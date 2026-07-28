@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Reconquista Basquet · Panel de Scouting</title>
 
 <script src="https://cdn.tailwindcss.com"></script>
@@ -69,7 +69,67 @@
   @keyframes spin-slow { to { transform: rotate(360deg); } }
   .animate-spin-slow { animation: spin-slow .9s linear infinite; }
 
-  .scrollbox { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* overflow-hidden del contenedor pisaba el scroll horizontal: las tablas
+     anchas quedaban CORTADAS en mobile en vez de scrollear. */
+  .scrollbox {
+    overflow-x: auto !important;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  /* Alturas de graficos por breakpoint */
+  .chart-box { position: relative; width: 100%; height: 520px; }
+  .chart-box.is-md { height: 420px; }
+  .chart-box.is-sm { height: 380px; }
+  @media (max-width: 1023px) {
+    .chart-box { height: 440px; }
+    .chart-box.is-md { height: 380px; }
+    .chart-box.is-sm { height: 340px; }
+  }
+  @media (max-width: 767px) {
+    .chart-box { height: 400px; }
+    .chart-box.is-md { height: 320px; }
+    .chart-box.is-sm { height: 300px; }
+  }
+  @media (max-width: 479px) {
+    .chart-box { height: 360px; }
+    .chart-box.is-md { height: 280px; }
+    .chart-box.is-sm { height: 260px; }
+  }
+
+  /* Primera columna fija: sin esto perdes de vista que jugador estas mirando
+     apenas scrolleas la tabla a lo ancho. */
+  @media (max-width: 767px) {
+    .scrollbox table th:first-child,
+    .scrollbox table td:first-child {
+      position: sticky; left: 0; z-index: 2;
+      background: #141414;
+      box-shadow: 1px 0 0 #282828;
+    }
+    .scrollbox table thead th:first-child { z-index: 3; }
+    .scrollbox tbody tr:hover td:first-child { background: #1b1b1b; }
+    .scrollbox table th, .scrollbox table td { padding-left: .625rem; padding-right: .625rem; }
+  }
+
+  /* Targets tactiles: 44px es el minimo comodo con el dedo */
+  @media (pointer: coarse) {
+    button, select, [role="button"] { min-height: 44px; }
+    .legend-chip { min-height: 0; }
+  }
+
+  /* Panel de logos faltantes: a lo ancho abajo en telefono */
+  @media (max-width: 639px) {
+    #logosFaltantesPanel {
+      left: .5rem; right: .5rem; bottom: .5rem; width: auto; max-width: none;
+    }
+  }
+
+  /* Evita el zoom automatico de iOS al enfocar un input < 16px */
+  @media (max-width: 767px) {
+    input, select, textarea { font-size: 16px; }
+  }
+
 
   @media (max-width: 767px) {
     #sidebar { transform: translateX(-100%); transition: transform .25s ease; }
@@ -195,6 +255,14 @@ const factorSelection = {
 
 const chartInstances = {};
 let equipoDestacado = -1;   // indice del equipo resaltado en el scatter ORTG/DRTG
+
+/* Breakpoints en JS. Chart.js congela las opciones al crear el grafico, asi que
+   lo que dependa del ancho se lee de aca y se re-renderiza al cruzar un corte. */
+const BP = {
+  movil:   () => (window.innerWidth || 1024) < 640,
+  tablet:  () => (window.innerWidth || 1024) < 1024,
+  bucket:  () => ((window.innerWidth || 1024) < 640 ? 0 : (window.innerWidth || 1024) < 1024 ? 1 : 2),
+};
 
 /* ============ UTILIDADES ============ */
 function normalizeText(s) {
@@ -612,7 +680,7 @@ function renderModernCard(title, value, subtitle, iconSvg) {
         <div class="text-accent w-7 h-7 flex items-center justify-center">
           ${iconSvg}
         </div>
-        <p class="font-display text-4xl md:text-5xl font-bold text-accent tracking-tight leading-none">${escapeHtml(value ?? '—')}</p>
+        <p class="font-display text-3xl sm:text-4xl md:text-5xl font-bold text-accent tracking-tight leading-none break-words">${escapeHtml(value ?? '—')}</p>
       </div>
       <p class="text-xs text-muted font-body">${escapeHtml(subtitle)}</p>
     </div>
@@ -994,7 +1062,7 @@ function buildPrincipal() {
     <section class="space-y-8">
       <div>
         <h2 class="font-display uppercase tracking-wide text-sm text-muted mb-3">Resumen General</h2>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
           ${kpiEquipos}
           ${kpiJugadores}
           ${kpiPartidos}
@@ -1014,9 +1082,9 @@ function buildPrincipal() {
           <h2 class="font-display uppercase tracking-wide text-sm text-muted mb-3">Tabla de Clasificación Completa</h2>
           ${fullStandTable}
         </div>
-        <div class="card rounded-xl p-5 border border-hairline">
-           <h3 class="font-display text-lg uppercase tracking-wide mb-4 text-ink">ORTG vs DRTG · Mapa de Rendimiento</h3>
-           <div class="relative w-full h-[520px]">
+        <div class="card rounded-xl p-3 sm:p-5 border border-hairline">
+           <h3 class="font-display text-base sm:text-lg uppercase tracking-wide mb-3 sm:mb-4 text-ink">ORTG vs DRTG · Mapa de Rendimiento</h3>
+           <div class="chart-box">
              <canvas id="ortgDrtgChart"></canvas>
            </div>
            <div class="flex flex-wrap items-center gap-x-5 gap-y-2 mt-4 pt-3 border-t border-hairline text-[11px] text-muted">
@@ -1024,7 +1092,7 @@ function buildPrincipal() {
              <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full border-2" style="border-color:#60a5fa"></i>Defensa fuerte</span>
              <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full border-2" style="border-color:#f7941e"></i>Ataque fuerte</span>
              <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full border-2" style="border-color:#ef4444"></i>Bajo</span>
-             <span class="ml-auto font-mono">Líneas punteadas = media de la liga · DRTG invertido (arriba = mejor defensa)</span>
+             <span class="ml-auto font-mono hidden lg:inline">Líneas punteadas = media de la liga · DRTG invertido (arriba = mejor defensa)</span>
            </div>
         </div>
       </div>
@@ -1124,7 +1192,7 @@ function buildFactores() {
         <div class="flex flex-wrap gap-2">${checkboxes}</div>
       </div>
       <div class="card rounded-lg p-5">
-        <div class="relative" style="height:420px;">
+        <div class="chart-box is-md">
           <canvas id="factoresChart"></canvas>
         </div>
       </div>
@@ -1189,12 +1257,26 @@ function drawFactoresChart() {
         r: {
           angleLines: { color: '#282828' },
           grid: { color: '#282828' },
-          pointLabels: { color: '#f5f4f2', font: { family: 'Barlow', size: 12 } },
-          ticks: { color: '#96938d', backdropColor: 'transparent' },
+          pointLabels: {
+            color: '#f5f4f2',
+            font: { family: 'Barlow', size: BP.movil() ? 9 : 12 },
+            // Etiquetas largas partidas en dos lineas en pantalla chica
+            callback: (l) => (BP.movil() && String(l).length > 12
+              ? String(l).replace(/\s+/, '\n').split('\n') : l),
+          },
+          ticks: { color: '#96938d', backdropColor: 'transparent', font: { size: BP.movil() ? 9 : 11 } },
         },
       },
       plugins: {
-        legend: { labels: { color: '#f5f4f2', font: { family: 'Barlow' } } },
+        legend: {
+          position: BP.movil() ? 'bottom' : 'top',
+          labels: {
+            color: '#f5f4f2',
+            font: { family: 'Barlow', size: BP.movil() ? 10 : 12 },
+            boxWidth: BP.movil() ? 10 : 20,
+            padding: BP.movil() ? 8 : 10,
+          },
+        },
       },
     },
   });
@@ -1251,6 +1333,18 @@ function drawOrtgDrtgChart() {
   if (chartInstances.ortgDrtg) chartInstances.ortgDrtg.destroy();
   equipoDestacado = -1;
 
+  /* El tamaño de logo, tipografia y carteles se calcula sobre el ancho REAL
+     del area de dibujo, no sobre el viewport: el mismo grafico puede estar
+     en una card angosta de escritorio o a pantalla completa en un telefono. */
+  function ui(chart) {
+    const w = chart.chartArea ? (chart.chartArea.right - chart.chartArea.left) : 600;
+    if (w < 360) return { logo: 20, nombre: 8, cartel: 9, corte: 8, mostrarNombres: false };
+    if (w < 520) return { logo: 24, nombre: 9, cartel: 10, corte: 10, mostrarNombres: true };
+    if (w < 760) return { logo: 27, nombre: 9, cartel: 10, corte: 11, mostrarNombres: true };
+    return { logo: 30, nombre: 10, cartel: 11, corte: 13, mostrarNombres: true };
+  }
+  const angosto = BP.movil;
+
   chartInstances.ortgDrtg = new Chart(canvas.getContext('2d'), {
     type: 'scatter',
     data: {
@@ -1259,29 +1353,30 @@ function drawOrtgDrtgChart() {
         data: chartData,
         backgroundColor: 'transparent',
         borderColor: 'transparent',
-        pointRadius: 18,
-        pointHoverRadius: 22,
+        pointRadius: angosto() ? 13 : 18,
+        pointHoverRadius: angosto() ? 16 : 22,
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { top: 18, right: 18, bottom: 4, left: 4 } },
+      layout: { padding: { top: angosto() ? 12 : 18, right: angosto() ? 10 : 18, bottom: 4, left: 4 } },
       scales: {
         x: {
           min: escala.xMin, max: escala.xMax,
-          title: { display: true, text: 'ORTG  →  ataque', color: '#9CA3AF', font: { family: 'Barlow', size: 11 } },
+          title: { display: true, text: angosto() ? 'ORTG →' : 'ORTG  →  ataque', color: '#9CA3AF', font: { family: 'Barlow', size: 11 } },
           grid: { color: 'rgba(40,40,40,0.65)' },
-          ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 } },
+          ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, maxTicksLimit: angosto() ? 5 : 10 },
         },
         y: {
           reverse: true,
           min: escala.yMin, max: escala.yMax,
-          title: { display: true, text: 'DRTG  ↑  defensa', color: '#9CA3AF', font: { family: 'Barlow', size: 11 } },
+          title: { display: true, text: angosto() ? 'DRTG ↑' : 'DRTG  ↑  defensa', color: '#9CA3AF', font: { family: 'Barlow', size: 11 } },
           grid: { color: 'rgba(40,40,40,0.65)' },
-          ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 } },
+          ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, maxTicksLimit: angosto() ? 6 : 10 },
         }
       },
+      interaction: { mode: 'nearest', intersect: false, axis: 'xy' },
       onHover: (evt, elementos) => {
         const idx = (elementos && elementos.length) ? elementos[0].index : -1;
         if (idx !== equipoDestacado) { idx >= 0 ? highlightPoint(idx) : removeHighlight(); }
@@ -1341,29 +1436,31 @@ function drawOrtgDrtgChart() {
           ctx.setLineDash([]);
 
           // Valor de cada media, pegado a la linea
-          ctx.font = '500 9px "DM Mono", monospace';
+          const U = ui(chart);
+          ctx.font = '500 ' + (U.cartel - 1) + 'px "DM Mono", monospace';
           ctx.fillStyle = 'rgba(156, 163, 175, 0.9)';
           ctx.textAlign = 'left';
           ctx.textBaseline = 'top';
-          ctx.fillText('media ' + avgX.toFixed(1), ex + 5, area.top + 4);
+          ctx.fillText(avgX.toFixed(1), ex + 5, area.top + 4);
           ctx.textAlign = 'right';
-          ctx.fillText('media ' + avgY.toFixed(1), area.right - 5, ey + 4);
+          ctx.fillText(avgY.toFixed(1), area.right - 5, ey + 4);
 
           // Carteles de cuadrante en las esquinas
-          const P = 10;
+          const P = U.cartel;
+          const corto = U.cartel <= 10;
           const carteles = [
             [CUADRANTES.def,   area.left + P,  area.top + P,    'left',  'top'],
             [CUADRANTES.elite, area.right - P, area.top + P,    'right', 'top'],
             [CUADRANTES.bajo,  area.left + P,  area.bottom - P, 'left',  'bottom'],
             [CUADRANTES.of,    area.right - P, area.bottom - P, 'right', 'bottom'],
           ];
-          ctx.font = '700 11px "Barlow Condensed", sans-serif';
+          ctx.font = '700 ' + U.cartel + 'px "Barlow Condensed", sans-serif';
           carteles.forEach(([q, x, y, ta, tb]) => {
             ctx.textAlign = ta;
             ctx.textBaseline = tb;
             ctx.fillStyle = q.color;
             ctx.globalAlpha = 0.85;
-            ctx.fillText(q.label, x, y);
+            ctx.fillText(corto ? q.corto : q.label, x, y);
           });
 
           ctx.restore();
@@ -1378,7 +1475,8 @@ function drawOrtgDrtgChart() {
           if (!meta || meta.hidden) return;
 
           const puntos = chart.data.datasets[0].data;
-          const BASE = 30;
+          const U = ui(chart);
+          const BASE = U.logo;
           const ocupados = [];  // cajas de texto ya dibujadas, para no pisarlas
 
           meta.data.forEach((point, index) => {
@@ -1434,15 +1532,17 @@ function drawOrtgDrtgChart() {
             ctx.shadowBlur = 0;
 
             // Nombre del equipo (reemplaza la lista lateral).
-            const etiqueta = activo ? item.name.toUpperCase() : recortar(item.name.toUpperCase(), 13);
-            ctx.font = (activo ? '700 12px ' : '600 10px ') + '"Barlow Condensed", sans-serif';
+            // En pantallas muy angostas solo se rotula el equipo tocado.
+            if (!U.mostrarNombres && !activo) { ctx.restore(); return; }
+            const etiqueta = activo ? item.name.toUpperCase() : recortar(item.name.toUpperCase(), U.corte);
+            ctx.font = (activo ? ('700 ' + (U.nombre + 2) + 'px ') : ('600 ' + U.nombre + 'px ')) + '"Barlow Condensed", sans-serif';
             ctx.textAlign = 'center';
 
             /* Evasion de colisiones: probamos arriba y, si ese hueco ya esta
                tomado por otra etiqueta, la mandamos abajo. Con dos intentos
                alcanza para densidades normales de liga. */
             const ancho = ctx.measureText(etiqueta).width;
-            const alto = 12;
+            const alto = U.nombre + 2;
             const arriba = y - r - 5;
             const abajo = y + r + 5 + alto;
             let ty = arriba, base = 'bottom';
@@ -1480,10 +1580,10 @@ function drawOrtgDrtgChart() {
 
 /* Definicion de los cuatro cuadrantes. Eje Y invertido: DRTG bajo = arriba. */
 const CUADRANTES = {
-  elite: { label: 'ELITE',       color: '#22c55e' },  // + ataque, + defensa
-  def:   { label: 'DEF FUERTE',  color: '#60a5fa' },  // - ataque, + defensa
-  of:    { label: 'OF FUERTE',   color: '#f7941e' },  // + ataque, - defensa
-  bajo:  { label: 'BAJO',        color: '#ef4444' },  // - ataque, - defensa
+  elite: { label: 'ELITE',      corto: 'ELITE', color: '#22c55e' },  // + ataque, + defensa
+  def:   { label: 'DEF FUERTE', corto: 'DEF',   color: '#60a5fa' },  // - ataque, + defensa
+  of:    { label: 'OF FUERTE',  corto: 'OF',    color: '#f7941e' },  // + ataque, - defensa
+  bajo:  { label: 'BAJO',       corto: 'BAJO',  color: '#ef4444' },  // - ataque, - defensa
 };
 
 function recortar(txt, max) {
@@ -1605,7 +1705,7 @@ function buildScoutingCompare(sheetKey, nameCandidates, selectionKey, chartSuffi
         </div>
       </div>
       <div class="card rounded-lg p-5">
-        <div class="relative" style="height:380px;">
+        <div class="chart-box is-sm">
           <canvas id="compareChart-${chartSuffix}"></canvas>
         </div>
       </div>
@@ -1675,12 +1775,24 @@ function drawScoutingCharts() {
           min: 0, max: 100,
           angleLines: { color: '#282828' },
           grid: { color: '#282828' },
-          pointLabels: { color: '#f5f4f2', font: { family: 'Barlow', size: 11 } },
+          pointLabels: {
+            color: '#f5f4f2',
+            font: { family: 'Barlow', size: BP.movil() ? 8 : 11 },
+            callback: (l) => (BP.movil() && String(l).length > 12
+              ? String(l).replace(/\s+/, '\n').split('\n') : l),
+          },
           ticks: { display: false },
         },
       },
       plugins: {
-        legend: { labels: { color: '#f5f4f2', font: { family: 'Barlow' } } },
+        legend: {
+          position: BP.movil() ? 'bottom' : 'top',
+          labels: {
+            color: '#f5f4f2',
+            font: { family: 'Barlow', size: BP.movil() ? 10 : 12 },
+            boxWidth: BP.movil() ? 10 : 20,
+          },
+        },
         tooltip: {
           callbacks: {
             label(ctx) {
@@ -1815,6 +1927,31 @@ async function init() {
   window.addEventListener('hashchange', () => {
     const s = (window.location.hash || '#principal').replace('#', '');
     if (VALID_SECTIONS.includes(s)) navigate(s);
+  });
+
+  /* Rotar el telefono cambia de breakpoint, pero Chart.js ya congelo las
+     opciones. Re-renderizamos SOLO al cruzar un corte, no en cada pixel. */
+  let bucketPrevio = BP.bucket();
+  let tResize;
+  window.addEventListener('resize', () => {
+    clearTimeout(tResize);
+    tResize = setTimeout(() => {
+      const b = BP.bucket();
+      if (b !== bucketPrevio) {
+        bucketPrevio = b;
+        if (b > 0) closeSidebar();
+        renderSection(currentSection);
+      }
+    }, 220);
+  });
+
+  /* En touch no existe el mouseleave: sin esto el equipo resaltado queda pegado. */
+  document.addEventListener('touchstart', (e) => {
+    if (equipoDestacado >= 0 && !(e.target && e.target.id === 'ortgDrtgChart')) removeHighlight();
+  }, { passive: true });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { closeSidebar(); removeHighlight(); }
   });
 }
 
