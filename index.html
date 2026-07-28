@@ -71,13 +71,6 @@
 
   .scrollbox { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-  .legend-row { border-left: 2px solid transparent; }
-  .legend-row:hover { background: #1F2937; }
-  .legend-row.is-active {
-    background: #1F2937; border-left-color: #f7941e; opacity: 1 !important;
-  }
-  .legend-row.is-active span { color: #f7941e; }
-
   @media (max-width: 767px) {
     #sidebar { transform: translateX(-100%); transition: transform .25s ease; }
     #sidebar.open { transform: translateX(0); }
@@ -286,39 +279,46 @@ function cleanName(name) {
   return String(name).replace(/\s*-\s*MM/g, '').trim();
 }
 
-/* ============ MÓDULO LOGOS (Drive → base64 → HTMLImageElement) ============ */
+/* ============ MÓDULO LOGOS (hosting estático) ============ */
 /*
-  Contrato:
-    LOGOS.init()            -> arranca la carga (idempotente). Devuelve Promise.
-    LOGOS.ready(timeoutMs)  -> Promise que resuelve cuando el mapa está descargado
-                               Y todas las imágenes decodificadas (o timeout).
-    LOGOS.getImage(nombre)  -> HTMLImageElement listo para ctx.drawImage(), o null.
-    LOGOS.getUrl(nombre)    -> dataURL (o placeholder) para usar en <img src>.
-    LOGOS.isReady()         -> bool sincrónico.
+  CONTEXTO: la app corre en GitHub Pages. No hay backend. `google.script.run`
+  NO EXISTE fuera del sandbox de HtmlService, así que todo el approach de
+  base64-desde-Drive es inaplicable acá. Este módulo resuelve logos por HTTP.
 
-  Reglas:
-    - NADA de crear Image() adentro del render loop de Chart.js.
-    - Resolución de nombre → clave: exacta > normalizada > fuzzy, memoizada.
-    - Si no hay backend (archivo abierto fuera de Apps Script) degrada a placeholder
-      sin romper el dashboard.
+  Cascada de proveedores, primero que responde gana:
+    0) CFG.overrides       -> mapa manual nombre -> URL (casos raros)
+    1) CFG.jsonpUrl        -> Apps Script publicado como API JSONP (opcional,
+                              mantiene el workflow "tiro el PNG en Drive")
+    2) CFG.basePath        -> archivos del propio repo por convención de slug
+                              (RECOMENDADO: mismo origen, cachea el browser,
+                               no ensucia el canvas, cero latencia de Drive)
+    3) null                -> el plugin dibuja el fallback de iniciales
+
+  Agregar un equipo nuevo = subir `logos/<slug>.png` al repo. Nada más.
 */
 const LOGOS = (function () {
 
+  const CFG = {
+    basePath: 'logos/',
+    extensiones: ['png', 'webp', 'jpg', 'jpeg', 'jfif', 'avif', 'svg', 'gif'],
+    // Dejalo en '' para desactivar. Si lo usás: URL /exec del Web App.
+    jsonpUrl: '',
+    jsonpTimeout: 8000,
+    overrides: {
+      // "NAUTICO ENSENADA": "logos/nautico.png",
+    },
+  };
+
   const DEFAULT_LOGO = "data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%239CA3AF%22%3E%3Cpath d=%22M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5%22%3E%3C/path%3E%3C/svg%3E";
 
-  let mapa = {};                 // CLAVE_NORMALIZADA -> dataURL
-  let claves = [];               // cache de Object.keys(mapa)
-  const imagenes = new Map();    // CLAVE -> HTMLImageElement decodificada
-  const aliasCache = new Map();  // nombre crudo -> CLAVE (o null). Evita fuzzy por frame.
-  const suscriptores = [];
+  const cache = new Map();      // CLAVE -> { img: HTMLImageElement|null, url: string|null }
+  const enVuelo = new Map();    // CLAVE -> Promise
+  let mapaRemoto = null;        // CLAVE -> URL (del JSONP)
+  let promesaRemota = null;
 
-  let estado = 'idle';           // idle | cargando | listo | error
-  let promesaCarga = null;
-  let resolverReady;
-  const promesaReady = new Promise((res) => { resolverReady = res; });
+  /* ---------- normalización y slugs ---------- */
 
-  /* ---- normalización (misma lógica que en el .gs) ---- */
-  function normalizarClave(s) {
+  function normalizar(s) {
     return String(s === null || s === undefined ? '' : s)
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .toUpperCase()
@@ -327,160 +327,206 @@ const LOGOS = (function () {
       .trim();
   }
 
-  /* ---- espera activa a que el sandbox de HtmlService inyecte google.script ---- */
-  function esperarApiAppsScript(timeoutMs) {
-    const limite = timeoutMs || 10000;
-    return new Promise((resolve) => {
-      const t0 = Date.now();
-      (function poll() {
-        if (typeof google !== 'undefined' && google.script && google.script.run) return resolve(true);
-        if (Date.now() - t0 >= limite) return resolve(false);
-        setTimeout(poll, 80);
-      })();
-    });
+  function slug(s) {
+    return normalizar(s).toLowerCase().replace(/\s+/g, '-');
   }
 
-  function llamarBackend() {
-    return new Promise((resolve) => {
-      let cerrado = false;
-      const cerrar = (valor) => { if (!cerrado) { cerrado = true; resolve(valor); } };
-      // Red de seguridad: si Drive se cuelga, no dejamos el dashboard esperando.
-      const guarda = setTimeout(() => {
-        console.warn('[LOGOS] timeout del backend, sigo con placeholders');
-        cerrar({});
-      }, 25000);
+  /*
+    Candidatos de nombre de archivo, de más específico a más laxo.
+    "ESTUDIANTES DE LA PLATA 'A'" ->
+      estudiantes-de-la-plata-a / estudiantes_de_la_plata_a / estudiantesdelaplataa
+      + primeras 2 palabras: estudiantes-de / estudiantes
+  */
+  function nombresArchivo(nombreEquipo) {
+    const base = slug(nombreEquipo);
+    if (!base) return [];
+    const partes = base.split('-').filter(Boolean);
+    const out = [base, base.replace(/-/g, '_'), base.replace(/-/g, '')];
 
-      google.script.run
-        .withSuccessHandler((resp) => { clearTimeout(guarda); cerrar(resp); })
-        .withFailureHandler((err) => {
-          clearTimeout(guarda);
-          console.error('[LOGOS] obtenerMapaLogos falló:', err && err.message ? err.message : err);
-          cerrar({});
-        })
-        .obtenerMapaLogos();
-    });
-  }
-
-  /* ---- decodifica TODOS los dataURL antes de dibujar nada ---- */
-  function precargar(dict) {
-    const entradas = Object.keys(dict);
-    if (!entradas.length) return Promise.resolve();
-    return Promise.all(entradas.map((clave) => new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => { imagenes.set(clave, img); resolve(); };
-      img.onerror = () => { console.warn('[LOGOS] no decodifica:', clave); resolve(); };
-      img.src = dict[clave];
-      // decode() nativo cuando está disponible: evita el primer frame en blanco.
-      if (img.decode) img.decode().then(() => { imagenes.set(clave, img); resolve(); }).catch(() => {});
-    })));
-  }
-
-  function finalizar(nuevoEstado) {
-    estado = nuevoEstado;
-    resolverReady(mapa);
-    suscriptores.splice(0).forEach((fn) => { try { fn(mapa); } catch (e) { console.error(e); } });
-  }
-
-  function init() {
-    if (promesaCarga) return promesaCarga;
-    estado = 'cargando';
-
-    promesaCarga = (async function () {
-      const hayApi = await esperarApiAppsScript(10000);
-
-      if (!hayApi) {
-        console.warn('[LOGOS] google.script.run no disponible. ' +
-          '¿Estás abriendo el HTML fuera del Web App de Apps Script? Sigo con placeholders.');
-        finalizar('error');
-        return mapa;
-      }
-
-      const resp = await llamarBackend();
-      // El backend puede devolver {logos:{...}} o el dict plano (compatibilidad).
-      const dict = (resp && resp.logos) ? resp.logos : (resp || {});
-
-      // Re-normalizamos del lado del cliente por las dudas (nombres de archivo raros).
-      mapa = {};
-      Object.keys(dict).forEach((k) => { mapa[normalizarClave(k)] = dict[k]; });
-      claves = Object.keys(mapa);
-      aliasCache.clear();
-
-      await precargar(mapa);
-      console.log('[LOGOS] listos:', claves.length, 'equipos');
-      finalizar('listo');
-      return mapa;
-    })();
-
-    return promesaCarga;
-  }
-
-  /* ---- resolución nombre → clave, memoizada ---- */
-  function resolverClave(nombreEquipo) {
-    const crudo = String(nombreEquipo || '');
-    if (aliasCache.has(crudo)) return aliasCache.get(crudo);
-
-    const norm = normalizarClave(crudo);
-    let clave = null;
-
-    if (norm && mapa[norm]) {
-      clave = norm;
-    } else if (norm) {
-      // Fuzzy: contención en cualquier dirección, se queda con la coincidencia más larga.
-      let mejor = null, mejorLen = 0;
-      for (let i = 0; i < claves.length; i++) {
-        const k = claves[i];
-        if (norm.indexOf(k) !== -1 || k.indexOf(norm) !== -1) {
-          if (k.length > mejorLen) { mejor = k; mejorLen = k.length; }
-        }
-      }
-      clave = mejor;
+    // Sin las iniciales sueltas: "C F GONNET" -> "gonnet", "CLUB A BANFIELD" -> "club-banfield"
+    const largas = partes.filter(t => t.length > 1);
+    if (largas.length && largas.length < partes.length) {
+      out.push(largas.join('-'), largas.join(''));
     }
 
-    aliasCache.set(crudo, clave);
-    return clave;
+    // Recortes por delante y por detras: el nombre distintivo puede estar
+    // en cualquier punta ("NAUTICO ensenada" vs "c f GONNET").
+    if (partes.length > 2) out.push(partes.slice(0, 2).join('-'), partes.slice(-2).join('-'));
+    if (partes.length > 1) out.push(partes[0], partes[partes.length - 1]);
+    if (largas.length > 1) out.push(largas[largas.length - 1], largas[0]);
+
+    return out.filter(v => v && v.length > 1).filter((v, i, a) => a.indexOf(v) === i);
   }
 
+  function candidatos(nombreEquipo) {
+    const urls = [];
+    const clave = normalizar(nombreEquipo);
+
+    // 0) override manual
+    const ovKey = Object.keys(CFG.overrides).find(k => normalizar(k) === clave);
+    if (ovKey) urls.push(CFG.overrides[ovKey]);
+
+    // 1) mapa remoto (JSONP) — match exacto y después contención
+    if (mapaRemoto) {
+      if (mapaRemoto[clave]) {
+        urls.push(mapaRemoto[clave]);
+      } else {
+        let mejor = null, len = 0;
+        Object.keys(mapaRemoto).forEach((k) => {
+          if ((clave.indexOf(k) !== -1 || k.indexOf(clave) !== -1) && k.length > len) {
+            mejor = k; len = k.length;
+          }
+        });
+        if (mejor) urls.push(mapaRemoto[mejor]);
+      }
+    }
+
+    // 2) archivos del repo por convención.
+    //    Tanda 1 = nombre exacto (acierta el 90% de las veces).
+    //    Tanda 2 = variantes y recortes, solo si la 1 no dio nada.
+    const nombres = nombresArchivo(nombreEquipo);
+    const tanda1 = [], tanda2 = [];
+    nombres.forEach((n, i) => {
+      CFG.extensiones.forEach((ext) => {
+        (i === 0 ? tanda1 : tanda2).push(CFG.basePath + n + '.' + ext);
+      });
+    });
+
+    return [urls.concat(tanda1), tanda2];
+  }
+
+  /* Prueba un lote de URLs EN PARALELO y devuelve la de menor indice que cargo. */
+  async function primeraQueCargue(urls) {
+    if (!urls.length) return null;
+    const res = await Promise.all(urls.map(u =>
+      cargarImagen(u).then(img => ({ img: img, url: u })).catch(() => null)
+    ));
+    return res.find(Boolean) || null;
+  }
+
+  /* ---------- carga ---------- */
+
+  function cargarImagen(url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      // Sin crossOrigin: los assets del repo son mismo-origen y Drive no manda
+      // CORS. Si algún día exportás el canvas a PNG, pasá TODO a assets locales.
+      img.onload = () => (img.naturalWidth > 0 ? resolve(img) : reject(new Error('vacía')));
+      img.onerror = () => reject(new Error('404 ' + url));
+      img.src = url;
+    });
+  }
+
+  function cargarJsonp(url) {
+    return new Promise((resolve, reject) => {
+      const cb = '__logosCb_' + Math.random().toString(36).slice(2);
+      const script = document.createElement('script');
+      const limpiar = () => { delete window[cb]; script.remove(); };
+      const guarda = setTimeout(() => { limpiar(); reject(new Error('JSONP timeout')); }, CFG.jsonpTimeout);
+
+      window[cb] = (data) => { clearTimeout(guarda); limpiar(); resolve(data); };
+      script.onerror = () => { clearTimeout(guarda); limpiar(); reject(new Error('JSONP error')); };
+      script.src = url + (url.indexOf('?') === -1 ? '?' : '&') + 'callback=' + cb;
+      document.head.appendChild(script);
+    });
+  }
+
+  function asegurarMapaRemoto() {
+    if (!CFG.jsonpUrl) return Promise.resolve(null);
+    if (promesaRemota) return promesaRemota;
+
+    promesaRemota = cargarJsonp(CFG.jsonpUrl)
+      .then((resp) => {
+        const dict = (resp && resp.logos) ? resp.logos : (resp || {});
+        mapaRemoto = {};
+        Object.keys(dict).forEach((k) => { mapaRemoto[normalizar(k)] = dict[k]; });
+        console.log('[LOGOS] mapa remoto:', Object.keys(mapaRemoto).length, 'equipos');
+        return mapaRemoto;
+      })
+      .catch((e) => {
+        console.warn('[LOGOS] sin mapa remoto (' + e.message + '), voy con archivos locales');
+        mapaRemoto = null;
+        return null;
+      });
+
+    return promesaRemota;
+  }
+
+  async function resolverUno(nombreEquipo) {
+    const clave = normalizar(nombreEquipo);
+    if (!clave) return { img: null, url: null };
+    if (cache.has(clave)) return cache.get(clave);
+    if (enVuelo.has(clave)) return enVuelo.get(clave);
+
+    const tarea = (async () => {
+      await asegurarMapaRemoto();
+      const tandas = candidatos(nombreEquipo);
+      for (let i = 0; i < tandas.length; i++) {
+        const hit = await primeraQueCargue(tandas[i]);
+        if (hit) { cache.set(clave, hit); return hit; }
+      }
+      const r = { img: null, url: null };
+      cache.set(clave, r);
+      return r;
+    })();
+
+    enVuelo.set(clave, tarea);
+    tarea.finally(() => enVuelo.delete(clave));
+    return tarea;
+  }
+
+  /**
+   * Resuelve un lote de equipos. Devuelve Promise<{encontrados, faltantes[]}>.
+   * Llamalo con los nombres que salen de la planilla, no antes.
+   */
+  async function resolver(nombres) {
+    const unicos = Array.from(new Set((nombres || []).map(n => String(n || '')).filter(Boolean)));
+    const res = await Promise.all(unicos.map(resolverUno));
+    const faltantes = unicos.filter((n, i) => !res[i].img);
+    if (faltantes.length) {
+      console.warn('[LOGOS] sin archivo (' + faltantes.length + '/' + unicos.length + '):', faltantes);
+      console.warn('[LOGOS] esperaba, por ejemplo:', CFG.basePath + slug(faltantes[0]) + '.png');
+    } else if (unicos.length) {
+      console.log('[LOGOS] ' + unicos.length + '/' + unicos.length + ' logos OK');
+    }
+    return { encontrados: unicos.length - faltantes.length, total: unicos.length, faltantes: faltantes };
+  }
+
+  /* ---------- lectura sincrónica (para el render loop) ---------- */
+
   function getImage(nombreEquipo) {
-    const clave = resolverClave(nombreEquipo);
-    if (!clave) return null;
-    const img = imagenes.get(clave);
-    return (img && img.complete && img.naturalWidth > 0) ? img : null;
+    const r = cache.get(normalizar(nombreEquipo));
+    return (r && r.img && r.img.complete && r.img.naturalWidth > 0) ? r.img : null;
   }
 
   function getUrl(nombreEquipo) {
-    const clave = resolverClave(nombreEquipo);
-    return clave ? mapa[clave] : DEFAULT_LOGO;
+    const r = cache.get(normalizar(nombreEquipo));
+    return (r && r.url) ? r.url : null;
   }
 
-  function ready(timeoutMs) {
-    if (!timeoutMs) return promesaReady;
-    return Promise.race([
-      promesaReady,
-      new Promise((res) => setTimeout(() => res(mapa), timeoutMs)),
-    ]);
-  }
-
-  function onReady(fn) {
-    if (estado === 'listo' || estado === 'error') { fn(mapa); return; }
-    suscriptores.push(fn);
+  function iniciales(nombre) {
+    return String(nombre || '?')
+      .split(/\s+/).filter(Boolean).slice(0, 2)
+      .map(p => p.charAt(0).toUpperCase()).join('');
   }
 
   return {
-    DEFAULT_LOGO,
-    init, ready, onReady,
-    getImage, getUrl,
-    normalizarClave,
-    isReady: () => estado === 'listo',
-    debug: () => ({ estado, claves: claves.slice(), decodificadas: imagenes.size }),
+    CFG, DEFAULT_LOGO,
+    resolver, getImage, getUrl, iniciales,
+    normalizar, slug,
+    // Diagnóstico: LOGOS.debug() en la consola
+    debug: () => {
+      const filas = [];
+      cache.forEach((v, k) => filas.push({ equipo: k, archivo: v.url || '— FALTA —' }));
+      console.table(filas);
+      return { resueltos: cache.size, jsonp: CFG.jsonpUrl || '(desactivado)', basePath: CFG.basePath };
+    },
   };
 })();
 
-/* Arrancamos la carga YA, en paralelo con el fetch de las hojas. */
-LOGOS.init();
-
-/* Compat con el código viejo */
+/* Compat con el código existente */
 const DEFAULT_LOGO = LOGOS.DEFAULT_LOGO;
-function getLogoUrl(teamName) { return LOGOS.getUrl(cleanName(teamName)); }
+function getLogoUrl(teamName) { return LOGOS.getUrl(cleanName(teamName)) || DEFAULT_LOGO; }
 function getTeamImage(teamName) { return LOGOS.getImage(cleanName(teamName)); }
 
 /* ============ CAPA DE DATOS (GViz) ============ */
@@ -970,13 +1016,15 @@ function buildPrincipal() {
         </div>
         <div class="card rounded-xl p-5 border border-hairline">
            <h3 class="font-display text-lg uppercase tracking-wide mb-4 text-ink">ORTG vs DRTG · Mapa de Rendimiento</h3>
-           <div class="flex flex-row gap-6 h-[450px]">
-             <div class="flex-grow relative h-full">
-               <canvas id="ortgDrtgChart"></canvas>
-             </div>
-             <div id="teamLegend" class="w-48 overflow-y-auto border-l border-hairline pl-4 space-y-1 text-sm">
-               <!-- La leyenda se carga dinámicamente -->
-             </div>
+           <div class="relative w-full h-[520px]">
+             <canvas id="ortgDrtgChart"></canvas>
+           </div>
+           <div class="flex flex-wrap items-center gap-x-5 gap-y-2 mt-4 pt-3 border-t border-hairline text-[11px] text-muted">
+             <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full border-2" style="border-color:#22c55e"></i>Elite</span>
+             <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full border-2" style="border-color:#60a5fa"></i>Defensa fuerte</span>
+             <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full border-2" style="border-color:#f7941e"></i>Ataque fuerte</span>
+             <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full border-2" style="border-color:#ef4444"></i>Bajo</span>
+             <span class="ml-auto font-mono">Líneas punteadas = media de la liga · DRTG invertido (arriba = mejor defensa)</span>
            </div>
         </div>
       </div>
@@ -1154,27 +1202,51 @@ function drawFactoresChart() {
 
 function drawOrtgDrtgChart() {
   const canvas = document.getElementById('ortgDrtgChart');
-  const legendContainer = document.getElementById('teamLegend');
-  if (!canvas || !legendContainer || typeof Chart === 'undefined') return;
+  if (!canvas || typeof Chart === 'undefined') return;
 
   const data = sheet('promedios4f');
   if (data.error || !data.rows.length) return;
-  
+
   const colEquipo = findColumnLabel(data.cols, ['EQUIPO', 'NOMBRE']);
   const colOff = findColumnLabel(data.cols, ['RTNG OFF', 'ORTG']);
   const colDef = findColumnLabel(data.cols, ['RTNG DEF', 'DRTG']);
 
   const chartData = data.rows
     .filter(r => !isEquipoTipo(r))
-    .map((r, i) => ({
+    .map((r) => ({
       name: cleanName(r.formatted[colEquipo] || 'Desconocido'),
       x: toNumber(r.values[colOff]),
       y: toNumber(r.values[colDef])
     }))
     .filter(d => d.x !== null && d.y !== null);
 
-  const avgX = chartData.reduce((acc, curr) => acc + curr.x, 0) / chartData.length;
-  const avgY = chartData.reduce((acc, curr) => acc + curr.y, 0) / chartData.length;
+  if (!chartData.length) return;
+
+  const avgX = chartData.reduce((a, d) => a + d.x, 0) / chartData.length;
+  const avgY = chartData.reduce((a, d) => a + d.y, 0) / chartData.length;
+
+  /* Margen extra en los ejes: los logos y los nombres se dibujan FUERA del punto,
+     asi que sin esto los equipos de los bordes quedan cortados. */
+  const xs = chartData.map(d => d.x), ys = chartData.map(d => d.y);
+  const rangoX = (Math.max.apply(null, xs) - Math.min.apply(null, xs)) || 10;
+  const rangoY = (Math.max.apply(null, ys) - Math.min.apply(null, ys)) || 10;
+  const escala = {
+    xMin: Math.min.apply(null, xs) - rangoX * 0.14,
+    xMax: Math.max.apply(null, xs) + rangoX * 0.14,
+    yMin: Math.min.apply(null, ys) - rangoY * 0.16,
+    yMax: Math.max.apply(null, ys) + rangoY * 0.20,
+  };
+
+  /* Eje Y invertido: DRTG bajo = buena defensa = arriba.
+     De ahi salen los cuatro cuadrantes. */
+  function cuadrante(d) {
+    const ofFuerte = d.x >= avgX;
+    const defFuerte = d.y <= avgY;
+    if (ofFuerte && defFuerte) return CUADRANTES.elite;
+    if (!ofFuerte && defFuerte) return CUADRANTES.def;
+    if (ofFuerte && !defFuerte) return CUADRANTES.of;
+    return CUADRANTES.bajo;
+  }
 
   if (chartInstances.ortgDrtg) chartInstances.ortgDrtg.destroy();
   equipoDestacado = -1;
@@ -1187,103 +1259,210 @@ function drawOrtgDrtgChart() {
         data: chartData,
         backgroundColor: 'transparent',
         borderColor: 'transparent',
-        pointRadius: 14,
-        pointHoverRadius: 18
+        pointRadius: 18,
+        pointHoverRadius: 22,
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: { top: 18, right: 18, bottom: 4, left: 4 } },
       scales: {
-        x: { title: { display: true, text: 'ORTG', color: '#9CA3AF' }, grid: { color: '#282828' } },
-        y: { reverse: true, title: { display: true, text: 'DRTG', color: '#9CA3AF' }, grid: { color: '#282828' } }
+        x: {
+          min: escala.xMin, max: escala.xMax,
+          title: { display: true, text: 'ORTG  →  ataque', color: '#9CA3AF', font: { family: 'Barlow', size: 11 } },
+          grid: { color: 'rgba(40,40,40,0.65)' },
+          ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 } },
+        },
+        y: {
+          reverse: true,
+          min: escala.yMin, max: escala.yMax,
+          title: { display: true, text: 'DRTG  ↑  defensa', color: '#9CA3AF', font: { family: 'Barlow', size: 11 } },
+          grid: { color: 'rgba(40,40,40,0.65)' },
+          ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 } },
+        }
       },
-      // Hover sobre el canvas -> resalta tambien la fila de la leyenda.
       onHover: (evt, elementos) => {
         const idx = (elementos && elementos.length) ? elementos[0].index : -1;
         if (idx !== equipoDestacado) { idx >= 0 ? highlightPoint(idx) : removeHighlight(); }
       },
-      plugins: { 
+      plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: (ctx) => `${ctx.raw.name} · ORTG: ${ctx.raw.x.toFixed(2)} | DRTG: ${ctx.raw.y.toFixed(2)}` } }
+        tooltip: {
+          displayColors: false,
+          backgroundColor: '#0B1121',
+          borderColor: '#374151',
+          borderWidth: 1,
+          padding: 10,
+          titleFont: { family: '"Barlow Condensed"', size: 14 },
+          bodyFont: { family: '"DM Mono"', size: 11 },
+          callbacks: {
+            title: (items) => items[0].raw.name.toUpperCase(),
+            label: (ctx) => [
+              'ORTG  ' + ctx.raw.x.toFixed(1) + '   (media ' + avgX.toFixed(1) + ')',
+              'DRTG  ' + ctx.raw.y.toFixed(1) + '   (media ' + avgY.toFixed(1) + ')',
+              cuadrante(ctx.raw).label,
+            ],
+          }
+        }
       }
     },
     plugins: [
+      /* --- 1. Cuadrantes: tintes, medias punteadas y carteles --- */
+      {
+        id: 'quadrant-plugin',
+        beforeDatasetsDraw: (chart) => {
+          const ctx = chart.ctx;
+          const area = chart.chartArea;
+          const ex = chart.scales.x.getPixelForValue(avgX);
+          const ey = chart.scales.y.getPixelForValue(avgY);
+
+          ctx.save();
+
+          // Tinte suavisimo por cuadrante, solo para orientar la lectura.
+          const tintes = [
+            [area.left, area.top, ex - area.left, ey - area.top, CUADRANTES.def.color],
+            [ex, area.top, area.right - ex, ey - area.top, CUADRANTES.elite.color],
+            [area.left, ey, ex - area.left, area.bottom - ey, CUADRANTES.bajo.color],
+            [ex, ey, area.right - ex, area.bottom - ey, CUADRANTES.of.color],
+          ];
+          ctx.globalAlpha = 0.035;
+          tintes.forEach(([x, y, w, h, color]) => { ctx.fillStyle = color; ctx.fillRect(x, y, w, h); });
+          ctx.globalAlpha = 1;
+
+          // Lineas de media
+          ctx.setLineDash([5, 5]);
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = 'rgba(156, 163, 175, 0.55)';
+          ctx.beginPath();
+          ctx.moveTo(ex, area.top); ctx.lineTo(ex, area.bottom);
+          ctx.moveTo(area.left, ey); ctx.lineTo(area.right, ey);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Valor de cada media, pegado a la linea
+          ctx.font = '500 9px "DM Mono", monospace';
+          ctx.fillStyle = 'rgba(156, 163, 175, 0.9)';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          ctx.fillText('media ' + avgX.toFixed(1), ex + 5, area.top + 4);
+          ctx.textAlign = 'right';
+          ctx.fillText('media ' + avgY.toFixed(1), area.right - 5, ey + 4);
+
+          // Carteles de cuadrante en las esquinas
+          const P = 10;
+          const carteles = [
+            [CUADRANTES.def,   area.left + P,  area.top + P,    'left',  'top'],
+            [CUADRANTES.elite, area.right - P, area.top + P,    'right', 'top'],
+            [CUADRANTES.bajo,  area.left + P,  area.bottom - P, 'left',  'bottom'],
+            [CUADRANTES.of,    area.right - P, area.bottom - P, 'right', 'bottom'],
+          ];
+          ctx.font = '700 11px "Barlow Condensed", sans-serif';
+          carteles.forEach(([q, x, y, ta, tb]) => {
+            ctx.textAlign = ta;
+            ctx.textBaseline = tb;
+            ctx.fillStyle = q.color;
+            ctx.globalAlpha = 0.85;
+            ctx.fillText(q.label, x, y);
+          });
+
+          ctx.restore();
+        }
+      },
+      /* --- 2. Logos + nombre arriba --- */
       {
         id: 'team-logos-plugin',
-        // Render 100% sincrónico: solo lee del cache ya decodificado.
         afterDatasetsDraw: (chart) => {
           const ctx = chart.ctx;
           const meta = chart.getDatasetMeta(0);
           if (!meta || meta.hidden) return;
 
           const puntos = chart.data.datasets[0].data;
-          const SIZE = 26;
+          const BASE = 30;
+          const ocupados = [];  // cajas de texto ya dibujadas, para no pisarlas
 
           meta.data.forEach((point, index) => {
             if (!point || point.skip) return;
             const item = puntos[index];
             if (!item) return;
 
+            const q = cuadrante(item);
             const img = LOGOS.getImage(item.name);
             const activo = (index === equipoDestacado);
             const hayFoco = (equipoDestacado >= 0);
             const x = point.x, y = point.y;
-            const r = (activo ? SIZE * 0.62 : SIZE / 2);
+            const r = (activo ? BASE * 0.62 : BASE / 2);
 
             ctx.save();
-            ctx.globalAlpha = (hayFoco && !activo) ? 0.28 : 1;
+            ctx.globalAlpha = (hayFoco && !activo) ? 0.25 : 1;
 
             if (activo) {
-              // Halo dorado detras del logo
               ctx.beginPath();
-              ctx.arc(x, y, r + 5, 0, Math.PI * 2);
-              ctx.fillStyle = 'rgba(247, 148, 30, 0.18)';
+              ctx.arc(x, y, r + 6, 0, Math.PI * 2);
+              ctx.fillStyle = 'rgba(247, 148, 30, 0.16)';
               ctx.fill();
             }
 
+            // Disco de fondo: los logos con transparencia necesitan base opaca.
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fillStyle = '#0B1121';
+            ctx.fill();
+
             ctx.save();
             if (img) {
-              // Recorte circular para que los PNG cuadrados no se vean como stickers.
               ctx.beginPath();
-              ctx.arc(x, y, r, 0, Math.PI * 2);
-              ctx.closePath();
+              ctx.arc(x, y, r - 1, 0, Math.PI * 2);
               ctx.clip();
-              ctx.drawImage(img, x - r, y - r, r * 2, r * 2);
+              ctx.drawImage(img, x - r + 1, y - r + 1, (r - 1) * 2, (r - 1) * 2);
             } else {
-              // Fallback dibujado a mano: iniciales. Nunca queda el punto vacío.
-              ctx.beginPath();
-              ctx.arc(x, y, r, 0, Math.PI * 2);
-              ctx.fillStyle = '#1F2937';
-              ctx.fill();
-              ctx.lineWidth = 1.5;
-              ctx.strokeStyle = '#f7941e';
-              ctx.stroke();
               ctx.fillStyle = '#F9FAFB';
-              ctx.font = '600 ' + Math.round(r * 0.78) + 'px Barlow, sans-serif';
+              ctx.font = '600 ' + Math.round(r * 0.72) + 'px Barlow, sans-serif';
               ctx.textAlign = 'center';
               ctx.textBaseline = 'middle';
               ctx.fillText(iniciales(item.name), x, y + 0.5);
             }
-            ctx.restore(); // fin del clip circular
+            ctx.restore();
 
-            // Anillo: dorado grueso si esta destacado, hairline si no.
+            // Anillo del color del cuadrante. Naranja grueso si esta activo.
             ctx.beginPath();
             ctx.arc(x, y, r, 0, Math.PI * 2);
-            ctx.lineWidth = activo ? 3 : 1.5;
-            ctx.strokeStyle = activo ? '#f7941e' : 'rgba(247, 148, 30, 0.45)';
+            ctx.lineWidth = activo ? 3 : 2;
+            ctx.strokeStyle = activo ? '#f7941e' : q.color;
             if (activo) { ctx.shadowColor = 'rgba(247, 148, 30, 0.9)'; ctx.shadowBlur = 12; }
             ctx.stroke();
             ctx.shadowBlur = 0;
 
-            if (activo) {
-              ctx.globalAlpha = 1;
-              ctx.fillStyle = '#F9FAFB';
-              ctx.font = '600 11px "Barlow Condensed", sans-serif';
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'bottom';
-              ctx.fillText(String(item.name).toUpperCase(), x, y - r - 9);
+            // Nombre del equipo (reemplaza la lista lateral).
+            const etiqueta = activo ? item.name.toUpperCase() : recortar(item.name.toUpperCase(), 13);
+            ctx.font = (activo ? '700 12px ' : '600 10px ') + '"Barlow Condensed", sans-serif';
+            ctx.textAlign = 'center';
+
+            /* Evasion de colisiones: probamos arriba y, si ese hueco ya esta
+               tomado por otra etiqueta, la mandamos abajo. Con dos intentos
+               alcanza para densidades normales de liga. */
+            const ancho = ctx.measureText(etiqueta).width;
+            const alto = 12;
+            const arriba = y - r - 5;
+            const abajo = y + r + 5 + alto;
+            let ty = arriba, base = 'bottom';
+
+            const choca = (cy) => ocupados.some(c =>
+              Math.abs(c.x - x) < (c.w + ancho) / 2 + 4 && Math.abs(c.y - cy) < alto + 2);
+
+            if (choca(arriba)) {
+              if (!choca(abajo)) { ty = abajo; base = 'alphabetic'; }
             }
+            if (!activo) ocupados.push({ x: x, y: ty, w: ancho });
+            ctx.textBaseline = base;
+
+            // Contorno oscuro para que el texto se lea sobre la grilla.
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#0B1121';
+            ctx.lineJoin = 'round';
+            ctx.strokeText(etiqueta, x, ty);
+            ctx.fillStyle = activo ? '#f7941e' : '#cbd5e1';
+            ctx.fillText(etiqueta, x, ty);
 
             ctx.restore();
           });
@@ -1292,47 +1471,70 @@ function drawOrtgDrtgChart() {
     ]
   });
 
-  renderTeamLegend(chartData);
-
-  // Si los logos todavía venían en camino, redibujamos cuando lleguen.
-  LOGOS.onReady(() => {
+  LOGOS.resolver(chartData.map(d => d.name)).then((res) => {
     const c = chartInstances.ortgDrtg;
     if (c) c.update('none');
-    renderTeamLegend(chartData);
+    renderPanelLogosFaltantes(res.faltantes);
   });
 }
 
-function iniciales(nombre) {
-  return String(nombre || '?')
-    .split(/\s+/).filter(Boolean).slice(0, 2)
-    .map(p => p.charAt(0).toUpperCase()).join('');
-}
+/* Definicion de los cuatro cuadrantes. Eje Y invertido: DRTG bajo = arriba. */
+const CUADRANTES = {
+  elite: { label: 'ELITE',       color: '#22c55e' },  // + ataque, + defensa
+  def:   { label: 'DEF FUERTE',  color: '#60a5fa' },  // - ataque, + defensa
+  of:    { label: 'OF FUERTE',   color: '#f7941e' },  // + ataque, - defensa
+  bajo:  { label: 'BAJO',        color: '#ef4444' },  // - ataque, - defensa
+};
 
-function renderTeamLegend(chartData) {
-  const legendContainer = document.getElementById('teamLegend');
-  if (!legendContainer) return;
-  legendContainer.innerHTML = chartData.map((d, i) => `
-    <div class="legend-row flex items-center gap-3 cursor-pointer p-2 rounded transition-colors"
-         data-idx="${i}"
-         onmouseenter="highlightPoint(${i})" onmouseleave="removeHighlight()">
-      <img src="${LOGOS.getUrl(d.name)}" alt="" class="w-6 h-6 object-contain shrink-0"
-           onerror="this.onerror=null; this.src='${LOGOS.DEFAULT_LOGO}';">
-      <span class="truncate text-ink/90 font-medium">${escapeHtml(d.name)}</span>
+function recortar(txt, max) {
+  const s = String(txt || '');
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
+function renderPanelLogosFaltantes(faltantes) {
+  const previo = document.getElementById('logosFaltantesPanel');
+  if (previo) previo.remove();
+  if (!faltantes || !faltantes.length) return;
+
+  const filas = faltantes.map(n =>
+    `<li class="flex items-baseline justify-between gap-3 py-1 border-b border-hairline/50 last:border-0">
+       <span class="text-muted truncate">${escapeHtml(n)}</span>
+       <code class="font-mono text-accent text-[11px] shrink-0">${LOGOS.slug(n)}.png</code>
+     </li>`).join('');
+
+  const lista = faltantes.map(n => LOGOS.slug(n) + '.png').join('\n');
+
+  const div = document.createElement('div');
+  div.id = 'logosFaltantesPanel';
+  div.className = 'fixed bottom-4 right-4 z-40 w-[330px] max-w-[92vw] card rounded-lg shadow-2xl p-4';
+  div.innerHTML = `
+    <div class="flex items-start justify-between gap-2 mb-2">
+      <h4 class="font-display uppercase tracking-wider text-sm text-accent">
+        Faltan ${faltantes.length} logo${faltantes.length > 1 ? 's' : ''}
+      </h4>
+      <button onclick="document.getElementById('logosFaltantesPanel').remove()"
+              class="text-muted hover:text-ink text-lg leading-none px-1" title="Cerrar">&times;</button>
     </div>
-  `).join('');
-  pintarFilaLeyenda();
-}
+    <p class="text-[11px] text-muted mb-3 leading-snug">
+      Subí estos archivos a la carpeta <code class="text-ink">logos/</code> del repositorio.
+      El nombre tiene que ser este; la extensión puede ser
+      <code class="text-ink">.png .jpg .webp .avif .svg</code>:
+    </p>
+    <ul class="text-xs max-h-56 overflow-y-auto mb-3">${filas}</ul>
+    <button id="copiarListaLogos"
+            class="w-full text-xs font-semibold uppercase tracking-wider bg-accent text-base rounded py-2 hover:bg-accentdeep transition-colors">
+      Copiar lista
+    </button>`;
+  document.body.appendChild(div);
 
-/* Sincroniza el estado visual de la leyenda con equipoDestacado. */
-function pintarFilaLeyenda() {
-  const cont = document.getElementById('teamLegend');
-  if (!cont) return;
-  cont.querySelectorAll('.legend-row').forEach((row) => {
-    const activa = Number(row.dataset.idx) === equipoDestacado;
-    row.classList.toggle('is-active', activa);
-    row.classList.toggle('opacity-40', equipoDestacado >= 0 && !activa);
+  div.querySelector('#copiarListaLogos').addEventListener('click', (ev) => {
+    navigator.clipboard.writeText(lista).then(() => {
+      ev.target.textContent = 'Copiado';
+      setTimeout(() => { ev.target.textContent = 'Copiar lista'; }, 1500);
+    }).catch(() => { ev.target.textContent = 'No se pudo copiar'; });
   });
 }
+
+const iniciales = LOGOS.iniciales;
 
 /* ============ SECCIÓN: SCOUTING ============ */
 function buildScouting() {
@@ -1568,10 +1770,7 @@ async function refreshData() {
   if (label) label.textContent = 'Actualizando…';
   // Datos y logos viajan en paralelo. Los logos tienen techo de 12s:
   // si Drive tarda, el dashboard igual arranca y los logos entran despues via onReady.
-  const [errors] = await Promise.all([
-    fetchAllData(),
-    LOGOS.ready(12000),
-  ]);
+  const errors = await fetchAllData();
   lastErrors = errors;
   renderStatusBanner(errors);
   updateLastUpdatedLabel();
@@ -1589,7 +1788,6 @@ function highlightPoint(index) {
   equipoDestacado = index;
   const chart = chartInstances.ortgDrtg;
   if (chart) chart.update('none');
-  pintarFilaLeyenda();
 }
 
 function removeHighlight() {
@@ -1597,7 +1795,6 @@ function removeHighlight() {
   equipoDestacado = -1;
   const chart = chartInstances.ortgDrtg;
   if (chart) chart.update('none');
-  pintarFilaLeyenda();
 }
 
 /* ============ INICIALIZACIÓN ============ */
@@ -1621,8 +1818,8 @@ async function init() {
   });
 }
 
-/* Un unico punto de arranque. No usamos window.onload para google.script.run:
-   el modulo LOGOS ya hace polling hasta que el sandbox inyecta la API. */
+/* Un unico punto de arranque. Los logos se resuelven despues, cuando ya
+   conocemos los nombres de los equipos que vinieron de la planilla. */
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {
