@@ -286,39 +286,46 @@ function cleanName(name) {
   return String(name).replace(/\s*-\s*MM/g, '').trim();
 }
 
-/* ============ MÓDULO LOGOS (Drive → base64 → HTMLImageElement) ============ */
+/* ============ MÓDULO LOGOS (hosting estático) ============ */
 /*
-  Contrato:
-    LOGOS.init()            -> arranca la carga (idempotente). Devuelve Promise.
-    LOGOS.ready(timeoutMs)  -> Promise que resuelve cuando el mapa está descargado
-                               Y todas las imágenes decodificadas (o timeout).
-    LOGOS.getImage(nombre)  -> HTMLImageElement listo para ctx.drawImage(), o null.
-    LOGOS.getUrl(nombre)    -> dataURL (o placeholder) para usar en <img src>.
-    LOGOS.isReady()         -> bool sincrónico.
+  CONTEXTO: la app corre en GitHub Pages. No hay backend. `google.script.run`
+  NO EXISTE fuera del sandbox de HtmlService, así que todo el approach de
+  base64-desde-Drive es inaplicable acá. Este módulo resuelve logos por HTTP.
 
-  Reglas:
-    - NADA de crear Image() adentro del render loop de Chart.js.
-    - Resolución de nombre → clave: exacta > normalizada > fuzzy, memoizada.
-    - Si no hay backend (archivo abierto fuera de Apps Script) degrada a placeholder
-      sin romper el dashboard.
+  Cascada de proveedores, primero que responde gana:
+    0) CFG.overrides       -> mapa manual nombre -> URL (casos raros)
+    1) CFG.jsonpUrl        -> Apps Script publicado como API JSONP (opcional,
+                              mantiene el workflow "tiro el PNG en Drive")
+    2) CFG.basePath        -> archivos del propio repo por convención de slug
+                              (RECOMENDADO: mismo origen, cachea el browser,
+                               no ensucia el canvas, cero latencia de Drive)
+    3) null                -> el plugin dibuja el fallback de iniciales
+
+  Agregar un equipo nuevo = subir `logos/<slug>.png` al repo. Nada más.
 */
 const LOGOS = (function () {
 
+  const CFG = {
+    basePath: 'logos/',
+    extensiones: ['png', 'webp', 'jpg', 'svg'],
+    // Dejalo en '' para desactivar. Si lo usás: URL /exec del Web App.
+    jsonpUrl: '',
+    jsonpTimeout: 8000,
+    overrides: {
+      // "NAUTICO ENSENADA": "logos/nautico.png",
+    },
+  };
+
   const DEFAULT_LOGO = "data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%239CA3AF%22%3E%3Cpath d=%22M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5%22%3E%3C/path%3E%3C/svg%3E";
 
-  let mapa = {};                 // CLAVE_NORMALIZADA -> dataURL
-  let claves = [];               // cache de Object.keys(mapa)
-  const imagenes = new Map();    // CLAVE -> HTMLImageElement decodificada
-  const aliasCache = new Map();  // nombre crudo -> CLAVE (o null). Evita fuzzy por frame.
-  const suscriptores = [];
+  const cache = new Map();      // CLAVE -> { img: HTMLImageElement|null, url: string|null }
+  const enVuelo = new Map();    // CLAVE -> Promise
+  let mapaRemoto = null;        // CLAVE -> URL (del JSONP)
+  let promesaRemota = null;
 
-  let estado = 'idle';           // idle | cargando | listo | error
-  let promesaCarga = null;
-  let resolverReady;
-  const promesaReady = new Promise((res) => { resolverReady = res; });
+  /* ---------- normalización y slugs ---------- */
 
-  /* ---- normalización (misma lógica que en el .gs) ---- */
-  function normalizarClave(s) {
+  function normalizar(s) {
     return String(s === null || s === undefined ? '' : s)
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .toUpperCase()
@@ -327,160 +334,184 @@ const LOGOS = (function () {
       .trim();
   }
 
-  /* ---- espera activa a que el sandbox de HtmlService inyecte google.script ---- */
-  function esperarApiAppsScript(timeoutMs) {
-    const limite = timeoutMs || 10000;
-    return new Promise((resolve) => {
-      const t0 = Date.now();
-      (function poll() {
-        if (typeof google !== 'undefined' && google.script && google.script.run) return resolve(true);
-        if (Date.now() - t0 >= limite) return resolve(false);
-        setTimeout(poll, 80);
-      })();
-    });
+  function slug(s) {
+    return normalizar(s).toLowerCase().replace(/\s+/g, '-');
   }
 
-  function llamarBackend() {
-    return new Promise((resolve) => {
-      let cerrado = false;
-      const cerrar = (valor) => { if (!cerrado) { cerrado = true; resolve(valor); } };
-      // Red de seguridad: si Drive se cuelga, no dejamos el dashboard esperando.
-      const guarda = setTimeout(() => {
-        console.warn('[LOGOS] timeout del backend, sigo con placeholders');
-        cerrar({});
-      }, 25000);
-
-      google.script.run
-        .withSuccessHandler((resp) => { clearTimeout(guarda); cerrar(resp); })
-        .withFailureHandler((err) => {
-          clearTimeout(guarda);
-          console.error('[LOGOS] obtenerMapaLogos falló:', err && err.message ? err.message : err);
-          cerrar({});
-        })
-        .obtenerMapaLogos();
-    });
+  /*
+    Candidatos de nombre de archivo, de más específico a más laxo.
+    "ESTUDIANTES DE LA PLATA 'A'" ->
+      estudiantes-de-la-plata-a / estudiantes_de_la_plata_a / estudiantesdelaplataa
+      + primeras 2 palabras: estudiantes-de / estudiantes
+  */
+  function nombresArchivo(nombreEquipo) {
+    const base = slug(nombreEquipo);
+    if (!base) return [];
+    const partes = base.split('-').filter(Boolean);
+    const out = [base, base.replace(/-/g, '_'), base.replace(/-/g, '')];
+    if (partes.length > 2) out.push(partes.slice(0, 2).join('-'));
+    if (partes.length > 1) out.push(partes[0]);
+    return out.filter((v, i, a) => a.indexOf(v) === i);
   }
 
-  /* ---- decodifica TODOS los dataURL antes de dibujar nada ---- */
-  function precargar(dict) {
-    const entradas = Object.keys(dict);
-    if (!entradas.length) return Promise.resolve();
-    return Promise.all(entradas.map((clave) => new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => { imagenes.set(clave, img); resolve(); };
-      img.onerror = () => { console.warn('[LOGOS] no decodifica:', clave); resolve(); };
-      img.src = dict[clave];
-      // decode() nativo cuando está disponible: evita el primer frame en blanco.
-      if (img.decode) img.decode().then(() => { imagenes.set(clave, img); resolve(); }).catch(() => {});
-    })));
-  }
+  function candidatos(nombreEquipo) {
+    const urls = [];
+    const clave = normalizar(nombreEquipo);
 
-  function finalizar(nuevoEstado) {
-    estado = nuevoEstado;
-    resolverReady(mapa);
-    suscriptores.splice(0).forEach((fn) => { try { fn(mapa); } catch (e) { console.error(e); } });
-  }
+    // 0) override manual
+    const ovKey = Object.keys(CFG.overrides).find(k => normalizar(k) === clave);
+    if (ovKey) urls.push(CFG.overrides[ovKey]);
 
-  function init() {
-    if (promesaCarga) return promesaCarga;
-    estado = 'cargando';
-
-    promesaCarga = (async function () {
-      const hayApi = await esperarApiAppsScript(10000);
-
-      if (!hayApi) {
-        console.warn('[LOGOS] google.script.run no disponible. ' +
-          '¿Estás abriendo el HTML fuera del Web App de Apps Script? Sigo con placeholders.');
-        finalizar('error');
-        return mapa;
+    // 1) mapa remoto (JSONP) — match exacto y después contención
+    if (mapaRemoto) {
+      if (mapaRemoto[clave]) {
+        urls.push(mapaRemoto[clave]);
+      } else {
+        let mejor = null, len = 0;
+        Object.keys(mapaRemoto).forEach((k) => {
+          if ((clave.indexOf(k) !== -1 || k.indexOf(clave) !== -1) && k.length > len) {
+            mejor = k; len = k.length;
+          }
+        });
+        if (mejor) urls.push(mapaRemoto[mejor]);
       }
-
-      const resp = await llamarBackend();
-      // El backend puede devolver {logos:{...}} o el dict plano (compatibilidad).
-      const dict = (resp && resp.logos) ? resp.logos : (resp || {});
-
-      // Re-normalizamos del lado del cliente por las dudas (nombres de archivo raros).
-      mapa = {};
-      Object.keys(dict).forEach((k) => { mapa[normalizarClave(k)] = dict[k]; });
-      claves = Object.keys(mapa);
-      aliasCache.clear();
-
-      await precargar(mapa);
-      console.log('[LOGOS] listos:', claves.length, 'equipos');
-      finalizar('listo');
-      return mapa;
-    })();
-
-    return promesaCarga;
-  }
-
-  /* ---- resolución nombre → clave, memoizada ---- */
-  function resolverClave(nombreEquipo) {
-    const crudo = String(nombreEquipo || '');
-    if (aliasCache.has(crudo)) return aliasCache.get(crudo);
-
-    const norm = normalizarClave(crudo);
-    let clave = null;
-
-    if (norm && mapa[norm]) {
-      clave = norm;
-    } else if (norm) {
-      // Fuzzy: contención en cualquier dirección, se queda con la coincidencia más larga.
-      let mejor = null, mejorLen = 0;
-      for (let i = 0; i < claves.length; i++) {
-        const k = claves[i];
-        if (norm.indexOf(k) !== -1 || k.indexOf(norm) !== -1) {
-          if (k.length > mejorLen) { mejor = k; mejorLen = k.length; }
-        }
-      }
-      clave = mejor;
     }
 
-    aliasCache.set(crudo, clave);
-    return clave;
+    // 2) archivos del repo por convención
+    nombresArchivo(nombreEquipo).forEach((n) => {
+      CFG.extensiones.forEach((ext) => urls.push(CFG.basePath + n + '.' + ext));
+    });
+
+    return urls;
   }
 
+  /* ---------- carga ---------- */
+
+  function cargarImagen(url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      // Sin crossOrigin: los assets del repo son mismo-origen y Drive no manda
+      // CORS. Si algún día exportás el canvas a PNG, pasá TODO a assets locales.
+      img.onload = () => (img.naturalWidth > 0 ? resolve(img) : reject(new Error('vacía')));
+      img.onerror = () => reject(new Error('404 ' + url));
+      img.src = url;
+    });
+  }
+
+  function cargarJsonp(url) {
+    return new Promise((resolve, reject) => {
+      const cb = '__logosCb_' + Math.random().toString(36).slice(2);
+      const script = document.createElement('script');
+      const limpiar = () => { delete window[cb]; script.remove(); };
+      const guarda = setTimeout(() => { limpiar(); reject(new Error('JSONP timeout')); }, CFG.jsonpTimeout);
+
+      window[cb] = (data) => { clearTimeout(guarda); limpiar(); resolve(data); };
+      script.onerror = () => { clearTimeout(guarda); limpiar(); reject(new Error('JSONP error')); };
+      script.src = url + (url.indexOf('?') === -1 ? '?' : '&') + 'callback=' + cb;
+      document.head.appendChild(script);
+    });
+  }
+
+  function asegurarMapaRemoto() {
+    if (!CFG.jsonpUrl) return Promise.resolve(null);
+    if (promesaRemota) return promesaRemota;
+
+    promesaRemota = cargarJsonp(CFG.jsonpUrl)
+      .then((resp) => {
+        const dict = (resp && resp.logos) ? resp.logos : (resp || {});
+        mapaRemoto = {};
+        Object.keys(dict).forEach((k) => { mapaRemoto[normalizar(k)] = dict[k]; });
+        console.log('[LOGOS] mapa remoto:', Object.keys(mapaRemoto).length, 'equipos');
+        return mapaRemoto;
+      })
+      .catch((e) => {
+        console.warn('[LOGOS] sin mapa remoto (' + e.message + '), voy con archivos locales');
+        mapaRemoto = null;
+        return null;
+      });
+
+    return promesaRemota;
+  }
+
+  async function resolverUno(nombreEquipo) {
+    const clave = normalizar(nombreEquipo);
+    if (!clave) return { img: null, url: null };
+    if (cache.has(clave)) return cache.get(clave);
+    if (enVuelo.has(clave)) return enVuelo.get(clave);
+
+    const tarea = (async () => {
+      await asegurarMapaRemoto();
+      const urls = candidatos(nombreEquipo);
+      for (let i = 0; i < urls.length; i++) {
+        try {
+          const img = await cargarImagen(urls[i]);
+          const r = { img: img, url: urls[i] };
+          cache.set(clave, r);
+          return r;
+        } catch (e) { /* siguiente candidato */ }
+      }
+      const r = { img: null, url: null };
+      cache.set(clave, r);
+      return r;
+    })();
+
+    enVuelo.set(clave, tarea);
+    tarea.finally(() => enVuelo.delete(clave));
+    return tarea;
+  }
+
+  /**
+   * Resuelve un lote de equipos. Devuelve Promise<{encontrados, faltantes[]}>.
+   * Llamalo con los nombres que salen de la planilla, no antes.
+   */
+  async function resolver(nombres) {
+    const unicos = Array.from(new Set((nombres || []).map(n => String(n || '')).filter(Boolean)));
+    const res = await Promise.all(unicos.map(resolverUno));
+    const faltantes = unicos.filter((n, i) => !res[i].img);
+    if (faltantes.length) {
+      console.warn('[LOGOS] sin archivo (' + faltantes.length + '/' + unicos.length + '):', faltantes);
+      console.warn('[LOGOS] esperaba, por ejemplo:', CFG.basePath + slug(faltantes[0]) + '.png');
+    } else if (unicos.length) {
+      console.log('[LOGOS] ' + unicos.length + '/' + unicos.length + ' logos OK');
+    }
+    return { encontrados: unicos.length - faltantes.length, total: unicos.length, faltantes: faltantes };
+  }
+
+  /* ---------- lectura sincrónica (para el render loop) ---------- */
+
   function getImage(nombreEquipo) {
-    const clave = resolverClave(nombreEquipo);
-    if (!clave) return null;
-    const img = imagenes.get(clave);
-    return (img && img.complete && img.naturalWidth > 0) ? img : null;
+    const r = cache.get(normalizar(nombreEquipo));
+    return (r && r.img && r.img.complete && r.img.naturalWidth > 0) ? r.img : null;
   }
 
   function getUrl(nombreEquipo) {
-    const clave = resolverClave(nombreEquipo);
-    return clave ? mapa[clave] : DEFAULT_LOGO;
+    const r = cache.get(normalizar(nombreEquipo));
+    return (r && r.url) ? r.url : null;
   }
 
-  function ready(timeoutMs) {
-    if (!timeoutMs) return promesaReady;
-    return Promise.race([
-      promesaReady,
-      new Promise((res) => setTimeout(() => res(mapa), timeoutMs)),
-    ]);
-  }
-
-  function onReady(fn) {
-    if (estado === 'listo' || estado === 'error') { fn(mapa); return; }
-    suscriptores.push(fn);
+  function iniciales(nombre) {
+    return String(nombre || '?')
+      .split(/\s+/).filter(Boolean).slice(0, 2)
+      .map(p => p.charAt(0).toUpperCase()).join('');
   }
 
   return {
-    DEFAULT_LOGO,
-    init, ready, onReady,
-    getImage, getUrl,
-    normalizarClave,
-    isReady: () => estado === 'listo',
-    debug: () => ({ estado, claves: claves.slice(), decodificadas: imagenes.size }),
+    CFG, DEFAULT_LOGO,
+    resolver, getImage, getUrl, iniciales,
+    normalizar, slug,
+    // Diagnóstico: LOGOS.debug() en la consola
+    debug: () => {
+      const filas = [];
+      cache.forEach((v, k) => filas.push({ equipo: k, archivo: v.url || '— FALTA —' }));
+      console.table(filas);
+      return { resueltos: cache.size, jsonp: CFG.jsonpUrl || '(desactivado)', basePath: CFG.basePath };
+    },
   };
 })();
 
-/* Arrancamos la carga YA, en paralelo con el fetch de las hojas. */
-LOGOS.init();
-
-/* Compat con el código viejo */
+/* Compat con el código existente */
 const DEFAULT_LOGO = LOGOS.DEFAULT_LOGO;
-function getLogoUrl(teamName) { return LOGOS.getUrl(cleanName(teamName)); }
+function getLogoUrl(teamName) { return LOGOS.getUrl(cleanName(teamName)) || DEFAULT_LOGO; }
 function getTeamImage(teamName) { return LOGOS.getImage(cleanName(teamName)); }
 
 /* ============ CAPA DE DATOS (GViz) ============ */
@@ -1294,19 +1325,64 @@ function drawOrtgDrtgChart() {
 
   renderTeamLegend(chartData);
 
-  // Si los logos todavía venían en camino, redibujamos cuando lleguen.
-  LOGOS.onReady(() => {
+  /* Recién ahora conocemos los equipos: resolvemos sus logos y redibujamos.
+     El plugin nunca espera nada; solo lee el cache que llena esto. */
+  LOGOS.resolver(chartData.map(d => d.name)).then((res) => {
     const c = chartInstances.ortgDrtg;
     if (c) c.update('none');
     renderTeamLegend(chartData);
+    renderPanelLogosFaltantes(res.faltantes);
   });
 }
 
-function iniciales(nombre) {
-  return String(nombre || '?')
-    .split(/\s+/).filter(Boolean).slice(0, 2)
-    .map(p => p.charAt(0).toUpperCase()).join('');
+/*
+  Panel de ayuda: lista en pantalla el nombre EXACTO de archivo que le falta a
+  cada equipo. Se autodestruye cuando estan todos los logos.
+*/
+function renderPanelLogosFaltantes(faltantes) {
+  const previo = document.getElementById('logosFaltantesPanel');
+  if (previo) previo.remove();
+  if (!faltantes || !faltantes.length) return;
+
+  const filas = faltantes.map(n =>
+    `<li class="flex items-baseline justify-between gap-3 py-1 border-b border-hairline/50 last:border-0">
+       <span class="text-muted truncate">${escapeHtml(n)}</span>
+       <code class="font-mono text-accent text-[11px] shrink-0">${LOGOS.slug(n)}.png</code>
+     </li>`).join('');
+
+  const lista = faltantes.map(n => LOGOS.slug(n) + '.png').join('\n');
+
+  const div = document.createElement('div');
+  div.id = 'logosFaltantesPanel';
+  div.className = 'fixed bottom-4 right-4 z-40 w-[330px] max-w-[92vw] card rounded-lg shadow-2xl p-4';
+  div.innerHTML = `
+    <div class="flex items-start justify-between gap-2 mb-2">
+      <h4 class="font-display uppercase tracking-wider text-sm text-accent">
+        Faltan ${faltantes.length} logo${faltantes.length > 1 ? 's' : ''}
+      </h4>
+      <button onclick="document.getElementById('logosFaltantesPanel').remove()"
+              class="text-muted hover:text-ink text-lg leading-none px-1" title="Cerrar">&times;</button>
+    </div>
+    <p class="text-[11px] text-muted mb-3 leading-snug">
+      Subí estos archivos a la carpeta <code class="text-ink">logos/</code> del repositorio,
+      con exactamente este nombre:
+    </p>
+    <ul class="text-xs max-h-56 overflow-y-auto mb-3">${filas}</ul>
+    <button id="copiarListaLogos"
+            class="w-full text-xs font-semibold uppercase tracking-wider bg-accent text-base rounded py-2 hover:bg-accentdeep transition-colors">
+      Copiar lista
+    </button>`;
+  document.body.appendChild(div);
+
+  div.querySelector('#copiarListaLogos').addEventListener('click', (ev) => {
+    navigator.clipboard.writeText(lista).then(() => {
+      ev.target.textContent = 'Copiado';
+      setTimeout(() => { ev.target.textContent = 'Copiar lista'; }, 1500);
+    }).catch(() => { ev.target.textContent = 'No se pudo copiar'; });
+  });
 }
+
+const iniciales = LOGOS.iniciales;
 
 function renderTeamLegend(chartData) {
   const legendContainer = document.getElementById('teamLegend');
@@ -1315,8 +1391,10 @@ function renderTeamLegend(chartData) {
     <div class="legend-row flex items-center gap-3 cursor-pointer p-2 rounded transition-colors"
          data-idx="${i}"
          onmouseenter="highlightPoint(${i})" onmouseleave="removeHighlight()">
-      <img src="${LOGOS.getUrl(d.name)}" alt="" class="w-6 h-6 object-contain shrink-0"
-           onerror="this.onerror=null; this.src='${LOGOS.DEFAULT_LOGO}';">
+      ${LOGOS.getUrl(d.name)
+        ? `<img src="${LOGOS.getUrl(d.name)}" alt="" class="w-6 h-6 object-contain shrink-0">`
+        : `<span class="w-6 h-6 shrink-0 rounded-full grid place-items-center text-[9px] font-semibold
+                       bg-surface2 text-ink border border-accent/60">${iniciales(d.name)}</span>`}
       <span class="truncate text-ink/90 font-medium">${escapeHtml(d.name)}</span>
     </div>
   `).join('');
@@ -1568,10 +1646,7 @@ async function refreshData() {
   if (label) label.textContent = 'Actualizando…';
   // Datos y logos viajan en paralelo. Los logos tienen techo de 12s:
   // si Drive tarda, el dashboard igual arranca y los logos entran despues via onReady.
-  const [errors] = await Promise.all([
-    fetchAllData(),
-    LOGOS.ready(12000),
-  ]);
+  const errors = await fetchAllData();
   lastErrors = errors;
   renderStatusBanner(errors);
   updateLastUpdatedLabel();
@@ -1621,8 +1696,8 @@ async function init() {
   });
 }
 
-/* Un unico punto de arranque. No usamos window.onload para google.script.run:
-   el modulo LOGOS ya hace polling hasta que el sandbox inyecta la API. */
+/* Un unico punto de arranque. Los logos se resuelven despues, cuando ya
+   conocemos los nombres de los equipos que vinieron de la planilla. */
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {
