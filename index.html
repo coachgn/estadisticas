@@ -71,13 +71,6 @@
 
   .scrollbox { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-  .legend-row { border-left: 2px solid transparent; }
-  .legend-row:hover { background: #1F2937; }
-  .legend-row.is-active {
-    background: #1F2937; border-left-color: #f7941e; opacity: 1 !important;
-  }
-  .legend-row.is-active span { color: #f7941e; }
-
   @media (max-width: 767px) {
     #sidebar { transform: translateX(-100%); transition: transform .25s ease; }
     #sidebar.open { transform: translateX(0); }
@@ -1023,13 +1016,15 @@ function buildPrincipal() {
         </div>
         <div class="card rounded-xl p-5 border border-hairline">
            <h3 class="font-display text-lg uppercase tracking-wide mb-4 text-ink">ORTG vs DRTG · Mapa de Rendimiento</h3>
-           <div class="flex flex-row gap-6 h-[450px]">
-             <div class="flex-grow relative h-full">
-               <canvas id="ortgDrtgChart"></canvas>
-             </div>
-             <div id="teamLegend" class="w-48 overflow-y-auto border-l border-hairline pl-4 space-y-1 text-sm">
-               <!-- La leyenda se carga dinámicamente -->
-             </div>
+           <div class="relative w-full h-[520px]">
+             <canvas id="ortgDrtgChart"></canvas>
+           </div>
+           <div class="flex flex-wrap items-center gap-x-5 gap-y-2 mt-4 pt-3 border-t border-hairline text-[11px] text-muted">
+             <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full border-2" style="border-color:#22c55e"></i>Elite</span>
+             <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full border-2" style="border-color:#60a5fa"></i>Defensa fuerte</span>
+             <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full border-2" style="border-color:#f7941e"></i>Ataque fuerte</span>
+             <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full border-2" style="border-color:#ef4444"></i>Bajo</span>
+             <span class="ml-auto font-mono">Líneas punteadas = media de la liga · DRTG invertido (arriba = mejor defensa)</span>
            </div>
         </div>
       </div>
@@ -1207,27 +1202,51 @@ function drawFactoresChart() {
 
 function drawOrtgDrtgChart() {
   const canvas = document.getElementById('ortgDrtgChart');
-  const legendContainer = document.getElementById('teamLegend');
-  if (!canvas || !legendContainer || typeof Chart === 'undefined') return;
+  if (!canvas || typeof Chart === 'undefined') return;
 
   const data = sheet('promedios4f');
   if (data.error || !data.rows.length) return;
-  
+
   const colEquipo = findColumnLabel(data.cols, ['EQUIPO', 'NOMBRE']);
   const colOff = findColumnLabel(data.cols, ['RTNG OFF', 'ORTG']);
   const colDef = findColumnLabel(data.cols, ['RTNG DEF', 'DRTG']);
 
   const chartData = data.rows
     .filter(r => !isEquipoTipo(r))
-    .map((r, i) => ({
+    .map((r) => ({
       name: cleanName(r.formatted[colEquipo] || 'Desconocido'),
       x: toNumber(r.values[colOff]),
       y: toNumber(r.values[colDef])
     }))
     .filter(d => d.x !== null && d.y !== null);
 
-  const avgX = chartData.reduce((acc, curr) => acc + curr.x, 0) / chartData.length;
-  const avgY = chartData.reduce((acc, curr) => acc + curr.y, 0) / chartData.length;
+  if (!chartData.length) return;
+
+  const avgX = chartData.reduce((a, d) => a + d.x, 0) / chartData.length;
+  const avgY = chartData.reduce((a, d) => a + d.y, 0) / chartData.length;
+
+  /* Margen extra en los ejes: los logos y los nombres se dibujan FUERA del punto,
+     asi que sin esto los equipos de los bordes quedan cortados. */
+  const xs = chartData.map(d => d.x), ys = chartData.map(d => d.y);
+  const rangoX = (Math.max.apply(null, xs) - Math.min.apply(null, xs)) || 10;
+  const rangoY = (Math.max.apply(null, ys) - Math.min.apply(null, ys)) || 10;
+  const escala = {
+    xMin: Math.min.apply(null, xs) - rangoX * 0.14,
+    xMax: Math.max.apply(null, xs) + rangoX * 0.14,
+    yMin: Math.min.apply(null, ys) - rangoY * 0.16,
+    yMax: Math.max.apply(null, ys) + rangoY * 0.20,
+  };
+
+  /* Eje Y invertido: DRTG bajo = buena defensa = arriba.
+     De ahi salen los cuatro cuadrantes. */
+  function cuadrante(d) {
+    const ofFuerte = d.x >= avgX;
+    const defFuerte = d.y <= avgY;
+    if (ofFuerte && defFuerte) return CUADRANTES.elite;
+    if (!ofFuerte && defFuerte) return CUADRANTES.def;
+    if (ofFuerte && !defFuerte) return CUADRANTES.of;
+    return CUADRANTES.bajo;
+  }
 
   if (chartInstances.ortgDrtg) chartInstances.ortgDrtg.destroy();
   equipoDestacado = -1;
@@ -1240,103 +1259,210 @@ function drawOrtgDrtgChart() {
         data: chartData,
         backgroundColor: 'transparent',
         borderColor: 'transparent',
-        pointRadius: 14,
-        pointHoverRadius: 18
+        pointRadius: 18,
+        pointHoverRadius: 22,
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: { top: 18, right: 18, bottom: 4, left: 4 } },
       scales: {
-        x: { title: { display: true, text: 'ORTG', color: '#9CA3AF' }, grid: { color: '#282828' } },
-        y: { reverse: true, title: { display: true, text: 'DRTG', color: '#9CA3AF' }, grid: { color: '#282828' } }
+        x: {
+          min: escala.xMin, max: escala.xMax,
+          title: { display: true, text: 'ORTG  →  ataque', color: '#9CA3AF', font: { family: 'Barlow', size: 11 } },
+          grid: { color: 'rgba(40,40,40,0.65)' },
+          ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 } },
+        },
+        y: {
+          reverse: true,
+          min: escala.yMin, max: escala.yMax,
+          title: { display: true, text: 'DRTG  ↑  defensa', color: '#9CA3AF', font: { family: 'Barlow', size: 11 } },
+          grid: { color: 'rgba(40,40,40,0.65)' },
+          ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 } },
+        }
       },
-      // Hover sobre el canvas -> resalta tambien la fila de la leyenda.
       onHover: (evt, elementos) => {
         const idx = (elementos && elementos.length) ? elementos[0].index : -1;
         if (idx !== equipoDestacado) { idx >= 0 ? highlightPoint(idx) : removeHighlight(); }
       },
-      plugins: { 
+      plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: (ctx) => `${ctx.raw.name} · ORTG: ${ctx.raw.x.toFixed(2)} | DRTG: ${ctx.raw.y.toFixed(2)}` } }
+        tooltip: {
+          displayColors: false,
+          backgroundColor: '#0B1121',
+          borderColor: '#374151',
+          borderWidth: 1,
+          padding: 10,
+          titleFont: { family: '"Barlow Condensed"', size: 14 },
+          bodyFont: { family: '"DM Mono"', size: 11 },
+          callbacks: {
+            title: (items) => items[0].raw.name.toUpperCase(),
+            label: (ctx) => [
+              'ORTG  ' + ctx.raw.x.toFixed(1) + '   (media ' + avgX.toFixed(1) + ')',
+              'DRTG  ' + ctx.raw.y.toFixed(1) + '   (media ' + avgY.toFixed(1) + ')',
+              cuadrante(ctx.raw).label,
+            ],
+          }
+        }
       }
     },
     plugins: [
+      /* --- 1. Cuadrantes: tintes, medias punteadas y carteles --- */
+      {
+        id: 'quadrant-plugin',
+        beforeDatasetsDraw: (chart) => {
+          const ctx = chart.ctx;
+          const area = chart.chartArea;
+          const ex = chart.scales.x.getPixelForValue(avgX);
+          const ey = chart.scales.y.getPixelForValue(avgY);
+
+          ctx.save();
+
+          // Tinte suavisimo por cuadrante, solo para orientar la lectura.
+          const tintes = [
+            [area.left, area.top, ex - area.left, ey - area.top, CUADRANTES.def.color],
+            [ex, area.top, area.right - ex, ey - area.top, CUADRANTES.elite.color],
+            [area.left, ey, ex - area.left, area.bottom - ey, CUADRANTES.bajo.color],
+            [ex, ey, area.right - ex, area.bottom - ey, CUADRANTES.of.color],
+          ];
+          ctx.globalAlpha = 0.035;
+          tintes.forEach(([x, y, w, h, color]) => { ctx.fillStyle = color; ctx.fillRect(x, y, w, h); });
+          ctx.globalAlpha = 1;
+
+          // Lineas de media
+          ctx.setLineDash([5, 5]);
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = 'rgba(156, 163, 175, 0.55)';
+          ctx.beginPath();
+          ctx.moveTo(ex, area.top); ctx.lineTo(ex, area.bottom);
+          ctx.moveTo(area.left, ey); ctx.lineTo(area.right, ey);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Valor de cada media, pegado a la linea
+          ctx.font = '500 9px "DM Mono", monospace';
+          ctx.fillStyle = 'rgba(156, 163, 175, 0.9)';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          ctx.fillText('media ' + avgX.toFixed(1), ex + 5, area.top + 4);
+          ctx.textAlign = 'right';
+          ctx.fillText('media ' + avgY.toFixed(1), area.right - 5, ey + 4);
+
+          // Carteles de cuadrante en las esquinas
+          const P = 10;
+          const carteles = [
+            [CUADRANTES.def,   area.left + P,  area.top + P,    'left',  'top'],
+            [CUADRANTES.elite, area.right - P, area.top + P,    'right', 'top'],
+            [CUADRANTES.bajo,  area.left + P,  area.bottom - P, 'left',  'bottom'],
+            [CUADRANTES.of,    area.right - P, area.bottom - P, 'right', 'bottom'],
+          ];
+          ctx.font = '700 11px "Barlow Condensed", sans-serif';
+          carteles.forEach(([q, x, y, ta, tb]) => {
+            ctx.textAlign = ta;
+            ctx.textBaseline = tb;
+            ctx.fillStyle = q.color;
+            ctx.globalAlpha = 0.85;
+            ctx.fillText(q.label, x, y);
+          });
+
+          ctx.restore();
+        }
+      },
+      /* --- 2. Logos + nombre arriba --- */
       {
         id: 'team-logos-plugin',
-        // Render 100% sincrónico: solo lee del cache ya decodificado.
         afterDatasetsDraw: (chart) => {
           const ctx = chart.ctx;
           const meta = chart.getDatasetMeta(0);
           if (!meta || meta.hidden) return;
 
           const puntos = chart.data.datasets[0].data;
-          const SIZE = 26;
+          const BASE = 30;
+          const ocupados = [];  // cajas de texto ya dibujadas, para no pisarlas
 
           meta.data.forEach((point, index) => {
             if (!point || point.skip) return;
             const item = puntos[index];
             if (!item) return;
 
+            const q = cuadrante(item);
             const img = LOGOS.getImage(item.name);
             const activo = (index === equipoDestacado);
             const hayFoco = (equipoDestacado >= 0);
             const x = point.x, y = point.y;
-            const r = (activo ? SIZE * 0.62 : SIZE / 2);
+            const r = (activo ? BASE * 0.62 : BASE / 2);
 
             ctx.save();
-            ctx.globalAlpha = (hayFoco && !activo) ? 0.28 : 1;
+            ctx.globalAlpha = (hayFoco && !activo) ? 0.25 : 1;
 
             if (activo) {
-              // Halo dorado detras del logo
               ctx.beginPath();
-              ctx.arc(x, y, r + 5, 0, Math.PI * 2);
-              ctx.fillStyle = 'rgba(247, 148, 30, 0.18)';
+              ctx.arc(x, y, r + 6, 0, Math.PI * 2);
+              ctx.fillStyle = 'rgba(247, 148, 30, 0.16)';
               ctx.fill();
             }
 
+            // Disco de fondo: los logos con transparencia necesitan base opaca.
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fillStyle = '#0B1121';
+            ctx.fill();
+
             ctx.save();
             if (img) {
-              // Recorte circular para que los PNG cuadrados no se vean como stickers.
               ctx.beginPath();
-              ctx.arc(x, y, r, 0, Math.PI * 2);
-              ctx.closePath();
+              ctx.arc(x, y, r - 1, 0, Math.PI * 2);
               ctx.clip();
-              ctx.drawImage(img, x - r, y - r, r * 2, r * 2);
+              ctx.drawImage(img, x - r + 1, y - r + 1, (r - 1) * 2, (r - 1) * 2);
             } else {
-              // Fallback dibujado a mano: iniciales. Nunca queda el punto vacío.
-              ctx.beginPath();
-              ctx.arc(x, y, r, 0, Math.PI * 2);
-              ctx.fillStyle = '#1F2937';
-              ctx.fill();
-              ctx.lineWidth = 1.5;
-              ctx.strokeStyle = '#f7941e';
-              ctx.stroke();
               ctx.fillStyle = '#F9FAFB';
-              ctx.font = '600 ' + Math.round(r * 0.78) + 'px Barlow, sans-serif';
+              ctx.font = '600 ' + Math.round(r * 0.72) + 'px Barlow, sans-serif';
               ctx.textAlign = 'center';
               ctx.textBaseline = 'middle';
               ctx.fillText(iniciales(item.name), x, y + 0.5);
             }
-            ctx.restore(); // fin del clip circular
+            ctx.restore();
 
-            // Anillo: dorado grueso si esta destacado, hairline si no.
+            // Anillo del color del cuadrante. Naranja grueso si esta activo.
             ctx.beginPath();
             ctx.arc(x, y, r, 0, Math.PI * 2);
-            ctx.lineWidth = activo ? 3 : 1.5;
-            ctx.strokeStyle = activo ? '#f7941e' : 'rgba(247, 148, 30, 0.45)';
+            ctx.lineWidth = activo ? 3 : 2;
+            ctx.strokeStyle = activo ? '#f7941e' : q.color;
             if (activo) { ctx.shadowColor = 'rgba(247, 148, 30, 0.9)'; ctx.shadowBlur = 12; }
             ctx.stroke();
             ctx.shadowBlur = 0;
 
-            if (activo) {
-              ctx.globalAlpha = 1;
-              ctx.fillStyle = '#F9FAFB';
-              ctx.font = '600 11px "Barlow Condensed", sans-serif';
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'bottom';
-              ctx.fillText(String(item.name).toUpperCase(), x, y - r - 9);
+            // Nombre del equipo (reemplaza la lista lateral).
+            const etiqueta = activo ? item.name.toUpperCase() : recortar(item.name.toUpperCase(), 13);
+            ctx.font = (activo ? '700 12px ' : '600 10px ') + '"Barlow Condensed", sans-serif';
+            ctx.textAlign = 'center';
+
+            /* Evasion de colisiones: probamos arriba y, si ese hueco ya esta
+               tomado por otra etiqueta, la mandamos abajo. Con dos intentos
+               alcanza para densidades normales de liga. */
+            const ancho = ctx.measureText(etiqueta).width;
+            const alto = 12;
+            const arriba = y - r - 5;
+            const abajo = y + r + 5 + alto;
+            let ty = arriba, base = 'bottom';
+
+            const choca = (cy) => ocupados.some(c =>
+              Math.abs(c.x - x) < (c.w + ancho) / 2 + 4 && Math.abs(c.y - cy) < alto + 2);
+
+            if (choca(arriba)) {
+              if (!choca(abajo)) { ty = abajo; base = 'alphabetic'; }
             }
+            if (!activo) ocupados.push({ x: x, y: ty, w: ancho });
+            ctx.textBaseline = base;
+
+            // Contorno oscuro para que el texto se lea sobre la grilla.
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#0B1121';
+            ctx.lineJoin = 'round';
+            ctx.strokeText(etiqueta, x, ty);
+            ctx.fillStyle = activo ? '#f7941e' : '#cbd5e1';
+            ctx.fillText(etiqueta, x, ty);
 
             ctx.restore();
           });
@@ -1345,22 +1471,25 @@ function drawOrtgDrtgChart() {
     ]
   });
 
-  renderTeamLegend(chartData);
-
-  /* Recién ahora conocemos los equipos: resolvemos sus logos y redibujamos.
-     El plugin nunca espera nada; solo lee el cache que llena esto. */
   LOGOS.resolver(chartData.map(d => d.name)).then((res) => {
     const c = chartInstances.ortgDrtg;
     if (c) c.update('none');
-    renderTeamLegend(chartData);
     renderPanelLogosFaltantes(res.faltantes);
   });
 }
 
-/*
-  Panel de ayuda: lista en pantalla el nombre EXACTO de archivo que le falta a
-  cada equipo. Se autodestruye cuando estan todos los logos.
-*/
+/* Definicion de los cuatro cuadrantes. Eje Y invertido: DRTG bajo = arriba. */
+const CUADRANTES = {
+  elite: { label: 'ELITE',       color: '#22c55e' },  // + ataque, + defensa
+  def:   { label: 'DEF FUERTE',  color: '#60a5fa' },  // - ataque, + defensa
+  of:    { label: 'OF FUERTE',   color: '#f7941e' },  // + ataque, - defensa
+  bajo:  { label: 'BAJO',        color: '#ef4444' },  // - ataque, - defensa
+};
+
+function recortar(txt, max) {
+  const s = String(txt || '');
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
 function renderPanelLogosFaltantes(faltantes) {
   const previo = document.getElementById('logosFaltantesPanel');
   if (previo) previo.remove();
@@ -1406,34 +1535,6 @@ function renderPanelLogosFaltantes(faltantes) {
 }
 
 const iniciales = LOGOS.iniciales;
-
-function renderTeamLegend(chartData) {
-  const legendContainer = document.getElementById('teamLegend');
-  if (!legendContainer) return;
-  legendContainer.innerHTML = chartData.map((d, i) => `
-    <div class="legend-row flex items-center gap-3 cursor-pointer p-2 rounded transition-colors"
-         data-idx="${i}"
-         onmouseenter="highlightPoint(${i})" onmouseleave="removeHighlight()">
-      ${LOGOS.getUrl(d.name)
-        ? `<img src="${LOGOS.getUrl(d.name)}" alt="" class="w-6 h-6 object-contain shrink-0">`
-        : `<span class="w-6 h-6 shrink-0 rounded-full grid place-items-center text-[9px] font-semibold
-                       bg-surface2 text-ink border border-accent/60">${iniciales(d.name)}</span>`}
-      <span class="truncate text-ink/90 font-medium">${escapeHtml(d.name)}</span>
-    </div>
-  `).join('');
-  pintarFilaLeyenda();
-}
-
-/* Sincroniza el estado visual de la leyenda con equipoDestacado. */
-function pintarFilaLeyenda() {
-  const cont = document.getElementById('teamLegend');
-  if (!cont) return;
-  cont.querySelectorAll('.legend-row').forEach((row) => {
-    const activa = Number(row.dataset.idx) === equipoDestacado;
-    row.classList.toggle('is-active', activa);
-    row.classList.toggle('opacity-40', equipoDestacado >= 0 && !activa);
-  });
-}
 
 /* ============ SECCIÓN: SCOUTING ============ */
 function buildScouting() {
@@ -1687,7 +1788,6 @@ function highlightPoint(index) {
   equipoDestacado = index;
   const chart = chartInstances.ortgDrtg;
   if (chart) chart.update('none');
-  pintarFilaLeyenda();
 }
 
 function removeHighlight() {
@@ -1695,7 +1795,6 @@ function removeHighlight() {
   equipoDestacado = -1;
   const chart = chartInstances.ortgDrtg;
   if (chart) chart.update('none');
-  pintarFilaLeyenda();
 }
 
 /* ============ INICIALIZACIÓN ============ */
