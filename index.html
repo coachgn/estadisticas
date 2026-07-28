@@ -307,7 +307,7 @@ const LOGOS = (function () {
 
   const CFG = {
     basePath: 'logos/',
-    extensiones: ['png', 'webp', 'jpg', 'svg'],
+    extensiones: ['png', 'webp', 'jpg', 'jpeg', 'jfif', 'avif', 'svg', 'gif'],
     // Dejalo en '' para desactivar. Si lo usás: URL /exec del Web App.
     jsonpUrl: '',
     jsonpTimeout: 8000,
@@ -349,9 +349,20 @@ const LOGOS = (function () {
     if (!base) return [];
     const partes = base.split('-').filter(Boolean);
     const out = [base, base.replace(/-/g, '_'), base.replace(/-/g, '')];
-    if (partes.length > 2) out.push(partes.slice(0, 2).join('-'));
-    if (partes.length > 1) out.push(partes[0]);
-    return out.filter((v, i, a) => a.indexOf(v) === i);
+
+    // Sin las iniciales sueltas: "C F GONNET" -> "gonnet", "CLUB A BANFIELD" -> "club-banfield"
+    const largas = partes.filter(t => t.length > 1);
+    if (largas.length && largas.length < partes.length) {
+      out.push(largas.join('-'), largas.join(''));
+    }
+
+    // Recortes por delante y por detras: el nombre distintivo puede estar
+    // en cualquier punta ("NAUTICO ensenada" vs "c f GONNET").
+    if (partes.length > 2) out.push(partes.slice(0, 2).join('-'), partes.slice(-2).join('-'));
+    if (partes.length > 1) out.push(partes[0], partes[partes.length - 1]);
+    if (largas.length > 1) out.push(largas[largas.length - 1], largas[0]);
+
+    return out.filter(v => v && v.length > 1).filter((v, i, a) => a.indexOf(v) === i);
   }
 
   function candidatos(nombreEquipo) {
@@ -377,12 +388,27 @@ const LOGOS = (function () {
       }
     }
 
-    // 2) archivos del repo por convención
-    nombresArchivo(nombreEquipo).forEach((n) => {
-      CFG.extensiones.forEach((ext) => urls.push(CFG.basePath + n + '.' + ext));
+    // 2) archivos del repo por convención.
+    //    Tanda 1 = nombre exacto (acierta el 90% de las veces).
+    //    Tanda 2 = variantes y recortes, solo si la 1 no dio nada.
+    const nombres = nombresArchivo(nombreEquipo);
+    const tanda1 = [], tanda2 = [];
+    nombres.forEach((n, i) => {
+      CFG.extensiones.forEach((ext) => {
+        (i === 0 ? tanda1 : tanda2).push(CFG.basePath + n + '.' + ext);
+      });
     });
 
-    return urls;
+    return [urls.concat(tanda1), tanda2];
+  }
+
+  /* Prueba un lote de URLs EN PARALELO y devuelve la de menor indice que cargo. */
+  async function primeraQueCargue(urls) {
+    if (!urls.length) return null;
+    const res = await Promise.all(urls.map(u =>
+      cargarImagen(u).then(img => ({ img: img, url: u })).catch(() => null)
+    ));
+    return res.find(Boolean) || null;
   }
 
   /* ---------- carga ---------- */
@@ -441,14 +467,10 @@ const LOGOS = (function () {
 
     const tarea = (async () => {
       await asegurarMapaRemoto();
-      const urls = candidatos(nombreEquipo);
-      for (let i = 0; i < urls.length; i++) {
-        try {
-          const img = await cargarImagen(urls[i]);
-          const r = { img: img, url: urls[i] };
-          cache.set(clave, r);
-          return r;
-        } catch (e) { /* siguiente candidato */ }
+      const tandas = candidatos(nombreEquipo);
+      for (let i = 0; i < tandas.length; i++) {
+        const hit = await primeraQueCargue(tandas[i]);
+        if (hit) { cache.set(clave, hit); return hit; }
       }
       const r = { img: null, url: null };
       cache.set(clave, r);
@@ -1364,8 +1386,9 @@ function renderPanelLogosFaltantes(faltantes) {
               class="text-muted hover:text-ink text-lg leading-none px-1" title="Cerrar">&times;</button>
     </div>
     <p class="text-[11px] text-muted mb-3 leading-snug">
-      Subí estos archivos a la carpeta <code class="text-ink">logos/</code> del repositorio,
-      con exactamente este nombre:
+      Subí estos archivos a la carpeta <code class="text-ink">logos/</code> del repositorio.
+      El nombre tiene que ser este; la extensión puede ser
+      <code class="text-ink">.png .jpg .webp .avif .svg</code>:
     </p>
     <ul class="text-xs max-h-56 overflow-y-auto mb-3">${filas}</ul>
     <button id="copiarListaLogos"
