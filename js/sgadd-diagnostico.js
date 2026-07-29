@@ -104,6 +104,7 @@ async function diagCorrer(forzar) {
       coherencia: SGADD.validarCoherencia(hojas),
       simetria: SGADD.testSimetria(hojas, d.fase),
       totales: SGADD.testTotales(hojas, d.fase),
+      cruces: SGADD.testCrucePartidos(hojas, d.fase),
     };
     if (d.datos.fases.length && !d.datos.fases.some(f => f.id === d.fase)) d.fase = d.datos.fases[0].id;
     d.estado = 'listo';
@@ -122,6 +123,7 @@ function diagPintar() {
   const { hojas, erroresCarga, ms } = d.datos;
   d.datos.simetria = SGADD.testSimetria(hojas, d.fase);
   d.datos.totales = SGADD.testTotales(hojas, d.fase);
+  d.datos.cruces = SGADD.testCrucePartidos(hojas, d.fase);
   const idx = SGADD.construirIndice(hojas, { fase: d.fase });
 
   const selFase = document.getElementById('diagFase');
@@ -131,7 +133,7 @@ function diagPintar() {
     diagBloqueCarga(hojas, erroresCarga, ms),
     diagBloqueEsquema(d.datos.esquema),
     diagBloqueCoherencia(d.datos.coherencia),
-    diagBloqueTotales(d.datos.totales),
+    diagBloqueTotales(d.datos.totales, d.datos.cruces),
     diagBloqueSimetria(d.datos.simetria),
     diagBloqueIndice(idx),
     diagBloqueFicha(idx),
@@ -212,8 +214,8 @@ function diagBloqueCoherencia(res) {
 }
 
 /* --- 3. Invariantes exactos --- */
-function diagBloqueTotales(res) {
-  const fallan = res.filter(r => r.nivel === 'error').length;
+function diagBloqueTotales(res, cruces) {
+  const fallan = res.concat(cruces || []).filter(r => r.nivel === 'error').length;
   const filas = res.map(r => {
     const color = r.nivel === 'ok' ? 'text-green-400' : (r.nivel === 'error' ? 'text-red-400' : 'text-yellow-400');
     return `<tr class="border-b border-hairline/40">
@@ -230,7 +232,19 @@ function diagBloqueTotales(res) {
         <th class="pb-2 pr-3">Invariante</th><th class="pb-2 pr-3 text-right">Σ A</th>
         <th class="pb-2 pr-3 text-right">Σ B</th><th class="pb-2"></th>
       </tr></thead><tbody>${filas}</tbody></table></div>
-    <p class="text-[11px] text-muted mt-3">Sobre totales no hay tolerancia: si no da idéntico, hay un partido mal cargado. Es un test más duro que el de promedios.</p>`);
+    <h5 class="font-display uppercase tracking-wide text-xs text-accent mt-5 mb-2">Cruce partido por partido</h5>
+    <div class="scrollbox"><table class="w-full text-left">
+      <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+        <th class="pb-2 pr-3">Columna</th><th class="pb-2 pr-3 text-right">Partidos</th>
+        <th class="pb-2 pr-3 text-right">Fallan</th><th class="pb-2"></th>
+      </tr></thead><tbody>${(cruces || []).map(c => `
+        <tr class="border-b border-hairline/40">
+          <td class="py-1.5 pr-3 font-mono text-xs">${escapeHtml(c.par)}</td>
+          <td class="py-1.5 pr-3 text-right font-mono text-xs">${c.propio !== undefined ? c.propio : '—'}</td>
+          <td class="py-1.5 pr-3 text-right font-mono text-xs">${c.rival !== undefined ? c.rival : '—'}</td>
+          <td class="py-1.5 text-xs ${c.nivel === 'ok' ? 'text-green-400' : 'text-red-400'}">${escapeHtml(c.mensaje)}</td>
+        </tr>`).join('')}</tbody></table></div>
+    <p class="text-[11px] text-muted mt-3">Sobre totales no hay tolerancia: si no da idéntico, hay un partido mal cargado. El cruce por partido es todavía más fino — caza dos errores que se compensen entre sí.</p>`);
 }
 
 /* --- 3b. Simetría (promedios) --- */
