@@ -743,6 +743,41 @@
     const COLS_SUMA = ['TCC', 'TCI', 'T3C', 'T1C', 'PP', 'PLAYS', 'RO', 'RD', 'PTS'];
     const div = (a, b) => (typeof a === 'number' && typeof b === 'number' && b > 0) ? a / b : null;
 
+    /**
+     * Agrega un conjunto de partidos de un equipo y devuelve sus 8 factores.
+     * Se usa para la temporada completa y para los cortes (local/visitante,
+     * últimos N, contra un rival puntual).
+     */
+    function agregarPartidos(claveEq, partidos) {
+      const yo = {}, riv = {};
+      let conRival = 0, g = 0, pd = 0;
+
+      partidos.forEach(p => {
+        sumar(yo, p, COLS_SUMA);
+        const res = texto(p['RESULTADO']).toUpperCase();
+        if (res === 'GANADO') g++; else if (res === 'PERDIDO') pd++;
+        const pareja = filasPorPartido.get(p.__partido) || [];
+        const otro = pareja.find(x => x.equipo !== claveEq);
+        if (otro) { sumar(riv, otro.fila, COLS_SUMA); conRival++; }
+      });
+
+      return {
+        pj: partidos.length, ganados: g, perdidos: pd,
+        propio: yo, rival: riv, partidosConRival: conRival,
+        ptsFavor: yo['PTS'] || 0, ptsContra: riv['PTS'] || 0,
+        factores: {
+          'eFG%':  div((yo['TCC'] || 0) + 0.5 * (yo['T3C'] || 0), yo['TCI']),
+          'RTL%':  div(yo['T1C'], yo['TCI']),
+          'PePP%': div(yo['PP'], yo['PLAYS']),
+          'RO%':   div(yo['RO'], (yo['RO'] || 0) + (riv['RD'] || 0)),
+          'eFG Opp%': div((riv['TCC'] || 0) + 0.5 * (riv['T3C'] || 0), riv['TCI']),
+          'RTL Opp%': div(riv['T1C'], riv['TCI']),
+          'PP Opp%':  div(riv['PP'], riv['PLAYS']),
+          'RO Opp%':  div(riv['RO'], (riv['RO'] || 0) + (yo['RD'] || 0)),
+        },
+      };
+    }
+
     equipos.forEach(e => {
       const yo = {}, riv = {};
       let conRival = 0;
@@ -753,6 +788,32 @@
         const otro = pareja.find(x => x.equipo !== e.clave);
         if (otro) { sumar(riv, otro.fila, COLS_SUMA); conRival++; }
       });
+
+      /* Récord, racha y cortes. El orden cronológico sale del orden de las
+         filas de Base Datos E: la columna FECHA viene como "5/5", sin año,
+         así que no se puede ordenar de forma confiable todavía. */
+      let g = 0, pd = 0;
+      e.partidos.forEach(p => {
+        const r = texto(p['RESULTADO']).toUpperCase();
+        if (r === 'GANADO') g++; else if (r === 'PERDIDO') pd++;
+      });
+      e.record = { ganados: g, perdidos: pd, pj: e.partidos.length };
+
+      let racha = 0, tipoRacha = null;
+      for (let i = e.partidos.length - 1; i >= 0; i--) {
+        const r = texto(e.partidos[i]['RESULTADO']).toUpperCase();
+        if (!r) continue;
+        if (tipoRacha === null) { tipoRacha = r; racha = 1; }
+        else if (r === tipoRacha) racha++;
+        else break;
+      }
+      e.racha = tipoRacha ? { tipo: tipoRacha, n: racha } : null;
+
+      e.split = {
+        LOCAL: agregarPartidos(e.clave, e.partidos.filter(p => texto(p['CONDICION']).toUpperCase() === 'LOCAL')),
+        VISITANTE: agregarPartidos(e.clave, e.partidos.filter(p => texto(p['CONDICION']).toUpperCase() === 'VISITANTE')),
+      };
+      e.ultimos5 = agregarPartidos(e.clave, e.partidos.slice(-5));
 
       e.totales = { propio: yo, rival: riv, partidosConRival: conRival };
       e.ponderado = {
@@ -948,7 +1009,7 @@
     }
 
     return {
-      fase, equipos, liga, avisos,
+      fase, equipos, liga, avisos, agregarPartidos,
       lista: () => Array.from(equipos.values()),
       get: (k) => equipos.get(claveEquipo(k)) || null,
       leer, leerVista, leerJugador, ranking, percentil,
