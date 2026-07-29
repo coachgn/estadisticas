@@ -53,6 +53,13 @@
     position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px;
     background: #f7941e; border-radius: 0 2px 2px 0;
   }
+  /* Respaldo de los colores de marca: si el JIT del CDN de Tailwind todavia
+     no genero la clase para un nodo recien inyectado, igual se ve bien. */
+  .text-ink { color: #F9FAFB; }
+  .text-muted { color: #9CA3AF; }
+  .text-accent { color: #f7941e; }
+  .bg-surface2 { background-color: #1F2937; }
+
   .card { background: #141414; border: 1px solid #282828; transition: border-color .15s ease; }
   .card:hover { border-color: #3a3a3a; }
 
@@ -183,6 +190,8 @@
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path stroke-linecap="round" d="m20 20-4.3-4.3"/></svg>
           Scouting
         </button>
+        <button onclick="navigate('diagnostico')" data-nav="diagnostico" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-ink/90 hover:bg-surface2 transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path stroke-linecap="round" d="m20 20-4.3-4.3"/></svg>Diagnóstico</button>
       </nav>
 
       <div class="px-4 py-4 border-t border-hairline">
@@ -213,9 +222,19 @@
   </div>
 </div>
 
+<script src="js/sgadd-core.js?v=11"></script>
+<script src="js/sgadd-ui.js?v=11"></script>
+<script src="js/sgadd-app.js?v=11"></script>
+<script src="js/sgadd-charts.js?v=11"></script>
+<script src="js/sgadd-equipos.js?v=11"></script>
+<script src="js/sgadd-diagnostico.js?v=11"></script>
+
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
-const SHEET_ID = '1Zi2cBd0WGUTks-S0XCxR0hoGpB9KZGuqisFhzdtJl4s';
+/* La planilla ya no es fija: la elige el usuario en el selector de categoría.
+   Toda la capa de datos (Principal, Jugadores, 4 Factores, Scouting) lee de
+   aca, asi que cambiar de categoria cambia el dashboard entero. */
+let SHEET_ID = '1Zi2cBd0WGUTks-S0XCxR0hoGpB9KZGuqisFhzdtJl4s';
 
 const SHEETS_CONFIG = [
   { name: 'ACUMULADO J',   key: 'acumuladoJ'   },
@@ -231,7 +250,7 @@ const SHEETS_CONFIG = [
   { name: 'RANKINGS E',    key: 'rankingsE'    },
 ];
 
-const VALID_SECTIONS = ['principal', 'equipos', 'jugadores', 'factores', 'scouting'];
+const VALID_SECTIONS = ['principal', 'equipos', 'jugadores', 'factores', 'scouting', 'diagnostico'];
 
 /* ============ ESTADO GLOBAL ============ */
 let DATA = {};
@@ -258,6 +277,8 @@ let equipoDestacado = -1;   // indice del equipo resaltado en el scatter ORTG/DR
 
 /* Breakpoints en JS. Chart.js congela las opciones al crear el grafico, asi que
    lo que dependa del ancho se lee de aca y se re-renderiza al cruzar un corte. */
+const esTactil = () => !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+
 const BP = {
   movil:   () => (window.innerWidth || 1024) < 640,
   tablet:  () => (window.innerWidth || 1024) < 1024,
@@ -344,7 +365,8 @@ function sheet(key) {
 
 function cleanName(name) {
   if (!name) return '';
-  return String(name).replace(/\s*-\s*MM/g, '').trim();
+  // "- MM", "- U21M", "- U15F": el sufijo de categoria no aporta en pantalla.
+  return String(name).replace(/\s*-\s*(MM|MF|U\d{1,2}\s*[MF]?)\s*$/i, '').replace(/\s*-\s*MM/g, '').trim();
 }
 
 /* ============ MÓDULO LOGOS (hosting estático) ============ */
@@ -1046,10 +1068,16 @@ function buildPrincipal() {
   const validEquipos = promE.rows.filter(r => !isEquipoTipo(r));
   const validJugadores = baseJ.rows.filter(r => !isEquipoTipo(r));
   const validPartidos = baseE.rows.filter(r => !isEquipoTipo(r));
+  /* Base Datos E trae DOS filas por partido, una por equipo. Contar filas
+     duplica el numero: 130 filas son 65 partidos. Se cuenta por PARTIDO. */
+  const colPartido = findColumnLabel(baseE.cols, ['PARTIDO']);
+  const partidosUnicos = colPartido
+    ? new Set(validPartidos.map(r => String(r.formatted[colPartido] || '').trim()).filter(Boolean)).size
+    : Math.round(validPartidos.length / 2);
 
   const kpiEquipos = renderModernCard('Equipos', promE.error ? '—' : String(countDistinct(validEquipos, findColumnLabel(promE.cols, ['EQUIPO', 'NOMBRE', 'RIVAL', 'TEAM']))), 'En competencia', iconGrid);
   const kpiJugadores = renderModernCard('Jugadores', baseJ.error ? '—' : String(countDistinct(validJugadores, findColumnLabel(baseJ.cols, ['NOMBRE', 'JUGADOR']))), 'Con datos', iconUser);
-  const kpiPartidos = renderModernCard('Partidos', baseE.error ? '—' : String(validPartidos.length), 'Disputados', iconGlobe);
+  const kpiPartidos = renderModernCard('Partidos', baseE.error ? '—' : String(partidosUnicos), 'Disputados', iconGlobe);
 
   const leaderPts = buildLeaderCard('Líderes en Puntos', promJ, ['PTS', 'PUNTOS']);
   const leaderReb = buildLeaderCard('Líderes en Rebotes', promJ, ['RT', 'REB', 'REBOTES', 'REBOTES TOTALES']);
@@ -1060,6 +1088,7 @@ function buildPrincipal() {
 
   return `
     <section class="space-y-8">
+      ${SGADD_APP.barra()}
       <div>
         <h2 class="font-display uppercase tracking-wide text-sm text-muted mb-3">Resumen General</h2>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
@@ -1083,7 +1112,7 @@ function buildPrincipal() {
           ${fullStandTable}
         </div>
         <div class="card rounded-xl p-3 sm:p-5 border border-hairline">
-           <h3 class="font-display text-base sm:text-lg uppercase tracking-wide mb-3 sm:mb-4 text-ink">ORTG vs DRTG · Mapa de Rendimiento</h3>
+           <h3 class="font-display text-base sm:text-lg uppercase tracking-wide mb-3 sm:mb-4" style="color:#F9FAFB">ORTG vs DRTG · Mapa de Rendimiento</h3>
            <div class="chart-box">
              <canvas id="ortgDrtgChart"></canvas>
            </div>
@@ -1100,7 +1129,7 @@ function buildPrincipal() {
 }
 
 /* ============ SECCIÓN: EQUIPOS / JUGADORES ============ */
-function buildEquipos() {
+function buildEquiposLegacy() {
   const tabs = [
     { id: 'acumulado', label: 'Acumulado' },
     { id: 'promedios', label: 'Promedios' },
@@ -1333,6 +1362,11 @@ function drawOrtgDrtgChart() {
   if (chartInstances.ortgDrtg) chartInstances.ortgDrtg.destroy();
   equipoDestacado = -1;
 
+  /* Chart.js no dispara onHover cuando el puntero SALE del canvas, asi que
+     el equipo quedaba resaltado y el resto atenuado para siempre. */
+  canvas.onmouseleave = removeHighlight;
+  canvas.onpointerleave = removeHighlight;
+
   /* El tamaño de logo, tipografia y carteles se calcula sobre el ancho REAL
      del area de dibujo, no sobre el viewport: el mismo grafico puede estar
      en una card angosta de escritorio o a pantalla completa en un telefono. */
@@ -1376,10 +1410,13 @@ function drawOrtgDrtgChart() {
           ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, maxTicksLimit: angosto() ? 6 : 10 },
         }
       },
-      interaction: { mode: 'nearest', intersect: false, axis: 'xy' },
+      /* En mouse exigimos estar SOBRE el punto; en touch no, porque el dedo
+         nunca cae justo. Con intersect:false en desktop, todo el grafico
+         quedaba atenuado apenas entrabas al area. */
+      interaction: { mode: 'nearest', intersect: !esTactil(), axis: 'xy' },
       onHover: (evt, elementos) => {
-        const idx = (elementos && elementos.length) ? elementos[0].index : -1;
-        if (idx !== equipoDestacado) { idx >= 0 ? highlightPoint(idx) : removeHighlight(); }
+        const i = (elementos && elementos.length) ? elementos[0].index : -1;
+        if (i !== equipoDestacado) { i >= 0 ? highlightPoint(i) : removeHighlight(); }
       },
       plugins: {
         legend: { display: false },
@@ -1816,7 +1853,7 @@ function renderSection(section) {
     btn.classList.toggle('bg-surface2', isActive);
     btn.classList.toggle('text-accent', isActive);
   });
-  const titles = { principal: 'Principal', equipos: 'Equipos', jugadores: 'Jugadores', factores: '4 Factores', scouting: 'Scouting' };
+  const titles = { principal: 'Principal', equipos: 'Equipos', jugadores: 'Jugadores', factores: '4 Factores', scouting: 'Scouting', diagnostico: 'Diagnóstico' };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = titles[section] || '';
 
@@ -1824,7 +1861,8 @@ function renderSection(section) {
   if (!root) return;
   switch (section) {
     case 'principal': root.innerHTML = buildPrincipal(); drawOrtgDrtgChart(); break;
-    case 'equipos': root.innerHTML = buildEquipos(); break;
+    case 'diagnostico': root.innerHTML = buildDiagnostico(); diagCorrer(); break;
+    case 'equipos': root.innerHTML = buildEquipos(); break;   // SGADD (js/sgadd-equipos.js)
     case 'jugadores': root.innerHTML = buildJugadores(); break;
     case 'factores': root.innerHTML = buildFactores(); drawFactoresChart(); break;
     case 'scouting': root.innerHTML = buildScouting(); drawScoutingCharts(); break;
@@ -1882,6 +1920,11 @@ async function refreshData() {
   if (label) label.textContent = 'Actualizando…';
   // Datos y logos viajan en paralelo. Los logos tienen techo de 12s:
   // si Drive tarda, el dashboard igual arranca y los logos entran despues via onReady.
+  // La planilla inicial sale del catalogo/hash, no de una constante.
+  SGADD_APP.inicializar();
+  const pIni = SGADD_APP.planillaActual();
+  if (pIni && pIni.sheetId) SHEET_ID = pIni.sheetId;
+
   const errors = await fetchAllData();
   lastErrors = errors;
   renderStatusBanner(errors);
@@ -1924,9 +1967,38 @@ async function init() {
   updateLastUpdatedLabel();
   renderSection(currentSection);
 
+  /* ---------------------------------------------------------------------
+     Cambio de categoria.
+
+     La capa de datos vieja (Principal, Jugadores, 4 Factores, Scouting) y el
+     nucleo SGADD (Equipos, Diagnostico) leen de la MISMA planilla. Cuando el
+     usuario cambia de categoria hay que refrescar las dos y repintar.
+     --------------------------------------------------------------------- */
+  window.onCategoriaCambiada = async function (idPlanilla) {
+    const p = SGADD.planilla(idPlanilla);
+    if (!p || !p.sheetId) return;
+    SHEET_ID = p.sheetId;
+    const root = document.getElementById('view-root');
+    if (root) root.innerHTML = '<div class="card rounded-xl p-8 border border-hairline text-center text-muted text-sm">Cambiando de categoria...</div>';
+    lastErrors = await fetchAllData();
+    renderSection(currentSection);
+  };
+
   window.addEventListener('hashchange', () => {
-    const s = (window.location.hash || '#principal').replace('#', '');
-    if (VALID_SECTIONS.includes(s)) navigate(s);
+    const h = window.location.hash || '#principal';
+    // Las rutas de SGADD son #/planilla/fase/seccion/... y las maneja su modulo.
+    if (h.indexOf('#/') === 0) {
+      const r = SGADD.Ruta.parse(h);
+      if (r.seccion === 'equipos') {
+        if (currentSection !== 'equipos') navigate('equipos');
+        else { equiposLeerRuta(); equiposPintar(); }
+      } else if (r.seccion === 'principal' && currentSection !== 'principal') {
+        navigate('principal');
+      }
+      return;
+    }
+    const sec = h.replace('#', '');
+    if (VALID_SECTIONS.includes(sec)) navigate(sec);
   });
 
   /* Rotar el telefono cambia de breakpoint, pero Chart.js ya congelo las
