@@ -15,6 +15,7 @@ const SGADD_DIAG = {
   planillaId: null,
   fase: 'REGULAR',
   estado: 'inicial',   // inicial | cargando | listo | error
+  equipoSel: null,
   datos: null,
 };
 
@@ -137,6 +138,7 @@ function diagPintar() {
     diagBloqueSimetria(d.datos.simetria),
     diagBloqueIndice(idx),
     diagBloqueFicha(idx),
+    diagBloqueEquipos(idx),
   ].join('');
 }
 
@@ -321,61 +323,65 @@ function diagBloqueIndice(idx) {
     ${avisos}`);
 }
 
-/* --- 5. Ficha --- */
+/* --- 5. Ficha · ahora armada con SGADD_UI --- */
 function diagBloqueFicha(idx) {
   const equipos = idx.lista();
   const propio = equipos.find(e => SGADD.esEquipoPropio(e.clave)) || equipos[0];
   if (!propio) return '';
 
-  const hero = ['NET RTNG', 'RTNG OFF', 'RTNG DEF', 'eFG%', 'AST-PP', 'RO%'].map(k => {
-    const r = idx.leer(propio.clave, k);
-    const rk = idx.ranking(propio.clave, k);
-    if (!r) return '';
-    const signo = r.delta === null ? '' : (r.delta > 0 ? '+' : '');
-    const bueno = r.delta === null ? null : (r.invertida ? r.delta < 0 : r.delta > 0);
-    const colorDelta = bueno === null ? 'text-muted' : (bueno ? 'text-green-400' : 'text-red-400');
-    const pct = r.percentil === null ? 0 : r.percentil;
-    const flojo = !r.muestraSuficiente;
-    return `
-      <div class="bg-surface2/50 rounded-lg p-3">
-        <p class="text-[10px] uppercase tracking-wider text-muted font-display truncate">${escapeHtml(r.label)}</p>
-        <p class="font-display text-2xl text-ink leading-tight">${escapeHtml(r.formateado)}</p>
-        <p class="text-[11px] ${colorDelta} font-mono">${signo}${escapeHtml(SGADD.formatear(k, r.delta))} vs mediana</p>
-        <div class="h-1 bg-hairline rounded-full mt-2 overflow-hidden">
-          <div class="h-full ${flojo ? 'bg-muted' : 'bg-accent'} rounded-full" style="width:${pct.toFixed(0)}%"></div>
-        </div>
-        <p class="text-[10px] ${flojo ? 'text-yellow-400/70' : 'text-muted'} mt-1 font-mono">${flojo ? '~' : ''}pctil ${pct.toFixed(0)}${rk ? ' · ' + rk.puesto + '°/' + rk.de : ''}${flojo ? ' · PJ ' + r.pj : ''}</p>
-      </div>`;
-  }).join('');
+  const hero = ['NET RTNG', 'RTNG OFF', 'RTNG DEF', 'eFG%', 'AST-PP', 'RO%']
+    .map(k => SGADD_UI.statCard(idx.leer(propio.clave, k), { ranking: idx.ranking(propio.clave, k) }))
+    .join('');
 
-  const vistas = ['factores-of', 'factores-def', 'distribucion-plays'].map(id => {
-    const v = idx.leerVista(propio.clave, id);
-    if (!v) return '';
-    const filas = v.filas.map(f => `
-      <tr class="border-b border-hairline/40">
-        <td class="py-1.5 pr-3 text-xs">${escapeHtml(f.label)}${f.invertida && !v.descriptiva ? ' <span class="text-muted">↓</span>' : ''}</td>
-        <td class="py-1.5 pr-3 text-right font-mono text-xs text-ink">${escapeHtml(f.formateado)}</td>
-        <td class="py-1.5 pr-3 text-right font-mono text-xs text-muted">${escapeHtml(f.tipoFormateado)}</td>
-        <td class="py-1.5 text-right font-mono text-xs ${v.descriptiva ? 'text-muted' : 'text-accent'}">${v.descriptiva ? '—' : (f.percentil === null ? '—' : f.percentil.toFixed(0))}</td>
-      </tr>`).join('');
-    return `
-      <div>
-        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">${escapeHtml(v.label)}</h5>
-        <table class="w-full text-left">
-          <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
-            <th class="pb-1 pr-3">Métrica</th><th class="pb-1 pr-3 text-right">Valor</th>
-            <th class="pb-1 pr-3 text-right">Mediana</th><th class="pb-1 text-right">Pctil</th>
-          </tr></thead><tbody>${filas}</tbody>
-        </table>
-        ${v.nota ? `<p class="text-[10px] text-muted mt-2 leading-snug">${escapeHtml(v.nota)}</p>` : ''}
-        ${v.suma !== undefined ? `<p class="text-[10px] mt-1 font-mono ${v.sumaOk ? 'text-green-400' : 'text-red-400'}">suma ${(v.suma * 100).toFixed(2)}%</p>` : ''}
-      </div>`;
+  const vistas = ['factores-of', 'factores-def', 'distribucion-plays']
+    .map(id => SGADD_UI.metricTable(idx.leerVista(propio.clave, id)))
+    .join('');
+
+  /* Contraste ponderado vs promedio simple: la razón por la que los
+     factores defensivos ya no salen de PROMEDIOS 4F. */
+  const comparacion = ['eFG Opp%', 'PP Opp%', 'RTL Opp%', 'RO Opp%'].map(k => {
+    const pond = propio.ponderado ? propio.ponderado[k] : null;
+    const simple = propio.factores ? propio.factores[k] : null;
+    const dif = (pond !== null && simple !== null && simple !== undefined) ? (pond - simple) : null;
+    return `<tr class="border-b border-hairline/40 last:border-0">
+      <td class="py-1.5 pr-3 text-xs">${escapeHtml(SGADD.metrica(k).label)}</td>
+      <td class="py-1.5 pr-3 text-right font-mono text-xs text-ink">${escapeHtml(SGADD.formatear(k, pond))}</td>
+      <td class="py-1.5 pr-3 text-right font-mono text-xs text-muted">${escapeHtml(SGADD.formatear(k, simple))}</td>
+      <td class="py-1.5 text-right font-mono text-xs ${dif === null ? 'text-muted' : Math.abs(dif) > 0.005 ? 'text-yellow-400' : 'text-muted'}">
+        ${dif === null ? '—' : (dif > 0 ? '+' : '') + (dif * 100).toFixed(2) + ' pp'}
+      </td>
+    </tr>`;
   }).join('');
 
   return diagCard('5 · Ficha de ' + propio.nombre,
     'n = ' + idx.liga.n + ' equipos · PJ ' + (propio.pj || 0) + (idx.liga.muestraSuficiente ? '' : ' · muestra floja'), `
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">${hero}</div>
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">${vistas}</div>`);
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">${vistas}</div>
+
+    <h5 class="font-display uppercase tracking-wide text-xs text-accent mt-6 mb-2">Ponderado vs promedio simple</h5>
+    <div class="scrollbox"><table class="w-full text-left">
+      <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+        <th class="pb-1 pr-3">Factor defensivo</th>
+        <th class="pb-1 pr-3 text-right">Calculado</th>
+        <th class="pb-1 pr-3 text-right">PROMEDIOS 4F</th>
+        <th class="pb-1 text-right">Dif</th>
+      </tr></thead><tbody>${comparacion}</tbody></table></div>
+    <p class="text-[10px] text-muted mt-2 leading-snug">
+      El calculado sale de sumar el box score del rival en cada partido (join por PARTIDO) y sacar el ratio
+      sobre los totales, igual que el lado ofensivo. El de PROMEDIOS 4F promedia los ratios partido a partido:
+      un partido de 40 tiros pesa igual que uno de 70.
+    </p>`);
+}
+
+/* Grilla de escudos: primera pieza reusable de la sección Equipos. */
+function diagBloqueEquipos(idx) {
+  return diagCard('6 · Selector de equipos', idx.lista().length + ' equipos',
+    SGADD_UI.teamPicker(idx.lista(), { onClick: 'diagVerEquipo', seleccionado: SGADD_DIAG.equipoSel }));
+}
+
+function diagVerEquipo(clave) {
+  SGADD_DIAG.equipoSel = clave;
+  diagPintar();
 }
 
 function diagCard(titulo, subtitulo, cuerpo) {
