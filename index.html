@@ -215,16 +215,18 @@
   </div>
 </div>
 
-<script src="js/sgadd-core.js"></script>
-<script src="js/sgadd-ui.js"></script>
-<script src="js/sgadd-app.js"></script>
-<script src="js/sgadd-principal.js"></script>
-<script src="js/sgadd-equipos.js"></script>
-<script src="js/sgadd-diagnostico.js"></script>
+<script src="js/sgadd-core.js?v=9"></script>
+<script src="js/sgadd-ui.js?v=9"></script>
+<script src="js/sgadd-app.js?v=9"></script>
+<script src="js/sgadd-equipos.js?v=9"></script>
+<script src="js/sgadd-diagnostico.js?v=9"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
-const SHEET_ID = '1Zi2cBd0WGUTks-S0XCxR0hoGpB9KZGuqisFhzdtJl4s';
+/* La planilla ya no es fija: la elige el usuario en el selector de categoría.
+   Toda la capa de datos (Principal, Jugadores, 4 Factores, Scouting) lee de
+   aca, asi que cambiar de categoria cambia el dashboard entero. */
+let SHEET_ID = '1Zi2cBd0WGUTks-S0XCxR0hoGpB9KZGuqisFhzdtJl4s';
 
 const SHEETS_CONFIG = [
   { name: 'ACUMULADO J',   key: 'acumuladoJ'   },
@@ -353,7 +355,8 @@ function sheet(key) {
 
 function cleanName(name) {
   if (!name) return '';
-  return String(name).replace(/\s*-\s*MM/g, '').trim();
+  // "- MM", "- U21M", "- U15F": el sufijo de categoria no aporta en pantalla.
+  return String(name).replace(/\s*-\s*(MM|MF|U\d{1,2}\s*[MF]?)\s*$/i, '').replace(/\s*-\s*MM/g, '').trim();
 }
 
 /* ============ MÓDULO LOGOS (hosting estático) ============ */
@@ -1022,7 +1025,7 @@ function renderFullStandingsTable() {
   `;
 }
 
-function buildPrincipalLegacy() {
+function buildPrincipal() {
   const promE = sheet('promediosE');
   const baseE = sheet('baseDatosE');
   const baseJ = sheet('baseDatosJ');
@@ -1069,6 +1072,7 @@ function buildPrincipalLegacy() {
 
   return `
     <section class="space-y-8">
+      ${SGADD_APP.barra()}
       <div>
         <h2 class="font-display uppercase tracking-wide text-sm text-muted mb-3">Resumen General</h2>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
@@ -1291,12 +1295,26 @@ function drawFactoresChart() {
   });
 }
 
-/* Recibe [{name, x, y}] desde SGADD. Antes leia la hoja por su cuenta. */
-function drawOrtgDrtgChart(datos) {
+function drawOrtgDrtgChart() {
   const canvas = document.getElementById('ortgDrtgChart');
   if (!canvas || typeof Chart === 'undefined') return;
 
-  const chartData = (datos || []).filter(d => d && d.x !== null && d.y !== null);
+  const data = sheet('promedios4f');
+  if (data.error || !data.rows.length) return;
+
+  const colEquipo = findColumnLabel(data.cols, ['EQUIPO', 'NOMBRE']);
+  const colOff = findColumnLabel(data.cols, ['RTNG OFF', 'ORTG']);
+  const colDef = findColumnLabel(data.cols, ['RTNG DEF', 'DRTG']);
+
+  const chartData = data.rows
+    .filter(r => !isEquipoTipo(r))
+    .map((r) => ({
+      name: cleanName(r.formatted[colEquipo] || 'Desconocido'),
+      x: toNumber(r.values[colOff]),
+      y: toNumber(r.values[colDef])
+    }))
+    .filter(d => d.x !== null && d.y !== null);
+
   if (!chartData.length) return;
 
   const avgX = chartData.reduce((a, d) => a + d.x, 0) / chartData.length;
@@ -1818,7 +1836,7 @@ function renderSection(section) {
   const root = document.getElementById('view-root');
   if (!root) return;
   switch (section) {
-    case 'principal': root.innerHTML = buildPrincipal(); break;   // SGADD (js/sgadd-principal.js)
+    case 'principal': root.innerHTML = buildPrincipal(); drawOrtgDrtgChart(); break;
     case 'diagnostico': root.innerHTML = buildDiagnostico(); diagCorrer(); break;
     case 'equipos': root.innerHTML = buildEquipos(); break;   // SGADD (js/sgadd-equipos.js)
     case 'jugadores': root.innerHTML = buildJugadores(); break;
@@ -1878,6 +1896,11 @@ async function refreshData() {
   if (label) label.textContent = 'Actualizando…';
   // Datos y logos viajan en paralelo. Los logos tienen techo de 12s:
   // si Drive tarda, el dashboard igual arranca y los logos entran despues via onReady.
+  // La planilla inicial sale del catalogo/hash, no de una constante.
+  SGADD_APP.inicializar();
+  const pIni = SGADD_APP.planillaActual();
+  if (pIni && pIni.sheetId) SHEET_ID = pIni.sheetId;
+
   const errors = await fetchAllData();
   lastErrors = errors;
   renderStatusBanner(errors);
@@ -1919,6 +1942,23 @@ async function init() {
   renderStatusBanner(errors);
   updateLastUpdatedLabel();
   renderSection(currentSection);
+
+  /* ---------------------------------------------------------------------
+     Cambio de categoria.
+
+     La capa de datos vieja (Principal, Jugadores, 4 Factores, Scouting) y el
+     nucleo SGADD (Equipos, Diagnostico) leen de la MISMA planilla. Cuando el
+     usuario cambia de categoria hay que refrescar las dos y repintar.
+     --------------------------------------------------------------------- */
+  window.onCategoriaCambiada = async function (idPlanilla) {
+    const p = SGADD.planilla(idPlanilla);
+    if (!p || !p.sheetId) return;
+    SHEET_ID = p.sheetId;
+    const root = document.getElementById('view-root');
+    if (root) root.innerHTML = '<div class="card rounded-xl p-8 border border-hairline text-center text-muted text-sm">Cambiando de categoria...</div>';
+    lastErrors = await fetchAllData();
+    renderSection(currentSection);
+  };
 
   window.addEventListener('hashchange', () => {
     const h = window.location.hash || '#principal';
