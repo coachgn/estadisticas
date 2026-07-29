@@ -426,16 +426,17 @@
       /* Las 9 del SGADD. Completar sheetId y poner activo: true.
          tira: femenina | negra | naranja   ·   categoria: U15 | U19 | U21 */
       ...['femenina', 'negra', 'naranja'].flatMap(tira =>
-        ['U15', 'U19', 'U21'].map(cat => ({
+        ['U15', 'U17', 'U21'].map(cat => ({
           id: tira + '-' + cat.toLowerCase() + '-clausura-2026',
-          sheetId: '',
+          // U21 ya tiene planilla. Falta confirmar a qué tira pertenece.
+          sheetId: (tira === 'negra' && cat === 'U21') ? '1CD7FEDcLkmZRI0tGkU67IjCmkxhnnIN2AKHhA4lWJT4' : '',
           anio: 2026, torneo: 'TORNEO LOCAL', categoria: cat,
           faseTorneo: 'CLAUSURA',
           rama: tira === 'femenina' ? 'femenina' : 'masculina',
           tira: tira,
           modulo: 'sgadd',
           label: ({ femenina: 'Femenina', negra: 'Masculina Negra', naranja: 'Masculina Naranja' })[tira] + ' · ' + cat,
-          activo: false,
+          activo: (tira === 'negra' && cat === 'U21'),
         }))
       ),
     ],
@@ -510,9 +511,26 @@
     return { cols: cols.slice(), filas: filas };
   }
 
+  /*
+     Las hojas traen DOS tipos de fila TIPO y hay que separarlas:
+
+       JUGADOR TIPO | ASTILLERO - MM | REGULAR | ...  ← mediana DE ESE EQUIPO
+       JUGADOR TIPO |                | REGULAR | ...  ← mediana DE LA LIGA
+
+     Con 12 equipos son 12 + 2 = 14 filas TIPO en PROMEDIOS J. Tomar la
+     primera que aparece devuelve la del primer equipo del abecedario, no la
+     de la liga: el umbral de minutos sale 11,83 (Astillero) en vez de 15,58.
+  */
   function esFilaTipo(fila, identificador) {
     if (!identificador) return false;
     return Object.keys(fila).some(k => texto(fila[k]).toUpperCase() === identificador);
+  }
+
+  /** ¿Es la fila TIPO global (sin equipo) o la de un equipo puntual? */
+  function tipoDeLiga(fila, identificador, campoEquipo) {
+    if (!esFilaTipo(fila, identificador)) return false;
+    const eq = texto(fila[campoEquipo || 'EQUIPO']).toUpperCase();
+    return eq === '' || eq === identificador;
   }
 
   /**
@@ -580,6 +598,7 @@
         if (faseFila && faseFila !== fase) return;
 
         if (esFilaTipo(fila, idTipo)) {
+          if (!tipoDeLiga(fila, idTipo, 'EQUIPO')) return;   // TIPO de un equipo, no de la liga
           // La fila TIPO es la MEDIANA columna por columna. Dos reglas:
           //  1. Nunca derivar una columna de otra: la mediana de las
           //     diferencias no es la diferencia de las medianas
@@ -650,12 +669,22 @@
       hj.filas.forEach(fila => {
         const faseFila = texto(fila['FASE']).toUpperCase();
         if (faseFila && faseFila !== fase) return;
+        const datosTipo = () => {
+          const o = {};
+          Object.keys(fila).forEach(c => { const v = num(fila[c]); if (v !== null) o[c] = v; });
+          return o;
+        };
+
         if (esFilaTipo(fila, idTipo)) {
-          liga.jugadorTipo = liga.jugadorTipo || {};
-          Object.keys(fila).forEach(c => {
-            const v = num(fila[c]);
-            if (v !== null && liga.jugadorTipo[c] === undefined) liga.jugadorTipo[c] = v;
-          });
+          if (tipoDeLiga(fila, idTipo, 'EQUIPO')) {
+            // Mediana de TODA la liga: de acá sale el umbral de minutos.
+            if (!liga.jugadorTipo) liga.jugadorTipo = datosTipo();
+          } else {
+            // Mediana del plantel: sirve para comparar a un jugador contra
+            // sus propios compañeros, no contra la liga entera.
+            const eT = equipo(fila['EQUIPO']);
+            if (eT) eT.jugadorTipo = datosTipo();
+          }
           return;
         }
         const e = equipo(fila['EQUIPO']);
@@ -943,16 +972,24 @@
   function validarCoherencia(hojas) {
     const out = [];
 
+    /* Cuenta filas de datos: descarta las TIPO (de liga y de equipo). */
+    function filasDatos(nombre, h) {
+      const idTipo = ESQUEMA[nombre] && ESQUEMA[nombre].filaTipo;
+      if (!idTipo) return h.filas.length;
+      return h.filas.filter(f => !esFilaTipo(f, idTipo)).length;
+    }
+
     PARES_HOJAS.forEach(([a, b]) => {
       const ha = hojas[a], hb = hojas[b];
       if (!ha || !hb) return;
-      const dif = ha.filas.length - hb.filas.length;
+      const na = filasDatos(a, ha), nb = filasDatos(b, hb);
+      const dif = na - nb;
       out.push({
         nivel: dif === 0 ? 'ok' : 'error',
         par: a + ' / ' + b,
-        a: ha.filas.length, b: hb.filas.length, dif: dif,
+        a: na, b: nb, dif: dif,
         mensaje: dif === 0
-          ? 'Mismo número de filas.'
+          ? na + ' filas de datos en las dos (sin contar filas TIPO).'
           : a + ' tiene ' + Math.abs(dif) + ' fila(s) ' + (dif > 0 ? 'de más' : 'de menos') + '. Revisar cuáles.',
       });
     });
@@ -1038,7 +1075,7 @@
     // 3
     CATALOGO, FASES, planilla, planillasVisibles, esEquipoPropio, agrupar, fasesDisponibles, Ruta,
     // 4
-    normalizarHoja, construirIndice, cargarCategoria, limpiarCache, parsearGviz, urlGviz,
+    normalizarHoja, construirIndice, esFilaTipo, tipoDeLiga, cargarCategoria, limpiarCache, parsearGviz, urlGviz,
     // 5
     validarEsquema, validarCoherencia, testSimetria, PARES_SIMETRIA, PARES_HOJAS,
   };
