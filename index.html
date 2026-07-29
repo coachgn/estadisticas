@@ -217,6 +217,7 @@
 
 <script src="js/sgadd-core.js"></script>
 <script src="js/sgadd-ui.js"></script>
+<script src="js/sgadd-equipos.js"></script>
 <script src="js/sgadd-diagnostico.js"></script>
 
 <script>
@@ -1106,7 +1107,7 @@ function buildPrincipal() {
 }
 
 /* ============ SECCIÓN: EQUIPOS / JUGADORES ============ */
-function buildEquipos() {
+function buildEquiposLegacy() {
   const tabs = [
     { id: 'acumulado', label: 'Acumulado' },
     { id: 'promedios', label: 'Promedios' },
@@ -1831,7 +1832,7 @@ function renderSection(section) {
   switch (section) {
     case 'principal': root.innerHTML = buildPrincipal(); drawOrtgDrtgChart(); break;
     case 'diagnostico': root.innerHTML = buildDiagnostico(); diagCorrer(); break;
-    case 'equipos': root.innerHTML = buildEquipos(); break;
+    case 'equipos': root.innerHTML = buildEquipos(); break;   // SGADD (js/sgadd-equipos.js)
     case 'jugadores': root.innerHTML = buildJugadores(); break;
     case 'factores': root.innerHTML = buildFactores(); drawFactoresChart(); break;
     case 'scouting': root.innerHTML = buildScouting(); drawScoutingCharts(); break;
@@ -1932,8 +1933,18 @@ async function init() {
   renderSection(currentSection);
 
   window.addEventListener('hashchange', () => {
-    const s = (window.location.hash || '#principal').replace('#', '');
-    if (VALID_SECTIONS.includes(s)) navigate(s);
+    const h = window.location.hash || '#principal';
+    // Las rutas de SGADD son #/planilla/fase/seccion/... y las maneja su modulo.
+    if (h.indexOf('#/') === 0) {
+      const r = SGADD.Ruta.parse(h);
+      if (r.seccion === 'equipos') {
+        if (currentSection !== 'equipos') navigate('equipos');
+        else { equiposLeerRuta(); equiposPintar(); }
+      }
+      return;
+    }
+    const sec = h.replace('#', '');
+    if (VALID_SECTIONS.includes(sec)) navigate(sec);
   });
 
   /* Rotar el telefono cambia de breakpoint, pero Chart.js ya congelo las
