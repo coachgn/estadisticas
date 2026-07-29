@@ -43,16 +43,54 @@
     return esPct ? n / 100 : n;
   }
 
+  /**
+   * GViz devuelve las celdas de fecha como el string "Date(2026,4,5)".
+   * OJO: el mes viene 0-indexado, como en el constructor de JS. Ese
+   * "Date(2026,4,5)" es el 5 de MAYO, no el 5 de abril.
+   *
+   * Yo venía diciendo que no se podía ordenar cronológicamente porque la
+   * FECHA era "5/5" sin año. Falso: la columna SÍ está tipada como fecha,
+   * mi parser la trataba como texto y la escupía cruda en pantalla.
+   */
+  function fecha(v) {
+    if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+    const s = String(v === null || v === undefined ? '' : v).trim();
+    if (!s) return null;
+    let m = /^Date\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(s);
+    if (m) return new Date(+m[1], +m[2], +m[3]);          // mes 0-indexado
+    m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);      // ISO
+    return null;                                          // "5/5" sin año: no confiable
+  }
+
+  function formatearFecha(d) {
+    if (!(d instanceof Date) || isNaN(d.getTime())) return '—';
+    const p2 = n => String(n).padStart(2, '0');
+    return p2(d.getDate()) + '/' + p2(d.getMonth() + 1);
+  }
+
   function texto(v) {
     return (v === null || v === undefined) ? '' : String(v).trim();
   }
 
   /** Normaliza nombres de equipo: "ATENAS 'A' - MM" → "ATENAS A" */
+  /*
+     Los equipos traen sufijo de categoría y cambia entre planillas:
+       "RECONQUISTA 'A' - MM"     (Primera)
+       "RECONQUISTA 'A' - U21M"   (U21 masculino)
+     Sin sacarlo, el mismo club es dos entidades distintas y el logo no
+     matchea: `reconquista-a-u21m.png` no existe.
+  */
+  const SUFIJO_CATEGORIA = /\s*-\s*(MM|MF|U\d{1,2}\s*[MF]?)\s*$/i;
+
+  function limpiarNombre(v) {
+    return texto(v).replace(SUFIJO_CATEGORIA, '').trim();
+  }
+
   function claveEquipo(v) {
-    return texto(v)
+    return limpiarNombre(v)
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .toUpperCase()
-      .replace(/\s*-\s*MM\b/g, '')
       .replace(/[^A-Z0-9]+/g, ' ')
       .trim();
   }
@@ -789,9 +827,18 @@
         if (otro) { sumar(riv, otro.fila, COLS_SUMA); conRival++; }
       });
 
-      /* Récord, racha y cortes. El orden cronológico sale del orden de las
-         filas de Base Datos E: la columna FECHA viene como "5/5", sin año,
-         así que no se puede ordenar de forma confiable todavía. */
+      /* Orden cronológico real. Los partidos sin fecha quedan al final
+         conservando el orden de la planilla, que suele ser el correcto. */
+      e.partidos.forEach((p, i) => { p.__fecha = fecha(p['FECHA']); p.__orden = i; });
+      e.partidos.sort((a, b) => {
+        if (a.__fecha && b.__fecha) return a.__fecha - b.__fecha;
+        if (a.__fecha) return -1;
+        if (b.__fecha) return 1;
+        return a.__orden - b.__orden;
+      });
+      e.sinFecha = e.partidos.filter(p => !p.__fecha).length;
+
+      /* Récord, racha y cortes. */
       let g = 0, pd = 0;
       e.partidos.forEach(p => {
         const r = texto(p['RESULTADO']).toUpperCase();
@@ -841,6 +888,8 @@
     const clavesPartido = new Set();
     equipos.forEach(e => e.partidos.forEach(p => { if (p.__partido) clavesPartido.add(p.__partido); }));
     liga.partidos = clavesPartido.size;
+    let sinF = 0; equipos.forEach(e => { sinF += (e.sinFecha || 0); });
+    liga.filasSinFecha = sinF;
     let filasP = 0; equipos.forEach(e => { filasP += e.partidos.length; });
     liga.filasPartido = filasP;
 
@@ -1337,7 +1386,7 @@
 
   const SGADD = {
     // utilidades
-    num, texto, claveEquipo, clavePersona, mediana, promedio, percentil,
+    num, texto, fecha, formatearFecha, limpiarNombre, claveEquipo, clavePersona, mediana, promedio, percentil,
     // 1
     ESQUEMA, HOJAS_EXCLUIDAS,
     // 2
