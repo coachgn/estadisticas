@@ -53,6 +53,13 @@
     position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px;
     background: #f7941e; border-radius: 0 2px 2px 0;
   }
+  /* Respaldo de los colores de marca: si el JIT del CDN de Tailwind todavia
+     no genero la clase para un nodo recien inyectado, igual se ve bien. */
+  .text-ink { color: #F9FAFB; }
+  .text-muted { color: #9CA3AF; }
+  .text-accent { color: #f7941e; }
+  .bg-surface2 { background-color: #1F2937; }
+
   .card { background: #141414; border: 1px solid #282828; transition: border-color .15s ease; }
   .card:hover { border-color: #3a3a3a; }
 
@@ -215,12 +222,12 @@
   </div>
 </div>
 
-<script src="js/sgadd-core.js?v=10"></script>
-<script src="js/sgadd-ui.js?v=10"></script>
-<script src="js/sgadd-app.js?v=10"></script>
-<script src="js/sgadd-charts.js?v=10"></script>
-<script src="js/sgadd-equipos.js?v=10"></script>
-<script src="js/sgadd-diagnostico.js?v=10"></script>
+<script src="js/sgadd-core.js?v=11"></script>
+<script src="js/sgadd-ui.js?v=11"></script>
+<script src="js/sgadd-app.js?v=11"></script>
+<script src="js/sgadd-charts.js?v=11"></script>
+<script src="js/sgadd-equipos.js?v=11"></script>
+<script src="js/sgadd-diagnostico.js?v=11"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -270,6 +277,8 @@ let equipoDestacado = -1;   // indice del equipo resaltado en el scatter ORTG/DR
 
 /* Breakpoints en JS. Chart.js congela las opciones al crear el grafico, asi que
    lo que dependa del ancho se lee de aca y se re-renderiza al cruzar un corte. */
+const esTactil = () => !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+
 const BP = {
   movil:   () => (window.innerWidth || 1024) < 640,
   tablet:  () => (window.innerWidth || 1024) < 1024,
@@ -1059,10 +1068,16 @@ function buildPrincipal() {
   const validEquipos = promE.rows.filter(r => !isEquipoTipo(r));
   const validJugadores = baseJ.rows.filter(r => !isEquipoTipo(r));
   const validPartidos = baseE.rows.filter(r => !isEquipoTipo(r));
+  /* Base Datos E trae DOS filas por partido, una por equipo. Contar filas
+     duplica el numero: 130 filas son 65 partidos. Se cuenta por PARTIDO. */
+  const colPartido = findColumnLabel(baseE.cols, ['PARTIDO']);
+  const partidosUnicos = colPartido
+    ? new Set(validPartidos.map(r => String(r.formatted[colPartido] || '').trim()).filter(Boolean)).size
+    : Math.round(validPartidos.length / 2);
 
   const kpiEquipos = renderModernCard('Equipos', promE.error ? '—' : String(countDistinct(validEquipos, findColumnLabel(promE.cols, ['EQUIPO', 'NOMBRE', 'RIVAL', 'TEAM']))), 'En competencia', iconGrid);
   const kpiJugadores = renderModernCard('Jugadores', baseJ.error ? '—' : String(countDistinct(validJugadores, findColumnLabel(baseJ.cols, ['NOMBRE', 'JUGADOR']))), 'Con datos', iconUser);
-  const kpiPartidos = renderModernCard('Partidos', baseE.error ? '—' : String(validPartidos.length), 'Disputados', iconGlobe);
+  const kpiPartidos = renderModernCard('Partidos', baseE.error ? '—' : String(partidosUnicos), 'Disputados', iconGlobe);
 
   const leaderPts = buildLeaderCard('Líderes en Puntos', promJ, ['PTS', 'PUNTOS']);
   const leaderReb = buildLeaderCard('Líderes en Rebotes', promJ, ['RT', 'REB', 'REBOTES', 'REBOTES TOTALES']);
@@ -1097,7 +1112,7 @@ function buildPrincipal() {
           ${fullStandTable}
         </div>
         <div class="card rounded-xl p-3 sm:p-5 border border-hairline">
-           <h3 class="font-display text-base sm:text-lg uppercase tracking-wide mb-3 sm:mb-4 text-ink">ORTG vs DRTG · Mapa de Rendimiento</h3>
+           <h3 class="font-display text-base sm:text-lg uppercase tracking-wide mb-3 sm:mb-4" style="color:#F9FAFB">ORTG vs DRTG · Mapa de Rendimiento</h3>
            <div class="chart-box">
              <canvas id="ortgDrtgChart"></canvas>
            </div>
@@ -1347,6 +1362,11 @@ function drawOrtgDrtgChart() {
   if (chartInstances.ortgDrtg) chartInstances.ortgDrtg.destroy();
   equipoDestacado = -1;
 
+  /* Chart.js no dispara onHover cuando el puntero SALE del canvas, asi que
+     el equipo quedaba resaltado y el resto atenuado para siempre. */
+  canvas.onmouseleave = removeHighlight;
+  canvas.onpointerleave = removeHighlight;
+
   /* El tamaño de logo, tipografia y carteles se calcula sobre el ancho REAL
      del area de dibujo, no sobre el viewport: el mismo grafico puede estar
      en una card angosta de escritorio o a pantalla completa en un telefono. */
@@ -1390,10 +1410,13 @@ function drawOrtgDrtgChart() {
           ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, maxTicksLimit: angosto() ? 6 : 10 },
         }
       },
-      interaction: { mode: 'nearest', intersect: false, axis: 'xy' },
+      /* En mouse exigimos estar SOBRE el punto; en touch no, porque el dedo
+         nunca cae justo. Con intersect:false en desktop, todo el grafico
+         quedaba atenuado apenas entrabas al area. */
+      interaction: { mode: 'nearest', intersect: !esTactil(), axis: 'xy' },
       onHover: (evt, elementos) => {
-        const idx = (elementos && elementos.length) ? elementos[0].index : -1;
-        if (idx !== equipoDestacado) { idx >= 0 ? highlightPoint(idx) : removeHighlight(); }
+        const i = (elementos && elementos.length) ? elementos[0].index : -1;
+        if (i !== equipoDestacado) { i >= 0 ? highlightPoint(i) : removeHighlight(); }
       },
       plugins: {
         legend: { display: false },
