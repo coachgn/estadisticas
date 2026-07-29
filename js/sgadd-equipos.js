@@ -1,192 +1,354 @@
 /* =====================================================================
-   SGADD · Componentes de UI
+   SGADD · Sección EQUIPOS
 
-   Funciones puras: reciben datos, devuelven HTML. Sin estado, sin efectos.
-   Así el diagnóstico y las secciones futuras pintan lo mismo sin duplicar.
+   Ruta:  #/<planilla>/<fase>/equipos/<equipo>/<tab>
+   Ej:    #/primera-clausura-2026/REGULAR/equipos/reconquista-a/4factores
 
-   Todas toman el objeto que devuelve idx.leer() / idx.leerJugador().
+   Estructura:
+     sin equipo  → grilla de escudos
+     con equipo  → header + KPI hero + tabs de drill-down
+
+   Regla: un tab, una pregunta. Si una métrica no ayuda a responder la
+   pregunta del tab, no va.
    ===================================================================== */
 
-const SGADD_UI = (function () {
-  'use strict';
+const EQUIPOS = {
+  planillaId: null,
+  fase: 'REGULAR',
+  equipo: null,
+  tab: 'general',
+  idx: null,
+  hojas: null,
+  cargando: false,
+  error: null,
+};
 
-  function esc(s) {
-    return String(s === null || s === undefined ? '' : s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
+const EQUIPOS_TABS = [
+  { id: 'general',   label: 'General',    pregunta: '¿Cómo viene?' },
+  { id: 'ofensiva',  label: 'Ofensiva',   pregunta: '¿Cómo anota?' },
+  { id: 'defensiva', label: 'Defensiva',  pregunta: '¿Cómo defiende?' },
+  { id: '4factores', label: '4 Factores', pregunta: '¿Dónde gana y dónde pierde?' },
+  { id: 'condicion', label: 'Local/Vis.', pregunta: '¿Cambia de local?' },
+  { id: 'plantel',   label: 'Plantel',    pregunta: '¿De quién depende?' },
+  { id: 'partidos',  label: 'Partidos',   pregunta: '¿Qué pasó cada noche?' },
+];
 
-  /* ¿El delta es bueno o malo? Respeta métricas invertidas. */
-  function signoDelta(r) {
-    if (r.delta === null || r.descriptiva) return null;
-    if (Math.abs(r.delta) < 1e-9) return 0;
-    const bueno = r.invertida ? r.delta < 0 : r.delta > 0;
-    return bueno ? 1 : -1;
-  }
+/* ===================== RUTEO ===================== */
 
-  function colorDelta(r) {
-    const s = signoDelta(r);
-    if (s === null) return 'text-muted';
-    if (s === 0) return 'text-muted';
-    return s > 0 ? 'text-green-400' : 'text-red-400';
-  }
+function equiposLeerRuta() {
+  const r = SGADD.Ruta.parse(window.location.hash);
+  if (r.seccion !== 'equipos') return false;
+  if (r.planilla) EQUIPOS.planillaId = r.planilla;
+  if (r.fase) EQUIPOS.fase = r.fase;
+  EQUIPOS.equipo = r.entidad || null;
+  EQUIPOS.tab = r.tab || 'general';
+  return true;
+}
 
-  /* ---------------------------------------------------------------------
-     PercentileBar
+function equiposEscribirRuta(reemplazar) {
+  const h = SGADD.Ruta.build({
+    planilla: EQUIPOS.planillaId,
+    fase: EQUIPOS.fase,
+    seccion: 'equipos',
+    entidad: EQUIPOS.equipo,
+    tab: EQUIPOS.equipo ? EQUIPOS.tab : null,
+  });
+  // replaceState para no llenar el historial con cada cambio de tab.
+  if (reemplazar) history.replaceState(null, '', h);
+  else history.pushState(null, '', h);
+}
 
-     Barra 0-100 con marca en la mediana. Cuando la muestra es pobre pierde
-     el color y gana un tilde: el dato sigue ahí, la confianza no.
-     --------------------------------------------------------------------- */
-  function percentileBar(r, opciones) {
-    const o = opciones || {};
-    if (r.descriptiva) return '';
-    const pct = (r.percentil === null) ? null : Math.max(0, Math.min(100, r.percentil));
-    if (pct === null) {
-      return `<div class="h-1 bg-hairline rounded-full mt-2"></div>
-              <p class="text-[10px] text-muted mt-1 font-mono">sin percentil</p>`;
-    }
-    const flojo = (r.muestraSuficiente === false);
-    const color = flojo ? 'bg-muted' : (pct >= 66 ? 'bg-green-400' : pct >= 34 ? 'bg-accent' : 'bg-red-400');
-    const nota = [
-      (flojo ? '~' : '') + 'pctil ' + pct.toFixed(0),
-      o.ranking ? o.ranking.puesto + '°/' + o.ranking.de : null,
-      flojo && r.pj ? 'PJ ' + r.pj : null,
-    ].filter(Boolean).join(' · ');
+function equiposIrA(clave) {
+  EQUIPOS.equipo = clave ? SGADD.claveEquipo(clave).toLowerCase().replace(/\s+/g, '-') : null;
+  equiposEscribirRuta(false);
+  equiposPintar();
+}
 
-    return `
-      <div class="relative h-1 bg-hairline rounded-full mt-2 overflow-hidden">
-        <div class="h-full ${color} rounded-full transition-all" style="width:${pct.toFixed(0)}%"></div>
-        <div class="absolute inset-y-0 left-1/2 w-px bg-ink/40" title="mediana"></div>
+function equiposVerTab(id) {
+  EQUIPOS.tab = id;
+  equiposEscribirRuta(true);
+  equiposPintar();
+}
+
+function equiposVolver() { equiposIrA(null); }
+
+
+/* ===================== CARGA ===================== */
+
+function buildEquipos() {
+  SGADD_APP.inicializar();
+  equiposLeerRuta();
+  // La categoría es una decisión global: si la ruta trae una, manda.
+  if (EQUIPOS.planillaId) SGADD_APP.estado.planillaId = EQUIPOS.planillaId;
+  if (EQUIPOS.fase) SGADD_APP.estado.fase = EQUIPOS.fase;
+  setTimeout(() => SGADD_APP.cargar(), 0);
+  return `<section id="equiposRoot" class="space-y-5">${SGADD_APP.barra()}</section>`;
+}
+
+function equiposCartel(txt, tono) {
+  const c = tono === 'error' ? 'text-red-400' : 'text-muted';
+  return `<div class="card rounded-xl p-8 border border-hairline text-center ${c} text-sm">${escapeHtml(txt)}</div>`;
+}
+
+/* ===================== RENDER ===================== */
+
+function equiposPintar() {
+  const root = document.getElementById('equiposRoot');
+  if (!root) return;
+  const st = SGADD_APP.estado;
+
+  const volver = EQUIPOS.equipo ? `<button onclick="equiposVolver()"
+      class="shrink-0 text-xs font-semibold uppercase tracking-wider border border-hairline rounded px-4 py-2.5 hover:bg-surface2 transition-colors">
+      ← Todos</button>` : '';
+
+  if (st.error) { root.innerHTML = SGADD_APP.barra({ extra: volver }) + SGADD_UI.aviso('No se pudo cargar', st.error, 'error'); return; }
+  if (!st.idx) { root.innerHTML = SGADD_APP.barra({ extra: volver }) + equiposCartel('Cargando la categoría…'); return; }
+
+  const idx = st.idx;
+  EQUIPOS.planillaId = st.planillaId;
+  EQUIPOS.fase = st.fase;
+  const e = EQUIPOS.equipo ? idx.get(EQUIPOS.equipo.replace(/-/g, ' ')) : null;
+
+  root.innerHTML = [
+    SGADD_APP.barra({ extra: volver }),
+    SGADD_APP.avisoMuestra(),
+    e ? equiposFicha(idx, e) : equiposGrilla(idx),
+  ].filter(Boolean).join('');
+}
+
+function equiposGrilla(idx) {
+  const lista = idx.lista().slice().sort((a, b) => {
+    const na = idx.leer(a.clave, 'NET RTNG'), nb = idx.leer(b.clave, 'NET RTNG');
+    return (nb && nb.valor !== null ? nb.valor : -999) - (na && na.valor !== null ? na.valor : -999);
+  });
+  return `
+    <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
+      <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Elegí un equipo</h3>
+      <p class="text-[11px] text-muted mb-4">Ordenados por rating neto. El tuyo va en naranja.</p>
+      ${SGADD_UI.teamPicker(lista, { onClick: 'equiposIrA', seleccionado: EQUIPOS.equipo })}
+    </div>`;
+}
+
+/* ---------- Ficha ---------- */
+
+function equiposFicha(idx, e) {
+  const tabs = EQUIPOS_TABS.map(t => ({ id: t.id, label: t.label, disponible: equiposTabDisponible(idx, e, t.id) }));
+  const actual = EQUIPOS_TABS.find(t => t.id === EQUIPOS.tab) || EQUIPOS_TABS[0];
+  return [
+    equiposHeader(idx, e),
+    `<div class="card rounded-xl p-4 sm:p-5 border border-hairline">
+       ${SGADD_UI.tabs(tabs, EQUIPOS.tab, 'equiposVerTab')}
+       <p class="text-[11px] text-muted mb-4 -mt-2">${escapeHtml(actual.pregunta)}</p>
+       ${equiposTab(idx, e, EQUIPOS.tab)}
+     </div>`,
+  ].join('');
+}
+
+function equiposTabDisponible(idx, e, id) {
+  if (id === 'plantel') return e.jugadores && e.jugadores.length > 0;
+  if (id === 'partidos' || id === 'condicion') return e.partidos && e.partidos.length > 0;
+  return true;
+}
+
+function equiposHeader(idx, e) {
+  const logo = (typeof LOGOS !== 'undefined') ? LOGOS.getUrl(e.nombre) : null;
+  const rk = idx.ranking(e.clave, 'NET RTNG');
+  const rec = e.record || { ganados: 0, perdidos: 0 };
+  const racha = e.racha
+    ? (e.racha.tipo === 'GANADO' ? e.racha.n + ' ganados al hilo' : e.racha.n + ' perdidos al hilo')
+    : '—';
+
+  const hero = ['NET RTNG', 'RTNG OFF', 'RTNG DEF', 'eFG%']
+    .map(k => SGADD_UI.statCard(idx.leer(e.clave, k), { ranking: idx.ranking(e.clave, k) })).join('');
+
+  return `
+    <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
+      <div class="flex items-center gap-4 mb-5">
+        ${logo ? `<img src="${escapeAttr(logo)}" alt="" class="w-16 h-16 object-contain shrink-0">` : ''}
+        <div class="min-w-0">
+          <h2 class="font-display text-xl sm:text-2xl uppercase tracking-wide text-ink truncate">${escapeHtml(e.nombre)}</h2>
+          <p class="text-xs text-muted font-mono">
+            ${rec.ganados}-${rec.perdidos} · ${racha}${rk ? ' · ' + rk.puesto + '° de ' + rk.de + ' en rating neto' : ''}
+          </p>
+        </div>
       </div>
-      <p class="text-[10px] ${flojo ? 'text-yellow-400/70' : 'text-muted'} mt-1 font-mono">${esc(nota)}</p>`;
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">${hero}</div>
+    </div>`;
+}
+
+/* ---------- Tabs ---------- */
+
+function equiposTab(idx, e, id) {
+  switch (id) {
+    case 'general':   return equiposTabGeneral(idx, e);
+    case 'ofensiva':  return equiposTabVistas(idx, e, ['eficiencia', 'tiro'], ['PPP', 'TS%', 'PT3%']);
+    case 'defensiva': return equiposTabDefensiva(idx, e);
+    case '4factores': return equiposTab4F(idx, e);
+    case 'condicion': return equiposTabCondicion(idx, e);
+    case 'plantel':   return equiposTabPlantel(idx, e);
+    case 'partidos':  return equiposTabPartidos(idx, e);
+    default:          return '';
   }
+}
 
-  /* ---------------------------------------------------------------------
-     StatCard
+function equiposTabGeneral(idx, e) {
+  const u5 = e.ultimos5 || {};
+  const dif = (u5.ptsFavor || 0) - (u5.ptsContra || 0);
+  const kpis = ['AST-PP', 'PePP%', 'RO%', 'PACE']
+    .map(k => SGADD_UI.statCard(idx.leer(e.clave, k), { ranking: idx.ranking(e.clave, k) })).join('');
 
-     La tarjeta de una métrica: valor grande, delta contra la mediana con
-     su signo interpretado, y barra de percentil.
-     --------------------------------------------------------------------- */
-  function statCard(r, opciones) {
-    if (!r) return '';
-    const o = opciones || {};
-    const s = signoDelta(r);
-    const flecha = s === null || s === 0 ? '' : (r.delta > 0 ? '▲' : '▼');
-    const deltaTxt = (r.delta === null)
-      ? ''
-      : `<p class="text-[11px] ${colorDelta(r)} font-mono">
-           ${flecha} ${esc((r.delta > 0 ? '+' : '') + SGADD.formatear(r.clave, r.delta))} vs mediana
-         </p>`;
+  const log = (e.partidos || []).slice(-5).map(p => {
+    const gano = SGADD.texto(p['RESULTADO']).toUpperCase() === 'GANADO';
+    return `<tr class="border-b border-hairline/40 last:border-0">
+      <td class="py-1.5 pr-3 text-xs truncate max-w-[220px]">${escapeHtml(equiposRival(p, e))}</td>
+      <td class="py-1.5 pr-3 text-xs text-muted">${escapeHtml(SGADD.texto(p['CONDICION']))}</td>
+      <td class="py-1.5 pr-3 text-right font-mono text-xs">${SGADD.num(p['PTS'])}-${SGADD.num(p['PTSopp'])}</td>
+      <td class="py-1.5 text-right text-xs font-semibold ${gano ? 'text-green-400' : 'text-red-400'}">${gano ? 'G' : 'P'}</td>
+    </tr>`;
+  }).join('');
 
-    return `
-      <div class="bg-surface2/50 rounded-lg p-3 ${o.clase || ''}">
-        <p class="text-[10px] uppercase tracking-wider text-muted font-display truncate" title="${esc(r.label)}">${esc(r.label)}</p>
-        <p class="font-display text-2xl text-ink leading-tight">${esc(r.formateado)}</p>
-        ${deltaTxt}
-        ${percentileBar(r, o)}
-      </div>`;
-  }
+  return `
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">${kpis}</div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div>
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Últimos 5</h5>
+        <table class="w-full text-left"><tbody>${log || '<tr><td class="text-xs text-muted py-2">Sin partidos.</td></tr>'}</tbody></table>
+        <p class="text-[11px] text-muted mt-2 font-mono">
+          ${u5.ganados || 0}-${u5.perdidos || 0} · diferencial ${dif > 0 ? '+' : ''}${dif}
+        </p>
+      </div>
+      ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'distribucion-plays'))}
+    </div>`;
+}
 
-  /* ---------------------------------------------------------------------
-     MetricTable — una vista completa (los 4 factores, el tiro, etc.)
-     --------------------------------------------------------------------- */
-  function metricTable(vista, opciones) {
-    if (!vista) return '';
-    const o = opciones || {};
-    const filas = vista.filas.map(r => {
-      const pct = (vista.descriptiva || r.percentil === null) ? '—' : r.percentil.toFixed(0);
-      const colorPct = vista.descriptiva ? 'text-muted'
-        : (r.percentil >= 66 ? 'text-green-400' : r.percentil >= 34 ? 'text-accent' : 'text-red-400');
-      return `
-        <tr class="border-b border-hairline/40 last:border-0">
-          <td class="py-1.5 pr-3 text-xs">${esc(r.label)}${r.invertida && !vista.descriptiva ? ' <span class="text-muted" title="menos es mejor">↓</span>' : ''}</td>
-          <td class="py-1.5 pr-3 text-right font-mono text-xs text-ink">${esc(r.formateado)}</td>
-          <td class="py-1.5 pr-3 text-right font-mono text-xs text-muted">${esc(r.tipoFormateado)}</td>
-          <td class="py-1.5 text-right font-mono text-xs ${colorPct}">${esc(pct)}</td>
-        </tr>`;
-    }).join('');
+function equiposTabVistas(idx, e, vistas, kpis) {
+  const cards = (kpis || []).map(k => SGADD_UI.statCard(idx.leer(e.clave, k), { ranking: idx.ranking(e.clave, k) })).join('');
+  const tablas = vistas.map(v => SGADD_UI.metricTable(idx.leerVista(e.clave, v))).join('');
+  return `
+    ${cards ? `<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">${cards}</div>` : ''}
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">${tablas}</div>`;
+}
 
-    const pie = [
-      vista.nota ? `<p class="text-[10px] text-muted mt-2 leading-snug">${esc(vista.nota)}</p>` : '',
-      vista.suma !== undefined
-        ? `<p class="text-[10px] mt-1 font-mono ${vista.sumaOk ? 'text-green-400' : 'text-red-400'}">suma ${(vista.suma * 100).toFixed(2)}%</p>`
-        : '',
-    ].join('');
+function equiposTabDefensiva(idx, e) {
+  const cards = ['RTNG DEF', 'PTSopp', 'RD%', 'PR']
+    .map(k => SGADD_UI.statCard(idx.leer(e.clave, k), { ranking: idx.ranking(e.clave, k) })).join('');
+  return `
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">${cards}</div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'factores-def'))}
+      ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'rebote'))}
+    </div>
+    <p class="text-[11px] text-muted mt-4 leading-snug">
+      Los factores del rival se calculan sumando su box score en cada partido, no promediando porcentajes.
+      Por eso son comparables uno a uno con los tuyos.
+    </p>`;
+}
 
-    return `
-      <div class="${o.clase || ''}">
-        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">${esc(vista.label)}</h5>
-        <table class="w-full text-left">
-          <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
-            <th class="pb-1 pr-3">Métrica</th>
-            <th class="pb-1 pr-3 text-right">Valor</th>
-            <th class="pb-1 pr-3 text-right">Mediana</th>
-            <th class="pb-1 text-right">Pctil</th>
-          </tr></thead>
-          <tbody>${filas}</tbody>
-        </table>
-        ${pie}
-      </div>`;
-  }
+function equiposTab4F(idx, e) {
+  return `
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'factores-of'))}
+      ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'factores-def'))}
+    </div>
+    <p class="text-[11px] text-muted mt-4 leading-snug">
+      Los ocho salen de la misma fuente y con el mismo método: ratio sobre los totales de la temporada.
+      La flecha ↓ marca las métricas donde menos es mejor.
+    </p>`;
+}
 
-  /* ---------------------------------------------------------------------
-     TeamPicker — grilla de escudos. Reusa el módulo LOGOS del index.
-     --------------------------------------------------------------------- */
-  function teamPicker(equipos, opciones) {
-    const o = opciones || {};
-    const hayLogos = (typeof LOGOS !== 'undefined');
+function equiposTabCondicion(idx, e) {
+  const filas = ['eFG%', 'PePP%', 'RTL%', 'RO%', 'eFG Opp%', 'PP Opp%', 'RTL Opp%', 'RO Opp%'].map(k => {
+    const l = e.split.LOCAL.factores[k], v = e.split.VISITANTE.factores[k];
+    const dif = (l !== null && v !== null) ? l - v : null;
+    const m = SGADD.metrica(k);
+    const mejorLocal = dif === null ? null : (m.invertida ? dif < 0 : dif > 0);
+    return `<tr class="border-b border-hairline/40 last:border-0">
+      <td class="py-1.5 pr-3 text-xs">${escapeHtml(m.label)}${m.invertida ? ' <span class="text-muted">↓</span>' : ''}</td>
+      <td class="py-1.5 pr-3 text-right font-mono text-xs text-ink">${escapeHtml(SGADD.formatear(k, l))}</td>
+      <td class="py-1.5 pr-3 text-right font-mono text-xs text-ink">${escapeHtml(SGADD.formatear(k, v))}</td>
+      <td class="py-1.5 text-right font-mono text-xs ${dif === null ? 'text-muted' : mejorLocal ? 'text-green-400' : 'text-red-400'}">
+        ${dif === null ? '—' : (dif > 0 ? '+' : '') + SGADD.formatear(k, dif)}
+      </td>
+    </tr>`;
+  }).join('');
 
-    const tiles = equipos.map(e => {
-      const url = hayLogos ? LOGOS.getUrl(e.nombre) : null;
-      const activo = o.seleccionado && SGADD.claveEquipo(o.seleccionado) === e.clave;
-      const propio = SGADD.esEquipoPropio(e.clave);
-      const escudo = url
-        ? `<img src="${esc(url)}" alt="" class="w-10 h-10 object-contain">`
-        : `<span class="w-10 h-10 rounded-full grid place-items-center text-xs font-semibold bg-surface2 text-ink border border-accent/60">
-             ${esc(hayLogos ? LOGOS.iniciales(e.nombre) : e.nombre.slice(0, 2))}
-           </span>`;
-      return `
-        <button type="button" onclick="${esc(o.onClick || 'void 0')}('${esc(e.clave)}')"
-          class="flex flex-col items-center gap-2 p-3 rounded-lg border transition-colors
-                 ${activo ? 'border-accent bg-surface2' : 'border-hairline hover:bg-surface2'}">
-          ${escudo}
-          <span class="text-[11px] text-center leading-tight ${propio ? 'text-accent font-semibold' : 'text-ink/90'}">
-            ${esc(e.nombre)}
-          </span>
-          ${e.pj ? `<span class="text-[10px] text-muted font-mono">PJ ${e.pj}</span>` : ''}
-        </button>`;
-    }).join('');
+  const cab = (t, s2) => `<div class="bg-surface2/50 rounded-lg p-3">
+      <p class="text-[10px] uppercase tracking-wider text-muted font-display">${t}</p>
+      <p class="font-display text-2xl text-ink leading-tight">${s2.ganados}-${s2.perdidos}</p>
+      <p class="text-[11px] text-muted font-mono">${s2.pj} PJ · ${s2.ptsFavor}-${s2.ptsContra}</p>
+    </div>`;
 
-    return `<div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">${tiles}</div>`;
-  }
+  return `
+    <div class="grid grid-cols-2 gap-3 mb-5">
+      ${cab('De local', e.split.LOCAL)}
+      ${cab('De visitante', e.split.VISITANTE)}
+    </div>
+    <div class="scrollbox"><table class="w-full text-left">
+      <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+        <th class="pb-1 pr-3">Factor</th><th class="pb-1 pr-3 text-right">Local</th>
+        <th class="pb-1 pr-3 text-right">Visitante</th><th class="pb-1 text-right">Dif</th>
+      </tr></thead><tbody>${filas}</tbody></table></div>
+    <p class="text-[11px] text-muted mt-3 leading-snug">
+      La columna Dif está pintada desde la mirada de local: verde significa que juegan mejor en casa.
+    </p>`;
+}
 
-  /* ---------------------------------------------------------------------
-     TabbedPanel — tabs con el id en el hash, para que el link sea compartible.
-     --------------------------------------------------------------------- */
-  function tabs(lista, activo, onClick) {
-    const items = lista.map(t => `
-      <button type="button" onclick="${esc(onClick)}('${esc(t.id)}')"
-        class="px-3 py-2 text-xs font-display uppercase tracking-wider rounded-md transition-colors
-               ${t.id === activo ? 'bg-accent text-base' : 'text-muted hover:text-ink hover:bg-surface2'}"
-        ${t.disponible === false ? 'disabled title="Sin datos suficientes"' : ''}>
-        ${esc(t.label)}
-      </button>`).join('');
-    return `<div class="flex flex-wrap gap-1 border-b border-hairline pb-2 mb-4">${items}</div>`;
-  }
+function equiposTabPlantel(idx, e) {
+  const jug = (e.jugadores || []).slice().sort((a, b) => (b['MIN'] || 0) - (a['MIN'] || 0));
+  const cols = ['MIN', 'PTS', 'USG%', 'TS%', 'eFG%', 'AST-PP', 'VAL'];
 
-  /* ---------------------------------------------------------------------
-     Avisos
-     --------------------------------------------------------------------- */
-  function aviso(titulo, texto, tono) {
-    const c = tono === 'error' ? 'red-400' : tono === 'ok' ? 'green-400' : 'yellow-400';
-    return `
-      <div class="rounded-lg border border-${c}/40 bg-${c}/5 p-3">
-        <p class="text-xs text-${c} font-display uppercase tracking-wide mb-1">${esc(titulo)}</p>
-        <p class="text-[11px] text-muted leading-snug">${esc(texto)}</p>
-      </div>`;
-  }
+  const filas = jug.map(j => {
+    const cal = j.__califica;
+    return `<tr class="border-b border-hairline/40 last:border-0 ${cal ? '' : 'opacity-50'}">
+      <td class="py-1.5 pr-3 text-xs whitespace-nowrap">${escapeHtml(j['NOMBRES'])}</td>
+      ${cols.map(c => `<td class="py-1.5 pr-3 text-right font-mono text-xs">${escapeHtml(SGADD.formatear(c, j[c]))}</td>`).join('')}
+      <td class="py-1.5 text-right text-[10px] ${cal ? 'text-muted' : 'text-yellow-400/70'}">${cal ? '' : 'pocos min'}</td>
+    </tr>`;
+  }).join('');
 
-  return { esc, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, signoDelta, colorDelta };
-})();
+  return `
+    <div class="scrollbox"><table class="w-full text-left">
+      <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+        <th class="pb-1 pr-3">Jugador</th>
+        ${cols.map(c => `<th class="pb-1 pr-3 text-right">${escapeHtml(c)}</th>`).join('')}
+        <th class="pb-1"></th>
+      </tr></thead><tbody>${filas}</tbody></table></div>
+    <p class="text-[11px] text-muted mt-3 leading-snug">
+      Los atenuados no llegan al umbral de minutos de la liga (MIN ≥ ${idx.liga.minJugador !== null ? idx.liga.minJugador.toFixed(2) : '—'}).
+      Sus porcentajes se muestran, pero no entran en ningún ranking: con pocos minutos, un tiro convertido mueve el eFG% diez puntos.
+    </p>`;
+}
 
-if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_UI;
+function equiposTabPartidos(idx, e) {
+  const filas = (e.partidos || []).slice().reverse().map(p => {
+    const gano = SGADD.texto(p['RESULTADO']).toUpperCase() === 'GANADO';
+    return `<tr class="border-b border-hairline/40 last:border-0">
+      <td class="py-1.5 pr-3 text-xs text-muted font-mono whitespace-nowrap">${escapeHtml(SGADD.formatearFecha(p.__fecha))}</td>
+      <td class="py-1.5 pr-3 text-xs truncate max-w-[200px]">${escapeHtml(equiposRival(p, e))}</td>
+      <td class="py-1.5 pr-3 text-xs text-muted">${escapeHtml(SGADD.texto(p['CONDICION']))}</td>
+      <td class="py-1.5 pr-3 text-right font-mono text-xs">${SGADD.num(p['PTS'])}-${SGADD.num(p['PTSopp'])}</td>
+      <td class="py-1.5 pr-3 text-right font-mono text-xs">${escapeHtml(SGADD.formatear('eFG%', p['eFG%']))}</td>
+      <td class="py-1.5 text-right text-xs font-semibold ${gano ? 'text-green-400' : 'text-red-400'}">${gano ? 'G' : 'P'}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="scrollbox"><table class="w-full text-left">
+      <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+        <th class="pb-1 pr-3">Fecha</th><th class="pb-1 pr-3">Rival</th><th class="pb-1 pr-3">Cond.</th>
+        <th class="pb-1 pr-3 text-right">Result.</th><th class="pb-1 pr-3 text-right">eFG%</th><th class="pb-1 text-right"></th>
+      </tr></thead><tbody>${filas}</tbody></table></div>
+    <p class="text-[11px] text-muted mt-3">
+      Orden cronológico.${e.sinFecha ? ' <span class="text-yellow-400">' + e.sinFecha + ' partido(s) sin fecha cargada</span>, van al final.' : ''}
+    </p>`;
+}
+
+/** Saca el nombre del rival del string "A vs B". */
+function equiposRival(p, e) {
+  const partido = SGADD.texto(p['PARTIDO']);
+  const partes = partido.split(/\s+vs\s+/i);
+  if (partes.length !== 2) return partido;
+  const mio = SGADD.claveEquipo(e.nombre);
+  const otro = SGADD.claveEquipo(partes[0]) === mio ? partes[1] : partes[0];
+  return SGADD.limpiarNombre(otro);
+}
