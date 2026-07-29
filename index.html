@@ -217,6 +217,8 @@
 
 <script src="js/sgadd-core.js"></script>
 <script src="js/sgadd-ui.js"></script>
+<script src="js/sgadd-app.js"></script>
+<script src="js/sgadd-principal.js"></script>
 <script src="js/sgadd-equipos.js"></script>
 <script src="js/sgadd-diagnostico.js"></script>
 
@@ -1020,7 +1022,7 @@ function renderFullStandingsTable() {
   `;
 }
 
-function buildPrincipal() {
+function buildPrincipalLegacy() {
   const promE = sheet('promediosE');
   const baseE = sheet('baseDatosE');
   const baseJ = sheet('baseDatosJ');
@@ -1289,26 +1291,12 @@ function drawFactoresChart() {
   });
 }
 
-function drawOrtgDrtgChart() {
+/* Recibe [{name, x, y}] desde SGADD. Antes leia la hoja por su cuenta. */
+function drawOrtgDrtgChart(datos) {
   const canvas = document.getElementById('ortgDrtgChart');
   if (!canvas || typeof Chart === 'undefined') return;
 
-  const data = sheet('promedios4f');
-  if (data.error || !data.rows.length) return;
-
-  const colEquipo = findColumnLabel(data.cols, ['EQUIPO', 'NOMBRE']);
-  const colOff = findColumnLabel(data.cols, ['RTNG OFF', 'ORTG']);
-  const colDef = findColumnLabel(data.cols, ['RTNG DEF', 'DRTG']);
-
-  const chartData = data.rows
-    .filter(r => !isEquipoTipo(r))
-    .map((r) => ({
-      name: cleanName(r.formatted[colEquipo] || 'Desconocido'),
-      x: toNumber(r.values[colOff]),
-      y: toNumber(r.values[colDef])
-    }))
-    .filter(d => d.x !== null && d.y !== null);
-
+  const chartData = (datos || []).filter(d => d && d.x !== null && d.y !== null);
   if (!chartData.length) return;
 
   const avgX = chartData.reduce((a, d) => a + d.x, 0) / chartData.length;
@@ -1830,7 +1818,7 @@ function renderSection(section) {
   const root = document.getElementById('view-root');
   if (!root) return;
   switch (section) {
-    case 'principal': root.innerHTML = buildPrincipal(); drawOrtgDrtgChart(); break;
+    case 'principal': root.innerHTML = buildPrincipal(); break;   // SGADD (js/sgadd-principal.js)
     case 'diagnostico': root.innerHTML = buildDiagnostico(); diagCorrer(); break;
     case 'equipos': root.innerHTML = buildEquipos(); break;   // SGADD (js/sgadd-equipos.js)
     case 'jugadores': root.innerHTML = buildJugadores(); break;
@@ -1940,6 +1928,8 @@ async function init() {
       if (r.seccion === 'equipos') {
         if (currentSection !== 'equipos') navigate('equipos');
         else { equiposLeerRuta(); equiposPintar(); }
+      } else if (r.seccion === 'principal' && currentSection !== 'principal') {
+        navigate('principal');
       }
       return;
     }
