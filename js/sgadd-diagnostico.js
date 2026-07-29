@@ -101,6 +101,7 @@ async function diagCorrer(forzar) {
       hojas, erroresCarga: errores, ms,
       fases: SGADD.fasesDisponibles(hojas),
       esquema: SGADD.validarEsquema(hojas),
+      coherencia: SGADD.validarCoherencia(hojas),
       simetria: SGADD.testSimetria(hojas, d.fase),
     };
     if (d.datos.fases.length && !d.datos.fases.some(f => f.id === d.fase)) d.fase = d.datos.fases[0].id;
@@ -127,6 +128,7 @@ function diagPintar() {
   cont.innerHTML = [
     diagBloqueCarga(hojas, erroresCarga, ms),
     diagBloqueEsquema(d.datos.esquema),
+    diagBloqueCoherencia(d.datos.coherencia),
     diagBloqueSimetria(d.datos.simetria),
     diagBloqueIndice(idx),
     diagBloqueFicha(idx),
@@ -182,6 +184,28 @@ function diagBloqueEsquema(problemas) {
   return diagCard('2 · Contrato de esquema',
     `${errores.length} error${errores.length === 1 ? '' : 'es'} · ${avisos.length} aviso${avisos.length === 1 ? '' : 's'}`,
     `<ul class="max-h-72 overflow-y-auto">${errores.concat(avisos).map(item).join('')}</ul>`);
+}
+
+/* --- 2b. Coherencia entre hojas --- */
+function diagBloqueCoherencia(res) {
+  const fallan = res.filter(r => r.nivel === 'error').length;
+  const filas = res.map(r => {
+    const color = r.nivel === 'ok' ? 'text-green-400' : 'text-red-400';
+    return `<tr class="border-b border-hairline/40">
+      <td class="py-1.5 pr-3 font-mono text-xs">${escapeHtml(r.par)}</td>
+      <td class="py-1.5 pr-3 text-right font-mono text-xs">${r.a}</td>
+      <td class="py-1.5 pr-3 text-right font-mono text-xs">${r.b}</td>
+      <td class="py-1.5 text-xs ${color}">${escapeHtml(r.mensaje)}</td>
+    </tr>`;
+  }).join('');
+  return diagCard('2b · Coherencia entre hojas',
+    fallan ? fallan + ' desajuste(s)' : 'Todo cuadra',
+    `<div class="scrollbox"><table class="w-full text-left">
+      <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+        <th class="pb-2 pr-3">Par</th><th class="pb-2 pr-3 text-right">A</th>
+        <th class="pb-2 pr-3 text-right">B</th><th class="pb-2"></th>
+      </tr></thead><tbody>${filas}</tbody></table></div>
+    <p class="text-[11px] text-muted mt-3">Cada hoja de promedios y su acumulado tienen que traer las mismas filas. Cada partido, sus dos equipos.</p>`);
 }
 
 /* --- 3. Simetría --- */
