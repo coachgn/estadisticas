@@ -72,6 +72,10 @@ const SGADD_APP = (function () {
     if (id === estado.planillaId) return;
     estado.planillaId = id;
     estado.hojas = null; estado.idx = null;
+    // La capa de datos vieja también tiene que seguir al selector.
+    if (typeof window !== 'undefined' && typeof window.onCategoriaCambiada === 'function') {
+      window.onCategoriaCambiada(id);
+    }
     cargar();
   }
 
@@ -142,7 +146,6 @@ const SGADD_APP = (function () {
   /* Cada sección se repinta sola cuando cambia la categoría o la fase. */
   onCambio(() => {
     if (typeof currentSection === 'undefined') return;
-    if (currentSection === 'principal' && typeof principalPintar === 'function') principalPintar();
     if (currentSection === 'equipos' && typeof equiposPintar === 'function') equiposPintar();
   });
 
