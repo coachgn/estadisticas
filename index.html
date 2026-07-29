@@ -183,6 +183,8 @@
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path stroke-linecap="round" d="m20 20-4.3-4.3"/></svg>
           Scouting
         </button>
+        <button onclick="navigate('diagnostico')" data-nav="diagnostico" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-ink/90 hover:bg-surface2 transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path stroke-linecap="round" d="m20 20-4.3-4.3"/></svg>Diagnóstico</button>
       </nav>
 
       <div class="px-4 py-4 border-t border-hairline">
@@ -213,6 +215,9 @@
   </div>
 </div>
 
+<script src="js/sgadd-core.js"></script>
+<script src="js/sgadd-diagnostico.js"></script>
+
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
 const SHEET_ID = '1Zi2cBd0WGUTks-S0XCxR0hoGpB9KZGuqisFhzdtJl4s';
@@ -231,7 +236,7 @@ const SHEETS_CONFIG = [
   { name: 'RANKINGS E',    key: 'rankingsE'    },
 ];
 
-const VALID_SECTIONS = ['principal', 'equipos', 'jugadores', 'factores', 'scouting'];
+const VALID_SECTIONS = ['principal', 'equipos', 'jugadores', 'factores', 'scouting', 'diagnostico'];
 
 /* ============ ESTADO GLOBAL ============ */
 let DATA = {};
@@ -1816,7 +1821,7 @@ function renderSection(section) {
     btn.classList.toggle('bg-surface2', isActive);
     btn.classList.toggle('text-accent', isActive);
   });
-  const titles = { principal: 'Principal', equipos: 'Equipos', jugadores: 'Jugadores', factores: '4 Factores', scouting: 'Scouting' };
+  const titles = { principal: 'Principal', equipos: 'Equipos', jugadores: 'Jugadores', factores: '4 Factores', scouting: 'Scouting', diagnostico: 'Diagnóstico' };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = titles[section] || '';
 
@@ -1824,6 +1829,7 @@ function renderSection(section) {
   if (!root) return;
   switch (section) {
     case 'principal': root.innerHTML = buildPrincipal(); drawOrtgDrtgChart(); break;
+    case 'diagnostico': root.innerHTML = buildDiagnostico(); diagCorrer(); break;
     case 'equipos': root.innerHTML = buildEquipos(); break;
     case 'jugadores': root.innerHTML = buildJugadores(); break;
     case 'factores': root.innerHTML = buildFactores(); drawFactoresChart(); break;
