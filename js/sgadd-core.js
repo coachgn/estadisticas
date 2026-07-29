@@ -927,6 +927,61 @@
     return problemas;
   }
 
+  /* ---------------------------------------------------------------------
+     Coherencia entre hojas. Cada hoja de promedios tiene su gemela de
+     acumulado y tiene que traer LAS MISMAS filas. Si difieren, una de las
+     dos tiene filas de más (totales por equipo, jugadores sin minutos,
+     restos de una carga vieja) y el índice va a contar mal.
+     --------------------------------------------------------------------- */
+  const PARES_HOJAS = [
+    ['PROMEDIOS E', 'ACUMULADO E'],
+    ['PROMEDIOS 4F', 'ACUMULADO 4F'],
+    ['PROMEDIOS J', 'ACUMULADO J'],
+    ['Base Datos E', '4 FACTORES'],
+  ];
+
+  function validarCoherencia(hojas) {
+    const out = [];
+
+    PARES_HOJAS.forEach(([a, b]) => {
+      const ha = hojas[a], hb = hojas[b];
+      if (!ha || !hb) return;
+      const dif = ha.filas.length - hb.filas.length;
+      out.push({
+        nivel: dif === 0 ? 'ok' : 'error',
+        par: a + ' / ' + b,
+        a: ha.filas.length, b: hb.filas.length, dif: dif,
+        mensaje: dif === 0
+          ? 'Mismo número de filas.'
+          : a + ' tiene ' + Math.abs(dif) + ' fila(s) ' + (dif > 0 ? 'de más' : 'de menos') + '. Revisar cuáles.',
+      });
+    });
+
+    /* Cada PARTIDO tiene que aparecer exactamente 2 veces: una fila por
+       equipo. Uno solo = partido cargado a medias. */
+    ['Base Datos E', '4 FACTORES'].forEach(nombre => {
+      const h = hojas[nombre];
+      if (!h) return;
+      const cuenta = new Map();
+      h.filas.forEach(f => {
+        const k = texto(f['PARTIDO']);
+        if (k) cuenta.set(k, (cuenta.get(k) || 0) + 1);
+      });
+      const huerfanos = [];
+      cuenta.forEach((n, k) => { if (n !== 2) huerfanos.push(k + ' (' + n + ')'); });
+      out.push({
+        nivel: huerfanos.length ? 'error' : 'ok',
+        par: nombre + ' · partidos completos',
+        a: cuenta.size, b: h.filas.length, dif: 0,
+        mensaje: huerfanos.length
+          ? huerfanos.length + ' partido(s) sin las dos filas: ' + huerfanos.slice(0, 3).join(', ')
+          : cuenta.size + ' partidos, todos con sus dos equipos.',
+      });
+    });
+
+    return out;
+  }
+
   /**
    * Test de simetría de liga. En una liga cerrada, lo que un equipo hace es
    * lo que otro sufre: el promedio de cada métrica propia tiene que coincidir
@@ -985,7 +1040,7 @@
     // 4
     normalizarHoja, construirIndice, cargarCategoria, limpiarCache, parsearGviz, urlGviz,
     // 5
-    validarEsquema, testSimetria, PARES_SIMETRIA,
+    validarEsquema, validarCoherencia, testSimetria, PARES_SIMETRIA, PARES_HOJAS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = SGADD;
