@@ -109,11 +109,32 @@ function equiposPintar() {
   EQUIPOS.fase = st.fase;
   const e = EQUIPOS.equipo ? idx.get(EQUIPOS.equipo.replace(/-/g, ' ')) : null;
 
+  SGADD_CHARTS.limpiar();
   root.innerHTML = [
     SGADD_APP.barra({ extra: volver }),
     SGADD_APP.avisoMuestra(),
     e ? equiposFicha(idx, e) : equiposGrilla(idx),
   ].filter(Boolean).join('');
+  SGADD_CHARTS.dibujarPendientes();
+}
+
+/** Panel con título, gráfico y su lectura. */
+function equiposPanel(titulo, cuerpo, narrativa) {
+  return `<div>
+    <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">${escapeHtml(titulo)}</h5>
+    ${cuerpo}${narrativa || ''}
+  </div>`;
+}
+
+/** Serie de una métrica: [valor del equipo, mediana de la liga]. */
+function equiposSerie(idx, e, claves) {
+  const eq = [], lg = [];
+  claves.forEach(k => {
+    const r = idx.leer(e.clave, k);
+    eq.push(r && r.valor !== null ? r.valor : 0);
+    lg.push(r && r.tipo !== null ? r.tipo : 0);
+  });
+  return { eq, lg };
 }
 
 function equiposGrilla(idx) {
@@ -181,7 +202,7 @@ function equiposHeader(idx, e) {
 function equiposTab(idx, e, id) {
   switch (id) {
     case 'general':   return equiposTabGeneral(idx, e);
-    case 'ofensiva':  return equiposTabVistas(idx, e, ['eficiencia', 'tiro'], ['PPP', 'TS%', 'PT3%']);
+    case 'ofensiva':  return equiposTabOfensiva(idx, e);
     case 'defensiva': return equiposTabDefensiva(idx, e);
     case '4factores': return equiposTab4F(idx, e);
     case 'condicion': return equiposTabCondicion(idx, e);
@@ -207,8 +228,28 @@ function equiposTabGeneral(idx, e) {
     </tr>`;
   }).join('');
 
+  const clavesRank = ['RO%', 'PLAYS', 'PP Opp%', 'PePP%', 'PT3%', 'eFG%', 'PPP', 'T2%', 'T1%'];
+  const filasRank = clavesRank.map(k => {
+    const r = idx.leer(e.clave, k);
+    if (!r) return null;
+    r.rk = idx.ranking(e.clave, k);
+    return r;
+  }).filter(Boolean).sort((a, b) => (b.percentil || 0) - (a.percentil || 0));
+
+  const rivales = (e.partidos || []).map(p => equiposRival(p, e));
+
   return `
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">${kpis}</div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      ${equiposPanel(e.nombre + ' vs liga · métricas clave',
+        SGADD_CHARTS.barrasRanking(filasRank),
+        SGADD_CHARTS.narrarAtaque(idx, e))}
+      ${equiposPanel('Evolución · puntos a favor y en contra',
+        SGADD_CHARTS.evolucion('chEvolucion', e.partidos || [], { rivales: rivales }),
+        SGADD_CHARTS.nota(e.sinFecha ? e.sinFecha + ' partido(s) sin fecha cargada van al final.' : 'Orden cronológico.'))}
+    </div>
+
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <div>
         <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Últimos 5</h5>
@@ -218,6 +259,48 @@ function equiposTabGeneral(idx, e) {
         </p>
       </div>
       ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'distribucion-plays'))}
+    </div>`;
+}
+
+function equiposTabOfensiva(idx, e) {
+  const cards = ['PPP', 'TS%', 'PT3%', 'TC%']
+    .map(k => SGADD_UI.statCard(idx.leer(e.clave, k), { ranking: idx.ranking(e.clave, k) })).join('');
+
+  const lanz = equiposSerie(idx, e, ['T2I', 'T3I', 'T1I', 'T2C', 'T3C', 'T1C']);
+  const ppt = equiposSerie(idx, e, ['PPT2', 'PPT3', 'PPT1']);
+
+  // Errados = intentados - convertidos. Guardado: si falta una columna,
+  // leer() devuelve null y no queremos que reviente el tab entero.
+  const val = (k, campo) => { const r = idx.leer(e.clave, k); const v = r ? r[campo] : null; return (typeof v === 'number' && isFinite(v)) ? v : 0; };
+  const conv  = ['T2C', 'T3C', 'T1C'].map(k => val(k, 'valor'));
+  const convL = ['T2C', 'T3C', 'T1C'].map(k => val(k, 'tipo'));
+  const errEq = ['T2I', 'T3I', 'T1I'].map((k, i) => Math.max(0, val(k, 'valor') - conv[i]));
+  const errL  = ['T2I', 'T3I', 'T1I'].map((k, i) => Math.max(0, val(k, 'tipo') - convL[i]));
+
+  return `
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">${cards}</div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      ${equiposPanel('Distribución de lanzamientos · ' + e.nombre + ' vs liga',
+        SGADD_CHARTS.barrasComparadas('chLanz', ['T2 int.', 'T3 int.', 'T1 int.', 'T2 conv.', 'T3 conv.', 'T1 conv.'],
+          lanz.eq, lanz.lg, { nombreEquipo: e.nombre }),
+        SGADD_CHARTS.nota('Promedios por partido. Muestra de dónde salen los tiros, no si entran.'))}
+      ${equiposPanel('Efectividad por zona · PPP convertido',
+        SGADD_CHARTS.barrasComparadas('chPPT', ['PPT2 (dobles)', 'PPT3 (triples)', 'PPT1 (libres)'],
+          ppt.eq, ppt.lg, { nombreEquipo: e.nombre }),
+        SGADD_CHARTS.narrarPPT(idx, e))}
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      ${equiposPanel(e.nombre + ' · convertidos vs errados',
+        SGADD_CHARTS.convertidosErrados('chCE1', conv, errEq))}
+      ${equiposPanel('Liga (equipo tipo) · convertidos vs errados',
+        SGADD_CHARTS.convertidosErrados('chCE2', convL, errL, { gris: true }))}
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'eficiencia'))}
+      ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'tiro'))}
     </div>`;
 }
 
@@ -232,8 +315,22 @@ function equiposTabVistas(idx, e, vistas, kpis) {
 function equiposTabDefensiva(idx, e) {
   const cards = ['RTNG DEF', 'PTSopp', 'RD%', 'PR']
     .map(k => SGADD_UI.statCard(idx.leer(e.clave, k), { ranking: idx.ranking(e.clave, k) })).join('');
+  const perd = equiposSerie(idx, e, ['PePP%', 'PP Opp%']);
+  const reb = equiposSerie(idx, e, ['RO', 'RD', 'RT']);
+
   return `
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">${cards}</div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      ${equiposPanel('Pérdidas de balón · propias vs provocadas',
+        SGADD_CHARTS.barrasComparadas('chPerd', ['PP% propias (menos=mejor)', 'PP Opp% provocadas (más=mejor)'],
+          perd.eq, perd.lg, { horizontal: true, nombreEquipo: e.nombre, formato: 'PePP%' }),
+        SGADD_CHARTS.narrarPerdidas(idx, e))}
+      ${equiposPanel('Rebotes · ' + e.nombre + ' vs liga',
+        SGADD_CHARTS.barrasComparadas('chReb', ['RO', 'RD', 'RT'], reb.eq, reb.lg, { nombreEquipo: e.nombre }),
+        SGADD_CHARTS.narrarRebote(idx, e))}
+    </div>
+
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'factores-def'))}
       ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'rebote'))}
@@ -245,7 +342,28 @@ function equiposTabDefensiva(idx, e) {
 }
 
 function equiposTab4F(idx, e) {
+  /* El radar necesita una escala común: usamos el percentil, que ya viene
+     0-100 y con la dirección resuelta (en métricas invertidas, más lejos del
+     centro sigue siendo mejor). */
+  const of = ['eFG%', 'PePP%', 'RTL%', 'RO%'];
+  const df = ['eFG Opp%', 'PP Opp%', 'RTL Opp%', 'RO Opp%'];
+  const pct = ks => ks.map(k => { const r = idx.leer(e.clave, k); return r && r.percentil !== null ? r.percentil : 50; });
+  const lbl = ks => ks.map(k => SGADD.metrica(k).label);
+
   return `
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      ${equiposPanel('Perfil ofensivo · percentiles',
+        SGADD_CHARTS.radar('chRadarOf', lbl(of), [
+          { label: e.nombre, data: pct(of) },
+          { label: 'Mediana de la liga', data: of.map(() => 50), color: SGADD_CHARTS.COL.liga, relleno: 'transparent' },
+        ]),
+        SGADD_CHARTS.nota('El círculo del 50 es la mediana. Cuanto más lejos del centro, mejor — también en las métricas donde menos es mejor.'))}
+      ${equiposPanel('Perfil defensivo · percentiles',
+        SGADD_CHARTS.radar('chRadarDef', lbl(df), [
+          { label: e.nombre, data: pct(df), color: SGADD_CHARTS.COL.acento, relleno: SGADD_CHARTS.COL.acentoSuave },
+          { label: 'Mediana de la liga', data: df.map(() => 50), color: SGADD_CHARTS.COL.liga, relleno: 'transparent' },
+        ]))}
+    </div>
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'factores-of'))}
       ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'factores-def'))}
@@ -278,10 +396,30 @@ function equiposTabCondicion(idx, e) {
       <p class="text-[11px] text-muted font-mono">${s2.pj} PJ · ${s2.ptsFavor}-${s2.ptsContra}</p>
     </div>`;
 
+  /* Radar Local vs Visitante. Las métricas van escaladas a una base común
+     (×100 los porcentajes) para que compartan un mismo eje. */
+  const ejesRadar = ['eFG%', 'RTL%', 'RO%', 'PePP%', 'PP Opp%', 'eFG Opp%'];
+  const escala = (obj) => ejesRadar.map(k => {
+    const v = obj.factores[k];
+    if (v === null || v === undefined) return 0;
+    const inv = SGADD.metrica(k).invertida;
+    // En invertidas mostramos el complemento: más lejos del centro = mejor.
+    return Math.round((inv ? (1 - v) : v) * 100);
+  });
+
   return `
     <div class="grid grid-cols-2 gap-3 mb-5">
       ${cab('De local', e.split.LOCAL)}
       ${cab('De visitante', e.split.VISITANTE)}
+    </div>
+
+    <div class="mb-6">
+      ${equiposPanel('Local vs visitante · comparación por condición',
+        SGADD_CHARTS.radar('chRadarCond', ejesRadar.map(k => SGADD.metrica(k).label + (SGADD.metrica(k).invertida ? ' (inv.)' : '')), [
+          { label: 'Local', data: escala(e.split.LOCAL) },
+          { label: 'Visitante', data: escala(e.split.VISITANTE), color: SGADD_CHARTS.COL.acento, relleno: SGADD_CHARTS.COL.acentoSuave },
+        ]),
+        SGADD_CHARTS.narrarCondicion(e))}
     </div>
     <div class="scrollbox"><table class="w-full text-left">
       <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
@@ -307,6 +445,12 @@ function equiposTabPlantel(idx, e) {
   }).join('');
 
   return `
+    <div class="mb-6">
+      ${equiposPanel('Uso vs eficiencia · quién carga y quién rinde',
+        SGADD_CHARTS.scatterUsoEficiencia('chUsoTs', (e.jugadoresCalificados || []), idx.liga),
+        SGADD_CHARTS.nota('Solo los que superan el umbral de minutos: con pocos minutos el TS% es ruido.'))}
+    </div>
+
     <div class="scrollbox"><table class="w-full text-left">
       <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
         <th class="pb-1 pr-3">Jugador</th>
