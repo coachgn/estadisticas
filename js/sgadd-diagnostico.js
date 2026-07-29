@@ -103,6 +103,7 @@ async function diagCorrer(forzar) {
       esquema: SGADD.validarEsquema(hojas),
       coherencia: SGADD.validarCoherencia(hojas),
       simetria: SGADD.testSimetria(hojas, d.fase),
+      totales: SGADD.testTotales(hojas, d.fase),
     };
     if (d.datos.fases.length && !d.datos.fases.some(f => f.id === d.fase)) d.fase = d.datos.fases[0].id;
     d.estado = 'listo';
@@ -120,6 +121,7 @@ function diagPintar() {
 
   const { hojas, erroresCarga, ms } = d.datos;
   d.datos.simetria = SGADD.testSimetria(hojas, d.fase);
+  d.datos.totales = SGADD.testTotales(hojas, d.fase);
   const idx = SGADD.construirIndice(hojas, { fase: d.fase });
 
   const selFase = document.getElementById('diagFase');
@@ -129,6 +131,7 @@ function diagPintar() {
     diagBloqueCarga(hojas, erroresCarga, ms),
     diagBloqueEsquema(d.datos.esquema),
     diagBloqueCoherencia(d.datos.coherencia),
+    diagBloqueTotales(d.datos.totales),
     diagBloqueSimetria(d.datos.simetria),
     diagBloqueIndice(idx),
     diagBloqueFicha(idx),
@@ -208,7 +211,29 @@ function diagBloqueCoherencia(res) {
     <p class="text-[11px] text-muted mt-3">Cada hoja de promedios y su acumulado tienen que traer las mismas filas. Cada partido, sus dos equipos.</p>`);
 }
 
-/* --- 3. Simetría --- */
+/* --- 3. Invariantes exactos --- */
+function diagBloqueTotales(res) {
+  const fallan = res.filter(r => r.nivel === 'error').length;
+  const filas = res.map(r => {
+    const color = r.nivel === 'ok' ? 'text-green-400' : (r.nivel === 'error' ? 'text-red-400' : 'text-yellow-400');
+    return `<tr class="border-b border-hairline/40">
+      <td class="py-1.5 pr-3 font-mono text-xs">${escapeHtml(r.par)}</td>
+      <td class="py-1.5 pr-3 text-right font-mono text-xs">${r.propio !== undefined ? r.propio.toFixed(0) : '—'}</td>
+      <td class="py-1.5 pr-3 text-right font-mono text-xs">${r.rival !== undefined ? r.rival.toFixed(0) : '—'}</td>
+      <td class="py-1.5 text-xs ${color}">${escapeHtml(r.mensaje)}</td>
+    </tr>`;
+  }).join('');
+  return diagCard('3 · Invariantes exactos (totales)',
+    fallan ? fallan + ' roto(s)' : 'Los totales cierran exacto',
+    `<div class="scrollbox"><table class="w-full text-left">
+      <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+        <th class="pb-2 pr-3">Invariante</th><th class="pb-2 pr-3 text-right">Σ A</th>
+        <th class="pb-2 pr-3 text-right">Σ B</th><th class="pb-2"></th>
+      </tr></thead><tbody>${filas}</tbody></table></div>
+    <p class="text-[11px] text-muted mt-3">Sobre totales no hay tolerancia: si no da idéntico, hay un partido mal cargado. Es un test más duro que el de promedios.</p>`);
+}
+
+/* --- 3b. Simetría (promedios) --- */
 function diagBloqueSimetria(res) {
   const fallan = res.filter(r => r.nivel === 'error').length;
   const filas = res.map(r => {
@@ -222,7 +247,7 @@ function diagBloqueSimetria(res) {
     </tr>`;
   }).join('');
 
-  return diagCard('3 · Simetría de liga',
+  return diagCard('3b · Simetría de liga (promedios)',
     fallan ? fallan + ' par(es) no cierran' : 'Los datos cierran',
     `<div class="scrollbox">
       <table class="w-full text-left">
@@ -240,7 +265,7 @@ function diagBloqueIndice(idx) {
   const equipos = idx.lista();
   const propio = equipos.find(e => SGADD.esEquipoPropio(e.clave));
   const conFactores = equipos.filter(e => e.factores).length;
-  const partidos = equipos.reduce((s, e) => s + e.partidos.length, 0);
+  const partidos = idx.liga.partidos;
   const jug = idx.liga.jugadores ? idx.liga.jugadores.length : 0;
   const jugCal = idx.liga.jugadoresCalificados ? idx.liga.jugadoresCalificados.length : 0;
 
@@ -249,6 +274,16 @@ function diagBloqueIndice(idx) {
       <p class="text-[10px] uppercase tracking-wider text-muted font-display">${escapeHtml(l)}</p>
       <p class="font-display text-2xl text-accent leading-tight">${escapeHtml(String(v))}</p>
       ${extra ? `<p class="text-[10px] text-muted">${escapeHtml(extra)}</p>` : ''}
+    </div>`;
+
+  const alertaMuestra = idx.liga.muestraSuficiente ? '' : `
+    <div class="mt-4 rounded-lg border border-yellow-400/40 bg-yellow-400/5 p-3">
+      <p class="text-xs text-yellow-400 font-display uppercase tracking-wide mb-1">Muestra insuficiente</p>
+      <p class="text-[11px] text-muted leading-snug">
+        El PJ mediano es ${idx.liga.pjMediano} y el mínimo razonable es ${idx.liga.PJ_MINIMO}.
+        Con tan pocos partidos, la mediana de la liga y los percentiles no distinguen una debilidad
+        estructural de un mal día. Los números se muestran igual, pero no los uses para decidir todavía.
+      </p>
     </div>`;
 
   const avisos = idx.avisos.length
@@ -262,12 +297,13 @@ function diagBloqueIndice(idx) {
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
       ${dato('Equipos', equipos.length)}
       ${dato('Con 4F', conFactores, conFactores === equipos.length ? 'cruce completo' : 'faltan cruces')}
-      ${dato('Partidos', partidos)}
+      ${dato('Partidos', partidos, idx.liga.filasPartido + ' filas equipo-partido')}
       ${dato('Jugadores', jug)}
       ${dato('Califican', jugCal, idx.liga.minJugador !== null ? 'MIN ≥ ' + idx.liga.minJugador.toFixed(2) : 'sin umbral')}
-      ${dato('Métricas TIPO', Object.keys(idx.liga.tipo).length)}
+      ${dato('PJ mediano', idx.liga.pjMediano, 'rango ' + idx.liga.pjMin + '–' + idx.liga.pjMax)}
     </div>
     <p class="text-xs text-muted mt-3">Equipo propio · ${propioTxt}</p>
+    ${alertaMuestra}
     ${avisos}`);
 }
 
@@ -285,15 +321,16 @@ function diagBloqueFicha(idx) {
     const bueno = r.delta === null ? null : (r.invertida ? r.delta < 0 : r.delta > 0);
     const colorDelta = bueno === null ? 'text-muted' : (bueno ? 'text-green-400' : 'text-red-400');
     const pct = r.percentil === null ? 0 : r.percentil;
+    const flojo = !r.muestraSuficiente;
     return `
       <div class="bg-surface2/50 rounded-lg p-3">
         <p class="text-[10px] uppercase tracking-wider text-muted font-display truncate">${escapeHtml(r.label)}</p>
         <p class="font-display text-2xl text-ink leading-tight">${escapeHtml(r.formateado)}</p>
         <p class="text-[11px] ${colorDelta} font-mono">${signo}${escapeHtml(SGADD.formatear(k, r.delta))} vs mediana</p>
         <div class="h-1 bg-hairline rounded-full mt-2 overflow-hidden">
-          <div class="h-full bg-accent rounded-full" style="width:${pct.toFixed(0)}%"></div>
+          <div class="h-full ${flojo ? 'bg-muted' : 'bg-accent'} rounded-full" style="width:${pct.toFixed(0)}%"></div>
         </div>
-        <p class="text-[10px] text-muted mt-1 font-mono">pctil ${pct.toFixed(0)}${rk ? ' · ' + rk.puesto + '°/' + rk.de : ''}</p>
+        <p class="text-[10px] ${flojo ? 'text-yellow-400/70' : 'text-muted'} mt-1 font-mono">${flojo ? '~' : ''}pctil ${pct.toFixed(0)}${rk ? ' · ' + rk.puesto + '°/' + rk.de : ''}${flojo ? ' · PJ ' + r.pj : ''}</p>
       </div>`;
   }).join('');
 
@@ -321,7 +358,8 @@ function diagBloqueFicha(idx) {
       </div>`;
   }).join('');
 
-  return diagCard('5 · Ficha de ' + propio.nombre, 'n = ' + idx.liga.n + ' equipos', `
+  return diagCard('5 · Ficha de ' + propio.nombre,
+    'n = ' + idx.liga.n + ' equipos · PJ ' + (propio.pj || 0) + (idx.liga.muestraSuficiente ? '' : ' · muestra floja'), `
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">${hero}</div>
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">${vistas}</div>`);
 }
