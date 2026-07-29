@@ -72,45 +72,17 @@ function equiposVerTab(id) {
 
 function equiposVolver() { equiposIrA(null); }
 
-function equiposCambiarPlanilla(id) { EQUIPOS.planillaId = id; EQUIPOS.idx = null; EQUIPOS.equipo = null; equiposCargar(); }
-function equiposCambiarFase(f) { EQUIPOS.fase = f; equiposReindexar(); }
 
 /* ===================== CARGA ===================== */
 
 function buildEquipos() {
+  SGADD_APP.inicializar();
   equiposLeerRuta();
-  const activas = SGADD.planillasVisibles({});
-  if (!EQUIPOS.planillaId && activas.length) EQUIPOS.planillaId = activas[0].id;
-  setTimeout(equiposCargar, 0);
-  return `<section id="equiposRoot" class="space-y-5">${equiposCartel('Cargando…')}</section>`;
-}
-
-async function equiposCargar() {
-  const p = SGADD.planilla(EQUIPOS.planillaId);
-  const root = document.getElementById('equiposRoot');
-  if (!p || !p.sheetId) { if (root) root.innerHTML = equiposCartel('Esa planilla todavía no tiene sheetId.', 'error'); return; }
-  if (EQUIPOS.idx && EQUIPOS.hojas) { equiposPintar(); return; }
-
-  EQUIPOS.cargando = true;
-  if (root) root.innerHTML = equiposCartel('Bajando ' + p.label + '…');
-  try {
-    const { hojas } = await SGADD.cargarCategoria(p.sheetId);
-    EQUIPOS.hojas = hojas;
-    const fases = SGADD.fasesDisponibles(hojas);
-    if (fases.length && !fases.some(f => f.id === EQUIPOS.fase)) EQUIPOS.fase = fases[0].id;
-    equiposReindexar();
-  } catch (e) {
-    EQUIPOS.error = e.message || String(e);
-    if (root) root.innerHTML = equiposCartel('Falló la carga: ' + EQUIPOS.error, 'error');
-  } finally {
-    EQUIPOS.cargando = false;
-  }
-}
-
-function equiposReindexar() {
-  if (!EQUIPOS.hojas) return;
-  EQUIPOS.idx = SGADD.construirIndice(EQUIPOS.hojas, { fase: EQUIPOS.fase });
-  equiposPintar();
+  // La categoría es una decisión global: si la ruta trae una, manda.
+  if (EQUIPOS.planillaId) SGADD_APP.estado.planillaId = EQUIPOS.planillaId;
+  if (EQUIPOS.fase) SGADD_APP.estado.fase = EQUIPOS.fase;
+  setTimeout(() => SGADD_APP.cargar(), 0);
+  return `<section id="equiposRoot" class="space-y-5">${SGADD_APP.barra()}</section>`;
 }
 
 function equiposCartel(txt, tono) {
@@ -122,45 +94,26 @@ function equiposCartel(txt, tono) {
 
 function equiposPintar() {
   const root = document.getElementById('equiposRoot');
-  if (!root || !EQUIPOS.idx) return;
-  const idx = EQUIPOS.idx;
+  if (!root) return;
+  const st = SGADD_APP.estado;
+
+  const volver = EQUIPOS.equipo ? `<button onclick="equiposVolver()"
+      class="shrink-0 text-xs font-semibold uppercase tracking-wider border border-hairline rounded px-4 py-2.5 hover:bg-surface2 transition-colors">
+      ← Todos</button>` : '';
+
+  if (st.error) { root.innerHTML = SGADD_APP.barra({ extra: volver }) + SGADD_UI.aviso('No se pudo cargar', st.error, 'error'); return; }
+  if (!st.idx) { root.innerHTML = SGADD_APP.barra({ extra: volver }) + equiposCartel('Cargando la categoría…'); return; }
+
+  const idx = st.idx;
+  EQUIPOS.planillaId = st.planillaId;
+  EQUIPOS.fase = st.fase;
   const e = EQUIPOS.equipo ? idx.get(EQUIPOS.equipo.replace(/-/g, ' ')) : null;
 
   root.innerHTML = [
-    equiposBarra(idx),
-    idx.liga.muestraSuficiente ? '' : SGADD_UI.aviso(
-      'Muestra insuficiente',
-      'PJ mediano ' + idx.liga.pjMediano + '. Con tan pocos partidos los percentiles no distinguen una debilidad estructural de un mal día.'),
+    SGADD_APP.barra({ extra: volver }),
+    SGADD_APP.avisoMuestra(),
     e ? equiposFicha(idx, e) : equiposGrilla(idx),
-  ].join('');
-}
-
-function equiposBarra(idx) {
-  const planillas = SGADD.CATALOGO.planillas;
-  const fases = SGADD.fasesDisponibles(EQUIPOS.hojas || {});
-  return `
-    <div class="card rounded-xl p-3 sm:p-4 border border-hairline">
-      <div class="flex flex-col sm:flex-row sm:items-end gap-3">
-        <div class="flex-1 min-w-0">
-          <label class="block text-[11px] uppercase tracking-wider text-muted font-display mb-1">Planilla</label>
-          <select onchange="equiposCambiarPlanilla(this.value)"
-            class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm focus:border-accent outline-none">
-            ${planillas.map(p => `<option value="${escapeAttr(p.id)}" ${p.id === EQUIPOS.planillaId ? 'selected' : ''} ${p.activo ? '' : 'disabled'}>
-              ${escapeHtml(p.label)}${p.activo ? '' : ' — sin sheetId'}</option>`).join('')}
-          </select>
-        </div>
-        <div class="sm:w-44">
-          <label class="block text-[11px] uppercase tracking-wider text-muted font-display mb-1">Fase</label>
-          <select onchange="equiposCambiarFase(this.value)"
-            class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm focus:border-accent outline-none">
-            ${fases.map(f => `<option value="${f.id}" ${f.id === EQUIPOS.fase ? 'selected' : ''}>${escapeHtml(f.label)}</option>`).join('')}
-          </select>
-        </div>
-        ${EQUIPOS.equipo ? `<button onclick="equiposVolver()"
-          class="shrink-0 text-xs font-semibold uppercase tracking-wider border border-hairline rounded px-4 py-2.5 hover:bg-surface2 transition-colors">
-          ← Todos</button>` : ''}
-      </div>
-    </div>`;
+  ].filter(Boolean).join('');
 }
 
 function equiposGrilla(idx) {
@@ -370,7 +323,7 @@ function equiposTabPartidos(idx, e) {
   const filas = (e.partidos || []).slice().reverse().map(p => {
     const gano = SGADD.texto(p['RESULTADO']).toUpperCase() === 'GANADO';
     return `<tr class="border-b border-hairline/40 last:border-0">
-      <td class="py-1.5 pr-3 text-xs text-muted font-mono whitespace-nowrap">${escapeHtml(SGADD.texto(p['FECHA']) || '—')}</td>
+      <td class="py-1.5 pr-3 text-xs text-muted font-mono whitespace-nowrap">${escapeHtml(SGADD.formatearFecha(p.__fecha))}</td>
       <td class="py-1.5 pr-3 text-xs truncate max-w-[200px]">${escapeHtml(equiposRival(p, e))}</td>
       <td class="py-1.5 pr-3 text-xs text-muted">${escapeHtml(SGADD.texto(p['CONDICION']))}</td>
       <td class="py-1.5 pr-3 text-right font-mono text-xs">${SGADD.num(p['PTS'])}-${SGADD.num(p['PTSopp'])}</td>
@@ -386,7 +339,7 @@ function equiposTabPartidos(idx, e) {
         <th class="pb-1 pr-3 text-right">Result.</th><th class="pb-1 pr-3 text-right">eFG%</th><th class="pb-1 text-right"></th>
       </tr></thead><tbody>${filas}</tbody></table></div>
     <p class="text-[11px] text-muted mt-3">
-      El orden es el de la planilla. Para ordenar por fecha de verdad hace falta que FECHA venga como 2026-05-05.
+      Orden cronológico.${e.sinFecha ? ' <span class="text-yellow-400">' + e.sinFecha + ' partido(s) sin fecha cargada</span>, van al final.' : ''}
     </p>`;
 }
 
@@ -397,5 +350,5 @@ function equiposRival(p, e) {
   if (partes.length !== 2) return partido;
   const mio = SGADD.claveEquipo(e.nombre);
   const otro = SGADD.claveEquipo(partes[0]) === mio ? partes[1] : partes[0];
-  return String(otro).replace(/\s*-\s*MM\s*$/i, '').trim();
+  return SGADD.limpiarNombre(otro);
 }
