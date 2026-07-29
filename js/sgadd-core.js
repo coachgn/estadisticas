@@ -71,6 +71,12 @@
       .trim();
   }
 
+  function listaPjs(equipos) {
+    const out = [];
+    equipos.forEach(e => { if (typeof e.pj === 'number' && e.pj > 0) out.push(e.pj); });
+    return out;
+  }
+
   function mediana(vals) {
     const a = vals.filter(v => typeof v === 'number' && isFinite(v)).sort((x, y) => x - y);
     if (!a.length) return null;
@@ -703,6 +709,34 @@
     }
 
     /* ---------------------------------------------------------------------
+       Partidos DISTINTOS.
+
+       Base Datos E trae dos filas por partido (una por equipo), así que
+       contar filas cuenta el doble. El partido se identifica por la columna
+       PARTIDO; FECHA sola no alcanza porque hay varios el mismo día.
+       --------------------------------------------------------------------- */
+    const clavesPartido = new Set();
+    equipos.forEach(e => e.partidos.forEach(p => { if (p.__partido) clavesPartido.add(p.__partido); }));
+    liga.partidos = clavesPartido.size;
+    let filasP = 0; equipos.forEach(e => { filasP += e.partidos.length; });
+    liga.filasPartido = filasP;
+
+    /* ---------------------------------------------------------------------
+       Tamaño de muestra.
+
+       Con 1 o 2 partidos jugados, la mediana de la liga y los percentiles no
+       significan nada: un mal día se ve igual que una debilidad estructural.
+       Los datos se muestran igual, pero marcados.
+       --------------------------------------------------------------------- */
+    equipos.forEach(e => { e.pj = (e.promedios && typeof e.promedios['PJ'] === 'number') ? e.promedios['PJ'] : e.partidos.length; });
+    const pjs = listaPjs(equipos);
+    liga.pjMin = pjs.length ? Math.min.apply(null, pjs) : 0;
+    liga.pjMax = pjs.length ? Math.max.apply(null, pjs) : 0;
+    liga.pjMediano = mediana(pjs) || 0;
+    liga.PJ_MINIMO = 5;                        // por debajo de esto, todo es ruido
+    liga.muestraSuficiente = liga.pjMediano >= liga.PJ_MINIMO;
+
+    /* ---------------------------------------------------------------------
        Umbral de minutos para jugadores.
 
        Sin esto los rankings individuales son basura. Ejemplo real de
@@ -784,6 +818,9 @@
         // Si se pide en el contexto de una vista, manda la vista.
         descriptiva: v ? !!v.descriptiva : (GRUPOS_DESCRIPTIVOS.indexOf(m.grupo) !== -1),
         vista: idVista || null,
+        // Contexto de muestra: un percentil sobre 2 partidos no es un percentil.
+        pj: e.pj || 0,
+        muestraSuficiente: (e.pj || 0) >= liga.PJ_MINIMO && liga.muestraSuficiente,
         n: dist.length,
       };
     }
@@ -1025,6 +1062,48 @@
    * con el de su versión Opp. Si no cierra, hay partidos mal cargados.
    * Se corre sobre PROMEDIOS 4F, donde ambos lados usan la MISMA agregación.
    */
+  /* ---------------------------------------------------------------------
+     Invariantes exactos sobre ACUMULADO E.
+
+     El test de simetría sobre PROMEDIOS 4F compara promedios, y esos solo
+     coinciden si todos los equipos jugaron la misma cantidad de partidos.
+     En una categoría arrancada, con equipos en 1 y otros en 2 partidos, la
+     diferencia crece sin que haya ningún error de carga.
+
+     Sobre TOTALES no hay tolerancia que valga: lo que un equipo suma, otro
+     lo sufre. Si no da idéntico, hay un partido mal cargado. Punto.
+     --------------------------------------------------------------------- */
+  const INVARIANTES_TOTALES = [
+    ['PTS', 'PTSopp'],
+    ['RD', 'ROopp'],     // mi rebote defensivo es el ofensivo que el rival no tomó
+    ['RO', 'RDopp'],
+    ['PP', 'PPopp'],
+    ['PLAYS', 'PLAYSopp'],
+  ];
+
+  function testTotales(hojas, fase) {
+    const h = hojas['ACUMULADO E'];
+    if (!h) return [{ nivel: 'aviso', par: '—', mensaje: 'Sin ACUMULADO E no se puede correr el test exacto.' }];
+    const f = (fase || 'REGULAR').toUpperCase();
+    const filas = h.filas.filter(r =>
+      !esFilaTipo(r, 'EQUIPO TIPO') && texto(r['EQUIPO']) !== '' &&
+      (!texto(r['FASE']) || texto(r['FASE']).toUpperCase() === f));
+
+    return INVARIANTES_TOTALES.map(([a, b]) => {
+      const sa = filas.reduce((s2, r) => s2 + (num(r[a]) || 0), 0);
+      const sb = filas.reduce((s2, r) => s2 + (num(r[b]) || 0), 0);
+      const dif = sa - sb;
+      // 0,5 cubre redondeos de la planilla; un error de carga es de enteros.
+      const ok = Math.abs(dif) < 0.5;
+      return {
+        nivel: ok ? 'ok' : 'error',
+        par: 'Σ ' + a + ' = Σ ' + b,
+        propio: sa, rival: sb, dif: dif, tolerancia: 0,
+        mensaje: ok ? 'Idéntico.' : 'Difieren en ' + dif.toFixed(1) + '. Hay un partido mal cargado.',
+      };
+    });
+  }
+
   const PARES_SIMETRIA = [
     ['PTS', 'PTSopp', 0.8],
     ['eFG%', 'eFG Opp%', 0.010],
@@ -1077,7 +1156,7 @@
     // 4
     normalizarHoja, construirIndice, esFilaTipo, tipoDeLiga, cargarCategoria, limpiarCache, parsearGviz, urlGviz,
     // 5
-    validarEsquema, validarCoherencia, testSimetria, PARES_SIMETRIA, PARES_HOJAS,
+    validarEsquema, validarCoherencia, testSimetria, testTotales, PARES_SIMETRIA, PARES_HOJAS, INVARIANTES_TOTALES,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = SGADD;
