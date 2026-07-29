@@ -229,7 +229,7 @@
   const M = (clave, label, hoja, formato, invertida, grupo, glosario) =>
     ({ clave, label, hoja, formato, invertida: !!invertida, grupo, glosario });
 
-  const P4F = 'PROMEDIOS 4F', PE = 'PROMEDIOS E';
+  const P4F = 'PROMEDIOS 4F', PE = 'PROMEDIOS E', CALC = 'CALCULADO';
 
   const METRICAS_LISTA = [
     /* --- Índices de eficiencia (solo viven en 4F) --- */
@@ -258,10 +258,15 @@
       'RO / (RO + RD del rival).'),
 
     /* --- 4 factores defensivos (solo existen en 4F) --- */
-    M('eFG Opp%', 'eFG% permitido', P4F, 'pct', true, 'factores-def', 'eFG% del rival.'),
-    M('PP Opp%', 'Pérdidas forzadas', P4F, 'pct', false, 'factores-def', 'Tasa de pérdidas del rival. Más es mejor.'),
-    M('RTL Opp%', 'Libres concedidos', P4F, 'pct', true, 'factores-def', 'RTL% del rival.'),
-    M('RO Opp%', 'Rebote ofensivo rival', P4F, 'pct', true, 'factores-def', 'RO% del rival. Menos es mejor.'),
+    /* Calculados sobre los totales de la temporada, joineando Base Datos E
+       por PARTIDO: la fila del rival ES su box score. Así el eFG% propio y el
+       permitido usan EXACTAMENTE el mismo método y son comparables entre sí.
+       PROMEDIOS 4F trae estas mismas métricas pero promediando los ratios de
+       cada partido, que no es comparable con el lado ofensivo. */
+    M('eFG Opp%', 'eFG% permitido', CALC, 'pct', true, 'factores-def', '(TCC + 0,5 × T3C) del rival / TCI del rival.'),
+    M('PP Opp%', 'Pérdidas forzadas', CALC, 'pct', false, 'factores-def', 'PP del rival / PLAYS del rival. Más es mejor.'),
+    M('RTL Opp%', 'Libres concedidos', CALC, 'pct', true, 'factores-def', 'T1C del rival / TCI del rival.'),
+    M('RO Opp%', 'Rebote ofensivo rival', CALC, 'pct', true, 'factores-def', 'RO del rival / (RO del rival + RD propio).'),
 
     /* --- Ritmo. Dispersión bajísima en esta liga (CV 2-3%): sirve como
            contexto, NO como KPI destacado. --- */
@@ -709,6 +714,63 @@
     }
 
     /* ---------------------------------------------------------------------
+       FACTORES PONDERADOS sobre totales de temporada.
+
+       Base Datos E trae dos filas por partido, así que la fila del rival ES
+       su box score completo. Joineando por PARTIDO obtenemos TCC/TCI/T3C/T1C
+       del rival, que no existen como columna `*opp` en ninguna hoja.
+
+       Con esto los 8 factores (4 propios + 4 del rival) se calculan con el
+       MISMO método: ratio sobre los totales de la temporada. Antes el lado
+       ofensivo venía ponderado de PROMEDIOS E y el defensivo era el promedio
+       simple de PROMEDIOS 4F: comparar "mi eFG%" contra "el eFG% que permito"
+       era comparar dos cosas distintas.
+       --------------------------------------------------------------------- */
+    const filasPorPartido = new Map();
+    equipos.forEach(e => e.partidos.forEach(p => {
+      const k = p.__partido;
+      if (!k) return;
+      if (!filasPorPartido.has(k)) filasPorPartido.set(k, []);
+      filasPorPartido.get(k).push({ equipo: e.clave, fila: p });
+    }));
+
+    function sumar(acum, fila, cols) {
+      cols.forEach(c => {
+        const v = fila[c];
+        if (typeof v === 'number' && isFinite(v)) acum[c] = (acum[c] || 0) + v;
+      });
+    }
+    const COLS_SUMA = ['TCC', 'TCI', 'T3C', 'T1C', 'PP', 'PLAYS', 'RO', 'RD', 'PTS'];
+    const div = (a, b) => (typeof a === 'number' && typeof b === 'number' && b > 0) ? a / b : null;
+
+    equipos.forEach(e => {
+      const yo = {}, riv = {};
+      let conRival = 0;
+
+      e.partidos.forEach(p => {
+        sumar(yo, p, COLS_SUMA);
+        const pareja = filasPorPartido.get(p.__partido) || [];
+        const otro = pareja.find(x => x.equipo !== e.clave);
+        if (otro) { sumar(riv, otro.fila, COLS_SUMA); conRival++; }
+      });
+
+      e.totales = { propio: yo, rival: riv, partidosConRival: conRival };
+      e.ponderado = {
+        // Ofensivos: recalculados desde la misma fuente, para poder contrastar
+        // contra PROMEDIOS E y detectar divergencias.
+        'eFG%':  div((yo['TCC'] || 0) + 0.5 * (yo['T3C'] || 0), yo['TCI']),
+        'RTL%':  div(yo['T1C'], yo['TCI']),
+        'PePP%': div(yo['PP'], yo['PLAYS']),
+        'RO%':   div(yo['RO'], (yo['RO'] || 0) + (riv['RD'] || 0)),
+        // Defensivos: el box score del rival, sumado sobre la temporada.
+        'eFG Opp%': div((riv['TCC'] || 0) + 0.5 * (riv['T3C'] || 0), riv['TCI']),
+        'RTL Opp%': div(riv['T1C'], riv['TCI']),
+        'PP Opp%':  div(riv['PP'], riv['PLAYS']),
+        'RO Opp%':  div(riv['RO'], (riv['RO'] || 0) + (yo['RD'] || 0)),
+      };
+    });
+
+    /* ---------------------------------------------------------------------
        Partidos DISTINTOS.
 
        Base Datos E trae dos filas por partido (una por equipo), así que
@@ -769,6 +831,7 @@
     Object.keys(METRICAS).forEach(clave => {
       const m = METRICAS[clave];
       const campo = (m.hoja === 'PROMEDIOS 4F') ? 'factores'
+                  : (m.hoja === 'CALCULADO') ? 'ponderado'
                   : (m.hoja === 'PROMEDIOS J') ? null : 'promedios';
       if (!campo) return;
       const vals = listaEquipos
@@ -791,6 +854,13 @@
       });
     }
 
+    liga.medianasCalculadas = {};
+    Object.keys(METRICAS).forEach(clave => {
+      if (METRICAS[clave].hoja !== 'CALCULADO') return;
+      const m2 = mediana(liga.distribuciones[clave] || []);
+      if (m2 !== null) liga.medianasCalculadas[clave] = m2;
+    });
+
     /**
      * Lee una métrica de un equipo desde su hoja dueña, con contexto.
      * Devuelve { valor, tipo, delta, percentil, formateado, descriptiva }.
@@ -800,10 +870,15 @@
       const m = METRICAS[claveMet];
       if (!e || !m) return null;
       const v = idVista ? VISTAS[idVista] : null;
-      const campo = (m.hoja === 'PROMEDIOS 4F') ? 'factores' : 'promedios';
+      const campo = (m.hoja === 'PROMEDIOS 4F') ? 'factores'
+                  : (m.hoja === 'CALCULADO') ? 'ponderado' : 'promedios';
       const valor = e[campo] ? e[campo][claveMet] : null;
       const val = (typeof valor === 'number' && isFinite(valor)) ? valor : null;
-      const tipo = (liga.tipo[claveMet] !== undefined) ? liga.tipo[claveMet] : null;
+      // Las métricas calculadas no tienen fila EQUIPO TIPO en la planilla:
+      // la mediana la calculamos sobre la distribución de los N equipos.
+      const tipo = (liga.tipo[claveMet] !== undefined) ? liga.tipo[claveMet]
+                 : (liga.medianasCalculadas[claveMet] !== undefined) ? liga.medianasCalculadas[claveMet]
+                 : null;
       const dist = liga.distribuciones[claveMet] || [];
       return {
         clave: claveMet,
