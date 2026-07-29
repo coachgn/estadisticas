@@ -1073,13 +1073,68 @@
      Sobre TOTALES no hay tolerancia que valga: lo que un equipo suma, otro
      lo sufre. Si no da idéntico, hay un partido mal cargado. Punto.
      --------------------------------------------------------------------- */
+  /*
+     El par correcto es X ↔ Xopp, siempre.
+
+     La columna `RDopp` de la fila de un equipo es, literalmente, el RD del
+     rival en ese partido. Sumando sobre toda la liga, cada RD aparece una vez
+     como propio y una vez como ajeno: Σ RD = Σ RDopp.
+
+     Yo los había cruzado (RD ↔ ROopp) razonando sobre oportunidades de
+     rebote. Eso es una relación conceptual, no una identidad contable.
+  */
   const INVARIANTES_TOTALES = [
     ['PTS', 'PTSopp'],
-    ['RD', 'ROopp'],     // mi rebote defensivo es el ofensivo que el rival no tomó
-    ['RO', 'RDopp'],
+    ['RD', 'RDopp'],
+    ['RO', 'ROopp'],
     ['PP', 'PPopp'],
     ['PLAYS', 'PLAYSopp'],
   ];
+
+  /*
+     Chequeo partido por partido, más fino que el agregado: dos errores que se
+     compensan entre sí pasan el test de totales pero no éste.
+     En cada PARTIDO hay dos filas y tiene que cumplirse, cruzado:
+        fila A · PTS  ===  fila B · PTSopp
+  */
+  const CRUCES_PARTIDO = ['PTS', 'RD', 'RO', 'PP', 'PLAYS'];
+
+  function testCrucePartidos(hojas, fase) {
+    const h = hojas['Base Datos E'];
+    if (!h) return [{ nivel: 'aviso', par: '—', mensaje: 'Sin Base Datos E no se puede cruzar partido por partido.' }];
+    const f = (fase || 'REGULAR').toUpperCase();
+
+    const porPartido = new Map();
+    h.filas.forEach(r => {
+      if (texto(r['FASE']) && texto(r['FASE']).toUpperCase() !== f) return;
+      const k = texto(r['PARTIDO']);
+      if (!k) return;
+      if (!porPartido.has(k)) porPartido.set(k, []);
+      porPartido.get(k).push(r);
+    });
+
+    return CRUCES_PARTIDO.map(col => {
+      const fallos = [];
+      let revisados = 0;
+      porPartido.forEach((filas, k) => {
+        if (filas.length !== 2) return;
+        revisados++;
+        const [a, b] = filas;
+        const av = num(a[col]), bo = num(b[col + 'opp']);
+        const bv = num(b[col]), ao = num(a[col + 'opp']);
+        if (av !== null && bo !== null && Math.abs(av - bo) > 0.5) fallos.push(k);
+        else if (bv !== null && ao !== null && Math.abs(bv - ao) > 0.5) fallos.push(k);
+      });
+      return {
+        nivel: fallos.length ? 'error' : 'ok',
+        par: col + ' ↔ ' + col + 'opp',
+        propio: revisados, rival: fallos.length,
+        mensaje: fallos.length
+          ? fallos.length + ' partido(s) no cruzan: ' + fallos.slice(0, 2).join(' · ')
+          : revisados + ' partidos cruzados, todos coinciden.',
+      };
+    });
+  }
 
   function testTotales(hojas, fase) {
     const h = hojas['ACUMULADO E'];
@@ -1156,7 +1211,8 @@
     // 4
     normalizarHoja, construirIndice, esFilaTipo, tipoDeLiga, cargarCategoria, limpiarCache, parsearGviz, urlGviz,
     // 5
-    validarEsquema, validarCoherencia, testSimetria, testTotales, PARES_SIMETRIA, PARES_HOJAS, INVARIANTES_TOTALES,
+    validarEsquema, validarCoherencia, testSimetria, testTotales, testCrucePartidos,
+    PARES_SIMETRIA, PARES_HOJAS, INVARIANTES_TOTALES, CRUCES_PARTIDO,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = SGADD;
