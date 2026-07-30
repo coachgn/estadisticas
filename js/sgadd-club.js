@@ -25,6 +25,8 @@ const CLUB = (function () {
   };
 
   const estado = { id: null, cfg: null, error: null, cargado: false };
+  let aplicado = false;
+  let yaHuboRender = false;
 
   /* Base del sitio deducida del propio <script>, no de la URL de la pagina.
      Con fetch('clubes/x.json') relativo, si la URL viene sin barra final
@@ -71,7 +73,7 @@ const CLUB = (function () {
       console.error('[CLUB] NO se pudo cargar ' + url + ' → ' + estado.error);
       estado.cfg = null;
     }
-    aplicar();
+    aplicarSeguro();
     estado.cargado = true;
     return estado.cfg;
   }
@@ -98,7 +100,7 @@ const CLUB = (function () {
     /* Si el <script> corre antes de que exista el header, reintentamos al
        DOMContentLoaded. Sin esto, la config carga bien pero no se ve. */
     if (!document.getElementById('clubNombre')) {
-      document.addEventListener('DOMContentLoaded', aplicar, { once: true });
+      document.addEventListener('DOMContentLoaded', aplicarSeguro, { once: true });
       return;
     }
 
@@ -149,6 +151,31 @@ const CLUB = (function () {
     if (typeof LOGOS !== 'undefined' && c.liga) {
       LOGOS.CFG.basePaths = ['logos/' + c.liga + '/', 'logos/'];
     }
+
+    aplicado = true;
+  }
+
+  /* Cada paso va en su propio try: si uno falla (un JSON a medias, un id de
+     elemento que cambió), los demás se aplican igual. Antes un error tiraba
+     abajo toda la personalización. */
+  function aplicarSeguro() {
+    try { aplicar(); }
+    catch (e) { console.error('[CLUB] error aplicando la config:', e); }
+    repintar();
+  }
+
+  /* Si la config llega después del primer render, hay que repintar: si no,
+     el panel queda con los datos del catálogo por defecto. */
+  function repintar() {
+    try {
+      if (typeof LOGOS !== 'undefined' && LOGOS.CFG.basePaths) {
+        // Los 404 anteriores quedaron cacheados: hay que reintentar.
+        if (typeof equiposPintar === 'function' && typeof currentSection !== 'undefined' && currentSection === 'equipos') equiposPintar();
+      }
+      if (typeof renderSection === 'function' && typeof currentSection !== 'undefined' && aplicado && yaHuboRender) {
+        renderSection(currentSection);
+      }
+    } catch (e) { console.warn('[CLUB] repintado omitido:', e); }
   }
 
   /** Para el pie de página: quién hizo esto. */
@@ -185,5 +212,9 @@ const CLUB = (function () {
     return r;
   }
 
-  return { TEMA, estado, cargar, aplicar, credito, idDesdeUrl, debug, get cfg() { return estado.cfg; } };
+  /** El index avisa cuando ya pintó una vez, para saber si hay que repintar. */
+  function marcarRender() { yaHuboRender = true; }
+
+  return { TEMA, estado, cargar, aplicar: aplicarSeguro, credito, idDesdeUrl, debug, marcarRender,
+           get cfg() { return estado.cfg; }, get aplicado() { return aplicado; } };
 })();

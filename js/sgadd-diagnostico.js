@@ -131,6 +131,7 @@ function diagPintar() {
   if (selFase) selFase.innerHTML = diagOpcionesFase();
 
   cont.innerHTML = [
+    diagBloqueClub(),
     diagBloqueCarga(hojas, erroresCarga, ms),
     diagBloqueEsquema(d.datos.esquema),
     diagBloqueCoherencia(d.datos.coherencia),
@@ -140,6 +141,39 @@ function diagPintar() {
     diagBloqueFicha(idx),
     diagBloqueEquipos(idx),
   ].join('');
+}
+
+/* --- 0. Config del club. Primero de todo: si esto está mal, lo demás miente. --- */
+function diagBloqueClub() {
+  const hay = (typeof CLUB !== 'undefined');
+  const st = hay ? CLUB.estado : null;
+  const ok = hay && st.cfg;
+
+  const fila = (k, v, tono) => `<tr class="border-b border-hairline/40 last:border-0">
+    <td class="py-1.5 pr-3 text-xs text-muted">${escapeHtml(k)}</td>
+    <td class="py-1.5 font-mono text-xs ${tono || 'text-ink'}">${escapeHtml(String(v))}</td></tr>`;
+
+  const filas = !hay
+    ? fila('Módulo', 'sgadd-club.js NO cargó — el panel usa los valores por defecto', 'text-yellow-400')
+    : [
+        fila('Club en la URL', st.id || '(ninguno)'),
+        fila('Archivo', st.url || 'clubes/' + st.id + '.json'),
+        fila('Estado', ok ? 'cargado' : 'NO cargó — usando defaults', ok ? 'text-green-400' : 'text-yellow-400'),
+        st.error ? fila('Error', st.error, 'text-red-400') : '',
+        ok ? fila('Nombre', st.cfg.nombre) : '',
+        ok ? fila('Color', CLUB.TEMA.acento) : '',
+        fila('Equipo propio', String(SGADD.CATALOGO.patronEquipoPropio)),
+        fila('Planillas', SGADD.CATALOGO.planillas.length + ' (' + SGADD.planillasVisibles({}).length + ' con datos)'),
+        fila('Escudos', (typeof LOGOS !== 'undefined' ? (LOGOS.CFG.basePaths || []).join('  →  ') : '—')),
+      ].join('');
+
+  return diagCard('0 · Configuración del club',
+    ok ? 'Personalizada' : (hay ? 'Valores por defecto' : 'Módulo ausente'),
+    `<table class="w-full text-left"><tbody>${filas}</tbody></table>
+     <p class="text-[11px] text-muted mt-3 leading-snug">
+       El panel funciona sin este archivo: si no carga, usa los valores por defecto y nada se rompe.
+       La fila <b>Escudos</b> muestra en qué carpetas busca, en orden.
+     </p>`);
 }
 
 /* --- 1. Carga --- */
