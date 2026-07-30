@@ -1,0 +1,19 @@
+{
+  "id": "demo",
+  "nombre": "Club Demo",
+  "nombreCorto": "CLUB DEMO",
+  "bajada": "Panel de scouting",
+  "acento": "#38bdf8",
+  "acentoOscuro": "#0284c7",
+  "liga": "la-plata",
+  "anio": 2026,
+  "torneo": "TORNEO LOCAL",
+  "patronEquipoPropio": "ATENAS",
+  "credito": "SGADD · Demostración",
+
+  "planillas": [
+    { "id": "demo-primera", "label": "Primera · Clausura 2026",
+      "sheetId": "1Zi2cBd0WGUTks-S0XCxR0hoGpB9KZGuqisFhzdtJl4s",
+      "categoria": "PRIMERA", "faseTorneo": "CLAUSURA", "rama": "masculina", "tira": null }
+  ]
+}
