@@ -232,14 +232,14 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=13"></script>
-<script src="js/sgadd-core.js?v=13"></script>
-<script src="js/sgadd-ui.js?v=13"></script>
-<script src="js/sgadd-app.js?v=13"></script>
-<script src="js/sgadd-charts.js?v=13"></script>
-<script src="js/sgadd-rankings.js?v=13"></script>
-<script src="js/sgadd-equipos.js?v=13"></script>
-<script src="js/sgadd-diagnostico.js?v=13"></script>
+<script src="js/sgadd-club.js?v=14"></script>
+<script src="js/sgadd-core.js?v=14"></script>
+<script src="js/sgadd-ui.js?v=14"></script>
+<script src="js/sgadd-app.js?v=14"></script>
+<script src="js/sgadd-charts.js?v=14"></script>
+<script src="js/sgadd-rankings.js?v=14"></script>
+<script src="js/sgadd-equipos.js?v=14"></script>
+<script src="js/sgadd-diagnostico.js?v=14"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -1091,8 +1091,13 @@ function buildPrincipal() {
   /* Base Datos E trae DOS filas por partido, una por equipo. Contar filas
      duplica el numero: 130 filas son 65 partidos. Se cuenta por PARTIDO. */
   const colPartido = findColumnLabel(baseE.cols, ['PARTIDO']);
+  /* Normalizamos espacios y mayusculas antes de contar: si las dos filas de
+     un partido difieren en un espacio doble, el Set las toma como dos
+     partidos distintos y el total sale de mas. */
+  const clavePartido = (r) => String(r.formatted[colPartido] || r.values[colPartido] || '')
+    .replace(/\s+/g, ' ').trim().toUpperCase();
   const partidosUnicos = colPartido
-    ? new Set(validPartidos.map(r => String(r.formatted[colPartido] || '').trim()).filter(Boolean)).size
+    ? new Set(validPartidos.map(clavePartido).filter(Boolean)).size
     : Math.round(validPartidos.length / 2);
 
   const kpiEquipos = renderModernCard('Equipos', promE.error ? '—' : String(countDistinct(validEquipos, findColumnLabel(promE.cols, ['EQUIPO', 'NOMBRE', 'RIVAL', 'TEAM']))), 'En competencia', iconGrid);
