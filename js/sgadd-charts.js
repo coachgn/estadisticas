@@ -19,8 +19,10 @@ const SGADD_CHARTS = (function () {
     equipoSuave: 'rgba(96,165,250,0.28)',
     liga: '#6b7280',
     ligaSuave: 'rgba(107,114,128,0.35)',
-    acento: '#f7941e',
-    acentoSuave: 'rgba(247,148,30,0.25)',
+    /* Se resuelve en cada lectura: el color de marca sale del JSON del club. */
+    get acento() { return (typeof CLUB !== 'undefined') ? CLUB.TEMA.acento : '#f7941e'; },
+    get acentoSuave() { return ((typeof CLUB !== 'undefined') ? CLUB.TEMA.acento : '#f7941e') + '40'; },
+
     bien: '#22c55e',
     mal: '#ef4444',
     grilla: 'rgba(40,40,40,0.65)',
