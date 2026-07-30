@@ -147,7 +147,8 @@ function equiposGrilla(idx) {
       <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Elegí un equipo</h3>
       <p class="text-[11px] text-muted mb-4">Ordenados por rating neto. El tuyo va en naranja.</p>
       ${SGADD_UI.teamPicker(lista, { onClick: 'equiposIrA', seleccionado: EQUIPOS.equipo })}
-    </div>`;
+    </div>
+    ${SGADD_RANKINGS.render(idx)}`;
 }
 
 /* ---------- Ficha ---------- */
