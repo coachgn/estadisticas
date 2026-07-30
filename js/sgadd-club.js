@@ -47,7 +47,16 @@ const CLUB = (function () {
     } catch (e) { return POR_DEFECTO; }
   }
 
-  async function cargar() {
+  let promesa = null;
+
+  /* Idempotente: si alguien la llama dos veces, comparten la misma promesa. */
+  function cargar() {
+    if (promesa) return promesa;
+    promesa = _cargar();
+    return promesa;
+  }
+
+  async function _cargar() {
     const id = idDesdeUrl();
     estado.id = id;
     const url = BASE + 'clubes/' + encodeURIComponent(id) + '.json';
@@ -85,6 +94,13 @@ const CLUB = (function () {
   function aplicar() {
     const c = estado.cfg;
     if (!c) { cartelError(); return; }
+
+    /* Si el <script> corre antes de que exista el header, reintentamos al
+       DOMContentLoaded. Sin esto, la config carga bien pero no se ve. */
+    if (!document.getElementById('clubNombre')) {
+      document.addEventListener('DOMContentLoaded', aplicar, { once: true });
+      return;
+    }
 
     /* --- Marca visible: es la del CLUB, no la del producto --- */
     if (c.nombre) {
@@ -141,5 +157,33 @@ const CLUB = (function () {
     return (c && c.credito) || 'SGADD · Sistema de Gestión y Análisis de Datos Deportivos';
   }
 
-  return { TEMA, estado, cargar, aplicar, credito, idDesdeUrl, get cfg() { return estado.cfg; } };
+  /* Auto-arranque. La config del club NO puede depender de que otro modulo
+     se acuerde de llamarla: si init() falla o cambia, el dashboard quedaria
+     mostrando la marca equivocada. Arranca sola y `cargar()` es idempotente,
+     asi que el await de init() se engancha a la misma promesa. */
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => cargar(), { once: true });
+    } else {
+      cargar();
+    }
+  }
+
+  /** Diagnostico rapido desde la consola: CLUB.debug() */
+  function debug() {
+    const r = {
+      id: estado.id, base: BASE, url: estado.url || (BASE + 'clubes/' + estado.id + '.json'),
+      cargado: estado.cargado, error: estado.error,
+      nombre: estado.cfg ? estado.cfg.nombre : null,
+      acento: TEMA.acento,
+      planillas: (typeof SGADD !== 'undefined') ? SGADD.CATALOGO.planillas.length : null,
+      patron: (typeof SGADD !== 'undefined') ? String(SGADD.CATALOGO.patronEquipoPropio) : null,
+      logos: (typeof LOGOS !== 'undefined') ? (LOGOS.CFG.basePaths || []).join(', ') : null,
+      headerEnDom: !!document.getElementById('clubNombre'),
+    };
+    console.table(r);
+    return r;
+  }
+
+  return { TEMA, estado, cargar, aplicar, credito, idDesdeUrl, debug, get cfg() { return estado.cfg; } };
 })();
