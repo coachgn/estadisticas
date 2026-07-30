@@ -232,14 +232,14 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=15"></script>
-<script src="js/sgadd-core.js?v=15"></script>
-<script src="js/sgadd-ui.js?v=15"></script>
-<script src="js/sgadd-app.js?v=15"></script>
-<script src="js/sgadd-charts.js?v=15"></script>
-<script src="js/sgadd-rankings.js?v=15"></script>
-<script src="js/sgadd-equipos.js?v=15"></script>
-<script src="js/sgadd-diagnostico.js?v=15"></script>
+<script src="js/sgadd-club.js?v=16"></script>
+<script src="js/sgadd-core.js?v=16"></script>
+<script src="js/sgadd-ui.js?v=16"></script>
+<script src="js/sgadd-app.js?v=16"></script>
+<script src="js/sgadd-charts.js?v=16"></script>
+<script src="js/sgadd-rankings.js?v=16"></script>
+<script src="js/sgadd-equipos.js?v=16"></script>
+<script src="js/sgadd-diagnostico.js?v=16"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -1964,6 +1964,7 @@ async function refreshData() {
 
   const errors = await fetchAllData();
   lastErrors = errors;
+  precargarLogos();
   renderStatusBanner(errors);
   updateLastUpdatedLabel();
   if (label) label.textContent = 'Actualizar datos';
@@ -2019,6 +2020,7 @@ async function init() {
     if (root) root.innerHTML = '<div class="card rounded-xl p-8 border border-hairline text-center text-muted text-sm">Cambiando de categoria...</div>';
     lastErrors = await fetchAllData();
     renderSection(currentSection);
+    precargarLogos();
   };
 
   window.addEventListener('hashchange', () => {
