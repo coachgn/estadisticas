@@ -232,14 +232,14 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=14"></script>
-<script src="js/sgadd-core.js?v=14"></script>
-<script src="js/sgadd-ui.js?v=14"></script>
-<script src="js/sgadd-app.js?v=14"></script>
-<script src="js/sgadd-charts.js?v=14"></script>
-<script src="js/sgadd-rankings.js?v=14"></script>
-<script src="js/sgadd-equipos.js?v=14"></script>
-<script src="js/sgadd-diagnostico.js?v=14"></script>
+<script src="js/sgadd-club.js?v=15"></script>
+<script src="js/sgadd-core.js?v=15"></script>
+<script src="js/sgadd-ui.js?v=15"></script>
+<script src="js/sgadd-app.js?v=15"></script>
+<script src="js/sgadd-charts.js?v=15"></script>
+<script src="js/sgadd-rankings.js?v=15"></script>
+<script src="js/sgadd-equipos.js?v=15"></script>
+<script src="js/sgadd-diagnostico.js?v=15"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -405,7 +405,10 @@ const LOGOS = (function () {
        distintos, y hay nombres que se repiten entre ligas (hay un Atenas
        en media Argentina). El de la liga gana; el generico es el respaldo.
        CLUB.aplicar() reemplaza esta lista segun el JSON del club. */
-    basePaths: ['logos/'],
+    /* Default que funciona SOLO, sin config externa. Busca primero en la
+       carpeta de la liga y despues en el pozo compartido, asi anda con la
+       estructura vieja y con la nueva. CLUB lo sobreescribe si carga. */
+    basePaths: ['logos/la-plata/', 'logos/'],
     extensiones: ['png', 'webp', 'jpg', 'jpeg', 'jfif', 'avif', 'svg', 'gif'],
     // Dejalo en '' para desactivar. Si lo usás: URL /exec del Web App.
     jsonpUrl: '',
@@ -1947,7 +1950,12 @@ async function refreshData() {
   // si Drive tarda, el dashboard igual arranca y los logos entran despues via onReady.
   /* El club define catalogo, tema y escudos. Todo lo demas depende de esto,
      asi que se resuelve primero. Si falla, seguimos con los defaults. */
-  await CLUB.cargar();
+  /* La config del club es una MEJORA OPCIONAL, no un requisito. Si el JSON
+     no esta o falla, el panel arranca igual con los defaults de arriba.
+     Nunca mas un archivo de configuracion puede tumbar el dashboard. */
+  if (typeof CLUB !== 'undefined') {
+    try { await CLUB.cargar(); } catch (e) { console.warn('[CLUB] omitido:', e); }
+  }
 
   // La planilla inicial sale del catalogo/hash, no de una constante.
   SGADD_APP.inicializar();
