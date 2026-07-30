@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>Reconquista Basquet · Panel de Scouting</title>
+<title>Panel de Scouting</title>
 
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
@@ -44,20 +44,25 @@
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: #141414; }
   ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
-  ::-webkit-scrollbar-thumb:hover { background: #f7941e; }
+  :root { --acento: #f7941e; --acento-oscuro: #d97706; }
+
+  ::-webkit-scrollbar-thumb:hover { background: var(--acento); }
   * { scrollbar-color: #333 #141414; scrollbar-width: thin; }
 
   .nav-item { position: relative; }
   .nav-item.active::before {
     content: '';
     position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px;
-    background: #f7941e; border-radius: 0 2px 2px 0;
+    background: var(--acento); border-radius: 0 2px 2px 0;
   }
   /* Respaldo de los colores de marca: si el JIT del CDN de Tailwind todavia
      no genero la clase para un nodo recien inyectado, igual se ve bien. */
   .text-ink { color: #F9FAFB; }
   .text-muted { color: #9CA3AF; }
-  .text-accent { color: #f7941e; }
+  .text-accent { color: var(--acento); }
+  .bg-accent { background-color: var(--acento); }
+  .border-accent { border-color: var(--acento); }
+  .hover\:bg-accentdeep:hover { background-color: var(--acento-oscuro); }
   .bg-surface2 { background-color: #1F2937; }
 
   .card { background: #141414; border: 1px solid #282828; transition: border-color .15s ease; }
@@ -66,11 +71,11 @@
   table thead th { position: sticky; top: 0; background: #141414; z-index: 1; }
   tbody tr { transition: background-color .1s ease; }
   tbody tr:hover { background: #1b1b1b; }
-  tbody tr:hover td:first-child { box-shadow: inset 3px 0 0 #f7941e; }
+  tbody tr:hover td:first-child { box-shadow: inset 3px 0 0 var(--acento); }
 
-  ::selection { background: #f7941e; color: #0a0a0a; }
+  ::selection { background: var(--acento); color: #0a0a0a; }
   input:focus-visible, button:focus-visible, select:focus-visible, [tabindex]:focus-visible {
-    outline: 2px solid #f7941e; outline-offset: 2px;
+    outline: 2px solid var(--acento); outline-offset: 2px;
   }
 
   @keyframes spin-slow { to { transform: rotate(360deg); } }
@@ -165,8 +170,13 @@
     <!-- Sidebar -->
     <aside id="sidebar" class="fixed md:sticky top-0 left-0 h-screen w-64 z-40 bg-surface border-r border-hairline flex flex-col shrink-0">
       <div class="px-5 py-6 border-b border-hairline">
-        <p class="font-display text-2xl font-bold tracking-wide leading-none">RECONQUISTA</p>
-        <p class="font-display text-accent text-sm tracking-[0.3em] uppercase mt-1">Basquet · Scouting</p>
+        <div class="flex items-center gap-3">
+          <img id="clubEscudo" src="" alt="" class="w-9 h-9 object-contain shrink-0 hidden">
+          <div class="min-w-0">
+            <p id="clubNombre" class="font-display text-xl font-bold tracking-wide leading-none truncate">—</p>
+            <p id="clubBajada" class="text-[11px] text-muted uppercase tracking-wider mt-1"></p>
+          </div>
+        </div>
       </div>
 
       <nav class="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
@@ -222,12 +232,14 @@
   </div>
 </div>
 
-<script src="js/sgadd-core.js?v=11"></script>
-<script src="js/sgadd-ui.js?v=11"></script>
-<script src="js/sgadd-app.js?v=11"></script>
-<script src="js/sgadd-charts.js?v=11"></script>
-<script src="js/sgadd-equipos.js?v=11"></script>
-<script src="js/sgadd-diagnostico.js?v=11"></script>
+<script src="js/sgadd-club.js?v=13"></script>
+<script src="js/sgadd-core.js?v=13"></script>
+<script src="js/sgadd-ui.js?v=13"></script>
+<script src="js/sgadd-app.js?v=13"></script>
+<script src="js/sgadd-charts.js?v=13"></script>
+<script src="js/sgadd-rankings.js?v=13"></script>
+<script src="js/sgadd-equipos.js?v=13"></script>
+<script src="js/sgadd-diagnostico.js?v=13"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -389,7 +401,11 @@ function cleanName(name) {
 const LOGOS = (function () {
 
   const CFG = {
-    basePath: 'logos/',
+    /* Pozo compartido + override por liga. Dos ciudades tienen rivales
+       distintos, y hay nombres que se repiten entre ligas (hay un Atenas
+       en media Argentina). El de la liga gana; el generico es el respaldo.
+       CLUB.aplicar() reemplaza esta lista segun el JSON del club. */
+    basePaths: ['logos/'],
     extensiones: ['png', 'webp', 'jpg', 'jpeg', 'jfif', 'avif', 'svg', 'gif'],
     // Dejalo en '' para desactivar. Si lo usás: URL /exec del Web App.
     jsonpUrl: '',
@@ -475,10 +491,14 @@ const LOGOS = (function () {
     //    Tanda 1 = nombre exacto (acierta el 90% de las veces).
     //    Tanda 2 = variantes y recortes, solo si la 1 no dio nada.
     const nombres = nombresArchivo(nombreEquipo);
+    const rutas = CFG.basePaths || ['logos/'];
     const tanda1 = [], tanda2 = [];
     nombres.forEach((n, i) => {
-      CFG.extensiones.forEach((ext) => {
-        (i === 0 ? tanda1 : tanda2).push(CFG.basePath + n + '.' + ext);
+      rutas.forEach((base, r) => {
+        CFG.extensiones.forEach((ext) => {
+          // Tanda 1: nombre exacto en la carpeta de la liga.
+          (i === 0 && r === 0 ? tanda1 : tanda2).push(base + n + '.' + ext);
+        });
       });
     });
 
@@ -575,7 +595,7 @@ const LOGOS = (function () {
     const faltantes = unicos.filter((n, i) => !res[i].img);
     if (faltantes.length) {
       console.warn('[LOGOS] sin archivo (' + faltantes.length + '/' + unicos.length + '):', faltantes);
-      console.warn('[LOGOS] esperaba, por ejemplo:', CFG.basePath + slug(faltantes[0]) + '.png');
+      console.warn('[LOGOS] esperaba, por ejemplo:', (CFG.basePaths || ['logos/'])[0] + slug(faltantes[0]) + '.png');
     } else if (unicos.length) {
       console.log('[LOGOS] ' + unicos.length + '/' + unicos.length + ' logos OK');
     }
@@ -609,7 +629,7 @@ const LOGOS = (function () {
       const filas = [];
       cache.forEach((v, k) => filas.push({ equipo: k, archivo: v.url || '— FALTA —' }));
       console.table(filas);
-      return { resueltos: cache.size, jsonp: CFG.jsonpUrl || '(desactivado)', basePath: CFG.basePath };
+      return { resueltos: cache.size, jsonp: CFG.jsonpUrl || '(desactivado)', basePaths: CFG.basePaths };
     },
   };
 })();
@@ -1119,7 +1139,7 @@ function buildPrincipal() {
            <div class="flex flex-wrap items-center gap-x-5 gap-y-2 mt-4 pt-3 border-t border-hairline text-[11px] text-muted">
              <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full border-2" style="border-color:#22c55e"></i>Elite</span>
              <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full border-2" style="border-color:#60a5fa"></i>Defensa fuerte</span>
-             <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full border-2" style="border-color:#f7941e"></i>Ataque fuerte</span>
+             <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full border-2" style="border-color:var(--acento)"></i>Ataque fuerte</span>
              <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full border-2" style="border-color:#ef4444"></i>Bajo</span>
              <span class="ml-auto font-mono hidden lg:inline">Líneas punteadas = media de la liga · DRTG invertido (arriba = mejor defensa)</span>
            </div>
@@ -1265,7 +1285,7 @@ function drawFactoresChart() {
   const selectedRows = data.rows.filter((r) => selection.has(r.formatted[nameCol]));
   if (!selectedRows.length) return;
 
-  const palette = ['#f7941e', '#4ade80', '#60a5fa', '#f472b6'];
+  const palette = CLUB.TEMA.paleta;
   const datasets = selectedRows.map((r, i) => ({
     label: r.formatted[nameCol],
     data: factorCols.map((fc) => toNumber(r.values[fc]) ?? 0),
@@ -1563,7 +1583,7 @@ function drawOrtgDrtgChart() {
             ctx.beginPath();
             ctx.arc(x, y, r, 0, Math.PI * 2);
             ctx.lineWidth = activo ? 3 : 2;
-            ctx.strokeStyle = activo ? '#f7941e' : q.color;
+            ctx.strokeStyle = activo ? CLUB.TEMA.acento : q.color;
             if (activo) { ctx.shadowColor = 'rgba(247, 148, 30, 0.9)'; ctx.shadowBlur = 12; }
             ctx.stroke();
             ctx.shadowBlur = 0;
@@ -1598,7 +1618,7 @@ function drawOrtgDrtgChart() {
             ctx.strokeStyle = '#0B1121';
             ctx.lineJoin = 'round';
             ctx.strokeText(etiqueta, x, ty);
-            ctx.fillStyle = activo ? '#f7941e' : '#cbd5e1';
+            ctx.fillStyle = activo ? CLUB.TEMA.acento : '#cbd5e1';
             ctx.fillText(etiqueta, x, ty);
 
             ctx.restore();
@@ -1619,7 +1639,7 @@ function drawOrtgDrtgChart() {
 const CUADRANTES = {
   elite: { label: 'ELITE',      corto: 'ELITE', color: '#22c55e' },  // + ataque, + defensa
   def:   { label: 'DEF FUERTE', corto: 'DEF',   color: '#60a5fa' },  // - ataque, + defensa
-  of:    { label: 'OF FUERTE',  corto: 'OF',    color: '#f7941e' },  // + ataque, - defensa
+  of:    { label: 'OF FUERTE',  corto: 'OF',    get color() { return CLUB.TEMA.acento; } },  // + ataque, - defensa
   bajo:  { label: 'BAJO',       corto: 'BAJO',  color: '#ef4444' },  // - ataque, - defensa
 };
 
@@ -1652,7 +1672,7 @@ function renderPanelLogosFaltantes(faltantes) {
               class="text-muted hover:text-ink text-lg leading-none px-1" title="Cerrar">&times;</button>
     </div>
     <p class="text-[11px] text-muted mb-3 leading-snug">
-      Subí estos archivos a la carpeta <code class="text-ink">logos/</code> del repositorio.
+      Subí estos archivos a <code class="text-ink">${(LOGOS.CFG.basePaths || ['logos/'])[0]}</code> en el repositorio.
       El nombre tiene que ser este; la extensión puede ser
       <code class="text-ink">.png .jpg .webp .avif .svg</code>:
     </p>
@@ -1786,7 +1806,7 @@ function drawScoutingCharts() {
     datasets.push({
       label: sel[0],
       data: numericCols.map((c) => ((toNumber(rowA.values[c]) ?? 0) / maxByMetric[c]) * 100),
-      borderColor: '#f7941e', backgroundColor: '#f7941e33', pointBackgroundColor: '#f7941e', borderWidth: 2,
+      borderColor: CLUB.TEMA.acento, backgroundColor: CLUB.TEMA.acento + '33', pointBackgroundColor: CLUB.TEMA.acento, borderWidth: 2,
     });
   }
   if (rowB && sel[1] !== sel[0]) {
@@ -1920,6 +1940,10 @@ async function refreshData() {
   if (label) label.textContent = 'Actualizando…';
   // Datos y logos viajan en paralelo. Los logos tienen techo de 12s:
   // si Drive tarda, el dashboard igual arranca y los logos entran despues via onReady.
+  /* El club define catalogo, tema y escudos. Todo lo demas depende de esto,
+     asi que se resuelve primero. Si falla, seguimos con los defaults. */
+  await CLUB.cargar();
+
   // La planilla inicial sale del catalogo/hash, no de una constante.
   SGADD_APP.inicializar();
   const pIni = SGADD_APP.planillaActual();
