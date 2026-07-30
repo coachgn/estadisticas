@@ -116,7 +116,12 @@ const CLUB = (function () {
     }
     if (c.escudo) {
       const img = document.getElementById('clubEscudo');
-      if (img) { img.src = c.escudo; img.classList.remove('hidden'); }
+      // Solo se muestra si carga: un escudo roto es peor que ninguno.
+      if (img) {
+        img.onload = () => img.classList.remove('hidden');
+        img.onerror = () => { img.classList.add('hidden'); console.warn('[CLUB] escudo no encontrado:', c.escudo); };
+        img.src = c.escudo;
+      }
     }
 
     /* --- Color de marca por variable CSS.
