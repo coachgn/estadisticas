@@ -65,6 +65,24 @@
   .hover\:bg-accentdeep:hover { background-color: var(--acento-oscuro); }
   .bg-surface2 { background-color: #1F2937; }
 
+  /* ---------------------------------------------------------------------
+     ALINEACION GLOBAL DE TABLAS
+
+     Regla unica: la primera columna (nombre de equipo, jugador o categoria)
+     va a la izquierda; todo lo demas centrado. Se aplica una sola vez aca en
+     vez de repetir text-center en cada <td> de cada seccion.
+
+     Escape: si la primera columna es un numero (puesto, #), poner la clase
+     `tabla-rank` en la <table> y el nombre pasa a ser la segunda columna.
+     --------------------------------------------------------------------- */
+  table th, table td { text-align: center; }
+  table th:first-child, table td:first-child { text-align: left; }
+
+  table.tabla-rank th:first-child,
+  table.tabla-rank td:first-child { text-align: center; }
+  table.tabla-rank th:nth-child(2),
+  table.tabla-rank td:nth-child(2) { text-align: left; }
+
   .card { background: #141414; border: 1px solid #282828; transition: border-color .15s ease; }
   .card:hover { border-color: #3a3a3a; }
 
@@ -232,14 +250,15 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=21"></script>
-<script src="js/sgadd-core.js?v=21"></script>
-<script src="js/sgadd-ui.js?v=21"></script>
-<script src="js/sgadd-app.js?v=21"></script>
-<script src="js/sgadd-charts.js?v=21"></script>
-<script src="js/sgadd-rankings.js?v=21"></script>
-<script src="js/sgadd-equipos.js?v=21"></script>
-<script src="js/sgadd-diagnostico.js?v=21"></script>
+<script src="js/sgadd-club.js?v=22"></script>
+<script src="js/sgadd-core.js?v=22"></script>
+<script src="js/sgadd-ui.js?v=22"></script>
+<script src="js/sgadd-app.js?v=22"></script>
+<script src="js/sgadd-charts.js?v=22"></script>
+<script src="js/sgadd-personalidad.js?v=22"></script>
+<script src="js/sgadd-rankings.js?v=22"></script>
+<script src="js/sgadd-equipos.js?v=22"></script>
+<script src="js/sgadd-diagnostico.js?v=22"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -923,7 +942,7 @@ function renderTable(tableId, sheetKey, opts = {}) {
     const arrow = active ? (st.sortDir === 'asc' ? '↑' : '↓') : '';
     const clickable = opts.sortable === false ? '' : `onclick="onTableSort('${tableId}','${escapeAttr(c.label)}')" class="cursor-pointer select-none hover:text-accent transition-colors"`;
     
-    return `<th ${clickable} class="px-4 py-3 text-left text-[11px] uppercase tracking-wider text-muted whitespace-nowrap font-display font-semibold border-b border-hairline bg-surface2/50 backdrop-blur">${escapeHtml(c.label)} <span class="text-accent ml-1">${arrow}</span></th>`;
+    return `<th ${clickable} class="px-4 py-3 text-[11px] uppercase tracking-wider text-muted whitespace-nowrap font-display font-semibold border-b border-hairline bg-surface2/50 backdrop-blur">${escapeHtml(c.label)} <span class="text-accent ml-1">${arrow}</span></th>`;
   }).join('');
 
   const tbodyRows = shownRows.map((r) => {
@@ -952,7 +971,7 @@ function renderTable(tableId, sheetKey, opts = {}) {
       ${searchBox}
       ${countLabel}
       <div class="scrollbox rounded-lg border border-hairline/50 overflow-hidden">
-        <table class="w-full border-collapse text-left">
+        <table class="w-full border-collapse tabla-rank">
           <thead><tr>${theadCells}</tr></thead>
           <tbody>${tbodyRows || `<tr><td class="px-4 py-5 text-sm text-muted text-center" colspan="${cols.length}">Sin resultados.</td></tr>`}</tbody>
         </table>
@@ -1074,7 +1093,7 @@ function renderStandingsTable(limit) {
   processedRows.sort((a, b) => b.pct - a.pct);
   if (limit) processedRows = processedRows.slice(0, limit);
 
-  const thClass = "px-4 py-3 text-left text-[11px] uppercase tracking-wider text-muted whitespace-nowrap font-display font-semibold border-b border-hairline bg-surface2/50 backdrop-blur";
+  const thClass = "px-4 py-3 text-[11px] uppercase tracking-wider text-muted whitespace-nowrap font-display font-semibold border-b border-hairline bg-surface2/50 backdrop-blur";
   const cellClass = "px-4 py-3 whitespace-nowrap text-sm border-b border-hairline/40 text-ink/90 font-mono tabular-nums";
 
   const tbody = processedRows.map((row, i) => {
@@ -1102,7 +1121,7 @@ function renderStandingsTable(limit) {
   return `
     <div class="bg-surface border border-hairline rounded-xl shadow-sm p-5">
       <div class="scrollbox rounded-lg border border-hairline/50 overflow-hidden">
-        <table class="w-full border-collapse text-left">
+        <table class="w-full border-collapse tabla-rank">
           <thead>
             <tr>
               ${['Pos', 'Equipo', 'PJ', 'PG', 'PP', 'PCT%', 'Dif', 'PTS+/P', 'PTS-/P'].map(h => `<th class="${thClass}">${h}</th>`).join('')}
@@ -1196,7 +1215,7 @@ function renderFullStandingsTable() {
     <div class="bg-surface border border-hairline rounded-xl shadow-sm p-5">
       <h3 class="font-display text-lg uppercase tracking-wide mb-4 text-ink">Clasificación Completa · Temporada 2026</h3>
       <div class="scrollbox rounded-lg border border-hairline/50 overflow-hidden">
-        <table class="w-full border-collapse text-left">
+        <table class="w-full border-collapse tabla-rank">
           <thead>
             <tr>
               ${['Pos', 'Equipo', 'PJ', 'PG', 'PP', 'PG L', 'PP L', 'PG V', 'PP V', 'PTS+', 'PTS-', 'Dif', 'Pct%', 'PTS+/P', 'PTS-/P'].map(h => `<th class="${thClass}">${h}</th>`).join('')}
