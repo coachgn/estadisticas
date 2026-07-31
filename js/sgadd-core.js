@@ -60,6 +60,12 @@
     if (m) return new Date(+m[1], +m[2], +m[3]);          // mes 0-indexado
     m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
     if (m) return new Date(+m[1], +m[2] - 1, +m[3]);      // ISO
+
+    /* dd/mm/aaaa: formato argentino. Se asume DIA primero, no mes.
+       Aparece asi en las planillas de Liga Argentina. */
+    m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s);
+    if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+
     return null;                                          // "5/5" sin año: no confiable
   }
 
