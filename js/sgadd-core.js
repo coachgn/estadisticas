@@ -784,7 +784,11 @@
         if (typeof v === 'number' && isFinite(v)) acum[c] = (acum[c] || 0) + v;
       });
     }
-    const COLS_SUMA = ['TCC', 'TCI', 'T3C', 'T1C', 'PP', 'PLAYS', 'RO', 'RD', 'PTS'];
+    /* T2I/T3I/T1I/T2C hacen falta para calcular T2%, T3% y T1% sobre un
+       subconjunto de partidos (victorias vs derrotas, local vs visitante).
+       Sin ellos solo se pueden reconstruir los 4 factores. */
+    const COLS_SUMA = ['TCC', 'TCI', 'T2C', 'T2I', 'T3C', 'T3I', 'T1C', 'T1I',
+                       'PP', 'PLAYS', 'RO', 'RD', 'PTS', 'AST'];
     const div = (a, b) => (typeof a === 'number' && typeof b === 'number' && b > 0) ? a / b : null;
 
     /**
@@ -809,6 +813,23 @@
         pj: partidos.length, ganados: g, perdidos: pd,
         propio: yo, rival: riv, partidosConRival: conRival,
         ptsFavor: yo['PTS'] || 0, ptsContra: riv['PTS'] || 0,
+        /* Ratios de tiro sobre el subconjunto. Se calculan sobre totales,
+           igual que en la temporada completa: comparables entre sí. */
+        tiro: {
+          'eFG%': div((yo['TCC'] || 0) + 0.5 * (yo['T3C'] || 0), yo['TCI']),
+          'TS%':  div(yo['PTS'], 2 * ((yo['TCI'] || 0) + 0.44 * (yo['T1I'] || 0))),
+          'T2%':  div(yo['T2C'], yo['T2I']),
+          'T3%':  div(yo['T3C'], yo['T3I']),
+          'T1%':  div(yo['T1C'], yo['T1I']),
+          'TC%':  div(yo['TCC'], yo['TCI']),
+          'PT3%': div(yo['T3I'], yo['PLAYS']),
+          'PePP%': div(yo['PP'], yo['PLAYS']),
+          'RO%':  div(yo['RO'], (yo['RO'] || 0) + (riv['RD'] || 0)),
+          'AST%': div(yo['AST'], yo['TCC']),
+          'PPP':  div(yo['PTS'], yo['PLAYS']),
+          'RTL%': div(yo['T1C'], yo['TCI']),
+          'eFG Opp%': div((riv['TCC'] || 0) + 0.5 * (riv['T3C'] || 0), riv['TCI']),
+        },
         factores: {
           'eFG%':  div((yo['TCC'] || 0) + 0.5 * (yo['T3C'] || 0), yo['TCI']),
           'RTL%':  div(yo['T1C'], yo['TCI']),
@@ -865,6 +886,12 @@
       e.split = {
         LOCAL: agregarPartidos(e.clave, e.partidos.filter(p => texto(p['CONDICION']).toUpperCase() === 'LOCAL')),
         VISITANTE: agregarPartidos(e.clave, e.partidos.filter(p => texto(p['CONDICION']).toUpperCase() === 'VISITANTE')),
+      };
+
+      /* Victorias vs derrotas: la base del insight de patrón de juego. */
+      e.porResultado = {
+        GANADO: agregarPartidos(e.clave, e.partidos.filter(p => texto(p['RESULTADO']).toUpperCase() === 'GANADO')),
+        PERDIDO: agregarPartidos(e.clave, e.partidos.filter(p => texto(p['RESULTADO']).toUpperCase() === 'PERDIDO')),
       };
       e.ultimos5 = agregarPartidos(e.clave, e.partidos.slice(-5));
 

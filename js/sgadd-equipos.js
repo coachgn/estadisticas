@@ -24,14 +24,14 @@ const EQUIPOS = {
 };
 
 const EQUIPOS_TABS = [
-  { id: 'general',   label: 'General',    pregunta: '¿Cómo viene?' },
-  { id: 'ofensiva',  label: 'Ofensiva',   pregunta: '¿Cómo anota?' },
-  { id: 'defensiva', label: 'Defensiva',  pregunta: '¿Cómo defiende?' },
-  { id: '4factores', label: '4 Factores', pregunta: '¿Dónde gana y dónde pierde?' },
+  { id: 'general',      label: 'General',      pregunta: '¿Cómo viene?' },
+  { id: 'ofensiva',     label: 'Ofensiva',     pregunta: '¿Cómo anota?' },
+  { id: 'defensiva',    label: 'Defensiva',    pregunta: '¿Cómo defiende?' },
+  { id: '4factores',    label: '4 Factores',   pregunta: '¿Dónde gana y dónde pierde?' },
+  { id: 'condicion',    label: 'Local/Vis.',   pregunta: '¿Cambia de local?' },
   { id: 'personalidad', label: 'Personalidad', pregunta: '¿A qué juega?' },
-  { id: 'condicion', label: 'Local/Vis.', pregunta: '¿Cambia de local?' },
-  { id: 'plantel',   label: 'Plantel',    pregunta: '¿De quién depende?' },
-  { id: 'partidos',  label: 'Partidos',   pregunta: '¿Qué pasó cada noche?' },
+  { id: 'plantel',      label: 'Plantel',      pregunta: '¿De quién depende?' },
+  { id: 'partidos',     label: 'Partidos',     pregunta: '¿Qué pasó cada noche?' },
 ];
 
 /* ===================== RUTEO ===================== */
@@ -196,6 +196,77 @@ function equiposHeader(idx, e) {
         </div>
       </div>
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">${hero}</div>
+    </div>`;
+}
+
+/* Tarjeta de un factor fuerte o débil. */
+function equiposClave(f, bueno) {
+  const borde = bueno ? 'border-green-400' : 'border-red-400';
+  return `
+    <div class="bg-surface2/50 rounded-lg p-2.5 mb-2 border-l-2 ${borde}
+                hover:bg-surface2 hover:border-l-4 transition-all duration-200">
+      <div class="flex items-baseline justify-between gap-2">
+        <span class="text-xs text-white">${escapeHtml(f.label)}</span>
+        <span class="font-mono text-xs text-white">${escapeHtml(f.formateado)}</span>
+      </div>
+      <p class="text-[10px] text-muted font-mono mt-0.5">pctil ${f.percentil.toFixed(0)} · liga ${escapeHtml(f.tipoFormateado)}</p>
+    </div>`;
+}
+
+/* ---------------------------------------------------------------------
+   INSIGHT · el patrón de las victorias
+   --------------------------------------------------------------------- */
+function equiposInsight(ins) {
+  if (!ins) return '';
+
+  if (!ins.suficiente) {
+    return `
+      <div class="mt-6 rounded-lg border border-hairline bg-surface2/30 p-4">
+        <p class="text-[10px] uppercase tracking-widest text-muted font-display mb-1">📌 Patrón de las victorias</p>
+        <p class="text-xs text-muted leading-snug">
+          ${escapeHtml(ins.motivo || ('Hacen falta al menos ' + SGADD_PERSONALIDAD.PJ_MINIMO_INSIGHT +
+            ' partidos ganados y ' + SGADD_PERSONALIDAD.PJ_MINIMO_INSIGHT + ' perdidos para comparar. Van ' +
+            ins.g.pj + '-' + ins.d.pj + '.'))}
+        </p>
+      </div>`;
+  }
+
+  const fila = (f) => {
+    const flecha = f.dif > 0 ? '▲' : f.dif < 0 ? '▼' : '=';
+    const color = !f.cambia ? 'text-muted' : (f.aFavor ? 'text-green-400' : 'text-red-400');
+    return `
+      <tr class="border-b border-hairline/40 last:border-0">
+        <td class="py-1.5 pr-3 text-xs text-white">${escapeHtml(f.label)}</td>
+        <td class="py-1.5 pr-3 font-mono text-xs text-white">${escapeHtml(SGADD.formatear('eFG%', f.victoria))}</td>
+        <td class="py-1.5 pr-3 font-mono text-xs text-white">${escapeHtml(SGADD.formatear('eFG%', f.derrota))}</td>
+        <td class="py-1.5 font-mono text-xs ${color}">${flecha} ${escapeHtml(SGADD.formatear('eFG%', Math.abs(f.dif)))}</td>
+      </tr>`;
+  };
+
+  return `
+    <div class="mt-6 rounded-lg border border-accent/40 bg-accent/5 p-4
+                hover:border-accent hover:shadow-lg transition-all duration-200">
+      <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-2">
+        📌 Insight clave · el patrón de las victorias
+      </p>
+      <div class="space-y-2 mb-4 max-w-4xl">
+        ${ins.texto.map(t => `<p class="text-sm text-white leading-relaxed">${escapeHtml(t)}</p>`).join('')}
+      </div>
+      <div class="scrollbox">
+        <table class="w-full">
+          <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+            <th class="pb-2 pr-3">Métrica</th>
+            <th class="pb-2 pr-3">En victorias (${ins.g.pj})</th>
+            <th class="pb-2 pr-3">En derrotas (${ins.d.pj})</th>
+            <th class="pb-2">Diferencia</th>
+          </tr></thead>
+          <tbody>${ins.cambian.concat(ins.estables).map(fila).join('')}</tbody>
+        </table>
+      </div>
+      <p class="text-[11px] text-muted mt-3 leading-snug">
+        Gris = se mantiene igual gane o pierda. Eso también informa: si el rebote no cambia,
+        el problema de las derrotas no es el rebote.
+      </p>
     </div>`;
 }
 
@@ -530,10 +601,11 @@ function equiposTabPersonalidad(idx, e) {
     const pos = Math.max(2, Math.min(98, x.percentil));
     const color = x.fuerte ? 'var(--acento)' : '#6b7280';
     return `
-      <div class="py-2.5 border-b border-hairline/40 last:border-0">
+      <div class="py-2.5 px-2 -mx-2 rounded border-b border-hairline/40 last:border-0
+                    hover:bg-surface2/40 transition-all duration-200">
         <div class="flex items-baseline justify-between gap-3 mb-1.5">
           <span class="text-[11px] uppercase tracking-wider text-muted font-display">${escapeHtml(x.titulo)}</span>
-          <span class="text-xs font-semibold ${x.fuerte ? 'text-accent' : 'text-ink/80'}">${escapeHtml(x.etiqueta)}</span>
+          <span class="text-xs font-semibold ${x.fuerte ? 'text-accent' : 'text-white'}">${escapeHtml(x.etiqueta)}</span>
         </div>
         <div class="relative h-1.5 rounded-full bg-surface2">
           <div class="absolute inset-y-0 left-1/2 w-px bg-ink/30"></div>
@@ -541,10 +613,10 @@ function equiposTabPersonalidad(idx, e) {
                style="left:calc(${pos.toFixed(0)}% - 7px);background:${color}"></div>
         </div>
         <div class="flex justify-between mt-1">
-          <span class="text-[10px] ${x.polo === 'izq' ? 'text-ink/70' : 'text-muted/50'}">${escapeHtml(x.izq)}</span>
-          <span class="text-[10px] ${x.polo === 'der' ? 'text-ink/70' : 'text-muted/50'}">${escapeHtml(x.der)}</span>
+          <span class="text-[10px] ${x.polo === 'izq' ? 'text-white' : 'text-muted/60'}">${escapeHtml(x.izq)}</span>
+          <span class="text-[10px] ${x.polo === 'der' ? 'text-white' : 'text-muted/60'}">${escapeHtml(x.der)}</span>
         </div>
-        ${x.descripcion ? `<p class="text-[10px] text-muted mt-1.5 leading-snug">${escapeHtml(x.descripcion)}</p>` : ''}
+        ${x.descripcion ? `<p class="text-[10px] text-slate-300 mt-1.5 leading-snug">${escapeHtml(x.descripcion)}</p>` : ''}
         <p class="text-[10px] text-muted/60 mt-1 font-mono">
           ${escapeHtml(x.metrica)} ${escapeHtml(x.valor)} · liga ${escapeHtml(x.mediana)} · pctil ${x.percentil.toFixed(0)}
         </p>
@@ -557,7 +629,8 @@ function equiposTabPersonalidad(idx, e) {
   /* --- Rasgos definitorios --- */
   const rasgos = p.rasgos.length
     ? p.rasgos.map(r => `
-        <div class="bg-surface2/50 rounded-lg p-3">
+        <div class="bg-surface2/50 rounded-lg p-3 border border-transparent
+                    hover:border-accent hover:shadow-lg transition-all duration-200">
           <p class="text-[10px] uppercase tracking-wider text-muted font-display">${escapeHtml(r.titulo)}</p>
           <p class="font-display text-base text-accent leading-tight mt-0.5">${escapeHtml(r.etiqueta)}</p>
           <p class="text-[10px] text-muted mt-1 font-mono">pctil ${r.percentil.toFixed(0)}</p>
@@ -599,21 +672,21 @@ function equiposTabPersonalidad(idx, e) {
       ${p.resumen ? `
       <div>
         <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Dónde gana y dónde pierde</h5>
-        <div class="space-y-3">
-          <div class="bg-surface2/50 rounded-lg p-3 border-l-2 border-green-400">
-            <p class="text-[10px] uppercase tracking-wider text-muted font-display">Su mejor arma</p>
-            <p class="text-sm text-ink mt-0.5">${escapeHtml(p.resumen.fuerte.label)} · ${escapeHtml(p.resumen.fuerte.formateado)}</p>
-            <p class="text-[10px] text-muted font-mono">pctil ${p.resumen.fuerte.percentil.toFixed(0)} · liga ${escapeHtml(p.resumen.fuerte.tipoFormateado)}</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <p class="text-[10px] uppercase tracking-wider text-green-400 font-display mb-1.5">Sus 3 armas</p>
+            ${p.resumen.fuertes.map(f => equiposClave(f, true)).join('')}
           </div>
-          <div class="bg-surface2/50 rounded-lg p-3 border-l-2 border-red-400">
-            <p class="text-[10px] uppercase tracking-wider text-muted font-display">Su punto débil</p>
-            <p class="text-sm text-ink mt-0.5">${escapeHtml(p.resumen.debil.label)} · ${escapeHtml(p.resumen.debil.formateado)}</p>
-            <p class="text-[10px] text-muted font-mono">pctil ${p.resumen.debil.percentil.toFixed(0)} · liga ${escapeHtml(p.resumen.debil.tipoFormateado)}</p>
+          <div>
+            <p class="text-[10px] uppercase tracking-wider text-red-400 font-display mb-1.5">Sus 3 grietas</p>
+            ${p.resumen.debiles.map(f => equiposClave(f, false)).join('')}
           </div>
         </div>
         <p class="text-[11px] text-muted mt-3 leading-snug">
-          Sale de los 8 factores: el mejor y el peor percentil. Es la lectura más corta de contra qué conviene prepararlos.
+          Los tres mejores y los tres peores percentiles de los 8 factores. Es la lectura más corta
+          de para qué prepararlos y por dónde atacarlos.
         </p>
       </div>` : ''}
-    </div>`;
+    </div>
+    ${equiposInsight(p.insight)}`;
 }

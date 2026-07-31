@@ -142,7 +142,8 @@ const SGADD_PERSONALIDAD = (function () {
     }).filter(Boolean);
 
     const rasgos = ejes.filter(x => x.fuerte).sort((a, b) => b.magnitud - a.magnitud);
-    return { ejes, rasgos, arquetipo: arquetipo(idx, e, ejes, rasgos), resumen: resumen(idx, e, ejes) };
+    return { ejes, rasgos, arquetipo: arquetipo(idx, e, ejes, rasgos),
+             resumen: resumen(idx, e, ejes), insight: insight(idx, e) };
   }
 
   /* ---------------------------------------------------------------------
@@ -194,21 +195,129 @@ const SGADD_PERSONALIDAD = (function () {
     return a.slice(0, -1).join(', ') + ' y ' + a[a.length - 1];
   }
 
-  /** Dos líneas: qué hace bien y qué le cuesta, en términos de rendimiento. */
+  /** Top 3 y bottom 3 sobre los 8 factores: lectura corta de para qué
+      prepararlos y por dónde atacarlos. */
   function resumen(idx, e) {
     const claves = ['eFG%', 'PePP%', 'RTL%', 'RO%', 'eFG Opp%', 'PP Opp%', 'RTL Opp%', 'RO Opp%'];
     const leidas = claves.map(k => idx.leer(e.clave, k)).filter(r => r && r.percentil !== null);
     if (!leidas.length) return null;
     const orden = leidas.slice().sort((a, b) => b.percentil - a.percentil);
+    const n = Math.min(3, Math.floor(orden.length / 2));
     return {
-      fuerte: orden[0],
-      debil: orden[orden.length - 1],
+      fuertes: orden.slice(0, n),
+      debiles: orden.slice(-n).reverse(),
+      // compat con la versión anterior
+      fuerte: orden[0], debil: orden[orden.length - 1],
       of: idx.leer(e.clave, 'RTNG OFF'),
       def: idx.leer(e.clave, 'RTNG DEF'),
     };
   }
 
-  return { EJES, FUERTE, LEVE, perfil, arquetipo, resumen };
+  /* =====================================================================
+     INSIGHT · el patrón de las victorias
+
+     Compara las mismas métricas en partidos ganados y perdidos. La gracia
+     no es listar diferencias, sino DISTINGUIR lo que cambia de lo que se
+     mantiene: si el rebote es igual en ambas y el triple se derrumba, el
+     problema no es el rebote.
+     ===================================================================== */
+
+  /* Métricas a contrastar. `umbral` = diferencia mínima (en fracción) para
+     considerar que cambió de verdad y no es ruido. */
+  const CONTRASTES = [
+    { k: 'eFG%',  label: 'eFG%',            umbral: 0.030, tipo: 'pct', cuerpo: 'la eficiencia de tiro' },
+    { k: 'T3%',   label: 'T3%',             umbral: 0.045, tipo: 'pct', cuerpo: 'el triple' },
+    { k: 'T2%',   label: 'T2%',             umbral: 0.040, tipo: 'pct', cuerpo: 'el tiro de dos' },
+    { k: 'T1%',   label: 'T1%',             umbral: 0.060, tipo: 'pct', cuerpo: 'el tiro libre' },
+    { k: 'PePP%', label: 'pérdidas',        umbral: 0.020, tipo: 'pct', cuerpo: 'el cuidado del balón', invertida: true },
+    { k: 'RO%',   label: 'rebote ofensivo', umbral: 0.030, tipo: 'pct', cuerpo: 'el rebote ofensivo' },
+    { k: 'AST%',  label: 'canastas asistidas', umbral: 0.040, tipo: 'pct', cuerpo: 'la circulación de pelota' },
+    { k: 'eFG Opp%', label: 'eFG% permitido', umbral: 0.030, tipo: 'pct', cuerpo: 'la defensa del tiro', invertida: true },
+  ];
+
+  const PJ_MINIMO_INSIGHT = 3;   // menos de 3 de cada lado no dice nada
+
+  function insight(idx, e) {
+    const pr = e.porResultado;
+    if (!pr || !pr.GANADO || !pr.PERDIDO) return null;
+    const g = pr.GANADO, d = pr.PERDIDO;
+    if (!g.pj || !d.pj) {
+      return { suficiente: false, g: g, d: d,
+        motivo: !g.pj ? 'Todavía no ganó ningún partido.' : 'Todavía no perdió ningún partido.' };
+    }
+
+    const filas = CONTRASTES.map(c => {
+      const vg = g.tiro ? g.tiro[c.k] : null;
+      const vd = d.tiro ? d.tiro[c.k] : null;
+      if (vg === null || vd === null || vg === undefined || vd === undefined) return null;
+      const dif = vg - vd;
+      // En invertidas (pérdidas, eFG permitido) bajar en victoria es a favor.
+      const aFavor = c.invertida ? dif < 0 : dif > 0;
+      return {
+        clave: c.k, label: c.label, cuerpo: c.cuerpo, invertida: !!c.invertida,
+        victoria: vg, derrota: vd, dif: dif, magnitud: Math.abs(dif),
+        cambia: Math.abs(dif) >= c.umbral, aFavor: aFavor,
+      };
+    }).filter(Boolean);
+
+    const cambian = filas.filter(f => f.cambia).sort((a, b) => b.magnitud - a.magnitud);
+    const estables = filas.filter(f => !f.cambia).sort((a, b) => a.magnitud - b.magnitud);
+
+    return {
+      suficiente: g.pj >= PJ_MINIMO_INSIGHT && d.pj >= PJ_MINIMO_INSIGHT,
+      g: g, d: d, filas: filas, cambian: cambian, estables: estables,
+      texto: narrar(idx, e, g, d, cambian, estables),
+    };
+  }
+
+  const pct = v => (v * 100).toFixed(1).replace('.', ',') + '%';
+
+  function narrar(idx, e, g, d, cambian, estables) {
+    const partes = [];
+
+    /* 1. El umbral: con qué eFG% gana. */
+    const efg = cambian.concat(estables).find(f => f.clave === 'eFG%');
+    if (efg) {
+      partes.push('Gana cuando el eFG% llega a ' + pct(efg.victoria) +
+        '; en las derrotas cae a ' + pct(efg.derrota) + '.');
+    }
+
+    /* 2. Lo que se derrumba, contrastado con lo que NO se mueve. Esa
+          oposición es lo que convierte un dato en un diagnóstico. */
+    const derrumbe = cambian.filter(f => f.aFavor && f.clave !== 'eFG%')[0];
+    if (derrumbe) {
+      let frase = 'La diferencia más grande está en ' + derrumbe.cuerpo +
+        ': ' + pct(derrumbe.victoria) + ' en victorias contra ' + pct(derrumbe.derrota) + ' en derrotas';
+      const firme = estables.find(f => f.clave !== 'eFG%');
+      if (firme) {
+        frase += ', mientras que ' + firme.cuerpo + ' se mantiene igual (' +
+          pct(firme.victoria) + ' vs ' + pct(firme.derrota) + ')';
+      }
+      partes.push(frase + '.');
+    }
+
+    /* 3. El punto de fuga: lo peor de la temporada, gane o pierda. */
+    const fuga = ['T1%', 'T3%', 'PePP%'].map(k => {
+      const r = idx.leer(e.clave, k === 'T1%' ? 'T1%' : k === 'T3%' ? 'T3%' : 'PePP%');
+      return r && r.percentil !== null ? { k: k, r: r } : null;
+    }).filter(Boolean).sort((a, b) => a.r.percentil - b.r.percentil)[0];
+
+    if (fuga && fuga.r.percentil <= 30) {
+      partes.push('Punto de fuga permanente: ' + fuga.r.label.toLowerCase() + ' ' +
+        fuga.r.formateado + ' contra ' + fuga.r.tipoFormateado + ' de la liga (percentil ' +
+        fuga.r.percentil.toFixed(0) + ').');
+    }
+
+    /* 4. Si nada se mueve, eso TAMBIÉN es una conclusión. */
+    if (!cambian.length) {
+      partes.push('Ninguna métrica cambia de forma clara entre ganar y perder: ' +
+        'la diferencia parece estar más en el rival o en el cierre de los partidos que en su propio juego.');
+    }
+
+    return partes;
+  }
+
+  return { EJES, FUERTE, LEVE, CONTRASTES, PJ_MINIMO_INSIGHT, perfil, arquetipo, resumen, insight };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_PERSONALIDAD;
