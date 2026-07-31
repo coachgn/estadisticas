@@ -4,41 +4,38 @@
   "nombreCorto": "RECONQUISTA",
   "bajada": "Basquet · Scouting",
   "escudo": "clubes/reconquista/escudo.png",
+
   "acento": "#f7941e",
   "acentoOscuro": "#d97706",
+
   "liga": "la-plata",
+  "patronEquipoPropio": "RECONQUISTA",
+  "sufijosEquipo": ["\\s*-\\s*(MM|MF|U\\d{1,2}\\s*[MF]?)\\s*$"],
+  "aliasLogos": {},
+
   "anio": 2026,
   "torneo": "TORNEO LOCAL",
-  "patronEquipoPropio": "RECONQUISTA",
   "credito": "SGADD · Casañas & Freytes",
 
   "planillas": [
-    { "id": "primera-clausura-2026", "label": "Primera · Clausura 2026",
+    {
+      "id": "primera-clausura-2026",
+      "label": "Primera · Clausura 2026",
       "sheetId": "1Zi2cBd0WGUTks-S0XCxR0hoGpB9KZGuqisFhzdtJl4s",
-      "categoria": "PRIMERA", "faseTorneo": "CLAUSURA", "rama": "masculina", "tira": null,
-      "modulo": "adicional" },
-
-    { "id": "negra-u21-clausura-2026", "label": "Masculina Negra · U21",
+      "categoria": "PRIMERA",
+      "faseTorneo": "CLAUSURA",
+      "rama": "masculina",
+      "tira": null,
+      "modulo": "adicional"
+    },
+    {
+      "id": "negra-u21-clausura-2026",
+      "label": "Masculina Negra · U21",
       "sheetId": "1CD7FEDcLkmZRI0tGkU67IjCmkxhnnIN2AKHhA4lWJT4",
-      "categoria": "U21", "faseTorneo": "CLAUSURA", "rama": "masculina", "tira": "negra" },
-
-    { "id": "negra-u15-clausura-2026", "label": "Masculina Negra · U15", "sheetId": "",
-      "categoria": "U15", "faseTorneo": "CLAUSURA", "rama": "masculina", "tira": "negra" },
-    { "id": "negra-u17-clausura-2026", "label": "Masculina Negra · U17", "sheetId": "",
-      "categoria": "U17", "faseTorneo": "CLAUSURA", "rama": "masculina", "tira": "negra" },
-
-    { "id": "naranja-u15-clausura-2026", "label": "Masculina Naranja · U15", "sheetId": "",
-      "categoria": "U15", "faseTorneo": "CLAUSURA", "rama": "masculina", "tira": "naranja" },
-    { "id": "naranja-u17-clausura-2026", "label": "Masculina Naranja · U17", "sheetId": "",
-      "categoria": "U17", "faseTorneo": "CLAUSURA", "rama": "masculina", "tira": "naranja" },
-    { "id": "naranja-u21-clausura-2026", "label": "Masculina Naranja · U21", "sheetId": "",
-      "categoria": "U21", "faseTorneo": "CLAUSURA", "rama": "masculina", "tira": "naranja" },
-
-    { "id": "femenina-u15-clausura-2026", "label": "Femenina · U15", "sheetId": "",
-      "categoria": "U15", "faseTorneo": "CLAUSURA", "rama": "femenina", "tira": "femenina" },
-    { "id": "femenina-u17-clausura-2026", "label": "Femenina · U17", "sheetId": "",
-      "categoria": "U17", "faseTorneo": "CLAUSURA", "rama": "femenina", "tira": "femenina" },
-    { "id": "femenina-u21-clausura-2026", "label": "Femenina · U21", "sheetId": "",
-      "categoria": "U21", "faseTorneo": "CLAUSURA", "rama": "femenina", "tira": "femenina" }
+      "categoria": "U21",
+      "faseTorneo": "CLAUSURA",
+      "rama": "masculina",
+      "tira": "negra"
+    }
   ]
 }

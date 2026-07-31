@@ -1,0 +1,36 @@
+{
+  "id": "jujuy",
+  "nombre": "Jujuy Basket",
+  "nombreCorto": "JUJUY BASKET",
+  "bajada": "Analitica · Liga Argentina",
+  "escudo": "clubes/jujuy/escudo.png",
+
+  "acento": "#2563eb",
+  "acentoOscuro": "#1d4ed8",
+
+  "liga": "liga-argentina",
+  "patronEquipoPropio": "JUJUY",
+
+  "//sufijosEquipo": "Sufijos a descartar del nombre del equipo. Si en Liga Argentina no hay, dejalo vacio. Si hay, agregalos como regex.",
+  "sufijosEquipo": [],
+
+  "//aliasLogos": "Solo para los que el matching automatico no encuentre. Clave = nombre en la planilla, valor = ruta del archivo.",
+  "aliasLogos": {},
+
+  "anio": 2025,
+  "torneo": "LIGA ARGENTINA",
+  "credito": "SGADD",
+
+  "planillas": [
+    {
+      "id": "jujuy-temporada",
+      "label": "Liga Argentina · Temporada 2024/25",
+      "//sheetId": "<<< PEGA ACA EL ID DE TU SHEET DE JUJUY >>>",
+      "sheetId": "",
+      "categoria": "PRIMERA",
+      "faseTorneo": "REGULAR",
+      "rama": "masculina",
+      "tira": null
+    }
+  ]
+}
