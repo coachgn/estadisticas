@@ -171,10 +171,10 @@
     <aside id="sidebar" class="fixed md:sticky top-0 left-0 h-screen w-64 z-40 bg-surface border-r border-hairline flex flex-col shrink-0">
       <div class="px-5 py-6 border-b border-hairline">
         <div class="flex items-center gap-3">
-          <img id="clubEscudo" src="" alt="" class="w-9 h-9 object-contain shrink-0 hidden">
+          <img id="clubEscudo" src="" alt="" class="w-12 h-12 object-contain shrink-0 hidden">
           <div class="min-w-0">
-            <p id="clubNombre" class="font-display text-xl font-bold tracking-wide leading-none truncate">—</p>
-            <p id="clubBajada" class="text-[11px] text-muted uppercase tracking-wider mt-1"></p>
+            <p id="clubNombre" class="font-display text-2xl font-bold tracking-wide leading-none truncate">—</p>
+            <p id="clubBajada" class="text-xs text-muted uppercase tracking-wider mt-1"></p>
           </div>
         </div>
       </div>
@@ -232,14 +232,14 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=16"></script>
-<script src="js/sgadd-core.js?v=16"></script>
-<script src="js/sgadd-ui.js?v=16"></script>
-<script src="js/sgadd-app.js?v=16"></script>
-<script src="js/sgadd-charts.js?v=16"></script>
-<script src="js/sgadd-rankings.js?v=16"></script>
-<script src="js/sgadd-equipos.js?v=16"></script>
-<script src="js/sgadd-diagnostico.js?v=16"></script>
+<script src="js/sgadd-club.js?v=17"></script>
+<script src="js/sgadd-core.js?v=17"></script>
+<script src="js/sgadd-ui.js?v=17"></script>
+<script src="js/sgadd-app.js?v=17"></script>
+<script src="js/sgadd-charts.js?v=17"></script>
+<script src="js/sgadd-rankings.js?v=17"></script>
+<script src="js/sgadd-equipos.js?v=17"></script>
+<script src="js/sgadd-diagnostico.js?v=17"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -565,6 +565,36 @@ const LOGOS = (function () {
     return promesaRemota;
   }
 
+  /* ---------------------------------------------------------------------
+     MANIFIESTO (opcional). Sin el, por cada equipo probamos 8 extensiones x
+     2 carpetas: hasta 190 pedidos, casi todos 404. Con un archivo
+     logos/<liga>/index.json que liste los nombres reales, es UN pedido.
+
+       { "astillero": "astillero.webp", "c f gonnet": "gonnet.jfif" }
+
+     La clave se normaliza igual que los nombres de equipo, asi que la podes
+     escribir como quieras. Si el archivo no existe, se prueba a mano igual
+     que antes y no cambia nada.
+     --------------------------------------------------------------------- */
+  let manifiesto = null, promesaManifiesto = null;
+
+  function cargarManifiesto() {
+    if (promesaManifiesto) return promesaManifiesto;
+    const base = (CFG.basePaths || ['logos/'])[0];
+    promesaManifiesto = fetch(base + 'index.json', { cache: 'no-cache' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => {
+        manifiesto = {};
+        if (j) {
+          Object.keys(j).forEach(k => { manifiesto[normalizarClave(k)] = base + j[k]; });
+          console.log('[LOGOS] manifiesto:', Object.keys(manifiesto).length, 'escudos');
+        }
+        return manifiesto;
+      })
+      .catch(() => { manifiesto = {}; return manifiesto; });
+    return promesaManifiesto;
+  }
+
   async function resolverUno(nombreEquipo) {
     const clave = normalizar(nombreEquipo);
     if (!clave) return { img: null, url: null };
@@ -573,6 +603,19 @@ const LOGOS = (function () {
 
     const tarea = (async () => {
       await asegurarMapaRemoto();
+      await cargarManifiesto();
+
+      // Camino rapido: el manifiesto dice exactamente cual es el archivo.
+      const enManifiesto = manifiesto && manifiesto[clave];
+      if (enManifiesto) {
+        try {
+          const img = await cargarImagen(enManifiesto);
+          const r = { img: img, url: enManifiesto };
+          cache.set(clave, r);
+          return r;
+        } catch (e) { /* el manifiesto miente: seguimos probando */ }
+      }
+
       const tandas = candidatos(nombreEquipo);
       for (let i = 0; i < tandas.length; i++) {
         const hit = await primeraQueCargue(tandas[i]);
@@ -641,6 +684,29 @@ const LOGOS = (function () {
 const DEFAULT_LOGO = LOGOS.DEFAULT_LOGO;
 function getLogoUrl(teamName) { return LOGOS.getUrl(cleanName(teamName)) || DEFAULT_LOGO; }
 function getTeamImage(teamName) { return LOGOS.getImage(cleanName(teamName)); }
+
+/* Resuelve los escudos de TODOS los equipos de la planilla, una sola vez.
+
+   Antes esto vivia adentro de drawOrtgDrtgChart(), asi que solo pasaba si
+   entrabas por Principal. Si ibas primero a Equipos, getUrl() devolvia null
+   y no se veia ningun escudo; y al volver, otra vez a esperar. */
+async function precargarLogos() {
+  try {
+    const d = sheet('promedios4f');
+    if (d.error || !d.rows.length) return;
+    const col = findColumnLabel(d.cols, ['EQUIPO', 'NOMBRE']);
+    const nombres = d.rows.filter(r => !isEquipoTipo(r))
+      .map(r => cleanName(r.formatted[col] || '')).filter(Boolean);
+    if (!nombres.length) return;
+
+    const res = await LOGOS.resolver(nombres);
+    if (typeof renderPanelLogosFaltantes === 'function') renderPanelLogosFaltantes(res.faltantes);
+    // Ya hay escudos: el del club puede caer al del equipo propio.
+    if (typeof CLUB !== 'undefined' && CLUB.reintentarEscudo) CLUB.reintentarEscudo();
+    // Los escudos llegan despues del primer pintado: hay que repintar.
+    if (typeof currentSection !== 'undefined') renderSection(currentSection);
+  } catch (e) { console.warn('[LOGOS] precarga omitida:', e); }
+}
 
 /* ============ CAPA DE DATOS (GViz) ============ */
 async function fetchSheet(sheetName) {
