@@ -232,14 +232,14 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=19"></script>
-<script src="js/sgadd-core.js?v=19"></script>
-<script src="js/sgadd-ui.js?v=19"></script>
-<script src="js/sgadd-app.js?v=19"></script>
-<script src="js/sgadd-charts.js?v=19"></script>
-<script src="js/sgadd-rankings.js?v=19"></script>
-<script src="js/sgadd-equipos.js?v=19"></script>
-<script src="js/sgadd-diagnostico.js?v=19"></script>
+<script src="js/sgadd-club.js?v=20"></script>
+<script src="js/sgadd-core.js?v=20"></script>
+<script src="js/sgadd-ui.js?v=20"></script>
+<script src="js/sgadd-app.js?v=20"></script>
+<script src="js/sgadd-charts.js?v=20"></script>
+<script src="js/sgadd-rankings.js?v=20"></script>
+<script src="js/sgadd-equipos.js?v=20"></script>
+<script src="js/sgadd-diagnostico.js?v=20"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -2060,14 +2060,7 @@ async function refreshData() {
   /* La config del club es una MEJORA OPCIONAL, no un requisito. Si el JSON
      no esta o falla, el panel arranca igual con los defaults de arriba.
      Nunca mas un archivo de configuracion puede tumbar el dashboard. */
-  if (typeof CLUB !== 'undefined') {
-    try { await CLUB.cargar(); } catch (e) { console.warn('[CLUB] omitido:', e); }
-  }
-
-  // La planilla inicial sale del catalogo/hash, no de una constante.
-  SGADD_APP.inicializar();
-  const pIni = SGADD_APP.planillaActual();
-  if (pIni && pIni.sheetId) SHEET_ID = pIni.sheetId;
+  await resolverClubYPlanilla();
 
   const errors = await fetchAllData();
   lastErrors = errors;
@@ -2098,9 +2091,42 @@ function removeHighlight() {
 }
 
 /* ============ INICIALIZACIÓN ============ */
+
+/* Resuelve el club de la URL y apunta SHEET_ID a SU planilla.
+
+   Este paso vivia SOLO dentro de refreshData(), asi que en el ARRANQUE
+   SHEET_ID se quedaba con el valor por defecto y ?club=jujuy terminaba
+   mostrando los datos de Reconquista. Ahora es una sola funcion que llaman
+   los dos caminos. */
+async function resolverClubYPlanilla() {
+  if (typeof CLUB !== 'undefined') {
+    try { await CLUB.cargar(); } catch (e) { console.warn('[CLUB] omitido:', e); }
+  }
+  if (typeof SGADD_APP === 'undefined') return;
+
+  SGADD_APP.inicializar();
+
+  /* Si la planilla seleccionada no pertenece a ESTE club (pasa al cambiar de
+     ?club=), se descarta y se toma la primera del catalogo nuevo. */
+  let p = SGADD_APP.planillaActual();
+  if (!p || !p.sheetId) {
+    const activas = SGADD.planillasVisibles({});
+    if (activas.length) {
+      SGADD_APP.estado.planillaId = activas[0].id;
+      p = SGADD_APP.planillaActual();
+    }
+  }
+  if (p && p.sheetId) SHEET_ID = p.sheetId;
+
+  console.log('[BOOT] club=' + ((typeof CLUB !== 'undefined' && CLUB.estado.id) || '?') +
+    ' · planilla=' + (p ? p.id : '—') + ' · sheet=' + SHEET_ID.slice(0, 14) + '…');
+}
 async function init() {
   const initial = (window.location.hash || '#principal').replace('#', '');
   currentSection = VALID_SECTIONS.includes(initial) ? initial : 'principal';
+
+  // Primero el club: define de QUE planilla se bajan los datos.
+  await resolverClubYPlanilla();
 
   const errors = await fetchAllData();
   lastErrors = errors;
