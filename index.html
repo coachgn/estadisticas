@@ -44,7 +44,7 @@
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: #141414; }
   ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
-  :root { --acento: #f7941e; --acento-oscuro: #d97706; }
+  :root { --acento: #f7941e; --acento-oscuro: #d97706; --acento-texto: #f7941e; }
 
   ::-webkit-scrollbar-thumb:hover { background: var(--acento); }
   * { scrollbar-color: #333 #141414; scrollbar-width: thin; }
@@ -59,7 +59,9 @@
      no genero la clase para un nodo recien inyectado, igual se ve bien. */
   .text-ink { color: #F9FAFB; }
   .text-muted { color: #a8b0bd; }
-  .text-accent { color: var(--acento); }
+  /* Como TEXTO se usa la variante aclarada: el color de marca crudo puede
+     no tener contraste suficiente sobre fondo oscuro (ver sgadd-club.js). */
+  .text-accent { color: var(--acento-texto) !important; }
   .bg-accent { background-color: var(--acento); }
   .border-accent { border-color: var(--acento); }
   .hover\:bg-accentdeep:hover { background-color: var(--acento-oscuro); }
@@ -110,6 +112,70 @@
   .transition-all { transition: all .2s ease; }
   .hover\:border-accent:hover { border-color: var(--acento); }
   .hover\:shadow-lg:hover { box-shadow: 0 8px 24px rgba(0,0,0,.45); }
+
+
+  /* =====================================================================
+     IMPRESIÓN · Informe pre-partido
+
+     Se activa con body.modo-impresion. El navegador ya sabe generar PDF;
+     lo único que hay que hacer es ocultar la app y darle reglas de corte.
+     ===================================================================== */
+  #informeSalida { display: none; }
+
+  body.modo-impresion #informeSalida { display: block; }
+  body.modo-impresion > *:not(#informeSalida) { display: none !important; }
+
+  @media print {
+    @page { size: A4; margin: 14mm 12mm; }
+
+    /* Papel: fondo blanco y texto negro. El tema oscuro gasta tinta y en
+       impresora hogareña sale gris sucio. */
+    html, body { background: #fff !important; color: #111 !important; }
+    body * { color: #111 !important; }
+
+    .card, .bg-surface2\/50, .bg-surface2\/30, .bg-surface2,
+    [class*="bg-accent/"], [class*="bg-green-400/"], [class*="bg-red-400/"] {
+      background: #fff !important;
+      border: 1px solid #d4d4d4 !important;
+      box-shadow: none !important;
+    }
+    .dato-sec, .text-muted { color: #555 !important; }
+    .text-green-400 { color: #15803d !important; }
+    .text-red-400 { color: #b91c1c !important; }
+    .text-accent { color: #000 !important; font-weight: 600; }
+
+    /* Nada de la app navegable entra al papel. */
+    aside, nav, header.sticky, button, select, input,
+    #modalInforme, #logosFaltantesPanel, [data-no-print] { display: none !important; }
+
+    /* Cortes: una tarjeta o una tabla partida al medio arruina el informe. */
+    .informe-bloque, .card, table, tr, .chart-box { page-break-inside: avoid; break-inside: avoid; }
+    .informe-bloque { page-break-after: auto; margin-bottom: 10mm; }
+    h1, h2, h3, h5 { page-break-after: avoid; break-after: avoid; }
+    thead { display: table-header-group; }   /* repite encabezado por página */
+
+    .informe-cabecera { border-bottom: 2px solid #111; padding-bottom: 4mm; margin-bottom: 6mm; }
+    .informe-cabecera h1 { font-size: 16pt; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+    .informe-cabecera p { font-size: 8pt; color: #555 !important; margin-top: 1mm; }
+
+    .informe-bloque h2 {
+      font-size: 11pt; font-weight: 700; text-transform: uppercase;
+      border-bottom: 1px solid #999; padding-bottom: 1.5mm; margin-bottom: 3mm;
+    }
+    .informe-pregunta { font-size: 8pt; color: #666 !important; margin-bottom: 3mm; }
+    .informe-arquetipo { border-left: 3px solid #111; padding-left: 4mm; margin-bottom: 4mm; }
+    .informe-arquetipo-titulo { font-size: 13pt; font-weight: 700; text-transform: uppercase; }
+    .informe-pie { border-top: 1px solid #999; padding-top: 3mm; font-size: 7.5pt; color: #666 !important; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 8pt; }
+    th, td { border-bottom: 1px solid #e0e0e0; padding: 1.5mm 2mm; }
+    th { font-size: 7pt; text-transform: uppercase; color: #555 !important; }
+
+    /* Los graficos entran a media pagina para que no empujen todo. */
+    .chart-box { height: 62mm !important; }
+    canvas { max-width: 100% !important; height: auto !important; }
+    .scrollbox { overflow: visible !important; }
+  }
 
   .card { background: #141414; border: 1px solid #282828; transition: border-color .15s ease; }
   .card:hover { border-color: #3a3a3a; }
@@ -278,15 +344,16 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=24"></script>
-<script src="js/sgadd-core.js?v=24"></script>
-<script src="js/sgadd-ui.js?v=24"></script>
-<script src="js/sgadd-app.js?v=24"></script>
-<script src="js/sgadd-charts.js?v=24"></script>
-<script src="js/sgadd-personalidad.js?v=24"></script>
-<script src="js/sgadd-rankings.js?v=24"></script>
-<script src="js/sgadd-equipos.js?v=24"></script>
-<script src="js/sgadd-diagnostico.js?v=24"></script>
+<script src="js/sgadd-club.js?v=25"></script>
+<script src="js/sgadd-core.js?v=25"></script>
+<script src="js/sgadd-ui.js?v=25"></script>
+<script src="js/sgadd-app.js?v=25"></script>
+<script src="js/sgadd-charts.js?v=25"></script>
+<script src="js/sgadd-personalidad.js?v=25"></script>
+<script src="js/sgadd-rankings.js?v=25"></script>
+<script src="js/sgadd-informe.js?v=25"></script>
+<script src="js/sgadd-equipos.js?v=25"></script>
+<script src="js/sgadd-diagnostico.js?v=25"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
