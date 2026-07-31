@@ -188,12 +188,17 @@ function equiposHeader(idx, e) {
     <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
       <div class="flex items-center gap-4 mb-5">
         ${logo ? `<img src="${escapeAttr(logo)}" alt="" class="w-16 h-16 object-contain shrink-0">` : ''}
-        <div class="min-w-0">
-          <h2 class="font-display text-xl sm:text-2xl uppercase tracking-wide text-ink truncate">${escapeHtml(e.nombre)}</h2>
+        <div class="min-w-0 flex-1">
+          <h2 class="font-display text-xl sm:text-2xl uppercase tracking-wide text-white truncate">${escapeHtml(e.nombre)}</h2>
           <p class="text-xs text-muted font-mono">
             ${rec.ganados}-${rec.perdidos} · ${racha}${rk ? ' · ' + rk.puesto + '° de ' + rk.de + ' en rating neto' : ''}
           </p>
         </div>
+        <button onclick="SGADD_INFORME.abrir()" data-no-print
+          class="shrink-0 text-xs font-semibold uppercase tracking-wider border border-hairline rounded px-4 py-2.5
+                 hover:border-accent hover:bg-surface2 transition-all duration-200" style="color:#fff">
+          📄 Generar informe PDF
+        </button>
       </div>
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">${hero}</div>
     </div>`;

@@ -21,6 +21,7 @@ const CLUB = (function () {
   const TEMA = {
     acento: '#f7941e',
     acentoOscuro: '#d97706',
+    acentoTexto: '#f7941e',
     paleta: ['#f7941e', '#4ade80', '#60a5fa', '#f472b6'],
   };
 
@@ -163,10 +164,12 @@ const CLUB = (function () {
     if (c.acento) {
       TEMA.acento = c.acento;
       TEMA.acentoOscuro = c.acentoOscuro || c.acento;
+      TEMA.acentoTexto = aclararHastaLegible(c.acento, FONDO_CARD, 4.5);
       TEMA.paleta = [TEMA.acento].concat(TEMA.paleta.slice(1));
       const raiz = document.documentElement;
       raiz.style.setProperty('--acento', TEMA.acento);
       raiz.style.setProperty('--acento-oscuro', TEMA.acentoOscuro);
+      raiz.style.setProperty('--acento-texto', TEMA.acentoTexto);
     }
 
     ponerEscudo(c);
@@ -229,6 +232,54 @@ const CLUB = (function () {
     if (estado.cfg) ponerEscudo(estado.cfg);
   }
 
+  /* ---------------------------------------------------------------------
+     COLOR DE ACENTO COMO TEXTO
+
+     El color de marca sirve para bordes y rellenos, pero NO siempre como
+     texto: el naranja de Reconquista da 6.44 de contraste sobre la card
+     oscura, el azul de Jujuy da 2.84 — ilegible (el mínimo WCAG AA es 4.5).
+
+     En vez de pedirle a cada club un segundo color, se aclara el suyo hasta
+     que sea legible. Mantiene la identidad y garantiza que se lea.
+     --------------------------------------------------------------------- */
+  const FONDO_CARD = '#1F2937';
+
+  function aRgb(hex) {
+    const h = String(hex).replace('#', '');
+    const full = h.length === 3 ? h.split('').map(x => x + x).join('') : h;
+    const m = full.match(/../g) || ['00', '00', '00'];
+    return m.slice(0, 3).map(x => parseInt(x, 16));
+  }
+
+  function luminancia(hex) {
+    return aRgb(hex).map(v => {
+      const s2 = v / 255;
+      return s2 <= 0.03928 ? s2 / 12.92 : Math.pow((s2 + 0.055) / 1.055, 2.4);
+    }).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+  }
+
+  function contraste(a, b) {
+    const l1 = luminancia(a), l2 = luminancia(b);
+    return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+  }
+
+  function aHex(rgb) {
+    return '#' + rgb.map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
+  }
+
+  /** Mezcla el color con blanco hasta alcanzar el contraste pedido. */
+  function aclararHastaLegible(color, fondo, minimo) {
+    try {
+      if (contraste(color, fondo) >= minimo) return color;
+      const base = aRgb(color);
+      for (let f = 0.1; f <= 1; f += 0.05) {
+        const mezcla = aHex(base.map(v => v + (255 - v) * f));
+        if (contraste(mezcla, fondo) >= minimo) return mezcla;
+      }
+      return '#ffffff';
+    } catch (e) { return color; }
+  }
+
   /** Para el pie de página: quién hizo esto. */
   function credito() {
     const c = estado.cfg;
@@ -267,6 +318,6 @@ const CLUB = (function () {
   function marcarRender() { yaHuboRender = true; }
 
   return { TEMA, estado, cargar, aplicar: aplicarSeguro, credito, idDesdeUrl, debug, marcarRender,
-           reintentarEscudo,
+           reintentarEscudo, aclararHastaLegible, contraste,
            get cfg() { return estado.cfg; }, get aplicado() { return aplicado; } };
 })();
