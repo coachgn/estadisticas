@@ -145,9 +145,19 @@ const CLUB = (function () {
     /* --- Escudos: pozo compartido + override por liga.
        Dos ciudades tienen rivales distintos, y hay nombres que se repiten
        (hay un Atenas en media Argentina). El de la liga pisa al genérico. --- */
-    if (typeof LOGOS !== 'undefined' && c.liga) {
-      LOGOS.CFG.basePaths = ['logos/' + c.liga + '/', 'logos/'];
+    if (typeof LOGOS !== 'undefined') {
+      // Limpiar ANTES de cambiar de carpeta: si no, quedan escudos de la
+      // liga anterior cacheados bajo el mismo nombre de equipo.
+      if (LOGOS.reset) LOGOS.reset();
+      if (c.liga) LOGOS.CFG.basePaths = ['logos/' + c.liga + '/', 'logos/'];
+      // Los sufijos de categoria son una convención de cada liga.
+      if (Array.isArray(c.sufijosEquipo)) LOGOS.CFG.sufijos = c.sufijosEquipo;
+      // Casos que el matching automático no resuelve.
+      if (c.aliasLogos) LOGOS.CFG.overrides = c.aliasLogos;
     }
+
+    // Las planillas de otro club no pueden quedar en memoria.
+    if (typeof SGADD !== 'undefined' && SGADD.limpiarCache) SGADD.limpiarCache();
 
     aplicado = true;
   }
