@@ -173,7 +173,19 @@ function diagBloqueClub() {
      <p class="text-[11px] text-muted mt-3 leading-snug">
        El panel funciona sin este archivo: si no carga, usa los valores por defecto y nada se rompe.
        La fila <b>Escudos</b> muestra en qué carpetas busca, en orden.
-     </p>`);
+     </p>
+     <div class="mt-4 pt-3 border-t border-hairline">
+       <p class="text-[11px] text-muted mb-2 leading-snug">
+         Sin manifiesto, cada escudo se busca probando 8 extensiones en 2 carpetas: cientos de pedidos 404.
+         Con manifiesto es uno solo. Generalo acá y subilo como
+         <code class="text-ink">${escapeHtml((typeof LOGOS !== 'undefined' ? (LOGOS.CFG.basePaths || ['logos/'])[0] : 'logos/') + 'index.json')}</code>.
+       </p>
+       <button onclick="diagGenerarManifiesto()"
+         class="text-xs font-semibold uppercase tracking-wider bg-accent text-base rounded px-4 py-2 hover:bg-accentdeep transition-colors">
+         Generar index.json
+       </button>
+       <pre id="diagManifiesto" class="hidden mt-3 p-3 bg-surface2 rounded text-[11px] font-mono overflow-x-auto max-h-64"></pre>
+     </div>`);
 }
 
 /* --- 1. Carga --- */
@@ -427,4 +439,15 @@ function diagCard(titulo, subtitulo, cuerpo) {
       </div>
       ${cuerpo}
     </div>`;
+}
+
+
+/** Vuelca el manifiesto de escudos para copiar y pegar. */
+function diagGenerarManifiesto() {
+  const pre = document.getElementById('diagManifiesto');
+  if (!pre || typeof LOGOS === 'undefined') return;
+  const txt = LOGOS.generarManifiesto();
+  pre.textContent = txt;
+  pre.classList.remove('hidden');
+  if (navigator.clipboard) navigator.clipboard.writeText(txt).catch(() => {});
 }
