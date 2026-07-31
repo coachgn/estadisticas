@@ -232,14 +232,14 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=17"></script>
-<script src="js/sgadd-core.js?v=17"></script>
-<script src="js/sgadd-ui.js?v=17"></script>
-<script src="js/sgadd-app.js?v=17"></script>
-<script src="js/sgadd-charts.js?v=17"></script>
-<script src="js/sgadd-rankings.js?v=17"></script>
-<script src="js/sgadd-equipos.js?v=17"></script>
-<script src="js/sgadd-diagnostico.js?v=17"></script>
+<script src="js/sgadd-club.js?v=19"></script>
+<script src="js/sgadd-core.js?v=19"></script>
+<script src="js/sgadd-ui.js?v=19"></script>
+<script src="js/sgadd-app.js?v=19"></script>
+<script src="js/sgadd-charts.js?v=19"></script>
+<script src="js/sgadd-rankings.js?v=19"></script>
+<script src="js/sgadd-equipos.js?v=19"></script>
+<script src="js/sgadd-diagnostico.js?v=19"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -409,6 +409,13 @@ const LOGOS = (function () {
        carpeta de la liga y despues en el pozo compartido, asi anda con la
        estructura vieja y con la nueva. CLUB lo sobreescribe si carga. */
     basePaths: ['logos/la-plata/', 'logos/'],
+
+    /* Sufijos de categoria a descartar del nombre del equipo. Son una
+       convencion DE CADA LIGA, no una regla universal:
+         La Plata      "ATENAS 'A' - MM", "RECONQUISTA 'A' - U21M"
+         Liga Argentina  puede no tener ninguno, u otro formato
+       El JSON del club los sobreescribe con `sufijosEquipo`. */
+    sufijos: ["\\s*-\\s*(MM|MF|U\\d{1,2}\\s*[MF]?)\\s*$"],
     extensiones: ['png', 'webp', 'jpg', 'jpeg', 'jfif', 'avif', 'svg', 'gif'],
     // Dejalo en '' para desactivar. Si lo usás: URL /exec del Web App.
     jsonpUrl: '',
@@ -427,11 +434,21 @@ const LOGOS = (function () {
 
   /* ---------- normalización y slugs ---------- */
 
+  /* Quita los sufijos de categoria configurados para la liga del club.
+     Sin esto, el mismo club es una entidad distinta en cada categoria y su
+     escudo no matchea: "RECONQUISTA 'A' - U21M" buscaria reconquista-a-u21m. */
+  function quitarSufijos(t) {
+    (CFG.sufijos || []).forEach((pat) => {
+      try { t = t.replace(new RegExp(pat, 'i'), ''); } catch (e) {}
+    });
+    return t;
+  }
+
   function normalizar(s) {
-    return String(s === null || s === undefined ? '' : s)
+    const base = String(s === null || s === undefined ? '' : s)
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .toUpperCase()
-      .replace(/\s*-\s*MM\b/g, '')
+      .toUpperCase();
+    return quitarSufijos(base)
       .replace(/[^A-Z0-9]+/g, ' ')
       .trim();
   }
@@ -586,12 +603,16 @@ const LOGOS = (function () {
       .then(j => {
         manifiesto = {};
         if (j) {
-          Object.keys(j).forEach(k => { manifiesto[normalizarClave(k)] = base + j[k]; });
+          Object.keys(j).forEach(k => { manifiesto[normalizar(k)] = base + j[k]; });
           console.log('[LOGOS] manifiesto:', Object.keys(manifiesto).length, 'escudos');
         }
         return manifiesto;
       })
-      .catch(() => { manifiesto = {}; return manifiesto; });
+      .catch((e) => {
+        // No romper si no hay manifiesto, pero NUNCA en silencio.
+        console.warn('[LOGOS] sin manifiesto:', e && e.message ? e.message : e);
+        manifiesto = {}; return manifiesto;
+      });
     return promesaManifiesto;
   }
 
@@ -671,6 +692,26 @@ const LOGOS = (function () {
     resolver, getImage, getUrl, iniciales,
     normalizar, slug,
     // Diagnóstico: LOGOS.debug() en la consola
+    /* Genera el contenido de logos/<liga>/index.json con lo que YA se resolvio.
+       Se usa una vez: se copia, se sube, y desde ahi la carga es instantanea. */
+    /* Borra TODO el estado en memoria. Obligatorio al cambiar de club: dos
+       ligas distintas pueden tener un "ATENAS" cada una, con escudos
+       distintos, y la clave de cache es solo el nombre normalizado. */
+    reset: () => {
+      cache.clear();
+      enVuelo.clear();
+      manifiesto = null; promesaManifiesto = null;
+      mapaRemoto = null; promesaRemota = null;
+      console.log('[LOGOS] cache limpiada');
+    },
+    generarManifiesto: () => {
+      const base = (CFG.basePaths || ['logos/'])[0];
+      const out = {};
+      cache.forEach((v, k) => {
+        if (v && v.url) out[k.toLowerCase()] = String(v.url).replace(base, '');
+      });
+      return JSON.stringify(out, null, 2);
+    },
     debug: () => {
       const filas = [];
       cache.forEach((v, k) => filas.push({ equipo: k, archivo: v.url || '— FALTA —' }));
