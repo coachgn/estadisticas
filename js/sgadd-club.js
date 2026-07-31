@@ -114,15 +114,7 @@ const CLUB = (function () {
       const b = document.getElementById('clubBajada');
       if (b) b.textContent = c.bajada;
     }
-    if (c.escudo) {
-      const img = document.getElementById('clubEscudo');
-      // Solo se muestra si carga: un escudo roto es peor que ninguno.
-      if (img) {
-        img.onload = () => img.classList.remove('hidden');
-        img.onerror = () => { img.classList.add('hidden'); console.warn('[CLUB] escudo no encontrado:', c.escudo); };
-        img.src = c.escudo;
-      }
-    }
+    ponerEscudo(c);
 
     /* --- Color de marca por variable CSS.
        Antes estaba escrito a mano en 13 lugares; ahora se cambia en un JSON. */
@@ -183,6 +175,40 @@ const CLUB = (function () {
     } catch (e) { console.warn('[CLUB] repintado omitido:', e); }
   }
 
+  /* El escudo del club se resuelve en cascada:
+       1. `escudo` del JSON, si existe el archivo
+       2. el logo del PROPIO equipo, que ya está en logos/<liga>/
+       3. nada (se oculta)
+     Así no hay que subir un archivo extra: el club ya tiene su escudo
+     cargado como equipo de la liga. */
+  function ponerEscudo(c) {
+    const img = document.getElementById('clubEscudo');
+    if (!img) return;
+
+    const candidatos = [];
+    if (c.escudo) candidatos.push(c.escudo);
+
+    // El logo del equipo propio, si LOGOS ya lo resolvió.
+    if (typeof LOGOS !== 'undefined' && c.patronEquipoPropio) {
+      const propio = (c.nombreCorto || c.patronEquipoPropio);
+      const url = LOGOS.getUrl(propio) || LOGOS.getUrl(c.patronEquipoPropio + " 'A'");
+      if (url) candidatos.push(url);
+    }
+
+    (function probar(i) {
+      if (i >= candidatos.length) { img.classList.add('hidden'); return; }
+      img.onload = () => img.classList.remove('hidden');
+      img.onerror = () => probar(i + 1);
+      img.src = candidatos[i];
+    })(0);
+  }
+
+  /* LOGOS resuelve los escudos después de que carga la config, así que
+     reintentamos cuando ya estén disponibles. */
+  function reintentarEscudo() {
+    if (estado.cfg) ponerEscudo(estado.cfg);
+  }
+
   /** Para el pie de página: quién hizo esto. */
   function credito() {
     const c = estado.cfg;
@@ -221,5 +247,6 @@ const CLUB = (function () {
   function marcarRender() { yaHuboRender = true; }
 
   return { TEMA, estado, cargar, aplicar: aplicarSeguro, credito, idDesdeUrl, debug, marcarRender,
+           reintentarEscudo,
            get cfg() { return estado.cfg; }, get aplicado() { return aplicado; } };
 })();
