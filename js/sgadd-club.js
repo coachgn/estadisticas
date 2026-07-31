@@ -93,41 +93,27 @@ const CLUB = (function () {
     document.body.appendChild(d);
   }
 
+  /* SEPARADO A PROPOSITO en datos y UI.
+
+     Antes era una sola funcion que arrancaba con "si el header no existe en
+     el DOM, salir y reintentar despues". Eso hacia que, cuando el script
+     corria antes de que el DOM estuviera listo, TAMPOCO se aplicara el
+     catalogo de planillas ni la carpeta de escudos. Es decir: un detalle de
+     presentacion bloqueaba la configuracion de datos.
+
+     Ahora los datos se aplican SIEMPRE, sin depender del DOM. */
   function aplicar() {
     const c = estado.cfg;
     if (!c) { cartelError(); return; }
+    aplicarDatos(c);
+    aplicarUI(c);
+    aplicado = true;
+  }
 
-    /* Si el <script> corre antes de que exista el header, reintentamos al
-       DOMContentLoaded. Sin esto, la config carga bien pero no se ve. */
-    if (!document.getElementById('clubNombre')) {
-      document.addEventListener('DOMContentLoaded', aplicarSeguro, { once: true });
-      return;
-    }
+  /** Catalogo, equipo propio, escudos. No toca el DOM. */
+  function aplicarDatos(c) {
 
-    /* --- Marca visible: es la del CLUB, no la del producto --- */
-    if (c.nombre) {
-      document.title = c.nombre + ' · Panel de Scouting';
-      const t = document.getElementById('clubNombre');
-      if (t) t.textContent = c.nombreCorto || c.nombre;
-    }
-    if (c.bajada) {
-      const b = document.getElementById('clubBajada');
-      if (b) b.textContent = c.bajada;
-    }
-    ponerEscudo(c);
-
-    /* --- Color de marca por variable CSS.
-       Antes estaba escrito a mano en 13 lugares; ahora se cambia en un JSON. */
-    if (c.acento) {
-      TEMA.acento = c.acento;
-      TEMA.acentoOscuro = c.acentoOscuro || c.acento;
-      TEMA.paleta = [TEMA.acento].concat(TEMA.paleta.slice(1));
-      const raiz = document.documentElement;
-      raiz.style.setProperty('--acento', TEMA.acento);
-      raiz.style.setProperty('--acento-oscuro', TEMA.acentoOscuro);
-    }
-
-    /* --- Catálogo de planillas --- */
+    /* --- Catalogo de planillas --- */
     if (typeof SGADD !== 'undefined') {
       if (c.patronEquipoPropio) {
         SGADD.CATALOGO.patronEquipoPropio = new RegExp(c.patronEquipoPropio, 'i');
@@ -142,24 +128,48 @@ const CLUB = (function () {
       }
     }
 
-    /* --- Escudos: pozo compartido + override por liga.
-       Dos ciudades tienen rivales distintos, y hay nombres que se repiten
-       (hay un Atenas en media Argentina). El de la liga pisa al genérico. --- */
+    /* --- Escudos: pozo compartido + override por liga. --- */
     if (typeof LOGOS !== 'undefined') {
       // Limpiar ANTES de cambiar de carpeta: si no, quedan escudos de la
       // liga anterior cacheados bajo el mismo nombre de equipo.
       if (LOGOS.reset) LOGOS.reset();
       if (c.liga) LOGOS.CFG.basePaths = ['logos/' + c.liga + '/', 'logos/'];
-      // Los sufijos de categoria son una convención de cada liga.
       if (Array.isArray(c.sufijosEquipo)) LOGOS.CFG.sufijos = c.sufijosEquipo;
-      // Casos que el matching automático no resuelve.
       if (c.aliasLogos) LOGOS.CFG.overrides = c.aliasLogos;
     }
 
-    // Las planillas de otro club no pueden quedar en memoria.
     if (typeof SGADD !== 'undefined' && SGADD.limpiarCache) SGADD.limpiarCache();
+  }
 
-    aplicado = true;
+  /** Marca visible y colores. Necesita el DOM; si no esta, reintenta. */
+  function aplicarUI(c) {
+    if (!document.getElementById('clubNombre')) {
+      document.addEventListener('DOMContentLoaded', () => aplicarUI(c), { once: true });
+      return;
+    }
+
+    /* --- Marca visible: es la del CLUB, no la del producto --- */
+    if (c.nombre) {
+      document.title = c.nombre + ' · Panel de Scouting';
+      const t = document.getElementById('clubNombre');
+      if (t) t.textContent = c.nombreCorto || c.nombre;
+    }
+    if (c.bajada) {
+      const b = document.getElementById('clubBajada');
+      if (b) b.textContent = c.bajada;
+    }
+    /* --- Color de marca por variable CSS.
+       Antes estaba escrito a mano en 13 lugares; ahora se cambia en un JSON. */
+    if (c.acento) {
+      TEMA.acento = c.acento;
+      TEMA.acentoOscuro = c.acentoOscuro || c.acento;
+      TEMA.paleta = [TEMA.acento].concat(TEMA.paleta.slice(1));
+      const raiz = document.documentElement;
+      raiz.style.setProperty('--acento', TEMA.acento);
+      raiz.style.setProperty('--acento-oscuro', TEMA.acentoOscuro);
+    }
+
+    ponerEscudo(c);
   }
 
   /* Cada paso va en su propio try: si uno falla (un JSON a medias, un id de
