@@ -109,7 +109,7 @@ const SGADD_RANKINGS = (function () {
 
     const cabecera = `
       <tr class="text-[10px] uppercase tracking-wider text-muted">
-        <th class="pb-2 pr-2 text-left">#</th>
+        <th class="pb-2 pr-2">#</th>
         <th class="pb-2 pr-3 text-left">Equipo</th>
         <th class="pb-2 pr-3 text-right">PJ</th>
         ${claves.map(k => {
@@ -175,7 +175,7 @@ const SGADD_RANKINGS = (function () {
 
     return `
       <div class="scrollbox">
-        <table class="w-full text-left">
+        <table class="w-full tabla-rank">
           <thead>${cabecera}</thead>
           <tbody>${filas}${tipo}</tbody>
         </table>

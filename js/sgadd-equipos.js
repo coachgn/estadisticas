@@ -28,6 +28,7 @@ const EQUIPOS_TABS = [
   { id: 'ofensiva',  label: 'Ofensiva',   pregunta: '¿Cómo anota?' },
   { id: 'defensiva', label: 'Defensiva',  pregunta: '¿Cómo defiende?' },
   { id: '4factores', label: '4 Factores', pregunta: '¿Dónde gana y dónde pierde?' },
+  { id: 'personalidad', label: 'Personalidad', pregunta: '¿A qué juega?' },
   { id: 'condicion', label: 'Local/Vis.', pregunta: '¿Cambia de local?' },
   { id: 'plantel',   label: 'Plantel',    pregunta: '¿De quién depende?' },
   { id: 'partidos',  label: 'Partidos',   pregunta: '¿Qué pasó cada noche?' },
@@ -206,6 +207,7 @@ function equiposTab(idx, e, id) {
     case 'ofensiva':  return equiposTabOfensiva(idx, e);
     case 'defensiva': return equiposTabDefensiva(idx, e);
     case '4factores': return equiposTab4F(idx, e);
+    case 'personalidad': return equiposTabPersonalidad(idx, e);
     case 'condicion': return equiposTabCondicion(idx, e);
     case 'plantel':   return equiposTabPlantel(idx, e);
     case 'partidos':  return equiposTabPartidos(idx, e);
@@ -496,4 +498,122 @@ function equiposRival(p, e) {
   const mio = SGADD.claveEquipo(e.nombre);
   const otro = SGADD.claveEquipo(partes[0]) === mio ? partes[1] : partes[0];
   return SGADD.limpiarNombre(otro);
+}
+
+
+/* ---------------------------------------------------------------------
+   TAB PERSONALIDAD
+
+   Todo en percentiles contra la propia liga: el mismo código sirve para
+   La Plata y para Liga Argentina sin tocar nada.
+   --------------------------------------------------------------------- */
+function equiposTabPersonalidad(idx, e) {
+  if (typeof SGADD_PERSONALIDAD === 'undefined') return '';
+  const p = SGADD_PERSONALIDAD.perfil(idx, e);
+
+  /* --- Titular --- */
+  const neto = p.arquetipo.neto;
+  const cabecera = `
+    <div class="rounded-lg border border-accent/40 bg-accent/5 p-4 mb-5">
+      <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-1">Identidad de juego</p>
+      <h4 class="font-display text-xl sm:text-2xl uppercase tracking-wide text-ink leading-tight">
+        ${escapeHtml(p.arquetipo.titulo)}
+      </h4>
+      <p class="text-xs text-muted mt-2 leading-snug max-w-3xl">${escapeHtml(p.arquetipo.frase)}</p>
+      ${neto && neto.valor !== null ? `<p class="text-[11px] text-muted mt-2 font-mono">
+        Rating neto ${escapeHtml(neto.formateado)} · percentil ${neto.percentil === null ? '—' : neto.percentil.toFixed(0)}
+      </p>` : ''}
+    </div>`;
+
+  /* --- Ejes: un slider por rasgo, con los dos polos --- */
+  const eje = (x) => {
+    const pos = Math.max(2, Math.min(98, x.percentil));
+    const color = x.fuerte ? 'var(--acento)' : '#6b7280';
+    return `
+      <div class="py-2.5 border-b border-hairline/40 last:border-0">
+        <div class="flex items-baseline justify-between gap-3 mb-1.5">
+          <span class="text-[11px] uppercase tracking-wider text-muted font-display">${escapeHtml(x.titulo)}</span>
+          <span class="text-xs font-semibold ${x.fuerte ? 'text-accent' : 'text-ink/80'}">${escapeHtml(x.etiqueta)}</span>
+        </div>
+        <div class="relative h-1.5 rounded-full bg-surface2">
+          <div class="absolute inset-y-0 left-1/2 w-px bg-ink/30"></div>
+          <div class="absolute -top-1 h-3.5 w-3.5 rounded-full border-2 border-base"
+               style="left:calc(${pos.toFixed(0)}% - 7px);background:${color}"></div>
+        </div>
+        <div class="flex justify-between mt-1">
+          <span class="text-[10px] ${x.polo === 'izq' ? 'text-ink/70' : 'text-muted/50'}">${escapeHtml(x.izq)}</span>
+          <span class="text-[10px] ${x.polo === 'der' ? 'text-ink/70' : 'text-muted/50'}">${escapeHtml(x.der)}</span>
+        </div>
+        ${x.descripcion ? `<p class="text-[10px] text-muted mt-1.5 leading-snug">${escapeHtml(x.descripcion)}</p>` : ''}
+        <p class="text-[10px] text-muted/60 mt-1 font-mono">
+          ${escapeHtml(x.metrica)} ${escapeHtml(x.valor)} · liga ${escapeHtml(x.mediana)} · pctil ${x.percentil.toFixed(0)}
+        </p>
+      </div>`;
+  };
+
+  const ataque = p.ejes.filter(x => x.familia === 'ataque' || x.familia === 'tempo');
+  const defensa = p.ejes.filter(x => x.familia === 'defensa');
+
+  /* --- Rasgos definitorios --- */
+  const rasgos = p.rasgos.length
+    ? p.rasgos.map(r => `
+        <div class="bg-surface2/50 rounded-lg p-3">
+          <p class="text-[10px] uppercase tracking-wider text-muted font-display">${escapeHtml(r.titulo)}</p>
+          <p class="font-display text-base text-accent leading-tight mt-0.5">${escapeHtml(r.etiqueta)}</p>
+          <p class="text-[10px] text-muted mt-1 font-mono">pctil ${r.percentil.toFixed(0)}</p>
+        </div>`).join('')
+    : `<p class="text-xs text-muted">Ningún rasgo se separa lo suficiente de la media como para definirlo.</p>`;
+
+  /* --- Radar: los 8 ejes en percentil --- */
+  const radar = SGADD_CHARTS.radar('chPersonalidad',
+    p.ejes.map(x => x.titulo),
+    [
+      { label: e.nombre, data: p.ejes.map(x => x.percentil) },
+      { label: 'Mediana de la liga', data: p.ejes.map(() => 50), color: SGADD_CHARTS.COL.liga, relleno: 'transparent' },
+    ]);
+
+  const aviso = p.ejes.some(x => !x.muestraSuficiente)
+    ? SGADD_UI.aviso('Perfil provisorio',
+        'Con pocos partidos, un rasgo puede ser una racha y no una identidad. Se estabiliza con la temporada.')
+    : '';
+
+  return `
+    ${cabecera}
+    ${aviso}
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">${rasgos}</div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      ${equiposPanel('Perfil completo · 8 ejes', radar,
+        SGADD_CHARTS.nota('El anillo del 50 es la mediana de su liga. Los ejes no tienen lado bueno ni malo: son formas de jugar.'))}
+      <div>
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Cómo ataca</h5>
+        ${ataque.map(eje).join('')}
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div>
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Cómo defiende</h5>
+        ${defensa.map(eje).join('')}
+      </div>
+      ${p.resumen ? `
+      <div>
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Dónde gana y dónde pierde</h5>
+        <div class="space-y-3">
+          <div class="bg-surface2/50 rounded-lg p-3 border-l-2 border-green-400">
+            <p class="text-[10px] uppercase tracking-wider text-muted font-display">Su mejor arma</p>
+            <p class="text-sm text-ink mt-0.5">${escapeHtml(p.resumen.fuerte.label)} · ${escapeHtml(p.resumen.fuerte.formateado)}</p>
+            <p class="text-[10px] text-muted font-mono">pctil ${p.resumen.fuerte.percentil.toFixed(0)} · liga ${escapeHtml(p.resumen.fuerte.tipoFormateado)}</p>
+          </div>
+          <div class="bg-surface2/50 rounded-lg p-3 border-l-2 border-red-400">
+            <p class="text-[10px] uppercase tracking-wider text-muted font-display">Su punto débil</p>
+            <p class="text-sm text-ink mt-0.5">${escapeHtml(p.resumen.debil.label)} · ${escapeHtml(p.resumen.debil.formateado)}</p>
+            <p class="text-[10px] text-muted font-mono">pctil ${p.resumen.debil.percentil.toFixed(0)} · liga ${escapeHtml(p.resumen.debil.tipoFormateado)}</p>
+          </div>
+        </div>
+        <p class="text-[11px] text-muted mt-3 leading-snug">
+          Sale de los 8 factores: el mejor y el peor percentil. Es la lectura más corta de contra qué conviene prepararlos.
+        </p>
+      </div>` : ''}
+    </div>`;
 }
