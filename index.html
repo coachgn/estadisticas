@@ -232,14 +232,14 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=20"></script>
-<script src="js/sgadd-core.js?v=20"></script>
-<script src="js/sgadd-ui.js?v=20"></script>
-<script src="js/sgadd-app.js?v=20"></script>
-<script src="js/sgadd-charts.js?v=20"></script>
-<script src="js/sgadd-rankings.js?v=20"></script>
-<script src="js/sgadd-equipos.js?v=20"></script>
-<script src="js/sgadd-diagnostico.js?v=20"></script>
+<script src="js/sgadd-club.js?v=21"></script>
+<script src="js/sgadd-core.js?v=21"></script>
+<script src="js/sgadd-ui.js?v=21"></script>
+<script src="js/sgadd-app.js?v=21"></script>
+<script src="js/sgadd-charts.js?v=21"></script>
+<script src="js/sgadd-rankings.js?v=21"></script>
+<script src="js/sgadd-equipos.js?v=21"></script>
+<script src="js/sgadd-diagnostico.js?v=21"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -428,6 +428,7 @@ const LOGOS = (function () {
   const DEFAULT_LOGO = "data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%239CA3AF%22%3E%3Cpath d=%22M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5%22%3E%3C/path%3E%3C/svg%3E";
 
   const cache = new Map();      // CLAVE -> { img: HTMLImageElement|null, url: string|null }
+  const alResolverFns = [];     // callbacks para repintar cuando llegan los escudos
   const enVuelo = new Map();    // CLAVE -> Promise
   let mapaRemoto = null;        // CLAVE -> URL (del JSONP)
   let promesaRemota = null;
@@ -594,6 +595,7 @@ const LOGOS = (function () {
      que antes y no cambia nada.
      --------------------------------------------------------------------- */
   let manifiesto = null, promesaManifiesto = null;
+  let manifiestoRoto = [];
 
   function cargarManifiesto() {
     if (promesaManifiesto) return promesaManifiesto;
@@ -634,7 +636,13 @@ const LOGOS = (function () {
           const r = { img: img, url: enManifiesto };
           cache.set(clave, r);
           return r;
-        } catch (e) { /* el manifiesto miente: seguimos probando */ }
+        } catch (e) {
+          /* El manifiesto apunta a un archivo que no existe. Seguimos
+             sondeando para no romper, pero AVISAMOS: un manifiesto con
+             nombres inventados es peor que no tenerlo, porque suma un
+             pedido fallido por equipo antes del sondeo. */
+          manifiestoRoto.push(clave + ' → ' + enManifiesto.replace((CFG.basePaths || [''])[0], ''));
+        }
       }
 
       const tandas = candidatos(nombreEquipo);
@@ -666,7 +674,17 @@ const LOGOS = (function () {
     } else if (unicos.length) {
       console.log('[LOGOS] ' + unicos.length + '/' + unicos.length + ' logos OK');
     }
-    return { encontrados: unicos.length - faltantes.length, total: unicos.length, faltantes: faltantes };
+    // Los escudos llegan DESPUES del primer pintado: hay que avisar.
+    alResolverFns.forEach(fn => { try { fn(); } catch (e) { console.warn('[LOGOS]', e); } });
+
+    if (manifiestoRoto.length) {
+      console.warn('[LOGOS] el manifiesto apunta a ' + manifiestoRoto.length +
+        ' archivo(s) que NO existen. Regeneralo desde Diagnóstico:', manifiestoRoto);
+    }
+    return {
+      encontrados: unicos.length - faltantes.length, total: unicos.length,
+      faltantes: faltantes, manifiestoRoto: manifiestoRoto.slice(),
+    };
   }
 
   /* ---------- lectura sincrónica (para el render loop) ---------- */
@@ -697,19 +715,31 @@ const LOGOS = (function () {
     /* Borra TODO el estado en memoria. Obligatorio al cambiar de club: dos
        ligas distintas pueden tener un "ATENAS" cada una, con escudos
        distintos, y la clave de cache es solo el nombre normalizado. */
+    /** Se llama cada vez que termina una tanda de resolucion. */
+    alResolver: (fn) => { if (typeof fn === 'function') alResolverFns.push(fn); },
     reset: () => {
       cache.clear();
       enVuelo.clear();
-      manifiesto = null; promesaManifiesto = null;
+      manifiesto = null; promesaManifiesto = null; manifiestoRoto = [];
       mapaRemoto = null; promesaRemota = null;
       console.log('[LOGOS] cache limpiada');
     },
+    /* Devuelve el JSON con los escudos YA resueltos. Si no hay ninguno, no
+       devuelve "{}" mudo: dice por que. Un {} sin explicacion me costo dos
+       vueltas de diagnostico. */
     generarManifiesto: () => {
       const base = (CFG.basePaths || ['logos/'])[0];
       const out = {};
+      let n = 0;
       cache.forEach((v, k) => {
-        if (v && v.url) out[k.toLowerCase()] = String(v.url).replace(base, '');
+        if (v && v.url) { out[k.toLowerCase()] = String(v.url).replace(base, ''); n++; }
       });
+      if (!n) {
+        return '// Todavia no hay escudos resueltos en memoria.\n' +
+               '// Entra a Principal o Equipos (ahi se resuelven), volve aca y apreta de nuevo.\n' +
+               '// Si ya pasaste por esas secciones y sigue vacio, es que ningun archivo\n' +
+               '// existe en ' + base;
+      }
       return JSON.stringify(out, null, 2);
     },
     debug: () => {
@@ -726,6 +756,23 @@ const DEFAULT_LOGO = LOGOS.DEFAULT_LOGO;
 function getLogoUrl(teamName) { return LOGOS.getUrl(cleanName(teamName)) || DEFAULT_LOGO; }
 function getTeamImage(teamName) { return LOGOS.getImage(cleanName(teamName)); }
 
+/* Repinta la seccion actual cuando terminan de resolverse los escudos.
+
+   Este es el "parpadeo": la seccion se pinta con getUrl() = null (iniciales)
+   y nadie la volvia a pintar cuando los archivos terminaban de bajar. Por eso
+   aparecian recien al salir y entrar. Se registra UNA sola vez. */
+let repintadoRegistrado = false;
+function registrarRepintadoPorLogos() {
+  if (repintadoRegistrado || typeof LOGOS === 'undefined' || !LOGOS.alResolver) return;
+  repintadoRegistrado = true;
+  LOGOS.alResolver(() => {
+    if (typeof CLUB !== 'undefined' && CLUB.reintentarEscudo) CLUB.reintentarEscudo();
+    if (typeof currentSection !== 'undefined' && typeof renderSection === 'function') {
+      renderSection(currentSection);
+    }
+  });
+}
+
 /* Resuelve los escudos de TODOS los equipos de la planilla, una sola vez.
 
    Antes esto vivia adentro de drawOrtgDrtgChart(), asi que solo pasaba si
@@ -733,6 +780,7 @@ function getTeamImage(teamName) { return LOGOS.getImage(cleanName(teamName)); }
    y no se veia ningun escudo; y al volver, otra vez a esperar. */
 async function precargarLogos() {
   try {
+    registrarRepintadoPorLogos();
     const d = sheet('promedios4f');
     if (d.error || !d.rows.length) return;
     const col = findColumnLabel(d.cols, ['EQUIPO', 'NOMBRE']);
@@ -742,10 +790,6 @@ async function precargarLogos() {
 
     const res = await LOGOS.resolver(nombres);
     if (typeof renderPanelLogosFaltantes === 'function') renderPanelLogosFaltantes(res.faltantes);
-    // Ya hay escudos: el del club puede caer al del equipo propio.
-    if (typeof CLUB !== 'undefined' && CLUB.reintentarEscudo) CLUB.reintentarEscudo();
-    // Los escudos llegan despues del primer pintado: hay que repintar.
-    if (typeof currentSection !== 'undefined') renderSection(currentSection);
   } catch (e) { console.warn('[LOGOS] precarga omitida:', e); }
 }
 
