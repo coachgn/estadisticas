@@ -1,7 +1,7 @@
 {
   "id": "jujuy",
-  "nombre": "Jujuy Basket",
-  "nombreCorto": "JUJUY BASKET",
+  "nombre": "Jujuy Basquet",
+  "nombreCorto": "JUJUY BASQUET",
   "bajada": "Analitica · Liga Argentina",
   "escudo": "clubes/jujuy/escudo.png",
 
@@ -11,24 +11,23 @@
   "liga": "liga-argentina",
   "patronEquipoPropio": "JUJUY",
 
-  "//sufijosEquipo": "Sufijos a descartar del nombre del equipo. Si en Liga Argentina no hay, dejalo vacio. Si hay, agregalos como regex.",
+  "//sufijosEquipo": "VACIO A PROPOSITO. En esta liga los parentesis -HINDU (C), COLON (SF)- son parte del nombre: distinguen equipos de distintas provincias. Si se descartaran, HINDU (C) y un eventual HINDU de otra ciudad serian el mismo equipo.",
   "sufijosEquipo": [],
 
-  "//aliasLogos": "Solo para los que el matching automatico no encuentre. Clave = nombre en la planilla, valor = ruta del archivo.",
+  "//aliasLogos": "Solo para lo que el matching automatico no encuentre. Clave = nombre en la planilla.",
   "aliasLogos": {},
 
   "anio": 2025,
-  "torneo": "LIGA ARGENTINA",
+  "torneo": "CONFERENCIA NORTE",
   "credito": "SGADD",
 
   "planillas": [
     {
-      "id": "jujuy-temporada",
-      "label": "Liga Argentina · Temporada 2024/25",
-      "//sheetId": "1TJFmDn7EzbCyax-gyT2wwbrvvVvm9QiX2HENhMH5W5Y",
-      "sheetId": "",
+      "id": "jujuy-apertura-2025",
+      "label": "Conferencia Norte · Apertura 2025",
+      "sheetId": "1TJFmDn7EzbCyax-gyT2wwbrvvVvm9QiX2HENhMH5W5Y",
       "categoria": "PRIMERA",
-      "faseTorneo": "REGULAR",
+      "faseTorneo": "APERTURA",
       "rama": "masculina",
       "tira": null
     }
