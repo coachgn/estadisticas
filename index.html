@@ -83,6 +83,22 @@
   table.tabla-rank th:nth-child(2),
   table.tabla-rank td:nth-child(2) { text-align: left; }
 
+  /* Utilitarias de alto contraste. Sobre fondo oscuro, text-ink/80 y
+     text-muted/50 quedan al limite de lo legible. */
+  .text-white { color: #ffffff; }
+  .text-slate-100 { color: #f1f5f9; }
+  .text-slate-300 { color: #cbd5e1; }
+  .text-green-400 { color: #4ade80; }
+  .text-red-400 { color: #f87171; }
+  .text-yellow-400 { color: #facc15; }
+  .border-green-400 { border-color: #4ade80; }
+  .border-red-400 { border-color: #f87171; }
+
+  /* Hover generico de tarjetas: la interfaz responde al cursor. */
+  .transition-all { transition: all .2s ease; }
+  .hover\:border-accent:hover { border-color: var(--acento); }
+  .hover\:shadow-lg:hover { box-shadow: 0 8px 24px rgba(0,0,0,.45); }
+
   .card { background: #141414; border: 1px solid #282828; transition: border-color .15s ease; }
   .card:hover { border-color: #3a3a3a; }
 
@@ -250,15 +266,15 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=22"></script>
-<script src="js/sgadd-core.js?v=22"></script>
-<script src="js/sgadd-ui.js?v=22"></script>
-<script src="js/sgadd-app.js?v=22"></script>
-<script src="js/sgadd-charts.js?v=22"></script>
-<script src="js/sgadd-personalidad.js?v=22"></script>
-<script src="js/sgadd-rankings.js?v=22"></script>
-<script src="js/sgadd-equipos.js?v=22"></script>
-<script src="js/sgadd-diagnostico.js?v=22"></script>
+<script src="js/sgadd-club.js?v=23"></script>
+<script src="js/sgadd-core.js?v=23"></script>
+<script src="js/sgadd-ui.js?v=23"></script>
+<script src="js/sgadd-app.js?v=23"></script>
+<script src="js/sgadd-charts.js?v=23"></script>
+<script src="js/sgadd-personalidad.js?v=23"></script>
+<script src="js/sgadd-rankings.js?v=23"></script>
+<script src="js/sgadd-equipos.js?v=23"></script>
+<script src="js/sgadd-diagnostico.js?v=23"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
