@@ -276,7 +276,7 @@ const SGADD_CHARTS = (function () {
   const pp = v => (v > 0 ? '+' : '') + (v * 100).toFixed(2) + ' pp';
 
   function nota(texto, tono) {
-    const c = tono === 'bien' ? 'text-green-400/90' : tono === 'mal' ? 'text-red-400/90' : 'text-muted';
+    const c = tono === 'bien' ? 'text-green-400' : tono === 'mal' ? 'text-red-400' : 'text-muted';
     return `<p class="text-[11px] ${c} mt-3 leading-snug">${texto}</p>`;
   }
 

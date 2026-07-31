@@ -110,14 +110,14 @@ const SGADD_RANKINGS = (function () {
     const cabecera = `
       <tr class="text-[10px] uppercase tracking-wider text-muted">
         <th class="pb-2 pr-2">#</th>
-        <th class="pb-2 pr-3 text-left">Equipo</th>
-        <th class="pb-2 pr-3 text-right">PJ</th>
+        <th class="pb-2 pr-3">Equipo</th>
+        <th class="pb-2 pr-3">PJ</th>
         ${claves.map(k => {
           const m = SGADD.metrica(k);
           const inv = m && m.invertida && !grupo.descriptiva;
-          return `<th class="pb-2 pr-1 text-right whitespace-nowrap" title="${SGADD_UI.esc(m ? m.glosario || m.label : k)}">
-            ${SGADD_UI.esc(k)}${inv ? ' <span class="text-muted/70">↓</span>' : ''}</th>
-            <th class="pb-2 pr-3 text-right text-muted/60">#</th>`;
+          return `<th class="pb-2 pr-1 whitespace-nowrap" title="${SGADD_UI.esc(m ? m.glosario || m.label : k)}">
+            ${SGADD_UI.esc(k)}${inv ? ' <span class="dato-sec">↓</span>' : ''}</th>
+            <th class="pb-2 pr-3 dato-sec">#</th>`;
         }).join('')}
       </tr>`;
 
@@ -139,9 +139,9 @@ const SGADD_RANKINGS = (function () {
         }
         const marca = esMediana ? ' ring-1 ring-accent/50 rounded' : '';
         return `
-          <td class="py-1.5 pr-1 text-right font-mono text-xs ${color}${marca}"
+          <td class="py-1.5 pr-1 font-mono text-xs ${color}${marca}"
               ${esMediana ? 'title="El más cercano a la mediana de la liga"' : ''}>${SGADD_UI.esc(SGADD.formatear(k, v))}</td>
-          <td class="py-1.5 pr-3 text-right font-mono text-[10px] text-muted">${p || '—'}</td>`;
+          <td class="py-1.5 pr-3 font-mono text-[10px] text-muted">${p || '—'}</td>`;
       }).join('');
 
       return `
@@ -154,7 +154,7 @@ const SGADD_RANKINGS = (function () {
               <span class="text-xs truncate ${propio ? 'text-accent font-semibold' : ''}">${SGADD_UI.esc(f.equipo.nombre)}</span>
             </div>
           </td>
-          <td class="py-1.5 pr-3 text-right font-mono text-xs text-muted">${f.equipo.pj || 0}</td>
+          <td class="py-1.5 pr-3 font-mono text-xs text-muted">${f.equipo.pj || 0}</td>
           ${celdas}
         </tr>`;
     }).join('');
@@ -164,11 +164,11 @@ const SGADD_RANKINGS = (function () {
       <tr class="border-t-2 border-hairline bg-surface2/40">
         <td class="py-2 pr-2"></td>
         <td class="py-2 pr-3 text-xs font-display uppercase tracking-wide text-muted">Equipo tipo</td>
-        <td class="py-2 pr-3 text-right font-mono text-xs text-muted">${idx.liga.pjMediano || '—'}</td>
+        <td class="py-2 pr-3 font-mono text-xs text-muted">${idx.liga.pjMediano || '—'}</td>
         ${claves.map(k => {
           const t = idx.liga.tipo[k] !== undefined ? idx.liga.tipo[k]
                   : (idx.liga.medianasCalculadas && idx.liga.medianasCalculadas[k] !== undefined ? idx.liga.medianasCalculadas[k] : null);
-          return `<td class="py-2 pr-1 text-right font-mono text-xs text-muted">${SGADD_UI.esc(SGADD.formatear(k, t))}</td>
+          return `<td class="py-2 pr-1 font-mono text-xs text-muted">${SGADD_UI.esc(SGADD.formatear(k, t))}</td>
                   <td class="py-2 pr-3"></td>`;
         }).join('')}
       </tr>`;

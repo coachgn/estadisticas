@@ -58,7 +58,7 @@ const SGADD_UI = (function () {
         <div class="h-full ${color} rounded-full transition-all" style="width:${pct.toFixed(0)}%"></div>
         <div class="absolute inset-y-0 left-1/2 w-px bg-ink/40" title="mediana"></div>
       </div>
-      <p class="text-[10px] ${flojo ? 'text-yellow-400/70' : 'text-muted'} mt-1 font-mono">${esc(nota)}</p>`;
+      <p class="text-[10px] ${flojo ? 'text-yellow-400' : 'text-muted'} mt-1 font-mono">${esc(nota)}</p>`;
   }
 
   /* ---------------------------------------------------------------------
@@ -100,9 +100,9 @@ const SGADD_UI = (function () {
       return `
         <tr class="border-b border-hairline/40 last:border-0">
           <td class="py-1.5 pr-3 text-xs">${esc(r.label)}${r.invertida && !vista.descriptiva ? ' <span class="text-muted" title="menos es mejor">↓</span>' : ''}</td>
-          <td class="py-1.5 pr-3 text-right font-mono text-xs text-ink">${esc(r.formateado)}</td>
-          <td class="py-1.5 pr-3 text-right font-mono text-xs text-muted">${esc(r.tipoFormateado)}</td>
-          <td class="py-1.5 text-right font-mono text-xs ${colorPct}">${esc(pct)}</td>
+          <td class="py-1.5 pr-3 font-mono text-xs text-ink">${esc(r.formateado)}</td>
+          <td class="py-1.5 pr-3 font-mono text-xs text-muted">${esc(r.tipoFormateado)}</td>
+          <td class="py-1.5 font-mono text-xs ${colorPct}">${esc(pct)}</td>
         </tr>`;
     }).join('');
 
@@ -119,9 +119,9 @@ const SGADD_UI = (function () {
         <table class="w-full text-left">
           <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
             <th class="pb-1 pr-3">Métrica</th>
-            <th class="pb-1 pr-3 text-right">Valor</th>
-            <th class="pb-1 pr-3 text-right">Mediana</th>
-            <th class="pb-1 text-right">Pctil</th>
+            <th class="pb-1 pr-3">Valor</th>
+            <th class="pb-1 pr-3">Mediana</th>
+            <th class="pb-1">Pctil</th>
           </tr></thead>
           <tbody>${filas}</tbody>
         </table>
@@ -150,7 +150,7 @@ const SGADD_UI = (function () {
           class="flex flex-col items-center gap-2 p-3 rounded-lg border transition-colors
                  ${activo ? 'border-accent bg-surface2' : 'border-hairline hover:bg-surface2'}">
           ${escudo}
-          <span class="text-[11px] text-center leading-tight ${propio ? 'text-accent font-semibold' : 'text-ink/90'}">
+          <span class="text-[11px] text-center leading-tight ${propio ? 'text-accent font-semibold' : 'text-white'}">
             ${esc(e.nombre)}
           </span>
           ${e.pj ? `<span class="text-[10px] text-muted font-mono">PJ ${e.pj}</span>` : ''}

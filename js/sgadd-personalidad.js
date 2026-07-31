@@ -266,8 +266,58 @@ const SGADD_PERSONALIDAD = (function () {
     return {
       suficiente: g.pj >= PJ_MINIMO_INSIGHT && d.pj >= PJ_MINIMO_INSIGHT,
       g: g, d: d, filas: filas, cambian: cambian, estables: estables,
+      condicion: contrasteCondicion(e),
+      recomendacion: recomendar(idx, e, cambian, estables),
       texto: narrar(idx, e, g, d, cambian, estables),
     };
+  }
+
+  /* Localía: se lee del split que ya calcula el índice. */
+  function contrasteCondicion(e) {
+    if (!e.split || !e.split.LOCAL || !e.split.VISITANTE) return null;
+    const l = e.split.LOCAL, v = e.split.VISITANTE;
+    if (!l.pj || !v.pj) return null;
+    const el = l.tiro ? l.tiro['eFG%'] : null;
+    const ev = v.tiro ? v.tiro['eFG%'] : null;
+    if (el === null || ev === null) return null;
+    return {
+      local: l, visitante: v, efgLocal: el, efgVisitante: ev, dif: el - ev,
+      relevante: Math.abs(el - ev) >= 0.025,
+    };
+  }
+
+  /* ---------------------------------------------------------------------
+     RECOMENDACIÓN ESTRATÉGICA
+
+     Dos lecturas opuestas del mismo perfil:
+       explotar  → por dónde le entrás (su peor percentil)
+       anular    → qué no le podés dejar hacer (su mejor arma + lo que
+                   colapsa en sus derrotas, que es su dependencia)
+     --------------------------------------------------------------------- */
+  function recomendar(idx, e, cambian) {
+    const claves = ['eFG%', 'PePP%', 'RTL%', 'RO%', 'eFG Opp%', 'PP Opp%', 'RTL Opp%', 'RO Opp%'];
+    const leidas = claves.map(k => idx.leer(e.clave, k)).filter(r => r && r.percentil !== null);
+    if (!leidas.length) return null;
+    const orden = leidas.slice().sort((a, b) => b.percentil - a.percentil);
+    const mejor = orden[0], peor = orden[orden.length - 1];
+
+    /* La métrica que más se derrumba en derrotas es su dependencia: si se
+       la sacás, entra en el modo en que ya perdió. */
+    const dependencia = (cambian || []).filter(f => f.aFavor)[0] || null;
+
+    const explotar = [];
+    if (peor) explotar.push('Su peor factor es ' + peor.label.toLowerCase() + ' (' +
+      peor.formateado + ', percentil ' + peor.percentil.toFixed(0) + '). Ahí es por donde cede.');
+    if (dependencia) explotar.push('Depende de ' + dependencia.cuerpo + ': cuando cae de ' +
+      pct(dependencia.victoria) + ' a ' + pct(dependencia.derrota) + ', pierde.');
+
+    const anular = [];
+    if (mejor) anular.push('No dejarlo cómodo en ' + mejor.label.toLowerCase() + ' (' +
+      mejor.formateado + ', percentil ' + mejor.percentil.toFixed(0) + '): es su mejor arma.');
+    if (dependencia) anular.push('Negarle ' + dependencia.cuerpo + ' es la forma más directa ' +
+      'de llevarlo a su versión perdedora.');
+
+    return { explotar: explotar, anular: anular, mejor: mejor, peor: peor, dependencia: dependencia };
   }
 
   const pct = v => (v * 100).toFixed(1).replace('.', ',') + '%';
@@ -296,7 +346,20 @@ const SGADD_PERSONALIDAD = (function () {
       partes.push(frase + '.');
     }
 
-    /* 3. El punto de fuga: lo peor de la temporada, gane o pierda. */
+    /* 3. Localía: si juega distinto de local, hay que decirlo. */
+    const cond = contrasteCondicion(e);
+    if (cond && cond.relevante) {
+      const mejorEn = cond.dif > 0 ? 'casa' : 'cancha ajena';
+      const peorEn = cond.dif > 0 ? 'visitante' : 'local';
+      const a = cond.dif > 0 ? cond.local : cond.visitante;
+      const b = cond.dif > 0 ? cond.visitante : cond.local;
+      partes.push('La localía pesa: en ' + mejorEn + ' sostiene un eFG% de ' +
+        pct(cond.dif > 0 ? cond.efgLocal : cond.efgVisitante) + ' con récord ' + a.ganados + '-' + a.perdidos +
+        ', pero de ' + peorEn + ' cae a ' + pct(cond.dif > 0 ? cond.efgVisitante : cond.efgLocal) +
+        ' (' + b.ganados + '-' + b.perdidos + ').');
+    }
+
+    /* 4. El punto de fuga: lo peor de la temporada, gane o pierda. */
     const fuga = ['T1%', 'T3%', 'PePP%'].map(k => {
       const r = idx.leer(e.clave, k === 'T1%' ? 'T1%' : k === 'T3%' ? 'T3%' : 'PePP%');
       return r && r.percentil !== null ? { k: k, r: r } : null;
@@ -308,7 +371,7 @@ const SGADD_PERSONALIDAD = (function () {
         fuga.r.percentil.toFixed(0) + ').');
     }
 
-    /* 4. Si nada se mueve, eso TAMBIÉN es una conclusión. */
+    /* 5. Si nada se mueve, eso TAMBIÉN es una conclusión. */
     if (!cambian.length) {
       partes.push('Ninguna métrica cambia de forma clara entre ganar y perder: ' +
         'la diferencia parece estar más en el rival o en el cierre de los partidos que en su propio juego.');
@@ -317,7 +380,8 @@ const SGADD_PERSONALIDAD = (function () {
     return partes;
   }
 
-  return { EJES, FUERTE, LEVE, CONTRASTES, PJ_MINIMO_INSIGHT, perfil, arquetipo, resumen, insight };
+  return { EJES, FUERTE, LEVE, CONTRASTES, PJ_MINIMO_INSIGHT,
+           perfil, arquetipo, resumen, insight, recomendar, contrasteCondicion };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_PERSONALIDAD;

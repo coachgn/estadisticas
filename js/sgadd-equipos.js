@@ -223,7 +223,7 @@ function equiposInsight(ins) {
     return `
       <div class="mt-6 rounded-lg border border-hairline bg-surface2/30 p-4">
         <p class="text-[10px] uppercase tracking-widest text-muted font-display mb-1">📌 Patrón de las victorias</p>
-        <p class="text-xs text-muted leading-snug">
+        <p class="text-xs dato-sec leading-snug">
           ${escapeHtml(ins.motivo || ('Hacen falta al menos ' + SGADD_PERSONALIDAD.PJ_MINIMO_INSIGHT +
             ' partidos ganados y ' + SGADD_PERSONALIDAD.PJ_MINIMO_INSIGHT + ' perdidos para comparar. Van ' +
             ins.g.pj + '-' + ins.d.pj + '.'))}
@@ -231,42 +231,84 @@ function equiposInsight(ins) {
       </div>`;
   }
 
-  const fila = (f) => {
-    const flecha = f.dif > 0 ? '▲' : f.dif < 0 ? '▼' : '=';
-    const color = !f.cambia ? 'text-muted' : (f.aFavor ? 'text-green-400' : 'text-red-400');
+  /* TABLA CURADA: solo lo que realmente cambia, hasta 5 filas. Las estables
+     no van a la tabla — van a una línea de texto abajo. Mezclarlas hacía que
+     lo importante se perdiera entre ruido. */
+  const relevantes = ins.cambian.slice(0, 5);
+  const filas = relevantes.map(f => {
+    const flecha = f.aFavor ? '▲' : '▼';
+    const color = f.aFavor ? 'text-green-400' : 'text-red-400';
+    const barra = Math.min(100, (f.magnitud / (relevantes[0].magnitud || 1)) * 100);
     return `
       <tr class="border-b border-hairline/40 last:border-0">
-        <td class="py-1.5 pr-3 text-xs text-white">${escapeHtml(f.label)}</td>
-        <td class="py-1.5 pr-3 font-mono text-xs text-white">${escapeHtml(SGADD.formatear('eFG%', f.victoria))}</td>
-        <td class="py-1.5 pr-3 font-mono text-xs text-white">${escapeHtml(SGADD.formatear('eFG%', f.derrota))}</td>
-        <td class="py-1.5 font-mono text-xs ${color}">${flecha} ${escapeHtml(SGADD.formatear('eFG%', Math.abs(f.dif)))}</td>
+        <td class="py-2 pr-3 text-xs text-white font-medium">${escapeHtml(f.label)}</td>
+        <td class="py-2 pr-3 font-mono text-xs text-white">${escapeHtml(SGADD.formatear('eFG%', f.victoria))}</td>
+        <td class="py-2 pr-3 font-mono text-xs dato-sec">${escapeHtml(SGADD.formatear('eFG%', f.derrota))}</td>
+        <td class="py-2">
+          <div class="flex items-center gap-2 justify-center">
+            <div class="h-1.5 w-16 rounded-full bg-surface2 overflow-hidden">
+              <div class="h-full rounded-full ${f.aFavor ? 'bg-green-400' : 'bg-red-400'}"
+                   style="width:${barra.toFixed(0)}%"></div>
+            </div>
+            <span class="font-mono text-xs ${color} font-medium">${flecha} ${escapeHtml(SGADD.formatear('eFG%', f.magnitud))}</span>
+          </div>
+        </td>
       </tr>`;
-  };
+  }).join('');
+
+  const estables = ins.estables.slice(0, 4).map(f => f.label).join(', ');
+  const notaEstables = estables
+    ? `<p class="text-[11px] dato-sec mt-3 leading-snug">
+         Se mantienen constantes gane o pierda: <span class="text-white">${escapeHtml(estables)}</span>.
+         Eso también informa: el problema de las derrotas no pasa por ahí.
+       </p>` : '';
+
+  /* RECOMENDACIÓN: las dos lecturas opuestas del mismo perfil. */
+  const rec = ins.recomendacion;
+  const bloqueRec = !rec ? '' : `
+    <div class="mt-5 pt-4 border-t border-hairline">
+      <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-3">💡 Recomendación estratégica</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="rounded-lg border border-green-400/40 bg-green-400/5 p-3
+                    hover:border-green-400 hover:shadow-lg transition-all duration-200">
+          <p class="text-[10px] uppercase tracking-wider text-green-400 font-display mb-1.5">Para explotarle</p>
+          ${rec.explotar.map(t => `<p class="text-xs text-white leading-relaxed mb-1.5 last:mb-0">${escapeHtml(t)}</p>`).join('')}
+        </div>
+        <div class="rounded-lg border border-red-400/40 bg-red-400/5 p-3
+                    hover:border-red-400 hover:shadow-lg transition-all duration-200">
+          <p class="text-[10px] uppercase tracking-wider text-red-400 font-display mb-1.5">Para anularle</p>
+          ${rec.anular.map(t => `<p class="text-xs text-white leading-relaxed mb-1.5 last:mb-0">${escapeHtml(t)}</p>`).join('')}
+        </div>
+      </div>
+    </div>`;
 
   return `
-    <div class="mt-6 rounded-lg border border-accent/40 bg-accent/5 p-4
+    <div class="mt-6 rounded-lg border border-accent/40 bg-accent/5 p-4 sm:p-5
                 hover:border-accent hover:shadow-lg transition-all duration-200">
-      <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-2">
+      <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-3">
         📌 Insight clave · el patrón de las victorias
       </p>
-      <div class="space-y-2 mb-4 max-w-4xl">
-        ${ins.texto.map(t => `<p class="text-sm text-white leading-relaxed">${escapeHtml(t)}</p>`).join('')}
+
+      <div class="space-y-2 mb-5 max-w-4xl">
+        ${ins.texto.map((t, i) => `
+          <p class="${i === 0 ? 'text-base text-white font-medium' : 'text-sm text-slate-100'} leading-relaxed">
+            ${escapeHtml(t)}
+          </p>`).join('')}
       </div>
+
       <div class="scrollbox">
         <table class="w-full">
           <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
-            <th class="pb-2 pr-3">Métrica</th>
-            <th class="pb-2 pr-3">En victorias (${ins.g.pj})</th>
-            <th class="pb-2 pr-3">En derrotas (${ins.d.pj})</th>
-            <th class="pb-2">Diferencia</th>
+            <th class="pb-2 pr-3">Lo que cambia</th>
+            <th class="pb-2 pr-3">Ganando (${ins.g.pj})</th>
+            <th class="pb-2 pr-3">Perdiendo (${ins.d.pj})</th>
+            <th class="pb-2">Impacto</th>
           </tr></thead>
-          <tbody>${ins.cambian.concat(ins.estables).map(fila).join('')}</tbody>
+          <tbody>${filas}</tbody>
         </table>
       </div>
-      <p class="text-[11px] text-muted mt-3 leading-snug">
-        Gris = se mantiene igual gane o pierda. Eso también informa: si el rebote no cambia,
-        el problema de las derrotas no es el rebote.
-      </p>
+      ${notaEstables}
+      ${bloqueRec}
     </div>`;
 }
 
@@ -297,8 +339,8 @@ function equiposTabGeneral(idx, e) {
     return `<tr class="border-b border-hairline/40 last:border-0">
       <td class="py-1.5 pr-3 text-xs truncate max-w-[220px]">${escapeHtml(equiposRival(p, e))}</td>
       <td class="py-1.5 pr-3 text-xs text-muted">${escapeHtml(SGADD.texto(p['CONDICION']))}</td>
-      <td class="py-1.5 pr-3 text-right font-mono text-xs">${SGADD.num(p['PTS'])}-${SGADD.num(p['PTSopp'])}</td>
-      <td class="py-1.5 text-right text-xs font-semibold ${gano ? 'text-green-400' : 'text-red-400'}">${gano ? 'G' : 'P'}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs">${SGADD.num(p['PTS'])}-${SGADD.num(p['PTSopp'])}</td>
+      <td class="py-1.5 text-xs font-semibold ${gano ? 'text-green-400' : 'text-red-400'}">${gano ? 'G' : 'P'}</td>
     </tr>`;
   }).join('');
 
@@ -456,9 +498,9 @@ function equiposTabCondicion(idx, e) {
     const mejorLocal = dif === null ? null : (m.invertida ? dif < 0 : dif > 0);
     return `<tr class="border-b border-hairline/40 last:border-0">
       <td class="py-1.5 pr-3 text-xs">${escapeHtml(m.label)}${m.invertida ? ' <span class="text-muted">↓</span>' : ''}</td>
-      <td class="py-1.5 pr-3 text-right font-mono text-xs text-ink">${escapeHtml(SGADD.formatear(k, l))}</td>
-      <td class="py-1.5 pr-3 text-right font-mono text-xs text-ink">${escapeHtml(SGADD.formatear(k, v))}</td>
-      <td class="py-1.5 text-right font-mono text-xs ${dif === null ? 'text-muted' : mejorLocal ? 'text-green-400' : 'text-red-400'}">
+      <td class="py-1.5 pr-3 font-mono text-xs text-ink">${escapeHtml(SGADD.formatear(k, l))}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs text-ink">${escapeHtml(SGADD.formatear(k, v))}</td>
+      <td class="py-1.5 font-mono text-xs ${dif === null ? 'text-muted' : mejorLocal ? 'text-green-400' : 'text-red-400'}">
         ${dif === null ? '—' : (dif > 0 ? '+' : '') + SGADD.formatear(k, dif)}
       </td>
     </tr>`;
@@ -497,8 +539,8 @@ function equiposTabCondicion(idx, e) {
     </div>
     <div class="scrollbox"><table class="w-full text-left">
       <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
-        <th class="pb-1 pr-3">Factor</th><th class="pb-1 pr-3 text-right">Local</th>
-        <th class="pb-1 pr-3 text-right">Visitante</th><th class="pb-1 text-right">Dif</th>
+        <th class="pb-1 pr-3">Factor</th><th class="pb-1 pr-3">Local</th>
+        <th class="pb-1 pr-3">Visitante</th><th class="pb-1">Dif</th>
       </tr></thead><tbody>${filas}</tbody></table></div>
     <p class="text-[11px] text-muted mt-3 leading-snug">
       La columna Dif está pintada desde la mirada de local: verde significa que juegan mejor en casa.
@@ -513,8 +555,8 @@ function equiposTabPlantel(idx, e) {
     const cal = j.__califica;
     return `<tr class="border-b border-hairline/40 last:border-0 ${cal ? '' : 'opacity-50'}">
       <td class="py-1.5 pr-3 text-xs whitespace-nowrap">${escapeHtml(j['NOMBRES'])}</td>
-      ${cols.map(c => `<td class="py-1.5 pr-3 text-right font-mono text-xs">${escapeHtml(SGADD.formatear(c, j[c]))}</td>`).join('')}
-      <td class="py-1.5 text-right text-[10px] ${cal ? 'text-muted' : 'text-yellow-400/70'}">${cal ? '' : 'pocos min'}</td>
+      ${cols.map(c => `<td class="py-1.5 pr-3 font-mono text-xs">${escapeHtml(SGADD.formatear(c, j[c]))}</td>`).join('')}
+      <td class="py-1.5 text-[10px] ${cal ? 'text-muted' : 'text-yellow-400'}">${cal ? '' : 'pocos min'}</td>
     </tr>`;
   }).join('');
 
@@ -528,7 +570,7 @@ function equiposTabPlantel(idx, e) {
     <div class="scrollbox"><table class="w-full text-left">
       <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
         <th class="pb-1 pr-3">Jugador</th>
-        ${cols.map(c => `<th class="pb-1 pr-3 text-right">${escapeHtml(c)}</th>`).join('')}
+        ${cols.map(c => `<th class="pb-1 pr-3">${escapeHtml(c)}</th>`).join('')}
         <th class="pb-1"></th>
       </tr></thead><tbody>${filas}</tbody></table></div>
     <p class="text-[11px] text-muted mt-3 leading-snug">
@@ -544,9 +586,9 @@ function equiposTabPartidos(idx, e) {
       <td class="py-1.5 pr-3 text-xs text-muted font-mono whitespace-nowrap">${escapeHtml(SGADD.formatearFecha(p.__fecha))}</td>
       <td class="py-1.5 pr-3 text-xs truncate max-w-[200px]">${escapeHtml(equiposRival(p, e))}</td>
       <td class="py-1.5 pr-3 text-xs text-muted">${escapeHtml(SGADD.texto(p['CONDICION']))}</td>
-      <td class="py-1.5 pr-3 text-right font-mono text-xs">${SGADD.num(p['PTS'])}-${SGADD.num(p['PTSopp'])}</td>
-      <td class="py-1.5 pr-3 text-right font-mono text-xs">${escapeHtml(SGADD.formatear('eFG%', p['eFG%']))}</td>
-      <td class="py-1.5 text-right text-xs font-semibold ${gano ? 'text-green-400' : 'text-red-400'}">${gano ? 'G' : 'P'}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs">${SGADD.num(p['PTS'])}-${SGADD.num(p['PTSopp'])}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs">${escapeHtml(SGADD.formatear('eFG%', p['eFG%']))}</td>
+      <td class="py-1.5 text-xs font-semibold ${gano ? 'text-green-400' : 'text-red-400'}">${gano ? 'G' : 'P'}</td>
     </tr>`;
   }).join('');
 
@@ -554,7 +596,7 @@ function equiposTabPartidos(idx, e) {
     <div class="scrollbox"><table class="w-full text-left">
       <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
         <th class="pb-1 pr-3">Fecha</th><th class="pb-1 pr-3">Rival</th><th class="pb-1 pr-3">Cond.</th>
-        <th class="pb-1 pr-3 text-right">Result.</th><th class="pb-1 pr-3 text-right">eFG%</th><th class="pb-1 text-right"></th>
+        <th class="pb-1 pr-3">Result.</th><th class="pb-1 pr-3">eFG%</th><th class="pb-1"></th>
       </tr></thead><tbody>${filas}</tbody></table></div>
     <p class="text-[11px] text-muted mt-3">
       Orden cronológico.${e.sinFecha ? ' <span class="text-yellow-400">' + e.sinFecha + ' partido(s) sin fecha cargada</span>, van al final.' : ''}
@@ -613,11 +655,11 @@ function equiposTabPersonalidad(idx, e) {
                style="left:calc(${pos.toFixed(0)}% - 7px);background:${color}"></div>
         </div>
         <div class="flex justify-between mt-1">
-          <span class="text-[10px] ${x.polo === 'izq' ? 'text-white' : 'text-muted/60'}">${escapeHtml(x.izq)}</span>
-          <span class="text-[10px] ${x.polo === 'der' ? 'text-white' : 'text-muted/60'}">${escapeHtml(x.der)}</span>
+          <span class="text-[10px] ${x.polo === 'izq' ? 'text-white' : 'dato-sec'}">${escapeHtml(x.izq)}</span>
+          <span class="text-[10px] ${x.polo === 'der' ? 'text-white' : 'dato-sec'}">${escapeHtml(x.der)}</span>
         </div>
         ${x.descripcion ? `<p class="text-[10px] text-slate-300 mt-1.5 leading-snug">${escapeHtml(x.descripcion)}</p>` : ''}
-        <p class="text-[10px] text-muted/60 mt-1 font-mono">
+        <p class="text-[10px] dato-sec mt-1 font-mono">
           ${escapeHtml(x.metrica)} ${escapeHtml(x.valor)} · liga ${escapeHtml(x.mediana)} · pctil ${x.percentil.toFixed(0)}
         </p>
       </div>`;

@@ -197,8 +197,8 @@ function diagBloqueCarga(hojas, errores, ms) {
     const err = errores.find(e => e.hoja === n);
     return `<tr class="border-b border-hairline/40">
       <td class="py-1.5 pr-3 font-mono text-xs">${escapeHtml(n)}</td>
-      <td class="py-1.5 pr-3 text-right font-mono text-xs">${h ? h.filas.length : '—'}</td>
-      <td class="py-1.5 pr-3 text-right font-mono text-xs">${h ? h.cols.length : '—'}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs">${h ? h.filas.length : '—'}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs">${h ? h.cols.length : '—'}</td>
       <td class="py-1.5 text-xs ${h ? 'text-green-400' : 'text-red-400'}">${h ? 'ok' : escapeHtml(err ? err.mensaje : 'no leída')}</td>
     </tr>`;
   }).join('');
@@ -207,8 +207,8 @@ function diagBloqueCarga(hojas, errores, ms) {
     <div class="scrollbox">
       <table class="w-full text-left">
         <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
-          <th class="pb-2 pr-3">Hoja</th><th class="pb-2 pr-3 text-right">Filas</th>
-          <th class="pb-2 pr-3 text-right">Cols</th><th class="pb-2">Estado</th>
+          <th class="pb-2 pr-3">Hoja</th><th class="pb-2 pr-3">Filas</th>
+          <th class="pb-2 pr-3">Cols</th><th class="pb-2">Estado</th>
         </tr></thead>
         <tbody>${filas}</tbody>
       </table>
@@ -246,8 +246,8 @@ function diagBloqueCoherencia(res) {
     const color = r.nivel === 'ok' ? 'text-green-400' : 'text-red-400';
     return `<tr class="border-b border-hairline/40">
       <td class="py-1.5 pr-3 font-mono text-xs">${escapeHtml(r.par)}</td>
-      <td class="py-1.5 pr-3 text-right font-mono text-xs">${r.a}</td>
-      <td class="py-1.5 pr-3 text-right font-mono text-xs">${r.b}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs">${r.a}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs">${r.b}</td>
       <td class="py-1.5 text-xs ${color}">${escapeHtml(r.mensaje)}</td>
     </tr>`;
   }).join('');
@@ -255,8 +255,8 @@ function diagBloqueCoherencia(res) {
     fallan ? fallan + ' desajuste(s)' : 'Todo cuadra',
     `<div class="scrollbox"><table class="w-full text-left">
       <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
-        <th class="pb-2 pr-3">Par</th><th class="pb-2 pr-3 text-right">A</th>
-        <th class="pb-2 pr-3 text-right">B</th><th class="pb-2"></th>
+        <th class="pb-2 pr-3">Par</th><th class="pb-2 pr-3">A</th>
+        <th class="pb-2 pr-3">B</th><th class="pb-2"></th>
       </tr></thead><tbody>${filas}</tbody></table></div>
     <p class="text-[11px] text-muted mt-3">Cada hoja de promedios y su acumulado tienen que traer las mismas filas. Cada partido, sus dos equipos.</p>`);
 }
@@ -268,8 +268,8 @@ function diagBloqueTotales(res, cruces) {
     const color = r.nivel === 'ok' ? 'text-green-400' : (r.nivel === 'error' ? 'text-red-400' : 'text-yellow-400');
     return `<tr class="border-b border-hairline/40">
       <td class="py-1.5 pr-3 font-mono text-xs">${escapeHtml(r.par)}</td>
-      <td class="py-1.5 pr-3 text-right font-mono text-xs">${r.propio !== undefined ? r.propio.toFixed(0) : '—'}</td>
-      <td class="py-1.5 pr-3 text-right font-mono text-xs">${r.rival !== undefined ? r.rival.toFixed(0) : '—'}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs">${r.propio !== undefined ? r.propio.toFixed(0) : '—'}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs">${r.rival !== undefined ? r.rival.toFixed(0) : '—'}</td>
       <td class="py-1.5 text-xs ${color}">${escapeHtml(r.mensaje)}</td>
     </tr>`;
   }).join('');
@@ -277,19 +277,19 @@ function diagBloqueTotales(res, cruces) {
     fallan ? fallan + ' roto(s)' : 'Los totales cierran exacto',
     `<div class="scrollbox"><table class="w-full text-left">
       <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
-        <th class="pb-2 pr-3">Invariante</th><th class="pb-2 pr-3 text-right">Σ A</th>
-        <th class="pb-2 pr-3 text-right">Σ B</th><th class="pb-2"></th>
+        <th class="pb-2 pr-3">Invariante</th><th class="pb-2 pr-3">Σ A</th>
+        <th class="pb-2 pr-3">Σ B</th><th class="pb-2"></th>
       </tr></thead><tbody>${filas}</tbody></table></div>
     <h5 class="font-display uppercase tracking-wide text-xs text-accent mt-5 mb-2">Cruce partido por partido</h5>
     <div class="scrollbox"><table class="w-full text-left">
       <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
-        <th class="pb-2 pr-3">Columna</th><th class="pb-2 pr-3 text-right">Partidos</th>
-        <th class="pb-2 pr-3 text-right">Fallan</th><th class="pb-2"></th>
+        <th class="pb-2 pr-3">Columna</th><th class="pb-2 pr-3">Partidos</th>
+        <th class="pb-2 pr-3">Fallan</th><th class="pb-2"></th>
       </tr></thead><tbody>${(cruces || []).map(c => `
         <tr class="border-b border-hairline/40">
           <td class="py-1.5 pr-3 font-mono text-xs">${escapeHtml(c.par)}</td>
-          <td class="py-1.5 pr-3 text-right font-mono text-xs">${c.propio !== undefined ? c.propio : '—'}</td>
-          <td class="py-1.5 pr-3 text-right font-mono text-xs">${c.rival !== undefined ? c.rival : '—'}</td>
+          <td class="py-1.5 pr-3 font-mono text-xs">${c.propio !== undefined ? c.propio : '—'}</td>
+          <td class="py-1.5 pr-3 font-mono text-xs">${c.rival !== undefined ? c.rival : '—'}</td>
           <td class="py-1.5 text-xs ${c.nivel === 'ok' ? 'text-green-400' : 'text-red-400'}">${escapeHtml(c.mensaje)}</td>
         </tr>`).join('')}</tbody></table></div>
     <p class="text-[11px] text-muted mt-3">Sobre totales no hay tolerancia: si no da idéntico, hay un partido mal cargado. El cruce por partido es todavía más fino — caza dos errores que se compensen entre sí.</p>`);
@@ -302,9 +302,9 @@ function diagBloqueSimetria(res) {
     const color = r.nivel === 'ok' ? 'text-green-400' : (r.nivel === 'error' ? 'text-red-400' : 'text-yellow-400');
     return `<tr class="border-b border-hairline/40">
       <td class="py-1.5 pr-3 font-mono text-xs">${escapeHtml(r.par)}</td>
-      <td class="py-1.5 pr-3 text-right font-mono text-xs">${r.propio !== undefined ? r.propio.toFixed(3) : '—'}</td>
-      <td class="py-1.5 pr-3 text-right font-mono text-xs">${r.rival !== undefined ? r.rival.toFixed(3) : '—'}</td>
-      <td class="py-1.5 pr-3 text-right font-mono text-xs ${color}">${r.dif !== undefined ? (r.dif > 0 ? '+' : '') + r.dif.toFixed(3) : '—'}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs">${r.propio !== undefined ? r.propio.toFixed(3) : '—'}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs">${r.rival !== undefined ? r.rival.toFixed(3) : '—'}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs ${color}">${r.dif !== undefined ? (r.dif > 0 ? '+' : '') + r.dif.toFixed(3) : '—'}</td>
       <td class="py-1.5 text-xs ${color}">${escapeHtml(r.mensaje)}</td>
     </tr>`;
   }).join('');
@@ -314,8 +314,8 @@ function diagBloqueSimetria(res) {
     `<div class="scrollbox">
       <table class="w-full text-left">
         <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
-          <th class="pb-2 pr-3">Par</th><th class="pb-2 pr-3 text-right">Propio</th>
-          <th class="pb-2 pr-3 text-right">Rival</th><th class="pb-2 pr-3 text-right">Dif</th><th class="pb-2"></th>
+          <th class="pb-2 pr-3">Par</th><th class="pb-2 pr-3">Propio</th>
+          <th class="pb-2 pr-3">Rival</th><th class="pb-2 pr-3">Dif</th><th class="pb-2"></th>
         </tr></thead><tbody>${filas}</tbody>
       </table>
     </div>
@@ -391,9 +391,9 @@ function diagBloqueFicha(idx) {
     const dif = (pond !== null && simple !== null && simple !== undefined) ? (pond - simple) : null;
     return `<tr class="border-b border-hairline/40 last:border-0">
       <td class="py-1.5 pr-3 text-xs">${escapeHtml(SGADD.metrica(k).label)}</td>
-      <td class="py-1.5 pr-3 text-right font-mono text-xs text-ink">${escapeHtml(SGADD.formatear(k, pond))}</td>
-      <td class="py-1.5 pr-3 text-right font-mono text-xs text-muted">${escapeHtml(SGADD.formatear(k, simple))}</td>
-      <td class="py-1.5 text-right font-mono text-xs ${dif === null ? 'text-muted' : Math.abs(dif) > 0.005 ? 'text-yellow-400' : 'text-muted'}">
+      <td class="py-1.5 pr-3 font-mono text-xs text-ink">${escapeHtml(SGADD.formatear(k, pond))}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs text-muted">${escapeHtml(SGADD.formatear(k, simple))}</td>
+      <td class="py-1.5 font-mono text-xs ${dif === null ? 'text-muted' : Math.abs(dif) > 0.005 ? 'text-yellow-400' : 'text-muted'}">
         ${dif === null ? '—' : (dif > 0 ? '+' : '') + (dif * 100).toFixed(2) + ' pp'}
       </td>
     </tr>`;
@@ -408,9 +408,9 @@ function diagBloqueFicha(idx) {
     <div class="scrollbox"><table class="w-full text-left">
       <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
         <th class="pb-1 pr-3">Factor defensivo</th>
-        <th class="pb-1 pr-3 text-right">Calculado</th>
-        <th class="pb-1 pr-3 text-right">PROMEDIOS 4F</th>
-        <th class="pb-1 text-right">Dif</th>
+        <th class="pb-1 pr-3">Calculado</th>
+        <th class="pb-1 pr-3">PROMEDIOS 4F</th>
+        <th class="pb-1">Dif</th>
       </tr></thead><tbody>${comparacion}</tbody></table></div>
     <p class="text-[10px] text-muted mt-2 leading-snug">
       El calculado sale de sumar el box score del rival en cada partido (join por PARTIDO) y sacar el ratio
