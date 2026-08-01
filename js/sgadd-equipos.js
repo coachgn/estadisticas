@@ -613,9 +613,11 @@ function equiposTabPartidos(idx, e) {
 
   const filas = (e.partidos || []).slice().reverse().map(p => {
     const gano = SGADD.texto(p['RESULTADO']).toUpperCase() === 'GANADO';
-    return `<tr class="border-b border-hairline/40 last:border-0">
-      <td class="py-1.5 pr-3 text-xs text-muted font-mono whitespace-nowrap">${escapeHtml(SGADD.formatearFecha(p.__fecha))}</td>
-      <td class="py-1.5 pr-3 text-xs truncate max-w-[200px]">${escapeHtml(equiposRival(p, e))}</td>
+    return `<tr class="border-b border-hairline/40 last:border-0 cursor-pointer hover:bg-surface2 transition-all duration-200"
+                onclick="equiposVerPartido('${escapeAttr(p.__id || '')}')"
+                title="Ver el detalle de este partido">
+      <td class="py-1.5 pr-3 text-xs dato-sec font-mono whitespace-nowrap">${escapeHtml(SGADD.formatearFecha(p.__fecha))}</td>
+      <td class="py-1.5 pr-3 text-xs text-white truncate max-w-[200px]">${escapeHtml(equiposRival(p, e))}</td>
       <td class="py-1.5 pr-3 text-xs text-muted">${escapeHtml(SGADD.texto(p['CONDICION']))}</td>
       <td class="py-1.5 pr-3 font-mono text-xs">${SGADD.num(p['PTS'])}-${SGADD.num(p['PTSopp'])}</td>
       <td class="py-1.5 pr-3 font-mono text-xs">${escapeHtml(SGADD.formatear('eFG%', p['eFG%']))}</td>
@@ -794,10 +796,17 @@ function equiposDetallePartido(idx, e, id) {
 
   const cabecera = `
     <div class="mb-5">
-      <button onclick="equiposCerrarPartido()"
-        class="text-xs uppercase tracking-wider dato-sec hover:text-white transition-all duration-200 mb-3">
-        ← Volver a partidos
-      </button>
+      <div class="flex items-center justify-between gap-3 mb-3" data-no-print>
+        <button onclick="equiposCerrarPartido()"
+          class="text-xs uppercase tracking-wider dato-sec hover:text-white transition-all duration-200">
+          ← Volver a partidos
+        </button>
+        <button onclick="equiposImprimirPartido()"
+          class="text-xs font-semibold uppercase tracking-wider border border-hairline rounded px-4 py-2
+                 hover:border-accent hover:bg-surface2 transition-all duration-200" style="color:#fff">
+          📄 Descargar PDF
+        </button>
+      </div>
       <div class="rounded-lg border ${gano ? 'border-green-400/40' : 'border-red-400/40'} bg-surface2/30 p-4">
         <p class="text-[10px] uppercase tracking-widest dato-sec text-center mb-3">
           ${escapeHtml(SGADD.formatearFecha(part.fecha))} ·
@@ -955,15 +964,33 @@ function equiposDetallePartido(idx, e, id) {
       Los atenuados jugaron menos de ${SGADD_PARTIDO.MIN_MINUTOS} minutos.
     </p>`;
 
+  /* Los dos box scores van lado a lado: en A4 juntos se llevan la mitad de
+     la hoja, y en columna no entrarían con el resto del informe. */
   return `
-    ${cabecera}
-    ${insight}
-    ${factores}
-    <div class="grid grid-cols-1 gap-6">
-      ${boxScore(propio, a.propios, 'Box score · ' + propio.equipo.nombre)}
-      ${riv ? boxScore(riv, a.rivales, 'Box score · ' + riv.equipo.nombre) : ''}
-    </div>
-    ${notaBox}`;
+    <div id="detallePartido">
+      ${cabecera}
+      ${insight}
+      ${factores}
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-6" id="boxScores">
+        ${boxScore(propio, a.propios, 'Box score · ' + propio.equipo.nombre)}
+        ${riv ? boxScore(riv, a.rivales, 'Box score · ' + riv.equipo.nombre) : ''}
+      </div>
+      ${notaBox}
+    </div>`;
+}
+
+/* ---------------------------------------------------------------------
+   PDF del partido · exactamente una hoja A4.
+
+   No reusa el modal del informe de equipo: acá no hay nada que elegir, el
+   informe post-partido es siempre el mismo. Un clic y afuera.
+   --------------------------------------------------------------------- */
+function equiposImprimirPartido() {
+  document.body.classList.add('modo-partido-print');
+  setTimeout(() => {
+    window.print();
+    setTimeout(() => document.body.classList.remove('modo-partido-print'), 400);
+  }, 250);
 }
 
 function signoNum(v) {
