@@ -38,8 +38,8 @@ for (let i = 1; i <= 8; i++) {
 }
 
 const idx = SGADD.construirIndice({
-  'PROMEDIOS E': leer('/home/claude/eq/prom.tsv'),
-  'PROMEDIOS 4F': leer('/home/claude/eq/p4f.tsv'),
+  'PROMEDIOS E': leer('./test-fixtures/prom.tsv'),
+  'PROMEDIOS 4F': leer('./test-fixtures/p4f.tsv'),
   'Base Datos E': { cols: colsE, filas: fE },
   'Base Datos J': { cols: colsJ, filas: fJ },
 }, { fase: 'REGULAR' });
@@ -102,7 +102,7 @@ console.log('\nROBUSTEZ');
 console.log('─'.repeat(70));
 check('id inexistente no rompe', idx.partido('2099-01-01_no-existe') === null);
 const sinBox = SGADD.construirIndice({
-  'PROMEDIOS E': leer('/home/claude/eq/prom.tsv'), 'PROMEDIOS 4F': leer('/home/claude/eq/p4f.tsv'),
+  'PROMEDIOS E': leer('./test-fixtures/prom.tsv'), 'PROMEDIOS 4F': leer('./test-fixtures/p4f.tsv'),
   'Base Datos E': { cols: colsE, filas: fE } }, { fase: 'REGULAR' });
 const pSinBox = sinBox.partido(ultimoId);
 check('sin Base Datos J, el partido existe igual', pSinBox && pSinBox.completo && !pSinBox.conBox);

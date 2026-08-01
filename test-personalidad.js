@@ -9,7 +9,7 @@ const check = (n, c, d) => { if (c) { ok++; console.log('  ✓ ' + n); } else { 
 const leer = p => { const L = fs.readFileSync(p, 'utf8').trim().split('\n'); const c = L[0].split('\t').map(x => x.trim());
   return { cols: c, filas: L.slice(1).map(l => { const v = l.split('\t'); const o = {}; c.forEach((k, i) => o[k] = (v[i] || '').trim()); return o; }).filter(f => Object.values(f).some(v => v !== '')) }; };
 
-const idx = SGADD.construirIndice({ 'PROMEDIOS E': leer('/home/claude/eq/prom.tsv'), 'PROMEDIOS 4F': leer('/home/claude/eq/p4f.tsv') }, { fase: 'REGULAR' });
+const idx = SGADD.construirIndice({ 'PROMEDIOS E': leer('./test-fixtures/prom.tsv'), 'PROMEDIOS 4F': leer('./test-fixtures/p4f.tsv') }, { fase: 'REGULAR' });
 
 console.log('\nPERFILES · Primera (12 equipos)');
 console.log('═'.repeat(76));
@@ -58,8 +58,8 @@ eqs.forEach((a, i) => eqs.forEach((b, j) => {
 }));
 const bd = juegos.map(r => { const o = {}; colsBD.forEach((c, i) => o[c] = r[i]); return o; });
 const idxFull = SGADD.construirIndice({
-  'PROMEDIOS E': leer('/home/claude/eq/prom.tsv'),
-  'PROMEDIOS 4F': leer('/home/claude/eq/p4f.tsv'),
+  'PROMEDIOS E': leer('./test-fixtures/prom.tsv'),
+  'PROMEDIOS 4F': leer('./test-fixtures/p4f.tsv'),
   'Base Datos E': { cols: colsBD, filas: bd },
 }, { fase: 'REGULAR' });
 const pFull = P.perfil(idxFull, idxFull.get('RECONQUISTA A'));
@@ -89,7 +89,7 @@ for (let i = 1; i <= 6; i++) mk(i, 'GANADO', 9, 25);    // T3% 36%
 for (let i = 7; i <= 11; i++) mk(i, 'PERDIDO', 6, 24);  // T3% 25%
 
 const idxI = SGADD.construirIndice({
-  'PROMEDIOS E': leer('/home/claude/eq/prom.tsv'), 'PROMEDIOS 4F': leer('/home/claude/eq/p4f.tsv'),
+  'PROMEDIOS E': leer('./test-fixtures/prom.tsv'), 'PROMEDIOS 4F': leer('./test-fixtures/p4f.tsv'),
   'Base Datos E': { cols: colsI, filas: fI } }, { fase: 'REGULAR' });
 const ins = P.insight(idxI, idxI.get('RECONQUISTA A'));
 check('separa victorias de derrotas', ins.g.pj === 6 && ins.d.pj === 5, ins.g.pj + '-' + ins.d.pj);
@@ -108,7 +108,7 @@ console.log('─'.repeat(76));
 /* Misma forma de juego, escala distinta: una liga de PACE 80 y otra de 100.
    El perfil tiene que salir IGUAL porque se mide contra la propia liga. */
 function ligaEscalada(factor) {
-  const base = leer('/home/claude/eq/prom.tsv');
+  const base = leer('./test-fixtures/prom.tsv');
   const filas = base.filas.map(f => {
     const o = {};
     Object.keys(f).forEach(k => {
@@ -118,7 +118,7 @@ function ligaEscalada(factor) {
     });
     return o;
   });
-  return SGADD.construirIndice({ 'PROMEDIOS E': { cols: base.cols, filas }, 'PROMEDIOS 4F': leer('/home/claude/eq/p4f.tsv') }, { fase: 'REGULAR' });
+  return SGADD.construirIndice({ 'PROMEDIOS E': { cols: base.cols, filas }, 'PROMEDIOS 4F': leer('./test-fixtures/p4f.tsv') }, { fase: 'REGULAR' });
 }
 const idxRapida = ligaEscalada(1.25);
 const a = P.perfil(idx, idx.get('RECONQUISTA A'));
