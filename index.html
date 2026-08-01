@@ -128,26 +128,55 @@
      ===================================================================== */
   @page partido { size: A4; margin: 10mm; }
 
+  /* =====================================================================
+     INFORME POST-PARTIDO · exactamente UNA hoja A4
+
+     ATENCIÓN AL MÉTODO: la primera versión usaba `body > *:not(#view-root)`
+     para ocultar la app. Eso salía en blanco porque #view-root está CUATRO
+     niveles adentro de <body>: la regla ocultaba el contenedor que lo
+     envuelve y se llevaba puesto el contenido.
+
+     La forma robusta no depende de la estructura: se oculta TODO el body y
+     después se re-muestra la cadena de ancestros del bloque a imprimir,
+     usando `visibility` en vez de `display` para no romper el layout.
+     ===================================================================== */
   @media print {
-    body.modo-partido-print #detallePartido { page: partido; }
+    body.modo-partido-print { visibility: hidden; }
 
-    /* Margen mas chico que el informe de equipo: son 8mm extra de alto,
-       justo lo que separa una carilla de dos. */
-    body.modo-partido-print { }
+    /* El bloque y toda su descendencia vuelven a ser visibles. */
+    body.modo-partido-print #detallePartido,
+    body.modo-partido-print #detallePartido * { visibility: visible !important; }
 
-    body.modo-partido-print > *:not(#view-root) { display: none !important; }
-    body.modo-partido-print #view-root > section > *:not(#equiposRoot) { display: none !important; }
-    body.modo-partido-print #equiposRoot > *:not(.card) { display: none !important; }
-
-    /* Del tab solo queda el detalle: fuera header de equipo, tabs y barra. */
-    body.modo-partido-print #equiposRoot .card > *:not(#detallePartido) { display: none !important; }
-
+    /* Se saca del flujo y se ancla arriba: los ancestros siguen ocupando
+       lugar aunque estén invisibles, y sin esto el informe arrancaría a
+       mitad de la hoja. */
     body.modo-partido-print #detallePartido {
+      position: absolute !important;
+      left: 0; top: 0; width: 100%;
+      page: partido;
       font-size: 7pt;
       line-height: 1.25;
+      background: #fff !important;
     }
 
-    /* Nada puede saltar de página: es una carilla o nada. */
+    /* Papel: blanco y negro sin depender de "Gráficos de fondo". */
+    body.modo-partido-print #detallePartido,
+    body.modo-partido-print #detallePartido * {
+      color: #111 !important;
+      background-image: none !important;
+      box-shadow: none !important;
+    }
+    body.modo-partido-print #detallePartido [class*="bg-"] { background: #fff !important; }
+    body.modo-partido-print #detallePartido .dato-sec { color: #555 !important; }
+    body.modo-partido-print #detallePartido .text-green-400 { color: #15803d !important; }
+    body.modo-partido-print #detallePartido .text-red-400 { color: #b91c1c !important; }
+    body.modo-partido-print #detallePartido .text-accent { color: #000 !important; font-weight: 700; }
+    body.modo-partido-print #detallePartido [class*="border-"] { border-color: #bbb !important; }
+
+    /* Los botones no van al papel. */
+    body.modo-partido-print [data-no-print] { display: none !important; }
+
+    /* Una carilla o nada. */
     body.modo-partido-print #detallePartido,
     body.modo-partido-print #detallePartido * {
       page-break-inside: avoid !important;
@@ -156,7 +185,7 @@
       page-break-after: avoid !important;
     }
 
-    /* Compactado general */
+    /* --- Compactado --- */
     body.modo-partido-print #detallePartido .p-4,
     body.modo-partido-print #detallePartido .p-5,
     body.modo-partido-print #detallePartido .sm\:p-5 { padding: 2mm !important; }
@@ -173,34 +202,41 @@
     body.modo-partido-print #detallePartido .pt-4 { padding-top: 2mm !important; }
     body.modo-partido-print #detallePartido .space-y-2 > * + * { margin-top: 1mm !important; }
 
-    /* Marcador: es lo primero que se mira, se mantiene grande. */
+    /* El marcador es lo primero que se mira: se mantiene grande. */
     body.modo-partido-print #detallePartido .text-3xl,
     body.modo-partido-print #detallePartido .text-4xl,
     body.modo-partido-print #detallePartido .sm\:text-4xl { font-size: 20pt !important; }
     body.modo-partido-print #detallePartido img { width: 8mm !important; height: 8mm !important; }
 
-    /* Narrativa: legible pero contenida. */
     body.modo-partido-print #detallePartido .text-base { font-size: 8.5pt !important; }
     body.modo-partido-print #detallePartido .text-sm  { font-size: 7.5pt !important; }
     body.modo-partido-print #detallePartido .text-xs  { font-size: 6.8pt !important; }
     body.modo-partido-print #detallePartido .text-\[10px\],
     body.modo-partido-print #detallePartido .text-\[11px\] { font-size: 5.8pt !important; }
 
-    /* Box scores en paralelo. */
+    /* Box scores en paralelo: en columna se comen media hoja. */
     body.modo-partido-print #boxScores {
       display: grid !important;
       grid-template-columns: 1fr 1fr !important;
       gap: 3mm !important;
     }
-    body.modo-partido-print #detallePartido table { font-size: 6pt !important; }
+    body.modo-partido-print #detallePartido table { font-size: 6pt !important; width: 100% !important; }
     body.modo-partido-print #detallePartido th,
-    body.modo-partido-print #detallePartido td { padding: 0.7mm 0.6mm !important; }
+    body.modo-partido-print #detallePartido td {
+      padding: 0.7mm 0.6mm !important;
+      border-bottom: 1px solid #e0e0e0 !important;
+    }
     body.modo-partido-print #detallePartido .scrollbox { overflow: visible !important; }
 
-    /* La 2da línea del desvío duplica altura de fila: se saca. */
+    /* La 2da linea del desvio duplica la altura de fila; el color alcanza. */
     body.modo-partido-print #detallePartido td span.block { display: none !important; }
-    /* La nota al pie del box tampoco aporta en papel. */
-    body.modo-partido-print #detallePartido > p:last-child { font-size: 5.5pt !important; }
+
+    /* Metricas avanzadas: 4 en una fila. */
+    body.modo-partido-print #avanzadasPartido {
+      display: grid !important;
+      grid-template-columns: repeat(4, 1fr) !important;
+      gap: 2mm !important;
+    }
   }
 
   /* =====================================================================
@@ -435,17 +471,17 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=27"></script>
-<script src="js/sgadd-core.js?v=27"></script>
-<script src="js/sgadd-ui.js?v=27"></script>
-<script src="js/sgadd-app.js?v=27"></script>
-<script src="js/sgadd-charts.js?v=27"></script>
-<script src="js/sgadd-personalidad.js?v=27"></script>
-<script src="js/sgadd-rankings.js?v=27"></script>
-<script src="js/sgadd-partido.js?v=27"></script>
-<script src="js/sgadd-informe.js?v=27"></script>
-<script src="js/sgadd-equipos.js?v=27"></script>
-<script src="js/sgadd-diagnostico.js?v=27"></script>
+<script src="js/sgadd-club.js?v=28"></script>
+<script src="js/sgadd-core.js?v=28"></script>
+<script src="js/sgadd-ui.js?v=28"></script>
+<script src="js/sgadd-app.js?v=28"></script>
+<script src="js/sgadd-charts.js?v=28"></script>
+<script src="js/sgadd-personalidad.js?v=28"></script>
+<script src="js/sgadd-rankings.js?v=28"></script>
+<script src="js/sgadd-partido.js?v=28"></script>
+<script src="js/sgadd-informe.js?v=28"></script>
+<script src="js/sgadd-equipos.js?v=28"></script>
+<script src="js/sgadd-diagnostico.js?v=28"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
