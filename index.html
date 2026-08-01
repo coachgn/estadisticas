@@ -166,7 +166,24 @@
       background-image: none !important;
       box-shadow: none !important;
     }
-    body.modo-partido-print #detallePartido [class*="bg-"] { background: #fff !important; }
+    /* El blanco absoluto desarmó la jerarquía: todo parecía texto suelto.
+       Las tarjetas conservan fondo suave y borde sólido; el papel sigue
+       siendo claro, así que el gasto de tinta no cambia. */
+    body.modo-partido-print #detallePartido [class*="bg-surface2"],
+    body.modo-partido-print #detallePartido [class*="bg-accent/"],
+    body.modo-partido-print #detallePartido [class*="bg-green-400/"],
+    body.modo-partido-print #detallePartido [class*="bg-red-400/"] {
+      background: #f1f5f9 !important;
+      border: 1px solid #cbd5e1 !important;
+      border-radius: 1.5mm !important;
+    }
+    body.modo-partido-print #detallePartido .border-green-400 { border-left: 2.5px solid #15803d !important; }
+    body.modo-partido-print #detallePartido .border-red-400 { border-left: 2.5px solid #b91c1c !important; }
+    body.modo-partido-print #detallePartido h5 {
+      border-bottom: 1px solid #cbd5e1 !important;
+      padding-bottom: 0.8mm !important;
+      color: #0f172a !important;
+    }
     body.modo-partido-print #detallePartido .dato-sec { color: #555 !important; }
     body.modo-partido-print #detallePartido .text-green-400 { color: #15803d !important; }
     body.modo-partido-print #detallePartido .text-red-400 { color: #b91c1c !important; }
@@ -176,13 +193,20 @@
     /* Los botones no van al papel. */
     body.modo-partido-print [data-no-print] { display: none !important; }
 
-    /* Una carilla o nada. */
-    body.modo-partido-print #detallePartido,
-    body.modo-partido-print #detallePartido * {
+    /* Nada se parte al medio, pero el informe SÍ puede ocupar dos hojas.
+       Forzar una sola carilla obligaba a apretar el box score; es mejor un
+       informe fluido de 1 o 2 páginas que uno amontonado. */
+    body.modo-partido-print #detallePartido > *,
+    body.modo-partido-print #detallePartido .card,
+    body.modo-partido-print #detallePartido table,
+    body.modo-partido-print #detallePartido tr {
       page-break-inside: avoid !important;
       break-inside: avoid !important;
-      page-break-before: avoid !important;
-      page-break-after: avoid !important;
+    }
+    body.modo-partido-print #proximoCruce {
+      page-break-before: auto !important;
+      break-before: auto !important;
+      margin-top: 4mm !important;
     }
 
     /* --- Compactado --- */
@@ -471,17 +495,17 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=28"></script>
-<script src="js/sgadd-core.js?v=28"></script>
-<script src="js/sgadd-ui.js?v=28"></script>
-<script src="js/sgadd-app.js?v=28"></script>
-<script src="js/sgadd-charts.js?v=28"></script>
-<script src="js/sgadd-personalidad.js?v=28"></script>
-<script src="js/sgadd-rankings.js?v=28"></script>
-<script src="js/sgadd-partido.js?v=28"></script>
-<script src="js/sgadd-informe.js?v=28"></script>
-<script src="js/sgadd-equipos.js?v=28"></script>
-<script src="js/sgadd-diagnostico.js?v=28"></script>
+<script src="js/sgadd-club.js?v=29"></script>
+<script src="js/sgadd-core.js?v=29"></script>
+<script src="js/sgadd-ui.js?v=29"></script>
+<script src="js/sgadd-app.js?v=29"></script>
+<script src="js/sgadd-charts.js?v=29"></script>
+<script src="js/sgadd-personalidad.js?v=29"></script>
+<script src="js/sgadd-rankings.js?v=29"></script>
+<script src="js/sgadd-partido.js?v=29"></script>
+<script src="js/sgadd-informe.js?v=29"></script>
+<script src="js/sgadd-equipos.js?v=29"></script>
+<script src="js/sgadd-diagnostico.js?v=29"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
