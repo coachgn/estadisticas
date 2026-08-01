@@ -114,6 +114,95 @@
   .hover\:shadow-lg:hover { box-shadow: 0 8px 24px rgba(0,0,0,.45); }
 
 
+
+  /* =====================================================================
+     INFORME POST-PARTIDO · exactamente UNA hoja A4
+
+     Presupuesto medido sobre 277mm útiles (A4 menos 10mm de margen):
+       encabezado 22 · insight 76 · factores 26 · box scores 68 · pie 6
+       = 266mm, con 11mm de sobra.
+
+     Los dos box scores van EN PARALELO: en columna se comen 136mm y no
+     entra nada más. Todo se comprime con tipografías en pt y paddings en
+     mm para que el resultado no dependa del zoom del navegador.
+     ===================================================================== */
+  @page partido { size: A4; margin: 10mm; }
+
+  @media print {
+    body.modo-partido-print #detallePartido { page: partido; }
+
+    /* Margen mas chico que el informe de equipo: son 8mm extra de alto,
+       justo lo que separa una carilla de dos. */
+    body.modo-partido-print { }
+
+    body.modo-partido-print > *:not(#view-root) { display: none !important; }
+    body.modo-partido-print #view-root > section > *:not(#equiposRoot) { display: none !important; }
+    body.modo-partido-print #equiposRoot > *:not(.card) { display: none !important; }
+
+    /* Del tab solo queda el detalle: fuera header de equipo, tabs y barra. */
+    body.modo-partido-print #equiposRoot .card > *:not(#detallePartido) { display: none !important; }
+
+    body.modo-partido-print #detallePartido {
+      font-size: 7pt;
+      line-height: 1.25;
+    }
+
+    /* Nada puede saltar de página: es una carilla o nada. */
+    body.modo-partido-print #detallePartido,
+    body.modo-partido-print #detallePartido * {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+      page-break-before: avoid !important;
+      page-break-after: avoid !important;
+    }
+
+    /* Compactado general */
+    body.modo-partido-print #detallePartido .p-4,
+    body.modo-partido-print #detallePartido .p-5,
+    body.modo-partido-print #detallePartido .sm\:p-5 { padding: 2mm !important; }
+    body.modo-partido-print #detallePartido .p-3,
+    body.modo-partido-print #detallePartido .p-2\.5 { padding: 1.2mm !important; }
+    body.modo-partido-print #detallePartido .mb-6,
+    body.modo-partido-print #detallePartido .mb-5 { margin-bottom: 2.5mm !important; }
+    body.modo-partido-print #detallePartido .mb-3,
+    body.modo-partido-print #detallePartido .mb-2 { margin-bottom: 1.2mm !important; }
+    body.modo-partido-print #detallePartido .gap-6,
+    body.modo-partido-print #detallePartido .gap-3 { gap: 2.5mm !important; }
+    body.modo-partido-print #detallePartido .mt-5,
+    body.modo-partido-print #detallePartido .mt-6 { margin-top: 2.5mm !important; }
+    body.modo-partido-print #detallePartido .pt-4 { padding-top: 2mm !important; }
+    body.modo-partido-print #detallePartido .space-y-2 > * + * { margin-top: 1mm !important; }
+
+    /* Marcador: es lo primero que se mira, se mantiene grande. */
+    body.modo-partido-print #detallePartido .text-3xl,
+    body.modo-partido-print #detallePartido .text-4xl,
+    body.modo-partido-print #detallePartido .sm\:text-4xl { font-size: 20pt !important; }
+    body.modo-partido-print #detallePartido img { width: 8mm !important; height: 8mm !important; }
+
+    /* Narrativa: legible pero contenida. */
+    body.modo-partido-print #detallePartido .text-base { font-size: 8.5pt !important; }
+    body.modo-partido-print #detallePartido .text-sm  { font-size: 7.5pt !important; }
+    body.modo-partido-print #detallePartido .text-xs  { font-size: 6.8pt !important; }
+    body.modo-partido-print #detallePartido .text-\[10px\],
+    body.modo-partido-print #detallePartido .text-\[11px\] { font-size: 5.8pt !important; }
+
+    /* Box scores en paralelo. */
+    body.modo-partido-print #boxScores {
+      display: grid !important;
+      grid-template-columns: 1fr 1fr !important;
+      gap: 3mm !important;
+    }
+    body.modo-partido-print #detallePartido table { font-size: 6pt !important; }
+    body.modo-partido-print #detallePartido th,
+    body.modo-partido-print #detallePartido td { padding: 0.7mm 0.6mm !important; }
+    body.modo-partido-print #detallePartido .scrollbox { overflow: visible !important; }
+
+    /* La 2da línea del desvío duplica altura de fila: se saca. */
+    body.modo-partido-print #detallePartido td span.block { display: none !important; }
+    /* La nota al pie del box tampoco aporta en papel. */
+    body.modo-partido-print #detallePartido > p:last-child { font-size: 5.5pt !important; }
+  }
+
   /* =====================================================================
      IMPRESIÓN · Informe pre-partido
 
@@ -127,6 +216,8 @@
 
   @media print {
     @page { size: A4; margin: 14mm 12mm; }
+    /* El post-partido necesita cada milimetro para entrar en una carilla. */
+    body.modo-partido-print { }
 
     /* Papel: fondo blanco y texto negro. El tema oscuro gasta tinta y en
        impresora hogareña sale gris sucio. */
@@ -344,17 +435,17 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=26"></script>
-<script src="js/sgadd-core.js?v=26"></script>
-<script src="js/sgadd-ui.js?v=26"></script>
-<script src="js/sgadd-app.js?v=26"></script>
-<script src="js/sgadd-charts.js?v=26"></script>
-<script src="js/sgadd-personalidad.js?v=26"></script>
-<script src="js/sgadd-rankings.js?v=26"></script>
-<script src="js/sgadd-partido.js?v=26"></script>
-<script src="js/sgadd-informe.js?v=26"></script>
-<script src="js/sgadd-equipos.js?v=26"></script>
-<script src="js/sgadd-diagnostico.js?v=26"></script>
+<script src="js/sgadd-club.js?v=27"></script>
+<script src="js/sgadd-core.js?v=27"></script>
+<script src="js/sgadd-ui.js?v=27"></script>
+<script src="js/sgadd-app.js?v=27"></script>
+<script src="js/sgadd-charts.js?v=27"></script>
+<script src="js/sgadd-personalidad.js?v=27"></script>
+<script src="js/sgadd-rankings.js?v=27"></script>
+<script src="js/sgadd-partido.js?v=27"></script>
+<script src="js/sgadd-informe.js?v=27"></script>
+<script src="js/sgadd-equipos.js?v=27"></script>
+<script src="js/sgadd-diagnostico.js?v=27"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
