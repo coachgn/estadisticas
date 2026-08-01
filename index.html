@@ -126,7 +126,8 @@
      entra nada más. Todo se comprime con tipografías en pt y paddings en
      mm para que el resultado no dependa del zoom del navegador.
      ===================================================================== */
-  @page partido { size: A4; margin: 10mm; }
+  /* El lienzo de la hoja: blanco de borde a borde. */
+  @page partido { size: A4; margin: 10mm; background: #ffffff; }
 
   /* =====================================================================
      INFORME POST-PARTIDO · exactamente UNA hoja A4
@@ -141,6 +142,21 @@
      usando `visibility` en vez de `display` para no romper el layout.
      ===================================================================== */
   @media print {
+    /* `visibility: hidden` NO saca el color de fondo: el elemento sigue
+       pintando su background. Por eso salían márgenes negros alrededor de
+       la hoja. Hay que blanquear html, body y los contenedores intermedios. */
+    html, body,
+    body.modo-partido-print,
+    body.modo-partido-print #view-root,
+    body.modo-partido-print .card {
+      background: #ffffff !important;
+      background-color: #ffffff !important;
+      background-image: none !important;
+    }
+    body.modo-partido-print > div,
+    body.modo-partido-print > div > div,
+    body.modo-partido-print > div > div > div { background: transparent !important; }
+
     body.modo-partido-print { visibility: hidden; }
 
     /* El bloque y toda su descendencia vuelven a ser visibles. */
@@ -162,9 +178,13 @@
     /* Papel: blanco y negro sin depender de "Gráficos de fondo". */
     body.modo-partido-print #detallePartido,
     body.modo-partido-print #detallePartido * {
-      color: #111 !important;
+      color: #0f172a !important;
       background-image: none !important;
       box-shadow: none !important;
+      /* Obliga al navegador a imprimir los colores, sin depender de
+         que el usuario active "Graficos de fondo". */
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
     }
     /* El blanco absoluto desarmó la jerarquía: todo parecía texto suelto.
        Las tarjetas conservan fondo suave y borde sólido; el papel sigue
@@ -184,11 +204,24 @@
       padding-bottom: 0.8mm !important;
       color: #0f172a !important;
     }
-    body.modo-partido-print #detallePartido .dato-sec { color: #555 !important; }
+    body.modo-partido-print #detallePartido .dato-sec,
+    body.modo-partido-print #detallePartido .text-muted { color: #64748b !important; }
+    body.modo-partido-print #detallePartido .text-white,
+    body.modo-partido-print #detallePartido .text-slate-100 { color: #0f172a !important; }
+
+    /* Verde y rojo un tono mas oscuro que en pantalla: sobre blanco, los de
+       la app quedan lavados. Mismo significado, distinta luminosidad. */
     body.modo-partido-print #detallePartido .text-green-400 { color: #15803d !important; }
     body.modo-partido-print #detallePartido .text-red-400 { color: #b91c1c !important; }
-    body.modo-partido-print #detallePartido .text-accent { color: #000 !important; font-weight: 700; }
-    body.modo-partido-print #detallePartido [class*="border-"] { border-color: #bbb !important; }
+    body.modo-partido-print #detallePartido .bg-green-400 { background: #15803d !important; }
+    body.modo-partido-print #detallePartido .bg-red-400 { background: #b91c1c !important; }
+    body.modo-partido-print #detallePartido .bg-muted { background: #94a3b8 !important; }
+    body.modo-partido-print #detallePartido .bg-surface2 { background: #e2e8f0 !important; }
+
+    /* El acento del club se mantiene: es la identidad del cliente. */
+    body.modo-partido-print #detallePartido .text-accent {
+      color: var(--acento-oscuro, #b45309) !important; font-weight: 700;
+    }
 
     /* Los botones no van al papel. */
     body.modo-partido-print [data-no-print] { display: none !important; }
@@ -230,7 +263,10 @@
     body.modo-partido-print #detallePartido .text-3xl,
     body.modo-partido-print #detallePartido .text-4xl,
     body.modo-partido-print #detallePartido .sm\:text-4xl { font-size: 20pt !important; }
-    body.modo-partido-print #detallePartido img { width: 8mm !important; height: 8mm !important; }
+    body.modo-partido-print #detallePartido img {
+      width: 8mm !important; height: 8mm !important;
+      -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+    }
 
     body.modo-partido-print #detallePartido .text-base { font-size: 8.5pt !important; }
     body.modo-partido-print #detallePartido .text-sm  { font-size: 7.5pt !important; }
@@ -495,17 +531,17 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=29"></script>
-<script src="js/sgadd-core.js?v=29"></script>
-<script src="js/sgadd-ui.js?v=29"></script>
-<script src="js/sgadd-app.js?v=29"></script>
-<script src="js/sgadd-charts.js?v=29"></script>
-<script src="js/sgadd-personalidad.js?v=29"></script>
-<script src="js/sgadd-rankings.js?v=29"></script>
-<script src="js/sgadd-partido.js?v=29"></script>
-<script src="js/sgadd-informe.js?v=29"></script>
-<script src="js/sgadd-equipos.js?v=29"></script>
-<script src="js/sgadd-diagnostico.js?v=29"></script>
+<script src="js/sgadd-club.js?v=30"></script>
+<script src="js/sgadd-core.js?v=30"></script>
+<script src="js/sgadd-ui.js?v=30"></script>
+<script src="js/sgadd-app.js?v=30"></script>
+<script src="js/sgadd-charts.js?v=30"></script>
+<script src="js/sgadd-personalidad.js?v=30"></script>
+<script src="js/sgadd-rankings.js?v=30"></script>
+<script src="js/sgadd-partido.js?v=30"></script>
+<script src="js/sgadd-informe.js?v=30"></script>
+<script src="js/sgadd-equipos.js?v=30"></script>
+<script src="js/sgadd-diagnostico.js?v=30"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
