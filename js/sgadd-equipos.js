@@ -878,8 +878,8 @@ function equiposDetallePartido(idx, e, id) {
           ${lista(a.grietas, 'border-red-400')}
         </div>
       </div>
-      ${bloqueRec}
     </div>`;
+  // bloqueRec NO va acá: se inserta al final, debajo de los box scores.
 
   /* --- 4 Factores enfrentados --- */
   const factores = (propio.factores && riv && riv.factores) ? (() => {
