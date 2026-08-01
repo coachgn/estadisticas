@@ -911,6 +911,43 @@ function equiposDetallePartido(idx, e, id) {
       </div>`;
   })() : '';
 
+  /* --- Métricas avanzadas del partido --- */
+  const avanzadas = (a.avanzadas) ? (() => {
+    const av = a.avanzadas, ar = a.avanzadasRival;
+    const tarjeta = (label, valor, propio, rival, fmt, mejorAlto) => {
+      if (valor === null || valor === undefined) return '';
+      const cmp = (typeof propio === 'number' && typeof rival === 'number')
+        ? (mejorAlto ? propio > rival : propio < rival) : null;
+      const color = cmp === null ? 'text-white' : (cmp ? 'text-green-400' : 'text-red-400');
+      return `
+        <div class="bg-surface2/50 rounded-lg p-3 border border-transparent
+                    hover:border-accent hover:shadow-lg transition-all duration-200">
+          <p class="text-[10px] uppercase tracking-wider dato-sec font-display">${escapeHtml(label)}</p>
+          <p class="font-display text-2xl ${color} leading-tight">${escapeHtml(fmt(valor))}</p>
+          ${typeof rival === 'number'
+            ? `<p class="text-[10px] dato-sec font-mono mt-0.5">rival ${escapeHtml(fmt(rival))}</p>` : ''}
+        </div>`;
+    };
+    const n1 = v => v.toFixed(1).replace('.', ',');
+    const n0 = v => String(Math.round(v));
+
+    return `
+      <div class="mb-6">
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Eficiencia del partido</h5>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3" id="avanzadasPartido">
+          ${tarjeta('Ritmo (PACE)', av.pace, null, null, n1)}
+          ${tarjeta('ORTG', av.ortg, av.ortg, ar ? ar.ortg : null, n1, true)}
+          ${tarjeta('DRTG', av.drtg, av.drtg, ar ? ar.drtg : null, n1, false)}
+          ${tarjeta('PLAYS', av.plays, av.plays, ar ? ar.plays : null, n0, true)}
+        </div>
+        <p class="text-[11px] dato-sec mt-2 leading-snug">
+          ORTG y DRTG están calculados por 100 <b>PLAYS</b>, no por 100 posesiones:
+          no son comparables con el ORTG de la NBA. PACE son las posesiones proyectadas
+          a 200 minutos de equipo.
+        </p>
+      </div>`;
+  })() : '';
+
   /* --- Box scores --- */
   const boxScore = (lado, desvios, titulo) => {
     if (!lado || !lado.box.length) {
@@ -971,6 +1008,7 @@ function equiposDetallePartido(idx, e, id) {
       ${cabecera}
       ${insight}
       ${factores}
+      ${avanzadas}
       <div class="grid grid-cols-1 xl:grid-cols-2 gap-6" id="boxScores">
         ${boxScore(propio, a.propios, 'Box score · ' + propio.equipo.nombre)}
         ${riv ? boxScore(riv, a.rivales, 'Box score · ' + riv.equipo.nombre) : ''}

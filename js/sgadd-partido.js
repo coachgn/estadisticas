@@ -36,12 +36,51 @@ const SGADD_PARTIDO = (function () {
   ];
 
   /* Columnas del box score. */
-  const COLS_BOX = ['MIN', 'PTS', 'T2C', 'T2I', 'T3C', 'T3I', 'T1C', 'T1I',
-                    'RT', 'AST', 'PR', 'PP', 'VAL'];
+  /* PLAYS entre PTS y T2C: dice cuántas posesiones usó cada jugador, que es
+     el contexto que le falta a los puntos sueltos. VAL sale: es un índice
+     compuesto que ya está resumido en el resto de las columnas. */
+  const COLS_BOX = ['MIN', 'PTS', 'PLAYS', 'T2C', 'T2I', 'T3C', 'T3I', 'T1C', 'T1I',
+                    'RT', 'AST', 'PR', 'PP'];
 
   /* En cuáles marcamos desvío. Contar rebotes de un partido contra el
      promedio tiene sentido; el T3% de 2 intentos, no. */
-  const COLS_DESVIO = ['PTS', 'RT', 'AST', 'VAL'];
+  const COLS_DESVIO = ['PTS', 'RT', 'AST', 'PLAYS'];
+
+  /* ---------------------------------------------------------------------
+     MÉTRICAS AVANZADAS DEL PARTIDO
+
+     Se leen de las columnas de la planilla cuando existen, y solo se
+     recalculan si faltan. Verificado contra un partido real: la fórmula
+     POS = TCI + PP + 0,44 × T1I − RO reproduce la columna al centésimo.
+
+     OJO con RTNG: en estas planillas está por 100 PLAYS, no por 100
+     posesiones. Se etiqueta así para que nadie lo compare con el ORTG
+     de la NBA y saque conclusiones equivocadas.
+     --------------------------------------------------------------------- */
+  function avanzadas(lado, rival) {
+    if (!lado) return null;
+    const f = lado.fila, g = rival ? rival.fila : null;
+    const n = k => (typeof f[k] === 'number' && isFinite(f[k])) ? f[k] : null;
+    const nr = k => (g && typeof g[k] === 'number' && isFinite(g[k])) ? g[k] : null;
+
+    const pos = n('POS') !== null ? n('POS')
+      : ((n('TCI') || 0) + (n('PP') || 0) + 0.44 * (n('T1I') || 0) - (n('RO') || 0));
+    const plays = n('PLAYS');
+    const pts = n('PTS');
+    const ptsOpp = n('PTSopp') !== null ? n('PTSopp') : nr('PTS');
+    const playsOpp = n('PLAYSopp') !== null ? n('PLAYSopp') : nr('PLAYS');
+
+    const div = (a, b) => (typeof a === 'number' && typeof b === 'number' && b > 0) ? a / b : null;
+
+    return {
+      pace: n('PACE'),
+      pos: pos,
+      plays: plays,
+      ortg: div(pts, plays) !== null ? div(pts, plays) * 100 : null,
+      drtg: div(ptsOpp, playsOpp) !== null ? div(ptsOpp, playsOpp) * 100 : null,
+      ppp: div(pts, plays),
+    };
+  }
 
   /* ---------------------------------------------------------------------
      ANÁLISIS
@@ -125,6 +164,8 @@ const SGADD_PARTIDO = (function () {
 
     return {
       gano: gano, rival: rival, contraste: contraste,
+      avanzadas: avanzadas(ladoPropio, rival),
+      avanzadasRival: rival ? avanzadas(rival, ladoPropio) : null,
       claves: claves, grietas: grietas,
       propios: propios, rivales: rivales,
       jugadores: ajusteJugadores(propios, rivales),
@@ -222,7 +263,7 @@ const SGADD_PARTIDO = (function () {
 
   return {
     Z_ATIPICO, MIN_MINUTOS, MIN_PARTIDOS_JUGADOR, COLS_BOX, COLS_DESVIO, CONTRASTE_EQUIPO,
-    analizar, desviosLado, contrasteEquipo, ajusteJugadores, nombreCorto,
+    analizar, desviosLado, contrasteEquipo, ajusteJugadores, nombreCorto, avanzadas,
   };
 })();
 
