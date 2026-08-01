@@ -343,6 +343,103 @@ function jugadoresRival(p) {
   return SGADD.limpiarNombre(otro);
 }
 
+/** "L" / "V" / "?" — la condición corta que va en badges y tooltips. */
+function jugadoresCondicionCorta(p) {
+  const cond = SGADD.texto(p['CONDICION']).toUpperCase();
+  return cond === 'LOCAL' ? 'L' : cond === 'VISITANTE' ? 'V' : '?';
+}
+
+/** "14/10/2025 - vs RECONQUISTA (L)" — para el tooltip del gráfico de
+    evolución: fecha, rival y condición en una sola línea. */
+function jugadoresEtiquetaEvolucion(p) {
+  return SGADD.formatearFecha(p.__fecha) + ' - vs ' + jugadoresRival(p) + ' (' + jugadoresCondicionCorta(p) + ')';
+}
+
+/* =====================================================================
+   LOCAL VS. VISITANTE
+
+   Si un jugador rinde distinto de local que de visitante, es una señal de
+   scouting real (¿depende del aliento? ¿de dormir en la ruta?). No hay
+   equivalente ya calculado para jugadores como e.split en Equipos: se
+   arma acá filtrando liga.jugadorPartidos por CONDICION.
+   ===================================================================== */
+
+/** Métricas que se comparan entre local y visitante. */
+const CLAVES_CONDICION = ['PTS', 'eFG%', 'PLAYS', 'MIN', 'USG%', 'AST-PP'];
+
+/** Con menos partidos de un lado, un solo picazo decide la comparación:
+    no hay suficiente para leer "sensibilidad" y no una racha. */
+const MIN_PJ_CONDICION = 2;
+
+/** Promedio y cantidad de partidos de un jugador, separado en LOCAL/VISITANTE. */
+function jugadoresSplitCondicion(idx, j) {
+  const partidos = idx.liga.jugadorPartidos.get(j.__clave) || [];
+  const porCondicion = (cond) => partidos.filter(p => SGADD.texto(p['CONDICION']).toUpperCase() === cond);
+  const local = porCondicion('LOCAL');
+  const visitante = porCondicion('VISITANTE');
+
+  const promedio = (arr, k) => {
+    const vals = arr.map(p => p[k]).filter(v => typeof v === 'number' && isFinite(v));
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  };
+  const armar = (arr) => {
+    const o = { pj: arr.length };
+    CLAVES_CONDICION.forEach(k => { o[k] = promedio(arr, k); });
+    return o;
+  };
+
+  const localM = armar(local), visitanteM = armar(visitante);
+  const suficiente = localM.pj >= MIN_PJ_CONDICION && visitanteM.pj >= MIN_PJ_CONDICION;
+
+  return {
+    local: localM, visitante: visitanteM, suficiente,
+    sensibilidad: suficiente ? jugadoresSensibilidadCondicion(localM, visitanteM) : null,
+  };
+}
+
+/* Umbral = diferencia mínima para no confundir ruido con una tendencia real.
+   `tipo` separa métricas de RENDIMIENTO (PTS/eFG%/AST-PP: subir o bajar es
+   una mejora o una caída) de métricas de USO (PLAYS/MIN/USG%: cambian el
+   rol, no necesariamente la calidad). */
+const SENSIBILIDAD_CONDICION = [
+  { clave: 'PTS', umbral: 2.0, tipo: 'rendimiento' },
+  { clave: 'eFG%', umbral: 0.03, tipo: 'rendimiento' },
+  { clave: 'AST-PP', umbral: 0.3, tipo: 'rendimiento' },
+  { clave: 'PLAYS', umbral: 2.0, tipo: 'uso' },
+  { clave: 'MIN', umbral: 2.0, tipo: 'uso' },
+  { clave: 'USG%', umbral: 0.03, tipo: 'uso' },
+];
+
+/** El indicador rápido: cuál es la métrica que más cambia entre local y
+    visitante (en relación a SU propio umbral, no en términos absolutos —
+    así 3 puntos de más en PTS y 3pp de más en eFG% se pueden comparar). */
+function jugadoresSensibilidadCondicion(localM, visitanteM) {
+  const filas = SENSIBILIDAD_CONDICION.map(def => {
+    const l = localM[def.clave], v = visitanteM[def.clave];
+    if (l === null || v === null) return null;
+    const dif = l - v;
+    return { clave: def.clave, tipo: def.tipo, dif: dif, peso: Math.abs(dif) / def.umbral };
+  }).filter(Boolean);
+
+  const relevantes = filas.filter(f => f.peso >= 1).sort((a, b) => b.peso - a.peso);
+  if (!relevantes.length) {
+    return { nivel: 'estable', clave: null, dif: 0,
+      texto: 'Rendimiento estable entre local y visitante: ninguna métrica cambia de forma relevante.' };
+  }
+
+  const top = relevantes[0];
+  const label = SGADD.metrica(top.clave).label;
+  const valor = SGADD.formatear(top.clave, Math.abs(top.dif));
+  const nivel = top.dif > 0 ? 'local' : 'visitante';
+  const texto = top.tipo === 'rendimiento'
+    ? 'Mejora de ' + (nivel === 'local' ? 'Local' : 'Visitante') + ' en ' + label +
+      ' (' + (top.dif > 0 ? '+' : '-') + valor + ' respecto a la otra condición)'
+    : (nivel === 'local' ? 'Más ' : 'Menos ') + label.toLowerCase() + ' de local (' +
+      (top.dif > 0 ? '+' : '') + SGADD.formatear(top.clave, top.dif) + ')';
+
+  return { nivel: nivel, clave: top.clave, dif: top.dif, texto: texto };
+}
+
 /* =====================================================================
    RUTEO
    ===================================================================== */
@@ -625,6 +722,52 @@ function jugadoresADN(sintesis) {
     </div>`;
 }
 
+/** Tarjeta comparativa Local vs. Visitante, con el badge de sensibilidad. */
+function jugadoresBloqueCondicion(idx, j) {
+  const split = jugadoresSplitCondicion(idx, j);
+  if (!split.suficiente) {
+    return SGADD_UI.aviso('Local vs. Visitante',
+      'Hacen falta al menos ' + MIN_PJ_CONDICION + ' partidos de local y ' + MIN_PJ_CONDICION + ' de visitante para comparar. ' +
+      'Lleva ' + split.local.pj + ' de local y ' + split.visitante.pj + ' de visitante.');
+  }
+
+  const filas = CLAVES_CONDICION.map(k => {
+    const l = split.local[k], v = split.visitante[k];
+    const dif = (l !== null && v !== null) ? l - v : null;
+    const m = SGADD.metrica(k);
+    const mejorLocal = dif === null ? null : (m.invertida ? dif < 0 : dif > 0);
+    return `<tr class="border-b border-hairline/40 last:border-0">
+      <td class="py-1.5 pr-3 text-xs">${escapeHtml(m.label)}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs text-ink">${escapeHtml(SGADD.formatear(k, l))}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs text-ink">${escapeHtml(SGADD.formatear(k, v))}</td>
+      <td class="py-1.5 font-mono text-xs ${dif === null ? 'text-muted' : mejorLocal ? 'text-green-400' : 'text-red-400'}">
+        ${dif === null ? '—' : (dif > 0 ? '+' : '') + escapeHtml(SGADD.formatear(k, dif))}
+      </td>
+    </tr>`;
+  }).join('');
+
+  const sens = split.sensibilidad;
+  const colorBadge = sens.nivel === 'estable' ? 'text-muted border-hairline bg-surface2/30'
+    : sens.nivel === 'local' ? 'text-green-400 border-green-400/40 bg-green-400/5'
+    : 'text-accent border-accent/40 bg-accent/5';
+  const etiquetaBadge = sens.nivel === 'estable' ? 'Rendimiento estable'
+    : sens.nivel === 'local' ? 'Sensible: mejor de Local' : 'Sensible: mejor de Visitante';
+
+  return `
+    <div class="rounded-lg border border-hairline bg-surface2/30 p-4 mb-6">
+      <div class="flex items-center justify-between gap-2 mb-3">
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent">Local vs. Visitante</h5>
+        <span class="text-[10px] font-display uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 ${colorBadge}">${escapeHtml(etiquetaBadge)}</span>
+      </div>
+      <div class="scrollbox"><table class="w-full text-left">
+        <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+          <th class="pb-1 pr-3">Métrica</th><th class="pb-1 pr-3">Local (${split.local.pj})</th>
+          <th class="pb-1 pr-3">Visitante (${split.visitante.pj})</th><th class="pb-1">Dif</th>
+        </tr></thead><tbody>${filas}</tbody></table></div>
+      <p class="text-[11px] text-muted mt-3 leading-snug">${escapeHtml(sens.texto)}</p>
+    </div>`;
+}
+
 function jugadoresTabGeneral(idx, j) {
   const sintesis = jugadoresSintesisPerfil(idx, j);
   const conclusionBloque = {
@@ -651,6 +794,7 @@ function jugadoresTabGeneral(idx, j) {
       ${jugadoresTarjetaSintesis(sintesis.eficiencia)}
       ${jugadoresTarjetaSintesis(conclusionBloque)}
     </div>
+    ${jugadoresBloqueCondicion(idx, j)}
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">${cards}</div>
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       ${SGADD_UI.metricTable(vistaMarcador)}
@@ -743,12 +887,14 @@ function jugadoresTabEvolucion(idx, j) {
     const z = jugadoresZScore(p[metricaId], stat.media, stat.desvio);
     return (z !== null && Math.abs(z) >= SGADD_PARTIDO.Z_ATIPICO) ? (z > 0 ? 1 : -1) : null;
   });
+  // Fecha + rival + condición (L/V) en el tooltip: "14/10/2025 - vs X (L)".
+  const etiquetas = partidos.map(jugadoresEtiquetaEvolucion);
 
   return `
     ${selector}
     <div class="mb-2">
       ${equiposPanel(metricaLbl + ' por partido · banda de ±1 desvío',
-        SGADD_CHARTS.evolucionJugador('chEvolJugador', partidos, metricaId, { media: stat.media, desvio: stat.desvio, atipicos: atipicos, label: metricaLbl }),
+        SGADD_CHARTS.evolucionJugador('chEvolJugador', partidos, metricaId, { media: stat.media, desvio: stat.desvio, atipicos: atipicos, label: metricaLbl, etiquetas: etiquetas }),
         `<p class="text-[11px] text-muted mt-3 leading-snug">
            Media ${escapeHtml(SGADD.formatear(metricaId, stat.media))} · desvío ${escapeHtml(SGADD.formatear(metricaId, stat.desvio))}
            sobre ${stat.n} partidos con box score.
@@ -799,9 +945,11 @@ function jugadoresTabPartidos(idx, j) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     JUGADORES_TABS, JUGADORES_METRICAS_EVOLUCION, ROLES_MINUTOS, PERFILES_TECNICOS, JERARQUIA, ZONAS_TIRO,
+    CLAVES_CONDICION, MIN_PJ_CONDICION, SENSIBILIDAD_CONDICION,
     jugadoresSlug, jugadoresBuscar, jugadoresZScore,
     jugadoresPartidosOrdenados, jugadoresRival, jugadoresIdCanonico,
     jugadoresRolMinutos, jugadoresPromedioMetrica, jugadoresPromediosLiga, jugadoresRT,
     jugadoresArquetipos, jugadoresJerarquia, jugadoresPuntoDeFuga, jugadoresSintesisPerfil,
+    jugadoresCondicionCorta, jugadoresEtiquetaEvolucion, jugadoresSplitCondicion, jugadoresSensibilidadCondicion,
   };
 }

@@ -217,7 +217,7 @@ const SGADD_CHARTS = (function () {
         scales: ejes({ desdeCero: false }),
         plugins: Object.assign(baseOpciones().plugins, {
           tooltip: Object.assign(baseOpciones().plugins.tooltip, {
-            callbacks: { title: (items) => (o.rivales ? o.rivales[items[0].dataIndex] : items[0].label) },
+            callbacks: { title: (items) => (o.etiquetas ? o.etiquetas[items[0].dataIndex] : items[0].label) },
           }),
         }),
       }),
@@ -271,7 +271,7 @@ const SGADD_CHARTS = (function () {
           tooltip: Object.assign(baseOpciones().plugins.tooltip, {
             filter: (item) => item.datasetIndex === 2,
             callbacks: {
-              title: (items) => (o.rivales ? o.rivales[items[0].dataIndex] : items[0].label),
+              title: (items) => (o.etiquetas ? o.etiquetas[items[0].dataIndex] : items[0].label),
               label: (c) => etiqueta + ': ' + fmt(c.raw),
             },
           }),

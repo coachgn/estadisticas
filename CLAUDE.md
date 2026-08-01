@@ -16,13 +16,13 @@ node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  22 tests · multi-cliente
 node test-boot.js          #  16 tests · arranque por club
-node test-jugadores.js     #  56 tests · rol por minutos, arquetipos, jerarquía, tiro, evolución
+node test-jugadores.js     #  75 tests · rol, arquetipos, jerarquía, tiro, evolución, local/visitante
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  17 tests · detalle partido a partido
 ```
 
-**267 tests en total. Todos tienen que dar verde antes de commitear.**
+**286 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -67,7 +67,7 @@ logos/<liga>/           ← escudos + index.json (manifiesto)
 test-fixtures/          ← prom.tsv + p4f.tsv, 12 equipos de La Plata (committeados)
 ```
 
-**Versión actual de assets: `?v=33`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=34`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -306,6 +306,40 @@ una recomendación de renovación de contrato** — el club es amateur, no
 gestiona pases — es la condición de uso para sacarle el máximo (ej. "limitar
 minutos", "trabajar tal debilidad").
 
+### Local vs. Visitante
+
+Tarjeta en el Tab General (`jugadoresBloqueCondicion()`) que compara PTS,
+eFG%, PLAYS, MIN, USG% y AST-PP entre los partidos de local y de visitante
+del jugador (`jugadoresSplitCondicion()`, arma los promedios filtrando
+`liga.jugadorPartidos` por `CONDICION` — no hay equivalente pre-calculado
+para jugadores como `e.split` en Equipos).
+
+Con menos de 2 partidos de un lado no se muestra la comparación (un solo
+partido no es una tendencia, es una noche). El **indicador de sensibilidad**
+(`jugadoresSensibilidadCondicion()`) elige la métrica que más se aleja de
+su propio umbral — no la diferencia más grande en términos absolutos, sino
+la más grande EN RELACIÓN a lo que se considera ruido para esa métrica
+(3 puntos de PTS y 3pp de eFG% no son la misma magnitud de cambio). Separa
+métricas de **rendimiento** (PTS/eFG%/AST-PP: "Mejora de Local/Visitante")
+de métricas de **uso** (PLAYS/MIN/USG%: cambia el rol, no necesariamente
+la calidad — no lleva la palabra "mejora"). Sin ninguna métrica relevante,
+el resultado es "Rendimiento estable".
+
+### Etiquetas de los gráficos de evolución
+
+Los tooltips de "Evolución" (Jugadores) y "Evolución · puntos a favor y en
+contra" (Equipos) muestran fecha + rival + condición corta, ej.
+`14/10 - vs ATENAS (L)`. `jugadoresEtiquetaEvolucion()` en
+`sgadd-jugadores.js` y `equiposEtiquetaEvolucion()` en `sgadd-equipos.js`
+son la misma idea duplicada a propósito (mismo criterio, cada módulo arma
+la suya con su propio helper de rival) — `sgadd-equipos.js` no tenía
+`module.exports` hasta esta vuelta; se le agregó SOLO para poder testear
+esa función pura, el resto del módulo sigue sin testearse directo (usa
+`document`/`LOGOS`, se verifica a mano en el navegador, igual que siempre).
+**OJO**: la fecha va sin año (`SGADD.formatearFecha()` da `dd/mm`, no
+`dd/mm/aaaa`) — es la convención que ya usa toda la app, no se tocó para
+no meter una inconsistencia en el resto de las tablas de partidos.
+
 ### Lo que entró en esta vuelta
 
 - **Grilla de la liga**: filtro por equipo, toggle "solo los que califican",
@@ -313,7 +347,8 @@ minutos", "trabajar tal debilidad").
 - **Ficha**: header con KPIs (PTS, MIN, eFG%, USG%), badge de rol, jerarquía
   (ADN) y la consistencia del jugador (`statJugador` media ± desvío).
 - **Tab General**: ADN (arquetipos + jerarquía), tarjetas de síntesis
-  (impacto/eficiencia/conclusión) y KPIs + tablas en percentil contra la liga.
+  (impacto/eficiencia/conclusión), la tarjeta Local vs. Visitante, y KPIs +
+  tablas en percentil contra la liga.
 - **Tab Tiro**: distribución por zona (Triple/Doble/Libre) — peso relativo,
   CONV%, PPP y C/I — más gráficos de volumen y acierto vs. la mediana de
   la liga (reusa `SGADD_CHARTS.barrasComparadas()`, no se escribió una
@@ -322,11 +357,14 @@ minutos", "trabajar tal debilidad").
   14 opciones: MIN, PTS, PLAYS, eFG%, TS%, USG%, RTL%, T2%, T3%, T1%,
   AST-PP, RO, RD, RT) con banda de ±1 desvío y picos atípicos (z ≥ 1.5)
   marcados en verde/rojo. `SGADD_CHARTS.evolucionJugador()` formatea el
-  tooltip y el eje Y según la métrica elegida (un eFG% ya no se lee "0,45").
+  tooltip y el eje Y según la métrica elegida (un eFG% ya no se lee "0,45"),
+  y el título del tooltip trae fecha + rival + condición.
 - **Tab Partidos**: log del jugador con el mismo marcado de atípicos, clic en
   una fila **cruza a Equipos** y abre el detalle completo de ESE partido
   (box score de los dos equipos, insight, recomendación) — no duplica esa
   UI, la reusa vía `Ruta.build()`.
+- **Equipos** (`sgadd-equipos.js`): el gráfico de evolución de puntos a
+  favor/en contra ahora tiene el mismo enriquecimiento de tooltip.
 
 ### Lo que queda para la próxima vuelta
 

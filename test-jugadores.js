@@ -9,6 +9,7 @@
    ===================================================================== */
 global.SGADD = require('./js/sgadd-core.js');
 const J = require('./js/sgadd-jugadores.js');
+const EQ = require('./js/sgadd-equipos.js');
 let ok = 0, fail = 0;
 const check = (n, c, d) => { if (c) { ok++; console.log('  ✓ ' + n); } else { fail++; console.log('  ✗ ' + n + (d !== undefined ? '  → ' + d : '')); } };
 
@@ -272,6 +273,135 @@ check('cada zona trae las 5 claves que arma la tabla (peso, conv, ppp, C, I)',
   J.ZONAS_TIRO.every(z => z.peso && z.conv && z.ppp && z.c && z.i));
 check('las claves de zona existen en el registro de métricas',
   J.ZONAS_TIRO.every(z => SGADD.metrica(z.peso) && SGADD.metrica(z.conv) && SGADD.metrica(z.ppp) && SGADD.metrica(z.c) && SGADD.metrica(z.i)));
+
+/* =====================================================================
+   LOCAL VS. VISITANTE
+
+   Fixture dedicada: un jugador con 3 partidos de local y 3 de visitante.
+   Un solo caso por escenario, con el resto de las métricas EXACTAMENTE
+   iguales entre condiciones, para que la "sensibilidad" no tenga dudas
+   sobre cuál es la métrica que realmente cambia.
+   ===================================================================== */
+console.log('\n13. LOCAL VS. VISITANTE');
+console.log('═'.repeat(70));
+
+const colsCond = ['FECHA', 'PARTIDO', 'NOMBRES', 'EQUIPO', 'FASE', 'CONDICION', 'RESULTADO', 'PTS', 'eFG%', 'PLAYS', 'MIN', 'USG%', 'AST-PP'];
+function filaCond(i, cond, pts, efg, plays, min, usg, astpp) {
+  return {
+    FECHA: String(i).padStart(2, '0') + '/05/2026', PARTIDO: 'X vs RIVAL' + i,
+    NOMBRES: 'CONDICIONAL, TEST', EQUIPO: 'X', FASE: 'REGULAR',
+    CONDICION: cond, RESULTADO: 'GANADO',
+    PTS: String(pts), 'eFG%': String(efg).replace('.', ','), PLAYS: String(plays),
+    MIN: String(min), 'USG%': String(usg).replace('.', ','), 'AST-PP': String(astpp).replace('.', ','),
+  };
+}
+
+// Caso A: solo eFG% cambia de forma relevante (mucho mejor de local).
+const filasCondA = [
+  filaCond(1, 'LOCAL', 20, 0.50, 15, 30, 0.25, 1.0),
+  filaCond(2, 'LOCAL', 22, 0.52, 15, 30, 0.25, 1.0),
+  filaCond(3, 'LOCAL', 18, 0.48, 15, 30, 0.25, 1.0),
+  filaCond(4, 'VISITANTE', 19, 0.35, 15, 30, 0.25, 1.0),
+  filaCond(5, 'VISITANTE', 21, 0.37, 15, 30, 0.25, 1.0),
+  filaCond(6, 'VISITANTE', 20, 0.36, 15, 30, 0.25, 1.0),
+];
+const idxCondA = SGADD.construirIndice({
+  'PROMEDIOS E': { cols: colsE, filas: filasE },
+  'PROMEDIOS J': { cols: colsJ, filas: [{ NOMBRES: 'CONDICIONAL, TEST', EQUIPO: 'X', FASE: 'REGULAR', MIN: '30', PTS: '20' }] },
+  'Base Datos J': { cols: colsCond, filas: filasCondA },
+}, { fase: 'REGULAR' });
+const jCondA = idxCondA.liga.jugadores.find(j => j['NOMBRES'] === 'CONDICIONAL, TEST');
+const splitA = J.jugadoresSplitCondicion(idxCondA, jCondA);
+
+check('separa 3 partidos de local y 3 de visitante', splitA.local.pj === 3 && splitA.visitante.pj === 3);
+check('PTS promedia igual de los dos lados (20 y 20) — no es la métrica sensible',
+  Math.abs(splitA.local['PTS'] - 20) < 0.01 && Math.abs(splitA.visitante['PTS'] - 20) < 0.01);
+check('eFG% de local (0.50) es bien distinto del de visitante (0.36)',
+  Math.abs(splitA.local['eFG%'] - 0.50) < 0.01 && Math.abs(splitA.visitante['eFG%'] - 0.36) < 0.01);
+check('con suficientes partidos de los dos lados, suficiente = true', splitA.suficiente === true);
+check('la sensibilidad detecta eFG% como la métrica que más cambia',
+  splitA.sensibilidad.clave === 'eFG%', JSON.stringify(splitA.sensibilidad));
+check('favorece a Local (mejor eFG% de local)', splitA.sensibilidad.nivel === 'local');
+check('el texto es de tipo "rendimiento" (Mejora de Local/Visitante), no de "uso"',
+  splitA.sensibilidad.texto.indexOf('Mejora de Local en eFG%') === 0, splitA.sensibilidad.texto);
+
+// Caso B: todo estable (ninguna métrica cruza su umbral).
+const filasCondB = [
+  filaCond(1, 'LOCAL', 20, 0.45, 15, 30, 0.25, 1.0),
+  filaCond(2, 'LOCAL', 20, 0.45, 15, 30, 0.25, 1.0),
+  filaCond(3, 'VISITANTE', 20, 0.45, 15, 30, 0.25, 1.0),
+  filaCond(4, 'VISITANTE', 20, 0.45, 15, 30, 0.25, 1.0),
+];
+const idxCondB = SGADD.construirIndice({
+  'PROMEDIOS E': { cols: colsE, filas: filasE },
+  'PROMEDIOS J': { cols: colsJ, filas: [{ NOMBRES: 'CONDICIONAL, TEST', EQUIPO: 'X', FASE: 'REGULAR', MIN: '30', PTS: '20' }] },
+  'Base Datos J': { cols: colsCond, filas: filasCondB },
+}, { fase: 'REGULAR' });
+const jCondB = idxCondB.liga.jugadores.find(j => j['NOMBRES'] === 'CONDICIONAL, TEST');
+const splitB = J.jugadoresSplitCondicion(idxCondB, jCondB);
+check('sin diferencias relevantes, el nivel es "estable"', splitB.sensibilidad.nivel === 'estable', JSON.stringify(splitB.sensibilidad));
+
+// Caso C: la métrica que más cambia es de USO (minutos), no de rendimiento.
+const filasCondC = [
+  filaCond(1, 'LOCAL', 20, 0.45, 15, 35, 0.25, 1.0),
+  filaCond(2, 'LOCAL', 20, 0.45, 15, 35, 0.25, 1.0),
+  filaCond(3, 'VISITANTE', 20, 0.45, 15, 25, 0.25, 1.0),
+  filaCond(4, 'VISITANTE', 20, 0.45, 15, 25, 0.25, 1.0),
+];
+const idxCondC = SGADD.construirIndice({
+  'PROMEDIOS E': { cols: colsE, filas: filasE },
+  'PROMEDIOS J': { cols: colsJ, filas: [{ NOMBRES: 'CONDICIONAL, TEST', EQUIPO: 'X', FASE: 'REGULAR', MIN: '30', PTS: '20' }] },
+  'Base Datos J': { cols: colsCond, filas: filasCondC },
+}, { fase: 'REGULAR' });
+const jCondC = idxCondC.liga.jugadores.find(j => j['NOMBRES'] === 'CONDICIONAL, TEST');
+const splitC = J.jugadoresSplitCondicion(idxCondC, jCondC);
+check('detecta MIN como la métrica que más cambia (10 minutos de diferencia)',
+  splitC.sensibilidad.clave === 'MIN', JSON.stringify(splitC.sensibilidad));
+check('el texto de una métrica de "uso" no dice "Mejora" (es un cambio de rol, no de calidad)',
+  splitC.sensibilidad.texto.indexOf('Mejora de') === -1, splitC.sensibilidad.texto);
+
+// Caso D: muestra insuficiente (1 solo partido de visitante).
+const filasCondD = [
+  filaCond(1, 'LOCAL', 20, 0.45, 15, 30, 0.25, 1.0),
+  filaCond(2, 'LOCAL', 20, 0.45, 15, 30, 0.25, 1.0),
+  filaCond(3, 'VISITANTE', 20, 0.45, 15, 30, 0.25, 1.0),
+];
+const idxCondD = SGADD.construirIndice({
+  'PROMEDIOS E': { cols: colsE, filas: filasE },
+  'PROMEDIOS J': { cols: colsJ, filas: [{ NOMBRES: 'CONDICIONAL, TEST', EQUIPO: 'X', FASE: 'REGULAR', MIN: '30', PTS: '20' }] },
+  'Base Datos J': { cols: colsCond, filas: filasCondD },
+}, { fase: 'REGULAR' });
+const jCondD = idxCondD.liga.jugadores.find(j => j['NOMBRES'] === 'CONDICIONAL, TEST');
+const splitD = J.jugadoresSplitCondicion(idxCondD, jCondD);
+check('con un solo partido de visitante, suficiente = false (' + J.MIN_PJ_CONDICION + ' es el mínimo)',
+  splitD.suficiente === false, JSON.stringify({ local: splitD.local.pj, visitante: splitD.visitante.pj }));
+check('sin muestra suficiente, no calcula sensibilidad (evita inventar una tendencia con 1 partido)',
+  splitD.sensibilidad === null);
+check('MIN_PJ_CONDICION exportado coincide con el mínimo real usado', J.MIN_PJ_CONDICION === 2);
+check('CLAVES_CONDICION son las 6 que pidió el enunciado (PTS, eFG%, PLAYS, MIN, USG%, AST-PP)',
+  J.CLAVES_CONDICION.join(',') === ['PTS', 'eFG%', 'PLAYS', 'MIN', 'USG%', 'AST-PP'].join(','));
+
+console.log('\n14. ETIQUETAS DE EVOLUCIÓN (fecha + rival + condición)');
+console.log('═'.repeat(70));
+check('jugadoresCondicionCorta() da "L"/"V"/"?"',
+  J.jugadoresCondicionCorta({ CONDICION: 'LOCAL' }) === 'L' &&
+  J.jugadoresCondicionCorta({ CONDICION: 'VISITANTE' }) === 'V' &&
+  J.jugadoresCondicionCorta({ CONDICION: '' }) === '?');
+
+const filaEvol = { PARTIDO: 'CONDICIONAL vs RIVAL', EQUIPO: 'CONDICIONAL', CONDICION: 'LOCAL', __fecha: new Date(2025, 9, 14) };
+const etiquetaJ = J.jugadoresEtiquetaEvolucion(filaEvol);
+check('jugadoresEtiquetaEvolucion() trae fecha, "vs RIVAL" y la condición entre paréntesis',
+  etiquetaJ === '14/10 - vs RIVAL (L)', etiquetaJ);
+
+const equipoFicticio = { nombre: 'CONDICIONAL' };
+const partidoEquipoFicticio = { PARTIDO: 'CONDICIONAL vs RIVAL', CONDICION: 'VISITANTE', __fecha: new Date(2025, 9, 14) };
+check('equiposCondicionCorta() replica el mismo criterio L/V',
+  EQ.equiposCondicionCorta({ CONDICION: 'LOCAL' }) === 'L' && EQ.equiposCondicionCorta({ CONDICION: 'VISITANTE' }) === 'V');
+const etiquetaE = EQ.equiposEtiquetaEvolucion(partidoEquipoFicticio, equipoFicticio);
+check('equiposEtiquetaEvolucion() da el mismo formato que la de Jugadores (fecha, rival, condición)',
+  etiquetaE === '14/10 - vs RIVAL (V)', etiquetaE);
+check('Jugadores y Equipos usan exactamente el mismo formato de etiqueta',
+  etiquetaJ.replace(' (L)', '') === etiquetaE.replace(' (V)', ''));
 
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');

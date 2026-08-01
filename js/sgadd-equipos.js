@@ -377,7 +377,8 @@ function equiposTabGeneral(idx, e) {
     return r;
   }).filter(Boolean).sort((a, b) => (b.percentil || 0) - (a.percentil || 0));
 
-  const rivales = (e.partidos || []).map(p => equiposRival(p, e));
+  // Fecha + rival + condición (L/V) en el tooltip: "14/10/2025 - vs X (L)".
+  const etiquetas = (e.partidos || []).map(p => equiposEtiquetaEvolucion(p, e));
 
   return `
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">${kpis}</div>
@@ -387,7 +388,7 @@ function equiposTabGeneral(idx, e) {
         SGADD_CHARTS.barrasRanking(filasRank),
         SGADD_CHARTS.narrarAtaque(idx, e))}
       ${equiposPanel('Evolución · puntos a favor y en contra',
-        SGADD_CHARTS.evolucion('chEvolucion', e.partidos || [], { rivales: rivales }),
+        SGADD_CHARTS.evolucion('chEvolucion', e.partidos || [], { etiquetas: etiquetas }),
         SGADD_CHARTS.nota(e.sinFecha ? e.sinFecha + ' partido(s) sin fecha cargada van al final.' : 'Orden cronológico.'))}
     </div>
 
@@ -645,6 +646,18 @@ function equiposRival(p, e) {
   const mio = SGADD.claveEquipo(e.nombre);
   const otro = SGADD.claveEquipo(partes[0]) === mio ? partes[1] : partes[0];
   return SGADD.limpiarNombre(otro);
+}
+
+/** "L" / "V" / "?" — la condición corta que va en badges y tooltips. */
+function equiposCondicionCorta(p) {
+  const cond = SGADD.texto(p['CONDICION']).toUpperCase();
+  return cond === 'LOCAL' ? 'L' : cond === 'VISITANTE' ? 'V' : '?';
+}
+
+/** "14/10/2025 - vs RECONQUISTA (L)" — para el tooltip del gráfico de
+    evolución: fecha, rival y condición en una sola línea. */
+function equiposEtiquetaEvolucion(p, e) {
+  return SGADD.formatearFecha(p.__fecha) + ' - vs ' + equiposRival(p, e) + ' (' + equiposCondicionCorta(p) + ')';
 }
 
 
@@ -1038,4 +1051,12 @@ function equiposImprimirPartido() {
 function signoNum(v) {
   const n = Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(1);
   return (v > 0 ? '+' : '') + String(n).replace('.', ',');
+}
+
+/* Este módulo es sobre todo render (document/LOGOS) y no se testea en Node
+   como un todo — mismo criterio que siempre. Se exportan nada más las
+   funciones puras nuevas, para poder testear la generación de etiquetas
+   del gráfico de evolución sin mockear el DOM. */
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { equiposRival, equiposCondicionCorta, equiposEtiquetaEvolucion };
 }
