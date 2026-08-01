@@ -145,14 +145,30 @@
     /* `visibility: hidden` NO saca el color de fondo: el elemento sigue
        pintando su background. Por eso salían márgenes negros alrededor de
        la hoja. Hay que blanquear html, body y los contenedores intermedios. */
-    html, body,
-    body.modo-partido-print,
-    body.modo-partido-print #view-root,
-    body.modo-partido-print .card {
+    /* ---------------------------------------------------------------------
+       EL MARCO NEGRO
+
+       Chromium ignora `background` dentro de @page: el color de la hoja y de
+       sus margenes lo toma del ELEMENTO RAIZ. Y hay tres fuentes de oscuro
+       peleando:
+         1. `html, body { background: #0a0a0a }` del style block
+         2. `<body class="bg-base">` — Tailwind inyecta su CSS DESPUES
+         3. #loader y header, tambien con bg-base
+
+       Se blanquea :root, html y body SIN condicionar a ninguna clase, y se
+       neutraliza `.bg-base`, que es la que gana por especificidad de clase.
+       --------------------------------------------------------------------- */
+    :root, html, body {
       background: #ffffff !important;
       background-color: #ffffff !important;
       background-image: none !important;
     }
+    .bg-base, [class*="bg-base"] {
+      background: #ffffff !important;
+      background-color: #ffffff !important;
+    }
+    body.modo-partido-print #view-root,
+    body.modo-partido-print .card,
     body.modo-partido-print > div,
     body.modo-partido-print > div > div,
     body.modo-partido-print > div > div > div { background: transparent !important; }
@@ -317,7 +333,12 @@
 
     /* Papel: fondo blanco y texto negro. El tema oscuro gasta tinta y en
        impresora hogareña sale gris sucio. */
-    html, body { background: #fff !important; color: #111 !important; }
+    :root, html, body {
+      background: #ffffff !important;
+      background-color: #ffffff !important;
+      color: #111 !important;
+    }
+    .bg-base, [class*="bg-base"] { background: #ffffff !important; }
     body * { color: #111 !important; }
 
     .card, .bg-surface2\/50, .bg-surface2\/30, .bg-surface2,
@@ -531,17 +552,17 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=30"></script>
-<script src="js/sgadd-core.js?v=30"></script>
-<script src="js/sgadd-ui.js?v=30"></script>
-<script src="js/sgadd-app.js?v=30"></script>
-<script src="js/sgadd-charts.js?v=30"></script>
-<script src="js/sgadd-personalidad.js?v=30"></script>
-<script src="js/sgadd-rankings.js?v=30"></script>
-<script src="js/sgadd-partido.js?v=30"></script>
-<script src="js/sgadd-informe.js?v=30"></script>
-<script src="js/sgadd-equipos.js?v=30"></script>
-<script src="js/sgadd-diagnostico.js?v=30"></script>
+<script src="js/sgadd-club.js?v=31"></script>
+<script src="js/sgadd-core.js?v=31"></script>
+<script src="js/sgadd-ui.js?v=31"></script>
+<script src="js/sgadd-app.js?v=31"></script>
+<script src="js/sgadd-charts.js?v=31"></script>
+<script src="js/sgadd-personalidad.js?v=31"></script>
+<script src="js/sgadd-rankings.js?v=31"></script>
+<script src="js/sgadd-partido.js?v=31"></script>
+<script src="js/sgadd-informe.js?v=31"></script>
+<script src="js/sgadd-equipos.js?v=31"></script>
+<script src="js/sgadd-diagnostico.js?v=31"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
