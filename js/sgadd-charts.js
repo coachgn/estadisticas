@@ -239,6 +239,11 @@ const SGADD_CHARTS = (function () {
     const arriba = valores.map(() => hayBanda ? o.media + o.desvio : null);
     const abajo = valores.map(() => hayBanda ? Math.max(0, o.media - o.desvio) : null);
     const atipicos = o.atipicos || [];
+    const etiqueta = o.label || (SGADD.metrica(clave) ? SGADD.metrica(clave).label : clave);
+    // El selector de métrica del tab Evolución mezcla puntos, minutos y
+    // porcentajes en el mismo gráfico: sin formatear por métrica, un eFG%
+    // de 0,45 se lee como "45" en vez de "45%".
+    const fmt = (v) => (v === null || v === undefined) ? '—' : SGADD.formatear(clave, v);
 
     encolar(() => crear(id, {
       type: 'line',
@@ -248,7 +253,7 @@ const SGADD_CHARTS = (function () {
           { label: 'Banda ±1 desvío', data: arriba, borderWidth: 0, pointRadius: 0, backgroundColor: COL.ligaSuave, fill: '+1' },
           { label: '_banda_abajo', data: abajo, borderWidth: 0, pointRadius: 0, backgroundColor: 'transparent', fill: false },
           {
-            label: o.label || (SGADD.metrica(clave) ? SGADD.metrica(clave).label : clave),
+            label: etiqueta,
             data: valores, borderColor: COL.equipo, backgroundColor: 'transparent', tension: 0.25,
             pointRadius: (c) => atipicos[c.dataIndex] ? 6 : 3,
             pointBackgroundColor: (c) => atipicos[c.dataIndex] ? (atipicos[c.dataIndex] > 0 ? COL.bien : COL.mal) : COL.equipo,
@@ -256,12 +261,19 @@ const SGADD_CHARTS = (function () {
         ],
       },
       options: baseOpciones({
-        scales: ejes({ desdeCero: false }),
+        scales: Object.assign(ejes({ desdeCero: false }), {
+          y: Object.assign({}, ejes({ desdeCero: false }).y, {
+            ticks: Object.assign({}, ejes({ desdeCero: false }).y.ticks, { callback: (v) => fmt(v) }),
+          }),
+        }),
         plugins: Object.assign(baseOpciones().plugins, {
           legend: { display: false },
           tooltip: Object.assign(baseOpciones().plugins.tooltip, {
             filter: (item) => item.datasetIndex === 2,
-            callbacks: { title: (items) => (o.rivales ? o.rivales[items[0].dataIndex] : items[0].label) },
+            callbacks: {
+              title: (items) => (o.rivales ? o.rivales[items[0].dataIndex] : items[0].label),
+              label: (c) => etiqueta + ': ' + fmt(c.raw),
+            },
           }),
         }),
       }),

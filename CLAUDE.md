@@ -16,13 +16,13 @@ node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  22 tests · multi-cliente
 node test-boot.js          #  16 tests · arranque por club
-node test-jugadores.js     #  22 tests · slug, rol, z-score, id canónico
+node test-jugadores.js     #  56 tests · rol por minutos, arquetipos, jerarquía, tiro, evolución
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  17 tests · detalle partido a partido
 ```
 
-**233 tests en total. Todos tienen que dar verde antes de commitear.**
+**267 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -67,7 +67,7 @@ logos/<liga>/           ← escudos + index.json (manifiesto)
 test-fixtures/          ← prom.tsv + p4f.tsv, 12 equipos de La Plata (committeados)
 ```
 
-**Versión actual de assets: `?v=32`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=33`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -229,8 +229,8 @@ amontonada.
 
 ## 8. Sección JUGADORES
 
-**Estado: primera entrega hecha** (grilla → ficha → tabs General/Evolución/
-Partidos). Vive en `sgadd-jugadores.js`, misma estructura que Equipos.
+**Estado: grilla → ficha → tabs General/Tiro/Evolución/Partidos, con motor de
+arquetipos.** Vive en `sgadd-jugadores.js`, misma estructura que Equipos.
 
 Ruta: `#/<planilla>/<fase>/jugadores/<jugador>/<tab>` — reusa `Ruta` tal cual
 (entidad = jugador, igual que Equipos usa entidad = equipo). El único cambio
@@ -245,19 +245,84 @@ equivocada con solo el nombre; con la clave compuesta no colisiona. Esto NO
 arregla la mezcla de stats en `statJugador()` (ver deuda técnica, punto 9),
 solo evita sumarle un segundo bug de navegación encima.
 
+### Rol por minutos — bandas fijas, no percentiles
+
+A pedido explícito del club, el badge de rol **NO** es relativo a la liga
+(no usa percentil): son bandas fijas de MIN de promedio, iguales en
+cualquier categoría (`ROLES_MINUTOS` en `sgadd-jugadores.js`):
+
+| Banda | MIN de promedio | Rol |
+|---|---|---|
+| Jugador Clave | +26 | Dependencia Absoluta |
+| Jugador Importante | 23 a 25 | Consistencia Estructural |
+| Jugador de Rotación | 13 a 22 | Impacto Quirúrgico |
+| Pocos Minutos | menos de 13 (marca aparte si es <10) | Contención y Emergencia |
+
+Ojo: esto es **distinto** de `liga.minJugador` (el umbral de calificación
+para que un percentil tenga sentido, que sí es relativo a cada liga). Un
+jugador puede ser "Jugador Clave" por minutos y a la vez no calificar para
+percentiles si la liga entera juega poco — son preguntas distintas.
+
+### ADN del jugador — arquetipos y jerarquía
+
+Motor de arquetipos técnicos + jerarquía dentro del plantel, adaptado del
+`obtenerSintesisPerfil(dataI)` que ya usa el club. Toda la lógica es pura y
+está en `sgadd-jugadores.js` (nada se movió a `sgadd-core.js`): `jugadoresPromediosLiga()`,
+`jugadoresArquetipos()`, `jugadoresJerarquia()`, `jugadoresPuntoDeFuga()` y
+`jugadoresSintesisPerfil()`, que junta todo para el Tab General.
+
+**Regla del proyecto: donde esa lógica usaba `VAL`, acá se usa `PLAYS`.** `VAL`
+está deliberadamente afuera del box score de SGADD (índice compuesto, ya
+resumido en el resto de columnas — ver punto 4); `PLAYS` da el mismo
+contexto de volumen de forma más legible y es la métrica que ya usa el
+resto del proyecto para "cuántas decisiones toma".
+
+Perfiles técnicos (`PERFILES_TECNICOS`, no excluyentes — un jugador puede
+calzar en varios) y umbrales, todos contra `idx.liga.jugadoresCalificados`
+de la liga actual (agnóstico de liga, igual que Personalidad):
+
+| Perfil | Condición |
+|---|---|
+| 🎯 Terminador de Élite | PLAYS > liga, eFG% > 1.15x liga, PPP > 1.05 |
+| 🧠 Generador | AST-PP > 1.40 |
+| 🏰 Puntal en la Pintura | RO+RD > 1.20x el promedio de la liga |
+| 🎯 Amenaza Perimetral Real | T3I > 3.0 y T3% > 34% |
+| 🧤 Especialista Defensivo | recuperos (PR) > 1.30x el promedio |
+| 📏 Buscador de Contacto | PT1% > 25% y T1% > 80% |
+
+Jerarquía (`JERARQUIA`, **sí excluyente**: cascada, gana el primero que
+calza, de más a menos exigente):
+
+1. ⭐ **Jugador Franquicia** — PLAYS > 1.20x liga y más de 28 minutos.
+2. ⚔️ **Referente Ofensivo / Segunda Espada** — PLAYS por encima del
+   promedio de la liga.
+3. 🧱 **Pieza de Quinteto Titular** — MIN ≥ 23, sin ser el foco de PLAYS.
+4. 🛠️ **Especialista de Rol** — el resto (fallback, siempre calza).
+
+La síntesis (Tab General) muestra impacto colectivo y eficiencia individual
+en Alto/Medio/Bajo contra la liga, más un "punto de fuga" (el percentil más
+bajo entre eFG%/PePP%/RTL%/AST-PP/T1%) y una conclusión táctica. **No es
+una recomendación de renovación de contrato** — el club es amateur, no
+gestiona pases — es la condición de uso para sacarle el máximo (ej. "limitar
+minutos", "trabajar tal debilidad").
+
 ### Lo que entró en esta vuelta
 
 - **Grilla de la liga**: filtro por equipo, toggle "solo los que califican",
-  badge de rol (Titular/Rotación/Suplente/Pocos min., por percentil de
-  minutos entre los calificados — heurístico simple, NO es el motor de
-  arquetipo individual del punto siguiente).
-- **Ficha**: header con KPIs (PTS, MIN, eFG%, USG%) y la consistencia del
-  jugador (`statJugador` media ± desvío) en una sola línea.
-- **Tab General**: KPIs + tablas de Tiro y Otras estadísticas, todo en
-  percentil contra la liga.
-- **Tab Evolución**: línea de PTS partido a partido con banda de ±1 desvío
-  (`SGADD_CHARTS.evolucionJugador()`) y los picos atípicos (z ≥ 1.5, mismo
-  umbral que Equipos) marcados en verde/rojo.
+  badge de rol por minutos (bandas fijas, ver arriba).
+- **Ficha**: header con KPIs (PTS, MIN, eFG%, USG%), badge de rol, jerarquía
+  (ADN) y la consistencia del jugador (`statJugador` media ± desvío).
+- **Tab General**: ADN (arquetipos + jerarquía), tarjetas de síntesis
+  (impacto/eficiencia/conclusión) y KPIs + tablas en percentil contra la liga.
+- **Tab Tiro**: distribución por zona (Triple/Doble/Libre) — peso relativo,
+  CONV%, PPP y C/I — más gráficos de volumen y acierto vs. la mediana de
+  la liga (reusa `SGADD_CHARTS.barrasComparadas()`, no se escribió una
+  fábrica nueva).
+- **Tab Evolución**: selector de métrica (`JUGADORES_METRICAS_EVOLUCION`,
+  14 opciones: MIN, PTS, PLAYS, eFG%, TS%, USG%, RTL%, T2%, T3%, T1%,
+  AST-PP, RO, RD, RT) con banda de ±1 desvío y picos atípicos (z ≥ 1.5)
+  marcados en verde/rojo. `SGADD_CHARTS.evolucionJugador()` formatea el
+  tooltip y el eje Y según la métrica elegida (un eFG% ya no se lee "0,45").
 - **Tab Partidos**: log del jugador con el mismo marcado de atípicos, clic en
   una fila **cruza a Equipos** y abre el detalle completo de ESE partido
   (box score de los dos equipos, insight, recomendación) — no duplica esa
@@ -265,13 +330,9 @@ solo evita sumarle un segundo bug de navegación encima.
 
 ### Lo que queda para la próxima vuelta
 
-1. Tabs **Tiro**, **Rol** y **Comparar** (contra otro jugador o contra el
-   JUGADOR TIPO).
-2. **Motor de arquetipo individual** (el equivalente de Personalidad pero en
-   percentiles de un jugador): *"Anotador de volumen, poco eficiente"*,
-   *"Especialista defensivo"*. El badge de rol actual es un placeholder.
-3. **Curva de carga**: minutos vs eficiencia partido a partido.
-4. PDF de ficha individual (después de resolver el punto 7).
+1. Tab **Comparar** (contra otro jugador o contra el JUGADOR TIPO).
+2. **Curva de carga**: minutos vs eficiencia partido a partido.
+3. PDF de ficha individual (después de resolver el punto 7).
 
 ---
 
