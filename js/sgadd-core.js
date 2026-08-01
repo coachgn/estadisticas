@@ -555,7 +555,20 @@
 
   /* --- Routing: #/cliente/tira/categoria/seccion/entidad/tab --- */
   /* Ruta: #/<planilla>/<fase>/<seccion>/<entidad>/<tab>
-     Ej: #/negra-u19-clausura-2026/REGULAR/equipos/atenas-a/4factores */
+     Ej: #/negra-u19-clausura-2026/REGULAR/equipos/atenas-a/4factores
+
+     La sección Jugadores reusa exactamente este mismo esquema para SU
+     propia navegación (seccion:'jugadores', entidad:<jugador>, tab:<tab>),
+     igual que hace Equipos con un equipo. No hace falta un campo nuevo
+     para eso.
+
+     El campo `jugador` (7mo nivel) es aparte: sirve para un link cruzado
+     PUNTUAL, por ejemplo desde el box score de un partido en Equipos hacia
+     la ficha de ese jugador en Jugadores. Como `filter()` saca cualquier
+     nivel vacío del medio (no solo al final), solo se puede confiar en
+     `jugador` cuando TODOS los niveles anteriores también están completos
+     — en la práctica, dentro del detalle de un partido, donde planilla,
+     fase, seccion, entidad, tab y sub ya están siempre seteados. */
   const Ruta = {
     parse(hash) {
       const partes = String(hash || '').replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
@@ -567,10 +580,12 @@
         tab:      partes[4] || null,
         // Sexto nivel: el detalle de un partido dentro del tab Partidos.
         sub:      partes[5] || null,
+        // Séptimo nivel: un jugador puntual (ver comentario arriba).
+        jugador:  partes[6] || null,
       };
     },
     build(r) {
-      const p = [r.planilla, r.fase, r.seccion, r.entidad, r.tab, r.sub]
+      const p = [r.planilla, r.fase, r.seccion, r.entidad, r.tab, r.sub, r.jugador]
         .filter(v => v !== null && v !== undefined && v !== '')
         .map(encodeURIComponent);
       return '#/' + p.join('/');
@@ -990,6 +1005,17 @@
     });
     liga.jugadores = todosJugadores;
     liga.jugadoresCalificados = todosJugadores.filter(j => j.__califica);
+
+    /* Agrupa por equipo para la grilla de Jugadores: filtrar por club sin
+       recorrer liga.jugadores entero (por nombre, string a string) en cada
+       repintado. Mismo criterio de clave que el resto del índice. */
+    liga.jugadoresPorEquipo = new Map();
+    todosJugadores.forEach(j => {
+      const k = claveEquipo(j['EQUIPO']);
+      if (!k) return;
+      if (!liga.jugadoresPorEquipo.has(k)) liga.jugadoresPorEquipo.set(k, []);
+      liga.jugadoresPorEquipo.get(k).push(j);
+    });
 
     /* ---------------------------------------------------------------------
        BOX SCORE POR PARTIDO

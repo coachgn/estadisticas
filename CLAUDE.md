@@ -11,17 +11,18 @@ principiante sobre el contenido técnico.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 94 tests · núcleo, índice, validador
-node test-logos.js         # 18 tests · resolución de escudos
-node test-ligas.js         #  9 tests · aislamiento entre ligas
-node test-clubes.js        # 22 tests · multi-cliente
-node test-boot.js          # 16 tests · arranque por club
-node test-personalidad.js  # 20 tests · identidad táctica
-node test-informe.js       #  7 tests · secciones del informe
-node test-partido.js       # 17 tests · detalle partido a partido
+node test-core.js          # 102 tests · núcleo, índice, validador
+node test-logos.js         #  18 tests · resolución de escudos
+node test-ligas.js         #   9 tests · aislamiento entre ligas
+node test-clubes.js        #  22 tests · multi-cliente
+node test-boot.js          #  16 tests · arranque por club
+node test-jugadores.js     #  22 tests · slug, rol, z-score, id canónico
+node test-personalidad.js  #  20 tests · identidad táctica
+node test-informe.js       #   7 tests · secciones del informe
+node test-partido.js       #  17 tests · detalle partido a partido
 ```
 
-**203 tests en total. Todos tienen que dar verde antes de commitear.**
+**233 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -56,15 +57,17 @@ js/
   sgadd-partido.js      ← análisis de un partido: desvíos z-score, avanzadas
   sgadd-rankings.js     ← réplica de RANKINGS E, calculada en el cliente
   sgadd-equipos.js      ← sección Equipos: grilla, ficha, 8 tabs, detalle partido
+  sgadd-jugadores.js    ← sección Jugadores: grilla, ficha, tabs General/Evolución/Partidos
   sgadd-informe.js      ← modal de exportación PDF del informe de equipo
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app
 clubes/
   reconquista.json      ← 2 planillas (Primera + U21 Negra), liga la-plata
   jujuy.json            ← 1 planilla (Conferencia Norte), liga liga-argentina
 logos/<liga>/           ← escudos + index.json (manifiesto)
+test-fixtures/          ← prom.tsv + p4f.tsv, 12 equipos de La Plata (committeados)
 ```
 
-**Versión actual de assets: `?v=31`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=32`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -115,6 +118,12 @@ devuelve basura. Los rankings se derivan en el cliente.
   También se parsea ISO y `dd/mm/aaaa` (Liga Argentina).
 - **`idPartido()` = FECHA + PARTIDO.** El string "A vs B" solo no alcanza: en
   liga con ida y vuelta puede colapsar dos partidos distintos.
+- **`idPartido()` de `Base Datos J` puede NO coincidir con el de `Base Datos E`
+  para el mismo partido**, si una hoja trae la FECHA vacía y la otra no (pasa
+  en datos reales de Reconquista). Para el link cruzado Jugadores → Equipos,
+  `jugadoresIdCanonico()` no confía en el id de la fila del jugador: busca el
+  mismo `PARTIDO` (por texto, no por fecha) en `idx.get(equipo).partidos` y usa
+  ESE id, que es el mismo cómputo que ya indexa `partidosPorId`.
 
 ### Nomenclatura por liga
 
@@ -218,56 +227,51 @@ amontonada.
 
 ---
 
-## 8. PRÓXIMO · Sección JUGADORES
+## 8. Sección JUGADORES
 
-El 70% del trabajo de datos ya está hecho:
+**Estado: primera entrega hecha** (grilla → ficha → tabs General/Evolución/
+Partidos). Vive en `sgadd-jugadores.js`, misma estructura que Equipos.
 
-| Pieza | Qué da |
-|---|---|
-| `liga.jugadorPartidos` | `Map<jugador, [todos sus partidos]>` |
-| `statJugador(clave, métrica)` | media, desvío y N |
-| `PROMEDIOS J` | acumulado de temporada |
-| `liga.jugadorTipo` | mediana de la liga = percentil 50 |
-| `liga.minJugador` | umbral de calificación |
+Ruta: `#/<planilla>/<fase>/jugadores/<jugador>/<tab>` — reusa `Ruta` tal cual
+(entidad = jugador, igual que Equipos usa entidad = equipo). El único cambio
+en `sgadd-core.js` fue agregar un 7mo nivel `jugador` a `Ruta` (para un link
+cruzado puntual, no para esta ruta) y el índice `liga.jugadoresPorEquipo`
+(`Map<claveEquipo, jugador[]>`, filtra la grilla sin recorrer `liga.jugadores`
+entero por nombre de equipo en cada repintado).
 
-**No hace falta tocar `sgadd-core.js`** salvo: extender `Ruta` con nivel de
-jugador, y agregar un índice `jugadoresPorEquipo`.
+**Clave de un jugador = NOMBRE + EQUIPO**, no el nombre solo (`jugadoresSlug()`
+en `sgadd-jugadores.js`). Dos homónimos de equipos distintos abrían la ficha
+equivocada con solo el nombre; con la clave compuesta no colisiona. Esto NO
+arregla la mezcla de stats en `statJugador()` (ver deuda técnica, punto 9),
+solo evita sumarle un segundo bug de navegación encima.
 
-### Estructura
+### Lo que entró en esta vuelta
 
-Misma que Equipos, que ya está probada: **grilla → ficha → tabs**.
+- **Grilla de la liga**: filtro por equipo, toggle "solo los que califican",
+  badge de rol (Titular/Rotación/Suplente/Pocos min., por percentil de
+  minutos entre los calificados — heurístico simple, NO es el motor de
+  arquetipo individual del punto siguiente).
+- **Ficha**: header con KPIs (PTS, MIN, eFG%, USG%) y la consistencia del
+  jugador (`statJugador` media ± desvío) en una sola línea.
+- **Tab General**: KPIs + tablas de Tiro y Otras estadísticas, todo en
+  percentil contra la liga.
+- **Tab Evolución**: línea de PTS partido a partido con banda de ±1 desvío
+  (`SGADD_CHARTS.evolucionJugador()`) y los picos atípicos (z ≥ 1.5, mismo
+  umbral que Equipos) marcados en verde/rojo.
+- **Tab Partidos**: log del jugador con el mismo marcado de atípicos, clic en
+  una fila **cruza a Equipos** y abre el detalle completo de ESE partido
+  (box score de los dos equipos, insight, recomendación) — no duplica esa
+  UI, la reusa vía `Ruta.build()`.
 
-- **Landing**: grilla del plantel con minutos, PTS y badge de rol. Filtro por
-  equipo (para scoutear rivales) y toggle "solo los que califican".
-- **Ficha individual** con tabs:
+### Lo que queda para la próxima vuelta
 
-| Tab | Qué responde |
-|---|---|
-| General | ¿Qué tipo de jugador es? KPI con percentil, radar de perfil |
-| Evolución | ¿Está mejorando? Línea por partido con banda de ±1 desvío |
-| Tiro | ¿De dónde anota? T2/T3/T1, volumen vs eficiencia |
-| Rol | ¿Cómo lo usan? USG%, AST%, minutos vs compañeros |
-| Partidos | Log con desvíos, clic → detalle del partido |
-| Comparar | Contra otro jugador o contra el JUGADOR TIPO |
-
-### Lo que le da identidad propia
-
-1. **Consistencia como métrica de primer orden.** Un jugador de 12 puntos con
-   desvío 3 es distinto de uno de 12 con desvío 9: el primero es un plan, el
-   segundo una lotería. `statJugador()` ya devuelve el desvío. Nadie lo mide.
-2. **Arquetipo individual**, con el motor de Personalidad en percentiles
-   individuales: *"Anotador de volumen, poco eficiente"*, *"Especialista
-   defensivo"*, *"Generador de bajo uso"*.
-3. **Curva de carga**: minutos vs eficiencia partido a partido. Responde la
-   pregunta de gestión de minutos que la propuesta institucional plantea.
-
-### Orden sugerido
-
-1. `Ruta` con nivel de jugador + `jugadoresPorEquipo`
-2. `sgadd-jugadores.js`: grilla, ficha, tabs General/Evolución/Partidos
-3. Motor de consistencia y arquetipo individual
-4. Tabs Tiro, Rol, Comparar
-5. PDF de ficha individual (después de resolver el punto 7)
+1. Tabs **Tiro**, **Rol** y **Comparar** (contra otro jugador o contra el
+   JUGADOR TIPO).
+2. **Motor de arquetipo individual** (el equivalente de Personalidad pero en
+   percentiles de un jugador): *"Anotador de volumen, poco eficiente"*,
+   *"Especialista defensivo"*. El badge de rol actual es un placeholder.
+3. **Curva de carga**: minutos vs eficiencia partido a partido.
+4. PDF de ficha individual (después de resolver el punto 7).
 
 ---
 
@@ -283,6 +287,11 @@ Misma que Equipos, que ya está probada: **grilla → ficha → tabs**.
 - La `FECHA` viene vacía en varias filas de `4 FACTORES` y en algunos partidos de
   `Base Datos E`. Se hereda por join contra `PARTIDO`; los que quedan sin fecha
   van al final del orden cronológico y se avisa en la UI.
+  **`Base Datos J` NO tiene ese join** (queda vacía tal cual viene): por eso
+  Jugadores resuelve el id de partido para el link a Equipos por texto de
+  `PARTIDO`, no por fecha (ver la regla de `idPartido()` en el punto 3).
+  Sumar el mismo join que ya tiene `4 FACTORES` sería la forma prolija de
+  cerrar esto de raíz.
 - Sin columnas de cuartos/parciales. Hay un hook comentado en el detalle de
   partido listo para cuando existan.
 - **El acceso es público.** Los `sheetId` están en los JSON, que son archivos
@@ -299,8 +308,8 @@ Después de **cualquier** cambio de código o función nueva:
 ```bash
 # 1. Correr TODA la suite
 node test-core.js && node test-logos.js && node test-ligas.js && \
-node test-clubes.js && node test-boot.js && node test-personalidad.js && \
-node test-informe.js && node test-partido.js
+node test-clubes.js && node test-boot.js && node test-jugadores.js && \
+node test-personalidad.js && node test-informe.js && node test-partido.js
 
 # 2. Solo si TODO da verde:
 git add .

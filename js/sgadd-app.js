@@ -147,6 +147,7 @@ const SGADD_APP = (function () {
   onCambio(() => {
     if (typeof currentSection === 'undefined') return;
     if (currentSection === 'equipos' && typeof equiposPintar === 'function') equiposPintar();
+    if (currentSection === 'jugadores' && typeof jugadoresPintar === 'function') jugadoresPintar();
   });
 
   return {

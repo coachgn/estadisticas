@@ -552,17 +552,18 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=31"></script>
-<script src="js/sgadd-core.js?v=31"></script>
-<script src="js/sgadd-ui.js?v=31"></script>
-<script src="js/sgadd-app.js?v=31"></script>
-<script src="js/sgadd-charts.js?v=31"></script>
-<script src="js/sgadd-personalidad.js?v=31"></script>
-<script src="js/sgadd-rankings.js?v=31"></script>
-<script src="js/sgadd-partido.js?v=31"></script>
-<script src="js/sgadd-informe.js?v=31"></script>
-<script src="js/sgadd-equipos.js?v=31"></script>
-<script src="js/sgadd-diagnostico.js?v=31"></script>
+<script src="js/sgadd-club.js?v=32"></script>
+<script src="js/sgadd-core.js?v=32"></script>
+<script src="js/sgadd-ui.js?v=32"></script>
+<script src="js/sgadd-app.js?v=32"></script>
+<script src="js/sgadd-charts.js?v=32"></script>
+<script src="js/sgadd-personalidad.js?v=32"></script>
+<script src="js/sgadd-rankings.js?v=32"></script>
+<script src="js/sgadd-partido.js?v=32"></script>
+<script src="js/sgadd-informe.js?v=32"></script>
+<script src="js/sgadd-equipos.js?v=32"></script>
+<script src="js/sgadd-jugadores.js?v=32"></script>
+<script src="js/sgadd-diagnostico.js?v=32"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -1647,21 +1648,10 @@ function buildEquiposLegacy() {
     </section>`;
 }
 
-function buildJugadores() {
-  const tabs = [
-    { id: 'acumulado', label: 'Acumulado' },
-    { id: 'promedios', label: 'Promedios' },
-    { id: 'base', label: 'Base de Datos' },
-    { id: 'rankings', label: 'Rankings' },
-  ];
-  const keyMap = { acumulado: 'acumuladoJ', promedios: 'promediosJ', base: 'baseDatosJ', rankings: 'rankingsJ' };
-  const active = tabState.jugadores;
-  return `
-    <section class="space-y-4">
-      <div class="flex flex-wrap gap-2">${buildTabs('jugadores', tabs)}</div>
-      ${renderTable(`jugadores-${active}`, keyMap[active])}
-    </section>`;
-}
+/* buildJugadores() vive ahora en js/sgadd-jugadores.js (grilla → ficha →
+   tabs, sobre el núcleo SGADD), igual que Equipos. La versión vieja mostraba
+   las hojas J crudas (Acumulado/Promedios/Base/Rankings); esa capa de datos
+   sigue existiendo para otras secciones, solo dejó de alimentar este tab. */
 
 /* ============ SECCIÓN: 4 FACTORES ============ */
 function detectNumericColumns(data, nameCol) {
@@ -2531,6 +2521,9 @@ async function init() {
       if (r.seccion === 'equipos') {
         if (currentSection !== 'equipos') navigate('equipos');
         else { equiposLeerRuta(); equiposPintar(); }
+      } else if (r.seccion === 'jugadores') {
+        if (currentSection !== 'jugadores') navigate('jugadores');
+        else { jugadoresLeerRuta(); jugadoresPintar(); }
       } else if (r.seccion === 'principal' && currentSection !== 'principal') {
         navigate('principal');
       }

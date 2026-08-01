@@ -226,6 +226,50 @@ const SGADD_CHARTS = (function () {
   }
 
   /* =====================================================================
+     5b. LÍNEA de evolución de UN jugador en UNA métrica, con banda ±1 desvío
+     La banda son dos datasets invisibles (arriba/abajo) con fill entre
+     ellos; la línea del jugador va encima, en un dataset aparte, para que
+     el tooltip no se confunda con los bordes de la banda.
+     ===================================================================== */
+  function evolucionJugador(id, partidos, clave, opciones) {
+    const o = opciones || {};
+    const labels = partidos.map(p => SGADD.formatearFecha(p.__fecha));
+    const valores = partidos.map(p => (typeof p[clave] === 'number' && isFinite(p[clave])) ? p[clave] : null);
+    const hayBanda = typeof o.media === 'number' && typeof o.desvio === 'number';
+    const arriba = valores.map(() => hayBanda ? o.media + o.desvio : null);
+    const abajo = valores.map(() => hayBanda ? Math.max(0, o.media - o.desvio) : null);
+    const atipicos = o.atipicos || [];
+
+    encolar(() => crear(id, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'Banda ±1 desvío', data: arriba, borderWidth: 0, pointRadius: 0, backgroundColor: COL.ligaSuave, fill: '+1' },
+          { label: '_banda_abajo', data: abajo, borderWidth: 0, pointRadius: 0, backgroundColor: 'transparent', fill: false },
+          {
+            label: o.label || (SGADD.metrica(clave) ? SGADD.metrica(clave).label : clave),
+            data: valores, borderColor: COL.equipo, backgroundColor: 'transparent', tension: 0.25,
+            pointRadius: (c) => atipicos[c.dataIndex] ? 6 : 3,
+            pointBackgroundColor: (c) => atipicos[c.dataIndex] ? (atipicos[c.dataIndex] > 0 ? COL.bien : COL.mal) : COL.equipo,
+          },
+        ],
+      },
+      options: baseOpciones({
+        scales: ejes({ desdeCero: false }),
+        plugins: Object.assign(baseOpciones().plugins, {
+          legend: { display: false },
+          tooltip: Object.assign(baseOpciones().plugins.tooltip, {
+            filter: (item) => item.datasetIndex === 2,
+            callbacks: { title: (items) => (o.rivales ? o.rivales[items[0].dataIndex] : items[0].label) },
+          }),
+        }),
+      }),
+    }));
+    return `<div class="chart-box is-sm"><canvas id="${id}"></canvas></div>`;
+  }
+
+  /* =====================================================================
      6. SCATTER uso vs eficiencia (plantel)
      ===================================================================== */
   function scatterUsoEficiencia(id, jugadores, liga) {
@@ -371,7 +415,7 @@ const SGADD_CHARTS = (function () {
 
   return {
     COL, crear, encolar, dibujarPendientes, limpiar, baseOpciones, ejes,
-    barrasRanking, barrasComparadas, convertidosErrados, radar, evolucion, scatterUsoEficiencia,
+    barrasRanking, barrasComparadas, convertidosErrados, radar, evolucion, evolucionJugador, scatterUsoEficiencia,
     nota, narrarPerdidas, narrarPPT, narrarCondicion, narrarRebote, narrarAtaque,
   };
 })();

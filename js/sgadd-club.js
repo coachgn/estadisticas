@@ -191,6 +191,7 @@ const CLUB = (function () {
       if (typeof LOGOS !== 'undefined' && LOGOS.CFG.basePaths) {
         // Los 404 anteriores quedaron cacheados: hay que reintentar.
         if (typeof equiposPintar === 'function' && typeof currentSection !== 'undefined' && currentSection === 'equipos') equiposPintar();
+        if (typeof jugadoresPintar === 'function' && typeof currentSection !== 'undefined' && currentSection === 'jugadores') jugadoresPintar();
       }
       if (typeof renderSection === 'function' && typeof currentSection !== 'undefined' && aplicado && yaHuboRender) {
         renderSection(currentSection);

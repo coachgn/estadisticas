@@ -119,6 +119,24 @@ check('Ruta.build() codifica caracteres especiales', construida.indexOf('atenas%
 check('Ruta.parse(Ruta.build()) da una vuelta completa (roundtrip)',
   S.Ruta.parse(construida).entidad === 'atenas a', JSON.stringify(S.Ruta.parse(construida)));
 
+/* Nivel de jugador (7mo segmento): pensado para un link cruzado puntual
+   -por ejemplo desde el box score de un partido en Equipos hacia la ficha
+   de ese jugador en Jugadores- donde todos los niveles anteriores ya están
+   completos. Ver el comentario de Ruta en sgadd-core.js. */
+const rutaConJugador = S.Ruta.build({
+  planilla: 'primera-clausura-2026', fase: 'REGULAR', seccion: 'equipos',
+  entidad: 'atenas-a', tab: 'partidos', sub: '2026-05-05_atenas-a-vs-reconquista-a',
+  jugador: 'moreira pedro--atenas a',
+});
+const parseadaConJugador = S.Ruta.parse(rutaConJugador);
+check('Ruta admite un 7mo nivel para un jugador puntual',
+  parseadaConJugador.jugador === 'moreira pedro--atenas a', JSON.stringify(parseadaConJugador));
+check('y no pisa ninguno de los niveles anteriores',
+  parseadaConJugador.seccion === 'equipos' && parseadaConJugador.entidad === 'atenas-a' &&
+  parseadaConJugador.tab === 'partidos' && parseadaConJugador.sub === '2026-05-05_atenas-a-vs-reconquista-a');
+check('sin jugador, Ruta.parse() lo deja en null (no rompe lo existente)',
+  S.Ruta.parse(construida).jugador === null);
+
 console.log('\n6. PERCENTIL: la fila TIPO cae en 50');
 console.log('═'.repeat(70));
 const dist10 = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
@@ -154,6 +172,33 @@ check('ranking() ubica al mejor en el puesto 1 de 3', rk.puesto === 1 && rk.de =
 
 const vistaRitmo = idx3.leerVista('A', 'ritmo');
 check('leerVista() arma una tabla completa para la sección', vistaRitmo.filas.length > 0 && vistaRitmo.filas.some(f => f.clave === 'PACE'));
+
+console.log('\n7B. INDICE: jugadoresPorEquipo');
+console.log('═'.repeat(70));
+const colsJ = ['NOMBRES', 'EQUIPO', 'FASE', 'MIN', 'PTS'];
+const filasJ = [
+  { NOMBRES: 'PEREZ, JUAN', EQUIPO: 'A', FASE: 'REGULAR', MIN: '20', PTS: '12' },
+  { NOMBRES: 'GOMEZ, LUIS', EQUIPO: 'A', FASE: 'REGULAR', MIN: '15', PTS: '8' },
+  { NOMBRES: 'DIAZ, ANA', EQUIPO: 'B', FASE: 'REGULAR', MIN: '25', PTS: '14' },
+  // Pocos minutos: por debajo del umbral de la liga (no califica).
+  { NOMBRES: 'RUIZ, TOM', EQUIPO: 'B', FASE: 'REGULAR', MIN: '3', PTS: '2' },
+  // Fila JUGADOR TIPO de liga (EQUIPO vacío): fija el umbral de minutos.
+  { NOMBRES: 'JUGADOR TIPO', EQUIPO: '', FASE: 'REGULAR', MIN: '15', PTS: '10' },
+];
+const idxJ = S.construirIndice({
+  'PROMEDIOS E': { cols: colsE, filas: filasE3 },
+  'PROMEDIOS J': { cols: colsJ, filas: filasJ },
+}, { fase: 'REGULAR' });
+check('agrupa por equipo, sin las filas TIPO',
+  idxJ.liga.jugadoresPorEquipo.get('A').length === 2 && idxJ.liga.jugadoresPorEquipo.get('B').length === 2,
+  JSON.stringify({ A: idxJ.liga.jugadoresPorEquipo.get('A').length, B: idxJ.liga.jugadoresPorEquipo.get('B').length }));
+check('un equipo sin jugadores cargados no aparece en el mapa', !idxJ.liga.jugadoresPorEquipo.has('C'));
+check('la suma de todos los grupos da liga.jugadores completo',
+  Array.from(idxJ.liga.jugadoresPorEquipo.values()).reduce((s, a) => s + a.length, 0) === idxJ.liga.jugadores.length);
+check('respeta el umbral de minutos calculado de JUGADOR TIPO: RUIZ no califica',
+  idxJ.liga.jugadoresPorEquipo.get('B').find(j => j['NOMBRES'] === 'RUIZ, TOM').__califica === false);
+check('las entradas del mapa son las MISMAS referencias que liga.jugadores (no copias)',
+  idxJ.liga.jugadores.includes(idxJ.liga.jugadoresPorEquipo.get('A')[0]));
 
 console.log('\n8. INDICE: partidos duplicados (ida y vuelta)');
 console.log('═'.repeat(70));
