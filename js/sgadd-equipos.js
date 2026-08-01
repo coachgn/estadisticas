@@ -837,8 +837,11 @@ function equiposDetallePartido(idx, e, id) {
     </div>`).join('') || '<p class="text-xs dato-sec">Sin desvíos relevantes.</p>';
 
   const rec = a.recomendacion;
+  /* Va al FINAL del informe, debajo de los box scores: es la conclusión,
+     no la introducción. Y si no entra en la hoja, salta a la siguiente
+     sin apretar el box score. */
   const bloqueRec = `
-    <div class="mt-5 pt-4 border-t border-hairline">
+    <div id="proximoCruce" class="mt-6 pt-4 border-t border-hairline">
       <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-3">💡 Para el próximo cruce</p>
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <div class="rounded-lg border border-green-400/40 bg-green-400/5 p-3 hover:border-green-400 hover:shadow-lg transition-all duration-200">
@@ -1014,6 +1017,7 @@ function equiposDetallePartido(idx, e, id) {
         ${riv ? boxScore(riv, a.rivales, 'Box score · ' + riv.equipo.nombre) : ''}
       </div>
       ${notaBox}
+      ${bloqueRec}
     </div>`;
 }
 
