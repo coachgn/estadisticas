@@ -17,6 +17,7 @@ const EQUIPOS = {
   fase: 'REGULAR',
   equipo: null,
   tab: 'general',
+  partido: null,
   idx: null,
   hojas: null,
   cargando: false,
@@ -43,6 +44,7 @@ function equiposLeerRuta() {
   if (r.fase) EQUIPOS.fase = r.fase;
   EQUIPOS.equipo = r.entidad || null;
   EQUIPOS.tab = r.tab || 'general';
+  EQUIPOS.partido = r.sub || null;   // id del partido abierto, si hay
   return true;
 }
 
@@ -53,6 +55,7 @@ function equiposEscribirRuta(reemplazar) {
     seccion: 'equipos',
     entidad: EQUIPOS.equipo,
     tab: EQUIPOS.equipo ? EQUIPOS.tab : null,
+    sub: EQUIPOS.partido || null,
   });
   // replaceState para no llenar el historial con cada cambio de tab.
   if (reemplazar) history.replaceState(null, '', h);
@@ -65,8 +68,24 @@ function equiposIrA(clave) {
   equiposPintar();
 }
 
+/** Abre el detalle de un partido dentro del tab Partidos. */
+function equiposVerPartido(id) {
+  EQUIPOS.tab = 'partidos';
+  EQUIPOS.partido = id;
+  equiposEscribirRuta(false);
+  equiposPintar();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function equiposCerrarPartido() {
+  EQUIPOS.partido = null;
+  equiposEscribirRuta(false);
+  equiposPintar();
+}
+
 function equiposVerTab(id) {
   EQUIPOS.tab = id;
+  EQUIPOS.partido = null;   // cambiar de tab cierra el detalle
   equiposEscribirRuta(true);
   equiposPintar();
 }
@@ -341,7 +360,8 @@ function equiposTabGeneral(idx, e) {
 
   const log = (e.partidos || []).slice(-5).map(p => {
     const gano = SGADD.texto(p['RESULTADO']).toUpperCase() === 'GANADO';
-    return `<tr class="border-b border-hairline/40 last:border-0">
+    return `<tr class="border-b border-hairline/40 last:border-0 cursor-pointer hover:bg-surface2 transition-all duration-200"
+                onclick="equiposVerPartido('${escapeAttr(p.__id || '')}')">
       <td class="py-1.5 pr-3 text-xs truncate max-w-[220px]">${escapeHtml(equiposRival(p, e))}</td>
       <td class="py-1.5 pr-3 text-xs text-muted">${escapeHtml(SGADD.texto(p['CONDICION']))}</td>
       <td class="py-1.5 pr-3 font-mono text-xs">${SGADD.num(p['PTS'])}-${SGADD.num(p['PTSopp'])}</td>
@@ -585,6 +605,12 @@ function equiposTabPlantel(idx, e) {
 }
 
 function equiposTabPartidos(idx, e) {
+  // Si hay un partido abierto en la ruta, se muestra el detalle.
+  if (EQUIPOS.partido && typeof equiposDetallePartido === 'function') {
+    const det = equiposDetallePartido(idx, e, EQUIPOS.partido);
+    if (det) return det;
+  }
+
   const filas = (e.partidos || []).slice().reverse().map(p => {
     const gano = SGADD.texto(p['RESULTADO']).toUpperCase() === 'GANADO';
     return `<tr class="border-b border-hairline/40 last:border-0">
@@ -604,6 +630,7 @@ function equiposTabPartidos(idx, e) {
         <th class="pb-1 pr-3">Result.</th><th class="pb-1 pr-3">eFG%</th><th class="pb-1"></th>
       </tr></thead><tbody>${filas}</tbody></table></div>
     <p class="text-[11px] text-muted mt-3">
+      Clic en cualquier fila para ver el detalle del partido.
       Orden cronológico.${e.sinFecha ? ' <span class="text-yellow-400">' + e.sinFecha + ' partido(s) sin fecha cargada</span>, van al final.' : ''}
     </p>`;
 }
@@ -736,4 +763,210 @@ function equiposTabPersonalidad(idx, e) {
       </div>` : ''}
     </div>
     ${equiposInsight(p.insight)}`;
+}
+
+/* =====================================================================
+   DETALLE DE UN PARTIDO · sub-vista dentro del tab Partidos
+   ===================================================================== */
+function equiposDetallePartido(idx, e, id) {
+  const part = idx.partido(id);
+  if (!part) return null;
+
+  const propio = part.lados.find(l => l.equipo.clave === e.clave);
+  if (!propio) return null;
+
+  const a = SGADD_PARTIDO.analizar(idx, part, propio);
+  const riv = a.rival;
+  const gano = a.gano;
+
+  /* --- Cabecera con marcador --- */
+  const marcador = (lado, esPropio) => {
+    const logo = (typeof LOGOS !== 'undefined') ? LOGOS.getUrl(lado.equipo.nombre) : null;
+    return `
+      <div class="flex-1 min-w-0 text-center">
+        ${logo ? `<img src="${escapeAttr(logo)}" alt="" class="w-12 h-12 object-contain mx-auto mb-1">` : ''}
+        <p class="text-[11px] uppercase tracking-wider truncate ${esPropio ? 'text-accent font-semibold' : 'dato-sec'}">
+          ${escapeHtml(lado.equipo.nombre)}
+        </p>
+        <p class="font-display text-3xl sm:text-4xl leading-none mt-1" style="color:#fff">${lado.fila['PTS'] || 0}</p>
+      </div>`;
+  };
+
+  const cabecera = `
+    <div class="mb-5">
+      <button onclick="equiposCerrarPartido()"
+        class="text-xs uppercase tracking-wider dato-sec hover:text-white transition-all duration-200 mb-3">
+        ← Volver a partidos
+      </button>
+      <div class="rounded-lg border ${gano ? 'border-green-400/40' : 'border-red-400/40'} bg-surface2/30 p-4">
+        <p class="text-[10px] uppercase tracking-widest dato-sec text-center mb-3">
+          ${escapeHtml(SGADD.formatearFecha(part.fecha))} ·
+          ${escapeHtml(SGADD.texto(propio.fila['CONDICION']))} ·
+          <span class="${gano ? 'text-green-400' : 'text-red-400'}">${gano ? 'Ganado' : 'Perdido'}</span>
+        </p>
+        <div class="flex items-center gap-3">
+          ${marcador(part.lados[0], part.lados[0] === propio)}
+          <span class="dato-sec text-sm shrink-0">—</span>
+          ${riv ? marcador(part.lados[1], part.lados[1] === propio) : ''}
+        </div>
+      </div>
+      <!-- Hook de parciales por cuarto: se activa cuando existan las
+           columnas PTS_Q1..PTS_Q4 en Base Datos E. -->
+    </div>`;
+
+  /* --- Insight del partido --- */
+  const lista = (arr, color) => arr.map(x => `
+    <div class="bg-surface2/50 rounded-lg p-2.5 mb-2 border-l-2 ${color}
+                hover:bg-surface2 hover:border-l-4 transition-all duration-200">
+      <div class="flex items-baseline justify-between gap-2">
+        <span class="text-xs text-white">${escapeHtml(x.label)}</span>
+        <span class="font-mono text-xs text-white">${escapeHtml(SGADD.formatear('eFG%', x.partido))}</span>
+      </div>
+      <p class="text-[10px] dato-sec font-mono mt-0.5">
+        habitual ${escapeHtml(SGADD.formatear('eFG%', x.habitual))} · ${x.dif > 0 ? '+' : ''}${escapeHtml(SGADD.formatear('eFG%', x.dif))}
+      </p>
+    </div>`).join('') || '<p class="text-xs dato-sec">Sin desvíos relevantes.</p>';
+
+  const rec = a.recomendacion;
+  const bloqueRec = `
+    <div class="mt-5 pt-4 border-t border-hairline">
+      <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-3">💡 Para el próximo cruce</p>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div class="rounded-lg border border-green-400/40 bg-green-400/5 p-3 hover:border-green-400 hover:shadow-lg transition-all duration-200">
+          <p class="text-[10px] uppercase tracking-wider text-green-400 font-display mb-1.5">${gano ? 'Sostener' : 'Corregir'}</p>
+          ${(gano ? rec.sostener : rec.corregir).map(t => `<p class="text-xs text-white leading-relaxed mb-1.5 last:mb-0">${escapeHtml(t)}</p>`).join('')}
+        </div>
+        <div class="rounded-lg border border-accent/40 bg-accent/5 p-3 hover:border-accent hover:shadow-lg transition-all duration-200">
+          <p class="text-[10px] uppercase tracking-wider text-accent font-display mb-1.5">🎯 Nuestros jugadores</p>
+          ${(rec.destacados.concat(rec.potenciar).slice(0, 3).map(t => `<p class="text-xs text-white leading-relaxed mb-1.5 last:mb-0">${escapeHtml(t)}</p>`).join('')
+            || '<p class="text-xs dato-sec">Nadie se salió de su promedio.</p>')}
+        </div>
+        <div class="rounded-lg border border-red-400/40 bg-red-400/5 p-3 hover:border-red-400 hover:shadow-lg transition-all duration-200">
+          <p class="text-[10px] uppercase tracking-wider text-red-400 font-display mb-1.5">🎯 Atención al rival</p>
+          ${(rec.vigilar.map(t => `<p class="text-xs text-white leading-relaxed mb-1.5 last:mb-0">${escapeHtml(t)}</p>`).join('')
+            || '<p class="text-xs dato-sec">Ningún rival tuvo un pico atípico.</p>')}
+        </div>
+      </div>
+    </div>`;
+
+  const insight = `
+    <div class="rounded-lg border border-accent/40 bg-accent/5 p-4 sm:p-5 mb-6
+                hover:border-accent hover:shadow-lg transition-all duration-200">
+      <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-3">📌 Insight del partido</p>
+      <div class="space-y-2 mb-5 max-w-4xl">
+        ${a.texto.map((t, i) => `<p class="${i === 0 ? 'text-base text-white font-medium' : 'text-sm text-slate-100'} leading-relaxed">${escapeHtml(t)}</p>`).join('')}
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <p class="text-[10px] uppercase tracking-wider text-green-400 font-display mb-1.5">3 claves del partido</p>
+          ${lista(a.claves, 'border-green-400')}
+        </div>
+        <div>
+          <p class="text-[10px] uppercase tracking-wider text-red-400 font-display mb-1.5">3 grietas del partido</p>
+          ${lista(a.grietas, 'border-red-400')}
+        </div>
+      </div>
+      ${bloqueRec}
+    </div>`;
+
+  /* --- 4 Factores enfrentados --- */
+  const factores = (propio.factores && riv && riv.factores) ? (() => {
+    const filas = ['eFG%', 'PP%', 'RTL%', 'RO%'].map(k => {
+      const vp = propio.factores[k], vr = riv.factores[k];
+      if (typeof vp !== 'number' || typeof vr !== 'number') return '';
+      const inv = k === 'PP%';
+      const mejorP = inv ? vp < vr : vp > vr;
+      const total = (vp + vr) || 1;
+      return `
+        <tr class="border-b border-hairline/40 last:border-0">
+          <td class="py-2 pr-3 font-mono text-xs ${mejorP ? 'text-green-400 font-medium' : 'text-white'}">${escapeHtml(SGADD.formatear('eFG%', vp))}</td>
+          <td class="py-2">
+            <div class="flex items-center gap-1">
+              <div class="flex-1 h-2 rounded-full bg-surface2 overflow-hidden flex justify-end">
+                <div class="h-full ${mejorP ? 'bg-green-400' : 'bg-muted'}" style="width:${(vp / total * 100).toFixed(0)}%"></div>
+              </div>
+              <span class="text-[10px] dato-sec whitespace-nowrap px-1">${escapeHtml(SGADD.metrica(k === 'PP%' ? 'PePP%' : k).label)}</span>
+              <div class="flex-1 h-2 rounded-full bg-surface2 overflow-hidden">
+                <div class="h-full ${!mejorP ? 'bg-red-400' : 'bg-muted'}" style="width:${(vr / total * 100).toFixed(0)}%"></div>
+              </div>
+            </div>
+          </td>
+          <td class="py-2 pl-3 font-mono text-xs ${!mejorP ? 'text-red-400 font-medium' : 'text-white'}">${escapeHtml(SGADD.formatear('eFG%', vr))}</td>
+        </tr>`;
+    }).join('');
+    return `
+      <div class="mb-6">
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">4 Factores del partido</h5>
+        <table class="w-full"><tbody>${filas}</tbody></table>
+        <p class="text-[11px] dato-sec mt-2">Verde = quién ganó ese factor. En pérdidas, menos es mejor.</p>
+      </div>`;
+  })() : '';
+
+  /* --- Box scores --- */
+  const boxScore = (lado, desvios, titulo) => {
+    if (!lado || !lado.box.length) {
+      return `<div><h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">${escapeHtml(titulo)}</h5>
+              <p class="text-xs dato-sec">Sin box score cargado para este partido.</p></div>`;
+    }
+    const cols = SGADD_PARTIDO.COLS_BOX;
+    const filas = desvios.map(d => {
+      const j = d.fila;
+      const flojo = !d.fiable;
+      const dest = d.destacado;
+      return `
+        <tr class="border-b border-hairline/40 last:border-0 ${flojo ? 'opacity-50' : ''}
+                   ${dest ? (dest.z > 0 ? 'bg-green-400/5' : 'bg-red-400/5') : ''}">
+          <td class="py-1.5 pr-3 text-xs whitespace-nowrap ${dest ? 'text-white font-medium' : 'text-white'}">
+            ${escapeHtml(SGADD_PARTIDO.nombreCorto(j))}
+            ${dest ? `<span class="ml-1 text-[10px] font-mono ${dest.z > 0 ? 'text-green-400' : 'text-red-400'}"
+              title="${escapeAttr(dest.clave + ' ' + SGADD.formatear(dest.clave, dest.valor) + ' vs ' + SGADD.formatear(dest.clave, dest.media) + ' de promedio')}">
+              ${dest.z > 0 ? '▲' : '▼'}${escapeHtml(dest.clave)}</span>` : ''}
+          </td>
+          ${cols.map(c => {
+            const m = d.marcas[c];
+            const marcado = m && m.atipico && d.fiable;
+            return `<td class="py-1.5 pr-2 font-mono text-xs ${marcado ? (m.z > 0 ? 'text-green-400 font-medium' : 'text-red-400 font-medium') : 'text-white'}"
+                     ${m ? `title="promedio ${SGADD.formatear(c, m.media)} en ${m.n} partidos"` : ''}>
+              ${escapeHtml(SGADD.formatear(c, j[c]))}${marcado ? `<span class="text-[9px] block leading-none">${signoNum(m.delta)}</span>` : ''}
+            </td>`;
+          }).join('')}
+        </tr>`;
+    }).join('');
+
+    return `
+      <div>
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">${escapeHtml(titulo)}</h5>
+        <div class="scrollbox">
+          <table class="w-full">
+            <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+              <th class="pb-2 pr-3">Jugador</th>
+              ${cols.map(c => `<th class="pb-2 pr-2">${escapeHtml(c)}</th>`).join('')}
+            </tr></thead>
+            <tbody>${filas}</tbody>
+          </table>
+        </div>
+      </div>`;
+  };
+
+  const notaBox = `
+    <p class="text-[11px] dato-sec mt-3 leading-snug">
+      Verde y rojo marcan rendimientos atípicos <b>para ese jugador</b>: más de ${SGADD_PARTIDO.Z_ATIPICO}
+      desvíos estándar sobre su propio promedio. El número chico debajo es la diferencia contra ese promedio.
+      Los atenuados jugaron menos de ${SGADD_PARTIDO.MIN_MINUTOS} minutos.
+    </p>`;
+
+  return `
+    ${cabecera}
+    ${insight}
+    ${factores}
+    <div class="grid grid-cols-1 gap-6">
+      ${boxScore(propio, a.propios, 'Box score · ' + propio.equipo.nombre)}
+      ${riv ? boxScore(riv, a.rivales, 'Box score · ' + riv.equipo.nombre) : ''}
+    </div>
+    ${notaBox}`;
+}
+
+function signoNum(v) {
+  const n = Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(1);
+  return (v > 0 ? '+' : '') + String(n).replace('.', ',');
 }

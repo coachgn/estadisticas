@@ -121,6 +121,27 @@
     return out;
   }
 
+  /* ---------------------------------------------------------------------
+     ID CANÓNICO DE PARTIDO
+
+     La columna PARTIDO es el string "LOCAL vs VISITANTE". En una liga con
+     ida y vuelta ese string se repite si alguna vez se carga al revés, y
+     dos partidos distintos colapsarían en uno. Con la FECHA adelante queda
+     a prueba de eso.
+
+     Formato: 2025-10-31_jujuy-basquet-vs-san-isidro
+     --------------------------------------------------------------------- */
+  function idPartido(nombrePartido, valorFecha) {
+    const f = fecha(valorFecha);
+    const iso = f
+      ? f.getFullYear() + '-' + String(f.getMonth() + 1).padStart(2, '0') + '-' + String(f.getDate()).padStart(2, '0')
+      : 'sf';
+    const slug = texto(nombrePartido)
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+    return iso + '_' + slug;
+  }
+
   function mediana(vals) {
     const a = vals.filter(v => typeof v === 'number' && isFinite(v)).sort((x, y) => x - y);
     if (!a.length) return null;
@@ -544,10 +565,12 @@
         seccion:  partes[2] || 'principal',
         entidad:  partes[3] || null,
         tab:      partes[4] || null,
+        // Sexto nivel: el detalle de un partido dentro del tab Partidos.
+        sub:      partes[5] || null,
       };
     },
     build(r) {
-      const p = [r.planilla, r.fase, r.seccion, r.entidad, r.tab]
+      const p = [r.planilla, r.fase, r.seccion, r.entidad, r.tab, r.sub]
         .filter(v => v !== null && v !== undefined && v !== '')
         .map(encodeURIComponent);
       return '#/' + p.join('/');
@@ -699,6 +722,7 @@
           datos[c] = (v !== null) ? v : texto(fila[c]);
         });
         datos.__partido = texto(fila['PARTIDO']);
+        datos.__id = idPartido(fila['PARTIDO'], fila['FECHA']);
         e[campo].push(datos);
       });
     });
@@ -967,6 +991,51 @@
     liga.jugadores = todosJugadores;
     liga.jugadoresCalificados = todosJugadores.filter(j => j.__califica);
 
+    /* ---------------------------------------------------------------------
+       BOX SCORE POR PARTIDO
+
+       Base Datos J tiene una fila por jugador-partido de TODA la liga. Con
+       272 partidos x 24 jugadores son ~6.500 filas: indexarlas por partido
+       cuesta 7 ms y el Map guarda referencias, no copias, así que el costo
+       de memoria es la estructura y nada más. No hace falta lazy loading.
+       --------------------------------------------------------------------- */
+    liga.boxPorPartido = new Map();   // idPartido -> filas de jugador
+    liga.jugadorPartidos = new Map(); // clavePersona -> filas de sus partidos
+
+    const hbj = hojas['Base Datos J'];
+    if (hbj) {
+      hbj.filas.forEach(fila => {
+        const faseFila = texto(fila['FASE']).toUpperCase();
+        if (faseFila && faseFila !== fase) return;
+        const id = idPartido(fila['PARTIDO'], fila['FECHA']);
+
+        const datos = {};
+        Object.keys(fila).forEach(c => {
+          const v = num(fila[c]);
+          datos[c] = (v !== null) ? v : texto(fila[c]);
+        });
+        datos.__id = id;
+        datos.__partido = texto(fila['PARTIDO']);
+        datos.__fecha = fecha(fila['FECHA']);
+        datos.__clave = clavePersona(fila['NOMBRES']);
+        datos.__equipo = claveEquipo(fila['EQUIPO']);
+
+        if (!liga.boxPorPartido.has(id)) liga.boxPorPartido.set(id, []);
+        liga.boxPorPartido.get(id).push(datos);
+
+        if (!liga.jugadorPartidos.has(datos.__clave)) liga.jugadorPartidos.set(datos.__clave, []);
+        liga.jugadorPartidos.get(datos.__clave).push(datos);
+      });
+    }
+
+    /* Índice de partidos por equipo, con su id canónico. */
+    equipos.forEach(e => {
+      e.partidosPorId = new Map();
+      e.partidos.forEach(p => { if (p.__id) e.partidosPorId.set(p.__id, p); });
+      e.factoresPorId = new Map();
+      e.factoresPartido.forEach(f => { if (f.__id) e.factoresPorId.set(f.__id, f); });
+    });
+
     /* --- Distribuciones para percentiles --- */
     const listaEquipos = Array.from(equipos.values());
     liga.n = listaEquipos.length;
@@ -1090,8 +1159,54 @@
       return out;
     }
 
+    /**
+     * Devuelve TODO lo de un partido: las dos filas de equipo, los dos
+     * conjuntos de factores y los dos box scores.
+     */
+    function partido(id) {
+      const box = liga.boxPorPartido.get(id) || [];
+      const lados = [];
+      equipos.forEach(e => {
+        const fe = e.partidosPorId.get(id);
+        if (!fe) return;
+        lados.push({
+          equipo: e,
+          fila: fe,
+          factores: e.factoresPorId.get(id) || null,
+          box: box.filter(b => b.__equipo === e.clave).sort((a, b) => (b['MIN'] || 0) - (a['MIN'] || 0)),
+        });
+      });
+      if (!lados.length) return null;
+
+      // El local primero, como se escribe en la columna PARTIDO.
+      lados.sort((a, b) => (texto(a.fila['CONDICION']).toUpperCase() === 'LOCAL' ? -1 : 1));
+      return {
+        id: id,
+        nombre: lados[0].fila.__partido || '',
+        fecha: lados[0].fila.__fecha || null,
+        lados: lados,
+        propio: lados.find(l => esEquipoPropio(l.equipo.clave)) || null,
+        completo: lados.length === 2,
+        conBox: box.length > 0,
+      };
+    }
+
+    /**
+     * Media y desvío de un jugador en una métrica, sobre SUS partidos.
+     * Con eso se sabe si un rendimiento fue atípico para ÉL, y no contra
+     * un umbral fijo: 20 puntos es normal para uno y un pico para otro.
+     */
+    function statJugador(clavePers, metrica) {
+      const ps = liga.jugadorPartidos.get(clavePers) || [];
+      const vals = ps.map(p => p[metrica]).filter(v => typeof v === 'number' && isFinite(v));
+      if (vals.length < 3) return null;
+      const m = vals.reduce((a, v) => a + v, 0) / vals.length;
+      const varianza = vals.reduce((a, v) => a + (v - m) * (v - m), 0) / vals.length;
+      return { media: m, desvio: Math.sqrt(varianza), n: vals.length };
+    }
+
     return {
-      fase, equipos, liga, avisos, agregarPartidos,
+      fase, equipos, liga, avisos, agregarPartidos, partido, statJugador,
       lista: () => Array.from(equipos.values()),
       get: (k) => equipos.get(claveEquipo(k)) || null,
       leer, leerVista, leerJugador, ranking, percentil,
@@ -1419,7 +1534,7 @@
 
   const SGADD = {
     // utilidades
-    num, texto, fecha, formatearFecha, limpiarNombre, claveEquipo, clavePersona, mediana, promedio, percentil,
+    num, texto, fecha, formatearFecha, limpiarNombre, claveEquipo, clavePersona, idPartido, mediana, promedio, percentil,
     // 1
     ESQUEMA, HOJAS_EXCLUIDAS,
     // 2
