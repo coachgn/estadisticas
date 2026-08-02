@@ -512,13 +512,13 @@
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.2"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 20c0-3.6 3.1-6.5 7-6.5s7 2.9 7 6.5"/></svg>
           Jugadores
         </button>
-        <button onclick="navigate('simulador')" data-nav="simulador" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 21h8M12 17v4M5 3h14l-1.5 8.5a5.5 5.5 0 0 1-11 0L5 3Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 5H2.5A2.5 2.5 0 0 0 3.8 9.6M19 5h2.5a2.5 2.5 0 0 1-1.3 4.6"/></svg>
-          Simulador 360°
-        </button>
         <button onclick="navigate('scouting')" data-nav="scouting" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path stroke-linecap="round" d="m20 20-4.3-4.3"/></svg>
           Scouting
+        </button>
+        <button onclick="navigate('simulador')" data-nav="simulador" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 21h8M12 17v4M5 3h14l-1.5 8.5a5.5 5.5 0 0 1-11 0L5 3Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 5H2.5A2.5 2.5 0 0 0 3.8 9.6M19 5h2.5a2.5 2.5 0 0 1-1.3 4.6"/></svg>
+          Simulador
         </button>
         <button onclick="navigate('diagnostico')" data-nav="diagnostico" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path stroke-linecap="round" d="m20 20-4.3-4.3"/></svg>Diagnóstico</button>
@@ -552,19 +552,20 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=36"></script>
-<script src="js/sgadd-core.js?v=36"></script>
-<script src="js/sgadd-ui.js?v=36"></script>
-<script src="js/sgadd-app.js?v=36"></script>
-<script src="js/sgadd-charts.js?v=36"></script>
-<script src="js/sgadd-personalidad.js?v=36"></script>
-<script src="js/sgadd-rankings.js?v=36"></script>
-<script src="js/sgadd-partido.js?v=36"></script>
-<script src="js/sgadd-informe.js?v=36"></script>
-<script src="js/sgadd-equipos.js?v=36"></script>
-<script src="js/sgadd-jugadores.js?v=36"></script>
-<script src="js/sgadd-4factores.js?v=36"></script>
-<script src="js/sgadd-diagnostico.js?v=36"></script>
+<script src="js/sgadd-club.js?v=37"></script>
+<script src="js/sgadd-core.js?v=37"></script>
+<script src="js/sgadd-ui.js?v=37"></script>
+<script src="js/sgadd-app.js?v=37"></script>
+<script src="js/sgadd-charts.js?v=37"></script>
+<script src="js/sgadd-personalidad.js?v=37"></script>
+<script src="js/sgadd-rankings.js?v=37"></script>
+<script src="js/sgadd-partido.js?v=37"></script>
+<script src="js/sgadd-informe.js?v=37"></script>
+<script src="js/sgadd-equipos.js?v=37"></script>
+<script src="js/sgadd-jugadores.js?v=37"></script>
+<script src="js/sgadd-4factores.js?v=37"></script>
+<script src="js/sgadd-scouting.js?v=37"></script>
+<script src="js/sgadd-diagnostico.js?v=37"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -587,7 +588,7 @@ const SHEETS_CONFIG = [
   { name: 'RANKINGS E',    key: 'rankingsE'    },
 ];
 
-const VALID_SECTIONS = ['principal', 'equipos', 'jugadores', 'simulador', 'scouting', 'diagnostico'];
+const VALID_SECTIONS = ['principal', 'equipos', 'jugadores', 'scouting', 'simulador', 'diagnostico'];
 
 /* ============ ESTADO GLOBAL ============ */
 let DATA = {};
@@ -599,7 +600,7 @@ let currentSection = 'principal';
 const tabState = {
   equipos: 'acumulado',
   jugadores: 'acumulado',
-  scouting: 'jugadores',
+  scouting: 'equipos',   // el informe pre-partido es la vista principal de Scouting
 };
 
 const tableState = {};
@@ -2030,17 +2031,38 @@ const iniciales = LOGOS.iniciales;
 /* ============ SECCIÓN: SCOUTING ============ */
 function buildScouting() {
   const tabs = [
+    { id: 'equipos', label: 'Informe pre-partido' },
     { id: 'jugadores', label: 'Comparar Jugadores' },
-    { id: 'equipos', label: 'Comparar Equipos' },
   ];
   const active = tabState.scouting;
-  const body = active === 'jugadores'
-    ? buildScoutingCompare('promediosJ', ['NOMBRE', 'JUGADOR'], 'scoutingPlayers', 'jugadores')
-    : buildScoutingCompare('promediosE', ['EQUIPO', 'NOMBRE', 'RIVAL', 'TEAM'], 'scoutingTeams', 'equipos');
+
+  /* El tab de equipos ya no es la comparativa genérica de dos filas de
+     PROMEDIOS E: es el informe pre-partido completo (sgadd-scouting.js),
+     que se apoya en `idx` y no en la capa de datos vieja. Por eso pinta
+     asincrónico igual que Equipos/Jugadores/Simulador, en vez de devolver
+     el HTML ya armado. El tab de jugadores sigue con la comparativa
+     legacy: es otra pregunta (dos jugadores cara a cara) y no la tocamos. */
+  if (active === 'equipos') {
+    SGADD_APP.inicializar();
+    /* Se encadena a la promesa de `cargar()` en vez de confiar solo en el
+       hook de onCambio de sgadd-app.js: si se entra a la sección antes de
+       que la categoría termine de bajar, el hook es el único que repinta
+       y cualquier desincronización entre los dos archivos deja la vista
+       clavada en "Cargando…". Con el .then() el repintado es local a
+       quien lo necesita. */
+    setTimeout(() => { scoutPintar(); Promise.resolve(SGADD_APP.cargar()).then(scoutPintar); }, 0);
+    return `
+      <section class="space-y-4">
+        <div class="flex flex-wrap gap-2">${buildTabs('scouting', tabs)}</div>
+        ${SGADD_APP.barra()}
+        <div id="scoutRoot" class="space-y-4"></div>
+      </section>`;
+  }
+
   return `
     <section class="space-y-4">
       <div class="flex flex-wrap gap-2">${buildTabs('scouting', tabs)}</div>
-      ${body}
+      ${buildScoutingCompare('promediosJ', ['NOMBRE', 'JUGADOR'], 'scoutingPlayers', 'jugadores')}
     </section>`;
 }
 
@@ -2207,7 +2229,7 @@ function renderSection(section) {
     btn.classList.toggle('bg-surface2', isActive);
     btn.classList.toggle('text-accent', isActive);
   });
-  const titles = { principal: 'Principal', equipos: 'Equipos', jugadores: 'Jugadores', simulador: 'Simulador 360°', scouting: 'Scouting', diagnostico: 'Diagnóstico' };
+  const titles = { principal: 'Principal', equipos: 'Equipos', jugadores: 'Jugadores', scouting: 'Scouting', simulador: 'Simulador', diagnostico: 'Diagnóstico' };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = titles[section] || '';
 

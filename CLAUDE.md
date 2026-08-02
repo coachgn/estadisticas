@@ -21,9 +21,10 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  17 tests · detalle partido a partido
+node test-scouting.js      #  99 tests · informe pre-partido, marcas, claves dinámicas
 ```
 
-**380 tests en total. Todos tienen que dar verde antes de commitear.**
+**479 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -60,6 +61,7 @@ js/
   sgadd-equipos.js      ← sección Equipos: grilla, ficha, 8 tabs, detalle partido
   sgadd-jugadores.js    ← sección Jugadores: grilla, ficha, tabs General/Evolución/Partidos
   sgadd-4factores.js    ← motor de regresión + sección Simulador (cruce A vs B)
+  sgadd-scouting.js     ← informe pre-partido de equipos (motor + UI)
   sgadd-informe.js      ← modal de exportación PDF del informe de equipo
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app
 clubes/
@@ -71,7 +73,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=36`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=37`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -378,7 +380,127 @@ no meter una inconsistencia en el resto de las tablas de partidos.
 
 ---
 
-## 9. Simulador 360°
+## 9. Sección SCOUTING · Informe pre-partido
+
+**Estado: implementado.** Vive en `js/sgadd-scouting.js` (motor puro
+`SGADD_SCOUT` + UI en globals, como Simulador). Es la réplica calculada de
+los PDFs "REPORTE SCOUTING" que el cuerpo técnico ya armaba a mano.
+
+Scouting tiene dos tabs: **Informe pre-partido** (el nuevo, por defecto) y
+**Comparar Jugadores** (la comparativa legacy de dos filas, sin tocar —
+responde otra pregunta). El tab de equipos NO usa la capa de datos vieja
+(`sheet()`): lee de `idx`, igual que Equipos/Jugadores/Simulador.
+
+### Orden del nav
+
+`Principal · Equipos · Jugadores · Scouting · Simulador · Diagnóstico`, y el
+label del simulador es **"Simulador"** a secas (el modelo se sigue llamando
+360° en la documentación y en la ficha, pero no en el menú).
+
+### Los seis bloques
+
+1. **Encabezado** — récord global y desglosado L/V de los dos, último
+   partido con rival y marcador, e historial directo.
+2. **Matriz de métricas avanzadas** — A vs B vs mediana de liga, con el
+   puesto en la liga por métrica. Dos bloques: posesión/eficiencia
+   (POS, PACE, eFG%, EFF OF/DEF con su PPP, %REB OF/DEF, %AST) y selección
+   de tiro/pérdidas (%USO 3PTS/2PTS/TL con su PPT, %TOV con su PP).
+3. **Splits L/V y ciclo reciente** — últimos 4 partidos separados en
+   ganados y perdidos, con puntos de fuga, valores de identidad y línea de
+   tiro.
+4. **Plan individual · marca asignada** — consigna y restricción sugeridas
+   por perfil, **editables**: el plan lo firma el DT, no el modelo.
+5. **Jugadores clave del rival** — tabla con semáforo del top 3 por métrica
+   y filas de cierre (promedio del plantel y de la liga).
+6. **Criterio estratégico** — resumen ejecutivo + claves dinámicas.
+
+### Las tres referencias que NO son la misma
+
+El bug más fácil de cometer acá es mezclar contra qué se compara cada cosa.
+Quedaron separadas a propósito:
+
+- **Puntos de fuga y valores de identidad** → contra el **propio promedio**
+  de temporada del equipo. La pregunta es "¿jugó como él mismo?".
+- **Línea de tiro** → contra la **mediana de la liga**. La pregunta es
+  "¿tiró bien en términos absolutos?".
+- **Semáforo top 3 de jugadores** → **dentro del plantel del rival**. La
+  pregunta es "de estos siete, ¿a quién le doy la marca?", no "¿es bueno
+  para la liga?" (eso ya lo contesta la sección Jugadores).
+
+Los primeros borradores usaban la misma referencia para todo y daban
+lecturas que se contradecían entre bloques.
+
+### Claves estratégicas: generación dinámica, no lista fija
+
+`REGLAS_CLAVE` corre cada regla contra el plantel del rival y solo devuelve
+las que los datos activan. Un informe contra un equipo de tiradores y otro
+contra uno de pintura salen distintos sin tocar código. Ocho reglas: ejes de
+eficiencia, clausura de tiradores, invitación selectiva al triple,
+disciplina de bonus, falta táctica rentable, presión a la conducción,
+control del cristal y colapso de la pintura.
+
+Hay pares **deliberadamente opuestos** que nunca pueden apuntar al mismo
+jugador, y el test lo verifica: *clausura de tiradores* (T3 caro) vs
+*invitación al triple* (T3 barato); *disciplina de bonus* (buen T1%, no lo
+mandes a la línea) vs *falta táctica rentable* (mal T1%, mandalo). Si
+alguna vez los dos marcan al mismo, hay un umbral mal puesto.
+
+`PERFILES_MARCA`, en cambio, **sí es una cascada excluyente**: un jugador
+puede disparar varias reglas de análisis, pero la marca asignada elige una
+sola, la de la amenaza más cara (ordenadas de mayor a menor costo esperado).
+
+### Umbrales: relativos donde importa
+
+Pérdidas y rebote ofensivo se miden **x la mediana de la liga**
+(`liga.jugadorTipo`), no en absoluto — regla del punto 4. Los que quedaron
+absolutos son los que son físicos del básquet y no dependen de la liga: un
+75% en libres es bueno en cualquier lado, y 1,20 pts por triple intentado
+es caro en cualquier lado.
+
+### Lo que la planilla NO tiene
+
+**No hay hoja de fixture.** Fecha del partido, torneo/instancia y próximo
+rival programado son campos **manuales** en la UI. No se estiman: un
+scouting con una fecha inventada es peor que uno sin fecha. Si alguna vez
+entra una hoja de calendario, esos tres campos salen solos.
+
+Tampoco se migró la parte **narrativa** de los PDFs de playoffs (lectura de
+la serie, estado anímico, "sus manos tiemblan en momentos de presión"). Eso
+es criterio del DT sobre partidos que vio, no un dato derivable — por eso la
+tabla de marcas es editable en vez de solo lectura.
+
+### Detalles de implementación que costaron
+
+- **`referenciaLiga()` tiene respaldo.** La mediana sale de la fila
+  `EQUIPO TIPO`; si esa fila no trae la columna (pasa con las opcionales,
+  como `PACE`), se calcula sobre la distribución de los N equipos. El TIPO
+  manda cuando existe: viene de la planilla y es lo que el club audita.
+  Dejar la columna "Liga" vacía en pleno informe es peor que recalcularla.
+- **La elección del rival a scoutear necesita tres ramas, no un ternario.**
+  Con `esEquipoPropio(local) ? visitante : local`, un partido donde
+  NOSOTROS somos el visitante terminaba scouteando a nuestro propio equipo.
+  Sin equipo propio en el cruce (preparar un partido ajeno es un caso real)
+  se toma el visitante, que es la convención del informe impreso. La UI
+  además deja cambiarlo a mano.
+- **Los campos de texto no repintan la sección.** `scoutMeta()` y
+  `scoutMarca()` escriben en el estado y nada más: un repintado por tecla
+  le saca el foco al input y hace imposible escribir un nombre completo.
+- **El tab se engancha a la promesa de `cargar()`**, no solo al hook de
+  `onCambio` de `sgadd-app.js`. Entrando a la sección antes de que baje la
+  categoría, el hook era el único que repintaba y la vista quedaba clavada
+  en "Cargando…".
+
+### Preparado para exportar (todavía no implementado)
+
+Cada bloque es un `<section class="scout-bloque" data-bloque="...">` dentro
+de `#scoutInforme`, y las tablas anchas scrollean dentro de su contenedor
+(verificado a 375px: el body no scrollea en horizontal). La exportación a
+PDF/WhatsApp puede cortar por bloque sin reestructurar el DOM — pero
+arrastra los mismos problemas abiertos del punto 7.
+
+---
+
+## 9 bis. Simulador 360°
 
 **Estado: implementado.** Vive en `js/sgadd-4factores.js`: el motor puro
 (`SGADD_4F`) más la sección Simulador (grilla de selección A vs B), mismo
@@ -588,7 +710,7 @@ Después de **cualquier** cambio de código o función nueva:
 node test-core.js && node test-logos.js && node test-ligas.js && \
 node test-clubes.js && node test-boot.js && node test-jugadores.js && \
 node test-4factores.js && node test-personalidad.js && node test-informe.js && \
-node test-partido.js
+node test-partido.js && node test-scouting.js
 
 # 2. Solo si TODO da verde:
 git add .

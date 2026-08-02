@@ -149,6 +149,10 @@ const SGADD_APP = (function () {
     if (currentSection === 'equipos' && typeof equiposPintar === 'function') equiposPintar();
     if (currentSection === 'jugadores' && typeof jugadoresPintar === 'function') jugadoresPintar();
     if (currentSection === 'simulador' && typeof simuladorPintar === 'function') simuladorPintar();
+    // Scouting solo repinta en el tab del informe pre-partido; el de
+    // comparar jugadores vive todavía en la capa de datos vieja.
+    if (currentSection === 'scouting' && typeof scoutPintar === 'function' &&
+        typeof tabState !== 'undefined' && tabState.scouting === 'equipos') scoutPintar();
   });
 
   return {
