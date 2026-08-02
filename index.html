@@ -516,6 +516,10 @@
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18M3 12h18M6 6l12 12M18 6 6 18"/></svg>
           4 Factores
         </button>
+        <button onclick="navigate('simulador')" data-nav="simulador" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 21h8M12 17v4M5 3h14l-1.5 8.5a5.5 5.5 0 0 1-11 0L5 3Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 5H2.5A2.5 2.5 0 0 0 3.8 9.6M19 5h2.5a2.5 2.5 0 0 1-1.3 4.6"/></svg>
+          Simulador
+        </button>
         <button onclick="navigate('scouting')" data-nav="scouting" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path stroke-linecap="round" d="m20 20-4.3-4.3"/></svg>
           Scouting
@@ -552,18 +556,19 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=34"></script>
-<script src="js/sgadd-core.js?v=34"></script>
-<script src="js/sgadd-ui.js?v=34"></script>
-<script src="js/sgadd-app.js?v=34"></script>
-<script src="js/sgadd-charts.js?v=34"></script>
-<script src="js/sgadd-personalidad.js?v=34"></script>
-<script src="js/sgadd-rankings.js?v=34"></script>
-<script src="js/sgadd-partido.js?v=34"></script>
-<script src="js/sgadd-informe.js?v=34"></script>
-<script src="js/sgadd-equipos.js?v=34"></script>
-<script src="js/sgadd-jugadores.js?v=34"></script>
-<script src="js/sgadd-diagnostico.js?v=34"></script>
+<script src="js/sgadd-club.js?v=35"></script>
+<script src="js/sgadd-core.js?v=35"></script>
+<script src="js/sgadd-ui.js?v=35"></script>
+<script src="js/sgadd-app.js?v=35"></script>
+<script src="js/sgadd-charts.js?v=35"></script>
+<script src="js/sgadd-personalidad.js?v=35"></script>
+<script src="js/sgadd-rankings.js?v=35"></script>
+<script src="js/sgadd-partido.js?v=35"></script>
+<script src="js/sgadd-informe.js?v=35"></script>
+<script src="js/sgadd-equipos.js?v=35"></script>
+<script src="js/sgadd-jugadores.js?v=35"></script>
+<script src="js/sgadd-4factores.js?v=35"></script>
+<script src="js/sgadd-diagnostico.js?v=35"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -586,7 +591,7 @@ const SHEETS_CONFIG = [
   { name: 'RANKINGS E',    key: 'rankingsE'    },
 ];
 
-const VALID_SECTIONS = ['principal', 'equipos', 'jugadores', 'factores', 'scouting', 'diagnostico'];
+const VALID_SECTIONS = ['principal', 'equipos', 'jugadores', 'factores', 'simulador', 'scouting', 'diagnostico'];
 
 /* ============ ESTADO GLOBAL ============ */
 let DATA = {};
@@ -2345,7 +2350,7 @@ function renderSection(section) {
     btn.classList.toggle('bg-surface2', isActive);
     btn.classList.toggle('text-accent', isActive);
   });
-  const titles = { principal: 'Principal', equipos: 'Equipos', jugadores: 'Jugadores', factores: '4 Factores', scouting: 'Scouting', diagnostico: 'Diagnóstico' };
+  const titles = { principal: 'Principal', equipos: 'Equipos', jugadores: 'Jugadores', factores: '4 Factores', simulador: 'Simulador', scouting: 'Scouting', diagnostico: 'Diagnóstico' };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = titles[section] || '';
 
@@ -2357,6 +2362,7 @@ function renderSection(section) {
     case 'equipos': root.innerHTML = buildEquipos(); break;   // SGADD (js/sgadd-equipos.js)
     case 'jugadores': root.innerHTML = buildJugadores(); break;
     case 'factores': root.innerHTML = buildFactores(); drawFactoresChart(); break;
+    case 'simulador': root.innerHTML = buildSimulador(); break;   // SGADD (js/sgadd-4factores.js)
     case 'scouting': root.innerHTML = buildScouting(); drawScoutingCharts(); break;
     default: root.innerHTML = '';
   }
@@ -2524,6 +2530,9 @@ async function init() {
       } else if (r.seccion === 'jugadores') {
         if (currentSection !== 'jugadores') navigate('jugadores');
         else { jugadoresLeerRuta(); jugadoresPintar(); }
+      } else if (r.seccion === 'simulador') {
+        if (currentSection !== 'simulador') navigate('simulador');
+        else { simuladorLeerRuta(); simuladorPintar(); }
       } else if (r.seccion === 'principal' && currentSection !== 'principal') {
         navigate('principal');
       }

@@ -192,6 +192,7 @@ const CLUB = (function () {
         // Los 404 anteriores quedaron cacheados: hay que reintentar.
         if (typeof equiposPintar === 'function' && typeof currentSection !== 'undefined' && currentSection === 'equipos') equiposPintar();
         if (typeof jugadoresPintar === 'function' && typeof currentSection !== 'undefined' && currentSection === 'jugadores') jugadoresPintar();
+        if (typeof simuladorPintar === 'function' && typeof currentSection !== 'undefined' && currentSection === 'simulador') simuladorPintar();
       }
       if (typeof renderSection === 'function' && typeof currentSection !== 'undefined' && aplicado && yaHuboRender) {
         renderSection(currentSection);

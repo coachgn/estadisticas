@@ -17,12 +17,13 @@ node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  22 tests · multi-cliente
 node test-boot.js          #  16 tests · arranque por club
 node test-jugadores.js     #  75 tests · rol, arquetipos, jerarquía, tiro, evolución, local/visitante
+node test-4factores.js     #  63 tests · regresión, pesos de liga, perfil de equipo, simulador
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  17 tests · detalle partido a partido
 ```
 
-**286 tests en total. Todos tienen que dar verde antes de commitear.**
+**349 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -58,6 +59,7 @@ js/
   sgadd-rankings.js     ← réplica de RANKINGS E, calculada en el cliente
   sgadd-equipos.js      ← sección Equipos: grilla, ficha, 8 tabs, detalle partido
   sgadd-jugadores.js    ← sección Jugadores: grilla, ficha, tabs General/Evolución/Partidos
+  sgadd-4factores.js    ← motor de regresión + sección Simulador (cruce A vs B)
   sgadd-informe.js      ← modal de exportación PDF del informe de equipo
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app
 clubes/
@@ -65,9 +67,11 @@ clubes/
   jujuy.json            ← 1 planilla (Conferencia Norte), liga liga-argentina
 logos/<liga>/           ← escudos + index.json (manifiesto)
 test-fixtures/          ← prom.tsv + p4f.tsv, 12 equipos de La Plata (committeados)
+simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
+                          ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=34`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=35`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -242,7 +246,7 @@ entero por nombre de equipo en cada repintado).
 **Clave de un jugador = NOMBRE + EQUIPO**, no el nombre solo (`jugadoresSlug()`
 en `sgadd-jugadores.js`). Dos homónimos de equipos distintos abrían la ficha
 equivocada con solo el nombre; con la clave compuesta no colisiona. Esto NO
-arregla la mezcla de stats en `statJugador()` (ver deuda técnica, punto 9),
+arregla la mezcla de stats en `statJugador()` (ver deuda técnica, punto 10),
 solo evita sumarle un segundo bug de navegación encima.
 
 ### Rol por minutos — bandas fijas, no percentiles
@@ -374,7 +378,94 @@ no meter una inconsistencia en el resto de las tablas de partidos.
 
 ---
 
-## 9. Deuda técnica conocida
+## 9. Simulador de Enfrentamientos (4 Factores)
+
+**Estado: implementado.** Vive en `js/sgadd-4factores.js`: el motor puro
+(`SGADD_4F`) más la sección Simulador (grilla de selección A vs B), mismo
+patrón de estado/ruteo que Equipos y Jugadores. Ruta:
+`#/<planilla>/<fase>/simulador/<local>/<visitante>`.
+
+Es una migración **auditada**, no trasladada tal cual, de
+`simulador-4factores-legacy.js` (Apps Script, 1805 líneas, queda en el repo
+como referencia de qué se corrigió). Se descartó toda la infraestructura de
+Google Sheets (menús, `SpreadsheetApp`, hojas físicas `DB_PROCESADA` /
+`PESO_FACTORES` / `HISTORIAL`, gráficos nativos): el motor lee directo de
+`idx` (lo que ya arma `sgadd-core.js` desde `Base Datos E` + `4 FACTORES`),
+sin reimplementar el pipeline de datos.
+
+### Qué corrigió la auditoría (no es la misma matemática que el original)
+
+1. **"Regresión lineal múltiple" en el nombre, Pearson simple en el código.**
+   El original calculaba una correlación de Pearson **por factor por
+   separado**, sin controlar por los otros — dos factores correlacionados
+   entre sí inflaban su peso combinado. `regresionMultiple()` resuelve los
+   4 coeficientes en un solo sistema de ecuaciones (OLS por Gauss-Jordan),
+   cada uno neto del resto. Verificado con datos reales de Reconquista:
+   regresión múltiple real sobre 132 partidos, R² 0,96.
+2. **Signo hardcodeado por posición.** El original guardaba
+   `Math.abs(pearson)` (tirando el signo) y en otra función reconstruía la
+   dirección con un array `[j===1||j===4||...] ? -1 : 1` — si alguien
+   reordenaba el array de factores, el signo quedaba mal sin romper nada
+   visiblemente. `netFactor()` arma el diferencial ya con el signo correcto
+   desde la propia definición del factor (`FACTORES_NET[].invertida`), una
+   sola vez, reusada tanto para calcular los pesos de liga como para el
+   simulador: no hay un lugar separado que se pueda desincronizar.
+3. **Bonus de localía multiplicaba todo el score del local**
+   (`score * bonusLocalia`): un equipo con score más alto recibía un bonus
+   de localía más grande en puntos absolutos, lo cual no tiene sentido —
+   la ventaja de jugar en casa no escala con lo bueno que sea el equipo.
+   Corregido a un bonus **aditivo** fijo en puntos (`BONUS_LOCALIA_PUNTOS`),
+   modulado apenas por la ventaja de localía real de la liga activa.
+4. **Confianza con clamp arbitrario**: `50 + margen×2.8`, forzado a mano
+   entre 51 y 94.8. Ni la pendiente ni los topes salían de ningún cálculo.
+   Reemplazado por una logística (`confianzaLogistica`), que acota
+   naturalmente en (0,1) sin clamps mágicos.
+5. **Peso temporal por recencia con off-by-one**: `0.8 + 0.4×(index/total)`
+   nunca llegaba exactamente a 1.2 en el último partido. Corregido a
+   `index/(total-1)`.
+6. Denominadores sin guarda explícita en el promedio ponderado — ahora
+   `promedioPonderado()` devuelve `null`, nunca `NaN`, si el peso
+   acumulado da 0.
+
+Lo que **sí** estaba bien pensado y se conservó: la muestra chica en una
+condición (< 3 partidos de local o de visitante) cae a la historia completa
+del equipo (`perfilEquipoSimulacion`, mismo criterio que
+`MIN_PARTIDOS_JUGADOR` en el resto del proyecto); el modelo de score base
+como `PLAYS × PPP` (identidad real de básquet, no un ajuste empírico).
+
+**Nuevo, no existía en el original**: la matriz de compensación Eficiencia
+vs. Volumen (`matrizVolumenEficiencia`) — clasifica a un equipo en un
+cuadrante (élite / vive del volumen / selectivo y letal / en construcción)
+por percentil de `PLAYS` y `eFG%` contra la liga, regla del proyecto de
+nunca comparar en valores absolutos.
+
+### Lo que NO se migró (decisión consciente)
+
+El original tenía un ciclo de "aprendizaje": guardaba cada predicción en
+`HISTORIAL`, comparaba contra el resultado real, y ajustaba los pesos
+parseando con regex el texto del reporte generado (`retroalimentarSimulador`).
+Eso es frágil por diseño (round-trip por texto para recuperar números) y
+además requiere estado persistente entre sesiones, que no encaja con un
+sitio estático sin backend. Acá los pesos se recalculan **de cero, en cada
+carga**, directo desde los partidos reales de la temporada — no hay
+"memoria" de aciertos pasados. Si en algún momento se quiere ese circuito
+de calibración, hace falta backend (ver deuda técnica del acceso público,
+punto 10) para persistir resultados reales de partidos ya simulados.
+
+### Límite conocido del modelo
+
+La regresión múltiple poolea TODOS los partidos de TODOS los equipos de la
+liga activa en un solo dataset (no hay coeficientes por equipo): asume que
+el valor en puntos de "un 1% más de eFG%" es igual para cualquier plantel.
+Es una simplificación razonable con el volumen de datos de una liga amateur
+(decenas de partidos, no miles), pero no captura estilos de juego
+extremos. Con menos de 30 partidos en la liga activa, degrada sola a
+regresión simple por factor (mismas unidades — puntos por unidad de
+factor — a diferencia del Pearson crudo del original).
+
+---
+
+## 10. Deuda técnica conocida
 
 - **No existe una maestra `JUGADORES` con ID estable.** Hoy la clave es el string
   del nombre, y ya se detectó que **dos jugadores homónimos de equipos distintos
@@ -397,10 +488,20 @@ no meter una inconsistencia en el resto de las tablas de partidos.
   públicos. Un sitio estático no puede filtrar nada. Para membresías por niveles
   hace falta backend (Supabase o Cloudflare Workers). `planillasVisibles(scope)`
   ya está preparado para recibir ese scope.
+- **`simulador-4factores-legacy.js` no se ejecuta.** Es el Apps Script original
+  (1805 líneas) que se auditó para construir `sgadd-4factores.js` — queda en el
+  repo como referencia de qué fórmulas se corrigieron y por qué (ver punto 9).
+  No lo toca ningún test ni ningún script de la app; es documentación, no código.
+- **El simulador no tiene ciclo de aprendizaje.** El original ajustaba pesos
+  comparando predicciones contra resultados reales (`retroalimentarSimulador`,
+  con estado persistente en la hoja `HISTORIAL`). Acá los pesos se recalculan
+  de cero en cada carga: no hay memoria de aciertos pasados. Retomar esto
+  necesita backend para persistir resultados (mismo problema que el punto
+  anterior).
 
 ---
 
-## 10. Workflow de Git — OBLIGATORIO
+## 11. Workflow de Git — OBLIGATORIO
 
 Después de **cualquier** cambio de código o función nueva:
 
@@ -408,7 +509,8 @@ Después de **cualquier** cambio de código o función nueva:
 # 1. Correr TODA la suite
 node test-core.js && node test-logos.js && node test-ligas.js && \
 node test-clubes.js && node test-boot.js && node test-jugadores.js && \
-node test-personalidad.js && node test-informe.js && node test-partido.js
+node test-4factores.js && node test-personalidad.js && node test-informe.js && \
+node test-partido.js
 
 # 2. Solo si TODO da verde:
 git add .
@@ -446,7 +548,7 @@ Regla práctica: función nueva → test nuevo.
 
 ---
 
-## 11. Estilo de código
+## 12. Estilo de código
 
 - **Español** en nombres de funciones, variables y comentarios del código propio.
 - **Comentar el POR QUÉ, no el qué.** Especialmente en las decisiones que
