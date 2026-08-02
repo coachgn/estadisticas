@@ -178,11 +178,24 @@ const SGADD_4F = (function () {
     return { ok: true, intercepto: beta[0], coeficientes: beta.slice(1), r2: r2, n: n, p: p };
   }
 
-  /** Peso temporal por recencia: 0.8 en el partido más viejo, 1.2 en el
-      más nuevo, lineal entre medio. Con un solo partido, peso neutro. */
+  /** Cuántos de los últimos partidos entran en la "ventana de forma
+      reciente" que pesa más fuerte (no solo la rampa lineal 0.8-1.2). */
+  const VENTANA_RECIENTE = 5;
+  /** Cuánto más pesa un partido de la ventana reciente sobre la rampa base. */
+  const REFUERZO_RECIENTE = 1.5;
+
+  /** Peso temporal por recencia: rampa lineal 0.8 (más viejo) a 1.2 (más
+      nuevo) — y encima, si hay más partidos que `VENTANA_RECIENTE`, los
+      últimos de esa ventana pesan un 50% más. Un plantel puede cambiar de
+      identidad en 3-5 fechas (lesión, ajuste táctico); una rampa lineal
+      sola diluye demasiado esa racha entre todo el historial. Con pocos
+      partidos (≤ ventana) no hay "resto" del que despegarse: la rampa
+      base ya representa toda la temporada, así que no se refuerza nada. */
   function pesoTemporalPartido(indice, total) {
     if (total <= 1) return 1;
-    return 0.8 + 0.4 * (indice / (total - 1));
+    const base = 0.8 + 0.4 * (indice / (total - 1));
+    const enVentanaReciente = total > VENTANA_RECIENTE && (total - indice) <= VENTANA_RECIENTE;
+    return enVentanaReciente ? base * REFUERZO_RECIENTE : base;
   }
 
   /** Promedio ponderado genérico. `null` (no NaN) si no hay datos o el
@@ -279,10 +292,21 @@ const SGADD_4F = (function () {
      ===================================================================== */
   const MIN_PARTIDOS_CONDICION = 3;
 
-  /** Promedio ponderado por recencia de los 8 factores de un equipo, en
-      una condición (LOCAL/VISITANTE). Con menos de 3 partidos en esa
+  /* Además de los 8 factores, se promedian condición-específico (no de
+     temporada completa) el ritmo/eficiencia de ESE contexto puntual: el
+     Ortg/Drtg de un equipo de local puede no ser el mismo que de
+     visitante, y promediar todo junto tapa esa diferencia. */
+  const CLAVES_PERFIL = ['eFG%', 'PP%', 'RO%', 'RTL%', 'eFG Opp%', 'PP Opp%', 'RO Opp%', 'RTL Opp%',
+    'PPP OF', 'PPP DEF', 'RTNG OFF', 'RTNG DEF'];
+
+  /** Promedio ponderado por recencia del perfil de un equipo en una
+      condición (LOCAL/VISITANTE): los 8 factores más su eficiencia y
+      rating específicos de esa condición. Con menos de 3 partidos en esa
       condición, usa toda la historia del equipo — un solo partido de
-      visitante no define un perfil, es ruido. */
+      visitante no define un perfil, es ruido. `PACE` sale de la
+      temporada completa (no varía tanto por condición como para
+      justificar el mismo recorte, y es la que menos partidos por
+      condición tiene disponibles de las hojas de origen). */
   function perfilEquipoSimulacion(idx, clave, condicion) {
     const e = idx.get(clave);
     if (!e) return null;
@@ -301,17 +325,20 @@ const SGADD_4F = (function () {
     });
     const pesos = ordenados.map((f, i) => pesoTemporalPartido(i, ordenados.length));
 
-    const claves = ['eFG%', 'PP%', 'RO%', 'RTL%', 'eFG Opp%', 'PP Opp%', 'RO Opp%', 'RTL Opp%'];
     const perfil = {};
-    claves.forEach(k => { perfil[k] = promedioPonderado(ordenados.map(f => f[k]), pesos); });
+    CLAVES_PERFIL.forEach(k => { perfil[k] = promedioPonderado(ordenados.map(f => f[k]), pesos); });
 
     const plays = idx.leer(clave, 'PLAYS');
-    const pppOf = idx.leer(clave, 'PPP');
+    const pace = idx.leer(clave, 'PACE');
+    const netRtng = idx.leer(clave, 'NET RTNG');
 
     perfil.pj = partidos.length;
     perfil.usoHistoriaCompleta = usoHistoriaCompleta;
     perfil.plays = plays && plays.valor !== null ? plays.valor : null;
-    perfil.pppOf = pppOf && pppOf.valor !== null ? pppOf.valor : null;
+    perfil.pace = pace && pace.valor !== null ? pace.valor : perfil.plays;   // PACE es opcional en la planilla: si falta, PLAYS es la mejor aproximación de ritmo
+    perfil.pppOf = perfil['PPP OF'];   // alias legible para quien consume el perfil
+    perfil.pppDef = perfil['PPP DEF'];
+    perfil.netRating = netRtng && netRtng.valor !== null ? netRtng.valor : null;
     return perfil;
   }
 
@@ -354,9 +381,62 @@ const SGADD_4F = (function () {
   }
 
   /* =====================================================================
-     6. SIMULADOR DE CRUCE
+     6. SIMULADOR DE CRUCE — modelo 360°
+
+     Línea base = ritmo esperado (PACE) × eficiencia cruzada (el ataque de
+     cada equipo contra la defensa específica del rival, no un promedio
+     simétrico de las dos ofensivas). Encima se suman tres correcciones
+     independientes, cada una con su propia unidad de puntos:
+       · duelos tácticos (regresión múltiple sobre los 4 factores)
+       · diferencial de Net Rating de temporada (Power Ranking, atenuado)
+       · bonus de localía aditivo (además de lo que ya capturan los
+         perfiles condición-específicos de cada equipo)
      ===================================================================== */
   const BONUS_LOCALIA_PUNTOS = 2.5;
+  /* Cuánto pesa el diferencial de Net Rating de temporada sobre el score.
+     Se atenúa (no se suma entero): los duelos y la base PACE×PPP ya están
+     midiendo fortaleza real partido a partido: sumar el Net Rating entero
+     ENCIMA sería contar dos veces la misma información. Se lo trata como
+     un prior de "quién es mejor en general", no como el driver principal. */
+  const ESCALA_NET_RATING = 0.15;
+  /* En básquet no hay empates. Si el modelo da un margen menor a esto (o
+     un empate al redondear a los enteros que se muestran en pantalla), se
+     desempata: no se "inventa" un ganador al azar, se usa la misma señal
+     que ya tiene el modelo (Net Rating + la ventaja de localía ya
+     calculada) para decidir el lado que rompe la paridad. No es una
+     prórroga simulada de verdad (no hay columnas de cuartos/parciales en
+     las planillas, ver deuda técnica) — es una proyección de margen
+     mínimo, que es lo que un DT necesita para leer el resultado. */
+  const MARGEN_MINIMO_EMPATE = 1.5;
+
+  /**
+   * En básquet no hay empates: si scoreL/scoreV vienen empatados o tan
+   * cerca que el REDONDEO a los enteros que se muestran en pantalla
+   * empataría ("80-80"), separa los dos scores alrededor de su propio
+   * promedio hasta una distancia de `margenMinimo`, decidiendo el lado
+   * ganador con `señal` (positiva favorece L, negativa favorece V — se
+   * espera que el llamador arme esa señal con datos reales del modelo,
+   * no un número arbitrario).
+   *
+   * Con `margenMinimo >= 1.0` el redondeo NUNCA puede volver a empatar:
+   * dos números a más de 1.0 de distancia no pueden caer en el mismo
+   * intervalo de redondeo de ancho 1.0 ([n-0.5, n+0.5)). Por eso el
+   * default es 1.5, con margen de sobra.
+   */
+  function resolverEmpate(scoreL, scoreV, señal, margenMinimo) {
+    const minimo = margenMinimo || MARGEN_MINIMO_EMPATE;
+    let margen = scoreL - scoreV;
+    let resuelto = false;
+    if (Math.abs(margen) < 0.5 || Math.round(scoreL) === Math.round(scoreV)) {
+      resuelto = true;
+      const margenDesempate = señal >= 0 ? minimo : -minimo;
+      const centro = (scoreL + scoreV) / 2;
+      scoreL = centro + margenDesempate / 2;
+      scoreV = centro - margenDesempate / 2;
+      margen = scoreL - scoreV;
+    }
+    return { scoreL: scoreL, scoreV: scoreV, margen: margen, resuelto: resuelto };
+  }
 
   /**
    * Simula LOCAL vs VISITANTE. Devuelve { ok:false, motivo } si falta
@@ -369,7 +449,8 @@ const SGADD_4F = (function () {
 
     const perfL = perfilEquipoSimulacion(idx, claveLocal, 'LOCAL');
     const perfV = perfilEquipoSimulacion(idx, claveVisitante, 'VISITANTE');
-    if (!perfL || !perfV || perfL.plays === null || perfV.plays === null || perfL.pppOf === null || perfV.pppOf === null) {
+    if (!perfL || !perfV || perfL.pace === null || perfV.pace === null ||
+        perfL.pppOf === null || perfV.pppOf === null || perfL.pppDef === null || perfV.pppDef === null) {
       return { ok: false, motivo: 'Alguno de los dos equipos no tiene partidos suficientes para simular.' };
     }
 
@@ -392,22 +473,42 @@ const SGADD_4F = (function () {
     const impactoTotalL = duelos.reduce((s, d) => s + d.impactoL, 0);
     const impactoTotalV = duelos.reduce((s, d) => s + d.impactoV, 0);
 
-    /* Línea base: puntos = posesiones × eficiencia por posesión (identidad
-       real, no un ajuste empírico). El ritmo esperado del cruce es el
-       promedio de los dos estilos; el impacto de los duelos tácticos
-       corrige esa base hacia arriba o abajo. */
-    const playsEsperados = (perfL.plays + perfV.plays) / 2;
-    const pppBase = (perfL.pppOf + perfV.pppOf) / 2;
+    /* Ritmo esperado del cruce: promedio del PACE de temporada de los dos
+       (identidad real de básquet: puntos = posesiones × eficiencia). */
+    const paceEsperado = (perfL.pace + perfV.pace) / 2;
+
+    /* Eficiencia cruzada: el ataque (condición-específico: de local para
+       L, de visitante para V) contra la defensa específica del rival en
+       SU condición — no el promedio simétrico de las dos ofensivas. */
+    const pppEsperadoL = (perfL.pppOf + perfV.pppDef) / 2;
+    const pppEsperadoV = (perfV.pppOf + perfL.pppDef) / 2;
+    const baseL = paceEsperado * pppEsperadoL;
+    const baseV = paceEsperado * pppEsperadoV;
+
+    /* Power Ranking / Net Rating: prior de fortaleza general, atenuado. */
+    const netRatingL = perfL.netRating !== null ? perfL.netRating : 0;
+    const netRatingV = perfV.netRating !== null ? perfV.netRating : 0;
+    const diffNetRating = netRatingL - netRatingV;
+    const ajusteNetRating = diffNetRating * ESCALA_NET_RATING;
 
     /* Bonus ADITIVO (no multiplicativo: la ventaja de jugar en casa no
        escala con lo bueno que sea el equipo), modulado por la ventaja de
-       localía real de esta liga. */
+       localía real de esta liga. Es un residuo: los perfiles L/V
+       condición-específicos de arriba ya capturan buena parte del efecto
+       propio de cada equipo, esto cubre lo que un plantel con pocos
+       partidos en casa todavía no alcanza a mostrar en su propia muestra. */
     const bonusLocalia = BONUS_LOCALIA_PUNTOS * (1 + ventajaLocaliaLiga(idx) * 4);
 
-    const scoreL = playsEsperados * pppBase + impactoTotalL + bonusLocalia;
-    const scoreV = playsEsperados * pppBase + impactoTotalV;
+    const scoreCrudoL = baseL + impactoTotalL + ajusteNetRating / 2 + bonusLocalia;
+    const scoreCrudoV = baseV + impactoTotalV - ajusteNetRating / 2;
 
-    const margen = scoreL - scoreV;
+    /* Regla anti-empate: la señal de desempate es la misma que ya calculó
+       el modelo (Net Rating + localía), no un número nuevo inventado
+       para la ocasión. */
+    const desempate = resolverEmpate(scoreCrudoL, scoreCrudoV, diffNetRating + bonusLocalia);
+    const scoreL = desempate.scoreL, scoreV = desempate.scoreV, margen = desempate.margen;
+    const empateResuelto = desempate.resuelto;
+
     const ganadorLocal = margen >= 0;
     const confianza = confianzaLogistica(margen);
 
@@ -420,10 +521,14 @@ const SGADD_4F = (function () {
       claveLocal: eL.clave, claveVisitante: eV.clave,
       scoreLocal: scoreL, scoreVisitante: scoreV,
       margen: margen,
+      empateResuelto: empateResuelto,
       ganador: ganadorLocal ? eL.nombre : eV.nombre,
       confianza: confianza,
       duelos: duelos,
       factorClave: factorClave,
+      paceEsperado: paceEsperado,
+      pppEsperadoLocal: pppEsperadoL, pppEsperadoVisitante: pppEsperadoV,
+      netRatingLocal: perfL.netRating, netRatingVisitante: perfV.netRating, ajusteNetRating: ajusteNetRating,
       bonusLocalia: bonusLocalia,
       metodoPesos: pesosLiga.metodo, rLiga2: pesosLiga.r2, nLiga: pesosLiga.n,
       muestraLocal: perfL.pj, muestraVisitante: perfV.pj,
@@ -434,11 +539,12 @@ const SGADD_4F = (function () {
 
   return {
     FACTORES_NET, MIN_MUESTRA_REGRESION, MIN_PARTIDOS_CONDICION, BONUS_LOCALIA_PUNTOS,
+    ESCALA_NET_RATING, MARGEN_MINIMO_EMPATE, VENTANA_RECIENTE, REFUERZO_RECIENTE,
     correlacionPearson, regresionSimple, regresionMultiple, resolverSistemaLineal,
     pesoTemporalPartido, promedioPonderado, confianzaLogistica,
     netFactor, datosRegresionLiga, pesosPorFactor,
     perfilEquipoSimulacion, ventajaLocaliaLiga, matrizVolumenEficiencia,
-    simularEnfrentamiento,
+    resolverEmpate, simularEnfrentamiento,
   };
 })();
 
@@ -572,6 +678,32 @@ function simuladorSelectores(idx) {
     </div>`;
 }
 
+/** Una fila del gráfico comparativo: dos barras horizontales (Local arriba,
+    Visitante abajo) escaladas al mayor de los dos valores. HTML/CSS puro
+    (no Chart.js): el simulador ya tiene tres unidades distintas en la misma
+    ficha (%, pts, pts de impacto) y forzarlas a un solo canvas complica más
+    de lo que aporta frente a barras de ancho proporcional. */
+function filaComparativa(etiqueta, valL, valV, nombreL, nombreV, formatear) {
+  const max = Math.max(Math.abs(valL), Math.abs(valV), 1e-6);
+  const pctL = Math.max(4, Math.abs(valL) / max * 100);
+  const pctV = Math.max(4, Math.abs(valV) / max * 100);
+  const favoreceL = valL >= valV;
+  const fila = (nombre, pct, valor, esFavorito, colorFavorito) => `
+    <div class="flex items-center gap-2 ${esFavorito !== undefined ? 'mb-1' : ''}">
+      <span class="w-24 sm:w-28 shrink-0 text-[11px] truncate ${esFavorito ? colorFavorito + ' font-semibold' : 'dato-sec'}" title="${escapeAttr(nombre)}">${escapeHtml(nombre)}</span>
+      <div class="flex-1 h-2.5 rounded-full bg-surface2 overflow-hidden min-w-0">
+        <div class="h-full rounded-full" style="width:${pct.toFixed(0)}%;background:${esFavorito ? (colorFavorito === 'text-accent' ? 'var(--acento)' : '#60a5fa') : 'rgba(148,163,184,0.35)'}"></div>
+      </div>
+      <span class="w-16 shrink-0 text-right font-mono text-[11px] text-ink">${escapeHtml(formatear(valor))}</span>
+    </div>`;
+  return `
+    <div class="py-2">
+      <p class="text-[10px] uppercase tracking-wider text-muted font-display mb-1.5">${escapeHtml(etiqueta)}</p>
+      ${fila(nombreL, pctL, valL, favoreceL, 'text-accent')}
+      ${fila(nombreV, pctV, valV, !favoreceL, 'text-blue-400')}
+    </div>`;
+}
+
 function simuladorResultado(idx) {
   if (!SIMULADOR.equipoLocal || !SIMULADOR.equipoVisitante) return '';
 
@@ -580,6 +712,19 @@ function simuladorResultado(idx) {
 
   const logoL = (typeof LOGOS !== 'undefined') ? LOGOS.getUrl(r.local) : null;
   const logoV = (typeof LOGOS !== 'undefined') ? LOGOS.getUrl(r.visitante) : null;
+  /* r.confianza = confianzaLogistica(margen) es SIEMPRE la probabilidad de
+     que gane el LOCAL (monótona creciente en margen = scoreLocal-scoreVisitante,
+     ver test 4). La confianza "del ganador" que se muestra en la cabecera
+     tiene que invertirse cuando gana el visitante, si no queda un cartel
+     que dice "gana Atenas, confianza 37%" con el propio modelo diciendo
+     lo contrario. */
+  const probLocal = r.confianza;
+  const probVisitante = 1 - r.confianza;
+  const confianzaGanador = r.margen >= 0 ? probLocal : probVisitante;
+  const impactoTotalL = r.duelos.reduce((s, d) => s + d.impactoL, 0);
+  const impactoTotalV = r.duelos.reduce((s, d) => s + d.impactoV, 0);
+
+  /* ===================== 🏆 Cabecera: ganador / confianza / margen ===================== */
   const marcador = (nombre, logo, score, esGanador) => `
     <div class="flex-1 min-w-0 text-center">
       ${logo ? `<img src="${escapeAttr(logo)}" alt="" class="w-12 h-12 object-contain mx-auto mb-1">` : ''}
@@ -590,23 +735,88 @@ function simuladorResultado(idx) {
   const cabecera = `
     <div class="rounded-lg border ${r.margen >= 0 ? 'border-accent/40' : 'border-hairline'} bg-surface2/30 p-4">
       <p class="text-[10px] uppercase tracking-widest dato-sec text-center mb-3">
-        Ganador estimado: <span class="text-accent font-semibold">${escapeHtml(r.ganador)}</span> ·
-        confianza ${(r.confianza * 100).toFixed(1)}%
+        🏆 Ganador estimado: <span class="text-accent font-semibold">${escapeHtml(r.ganador)}</span> ·
+        🎯 confianza ${(confianzaGanador * 100).toFixed(1)}% ·
+        📏 margen ${Math.abs(r.margen).toFixed(1)} pts
       </p>
       <div class="flex items-center gap-3">
         ${marcador(r.local, logoL, r.scoreLocal, r.margen >= 0)}
         <span class="dato-sec text-sm shrink-0">—</span>
         ${marcador(r.visitante, logoV, r.scoreVisitante, r.margen < 0)}
       </div>
+      ${r.empateResuelto ? `<p class="text-[10px] text-muted text-center mt-3 leading-snug">
+        El modelo proyectaba un resultado sin margen claro (en básquet no hay empates): se resolvió
+        con la fuerza de temporada (Net Rating) y la ventaja de localía, el mismo criterio que ya
+        usa el resto del cálculo.</p>` : ''}
     </div>`;
 
+  /* ===================== 📊 Gráfico comparativo ===================== */
+  const graficoComparativo = `
+    <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
+      <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-1">📊 Comparativa 360°</h5>
+      <p class="text-[11px] text-muted mb-1">Probabilidad, puntos proyectados e impacto neto de los 4 factores, lado a lado.</p>
+      ${filaComparativa('Probabilidad de victoria', probLocal * 100, probVisitante * 100, r.local, r.visitante, v => v.toFixed(0) + '%')}
+      ${filaComparativa('Puntos proyectados', r.scoreLocal, r.scoreVisitante, r.local, r.visitante, v => Math.round(v) + ' pts')}
+      ${filaComparativa('Impacto neto de los 4 factores', impactoTotalL, impactoTotalV, r.local, r.visitante, v => (v >= 0 ? '+' : '') + v.toFixed(1))}
+    </div>`;
+
+  /* ===================== 🏠 Localía y ritmo del cruce ===================== */
+  const fichaLocalia = `
+    <div class="bg-surface2/50 rounded-lg p-3">
+      <p class="text-[10px] uppercase tracking-wider text-muted font-display">🏠 Bonus de localía / ventaja de cancha</p>
+      <p class="text-xl text-white font-display mt-0.5">+${r.bonusLocalia.toFixed(1)} pts</p>
+      <p class="text-[10px] dato-sec mt-1">aditivo para ${escapeHtml(r.local)}, calibrado con la ventaja de localía real de esta liga</p>
+      <div class="border-t border-hairline/40 mt-2 pt-2 space-y-0.5">
+        <p class="text-[11px] text-ink font-mono">Ritmo esperado del cruce: <span class="text-white">${r.paceEsperado.toFixed(1)}</span> posesiones</p>
+        <p class="text-[11px] text-ink font-mono">Eficiencia esperada: ${escapeHtml(r.local)} <span class="text-white">${r.pppEsperadoLocal.toFixed(2)}</span> PPP · ${escapeHtml(r.visitante)} <span class="text-white">${r.pppEsperadoVisitante.toFixed(2)}</span> PPP</p>
+      </div>
+    </div>`;
+
+  /* ===================== ⚡ Power Ranking / Net Rating ===================== */
+  const netRatingFmt = (v) => v === null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(1);
+  const fichaNetRating = `
+    <div class="bg-surface2/50 rounded-lg p-3">
+      <p class="text-[10px] uppercase tracking-wider text-muted font-display">⚡ Fuerza de temporada (Net Rating)</p>
+      <p class="text-[11px] text-ink font-mono mt-1">${escapeHtml(r.local)}: <span class="text-white">${netRatingFmt(r.netRatingLocal)}</span> · ${escapeHtml(r.visitante)}: <span class="text-white">${netRatingFmt(r.netRatingVisitante)}</span></p>
+      <p class="text-[10px] dato-sec mt-1.5">Ajuste aplicado: ${r.ajusteNetRating >= 0 ? '+' : ''}${Math.abs(r.ajusteNetRating).toFixed(1)} pts a favor de ${escapeHtml(r.ajusteNetRating >= 0 ? r.local : r.visitante)} (prior de fortaleza general, atenuado — no es el driver principal).</p>
+    </div>`;
+
+  /* ===================== 📊 Influencia de los 4 factores en esta liga ===================== */
+  const pesosLiga = SGADD_4F.pesosPorFactor(idx);
+  const maxPeso = Math.max(...SGADD_4F.FACTORES_NET.map(def => Math.abs(pesosLiga.pesos[def.id] || 0)), 1e-6);
+  const filasPesos = SGADD_4F.FACTORES_NET.map(def => {
+    const w = pesosLiga.pesos[def.id] || 0;
+    const pct = Math.max(4, Math.abs(w) / maxPeso * 100);
+    return `
+      <div class="flex items-center gap-2 py-1">
+        <span class="w-40 sm:w-48 shrink-0 text-[11px] text-muted truncate">${escapeHtml(def.label)} <span class="dato-sec">(${escapeHtml(def.id)})</span></span>
+        <div class="flex-1 h-2 rounded-full bg-surface2 overflow-hidden min-w-0">
+          <div class="h-full rounded-full" style="width:${pct.toFixed(0)}%;background:${w >= 0 ? '#22c55e' : '#ef4444'}"></div>
+        </div>
+        <span class="w-14 shrink-0 text-right font-mono text-[11px] text-ink">${w.toFixed(2)}</span>
+      </div>`;
+  }).join('');
+  const notaMetodo = r.metodoPesos === 'regresion'
+    ? `Pesos calculados por regresión múltiple sobre ${r.nLiga} partidos de la liga (R² ${r.rLiga2.toFixed(2)}).`
+    : `Muestra de liga insuficiente para regresión múltiple confiable: se usó regresión simple por factor sobre ${r.nLiga} partidos (mismas unidades, sin controlar por los demás factores).`;
+  const fichaInfluencia = `
+    <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
+      <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-1">📊 Desglose de influencia de la liga</h5>
+      <p class="text-[11px] text-muted mb-3">Cuánto pesa cada factor sobre el margen final en esta liga (no en general).</p>
+      ${filasPesos}
+      <p class="text-[11px] text-muted mt-3 leading-snug">${notaMetodo}</p>
+    </div>`;
+
+  /* ===================== ⚔️ Duelos tácticos cruzados ===================== */
   const filasDuelos = r.duelos.slice().sort((a, b) => Math.abs(b.impactoL - b.impactoV) - Math.abs(a.impactoL - a.impactoV)).map(d => {
     const favoreceLocal = d.impactoL >= d.impactoV;
+    const ventajaL = d.netL !== null && d.netL > 0;
+    const ventajaV = d.netV !== null && d.netV > 0;
     return `
       <tr class="border-b border-hairline/40 last:border-0 ${d.id === r.factorClave.id ? 'bg-accent/5' : ''}">
         <td class="py-1.5 pr-3 text-xs text-white">${escapeHtml(d.label)}${d.id === r.factorClave.id ? ' <span class="text-accent">★</span>' : ''}</td>
-        <td class="py-1.5 pr-3 font-mono text-xs text-ink">${escapeHtml(SGADD.formatear(d.id, d.propioL))} <span class="dato-sec">vs</span> ${escapeHtml(SGADD.formatear(d.idOpp || d.id, d.defV))}</td>
-        <td class="py-1.5 pr-3 font-mono text-xs text-ink">${escapeHtml(SGADD.formatear(d.id, d.propioV))} <span class="dato-sec">vs</span> ${escapeHtml(SGADD.formatear(d.idOpp || d.id, d.defL))}</td>
+        <td class="py-1.5 pr-3 font-mono text-xs text-ink">${ventajaL ? '✅' : '❌'} ${escapeHtml(SGADD.formatear(d.id, d.propioL))} <span class="dato-sec">vs</span> ${escapeHtml(SGADD.formatear(d.idOpp || d.id, d.defV))}</td>
+        <td class="py-1.5 pr-3 font-mono text-xs text-ink">${ventajaV ? '✅' : '❌'} ${escapeHtml(SGADD.formatear(d.id, d.propioV))} <span class="dato-sec">vs</span> ${escapeHtml(SGADD.formatear(d.idOpp || d.id, d.defL))}</td>
         <td class="py-1.5 font-mono text-xs ${favoreceLocal ? 'text-accent' : 'text-blue-400'}">${favoreceLocal ? '◀' : '▶'} ${Math.abs(d.impactoL - d.impactoV).toFixed(1)} pts</td>
       </tr>`;
   }).join('');
@@ -620,10 +830,6 @@ function simuladorResultado(idx) {
       <p class="text-[10px] dato-sec font-mono mt-1">volumen pctil ${m.volumen.percentil.toFixed(0)} · eficiencia pctil ${m.eficiencia.percentil.toFixed(0)}</p>
     </div>`;
 
-  const notaMetodo = r.metodoPesos === 'regresion'
-    ? `Pesos de los 4 factores calculados por regresión múltiple sobre ${r.nLiga} partidos de la liga (R² ${r.rLiga2.toFixed(2)}).`
-    : `Muestra de liga insuficiente para regresión múltiple confiable: se usó regresión simple por factor sobre ${r.nLiga} partidos (mismas unidades, sin controlar por los demás factores).`;
-
   const notaMuestra = [
     r.usoHistoriaCompletaLocal ? escapeHtml(r.local) + ' no llega a ' + SGADD_4F.MIN_PARTIDOS_CONDICION + ' partidos de local: se usó toda su temporada (' + r.muestraLocal + ' PJ).' : '',
     r.usoHistoriaCompletaVisitante ? escapeHtml(r.visitante) + ' no llega a ' + SGADD_4F.MIN_PARTIDOS_CONDICION + ' partidos de visitante: se usó toda su temporada (' + r.muestraVisitante + ' PJ).' : '',
@@ -632,24 +838,29 @@ function simuladorResultado(idx) {
   return `
     <div class="space-y-5">
       ${cabecera}
+      ${graficoComparativo}
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        ${fichaLocalia}
+        ${fichaNetRating}
+      </div>
+      ${fichaInfluencia}
       <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
-        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Duelos tácticos</h5>
-        <p class="text-[11px] text-muted mb-3">★ marca el factor con más impacto en el margen. ◀ favorece al local, ▶ al visitante.</p>
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">⚔️ Duelos tácticos cruzados</h5>
+        <p class="text-[11px] text-muted mb-3">★ marca el factor con más impacto en el margen. ✅/❌ indica si ese ataque supera a esa defensa. ◀ favorece al local, ▶ al visitante.</p>
         <div class="scrollbox"><table class="w-full text-left">
           <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
-            <th class="pb-1 pr-3">Factor</th><th class="pb-1 pr-3">Cuando ataca ${escapeHtml(r.local)}</th>
-            <th class="pb-1 pr-3">Cuando ataca ${escapeHtml(r.visitante)}</th><th class="pb-1">Impacto</th>
+            <th class="pb-1 pr-3">Factor</th><th class="pb-1 pr-3">Ataque ${escapeHtml(r.local)} vs Defensa ${escapeHtml(r.visitante)}</th>
+            <th class="pb-1 pr-3">Ataque ${escapeHtml(r.visitante)} vs Defensa ${escapeHtml(r.local)}</th><th class="pb-1">Impacto</th>
           </tr></thead><tbody>${filasDuelos}</tbody></table></div>
         <p class="text-[11px] text-muted mt-3 leading-snug">
           Margen proyectado: ${r.margen >= 0 ? '+' : ''}${r.margen.toFixed(1)} pts para ${escapeHtml(r.local)}.
-          Bonus de localía incluido: +${r.bonusLocalia.toFixed(1)} pts (aditivo, no multiplica el resto del score).
         </p>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         ${badgeMatriz(matrizL, r.local + ' · eficiencia vs. volumen')}
         ${badgeMatriz(matrizV, r.visitante + ' · eficiencia vs. volumen')}
       </div>
-      <p class="text-[11px] text-muted leading-snug">${notaMetodo}${notaMuestra ? ' ' + notaMuestra : ''}</p>
+      ${notaMuestra ? `<p class="text-[11px] text-muted leading-snug">${notaMuestra}</p>` : ''}
     </div>`;
 }
 

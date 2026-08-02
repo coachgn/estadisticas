@@ -171,22 +171,36 @@ check('los factores sin variación dan 0, no ruido ni NaN',
 console.log('\n7. PERFIL DE EQUIPO PARA SIMULAR: fallback de muestra chica y recencia');
 console.log('═'.repeat(70));
 
-const colsPE = ['EQUIPO', 'FASE', 'PJ', 'PLAYS', 'PPP', 'eFG%'];
+const colsPE = ['EQUIPO', 'FASE', 'PJ', 'PLAYS', 'PACE', 'PPP', 'eFG%'];
 const filasPE = [
-  { EQUIPO: 'X', FASE: 'REGULAR', PJ: '5', PLAYS: '95', PPP: '0,85', 'eFG%': '0,40' },
-  { EQUIPO: 'Y', FASE: 'REGULAR', PJ: '6', PLAYS: '65', PPP: '0,90', 'eFG%': '0,55' },
-  { EQUIPO: 'Z', FASE: 'REGULAR', PJ: '5', PLAYS: '80', PPP: '0,88', 'eFG%': '0,45' },
+  { EQUIPO: 'X', FASE: 'REGULAR', PJ: '5', PLAYS: '95', PACE: '92', PPP: '0,85', 'eFG%': '0,40' },
+  { EQUIPO: 'Y', FASE: 'REGULAR', PJ: '6', PLAYS: '65', PACE: '78', PPP: '0,90', 'eFG%': '0,55' },
+  { EQUIPO: 'Z', FASE: 'REGULAR', PJ: '5', PLAYS: '80', PACE: '85', PPP: '0,88', 'eFG%': '0,45' },
+];
+const colsP4F = ['EQUIPO', 'FASE', 'PJ', 'NET RTNG'];
+const filasP4F = [
+  { EQUIPO: 'X', FASE: 'REGULAR', PJ: '5', 'NET RTNG': '-3,0' },
+  { EQUIPO: 'Y', FASE: 'REGULAR', PJ: '6', 'NET RTNG': '8,0' },
 ];
 
 /* X: 4 LOCAL (eFG% creciente 0,30→0,50, para ver que la recencia pesa) + 1
    VISITANTE (menos de 3: tiene que caer a toda la temporada). */
+/* PPP/RTNG DISTINTOS por equipo (no una constante compartida): así se puede
+   verificar que el cruce ataque-propio/defensa-rival da un número distinto
+   según quién ataca, y no un promedio genérico de liga. */
 function filaSim(equipo, cond, fecha, partido, efg, resultado) {
+  const pppOf = equipo === 'X' ? 0.90 : 0.95;
+  const pppDef = equipo === 'X' ? 0.80 : 0.75;
+  const rtngOf = equipo === 'X' ? 90 : 95;
+  const rtngDef = equipo === 'X' ? 80 : 75;
   return {
     bd: { FECHA: fecha, PARTIDO: partido, EQUIPO: equipo, FASE: 'REGULAR', CONDICION: cond, RESULTADO: resultado, PTS: '70', PTSopp: '65' },
     f4: {
       FECHA: fecha, PARTIDO: partido, EQUIPO: equipo, FASE: 'REGULAR', CONDICION: cond, RESULTADO: resultado,
       'eFG%': String(efg), 'eFG Opp%': '0,45', 'PP%': '0,15', 'PP Opp%': '0,15',
       'RO%': '0,25', 'RO Opp%': '0,25', 'RTL%': '0,20', 'RTL Opp%': '0,20',
+      'PPP OF': String(pppOf).replace('.', ','), 'PPP DEF': String(pppDef).replace('.', ','),
+      'RTNG OFF': rtngOf + ',0', 'RTNG DEF': rtngDef + ',0',
     },
   };
 }
@@ -205,6 +219,7 @@ const partidosXY = [
 ];
 const idxSim = SGADD.construirIndice({
   'PROMEDIOS E': { cols: colsPE, filas: filasPE },
+  'PROMEDIOS 4F': { cols: colsP4F, filas: filasP4F },
   'Base Datos E': { cols: colsBD, filas: partidosXY.map(p => p.bd) },
   '4 FACTORES': { cols: cols4F, filas: partidosXY.map(p => p.f4) },
 }, { fase: 'REGULAR' });
@@ -226,8 +241,15 @@ check('Y tiene 3 partidos de cada lado: ninguno de los dos necesita el respaldo'
   perfilYLocal.pj === 3 && perfilYVisitante.pj === 3);
 
 check('perfilEquipoSimulacion() de un equipo inexistente da null', F.perfilEquipoSimulacion(idxSim, 'NO_EXISTE', 'LOCAL') === null);
-check('perfilEquipoSimulacion() trae PLAYS y PPP de la temporada (PROMEDIOS E)',
-  cerca(perfilXLocal.plays, 95) && cerca(perfilXLocal.pppOf, 0.85));
+check('perfilEquipoSimulacion() trae PLAYS y PACE de la temporada (PROMEDIOS E)',
+  cerca(perfilXLocal.plays, 95) && cerca(perfilXLocal.pace, 92), JSON.stringify({ plays: perfilXLocal.plays, pace: perfilXLocal.pace }));
+check('perfilEquipoSimulacion() trae PPP OF/DEF y RTNG OF/DEF condición-específicos (no de temporada)',
+  cerca(perfilXLocal.pppOf, 0.90) && cerca(perfilXLocal.pppDef, 0.80) &&
+  cerca(perfilXLocal['RTNG OFF'], 90.0) && cerca(perfilXLocal['RTNG DEF'], 80.0),
+  JSON.stringify({ pppOf: perfilXLocal.pppOf, pppDef: perfilXLocal.pppDef }));
+check('perfilEquipoSimulacion() trae el Net Rating de temporada (PROMEDIOS 4F)',
+  cerca(perfilXLocal.netRating, -3.0) && cerca(perfilYLocal.netRating, 8.0),
+  JSON.stringify({ X: perfilXLocal.netRating, Y: perfilYLocal.netRating }));
 
 console.log('\n8. VENTAJA DE LOCALÍA DE LIGA');
 console.log('═'.repeat(70));
@@ -268,6 +290,129 @@ check('con esta liga chica (< 30 partidos) el método de pesos es el de respaldo
 check('la simulación registra que ninguno de los dos necesitó el respaldo de muestra chica',
   sim.usoHistoriaCompletaLocal === false && sim.usoHistoriaCompletaVisitante === false,
   JSON.stringify({ local: sim.usoHistoriaCompletaLocal, visitante: sim.usoHistoriaCompletaVisitante }));
+
+console.log('\n11. PACE: escala las posesiones proyectadas, no un promedio genérico');
+console.log('═'.repeat(70));
+
+check('paceEsperado es el promedio del PACE de LOCAL y VISITANTE',
+  cerca(sim.paceEsperado, (92 + 78) / 2), sim.paceEsperado);
+check('pppEsperadoLocal cruza el ataque de LOCAL con la defensa de VISITANTE',
+  cerca(sim.pppEsperadoLocal, (0.90 + 0.75) / 2, 1e-6), sim.pppEsperadoLocal);
+check('pppEsperadoVisitante cruza el ataque de VISITANTE con la defensa de LOCAL',
+  cerca(sim.pppEsperadoVisitante, (0.95 + 0.80) / 2, 1e-6), sim.pppEsperadoVisitante);
+check('los dos cruces dan valores DISTINTOS: no es un promedio genérico de liga',
+  Math.abs(sim.pppEsperadoLocal - sim.pppEsperadoVisitante) > 0.01,
+  JSON.stringify({ local: sim.pppEsperadoLocal, visitante: sim.pppEsperadoVisitante }));
+
+/* Si el PACE de los dos equipos se duplica, el score tiene que subir en la
+   misma proporción que el pace esperado — el resto de los términos (duelos,
+   net rating, localía) no dependen del pace y tienen que quedar intactos. */
+const filasPEPaceDoble = filasPE.map(f => (f.EQUIPO === 'X' || f.EQUIPO === 'Y')
+  ? Object.assign({}, f, { PACE: String(Number(f.PACE.replace(',', '.')) * 2) })
+  : f);
+const idxSimPaceDoble = SGADD.construirIndice({
+  'PROMEDIOS E': { cols: colsPE, filas: filasPEPaceDoble },
+  'PROMEDIOS 4F': { cols: colsP4F, filas: filasP4F },
+  'Base Datos E': { cols: colsBD, filas: partidosXY.map(p => p.bd) },
+  '4 FACTORES': { cols: cols4F, filas: partidosXY.map(p => p.f4) },
+}, { fase: 'REGULAR' });
+const simPaceDoble = F.simularEnfrentamiento(idxSimPaceDoble, 'X', 'Y');
+check('con el pace duplicado, paceEsperado también se duplica',
+  cerca(simPaceDoble.paceEsperado, sim.paceEsperado * 2), simPaceDoble.paceEsperado);
+if (!sim.empateResuelto && !simPaceDoble.empateResuelto) {
+  const deltaEsperadoL = (simPaceDoble.paceEsperado - sim.paceEsperado) * sim.pppEsperadoLocal;
+  const deltaRealL = simPaceDoble.scoreLocal - sim.scoreLocal;
+  check('el score de LOCAL sube exactamente lo que aporta el pace extra (el resto del modelo no se mueve)',
+    cerca(deltaRealL, deltaEsperadoL, 0.05), JSON.stringify({ esperado: deltaEsperadoL, real: deltaRealL }));
+}
+
+console.log('\n12. REGLA ANTI-EMPATE: en básquet no hay empates');
+console.log('═'.repeat(70));
+
+check('un empate exacto (80-80) se desempata con el margen mínimo configurado',
+  (() => { const r = F.resolverEmpate(80, 80, 1); return r.resuelto === true && cerca(Math.abs(r.margen), F.MARGEN_MINIMO_EMPATE); })());
+check('la señal positiva favorece a Local', (() => { const r = F.resolverEmpate(80, 80, 1); return r.scoreL > r.scoreV; })());
+check('la señal negativa favorece a Visitante', (() => { const r = F.resolverEmpate(80, 80, -1); return r.scoreV > r.scoreL; })());
+check('un margen crudo chico (<0,5) también se desempata', F.resolverEmpate(80.2, 79.9, 1).resuelto === true);
+check('un margen que redondearía igual (80,4 y 79,6 → 80 y 80) también se desempata aunque el margen crudo sea 0,8',
+  (() => { const r = F.resolverEmpate(80.4, 79.6, -1); return r.resuelto === true && Math.round(r.scoreL) !== Math.round(r.scoreV); })());
+check('un margen ya claro (7 puntos) no se toca', (() => { const r = F.resolverEmpate(85, 78, 1); return r.resuelto === false && cerca(r.scoreL, 85) && cerca(r.scoreV, 78); })());
+check('MARGEN_MINIMO_EMPATE es ≥ 1.0 (con ese piso, Math.round nunca puede volver a empatar)', F.MARGEN_MINIMO_EMPATE >= 1.0);
+
+let ningunEmpate = true;
+for (let i = 0; i < 200; i++) {
+  const centro = 60 + i * 0.3;
+  const ruido = ((i % 11) - 5) * 0.09; // barre de -0,45 a +0,45, cruza el borde del redondeo
+  const señal = (i % 2 === 0) ? 1 : -1;
+  const r = F.resolverEmpate(centro + ruido, centro - ruido, señal);
+  if (Math.round(r.scoreL) === Math.round(r.scoreV)) { ningunEmpate = false; break; }
+}
+check('en 200 pares generados a propósito cerca del empate, el marcador redondeado nunca coincide', ningunEmpate);
+
+check('la simulación real X vs Y expone si tuvo que desempatar', typeof sim.empateResuelto === 'boolean');
+check('la simulación real X vs Y nunca da un marcador redondeado empatado',
+  Math.round(sim.scoreLocal) !== Math.round(sim.scoreVisitante),
+  Math.round(sim.scoreLocal) + ' - ' + Math.round(sim.scoreVisitante));
+
+/* Caso límite de punta a punta: dos perfiles CASI idénticos (mismo pace,
+   mismo PPP cruzado, mismo net rating), para que el margen crudo antes del
+   desempate quede lo más chico posible, y confirmar que el simulador igual
+   entrega un ganador claro. */
+const filasPEEspejo = [
+  { EQUIPO: 'X', FASE: 'REGULAR', PJ: '5', PLAYS: '95', PACE: '85', PPP: '0,85', 'eFG%': '0,40' },
+  { EQUIPO: 'Y', FASE: 'REGULAR', PJ: '6', PLAYS: '95', PACE: '85', PPP: '0,85', 'eFG%': '0,40' },
+];
+const filasP4FEspejo = [
+  { EQUIPO: 'X', FASE: 'REGULAR', PJ: '5', 'NET RTNG': '0,0' },
+  { EQUIPO: 'Y', FASE: 'REGULAR', PJ: '6', 'NET RTNG': '0,0' },
+];
+function filaEspejo(equipo, cond, fecha, partido) {
+  return {
+    bd: { FECHA: fecha, PARTIDO: partido, EQUIPO: equipo, FASE: 'REGULAR', CONDICION: cond, RESULTADO: 'GANADO', PTS: '70', PTSopp: '70' },
+    f4: {
+      FECHA: fecha, PARTIDO: partido, EQUIPO: equipo, FASE: 'REGULAR', CONDICION: cond, RESULTADO: 'GANADO',
+      'eFG%': '0,45', 'eFG Opp%': '0,45', 'PP%': '0,15', 'PP Opp%': '0,15',
+      'RO%': '0,25', 'RO Opp%': '0,25', 'RTL%': '0,20', 'RTL Opp%': '0,20',
+      'PPP OF': '0,85', 'PPP DEF': '0,85', 'RTNG OFF': '85,0', 'RTNG DEF': '85,0',
+    },
+  };
+}
+const partidosEspejo = [
+  filaEspejo('X', 'LOCAL', '01/01/2026', 'X vs E1'), filaEspejo('X', 'LOCAL', '08/01/2026', 'X vs E2'), filaEspejo('X', 'LOCAL', '15/01/2026', 'X vs E3'),
+  filaEspejo('X', 'VISITANTE', '22/01/2026', 'X vs E4'), filaEspejo('X', 'VISITANTE', '29/01/2026', 'X vs E5'), filaEspejo('X', 'VISITANTE', '05/02/2026', 'X vs E6'),
+  filaEspejo('Y', 'LOCAL', '01/01/2026', 'Y vs F1'), filaEspejo('Y', 'LOCAL', '08/01/2026', 'Y vs F2'), filaEspejo('Y', 'LOCAL', '15/01/2026', 'Y vs F3'),
+  filaEspejo('Y', 'VISITANTE', '22/01/2026', 'Y vs F4'), filaEspejo('Y', 'VISITANTE', '29/01/2026', 'Y vs F5'), filaEspejo('Y', 'VISITANTE', '05/02/2026', 'Y vs F6'),
+];
+const idxEspejo = SGADD.construirIndice({
+  'PROMEDIOS E': { cols: colsPE, filas: filasPEEspejo },
+  'PROMEDIOS 4F': { cols: colsP4F, filas: filasP4FEspejo },
+  'Base Datos E': { cols: colsBD, filas: partidosEspejo.map(p => p.bd) },
+  '4 FACTORES': { cols: cols4F, filas: partidosEspejo.map(p => p.f4) },
+}, { fase: 'REGULAR' });
+const simEspejo = F.simularEnfrentamiento(idxEspejo, 'X', 'Y');
+check('con dos equipos casi espejo, el simulador igual da un ganador claro (nunca empata)',
+  simEspejo.ok === true && Math.round(simEspejo.scoreLocal) !== Math.round(simEspejo.scoreVisitante),
+  JSON.stringify({ scoreLocal: simEspejo.scoreLocal, scoreVisitante: simEspejo.scoreVisitante }));
+
+console.log('\n13. RECENCIA: ventana de refuerzo para los últimos partidos de una racha larga');
+console.log('═'.repeat(70));
+
+const total10 = 10;
+for (let i = 0; i < 5; i++) {
+  const esperado = 0.8 + 0.4 * (i / (total10 - 1));
+  check('partido ' + (i + 1) + ' de 10 (fuera de la ventana reciente) no lleva refuerzo',
+    cerca(F.pesoTemporalPartido(i, total10), esperado, 1e-9), F.pesoTemporalPartido(i, total10));
+}
+for (let i = 5; i < 10; i++) {
+  const esperado = (0.8 + 0.4 * (i / (total10 - 1))) * F.REFUERZO_RECIENTE;
+  check('partido ' + (i + 1) + ' de 10 (dentro de la ventana de los últimos ' + F.VENTANA_RECIENTE + ') lleva el refuerzo x' + F.REFUERZO_RECIENTE,
+    cerca(F.pesoTemporalPartido(i, total10), esperado, 1e-9), F.pesoTemporalPartido(i, total10));
+}
+check('con total <= VENTANA_RECIENTE (5 partidos) nadie lleva refuerzo (rango ya cubierto por los tests de la sección 4)',
+  cerca(F.pesoTemporalPartido(4, 5), 0.8 + 0.4 * (4 / 4), 1e-9));
+check('el refuerzo hace que el último partido de una racha larga pese bastante más que uno del principio',
+  F.pesoTemporalPartido(9, 10) > F.pesoTemporalPartido(0, 10) * 2,
+  JSON.stringify({ ultimo: F.pesoTemporalPartido(9, 10), primero: F.pesoTemporalPartido(0, 10) }));
 
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');

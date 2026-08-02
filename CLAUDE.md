@@ -17,13 +17,13 @@ node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  22 tests · multi-cliente
 node test-boot.js          #  16 tests · arranque por club
 node test-jugadores.js     #  75 tests · rol, arquetipos, jerarquía, tiro, evolución, local/visitante
-node test-4factores.js     #  63 tests · regresión, pesos de liga, perfil de equipo, simulador
+node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  17 tests · detalle partido a partido
 ```
 
-**349 tests en total. Todos tienen que dar verde antes de commitear.**
+**380 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -71,7 +71,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=35`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=36`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -378,12 +378,19 @@ no meter una inconsistencia en el resto de las tablas de partidos.
 
 ---
 
-## 9. Simulador de Enfrentamientos (4 Factores)
+## 9. Simulador 360°
 
 **Estado: implementado.** Vive en `js/sgadd-4factores.js`: el motor puro
 (`SGADD_4F`) más la sección Simulador (grilla de selección A vs B), mismo
 patrón de estado/ruteo que Equipos y Jugadores. Ruta:
 `#/<planilla>/<fase>/simulador/<local>/<visitante>`.
+
+**No existe una sección "4 Factores" independiente en el nav.** Existió una
+versión previa con una tabla legacy de solo lectura de `PROMEDIOS 4F`; se
+sacó del router (`VALID_SECTIONS`) y del menú porque todo el análisis de 4
+factores (pesos de liga, matriz eficiencia/volumen, duelos tácticos) ya vive
+**dentro** de cada cruce del Simulador — tenerlo repetido en dos lugares era
+redundante y quedaba desactualizado respecto al motor real.
 
 Es una migración **auditada**, no trasladada tal cual, de
 `simulador-4factores-legacy.js` (Apps Script, 1805 líneas, queda en el repo
@@ -438,6 +445,77 @@ vs. Volumen (`matrizVolumenEficiencia`) — clasifica a un equipo en un
 cuadrante (élite / vive del volumen / selectivo y letal / en construcción)
 por percentil de `PLAYS` y `eFG%` contra la liga, regla del proyecto de
 nunca comparar en valores absolutos.
+
+### Upgrade a 360°: en básquet no hay empates
+
+Vuelta posterior a la migración inicial. El modelo original (arriba) podía
+proyectar un resultado empatado o con un margen tan chico que redondeaba a
+un "80-80" en pantalla — imposible en básquet real. Se corrigió de raíz,
+no se parchea después:
+
+- **`resolverEmpate(scoreL, scoreV, señal, margenMinimo)`** — si el margen
+  crudo es menor a 0,5 puntos o los dos scores redondean al mismo entero,
+  separa ambos scores alrededor de su propio promedio hasta una distancia
+  de `MARGEN_MINIMO_EMPATE` (1.5 pts). La `señal` de desempate **no es un
+  número inventado para la ocasión**: es la misma que ya calculó el modelo
+  (`diffNetRating + bonusLocalia`), así que el desempate favorece al mismo
+  equipo que ya venía favorecido por el resto de las variables.
+  Matemáticamente, con `margenMinimo ≥ 1.0` el redondeo **nunca** puede
+  volver a empatar: dos números a más de 1.0 de distancia no pueden caer en
+  el mismo intervalo de redondeo `[n-0.5, n+0.5)`. El resultado expone
+  `empateResuelto: boolean` para que la UI pueda avisar cuando pasó.
+- **Pace real, no un promedio simétrico.** `paceEsperado` es el promedio del
+  `PACE` de temporada de los dos equipos (posesiones esperadas del cruce);
+  el score base ya no es "mismo PPP para los dos", es **cruzado**:
+  `pppEsperadoLocal = (ataque de LOCAL de-condición + defensa de VISITANTE
+  de-condición) / 2` y viceversa para el visitante. `perfilEquipoSimulacion`
+  trae `PPP OF/DEF` y `RTNG OFF/DEF` **condición-específicos** (de local
+  para el local, de visitante para el visitante — no el promedio de
+  temporada completa), leídos de `4 FACTORES` por partido, con el mismo
+  fallback a toda la temporada si hay menos de `MIN_PARTIDOS_CONDICION` (3)
+  partidos en esa condición.
+- **Ventana de refuerzo por racha reciente.** Además del ramp lineal
+  0.8→1.2 por recencia (ya existía), si un equipo tiene más de
+  `VENTANA_RECIENTE` (5) partidos, los últimos 5 llevan un multiplicador
+  extra `REFUERZO_RECIENTE` (×1.5) sobre su peso — una racha de los últimos
+  partidos pesa más que la misma diferencia al principio de la temporada.
+- **Net Rating diferencial como prior de fortaleza general.**
+  `diffNetRating = netRatingLocal - netRatingVisitante` (de `PROMEDIOS 4F`,
+  temporada completa) se atenúa con `ESCALA_NET_RATING` (0.15) y se suma
+  ±mitad al score de cada lado — un prior de "quién es mejor en general",
+  no el driver principal (eso lo siguen siendo los duelos por factor y el
+  pace×eficiencia cruzado).
+
+### UI: ficha 360°
+
+`simuladorResultado()` en `sgadd-4factores.js` (sección UI, plain globals,
+no exportada — se verifica a mano en el navegador, igual que el resto de
+las UI de Equipos/Jugadores) arma, en orden:
+
+1. **🏆 Cabecera** — ganador, confianza y margen. `r.confianza` (la que
+   devuelve `SGADD_4F.simularEnfrentamiento`) es **siempre** la probabilidad
+   de que gane el LOCAL (monótona en `margen = scoreLocal - scoreVisitante`,
+   nunca "la probabilidad del ganador"). La UI arma
+   `confianzaGanador = margen >= 0 ? r.confianza : 1 - r.confianza` antes de
+   mostrarla junto al nombre del ganador — mezclar los dos (mostrar
+   `r.confianza` crudo al lado de "gana el visitante") es el bug que ya se
+   pisó una vez en esta misma vuelta, verificado en el navegador con
+   Reconquista vs. Atenas real: el cartel decía "gana Atenas, confianza
+   37%" con el propio modelo diciendo lo contrario.
+2. **📊 Comparativa 360°** — gráfico de barras HTML/CSS (no Chart.js:
+   probabilidad/puntos/impacto son tres unidades distintas en la misma
+   ficha, forzarlas a un solo canvas complica más de lo que aporta) vía
+   `filaComparativa()`, con la misma corrección de signo que la cabecera.
+3. **🏠 Localía y ritmo** — bonus aditivo, pace esperado del cruce y PPP
+   esperado cruzado de cada lado.
+4. **⚡ Net Rating** — fuerza de temporada de cada equipo y el ajuste en
+   puntos aplicado.
+5. **📊 Desglose de influencia de la liga** — barras de peso por factor
+   (`SGADD_4F.pesosPorFactor`), verde/rojo según el signo.
+6. **⚔️ Duelos tácticos cruzados** — igual que antes, con indicador ✅/❌
+   por celda: ✅ si ese ataque (`netL`/`netV`, ya con el signo correcto de
+   `netFactor`) supera a esa defensa.
+7. Matriz eficiencia vs. volumen de cada equipo (sin cambios).
 
 ### Lo que NO se migró (decisión consciente)
 

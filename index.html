@@ -512,13 +512,9 @@
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.2"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 20c0-3.6 3.1-6.5 7-6.5s7 2.9 7 6.5"/></svg>
           Jugadores
         </button>
-        <button onclick="navigate('factores')" data-nav="factores" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18M3 12h18M6 6l12 12M18 6 6 18"/></svg>
-          4 Factores
-        </button>
         <button onclick="navigate('simulador')" data-nav="simulador" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 21h8M12 17v4M5 3h14l-1.5 8.5a5.5 5.5 0 0 1-11 0L5 3Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 5H2.5A2.5 2.5 0 0 0 3.8 9.6M19 5h2.5a2.5 2.5 0 0 1-1.3 4.6"/></svg>
-          Simulador
+          Simulador 360°
         </button>
         <button onclick="navigate('scouting')" data-nav="scouting" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path stroke-linecap="round" d="m20 20-4.3-4.3"/></svg>
@@ -556,19 +552,19 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=35"></script>
-<script src="js/sgadd-core.js?v=35"></script>
-<script src="js/sgadd-ui.js?v=35"></script>
-<script src="js/sgadd-app.js?v=35"></script>
-<script src="js/sgadd-charts.js?v=35"></script>
-<script src="js/sgadd-personalidad.js?v=35"></script>
-<script src="js/sgadd-rankings.js?v=35"></script>
-<script src="js/sgadd-partido.js?v=35"></script>
-<script src="js/sgadd-informe.js?v=35"></script>
-<script src="js/sgadd-equipos.js?v=35"></script>
-<script src="js/sgadd-jugadores.js?v=35"></script>
-<script src="js/sgadd-4factores.js?v=35"></script>
-<script src="js/sgadd-diagnostico.js?v=35"></script>
+<script src="js/sgadd-club.js?v=36"></script>
+<script src="js/sgadd-core.js?v=36"></script>
+<script src="js/sgadd-ui.js?v=36"></script>
+<script src="js/sgadd-app.js?v=36"></script>
+<script src="js/sgadd-charts.js?v=36"></script>
+<script src="js/sgadd-personalidad.js?v=36"></script>
+<script src="js/sgadd-rankings.js?v=36"></script>
+<script src="js/sgadd-partido.js?v=36"></script>
+<script src="js/sgadd-informe.js?v=36"></script>
+<script src="js/sgadd-equipos.js?v=36"></script>
+<script src="js/sgadd-jugadores.js?v=36"></script>
+<script src="js/sgadd-4factores.js?v=36"></script>
+<script src="js/sgadd-diagnostico.js?v=36"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -591,7 +587,7 @@ const SHEETS_CONFIG = [
   { name: 'RANKINGS E',    key: 'rankingsE'    },
 ];
 
-const VALID_SECTIONS = ['principal', 'equipos', 'jugadores', 'factores', 'simulador', 'scouting', 'diagnostico'];
+const VALID_SECTIONS = ['principal', 'equipos', 'jugadores', 'simulador', 'scouting', 'diagnostico'];
 
 /* ============ ESTADO GLOBAL ============ */
 let DATA = {};
@@ -603,7 +599,6 @@ let currentSection = 'principal';
 const tabState = {
   equipos: 'acumulado',
   jugadores: 'acumulado',
-  factores: 'partido',
   scouting: 'jugadores',
 };
 
@@ -1669,144 +1664,6 @@ function detectNumericColumns(data, nameCol) {
   }).map((c) => c.label);
 }
 
-function buildFactores() {
-  const tabs = [
-    { id: 'partido', label: 'Partido a Partido' },
-    { id: 'promedios', label: 'Promedios' },
-    { id: 'acumulado', label: 'Acumulado' },
-  ];
-  const keyMap = { partido: '4factores', promedios: 'promedios4f', acumulado: 'acumulado4f' };
-  const active = tabState.factores;
-  const key = keyMap[active];
-  const data = sheet(key);
-  const tabsHtml = `<div class="flex flex-wrap gap-2">${buildTabs('factores', tabs)}</div>`;
-
-  if (data.error) return `<section class="space-y-4">${tabsHtml}${renderErrorCard(`${key}: ${data.error}`)}</section>`;
-  if (!data.rows.length) return `<section class="space-y-4">${tabsHtml}${renderEmptyCard('No hay datos en esta hoja.')}</section>`;
-
-  const nameCol = findColumnLabel(data.cols, ['EQUIPO', 'NOMBRE', 'JUGADOR', 'RIVAL', 'TEAM']);
-  const factorCols = detectNumericColumns(data, nameCol);
-
-  if (!nameCol || factorCols.length < 2) {
-    return `<section class="space-y-4">${tabsHtml}
-      ${renderEmptyCard('No se detectaron suficientes columnas numéricas para graficar. Se muestra la tabla completa.')}
-      ${renderTable(`factores-${active}`, key)}
-    </section>`;
-  }
-
-  const selKey = `factores-${active}`;
-  if (!factorSelection[selKey]) {
-    factorSelection[selKey] = new Set(data.rows.slice(0, Math.min(4, data.rows.length)).map((r) => r.formatted[nameCol]));
-  }
-  const selection = factorSelection[selKey];
-
-  const checkboxes = data.rows.map((r) => {
-    const label = r.formatted[nameCol];
-    const checked = selection.has(label);
-    return `
-      <label class="flex items-center gap-2 text-sm px-3 py-2 rounded-md border ${checked ? 'border-accent text-ink' : 'border-hairline text-muted'} cursor-pointer">
-        <input type="checkbox" ${checked ? 'checked' : ''} onchange="onFactorToggle('${escapeAttr(selKey)}','${escapeAttr(label)}', this.checked)" class="accent-orange-500" />
-        ${escapeHtml(label)}
-      </label>`;
-  }).join('');
-
-  return `
-    <section class="space-y-4">
-      ${tabsHtml}
-      <div class="card rounded-lg p-5">
-        <p class="font-display uppercase text-sm tracking-wide text-muted mb-3">Seleccioná hasta 4 para comparar</p>
-        <div class="flex flex-wrap gap-2">${checkboxes}</div>
-      </div>
-      <div class="card rounded-lg p-5">
-        <div class="chart-box is-md">
-          <canvas id="factoresChart"></canvas>
-        </div>
-      </div>
-      <div>
-        <h2 class="font-display uppercase tracking-wide text-sm text-muted mb-3">Detalle</h2>
-        ${renderTable(`factores-${active}`, key)}
-      </div>
-    </section>`;
-}
-
-function onFactorToggle(selKey, label, checked) {
-  const set = factorSelection[selKey] || (factorSelection[selKey] = new Set());
-  if (checked) {
-    if (set.size >= 4) {
-      alert('Podés comparar hasta 4 elementos a la vez. Desmarcá uno para agregar otro.');
-      rerenderCurrentSection();
-      return;
-    }
-    set.add(label);
-  } else {
-    set.delete(label);
-  }
-  rerenderCurrentSection();
-}
-
-function drawFactoresChart() {
-  if (typeof Chart === 'undefined') return;
-  const canvas = document.getElementById('factoresChart');
-  if (!canvas) return;
-  const keyMap = { partido: '4factores', promedios: 'promedios4f', acumulado: 'acumulado4f' };
-  const key = keyMap[tabState.factores];
-  const data = sheet(key);
-  if (data.error || !data.rows.length) return;
-
-  const nameCol = findColumnLabel(data.cols, ['EQUIPO', 'NOMBRE', 'JUGADOR', 'RIVAL', 'TEAM']);
-  const factorCols = detectNumericColumns(data, nameCol);
-  if (!nameCol || factorCols.length < 2) return;
-
-  const selKey = `factores-${tabState.factores}`;
-  const selection = factorSelection[selKey] || new Set();
-  const selectedRows = data.rows.filter((r) => selection.has(r.formatted[nameCol]));
-  if (!selectedRows.length) return;
-
-  const palette = CLUB.TEMA.paleta;
-  const datasets = selectedRows.map((r, i) => ({
-    label: r.formatted[nameCol],
-    data: factorCols.map((fc) => toNumber(r.values[fc]) ?? 0),
-    borderColor: palette[i % palette.length],
-    backgroundColor: `${palette[i % palette.length]}33`,
-    pointBackgroundColor: palette[i % palette.length],
-    borderWidth: 2,
-  }));
-
-  if (chartInstances.factores) chartInstances.factores.destroy();
-  chartInstances.factores = new Chart(canvas.getContext('2d'), {
-    type: 'radar',
-    data: { labels: factorCols, datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        r: {
-          angleLines: { color: '#282828' },
-          grid: { color: '#282828' },
-          pointLabels: {
-            color: '#f5f4f2',
-            font: { family: 'Barlow', size: BP.movil() ? 9 : 12 },
-            // Etiquetas largas partidas en dos lineas en pantalla chica
-            callback: (l) => (BP.movil() && String(l).length > 12
-              ? String(l).replace(/\s+/, '\n').split('\n') : l),
-          },
-          ticks: { color: '#96938d', backdropColor: 'transparent', font: { size: BP.movil() ? 9 : 11 } },
-        },
-      },
-      plugins: {
-        legend: {
-          position: BP.movil() ? 'bottom' : 'top',
-          labels: {
-            color: '#f5f4f2',
-            font: { family: 'Barlow', size: BP.movil() ? 10 : 12 },
-            boxWidth: BP.movil() ? 10 : 20,
-            padding: BP.movil() ? 8 : 10,
-          },
-        },
-      },
-    },
-  });
-}
 
 function drawOrtgDrtgChart() {
   const canvas = document.getElementById('ortgDrtgChart');
@@ -2350,7 +2207,7 @@ function renderSection(section) {
     btn.classList.toggle('bg-surface2', isActive);
     btn.classList.toggle('text-accent', isActive);
   });
-  const titles = { principal: 'Principal', equipos: 'Equipos', jugadores: 'Jugadores', factores: '4 Factores', simulador: 'Simulador', scouting: 'Scouting', diagnostico: 'Diagnóstico' };
+  const titles = { principal: 'Principal', equipos: 'Equipos', jugadores: 'Jugadores', simulador: 'Simulador 360°', scouting: 'Scouting', diagnostico: 'Diagnóstico' };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = titles[section] || '';
 
@@ -2361,7 +2218,6 @@ function renderSection(section) {
     case 'diagnostico': root.innerHTML = buildDiagnostico(); diagCorrer(); break;
     case 'equipos': root.innerHTML = buildEquipos(); break;   // SGADD (js/sgadd-equipos.js)
     case 'jugadores': root.innerHTML = buildJugadores(); break;
-    case 'factores': root.innerHTML = buildFactores(); drawFactoresChart(); break;
     case 'simulador': root.innerHTML = buildSimulador(); break;   // SGADD (js/sgadd-4factores.js)
     case 'scouting': root.innerHTML = buildScouting(); drawScoutingCharts(); break;
     default: root.innerHTML = '';
