@@ -12,6 +12,7 @@ const J = require('./js/sgadd-jugadores.js');
 const EQ = require('./js/sgadd-equipos.js');
 let ok = 0, fail = 0;
 const check = (n, c, d) => { if (c) { ok++; console.log('  ✓ ' + n); } else { fail++; console.log('  ✗ ' + n + (d !== undefined ? '  → ' + d : '')); } };
+const cerca = (a, b, tol) => typeof a === 'number' && typeof b === 'number' && Math.abs(a - b) < (tol || 1e-6);
 
 /* --- Fixture: 2 equipos, jugadores homónimos en equipos distintos --- */
 const colsE = ['EQUIPO', 'FASE', 'PJ'];
@@ -414,7 +415,7 @@ console.log('═'.repeat(70));
 
 const colsRk = ['NOMBRES', 'EQUIPO', 'FASE', 'PJ', 'MIN', 'PTS', 'PLAYS', 'PPP', 'eFG%', 'TS%', 'RTL%', 'USG%',
   'TC%', 'TCC', 'TCI', 'PT2%', 'T2%', 'T2C', 'T2I', 'PPT2', 'PT3%', 'T3%', 'T3C', 'T3I', 'PPT3',
-  'PT1%', 'T1%', 'T1C', 'T1I', 'PPT1', 'RO', 'RD', 'RT', 'AST', 'AST%', 'AST-PP', 'FC', 'FR', 'PP'];
+  'PT1%', 'T1%', 'T1C', 'T1I', 'PPT1', 'RO', 'RD', 'RT', 'AST', 'AST%', 'AST-PP', 'FC', 'FR', 'PP', 'RO%', 'RD%', 'PePP%'];
 
 function jr(nombre, equipo, o) {
   return Object.assign({
@@ -424,13 +425,14 @@ function jr(nombre, equipo, o) {
     'PT3%': '0,35', 'T3%': '0,33', T3C: '1', T3I: '3', PPT3: '1,00',
     'PT1%': '0,08', 'T1%': '0,70', T1C: '2', T1I: '3', PPT1: '0,67',
     RO: '2', RD: '4', RT: '6', AST: '2', 'AST%': '0,15', 'AST-PP': '1,50', FC: '2', FR: '2', PP: '1,3',
+    'RO%': '0,05', 'RD%': '0,12', 'PePP%': '0,13',
   }, o);
 }
 
 const filasRk = [
-  jr('JUGADOR TIPO', '', { MIN: '15' }),
+  jr('JUGADOR TIPO', '', { MIN: '15', 'RO%': '0,05', 'RD%': '0,12', 'PePP%': '0,13' }),
   /* Rebotes: REBOTEADOR domina RO; ANCLA tiene más RD pero menos RO. */
-  jr('REBOTEADOR, ALTO', 'A', { MIN: '30', RO: '5', RD: '6', RT: '11', 'AST-PP': '0,80', FC: '3', FR: '4' }),
+  jr('REBOTEADOR, ALTO', 'A', { MIN: '30', RO: '5', RD: '6', RT: '11', 'AST-PP': '0,80', FC: '3', FR: '4', 'RO%': '0,10' }),
   jr('ANCLA, DEFENSIVA', 'A', { MIN: '28', RO: '1', RD: '9', RT: '10', 'AST-PP': '0,90' }),
   /* Creación: GENERADOR lidera AST-PP. */
   jr('GENERADOR, FINO', 'B', { MIN: '27', 'AST-PP': '3,20', 'AST%': '0,40', AST: '6', FC: '1', FR: '5', RO: '0,5' }),
@@ -573,6 +575,68 @@ const conNulo = J.jugadoresRanking(idxNulo, 'rebotes', { ordenPor: 'RD', dir: 'a
 check('un jugador sin dato en la columna de orden queda al fondo, no al tope',
   conNulo.filas[0].celdas['RD'] !== null,
   conNulo.filas.map(f => f.jugador + ':' + f.celdas['RD']).join('|'));
+
+/* =====================================================================
+   MOTOR CENTRALIZADO DE ADN + FILTRO POR EQUIPO
+   ===================================================================== */
+console.log('\nY. ADN CENTRALIZADO Y SELECTOR DE EQUIPO');
+console.log('═'.repeat(70));
+
+const jugRk = idxRk.liga.jugadoresPorEquipo.get('A') || [];
+const reboteador = jugRk.find(j => j['NOMBRES'] === 'REBOTEADOR, ALTO');
+const adnReb = J.jugadoresADN(idxRk, reboteador);
+
+check('jugadoresADN() devuelve las cuatro taxonomías juntas',
+  !!adnReb.rolMinutos && !!adnReb.jerarquia && Array.isArray(adnReb.arquetipos) && !!adnReb.rolFuncional,
+  JSON.stringify(Object.keys(adnReb)));
+check('el rol funcional sale de la cascada compartida',
+  J.JUGADORES_ROLES_FUNCIONALES.some(r => r.id === adnReb.rolFuncional.id), adnReb.rolFuncional.id);
+check('ningún rol funcional usa posiciones tradicionales',
+  J.JUGADORES_ROLES_FUNCIONALES.every(r => !/\b(base|alero|pivote?|ala|escolta)\b/i.test(r.label)));
+check('la cascada de roles siempre resuelve', !!adnReb.rolFuncional.label);
+check('jugadoresADN() sin jugador da null', J.jugadoresADN(idxRk, null) === null);
+
+check('el perfil base calcula la mezcla de lanzamiento sobre intentos',
+  cerca(J.jugadoresPerfilBase(idxRk, reboteador).mezclaTriple, 3 / 9, 1e-6),
+  J.jugadoresPerfilBase(idxRk, reboteador).mezclaTriple);
+check('el perfil base relativiza el rebote contra la mediana de la liga',
+  cerca(J.jugadoresPerfilBase(idxRk, reboteador).reboteRel, 0.10 / 0.05, 1e-6),
+  J.jugadoresPerfilBase(idxRk, reboteador).reboteRel);
+
+const badges = J.jugadoresBadges(adnReb);
+check('los badges traen jerarquía, rol y arquetipos con el mismo formato',
+  badges.some(b => b.tipo === 'jerarquia') && badges.some(b => b.tipo === 'rol'),
+  JSON.stringify(badges.map(b => b.tipo + ':' + b.texto)));
+check('cada badge trae texto listo para pintar', badges.every(b => typeof b.texto === 'string' && b.texto.length > 2));
+check('jugadoresBadges(null) da lista vacía, no rompe', J.jugadoresBadges(null).length === 0);
+
+/* --- El plantel del picker: orden estricto por MIN --- */
+const plantelA = (idxRk.liga.jugadoresPorEquipo.get('A') || [])
+  .slice().sort((a, b) => (b['MIN'] || 0) - (a['MIN'] || 0));
+check('el plantel de un equipo se ordena por MIN de mayor a menor',
+  plantelA.every((j, i, a) => i === 0 || a[i - 1]['MIN'] >= j['MIN']),
+  plantelA.map(j => j['NOMBRES'] + ':' + j['MIN']).join('|'));
+check('el primero del plantel es el que más minutos juega',
+  plantelA[0]['NOMBRES'] === 'REBOTEADOR, ALTO', plantelA[0]['NOMBRES']);
+check('el índice agrupa por equipo sin mezclar planteles',
+  plantelA.every(j => SGADD.claveEquipo(j['EQUIPO']) === 'A'));
+
+/* --- El selector NO puede volver a sacar al usuario de la sección ---
+   La UI usa `document` y no se exporta, así que el contrato se verifica
+   sobre el propio fuente: es un guard contra la regresión concreta que
+   hubo (el picker navegaba a Equipos → Plantel). */
+const fuenteJ = require('fs').readFileSync('./js/sgadd-jugadores.js', 'utf8');
+const cuerpoElegir = fuenteJ.slice(
+  fuenteJ.indexOf('function jugadoresElegirEquipo'),
+  fuenteJ.indexOf('function jugadoresCambiarUmbral'));
+check('jugadoresElegirEquipo() NO navega a otra sección',
+  !/navigate\s*\(/.test(cuerpoElegir) && !/equiposIrA\s*\(/.test(cuerpoElegir), cuerpoElegir.slice(0, 200));
+check('jugadoresElegirEquipo() escribe el filtro local y repinta la propia sección',
+  /JUGADORES\.filtroEquipo\s*=/.test(cuerpoElegir) && /jugadoresPintar\(\)/.test(cuerpoElegir));
+check('volver a tocar el mismo escudo saca el filtro (toggle)',
+  /===\s*clave\)\s*\?\s*null/.test(cuerpoElegir), cuerpoElegir.slice(0, 260));
+check('el plantel filtrado ordena por MIN descendente en el propio render',
+  /jugadoresPorEquipo\.get\(clave\)[\s\S]{0,160}b\['MIN'\][^\n]*a\['MIN'\]/.test(fuenteJ));
 
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');

@@ -668,6 +668,118 @@ check('no se puede armar un informe de un equipo contra sí mismo',
 check('un equipo inexistente da error explícito, no una excepción',
   S.informePrePartido(idx, 'NO_EXISTE', 'TOPO').ok === false);
 
+/* =====================================================================
+   HOMOLOGACIÓN CON LA SECCIÓN JUGADORES
+
+   El bug que cierran: el mismo jugador aparecía como "Manejador
+   Secundario / Defensor Físico" en el informe pre-partido y como
+   "⭐ Jugador Franquicia / 🧤 Especialista Defensivo / Dependencia
+   Absoluta" en su ficha. No eran datos contradictorios, eran DOS
+   subconjuntos distintos de la misma taxonomía calculados por dos motores.
+   Ahora hay uno solo y estos tests lo amarran.
+   ===================================================================== */
+console.log('\n9. HOMOLOGACIÓN TOTAL CON LA SECCIÓN JUGADORES');
+console.log('═'.repeat(70));
+
+const JUG = require('./js/sgadd-jugadores.js');
+const plantelAguila = idx.liga.jugadoresPorEquipo.get('AGUILA') || [];
+
+check('scouting expone los roles funcionales del motor de Jugadores, no una copia',
+  S.ROLES_FUNCIONALES === JUG.JUGADORES_ROLES_FUNCIONALES,
+  'scouting:' + S.ROLES_FUNCIONALES.length + ' jugadores:' + JUG.JUGADORES_ROLES_FUNCIONALES.length);
+check('los umbrales de rol son literalmente el mismo objeto en las dos secciones',
+  S.UMBRALES.minutosClave === JUG.JUGADORES_UMBRALES.minutosClave &&
+  S.UMBRALES.mezclaTripleaPerimetral === JUG.JUGADORES_UMBRALES.mezclaTripleaPerimetral &&
+  S.UMBRALES.astPPGenerador === JUG.JUGADORES_UMBRALES.astPPGenerador);
+
+/* Para CADA jugador del plantel, el rol y las métricas tienen que dar
+   exactamente lo mismo pedidos desde un lado o desde el otro. */
+plantelAguila.forEach(j => {
+  const adn = JUG.jugadoresADN(idx, j);
+  const fila = tabla.filas.find(f => f.clave === j.__clave);
+  if (!fila) return;
+  if (fila.rol.id !== adn.rolFuncional.id) {
+    check('rol funcional idéntico para ' + adn.nombre, false,
+      'scouting:' + fila.rol.id + ' jugadores:' + adn.rolFuncional.id);
+  }
+});
+check('el rol funcional es idéntico en las dos secciones para TODO el plantel',
+  plantelAguila.every(j => {
+    const fila = tabla.filas.find(f => f.clave === j.__clave);
+    return !fila || fila.rol.id === JUG.jugadoresADN(idx, j).rolFuncional.id;
+  }));
+check('la jerarquía viaja en el perfil de scouting con la etiqueta de Jugadores',
+  plantelAguila.every(j => {
+    const fila = tabla.filas.find(f => f.clave === j.__clave);
+    if (!fila) return true;
+    const adn = JUG.jugadoresADN(idx, j);
+    return fila.perfil.jerarquia === adn.jerarquia.label;
+  }), JSON.stringify(tabla.filas.map(f => f.nombre + '→' + f.perfil.jerarquia)));
+check('los arquetipos son los mismos en las dos vistas',
+  plantelAguila.every(j => {
+    const fila = tabla.filas.find(f => f.clave === j.__clave);
+    if (!fila) return true;
+    const esperados = JUG.jugadoresADN(idx, j).arquetipos.map(a => a.label).sort().join('|');
+    return (fila.perfil.arquetipos || []).slice().sort().join('|') === esperados;
+  }));
+check('el perfil de scouting trae el ADN completo listo para pintar los mismos badges',
+  tabla.filas.every(f => f.perfil.adn && f.perfil.adn.rolFuncional && f.perfil.adn.jerarquia));
+
+/* --- Métricas base: ni un decimal de diferencia --- */
+const METRICAS_HOMOLOGADAS = ['min', 'plays', 'pts', 'ppp', 'efg', 'usoTriple', 'usoDoble',
+  'usoLibre', 'pptTriple', 'pptDoble', 'pptLibre', 'perdidas', 'rebote', 'reboteRel', 'perdidasRel',
+  'mezclaTriple', 'astPP', 't1', 't3'];
+check('las ' + METRICAS_HOMOLOGADAS.length + ' métricas base coinciden EXACTO entre Scouting y Jugadores',
+  plantelAguila.every(j => {
+    const fila = tabla.filas.find(f => f.clave === j.__clave);
+    if (!fila) return true;
+    const base = JUG.jugadoresPerfilBase(idx, j);
+    return METRICAS_HOMOLOGADAS.every(k => {
+      const a = fila.perfil[k], b = base[k];
+      if (a === null && b === null) return true;
+      return a === b;   // igualdad estricta: es el MISMO cálculo, no uno parecido
+    });
+  }));
+check('los discriminantes de origen también coinciden',
+  plantelAguila.every(j => {
+    const fila = tabla.filas.find(f => f.clave === j.__clave);
+    if (!fila) return true;
+    const base = JUG.jugadoresPerfilBase(idx, j);
+    return fila.perfil.esInterior === base.esInterior && fila.perfil.esPerimetral === base.esPerimetral;
+  }));
+
+/* --- Las consignas derivan del perfil cuantitativo --- */
+check('un jugador con volumen alto y eFG% bajo recibe permisividad de tiro, no presión',
+  tabla.filas.every(f => f.marca.id !== 'volumen-sin-eficiencia' ||
+    /PERMITIR EL TIRO EXTERNO/.test(f.marca.consigna)));
+check('la regla de volumen sin eficiencia existe en la cascada',
+  S.PERFILES_MARCA.some(p => p.id === 'volumen-sin-eficiencia'));
+check('esa regla NUNCA se aplica a alguien con tiro externo rentable',
+  tabla.filas.every(f => f.marca.id !== 'volumen-sin-eficiencia' || !f.perfil.tiroExternoRentable));
+/* El fallback de contención se exceptúa a propósito: se activa justamente
+   cuando NINGÚN umbral lo dispara, así que no hay número que citar. */
+check('cada consigna que nace de un umbral cita el número que la disparó',
+  tabla.filas.every(f => f.marca.id === 'contencion' || /\d/.test(f.marca.porque)),
+  tabla.filas.filter(f => f.marca.id !== 'contencion' && !/\d/.test(f.marca.porque))
+    .map(f => f.nombre + '→' + f.marca.id).join('|'));
+check('el fallback de contención explica por qué no hay número',
+  S.PERFILES_MARCA[S.PERFILES_MARCA.length - 1].id === 'contencion');
+
+/* --- El resumen ejecutivo gira alrededor de los jugadores --- */
+const resumenJ = S.resumenEjecutivo(idx, 'TOPO', 'AGUILA');
+check('el resumen nombra jugadores concretos, no solo al equipo',
+  tabla.filas.some(f => resumenJ.indexOf(f.nombre) !== -1), resumenJ.slice(0, 160));
+check('el resumen identifica el eje del ataque con su volumen',
+  /ataque pasa por/i.test(resumenJ), resumenJ.slice(0, 200));
+check('el resumen dice a quién NO se puede soltar',
+  /Prohibido soltar/i.test(resumenJ) || !tabla.filas.some(f => f.perfil.tiroExternoRentable));
+check('el resumen dice a quién conviene dejar resolver',
+  /queremos que termine la posesión/i.test(resumenJ) ||
+  !tabla.filas.some(f => ['tirador-ineficiente', 'tirador-sistematico-frio', 'volumen-sin-eficiencia'].indexOf(f.marca.id) !== -1));
+check('el resumen cierra con el estado del ciclo reciente', /últimos \d+ partidos/i.test(resumenJ));
+check('el resumen es sustancialmente más largo que un párrafo suelto',
+  resumenJ.length > 400, resumenJ.length);
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

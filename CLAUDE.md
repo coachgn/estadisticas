@@ -16,15 +16,15 @@ node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  22 tests · multi-cliente
 node test-boot.js          #  16 tests · arranque por club
-node test-jugadores.js     # 115 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
+node test-jugadores.js     # 132 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  17 tests · detalle partido a partido
-node test-scouting.js      # 160 tests · informe pre-partido, bandas de liga, marcas, claves
+node test-scouting.js      # 179 tests · informe pre-partido, bandas, marcas, homologacion ADN
 ```
 
-**580 tests en total. Todos tienen que dar verde antes de commitear.**
+**616 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -73,7 +73,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=41`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=42`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -269,6 +269,48 @@ para que un percentil tenga sentido, que sí es relativo a cada liga). Un
 jugador puede ser "Jugador Clave" por minutos y a la vez no calificar para
 percentiles si la liga entera juega poco — son preguntas distintas.
 
+### El ADN es un motor único · single source of truth
+
+`jugadoresADN(idx, j)` en `sgadd-jugadores.js` es **la** función que
+etiqueta a un jugador. Devuelve las cuatro taxonomías juntas:
+
+| Campo | Pregunta que contesta | Ejemplo |
+|---|---|---|
+| `rolMinutos` | ¿cuánto juega? | Jugador Clave · Dependencia Absoluta |
+| `jerarquia` | ¿cuánto pesa en su plantel? | ⭐ Jugador Franquicia |
+| `arquetipos` | ¿qué sabe hacer? | 🧤 Especialista Defensivo |
+| `rolFuncional` | ¿qué función cumple en cancha? | Manejador Secundario |
+
+**El bug que cerró.** El rol funcional vivía en `sgadd-scouting.js` y el
+resto acá, y cada sección mostraba un subconjunto distinto: el mismo
+jugador era "Manejador Secundario / Defensor Físico" en el informe
+pre-partido y "⭐ Jugador Franquicia / 🧤 Especialista Defensivo /
+Dependencia Absoluta" en su ficha. No eran datos contradictorios — eran dos
+motores y dos recortes. Ahora:
+
+- `JUGADORES_ROLES_FUNCIONALES` y `JUGADORES_UMBRALES` viven **solo** acá.
+  `sgadd-scouting.js` los lee (`COMPARTIDOS`), no los copia: un número
+  duplicado termina distinto en cada archivo y vuelve a partir la
+  taxonomía en dos.
+- `jugadoresPerfilBase(idx, j)` calcula las métricas y los relativos a la
+  liga. Scouting parte de ahí y solo **agrega** lo que depende del plantel
+  (`concentracion`, `cuotaTriplesEquipo`), que es lo único que Jugadores no
+  puede saber.
+- `jugadoresBadges(adn)` arma las etiquetas, así que las dos vistas pintan
+  literalmente el mismo texto.
+
+Hay tests que recorren el plantel entero y exigen **igualdad estricta**
+(`===`, no tolerancia) de 19 métricas base, de los discriminantes de origen
+y del rol entre Scouting y Jugadores. Si alguien vuelve a duplicar la
+cascada, fallan.
+
+`sgadd-scouting.js` carga DESPUÉS de `sgadd-jugadores.js` en el
+`index.html`: la dependencia va en un solo sentido y no puede invertirse.
+
+**Ojo con el nombre**: `jugadoresADN()` es el motor; el renderer de los
+badges de la ficha se llama `jugadoresBloqueADN()`. Se llamaban igual y
+colisionaban.
+
 ### ADN del jugador — arquetipos y jerarquía
 
 Motor de arquetipos técnicos + jerarquía dentro del plantel, adaptado del
@@ -346,20 +388,29 @@ esa función pura, el resto del módulo sigue sin testearse directo (usa
 `dd/mm/aaaa`) — es la convención que ya usa toda la app, no se tocó para
 no meter una inconsistencia en el resto de las tablas de partidos.
 
-### Landing de la sección: picker + rankings TOP 20
+### Landing de la sección: picker + plantel filtrado + rankings
 
-Al entrar a Jugadores (sin ficha abierta) hay **dos bloques y nada más**:
+Al entrar a Jugadores (sin ficha abierta):
 
 1. **Elegí un equipo** — grilla de escudos con el MISMO componente que usa
-   Equipos (`SGADD_UI.teamPicker`), no una copia. Clic abre el **tab Plantel
-   de la sección Equipos** para ese club.
-2. **Rankings de la liga · top 20** — 8 tablas en tabs.
+   Equipos (`SGADD_UI.teamPicker`), no una copia.
+2. **Plantel · <equipo>** — aparece SOLO con un equipo elegido. Cards
+   ordenadas **estrictamente por MIN de mayor a menor**, con escudo, banda
+   de minutos, badges del ADN y MIN/PLAYS/PTS/eFG%. Clic en una card abre
+   el perfil 360°.
+3. **Rankings de la liga · top 20** — 8 tablas en tabs.
 
-**La card "Plantel de la liga" se eliminó.** Repetía lo que ya muestra el
-tab Plantel de Equipos, y con el picker llevando directo ahí, tener las dos
-listas era pedirle al DT que eligiera entre dos caminos al mismo lugar. Con
-ella se fueron `JUGADORES.filtroEquipo`, `soloCalifican`,
-`jugadoresFiltrarEquipo()` y `jugadoresToggleCalifican()`.
+**El selector NO cambia de sección.** Hubo una vuelta en la que el clic en
+un escudo navegaba a `Equipos → Plantel`; rompía el flujo de trabajo (el DT
+entra a Jugadores para mirar jugadores y terminaba en otra pantalla). Ahora
+`jugadoresElegirEquipo()` solo escribe `JUGADORES.filtroEquipo` y repinta
+la propia sección; volver a tocar el mismo escudo saca el filtro. Hay un
+test que lee el fuente de esa función y falla si vuelve a aparecer un
+`navigate(` o un `equiposIrA(` adentro.
+
+No existe una lista de "todos los jugadores de la liga": sin equipo elegido
+solo están el picker y los rankings. La lista completa se sacó por
+redundante y no volvió.
 
 **Los dos pickers ordenan alfabético.** El de Equipos ordenaba por rating
 neto; se alineó con el de Jugadores porque el escudo es un buscador, no un
@@ -540,6 +591,27 @@ Hay un test que recorre todo el plantel y verifica que **a nadie con tiro
 externo rentable se le sugiera flotar o ayudar desde él**. Con datos reales
 de Atenas: Schroeder (2,4 T3I, PPT3 1,04) pasó a STAY HOME y Qüin (5,4 T3I,
 PPT3 0,78) a contestar sin saltar — antes los dos recibían "flotar".
+
+### El resumen de criterio estratégico gira alrededor de los jugadores
+
+`resumenEjecutivo()` arma ocho tramos, y siete nombran jugadores concretos
+con el número que los justifica: contexto de ritmo, el **eje del ataque**
+(quién concentra los plays, con su rol y su PPP), **a quién no se puede
+soltar** (los de tiro externo rentable), **a quién conviene dejar
+resolver**, el cristal, la conducción presionable, el criterio global según
+la composición de marcas, y el ciclo reciente. Contra Atenas real da ~1700
+caracteres con nombres propios en cada consigna.
+
+Se arma desde `jugadoresClave()`, o sea desde las mismas filas que pinta la
+tabla de arriba: no puede contradecir al cuadro que tiene al lado.
+
+### Consigna por volumen sin eficiencia
+
+`volumen-sin-eficiencia` → `PERMITIR EL TIRO EXTERNO · CERRAR LA PINTURA`.
+Se activa con concentración alta de plays (≥ 20% del equipo) Y eFG% por
+debajo de su liga (banda `limitado`/`fuga`), Y sin tiro externo rentable.
+Va después de las tres reglas de tiro externo justamente para no pisar al
+especialista eficiente de bajo volumen.
 
 ### Exportación a PDF por cards
 

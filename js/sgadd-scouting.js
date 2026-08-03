@@ -36,30 +36,35 @@ const SGADD_SCOUT = (function () {
   const TOP_JUGADORES = 8;          // los que realmente juegan el partido
   const TOP_SEMAFORO = 3;           // "top 3 de cada métrica", pedido del club
 
+  /* Umbrales compartidos con el motor de JUGADORES. Se leen de allá, no se
+     copian: un número duplicado es un número que en algún momento va a
+     quedar distinto en cada archivo y a etiquetar al mismo jugador de dos
+     formas — exactamente el bug que este módulo cerró. */
+  const COMPARTIDOS = (function () {
+    if (typeof JUGADORES_UMBRALES !== 'undefined') return JUGADORES_UMBRALES;
+    try { return require('./sgadd-jugadores.js').JUGADORES_UMBRALES; } catch (e) { return {}; }
+  })();
+
   /* Umbrales del plan individual. */
   const U = {
     concentracionAlta: 0.20,   // >20% de los plays del equipo = eje de eficiencia
-    usoTripleAlto: 0.40,       // 40% de sus plays terminan en triple
     pptTripleElite: 1.20,      // 1,20 pts por triple intentado = hay que cerrarlo
     pptTriplePobre: 0.90,      // por debajo de 0,90 conviene regalárselo
     usoLibreAlto: 0.10,        // 10% de sus plays terminan en la línea
     t1Confiable: 0.75,         // no mandarlo a la línea
     t1Pobre: 0.60,             // castigable, pero NO con falta sistemática
     perdidasAltas: 1.25,       // x la mediana de la liga → presionable
-    reboteOfensivoAlto: 1.20,  // x la mediana de la liga → box-out especial
-    pptDobleAlto: 1.10,        // finaliza de verdad cerca del aro
-    minutosClave: 20,          // por debajo de esto no condiciona un plan
 
-    /* --- Discriminantes de origen (perimetral vs. interno) ---
-       El error que motivó esta refactorización: clasificar por PPT2 solo
-       mete a cualquier slasher eficiente en la bolsa de "referencia
-       interna". El origen lo define de dónde LANZA y cuánto pesa en el
-       cristal, no cuánto convierte adentro. */
-    mezclaTripleaPerimetral: 0.30,  // T3I / (T3I + T2I): a partir de acá, tira de afuera
-    mezclaTripleInterior: 0.12,     // por debajo, prácticamente no sale del área
-    reboteInterior: 1.15,           // RO% x la mediana de la liga
-    astPPGenerador: 1.40,           // asistencias por pérdida de un conductor real
-    astVolumenGenerador: 2.5,       // AST por partido: el ratio solo no alcanza
+    /* --- Compartidos con el rol funcional (sgadd-jugadores.js) --- */
+    usoTripleAlto: COMPARTIDOS.usoTripleAlto,
+    reboteOfensivoAlto: COMPARTIDOS.reboteOfensivoAlto,
+    pptDobleAlto: COMPARTIDOS.pptDobleAlto,
+    minutosClave: COMPARTIDOS.minutosClave,
+    mezclaTripleaPerimetral: COMPARTIDOS.mezclaTripleaPerimetral,
+    mezclaTripleInterior: COMPARTIDOS.mezclaTripleInterior,
+    reboteInterior: COMPARTIDOS.reboteInterior,
+    astPPGenerador: COMPARTIDOS.astPPGenerador,
+    astVolumenGenerador: COMPARTIDOS.astVolumenGenerador,
 
     /* --- Falta táctica: criterio restrictivo a propósito ---
        Mandar a la línea es la excepción, no el plan. Solo con un T1%
@@ -152,57 +157,15 @@ const SGADD_SCOUT = (function () {
      PPT2 alto pero que lanza de afuera y no rebotea NUNCA cae en los roles
      internos, cae en Slasher.
      ===================================================================== */
-  const ROLES_FUNCIONALES = [
-    {
-      id: 'generador-primario', label: 'Generador Primario',
-      test: (p) => p.astPP !== null && p.ast !== null &&
-        p.astPP >= U.astPPGenerador && p.ast >= U.astVolumenGenerador && p.min >= U.minutosClave,
-      detalle: (p) => 'conduce el ataque: ' + num1(p.ast) + ' AST con ' + num2(p.astPP) + ' de AST-PP.',
-    },
-    {
-      id: 'rim-runner', label: 'Rebotador de Impacto / Rim Runner',
-      test: (p) => p.esInterior && p.reboteRel !== null && p.reboteRel >= U.reboteOfensivoAlto,
-      detalle: (p) => 'vive del cristal ofensivo: ' + num2(p.reboteRel) + 'x la mediana de la liga en RO%.',
-    },
-    {
-      id: 'finalizador-corto', label: 'Finalizador Corto / Short Roll',
-      test: (p) => p.esInterior && p.pptDoble !== null && p.pptDoble >= U.pptDobleAlto,
-      detalle: (p) => 'termina cerca del aro con ' + num2(p.pptDoble) + ' por doble intentado.',
-    },
-    {
-      id: 'ancla-defensiva', label: 'Ancla Defensiva',
-      test: (p) => p.esInterior && p.reboteDefRel !== null && p.reboteDefRel >= U.reboteInterior,
-      detalle: (p) => 'sostiene el rebote defensivo (' + num2(p.reboteDefRel) + 'x la liga) sin cargar el ataque.',
-    },
-    {
-      id: 'spacing', label: 'Spacing / Tirador de Descarga',
-      test: (p) => p.esPerimetral && p.usoTriple !== null && p.usoTriple >= U.usoTripleAlto,
-      detalle: (p) => 'abre la cancha: ' + pct(p.usoTriple) + ' de sus plays terminan en triple.',
-    },
-    {
-      id: 'slasher', label: 'Slasher / Penetrador',
-      /* Acá aterriza el caso que motivó el cambio: PPT2 alto pero origen
-         perimetral. Ataca el aro DESDE afuera, no juega de espaldas. */
-      test: (p) => p.esPerimetral && p.pptDoble !== null && p.pptDoble >= 1.00,
-      detalle: (p) => 'ataca el aro desde el perímetro: ' + num2(p.pptDoble) +
-        ' por doble intentado con ' + pct(p.mezclaTriple) + ' de sus tiros de campo desde la línea de 3.',
-    },
-    {
-      id: 'manejador-secundario', label: 'Manejador Secundario',
-      test: (p) => p.astPP !== null && p.astPP >= 1.00 && p.min >= U.minutosClave,
-      detalle: (p) => 'segunda línea de conducción: ' + num2(p.astPP) + ' de AST-PP.',
-    },
-    {
-      id: 'perimetral-media', label: 'Perimetral de Media Distancia',
-      test: (p) => p.esPerimetral,
-      detalle: (p) => 'juega de cara al aro sin volumen de triple: ' + pct(p.usoTriple) + ' de uso externo.',
-    },
-    {
-      id: 'complementario', label: 'Rol Complementario',
-      test: () => true,
-      detalle: () => 'sin una función dominante que condicione el plan defensivo.',
-    },
-  ];
+  /* Los ROLES FUNCIONALES viven en `sgadd-jugadores.js` (JUGADORES_ROLES_FUNCIONALES).
+     Acá solo se re-exporta la referencia para que los tests y la UI de
+     scouting puedan leerla sin duplicar la cascada. */
+  function rolesFuncionales() {
+    const f = fichaJugadores();
+    if (typeof JUGADORES_ROLES_FUNCIONALES !== 'undefined') return JUGADORES_ROLES_FUNCIONALES;
+    try { return require('./sgadd-jugadores.js').JUGADORES_ROLES_FUNCIONALES; } catch (e) { return []; }
+  }
+
 
   /* =====================================================================
      PERFILES DEFENSIVOS DE NUESTRO PLANTEL
@@ -329,6 +292,25 @@ const SGADD_SCOUT = (function () {
         !p.tiroExternoRentable && !p.viaPrincipalExterna,
       porque: (p) => 'tira mucho de afuera (' + pct(p.usoTriple) + ' de sus plays) y saca ' +
         num2(p.pptTriple) + ' por intento sin ser la vía principal del ataque rival: ese tiro nos conviene.',
+    },
+    {
+      /* Volumen alto con eficiencia por debajo de la liga. La regla que
+         pidió el club: si tira mucho y le rinde poco, la consigna es
+         permitirle el tiro externo en vez de salir a buscarlo. Va DESPUÉS
+         de las tres reglas de tiro externo para no pisar al especialista
+         eficiente, y se apoya en la misma banda de eFG% que muestra la
+         ficha del jugador — no en un umbral propio. */
+      id: 'volumen-sin-eficiencia',
+      etiqueta: 'Volumen alto, eficiencia baja',
+      defensor: PERFILES_DEFENSOR.spacing,
+      consigna: 'PERMITIR EL TIRO EXTERNO · CERRAR LA PINTURA',
+      restriccion: 'NO DOBLAR · QUE RESUELVA ÉL',
+      test: (p) => p.concentracion !== null && p.concentracion >= U.concentracionAlta &&
+        !p.tiroExternoRentable && (porDebajo(p.bandaEfg) ||
+          (p.efg !== null && p.bandaEfg !== null && p.bandaEfg.id === 'fuga')),
+      porque: (p) => 'concentra ' + pct(p.concentracion) + ' de los plays del equipo con un eFG% de ' +
+        pct(p.efg) + ' (' + (p.bandaEfg ? p.bandaEfg.label.toLowerCase() : 'sin referencia') +
+        '): cuanto más resuelva él, mejor para nosotros.',
     },
     {
       id: 'rebotador',
@@ -722,12 +704,18 @@ const SGADD_SCOUT = (function () {
    * cruce se enriquece acá y en ningún otro lado.
    */
   function fichaJugadores() {
-    if (typeof jugadoresArquetipos === 'function') {
-      return { arquetipos: jugadoresArquetipos, jerarquia: jugadoresJerarquia, rolMinutos: jugadoresRolMinutos };
+    if (typeof jugadoresADN === 'function') {
+      return {
+        adn: jugadoresADN, perfilBase: jugadoresPerfilBase,
+        rolFuncional: jugadoresRolFuncional, badges: jugadoresBadges,
+      };
     }
     try {
       const m = require('./sgadd-jugadores.js');
-      return { arquetipos: m.jugadoresArquetipos, jerarquia: m.jugadoresJerarquia, rolMinutos: m.jugadoresRolMinutos };
+      return {
+        adn: m.jugadoresADN, perfilBase: m.jugadoresPerfilBase,
+        rolFuncional: m.jugadoresRolFuncional, badges: m.jugadoresBadges,
+      };
     } catch (e) { return null; }
   }
 
@@ -738,87 +726,21 @@ const SGADD_SCOUT = (function () {
    * cambio de umbral quedaría aplicado en un lado y no en el otro.
    */
   function perfilJugador(idx, j, totalPlaysEquipo, totalTriplesEquipo) {
-    const tipo = idx.liga.jugadorTipo || {};
-    const medPerdidas = nn(tipo['PePP%']);
-    const medRebote = nn(tipo['RO%']);
-    const medReboteDef = nn(tipo['RD%']);
-    const perdidas = nn(j['PePP%']);
-    const rebote = nn(j['RO%']);
-    const reboteDef = nn(j['RD%']);
-    const t3i = nn(j['T3I']);
-    const t2i = nn(j['T2I']);
-
-    /* Mezcla de lanzamiento: qué proporción de sus tiros de campo son de
-       3. Es el discriminante de ORIGEN, y por eso se calcula sobre
-       intentos y no sobre conversiones ni sobre puntos por intento: de
-       dónde tira no depende de si le entra. */
-    const mezclaTriple = div(t3i, (t3i || 0) + (t2i || 0));
-    const reboteRel = div(rebote, medRebote);
-    const reboteDefRel = div(reboteDef, medReboteDef);
-
-    const p = {
-      nombre: String(j['NOMBRES'] || '').trim(),
-      clave: j.__clave || null,
-      min: nn(j['MIN']),
-      plays: nn(j['PLAYS']),
-      pts: nn(j['PTS']),
-      ppp: nn(j['PPP']),
-      efg: nn(j['eFG%']),
-      ts: nn(j['TS%']),
-      usg: nn(j['USG%']),
-      rtl: nn(j['RTL%']),
-      usoTriple: nn(j['PT3%']),
-      pptTriple: nn(j['PPT3']),
-      usoDoble: nn(j['PT2%']),
-      pptDoble: nn(j['PPT2']),
-      usoLibre: nn(j['PT1%']),
-      pptLibre: nn(j['PPT1']),
-      t1: nn(j['T1%']),
-      t2: nn(j['T2%']),
-      t3: nn(j['T3%']),
-      t3i: t3i, t2i: t2i, t1i: nn(j['T1I']),
-      perdidas: perdidas,
-      rebote: rebote, reboteDef: reboteDef,
-      ro: nn(j['RO']), rd: nn(j['RD']),
-      ast: nn(j['AST']),
-      astPP: nn(j['AST-PP']),
-      mezclaTriple: mezclaTriple,
-      /* Relativos a la liga: la comparación que vale, no el absoluto. */
-      perdidasRel: div(perdidas, medPerdidas),
-      reboteRel: reboteRel,
-      reboteDefRel: reboteDefRel,
-      concentracion: div(nn(j['PLAYS']), totalPlaysEquipo),
-      califica: !!j.__califica,
-    };
-
-    /* --- Origen: la guarda que impide el bug de clasificación ---
-       Un PPT2 alto NO alcanza para llamar a alguien "referencia interna".
-       Es interno si tira casi todo de adentro Y pesa en algún cristal;
-       es perimetral si tiene volumen real de triple. Cuando los dos dan
-       falso (un ala sin triple ni rebote), no es ninguno de los dos y
-       cae en los roles neutros de la cascada. */
-    p.esInterior = mezclaTriple !== null && mezclaTriple < U.mezclaTripleInterior &&
-      ((reboteRel !== null && reboteRel >= U.reboteInterior) ||
-       (reboteDefRel !== null && reboteDefRel >= U.reboteInterior));
-    p.esPerimetral = mezclaTriple !== null && mezclaTriple >= U.mezclaTripleaPerimetral;
-
-    /* Arquetipos de la pestaña JUGADORES: cuarta fuente del cruce. */
     const ficha = fichaJugadores();
-    p.arquetipos = (ficha && ficha.arquetipos) ? (function () {
-      try { return ficha.arquetipos(idx, j).map(a => a.label); } catch (e) { return []; }
-    })() : [];
-    p.jerarquia = (ficha && ficha.jerarquia) ? (function () {
-      try { const r = ficha.jerarquia(idx, j); return r ? r.label : null; } catch (e) { return null; }
-    })() : null;
+    /* La base sale ENTERA del motor de JUGADORES: mismas métricas, mismos
+       relativos a la liga, mismos discriminantes de origen. Acá solo se
+       agrega lo que depende del plantel, que es lo único que Jugadores no
+       puede saber (cuánto del equipo pasa por él). */
+    const p = (ficha && ficha.perfilBase) ? ficha.perfilBase(idx, j) : {};
+    p.concentracion = div(nn(j['PLAYS']), totalPlaysEquipo);
 
-    /* Si la ficha de JUGADORES ya lo marcó como amenaza perimetral real,
-       eso pisa el cálculo de mezcla: es exactamente el caso que el pedido
-       pone como ejemplo (alto PPT2 pero origen perimetral). */
-    if (p.arquetipos.indexOf('Amenaza Perimetral Real') !== -1) {
-      p.esPerimetral = true;
-      p.esInterior = false;
-    }
-
+    /* Etiquetas del ADN compartido, para que el informe muestre las mismas
+       que la ficha del jugador. */
+    const adn = (ficha && ficha.adn) ? ficha.adn(idx, j) : null;
+    p.adn = adn;
+    p.jerarquia = adn && adn.jerarquia ? adn.jerarquia.label : null;
+    p.rolMinutos = adn && adn.rolMinutos ? adn.rolMinutos.label : null;
+    if (!Array.isArray(p.arquetipos)) p.arquetipos = [];
     /* --- Lectura contextual del tiro externo ---
        Acá se decide si se le flota o no, que es la consigna más cara de
        equivocar. Cada flag combina el piso absoluto (economía del básquet)
@@ -833,8 +755,8 @@ const SGADD_SCOUT = (function () {
 
     /* Tira de afuera de verdad: sin volumen mínimo no hay regla que valga,
        dos triples en todo el torneo no describen a nadie. */
-    p.tiraDeAfuera = (t3i !== null && t3i >= 1.0);
-    p.tiradorSistematico = (t3i !== null && t3i >= U.volumenTripleSistematico);
+    p.tiraDeAfuera = (p.t3i !== null && p.t3i >= 1.0);
+    p.tiradorSistematico = (p.t3i !== null && p.t3i >= U.volumenTripleSistematico);
 
     /* Rentable = supera el piso duro O está por encima de su liga. */
     p.tiroExternoRentable = p.tiraDeAfuera && (
@@ -852,19 +774,20 @@ const SGADD_SCOUT = (function () {
     /* ¿Su tiro externo es la vía principal del ataque rival? Si concentra
        una porción grande de los triples del equipo, invitarlo a tirar es
        invitar al equipo entero a hacer lo que mejor sabe. */
-    p.cuotaTriplesEquipo = div(t3i, totalTriplesEquipo);
+    p.cuotaTriplesEquipo = div(p.t3i, totalTriplesEquipo);
     p.viaPrincipalExterna = p.cuotaTriplesEquipo !== null &&
       p.cuotaTriplesEquipo >= U.viaPrincipalTriple;
 
     return p;
   }
 
-  /** Rol funcional: primera de la cascada que calza (excluyente). */
+  /** Rol funcional: delega en el motor de JUGADORES. No hay una segunda
+      cascada acá — que existiera es lo que hacía que el mismo jugador
+      tuviera un rol en el informe y otro en su ficha. */
   function rolFuncional(perfil) {
-    const r = ROLES_FUNCIONALES.find(d => {
-      try { return !!d.test(perfil); } catch (e) { return false; }
-    }) || ROLES_FUNCIONALES[ROLES_FUNCIONALES.length - 1];
-    return { id: r.id, label: r.label, detalle: r.detalle(perfil) };
+    const ficha = fichaJugadores();
+    if (ficha && ficha.rolFuncional) return ficha.rolFuncional(perfil);
+    return { id: 'complementario', label: 'Rol Complementario', detalle: '' };
   }
 
   /** Marca asignada sugerida: primera de la cascada que calza. */
@@ -1185,79 +1108,106 @@ const SGADD_SCOUT = (function () {
   function resumenEjecutivo(idx, claveNuestro, claveRival) {
     const eR = idx.get(claveRival);
     if (!eR) return '';
-    const partes = [];
-
-    const efg = idx.leer(claveRival, 'eFG%');
-    const pace = idx.leer(claveRival, 'PACE');
-    const ro = idx.leer(claveRival, 'RO%');
-    const uso3 = idx.leer(claveRival, 'PT3%');
-
-    /* 1. Identidad de ritmo: condiciona si el plan es correr o frenar. */
-    if (pace && pace.percentil !== null) {
-      partes.push(pace.percentil >= 66
-        ? eR.nombre + ' juega a ritmo alto (' + pace.formateado + ', percentil ' + pace.percentil.toFixed(0) +
-          '): el plan pasa por controlar el tempo y no entrar en un partido de ida y vuelta.'
-        : pace.percentil <= 34
-          ? eR.nombre + ' juega a ritmo controlado (' + pace.formateado + ', percentil ' + pace.percentil.toFixed(0) +
-            '): hay que forzar posesiones rápidas y sacarlos de su libreto.'
-          : eR.nombre + ' maneja un ritmo de media tabla (' + pace.formateado + '): el tempo no define este partido, lo define la eficiencia.');
-    }
-
-    /* 2. De dónde sacan los puntos: perímetro, pintura o segundas chances. */
-    const via = [];
-    if (uso3 && uso3.percentil !== null && uso3.percentil >= 66) via.push('el volumen de triples (' + uso3.formateado + ' de sus plays)');
-    if (ro && ro.percentil !== null && ro.percentil >= 66) via.push('el rebote ofensivo (' + ro.formateado + ', percentil ' + ro.percentil.toFixed(0) + ')');
-    if (efg && efg.percentil !== null && efg.percentil >= 66) via.push('una eficiencia de tiro alta (' + efg.formateado + ')');
-    if (via.length) {
-      partes.push('Su producción se apoya en ' + via.join(', ') + '. Ahí es donde hay que pagar el precio defensivo.');
-    } else if (efg && efg.percentil !== null && efg.percentil <= 34) {
-      partes.push('No tienen una vía de anotación que se destaque en la liga (eFG% ' + efg.formateado +
-        ', percentil ' + efg.percentil.toFixed(0) + '): sostener la estructura defensiva alcanza para incomodarlos.');
-    }
-
-    /* 3. Filosofía defensiva de la noche: se deriva de la composición REAL
-       de marcas asignadas, no de una frase fija. Si el plantel rival está
-       cargado de perímetro, el criterio es de clausura externa; si está
-       cargado de pintura, es de colapso interior. */
     const tabla = jugadoresClave(idx, claveRival);
-    if (tabla) {
-      const cuenta = {};
-      tabla.filas.forEach(f => { cuenta[f.marca.id] = (cuenta[f.marca.id] || 0) + 1; });
-      const perimetro = (cuenta['tirador-elite'] || 0);
-      const interior = (cuenta['interior-dominante'] || 0) + (cuenta['rebotador'] || 0);
-      const regalables = (cuenta['tirador-ineficiente'] || 0);
+    if (!tabla || !tabla.filas.length) return '';
 
-      if (perimetro && interior) {
-        partes.push('Criterio defensivo: no se puede cerrar todo. La consigna es sostener el perímetro sobre ' +
-          perimetro + (perimetro > 1 ? ' amenazas reales' : ' amenaza real') + ' de triple y colapsar la pintura con ayuda de lado débil, ' +
-          'aceptando el tiro de media distancia como el mal menor.');
-      } else if (perimetro) {
-        partes.push('Criterio defensivo: clausura perimetral. El daño llega de afuera, así que la prioridad es negar el catch & shoot ' +
-          'y cerrar esquinas, aun a costa de conceder penetraciones controladas hacia la ayuda.');
-      } else if (interior) {
-        partes.push('Criterio defensivo: colapso de la pintura. Sin amenaza externa que castigue, se puede hundir la defensa, ' +
-          'negar la recepción interior y cargar el cristal.');
-      }
-      if (regalables) {
-        partes.push('Hay ' + regalables + (regalables > 1 ? ' lanzadores' : ' lanzador') +
-          ' de volumen sin renta: contra ellos la invitación al tiro externo es una ganancia, no una concesión.');
-      }
+    const partes = [];
+    const filas = tabla.filas;
+    const orden = (fn) => filas.slice().sort((a, b) => (fn(b) || 0) - (fn(a) || 0));
+
+    /* ---- 1. Quién es el equipo, en una línea de contexto ---- */
+    const pace = idx.leer(claveRival, 'PACE');
+    const efgEq = idx.leer(claveRival, 'eFG%');
+    if (pace && pace.percentil !== null) {
+      partes.push(eR.nombre + (pace.percentil >= 66
+        ? ' juega a ritmo alto (' + pace.formateado + '), así que el plan individual se sostiene o se cae con el balance defensivo.'
+        : pace.percentil <= 34
+          ? ' juega a ritmo controlado (' + pace.formateado + '): pocas posesiones, cada marca individual pesa más.'
+          : ' maneja un ritmo de media tabla (' + pace.formateado + '): el partido lo definen los duelos, no el tempo.'));
     }
 
-    /* 4. El foco individual, desde las claves ya generadas. */
-    const claves = clavesEstrategicas(idx, claveRival);
-    const prioritaria = claves.find(c => c.id === 'ejes-eficiencia') || claves[0];
-    if (prioritaria) {
-      partes.push('Prioridad del plan: ' + prioritaria.titulo.toLowerCase() + ' — ' +
-        prioritaria.jugadores.join(', ') + '.');
+    /* ---- 2. El eje: sobre quién pasa el ataque ---- */
+    const porPlays = orden(f => f.perfil.concentracion);
+    const eje = porPlays[0];
+    if (eje && eje.perfil.concentracion !== null) {
+      const segundo = porPlays[1];
+      partes.push('El ataque pasa por ' + eje.nombre + ' (' + eje.rol.label.toLowerCase() + ', ' +
+        pct(eje.perfil.concentracion) + ' de los plays del equipo, ' + num1(eje.perfil.pts) + ' pts con ' +
+        num2(eje.perfil.ppp) + ' PPP)' +
+        (segundo && segundo.perfil.concentracion !== null
+          ? ', con ' + segundo.nombre + ' como segunda vía (' + pct(segundo.perfil.concentracion) + ').'
+          : '.') +
+        ' Su marca es la decisión más cara de la noche: ' + eje.marca.consigna.toLowerCase() + '.');
     }
 
-    /* 5. Ciclo reciente: en qué estado llegan. */
+    /* ---- 3. Los que hay que cerrar sí o sí ---- */
+    const cerrar = filas.filter(f => f.perfil.tiroExternoRentable);
+    if (cerrar.length) {
+      partes.push('Prohibido soltar a ' + nombres(cerrar.map(f => f.perfil)) + ': ' +
+        detallePorJugador(cerrar.map(f => f.perfil), m => 'tira ' + pct(m.t3) + ' con ' +
+          num2(m.pptTriple) + ' de renta por intento') +
+        '. Sobre ellos la consigna es stay home, no se ayuda desde ese lado aunque se rompa la pintura.');
+    }
+
+    /* ---- 4. Los que conviene dejar resolver ---- */
+    const permitir = filas.filter(f =>
+      f.marca.id === 'tirador-ineficiente' || f.marca.id === 'tirador-sistematico-frio' ||
+      f.marca.id === 'volumen-sin-eficiencia');
+    if (permitir.length) {
+      partes.push('En cambio ' + nombres(permitir.map(f => f.perfil)) + ' ' +
+        (permitir.length > 1 ? 'son' : 'es') + ' donde queremos que termine la posesión: ' +
+        detallePorJugador(permitir.map(f => f.perfil), m => 'eFG% ' + pct(m.efg) +
+          (m.pptTriple !== null ? ' y ' + num2(m.pptTriple) + ' por triple' : '')) +
+        '. Cerrar los caminos al aro y aceptar ese lanzamiento es ganancia, no concesión.');
+    }
+
+    /* ---- 5. Dónde nos pueden lastimar sin la pelota ---- */
+    const cristal = orden(f => f.perfil.reboteRel).filter(f =>
+      f.perfil.reboteRel !== null && f.perfil.reboteRel >= U.reboteOfensivoAlto);
+    if (cristal.length) {
+      partes.push('Box-out asignado sobre ' + nombres(cristal.slice(0, 2).map(f => f.perfil)) +
+        ': sin cargarlos, las segundas chances les devuelven las posesiones que la defensa les saca.');
+    }
+
+    /* ---- 6. Dónde se los puede romper ---- */
+    const presionables = orden(f => f.perfil.perdidasRel).filter(f =>
+      f.perfil.perdidasRel !== null && f.perfil.perdidasRel >= U.perdidasAltas &&
+      f.perfil.min >= U.minutosClave);
+    if (presionables.length) {
+      /* Sin `m.nombre` adentro: `detallePorJugador` ya lo antepone cuando
+         hay más de uno, y ponerlo acá lo duplicaba ("BORRAJO BORRAJO pierde"). */
+      partes.push('La vía para romperlos es la conducción: ' +
+        detallePorJugador(presionables.slice(0, 2).map(f => f.perfil), m => 'pierde ' +
+          pct(m.perdidas) + ' de sus plays (' + num2(m.perdidasRel) + 'x la liga)') +
+        '. Presión al drible en mitad de cancha y trap en la primera cortina.');
+    }
+
+    /* ---- 7. Composición del plantel: qué defensa pide la noche ---- */
+    const cuenta = {};
+    filas.forEach(f => { cuenta[f.marca.id] = (cuenta[f.marca.id] || 0) + 1; });
+    const perimetro = (cuenta['tirador-elite'] || 0) + (cuenta['tirador-eficiente-bajo-volumen'] || 0);
+    const interior = (cuenta['interior-dominante'] || 0) + (cuenta['rebotador'] || 0);
+    if (perimetro && interior) {
+      partes.push('Criterio global: no se puede cerrar todo. Con ' + perimetro + ' amenaza' +
+        (perimetro > 1 ? 's' : '') + ' externa' + (perimetro > 1 ? 's' : '') + ' reales y ' + interior +
+        ' de pintura, la consigna es sostener el perímetro y colapsar con ayuda de lado débil, ' +
+        'aceptando la media distancia como el mal menor.');
+    } else if (perimetro) {
+      partes.push('Criterio global: clausura perimetral. El daño llega de afuera, así que se niega el catch & shoot ' +
+        'y se cierran esquinas aun a costa de conceder penetraciones controladas hacia la ayuda.');
+    } else if (interior) {
+      partes.push('Criterio global: colapso de la pintura. Sin amenaza externa que castigue, se puede hundir la defensa, ' +
+        'negar la recepción interior y cargar el cristal.');
+    }
+
+    /* ---- 8. En qué estado llegan ---- */
     const ciclo = analisisCiclo(idx, claveRival);
     if (ciclo && ciclo.pj) {
       const g = ciclo.ganados ? ciclo.ganados.pj : 0;
       const p = ciclo.perdidos ? ciclo.perdidos.pj : 0;
-      partes.push('Llegan ' + g + '-' + p + ' en sus últimos ' + ciclo.pj + ' partidos.');
+      partes.push('Llegan ' + g + '-' + p + ' en sus últimos ' + ciclo.pj + ' partidos' +
+        (efgEq && efgEq.percentil !== null ? ', con un eFG% de temporada de ' + efgEq.formateado +
+          ' (percentil ' + efgEq.percentil.toFixed(0) + ' de la liga).' : '.'));
     }
 
     return partes.join(' ');
@@ -1306,7 +1256,8 @@ const SGADD_SCOUT = (function () {
   return {
     VENTANA_CICLO, TOP_JUGADORES, TOP_SEMAFORO, UMBRALES: U, DELTA, BANDAS,
     MATRIZ_POSESION, MATRIZ_TIRO, METRICAS_RANKING, COLS_JUGADOR,
-    PERFILES_MARCA, PERFILES_DEFENSOR, ROLES_FUNCIONALES, REGLAS_CLAVE,
+    PERFILES_MARCA, PERFILES_DEFENSOR, REGLAS_CLAVE,
+    get ROLES_FUNCIONALES() { return rolesFuncionales(); },
     statLiga, bandaLiga, porEncima, porDebajo,
     celdaMatriz, referenciaLiga, filaMatriz, matrizComparativa, rankingsLiga,
     detallePartido, fichaEquipo, historialDirecto,
@@ -1525,6 +1476,24 @@ function scoutLogo(nombre) { return (typeof LOGOS !== 'undefined') ? LOGOS.getUr
 function scoutRecord(r) { return r.ganados + ' - ' + r.perdidos; }
 
 /** Chip de ranking, coloreado por tercio de la liga. */
+/**
+ * Badges del ADN, con el MISMO formato y las mismas etiquetas que la
+ * sección Jugadores. Salen de `jugadoresBadges()`, no de una lista propia:
+ * si esta función armara sus propios textos volvería el bug de que el
+ * mismo jugador se llama distinto en cada pantalla.
+ */
+function scoutBadgesADN(perfil) {
+  if (!perfil || !perfil.adn || typeof jugadoresBadges !== 'function') return '';
+  const badges = jugadoresBadges(perfil.adn);
+  if (!badges.length) return '';
+  return `<div class="flex flex-wrap gap-1 mt-1">${badges.map(b => {
+    const color = b.tipo === 'jerarquia' ? 'text-accent border-accent/40'
+      : b.tipo === 'rol' ? 'text-blue-400 border-blue-400/30'
+        : 'text-green-400 border-green-400/30';
+    return `<span class="text-[9px] leading-tight px-1.5 py-0.5 rounded-full border ${color} whitespace-nowrap">${escapeHtml(b.texto)}</span>`;
+  }).join('')}</div>`;
+}
+
 /** Nombre de equipo con su escudo al lado. `alto` en px. */
 function scoutNombreConLogo(nombre, alto) {
   const l = scoutLogo(nombre);
@@ -1742,6 +1711,7 @@ function scoutBloqueMarcas(inf) {
         <td class="px-2 py-2">
           <p class="text-xs text-white">${escapeHtml(f.nombre)}</p>
           <p class="text-[10px] text-accent">${escapeHtml(f.rol.label)}</p>
+          ${f.perfil.jerarquia ? `<p class="text-[10px] text-blue-400">${escapeHtml(f.perfil.jerarquia)}</p>` : ''}
           <p class="text-[10px] dato-sec">${escapeHtml(SGADD.formatear('MIN', f.perfil.min))} min · ${escapeHtml(SGADD.formatear('PTS', f.perfil.pts))} pts</p>
         </td>
         <td class="px-2 py-2">
@@ -1895,6 +1865,7 @@ function scoutBloqueFichas(inf) {
       <article class="scout-ficha bg-surface2/40 rounded-lg p-3">
         <p class="font-display text-sm text-white leading-tight">${escapeHtml(f.nombre)}</p>
         <p class="text-[10px] uppercase tracking-wider text-accent font-display">${escapeHtml(f.rol.label)}</p>
+        ${scoutBadgesADN(p)}
         <p class="text-[11px] font-mono text-ink mt-1 mb-2">
           MIN ${escapeHtml(SGADD.formatear('MIN', p.min))} ·
           PLAYS ${escapeHtml(SGADD.formatear('PLAYS', p.plays))} ·

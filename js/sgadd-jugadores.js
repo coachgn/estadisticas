@@ -33,6 +33,7 @@ const JUGADORES = {
   fase: 'REGULAR',
   jugador: null,        // slug del jugador abierto
   tab: 'general',
+  filtroEquipo: null,   // clave del equipo elegido en el picker, o null
   metricaEvolucion: 'PTS',
   rankingAbierto: 'produccion',
   /* null = usar el umbral de la liga (MIN del JUGADOR TIPO). El DT puede
@@ -356,6 +357,207 @@ function jugadoresJerarquia(idx, j) {
   const prom = jugadoresPromediosLiga(idx);
   const nivel = JERARQUIA.find(n => { try { return !!n.calza(j, prom); } catch (e) { return false; } });
   return { id: nivel.id, emoji: nivel.emoji, label: nivel.label, descripcion: nivel.descripcion };
+}
+
+/* =====================================================================
+   MOTOR CENTRALIZADO DE ADN — single source of truth
+
+   Todo lo que "etiqueta" a un jugador (banda de minutos, jerarquía,
+   arquetipos técnicos y rol funcional) sale de acá y de ningún otro lado.
+   Antes el rol funcional vivía en `sgadd-scouting.js` y el resto acá, así
+   que el mismo jugador aparecía como "Manejador Secundario" en el informe
+   pre-partido y como "⭐ Jugador Franquicia · 🧤 Especialista Defensivo"
+   en su ficha, sin que nada explicara la diferencia.
+
+   No son taxonomías que compitan: responden preguntas distintas (cuánto
+   juega / cuánto pesa en el plantel / qué sabe hacer / qué función cumple
+   en cancha). El error era MOSTRAR un subconjunto distinto en cada
+   sección. Ahora las dos piden `jugadoresADN()` y pintan lo mismo.
+
+   `sgadd-scouting.js` carga DESPUÉS que este archivo, así que puede usar
+   estos globals; la dependencia va en un solo sentido.
+   ===================================================================== */
+
+/* Umbrales del rol funcional. Viven acá porque el rol vive acá: si
+   quedaran en scouting, cambiar uno movería la etiqueta en una sección y
+   no en la otra, que es justo el bug que esto cierra. */
+const JUGADORES_UMBRALES = {
+  minutosClave: 20,              // debajo de esto no condiciona un plan
+  astPPGenerador: 1.40,          // asistencias por pérdida de un conductor real
+  astVolumenGenerador: 2.5,      // el ratio solo no alcanza: hace falta volumen
+  usoTripleAlto: 0.40,           // 40% de sus plays terminan en triple
+  pptDobleAlto: 1.10,            // finaliza de verdad cerca del aro
+  reboteOfensivoAlto: 1.20,      // x la mediana de la liga en RO%
+  reboteInterior: 1.15,          // x la mediana de la liga en RD%
+  /* Discriminantes de ORIGEN. El bug que cerraron: clasificar por PPT2
+     solo mete a cualquier slasher eficiente en la bolsa de "referencia
+     interna". De dónde LANZA se mide sobre intentos, no sobre aciertos. */
+  mezclaTripleaPerimetral: 0.30, // T3I / (T3I + T2I): de acá arriba, tira de afuera
+  mezclaTripleInterior: 0.12,    // debajo, prácticamente no sale del área
+};
+
+/** Rol funcional: cascada excluyente, sin posiciones tradicionales. */
+const JUGADORES_ROLES_FUNCIONALES = [
+  {
+    id: 'generador-primario', label: 'Generador Primario',
+    test: (p) => p.astPP !== null && p.ast !== null &&
+      p.astPP >= JUGADORES_UMBRALES.astPPGenerador &&
+      p.ast >= JUGADORES_UMBRALES.astVolumenGenerador &&
+      p.min >= JUGADORES_UMBRALES.minutosClave,
+    detalle: (p) => 'conduce el ataque: ' + jugadoresNum(p.ast, 1) + ' AST con ' + jugadoresNum(p.astPP, 2) + ' de AST-PP.',
+  },
+  {
+    id: 'rim-runner', label: 'Rebotador de Impacto / Rim Runner',
+    test: (p) => p.esInterior && p.reboteRel !== null && p.reboteRel >= JUGADORES_UMBRALES.reboteOfensivoAlto,
+    detalle: (p) => 'vive del cristal ofensivo: ' + jugadoresNum(p.reboteRel, 2) + 'x la mediana de la liga en RO%.',
+  },
+  {
+    id: 'finalizador-corto', label: 'Finalizador Corto / Short Roll',
+    test: (p) => p.esInterior && p.pptDoble !== null && p.pptDoble >= JUGADORES_UMBRALES.pptDobleAlto,
+    detalle: (p) => 'termina cerca del aro con ' + jugadoresNum(p.pptDoble, 2) + ' por doble intentado.',
+  },
+  {
+    id: 'ancla-defensiva', label: 'Ancla Defensiva',
+    test: (p) => p.esInterior && p.reboteDefRel !== null && p.reboteDefRel >= JUGADORES_UMBRALES.reboteInterior,
+    detalle: (p) => 'sostiene el rebote defensivo (' + jugadoresNum(p.reboteDefRel, 2) + 'x la liga) sin cargar el ataque.',
+  },
+  {
+    id: 'spacing', label: 'Spacing / Tirador de Descarga',
+    test: (p) => p.esPerimetral && p.usoTriple !== null && p.usoTriple >= JUGADORES_UMBRALES.usoTripleAlto,
+    detalle: (p) => 'abre la cancha: ' + jugadoresPct(p.usoTriple) + ' de sus plays terminan en triple.',
+  },
+  {
+    id: 'slasher', label: 'Slasher / Penetrador',
+    /* PPT2 alto pero origen perimetral: ataca el aro DESDE afuera, no
+       juega de espaldas. */
+    test: (p) => p.esPerimetral && p.pptDoble !== null && p.pptDoble >= 1.00,
+    detalle: (p) => 'ataca el aro desde el perímetro: ' + jugadoresNum(p.pptDoble, 2) +
+      ' por doble intentado con ' + jugadoresPct(p.mezclaTriple) + ' de sus tiros de campo desde la línea de 3.',
+  },
+  {
+    id: 'manejador-secundario', label: 'Manejador Secundario',
+    test: (p) => p.astPP !== null && p.astPP >= 1.00 && p.min >= JUGADORES_UMBRALES.minutosClave,
+    detalle: (p) => 'segunda línea de conducción: ' + jugadoresNum(p.astPP, 2) + ' de AST-PP.',
+  },
+  {
+    id: 'perimetral-media', label: 'Perimetral de Media Distancia',
+    test: (p) => p.esPerimetral,
+    detalle: (p) => 'juega de cara al aro sin volumen de triple: ' + jugadoresPct(p.usoTriple) + ' de uso externo.',
+  },
+  {
+    id: 'complementario', label: 'Rol Complementario',
+    test: () => true,
+    detalle: () => 'sin una función dominante que condicione el plan defensivo.',
+  },
+];
+
+function jugadoresNum(v, dec) {
+  return (typeof v === 'number' && isFinite(v)) ? v.toFixed(dec).replace('.', ',') : '—';
+}
+function jugadoresPct(v) {
+  return (typeof v === 'number' && isFinite(v)) ? (v * 100).toFixed(1).replace('.', ',') + '%' : '—';
+}
+function jugadoresNN(v) { return (typeof v === 'number' && isFinite(v)) ? v : null; }
+function jugadoresDiv(a, b) {
+  return (jugadoresNN(a) !== null && jugadoresNN(b) !== null && b !== 0) ? a / b : null;
+}
+
+/**
+ * Perfil métrico de un jugador, SIN los campos que dependen del total del
+ * equipo (concentración de plays, cuota de triples). Esos los agrega
+ * Scouting encima, porque solo tienen sentido dentro de un plantel.
+ *
+ * Es la base compartida: las dos secciones parten de los mismos números.
+ */
+function jugadoresPerfilBase(idx, j) {
+  const tipo = (idx && idx.liga && idx.liga.jugadorTipo) ? idx.liga.jugadorTipo : {};
+  const rebote = jugadoresNN(j['RO%']);
+  const reboteDef = jugadoresNN(j['RD%']);
+  const t3i = jugadoresNN(j['T3I']);
+  const t2i = jugadoresNN(j['T2I']);
+
+  /* Sobre INTENTOS, no sobre conversiones: de dónde tira no depende de si
+     le entra. */
+  const mezclaTriple = jugadoresDiv(t3i, (t3i || 0) + (t2i || 0));
+  const reboteRel = jugadoresDiv(rebote, jugadoresNN(tipo['RO%']));
+  const reboteDefRel = jugadoresDiv(reboteDef, jugadoresNN(tipo['RD%']));
+
+  const p = {
+    nombre: String(j['NOMBRES'] || '').trim(),
+    clave: j.__clave || null,
+    min: jugadoresNN(j['MIN']), plays: jugadoresNN(j['PLAYS']),
+    pts: jugadoresNN(j['PTS']), ppp: jugadoresNN(j['PPP']),
+    efg: jugadoresNN(j['eFG%']), ts: jugadoresNN(j['TS%']),
+    usg: jugadoresNN(j['USG%']), rtl: jugadoresNN(j['RTL%']),
+    usoTriple: jugadoresNN(j['PT3%']), pptTriple: jugadoresNN(j['PPT3']),
+    usoDoble: jugadoresNN(j['PT2%']), pptDoble: jugadoresNN(j['PPT2']),
+    usoLibre: jugadoresNN(j['PT1%']), pptLibre: jugadoresNN(j['PPT1']),
+    t1: jugadoresNN(j['T1%']), t2: jugadoresNN(j['T2%']), t3: jugadoresNN(j['T3%']),
+    t3i: t3i, t2i: t2i, t1i: jugadoresNN(j['T1I']),
+    perdidas: jugadoresNN(j['PePP%']),
+    rebote: rebote, reboteDef: reboteDef,
+    ro: jugadoresNN(j['RO']), rd: jugadoresNN(j['RD']),
+    ast: jugadoresNN(j['AST']), astPP: jugadoresNN(j['AST-PP']),
+    pr: jugadoresNN(j['PR']),
+    mezclaTriple: mezclaTriple,
+    perdidasRel: jugadoresDiv(jugadoresNN(j['PePP%']), jugadoresNN(tipo['PePP%'])),
+    reboteRel: reboteRel, reboteDefRel: reboteDefRel,
+    califica: !!j.__califica,
+  };
+
+  /* Interno = casi no lanza de afuera Y pesa en algún cristal.
+     Perimetral = volumen real de triple. Pueden dar los dos falso (un ala
+     sin triple ni rebote): ahí cae en los roles neutros de la cascada. */
+  p.esInterior = mezclaTriple !== null && mezclaTriple < JUGADORES_UMBRALES.mezclaTripleInterior &&
+    ((reboteRel !== null && reboteRel >= JUGADORES_UMBRALES.reboteInterior) ||
+     (reboteDefRel !== null && reboteDefRel >= JUGADORES_UMBRALES.reboteInterior));
+  p.esPerimetral = mezclaTriple !== null && mezclaTriple >= JUGADORES_UMBRALES.mezclaTripleaPerimetral;
+
+  /* Los arquetipos son la fuente primaria del origen: si acá ya se lo
+     marcó como amenaza perimetral, eso pisa el cálculo de mezcla. */
+  p.arquetipos = jugadoresArquetipos(idx, j).map(a => a.label);
+  if (p.arquetipos.indexOf('Amenaza Perimetral Real') !== -1) {
+    p.esPerimetral = true;
+    p.esInterior = false;
+  }
+  return p;
+}
+
+/** Rol funcional: primera de la cascada que calza (excluyente). */
+function jugadoresRolFuncional(perfil) {
+  const r = JUGADORES_ROLES_FUNCIONALES.find(d => {
+    try { return !!d.test(perfil); } catch (e) { return false; }
+  }) || JUGADORES_ROLES_FUNCIONALES[JUGADORES_ROLES_FUNCIONALES.length - 1];
+  return { id: r.id, label: r.label, detalle: r.detalle(perfil) };
+}
+
+/**
+ * ADN completo de un jugador: LA función que tienen que llamar todas las
+ * secciones. Devuelve las cuatro taxonomías juntas para que ninguna vista
+ * pueda mostrar un subconjunto distinto de otra.
+ */
+function jugadoresADN(idx, j) {
+  if (!idx || !j) return null;
+  const perfil = jugadoresPerfilBase(idx, j);
+  return {
+    nombre: perfil.nombre,
+    clave: perfil.clave,
+    perfil: perfil,
+    rolMinutos: jugadoresRolMinutos(perfil.min),      // cuánto juega
+    jerarquia: jugadoresJerarquia(idx, j),            // cuánto pesa en el plantel
+    arquetipos: jugadoresArquetipos(idx, j),          // qué sabe hacer
+    rolFuncional: jugadoresRolFuncional(perfil),      // qué función cumple en cancha
+  };
+}
+
+/** Etiquetas cortas del ADN, para pintar badges iguales en todas las vistas. */
+function jugadoresBadges(adn) {
+  if (!adn) return [];
+  const out = [];
+  if (adn.jerarquia) out.push({ tipo: 'jerarquia', texto: adn.jerarquia.emoji + ' ' + adn.jerarquia.label });
+  if (adn.rolFuncional) out.push({ tipo: 'rol', texto: adn.rolFuncional.label });
+  (adn.arquetipos || []).forEach(a => out.push({ tipo: 'arquetipo', texto: a.emoji + ' ' + a.label }));
+  return out;
 }
 
 /** El percentil más bajo entre un puñado de métricas de referencia: la
@@ -693,16 +895,18 @@ function jugadoresOrdenarRanking(clave) {
 }
 
 /**
- * Click en un escudo: abre el plantel del club en la sección Equipos.
- * No se duplica acá esa vista — Equipos ya tiene el tab "Plantel" con la
- * grilla y los links a cada ficha. Antes esto filtraba una card "Plantel
- * de la liga" que se sacó en esta vuelta.
+ * Click en un escudo: filtra EN ESTA MISMA SECCIÓN y muestra las cards del
+ * plantel de ese club. NO navega a Equipos — que lo hiciera rompía el flujo
+ * de trabajo: el DT entra a Jugadores para mirar jugadores, y terminaba en
+ * otra pantalla. Volver a tocar el mismo escudo saca el filtro.
  */
 function jugadoresElegirEquipo(clave) {
-  if (typeof equiposIrA !== 'function') return;
-  if (typeof EQUIPOS !== 'undefined') EQUIPOS.tab = 'plantel';
-  if (typeof navigate === 'function') navigate('equipos');
-  equiposIrA(clave);
+  JUGADORES.filtroEquipo = (JUGADORES.filtroEquipo === clave) ? null : clave;
+  jugadoresPintar();
+  if (JUGADORES.filtroEquipo) {
+    const el = document.getElementById('jugadoresPlantel');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
 
 function jugadoresCambiarUmbral(v) {
@@ -717,9 +921,9 @@ function jugadoresPickerEquipos(idx) {
     <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
       <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Elegí un equipo</h3>
       <p class="text-[11px] text-muted mb-4">
-        Abre el plantel completo del club, con la ficha de cada jugador.
+        Muestra el plantel del club acá mismo, ordenado por minutos. Volvé a tocarlo para quitar el filtro.
       </p>
-      ${SGADD_UI.teamPicker(lista, { onClick: 'jugadoresElegirEquipo' })}
+      ${SGADD_UI.teamPicker(lista, { onClick: 'jugadoresElegirEquipo', seleccionado: JUGADORES.filtroEquipo })}
     </div>`;
 }
 
@@ -838,11 +1042,87 @@ function jugadoresBloqueRankings(idx) {
  * directo ahí, tener las dos listas era pedirle al DT que eligiera entre
  * dos caminos al mismo lugar.
  */
+/**
+ * Plantel del equipo elegido. Aparece SOLO con un equipo seleccionado: sin
+ * filtro no hay card (la lista completa de la liga se sacó en su momento
+ * por redundante, ver CLAUDE.md).
+ *
+ * Orden estricto por MIN de mayor a menor: el que más juega es el que más
+ * condiciona el partido, independientemente de cuánto anote.
+ */
+function jugadoresPlantelEquipo(idx) {
+  const clave = JUGADORES.filtroEquipo;
+  if (!clave) return '';
+  const e = idx.get(clave);
+  const lista = (idx.liga.jugadoresPorEquipo.get(clave) || [])
+    .slice()
+    .sort((a, b) => (b['MIN'] || 0) - (a['MIN'] || 0));
+
+  if (!lista.length) {
+    return `<div id="jugadoresPlantel" class="card rounded-xl p-4 sm:p-5 border border-hairline">
+      <p class="text-xs text-muted">Este equipo no tiene jugadores cargados en la fase activa.</p></div>`;
+  }
+
+  const cards = lista.map(j => {
+    const adn = jugadoresADN(idx, j);
+    const slug = jugadoresSlug(j);
+    const logo = (typeof LOGOS !== 'undefined') ? LOGOS.getUrl(j['EQUIPO']) : null;
+    const rolMin = adn.rolMinutos;
+
+    /* Badges del ADN compartido: los mismos que muestra la ficha y el
+       informe de Scouting. Se recortan a tres para que la card no se
+       convierta en un párrafo. */
+    const badges = jugadoresBadges(adn).slice(0, 3).map(b => {
+      const color = b.tipo === 'jerarquia' ? 'text-accent border-accent/40'
+        : b.tipo === 'rol' ? 'text-blue-400 border-blue-400/30'
+          : 'text-green-400 border-green-400/30';
+      return `<span class="text-[9px] leading-tight px-1.5 py-0.5 rounded-full border ${color} whitespace-nowrap">${escapeHtml(b.texto)}</span>`;
+    }).join('');
+
+    const kpi = (k) => `<span class="whitespace-nowrap"><span class="dato-sec">${escapeHtml(k)}</span> ${escapeHtml(SGADD.formatear(k, j[k]))}</span>`;
+
+    return `
+      <button type="button" onclick="jugadoresIrA('${escapeAttr(slug)}')"
+        class="flex flex-col gap-2 p-3 rounded-lg border border-hairline hover:border-accent hover:bg-surface2 transition-all duration-200 text-left min-w-0">
+        <div class="flex items-center gap-2 min-w-0">
+          ${logo ? `<img src="${escapeAttr(logo)}" alt="" class="w-8 h-8 object-contain shrink-0">` : ''}
+          <div class="min-w-0 flex-1">
+            <p class="text-xs text-white font-medium truncate">${escapeHtml(j['NOMBRES'])}</p>
+            ${rolMin ? `<p class="text-[10px] ${rolMin.color} truncate" title="${escapeAttr(rolMin.rol)}">${escapeHtml(rolMin.label)}</p>` : ''}
+          </div>
+        </div>
+        ${badges ? `<div class="flex flex-wrap gap-1">${badges}</div>` : ''}
+        <div class="flex flex-wrap gap-x-2 gap-y-0.5 font-mono text-[10px] text-ink border-t border-hairline/40 pt-1.5">
+          ${kpi('MIN')} ${kpi('PLAYS')} ${kpi('PTS')} ${kpi('eFG%')}
+        </div>
+      </button>`;
+  }).join('');
+
+  return `
+    <div id="jugadoresPlantel" class="card rounded-xl p-4 sm:p-5 border border-hairline">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-1">
+        <h3 class="font-display uppercase tracking-wide text-sm text-ink">
+          Plantel · ${escapeHtml(e ? e.nombre : clave)}
+        </h3>
+        <button type="button" onclick="jugadoresElegirEquipo('${escapeAttr(clave)}')"
+          class="text-[11px] text-muted hover:text-accent border border-hairline hover:border-accent rounded px-2.5 py-1 transition-colors">
+          Quitar filtro
+        </button>
+      </div>
+      <p class="text-[11px] text-muted mb-4">
+        ${lista.length} jugador${lista.length === 1 ? '' : 'es'}, ordenados por minutos de mayor a menor.
+        Clic en una card para abrir el perfil 360°.
+      </p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">${cards}</div>
+    </div>`;
+}
+
 function jugadoresGrilla(idx) {
   return [
     jugadoresPickerEquipos(idx),
+    jugadoresPlantelEquipo(idx),
     jugadoresBloqueRankings(idx),
-  ].join('');
+  ].filter(Boolean).join('');
 }
 
 /* ---------- Ficha ---------- */
@@ -934,7 +1214,7 @@ function jugadoresTarjetaSintesis(bloque) {
     </div>`;
 }
 
-function jugadoresADN(sintesis) {
+function jugadoresBloqueADN(sintesis) {
   const arqs = sintesis.arquetipos.length
     ? sintesis.arquetipos.map(a => `
         <span class="inline-flex items-center gap-1 text-[11px] bg-surface2/60 border border-hairline rounded-full px-2.5 py-1 mr-1.5 mb-1.5"
@@ -1021,7 +1301,7 @@ function jugadoresTabGeneral(idx, j) {
   };
 
   return `
-    ${jugadoresADN(sintesis)}
+    ${jugadoresBloqueADN(sintesis)}
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
       ${jugadoresTarjetaSintesis(sintesis.impacto)}
       ${jugadoresTarjetaSintesis(sintesis.eficiencia)}
@@ -1179,6 +1459,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     JUGADORES_TABS, JUGADORES_METRICAS_EVOLUCION, ROLES_MINUTOS, PERFILES_TECNICOS, JERARQUIA, ZONAS_TIRO,
     JUGADORES_RANKINGS, JUGADORES_TOP_N, jugadoresRanking, jugadoresUmbralRanking,
+    JUGADORES_UMBRALES, JUGADORES_ROLES_FUNCIONALES,
+    jugadoresPerfilBase, jugadoresRolFuncional, jugadoresADN, jugadoresBadges,
     CLAVES_CONDICION, MIN_PJ_CONDICION, SENSIBILIDAD_CONDICION,
     jugadoresSlug, jugadoresBuscar, jugadoresZScore,
     jugadoresPartidosOrdenados, jugadoresRival, jugadoresIdCanonico,
