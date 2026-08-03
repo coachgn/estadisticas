@@ -341,9 +341,13 @@ const JERARQUIA = [
     descripcion: 'Alto volumen de decisiones: carga una parte grande del ataque.',
   },
   {
-    id: 'quinteto', emoji: '🧱', label: 'Pieza de Quinteto Titular',
+    /* NO decir "titular". La planilla no trae el quinteto inicial, y 23
+       minutos de promedio los puede hacer perfectamente un sexto hombre.
+       La etiqueta describe la CARGA DE MINUTOS, que es lo que el dato
+       sostiene, no el momento en que entra a la cancha. */
+    id: 'quinteto', emoji: '🧱', label: 'Pieza de Rotación Alta',
     calza: (j) => typeof j['MIN'] === 'number' && j['MIN'] >= 23,
-    descripcion: 'Presencia extendida en cancha con un aporte estable, sin ser el foco del ataque.',
+    descripcion: 'Carga de minutos alta y aporte estable, sin ser el foco del ataque.',
   },
   {
     id: 'especialista', emoji: '🛠️', label: 'Especialista de Rol',

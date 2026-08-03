@@ -656,10 +656,10 @@ const SGADD_SCOUT = (function () {
        el top-3 se decide por PTS: la pregunta del bloque es quién anota,
        y el PPP es el contexto de rentabilidad.
      - Las tres columnas de uso muestran el % de plays del jugador, pero
-       rankean por INTENTOS ABSOLUTOS (T3I/T2I/T1I). Un suplente que tiró
-       3 triples en el torneo puede tener 60% de uso externo y no es un
-       tirador: el semáforo tiene que marcar volumen real dentro de la
-       estructura del equipo, no una fracción sobre una muestra mínima. */
+       rankean por INTENTOS ABSOLUTOS (T3I/T2I/T1I). Un jugador de pocos
+       minutos que tiró 3 triples en el torneo puede tener 60% de uso
+       externo y no es un tirador: el semáforo tiene que marcar volumen
+       real dentro de la estructura, no una fracción sobre casi nada. */
   const COLS_JUGADOR = [
     { id: 'MIN', label: 'MIN', formato: 'num1' },
     { id: 'PLAYS', label: 'PLAYS', formato: 'num1' },
@@ -1056,11 +1056,16 @@ const SGADD_SCOUT = (function () {
     },
   ];
 
-  function nombres(perfiles) {
-    const ns = perfiles.map(p => p.nombre);
-    if (ns.length === 1) return ns[0];
-    return ns.slice(0, -1).join(', ') + ' y ' + ns[ns.length - 1];
+  /** Enumeración natural: "A", "A y B", "A, B y C". Con `join(' y ')` a
+      partir de tres elementos queda "A y B y C", que se lee a los tropezones
+      en un informe que el DT lee en voz alta al plantel. */
+  function enumerar(items) {
+    if (!items.length) return '';
+    if (items.length === 1) return items[0];
+    return items.slice(0, -1).join(', ') + ' y ' + items[items.length - 1];
   }
+
+  function nombres(perfiles) { return enumerar(perfiles.map(p => p.nombre)); }
 
   /**
    * Detalle por jugador de una clave. Con UNO solo omite el nombre: ya lo
@@ -1105,6 +1110,26 @@ const SGADD_SCOUT = (function () {
      que no pueda contradecir a la tabla que está justo encima.
      ===================================================================== */
 
+  /**
+   * Síntesis ejecutiva del plan. Seis tramos fijos, todos alrededor de los
+   * JUGADORES y no del equipo como bloque:
+   *
+   *   1. ritmo y balance defensivo
+   *   2. eje de ataque y creación (volumen + PPP)
+   *   3. a quién NO se puede soltar (stay home)
+   *   4. a quién conviene invitar a tirar
+   *   5. carga del cristal (box-out asignado)
+   *   6. criterio global + momento reciente
+   *
+   * La prioridad la marcan MIN y PLAYS: se nombra primero a los que el
+   * motor de JUGADORES clasifica como Clave o Importante por su banda de
+   * minutos, porque son los que van a estar en cancha en los momentos que
+   * definen el partido. Los de rotación baja entran solo si disparan una
+   * regla puntual (un tirador caro de 12 minutos sigue siendo caro).
+   *
+   * NUNCA se los llama titulares: la planilla no trae el quinteto inicial
+   * y 25 minutos de promedio los puede hacer un sexto hombre.
+   */
   function resumenEjecutivo(idx, claveNuestro, claveRival) {
     const eR = idx.get(claveRival);
     if (!eR) return '';
@@ -1115,100 +1140,120 @@ const SGADD_SCOUT = (function () {
     const filas = tabla.filas;
     const orden = (fn) => filas.slice().sort((a, b) => (fn(b) || 0) - (fn(a) || 0));
 
-    /* ---- 1. Quién es el equipo, en una línea de contexto ---- */
+    /* Carga alta = Clave o Importante por banda de minutos. Es la etiqueta
+       del motor centralizado, no un umbral propio de este archivo. */
+    const cargaAlta = (f) => f.perfil.adn && f.perfil.adn.rolMinutos &&
+      ['clave', 'importante'].indexOf(f.perfil.adn.rolMinutos.id) !== -1;
+    /* Prioriza a los de carga alta sin descartar al resto: un especialista
+       de pocos minutos que dispara una regla se nombra igual, pero después. */
+    const priorizar = (lista) => lista.slice().sort((a, b) => {
+      const d = (cargaAlta(b) ? 1 : 0) - (cargaAlta(a) ? 1 : 0);
+      return d !== 0 ? d : (b.perfil.min || 0) - (a.perfil.min || 0);
+    });
+
+    /* ---- 1. Ritmo y balance defensivo ---- */
     const pace = idx.leer(claveRival, 'PACE');
-    const efgEq = idx.leer(claveRival, 'eFG%');
     if (pace && pace.percentil !== null) {
       partes.push(eR.nombre + (pace.percentil >= 66
         ? ' juega a ritmo alto (' + pace.formateado + '), así que el plan individual se sostiene o se cae con el balance defensivo.'
         : pace.percentil <= 34
-          ? ' juega a ritmo controlado (' + pace.formateado + '): pocas posesiones, cada marca individual pesa más.'
+          ? ' juega a ritmo controlado (' + pace.formateado + '): pocas posesiones, y cada marca individual pesa el doble.'
           : ' maneja un ritmo de media tabla (' + pace.formateado + '): el partido lo definen los duelos, no el tempo.'));
     }
 
-    /* ---- 2. El eje: sobre quién pasa el ataque ---- */
+    /* ---- 2. Eje de ataque y creación ---- */
     const porPlays = orden(f => f.perfil.concentracion);
     const eje = porPlays[0];
     if (eje && eje.perfil.concentracion !== null) {
       const segundo = porPlays[1];
-      partes.push('El ataque pasa por ' + eje.nombre + ' (' + eje.rol.label.toLowerCase() + ', ' +
-        pct(eje.perfil.concentracion) + ' de los plays del equipo, ' + num1(eje.perfil.pts) + ' pts con ' +
-        num2(eje.perfil.ppp) + ' PPP)' +
+      partes.push('El ataque pasa por ' + eje.nombre + ' (' + pct(eje.perfil.concentracion) +
+        ' de los plays del equipo, ' + num1(eje.perfil.pts) + ' pts con ' + num2(eje.perfil.ppp) + ' PPP, ' +
+        eje.rol.label.toLowerCase() + ')' +
         (segundo && segundo.perfil.concentracion !== null
           ? ', con ' + segundo.nombre + ' como segunda vía (' + pct(segundo.perfil.concentracion) + ').'
           : '.') +
         ' Su marca es la decisión más cara de la noche: ' + eje.marca.consigna.toLowerCase() + '.');
     }
 
-    /* ---- 3. Los que hay que cerrar sí o sí ---- */
-    const cerrar = filas.filter(f => f.perfil.tiroExternoRentable);
+    /* ---- 3. Stay home: los que no se sueltan ---- */
+    const cerrar = priorizar(filas.filter(f => f.perfil.tiroExternoRentable)).slice(0, 3);
     if (cerrar.length) {
-      partes.push('Prohibido soltar a ' + nombres(cerrar.map(f => f.perfil)) + ': ' +
-        detallePorJugador(cerrar.map(f => f.perfil), m => 'tira ' + pct(m.t3) + ' con ' +
-          num2(m.pptTriple) + ' de renta por intento') +
-        '. Sobre ellos la consigna es stay home, no se ayuda desde ese lado aunque se rompa la pintura.');
+      partes.push('Prohibido soltar a ' +
+        enumerar(cerrar.map(f => f.nombre + ' (' + pct(f.perfil.t3) + ' de 3, ' + num2(f.perfil.pptTriple) + ' PPT3)')) +
+        ': sobre ' + (cerrar.length > 1 ? 'ellos' : 'él') + ' la consigna es stay home, ' +
+        'no se ayuda desde ese lado aunque se rompa la pintura.');
     }
 
-    /* ---- 4. Los que conviene dejar resolver ---- */
-    const permitir = filas.filter(f =>
-      f.marca.id === 'tirador-ineficiente' || f.marca.id === 'tirador-sistematico-frio' ||
-      f.marca.id === 'volumen-sin-eficiencia');
+    /* ---- 4. Invitación selectiva al tiro ---- */
+    const permitir = priorizar(filas.filter(f =>
+      ['tirador-ineficiente', 'tirador-sistematico-frio', 'volumen-sin-eficiencia'].indexOf(f.marca.id) !== -1
+    )).slice(0, 3);
     if (permitir.length) {
-      partes.push('En cambio ' + nombres(permitir.map(f => f.perfil)) + ' ' +
-        (permitir.length > 1 ? 'son' : 'es') + ' donde queremos que termine la posesión: ' +
-        detallePorJugador(permitir.map(f => f.perfil), m => 'eFG% ' + pct(m.efg) +
-          (m.pptTriple !== null ? ' y ' + num2(m.pptTriple) + ' por triple' : '')) +
-        '. Cerrar los caminos al aro y aceptar ese lanzamiento es ganancia, no concesión.');
+      partes.push('En cambio ' +
+        enumerar(permitir.map(f => f.nombre + ' (eFG% ' + pct(f.perfil.efg) +
+          (f.perfil.pptTriple !== null ? ', ' + num2(f.perfil.pptTriple) + ' PPT3' : '') + ')')) +
+        ' ' + (permitir.length > 1 ? 'son' : 'es') + ' donde queremos que termine la posesión. ' +
+        'Cerrar los caminos al aro y aceptar ese lanzamiento es ganancia, no concesión.');
     }
 
-    /* ---- 5. Dónde nos pueden lastimar sin la pelota ---- */
-    const cristal = orden(f => f.perfil.reboteRel).filter(f =>
-      f.perfil.reboteRel !== null && f.perfil.reboteRel >= U.reboteOfensivoAlto);
+    /* ---- 5. Carga y control del cristal ---- */
+    const cristal = priorizar(orden(f => f.perfil.reboteRel).filter(f =>
+      f.perfil.reboteRel !== null && f.perfil.reboteRel >= U.reboteOfensivoAlto)).slice(0, 2);
     if (cristal.length) {
-      partes.push('Box-out asignado sobre ' + nombres(cristal.slice(0, 2).map(f => f.perfil)) +
+      /* El múltiplo va pegado a cada nombre: separarlos en dos listas
+         obliga a contar posiciones para saber cuál es de quién. */
+      partes.push('Box-out asignado sobre ' +
+        enumerar(cristal.map(f => f.nombre + ' (' + num2(f.perfil.reboteRel) + 'x la liga en RO%)')) +
         ': sin cargarlos, las segundas chances les devuelven las posesiones que la defensa les saca.');
     }
 
-    /* ---- 6. Dónde se los puede romper ---- */
-    const presionables = orden(f => f.perfil.perdidasRel).filter(f =>
+    /* Extra táctico: por dónde se los rompe. No es uno de los seis tramos
+       fijos, pero cuando hay un conductor que pierde mucho es la vía más
+       barata de sacarlos de partido y sería una omisión callarla. */
+    const presionables = priorizar(orden(f => f.perfil.perdidasRel).filter(f =>
       f.perfil.perdidasRel !== null && f.perfil.perdidasRel >= U.perdidasAltas &&
-      f.perfil.min >= U.minutosClave);
+      f.perfil.min >= U.minutosClave)).slice(0, 2);
     if (presionables.length) {
-      /* Sin `m.nombre` adentro: `detallePorJugador` ya lo antepone cuando
-         hay más de uno, y ponerlo acá lo duplicaba ("BORRAJO BORRAJO pierde"). */
       partes.push('La vía para romperlos es la conducción: ' +
-        detallePorJugador(presionables.slice(0, 2).map(f => f.perfil), m => 'pierde ' +
-          pct(m.perdidas) + ' de sus plays (' + num2(m.perdidasRel) + 'x la liga)') +
+        enumerar(presionables.map(f => f.nombre + ' pierde ' + pct(f.perfil.perdidas) +
+          ' de sus plays (' + num2(f.perfil.perdidasRel) + 'x la liga)')) +
         '. Presión al drible en mitad de cancha y trap en la primera cortina.');
     }
 
-    /* ---- 7. Composición del plantel: qué defensa pide la noche ---- */
+    /* ---- 6. Criterio global + momento reciente, en un solo cierre ---- */
     const cuenta = {};
     filas.forEach(f => { cuenta[f.marca.id] = (cuenta[f.marca.id] || 0) + 1; });
     const perimetro = (cuenta['tirador-elite'] || 0) + (cuenta['tirador-eficiente-bajo-volumen'] || 0);
     const interior = (cuenta['interior-dominante'] || 0) + (cuenta['rebotador'] || 0);
+
+    let criterio;
     if (perimetro && interior) {
-      partes.push('Criterio global: no se puede cerrar todo. Con ' + perimetro + ' amenaza' +
-        (perimetro > 1 ? 's' : '') + ' externa' + (perimetro > 1 ? 's' : '') + ' reales y ' + interior +
-        ' de pintura, la consigna es sostener el perímetro y colapsar con ayuda de lado débil, ' +
-        'aceptando la media distancia como el mal menor.');
+      criterio = 'Criterio global: no se puede cerrar todo. Con ' + perimetro + ' amenaza' +
+        (perimetro > 1 ? 's' : '') + ' externa' + (perimetro > 1 ? 's' : '') + ' real' +
+        (perimetro > 1 ? 'es' : '') + ' y ' + interior + ' de pintura, se sostiene el perímetro y se colapsa con ayuda ' +
+        'de lado débil, aceptando la media distancia como el mal menor.';
     } else if (perimetro) {
-      partes.push('Criterio global: clausura perimetral. El daño llega de afuera, así que se niega el catch & shoot ' +
-        'y se cierran esquinas aun a costa de conceder penetraciones controladas hacia la ayuda.');
+      criterio = 'Criterio global: clausura perimetral. El daño llega de afuera, así que se niega el catch & shoot ' +
+        'y se cierran esquinas, aun a costa de conceder penetraciones controladas hacia la ayuda.';
     } else if (interior) {
-      partes.push('Criterio global: colapso de la pintura. Sin amenaza externa que castigue, se puede hundir la defensa, ' +
-        'negar la recepción interior y cargar el cristal.');
+      criterio = 'Criterio global: colapso de la pintura. Sin amenaza externa que castigue, se hunde la defensa, ' +
+        'se niega la recepción interior y se carga el cristal.';
+    } else {
+      criterio = 'Criterio global: sin una amenaza que se despegue, alcanza con sostener la estructura y no regalar tiros cómodos.';
     }
 
-    /* ---- 8. En qué estado llegan ---- */
     const ciclo = analisisCiclo(idx, claveRival);
+    const efgEq = idx.leer(claveRival, 'eFG%');
+    let momento = '';
     if (ciclo && ciclo.pj) {
       const g = ciclo.ganados ? ciclo.ganados.pj : 0;
       const p = ciclo.perdidos ? ciclo.perdidos.pj : 0;
-      partes.push('Llegan ' + g + '-' + p + ' en sus últimos ' + ciclo.pj + ' partidos' +
-        (efgEq && efgEq.percentil !== null ? ', con un eFG% de temporada de ' + efgEq.formateado +
-          ' (percentil ' + efgEq.percentil.toFixed(0) + ' de la liga).' : '.'));
+      momento = ' Llegan ' + g + '-' + p + ' en sus últimos ' + ciclo.pj + ' partidos' +
+        (efgEq && efgEq.percentil !== null
+          ? ', con un eFG% de temporada de ' + efgEq.formateado + ' (percentil ' + efgEq.percentil.toFixed(0) + ' de la liga).'
+          : '.');
     }
+    partes.push(criterio + momento);
 
     return partes.join(' ');
   }

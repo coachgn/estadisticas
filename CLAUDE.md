@@ -21,10 +21,10 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  17 tests · detalle partido a partido
-node test-scouting.js      # 179 tests · informe pre-partido, bandas, marcas, homologacion ADN
+node test-scouting.js      # 202 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 ```
 
-**616 tests en total. Todos tienen que dar verde antes de commitear.**
+**639 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -73,7 +73,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=42`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=43`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -344,7 +344,7 @@ calza, de más a menos exigente):
 1. ⭐ **Jugador Franquicia** — PLAYS > 1.20x liga y más de 28 minutos.
 2. ⚔️ **Referente Ofensivo / Segunda Espada** — PLAYS por encima del
    promedio de la liga.
-3. 🧱 **Pieza de Quinteto Titular** — MIN ≥ 23, sin ser el foco de PLAYS.
+3. 🧱 **Pieza de Rotación Alta** — MIN ≥ 23, sin ser el foco de PLAYS.
 4. 🛠️ **Especialista de Rol** — el resto (fallback, siempre calza).
 
 La síntesis (Tab General) muestra impacto colectivo y eficiencia individual
@@ -592,18 +592,57 @@ externo rentable se le sugiera flotar o ayudar desde él**. Con datos reales
 de Atenas: Schroeder (2,4 T3I, PPT3 1,04) pasó a STAY HOME y Qüin (5,4 T3I,
 PPT3 0,78) a contestar sin saltar — antes los dos recibían "flotar".
 
-### El resumen de criterio estratégico gira alrededor de los jugadores
+### El resumen de criterio estratégico: seis tramos alrededor de jugadores
 
-`resumenEjecutivo()` arma ocho tramos, y siete nombran jugadores concretos
-con el número que los justifica: contexto de ritmo, el **eje del ataque**
-(quién concentra los plays, con su rol y su PPP), **a quién no se puede
-soltar** (los de tiro externo rentable), **a quién conviene dejar
-resolver**, el cristal, la conducción presionable, el criterio global según
-la composición de marcas, y el ciclo reciente. Contra Atenas real da ~1700
-caracteres con nombres propios en cada consigna.
+`resumenEjecutivo()` sigue un esquema fijo, y todos los tramos salvo el
+primero nombran jugadores concretos con el número que los justifica:
+
+1. **Ritmo y balance defensivo** — el PACE del rival y su consecuencia.
+2. **Eje de ataque y creación** — quién concentra los plays, con % del
+   equipo, puntos, PPP y su rol funcional; más la segunda vía.
+3. **Stay home** — los de tiro externo rentable, con T3% y PPT3. Sobre
+   ellos no se ayuda "aunque se rompa la pintura".
+4. **Invitación selectiva** — los de volumen sin renta, encuadrados como
+   ganancia y no como concesión.
+5. **Carga del cristal** — box-out asignado, con el múltiplo de liga en RO%
+   pegado a cada nombre.
+6. **Criterio global + momento reciente**, en un solo cierre.
+
+(Hay un tramo extra entre el 5 y el 6 cuando existe un conductor que pierde
+mucho: es la vía más barata de sacarlos del partido y callarla sería una
+omisión.)
+
+**La prioridad la marcan MIN y PLAYS.** `priorizar()` ordena por la banda
+de minutos del motor centralizado (Clave e Importante primero) sin
+descartar al resto: un tirador caro de 12 minutos se nombra igual, pero
+después. Contra Atenas real da ~1550 caracteres.
 
 Se arma desde `jugadoresClave()`, o sea desde las mismas filas que pinta la
 tabla de arriba: no puede contradecir al cuadro que tiene al lado.
+
+`enumerar()` arma las listas en castellano ("A, B y C"). Con `join(' y ')`
+salía "A y B y C", que se lee a los tropezones en un informe que el DT lee
+en voz alta.
+
+### PROHIBIDO hablar de titularidad
+
+**La planilla no trae el quinteto inicial.** No hay columna de titulares, y
+25 minutos de promedio los puede hacer perfectamente un sexto hombre. Por
+eso ninguna etiqueta, consigna, ficha ni resumen puede decir "titular",
+"suplente" o "quinteto inicial", ni en la UI ni en los comentarios del
+código.
+
+La jerarquización sale **solo** de las etiquetas del motor centralizado
+(Jugador Clave / Importante / de Rotación / Pocos Minutos, y la jerarquía
+del ADN) y de MIN y PLAYS.
+
+Por esto la jerarquía `🧱 Pieza de Quinteto Titular` pasó a llamarse
+**`🧱 Pieza de Rotación Alta`**: el umbral (MIN ≥ 23) mide carga de
+minutos, que es lo que el dato sostiene, no el momento en que entra a la
+cancha. Hay tests que recorren TODAS las etiquetas del sistema (jerarquías,
+bandas de minutos, perfiles técnicos, roles funcionales, perfiles de
+defensor, consignas, fortalezas, fugas, claves y el resumen) y fallan si
+alguna vuelve a mencionar titularidad.
 
 ### Consigna por volumen sin eficiencia
 

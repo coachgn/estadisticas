@@ -780,6 +780,85 @@ check('el resumen cierra con el estado del ciclo reciente', /últimos \d+ partid
 check('el resumen es sustancialmente más largo que un párrafo suelto',
   resumenJ.length > 400, resumenJ.length);
 
+console.log('\n10. SÍNTESIS ESTRATÉGICA · LOS SEIS TRAMOS');
+console.log('═'.repeat(70));
+
+/* 1. Ritmo */
+check('1· abre con el ritmo del rival y su consecuencia defensiva',
+  /^AGUILA.*ritmo/i.test(resumenJ) && /(balance defensivo|marca individual|duelos)/i.test(resumenJ),
+  resumenJ.slice(0, 130));
+/* 2. Eje de ataque */
+check('2· identifica el eje del ataque con % de plays, puntos y PPP',
+  /ataque pasa por/i.test(resumenJ) && /de los plays del equipo/.test(resumenJ) &&
+  /pts con .* PPP/.test(resumenJ), resumenJ.slice(resumenJ.indexOf('El ataque'), resumenJ.indexOf('El ataque') + 170));
+check('2· nombra una segunda vía cuando existe',
+  /segunda vía/i.test(resumenJ) || tabla.filas.length < 2);
+check('2· cierra el tramo del eje con su consigna de marca',
+  /decisión más cara de la noche/i.test(resumenJ));
+/* 3. Stay home */
+check('3· lista a los intocables con su T3% y su PPT3',
+  /Prohibido soltar a .*de 3, .*PPT3/.test(resumenJ) || !tabla.filas.some(f => f.perfil.tiroExternoRentable),
+  resumenJ.slice(resumenJ.indexOf('Prohibido'), resumenJ.indexOf('Prohibido') + 150));
+check('3· explicita que no se ayuda desde ese lado',
+  /no se ayuda desde ese lado/i.test(resumenJ) || !tabla.filas.some(f => f.perfil.tiroExternoRentable));
+/* 4. Invitación selectiva */
+check('4· encuadra el tiro permitido como ganancia, no como concesión',
+  /es ganancia, no concesión/i.test(resumenJ) ||
+  !tabla.filas.some(f => ['tirador-ineficiente', 'tirador-sistematico-frio', 'volumen-sin-eficiencia'].indexOf(f.marca.id) !== -1));
+check('4· cita el eFG% de los que conviene dejar tirar',
+  !/queremos que termine la posesión/.test(resumenJ) || /eFG% \d/.test(resumenJ));
+/* 5. Cristal */
+check('5· asigna box-out con el múltiplo de liga que lo justifica',
+  !/Box-out asignado/.test(resumenJ) || /x la liga en RO%/.test(resumenJ),
+  resumenJ.slice(resumenJ.indexOf('Box-out'), resumenJ.indexOf('Box-out') + 140));
+/* 6. Criterio global + momento */
+check('6· cierra con criterio global y momento reciente en el mismo tramo',
+  /Criterio global:/.test(resumenJ) && /últimos \d+ partidos/.test(resumenJ));
+check('6· el momento reciente trae el percentil de eFG% de la temporada',
+  /percentil \d+ de la liga/.test(resumenJ) || !/eFG% de temporada/.test(resumenJ));
+check('los seis tramos salen en el orden del esquema',
+  (function () {
+    const pos = ['ritmo', 'El ataque pasa por', 'Criterio global:'].map(s => resumenJ.indexOf(s));
+    return pos.every(p => p !== -1) && pos[0] < pos[1] && pos[1] < pos[2];
+  })(), resumenJ.slice(0, 80));
+
+/* --- Prioridad por carga de minutos --- */
+check('el eje nombrado es el que más plays concentra del plantel',
+  (function () {
+    const top = tabla.filas.slice().sort((a, b) => (b.perfil.concentracion || 0) - (a.perfil.concentracion || 0))[0];
+    return resumenJ.indexOf(top.nombre) !== -1;
+  })());
+check('los jugadores nombrados salen del plantel real, no de un texto fijo',
+  tabla.filas.filter(f => resumenJ.indexOf(f.nombre) !== -1).length >= 2,
+  tabla.filas.filter(f => resumenJ.indexOf(f.nombre) !== -1).map(f => f.nombre).join('|'));
+
+/* --- TAREA 3: nada de titularidad, en ninguna parte --- */
+console.log('\n11. RESTRICCIÓN DE TITULARIDAD');
+console.log('═'.repeat(70));
+
+const PROHIBIDAS = /\b(titular(es)?|suplente(s)?|quinteto inicial|starter)\b/i;
+check('el resumen estratégico no habla de titulares ni suplentes',
+  !PROHIBIDAS.test(resumenJ), (resumenJ.match(PROHIBIDAS) || [''])[0]);
+check('ninguna consigna ni restricción de marca menciona titularidad',
+  tabla.filas.every(f => !PROHIBIDAS.test(f.marca.consigna + ' ' + f.marca.restriccion + ' ' + f.marca.porque)));
+check('ningún rol funcional menciona titularidad',
+  S.ROLES_FUNCIONALES.every(r => !PROHIBIDAS.test(r.label)),
+  S.ROLES_FUNCIONALES.map(r => r.label).join(' | '));
+check('ninguna etiqueta de jerarquía del ADN menciona titularidad',
+  JUG.JERARQUIA.every(n => !PROHIBIDAS.test(n.label + ' ' + n.descripcion)),
+  JUG.JERARQUIA.map(n => n.label).join(' | '));
+check('ninguna banda de minutos menciona titularidad',
+  JUG.ROLES_MINUTOS.every(r => !PROHIBIDAS.test(r.label + ' ' + r.rol)),
+  JUG.ROLES_MINUTOS.map(r => r.label).join(' | '));
+check('los perfiles técnicos tampoco',
+  JUG.PERFILES_TECNICOS.every(p => !PROHIBIDAS.test(p.label + ' ' + p.detalle)));
+check('ningún perfil de defensor nuestro lo menciona',
+  Object.keys(S.PERFILES_DEFENSOR).every(k => !PROHIBIDAS.test(S.PERFILES_DEFENSOR[k])));
+check('las fortalezas y fugas generadas tampoco lo mencionan',
+  tabla.filas.every(f => f.fortalezas.concat(f.fugas).every(t => !PROHIBIDAS.test(t))));
+check('las claves estratégicas tampoco',
+  S.clavesEstrategicas(idx, 'AGUILA').every(c => !PROHIBIDAS.test(c.texto + ' ' + c.titulo)));
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);
