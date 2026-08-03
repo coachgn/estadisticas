@@ -518,6 +518,62 @@ check('trae la mediana del propio top para el resalte de referencia',
 check('un grupo inexistente da null, no una excepción', J.jugadoresRanking(idxRk, 'NO_EXISTE') === null);
 check('sin índice devuelve null en vez de romper', J.jugadoresRanking(null, 'rebotes') === null);
 
+/* --- Orden dinámico por cabecera --- */
+console.log('\nX bis. ORDEN DINÁMICO POR COLUMNA');
+console.log('═'.repeat(70));
+
+check('sin pedir orden, se muestra por la métrica del grupo',
+  rkReb.ordenPor === 'RO' && rkReb.dir === 'desc', JSON.stringify({ por: rkReb.ordenPor, dir: rkReb.dir }));
+
+const porRD = J.jugadoresRanking(idxRk, 'rebotes', { ordenPor: 'RD' });
+check('ordenando por RD, el primero es el que más rebotes defensivos tiene',
+  porRD.filas[0].jugador === 'ANCLA, DEFENSIVA', porRD.filas.map(f => f.jugador + ':' + f.celdas['RD']).join('|'));
+check('el resultado informa por qué columna se está mostrando',
+  porRD.ordenPor === 'RD' && porRD.dir === 'desc');
+check('el orden descendente se cumple fila a fila',
+  porRD.filas.every((f, i, a) => i === 0 || a[i - 1].celdas['RD'] >= f.celdas['RD']),
+  porRD.filas.map(f => f.celdas['RD']).join(','));
+
+const porRDAsc = J.jugadoresRanking(idxRk, 'rebotes', { ordenPor: 'RD', dir: 'asc' });
+check('el sentido ascendente invierte la tabla',
+  porRDAsc.filas.every((f, i, a) => i === 0 || a[i - 1].celdas['RD'] <= f.celdas['RD']),
+  porRDAsc.filas.map(f => f.celdas['RD']).join(','));
+/* Se compara el VALOR y no el nombre: con empates (varios con el mismo RD)
+   el primero ascendente no tiene por qué ser el mismo jugador que el último
+   descendente, pero el número sí tiene que coincidir. */
+check('ascendente arranca en el mismo valor en que termina el descendente',
+  porRDAsc.filas[0].celdas['RD'] === porRD.filas[porRD.filas.length - 1].celdas['RD'],
+  JSON.stringify({ asc: porRDAsc.filas[0].celdas['RD'], descUltimo: porRD.filas[porRD.filas.length - 1].celdas['RD'] }));
+
+/* La regla que evita que la tabla deje de ser lo que dice ser. */
+check('reordenar NO cambia quién entra al top: son los mismos jugadores',
+  porRD.filas.map(f => f.jugador).sort().join('|') === rkReb.filas.map(f => f.jugador).sort().join('|'),
+  JSON.stringify({ rd: porRD.filas.length, ro: rkReb.filas.length }));
+check('el grupo sigue declarando su métrica de selección aunque se muestre por otra',
+  porRD.orden === 'RO' && porRD.ordenPor === 'RD');
+check('el puesto se renumera según el orden mostrado',
+  porRD.filas.every((f, i) => f.puesto === i + 1));
+
+check('pedir orden por una columna que no está en la tabla cae al orden del grupo',
+  J.jugadoresRanking(idxRk, 'rebotes', { ordenPor: 'T3I' }).ordenPor === 'RO');
+check('una dirección inválida cae a descendente',
+  J.jugadoresRanking(idxRk, 'rebotes', { dir: 'lo-que-sea' }).dir === 'desc');
+check('se puede ordenar por cualquier columna declarada del grupo',
+  rkCre.columnas.every(k => J.jugadoresRanking(idxRk, 'creacion', { ordenPor: k }).ordenPor === k));
+
+/* Los nulos no pueden colarse al tope en ascendente: un "—" arriba de
+   todo parece el mejor y es el que no tiene dato. */
+const filasNulo = filasRk.concat([jr('SIN, DATO', 'B', { MIN: '24', RD: '' })]);
+const idxNulo = SGADD.construirIndice({
+  'PROMEDIOS E': { cols: colsE, filas: filasE },
+  'PROMEDIOS J': { cols: colsRk, filas: filasNulo },
+  'Base Datos E': { cols: colsBD, filas: filasBD },
+}, { fase: 'REGULAR' });
+const conNulo = J.jugadoresRanking(idxNulo, 'rebotes', { ordenPor: 'RD', dir: 'asc' });
+check('un jugador sin dato en la columna de orden queda al fondo, no al tope',
+  conNulo.filas[0].celdas['RD'] !== null,
+  conNulo.filas.map(f => f.jugador + ':' + f.celdas['RD']).join('|'));
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

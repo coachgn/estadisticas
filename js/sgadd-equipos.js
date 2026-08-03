@@ -158,14 +158,14 @@ function equiposSerie(idx, e, claves) {
 }
 
 function equiposGrilla(idx) {
-  const lista = idx.lista().slice().sort((a, b) => {
-    const na = idx.leer(a.clave, 'NET RTNG'), nb = idx.leer(b.clave, 'NET RTNG');
-    return (nb && nb.valor !== null ? nb.valor : -999) - (na && na.valor !== null ? na.valor : -999);
-  });
+  /* Alfabético, igual que el picker de Jugadores: el escudo es un buscador,
+     no un ranking. Para saber quién anda mejor está la tabla de rankings
+     que va justo abajo, con el rating neto y el puesto de cada uno. */
+  const lista = idx.lista().slice().sort((a, b) => a.nombre.localeCompare(b.nombre));
   return `
     <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
       <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Elegí un equipo</h3>
-      <p class="text-[11px] text-muted mb-4">Ordenados por rating neto. El tuyo va en naranja.</p>
+      <p class="text-[11px] text-muted mb-4">Por orden alfabético. El tuyo va en naranja.</p>
       ${SGADD_UI.teamPicker(lista, { onClick: 'equiposIrA', seleccionado: EQUIPOS.equipo })}
     </div>
     ${SGADD_RANKINGS.render(idx)}`;

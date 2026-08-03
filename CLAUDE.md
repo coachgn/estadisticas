@@ -16,7 +16,7 @@ node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  22 tests · multi-cliente
 node test-boot.js          #  16 tests · arranque por club
-node test-jugadores.js     # 102 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
+node test-jugadores.js     # 115 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
@@ -24,7 +24,7 @@ node test-partido.js       #  17 tests · detalle partido a partido
 node test-scouting.js      # 160 tests · informe pre-partido, bandas de liga, marcas, claves
 ```
 
-**567 tests en total. Todos tienen que dar verde antes de commitear.**
+**580 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -73,7 +73,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=40`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=41`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -348,15 +348,23 @@ no meter una inconsistencia en el resto de las tablas de partidos.
 
 ### Landing de la sección: picker + rankings TOP 20
 
-Al entrar a Jugadores (sin ficha abierta) el orden vertical es:
+Al entrar a Jugadores (sin ficha abierta) hay **dos bloques y nada más**:
 
 1. **Elegí un equipo** — grilla de escudos con el MISMO componente que usa
-   Equipos (`SGADD_UI.teamPicker`), no una copia. Clic filtra el plantel de
-   abajo y hace scroll hasta él; clic de nuevo en el mismo escudo saca el
-   filtro.
+   Equipos (`SGADD_UI.teamPicker`), no una copia. Clic abre el **tab Plantel
+   de la sección Equipos** para ese club.
 2. **Rankings de la liga · top 20** — 8 tablas en tabs.
-3. **Plantel** — la grilla de siempre, con su selector y el toggle de
-   "solo los que califican".
+
+**La card "Plantel de la liga" se eliminó.** Repetía lo que ya muestra el
+tab Plantel de Equipos, y con el picker llevando directo ahí, tener las dos
+listas era pedirle al DT que eligiera entre dos caminos al mismo lugar. Con
+ella se fueron `JUGADORES.filtroEquipo`, `soloCalifican`,
+`jugadoresFiltrarEquipo()` y `jugadoresToggleCalifican()`.
+
+**Los dos pickers ordenan alfabético.** El de Equipos ordenaba por rating
+neto; se alineó con el de Jugadores porque el escudo es un buscador, no un
+ranking — para saber quién anda mejor está la tabla de rankings que va
+justo abajo, con el puesto de cada uno.
 
 `JUGADORES_RANKINGS` es la réplica calculada de la hoja `RANKINGS J`, que
 está excluida del ESQUEMA a propósito (mismo motivo que `RANKINGS E`: no es
@@ -385,6 +393,30 @@ al lado de cada métrica; en pantalla chica eso es ilegible.
 - **La mediana del resalte es la del propio top**, no la de la liga: estos
   veinte ya son la cola de arriba, y contra la liga entera todos quedarían
   marcados como "por encima".
+
+### Orden dinámico: seleccionar y mostrar son dos pasos distintos
+
+Clic en la cabecera de una métrica reordena la tabla; repetir el clic
+invierte el sentido. La flecha marca la columna activa (▲/▼) y el resto
+lleva un ⇅ tenue para que se note que también responden.
+
+La distinción que hay que respetar al tocar `jugadoresRanking()`:
+
+1. **Quién entra al top 20** → SIEMPRE por `g.orden`, la métrica del grupo.
+   Eso es lo que hace que "top 20 de rebotes" sea el top 20 de rebotes.
+2. **Cómo se muestran esos 20** → por `opciones.ordenPor`, lo que el
+   usuario elija en la cabecera.
+
+Si el orden de pantalla cambiara la selección, al ordenar por RD la tabla
+dejaría de ser el top de rebotes y pasaría a ser otro cuadro sin avisar.
+El `#` sí se renumera según el orden mostrado, que es lo que espera
+cualquiera que toca una cabecera.
+
+Detalles: cambiar de tab resetea el orden (un "por RD" heredado no
+significa nada en la tabla de triples); los nulos van siempre al fondo,
+ordene como ordene (un `—` arriba de todo en ascendente parece el mejor y
+es el que no tiene dato); y pedir una columna que no está en el grupo cae
+al orden del grupo en vez de romper.
 
 ### Lo que entró en esta vuelta
 
