@@ -36,7 +36,109 @@ const JUGADORES = {
   filtroEquipo: null,   // clave de equipo para la grilla, o null = toda la liga
   soloCalifican: true,
   metricaEvolucion: 'PTS',
+  rankingAbierto: 'produccion',
+  /* null = usar el umbral de la liga (MIN del JUGADOR TIPO). El DT puede
+     bajarlo para ver especialistas de pocos minutos. */
+  rankingMinManual: null,
 };
+
+/* =====================================================================
+   RANKINGS TOP 20 DE LA LIGA
+
+   Réplica calculada en el cliente de la hoja `RANKINGS J`, que está
+   excluida del ESQUEMA a propósito (no es una tabla: son bloques
+   apilados con encabezados repetidos y GViz devuelve basura — ver punto 3
+   de CLAUDE.md). Misma idea que `sgadd-rankings.js` hace con RANKINGS E.
+
+   `orden` es la métrica que decide QUIÉN entra al top 20; las columnas se
+   muestran completas para cada uno de esos veinte. No se rankea columna
+   por columna como en la planilla: un top 20 por PTS donde además cada
+   celda trae su propio puesto se vuelve ilegible en pantalla chica.
+   ===================================================================== */
+
+const JUGADORES_TOP_N = 20;
+
+const JUGADORES_RANKINGS = [
+  { id: 'produccion', titulo: 'Participación y puntos', orden: 'PTS',
+    cols: ['PJ', 'MIN', 'PTS', 'PLAYS', 'PPP'] },
+  { id: 'eficiencia', titulo: 'Eficiencia', orden: 'eFG%',
+    cols: ['PJ', 'MIN', 'USG%', 'eFG%', 'TS%', 'RTL%'] },
+  { id: 'tiro', titulo: 'Tiro de campo', orden: 'TCI',
+    cols: ['PJ', 'MIN', 'PTS', 'TC%', 'TCC', 'TCI'] },
+  { id: 't2', titulo: 'Tiro de 2', orden: 'T2I',
+    cols: ['MIN', 'PT2%', 'T2%', 'T2C', 'T2I', 'PPT2'] },
+  { id: 't3', titulo: 'Tiro de 3', orden: 'T3I',
+    cols: ['MIN', 'PT3%', 'T3%', 'T3C', 'T3I', 'PPT3'] },
+  { id: 'libres', titulo: 'Tiros libres', orden: 'T1I',
+    cols: ['MIN', 'PT1%', 'T1%', 'T1C', 'T1I', 'PPT1'] },
+  /* Las dos nuevas de esta vuelta. */
+  { id: 'rebotes', titulo: 'Rebotes', orden: 'RO',
+    cols: ['MIN', 'RO', 'RD', 'RT'],
+    nota: 'Ordenado por rebote ofensivo: es el que genera segundas chances y el que hay que salir a bloquear.' },
+  { id: 'creacion', titulo: 'Creación y disciplina', orden: 'AST-PP',
+    cols: ['MIN', 'AST-PP', 'AST%', 'FC', 'FR'],
+    nota: 'AST-PP es la métrica que más separa a un conductor real de uno que solo tiene la pelota.' },
+];
+
+/** Umbral de minutos vigente: el manual si lo hay, si no el de la liga. */
+function jugadoresUmbralRanking(idx) {
+  if (typeof JUGADORES.rankingMinManual === 'number') return JUGADORES.rankingMinManual;
+  return (idx.liga && typeof idx.liga.minJugador === 'number') ? idx.liga.minJugador : 0;
+}
+
+/**
+ * Top N de la liga para un grupo de ranking. Puro: no toca el DOM ni el
+ * estado global salvo para leer el umbral, que se puede pasar por
+ * `opciones.umbral` para poder testearlo sin tocar `JUGADORES`.
+ */
+function jugadoresRanking(idx, id, opciones) {
+  const o = opciones || {};
+  const g = JUGADORES_RANKINGS.find(x => x.id === id);
+  if (!g || !idx || !idx.liga) return null;
+
+  const umbral = (typeof o.umbral === 'number') ? o.umbral : jugadoresUmbralRanking(idx);
+  const topN = o.topN || JUGADORES_TOP_N;
+
+  /* El valor de orden sale del mismo extractor que las celdas, para que
+     no pueda pasar que la tabla ordene por una cosa y muestre otra. */
+  const valor = (j, k) => (k === 'RT') ? jugadoresRT(j)
+    : (typeof j[k] === 'number' && isFinite(j[k])) ? j[k] : null;
+
+  const elegibles = (idx.liga.jugadores || []).filter(j => {
+    const m = valor(j, 'MIN');
+    return m !== null && m >= umbral && valor(j, g.orden) !== null;
+  });
+
+  const ordenados = elegibles.slice().sort((a, b) => valor(b, g.orden) - valor(a, g.orden));
+  const filas = ordenados.slice(0, topN).map((j, i) => {
+    const celdas = {};
+    g.cols.forEach(k => { celdas[k] = valor(j, k); });
+    return {
+      puesto: i + 1,
+      jugador: String(j['NOMBRES'] || '').trim(),
+      equipo: SGADD.limpiarNombre(j['EQUIPO'] || ''),
+      claveEquipo: SGADD.claveEquipo(j['EQUIPO'] || ''),
+      slug: jugadoresSlug(j),
+      celdas: celdas,
+      valorOrden: valor(j, g.orden),
+    };
+  });
+
+  /* Mediana del propio top, para el anillo de referencia: la de la liga
+     entera no sirve acá porque estos veinte ya son la cola de arriba. */
+  const medianas = {};
+  g.cols.forEach(k => {
+    const vals = filas.map(f => f.celdas[k]).filter(v => v !== null).sort((a, b) => a - b);
+    medianas[k] = vals.length ? (vals.length % 2 ? vals[(vals.length - 1) / 2]
+      : (vals[vals.length / 2 - 1] + vals[vals.length / 2]) / 2) : null;
+  });
+
+  return {
+    id: g.id, titulo: g.titulo, orden: g.orden, nota: g.nota || null,
+    columnas: g.cols, filas: filas, medianas: medianas,
+    umbral: umbral, elegibles: elegibles.length,
+  };
+}
 
 const JUGADORES_TABS = [
   { id: 'general',   label: 'General',   pregunta: '¿Qué tipo de jugador es?' },
@@ -551,6 +653,129 @@ function jugadoresPintar() {
 
 /* ---------- Grilla ---------- */
 
+/* ---------- Landing: elegí un equipo + rankings de la liga ---------- */
+
+function jugadoresVerRanking(id) {
+  JUGADORES.rankingAbierto = id;
+  jugadoresPintar();
+}
+
+/** Filtra la grilla por equipo desde las cards y baja hasta el plantel. */
+function jugadoresElegirEquipo(clave) {
+  JUGADORES.filtroEquipo = (JUGADORES.filtroEquipo === clave) ? null : clave;
+  jugadoresPintar();
+  const el = document.getElementById('jugadoresPlantel');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function jugadoresCambiarUmbral(v) {
+  const n = parseFloat(String(v).replace(',', '.'));
+  JUGADORES.rankingMinManual = isFinite(n) ? n : null;
+  jugadoresPintar();
+}
+
+function jugadoresPickerEquipos(idx) {
+  const lista = idx.lista().slice().sort((a, b) => a.nombre.localeCompare(b.nombre));
+  return `
+    <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
+      <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Elegí un equipo</h3>
+      <p class="text-[11px] text-muted mb-4">
+        Filtra el plantel de abajo. Volvé a tocar el mismo escudo para ver toda la liga.
+      </p>
+      ${SGADD_UI.teamPicker(lista, { onClick: 'jugadoresElegirEquipo', seleccionado: JUGADORES.filtroEquipo })}
+    </div>`;
+}
+
+function jugadoresTablaRanking(idx, r) {
+  if (!r || !r.filas.length) {
+    return `<p class="text-xs text-muted py-4">Ningún jugador llega al umbral de minutos.</p>`;
+  }
+
+  const th = r.columnas.map(k =>
+    `<th class="py-1 pr-3 text-right whitespace-nowrap">${SGADD_UI.esc(k)}</th>`).join('');
+
+  const filas = r.filas.map(f => {
+    const logo = (typeof LOGOS !== 'undefined') ? LOGOS.getUrl(f.equipo) : null;
+    const propio = SGADD.esEquipoPropio(f.claveEquipo);
+    /* Mismo semáforo que los rankings de equipos: podio en acento, top 25%
+       del cuadro en verde, cola en rojo, y anillo en el más cercano a la
+       mediana del propio top. */
+    const celdas = r.columnas.map(k => {
+      const v = f.celdas[k];
+      const med = r.medianas[k];
+      const esMediana = v !== null && med !== null && r.filas.length > 3 &&
+        Math.abs(v - med) === Math.min.apply(null, r.filas.map(x =>
+          x.celdas[k] === null ? Infinity : Math.abs(x.celdas[k] - med)));
+      const destaca = (k === r.orden);
+      return `<td class="py-1.5 pr-3 text-right font-mono text-xs whitespace-nowrap
+        ${destaca ? 'text-white font-semibold' : 'text-ink'}${esMediana ? ' ring-1 ring-accent/50 rounded' : ''}"
+        ${esMediana ? 'title="El más cercano a la mediana de este top"' : ''}
+        >${SGADD_UI.esc(SGADD.formatear(k, v))}</td>`;
+    }).join('');
+
+    const colorPuesto = f.puesto === 1 ? 'text-accent font-bold'
+      : f.puesto <= 3 ? 'text-green-400 font-semibold'
+        : f.puesto <= 10 ? 'text-ink' : 'text-muted';
+
+    return `
+      <tr class="border-b border-hairline/40 last:border-0 cursor-pointer hover:bg-surface2 ${propio ? 'bg-accent/5' : ''}"
+          onclick="jugadoresIrA('${SGADD_UI.esc(f.slug)}')">
+        <td class="py-1.5 pr-2 font-mono text-xs ${colorPuesto}">${f.puesto}</td>
+        <td class="py-1.5 pr-3">
+          <div class="flex items-center gap-2 min-w-0">
+            ${logo ? `<img src="${SGADD_UI.esc(logo)}" alt="" class="w-5 h-5 object-contain shrink-0">` : ''}
+            <span class="text-xs truncate ${propio ? 'text-accent font-semibold' : 'text-white'}">${SGADD_UI.esc(f.jugador)}</span>
+          </div>
+        </td>
+        <td class="py-1.5 pr-3 text-[11px] text-muted truncate max-w-[9rem]">${SGADD_UI.esc(f.equipo)}</td>
+        ${celdas}
+      </tr>`;
+  }).join('');
+
+  return `
+    <div class="scrollbox"><table class="w-full text-left">
+      <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+        <th class="py-1 pr-2">#</th><th class="py-1 pr-3">Jugador</th><th class="py-1 pr-3">Equipo</th>${th}
+      </tr></thead>
+      <tbody>${filas}</tbody>
+    </table></div>
+    <p class="text-[11px] text-muted mt-3 leading-snug">
+      Top ${r.filas.length} de ${r.elegibles} jugadores con MIN ≥ ${r.umbral.toFixed(2).replace('.', ',')},
+      ordenado por <span class="font-mono">${SGADD_UI.esc(r.orden)}</span>.
+      El valor con anillo naranja es el más cercano a la mediana de este top.
+      Clic en una fila para abrir la ficha.${r.nota ? '<br>' + SGADD_UI.esc(r.nota) : ''}
+    </p>`;
+}
+
+function jugadoresBloqueRankings(idx) {
+  const r = jugadoresRanking(idx, JUGADORES.rankingAbierto) ||
+            jugadoresRanking(idx, JUGADORES_RANKINGS[0].id);
+  if (!r) return '';
+  const tabs = JUGADORES_RANKINGS.map(g => ({ id: g.id, label: g.titulo }));
+  const umbral = jugadoresUmbralRanking(idx);
+
+  return `
+    <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
+      <div class="flex flex-wrap items-end gap-3 mb-3">
+        <div class="flex-1 min-w-[200px]">
+          <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Rankings de la liga · top ${JUGADORES_TOP_N}</h3>
+          <p class="text-[11px] text-muted">
+            Las mismas tablas de la hoja RANKINGS J, calculadas en vivo sobre ${idx.liga.jugadores.length} jugadores.
+          </p>
+        </div>
+        <div>
+          <label class="block text-[10px] uppercase tracking-wider text-muted font-display mb-1">Minutos mínimos</label>
+          <input type="number" step="0.5" min="0" value="${umbral.toFixed(1)}"
+            onchange="jugadoresCambiarUmbral(this.value)"
+            class="w-24 bg-surface2 border border-hairline rounded-md px-3 py-2 text-xs focus:border-accent outline-none">
+        </div>
+      </div>
+      ${SGADD_UI.tabs(tabs, r.id, 'jugadoresVerRanking')}
+      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-2">${SGADD_UI.esc(r.titulo)}</h4>
+      ${jugadoresTablaRanking(idx, r)}
+    </div>`;
+}
+
 function jugadoresGrilla(idx) {
   const equipos = idx.lista().slice().sort((a, b) => a.nombre.localeCompare(b.nombre));
   const base = JUGADORES.filtroEquipo
@@ -577,18 +802,29 @@ function jugadoresGrilla(idx) {
           <span class="text-xs text-white font-medium truncate">${escapeHtml(j['NOMBRES'])}</span>
         </div>
         <p class="text-[10px] text-muted truncate">${escapeHtml(SGADD.limpiarNombre(j['EQUIPO']))}</p>
-        <div class="flex items-center justify-between mt-1 gap-1">
-          <span class="font-mono text-[11px] text-ink whitespace-nowrap">${escapeHtml(SGADD.formatear('MIN', j['MIN']))} min · ${escapeHtml(SGADD.formatear('PTS', j['PTS']))} pts</span>
-          ${rolMin ? `<span class="text-[10px] font-display uppercase tracking-wide shrink-0 ${rolMin.color}" title="${escapeAttr(rolMin.rol)}">${escapeHtml(rolMin.corto)}</span>` : ''}
+        <div class="flex items-center justify-between mt-1 gap-1 min-w-0">
+          <span class="font-mono text-[11px] text-ink truncate min-w-0">${escapeHtml(SGADD.formatear('MIN', j['MIN']))} min · ${escapeHtml(SGADD.formatear('PTS', j['PTS']))} pts</span>
+          ${rolMin ? `<span class="text-[10px] font-display uppercase tracking-wide shrink-0 truncate max-w-[45%] ${rolMin.color}" title="${escapeAttr(rolMin.rol)}">${escapeHtml(rolMin.corto)}</span>` : ''}
         </div>
       </button>`;
   }).join('') || `<p class="text-xs text-muted p-4">Ningún jugador coincide con el filtro.</p>`;
 
+  const nombreFiltro = JUGADORES.filtroEquipo
+    ? (idx.get(JUGADORES.filtroEquipo) ? idx.get(JUGADORES.filtroEquipo).nombre : JUGADORES.filtroEquipo)
+    : null;
+
+  /* Orden del landing: primero el picker de escudos (la navegación),
+     después los rankings (la inteligencia de liga) y al final el plantel
+     filtrable, que es lo que el picker de arriba condiciona. */
   return `
-    <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
+    ${jugadoresPickerEquipos(idx)}
+    ${jugadoresBloqueRankings(idx)}
+    <div id="jugadoresPlantel" class="card rounded-xl p-4 sm:p-5 border border-hairline">
       <div class="flex flex-wrap items-end gap-3 mb-4">
         <div class="flex-1 min-w-[180px]">
-          <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Plantel de la liga</h3>
+          <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">
+            ${nombreFiltro ? 'Plantel · ' + escapeHtml(nombreFiltro) : 'Plantel de la liga'}
+          </h3>
           <p class="text-[11px] text-muted">${lista.length} jugador${lista.length === 1 ? '' : 'es'}. Ordenados por minutos.</p>
         </div>
         <div>
@@ -945,6 +1181,7 @@ function jugadoresTabPartidos(idx, j) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     JUGADORES_TABS, JUGADORES_METRICAS_EVOLUCION, ROLES_MINUTOS, PERFILES_TECNICOS, JERARQUIA, ZONAS_TIRO,
+    JUGADORES_RANKINGS, JUGADORES_TOP_N, jugadoresRanking, jugadoresUmbralRanking,
     CLAVES_CONDICION, MIN_PJ_CONDICION, SENSIBILIDAD_CONDICION,
     jugadoresSlug, jugadoresBuscar, jugadoresZScore,
     jugadoresPartidosOrdenados, jugadoresRival, jugadoresIdCanonico,

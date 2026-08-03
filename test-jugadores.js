@@ -403,6 +403,121 @@ check('equiposEtiquetaEvolucion() da el mismo formato que la de Jugadores (fecha
 check('Jugadores y Equipos usan exactamente el mismo formato de etiqueta',
   etiquetaJ.replace(' (L)', '') === etiquetaE.replace(' (V)', ''));
 
+/* =====================================================================
+   RANKINGS TOP 20 DE LA LIGA (landing de la sección)
+
+   Fixture aparte: hacen falta las columnas de rebote, creación y
+   disciplina, que la fixture principal no trae porque prueba otra cosa.
+   ===================================================================== */
+console.log('\nX. RANKINGS DE LIGA · TOP 20');
+console.log('═'.repeat(70));
+
+const colsRk = ['NOMBRES', 'EQUIPO', 'FASE', 'PJ', 'MIN', 'PTS', 'PLAYS', 'PPP', 'eFG%', 'TS%', 'RTL%', 'USG%',
+  'TC%', 'TCC', 'TCI', 'PT2%', 'T2%', 'T2C', 'T2I', 'PPT2', 'PT3%', 'T3%', 'T3C', 'T3I', 'PPT3',
+  'PT1%', 'T1%', 'T1C', 'T1I', 'PPT1', 'RO', 'RD', 'RT', 'AST', 'AST%', 'AST-PP', 'FC', 'FR', 'PP'];
+
+function jr(nombre, equipo, o) {
+  return Object.assign({
+    NOMBRES: nombre, EQUIPO: equipo, FASE: 'REGULAR', PJ: '5', MIN: '20', PTS: '10',
+    PLAYS: '10', PPP: '1,00', 'eFG%': '0,50', 'TS%': '0,55', 'RTL%': '0,20', 'USG%': '0,20',
+    'TC%': '0,45', TCC: '4', TCI: '9', 'PT2%': '0,42', 'T2%': '0,50', T2C: '3', T2I: '6', PPT2: '1,00',
+    'PT3%': '0,35', 'T3%': '0,33', T3C: '1', T3I: '3', PPT3: '1,00',
+    'PT1%': '0,08', 'T1%': '0,70', T1C: '2', T1I: '3', PPT1: '0,67',
+    RO: '2', RD: '4', RT: '6', AST: '2', 'AST%': '0,15', 'AST-PP': '1,50', FC: '2', FR: '2', PP: '1,3',
+  }, o);
+}
+
+const filasRk = [
+  jr('JUGADOR TIPO', '', { MIN: '15' }),
+  /* Rebotes: REBOTEADOR domina RO; ANCLA tiene más RD pero menos RO. */
+  jr('REBOTEADOR, ALTO', 'A', { MIN: '30', RO: '5', RD: '6', RT: '11', 'AST-PP': '0,80', FC: '3', FR: '4' }),
+  jr('ANCLA, DEFENSIVA', 'A', { MIN: '28', RO: '1', RD: '9', RT: '10', 'AST-PP': '0,90' }),
+  /* Creación: GENERADOR lidera AST-PP. */
+  jr('GENERADOR, FINO', 'B', { MIN: '27', 'AST-PP': '3,20', 'AST%': '0,40', AST: '6', FC: '1', FR: '5', RO: '0,5' }),
+  jr('ANOTADOR, PURO', 'B', { MIN: '26', PTS: '22', PLAYS: '18', 'AST-PP': '0,60', RO: '1,5' }),
+  /* Por debajo del umbral de la liga: no puede entrar a ningún top. */
+  jr('SUPLENTE, CORTO', 'A', { MIN: '6', RO: '9', 'AST-PP': '9,00' }),
+];
+
+const idxRk = SGADD.construirIndice({
+  'PROMEDIOS E': { cols: colsE, filas: filasE },
+  'PROMEDIOS J': { cols: colsRk, filas: filasRk },
+  'Base Datos E': { cols: colsBD, filas: filasBD },
+}, { fase: 'REGULAR' });
+
+check('hay 8 grupos de ranking', J.JUGADORES_RANKINGS.length === 8,
+  J.JUGADORES_RANKINGS.map(g => g.id).join(','));
+check('el top por defecto es de 20', J.JUGADORES_TOP_N === 20);
+check('están las seis tablas heredadas de la hoja RANKINGS J',
+  ['produccion', 'eficiencia', 'tiro', 't2', 't3', 'libres'].every(id => J.JUGADORES_RANKINGS.some(g => g.id === id)));
+check('el umbral por defecto sale del MIN del JUGADOR TIPO',
+  J.jugadoresUmbralRanking(idxRk) === 15, J.jugadoresUmbralRanking(idxRk));
+
+/* --- Tabla nueva: REBOTES --- */
+const rkReb = J.jugadoresRanking(idxRk, 'rebotes');
+check('la tabla de rebotes existe y se titula Rebotes', rkReb && rkReb.titulo === 'Rebotes');
+check('ordena por rebote ofensivo', rkReb.orden === 'RO');
+check('trae las columnas pedidas (MIN, RO, RD, RT)',
+  rkReb.columnas.join(',') === 'MIN,RO,RD,RT', rkReb.columnas.join(','));
+check('cada fila trae puesto, jugador y equipo',
+  rkReb.filas.every(f => f.puesto >= 1 && !!f.jugador && !!f.equipo));
+check('el primero es el que más rebotes ofensivos captura',
+  rkReb.filas[0].jugador === 'REBOTEADOR, ALTO', rkReb.filas.map(f => f.jugador).join('|'));
+check('el ancla defensiva, con más RD pero menos RO, queda por detrás',
+  rkReb.filas.findIndex(f => f.jugador === 'ANCLA, DEFENSIVA') > 0,
+  rkReb.filas.map(f => f.jugador + ':' + f.celdas['RO']).join('|'));
+check('RT se resuelve aunque haya que derivarlo de RO+RD',
+  rkReb.filas[0].celdas['RT'] === 11, rkReb.filas[0].celdas['RT']);
+
+/* --- Tabla nueva: CREACIÓN Y DISCIPLINA --- */
+const rkCre = J.jugadoresRanking(idxRk, 'creacion');
+check('la tabla de creación y disciplina existe', rkCre && rkCre.titulo === 'Creación y disciplina');
+check('ordena por AST-PP', rkCre.orden === 'AST-PP');
+check('trae las columnas pedidas (MIN, AST-PP, AST%, FC, FR)',
+  rkCre.columnas.join(',') === 'MIN,AST-PP,AST%,FC,FR', rkCre.columnas.join(','));
+check('el primero es el mejor ratio de asistencias por pérdida',
+  rkCre.filas[0].jugador === 'GENERADOR, FINO', rkCre.filas.map(f => f.jugador).join('|'));
+check('trae las faltas cometidas y recibidas de cada uno',
+  rkCre.filas[0].celdas['FC'] !== null && rkCre.filas[0].celdas['FR'] !== null,
+  JSON.stringify(rkCre.filas[0].celdas));
+
+/* --- Filtro de minutos --- */
+check('el suplente de 6 minutos no entra a ningún top pese a liderar RO y AST-PP',
+  !rkReb.filas.some(f => f.jugador === 'SUPLENTE, CORTO') &&
+  !rkCre.filas.some(f => f.jugador === 'SUPLENTE, CORTO'),
+  rkReb.filas.map(f => f.jugador).join('|'));
+check('bajando el umbral a mano, el suplente sí aparece y lidera',
+  J.jugadoresRanking(idxRk, 'rebotes', { umbral: 0 }).filas[0].jugador === 'SUPLENTE, CORTO',
+  J.jugadoresRanking(idxRk, 'rebotes', { umbral: 0 }).filas[0].jugador);
+check('el umbral aplicado viaja en el resultado, para poder mostrarlo', rkReb.umbral === 15, rkReb.umbral);
+check('se informa cuántos quedaron elegibles, no solo los 20 mostrados',
+  typeof rkReb.elegibles === 'number' && rkReb.elegibles >= rkReb.filas.length);
+
+/* --- Contrato general de todas las tablas --- */
+J.JUGADORES_RANKINGS.forEach(g => {
+  const r = J.jugadoresRanking(idxRk, g.id);
+  if (!r) { check('el grupo ' + g.id + ' se resuelve', false); return; }
+  const desc = r.filas.every((f, i, a) => i === 0 || a[i - 1].valorOrden >= f.valorOrden);
+  if (!desc) check('el grupo ' + g.id + ' viene ordenado descendente', false,
+    r.filas.map(f => f.valorOrden).join(','));
+});
+check('todas las tablas vienen ordenadas de mayor a menor por su métrica de orden',
+  J.JUGADORES_RANKINGS.every(g => {
+    const r = J.jugadoresRanking(idxRk, g.id);
+    return r && r.filas.every((f, i, a) => i === 0 || a[i - 1].valorOrden >= f.valorOrden);
+  }));
+check('todas las tablas respetan el tope de ' + J.JUGADORES_TOP_N,
+  J.JUGADORES_RANKINGS.every(g => J.jugadoresRanking(idxRk, g.id).filas.length <= J.JUGADORES_TOP_N));
+check('cada fila trae el slug para poder abrir la ficha del jugador',
+  rkReb.filas.every(f => typeof f.slug === 'string' && f.slug.length > 0));
+check('la slug del ranking es la misma que usa la grilla (nombre + equipo)',
+  rkReb.filas[0].slug === J.jugadoresSlug({ NOMBRES: 'REBOTEADOR, ALTO', EQUIPO: 'A' }),
+  rkReb.filas[0].slug);
+check('trae la mediana del propio top para el resalte de referencia',
+  rkReb.medianas && typeof rkReb.medianas['RO'] === 'number', JSON.stringify(rkReb.medianas));
+check('un grupo inexistente da null, no una excepción', J.jugadoresRanking(idxRk, 'NO_EXISTE') === null);
+check('sin índice devuelve null en vez de romper', J.jugadoresRanking(null, 'rebotes') === null);
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

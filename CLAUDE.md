@@ -16,7 +16,7 @@ node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  22 tests · multi-cliente
 node test-boot.js          #  16 tests · arranque por club
-node test-jugadores.js     #  75 tests · rol, arquetipos, jerarquía, tiro, evolución, local/visitante
+node test-jugadores.js     # 102 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
@@ -24,7 +24,7 @@ node test-partido.js       #  17 tests · detalle partido a partido
 node test-scouting.js      # 160 tests · informe pre-partido, bandas de liga, marcas, claves
 ```
 
-**540 tests en total. Todos tienen que dar verde antes de commitear.**
+**567 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -73,7 +73,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=39`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=40`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -345,6 +345,46 @@ esa función pura, el resto del módulo sigue sin testearse directo (usa
 **OJO**: la fecha va sin año (`SGADD.formatearFecha()` da `dd/mm`, no
 `dd/mm/aaaa`) — es la convención que ya usa toda la app, no se tocó para
 no meter una inconsistencia en el resto de las tablas de partidos.
+
+### Landing de la sección: picker + rankings TOP 20
+
+Al entrar a Jugadores (sin ficha abierta) el orden vertical es:
+
+1. **Elegí un equipo** — grilla de escudos con el MISMO componente que usa
+   Equipos (`SGADD_UI.teamPicker`), no una copia. Clic filtra el plantel de
+   abajo y hace scroll hasta él; clic de nuevo en el mismo escudo saca el
+   filtro.
+2. **Rankings de la liga · top 20** — 8 tablas en tabs.
+3. **Plantel** — la grilla de siempre, con su selector y el toggle de
+   "solo los que califican".
+
+`JUGADORES_RANKINGS` es la réplica calculada de la hoja `RANKINGS J`, que
+está excluida del ESQUEMA a propósito (mismo motivo que `RANKINGS E`: no es
+una tabla, son bloques apilados y GViz devuelve basura). Seis tablas vienen
+del Apps Script original — participación y puntos, eficiencia, tiro de
+campo, tiro de 2, tiro de 3, tiros libres — y **dos son nuevas**:
+
+| Tabla | Orden | Columnas |
+|---|---|---|
+| Rebotes | `RO` | MIN, RO, RD, RT |
+| Creación y disciplina | `AST-PP` | MIN, AST-PP, AST%, FC, FR |
+
+**Diferencia deliberada con la planilla**: acá `orden` decide únicamente
+QUIÉN entra al top 20, y después se muestran las columnas completas de esos
+veinte. El Apps Script rankea columna por columna y agrega una columna `#`
+al lado de cada métrica; en pantalla chica eso es ilegible.
+
+- **`RT` se deriva si falta**, con `jugadoresRT()` (RO + RD), el mismo
+  helper que ya usaba el motor de arquetipos.
+- **El umbral de minutos es editable.** Arranca en el `MIN` del
+  `JUGADOR TIPO` de la liga (`jugadoresUmbralRanking`), que es el mismo
+  criterio de calificación del resto del proyecto, pero el input deja
+  bajarlo: un especialista de 8 minutos no califica para percentiles y aun
+  así puede ser el que más rebotes ofensivos captura. Hay un test que
+  verifica las dos ramas.
+- **La mediana del resalte es la del propio top**, no la de la liga: estos
+  veinte ya son la cola de arriba, y contra la liga entera todos quedarían
+  marcados como "por encima".
 
 ### Lo que entró en esta vuelta
 
