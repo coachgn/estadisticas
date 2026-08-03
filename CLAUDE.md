@@ -21,10 +21,10 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  17 tests · detalle partido a partido
-node test-scouting.js      #  99 tests · informe pre-partido, marcas, claves dinámicas
+node test-scouting.js      # 138 tests · informe pre-partido, roles funcionales, marcas, claves
 ```
 
-**479 tests en total. Todos tienen que dar verde antes de commitear.**
+**518 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -73,7 +73,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=37`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=38`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -397,7 +397,7 @@ responde otra pregunta). El tab de equipos NO usa la capa de datos vieja
 label del simulador es **"Simulador"** a secas (el modelo se sigue llamando
 360° en la documentación y en la ficha, pero no en el menú).
 
-### Los seis bloques
+### Los ocho bloques, en orden
 
 1. **Encabezado** — récord global y desglosado L/V de los dos, último
    partido con rival y marcador, e historial directo.
@@ -408,11 +408,70 @@ label del simulador es **"Simulador"** a secas (el modelo se sigue llamando
 3. **Splits L/V y ciclo reciente** — últimos 4 partidos separados en
    ganados y perdidos, con puntos de fuga, valores de identidad y línea de
    tiro.
-4. **Plan individual · marca asignada** — consigna y restricción sugeridas
-   por perfil, **editables**: el plan lo firma el DT, no el modelo.
-5. **Jugadores clave del rival** — tabla con semáforo del top 3 por métrica
-   y filas de cierre (promedio del plantel y de la liga).
-6. **Criterio estratégico** — resumen ejecutivo + claves dinámicas.
+4. **Jugadores clave del rival** — tabla con mapa de calor del top 3 por
+   métrica y filas de cierre (promedio del plantel y de la liga).
+5. **Plan individual · marca asignada** — perfil defensor, consigna y
+   restricción sugeridas, **editables**: el plan lo firma el DT.
+6. **Resumen de criterio estratégico** — va inmediatamente debajo de la
+   tabla de marcas, porque sintetiza justamente esa composición de marcas.
+7. **Claves estratégicas y anticipación** — las 8 reglas dinámicas.
+8. **Ficha de análisis por jugador** — rol funcional, fortalezas, puntos de
+   fuga y plan de acción, uno por rival.
+
+### Roles funcionales, no posiciones
+
+`ROLES_FUNCIONALES` es una cascada excluyente sin base/alero/pivote:
+Generador Primario, Manejador Secundario, Spacing / Tirador de Descarga,
+Slasher / Penetrador, Finalizador Corto / Short Roll, Rebotador de Impacto /
+Rim Runner, Ancla Defensiva, Perimetral de Media Distancia y un fallback.
+
+**El bug que motivó el refactor: clasificar por PPT2 solo.** Un slasher
+eficiente y un poste bajo pueden tener el mismo PPT2, y el motor viejo le
+asignaba al slasher una marca de poste bajo (3/4 por delante). Ahora el
+origen se decide con un cruce de cuatro fuentes:
+
+1. los **arquetipos ya calculados en la pestaña JUGADORES** (fuente
+   primaria: no se recalcula el perfil con otro criterio, dos motores que
+   se contradigan entre secciones es peor que ninguno),
+2. la **mezcla de lanzamiento** `T3I / (T3I + T2I)` — sobre INTENTOS, no
+   sobre conversiones: de dónde tira no depende de si le entra,
+3. la **generación** (AST y AST-PP),
+4. el **impacto en los cristales** (RO/RO% y RD/RD%).
+
+`esInterior` exige mezcla de triple baja **y** peso real en algún cristal;
+`esPerimetral` exige volumen de triple. Si la ficha de JUGADORES ya lo marcó
+como *Amenaza Perimetral Real*, eso pisa el cálculo. Verificado con datos
+reales: Ferraro Dieguez pasó de "referencia interna" a Slasher / Penetrador.
+
+**Ojo con las fixtures de test**: si un jugador tiene `PT3%` de 5% pero
+T3I = 3 de 9 tiros de campo, el motor lo saca de los roles internos — y
+tiene razón, esos dos datos describen a un jugador que no existe. La
+incoherencia hay que arreglarla en el dato, no en el umbral.
+
+**La planilla no tiene columna de talla ni de posición cargada a mano**, así
+que "ficha del jugador" son los arquetipos calculados. Si algún día entra
+una columna de altura, el cruce se enriquece en `perfilJugador()` y en
+ningún otro lado.
+
+### Marca asignada: "elegir el veneno" con soluciones de campo
+
+La columna **Defensor nuestro** sugiere un PERFIL táctico
+(`PERFILES_DEFENSOR`, seis: Especialista 1x1 Perimetral, Defensor Físico de
+Contención, Atrapador / Presión al Drible, Defensor de Ajuste / Spacing,
+Ancla Interior / Protector de Aro, Defensor Versátil / Cambios), no un
+nombre propio: quién lo cubre depende del quinteto en cancha y de las faltas
+de cada uno. El campo es editable para poner el nombre al armar la rotación.
+
+Las consignas son todas de **campo**: ice en P&R, drop coverage, show corto,
+negación de catch & shoot, flotación/under, contención de mano dominante,
+cierre de esquinas, ayuda de lado débil.
+
+**Mandar a la línea dejó de ser la respuesta para todo.** Es un solo perfil
+de la cascada y con umbral duro: `T1% < 40%` **y** volumen interno
+(`PT2% ≥ 45%`). El criterio: a alguien que convierte 60% de libres le estás
+regalando 1,20 puntos por posesión, más de lo que vale una posesión promedio
+en estas ligas. Con los datos reales de Atenas hoy **no califica nadie**, que
+es exactamente el punto.
 
 ### Las tres referencias que NO son la misma
 
@@ -423,12 +482,37 @@ Quedaron separadas a propósito:
   de temporada del equipo. La pregunta es "¿jugó como él mismo?".
 - **Línea de tiro** → contra la **mediana de la liga**. La pregunta es
   "¿tiró bien en términos absolutos?".
-- **Semáforo top 3 de jugadores** → **dentro del plantel del rival**. La
-  pregunta es "de estos siete, ¿a quién le doy la marca?", no "¿es bueno
+- **Mapa de calor top 3 de jugadores** → **dentro del plantel del rival**.
+  La pregunta es "de estos ocho, ¿a quién le doy la marca?", no "¿es bueno
   para la liga?" (eso ya lo contesta la sección Jugadores).
 
 Los primeros borradores usaban la misma referencia para todo y daban
 lecturas que se contradecían entre bloques.
+
+### Mapa de calor: qué se muestra y por qué se ordena distinto
+
+El top 3 marca **jerarquía de amenaza**: 1° verde (amenaza principal), 2°
+naranja (precaución), 3° amarillo (foco complementario). Fuera del top, sin
+resalte.
+
+`rankPor` en `COLS_JUGADOR` existe porque **la métrica que se muestra no
+siempre es la que ordena**:
+
+- **PTS / PLAY** muestra los puntos (número grande) con el PPP debajo, pero
+  el top-3 sale por PTS: la pregunta del bloque es quién anota.
+- **Las tres columnas de uso** muestran el % de plays del jugador y rankean
+  por **intentos absolutos** (T3I / T2I / T1I). Un suplente que tiró 3
+  triples en todo el torneo puede tener 60% de uso externo y no es un
+  tirador: el resalte tiene que marcar volumen real dentro de la estructura
+  del equipo, no una fracción sobre una muestra mínima. Hay un test que usa
+  exactamente ese falso positivo.
+
+En la fila de cierre, **Prom. jugadores/equipo** se colorea contra la liga:
+verde si el plantel está mejor, rojo si está peor, neutro si empatan. Se
+respeta la **dirección de la métrica** — en %TOV, perder menos es mejor, así
+que un equipo que pierde más pelotas que la liga sale en rojo. Pintarlo de
+verde por "supera el valor" contradiría al resto del sistema, donde el verde
+siempre significa ventaja.
 
 ### Claves estratégicas: generación dinámica, no lista fija
 

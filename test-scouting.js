@@ -15,6 +15,7 @@ const S = require('./js/sgadd-scouting.js');
 let ok = 0, fail = 0;
 const check = (n, c, d) => { if (c) { ok++; console.log('  ✓ ' + n); } else { fail++; console.log('  ✗ ' + n + (d !== undefined ? '  → ' + d : '')); } };
 const cerca = (a, b, tol) => typeof a === 'number' && typeof b === 'number' && Math.abs(a - b) < (tol || 1e-6);
+const porNombreCelda = (t, nombre, col) => t.filas.find(f => f.nombre === nombre).celdas[col];
 
 /* =====================================================================
    FIXTURE
@@ -112,35 +113,66 @@ function jug(nombre, equipo, o) {
   return Object.assign(base, o);
 }
 
+/* Los T3I/T2I van coherentes con el %USO de cada jugador a propósito: el
+   motor clasifica el ORIGEN por la mezcla de intentos, así que una fixture
+   con "5% de uso externo" y 3 triples de 9 tiros de campo describe a un
+   jugador que no existe — y el motor, con razón, lo saca de los roles
+   internos. Es la misma incoherencia que el pedido quiere prevenir en
+   datos reales. */
 const filasPJ = [
   /* Fila TIPO de liga: la mediana. EQUIPO vacío = la de liga, no la de un
      equipo puntual (regla del punto 3 de CLAUDE.md). */
-  jug('JUGADOR TIPO', '', { MIN: '15', 'PePP%': '0,13', 'RO%': '0,05', PLAYS: '9' }),
+  jug('JUGADOR TIPO', '', { MIN: '15', 'PePP%': '0,13', 'RO%': '0,05', 'RD%': '0,12', PLAYS: '9' }),
 
   /* AGUILA — el rival a scoutear. */
   jug('TIRADOR, ELITE', 'AGUILA', {
     MIN: '30', PLAYS: '20', PTS: '22', PPP: '1,10',
     'PT3%': '0,55', PPT3: '1,35', 'T3%': '0,45', 'PT2%': '0,30', PPT2: '0,95',
     'PT1%': '0,08', 'T1%': '0,80', 'PePP%': '0,10',
+    T3I: '8', T2I: '4', T1I: '2',
   }),
+  /* Interno puro: casi no lanza de afuera y domina el cristal. */
   jug('PIVOT, INTERNO', 'AGUILA', {
     MIN: '28', PLAYS: '14', PTS: '15',
     'PT3%': '0,05', PPT3: '0,30', 'PT2%': '0,72', PPT2: '1,25',
-    'PT1%': '0,12', 'T1%': '0,52', 'RO%': '0,11', 'PePP%': '0,12',
+    'PT1%': '0,12', 'T1%': '0,52', 'RO%': '0,11', 'RD%': '0,20', 'PePP%': '0,12',
+    T3I: '0,4', T2I: '9', T1I: '3', AST: '1', 'AST-PP': '0,70',
+  }),
+  /* Slasher: PPT2 tan alto como el pivot, pero lanza de afuera y no
+     rebotea. No puede clasificar como referencia interna. */
+  jug('SLASHER, PENETRADOR', 'AGUILA', {
+    MIN: '27', PLAYS: '13', PTS: '14',
+    'PT3%': '0,30', PPT3: '0,95', 'PT2%': '0,58', PPT2: '1,25',
+    'PT1%': '0,10', 'T1%': '0,70', 'RO%': '0,03', 'RD%': '0,08', 'PePP%': '0,12',
+    T3I: '3,5', T2I: '6', T1I: '2,5', AST: '2', 'AST-PP': '1,10',
   }),
   jug('BASE, RIESGOSO', 'AGUILA', {
     MIN: '26', PLAYS: '13', PTS: '10',
     'PePP%': '0,22', 'AST-PP': '1,10', 'PT3%': '0,30', PPT3: '0,90', 'PT2%': '0,50',
+    T3I: '3', T2I: '5', T1I: '2', AST: '3',
   }),
   jug('LADRILLO, PERIMETRAL', 'AGUILA', {
     MIN: '24', PLAYS: '11', PTS: '8',
     'PT3%': '0,52', PPT3: '0,72', 'T3%': '0,24', 'PT2%': '0,35', 'PePP%': '0,12',
+    T3I: '6', T2I: '3', T1I: '1',
   }),
   jug('CONTACTO, FINO', 'AGUILA', {
     MIN: '22', PLAYS: '10', PTS: '11',
     'PT1%': '0,18', 'T1%': '0,88', PPT1: '0,88', 'PT3%': '0,20', 'PT2%': '0,50',
+    T3I: '2', T2I: '5', T1I: '4',
   }),
-  jug('SUPLENTE, GRIS', 'AGUILA', { MIN: '10', PLAYS: '4', PTS: '3' }),
+  /* Interno con T1% pésimo Y volumen adentro: el ÚNICO caso donde la
+     falta táctica es negocio (T1% < 40%). */
+  jug('MANOS, PIEDRA', 'AGUILA', {
+    MIN: '21', PLAYS: '9', PTS: '7',
+    'PT3%': '0,04', PPT3: '0,20', 'PT2%': '0,62', PPT2: '1,05',
+    'PT1%': '0,16', 'T1%': '0,35', PPT1: '0,35', 'RO%': '0,09', 'RD%': '0,16', 'PePP%': '0,12',
+    T3I: '0,3', T2I: '7', T1I: '4', AST: '1', 'AST-PP': '0,60',
+  }),
+  jug('SUPLENTE, GRIS', 'AGUILA', {
+    MIN: '10', PLAYS: '4', PTS: '3',
+    T3I: '1', T2I: '2', T1I: '0,5',
+  }),
 
   /* Los otros tres equipos, sin perfiles extremos: solo para que la liga
      tenga distribución y los percentiles signifiquen algo. */
@@ -163,7 +195,8 @@ console.log('\n0. LA FIXTURE ES SANA (si esto falla, el resto miente)');
 console.log('═'.repeat(70));
 check('la liga tiene los 4 equipos', idx.lista().length === 4, idx.lista().length);
 check('AGUILA tiene sus 3 partidos', idx.get('AGUILA').partidos.length === 3);
-check('AGUILA tiene su plantel de 6', (idx.liga.jugadoresPorEquipo.get('AGUILA') || []).length === 6);
+check('AGUILA tiene su plantel de 8', (idx.liga.jugadoresPorEquipo.get('AGUILA') || []).length === 8,
+  (idx.liga.jugadoresPorEquipo.get('AGUILA') || []).length);
 check('la fila JUGADOR TIPO de liga se reconoció', idx.liga.jugadorTipo !== null && cerca(idx.liga.jugadorTipo['PePP%'], 0.13, 1e-4),
   JSON.stringify(idx.liga.jugadorTipo && idx.liga.jugadorTipo['PePP%']));
 
@@ -274,7 +307,7 @@ check('con una ventana donde no perdió ningún partido, el grupo perdidos es nu
 console.log('\n5. JUGADORES CLAVE Y SEMÁFORO TOP 3');
 console.log('═'.repeat(70));
 const tabla = S.jugadoresClave(idx, 'AGUILA');
-check('la tabla trae los 6 jugadores de AGUILA', tabla.filas.length === 6, tabla.filas.length);
+check('la tabla trae los 8 jugadores de AGUILA', tabla.filas.length === 8, tabla.filas.length);
 check('vienen ordenados por minutos, de mayor a menor',
   tabla.filas.map(f => f.perfil.min).every((m, i, a) => i === 0 || a[i - 1] >= m),
   JSON.stringify(tabla.filas.map(f => f.perfil.min)));
@@ -285,18 +318,24 @@ check('las celdas de %USO 3PTS traen su PPT3 debajo',
 check('trae la fila de cierre de promedio del equipo', !!tabla.promedioEquipo && tabla.promedioEquipo['MIN'].valor !== null);
 check('trae la fila de cierre de promedio de la liga', !!tabla.promedioLiga && tabla.promedioLiga['MIN'].valor !== null);
 
-/* Semáforo: exactamente 3 destacados por métrica, y son los 3 más altos. */
-S.COLS_JUGADOR.forEach(c => {
-  const destacados = tabla.filas.filter(f => f.celdas[c.id].destacado);
-  if (destacados.length !== S.TOP_SEMAFORO) {
-    check('semáforo de ' + c.label + ': marca exactamente ' + S.TOP_SEMAFORO, false, destacados.length);
-  }
-});
+/* --- La columna PTS/PLAY muestra puntos arriba y PPP debajo --- */
+const colPts = tabla.columnas.find(c => c.label === 'PTS / PLAY');
+check('la columna PTS / PLAY muestra los PUNTOS como valor principal', colPts.id === 'PTS', colPts.id);
+check('y la rentabilidad (PPP) como subtexto', colPts.sub === 'PPP', colPts.sub);
+check('el valor principal de la celda es el promedio de puntos, no el PPP',
+  cerca(porNombreCelda(tabla, 'TIRADOR, ELITE', 'PTS').valor, 22),
+  porNombreCelda(tabla, 'TIRADOR, ELITE', 'PTS').valor);
+check('el subtexto de la celda es el PPP',
+  cerca(porNombreCelda(tabla, 'TIRADOR, ELITE', 'PTS').sub.valor, 1.10, 1e-4),
+  JSON.stringify(porNombreCelda(tabla, 'TIRADOR, ELITE', 'PTS').sub));
+
+/* --- Semáforo: exactamente 3 destacados por métrica --- */
 check('el semáforo marca exactamente ' + S.TOP_SEMAFORO + ' jugadores en cada una de las 8 métricas',
-  S.COLS_JUGADOR.every(c => tabla.filas.filter(f => f.celdas[c.id].destacado).length === S.TOP_SEMAFORO));
+  S.COLS_JUGADOR.every(c => tabla.filas.filter(f => f.celdas[c.id].destacado).length === S.TOP_SEMAFORO),
+  S.COLS_JUGADOR.map(c => c.label + ':' + tabla.filas.filter(f => f.celdas[c.id].destacado).length).join(' '));
 check('el top de MIN son efectivamente los tres que más minutos juegan',
   tabla.filas.filter(f => f.celdas['MIN'].destacado).map(f => f.nombre).sort().join('|') ===
-  ['TIRADOR, ELITE', 'PIVOT, INTERNO', 'BASE, RIESGOSO'].sort().join('|'),
+  ['TIRADOR, ELITE', 'PIVOT, INTERNO', 'SLASHER, PENETRADOR'].sort().join('|'),
   tabla.filas.filter(f => f.celdas['MIN'].destacado).map(f => f.nombre).join('|'));
 check('en %TOV el semáforo marca a los que MÁS pierden (es a quien conviene presionar)',
   tabla.filas.filter(f => f.celdas['PePP%'].destacado).some(f => f.nombre === 'BASE, RIESGOSO'),
@@ -305,7 +344,41 @@ check('el destacado guarda su puesto interno (1 a 3)',
   tabla.filas.filter(f => f.celdas['MIN'].destacado).every(f => f.celdas['MIN'].puestoInterno >= 1 && f.celdas['MIN'].puestoInterno <= 3));
 check('jugadoresClave() de un equipo inexistente da null', S.jugadoresClave(idx, 'NO_EXISTE') === null);
 
-console.log('\n6. PERFIL Y MARCA ASIGNADA SUGERIDA');
+/* --- Las columnas de uso rankean por VOLUMEN ABSOLUTO de intentos --- */
+check('las tres columnas de uso rankean por intentos absolutos, no por el % mostrado',
+  tabla.columnas.find(c => c.id === 'PT3%').rankPor === 'T3I' &&
+  tabla.columnas.find(c => c.id === 'PT2%').rankPor === 'T2I' &&
+  tabla.columnas.find(c => c.id === 'PT1%').rankPor === 'T1I');
+/* SUPLENTE, GRIS tiene 35% de uso externo (más que el pivot) pero solo 1
+   T3I: por volumen no puede entrar al top 3 de tiradores. Es exactamente
+   el falso positivo que el criterio de volumen absoluto previene. */
+const topUso3 = tabla.filas.filter(f => f.celdas['PT3%'].destacado).map(f => f.nombre);
+check('un suplente con % de uso alto pero 1 solo intento NO entra al top de tiradores',
+  topUso3.indexOf('SUPLENTE, GRIS') === -1, topUso3.join('|'));
+check('el top de uso de 3PTS son los que más triples intentan de verdad',
+  topUso3.sort().join('|') === ['TIRADOR, ELITE', 'LADRILLO, PERIMETRAL', 'SLASHER, PENETRADOR'].sort().join('|'),
+  topUso3.join('|'));
+const topUso1 = tabla.filas.filter(f => f.celdas['PT1%'].destacado).map(f => f.nombre);
+check('el top de uso de TL sale de T1I absolutos',
+  topUso1.indexOf('MANOS, PIEDRA') !== -1 && topUso1.indexOf('CONTACTO, FINO') !== -1, topUso1.join('|'));
+
+/* --- Fila de cierre: comparación equipo vs liga con dirección --- */
+check('la fila de promedio del equipo trae la comparación contra la liga',
+  S.COLS_JUGADOR.every(c => ['mejor', 'peor', 'neutro'].indexOf(tabla.promedioEquipo[c.id].comparacion) !== -1),
+  JSON.stringify(S.COLS_JUGADOR.map(c => c.label + ':' + tabla.promedioEquipo[c.id].comparacion)));
+check('en una métrica normal, estar por encima de la liga es "mejor"',
+  (function () {
+    const a = tabla.promedioEquipo['PTS'].valor, b = tabla.promedioLiga['PTS'].valor;
+    return a > b ? tabla.promedioEquipo['PTS'].comparacion === 'mejor' : true;
+  })(), JSON.stringify({ eq: tabla.promedioEquipo['PTS'].valor, liga: tabla.promedioLiga['PTS'].valor }));
+check('en %TOV (invertida) perder MÁS que la liga se marca como "peor", no como "mejor"',
+  (function () {
+    const a = tabla.promedioEquipo['PePP%'].valor, b = tabla.promedioLiga['PePP%'].valor;
+    if (a === null || b === null || Math.abs(a - b) < 1e-9) return true;
+    return tabla.promedioEquipo['PePP%'].comparacion === (a < b ? 'mejor' : 'peor');
+  })(), JSON.stringify({ eq: tabla.promedioEquipo['PePP%'].valor, liga: tabla.promedioLiga['PePP%'].valor, cmp: tabla.promedioEquipo['PePP%'].comparacion }));
+
+console.log('\n6. ROL FUNCIONAL: CRUCE MULTIFUENTE (el bug que motivó el refactor)');
 console.log('═'.repeat(70));
 const porNombre = {};
 tabla.filas.forEach(f => { porNombre[f.nombre] = f; });
@@ -316,30 +389,120 @@ check('el perfil calcula la concentración de plays sobre el total del plantel',
 check('el perfil relativiza las pérdidas contra la mediana de la liga, no en absoluto',
   cerca(porNombre['BASE, RIESGOSO'].perfil.perdidasRel, 0.22 / 0.13, 1e-3),
   porNombre['BASE, RIESGOSO'].perfil.perdidasRel);
+check('el perfil calcula la mezcla de lanzamiento sobre INTENTOS (T3I vs T2I)',
+  cerca(porNombre['TIRADOR, ELITE'].perfil.mezclaTriple, 8 / 12, 1e-6),
+  porNombre['TIRADOR, ELITE'].perfil.mezclaTriple);
 
-check('al tirador de élite le asigna TOP LOCK y NO FOUL',
+/* EL CASO CENTRAL: pivot y slasher tienen el MISMO PPT2 (1,25). Si el
+   motor clasificara por PPT2, los dos serían "referencia interna". */
+check('el pivot y el slasher tienen exactamente el mismo PPT2 (la trampa del criterio viejo)',
+  cerca(porNombre['PIVOT, INTERNO'].perfil.pptDoble, porNombre['SLASHER, PENETRADOR'].perfil.pptDoble, 1e-6),
+  JSON.stringify({ pivot: porNombre['PIVOT, INTERNO'].perfil.pptDoble, slasher: porNombre['SLASHER, PENETRADOR'].perfil.pptDoble }));
+check('el pivot (casi no lanza de afuera + domina el cristal) queda marcado como interior',
+  porNombre['PIVOT, INTERNO'].perfil.esInterior === true && porNombre['PIVOT, INTERNO'].perfil.esPerimetral === false,
+  JSON.stringify({ int: porNombre['PIVOT, INTERNO'].perfil.esInterior, per: porNombre['PIVOT, INTERNO'].perfil.esPerimetral }));
+check('el slasher (mismo PPT2 pero lanza de afuera y no rebotea) NO es interior',
+  porNombre['SLASHER, PENETRADOR'].perfil.esInterior === false && porNombre['SLASHER, PENETRADOR'].perfil.esPerimetral === true,
+  JSON.stringify({ int: porNombre['SLASHER, PENETRADOR'].perfil.esInterior, per: porNombre['SLASHER, PENETRADOR'].perfil.esPerimetral }));
+check('y por eso su ROL es Slasher / Penetrador, nunca una referencia interna',
+  porNombre['SLASHER, PENETRADOR'].rol.id === 'slasher',
+  JSON.stringify(porNombre['SLASHER, PENETRADOR'].rol));
+check('el pivot sí cae en un rol interno',
+  ['rim-runner', 'finalizador-corto', 'ancla-defensiva'].indexOf(porNombre['PIVOT, INTERNO'].rol.id) !== -1,
+  JSON.stringify(porNombre['PIVOT, INTERNO'].rol));
+check('el rol del tirador de élite es de spacing',
+  porNombre['TIRADOR, ELITE'].rol.id === 'spacing', JSON.stringify(porNombre['TIRADOR, ELITE'].rol));
+check('ningún rol funcional usa posiciones tradicionales (base/alero/pivot)',
+  S.ROLES_FUNCIONALES.every(r => !/\b(base|alero|pivote?|ala|escolta)\b/i.test(r.label)),
+  S.ROLES_FUNCIONALES.map(r => r.label).join(' | '));
+check('la cascada de roles siempre resuelve: nadie queda sin rol',
+  tabla.filas.every(f => !!f.rol.id && !!f.rol.label && !!f.rol.detalle));
+check('el perfil incorpora los arquetipos de la pestaña JUGADORES (cuarta fuente del cruce)',
+  Array.isArray(porNombre['TIRADOR, ELITE'].perfil.arquetipos) &&
+  porNombre['TIRADOR, ELITE'].perfil.arquetipos.length > 0,
+  JSON.stringify(porNombre['TIRADOR, ELITE'].perfil.arquetipos));
+
+console.log('\n6 bis. MARCA ASIGNADA: PERFIL DEFENSIVO Y CONSIGNAS DE CAMPO');
+console.log('═'.repeat(70));
+
+check('al tirador de élite le asigna negación de catch & shoot',
   porNombre['TIRADOR, ELITE'].marca.id === 'tirador-elite' &&
-  porNombre['TIRADOR, ELITE'].marca.consigna === 'TOP LOCK / LÍNEA DE PASE' &&
-  porNombre['TIRADOR, ELITE'].marca.restriccion === 'NO FOUL',
+  /CATCH & SHOOT/.test(porNombre['TIRADOR, ELITE'].marca.consigna),
   JSON.stringify(porNombre['TIRADOR, ELITE'].marca));
-check('al pivot interno le asigna 3/4 POR DELANTE y BOX-OUT DE CHOQUE',
-  porNombre['PIVOT, INTERNO'].marca.id === 'finalizador-interno' &&
-  porNombre['PIVOT, INTERNO'].marca.restriccion === 'BOX-OUT DE CHOQUE',
+check('al pivot interno le asigna front / negar recepción',
+  porNombre['PIVOT, INTERNO'].marca.id === 'interior-dominante' &&
+  /NEGAR RECEPCIÓN/.test(porNombre['PIVOT, INTERNO'].marca.consigna),
   JSON.stringify(porNombre['PIVOT, INTERNO'].marca));
-check('al base que pierde mucho le asigna ACOSO AL DRIBLE / TRAP',
+check('al slasher le asigna contención de mano dominante, NO una marca de poste bajo',
+  porNombre['SLASHER, PENETRADOR'].marca.id === 'slasher' &&
+  /MANO DOMINANTE/.test(porNombre['SLASHER, PENETRADOR'].marca.consigna),
+  JSON.stringify(porNombre['SLASHER, PENETRADOR'].marca));
+check('al conductor con pérdidas le asigna ICE en P&R y presión al drible',
   porNombre['BASE, RIESGOSO'].marca.id === 'generador-riesgoso' &&
-  porNombre['BASE, RIESGOSO'].marca.restriccion === 'FORZAR EL ERROR',
+  /ICE EN P&R/.test(porNombre['BASE, RIESGOSO'].marca.consigna),
   JSON.stringify(porNombre['BASE, RIESGOSO'].marca));
-check('al tirador de volumen sin renta le asigna FLOTAR / UNDER e INVITACIÓN AL TIRO',
+check('al tirador de volumen sin renta le asigna under / flotación e invitación al tiro',
   porNombre['LADRILLO, PERIMETRAL'].marca.id === 'tirador-ineficiente' &&
-  porNombre['LADRILLO, PERIMETRAL'].marca.restriccion === 'INVITACIÓN AL TIRO',
+  /FLOTACIÓN/.test(porNombre['LADRILLO, PERIMETRAL'].marca.consigna),
   JSON.stringify(porNombre['LADRILLO, PERIMETRAL'].marca));
-check('al suplente sin amenaza dominante le queda el fallback de contención',
+check('al suplente sin amenaza dominante le queda el fallback (drop coverage)',
   porNombre['SUPLENTE, GRIS'].marca.id === 'contencion', JSON.stringify(porNombre['SUPLENTE, GRIS'].marca));
+
+/* --- La falta táctica dejó de ser la respuesta para todo --- */
+check('el único jugador al que se le manda a la línea es el de T1% < 40% con volumen interno',
+  tabla.filas.filter(f => f.marca.id === 'castigable-en-la-linea').map(f => f.nombre).join('|') === 'MANOS, PIEDRA',
+  tabla.filas.filter(f => f.marca.id === 'castigable-en-la-linea').map(f => f.nombre).join('|'));
+check('el umbral de falta táctica es estricto: T1% por debajo de 40%',
+  S.UMBRALES.t1Regalable <= 0.40, S.UMBRALES.t1Regalable);
+check('a nadie con T1% >= 40% se le sugiere mandarlo a la línea',
+  tabla.filas.every(f => f.marca.id !== 'castigable-en-la-linea' || (f.perfil.t1 !== null && f.perfil.t1 < 0.40)));
+check('ninguna consigna que no sea la de castigo en la línea propone falta sistemática',
+  tabla.filas.every(f => f.marca.id === 'castigable-en-la-linea' || !/MANDAR A LA LÍNEA|FALTA TÁCTICA/.test(f.marca.consigna + f.marca.restriccion)),
+  tabla.filas.map(f => f.marca.id + ':' + f.marca.consigna).join(' | '));
+check('las consignas son soluciones de campo del glosario moderno',
+  tabla.filas.some(f => /ICE EN P&R/.test(f.marca.consigna)) &&
+  tabla.filas.some(f => /DROP COVERAGE/.test(f.marca.consigna)) &&
+  tabla.filas.some(f => /FLOTACIÓN/.test(f.marca.consigna)));
+
+/* --- Defensor nuestro: perfil táctico, no un nombre propio --- */
+const perfilesValidos = Object.keys(S.PERFILES_DEFENSOR).map(k => S.PERFILES_DEFENSOR[k]);
+check('cada marca sugiere un PERFIL defensivo de nuestro plantel, no un nombre',
+  tabla.filas.every(f => perfilesValidos.indexOf(f.marca.defensor) !== -1),
+  tabla.filas.map(f => f.marca.defensor).join(' | '));
+check('hay 6 perfiles defensivos disponibles', perfilesValidos.length === 6, perfilesValidos.length);
+check('al tirador de élite le corresponde el especialista 1x1 perimetral',
+  porNombre['TIRADOR, ELITE'].marca.defensor === S.PERFILES_DEFENSOR.perimetral1x1);
+check('al pivot interno le corresponde el ancla interior',
+  porNombre['PIVOT, INTERNO'].marca.defensor === S.PERFILES_DEFENSOR.ancla);
+check('al conductor con pérdidas le corresponde el atrapador',
+  porNombre['BASE, RIESGOSO'].marca.defensor === S.PERFILES_DEFENSOR.atrapador);
+
 check('cada marca explica POR QUÉ con el número que la disparó',
   tabla.filas.every(f => typeof f.marca.porque === 'string' && f.marca.porque.length > 10));
 check('la cascada de marcas siempre resuelve: ningún jugador queda sin consigna',
   tabla.filas.every(f => !!f.marca.consigna && !!f.marca.restriccion));
+
+console.log('\n6 ter. FICHA DE ANÁLISIS DE RIVAL (por jugador)');
+console.log('═'.repeat(70));
+check('cada fila trae fortalezas y fugas', tabla.filas.every(f => f.fortalezas.length > 0 && f.fugas.length > 0));
+check('las fortalezas del tirador de élite nombran su renta de triple',
+  porNombre['TIRADOR, ELITE'].fortalezas.some(t => /PPT3/.test(t)),
+  JSON.stringify(porNombre['TIRADOR, ELITE'].fortalezas));
+check('las fugas del tirador ineficiente señalan que su tiro preferido es el que menos rinde',
+  porNombre['LADRILLO, PERIMETRAL'].fugas.some(t => /PPT3/.test(t)),
+  JSON.stringify(porNombre['LADRILLO, PERIMETRAL'].fugas));
+check('las fugas del que pierde mucho señalan el %TOV',
+  porNombre['BASE, RIESGOSO'].fugas.some(t => /%TOV/.test(t)),
+  JSON.stringify(porNombre['BASE, RIESGOSO'].fugas));
+check('las fugas del de manos de piedra señalan el T1%',
+  porNombre['MANOS, PIEDRA'].fugas.some(t => /T1%/.test(t)),
+  JSON.stringify(porNombre['MANOS, PIEDRA'].fugas));
+check('cada bullet cruza métrica con lectura táctica, no es un número suelto',
+  tabla.filas.every(f => f.fortalezas.concat(f.fugas).every(t => t.length > 30)));
+
+const fichaJ = S.fichaRival(idx, (idx.liga.jugadoresPorEquipo.get('AGUILA') || [])[0], 100);
+check('fichaRival() arma nombre, rol, marca, fortalezas y fugas de una sola llamada',
+  !!fichaJ.nombre && !!fichaJ.rol && !!fichaJ.marca && fichaJ.fortalezas.length > 0 && fichaJ.fugas.length > 0);
 
 /* Un jugador que dispara dos reglas se queda con la más cara: el tirador
    de élite también tiene buen T1%, y aun así la marca es TOP LOCK. */
