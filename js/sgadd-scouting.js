@@ -166,22 +166,133 @@ const SGADD_SCOUT = (function () {
     try { return require('./sgadd-jugadores.js').JUGADORES_ROLES_FUNCIONALES; } catch (e) { return []; }
   }
 
-
   /* =====================================================================
-     PERFILES DEFENSIVOS DE NUESTRO PLANTEL
+     MATRIZ DE PERFILES DEFENSIVOS DE NUESTRO PLANTEL
 
      La columna "Defensor nuestro" sugiere un PERFIL, no un nombre propio:
      quién lo cubre depende de quién esté en cancha y de las faltas de cada
-     uno. El DT reemplaza el perfil por el nombre cuando arma el quinteto.
+     uno. El DT reemplaza el perfil por el nombre cuando arma la rotación.
+
+     Diez familias, cada una con sus especialidades. `CATALOGO_DEFENSOR` es
+     la referencia completa que ve el cuerpo técnico; `PERFILES_DEFENSOR`
+     es el índice plano que usan las reglas de asignación. Ojo: hay dos
+     familias de perimetral atlético (🏃 contención en la línea de pelota y
+     🦅 ayudas desde el lado débil) — son tareas distintas y por eso no se
+     fusionaron.
      ===================================================================== */
-  const PERFILES_DEFENSOR = {
-    perimetral1x1: 'Especialista 1x1 Perimetral',
-    fisico: 'Defensor Físico de Contención',
-    atrapador: 'Atrapador / Presión al Drible',
-    spacing: 'Defensor de Ajuste / Spacing',
-    ancla: 'Ancla Interior / Protector de Aro',
-    versatil: 'Defensor Versátil / Cambios (Switch)',
-  };
+  const CATALOGO_DEFENSOR = [
+    {
+      id: 'especialista1x1', emoji: '🛡', familia: 'Especialista 1x1',
+      perfiles: [
+        { id: 'onBall', label: 'Defensor sobre la Bola / On-Ball Stopper', detalle: 'Neutraliza aclarados e isolaciones del generador principal.' },
+        { id: 'sombra', label: 'Sombra / Shadow', detalle: 'Persigue cara a cara al anotador rival por toda la cancha.' },
+        { id: 'lockdown', label: 'Anulador Defensivo / Lockdown Defender', detalle: 'Cancela por completo el impacto de la estrella rival.' },
+      ],
+    },
+    {
+      id: 'presionInicial', emoji: '⚡', familia: 'Presión Inicial',
+      perfiles: [
+        { id: 'poa', label: 'Defensor en Punto de Ataque / POA Defender', detalle: 'Asfixia el inicio de la ofensiva en el eje de la cancha.' },
+        { id: 'disruptor', label: 'Disruptor de Bloqueos / P&R Disruptor', detalle: 'Rompe la dinámica del bloqueo y reanudación central.' },
+        { id: 'hostigador', label: 'Hostigador / Ball-Screen Pest', detalle: 'Fuerza pérdidas metiendo las manos en la línea de drible.' },
+      ],
+    },
+    {
+      id: 'perimetralAtletico', emoji: '🏃', familia: 'Perimetral Atlético',
+      perfiles: [
+        { id: 'wingChaser', label: 'Perseguidor de Líneas / Wing Chaser', detalle: 'Niega las líneas de carrera de exteriores explosivos.' },
+        { id: 'transicion', label: 'Defensor de Transición / Transition Defender', detalle: 'Frena el contraataque rival mediante velocidad de repliegue.' },
+        { id: 'driveContainment', label: 'Contenedor de Penetraciones / Drive Containment', detalle: 'Absorbe el primer paso rival con físico y desplazamiento lateral.' },
+      ],
+    },
+    {
+      id: 'perimetralFisico', emoji: '💪', familia: 'Perimetral Físico',
+      perfiles: [
+        { id: 'enforcer', label: 'Desgastador Perimetral / Perimeter Enforcer', detalle: 'Choca en pantallas y ensucia el juego exterior.' },
+        { id: 'goon', label: 'Defensor de Choque / Defensive Goon', detalle: 'Castiga los cortes rivales mediante contacto legal.' },
+        { id: 'rebotandoGuard', label: 'Cerrador Rebotero / Rebounding Guard', detalle: 'Sella el box-out desde afuera hacia adentro para asegurar la posesión.' },
+      ],
+    },
+    {
+      id: 'perimetralLargo', emoji: '📏', familia: 'Perimetral Largo',
+      perfiles: [
+        { id: 'envergadura', label: 'Defensor de Envergadura / Length Defender', detalle: 'Usa brazos largos para puntear tiros de alto alcance.' },
+        { id: 'volumeContainment', label: 'Contenedor de Volumen / Volume Containment', detalle: 'Molesta la visual de tiradores lejanos (8-9 metros).' },
+        { id: 'closeout', label: 'Cerrador de Tiros Abiertos / Closeout Specialist', detalle: 'Llegada rápida a los tiros externos usando su alcance de brazos.' },
+      ],
+    },
+    {
+      id: 'especialistaPerimetral', emoji: '🎯', familia: 'Especialista Perimetral',
+      perfiles: [
+        { id: 'sniperStopper', label: 'Anulador de Tiradores / Sniper Stopper', detalle: 'Persigue a especialistas a través de cortinas indirectas.' },
+        { id: 'denier', label: 'Defensor de Denegación / Denier', detalle: 'Evita por completo que el tirador letal reciba la pelota.' },
+        { id: 'screenNavigator', label: 'Navegador de Pantallas / Screen Navigator', detalle: 'Esquiva o pasa pantallas por arriba (over the top).' },
+      ],
+    },
+    {
+      id: 'especialistaInterior', emoji: '🏢', familia: 'Especialista Interior',
+      perfiles: [
+        { id: 'drop', label: 'Defensor en Caída / Drop Protector', detalle: 'Se hunde en la pintura ante penetradores sin salir al exterior.' },
+        { id: 'rimProtector', label: 'Protector de Aro Clásico / Classic Rim Protector', detalle: 'Se mantiene en la restricción para intimidar tiros cortos.' },
+        { id: 'paintPillar', label: 'Muro de Pintura / Paint Pillar', detalle: 'Anula físicamente el juego de espaldas al aro de los terminales internos.' },
+      ],
+    },
+    {
+      id: 'referenteZona', emoji: '🏰', familia: 'Referente de Zona',
+      perfiles: [
+        { id: 'rimProtectorPrimario', label: 'Protector de Aro Primario / Primary Rim Protector', detalle: 'Lidera la comunicación trasera y bloquea tiros cerca del aro.' },
+        { id: 'glassCleaner', label: 'Asegurador del Rebote / Glass Cleaner', detalle: 'Termina la posesión defensiva capturando el rebote defensivo.' },
+        { id: 'paintDominator', label: 'Defensor del Eje / Paint Dominator', detalle: 'Domina la zona pintada alterando la efectividad rival en su eje central.' },
+      ],
+    },
+    {
+      id: 'hibridoFisico', emoji: '🧱', familia: 'Híbrido Físico',
+      perfiles: [
+        { id: 'switchable', label: 'Defensor Multiuso / Switchable Forward', detalle: 'Cambia de marca y absorbe contactos de internos en alineaciones bajas o intermedias.' },
+        { id: 'lowPostWall', label: 'Muro de Ayudas / Low-Post Wall', detalle: 'Dobla la marca en el poste bajo o colapsa la zona pintada.' },
+        { id: 'interiorImpact', label: 'Defensor de Impacto Interno / Interior Impact Defender', detalle: 'Aporta masa muscular para defender la pintura y ayudar adentro.' },
+      ],
+    },
+    {
+      id: 'ayudasAtleticas', emoji: '🦅', familia: 'Perimetral Atlético · Ayudas',
+      perfiles: [
+        { id: 'freeSafety', label: 'Líbero de Ayudas / Free Safety', detalle: 'Salta desde el lado débil para taponar o cortar pases en cortes directos.' },
+        { id: 'verticalRotator', label: 'Rotador Vertical / Vertical Rotator', detalle: 'Cierra el aro llegando a toda velocidad gracias a su zancada e hiperatletismo.' },
+        { id: 'interceptor', label: 'Interceptor de Línea / Passing Lane Interceptor', detalle: 'Lee los ojos del pasador para robar balones dirigidos a cortes hacia el aro.' },
+      ],
+    },
+    {
+      id: 'contencionTactica', emoji: '📐', familia: 'Contención Táctica',
+      perfiles: [
+        { id: 'targetDefender', label: 'Defensor Flotante / Target Defender', detalle: 'Entra en rotación para flotar (sag-off) ante rivales sin tiro exterior.' },
+        { id: 'readSpecialist', label: 'Especialista de Lectura / Read Specialist', detalle: 'Compensa falta de tiro o físico anticipando los esquemas tácticos rivales.' },
+        { id: 'paceController', label: 'Freno de Ritmo / Pace Controller', detalle: 'Jugador de refresco que ralentiza el partido o ejecuta faltas tácticas de gestión.' },
+      ],
+    },
+  ];
+
+  /* Índice plano: id de perfil → etiqueta con su familia. Lo usan las
+     reglas de asignación, así que el label de la tabla y el del catálogo
+     no pueden divergir. */
+  const PERFILES_DEFENSOR = (function () {
+    const out = {};
+    CATALOGO_DEFENSOR.forEach(cat => {
+      cat.perfiles.forEach(p => {
+        out[p.id] = p.label;
+        out[p.id + '__familia'] = cat.emoji + ' ' + cat.familia;
+      });
+    });
+    return out;
+  })();
+
+  /** Familia (con emoji) a la que pertenece un perfil, por su etiqueta. */
+  function familiaDefensor(label) {
+    let fam = null;
+    CATALOGO_DEFENSOR.forEach(cat => {
+      cat.perfiles.forEach(p => { if (p.label === label) fam = cat.emoji + ' ' + cat.familia; });
+    });
+    return fam;
+  }
 
   /* =====================================================================
      MARCA ASIGNADA — "elegir el veneno" con soluciones de campo
@@ -192,144 +303,203 @@ const SGADD_SCOUT = (function () {
      La falta táctica quedó reducida a un solo perfil y con un umbral duro
      (T1% < 40% + volumen interno): mandar a la línea a alguien que
      convierte 60% es regalarle 1,20 puntos por posesión.
+
+     FORMATO: `consigna` y `restriccion` son objetos {titulo, detalle}.
+       - `titulo`  → la directiva táctica corta, en mayúsculas. Es lo que
+                     el DT canta en el vestuario y lo único editable.
+       - `detalle` → la justificación con el NÚMERO que la disparó. Sin
+                     esto el informe es una lista de órdenes sin sustento;
+                     con esto el ayudante puede discutirla con el dato en
+                     la mano.
      ===================================================================== */
   const PERFILES_MARCA = [
     {
       id: 'tirador-elite',
       etiqueta: 'Amenaza perimetral de élite',
-      defensor: PERFILES_DEFENSOR.perimetral1x1,
-      consigna: 'TOP LOCK / NEGACIÓN DE CATCH & SHOOT',
-      restriccion: 'PASAR SIEMPRE POR ARRIBA · NO AYUDAR DESDE ÉL',
+      defensor: PERFILES_DEFENSOR.sniperStopper,
       test: (p) => p.usoTriple >= U.usoTripleAlto && p.pptTriple >= U.pptTripleElite,
-      porque: (p) => 'concentra ' + pct(p.usoTriple) + ' de sus plays en el triple con ' +
-        num2(p.pptTriple) + ' pts por intento: negarle la recepción cuesta menos que cerrarle el tiro.',
+      consigna: (p) => ({
+        titulo: 'TOP LOCK / OVER.',
+        detalle: 'Tirador de élite (' + num2(p.pptTriple) + ' PPT3 sobre ' + pct(p.usoTriple) +
+          ' de uso). Pasar siempre por arriba de la cortina para negarle el catch & shoot.',
+      }),
+      restriccion: (p) => ({
+        titulo: 'NO AYUDAR DESDE ÉL.',
+        detalle: 'Cada rotación que lo deja solo vale ' + num2(p.pptTriple) +
+          ' puntos por intento. Antes de doblar a otro, chequear dónde está él.',
+      }),
     },
     {
       /* REGLA DURA: tirador eficiente aunque anote poco. El error que
-         corrige es tratar "pocos puntos" como "no es amenaza": un
-         especialista de banco que mete el 38% castiga cualquier ayuda que
-         salga de él. Va ARRIBA de todo lo interno y de todo lo de
-         flotación a propósito — es la marca que no se puede equivocar. */
+         corrige es tratar "pocos puntos" como "no es amenaza". */
       id: 'tirador-eficiente-bajo-volumen',
       etiqueta: 'Tirador eficiente (poco volumen, alta renta)',
-      defensor: PERFILES_DEFENSOR.perimetral1x1,
-      consigna: 'STAY HOME / NEGACIÓN DE CATCH & SHOOT',
-      restriccion: 'PROHIBIDO FLOTAR O AYUDAR DESDE ÉL',
+      defensor: PERFILES_DEFENSOR.denier,
       test: (p) => p.tiraDeAfuera && p.tiroExternoRentable,
-      porque: (p) => 'convierte ' + pct(p.t3) + ' de triple con ' + num2(p.pptTriple) +
-        ' pts por intento (' + (p.bandaPptTriple ? p.bandaPptTriple.label.toLowerCase() : 'sin referencia de liga') +
-        '): anota poco por volumen, no por eficiencia — soltarlo es regalarle el tiro más caro.',
+      consigna: (p) => ({
+        titulo: 'STAY HOME / NEGACIÓN DE RECEPCIÓN.',
+        detalle: 'Convierte ' + pct(p.t3) + ' de triple con ' + num2(p.pptTriple) +
+          ' por intento aunque promedie ' + num1(p.pts) + ' PTS. Anota poco por volumen, no por eficiencia.',
+      }),
+      restriccion: (p) => ({
+        titulo: 'PROHIBIDO FLOTAR.',
+        detalle: 'Su bajo promedio de puntos engaña: si lo soltamos, ese tiro es el más caro que conceden (' +
+          num2(p.pptTriple) + ' PPT3).',
+      }),
     },
     {
-      /* Contracara: mucho volumen, poca renta. No es "flotar y listo":
-         si tira 6 triples por partido hay que contestarle igual, pero sin
-         desarmar la estructura defensiva por él. */
+      /* Contracara: mucho volumen, poca renta. Hay que contestarle igual,
+         pero sin desarmar la estructura defensiva por él. */
       id: 'tirador-sistematico-frio',
       etiqueta: 'Tirador sistemático de bajo porcentaje',
-      defensor: PERFILES_DEFENSOR.spacing,
-      consigna: 'CLOSE-OUT CORTO / CONTESTAR SIN SALTAR',
-      restriccion: 'NO CORRER EL CIERRE · MANTENER LA ESTRUCTURA',
+      defensor: PERFILES_DEFENSOR.closeout,
       test: (p) => p.tiradorSistematico && p.tiroExternoFrio,
-      porque: (p) => 'lanza ' + num1(p.t3i) + ' triples por partido con ' + pct(p.t3) + ' de acierto (' +
-        num2(p.pptTriple) + ' PPT3): hay que puntearle la mano, pero no romper la defensa para hacerlo.',
+      consigna: (p) => ({
+        titulo: 'CLOSE-OUT CORTO / CONTESTAR SIN SALTAR.',
+        detalle: 'Lanza ' + num1(p.t3i) + ' triples por partido con ' + pct(p.t3) + ' de acierto (' +
+          num2(p.pptTriple) + ' PPT3). Hay que puntearle la mano por volumen, no por peligro.',
+      }),
+      restriccion: (p) => ({
+        titulo: 'NO CORRER EL CIERRE.',
+        detalle: 'Con ' + num2(p.pptTriple) + ' por intento no justifica romper la estructura: ' +
+          'si nos pasa de cara, el daño es mayor que el tiro que evitamos.',
+      }),
     },
     {
       id: 'interior-dominante',
       etiqueta: 'Referencia interna',
-      defensor: PERFILES_DEFENSOR.ancla,
-      consigna: 'FRONT / 3-4 POR DELANTE · NEGAR RECEPCIÓN',
-      restriccion: 'AYUDA DE LADO DÉBIL AL PASE INTERIOR · BOX-OUT DE CHOQUE',
+      defensor: PERFILES_DEFENSOR.paintPillar,
       /* `esInterior` es obligatorio: sin esa guarda, un slasher con buen
          PPT2 entraba acá y se le asignaba una marca de poste bajo. */
       test: (p) => p.esInterior && p.pptDoble >= U.pptDobleAlto,
-      porque: (p) => 'rinde ' + num2(p.pptDoble) + ' por doble intentado desde adentro y pesa en el cristal (' +
-        num2(p.reboteRel) + 'x la liga en RO%): la pelea es por la posición previa a la recepción.',
+      consigna: (p) => ({
+        titulo: '3/4 POR DELANTE / FRONT.',
+        detalle: 'Letal en la pintura (' + num2(p.pptDoble) + ' PPT2) y con peso en el cristal (' +
+          num2(p.reboteRel) + 'x la liga en RO%). No debe recibir cómodo de espaldas al aro.',
+      }),
+      restriccion: (p) => ({
+        titulo: 'AYUDA DE LADO DÉBIL AL PASE INTERIOR.',
+        detalle: 'Si le ganan la posición, la ayuda llega desde el lado débil. El box-out es de choque: ' +
+          'con ' + num2(p.reboteRel) + 'x la liga en RO%, sus segundas chances valen tanto como su primer tiro.',
+      }),
     },
     {
       id: 'slasher',
       etiqueta: 'Slasher / penetrador',
-      defensor: PERFILES_DEFENSOR.fisico,
-      consigna: 'CONTENCIÓN DE MANO DOMINANTE · CIERRE DE CAMINOS',
-      restriccion: 'SIN SALTAR AL AMAGUE · AYUDA CORTA Y RECUPERO',
+      defensor: PERFILES_DEFENSOR.driveContainment,
       test: (p) => p.esPerimetral && p.pptDoble >= U.pptDobleAlto,
-      porque: (p) => 'ataca el aro desde afuera con ' + num2(p.pptDoble) +
-        ' por doble intentado: el daño es en el primer paso, no de espaldas.',
+      consigna: (p) => ({
+        titulo: 'CONTENCIÓN DE MANO DOMINANTE.',
+        detalle: 'Ataca el aro desde afuera con ' + num2(p.pptDoble) + ' PPT2 y ' +
+          pct(p.mezclaTriple) + ' de sus tiros de campo desde la línea de 3. El daño es en el primer paso.',
+      }),
+      restriccion: (p) => ({
+        titulo: 'SIN SALTAR AL AMAGUE.',
+        detalle: 'Defensa de pecho y recupero: obligarlo a la media distancia, ' +
+          'que es donde su renta cae por debajo de ' + num2(p.pptDoble) + '.',
+      }),
     },
     {
       id: 'generador-riesgoso',
       etiqueta: 'Conductor con pérdidas altas',
-      defensor: PERFILES_DEFENSOR.atrapador,
-      consigna: 'ICE EN P&R · PRESIÓN AL DRIBLE EN MITAD DE CANCHA',
-      restriccion: 'FORZAR EL ERROR SIN FALTA · ROTACIÓN PREPARADA',
+      defensor: PERFILES_DEFENSOR.hostigador,
       test: (p) => p.perdidasRel >= U.perdidasAltas && p.min >= U.minutosClave,
-      porque: (p) => 'pierde ' + pct(p.perdidas) + ' de sus plays, ' + num2(p.perdidasRel) +
-        'x la mediana de la liga: el error propio es más barato que defenderle la jugada.',
+      consigna: (p) => ({
+        titulo: 'ACOSO AL DRIBLE / TRAP.',
+        detalle: 'Es el eje pero con ' + pct(p.perdidas) + ' de pérdidas (' + num2(p.perdidasRel) +
+          'x la liga). Saltarle al atrape en mitad de cancha e ir al ice en cada P&R.',
+      }),
+      restriccion: (p) => ({
+        titulo: 'FORZAR EL ERROR SIN FALTA.',
+        detalle: 'Sus ' + pct(p.perdidas) + ' de pérdidas son más baratas que defenderle la jugada, pero ' +
+          'una falta en el atrape le devuelve la posesión y nos carga el bonus.',
+      }),
     },
     {
       id: 'castigable-en-la-linea',
       etiqueta: 'Vulnerable en la línea',
-      defensor: PERFILES_DEFENSOR.fisico,
-      consigna: 'VERTICALIDAD SIN CONTACTO · SI FINALIZA ADENTRO, FALTA DURA',
-      restriccion: 'ÚNICO PERFIL DONDE LA FALTA ES NEGOCIO',
-      /* El umbral es duro a propósito: T1% < 40% Y volumen interno real. */
+      defensor: PERFILES_DEFENSOR.interiorImpact,
+      /* Umbral duro a propósito: T1% < 40% Y volumen interno real. */
       test: (p) => p.t1 !== null && p.t1 < U.t1Regalable && p.usoDoble >= U.usoDobleInterno,
-      porque: (p) => 'convierte ' + pct(p.t1) + ' de libres con ' + pct(p.usoDoble) +
-        ' de sus plays adentro: acá sí el cambio de una finalización por dos libres es ganancia.',
+      consigna: (p) => ({
+        titulo: 'VERTICALIDAD SIN CONTACTO.',
+        detalle: 'Concentra ' + pct(p.usoDoble) + ' de sus plays adentro pero convierte ' + pct(p.t1) +
+          ' de libres. Si finaliza cerca del aro, la falta dura es negocio.',
+      }),
+      restriccion: (p) => ({
+        titulo: 'ÚNICO PERFIL DONDE LA FALTA ES NEGOCIO.',
+        detalle: 'Con ' + pct(p.t1) + ' en la línea le estamos cambiando una finalización por ' +
+          num2((p.t1 || 0) * 2) + ' puntos esperados. Con cualquier otro rival, no.',
+      }),
     },
     {
-      /* La invitación al tiro es la consigna más fácil de aplicar mal.
-         Tiene TRES condiciones acumuladas: renta baja en términos
-         absolutos, por debajo de la liga en su contexto, y que su tiro no
-         sea la vía principal del ataque rival. Si falla cualquiera, el
-         jugador ya cayó antes en `tirador-sistematico-frio` (contestar
-         sin saltar) o en `tirador-eficiente-bajo-volumen` (stay home). */
+      /* La invitación al tiro es la consigna más fácil de aplicar mal:
+         tres condiciones acumuladas. */
       id: 'tirador-ineficiente',
       etiqueta: 'Tirador de volumen sin renta',
-      defensor: PERFILES_DEFENSOR.spacing,
-      consigna: 'UNDER / FLOTACIÓN · CERRAR PENETRACIÓN',
-      restriccion: 'INVITACIÓN AL TIRO EXTERNO · NO CORRER EL CLOSE-OUT',
+      defensor: PERFILES_DEFENSOR.targetDefender,
       test: (p) => p.usoTriple >= U.usoTripleAlto && p.pptTriple <= U.pptTriplePobre &&
         !p.tiroExternoRentable && !p.viaPrincipalExterna,
-      porque: (p) => 'tira mucho de afuera (' + pct(p.usoTriple) + ' de sus plays) y saca ' +
-        num2(p.pptTriple) + ' por intento sin ser la vía principal del ataque rival: ese tiro nos conviene.',
+      consigna: (p) => ({
+        titulo: 'UNDER / FLOTACIÓN.',
+        detalle: 'Tira ' + pct(p.usoTriple) + ' de sus plays de afuera y saca ' + num2(p.pptTriple) +
+          ' por intento sin ser la vía principal del ataque. Cerrar la penetración y dejarlo lanzar.',
+      }),
+      restriccion: (p) => ({
+        titulo: 'INVITACIÓN AL TIRO.',
+        detalle: 'Su PPT2 es de ' + num2(p.pptDoble) + ': es preferible que flote a que entre al aro.',
+      }),
     },
     {
-      /* Volumen alto con eficiencia por debajo de la liga. La regla que
-         pidió el club: si tira mucho y le rinde poco, la consigna es
-         permitirle el tiro externo en vez de salir a buscarlo. Va DESPUÉS
-         de las tres reglas de tiro externo para no pisar al especialista
-         eficiente, y se apoya en la misma banda de eFG% que muestra la
-         ficha del jugador — no en un umbral propio. */
       id: 'volumen-sin-eficiencia',
       etiqueta: 'Volumen alto, eficiencia baja',
-      defensor: PERFILES_DEFENSOR.spacing,
-      consigna: 'PERMITIR EL TIRO EXTERNO · CERRAR LA PINTURA',
-      restriccion: 'NO DOBLAR · QUE RESUELVA ÉL',
+      defensor: PERFILES_DEFENSOR.volumeContainment,
       test: (p) => p.concentracion !== null && p.concentracion >= U.concentracionAlta &&
         !p.tiroExternoRentable && (porDebajo(p.bandaEfg) ||
           (p.efg !== null && p.bandaEfg !== null && p.bandaEfg.id === 'fuga')),
-      porque: (p) => 'concentra ' + pct(p.concentracion) + ' de los plays del equipo con un eFG% de ' +
-        pct(p.efg) + ' (' + (p.bandaEfg ? p.bandaEfg.label.toLowerCase() : 'sin referencia') +
-        '): cuanto más resuelva él, mejor para nosotros.',
+      consigna: (p) => ({
+        titulo: 'PERMITIR EL TIRO EXTERNO.',
+        detalle: 'Concentra ' + pct(p.concentracion) + ' de los plays del equipo con un eFG% de ' +
+          pct(p.efg) + ' (' + (p.bandaEfg ? p.bandaEfg.label.toLowerCase() : 'sin referencia de liga') +
+          '). Cuanto más resuelva él, mejor para nosotros.',
+      }),
+      restriccion: (p) => ({
+        titulo: 'NO DOBLAR.',
+        detalle: 'Doblarlo le baja el volumen y le sube la eficiencia al resto: ' +
+          'que termine él la posesión es el mejor escenario.',
+      }),
     },
     {
       id: 'rebotador',
       etiqueta: 'Rebotador de impacto',
-      defensor: PERFILES_DEFENSOR.fisico,
-      consigna: 'BOX-OUT DE CHOQUE · SACARLO DEL SEMICÍRCULO',
-      restriccion: 'NO DEJARLO ENTRAR EN CARRERA AL REBOTE',
+      defensor: PERFILES_DEFENSOR.glassCleaner,
       test: (p) => p.reboteRel !== null && p.reboteRel >= U.reboteOfensivoAlto,
-      porque: (p) => 'captura ' + num2(p.reboteRel) + 'x la mediana de la liga en rebote ofensivo: ' +
-        'las segundas chances son su vía de anotación.',
+      consigna: (p) => ({
+        titulo: 'BOX-OUT DE CHOQUE.',
+        detalle: 'Captura ' + num2(p.reboteRel) + 'x la mediana de la liga en rebote ofensivo (' +
+          num1(p.ro) + ' RO). Hay que sacarlo del semicírculo antes de que salte.',
+      }),
+      restriccion: (p) => ({
+        titulo: 'NO DEJARLO ENTRAR EN CARRERA.',
+        detalle: 'Las segundas chances son su vía de anotación: si llega lanzado al rebote, ' +
+          'la posesión defensiva no termina.',
+      }),
     },
     {
       id: 'contencion',
       etiqueta: 'Rol complementario',
-      defensor: PERFILES_DEFENSOR.versatil,
-      consigna: 'DROP COVERAGE · CLOSE-OUT CORTO',
-      restriccion: 'AYUDAR DESDE ÉL · SIN FALTA',
+      defensor: PERFILES_DEFENSOR.switchable,
       test: () => true,   // fallback: siempre calza
-      porque: () => 'no concentra volumen ni tiene una amenaza dominante: es el lado por donde conviene ayudar.',
+      consigna: (p) => ({
+        titulo: 'DROP COVERAGE / CLOSE-OUT CORTO.',
+        detalle: 'Con ' + num1(p.min) + ' minutos y ' + num2(p.ppp) + ' PPP no concentra volumen ' +
+          'ni tiene una amenaza dominante: alcanza con no regalarle nada fácil.',
+      }),
+      restriccion: (p) => ({
+        titulo: 'AYUDAR DESDE ÉL.',
+        detalle: 'Con ' + pct(p.usoTriple) + ' de uso externo y ' + num2(p.pptTriple) + ' PPT3 no castiga ' +
+          'la rotación: es el lado por donde mandar la ayuda y desde donde doblar a los que sí condicionan el partido.',
+      }),
     },
   ];
 
@@ -790,16 +960,39 @@ const SGADD_SCOUT = (function () {
     return { id: 'complementario', label: 'Rol Complementario', detalle: '' };
   }
 
-  /** Marca asignada sugerida: primera de la cascada que calza. */
+  /**
+   * Marca asignada sugerida: primera de la cascada que calza.
+   *
+   * `consigna` y `restriccion` salen como {titulo, detalle}. Se exponen
+   * además `consignaTexto`/`restriccionTexto` planos, porque el input
+   * editable de la tabla y el export a PDF necesitan un string y no un
+   * objeto — pero el que manda es el objeto.
+   */
   function marcaSugerida(perfil) {
     const p = PERFILES_MARCA.find(d => {
       try { return d.test(perfil); } catch (e) { return false; }
     }) || PERFILES_MARCA[PERFILES_MARCA.length - 1];
+
+    const armar = (fn) => {
+      try {
+        const r = fn(perfil);
+        return { titulo: String(r.titulo || ''), detalle: String(r.detalle || '') };
+      } catch (e) { return { titulo: '', detalle: '' }; }
+    };
+    const consigna = armar(p.consigna);
+    const restriccion = armar(p.restriccion);
+
     return {
       id: p.id, etiqueta: p.etiqueta,
       defensor: p.defensor,
-      consigna: p.consigna, restriccion: p.restriccion,
-      porque: p.porque(perfil),
+      familiaDefensor: familiaDefensor(p.defensor),
+      consigna: consigna, restriccion: restriccion,
+      consignaTexto: (consigna.titulo + ' ' + consigna.detalle).trim(),
+      restriccionTexto: (restriccion.titulo + ' ' + restriccion.detalle).trim(),
+      /* `porque` se mantiene por compatibilidad con el resto del módulo:
+         es la justificación de la consigna, que es la que explica la
+         decisión principal. */
+      porque: consigna.detalle,
     };
   }
 
@@ -1065,6 +1258,16 @@ const SGADD_SCOUT = (function () {
     return items.slice(0, -1).join(', ') + ' y ' + items[items.length - 1];
   }
 
+  /**
+   * Marca un nombre para que salga en negrita. Se usa `**...**` y NO
+   * `<b>` a propósito: el motor es puro y su salida se escapa antes de
+   * inyectarla en el DOM. Si emitiera HTML habría que dejar de escapar el
+   * resumen entero, y un nombre de jugador con `<` en la planilla se
+   * convertiría en un agujero. La UI escapa primero y recién después
+   * convierte el marcador (`scoutNegritas`).
+   */
+  function neg(nombre) { return '**' + nombre + '**'; }
+
   function nombres(perfiles) { return enumerar(perfiles.map(p => p.nombre)); }
 
   /**
@@ -1154,7 +1357,7 @@ const SGADD_SCOUT = (function () {
     /* ---- 1. Ritmo y balance defensivo ---- */
     const pace = idx.leer(claveRival, 'PACE');
     if (pace && pace.percentil !== null) {
-      partes.push(eR.nombre + (pace.percentil >= 66
+      partes.push(neg(eR.nombre) + (pace.percentil >= 66
         ? ' juega a ritmo alto (' + pace.formateado + '), así que el plan individual se sostiene o se cae con el balance defensivo.'
         : pace.percentil <= 34
           ? ' juega a ritmo controlado (' + pace.formateado + '): pocas posesiones, y cada marca individual pesa el doble.'
@@ -1166,20 +1369,20 @@ const SGADD_SCOUT = (function () {
     const eje = porPlays[0];
     if (eje && eje.perfil.concentracion !== null) {
       const segundo = porPlays[1];
-      partes.push('El ataque pasa por ' + eje.nombre + ' (' + pct(eje.perfil.concentracion) +
+      partes.push('El ataque pasa por ' + neg(eje.nombre) + ' (' + pct(eje.perfil.concentracion) +
         ' de los plays del equipo, ' + num1(eje.perfil.pts) + ' pts con ' + num2(eje.perfil.ppp) + ' PPP, ' +
         eje.rol.label.toLowerCase() + ')' +
         (segundo && segundo.perfil.concentracion !== null
-          ? ', con ' + segundo.nombre + ' como segunda vía (' + pct(segundo.perfil.concentracion) + ').'
+          ? ', con ' + neg(segundo.nombre) + ' como segunda vía (' + pct(segundo.perfil.concentracion) + ').'
           : '.') +
-        ' Su marca es la decisión más cara de la noche: ' + eje.marca.consigna.toLowerCase() + '.');
+        ' Su marca es la decisión más cara de la noche: ' + eje.marca.consigna.titulo.toLowerCase().replace(/.$/, '') + '.');
     }
 
     /* ---- 3. Stay home: los que no se sueltan ---- */
     const cerrar = priorizar(filas.filter(f => f.perfil.tiroExternoRentable)).slice(0, 3);
     if (cerrar.length) {
       partes.push('Prohibido soltar a ' +
-        enumerar(cerrar.map(f => f.nombre + ' (' + pct(f.perfil.t3) + ' de 3, ' + num2(f.perfil.pptTriple) + ' PPT3)')) +
+        enumerar(cerrar.map(f => neg(f.nombre) + ' (' + pct(f.perfil.t3) + ' de 3, ' + num2(f.perfil.pptTriple) + ' PPT3)')) +
         ': sobre ' + (cerrar.length > 1 ? 'ellos' : 'él') + ' la consigna es stay home, ' +
         'no se ayuda desde ese lado aunque se rompa la pintura.');
     }
@@ -1190,7 +1393,7 @@ const SGADD_SCOUT = (function () {
     )).slice(0, 3);
     if (permitir.length) {
       partes.push('En cambio ' +
-        enumerar(permitir.map(f => f.nombre + ' (eFG% ' + pct(f.perfil.efg) +
+        enumerar(permitir.map(f => neg(f.nombre) + ' (eFG% ' + pct(f.perfil.efg) +
           (f.perfil.pptTriple !== null ? ', ' + num2(f.perfil.pptTriple) + ' PPT3' : '') + ')')) +
         ' ' + (permitir.length > 1 ? 'son' : 'es') + ' donde queremos que termine la posesión. ' +
         'Cerrar los caminos al aro y aceptar ese lanzamiento es ganancia, no concesión.');
@@ -1203,7 +1406,7 @@ const SGADD_SCOUT = (function () {
       /* El múltiplo va pegado a cada nombre: separarlos en dos listas
          obliga a contar posiciones para saber cuál es de quién. */
       partes.push('Box-out asignado sobre ' +
-        enumerar(cristal.map(f => f.nombre + ' (' + num2(f.perfil.reboteRel) + 'x la liga en RO%)')) +
+        enumerar(cristal.map(f => neg(f.nombre) + ' (' + num2(f.perfil.reboteRel) + 'x la liga en RO%)')) +
         ': sin cargarlos, las segundas chances les devuelven las posesiones que la defensa les saca.');
     }
 
@@ -1215,7 +1418,7 @@ const SGADD_SCOUT = (function () {
       f.perfil.min >= U.minutosClave)).slice(0, 2);
     if (presionables.length) {
       partes.push('La vía para romperlos es la conducción: ' +
-        enumerar(presionables.map(f => f.nombre + ' pierde ' + pct(f.perfil.perdidas) +
+        enumerar(presionables.map(f => neg(f.nombre) + ' pierde ' + pct(f.perfil.perdidas) +
           ' de sus plays (' + num2(f.perfil.perdidasRel) + 'x la liga)')) +
         '. Presión al drible en mitad de cancha y trap en la primera cortina.');
     }
@@ -1301,7 +1504,7 @@ const SGADD_SCOUT = (function () {
   return {
     VENTANA_CICLO, TOP_JUGADORES, TOP_SEMAFORO, UMBRALES: U, DELTA, BANDAS,
     MATRIZ_POSESION, MATRIZ_TIRO, METRICAS_RANKING, COLS_JUGADOR,
-    PERFILES_MARCA, PERFILES_DEFENSOR, REGLAS_CLAVE,
+    PERFILES_MARCA, PERFILES_DEFENSOR, CATALOGO_DEFENSOR, familiaDefensor, REGLAS_CLAVE,
     get ROLES_FUNCIONALES() { return rolesFuncionales(); },
     statLiga, bandaLiga, porEncima, porDebajo,
     celdaMatriz, referenciaLiga, filaMatriz, matrizComparativa, rankingsLiga,
@@ -1744,37 +1947,39 @@ function scoutBloqueMarcas(inf) {
 
   const filas = t.filas.map(f => {
     const g = SCOUT_UI.marcas[f.clave] || {};
-    const consigna = g.consigna !== undefined ? g.consigna : f.marca.consigna;
-    const restriccion = g.restriccion !== undefined ? g.restriccion : f.marca.restriccion;
+    /* Solo el TÍTULO es editable. La justificación numérica va debajo en
+       solo lectura: es el dato que sostiene la directiva y no tiene
+       sentido que el DT la reescriba a mano — si el número cambia, tiene
+       que cambiar con la planilla. */
+    const consigna = g.consigna !== undefined ? g.consigna : f.marca.consigna.titulo;
+    const restriccion = g.restriccion !== undefined ? g.restriccion : f.marca.restriccion.titulo;
     /* El defensor viene precargado con el PERFIL táctico sugerido, no con
-       un nombre: quién lo cubre depende del quinteto en cancha y de las
-       faltas de cada uno. El DT lo reemplaza por el nombre al armar la
-       rotación. */
+       un nombre: quién lo cubre depende de quién esté en cancha y de las
+       faltas de cada uno. El DT lo reemplaza al armar la rotación. */
     const defensor = g.defensor !== undefined ? g.defensor : f.marca.defensor;
+    const celdaDirectiva = (valor, campo, detalle, color) => `
+        <td class="px-2 py-2 align-top text-left">
+          <input type="text" value="${escapeAttr(valor)}"
+            oninput="scoutMarca('${escapeAttr(f.clave)}', '${campo}', this.value)"
+            class="w-full bg-surface2 border border-hairline rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ${color} focus:border-accent outline-none">
+          <p class="text-[10px] text-muted leading-snug mt-1 text-left">${escapeHtml(detalle)}</p>
+        </td>`;
     return `
       <tr class="border-b border-hairline/40 last:border-0 align-top">
-        <td class="px-2 py-2">
+        <td class="px-2 py-2 text-left">
           <p class="text-xs text-white">${escapeHtml(f.nombre)}</p>
           <p class="text-[10px] text-accent">${escapeHtml(f.rol.label)}</p>
           ${f.perfil.jerarquia ? `<p class="text-[10px] text-blue-400">${escapeHtml(f.perfil.jerarquia)}</p>` : ''}
-          <p class="text-[10px] dato-sec">${escapeHtml(SGADD.formatear('MIN', f.perfil.min))} min · ${escapeHtml(SGADD.formatear('PTS', f.perfil.pts))} pts</p>
+          <p class="text-[10px] dato-sec">${escapeHtml(SGADD.formatear('MIN', f.perfil.min))} min · ${escapeHtml(SGADD.formatear('PTS', f.perfil.pts))} pts · ${escapeHtml(SGADD.formatear('PPP', f.perfil.ppp))} PPP</p>
         </td>
-        <td class="px-2 py-2">
-          <input type="text" value="${escapeAttr(defensor)}" placeholder="Perfil o nombre"
+        <td class="px-2 py-2 align-top text-left">
+          <input type="text" value="${escapeAttr(defensor)}" title="${escapeAttr(defensor)}" placeholder="Perfil o nombre"
             oninput="scoutMarca('${escapeAttr(f.clave)}', 'defensor', this.value)"
-            class="w-full bg-surface2 border border-hairline rounded px-2 py-1 text-xs focus:border-accent outline-none">
+            class="w-full bg-surface2 border border-hairline rounded px-2 py-1 text-[11px] focus:border-accent outline-none">
+          ${f.marca.familiaDefensor ? `<p class="text-[10px] text-muted mt-1 text-left">${escapeHtml(f.marca.familiaDefensor)}</p>` : ''}
         </td>
-        <td class="px-2 py-2">
-          <input type="text" value="${escapeAttr(consigna)}"
-            oninput="scoutMarca('${escapeAttr(f.clave)}', 'consigna', this.value)"
-            class="w-full bg-surface2 border border-hairline rounded px-2 py-1 text-xs text-accent focus:border-accent outline-none">
-        </td>
-        <td class="px-2 py-2">
-          <input type="text" value="${escapeAttr(restriccion)}"
-            oninput="scoutMarca('${escapeAttr(f.clave)}', 'restriccion', this.value)"
-            class="w-full bg-surface2 border border-hairline rounded px-2 py-1 text-xs focus:border-accent outline-none">
-        </td>
-        <td class="px-2 py-2 text-[10px] text-muted leading-snug">${escapeHtml(f.marca.porque)}</td>
+        ${celdaDirectiva(consigna, 'consigna', f.marca.consigna.detalle, 'text-accent')}
+        ${celdaDirectiva(restriccion, 'restriccion', f.marca.restriccion.detalle, 'text-white')}
       </tr>`;
   }).join('');
 
@@ -1782,16 +1987,16 @@ function scoutBloqueMarcas(inf) {
     <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="marcas">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">🛡 Plan individual · marca asignada</h4>
       <p class="text-[11px] text-muted mb-3">
-        La consigna y la restricción vienen sugeridas por el perfil de cada rival — son editables:
-        el que define el plan es el cuerpo técnico, no el modelo.
+        Cada celda trae la <strong>directiva en mayúsculas</strong> (editable: el plan lo firma el cuerpo
+        técnico) y debajo la <strong>justificación con el número</strong> que la disparó, que sale de la
+        planilla y no se toca a mano.
       </p>
-      <div class="scrollbox"><table class="w-full text-left" style="min-width:52rem">
+      <div class="scrollbox"><table class="w-full text-left" style="min-width:62rem">
         <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
-          <th class="px-2 pb-1" style="width:15%">Jugador rival</th>
-          <th class="px-2 pb-1" style="width:16%">Defensor nuestro</th>
-          <th class="px-2 pb-1" style="width:21%">Consigna técnica</th>
-          <th class="px-2 pb-1" style="width:19%">Restricción / alerta</th>
-          <th class="px-2 pb-1" style="width:29%">Por qué</th>
+          <th class="px-2 pb-1" style="width:18%">Jugador rival</th>
+          <th class="px-2 pb-1" style="width:22%">Defensor nuestro</th>
+          <th class="px-2 pb-1" style="width:30%">Consigna técnica principal</th>
+          <th class="px-2 pb-1" style="width:30%">Restricción / alerta</th>
         </tr></thead>
         <tbody>${filas}</tbody>
       </table></div>
@@ -1868,12 +2073,21 @@ function scoutBloqueJugadores(inf) {
 
 /* ===================== BLOQUE 6 · RESUMEN Y CLAVES ===================== */
 
+/**
+ * Escapa PRIMERO y convierte el marcador `**...**` DESPUÉS. El orden
+ * importa: al revés, un nombre con `<` en la planilla saldría del texto y
+ * entraría al DOM como markup.
+ */
+function scoutNegritas(texto) {
+  return escapeHtml(texto || '').replace(/\*\*(.+?)\*\*/g, '<b class="text-white">$1</b>');
+}
+
 function scoutBloqueResumen(inf) {
   if (!inf.resumen) return '';
   return `
     <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="resumen">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-2">🧠 Resumen de criterio estratégico</h4>
-      <p class="text-[12px] text-ink leading-relaxed">${escapeHtml(inf.resumen)}</p>
+      <p class="text-[12px] text-ink leading-relaxed">${scoutNegritas(inf.resumen)}</p>
     </section>`;
 }
 
@@ -1921,13 +2135,18 @@ function scoutBloqueFichas(inf) {
         <ul class="text-[11px] text-ink leading-snug space-y-0.5 mt-0.5 mb-2">${lista(f.fortalezas, '#22c55e')}</ul>
         <p class="text-[10px] uppercase tracking-wider text-red-400 font-display">Puntos de fuga · dónde lo atacamos</p>
         <ul class="text-[11px] text-ink leading-snug space-y-0.5 mt-0.5 mb-2">${lista(f.fugas, '#ef4444')}</ul>
-        <div class="border-t border-hairline/50 pt-2 space-y-0.5">
-          <p class="text-[11px]"><span class="dato-sec">Consigna técnica:</span>
-            <span class="text-accent font-semibold">${escapeHtml(f.marca.consigna)}</span></p>
-          <p class="text-[11px]"><span class="dato-sec">Restricción / alerta:</span>
-            <span class="text-white">${escapeHtml(f.marca.restriccion)}</span></p>
-          <p class="text-[11px]"><span class="dato-sec">Perfil defensor:</span>
-            <span class="text-ink">${escapeHtml(f.marca.defensor)}</span></p>
+        <div class="border-t border-hairline/50 pt-2 space-y-1.5">
+          <div>
+            <p class="text-[11px] text-accent font-semibold uppercase tracking-wide">${escapeHtml(f.marca.consigna.titulo)}</p>
+            <p class="text-[10px] text-muted leading-snug">${escapeHtml(f.marca.consigna.detalle)}</p>
+          </div>
+          <div>
+            <p class="text-[11px] text-white font-semibold uppercase tracking-wide">${escapeHtml(f.marca.restriccion.titulo)}</p>
+            <p class="text-[10px] text-muted leading-snug">${escapeHtml(f.marca.restriccion.detalle)}</p>
+          </div>
+          <p class="text-[10px]"><span class="dato-sec">Defensor sugerido:</span>
+            <span class="text-ink">${escapeHtml(f.marca.defensor)}</span>
+            ${f.marca.familiaDefensor ? `<span class="dato-sec"> · ${escapeHtml(f.marca.familiaDefensor)}</span>` : ''}</p>
         </div>
       </article>`;
   }).join('');

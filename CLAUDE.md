@@ -21,10 +21,10 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  17 tests · detalle partido a partido
-node test-scouting.js      # 202 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-scouting.js      # 239 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 ```
 
-**639 tests en total. Todos tienen que dar verde antes de commitear.**
+**676 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -73,7 +73,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=43`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=44`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -624,6 +624,13 @@ tabla de arriba: no puede contradecir al cuadro que tiene al lado.
 salía "A y B y C", que se lee a los tropezones en un informe que el DT lee
 en voz alta.
 
+**Los nombres van en negrita**, y el marcador es `**...**` y NO `<b>`:
+`neg()` en el motor emite el marcador y `scoutNegritas()` en la UI **escapa
+primero y convierte después**. Al revés, un nombre con `<` en la planilla
+saldría del texto y entraría al DOM como markup — el motor es puro y su
+salida se escapa siempre. Hay un test que verifica que el motor NO devuelva
+HTML y que ningún nombre quede fuera del marcador.
+
 ### PROHIBIDO hablar de titularidad
 
 **La planilla no trae el quinteto inicial.** No hay columna de titulares, y
@@ -708,14 +715,67 @@ que "ficha del jugador" son los arquetipos calculados. Si algún día entra
 una columna de altura, el cruce se enriquece en `perfilJugador()` y en
 ningún otro lado.
 
-### Marca asignada: "elegir el veneno" con soluciones de campo
+### Matriz de perfiles de "Defensor nuestro"
 
-La columna **Defensor nuestro** sugiere un PERFIL táctico
-(`PERFILES_DEFENSOR`, seis: Especialista 1x1 Perimetral, Defensor Físico de
-Contención, Atrapador / Presión al Drible, Defensor de Ajuste / Spacing,
-Ancla Interior / Protector de Aro, Defensor Versátil / Cambios), no un
-nombre propio: quién lo cubre depende del quinteto en cancha y de las faltas
-de cada uno. El campo es editable para poner el nombre al armar la rotación.
+`CATALOGO_DEFENSOR` son **11 familias con 33 perfiles** específicos. Sugiere
+un PERFIL táctico, no un nombre propio: quién lo cubre depende de quién esté
+en cancha y de las faltas de cada uno. El campo es editable para poner el
+nombre al armar la rotación.
+
+| Familia | Perfiles |
+|---|---|
+| 🛡 Especialista 1x1 | On-Ball Stopper · Shadow · Lockdown Defender |
+| ⚡ Presión Inicial | POA Defender · P&R Disruptor · Ball-Screen Pest |
+| 🏃 Perimetral Atlético | Wing Chaser · Transition Defender · Drive Containment |
+| 💪 Perimetral Físico | Perimeter Enforcer · Defensive Goon · Rebounding Guard |
+| 📏 Perimetral Largo | Length Defender · Volume Containment · Closeout Specialist |
+| 🎯 Especialista Perimetral | Sniper Stopper · Denier · Screen Navigator |
+| 🏢 Especialista Interior | Drop Protector · Classic Rim Protector · Paint Pillar |
+| 🏰 Referente de Zona | Primary Rim Protector · Glass Cleaner · Paint Dominator |
+| 🧱 Híbrido Físico | Switchable Forward · Low-Post Wall · Interior Impact |
+| 🦅 Perimetral Atlético · Ayudas | Free Safety · Vertical Rotator · Passing Lane Interceptor |
+| 📐 Contención Táctica | Target Defender · Read Specialist · Pace Controller |
+
+**Hay dos familias de perimetral atlético** (🏃 contención en la línea de
+pelota y 🦅 ayudas desde el lado débil) y no se fusionaron: son tareas
+distintas y mezclarlas volvería a agrupar marcas que piden defensores
+diferentes.
+
+Las 11 marcas de la cascada usan **11 perfiles distintos** — hay un test que
+lo verifica. Antes seis perfiles cargaban las once marcas y dos de ellos
+concentraban la mitad.
+
+| Marca | Defensor asignado |
+|---|---|
+| `tirador-elite` | 🎯 Sniper Stopper |
+| `tirador-eficiente-bajo-volumen` | 🎯 Denier |
+| `tirador-sistematico-frio` | 📏 Closeout Specialist |
+| `interior-dominante` | 🏢 Paint Pillar |
+| `slasher` | 🏃 Drive Containment |
+| `generador-riesgoso` | ⚡ Ball-Screen Pest |
+| `castigable-en-la-linea` | 🧱 Interior Impact Defender |
+| `tirador-ineficiente` | 📐 Target Defender |
+| `volumen-sin-eficiencia` | 📏 Volume Containment |
+| `rebotador` | 🏰 Glass Cleaner |
+| `contencion` (fallback) | 🧱 Switchable Forward |
+
+### Cada celda: directiva + justificación numérica
+
+`consigna` y `restriccion` son **objetos `{titulo, detalle}`**, no strings:
+
+- `titulo` → la directiva corta en MAYÚSCULAS (`TOP LOCK / OVER.`,
+  `3/4 POR DELANTE / FRONT.`, `ACOSO AL DRIBLE / TRAP.`). Es lo único
+  **editable**: lo que el DT canta en el vestuario.
+- `detalle` → la justificación con el NÚMERO que la disparó, en solo
+  lectura. Si el número cambia, cambia con la planilla y no a mano.
+
+Ambos se generan como funciones del perfil, así que el número sale del
+jugador y no de un texto fijo. Hay tests que exigen que **los dos** títulos
+estén en mayúsculas y que **los dos** detalles citen al menos un dígito y
+nombren la métrica.
+
+`consignaTexto`/`restriccionTexto` son la concatenación plana, para el input
+editable y el export a PDF; el que manda es el objeto.
 
 Las consignas son todas de **campo**: ice en P&R, drop coverage, show corto,
 negación de catch & shoot, flotación/under, contención de mano dominante,

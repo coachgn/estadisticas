@@ -452,27 +452,27 @@ console.log('═'.repeat(70));
 
 check('al tirador de élite le asigna negación de catch & shoot',
   porNombre['TIRADOR, ELITE'].marca.id === 'tirador-elite' &&
-  /CATCH & SHOOT/.test(porNombre['TIRADOR, ELITE'].marca.consigna),
+  /catch & shoot/i.test(porNombre["TIRADOR, ELITE"].marca.consignaTexto),
   JSON.stringify(porNombre['TIRADOR, ELITE'].marca));
 check('al pivot interno le asigna front / negar recepción',
   porNombre['PIVOT, INTERNO'].marca.id === 'interior-dominante' &&
-  /NEGAR RECEPCIÓN/.test(porNombre['PIVOT, INTERNO'].marca.consigna),
+  /FRONT/.test(porNombre['PIVOT, INTERNO'].marca.consignaTexto),
   JSON.stringify(porNombre['PIVOT, INTERNO'].marca));
 check('al slasher le asigna contención de mano dominante, NO una marca de poste bajo',
   porNombre['SLASHER, PENETRADOR'].marca.id === 'slasher' &&
-  /MANO DOMINANTE/.test(porNombre['SLASHER, PENETRADOR'].marca.consigna),
+  /MANO DOMINANTE/.test(porNombre['SLASHER, PENETRADOR'].marca.consignaTexto),
   JSON.stringify(porNombre['SLASHER, PENETRADOR'].marca));
 check('al conductor con pérdidas le asigna ICE en P&R y presión al drible',
   porNombre['BASE, RIESGOSO'].marca.id === 'generador-riesgoso' &&
-  /ICE EN P&R/.test(porNombre['BASE, RIESGOSO'].marca.consigna),
+  /ACOSO AL DRIBLE/.test(porNombre['BASE, RIESGOSO'].marca.consignaTexto),
   JSON.stringify(porNombre['BASE, RIESGOSO'].marca));
 check('al lanzador de volumen con mal porcentaje se le CONTESTA sin saltar, no se le flota',
   porNombre['LADRILLO, PERIMETRAL'].marca.id === 'tirador-sistematico-frio' &&
-  /CONTESTAR SIN SALTAR/.test(porNombre['LADRILLO, PERIMETRAL'].marca.consigna),
+  /CONTESTAR SIN SALTAR/.test(porNombre['LADRILLO, PERIMETRAL'].marca.consignaTexto),
   JSON.stringify(porNombre['LADRILLO, PERIMETRAL'].marca));
 check('la flotación queda para el de renta baja SIN volumen sistemático',
   porNombre['FLOTABLE, MENOR'].marca.id === 'tirador-ineficiente' &&
-  /FLOTACIÓN/.test(porNombre['FLOTABLE, MENOR'].marca.consigna),
+  /FLOTACIÓN/.test(porNombre['FLOTABLE, MENOR'].marca.consignaTexto),
   JSON.stringify(porNombre['FLOTABLE, MENOR'].marca));
 check('al suplente sin amenaza dominante le queda el fallback (drop coverage)',
   porNombre['SUPLENTE, GRIS'].marca.id === 'contencion', JSON.stringify(porNombre['SUPLENTE, GRIS'].marca));
@@ -489,22 +489,25 @@ check('ninguna consigna que no sea la de castigo en la línea propone falta sist
   tabla.filas.every(f => f.marca.id === 'castigable-en-la-linea' || !/MANDAR A LA LÍNEA|FALTA TÁCTICA/.test(f.marca.consigna + f.marca.restriccion)),
   tabla.filas.map(f => f.marca.id + ':' + f.marca.consigna).join(' | '));
 check('las consignas son soluciones de campo del glosario moderno',
-  tabla.filas.some(f => /ICE EN P&R/.test(f.marca.consigna)) &&
-  tabla.filas.some(f => /DROP COVERAGE/.test(f.marca.consigna)) &&
-  tabla.filas.some(f => /FLOTACIÓN/.test(f.marca.consigna)));
+  tabla.filas.some(f => /ACOSO AL DRIBLE|TRAP/.test(f.marca.consignaTexto)) &&
+  tabla.filas.some(f => /DROP COVERAGE/.test(f.marca.consignaTexto)) &&
+  tabla.filas.some(f => /FLOTACIÓN|UNDER/.test(f.marca.consignaTexto)));
 
 /* --- Defensor nuestro: perfil táctico, no un nombre propio --- */
 const perfilesValidos = Object.keys(S.PERFILES_DEFENSOR).map(k => S.PERFILES_DEFENSOR[k]);
 check('cada marca sugiere un PERFIL defensivo de nuestro plantel, no un nombre',
   tabla.filas.every(f => perfilesValidos.indexOf(f.marca.defensor) !== -1),
   tabla.filas.map(f => f.marca.defensor).join(' | '));
-check('hay 6 perfiles defensivos disponibles', perfilesValidos.length === 6, perfilesValidos.length);
-check('al tirador de élite le corresponde el especialista 1x1 perimetral',
-  porNombre['TIRADOR, ELITE'].marca.defensor === S.PERFILES_DEFENSOR.perimetral1x1);
-check('al pivot interno le corresponde el ancla interior',
-  porNombre['PIVOT, INTERNO'].marca.defensor === S.PERFILES_DEFENSOR.ancla);
-check('al conductor con pérdidas le corresponde el atrapador',
-  porNombre['BASE, RIESGOSO'].marca.defensor === S.PERFILES_DEFENSOR.atrapador);
+check('el catálogo tiene 11 familias de defensor', S.CATALOGO_DEFENSOR.length === 11, S.CATALOGO_DEFENSOR.length);
+check('al tirador de élite le corresponde el anulador de tiradores',
+  porNombre['TIRADOR, ELITE'].marca.defensor === S.PERFILES_DEFENSOR.sniperStopper,
+  porNombre['TIRADOR, ELITE'].marca.defensor);
+check('al pivot interno le corresponde el muro de pintura',
+  porNombre['PIVOT, INTERNO'].marca.defensor === S.PERFILES_DEFENSOR.paintPillar,
+  porNombre['PIVOT, INTERNO'].marca.defensor);
+check('al conductor con pérdidas le corresponde el hostigador',
+  porNombre['BASE, RIESGOSO'].marca.defensor === S.PERFILES_DEFENSOR.hostigador,
+  porNombre['BASE, RIESGOSO'].marca.defensor);
 
 check('cada marca explica POR QUÉ con el número que la disparó',
   tabla.filas.every(f => typeof f.marca.porque === 'string' && f.marca.porque.length > 10));
@@ -547,7 +550,7 @@ check('pero su tiro externo se marca como rentable',
   JSON.stringify({ ppt3: caro.perfil.pptTriple, t3: caro.perfil.t3, banda: caro.perfil.bandaPptTriple && caro.perfil.bandaPptTriple.id }));
 check('y su consigna OBLIGATORIA es STAY HOME, nunca flotar',
   caro.marca.id === 'tirador-eficiente-bajo-volumen' &&
-  /STAY HOME/.test(caro.marca.consigna) && /PROHIBIDO FLOTAR/.test(caro.marca.restriccion),
+  /STAY HOME/.test(caro.marca.consignaTexto) && /PROHIBIDO FLOTAR/.test(caro.marca.restriccionTexto),
   JSON.stringify(caro.marca));
 check('a NADIE con tiro externo rentable se le sugiere flotar o ayudar desde él',
   tabla.filas.every(f => !f.perfil.tiroExternoRentable ||
@@ -751,7 +754,7 @@ check('los discriminantes de origen también coinciden',
 /* --- Las consignas derivan del perfil cuantitativo --- */
 check('un jugador con volumen alto y eFG% bajo recibe permisividad de tiro, no presión',
   tabla.filas.every(f => f.marca.id !== 'volumen-sin-eficiencia' ||
-    /PERMITIR EL TIRO EXTERNO/.test(f.marca.consigna)));
+    /PERMITIR EL TIRO EXTERNO/.test(f.marca.consignaTexto)));
 check('la regla de volumen sin eficiencia existe en la cascada',
   S.PERFILES_MARCA.some(p => p.id === 'volumen-sin-eficiencia'));
 check('esa regla NUNCA se aplica a alguien con tiro externo rentable',
@@ -784,8 +787,8 @@ console.log('\n10. SÍNTESIS ESTRATÉGICA · LOS SEIS TRAMOS');
 console.log('═'.repeat(70));
 
 /* 1. Ritmo */
-check('1· abre con el ritmo del rival y su consecuencia defensiva',
-  /^AGUILA.*ritmo/i.test(resumenJ) && /(balance defensivo|marca individual|duelos)/i.test(resumenJ),
+check('1· abre con el ritmo del rival (en negrita) y su consecuencia defensiva',
+  /^\*\*AGUILA\*\*.*ritmo/i.test(resumenJ) && /(balance defensivo|marca individual|duelos)/i.test(resumenJ),
   resumenJ.slice(0, 130));
 /* 2. Eje de ataque */
 check('2· identifica el eje del ataque con % de plays, puntos y PPP',
@@ -858,6 +861,127 @@ check('las fortalezas y fugas generadas tampoco lo mencionan',
   tabla.filas.every(f => f.fortalezas.concat(f.fugas).every(t => !PROHIBIDAS.test(t))));
 check('las claves estratégicas tampoco',
   S.clavesEstrategicas(idx, 'AGUILA').every(c => !PROHIBIDAS.test(c.texto + ' ' + c.titulo)));
+
+console.log('\n12. MATRIZ DE PERFILES DE DEFENSOR NUESTRO');
+console.log('═'.repeat(70));
+
+const TOTAL_PERFILES = S.CATALOGO_DEFENSOR.reduce((n, c) => n + c.perfiles.length, 0);
+check('el catálogo tiene 11 familias', S.CATALOGO_DEFENSOR.length === 11, S.CATALOGO_DEFENSOR.length);
+check('con 33 perfiles específicos entre todas', TOTAL_PERFILES === 33, TOTAL_PERFILES);
+check('cada familia trae emoji, nombre y al menos 3 perfiles',
+  S.CATALOGO_DEFENSOR.every(c => !!c.emoji && !!c.familia && c.perfiles.length >= 3));
+check('cada perfil trae id, etiqueta y qué hace',
+  S.CATALOGO_DEFENSOR.every(c => c.perfiles.every(p => !!p.id && !!p.label && p.detalle.length > 20)));
+check('no hay ids de perfil repetidos entre familias',
+  (function () {
+    const ids = [];
+    S.CATALOGO_DEFENSOR.forEach(c => c.perfiles.forEach(p => ids.push(p.id)));
+    return new Set(ids).size === ids.length;
+  })());
+check('las dos familias de perimetral atlético quedaron separadas (línea de pelota vs. ayudas)',
+  S.CATALOGO_DEFENSOR.filter(c => /Perimetral Atlético/.test(c.familia)).length === 2);
+check('familiaDefensor() resuelve la familia de un perfil por su etiqueta',
+  S.familiaDefensor(S.PERFILES_DEFENSOR.sniperStopper) === '🎯 Especialista Perimetral',
+  S.familiaDefensor(S.PERFILES_DEFENSOR.sniperStopper));
+check('familiaDefensor() de una etiqueta desconocida da null', S.familiaDefensor('NO EXISTE') === null);
+
+/* Cada marca tiene que caer en un perfil REAL del catálogo. */
+const etiquetasCatalogo = [];
+S.CATALOGO_DEFENSOR.forEach(c => c.perfiles.forEach(p => etiquetasCatalogo.push(p.label)));
+check('cada marca de la cascada asigna un perfil que existe en el catálogo',
+  S.PERFILES_MARCA.every(m => etiquetasCatalogo.indexOf(m.defensor) !== -1),
+  S.PERFILES_MARCA.filter(m => etiquetasCatalogo.indexOf(m.defensor) === -1).map(m => m.id).join('|'));
+check('las 11 marcas usan 11 perfiles DISTINTOS: no se repite defensor',
+  new Set(S.PERFILES_MARCA.map(m => m.defensor)).size === S.PERFILES_MARCA.length,
+  S.PERFILES_MARCA.map(m => m.defensor).join(' | '));
+check('cada fila del informe trae también la familia del defensor sugerido',
+  tabla.filas.every(f => !!f.marca.familiaDefensor));
+
+/* Asignaciones concretas: el perfil tiene que describir la tarea real. */
+check('al tirador sistemático frío le toca el cerrador de tiros abiertos',
+  porNombre['LADRILLO, PERIMETRAL'].marca.defensor === S.PERFILES_DEFENSOR.closeout);
+check('al tirador eficiente de bajo volumen le toca el defensor de denegación',
+  porNombre['ESPECIALISTA, CARO'].marca.defensor === S.PERFILES_DEFENSOR.denier);
+check('al slasher le toca el contenedor de penetraciones',
+  porNombre['SLASHER, PENETRADOR'].marca.defensor === S.PERFILES_DEFENSOR.driveContainment);
+check('al que hay que flotarle le toca el defensor flotante',
+  porNombre['FLOTABLE, MENOR'].marca.defensor === S.PERFILES_DEFENSOR.targetDefender);
+check('al vulnerable en la línea le toca el defensor de impacto interno',
+  porNombre['MANOS, PIEDRA'].marca.defensor === S.PERFILES_DEFENSOR.interiorImpact);
+check('el fallback usa el defensor multiuso (switch)',
+  porNombre['SUPLENTE, GRIS'].marca.defensor === S.PERFILES_DEFENSOR.switchable);
+
+console.log('\n13. DIRECTIVA + JUSTIFICACIÓN NUMÉRICA EN CADA CELDA');
+console.log('═'.repeat(70));
+
+check('consigna y restricción son objetos {titulo, detalle}, no strings sueltos',
+  tabla.filas.every(f =>
+    typeof f.marca.consigna === 'object' && typeof f.marca.consigna.titulo === 'string' &&
+    typeof f.marca.restriccion === 'object' && typeof f.marca.restriccion.titulo === 'string'));
+check('el título de la consigna va SIEMPRE en mayúsculas',
+  tabla.filas.every(f => f.marca.consigna.titulo === f.marca.consigna.titulo.toUpperCase()),
+  tabla.filas.filter(f => f.marca.consigna.titulo !== f.marca.consigna.titulo.toUpperCase()).map(f => f.marca.consigna.titulo).join('|'));
+check('el título de la restricción también',
+  tabla.filas.every(f => f.marca.restriccion.titulo === f.marca.restriccion.titulo.toUpperCase()));
+check('los títulos son directivas cortas, no párrafos',
+  tabla.filas.every(f => f.marca.consigna.titulo.length <= 45 && f.marca.restriccion.titulo.length <= 45),
+  tabla.filas.map(f => f.marca.consigna.titulo.length).join(','));
+
+/* La justificación es lo que separa una orden de un análisis. */
+const CON_NUMERO = /\d/;
+check('la justificación de la consigna cita al menos un número del jugador',
+  tabla.filas.every(f => CON_NUMERO.test(f.marca.consigna.detalle)),
+  tabla.filas.filter(f => !CON_NUMERO.test(f.marca.consigna.detalle)).map(f => f.nombre).join('|'));
+check('la justificación de la restricción también',
+  tabla.filas.every(f => CON_NUMERO.test(f.marca.restriccion.detalle)),
+  tabla.filas.filter(f => !CON_NUMERO.test(f.marca.restriccion.detalle)).map(f => f.nombre + '→' + f.marca.restriccion.detalle).join('|'));
+check('las justificaciones son oraciones, no fragmentos',
+  tabla.filas.every(f => f.marca.consigna.detalle.length > 40 && f.marca.restriccion.detalle.length > 40));
+check('la justificación nombra la métrica, no solo el número',
+  tabla.filas.every(f => /(PPT3|PPT2|PTS|PPP|eFG%|RO%|T1%|pérdidas|triple|libres|plays|minutos|liga)/i.test(f.marca.consigna.detalle)),
+  tabla.filas.filter(f => !/(PPT3|PPT2|PTS|PPP|eFG%|RO%|T1%|pérdidas|triple|libres|plays|minutos|liga)/i.test(f.marca.consigna.detalle)).map(f => f.nombre).join('|'));
+check('los textos planos concatenan título y justificación, para el input y el PDF',
+  tabla.filas.every(f => f.marca.consignaTexto === (f.marca.consigna.titulo + ' ' + f.marca.consigna.detalle).trim()));
+
+/* Ejemplos concretos del pedido. */
+check('el tirador de élite recibe TOP LOCK / OVER con su PPT3 en la justificación',
+  /TOP LOCK/.test(porNombre['TIRADOR, ELITE'].marca.consigna.titulo) &&
+  /PPT3/.test(porNombre['TIRADOR, ELITE'].marca.consigna.detalle),
+  JSON.stringify(porNombre['TIRADOR, ELITE'].marca.consigna));
+check('la referencia interna recibe 3/4 POR DELANTE / FRONT con su PPT2',
+  /3\/4 POR DELANTE/.test(porNombre['PIVOT, INTERNO'].marca.consigna.titulo) &&
+  /PPT2/.test(porNombre['PIVOT, INTERNO'].marca.consigna.detalle));
+check('el conductor con pérdidas recibe ACOSO AL DRIBLE / TRAP con su %TOV',
+  /ACOSO AL DRIBLE/.test(porNombre['BASE, RIESGOSO'].marca.consigna.titulo) &&
+  /pérdidas/.test(porNombre['BASE, RIESGOSO'].marca.consigna.detalle));
+check('el rebotador recibe BOX-OUT DE CHOQUE con su múltiplo de RO%',
+  (function () {
+    const f = tabla.filas.find(x => x.marca.id === 'rebotador');
+    return !f || (/BOX-OUT DE CHOQUE/.test(f.marca.consigna.titulo) && /RO%|rebote/i.test(f.marca.consigna.detalle));
+  })());
+
+console.log('\n14. NOMBRES EN NEGRITA EN EL RESUMEN');
+console.log('═'.repeat(70));
+
+const resumenNeg = S.resumenEjecutivo(idx, 'TOPO', 'AGUILA');
+const negritas = (resumenNeg.match(/\*\*(.+?)\*\*/g) || []).map(s => s.replace(/\*\*/g, ''));
+check('el resumen marca nombres en negrita con **…**', negritas.length > 0, negritas.length);
+check('el nombre del equipo rival va en negrita', negritas.indexOf('AGUILA') !== -1, negritas.join('|'));
+check('TODOS los jugadores nombrados en el resumen están en negrita',
+  tabla.filas.every(f => resumenNeg.indexOf(f.nombre) === -1 || negritas.indexOf(f.nombre) !== -1),
+  tabla.filas.filter(f => resumenNeg.indexOf(f.nombre) !== -1 && negritas.indexOf(f.nombre) === -1).map(f => f.nombre).join('|'));
+check('ningún nombre queda suelto fuera del marcador',
+  (function () {
+    let limpio = resumenNeg;
+    negritas.forEach(n => { limpio = limpio.split('**' + n + '**').join(''); });
+    return tabla.filas.every(f => limpio.indexOf(f.nombre) === -1);
+  })());
+check('los marcadores están balanceados (par de asteriscos)',
+  (resumenNeg.match(/\*\*/g) || []).length % 2 === 0);
+check('el marcador NO es HTML: el motor es puro y la UI escapa antes de convertir',
+  !/<b>|<\/b>|<strong>/i.test(resumenNeg));
+check('al menos un jugador de cada tramo con nombres está marcado',
+  negritas.length >= 3, negritas.join('|'));
 
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
