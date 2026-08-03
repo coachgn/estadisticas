@@ -21,10 +21,10 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  17 tests · detalle partido a partido
-node test-scouting.js      # 138 tests · informe pre-partido, roles funcionales, marcas, claves
+node test-scouting.js      # 160 tests · informe pre-partido, bandas de liga, marcas, claves
 ```
 
-**518 tests en total. Todos tienen que dar verde antes de commitear.**
+**540 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -73,7 +73,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=38`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=39`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -399,6 +399,9 @@ label del simulador es **"Simulador"** a secas (el modelo se sigue llamando
 
 ### Los ocho bloques, en orden
 
+Cada uno es una `<section class="scout-card" data-bloque="...">`. El orden
+es rígido y va de lo colectivo a lo individual:
+
 1. **Encabezado** — récord global y desglosado L/V de los dos, último
    partido con rival y marcador, e historial directo.
 2. **Matriz de métricas avanzadas** — A vs B vs mediana de liga, con el
@@ -408,15 +411,84 @@ label del simulador es **"Simulador"** a secas (el modelo se sigue llamando
 3. **Splits L/V y ciclo reciente** — últimos 4 partidos separados en
    ganados y perdidos, con puntos de fuga, valores de identidad y línea de
    tiro.
-4. **Jugadores clave del rival** — tabla con mapa de calor del top 3 por
-   métrica y filas de cierre (promedio del plantel y de la liga).
-5. **Plan individual · marca asignada** — perfil defensor, consigna y
+4. **Plan individual · marca asignada** — perfil defensor, consigna y
    restricción sugeridas, **editables**: el plan lo firma el DT.
-6. **Resumen de criterio estratégico** — va inmediatamente debajo de la
+5. **Resumen de criterio estratégico** — va inmediatamente debajo de la
    tabla de marcas, porque sintetiza justamente esa composición de marcas.
+6. **Jugadores clave del rival** — tabla con mapa de calor del top 3 por
+   métrica y filas de cierre (promedio del plantel y de la liga).
 7. **Claves estratégicas y anticipación** — las 8 reglas dinámicas.
 8. **Ficha de análisis por jugador** — rol funcional, fortalezas, puntos de
    fuga y plan de acción, uno por rival.
+
+Los escudos se pintan al lado de cada nombre de equipo (`scoutNombreConLogo`)
+en el encabezado, la matriz, los rankings, el ciclo y la tabla de jugadores.
+
+### Criterio contextual: bandas z contra la liga
+
+Ninguna decisión táctica individual sale solo de un umbral absoluto. Primero
+se mide cuánto se desvía el jugador de la media de jugadores calificados de
+ESTA liga (`bandaLiga`, cinco bandas en ±1,2σ y ±0,5σ):
+
+| Banda | z | Lectura |
+|---|---|---|
+| `elite` | ≥ +1,2σ | Muy por encima de la liga |
+| `superior` | +0,5σ a +1,2σ | Por encima |
+| `estandar` | −0,5σ a +0,5σ | En el promedio |
+| `limitado` | −1,2σ a −0,5σ | Por debajo |
+| `fuga` | ≤ −1,2σ | Punto de fuga claro |
+
+Se usa media/desvío y **no percentil** porque las reglas están expresadas en
+sigmas y porque el percentil comprime los extremos: entre el 1° y el 3° de
+la liga puede haber medio punto de PPT3 y los tres caen en "percentil 95".
+En métricas invertidas (%TOV) el signo se da vuelta, para que `elite`
+signifique siempre lo mismo: mejor que la liga.
+
+### El error táctico más caro: flotarle a un tirador eficiente
+
+Tres reglas de tiro externo, en cascada y en este orden:
+
+1. **`tirador-eficiente-bajo-volumen`** → `STAY HOME / NEGACIÓN DE CATCH &
+   SHOOT`, con `PROHIBIDO FLOTAR` como restricción. Se activa con volumen
+   mínimo (≥ 1 triple por partido) y renta por encima del piso duro
+   (PPT3 ≥ 1,05 o T3% ≥ 35%) **o** por encima de su liga. Es el
+   especialista que anota poco **por volumen, no por eficiencia**: con el
+   criterio viejo, que miraba puntos, quedaba en el montón y se le soltaba.
+   Va arriba de todo lo interno y de todo lo de flotación a propósito.
+2. **`tirador-sistematico-frio`** → `CLOSE-OUT CORTO / CONTESTAR SIN
+   SALTAR`. Mucho volumen (≥ 2,5 triples por partido) con renta baja: hay
+   que puntearle la mano igual, pero sin desarmar la estructura por él.
+3. **`tirador-ineficiente`** (flotación) → tiene **tres** condiciones
+   acumuladas: renta baja en absoluto, por debajo de la liga en su
+   contexto, y que su tiro **no sea la vía principal** del ataque rival
+   (< 25% de los triples del equipo). Si falla cualquiera, ya cayó en una
+   de las dos reglas anteriores.
+
+Hay un test que recorre todo el plantel y verifica que **a nadie con tiro
+externo rentable se le sugiera flotar o ayudar desde él**. Con datos reales
+de Atenas: Schroeder (2,4 T3I, PPT3 1,04) pasó a STAY HOME y Qüin (5,4 T3I,
+PPT3 0,78) a contestar sin saltar — antes los dos recibían "flotar".
+
+### Exportación a PDF por cards
+
+Botón *🖨 Exportar PDF* → modal con un checkbox por card. Al imprimir,
+`scoutImprimir()` marca `body.modo-scout-print`, aplica `.no-imprimir` a las
+cards destildadas, llama a `window.print()` y limpia la clase en
+`afterprint`. Sin esa clase un Ctrl+P normal no cambia de comportamiento:
+en la app conviven dos exportaciones (esta y la del informe de equipo) y no
+pueden pisarse.
+
+CSS: `.scout-card { page-break-inside: avoid; page-break-after: always }`,
+con `:last-of-type` en `auto` para no arrastrar una hoja en blanco, y
+`.scout-ficha` también sin cortes. Los `input[type=text]` de la tabla de
+marcas **sí** se imprimen (la regla general de `@media print` esconde todo
+input, pero acá el valor cargado por el DT es el contenido del informe).
+
+**`@page` no se puede condicionar por clase del body**, así que es
+compartida con la exportación del informe de equipo: quedó en
+`A4 portrait, margen 12mm 10mm`. Los problemas abiertos del punto 7
+(márgenes negros en Chromium) aplican igual a esta exportación: no está
+verificada contra una impresora real.
 
 ### Roles funcionales, no posiciones
 

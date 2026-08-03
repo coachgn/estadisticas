@@ -126,7 +126,7 @@ const filasPJ = [
 
   /* AGUILA — el rival a scoutear. */
   jug('TIRADOR, ELITE', 'AGUILA', {
-    MIN: '30', PLAYS: '20', PTS: '22', PPP: '1,10',
+    MIN: '30', PLAYS: '24', PTS: '22', PPP: '1,10',
     'PT3%': '0,55', PPT3: '1,35', 'T3%': '0,45', 'PT2%': '0,30', PPT2: '0,95',
     'PT1%': '0,08', 'T1%': '0,80', 'PePP%': '0,10',
     T3I: '8', T2I: '4', T1I: '2',
@@ -169,6 +169,25 @@ const filasPJ = [
     'PT1%': '0,16', 'T1%': '0,35', PPT1: '0,35', 'RO%': '0,09', 'RD%': '0,16', 'PePP%': '0,12',
     T3I: '0,3', T2I: '7', T1I: '4', AST: '1', 'AST-PP': '0,60',
   }),
+  /* El caso "Benavídez": pocos minutos y pocos puntos, pero el triple que
+     tira es CARO. Con el criterio viejo (que miraba puntos) quedaba en el
+     montón y se le flotaba; es el error táctico más grave del engine. */
+  jug('ESPECIALISTA, CARO', 'AGUILA', {
+    MIN: '14', PLAYS: '5', PTS: '5', PPP: '1,00',
+    /* PPT3 1,14 queda por DEBAJO del umbral de "élite" (1,20) pero por
+       encima del piso de rentabilidad (1,05): es exactamente el hueco
+       donde el engine viejo lo soltaba. */
+    'PT3%': '0,60', PPT3: '1,14', 'T3%': '0,38', 'PT2%': '0,25', PPT2: '0,90',
+    'PT1%': '0,05', 'T1%': '0,75', 'PePP%': '0,10',
+    T3I: '2', T2I: '1', T1I: '0,3',
+  }),
+  /* Único candidato legítimo a flotación: renta baja, volumen chico (no
+     llega a "sistemático") y sin peso en el volumen externo del equipo. */
+  jug('FLOTABLE, MENOR', 'AGUILA', {
+    MIN: '12', PLAYS: '5', PTS: '3',
+    'PT3%': '0,45', PPT3: '0,75', 'T3%': '0,25', 'PT2%': '0,40',
+    T3I: '2', T2I: '2,5', T1I: '0,4',
+  }),
   jug('SUPLENTE, GRIS', 'AGUILA', {
     MIN: '10', PLAYS: '4', PTS: '3',
     T3I: '1', T2I: '2', T1I: '0,5',
@@ -195,7 +214,7 @@ console.log('\n0. LA FIXTURE ES SANA (si esto falla, el resto miente)');
 console.log('═'.repeat(70));
 check('la liga tiene los 4 equipos', idx.lista().length === 4, idx.lista().length);
 check('AGUILA tiene sus 3 partidos', idx.get('AGUILA').partidos.length === 3);
-check('AGUILA tiene su plantel de 8', (idx.liga.jugadoresPorEquipo.get('AGUILA') || []).length === 8,
+check('AGUILA tiene su plantel de 10', (idx.liga.jugadoresPorEquipo.get('AGUILA') || []).length === 10,
   (idx.liga.jugadoresPorEquipo.get('AGUILA') || []).length);
 check('la fila JUGADOR TIPO de liga se reconoció', idx.liga.jugadorTipo !== null && cerca(idx.liga.jugadorTipo['PePP%'], 0.13, 1e-4),
   JSON.stringify(idx.liga.jugadorTipo && idx.liga.jugadorTipo['PePP%']));
@@ -306,8 +325,14 @@ check('con una ventana donde no perdió ningún partido, el grupo perdidos es nu
 
 console.log('\n5. JUGADORES CLAVE Y SEMÁFORO TOP 3');
 console.log('═'.repeat(70));
-const tabla = S.jugadoresClave(idx, 'AGUILA');
-check('la tabla trae los 8 jugadores de AGUILA', tabla.filas.length === 8, tabla.filas.length);
+check('por defecto la tabla se recorta al top ' + S.TOP_JUGADORES + ' por minutos',
+  S.jugadoresClave(idx, 'AGUILA').filas.length === S.TOP_JUGADORES,
+  S.jugadoresClave(idx, 'AGUILA').filas.length);
+/* Para el resto de las pruebas se pide el plantel entero: los dos casos
+   límite de tiro externo (el especialista caro y el flotable) juegan pocos
+   minutos justamente porque ese es su perfil. */
+const tabla = S.jugadoresClave(idx, 'AGUILA', 10);
+check('con límite explícito trae el plantel completo', tabla.filas.length === 10, tabla.filas.length);
 check('vienen ordenados por minutos, de mayor a menor',
   tabla.filas.map(f => f.perfil.min).every((m, i, a) => i === 0 || a[i - 1] >= m),
   JSON.stringify(tabla.filas.map(f => f.perfil.min)));
@@ -384,7 +409,7 @@ const porNombre = {};
 tabla.filas.forEach(f => { porNombre[f.nombre] = f; });
 
 check('el perfil calcula la concentración de plays sobre el total del plantel',
-  cerca(porNombre['TIRADOR, ELITE'].perfil.concentracion, 20 / tabla.totalPlays, 1e-6),
+  cerca(porNombre['TIRADOR, ELITE'].perfil.concentracion, 24 / tabla.totalPlays, 1e-6),
   porNombre['TIRADOR, ELITE'].perfil.concentracion);
 check('el perfil relativiza las pérdidas contra la mediana de la liga, no en absoluto',
   cerca(porNombre['BASE, RIESGOSO'].perfil.perdidasRel, 0.22 / 0.13, 1e-3),
@@ -441,10 +466,14 @@ check('al conductor con pérdidas le asigna ICE en P&R y presión al drible',
   porNombre['BASE, RIESGOSO'].marca.id === 'generador-riesgoso' &&
   /ICE EN P&R/.test(porNombre['BASE, RIESGOSO'].marca.consigna),
   JSON.stringify(porNombre['BASE, RIESGOSO'].marca));
-check('al tirador de volumen sin renta le asigna under / flotación e invitación al tiro',
-  porNombre['LADRILLO, PERIMETRAL'].marca.id === 'tirador-ineficiente' &&
-  /FLOTACIÓN/.test(porNombre['LADRILLO, PERIMETRAL'].marca.consigna),
+check('al lanzador de volumen con mal porcentaje se le CONTESTA sin saltar, no se le flota',
+  porNombre['LADRILLO, PERIMETRAL'].marca.id === 'tirador-sistematico-frio' &&
+  /CONTESTAR SIN SALTAR/.test(porNombre['LADRILLO, PERIMETRAL'].marca.consigna),
   JSON.stringify(porNombre['LADRILLO, PERIMETRAL'].marca));
+check('la flotación queda para el de renta baja SIN volumen sistemático',
+  porNombre['FLOTABLE, MENOR'].marca.id === 'tirador-ineficiente' &&
+  /FLOTACIÓN/.test(porNombre['FLOTABLE, MENOR'].marca.consigna),
+  JSON.stringify(porNombre['FLOTABLE, MENOR'].marca));
 check('al suplente sin amenaza dominante le queda el fallback (drop coverage)',
   porNombre['SUPLENTE, GRIS'].marca.id === 'contencion', JSON.stringify(porNombre['SUPLENTE, GRIS'].marca));
 
@@ -481,6 +510,67 @@ check('cada marca explica POR QUÉ con el número que la disparó',
   tabla.filas.every(f => typeof f.marca.porque === 'string' && f.marca.porque.length > 10));
 check('la cascada de marcas siempre resuelve: ningún jugador queda sin consigna',
   tabla.filas.every(f => !!f.marca.consigna && !!f.marca.restriccion));
+
+console.log('\n6 quater. CRITERIO CONTEXTUAL: BANDAS z CONTRA LA LIGA');
+console.log('═'.repeat(70));
+
+check('hay 5 bandas contextuales', S.BANDAS.length === 5, S.BANDAS.map(b => b.id).join(','));
+check('los cortes son ±1,2σ y ±0,5σ',
+  S.BANDAS[0].z === 1.2 && S.BANDAS[1].z === 0.5 && S.BANDAS[2].z === -0.5 && S.BANDAS[3].z === -1.2,
+  S.BANDAS.map(b => b.z).join(','));
+const statPpt3 = S.statLiga(idx, 'PPT3');
+check('statLiga() calcula media y desvío sobre los jugadores calificados',
+  statPpt3 !== null && statPpt3.n >= 3 && statPpt3.desvio > 0, JSON.stringify(statPpt3));
+check('statLiga() de una métrica sin distribución da null', S.statLiga(idx, 'METRICA_QUE_NO_EXISTE') === null);
+
+check('un valor muy por encima de la media cae en la banda élite',
+  S.bandaLiga(idx, 'PPT3', statPpt3.media + 2 * statPpt3.desvio, false).id === 'elite');
+check('un valor en la media cae en la banda estándar',
+  S.bandaLiga(idx, 'PPT3', statPpt3.media, false).id === 'estandar');
+check('un valor muy por debajo cae en punto de fuga',
+  S.bandaLiga(idx, 'PPT3', statPpt3.media - 2 * statPpt3.desvio, false).id === 'fuga');
+check('en una métrica invertida el signo se da vuelta: perder MENOS es élite',
+  (function () {
+    const s = S.statLiga(idx, 'PePP%');
+    return S.bandaLiga(idx, 'PePP%', s.media - 2 * s.desvio, true).id === 'elite';
+  })());
+check('bandaLiga() de un valor nulo da null', S.bandaLiga(idx, 'PPT3', null, false) === null);
+check('porEncima() y porDebajo() clasifican las bandas correctamente',
+  S.porEncima({ id: 'elite' }) && S.porEncima({ id: 'superior' }) && !S.porEncima({ id: 'estandar' }) &&
+  S.porDebajo({ id: 'fuga' }) && S.porDebajo({ id: 'limitado' }) && !S.porDebajo({ id: 'estandar' }));
+
+/* EL CASO CENTRAL DE ESTA VUELTA: el tirador eficiente de bajo volumen. */
+const caro = porNombre['ESPECIALISTA, CARO'];
+check('el especialista de pocos minutos anota poco (5 PTS de promedio)', cerca(caro.perfil.pts, 5));
+check('pero su tiro externo se marca como rentable',
+  caro.perfil.tiroExternoRentable === true,
+  JSON.stringify({ ppt3: caro.perfil.pptTriple, t3: caro.perfil.t3, banda: caro.perfil.bandaPptTriple && caro.perfil.bandaPptTriple.id }));
+check('y su consigna OBLIGATORIA es STAY HOME, nunca flotar',
+  caro.marca.id === 'tirador-eficiente-bajo-volumen' &&
+  /STAY HOME/.test(caro.marca.consigna) && /PROHIBIDO FLOTAR/.test(caro.marca.restriccion),
+  JSON.stringify(caro.marca));
+check('a NADIE con tiro externo rentable se le sugiere flotar o ayudar desde él',
+  tabla.filas.every(f => !f.perfil.tiroExternoRentable ||
+    !/FLOTACIÓN|UNDER|INVITACIÓN AL TIRO/.test(f.marca.consigna + ' ' + f.marca.restriccion)),
+  tabla.filas.filter(f => f.perfil.tiroExternoRentable).map(f => f.nombre + '→' + f.marca.consigna).join(' | '));
+check('el especialista caro aparece en fortalezas por su renta, no por sus puntos',
+  caro.fortalezas.some(t => /T3%|PPT3/.test(t)), JSON.stringify(caro.fortalezas));
+
+/* Volumen: quién es "sistemático" y quién no. */
+check('con 6 triples por partido el lanzador es sistemático',
+  porNombre['LADRILLO, PERIMETRAL'].perfil.tiradorSistematico === true);
+check('con 2 triples por partido no llega a sistemático (y por eso admite flotación)',
+  porNombre['FLOTABLE, MENOR'].perfil.tiradorSistematico === false &&
+  porNombre['FLOTABLE, MENOR'].perfil.viaPrincipalExterna === false,
+  JSON.stringify({ t3i: porNombre['FLOTABLE, MENOR'].perfil.t3i, cuota: porNombre['FLOTABLE, MENOR'].perfil.cuotaTriplesEquipo }));
+check('la cuota de triples se mide sobre el total del equipo',
+  cerca(porNombre['TIRADOR, ELITE'].perfil.cuotaTriplesEquipo, 8 / tabla.totalTriples, 1e-6),
+  JSON.stringify({ cuota: porNombre['TIRADOR, ELITE'].perfil.cuotaTriplesEquipo, total: tabla.totalTriples }));
+check('el que concentra el volumen externo del equipo queda protegido de la invitación al triple',
+  porNombre['TIRADOR, ELITE'].perfil.viaPrincipalExterna === true,
+  porNombre['TIRADOR, ELITE'].perfil.cuotaTriplesEquipo);
+check('el perfil trae las bandas contextuales de sus métricas de tiro',
+  tabla.filas.every(f => f.perfil.bandaPptTriple === null || typeof f.perfil.bandaPptTriple.z === 'number'));
 
 console.log('\n6 ter. FICHA DE ANÁLISIS DE RIVAL (por jugador)');
 console.log('═'.repeat(70));

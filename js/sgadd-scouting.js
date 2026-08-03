@@ -68,7 +68,75 @@ const SGADD_SCOUT = (function () {
        vale una posesión promedio en estas ligas. */
     t1Regalable: 0.40,
     usoDobleInterno: 0.45,
+
+    /* --- Pisos de tiro externo ---
+       Estos SÍ son absolutos porque son economía del básquet, no de la
+       liga: 1,05 pts por triple intentado supera el valor de una posesión
+       promedio en cualquier categoría, así que a ese tirador no se le
+       flota ni aunque sea el peor de su liga. Se combinan con la banda
+       contextual: hace falta que se cumpla el piso duro O que esté por
+       encima de la liga. */
+    pptTripleRentable: 1.05,   // por encima de esto, prohibido flotar
+    t3Rentable: 0.35,
+    pptTripleFrio: 0.88,       // por debajo, se le contesta sin desarmar
+    t3Frio: 0.30,
+    /* Volumen mínimo de triples por partido para considerarlo "tirador
+       sistemático". Debajo de esto la muestra no alcanza para una regla. */
+    volumenTripleSistematico: 2.5,
+    /* Cuánto de los triples del equipo tiene que concentrar para que su
+       tiro sea "la vía principal de ataque" y quede prohibido invitarlo. */
+    viaPrincipalTriple: 0.25,
   };
+
+  /* =====================================================================
+     BANDAS CONTEXTUALES CONTRA LA LIGA
+
+     Ninguna decisión táctica individual se toma solo contra un umbral
+     absoluto: primero se mide cuánto se desvía el jugador de la media de
+     jugadores calificados de ESTA liga. Un PPT3 de 1,05 es de élite en una
+     liga y del montón en otra; el umbral fijo miente al cambiar de
+     categoría, el z-score no.
+
+     Se usa media/desvío (no percentil) porque las reglas del pedido están
+     expresadas en sigmas, y porque el percentil comprime los extremos:
+     entre el 1° y el 3° de la liga puede haber medio punto de PPT3 y los
+     tres caer en "percentil 95".
+     ===================================================================== */
+
+  const BANDAS = [
+    { id: 'elite', z: 1.2, label: 'Muy por encima de la liga', tono: 'muy-alto' },
+    { id: 'superior', z: 0.5, label: 'Por encima de la liga', tono: 'alto' },
+    { id: 'estandar', z: -0.5, label: 'En el promedio de la liga', tono: 'medio' },
+    { id: 'limitado', z: -1.2, label: 'Por debajo de la liga', tono: 'bajo' },
+    { id: 'fuga', z: -Infinity, label: 'Muy por debajo de la liga', tono: 'muy-bajo' },
+  ];
+
+  /** Media y desvío de una métrica sobre los jugadores calificados. */
+  function statLiga(idx, metrica) {
+    const vals = (idx.liga.distribucionesJ && idx.liga.distribucionesJ[metrica]) || [];
+    if (vals.length < 3) return null;
+    const media = vals.reduce((a, v) => a + v, 0) / vals.length;
+    const varianza = vals.reduce((a, v) => a + (v - media) * (v - media), 0) / vals.length;
+    return { media: media, desvio: Math.sqrt(varianza), n: vals.length };
+  }
+
+  /**
+   * Ubica un valor en las cinco bandas contextuales. `invertida` da vuelta
+   * el signo del z (en %TOV, menos es mejor), para que "elite" signifique
+   * siempre lo mismo: mejor que la liga.
+   */
+  function bandaLiga(idx, metrica, valor, invertida) {
+    const s = statLiga(idx, metrica);
+    if (s === null || nn(valor) === null || s.desvio === 0) return null;
+    const z = ((valor - s.media) / s.desvio) * (invertida ? -1 : 1);
+    const b = BANDAS.find(d => z >= d.z);
+    return { id: b.id, label: b.label, tono: b.tono, z: z, media: s.media, desvio: s.desvio, n: s.n };
+  }
+
+  /** ¿La banda está por encima del estándar de la liga? */
+  function porEncima(b) { return !!b && (b.id === 'elite' || b.id === 'superior'); }
+  /** ¿Por debajo? */
+  function porDebajo(b) { return !!b && (b.id === 'limitado' || b.id === 'fuga'); }
 
   /* =====================================================================
      ROLES FUNCIONALES — sin posiciones tradicionales
@@ -174,6 +242,35 @@ const SGADD_SCOUT = (function () {
         num2(p.pptTriple) + ' pts por intento: negarle la recepción cuesta menos que cerrarle el tiro.',
     },
     {
+      /* REGLA DURA: tirador eficiente aunque anote poco. El error que
+         corrige es tratar "pocos puntos" como "no es amenaza": un
+         especialista de banco que mete el 38% castiga cualquier ayuda que
+         salga de él. Va ARRIBA de todo lo interno y de todo lo de
+         flotación a propósito — es la marca que no se puede equivocar. */
+      id: 'tirador-eficiente-bajo-volumen',
+      etiqueta: 'Tirador eficiente (poco volumen, alta renta)',
+      defensor: PERFILES_DEFENSOR.perimetral1x1,
+      consigna: 'STAY HOME / NEGACIÓN DE CATCH & SHOOT',
+      restriccion: 'PROHIBIDO FLOTAR O AYUDAR DESDE ÉL',
+      test: (p) => p.tiraDeAfuera && p.tiroExternoRentable,
+      porque: (p) => 'convierte ' + pct(p.t3) + ' de triple con ' + num2(p.pptTriple) +
+        ' pts por intento (' + (p.bandaPptTriple ? p.bandaPptTriple.label.toLowerCase() : 'sin referencia de liga') +
+        '): anota poco por volumen, no por eficiencia — soltarlo es regalarle el tiro más caro.',
+    },
+    {
+      /* Contracara: mucho volumen, poca renta. No es "flotar y listo":
+         si tira 6 triples por partido hay que contestarle igual, pero sin
+         desarmar la estructura defensiva por él. */
+      id: 'tirador-sistematico-frio',
+      etiqueta: 'Tirador sistemático de bajo porcentaje',
+      defensor: PERFILES_DEFENSOR.spacing,
+      consigna: 'CLOSE-OUT CORTO / CONTESTAR SIN SALTAR',
+      restriccion: 'NO CORRER EL CIERRE · MANTENER LA ESTRUCTURA',
+      test: (p) => p.tiradorSistematico && p.tiroExternoFrio,
+      porque: (p) => 'lanza ' + num1(p.t3i) + ' triples por partido con ' + pct(p.t3) + ' de acierto (' +
+        num2(p.pptTriple) + ' PPT3): hay que puntearle la mano, pero no romper la defensa para hacerlo.',
+    },
+    {
       id: 'interior-dominante',
       etiqueta: 'Referencia interna',
       defensor: PERFILES_DEFENSOR.ancla,
@@ -217,14 +314,21 @@ const SGADD_SCOUT = (function () {
         ' de sus plays adentro: acá sí el cambio de una finalización por dos libres es ganancia.',
     },
     {
+      /* La invitación al tiro es la consigna más fácil de aplicar mal.
+         Tiene TRES condiciones acumuladas: renta baja en términos
+         absolutos, por debajo de la liga en su contexto, y que su tiro no
+         sea la vía principal del ataque rival. Si falla cualquiera, el
+         jugador ya cayó antes en `tirador-sistematico-frio` (contestar
+         sin saltar) o en `tirador-eficiente-bajo-volumen` (stay home). */
       id: 'tirador-ineficiente',
       etiqueta: 'Tirador de volumen sin renta',
       defensor: PERFILES_DEFENSOR.spacing,
       consigna: 'UNDER / FLOTACIÓN · CERRAR PENETRACIÓN',
       restriccion: 'INVITACIÓN AL TIRO EXTERNO · NO CORRER EL CLOSE-OUT',
-      test: (p) => p.usoTriple >= U.usoTripleAlto && p.pptTriple <= U.pptTriplePobre,
+      test: (p) => p.usoTriple >= U.usoTripleAlto && p.pptTriple <= U.pptTriplePobre &&
+        !p.tiroExternoRentable && !p.viaPrincipalExterna,
       porque: (p) => 'tira mucho de afuera (' + pct(p.usoTriple) + ' de sus plays) y saca ' +
-        num2(p.pptTriple) + ' por intento: ese tiro nos conviene.',
+        num2(p.pptTriple) + ' por intento sin ser la vía principal del ataque rival: ese tiro nos conviene.',
     },
     {
       id: 'rebotador',
@@ -633,7 +737,7 @@ const SGADD_SCOUT = (function () {
    * claves estratégicas: si cada uno leyera las columnas por su cuenta, un
    * cambio de umbral quedaría aplicado en un lado y no en el otro.
    */
-  function perfilJugador(idx, j, totalPlaysEquipo) {
+  function perfilJugador(idx, j, totalPlaysEquipo, totalTriplesEquipo) {
     const tipo = idx.liga.jugadorTipo || {};
     const medPerdidas = nn(tipo['PePP%']);
     const medRebote = nn(tipo['RO%']);
@@ -714,6 +818,44 @@ const SGADD_SCOUT = (function () {
       p.esPerimetral = true;
       p.esInterior = false;
     }
+
+    /* --- Lectura contextual del tiro externo ---
+       Acá se decide si se le flota o no, que es la consigna más cara de
+       equivocar. Cada flag combina el piso absoluto (economía del básquet)
+       con la banda contra la liga (contexto de la categoría): alcanza con
+       cualquiera de los dos para tratarlo como amenaza, pero hacen falta
+       los dos para tratarlo como regalable. */
+    p.bandaPptTriple = bandaLiga(idx, 'PPT3', p.pptTriple, false);
+    p.bandaT3 = bandaLiga(idx, 'T3%', p.t3, false);
+    p.bandaEfg = bandaLiga(idx, 'eFG%', p.efg, false);
+    p.bandaTov = bandaLiga(idx, 'PePP%', p.perdidas, true);
+    p.bandaT1 = bandaLiga(idx, 'T1%', p.t1, false);
+
+    /* Tira de afuera de verdad: sin volumen mínimo no hay regla que valga,
+       dos triples en todo el torneo no describen a nadie. */
+    p.tiraDeAfuera = (t3i !== null && t3i >= 1.0);
+    p.tiradorSistematico = (t3i !== null && t3i >= U.volumenTripleSistematico);
+
+    /* Rentable = supera el piso duro O está por encima de su liga. */
+    p.tiroExternoRentable = p.tiraDeAfuera && (
+      (p.pptTriple !== null && p.pptTriple >= U.pptTripleRentable) ||
+      (p.t3 !== null && p.t3 >= U.t3Rentable) ||
+      porEncima(p.bandaPptTriple) || porEncima(p.bandaT3));
+
+    /* Frío = por debajo del piso Y por debajo de su liga (o sin
+       referencia de liga, en cuyo caso manda el piso absoluto). */
+    p.tiroExternoFrio = !p.tiroExternoRentable && (
+      (p.pptTriple !== null && p.pptTriple < U.pptTripleFrio) ||
+      (p.t3 !== null && p.t3 < U.t3Frio) ||
+      porDebajo(p.bandaPptTriple) || porDebajo(p.bandaT3));
+
+    /* ¿Su tiro externo es la vía principal del ataque rival? Si concentra
+       una porción grande de los triples del equipo, invitarlo a tirar es
+       invitar al equipo entero a hacer lo que mejor sabe. */
+    p.cuotaTriplesEquipo = div(t3i, totalTriplesEquipo);
+    p.viaPrincipalExterna = p.cuotaTriplesEquipo !== null &&
+      p.cuotaTriplesEquipo >= U.viaPrincipalTriple;
+
     return p;
   }
 
@@ -752,6 +894,12 @@ const SGADD_SCOUT = (function () {
         p.pptTriple >= U.pptTripleElite && p.usoTriple >= 0.25) {
       out.push('PPT3 ' + num2(p.pptTriple) + ' sobre ' + pct(p.usoTriple) +
         ' de uso: castiga cualquier ayuda que lo deje solo en el perímetro.');
+    } else if (p.tiroExternoRentable && p.tiraDeAfuera) {
+      /* El caso del especialista de pocos minutos: anota poco pero su
+         tiro es caro. Sin esta rama quedaba invisible en las fortalezas. */
+      out.push('T3% ' + pct(p.t3) + ' con ' + num1(p.t3i) + ' intentos por partido' +
+        (p.bandaPptTriple ? ' (' + p.bandaPptTriple.label.toLowerCase() + ' en PPT3)' : '') +
+        ': volumen bajo, pero cada tiro liberado es caro.');
     }
     if (p.pptDoble !== null && p.pptDoble >= U.pptDobleAlto) {
       out.push('PPT2 ' + num2(p.pptDoble) + ': ' + (p.esInterior
@@ -803,8 +951,8 @@ const SGADD_SCOUT = (function () {
   }
 
   /** Ficha completa de un jugador rival, lista para pintar. */
-  function fichaRival(idx, j, totalPlaysEquipo) {
-    const p = perfilJugador(idx, j, totalPlaysEquipo);
+  function fichaRival(idx, j, totalPlaysEquipo, totalTriplesEquipo) {
+    const p = perfilJugador(idx, j, totalPlaysEquipo, totalTriplesEquipo);
     return {
       nombre: p.nombre, clave: p.clave, perfil: p,
       rol: rolFuncional(p),
@@ -833,6 +981,9 @@ const SGADD_SCOUT = (function () {
     if (!elegidos.length) return null;
 
     const totalPlays = plantel.reduce((s, j) => s + (nn(j['PLAYS']) || 0), 0);
+    /* Sobre el plantel COMPLETO, no sobre los elegidos: la cuota de
+       triples de un jugador se mide contra todo lo que tira el equipo. */
+    const totalTriples = plantel.reduce((s, j) => s + (nn(j['T3I']) || 0), 0);
 
     /* Semáforo: top 3 por métrica DENTRO de los elegidos, ordenado por
        `rankPor` cuando la columna lo define (volumen absoluto de tiros,
@@ -850,7 +1001,7 @@ const SGADD_SCOUT = (function () {
     });
 
     const filas = elegidos.map(j => {
-      const perfil = perfilJugador(idx, j, totalPlays);
+      const perfil = perfilJugador(idx, j, totalPlays, totalTriples);
       const celdas = {};
       COLS_JUGADOR.forEach(c => {
         const v = nn(j[c.id]);
@@ -905,6 +1056,7 @@ const SGADD_SCOUT = (function () {
       promedioEquipo: promEquipo,
       promedioLiga: promLiga,
       totalPlays: totalPlays,
+      totalTriples: totalTriples,
     };
   }
 
@@ -1152,9 +1304,10 @@ const SGADD_SCOUT = (function () {
   }
 
   return {
-    VENTANA_CICLO, TOP_JUGADORES, TOP_SEMAFORO, UMBRALES: U, DELTA,
+    VENTANA_CICLO, TOP_JUGADORES, TOP_SEMAFORO, UMBRALES: U, DELTA, BANDAS,
     MATRIZ_POSESION, MATRIZ_TIRO, METRICAS_RANKING, COLS_JUGADOR,
     PERFILES_MARCA, PERFILES_DEFENSOR, ROLES_FUNCIONALES, REGLAS_CLAVE,
+    statLiga, bandaLiga, porEncima, porDebajo,
     celdaMatriz, referenciaLiga, filaMatriz, matrizComparativa, rankingsLiga,
     detallePartido, fichaEquipo, historialDirecto,
     analizarSubset, analisisCiclo,
@@ -1174,7 +1327,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_SCOU
    en Node — se verifica a mano en el navegador. Toda la matemática vive
    arriba, en SGADD_SCOUT.
 
-   El DOM queda deliberadamente seccionado (`<section class="scout-bloque"
+   El DOM queda deliberadamente seccionado (`<section class="scout-card"
    data-bloque="...">` dentro de `#scoutInforme`) para que la exportación a
    PDF/imagen de la próxima etapa pueda cortar por bloque sin tener que
    reestructurar nada.
@@ -1188,7 +1341,25 @@ const SCOUT_UI = {
   torneo: '',
   proximoRival: '',
   marcas: {},            // clave de jugador -> { defensor, consigna, restriccion }
+  /* Qué cards entran en el PDF. Todas por defecto: el DT destilda las que
+     no quiere en ESE informe (a veces el rival se prepara solo con marcas
+     y claves, sin la matriz entera). */
+  cards: {
+    encabezado: true, matriz: true, ciclo: true, marcas: true,
+    resumen: true, jugadores: true, claves: true, fichas: true,
+  },
 };
+
+const SCOUT_CARDS = [
+  { id: 'encabezado', label: 'Encabezado y récord' },
+  { id: 'matriz', label: 'Matriz de métricas y rankings' },
+  { id: 'ciclo', label: 'Splits L/V y ciclo reciente' },
+  { id: 'marcas', label: 'Plan individual · marcas' },
+  { id: 'resumen', label: 'Resumen de criterio estratégico' },
+  { id: 'jugadores', label: 'Tabla de jugadores clave' },
+  { id: 'claves', label: 'Claves estratégicas' },
+  { id: 'fichas', label: 'Fichas individuales' },
+];
 
 /* ===================== ESTADO Y EVENTOS ===================== */
 
@@ -1218,6 +1389,69 @@ function scoutMeta(campo, valor) { SCOUT_UI[campo] = valor; }
 function scoutMarca(claveJug, campo, valor) {
   if (!SCOUT_UI.marcas[claveJug]) SCOUT_UI.marcas[claveJug] = {};
   SCOUT_UI.marcas[claveJug][campo] = valor;
+}
+
+/* ===================== EXPORTACIÓN POR CARDS ===================== */
+
+/** Marca/desmarca una card para el informe impreso. */
+function scoutCard(id, incluir) {
+  SCOUT_UI.cards[id] = !!incluir;
+  const el = document.querySelector('.scout-card[data-bloque="' + id + '"]');
+  if (el) el.classList.toggle('no-imprimir', !incluir);
+}
+
+function scoutAbrirExport() {
+  const m = document.getElementById('scoutExportModal');
+  if (m) m.classList.remove('hidden');
+}
+function scoutCerrarExport() {
+  const m = document.getElementById('scoutExportModal');
+  if (m) m.classList.add('hidden');
+}
+
+/**
+ * Imprime solo las cards marcadas. `body.modo-scout-print` es lo que
+ * activa las reglas de `@media print` del index.html: sin esa clase, un
+ * Ctrl+P normal sigue imprimiendo la página como siempre.
+ */
+function scoutImprimir() {
+  scoutCerrarExport();
+  SCOUT_CARDS.forEach(c => scoutCard(c.id, SCOUT_UI.cards[c.id]));
+  document.body.classList.add('modo-scout-print');
+  const limpiar = () => {
+    document.body.classList.remove('modo-scout-print');
+    window.removeEventListener('afterprint', limpiar);
+  };
+  window.addEventListener('afterprint', limpiar);
+  setTimeout(() => window.print(), 60);
+}
+
+function scoutModalExport() {
+  const items = SCOUT_CARDS.map(c => `
+    <label class="flex items-center gap-2 py-1 cursor-pointer">
+      <input type="checkbox" ${SCOUT_UI.cards[c.id] ? 'checked' : ''}
+        onchange="scoutCard('${c.id}', this.checked)"
+        class="accent-current" style="accent-color:var(--acento)">
+      <span class="text-xs text-ink">${escapeHtml(c.label)}</span>
+    </label>`).join('');
+
+  return `
+    <div id="scoutExportModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 no-imprimir"
+      style="background:rgba(0,0,0,.7)">
+      <div class="card rounded-xl border border-hairline p-5 w-full max-w-sm">
+        <h4 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Exportar informe</h4>
+        <p class="text-[11px] text-muted mb-3">
+          Elegí qué bloques entran en el PDF. Cada uno arranca en una hoja nueva (A4 vertical).
+        </p>
+        <div class="max-h-64 overflow-y-auto mb-4">${items}</div>
+        <div class="flex gap-2 justify-end">
+          <button type="button" onclick="scoutCerrarExport()"
+            class="px-3 py-1.5 text-xs border border-hairline rounded hover:bg-surface2 transition-colors">Cancelar</button>
+          <button type="button" onclick="scoutImprimir()"
+            class="px-3 py-1.5 text-xs rounded bg-accent text-black font-semibold">Imprimir / PDF</button>
+        </div>
+      </div>
+    </div>`;
 }
 
 /* ===================== RENDER ===================== */
@@ -1291,6 +1525,16 @@ function scoutLogo(nombre) { return (typeof LOGOS !== 'undefined') ? LOGOS.getUr
 function scoutRecord(r) { return r.ganados + ' - ' + r.perdidos; }
 
 /** Chip de ranking, coloreado por tercio de la liga. */
+/** Nombre de equipo con su escudo al lado. `alto` en px. */
+function scoutNombreConLogo(nombre, alto) {
+  const l = scoutLogo(nombre);
+  const px = alto || 18;
+  return `<span class="inline-flex items-center gap-1.5 min-w-0">
+    ${l ? `<img src="${escapeAttr(l)}" alt="" style="width:${px}px;height:${px}px" class="object-contain shrink-0">` : ''}
+    <span class="truncate">${escapeHtml(nombre)}</span>
+  </span>`;
+}
+
 function scoutChipRk(puesto, de) {
   if (!puesto) return '';
   const tono = puesto <= de / 3 ? '#22c55e' : puesto > (de * 2) / 3 ? '#ef4444' : '#9CA3AF';
@@ -1329,7 +1573,7 @@ function scoutBloqueEncabezado(inf) {
     </li>`).join('') : '';
 
   return `
-    <section class="scout-bloque card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="encabezado">
+    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="encabezado">
       <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-3">
         Reporte de scouting${SCOUT_UI.torneo ? ' · ' + escapeHtml(SCOUT_UI.torneo) : ''}${SCOUT_UI.fecha ? ' · ' + escapeHtml(SCOUT_UI.fecha) : ''}
       </p>
@@ -1387,7 +1631,7 @@ function scoutBloqueMatriz(inf) {
 
   const listaRk = (rks, nombre) => `
     <div class="bg-surface2/50 rounded-lg p-3">
-      <p class="text-[10px] uppercase tracking-wider text-muted font-display truncate mb-1.5">${escapeHtml(nombre)}</p>
+      <p class="text-[10px] uppercase tracking-wider text-muted font-display mb-1.5">${scoutNombreConLogo(nombre, 14)}</p>
       <div class="space-y-0.5">
         ${rks.map(r => {
           const col = r.tono === 'fuerte' ? '#22c55e' : r.tono === 'debil' ? '#ef4444' : '#9CA3AF';
@@ -1400,7 +1644,7 @@ function scoutBloqueMatriz(inf) {
     </div>`;
 
   return `
-    <section class="scout-bloque card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="matriz">
+    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="matriz">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">📊 Métricas avanzadas y ranking en la liga</h4>
       <p class="text-[11px] text-muted mb-2">
         Verde = tercio alto de la liga, rojo = tercio bajo. El chip es el puesto en la liga de esa métrica.
@@ -1408,8 +1652,8 @@ function scoutBloqueMatriz(inf) {
       <div class="scrollbox"><table class="w-full text-left">
         <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
           <th class="px-2 pb-1 text-left">Métrica</th>
-          <th class="px-2 pb-1 text-center">${escapeHtml(inf.local.nombre)}</th>
-          <th class="px-2 pb-1 text-center">${escapeHtml(inf.visitante.nombre)}</th>
+          <th class="px-2 pb-1 text-center">${scoutNombreConLogo(inf.local.nombre, 16)}</th>
+          <th class="px-2 pb-1 text-center">${scoutNombreConLogo(inf.visitante.nombre, 16)}</th>
           <th class="px-2 pb-1 text-center">Liga</th>
         </tr></thead>
         <tbody>
@@ -1452,7 +1696,7 @@ function scoutBloqueCiclo(inf) {
   const columna = (ficha, ciclo) => `
     <div class="space-y-3">
       <div>
-        <p class="font-display text-sm text-white truncate">${escapeHtml(ficha.nombre)}</p>
+        <p class="font-display text-sm text-white">${scoutNombreConLogo(ficha.nombre, 16)}</p>
         <p class="text-[11px] font-mono dato-sec">
           De local: ${ficha.local.pj} PJ (${scoutRecord(ficha.local)}) ·
           De visitante: ${ficha.visitante.pj} PJ (${scoutRecord(ficha.visitante)})
@@ -1465,7 +1709,7 @@ function scoutBloqueCiclo(inf) {
     </div>`;
 
   return `
-    <section class="scout-bloque card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="ciclo">
+    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="ciclo">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">🔀 Splits local/visitante y tendencia reciente</h4>
       <p class="text-[11px] text-muted mb-3">
         Fugas e identidad se miden contra el <strong>propio promedio</strong> del equipo (¿jugó como él mismo?);
@@ -1520,7 +1764,7 @@ function scoutBloqueMarcas(inf) {
   }).join('');
 
   return `
-    <section class="scout-bloque card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="marcas">
+    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="marcas">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">🛡 Plan individual · marca asignada</h4>
       <p class="text-[11px] text-muted mb-3">
         La consigna y la restricción vienen sugeridas por el perfil de cada rival — son editables:
@@ -1584,8 +1828,8 @@ function scoutBloqueJugadores(inf) {
     </tr>`;
 
   return `
-    <section class="scout-bloque card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="jugadores">
-      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">👥 Jugadores clave · ${escapeHtml(t.equipo)}</h4>
+    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="jugadores">
+      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">👥 Jugadores clave · ${scoutNombreConLogo(t.equipo, 18)}</h4>
       <p class="text-[11px] text-muted mb-3">
         Top ${SGADD_SCOUT.TOP_SEMAFORO} de cada métrica dentro de este plantel:
         <span style="color:#22c55e">1° amenaza principal</span> ·
@@ -1612,7 +1856,7 @@ function scoutBloqueJugadores(inf) {
 function scoutBloqueResumen(inf) {
   if (!inf.resumen) return '';
   return `
-    <section class="scout-bloque card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="resumen">
+    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="resumen">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-2">🧠 Resumen de criterio estratégico</h4>
       <p class="text-[12px] text-ink leading-relaxed">${escapeHtml(inf.resumen)}</p>
     </section>`;
@@ -1629,7 +1873,7 @@ function scoutBloqueClaves(inf) {
     </li>`).join('');
 
   return `
-    <section class="scout-bloque card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="claves">
+    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="claves">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-2">🎯 Claves estratégicas y anticipación</h4>
       ${bullets ? `<ul class="space-y-2">${bullets}</ul>`
         : `<p class="text-[11px] text-muted">Ninguna métrica del rival dispara una clave específica: el plan es sostener la estructura defensiva propia.</p>`}
@@ -1673,7 +1917,7 @@ function scoutBloqueFichas(inf) {
   }).join('');
 
   return `
-    <section class="scout-bloque card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="fichas">
+    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="fichas">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">📋 Ficha de análisis por jugador</h4>
       <p class="text-[11px] text-muted mb-3">
         Rol funcional, fortalezas, fisuras y plan de acción de cada rival. Cada punto cruza la métrica
@@ -1698,12 +1942,16 @@ function scoutInforme(idx) {
      que no es del club), pero preparar un partido ajeno es un caso real. */
   const eR = idx.get(inf.claveRival), eN = idx.get(inf.claveNuestro);
   const toggle = `
-    <div class="flex flex-wrap items-center gap-2">
+    <div class="flex flex-wrap items-center gap-2 no-imprimir">
       <span class="text-[10px] uppercase tracking-wider text-muted font-display">Scouting sobre</span>
       ${[eR, eN].map(e => `<button type="button" onclick="scoutCambiarObjetivo('${escapeAttr(e.clave)}')"
         class="px-3 py-1 text-[11px] rounded border transition-colors ${e.clave === inf.claveRival
           ? 'bg-accent text-black border-accent font-semibold' : 'border-hairline text-muted hover:text-ink'}"
         >${escapeHtml(e.nombre)}</button>`).join('')}
+      <button type="button" onclick="scoutAbrirExport()"
+        class="ml-auto px-3 py-1 text-[11px] rounded border border-hairline text-muted hover:text-accent hover:border-accent transition-colors">
+        🖨 Exportar PDF
+      </button>
     </div>`;
 
   return `
@@ -1712,10 +1960,11 @@ function scoutInforme(idx) {
       ${scoutBloqueEncabezado(inf)}
       ${scoutBloqueMatriz(inf)}
       ${scoutBloqueCiclo(inf)}
-      ${scoutBloqueJugadores(inf)}
       ${scoutBloqueMarcas(inf)}
       ${scoutBloqueResumen(inf)}
+      ${scoutBloqueJugadores(inf)}
       ${scoutBloqueClaves(inf)}
       ${scoutBloqueFichas(inf)}
+      ${scoutModalExport()}
     </div>`;
 }

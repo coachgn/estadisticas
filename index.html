@@ -327,7 +327,10 @@
   body.modo-impresion > *:not(#informeSalida) { display: none !important; }
 
   @media print {
-    @page { size: A4; margin: 14mm 12mm; }
+    /* `@page` no se puede condicionar por clase del body, así que es
+       compartida por las dos exportaciones (informe de equipo y scouting).
+       Vertical explícito para que no dependa del default del navegador. */
+    @page { size: A4 portrait; margin: 12mm 10mm; }
     /* El post-partido necesita cada milimetro para entrar en una carilla. */
     body.modo-partido-print { }
 
@@ -383,7 +386,52 @@
     .chart-box { height: 62mm !important; }
     canvas { max-width: 100% !important; height: auto !important; }
     .scrollbox { overflow: visible !important; }
+
+    /* =================================================================
+       SCOUTING PRE-PARTIDO · export por cards (A4 vertical)
+
+       Se activa con body.modo-scout-print, que pone scoutImprimir() y
+       saca en afterprint. Sin esa clase un Ctrl+P normal no cambia de
+       comportamiento: hay dos exportaciones distintas en la app y no
+       pueden pisarse entre sí.
+       ================================================================= */
+    body.modo-scout-print { }
+
+    body.modo-scout-print .no-imprimir,
+    body.modo-scout-print .scout-card.no-imprimir { display: none !important; }
+
+    /* Una card no se parte nunca: media tabla de marcas en una hoja y
+       media en la siguiente es peor que una hoja con espacio de sobra. */
+    body.modo-scout-print .scout-card {
+      page-break-inside: avoid; break-inside: avoid;
+      page-break-after: always; break-after: page;
+      border: 1px solid #d4d4d4 !important;
+      margin-bottom: 0;
+    }
+    /* La ultima no arrastra una hoja en blanco detras. */
+    body.modo-scout-print .scout-card:last-of-type {
+      page-break-after: auto; break-after: auto;
+    }
+    /* Las fichas individuales tampoco se cortan al medio. */
+    body.modo-scout-print .scout-ficha {
+      page-break-inside: avoid; break-inside: avoid;
+    }
+    /* Los inputs editables de marcas SI tienen que verse en el papel:
+       la regla general de arriba esconde todo input, y acá el valor
+       cargado por el DT es justamente el contenido del informe. */
+    body.modo-scout-print .scout-card input[type="text"] {
+      display: block !important;
+      border: none !important;
+      background: transparent !important;
+      color: #111 !important;
+      padding: 0 !important;
+      font-size: 8pt;
+    }
   }
+
+  /* Fuera de impresion el helper no hace nada visible: existe para que
+     el modal de export y los controles no entren al PDF. */
+  @media screen { .no-imprimir { } }
 
   .card { background: #141414; border: 1px solid #282828; transition: border-color .15s ease; }
   .card:hover { border-color: #3a3a3a; }
@@ -552,20 +600,20 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=38"></script>
-<script src="js/sgadd-core.js?v=38"></script>
-<script src="js/sgadd-ui.js?v=38"></script>
-<script src="js/sgadd-app.js?v=38"></script>
-<script src="js/sgadd-charts.js?v=38"></script>
-<script src="js/sgadd-personalidad.js?v=38"></script>
-<script src="js/sgadd-rankings.js?v=38"></script>
-<script src="js/sgadd-partido.js?v=38"></script>
-<script src="js/sgadd-informe.js?v=38"></script>
-<script src="js/sgadd-equipos.js?v=38"></script>
-<script src="js/sgadd-jugadores.js?v=38"></script>
-<script src="js/sgadd-4factores.js?v=38"></script>
-<script src="js/sgadd-scouting.js?v=38"></script>
-<script src="js/sgadd-diagnostico.js?v=38"></script>
+<script src="js/sgadd-club.js?v=39"></script>
+<script src="js/sgadd-core.js?v=39"></script>
+<script src="js/sgadd-ui.js?v=39"></script>
+<script src="js/sgadd-app.js?v=39"></script>
+<script src="js/sgadd-charts.js?v=39"></script>
+<script src="js/sgadd-personalidad.js?v=39"></script>
+<script src="js/sgadd-rankings.js?v=39"></script>
+<script src="js/sgadd-partido.js?v=39"></script>
+<script src="js/sgadd-informe.js?v=39"></script>
+<script src="js/sgadd-equipos.js?v=39"></script>
+<script src="js/sgadd-jugadores.js?v=39"></script>
+<script src="js/sgadd-4factores.js?v=39"></script>
+<script src="js/sgadd-scouting.js?v=39"></script>
+<script src="js/sgadd-diagnostico.js?v=39"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
