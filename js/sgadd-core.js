@@ -896,6 +896,63 @@
       });
     });
 
+    /* ---------------------------------------------------------------------
+       JOIN DE FECHA POR PARTIDO · `Base Datos E` es la fuente de verdad
+
+       `4 FACTORES` y `Base Datos J` traen la FECHA vacía en muchas filas (en
+       la planilla de Reconquista, en TODAS las de `Base Datos J`). Como
+       `idPartido()` = FECHA + PARTIDO, sin heredarla el mismo partido tiene
+       dos ids distintos según la hoja (`sf_atenas-a-vs-…` contra
+       `2026-05-05_atenas-a-vs-…`) y nunca cruzan: el box score del detalle
+       de partido no se dibujaba nunca.
+
+       El mapa se arma ANTES de indexar nada y la fecha heredada entra al
+       cálculo del `__id`, no después. Parchear el `FECHA` a posteriori —como
+       se hacía con `4 FACTORES`— deja el `__id` viejo ya calculado, así que
+       `factoresPorId` seguía sin matchear aunque la fecha estuviera bien.
+
+       GUARD DE AMBIGÜEDAD: el texto `"A vs B"` NO identifica un partido en
+       una liga con ida y vuelta — los dos cruces se escriben igual y solo
+       los separa la fecha, que es justamente el dato que falta. Si un mismo
+       PARTIDO aparece con dos fechas distintas en `Base Datos E`, NO se
+       hereda nada: se prefiere un partido sin cruzar (que la UI ya sabe
+       mostrar como "sin box score") antes que atribuirle a un jugador la
+       noche equivocada. Se avisa en el Diagnóstico.
+       --------------------------------------------------------------------- */
+    const fechaPorPartido = new Map();
+    const partidosAmbiguos = new Set();
+    (function () {
+      const h = hojas['Base Datos E'];
+      if (!h) return;
+      h.filas.forEach(fila => {
+        const faseFila = texto(fila['FASE']).toUpperCase();
+        if (faseFila && faseFila !== fase) return;
+        if (!enTorneo(fila)) return;
+        const k = texto(fila['PARTIDO']);
+        const f = fila['FECHA'];
+        if (!k || !f) return;
+        const previa = fechaPorPartido.get(k);
+        if (previa === undefined) fechaPorPartido.set(k, f);
+        else if (String(previa) !== String(f)) partidosAmbiguos.add(k);
+      });
+      if (partidosAmbiguos.size) {
+        avisos.push(partidosAmbiguos.size + ' cruce(s) con el mismo texto de PARTIDO en más de una fecha ' +
+          '(ida y vuelta): las filas sin FECHA de esos partidos no se pueden atribuir y quedan sin box score.');
+      }
+    })();
+
+    /**
+     * La FECHA de la fila, o la del mismo PARTIDO en `Base Datos E`.
+     * Devuelve la propia (vacía incluida) si el cruce es ambiguo.
+     */
+    function fechaEfectiva(fila) {
+      if (fila['FECHA']) return fila['FECHA'];
+      const k = texto(fila['PARTIDO']);
+      if (partidosAmbiguos.has(k)) return fila['FECHA'];
+      const heredada = fechaPorPartido.get(k);
+      return heredada !== undefined ? heredada : fila['FECHA'];
+    }
+
     /* --- Partido a partido --- */
     const porPartido = [
       ['Base Datos E', 'partidos'],
@@ -916,23 +973,11 @@
           const v = num(fila[c]);
           datos[c] = (v !== null) ? v : texto(fila[c]);
         });
+        const f = fechaEfectiva(fila);
+        datos['FECHA'] = f;
         datos.__partido = texto(fila['PARTIDO']);
-        datos.__id = idPartido(fila['PARTIDO'], fila['FECHA']);
+        datos.__id = idPartido(fila['PARTIDO'], f);
         e[campo].push(datos);
-      });
-    });
-
-    /* --- FECHA viene vacía en 4 FACTORES: se hereda desde Base Datos E
-           usando PARTIDO + EQUIPO como clave del join. --- */
-    const fechaPorPartido = new Map();
-    equipos.forEach(e => {
-      e.partidos.forEach(p => {
-        if (p.__partido && p['FECHA']) fechaPorPartido.set(p.__partido, p['FECHA']);
-      });
-    });
-    equipos.forEach(e => {
-      e.factoresPartido.forEach(f => {
-        if (!f['FECHA'] && fechaPorPartido.has(f.__partido)) f['FECHA'] = fechaPorPartido.get(f.__partido);
       });
     });
 
@@ -1215,16 +1260,21 @@
         const faseFila = texto(fila['FASE']).toUpperCase();
         if (faseFila && faseFila !== fase) return;
         if (!enTorneo(fila)) return;   // [multi-torneo] el índice es de UNA competencia
-        const id = idPartido(fila['PARTIDO'], fila['FECHA']);
+        /* Mismo join que las hojas de equipo: sin heredar la FECHA, el id
+           de esta fila nunca cruza con el de `Base Datos E` y el box score
+           del partido queda huérfano. */
+        const fEfectiva = fechaEfectiva(fila);
+        const id = idPartido(fila['PARTIDO'], fEfectiva);
 
         const datos = {};
         Object.keys(fila).forEach(c => {
           const v = num(fila[c]);
           datos[c] = (v !== null) ? v : texto(fila[c]);
         });
+        datos['FECHA'] = fEfectiva;
         datos.__id = id;
         datos.__partido = texto(fila['PARTIDO']);
-        datos.__fecha = fecha(fila['FECHA']);
+        datos.__fecha = fecha(fEfectiva);
         datos.__clave = clavePersona(fila['NOMBRES']);
         datos.__equipo = claveEquipo(fila['EQUIPO']);
 

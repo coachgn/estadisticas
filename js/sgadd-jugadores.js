@@ -658,16 +658,25 @@ function jugadoresPartidosOrdenados(idx, clave) {
 }
 
 /**
- * El id de partido de UNA fila de jugador puede no coincidir con el que usa
- * Equipos: si Base Datos J trae la FECHA vacía para ese partido pero Base
- * Datos E no, idPartido() da un "sf_..." de un lado y una fecha real del
- * otro. Para no romper el link cruzado, se resuelve el id CANÓNICO buscando
- * el mismo PARTIDO (por texto, no por fecha) en los partidos del equipo:
- * ese es el mismo cómputo que ya usa idx.partidosPorId.
+ * El id canónico del partido de UNA fila de jugador: el que usa Equipos.
+ *
+ * Desde el join de FECHA en `construirIndice()`, `Base Datos J` hereda la
+ * fecha del mismo PARTIDO en `Base Datos E`, así que el `__id` de la fila
+ * YA suele ser el bueno. Por eso el primer intento es usarlo tal cual —es
+ * exacto, no una inferencia— y recién si no existe en el índice del equipo
+ * se cae al match por TEXTO de PARTIDO.
+ *
+ * Ese fallback sigue haciendo falta para el caso que el join no puede
+ * resolver: un cruce con ida y vuelta (mismo `"A vs B"` en dos fechas) donde
+ * la fila del jugador viene sin fecha. Ahí el texto no alcanza para saber de
+ * qué noche se trata y se abre la primera; es una aproximación conocida, no
+ * un dato. La forma de cerrarla de verdad es que la planilla traiga la
+ * FECHA en `Base Datos J`.
  */
 function jugadoresIdCanonico(idx, p) {
   const e = idx.get(p['EQUIPO']);
   if (!e) return p.__id || null;
+  if (p.__id && e.partidosPorId && e.partidosPorId.has(p.__id)) return p.__id;
   const match = e.partidos.find(x => x.__partido === p.__partido);
   return match ? match.__id : (p.__id || null);
 }
@@ -950,7 +959,7 @@ function jugadoresTablaRanking(idx, r) {
     const flecha = activa ? (r.dir === 'asc' ? '▲' : '▼') : '⇅';
     return `<th class="py-1 px-2 text-center align-middle whitespace-nowrap cursor-pointer select-none
         hover:text-accent transition-colors ${activa ? 'text-accent' : ''}"
-        onclick="jugadoresOrdenarRanking('${SGADD_UI.esc(k)}')"
+        onclick="jugadoresOrdenarRanking('${SGADD_UI.escJs(k)}')"
         title="Ordenar por ${SGADD_UI.esc(k)}">${SGADD_UI.esc(k)}
       <span class="${activa ? 'text-accent' : 'opacity-40'}">${flecha}</span></th>`;
   }).join('');
@@ -981,7 +990,7 @@ function jugadoresTablaRanking(idx, r) {
 
     return `
       <tr class="border-b border-hairline/40 last:border-0 cursor-pointer hover:bg-surface2 ${propio ? 'bg-accent/5' : ''}"
-          onclick="jugadoresIrA('${SGADD_UI.esc(f.slug)}')">
+          onclick="jugadoresIrA('${SGADD_UI.escJs(f.slug)}')">
         <td class="py-1.5 pr-2 text-left align-middle font-mono text-xs ${colorPuesto}">${f.puesto}</td>
         <td class="py-1.5 pr-3 text-left align-middle">
           <div class="flex items-center gap-2 min-w-0">
@@ -1096,7 +1105,7 @@ function jugadoresPlantelEquipo(idx) {
     const kpiMasMenos = typeof j['+/-'] === 'number' ? kpi('+/-') : '';
 
     return `
-      <button type="button" onclick="jugadoresIrA('${escapeAttr(slug)}')"
+      <button type="button" onclick="jugadoresIrA('${SGADD_UI.escJs(slug)}')"
         class="flex flex-col gap-2 p-3 rounded-lg border border-hairline hover:border-accent hover:bg-surface2 transition-all duration-200 text-left min-w-0">
         <div class="flex items-center gap-2 min-w-0">
           ${logo ? `<img src="${escapeAttr(logo)}" alt="" class="w-8 h-8 object-contain shrink-0">` : ''}
@@ -1118,7 +1127,7 @@ function jugadoresPlantelEquipo(idx) {
         <h3 class="font-display uppercase tracking-wide text-sm text-ink">
           Plantel · ${escapeHtml(e ? e.nombre : clave)}
         </h3>
-        <button type="button" onclick="jugadoresElegirEquipo('${escapeAttr(clave)}')"
+        <button type="button" onclick="jugadoresElegirEquipo('${SGADD_UI.escJs(clave)}')"
           class="text-[11px] text-muted hover:text-accent border border-hairline hover:border-accent rounded px-2.5 py-1 transition-colors">
           Quitar filtro
         </button>
@@ -1448,7 +1457,7 @@ function jugadoresTabPartidos(idx, j) {
     const colorPts = atipico ? (z > 0 ? 'text-green-400 font-medium' : 'text-red-400 font-medium') : 'text-white';
 
     return `<tr class="border-b border-hairline/40 last:border-0 cursor-pointer hover:bg-surface2 transition-all duration-200 ${flojo ? 'opacity-50' : ''}"
-                onclick="jugadoresVerPartido('${escapeAttr(p['EQUIPO'] || '')}', '${escapeAttr(jugadoresIdCanonico(idx, p) || '')}')"
+                onclick="jugadoresVerPartido('${SGADD_UI.escJs(p['EQUIPO'] || '')}', '${SGADD_UI.escJs(jugadoresIdCanonico(idx, p) || '')}')"
                 title="Ver el detalle de este partido en Equipos">
       <td class="py-1.5 pr-3 text-xs dato-sec font-mono whitespace-nowrap">${escapeHtml(SGADD.formatearFecha(p.__fecha))}</td>
       <td class="py-1.5 pr-3 text-xs text-white truncate max-w-[200px]">${escapeHtml(jugadoresRival(p))}</td>

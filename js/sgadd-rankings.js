@@ -146,7 +146,7 @@ const SGADD_RANKINGS = (function () {
 
       return `
         <tr class="border-b border-hairline/40 last:border-0 cursor-pointer hover:bg-surface2 ${propio ? 'bg-accent/5' : ''}"
-            onclick="equiposIrA('${SGADD_UI.esc(f.equipo.clave)}')">
+            onclick="equiposIrA('${SGADD_UI.escJs(f.equipo.clave)}')">
           <td class="py-1.5 pr-2 text-xs text-muted font-mono">${i + 1}</td>
           <td class="py-1.5 pr-3">
             <div class="flex items-center gap-2 min-w-0">

@@ -656,6 +656,63 @@ check('volver a tocar el mismo escudo saca el filtro (toggle)',
 check('el plantel filtrado ordena por MIN descendente en el propio render',
   /jugadoresPorEquipo\.get\(clave\)[\s\S]{0,160}b\['MIN'\][^\n]*a\['MIN'\]/.test(fuenteJ));
 
+/* =====================================================================
+   HANDLERS INLINE CON NOMBRES QUE TRAEN COMILLA SIMPLE
+
+   Los equipos de La Plata se llaman `RECONQUISTA 'A' - MM`. Metido en un
+   onclick con solo escape de HTML, el parser decodifica las entidades ANTES
+   de que exista el JS y el handler queda `f('RECONQUISTA 'A' - MM')`:
+   SyntaxError, el clic no hace nada y no se ve ningún error en pantalla.
+   Era el motivo de que en Jugadores → Partidos el clic en una fila no
+   abriera el detalle del partido en Equipos.
+   ===================================================================== */
+const UI = require('./js/sgadd-ui.js');
+console.log('\n15. ESCAPE PARA HANDLERS INLINE');
+console.log('═'.repeat(70));
+
+const nombreConComilla = "RECONQUISTA 'A' - MM";
+const attr = UI.escJs(nombreConComilla);
+check('escJs deja la comilla simple escapada para el literal de JS',
+  attr.indexOf("\\&#39;") !== -1, attr);
+/* La prueba de fuego: decodificar las entidades (lo que hace el parser) y
+   evaluar el handler resultante tiene que devolver el nombre intacto. */
+const decodificar = (s) => s.replace(/&#39;/g, "'").replace(/&quot;/g, '"')
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+check('el handler resultante es JS válido y recupera el nombre exacto',
+  (() => {
+    try { return eval("(function(x){return x;})('" + decodificar(attr) + "')") === nombreConComilla; }
+    catch (e) { return false; }
+  })(), decodificar(attr));
+check('con solo esc() ese mismo handler NO compila: es el bug que se cerró',
+  (() => {
+    try { eval("(function(x){return x;})('" + decodificar(UI.esc(nombreConComilla)) + "')"); return false; }
+    catch (e) { return true; }
+  })());
+check('la barra invertida también se escapa, y en el orden correcto',
+  (() => {
+    const raro = "A\\B'C";
+    try { return eval("(function(x){return x;})('" + decodificar(UI.escJs(raro)) + "')") === raro; }
+    catch (e) { return false; }
+  })());
+check('sigue escapando el HTML: un < no puede salir del atributo',
+  UI.escJs('<img>').indexOf('<') === -1, UI.escJs('<img>'));
+check('null y undefined dan string vacío, no "null"',
+  UI.escJs(null) === '' && UI.escJs(undefined) === '');
+
+/* Guard de regresión sobre el fuente: ningún handler inline puede volver a
+   interpolar un valor con `escapeAttr` o `esc` a secas. */
+const fuentesUI = ['./js/sgadd-jugadores.js', './js/sgadd-equipos.js', './js/sgadd-rankings.js',
+  './js/sgadd-scouting.js', './js/sgadd-ui.js'];
+const sospechosos = [];
+fuentesUI.forEach(f => {
+  const src = require('fs').readFileSync(f, 'utf8');
+  const re = /on(?:click|input|change)="[^"]*\('\$\{(?:escapeAttr|esc|SGADD_UI\.esc)\(/g;
+  let m;
+  while ((m = re.exec(src)) !== null) sospechosos.push(f + ': ' + m[0]);
+});
+check('ningún handler inline interpola un valor sin escJs',
+  sospechosos.length === 0, sospechosos.join(' | '));
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

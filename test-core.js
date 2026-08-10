@@ -534,6 +534,92 @@ check('el torneo también se codifica: un nombre con espacio no parte la ruta',
 check('y vuelve entero al parsear',
   SGADD.Ruta.parse(SGADD.Ruta.build({ planilla: 'p', torneo: 'COPA DE ORO', fase: 'REGULAR', seccion: 'equipos' })).torneo === 'COPA DE ORO');
 
+
+/* =====================================================================
+   AB. JOIN DE FECHA POR PARTIDO
+
+   `idPartido()` = FECHA + PARTIDO. Si `Base Datos J` trae la FECHA vacía y
+   `Base Datos E` no, el mismo partido tiene dos ids y nunca cruzan: el box
+   score del detalle de partido queda huérfano. `Base Datos E` es la fuente
+   de verdad y las otras dos hojas heredan de ahí.
+   ===================================================================== */
+console.log('\nAB. JOIN DE FECHA POR PARTIDO (Base Datos E manda)');
+console.log('═'.repeat(70));
+
+const colsJoinE = ['FECHA', 'PARTIDO', 'EQUIPO', 'FASE', 'CONDICION', 'RESULTADO', 'PTS', 'PTSopp'];
+const colsJoinJ = ['FECHA', 'PARTIDO', 'NOMBRES', 'EQUIPO', 'FASE', 'CONDICION', 'RESULTADO', 'MIN', 'PTS'];
+const colsJoin4F  = ['FECHA', 'PARTIDO', 'EQUIPO', 'FASE', 'PPP OF'];
+
+/* Un solo cruce por texto de PARTIDO: caso NO ambiguo, se puede heredar. */
+const libroJoin = {
+  'PROMEDIOS E': { cols: ['EQUIPO', 'FASE', 'PJ'], filas: [
+    { EQUIPO: 'A', FASE: 'REGULAR', PJ: '1' }, { EQUIPO: 'B', FASE: 'REGULAR', PJ: '1' } ] },
+  'Base Datos E': { cols: colsJoinE, filas: [
+    { FECHA: '01/05/2026', PARTIDO: 'A vs B', EQUIPO: 'A', FASE: 'REGULAR', CONDICION: 'LOCAL', RESULTADO: 'GANADO', PTS: '70', PTSopp: '60' },
+    { FECHA: '01/05/2026', PARTIDO: 'A vs B', EQUIPO: 'B', FASE: 'REGULAR', CONDICION: 'VISITANTE', RESULTADO: 'PERDIDO', PTS: '60', PTSopp: '70' } ] },
+  /* Las dos hojas que vienen SIN fecha, que es el caso real del motor. */
+  '4 FACTORES': { cols: colsJoin4F, filas: [
+    { FECHA: '', PARTIDO: 'A vs B', EQUIPO: 'A', FASE: 'REGULAR', 'PPP OF': '1,05' },
+    { FECHA: '', PARTIDO: 'A vs B', EQUIPO: 'B', FASE: 'REGULAR', 'PPP OF': '0,90' } ] },
+  'Base Datos J': { cols: colsJoinJ, filas: [
+    { FECHA: '', PARTIDO: 'A vs B', NOMBRES: 'UNO, J', EQUIPO: 'A', FASE: 'REGULAR', CONDICION: 'LOCAL', RESULTADO: 'GANADO', MIN: '25', PTS: '18' },
+    { FECHA: '', PARTIDO: 'A vs B', NOMBRES: 'DOS, K', EQUIPO: 'B', FASE: 'REGULAR', CONDICION: 'VISITANTE', RESULTADO: 'PERDIDO', MIN: '22', PTS: '12' } ] },
+};
+const idxJoin = SGADD.construirIndice(libroJoin, { fase: 'REGULAR' });
+const idEsperado = SGADD.idPartido('A vs B', '01/05/2026');
+const pJoin = idxJoin.partido(idEsperado);
+
+check('el id del partido sale con la fecha de Base Datos E',
+  idEsperado === '2026-05-01_a-vs-b', idEsperado);
+check('el partido existe y tiene sus dos lados', !!pJoin && pJoin.completo);
+/* La regresión que motivó todo esto: conBox venía false en los 72 partidos. */
+check('conBox es TRUE: las filas sin fecha de Base Datos J heredaron y cruzaron',
+  !!pJoin && pJoin.conBox === true);
+check('cada lado trae su propio box score, no el del rival',
+  pJoin.lados.every(l => l.box.length === 1) &&
+  pJoin.lados.find(l => l.equipo.clave === 'A').box[0]['NOMBRES'] === 'UNO, J');
+/* 4 FACTORES ya heredaba la fecha, pero DESPUÉS de calcular el __id, así
+   que factoresPorId seguía sin matchear. Ahora la fecha entra al cómputo. */
+check('4 FACTORES también cruza: el lado trae sus factores, no null',
+  pJoin.lados.every(l => l.factores !== null),
+  JSON.stringify(pJoin.lados.map(l => l.equipo.clave + ':' + (l.factores ? 'ok' : 'null'))));
+check('la fila del jugador queda con la fecha heredada, no vacía',
+  idxJoin.liga.jugadorPartidos.get(SGADD.clavePersona('UNO, J'))[0].__fecha instanceof Date);
+
+/* --- Guard de ambigüedad: ida y vuelta con el mismo texto de PARTIDO --- */
+const libroAmbiguo = {
+  'PROMEDIOS E': libroJoin['PROMEDIOS E'],
+  'Base Datos E': { cols: colsJoinE, filas: libroJoin['Base Datos E'].filas.concat([
+    { FECHA: '15/06/2026', PARTIDO: 'A vs B', EQUIPO: 'A', FASE: 'REGULAR', CONDICION: 'LOCAL', RESULTADO: 'PERDIDO', PTS: '55', PTSopp: '65' },
+    { FECHA: '15/06/2026', PARTIDO: 'A vs B', EQUIPO: 'B', FASE: 'REGULAR', CONDICION: 'VISITANTE', RESULTADO: 'GANADO', PTS: '65', PTSopp: '55' },
+  ]) },
+  'Base Datos J': libroJoin['Base Datos J'],
+};
+const idxAmb = SGADD.construirIndice(libroAmbiguo, { fase: 'REGULAR' });
+/* En ida y vuelta el texto "A vs B" no identifica el partido: lo único que
+   los separa es la fecha, que es el dato que falta. Heredar sería atribuirle
+   al jugador la noche equivocada, que es peor que no cruzar. */
+check('con ida y vuelta NO se hereda: la fila sin fecha queda con id sf_',
+  idxAmb.liga.jugadorPartidos.get(SGADD.clavePersona('UNO, J'))[0].__id.indexOf('sf_') === 0,
+  idxAmb.liga.jugadorPartidos.get(SGADD.clavePersona('UNO, J'))[0].__id);
+check('y ninguno de los dos cruces se lleva un box score que no le toca',
+  idxAmb.partido('2026-05-01_a-vs-b').conBox === false &&
+  idxAmb.partido('2026-06-15_a-vs-b').conBox === false);
+check('el Diagnóstico avisa del cruce ambiguo en vez de callarlo',
+  idxAmb.avisos.some(a => /ida y vuelta/i.test(a)), JSON.stringify(idxAmb.avisos));
+check('sin ambigüedad no se avisa nada de esto',
+  !idxJoin.avisos.some(a => /ida y vuelta/i.test(a)), JSON.stringify(idxJoin.avisos));
+
+/* --- Retrocompat: una planilla que YA trae la fecha en las tres hojas --- */
+const libroConFecha = {
+  'PROMEDIOS E': libroJoin['PROMEDIOS E'],
+  'Base Datos E': libroJoin['Base Datos E'],
+  'Base Datos J': { cols: colsJoinJ, filas: libroJoin['Base Datos J'].filas.map(f =>
+    Object.assign({}, f, { FECHA: '01/05/2026' })) },
+};
+check('con la fecha ya cargada el resultado es el mismo: el join no la pisa',
+  SGADD.construirIndice(libroConFecha, { fase: 'REGULAR' }).partido(idEsperado).conBox === true);
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

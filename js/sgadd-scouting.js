@@ -1960,7 +1960,7 @@ function scoutBloqueMarcas(inf) {
     const celdaDirectiva = (valor, campo, detalle, color) => `
         <td class="px-2 py-2 align-top text-left">
           <input type="text" value="${escapeAttr(valor)}"
-            oninput="scoutMarca('${escapeAttr(f.clave)}', '${campo}', this.value)"
+            oninput="scoutMarca('${SGADD_UI.escJs(f.clave)}', '${campo}', this.value)"
             class="w-full bg-surface2 border border-hairline rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ${color} focus:border-accent outline-none">
           <p class="text-[10px] text-muted leading-snug mt-1 text-left">${escapeHtml(detalle)}</p>
         </td>`;
@@ -1974,7 +1974,7 @@ function scoutBloqueMarcas(inf) {
         </td>
         <td class="px-2 py-2 align-top text-left">
           <input type="text" value="${escapeAttr(defensor)}" title="${escapeAttr(defensor)}" placeholder="Perfil o nombre"
-            oninput="scoutMarca('${escapeAttr(f.clave)}', 'defensor', this.value)"
+            oninput="scoutMarca('${SGADD_UI.escJs(f.clave)}', 'defensor', this.value)"
             class="w-full bg-surface2 border border-hairline rounded px-2 py-1 text-[11px] focus:border-accent outline-none">
           ${f.marca.familiaDefensor ? `<p class="text-[10px] text-muted mt-1 text-left">${escapeHtml(f.marca.familiaDefensor)}</p>` : ''}
         </td>
@@ -2179,7 +2179,7 @@ function scoutInforme(idx) {
   const toggle = `
     <div class="flex flex-wrap items-center gap-2 no-imprimir">
       <span class="text-[10px] uppercase tracking-wider text-muted font-display">Scouting sobre</span>
-      ${[eR, eN].map(e => `<button type="button" onclick="scoutCambiarObjetivo('${escapeAttr(e.clave)}')"
+      ${[eR, eN].map(e => `<button type="button" onclick="scoutCambiarObjetivo('${SGADD_UI.escJs(e.clave)}')"
         class="px-3 py-1 text-[11px] rounded border transition-colors ${e.clave === inf.claveRival
           ? 'bg-accent text-black border-accent font-semibold' : 'border-hairline text-muted hover:text-ink'}"
         >${escapeHtml(e.nombre)}</button>`).join('')}

@@ -610,20 +610,20 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=47"></script>
-<script src="js/sgadd-core.js?v=47"></script>
-<script src="js/sgadd-ui.js?v=47"></script>
-<script src="js/sgadd-app.js?v=47"></script>
-<script src="js/sgadd-charts.js?v=47"></script>
-<script src="js/sgadd-personalidad.js?v=47"></script>
-<script src="js/sgadd-rankings.js?v=47"></script>
-<script src="js/sgadd-partido.js?v=47"></script>
-<script src="js/sgadd-informe.js?v=47"></script>
-<script src="js/sgadd-equipos.js?v=47"></script>
-<script src="js/sgadd-jugadores.js?v=47"></script>
-<script src="js/sgadd-4factores.js?v=47"></script>
-<script src="js/sgadd-scouting.js?v=47"></script>
-<script src="js/sgadd-diagnostico.js?v=47"></script>
+<script src="js/sgadd-club.js?v=48"></script>
+<script src="js/sgadd-core.js?v=48"></script>
+<script src="js/sgadd-ui.js?v=48"></script>
+<script src="js/sgadd-app.js?v=48"></script>
+<script src="js/sgadd-charts.js?v=48"></script>
+<script src="js/sgadd-personalidad.js?v=48"></script>
+<script src="js/sgadd-rankings.js?v=48"></script>
+<script src="js/sgadd-partido.js?v=48"></script>
+<script src="js/sgadd-informe.js?v=48"></script>
+<script src="js/sgadd-equipos.js?v=48"></script>
+<script src="js/sgadd-jugadores.js?v=48"></script>
+<script src="js/sgadd-4factores.js?v=48"></script>
+<script src="js/sgadd-scouting.js?v=48"></script>
+<script src="js/sgadd-diagnostico.js?v=48"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -2306,12 +2306,19 @@ function renderSection(section) {
 
 function navigate(section) {
   if (!VALID_SECTIONS.includes(section)) section = 'principal';
+  /* Si el hash ya trae una ruta SGADD completa de ESTA misma sección, no se
+     pisa: la escribió quien navegó (por ejemplo el link cruzado de Jugadores
+     al detalle de un partido en Equipos, que lleva equipo + tab + partido).
+     Reemplazarla por "#equipos" a secas dejaba el link imposible de compartir
+     y un F5 volvía a la grilla. */
+  const actual = window.location.hash || '';
+  const rutaSgadd = actual.indexOf('#/') === 0 && SGADD.Ruta.parse(actual).seccion === section;
   renderSection(section);
   closeSidebar();
   const root = document.getElementById('view-root');
   if (root) root.scrollTop = 0;
   window.scrollTo(0, 0);
-  history.replaceState(null, '', `#${section}`);
+  if (!rutaSgadd) history.replaceState(null, '', `#${section}`);
 }
 
 /* ============ SIDEBAR MÓVIL ============ */

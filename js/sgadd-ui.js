@@ -146,7 +146,7 @@ const SGADD_UI = (function () {
              ${esc(hayLogos ? LOGOS.iniciales(e.nombre) : e.nombre.slice(0, 2))}
            </span>`;
       return `
-        <button type="button" onclick="${esc(o.onClick || 'void 0')}('${esc(e.clave)}')"
+        <button type="button" onclick="${esc(o.onClick || 'void 0')}('${escJs(e.clave)}')"
           class="flex flex-col items-center gap-2 p-3 rounded-lg border transition-colors
                  ${activo ? 'border-accent bg-surface2' : 'border-hairline hover:bg-surface2'}">
           ${escudo}
@@ -165,7 +165,7 @@ const SGADD_UI = (function () {
      --------------------------------------------------------------------- */
   function tabs(lista, activo, onClick) {
     const items = lista.map(t => `
-      <button type="button" onclick="${esc(onClick)}('${esc(t.id)}')"
+      <button type="button" onclick="${esc(onClick)}('${escJs(t.id)}')"
         class="px-3 py-2 text-xs font-display uppercase tracking-wider rounded-md transition-colors
                ${t.id === activo ? 'bg-accent text-base' : 'text-muted hover:text-ink hover:bg-surface2'}"
         ${t.disponible === false ? 'disabled title="Sin datos suficientes"' : ''}>
@@ -198,7 +198,28 @@ const SGADD_UI = (function () {
     return v > 0 ? 'mm-pos' : 'mm-neg';
   }
 
-  return { esc, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, signoDelta, colorDelta, claseMasMenos };
+  /**
+   * Un valor que va DENTRO de un string de JavaScript, DENTRO de un atributo
+   * HTML: `onclick="f('${escJs(x)}')"`. Son dos capas de escape y hay que
+   * hacerlas en este orden.
+   *
+   * El bug que cierra: los equipos de La Plata se llaman `RECONQUISTA 'A' - MM`.
+   * Con solo `esc()` el atributo queda `f(&#39;RECONQUISTA &#39;A&#39;...&#39;)`,
+   * el parser HTML decodifica las entidades ANTES de que exista el JS, y el
+   * handler pasa a ser `f('RECONQUISTA 'A' - MM')` → SyntaxError. El clic no
+   * hacía nada y no había error visible en pantalla.
+   *
+   * Primero se cierra el literal de JS (barra invertida y comilla simple) y
+   * recién después se escapa el HTML: al revés, `esc()` convertiría la barra
+   * que acabamos de agregar en parte del texto.
+   */
+  function escJs(v) {
+    return esc(String(v === null || v === undefined ? '' : v)
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'"));
+  }
+
+  return { esc, escJs, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, signoDelta, colorDelta, claseMasMenos };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_UI;

@@ -363,7 +363,7 @@ function equiposTabGeneral(idx, e) {
   const log = (e.partidos || []).slice(-5).map(p => {
     const gano = SGADD.texto(p['RESULTADO']).toUpperCase() === 'GANADO';
     return `<tr class="border-b border-hairline/40 last:border-0 cursor-pointer hover:bg-surface2 transition-all duration-200"
-                onclick="equiposVerPartido('${escapeAttr(p.__id || '')}')">
+                onclick="equiposVerPartido('${SGADD_UI.escJs(p.__id || '')}')">
       <td class="py-1.5 pr-3 text-xs truncate max-w-[220px]">${escapeHtml(equiposRival(p, e))}</td>
       <td class="py-1.5 pr-3 text-xs text-muted">${escapeHtml(SGADD.texto(p['CONDICION']))}</td>
       <td class="py-1.5 pr-3 font-mono text-xs">${SGADD.num(p['PTS'])}-${SGADD.num(p['PTSopp'])}</td>
@@ -617,7 +617,7 @@ function equiposTabPartidos(idx, e) {
   const filas = (e.partidos || []).slice().reverse().map(p => {
     const gano = SGADD.texto(p['RESULTADO']).toUpperCase() === 'GANADO';
     return `<tr class="border-b border-hairline/40 last:border-0 cursor-pointer hover:bg-surface2 transition-all duration-200"
-                onclick="equiposVerPartido('${escapeAttr(p.__id || '')}')"
+                onclick="equiposVerPartido('${SGADD_UI.escJs(p.__id || '')}')"
                 title="Ver el detalle de este partido">
       <td class="py-1.5 pr-3 text-xs dato-sec font-mono whitespace-nowrap">${escapeHtml(SGADD.formatearFecha(p.__fecha))}</td>
       <td class="py-1.5 pr-3 text-xs text-white truncate max-w-[200px]">${escapeHtml(equiposRival(p, e))}</td>

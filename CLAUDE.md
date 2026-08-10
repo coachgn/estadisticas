@@ -11,12 +11,12 @@ principiante sobre el contenido técnico.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 159 tests · núcleo, índice, validador
+node test-core.js          # 170 tests · núcleo, índice, validador
 node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  22 tests · multi-cliente
 node test-boot.js          #  16 tests · arranque por club
-node test-jugadores.js     # 136 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
+node test-jugadores.js     # 143 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
@@ -24,7 +24,7 @@ node test-partido.js       #  22 tests · detalle partido a partido
 node test-scouting.js      # 239 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 ```
 
-**742 tests en total. Todos tienen que dar verde antes de commitear.**
+**760 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -74,7 +74,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=47`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=48`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -224,6 +224,73 @@ Cada sección lee el torneo del hash con `SGADD_APP.aplicarTorneoRuta(r.torneo)`
 dentro de su `leerRuta()` y lo escribe con `torneo: SGADD_APP.estado.torneo` en
 su `Ruta.build()`. El torneo **no** vive en el estado de la sección: es global,
 pero viaja en la URL para que un link compartido lo pueda cambiar.
+
+---
+
+## 3 quater. El join de FECHA · `Base Datos E` es la fuente de verdad
+
+`idPartido()` = **FECHA + PARTIDO**. Si una hoja trae la `FECHA` vacía y otra
+no, el mismo partido tiene dos ids (`sf_atenas-a-vs-…` contra
+`2026-05-05_atenas-a-vs-…`) y no cruzan nunca.
+
+**Consecuencia medida antes del fix** (Primera · Clausura 2026): las 1726
+filas de `Base Datos J` venían sin fecha, así que `partido.conBox` era `false`
+en los **72 partidos** y el box score del detalle **no se dibujaba nunca**.
+`4 FACTORES` tenía el mismo problema por otro motivo: sí heredaba la fecha,
+pero **después** de calcular el `__id`, así que `factoresPorId` seguía sin
+matchear.
+
+`construirIndice()` arma `fechaPorPartido` desde `Base Datos E` **antes** de
+indexar nada, y `fechaEfectiva(fila)` entra al cómputo del `__id` de las tres
+hojas partido a partido. Parchear el `FECHA` a posteriori no sirve: el `__id`
+ya está calculado.
+
+### Guard de ambigüedad · por qué a veces NO se hereda
+
+El texto `"A vs B"` **no identifica un partido** en una liga con ida y vuelta:
+los dos cruces se escriben igual y lo único que los separa es la fecha, que es
+justamente el dato que falta. Si un mismo `PARTIDO` aparece con dos fechas en
+`Base Datos E`, **no se hereda nada** y se avisa en el Diagnóstico.
+
+Es la misma regla que el resto del proyecto: **un dato inventado es peor que
+un dato ausente**. Un partido sin cruzar la UI ya lo sabe mostrar ("Sin box
+score cargado"); atribuirle a un jugador la noche equivocada no se nota y
+contamina su log, su desvío y sus atípicos.
+
+Con los datos reales de Reconquista: **72 de 72** partidos con box score, cero
+cruces ambiguos.
+
+### `jugadoresIdCanonico()` sigue existiendo, pero cambió de orden
+
+Ahora el primer intento es usar el `__id` de la propia fila —que después del
+join suele ser el bueno, y es exacto, no una inferencia— y recién si no está
+en `partidosPorId` se cae al match por texto de `PARTIDO`. Ese fallback es
+para el caso ambiguo, y **abre la primera de las dos noches**: es una
+aproximación conocida, no un dato.
+
+---
+
+## 3 quinquies. Handlers inline y nombres con comilla simple
+
+Los equipos de La Plata se llaman **`RECONQUISTA 'A' - MM`**. Un nombre así
+metido en un `onclick` con solo escape de HTML rompe el handler:
+
+```
+onclick="f('${esc(nombre)}')"   →   f(&#39;RECONQUISTA &#39;A&#39; - MM&#39;)
+```
+
+El parser HTML decodifica las entidades **antes** de que exista el JS, así que
+el handler queda `f('RECONQUISTA 'A' - MM')` → `SyntaxError`. El clic no hace
+nada **y no se ve ningún error en pantalla**. Era el motivo de que en
+Jugadores → Partidos el clic en una fila no abriera el detalle en Equipos.
+
+`SGADD_UI.escJs(v)` hace las **dos capas en orden**: primero cierra el literal
+de JS (barra invertida y comilla simple), después escapa el HTML. Al revés,
+`esc()` convertiría la barra recién agregada en parte del texto.
+
+Todo handler inline que interpole un valor usa `escJs`, no `esc` ni
+`escapeAttr`. Hay un test que recorre los cinco módulos de UI y falla si
+aparece uno nuevo sin él.
 
 ---
 
@@ -1220,22 +1287,14 @@ factor — a diferencia del Pearson crudo del original).
   postergado hasta cerrar el proyecto actual.
 - `PROMEDIOS J` tiene una fila `JUGADOR TIPO` por equipo además de la de liga.
   Está contemplado, pero conviene saberlo.
-- La `FECHA` viene vacía en varias filas de `4 FACTORES` y en algunos partidos de
-  `Base Datos E`. Se hereda por join contra `PARTIDO`; los que quedan sin fecha
-  van al final del orden cronológico y se avisa en la UI.
-  **`Base Datos J` NO tiene ese join** (queda vacía tal cual viene): por eso
-  Jugadores resuelve el id de partido para el link a Equipos por texto de
-  `PARTIDO`, no por fecha (ver la regla de `idPartido()` en el punto 3).
-  Sumar el mismo join que ya tiene `4 FACTORES` sería la forma prolija de
-  cerrar esto de raíz.
-  **Consecuencia medida (2026-08-10, Primera · Clausura 2026):** en esa
-  planilla la `FECHA` viene vacía en las 1726 filas de `Base Datos J`, así que
-  su `idPartido()` da `sf_…` y NUNCA matchea el `2026-05-05_…` de
-  `Base Datos E`. Resultado: `partido.conBox === false` en los 72 partidos y
-  **el box score del detalle de partido no se dibuja nunca** — sale "Sin box
-  score cargado para este partido". No es un bug del render (verificado
-  inyectando el join en memoria: la tabla, la columna `+/-` y el badge de
-  margen salen bien); es este join que falta. Es lo primero a arreglar acá.
+- ~~La `FECHA` vacía de `Base Datos J` rompía el cruce con `Base Datos E`.~~
+  **RESUELTO** (ver punto 3 quater): las tres hojas partido a partido heredan
+  la `FECHA` de `Base Datos E` en `construirIndice()`, antes de calcular el
+  `__id`. Queda el límite del guard de ambigüedad, que es del dato y no del
+  código: en un cruce de ida y vuelta con el mismo texto de `PARTIDO`, una
+  fila sin fecha no se puede atribuir a ninguna de las dos noches y queda sin
+  cruzar. La forma de cerrarlo es que la planilla traiga la `FECHA` en
+  `Base Datos J`; mientras tanto se avisa en el Diagnóstico.
 - Sin columnas de cuartos/parciales. Hay un hook comentado en el detalle de
   partido listo para cuando existan.
 - **El acceso es público.** Los `sheetId` están en los JSON, que son archivos
