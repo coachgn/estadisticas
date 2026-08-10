@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>SGADD · Manual de etiquetado de jugadores</title>
+<style>
+  @page { size: A4 portrait; margin: 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    color: #1a1a1a; background: #fff; margin: 0 auto; max-width: 190mm;
+    font-size: 10.5pt; line-height: 1.45;
+  }
+  header { border-bottom: 3px solid #E87A2A; padding-bottom: 10px; margin-bottom: 18px; }
+  h1 { font-size: 21pt; margin: 0 0 2px; letter-spacing: -.3px; }
+  .bajada { color: #555; font-size: 10pt; margin: 0; }
+  .meta { color: #888; font-size: 8.5pt; margin-top: 6px; }
+  h2 {
+    font-size: 14pt; margin: 26px 0 8px; padding: 6px 10px;
+    background: #1a1a1a; color: #fff; border-radius: 3px;
+    page-break-after: avoid;
+  }
+  h3 {
+    font-size: 11.5pt; margin: 18px 0 6px; color: #B85C10;
+    border-bottom: 1px solid #e5e5e5; padding-bottom: 3px;
+    page-break-after: avoid;
+  }
+  h4 { font-size: 10.5pt; margin: 14px 0 5px; color: #333; page-break-after: avoid; }
+  .sub { font-weight: 400; color: #888; font-size: 9pt; font-style: italic; }
+  p { margin: 6px 0; }
+  ul, ol { margin: 6px 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; font-size: 9pt; page-break-inside: avoid; }
+  th {
+    background: #f0f0f0; text-align: left; padding: 5px 7px;
+    border-bottom: 2px solid #ccc; font-size: 8.5pt;
+    text-transform: uppercase; letter-spacing: .4px; color: #444;
+  }
+  td { padding: 5px 7px; border-bottom: 1px solid #eee; vertical-align: top; }
+  td.k { width: 26%; }
+  table.ancha td.k { width: 22%; }
+  tr:nth-child(even) td { background: #fafafa; }
+  .corte {
+    font-family: "Consolas", "DM Mono", monospace; font-size: 8.5pt;
+    background: #FFF4E8; color: #8A4200; padding: 1px 5px;
+    border-radius: 3px; border: 1px solid #F0D5B8; display: inline-block;
+  }
+  .caja {
+    background: #FAFAFA; border-left: 3px solid #E87A2A;
+    padding: 9px 12px; margin: 10px 0; font-size: 9.5pt;
+    page-break-inside: avoid;
+  }
+  .nota { font-size: 9pt; color: #666; font-style: italic; }
+  .aviso {
+    background: #FFF9E6; border-left: 3px solid #E0A800;
+    padding: 8px 12px; margin: 10px 0; font-size: 9.5pt;
+    page-break-inside: avoid;
+  }
+  .mono {
+    font-family: "Consolas", monospace; font-size: 8.5pt; white-space: pre;
+    background: #fff; border: 1px solid #e5e5e5; padding: 7px 9px;
+    margin-top: 6px; border-radius: 3px; overflow-x: auto;
+  }
+  .indice { columns: 2; column-gap: 24px; font-size: 9.5pt; }
+  .indice a { color: #B85C10; text-decoration: none; }
+  footer {
+    margin-top: 26px; padding-top: 10px; border-top: 1px solid #ddd;
+    font-size: 8.5pt; color: #888;
+  }
+  .salto { page-break-before: always; }
+  @media print { body { max-width: none; } a { color: inherit; text-decoration: none; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Manual de etiquetado de jugadores</h1>
+  <p class="bajada">Cómo el panel clasifica a un jugador, con qué métrica y con qué corte exacto.</p>
+  <p class="meta">SGADD · Sistema de Gestión y Análisis de Datos Deportivos ·
+     Generado el 10/08/2026 · 35 etiquetas documentadas</p>
+</header>
+
+<p>Este documento existe para que <b>dos entrenadores que miran el mismo informe lean lo
+mismo</b>. Cada etiqueta que el panel le pone a un jugador sale de una regla explícita
+con un número detrás, y acá están todas.</p>
+
+<div class="caja">
+  <b>Cómo leerlo.</b> Los cortes van en <span class="corte">recuadro naranja</span>.
+  Donde dice <i>"× la liga"</i> el umbral es <b>relativo</b> y se recalcula con cada
+  categoría; donde hay un número pelado es <b>absoluto</b> y vale igual en cualquier
+  torneo. Esa distinción es la que permite usar el mismo panel en una liga local y en
+  una nacional.
+</div>
+
+<div class="indice">
+  <b>Contenido</b><br>
+  1. Clasificación ofensiva<br>
+  &nbsp;&nbsp;1.1 Bandas de minutos<br>
+  &nbsp;&nbsp;1.2 Jerarquía en el plantel<br>
+  &nbsp;&nbsp;1.3 Arquetipos técnicos<br>
+  &nbsp;&nbsp;1.4 Rol funcional<br>
+  2. Clasificación defensiva<br>
+  &nbsp;&nbsp;2.1 Bandas contra la liga<br>
+  &nbsp;&nbsp;2.2 Marca asignada<br>
+  &nbsp;&nbsp;2.3 Catálogo de defensores<br>
+  &nbsp;&nbsp;2.4 Plan defensivo colectivo<br>
+  &nbsp;&nbsp;2.5 Claves estratégicas<br>
+  3. Cómo leer los números<br>
+  &nbsp;&nbsp;3.1 Contra qué se compara cada cosa<br>
+  &nbsp;&nbsp;3.2 Lo que el sistema no sabe<br>
+</div>
+
+<h2>1 · Clasificación ofensiva</h2>
+<p>Cuatro familias de etiquetas que <b>no compiten entre sí</b>: contestan preguntas
+distintas y un jugador recibe una de cada una.</p>
+
+    <h3>1.1 · Bandas de minutos <span class="sub">¿cuánto juega?</span></h3>
+    <p>Cascada excluyente sobre el promedio de <b>MIN</b>. Es la única familia con
+    umbrales <b>absolutos</b>: un promedio de 27 minutos es carga alta en cualquier
+    categoría. No usa percentiles a pedido del club.</p>
+    <table class="">
+    <thead><tr><th>Etiqueta</th><th>Corte de MIN</th><th>Lectura</th></tr></thead>
+    <tbody><tr><td class="k"><b>Jugador Clave</b></td><td class=""><span class="corte">25 o más</span></td><td class="">Dependencia Absoluta</td></tr><tr><td class="k"><b>Jugador Importante</b></td><td class=""><span class="corte">20 a 24,9</span></td><td class="">Consistencia Estructural</td></tr><tr><td class="k"><b>Jugador de Rotación</b></td><td class=""><span class="corte">15 a 19,9</span></td><td class="">Impacto Quirúrgico</td></tr><tr><td class="k"><b>Pocos Minutos</b></td><td class=""><span class="corte">menos de 15</span></td><td class="">Contención y Emergencia</td></tr></tbody>
+  </table>
+    <p class="nota">Dentro de <i>Pocos Minutos</i> hay un matiz extra: por debajo de
+    10 minutos la muestra es tan chica que ni esa banda alcanza a describirlo.</p>
+
+    <h3>1.2 · Jerarquía en el plantel <span class="sub">¿cuánto pesa?</span></h3>
+    <p><b>Cascada excluyente</b>: gana el primero que calza, de más a menos exigente.</p>
+    <table class="">
+    <thead><tr><th>Nivel</th><th>Corte</th><th>Qué describe</th></tr></thead>
+    <tbody><tr><td class="k"><b>⭐ Jugador Franquicia</b></td><td class=""><span class="corte">PLAYS &gt; 1,20× promedio de liga y MIN &gt; 28</span></td><td class="">Líder absoluto del plantel: el equipo pasa por sus manos y por sus minutos.</td></tr><tr><td class="k"><b>⚔️ Referente Ofensivo / Segunda Espada</b></td><td class=""><span class="corte">PLAYS &gt; promedio de liga</span></td><td class="">Alto volumen de decisiones: carga una parte grande del ataque.</td></tr><tr><td class="k"><b>🧱 Pieza de Rotación Alta</b></td><td class=""><span class="corte">MIN ≥ 23</span></td><td class="">Carga de minutos alta y aporte estable, sin ser el foco del ataque.</td></tr><tr><td class="k"><b>🛠️ Especialista de Rol</b></td><td class=""><span class="corte">fallback: siempre calza</span></td><td class="">Ejecuta tareas puntuales dentro de un rol acotado.</td></tr></tbody>
+  </table>
+    <p class="aviso"><b>Nunca se dice "titular".</b> La planilla no trae el quinteto
+    inicial y 23 minutos los puede hacer un sexto hombre. La etiqueta mide carga de
+    minutos, que es lo que el dato sostiene.</p>
+
+    <h3>1.3 · Arquetipos técnicos <span class="sub">¿qué sabe hacer?</span></h3>
+    <p><b>NO son excluyentes</b>: un jugador puede calzar en varios, en uno o en
+    ninguno. Se miden contra el promedio de los jugadores <b>calificados</b> de la
+    liga activa, así que el mismo código sirve para cualquier categoría.</p>
+    <table class="">
+    <thead><tr><th>Arquetipo</th><th>Corte</th><th>Qué significa en cancha</th></tr></thead>
+    <tbody><tr><td class="k"><b>🎯 Terminador de Élite</b></td><td class=""><span class="corte">PLAYS &gt; promedio de liga · eFG% &gt; 1,15× promedio · PPP &gt; 1,05</span></td><td class="">Alto volumen de plays con una eficiencia muy por encima de la liga: no solo participa, resuelve.</td></tr><tr><td class="k"><b>🧠 Generador</b></td><td class=""><span class="corte">AST-PP &gt; 1,40</span></td><td class="">Reparte muchas más asistencias de las que pierde la pelota: hace mejor a los demás.</td></tr><tr><td class="k"><b>🏰 Puntal en la Pintura</b></td><td class=""><span class="corte">RO+RD &gt; 1,20× el promedio de la liga</span></td><td class="">Domina el vidrio muy por encima del promedio de la liga, en ataque y en defensa.</td></tr><tr><td class="k"><b>🎯 Amenaza Perimetral Real</b></td><td class=""><span class="corte">T3I &gt; 3,0 y T3% &gt; 34%</span></td><td class="">Volumen y acierto de triple genuinos: hay que salir a buscarlo afuera.</td></tr><tr><td class="k"><b>🧤 Especialista Defensivo</b></td><td class=""><span class="corte">PR &gt; 1,30× el promedio de la liga</span></td><td class="">Roba muchas más pelotas que el resto de la liga: genera posesiones extra.</td></tr><tr><td class="k"><b>📏 Buscador de Contacto</b></td><td class=""><span class="corte">RTL% ≥ 0.28 y FR ≥ 2.5 y PT1% ≥ 0.12 y T1% ≥ 0.72</span></td><td class="">Ataca el contacto con volumen real (tasa de libres y faltas recibidas por encima de la liga) y además convierte.</td></tr></tbody>
+  </table>
+
+    <h3>1.4 · Rol funcional <span class="sub">¿qué función cumple?</span></h3>
+    <p><b>Cascada excluyente, sin base / alero / pivote.</b> El orden importa: gana el
+    primero que calza. La planilla no trae talla ni posición, así que el rol sale de
+    lo que el jugador hace, no de dónde se para.</p>
+    <table class="">
+    <thead><tr><th>Rol (en orden de evaluación)</th><th>Corte</th></tr></thead>
+    <tbody><tr><td class="k"><b>1. Generador Primario</b></td><td class=""><span class="corte">AST-PP ≥ 1.4 · AST ≥ 2.5 · MIN ≥ 20</span></td></tr><tr><td class="k"><b>2. Finalizador Corto / Short Roll</b></td><td class=""><span class="corte">interior · PPT2 ≥ 1.1</span></td></tr><tr><td class="k"><b>3. Ancla Defensiva</b></td><td class=""><span class="corte">interior · RD rel ≥ 1.15 y RD rel &gt; RO rel</span></td></tr><tr><td class="k"><b>4. Rebotador de Impacto / Rim Runner</b></td><td class=""><span class="corte">interior · RO rel ≥ 1.3</span></td></tr><tr><td class="k"><b>5. Juego de Espaldas / Poste Bajo</b></td><td class=""><span class="corte">interior sin dimensión dominante (fallback interior)</span></td></tr><tr><td class="k"><b>6. Spacing / Tirador de Descarga</b></td><td class=""><span class="corte">perimetral · PT3% ≥ 0.4</span></td></tr><tr><td class="k"><b>7. Slasher / Penetrador</b></td><td class=""><span class="corte">perimetral · PPT2 ≥ 1,00</span></td></tr><tr><td class="k"><b>8. Manejador Secundario</b></td><td class=""><span class="corte">AST-PP ≥ 1,00 · MIN ≥ 20</span></td></tr><tr><td class="k"><b>9. Perimetral de Media Distancia</b></td><td class=""><span class="corte">perimetral, sin volumen de triple</span></td></tr><tr><td class="k"><b>10. Rol Complementario</b></td><td class=""><span class="corte">fallback: ninguna función domina</span></td></tr></tbody>
+  </table>
+    <div class="caja">
+      <b>Cómo se decide si es interior o perimetral.</b> Sobre <b>intentos</b>, no sobre
+      aciertos: de dónde tira no depende de si le entra.
+      <div class="mono">mezcla = T3I / (T3I + T2I)
+menor a 0,12 → interior
+0,12 a 0,3 → desempate por rebote total (≥ 1,1× la mediana → interior)
+0,3 o más → perimetral
+sin tiros de campo → sin origen (no se infiere)</div>
+    </div>
+
+<h2 class="salto">2 · Clasificación defensiva</h2>
+
+    <h3>2.1 · Bandas contra la liga <span class="sub">el contexto de todo lo demás</span></h3>
+    <p>Ninguna decisión táctica individual sale solo de un umbral fijo. Primero se mide
+    cuánto se desvía el jugador de la media de <b>esta</b> liga. Un PPT3 de 1,05 es de
+    élite en una categoría y del montón en otra.</p>
+    <table class="">
+    <thead><tr><th>Banda</th><th>Desvíos estándar</th></tr></thead>
+    <tbody><tr><td class="k"><b>Muy por encima de la liga</b></td><td class=""><span class="corte">z ≥ +1,2</span></td></tr><tr><td class="k"><b>Por encima de la liga</b></td><td class=""><span class="corte">z ≥ +0,5</span></td></tr><tr><td class="k"><b>En el promedio de la liga</b></td><td class=""><span class="corte">z ≥ -0,5</span></td></tr><tr><td class="k"><b>Por debajo de la liga</b></td><td class=""><span class="corte">z ≥ -1,2</span></td></tr><tr><td class="k"><b>Muy por debajo de la liga</b></td><td class=""><span class="corte">z &lt; −1,2</span></td></tr></tbody>
+  </table>
+    <p class="nota">En métricas invertidas (pérdidas) el signo se da vuelta, para que
+    <i>"muy por encima"</i> signifique siempre lo mismo: mejor que la liga.</p>
+
+    <h3>2.2 · Marca asignada <span class="sub">cascada de 11, de la amenaza más cara a la más barata</span></h3>
+    <p>Un jugador puede disparar varias reglas de análisis, pero <b>recibe una sola
+    marca</b>: la de la amenaza que más caro sale conceder. El orden ES la regla.</p>
+    <table class="ancha">
+    <thead><tr><th>Marca (en orden)</th><th>Corte</th><th>Perfiles de defensor candidatos</th></tr></thead>
+    <tbody><tr><td class="k"><b>1. Amenaza perimetral de élite</b></td><td class=""><span class="corte">PT3% ≥ 0.4 y PPT3 ≥ 1.2</span></td><td class="">Defensor de Denegación / Denier<br>Navegador de Pantallas / Screen Navigator<br>Anulador de Tiradores / Sniper Stopper</td></tr><tr><td class="k"><b>2. Volumen alto, eficiencia baja</b></td><td class=""><span class="corte">concentración ≥ 0.15 · sin tiro rentable · eFG% por debajo de la liga</span></td><td class="">Defensor de Envergadura / Length Defender<br>Contenedor de Volumen / Volume Containment</td></tr><tr><td class="k"><b>3. Tirador eficiente (poco volumen, alta renta)</b></td><td class=""><span class="corte">T3I ≥ 1,0 y tiro externo rentable</span></td><td class="">Cerrador de Tiros Abiertos / Closeout Specialist<br>Anulador de Tiradores / Sniper Stopper<br>Defensor de Denegación / Denier</td></tr><tr><td class="k"><b>4. Referencia interna</b></td><td class=""><span class="corte">interior · PPT2 ≥ 1.1</span></td><td class="">Protector de Aro Primario / Primary Rim Protector<br>Defensor en Caída / Drop Protector<br>Muro de Pintura / Paint Pillar</td></tr><tr><td class="k"><b>5. Slasher / penetrador</b></td><td class=""><span class="corte">perimetral · PPT2 ≥ 1.1</span></td><td class="">Defensor en Punto de Ataque / POA Defender<br>Defensor de Transición / Transition Defender<br>Contenedor de Penetraciones / Drive Containment</td></tr><tr><td class="k"><b>6. Conductor con pérdidas altas</b></td><td class=""><span class="corte">pérdidas ≥ 1.25× la liga · MIN ≥ 20</span></td><td class="">Disruptor de Bloqueos / P&amp;R Disruptor<br>Defensor en Punto de Ataque / POA Defender<br>Hostigador / Ball-Screen Pest</td></tr><tr><td class="k"><b>7. Tirador sistemático de bajo porcentaje</b></td><td class=""><span class="corte">T3I ≥ 2.5 y tiro externo frío</span></td><td class="">Contenedor de Volumen / Volume Containment<br>Navegador de Pantallas / Screen Navigator<br>Cerrador de Tiros Abiertos / Closeout Specialist</td></tr><tr><td class="k"><b>8. Vulnerable en la línea</b></td><td class=""><span class="corte">T1% &lt; 0.4 y PT2% ≥ 0.45</span></td><td class="">Muro de Ayudas / Low-Post Wall<br>Defensor de Impacto Interno / Interior Impact Defender</td></tr><tr><td class="k"><b>9. Tirador de volumen sin renta</b></td><td class=""><span class="corte">PT3% ≥ 0.4 · PPT3 ≤ 0.9 · no rentable · no es la vía principal</span></td><td class="">Especialista de Lectura / Read Specialist<br>Defensor Flotante / Target Defender</td></tr><tr><td class="k"><b>10. Rebotador de impacto</b></td><td class=""><span class="corte">RO rel ≥ 1.3</span></td><td class="">Cerrador Rebotero / Rebounding Guard<br>Defensor del Eje / Paint Dominator<br>Asegurador del Rebote / Glass Cleaner</td></tr><tr><td class="k"><b>11. Rol complementario</b></td><td class=""><span class="corte">fallback: ninguna amenaza domina</span></td><td class="">Interceptor de Línea / Passing Lane Interceptor<br>Freno de Ritmo / Pace Controller<br>Líbero de Ayudas / Free Safety<br>Defensor Multiuso / Switchable Forward</td></tr></tbody>
+  </table>
+    <div class="caja">
+      <b>Las tres reglas de tiro externo, y por qué están en ese orden.</b>
+      <ol>
+        <li><b>Tirador eficiente de bajo volumen</b> va arriba de todo lo interno: es el
+        especialista que anota poco <i>por volumen, no por eficiencia</i>. Con el criterio
+        que mira puntos, quedaba en el montón y se le soltaba. Restricción:
+        <b>prohibido flotar</b>.</li>
+        <li><b>Tirador sistemático frío</b>: mucho volumen, poca renta. Se le contesta
+        igual, pero sin desarmar la estructura por él.</li>
+        <li><b>Tirador de volumen sin renta</b> es la única que autoriza flotar, y pide
+        <b>tres condiciones acumuladas</b>. Si falla cualquiera, ya cayó en una de las
+        dos anteriores.</li>
+      </ol>
+      <b>Mandar a la línea no es la respuesta para todo.</b> Es un solo perfil y con
+      umbral duro (T1% &lt; 0,4 <i>y</i> volumen interno): a alguien que
+      convierte 60% de libres le estás regalando 1,20 puntos por posesión.
+    </div>
+
+    <h3>2.3 · Catálogo de perfiles de defensor <span class="sub">11 familias, 33 perfiles</span></h3>
+    <p>La columna <i>Defensor nuestro</i> sugiere un <b>perfil táctico, no un nombre
+    propio</b>: quién lo cubre depende de quién esté en cancha y de las faltas de cada
+    uno. El campo es editable para poner el nombre al armar la rotación.</p>
+    <p class="nota">El motor puede sugerir <b>25 de los 33</b>:
+    cada marca declara varios candidatos y desempata con métricas secundarias
+    (recuperos, rebote ofensivo, asistencias). El resto está para que el cuerpo técnico
+    lo elija a mano.</p>
+    <table class="ancha">
+    <thead><tr><th>Familia</th><th>Perfiles</th></tr></thead>
+    <tbody><tr><td class="k"><b>🛡 Especialista 1x1</b></td><td class=""><b>Defensor sobre la Bola</b> · Neutraliza aclarados e isolaciones del generador principal.<br><b>Sombra</b> · Persigue cara a cara al anotador rival por toda la cancha.<br><b>Anulador Defensivo</b> · Cancela por completo el impacto de la estrella rival.</td></tr><tr><td class="k"><b>⚡ Presión Inicial</b></td><td class=""><b>Defensor en Punto de Ataque</b> · Asfixia el inicio de la ofensiva en el eje de la cancha.<br><b>Disruptor de Bloqueos</b> · Rompe la dinámica del bloqueo y reanudación central.<br><b>Hostigador</b> · Fuerza pérdidas metiendo las manos en la línea de drible.</td></tr><tr><td class="k"><b>🏃 Perimetral Atlético</b></td><td class=""><b>Perseguidor de Líneas</b> · Niega las líneas de carrera de exteriores explosivos.<br><b>Defensor de Transición</b> · Frena el contraataque rival mediante velocidad de repliegue.<br><b>Contenedor de Penetraciones</b> · Absorbe el primer paso rival con físico y desplazamiento lateral.</td></tr><tr><td class="k"><b>💪 Perimetral Físico</b></td><td class=""><b>Desgastador Perimetral</b> · Choca en pantallas y ensucia el juego exterior.<br><b>Defensor de Choque</b> · Castiga los cortes rivales mediante contacto legal.<br><b>Cerrador Rebotero</b> · Sella el box-out desde afuera hacia adentro para asegurar la posesión.</td></tr><tr><td class="k"><b>📏 Perimetral Largo</b></td><td class=""><b>Defensor de Envergadura</b> · Usa brazos largos para puntear tiros de alto alcance.<br><b>Contenedor de Volumen</b> · Molesta la visual de tiradores lejanos (8-9 metros).<br><b>Cerrador de Tiros Abiertos</b> · Llegada rápida a los tiros externos usando su alcance de brazos.</td></tr><tr><td class="k"><b>🎯 Especialista Perimetral</b></td><td class=""><b>Anulador de Tiradores</b> · Persigue a especialistas a través de cortinas indirectas.<br><b>Defensor de Denegación</b> · Evita por completo que el tirador letal reciba la pelota.<br><b>Navegador de Pantallas</b> · Esquiva o pasa pantallas por arriba (over the top).</td></tr><tr><td class="k"><b>🏢 Especialista Interior</b></td><td class=""><b>Defensor en Caída</b> · Se hunde en la pintura ante penetradores sin salir al exterior.<br><b>Protector de Aro Clásico</b> · Se mantiene en la restricción para intimidar tiros cortos.<br><b>Muro de Pintura</b> · Anula físicamente el juego de espaldas al aro de los terminales internos.</td></tr><tr><td class="k"><b>🏰 Referente de Zona</b></td><td class=""><b>Protector de Aro Primario</b> · Lidera la comunicación trasera y bloquea tiros cerca del aro.<br><b>Asegurador del Rebote</b> · Termina la posesión defensiva capturando el rebote defensivo.<br><b>Defensor del Eje</b> · Domina la zona pintada alterando la efectividad rival en su eje central.</td></tr><tr><td class="k"><b>🧱 Híbrido Físico</b></td><td class=""><b>Defensor Multiuso</b> · Cambia de marca y absorbe contactos de internos en alineaciones bajas o intermedias.<br><b>Muro de Ayudas</b> · Dobla la marca en el poste bajo o colapsa la zona pintada.<br><b>Defensor de Impacto Interno</b> · Aporta masa muscular para defender la pintura y ayudar adentro.</td></tr><tr><td class="k"><b>🦅 Perimetral Atlético · Ayudas</b></td><td class=""><b>Líbero de Ayudas</b> · Salta desde el lado débil para taponar o cortar pases en cortes directos.<br><b>Rotador Vertical</b> · Cierra el aro llegando a toda velocidad gracias a su zancada e hiperatletismo.<br><b>Interceptor de Línea</b> · Lee los ojos del pasador para robar balones dirigidos a cortes hacia el aro.</td></tr><tr><td class="k"><b>📐 Contención Táctica</b></td><td class=""><b>Defensor Flotante</b> · Entra en rotación para flotar (sag-off) ante rivales sin tiro exterior.<br><b>Especialista de Lectura</b> · Compensa falta de tiro o físico anticipando los esquemas tácticos rivales.<br><b>Freno de Ritmo</b> · Jugador de refresco que ralentiza el partido o ejecuta faltas tácticas de gestión.</td></tr></tbody>
+  </table>
+
+    <h3>2.4 · Plan defensivo colectivo <span class="sub">las marcas se conectan entre sí</span></h3>
+    <p>Una defensa no es la suma de once marcas individuales: si a cuatro rivales les
+    ponés <i>"doblar"</i>, te quedaste sin nadie para doblar. El plan clasifica al
+    plantel rival y después cada celda se escribe <b>sabiendo qué hacen las otras diez</b>.</p>
+    <table class="ancha">
+    <thead><tr><th>Grupo</th><th>Quién entra</th><th>Qué dice su celda</th></tr></thead>
+    <tbody><tr><td class="k"><b>🎯 Focos · se dobla</b></td><td class=""><span class="corte">marca de tirador de élite, referencia interna o slasher; o concentra ≥ 0,15 de los plays; o es franquicia</span></td><td class="">su celda dice desde dónde sale la ayuda</td></tr><tr><td class="k"><b>🚫 Intocables · no se sueltan</b></td><td class=""><span class="corte">tiene tiro externo rentable</span></td><td class="">su defensor no participa de las ayudas</td></tr><tr><td class="k"><b>↩ Fuentes de ayuda</b></td><td class=""><span class="corte">tiro frío o sin renta</span></td><td class="">es el lado desde donde se dobla</td></tr><tr><td class="k"><b>🏰 Box-out asignado</b></td><td class=""><span class="corte">RO rel ≥ 1,3</span></td><td class="">su defensor no rota: bloquea</td></tr></tbody>
+  </table>
+    <p class="nota"><b>El orden de los vetos es la lógica del plan.</b> Un intocable
+    nunca puede ser fuente de ayuda (soltarlo es el error más caro). Un foco tampoco
+    (el que exige doblaje no puede ayudar en otro lado). Un reboteador tampoco: no se
+    le puede pedir al mismo defensor que sea el primero en rotar y que no abandone el
+    box-out.</p>
+    <h4>Escenarios que reconoce</h4>
+    <table class="">
+    <thead><tr><th>Escenario</th><th>Se activa cuando</th></tr></thead>
+    <tbody><tr><td class="k"><b>Franquicia solitaria</b></td><td class="">un solo foco y hay fuente de ayuda</td></tr><tr><td class="k"><b>Ataque abierto · spacing alto</b></td><td class="">3 o más tiradores rentables</td></tr><tr><td class="k"><b>Interior dominante con perímetro frío</b></td><td class="">foco interior y al menos 2 fuentes</td></tr><tr><td class="k"><b>Sin lado barato</b></td><td class="">hay foco y no hay ninguna fuente</td></tr><tr><td class="k"><b>Ataque distribuido</b></td><td class="">fallback: ningún patrón domina</td></tr></tbody>
+  </table>
+    <p class="aviso"><b>Regla de coherencia:</b> si hay un foco, tiene que haber una
+    fuente de ayuda designada. Si el rival no tiene ningún lado barato, el plan lo dice
+    en vez de inventar una ayuda que no existe. La única excepción es
+    <i>spacing alto</i>: ahí el plan renuncia a ayudar a propósito y pasa a 1×1.</p>
+
+    <h3>2.5 · Claves estratégicas <span class="sub">se activan solas</span></h3>
+    <p>No hay lista fija: cada regla mira el plantel del rival y aparece únicamente si
+    los datos la justifican. Un informe contra un equipo de tiradores y otro contra uno
+    de pintura salen distintos sin tocar nada.</p>
+    <table class="">
+    <thead><tr><th>Clave</th><th>Se activa cuando</th></tr></thead>
+    <tbody><tr><td class="k"><b>📉 Ejes de eficiencia</b></td><td class=""><span class="corte">concentra ≥ 0,15 de los plays del equipo</span></td></tr><tr><td class="k"><b>🏹 Clausura de tiradores</b></td><td class=""><span class="corte">PT3% ≥ 0,4 y PPT3 ≥ 1,2</span></td></tr><tr><td class="k"><b>🎁 Invitación selectiva al triple</b></td><td class=""><span class="corte">PT3% ≥ 0,4 y PPT3 ≤ 0,9</span></td></tr><tr><td class="k"><b>🚫 Disciplina de bonus / control de T1</b></td><td class=""><span class="corte">PT1% ≥ 0,1 y T1% ≥ 0,75</span></td></tr><tr><td class="k"><b>🎯 Falta táctica rentable</b></td><td class=""><span class="corte">PT1% ≥ 0,1 y T1% ≤ 0,6</span></td></tr><tr><td class="k"><b>🧤 Presión a la conducción</b></td><td class=""><span class="corte">pérdidas ≥ 1,25× la liga</span></td></tr><tr><td class="k"><b>🏰 Control del cristal</b></td><td class=""><span class="corte">RO rel ≥ 1,3</span></td></tr><tr><td class="k"><b>🛡 Colapso de la pintura</b></td><td class=""><span class="corte">PPT2 ≥ 1,1 y PT2% ≥ 0,40</span></td></tr><tr><td class="k"><b>🧲 Líneas de pase del rival</b></td><td class=""><span class="corte">recuperos por encima de la liga</span></td></tr><tr><td class="k"><b>📐 Concesión perimetral selectiva</b></td><td class=""><span class="corte">tira entre 1 y 2,5 triples sin renta</span></td></tr></tbody>
+  </table>
+    <p class="nota"><b>Pares deliberadamente opuestos</b>, que nunca pueden apuntar al
+    mismo jugador: <i>clausura de tiradores</i> ↔ <i>invitación al triple</i>, y
+    <i>disciplina de bonus</i> ↔ <i>falta táctica rentable</i>.</p>
+
+<h2 class="salto">3 · Cómo leer los números</h2>
+
+    <h3>3.1 · Contra qué se compara cada cosa</h3>
+    <p>El error más fácil al leer el informe es suponer que todas las etiquetas se
+    calculan contra lo mismo. <b>No es así, y es a propósito.</b></p>
+    <table class="ancha">
+    <thead><tr><th>Referencia</th><th>Qué contesta</th><th>Dónde se usa</th></tr></thead>
+    <tbody><tr><td class="k"><b>Absoluta</b></td><td class="">Un umbral fijo, igual en cualquier liga</td><td class="">Bandas de minutos, T1% regalable, PPT3 de élite</td></tr><tr><td class="k"><b>Promedio de la liga</b></td><td class="">Media de los jugadores calificados</td><td class="">Arquetipos técnicos, jerarquía</td></tr><tr><td class="k"><b>Mediana de calificados</b></td><td class="">El jugador típico <b>de los que juegan</b></td><td class="">Relativos de rebote</td></tr><tr><td class="k"><b>Banda z</b></td><td class="">Cuántos desvíos se despega de su liga</td><td class="">Decisiones de marca, fortalezas y fugas</td></tr><tr><td class="k"><b>Dentro del plantel rival</b></td><td class="">De estos ocho, ¿a quién marco?</td><td class="">Semáforo del cuadro de jugadores clave</td></tr></tbody>
+  </table>
+    <div class="caja">
+      <b>Cuándo un umbral absoluto es legítimo.</b> Se contrastó el motor contra dos
+      ligas de nivel distinto (Primera de La Plata y Conferencia Norte de Liga
+      Argentina). Un umbral absoluto vale cuando describe <b>economía del básquet</b>:
+      1,20 puntos por triple intentado es caro en cualquier lado, y 40% de libres es
+      malo en cualquier lado — esos caen en el mismo percentil ±1 en las dos ligas.
+      Cuando en cambio describe <i>"por debajo del promedio"</i>, la brecha entre
+      categorías llega a 26 puntos percentiles y la etiqueta pasa a significar cosas
+      distintas. Por eso las fortalezas y las fugas se leen contra la banda z.
+    </div>
+
+    <h3>3.2 · Lo que el sistema NO sabe</h3>
+    <ul>
+      <li><b>Quién arranca el partido.</b> La planilla no trae el quinteto inicial. Por
+      eso ninguna etiqueta dice "titular" ni "suplente": la jerarquización sale de los
+      minutos y del volumen de decisiones.</li>
+      <li><b>La talla y la posición.</b> No hay columna de altura, así que el rol sale de
+      lo que el jugador hace en cancha.</li>
+      <li><b>El calendario.</b> No hay hoja de fixture: la fecha del partido, el torneo y
+      el próximo rival se cargan a mano. Un scouting con una fecha inventada es peor que
+      uno sin fecha.</li>
+      <li><b>Los cuartos.</b> No hay parciales cargados, así que no se puede leer en qué
+      tramo del partido pasa cada cosa.</li>
+      <li><b>El estado del jugador.</b> Todavía no se distingue a un lesionado de un
+      jugador dado de baja o de uno que pasó a otro club. Está en diseño.</li>
+    </ul>
+    <p class="aviso">Todo lo que el sistema no sabe se deja explícitamente vacío. La
+    regla del proyecto es que <b>un dato inventado es peor que un dato ausente</b>: un
+    partido sin cruzar se muestra como tal, y un jugador sin muestra suficiente pierde
+    el percentil en vez de recibir uno falso.</p>
+
+<footer>
+  Generado automáticamente desde el código del panel
+  (<span class="mono" style="display:inline;padding:1px 4px">node generar-manual-etiquetas.js</span>).
+  Si un umbral cambia en el motor, cambia acá: el manual no puede contradecir al sistema.
+  <br>SGADD · Club Reconquista La Plata.
+</footer>
+
+</body>
+</html>

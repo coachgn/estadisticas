@@ -860,6 +860,59 @@ check('sin tiros de campo el origen queda vacío: no se inventa',
 check('el desempate usa el rebote TOTAL, que es el que dice cuánto vidrio toma',
   typeof gr.reboteTotalRel === 'number' && J.JUGADORES_UMBRALES.reboteDesempate === 1.10);
 
+/* =====================================================================
+   17. NODOS DEL SCATTER "USO VS EFICIENCIA"
+
+   Lo único puro del gráfico: las iniciales y el radio. El dibujo usa
+   Chart.js y `document`, y se verifica a mano en el navegador.
+   ===================================================================== */
+const CH = require('./js/sgadd-charts.js');
+console.log('\n17. NODOS DEL SCATTER USO VS EFICIENCIA');
+console.log('═'.repeat(70));
+
+/* La planilla escribe "APELLIDO, NOMBRE" y la insignia va al revés: el
+   ejemplo del club es "RS" para Ramiro Stehli. */
+check('"STEHLI, RAMIRO" da RS: nombre primero, apellido después',
+  CH.inicialesJugador('STEHLI, RAMIRO') === 'RS', CH.inicialesJugador('STEHLI, RAMIRO'));
+check('con segundo nombre toma solo la primera inicial del nombre de pila',
+  CH.inicialesJugador('MOREIRA , PEDRO MARTÍN') === 'PM', CH.inicialesJugador('MOREIRA , PEDRO MARTÍN'));
+check('con apellido compuesto toma la primera letra del apellido completo',
+  CH.inicialesJugador('GARCIA BARUCCO , MATEO') === 'MG', CH.inicialesJugador('GARCIA BARUCCO , MATEO'));
+check('tolera el espacio antes de la coma que traen algunas planillas',
+  CH.inicialesJugador('SANCHEZ , YAGO') === 'YS');
+check('un apóstrofo en el apellido no rompe la inicial',
+  CH.inicialesJugador("O'CONNOR, SEAN") === 'SO', CH.inicialesJugador("O'CONNOR, SEAN"));
+check('los acentos se conservan como letra inicial válida',
+  CH.inicialesJugador('ÁLVAREZ, ÉRICA') === 'ÉÁ', CH.inicialesJugador('ÁLVAREZ, ÉRICA'));
+/* Sin coma no hay cómo saber qué es apellido: se toman las dos primeras
+   palabras tal cual vienen, antes que dejar el nodo vacío. */
+check('sin coma usa las dos primeras palabras', CH.inicialesJugador('JUAN PEREZ') === 'JP');
+check('con una sola palabra usa sus dos primeras letras',
+  CH.inicialesJugador('MADONNA') === 'MA');
+check('vacío, null y undefined dan string vacío en vez de romper el canvas',
+  CH.inicialesJugador('') === '' && CH.inicialesJugador(null) === '' && CH.inicialesJugador(undefined) === '');
+
+/* El radio tiene piso alto porque adentro entran dos letras: por debajo de
+   13px la insignia deja de leerse. */
+check('el radio nunca baja de 13px: adentro tienen que entrar dos letras',
+  CH.radioNodo(0) === 13 && CH.radioNodo(3) === 13, CH.radioNodo(3));
+check('y nunca pasa de 22px: un nodo más grande tapa a los vecinos',
+  CH.radioNodo(60) === 22 && CH.radioNodo(200) === 22);
+check('entre esos topes crece con los minutos',
+  CH.radioNodo(30) > CH.radioNodo(20) && CH.radioNodo(20) > CH.radioNodo(12));
+check('con minutos no numéricos no devuelve NaN',
+  isFinite(CH.radioNodo(null)) && isFinite(CH.radioNodo(undefined)) && isFinite(CH.radioNodo('x')));
+
+/* El piso del gráfico es 10 minutos y NO el umbral de calificación de la
+   liga: acá no se muestra ningún percentil, se muestran dos métricas
+   crudas, así que excluir a los de rotación corta y a los refuerzos de
+   última fecha era perder justo a los que el DT quiere ubicar. */
+check('el piso del scatter es de 10 minutos', CH.MIN_SCATTER === 10);
+const fuenteEq = require('fs').readFileSync('./js/sgadd-equipos.js', 'utf8');
+check('el scatter recibe el PLANTEL COMPLETO, no solo los calificados',
+  /scatterUsoEficiencia\('chUsoTs',[\s\S]{0,200}jugadoresPorEquipo/.test(fuenteEq) &&
+  !/scatterUsoEficiencia\('chUsoTs',\s*\(e\.jugadoresCalificados/.test(fuenteEq));
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

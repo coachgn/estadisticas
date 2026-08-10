@@ -591,8 +591,18 @@ function equiposTabPlantel(idx, e) {
   return `
     <div class="mb-6">
       ${equiposPanel('Uso vs eficiencia · quién carga y quién rinde',
-        SGADD_CHARTS.scatterUsoEficiencia('chUsoTs', (e.jugadoresCalificados || []), idx.liga),
-        SGADD_CHARTS.nota('Solo los que superan el umbral de minutos: con pocos minutos el TS% es ruido.'))}
+        /* Se le pasa el PLANTEL COMPLETO, no `jugadoresCalificados`: el
+           gráfico filtra por su propio piso de 10 minutos.
+
+           El umbral de calificación de la liga (~15,4 en La Plata) responde
+           otra pregunta —si un PERCENTIL tiene sentido— y acá no se muestra
+           ningún percentil, se muestran dos métricas crudas. Con el filtro
+           viejo quedaban afuera los refuerzos de última fecha y los de
+           rotación corta, que son justamente los que el DT quiere ubicar
+           en el cuadrante. */
+        SGADD_CHARTS.scatterUsoEficiencia('chUsoTs',
+          (idx.liga.jugadoresPorEquipo.get(e.clave) || e.jugadores || []), idx.liga),
+        SGADD_CHARTS.nota('Incluye a todo el que promedie 10 minutos o más, califique o no para percentiles.'))}
     </div>
 
     <div class="scrollbox"><table class="w-full text-left">

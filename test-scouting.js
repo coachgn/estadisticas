@@ -1271,6 +1271,81 @@ check('elegirDefensorBalanceado respeta el tope pero nunca deja la celda vacía'
   return !!S.elegirDefensorBalanceado(m, {}, saturado);
 })());
 
+/* =====================================================================
+   20. MANUAL DE ETIQUETADO PARA CUERPOS TÉCNICOS
+
+   El manual se GENERA desde los módulos reales. Un documento escrito a
+   mano queda desactualizado en la primera recalibración y termina
+   contradiciendo al panel — el mismo problema que este proyecto viene
+   cerrando en los motores.
+   ===================================================================== */
+console.log('\n20. MANUAL DE ETIQUETADO (entregable para entrenadores)');
+console.log('═'.repeat(70));
+
+const fsM = require('fs');
+const cpM = require('child_process');
+let manualHtml = '';
+let manualOk = true;
+try {
+  cpM.execSync('node generar-manual-etiquetas.js', { stdio: 'pipe' });
+  manualHtml = fsM.readFileSync('./MANUAL_ETIQUETADO_SGADD.html', 'utf8');
+} catch (e) { manualOk = false; }
+
+check('el generador corre y escribe el HTML', manualOk && manualHtml.length > 5000,
+  manualOk ? manualHtml.length + ' bytes' : 'no corrió');
+
+/* Cobertura: TODAS las etiquetas del sistema tienen que estar. Si mañana
+   se agrega un rol o una marca y no aparece en el manual, esto falla. */
+const faltantes = [];
+JUG.PERFILES_TECNICOS.forEach(p => { if (manualHtml.indexOf(p.label) === -1) faltantes.push('arquetipo:' + p.id); });
+JUG.JUGADORES_ROLES_FUNCIONALES.forEach(r => { if (manualHtml.indexOf(r.label) === -1) faltantes.push('rol:' + r.id); });
+JUG.JERARQUIA.forEach(n => { if (manualHtml.indexOf(n.label) === -1) faltantes.push('jerarquia:' + n.id); });
+JUG.ROLES_MINUTOS.forEach(b => { if (manualHtml.indexOf(b.label) === -1) faltantes.push('banda:' + b.id); });
+S.PERFILES_MARCA.forEach(m => { if (manualHtml.indexOf(m.etiqueta) === -1) faltantes.push('marca:' + m.id); });
+S.CATALOGO_DEFENSOR.forEach(c => { if (manualHtml.indexOf(c.familia) === -1) faltantes.push('familia:' + c.id); });
+S.REGLAS_CLAVE.forEach(r => { if (manualHtml.indexOf(r.titulo) === -1) faltantes.push('clave:' + r.id); });
+S.ESCENARIOS.forEach(e => { if (manualHtml.indexOf(e.label) === -1) faltantes.push('escenario:' + e.id); });
+check('el manual documenta TODAS las etiquetas del sistema, sin faltar una',
+  faltantes.length === 0, faltantes.join(' | '));
+
+/* Los cortes se escriben a mano en el generador (viven dentro de closures
+   y no son introspectables). Esto los amarra a las constantes reales para
+   que no puedan divergir en silencio. */
+const citas = [
+  ['t1Contacto', JUG.JUGADORES_UMBRALES.t1Contacto],
+  ['rtlContacto', JUG.JUGADORES_UMBRALES.rtlContacto],
+  ['pptDobleAlto', JUG.JUGADORES_UMBRALES.pptDobleAlto],
+  ['reboteOfensivoAlto', JUG.JUGADORES_UMBRALES.reboteOfensivoAlto],
+  ['mezclaTripleInterior', JUG.JUGADORES_UMBRALES.mezclaTripleInterior],
+  ['concentracionAlta', S.UMBRALES.concentracionAlta],
+  ['pptTripleElite', S.UMBRALES.pptTripleElite],
+  ['t1Regalable', S.UMBRALES.t1Regalable],
+  ['volumenTripleSistematico', S.UMBRALES.volumenTripleSistematico],
+];
+const noCitados = citas.filter(([n, v]) =>
+  manualHtml.indexOf(String(v).replace('.', ',')) === -1 && manualHtml.indexOf(String(v)) === -1);
+check('cada umbral citado en el manual existe con ese valor en el código',
+  noCitados.length === 0, noCitados.map(c => c[0] + '=' + c[1]).join(' | '));
+
+check('el manual trae las tres secciones y sus tablas',
+  (manualHtml.match(/<h2/g) || []).length >= 3 && (manualHtml.match(/<table/g) || []).length >= 10);
+check('declara @page A4 para imprimir a PDF sin ajustes',
+  /@page[^}]*A4/.test(manualHtml));
+/* La regla de titularidad también rige en el entregable, pero lo que hay
+   que verificar es que no se ETIQUETE a nadie así — no que la palabra no
+   exista. El manual la nombra dos veces y las dos son para explicar por
+   qué no se usa, que es información que el DT necesita. */
+check('ninguna etiqueta impresa en el manual menciona titularidad',
+  [].concat(JUG.PERFILES_TECNICOS.map(p => p.label), JUG.JERARQUIA.map(n => n.label),
+    JUG.ROLES_MINUTOS.map(b => b.label + ' ' + b.rol), JUG.JUGADORES_ROLES_FUNCIONALES.map(r => r.label),
+    S.PERFILES_MARCA.map(m => m.etiqueta))
+    .every(t => !/\b(titular|suplente|quinteto inicial)\b/i.test(t)));
+check('y el manual explica explícitamente por qué no se usa esa palabra',
+  /Nunca se dice "titular"/.test(manualHtml) &&
+  /ninguna etiqueta dice "titular"/.test(manualHtml));
+check('el manual avisa que se genera desde el código, no se escribe a mano',
+  /Generado autom[áa]ticamente desde el c[óo]digo/.test(manualHtml));
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

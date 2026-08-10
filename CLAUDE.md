@@ -16,15 +16,15 @@ node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  22 tests · multi-cliente
 node test-boot.js          #  16 tests · arranque por club
-node test-jugadores.js     # 170 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
+node test-jugadores.js     # 185 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  22 tests · detalle partido a partido
-node test-scouting.js      # 300 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-scouting.js      # 308 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 ```
 
-**848 tests en total. Todos tienen que dar verde antes de commitear.**
+**871 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -65,6 +65,10 @@ js/
   sgadd-informe.js      ← modal de exportación PDF del informe de equipo
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app
 INTEGRACION_MOTORSTATS.md ← auditoría del motor que escribe las planillas
+AUDITORIA_ETIQUETAS_JUGADORES.md ← glosario y auditoría de TODAS las etiquetas
+PROPUESTA_ESTADOS_JUGADOR.md ← diseño de estados y buzón de alertas (SIN implementar)
+generar-manual-etiquetas.js  ← genera MANUAL_ETIQUETADO_SGADD.html para el
+                          cuerpo técnico. Se corre a mano: `node generar-manual-etiquetas.js`
 clubes/
   reconquista.json      ← 2 planillas (Primera + U21 Negra), liga la-plata
   jujuy.json            ← 1 planilla (Conferencia Norte), liga liga-argentina
@@ -74,7 +78,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=51`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=52`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -617,6 +621,27 @@ bajo entre eFG%/PePP%/RTL%/AST-PP/T1%) y una conclusión táctica. **No es
 una recomendación de renovación de contrato** — el club es amateur, no
 gestiona pases — es la condición de uso para sacarle el máximo (ej. "limitar
 minutos", "trabajar tal debilidad").
+
+### El scatter "Uso vs eficiencia" · nodos con iniciales
+
+`SGADD_CHARTS.scatterUsoEficiencia()` dibuja un anillo con las **iniciales del
+jugador adentro** (`inicialesJugador`), no una burbuja anónima. La planilla
+escribe `"APELLIDO, NOMBRE"` y la insignia va al revés: `"STEHLI, RAMIRO"` →
+**RS**. El texto lo pinta un plugin propio de Chart.js (`afterDatasetsDraw`),
+con halo oscuro para que se lea aunque dos nodos se superpongan; el que está
+bajo el cursor va con fuente más grande y blanco pleno.
+
+**El piso son 10 minutos (`MIN_SCATTER`), y NO el umbral de calificación de la
+liga.** Son dos preguntas distintas: `liga.minJugador` (~15,4 en La Plata)
+decide si un PERCENTIL tiene sentido, y acá no se muestra ningún percentil sino
+dos métricas crudas. Con el filtro viejo el gráfico recibía
+`jugadoresCalificados` y dejaba afuera a los de rotación corta y a los
+**refuerzos de última fecha** — justo los que el DT quiere ubicar en el
+cuadrante. Medido en Reconquista: pasó de 7 a 9 nodos, y los dos que entraron
+son un jugador de 13,6 minutos y un refuerzo con 4 partidos.
+
+El radio va de 13 a 22px: el piso es alto porque adentro tienen que entrar dos
+letras legibles.
 
 ### Local vs. Visitante
 

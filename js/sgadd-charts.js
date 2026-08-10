@@ -284,10 +284,98 @@ const SGADD_CHARTS = (function () {
   /* =====================================================================
      6. SCATTER uso vs eficiencia (plantel)
      ===================================================================== */
+  /* ---------------------------------------------------------------------
+     MINUTOS MÍNIMOS PARA ENTRAR AL SCATTER
+
+     Distinto del umbral de calificación de la liga (`liga.minJugador`, que
+     decide si un percentil tiene sentido). Acá el problema es otro y es de
+     legibilidad: un jugador de 3 minutos aporta un punto en una esquina
+     que no describe nada y encima tapa a los que sí juegan. 10 minutos es
+     el piso donde el USG% deja de ser una fracción sobre casi nada.
+     --------------------------------------------------------------------- */
+  const MIN_SCATTER = 10;
+
+  /**
+   * Iniciales de nombre y apellido, en ese orden: "STEHLI, RAMIRO" → "RS".
+   *
+   * La planilla escribe "APELLIDO, NOMBRE", así que hay que dar vuelta los
+   * lados. Sin coma se toman las dos primeras palabras tal cual vienen, y
+   * si hay una sola palabra se usan sus dos primeras letras — antes que
+   * dejar el nodo vacío.
+   */
+  function inicialesJugador(nombre) {
+    const t = String(nombre === null || nombre === undefined ? '' : nombre).trim();
+    if (!t) return '';
+    const primera = (s) => {
+      const m = String(s || '').trim().match(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/);
+      return m ? m[0].toUpperCase() : '';
+    };
+    if (t.indexOf(',') !== -1) {
+      const partes = t.split(',');
+      const apellido = partes[0];
+      const nombrePila = partes.slice(1).join(' ');
+      return (primera(nombrePila) + primera(apellido)) || primera(apellido);
+    }
+    const pal = t.split(/\s+/).filter(Boolean);
+    if (pal.length >= 2) return primera(pal[0]) + primera(pal[1]);
+    return t.slice(0, 2).toUpperCase();
+  }
+
+  /* Radio del nodo por minutos. El piso es alto a propósito: adentro tienen
+     que entrar dos letras legibles, así que 13px es el mínimo utilizable. */
+  function radioNodo(min) {
+    const m = (typeof min === 'number' && isFinite(min)) ? min : MIN_SCATTER;
+    return Math.max(13, Math.min(22, 11 + m / 3));
+  }
+
+  /**
+   * Plugin que escribe las iniciales dentro de cada nodo. Chart.js no tiene
+   * nada nativo para esto: se dibuja encima del dataset ya pintado.
+   * El punto bajo el cursor va con fuente más grande y en blanco pleno,
+   * que es el "destaque de la insignia" del pedido.
+   */
+  const pluginIniciales = {
+    id: 'inicialesJugador',
+    afterDatasetsDraw: (chart) => {
+      const ctx = chart.ctx;
+      const activos = (chart.getActiveElements ? chart.getActiveElements() : []) || [];
+      chart.data.datasets.forEach((ds, di) => {
+        const meta = chart.getDatasetMeta(di);
+        if (meta.hidden) return;
+        meta.data.forEach((punto, pi) => {
+          const raw = ds.data[pi];
+          if (!raw || !raw.iniciales) return;
+          const activo = activos.some(a => a.datasetIndex === di && a.index === pi);
+          const r = radioNodo(raw.min);
+          ctx.save();
+          ctx.font = (activo ? '700 ' : '600 ') + Math.round(activo ? r * 0.95 : r * 0.78) + 'px system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          /* Halo oscuro para que la inicial se lea sobre cualquier fondo,
+             incluso cuando dos nodos se superponen. */
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = 'rgba(10,10,12,0.85)';
+          ctx.strokeText(raw.iniciales, punto.x, punto.y);
+          ctx.fillStyle = activo ? '#FFFFFF' : 'rgba(255,255,255,0.92)';
+          ctx.fillText(raw.iniciales, punto.x, punto.y);
+          ctx.restore();
+        });
+      });
+    },
+  };
+
   function scatterUsoEficiencia(id, jugadores, liga) {
-    const puntos = jugadores.map(j => ({
-      x: j['USG%'], y: j['TS%'], name: j['NOMBRES'], min: j['MIN'],
-    })).filter(p => typeof p.x === 'number' && typeof p.y === 'number');
+    const puntos = jugadores
+      .filter(j => typeof j['MIN'] === 'number' && j['MIN'] >= MIN_SCATTER)
+      .map(j => ({
+        x: j['USG%'], y: j['TS%'], name: j['NOMBRES'], min: j['MIN'],
+        efg: j['eFG%'], pts: j['PTS'], iniciales: inicialesJugador(j['NOMBRES']),
+      }))
+      .filter(p => typeof p.x === 'number' && typeof p.y === 'number');
+
+    if (!puntos.length) {
+      return `<p class="text-xs text-muted py-4">Ningún jugador del plantel llega a ${MIN_SCATTER} minutos de promedio.</p>`;
+    }
 
     encolar(() => crear(id, {
       type: 'scatter',
@@ -295,13 +383,23 @@ const SGADD_CHARTS = (function () {
         datasets: [{
           label: 'Jugadores',
           data: puntos,
-          backgroundColor: COL.equipo,
-          borderColor: COL.equipo,
-          pointRadius: (c) => Math.max(4, Math.min(14, (c.raw.min || 0) / 3)),
-          pointHoverRadius: 16,
+          /* Relleno translúcido + contorno pleno del color de marca: el nodo
+             es un anillo con la insignia adentro, no una burbuja celeste
+             opaca. El acento sale del JSON del club, así que Jujuy lo pinta
+             azul sin tocar nada acá. */
+          backgroundColor: COL.acentoSuave,
+          borderColor: COL.acento,
+          borderWidth: 2,
+          get hoverBackgroundColor() { return COL.acento + '88'; },
+          hoverBorderColor: '#FFFFFF',
+          hoverBorderWidth: 3,
+          pointRadius: (c) => radioNodo(c.raw && c.raw.min),
+          pointHoverRadius: (c) => radioNodo(c.raw && c.raw.min) + 4,
         }],
       },
       options: baseOpciones({
+        /* El hover tiene que agarrar el nodo entero, no solo su centro. */
+        interaction: { mode: 'nearest', intersect: true },
         scales: {
           x: Object.assign(ejes({ desdeCero: false }).x, { title: { display: true, text: 'USG% · cuánto usa', color: COL.texto } }),
           y: Object.assign(ejes({ desdeCero: false }).y, { title: { display: true, text: 'TS% · qué tan bien', color: COL.texto } }),
@@ -310,18 +408,26 @@ const SGADD_CHARTS = (function () {
           legend: { display: false },
           tooltip: Object.assign(baseOpciones().plugins.tooltip, {
             callbacks: {
-              title: (i) => i[0].raw.name,
-              label: (c) => ['USG ' + SGADD.formatear('USG%', c.raw.x), 'TS ' + SGADD.formatear('TS%', c.raw.y), 'MIN ' + c.raw.min.toFixed(1)],
+              title: (i) => i[0].raw.iniciales + ' · ' + i[0].raw.name,
+              label: (c) => [
+                'USG% ' + SGADD.formatear('USG%', c.raw.x),
+                'eFG% ' + SGADD.formatear('eFG%', c.raw.efg),
+                'TS% ' + SGADD.formatear('TS%', c.raw.y),
+                'PTS ' + SGADD.formatear('PTS', c.raw.pts),
+                'MIN ' + SGADD.formatear('MIN', c.raw.min),
+              ],
             },
           }),
         }),
       }),
+      plugins: [pluginIniciales],
     }));
 
-    const nota = (liga && liga.jugadorTipo)
-      ? 'El tamaño de cada punto son los minutos. Arriba a la derecha: mucho volumen y buena eficiencia.'
-      : '';
-    return `<div class="chart-box is-md"><canvas id="${id}"></canvas></div>${nota ? `<p class="text-[11px] text-muted mt-2">${nota}</p>` : ''}`;
+    const nota = 'Cada nodo son las iniciales del jugador y su tamaño, los minutos. ' +
+      'Arriba a la derecha: mucho volumen y buena eficiencia. ' +
+      'Solo los de ' + MIN_SCATTER + ' minutos o más — con menos, el USG% es una fracción sobre casi nada.';
+    return `<div class="chart-box is-md"><canvas id="${id}"></canvas></div>
+            <p class="text-[11px] text-muted mt-2 leading-snug">${nota}</p>`;
   }
 
   /* =====================================================================
@@ -428,6 +534,12 @@ const SGADD_CHARTS = (function () {
   return {
     COL, crear, encolar, dibujarPendientes, limpiar, baseOpciones, ejes,
     barrasRanking, barrasComparadas, convertidosErrados, radar, evolucion, evolucionJugador, scatterUsoEficiencia,
+    inicialesJugador, radioNodo, MIN_SCATTER,
     nota, narrarPerdidas, narrarPPT, narrarCondicion, narrarRebote, narrarAtaque,
   };
 })();
+
+/* Compatible con Node SOLO para testear las funciones puras (iniciales,
+   radio del nodo). El resto usa `document` y Chart.js y se verifica a mano
+   en el navegador, igual que las UI de Equipos y Jugadores. */
+if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_CHARTS;
