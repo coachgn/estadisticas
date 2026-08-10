@@ -7,7 +7,7 @@ defensiva, perfil de defensor asignado, fortalezas, fugas y claves estratégicas
 - **Fecha del relevamiento:** 2026-08-10
 - **Reconfiguración aplicada:** 2026-08-10 (ver
   [§VI](#vi-reconfiguración-aplicada--rangos-recomendados-y-distribución-final))
-- **Versión de assets auditada:** `?v=50`
+- **Versión de assets auditada:** `?v=51`
 - **Archivos inspeccionados:** `js/sgadd-jugadores.js` (1501 líneas),
   `js/sgadd-scouting.js` (2205), `js/sgadd-core.js` (índice y percentiles),
   `js/sgadd-ui.js` (render de badges)
@@ -31,6 +31,7 @@ defensiva, perfil de defensor asignado, fortalezas, fugas y claves estratégicas
 - [V. Diagnóstico de oportunidades y puntos ciegos](#v-diagnóstico-de-oportunidades-y-puntos-ciegos)
 - [VI. Reconfiguración aplicada · rangos y distribución final](#vi-reconfiguración-aplicada--rangos-recomendados-y-distribución-final)
 - [VII. Segunda auditoría · marcas, catálogo defensivo, fugas y claves](#vii-segunda-auditoría--marcas-catálogo-defensivo-fugas-y-claves)
+- [VIII. Plan defensivo colectivo](#viii-plan-defensivo-colectivo--las-marcas-se-conectan-entre-sí)
 - [Anexo A · Inventario numérico](#anexo-a--inventario-numérico)
 - [Anexo B · Métricas de la planilla usadas para clasificar](#anexo-b--métricas-de-la-planilla-usadas-para-clasificar)
 
@@ -1275,6 +1276,138 @@ promedios de temporada. Es una vuelta aparte.
 
 ---
 
+## VIII. Plan defensivo colectivo · las marcas se conectan entre sí
+
+Implementado el 2026-08-10. Es el cambio conceptual más grande del módulo
+II.3: la tabla de marcas deja de ser un listado de fichas aisladas.
+
+### VIII.1 · El problema
+
+Cada celda decía **qué hacerle** a un jugador rival. Ninguna decía **de dónde
+sale la ayuda** para hacerlo. Y una defensa no es la suma de once marcas
+individuales: si a cuatro rivales les ponés *"doblar"*, te quedaste sin nadie
+para doblar.
+
+Con datos reales, el informe contra Atenas producía cuatro consignas de ayuda
+sin designar una sola fuente, y dos tiradores rentables sin decir en ninguna
+parte que su defensor no puede ser el que rota.
+
+### VIII.2 · La arquitectura
+
+`generarPlanDefensivoColectivo(filas, nuestroPlantel)` corre en una **segunda
+pasada** dentro de `jugadoresClave()`. Hace falta que las once fichas estén
+calculadas para saber quién es qué: recién con el mapa completo se pueden
+escribir las conexiones.
+
+```
+1ª pasada  →  perfil + marca + fortalezas + fugas de cada jugador
+                     ↓
+              clasificarEcosistema(filas)
+                     ↓
+              ESCENARIOS.find(test)          ← el marco del cruce
+                     ↓
+2ª pasada  →  conexionColectiva(fila, plan)  ← se agrega al DETALLE
+              elegirDefensorBalanceado(...)  ← reparte la carga
+```
+
+### VIII.3 · Los cuatro grupos y el orden de los vetos
+
+| Grupo | Quién entra | Qué dice su celda |
+|---|---|---|
+| 🎯 **Focos** | marca `tirador-elite` / `interior-dominante` / `slasher`, o concentración ≥ 0,15, o jerarquía franquicia | *"la ayuda salta desde X"* |
+| 🚫 **Intocables** | `tiroExternoRentable` | *"su defensor no participa de las ayudas: se queda"* |
+| ↩ **Fuentes** | `tiroExternoFrio` u `ocasionalFrio`, o marca `tirador-ineficiente` / `volumen-sin-eficiencia` | *"es el lado desde donde mandar la ayuda y doblar a Y"* |
+| 🏰 **Cristal** | `reboteRel ≥ 1,30` | *"su defensor NO rota: lo bloquea"* |
+
+**El orden de cálculo ES la lógica del plan.** Los vetos, en orden de costo:
+
+1. **Intocables** primero — soltar un tiro rentable es el error más caro del
+   informe, así que pertenecer a este grupo veta todo lo demás.
+2. **Focos** — el que exige doblaje no puede estar ayudando en otro lado.
+3. **Cristal antes que fuentes** — no se le puede pedir al mismo defensor que
+   sea el primero en rotar y que no abandone el box-out. Gana el rebote: la
+   segunda chance anula todo el trabajo defensivo previo.
+4. **Fuentes** — lo que queda.
+
+Verificado sobre **29 planteles** de las dos ligas: **cero solapamientos**
+entre fuentes e intocables, fuentes y focos, o fuentes y cristal.
+
+**Un jugador puede ser foco Y intocable** —el tirador de élite— y ahí se lo
+dobla *y* desde él no se sale nunca. La cascada da prioridad a foco pero
+agrega la segunda mitad explícitamente: sin eso se comía justo la advertencia
+más cara de olvidar. **Lo encontró un test**, no una lectura del código.
+
+### VIII.4 · Los cinco escenarios
+
+| Escenario | Se activa cuando | La Plata | Liga Argentina |
+|---|---|---|---|
+| `franquicia-solitaria` | un solo foco y hay fuente | 1 | 0 |
+| `spacing-alto` | ≥ 3 tiradores rentables | 2 | **8** |
+| `interior-y-frios` | foco interior + ≥ 2 fuentes | 2 | 3 |
+| `sin-lado-barato` | hay foco y no hay fuente | 0 | 2 |
+| `distribuido` | *fallback* | 7 | 4 |
+
+Los cinco se activan con datos reales. Que `spacing-alto` domine en Liga
+Argentina (8 de 17 planteles) y sea marginal en La Plata (2 de 12) es
+exactamente lo que uno espera de la diferencia de nivel medida en la
+[sección VII](#vii-segunda-auditoría--marcas-catálogo-defensivo-fugas-y-claves).
+
+### VIII.5 · La regla de coherencia, y su única excepción
+
+> **Si hay un foco, tiene que haber una fuente de ayuda designada.**
+
+Un plan que manda a doblar sin decir desde dónde no es un plan. Si el rival no
+tiene ningún lado barato, el escenario `sin-lado-barato` lo dice en vez de
+inventar una ayuda que no existe.
+
+**La excepción es `spacing-alto`**, y no es una concesión: con tres o más
+tiradores rentables el plan **renuncia a ayudar a propósito** y pasa a 1x1, así
+que la ausencia de fuente es la conclusión, no un agujero. Pedirle una fuente
+sería contradecir su propia consigna.
+
+El primer diseño marcaba esos 8 planteles de Liga Argentina como incoherentes.
+Estaba mal el flag, no el plan.
+
+### VIII.6 · Ejemplo generado · Reconquista vs Atenas
+
+Escenario detectado: **Interior dominante con perímetro frío**.
+*"La ayuda al poste bajo sale de los perimetrales fríos (AMAN, DEVECE), no del
+lado de los tiradores."*
+
+| Jugador | Grupo | Defensor sugerido | Conexión agregada a su celda |
+|---|---|---|---|
+| BORRAJO | 🎯 Foco | Drop Protector | consigna: *"La ayuda salta desde AMAN o DEVECE."* · restricción: *"Nunca desde SANCHEZ y LOPEZ: ese tiro es el más caro del cruce."* |
+| SCHROEDER | 🎯 Foco | POA Defender | *"La ayuda salta desde AMAN o DEVECE."* |
+| SANCHEZ | 🚫 Intocable | Sniper Stopper | consigna: *"Su defensor no participa de las ayudas sobre SCHROEDER: se queda."* · restricción: *"NO es la fuente de ayuda del plan: para eso está AMAN."* |
+| LOPEZ | 🚫 Intocable | Screen Navigator | ídem |
+| AMAN | ↩ Fuente | Volume Containment | consigna: *"Es el lado desde donde mandar la ayuda y doblar a SCHROEDER y BORRAJO."* |
+| DEVECE | ↩ Fuente | Ball-Screen Pest | ídem |
+| ERRA | 🏰 Cristal | Paint Dominator | *"Su defensor NO rota: lo bloquea y termina la posesión."* |
+| QÜIN | 🏰 Cristal | Volume Containment | ídem |
+
+Es el sistema interconectado del pedido: el foco sabe desde dónde recibe la
+ayuda, la fuente sabe a quién va a doblar, y el tirador eficiente tiene
+prohibido ser la fuente **con el nombre de quién sí lo es**.
+
+### VIII.7 · Lo que NO se tocó
+
+**El contrato de editabilidad.** La conexión se agrega **solo al `detalle`**,
+nunca al `titulo`. Dos tests lo amarran: uno falla si un texto de conexión
+aparece en un título, otro exige que los títulos sigan midiendo ≤ 60
+caracteres — son para cantar en el vestuario, no para leer.
+
+**La asignación automática nunca queda vacía.**
+`elegirDefensorBalanceado()` reparte los perfiles (máximo 2 repeticiones por
+tabla, porque sugerir cuatro *Sniper Stopper* le pide al DT cuatro defensores
+del mismo tipo que probablemente no tiene), pero si no hay alternativa repite
+antes que dejar la celda sin sugerencia.
+
+**Nuestro plantel sigue sin quinteto inicial.** El plan dimensiona la carga
+(`cargaEspecial`, `sobrecargado`) y sugiere PERFILES; los nombres los pone el
+DT. La planilla no trae titulares y esa restricción se mantiene.
+
+---
+
 ## Anexo A · Inventario numérico
 
 | Familia de etiquetas | Cantidad | Excluyente | Referencia | Archivo |
@@ -1367,5 +1500,5 @@ Suite completa corrida después de aplicar la reconfiguración de la sección VI
 | `test-personalidad.js` | ✓ 20 |
 | `test-informe.js` | ✓ 7 |
 | `test-partido.js` | ✓ 22 |
-| `test-scouting.js` | ✓ 272 |
-| **Total** | **820 · 0 fallas** |
+| `test-scouting.js` | ✓ 300 |
+| **Total** | **848 · 0 fallas** |

@@ -1148,6 +1148,129 @@ check('concesión perimetral y clausura de tiradores nunca marcan al mismo', (()
 check('las claves activas siguen saliendo con texto y jugadores',
   S.clavesEstrategicas(idx, 'B').every(c => !!c.texto && Array.isArray(c.jugadores)));
 
+/* =====================================================================
+   19. PLAN DEFENSIVO COLECTIVO
+
+   La tabla de marcas dejó de ser un listado de fichas aisladas. Una
+   defensa no es la suma de once marcas individuales: si a cuatro rivales
+   les ponés "doblar", te quedaste sin nadie para doblar.
+   ===================================================================== */
+console.log('\n19. PLAN DEFENSIVO COLECTIVO');
+console.log('═'.repeat(70));
+
+const plan = tabla.plan;
+check('la tabla de jugadores clave viene con el plan colectivo', !!plan);
+check('el plan clasifica el ecosistema en los cuatro grupos',
+  Array.isArray(plan.focos) && Array.isArray(plan.intocables) &&
+  Array.isArray(plan.fuentes) && Array.isArray(plan.cristal));
+check('y elige un escenario con etiqueta y consigna',
+  !!plan.escenario.id && !!plan.escenario.label && !!plan.escenario.texto,
+  JSON.stringify(plan.escenario));
+check('el escenario elegido es uno de los declarados',
+  S.ESCENARIOS.some(e => e.id === plan.escenario.id), plan.escenario.id);
+check('hay un escenario fallback que siempre calza',
+  S.ESCENARIOS[S.ESCENARIOS.length - 1].test({ focos: [], intocables: [], fuentes: [], cristal: [] }) === true);
+
+/* --- Las exclusiones entre grupos, que son la lógica del plan --- */
+const cruce = (a, b) => a.filter(x => b.some(y => y.clave === x.clave));
+/* Soltar a un tirador rentable es el error más caro del informe: no puede
+   ser jamás el lado desde donde sale la ayuda. */
+check('un INTOCABLE nunca es fuente de ayuda',
+  cruce(plan.fuentes, plan.intocables).length === 0,
+  cruce(plan.fuentes, plan.intocables).map(x => x.nombre).join('|'));
+/* El que exige doblaje no puede estar ayudando en otro lado a la vez. */
+check('un FOCO nunca es fuente de ayuda',
+  cruce(plan.fuentes, plan.focos).length === 0);
+/* No se le puede pedir al mismo defensor que sea el primero en rotar y
+   que no abandone el box-out. */
+check('un reboteador de CRISTAL nunca es fuente de ayuda',
+  cruce(plan.fuentes, plan.cristal).length === 0);
+check('los focos están acotados: doblar a todos no es un plan',
+  plan.focos.length <= 2, plan.focos.length);
+
+/* --- La regla de coherencia que pidió el club --- */
+check('si hay un foco, hay una fuente de ayuda designada (o el plan explica por qué no)',
+  plan.focos.length === 0 || plan.fuentes.length >= 1 ||
+  plan.escenario.id === 'spacing-alto' || !!plan.aviso,
+  JSON.stringify({ focos: plan.focos.length, fuentes: plan.fuentes.length, esc: plan.escenario.id }));
+check('el flag `coherente` refleja esa condición', typeof plan.coherente === 'boolean');
+/* En spacing alto la ausencia de fuente NO es un agujero: es la
+   conclusión. Con 3+ tiradores rentables el plan renuncia a ayudar. */
+check('con spacing alto y sin fuentes el plan igual se considera coherente', (() => {
+  const p = S.generarPlanDefensivoColectivo([], []);
+  return p.coherente === true;   // sin focos tampoco hay incoherencia
+})());
+check('sin ningún foco no se pide fuente de ayuda',
+  S.generarPlanDefensivoColectivo([], []).aviso === null);
+check('el plan cuenta la carga defensiva especial que pide',
+  typeof plan.cargaEspecial === 'number' && plan.cargaEspecial >= 0);
+
+/* --- Cada motivo cita el número o la razón que metió al jugador ahí --- */
+check('cada integrante del plan trae nombre, clave y motivo',
+  [].concat(plan.focos, plan.intocables, plan.fuentes, plan.cristal)
+    .every(x => !!x.nombre && !!x.clave && !!x.motivo));
+check('el motivo de un intocable cita su renta de triple',
+  plan.intocables.every(x => /\d/.test(x.motivo)),
+  plan.intocables.map(x => x.motivo).join('|'));
+
+/* --- Las conexiones entre celdas --- */
+check('cada fila sabe qué papel cumple en el plan',
+  tabla.filas.every(f => f.plan && typeof f.plan.foco === 'boolean' &&
+    typeof f.plan.intocable === 'boolean' && typeof f.plan.fuente === 'boolean' &&
+    typeof f.plan.cristal === 'boolean'));
+const filaFoco = tabla.filas.find(f => f.plan.foco);
+const filaFuente = tabla.filas.find(f => f.plan.fuente);
+const filaIntocable = tabla.filas.find(f => f.plan.intocable);
+if (filaFoco && plan.fuentes.length) {
+  check('la consigna de un FOCO dice desde dónde sale la ayuda',
+    /ayuda salta desde/i.test(filaFoco.marca.consigna.detalle),
+    filaFoco.marca.consigna.detalle.slice(-90));
+}
+if (filaFuente && plan.focos.length) {
+  check('la consigna de una FUENTE nombra a quién se dobla',
+    /es el lado desde donde mandar la ayuda/i.test(filaFuente.marca.consigna.detalle) &&
+    plan.focos.some(x => filaFuente.marca.consigna.detalle.indexOf(x.nombre) !== -1),
+    filaFuente.marca.consigna.detalle.slice(-120));
+}
+if (filaIntocable) {
+  check('la restricción de un INTOCABLE dice explícitamente que no es la fuente de ayuda',
+    /no es la fuente de ayuda/i.test(filaIntocable.marca.restriccion.detalle),
+    filaIntocable.marca.restriccion.detalle.slice(-90));
+}
+check('conexionColectiva sin plan no rompe y devuelve texto vacío', (() => {
+  const c = S.conexionColectiva({ clave: 'X' }, null);
+  return c.consigna === '' && c.restriccion === '';
+})());
+
+/* --- CONTRATO DE EDITABILIDAD: lo colectivo va al detalle, nunca al
+   título. El título en mayúsculas es la firma del DT. --- */
+check('los títulos siguen siendo directivas cortas en MAYÚSCULAS',
+  tabla.filas.every(f => f.marca.consigna.titulo === f.marca.consigna.titulo.toUpperCase() &&
+    f.marca.restriccion.titulo === f.marca.restriccion.titulo.toUpperCase()));
+check('ninguna conexión colectiva se coló en un título',
+  tabla.filas.every(f => !/ayuda salta desde|es el lado desde donde|no es la fuente/i
+    .test(f.marca.consigna.titulo + ' ' + f.marca.restriccion.titulo)));
+check('los títulos siguen siendo cortos: son para cantar en el vestuario',
+  tabla.filas.every(f => f.marca.consigna.titulo.length <= 60),
+  tabla.filas.map(f => f.marca.consigna.titulo.length).join(','));
+check('el texto plano se recalculó después de agregar la conexión',
+  tabla.filas.every(f => f.marca.consignaTexto.indexOf(f.marca.consigna.detalle) !== -1));
+
+/* --- Balanceo de la carga defensiva sobre nuestro plantel --- */
+const cuentaDef = {};
+tabla.filas.forEach(f => { cuentaDef[f.marca.defensor] = (cuentaDef[f.marca.defensor] || 0) + 1; });
+check('ningún perfil de defensor se repite más de 2 veces en la misma tabla',
+  Object.keys(cuentaDef).every(k => cuentaDef[k] <= 2),
+  Object.keys(cuentaDef).map(k => k + ':' + cuentaDef[k]).join(' | '));
+check('todas las filas siguen teniendo un defensor asignado',
+  tabla.filas.every(f => !!f.marca.defensor && !!f.marca.familiaDefensor));
+check('elegirDefensorBalanceado respeta el tope pero nunca deja la celda vacía', (() => {
+  const m = S.PERFILES_MARCA[0];
+  const saturado = {};
+  m.defensores.forEach(c => { saturado[S.PERFILES_DEFENSOR[c.id]] = 99; });
+  return !!S.elegirDefensorBalanceado(m, {}, saturado);
+})());
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

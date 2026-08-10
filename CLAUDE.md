@@ -21,10 +21,10 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  22 tests · detalle partido a partido
-node test-scouting.js      # 272 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-scouting.js      # 300 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 ```
 
-**820 tests en total. Todos tienen que dar verde antes de commitear.**
+**848 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -74,7 +74,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=50`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=51`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -798,8 +798,9 @@ es rígido y va de lo colectivo a lo individual:
 3. **Splits L/V y ciclo reciente** — últimos 4 partidos separados en
    ganados y perdidos, con puntos de fuga, valores de identidad y línea de
    tiro.
-4. **Plan individual · marca asignada** — perfil defensor, consigna y
-   restricción sugeridas, **editables**: el plan lo firma el DT.
+4. **Plan defensivo · marca asignada** — panel del plan COLECTIVO más la
+   tabla de marcas conectadas entre sí (ver punto 9 ter). Perfil defensor,
+   consigna y restricción sugeridas, **editables**: el plan lo firma el DT.
 5. **Resumen de criterio estratégico** — va inmediatamente debajo de la
    tabla de marcas, porque sintetiza justamente esa composición de marcas.
 6. **Jugadores clave del rival** — tabla con mapa de calor del top 3 por
@@ -972,6 +973,76 @@ compartida con la exportación del informe de equipo: quedó en
 `A4 portrait, margen 12mm 10mm`. Los problemas abiertos del punto 7
 (márgenes negros en Chromium) aplican igual a esta exportación: no está
 verificada contra una impresora real.
+
+### El plan es COLECTIVO, no una lista de fichas sueltas
+
+`generarPlanDefensivoColectivo(filas, nuestroPlantel)` corre en una **segunda
+pasada**, después de calcular las once fichas: recién con el mapa completo se
+puede saber quién es foco, quién intocable y quién fuente de ayuda.
+
+El problema que resuelve: una defensa no es la suma de once marcas
+individuales. Si a cuatro rivales les ponés "doblar", te quedaste sin nadie
+para doblar. Antes cada celda decía qué hacerle a un jugador y **ninguna decía
+de dónde sale la ayuda para hacerlo**.
+
+#### Los cuatro grupos y sus vetos
+
+| Grupo | Quién entra | Qué dice su celda |
+|---|---|---|
+| 🎯 **Focos** | marca `tirador-elite`/`interior-dominante`/`slasher`, o concentración ≥ 0,15, o jerarquía franquicia | "la ayuda salta desde X" |
+| 🚫 **Intocables** | `tiroExternoRentable` | "su defensor no participa de las ayudas: se queda" |
+| ↩ **Fuentes** | `tiroExternoFrio` u `ocasionalFrio`, o marca `tirador-ineficiente`/`volumen-sin-eficiencia` | "es el lado desde donde mandar la ayuda y doblar a Y" |
+| 🏰 **Cristal** | `reboteRel ≥ 1,30` | "su defensor NO rota: lo bloquea" |
+
+**El orden de cálculo es la lógica del plan**, y los vetos van en este orden:
+
+1. **Intocables** primero — soltar un tiro rentable es el error más caro del
+   informe, así que la pertenencia a este grupo veta todo lo demás.
+2. **Focos** — el que exige doblaje no puede estar ayudando en otro lado.
+3. **Cristal** antes que fuentes — no se le puede pedir al mismo defensor que
+   sea el primero en rotar y que no abandone el box-out. Gana el rebote: la
+   segunda chance anula todo el trabajo defensivo previo.
+4. **Fuentes** — lo que queda.
+
+Hay tests que verifican los tres cruces vacíos. Con datos reales de las dos
+ligas (29 planteles): **cero solapamientos**.
+
+**Un jugador puede ser foco Y intocable** (el tirador de élite): se lo dobla y
+desde él no se sale nunca. La cascada de `conexionColectiva` da prioridad a
+foco, pero agrega explícitamente la segunda mitad — sin eso se comía justo la
+advertencia más cara de olvidar. Lo encontró un test.
+
+#### Los cinco escenarios
+
+| Escenario | Se activa cuando | La Plata | Liga Argentina |
+|---|---|---|---|
+| `franquicia-solitaria` | un solo foco y hay fuente | 1 | 0 |
+| `spacing-alto` | ≥ 3 tiradores rentables | 2 | **8** |
+| `interior-y-frios` | foco interior + ≥ 2 fuentes | 2 | 3 |
+| `sin-lado-barato` | hay foco y no hay fuente | 0 | 2 |
+| `distribuido` | *fallback* | 7 | 4 |
+
+**`spacing-alto` es la excepción de la regla de coherencia.** Con tres o más
+tiradores rentables el plan **renuncia a ayudar a propósito** y pasa a 1x1, así
+que la ausencia de fuente no es un agujero: es la conclusión. Pedirle una
+fuente sería contradecir su propia consigna. Ocho de los diecisiete planteles
+de Liga Argentina caen ahí — es lo que uno espera de una liga de mejor nivel.
+
+#### El contrato de editabilidad no se toca
+
+La conexión colectiva se agrega **solo al `detalle`**, nunca al `titulo`. El
+título en MAYÚSCULAS sigue siendo la firma del DT y lo único editable. Hay un
+test que falla si un texto de conexión aparece en un título, y otro que exige
+que los títulos sigan midiendo ≤ 60 caracteres: son para cantar en el
+vestuario, no para leer.
+
+#### Balanceo de la carga defensiva
+
+`elegirDefensorBalanceado()` reparte los perfiles sobre el plantel propio: si
+uno ya se sugirió **2 veces** en la misma tabla, prueba el siguiente candidato.
+El motivo es de cancha: sugerir cuatro "Sniper Stopper" le pide al DT cuatro
+defensores del mismo tipo que probablemente no tiene. Cuando no hay
+alternativa se repite igual — antes que dejar la celda vacía.
 
 ### Roles funcionales, no posiciones
 

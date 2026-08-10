@@ -332,6 +332,33 @@ const SGADD_SCOUT = (function () {
     return lista.length ? (PERFILES_DEFENSOR[lista[lista.length - 1].id] || null) : null;
   }
 
+  /**
+   * Igual que `elegirDefensor`, pero repartiendo la carga sobre el plantel
+   * propio: si un perfil ya se sugirió `MAX_REPETICIONES` veces, se prueba
+   * el siguiente candidato.
+   *
+   * El motivo es de cancha, no de estética: sugerir cuatro veces "Sniper
+   * Stopper" en la misma tabla le pide al DT cuatro defensores del mismo
+   * tipo que probablemente no tiene. Cuando NO hay alternativa se repite
+   * igual — antes que dejar la celda vacía, se repite y el DT decide.
+   */
+  const MAX_REPETICIONES_DEFENSOR = 2;
+
+  function elegirDefensorBalanceado(marca, perfil, usados) {
+    const lista = (marca && marca.defensores) || [];
+    const cuenta = usados || {};
+    const califican = lista.filter(c => {
+      if (!c.cuando) return true;
+      try { return !!c.cuando(perfil); } catch (e) { return false; }
+    });
+    const orden = califican.length ? califican : lista;
+    for (let i = 0; i < orden.length; i++) {
+      const et = PERFILES_DEFENSOR[orden[i].id];
+      if (et && (cuenta[et] || 0) < MAX_REPETICIONES_DEFENSOR) return et;
+    }
+    return elegirDefensor(marca, perfil);
+  }
+
   /** Todos los perfiles que el motor PUEDE llegar a sugerir. Lo usan los
       tests y sirve para auditar cuánto del catálogo está vivo. */
   function defensoresAlcanzables() {
@@ -1182,6 +1209,246 @@ const SGADD_SCOUT = (function () {
   /** Sufijo con la lectura de liga, cuando hay banda. */
   function ctx(b) { return b ? ' (' + b.label.toLowerCase() + ')' : ''; }
 
+  /* =====================================================================
+     6 bis. PLAN DEFENSIVO COLECTIVO
+
+     El problema que resuelve: hasta acá la tabla de marcas era un listado
+     de fichas AISLADAS. Cada celda decía qué hacerle a un jugador, pero
+     ninguna decía de dónde sale la ayuda para hacerlo. Y una defensa no es
+     la suma de once marcas individuales: si a cuatro rivales les ponés
+     "doblar", te quedaste sin nadie para doblar.
+
+     El plan clasifica el ecosistema rival ANTES de escribir las conexiones,
+     y después cada celda se escribe sabiendo qué hacen las otras diez:
+
+       FOCOS       → a quién se dobla (y desde dónde sale esa ayuda)
+       INTOCABLES  → de quién NO se sale nunca (tiro rentable)
+       FUENTES     → desde quién se ayuda (tiro frío o sin renta)
+       CRISTAL     → quién exige box-out asignado en vez de rotar
+
+     La regla de coherencia que amarra todo: **si hay un foco tiene que
+     haber una fuente**. Si el rival no tiene ningún lado barato, el plan
+     lo dice en vez de inventar una ayuda que no existe.
+     ===================================================================== */
+
+  /** Cuántos focos como máximo antes de que "doblar a todos" deje de ser
+      un plan. Con más de dos, la ayuda se diluye y conviene defender 1x1. */
+  const MAX_FOCOS = 2;
+  /** Mínimo de tiradores rentables para considerar que el rival abre la
+      cancha y las ayudas profundas dejan de ser rentables. */
+  const MIN_TIRADORES_SPACING = 3;
+
+  const ESCENARIOS = [
+    {
+      id: 'franquicia-solitaria',
+      label: 'Franquicia solitaria',
+      /* Un foco que concentra bastante más que el segundo: el plan puede
+         permitirse cargar las ayudas sobre él sin quedar descubierto. */
+      test: (e) => e.focos.length === 1 && e.fuentes.length >= 1,
+      consigna: (e) => 'Todo el peso de la ayuda va sobre ' + e.focos[0].nombre +
+        '. La segunda y la tercera opción defienden 1x1 y saltan al doblaje cuando él ataca.',
+    },
+    {
+      id: 'spacing-alto',
+      label: 'Ataque abierto · spacing alto',
+      /* Con tres o más tiradores rentables, cada ayuda profunda es un
+         triple liberado. El plan cambia de doblar a cerrar líneas. */
+      test: (e) => e.intocables.length >= MIN_TIRADORES_SPACING,
+      consigna: (e) => 'Con ' + e.intocables.length + ' amenazas externas rentables no hay ayuda profunda que pague: ' +
+        'defensa 1x1, close-out corto y negación de la línea de pase. Nadie sale de su tirador.',
+    },
+    {
+      id: 'interior-y-frios',
+      label: 'Interior dominante con perímetro frío',
+      test: (e) => e.focos.some(f => f.interior) && e.fuentes.length >= 2,
+      consigna: (e) => 'La ayuda al poste bajo sale de los perimetrales fríos (' +
+        enumerar(e.fuentes.slice(0, 2).map(f => f.nombre)) + '), no del lado de los tiradores.',
+    },
+    {
+      id: 'sin-lado-barato',
+      label: 'Sin lado barato',
+      /* Caso incómodo y real: todos tiran bien. Decirlo es más útil que
+         designar una fuente de ayuda que no existe. */
+      test: (e) => e.focos.length >= 1 && e.fuentes.length === 0,
+      consigna: () => 'No hay un lado barato desde donde ayudar: la ayuda tiene que salir de rotación corta ' +
+        'y volver, o directamente jugar 1x1 y aceptar el duelo.',
+    },
+    {
+      id: 'distribuido',
+      label: 'Ataque distribuido',
+      test: () => true,
+      consigna: (e) => e.focos.length
+        ? 'Sin un eje único: marcas individuales firmes y ayuda solo sobre ' +
+          enumerar(e.focos.map(f => f.nombre)) + '.'
+        : 'Ningún jugador condiciona el plan por sí solo: el partido se define en la disciplina colectiva, no en una marca.',
+    },
+  ];
+
+  /**
+   * Clasifica el plantel rival en los cuatro grupos del plan.
+   * Recibe las filas ya calculadas (perfil + marca) para no recalcular
+   * nada: el plan no puede contradecir a la tabla que tiene al lado.
+   */
+  function clasificarEcosistema(filas) {
+    const ref = (f, motivo, extra) => Object.assign({
+      clave: f.clave, nombre: f.nombre, motivo: motivo,
+      interior: !!f.perfil.esInterior,
+    }, extra || {});
+
+    /* INTOCABLES primero: la pertenencia a este grupo veta la de FUENTES.
+       Es la regla más cara del informe — soltar a un tirador rentable. */
+    const intocables = filas.filter(f => f.perfil.tiroExternoRentable)
+      .map(f => ref(f, 'T3% ' + pct(f.perfil.t3) + ' con ' + num2(f.perfil.pptTriple) + ' por intento'));
+    const esIntocable = (f) => intocables.some(x => x.clave === f.clave);
+
+    /* FOCOS: los que obligan a mandar una segunda marca. El motivo cita la
+       razón por la que entró, no una métrica cualquiera: decir "7,8% de
+       los plays" de alguien que entró por ser referencia interna hace
+       parecer que 7,8% es mucho, y no lo es. */
+    const motivoFoco = (f) => {
+      if (f.perfil.concentracion !== null && f.perfil.concentracion >= U.concentracionAlta) {
+        return pct(f.perfil.concentracion) + ' de los plays del equipo';
+      }
+      if (f.perfil.adn && f.perfil.adn.jerarquia && f.perfil.adn.jerarquia.id === 'franquicia') {
+        return 'jugador franquicia del plantel';
+      }
+      return f.marca.etiqueta.toLowerCase();
+    };
+    const focos = filas.filter(f =>
+      ['tirador-elite', 'interior-dominante', 'slasher'].indexOf(f.marca.id) !== -1 ||
+      (f.perfil.concentracion !== null && f.perfil.concentracion >= U.concentracionAlta) ||
+      (f.perfil.adn && f.perfil.adn.jerarquia && f.perfil.adn.jerarquia.id === 'franquicia'))
+      .sort((a, b) => (b.perfil.concentracion || 0) - (a.perfil.concentracion || 0))
+      .slice(0, MAX_FOCOS)
+      .map(f => ref(f, motivoFoco(f)));
+    const esFoco = (f) => focos.some(x => x.clave === f.clave);
+
+    /* CRISTAL: no se rota desde ellos, se los bloquea. Se calcula ANTES que
+       las fuentes porque las dos tareas son incompatibles: no se puede
+       pedirle al mismo defensor que sea el primero en rotar y que no
+       abandone el box-out. El rebote gana, porque la segunda chance anula
+       todo el trabajo defensivo previo. */
+    const cristal = filas.filter(f => f.perfil.reboteRel !== null &&
+        f.perfil.reboteRel >= U.reboteOfensivoAlto)
+      .sort((a, b) => b.perfil.reboteRel - a.perfil.reboteRel)
+      .map(f => ref(f, num2(f.perfil.reboteRel) + 'x la mediana de la liga en RO%'));
+    const esCristal = (f) => cristal.some(x => x.clave === f.clave);
+
+    /* FUENTES: desde acá sale la ayuda. Tres vetos, en este orden de
+       importancia: un intocable NUNCA (soltar un tiro rentable es el error
+       más caro), un foco tampoco (el que exige doblaje no puede estar
+       ayudando en otro lado) y un reboteador tampoco (ver arriba). */
+    const fuentes = filas.filter(f => !esIntocable(f) && !esFoco(f) && !esCristal(f) &&
+        (f.perfil.tiroExternoFrio || f.perfil.tiroExternoOcasionalFrio ||
+         ['tirador-ineficiente', 'volumen-sin-eficiencia'].indexOf(f.marca.id) !== -1))
+      .sort((a, b) => (a.perfil.pptTriple || 0) - (b.perfil.pptTriple || 0))
+      .map(f => ref(f, f.perfil.pptTriple !== null
+        ? num2(f.perfil.pptTriple) + ' por triple intentado'
+        : 'sin amenaza externa'));
+
+    return { focos, intocables, fuentes, cristal };
+  }
+
+  /**
+   * Plan defensivo colectivo del cruce.
+   *
+   * `nuestroPlantel` es opcional y hoy solo se usa para dimensionar el
+   * reparto de marcas: la planilla no trae quinteto inicial, así que el
+   * plan sugiere PERFILES y el DT pone los nombres.
+   */
+  function generarPlanDefensivoColectivo(filas, nuestroPlantel) {
+    const eco = clasificarEcosistema(filas || []);
+    const esc = ESCENARIOS.find(e => { try { return !!e.test(eco); } catch (err) { return false; } });
+    const nuestros = (nuestroPlantel || []).length;
+
+    /* La coherencia que hay que poder auditar: un plan que manda a doblar
+       sin decir desde dónde no es un plan.
+
+       Con UNA excepción real, no una concesión: en `spacing-alto` la
+       ausencia de fuente no es un agujero, es la conclusión. Con tres o más
+       tiradores rentables el plan renuncia a ayudar a propósito y pasa a
+       1x1 — pedirle una fuente de ayuda sería contradecir su propia
+       consigna. Medido en Liga Argentina: 8 de 17 planteles caen ahí. */
+    const renunciaAAyudar = esc.id === 'spacing-alto';
+    const coherente = eco.focos.length === 0 || eco.fuentes.length >= 1 || renunciaAAyudar;
+
+    return {
+      escenario: { id: esc.id, label: esc.label, texto: esc.consigna(eco) },
+      focos: eco.focos, intocables: eco.intocables, fuentes: eco.fuentes, cristal: eco.cristal,
+      coherente: coherente,
+      /* El aviso sale solo cuando falta la ayuda de verdad. En spacing alto
+         no falta: se decidió no usarla. */
+      aviso: coherente ? null
+        : 'El rival no tiene ningún jugador de tiro barato: no hay lado desde donde ayudar sin pagarlo.',
+      /* Cuántos defensores nuestros hacen falta con una tarea especial.
+         Si supera el plantel disponible, el plan pide priorizar. */
+      cargaEspecial: eco.focos.length + eco.intocables.length + eco.cristal.length,
+      nuestroPlantel: nuestros || null,
+      sobrecargado: nuestros ? (eco.focos.length + eco.intocables.length + eco.cristal.length) > nuestros : false,
+    };
+  }
+
+  /**
+   * Conexión de UN jugador con el resto del plan. Devuelve el texto que se
+   * agrega al `detalle` de su consigna y de su restricción — nunca al
+   * `titulo`, que es lo único editable por el DT y tiene que seguir siendo
+   * su firma.
+   */
+  function conexionColectiva(fila, plan) {
+    if (!plan) return { consigna: '', restriccion: '' };
+    const yo = fila.clave;
+    const en = (lista) => lista.some(x => x.clave === yo);
+    const otros = (lista) => lista.filter(x => x.clave !== yo).map(x => x.nombre);
+    const fuente = plan.fuentes.length ? plan.fuentes[0].nombre : null;
+    const foco = plan.focos.length ? plan.focos[0].nombre : null;
+
+    if (en(plan.focos)) {
+      const ayuda = fuente
+        ? 'La ayuda salta desde ' + fuente + (plan.fuentes.length > 1 ? ' o ' + plan.fuentes[1].nombre : '') + '.'
+        : 'No hay lado barato: la ayuda es de rotación corta y vuelve.';
+      const desde = otros(plan.intocables);
+      /* Un tirador de élite es foco Y intocable a la vez: se lo dobla, y
+         desde él no se ayuda nunca. Con la cascada a secas se comía la
+         segunda mitad, que es justamente la más cara de olvidar. */
+      const tambienIntocable = en(plan.intocables)
+        ? ' Y NO es la fuente de ayuda del plan: sobre él se va, de él no se sale.'
+        : '';
+      return {
+        consigna: ' ' + ayuda,
+        restriccion: (desde.length
+          ? ' Nunca desde ' + enumerar(desde) + ': ese tiro es el más caro del cruce.'
+          : ' Antes de doblar, chequear que el lado débil esté cubierto.') + tambienIntocable,
+      };
+    }
+    if (en(plan.intocables)) {
+      return {
+        consigna: ' Su defensor no participa de las ayudas' + (foco ? ' sobre ' + foco : '') + ': se queda.',
+        restriccion: fuente
+          ? ' NO es la fuente de ayuda del plan: para eso está ' + fuente + '.'
+          : ' NO es la fuente de ayuda del plan bajo ninguna circunstancia.',
+      };
+    }
+    if (en(plan.fuentes)) {
+      const destino = plan.focos.length ? enumerar(plan.focos.map(f => f.nombre)) : null;
+      return {
+        consigna: destino
+          ? ' Es el lado desde donde mandar la ayuda y doblar a ' + destino + '.'
+          : ' Es el lado por donde puede salir la ayuda si hace falta.',
+        restriccion: ' Su defensor es el primero que rota: quedarse con él es desperdiciar la única ayuda barata del cruce.',
+      };
+    }
+    if (en(plan.cristal)) {
+      return {
+        consigna: ' Su defensor NO rota: lo bloquea y termina la posesión.',
+        restriccion: ' Si su marca se va a ayudar, el rebote de ataque anula todo el trabajo defensivo previo.',
+      };
+    }
+    return {
+      consigna: foco ? ' Puede ceder su marca para doblar a ' + foco + ' si la jugada lo pide.' : '',
+      restriccion: '',
+    };
+  }
+
   function fortalezasJugador(p) {
     const out = [];
     if (p.pptTriple !== null && p.usoTriple !== null &&
@@ -1355,6 +1622,51 @@ const SGADD_SCOUT = (function () {
       };
     });
 
+    /* ------------------------------------------------------------------
+       SEGUNDA PASADA · el plan colectivo
+
+       Hace falta que las once fichas estén calculadas para saber quién es
+       foco, quién intocable y quién fuente de ayuda. Recién con el mapa
+       completo se pueden escribir las conexiones entre celdas: una marca
+       que dice "doblar" necesita que otra diga "desde acá sale la ayuda".
+
+       El texto se agrega SOLO al `detalle`. El `titulo` en mayúsculas es
+       la firma del DT y sigue siendo lo único editable.
+       ------------------------------------------------------------------ */
+    const plan = generarPlanDefensivoColectivo(filas, idx.liga.jugadoresPorEquipo
+      ? (Array.from(idx.liga.jugadoresPorEquipo.keys())
+          .filter(k => SGADD.esEquipoPropio(k))
+          .reduce((acc, k) => acc.concat(idx.liga.jugadoresPorEquipo.get(k) || []), []))
+      : []);
+
+    /* La carga se reparte sobre las filas ordenadas por minutos, que ya es
+       el orden de la tabla: el que más juega elige perfil primero. */
+    const usados = {};
+    filas.forEach(f => {
+      const def = elegirDefensorBalanceado(
+        PERFILES_MARCA.find(m => m.id === f.marca.id), f.perfil, usados);
+      if (def) {
+        usados[def] = (usados[def] || 0) + 1;
+        f.marca.defensor = def;
+        f.marca.familiaDefensor = familiaDefensor(def);
+      }
+      const cx = conexionColectiva(f, plan);
+      f.plan = {
+        foco: plan.focos.some(x => x.clave === f.clave),
+        intocable: plan.intocables.some(x => x.clave === f.clave),
+        fuente: plan.fuentes.some(x => x.clave === f.clave),
+        cristal: plan.cristal.some(x => x.clave === f.clave),
+      };
+      if (cx.consigna) {
+        f.marca.consigna.detalle += cx.consigna;
+        f.marca.consignaTexto = (f.marca.consigna.titulo + ' ' + f.marca.consigna.detalle).trim();
+      }
+      if (cx.restriccion) {
+        f.marca.restriccion.detalle += cx.restriccion;
+        f.marca.restriccionTexto = (f.marca.restriccion.titulo + ' ' + f.marca.restriccion.detalle).trim();
+      }
+    });
+
     const promedioFila = (jugs) => {
       const out = {};
       COLS_JUGADOR.forEach(c => {
@@ -1386,6 +1698,7 @@ const SGADD_SCOUT = (function () {
       equipo: e.nombre, clave: e.clave,
       columnas: COLS_JUGADOR,
       filas: filas,
+      plan: plan,
       promedioEquipo: promEquipo,
       promedioLiga: promLiga,
       totalPlays: totalPlays,
@@ -1744,7 +2057,8 @@ const SGADD_SCOUT = (function () {
     VENTANA_CICLO, TOP_JUGADORES, TOP_SEMAFORO, UMBRALES: U, DELTA, BANDAS,
     MATRIZ_POSESION, MATRIZ_TIRO, METRICAS_RANKING, COLS_JUGADOR,
     PERFILES_MARCA, PERFILES_DEFENSOR, CATALOGO_DEFENSOR, familiaDefensor, REGLAS_CLAVE,
-    elegirDefensor, defensoresAlcanzables,
+    elegirDefensor, elegirDefensorBalanceado, defensoresAlcanzables,
+    ESCENARIOS, clasificarEcosistema, generarPlanDefensivoColectivo, conexionColectiva,
     get ROLES_FUNCIONALES() { return rolesFuncionales(); },
     statLiga, bandaLiga, porEncima, porDebajo,
     celdaMatriz, referenciaLiga, filaMatriz, matrizComparativa, rankingsLiga,
@@ -2181,6 +2495,48 @@ function scoutBloqueCiclo(inf) {
 
 /* ===================== BLOQUE 4 · MARCAS ASIGNADAS ===================== */
 
+/**
+ * Cabecera del plan colectivo: el escenario del rival y los cuatro grupos.
+ * Va ARRIBA de la tabla a propósito — es el marco que explica por qué cada
+ * celda dice lo que dice, y leerlo después convierte las conexiones en
+ * ruido.
+ */
+function scoutPlanColectivo(plan) {
+  if (!plan) return '';
+  const grupo = (titulo, lista, color, nota) => {
+    if (!lista.length) return '';
+    return `
+      <div class="rounded-lg border ${color} p-3 min-w-0">
+        <p class="text-[10px] uppercase tracking-widest font-display mb-1.5">${escapeHtml(titulo)}</p>
+        <ul class="space-y-1">
+          ${lista.map(x => `<li class="text-[11px] leading-snug">
+            <span class="text-white font-medium">${escapeHtml(x.nombre)}</span>
+            <span class="dato-sec"> · ${escapeHtml(x.motivo)}</span></li>`).join('')}
+        </ul>
+        <p class="text-[10px] dato-sec mt-2 leading-snug">${escapeHtml(nota)}</p>
+      </div>`;
+  };
+
+  const aviso = plan.aviso
+    ? `<p class="text-[11px] text-yellow-400 mt-3 leading-snug">⚠ ${escapeHtml(plan.aviso)}</p>` : '';
+  const sobrecarga = plan.sobrecargado
+    ? `<p class="text-[11px] text-yellow-400 mt-1 leading-snug">⚠ El plan pide ${plan.cargaEspecial} tareas
+       defensivas especiales y el plantel tiene ${plan.nuestroPlantel} jugadores cargados: hay que priorizar.</p>` : '';
+
+  return `
+    <div class="rounded-lg border border-accent/40 bg-accent/5 p-4 mb-4">
+      <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-1">Plan colectivo · ${escapeHtml(plan.escenario.label)}</p>
+      <p class="text-xs text-ink leading-snug mb-3">${escapeHtml(plan.escenario.texto)}</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
+        ${grupo('🎯 Focos · se dobla', plan.focos, 'border-red-400/40', 'La segunda marca llega acá.')}
+        ${grupo('🚫 No se sueltan', plan.intocables, 'border-green-400/40', 'Su defensor no ayuda nunca.')}
+        ${grupo('↩ Fuentes de ayuda', plan.fuentes, 'border-blue-400/40', 'Desde acá sale la rotación.')}
+        ${grupo('🏰 Box-out asignado', plan.cristal, 'border-yellow-400/40', 'Se los bloquea, no se rota desde ellos.')}
+      </div>
+      ${aviso}${sobrecarga}
+    </div>`;
+}
+
 function scoutBloqueMarcas(inf) {
   const t = inf.jugadoresRival;
   if (!t || !t.filas.length) return '';
@@ -2225,12 +2581,14 @@ function scoutBloqueMarcas(inf) {
 
   return `
     <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="marcas">
-      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">🛡 Plan individual · marca asignada</h4>
+      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">🛡 Plan defensivo · marca asignada</h4>
       <p class="text-[11px] text-muted mb-3">
         Cada celda trae la <strong>directiva en mayúsculas</strong> (editable: el plan lo firma el cuerpo
         técnico) y debajo la <strong>justificación con el número</strong> que la disparó, que sale de la
-        planilla y no se toca a mano.
+        planilla y no se toca a mano. Las marcas están <strong>conectadas entre sí</strong>: la ayuda que
+        pide una celda sale del jugador que otra celda designa como fuente.
       </p>
+      ${scoutPlanColectivo(t.plan)}
       <div class="scrollbox"><table class="w-full text-left" style="min-width:62rem">
         <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
           <th class="px-2 pb-1" style="width:18%">Jugador rival</th>
