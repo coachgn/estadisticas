@@ -370,6 +370,10 @@ const SGADD_CHARTS = (function () {
       .map(j => ({
         x: j['USG%'], y: j['TS%'], name: j['NOMBRES'], min: j['MIN'],
         efg: j['eFG%'], pts: j['PTS'], iniciales: inicialesJugador(j['NOMBRES']),
+        /* Ancla de la sincronización con la tabla de abajo. Se usa el
+           `__clave` del índice (clavePersona) para que el `data-jug` del
+           `<tr>` y el punto del scatter sean el mismo string. */
+        clave: j.__clave || null,
       }))
       .filter(p => typeof p.x === 'number' && typeof p.y === 'number');
 
@@ -400,6 +404,17 @@ const SGADD_CHARTS = (function () {
       options: baseOpciones({
         /* El hover tiene que agarrar el nodo entero, no solo su centro. */
         interaction: { mode: 'nearest', intersect: true },
+        /* --- Sincronización gráfico → tabla ---
+           El gráfico no sabe nada de la tabla: avisa quién está activo y
+           el módulo de la sección decide qué hacer. Así la fábrica sigue
+           sirviendo para cualquier vista que la use. */
+        onHover: (ev, activos) => {
+          const clave = (activos && activos.length && puntos[activos[0].index])
+            ? puntos[activos[0].index].clave : null;
+          if (typeof window !== 'undefined' && typeof window.equiposDestacarJugador === 'function') {
+            window.equiposDestacarJugador(clave, 'grafico');
+          }
+        },
         scales: {
           x: Object.assign(ejes({ desdeCero: false }).x, { title: { display: true, text: 'USG% · cuánto usa', color: COL.texto } }),
           y: Object.assign(ejes({ desdeCero: false }).y, { title: { display: true, text: 'TS% · qué tan bien', color: COL.texto } }),

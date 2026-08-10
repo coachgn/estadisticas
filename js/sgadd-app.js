@@ -177,6 +177,10 @@ const SGADD_APP = (function () {
               ${fases().map(f => `<option value="${f.id}" ${f.id === estado.fase ? 'selected' : ''}>${SGADD_UI.esc(f.label)}</option>`).join('')}
             </select>
           </div>
+          <!-- Buzón de alertas: al lado del selector de torneo, como se pidió.
+               El contenido lo pinta SGADD_BUZON y queda vacío si no hay nada
+               pendiente: un icono permanentemente vacío entrena a ignorarlo. -->
+          <div id="buzonSlot" class="shrink-0 self-end"></div>
           ${o.extra || ''}
         </div>
         ${info ? `<p class="text-[11px] text-muted mt-2 font-mono">${SGADD_UI.esc(p ? p.label : '')} · ${SGADD_UI.esc(info)}</p>` : ''}
@@ -191,6 +195,9 @@ const SGADD_APP = (function () {
 
   /* Cada sección se repinta sola cuando cambia la categoría o la fase. */
   onCambio(() => {
+    /* El buzón recalcula sus alertas contra el índice nuevo: cambiar de
+       planilla o de torneo cambia el plantel y por lo tanto las ausencias. */
+    if (typeof SGADD_BUZON !== 'undefined') { try { SGADD_BUZON.sincronizar(); } catch (e) {} }
     if (typeof currentSection === 'undefined') return;
     if (currentSection === 'equipos' && typeof equiposPintar === 'function') equiposPintar();
     if (currentSection === 'jugadores' && typeof jugadoresPintar === 'function') jugadoresPintar();

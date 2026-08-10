@@ -1574,7 +1574,18 @@ const SGADD_SCOUT = (function () {
 
     /* Por minutos: el que más juega es el que más condiciona el plan,
        independientemente de cuánto anote. */
+    /* Los dados de BAJA salen del plan: no van a estar en la cancha, así
+       que asignarles una marca es gastar una decisión defensiva en alguien
+       que no juega. Sus datos SÍ siguen contando en las medianas de la
+       competencia (`enMedianas`), que es lo que decidió el club: los
+       partidos que jugó, los jugó.
+
+       Sin el módulo de estados cargado —Node, o antes de que el DT
+       confirme nada— todos pasan y el informe sale igual que siempre. */
+    const enPlan = (j) => (typeof SGADD_BUZON === 'undefined') ? true
+      : SGADD_BUZON.enPlan(j['NOMBRES'], j['EQUIPO']);
     const plantel = (idx.liga.jugadoresPorEquipo.get(e.clave) || [])
+      .filter(enPlan)
       .slice()
       .sort((a, b) => (nn(b['MIN']) || 0) - (nn(a['MIN']) || 0));
     const elegidos = plantel.slice(0, n);

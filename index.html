@@ -115,6 +115,57 @@
   .mm-neg  { color: #f4a5a5 !important; opacity: .75; }
   .mm-cero { color: #8b93a0 !important; }
 
+  /* =====================================================================
+     BUZÓN DE ALERTAS · drawer, toast y sincronización gráfico ↔ tabla
+
+     Todo a mano y no con utilidades de Tailwind: son nodos inyectados
+     dinámicamente y el JIT del CDN no genera clases para ellos (misma
+     razón que los respaldos de text-accent y de .mm-pos).
+     ===================================================================== */
+
+  /* --- Drawer: entrada y salida suaves, como pide Checklist Design --- */
+  @keyframes buzonFadeIn  { from { opacity: 0 } to { opacity: 1 } }
+  @keyframes buzonSlideIn { from { transform: translateX(100%) } to { transform: translateX(0) } }
+  .buzon-fade  { animation: buzonFadeIn .18s ease-out both; }
+  .buzon-slide { animation: buzonSlideIn .22s cubic-bezier(.22,.8,.3,1) both; }
+  .buzon-saliendo { animation: buzonFadeIn .16s ease-in reverse both; }
+  .buzon-saliendo .buzon-slide { animation: buzonSlideIn .16s ease-in reverse both; }
+
+  /* --- Toast: feedback inmediato al confirmar una alerta --- */
+  @keyframes toastIn  { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+  .toast-in  { animation: toastIn .2s cubic-bezier(.22,.8,.3,1) both; }
+  .toast-out { animation: toastIn .2s ease-in reverse both; }
+
+  /* --- Fila destacada del plantel (viene del hover en el scatter) ---
+     Fondo de acento sutil + barra lateral: el fondo solo no se distingue
+     bien sobre la card oscura, y el borde solo no dice "esta fila". */
+  #plantelTabla tr.fila-jug { transition: background-color .16s ease, box-shadow .16s ease; }
+  #plantelTabla tr.fila-jug:hover,
+  #plantelTabla tr.fila-activa {
+    background: color-mix(in srgb, var(--acento) 14%, transparent);
+    box-shadow: inset 3px 0 0 0 var(--acento);
+  }
+  /* Respaldo para navegadores sin color-mix. */
+  @supports not (background: color-mix(in srgb, red 10%, transparent)) {
+    #plantelTabla tr.fila-jug:hover,
+    #plantelTabla tr.fila-activa { background: rgba(247,148,30,.14); box-shadow: inset 3px 0 0 0 #f7941e; }
+  }
+
+  /* --- Foco visible en todo lo interactivo (WCAG 2.4.7) ---
+     `:focus-visible` y no `:focus`: el anillo aparece al navegar con
+     teclado y no en cada clic del mouse, que es lo que lo volvía ruido. */
+  button:focus-visible, select:focus-visible, input:focus-visible,
+  a:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--acento-texto);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .buzon-fade, .buzon-slide, .toast-in, .toast-out, .buzon-saliendo,
+    .buzon-saliendo .buzon-slide { animation: none !important; }
+    #plantelTabla tr.fila-jug { transition: none; }
+  }
+
   .border-green-400 { border-color: #4ade80; }
   .border-red-400 { border-color: #f87171; }
 
@@ -610,20 +661,22 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=52"></script>
-<script src="js/sgadd-core.js?v=52"></script>
-<script src="js/sgadd-ui.js?v=52"></script>
-<script src="js/sgadd-app.js?v=52"></script>
-<script src="js/sgadd-charts.js?v=52"></script>
-<script src="js/sgadd-personalidad.js?v=52"></script>
-<script src="js/sgadd-rankings.js?v=52"></script>
-<script src="js/sgadd-partido.js?v=52"></script>
-<script src="js/sgadd-informe.js?v=52"></script>
-<script src="js/sgadd-equipos.js?v=52"></script>
-<script src="js/sgadd-jugadores.js?v=52"></script>
-<script src="js/sgadd-4factores.js?v=52"></script>
-<script src="js/sgadd-scouting.js?v=52"></script>
-<script src="js/sgadd-diagnostico.js?v=52"></script>
+<script src="js/sgadd-club.js?v=53"></script>
+<script src="js/sgadd-core.js?v=53"></script>
+<script src="js/sgadd-ui.js?v=53"></script>
+<script src="js/sgadd-app.js?v=53"></script>
+<script src="js/sgadd-estados.js?v=53"></script>
+<script src="js/sgadd-buzon.js?v=53"></script>
+<script src="js/sgadd-charts.js?v=53"></script>
+<script src="js/sgadd-personalidad.js?v=53"></script>
+<script src="js/sgadd-rankings.js?v=53"></script>
+<script src="js/sgadd-partido.js?v=53"></script>
+<script src="js/sgadd-informe.js?v=53"></script>
+<script src="js/sgadd-equipos.js?v=53"></script>
+<script src="js/sgadd-jugadores.js?v=53"></script>
+<script src="js/sgadd-4factores.js?v=53"></script>
+<script src="js/sgadd-scouting.js?v=53"></script>
+<script src="js/sgadd-diagnostico.js?v=53"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

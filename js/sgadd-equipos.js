@@ -575,14 +575,69 @@ function equiposTabCondicion(idx, e) {
     </p>`;
 }
 
+/* =====================================================================
+   SINCRONIZACIÓN BIDIRECCIONAL · scatter ↔ tabla de plantel
+
+   Un único punto de entrada para las dos direcciones, y ese es el punto:
+   con dos handlers separados (uno que pinta la fila, otro que agranda el
+   nodo) el hover sobre el gráfico dispara el de la tabla, que vuelve a
+   disparar el del gráfico, y se entra en un bucle de repintado.
+
+   `origen` corta ese bucle: cuando el aviso viene del gráfico NO se le
+   vuelve a hablar al gráfico, y viceversa.
+   ===================================================================== */
+let equiposJugDestacado = null;
+
+function equiposDestacarJugador(clave, origen) {
+  const val = clave || null;
+  if (val === equiposJugDestacado) return;   // sin cambio, sin trabajo
+  equiposJugDestacado = val;
+
+  /* --- Tabla --- */
+  const filas = document.querySelectorAll('#plantelTabla tr[data-jug]');
+  filas.forEach(tr => {
+    tr.classList.toggle('fila-activa', !!val && tr.getAttribute('data-jug') === val);
+  });
+
+  /* --- Gráfico: solo si el aviso NO vino de él --- */
+  if (origen === 'grafico') return;
+  const cv = document.getElementById('chUsoTs');
+  if (!cv || typeof Chart === 'undefined') return;
+  const ch = Chart.getChart(cv);
+  if (!ch) return;
+  const datos = ch.data.datasets[0].data;
+  const i = val ? datos.findIndex(d => d.clave === val) : -1;
+  if (i === -1) {
+    ch.setActiveElements([]);
+    if (ch.tooltip) ch.tooltip.setActiveElements([], { x: 0, y: 0 });
+  } else {
+    ch.setActiveElements([{ datasetIndex: 0, index: i }]);
+    /* El tooltip también, si no el nodo crece pero no se sabe cuál es. */
+    if (ch.tooltip) ch.tooltip.setActiveElements([{ datasetIndex: 0, index: i }], { x: 0, y: 0 });
+  }
+  ch.update('none');   // sin animación: el hover tiene que sentirse inmediato
+}
+
 function equiposTabPlantel(idx, e) {
   const jug = (e.jugadores || []).slice().sort((a, b) => (b['MIN'] || 0) - (a['MIN'] || 0));
   const cols = ['MIN', 'PTS', 'USG%', 'TS%', 'eFG%', 'AST-PP', 'VAL', '+/-'];
 
   const filas = jug.map(j => {
     const cal = j.__califica;
-    return `<tr class="border-b border-hairline/40 last:border-0 ${cal ? '' : 'opacity-50'}">
-      <td class="py-1.5 pr-3 text-xs whitespace-nowrap">${escapeHtml(j['NOMBRES'])}</td>
+    /* El estado sale del buzón, no de la planilla. Sin el módulo cargado
+       todos son ACTIVO y la fila se pinta igual que siempre. */
+    const est = (typeof SGADD_BUZON !== 'undefined') ? SGADD_BUZON.estadoDe(j['NOMBRES'], j['EQUIPO']) : null;
+    const badgeEstado = (est && est.id !== 'ACTIVO')
+      ? `<span class="ml-1.5 text-[9px] px-1.5 py-0.5 rounded-full border ${est.borde} ${est.color} whitespace-nowrap"
+              title="${escapeAttr(est.descripcion + (est.origen === 'usuario' ? ' · confirmado a mano' : ''))}">${est.emoji} ${escapeHtml(est.label)}</span>`
+      : '';
+    /* `data-jug` es el ancla de la sincronización con el scatter: el mismo
+       string que lleva cada punto del gráfico. */
+    return `<tr data-jug="${escapeAttr(j.__clave || '')}"
+      onmouseenter="equiposDestacarJugador('${SGADD_UI.escJs(j.__clave || '')}', 'tabla')"
+      onmouseleave="equiposDestacarJugador(null, 'tabla')"
+      class="fila-jug border-b border-hairline/40 last:border-0 ${cal ? '' : 'opacity-50'}">
+      <td class="py-1.5 pr-3 text-xs whitespace-nowrap">${escapeHtml(j['NOMBRES'])}${badgeEstado}</td>
       ${cols.map(c => `<td class="py-1.5 pr-3 font-mono text-xs ${c === '+/-' ? SGADD_UI.claseMasMenos(j[c]) : ''}">${escapeHtml(SGADD.formatear(c, j[c]))}</td>`).join('')}
       <td class="py-1.5 text-[10px] ${cal ? 'text-muted' : 'text-yellow-400'}">${cal ? '' : 'pocos min'}</td>
     </tr>`;
@@ -605,7 +660,7 @@ function equiposTabPlantel(idx, e) {
         SGADD_CHARTS.nota('Incluye a todo el que promedie 10 minutos o más, califique o no para percentiles.'))}
     </div>
 
-    <div class="scrollbox"><table class="w-full text-left">
+    <div class="scrollbox"><table id="plantelTabla" class="w-full text-left">
       <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
         <th class="pb-1 pr-3">Jugador</th>
         ${cols.map(c => `<th class="pb-1 pr-3">${escapeHtml(c)}</th>`).join('')}

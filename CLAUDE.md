@@ -22,9 +22,10 @@ node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  22 tests · detalle partido a partido
 node test-scouting.js      # 308 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-estados.js       #  87 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**871 tests en total. Todos tienen que dar verde antes de commitear.**
+**958 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -63,10 +64,12 @@ js/
   sgadd-4factores.js    ← motor de regresión + sección Simulador (cruce A vs B)
   sgadd-scouting.js     ← informe pre-partido de equipos (motor + UI)
   sgadd-informe.js      ← modal de exportación PDF del informe de equipo
+  sgadd-estados.js      ← motor puro de estados de jugador y detección de alertas
+  sgadd-buzon.js        ← UI del buzón: drawer, toast, badge (usa `document`)
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app
 INTEGRACION_MOTORSTATS.md ← auditoría del motor que escribe las planillas
 AUDITORIA_ETIQUETAS_JUGADORES.md ← glosario y auditoría de TODAS las etiquetas
-PROPUESTA_ESTADOS_JUGADOR.md ← diseño de estados y buzón de alertas (SIN implementar)
+PROPUESTA_ESTADOS_JUGADOR.md ← diseño original de estados (ya implementado, ver punto 13)
 generar-manual-etiquetas.js  ← genera MANUAL_ETIQUETADO_SGADD.html para el
                           cuerpo técnico. Se corre a mano: `node generar-manual-etiquetas.js`
 clubes/
@@ -78,7 +81,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=52`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=53`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -1607,7 +1610,7 @@ Después de **cualquier** cambio de código o función nueva:
 node test-core.js && node test-logos.js && node test-ligas.js && \
 node test-clubes.js && node test-boot.js && node test-jugadores.js && \
 node test-4factores.js && node test-personalidad.js && node test-informe.js && \
-node test-partido.js && node test-scouting.js
+node test-partido.js && node test-scouting.js && node test-estados.js
 
 # 2. Solo si TODO da verde:
 git add .
@@ -1655,3 +1658,102 @@ Regla práctica: función nueva → test nuevo.
 - Tailwind: los colores custom (`text-accent`, `text-ink`) dependen del JIT del
   CDN y **fallan en nodos inyectados dinámicamente**. Para esos casos hay
   respaldos definidos a mano en el `<style>` del `index.html`.
+
+---
+
+## 13. Estados de jugador y buzón de alertas
+
+Dos módulos: `sgadd-estados.js` es el motor **puro y testeable**, y
+`sgadd-buzon.js` es todo lo que toca `document`. La dependencia va en un
+solo sentido y no puede invertirse.
+
+### Los cuatro estados
+
+| Estado | ¿Entra a los planes? | ¿Suma a las medianas? | ¿Avisa en scouting? |
+|---|---|---|---|
+| 🟢 `ACTIVO` | sí | sí | no |
+| 🟡 `SUSPENSO` (lesión o sanción) | **sí** | sí | **sí** |
+| 🔵 `ALTA` (refuerzo) | sí | sí | **sí** |
+| 🔴 `BAJA` (traspaso o fuera) | **no** | **sí** | no |
+
+**Las dos decisiones que hay que respetar al tocarlo:**
+
+1. **Un `SUSPENSO` sigue en el informe.** El DT rival necesita saber que ese
+   jugador existe y qué hace, aunque no haya jugado las últimas cuatro
+   fechas: si vuelve, vuelve. Lo que no puede es que su ausencia pase
+   inadvertida — por eso `avisaEnScouting`.
+2. **Una `BAJA` sale de los planes pero NO de las medianas.** Los partidos
+   que jugó, los jugó: borrarla de la competencia sería reescribir el
+   torneo. `jugadoresClave()` la filtra del plan defensivo; el índice y los
+   percentiles no se tocan.
+
+### El filtro anti-spam de inactividad
+
+La regla de los 4 partidos **sola** marcaba **50 de 210 jugadores (24%)** en
+la liga real. Un buzón que se abre con 50 tarjetas no se lee: se ignora para
+siempre y después no se ve el que sí importa.
+
+```
+racha ≥ 4 partidos consecutivos sin minutos
+  Y  PJ previos > 0        ← si nunca entró, no es una baja: nunca estuvo
+  Y  MIN previo ≥ 8,0      ← si entraba 3 minutos sueltos, no era rotación
+```
+
+Con los dos filtros: **15 alertas**, todas de jugadores que *eran* rotación y
+dejaron de serlo. Ejemplo real: PALOMEQUE, 4 partidos a 21,6 minutos, ocho
+fechas sin entrar.
+
+### `origen: "usuario"` gana siempre
+
+`fusionarDeteccion()` **nunca** pisa un registro marcado por el DT, y el
+detector saltea a los que ya tienen respuesta. Es lo que hace que el buzón no
+vuelva a preguntar lo que ya se contestó. Un escaneo sí puede corregir a otro
+escaneo, y el DT puede cambiar de opinión sobre su propia decisión.
+
+### Dónde viven los estados
+
+`localStorage`, con clave `sgadd.estados.<club>.<planilla>`. **No en la
+planilla**: MotorStats no escribe estado y pedirle una columna abre un ciclo
+de coordinación con el otro proyecto por algo que es una decisión del cuerpo
+técnico, no un dato del box score.
+
+**OJO con el id del club: es `CLUB.estado.id`**, no `CLUB.ID` ni `CLUB.id`.
+Con la propiedad equivocada devolvía `undefined`, todos los clubes escribían
+en la misma clave y **Jujuy habría pisado los estados de Reconquista** — sin
+que se notara, porque el fallback coincidía con el nombre del club por
+defecto. Hay un test que fija la cadena de respaldos.
+
+Sin `localStorage` (Node, modo privado, primera visita) todos son `ACTIVO` y
+el panel se comporta exactamente como antes.
+
+### El buzón · patrones de Checklist Design
+
+- **Drawer**: overlay con `backdrop-blur`, entrada y salida animadas, cierre
+  con ESC, clic afuera y botón explícito. **Foco atrapado adentro** mientras
+  está abierto y devuelto al disparador al cerrar — sin la trampa de foco el
+  tabulador se va a la página de atrás y deja de ser modal en la práctica.
+- **Empty state**: cuando no hay nada pendiente NO se muestra una lista
+  vacía sino un cierre positivo ("Plantel al día") con el recuento de lo ya
+  confirmado.
+- **La campana no se dibuja sin alertas.** Un icono permanentemente vacío
+  entrena a ignorarlo.
+- **Toast** en cada resolución, con `role="status"` y `aria-live="polite"`:
+  se anuncia sin robar el foco.
+- **"Mantener activo" siempre está.** Descartar tiene que ser tan fácil como
+  confirmar; si no, el buzón se vuelve una trampa y el DT deja de abrirlo.
+- **`:focus-visible` y no `:focus`**: el anillo aparece al navegar con
+  teclado y no en cada clic del mouse, que es lo que lo volvía ruido.
+
+### Sincronización bidireccional scatter ↔ tabla de plantel
+
+`equiposDestacarJugador(clave, origen)` es **un único punto de entrada para
+las dos direcciones**, y ese es el punto. Con dos handlers separados (uno que
+pinta la fila, otro que agranda el nodo), el hover sobre el gráfico dispara
+el de la tabla, que vuelve a disparar el del gráfico: **bucle de repintado**.
+
+`origen` lo corta: cuando el aviso viene del gráfico no se le vuelve a hablar
+al gráfico. Hay además una salida temprana si la clave no cambió.
+
+El ancla es `j.__clave` en los dos lados: `data-jug` en el `<tr>` y `clave`
+en cada punto del scatter. El gráfico actualiza con `update('none')` —sin
+animación— porque un hover con transición se siente roto.
