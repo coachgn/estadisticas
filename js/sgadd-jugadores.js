@@ -63,8 +63,12 @@ const JUGADORES = {
 const JUGADORES_TOP_N = 20;
 
 const JUGADORES_RANKINGS = [
+  /* `+/-` va como columna pero NUNCA como `orden`: el top 20 de esta tabla
+     tiene que seguir siendo el de puntos. El +/- depende tanto del resto del
+     quinteto que ordenar por él daría un ranking del equipo disfrazado de
+     ranking de jugadores. */
   { id: 'produccion', titulo: 'Participación y puntos', orden: 'PTS',
-    cols: ['PJ', 'MIN', 'PTS', 'PLAYS', 'PPP'] },
+    cols: ['PJ', 'MIN', 'PTS', 'PLAYS', 'PPP', '+/-'] },
   { id: 'eficiencia', titulo: 'Eficiencia', orden: 'eFG%',
     cols: ['PJ', 'MIN', 'USG%', 'eFG%', 'TS%', 'RTL%'] },
   { id: 'tiro', titulo: 'Tiro de campo', orden: 'TCI',
@@ -784,6 +788,7 @@ function jugadoresLeerRuta() {
   if (r.seccion !== 'jugadores') return false;
   if (r.planilla) JUGADORES.planillaId = r.planilla;
   if (r.fase) JUGADORES.fase = r.fase;
+  SGADD_APP.aplicarTorneoRuta(r.torneo);
   JUGADORES.jugador = r.entidad || null;
   JUGADORES.tab = r.tab || 'general';
   return true;
@@ -792,6 +797,7 @@ function jugadoresLeerRuta() {
 function jugadoresEscribirRuta(reemplazar) {
   const h = SGADD.Ruta.build({
     planilla: JUGADORES.planillaId,
+    torneo: SGADD_APP.estado.torneo,
     fase: JUGADORES.fase,
     seccion: 'jugadores',
     entidad: JUGADORES.jugador,
@@ -823,7 +829,7 @@ function jugadoresVerPartido(equipoCrudo, idPartido) {
   if (!equipoCrudo || !idPartido) return;
   const slug = SGADD.claveEquipo(equipoCrudo).toLowerCase().replace(/\s+/g, '-');
   const hash = SGADD.Ruta.build({
-    planilla: JUGADORES.planillaId, fase: JUGADORES.fase,
+    planilla: JUGADORES.planillaId, torneo: SGADD_APP.estado.torneo, fase: JUGADORES.fase,
     seccion: 'equipos', entidad: slug, tab: 'partidos', sub: idPartido,
   });
   history.pushState(null, '', hash);
@@ -962,8 +968,9 @@ function jugadoresTablaRanking(idx, r) {
         Math.abs(v - med) === Math.min.apply(null, r.filas.map(x =>
           x.celdas[k] === null ? Infinity : Math.abs(x.celdas[k] - med)));
       const destaca = (k === r.ordenPor);
+      const base = k === '+/-' ? SGADD_UI.claseMasMenos(v) : 'text-ink';
       return `<td class="py-1.5 px-2 text-center align-middle font-mono text-xs whitespace-nowrap
-        ${destaca ? 'text-white font-semibold' : 'text-ink'}${esMediana ? ' ring-1 ring-accent/50 rounded' : ''}"
+        ${destaca ? 'text-white font-semibold' : base}${esMediana ? ' ring-1 ring-accent/50 rounded' : ''}"
         ${esMediana ? 'title="El más cercano a la mediana de este top"' : ''}
         >${SGADD_UI.esc(SGADD.formatear(k, v))}</td>`;
     }).join('');
@@ -1083,7 +1090,10 @@ function jugadoresPlantelEquipo(idx) {
       return `<span class="text-[9px] leading-tight px-1.5 py-0.5 rounded-full border ${color} whitespace-nowrap">${escapeHtml(b.texto)}</span>`;
     }).join('');
 
-    const kpi = (k) => `<span class="whitespace-nowrap"><span class="dato-sec">${escapeHtml(k)}</span> ${escapeHtml(SGADD.formatear(k, j[k]))}</span>`;
+    const kpi = (k) => `<span class="whitespace-nowrap"><span class="dato-sec">${escapeHtml(k)}</span> <span class="${k === '+/-' ? SGADD_UI.claseMasMenos(j[k]) : ''}">${escapeHtml(SGADD.formatear(k, j[k]))}</span></span>`;
+    /* El +/- solo aparece si la planilla lo trae: sumar un "—" fijo a cada
+       card de las planillas viejas es ruido, no información. */
+    const kpiMasMenos = typeof j['+/-'] === 'number' ? kpi('+/-') : '';
 
     return `
       <button type="button" onclick="jugadoresIrA('${escapeAttr(slug)}')"
@@ -1097,7 +1107,7 @@ function jugadoresPlantelEquipo(idx) {
         </div>
         ${badges ? `<div class="flex flex-wrap gap-1">${badges}</div>` : ''}
         <div class="flex flex-wrap gap-x-2 gap-y-0.5 font-mono text-[10px] text-ink border-t border-hairline/40 pt-1.5">
-          ${kpi('MIN')} ${kpi('PLAYS')} ${kpi('PTS')} ${kpi('eFG%')}
+          ${kpi('MIN')} ${kpi('PLAYS')} ${kpi('PTS')} ${kpi('eFG%')} ${kpiMasMenos}
         </div>
       </button>`;
   }).join('');
@@ -1299,9 +1309,14 @@ function jugadoresTabGeneral(idx, j) {
     label: 'Otras estadísticas', descriptiva: false,
     filas: ['AST', 'PR', 'PP', 'TC', 'TR'].map(k => idx.leerJugador(j, k)).filter(Boolean),
   };
+  /* `+/-` entra a la tabla solo si la planilla lo trae (MotorStats v30+).
+     Con las planillas viejas la fila saldría con "—" en valor y percentil:
+     una fila muerta permanente en la vista principal del jugador. */
+  const clavesMarcador = ['PTS', 'PLAYS', 'MIN'];
+  if (typeof j['+/-'] === 'number') clavesMarcador.push('+/-');
   const vistaMarcador = {
     label: 'Marcador y contexto', descriptiva: false,
-    filas: ['PTS', 'PLAYS', 'MIN'].map(k => idx.leerJugador(j, k)).filter(Boolean),
+    filas: clavesMarcador.map(k => idx.leerJugador(j, k)).filter(Boolean),
   };
 
   return `
@@ -1440,6 +1455,7 @@ function jugadoresTabPartidos(idx, j) {
       <td class="py-1.5 pr-3 text-xs text-muted">${escapeHtml(SGADD.texto(p['CONDICION']))}</td>
       <td class="py-1.5 pr-3 font-mono text-xs">${escapeHtml(SGADD.formatear('MIN', p['MIN']))}</td>
       <td class="py-1.5 pr-3 font-mono text-xs ${colorPts}">${escapeHtml(SGADD.formatear('PTS', p['PTS']))}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs ${SGADD_UI.claseMasMenos(p['+/-'])}">${escapeHtml(SGADD.formatear('+/-', p['+/-']))}</td>
       <td class="py-1.5 text-xs font-semibold ${gano ? 'text-green-400' : 'text-red-400'}">${gano ? 'G' : 'P'}</td>
     </tr>`;
   }).join('');
@@ -1448,14 +1464,15 @@ function jugadoresTabPartidos(idx, j) {
     <div class="scrollbox"><table class="w-full text-left">
       <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
         <th class="pb-1 pr-3">Fecha</th><th class="pb-1 pr-3">Rival</th><th class="pb-1 pr-3">Cond.</th>
-        <th class="pb-1 pr-3">MIN</th><th class="pb-1 pr-3">PTS</th><th class="pb-1"></th>
+        <th class="pb-1 pr-3">MIN</th><th class="pb-1 pr-3">PTS</th><th class="pb-1 pr-3">+/-</th><th class="pb-1"></th>
       </tr></thead>
-      <tbody>${filas || '<tr><td class="text-xs text-muted py-2" colspan="6">Sin partidos con box score.</td></tr>'}</tbody>
+      <tbody>${filas || '<tr><td class="text-xs text-muted py-2" colspan="7">Sin partidos con box score.</td></tr>'}</tbody>
     </table></div>
     <p class="text-[11px] text-muted mt-3 leading-snug">
       En verde o rojo, los partidos a más de ${SGADD_PARTIDO.Z_ATIPICO} desvíos de su propio promedio de puntos.
       Los atenuados jugaron menos de ${SGADD_PARTIDO.MIN_MINUTOS} minutos. Clic en cualquier fila para ver el
       detalle completo de ese partido (box score de los dos equipos) en Equipos.
+      <b>+/-</b> es la diferencia de puntos con él en cancha: no es el margen del partido, que es del equipo.
     </p>`;
 }
 

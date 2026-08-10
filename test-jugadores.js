@@ -520,6 +520,24 @@ check('trae la mediana del propio top para el resalte de referencia',
 check('un grupo inexistente da null, no una excepción', J.jugadoresRanking(idxRk, 'NO_EXISTE') === null);
 check('sin índice devuelve null en vez de romper', J.jugadoresRanking(null, 'rebotes') === null);
 
+/* --- `+/-` en los rankings: columna sí, criterio de orden NO --- */
+const grupoProd = J.JUGADORES_RANKINGS.find(g => g.id === 'produccion');
+check('la tabla de producción muestra el +/-', grupoProd.cols.indexOf('+/-') !== -1,
+  grupoProd.cols.join(','));
+check('pero sigue ordenando por PTS: el top 20 tiene que ser el de puntos',
+  grupoProd.orden === 'PTS');
+/* El +/- de un jugador depende de los otros cuatro que estaban en cancha:
+   como criterio de selección daría un ranking del equipo disfrazado de
+   ranking de jugadores. */
+check('NINGÚN grupo usa +/- como métrica de orden',
+  J.JUGADORES_RANKINGS.every(g => g.orden !== '+/-'),
+  J.JUGADORES_RANKINGS.map(g => g.id + ':' + g.orden).join(','));
+check('con la planilla vieja (sin la columna) la tabla se arma igual, con el +/- en null',
+  (() => {
+    const r = J.jugadoresRanking(idxRk, 'produccion');
+    return r && r.filas.length > 0 && r.filas.every(f => f.celdas['+/-'] === null);
+  })());
+
 /* --- Orden dinámico por cabecera --- */
 console.log('\nX bis. ORDEN DINÁMICO POR COLUMNA');
 console.log('═'.repeat(70));

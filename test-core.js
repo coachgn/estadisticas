@@ -329,10 +329,14 @@ const dosT = SGADD.validarTorneo({ 'PROMEDIOS E': { cols: colsT, filas: [
   { EQUIPO: 'A', TORNEO: 'APERTURA', FASE: 'REGULAR', PJ: '5', PTS: '80' },
   { EQUIPO: 'A', TORNEO: 'CLAUSURA', FASE: 'REGULAR', PJ: '4', PTS: '60' },
 ] } });
-check('dos torneos en la misma hoja son ERROR: el índice los colapsaría',
-  dosT.length === 1 && dosT[0].nivel === 'error', JSON.stringify(dosT));
-check('el mensaje nombra los torneos en conflicto',
-  /APERTURA/.test(dosT[0].mensaje) && /CLAUSURA/.test(dosT[0].mensaje));
+/* Antes esto era un ERROR (el índice agrupaba por EQUIPO + FASE y el
+   segundo torneo pisaba al primero). Con el índice scopeado por torneo
+   dejó de serlo: es un aviso informativo de que se está viendo un recorte. */
+check('dos torneos en la misma hoja son AVISO, ya no error: el índice scopea por torneo',
+  dosT.length === 1 && dosT[0].nivel === 'aviso', JSON.stringify(dosT));
+check('el mensaje nombra los dos torneos y manda al selector',
+  /APERTURA/.test(dosT[0].mensaje) && /CLAUSURA/.test(dosT[0].mensaje) &&
+  /selector/i.test(dosT[0].mensaje));
 
 const mixto = SGADD.validarTorneo({ 'PROMEDIOS E': { cols: colsT, filas: [
   { EQUIPO: 'A', TORNEO: 'APERTURA', FASE: 'REGULAR', PJ: '5', PTS: '80' },
@@ -378,10 +382,157 @@ check('el que no jugó queda con la métrica en null, no en 0',
 
 /* --- `+/-` registrado como métrica conocida --- */
 check('+/- está en el registro de métricas', !!SGADD.metrica('+/-'));
-check('+/- se formatea con un decimal', SGADD.formatear('+/-', 12.34) === '12,3');
 check('+/- NO es invertida: más es mejor', SGADD.metrica('+/-').invertida === false);
-check('+/- NO se agregó a ninguna vista: meterlo en el box score es decisión de UI',
+check('+/- NO se agregó a ninguna VISTA del núcleo: las tablas que lo muestran lo arman en la UI',
   Object.keys(SGADD.VISTAS).every(v => SGADD.VISTAS[v].metricas.indexOf('+/-') === -1));
+
+/* Formato `signo`: sin el "+" adelante un +/- se lee como un total. */
+check('+/- positivo lleva signo explícito', SGADD.formatear('+/-', 12) === '+12');
+check('+/- negativo conserva el menos', SGADD.formatear('+/-', -5) === '-5');
+check('+/- en cero va pelado, sin signo', SGADD.formatear('+/-', 0) === '0');
+check('+/- promedio va con un decimal y coma', SGADD.formatear('+/-', 3.42) === '+3,4');
+check('+/- promedio negativo también', SGADD.formatear('+/-', -3.42) === '-3,4');
+check('+/- sin dato es raya, no cero', SGADD.formatear('+/-', null) === '—');
+
+/* El +/- de EQUIPO es el margen del partido, NUNCA la suma de los cinco
+   individuales: en cancha hay 5 a la vez y esa suma da ~5x el margen. */
+check('masMenosEquipo es el margen real del partido', SGADD.masMenosEquipo(88, 69) === 19);
+check('masMenosEquipo da negativo en la derrota', SGADD.masMenosEquipo(69, 88) === -19);
+check('masMenosEquipo sin puntos del rival devuelve null, no NaN',
+  SGADD.masMenosEquipo(88, null) === null && SGADD.masMenosEquipo(88, undefined) === null);
+check('el margen de equipo NO coincide con la suma de los +/- individuales', (() => {
+  // 5 en cancha, cada uno con el +/- del partido que ganaron por 19.
+  const box = [{ '+/-': 19 }, { '+/-': 19 }, { '+/-': 19 }, { '+/-': 19 }, { '+/-': 19 }];
+  const suma = box.reduce((a, j) => a + j['+/-'], 0);
+  return suma === 95 && SGADD.masMenosEquipo(88, 69) === 19 && suma !== SGADD.masMenosEquipo(88, 69);
+})());
+
+
+/* =====================================================================
+   AA. MULTI-TORNEO · scope del índice y ruteo con la competencia
+
+   Un libro puede traer Apertura y Clausura con la MISMA fase "REGULAR" y
+   los mismos equipos. Sin scopear, las filas del segundo torneo pisan a
+   las del primero y nadie se entera.
+
+   La clave compuesta NO va en `claveEquipo()` a propósito: esa función es
+   el normalizador de NOMBRES y la usan los escudos, `esEquipoPropio`, los
+   slugs de la URL y la extracción del rival —que parte el texto "A vs B"
+   del campo PARTIDO, donde no hay ni torneo ni fase. Una clave compuesta
+   ahí dejaría todos los rivales de la app en blanco.
+   ===================================================================== */
+console.log('\nAA. MULTI-TORNEO (scope del índice + ruteo)');
+console.log('═'.repeat(70));
+
+check('claveEquipo NO devuelve una clave compuesta: sigue siendo el normalizador de nombres',
+  SGADD.claveEquipo("ATENAS 'A' - MM") === 'ATENAS A', SGADD.claveEquipo("ATENAS 'A' - MM"));
+check('sin eso, la extracción del rival desde el texto "A vs B" seguiría matcheando',
+  SGADD.claveEquipo('ATENAS A') === SGADD.claveEquipo("ATENAS 'A' - MM"));
+
+/* --- torneosDisponibles --- */
+const colsMT = ['EQUIPO', 'TORNEO', 'FASE', 'PJ', 'PTS'];
+const filaMT = (eq, tor, pj, pts) => ({ EQUIPO: eq, TORNEO: tor, FASE: 'REGULAR', PJ: String(pj), PTS: String(pts) });
+const libroDosTorneos = {
+  'PROMEDIOS E': { cols: colsMT, filas: [
+    filaMT('ATENAS A', 'APERTURA', 5, 80),
+    filaMT('GIMNASIA', 'APERTURA', 5, 70),
+    filaMT('ATENAS A', 'CLAUSURA', 4, 60),
+    filaMT('GIMNASIA', 'CLAUSURA', 4, 90),
+    { EQUIPO: 'EQUIPO TIPO', TORNEO: '', FASE: 'REGULAR', PJ: '5', PTS: '75' },
+  ] },
+};
+const torneos = SGADD.torneosDisponibles(libroDosTorneos);
+check('torneosDisponibles encuentra los dos torneos del libro',
+  torneos.length === 2 && torneos[0].id === 'APERTURA' && torneos[1].id === 'CLAUSURA',
+  JSON.stringify(torneos));
+check('vienen ordenados alfabéticamente, no por orden de aparición',
+  torneos.map(t => t.id).join() === 'APERTURA,CLAUSURA');
+check('la fila EQUIPO TIPO no se cuenta como un torneo más',
+  torneos.every(t => t.id !== ''));
+check('una planilla pre-v44 (sin la columna) devuelve un único GENERAL',
+  (() => {
+    const l = SGADD.torneosDisponibles({ 'PROMEDIOS E': { cols: ['EQUIPO', 'FASE', 'PJ'],
+      filas: [{ EQUIPO: 'A', FASE: 'REGULAR', PJ: '5' }] } });
+    return l.length === 1 && l[0].id === SGADD.TORNEO_GENERAL && l[0].unico === true;
+  })());
+check('torneoDeFila cae a GENERAL cuando la fila no trae la columna',
+  SGADD.torneoDeFila({ EQUIPO: 'A' }) === SGADD.TORNEO_GENERAL);
+check('torneoDeFila mayusculiza: "apertura" y "APERTURA" son el mismo torneo',
+  SGADD.torneoDeFila({ TORNEO: 'apertura' }) === 'APERTURA');
+
+/* --- El scope del índice: dos "REGULAR" homónimos no se colapsan --- */
+const idxAp = SGADD.construirIndice(libroDosTorneos, { fase: 'REGULAR', torneo: 'APERTURA' });
+const idxCl = SGADD.construirIndice(libroDosTorneos, { fase: 'REGULAR', torneo: 'CLAUSURA' });
+check('el índice de Apertura toma los PTS de Apertura',
+  idxAp.get('ATENAS A') && idxAp.get('ATENAS A').promedios['PTS'] === 80,
+  idxAp.get('ATENAS A') && idxAp.get('ATENAS A').promedios['PTS']);
+check('el índice de Clausura toma los PTS de Clausura, sin pisar al otro',
+  idxCl.get('ATENAS A') && idxCl.get('ATENAS A').promedios['PTS'] === 60,
+  idxCl.get('ATENAS A') && idxCl.get('ATENAS A').promedios['PTS']);
+check('cada torneo cuenta sus propios equipos, no la suma de los dos',
+  idxAp.liga.n === 2 && idxCl.liga.n === 2, idxAp.liga.n + '/' + idxCl.liga.n);
+check('el índice recuerda a qué torneo pertenece',
+  idxAp.liga.torneo === 'APERTURA' && idxCl.liga.torneo === 'CLAUSURA');
+check('sin torneo pedido, el índice es GENERAL y no filtra nada',
+  SGADD.construirIndice(libroDosTorneos, { fase: 'REGULAR' }).liga.torneo === SGADD.TORNEO_GENERAL);
+
+/* Retrocompatibilidad: la planilla vieja no tiene TORNEO y tiene que
+   indexarse igual, sin que el filtro le vacíe las filas. */
+const libroViejo = { 'PROMEDIOS E': { cols: ['EQUIPO', 'FASE', 'PJ', 'PTS'], filas: [
+  { EQUIPO: 'ATENAS A', FASE: 'REGULAR', PJ: '5', PTS: '80' },
+  { EQUIPO: 'GIMNASIA', FASE: 'REGULAR', PJ: '5', PTS: '70' },
+] } };
+check('una planilla sin columna TORNEO se indexa igual bajo GENERAL',
+  SGADD.construirIndice(libroViejo, { fase: 'REGULAR' }).liga.n === 2);
+check('y tampoco se vacía si alguien le pide un torneo que no existe: las filas sin torneo pasan siempre',
+  SGADD.construirIndice(libroViejo, { fase: 'REGULAR', torneo: 'APERTURA' }).liga.n === 2);
+
+/* --- Ruteo #/<planilla>/<torneo>/<fase>/<seccion>/... --- */
+const rNuevo = SGADD.Ruta.parse('#/primera/APERTURA/REGULAR/equipos/atenas-a/plantel');
+check('Ruta.parse lee el torneo del formato nuevo',
+  rNuevo.torneo === 'APERTURA' && rNuevo.fase === 'REGULAR' && rNuevo.seccion === 'equipos',
+  JSON.stringify(rNuevo));
+check('y no se come la entidad ni el tab al correr un nivel',
+  rNuevo.entidad === 'atenas-a' && rNuevo.tab === 'plantel');
+
+/* El formato viejo tiene que seguir andando: hay links compartidos y
+   favoritos guardados con #/<planilla>/<fase>/<seccion>. La detección usa
+   el vocabulario cerrado de SECCIONES, que es finito y conocido. */
+const rViejo = SGADD.Ruta.parse('#/primera/REGULAR/equipos/atenas-a/plantel');
+check('Ruta.parse sigue leyendo el formato viejo, sin torneo',
+  rViejo.torneo === null && rViejo.fase === 'REGULAR' && rViejo.seccion === 'equipos',
+  JSON.stringify(rViejo));
+check('en el formato viejo la entidad y el tab tampoco se corren',
+  rViejo.entidad === 'atenas-a' && rViejo.tab === 'plantel');
+check('un hash corto viejo (#/planilla/fase/seccion) se sigue entendiendo',
+  (() => { const r = SGADD.Ruta.parse('#/primera/REGULAR/jugadores');
+    return r.torneo === null && r.fase === 'REGULAR' && r.seccion === 'jugadores'; })());
+check('SECCIONES es el vocabulario que decide el formato y están las 6',
+  SGADD.SECCIONES.length === 6 &&
+  ['principal', 'equipos', 'jugadores', 'scouting', 'simulador', 'diagnostico']
+    .every(s => SGADD.SECCIONES.indexOf(s) !== -1), SGADD.SECCIONES.join(','));
+
+const hashNuevo = SGADD.Ruta.build({ planilla: 'primera', torneo: 'APERTURA', fase: 'REGULAR',
+  seccion: 'equipos', entidad: 'atenas-a', tab: 'plantel' });
+check('Ruta.build inserta el torneo entre planilla y fase',
+  hashNuevo === '#/primera/APERTURA/REGULAR/equipos/atenas-a/plantel', hashNuevo);
+check('roundtrip build→parse conserva el torneo',
+  SGADD.Ruta.parse(hashNuevo).torneo === 'APERTURA');
+/* GENERAL no se escribe: una planilla de un solo torneo no tiene por qué
+   arrastrar un /GENERAL/ en cada link que comparte el DT. */
+check('Ruta.build OMITE el torneo cuando es GENERAL',
+  SGADD.Ruta.build({ planilla: 'primera', torneo: SGADD.TORNEO_GENERAL, fase: 'REGULAR', seccion: 'equipos' })
+    === '#/primera/REGULAR/equipos');
+check('Ruta.build sin torneo escribe el formato viejo, igual que antes',
+  SGADD.Ruta.build({ planilla: 'primera', fase: 'REGULAR', seccion: 'equipos' })
+    === '#/primera/REGULAR/equipos');
+check('roundtrip del formato viejo: parse(build()) no inventa un torneo',
+  SGADD.Ruta.parse(SGADD.Ruta.build({ planilla: 'primera', fase: 'REGULAR', seccion: 'jugadores' })).torneo === null);
+check('el torneo también se codifica: un nombre con espacio no parte la ruta',
+  SGADD.Ruta.build({ planilla: 'p', torneo: 'COPA DE ORO', fase: 'REGULAR', seccion: 'equipos' })
+    .indexOf('COPA%20DE%20ORO') !== -1);
+check('y vuelve entero al parsear',
+  SGADD.Ruta.parse(SGADD.Ruta.build({ planilla: 'p', torneo: 'COPA DE ORO', fase: 'REGULAR', seccion: 'equipos' })).torneo === 'COPA DE ORO');
 
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');

@@ -109,6 +109,28 @@ check('sin Base Datos J, el partido existe igual', pSinBox && pSinBox.completo &
 check('y analizar() no revienta',
   !!P.analizar(sinBox, pSinBox, pSinBox.lados.find(l => l.equipo.clave === 'RECONQUISTA A')));
 
+
+/* --- `+/-` en el box score (MotorStats v30+) --- */
+console.log('\n8. COLUMNA +/- EN EL BOX SCORE');
+console.log('═'.repeat(70));
+check('+/- es una columna del box score', P.COLS_BOX.indexOf('+/-') !== -1);
+check('va última: no es producción del jugador, es cómo le fue al equipo con él adentro',
+  P.COLS_BOX[P.COLS_BOX.length - 1] === '+/-', P.COLS_BOX.join(','));
+/* Marcar un +/- como "atípico contra su propio promedio" no dice nada del
+   jugador: depende de los otros cuatro que estaban en cancha. */
+check('NO entra en COLS_DESVIO: el +/- depende del resto del quinteto',
+  P.COLS_DESVIO.indexOf('+/-') === -1);
+check('los desvíos siguen siendo los cuatro de siempre',
+  P.COLS_DESVIO.join(',') === 'PTS,RT,AST,PLAYS', P.COLS_DESVIO.join(','));
+
+/* Regla de negocio verificada por el motor en su v31: con 5 en cancha,
+   sumar la columna da ~5x el margen real. El total de equipo NO se suma. */
+check('el margen del equipo sale de SGADD.masMenosEquipo, no de sumar la columna', (function () {
+  var box = [19, 19, 19, 19, 19].map(function (v) { return { '+/-': v }; });
+  var suma = box.reduce(function (a, j) { return a + j['+/-']; }, 0);
+  return SGADD.masMenosEquipo(88, 69) === 19 && suma === 95;
+})());
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

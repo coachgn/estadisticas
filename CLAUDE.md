@@ -11,20 +11,20 @@ principiante sobre el contenido técnico.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 122 tests · núcleo, índice, validador
+node test-core.js          # 159 tests · núcleo, índice, validador
 node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  22 tests · multi-cliente
 node test-boot.js          #  16 tests · arranque por club
-node test-jugadores.js     # 132 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
+node test-jugadores.js     # 136 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
-node test-partido.js       #  17 tests · detalle partido a partido
+node test-partido.js       #  22 tests · detalle partido a partido
 node test-scouting.js      # 239 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 ```
 
-**695 tests en total. Todos tienen que dar verde antes de commitear.**
+**742 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -74,7 +74,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=46`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=47`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -105,24 +105,125 @@ motor (PLAY vs POS, PPP por play, RTNG por 100 plays, EQUIPO TIPO = mediana en
 escala por partido, tasas que se recalculan en vez de promediarse). Ver
 [`INTEGRACION_MOTORSTATS.md`](INTEGRACION_MOTORSTATS.md) para el detalle.
 
-**Tres columnas que el motor escribe y este panel todavía no usa** (clave `motor`
-del ESQUEMA, NO `opt` — ver punto 5):
+**Tres columnas que el motor escribe** (clave `motor` del ESQUEMA, NO `opt` —
+ver punto 5). Las tres están soportadas; `ID_ARCHIVO` es la única que el panel
+todavía no muestra:
 
-| Columna | Desde | Dónde |
-|---|---|---|
-| `+/-` | v30 | las 3 hojas de jugador |
-| `ID_ARCHIVO` | v43 | las 3 maestras |
-| `TORNEO` | v44 | las 9 hojas |
+| Columna | Desde | Dónde | Estado en SGADD |
+|---|---|---|---|
+| `+/-` | v30 | las 3 hojas de jugador | **se muestra** (punto 3 bis) |
+| `ID_ARCHIVO` | v43 | las 3 maestras | leída, sin uso en la UI |
+| `TORNEO` | v44 | las 9 hojas | **scopea el índice** (punto 3 ter) |
 
 Las planillas de Reconquista están en esquema **pre-v43** y no traen ninguna.
-Verificado que una planilla v52 **no rompe** el panel: 0 errores de esquema.
+Verificado que una planilla v52 **no rompe** el panel: 0 errores de esquema. Y
+que sin esas columnas todo sigue igual que antes: retrocompatibilidad probada
+con tests y en el navegador.
 
-**El día que el club migre y cargue dos torneos en una misma planilla, SGADD los
-colapsa**: agrupa por `EQUIPO + FASE` y desde v47 la columna `FASE` guarda la fase
-limpia, así que lo que distingue un tramo de otro es el par `TORNEO + FASE`. Es el
-mismo defecto que el motor corrigió en su v49. `validarTorneo()` lo detecta y lo
-marca en rojo en el Diagnóstico; la corrección de fondo (meter `TORNEO` en la clave
-del índice) está pendiente y toca las 4 secciones.
+---
+
+## 3 bis. La métrica `+/-`
+
+`M('+/-', …, formato 'signo')` en `sgadd-core.js`. Se muestra en:
+
+- **Box score del partido** (`SGADD_PARTIDO.COLS_BOX`), última columna.
+- **Tab Partidos** de la ficha del jugador.
+- **Plantel** (tab de Equipos) y las cards del plantel filtrado en Jugadores.
+- **Tabla "Marcador y contexto"** del Tab General y el ranking de producción.
+
+Tres decisiones que hay que respetar al tocarlo:
+
+1. **El `+/-` de un EQUIPO es el margen del partido, NO la suma de los
+   individuales.** Con 5 en cancha esa suma da ~5x el margen (el motor lo
+   verificó en su v31: ±95 donde el partido se ganó por 19). Por eso existe
+   `SGADD.masMenosEquipo(ptsPropios, ptsRival)` y por eso el box score **no
+   tiene fila de totales** en esa columna: una fila de totales invitaría
+   justamente a sumarla. El margen del equipo va como badge al lado del
+   título del box score.
+2. **No entra en `COLS_DESVIO` ni se usa como criterio de orden en ningún
+   ranking.** Marcar un `+/-` como "atípico contra su propio promedio" no dice
+   nada del jugador: depende de los otros cuatro que estaban en cancha.
+   Ordenar un top 20 por `+/-` daría un ranking del equipo disfrazado de
+   ranking de jugadores.
+3. **El color es a propósito más apagado** que el verde/rojo de los
+   rendimientos atípicos (`.mm-pos` / `.mm-neg` / `.mm-cero`, definidas a mano
+   en el `<style>` del `index.html` porque el JIT de Tailwind no genera clases
+   para nodos inyectados). Dos semáforos con la misma intensidad en la misma
+   tabla no se leen. El cero va neutro: ni bueno ni malo.
+
+El formato `signo` da `+12`, `-5`, `0` para enteros (el dato de un partido) y
+`+3,4` para promedios. Sin el `+` adelante un `+/-` se lee como un total.
+
+Donde la planilla no trae la columna, las tablas fijas muestran `—` y las
+listas opcionales (cards del plantel, fila de "Marcador y contexto") **omiten
+el dato**: una fila muerta permanente es ruido, no información.
+
+---
+
+## 3 ter. Multi-torneo · el índice se scopea, `claveEquipo()` NO se toca
+
+Un libro puede traer Apertura y Clausura con la **misma** `FASE` ("REGULAR") y
+los mismos equipos. Sin scopear, las filas del segundo torneo pisan a las del
+primero y nadie se entera — el mismo defecto que el motor corrigió en su v49.
+
+**El índice se construye scopeado a UNA competencia:**
+`SGADD.construirIndice(hojas, { fase, torneo })`. El torneo elegido queda en
+`idx.liga.torneo`.
+
+**Por qué NO se metió el torneo en `claveEquipo()`** (era el pedido literal:
+`TORNEO|EQUIPO|FASE`). Esa función es el **normalizador de nombres**
+(`"ATENAS 'A' - MM"` → `ATENAS A`) y la usan cuatro cosas más:
+
+1. la resolución de escudos (`LOGOS`),
+2. `esEquipoPropio()`,
+3. los slugs de la URL (`claveEquipo(x).toLowerCase().replace(/\s+/g,'-')`),
+4. y —crítico— la **extracción del rival**, que parte el texto `"A vs B"` del
+   campo `PARTIDO` y compara cada lado contra el equipo propio
+   (`jugadoresRival`, `equiposRival`).
+
+Ese texto **no tiene torneo ni fase**. Una clave compuesta ahí nunca volvería a
+matchear y todos los rivales de la app quedarían en blanco. Scopear el índice da
+exactamente el mismo resultado —dos `REGULAR` de torneos distintos jamás se
+colapsan— sin tocar nada de eso. Hay tests que fijan las dos cosas.
+
+### Reglas del scope
+
+- **`GENERAL` es el torneo por defecto**: la planilla no trae la columna, todo
+  el libro es una sola competencia y no se filtra nada.
+- **Una fila SIN torneo pasa siempre**, aunque se esté filtrando. Si un libro
+  trae `TORNEO` en `PROMEDIOS E` pero no en `Base Datos J` (convención mixta
+  entre carpetas del motor), descartarla dejaría la sección de jugadores vacía
+  sin decir por qué. Dejarla pasar como mucho mezcla filas sin atribuir, que es
+  la degradación barata — y de eso ya avisa `validarTorneo()`.
+- **`validarTorneo()` bajó de error a AVISO** en el caso de dos torneos en una
+  hoja: con el índice scopeado ya no se pisan. Queda como aviso informativo de
+  que se está viendo un recorte.
+
+### Estado global y selector
+
+`SGADD_APP.estado.torneo` es global, igual que planilla y fase. El selector
+**Torneo** aparece en la barra superior SOLO si el libro trae más de uno: con
+una planilla por torneo —que es como trabajan todos los clubes hoy— sería un
+desplegable de una sola opción ocupando lugar. Cambiar de planilla resetea el
+torneo (es del libro anterior) y `cargar()` lo revalida contra los torneos
+reales del libro nuevo.
+
+### Ruta: `#/<planilla>/<torneo>/<fase>/<seccion>/…`
+
+El torneo entra como **segundo** nivel. La retrocompatibilidad no es opcional:
+hay links compartidos y favoritos con el formato viejo
+`#/<planilla>/<fase>/<seccion>`.
+
+`Ruta.parse()` distingue los dos formatos con el **vocabulario cerrado de
+`SGADD.SECCIONES`** (6 nombres, finitos y conocidos): si `partes[3]` es una
+sección conocida, es el formato nuevo. `Ruta.build()` **omite** el torneo
+cuando es `GENERAL`, así una planilla de un solo torneo no arrastra un
+`/GENERAL/` en cada link que comparte el DT.
+
+Cada sección lee el torneo del hash con `SGADD_APP.aplicarTorneoRuta(r.torneo)`
+dentro de su `leerRuta()` y lo escribe con `torneo: SGADD_APP.estado.torneo` en
+su `Ruta.build()`. El torneo **no** vive en el estado de la sección: es global,
+pero viaja en la URL para que un link compartido lo pueda cambiar.
 
 ---
 
@@ -1127,6 +1228,14 @@ factor — a diferencia del Pearson crudo del original).
   `PARTIDO`, no por fecha (ver la regla de `idPartido()` en el punto 3).
   Sumar el mismo join que ya tiene `4 FACTORES` sería la forma prolija de
   cerrar esto de raíz.
+  **Consecuencia medida (2026-08-10, Primera · Clausura 2026):** en esa
+  planilla la `FECHA` viene vacía en las 1726 filas de `Base Datos J`, así que
+  su `idPartido()` da `sf_…` y NUNCA matchea el `2026-05-05_…` de
+  `Base Datos E`. Resultado: `partido.conBox === false` en los 72 partidos y
+  **el box score del detalle de partido no se dibuja nunca** — sale "Sin box
+  score cargado para este partido". No es un bug del render (verificado
+  inyectando el join en memoria: la tabla, la columna `+/-` y el badge de
+  margen salen bien); es este join que falta. Es lo primero a arreglar acá.
 - Sin columnas de cuartos/parciales. Hay un hook comentado en el detalle de
   partido listo para cuando existan.
 - **El acceso es público.** Los `sheetId` están en los JSON, que son archivos

@@ -15,6 +15,7 @@ const SGADD_APP = (function () {
 
   const estado = {
     planillaId: null,
+    torneo: null,        // null = todavía no se resolvió contra el libro
     fase: 'REGULAR',
     hojas: null,
     idx: null,
@@ -37,6 +38,7 @@ const SGADD_APP = (function () {
       ? r.planilla
       : (activas.length ? activas[0].id : null);
     if (r.fase) estado.fase = r.fase;
+    if (r.torneo) estado.torneo = r.torneo;
   }
 
   /** Carga la planilla activa. Idempotente: si ya está, resuelve al toque. */
@@ -54,6 +56,11 @@ const SGADD_APP = (function () {
       estado.hojas = hojas;
       const fases = SGADD.fasesDisponibles(hojas);
       if (fases.length && !fases.some(f => f.id === estado.fase)) estado.fase = fases[0].id;
+      /* El torneo del hash puede no existir en ESTE libro (link viejo, o
+         se cambió de categoría): se cae al primero disponible en vez de
+         indexar una competencia vacía. */
+      const torneos = SGADD.torneosDisponibles(hojas);
+      if (!estado.torneo || !torneos.some(t => t.id === estado.torneo)) estado.torneo = torneos[0].id;
       reindexar();
     } catch (e) {
       estado.error = e.message || String(e);
@@ -65,13 +72,38 @@ const SGADD_APP = (function () {
 
   function reindexar() {
     if (!estado.hojas) return;
-    estado.idx = SGADD.construirIndice(estado.hojas, { fase: estado.fase });
+    estado.idx = SGADD.construirIndice(estado.hojas, { fase: estado.fase, torneo: estado.torneo });
+  }
+
+  function torneos() {
+    return estado.hojas ? SGADD.torneosDisponibles(estado.hojas)
+      : [{ id: SGADD.TORNEO_GENERAL, label: 'Todos', unico: true }];
+  }
+
+  function cambiarTorneo(t) {
+    if (t === estado.torneo) return;
+    estado.torneo = t;
+    reindexar();
+    avisar();
+  }
+
+  /* Sincroniza el torneo que trae el hash con el estado global. La llaman
+     los `leerRuta()` de cada sección: el torneo NO vive en el estado de la
+     sección (es una decisión global, igual que planilla y fase), pero sí
+     viaja en la URL, así que un link compartido tiene que poder cambiarlo.
+     Si el libro ya está cargado, reindexa; si todavía no, `cargar()` lo
+     valida contra los torneos reales del libro. */
+  function aplicarTorneoRuta(t) {
+    if (!t || t === estado.torneo) return;
+    estado.torneo = t;
+    if (estado.hojas) reindexar();
   }
 
   function cambiarPlanilla(id) {
     if (id === estado.planillaId) return;
     estado.planillaId = id;
-    estado.hojas = null; estado.idx = null;
+    /* El torneo es del libro anterior: se vuelve a resolver al cargar. */
+    estado.hojas = null; estado.idx = null; estado.torneo = null;
     // La capa de datos vieja también tiene que seguir al selector.
     if (typeof window !== 'undefined' && typeof window.onCategoriaCambiada === 'function') {
       window.onCategoriaCambiada(id);
@@ -114,6 +146,19 @@ const SGADD_APP = (function () {
       ? `${estado.idx.liga.n} equipos · ${estado.idx.liga.partidos} partidos · PJ mediano ${estado.idx.liga.pjMediano}`
       : (estado.cargando ? 'Cargando…' : '');
 
+    /* El selector de torneo aparece SOLO si el libro trae más de uno. Con
+       una planilla por torneo —que es como trabajan todos los clubes hoy—
+       sería un desplegable de una sola opción ocupando lugar. */
+    const listaTorneos = torneos();
+    const selectorTorneo = listaTorneos.length <= 1 ? '' : `
+          <div class="sm:w-44">
+            <label class="block text-[11px] uppercase tracking-wider text-muted font-display mb-1">Torneo</label>
+            <select onchange="SGADD_APP.cambiarTorneo(this.value)"
+              class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm focus:border-accent outline-none">
+              ${listaTorneos.map(t => `<option value="${SGADD_UI.esc(t.id)}" ${t.id === estado.torneo ? 'selected' : ''}>${SGADD_UI.esc(t.label)}</option>`).join('')}
+            </select>
+          </div>`;
+
     return `
       <div class="card rounded-xl p-3 sm:p-4 border border-hairline">
         <div class="flex flex-col sm:flex-row sm:items-end gap-3">
@@ -124,6 +169,7 @@ const SGADD_APP = (function () {
               ${opts}
             </select>
           </div>
+          ${selectorTorneo}
           <div class="sm:w-44">
             <label class="block text-[11px] uppercase tracking-wider text-muted font-display mb-1">Fase</label>
             <select onchange="SGADD_APP.cambiarFase(this.value)"
@@ -156,8 +202,8 @@ const SGADD_APP = (function () {
   });
 
   return {
-    estado, inicializar, cargar, reindexar, cambiarPlanilla, cambiarFase,
-    planillaActual, fases, barra, avisoMuestra, onCambio,
+    estado, inicializar, cargar, reindexar, cambiarPlanilla, cambiarFase, cambiarTorneo,
+    aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, onCambio,
     get idx() { return estado.idx; },
   };
 })();

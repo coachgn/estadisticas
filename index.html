@@ -105,6 +105,16 @@
   .text-green-400 { color: #4ade80 !important; }
   .text-red-400 { color: #f87171 !important; }
   .text-yellow-400 { color: #facc15; }
+
+  /* +/- del jugador. A propósito MÁS APAGADO que el verde/rojo de arriba:
+     esos marcan rendimientos atípicos y son un hallazgo; el +/- es una
+     columna de contexto. Dos semáforos con la misma intensidad en la misma
+     tabla no se leen. Van a mano y no con utilidades de Tailwind porque el
+     JIT del CDN no genera clases para nodos inyectados dinámicamente. */
+  .mm-pos  { color: #6ee7a8 !important; opacity: .75; }
+  .mm-neg  { color: #f4a5a5 !important; opacity: .75; }
+  .mm-cero { color: #8b93a0 !important; }
+
   .border-green-400 { border-color: #4ade80; }
   .border-red-400 { border-color: #f87171; }
 
@@ -600,20 +610,20 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=46"></script>
-<script src="js/sgadd-core.js?v=46"></script>
-<script src="js/sgadd-ui.js?v=46"></script>
-<script src="js/sgadd-app.js?v=46"></script>
-<script src="js/sgadd-charts.js?v=46"></script>
-<script src="js/sgadd-personalidad.js?v=46"></script>
-<script src="js/sgadd-rankings.js?v=46"></script>
-<script src="js/sgadd-partido.js?v=46"></script>
-<script src="js/sgadd-informe.js?v=46"></script>
-<script src="js/sgadd-equipos.js?v=46"></script>
-<script src="js/sgadd-jugadores.js?v=46"></script>
-<script src="js/sgadd-4factores.js?v=46"></script>
-<script src="js/sgadd-scouting.js?v=46"></script>
-<script src="js/sgadd-diagnostico.js?v=46"></script>
+<script src="js/sgadd-club.js?v=47"></script>
+<script src="js/sgadd-core.js?v=47"></script>
+<script src="js/sgadd-ui.js?v=47"></script>
+<script src="js/sgadd-app.js?v=47"></script>
+<script src="js/sgadd-charts.js?v=47"></script>
+<script src="js/sgadd-personalidad.js?v=47"></script>
+<script src="js/sgadd-rankings.js?v=47"></script>
+<script src="js/sgadd-partido.js?v=47"></script>
+<script src="js/sgadd-informe.js?v=47"></script>
+<script src="js/sgadd-equipos.js?v=47"></script>
+<script src="js/sgadd-jugadores.js?v=47"></script>
+<script src="js/sgadd-4factores.js?v=47"></script>
+<script src="js/sgadd-scouting.js?v=47"></script>
+<script src="js/sgadd-diagnostico.js?v=47"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

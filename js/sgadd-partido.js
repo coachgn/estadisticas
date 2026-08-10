@@ -39,8 +39,13 @@ const SGADD_PARTIDO = (function () {
   /* PLAYS entre PTS y T2C: dice cuántas posesiones usó cada jugador, que es
      el contexto que le falta a los puntos sueltos. VAL sale: es un índice
      compuesto que ya está resumido en el resto de las columnas. */
+  /* `+/-` va ÚLTIMO y no entre PTS y PLAYS: no es producción del jugador,
+     es cómo le fue al equipo con él adentro. Si la planilla todavía no la
+     trae (Reconquista hoy), la columna sale con "—" y no rompe nada.
+     OJO: NO existe fila de totales de esta columna. El +/- del equipo es el
+     margen del partido (SGADD.masMenosEquipo), nunca la suma de los cinco. */
   const COLS_BOX = ['MIN', 'PTS', 'PLAYS', 'T2C', 'T2I', 'T3C', 'T3I', 'T1C', 'T1I',
-                    'RT', 'AST', 'PR', 'PP'];
+                    'RT', 'AST', 'PR', 'PP', '+/-'];
 
   /* En cuáles marcamos desvío. Contar rebotes de un partido contra el
      promedio tiene sentido; el T3% de 2 intentos, no. */

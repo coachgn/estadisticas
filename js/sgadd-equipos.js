@@ -42,6 +42,7 @@ function equiposLeerRuta() {
   if (r.seccion !== 'equipos') return false;
   if (r.planilla) EQUIPOS.planillaId = r.planilla;
   if (r.fase) EQUIPOS.fase = r.fase;
+  SGADD_APP.aplicarTorneoRuta(r.torneo);
   EQUIPOS.equipo = r.entidad || null;
   EQUIPOS.tab = r.tab || 'general';
   EQUIPOS.partido = r.sub || null;   // id del partido abierto, si hay
@@ -51,6 +52,7 @@ function equiposLeerRuta() {
 function equiposEscribirRuta(reemplazar) {
   const h = SGADD.Ruta.build({
     planilla: EQUIPOS.planillaId,
+    torneo: SGADD_APP.estado.torneo,
     fase: EQUIPOS.fase,
     seccion: 'equipos',
     entidad: EQUIPOS.equipo,
@@ -575,13 +577,13 @@ function equiposTabCondicion(idx, e) {
 
 function equiposTabPlantel(idx, e) {
   const jug = (e.jugadores || []).slice().sort((a, b) => (b['MIN'] || 0) - (a['MIN'] || 0));
-  const cols = ['MIN', 'PTS', 'USG%', 'TS%', 'eFG%', 'AST-PP', 'VAL'];
+  const cols = ['MIN', 'PTS', 'USG%', 'TS%', 'eFG%', 'AST-PP', 'VAL', '+/-'];
 
   const filas = jug.map(j => {
     const cal = j.__califica;
     return `<tr class="border-b border-hairline/40 last:border-0 ${cal ? '' : 'opacity-50'}">
       <td class="py-1.5 pr-3 text-xs whitespace-nowrap">${escapeHtml(j['NOMBRES'])}</td>
-      ${cols.map(c => `<td class="py-1.5 pr-3 font-mono text-xs">${escapeHtml(SGADD.formatear(c, j[c]))}</td>`).join('')}
+      ${cols.map(c => `<td class="py-1.5 pr-3 font-mono text-xs ${c === '+/-' ? SGADD_UI.claseMasMenos(j[c]) : ''}">${escapeHtml(SGADD.formatear(c, j[c]))}</td>`).join('')}
       <td class="py-1.5 text-[10px] ${cal ? 'text-muted' : 'text-yellow-400'}">${cal ? '' : 'pocos min'}</td>
     </tr>`;
   }).join('');
@@ -970,6 +972,16 @@ function equiposDetallePartido(idx, e, id) {
       return `<div><h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">${escapeHtml(titulo)}</h5>
               <p class="text-xs dato-sec">Sin box score cargado para este partido.</p></div>`;
     }
+    /* El +/- del EQUIPO es el margen del partido, no la suma de la columna:
+       con 5 en cancha esa suma da ~5x el margen. Por eso sale de
+       SGADD.masMenosEquipo y va en el encabezado, no como fila de totales
+       (una fila de totales invitaría justamente a sumar la columna). */
+    const margen = SGADD.masMenosEquipo(lado.fila['PTS'],
+      lado.rivalFila ? lado.rivalFila['PTS'] : lado.fila['PTSopp']);
+    const badgeMargen = margen === null ? '' :
+      `<span class="ml-2 font-mono normal-case ${SGADD_UI.claseMasMenos(margen)}"
+             title="Margen del partido. El +/- del equipo NO es la suma de los +/- individuales.">
+         ${escapeHtml(SGADD.formatear('+/-', margen))}</span>`;
     const cols = SGADD_PARTIDO.COLS_BOX;
     const filas = desvios.map(d => {
       const j = d.fila;
@@ -987,7 +999,10 @@ function equiposDetallePartido(idx, e, id) {
           ${cols.map(c => {
             const m = d.marcas[c];
             const marcado = m && m.atipico && d.fiable;
-            return `<td class="py-1.5 pr-2 font-mono text-xs ${marcado ? (m.z > 0 ? 'text-green-400 font-medium' : 'text-red-400 font-medium') : 'text-white'}"
+            /* El +/- lleva su propio color tenue: no compite con el marcado
+               de atípicos, que es el semáforo fuerte de esta tabla. */
+            const base = c === '+/-' ? SGADD_UI.claseMasMenos(j[c]) : 'text-white';
+            return `<td class="py-1.5 pr-2 font-mono text-xs ${marcado ? (m.z > 0 ? 'text-green-400 font-medium' : 'text-red-400 font-medium') : base}"
                      ${m ? `title="promedio ${SGADD.formatear(c, m.media)} en ${m.n} partidos"` : ''}>
               ${escapeHtml(SGADD.formatear(c, j[c]))}${marcado ? `<span class="text-[9px] block leading-none">${signoNum(m.delta)}</span>` : ''}
             </td>`;
@@ -997,7 +1012,7 @@ function equiposDetallePartido(idx, e, id) {
 
     return `
       <div>
-        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">${escapeHtml(titulo)}</h5>
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">${escapeHtml(titulo)}${badgeMargen}</h5>
         <div class="scrollbox">
           <table class="w-full">
             <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
@@ -1015,6 +1030,8 @@ function equiposDetallePartido(idx, e, id) {
       Verde y rojo marcan rendimientos atípicos <b>para ese jugador</b>: más de ${SGADD_PARTIDO.Z_ATIPICO}
       desvíos estándar sobre su propio promedio. El número chico debajo es la diferencia contra ese promedio.
       Los atenuados jugaron menos de ${SGADD_PARTIDO.MIN_MINUTOS} minutos.
+      <b>+/-</b> es la diferencia de puntos con el jugador en cancha; el que va al lado del título es el
+      margen del equipo en el partido, que <b>no</b> es la suma de los individuales (en cancha hay cinco a la vez).
     </p>`;
 
   /* Los dos box scores van lado a lado: en A4 juntos se llevan la mitad de

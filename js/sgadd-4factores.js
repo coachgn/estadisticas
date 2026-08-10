@@ -572,6 +572,7 @@ function simuladorLeerRuta() {
   if (r.seccion !== 'simulador') return false;
   if (r.planilla) SIMULADOR.planillaId = r.planilla;
   if (r.fase) SIMULADOR.fase = r.fase;
+  SGADD_APP.aplicarTorneoRuta(r.torneo);
   SIMULADOR.equipoLocal = r.entidad || null;
   SIMULADOR.equipoVisitante = r.tab || null;
   return true;
@@ -579,7 +580,7 @@ function simuladorLeerRuta() {
 
 function simuladorEscribirRuta(reemplazar) {
   const h = SGADD.Ruta.build({
-    planilla: SIMULADOR.planillaId, fase: SIMULADOR.fase, seccion: 'simulador',
+    planilla: SIMULADOR.planillaId, torneo: SGADD_APP.estado.torneo, fase: SIMULADOR.fase, seccion: 'simulador',
     entidad: SIMULADOR.equipoLocal, tab: SIMULADOR.equipoVisitante,
   });
   if (reemplazar) history.replaceState(null, '', h);

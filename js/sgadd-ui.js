@@ -186,7 +186,19 @@ const SGADD_UI = (function () {
       </div>`;
   }
 
-  return { esc, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, signoDelta, colorDelta };
+  /* Color del +/-. Deliberadamente TENUE, y con clases propias definidas a
+     mano en el <style> del index.html en vez de utilidades de Tailwind: son
+     nodos inyectados dinámicamente y el JIT del CDN no las genera (misma
+     razón que los respaldos de text-accent / text-ink). El verde y el rojo
+     plenos ya los usa el marcado de rendimientos atípicos del box score; si
+     el +/- compitiera con eso, la tabla tendría dos semáforos y no se leería
+     ninguno. El 0 va neutro: ni bueno ni malo. */
+  function claseMasMenos(v) {
+    if (typeof v !== 'number' || !isFinite(v) || v === 0) return 'mm-cero';
+    return v > 0 ? 'mm-pos' : 'mm-neg';
+  }
+
+  return { esc, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, signoDelta, colorDelta, claseMasMenos };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_UI;

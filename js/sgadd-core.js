@@ -317,6 +317,52 @@
   }
 
   /* =====================================================================
+     TORNEO — la competencia, por encima de la fase
+
+     Desde MotorStats v44 las planillas traen la columna `TORNEO`, y desde
+     v47 `FASE` guarda la fase LIMPIA ("REGULAR"). Lo que distingue un
+     tramo de otro es el par TORNEO + FASE: dos "REGULAR" de torneos
+     distintos son competencias distintas y no se pueden mezclar.
+
+     Las planillas pre-v44 no traen la columna. Para esas, TODO el libro es
+     una sola competencia y se la llama `GENERAL`. No es un valor que
+     aparezca en ningún dato: es la etiqueta del caso "sin torneo", y
+     existe para que el resto del código no tenga que preguntar dos veces.
+     ===================================================================== */
+  const TORNEO_GENERAL = 'GENERAL';
+
+  /** El torneo de una fila, o GENERAL si la planilla no trae la columna. */
+  function torneoDeFila(fila) {
+    const t = texto(fila && fila['TORNEO']).toUpperCase();
+    return t || TORNEO_GENERAL;
+  }
+
+  /**
+   * Torneos presentes en el libro. Con una planilla pre-v44 devuelve un
+   * único `GENERAL`, así que la UI puede tratar los dos casos igual y
+   * simplemente no mostrar el selector cuando hay uno solo.
+   */
+  function torneosDisponibles(hojas) {
+    const vistos = new Set();
+    let hayColumna = false;
+    ['PROMEDIOS E', 'PROMEDIOS 4F', 'Base Datos E', 'PROMEDIOS J'].forEach(n => {
+      const h = hojas[n];
+      if (!h) return;
+      if (h.cols.indexOf('TORNEO') === -1) return;
+      hayColumna = true;
+      const idTipo = ESQUEMA[n] ? ESQUEMA[n].filaTipo : null;
+      h.filas.forEach(f => {
+        if (esFilaTipo(f, idTipo)) return;   // la fila TIPO de liga va sin torneo
+        const v = texto(f['TORNEO']).toUpperCase();
+        if (v) vistos.add(v);
+      });
+    });
+    if (!hayColumna || !vistos.size) return [{ id: TORNEO_GENERAL, label: 'Todos', unico: true }];
+    return Array.from(vistos).sort()
+      .map(id => ({ id: id, label: id.charAt(0) + id.slice(1).toLowerCase(), unico: false }));
+  }
+
+  /* =====================================================================
      2. METRICAS — el registro único de verdad
      `hoja`      : quién manda. Si la métrica está en dos hojas, gana esta.
      `invertida` : true = menos es mejor.
@@ -427,15 +473,17 @@
       'Porcentaje de plays del equipo que termina el jugador mientras está en cancha.'),
 
     /* [MotorStats v30/v33] Sólo en las 3 hojas de jugador, y sólo si la
-       planilla ya migró: las de Reconquista todavía no la traen. Se registra
-       para que `leer`/`formatear` la manejen si aparece, pero NO se sumó a
-       ninguna VISTA — meterla en el box score es una decisión de UI aparte.
+       planilla ya migró: las de Reconquista todavía no la traen. Si falta,
+       `leer`/`formatear` devuelven "—" y las tablas que la muestran quedan
+       con una columna vacía: no rompe nada.
 
        OJO al leer un total de equipo: el `+/-` del equipo es el margen del
        partido (PTS − PTSopp), NUNCA la suma de los individuales. Con 5
        jugadores en cancha esa suma da 5x el margen (verificado por el motor
-       en v31: ±95 en vez de ±19). */
-    M('+/-', 'Más/menos', 'PROMEDIOS J', 'num1', false, 'jugador',
+       en v31: ±95 en vez de ±19). Por eso el margen de equipo se calcula en
+       `SGADD.masMenosEquipo()` y NUNCA se agrega una fila de totales a la
+       columna `+/-` del box score. */
+    M('+/-', 'Más/menos', 'PROMEDIOS J', 'signo', false, 'jugador',
       'Diferencia de puntos con el jugador en cancha. A nivel equipo es el margen del partido, no la suma de los individuales.'),
   ];
 
@@ -508,8 +556,32 @@
       case 'int':  return String(Math.round(valor));
       case 'num1': return valor.toFixed(1).replace('.', ',');
       case 'num2': return valor.toFixed(2).replace('.', ',');
+      /* Signo explícito: un +/- sin el "+" adelante se lee como un total y
+         pierde la mitad del sentido. Entero cuando el dato es entero (el
+         de un partido siempre lo es) y con un decimal cuando es promedio;
+         el 0 va pelado, sin signo. */
+      case 'signo': {
+        const r = Number.isInteger(valor) ? String(valor) : valor.toFixed(1).replace('.', ',');
+        return valor > 0 ? '+' + r : r;
+      }
       default:     return String(valor);
     }
+  }
+
+  /* ---------------------------------------------------------------------
+     `+/-` DE EQUIPO — es el margen del partido, NO la suma de los individuales
+
+     Regla de negocio del motor, no un detalle de presentación: en cancha hay
+     5 jugadores a la vez, así que sumar sus `+/-` da ~5x el margen real
+     (verificado por MotorStats en v31: ±95 donde el partido se ganó por 19).
+     Cualquier total de equipo tiene que salir de acá y nunca de un
+     `reduce((a, j) => a + j['+/-'])` sobre el box score.
+     --------------------------------------------------------------------- */
+  function masMenosEquipo(ptsPropios, ptsRival) {
+    const a = (typeof ptsPropios === 'number' && isFinite(ptsPropios)) ? ptsPropios : null;
+    const b = (typeof ptsRival === 'number' && isFinite(ptsRival)) ? ptsRival : null;
+    if (a === null || b === null) return null;
+    return a - b;
   }
 
   /* =====================================================================
@@ -613,23 +685,51 @@
      `jugador` cuando TODOS los niveles anteriores también están completos
      — en la práctica, dentro del detalle de un partido, donde planilla,
      fase, seccion, entidad, tab y sub ya están siempre seteados. */
+  /* Las secciones válidas viven acá y no solo en el index.html porque
+     `Ruta.parse` las necesita para distinguir el formato viejo del nuevo
+     (ver abajo). El router del index.html sigue siendo el dueño de a cuál
+     navegar; esto es solo el vocabulario. */
+  const SECCIONES = ['principal', 'equipos', 'jugadores', 'scouting', 'simulador', 'diagnostico'];
+
   const Ruta = {
+    /**
+     * Formato actual:  #/<planilla>/<torneo>/<fase>/<seccion>/...
+     * Formato anterior: #/<planilla>/<fase>/<seccion>/...
+     *
+     * Los links viejos que el club ya tiene guardados TIENEN que seguir
+     * funcionando, así que se detecta cuál es cuál en vez de romperlos: en
+     * el formato nuevo la sección está en la posición 3, en el viejo en la
+     * 2. Como el vocabulario de secciones es finito y conocido, alcanza con
+     * mirar dónde cae. Sin ese chequeo, `#/primera/REGULAR/equipos` se
+     * leería como torneo=REGULAR, fase=equipos y sección vacía.
+     */
     parse(hash) {
       const partes = String(hash || '').replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
+      const esSeccion = (v) => !!v && SECCIONES.indexOf(String(v).toLowerCase()) !== -1;
+
+      /* Con menos de 3 tramos no hay ambigüedad posible: es formato viejo.
+         Con 3 o más, el formato nuevo pone la sección en partes[3]. */
+      const nuevo = esSeccion(partes[3]) || (partes.length >= 3 && !esSeccion(partes[2]));
+      const off = nuevo ? 1 : 0;
+
       return {
         planilla: partes[0] || null,
-        fase:     partes[1] ? partes[1].toUpperCase() : null,
-        seccion:  partes[2] || 'principal',
-        entidad:  partes[3] || null,
-        tab:      partes[4] || null,
-        // Sexto nivel: el detalle de un partido dentro del tab Partidos.
-        sub:      partes[5] || null,
-        // Séptimo nivel: un jugador puntual (ver comentario arriba).
-        jugador:  partes[6] || null,
+        torneo:   nuevo && partes[1] ? partes[1].toUpperCase() : null,
+        fase:     partes[1 + off] ? partes[1 + off].toUpperCase() : null,
+        seccion:  partes[2 + off] || 'principal',
+        entidad:  partes[3 + off] || null,
+        tab:      partes[4 + off] || null,
+        // Detalle de un partido dentro del tab Partidos.
+        sub:      partes[5 + off] || null,
+        // Un jugador puntual (ver comentario arriba).
+        jugador:  partes[6 + off] || null,
       };
     },
     build(r) {
-      const p = [r.planilla, r.fase, r.seccion, r.entidad, r.tab, r.sub, r.jugador]
+      /* El torneo se omite cuando es GENERAL: una planilla de un solo
+         torneo no tiene por qué arrastrar "/GENERAL/" en cada link. */
+      const t = (r.torneo && String(r.torneo).toUpperCase() !== TORNEO_GENERAL) ? r.torneo : null;
+      const p = [r.planilla, t, r.fase, r.seccion, r.entidad, r.tab, r.sub, r.jugador]
         .filter(v => v !== null && v !== undefined && v !== '')
         .map(encodeURIComponent);
       return '#/' + p.join('/');
@@ -698,8 +798,42 @@
     const opt = opciones || {};
     const fase = opt.fase || 'REGULAR';
 
+    /* El índice representa UNA competencia: un par (torneo, fase). El
+       torneo NO entra en la clave del equipo — entra en el alcance del
+       índice, que es distinto y mucho menos invasivo.
+
+       Por qué NO se metió en `claveEquipo()`: esa función es el
+       normalizador de NOMBRES ("ATENAS 'A' - MM" → "ATENAS A") y la usan
+       la resolución de escudos, `esEquipoPropio`, los slugs de la URL y
+       —crítico— la extracción del rival, que parte el texto "A vs B" del
+       campo PARTIDO y compara cada lado contra el equipo propio. Ese texto
+       no tiene torneo ni fase, así que una clave compuesta nunca volvería
+       a matchear y todos los rivales de la app quedarían en blanco.
+       Scopear el índice da el mismo resultado —dos "REGULAR" de torneos
+       distintos jamás se colapsan— sin tocar nada de eso.
+
+       `GENERAL` = la planilla no trae la columna: todo el libro es una
+       sola competencia y no se filtra nada. */
+    const torneo = (opt.torneo || TORNEO_GENERAL).toUpperCase();
+    const filtraTorneo = torneo !== TORNEO_GENERAL;
+    /**
+     * ¿Esta fila pertenece a la competencia que estoy indexando?
+     *
+     * Una fila SIN torneo pasa siempre. Es a propósito: si un libro trae
+     * TORNEO en `PROMEDIOS E` pero no en `Base Datos J` (convención mixta,
+     * pasa entre carpetas del motor), descartarla dejaría la sección de
+     * jugadores vacía sin decir por qué. Dejarla pasar como mucho mezcla
+     * filas sin atribuir, que es la degradación barata — y de eso ya avisa
+     * `validarTorneo` en el Diagnóstico.
+     */
+    const enTorneo = (fila) => {
+      if (!filtraTorneo) return true;
+      const t = torneoDeFila(fila);
+      return t === TORNEO_GENERAL || t === torneo;
+    };
+
     const equipos = new Map();   // claveEquipo -> { nombre, promedios, acumulado, factores, partidos:[], jugadores:[] }
-    const liga = { fase: fase, n: 0, tipo: {}, distribuciones: {} };
+    const liga = { fase: fase, torneo: torneo, n: 0, tipo: {}, distribuciones: {} };
     const avisos = [];
 
     function equipo(nombreCrudo) {
@@ -733,6 +867,7 @@
         // La clave es EQUIPO + FASE. Sin esto, cuando aparezca la fila TOTAL
         // de cada equipo el lookup devuelve la primera que encuentre.
         if (faseFila && faseFila !== fase) return;
+        if (!enTorneo(fila)) return;   // [multi-torneo] el índice es de UNA competencia
 
         if (esFilaTipo(fila, idTipo)) {
           if (!tipoDeLiga(fila, idTipo, 'EQUIPO')) return;   // TIPO de un equipo, no de la liga
@@ -773,6 +908,7 @@
       h.filas.forEach(fila => {
         const faseFila = texto(fila['FASE']).toUpperCase();
         if (faseFila && faseFila !== fase) return;
+        if (!enTorneo(fila)) return;   // [multi-torneo] el índice es de UNA competencia
         const e = equipo(fila['EQUIPO']);
         if (!e) return;
         const datos = {};
@@ -807,6 +943,7 @@
       hj.filas.forEach(fila => {
         const faseFila = texto(fila['FASE']).toUpperCase();
         if (faseFila && faseFila !== fase) return;
+        if (!enTorneo(fila)) return;   // [multi-torneo] el índice es de UNA competencia
         const datosTipo = () => {
           const o = {};
           Object.keys(fila).forEach(c => { const v = num(fila[c]); if (v !== null) o[c] = v; });
@@ -1077,6 +1214,7 @@
       hbj.filas.forEach(fila => {
         const faseFila = texto(fila['FASE']).toUpperCase();
         if (faseFila && faseFila !== fase) return;
+        if (!enTorneo(fila)) return;   // [multi-torneo] el índice es de UNA competencia
         const id = idPartido(fila['PARTIDO'], fila['FECHA']);
 
         const datos = {};
@@ -1446,15 +1584,23 @@
         if (t) torneos.add(t); else sinTorneo++;
       });
 
+      /* Dos torneos en una hoja YA NO son un error: desde el refactor
+         multi-torneo el índice se construye scopeado a UNA competencia
+         (`construirIndice(hojas, { fase, torneo })`) y el selector de la
+         barra elige cuál. Antes sí lo era, porque el índice agrupaba por
+         EQUIPO + FASE y las filas del segundo torneo pisaban a las del
+         primero. Queda como aviso informativo: el DT tiene que saber que
+         está viendo un recorte, no el libro entero. */
       if (torneos.size > 1) {
         out.push({
-          nivel: 'error', hoja: nombre,
+          nivel: 'aviso', hoja: nombre,
           mensaje: 'La hoja trae ' + torneos.size + ' torneos (' +
-            Array.from(torneos).sort().join(', ') + ') y este panel agrupa por EQUIPO + FASE ' +
-            'sin mirar TORNEO. Las filas del segundo torneo PISAN a las del primero. ' +
-            'Usá una planilla por torneo hasta que el índice contemple la competencia.',
+            Array.from(torneos).sort().join(', ') + '). El índice se arma de a un torneo ' +
+            'por vez: elegí cuál en el selector Torneo de la barra superior. ' +
+            'Las filas de los otros no entran en los promedios ni en los percentiles.',
         });
-      } else if (torneos.size === 1 && sinTorneo > 0) {
+      }
+      if (torneos.size >= 1 && sinTorneo > 0) {
         out.push({
           nivel: 'aviso', hoja: nombre,
           mensaje: sinTorneo + ' de ' + datos.length + ' filas no tienen TORNEO y las otras sí (' +
@@ -1664,9 +1810,10 @@
     // 1
     ESQUEMA, HOJAS_EXCLUIDAS,
     // 2
-    METRICAS, METRICAS_LISTA, VISTAS, GRUPOS_DESCRIPTIVOS, metrica, vista, formatear,
+    METRICAS, METRICAS_LISTA, VISTAS, GRUPOS_DESCRIPTIVOS, metrica, vista, formatear, masMenosEquipo,
     // 3
-    CATALOGO, FASES, planilla, planillasVisibles, esEquipoPropio, agrupar, fasesDisponibles, Ruta,
+    CATALOGO, FASES, SECCIONES, TORNEO_GENERAL, planilla, planillasVisibles, esEquipoPropio, agrupar,
+    fasesDisponibles, torneosDisponibles, torneoDeFila, Ruta,
     // 4
     normalizarHoja, construirIndice, esFilaTipo, tipoDeLiga, cargarCategoria, limpiarCache, parsearGviz, urlGviz,
     // 5
