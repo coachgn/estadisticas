@@ -11,7 +11,7 @@ principiante sobre el contenido técnico.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 102 tests · núcleo, índice, validador
+node test-core.js          # 122 tests · núcleo, índice, validador
 node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  22 tests · multi-cliente
@@ -24,7 +24,7 @@ node test-partido.js       #  17 tests · detalle partido a partido
 node test-scouting.js      # 239 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 ```
 
-**676 tests en total. Todos tienen que dar verde antes de commitear.**
+**695 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -64,6 +64,7 @@ js/
   sgadd-scouting.js     ← informe pre-partido de equipos (motor + UI)
   sgadd-informe.js      ← modal de exportación PDF del informe de equipo
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app
+INTEGRACION_MOTORSTATS.md ← auditoría del motor que escribe las planillas
 clubes/
   reconquista.json      ← 2 planillas (Primera + U21 Negra), liga la-plata
   jujuy.json            ← 1 planilla (Conferencia Norte), liga liga-argentina
@@ -73,7 +74,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=44`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=46`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -87,6 +88,43 @@ lados, `init()` quedó sin ella y Jujuy mostraba los datos de Reconquista.
 ---
 
 ## 3. Modelo de datos
+
+### De dónde salen las planillas: MotorStats
+
+**SGADD no genera datos: los consume.** Las 9 hojas las escribe **MotorStats**, una
+librería privada de Google Apps Script que vive en `C:\Users\Pc\mi-motor-stats`
+y procesa los box scores de la CABB.
+
+```
+CABB (box score) → MotorStats (Apps Script) → Google Sheets → SGADD (este panel)
+```
+
+El `ESQUEMA` de acá y los `ENCABEZADOS_FINALES_*` del motor son **la misma
+especificación**. Auditado en 2026-08-10: ninguna fórmula de SGADD contradice al
+motor (PLAY vs POS, PPP por play, RTNG por 100 plays, EQUIPO TIPO = mediana en
+escala por partido, tasas que se recalculan en vez de promediarse). Ver
+[`INTEGRACION_MOTORSTATS.md`](INTEGRACION_MOTORSTATS.md) para el detalle.
+
+**Tres columnas que el motor escribe y este panel todavía no usa** (clave `motor`
+del ESQUEMA, NO `opt` — ver punto 5):
+
+| Columna | Desde | Dónde |
+|---|---|---|
+| `+/-` | v30 | las 3 hojas de jugador |
+| `ID_ARCHIVO` | v43 | las 3 maestras |
+| `TORNEO` | v44 | las 9 hojas |
+
+Las planillas de Reconquista están en esquema **pre-v43** y no traen ninguna.
+Verificado que una planilla v52 **no rompe** el panel: 0 errores de esquema.
+
+**El día que el club migre y cargue dos torneos en una misma planilla, SGADD los
+colapsa**: agrupa por `EQUIPO + FASE` y desde v47 la columna `FASE` guarda la fase
+limpia, así que lo que distingue un tramo de otro es el par `TORNEO + FASE`. Es el
+mismo defecto que el motor corrigió en su v49. `validarTorneo()` lo detecta y lo
+marca en rojo en el Diagnóstico; la corrección de fondo (meter `TORNEO` en la clave
+del índice) está pendiente y toca las 4 secciones.
+
+---
 
 Google Sheets vía GViz público. **9 hojas** por planilla, contrato en `ESQUEMA`:
 
@@ -164,7 +202,15 @@ JSON del club:
 
 ## 5. Validadores (sección Diagnóstico)
 
-1. **Contrato de esquema** — columnas faltantes por hoja, error vs aviso
+0. **Guard de TORNEO** (`validarTorneo`) — se concatena al bloque 1. Error si una
+   hoja trae dos o más torneos (el índice los colapsa), aviso si la convención
+   viene mixta. Silencio con un solo torneo o sin la columna. **Avisa, no aborta**,
+   igual que `_validarTorneo_` del motor.
+1. **Contrato de esquema** — columnas faltantes por hoja, error vs aviso.
+   Tres categorías: `req` (falta → error), `opt` (falta → aviso, se degrada la UI)
+   y **`motor`** (las agrega MotorStats y este panel no las usa: si faltan **no se
+   avisa**). Ponerlas en `opt` llenaba el Diagnóstico de 9 avisos por columnas que
+   no degradan nada — probado contra la planilla real y hay un test que lo amarra.
 2. **Coherencia entre hojas** — promedios y acumulados con las mismas filas
 3. **Invariantes exactos** — `Σ PTS = Σ PTSopp`, `Σ RD = Σ RDopp`, etc.
    El par correcto es siempre `X ↔ Xopp`.

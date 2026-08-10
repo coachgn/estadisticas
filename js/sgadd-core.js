@@ -157,8 +157,13 @@
   /* =====================================================================
      1. ESQUEMA — contrato de columnas
      Derivado de las constantes ENCABEZADOS_FINALES_* del backend.
-     `req`  = si falta, la hoja no sirve → error
-     `opt`  = si falta, se degrada la UI → warning
+     `req`   = si falta, la hoja no sirve → error
+     `opt`   = si falta, se degrada la UI → warning
+     `motor` = las agrega MotorStats y este panel todavía no las usa. Si
+               faltan NO pasa nada y NO se avisa: ponerlas en `opt` llenaba
+               el Diagnóstico de 9 avisos por columnas que no degradan nada
+               (probado con la planilla real de Reconquista). Están
+               declaradas para dejar escrito el contrato con el productor.
      ===================================================================== */
 
   const COLS_BOX = [
@@ -184,30 +189,52 @@
     'eFG Opp%', 'PP Opp%', 'RTL Opp%', 'RO Opp%',
   ];
 
+  /* ---------------------------------------------------------------------
+     COLUMNAS QUE AGREGA EL MOTOR (MotorStats v30/v43/v44)
+
+     SGADD es el CONSUMIDOR de las planillas que escribe MotorStats. El motor
+     fue agregando columnas de trazabilidad que este panel todavía no usa:
+
+       `+/-`        v30 · sólo en las 3 hojas de jugador
+       `ID_ARCHIVO` v43 · clave primaria del motor, en las 3 maestras
+       `TORNEO`     v44 · competencia; en las 6 agregadas va junto a FASE,
+                    en las maestras al final para no desplazar datos ya cargados
+
+     Van como OPCIONALES a propósito: las planillas de Reconquista todavía no
+     las traen (verificado: esquema pre-v43), así que exigirlas rompería hoy.
+     Declararlas evita que el validador las reporte como desconocidas cuando
+     el club migre, y deja escrito el contrato con el productor.
+     --------------------------------------------------------------------- */
+  const COLS_MOTOR = ['TORNEO', 'ID_ARCHIVO', '+/-'];
+
   const ESQUEMA = {
     'PROMEDIOS E': {
       rol: 'equipo-temporada', grano: 'equipo', filaTipo: 'EQUIPO TIPO',
       clave: ['EQUIPO', 'FASE'],
       req: ['EQUIPO', 'FASE', 'PJ'].concat(COLS_BOX.filter(c => c !== 'USG%')),
       opt: ['POS', 'PACE'],
+      motor: COLS_MOTOR,
     },
     'ACUMULADO E': {
       rol: 'equipo-temporada-total', grano: 'equipo', filaTipo: 'EQUIPO TIPO',
       clave: ['EQUIPO', 'FASE'],
       req: ['EQUIPO', 'FASE', 'PJ'].concat(COLS_CRUDAS),
       opt: ['POS', 'PACE'],
+      motor: COLS_MOTOR,
     },
     'Base Datos E': {
       rol: 'equipo-partido', grano: 'equipo', filaTipo: null,
       clave: ['PARTIDO', 'EQUIPO'],
       req: ['FECHA', 'PARTIDO', 'EQUIPO', 'FASE', 'CONDICION', 'RESULTADO'].concat(COLS_BOX.filter(c => c !== 'USG%')),
       opt: ['POS', 'PACE'],
+      motor: COLS_MOTOR,
     },
     'PROMEDIOS 4F': {
       rol: 'factores-temporada', grano: 'equipo', filaTipo: 'EQUIPO TIPO',
       clave: ['EQUIPO', 'FASE'],
       req: ['EQUIPO', 'FASE', 'PJ'].concat(COLS_4F),
       opt: [],
+      motor: COLS_MOTOR,
     },
     'ACUMULADO 4F': {
       rol: 'factores-temporada-total', grano: 'equipo', filaTipo: 'EQUIPO TIPO',
@@ -215,30 +242,35 @@
       // OJO: esta hoja NO trae los 4 factores, solo ratings.
       req: ['EQUIPO', 'FASE', 'PJ', 'PTS', 'PTSopp', 'RTNG OFF', 'RTNG DEF', 'NET RTNG', 'PPP OF', 'PPP DEF', 'NET PPP'],
       opt: [],
+      motor: COLS_MOTOR,
     },
     '4 FACTORES': {
       rol: 'factores-partido', grano: 'equipo', filaTipo: null,
       clave: ['PARTIDO', 'EQUIPO'],
       req: ['PARTIDO', 'EQUIPO', 'FASE', 'CONDICION', 'RESULTADO'].concat(COLS_4F),
-      opt: ['FECHA'],   // viene vacía en la planilla actual → se joinea por PARTIDO
+      opt: ['FECHA'],   // FECHA viene vacía en la planilla actual → se joinea por PARTIDO
+      motor: COLS_MOTOR,
     },
     'PROMEDIOS J': {
       rol: 'jugador-temporada', grano: 'jugador', filaTipo: 'JUGADOR TIPO',
       clave: ['NOMBRES', 'EQUIPO', 'FASE'],
       req: ['NOMBRES', 'EQUIPO', 'FASE', 'PJ', 'USG%'].concat(COLS_BOX),
       opt: [],
+      motor: COLS_MOTOR,
     },
     'ACUMULADO J': {
       rol: 'jugador-temporada-total', grano: 'jugador', filaTipo: 'JUGADOR TIPO',
       clave: ['NOMBRES', 'EQUIPO', 'FASE'],
       req: ['NOMBRES', 'EQUIPO', 'FASE', 'PJ'].concat(COLS_CRUDAS),
       opt: [],
+      motor: COLS_MOTOR,
     },
     'Base Datos J': {
       rol: 'jugador-partido', grano: 'jugador', filaTipo: null,
       clave: ['PARTIDO', 'NOMBRES'],
       req: ['FECHA', 'PARTIDO', 'NOMBRES', 'EQUIPO', 'FASE', 'CONDICION', 'RESULTADO', 'USG%'].concat(COLS_BOX),
       opt: [],
+      motor: COLS_MOTOR,
     },
     /* RANKINGS J y RANKINGS E quedan EXCLUIDAS a propósito.
        No son tablas: son bloques apilados con encabezados repetidos, filas
@@ -393,6 +425,18 @@
     M('MIN', 'Minutos', PE, 'num1', false, 'contexto', ''),
     M('USG%', 'Uso', 'PROMEDIOS J', 'pct', false, 'jugador',
       'Porcentaje de plays del equipo que termina el jugador mientras está en cancha.'),
+
+    /* [MotorStats v30/v33] Sólo en las 3 hojas de jugador, y sólo si la
+       planilla ya migró: las de Reconquista todavía no la traen. Se registra
+       para que `leer`/`formatear` la manejen si aparece, pero NO se sumó a
+       ninguna VISTA — meterla en el box score es una decisión de UI aparte.
+
+       OJO al leer un total de equipo: el `+/-` del equipo es el margen del
+       partido (PTS − PTSopp), NUNCA la suma de los individuales. Con 5
+       jugadores en cancha esa suma da 5x el margen (verificado por el motor
+       en v31: ±95 en vez de ±19). */
+    M('+/-', 'Más/menos', 'PROMEDIOS J', 'num1', false, 'jugador',
+      'Diferencia de puntos con el jugador en cancha. A nivel equipo es el margen del partido, no la suma de los individuales.'),
   ];
 
   const METRICAS = {};
@@ -1365,6 +1409,62 @@
     ['Base Datos E', '4 FACTORES'],
   ];
 
+  /**
+   * VALIDADOR DE TORNEO — riesgo de colapso entre competencias.
+   *
+   * Desde MotorStats v44 las planillas traen la columna `TORNEO`, y desde
+   * v47 la columna `FASE` guarda la fase LIMPIA (`"REGULAR"`), no la
+   * etiqueta compuesta. Lo que distingue un tramo de otro pasó a ser el par
+   * `TORNEO + FASE`.
+   *
+   * SGADD agrupa por `EQUIPO + FASE` y NO mira `TORNEO`. Con una planilla de
+   * un solo torneo eso es correcto y es el caso de todos los clubes hoy.
+   * Con dos torneos en la misma planilla, la segunda fila PISA a la primera
+   * y el dato se pierde en silencio — es el mismo defecto que el motor
+   * corrigió en su v49, visto desde el lado del consumidor.
+   *
+   * Este guard AVISA, no aborta: sigue exactamente el criterio de
+   * `_validarTorneo_` del motor (v48 · P2). Cambiar la clave del índice para
+   * incluir TORNEO es un refactor que toca todas las secciones y no se hace
+   * a espaldas de una advertencia.
+   */
+  function validarTorneo(hojas) {
+    const out = [];
+    Object.keys(ESQUEMA).forEach(nombre => {
+      const h = hojas[nombre];
+      if (!h || !h.filas || !h.filas.length) return;
+      if (h.cols.indexOf('TORNEO') === -1) return;   // planilla pre-v44: nada que revisar
+
+      const idTipo = ESQUEMA[nombre].filaTipo;
+      const datos = h.filas.filter(f => !esFilaTipo(f, idTipo));
+      if (!datos.length) return;
+
+      const torneos = new Set();
+      let sinTorneo = 0;
+      datos.forEach(f => {
+        const t = texto(f['TORNEO']);
+        if (t) torneos.add(t); else sinTorneo++;
+      });
+
+      if (torneos.size > 1) {
+        out.push({
+          nivel: 'error', hoja: nombre,
+          mensaje: 'La hoja trae ' + torneos.size + ' torneos (' +
+            Array.from(torneos).sort().join(', ') + ') y este panel agrupa por EQUIPO + FASE ' +
+            'sin mirar TORNEO. Las filas del segundo torneo PISAN a las del primero. ' +
+            'Usá una planilla por torneo hasta que el índice contemple la competencia.',
+        });
+      } else if (torneos.size === 1 && sinTorneo > 0) {
+        out.push({
+          nivel: 'aviso', hoja: nombre,
+          mensaje: sinTorneo + ' de ' + datos.length + ' filas no tienen TORNEO y las otras sí (' +
+            Array.from(torneos)[0] + '). Convención mixta en las carpetas de Nivel 5 del motor.',
+        });
+      }
+    });
+    return out;
+  }
+
   function validarCoherencia(hojas) {
     const out = [];
 
@@ -1570,7 +1670,7 @@
     // 4
     normalizarHoja, construirIndice, esFilaTipo, tipoDeLiga, cargarCategoria, limpiarCache, parsearGviz, urlGviz,
     // 5
-    validarEsquema, validarCoherencia, testSimetria, testTotales, testCrucePartidos,
+    validarEsquema, validarTorneo, validarCoherencia, testSimetria, testTotales, testCrucePartidos,
     PARES_SIMETRIA, PARES_HOJAS, INVARIANTES_TOTALES, CRUCES_PARTIDO,
   };
 

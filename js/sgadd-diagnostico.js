@@ -101,7 +101,11 @@ async function diagCorrer(forzar) {
     d.datos = {
       hojas, erroresCarga: errores, ms,
       fases: SGADD.fasesDisponibles(hojas),
-      esquema: SGADD.validarEsquema(hojas),
+      /* El guard de TORNEO va en el mismo bloque que el contrato de esquema:
+         también es un problema de contrato con el productor (MotorStats), no
+         de coherencia entre hojas. Se concatena en vez de abrir una card
+         nueva para no renumerar los bloques que el club ya conoce. */
+      esquema: SGADD.validarEsquema(hojas).concat(SGADD.validarTorneo(hojas)),
       coherencia: SGADD.validarCoherencia(hojas),
       simetria: SGADD.testSimetria(hojas, d.fase),
       totales: SGADD.testTotales(hojas, d.fase),

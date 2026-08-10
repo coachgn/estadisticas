@@ -281,6 +281,108 @@ const simRes = S.testSimetria({ 'PROMEDIOS 4F': { cols: cols4F, filas: simOk } }
 check('en una liga que cierra, eFG%/eFG Opp% coinciden en promedio → ok', simRes.find(s => s.par === 'eFG% / eFG Opp%').nivel === 'ok');
 check('sin PROMEDIOS 4F, avisa que no puede correr', S.testSimetria({}, 'REGULAR')[0].nivel === 'error');
 
+/* =====================================================================
+   CONTRATO CON MOTORSTATS (el productor de las planillas)
+
+   SGADD consume lo que escribe el motor de Apps Script. Estos tests
+   amarran el contrato: si el motor agrega columnas o cambia la convención
+   de celdas vacías, el panel tiene que seguir funcionando o avisar — nunca
+   perder datos en silencio.
+   ===================================================================== */
+console.log('\nZ. CONTRATO CON EL MOTOR (MotorStats v30/v43/v44/v48)');
+console.log('═'.repeat(70));
+
+/* --- Las columnas del motor están declaradas como opcionales --- */
+const HOJAS_MOTOR = ['PROMEDIOS E', 'ACUMULADO E', 'Base Datos E', 'PROMEDIOS 4F',
+  'ACUMULADO 4F', '4 FACTORES', 'PROMEDIOS J', 'ACUMULADO J', 'Base Datos J'];
+check('las 9 hojas declaran las columnas del motor en la clave `motor`',
+  HOJAS_MOTOR.every(h => (SGADD.ESQUEMA[h].motor || []).indexOf('TORNEO') !== -1),
+  HOJAS_MOTOR.filter(h => (SGADD.ESQUEMA[h].motor || []).indexOf('TORNEO') === -1).join(','));
+check('las tres: TORNEO, ID_ARCHIVO y +/-',
+  HOJAS_MOTOR.every(h => ['TORNEO', 'ID_ARCHIVO', '+/-']
+    .every(c => (SGADD.ESQUEMA[h].motor || []).indexOf(c) !== -1)));
+/* La regresión que casi meto: en `opt` el validador avisa cuando faltan, y
+   con la planilla real de Reconquista eso daba 9 avisos por columnas que no
+   degradan absolutamente nada. */
+check('NO están en opt: si faltan no se avisa, porque no degradan ninguna vista',
+  HOJAS_MOTOR.every(h => ['TORNEO', 'ID_ARCHIVO', '+/-']
+    .every(c => (SGADD.ESQUEMA[h].opt || []).indexOf(c) === -1)));
+check('NINGUNA de esas tres es obligatoria: las planillas actuales no las traen',
+  HOJAS_MOTOR.every(h => ['TORNEO', 'ID_ARCHIVO', '+/-']
+    .every(c => (SGADD.ESQUEMA[h].req || []).indexOf(c) === -1)));
+
+/* --- Una planilla en esquema v52 no puede romper el validador --- */
+const colsV52E = ['EQUIPO', 'TORNEO', 'FASE', 'PJ'].concat(
+  SGADD.ESQUEMA['PROMEDIOS E'].req.filter(c => ['EQUIPO', 'FASE', 'PJ'].indexOf(c) === -1));
+const filaV52 = {}; colsV52E.forEach(c => { filaV52[c] = '1'; });
+Object.assign(filaV52, { EQUIPO: 'A', TORNEO: 'APERTURA', FASE: 'REGULAR', PJ: '3' });
+/* Se filtra por la hoja bajo prueba: las otras 8 faltan en la fixture y
+   reportan "no existe", que es correcto y no es lo que se está midiendo. */
+const errV52 = SGADD.validarEsquema({ 'PROMEDIOS E': { cols: colsV52E, filas: [filaV52] } })
+  .filter(x => x.nivel === 'error' && x.hoja === 'PROMEDIOS E');
+check('una hoja con las columnas nuevas del motor NO produce error de esquema',
+  errV52.length === 0, JSON.stringify(errV52.map(e => e.mensaje).slice(0, 2)));
+
+/* --- Guard de TORNEO: el defecto que el motor corrigió en su v49 --- */
+const colsT = ['EQUIPO', 'TORNEO', 'FASE', 'PJ', 'PTS'];
+const dosT = SGADD.validarTorneo({ 'PROMEDIOS E': { cols: colsT, filas: [
+  { EQUIPO: 'A', TORNEO: 'APERTURA', FASE: 'REGULAR', PJ: '5', PTS: '80' },
+  { EQUIPO: 'A', TORNEO: 'CLAUSURA', FASE: 'REGULAR', PJ: '4', PTS: '60' },
+] } });
+check('dos torneos en la misma hoja son ERROR: el índice los colapsaría',
+  dosT.length === 1 && dosT[0].nivel === 'error', JSON.stringify(dosT));
+check('el mensaje nombra los torneos en conflicto',
+  /APERTURA/.test(dosT[0].mensaje) && /CLAUSURA/.test(dosT[0].mensaje));
+
+const mixto = SGADD.validarTorneo({ 'PROMEDIOS E': { cols: colsT, filas: [
+  { EQUIPO: 'A', TORNEO: 'APERTURA', FASE: 'REGULAR', PJ: '5', PTS: '80' },
+  { EQUIPO: 'B', TORNEO: '', FASE: 'REGULAR', PJ: '4', PTS: '60' },
+] } });
+check('convención mixta (parte con TORNEO, parte sin) es AVISO, no error',
+  mixto.length === 1 && mixto[0].nivel === 'aviso', JSON.stringify(mixto));
+
+check('un solo torneo no dispara nada: es el caso de todos los clubes hoy',
+  SGADD.validarTorneo({ 'PROMEDIOS E': { cols: colsT, filas: [
+    { EQUIPO: 'A', TORNEO: 'APERTURA', FASE: 'REGULAR', PJ: '5', PTS: '80' }] } }).length === 0);
+check('una planilla pre-v44 (sin la columna) tampoco: no hay nada que revisar',
+  SGADD.validarTorneo({ 'PROMEDIOS E': { cols: ['EQUIPO', 'FASE', 'PJ'],
+    filas: [{ EQUIPO: 'A', FASE: 'REGULAR', PJ: '5' }] } }).length === 0);
+check('la fila EQUIPO TIPO no cuenta como torneo faltante',
+  SGADD.validarTorneo({ 'PROMEDIOS E': { cols: colsT, filas: [
+    { EQUIPO: 'A', TORNEO: 'APERTURA', FASE: 'REGULAR', PJ: '5', PTS: '80' },
+    { EQUIPO: 'EQUIPO TIPO', TORNEO: '', FASE: 'REGULAR', PJ: '5', PTS: '70' },
+  ] } }).length === 0);
+
+/* --- Regla de celdas vacías (motor v48 · P3) --- */
+check('num("") es null: "no jugó" no es "jugó y sacó cero"', SGADD.num('') === null);
+check('num(0) sigue siendo 0: tiró y erró ES un dato', SGADD.num(0) === 0);
+
+const colsJv48 = ['NOMBRES', 'EQUIPO', 'FASE', 'PJ', 'MIN', 'PTS', 'PLAYS', 'USG%', 'eFG%', 'TS%', 'PPP'];
+const jv48 = (n, min, efg) => ({ NOMBRES: n, EQUIPO: 'A', FASE: 'REGULAR', PJ: '3', MIN: String(min),
+  PTS: '10', PLAYS: '10', 'USG%': '0,2', 'eFG%': efg, 'TS%': efg, PPP: '1' });
+const idxV48 = SGADD.construirIndice({
+  'PROMEDIOS E': { cols: ['EQUIPO', 'FASE', 'PJ'], filas: [{ EQUIPO: 'A', FASE: 'REGULAR', PJ: '3' }] },
+  'PROMEDIOS J': { cols: colsJv48, filas: [
+    jv48('BUENO', 30, '0,60'), jv48('MEDIO', 25, '0,50'), jv48('FLOJO', 20, '0,40'),
+    jv48('NO JUGO', 22, ''),   // MIN alto pero tasa vacía: el caso de v48
+    Object.assign(jv48('JUGADOR TIPO', 15, '0,50'), { EQUIPO: '' }),
+  ] },
+}, { fase: 'REGULAR' });
+check('una tasa vacía no entra a la distribución de la liga',
+  (idxV48.liga.distribucionesJ['eFG%'] || []).length === 3,
+  JSON.stringify(idxV48.liga.distribucionesJ['eFG%']));
+check('y el jugador con tasa vacía no arrastra el percentil de los demás hacia arriba',
+  idxV48.leerJugador(idxV48.liga.jugadores.find(j => j['NOMBRES'] === 'FLOJO'), 'eFG%').percentil < 34);
+check('el que no jugó queda con la métrica en null, no en 0',
+  idxV48.leerJugador(idxV48.liga.jugadores.find(j => j['NOMBRES'] === 'NO JUGO'), 'eFG%').valor === null);
+
+/* --- `+/-` registrado como métrica conocida --- */
+check('+/- está en el registro de métricas', !!SGADD.metrica('+/-'));
+check('+/- se formatea con un decimal', SGADD.formatear('+/-', 12.34) === '12,3');
+check('+/- NO es invertida: más es mejor', SGADD.metrica('+/-').invertida === false);
+check('+/- NO se agregó a ninguna vista: meterlo en el box score es decisión de UI',
+  Object.keys(SGADD.VISTAS).every(v => SGADD.VISTAS[v].metricas.indexOf('+/-') === -1));
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);
