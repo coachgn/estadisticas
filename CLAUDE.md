@@ -6,6 +6,11 @@ Sitio estático publicado en GitHub Pages: `https://coachgn.github.io/estadistic
 Hablar siempre en **español rioplatense**, directo y técnico. Sin explicaciones de
 principiante sobre el contenido técnico.
 
+**Guía de diseño oficial: https://www.checklist.design/** — se consulta ante
+cualquier duda de interfaz (microinteracciones, drawers, toasts, empty states,
+focus rings, contraste WCAG, jerarquía en tablas y gráficos). Detalle y reglas
+aplicadas en el punto 14.
+
 ---
 
 ## 1. Cómo correr y verificar
@@ -21,11 +26,11 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  22 tests · detalle partido a partido
-node test-scouting.js      # 308 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-scouting.js      # 324 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       #  87 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**958 tests en total. Todos tienen que dar verde antes de commitear.**
+**974 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -81,7 +86,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=53`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=54`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -1757,3 +1762,86 @@ al gráfico. Hay además una salida temprana si la clave no cambió.
 El ancla es `j.__clave` en los dos lados: `data-jug` en el `<tr>` y `clave`
 en cada punto del scatter. El gráfico actualiza con `update('none')` —sin
 animación— porque un hover con transición se siente roto.
+
+---
+
+## 14. Guía de diseño oficial · Checklist Design
+
+**https://www.checklist.design/** es la referencia del proyecto para todo lo
+que sea interfaz. Ante una duda de UI —un estado que falta, una transición,
+un contraste dudoso— **se consulta ahí antes de inventar**.
+
+No es una librería ni una dependencia: es una lista de verificación por
+componente. Se usa como control, no como fuente de código.
+
+### Para qué se consulta
+
+| Tema | Qué resuelve |
+|---|---|
+| **Drawer / Modal** | overlay, desenfoque, animación, trampa de foco, cierre |
+| **Toast** | duración, posición, anuncio a lectores de pantalla |
+| **Empty states** | qué mostrar cuando no hay nada, y con qué tono |
+| **Tablas** | jerarquía, estados de fila, alineación de números |
+| **Botones** | hover, active, disabled, focus |
+| **Formularios** | etiquetas, errores, ayuda contextual |
+| **Contraste** | WCAG AA como piso, siempre |
+
+### Reglas que ya están aplicadas y no se negocian
+
+**Foco visible con `:focus-visible`, nunca con `:focus`.** El anillo aparece
+al navegar con teclado y no en cada clic del mouse — con `:focus` era ruido
+permanente y terminaba desactivándose, que es peor que no tenerlo.
+
+**Contraste AA en todo el sistema.** Auditado sobre los 15 pares de color del
+panel (texto, `dato-sec`, acento, verde/rojo de atípicos, `mm-pos`/`mm-neg`,
+badges, fila destacada): **los 15 pasan 4.5:1**. Al agregar un color nuevo hay
+que medirlo, no estimarlo.
+
+**Ningún estado se comunica solo con color.** El `+/-` lleva signo además de
+tinte, los atípicos llevan flecha, los estados de plantel llevan emoji y
+texto. Un daltónico tiene que poder leer el panel entero.
+
+**`prefers-reduced-motion` desactiva todas las animaciones.** Drawer, toast y
+transiciones de fila.
+
+**Empty states positivos, no listas vacías.** El buzón sin alertas muestra
+"Plantel al día" con su marca, no un contenedor en blanco.
+
+**Descartar tan fácil como confirmar.** Toda acción destructiva o de
+compromiso tiene su opción neutra igual de visible ("Mantener activo").
+
+### El error de CSS que hay que recordar
+
+**En una tabla, el fondo de la fila va en los `<td>`, no en el `<tr>`.** La
+card pinta las celdas con `#141414` propio y ese fondo **tapa** el del `tr`:
+la regla se aplicaba, el `getComputedStyle` del `tr` la mostraba, y en
+pantalla no se veía nada.
+
+Por lo mismo, el desplazamiento de la fila destacada se hace con
+`padding-left` y no con `transform`: en `display: table-row` los motores
+directamente lo ignoran.
+
+### Estados de fila del plantel
+
+```css
+tr.fila-jug > td            → transición .2s de fondo, .15s de padding
+tr.fila-jug:hover > td      → tinte del acento al 12%
+tr.fila-destacada > td      → ídem, y llega desde el hover en el scatter
+   > td:first-child         → barra lateral de 3px + padding-left 9px
+```
+
+**El texto NO cambia de color al destacarse.** Repintarlo obliga a revalidar
+el contraste de cada celda —verde de atípico, rojo de `+/-` negativo, naranja
+de acento— contra un fondo nuevo. El tinte al 12% deja todo por encima de
+4.5:1 sin tocar un solo color de texto.
+
+### La tabla del plantel y el scatter son el MISMO conjunto
+
+`equiposTabPlantel()` lee `SGADD_CHARTS.MIN_SCATTER` en vez de repetir el 10.
+Con cortes distintos la mitad de las filas apuntaba a un nodo inexistente y
+el hover no hacía nada. La insignia con las iniciales (`.fila-inicial`) es el
+puente visual: sin ella hay que leer el nombre completo para saber qué punto
+del gráfico es cuál.
+
+Los jugadores por debajo del piso **no se ocultan en silencio**: la nota al
+pie dice cuántos son y por qué.

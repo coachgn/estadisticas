@@ -1346,6 +1346,104 @@ check('y el manual explica explícitamente por qué no se usa esa palabra',
 check('el manual avisa que se genera desde el código, no se escribe a mano',
   /Generado autom[áa]ticamente desde el c[óo]digo/.test(manualHtml));
 
+/* =====================================================================
+   21. REACTIVIDAD DEL PLAN ANTE UN CAMBIO DE ESTADO
+
+   Simula lo que hace el DT desde el buzón: confirmar una 🔴 BAJA. El plan
+   defensivo tiene que recalcularse ENTERO en el acto — no alcanza con
+   esconder la fila, porque los vetos entre grupos dependen de quiénes
+   están, y un foco sin fuente de ayuda es un plan roto.
+   ===================================================================== */
+console.log('\n21. REACTIVIDAD DEL PLAN ANTE UNA BAJA');
+console.log('═'.repeat(70));
+
+const EST = require('./js/sgadd-estados.js');
+
+/* `jugadoresClave()` consulta `SGADD_BUZON.enPlan`, que en el navegador
+   viene del drawer. Acá se monta un doble con el mismo contrato: es la
+   única forma de probar la reactividad sin un DOM. */
+let bajas = {};
+global.SGADD_BUZON = {
+  enPlan: (nombre, equipo) => EST.enPlan(bajas, EST.claveJugador(nombre, equipo)),
+  estadoDe: (nombre, equipo) => {
+    const r = EST.registroDe(bajas, EST.claveJugador(nombre, equipo));
+    return Object.assign({}, EST.estado(r.estado), { origen: r.origen });
+  },
+};
+
+const antes = S.jugadoresClave(idx, 'AGUILA', 10);
+const nombresAntes = antes.filas.map(f => f.nombre);
+check('el doble del buzón no cambia nada mientras todos están activos',
+  nombresAntes.length > 3, nombresAntes.length + ' fichas');
+
+/* Se da de baja al PRIMER jugador de la tabla: el que más minutos juega,
+   para que el impacto sobre el plan sea el máximo posible. */
+const victima = antes.filas[0];
+const claveVictima = EST.claveJugador(victima.nombre, victima.perfil.equipo);
+bajas = EST.aplicar({}, claveVictima, 'BAJA', { origen: 'usuario' });
+
+const despues = S.jugadoresClave(idx, 'AGUILA', 10);
+const nombresDespues = despues.filas.map(f => f.nombre);
+
+check('el jugador dado de BAJA desaparece de la tabla de marcas',
+  nombresDespues.indexOf(victima.nombre) === -1,
+  victima.nombre + ' → ' + nombresDespues.join(' | '));
+check('y no queda ninguna fila huérfana: todas siguen con perfil y marca',
+  despues.filas.every(f => !!f.perfil && !!f.marca && !!f.marca.defensor && !!f.rol));
+check('el resto del plantel sigue estando', nombresDespues.length === nombresAntes.length - 1,
+  nombresAntes.length + ' → ' + nombresDespues.length);
+
+/* --- La cadena de vetos se recalcula, no se parchea --- */
+const planA = antes.plan, planD = despues.plan;
+const enGrupos = (p, n) => [].concat(p.focos, p.intocables, p.fuentes, p.cristal).some(x => x.nombre === n);
+check('el dado de baja sale de TODOS los grupos del plan colectivo',
+  !enGrupos(planD, victima.nombre), victima.nombre);
+check('el plan sigue siendo internamente coherente después de la baja',
+  planD.focos.length === 0 || planD.fuentes.length >= 1 ||
+  planD.escenario.id === 'spacing-alto' || !!planD.aviso,
+  JSON.stringify({ focos: planD.focos.length, fuentes: planD.fuentes.length, esc: planD.escenario.id }));
+/* Los tres vetos tienen que seguir valiendo sobre el conjunto NUEVO. */
+const cruceD = (a, b) => a.filter(x => b.some(y => y.clave === x.clave));
+check('los vetos se recalculan sobre el plantel nuevo, no se heredan',
+  cruceD(planD.fuentes, planD.intocables).length === 0 &&
+  cruceD(planD.fuentes, planD.focos).length === 0 &&
+  cruceD(planD.fuentes, planD.cristal).length === 0);
+check('el escenario se re-evalúa: puede cambiar si se fue el eje del ataque',
+  !!planD.escenario.id && S.ESCENARIOS.some(e => e.id === planD.escenario.id),
+  planA.escenario.id + ' → ' + planD.escenario.id);
+
+/* --- Las conexiones entre celdas no pueden nombrar a un ausente --- */
+const textoPlan = despues.filas.map(f =>
+  f.marca.consigna.detalle + ' ' + f.marca.restriccion.detalle).join(' ');
+check('ninguna consigna sigue mandando la ayuda hacia el jugador que se fue',
+  textoPlan.indexOf(victima.nombre) === -1,
+  victima.nombre);
+check('y las que nombran una fuente nombran a alguien que sigue en la tabla',
+  planD.fuentes.every(f => nombresDespues.indexOf(f.nombre) !== -1));
+check('el resumen ejecutivo tampoco lo menciona',
+  S.resumenEjecutivo(idx, 'HALCON', 'AGUILA').indexOf(victima.nombre) === -1);
+
+/* --- SUSPENSO y ALTA NO sacan del plan: solo avisan --- */
+bajas = EST.aplicar({}, claveVictima, 'SUSPENSO', { origen: 'usuario' });
+check('un SUSPENSO sigue en la tabla: si vuelve, vuelve con esta ficha',
+  S.jugadoresClave(idx, 'AGUILA', 10).filas.some(f => f.nombre === victima.nombre));
+bajas = EST.aplicar({}, claveVictima, 'ALTA', { origen: 'usuario' });
+check('un ALTA también, sin exigirle piso de partidos',
+  S.jugadoresClave(idx, 'AGUILA', 10).filas.some(f => f.nombre === victima.nombre));
+
+/* --- Volver a ACTIVO restaura el plan tal cual estaba --- */
+bajas = {};
+const restaurado = S.jugadoresClave(idx, 'AGUILA', 10);
+check('volver a ACTIVO devuelve la tabla exactamente como estaba',
+  restaurado.filas.map(f => f.nombre).join('|') === nombresAntes.join('|'));
+check('y el plan colectivo vuelve al mismo escenario',
+  restaurado.plan.escenario.id === planA.escenario.id,
+  planA.escenario.id + ' vs ' + restaurado.plan.escenario.id);
+
+delete global.SGADD_BUZON;
+check('sin el módulo de buzón cargado el informe sale igual que siempre',
+  S.jugadoresClave(idx, 'AGUILA', 10).filas.length === nombresAntes.length);
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

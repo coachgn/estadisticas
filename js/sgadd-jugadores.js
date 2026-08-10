@@ -626,6 +626,9 @@ function jugadoresPerfilBase(idx, j) {
   const p = {
     nombre: String(j['NOMBRES'] || '').trim(),
     clave: j.__clave || null,
+    /* El equipo CRUDO, tal cual viene de la planilla: lo necesita el buzón
+       para armar la clave de estado, que es NOMBRE + EQUIPO normalizado. */
+    equipo: j['EQUIPO'] || null,
     min: jugadoresNN(j['MIN']), plays: jugadoresNN(j['PLAYS']),
     pts: jugadoresNN(j['PTS']), ppp: jugadoresNN(j['PPP']),
     efg: jugadoresNN(j['eFG%']), ts: jugadoresNN(j['TS%']),
@@ -1233,6 +1236,22 @@ function jugadoresBloqueRankings(idx) {
  * Orden estricto por MIN de mayor a menor: el que más juega es el que más
  * condiciona el partido, independientemente de cuánto anote.
  */
+/**
+ * Badge del estado de plantel (lesión, refuerzo, baja). Sale del buzón, no
+ * de la planilla: sin el módulo cargado devuelve vacío y la card se pinta
+ * exactamente como antes.
+ *
+ * ACTIVO no dibuja nada a propósito: si el 90% del plantel lleva un badge
+ * verde, el badge deja de significar algo y solo agrega ruido a la card.
+ */
+function jugadoresBadgeEstado(j) {
+  if (typeof SGADD_BUZON === 'undefined') return '';
+  const est = SGADD_BUZON.estadoDe(j['NOMBRES'], j['EQUIPO']);
+  if (!est || est.id === 'ACTIVO') return '';
+  const nota = est.descripcion + (est.origen === 'usuario' ? ' · confirmado por el cuerpo técnico' : '');
+  return `<p class="text-[9px] mt-0.5 ${est.color} truncate" title="${escapeAttr(nota)}">${est.emoji} ${escapeHtml(est.label)}</p>`;
+}
+
 function jugadoresPlantelEquipo(idx) {
   const clave = JUGADORES.filtroEquipo;
   if (!clave) return '';
@@ -1275,6 +1294,7 @@ function jugadoresPlantelEquipo(idx) {
           <div class="min-w-0 flex-1">
             <p class="text-xs text-white font-medium truncate">${escapeHtml(j['NOMBRES'])}</p>
             ${rolMin ? `<p class="text-[10px] ${rolMin.color} truncate" title="${escapeAttr(rolMin.rol)}">${escapeHtml(rolMin.label)}</p>` : ''}
+            ${jugadoresBadgeEstado(j)}
           </div>
         </div>
         ${badges ? `<div class="flex flex-wrap gap-1">${badges}</div>` : ''}
@@ -1361,6 +1381,16 @@ function jugadoresHeader(idx, j) {
       </div>
       <div class="mb-4 flex items-center gap-2 flex-wrap">
         ${badgeRol}
+        ${(() => {
+          /* En la FICHA el estado sí se muestra completo, con la fecha de
+             corte: acá hay lugar y es el dato que explica por qué sus
+             promedios se cortaron en la fecha 8. */
+          if (typeof SGADD_BUZON === 'undefined') return '';
+          const est = SGADD_BUZON.estadoDe(j['NOMBRES'], j['EQUIPO']);
+          if (!est || est.id === 'ACTIVO') return '';
+          return `<span class="text-[10px] font-display uppercase tracking-wider px-2.5 py-1 rounded border ${est.borde} ${est.color}"
+            title="${escapeAttr(est.descripcion)}">${est.emoji} ${escapeHtml(est.label)}${est.desde ? ' · desde ' + escapeHtml(est.desde) : ''}</span>`;
+        })()}
         ${rolMin && rolMin.urgente ? `<span class="text-[10px] text-yellow-400">⚠ menos de 10 min de promedio: muestra muy chica</span>` : ''}
       </div>
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">${hero}</div>

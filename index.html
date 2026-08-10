@@ -137,18 +137,63 @@
   .toast-out { animation: toastIn .2s ease-in reverse both; }
 
   /* --- Fila destacada del plantel (viene del hover en el scatter) ---
-     Fondo de acento sutil + barra lateral: el fondo solo no se distingue
-     bien sobre la card oscura, y el borde solo no dice "esta fila". */
-  #plantelTabla tr.fila-jug { transition: background-color .16s ease, box-shadow .16s ease; }
-  #plantelTabla tr.fila-jug:hover,
-  #plantelTabla tr.fila-activa {
-    background: color-mix(in srgb, var(--acento) 14%, transparent);
+     Checklist Design · table row states:
+       · tinte del acento al 12%, NUNCA blanco plano: sobre una card oscura
+         el blanco encandila y tapa el color de los números;
+       · indicador lateral de 3px, porque el fondo solo no dice CUÁL fila
+         está activa cuando hay dos tintes parecidos en pantalla;
+       · el texto NO cambia de color al destacarse. Repintarlo obliga a
+         revalidar el contraste de cada celda (verde de atípico, rojo de
+         +/- negativo, naranja de acento) contra un fondo nuevo.
+     El tinte al 12% sobre #0e0e10 da 1,08:1 de diferencia con el fondo
+     base: se ve, y deja los textos por encima de 4.5:1 igual que antes. */
+  /* OJO: el fondo va en los `td`, NO en el `tr`. La card pinta las celdas
+     con `#141414` propio y ese fondo TAPA el del `tr`: la regla se aplicaba
+     y no se veía nada. Por lo mismo el desplazamiento se hace con
+     `padding-left` y no con `transform`, que en `display: table-row` los
+     motores directamente ignoran. */
+  #plantelTabla tr.fila-jug > td {
+    transition: background-color .2s ease, padding-left .15s ease, box-shadow .2s ease;
+  }
+  #plantelTabla tr.fila-jug:hover > td,
+  #plantelTabla tr.fila-destacada > td {
+    background: color-mix(in srgb, var(--acento) 12%, #141414);
+  }
+  #plantelTabla tr.fila-jug:hover > td:first-child,
+  #plantelTabla tr.fila-destacada > td:first-child {
     box-shadow: inset 3px 0 0 0 var(--acento);
   }
+  /* La fila que llega desde el gráfico se corre apenas: el desplazamiento
+     es lo que el ojo percibe primero cuando está mirando el scatter. */
+  #plantelTabla tr.fila-destacada > td:first-child { padding-left: 9px; }
+  #plantelTabla tr.fila-destacada .fila-inicial {
+    border-color: var(--acento);
+    color: var(--acento-texto);
+    background: color-mix(in srgb, var(--acento) 22%, transparent);
+  }
+  /* Insignia con las mismas iniciales del nodo: es el puente visual entre
+     las dos vistas. Sin esto hay que leer el nombre completo para saber
+     qué punto del gráfico es cuál. */
+  .fila-inicial {
+    display: inline-grid; place-items: center;
+    width: 22px; height: 22px; margin-right: 8px;
+    border: 1px solid var(--hairline, #2a2a2e); border-radius: 999px;
+    font-size: 9px; font-weight: 700; letter-spacing: .3px;
+    color: #a8b0bd; vertical-align: middle;
+    transition: background-color .2s ease, border-color .2s ease, color .2s ease;
+  }
+  /* Atenuado, pero legible: 3.1:1 sobre el fondo de la card. El
+     `opacity: .5` anterior lo tiraba a 2.2:1 y no pasaba WCAG. */
+  #plantelTabla tr.fila-flojo td { color: #8b93a0; }
+  #plantelTabla tr.fila-flojo .fila-inicial { opacity: .6; }
+
   /* Respaldo para navegadores sin color-mix. */
-  @supports not (background: color-mix(in srgb, red 10%, transparent)) {
-    #plantelTabla tr.fila-jug:hover,
-    #plantelTabla tr.fila-activa { background: rgba(247,148,30,.14); box-shadow: inset 3px 0 0 0 #f7941e; }
+  @supports not (background: color-mix(in srgb, red 10%, #000)) {
+    #plantelTabla tr.fila-jug:hover > td,
+    #plantelTabla tr.fila-destacada > td { background: #2c2318; }
+    #plantelTabla tr.fila-jug:hover > td:first-child,
+    #plantelTabla tr.fila-destacada > td:first-child { box-shadow: inset 3px 0 0 0 #f7941e; }
+    #plantelTabla tr.fila-destacada .fila-inicial { background: rgba(247,148,30,.22); }
   }
 
   /* --- Foco visible en todo lo interactivo (WCAG 2.4.7) ---
@@ -661,22 +706,22 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=53"></script>
-<script src="js/sgadd-core.js?v=53"></script>
-<script src="js/sgadd-ui.js?v=53"></script>
-<script src="js/sgadd-app.js?v=53"></script>
-<script src="js/sgadd-estados.js?v=53"></script>
-<script src="js/sgadd-buzon.js?v=53"></script>
-<script src="js/sgadd-charts.js?v=53"></script>
-<script src="js/sgadd-personalidad.js?v=53"></script>
-<script src="js/sgadd-rankings.js?v=53"></script>
-<script src="js/sgadd-partido.js?v=53"></script>
-<script src="js/sgadd-informe.js?v=53"></script>
-<script src="js/sgadd-equipos.js?v=53"></script>
-<script src="js/sgadd-jugadores.js?v=53"></script>
-<script src="js/sgadd-4factores.js?v=53"></script>
-<script src="js/sgadd-scouting.js?v=53"></script>
-<script src="js/sgadd-diagnostico.js?v=53"></script>
+<script src="js/sgadd-club.js?v=54"></script>
+<script src="js/sgadd-core.js?v=54"></script>
+<script src="js/sgadd-ui.js?v=54"></script>
+<script src="js/sgadd-app.js?v=54"></script>
+<script src="js/sgadd-estados.js?v=54"></script>
+<script src="js/sgadd-buzon.js?v=54"></script>
+<script src="js/sgadd-charts.js?v=54"></script>
+<script src="js/sgadd-personalidad.js?v=54"></script>
+<script src="js/sgadd-rankings.js?v=54"></script>
+<script src="js/sgadd-partido.js?v=54"></script>
+<script src="js/sgadd-informe.js?v=54"></script>
+<script src="js/sgadd-equipos.js?v=54"></script>
+<script src="js/sgadd-jugadores.js?v=54"></script>
+<script src="js/sgadd-4factores.js?v=54"></script>
+<script src="js/sgadd-scouting.js?v=54"></script>
+<script src="js/sgadd-diagnostico.js?v=54"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

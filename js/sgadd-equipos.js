@@ -596,7 +596,7 @@ function equiposDestacarJugador(clave, origen) {
   /* --- Tabla --- */
   const filas = document.querySelectorAll('#plantelTabla tr[data-jug]');
   filas.forEach(tr => {
-    tr.classList.toggle('fila-activa', !!val && tr.getAttribute('data-jug') === val);
+    tr.classList.toggle('fila-destacada', !!val && tr.getAttribute('data-jug') === val);
   });
 
   /* --- Gráfico: solo si el aviso NO vino de él --- */
@@ -619,7 +619,19 @@ function equiposDestacarJugador(clave, origen) {
 }
 
 function equiposTabPlantel(idx, e) {
-  const jug = (e.jugadores || []).slice().sort((a, b) => (b['MIN'] || 0) - (a['MIN'] || 0));
+  /* El MISMO corte que el scatter (`SGADD_CHARTS.MIN_SCATTER`), no uno
+     propio. La tabla y el gráfico son dos vistas del mismo conjunto y la
+     sincronización cruzada los ata: con cortes distintos, la mitad de las
+     filas apuntaba a un nodo que no existe y el hover no hacía nada.
+     Se lee la constante en vez de repetir el 10, que es la única forma de
+     que no se separen la próxima vez que alguien la mueva. */
+  const pisoMin = (typeof SGADD_CHARTS !== 'undefined' && typeof SGADD_CHARTS.MIN_SCATTER === 'number')
+    ? SGADD_CHARTS.MIN_SCATTER : 10;
+  const plantelCompleto = idx.liga.jugadoresPorEquipo.get(e.clave) || e.jugadores || [];
+  const jug = plantelCompleto
+    .filter(j => typeof j['MIN'] === 'number' && j['MIN'] >= pisoMin)
+    .slice().sort((a, b) => (b['MIN'] || 0) - (a['MIN'] || 0));
+  const ocultos = plantelCompleto.length - jug.length;
   const cols = ['MIN', 'PTS', 'USG%', 'TS%', 'eFG%', 'AST-PP', 'VAL', '+/-'];
 
   const filas = jug.map(j => {
@@ -636,8 +648,11 @@ function equiposTabPlantel(idx, e) {
     return `<tr data-jug="${escapeAttr(j.__clave || '')}"
       onmouseenter="equiposDestacarJugador('${SGADD_UI.escJs(j.__clave || '')}', 'tabla')"
       onmouseleave="equiposDestacarJugador(null, 'tabla')"
-      class="fila-jug border-b border-hairline/40 last:border-0 ${cal ? '' : 'opacity-50'}">
-      <td class="py-1.5 pr-3 text-xs whitespace-nowrap">${escapeHtml(j['NOMBRES'])}${badgeEstado}</td>
+      class="fila-jug border-b border-hairline/40 last:border-0 ${cal ? '' : 'fila-flojo'}">
+      <td class="py-1.5 pr-3 text-xs whitespace-nowrap">
+        <span class="fila-inicial" aria-hidden="true">${escapeHtml(
+          (typeof SGADD_CHARTS !== 'undefined' ? SGADD_CHARTS.inicialesJugador(j['NOMBRES']) : ''))}</span>
+        ${escapeHtml(j['NOMBRES'])}${badgeEstado}</td>
       ${cols.map(c => `<td class="py-1.5 pr-3 font-mono text-xs ${c === '+/-' ? SGADD_UI.claseMasMenos(j[c]) : ''}">${escapeHtml(SGADD.formatear(c, j[c]))}</td>`).join('')}
       <td class="py-1.5 text-[10px] ${cal ? 'text-muted' : 'text-yellow-400'}">${cal ? '' : 'pocos min'}</td>
     </tr>`;
@@ -667,8 +682,13 @@ function equiposTabPlantel(idx, e) {
         <th class="pb-1"></th>
       </tr></thead><tbody>${filas}</tbody></table></div>
     <p class="text-[11px] text-muted mt-3 leading-snug">
-      Los atenuados no llegan al umbral de minutos de la liga (MIN ≥ ${idx.liga.minJugador !== null ? idx.liga.minJugador.toFixed(2) : '—'}).
-      Sus porcentajes se muestran, pero no entran en ningún ranking: con pocos minutos, un tiro convertido mueve el eFG% diez puntos.
+      Una fila por nodo: la tabla y el gráfico muestran exactamente a los mismos jugadores,
+      los que promedian <b>${pisoMin} minutos o más</b>. Pasá el cursor por cualquiera de los dos y se
+      destaca en el otro.
+      ${ocultos ? `<b>${ocultos}</b> jugador${ocultos === 1 ? '' : 'es'} del plantel quedan fuera por debajo de ese piso: con
+        menos minutos, un tiro convertido mueve el eFG% diez puntos.` : ''}
+      Los atenuados no llegan al umbral de calificación de la liga
+      (MIN ≥ ${idx.liga.minJugador !== null ? idx.liga.minJugador.toFixed(2) : '—'}), así que se muestran sin percentil.
     </p>`;
 }
 

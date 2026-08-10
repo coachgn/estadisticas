@@ -2295,6 +2295,30 @@ function scoutRecord(r) { return r.ganados + ' - ' + r.perdidos; }
  * si esta función armara sus propios textos volvería el bug de que el
  * mismo jugador se llama distinto en cada pantalla.
  */
+/**
+ * Aviso de estado en la ficha del rival.
+ *
+ * Solo se pinta para los estados con `avisaEnScouting` (🟡 SUSPENSO y 🔵
+ * ALTA). Los dados de 🔴 BAJA no llegan hasta acá: `jugadoresClave()` ya
+ * los sacó del plan, así que no hay ficha que marcar — y ese es el punto,
+ * no gastar una decisión defensiva en alguien que no va a estar.
+ *
+ * Es una alerta y no un badge más: va en su propia línea, con borde, para
+ * que no se lea como un arquetipo. Un lesionado que vuelve y un refuerzo
+ * recién llegado cambian el plan de la misma forma que un dato del box
+ * score, y el DT tiene que verlo antes de repartir las marcas.
+ */
+function scoutEstadoJugador(perfil) {
+  if (typeof SGADD_BUZON === 'undefined' || !perfil) return '';
+  const est = SGADD_BUZON.estadoDe(perfil.nombre, perfil.equipo || '');
+  if (!est || !est.avisaEnScouting) return '';
+  const detalle = est.id === 'ALTA'
+    ? 'Incorporación reciente: sus promedios salen de pocos partidos.'
+    : 'Sin minutos en las últimas fechas. Si vuelve, entra con esta ficha.';
+  return `<p class="mt-1 text-[10px] leading-snug px-2 py-1 rounded border ${est.borde} ${est.color}">
+    ${est.emoji} <b>${escapeHtml(est.label)}</b> · ${escapeHtml(detalle)}</p>`;
+}
+
 function scoutBadgesADN(perfil) {
   if (!perfil || !perfil.adn || typeof jugadoresBadges !== 'function') return '';
   const badges = jugadoresBadges(perfil.adn);
@@ -2733,6 +2757,7 @@ function scoutBloqueFichas(inf) {
       <article class="scout-ficha bg-surface2/40 rounded-lg p-3">
         <p class="font-display text-sm text-white leading-tight">${escapeHtml(f.nombre)}</p>
         <p class="text-[10px] uppercase tracking-wider text-accent font-display">${escapeHtml(f.rol.label)}</p>
+        ${scoutEstadoJugador(p)}
         ${scoutBadgesADN(p)}
         <p class="text-[11px] font-mono text-ink mt-1 mb-2">
           MIN ${escapeHtml(SGADD.formatear('MIN', p.min))} ·
