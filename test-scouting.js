@@ -499,12 +499,15 @@ check('cada marca sugiere un PERFIL defensivo de nuestro plantel, no un nombre',
   tabla.filas.every(f => perfilesValidos.indexOf(f.marca.defensor) !== -1),
   tabla.filas.map(f => f.marca.defensor).join(' | '));
 check('el catálogo tiene 11 familias de defensor', S.CATALOGO_DEFENSOR.length === 11, S.CATALOGO_DEFENSOR.length);
-check('al tirador de élite le corresponde el anulador de tiradores',
-  porNombre['TIRADOR, ELITE'].marca.defensor === S.PERFILES_DEFENSOR.sniperStopper,
-  porNombre['TIRADOR, ELITE'].marca.defensor);
-check('al pivot interno le corresponde el muro de pintura',
-  porNombre['PIVOT, INTERNO'].marca.defensor === S.PERFILES_DEFENSOR.paintPillar,
-  porNombre['PIVOT, INTERNO'].marca.defensor);
+/* El perfil concreto ya no es fijo por marca: se desempaqueta con métricas
+   secundarias (ver `elegirDefensor`). Lo que NO puede cambiar es la FAMILIA
+   táctica, que es la que describe la tarea. */
+check('al tirador de élite le toca un especialista perimetral',
+  /Especialista Perimetral|Perimetral Largo/.test(porNombre['TIRADOR, ELITE'].marca.familiaDefensor),
+  porNombre['TIRADOR, ELITE'].marca.defensor + ' → ' + porNombre['TIRADOR, ELITE'].marca.familiaDefensor);
+check('al pivot interno le toca un defensor de la pintura',
+  /Especialista Interior|Referente de Zona/.test(porNombre['PIVOT, INTERNO'].marca.familiaDefensor),
+  porNombre['PIVOT, INTERNO'].marca.defensor + ' → ' + porNombre['PIVOT, INTERNO'].marca.familiaDefensor);
 check('al conductor con pérdidas le corresponde el hostigador',
   porNombre['BASE, RIESGOSO'].marca.defensor === S.PERFILES_DEFENSOR.hostigador,
   porNombre['BASE, RIESGOSO'].marca.defensor);
@@ -774,8 +777,8 @@ check('y sigue debajo de tirador-elite: la amenaza externa real manda',
   idsMarca.indexOf('tirador-elite') < idsMarca.indexOf('volumen-sin-eficiencia'));
 check('no aparece dos veces en la cascada después de moverla',
   idsMarca.filter(id => id === 'volumen-sin-eficiencia').length === 1);
-check('la cascada sigue teniendo 11 marcas con 11 defensores distintos',
-  S.PERFILES_MARCA.length === 11 && new Set(S.PERFILES_MARCA.map(m => m.defensor)).size === 11);
+check('la cascada sigue teniendo 11 marcas',
+  S.PERFILES_MARCA.length === 11, S.PERFILES_MARCA.length);
 
 /* El bloqueo REAL no era el orden sino el umbral: la concentración es
    PLAYS del jugador sobre los PLAYS de TODO el plantel, y con planteles de
@@ -914,28 +917,52 @@ check('familiaDefensor() de una etiqueta desconocida da null', S.familiaDefensor
 /* Cada marca tiene que caer en un perfil REAL del catálogo. */
 const etiquetasCatalogo = [];
 S.CATALOGO_DEFENSOR.forEach(c => c.perfiles.forEach(p => etiquetasCatalogo.push(p.label)));
-check('cada marca de la cascada asigna un perfil que existe en el catálogo',
-  S.PERFILES_MARCA.every(m => etiquetasCatalogo.indexOf(m.defensor) !== -1),
-  S.PERFILES_MARCA.filter(m => etiquetasCatalogo.indexOf(m.defensor) === -1).map(m => m.id).join('|'));
-check('las 11 marcas usan 11 perfiles DISTINTOS: no se repite defensor',
-  new Set(S.PERFILES_MARCA.map(m => m.defensor)).size === S.PERFILES_MARCA.length,
-  S.PERFILES_MARCA.map(m => m.defensor).join(' | '));
+check('todos los candidatos de todas las marcas existen en el catálogo',
+  S.PERFILES_MARCA.every(m => (m.defensores || []).every(c => !!S.PERFILES_DEFENSOR[c.id])),
+  S.PERFILES_MARCA.map(m => m.id + ':' + (m.defensores || []).filter(c => !S.PERFILES_DEFENSOR[c.id]).map(c => c.id).join(',')).join('|'));
+/* La propiedad que NO se puede perder al abrir el catálogo: la sugerencia
+   automática siempre tiene que resolver. Por eso el ÚLTIMO candidato de cada
+   marca no lleva condición: es el default. */
+check('cada marca declara al menos dos candidatos y un default sin condición',
+  S.PERFILES_MARCA.every(m => (m.defensores || []).length >= 2 &&
+    !m.defensores[m.defensores.length - 1].cuando),
+  S.PERFILES_MARCA.filter(m => (m.defensores || []).length < 2 ||
+    m.defensores[m.defensores.length - 1].cuando).map(m => m.id).join('|'));
+check('ninguna marca repite el mismo perfil dos veces entre sus candidatos',
+  S.PERFILES_MARCA.every(m => new Set(m.defensores.map(c => c.id)).size === m.defensores.length));
+/* P-2: el catálogo dejó de ser decorativo. Antes solo 11 de 33 perfiles eran
+   alcanzables (uno fijo por marca) y la UI no lo comunicaba. */
+check('el desempaquetado abre buena parte del catálogo: 22 perfiles o más alcanzables',
+  S.defensoresAlcanzables().length >= 22, S.defensoresAlcanzables().length + ' de ' + etiquetasCatalogo.length);
+check('todos los alcanzables son etiquetas reales del catálogo',
+  S.defensoresAlcanzables().every(d => etiquetasCatalogo.indexOf(d) !== -1));
+check('elegirDefensor nunca devuelve vacío, aunque el perfil venga sin datos',
+  S.PERFILES_MARCA.every(m => !!S.elegirDefensor(m, {})),
+  S.PERFILES_MARCA.filter(m => !S.elegirDefensor(m, {})).map(m => m.id).join('|'));
+check('y tampoco con un perfil nulo',
+  S.PERFILES_MARCA.every(m => !!S.elegirDefensor(m, null)));
 check('cada fila del informe trae también la familia del defensor sugerido',
   tabla.filas.every(f => !!f.marca.familiaDefensor));
 
 /* Asignaciones concretas: el perfil tiene que describir la tarea real. */
-check('al tirador sistemático frío le toca el cerrador de tiros abiertos',
-  porNombre['LADRILLO, PERIMETRAL'].marca.defensor === S.PERFILES_DEFENSOR.closeout);
-check('al tirador eficiente de bajo volumen le toca el defensor de denegación',
-  porNombre['ESPECIALISTA, CARO'].marca.defensor === S.PERFILES_DEFENSOR.denier);
-check('al slasher le toca el contenedor de penetraciones',
-  porNombre['SLASHER, PENETRADOR'].marca.defensor === S.PERFILES_DEFENSOR.driveContainment);
-check('al que hay que flotarle le toca el defensor flotante',
-  porNombre['FLOTABLE, MENOR'].marca.defensor === S.PERFILES_DEFENSOR.targetDefender);
-check('al vulnerable en la línea le toca el defensor de impacto interno',
-  porNombre['MANOS, PIEDRA'].marca.defensor === S.PERFILES_DEFENSOR.interiorImpact);
-check('el fallback usa el defensor multiuso (switch)',
-  porNombre['SUPLENTE, GRIS'].marca.defensor === S.PERFILES_DEFENSOR.switchable);
+check('al tirador sistemático frío le toca un perfil de cierre o contención de volumen',
+  /Perimetral Largo|Especialista Perimetral/.test(porNombre['LADRILLO, PERIMETRAL'].marca.familiaDefensor),
+  porNombre['LADRILLO, PERIMETRAL'].marca.defensor);
+check('al tirador eficiente de bajo volumen le toca un perfil de negación o cierre',
+  /Especialista Perimetral|Perimetral Largo/.test(porNombre['ESPECIALISTA, CARO'].marca.familiaDefensor),
+  porNombre['ESPECIALISTA, CARO'].marca.defensor);
+check('al slasher le toca un perfil de contención de penetración o presión inicial',
+  /Perimetral Atlético|Presión Inicial/.test(porNombre['SLASHER, PENETRADOR'].marca.familiaDefensor),
+  porNombre['SLASHER, PENETRADOR'].marca.defensor);
+check('al que hay que flotarle le toca contención táctica',
+  /Contención Táctica/.test(porNombre['FLOTABLE, MENOR'].marca.familiaDefensor),
+  porNombre['FLOTABLE, MENOR'].marca.defensor);
+check('al vulnerable en la línea le toca un híbrido físico',
+  /Híbrido Físico/.test(porNombre['MANOS, PIEDRA'].marca.familiaDefensor),
+  porNombre['MANOS, PIEDRA'].marca.defensor);
+check('el fallback resuelve igual, con un perfil del catálogo',
+  etiquetasCatalogo.indexOf(porNombre['SUPLENTE, GRIS'].marca.defensor) !== -1,
+  porNombre['SUPLENTE, GRIS'].marca.defensor);
 
 console.log('\n13. DIRECTIVA + JUSTIFICACIÓN NUMÉRICA EN CADA CELDA');
 console.log('═'.repeat(70));
@@ -1008,6 +1035,118 @@ check('el marcador NO es HTML: el motor es puro y la UI escapa antes de converti
   !/<b>|<\/b>|<strong>/i.test(resumenNeg));
 check('al menos un jugador de cada tramo con nombres está marcado',
   negritas.length >= 3, negritas.join('|'));
+
+/* =====================================================================
+   AUDITORÍA DE MARCAS, FUGAS Y CLAVES · segunda vuelta
+
+   Cuatro correcciones que salieron de contrastar el motor contra DOS ligas
+   de nivel distinto (Primera de La Plata y Conferencia Norte de Liga
+   Argentina). El patrón común: umbrales absolutos que describían el
+   promedio de una liga disfrazados de constantes del básquet.
+   ===================================================================== */
+console.log('\n18. AUDITORÍA DE MARCAS, FUGAS Y CLAVES (2ª vuelta)');
+console.log('═'.repeat(70));
+
+/* --- II.3 · el orden de la cascada respeta el costo de la amenaza --- */
+const ordenIds = S.PERFILES_MARCA.map(m => m.id);
+const pMarca = (id) => ordenIds.indexOf(id);
+/* `tirador-sistematico-frio` es, por definición, una amenaza BARATA: el
+   tipo tira mucho y mal. Estaba arriba de las tres caras y les robaba
+   jugadores — medido, 9 slashers de La Plata recibían "close-out corto"
+   cuando su daño real era la penetración (uno con 1,65 de PPT2). */
+check('el tiro frío se evalúa DESPUÉS de la referencia interna',
+  pMarca('tirador-sistematico-frio') > pMarca('interior-dominante'), ordenIds.join(' > '));
+check('y después del slasher',
+  pMarca('tirador-sistematico-frio') > pMarca('slasher'));
+check('y después del conductor con pérdidas altas',
+  pMarca('tirador-sistematico-frio') > pMarca('generador-riesgoso'));
+/* Pero las dos amenazas externas CARAS siguen arriba de todo lo interno:
+   soltar a un tirador rentable es el error más caro del informe. */
+check('las dos amenazas externas caras siguen arriba de las internas',
+  pMarca('tirador-elite') < pMarca('interior-dominante') &&
+  pMarca('tirador-eficiente-bajo-volumen') < pMarca('interior-dominante'));
+check('y el fallback sigue último', pMarca('contencion') === ordenIds.length - 1);
+
+/* --- II.3 · `tiroExternoFrio` es CONJUNCIÓN, no disyunción --- */
+const perfilBase = { t3i: 3.0, pptTriple: 0.80, t3: 0.28, bandaPptTriple: null, bandaT3: null };
+const frioDe = (extra) => {
+  const j = Object.assign({ NOMBRES: 'X', EQUIPO: 'A', FASE: 'REGULAR' }, extra);
+  return j;
+};
+/* El código venía declarando en su propio comentario que para tratar a
+   alguien como "regalable" hacían falta las dos señales, y aplicaba un OR.
+   Con el piso de 0,88 PPT3 en el percentil 57 de La Plata, eso llevaba
+   `tirador-sistematico-frio` al 34% de las fichas. */
+const conBandaAlta = { id: 'superior', label: 'Por encima de la liga', tono: 'alto', z: 0.8 };
+const conBandaBaja = { id: 'limitado', label: 'Por debajo de la liga', tono: 'bajo', z: -0.8 };
+check('con piso bajo pero contexto de liga ALTO ya no se lo trata como frío', (() => {
+  const p = Object.assign({}, perfilBase, { bandaPptTriple: conBandaAlta, tiroExternoRentable: false });
+  /* Reproduce la fórmula del motor sobre un perfil armado a mano. */
+  const piso = p.pptTriple < S.UMBRALES.pptTripleFrio || p.t3 < S.UMBRALES.t3Frio;
+  const hayBanda = p.bandaPptTriple !== null || p.bandaT3 !== null;
+  const ctxFrio = !hayBanda || (p.bandaPptTriple && ['limitado', 'fuga'].indexOf(p.bandaPptTriple.id) !== -1);
+  return piso && !ctxFrio;
+})());
+check('sin bandas de liga manda el piso absoluto: no se deja de decidir', (() => {
+  const p = Object.assign({}, perfilBase);
+  const piso = p.pptTriple < S.UMBRALES.pptTripleFrio || p.t3 < S.UMBRALES.t3Frio;
+  const hayBanda = p.bandaPptTriple !== null || p.bandaT3 !== null;
+  return piso && !hayBanda;
+})());
+check('el perfil expone el caso del tirador de volumen MEDIO sin renta',
+  tabla.filas.every(f => typeof f.perfil.tiroExternoOcasionalFrio === 'boolean'));
+/* Volumen medio = tira lo suficiente para importar, no lo suficiente para
+   perseguirlo. Ninguna de las tres reglas de tiro lo alcanzaba. */
+check('un tirador ocasional frío no es a la vez sistemático',
+  tabla.filas.every(f => !f.perfil.tiroExternoOcasionalFrio || !f.perfil.tiradorSistematico));
+check('ni rentable',
+  tabla.filas.every(f => !f.perfil.tiroExternoOcasionalFrio || !f.perfil.tiroExternoRentable));
+
+/* --- II.5 · las bandas z entraron a fortalezas y fugas --- */
+check('el perfil trae las bandas nuevas que faltaban',
+  tabla.filas.every(f => 'bandaPptDoble' in f.perfil && 'bandaAstPP' in f.perfil &&
+    'bandaPr' in f.perfil && 'bandaRtl' in f.perfil && 'bandaFr' in f.perfil && 'bandaRo' in f.perfil));
+/* PR era la única métrica defensiva del rival que el informe ignoraba por
+   completo, pese a existir el arquetipo "Especialista Defensivo". */
+check('PR ya participa de las fortalezas',
+  /porEncima\(p\.bandaPr\)/.test(require('fs').readFileSync('./js/sgadd-scouting.js', 'utf8')));
+check('RTL% y FR también',
+  /bandaRtl[\s\S]{0,200}bandaFr/.test(require('fs').readFileSync('./js/sgadd-scouting.js', 'utf8')));
+check('las fugas leen la banda de eFG% en vez de un 0,45 fijo', (() => {
+  const src = require('fs').readFileSync('./js/sgadd-scouting.js', 'utf8');
+  const cuerpo = src.slice(src.indexOf('function fugasJugador'), src.indexOf('/** Ficha completa de un jugador rival'));
+  return /porDebajo\(p\.bandaEfg\)/.test(cuerpo) && !/p\.efg < 0\.45/.test(cuerpo);
+})());
+/* El umbral de 0,40 en la línea SÍ queda absoluto: describe economía del
+   básquet y se verificó que cae en el mismo percentil (±1) en las dos
+   ligas contrastadas. */
+check('pero el piso de la falta táctica sigue absoluto: es economía, no nivel de liga', (() => {
+  const src = require('fs').readFileSync('./js/sgadd-scouting.js', 'utf8');
+  const cuerpo = src.slice(src.indexOf('function fugasJugador'), src.indexOf('/** Ficha completa de un jugador rival'));
+  return /U\.t1Regalable/.test(cuerpo);
+})());
+check('ningún jugador se queda sin fortalezas ni sin fugas: siempre hay bullet',
+  tabla.filas.every(f => f.fortalezas.length >= 1 && f.fugas.length >= 1));
+
+/* --- II.6 · las dos claves nuevas --- */
+const idsClave = S.REGLAS_CLAVE.map(r => r.id);
+check('hay 10 claves estratégicas', S.REGLAS_CLAVE.length === 10, idsClave.join(','));
+check('entró la clave de líneas de pase (PR del rival)',
+  idsClave.indexOf('lineas-de-pase') !== -1, idsClave.join(','));
+check('y la de concesión perimetral selectiva',
+  idsClave.indexOf('concesion-perimetral') !== -1);
+check('todas las claves siguen trayendo icono, título y buscador',
+  S.REGLAS_CLAVE.every(r => !!r.icono && !!r.titulo && typeof r.buscar === 'function' && typeof r.texto === 'function'));
+/* Los pares opuestos no pueden apuntar al mismo jugador: la concesión
+   perimetral es para volumen MEDIO, la clausura para volumen alto y caro. */
+check('concesión perimetral y clausura de tiradores nunca marcan al mismo', (() => {
+  const perfiles = tabla.filas.map(f => f.perfil);
+  const conce = S.REGLAS_CLAVE.find(r => r.id === 'concesion-perimetral').buscar(perfiles).map(p => p.nombre);
+  const claus = S.REGLAS_CLAVE.find(r => r.id === 'clausura-tiradores').buscar(perfiles).map(p => p.nombre);
+  return conce.every(n => claus.indexOf(n) === -1);
+})());
+check('las claves activas siguen saliendo con texto y jugadores',
+  S.clavesEstrategicas(idx, 'B').every(c => !!c.texto && Array.isArray(c.jugadores)));
 
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');

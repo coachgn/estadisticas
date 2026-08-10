@@ -21,10 +21,10 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  22 tests · detalle partido a partido
-node test-scouting.js      # 245 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-scouting.js      # 272 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 ```
 
-**793 tests en total. Todos tienen que dar verde antes de commitear.**
+**820 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -74,7 +74,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=49`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=50`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -856,6 +856,35 @@ externo rentable se le sugiera flotar o ayudar desde él**. Con datos reales
 de Atenas: Schroeder (2,4 T3I, PPT3 1,04) pasó a STAY HOME y Qüin (5,4 T3I,
 PPT3 0,78) a contestar sin saltar — antes los dos recibían "flotar".
 
+**`tiroExternoFrio` es CONJUNCIÓN, no disyunción.** Piso absoluto **y**
+contexto de liga. Durante mucho tiempo el comentario del código declaraba
+esta asimetría —basta una señal para tratarlo como amenaza, hacen falta las
+dos para tratarlo como regalable— y el código aplicaba un OR de cuatro
+condiciones. Como el piso de 0,88 PPT3 cae en el percentil 57 de La Plata,
+`tirador-sistematico-frio` se llevaba el **34% de las fichas**; contrastado
+contra Liga Argentina, ese mismo piso cae en el p35, o sea que la etiqueta
+significaba cosas distintas según la categoría.
+
+El contexto es **"no destaca en su liga"** (`!porEncima`) y no *"está en el
+fondo"* (`porDebajo`): con la versión dura la regla se apagaba al 2%, que es
+el mismo defecto dado vuelta. Hoy: 20% en La Plata, 4% en Liga Argentina.
+
+**Hay una cuarta lectura del tiro externo**: `tiroExternoOcasionalFrio`, el
+que lanza entre 1 y 2,5 triples por partido sin renta. No alcanzaba ninguna
+de las tres reglas de marca (una exige rentabilidad, otra ≥ 2,5 intentos y
+la tercera `PT3% ≥ 0,40`), así que **17 fichas de La Plata y 18 de Liga
+Argentina tenían su tiro sin mencionar en todo el informe**. No lleva marca
+propia —su amenaza principal casi siempre es otra— sino un bullet de fuga y
+la clave 📐 de concesión perimetral.
+
+### El orden de la cascada va por COSTO de la amenaza
+
+`tirador-sistematico-frio` es por definición una amenaza **barata** (tira
+mucho y mal) y estaba en el puesto 4, arriba de `interior-dominante`,
+`slasher` y `generador-riesgoso`. Medido: **9 slashers de La Plata** recibían
+"CLOSE-OUT CORTO" cuando su daño real era la penetración — uno con 1,65 de
+PPT2 contra 0,51 de PPT3. Bajó al 7. Hay tests que fijan el orden relativo.
+
 ### El resumen de criterio estratégico: seis tramos alrededor de jugadores
 
 `resumenEjecutivo()` sigue un esquema fijo, y todos los tramos salvo el
@@ -1024,8 +1053,9 @@ ningún otro lado.
 
 ### Matriz de perfiles de "Defensor nuestro"
 
-`CATALOGO_DEFENSOR` son **11 familias con 33 perfiles** específicos. Sugiere
-un PERFIL táctico, no un nombre propio: quién lo cubre depende de quién esté
+`CATALOGO_DEFENSOR` son **11 familias con 33 perfiles** específicos, de los
+que el motor puede sugerir **25**. Sugiere un PERFIL táctico, no un nombre
+propio: quién lo cubre depende de quién esté
 en cancha y de las faltas de cada uno. El campo es editable para poner el
 nombre al armar la rotación.
 
@@ -1048,9 +1078,23 @@ pelota y 🦅 ayudas desde el lado débil) y no se fusionaron: son tareas
 distintas y mezclarlas volvería a agrupar marcas que piden defensores
 diferentes.
 
-Las 11 marcas de la cascada usan **11 perfiles distintos** — hay un test que
-lo verifica. Antes seis perfiles cargaban las once marcas y dos de ellos
-concentraban la mitad.
+### El perfil se desempaqueta con métricas secundarias
+
+Cada marca declara una **lista ordenada de candidatos** (`defensores`), no un
+perfil fijo. Gana el primero cuyo `cuando(perfil)` da verdadero y el último
+no lleva condición: es el default, así que **la sugerencia automática nunca
+puede quedar vacía** — esa es la propiedad que había que conservar al abrir
+el catálogo.
+
+Antes cada marca tenía un perfil fijo, así que solo **11 de 33** eran
+alcanzables y los otros 22 quedaban de adorno sin que la UI lo dijera. Los
+discriminantes son métricas que ya estaban calculadas y que ninguna regla
+usaba: `PR` (elegir entre `Denier` e `Interceptor` es una pregunta sobre
+manos activas), `RO%` y `PPT2` (entre `Paint Pillar` y `Drop Protector`, una
+sobre dónde defiende el aro) y `AST-PP`.
+
+Con datos reales se asignaron **19 perfiles distintos en La Plata** y **22 en
+Liga Argentina**, sobre 9 y 10 familias.
 
 | Marca | Defensor asignado |
 |---|---|
@@ -1140,10 +1184,17 @@ siempre significa ventaja.
 
 `REGLAS_CLAVE` corre cada regla contra el plantel del rival y solo devuelve
 las que los datos activan. Un informe contra un equipo de tiradores y otro
-contra uno de pintura salen distintos sin tocar código. Ocho reglas: ejes de
-eficiencia, clausura de tiradores, invitación selectiva al triple,
-disciplina de bonus, falta táctica rentable, presión a la conducción,
-control del cristal y colapso de la pintura.
+contra uno de pintura salen distintos sin tocar código. **Diez reglas**: ejes
+de eficiencia, clausura de tiradores, invitación selectiva al triple,
+disciplina de bonus, falta táctica rentable, presión a la conducción, control
+del cristal, colapso de la pintura, **🧲 líneas de pase del rival** y **📐
+concesión perimetral selectiva**.
+
+Las dos últimas son de la segunda auditoría. `PR` era la única métrica
+defensiva del rival que el informe ignoraba por completo —ocho reglas y
+ninguna miraba sus manos— pese a existir el arquetipo *Especialista
+Defensivo* en la ficha del jugador: un plantel que roba condiciona NUESTRO
+manejo y eso se prepara antes del partido.
 
 Hay pares **deliberadamente opuestos** que nunca pueden apuntar al mismo
 jugador, y el test lo verifica: *clausura de tiradores* (T3 caro) vs
@@ -1154,6 +1205,38 @@ alguna vez los dos marcan al mismo, hay un umbral mal puesto.
 `PERFILES_MARCA`, en cambio, **sí es una cascada excluyente**: un jugador
 puede disparar varias reglas de análisis, pero la marca asignada elige una
 sola, la de la amenaza más cara (ordenadas de mayor a menor costo esperado).
+
+### Cuándo un umbral absoluto es legítimo
+
+Se contrastó el motor contra **dos ligas de nivel distinto** (Primera de La
+Plata y Conferencia Norte de Liga Argentina: eFG% mediano 0,469 contra 0,530,
+AST-PP 0,867 contra 1,259) midiendo en qué percentil cae cada umbral.
+
+**Un umbral absoluto es legítimo cuando describe economía del básquet.** Esos
+caen en el mismo percentil ±1 en las dos ligas: `pptTripleElite` 1,20 (p91 /
+p90), `t1Regalable` 0,40 (p4 / p3), `volumenTripleSistematico` 2,5 (p32 /
+p31), `usoDobleInterno` 0,45 (p61 / p60).
+
+**Es ilegítimo cuando describe "por debajo del promedio" disfrazado de
+constante.** Ahí la brecha se dispara y la etiqueta significa cosas distintas
+según la categoría: `pptTriplePobre` 0,90 (p61 / **p35**), `t3Frio` 0,30
+(p58 / **p35**), `pptTripleFrio` 0,88 (p57 / **p35**), `t1Pobre` 0,60 (p35 /
+**p15**), `astPPGenerador` 1,40 (p79 / **p59**).
+
+Regla práctica al agregar un umbral: si no podés justificarlo en puntos por
+posesión, va contra la banda z.
+
+### Fortalezas y fugas: contra la liga, no contra un número fijo
+
+`fortalezasJugador()` y `fugasJugador()` leían umbrales absolutos, y eso
+apagaba el bloque de fugas **justo donde más falta hace**: en Liga Argentina
+casi nadie baja de `eFG% < 0,45` o de `T1% < 0,40`, así que el **46% de las
+fichas** salía con *"Sin una fisura clara"* (contra 19% en La Plata). Ahora
+los bullets de eFG%, %TOV, T1%, AST-PP y PPT2 preguntan contra la banda z:
+17% y 18% respectivamente.
+
+`PR`, `RTL%` y `FR` entraron como bullets nuevos. Eran métricas que el perfil
+calculaba y que **ninguna regla del informe usaba**.
 
 ### Umbrales: relativos donde importa
 

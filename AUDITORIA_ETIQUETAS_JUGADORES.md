@@ -7,7 +7,7 @@ defensiva, perfil de defensor asignado, fortalezas, fugas y claves estratégicas
 - **Fecha del relevamiento:** 2026-08-10
 - **Reconfiguración aplicada:** 2026-08-10 (ver
   [§VI](#vi-reconfiguración-aplicada--rangos-recomendados-y-distribución-final))
-- **Versión de assets auditada:** `?v=49`
+- **Versión de assets auditada:** `?v=50`
 - **Archivos inspeccionados:** `js/sgadd-jugadores.js` (1501 líneas),
   `js/sgadd-scouting.js` (2205), `js/sgadd-core.js` (índice y percentiles),
   `js/sgadd-ui.js` (render de badges)
@@ -30,6 +30,7 @@ defensiva, perfil de defensor asignado, fortalezas, fugas y claves estratégicas
 - [IV. Mapa técnico de código](#iv-mapa-técnico-de-código)
 - [V. Diagnóstico de oportunidades y puntos ciegos](#v-diagnóstico-de-oportunidades-y-puntos-ciegos)
 - [VI. Reconfiguración aplicada · rangos y distribución final](#vi-reconfiguración-aplicada--rangos-recomendados-y-distribución-final)
+- [VII. Segunda auditoría · marcas, catálogo defensivo, fugas y claves](#vii-segunda-auditoría--marcas-catálogo-defensivo-fugas-y-claves)
 - [Anexo A · Inventario numérico](#anexo-a--inventario-numérico)
 - [Anexo B · Métricas de la planilla usadas para clasificar](#anexo-b--métricas-de-la-planilla-usadas-para-clasificar)
 
@@ -736,7 +737,7 @@ para que el rol no herede la condición de rebote.
 
 ### P-2 · 22 de 33 perfiles defensivos son inalcanzables
 
-**Severidad: alta (de expectativa).** El catálogo documenta 33 perfiles, pero
+**Severidad: alta (de expectativa). — [RESUELTO en VII.3: 25 de 33 alcanzables]** El catálogo documenta 33 perfiles, pero
 el motor solo puede asignar **11**: exactamente uno por regla de marca. Los
 otros 22 existen como referencia para que el DT elija a mano.
 
@@ -750,7 +751,7 @@ entre `Denier` e `Interceptor`).
 
 ### P-3 · Una sola marca se lleva el 40% del plantel
 
-**Severidad: media.** `tirador-sistematico-frio` cae sobre **38 de 96** fichas.
+**Severidad: media. — [RESUELTO en VII.2: 34% → 20%]** `tirador-sistematico-frio` cae sobre **38 de 96** fichas.
 La causa es la definición de `tiroExternoFrio`, que es una **disyunción de
 cuatro condiciones**: alcanza con estar por debajo en *cualquiera* de PPT3
 absoluto, T3% absoluto, banda PPT3 o banda T3%.
@@ -850,7 +851,7 @@ ninguna de las dos** y cae más abajo en la cascada.
 
 ### P-10 · Los fallbacks de fortalezas y fugas son frecuentes
 
-**Severidad: baja.** *"Sin una fortaleza que se despegue"* aparece en **10 de
+**Severidad: baja. — [RESUELTO en VII.4: en Liga Argentina, 46% → 18% de fichas sin fisura]** *"Sin una fortaleza que se despegue"* aparece en **10 de
 96** y *"Sin una fisura clara"* en **18 de 96**. Casi 1 de cada 5 fichas
 individuales del informe no ofrece un punto de ataque.
 
@@ -863,6 +864,8 @@ indirectamente.
 contra el umbral fijo. La infraestructura ya está.
 
 ### P-11 · Métricas presentes en el perfil que ninguna etiqueta usa
+
+**— [RESUELTO PARCIAL en VII.3/VII.4/VII.5: `PR`, `RTL%` y `FR` entraron a fortalezas, fugas, claves y desempaquetado de defensor. Siguen sin uso `TS%`, `RTL%` en marcas, `PPT1`, `T2%` y `T1I`.]**
 
 `jugadoresPerfilBase()` calcula ~40 campos. **No participan de ninguna regla de
 clasificación:** `ts` (TS%), `rtl` (RTL%), `usg` (USG%, salvo un chequeo de
@@ -1059,6 +1062,219 @@ en 34%), P-7 (etiquetas sin percentil para no calificados), P-8, P-10, P-11
 
 ---
 
+## VII. Segunda auditoría · marcas, catálogo defensivo, fugas y claves
+
+Ejecutada el 2026-08-10 sobre **dos ligas de nivel distinto**, que es lo que
+permitió separar los umbrales que describen básquet de los que describían el
+promedio de una liga.
+
+| | Primera · La Plata | Conferencia Norte · Liga Argentina |
+|---|---|---|
+| Equipos | 12 | 17 |
+| Jugadores | 210 | 260 |
+| Calificados | 97 | 124 |
+| Fichas de scouting | 96 | 136 |
+| eFG% mediano | 0,469 | **0,530** |
+| PPT3 mediano | 0,833 | **0,965** |
+| PPT2 mediano | 0,974 | **1,076** |
+| AST-PP mediano | 0,867 | **1,259** |
+| %TOV mediano | 0,149 | **0,131** |
+| Desvío de eFG% | 0,084 | **0,054** |
+
+Mejor nivel y **menos dispersión**: en Liga Argentina los jugadores se parecen
+más entre sí, así que cualquier umbral fijo corta la distribución en otro lado.
+
+### VII.1 · Qué umbrales aguantan el cambio de categoría
+
+Percentil en el que cae cada umbral absoluto, en cada liga:
+
+| Umbral | Valor | La Plata | Liga Argentina | Brecha |
+|---|---|---|---|---|
+| `pptTripleElite` | 1,20 | p91 | p90 | **1** ✅ |
+| `volumenTripleSistematico` | 2,5 | p32 | p31 | **1** ✅ |
+| `t1Regalable` | 0,40 | p4 | p3 | **1** ✅ |
+| `usoDobleInterno` | 0,45 | p61 | p60 | **1** ✅ |
+| `t1Confiable` | 0,75 | p71 | p67 | 4 ✅ |
+| `usoTripleAlto` | 0,40 | p70 | p65 | 5 ✅ |
+| `usoLibreAlto` | 0,10 | p43 | p50 | 7 |
+| `pptDobleAlto` | 1,10 | p70 | p61 | 9 |
+| `t3Rentable` / `pptTripleRentable` | 0,35 / 1,05 | p80 | p68 | 12 |
+| `minutosClave` | 20 | p31 | p13 | 18 ⚠ |
+| `astPPGenerador` | 1,40 | p79 | p59 | **20** ⚠ |
+| `t1Pobre` | 0,60 | p35 | p15 | **20** ⚠ |
+| `pptTripleFrio` | 0,88 | p57 | p35 | **22** ⚠ |
+| `t3Frio` | 0,30 | p58 | p35 | **23** ⚠ |
+| `pptTriplePobre` | 0,90 | p61 | p35 | **26** ⚠ |
+
+**La regla que sale de acá:** un umbral absoluto es legítimo cuando describe
+**economía del básquet** (1,20 pts por triple intentado es caro en cualquier
+lado; 40% en la línea es malo en cualquier lado) y esos caen en el mismo
+percentil ±1 en las dos ligas. Cuando describe **"por debajo del promedio"**
+disfrazado de constante, la brecha se dispara y la etiqueta significa cosas
+distintas según la categoría.
+
+### VII.2 · II.3 · Inconsistencias de la cascada de marcas
+
+#### 1. El código contradecía su propio comentario
+
+`perfilJugador()` venía documentando desde siempre:
+
+> *"alcanza con cualquiera de los dos para tratarlo como amenaza, pero hacen
+> falta los dos para tratarlo como regalable"*
+
+…y `tiroExternoFrio` estaba implementado como **disyunción de cuatro
+condiciones**: bastaba estar bajo en PPT3 absoluto **o** T3% absoluto **o**
+banda PPT3 **o** banda T3%. Con el piso de 0,88 en el percentil 57 de La
+Plata, `tirador-sistematico-frio` se llevaba el **34% de las fichas**.
+
+**Corregido a conjunción**: piso absoluto **y** contexto de liga. El contexto
+es *"no destaca en su liga"* (`!porEncima`) y no *"está en el fondo"*
+(`porDebajo`) — con la versión dura la regla se apagaba al 2%, que es el mismo
+defecto dado vuelta.
+
+| | Antes | Ahora |
+|---|---|---|
+| La Plata | 33 fichas (34%) | **19 (20%)** |
+| Liga Argentina | 12 (9%) | **5 (4%)** |
+
+#### 2. La amenaza barata evaluaba antes que las caras
+
+`tirador-sistematico-frio` es, por definición, una amenaza **barata**: el tipo
+tira mucho y mal. Estaba en el puesto 4, arriba de `interior-dominante`,
+`slasher` y `generador-riesgoso`.
+
+Consecuencia medida: **9 slashers de La Plata y 4 de Liga Argentina** recibían
+*"CLOSE-OUT CORTO / CONTESTAR SIN SALTAR"* cuando su daño real era la
+penetración. Uno de ellos con **1,65 de PPT2 contra 0,51 de PPT3**: el informe
+mandaba al defensor a preocuparse por el tiro que menos le rinde al rival.
+Además **9 conductores** con pérdidas altas quedaban sin la consigna de trap.
+
+**Orden nuevo** (de la amenaza más cara a la más barata):
+
+```
+1. tirador-elite                      ← amenaza externa cara
+2. volumen-sin-eficiencia             ← decisión de plan sobre el eje
+3. tirador-eficiente-bajo-volumen     ← amenaza externa cara escondida
+4. interior-dominante                 ← amenaza interna cara
+5. slasher                            ← penetración cara
+6. generador-riesgoso                 ← conductor presionable
+7. tirador-sistematico-frio           ← amenaza BARATA (bajó del 4)
+8. castigable-en-la-linea
+9. tirador-ineficiente
+10. rebotador
+11. contencion                        ← fallback
+```
+
+#### 3. El hueco del tirador de volumen medio
+
+Un jugador que tira entre 1 y 2,5 triples por partido sin renta **no
+alcanzaba ninguna de las tres reglas de tiro**: `tirador-eficiente` exige
+rentabilidad, `sistematico-frio` exige ≥ 2,5 intentos y `tirador-ineficiente`
+exige `PT3% ≥ 0,40`. Medido: **17 fichas en La Plata y 18 en Liga Argentina**
+con su tiro sin mencionar en todo el informe.
+
+No merece marca propia —su amenaza principal casi siempre es otra— así que se
+resolvió donde corresponde: un flag `tiroExternoOcasionalFrio` que alimenta un
+bullet de fuga y una clave estratégica nueva.
+
+#### 4. Escenarios de choque probados
+
+| Escenario | Resultado |
+|---|---|
+| **Perimetral robador** (`PR` en el top 20%) | 21 en La Plata, 28 en Liga Argentina. **`PR` no participaba de ninguna regla del informe.** Resuelto en VII.4 y VII.5. |
+| **Tirador de volumen medio** | 17 / 18 fichas sin cobertura. Resuelto arriba. |
+| **Interior de rol** (sin PPT2 alto ni rebote dominante) | 0 en La Plata, 3 en Liga Argentina. No es un hueco: las marcas anteriores los capturan. |
+
+### VII.3 · II.4 · Desempaquetado del catálogo defensivo (P-2)
+
+El catálogo documentaba **33 perfiles** pero el motor solo podía asignar
+**11**: uno fijo por regla de marca. Los otros 22 quedaban de adorno y la UI
+no lo comunicaba.
+
+Cada marca declara ahora una **lista ordenada de candidatos**; gana el primero
+cuyo `cuando(perfil)` da verdadero, y el último no lleva condición: es el
+default. **La sugerencia automática nunca puede quedar vacía**, que es la
+propiedad que había que conservar.
+
+| Marca | Candidatos (en orden) | Discriminante |
+|---|---|---|
+| `tirador-elite` | Denier · Screen Navigator · **Sniper Stopper** | vía principal externa / volumen sistemático |
+| `volumen-sin-eficiencia` | Length Defender · **Volume Containment** | uso externo alto |
+| `tirador-eficiente-bajo-volumen` | Closeout · Sniper Stopper · **Denier** | volumen bajo / PPT3 por encima de la liga |
+| `interior-dominante` | Primary Rim Protector · Drop Protector · **Paint Pillar** | PPT2 ≥ 1,30 / `RO%` y PPT2 por encima |
+| `slasher` | POA Defender · Transition Defender · **Drive Containment** | AST-PP alto / **`PR` alto** |
+| `generador-riesgoso` | P&R Disruptor · POA Defender · **Ball-Screen Pest** | AST-PP alto / +28 min |
+| `tirador-sistematico-frio` | Volume Containment · Screen Navigator · **Closeout** | T3I ≥ 5 / uso externo alto |
+| `castigable-en-la-linea` | Low-Post Wall · **Interior Impact** | es interior |
+| `tirador-ineficiente` | Read Specialist · **Target Defender** | AST-PP alto (es pasador, no tirador) |
+| `rebotador` | Rebounding Guard · Paint Dominator · **Glass Cleaner** | es perimetral / domina los dos cristales |
+| `contencion` | Passing Lane Interceptor · Pace Controller · Free Safety · **Switchable** | **`PR` alto** / pocos minutos / `RO%` alto |
+
+**Perfiles alcanzables: 11 → 25 de 33.** Usados con datos reales: **19** en La
+Plata y **22** en Liga Argentina, sobre **9 y 10 familias** respectivamente.
+
+Los discriminantes son métricas que ya estaban calculadas y que ninguna regla
+usaba: elegir entre `Denier` e `Interceptor` es una pregunta sobre manos
+activas (`PR`), y entre `Paint Pillar` y `Drop Protector`, una sobre dónde
+defiende el aro (`RO%` + `PPT2`).
+
+### VII.4 · II.5 · Fortalezas y fugas contra la liga (P-10)
+
+El bloque de fugas se apagaba **justo donde más falta hace**:
+
+| | La Plata | Liga Argentina |
+|---|---|---|
+| *"Sin una fisura clara"* — antes | 19% | **46%** |
+| *"Sin una fisura clara"* — ahora | **17%** | **18%** |
+| *"Sin fortaleza destacada"* — antes | 21% | 8% |
+| *"Sin fortaleza destacada"* — ahora | **18%** | **8%** |
+
+En una liga pareja y de mejor nivel casi nadie baja de `eFG% < 0,45` o de
+`T1% < 0,40`, así que **casi la mitad de las fichas del informe no ofrecía un
+punto de ataque**. Los bullets ahora preguntan *"¿está por debajo de SU
+liga?"* y la respuesta viaja con el nivel de la categoría.
+
+**Bullets reescritos con banda z:** eFG%, %TOV, T1%, AST-PP, PPT2.
+**Bullets nuevos:** `PR` (fortaleza — líneas de pase), `RTL%` + `FR`
+(fortaleza — ataca el contacto), PPT2 bajo en perimetral (fuga), tirador de
+volumen medio sin renta (fuga).
+
+**Lo que quedó absoluto a propósito:** `t1Regalable` (0,40) y `pptTripleElite`
+(1,20), los dos verificados en el mismo percentil ±1 en las dos ligas.
+
+Bandas agregadas al perfil: `bandaPptDoble`, `bandaAstPP`, `bandaPr`,
+`bandaRtl`, `bandaFr`, `bandaRo`.
+
+### VII.5 · II.6 · Claves estratégicas: de 8 a 10
+
+| Icono | Clave nueva | Condición | Por qué faltaba |
+|---|---|---|---|
+| 🧲 | **Líneas de pase del rival** | `PR` por encima de la liga **y** MIN ≥ 20 | Ocho reglas y ninguna miraba las manos del rival. Un plantel que roba condiciona NUESTRO manejo, y eso se prepara antes del partido |
+| 📐 | **Concesión perimetral selectiva** | `tiroExternoOcasionalFrio` **y** MIN ≥ 20 | El DT no tenía dónde leer cuál es el tiro que conviene conceder cuando hay que elegir |
+
+Verificado que *concesión perimetral* y *clausura de tiradores* nunca apuntan
+al mismo jugador: una es para volumen medio sin renta, la otra para volumen
+alto y caro.
+
+**No implementado:** alerta de tiradores en racha. Requiere leer
+`liga.jugadorPartidos` desde el motor de scouting, que hoy trabaja solo con
+promedios de temporada. Es una vuelta aparte.
+
+### VII.6 · Resultado consolidado
+
+| Indicador | La Plata antes | La Plata ahora | LA antes | LA ahora |
+|---|---|---|---|---|
+| Marca dominante | `frio` 34% | **`frio` 20%** | `eficiente` 29% | `eficiente` 29% |
+| Marcas activas | 11/11 | 11/11 | 11/11 | 11/11 |
+| Perfiles de defensor usados | 11 | **19** | 11 | **22** |
+| Familias defensivas usadas | 7 | **9** | 7 | **10** |
+| Slashers con marca de tirador | 9 | **0** | 4 | **0** |
+| *Sin fisura clara* | 19% | **17%** | 46% | **18%** |
+| *Sin fortaleza destacada* | 21% | **18%** | 8% | **8%** |
+| Flotación a un tirador rentable | 0 | **0** | 0 | **0** |
+
+---
+
 ## Anexo A · Inventario numérico
 
 | Familia de etiquetas | Cantidad | Excluyente | Referencia | Archivo |
@@ -1072,10 +1288,10 @@ en 34%), P-7 (etiquetas sin percentil para no calificados), P-8, P-10, P-11
 | Bandas z | 5 | Sí | Media/desvío liga | scouting |
 | Marcas asignadas | 11 | Sí | Mixta | scouting |
 | Perfiles de defensor (catálogo) | 33 en 11 familias | — | — | scouting |
-| Perfiles de defensor (asignables) | **11** | Sí | 1:1 con marca | scouting |
+| Perfiles de defensor (asignables) | **25** | Sí | candidatos con desempate | scouting |
 | Bullets de fortaleza | 7 (+fallback) | **No** | Absoluta | scouting |
 | Bullets de fuga | 6 (+fallback) | **No** | Absoluta | scouting |
-| Claves estratégicas | 8 | **No** | Mixta | scouting |
+| Claves estratégicas | **10** | **No** | Mixta | scouting |
 | Tablas de ranking | 8 | — | Top 20 liga | jugadores |
 
 **Total de etiquetas distintas que puede recibir un jugador: 57**
@@ -1092,7 +1308,7 @@ defensor + 5 bandas z + 6 salidas de síntesis, menos solapamientos de conteo).
 | Roles funcionales con ≥ 1 caso | 7 / 9 | **10 / 10** |
 | Marcas con ≥ 1 caso | 10 / 11 | **11 / 11** |
 | Arquetipos con ≥ 1 caso | 5 / 6 | **6 / 6** |
-| Perfiles de defensor asignados | 10 / 33 | **11 / 33** |
+| Perfiles de defensor asignados | 10 / 33 | **19 / 33** *(25 alcanzables)* |
 | Jugadores sin ningún arquetipo | 140 (67%) | **135 (64%)** |
 | Jugadores sin origen definido | 74 (35%) | **27 (13%)** |
 | Contradicciones rol interno ↔ marca externa | 0 | **0** |
@@ -1151,5 +1367,5 @@ Suite completa corrida después de aplicar la reconfiguración de la sección VI
 | `test-personalidad.js` | ✓ 20 |
 | `test-informe.js` | ✓ 7 |
 | `test-partido.js` | ✓ 22 |
-| `test-scouting.js` | ✓ 245 |
-| **Total** | **793 · 0 fallas** |
+| `test-scouting.js` | ✓ 272 |
+| **Total** | **820 · 0 fallas** |
