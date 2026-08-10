@@ -75,12 +75,20 @@ check('jugadoresBuscar() encuentra también a los que no califican (RUIZ)',
 
 console.log('\n2. ROL POR MINUTOS — bandas fijas, no percentiles');
 console.log('═'.repeat(70));
-check('26 min exactos → Jugador Clave', J.jugadoresRolMinutos(26).id === 'clave', JSON.stringify(J.jugadoresRolMinutos(26)));
-check('25,9 min → todavía Importante (no llega a Clave)', J.jugadoresRolMinutos(25.9).id === 'importante');
-check('23 min exactos → Jugador Importante', J.jugadoresRolMinutos(23).id === 'importante');
-check('22,9 min → cae a Rotación', J.jugadoresRolMinutos(22.9).id === 'rotacion');
-check('13 min exactos → Jugador de Rotación', J.jugadoresRolMinutos(13).id === 'rotacion');
-check('12,9 min → Pocos Minutos', J.jugadoresRolMinutos(12.9).id === 'pocos');
+/* Cortes recalibrados contra la distribución real de la liga: 25 / 20 / 15.
+   El de 15 coincide con el umbral de calificación (~15,4 min), así que
+   "Pocos Minutos" pasa a significar "no llega a tener percentil". */
+check('25 min exactos → Jugador Clave', J.jugadoresRolMinutos(25).id === 'clave', JSON.stringify(J.jugadoresRolMinutos(25)));
+check('24,9 min → todavía Importante (no llega a Clave)', J.jugadoresRolMinutos(24.9).id === 'importante');
+check('20 min exactos → Jugador Importante', J.jugadoresRolMinutos(20).id === 'importante');
+check('19,9 min → cae a Rotación', J.jugadoresRolMinutos(19.9).id === 'rotacion');
+check('15 min exactos → Jugador de Rotación', J.jugadoresRolMinutos(15).id === 'rotacion');
+check('14,9 min → Pocos Minutos', J.jugadoresRolMinutos(14.9).id === 'pocos');
+check('los cortes declarados son 25 / 20 / 15 y no otros',
+  J.ROLES_MINUTOS.map(r => r.min).join(',') === '25,20,15,-Infinity',
+  J.ROLES_MINUTOS.map(r => r.min).join(','));
+check('las cuatro bandas son contiguas: ningún valor de MIN queda sin banda',
+  [40, 25, 24.9, 20, 19.9, 15, 14.9, 0].every(m => J.jugadoresRolMinutos(m) !== null));
 check('cada banda trae el "rol" (la etiqueta larga) además del id',
   J.jugadoresRolMinutos(30).rol === 'Dependencia Absoluta' &&
   J.jugadoresRolMinutos(24).rol === 'Consistencia Estructural' &&
@@ -91,7 +99,8 @@ check('por debajo de 10 min se marca "urgente" (matiz dentro de Pocos Minutos)',
 check('con minutos no numéricos da null (no revienta)', J.jugadoresRolMinutos(null) === null && J.jugadoresRolMinutos(undefined) === null);
 check('con pocos minutos (RUIZ, 4′) el rol es Pocos Minutos aunque tenga buen percentil',
   J.jugadoresRolMinutos(ruiz['MIN']).id === 'pocos', ruiz['MIN']);
-check('MOREIRA (A), 25′, es Jugador Importante', J.jugadoresRolMinutos(moreiraA['MIN']).id === 'importante', moreiraA['MIN']);
+check('MOREIRA (A), 25′, pasa a Jugador Clave con los cortes nuevos',
+  J.jugadoresRolMinutos(moreiraA['MIN']).id === 'clave', moreiraA['MIN']);
 
 console.log('\n3. Z-SCORE');
 console.log('═'.repeat(70));
@@ -149,12 +158,14 @@ check('cada tab trae id, label y la pregunta que responde',
 console.log('\n8. ARQUETIPOS TÉCNICOS');
 console.log('═'.repeat(70));
 
-const colsArq = ['NOMBRES', 'EQUIPO', 'FASE', 'MIN', 'PTS', 'PLAYS', 'eFG%', 'PPP', 'AST-PP', 'RO', 'RD', 'RT', 'PR', 'T3I', 'T3%', 'PT1%', 'T1%'];
+const colsArq = ['NOMBRES', 'EQUIPO', 'FASE', 'MIN', 'PTS', 'PLAYS', 'eFG%', 'PPP', 'AST-PP',
+  'RO', 'RD', 'RT', 'PR', 'T3I', 'T3%', 'PT1%', 'T1%', 'RTL%', 'FR'];
 function filaBase(n) {
   return { NOMBRES: 'BASE ' + n, EQUIPO: 'A', FASE: 'REGULAR',
     MIN: '20', PTS: '8', PLAYS: '10', 'eFG%': '0,40', PPP: '0,80',
     'AST-PP': '0,9', RO: '2', RD: '4', RT: '6', PR: '2',
-    T3I: '1,0', 'T3%': '0,25', 'PT1%': '0,12', 'T1%': '0,70' };
+    T3I: '1,0', 'T3%': '0,25', 'PT1%': '0,10', 'T1%': '0,65',
+    'RTL%': '0,18', FR: '1,5' };
 }
 const filasArq = [
   filaBase(1), filaBase(2), filaBase(3), filaBase(4), filaBase(5),
@@ -169,8 +180,10 @@ const filasArq = [
   Object.assign(filaBase('AMENAZA'), { NOMBRES: 'AMENAZA', T3I: '5,0', 'T3%': '0,40' }),
   // Especialista Defensivo: recuperos muy por encima del promedio.
   Object.assign(filaBase('ESPDEF'), { NOMBRES: 'ESPDEF', PR: '5' }),
-  // Buscador de Contacto: peso y acierto de tiro libre.
-  Object.assign(filaBase('CONTACTO'), { NOMBRES: 'CONTACTO', 'PT1%': '0,30', 'T1%': '0,85' }),
+  /* Buscador de Contacto: ahora es MULTIVARIABLE (RTL% + FR + PT1% + T1%).
+     El criterio viejo (`PT1% > 0,25`) era inalcanzable: el PT1% más alto de
+     la liga real es 0,230, así que el arquetipo daba cero sobre 210. */
+  Object.assign(filaBase('CONTACTO'), { NOMBRES: 'CONTACTO', 'RTL%': '0,35', FR: '4', 'PT1%': '0,16', 'T1%': '0,80' }),
   { NOMBRES: 'JUGADOR TIPO', EQUIPO: '', FASE: 'REGULAR', MIN: '10', PTS: '8' },
 ];
 const idxArq = SGADD.construirIndice({
@@ -192,8 +205,22 @@ check('Amenaza Perimetral Real: T3I > 3.0 y T3% > 34%',
   idsDe(J.jugadoresArquetipos(idxArq, jugArq('AMENAZA'))).indexOf('amenaza') !== -1);
 check('Especialista Defensivo: recuperos > 1.30x el promedio',
   idsDe(J.jugadoresArquetipos(idxArq, jugArq('ESPDEF'))).indexOf('especialistaDef') !== -1);
-check('Buscador de Contacto: PT1% > 25% y T1% > 80%',
-  idsDe(J.jugadoresArquetipos(idxArq, jugArq('CONTACTO'))).indexOf('buscadorContacto') !== -1);
+check('Buscador de Contacto: RTL% + FR + PT1% + T1% exigidos juntos',
+  idsDe(J.jugadoresArquetipos(idxArq, jugArq('CONTACTO'))).indexOf('buscadorContacto') !== -1,
+  JSON.stringify(J.jugadoresArquetipos(idxArq, jugArq('CONTACTO'))));
+/* Las cuatro señales miden cosas distintas y por eso se exigen juntas:
+   con volumen de línea pero sin puntería, o con puntería y sin volumen,
+   NO es un buscador de contacto. */
+check('con RTL% y FR altos pero T1% pobre NO califica',
+  idsDe(J.jugadoresArquetipos(idxArq,
+    Object.assign({}, jugArq('CONTACTO'), { 'T1%': 0.55 }))).indexOf('buscadorContacto') === -1);
+check('con T1% de élite pero sin volumen de línea tampoco',
+  idsDe(J.jugadoresArquetipos(idxArq,
+    Object.assign({}, jugArq('CONTACTO'), { 'RTL%': 0.10, FR: 0.8, 'PT1%': 0.04 }))).indexOf('buscadorContacto') === -1);
+check('el umbral de PT1% es alcanzable en la liga real (el viejo, 0,25, no lo era)',
+  J.JUGADORES_UMBRALES.usoLibreContacto <= 0.20, J.JUGADORES_UMBRALES.usoLibreContacto);
+check('el filtro de efectividad quedó en 0,72 como se pidió',
+  J.JUGADORES_UMBRALES.t1Contacto === 0.72);
 check('un jugador "promedio" no calza en NINGÚN perfil (el motor discrimina, no siempre da positivo)',
   J.jugadoresArquetipos(idxArq, jugArq('BASE 1')).length === 0,
   J.jugadoresArquetipos(idxArq, jugArq('BASE 1')));
@@ -712,6 +739,126 @@ fuentesUI.forEach(f => {
 });
 check('ningún handler inline interpola un valor sin escJs',
   sospechosos.length === 0, sospechosos.join(' | '));
+
+/* =====================================================================
+   16. RECALIBRACIÓN POR DISTRIBUCIÓN REAL
+
+   Tres correcciones que salieron de medir la liga entera, no de ajustar
+   umbrales a ojo. Los tres puntos ciegos que cierran (P-1, P-5, P-6)
+   tenían la misma raíz: umbrales que decían una cosa y en los datos
+   significaban otra.
+   ===================================================================== */
+console.log('\n16. RECALIBRACIÓN POR DISTRIBUCIÓN REAL');
+console.log('═'.repeat(70));
+
+/* --- La referencia de los relativos de rebote ---
+   El JUGADOR TIPO de la planilla es la mediana de TODOS los jugadores del
+   libro, incluidos los de 0 minutos: en la liga real venía 1,66x por
+   debajo de la mediana de los calificados. Con esa referencia, un umbral
+   de "1,20x la liga" lo pasaba el 65% del plantel. */
+const colsRef = ['NOMBRES', 'EQUIPO', 'FASE', 'MIN', 'RO%', 'RD%', 'RO', 'RD', 'RT', 'T3I', 'T2I', 'PPT2'];
+const filaRef = (n, min, ro, rd) => ({ NOMBRES: n, EQUIPO: 'A', FASE: 'REGULAR', MIN: String(min),
+  'RO%': String(ro).replace('.', ','), 'RD%': String(rd).replace('.', ','),
+  RO: '1', RD: '3', RT: '4', T3I: '1', T2I: '9', PPT2: '0,90' });
+const idxRef = SGADD.construirIndice({
+  'PROMEDIOS E': { cols: colsE, filas: filasE },
+  'PROMEDIOS J': { cols: colsRef, filas: [
+    /* Cuatro que califican (MIN ≥ 20, el del JUGADOR TIPO) con RO% alto… */
+    filaRef('CAL 1', 24, 0.040, 0.100), filaRef('CAL 2', 26, 0.044, 0.110),
+    filaRef('CAL 3', 22, 0.038, 0.095), filaRef('CAL 4', 28, 0.042, 0.105),
+    /* …y tres que no juegan y arrastran la mediana del libro hacia abajo. */
+    filaRef('BANCA 1', 2, 0.004, 0.010), filaRef('BANCA 2', 1, 0.003, 0.008),
+    filaRef('BANCA 3', 3, 0.005, 0.012),
+    { NOMBRES: 'JUGADOR TIPO', EQUIPO: '', FASE: 'REGULAR', MIN: '20',
+      'RO%': '0,010', 'RD%': '0,025', RO: '1', RD: '3', RT: '4', T3I: '1', T2I: '9', PPT2: '0,90' },
+  ] },
+}, { fase: 'REGULAR' });
+
+const refReb = J.jugadoresReferenciasRebote(idxRef);
+check('con muestra suficiente la referencia es la mediana de los CALIFICADOS, no el JUGADOR TIPO',
+  refReb.origen === 'mediana de calificados', refReb.origen);
+check('y esa mediana es sensiblemente mayor que la del TIPO (que incluye a los que no juegan)',
+  refReb['RO%'] > idxRef.liga.jugadorTipo['RO%'] * 2,
+  refReb['RO%'] + ' vs ' + idxRef.liga.jugadorTipo['RO%']);
+const perfCal1 = J.jugadoresPerfilBase(idxRef, idxRef.liga.jugadores.find(j => j['NOMBRES'] === 'CAL 1'));
+check('un jugador de rotación normal queda cerca de 1,00 y no inflado a 4x',
+  perfCal1.reboteRel > 0.8 && perfCal1.reboteRel < 1.2, perfCal1.reboteRel);
+check('el perfil expone de dónde salió la referencia, para poder auditarlo',
+  perfCal1.refRebote === 'mediana de calificados', perfCal1.refRebote);
+check('sin calificados suficientes se degrada al JUGADOR TIPO en vez de romper',
+  J.jugadoresReferenciasRebote({ liga: { jugadorTipo: { 'RO%': 0.02, 'RD%': 0.05 }, jugadoresCalificados: [] } }).origen === 'JUGADOR TIPO');
+check('sin índice tampoco revienta', !!J.jugadoresReferenciasRebote(null));
+
+/* --- P-1: los tres roles interiores son alcanzables ---
+   Antes `rim-runner` iba primero con un piso que el discriminante de
+   origen ya garantizaba, así que se llevaba el grupo interior completo. */
+const rolesIds = J.JUGADORES_ROLES_FUNCIONALES.map(r => r.id);
+const pos = (id) => rolesIds.indexOf(id);
+check('finalizador-corto se evalúa ANTES que rim-runner',
+  pos('finalizador-corto') < pos('rim-runner'), rolesIds.join(' > '));
+check('ancla-defensiva también',
+  pos('ancla-defensiva') < pos('rim-runner'), rolesIds.join(' > '));
+check('existe un fallback INTERIOR: un interior sin rasgo dominante no cae con los perimetrales',
+  pos('poste-bajo') !== -1 && pos('poste-bajo') < pos('spacing'));
+check('el fallback interior va después de los tres roles específicos',
+  pos('poste-bajo') > pos('rim-runner'));
+
+const interior = { esInterior: true, esPerimetral: false, mezclaTriple: 0.05,
+  pptDoble: 1.30, reboteRel: 2.00, reboteDefRel: 1.50, astPP: 0.5, ast: 1, min: 25, usoTriple: 0.05 };
+check('un interior que termina cerca del aro es Finalizador Corto, no Rim Runner',
+  J.jugadoresRolFuncional(interior).id === 'finalizador-corto', J.jugadoresRolFuncional(interior).id);
+const anclaP = Object.assign({}, interior, { pptDoble: 0.85, reboteRel: 1.05, reboteDefRel: 1.60 });
+check('el que sostiene el cristal DEFENSIVO más que el ofensivo es Ancla Defensiva',
+  J.jugadoresRolFuncional(anclaP).id === 'ancla-defensiva', J.jugadoresRolFuncional(anclaP).id);
+const rimP = Object.assign({}, interior, { pptDoble: 0.85, reboteRel: 1.80, reboteDefRel: 1.20 });
+check('el que vive del cristal OFENSIVO sigue siendo Rim Runner',
+  J.jugadoresRolFuncional(rimP).id === 'rim-runner', J.jugadoresRolFuncional(rimP).id);
+const posteP = Object.assign({}, interior, { pptDoble: 0.85, reboteRel: 1.00, reboteDefRel: 1.00 });
+check('el interior sin dimensión dominante cae en Poste Bajo, no en Rol Complementario',
+  J.jugadoresRolFuncional(posteP).id === 'poste-bajo', J.jugadoresRolFuncional(posteP).id);
+/* El comparativo es lo que impide que ancla y rim runner sean el mismo test
+   con otro nombre: en esta liga el que rebotea en defensa casi siempre
+   rebotea también en ataque. */
+check('con RD y RO igual de altos gana Rim Runner: el ancla exige que el defensivo pese MÁS',
+  J.jugadoresRolFuncional(Object.assign({}, interior,
+    { pptDoble: 0.85, reboteRel: 1.60, reboteDefRel: 1.60 })).id === 'rim-runner');
+
+/* --- P-6 / P-9: la zona gris de origen se resuelve por cristal --- */
+const colsZG = ['NOMBRES', 'EQUIPO', 'FASE', 'MIN', 'RO%', 'RD%', 'RO', 'RD', 'RT', 'T3I', 'T2I', 'PPT2'];
+const zg = (n, t3i, t2i, rt) => ({ NOMBRES: n, EQUIPO: 'A', FASE: 'REGULAR', MIN: '24',
+  'RO%': '0,030', 'RD%': '0,090', RO: '2', RD: '4', RT: String(rt), T3I: String(t3i), T2I: String(t2i), PPT2: '0,90' });
+const idxZG = SGADD.construirIndice({
+  'PROMEDIOS E': { cols: colsE, filas: filasE },
+  'PROMEDIOS J': { cols: colsZG, filas: [
+    zg('GRIS REBOTEA', 2, 8, 12),    // mezcla 0,20 → zona gris, RT muy alto
+    zg('GRIS NO REBOTEA', 2, 8, 2),  // mezcla 0,20 → zona gris, RT muy bajo
+    zg('MEDIO 1', 2, 8, 6), zg('MEDIO 2', 2, 8, 6), zg('MEDIO 3', 2, 8, 6),
+    { NOMBRES: 'JUGADOR TIPO', EQUIPO: '', FASE: 'REGULAR', MIN: '20',
+      'RO%': '0,020', 'RD%': '0,060', RO: '1', RD: '3', RT: '6', T3I: '2', T2I: '8', PPT2: '0,90' },
+  ] },
+}, { fase: 'REGULAR' });
+const perfZG = (n) => J.jugadoresPerfilBase(idxZG, idxZG.liga.jugadores.find(j => j['NOMBRES'] === n));
+const gr = perfZG('GRIS REBOTEA'), gn = perfZG('GRIS NO REBOTEA');
+check('la fixture cae de verdad en la zona gris de mezcla (0,12 a 0,30)',
+  cerca(gr.mezclaTriple, 0.20, 1e-6) && gr.mezclaTriple >= J.JUGADORES_UMBRALES.mezclaTripleInterior &&
+  gr.mezclaTriple < J.JUGADORES_UMBRALES.mezclaTripleaPerimetral, gr.mezclaTriple);
+check('en la zona gris, el que pesa en el cristal se resuelve como INTERIOR',
+  gr.esInterior === true && gr.esPerimetral === false,
+  'int=' + gr.esInterior + ' per=' + gr.esPerimetral + ' rtRel=' + gr.reboteTotalRel);
+check('y el que no, como PERIMETRAL',
+  gn.esPerimetral === true && gn.esInterior === false,
+  'int=' + gn.esInterior + ' per=' + gn.esPerimetral + ' rtRel=' + gn.reboteTotalRel);
+check('ya no existe el caso "ni interior ni perimetral" con tiros de campo cargados',
+  idxZG.liga.jugadores.filter(j => j['NOMBRES'] !== 'JUGADOR TIPO')
+    .map(j => J.jugadoresPerfilBase(idxZG, j))
+    .every(p => p.esInterior || p.esPerimetral));
+/* Sin un solo tiro de campo no hay origen que inferir: eso NO se completa
+   con el desempate, se deja explícitamente sin clasificar. */
+check('sin tiros de campo el origen queda vacío: no se inventa',
+  (() => { const p = J.jugadoresPerfilBase(idxZG, { NOMBRES: 'X', T3I: 0, T2I: 0 });
+    return p.esInterior === false && p.esPerimetral === false && p.mezclaTriple === null; })());
+check('el desempate usa el rebote TOTAL, que es el que dice cuánto vidrio toma',
+  typeof gr.reboteTotalRel === 'number' && J.JUGADORES_UMBRALES.reboteDesempate === 1.10);
 
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');

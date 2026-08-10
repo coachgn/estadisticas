@@ -16,15 +16,15 @@ node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  22 tests · multi-cliente
 node test-boot.js          #  16 tests · arranque por club
-node test-jugadores.js     # 143 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
+node test-jugadores.js     # 170 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  22 tests · detalle partido a partido
-node test-scouting.js      # 239 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-scouting.js      # 245 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 ```
 
-**760 tests en total. Todos tienen que dar verde antes de commitear.**
+**793 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -74,7 +74,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=48`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=49`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -473,10 +473,18 @@ cualquier categoría (`ROLES_MINUTOS` en `sgadd-jugadores.js`):
 
 | Banda | MIN de promedio | Rol |
 |---|---|---|
-| Jugador Clave | +26 | Dependencia Absoluta |
-| Jugador Importante | 23 a 25 | Consistencia Estructural |
-| Jugador de Rotación | 13 a 22 | Impacto Quirúrgico |
-| Pocos Minutos | menos de 13 (marca aparte si es <10) | Contención y Emergencia |
+| Jugador Clave | 25 o más | Dependencia Absoluta |
+| Jugador Importante | 20 a 24,9 | Consistencia Estructural |
+| Jugador de Rotación | 15 a 19,9 | Impacto Quirúrgico |
+| Pocos Minutos | menos de 15 (marca aparte si es <10) | Contención y Emergencia |
+
+**Recalibradas en 2026-08-10** contra la distribución real (210 jugadores,
+MIN p25 19,4 · p50 22,7 · p75 27,9 entre calificados). Los cortes viejos
+(26/23/13) dejaban "Importante" en una franja de 3 minutos —14 jugadores en
+toda la liga— y metían 60 en una "Rotación" de 10 minutos de ancho. Los
+nuevos parten la liga en tres grupos activos comparables (34 / 33 / 31) y el
+corte de 15 coincide con el umbral de calificación, así que **Pocos Minutos
+pasa a significar exactamente "no llega a tener percentil"**.
 
 Ojo: esto es **distinto** de `liga.minJugador` (el umbral de calificación
 para que un percentil tenga sentido, que sí es relativo a cada liga). Un
@@ -543,14 +551,27 @@ Perfiles técnicos (`PERFILES_TECNICOS`, no excluyentes — un jugador puede
 calzar en varios) y umbrales, todos contra `idx.liga.jugadoresCalificados`
 de la liga actual (agnóstico de liga, igual que Personalidad):
 
-| Perfil | Condición |
-|---|---|
-| 🎯 Terminador de Élite | PLAYS > liga, eFG% > 1.15x liga, PPP > 1.05 |
-| 🧠 Generador | AST-PP > 1.40 |
-| 🏰 Puntal en la Pintura | RO+RD > 1.20x el promedio de la liga |
-| 🎯 Amenaza Perimetral Real | T3I > 3.0 y T3% > 34% |
-| 🧤 Especialista Defensivo | recuperos (PR) > 1.30x el promedio |
-| 📏 Buscador de Contacto | PT1% > 25% y T1% > 80% |
+| Perfil | Condición | Casos en la liga real |
+|---|---|---|
+| 🎯 Terminador de Élite | PLAYS > liga, eFG% > 1.15x liga, PPP > 1.05 | 4 |
+| 🧠 Generador | AST-PP > 1.40 | 29 |
+| 🏰 Puntal en la Pintura | RO+RD > 1.20x el promedio de la liga | 28 |
+| 🎯 Amenaza Perimetral Real | T3I > 3.0 y T3% > 34% | 11 |
+| 🧤 Especialista Defensivo | recuperos (PR) > 1.30x el promedio | 30 |
+| 📏 Buscador de Contacto | RTL% ≥ 0,28 **y** FR ≥ 2,5 **y** PT1% ≥ 0,12 **y** T1% ≥ 0,72 | 12 |
+
+**El Buscador de Contacto es multivariable desde 2026-08-10.** El criterio
+anterior (`PT1% > 0,25` y `T1% > 0,80`) era **imposible de cumplir**: el
+PT1% más alto de la liga real es 0,230, así que el arquetipo daba cero sobre
+210 jugadores. Un cuarto de los plays terminando en la línea es un perfil de
+NBA, no de liga amateur.
+
+Ahora el viaje a la línea se mide con cuatro señales que describen cosas
+distintas y por eso se exigen **juntas**: `RTL%` (con qué frecuencia el
+ataque termina en tiro libre), `FR` (agresividad: faltas recibidas por
+partido), `PT1%` (qué porción de SUS plays son libres) y `T1%` (si además
+rinde). Los tres primeros salen del percentil ~70 de la liga real; el `T1%`
+es el único absoluto, porque convertir 72% es bueno en cualquier categoría.
 
 Jerarquía (`JERARQUIA`, **sí excluyente**: cascada, gana el primero que
 calza, de más a menos exigente):
@@ -560,6 +581,35 @@ calza, de más a menos exigente):
    promedio de la liga.
 3. 🧱 **Pieza de Rotación Alta** — MIN ≥ 23, sin ser el foco de PLAYS.
 4. 🛠️ **Especialista de Rol** — el resto (fallback, siempre calza).
+
+### La referencia de los relativos de rebote NO es el `JUGADOR TIPO`
+
+Regla que costó encontrar y que estaba distorsionando media taxonomía.
+
+**La fila `JUGADOR TIPO` de la planilla es la mediana de TODOS los jugadores
+del libro, incluidos los que promedian 0 minutos.** Medido en la liga real:
+`RO%` del TIPO 0,0131 contra 0,0216 de mediana entre los 97 calificados — un
+factor de **1,66x**. En `RD%`, **1,70x**.
+
+Consecuencia: `reboteRel = RO% / TIPO.RO%` daba **1,66 de MEDIANA** para un
+jugador de rotación normal. Un umbral de "1,20x la liga" lo pasaba el 65% del
+plantel y uno de "1,15x" el 85%. Los umbrales decían *"muy por encima de la
+liga"* y en los hechos significaban *"juega"*.
+
+Eso hacía que `esInterior` fuera casi gratis en su parte de rebote y que
+`rim-runner` —primero de los tres roles interiores— absorbiera al grupo
+entero: `finalizador-corto` y `ancla-defensiva` daban **cero sobre 210**.
+
+`jugadoresReferenciasRebote(idx)` compara contra la **mediana de los
+calificados**, que es el mismo universo con el que ya se construyen los
+percentiles y las bandas z. El `JUGADOR TIPO` queda como respaldo cuando hay
+menos de 3 calificados: viene de la planilla y es lo que el club audita, así
+que no se descarta, se degrada a él. El perfil expone `refRebote` para poder
+auditar cuál se usó.
+
+**Al tocar cualquier umbral relativo de rebote hay que recordar que ahora la
+mediana vale 1,00.** Los valores vigentes: `reboteDesempate` 1,10 (≈p57),
+`reboteInterior` 1,15 (≈p62), `reboteOfensivoAlto` 1,30 (≈p68).
 
 La síntesis (Tab General) muestra impacto colectivo y eficiencia individual
 en Alto/Medio/Bajo contra la liga, más un "punto de fuga" (el percentil más
@@ -896,10 +946,34 @@ verificada contra una impresora real.
 
 ### Roles funcionales, no posiciones
 
-`ROLES_FUNCIONALES` es una cascada excluyente sin base/alero/pivote:
-Generador Primario, Manejador Secundario, Spacing / Tirador de Descarga,
-Slasher / Penetrador, Finalizador Corto / Short Roll, Rebotador de Impacto /
-Rim Runner, Ancla Defensiva, Perimetral de Media Distancia y un fallback.
+`ROLES_FUNCIONALES` es una cascada excluyente sin base/alero/pivote. **Diez
+roles**, en este orden (el orden ES la regla: gana el primero que calza):
+
+| # | Rol | Condición | Casos reales |
+|---|---|---|---|
+| 1 | Generador Primario | AST-PP ≥ 1,40 · AST ≥ 2,5 · MIN ≥ 20 | 8 |
+| 2 | Finalizador Corto / Short Roll | interior · PPT2 ≥ 1,10 | 15 |
+| 3 | Ancla Defensiva | interior · RD rel ≥ 1,15 **y RD rel > RO rel** | 2 |
+| 4 | Rebotador de Impacto / Rim Runner | interior · RO rel ≥ 1,30 | 6 |
+| 5 | Juego de Espaldas / Poste Bajo | interior *(fallback interior)* | 16 |
+| 6 | Spacing / Tirador de Descarga | perimetral · PT3% ≥ 0,40 | 57 |
+| 7 | Slasher / Penetrador | perimetral · PPT2 ≥ 1,00 | 40 |
+| 8 | Manejador Secundario | AST-PP ≥ 1,00 · MIN ≥ 20 | 5 |
+| 9 | Perimetral de Media Distancia | perimetral | 34 |
+| 10 | Rol Complementario | *fallback* | 27 |
+
+**Los tres roles interiores estaban muertos** (`finalizador-corto` y
+`ancla-defensiva` daban CERO sobre 210) porque `rim-runner` iba primero con
+un piso que el discriminante de origen ya garantizaba. Se corrigió el orden
+—del rol más específico al más genérico— y cada uno pide ahora su
+**especialidad dominante**. El comparativo `RD rel > RO rel` del ancla es lo
+que impide que ancla y rim runner sean el mismo test con otro nombre: en esta
+liga el que rebotea en defensa casi siempre rebotea también en ataque.
+
+`poste-bajo` es un **fallback INTERIOR** nuevo. Sin él, un interior sin
+dimensión dominante caía en "Rol Complementario" junto a los perimetrales sin
+rasgo, y el informe perdía el único dato que sí tenía de él: que juega de
+espaldas al aro.
 
 **El bug que motivó el refactor: clasificar por PPT2 solo.** Un slasher
 eficiente y un poste bajo pueden tener el mismo PPT2, y el motor viejo le
@@ -914,10 +988,29 @@ origen se decide con un cruce de cuatro fuentes:
 3. la **generación** (AST y AST-PP),
 4. el **impacto en los cristales** (RO/RO% y RD/RD%).
 
-`esInterior` exige mezcla de triple baja **y** peso real en algún cristal;
-`esPerimetral` exige volumen de triple. Si la ficha de JUGADORES ya lo marcó
-como *Amenaza Perimetral Real*, eso pisa el cálculo. Verificado con datos
-reales: Ferraro Dieguez pasó de "referencia interna" a Slasher / Penetrador.
+El origen se resuelve en **tres tramos de mezcla de triple, no dos**:
+
+```
+mezcla < 0,12         → interior sin discusión (casi no sale del área)
+mezcla ≥ 0,30         → perimetral sin discusión (volumen real de triple)
+[0,12 ; 0,30)         → DESEMPATE por cristal: RT rel ≥ 1,10 → interior
+```
+
+Antes ese tramo intermedio no era ni una cosa ni la otra y dejaba al **35% de
+la liga sin origen**; como cuatro de los diez roles exigen uno de los dos
+flags, esos jugadores solo podían caer en el fallback. El ala que tira poco
+de afuera y no rebotea es un perfil real —no un residuo— y ahora se resuelve
+hacia el lado que su juego indica. Con el desempate, los sin origen bajaron
+de 74 a **27, que son exactamente los que no registran un solo tiro de
+campo**: ahí no se infiere nada, se deja vacío a propósito.
+
+Se usa el rebote **TOTAL** y no el ofensivo: en la franja intermedia lo que
+define si alguien juega adentro es cuánto vidrio toma, no de qué lado del aro
+lo toma.
+
+Si la ficha de JUGADORES ya lo marcó como *Amenaza Perimetral Real*, eso pisa
+el cálculo. Verificado con datos reales: Ferraro Dieguez pasó de "referencia
+interna" a Slasher / Penetrador.
 
 **Ojo con las fixtures de test**: si un jugador tiene `PT3%` de 5% pero
 T3I = 3 de 9 tiros de campo, el motor lo saca de los roles internos — y
@@ -1064,11 +1157,23 @@ sola, la de la amenaza más cara (ordenadas de mayor a menor costo esperado).
 
 ### Umbrales: relativos donde importa
 
-Pérdidas y rebote ofensivo se miden **x la mediana de la liga**
-(`liga.jugadorTipo`), no en absoluto — regla del punto 4. Los que quedaron
-absolutos son los que son físicos del básquet y no dependen de la liga: un
-75% en libres es bueno en cualquier lado, y 1,20 pts por triple intentado
-es caro en cualquier lado.
+Pérdidas y rebote se miden **x la mediana de la liga**, no en absoluto —
+regla del punto 4. **Ojo con la referencia**: las pérdidas siguen usando
+`liga.jugadorTipo`, pero los relativos de rebote pasaron a la **mediana de
+los calificados** (ver punto 8), porque el TIPO los inflaba 1,7x. Los que
+quedaron absolutos son los que son físicos del básquet y no dependen de la
+liga: un 75% en libres es bueno en cualquier lado, y 1,20 pts por triple
+intentado es caro en cualquier lado.
+
+**`concentracionAlta` bajó de 0,20 a 0,15.** La concentración es
+`PLAYS del jugador / Σ PLAYS del plantel COMPLETO`, y con planteles de 14 a
+22 jugadores el techo es bajo: medido sobre las 96 fichas, mediana 0,092 ·
+p90 0,157 · **máximo 0,228**, y en **10 de los 12 equipos el jugador más
+usado no llegaba a 0,20**. O sea que la regla `volumen-sin-eficiencia` no
+podía activarse jamás en la mayoría de los equipos — ese era su bloqueo real,
+no el orden de la cascada (que igual se corrigió: subió al segundo lugar).
+Con 0,15 (≈p88) marca al eje real del ataque: 15 de 96, uno o dos por
+equipo.
 
 ### Lo que la planilla NO tiene
 

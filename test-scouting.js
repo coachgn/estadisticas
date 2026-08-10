@@ -759,6 +759,32 @@ check('la regla de volumen sin eficiencia existe en la cascada',
   S.PERFILES_MARCA.some(p => p.id === 'volumen-sin-eficiencia'));
 check('esa regla NUNCA se aplica a alguien con tiro externo rentable',
   tabla.filas.every(f => f.marca.id !== 'volumen-sin-eficiencia' || !f.perfil.tiroExternoRentable));
+
+/* --- P-4: la regla de volumen dejó de estar bloqueada ---
+   Daba CERO sobre las 96 fichas de la liga real por DOS motivos, y hubo
+   que corregir los dos. */
+const idsMarca = S.PERFILES_MARCA.map(m => m.id);
+check('volumen-sin-eficiencia se evalúa antes que las reglas de tiro que la tapaban',
+  idsMarca.indexOf('volumen-sin-eficiencia') < idsMarca.indexOf('tirador-eficiente-bajo-volumen') &&
+  idsMarca.indexOf('volumen-sin-eficiencia') < idsMarca.indexOf('tirador-sistematico-frio'),
+  idsMarca.join(' > '));
+/* Pero sigue DEBAJO de tirador-elite: un tirador de 1,20 PPT3 es una
+   amenaza aunque concentre mucho volumen, y esa marca manda. */
+check('y sigue debajo de tirador-elite: la amenaza externa real manda',
+  idsMarca.indexOf('tirador-elite') < idsMarca.indexOf('volumen-sin-eficiencia'));
+check('no aparece dos veces en la cascada después de moverla',
+  idsMarca.filter(id => id === 'volumen-sin-eficiencia').length === 1);
+check('la cascada sigue teniendo 11 marcas con 11 defensores distintos',
+  S.PERFILES_MARCA.length === 11 && new Set(S.PERFILES_MARCA.map(m => m.defensor)).size === 11);
+
+/* El bloqueo REAL no era el orden sino el umbral: la concentración es
+   PLAYS del jugador sobre los PLAYS de TODO el plantel, y con planteles de
+   14 a 22 jugadores el techo medido en la liga real fue 0,228 — en 10 de
+   los 12 equipos el jugador más usado no llegaba a 0,20. */
+check('el umbral de concentración es alcanzable con planteles reales',
+  S.UMBRALES.concentracionAlta <= 0.16, S.UMBRALES.concentracionAlta);
+check('pero sigue marcando a pocos: no puede ser "cualquiera que juegue"',
+  S.UMBRALES.concentracionAlta >= 0.12, S.UMBRALES.concentracionAlta);
 /* El fallback de contención se exceptúa a propósito: se activa justamente
    cuando NINGÚN umbral lo dispara, así que no hay número que citar. */
 check('cada consigna que nace de un umbral cita el número que la disparó',

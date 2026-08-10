@@ -47,7 +47,18 @@ const SGADD_SCOUT = (function () {
 
   /* Umbrales del plan individual. */
   const U = {
-    concentracionAlta: 0.20,   // >20% de los plays del equipo = eje de eficiencia
+    /* Recalibrado contra la liga real. La concentración es
+       `PLAYS del jugador / Σ PLAYS del plantel COMPLETO`, y con planteles
+       de 14 a 22 jugadores el techo matemático es bajo: medido sobre las
+       96 fichas, mediana 0,092 · p90 0,157 · máximo 0,228, y en 10 de los
+       12 equipos el jugador MÁS usado no llegaba a 0,20.
+
+       O sea que con el umbral viejo la regla no podía activarse jamás en
+       la mayoría de los equipos — ese era el bloqueo real de
+       `volumen-sin-eficiencia` (P-4), no el orden de la cascada. Con 0,15
+       (≈ p88) marca al eje real del ataque: 15 de 96, uno o dos por
+       equipo. */
+    concentracionAlta: 0.15,   // ≥15% de los plays del equipo = eje del ataque
     pptTripleElite: 1.20,      // 1,20 pts por triple intentado = hay que cerrarlo
     pptTriplePobre: 0.90,      // por debajo de 0,90 conviene regalárselo
     usoLibreAlto: 0.10,        // 10% de sus plays terminan en la línea
@@ -330,6 +341,37 @@ const SGADD_SCOUT = (function () {
       }),
     },
     {
+      /* SUBIÓ AL SEGUNDO LUGAR (P-4). Es una lectura de VOLUMEN, no de
+         tiro: describe al que resuelve mucho y mal, y esa conclusión no
+         debería depender de qué reglas de tiro se hayan evaluado antes.
+
+         No puede pisar a ninguna de las tres reglas de tiro externo porque
+         exige `!tiroExternoRentable`, y las dos que van arriba de ella
+         (`tirador-elite` y esta misma condición) solo aplican a tiradores
+         rentables. La única que quedaba realmente tapada era esta.
+
+         Ojo: su bloqueo principal NO era el orden sino
+         `concentracionAlta`, que estaba en 0,20 y era inalcanzable. Se
+         corrigieron las dos cosas. */
+      id: 'volumen-sin-eficiencia',
+      etiqueta: 'Volumen alto, eficiencia baja',
+      defensor: PERFILES_DEFENSOR.volumeContainment,
+      test: (p) => p.concentracion !== null && p.concentracion >= U.concentracionAlta &&
+        !p.tiroExternoRentable && (porDebajo(p.bandaEfg) ||
+          (p.efg !== null && p.bandaEfg !== null && p.bandaEfg.id === 'fuga')),
+      consigna: (p) => ({
+        titulo: 'PERMITIR EL TIRO EXTERNO.',
+        detalle: 'Concentra ' + pct(p.concentracion) + ' de los plays del equipo con un eFG% de ' +
+          pct(p.efg) + ' (' + (p.bandaEfg ? p.bandaEfg.label.toLowerCase() : 'sin referencia de liga') +
+          '). Cuanto más resuelva él, mejor para nosotros.',
+      }),
+      restriccion: (p) => ({
+        titulo: 'NO DOBLAR.',
+        detalle: 'Doblarlo le baja el volumen y le sube la eficiencia al resto: ' +
+          'que termine él la posesión es el mejor escenario.',
+      }),
+    },
+    {
       /* REGLA DURA: tirador eficiente aunque anote poco. El error que
          corrige es tratar "pocos puntos" como "no es amenaza". */
       id: 'tirador-eficiente-bajo-volumen',
@@ -448,25 +490,6 @@ const SGADD_SCOUT = (function () {
       restriccion: (p) => ({
         titulo: 'INVITACIÓN AL TIRO.',
         detalle: 'Su PPT2 es de ' + num2(p.pptDoble) + ': es preferible que flote a que entre al aro.',
-      }),
-    },
-    {
-      id: 'volumen-sin-eficiencia',
-      etiqueta: 'Volumen alto, eficiencia baja',
-      defensor: PERFILES_DEFENSOR.volumeContainment,
-      test: (p) => p.concentracion !== null && p.concentracion >= U.concentracionAlta &&
-        !p.tiroExternoRentable && (porDebajo(p.bandaEfg) ||
-          (p.efg !== null && p.bandaEfg !== null && p.bandaEfg.id === 'fuga')),
-      consigna: (p) => ({
-        titulo: 'PERMITIR EL TIRO EXTERNO.',
-        detalle: 'Concentra ' + pct(p.concentracion) + ' de los plays del equipo con un eFG% de ' +
-          pct(p.efg) + ' (' + (p.bandaEfg ? p.bandaEfg.label.toLowerCase() : 'sin referencia de liga') +
-          '). Cuanto más resuelva él, mejor para nosotros.',
-      }),
-      restriccion: (p) => ({
-        titulo: 'NO DOBLAR.',
-        detalle: 'Doblarlo le baja el volumen y le sube la eficiencia al resto: ' +
-          'que termine él la posesión es el mejor escenario.',
       }),
     },
     {

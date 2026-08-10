@@ -224,12 +224,20 @@ function jugadoresBuscar(idx, slug) {
    (liga.minJugador, ver grilla) sigue siendo relativo, porque decide si
    hay muestra para confiar en un percentil, pregunta distinta.
    ===================================================================== */
+/* Recalibradas contra la distribución real de la liga (Primera · Clausura
+   2026, 210 jugadores): MIN p25 19,4 · p50 22,7 · p75 27,9 entre los
+   calificados. Los cortes anteriores (26/23/13) dejaban la banda
+   "Importante" en una franja de 3 minutos —14 jugadores en toda la liga—
+   y metían en "Rotación" un rango de 10 minutos con 60. Los nuevos cortes
+   parten la liga en cuatro grupos comparables y coinciden con el umbral de
+   calificación (~15,4 min), así que "Pocos Minutos" pasa a significar
+   exactamente "no llega a calificar para percentiles". */
 const ROLES_MINUTOS = [
-  { id: 'clave', min: 26, label: 'Jugador Clave', corto: 'Clave',
+  { id: 'clave', min: 25, label: 'Jugador Clave', corto: 'Clave',
     rol: 'Dependencia Absoluta', color: 'text-accent' },
-  { id: 'importante', min: 23, label: 'Jugador Importante', corto: 'Importante',
+  { id: 'importante', min: 20, label: 'Jugador Importante', corto: 'Importante',
     rol: 'Consistencia Estructural', color: 'text-green-400' },
-  { id: 'rotacion', min: 13, label: 'Jugador de Rotación', corto: 'Rotación',
+  { id: 'rotacion', min: 15, label: 'Jugador de Rotación', corto: 'Rotación',
     rol: 'Impacto Quirúrgico', color: 'text-blue-400' },
   { id: 'pocos', min: -Infinity, label: 'Pocos Minutos', corto: 'Pocos min.',
     rol: 'Contención y Emergencia', color: 'text-yellow-400' },
@@ -286,6 +294,64 @@ function jugadoresPromediosLiga(idx) {
   };
 }
 
+/* =====================================================================
+   REFERENCIA DE LOS RELATIVOS DE REBOTE — la mediana de los CALIFICADOS
+
+   La fila `JUGADOR TIPO` de la planilla es la mediana de TODOS los
+   jugadores del libro, incluidos los que promedian 0 minutos. Medido en la
+   liga real: `RO%` del TIPO 0,0131 contra 0,0216 de mediana entre los 97
+   calificados — un factor de 1,66x. En `RD%`, 1,70x.
+
+   Consecuencia: `reboteRel = RO% / TIPO.RO%` daba 1,66 de MEDIANA para un
+   jugador de rotación normal, así que un umbral de "1,20x la liga" lo
+   pasaba el 65% del plantel y uno de "1,15x" el 85%. Los umbrales decían
+   "muy por encima de la liga" y en los hechos significaban "juega".
+
+   Eso hacía que `esInterior` fuera casi gratis en su parte de rebote y que
+   `rim-runner` —primero de los tres roles interiores— absorbiera al grupo
+   entero: `finalizador-corto` y `ancla-defensiva` daban CERO sobre 210
+   jugadores (punto ciego P-1 de la auditoría).
+
+   Se compara contra la mediana de los calificados, que es el universo con
+   el que ya se construyen los percentiles y las bandas z. El TIPO queda
+   como respaldo para libros sin muestra suficiente: viene de la planilla y
+   es lo que el club audita, así que no se descarta, se degrada a él.
+   ===================================================================== */
+
+/** Mediana de una lista de números, o null. Local para no depender del
+    orden de carga de `sgadd-core.js` en el navegador. */
+function jugadoresMediana(vals) {
+  const v = vals.filter(x => typeof x === 'number' && isFinite(x)).sort((a, b) => a - b);
+  if (!v.length) return null;
+  const m = Math.floor(v.length / 2);
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+}
+
+/** Mínimo de calificados para confiar en la mediana propia. Con menos, la
+    "mediana de la liga" sería la de dos o tres jugadores. */
+const MIN_CALIFICADOS_REFERENCIA = 3;
+
+/**
+ * Referencias de rebote contra las que se miden `reboteRel`, `reboteDefRel`
+ * y `reboteTotalRel`. Devuelve además `origen` para poder auditarlo.
+ */
+function jugadoresReferenciasRebote(idx) {
+  const tipo = (idx && idx.liga && idx.liga.jugadorTipo) ? idx.liga.jugadorTipo : {};
+  const cal = (idx && idx.liga && idx.liga.jugadoresCalificados) || [];
+  const respaldo = {
+    'RO%': jugadoresNN(tipo['RO%']), 'RD%': jugadoresNN(tipo['RD%']),
+    RT: jugadoresNN(tipo['RT']) !== null ? jugadoresNN(tipo['RT']) : jugadoresNN(jugadoresRT(tipo)),
+    origen: 'JUGADOR TIPO',
+  };
+  if (cal.length < MIN_CALIFICADOS_REFERENCIA) return respaldo;
+
+  const ro = jugadoresMediana(cal.map(j => j['RO%']));
+  const rd = jugadoresMediana(cal.map(j => j['RD%']));
+  const rt = jugadoresMediana(cal.map(j => jugadoresRT(j)));
+  if (ro === null || rd === null || !ro || !rd) return respaldo;
+  return { 'RO%': ro, 'RD%': rd, RT: rt, origen: 'mediana de calificados' };
+}
+
 /* Perfiles técnicos: no son excluyentes, un jugador puede calzar en más
    de uno (por ejemplo, un tirador que además rebotea bien). */
 const PERFILES_TECNICOS = [
@@ -316,9 +382,27 @@ const PERFILES_TECNICOS = [
     detalle: 'Roba muchas más pelotas que el resto de la liga: genera posesiones extra.',
   },
   {
+    /* Multivariable a propósito. El criterio anterior (`PT1% > 0,25` y
+       `T1% > 0,80`) era IMPOSIBLE de cumplir: el PT1% más alto de la liga
+       real es 0,230, así que el arquetipo daba cero sobre 210 jugadores
+       (punto ciego P-5). Un cuarto de los plays terminando en la línea es
+       un perfil de NBA, no de liga amateur.
+
+       Ahora el viaje a la línea se mide con cuatro señales que describen
+       cosas distintas y por eso se exigen juntas:
+         · RTL%  → con qué frecuencia el ataque termina en tiro libre
+         · FR    → agresividad: cuántas faltas recibe por partido
+         · PT1%  → qué porción de SUS plays son libres
+         · T1%   → si el viaje además rinde
+       Los tres primeros están calibrados sobre el percentil ~70 de la liga
+       real; el T1% es el único absoluto, porque convertir 72% de libres es
+       bueno en cualquier categoría. */
     id: 'buscadorContacto', emoji: '📏', label: 'Buscador de Contacto',
-    calza: (j) => j['PT1%'] > 0.25 && j['T1%'] > 0.80,
-    detalle: 'Buena parte de sus plays terminan en la línea, y ahí adentro no falla.',
+    calza: (j) => j['RTL%'] >= JUGADORES_UMBRALES.rtlContacto &&
+      j['FR'] >= JUGADORES_UMBRALES.frContacto &&
+      j['PT1%'] >= JUGADORES_UMBRALES.usoLibreContacto &&
+      j['T1%'] >= JUGADORES_UMBRALES.t1Contacto,
+    detalle: 'Ataca el contacto con volumen real (tasa de libres y faltas recibidas por encima de la liga) y además convierte.',
   },
 ];
 
@@ -394,14 +478,31 @@ const JUGADORES_UMBRALES = {
   astPPGenerador: 1.40,          // asistencias por pérdida de un conductor real
   astVolumenGenerador: 2.5,      // el ratio solo no alcanza: hace falta volumen
   usoTripleAlto: 0.40,           // 40% de sus plays terminan en triple
-  pptDobleAlto: 1.10,            // finaliza de verdad cerca del aro
-  reboteOfensivoAlto: 1.20,      // x la mediana de la liga en RO%
-  reboteInterior: 1.15,          // x la mediana de la liga en RD%
+  pptDobleAlto: 1.10,            // finaliza de verdad cerca del aro (p75 de la liga)
+
+  /* --- Rebote, todo x la MEDIANA DE LOS CALIFICADOS ---
+     Ver `jugadoresReferenciasRebote()`: antes se medía contra el JUGADOR
+     TIPO, que es la mediana de TODOS (incluidos los de 0 minutos) y venía
+     1,7x abajo. Con la referencia corregida estos números por fin
+     significan lo que dicen; en percentiles de la liga real:
+       1,10 ≈ p57 · 1,15 ≈ p62 · 1,30 ≈ p68 */
+  reboteOfensivoAlto: 1.30,      // rim runner: vive del cristal OFENSIVO
+  reboteInterior: 1.15,          // ancla defensiva y origen interior, sobre RD%
+  reboteDesempate: 1.10,         // zona gris de mezcla: define interior vs perimetral
+
   /* Discriminantes de ORIGEN. El bug que cerraron: clasificar por PPT2
      solo mete a cualquier slasher eficiente en la bolsa de "referencia
      interna". De dónde LANZA se mide sobre intentos, no sobre aciertos. */
   mezclaTripleaPerimetral: 0.30, // T3I / (T3I + T2I): de acá arriba, tira de afuera
   mezclaTripleInterior: 0.12,    // debajo, prácticamente no sale del área
+
+  /* --- Viaje a la línea (arquetipo Buscador de Contacto) ---
+     Los tres primeros salen del percentil ~70 de la liga real; el T1% es
+     absoluto porque convertir 72% es bueno en cualquier categoría. */
+  rtlContacto: 0.28,             // RTL%: frecuencia con que el ataque termina en la línea
+  frContacto: 2.5,               // faltas recibidas por partido
+  usoLibreContacto: 0.12,        // PT1%: porción de SUS plays que son libres
+  t1Contacto: 0.72,              // efectividad mínima en el cobro
 };
 
 /** Rol funcional: cascada excluyente, sin posiciones tradicionales. */
@@ -414,11 +515,24 @@ const JUGADORES_ROLES_FUNCIONALES = [
       p.min >= JUGADORES_UMBRALES.minutosClave,
     detalle: (p) => 'conduce el ataque: ' + jugadoresNum(p.ast, 1) + ' AST con ' + jugadoresNum(p.astPP, 2) + ' de AST-PP.',
   },
-  {
-    id: 'rim-runner', label: 'Rebotador de Impacto / Rim Runner',
-    test: (p) => p.esInterior && p.reboteRel !== null && p.reboteRel >= JUGADORES_UMBRALES.reboteOfensivoAlto,
-    detalle: (p) => 'vive del cristal ofensivo: ' + jugadoresNum(p.reboteRel, 2) + 'x la mediana de la liga en RO%.',
-  },
+  /* ------------------------------------------------------------------
+     LOS TRES ROLES INTERIORES · orden y umbrales recalibrados (P-1)
+
+     Antes `rim-runner` iba primero y pedía `reboteRel ≥ 1,20` contra una
+     referencia inflada, así que se llevaba el 100% del grupo interior:
+     `finalizador-corto` y `ancla-defensiva` daban CERO sobre 210 jugadores.
+
+     Ahora cada uno pide su ESPECIALIDAD DOMINANTE, y el orden va del rol
+     más específico al más genérico:
+       1. finalizador-corto → termina cerca del aro (PPT2)
+       2. ancla-defensiva   → su fuerte es el cristal DEFENSIVO, y lo es
+                              más que el ofensivo (`reboteDefRel > reboteRel`)
+       3. rim-runner        → vive del cristal OFENSIVO
+       4. poste-bajo        → interior sin una dimensión dominante
+     Sin el comparativo del punto 2, el ancla y el rim runner vuelven a ser
+     el mismo test con otro nombre: en esta liga el que rebotea en defensa
+     casi siempre también rebotea en ataque.
+     ------------------------------------------------------------------ */
   {
     id: 'finalizador-corto', label: 'Finalizador Corto / Short Roll',
     test: (p) => p.esInterior && p.pptDoble !== null && p.pptDoble >= JUGADORES_UMBRALES.pptDobleAlto,
@@ -426,8 +540,25 @@ const JUGADORES_ROLES_FUNCIONALES = [
   },
   {
     id: 'ancla-defensiva', label: 'Ancla Defensiva',
-    test: (p) => p.esInterior && p.reboteDefRel !== null && p.reboteDefRel >= JUGADORES_UMBRALES.reboteInterior,
-    detalle: (p) => 'sostiene el rebote defensivo (' + jugadoresNum(p.reboteDefRel, 2) + 'x la liga) sin cargar el ataque.',
+    test: (p) => p.esInterior && p.reboteDefRel !== null && p.reboteRel !== null &&
+      p.reboteDefRel >= JUGADORES_UMBRALES.reboteInterior && p.reboteDefRel > p.reboteRel,
+    detalle: (p) => 'sostiene el rebote defensivo (' + jugadoresNum(p.reboteDefRel, 2) +
+      'x la mediana de la liga en RD%) más de lo que carga el ofensivo (' + jugadoresNum(p.reboteRel, 2) + 'x).',
+  },
+  {
+    id: 'rim-runner', label: 'Rebotador de Impacto / Rim Runner',
+    test: (p) => p.esInterior && p.reboteRel !== null && p.reboteRel >= JUGADORES_UMBRALES.reboteOfensivoAlto,
+    detalle: (p) => 'vive del cristal ofensivo: ' + jugadoresNum(p.reboteRel, 2) + 'x la mediana de la liga en RO%.',
+  },
+  {
+    /* Fallback INTERIOR. Sin él, un interior que no destaca en ninguna de
+       las tres dimensiones caía en "Rol Complementario" junto a los
+       perimetrales sin rasgo, y el informe perdía el único dato que sí
+       tenía de él: que juega de espaldas al aro. */
+    id: 'poste-bajo', label: 'Juego de Espaldas / Poste Bajo',
+    test: (p) => p.esInterior,
+    detalle: (p) => 'juega de espaldas al aro: solo ' + jugadoresPct(p.mezclaTriple) +
+      ' de sus tiros de campo salen de la línea de 3.',
   },
   {
     id: 'spacing', label: 'Spacing / Tirador de Descarga',
@@ -479,6 +610,7 @@ function jugadoresDiv(a, b) {
  */
 function jugadoresPerfilBase(idx, j) {
   const tipo = (idx && idx.liga && idx.liga.jugadorTipo) ? idx.liga.jugadorTipo : {};
+  const ref = jugadoresReferenciasRebote(idx);
   const rebote = jugadoresNN(j['RO%']);
   const reboteDef = jugadoresNN(j['RD%']);
   const t3i = jugadoresNN(j['T3I']);
@@ -487,8 +619,9 @@ function jugadoresPerfilBase(idx, j) {
   /* Sobre INTENTOS, no sobre conversiones: de dónde tira no depende de si
      le entra. */
   const mezclaTriple = jugadoresDiv(t3i, (t3i || 0) + (t2i || 0));
-  const reboteRel = jugadoresDiv(rebote, jugadoresNN(tipo['RO%']));
-  const reboteDefRel = jugadoresDiv(reboteDef, jugadoresNN(tipo['RD%']));
+  const reboteRel = jugadoresDiv(rebote, ref['RO%']);
+  const reboteDefRel = jugadoresDiv(reboteDef, ref['RD%']);
+  const reboteTotalRel = jugadoresDiv(jugadoresRT(j), ref.RT);
 
   const p = {
     nombre: String(j['NOMBRES'] || '').trim(),
@@ -509,17 +642,47 @@ function jugadoresPerfilBase(idx, j) {
     pr: jugadoresNN(j['PR']),
     mezclaTriple: mezclaTriple,
     perdidasRel: jugadoresDiv(jugadoresNN(j['PePP%']), jugadoresNN(tipo['PePP%'])),
-    reboteRel: reboteRel, reboteDefRel: reboteDefRel,
+    reboteRel: reboteRel, reboteDefRel: reboteDefRel, reboteTotalRel: reboteTotalRel,
+    refRebote: ref.origen,
+    rtl: jugadoresNN(j['RTL%']), fr: jugadoresNN(j['FR']), fc: jugadoresNN(j['FC']),
     califica: !!j.__califica,
   };
 
-  /* Interno = casi no lanza de afuera Y pesa en algún cristal.
-     Perimetral = volumen real de triple. Pueden dar los dos falso (un ala
-     sin triple ni rebote): ahí cae en los roles neutros de la cascada. */
-  p.esInterior = mezclaTriple !== null && mezclaTriple < JUGADORES_UMBRALES.mezclaTripleInterior &&
-    ((reboteRel !== null && reboteRel >= JUGADORES_UMBRALES.reboteInterior) ||
-     (reboteDefRel !== null && reboteDefRel >= JUGADORES_UMBRALES.reboteInterior));
-  p.esPerimetral = mezclaTriple !== null && mezclaTriple >= JUGADORES_UMBRALES.mezclaTripleaPerimetral;
+  /* ------------------------------------------------------------------
+     ORIGEN · sin zona gris (P-6 / P-9)
+
+     Tres tramos de mezcla de triple, no dos:
+       < 0,12          → interior sin discusión (casi no sale del área)
+       ≥ 0,30          → perimetral sin discusión (volumen real de triple)
+       [0,12 ; 0,30)   → DESEMPATE por cristal: el rebote total decide.
+
+     Antes ese tramo intermedio no era ni una cosa ni la otra y dejaba al
+     35% de la liga sin origen; como cuatro de los nueve roles funcionales
+     exigen uno de los dos flags, esos jugadores solo podían caer en el
+     fallback. El ala que tira poco de afuera y no rebotea es un perfil
+     real —no un residuo— y ahora se resuelve hacia el lado que su juego
+     indica en vez de quedar afuera del sistema.
+
+     Se usa el rebote TOTAL y no el ofensivo: en la franja intermedia lo
+     que define si alguien juega adentro es cuánto vidrio toma, no de qué
+     lado del aro lo toma.
+     ------------------------------------------------------------------ */
+  const U = JUGADORES_UMBRALES;
+  if (mezclaTriple === null) {
+    // Sin un solo tiro de campo no hay origen que inferir. No se inventa.
+    p.esInterior = false;
+    p.esPerimetral = false;
+  } else if (mezclaTriple < U.mezclaTripleInterior) {
+    p.esInterior = true;
+    p.esPerimetral = false;
+  } else if (mezclaTriple >= U.mezclaTripleaPerimetral) {
+    p.esInterior = false;
+    p.esPerimetral = true;
+  } else {
+    const pesaEnElCristal = reboteTotalRel !== null && reboteTotalRel >= U.reboteDesempate;
+    p.esInterior = pesaEnElCristal;
+    p.esPerimetral = !pesaEnElCristal;
+  }
 
   /* Los arquetipos son la fuente primaria del origen: si acá ya se lo
      marcó como amenaza perimetral, eso pisa el cálculo de mezcla. */
@@ -1495,6 +1658,7 @@ if (typeof module !== 'undefined' && module.exports) {
     jugadoresSlug, jugadoresBuscar, jugadoresZScore,
     jugadoresPartidosOrdenados, jugadoresRival, jugadoresIdCanonico,
     jugadoresRolMinutos, jugadoresPromedioMetrica, jugadoresPromediosLiga, jugadoresRT,
+    jugadoresReferenciasRebote, jugadoresMediana, MIN_CALIFICADOS_REFERENCIA,
     jugadoresArquetipos, jugadoresJerarquia, jugadoresPuntoDeFuga, jugadoresSintesisPerfil,
     jugadoresCondicionCorta, jugadoresEtiquetaEvolucion, jugadoresSplitCondicion, jugadoresSensibilidadCondicion,
   };
