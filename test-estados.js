@@ -363,7 +363,13 @@ check('la campana no se dibuja cuando no hay nada pendiente',
    usa la capa de datos vieja y no pinta la barra de SGADD_APP. */
 const indexHtml = fs.readFileSync('./index.html', 'utf8');
 check('el slot del buzón está en el header, al lado del banner de estado',
-  /<div id="buzonSlot"[\s\S]{0,200}id="status-banner-holder"/.test(indexHtml));
+  /id="status-banner-holder"[\s\S]{0,200}<div id="buzonSlot"/.test(indexHtml));
+/* Los dos van dentro de un mismo grupo con `ml-auto`. Sueltos, el
+   `justify-between` del header los repartía a lo ancho y la campana quedaba
+   flotando en el MEDIO de la barra en vez de anclada a la derecha. El buzón
+   va último dentro del grupo, o sea pegado al borde. */
+check('van agrupados y anclados al extremo derecho, no repartidos por el flex',
+  /<div class="flex items-center gap-3 shrink-0 ml-auto">[\s\S]{0,200}id="buzonSlot"/.test(indexHtml));
 check('y NO en la barra de sección, que Principal no pinta',
   !/buzonSlot/.test(fs.readFileSync('./js/sgadd-app.js', 'utf8')));
 /* El arranque del índice tiene que colgar de `init()`, NO de `refreshData()`:

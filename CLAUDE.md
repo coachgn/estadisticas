@@ -26,11 +26,11 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  22 tests · detalle partido a partido
-node test-scouting.js      # 348 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
-node test-estados.js       # 110 tests · estados de jugador, alertas, buzon, sync grafico-tabla
+node test-scouting.js      # 380 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-estados.js       # 111 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1025 tests en total. Todos tienen que dar verde antes de commitear.**
+**1058 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -86,7 +86,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=59`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=60`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -1185,14 +1185,81 @@ diferentes.
 ### A quién de los nuestros le toca
 
 La columna *Defensor nuestro* trae, debajo del perfil táctico, hasta **tres
-jugadores del plantel propio** para esa tarea, el primero destacado.
+jugadores** para esa tarea: Rank 1 destacado y dos de recambio para cuando el
+primero carga faltas.
 
-`candidatosPropios()` puntúa a cada uno con las señales que declara su
-familia en `CATALOGO_DEFENSOR.defiende`: **tapas (`TC`)**, recuperos (`PR`),
-faltas (`FC`), rebote defensivo y ofensivo relativos, minutos y el origen
-interior o perimetral. Las métricas se normalizan **dentro del propio
-plantel**, no contra la liga: la pregunta es *"de los míos, ¿quién?"*, y esa
-respuesta no cambia porque la liga entera defienda mejor o peor.
+#### REGLA DE ORO: el defensor sale SIEMPRE del otro equipo del cruce
+
+`plantelDefensor(idx, claveAtacante, claveNuestro)` es el único lugar que
+resuelve de qué plantel salen los "nuestros", y la respuesta es **el otro lado
+del cruce**. Nunca el equipo que ataca. En Reconquista vs Atenas: para
+neutralizar a Reconquista los defensores son de Atenas, y al revés.
+
+**El bug que cierra.** Acá se resolvía con `SGADD.esEquipoPropio()`, o sea *"el
+equipo del club configurado en el JSON"*. Eso funciona mientras el equipo
+scouteado sea el ajeno, pero el informe deja **elegir el rival a mano**
+(`o.claveRival`) justamente para preparar un partido ajeno o para mirar el
+cruce desde el otro lado. Cuando el DT scouteaba a Reconquista, el rival era
+Reconquista **y el "plantel propio" también**: la tabla salía con MITIDIERI
+marcando a MITIDIERI, su propio compañero.
+
+`informePrePartido()` ya calculaba bien `claveNuestro` — lo que faltaba era
+**pasárselo**. Ahora viaja explícito a `jugadoresClave()`, a
+`clavesEstrategicas()` y a `resumenEjecutivo()`, que si recalculara con otro
+plantel contradiría al cuadro que tiene al lado.
+
+Dos guardas más, porque el respaldo también podía fallar:
+
+- **El cruce degenerado no se sirve.** Con el mismo equipo de los dos lados,
+  `plantelDefensor` devuelve vacío. Antes que sugerir compañeros, nada.
+- **El respaldo por `esEquipoPropio()` excluye al equipo atacante**, así que ni
+  siquiera el fallback puede devolver a un compañero.
+
+Hay tests que corren el cruce en los dos sentidos y exigen que ningún candidato
+comparta equipo con el atacante.
+
+#### El algoritmo tiene DOS PASOS, y el orden es la regla
+
+```
+PASO 1 · match posicional  →  ¿PUEDE ir con él?   (filtro duro)
+PASO 2 · métricas defensivas →  ¿qué tan BIEN lo hace?  (ranking)
+```
+
+**Paso 1 · biotipo** (`compatiblePosicional`). Contra un atacante `esInterior`
+pasan interiores e híbridos; contra un `esPerimetral`, perimetrales e híbridos;
+sin origen resuelto en el atacante, no se filtra nada. El *híbrido* —el que no
+tiene ninguno de los dos flags— pasa **en los dos sentidos** a propósito: no
+tener origen resuelto es falta de dato, no un dato en contra.
+
+El motivo de que vaya primero es de cancha: por muchos recuperos que tenga, un
+perimetral no defiende de espaldas al poste bajo del rival. Hay un test que
+fabrica exactamente ese escenario —un ala con tapas y rebote enormes contra un
+interior flojo en todo— y verifica que **sin el paso 1 gana el ala y con el
+paso 1 gana el interior**. Sin ese test el orden se puede invertir sin que se
+note.
+
+**Paso 2 · ranking**, con los pesos que declara la familia en
+`CATALOGO_DEFENSOR.defiende`: **tapas (`TC`)**, recuperos (`PR`), faltas
+(`FC`), rebote defensivo y ofensivo relativos y minutos. Las métricas se
+normalizan **dentro del propio plantel**, no contra la liga: la pregunta es
+*"de los míos, ¿quién?"*, y esa respuesta no cambia porque la liga entera
+defienda mejor o peor.
+
+**Degradación.** Si el paso 1 deja la lista vacía —un plantel entero de
+perimetrales contra un poste rival es un escenario real en categorías chicas—
+se vuelve al plantel sin filtrar, se marca `compatible: false` y **la UI lo
+dice**: *"Sin nadie del biotipo… los nombres salen por métricas, con desventaja
+física"*. La propiedad que no se negocia es que la sugerencia nunca quede
+vacía: una celda en blanco no le dice al DT que el cruce es problemático, le
+dice que el panel se rompió.
+
+Medido con Reconquista vs Atenas real: **cero choques de biotipo** en las once
+filas. BORRAJO (interior) pasó a recibir solo a VELAZQUEZ —el único interior
+del plantel— donde antes se le proponían dos perimetrales detrás.
+
+**Ojo con el filtro y el peso**: son cosas distintas y por eso conviven. El
+filtro mira al **atacante** (¿puede ir con él?); el peso `interior`/`perimetral`
+de `defiende` mira la **tarea** (dentro de los compatibles, cuál calza mejor).
 
 **`TC` — Tapas cometidas — es la única métrica del box score que mide un acto
 defensivo directo**, y por eso pesa más que el rebote en los dos perfiles de
@@ -1826,6 +1893,12 @@ pie del menú. Se probaron las dos y las dos fallan por el mismo motivo:
 así que la campana desaparecía justo en la pantalla de entrada. El punto
 verde de "datos al día" quedó con la hora, en el pie del menú: son dos cosas
 distintas y estaban duplicadas.
+
+**Los dos van dentro de un mismo grupo con `ml-auto`, y el buzón último.**
+Sueltos como hijos directos, el `justify-between` del header repartía los tres
+elementos a lo ancho y la campana quedaba **flotando en el medio de la barra**
+en vez de anclada a la derecha. Con el grupo queda a 16px del borde —el padding
+del header— en cualquier ancho.
 
 Dos consecuencias de estar en el header:
 

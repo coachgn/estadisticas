@@ -727,9 +727,16 @@
                "Datos actualizados"— para que se vea desde cualquier sección,
                incluida Principal, que usa la capa de datos vieja y no pinta la
                barra de SGADD_APP. El estado de los datos se mudó al pie del
-               menú, junto a la hora, así que acá no se pisan. -->
-          <div id="buzonSlot" class="shrink-0"></div>
-          <div id="status-banner-holder" class="shrink-0"></div>
+               menú, junto a la hora, así que acá no se pisan.
+
+               Los dos van DENTRO de un mismo grupo con `ml-auto`: sueltos, el
+               `justify-between` del padre los repartía a lo ancho y la campana
+               quedaba flotando en el medio del header en vez de anclada a la
+               derecha. El buzón va último, o sea pegado al borde. -->
+          <div class="flex items-center gap-3 shrink-0 ml-auto">
+            <div id="status-banner-holder" class="shrink-0"></div>
+            <div id="buzonSlot" class="shrink-0"></div>
+          </div>
         </div>
       </header>
 
@@ -738,22 +745,22 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=59"></script>
-<script src="js/sgadd-core.js?v=59"></script>
-<script src="js/sgadd-ui.js?v=59"></script>
-<script src="js/sgadd-app.js?v=59"></script>
-<script src="js/sgadd-estados.js?v=59"></script>
-<script src="js/sgadd-buzon.js?v=59"></script>
-<script src="js/sgadd-charts.js?v=59"></script>
-<script src="js/sgadd-personalidad.js?v=59"></script>
-<script src="js/sgadd-rankings.js?v=59"></script>
-<script src="js/sgadd-partido.js?v=59"></script>
-<script src="js/sgadd-informe.js?v=59"></script>
-<script src="js/sgadd-equipos.js?v=59"></script>
-<script src="js/sgadd-jugadores.js?v=59"></script>
-<script src="js/sgadd-4factores.js?v=59"></script>
-<script src="js/sgadd-scouting.js?v=59"></script>
-<script src="js/sgadd-diagnostico.js?v=59"></script>
+<script src="js/sgadd-club.js?v=60"></script>
+<script src="js/sgadd-core.js?v=60"></script>
+<script src="js/sgadd-ui.js?v=60"></script>
+<script src="js/sgadd-app.js?v=60"></script>
+<script src="js/sgadd-estados.js?v=60"></script>
+<script src="js/sgadd-buzon.js?v=60"></script>
+<script src="js/sgadd-charts.js?v=60"></script>
+<script src="js/sgadd-personalidad.js?v=60"></script>
+<script src="js/sgadd-rankings.js?v=60"></script>
+<script src="js/sgadd-partido.js?v=60"></script>
+<script src="js/sgadd-informe.js?v=60"></script>
+<script src="js/sgadd-equipos.js?v=60"></script>
+<script src="js/sgadd-jugadores.js?v=60"></script>
+<script src="js/sgadd-4factores.js?v=60"></script>
+<script src="js/sgadd-scouting.js?v=60"></script>
+<script src="js/sgadd-diagnostico.js?v=60"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
