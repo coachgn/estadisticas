@@ -358,13 +358,21 @@ check('el buzón conoce los tres tipos de alerta',
   /reingreso:\s*\{/.test(buzon) && /traspaso:\s*\{/.test(buzon) && /inactividad:\s*\{/.test(buzon));
 check('la campana no se dibuja cuando no hay nada pendiente',
   /if \(!n\) return '';/.test(buzon));
-/* La campana vive en el pie del menú, junto al reloj de actualización: ahí
-   aparece en TODAS las secciones, incluida Principal, que usa la capa de
-   datos vieja y no pinta la barra de SGADD_APP. */
+/* La campana vive en el HEADER, donde antes estaba el cartel "Datos
+   actualizados". Así se ve desde cualquier sección, incluida Principal, que
+   usa la capa de datos vieja y no pinta la barra de SGADD_APP. */
 const indexHtml = fs.readFileSync('./index.html', 'utf8');
-check('el slot del buzón está en el sidebar, junto al estado de datos',
-  /<div id="buzonSlot"[\s\S]{0,200}id="last-updated"/.test(indexHtml));
-check('y ya no está en el header', !/header[\s\S]{0,400}id="buzonSlot"/.test(indexHtml.slice(0, indexHtml.indexOf('</header>') + 9)));
+check('el slot del buzón está en el header, al lado del banner de estado',
+  /<div id="buzonSlot"[\s\S]{0,200}id="status-banner-holder"/.test(indexHtml));
+check('y NO en la barra de sección, que Principal no pinta',
+  !/buzonSlot/.test(fs.readFileSync('./js/sgadd-app.js', 'utf8')));
+/* El arranque del índice tiene que colgar de `init()`, NO de `refreshData()`:
+   refreshData solo corre cuando el usuario toca "Actualizar datos", así que
+   la campana no aparecía hasta que alguien la tocara o entrara a Equipos. */
+const bloqueInit = indexHtml.slice(indexHtml.indexOf('async function init()'));
+check('init() dispara SGADD_APP.cargar() para que el buzón tenga alertas al arrancar',
+  /SGADD_APP\.cargar\(\)[\s\S]{0,160}SGADD_BUZON\.sincronizar\(\)/.test(
+    bloqueInit.slice(0, bloqueInit.indexOf('Cambio de categoria'))));
 check('el punto verde de "datos actualizados" acompaña a la hora',
   /bg-green-500[^`]*\$\{escapeHtml\(lastUpdated\.toLocaleTimeString/.test(indexHtml));
 /* Estaba duplicado: el header decía "Datos actualizados" y el pie del menú

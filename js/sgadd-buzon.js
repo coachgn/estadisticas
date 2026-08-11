@@ -95,13 +95,9 @@ const SGADD_BUZON = (function () {
       <button type="button" id="buzonBoton" onclick="SGADD_BUZON.abrir(this)"
         aria-label="${n} alerta${n === 1 ? '' : 's'} de plantel pendiente${n === 1 ? '' : 's'}"
         title="Alertas de plantel"
-        class="relative shrink-0 grid place-items-center w-8 h-8 rounded-md border border-hairline
-               bg-surface2 hover:bg-surface2/70 hover:border-yellow-400/50
-               active:scale-95 transition-all duration-150
-               focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-2 focus-visible:ring-offset-base">
-        <span aria-hidden="true" class="text-xs leading-none">🔔</span>
-        <span class="absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-1 rounded-full
-                     bg-yellow-400 text-black text-[9px] font-bold leading-[16px] text-center">${n}</span>
+        class="buzon-boton focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-2 focus-visible:ring-offset-base">
+        <span aria-hidden="true">🔔</span>
+        <span class="buzon-badge">${n}</span>
       </button>`;
   }
 

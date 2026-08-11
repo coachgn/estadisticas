@@ -26,11 +26,11 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  22 tests · detalle partido a partido
-node test-scouting.js      # 341 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
-node test-estados.js       # 109 tests · estados de jugador, alertas, buzon, sync grafico-tabla
+node test-scouting.js      # 348 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-estados.js       # 110 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1017 tests en total. Todos tienen que dar verde antes de commitear.**
+**1025 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -86,7 +86,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=56`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=59`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -1188,23 +1188,32 @@ La columna *Defensor nuestro* trae, debajo del perfil táctico, hasta **tres
 jugadores del plantel propio** para esa tarea, el primero destacado.
 
 `candidatosPropios()` puntúa a cada uno con las señales que declara su
-familia en `CATALOGO_DEFENSOR.defiende`: recuperos (`PR`), faltas (`FC`),
-rebote defensivo y ofensivo relativos, minutos y el origen interior o
-perimetral. Las métricas se normalizan **dentro del propio plantel**, no
-contra la liga: la pregunta es *"de los míos, ¿quién?"*, y esa respuesta no
-cambia porque la liga entera defienda mejor o peor.
+familia en `CATALOGO_DEFENSOR.defiende`: **tapas (`TC`)**, recuperos (`PR`),
+faltas (`FC`), rebote defensivo y ofensivo relativos, minutos y el origen
+interior o perimetral. Las métricas se normalizan **dentro del propio
+plantel**, no contra la liga: la pregunta es *"de los míos, ¿quién?"*, y esa
+respuesta no cambia porque la liga entera defienda mejor o peor.
 
-Los pesos siguen la lógica de cancha: al 🏢 Especialista Interior se lo busca
-por adentro y por rebote; al ⚡ de Presión Inicial y al 🦅 de Ayudas, por
-recuperos; al 💪 Perimetral Físico las faltas le **suman** (es contacto) y al
-🏃 Perimetral Atlético le **restan** (tiene que contener sin fallar). Hay
-tests que fijan esas relaciones.
+**`TC` — Tapas cometidas — es la única métrica del box score que mide un acto
+defensivo directo**, y por eso pesa más que el rebote en los dos perfiles de
+protección de aro: en 🏰 Referente de Zona `tc` 1,5 contra `rd` 1,2, y en 🏢
+Especialista Interior `tc` 1,3 contra `rd` 0,9. El rebote defensivo es un
+proxy de tamaño; una tapa es la acción en sí. Las familias de contención
+perimetral **no llevan `tc`**: al que tiene que contener la penetración sin
+saltar, tapar no le suma — le puede restar.
 
-**LA ADVERTENCIA QUE NO SE SACA: la planilla no mide defensa individual.** No
-hay tapas, ni desplazamientos, ni puntos permitidos por marca. Lo único
-defensivo del box score son `PR` y `FC`, más el rebote como proxy de tamaño.
-Es una sugerencia por aproximación y la UI lo dice con todas las letras: el
-nombre final lo pone el cuerpo técnico.
+El resto de los pesos sigue la misma lógica de cancha: al ⚡ de Presión
+Inicial y al 🦅 de Ayudas se los busca por recuperos; al 💪 Perimetral Físico
+las faltas le **suman** (es contacto) y al 🏃 Perimetral Atlético le **restan**
+(tiene que contener sin fallar). Hay tests que fijan esas relaciones.
+
+**LA ADVERTENCIA QUE NO SE SACA: el box score no mide defensa completa.** Con
+`TC`, `PR`, `FC` y el rebote se cubre lo que deja rastro — tapar, robar,
+chocar, cerrar el cristal — pero **el trabajo sin pelota no aparece en ninguna
+columna**: cerrar líneas de pase, navegar bloqueos, rotar a tiempo, contener
+sin fallar. Un defensor que hace todo eso bien puede tener la planilla en
+blanco. Es una sugerencia por aproximación y la UI lo dice con todas las
+letras: el nombre final lo pone el cuerpo técnico.
 
 `cargaPropia` reparte igual que `elegirDefensorBalanceado`: cada marca ya
 asignada le resta 0,35 al puntaje. Sin eso el mismo defensor encabezaba las
@@ -1807,6 +1816,30 @@ Dos caminos, porque un estado sin forma de deshacerse es una trampa:
   confirmar; si no, el buzón se vuelve una trampa y el DT deja de abrirlo.
 - **`:focus-visible` y no `:focus`**: el anillo aparece al navegar con
   teclado y no en cada clic del mouse, que es lo que lo volvía ruido.
+
+### Dónde vive la campana: en el HEADER, y por qué importa
+
+`#buzonSlot` está en el **header global**, al lado de `#status-banner-holder`
+—donde antes decía "Datos actualizados"—, y NO en la barra de sección ni al
+pie del menú. Se probaron las dos y las dos fallan por el mismo motivo:
+**Principal usa la capa de datos vieja y no pinta la barra de `SGADD_APP`**,
+así que la campana desaparecía justo en la pantalla de entrada. El punto
+verde de "datos al día" quedó con la hora, en el pie del menú: son dos cosas
+distintas y estaban duplicadas.
+
+Dos consecuencias de estar en el header:
+
+1. **El arranque del índice cuelga de `init()`, no de `refreshData()`.**
+   Principal nunca dispara `SGADD_APP.cargar()`, así que sin ese disparo la
+   campana no aparecía hasta que el usuario tocara "Actualizar datos" o
+   entrara a Equipos. Va sin `await` para no demorar el primer render, y la
+   carga queda cacheada en `SGADD.cargarCategoria`. Ya se cometió el error de
+   ponerlo en `refreshData()` —que solo corre al tocar el botón— y hay un
+   test que lo fija.
+2. **El botón necesita CSS a mano** (`.buzon-boton` / `.buzon-badge` en el
+   `<style>` del `index.html`). Es un nodo inyectado, así que el JIT de
+   Tailwind del CDN no le genera las clases y salía de 21px: la regla del
+   punto 12, otra vez.
 
 ### Sincronización bidireccional scatter ↔ tabla de plantel
 

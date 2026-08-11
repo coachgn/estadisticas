@@ -240,7 +240,7 @@ const SGADD_SCOUT = (function () {
         { id: 'closeout', label: 'Cerrador de Tiros Abiertos / Closeout Specialist', detalle: 'Llegada rápida a los tiros externos usando su alcance de brazos.' },
       ],
       /* Señales con las que se busca a NUESTRO defensor para esta tarea. */
-      defiende: { perimetral: 0.7, rd: 1.2, min: 0.3 },
+      defiende: { perimetral: 0.7, tc: 1.2, rd: 0.9, min: 0.3 },
     },
     {
       id: 'especialistaPerimetral', emoji: '🎯', familia: 'Especialista Perimetral',
@@ -260,7 +260,7 @@ const SGADD_SCOUT = (function () {
         { id: 'paintPillar', label: 'Muro de Pintura / Paint Pillar', detalle: 'Anula físicamente el juego de espaldas al aro de los terminales internos.' },
       ],
       /* Señales con las que se busca a NUESTRO defensor para esta tarea. */
-      defiende: { interior: 1.4, rd: 1.0, fc: 0.2 },
+      defiende: { interior: 1.2, tc: 1.3, rd: 0.9, fc: 0.2 },
     },
     {
       id: 'referenteZona', emoji: '🏰', familia: 'Referente de Zona',
@@ -270,7 +270,7 @@ const SGADD_SCOUT = (function () {
         { id: 'paintDominator', label: 'Defensor del Eje / Paint Dominator', detalle: 'Domina la zona pintada alterando la efectividad rival en su eje central.' },
       ],
       /* Señales con las que se busca a NUESTRO defensor para esta tarea. */
-      defiende: { interior: 1.2, rd: 1.4, ro: 0.5 },
+      defiende: { interior: 1.0, tc: 1.5, rd: 1.2, ro: 0.4 },
     },
     {
       id: 'hibridoFisico', emoji: '🧱', familia: 'Híbrido Físico',
@@ -280,7 +280,7 @@ const SGADD_SCOUT = (function () {
         { id: 'interiorImpact', label: 'Defensor de Impacto Interno / Interior Impact Defender', detalle: 'Aporta masa muscular para defender la pintura y ayudar adentro.' },
       ],
       /* Señales con las que se busca a NUESTRO defensor para esta tarea. */
-      defiende: { interior: 0.9, fc: 0.9, rd: 0.7 },
+      defiende: { interior: 0.9, fc: 0.9, rd: 0.7, tc: 0.4 },
     },
     {
       id: 'ayudasAtleticas', emoji: '🦅', familia: 'Perimetral Atlético · Ayudas',
@@ -290,7 +290,7 @@ const SGADD_SCOUT = (function () {
         { id: 'interceptor', label: 'Interceptor de Línea / Passing Lane Interceptor', detalle: 'Lee los ojos del pasador para robar balones dirigidos a cortes hacia el aro.' },
       ],
       /* Señales con las que se busca a NUESTRO defensor para esta tarea. */
-      defiende: { pr: 1.5, perimetral: 0.5, min: 0.3 },
+      defiende: { pr: 1.3, tc: 0.9, perimetral: 0.5, min: 0.3 },
     },
     {
       id: 'contencionTactica', emoji: '📐', familia: 'Contención Táctica',
@@ -397,12 +397,16 @@ const SGADD_SCOUT = (function () {
      El perfil táctico dice QUÉ tarea hay que hacer; esto propone QUIÉN de
      nuestro plantel está en mejores condiciones de hacerla.
 
-     ADVERTENCIA QUE HAY QUE MANTENER A LA VISTA: **la planilla no mide
-     defensa individual.** No hay tapas, ni desplazamientos, ni puntos
-     permitidos por marca. Lo único defensivo que trae el box score son los
-     recuperos (`PR`) y las faltas cometidas (`FC`), más el rebote como
-     proxy de tamaño. Así que esto es una sugerencia por aproximación, no
-     una medición — y la UI lo dice con todas las letras.
+     QUÉ MIDE Y QUÉ NO. El box score trae cuatro señales defensivas
+     reales: **tapas cometidas (`TC`)**, recuperos (`PR`), faltas (`FC`) y
+     rebote defensivo. Con eso alcanza para separar a un protector de aro
+     de un perseguidor de tiradores, que es la decisión que el bloque
+     necesita.
+
+     Lo que NO trae es el trabajo sin pelota: desplazamiento lateral,
+     navegación de cortinas, puntos permitidos por marca. Por eso sigue
+     siendo una sugerencia y no un veredicto — pero se apoya en datos
+     defensivos de verdad, no solo en proxies de tamaño.
 
      Se compara DENTRO de nuestro plantel y no contra la liga: la pregunta
      es "de los míos, ¿quién?", y esa respuesta no cambia porque la liga
@@ -426,6 +430,11 @@ const SGADD_SCOUT = (function () {
         nombre: String(j['NOMBRES'] || '').trim(),
         clave: j.__clave || null,
         min: nn(j['MIN']), pr: nn(j['PR']), fc: nn(j['FC']),
+        /* TC = tapas cometidas. Es LA métrica de protección de aro que
+           trae el box score, y la que más pesa para los perfiles
+           interiores: un Primary Rim Protector se busca por acá antes que
+           por rebote. */
+        tc: nn(j['TC']),
         rd: base.reboteDefRel !== undefined ? base.reboteDefRel : nn(j['RD%']),
         ro: base.reboteRel !== undefined ? base.reboteRel : nn(j['RO%']),
         interior: base.esInterior ? 1 : 0,
@@ -441,11 +450,11 @@ const SGADD_SCOUT = (function () {
       if (max === min) return () => 0.5;
       return (v) => (typeof v === 'number' && isFinite(v)) ? (v - min) / (max - min) : 0.5;
     };
-    const escalas = { pr: norm('pr'), fc: norm('fc'), rd: norm('rd'), ro: norm('ro'), min: norm('min') };
+    const escalas = { pr: norm('pr'), fc: norm('fc'), tc: norm('tc'), rd: norm('rd'), ro: norm('ro'), min: norm('min') };
     perfiles.forEach(p => {
       p.n = {
-        pr: escalas.pr(p.pr), fc: escalas.fc(p.fc), rd: escalas.rd(p.rd),
-        ro: escalas.ro(p.ro), min: escalas.min(p.min),
+        pr: escalas.pr(p.pr), fc: escalas.fc(p.fc), tc: escalas.tc(p.tc),
+        rd: escalas.rd(p.rd), ro: escalas.ro(p.ro), min: escalas.min(p.min),
         interior: p.interior, perimetral: p.perimetral,
       };
     });
@@ -2761,9 +2770,10 @@ function scoutBloqueMarcas(inf) {
       </p>
       <p class="text-[11px] text-muted mb-3 leading-snug">
         <b>De los nuestros</b> propone hasta tres jugadores del plantel para cada tarea, el primero
-        en naranja. Sale de cruzar recuperos, faltas, rebote y minutos —<b>lo único defensivo que
-        trae el box score</b>—, así que es una aproximación por proxy y no una medición de defensa:
-        el nombre final lo pone el cuerpo técnico.
+        en naranja. Cruza <b>tapas, recuperos, faltas, rebote y minutos</b>, comparados dentro del
+        propio plantel. Lo que el box score no mide es el trabajo sin pelota —desplazamiento,
+        navegación de cortinas, puntos permitidos por marca—, así que es una sugerencia y no un
+        veredicto: el nombre final lo pone el cuerpo técnico.
       </p>
       ${scoutPlanColectivo(t.plan)}
       <div class="scrollbox"><table class="w-full text-left" style="min-width:62rem">

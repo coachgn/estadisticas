@@ -123,6 +123,29 @@
      razón que los respaldos de text-accent y de .mm-pos).
      ===================================================================== */
 
+  /* --- Campana del buzón ---
+     A mano y no con utilidades de Tailwind: el botón lo inyecta
+     `SGADD_BUZON.badge()` después del render y el JIT del CDN no genera
+     clases para nodos dinámicos, así que `w-10 h-10` no se aplicaba y el
+     botón quedaba del ancho del emoji (21px). Mismo motivo que .mm-pos y
+     .fila-inicial. */
+  .buzon-boton {
+    position: relative; display: grid; place-items: center;
+    width: 40px; height: 40px; flex-shrink: 0;
+    border: 1px solid #282828; border-radius: 8px;
+    background: #1c1c1f; font-size: 16px; line-height: 1;
+    cursor: pointer;
+    transition: background-color .15s ease, border-color .15s ease, transform .15s ease;
+  }
+  .buzon-boton:hover { background: #24242a; border-color: rgba(250,204,21,.5); }
+  .buzon-boton:active { transform: scale(.95); }
+  .buzon-badge {
+    position: absolute; top: -6px; right: -6px;
+    min-width: 18px; height: 18px; padding: 0 4px;
+    border-radius: 999px; background: #facc15; color: #000;
+    font-size: 10px; font-weight: 700; line-height: 18px; text-align: center;
+  }
+
   /* --- Drawer: entrada y salida suaves, como pide Checklist Design --- */
   @keyframes buzonFadeIn  { from { opacity: 0 } to { opacity: 1 } }
   @keyframes buzonSlideIn { from { transform: translateX(100%) } to { transform: translateX(0) } }
@@ -683,16 +706,10 @@
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M4.5 9a8 8 0 0 1 14-3.5M19.5 15a8 8 0 0 1-14 3.5"/></svg>
           <span id="refresh-label">Actualizar datos</span>
         </button>
-        <!-- Campana + estado de datos en una sola fila. El buzón vive acá y
-             no en el header porque "Datos actualizados" ya estaba duplicado
-             entre los dos lugares, y porque el pie del menú es donde el DT
-             mira el estado del panel. Al estar en el sidebar aparece en TODAS
-             las secciones, incluida Principal, que usa la capa de datos vieja
-             y no pinta la barra de SGADD_APP. -->
-        <div class="mt-2 flex items-center justify-center gap-2">
-          <div id="buzonSlot" class="shrink-0"></div>
-          <p id="last-updated" class="text-[11px] text-muted font-mono tabular-nums leading-tight"></p>
-        </div>
+        <!-- El punto verde vive acá, junto a la hora: antes el header decía
+             "Datos actualizados" con texto y el pie la hora, o sea el mismo
+             dato dos veces. La campana va arriba, en el header. -->
+        <p id="last-updated" class="text-[11px] text-muted mt-2 text-center font-mono tabular-nums"></p>
       </div>
     </aside>
 
@@ -706,6 +723,12 @@
             </button>
             <h1 id="page-title" class="font-display text-2xl md:text-3xl uppercase tracking-wide truncate">Principal</h1>
           </div>
+          <!-- Buzón de alertas. Va en el HEADER —donde antes estaba el cartel
+               "Datos actualizados"— para que se vea desde cualquier sección,
+               incluida Principal, que usa la capa de datos vieja y no pinta la
+               barra de SGADD_APP. El estado de los datos se mudó al pie del
+               menú, junto a la hora, así que acá no se pisan. -->
+          <div id="buzonSlot" class="shrink-0"></div>
           <div id="status-banner-holder" class="shrink-0"></div>
         </div>
       </header>
@@ -715,22 +738,22 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=56"></script>
-<script src="js/sgadd-core.js?v=56"></script>
-<script src="js/sgadd-ui.js?v=56"></script>
-<script src="js/sgadd-app.js?v=56"></script>
-<script src="js/sgadd-estados.js?v=56"></script>
-<script src="js/sgadd-buzon.js?v=56"></script>
-<script src="js/sgadd-charts.js?v=56"></script>
-<script src="js/sgadd-personalidad.js?v=56"></script>
-<script src="js/sgadd-rankings.js?v=56"></script>
-<script src="js/sgadd-partido.js?v=56"></script>
-<script src="js/sgadd-informe.js?v=56"></script>
-<script src="js/sgadd-equipos.js?v=56"></script>
-<script src="js/sgadd-jugadores.js?v=56"></script>
-<script src="js/sgadd-4factores.js?v=56"></script>
-<script src="js/sgadd-scouting.js?v=56"></script>
-<script src="js/sgadd-diagnostico.js?v=56"></script>
+<script src="js/sgadd-club.js?v=59"></script>
+<script src="js/sgadd-core.js?v=59"></script>
+<script src="js/sgadd-ui.js?v=59"></script>
+<script src="js/sgadd-app.js?v=59"></script>
+<script src="js/sgadd-estados.js?v=59"></script>
+<script src="js/sgadd-buzon.js?v=59"></script>
+<script src="js/sgadd-charts.js?v=59"></script>
+<script src="js/sgadd-personalidad.js?v=59"></script>
+<script src="js/sgadd-rankings.js?v=59"></script>
+<script src="js/sgadd-partido.js?v=59"></script>
+<script src="js/sgadd-informe.js?v=59"></script>
+<script src="js/sgadd-equipos.js?v=59"></script>
+<script src="js/sgadd-jugadores.js?v=59"></script>
+<script src="js/sgadd-4factores.js?v=59"></script>
+<script src="js/sgadd-scouting.js?v=59"></script>
+<script src="js/sgadd-diagnostico.js?v=59"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -2570,6 +2593,18 @@ async function init() {
   renderStatusBanner(errors);
   updateLastUpdatedLabel();
   renderSection(currentSection);
+
+  /* El buzon vive en el header global, asi que tiene que tener alertas ANTES
+     de que el usuario entre a una seccion SGADD. Principal usa la capa de
+     datos vieja y nunca dispara `SGADD_APP.cargar()`, asi que se dispara aca
+     — sin await, para no demorar el primer render. La carga queda cacheada en
+     `SGADD.cargarCategoria`, asi que entrar despues a Equipos no vuelve a
+     pedir nada. */
+  if (typeof SGADD_APP !== 'undefined') {
+    Promise.resolve(SGADD_APP.cargar()).then(function () {
+      if (typeof SGADD_BUZON !== 'undefined') SGADD_BUZON.sincronizar();
+    }).catch(function () {});
+  }
 
   /* ---------------------------------------------------------------------
      Cambio de categoria.

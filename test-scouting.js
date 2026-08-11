@@ -1457,17 +1457,36 @@ check('las 11 familias declaran con qué señales se busca a su defensor',
   S.CATALOGO_DEFENSOR.every(c => c.defiende && Object.keys(c.defiende).length > 0),
   S.CATALOGO_DEFENSOR.filter(c => !c.defiende).map(c => c.id).join('|'));
 /* Las señales tienen que salir de lo que el box score realmente trae. */
-const señalesValidas = ['pr', 'fc', 'rd', 'ro', 'min', 'interior', 'perimetral'];
+const señalesValidas = ['pr', 'fc', 'tc', 'rd', 'ro', 'min', 'interior', 'perimetral'];
 check('y todas las señales existen en la planilla: no hay métricas inventadas',
   S.CATALOGO_DEFENSOR.every(c => Object.keys(c.defiende).every(k => señalesValidas.indexOf(k) !== -1)),
   S.CATALOGO_DEFENSOR.map(c => Object.keys(c.defiende).filter(k => señalesValidas.indexOf(k) === -1)).flat().join('|'));
 /* Coherencia deportiva: al interior se lo busca por rebote y al de presión
    por recuperos, no al revés. */
 const fam = (id) => S.CATALOGO_DEFENSOR.find(c => c.id === id).defiende;
-check('al Especialista Interior se lo busca por adentro y por rebote',
-  fam('especialistaInterior').interior > 0 && fam('especialistaInterior').rd > 0);
-check('al Referente de Zona, por rebote sobre todo',
-  fam('referenteZona').rd >= fam('referenteZona').interior);
+/* TC = tapas cometidas. Es LA métrica de protección de aro del box score y
+   la que más pesa para los perfiles interiores: un Primary Rim Protector se
+   busca por tapas antes que por rebote. */
+check('el box score SÍ trae tapas, y son la señal principal del interior',
+  !!SGADD.metrica('TC') && SGADD.metrica('TC').label === 'Tapas cometidas');
+check('al Especialista Interior se lo busca por tapas, adentro y rebote',
+  fam('especialistaInterior').tc > 0 && fam('especialistaInterior').interior > 0 &&
+  fam('especialistaInterior').rd > 0);
+check('y las tapas pesan más que el rebote para ese perfil',
+  fam('especialistaInterior').tc > fam('especialistaInterior').rd,
+  JSON.stringify(fam('especialistaInterior')));
+check('al Referente de Zona, tapas por encima de todo: es el protector de aro',
+  fam('referenteZona').tc > fam('referenteZona').rd &&
+  fam('referenteZona').tc > fam('referenteZona').interior,
+  JSON.stringify(fam('referenteZona')));
+check('al Perimetral Largo también, que es el que puntea el tiro',
+  fam('perimetralLargo').tc > 0);
+check('y al Rotador Vertical de las ayudas',
+  fam('ayudasAtleticas').tc > 0);
+/* Pero NO a los perfiles de contención perimetral: ahí la tarea es
+   desplazarse, no saltar. */
+check('a los perfiles de contención perimetral las tapas no les suman',
+  !fam('perimetralAtletico').tc && !fam('especialistaPerimetral').tc && !fam('contencionTactica').tc);
 check('a los de Presión Inicial y Ayudas, por recuperos',
   fam('presionInicial').pr > 0.5 && fam('ayudasAtleticas').pr > 0.5);
 check('al Perimetral Físico, por faltas: es contacto, no un defecto',
@@ -1517,8 +1536,14 @@ if (primero) {
 const fuenteScout = require('fs').readFileSync('./js/sgadd-scouting.js', 'utf8');
 check('la tabla muestra los candidatos con el primero destacado',
   /De los nuestros:/.test(fuenteScout) && /text-accent font-semibold/.test(fuenteScout));
-check('y avisa que es una aproximación por proxy, no una medición de defensa',
-  /aproximaci[óo]n por proxy y no una medici[óo]n de defensa/.test(fuenteScout));
+check('la nota nombra las señales reales que cruza, tapas incluidas',
+  /tapas, recuperos, faltas, rebote y minutos/.test(fuenteScout));
+/* Lo que el box score NO trae es el trabajo sin pelota. Decirlo así es
+   preciso; decir "no mide defensa" era falso, porque TC existe. */
+check('y aclara qué es lo que el box score NO mide, sin exagerar',
+  /trabajo sin pelota/.test(fuenteScout) && /no un\s*\n?\s*veredicto|no un veredicto/.test(fuenteScout));
+check('las tapas entran a las señales normalizadas del plantel',
+  señales.every(p => typeof p.n.tc === 'number' && p.n.tc >= 0 && p.n.tc <= 1));
 
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
