@@ -9,6 +9,23 @@
    Lo que arma HTML (tabla de marcas, tarjetas del informe) usa document y
    no se testea acá — mismo criterio que el resto de las UI del proyecto:
    se verifica a mano en el navegador con datos reales.
+
+   NOMBRES DE EQUIPO: los cuatro son REALES y salen de
+   `logos/la-plata/index.json` (ATENAS A, PLATENSE A, NAUTICO ENSENADA,
+   UNIVERSAL). Antes eran inventados —AGUILA, MEDIO, BAJO, TOPO— y eso
+   escondía dos problemas: un fixture con un club que no existe no se puede
+   contrastar contra la planilla, y ya pasó que un test apuntara a 'HALCON',
+   que tampoco existía, corriendo en silencio sobre una lista vacía. Con
+   nombres reales, un typo se nota.
+
+   Ninguno de los cuatro es RECONQUISTA a propósito: varios checks verifican
+   qué hace el respaldo por `esEquipoPropio()` cuando NINGÚN equipo del cruce
+   es del club. Meter al equipo propio acá cambiaría esa rama sin avisar.
+
+   Los NOMBRES DE JUGADOR sí siguen siendo descriptivos ('TIRADOR, ELITE',
+   'PIVOT, INTERNO'): dicen qué regla encarna cada uno, que es justamente lo
+   que el test verifica. Con nombres de personas reales el test no se leería,
+   y además quedaría mintiendo apenas ese jugador cambie de rendimiento.
    ===================================================================== */
 global.SGADD = require('./js/sgadd-core.js');
 const S = require('./js/sgadd-scouting.js');
@@ -25,7 +42,7 @@ const colsPE = ['EQUIPO', 'FASE', 'PJ', 'POS', 'PACE', 'PLAYS', 'PPP', 'PTS', 'P
   'eFG%', 'RTL%', 'RO%', 'RD%', 'AST%', 'PT3%', 'PT2%', 'PT1%', 'PePP%',
   'PPT3', 'PPT2', 'PPT1', 'T1%', 'T2%', 'T3%', 'PP', 'PR', 'RO'];
 
-/* AGUILA es el mejor en casi todo; TOPO el peor; MEDIO y BAJO en el medio.
+/* ATENAS A es el mejor en casi todo; UNIVERSAL el peor; PLATENSE A y NAUTICO ENSENADA en el medio.
    Con 4 equipos los rankings son inequívocos y se pueden afirmar a mano. */
 function filaPE(eq, pace, efg, ro, uso3, t3, pp, pr, rebOf) {
   return {
@@ -43,19 +60,19 @@ function filaPE(eq, pace, efg, ro, uso3, t3, pp, pr, rebOf) {
    dos caminos de `referenciaLiga` — el TIPO de la planilla y el respaldo
    calculado sobre la distribución. */
 const filasPE = [
-  filaPE('AGUILA', 82, 0.55, 0.34, 0.40, 0.38, 10, 9, 13),
-  filaPE('MEDIO', 78, 0.50, 0.29, 0.35, 0.34, 12, 7, 10),
-  filaPE('BAJO', 75, 0.46, 0.25, 0.31, 0.31, 13, 6, 9),
-  filaPE('TOPO', 72, 0.42, 0.21, 0.28, 0.28, 15, 4, 7),
+  filaPE('ATENAS A', 82, 0.55, 0.34, 0.40, 0.38, 10, 9, 13),
+  filaPE('PLATENSE A', 78, 0.50, 0.29, 0.35, 0.34, 12, 7, 10),
+  filaPE('NAUTICO ENSENADA', 75, 0.46, 0.25, 0.31, 0.31, 13, 6, 9),
+  filaPE('UNIVERSAL', 72, 0.42, 0.21, 0.28, 0.28, 15, 4, 7),
   Object.assign(filaPE('EQUIPO TIPO', 0, 0.49, 0.27, 0.33, 0.32, 12.5, 6.5, 9.5), { PACE: '', POS: '' }),
 ];
 
 const colsP4F = ['EQUIPO', 'FASE', 'PJ', 'RTNG OFF', 'RTNG DEF', 'NET RTNG', 'PPP OF', 'PPP DEF'];
 const filasP4F = [
-  { EQUIPO: 'AGUILA', FASE: 'REGULAR', PJ: '3', 'RTNG OFF': '98,0', 'RTNG DEF': '88,0', 'NET RTNG': '10,0', 'PPP OF': '0,98', 'PPP DEF': '0,88' },
-  { EQUIPO: 'MEDIO', FASE: 'REGULAR', PJ: '3', 'RTNG OFF': '93,0', 'RTNG DEF': '92,0', 'NET RTNG': '1,0', 'PPP OF': '0,93', 'PPP DEF': '0,92' },
-  { EQUIPO: 'BAJO', FASE: 'REGULAR', PJ: '3', 'RTNG OFF': '90,0', 'RTNG DEF': '95,0', 'NET RTNG': '-5,0', 'PPP OF': '0,90', 'PPP DEF': '0,95' },
-  { EQUIPO: 'TOPO', FASE: 'REGULAR', PJ: '3', 'RTNG OFF': '86,0', 'RTNG DEF': '99,0', 'NET RTNG': '-13,0', 'PPP OF': '0,86', 'PPP DEF': '0,99' },
+  { EQUIPO: 'ATENAS A', FASE: 'REGULAR', PJ: '3', 'RTNG OFF': '98,0', 'RTNG DEF': '88,0', 'NET RTNG': '10,0', 'PPP OF': '0,98', 'PPP DEF': '0,88' },
+  { EQUIPO: 'PLATENSE A', FASE: 'REGULAR', PJ: '3', 'RTNG OFF': '93,0', 'RTNG DEF': '92,0', 'NET RTNG': '1,0', 'PPP OF': '0,93', 'PPP DEF': '0,92' },
+  { EQUIPO: 'NAUTICO ENSENADA', FASE: 'REGULAR', PJ: '3', 'RTNG OFF': '90,0', 'RTNG DEF': '95,0', 'NET RTNG': '-5,0', 'PPP OF': '0,90', 'PPP DEF': '0,95' },
+  { EQUIPO: 'UNIVERSAL', FASE: 'REGULAR', PJ: '3', 'RTNG OFF': '86,0', 'RTNG DEF': '99,0', 'NET RTNG': '-13,0', 'PPP OF': '0,86', 'PPP DEF': '0,99' },
 ];
 
 const colsBD = ['FECHA', 'PARTIDO', 'EQUIPO', 'FASE', 'CONDICION', 'RESULTADO',
@@ -79,19 +96,19 @@ function partido(fecha, nombre, local, visitante, ptsL, ptsV, tccL, tccV, roL) {
   ];
 }
 
-/* AGUILA: 3 partidos (2 de local, 1 de visitante). Sus dos ganados tienen
+/* ATENAS A: 3 partidos (2 de local, 1 de visitante). Sus dos ganados tienen
    TCC alto y RO alto; el perdido, TCC bajo. Eso es lo que tiene que
    detectar `analisisCiclo`. */
 const filasBD = [].concat(
-  partido('05/01/2026', 'AGUILA vs TOPO', 'AGUILA', 'TOPO', 88, 70, 34, 24, 15),
-  partido('12/01/2026', 'AGUILA vs MEDIO', 'AGUILA', 'MEDIO', 84, 74, 33, 27, 14),
-  partido('19/01/2026', 'BAJO vs AGUILA', 'BAJO', 'AGUILA', 80, 66, 30, 22, 9),
-  partido('26/01/2026', 'MEDIO vs TOPO', 'MEDIO', 'TOPO', 79, 71, 30, 26, 10),
-  partido('02/02/2026', 'TOPO vs BAJO', 'TOPO', 'BAJO', 68, 77, 24, 29, 8),
-  partido('09/02/2026', 'MEDIO vs BAJO', 'MEDIO', 'BAJO', 81, 75, 31, 28, 11)
+  partido('05/01/2026', 'ATENAS A vs UNIVERSAL', 'ATENAS A', 'UNIVERSAL', 88, 70, 34, 24, 15),
+  partido('12/01/2026', 'ATENAS A vs PLATENSE A', 'ATENAS A', 'PLATENSE A', 84, 74, 33, 27, 14),
+  partido('19/01/2026', 'NAUTICO ENSENADA vs ATENAS A', 'NAUTICO ENSENADA', 'ATENAS A', 80, 66, 30, 22, 9),
+  partido('26/01/2026', 'PLATENSE A vs UNIVERSAL', 'PLATENSE A', 'UNIVERSAL', 79, 71, 30, 26, 10),
+  partido('02/02/2026', 'UNIVERSAL vs NAUTICO ENSENADA', 'UNIVERSAL', 'NAUTICO ENSENADA', 68, 77, 24, 29, 8),
+  partido('09/02/2026', 'PLATENSE A vs NAUTICO ENSENADA', 'PLATENSE A', 'NAUTICO ENSENADA', 81, 75, 31, 28, 11)
 );
 
-/* --- Planteles. Cada jugador de AGUILA encarna una regla distinta. --- */
+/* --- Planteles. Cada jugador de ATENAS A encarna una regla distinta. --- */
 const colsPJ = ['NOMBRES', 'EQUIPO', 'FASE', 'PJ', 'MIN', 'PLAYS', 'PTS', 'PPP', 'eFG%', 'TS%', 'RTL%', 'USG%',
   'PT2%', 'PT3%', 'PT1%', 'PePP%', 'T2C', 'T2I', 'PPT2', 'T2%', 'T3C', 'T3I', 'PPT3', 'T3%',
   'T1C', 'T1I', 'PPT1', 'T1%', 'TCC', 'TCI', 'TC%', 'RD', 'RD%', 'RO', 'RO%', 'RT', 'RT%',
@@ -124,15 +141,15 @@ const filasPJ = [
      equipo puntual (regla del punto 3 de CLAUDE.md). */
   jug('JUGADOR TIPO', '', { MIN: '15', 'PePP%': '0,13', 'RO%': '0,05', 'RD%': '0,12', PLAYS: '9' }),
 
-  /* AGUILA — el rival a scoutear. */
-  jug('TIRADOR, ELITE', 'AGUILA', {
+  /* ATENAS A — el rival a scoutear. */
+  jug('TIRADOR, ELITE', 'ATENAS A', {
     MIN: '30', PLAYS: '24', PTS: '22', PPP: '1,10',
     'PT3%': '0,55', PPT3: '1,35', 'T3%': '0,45', 'PT2%': '0,30', PPT2: '0,95',
     'PT1%': '0,08', 'T1%': '0,80', 'PePP%': '0,10',
     T3I: '8', T2I: '4', T1I: '2',
   }),
   /* Interno puro: casi no lanza de afuera y domina el cristal. */
-  jug('PIVOT, INTERNO', 'AGUILA', {
+  jug('PIVOT, INTERNO', 'ATENAS A', {
     MIN: '28', PLAYS: '14', PTS: '15',
     'PT3%': '0,05', PPT3: '0,30', 'PT2%': '0,72', PPT2: '1,25',
     'PT1%': '0,12', 'T1%': '0,52', 'RO%': '0,11', 'RD%': '0,20', 'PePP%': '0,12',
@@ -140,30 +157,30 @@ const filasPJ = [
   }),
   /* Slasher: PPT2 tan alto como el pivot, pero lanza de afuera y no
      rebotea. No puede clasificar como referencia interna. */
-  jug('SLASHER, PENETRADOR', 'AGUILA', {
+  jug('SLASHER, PENETRADOR', 'ATENAS A', {
     MIN: '27', PLAYS: '13', PTS: '14',
     'PT3%': '0,30', PPT3: '0,95', 'PT2%': '0,58', PPT2: '1,25',
     'PT1%': '0,10', 'T1%': '0,70', 'RO%': '0,03', 'RD%': '0,08', 'PePP%': '0,12',
     T3I: '3,5', T2I: '6', T1I: '2,5', AST: '2', 'AST-PP': '1,10',
   }),
-  jug('BASE, RIESGOSO', 'AGUILA', {
+  jug('BASE, RIESGOSO', 'ATENAS A', {
     MIN: '26', PLAYS: '13', PTS: '10',
     'PePP%': '0,22', 'AST-PP': '1,10', 'PT3%': '0,30', PPT3: '0,90', 'PT2%': '0,50',
     T3I: '3', T2I: '5', T1I: '2', AST: '3',
   }),
-  jug('LADRILLO, PERIMETRAL', 'AGUILA', {
+  jug('LADRILLO, PERIMETRAL', 'ATENAS A', {
     MIN: '24', PLAYS: '11', PTS: '8',
     'PT3%': '0,52', PPT3: '0,72', 'T3%': '0,24', 'PT2%': '0,35', 'PePP%': '0,12',
     T3I: '6', T2I: '3', T1I: '1',
   }),
-  jug('CONTACTO, FINO', 'AGUILA', {
+  jug('CONTACTO, FINO', 'ATENAS A', {
     MIN: '22', PLAYS: '10', PTS: '11',
     'PT1%': '0,18', 'T1%': '0,88', PPT1: '0,88', 'PT3%': '0,20', 'PT2%': '0,50',
     T3I: '2', T2I: '5', T1I: '4',
   }),
   /* Interno con T1% pésimo Y volumen adentro: el ÚNICO caso donde la
      falta táctica es negocio (T1% < 40%). */
-  jug('MANOS, PIEDRA', 'AGUILA', {
+  jug('MANOS, PIEDRA', 'ATENAS A', {
     MIN: '21', PLAYS: '9', PTS: '7',
     'PT3%': '0,04', PPT3: '0,20', 'PT2%': '0,62', PPT2: '1,05',
     'PT1%': '0,16', 'T1%': '0,35', PPT1: '0,35', 'RO%': '0,09', 'RD%': '0,16', 'PePP%': '0,12',
@@ -172,7 +189,7 @@ const filasPJ = [
   /* El caso "Benavídez": pocos minutos y pocos puntos, pero el triple que
      tira es CARO. Con el criterio viejo (que miraba puntos) quedaba en el
      montón y se le flotaba; es el error táctico más grave del engine. */
-  jug('ESPECIALISTA, CARO', 'AGUILA', {
+  jug('ESPECIALISTA, CARO', 'ATENAS A', {
     MIN: '14', PLAYS: '5', PTS: '5', PPP: '1,00',
     /* PPT3 1,14 queda por DEBAJO del umbral de "élite" (1,20) pero por
        encima del piso de rentabilidad (1,05): es exactamente el hueco
@@ -183,24 +200,24 @@ const filasPJ = [
   }),
   /* Único candidato legítimo a flotación: renta baja, volumen chico (no
      llega a "sistemático") y sin peso en el volumen externo del equipo. */
-  jug('FLOTABLE, MENOR', 'AGUILA', {
+  jug('FLOTABLE, MENOR', 'ATENAS A', {
     MIN: '12', PLAYS: '5', PTS: '3',
     'PT3%': '0,45', PPT3: '0,75', 'T3%': '0,25', 'PT2%': '0,40',
     T3I: '2', T2I: '2,5', T1I: '0,4',
   }),
-  jug('SUPLENTE, GRIS', 'AGUILA', {
+  jug('SUPLENTE, GRIS', 'ATENAS A', {
     MIN: '10', PLAYS: '4', PTS: '3',
     T3I: '1', T2I: '2', T1I: '0,5',
   }),
 
   /* Los otros tres equipos, sin perfiles extremos: solo para que la liga
      tenga distribución y los percentiles signifiquen algo. */
-  jug('UNO, MEDIO', 'MEDIO', { MIN: '26', PLAYS: '12' }),
-  jug('DOS, MEDIO', 'MEDIO', { MIN: '22', PLAYS: '10' }),
-  jug('UNO, BAJO', 'BAJO', { MIN: '25', PLAYS: '11' }),
-  jug('DOS, BAJO', 'BAJO', { MIN: '20', PLAYS: '9' }),
-  jug('UNO, TOPO', 'TOPO', { MIN: '24', PLAYS: '10' }),
-  jug('DOS, TOPO', 'TOPO', { MIN: '18', PLAYS: '8' }),
+  jug('UNO, PLATENSE', 'PLATENSE A', { MIN: '26', PLAYS: '12' }),
+  jug('DOS, PLATENSE', 'PLATENSE A', { MIN: '22', PLAYS: '10' }),
+  jug('UNO, NAUTICO', 'NAUTICO ENSENADA', { MIN: '25', PLAYS: '11' }),
+  jug('DOS, NAUTICO', 'NAUTICO ENSENADA', { MIN: '20', PLAYS: '9' }),
+  jug('UNO, UNIVERSAL', 'UNIVERSAL', { MIN: '24', PLAYS: '10' }),
+  jug('DOS, UNIVERSAL', 'UNIVERSAL', { MIN: '18', PLAYS: '8' }),
 ];
 
 const idx = SGADD.construirIndice({
@@ -213,15 +230,15 @@ const idx = SGADD.construirIndice({
 console.log('\n0. LA FIXTURE ES SANA (si esto falla, el resto miente)');
 console.log('═'.repeat(70));
 check('la liga tiene los 4 equipos', idx.lista().length === 4, idx.lista().length);
-check('AGUILA tiene sus 3 partidos', idx.get('AGUILA').partidos.length === 3);
-check('AGUILA tiene su plantel de 10', (idx.liga.jugadoresPorEquipo.get('AGUILA') || []).length === 10,
-  (idx.liga.jugadoresPorEquipo.get('AGUILA') || []).length);
+check('ATENAS A tiene sus 3 partidos', idx.get('ATENAS A').partidos.length === 3);
+check('ATENAS A tiene su plantel de 10', (idx.liga.jugadoresPorEquipo.get('ATENAS A') || []).length === 10,
+  (idx.liga.jugadoresPorEquipo.get('ATENAS A') || []).length);
 check('la fila JUGADOR TIPO de liga se reconoció', idx.liga.jugadorTipo !== null && cerca(idx.liga.jugadorTipo['PePP%'], 0.13, 1e-4),
   JSON.stringify(idx.liga.jugadorTipo && idx.liga.jugadorTipo['PePP%']));
 
 console.log('\n1. MATRIZ DE MÉTRICAS AVANZADAS');
 console.log('═'.repeat(70));
-const matriz = S.matrizComparativa(idx, 'AGUILA', 'TOPO');
+const matriz = S.matrizComparativa(idx, 'ATENAS A', 'UNIVERSAL');
 check('la matriz trae los dos bloques del informe', !!matriz && Array.isArray(matriz.posesion) && Array.isArray(matriz.tiro));
 check('el bloque de posesión trae las 8 métricas pedidas (POS, PACE, eFG%, EFF OF/DEF, %REB OF/DEF, %AST)',
   matriz.posesion.length === 8, matriz.posesion.map(f => f.label).join(','));
@@ -232,9 +249,9 @@ const filaPace = matriz.posesion.find(f => f.id === 'PACE');
 check('la fila de PACE trae el valor de cada equipo y la mediana de la liga',
   cerca(filaPace.local.valor, 82) && cerca(filaPace.visitante.valor, 72) && filaPace.liga.valor !== null,
   JSON.stringify({ l: filaPace.local.valor, v: filaPace.visitante.valor, liga: filaPace.liga.valor }));
-check('AGUILA es 1° en PACE de 4 equipos', filaPace.local.puesto === 1 && filaPace.local.de === 4,
+check('ATENAS A es 1° en PACE de 4 equipos', filaPace.local.puesto === 1 && filaPace.local.de === 4,
   JSON.stringify({ puesto: filaPace.local.puesto, de: filaPace.local.de }));
-check('TOPO es último en PACE', filaPace.visitante.puesto === 4, filaPace.visitante.puesto);
+check('UNIVERSAL es último en PACE', filaPace.visitante.puesto === 4, filaPace.visitante.puesto);
 
 check('PACE no está en la fila EQUIPO TIPO: la referencia de liga se calcula sobre la distribución',
   filaPace.liga.calculada === true && cerca(filaPace.liga.valor, (78 + 75) / 2),
@@ -253,27 +270,27 @@ check('%USO 3PTS trae su PPT3 como secundaria', filaUso3.local.sub && filaUso3.l
 const filaTov = matriz.tiro.find(f => f.id === 'PePP%');
 check('%TOV queda marcada como métrica invertida (perder menos es mejor)', filaTov.invertida === true);
 check('%TOV trae el total de pérdidas (PP) como secundaria', filaTov.subClave === 'PP');
-check('matrizComparativa() de un equipo inexistente da null', S.matrizComparativa(idx, 'NO_EXISTE', 'TOPO') === null);
+check('matrizComparativa() de un equipo inexistente da null', S.matrizComparativa(idx, 'NO_EXISTE', 'UNIVERSAL') === null);
 
 console.log('\n2. RANKINGS EN LA LIGA');
 console.log('═'.repeat(70));
-const rkAguila = S.rankingsLiga(idx, 'AGUILA');
-const rkTopo = S.rankingsLiga(idx, 'TOPO');
+const rkAguila = S.rankingsLiga(idx, 'ATENAS A');
+const rkTopo = S.rankingsLiga(idx, 'UNIVERSAL');
 check('devuelve una entrada por métrica del bloque de rankings', rkAguila.length > 0 && rkAguila.length <= S.METRICAS_RANKING.length);
 check('cada entrada trae puesto sobre total', rkAguila.every(r => r.puesto >= 1 && r.puesto <= r.de));
 const rkEfg = rkAguila.find(r => r.id === 'eFG%');
-check('AGUILA es 1° en eFG%', rkEfg.puesto === 1, rkEfg.puesto);
+check('ATENAS A es 1° en eFG%', rkEfg.puesto === 1, rkEfg.puesto);
 check('un puesto del tercio superior sale con tono fuerte', rkEfg.tono === 'fuerte', rkEfg.tono);
 const rkEfgTopo = rkTopo.find(r => r.id === 'eFG%');
-check('TOPO, último en eFG%, sale con tono débil', rkEfgTopo.puesto === 4 && rkEfgTopo.tono === 'debil', rkEfgTopo.tono);
+check('UNIVERSAL, último en eFG%, sale con tono débil', rkEfgTopo.puesto === 4 && rkEfgTopo.tono === 'debil', rkEfgTopo.tono);
 const rkTov = rkAguila.find(r => r.id === 'PP');
-check('en TOV (métrica invertida) el 1° es el que MENOS pierde: AGUILA con 10',
+check('en TOV (métrica invertida) el 1° es el que MENOS pierde: ATENAS A con 10',
   rkTov.puesto === 1, JSON.stringify({ puesto: rkTov.puesto, valor: rkTov.valor }));
 check('rankingsLiga() de un equipo inexistente da lista vacía', S.rankingsLiga(idx, 'NO_EXISTE').length === 0);
 
 console.log('\n3. METADATA: RÉCORD, SPLITS L/V, ÚLTIMO PARTIDO E HISTORIAL');
 console.log('═'.repeat(70));
-const ficha = S.fichaEquipo(idx, 'AGUILA');
+const ficha = S.fichaEquipo(idx, 'ATENAS A');
 check('el récord global sale de los partidos, no de una columna', ficha.pj === 3 && ficha.ganados === 2 && ficha.perdidos === 1,
   JSON.stringify({ pj: ficha.pj, g: ficha.ganados, p: ficha.perdidos }));
 check('el récord de local está desglosado (2 PJ, 2-0)', ficha.local.pj === 2 && ficha.local.ganados === 2,
@@ -281,21 +298,21 @@ check('el récord de local está desglosado (2 PJ, 2-0)', ficha.local.pj === 2 &
 check('el récord de visitante está desglosado (1 PJ, 0-1)', ficha.visitante.pj === 1 && ficha.visitante.perdidos === 1,
   JSON.stringify(ficha.visitante));
 check('el último partido trae rival y marcador resueltos contra el otro lado',
-  ficha.ultimoPartido.rival === 'BAJO' && ficha.ultimoPartido.pts === 66 && ficha.ultimoPartido.ptsRival === 80,
+  ficha.ultimoPartido.rival === 'NAUTICO ENSENADA' && ficha.ultimoPartido.pts === 66 && ficha.ultimoPartido.ptsRival === 80,
   JSON.stringify(ficha.ultimoPartido));
 check('el último partido conserva la condición', ficha.ultimoPartido.condicion === 'VISITANTE', ficha.ultimoPartido.condicion);
 check('fichaEquipo() de un equipo inexistente da null', S.fichaEquipo(idx, 'NO_EXISTE') === null);
 
-const h2h = S.historialDirecto(idx, 'AGUILA', 'TOPO');
-check('el historial directo encuentra el único cruce entre AGUILA y TOPO', h2h.length === 1, h2h.length);
+const h2h = S.historialDirecto(idx, 'ATENAS A', 'UNIVERSAL');
+check('el historial directo encuentra el único cruce entre ATENAS A y UNIVERSAL', h2h.length === 1, h2h.length);
 check('el cruce trae el marcador de los dos lados', cerca(h2h[0].ptsLocal, 88) && cerca(h2h[0].ptsVisitante, 70),
   JSON.stringify(h2h[0]));
 check('sin cruces previos el historial es una lista vacía, no null',
-  Array.isArray(S.historialDirecto(idx, 'AGUILA', 'AGUILA')) );
+  Array.isArray(S.historialDirecto(idx, 'ATENAS A', 'ATENAS A')) );
 
 console.log('\n4. ANÁLISIS DEL CICLO RECIENTE');
 console.log('═'.repeat(70));
-const ciclo = S.analisisCiclo(idx, 'AGUILA');
+const ciclo = S.analisisCiclo(idx, 'ATENAS A');
 check('la ventana por defecto es de ' + S.VENTANA_CICLO + ' partidos', ciclo.ventana === S.VENTANA_CICLO);
 check('con 3 partidos jugados analiza los 3 (no rellena)', ciclo.pj === 3, ciclo.pj);
 check('separa ganados (2) y perdidos (1)', ciclo.ganados.pj === 2 && ciclo.perdidos.pj === 1,
@@ -319,19 +336,19 @@ check('la línea de tiro trae el delta contra la mediana de la LIGA (no contra s
 check('un equipo sin partidos no revienta el ciclo', S.analisisCiclo(idx, 'NO_EXISTE') === null);
 
 /* Un subconjunto vacío (equipo invicto en la ventana) no puede romper. */
-const cicloBajo = S.analisisCiclo(idx, 'BAJO', 2);
+const cicloBajo = S.analisisCiclo(idx, 'NAUTICO ENSENADA', 2);
 check('con una ventana donde no perdió ningún partido, el grupo perdidos es null y no un objeto vacío',
   cicloBajo.perdidos === null || cicloBajo.perdidos.pj > 0, JSON.stringify(cicloBajo.perdidos));
 
 console.log('\n5. JUGADORES CLAVE Y SEMÁFORO TOP 3');
 console.log('═'.repeat(70));
 check('por defecto la tabla se recorta al top ' + S.TOP_JUGADORES + ' por minutos',
-  S.jugadoresClave(idx, 'AGUILA').filas.length === S.TOP_JUGADORES,
-  S.jugadoresClave(idx, 'AGUILA').filas.length);
+  S.jugadoresClave(idx, 'ATENAS A').filas.length === S.TOP_JUGADORES,
+  S.jugadoresClave(idx, 'ATENAS A').filas.length);
 /* Para el resto de las pruebas se pide el plantel entero: los dos casos
    límite de tiro externo (el especialista caro y el flotable) juegan pocos
    minutos justamente porque ese es su perfil. */
-const tabla = S.jugadoresClave(idx, 'AGUILA', 10);
+const tabla = S.jugadoresClave(idx, 'ATENAS A', 10);
 check('con límite explícito trae el plantel completo', tabla.filas.length === 10, tabla.filas.length);
 check('vienen ordenados por minutos, de mayor a menor',
   tabla.filas.map(f => f.perfil.min).every((m, i, a) => i === 0 || a[i - 1] >= m),
@@ -596,7 +613,7 @@ check('las fugas del de manos de piedra señalan el T1%',
 check('cada bullet cruza métrica con lectura táctica, no es un número suelto',
   tabla.filas.every(f => f.fortalezas.concat(f.fugas).every(t => t.length > 30)));
 
-const fichaJ = S.fichaRival(idx, (idx.liga.jugadoresPorEquipo.get('AGUILA') || [])[0], 100);
+const fichaJ = S.fichaRival(idx, (idx.liga.jugadoresPorEquipo.get('ATENAS A') || [])[0], 100);
 check('fichaRival() arma nombre, rol, marca, fortalezas y fugas de una sola llamada',
   !!fichaJ.nombre && !!fichaJ.rol && !!fichaJ.marca && fichaJ.fortalezas.length > 0 && fichaJ.fugas.length > 0);
 
@@ -607,7 +624,7 @@ check('ante dos perfiles posibles gana el de amenaza más cara (élite sobre lib
 
 console.log('\n7. CLAVES ESTRATÉGICAS DINÁMICAS');
 console.log('═'.repeat(70));
-const claves = S.clavesEstrategicas(idx, 'AGUILA');
+const claves = S.clavesEstrategicas(idx, 'ATENAS A');
 const ids = claves.map(c => c.id);
 check('genera varias claves, no una lista fija', claves.length >= 5, ids.join(','));
 check('detecta el eje de eficiencia (jugador que concentra el volumen)', ids.indexOf('ejes-eficiencia') !== -1, ids.join(','));
@@ -640,22 +657,22 @@ check('cada clave lista a lo sumo 3 jugadores (el DT actúa sobre los que más j
 
 /* Un equipo sin perfiles extremos tiene que generar MENOS claves: si
    generara las mismas, la "generación dinámica" sería decorativa. */
-const clavesMedio = S.clavesEstrategicas(idx, 'MEDIO');
+const clavesMedio = S.clavesEstrategicas(idx, 'PLATENSE A');
 check('un plantel sin perfiles extremos dispara menos claves que uno con especialistas',
   clavesMedio.length < claves.length, clavesMedio.length + ' vs ' + claves.length);
 check('clavesEstrategicas() de un equipo inexistente da lista vacía', S.clavesEstrategicas(idx, 'NO_EXISTE').length === 0);
 
 console.log('\n8. RESUMEN EJECUTIVO E INFORME COMPLETO');
 console.log('═'.repeat(70));
-const resumen = S.resumenEjecutivo(idx, 'TOPO', 'AGUILA');
+const resumen = S.resumenEjecutivo(idx, 'UNIVERSAL', 'ATENAS A');
 check('el resumen es un párrafo con contenido', typeof resumen === 'string' && resumen.length > 60, resumen.length);
-check('el resumen nombra al rival', resumen.indexOf('AGUILA') !== -1, resumen);
-check('el resumen lee el ritmo del rival (AGUILA es el más rápido de la liga)',
+check('el resumen nombra al rival', resumen.indexOf('ATENAS A') !== -1, resumen);
+check('el resumen lee el ritmo del rival (ATENAS A es el más rápido de la liga)',
   /ritmo alto/i.test(resumen), resumen);
 check('el resumen cierra con el estado del ciclo reciente', /últimos \d+ partidos/i.test(resumen), resumen);
-check('resumenEjecutivo() de un equipo inexistente da string vacío', S.resumenEjecutivo(idx, 'TOPO', 'NO_EXISTE') === '');
+check('resumenEjecutivo() de un equipo inexistente da string vacío', S.resumenEjecutivo(idx, 'UNIVERSAL', 'NO_EXISTE') === '');
 
-const informe = S.informePrePartido(idx, 'AGUILA', 'TOPO');
+const informe = S.informePrePartido(idx, 'ATENAS A', 'UNIVERSAL');
 check('el informe completo se resuelve', informe.ok === true, informe.motivo);
 check('trae los 6 bloques del pedido',
   !!informe.local && !!informe.matriz && !!informe.cicloLocal && !!informe.jugadoresRival &&
@@ -663,16 +680,16 @@ check('trae los 6 bloques del pedido',
 check('trae el historial directo entre los dos', informe.historial.length === 1);
 check('trae los rankings de los DOS equipos', informe.rankingsLocal.length > 0 && informe.rankingsVisitante.length > 0);
 check('sin equipo propio en la liga, el rival a scoutear es el visitante (convención del informe impreso)',
-  informe.claveRival === 'TOPO' && informe.claveNuestro === 'AGUILA',
+  informe.claveRival === 'UNIVERSAL' && informe.claveNuestro === 'ATENAS A',
   JSON.stringify({ rival: informe.claveRival, nuestro: informe.claveNuestro }));
 check('se puede forzar a mano qué equipo se scoutea',
-  S.informePrePartido(idx, 'AGUILA', 'TOPO', { claveRival: 'AGUILA' }).claveRival === 'AGUILA');
+  S.informePrePartido(idx, 'ATENAS A', 'UNIVERSAL', { claveRival: 'ATENAS A' }).claveRival === 'ATENAS A');
 check('el rival forzado es el que aparece en la tabla de jugadores',
-  S.informePrePartido(idx, 'AGUILA', 'TOPO', { claveRival: 'AGUILA' }).jugadoresRival.clave === 'AGUILA');
+  S.informePrePartido(idx, 'ATENAS A', 'UNIVERSAL', { claveRival: 'ATENAS A' }).jugadoresRival.clave === 'ATENAS A');
 check('no se puede armar un informe de un equipo contra sí mismo',
-  S.informePrePartido(idx, 'AGUILA', 'AGUILA').ok === false);
+  S.informePrePartido(idx, 'ATENAS A', 'ATENAS A').ok === false);
 check('un equipo inexistente da error explícito, no una excepción',
-  S.informePrePartido(idx, 'NO_EXISTE', 'TOPO').ok === false);
+  S.informePrePartido(idx, 'NO_EXISTE', 'UNIVERSAL').ok === false);
 
 /* =====================================================================
    HOMOLOGACIÓN CON LA SECCIÓN JUGADORES
@@ -688,7 +705,7 @@ console.log('\n9. HOMOLOGACIÓN TOTAL CON LA SECCIÓN JUGADORES');
 console.log('═'.repeat(70));
 
 const JUG = require('./js/sgadd-jugadores.js');
-const plantelAguila = idx.liga.jugadoresPorEquipo.get('AGUILA') || [];
+const plantelAguila = idx.liga.jugadoresPorEquipo.get('ATENAS A') || [];
 
 check('scouting expone los roles funcionales del motor de Jugadores, no una copia',
   S.ROLES_FUNCIONALES === JUG.JUGADORES_ROLES_FUNCIONALES,
@@ -798,7 +815,7 @@ check('el fallback de contención explica por qué no hay número',
   S.PERFILES_MARCA[S.PERFILES_MARCA.length - 1].id === 'contencion');
 
 /* --- El resumen ejecutivo gira alrededor de los jugadores --- */
-const resumenJ = S.resumenEjecutivo(idx, 'TOPO', 'AGUILA');
+const resumenJ = S.resumenEjecutivo(idx, 'UNIVERSAL', 'ATENAS A');
 check('el resumen nombra jugadores concretos, no solo al equipo',
   tabla.filas.some(f => resumenJ.indexOf(f.nombre) !== -1), resumenJ.slice(0, 160));
 check('el resumen identifica el eje del ataque con su volumen',
@@ -817,7 +834,7 @@ console.log('═'.repeat(70));
 
 /* 1. Ritmo */
 check('1· abre con el ritmo del rival (en negrita) y su consecuencia defensiva',
-  /^\*\*AGUILA\*\*.*ritmo/i.test(resumenJ) && /(balance defensivo|marca individual|duelos)/i.test(resumenJ),
+  /^\*\*ATENAS A\*\*.*ritmo/i.test(resumenJ) && /(balance defensivo|marca individual|duelos)/i.test(resumenJ),
   resumenJ.slice(0, 130));
 /* 2. Eje de ataque */
 check('2· identifica el eje del ataque con % de plays, puntos y PPP',
@@ -889,7 +906,7 @@ check('ningún perfil de defensor nuestro lo menciona',
 check('las fortalezas y fugas generadas tampoco lo mencionan',
   tabla.filas.every(f => f.fortalezas.concat(f.fugas).every(t => !PROHIBIDAS.test(t))));
 check('las claves estratégicas tampoco',
-  S.clavesEstrategicas(idx, 'AGUILA').every(c => !PROHIBIDAS.test(c.texto + ' ' + c.titulo)));
+  S.clavesEstrategicas(idx, 'ATENAS A').every(c => !PROHIBIDAS.test(c.texto + ' ' + c.titulo)));
 
 console.log('\n12. MATRIZ DE PERFILES DE DEFENSOR NUESTRO');
 console.log('═'.repeat(70));
@@ -1016,10 +1033,10 @@ check('el rebotador recibe BOX-OUT DE CHOQUE con su múltiplo de RO%',
 console.log('\n14. NOMBRES EN NEGRITA EN EL RESUMEN');
 console.log('═'.repeat(70));
 
-const resumenNeg = S.resumenEjecutivo(idx, 'TOPO', 'AGUILA');
+const resumenNeg = S.resumenEjecutivo(idx, 'UNIVERSAL', 'ATENAS A');
 const negritas = (resumenNeg.match(/\*\*(.+?)\*\*/g) || []).map(s => s.replace(/\*\*/g, ''));
 check('el resumen marca nombres en negrita con **…**', negritas.length > 0, negritas.length);
-check('el nombre del equipo rival va en negrita', negritas.indexOf('AGUILA') !== -1, negritas.join('|'));
+check('el nombre del equipo rival va en negrita', negritas.indexOf('ATENAS A') !== -1, negritas.join('|'));
 check('TODOS los jugadores nombrados en el resumen están en negrita',
   tabla.filas.every(f => resumenNeg.indexOf(f.nombre) === -1 || negritas.indexOf(f.nombre) !== -1),
   tabla.filas.filter(f => resumenNeg.indexOf(f.nombre) !== -1 && negritas.indexOf(f.nombre) === -1).map(f => f.nombre).join('|'));
@@ -1093,7 +1110,7 @@ check('sin bandas de liga manda el piso absoluto: no se deja de decidir', (() =>
   const hayBanda = p.bandaPptTriple !== null || p.bandaT3 !== null;
   return piso && !hayBanda;
 })());
-check('el perfil expone el caso del tirador de volumen MEDIO sin renta',
+check('el perfil expone el caso del tirador de volumen medio sin renta',
   tabla.filas.every(f => typeof f.perfil.tiroExternoOcasionalFrio === 'boolean'));
 /* Volumen medio = tira lo suficiente para importar, no lo suficiente para
    perseguirlo. Ninguna de las tres reglas de tiro lo alcanzaba. */
@@ -1138,7 +1155,7 @@ check('y la de concesión perimetral selectiva',
 check('todas las claves siguen trayendo icono, título y buscador',
   S.REGLAS_CLAVE.every(r => !!r.icono && !!r.titulo && typeof r.buscar === 'function' && typeof r.texto === 'function'));
 /* Los pares opuestos no pueden apuntar al mismo jugador: la concesión
-   perimetral es para volumen MEDIO, la clausura para volumen alto y caro. */
+   perimetral es para volumen medio, la clausura para volumen alto y caro. */
 check('concesión perimetral y clausura de tiradores nunca marcan al mismo', (() => {
   const perfiles = tabla.filas.map(f => f.perfil);
   const conce = S.REGLAS_CLAVE.find(r => r.id === 'concesion-perimetral').buscar(perfiles).map(p => p.nombre);
@@ -1371,7 +1388,7 @@ global.SGADD_BUZON = {
   },
 };
 
-const antes = S.jugadoresClave(idx, 'AGUILA', 10);
+const antes = S.jugadoresClave(idx, 'ATENAS A', 10);
 const nombresAntes = antes.filas.map(f => f.nombre);
 check('el doble del buzón no cambia nada mientras todos están activos',
   nombresAntes.length > 3, nombresAntes.length + ' fichas');
@@ -1382,7 +1399,7 @@ const victima = antes.filas[0];
 const claveVictima = EST.claveJugador(victima.nombre, victima.perfil.equipo);
 bajas = EST.aplicar({}, claveVictima, 'BAJA', { origen: 'usuario' });
 
-const despues = S.jugadoresClave(idx, 'AGUILA', 10);
+const despues = S.jugadoresClave(idx, 'ATENAS A', 10);
 const nombresDespues = despues.filas.map(f => f.nombre);
 
 check('el jugador dado de BAJA desaparece de la tabla de marcas',
@@ -1421,19 +1438,19 @@ check('ninguna consigna sigue mandando la ayuda hacia el jugador que se fue',
 check('y las que nombran una fuente nombran a alguien que sigue en la tabla',
   planD.fuentes.every(f => nombresDespues.indexOf(f.nombre) !== -1));
 check('el resumen ejecutivo tampoco lo menciona',
-  S.resumenEjecutivo(idx, 'HALCON', 'AGUILA').indexOf(victima.nombre) === -1);
+  S.resumenEjecutivo(idx, 'HALCON', 'ATENAS A').indexOf(victima.nombre) === -1);
 
 /* --- SUSPENSO y ALTA NO sacan del plan: solo avisan --- */
 bajas = EST.aplicar({}, claveVictima, 'SUSPENSO', { origen: 'usuario' });
 check('un SUSPENSO sigue en la tabla: si vuelve, vuelve con esta ficha',
-  S.jugadoresClave(idx, 'AGUILA', 10).filas.some(f => f.nombre === victima.nombre));
+  S.jugadoresClave(idx, 'ATENAS A', 10).filas.some(f => f.nombre === victima.nombre));
 bajas = EST.aplicar({}, claveVictima, 'ALTA', { origen: 'usuario' });
 check('un ALTA también, sin exigirle piso de partidos',
-  S.jugadoresClave(idx, 'AGUILA', 10).filas.some(f => f.nombre === victima.nombre));
+  S.jugadoresClave(idx, 'ATENAS A', 10).filas.some(f => f.nombre === victima.nombre));
 
 /* --- Volver a ACTIVO restaura el plan tal cual estaba --- */
 bajas = {};
-const restaurado = S.jugadoresClave(idx, 'AGUILA', 10);
+const restaurado = S.jugadoresClave(idx, 'ATENAS A', 10);
 check('volver a ACTIVO devuelve la tabla exactamente como estaba',
   restaurado.filas.map(f => f.nombre).join('|') === nombresAntes.join('|'));
 check('y el plan colectivo vuelve al mismo escenario',
@@ -1442,7 +1459,7 @@ check('y el plan colectivo vuelve al mismo escenario',
 
 delete global.SGADD_BUZON;
 check('sin el módulo de buzón cargado el informe sale igual que siempre',
-  S.jugadoresClave(idx, 'AGUILA', 10).filas.length === nombresAntes.length);
+  S.jugadoresClave(idx, 'ATENAS A', 10).filas.length === nombresAntes.length);
 
 /* =====================================================================
    22. QUIÉN DE LOS NUESTROS DEFIENDE A CADA UNO
@@ -1496,8 +1513,8 @@ check('pero al Perimetral Atlético las faltas le RESTAN: tiene que contener sin
 
 /* OJO: acá decía 'HALCON', que no existe en la fixture, así que `señales`
    era [] y los ocho checks de abajo pasaban sobre una lista vacía sin
-   verificar nada. AGUILA es el plantel que sí tiene los 10 jugadores. */
-const señales = S.señalesPlantel(idx, idx.liga.jugadoresPorEquipo.get('AGUILA') || []);
+   verificar nada. ATENAS A es el plantel que sí tiene los 10 jugadores. */
+const señales = S.señalesPlantel(idx, idx.liga.jugadoresPorEquipo.get('ATENAS A') || []);
 check('la fixture de señales NO está vacía (si lo está, los checks de abajo mienten)',
   señales.length === 10, señales.length);
 check('las señales del plantel se normalizan 0-1 para poder sumarlas',
@@ -1573,14 +1590,14 @@ const candidatosDe = (inf) => inf.jugadoresRival.filas
   .reduce((acc, f) => acc.concat(f.marca.candidatos || []), []);
 
 /* (a) del pedido: en un cruce, cada tabla propone defensores del OTRO. */
-const cruceA = S.informePrePartido(idx, 'AGUILA', 'MEDIO', { claveRival: 'MEDIO' });
-const cruceB = S.informePrePartido(idx, 'AGUILA', 'MEDIO', { claveRival: 'AGUILA' });
+const cruceA = S.informePrePartido(idx, 'ATENAS A', 'PLATENSE A', { claveRival: 'PLATENSE A' });
+const cruceB = S.informePrePartido(idx, 'ATENAS A', 'PLATENSE A', { claveRival: 'ATENAS A' });
 
-check('scouteando a MEDIO, los defensores son de AGUILA',
-  candidatosDe(cruceA).length > 0 && candidatosDe(cruceA).every(c => c.equipo === 'AGUILA'),
+check('scouteando a PLATENSE A, los defensores son de ATENAS A',
+  candidatosDe(cruceA).length > 0 && candidatosDe(cruceA).every(c => c.equipo === 'ATENAS A'),
   candidatosDe(cruceA).map(c => c.nombre + '/' + c.equipo).join('|'));
-check('scouteando a AGUILA, los defensores son de MEDIO',
-  candidatosDe(cruceB).length > 0 && candidatosDe(cruceB).every(c => c.equipo === 'MEDIO'),
+check('scouteando a ATENAS A, los defensores son de PLATENSE A',
+  candidatosDe(cruceB).length > 0 && candidatosDe(cruceB).every(c => c.equipo === 'PLATENSE A'),
   candidatosDe(cruceB).map(c => c.nombre + '/' + c.equipo).join('|'));
 /* El corazón del bug, dicho al revés: nadie puede defender a un compañero. */
 check('NINGÚN jugador aparece como defensor de su propio compañero de equipo',
@@ -1592,13 +1609,13 @@ check('el defensor propuesto nunca es el atacante mismo',
 
 /* `plantelDefensor` como unidad: los tres caminos. */
 check('plantelDefensor() con claveNuestro explícita devuelve ESE plantel',
-  S.plantelDefensor(idx, 'AGUILA', 'MEDIO').every(j => j['EQUIPO'] === 'MEDIO') &&
-  S.plantelDefensor(idx, 'AGUILA', 'MEDIO').length === 2);
+  S.plantelDefensor(idx, 'ATENAS A', 'PLATENSE A').every(j => j['EQUIPO'] === 'PLATENSE A') &&
+  S.plantelDefensor(idx, 'ATENAS A', 'PLATENSE A').length === 2);
 /* El cruce degenerado no se sirve: antes que devolver compañeros, vacío. */
 check('con el mismo equipo de los dos lados devuelve vacío, no compañeros',
-  S.plantelDefensor(idx, 'AGUILA', 'AGUILA').length === 0);
+  S.plantelDefensor(idx, 'ATENAS A', 'ATENAS A').length === 0);
 check('sin claveNuestro, el respaldo por esEquipoPropio EXCLUYE al atacante',
-  S.plantelDefensor(idx, 'AGUILA', null).every(j => j['EQUIPO'] !== 'AGUILA'));
+  S.plantelDefensor(idx, 'ATENAS A', null).every(j => j['EQUIPO'] !== 'ATENAS A'));
 
 /* El resumen ejecutivo lee la MISMA tabla: si recalculara con otro plantel,
    el texto contradiría al cuadro que tiene al lado. */

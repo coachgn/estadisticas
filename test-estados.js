@@ -391,6 +391,65 @@ check('resolver() marca la decisión como del usuario',
   /aplicar\(estado\.mapa, a\.clave, idEstado, \{ origen: 'usuario' \}\)/.test(buzon));
 check('y confirma con un toast', /toast\(e\.emoji/.test(buzon));
 
+/* =====================================================================
+   EL DRAWER NO PIERDE LA POSICIÓN DE LECTURA
+
+   `root.innerHTML = panel()` reconstruía TODO el drawer, así que el
+   contenedor scrolleable nacía en scrollTop 0: resolver la novena tarjeta
+   mandaba al DT de vuelta al principio. Con quince alertas eso convierte el
+   buzón en algo que no se termina de usar.
+   ===================================================================== */
+console.log('\n8. DRAWER · resolver una alerta no resetea el scroll');
+console.log('═'.repeat(70));
+
+check('el contenedor scrolleable tiene id propio para poder leer su scrollTop',
+  /id="buzonScroll"/.test(buzon));
+check('resolver() ya NO reconstruye el drawer entero con innerHTML = panel()',
+  !/function resolver[\s\S]{0,2000}?root\.innerHTML = panel\(\)/.test(buzon));
+check('saca SOLO la tarjeta resuelta del DOM',
+  /function quitarTarjeta/.test(buzon) && /removeChild\(li\)/.test(buzon));
+/* La altura se anima porque `height:auto` no lo es; sin fijarla en px antes,
+   la tarjeta desaparece de golpe y el salto es el mismo que se evita. */
+check('la anima colapsando la altura, fijándola antes en píxeles',
+  /li\.style\.height = li\.offsetHeight \+ 'px'/.test(buzon) &&
+  /li\.style\.height = '0px'/.test(buzon));
+/* `space-y` pone margin-top en la SIGUIENTE tarjeta: sin anularlo queda un
+   hueco fantasma donde estaba la que se fue. */
+check('y colapsa también margen, padding y borde, o queda un hueco fantasma',
+  /marginTop = '0px'/.test(buzon) && /paddingTop = '0px'/.test(buzon) &&
+  /borderWidth = '0px'/.test(buzon));
+check('la posición de lectura se restaura acotada al alto nuevo',
+  /scrollTop = Math\.min\([\s\S]{0,80}scrollHeight - [\s\S]{0,30}clientHeight/.test(buzon));
+check('el repintado completo, cuando hace falta, también conserva el scroll',
+  /function repintarPanel[\s\S]{0,900}scrollTop = Math\.min/.test(buzon));
+/* Preservar el scroll SIN preservar el desplegable no alcanza: al repintar,
+   el <details> vuelve cerrado, el contenido se acorta y el scrollTop
+   guardado queda por encima del máximo nuevo, así que se recorta a 0.
+   Medido: reactivar desde el fondo devolvía al tope igual. */
+check('y reabre el desplegable de confirmados, o el scroll se recorta a 0 igual',
+  /detNuevo && abierto\) detNuevo\.open = true/.test(buzon));
+check('resuelta la última, se muestra el empty state y no una lista vacía',
+  /!ul\.querySelector\('\[data-alerta\]'\)[\s\S]{0,200}vacio\(\)/.test(buzon));
+check('prefers-reduced-motion saltea la animación de salida',
+  /function sinMovimiento[\s\S]{0,200}prefers-reduced-motion/.test(buzon) &&
+  /\.buzon-tarjeta-saliendo \{ transition: none !important/.test(indexHtml));
+
+/* El bug escondido detrás del fix: los botones se identificaban por ÍNDICE
+   del array. Al sacar una tarjeta sin repintar, `estado.alertas` se
+   recalcula y se acorta, así que los índices de las de abajo quedan
+   corridos y el clic siguiente resuelve al jugador EQUIVOCADO — sin ningún
+   síntoma visible. La clave sobrevive a que la lista cambie debajo. */
+check('las acciones se anclan a la CLAVE del jugador, no al índice del array',
+  /SGADD_BUZON\.resolver\('\$\{SGADD_UI\.escJs\(a\.clave\)\}'/.test(buzon));
+check('y resolver() busca la alerta por clave',
+  /estado\.alertas\.filter\(x => x\.clave === clave\)\[0\]/.test(buzon));
+check('cada tarjeta lleva su clave en data-alerta para poder ubicarla',
+  /data-alerta="\$\{SGADD_UI\.esc\(a\.clave\)\}"/.test(buzon));
+/* Si el recálculo movió algo más que la tarjeta tocada, la remoción
+   quirúrgica dejaría la lista desincronizada del estado. */
+check('si el recálculo cambió algo más que la tarjeta tocada, repinta completo',
+  /esperado !== real[\s\S]{0,60}repintarPanel\(\)/.test(buzon));
+
 /* El id del club sale de `CLUB.estado.id`. Con la propiedad equivocada
    (`CLUB.ID`, que NO existe) todos los clubes escribían en la misma clave
    y Jujuy habría pisado los estados de Reconquista — el fallback coincidía

@@ -154,6 +154,21 @@
   .buzon-saliendo { animation: buzonFadeIn .16s ease-in reverse both; }
   .buzon-saliendo .buzon-slide { animation: buzonSlideIn .16s ease-in reverse both; }
 
+  /* --- Salida de UNA tarjeta resuelta ---
+     Se anima la ALTURA (más margen, padding y borde) para que las tarjetas
+     de abajo suban solas por el flujo, sin repintar la lista ni resetear el
+     scroll. `height: auto` no es animable: el JS fija la altura en px antes
+     de colapsarla. `transform` no serviría acá — desplazaría la tarjeta pero
+     seguiría ocupando su lugar, y el hueco quedaría igual. */
+  .buzon-tarjeta-saliendo {
+    transition: height .22s cubic-bezier(.4,0,.2,1),
+                opacity .16s ease-out,
+                margin .22s cubic-bezier(.4,0,.2,1),
+                padding .22s cubic-bezier(.4,0,.2,1),
+                border-width .22s cubic-bezier(.4,0,.2,1);
+    pointer-events: none;   /* no se puede votar dos veces la misma tarjeta */
+  }
+
   /* --- Toast: feedback inmediato al confirmar una alerta --- */
   @keyframes toastIn  { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
   .toast-in  { animation: toastIn .2s cubic-bezier(.22,.8,.3,1) both; }
@@ -231,6 +246,7 @@
   @media (prefers-reduced-motion: reduce) {
     .buzon-fade, .buzon-slide, .toast-in, .toast-out, .buzon-saliendo,
     .buzon-saliendo .buzon-slide { animation: none !important; }
+    .buzon-tarjeta-saliendo { transition: none !important; }
     #plantelTabla tr.fila-jug { transition: none; }
   }
 
@@ -745,22 +761,22 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=60"></script>
-<script src="js/sgadd-core.js?v=60"></script>
-<script src="js/sgadd-ui.js?v=60"></script>
-<script src="js/sgadd-app.js?v=60"></script>
-<script src="js/sgadd-estados.js?v=60"></script>
-<script src="js/sgadd-buzon.js?v=60"></script>
-<script src="js/sgadd-charts.js?v=60"></script>
-<script src="js/sgadd-personalidad.js?v=60"></script>
-<script src="js/sgadd-rankings.js?v=60"></script>
-<script src="js/sgadd-partido.js?v=60"></script>
-<script src="js/sgadd-informe.js?v=60"></script>
-<script src="js/sgadd-equipos.js?v=60"></script>
-<script src="js/sgadd-jugadores.js?v=60"></script>
-<script src="js/sgadd-4factores.js?v=60"></script>
-<script src="js/sgadd-scouting.js?v=60"></script>
-<script src="js/sgadd-diagnostico.js?v=60"></script>
+<script src="js/sgadd-club.js?v=61"></script>
+<script src="js/sgadd-core.js?v=61"></script>
+<script src="js/sgadd-ui.js?v=61"></script>
+<script src="js/sgadd-app.js?v=61"></script>
+<script src="js/sgadd-estados.js?v=61"></script>
+<script src="js/sgadd-buzon.js?v=61"></script>
+<script src="js/sgadd-charts.js?v=61"></script>
+<script src="js/sgadd-personalidad.js?v=61"></script>
+<script src="js/sgadd-rankings.js?v=61"></script>
+<script src="js/sgadd-partido.js?v=61"></script>
+<script src="js/sgadd-informe.js?v=61"></script>
+<script src="js/sgadd-equipos.js?v=61"></script>
+<script src="js/sgadd-jugadores.js?v=61"></script>
+<script src="js/sgadd-4factores.js?v=61"></script>
+<script src="js/sgadd-scouting.js?v=61"></script>
+<script src="js/sgadd-diagnostico.js?v=61"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

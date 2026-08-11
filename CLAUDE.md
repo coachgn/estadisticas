@@ -27,10 +27,10 @@ node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  22 tests · detalle partido a partido
 node test-scouting.js      # 380 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
-node test-estados.js       # 111 tests · estados de jugador, alertas, buzon, sync grafico-tabla
+node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1058 tests en total. Todos tienen que dar verde antes de commitear.**
+**1072 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -41,6 +41,26 @@ por la web de GitHub.
 Algunos tests extraen módulos del `index.html` en tiempo de ejecución
 (`logos-extraido.js`, `boot-extraido.js`). Son temporales: se generan, se usan y
 se borran dentro del propio test. No commitearlos.
+
+### Los nombres de EQUIPO de las fixtures son reales
+
+Salen de `logos/<liga>/index.json`. `test-scouting.js` usa ATENAS A, PLATENSE A,
+NAUTICO ENSENADA y UNIVERSAL; antes eran inventados —AGUILA, MEDIO, BAJO,
+TOPO— y eso escondía dos problemas: **un club que no existe no se puede
+contrastar contra la planilla**, y ya pasó que un test apuntara a `'HALCON'`,
+que tampoco existía, corriendo **en silencio sobre una lista vacía** — ocho
+checks de candidatos que no verificaban nada. Con nombres reales un typo se
+nota, y hay un check que falla si la fixture de señales queda vacía.
+
+Ninguna fixture de scouting usa RECONQUISTA **a propósito**: varios checks
+verifican qué hace el respaldo por `esEquipoPropio()` cuando ninguno de los dos
+equipos del cruce es del club. Meter al equipo propio ahí cambiaría esa rama
+sin avisar.
+
+Los **nombres de JUGADOR** sí siguen siendo descriptivos (`'TIRADOR, ELITE'`,
+`'PIVOT, INTERNO'`): dicen qué regla encarna cada uno, que es justo lo que el
+test verifica. Con nombres de personas reales el test no se leería, y quedaría
+mintiendo apenas ese jugador cambie de rendimiento.
 
 `test-personalidad.js` y `test-partido.js` sí dependen de fixtures **committeadas**
 en `test-fixtures/prom.tsv` y `test-fixtures/p4f.tsv` (12 equipos de La Plata,
@@ -86,7 +106,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=60`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=61`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -1883,6 +1903,46 @@ Dos caminos, porque un estado sin forma de deshacerse es una trampa:
   confirmar; si no, el buzón se vuelve una trampa y el DT deja de abrirlo.
 - **`:focus-visible` y no `:focus`**: el anillo aparece al navegar con
   teclado y no en cada clic del mouse, que es lo que lo volvía ruido.
+
+### Resolver una alerta NO puede resetear el scroll
+
+`resolver()` hacía `root.innerHTML = panel()`, o sea reconstruía **todo** el
+drawer. El contenedor scrolleable era un nodo nuevo y nacía en `scrollTop = 0`:
+el DT resolvía la novena tarjeta y el panel lo mandaba de vuelta al principio.
+Con quince alertas eso convierte el buzón en algo que no se termina de usar.
+
+Ahora se saca **solo la tarjeta resuelta** (`quitarTarjeta`), colapsando su
+altura para que las de abajo suban por el flujo natural. Medido con Reconquista
+real, 15 alertas: **salto 0** con contenido debajo. Cerca del final del scroll
+el navegador recorta solo —no hay contenido para llenar el hueco— y eso es
+correcto: `Math.min(scrollTop, scrollHeight - clientHeight)`.
+
+Tres detalles que costaron:
+
+1. **`height: auto` no es animable.** El JS fija la altura en píxeles antes de
+   colapsarla; sin ese paso la tarjeta desaparece de golpe y el salto es el
+   mismo que se quería evitar. `transform` tampoco sirve: desplazaría la
+   tarjeta pero seguiría ocupando su lugar.
+2. **Hay que colapsar margen, padding y borde además de la altura.** `space-y`
+   pone `margin-top` en la tarjeta SIGUIENTE, así que sin anularlo queda un
+   hueco fantasma donde estaba la que se fue.
+3. **Preservar el scroll sin preservar el `<details>` de confirmados no
+   alcanza.** Al repintar vuelve cerrado, el contenido se acorta de golpe y el
+   `scrollTop` guardado queda por encima del máximo nuevo, así que se recorta
+   a 0 igual. `repintarPanel()` reabre el desplegable. Medido: reactivar desde
+   el fondo devolvía al tope hasta que se agregó eso.
+
+**El bug escondido detrás del fix: los botones se identificaban por ÍNDICE del
+array.** Sacar una tarjeta sin repintar la lista entera dejaba a las de abajo
+apuntando a posiciones corridas —`estado.alertas` se recalcula y se acorta— y
+el clic siguiente resolvía **al jugador equivocado, sin ningún síntoma
+visible**. El anclaje pasó a la clave (`data-alerta`), que sobrevive a que la
+lista cambie debajo. Verificado en el navegador resolviendo cuatro seguidas:
+cada clic sacó exactamente al pedido.
+
+Queda un respaldo: si el recálculo cambió algo más que la tarjeta tocada, se
+repinta completo —conservando scroll y desplegable— en vez de dejar la lista
+desincronizada del estado.
 
 ### Dónde vive la campana: en el HEADER, y por qué importa
 

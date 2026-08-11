@@ -116,12 +116,19 @@ const SGADD_BUZON = (function () {
     inactividad: { icono: '⏸', titulo: 'Inactividad',    tono: 'text-yellow-400 border-yellow-400/40' },
   };
 
-  function tarjeta(a, i) {
+  function tarjeta(a) {
     const t = TIPOS[a.tipo] || TIPOS.inactividad;
     const icono = t.icono, titulo = t.titulo, tono = t.tono;
 
+    /* El anclaje es la CLAVE del jugador, no el índice del array.
+
+       Con índice, resolver una alerta sin repintar la lista entera dejaba a
+       las de abajo apuntando a posiciones corridas —`estado.alertas` se
+       recalcula y se acorta— y el clic siguiente resolvía al jugador
+       equivocado, sin ningún síntoma visible. La clave es estable: sobrevive
+       a que la lista cambie debajo. */
     const accion = (id, texto, clase) => `
-      <button type="button" onclick="SGADD_BUZON.resolver(${i}, '${SGADD_UI.escJs(id)}')"
+      <button type="button" onclick="SGADD_BUZON.resolver('${SGADD_UI.escJs(a.clave)}', '${SGADD_UI.escJs(id)}')"
         class="flex-1 min-w-[7rem] text-[11px] font-semibold px-2.5 py-2 rounded-md border
                transition-all duration-150 active:scale-[0.97]
                focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-base ${clase}">
@@ -149,7 +156,8 @@ const SGADD_BUZON = (function () {
       : accion('ACTIVO', '✓ Mantener activo', claseDe('ACTIVO'));
 
     return `
-      <li class="rounded-lg border ${tono} bg-surface2/40 p-3">
+      <li data-alerta="${SGADD_UI.esc(a.clave)}"
+        class="buzon-tarjeta rounded-lg border ${tono} bg-surface2/40 p-3">
         <div class="flex items-start gap-2 mb-1.5">
           <span aria-hidden="true" class="text-sm leading-none mt-0.5">${icono}</span>
           <div class="min-w-0 flex-1">
@@ -222,10 +230,11 @@ const SGADD_BUZON = (function () {
     persistir();
     toast('🟢 ' + nombre + ' · vuelve a Activo', 'ok');
     sincronizar();
-    if (estado.abierto) {
-      const root = document.getElementById('buzonRoot');
-      if (root) root.innerHTML = panel();
-    }
+    /* Acá sí se repinta entero —reactivar puede hacer aparecer alertas y
+       cambia la lista de confirmados a la vez— pero conservando el scroll:
+       la lista de confirmados vive al PIE del drawer, así que un salto al
+       tope dejaba al DT lejos del botón que acababa de tocar. */
+    if (estado.abierto) repintarPanel();
     repintarSecciones();
   }
 
@@ -248,7 +257,7 @@ const SGADD_BUZON = (function () {
   function panel() {
     const n = estado.alertas.length;
     const lista = n
-      ? `<ul class="space-y-2.5">${estado.alertas.map(tarjeta).join('')}</ul>`
+      ? `<ul id="buzonLista" class="space-y-2.5">${estado.alertas.map(tarjeta).join('')}</ul>`
       : vacio();
 
     return `
@@ -271,7 +280,7 @@ const SGADD_BUZON = (function () {
             </button>
           </header>
 
-          <div class="flex-1 overflow-y-auto p-4">${lista}${bloqueConfirmados()}</div>
+          <div id="buzonScroll" class="flex-1 overflow-y-auto p-4">${lista}<div id="buzonConfirmados">${bloqueConfirmados()}</div></div>
 
           <footer class="p-3 border-t border-hairline shrink-0">
             <p class="text-[10px] dato-sec leading-snug">
@@ -345,8 +354,98 @@ const SGADD_BUZON = (function () {
         typeof tabState !== 'undefined' && tabState.scouting === 'equipos') scoutPintar();
   }
 
-  function resolver(indice, idEstado) {
-    const a = estado.alertas[indice];
+  /* =====================================================================
+     REMOCIÓN QUIRÚRGICA · por qué NO se repinta el drawer entero
+
+     Antes, resolver una alerta hacía `root.innerHTML = panel()`. Eso
+     reconstruye TODO el drawer, así que el contenedor scrolleable es un nodo
+     nuevo y nace en `scrollTop = 0`: el DT resolvía la novena tarjeta y el
+     panel lo mandaba de vuelta al principio, perdiendo su lugar de lectura.
+     Con quince alertas eso convierte el buzón en algo que no se termina de
+     usar.
+
+     Ahora se saca SOLO la tarjeta resuelta —colapsando su altura para que
+     las de abajo suban solas— y se restaura la posición de lectura. El
+     repintado completo queda como respaldo para el caso raro en que el
+     recálculo cambie algo más que la tarjeta tocada (ver `resolver`).
+     ===================================================================== */
+
+  const MS_SALIDA = 220;
+
+  /** ¿El usuario pidió menos movimiento? Entonces no hay animación: se
+      remueve y listo. Regla del proyecto, no una preferencia de este módulo. */
+  function sinMovimiento() {
+    return typeof window !== 'undefined' && window.matchMedia
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  /**
+   * Colapsa una tarjeta y la saca del DOM. Las de abajo suben por el flujo
+   * natural, sin tocar el scroll.
+   *
+   * La altura se fija en píxeles ANTES de animar porque `height: auto` no es
+   * animable: sin ese paso la tarjeta desaparecería de golpe y el salto sería
+   * el mismo que se quiere evitar. Los márgenes y paddings también se
+   * colapsan — `space-y-2.5` pone `margin-top` en la siguiente, y si no se
+   * anula queda un hueco fantasma donde estaba la tarjeta.
+   */
+  function quitarTarjeta(li, alTerminar) {
+    const fin = () => { if (li.parentNode) li.parentNode.removeChild(li); if (alTerminar) alTerminar(); };
+    if (!li) { if (alTerminar) alTerminar(); return; }
+    if (sinMovimiento()) { fin(); return; }
+
+    li.style.height = li.offsetHeight + 'px';
+    li.style.overflow = 'hidden';
+    li.classList.add('buzon-tarjeta-saliendo');
+    /* Dos cuadros: el primero fija la altura de partida, el segundo dispara
+       la transición. En uno solo el navegador colapsa los dos estilos y no
+       hay animación. */
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      li.style.height = '0px';
+      li.style.opacity = '0';
+      li.style.marginTop = '0px';
+      li.style.marginBottom = '0px';
+      li.style.paddingTop = '0px';
+      li.style.paddingBottom = '0px';
+      li.style.borderWidth = '0px';
+    }));
+    setTimeout(fin, MS_SALIDA);
+  }
+
+  /** Las claves de las alertas que hoy están pintadas en el drawer. */
+  function clavesEnPantalla() {
+    const ul = document.getElementById('buzonLista');
+    if (!ul) return [];
+    return Array.from(ul.querySelectorAll('[data-alerta]')).map(li => li.getAttribute('data-alerta'));
+  }
+
+  /**
+   * Repintado completo, pero conservando la posición de lectura.
+   *
+   * También se conserva si el `<details>` de confirmados estaba abierto: al
+   * repintar vuelve cerrado por defecto, el contenido se acorta de golpe y
+   * el `scrollTop` guardado queda por encima del máximo nuevo, así que el
+   * navegador lo recorta a 0. O sea: preservar el scroll sin preservar el
+   * desplegable no alcanza — el DT reactivaba a alguien desde el fondo de la
+   * lista y el panel lo devolvía al tope igual.
+   */
+  function repintarPanel() {
+    const root = document.getElementById('buzonRoot');
+    if (!root) return;
+    const prev = document.getElementById('buzonScroll');
+    const y = prev ? prev.scrollTop : 0;
+    const det = document.querySelector('#buzonConfirmados details');
+    const abierto = !!(det && det.open);
+    root.innerHTML = panel();
+    const detNuevo = document.querySelector('#buzonConfirmados details');
+    if (detNuevo && abierto) detNuevo.open = true;
+    const nuevo = document.getElementById('buzonScroll');
+    if (nuevo) nuevo.scrollTop = Math.min(y, Math.max(0, nuevo.scrollHeight - nuevo.clientHeight));
+  }
+
+  function resolver(clave, idEstado) {
+    /* Se busca por CLAVE y no por índice: ver el comentario en `tarjeta`. */
+    const a = estado.alertas.filter(x => x.clave === clave)[0];
     if (!a || !E) return;
     estado.mapa = E.aplicar(estado.mapa, a.clave, idEstado, { origen: 'usuario' });
     persistir();
@@ -356,12 +455,37 @@ const SGADD_BUZON = (function () {
 
     /* Se recalculan las alertas: la que se acaba de resolver desaparece
        porque `origen: "usuario"` la excluye del detector. */
+    const antes = clavesEnPantalla();
     sincronizar();
-    if (estado.abierto) {
-      const root = document.getElementById('buzonRoot');
-      if (root) root.innerHTML = panel();
-    }
     repintarSecciones();
+    if (!estado.abierto) return;
+
+    /* El caso normal: lo único que cambió es la tarjeta que se tocó. Se la
+       saca sola y nadie pierde el scroll. Si el recálculo movió algo más
+       —una alerta nueva, otra que dejó de aplicar— se repinta completo, que
+       igual conserva la posición. */
+    const esperado = antes.filter(k => k !== clave).sort().join('');
+    const real = estado.alertas.map(x => x.clave).sort().join('');
+    if (esperado !== real) { repintarPanel(); return; }
+
+    const cont = document.getElementById('buzonScroll');
+    const li = document.querySelector('#buzonLista [data-alerta="' + (window.CSS && CSS.escape ? CSS.escape(clave) : clave) + '"]');
+    quitarTarjeta(li, () => {
+      /* El conteo de confirmados cambió: se actualiza ese bloque solo. */
+      const conf = document.getElementById('buzonConfirmados');
+      if (conf) conf.innerHTML = bloqueConfirmados();
+      /* Resuelta la última, la lista vacía no se muestra como un hueco: va
+         el cierre positivo del empty state. */
+      const ul = document.getElementById('buzonLista');
+      if (ul && !ul.querySelector('[data-alerta]')) {
+        const envoltorio = document.createElement('div');
+        envoltorio.innerHTML = vacio();
+        ul.parentNode.replaceChild(envoltorio.firstElementChild, ul);
+      }
+      /* Al acortarse el contenido el navegador puede recortar el scroll solo;
+         se lo reacomoda al máximo posible en vez de dejarlo saltar. */
+      if (cont) cont.scrollTop = Math.min(cont.scrollTop, Math.max(0, cont.scrollHeight - cont.clientHeight));
+    });
   }
 
   /* =====================================================================
