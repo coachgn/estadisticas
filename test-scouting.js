@@ -1444,6 +1444,82 @@ delete global.SGADD_BUZON;
 check('sin el módulo de buzón cargado el informe sale igual que siempre',
   S.jugadoresClave(idx, 'AGUILA', 10).filas.length === nombresAntes.length);
 
+/* =====================================================================
+   22. QUIÉN DE LOS NUESTROS DEFIENDE A CADA UNO
+
+   El perfil táctico dice QUÉ tarea hay que hacer; esto propone QUIÉN del
+   plantel propio está en mejores condiciones de hacerla.
+   ===================================================================== */
+console.log('\n22. CANDIDATOS DEL PLANTEL PROPIO');
+console.log('═'.repeat(70));
+
+check('las 11 familias declaran con qué señales se busca a su defensor',
+  S.CATALOGO_DEFENSOR.every(c => c.defiende && Object.keys(c.defiende).length > 0),
+  S.CATALOGO_DEFENSOR.filter(c => !c.defiende).map(c => c.id).join('|'));
+/* Las señales tienen que salir de lo que el box score realmente trae. */
+const señalesValidas = ['pr', 'fc', 'rd', 'ro', 'min', 'interior', 'perimetral'];
+check('y todas las señales existen en la planilla: no hay métricas inventadas',
+  S.CATALOGO_DEFENSOR.every(c => Object.keys(c.defiende).every(k => señalesValidas.indexOf(k) !== -1)),
+  S.CATALOGO_DEFENSOR.map(c => Object.keys(c.defiende).filter(k => señalesValidas.indexOf(k) === -1)).flat().join('|'));
+/* Coherencia deportiva: al interior se lo busca por rebote y al de presión
+   por recuperos, no al revés. */
+const fam = (id) => S.CATALOGO_DEFENSOR.find(c => c.id === id).defiende;
+check('al Especialista Interior se lo busca por adentro y por rebote',
+  fam('especialistaInterior').interior > 0 && fam('especialistaInterior').rd > 0);
+check('al Referente de Zona, por rebote sobre todo',
+  fam('referenteZona').rd >= fam('referenteZona').interior);
+check('a los de Presión Inicial y Ayudas, por recuperos',
+  fam('presionInicial').pr > 0.5 && fam('ayudasAtleticas').pr > 0.5);
+check('al Perimetral Físico, por faltas: es contacto, no un defecto',
+  fam('perimetralFisico').fc > 0);
+check('pero al Perimetral Atlético las faltas le RESTAN: tiene que contener sin fallar',
+  fam('perimetralAtletico').fc < 0);
+
+const señales = S.señalesPlantel(idx, idx.liga.jugadoresPorEquipo.get('HALCON') || []);
+check('las señales del plantel se normalizan 0-1 para poder sumarlas',
+  señales.every(p => Object.keys(p.n).every(k => p.n[k] >= 0 && p.n[k] <= 1)),
+  JSON.stringify(señales[0] && señales[0].n));
+check('un jugador sin dato en una métrica pesa como el promedio, no como cero',
+  S.señalesPlantel(idx, [{ NOMBRES: 'X, Y', EQUIPO: 'HALCON' }])[0].n.pr === 0.5);
+
+const cand = S.candidatosPropios('especialistaInterior', señales, {});
+check('devuelve hasta 3 candidatos y nunca más',
+  cand.length <= S.MAX_CANDIDATOS_PROPIOS && cand.length <= señales.length, cand.length);
+check('cada candidato trae nombre y puntaje',
+  cand.every(c => !!c.nombre && typeof c.score === 'number'));
+check('vienen ordenados de mejor a peor',
+  cand.every((c, i, a) => i === 0 || a[i - 1].score >= c.score));
+/* No se le asigna la marca del mejor anotador rival a alguien que
+   promedia cuatro minutos. */
+check('no propone a nadie por debajo del piso de minutos',
+  cand.every(c => c.min === null || c.min >= S.MIN_CANDIDATO_PROPIO),
+  cand.map(c => c.nombre + ':' + c.min).join('|'));
+check('una familia inexistente devuelve lista vacía en vez de romper',
+  S.candidatosPropios('NO_EXISTE', señales, {}).length === 0);
+check('sin plantel tampoco rompe',
+  S.candidatosPropios('especialistaInterior', [], {}).length === 0 &&
+  S.candidatosPropios('especialistaInterior', null, {}).length === 0);
+
+/* El balanceo: sin él, el mismo defensor encabezaba las once filas y la
+   sugerencia dejaba de decir nada. */
+const primero = cand.length ? cand[0].nombre : null;
+if (primero) {
+  const conCarga = S.candidatosPropios('especialistaInterior', señales, { [primero]: 3 });
+  check('el que ya lleva varias marcas baja en el orden',
+    conCarga.length < 2 || conCarga[0].nombre !== primero,
+    primero + ' → ' + (conCarga[0] && conCarga[0].nombre));
+  check('pero no se lo excluye: a veces es el único que puede',
+    conCarga.some(c => c.nombre === primero) || señales.length < 4);
+}
+
+/* La UI tiene que decir que esto es una aproximación. La planilla no mide
+   defensa individual: solo trae recuperos, faltas y rebote. */
+const fuenteScout = require('fs').readFileSync('./js/sgadd-scouting.js', 'utf8');
+check('la tabla muestra los candidatos con el primero destacado',
+  /De los nuestros:/.test(fuenteScout) && /text-accent font-semibold/.test(fuenteScout));
+check('y avisa que es una aproximación por proxy, no una medición de defensa',
+  /aproximaci[óo]n por proxy y no una medici[óo]n de defensa/.test(fuenteScout));
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

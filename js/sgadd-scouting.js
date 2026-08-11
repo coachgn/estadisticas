@@ -199,6 +199,8 @@ const SGADD_SCOUT = (function () {
         { id: 'sombra', label: 'Sombra / Shadow', detalle: 'Persigue cara a cara al anotador rival por toda la cancha.' },
         { id: 'lockdown', label: 'Anulador Defensivo / Lockdown Defender', detalle: 'Cancela por completo el impacto de la estrella rival.' },
       ],
+      /* Señales con las que se busca a NUESTRO defensor para esta tarea. */
+      defiende: { pr: 1.0, min: 0.8, fc: -0.5 },
     },
     {
       id: 'presionInicial', emoji: '⚡', familia: 'Presión Inicial',
@@ -207,6 +209,8 @@ const SGADD_SCOUT = (function () {
         { id: 'disruptor', label: 'Disruptor de Bloqueos / P&R Disruptor', detalle: 'Rompe la dinámica del bloqueo y reanudación central.' },
         { id: 'hostigador', label: 'Hostigador / Ball-Screen Pest', detalle: 'Fuerza pérdidas metiendo las manos en la línea de drible.' },
       ],
+      /* Señales con las que se busca a NUESTRO defensor para esta tarea. */
+      defiende: { pr: 1.4, perimetral: 0.8, min: 0.3 },
     },
     {
       id: 'perimetralAtletico', emoji: '🏃', familia: 'Perimetral Atlético',
@@ -215,6 +219,8 @@ const SGADD_SCOUT = (function () {
         { id: 'transicion', label: 'Defensor de Transición / Transition Defender', detalle: 'Frena el contraataque rival mediante velocidad de repliegue.' },
         { id: 'driveContainment', label: 'Contenedor de Penetraciones / Drive Containment', detalle: 'Absorbe el primer paso rival con físico y desplazamiento lateral.' },
       ],
+      /* Señales con las que se busca a NUESTRO defensor para esta tarea. */
+      defiende: { perimetral: 1.0, pr: 0.8, fc: -0.6, min: 0.3 },
     },
     {
       id: 'perimetralFisico', emoji: '💪', familia: 'Perimetral Físico',
@@ -223,6 +229,8 @@ const SGADD_SCOUT = (function () {
         { id: 'goon', label: 'Defensor de Choque / Defensive Goon', detalle: 'Castiga los cortes rivales mediante contacto legal.' },
         { id: 'rebotandoGuard', label: 'Cerrador Rebotero / Rebounding Guard', detalle: 'Sella el box-out desde afuera hacia adentro para asegurar la posesión.' },
       ],
+      /* Señales con las que se busca a NUESTRO defensor para esta tarea. */
+      defiende: { perimetral: 0.8, fc: 1.0, rd: 0.6 },
     },
     {
       id: 'perimetralLargo', emoji: '📏', familia: 'Perimetral Largo',
@@ -231,6 +239,8 @@ const SGADD_SCOUT = (function () {
         { id: 'volumeContainment', label: 'Contenedor de Volumen / Volume Containment', detalle: 'Molesta la visual de tiradores lejanos (8-9 metros).' },
         { id: 'closeout', label: 'Cerrador de Tiros Abiertos / Closeout Specialist', detalle: 'Llegada rápida a los tiros externos usando su alcance de brazos.' },
       ],
+      /* Señales con las que se busca a NUESTRO defensor para esta tarea. */
+      defiende: { perimetral: 0.7, rd: 1.2, min: 0.3 },
     },
     {
       id: 'especialistaPerimetral', emoji: '🎯', familia: 'Especialista Perimetral',
@@ -239,6 +249,8 @@ const SGADD_SCOUT = (function () {
         { id: 'denier', label: 'Defensor de Denegación / Denier', detalle: 'Evita por completo que el tirador letal reciba la pelota.' },
         { id: 'screenNavigator', label: 'Navegador de Pantallas / Screen Navigator', detalle: 'Esquiva o pasa pantallas por arriba (over the top).' },
       ],
+      /* Señales con las que se busca a NUESTRO defensor para esta tarea. */
+      defiende: { perimetral: 1.0, pr: 1.0, min: 0.6 },
     },
     {
       id: 'especialistaInterior', emoji: '🏢', familia: 'Especialista Interior',
@@ -247,6 +259,8 @@ const SGADD_SCOUT = (function () {
         { id: 'rimProtector', label: 'Protector de Aro Clásico / Classic Rim Protector', detalle: 'Se mantiene en la restricción para intimidar tiros cortos.' },
         { id: 'paintPillar', label: 'Muro de Pintura / Paint Pillar', detalle: 'Anula físicamente el juego de espaldas al aro de los terminales internos.' },
       ],
+      /* Señales con las que se busca a NUESTRO defensor para esta tarea. */
+      defiende: { interior: 1.4, rd: 1.0, fc: 0.2 },
     },
     {
       id: 'referenteZona', emoji: '🏰', familia: 'Referente de Zona',
@@ -255,6 +269,8 @@ const SGADD_SCOUT = (function () {
         { id: 'glassCleaner', label: 'Asegurador del Rebote / Glass Cleaner', detalle: 'Termina la posesión defensiva capturando el rebote defensivo.' },
         { id: 'paintDominator', label: 'Defensor del Eje / Paint Dominator', detalle: 'Domina la zona pintada alterando la efectividad rival en su eje central.' },
       ],
+      /* Señales con las que se busca a NUESTRO defensor para esta tarea. */
+      defiende: { interior: 1.2, rd: 1.4, ro: 0.5 },
     },
     {
       id: 'hibridoFisico', emoji: '🧱', familia: 'Híbrido Físico',
@@ -263,6 +279,8 @@ const SGADD_SCOUT = (function () {
         { id: 'lowPostWall', label: 'Muro de Ayudas / Low-Post Wall', detalle: 'Dobla la marca en el poste bajo o colapsa la zona pintada.' },
         { id: 'interiorImpact', label: 'Defensor de Impacto Interno / Interior Impact Defender', detalle: 'Aporta masa muscular para defender la pintura y ayudar adentro.' },
       ],
+      /* Señales con las que se busca a NUESTRO defensor para esta tarea. */
+      defiende: { interior: 0.9, fc: 0.9, rd: 0.7 },
     },
     {
       id: 'ayudasAtleticas', emoji: '🦅', familia: 'Perimetral Atlético · Ayudas',
@@ -271,6 +289,8 @@ const SGADD_SCOUT = (function () {
         { id: 'verticalRotator', label: 'Rotador Vertical / Vertical Rotator', detalle: 'Cierra el aro llegando a toda velocidad gracias a su zancada e hiperatletismo.' },
         { id: 'interceptor', label: 'Interceptor de Línea / Passing Lane Interceptor', detalle: 'Lee los ojos del pasador para robar balones dirigidos a cortes hacia el aro.' },
       ],
+      /* Señales con las que se busca a NUESTRO defensor para esta tarea. */
+      defiende: { pr: 1.5, perimetral: 0.5, min: 0.3 },
     },
     {
       id: 'contencionTactica', emoji: '📐', familia: 'Contención Táctica',
@@ -279,6 +299,8 @@ const SGADD_SCOUT = (function () {
         { id: 'readSpecialist', label: 'Especialista de Lectura / Read Specialist', detalle: 'Compensa falta de tiro o físico anticipando los esquemas tácticos rivales.' },
         { id: 'paceController', label: 'Freno de Ritmo / Pace Controller', detalle: 'Jugador de refresco que ralentiza el partido o ejecuta faltas tácticas de gestión.' },
       ],
+      /* Señales con las que se busca a NUESTRO defensor para esta tarea. */
+      defiende: { min: 1.0, fc: -0.4 },
     },
   ];
 
@@ -367,6 +389,97 @@ const SGADD_SCOUT = (function () {
       if (PERFILES_DEFENSOR[c.id]) out.add(PERFILES_DEFENSOR[c.id]);
     }));
     return Array.from(out);
+  }
+
+  /* =====================================================================
+     A QUIÉN DE LOS NUESTROS LE TOCA
+
+     El perfil táctico dice QUÉ tarea hay que hacer; esto propone QUIÉN de
+     nuestro plantel está en mejores condiciones de hacerla.
+
+     ADVERTENCIA QUE HAY QUE MANTENER A LA VISTA: **la planilla no mide
+     defensa individual.** No hay tapas, ni desplazamientos, ni puntos
+     permitidos por marca. Lo único defensivo que trae el box score son los
+     recuperos (`PR`) y las faltas cometidas (`FC`), más el rebote como
+     proxy de tamaño. Así que esto es una sugerencia por aproximación, no
+     una medición — y la UI lo dice con todas las letras.
+
+     Se compara DENTRO de nuestro plantel y no contra la liga: la pregunta
+     es "de los míos, ¿quién?", y esa respuesta no cambia porque la liga
+     entera defienda mejor o peor.
+     ===================================================================== */
+
+  /** Cuántos nombres se sugieren por marca. Más de tres deja de ser una
+      sugerencia y pasa a ser la lista del plantel. */
+  const MAX_CANDIDATOS_PROPIOS = 3;
+  /** Piso de minutos para proponer a alguien: no se le asigna la marca del
+      mejor anotador rival a uno que promedia cuatro minutos. */
+  const MIN_CANDIDATO_PROPIO = 10;
+
+  /** Señales defensivas de UN jugador propio, normalizadas 0-1 dentro del
+      plantel. `null` en una métrica pesa como el promedio, no como cero. */
+  function señalesPlantel(idx, plantel) {
+    const ficha = fichaJugadores();
+    const perfiles = plantel.map(j => {
+      const base = (ficha && ficha.perfilBase) ? ficha.perfilBase(idx, j) : {};
+      return {
+        nombre: String(j['NOMBRES'] || '').trim(),
+        clave: j.__clave || null,
+        min: nn(j['MIN']), pr: nn(j['PR']), fc: nn(j['FC']),
+        rd: base.reboteDefRel !== undefined ? base.reboteDefRel : nn(j['RD%']),
+        ro: base.reboteRel !== undefined ? base.reboteRel : nn(j['RO%']),
+        interior: base.esInterior ? 1 : 0,
+        perimetral: base.esPerimetral ? 1 : 0,
+      };
+    });
+    /* Normalización min-max sobre el propio plantel: convierte métricas de
+       escalas distintas (0,9 recuperos y 24 minutos) en algo sumable. */
+    const norm = (campo) => {
+      const vals = perfiles.map(p => p[campo]).filter(v => typeof v === 'number' && isFinite(v));
+      if (vals.length < 2) return () => 0.5;
+      const min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
+      if (max === min) return () => 0.5;
+      return (v) => (typeof v === 'number' && isFinite(v)) ? (v - min) / (max - min) : 0.5;
+    };
+    const escalas = { pr: norm('pr'), fc: norm('fc'), rd: norm('rd'), ro: norm('ro'), min: norm('min') };
+    perfiles.forEach(p => {
+      p.n = {
+        pr: escalas.pr(p.pr), fc: escalas.fc(p.fc), rd: escalas.rd(p.rd),
+        ro: escalas.ro(p.ro), min: escalas.min(p.min),
+        interior: p.interior, perimetral: p.perimetral,
+      };
+    });
+    return perfiles;
+  }
+
+  /**
+   * Los mejores candidatos de NUESTRO plantel para una familia defensiva.
+   *
+   * `usados` reparte la carga igual que `elegirDefensorBalanceado`: si a un
+   * jugador ya se le asignaron dos marcas, baja en el orden. No se lo
+   * excluye —a veces es el único que puede— pero deja de aparecer primero
+   * en todas las filas, que era lo que volvía inútil la sugerencia.
+   */
+  function candidatosPropios(familiaId, perfiles, usados) {
+    const cat = CATALOGO_DEFENSOR.find(c => c.id === familiaId);
+    if (!cat || !cat.defiende || !perfiles || !perfiles.length) return [];
+    const pesos = cat.defiende;
+    const cuenta = usados || {};
+
+    return perfiles
+      .filter(p => p.min === null || p.min >= MIN_CANDIDATO_PROPIO)
+      .map(p => {
+        let score = 0;
+        Object.keys(pesos).forEach(k => {
+          const v = p.n[k];
+          if (typeof v === 'number') score += pesos[k] * v;
+        });
+        /* Penalidad por carga: cada marca ya asignada le resta. */
+        score -= 0.35 * (cuenta[p.nombre] || 0);
+        return { nombre: p.nombre, clave: p.clave, score: score, min: p.min };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, MAX_CANDIDATOS_PROPIOS);
   }
 
   /** Familia (con emoji) a la que pertenece un perfil, por su etiqueta. */
@@ -1644,15 +1757,21 @@ const SGADD_SCOUT = (function () {
        El texto se agrega SOLO al `detalle`. El `titulo` en mayúsculas es
        la firma del DT y sigue siendo lo único editable.
        ------------------------------------------------------------------ */
-    const plan = generarPlanDefensivoColectivo(filas, idx.liga.jugadoresPorEquipo
+    const nuestroPlantel = idx.liga.jugadoresPorEquipo
       ? (Array.from(idx.liga.jugadoresPorEquipo.keys())
           .filter(k => SGADD.esEquipoPropio(k))
           .reduce((acc, k) => acc.concat(idx.liga.jugadoresPorEquipo.get(k) || []), []))
-      : []);
+      : [];
+    const plan = generarPlanDefensivoColectivo(filas, nuestroPlantel);
+    /* Señales defensivas de los nuestros, calculadas UNA vez para las once
+       filas: normalizar el plantel por cada marca sería el mismo trabajo
+       repetido y daría exactamente lo mismo. */
+    const señalesPropias = señalesPlantel(idx, nuestroPlantel);
 
     /* La carga se reparte sobre las filas ordenadas por minutos, que ya es
        el orden de la tabla: el que más juega elige perfil primero. */
     const usados = {};
+    const cargaPropia = {};   // cuántas marcas lleva ya cada defensor nuestro
     filas.forEach(f => {
       const def = elegirDefensorBalanceado(
         PERFILES_MARCA.find(m => m.id === f.marca.id), f.perfil, usados);
@@ -1660,6 +1779,16 @@ const SGADD_SCOUT = (function () {
         usados[def] = (usados[def] || 0) + 1;
         f.marca.defensor = def;
         f.marca.familiaDefensor = familiaDefensor(def);
+        /* Quién de los nuestros puede hacer esa tarea. Se reparte la carga
+           con `cargaPropia`: sin eso, el mismo defensor encabezaba las once
+           filas y la sugerencia dejaba de decir nada. */
+        const cat = CATALOGO_DEFENSOR.find(c => c.perfiles.some(x => x.label === def));
+        f.marca.candidatos = cat ? candidatosPropios(cat.id, señalesPropias, cargaPropia) : [];
+        f.marca.candidatos.forEach((c, i) => {
+          /* Solo el primero suma carga: es el que el DT va a leer como
+             sugerencia principal, los otros dos son alternativas. */
+          if (i === 0) cargaPropia[c.nombre] = (cargaPropia[c.nombre] || 0) + 1;
+        });
       }
       const cx = conexionColectiva(f, plan);
       f.plan = {
@@ -2069,6 +2198,7 @@ const SGADD_SCOUT = (function () {
     MATRIZ_POSESION, MATRIZ_TIRO, METRICAS_RANKING, COLS_JUGADOR,
     PERFILES_MARCA, PERFILES_DEFENSOR, CATALOGO_DEFENSOR, familiaDefensor, REGLAS_CLAVE,
     elegirDefensor, elegirDefensorBalanceado, defensoresAlcanzables,
+    candidatosPropios, señalesPlantel, MAX_CANDIDATOS_PROPIOS, MIN_CANDIDATO_PROPIO,
     ESCENARIOS, clasificarEcosistema, generarPlanDefensivoColectivo, conexionColectiva,
     get ROLES_FUNCIONALES() { return rolesFuncionales(); },
     statLiga, bandaLiga, porEncima, porDebajo,
@@ -2608,6 +2738,12 @@ function scoutBloqueMarcas(inf) {
             oninput="scoutMarca('${SGADD_UI.escJs(f.clave)}', 'defensor', this.value)"
             class="w-full bg-surface2 border border-hairline rounded px-2 py-1 text-[11px] focus:border-accent outline-none">
           ${f.marca.familiaDefensor ? `<p class="text-[10px] text-muted mt-1 text-left">${escapeHtml(f.marca.familiaDefensor)}</p>` : ''}
+          ${(f.marca.candidatos && f.marca.candidatos.length) ? `
+            <p class="text-[10px] text-left mt-1 leading-snug">
+              <span class="dato-sec">De los nuestros:</span>
+              ${f.marca.candidatos.map((c, i) => `<span class="${i === 0 ? 'text-accent font-semibold' : 'text-ink'}"
+                >${escapeHtml(SGADD.clavePersona(c.nombre).split(',')[0])}</span>`).join('<span class="dato-sec"> · </span>')}
+            </p>` : ''}
         </td>
         ${celdaDirectiva(consigna, 'consigna', f.marca.consigna.detalle, 'text-accent')}
         ${celdaDirectiva(restriccion, 'restriccion', f.marca.restriccion.detalle, 'text-white')}
@@ -2622,6 +2758,12 @@ function scoutBloqueMarcas(inf) {
         técnico) y debajo la <strong>justificación con el número</strong> que la disparó, que sale de la
         planilla y no se toca a mano. Las marcas están <strong>conectadas entre sí</strong>: la ayuda que
         pide una celda sale del jugador que otra celda designa como fuente.
+      </p>
+      <p class="text-[11px] text-muted mb-3 leading-snug">
+        <b>De los nuestros</b> propone hasta tres jugadores del plantel para cada tarea, el primero
+        en naranja. Sale de cruzar recuperos, faltas, rebote y minutos —<b>lo único defensivo que
+        trae el box score</b>—, así que es una aproximación por proxy y no una medición de defensa:
+        el nombre final lo pone el cuerpo técnico.
       </p>
       ${scoutPlanColectivo(t.plan)}
       <div class="scrollbox"><table class="w-full text-left" style="min-width:62rem">

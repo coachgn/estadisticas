@@ -358,6 +358,19 @@ check('el buzón conoce los tres tipos de alerta',
   /reingreso:\s*\{/.test(buzon) && /traspaso:\s*\{/.test(buzon) && /inactividad:\s*\{/.test(buzon));
 check('la campana no se dibuja cuando no hay nada pendiente',
   /if \(!n\) return '';/.test(buzon));
+/* La campana vive en el pie del menú, junto al reloj de actualización: ahí
+   aparece en TODAS las secciones, incluida Principal, que usa la capa de
+   datos vieja y no pinta la barra de SGADD_APP. */
+const indexHtml = fs.readFileSync('./index.html', 'utf8');
+check('el slot del buzón está en el sidebar, junto al estado de datos',
+  /<div id="buzonSlot"[\s\S]{0,200}id="last-updated"/.test(indexHtml));
+check('y ya no está en el header', !/header[\s\S]{0,400}id="buzonSlot"/.test(indexHtml.slice(0, indexHtml.indexOf('</header>') + 9)));
+check('el punto verde de "datos actualizados" acompaña a la hora',
+  /bg-green-500[^`]*\$\{escapeHtml\(lastUpdated\.toLocaleTimeString/.test(indexHtml));
+/* Estaba duplicado: el header decía "Datos actualizados" y el pie del menú
+   la hora. Ahora el header queda para los errores, que sí necesitan verse. */
+check('el header solo se usa para avisos de error, no repite el estado OK',
+  /Sin errores el header queda vacío/.test(indexHtml));
 check('el badge dice cuántas alertas hay en su etiqueta accesible',
   /aria-label="\$\{n\} alerta/.test(buzon));
 check('resolver() marca la decisión como del usuario',

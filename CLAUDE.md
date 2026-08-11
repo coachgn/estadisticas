@@ -26,11 +26,11 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  22 tests · detalle partido a partido
-node test-scouting.js      # 324 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
-node test-estados.js       # 105 tests · estados de jugador, alertas, buzon, sync grafico-tabla
+node test-scouting.js      # 341 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-estados.js       # 109 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**996 tests en total. Todos tienen que dar verde antes de commitear.**
+**1017 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -86,7 +86,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=55`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=56`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -1182,6 +1182,34 @@ pelota y 🦅 ayudas desde el lado débil) y no se fusionaron: son tareas
 distintas y mezclarlas volvería a agrupar marcas que piden defensores
 diferentes.
 
+### A quién de los nuestros le toca
+
+La columna *Defensor nuestro* trae, debajo del perfil táctico, hasta **tres
+jugadores del plantel propio** para esa tarea, el primero destacado.
+
+`candidatosPropios()` puntúa a cada uno con las señales que declara su
+familia en `CATALOGO_DEFENSOR.defiende`: recuperos (`PR`), faltas (`FC`),
+rebote defensivo y ofensivo relativos, minutos y el origen interior o
+perimetral. Las métricas se normalizan **dentro del propio plantel**, no
+contra la liga: la pregunta es *"de los míos, ¿quién?"*, y esa respuesta no
+cambia porque la liga entera defienda mejor o peor.
+
+Los pesos siguen la lógica de cancha: al 🏢 Especialista Interior se lo busca
+por adentro y por rebote; al ⚡ de Presión Inicial y al 🦅 de Ayudas, por
+recuperos; al 💪 Perimetral Físico las faltas le **suman** (es contacto) y al
+🏃 Perimetral Atlético le **restan** (tiene que contener sin fallar). Hay
+tests que fijan esas relaciones.
+
+**LA ADVERTENCIA QUE NO SE SACA: la planilla no mide defensa individual.** No
+hay tapas, ni desplazamientos, ni puntos permitidos por marca. Lo único
+defensivo del box score son `PR` y `FC`, más el rebote como proxy de tamaño.
+Es una sugerencia por aproximación y la UI lo dice con todas las letras: el
+nombre final lo pone el cuerpo técnico.
+
+`cargaPropia` reparte igual que `elegirDefensorBalanceado`: cada marca ya
+asignada le resta 0,35 al puntaje. Sin eso el mismo defensor encabezaba las
+once filas y la sugerencia dejaba de decir nada.
+
 ### El perfil se desempaqueta con métricas secundarias
 
 Cada marca declara una **lista ordenada de candidatos** (`defensores`), no un
@@ -1674,12 +1702,19 @@ solo sentido y no puede invertirse.
 
 ### Dónde vive el buzón
 
-**En el header global, no en la barra de la sección.** Una alerta de plantel
-no depende de qué pantalla estés mirando, y Principal usa la capa de datos
-vieja: nunca pinta `SGADD_APP.barra()`, así que ahí la campana no aparecía.
-Por eso el `init()` dispara `SGADD_APP.cargar()` sin `await` al final del
-arranque — la carga está cacheada, así que entrar después a Equipos no vuelve
-a pedir nada.
+**En el pie del menú lateral, junto al reloj de actualización.** Ahí aparece
+en TODAS las secciones —incluida Principal, que usa la capa de datos vieja y
+nunca pinta `SGADD_APP.barra()`— y comparte lugar con el estado del panel,
+que es donde el DT ya mira si los datos están frescos.
+
+El punto verde de *"datos actualizados"* se mudó ahí también: **estaba
+duplicado**, el header lo decía con texto y el pie con la hora. Ahora el
+header queda solo para los avisos de error, que sí necesitan estar a la
+vista.
+
+El `init()` dispara `SGADD_APP.cargar()` sin `await` al final del arranque
+para que el buzón tenga índice desde el vamos — la carga está cacheada, así
+que entrar después a Equipos no vuelve a pedir nada.
 
 ### Los cuatro estados
 
