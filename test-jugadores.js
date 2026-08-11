@@ -913,6 +913,21 @@ check('el scatter recibe el PLANTEL COMPLETO, no solo los calificados',
   /scatterUsoEficiencia\('chUsoTs',[\s\S]{0,200}jugadoresPorEquipo/.test(fuenteEq) &&
   !/scatterUsoEficiencia\('chUsoTs',\s*\(e\.jugadoresCalificados/.test(fuenteEq));
 
+/* La TABLA muestra el plantel completo —es la lista del equipo y esconder
+   a la mitad no la aclara, la deja incompleta— pero el peso visual lo
+   decide el mismo corte que el gráfico. Antes lo decidía `__califica`, y
+   quedaban atenuados jugadores que sí están en el scatter. */
+check('la tabla del plantel NO filtra: muestra el plantel completo',
+  /const jug = \(idx\.liga\.jugadoresPorEquipo\.get\(e\.clave\) \|\| e\.jugadores \|\| \[\]\)/.test(fuenteEq));
+check('pero el atenuado sale del mismo piso que el gráfico, no del umbral de liga',
+  /const cal = enGrafico\(j\);/.test(fuenteEq) &&
+  /const enGrafico = \(j\) => typeof j\['MIN'\] === 'number' && j\['MIN'\] >= pisoMin;/.test(fuenteEq));
+check('y el piso se lee de la constante del gráfico, no se repite el 10',
+  /SGADD_CHARTS\.MIN_SCATTER\s*$|SGADD_CHARTS\.MIN_SCATTER\s*\n/.test(fuenteEq) ||
+  /typeof SGADD_CHARTS\.MIN_SCATTER === 'number'/.test(fuenteEq));
+check('"sin percentil" es una nota al costado, no un atenuado de toda la fila',
+  /const sinPercentil = !j\.__califica;/.test(fuenteEq) && /sin percentil/.test(fuenteEq));
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

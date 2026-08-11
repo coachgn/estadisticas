@@ -697,6 +697,11 @@
             </button>
             <h1 id="page-title" class="font-display text-2xl md:text-3xl uppercase tracking-wide truncate">Principal</h1>
           </div>
+          <!-- El buzón vive en el HEADER GLOBAL, no en la barra de la sección:
+               una alerta de plantel no depende de qué pantalla estés mirando, y
+               en Principal —que usa la capa de datos vieja y no pinta la barra
+               de SGADD_APP— no se veía. -->
+          <div id="buzonSlot" class="shrink-0"></div>
           <div id="status-banner-holder" class="shrink-0"></div>
         </div>
       </header>
@@ -706,22 +711,22 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=54"></script>
-<script src="js/sgadd-core.js?v=54"></script>
-<script src="js/sgadd-ui.js?v=54"></script>
-<script src="js/sgadd-app.js?v=54"></script>
-<script src="js/sgadd-estados.js?v=54"></script>
-<script src="js/sgadd-buzon.js?v=54"></script>
-<script src="js/sgadd-charts.js?v=54"></script>
-<script src="js/sgadd-personalidad.js?v=54"></script>
-<script src="js/sgadd-rankings.js?v=54"></script>
-<script src="js/sgadd-partido.js?v=54"></script>
-<script src="js/sgadd-informe.js?v=54"></script>
-<script src="js/sgadd-equipos.js?v=54"></script>
-<script src="js/sgadd-jugadores.js?v=54"></script>
-<script src="js/sgadd-4factores.js?v=54"></script>
-<script src="js/sgadd-scouting.js?v=54"></script>
-<script src="js/sgadd-diagnostico.js?v=54"></script>
+<script src="js/sgadd-club.js?v=55"></script>
+<script src="js/sgadd-core.js?v=55"></script>
+<script src="js/sgadd-ui.js?v=55"></script>
+<script src="js/sgadd-app.js?v=55"></script>
+<script src="js/sgadd-estados.js?v=55"></script>
+<script src="js/sgadd-buzon.js?v=55"></script>
+<script src="js/sgadd-charts.js?v=55"></script>
+<script src="js/sgadd-personalidad.js?v=55"></script>
+<script src="js/sgadd-rankings.js?v=55"></script>
+<script src="js/sgadd-partido.js?v=55"></script>
+<script src="js/sgadd-informe.js?v=55"></script>
+<script src="js/sgadd-equipos.js?v=55"></script>
+<script src="js/sgadd-jugadores.js?v=55"></script>
+<script src="js/sgadd-4factores.js?v=55"></script>
+<script src="js/sgadd-scouting.js?v=55"></script>
+<script src="js/sgadd-diagnostico.js?v=55"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -2473,6 +2478,18 @@ async function refreshData() {
   updateLastUpdatedLabel();
   if (label) label.textContent = 'Actualizar datos';
   renderSection(currentSection);
+
+  /* El buzón vive en el header global, así que tiene que tener alertas
+     ANTES de que el usuario entre a una sección SGADD. Principal usa la
+     capa de datos vieja y nunca dispara `SGADD_APP.cargar()`, así que se
+     dispara acá — sin await, para no demorar el primer render. La carga
+     está cacheada por `SGADD.cargarCategoria`, así que entrar después a
+     Equipos no vuelve a pedir nada. */
+  if (typeof SGADD_APP !== 'undefined') {
+    Promise.resolve(SGADD_APP.cargar()).then(() => {
+      if (typeof SGADD_BUZON !== 'undefined') SGADD_BUZON.sincronizar();
+    }).catch(() => {});
+  }
 }
 
 /*

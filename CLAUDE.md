@@ -21,16 +21,16 @@ node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  22 tests · multi-cliente
 node test-boot.js          #  16 tests · arranque por club
-node test-jugadores.js     # 185 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
+node test-jugadores.js     # 189 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  22 tests · detalle partido a partido
 node test-scouting.js      # 324 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
-node test-estados.js       #  87 tests · estados de jugador, alertas, buzon, sync grafico-tabla
+node test-estados.js       # 105 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**974 tests en total. Todos tienen que dar verde antes de commitear.**
+**996 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -86,7 +86,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=54`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=55`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -1672,6 +1672,15 @@ Dos módulos: `sgadd-estados.js` es el motor **puro y testeable**, y
 `sgadd-buzon.js` es todo lo que toca `document`. La dependencia va en un
 solo sentido y no puede invertirse.
 
+### Dónde vive el buzón
+
+**En el header global, no en la barra de la sección.** Una alerta de plantel
+no depende de qué pantalla estés mirando, y Principal usa la capa de datos
+vieja: nunca pinta `SGADD_APP.barra()`, así que ahí la campana no aparecía.
+Por eso el `init()` dispara `SGADD_APP.cargar()` sin `await` al final del
+arranque — la carga está cacheada, así que entrar después a Equipos no vuelve
+a pedir nada.
+
 ### Los cuatro estados
 
 | Estado | ¿Entra a los planes? | ¿Suma a las medianas? | ¿Avisa en scouting? |
@@ -1730,6 +1739,21 @@ defecto. Hay un test que fija la cadena de respaldos.
 
 Sin `localStorage` (Node, modo privado, primera visita) todos son `ACTIVO` y
 el panel se comporta exactamente como antes.
+
+### Volver atrás · alerta de reingreso y lista de confirmados
+
+Dos caminos, porque un estado sin forma de deshacerse es una trampa:
+
+1. **Alerta de reingreso** (`detectarReingresos`). Si alguien marcado 🟡 o 🔴
+   volvió a jugar en alguno de los últimos 4 partidos de su equipo, el buzón
+   avisa y ofrece reactivarlo. **Es la única alerta que se dispara sobre un
+   registro con `origen: "usuario"`**, y no contradice la precedencia: no
+   cambia nada, avisa de un hecho nuevo —jugó— que el DT no tenía cuando
+   decidió. Su acción neutra no es "mantener activo" sino *"dejarlo como
+   está"*, porque el jugador justamente no está activo.
+2. **Lista de estados confirmados**, al pie del drawer. Sin ella, la alerta
+   que originó el estado desaparece —porque el DT la contestó— y no quedaba
+   dónde volver atrás. Un botón por jugador, en cualquier momento.
 
 ### El buzón · patrones de Checklist Design
 
@@ -1835,13 +1859,20 @@ el contraste de cada celda —verde de atípico, rojo de `+/-` negativo, naranja
 de acento— contra un fondo nuevo. El tinte al 12% deja todo por encima de
 4.5:1 sin tocar un solo color de texto.
 
-### La tabla del plantel y el scatter son el MISMO conjunto
+### La tabla del plantel muestra TODO, el gráfico solo los de 10+
 
-`equiposTabPlantel()` lee `SGADD_CHARTS.MIN_SCATTER` en vez de repetir el 10.
-Con cortes distintos la mitad de las filas apuntaba a un nodo inexistente y
-el hover no hacía nada. La insignia con las iniciales (`.fila-inicial`) es el
-puente visual: sin ella hay que leer el nombre completo para saber qué punto
-del gráfico es cuál.
+Son dos cosas distintas y hubo que separarlas:
 
-Los jugadores por debajo del piso **no se ocultan en silencio**: la nota al
-pie dice cuántos son y por qué.
+- **La tabla es la lista del equipo**: muestra el plantel completo. Esconder a
+  la mitad no la aclara, la deja incompleta.
+- **El peso visual** lo decide el mismo corte que el gráfico
+  (`SGADD_CHARTS.MIN_SCATTER`, leído y no repetido): los de 10 minutos o más
+  van en blanco, el resto atenuado. Antes eso lo decidía `__califica` y
+  quedaban grises jugadores que sí estaban en el scatter — el DT los veía de
+  un color en la tabla y de otro en el nodo.
+- **"Sin percentil"** es una nota al costado, no un atenuado de toda la fila:
+  no llegar al umbral de calificación de la liga es otra pregunta.
+
+La insignia con las iniciales (`.fila-inicial`) es el puente visual entre las
+dos vistas: sin ella hay que leer el nombre completo para saber qué punto del
+gráfico es cuál.

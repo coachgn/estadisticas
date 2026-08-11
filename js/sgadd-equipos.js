@@ -627,15 +627,27 @@ function equiposTabPlantel(idx, e) {
      que no se separen la próxima vez que alguien la mueva. */
   const pisoMin = (typeof SGADD_CHARTS !== 'undefined' && typeof SGADD_CHARTS.MIN_SCATTER === 'number')
     ? SGADD_CHARTS.MIN_SCATTER : 10;
-  const plantelCompleto = idx.liga.jugadoresPorEquipo.get(e.clave) || e.jugadores || [];
-  const jug = plantelCompleto
-    .filter(j => typeof j['MIN'] === 'number' && j['MIN'] >= pisoMin)
+  /* La tabla muestra el PLANTEL COMPLETO: es la lista del equipo y esconder
+     a la mitad no la vuelve más clara, la vuelve incompleta. Lo que sí
+     cambia es la jerarquía visual — los que están en el gráfico van en
+     blanco y el resto atenuado. */
+  const jug = (idx.liga.jugadoresPorEquipo.get(e.clave) || e.jugadores || [])
     .slice().sort((a, b) => (b['MIN'] || 0) - (a['MIN'] || 0));
-  const ocultos = plantelCompleto.length - jug.length;
+  const enGrafico = (j) => typeof j['MIN'] === 'number' && j['MIN'] >= pisoMin;
+  const fueraDelGrafico = jug.filter(j => !enGrafico(j)).length;
   const cols = ['MIN', 'PTS', 'USG%', 'TS%', 'eFG%', 'AST-PP', 'VAL', '+/-'];
 
   const filas = jug.map(j => {
-    const cal = j.__califica;
+    /* Dos preguntas distintas, dos marcas distintas:
+         · `enGrafico` (MIN ≥ 10) decide el PESO VISUAL, porque es el que
+           empareja la fila con un nodo del scatter;
+         · `__califica` (MIN ≥ umbral de liga) decide si tiene percentil,
+           y eso se dice con una nota al costado, no atenuando la fila.
+       Antes las dos se resolvían con `__califica` y quedaban atenuados
+       jugadores que sí están en el gráfico — el DT los veía grises en la
+       tabla y en blanco en el nodo. */
+    const cal = enGrafico(j);
+    const sinPercentil = !j.__califica;
     /* El estado sale del buzón, no de la planilla. Sin el módulo cargado
        todos son ACTIVO y la fila se pinta igual que siempre. */
     const est = (typeof SGADD_BUZON !== 'undefined') ? SGADD_BUZON.estadoDe(j['NOMBRES'], j['EQUIPO']) : null;
@@ -654,7 +666,10 @@ function equiposTabPlantel(idx, e) {
           (typeof SGADD_CHARTS !== 'undefined' ? SGADD_CHARTS.inicialesJugador(j['NOMBRES']) : ''))}</span>
         ${escapeHtml(j['NOMBRES'])}${badgeEstado}</td>
       ${cols.map(c => `<td class="py-1.5 pr-3 font-mono text-xs ${c === '+/-' ? SGADD_UI.claseMasMenos(j[c]) : ''}">${escapeHtml(SGADD.formatear(c, j[c]))}</td>`).join('')}
-      <td class="py-1.5 text-[10px] ${cal ? 'text-muted' : 'text-yellow-400'}">${cal ? '' : 'pocos min'}</td>
+      <td class="py-1.5 text-[10px] whitespace-nowrap">${
+        !cal ? `<span class="text-muted" title="Por debajo de ${pisoMin} minutos: no entra al gráfico">fuera del gráfico</span>`
+        : sinPercentil ? `<span class="text-yellow-400" title="No llega al umbral de calificación de la liga: se muestra sin percentil">sin percentil</span>`
+        : ''}</td>
     </tr>`;
   }).join('');
 
@@ -682,13 +697,14 @@ function equiposTabPlantel(idx, e) {
         <th class="pb-1"></th>
       </tr></thead><tbody>${filas}</tbody></table></div>
     <p class="text-[11px] text-muted mt-3 leading-snug">
-      Una fila por nodo: la tabla y el gráfico muestran exactamente a los mismos jugadores,
-      los que promedian <b>${pisoMin} minutos o más</b>. Pasá el cursor por cualquiera de los dos y se
-      destaca en el otro.
-      ${ocultos ? `<b>${ocultos}</b> jugador${ocultos === 1 ? '' : 'es'} del plantel quedan fuera por debajo de ese piso: con
-        menos minutos, un tiro convertido mueve el eFG% diez puntos.` : ''}
-      Los atenuados no llegan al umbral de calificación de la liga
-      (MIN ≥ ${idx.liga.minJugador !== null ? idx.liga.minJugador.toFixed(2) : '—'}), así que se muestran sin percentil.
+      <b>El plantel completo</b>, ordenado por minutos. Los que van en blanco son los mismos
+      ${jug.length - fueraDelGrafico} que están en el gráfico (<b>${pisoMin} minutos o más</b>):
+      pasá el cursor por cualquiera de los dos y se destaca en el otro.
+      ${fueraDelGrafico ? `Los ${fueraDelGrafico} atenuados juegan menos de ${pisoMin} minutos y no entran al
+        gráfico: con esa muestra, un tiro convertido mueve el eFG% diez puntos.` : ''}
+      Los marcados <span class="text-yellow-400">sin percentil</span> no llegan al umbral de
+      calificación de la liga (MIN ≥ ${idx.liga.minJugador !== null ? idx.liga.minJugador.toFixed(2) : '—'}):
+      sus datos se muestran igual, pero no entran en ningún ranking.
     </p>`;
 }
 

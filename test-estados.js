@@ -218,6 +218,60 @@ check('no alerta por jugadores que están en un solo equipo',
   trasp.every(a => a.nombre !== 'TITULAR, FIJO' && a.nombre !== 'OTRO, EQUIPO'));
 
 /* =====================================================================
+   5 bis. ALERTA DE REINGRESO · el que vuelve
+
+   Contracara necesaria de la alerta de inactividad: sin esto, un jugador
+   marcado 🟡 SUSPENSO se quedaba con esa etiqueta para siempre, porque
+   `origen: "usuario"` bloquea al detector. El DT tenía que acordarse solo
+   de que volvió.
+   ===================================================================== */
+console.log('\n5 bis. ALERTA DE REINGRESO');
+console.log('═'.repeat(70));
+
+/* TITULAR juega las 12 fechas. Si alguien lo marcó como lesionado, el
+   sistema tiene que avisar que está jugando igual. */
+const claveTitular = E.claveJugador('TITULAR, FIJO', 'A');
+const marcadoMal = E.aplicar({}, claveTitular, 'SUSPENSO', { origen: 'usuario' });
+const reing = E.detectarReingresos(idx, marcadoMal);
+check('avisa cuando un marcado como SUSPENSO volvió a jugar',
+  reing.length === 1 && reing[0].nombre === 'TITULAR, FIJO',
+  reing.map(r => r.nombre).join('|'));
+check('la alerta dice en qué estado está y cuántos partidos jugó',
+  reing[0].estadoActual === 'SUSPENSO' && reing[0].partidosJugados > 0 && /\d/.test(reing[0].detalle),
+  reing[0].detalle);
+check('sugiere volver a ACTIVO', reing[0].sugerencias.indexOf('ACTIVO') !== -1);
+check('también avisa si estaba dado de BAJA y volvió a jugar',
+  E.detectarReingresos(idx, E.aplicar({}, claveTitular, 'BAJA', { origen: 'usuario' })).length === 1);
+
+/* ES LA ÚNICA alerta que se dispara sobre un registro marcado por el
+   usuario, y no contradice la precedencia: no cambia nada, avisa de un
+   hecho nuevo —jugó— que el DT no tenía cuando decidió. */
+check('el reingreso NO cambia el estado por su cuenta: solo avisa',
+  E.registroDe(marcadoMal, claveTitular).estado === 'SUSPENSO');
+check('no avisa por un jugador ACTIVO que juega: eso no es noticia',
+  E.detectarReingresos(idx, {}).length === 0);
+/* LESIONADO, LARGO no juega hace 4 fechas: marcarlo suspenso es correcto y
+   no tiene que generar un reingreso. */
+const claveLesionado = E.claveJugador('LESIONADO, LARGO', 'A');
+check('no avisa por el que sigue sin jugar después de marcarlo',
+  E.detectarReingresos(idx, E.aplicar({}, claveLesionado, 'SUSPENSO', { origen: 'usuario' })).length === 0);
+check('sin índice devuelve lista vacía en vez de romper',
+  E.detectarReingresos(null, marcadoMal).length === 0 && E.detectarReingresos(idx, null).length === 0);
+
+/* --- Volver a ACTIVO es siempre posible --- */
+const reactivado = E.aplicar(marcadoMal, claveTitular, 'ACTIVO', { origen: 'usuario' });
+check('reactivar deja el registro en ACTIVO y como decisión del usuario',
+  E.registroDe(reactivado, claveTitular).estado === 'ACTIVO' &&
+  E.registroDe(reactivado, claveTitular).origen === 'usuario');
+check('y la alerta de reingreso desaparece',
+  E.detectarReingresos(idx, reactivado).length === 0);
+check('vuelve a entrar a los planes defensivos',
+  E.enPlan(reactivado, claveTitular) === true);
+/* Y el ciclo se puede repetir: se lesiona de nuevo, vuelve de nuevo. */
+check('el ciclo se puede repetir sin límite',
+  E.detectarReingresos(idx, E.aplicar(reactivado, claveTitular, 'SUSPENSO', { origen: 'usuario' })).length === 1);
+
+/* =====================================================================
    6. AGREGADO Y RESUMEN
    ===================================================================== */
 console.log('\n6. AGREGADO DE ALERTAS Y RESUMEN');
@@ -285,6 +339,23 @@ check('y usa :focus-visible, no :focus: el anillo aparece con teclado, no con ca
    vuelve una trampa y el DT deja de abrirlo. */
 check('cada alerta ofrece SIEMPRE la opción de mantener activo',
   /Mantener activo/.test(buzon));
+/* En un reingreso "mantener activo" no tiene sentido: el jugador
+   justamente NO está activo. La acción neutra es dejarlo como está. */
+check('en un reingreso la acción neutra es dejarlo como está, no "mantener activo"',
+  /Dejarlo como está/.test(buzon) && /a\.tipo === 'reingreso'/.test(buzon));
+/* Sin lista de confirmados no había forma de deshacer: la alerta que
+   originó el estado desaparece justamente porque el DT la contestó. */
+check('hay una lista de estados confirmados para poder revertir después',
+  /function listaConfirmados/.test(buzon) && /Estados confirmados/.test(buzon));
+check('con un botón de reactivar por jugador',
+  /SGADD_BUZON\.revertir\(/.test(buzon) && /Reactivar/.test(buzon));
+check('revertir marca ACTIVO como decisión del usuario y avisa con toast',
+  /aplicar\(estado\.mapa, clave, 'ACTIVO', \{ origen: 'usuario' \}\)/.test(buzon) &&
+  /vuelve a Activo/.test(buzon));
+check('la lista solo muestra lo que confirmó el DT, no lo que detectó el motor',
+  /reg\.origen === 'usuario' && x\.reg\.estado !== 'ACTIVO'/.test(buzon));
+check('el buzón conoce los tres tipos de alerta',
+  /reingreso:\s*\{/.test(buzon) && /traspaso:\s*\{/.test(buzon) && /inactividad:\s*\{/.test(buzon));
 check('la campana no se dibuja cuando no hay nada pendiente',
   /if \(!n\) return '';/.test(buzon));
 check('el badge dice cuántas alertas hay en su etiqueta accesible',

@@ -114,10 +114,15 @@ const SGADD_BUZON = (function () {
      DRAWER
      ===================================================================== */
 
+  const TIPOS = {
+    reingreso:   { icono: '↩', titulo: 'Volvió a jugar', tono: 'text-green-400 border-green-400/40' },
+    traspaso:    { icono: '⇄', titulo: 'Traspaso',       tono: 'text-blue-400 border-blue-400/40' },
+    inactividad: { icono: '⏸', titulo: 'Inactividad',    tono: 'text-yellow-400 border-yellow-400/40' },
+  };
+
   function tarjeta(a, i) {
-    const icono = a.tipo === 'traspaso' ? '⇄' : '⏸';
-    const titulo = a.tipo === 'traspaso' ? 'Traspaso' : 'Inactividad';
-    const tono = a.tipo === 'traspaso' ? 'text-blue-400 border-blue-400/40' : 'text-yellow-400 border-yellow-400/40';
+    const t = TIPOS[a.tipo] || TIPOS.inactividad;
+    const icono = t.icono, titulo = t.titulo, tono = t.tono;
 
     const accion = (id, texto, clase) => `
       <button type="button" onclick="SGADD_BUZON.resolver(${i}, '${SGADD_UI.escJs(id)}')"
@@ -129,13 +134,23 @@ const SGADD_BUZON = (function () {
     /* Las acciones salen de la sugerencia del detector, más "mantener
        activo" que SIEMPRE está: descartar tiene que ser tan fácil como
        confirmar, si no el buzón se vuelve una trampa. */
-    const acciones = (a.sugerencias || []).map(id => {
-      const e = E.estado(id);
-      const clase = id === 'BAJA' ? 'text-red-400 border-red-400/40 hover:bg-red-400/10 focus-visible:ring-red-400'
-        : id === 'ALTA' ? 'text-blue-400 border-blue-400/40 hover:bg-blue-400/10 focus-visible:ring-blue-400'
-          : 'text-yellow-400 border-yellow-400/40 hover:bg-yellow-400/10 focus-visible:ring-yellow-400';
-      return accion(id, e.emoji + ' ' + e.label, clase);
-    }).join('');
+    const claseDe = (id) =>
+      id === 'BAJA' ? 'text-red-400 border-red-400/40 hover:bg-red-400/10 focus-visible:ring-red-400'
+      : id === 'ALTA' ? 'text-blue-400 border-blue-400/40 hover:bg-blue-400/10 focus-visible:ring-blue-400'
+      : id === 'ACTIVO' ? 'text-green-400 border-green-400/40 hover:bg-green-400/10 focus-visible:ring-green-400'
+      : 'text-yellow-400 border-yellow-400/40 hover:bg-yellow-400/10 focus-visible:ring-yellow-400';
+
+    const acciones = (a.sugerencias || []).map(id =>
+      accion(id, E.estado(id).emoji + ' ' + E.estado(id).label, claseDe(id))).join('');
+
+    /* En un reingreso la acción neutra NO puede ser "mantener activo" —el
+       jugador justamente NO está activo—, sino dejarlo como está. Reusa
+       `resolver` con el estado que ya tiene, que lo re-confirma como
+       decisión del DT y saca la alerta del buzón. */
+    const neutra = a.tipo === 'reingreso'
+      ? accion(a.estadoActual, '↺ Dejarlo como está',
+          'text-muted border-hairline hover:bg-surface2 focus-visible:ring-accent')
+      : accion('ACTIVO', '✓ Mantener activo', claseDe('ACTIVO'));
 
     return `
       <li class="rounded-lg border ${tono} bg-surface2/40 p-3">
@@ -150,9 +165,72 @@ const SGADD_BUZON = (function () {
         <p class="text-[11px] dato-sec leading-snug mb-2.5">${SGADD_UI.esc(a.detalle)}</p>
         <div class="flex flex-wrap gap-1.5">
           ${acciones}
-          ${accion('ACTIVO', '✓ Mantener activo', 'text-green-400 border-green-400/40 hover:bg-green-400/10 focus-visible:ring-green-400')}
+          ${neutra}
         </div>
       </li>`;
+  }
+
+  /* =====================================================================
+     ESTADOS CONFIRMADOS · revertir en cualquier momento
+
+     Sin esta lista, un estado marcado por el DT quedaba sin forma de
+     deshacerse: la alerta que lo originó desaparece justamente porque él
+     la contestó, así que el buzón se vaciaba y no había dónde volver atrás.
+     ===================================================================== */
+
+  function listaConfirmados() {
+    if (!E) return [];
+    return Object.keys(estado.mapa)
+      .map(k => ({ clave: k, reg: E.registroDe(estado.mapa, k) }))
+      .filter(x => x.reg.origen === 'usuario' && x.reg.estado !== 'ACTIVO')
+      .sort((a, b) => a.clave.localeCompare(b.clave));
+  }
+
+  function bloqueConfirmados() {
+    const lista = listaConfirmados();
+    if (!lista.length) return '';
+    return `
+      <details class="mt-4 rounded-lg border border-hairline bg-surface2/30">
+        <summary class="cursor-pointer select-none px-3 py-2 text-[11px] uppercase tracking-widest
+                        font-display text-muted hover:text-ink transition-colors
+                        focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-base">
+          Estados confirmados (${lista.length})
+        </summary>
+        <ul class="px-3 pb-3 space-y-1.5">
+          ${lista.map(x => {
+            const e = E.estado(x.reg.estado);
+            const nombre = x.clave.split('|')[0];
+            const equipo = x.clave.split('|')[1] || '';
+            return `<li class="flex items-center justify-between gap-2 py-1 border-b border-hairline/40 last:border-0">
+              <div class="min-w-0">
+                <p class="text-[11px] text-white truncate">${SGADD_UI.esc(nombre)}</p>
+                <p class="text-[10px] ${e.color}">${e.emoji} ${SGADD_UI.esc(e.label)}
+                  <span class="text-muted">· ${SGADD_UI.esc(equipo)}${x.reg.desde ? ' · desde ' + SGADD_UI.esc(x.reg.desde) : ''}</span></p>
+              </div>
+              <button type="button" onclick="SGADD_BUZON.revertir('${SGADD_UI.escJs(x.clave)}')"
+                class="shrink-0 text-[10px] px-2 py-1 rounded border border-green-400/40 text-green-400
+                       hover:bg-green-400/10 active:scale-95 transition-all duration-150
+                       focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-base">
+                🟢 Reactivar</button>
+            </li>`;
+          }).join('')}
+        </ul>
+      </details>`;
+  }
+
+  /** Vuelve a ACTIVO a un jugador ya confirmado, desde la lista de estados. */
+  function revertir(clave) {
+    if (!E || !clave) return;
+    const nombre = String(clave).split('|')[0];
+    estado.mapa = E.aplicar(estado.mapa, clave, 'ACTIVO', { origen: 'usuario' });
+    persistir();
+    toast('🟢 ' + nombre + ' · vuelve a Activo', 'ok');
+    sincronizar();
+    if (estado.abierto) {
+      const root = document.getElementById('buzonRoot');
+      if (root) root.innerHTML = panel();
+    }
+    repintarSecciones();
   }
 
   /** Empty state: no una lista vacía, un cierre positivo. */
@@ -197,7 +275,7 @@ const SGADD_BUZON = (function () {
             </button>
           </header>
 
-          <div class="flex-1 overflow-y-auto p-4">${lista}</div>
+          <div class="flex-1 overflow-y-auto p-4">${lista}${bloqueConfirmados()}</div>
 
           <footer class="p-3 border-t border-hairline shrink-0">
             <p class="text-[10px] dato-sec leading-snug">
@@ -261,6 +339,16 @@ const SGADD_BUZON = (function () {
      RESOLUCIÓN DE UNA ALERTA
      ===================================================================== */
 
+  /** Las secciones que muestran plantel se repintan para reflejar el
+      estado nuevo sin que el DT tenga que navegar a otro lado. */
+  function repintarSecciones() {
+    if (typeof currentSection === 'undefined') return;
+    if (currentSection === 'equipos' && typeof equiposPintar === 'function') equiposPintar();
+    if (currentSection === 'jugadores' && typeof jugadoresPintar === 'function') jugadoresPintar();
+    if (currentSection === 'scouting' && typeof scoutPintar === 'function' &&
+        typeof tabState !== 'undefined' && tabState.scouting === 'equipos') scoutPintar();
+  }
+
   function resolver(indice, idEstado) {
     const a = estado.alertas[indice];
     if (!a || !E) return;
@@ -277,12 +365,7 @@ const SGADD_BUZON = (function () {
       const root = document.getElementById('buzonRoot');
       if (root) root.innerHTML = panel();
     }
-    /* Las secciones que muestran plantel se repintan para reflejar el
-       badge nuevo sin que el DT tenga que navegar. */
-    if (typeof currentSection !== 'undefined') {
-      if (currentSection === 'equipos' && typeof equiposPintar === 'function') equiposPintar();
-      if (currentSection === 'jugadores' && typeof jugadoresPintar === 'function') jugadoresPintar();
-    }
+    repintarSecciones();
   }
 
   /* =====================================================================
@@ -313,6 +396,6 @@ const SGADD_BUZON = (function () {
 
   return {
     estado, sincronizar, badge, pintarBadge, estadoDe, enPlan,
-    abrir, cerrar, resolver, toast,
+    abrir, cerrar, resolver, revertir, listaConfirmados, toast,
   };
 })();

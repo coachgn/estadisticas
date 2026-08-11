@@ -295,9 +295,70 @@ const SGADD_ESTADOS = (function () {
     return out;
   }
 
-  /** Todas las alertas pendientes de una planilla. */
+  /**
+   * Alertas de REINGRESO: alguien marcado como ausente que volvió a jugar.
+   *
+   * Es la contracara necesaria de la alerta de inactividad. Sin esto, un
+   * jugador marcado 🟡 SUSPENSO se quedaba con esa etiqueta para siempre
+   * —porque `origen: "usuario"` bloquea al detector— y el DT tenía que
+   * acordarse solo de que volvió. El plan de scouting seguiría mostrándolo
+   * como dudoso y, si estaba en 🔴 BAJA, seguiría fuera del plan aunque
+   * esté jugando.
+   *
+   * **Esta es la ÚNICA alerta que se dispara sobre un registro marcado por
+   * el usuario**, y no contradice la regla de precedencia: no cambia nada
+   * por su cuenta, avisa de un hecho nuevo —jugó— que el DT no tenía
+   * cuando decidió. La decisión sigue siendo suya.
+   */
+  function detectarReingresos(idx, mapa) {
+    if (!idx || !idx.liga || !mapa) return [];
+    const out = [];
+    const partidosPorEquipo = new Map();
+    idx.lista().forEach(e => {
+      partidosPorEquipo.set(e.clave, e.partidos.slice()
+        .sort((a, b) => (a.__fecha || 0) - (b.__fecha || 0))
+        .map(p => p.__id));
+    });
+
+    (idx.liga.jugadores || []).forEach(j => {
+      const clave = claveJugador(j['NOMBRES'], j['EQUIPO']);
+      const r = registroDe(mapa, clave);
+      /* Solo los marcados como ausentes: un ACTIVO que juega no es noticia. */
+      if (r.estado !== 'SUSPENSO' && r.estado !== 'BAJA') return;
+
+      const eqClave = SGADD.claveEquipo(j['EQUIPO']);
+      const ids = partidosPorEquipo.get(eqClave) || [];
+      if (!ids.length) return;
+      const ultimos = ids.slice(-RACHA_INACTIVIDAD);
+      const jugados = new Set((idx.liga.jugadorPartidos.get(j.__clave) || [])
+        .filter(p => (p['MIN'] || 0) > 0).map(p => p.__id));
+      const reingresos = ultimos.filter(id => jugados.has(id));
+      if (!reingresos.length) return;
+
+      const est = estado(r.estado);
+      out.push({
+        tipo: 'reingreso', clave: clave,
+        nombre: j['NOMBRES'], equipo: SGADD.limpiarNombre(j['EQUIPO']),
+        estadoActual: r.estado, partidosJugados: reingresos.length,
+        detalle: 'Está marcado como ' + est.emoji + ' ' + est.label.toLowerCase() +
+          ' y volvió a jugar: ' + reingresos.length + ' de los últimos ' + ultimos.length +
+          ' partidos del equipo.',
+        sugerencias: ['ACTIVO'],
+      });
+    });
+    return out;
+  }
+
+  /**
+   * Todas las alertas pendientes de una planilla.
+   * Los reingresos van PRIMEROS: son los que corrigen un dato que hoy está
+   * mal en el panel, no los que proponen marcar algo nuevo.
+   */
   function detectarAlertas(idx, mapa) {
-    return [].concat(detectarTraspasos(idx, mapa), detectarInactividad(idx, mapa));
+    return [].concat(
+      detectarReingresos(idx, mapa),
+      detectarTraspasos(idx, mapa),
+      detectarInactividad(idx, mapa));
   }
 
   /* =====================================================================
@@ -327,7 +388,7 @@ const SGADD_ESTADOS = (function () {
     RACHA_INACTIVIDAD, MIN_PJ_PREVIOS, MIN_MINUTOS_PREVIOS,
     claveJugador, claveAlmacen, leerTodos, guardarTodos,
     registroDe, aplicar, fusionarDeteccion, enPlan, enMedianas,
-    detectarInactividad, detectarTraspasos, detectarAlertas, resumen,
+    detectarInactividad, detectarTraspasos, detectarReingresos, detectarAlertas, resumen,
   };
 })();
 

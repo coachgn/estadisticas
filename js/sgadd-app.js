@@ -177,10 +177,6 @@ const SGADD_APP = (function () {
               ${fases().map(f => `<option value="${f.id}" ${f.id === estado.fase ? 'selected' : ''}>${SGADD_UI.esc(f.label)}</option>`).join('')}
             </select>
           </div>
-          <!-- Buzón de alertas: al lado del selector de torneo, como se pidió.
-               El contenido lo pinta SGADD_BUZON y queda vacío si no hay nada
-               pendiente: un icono permanentemente vacío entrena a ignorarlo. -->
-          <div id="buzonSlot" class="shrink-0 self-end"></div>
           ${o.extra || ''}
         </div>
         ${info ? `<p class="text-[11px] text-muted mt-2 font-mono">${SGADD_UI.esc(p ? p.label : '')} · ${SGADD_UI.esc(info)}</p>` : ''}
