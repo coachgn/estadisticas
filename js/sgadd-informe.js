@@ -137,14 +137,38 @@ const SGADD_INFORME = (function () {
        salgan borrosos en papel hay que forzar más resolución. */
     if (typeof SGADD_CHARTS !== 'undefined') SGADD_CHARTS.dibujarPendientes();
 
+    /* Los escudos se serializan a `data:` URI: al imprimir, el navegador
+       vuelve a resolver el `src` de cada <img> y cualquier fallo ahí los
+       deja afuera del PDF sin avisar. Misma utilidad que las otras dos
+       exportaciones. */
+    SGADD_UI.embeberImagenes('#informeSalida');
+
+    /* La limpieza cuelga de `afterprint`, NO de un setTimeout ciego.
+
+       Antes era `setTimeout(limpiar, 400)` disparado justo después de
+       `window.print()`: si el diálogo de impresión tardaba en abrir —o si el
+       navegador no bloquea en `print()`, que es lo que pasa al generar el PDF
+       por automatización— el informe se borraba a sí mismo ANTES de que se
+       imprimiera y salía la app en vez del informe. Medido: capturando a los
+       3,5 s no quedaba nada de `#informeSalida`.
+
+       El timeout queda solo como red de seguridad por si `afterprint` no
+       llega (pasa en algunos navegadores al cancelar), con margen de sobra. */
     setTimeout(() => {
+      const alTerminar = () => {
+        window.removeEventListener('afterprint', alTerminar);
+        clearTimeout(respaldo);
+        limpiar();
+      };
+      window.addEventListener('afterprint', alTerminar);
+      const respaldo = setTimeout(alTerminar, 60000);
       window.print();
-      setTimeout(limpiar, 400);
     }, 700);
   }
 
   function limpiar() {
     document.body.classList.remove('modo-impresion');
+    SGADD_UI.restaurarImagenes('#informeSalida');
     const s = document.getElementById('informeSalida');
     if (s) s.remove();
     if (typeof equiposPintar === 'function') equiposPintar();

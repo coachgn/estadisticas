@@ -24,13 +24,13 @@ node test-boot.js          #  16 tests · arranque por club
 node test-jugadores.js     # 189 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
-node test-informe.js       #   7 tests · secciones del informe
-node test-partido.js       #  22 tests · detalle partido a partido
+node test-informe.js       #  20 tests · secciones del informe y su PDF
+node test-partido.js       #  26 tests · detalle partido a partido y su PDF
 node test-scouting.js      # 433 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1125 tests en total. Todos tienen que dar verde antes de commitear.**
+**1142 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -106,7 +106,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=68`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=73`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -651,11 +651,55 @@ valores que había al renderizar, o sea vacíos.
 `scoutActualizarCabeceraImpresa()` la regenera al imprimir, que es el único
 momento en que importa y donde ya nadie está tipeando.
 
-### 7.6 · Lo que sigue abierto
+### 7.6 · Las otras dos exportaciones
 
-- **Márgenes negros del informe de equipo y del post-partido.** El aplanado a
-  blanco está escrito y ahora condicionado, pero **no se verificó contra una
-  impresora real** — solo con la simulación de arriba.
+Auditadas generando sus PDF, igual que la de scouting.
+
+| | Antes | Ahora |
+|---|---|---|
+| **Informe de equipo** | *el informe se autodestruía* | 8 pág · A4 · 10 img |
+| **Post-partido** | 2 páginas | **1 carilla** · A4 · 3 img |
+
+**El bug que se comía el informe de equipo entero.** La limpieza era
+`setTimeout(limpiar, 400)` disparado justo después de `window.print()`. Si el
+diálogo tardaba en abrir —o si el navegador no bloquea en `print()`, que es lo
+que pasa al generar el PDF por automatización— **el informe se borraba a sí
+mismo antes de imprimirse** y salía la app en su lugar. Medido: a los 3,5 s no
+quedaba nada de `#informeSalida`. Ahora cuelga de `afterprint`, con un respaldo
+de 60 s por si ese evento no llega (pasa al cancelar en algunos navegadores).
+
+**El post-partido entra en una carilla**, que es su especificación. Lo que lo
+empujaba a la segunda hoja: *"Para el próximo cruce"* usa `lg:grid-cols-3`, y
+el breakpoint `lg` de Tailwind es 1024px mientras que la hoja A4 vertical mide
+794 — **en el papel nunca se activaba** y los tres bloques quedaban apilados,
+~210px de más. Se fuerzan las tres columnas en print y se comprimen los aires
+verticales. **No se toca la tipografía**: el box score tiene que poder leerse,
+que es todo el punto de llevar la hoja a la cancha.
+
+**Los gráficos ya no salen invisibles.** Chart.js fija sus colores en JS, así
+que `@media print` no los puede corregir: el radar de 8 ejes del informe de
+equipo pintaba las etiquetas en `#f5f4f2` sobre papel blanco. `COL.tinta`,
+`COL.grilla` y `COL.texto` pasaron a ser **getters** que consultan
+`enPapelClaro()` (la clase `modo-impresion` del body) y se resuelven al
+dibujar. Funciona porque `generar()` agrega la clase **antes** de llamar a
+`dibujarPendientes()`.
+
+**Una sola utilidad de escudos para las tres.** `SGADD_UI.embeberImagenes()` /
+`restaurarImagenes()` viven en `sgadd-ui.js`, que carga antes que todos los
+módulos de sección. Duplicarla en cada exportación las desincroniza.
+
+**Criterio de color, que es distinto a propósito:**
+
+- **Scouting** → paleta de la app sobre hoja blanca. Es un PDF que se lee en
+  pantalla y se comparte.
+- **Informe de equipo y post-partido** → blanco y negro con acentos. Son hojas
+  que se imprimen y se llevan; el diseño de papel ya estaba y funciona.
+
+### 7.7 · Lo que sigue abierto
+
+- **Nada se verificó contra una impresora física.** Todo se midió sobre el PDF
+  generado, que es lo que el club usa (se comparte, no se imprime en papel en
+  la mayoría de los casos). Los márgenes negros SÍ están resueltos y medidos.
 - **`@page` a secas no se puede condicionar por clase del body.** La vertical
   (`A4 portrait, 12mm 10mm`) la comparten el informe de equipo y el
   post-partido; Scouting se sale de ahí con su `@page` nombrada. Un cambio en

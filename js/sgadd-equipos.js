@@ -1159,10 +1159,18 @@ function equiposDetallePartido(idx, e, id) {
    informe post-partido es siempre el mismo. Un clic y afuera.
    --------------------------------------------------------------------- */
 function equiposImprimirPartido() {
+  /* Los escudos se serializan antes de imprimir: al imprimir, el navegador
+     vuelve a resolver el `src` de cada <img> y cualquier fallo ahí los deja
+     afuera del PDF sin avisar. Misma utilidad que usan las otras dos
+     exportaciones. */
+  SGADD_UI.embeberImagenes('#detallePartido');
   document.body.classList.add('modo-partido-print');
   setTimeout(() => {
     window.print();
-    setTimeout(() => document.body.classList.remove('modo-partido-print'), 400);
+    setTimeout(() => {
+      document.body.classList.remove('modo-partido-print');
+      SGADD_UI.restaurarImagenes('#detallePartido');
+    }, 400);
   }, 250);
 }
 

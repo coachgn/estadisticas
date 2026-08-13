@@ -219,7 +219,55 @@ const SGADD_UI = (function () {
       .replace(/'/g, "\\'"));
   }
 
-  return { esc, escJs, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, signoDelta, colorDelta, claseMasMenos };
+  /* =====================================================================
+     ESCUDOS EN EL PAPEL
+
+     Al imprimir, el navegador vuelve a resolver el `src` de cada <img>, y
+     cualquier cosa que falle en ese momento —la ruta relativa, el caché, el
+     origen del documento— deja la imagen afuera del PDF sin ningún aviso.
+     Medido: un informe con 9 escudos en pantalla salía con CERO imágenes.
+
+     Con la imagen dibujada en un canvas y serializada, el `src` no depende
+     de nada externo. Vive acá y no en un módulo de sección porque lo
+     necesitan las TRES exportaciones (scouting, informe de equipo y
+     post-partido) y `sgadd-ui.js` carga antes que todas.
+     ===================================================================== */
+
+  /** Pasa a `data:` URI las imágenes de `raiz` (selector o nodo).
+   *  Sincrónico a propósito: las que ya están en pantalla no esperan nada.
+   *  Una que no esté lista se deja como está — mejor su `src` original que
+   *  una imagen en blanco. */
+  function embeberImagenes(raiz) {
+    const cont = typeof raiz === 'string' ? document.querySelector(raiz) : raiz;
+    if (!cont) return 0;
+    let n = 0;
+    Array.prototype.forEach.call(cont.querySelectorAll('img'), (img) => {
+      if (!img.complete || !img.naturalWidth) return;
+      if (String(img.getAttribute('src') || '').indexOf('data:') === 0) return;
+      try {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        c.getContext('2d').drawImage(img, 0, 0);
+        img.setAttribute('data-src', img.getAttribute('src'));
+        img.setAttribute('src', c.toDataURL('image/png'));
+        n++;
+      } catch (e) { /* lienzo contaminado: se deja el src original */ }
+    });
+    return n;
+  }
+
+  /** Devuelve las imágenes a su ruta original después de imprimir. */
+  function restaurarImagenes(raiz) {
+    const cont = typeof raiz === 'string' ? document.querySelector(raiz) : raiz;
+    if (!cont) return;
+    Array.prototype.forEach.call(cont.querySelectorAll('img[data-src]'), (img) => {
+      img.setAttribute('src', img.getAttribute('data-src'));
+      img.removeAttribute('data-src');
+    });
+  }
+
+  return { esc, escJs, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, signoDelta, colorDelta, claseMasMenos,
+    embeberImagenes, restaurarImagenes };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_UI;

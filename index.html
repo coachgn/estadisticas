@@ -387,6 +387,40 @@
     /* Los botones no van al papel. */
     body.modo-partido-print [data-no-print] { display: none !important; }
 
+    /* -----------------------------------------------------------------
+       LOS TRES BLOQUES DE CIERRE, EN TRES COLUMNAS
+
+       "Para el próximo cruce" ya usa `lg:grid-cols-3`, pero el breakpoint
+       `lg` de Tailwind es 1024px y la hoja A4 vertical mide 794px: en el
+       papel nunca se activaba y los tres quedaban APILADOS, ocupando ~330px
+       de alto donde en columnas ocupan ~120.
+
+       Es exactamente lo que empujaba el informe a una segunda hoja: medido,
+       el detalle daba 1260px contra 1047 de A4 útil, y estos 210px son la
+       diferencia. Se gana espacio usando el ancho libre, sin achicar la
+       tipografía del box score, que es lo que hay que poder leer.
+       ----------------------------------------------------------------- */
+    body.modo-partido-print #proximoCruce > .grid {
+      display: grid !important;
+      grid-template-columns: repeat(3, 1fr) !important;
+      gap: 2mm !important;
+    }
+    /* Los aires de PANTALLA son generosos a propósito; en una carilla A4
+       son los que sobran. Se comprimen los espacios verticales y NO la
+       tipografía: el box score tiene que seguir siendo legible, que es todo
+       el punto de llevar la hoja a la cancha. Con esto el detalle bajó de
+       1260px a los 1047 que entran en la hoja. */
+    body.modo-partido-print #detallePartido .mb-6 { margin-bottom: 2.5mm !important; }
+    body.modo-partido-print #detallePartido .mt-6 { margin-top: 2.5mm !important; }
+    body.modo-partido-print #detallePartido .mb-5 { margin-bottom: 2mm !important; }
+    body.modo-partido-print #detallePartido .mb-4,
+    body.modo-partido-print #detallePartido .mb-3 { margin-bottom: 1.5mm !important; }
+    body.modo-partido-print #detallePartido .p-4,
+    body.modo-partido-print #detallePartido .p-5 { padding: 2mm !important; }
+    body.modo-partido-print #detallePartido .pt-4 { padding-top: 2mm !important; }
+    body.modo-partido-print #detallePartido .gap-3 { gap: 1.5mm !important; }
+    body.modo-partido-print #detallePartido .space-y-2 > * + * { margin-top: 1mm !important; }
+
     /* Nada se parte al medio, pero el informe SÍ puede ocupar dos hojas.
        Forzar una sola carilla obligaba a apretar el box score; es mejor un
        informe fluido de 1 o 2 páginas que uno amontonado. */
@@ -494,6 +528,20 @@
        INVISIBLE. Excluir el modo de raíz deja las clases originales
        intactas y el papel sale igual que la pantalla. */
     html:not(.modo-scout-print) :root,
+    /* EL LIENZO · vale para las TRES exportaciones.
+
+       `:root { color-scheme: dark }` hace que Chrome pinte el lienzo de la
+       página —lo que queda detrás de todo, márgenes incluidos— con su gris
+       por defecto #121212, y lo pinta ANTES que el documento, así que ningún
+       `background: #fff` lo tapa. Es la causa real de los "márgenes negros"
+       que estuvieron abiertos meses en el punto 7.
+
+       Medido en los PDF de las otras dos exportaciones ANTES de esta línea:
+       informe de equipo → primer relleno RGB(18,18,18); post-partido →
+       RGB(15,23,42). Las dos salían con el marco oscuro. */
+    @page { background: #ffffff; }
+    html { color-scheme: light !important; }
+
     html:not(.modo-scout-print),
     html:not(.modo-scout-print) body {
       background: #ffffff !important;
@@ -994,22 +1042,22 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=68"></script>
-<script src="js/sgadd-core.js?v=68"></script>
-<script src="js/sgadd-ui.js?v=68"></script>
-<script src="js/sgadd-app.js?v=68"></script>
-<script src="js/sgadd-estados.js?v=68"></script>
-<script src="js/sgadd-buzon.js?v=68"></script>
-<script src="js/sgadd-charts.js?v=68"></script>
-<script src="js/sgadd-personalidad.js?v=68"></script>
-<script src="js/sgadd-rankings.js?v=68"></script>
-<script src="js/sgadd-partido.js?v=68"></script>
-<script src="js/sgadd-informe.js?v=68"></script>
-<script src="js/sgadd-equipos.js?v=68"></script>
-<script src="js/sgadd-jugadores.js?v=68"></script>
-<script src="js/sgadd-4factores.js?v=68"></script>
-<script src="js/sgadd-scouting.js?v=68"></script>
-<script src="js/sgadd-diagnostico.js?v=68"></script>
+<script src="js/sgadd-club.js?v=73"></script>
+<script src="js/sgadd-core.js?v=73"></script>
+<script src="js/sgadd-ui.js?v=73"></script>
+<script src="js/sgadd-app.js?v=73"></script>
+<script src="js/sgadd-estados.js?v=73"></script>
+<script src="js/sgadd-buzon.js?v=73"></script>
+<script src="js/sgadd-charts.js?v=73"></script>
+<script src="js/sgadd-personalidad.js?v=73"></script>
+<script src="js/sgadd-rankings.js?v=73"></script>
+<script src="js/sgadd-partido.js?v=73"></script>
+<script src="js/sgadd-informe.js?v=73"></script>
+<script src="js/sgadd-equipos.js?v=73"></script>
+<script src="js/sgadd-jugadores.js?v=73"></script>
+<script src="js/sgadd-4factores.js?v=73"></script>
+<script src="js/sgadd-scouting.js?v=73"></script>
+<script src="js/sgadd-diagnostico.js?v=73"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

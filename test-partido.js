@@ -131,6 +131,33 @@ check('el margen del equipo sale de SGADD.masMenosEquipo, no de sumar la columna
   return SGADD.masMenosEquipo(88, 69) === 19 && suma === 95;
 })());
 
+/* =====================================================================
+   EL PDF POST-PARTIDO · una carilla A4
+
+   Medido generando el archivo con Chrome: antes salía en DOS páginas.
+   ===================================================================== */
+console.log('\nPDF POST-PARTIDO · que entre en una carilla');
+console.log('═'.repeat(70));
+
+const htmlPartido = require('fs').readFileSync('./index.html', 'utf8');
+const equiposJs = require('fs').readFileSync('./js/sgadd-equipos.js', 'utf8');
+
+/* "Para el próximo cruce" ya usaba `lg:grid-cols-3`, pero el breakpoint
+   `lg` de Tailwind es 1024px y la hoja A4 vertical mide 794: en el papel
+   nunca se activaba y los tres bloques quedaban APILADOS. Eran ~210px de
+   más, justo lo que empujaba el informe a una segunda hoja. */
+check('los tres bloques de cierre van en columnas al imprimir',
+  /#proximoCruce > \.grid \{[\s\S]{0,140}grid-template-columns: repeat\(3, 1fr\) !important/.test(htmlPartido));
+/* Se comprimen los ESPACIOS, no la tipografía: el box score tiene que
+   seguir siendo legible, que es todo el punto de llevar la hoja. */
+check('se comprimen los aires verticales y no la tipografía',
+  /modo-partido-print #detallePartido \.mb-6 \{ margin-bottom: 2\.5mm/.test(htmlPartido) &&
+  !/modo-partido-print #detallePartido \{[^}]*font-size: [0-5]/.test(htmlPartido));
+check('los escudos se embeben antes de imprimir',
+  /SGADD_UI\.embeberImagenes\('#detallePartido'\)/.test(equiposJs));
+check('y se restauran después',
+  /SGADD_UI\.restaurarImagenes\('#detallePartido'\)/.test(equiposJs));
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

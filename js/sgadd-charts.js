@@ -14,6 +14,20 @@
 const SGADD_CHARTS = (function () {
   'use strict';
 
+  /* ¿Se está dibujando para el PAPEL BLANCO?
+     El informe de equipo (`modo-impresion`) imprime sobre fondo claro, y los
+     grises pensados para el tema oscuro quedan invisibles ahí: el radar de
+     8 ejes salía con las etiquetas en #f5f4f2 sobre blanco, o sea en blanco
+     sobre blanco. Como los colores de Chart.js se fijan en JS y no en CSS,
+     `@media print` no los puede corregir: hay que resolverlos al dibujar.
+
+     El scouting NO entra acá: imprime con la paleta oscura de la app, así
+     que sus gráficos ya están sobre el fondo correcto. */
+  function enPapelClaro() {
+    return typeof document !== 'undefined' && document.body &&
+      document.body.classList.contains('modo-impresion');
+  }
+
   const COL = {
     equipo: '#60a5fa',
     equipoSuave: 'rgba(96,165,250,0.28)',
@@ -25,8 +39,12 @@ const SGADD_CHARTS = (function () {
 
     bien: '#22c55e',
     mal: '#ef4444',
-    grilla: 'rgba(40,40,40,0.65)',
-    texto: '#9CA3AF',
+    /* Los dos siguientes SÍ dependen del fondo, así que se leen en cada
+       dibujado en vez de quedar fijos. */
+    get grilla() { return enPapelClaro() ? 'rgba(148,163,184,0.55)' : 'rgba(40,40,40,0.65)'; },
+    get texto() { return enPapelClaro() ? '#334155' : '#9CA3AF'; },
+    /* Texto de máximo contraste: etiquetas de eje y leyendas. */
+    get tinta() { return enPapelClaro() ? '#0f172a' : '#f5f4f2'; },
   };
 
   const instancias = {};
@@ -59,7 +77,7 @@ const SGADD_CHARTS = (function () {
       maintainAspectRatio: false,
       plugins: {
         legend: {
-          labels: { color: '#f5f4f2', font: { family: 'Barlow', size: movil() ? 10 : 12 }, boxWidth: movil() ? 10 : 18, padding: 10 },
+          labels: { color: COL.tinta, font: { family: 'Barlow', size: movil() ? 10 : 12 }, boxWidth: movil() ? 10 : 18, padding: 10 },
         },
         tooltip: {
           backgroundColor: '#0B1121', borderColor: '#374151', borderWidth: 1, padding: 10,
@@ -182,7 +200,7 @@ const SGADD_CHARTS = (function () {
             angleLines: { color: COL.grilla },
             grid: { color: COL.grilla },
             pointLabels: {
-              color: '#f5f4f2',
+              color: COL.tinta,
               font: { family: 'Barlow', size: movil() ? 8 : 11 },
               callback: (l) => (movil() && String(l).length > 12 ? String(l).replace(/\s+/, '\n').split('\n') : l),
             },

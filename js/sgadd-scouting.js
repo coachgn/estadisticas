@@ -2435,48 +2435,12 @@ function scoutCerrarExport() {
  * activa las reglas de `@media print` del index.html: sin esa clase, un
  * Ctrl+P normal sigue imprimiendo la página como siempre.
  */
-/**
- * Convierte los escudos a `data:` URI antes de imprimir.
- *
- * POR QUÉ: al imprimir, el navegador vuelve a resolver el `src` de cada
- * `<img>`. Cualquier cosa que falle en ese momento —la ruta relativa, el
- * caché, el origen del documento— deja el escudo afuera del PDF sin ningún
- * aviso. Con la imagen ya dibujada en un canvas y serializada, el `src` no
- * depende de nada externo y el escudo entra siempre.
- *
- * Es sincrónico a propósito: las imágenes ya están cargadas en pantalla
- * (`complete && naturalWidth`), así que `drawImage` no espera nada. Una que
- * no esté lista se deja como está — mejor su `src` original que una imagen
- * en blanco.
- *
- * `canvas.toDataURL()` puede tirar por lienzo contaminado si algún escudo
- * viniera de otro origen; por eso va en try/catch y por eso se guarda el
- * `src` original en `data-src` para poder restaurarlo al terminar.
- */
-function scoutEmbeberEscudos() {
-  const imgs = document.querySelectorAll('#scoutInforme img');
-  Array.prototype.forEach.call(imgs, (img) => {
-    if (!img.complete || !img.naturalWidth) return;
-    if (img.getAttribute('src').indexOf('data:') === 0) return;
-    try {
-      const c = document.createElement('canvas');
-      c.width = img.naturalWidth; c.height = img.naturalHeight;
-      c.getContext('2d').drawImage(img, 0, 0);
-      const datos = c.toDataURL('image/png');
-      img.setAttribute('data-src', img.getAttribute('src'));
-      img.setAttribute('src', datos);
-    } catch (e) { /* lienzo contaminado: se deja el src original */ }
-  });
-}
-
-/** Devuelve los escudos a su ruta original después de imprimir. */
-function scoutRestaurarEscudos() {
-  const imgs = document.querySelectorAll('#scoutInforme img[data-src]');
-  Array.prototype.forEach.call(imgs, (img) => {
-    img.setAttribute('src', img.getAttribute('data-src'));
-    img.removeAttribute('data-src');
-  });
-}
+/* Los escudos se pasan a `data:` URI antes de imprimir: si no, el navegador
+   re-resuelve el `src` de cada <img> al imprimir y cualquier fallo ahí lo deja
+   afuera del PDF sin avisar (medido: 9 escudos en pantalla, 0 en el archivo).
+   La utilidad vive en `sgadd-ui.js` porque la usan las TRES exportaciones. */
+function scoutEmbeberEscudos() { return SGADD_UI.embeberImagenes('#scoutInforme'); }
+function scoutRestaurarEscudos() { SGADD_UI.restaurarImagenes('#scoutInforme'); }
 
 function scoutImprimir() {
   scoutCerrarExport();

@@ -1913,8 +1913,12 @@ check('y NO se emite una cadena vacía como antes',
 /* (b) Al imprimir, el navegador re-resuelve el `src` de cada <img>, y
    cualquier cosa que falle ahí deja el escudo afuera del PDF sin avisar.
    Serializados a data: URI, el src no depende de nada externo. */
+/* La implementación vive en `sgadd-ui.js`: la comparten las TRES
+   exportaciones y duplicarla en cada una las desincroniza. */
 check('los escudos se embeben como data: URI antes de imprimir',
-  /function scoutEmbeberEscudos/.test(scoutJs) && /toDataURL\('image\/png'\)/.test(scoutJs));
+  /function scoutEmbeberEscudos/.test(scoutJs) &&
+  /SGADD_UI\.embeberImagenes\('#scoutInforme'\)/.test(scoutJs) &&
+  /toDataURL\('image\/png'\)/.test(require('fs').readFileSync('./js/sgadd-ui.js', 'utf8')));
 check('y se restauran al terminar, para no dejar el DOM con blobs',
   /function scoutRestaurarEscudos/.test(scoutJs) &&
   /scoutRestaurarEscudos\(\);/.test(scoutJs));
