@@ -24,13 +24,13 @@ node test-boot.js          #  16 tests · arranque por club
 node test-jugadores.js     # 189 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
-node test-informe.js       #  20 tests · secciones del informe y su PDF
+node test-informe.js       #  30 tests · secciones del informe y su PDF
 node test-partido.js       #  26 tests · detalle partido a partido y su PDF
 node test-scouting.js      # 433 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1142 tests en total. Todos tienen que dar verde antes de commitear.**
+**1152 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -106,7 +106,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=73`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=76`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -657,8 +657,34 @@ Auditadas generando sus PDF, igual que la de scouting.
 
 | | Antes | Ahora |
 |---|---|---|
-| **Informe de equipo** | *el informe se autodestruía* | 8 pág · A4 · 10 img |
-| **Post-partido** | 2 páginas | **1 carilla** · A4 · 3 img |
+| **Informe de equipo** | *el informe se autodestruía* | 9 pág · **A3 apaisada** · 10 img |
+| **Post-partido** | 2 páginas | **1 carilla** · A4 vertical · 3 img |
+
+**El informe de equipo también va en A3 apaisada**, por el mismo motivo que el
+de scouting: es ancho —tablas de métricas, barras comparadas, radar de 8
+ejes— y en A4 vertical todo entra apretado en 190mm.
+
+**Sus tarjetas usan el gris del post-partido** (`#f1f5f9` con borde `#cbd5e1`),
+no blanco: el blanco absoluto desarmaba la jerarquía y todo parecía texto
+suelto. Son los mismos valores, así que los dos informes en papel se leen
+igual. El post-partido se deja como está.
+
+**Los gráficos ya no se montan sobre lo que sigue.** `.chart-box` fija la
+altura de la caja, pero el `<canvas>` se dimensiona solo (`maintainAspectRatio:
+false`) y se desbordaba sobre el pie de figura o la tabla siguiente. Se confina
+con `position: absolute; inset: 0` + `height: 100%`, y la caja lleva
+`overflow: hidden`.
+
+La caja va a **88mm y no 70**: un radar es **cuadrado**, así que su tamaño lo
+limita el lado más corto. Con 70mm quedaba diminuto en el centro de una hoja de
+400mm de ancho, con medio metro de aire a los lados.
+
+**El texto que se cortaba en el borde derecho.** Las filas de los 8 ejes usan
+`px-2 -mx-2` —una sangría negativa para que el hover cubra todo el ancho de la
+card—. En pantalla el padre tiene padding y no se nota; en el papel no lo tiene,
+así que esos 8px se salían del área imprimible y **cortaban el texto alineado a
+la derecha** ("Acelerado", "Va a la línea"…). Medido: 6 elementos llegaban a
+1510px sobre un informe de 1502; después del fix, **0 desbordes**.
 
 **El bug que se comía el informe de equipo entero.** La limpieza era
 `setTimeout(limpiar, 400)` disparado justo después de `window.print()`. Si el
@@ -692,8 +718,10 @@ módulos de sección. Duplicarla en cada exportación las desincroniza.
 
 - **Scouting** → paleta de la app sobre hoja blanca. Es un PDF que se lee en
   pantalla y se comparte.
-- **Informe de equipo y post-partido** → blanco y negro con acentos. Son hojas
-  que se imprimen y se llevan; el diseño de papel ya estaba y funciona.
+- **Informe de equipo y post-partido** → papel claro con tarjetas grises
+  (`#f1f5f9`) y acentos de color. Son hojas que se imprimen y se llevan.
+  El informe de equipo va en A3 apaisada; el post-partido, en A4 vertical
+  porque su especificación es entrar en UNA carilla.
 
 ### 7.7 · Lo que sigue abierto
 

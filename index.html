@@ -614,6 +614,94 @@
     .scrollbox { overflow: visible !important; }
 
     /* =================================================================
+       INFORME DE EQUIPO · hoja A3 apaisada
+
+       Mismo formato que el de scouting, y por el mismo motivo: el informe
+       es ancho —tablas de métricas, barras comparadas, radar de 8 ejes— y
+       en A4 vertical todo eso queda apretado en 190mm. A3 apaisada da
+       400mm útiles y el mismo alto que un A4 vertical.
+       ================================================================= */
+    body.modo-impresion { page: apaisada; }
+    body.modo-impresion #informeSalida { max-width: none !important; }
+
+    /* -----------------------------------------------------------------
+       LAS TARJETAS, CON EL GRIS DEL POST-PARTIDO
+
+       El blanco absoluto desarmaba la jerarquía: todo parecía texto
+       suelto. Es el mismo criterio —y los mismos valores— que ya usa el
+       informe post-partido, así que los dos PDF se leen igual.
+       ----------------------------------------------------------------- */
+    body.modo-impresion #informeSalida .card,
+    body.modo-impresion #informeSalida [class*="bg-surface2"],
+    body.modo-impresion #informeSalida [class*="bg-accent/"],
+    body.modo-impresion #informeSalida [class*="bg-green-400/"],
+    body.modo-impresion #informeSalida [class*="bg-red-400/"] {
+      background: #f1f5f9 !important;
+      border: 1px solid #cbd5e1 !important;
+      border-radius: 1.5mm !important;
+      box-shadow: none !important;
+    }
+    /* Los acentos de color del post-partido, para que el verde y el rojo
+       sigan significando lo mismo en los dos informes. */
+    body.modo-impresion #informeSalida .border-green-400 { border-left: 2.5px solid #15803d !important; }
+    body.modo-impresion #informeSalida .border-red-400 { border-left: 2.5px solid #b91c1c !important; }
+    body.modo-impresion #informeSalida .text-green-400 { color: #15803d !important; }
+    body.modo-impresion #informeSalida .text-red-400 { color: #b91c1c !important; }
+    body.modo-impresion #informeSalida .text-accent {
+      color: var(--acento-oscuro, #b45309) !important; font-weight: 700;
+    }
+
+    /* -----------------------------------------------------------------
+       LOS GRÁFICOS NO SE MONTAN SOBRE LO QUE VIENE DESPUÉS
+
+       `.chart-box` fija la altura del contenedor, pero el <canvas> de
+       Chart.js se dimensiona por su cuenta con `maintainAspectRatio:
+       false` y se desborda: en el PDF terminaba pisando el pie de figura,
+       el encabezado de la tabla siguiente o la tabla misma.
+
+       `overflow: hidden` sola recortaría el gráfico. Lo que hace falta es
+       que el canvas se ajuste al contenedor (`height: 100%` y no `auto`)
+       y que el bloque entero reserve su espacio.
+       ----------------------------------------------------------------- */
+    /* 88mm y no 70: un radar es CUADRADO, así que su tamaño lo limita el
+       lado más corto de la caja. En una hoja de 400mm de ancho, con 70mm de
+       alto el gráfico quedaba diminuto en el centro y con medio metro de
+       aire a los lados. Subir el alto lo hace crecer de verdad. */
+    body.modo-impresion #informeSalida .chart-box {
+      height: 88mm !important;
+      max-height: 88mm !important;
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 4mm;
+      page-break-inside: avoid; break-inside: avoid;
+    }
+    body.modo-impresion #informeSalida .chart-box canvas {
+      position: absolute; inset: 0;
+      width: 100% !important;
+      height: 100% !important;
+      max-height: 100% !important;
+    }
+    /* El pie de figura no se separa de su gráfico. */
+    body.modo-impresion #informeSalida .chart-box + p {
+      page-break-before: avoid; break-before: avoid;
+      margin-top: 0;
+    }
+
+    /* Las filas de los 8 ejes usan `px-2 -mx-2`: una sangría negativa para
+       que el hover cubra todo el ancho de la card. En pantalla el padre
+       tiene padding y no se nota; en el papel no lo tiene, así que esos 8mm
+       se salían del área imprimible y CORTABAN el texto alineado a la
+       derecha ("Acelerado", "Juego perimetral", "Va a la línea"…). Medido:
+       6 elementos llegaban a 1510px sobre un informe de 1502.
+       El hover no existe en papel, así que la sangría tampoco hace falta. */
+    body.modo-impresion #informeSalida .-mx-2 {
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+    }
+    /* Red de seguridad: nada se pega al filo de la hoja. */
+    body.modo-impresion #informeSalida { padding-right: 1mm; }
+
+    /* =================================================================
        SCOUTING PRE-PARTIDO · export por cards
 
        Se activa con la clase `modo-scout-print`, que scoutImprimir() pone
@@ -1042,22 +1130,22 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=73"></script>
-<script src="js/sgadd-core.js?v=73"></script>
-<script src="js/sgadd-ui.js?v=73"></script>
-<script src="js/sgadd-app.js?v=73"></script>
-<script src="js/sgadd-estados.js?v=73"></script>
-<script src="js/sgadd-buzon.js?v=73"></script>
-<script src="js/sgadd-charts.js?v=73"></script>
-<script src="js/sgadd-personalidad.js?v=73"></script>
-<script src="js/sgadd-rankings.js?v=73"></script>
-<script src="js/sgadd-partido.js?v=73"></script>
-<script src="js/sgadd-informe.js?v=73"></script>
-<script src="js/sgadd-equipos.js?v=73"></script>
-<script src="js/sgadd-jugadores.js?v=73"></script>
-<script src="js/sgadd-4factores.js?v=73"></script>
-<script src="js/sgadd-scouting.js?v=73"></script>
-<script src="js/sgadd-diagnostico.js?v=73"></script>
+<script src="js/sgadd-club.js?v=76"></script>
+<script src="js/sgadd-core.js?v=76"></script>
+<script src="js/sgadd-ui.js?v=76"></script>
+<script src="js/sgadd-app.js?v=76"></script>
+<script src="js/sgadd-estados.js?v=76"></script>
+<script src="js/sgadd-buzon.js?v=76"></script>
+<script src="js/sgadd-charts.js?v=76"></script>
+<script src="js/sgadd-personalidad.js?v=76"></script>
+<script src="js/sgadd-rankings.js?v=76"></script>
+<script src="js/sgadd-partido.js?v=76"></script>
+<script src="js/sgadd-informe.js?v=76"></script>
+<script src="js/sgadd-equipos.js?v=76"></script>
+<script src="js/sgadd-jugadores.js?v=76"></script>
+<script src="js/sgadd-4factores.js?v=76"></script>
+<script src="js/sgadd-scouting.js?v=76"></script>
+<script src="js/sgadd-diagnostico.js?v=76"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

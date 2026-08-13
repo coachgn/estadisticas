@@ -90,6 +90,48 @@ check('la grilla y el texto de ejes también se adaptan',
   /get grilla\(\) \{ return enPapelClaro\(\)/.test(chartsJs) &&
   /get texto\(\) \{ return enPapelClaro\(\)/.test(chartsJs));
 
+/* --- Hoja A3 apaisada, como la de scouting --------------------------- */
+/* El informe es ancho —tablas de métricas, barras comparadas, radar de 8
+   ejes— y en A4 vertical todo eso entra apretado en 190mm. */
+check('el informe se imprime en la hoja A3 apaisada',
+  /body\.modo-impresion \{ page: apaisada; \}/.test(html));
+check('y el ancho de la app deja de topearlo',
+  /body\.modo-impresion #informeSalida \{ max-width: none !important; \}/.test(html));
+
+/* --- Las tarjetas, con el gris del post-partido ---------------------- */
+/* El blanco absoluto desarmaba la jerarquía: todo parecía texto suelto.
+   Mismos valores que el post-partido, así los dos PDF se leen igual. */
+check('las tarjetas llevan el mismo gris que las del post-partido',
+  /body\.modo-impresion #informeSalida \.card,[\s\S]{0,400}background: #f1f5f9 !important;[\s\S]{0,80}border: 1px solid #cbd5e1/.test(html));
+check('y el mismo valor que usa el post-partido, no uno parecido',
+  (html.match(/background: #f1f5f9 !important/g) || []).length >= 2);
+check('el verde y el rojo significan lo mismo en los dos informes',
+  /body\.modo-impresion #informeSalida \.text-green-400 \{ color: #15803d/.test(html) &&
+  /body\.modo-impresion #informeSalida \.text-red-400 \{ color: #b91c1c/.test(html));
+
+/* --- Los gráficos no se montan sobre lo que sigue -------------------- */
+/* `.chart-box` fija la altura, pero el <canvas> se dimensiona solo con
+   `maintainAspectRatio: false` y se desborda sobre el pie de figura, el
+   encabezado de la tabla siguiente o la tabla misma. */
+check('el canvas queda confinado dentro de su caja',
+  /#informeSalida \.chart-box canvas \{[\s\S]{0,160}position: absolute; inset: 0;[\s\S]{0,160}height: 100% !important/.test(html));
+check('la caja del gráfico reserva su espacio y no se parte',
+  /#informeSalida \.chart-box \{[\s\S]{0,220}overflow: hidden;[\s\S]{0,120}page-break-inside: avoid/.test(html));
+/* Un radar es CUADRADO: su tamaño lo limita el lado más corto. Con 70mm de
+   alto quedaba diminuto en el centro de una hoja de 400mm de ancho. */
+check('la caja es alta para que el radar crezca de verdad',
+  /#informeSalida \.chart-box \{[\s\S]{0,60}height: 88mm !important/.test(html));
+check('el pie de figura no se separa de su gráfico',
+  /#informeSalida \.chart-box \+ p \{[\s\S]{0,100}page-break-before: avoid/.test(html));
+
+/* Las filas de los 8 ejes usan `px-2 -mx-2` para que el hover cubra todo el
+   ancho. En el papel el padre no tiene padding, así que esos 8px se salían
+   del área imprimible y cortaban el texto alineado a la derecha
+   ("Acelerado", "Va a la línea"…). Medido: 6 elementos a 1510px sobre un
+   informe de 1502. Después del fix: 0 desbordes. */
+check('la sangría negativa del hover se anula en el papel',
+  /body\.modo-impresion #informeSalida \.-mx-2 \{[\s\S]{0,120}margin-right: 0 !important/.test(html));
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);
