@@ -159,8 +159,13 @@ const SGADD_APP = (function () {
             </select>
           </div>`;
 
+    /* `no-imprimir`: la barra es un CONTROL de navegación, no contenido del
+       informe. En el papel sus `<select>` quedan ocultos por la regla general
+       de `@media print` y solo sobreviven las etiquetas —"CATEGORÍA", "FASE"—
+       colgando sobre una card vacía. La categoría activa ya viaja en el
+       encabezado de cada informe. */
     return `
-      <div class="card rounded-xl p-3 sm:p-4 border border-hairline">
+      <div class="card no-imprimir rounded-xl p-3 sm:p-4 border border-hairline">
         <div class="flex flex-col sm:flex-row sm:items-end gap-3">
           <div class="flex-1 min-w-0">
             <label class="block text-[11px] uppercase tracking-wider text-muted font-display mb-1">Categoría</label>

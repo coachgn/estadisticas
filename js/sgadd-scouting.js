@@ -2547,8 +2547,13 @@ function scoutSelectores(idx) {
   /* Fecha, torneo y próximo rival son los únicos datos del informe que la
      planilla NO tiene (no hay hoja de fixture). Van como campo manual: un
      scouting con una fecha inventada es peor que uno sin fecha. */
+  /* `no-imprimir`: este bloque es el FORMULARIO del informe, no el informe.
+     En el papel sus selects e inputs quedan ocultos y solo sobreviven las
+     etiquetas sueltas ("LOCAL", "VISITANTE", "FECHA DEL PARTIDO"…) sobre una
+     card vacía. Los valores que el DT carga acá se imprimen igual, en la
+     ficha del cruce del encabezado — ver `scoutCabeceraImpresa`. */
   return `
-    <div class="card rounded-xl p-4 sm:p-5 border border-hairline space-y-4">
+    <div class="card no-imprimir rounded-xl p-4 sm:p-5 border border-hairline space-y-4">
       <div>
         <h3 class="font-display uppercase tracking-wide text-sm text-ink">Informe pre-partido</h3>
         <p class="text-[11px] text-muted mt-1">
@@ -2838,7 +2843,7 @@ function scoutBloqueMatriz(inf) {
     </div>`;
 
   return `
-    <section class="scout-card scout-pagina card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="matriz">
+    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="matriz">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">📊 Métricas avanzadas y ranking en la liga</h4>
       <p class="text-[11px] text-muted mb-2">
         Verde = tercio alto de la liga, rojo = tercio bajo. El chip es el puesto en la liga de esa métrica.

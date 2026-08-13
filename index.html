@@ -528,8 +528,13 @@
       position: static !important;
     }
 
-    /* Nada de la app navegable entra al papel. */
+    /* Nada de la app navegable entra al papel. `.no-imprimir` vale para las
+       TRES exportaciones, no solo para la de scouting: marca lo que es
+       control y no contenido. Sin esto, esconder los `<select>` dejaba sus
+       etiquetas huérfanas ("CATEGORÍA", "FASE", "LOCAL", "VISITANTE")
+       flotando sobre una card vacía al principio del PDF. */
     aside, nav, header.sticky, button, select, input,
+    .no-imprimir,
     #modalInforme, #logosFaltantesPanel, [data-no-print] { display: none !important; }
 
     /* Cortes: una tarjeta o una tabla partida al medio arruina el informe. */
@@ -989,22 +994,22 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=67"></script>
-<script src="js/sgadd-core.js?v=67"></script>
-<script src="js/sgadd-ui.js?v=67"></script>
-<script src="js/sgadd-app.js?v=67"></script>
-<script src="js/sgadd-estados.js?v=67"></script>
-<script src="js/sgadd-buzon.js?v=67"></script>
-<script src="js/sgadd-charts.js?v=67"></script>
-<script src="js/sgadd-personalidad.js?v=67"></script>
-<script src="js/sgadd-rankings.js?v=67"></script>
-<script src="js/sgadd-partido.js?v=67"></script>
-<script src="js/sgadd-informe.js?v=67"></script>
-<script src="js/sgadd-equipos.js?v=67"></script>
-<script src="js/sgadd-jugadores.js?v=67"></script>
-<script src="js/sgadd-4factores.js?v=67"></script>
-<script src="js/sgadd-scouting.js?v=67"></script>
-<script src="js/sgadd-diagnostico.js?v=67"></script>
+<script src="js/sgadd-club.js?v=68"></script>
+<script src="js/sgadd-core.js?v=68"></script>
+<script src="js/sgadd-ui.js?v=68"></script>
+<script src="js/sgadd-app.js?v=68"></script>
+<script src="js/sgadd-estados.js?v=68"></script>
+<script src="js/sgadd-buzon.js?v=68"></script>
+<script src="js/sgadd-charts.js?v=68"></script>
+<script src="js/sgadd-personalidad.js?v=68"></script>
+<script src="js/sgadd-rankings.js?v=68"></script>
+<script src="js/sgadd-partido.js?v=68"></script>
+<script src="js/sgadd-informe.js?v=68"></script>
+<script src="js/sgadd-equipos.js?v=68"></script>
+<script src="js/sgadd-jugadores.js?v=68"></script>
+<script src="js/sgadd-4factores.js?v=68"></script>
+<script src="js/sgadd-scouting.js?v=68"></script>
+<script src="js/sgadd-diagnostico.js?v=68"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

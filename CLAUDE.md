@@ -26,11 +26,11 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  22 tests · detalle partido a partido
-node test-scouting.js      # 430 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-scouting.js      # 433 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1122 tests en total. Todos tienen que dar verde antes de commitear.**
+**1125 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -106,7 +106,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=67`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=68`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -556,6 +556,26 @@ imprime angosto en el medio de una hoja de 400mm.
 pegadas a la anterior. Se pagina con **`page-break-before` y no `after`**: si el
 DT destilda una card del medio, con `after` quedaba una hoja en blanco donde
 estaba la oculta.
+
+**El PDF arranca en el informe, no en los controles.** La barra de
+categoría/fase y el formulario del cruce llevan `.no-imprimir`: son controles,
+no contenido. Sin eso, esconder los `<select>` dejaba sus **etiquetas
+huérfanas** —"CATEGORÍA", "FASE", "LOCAL", "VISITANTE", "FECHA DEL PARTIDO"—
+flotando sobre dos cards vacías en la primera hoja. La categoría activa y los
+tres campos manuales ya viajan en la ficha del cruce del encabezado.
+
+`.no-imprimir` es una regla general de `@media print`, válida para las tres
+exportaciones: marca lo que es control y no contenido.
+
+**La matriz no fuerza hoja nueva**: si entra con el encabezado van juntas, si
+no, el navegador la baja entera (`page-break-inside: avoid`). Medido con
+Reconquista vs Atenas en A3 apaisada (1047px útiles): encabezado 251px + matriz
+973px = **1240px**, así que en ese cruce no llegan a convivir por ~190px. En un
+cruce con menos filas de ranking, sí.
+
+Alturas medidas de las demás, por si hay que volver a repartir: ciclo 426 ·
+plan colectivo 464 + resumen 203 · tabla de marcas 879 · jugadores 575 + claves
+351 · fichas 1635 (dos hojas).
 
 ```
 1 Encabezado · 2 Matriz · 3 Splits y ciclo

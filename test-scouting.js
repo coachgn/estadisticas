@@ -1753,7 +1753,9 @@ const seccionDe = (bloque, i) => {
 };
 const abreHoja = (b, i) => /\bscout-pagina\b/.test(seccionDe(b, i));
 
-['encabezado', 'matriz', 'ciclo', 'jugadores', 'fichas'].forEach(b =>
+/* `matriz` salió de esta lista a propósito: ya no fuerza hoja nueva, para
+   poder convivir con el encabezado cuando el espacio alcanza. */
+['encabezado', 'ciclo', 'jugadores', 'fichas'].forEach(b =>
   check('la card "' + b + '" abre hoja nueva', abreHoja(b)));
 /* Estos dos NO abren hoja: van con la card de arriba. Es el pedido
    explícito del club — el resumen se lee junto al plan que sintetiza, y
@@ -1937,6 +1939,26 @@ check('y el título del reporte también toma torneo y fecha',
   /scout-titulo-reporte/.test(scoutJs));
 check('los campos incluyen fecha, torneo, próximo rival y las dos claves',
   /dato\('Fecha del partido'[\s\S]{0,400}dato\('Plan defensivo de'/.test(scoutJs));
+
+/* EL PDF ARRANCA EN EL INFORME, NO EN LOS CONTROLES.
+
+   Esconder los `<select>` y los `<input>` dejaba sus ETIQUETAS huérfanas
+   —"CATEGORÍA", "FASE", "LOCAL", "VISITANTE", "FECHA DEL PARTIDO"— flotando
+   sobre dos cards vacías al principio del PDF. Son controles, no contenido:
+   la categoría activa y los tres campos manuales ya viajan en la ficha del
+   cruce del encabezado. */
+check('`.no-imprimir` vale para las TRES exportaciones, no solo para scouting',
+  /aside, nav, header\.sticky, button, select, input,\s*\n\s*\.no-imprimir,/.test(idxHtml));
+check('la barra de categoría/fase no entra al papel',
+  /card no-imprimir rounded-xl/.test(require('fs').readFileSync('./js/sgadd-app.js', 'utf8')));
+check('el formulario del cruce tampoco',
+  /<div class="card no-imprimir rounded-xl p-4 sm:p-5 border border-hairline space-y-4">/.test(scoutJs));
+/* Y la matriz deja de forzar hoja nueva: si entra con el encabezado, van
+   juntas; si no, el navegador la baja entera. Medido con Reconquista vs
+   Atenas: encabezado 251px + matriz 973px = 1240 contra 1047 de hoja A3
+   apaisada útil, así que en ESTE cruce no llegan a convivir. */
+check('la matriz ya no fuerza hoja nueva: convive con el encabezado si entra',
+  !/<section class="scout-card scout-pagina[^"]*" data-bloque="matriz">/.test(scoutJs));
 
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
