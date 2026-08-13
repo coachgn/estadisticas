@@ -2435,9 +2435,54 @@ function scoutCerrarExport() {
  * activa las reglas de `@media print` del index.html: sin esa clase, un
  * Ctrl+P normal sigue imprimiendo la página como siempre.
  */
+/**
+ * Convierte los escudos a `data:` URI antes de imprimir.
+ *
+ * POR QUÉ: al imprimir, el navegador vuelve a resolver el `src` de cada
+ * `<img>`. Cualquier cosa que falle en ese momento —la ruta relativa, el
+ * caché, el origen del documento— deja el escudo afuera del PDF sin ningún
+ * aviso. Con la imagen ya dibujada en un canvas y serializada, el `src` no
+ * depende de nada externo y el escudo entra siempre.
+ *
+ * Es sincrónico a propósito: las imágenes ya están cargadas en pantalla
+ * (`complete && naturalWidth`), así que `drawImage` no espera nada. Una que
+ * no esté lista se deja como está — mejor su `src` original que una imagen
+ * en blanco.
+ *
+ * `canvas.toDataURL()` puede tirar por lienzo contaminado si algún escudo
+ * viniera de otro origen; por eso va en try/catch y por eso se guarda el
+ * `src` original en `data-src` para poder restaurarlo al terminar.
+ */
+function scoutEmbeberEscudos() {
+  const imgs = document.querySelectorAll('#scoutInforme img');
+  Array.prototype.forEach.call(imgs, (img) => {
+    if (!img.complete || !img.naturalWidth) return;
+    if (img.getAttribute('src').indexOf('data:') === 0) return;
+    try {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      const datos = c.toDataURL('image/png');
+      img.setAttribute('data-src', img.getAttribute('src'));
+      img.setAttribute('src', datos);
+    } catch (e) { /* lienzo contaminado: se deja el src original */ }
+  });
+}
+
+/** Devuelve los escudos a su ruta original después de imprimir. */
+function scoutRestaurarEscudos() {
+  const imgs = document.querySelectorAll('#scoutInforme img[data-src]');
+  Array.prototype.forEach.call(imgs, (img) => {
+    img.setAttribute('src', img.getAttribute('data-src'));
+    img.removeAttribute('data-src');
+  });
+}
+
 function scoutImprimir() {
   scoutCerrarExport();
   SCOUT_CARDS.forEach(c => scoutCard(c.id, SCOUT_UI.cards[c.id]));
+  scoutActualizarCabeceraImpresa();
+  scoutEmbeberEscudos();
   /* La clase va en el <html> ADEMÁS del <body>. Las reglas de papel blanco
      de `@media print` apuntan a `:root, html, body` con `!important`, y una
      clase del body no le puede ganar al selector `html`: el informe salía
@@ -2448,6 +2493,7 @@ function scoutImprimir() {
   const limpiar = () => {
     document.documentElement.classList.remove('modo-scout-print');
     document.body.classList.remove('modo-scout-print');
+    scoutRestaurarEscudos();
     window.removeEventListener('afterprint', limpiar);
   };
   window.addEventListener('afterprint', limpiar);
@@ -2599,10 +2645,87 @@ function scoutBadgesADN(perfil) {
 function scoutNombreConLogo(nombre, alto) {
   const l = scoutLogo(nombre);
   const px = alto || 18;
+  /* Sin escudo resuelto NO se deja el hueco: va una insignia con las
+     iniciales. Antes se emitía cadena vacía, así que el informe quedaba sin
+     ninguna marca del equipo — y eso pasa siempre que el manifiesto de
+     logos no se pueda leer, por ejemplo abriendo el panel como `file://`,
+     donde el `fetch` del índice lo bloquea CORS. La insignia mantiene la
+     lectura y el ancho de la fila estable. */
+  const marca = l
+    ? `<img src="${escapeAttr(l)}" alt="" style="width:${px}px;height:${px}px"
+        class="escudo-scout object-contain shrink-0">`
+    : `<span class="escudo-scout escudo-iniciales shrink-0"
+        style="width:${px}px;height:${px}px;font-size:${Math.max(7, Math.round(px * 0.42))}px"
+        aria-hidden="true">${escapeHtml(scoutIniciales(nombre))}</span>`;
   return `<span class="inline-flex items-center gap-1.5 min-w-0">
-    ${l ? `<img src="${escapeAttr(l)}" alt="" style="width:${px}px;height:${px}px" class="object-contain shrink-0">` : ''}
+    ${marca}
     <span class="truncate">${escapeHtml(nombre)}</span>
   </span>`;
+}
+
+/** Iniciales del equipo para la insignia de respaldo. */
+function scoutIniciales(nombre) {
+  if (typeof LOGOS !== 'undefined' && LOGOS.iniciales) return LOGOS.iniciales(nombre);
+  return String(nombre || '?').split(/\s+/).filter(Boolean).slice(0, 2)
+    .map(p => p.charAt(0).toUpperCase()).join('');
+}
+
+/**
+ * Ficha del cruce para el PAPEL.
+ *
+ * El bloque de arriba de la pantalla —cruce, fecha, torneo, próximo rival—
+ * vive en `<select>` e `<input>`, y la regla general de `@media print`
+ * esconde todo control de formulario. Resultado: los tres datos que el DT
+ * carga a mano, que son justamente los que la planilla NO tiene, no salían
+ * en el PDF. Acá se repiten como texto plano, solo para imprimir.
+ *
+ * No se toca la regla que esconde los controles: en el papel un `<select>`
+ * se imprime como una caja con una flecha, que no es lo que hay que leer.
+ */
+function scoutCabeceraImpresa(inf) {
+  /* Las claves del cruce se guardan para poder REGENERAR este bloque justo
+     antes de imprimir, sin volver a calcular el informe entero. */
+  SCOUT_UI.__claveRival = inf.claveRival;
+  SCOUT_UI.__claveNuestro = inf.claveNuestro;
+  return `<div class="solo-imprimir scout-meta-impresa">${scoutCamposMeta()}</div>`;
+}
+
+function scoutCamposMeta() {
+  const dato = (label, valor) => valor
+    ? `<div>
+         <p class="text-[9px] uppercase tracking-widest text-muted font-display">${escapeHtml(label)}</p>
+         <p class="text-[11px] text-ink font-semibold">${escapeHtml(valor)}</p>
+       </div>`
+    : '';
+  return [
+    dato('Fecha del partido', SCOUT_UI.fecha),
+    dato('Torneo / instancia', SCOUT_UI.torneo),
+    dato('Próximo rival programado', SCOUT_UI.proximoRival),
+    dato('Equipo scouteado', SCOUT_UI.__claveRival),
+    dato('Plan defensivo de', SCOUT_UI.__claveNuestro),
+  ].filter(Boolean).join('');
+}
+
+/**
+ * Refresca la ficha del cruce justo antes de imprimir.
+ *
+ * `scoutMeta()` escribe en el estado y NO repinta la sección — si lo hiciera,
+ * cada tecla le sacaría el foco al input y sería imposible escribir un nombre
+ * completo. La contra es que el HTML de la cabecera queda con los valores que
+ * había al renderizar, o sea vacíos: la fecha y el torneo que el DT acababa
+ * de cargar no salían en el PDF. Se regenera acá, que es el único momento en
+ * que importa y donde ya nadie está tipeando.
+ */
+function scoutActualizarCabeceraImpresa() {
+  const el = document.querySelector('.scout-meta-impresa');
+  if (el) el.innerHTML = scoutCamposMeta();
+  /* El título del reporte también lleva torneo y fecha. */
+  const t = document.querySelector('[data-bloque="encabezado"] .scout-titulo-reporte');
+  if (t) {
+    t.textContent = 'Reporte de scouting'
+      + (SCOUT_UI.torneo ? ' · ' + SCOUT_UI.torneo : '')
+      + (SCOUT_UI.fecha ? ' · ' + SCOUT_UI.fecha : '');
+  }
 }
 
 function scoutChipRk(puesto, de) {
@@ -2644,9 +2767,10 @@ function scoutBloqueEncabezado(inf) {
 
   return `
     <section class="scout-card scout-pagina card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="encabezado">
-      <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-3">
+      <p class="scout-titulo-reporte text-[10px] uppercase tracking-widest text-accent font-display mb-3">
         Reporte de scouting${SCOUT_UI.torneo ? ' · ' + escapeHtml(SCOUT_UI.torneo) : ''}${SCOUT_UI.fecha ? ' · ' + escapeHtml(SCOUT_UI.fecha) : ''}
       </p>
+      ${scoutCabeceraImpresa(inf)}
       <div class="flex flex-col sm:flex-row gap-4">
         ${cara(inf.local, 'Local')}
         <div class="hidden sm:block w-px bg-hairline"></div>
@@ -3114,7 +3238,7 @@ function scoutBloqueFichas(inf) {
         Rol funcional, fortalezas, fisuras y plan de acción de cada rival. Cada punto cruza la métrica
         con su consecuencia en cancha.
       </p>
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">${fichas}</div>
+      <div class="scout-fichas-grid grid grid-cols-1 lg:grid-cols-2 gap-3">${fichas}</div>
     </section>`;
 }
 

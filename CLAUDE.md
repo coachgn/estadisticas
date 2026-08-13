@@ -26,11 +26,11 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  22 tests · detalle partido a partido
-node test-scouting.js      # 412 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-scouting.js      # 430 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1104 tests en total. Todos tienen que dar verde antes de commitear.**
+**1122 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -106,7 +106,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=63`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=67`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -453,24 +453,64 @@ Hay **tres** exportaciones, y no comparten criterio de color:
 Enfoque: `window.print()` + `@media print`. **No usar html2pdf/jsPDF**: los
 canvas de Chart.js no rasterizan bien y los cortes de página quedan mal.
 
-### Cómo verificarlo sin impresora
+### Cómo verificarlo · GENERAR EL PDF, no leer el CSS
 
-El bloque `@media print` no se puede inspeccionar con DevTools desde acá. Lo
-que sí funciona: **volcar las reglas de `@media print` a un `<style>` sin la
-media query** y aplicar las clases de modo a mano. El layout queda idéntico al
-del papel y se puede medir con `getComputedStyle` y `getBoundingClientRect`.
-Es como se midieron los números de abajo.
+**Se puede generar el PDF real y auditarlo.** Es la única forma de no
+adivinar, y ya evitó tres diagnósticos equivocados. Chrome está en
+`C:\Program Files\Google\Chrome\Application\chrome.exe`:
+
+1. `chrome --headless=new --remote-debugging-port=9222 --user-data-dir=<tmp>`
+2. Por CDP (`fetch` a `127.0.0.1:9222/json/list` + `WebSocket`, ambos nativos
+   en Node): `Page.navigate` → `Runtime.evaluate` para armar el cruce →
+   `Page.printToPDF` con `preferCSSPageSize: true`.
+3. El PDF se audita **sin librerías**, leyendo el archivo con Python: los
+   `/MediaBox` dan el tamaño de cada hoja, `/Subtype /Image` cuenta los
+   escudos incrustados, y descomprimiendo el primer stream con `zlib` se lee
+   el color de relleno inicial —que es el fondo de la hoja—.
+
+Para mirar el resultado sin renderizar el PDF: `Emulation.setEmulatedMedia`
+con `media: 'print'` + `Page.captureScreenshot` con `clip`, al ancho real de
+la hoja. Da la imagen fiel de cada bloque.
+
+Alternativa liviana sin Chrome aparte: **volcar las reglas de `@media print` a
+un `<style>` sin la media query** y aplicar las clases de modo a mano. Sirve
+para medir con `getComputedStyle`, pero **no ve `@page`**: el tamaño de hoja y
+los cortes de página solo se verifican con el PDF de verdad.
 
 Ojo: **el Browser pane inlinea los `file://` como `data:` URL**, lo que rompe
 los `<script src="js/…">` relativos y deja la app sin cargar. Hay un
 `.claude/launch.json` que levanta `python -m http.server 8765` para probar
 sobre HTTP real.
 
+**Y ojo con `file://` en general**: ahí `LOGOS.resolver()` no puede leer el
+manifiesto (`fetch` bloqueado por CORS) y el panel queda **sin un solo
+escudo** — medido, 0 en `file://` contra 12 en `http://`. No es un bug del
+panel: es que el sitio está pensado para servirse.
+
 ### 7.1 · Scouting · RESUELTO
 
-**Se imprime con los colores vigentes de la app**, no en blanco y negro. Es un
-PDF que se lee en pantalla y se comparte por WhatsApp, no una hoja para la
-impresora hogareña.
+**La hoja va BLANCA y las cards conservan el color de la app.** Ese contraste
+es el que hace legible el informe: cada card queda recortada sobre el papel en
+vez de fundirse con él. Antes la hoja entera salía casi negra de borde a
+borde.
+
+**La causa real de los "márgenes negros"** —el problema #1 del punto 7, que
+estuvo abierto meses— es `:root { color-scheme: dark }`: hace que Chrome pinte
+el **lienzo** de la página (lo que queda detrás de todo, márgenes incluidos)
+con su gris por defecto **#121212**, y lo pinta *antes* que el documento, así
+que ningún `background: #fff` lo tapa. Medido en el PDF: el primer relleno de
+cada hoja era exactamente `RGB(18,18,18)`. Se apaga con `color-scheme: light`
+en el modo de impresión. Ninguna cantidad de `!important` sobre `html`, `body`
+o `.bg-base` lo hubiera resuelto.
+
+**Dos efectos colaterales de la hoja blanca**, los dos ya corregidos:
+
+- El texto **sin clase de color propia** hereda el `#111` del body y queda
+  casi negro *dentro* de la card. Pasaba con los nombres de métrica de los
+  rankings (*"4° de 12 en PACE"*). Se arregla devolviendo el color claro a
+  `.scout-card` / `.scout-ficha`.
+- Lo que vive **fuera** de una card necesita el color oscuro explícito, o
+  desaparece sobre el blanco.
 
 **El aplanado a papel blanco está condicionado a `html:not(.modo-scout-print)`,
 y esa es la única forma que funciona.** Intentar revertirlo desde el modo scout
@@ -489,7 +529,28 @@ selector `html`.
 descarta todo fondo al imprimir y el informe saldría en blanco con el texto
 claro encima.
 
-### 7.2 · Las hojas del informe de scouting
+### 7.2 · El tamaño de hoja · A3 apaisada
+
+```
+A4 vertical   210 × 297 mm
+A3 apaisada   420 × 297 mm   ← mismo alto, el doble de ancho
+```
+
+Es exactamente *"el mismo largo que A4 pero más ancha"* que pidió el club, sin
+inventar una medida. Con margen 10mm quedan **400mm útiles (≈1512px)**: la
+tabla de marcas entra holgada y las fichas de jugador van **de a dos por
+fila** (`.scout-fichas-grid`). El informe bajó de **11 a 8 páginas**.
+
+**La `page` va en el `body`, no solo en las cards.** `@page` a secas no se
+puede condicionar por clase, así que la hoja por defecto sigue siendo la A4
+vertical de las otras dos exportaciones; sin esa línea, el arranque del
+documento y todo lo que quede fuera de una card genera **hojas A4 sueltas
+mezcladas con las A3**. Medido: el PDF salía con los dos tamaños.
+
+También hay que soltar el `max-width` de la app (`1600px`) o el contenido se
+imprime angosto en el medio de una hoja de 400mm.
+
+### 7.2 bis · Las hojas del informe
 
 `.scout-pagina` marca las cards que **abren** hoja; las que no la llevan quedan
 pegadas a la anterior. Se pagina con **`page-break-before` y no `after`**: si el
@@ -542,14 +603,43 @@ neutralizado** en `@media print`: en el PDF blanco y negro daba texto gris
 `position: sticky` en los dos modos — en papel no sirve y desalinea la tabla al
 paginar.
 
-### 7.5 · Lo que sigue abierto
+### 7.5 · Escudos y campos manuales · lo que NO llegaba al papel
+
+**Los escudos salían en CERO.** Medido sobre el PDF: `/Subtype /Image` daba 0.
+Dos causas distintas, las dos corregidas:
+
+1. **Sin escudo resuelto no se emitía nada** (`${l ? '<img…>' : ''}`), así que
+   el informe quedaba sin ninguna marca del equipo. Ahora va una **insignia
+   con las iniciales** (`.escudo-iniciales`). Es lo que pasa siempre que el
+   manifiesto no se pueda leer — con el panel abierto como `file://`, por
+   ejemplo.
+2. **Al imprimir, el navegador vuelve a resolver el `src` de cada `<img>`**, y
+   cualquier cosa que falle en ese momento —ruta, caché, origen— deja el
+   escudo afuera del PDF sin ningún aviso. `scoutEmbeberEscudos()` los pasa a
+   **`data:` URI** con un canvas antes de imprimir, y `scoutRestaurarEscudos()`
+   los devuelve en `afterprint`. Con la imagen serializada el `src` no depende
+   de nada externo.
+
+**Los campos manuales tampoco se imprimían.** Fecha, torneo y próximo rival
+—justo los tres datos que la planilla NO tiene— viven en `<input>`, y la regla
+general de `@media print` esconde todo control de formulario. Ahora se repiten
+como texto en `.scout-meta-impresa`, dentro de un `.solo-imprimir`.
+
+Con un detalle que costó: **`scoutMeta()` no repinta a propósito** (cada tecla
+le sacaría el foco al input), así que el HTML de esa cabecera queda con los
+valores que había al renderizar, o sea vacíos.
+`scoutActualizarCabeceraImpresa()` la regenera al imprimir, que es el único
+momento en que importa y donde ya nadie está tipeando.
+
+### 7.6 · Lo que sigue abierto
 
 - **Márgenes negros del informe de equipo y del post-partido.** El aplanado a
   blanco está escrito y ahora condicionado, pero **no se verificó contra una
   impresora real** — solo con la simulación de arriba.
-- **`@page` no se puede condicionar por clase del body**, así que la vertical
-  (`A4 portrait, 12mm 10mm`) es compartida por las tres exportaciones. Un cambio
-  de página afecta a todas: probarlas juntas.
+- **`@page` a secas no se puede condicionar por clase del body.** La vertical
+  (`A4 portrait, 12mm 10mm`) la comparten el informe de equipo y el
+  post-partido; Scouting se sale de ahí con su `@page` nombrada. Un cambio en
+  la vertical afecta a las otras dos: probarlas juntas.
 
 ### Presupuesto medido (A4, margen 10mm = 277mm útiles)
 

@@ -588,16 +588,49 @@
        `print-color-adjust: exact` es obligatorio: sin él Chromium descarta
        fondos e imágenes al imprimir y quedaría todo blanco igual.
        ----------------------------------------------------------------- */
-    /* Como el aplanado de arriba ya se excluyó con `:not(.modo-scout-print)`,
-       acá NO hace falta redeclarar un solo color: las clases originales de
-       la app siguen vigentes y el papel sale igual que la pantalla. Lo único
-       que se agrega es lo que el navegador no infiere solo. */
+    /* -----------------------------------------------------------------
+       LA HOJA VA BLANCA · LAS CARDS CONSERVAN SU COLOR
+
+       Ese contraste es el que hace legible el informe impreso: cada card
+       queda recortada sobre el papel en vez de fundirse con él. Antes la
+       hoja entera salía casi negra (medido en el PDF: RGB 18,18,18) y el
+       resultado era una mancha oscura de borde a borde.
+
+       Como el aplanado a blanco y negro ya se excluyó con
+       `:not(.modo-scout-print)`, las clases originales de la app siguen
+       vigentes DENTRO de las cards y no hace falta redeclarar un color.
+       ----------------------------------------------------------------- */
     html.modo-scout-print,
     html.modo-scout-print body {
-      background: #0a0a0a !important;
-      background-color: #0a0a0a !important;
-      color: #F9FAFB;
+      background: #ffffff !important;
+      background-color: #ffffff !important;
+      color: #111;
+      /* `:root { color-scheme: dark }` hace que Chrome pinte el LIENZO de la
+         página —lo que queda detrás de todo, incluidos los márgenes— con su
+         gris oscuro por defecto, #121212. Medido en el PDF: el primer
+         relleno de cada hoja era exactamente RGB(18,18,18), y ningún
+         `background: #fff` lo tapaba porque se pinta antes que el documento.
+         Es la causa real de los "márgenes negros" del punto 7. */
+      color-scheme: light;
     }
+    /* Los contenedores intermedios también: cualquiera con fondo propio
+       vuelve a pintar la hoja de oscuro. */
+    html.modo-scout-print .bg-base,
+    html.modo-scout-print [class*="bg-base"],
+    html.modo-scout-print #view-root,
+    html.modo-scout-print #app,
+    html.modo-scout-print #scoutInforme { background: transparent !important; }
+    /* Lo poco que vive FUERA de una card iría claro sobre blanco: el texto
+       suelto se oscurece para que no desaparezca. */
+    html.modo-scout-print #scoutInforme > p,
+    html.modo-scout-print #scoutInforme > h3 { color: #111 !important; }
+    /* …y DENTRO de la card se vuelve al claro. Sin esta línea, todo el texto
+       que no lleva una clase de color propia hereda el `#111` del body y
+       queda casi negro sobre el fondo oscuro de la card: pasaba con los
+       nombres de métrica de los rankings ("4° de 12 en PACE"), que se
+       imprimían ilegibles. Es la contracara de haber puesto la hoja blanca. */
+    html.modo-scout-print .scout-card,
+    html.modo-scout-print .scout-ficha { color: #F9FAFB; }
     /* Obligatorio: sin esto Chromium descarta TODO fondo e imagen al
        imprimir y el informe saldría en blanco igual, con el texto claro
        encima — o sea ilegible. */
@@ -664,11 +697,53 @@
           nombrada, esta sola alcanza para que la columna entre —apretada,
           pero entera—. O sea: la columna no depende del landscape.
        ----------------------------------------------------------------- */
-    @page apaisada { size: A4 landscape; margin: 10mm; }
-    html.modo-scout-print .scout-pagina-ancha { page: apaisada; }
+    /* -----------------------------------------------------------------
+       EL TAMAÑO DE HOJA DEL INFORME · A3 apaisada
+
+       Pedido: "el mismo largo que A4, pero lo suficientemente ancha para
+       que entren todas las tablas y dos fichas de jugador una al lado de
+       la otra". A3 apaisada es exactamente eso y no hay que inventar una
+       medida:
+
+           A4 vertical  210 × 297 mm
+           A3 apaisada  420 × 297 mm   ← mismo alto, el doble de ancho
+
+       Con margen 10mm quedan 400mm útiles (≈1512px): la tabla de marcas
+       entra holgada y las fichas van de a dos por fila.
+
+       Se aplica a TODO el informe de scouting, no solo a la tabla: mezclar
+       tamaños dentro de un mismo PDF obliga al DT a rotar hojas para
+       leerlo, y la carpeta del cuerpo técnico es de un solo formato.
+       ----------------------------------------------------------------- */
+    @page apaisada { size: A3 landscape; margin: 10mm; }
+    /* La `page` va en el BODY y no solo en las cards. `@page` a secas no se
+       puede condicionar por clase, así que la hoja por defecto sigue siendo
+       la A4 vertical que usan las otras dos exportaciones; sin esta línea,
+       todo lo que quedara fuera de una card —y el arranque del documento—
+       generaba hojas A4 sueltas mezcladas con las A3. Medido: el PDF salía
+       con los dos tamaños. */
+    html.modo-scout-print body,
+    html.modo-scout-print .scout-card { page: apaisada; }
     html.modo-scout-print .scrollbox {
       overflow: visible !important;
       max-width: none !important;
+    }
+    /* El ancho de la app está topeado en 1600px para pantalla; en el papel
+       tiene que ocupar la hoja entera. */
+    html.modo-scout-print #view-root,
+    html.modo-scout-print main { max-width: none !important; padding: 0 !important; }
+
+    /* -----------------------------------------------------------------
+       FICHAS DE JUGADOR · dos por fila
+
+       En una hoja de 400mm útiles, una ficha por fila deja media hoja en
+       blanco y estira el informe a el doble de páginas.
+       ----------------------------------------------------------------- */
+    html.modo-scout-print [data-bloque="fichas"] .scout-fichas-grid {
+      display: grid !important;
+      grid-template-columns: 1fr 1fr;
+      gap: 4mm;
+      align-items: start;
     }
     html.modo-scout-print .tabla-marcas {
       min-width: 0 !important;
@@ -702,6 +777,34 @@
   /* Fuera de impresion el helper no hace nada visible: existe para que
      el modal de export y los controles no entren al PDF. */
   @media screen { .no-imprimir { } }
+
+  /* Al reves: lo que existe SOLO para el papel. La ficha del cruce (fecha,
+     torneo, proximo rival) se repite ahi como texto porque en pantalla vive
+     en inputs, y `@media print` esconde todo control de formulario. */
+  .solo-imprimir { display: none; }
+  @media print {
+    .solo-imprimir { display: block; }
+    .scout-meta-impresa {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fit, minmax(38mm, 1fr));
+      gap: 2mm 5mm;
+      padding: 2mm 0 3mm;
+      margin-bottom: 3mm;
+      border-bottom: 1px solid #282828;
+    }
+  }
+
+  /* Insignia de respaldo cuando un equipo no tiene escudo resuelto. Sin
+     esto el informe quedaba sin ninguna marca del equipo — pasa siempre que
+     el manifiesto de logos no se pueda leer (por ejemplo abriendo el panel
+     como file://, donde el fetch del indice lo bloquea CORS). */
+  .escudo-iniciales {
+    display: inline-grid; place-items: center;
+    border-radius: 50%;
+    background: #1c1c1f; border: 1px solid #333;
+    color: #a8b0bd; font-weight: 700; line-height: 1;
+    letter-spacing: .02em;
+  }
 
   .card { background: #141414; border: 1px solid #282828; transition: border-color .15s ease; }
   .card:hover { border-color: #3a3a3a; }
@@ -886,22 +989,22 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=63"></script>
-<script src="js/sgadd-core.js?v=63"></script>
-<script src="js/sgadd-ui.js?v=63"></script>
-<script src="js/sgadd-app.js?v=63"></script>
-<script src="js/sgadd-estados.js?v=63"></script>
-<script src="js/sgadd-buzon.js?v=63"></script>
-<script src="js/sgadd-charts.js?v=63"></script>
-<script src="js/sgadd-personalidad.js?v=63"></script>
-<script src="js/sgadd-rankings.js?v=63"></script>
-<script src="js/sgadd-partido.js?v=63"></script>
-<script src="js/sgadd-informe.js?v=63"></script>
-<script src="js/sgadd-equipos.js?v=63"></script>
-<script src="js/sgadd-jugadores.js?v=63"></script>
-<script src="js/sgadd-4factores.js?v=63"></script>
-<script src="js/sgadd-scouting.js?v=63"></script>
-<script src="js/sgadd-diagnostico.js?v=63"></script>
+<script src="js/sgadd-club.js?v=67"></script>
+<script src="js/sgadd-core.js?v=67"></script>
+<script src="js/sgadd-ui.js?v=67"></script>
+<script src="js/sgadd-app.js?v=67"></script>
+<script src="js/sgadd-estados.js?v=67"></script>
+<script src="js/sgadd-buzon.js?v=67"></script>
+<script src="js/sgadd-charts.js?v=67"></script>
+<script src="js/sgadd-personalidad.js?v=67"></script>
+<script src="js/sgadd-rankings.js?v=67"></script>
+<script src="js/sgadd-partido.js?v=67"></script>
+<script src="js/sgadd-informe.js?v=67"></script>
+<script src="js/sgadd-equipos.js?v=67"></script>
+<script src="js/sgadd-jugadores.js?v=67"></script>
+<script src="js/sgadd-4factores.js?v=67"></script>
+<script src="js/sgadd-scouting.js?v=67"></script>
+<script src="js/sgadd-diagnostico.js?v=67"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

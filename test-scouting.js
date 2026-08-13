@@ -1794,10 +1794,10 @@ check('y el orden de las hojas es el pedido, sin saltos',
 /* La tabla mide 62rem y en A4 vertical el área útil es ~190mm: la última
    columna caía FUERA de la página y Chromium no la imprimía. Hacen falta
    las dos correcciones, y la segunda sola ya alcanza para que entre. */
-check('la hoja de la tabla declara una @page apaisada',
-  /@page apaisada \{ size: A4 landscape/.test(idxHtml));
-check('y la clase la aplica con la propiedad `page`',
-  /\.scout-pagina-ancha \{ page: apaisada; \}/.test(idxHtml));
+/* La hoja pasó de A4 apaisada a A3 apaisada: ver la sección 26. Acá solo
+   se verifica que la tabla siga marcada como la que necesita el ancho. */
+check('la tabla de marcas sigue marcada como hoja ancha',
+  /scout-pagina scout-pagina-ancha/.test(scoutJs));
 /* El min-width es un estilo INLINE: sin !important no se le puede ganar. */
 check('el min-width de 62rem se anula con !important (es inline)',
   /\.tabla-marcas \{[\s\S]{0,120}min-width: 0 !important/.test(idxHtml));
@@ -1820,8 +1820,10 @@ check('el aplanado a blanco y negro excluye al modo scout',
 check('y también el fondo blanco de la hoja',
   /html:not\(\.modo-scout-print\) body \{[\s\S]{0,120}background: #ffffff !important/.test(idxHtml) ||
   /html:not\(\.modo-scout-print\),[\s\S]{0,120}background: #ffffff !important/.test(idxHtml));
-check('el modo scout imprime con el fondo oscuro de la app',
-  /html\.modo-scout-print,[\s\S]{0,80}body \{[\s\S]{0,80}background: #0a0a0a !important/.test(idxHtml));
+/* La hoja ya NO se imprime oscura: va blanca y el color queda en las
+   cards, que es lo que hace el contraste. Se verifica en la sección 26. */
+check('las cards conservan su color propio sobre la hoja blanca',
+  /html:not\(\.modo-scout-print\) \.card,/.test(idxHtml));
 /* Sin esto Chromium descarta todo fondo al imprimir y saldría en blanco. */
 check('print-color-adjust: exact, o el navegador tira los fondos',
   /html\.modo-scout-print, html\.modo-scout-print \* \{[\s\S]{0,140}print-color-adjust: exact !important/.test(idxHtml));
@@ -1852,6 +1854,89 @@ check('la primera no arrastra una hoja en blanco adelante',
 /* El valor que el DT cargó a mano ES el contenido del informe. */
 check('los inputs editables de marcas SÍ se imprimen',
   /html\.modo-scout-print \.scout-card input\[type="text"\] \{[\s\S]{0,120}display: block !important/.test(idxHtml));
+
+/* =====================================================================
+   AUDITORÍA CONTRA EL PDF REAL
+
+   Todo lo de acá abajo salió de medir un PDF generado con Chrome, no de
+   leer el CSS: 8 páginas, un solo tamaño de hoja, primer relleno blanco,
+   escudos incrustados.
+   ===================================================================== */
+console.log('\n26. PDF · lo que se midió sobre el archivo generado');
+console.log('═'.repeat(70));
+
+/* Hoja A3 apaisada: "el mismo largo que A4, más ancha". 420×297 contra
+   210×297 — mismo alto exacto, el doble de ancho. */
+check('la hoja del informe es A3 apaisada, no A4',
+  /@page apaisada \{ size: A3 landscape/.test(idxHtml));
+/* Sin la `page` en el body, el arranque del documento y todo lo que
+   quedara fuera de una card generaba hojas A4 sueltas: el PDF salía con
+   los dos tamaños mezclados. */
+check('la página apaisada se aplica también al body, o salen hojas A4 sueltas',
+  /html\.modo-scout-print body,[\s\S]{0,80}\.scout-card \{ page: apaisada; \}/.test(idxHtml));
+check('el ancho de la app deja de estar topeado en el papel',
+  /html\.modo-scout-print #view-root,[\s\S]{0,80}max-width: none !important/.test(idxHtml));
+check('las fichas de jugador van de a dos por hoja',
+  /\.scout-fichas-grid \{[\s\S]{0,120}grid-template-columns: 1fr 1fr/.test(idxHtml));
+check('y el contenedor lleva la clase que la CSS engancha',
+  /class="scout-fichas-grid/.test(scoutJs));
+
+/* LA HOJA VA BLANCA Y LAS CARDS CONSERVAN SU COLOR: ese contraste es el
+   que hace legible el informe. Medido en el PDF viejo: el primer relleno
+   de cada hoja era RGB(18,18,18) de borde a borde. */
+check('la hoja se imprime blanca',
+  /html\.modo-scout-print,[\s\S]{0,120}background: #ffffff !important/.test(idxHtml));
+/* La causa REAL de los "márgenes negros" del punto 7: `color-scheme: dark`
+   hace que Chrome pinte el lienzo de la página con su #121212 antes que el
+   documento, así que ningún `background: #fff` lo tapaba. */
+check('y se apaga color-scheme: dark, que pintaba el lienzo de #121212',
+  /html\.modo-scout-print[\s\S]{0,900}color-scheme: light/.test(idxHtml));
+check('los contenedores intermedios no vuelven a pintar la hoja de oscuro',
+  /html\.modo-scout-print #view-root,[\s\S]{0,200}background: transparent !important/.test(idxHtml));
+/* Contracara de la hoja blanca: el texto sin clase propia hereda el #111
+   del body y queda casi negro DENTRO de la card. Pasaba con los nombres de
+   métrica de los rankings ("4° de 12 en PACE"). */
+check('dentro de la card el texto heredado vuelve a ser claro',
+  /html\.modo-scout-print \.scout-card,[\s\S]{0,80}\.scout-ficha \{ color: #F9FAFB; \}/.test(idxHtml));
+
+/* ESCUDOS. Medido: el PDF salía con CERO imágenes. */
+/* (a) Sin escudo resuelto no se dejaba nada; ahora va una insignia con las
+   iniciales. Pasa siempre que el manifiesto no se pueda leer — por ejemplo
+   con el panel abierto como file://, donde el fetch del índice lo bloquea
+   CORS: medido, 0 escudos en file:// contra 12 en http://. */
+check('sin escudo resuelto se pinta una insignia con las iniciales',
+  /escudo-iniciales/.test(scoutJs) && /\.escudo-iniciales \{/.test(idxHtml));
+check('y NO se emite una cadena vacía como antes',
+  !/\$\{l \? `<img[\s\S]{0,200}` : ''\}\s*\n\s*<span class="truncate">/.test(scoutJs));
+/* (b) Al imprimir, el navegador re-resuelve el `src` de cada <img>, y
+   cualquier cosa que falle ahí deja el escudo afuera del PDF sin avisar.
+   Serializados a data: URI, el src no depende de nada externo. */
+check('los escudos se embeben como data: URI antes de imprimir',
+  /function scoutEmbeberEscudos/.test(scoutJs) && /toDataURL\('image\/png'\)/.test(scoutJs));
+check('y se restauran al terminar, para no dejar el DOM con blobs',
+  /function scoutRestaurarEscudos/.test(scoutJs) &&
+  /scoutRestaurarEscudos\(\);/.test(scoutJs));
+check('scoutImprimir() los embebe',
+  /scoutEmbeberEscudos\(\);/.test(scoutJs.slice(scoutJs.indexOf('function scoutImprimir'))));
+
+/* LOS CAMPOS MANUALES. `@media print` esconde todo control de formulario,
+   así que fecha, torneo y próximo rival —los tres datos que la planilla NO
+   tiene— no salían en el PDF. */
+check('la ficha del cruce se repite como texto solo para el papel',
+  /function scoutCabeceraImpresa/.test(scoutJs) && /solo-imprimir scout-meta-impresa/.test(scoutJs));
+check('.solo-imprimir se muestra únicamente al imprimir',
+  /\.solo-imprimir \{ display: none; \}/.test(idxHtml) &&
+  /@media print \{\s*\.solo-imprimir \{ display: block; \}/.test(idxHtml));
+/* `scoutMeta()` no repinta a propósito —cada tecla le sacaría el foco al
+   input— así que el HTML de la cabecera queda con los valores que había al
+   renderizar: vacíos. Se regenera al imprimir, que es cuando importa. */
+check('la cabecera se regenera al imprimir, o sale con los campos vacíos',
+  /function scoutActualizarCabeceraImpresa/.test(scoutJs) &&
+  /scoutActualizarCabeceraImpresa\(\);/.test(scoutJs.slice(scoutJs.indexOf('function scoutImprimir'))));
+check('y el título del reporte también toma torneo y fecha',
+  /scout-titulo-reporte/.test(scoutJs));
+check('los campos incluyen fecha, torneo, próximo rival y las dos claves',
+  /dato\('Fecha del partido'[\s\S]{0,400}dato\('Plan defensivo de'/.test(scoutJs));
 
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
