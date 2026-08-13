@@ -1733,6 +1733,126 @@ check('el informe pasa el perfil del atacante al motor de candidatos',
   /candidatosPropios\(cat\.id, señalesPropias, cargaPropia, \{ atacante: f\.perfil \}\)/
     .test(fuenteCruce));
 
+/* =====================================================================
+   EXPORTACIÓN A PDF · paginado, colores y la columna que se perdía
+   ===================================================================== */
+console.log('\n25. PDF DE SCOUTING · hojas, colores y ancho de la tabla');
+console.log('═'.repeat(70));
+
+const idxHtml = require('fs').readFileSync('./index.html', 'utf8');
+const scoutJs = require('fs').readFileSync('./js/sgadd-scouting.js', 'utf8');
+
+/* --- Agrupación de cards por hoja --------------------------------- */
+/* Las que ABREN hoja llevan `scout-pagina`; las que no, quedan pegadas a
+   la anterior. Así se arman los pares que el cuerpo técnico lee juntos. */
+const seccionDe = (bloque, i) => {
+  const re = new RegExp('<section class="([^"]*)"[\\s\\n]*data-bloque="' + bloque + '">', 'g');
+  const todas = []; let m;
+  while ((m = re.exec(scoutJs))) todas.push(m[1]);
+  return todas[i || 0] || '';
+};
+const abreHoja = (b, i) => /\bscout-pagina\b/.test(seccionDe(b, i));
+
+['encabezado', 'matriz', 'ciclo', 'jugadores', 'fichas'].forEach(b =>
+  check('la card "' + b + '" abre hoja nueva', abreHoja(b)));
+/* Estos dos NO abren hoja: van con la card de arriba. Es el pedido
+   explícito del club — el resumen se lee junto al plan que sintetiza, y
+   las claves junto a la tabla de jugadores que las dispara. */
+check('"resumen" NO abre hoja: va junto al plan colectivo',
+  !abreHoja('resumen'), seccionDe('resumen'));
+check('"claves" NO abre hoja: va junto a la tabla de jugadores',
+  !abreHoja('claves'), seccionDe('claves'));
+
+/* El bloque de marcas son DOS sections con el mismo data-bloque. */
+check('el plan de marcas se parte en dos sections',
+  (scoutJs.match(/<section class="[^"]*"[\s\n]*data-bloque="marcas">/g) || []).length === 2,
+  (scoutJs.match(/<section class="[^"]*"[\s\n]*data-bloque="marcas">/g) || []).length);
+check('la segunda es la TABLA, y va apaisada',
+  /\bscout-pagina\b/.test(seccionDe('marcas', 1)) &&
+  /\bscout-pagina-ancha\b/.test(seccionDe('marcas', 1)));
+check('el panel colectivo abre hoja pero NO es el apaisado',
+  abreHoja('marcas', 0) && !/scout-pagina-ancha/.test(seccionDe('marcas', 0)));
+/* Un solo checkbox controla las dos: con `querySelector` en singular,
+   destildar "Plan individual" dejaba la tabla en el PDF igual. */
+check('scoutCard() alcanza a las DOS sections del bloque',
+  /querySelectorAll\('\.scout-card\[data-bloque="' \+ id \+ '"\]'\)/.test(scoutJs) ||
+  /querySelectorAll\('\.scout-card\[data-bloque="' \+ id/.test(scoutJs));
+
+/* El orden de render define el orden de las hojas. */
+const orden = ['Encabezado', 'Matriz', 'Ciclo', 'Marcas(inf)', 'Resumen', 'MarcasTabla', 'Jugadores', 'Claves', 'Fichas']
+  .map(x => 'scoutBloque' + x.replace('(inf)', ''));
+const cuerpoInforme = scoutJs.slice(scoutJs.indexOf('<div id="scoutInforme"'));
+const posiciones = orden.map(f => cuerpoInforme.indexOf(f + '(inf)'));
+check('el resumen va ANTES de la tabla de marcas, no después',
+  posiciones[4] > 0 && posiciones[5] > 0 && posiciones[4] < posiciones[5],
+  posiciones.join(','));
+check('y el orden de las hojas es el pedido, sin saltos',
+  posiciones.every((p, i) => p > 0 && (i === 0 || p > posiciones[i - 1])),
+  posiciones.join(','));
+
+/* --- La columna "Restricción / alerta" ----------------------------- */
+/* La tabla mide 62rem y en A4 vertical el área útil es ~190mm: la última
+   columna caía FUERA de la página y Chromium no la imprimía. Hacen falta
+   las dos correcciones, y la segunda sola ya alcanza para que entre. */
+check('la hoja de la tabla declara una @page apaisada',
+  /@page apaisada \{ size: A4 landscape/.test(idxHtml));
+check('y la clase la aplica con la propiedad `page`',
+  /\.scout-pagina-ancha \{ page: apaisada; \}/.test(idxHtml));
+/* El min-width es un estilo INLINE: sin !important no se le puede ganar. */
+check('el min-width de 62rem se anula con !important (es inline)',
+  /\.tabla-marcas \{[\s\S]{0,120}min-width: 0 !important/.test(idxHtml));
+check('el scrollbox deja de recortar al imprimir',
+  /html\.modo-scout-print \.scrollbox \{[\s\S]{0,80}overflow: visible !important/.test(idxHtml));
+check('la tabla se reparte el ancho de la hoja en vez de desbordarla',
+  /\.tabla-marcas \{[\s\S]{0,200}width: 100% !important[\s\S]{0,80}table-layout: fixed/.test(idxHtml));
+check('un texto largo parte de línea en vez de ensanchar la columna',
+  /\.tabla-marcas td[\s\S]{0,200}overflow-wrap: anywhere/.test(idxHtml));
+check('la tabla lleva la clase que la CSS engancha',
+  /class="tabla-marcas w-full text-left"/.test(scoutJs));
+
+/* --- Colores de la app en el papel --------------------------------- */
+/* El aplanado a blanco y negro es para las OTRAS dos exportaciones. Si no
+   se lo excluye de raíz, `body * { color: #111 !important }` gana sobre
+   cualquier regla del modo scout y deja el texto casi negro sobre fondo
+   oscuro: INVISIBLE. Medido: 0 elementos en #111 después del fix. */
+check('el aplanado a blanco y negro excluye al modo scout',
+  /html:not\(\.modo-scout-print\) body \* \{ color: #111 !important; \}/.test(idxHtml));
+check('y también el fondo blanco de la hoja',
+  /html:not\(\.modo-scout-print\) body \{[\s\S]{0,120}background: #ffffff !important/.test(idxHtml) ||
+  /html:not\(\.modo-scout-print\),[\s\S]{0,120}background: #ffffff !important/.test(idxHtml));
+check('el modo scout imprime con el fondo oscuro de la app',
+  /html\.modo-scout-print,[\s\S]{0,80}body \{[\s\S]{0,80}background: #0a0a0a !important/.test(idxHtml));
+/* Sin esto Chromium descarta todo fondo al imprimir y saldría en blanco. */
+check('print-color-adjust: exact, o el navegador tira los fondos',
+  /html\.modo-scout-print, html\.modo-scout-print \* \{[\s\S]{0,140}print-color-adjust: exact !important/.test(idxHtml));
+
+/* La clase tiene que ir en el <html>: las reglas de papel blanco apuntan a
+   `:root, html, body` y una clase del body no le gana al selector `html`. */
+check('scoutImprimir() marca el <html>, no solo el <body>',
+  /document\.documentElement\.classList\.add\('modo-scout-print'\)/.test(scoutJs));
+check('y lo limpia al terminar de imprimir',
+  /document\.documentElement\.classList\.remove\('modo-scout-print'\)/.test(scoutJs));
+
+/* Problema 2 del punto 7 de CLAUDE.md: el `thead th` sticky trae
+   `background: #141414` y no estaba neutralizado, así que en el PDF en
+   blanco y negro daba texto gris #555 sobre casi negro. */
+check('el thead sticky deja de pintar oscuro en el PDF blanco y negro',
+  /html:not\(\.modo-scout-print\) table thead th \{[\s\S]{0,120}background: #ffffff !important/.test(idxHtml));
+check('y pierde el sticky, que desalinea la tabla al paginar',
+  /html\.modo-scout-print table thead th \{ position: static !important; \}/.test(idxHtml));
+
+/* Las cards no se parten y el corte se pone con `before`: si el DT
+   destilda una del medio, con `after` quedaba una hoja en blanco. */
+check('ninguna card se parte al medio entre dos hojas',
+  /html\.modo-scout-print \.scout-card \{[\s\S]{0,120}page-break-inside: avoid/.test(idxHtml));
+check('el corte va con page-break-BEFORE, no after',
+  /\.scout-card\.scout-pagina \{[\s\S]{0,80}page-break-before: always/.test(idxHtml));
+check('la primera no arrastra una hoja en blanco adelante',
+  /scout-pagina:first-of-type \{[\s\S]{0,80}page-break-before: auto/.test(idxHtml));
+/* El valor que el DT cargó a mano ES el contenido del informe. */
+check('los inputs editables de marcas SÍ se imprimen',
+  /html\.modo-scout-print \.scout-card input\[type="text"\] \{[\s\S]{0,120}display: block !important/.test(idxHtml));
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

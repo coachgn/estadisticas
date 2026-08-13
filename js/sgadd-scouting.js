@@ -2409,11 +2409,16 @@ function scoutMarca(claveJug, campo, valor) {
 
 /* ===================== EXPORTACIÓN POR CARDS ===================== */
 
-/** Marca/desmarca una card para el informe impreso. */
+/** Marca/desmarca una card para el informe impreso.
+ *
+ *  `querySelectorAll` y no `querySelector`: el plan de marcas son DOS
+ *  `<section>` con el mismo `data-bloque` —el panel colectivo y la tabla,
+ *  que van en hojas distintas— y un solo checkbox las controla a las dos.
+ *  Con el singular, destildar "Plan individual" dejaba la tabla en el PDF. */
 function scoutCard(id, incluir) {
   SCOUT_UI.cards[id] = !!incluir;
-  const el = document.querySelector('.scout-card[data-bloque="' + id + '"]');
-  if (el) el.classList.toggle('no-imprimir', !incluir);
+  const els = document.querySelectorAll('.scout-card[data-bloque="' + id + '"]');
+  Array.prototype.forEach.call(els, el => el.classList.toggle('no-imprimir', !incluir));
 }
 
 function scoutAbrirExport() {
@@ -2433,8 +2438,15 @@ function scoutCerrarExport() {
 function scoutImprimir() {
   scoutCerrarExport();
   SCOUT_CARDS.forEach(c => scoutCard(c.id, SCOUT_UI.cards[c.id]));
+  /* La clase va en el <html> ADEMÁS del <body>. Las reglas de papel blanco
+     de `@media print` apuntan a `:root, html, body` con `!important`, y una
+     clase del body no le puede ganar al selector `html`: el informe salía
+     aplanado a blanco y negro aunque el modo scout pidiera lo contrario.
+     La del body se conserva porque hay reglas viejas que la usan. */
+  document.documentElement.classList.add('modo-scout-print');
   document.body.classList.add('modo-scout-print');
   const limpiar = () => {
+    document.documentElement.classList.remove('modo-scout-print');
     document.body.classList.remove('modo-scout-print');
     window.removeEventListener('afterprint', limpiar);
   };
@@ -2631,7 +2643,7 @@ function scoutBloqueEncabezado(inf) {
     </li>`).join('') : '';
 
   return `
-    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="encabezado">
+    <section class="scout-card scout-pagina card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="encabezado">
       <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-3">
         Reporte de scouting${SCOUT_UI.torneo ? ' · ' + escapeHtml(SCOUT_UI.torneo) : ''}${SCOUT_UI.fecha ? ' · ' + escapeHtml(SCOUT_UI.fecha) : ''}
       </p>
@@ -2702,7 +2714,7 @@ function scoutBloqueMatriz(inf) {
     </div>`;
 
   return `
-    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="matriz">
+    <section class="scout-card scout-pagina card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="matriz">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">📊 Métricas avanzadas y ranking en la liga</h4>
       <p class="text-[11px] text-muted mb-2">
         Verde = tercio alto de la liga, rojo = tercio bajo. El chip es el puesto en la liga de esa métrica.
@@ -2767,7 +2779,7 @@ function scoutBloqueCiclo(inf) {
     </div>`;
 
   return `
-    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="ciclo">
+    <section class="scout-card scout-pagina card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="ciclo">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">🔀 Splits local/visitante y tendencia reciente</h4>
       <p class="text-[11px] text-muted mb-3">
         Fugas e identidad se miden contra el <strong>propio promedio</strong> del equipo (¿jugó como él mismo?);
@@ -2824,11 +2836,10 @@ function scoutPlanColectivo(plan) {
     </div>`;
 }
 
-function scoutBloqueMarcas(inf) {
-  const t = inf.jugadoresRival;
-  if (!t || !t.filas.length) return '';
-
-  const filas = t.filas.map(f => {
+/** Las `<tr>` de la tabla de marcas. Vive aparte porque el bloque se
+ *  reparte en dos hojas y solo la segunda las usa. */
+function scoutFilasMarcas(t) {
+  return t.filas.map(f => {
     const g = SCOUT_UI.marcas[f.clave] || {};
     /* Solo el TÍTULO es editable. La justificación numérica va debajo en
        solo lectura: es el dato que sostiene la directiva y no tiene
@@ -2876,9 +2887,14 @@ function scoutBloqueMarcas(inf) {
         ${celdaDirectiva(restriccion, 'restriccion', f.marca.restriccion.detalle, 'text-white')}
       </tr>`;
   }).join('');
+}
+
+function scoutBloqueMarcas(inf) {
+  const t = inf.jugadoresRival;
+  if (!t || !t.filas.length) return '';
 
   return `
-    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="marcas">
+    <section class="scout-card scout-pagina card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="marcas">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">🛡 Plan defensivo · marca asignada</h4>
       <p class="text-[11px] text-muted mb-3">
         Cada celda trae la <strong>directiva en mayúsculas</strong> (editable: el plan lo firma el cuerpo
@@ -2897,7 +2913,40 @@ function scoutBloqueMarcas(inf) {
         técnico.
       </p>
       ${scoutPlanColectivo(t.plan)}
-      <div class="scrollbox"><table class="w-full text-left" style="min-width:62rem">
+    </section>`;
+}
+
+/* ---------------------------------------------------------------------
+   BLOQUE 4 bis · la TABLA de marcas, en su propia hoja y APAISADA
+
+   Va separada del panel colectivo por dos motivos:
+
+   1. **Le cabe la columna que se perdía.** La tabla mide 62rem (≈992px) y
+      en A4 vertical el área útil es ~190mm (≈718px): la última columna,
+      "Restricción / alerta", quedaba FUERA del área de página y
+      directamente no salía en el PDF. Apaisada hay ~277mm (≈1047px) y
+      entra completa. Ver `.scout-pagina-ancha` en el `index.html`.
+   2. El DT lee el plan colectivo y su síntesis de un lado, y el detalle
+      jugador por jugador del otro, con las dos hojas sobre la mesa.
+
+   Comparte `data-bloque="marcas"` con el panel a propósito: son UNA sola
+   unidad de exportación (un checkbox) partida en dos páginas.
+   --------------------------------------------------------------------- */
+
+function scoutBloqueMarcasTabla(inf) {
+  const t = inf.jugadoresRival;
+  if (!t || !t.filas.length) return '';
+  const filas = scoutFilasMarcas(t);
+
+  return `
+    <section class="scout-card scout-pagina scout-pagina-ancha card rounded-xl p-4 sm:p-5 border border-hairline"
+      data-bloque="marcas">
+      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">🛡 Marcas · jugador por jugador</h4>
+      <p class="text-[11px] text-muted mb-3">
+        ${escapeHtml(inf.claveRival || '')} · la directiva en mayúsculas la firma el cuerpo técnico;
+        el detalle con el número sale de la planilla y no se toca a mano.
+      </p>
+      <div class="scrollbox"><table class="tabla-marcas w-full text-left" style="min-width:62rem">
         <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
           <th class="px-2 pb-1" style="width:18%">Jugador rival</th>
           <th class="px-2 pb-1" style="width:22%">Defensor nuestro</th>
@@ -2954,7 +3003,7 @@ function scoutBloqueJugadores(inf) {
     </tr>`;
 
   return `
-    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="jugadores">
+    <section class="scout-card scout-pagina card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="jugadores">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">👥 Jugadores clave · ${scoutNombreConLogo(t.equipo, 18)}</h4>
       <p class="text-[11px] text-muted mb-3">
         Top ${SGADD_SCOUT.TOP_SEMAFORO} de cada métrica dentro de este plantel:
@@ -3059,7 +3108,7 @@ function scoutBloqueFichas(inf) {
   }).join('');
 
   return `
-    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="fichas">
+    <section class="scout-card scout-pagina card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="fichas">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">📋 Ficha de análisis por jugador</h4>
       <p class="text-[11px] text-muted mb-3">
         Rol funcional, fortalezas, fisuras y plan de acción de cada rival. Cada punto cruza la métrica
@@ -3096,6 +3145,21 @@ function scoutInforme(idx) {
       </button>
     </div>`;
 
+  /* ORDEN · el mismo en pantalla y en el papel.
+     Las hojas del PDF salen de este orden más la clase `scout-pagina`, que
+     marca cuáles ABREN hoja nueva:
+
+       1. Encabezado y récord
+       2. Matriz de métricas y rankings
+       3. Splits L/V y ciclo reciente
+       4. Plan colectivo  +  Resumen de criterio estratégico   ← van juntos
+       5. Tabla de marcas, APAISADA                            ← sola
+       6. Tabla de jugadores clave  +  Claves estratégicas     ← van juntos
+       7. Fichas individuales
+
+     El resumen sube ANTES de la tabla porque sintetiza el plan colectivo,
+     que ahora tiene al lado; la tabla es el detalle operativo y se lee con
+     el informe abierto sobre la mesa. */
   return `
     <div id="scoutInforme" class="space-y-4 mt-4">
       ${toggle}
@@ -3104,6 +3168,7 @@ function scoutInforme(idx) {
       ${scoutBloqueCiclo(inf)}
       ${scoutBloqueMarcas(inf)}
       ${scoutBloqueResumen(inf)}
+      ${scoutBloqueMarcasTabla(inf)}
       ${scoutBloqueJugadores(inf)}
       ${scoutBloqueClaves(inf)}
       ${scoutBloqueFichas(inf)}

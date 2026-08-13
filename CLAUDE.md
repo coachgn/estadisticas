@@ -26,11 +26,11 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #   7 tests · secciones del informe
 node test-partido.js       #  22 tests · detalle partido a partido
-node test-scouting.js      # 380 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-scouting.js      # 412 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1072 tests en total. Todos tienen que dar verde antes de commitear.**
+**1104 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -106,7 +106,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=61`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=63`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -440,30 +440,128 @@ Sumar un cliente = un JSON + su carpeta de escudos. Cero código.
 
 ---
 
-## 7. PENDIENTE · Exportación a PDF
+## 7. Exportación a PDF
 
-**Estado: no resuelto. Retomar en entorno local con navegador real.**
+Hay **tres** exportaciones, y no comparten criterio de color:
 
-Hay dos exportaciones:
-- **Informe de equipo** (`sgadd-informe.js`): modal con checkboxes, `?club` +
-  rival opcional
-- **Informe post-partido** (`equiposImprimirPartido()`): una carilla A4
+| Export | Dónde | Color |
+|---|---|---|
+| **Scouting pre-partido** (`scoutImprimir()`) | `sgadd-scouting.js` | **la paleta de la app** |
+| **Informe de equipo** (`sgadd-informe.js`) | modal con checkboxes | papel blanco |
+| **Post-partido** (`equiposImprimirPartido()`) | una carilla A4 | papel blanco |
 
-Enfoque elegido: `window.print()` + `@media print`. **No usar html2pdf/jsPDF**:
-los canvas de Chart.js no rasterizan bien y los cortes de página quedan mal.
+Enfoque: `window.print()` + `@media print`. **No usar html2pdf/jsPDF**: los
+canvas de Chart.js no rasterizan bien y los cortes de página quedan mal.
 
-### Problemas abiertos
+### Cómo verificarlo sin impresora
 
-1. **Márgenes negros.** Chromium ignora `background` dentro de `@page`; el color
-   de la hoja sale del elemento raíz. Se intentó blanquear `:root, html, body` y
-   neutralizar `.bg-base` (clase de Tailwind, inyectada después del `<style>`).
-   **Sigue saliendo negro.** Debuggear con DevTools → Rendering → Emulate CSS
-   media type: print, que permite inspeccionar el DOM impreso en vivo.
-2. **Nombres de jugadores ilegibles** en el box score impreso: fondo oscuro con
-   texto oscuro. La regla `thead th { background: #141414 }` se aplica por
-   elemento, no por clase, y sobrevive a los overrides.
-3. **Fidelidad de color**: se quiere conservar acentos, verdes y rojos de la app,
-   con fondo claro. `print-color-adjust: exact` está puesto pero sin verificar.
+El bloque `@media print` no se puede inspeccionar con DevTools desde acá. Lo
+que sí funciona: **volcar las reglas de `@media print` a un `<style>` sin la
+media query** y aplicar las clases de modo a mano. El layout queda idéntico al
+del papel y se puede medir con `getComputedStyle` y `getBoundingClientRect`.
+Es como se midieron los números de abajo.
+
+Ojo: **el Browser pane inlinea los `file://` como `data:` URL**, lo que rompe
+los `<script src="js/…">` relativos y deja la app sin cargar. Hay un
+`.claude/launch.json` que levanta `python -m http.server 8765` para probar
+sobre HTTP real.
+
+### 7.1 · Scouting · RESUELTO
+
+**Se imprime con los colores vigentes de la app**, no en blanco y negro. Es un
+PDF que se lee en pantalla y se comparte por WhatsApp, no una hoja para la
+impresora hogareña.
+
+**El aplanado a papel blanco está condicionado a `html:not(.modo-scout-print)`,
+y esa es la única forma que funciona.** Intentar revertirlo desde el modo scout
+es imposible: `body * { color: #111 !important }` le gana a cualquier regla que
+no repita el `!important` con más especificidad, y hay decenas de clases de
+color en la app. Al hacerlo así, todo lo que no estuviera listado a mano —los
+`<strong>` de las notas, los nombres dentro del plan colectivo— quedaba en gris
+casi negro sobre fondo oscuro, o sea **invisible**. Excluir el modo de raíz deja
+las clases originales intactas: medido, **0 elementos en `#111`**.
+
+**La clase va en el `<html>` además del `<body>`.** Las reglas de papel blanco
+apuntan a `:root, html, body`, y una clase del body no le puede ganar al
+selector `html`.
+
+**`print-color-adjust: exact` es obligatorio**, no decorativo: sin él Chromium
+descarta todo fondo al imprimir y el informe saldría en blanco con el texto
+claro encima.
+
+### 7.2 · Las hojas del informe de scouting
+
+`.scout-pagina` marca las cards que **abren** hoja; las que no la llevan quedan
+pegadas a la anterior. Se pagina con **`page-break-before` y no `after`**: si el
+DT destilda una card del medio, con `after` quedaba una hoja en blanco donde
+estaba la oculta.
+
+```
+1 Encabezado · 2 Matriz · 3 Splits y ciclo
+4 Plan colectivo  +  Resumen de criterio estratégico
+5 Tabla de marcas · APAISADA
+6 Jugadores clave  +  Claves estratégicas
+7+ Fichas individuales
+```
+
+El **resumen sube antes de la tabla**: sintetiza el plan colectivo, que ahora
+tiene al lado. El orden es el mismo en pantalla y en papel — dos órdenes
+distintos para el mismo informe se desincronizan solos.
+
+### 7.3 · La columna que no salía · "Restricción / alerta"
+
+La tabla de marcas mide `min-width: 62rem` (≈992px) y el área útil de un A4
+vertical con margen 10mm es ~190mm (≈718px). **La última columna caía fuera del
+área de página y Chromium simplemente no la imprimía**: no había scroll ni corte
+visible, la columna desaparecía.
+
+Se corrige con **dos** cosas, y conviene entender que son independientes:
+
+1. **`@page apaisada` + `page: apaisada`** sobre `.scout-pagina-ancha`. Da
+   277mm útiles (≈1047px). Es CSS Paged Media: una página con nombre, aplicada
+   por la propiedad `page` del elemento.
+2. **`min-width: 0 !important` + `width: 100%` + `table-layout: fixed`** y
+   `overflow: visible` en el `.scrollbox`. El `min-width` es un estilo **inline**,
+   así que sin `!important` no se le puede ganar. **Esta sola ya alcanza** para
+   que la columna entre —apretada, pero entera— si el navegador ignorara la
+   página nombrada.
+
+Medido en A4 apaisada: tabla 1008px, la última columna termina en **1061 de
+1123 disponibles**. Las cuatro entran.
+
+`overflow-wrap: anywhere` en las celdas: un nombre largo parte de línea en vez
+de ensanchar la columna y volver a desbordar.
+
+**La tabla de marcas es el único bloque apaisado.** El resto va vertical.
+
+### 7.4 · Encabezados de tabla ilegibles · RESUELTO
+
+`table thead th` trae `background: #141414` por el sticky y **no estaba
+neutralizado** en `@media print`: en el PDF blanco y negro daba texto gris
+`#555` sobre casi negro. Ahora se blanquea en el modo claro y pierde el
+`position: sticky` en los dos modos — en papel no sirve y desalinea la tabla al
+paginar.
+
+### 7.5 · Lo que sigue abierto
+
+- **Márgenes negros del informe de equipo y del post-partido.** El aplanado a
+  blanco está escrito y ahora condicionado, pero **no se verificó contra una
+  impresora real** — solo con la simulación de arriba.
+- **`@page` no se puede condicionar por clase del body**, así que la vertical
+  (`A4 portrait, 12mm 10mm`) es compartida por las tres exportaciones. Un cambio
+  de página afecta a todas: probarlas juntas.
+
+### Presupuesto medido (A4, margen 10mm = 277mm útiles)
+
+```
+Encabezado 22 · Insight 46 · 4 Factores 26 · Eficiencia 20
+Box scores EN PARALELO 68 · Nota 6 · Próximo cruce 30
+TOTAL 218mm
+```
+
+Los box scores van lado a lado: en columna no entra. El bloque "Próximo cruce"
+va al final con `page-break-before: auto` — mejor dos hojas fluidas que una
+amontonada.
 
 ### Presupuesto medido (A4, margen 10mm = 277mm útiles)
 
@@ -1015,17 +1113,19 @@ cards destildadas, llama a `window.print()` y limpia la clase en
 en la app conviven dos exportaciones (esta y la del informe de equipo) y no
 pueden pisarse.
 
-CSS: `.scout-card { page-break-inside: avoid; page-break-after: always }`,
-con `:last-of-type` en `auto` para no arrastrar una hoja en blanco, y
-`.scout-ficha` también sin cortes. Los `input[type=text]` de la tabla de
-marcas **sí** se imprimen (la regla general de `@media print` esconde todo
-input, pero acá el valor cargado por el DT es el contenido del informe).
+**El paginado, los colores y la hoja apaisada de la tabla de marcas están
+en el punto 7.1–7.3.** Lo que importa acá: las cards NO van una por hoja —
+se agrupan en los pares que el cuerpo técnico lee juntos— y el bloque de
+marcas son **dos `<section>` con el mismo `data-bloque`**, el panel
+colectivo y la tabla, en hojas distintas. Comparten `data-bloque` a
+propósito: son una sola unidad de exportación, con un solo checkbox.
 
-**`@page` no se puede condicionar por clase del body**, así que es
-compartida con la exportación del informe de equipo: quedó en
-`A4 portrait, margen 12mm 10mm`. Los problemas abiertos del punto 7
-(márgenes negros en Chromium) aplican igual a esta exportación: no está
-verificada contra una impresora real.
+Por eso `scoutCard()` usa **`querySelectorAll` y no `querySelector`**: con el
+singular, destildar "Plan individual" dejaba la tabla en el PDF igual.
+
+Los `input[type=text]` de la tabla de marcas **sí** se imprimen (la regla
+general de `@media print` esconde todo input, pero acá el valor cargado por
+el DT es el contenido del informe).
 
 ### El plan es COLECTIVO, no una lista de fichas sueltas
 

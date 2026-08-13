@@ -480,25 +480,53 @@
     body.modo-partido-print { }
 
     /* Papel: fondo blanco y texto negro. El tema oscuro gasta tinta y en
-       impresora hogareña sale gris sucio. */
-    :root, html, body {
+       impresora hogareña sale gris sucio.
+
+       TODO ESTE APLANADO VA CONDICIONADO A `html:not(.modo-scout-print)`.
+
+       El informe de scouting se imprime a color, con la paleta de la app
+       (ver más abajo), y estas reglas son imposibles de revertir desde otro
+       lado: `body * { color: #111 !important }` le gana a cualquier regla
+       que no repita el `!important` con más especificidad, y hay decenas de
+       clases de color en la app. Al intentarlo, todo lo que no estuviera
+       listado a mano —los `<strong>` de las notas, los nombres dentro del
+       plan colectivo— quedaba en gris casi negro sobre fondo oscuro, o sea
+       INVISIBLE. Excluir el modo de raíz deja las clases originales
+       intactas y el papel sale igual que la pantalla. */
+    html:not(.modo-scout-print) :root,
+    html:not(.modo-scout-print),
+    html:not(.modo-scout-print) body {
       background: #ffffff !important;
       background-color: #ffffff !important;
       color: #111 !important;
     }
-    .bg-base, [class*="bg-base"] { background: #ffffff !important; }
-    body * { color: #111 !important; }
+    html:not(.modo-scout-print) .bg-base,
+    html:not(.modo-scout-print) [class*="bg-base"] { background: #ffffff !important; }
+    html:not(.modo-scout-print) body * { color: #111 !important; }
 
-    .card, .bg-surface2\/50, .bg-surface2\/30, .bg-surface2,
-    [class*="bg-accent/"], [class*="bg-green-400/"], [class*="bg-red-400/"] {
+    html:not(.modo-scout-print) .card,
+    html:not(.modo-scout-print) .bg-surface2\/50,
+    html:not(.modo-scout-print) .bg-surface2\/30,
+    html:not(.modo-scout-print) .bg-surface2,
+    html:not(.modo-scout-print) [class*="bg-accent/"],
+    html:not(.modo-scout-print) [class*="bg-green-400/"],
+    html:not(.modo-scout-print) [class*="bg-red-400/"] {
       background: #fff !important;
       border: 1px solid #d4d4d4 !important;
       box-shadow: none !important;
     }
-    .dato-sec, .text-muted { color: #555 !important; }
-    .text-green-400 { color: #15803d !important; }
-    .text-red-400 { color: #b91c1c !important; }
-    .text-accent { color: #000 !important; font-weight: 600; }
+    html:not(.modo-scout-print) .dato-sec,
+    html:not(.modo-scout-print) .text-muted { color: #555 !important; }
+    html:not(.modo-scout-print) .text-green-400 { color: #15803d !important; }
+    html:not(.modo-scout-print) .text-red-400 { color: #b91c1c !important; }
+    html:not(.modo-scout-print) .text-accent { color: #000 !important; font-weight: 600; }
+    /* El `thead th` de la app trae `background: #141414` por el sticky y no
+       estaba neutralizado acá: daba texto gris #555 sobre casi negro, o sea
+       encabezados de tabla ilegibles en el PDF en blanco y negro. */
+    html:not(.modo-scout-print) table thead th {
+      background: #ffffff !important;
+      position: static !important;
+    }
 
     /* Nada de la app navegable entra al papel. */
     aside, nav, header.sticky, button, select, input,
@@ -533,44 +561,141 @@
     .scrollbox { overflow: visible !important; }
 
     /* =================================================================
-       SCOUTING PRE-PARTIDO · export por cards (A4 vertical)
+       SCOUTING PRE-PARTIDO · export por cards
 
-       Se activa con body.modo-scout-print, que pone scoutImprimir() y
-       saca en afterprint. Sin esa clase un Ctrl+P normal no cambia de
-       comportamiento: hay dos exportaciones distintas en la app y no
-       pueden pisarse entre sí.
+       Se activa con la clase `modo-scout-print`, que scoutImprimir() pone
+       en el <html> Y en el <body>, y saca en afterprint. Sin esa clase un
+       Ctrl+P normal no cambia de comportamiento: hay tres exportaciones
+       distintas en la app y no pueden pisarse entre sí.
+
+       POR QUÉ LA CLASE VA TAMBIÉN EN EL <html>: las reglas de papel blanco
+       de más arriba apuntan a `:root, html, body` con `!important`, y una
+       clase del body no le puede ganar al selector `html`. Con la clase en
+       el elemento raíz, `html.modo-scout-print` (0,1,1) sí gana.
        ================================================================= */
-    body.modo-scout-print { }
 
-    body.modo-scout-print .no-imprimir,
-    body.modo-scout-print .scout-card.no-imprimir { display: none !important; }
+    html.modo-scout-print .no-imprimir,
+    html.modo-scout-print .scout-card.no-imprimir { display: none !important; }
 
-    /* Una card no se parte nunca: media tabla de marcas en una hoja y
-       media en la siguiente es peor que una hoja con espacio de sobra. */
-    body.modo-scout-print .scout-card {
-      page-break-inside: avoid; break-inside: avoid;
-      page-break-after: always; break-after: page;
-      border: 1px solid #d4d4d4 !important;
-      margin-bottom: 0;
+    /* -----------------------------------------------------------------
+       COLORES DE LA APP EN EL PAPEL
+
+       A pedido del club: el informe de scouting se imprime con la paleta
+       vigente, no en blanco y negro. Es un PDF que se lee en pantalla y se
+       comparte por WhatsApp, no una hoja para la impresora hogareña — el
+       argumento de "el tema oscuro gasta tinta" no aplica acá.
+
+       `print-color-adjust: exact` es obligatorio: sin él Chromium descarta
+       fondos e imágenes al imprimir y quedaría todo blanco igual.
+       ----------------------------------------------------------------- */
+    /* Como el aplanado de arriba ya se excluyó con `:not(.modo-scout-print)`,
+       acá NO hace falta redeclarar un solo color: las clases originales de
+       la app siguen vigentes y el papel sale igual que la pantalla. Lo único
+       que se agrega es lo que el navegador no infiere solo. */
+    html.modo-scout-print,
+    html.modo-scout-print body {
+      background: #0a0a0a !important;
+      background-color: #0a0a0a !important;
+      color: #F9FAFB;
     }
-    /* La ultima no arrastra una hoja en blanco detras. */
-    body.modo-scout-print .scout-card:last-of-type {
+    /* Obligatorio: sin esto Chromium descarta TODO fondo e imagen al
+       imprimir y el informe saldría en blanco igual, con el texto claro
+       encima — o sea ilegible. */
+    html.modo-scout-print, html.modo-scout-print * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    /* El sticky del `thead th` deja de tener sentido en papel y su
+       `position: sticky` desalinea la tabla al paginar. */
+    html.modo-scout-print table thead th { position: static !important; }
+
+    /* -----------------------------------------------------------------
+       PAGINADO POR GRUPOS
+
+       Antes CADA card rompía página (`page-break-after: always`), así que
+       el informe salía a una card por hoja sin poder juntar las que se
+       leen de a pares. Ahora rompe solo la que ABRE hoja (`.scout-pagina`)
+       y las que no la llevan quedan pegadas a la anterior:
+
+         1 Encabezado · 2 Matriz · 3 Ciclo
+         4 Plan colectivo + Resumen de criterio
+         5 Tabla de marcas (APAISADA)
+         6 Jugadores clave + Claves estratégicas
+         7+ Fichas individuales
+
+       `page-break-before` y no `after`: si el DT destilda una card del
+       medio, el corte lo sigue poniendo la card que sí se imprime. Con
+       `after` quedaba una hoja en blanco donde estaba la oculta.
+       ----------------------------------------------------------------- */
+    html.modo-scout-print .scout-card {
+      page-break-inside: avoid; break-inside: avoid;
       page-break-after: auto; break-after: auto;
+      margin-bottom: 4mm;
+    }
+    html.modo-scout-print .scout-card.scout-pagina {
+      page-break-before: always; break-before: page;
+    }
+    /* La primera no arrastra una hoja en blanco adelante. */
+    html.modo-scout-print .scout-card.scout-pagina:first-of-type {
+      page-break-before: auto; break-before: auto;
     }
     /* Las fichas individuales tampoco se cortan al medio. */
-    body.modo-scout-print .scout-ficha {
+    html.modo-scout-print .scout-ficha {
       page-break-inside: avoid; break-inside: avoid;
     }
-    /* Los inputs editables de marcas SI tienen que verse en el papel:
-       la regla general de arriba esconde todo input, y acá el valor
-       cargado por el DT es justamente el contenido del informe. */
-    body.modo-scout-print .scout-card input[type="text"] {
+
+    /* -----------------------------------------------------------------
+       LA HOJA APAISADA · el fix de "Restricción / alerta"
+
+       La tabla de marcas mide `min-width: 62rem` (≈992px) y el área útil
+       de un A4 vertical con margen 10mm es ~190mm (≈718px). La última
+       columna caía FUERA del área de página y Chromium simplemente no la
+       imprimía: no había scroll ni corte visible, la columna desaparecía.
+
+       Dos correcciones, y hacen falta LAS DOS:
+
+       1. `@page apaisada` + `page: apaisada` da 277mm útiles (≈1047px).
+          Es CSS Paged Media: una página con nombre, aplicada por la
+          propiedad `page` del elemento.
+       2. `min-width: 0` + `overflow: visible` sobre el `.scrollbox`. El
+          `min-width` es un estilo INLINE, así que hace falta `!important`
+          para ganarle. Sin esto, aun apaisada la tabla se pasa unos píxeles
+          y vuelve a recortar; y si el navegador ignorara la página
+          nombrada, esta sola alcanza para que la columna entre —apretada,
+          pero entera—. O sea: la columna no depende del landscape.
+       ----------------------------------------------------------------- */
+    @page apaisada { size: A4 landscape; margin: 10mm; }
+    html.modo-scout-print .scout-pagina-ancha { page: apaisada; }
+    html.modo-scout-print .scrollbox {
+      overflow: visible !important;
+      max-width: none !important;
+    }
+    html.modo-scout-print .tabla-marcas {
+      min-width: 0 !important;
+      width: 100% !important;
+      table-layout: fixed;
+      font-size: 7.5pt;
+    }
+    html.modo-scout-print .tabla-marcas td,
+    html.modo-scout-print .tabla-marcas th {
+      padding: 1.5mm 1.5mm;
+      vertical-align: top;
+      word-break: break-word;      /* un nombre largo no ensancha la columna */
+      overflow-wrap: anywhere;
+    }
+
+    /* Los inputs editables de marcas SI tienen que verse en el papel: la
+       regla general esconde todo input, y acá el valor cargado por el DT es
+       justamente el contenido del informe. */
+    html.modo-scout-print .scout-card input[type="text"] {
       display: block !important;
+      width: 100% !important;
       border: none !important;
       background: transparent !important;
-      color: #111 !important;
+      color: var(--acento-texto) !important;
       padding: 0 !important;
-      font-size: 8pt;
+      font-size: 7.5pt;
+      font-weight: 600;
     }
   }
 
@@ -761,22 +886,22 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=61"></script>
-<script src="js/sgadd-core.js?v=61"></script>
-<script src="js/sgadd-ui.js?v=61"></script>
-<script src="js/sgadd-app.js?v=61"></script>
-<script src="js/sgadd-estados.js?v=61"></script>
-<script src="js/sgadd-buzon.js?v=61"></script>
-<script src="js/sgadd-charts.js?v=61"></script>
-<script src="js/sgadd-personalidad.js?v=61"></script>
-<script src="js/sgadd-rankings.js?v=61"></script>
-<script src="js/sgadd-partido.js?v=61"></script>
-<script src="js/sgadd-informe.js?v=61"></script>
-<script src="js/sgadd-equipos.js?v=61"></script>
-<script src="js/sgadd-jugadores.js?v=61"></script>
-<script src="js/sgadd-4factores.js?v=61"></script>
-<script src="js/sgadd-scouting.js?v=61"></script>
-<script src="js/sgadd-diagnostico.js?v=61"></script>
+<script src="js/sgadd-club.js?v=63"></script>
+<script src="js/sgadd-core.js?v=63"></script>
+<script src="js/sgadd-ui.js?v=63"></script>
+<script src="js/sgadd-app.js?v=63"></script>
+<script src="js/sgadd-estados.js?v=63"></script>
+<script src="js/sgadd-buzon.js?v=63"></script>
+<script src="js/sgadd-charts.js?v=63"></script>
+<script src="js/sgadd-personalidad.js?v=63"></script>
+<script src="js/sgadd-rankings.js?v=63"></script>
+<script src="js/sgadd-partido.js?v=63"></script>
+<script src="js/sgadd-informe.js?v=63"></script>
+<script src="js/sgadd-equipos.js?v=63"></script>
+<script src="js/sgadd-jugadores.js?v=63"></script>
+<script src="js/sgadd-4factores.js?v=63"></script>
+<script src="js/sgadd-scouting.js?v=63"></script>
+<script src="js/sgadd-diagnostico.js?v=63"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
