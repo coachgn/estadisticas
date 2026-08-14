@@ -24,13 +24,13 @@ node test-boot.js          #  16 tests · arranque por club
 node test-jugadores.js     # 189 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
-node test-informe.js       #  30 tests · secciones del informe y su PDF
+node test-informe.js       #  35 tests · secciones del informe y su PDF
 node test-partido.js       #  26 tests · detalle partido a partido y su PDF
-node test-scouting.js      # 433 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-scouting.js      # 432 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1152 tests en total. Todos tienen que dar verde antes de commitear.**
+**1156 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -106,7 +106,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=76`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=81`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -679,6 +679,29 @@ La caja va a **88mm y no 70**: un radar es **cuadrado**, así que su tamaño lo
 limita el lado más corto. Con 70mm quedaba diminuto en el centro de una hoja de
 400mm de ancho, con medio metro de aire a los lados.
 
+**Al canvas NO se le fuerza `width/height: 100%`.** Chart.js dibuja el bitmap a
+un tamaño y el CSS lo **escala**: si los dos no coinciden, el gráfico sale
+deformado. Era lo que ponía el radar *"muy apaisado"* — el polígono se estiraba
+a lo ancho de la caja en vez de quedar regular. Van `max-width` y `max-height`,
+y Chart.js dimensiona solo con `responsive: true`.
+
+Los radares llevan además `.is-radar` (la pone la propia fábrica) y en el papel
+se acotan a **120mm centrados**: a todo el ancho quedaban chicos en el medio,
+con las etiquetas separadísimas del dibujo.
+
+### 7.6 bis · Los bloques que abren hoja en el informe de equipo
+
+*"Cómo ataca"*, *"Dónde gana y dónde pierde"* y las tablas de *"4 Factores
+ofensivos/defensivos"* empiezan en página nueva. Se marcan con **`data-hoja`**
+en `sgadd-equipos.js`.
+
+`page-break-before` **solo no alcanza**: los tres viven dentro de un grid de dos
+columnas —al lado del radar, o uno al lado del otro— y el navegador intenta
+mantener la fila, así que el corte queda a mitad de camino. Primero hay que
+aplanar la grilla (`display: block`), y recién ahí el salto funciona. En A3
+apaisada eso no aprieta nada y cada bloque ocupa su hoja, que es donde mejor se
+leen: son listas largas de ejes y de claves.
+
 **El texto que se cortaba en el borde derecho.** Las filas de los 8 ejes usan
 `px-2 -mx-2` —una sangría negativa para que el hover cubra todo el ancho de la
 card—. En pantalla el padre tiene padding y no se nota; en el papel no lo tiene,
@@ -714,14 +737,35 @@ dibujar. Funciona porque `generar()` agrega la clase **antes** de llamar a
 `restaurarImagenes()` viven en `sgadd-ui.js`, que carga antes que todos los
 módulos de sección. Duplicarla en cada exportación las desincroniza.
 
-**Criterio de color, que es distinto a propósito:**
+**UN SOLO CRITERIO DE COLOR PARA LAS TRES.** Hoja blanca, tarjetas grises
+(`#f1f5f9` con borde `#cbd5e1`) y acentos. El DT abre cualquiera de los tres
+y encuentra la misma jerarquía visual. Scouting estuvo un tiempo con la paleta
+oscura de la app; se revirtió a pedido del club.
 
-- **Scouting** → paleta de la app sobre hoja blanca. Es un PDF que se lee en
-  pantalla y se comparte.
-- **Informe de equipo y post-partido** → papel claro con tarjetas grises
-  (`#f1f5f9`) y acentos de color. Son hojas que se imprimen y se llevan.
-  El informe de equipo va en A3 apaisada; el post-partido, en A4 vertical
-  porque su especificación es entrar en UNA carilla.
+**Dos trampas de especificidad que costaron encontrar**, las dos por el mismo
+motivo — **el JIT del CDN de Tailwind genera sus utilidades de color CON
+`!important`**, así que `.text-slate-300` (0,1,0) le gana a `body *` (0,0,1)
+aunque las dos lo lleven:
+
+1. Los párrafos de descripción de los 8 ejes salían en `#cbd5e1` sobre gris
+   claro, ilegibles.
+2. Los nombres de los equipos del cruce (`.text-white`) salían en blanco sobre
+   gris.
+
+Se cubren con `body [class*="text-slate-"]`, `body .text-white` y compañía: con
+`body` adelante la especificidad sube a 0,1,1 y gana el papel.
+
+**El acento se OSCURECE por club, no se reemplaza por un color fijo.** El
+naranja de Reconquista da 2,08 de contraste sobre el gris de las tarjetas y se
+leía lavado. `oscurecerHastaLegible()` en `sgadd-club.js` lo mezcla con negro
+hasta pasar 4.5 y lo publica como `--acento-papel` (Reconquista: `#a16014`,
+4,57). Es el simétrico de `aclararHastaLegible()`, que ya existía para el tema
+oscuro. Con un color fijo, el informe de Jujuy saldría con el naranja de
+Reconquista.
+
+**Tamaños de hoja:** scouting e informe de equipo en A3 apaisada; el
+post-partido en A4 vertical, porque su especificación es entrar en UNA
+carilla.
 
 ### 7.7 · Lo que sigue abierto
 

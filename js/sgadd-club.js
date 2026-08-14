@@ -165,11 +165,15 @@ const CLUB = (function () {
       TEMA.acento = c.acento;
       TEMA.acentoOscuro = c.acentoOscuro || c.acento;
       TEMA.acentoTexto = aclararHastaLegible(c.acento, FONDO_CARD, 4.5);
+      /* Variante para el papel: el mismo acento, oscurecido hasta que se
+         lea sobre el gris de las tarjetas impresas. */
+      TEMA.acentoPapel = oscurecerHastaLegible(c.acento, FONDO_PAPEL, 4.5);
       TEMA.paleta = [TEMA.acento].concat(TEMA.paleta.slice(1));
       const raiz = document.documentElement;
       raiz.style.setProperty('--acento', TEMA.acento);
       raiz.style.setProperty('--acento-oscuro', TEMA.acentoOscuro);
       raiz.style.setProperty('--acento-texto', TEMA.acentoTexto);
+      raiz.style.setProperty('--acento-papel', TEMA.acentoPapel);
     }
 
     ponerEscudo(c);
@@ -245,6 +249,10 @@ const CLUB = (function () {
      que sea legible. Mantiene la identidad y garantiza que se lea.
      --------------------------------------------------------------------- */
   const FONDO_CARD = '#1F2937';
+  /* El gris de las tarjetas impresas, compartido por las tres exportaciones
+     a PDF. El acento se oscurece contra ESTE fondo, no contra el blanco de
+     la hoja: el texto de acento vive dentro de las tarjetas. */
+  const FONDO_PAPEL = '#f1f5f9';
 
   function aRgb(hex) {
     const h = String(hex).replace('#', '');
@@ -279,6 +287,32 @@ const CLUB = (function () {
         if (contraste(mezcla, fondo) >= minimo) return mezcla;
       }
       return '#ffffff';
+    } catch (e) { return color; }
+  }
+
+  /**
+   * El simétrico, para el PAPEL: mezcla con negro hasta que se lea sobre
+   * fondo claro.
+   *
+   * Los tres PDF se imprimen con tarjetas grises (`#f1f5f9`), y ahí el
+   * acento crudo del club no alcanza: el naranja de Reconquista da 2,84 de
+   * contraste sobre ese gris, muy por debajo del 4.5 de WCAG — se leía
+   * lavado, casi invisible. Aclararlo (lo que sirve en el tema oscuro)
+   * empeora las cosas; hay que oscurecerlo.
+   *
+   * No se usa un naranja fijo a propósito: el acento es la identidad del
+   * cliente, y con un valor fijo el informe de Jujuy saldría con el color
+   * de Reconquista.
+   */
+  function oscurecerHastaLegible(color, fondo, minimo) {
+    try {
+      if (contraste(color, fondo) >= minimo) return color;
+      const base = aRgb(color);
+      for (let f = 0.1; f <= 1; f += 0.05) {
+        const mezcla = aHex(base.map(v => v * (1 - f)));
+        if (contraste(mezcla, fondo) >= minimo) return mezcla;
+      }
+      return '#000000';
     } catch (e) { return color; }
   }
 
@@ -320,6 +354,6 @@ const CLUB = (function () {
   function marcarRender() { yaHuboRender = true; }
 
   return { TEMA, estado, cargar, aplicar: aplicarSeguro, credito, idDesdeUrl, debug, marcarRender,
-           reintentarEscudo, aclararHastaLegible, contraste,
+           reintentarEscudo, aclararHastaLegible, oscurecerHastaLegible, contraste,
            get cfg() { return estado.cfg; }, get aplicado() { return aplicado; } };
 })();

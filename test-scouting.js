@@ -1812,23 +1812,36 @@ check('un texto largo parte de línea en vez de ensanchar la columna',
 check('la tabla lleva la clase que la CSS engancha',
   /class="tabla-marcas w-full text-left"/.test(scoutJs));
 
-/* --- Colores de la app en el papel --------------------------------- */
-/* El aplanado a blanco y negro es para las OTRAS dos exportaciones. Si no
-   se lo excluye de raíz, `body * { color: #111 !important }` gana sobre
-   cualquier regla del modo scout y deja el texto casi negro sobre fondo
-   oscuro: INVISIBLE. Medido: 0 elementos en #111 después del fix. */
-check('el aplanado a blanco y negro excluye al modo scout',
-  /html:not\(\.modo-scout-print\) body \* \{ color: #111 !important; \}/.test(idxHtml));
-check('y también el fondo blanco de la hoja',
-  /html:not\(\.modo-scout-print\) body \{[\s\S]{0,120}background: #ffffff !important/.test(idxHtml) ||
-  /html:not\(\.modo-scout-print\),[\s\S]{0,120}background: #ffffff !important/.test(idxHtml));
-/* La hoja ya NO se imprime oscura: va blanca y el color queda en las
-   cards, que es lo que hace el contraste. Se verifica en la sección 26. */
-check('las cards conservan su color propio sobre la hoja blanca',
-  /html:not\(\.modo-scout-print\) \.card,/.test(idxHtml));
-/* Sin esto Chromium descarta todo fondo al imprimir y saldría en blanco. */
-check('print-color-adjust: exact, o el navegador tira los fondos',
-  /html\.modo-scout-print, html\.modo-scout-print \* \{[\s\S]{0,140}print-color-adjust: exact !important/.test(idxHtml));
+/* --- UN SOLO CRITERIO DE PAPEL PARA LAS TRES EXPORTACIONES ----------
+
+   Scouting estuvo un tiempo con la paleta oscura de la app. Se revirtió a
+   pedido del club: los tres informes van en papel claro con tarjetas
+   grises, así el DT abre cualquiera y encuentra la misma jerarquía. */
+check('la hoja se imprime blanca',
+  /:root, html, body \{[\s\S]{0,120}background: #ffffff !important/.test(idxHtml));
+/* La causa real de los "márgenes negros": `color-scheme: dark` hace que
+   Chrome pinte el lienzo con su #121212 ANTES que el documento. */
+check('y se apaga color-scheme: dark, que pintaba el lienzo de #121212',
+  /html \{ color-scheme: light !important; \}/.test(idxHtml));
+/* Las tarjetas van en GRIS y no en blanco: el blanco absoluto desarma la
+   jerarquía y todo parece texto suelto. Mismo valor en los tres. */
+check('las tarjetas llevan el gris compartido con los otros dos informes',
+  /\.scout-card,[\s\S]{0,300}background: #f1f5f9 !important/.test(idxHtml));
+check('y el scouting NO tiene un aplanado propio que lo saque del criterio',
+  !/html:not\(\.modo-scout-print\)/.test(idxHtml));
+/* El JIT del CDN de Tailwind genera sus utilidades de color CON
+   `!important`, así que `.text-slate-300` (0,1,0) le gana a `body *`
+   (0,0,1). Los párrafos de descripción y los nombres de equipo salían en
+   gris clarísimo sobre gris. Con `body` adelante gana el papel. */
+check('las utilidades de color de Tailwind no ganan sobre el papel',
+  /body \[class\*="text-slate-"\]/.test(idxHtml) && /body \.text-white,/.test(idxHtml));
+/* El acento es la IDENTIDAD del cliente: no se reemplaza por un color fijo,
+   se oscurece hasta que se lea sobre el gris de las tarjetas. */
+check('el acento del club se oscurece para el papel en vez de fijarse a mano',
+  /--acento-papel/.test(idxHtml) &&
+  /oscurecerHastaLegible/.test(require('fs').readFileSync('./js/sgadd-club.js', 'utf8')));
+check('el thead sticky pierde el sticky, que desalinea la tabla al paginar',
+  /table thead th \{[\s\S]{0,80}position: static !important/.test(idxHtml));
 
 /* La clase tiene que ir en el <html>: las reglas de papel blanco apuntan a
    `:root, html, body` y una clase del body no le gana al selector `html`. */
@@ -1838,12 +1851,10 @@ check('y lo limpia al terminar de imprimir',
   /document\.documentElement\.classList\.remove\('modo-scout-print'\)/.test(scoutJs));
 
 /* Problema 2 del punto 7 de CLAUDE.md: el `thead th` sticky trae
-   `background: #141414` y no estaba neutralizado, así que en el PDF en
-   blanco y negro daba texto gris #555 sobre casi negro. */
-check('el thead sticky deja de pintar oscuro en el PDF blanco y negro',
-  /html:not\(\.modo-scout-print\) table thead th \{[\s\S]{0,120}background: #ffffff !important/.test(idxHtml));
-check('y pierde el sticky, que desalinea la tabla al paginar',
-  /html\.modo-scout-print table thead th \{ position: static !important; \}/.test(idxHtml));
+   `background: #141414` y no estaba neutralizado, así que en el PDF daba
+   texto gris #555 sobre casi negro. Ahora se blanquea para las tres. */
+check('el thead sticky deja de pintar oscuro en el papel',
+  /table thead th \{[\s\S]{0,120}background: #ffffff !important/.test(idxHtml));
 
 /* Las cards no se parten y el corte se pone con `before`: si el DT
    destilda una del medio, con `after` quedaba una hoja en blanco. */
@@ -1883,23 +1894,11 @@ check('las fichas de jugador van de a dos por hoja',
 check('y el contenedor lleva la clase que la CSS engancha',
   /class="scout-fichas-grid/.test(scoutJs));
 
-/* LA HOJA VA BLANCA Y LAS CARDS CONSERVAN SU COLOR: ese contraste es el
-   que hace legible el informe. Medido en el PDF viejo: el primer relleno
-   de cada hoja era RGB(18,18,18) de borde a borde. */
-check('la hoja se imprime blanca',
-  /html\.modo-scout-print,[\s\S]{0,120}background: #ffffff !important/.test(idxHtml));
-/* La causa REAL de los "márgenes negros" del punto 7: `color-scheme: dark`
-   hace que Chrome pinte el lienzo de la página con su #121212 antes que el
-   documento, así que ningún `background: #fff` lo tapaba. */
-check('y se apaga color-scheme: dark, que pintaba el lienzo de #121212',
-  /html\.modo-scout-print[\s\S]{0,900}color-scheme: light/.test(idxHtml));
-check('los contenedores intermedios no vuelven a pintar la hoja de oscuro',
+/* El papel claro ya se verifica en la sección 25, que es común a las tres
+   exportaciones. Acá queda lo propio del scouting: los contenedores
+   intermedios que traen fondo propio y volverían a pintar la hoja. */
+check('los contenedores intermedios no vuelven a pintar la hoja',
   /html\.modo-scout-print #view-root,[\s\S]{0,200}background: transparent !important/.test(idxHtml));
-/* Contracara de la hoja blanca: el texto sin clase propia hereda el #111
-   del body y queda casi negro DENTRO de la card. Pasaba con los nombres de
-   métrica de los rankings ("4° de 12 en PACE"). */
-check('dentro de la card el texto heredado vuelve a ser claro',
-  /html\.modo-scout-print \.scout-card,[\s\S]{0,80}\.scout-ficha \{ color: #F9FAFB; \}/.test(idxHtml));
 
 /* ESCUDOS. Medido: el PDF salía con CERO imágenes. */
 /* (a) Sin escudo resuelto no se dejaba nada; ahora va una insignia con las

@@ -508,7 +508,7 @@ function equiposTab4F(idx, e) {
           { label: 'Mediana de la liga', data: df.map(() => 50), color: SGADD_CHARTS.COL.liga, relleno: 'transparent' },
         ]))}
     </div>
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6" data-hoja>
       ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'factores-of'))}
       ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'factores-def'))}
     </div>
@@ -850,7 +850,7 @@ function equiposTabPersonalidad(idx, e) {
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
       ${equiposPanel('Perfil completo · 8 ejes', radar,
         SGADD_CHARTS.nota('El anillo del 50 es la mediana de su liga. Los ejes no tienen lado bueno ni malo: son formas de jugar.'))}
-      <div>
+      <div data-hoja>
         <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Cómo ataca</h5>
         ${ataque.map(eje).join('')}
       </div>
@@ -862,7 +862,7 @@ function equiposTabPersonalidad(idx, e) {
         ${defensa.map(eje).join('')}
       </div>
       ${p.resumen ? `
-      <div>
+      <div data-hoja>
         <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Dónde gana y dónde pierde</h5>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>

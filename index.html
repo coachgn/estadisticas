@@ -44,7 +44,11 @@
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: #141414; }
   ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
-  :root { --acento: #f7941e; --acento-oscuro: #d97706; --acento-texto: #f7941e; }
+  :root { --acento: #f7941e; --acento-oscuro: #d97706; --acento-texto: #f7941e;
+          /* Variante oscurecida para el PAPEL: el acento crudo da 2,08 de
+             contraste sobre el gris de las tarjetas impresas y se lee lavado.
+             `sgadd-club.js` la recalcula por club. */
+          --acento-papel: #a16014; }
 
   ::-webkit-scrollbar-thumb:hover { background: var(--acento); }
   * { scrollbar-color: #333 #141414; scrollbar-width: thin; }
@@ -381,7 +385,7 @@
 
     /* El acento del club se mantiene: es la identidad del cliente. */
     body.modo-partido-print #detallePartido .text-accent {
-      color: var(--acento-oscuro, #b45309) !important; font-weight: 700;
+      color: var(--acento-papel, #a16014) !important; font-weight: 700;
     }
 
     /* Los botones no van al papel. */
@@ -513,65 +517,90 @@
     /* El post-partido necesita cada milimetro para entrar en una carilla. */
     body.modo-partido-print { }
 
-    /* Papel: fondo blanco y texto negro. El tema oscuro gasta tinta y en
-       impresora hogareña sale gris sucio.
+    /* =================================================================
+       PAPEL CLARO · UN SOLO CRITERIO PARA LAS TRES EXPORTACIONES
 
-       TODO ESTE APLANADO VA CONDICIONADO A `html:not(.modo-scout-print)`.
+       Hoja blanca, texto oscuro, tarjetas grises y acentos de color. Los
+       tres informes se leen igual, que es lo que pidió el club: el DT
+       abre cualquiera de los tres y encuentra la misma jerarquía visual.
 
-       El informe de scouting se imprime a color, con la paleta de la app
-       (ver más abajo), y estas reglas son imposibles de revertir desde otro
-       lado: `body * { color: #111 !important }` le gana a cualquier regla
-       que no repita el `!important` con más especificidad, y hay decenas de
-       clases de color en la app. Al intentarlo, todo lo que no estuviera
-       listado a mano —los `<strong>` de las notas, los nombres dentro del
-       plan colectivo— quedaba en gris casi negro sobre fondo oscuro, o sea
-       INVISIBLE. Excluir el modo de raíz deja las clases originales
-       intactas y el papel sale igual que la pantalla. */
-    html:not(.modo-scout-print) :root,
-    /* EL LIENZO · vale para las TRES exportaciones.
+       (Scouting estuvo un tiempo con la paleta oscura de la app. Se
+       revirtió: en papel el gris claro de las tarjetas contra el blanco de
+       la hoja separa mejor los bloques, y no depende de que el lector
+       tenga "gráficos de fondo" activado.)
+       ================================================================= */
 
-       `:root { color-scheme: dark }` hace que Chrome pinte el lienzo de la
-       página —lo que queda detrás de todo, márgenes incluidos— con su gris
-       por defecto #121212, y lo pinta ANTES que el documento, así que ningún
-       `background: #fff` lo tapa. Es la causa real de los "márgenes negros"
-       que estuvieron abiertos meses en el punto 7.
+    /* EL LIENZO. `:root { color-scheme: dark }` hace que Chrome pinte el
+       fondo de la página —lo que queda detrás de todo, márgenes incluidos—
+       con su gris por defecto #121212, y lo pinta ANTES que el documento,
+       así que ningún `background: #fff` lo tapa. Es la causa real de los
+       "márgenes negros" que estuvieron abiertos meses en el punto 7.
 
-       Medido en los PDF de las otras dos exportaciones ANTES de esta línea:
-       informe de equipo → primer relleno RGB(18,18,18); post-partido →
-       RGB(15,23,42). Las dos salían con el marco oscuro. */
+       Medido en los PDF ANTES de esta línea: informe de equipo → primer
+       relleno RGB(18,18,18); post-partido → RGB(15,23,42). */
     @page { background: #ffffff; }
     html { color-scheme: light !important; }
 
-    html:not(.modo-scout-print),
-    html:not(.modo-scout-print) body {
+    :root, html, body {
       background: #ffffff !important;
       background-color: #ffffff !important;
       color: #111 !important;
     }
-    html:not(.modo-scout-print) .bg-base,
-    html:not(.modo-scout-print) [class*="bg-base"] { background: #ffffff !important; }
-    html:not(.modo-scout-print) body * { color: #111 !important; }
+    .bg-base,
+    [class*="bg-base"] { background: #ffffff !important; }
+    body * { color: #111 !important; }
+    /* El JIT del CDN de Tailwind genera sus utilidades de color CON
+       `!important`, así que `.text-slate-300` (0,1,0) le gana a `body *`
+       (0,0,1) aunque las dos lo lleven. Resultado: los párrafos de
+       descripción de los 8 ejes ("Empuja el ritmo. Más posesiones que el
+       resto…") se imprimían en gris #cbd5e1 sobre gris claro — ilegibles.
+       Con `body` adelante la especificidad sube a 0,1,1 y gana el papel.
+       El post-partido ya tenía este parche puntual para `.text-slate-100`;
+       acá vale para las tres exportaciones y para toda la familia. */
+    body [class*="text-slate-"],
+    body [class*="text-gray-"],
+    body [class*="text-zinc-"],
+    body [class*="text-neutral-"],
+    /* `.text-white` y `.text-ink` son el texto DESTACADO del tema oscuro
+       —nombres de equipo, marcadores, valores fuertes—. Sobre papel claro
+       desaparecen: en el informe de scouting los nombres de los dos clubes
+       del cruce salían en blanco sobre gris. */
+    body .text-white,
+    body .text-ink { color: #111 !important; }
 
-    html:not(.modo-scout-print) .card,
-    html:not(.modo-scout-print) .bg-surface2\/50,
-    html:not(.modo-scout-print) .bg-surface2\/30,
-    html:not(.modo-scout-print) .bg-surface2,
-    html:not(.modo-scout-print) [class*="bg-accent/"],
-    html:not(.modo-scout-print) [class*="bg-green-400/"],
-    html:not(.modo-scout-print) [class*="bg-red-400/"] {
-      background: #fff !important;
-      border: 1px solid #d4d4d4 !important;
+    /* LAS TARJETAS VAN EN GRIS, NO EN BLANCO. El blanco absoluto desarma
+       la jerarquía: todo parece texto suelto. Es el mismo valor que usaba
+       el post-partido, ahora compartido por los tres informes. */
+    .card,
+    .scout-card,
+    .scout-ficha,
+    .bg-surface2\/50,
+    .bg-surface2\/30,
+    .bg-surface2,
+    [class*="bg-accent/"],
+    [class*="bg-green-400/"],
+    [class*="bg-red-400/"] {
+      background: #f1f5f9 !important;
+      border: 1px solid #cbd5e1 !important;
+      border-radius: 1.5mm !important;
       box-shadow: none !important;
     }
-    html:not(.modo-scout-print) .dato-sec,
-    html:not(.modo-scout-print) .text-muted { color: #555 !important; }
-    html:not(.modo-scout-print) .text-green-400 { color: #15803d !important; }
-    html:not(.modo-scout-print) .text-red-400 { color: #b91c1c !important; }
-    html:not(.modo-scout-print) .text-accent { color: #000 !important; font-weight: 600; }
+    .dato-sec,
+    .text-muted { color: #64748b !important; }
+    .text-green-400 { color: #15803d !important; }
+    .text-red-400 { color: #b91c1c !important; }
+    .text-yellow-400 { color: #a16207 !important; }
+    .text-blue-400 { color: #1d4ed8 !important; }
+    .text-amber-400 { color: #b45309 !important; }
+    /* El acento del club se mantiene: es la identidad del cliente. Se usa
+       la variante oscura, que sobre blanco sí tiene contraste. */
+    .text-accent { color: var(--acento-papel, #a16014) !important; font-weight: 700; }
+    .border-green-400 { border-left: 2.5px solid #15803d !important; }
+    .border-red-400 { border-left: 2.5px solid #b91c1c !important; }
     /* El `thead th` de la app trae `background: #141414` por el sticky y no
        estaba neutralizado acá: daba texto gris #555 sobre casi negro, o sea
        encabezados de tabla ilegibles en el PDF en blanco y negro. */
-    html:not(.modo-scout-print) table thead th {
+    table thead th {
       background: #ffffff !important;
       position: static !important;
     }
@@ -648,7 +677,7 @@
     body.modo-impresion #informeSalida .text-green-400 { color: #15803d !important; }
     body.modo-impresion #informeSalida .text-red-400 { color: #b91c1c !important; }
     body.modo-impresion #informeSalida .text-accent {
-      color: var(--acento-oscuro, #b45309) !important; font-weight: 700;
+      color: var(--acento-papel, #a16014) !important; font-weight: 700;
     }
 
     /* -----------------------------------------------------------------
@@ -675,11 +704,26 @@
       margin-bottom: 4mm;
       page-break-inside: avoid; break-inside: avoid;
     }
+    /* NO se le fuerza `width/height: 100%` al canvas.
+
+       Chart.js dibuja el bitmap a un tamaño y el CSS lo ESCALA: si los dos
+       no coinciden, el gráfico sale deformado. Es lo que ponía el radar
+       "muy apaisado" — el polígono se estiraba a lo ancho de la caja en vez
+       de quedar regular. Con `max-*` y `responsive: true`, Chart.js
+       dimensiona el bitmap al contenedor y el CSS no lo toca. */
     body.modo-impresion #informeSalida .chart-box canvas {
-      position: absolute; inset: 0;
-      width: 100% !important;
-      height: 100% !important;
+      max-width: 100% !important;
       max-height: 100% !important;
+    }
+    /* Un radar es CUADRADO: su radio sale del lado más corto de la caja. A
+       todo el ancho de una hoja de 400mm quedaba chico en el centro y con
+       las etiquetas separadísimas del dibujo. Se le acota el ancho —un poco
+       más que el alto, para que entren "Protección del aro" y "Búsqueda de
+       contacto" a los costados— y se centra. */
+    body.modo-impresion #informeSalida .chart-box.is-radar {
+      max-width: 120mm;
+      margin-left: auto;
+      margin-right: auto;
     }
     /* El pie de figura no se separa de su gráfico. */
     body.modo-impresion #informeSalida .chart-box + p {
@@ -700,6 +744,33 @@
     }
     /* Red de seguridad: nada se pega al filo de la hoja. */
     body.modo-impresion #informeSalida { padding-right: 1mm; }
+
+    /* -----------------------------------------------------------------
+       BLOQUES QUE ABREN HOJA · `data-hoja`
+
+       Pedido del club: "Cómo ataca", "Dónde gana y dónde pierde" y las
+       tablas de "4 Factores ofensivos/defensivos" empiezan en página nueva.
+
+       En pantalla esos tres viven DENTRO de un grid de dos columnas —al
+       lado del radar o uno al lado del otro—, así que romper página no
+       alcanza: primero hay que sacarlos de la grilla, o el navegador
+       intenta mantener la fila y el corte queda a mitad de camino. En el
+       papel el grid pasa a una columna y cada bloque ocupa su hoja entera,
+       que es donde mejor se leen: son listas largas de ejes y de claves.
+       ----------------------------------------------------------------- */
+    body.modo-impresion #informeSalida [data-hoja] {
+      page-break-before: always; break-before: page;
+      page-break-inside: auto; break-inside: auto;
+    }
+    /* La grilla que contiene un `data-hoja` se aplana: si sigue en dos
+       columnas, el corte de página parte la fila al medio. */
+    body.modo-impresion #informeSalida .grid:has(> [data-hoja]) {
+      display: block !important;
+    }
+    /* Respaldo para navegadores sin `:has()`: los grids de dos columnas del
+       informe se aplanan igual, que en A3 apaisada no aprieta nada. */
+    body.modo-impresion #informeSalida .lg\:grid-cols-2 { display: block !important; }
+    body.modo-impresion #informeSalida .lg\:grid-cols-2 > * + * { margin-top: 4mm; }
 
     /* =================================================================
        SCOUTING PRE-PARTIDO · export por cards
@@ -729,59 +800,21 @@
        `print-color-adjust: exact` es obligatorio: sin él Chromium descarta
        fondos e imágenes al imprimir y quedaría todo blanco igual.
        ----------------------------------------------------------------- */
-    /* -----------------------------------------------------------------
-       LA HOJA VA BLANCA · LAS CARDS CONSERVAN SU COLOR
-
-       Ese contraste es el que hace legible el informe impreso: cada card
-       queda recortada sobre el papel en vez de fundirse con él. Antes la
-       hoja entera salía casi negra (medido en el PDF: RGB 18,18,18) y el
-       resultado era una mancha oscura de borde a borde.
-
-       Como el aplanado a blanco y negro ya se excluyó con
-       `:not(.modo-scout-print)`, las clases originales de la app siguen
-       vigentes DENTRO de las cards y no hace falta redeclarar un color.
-       ----------------------------------------------------------------- */
-    html.modo-scout-print,
-    html.modo-scout-print body {
-      background: #ffffff !important;
-      background-color: #ffffff !important;
-      color: #111;
-      /* `:root { color-scheme: dark }` hace que Chrome pinte el LIENZO de la
-         página —lo que queda detrás de todo, incluidos los márgenes— con su
-         gris oscuro por defecto, #121212. Medido en el PDF: el primer
-         relleno de cada hoja era exactamente RGB(18,18,18), y ningún
-         `background: #fff` lo tapaba porque se pinta antes que el documento.
-         Es la causa real de los "márgenes negros" del punto 7. */
-      color-scheme: light;
-    }
-    /* Los contenedores intermedios también: cualquiera con fondo propio
-       vuelve a pintar la hoja de oscuro. */
+    /* El scouting usa el MISMO papel claro que los otros dos informes: todo
+       eso ya está definido arriba, sin condicionar a ningún modo. Acá queda
+       solo lo propio de esta exportación: los contenedores intermedios que
+       traen fondo propio, y el `print-color-adjust`. */
     html.modo-scout-print .bg-base,
     html.modo-scout-print [class*="bg-base"],
     html.modo-scout-print #view-root,
     html.modo-scout-print #app,
     html.modo-scout-print #scoutInforme { background: transparent !important; }
-    /* Lo poco que vive FUERA de una card iría claro sobre blanco: el texto
-       suelto se oscurece para que no desaparezca. */
-    html.modo-scout-print #scoutInforme > p,
-    html.modo-scout-print #scoutInforme > h3 { color: #111 !important; }
-    /* …y DENTRO de la card se vuelve al claro. Sin esta línea, todo el texto
-       que no lleva una clase de color propia hereda el `#111` del body y
-       queda casi negro sobre el fondo oscuro de la card: pasaba con los
-       nombres de métrica de los rankings ("4° de 12 en PACE"), que se
-       imprimían ilegibles. Es la contracara de haber puesto la hoja blanca. */
-    html.modo-scout-print .scout-card,
-    html.modo-scout-print .scout-ficha { color: #F9FAFB; }
-    /* Obligatorio: sin esto Chromium descarta TODO fondo e imagen al
-       imprimir y el informe saldría en blanco igual, con el texto claro
-       encima — o sea ilegible. */
+    /* Obligatorio: sin esto Chromium descarta TODO fondo al imprimir y las
+       tarjetas grises saldrían en blanco, sin separación entre bloques. */
     html.modo-scout-print, html.modo-scout-print * {
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
-    /* El sticky del `thead th` deja de tener sentido en papel y su
-       `position: sticky` desalinea la tabla al paginar. */
-    html.modo-scout-print table thead th { position: static !important; }
 
     /* -----------------------------------------------------------------
        PAGINADO POR GRUPOS
@@ -908,10 +941,10 @@
       width: 100% !important;
       border: none !important;
       background: transparent !important;
-      color: var(--acento-texto) !important;
+      color: var(--acento-papel, #a16014) !important;
       padding: 0 !important;
       font-size: 7.5pt;
-      font-weight: 600;
+      font-weight: 700;
     }
   }
 
@@ -1130,22 +1163,22 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=76"></script>
-<script src="js/sgadd-core.js?v=76"></script>
-<script src="js/sgadd-ui.js?v=76"></script>
-<script src="js/sgadd-app.js?v=76"></script>
-<script src="js/sgadd-estados.js?v=76"></script>
-<script src="js/sgadd-buzon.js?v=76"></script>
-<script src="js/sgadd-charts.js?v=76"></script>
-<script src="js/sgadd-personalidad.js?v=76"></script>
-<script src="js/sgadd-rankings.js?v=76"></script>
-<script src="js/sgadd-partido.js?v=76"></script>
-<script src="js/sgadd-informe.js?v=76"></script>
-<script src="js/sgadd-equipos.js?v=76"></script>
-<script src="js/sgadd-jugadores.js?v=76"></script>
-<script src="js/sgadd-4factores.js?v=76"></script>
-<script src="js/sgadd-scouting.js?v=76"></script>
-<script src="js/sgadd-diagnostico.js?v=76"></script>
+<script src="js/sgadd-club.js?v=81"></script>
+<script src="js/sgadd-core.js?v=81"></script>
+<script src="js/sgadd-ui.js?v=81"></script>
+<script src="js/sgadd-app.js?v=81"></script>
+<script src="js/sgadd-estados.js?v=81"></script>
+<script src="js/sgadd-buzon.js?v=81"></script>
+<script src="js/sgadd-charts.js?v=81"></script>
+<script src="js/sgadd-personalidad.js?v=81"></script>
+<script src="js/sgadd-rankings.js?v=81"></script>
+<script src="js/sgadd-partido.js?v=81"></script>
+<script src="js/sgadd-informe.js?v=81"></script>
+<script src="js/sgadd-equipos.js?v=81"></script>
+<script src="js/sgadd-jugadores.js?v=81"></script>
+<script src="js/sgadd-4factores.js?v=81"></script>
+<script src="js/sgadd-scouting.js?v=81"></script>
+<script src="js/sgadd-diagnostico.js?v=81"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

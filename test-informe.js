@@ -113,8 +113,34 @@ check('el verde y el rojo significan lo mismo en los dos informes',
 /* `.chart-box` fija la altura, pero el <canvas> se dimensiona solo con
    `maintainAspectRatio: false` y se desborda sobre el pie de figura, el
    encabezado de la tabla siguiente o la tabla misma. */
-check('el canvas queda confinado dentro de su caja',
-  /#informeSalida \.chart-box canvas \{[\s\S]{0,160}position: absolute; inset: 0;[\s\S]{0,160}height: 100% !important/.test(html));
+/* NO se le fuerza `width/height: 100%` al canvas: Chart.js dibuja el
+   bitmap a un tamaño y el CSS lo ESCALA, así que si no coinciden el
+   gráfico sale DEFORMADO. Era lo que ponía el radar "muy apaisado" — el
+   polígono se estiraba a lo ancho de la caja en vez de quedar regular. */
+const reglaCanvas = (html.match(/#informeSalida \.chart-box canvas \{[^}]*\}/) || [''])[0];
+check('el canvas no se estira: solo se le pone un máximo',
+  /max-width: 100% !important/.test(reglaCanvas) &&
+  /max-height: 100% !important/.test(reglaCanvas) &&
+  !/(^|[^-])width: 100% !important/.test(reglaCanvas.replace(/max-width/g, 'MW')),
+  reglaCanvas.slice(0, 90));
+/* Un radar es cuadrado: a todo el ancho de una hoja de 400mm quedaba chico
+   en el centro y con las etiquetas separadísimas del dibujo. */
+check('el radar se acota en ancho y se centra',
+  /\.chart-box\.is-radar \{[\s\S]{0,140}max-width: 120mm;[\s\S]{0,80}margin-left: auto/.test(html));
+check('y la fábrica los marca con `is-radar`',
+  /chart-box is-md is-radar/.test(chartsJs));
+
+/* Tres bloques abren hoja a pedido del club. En pantalla viven DENTRO de
+   un grid de dos columnas, así que romper página no alcanza: primero hay
+   que aplanar la grilla o el corte queda a mitad de fila. */
+check('los bloques marcados abren hoja nueva',
+  /#informeSalida \[data-hoja\] \{[\s\S]{0,120}page-break-before: always/.test(html));
+/* El selector lleva la barra de escape de Tailwind: `.lg\:grid-cols-2`. */
+check('y la grilla que los contiene se aplana',
+  html.indexOf('#informeSalida .lg') !== -1 &&
+  /#informeSalida \.lg.:grid-cols-2 \{ display: block !important; \}/.test(html));
+check('están marcados los tres: cómo ataca, dónde gana y 4 factores',
+  (require('fs').readFileSync('./js/sgadd-equipos.js', 'utf8').match(/data-hoja/g) || []).length === 3);
 check('la caja del gráfico reserva su espacio y no se parte',
   /#informeSalida \.chart-box \{[\s\S]{0,220}overflow: hidden;[\s\S]{0,120}page-break-inside: avoid/.test(html));
 /* Un radar es CUADRADO: su tamaño lo limita el lado más corto. Con 70mm de

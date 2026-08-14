@@ -210,7 +210,11 @@ const SGADD_CHARTS = (function () {
         },
       }),
     }));
-    return `<div class="chart-box is-md"><canvas id="${id}"></canvas></div>`;
+    /* `is-radar`: un radar es CUADRADO por naturaleza (el radio sale del
+       lado más corto). En una hoja apaisada, dejarlo a todo el ancho lo
+       deja chico en el centro con medio metro de aire a los lados, así que
+       en impresión se le acota el ancho y se centra. */
+    return `<div class="chart-box is-md is-radar"><canvas id="${id}"></canvas></div>`;
   }
 
   /* =====================================================================
