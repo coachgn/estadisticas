@@ -24,13 +24,13 @@ node test-boot.js          #  16 tests · arranque por club
 node test-jugadores.js     # 189 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
-node test-informe.js       #  35 tests · secciones del informe y su PDF
+node test-informe.js       #  38 tests · secciones del informe y su PDF
 node test-partido.js       #  26 tests · detalle partido a partido y su PDF
-node test-scouting.js      # 432 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-scouting.js      # 435 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1156 tests en total. Todos tienen que dar verde antes de commitear.**
+**1162 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -106,7 +106,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=81`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=82`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -689,6 +689,16 @@ Los radares llevan además `.is-radar` (la pone la propia fábrica) y en el pape
 se acotan a **120mm centrados**: a todo el ancho quedaban chicos en el medio,
 con las etiquetas separadísimas del dibujo.
 
+**El de local/visitante es la excepción y va a 125×165mm.** Es el único radar
+que ocupa una fila entera —los otros van de a dos— así que con la hoja completa
+para él, 88mm lo dejaban diminuto. Se sube el ALTO, que es lo que fija el radio.
+
+**Los que no entran al gráfico salen más tenues.** En pantalla la fila lleva
+`.fila-flojo`; en el papel el aplanado los igualaba a todos y el plantel se
+leía como si los dieciocho pesaran lo mismo. Va con `color: #94a3b8` y **no con
+`opacity`**: la opacidad afecta también a la insignia de iniciales y al borde
+de la fila, y en papel eso se ve sucio.
+
 ### 7.6 bis · Los bloques que abren hoja en el informe de equipo
 
 *"Cómo ataca"*, *"Dónde gana y dónde pierde"* y las tablas de *"4 Factores
@@ -754,6 +764,17 @@ aunque las dos lo lleven:
 
 Se cubren con `body [class*="text-slate-"]`, `body .text-white` y compañía: con
 `body` adelante la especificidad sube a 0,1,1 y gana el papel.
+
+**Hay una tercera variante del mismo problema, pero con FONDOS.** Las tarjetas
+anidadas del ciclo (*"Partidos ganados / perdidos"*) usan `bg-surface2/40`, y
+ahí la especificidad empata (0,1,0 las dos, `!important` las dos): gana **la
+que viene última en el documento**, y el `<style>` del CDN de Tailwind se
+inyecta después del nuestro. Salían en gris oscuro sobre la tarjeta clara.
+Mismo remedio: `body` adelante.
+
+Esas tarjetas llevan además `.ciclo-ganado` / `.ciclo-perdido`, que en el papel
+les pinta el **borde en verde o rojo**. Es lo que las distingue de un vistazo,
+que es para lo que el DT las mira.
 
 **El acento se OSCURECE por club, no se reemplaza por un color fijo.** El
 naranja de Reconquista da 2,08 de contraste sobre el gris de las tarjetas y se

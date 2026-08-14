@@ -1853,6 +1853,22 @@ check('y lo limpia al terminar de imprimir',
 /* Problema 2 del punto 7 de CLAUDE.md: el `thead th` sticky trae
    `background: #141414` y no estaba neutralizado, así que en el PDF daba
    texto gris #555 sobre casi negro. Ahora se blanquea para las tres. */
+/* Las tarjetas anidadas del ciclo ("Partidos ganados / perdidos") viven
+   dentro de la card de splits y usan `bg-surface2/40`. El aplanado general
+   las alcanza pero PIERDE: el <style> del CDN de Tailwind se inyecta
+   después del nuestro, así que a igual especificidad (0,1,0) y con
+   `!important` en las dos, gana la última del documento. Salían en gris
+   oscuro sobre la tarjeta clara. */
+check('las tarjetas del ciclo van en tono claro',
+  /body \.scout-ciclo-card \{[\s\S]{0,120}background: #f8fafc !important/.test(idxHtml));
+/* El borde las distingue de un vistazo, que es para lo que el DT las mira. */
+check('con borde verde las de ganados y rojo las de perdidos',
+  /\.scout-ciclo-card\.ciclo-ganado \{ border-color: #15803d !important; \}/.test(idxHtml) &&
+  /\.scout-ciclo-card\.ciclo-perdido \{ border-color: #b91c1c !important; \}/.test(idxHtml));
+check('y el motor las marca según el resultado',
+  /ciclo-perdido' : 'ciclo-ganado'/.test(scoutJs) &&
+  /scout-ciclo-card \$\{tono\}/.test(scoutJs));
+
 check('el thead sticky deja de pintar oscuro en el papel',
   /table thead th \{[\s\S]{0,120}background: #ffffff !important/.test(idxHtml));
 

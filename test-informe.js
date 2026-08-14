@@ -158,6 +158,22 @@ check('el pie de figura no se separa de su gráfico',
 check('la sangría negativa del hover se anula en el papel',
   /body\.modo-impresion #informeSalida \.-mx-2 \{[\s\S]{0,120}margin-right: 0 !important/.test(html));
 
+/* Los que no entran al scatter (menos de 10 minutos) se atenúan también en
+   el papel: el aplanado los igualaba a todos y el plantel se leía como si
+   los dieciocho pesaran lo mismo. */
+check('los jugadores fuera del gráfico van más tenues en el papel',
+  /tr\.fila-flojo td,[\s\S]{0,140}color: #94a3b8 !important/.test(html));
+/* Con `color` y no con `opacity` en la fila entera: la opacidad afecta
+   también a la insignia de iniciales y al borde, y en papel se ve sucio. */
+check('y se atenúan con color, no bajando la opacidad de toda la fila',
+  !/tr\.fila-flojo td \{[^}]*opacity/.test(html));
+
+/* El radar de local/visitante es el ÚNICO que va solo en su fila; los otros
+   van de a dos y por eso 88mm de alto les alcanza. Con la hoja entera para
+   él, esa medida lo dejaba diminuto en el medio. */
+check('el radar de local/visitante tiene su propia medida, más grande',
+  /is-radar:has\(#chRadarCond\)[\s\S]{0,160}height: 125mm !important/.test(html));
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

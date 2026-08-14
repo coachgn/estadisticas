@@ -725,6 +725,16 @@
       margin-left: auto;
       margin-right: auto;
     }
+    /* EXCEPCIÓN: el radar de local/visitante es el ÚNICO que va solo en su
+       fila; los otros van de a dos y por eso 88mm de alto les alcanza. A
+       este, con la hoja entera para él, esa medida lo dejaba diminuto en el
+       medio. Se le da más de las dos: el radio lo fija el lado más corto,
+       así que hay que subir el alto para que crezca de verdad. */
+    body.modo-impresion #informeSalida .chart-box.is-radar:has(#chRadarCond) {
+      height: 125mm !important;
+      max-height: 125mm !important;
+      max-width: 165mm;
+    }
     /* El pie de figura no se separa de su gráfico. */
     body.modo-impresion #informeSalida .chart-box + p {
       page-break-before: avoid; break-before: avoid;
@@ -744,6 +754,26 @@
     }
     /* Red de seguridad: nada se pega al filo de la hoja. */
     body.modo-impresion #informeSalida { padding-right: 1mm; }
+
+    /* -----------------------------------------------------------------
+       LOS QUE NO ENTRAN AL GRÁFICO, MÁS TENUES
+
+       En pantalla la fila lleva `.fila-flojo` y sale en gris; en el papel el
+       aplanado (`body * { color: #111 }`) los igualaba a todos, así que el
+       plantel se leía como si los dieciocho pesaran lo mismo. Los que juegan
+       menos de 10 minutos no entran al scatter y no deberían competir por la
+       atención con los titulares de la rotación.
+
+       Va con `color` y no con `opacity`: la opacidad afecta también a la
+       insignia de iniciales y al borde de la fila, y en papel eso se ve
+       sucio. El gris elegido sigue siendo legible impreso.
+       ----------------------------------------------------------------- */
+    body.modo-impresion #informeSalida tr.fila-flojo td,
+    body.modo-impresion #informeSalida tr.fila-flojo td * { color: #94a3b8 !important; }
+    body.modo-impresion #informeSalida tr.fila-flojo .fila-inicial {
+      opacity: .55;
+      border-color: #cbd5e1 !important;
+    }
 
     /* -----------------------------------------------------------------
        BLOQUES QUE ABREN HOJA · `data-hoja`
@@ -815,6 +845,25 @@
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
+
+    /* -----------------------------------------------------------------
+       LAS TARJETAS ANIDADAS DEL CICLO
+
+       "Partidos ganados / perdidos" viven DENTRO de la card de splits y
+       usan `bg-surface2/40`. El aplanado general las alcanza, pero pierde:
+       el `<style>` del CDN de Tailwind se inyecta DESPUÉS del nuestro, así
+       que a igual especificidad (0,1,0) y con `!important` en las dos, gana
+       la que viene última en el documento. Salían en gris oscuro sobre la
+       tarjeta clara. Con `body` adelante sube a 0,1,1 y gana el papel.
+
+       El BORDE las distingue de un vistazo, que es para lo que el DT las
+       mira: verde el bloque de ganados, rojo el de perdidos. */
+    body .scout-ciclo-card {
+      background: #f8fafc !important;
+      border: 1px solid #cbd5e1 !important;
+    }
+    body .scout-ciclo-card.ciclo-ganado { border-color: #15803d !important; }
+    body .scout-ciclo-card.ciclo-perdido { border-color: #b91c1c !important; }
 
     /* -----------------------------------------------------------------
        PAGINADO POR GRUPOS
@@ -1163,22 +1212,22 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=81"></script>
-<script src="js/sgadd-core.js?v=81"></script>
-<script src="js/sgadd-ui.js?v=81"></script>
-<script src="js/sgadd-app.js?v=81"></script>
-<script src="js/sgadd-estados.js?v=81"></script>
-<script src="js/sgadd-buzon.js?v=81"></script>
-<script src="js/sgadd-charts.js?v=81"></script>
-<script src="js/sgadd-personalidad.js?v=81"></script>
-<script src="js/sgadd-rankings.js?v=81"></script>
-<script src="js/sgadd-partido.js?v=81"></script>
-<script src="js/sgadd-informe.js?v=81"></script>
-<script src="js/sgadd-equipos.js?v=81"></script>
-<script src="js/sgadd-jugadores.js?v=81"></script>
-<script src="js/sgadd-4factores.js?v=81"></script>
-<script src="js/sgadd-scouting.js?v=81"></script>
-<script src="js/sgadd-diagnostico.js?v=81"></script>
+<script src="js/sgadd-club.js?v=82"></script>
+<script src="js/sgadd-core.js?v=82"></script>
+<script src="js/sgadd-ui.js?v=82"></script>
+<script src="js/sgadd-app.js?v=82"></script>
+<script src="js/sgadd-estados.js?v=82"></script>
+<script src="js/sgadd-buzon.js?v=82"></script>
+<script src="js/sgadd-charts.js?v=82"></script>
+<script src="js/sgadd-personalidad.js?v=82"></script>
+<script src="js/sgadd-rankings.js?v=82"></script>
+<script src="js/sgadd-partido.js?v=82"></script>
+<script src="js/sgadd-informe.js?v=82"></script>
+<script src="js/sgadd-equipos.js?v=82"></script>
+<script src="js/sgadd-jugadores.js?v=82"></script>
+<script src="js/sgadd-4factores.js?v=82"></script>
+<script src="js/sgadd-scouting.js?v=82"></script>
+<script src="js/sgadd-diagnostico.js?v=82"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

@@ -2842,8 +2842,12 @@ function scoutTarjetaCiclo(sub) {
       ` <span style="color:${l.delta >= 0 ? '#22c55e' : '#ef4444'}">(${l.delta >= 0 ? '+' : ''}${(l.delta * 100).toFixed(1).replace('.', ',')})</span>`;
     return escapeHtml(l.clave.replace('%', '')) + ': ' + escapeHtml(l.formateado) + d;
   }).join(' | ');
+  /* La clase de resultado permite pintarle el borde en verde o rojo al
+     imprimir: en papel, el color del borde es lo que separa de un vistazo
+     el bloque de ganados del de perdidos. */
+  const tono = /perdid/i.test(sub.etiqueta) ? 'ciclo-perdido' : 'ciclo-ganado';
   return `
-    <div class="bg-surface2/40 rounded-lg p-3">
+    <div class="scout-ciclo-card ${tono} bg-surface2/40 rounded-lg p-3">
       <p class="text-[11px] font-display uppercase tracking-wide text-white mb-1.5">
         📋 ${escapeHtml(sub.etiqueta)} (${sub.pj} part.)
       </p>
