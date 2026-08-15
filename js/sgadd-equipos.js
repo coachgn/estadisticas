@@ -1162,6 +1162,7 @@ function equiposDetallePartido(idx, e, id) {
       </div>
       ${notaBox}
       ${bloqueRec}
+      <footer class="informe-pie solo-imprimir">${SGADD_UI.pieInforme()}</footer>
     </div>`;
 }
 

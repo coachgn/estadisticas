@@ -631,7 +631,23 @@
     .informe-pregunta { font-size: 8pt; color: #666 !important; margin-bottom: 3mm; }
     .informe-arquetipo { border-left: 3px solid #111; padding-left: 4mm; margin-bottom: 4mm; }
     .informe-arquetipo-titulo { font-size: 13pt; font-weight: 700; text-transform: uppercase; }
-    .informe-pie { border-top: 1px solid #999; padding-top: 3mm; font-size: 7.5pt; color: #666 !important; }
+    /* Pie compartido por las TRES exportaciones. Lo arma
+       `SGADD_UI.pieInforme()`: "MotorStats^AR · Generado el <fecha>". */
+    .informe-pie {
+      border-top: 1px solid #999; padding-top: 3mm; margin-top: 4mm;
+      font-size: 7.5pt; color: #666 !important;
+      page-break-inside: avoid; break-inside: avoid;
+    }
+    .informe-pie .pie-marca { font-weight: 700; color: #334155 !important; }
+    /* El AR es parte de la marca, no una sigla suelta: va volado y más
+       chico, pero no tanto como para no leerse impreso. */
+    .informe-pie .pie-marca-sup {
+      font-size: .62em;
+      vertical-align: super;
+      line-height: 0;
+      margin-left: .5px;
+      letter-spacing: .02em;
+    }
 
     table { width: 100%; border-collapse: collapse; font-size: 8pt; }
     th, td { border-bottom: 1px solid #e0e0e0; padding: 1.5mm 2mm; }
@@ -889,6 +905,31 @@
        el fondo del 10% a un tinte que sí se ve. El `!important` es
        obligatorio: el color de pantalla va en un `style` inline.
        ----------------------------------------------------------------- */
+    /* -----------------------------------------------------------------
+       EL SEMÁFORO DEL INFORME, TAMBIÉN EN EL PAPEL
+
+       El informe pinta el mismo juego de tres tonos en ocho lugares —matriz
+       de métricas, rankings de liga, línea de tiro, filas de cierre,
+       leyenda del top 3, viñetas de la ficha— siempre con `style="color:…"`
+       INLINE. Al imprimir, el aplanado (`body * { color: #111 !important }`)
+       le gana al inline, así que TODOS los números salían en negro y se
+       perdía la lectura rápida de "esto lo hace bien / esto lo hace mal".
+
+       El motor emite, junto al color de pantalla, una clase que dice qué
+       SIGNIFICA ese color (`scoutTono()`); acá se repinta con la variante
+       oscura, que sobre papel blanco sí se lee. Son los mismos tonos que ya
+       usan el verde y el rojo del resto del papel: un solo vocabulario. */
+    body .tono-alto   { color: #15803d !important; }
+    body .tono-bajo   { color: #b91c1c !important; }
+    body .tono-medio  { color: #c2410c !important; }
+    body .tono-aviso  { color: #a16207 !important; }
+    body .tono-neutro { color: #64748b !important; }
+    /* El chip del puesto lleva el color de fondo al 13% (`…22`), que sobre
+       la tarjeta gris casi no se ve: se le sube el tinte. */
+    body .chip-rk.tono-alto   { background: #dcfce7 !important; }
+    body .chip-rk.tono-bajo   { background: #fee2e2 !important; }
+    body .chip-rk.tono-neutro { background: #e2e8f0 !important; }
+
     body .top-1 { color: #15803d !important; background: #dcfce7 !important; }
     body .top-2 { color: #c2410c !important; background: #ffedd5 !important; }
     body .top-3 { color: #a16207 !important; background: #fef9c3 !important; }
@@ -1244,22 +1285,22 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=84"></script>
-<script src="js/sgadd-core.js?v=84"></script>
-<script src="js/sgadd-ui.js?v=84"></script>
-<script src="js/sgadd-app.js?v=84"></script>
-<script src="js/sgadd-estados.js?v=84"></script>
-<script src="js/sgadd-buzon.js?v=84"></script>
-<script src="js/sgadd-charts.js?v=84"></script>
-<script src="js/sgadd-personalidad.js?v=84"></script>
-<script src="js/sgadd-rankings.js?v=84"></script>
-<script src="js/sgadd-partido.js?v=84"></script>
-<script src="js/sgadd-informe.js?v=84"></script>
-<script src="js/sgadd-equipos.js?v=84"></script>
-<script src="js/sgadd-jugadores.js?v=84"></script>
-<script src="js/sgadd-4factores.js?v=84"></script>
-<script src="js/sgadd-scouting.js?v=84"></script>
-<script src="js/sgadd-diagnostico.js?v=84"></script>
+<script src="js/sgadd-club.js?v=85"></script>
+<script src="js/sgadd-core.js?v=85"></script>
+<script src="js/sgadd-ui.js?v=85"></script>
+<script src="js/sgadd-app.js?v=85"></script>
+<script src="js/sgadd-estados.js?v=85"></script>
+<script src="js/sgadd-buzon.js?v=85"></script>
+<script src="js/sgadd-charts.js?v=85"></script>
+<script src="js/sgadd-personalidad.js?v=85"></script>
+<script src="js/sgadd-rankings.js?v=85"></script>
+<script src="js/sgadd-partido.js?v=85"></script>
+<script src="js/sgadd-informe.js?v=85"></script>
+<script src="js/sgadd-equipos.js?v=85"></script>
+<script src="js/sgadd-jugadores.js?v=85"></script>
+<script src="js/sgadd-4factores.js?v=85"></script>
+<script src="js/sgadd-scouting.js?v=85"></script>
+<script src="js/sgadd-diagnostico.js?v=85"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

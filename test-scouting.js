@@ -1863,6 +1863,41 @@ check('y lo limpia al terminar de imprimir',
    que sobre el fondo oscuro alcanza. En papel se desdibujan y los cuatro
    dejan de distinguirse, justo lo que hace legible el plan de un vistazo:
    cada grupo es una decisión defensiva distinta. */
+/* EL SEMÁFORO TAMBIÉN EN EL PAPEL.
+
+   El informe pinta el mismo juego de tonos en ocho lugares y siempre con
+   `style="color:…"` INLINE. Al imprimir, el aplanado
+   (`body * { color:#111 !important }`) le gana al inline —un !important de
+   autor gana a un estilo en línea sin !important— y TODOS los números
+   salían en negro: se perdía la lectura rápida de "esto lo hace bien /
+   esto lo hace mal", que es para lo que están los colores. */
+check('el motor emite una clase de significado junto al color inline',
+  /const SCOUT_TONOS = \{/.test(scoutJs) && /function scoutTono/.test(scoutJs));
+check('y el papel la repinta con la variante oscura',
+  /body \.tono-alto\s+\{ color: #15803d !important; \}/.test(idxHtml) &&
+  /body \.tono-bajo\s+\{ color: #b91c1c !important; \}/.test(idxHtml) &&
+  /body \.tono-medio\s+\{ color: #c2410c !important; \}/.test(idxHtml) &&
+  /body \.tono-aviso\s+\{ color: #a16207 !important; \}/.test(idxHtml));
+/* Los ocho lugares: matriz, chip de puesto, rankings, línea de tiro, fila
+   de cierre, leyenda del top 3 y viñetas de la ficha. */
+check('el tono viaja en los ocho lugares que usan el semáforo',
+  (scoutJs.match(/scoutTono\(/g) || []).length >= 5 &&
+  /class="tono-alto"/.test(scoutJs) && /class="tono-medio"/.test(scoutJs) &&
+  /class="tono-aviso"/.test(scoutJs) &&
+  /'tono-alto' : 'tono-bajo'/.test(scoutJs));
+check('el chip del puesto sube su tinte de fondo, que al 13% no se veía',
+  /body \.chip-rk\.tono-alto\s+\{ background: #dcfce7/.test(idxHtml));
+
+/* EL PIE, compartido por las TRES exportaciones. Es la firma del PRODUCTO
+   y no la del club: el motor es el mismo para todos y el nombre del cliente
+   ya viaja en el encabezado. */
+check('el pie lo arma una sola utilidad, en sgadd-ui.js',
+  /function pieInforme/.test(require('fs').readFileSync('./js/sgadd-ui.js', 'utf8')));
+check('dice MotorStats con el AR en superíndice',
+  /<sup class="pie-marca-sup">AR<\/sup>/.test(require('fs').readFileSync('./js/sgadd-ui.js', 'utf8')));
+check('y el scouting lo usa',
+  /SGADD_UI\.pieInforme\(\)/.test(scoutJs));
+
 check('los grupos del plan colectivo llevan borde sólido en el papel',
   /body \.scout-grupo \{[\s\S]{0,120}border-width: 1\.5px !important/.test(idxHtml));
 check('y un color por grupo, para poder distinguirlos',

@@ -256,6 +256,33 @@ const SGADD_UI = (function () {
     return n;
   }
 
+  /* =====================================================================
+     EL PIE DE LOS TRES PDF
+
+     "MotorStats^AR · Generado el <fecha>". Es la firma del PRODUCTO, no la
+     del club: no sale del JSON de cliente, porque el motor es el mismo para
+     todos y el pie tiene que decir quién generó el informe. El nombre del
+     club ya viaja en el encabezado de cada exportación.
+
+     El `AR` va en <sup>: es parte de la marca, no una sigla suelta.
+     ===================================================================== */
+  const MARCA = 'MotorStats';
+
+  /** Fecha de emisión en dd/mm/aaaa, que es la convención del proyecto. */
+  function fechaHoy() {
+    const d = new Date();
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    return dd + '/' + mm + '/' + d.getFullYear();
+  }
+
+  /** Pie compartido por las tres exportaciones a PDF. */
+  function pieInforme(fecha) {
+    return '<span class="pie-marca">' + esc(MARCA) +
+      '<sup class="pie-marca-sup">AR</sup></span> · Generado el ' +
+      esc(fecha || fechaHoy());
+  }
+
   /** Devuelve las imágenes a su ruta original después de imprimir. */
   function restaurarImagenes(raiz) {
     const cont = typeof raiz === 'string' ? document.querySelector(raiz) : raiz;
@@ -267,7 +294,7 @@ const SGADD_UI = (function () {
   }
 
   return { esc, escJs, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, signoDelta, colorDelta, claseMasMenos,
-    embeberImagenes, restaurarImagenes };
+    embeberImagenes, restaurarImagenes, pieInforme, fechaHoy, MARCA };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_UI;

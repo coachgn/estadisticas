@@ -227,10 +227,10 @@ const SGADD_INFORME = (function () {
         </section>`);
     });
 
-    bloques.push(`<footer class="informe-pie">
-      ${SGADD_UI.esc((typeof CLUB !== 'undefined' && CLUB.credito) ? CLUB.credito() : 'SGADD')} ·
-      Generado el ${fecha}
-    </footer>`);
+    /* El pie es la firma del PRODUCTO y no la del club: lo arma
+       `SGADD_UI.pieInforme()`, compartido por las tres exportaciones a PDF.
+       El nombre del cliente ya viaja en el encabezado del informe. */
+    bloques.push(`<footer class="informe-pie">${SGADD_UI.pieInforme(fecha)}</footer>`);
 
     return bloques.join('');
   }

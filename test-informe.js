@@ -183,6 +183,25 @@ check('el radar de local/visitante va en un contenedor acotado',
 check('y por eso NO necesita una medida propia en el CSS',
   !/is-radar:has\(#chRadarCond\)/.test(html));
 
+/* EL PIE · la firma del PRODUCTO, no la del club.
+
+   Antes salía de `CLUB.credito()`, o sea del JSON de cada cliente
+   ("SGADD · Casañas & Freytes" para uno, "SGADD" para otro). El motor es el
+   mismo para todos y el pie tiene que decir quién generó el informe; el
+   nombre del club ya viaja en el encabezado de cada exportación. */
+check('el pie usa la utilidad compartida, no el crédito del club',
+  /SGADD_UI\.pieInforme\(fecha\)/.test(infoJs) && !/CLUB\.credito\(\)/.test(infoJs));
+check('dice MotorStats con el AR en superíndice',
+  /const MARCA = 'MotorStats'/.test(uiJs) && /<sup class="pie-marca-sup">AR<\/sup>/.test(uiJs));
+check('y mantiene la fecha de emisión', / · Generado el /.test(uiJs));
+/* Las TRES exportaciones lo llevan. */
+check('el post-partido también lo lleva',
+  /SGADD_UI\.pieInforme\(\)/.test(fs.readFileSync('./js/sgadd-equipos.js', 'utf8')));
+check('y el scouting también',
+  /SGADD_UI\.pieInforme\(\)/.test(fs.readFileSync('./js/sgadd-scouting.js', 'utf8')));
+check('el superíndice se estila como parte de la marca',
+  /\.informe-pie \.pie-marca-sup \{[\s\S]{0,140}vertical-align: super/.test(html));
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

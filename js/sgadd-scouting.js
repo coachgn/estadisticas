@@ -2697,10 +2697,47 @@ function scoutActualizarCabeceraImpresa() {
   }
 }
 
+/* =====================================================================
+   EL SEMÁFORO, TAMBIÉN EN EL PAPEL
+
+   El informe pinta el mismo juego de tres tonos en ocho lugares distintos
+   (matriz, rankings, línea de tiro, filas de cierre, leyenda del top 3) y
+   siempre con `style="color:…"` INLINE.
+
+   En pantalla eso alcanza, pero al imprimir el aplanado a papel
+   (`body * { color: #111 !important }`) le gana al inline —un `!important`
+   de autor gana a un estilo en línea sin `!important`— y el informe salía
+   con todos los números en negro: se perdía justamente la lectura rápida
+   de "esto lo hace bien / esto lo hace mal".
+
+   La solución es emitir, junto al color de pantalla, una CLASE que diga
+   qué significa ese color. El CSS de impresión la repinta con la variante
+   oscura, que sobre papel blanco sí se lee. La clase no hace nada en
+   pantalla: ahí sigue mandando el inline.
+   ===================================================================== */
+const SCOUT_TONOS = {
+  '#22c55e': 'tono-alto',     // verde  · tercio alto de la liga, o mejor que
+  '#ef4444': 'tono-bajo',     // rojo   · tercio bajo, o peor que
+  '#f97316': 'tono-medio',    // naranja· 2° del top 3
+  '#facc15': 'tono-aviso',    // amarillo· 3° del top 3
+  '#9CA3AF': 'tono-neutro',
+  '#e5e7eb': 'tono-neutro',
+};
+
+/** Clase de significado para un color del semáforo. Cadena vacía si el
+ *  color no es uno de los del juego (no se inventa un tono). */
+function scoutTono(col) {
+  const c = SCOUT_TONOS[String(col || '').toLowerCase()] ||
+            SCOUT_TONOS[String(col || '')];
+  return c ? ' ' + c : '';
+}
+
 function scoutChipRk(puesto, de) {
   if (!puesto) return '';
   const tono = puesto <= de / 3 ? '#22c55e' : puesto > (de * 2) / 3 ? '#ef4444' : '#9CA3AF';
-  return `<span class="text-[9px] font-mono px-1 py-0.5 rounded ml-1"
+  /* El chip lleva su tono como clase además del color inline: en el papel
+     el inline pierde contra el aplanado y salía en negro. */
+  return `<span class="text-[9px] font-mono px-1 py-0.5 rounded ml-1 chip-rk${scoutTono(tono)}"
     style="background:${tono}22;color:${tono}">${puesto}°</span>`;
 }
 
@@ -2766,7 +2803,7 @@ function scoutCeldaMatriz(c) {
   const col = p === null ? '#e5e7eb' : p >= 66 ? '#22c55e' : p <= 34 ? '#ef4444' : '#e5e7eb';
   return `
     <td class="px-2 py-1.5 text-center">
-      <span class="font-mono text-sm" style="color:${col}">${escapeHtml(c.formateado)}</span>${scoutChipRk(c.puesto, c.de)}
+      <span class="font-mono text-sm${scoutTono(col)}" style="color:${col}">${escapeHtml(c.formateado)}</span>${scoutChipRk(c.puesto, c.de)}
       ${c.sub ? `<span class="block text-[10px] font-mono dato-sec">${escapeHtml(c.sub.clave)}: ${escapeHtml(c.sub.formateado)}</span>` : ''}
     </td>`;
 }
@@ -2799,7 +2836,7 @@ function scoutBloqueMatriz(inf) {
         ${rks.map(r => {
           const col = r.tono === 'fuerte' ? '#22c55e' : r.tono === 'debil' ? '#ef4444' : '#9CA3AF';
           return `<p class="text-[11px] font-mono">
-            <span style="color:${col}">${r.puesto}°</span>
+            <span class="${scoutTono(col).trim()}" style="color:${col}">${r.puesto}°</span>
             <span class="dato-sec"> de ${r.de} en </span>${escapeHtml(r.label)}
             <span class="text-ink">(${escapeHtml(r.formateado)})</span></p>`;
         }).join('')}
@@ -2839,7 +2876,7 @@ function scoutTarjetaCiclo(sub) {
   if (!sub) return '';
   const linea = sub.lineaTiro.map(l => {
     const d = l.delta === null ? '' :
-      ` <span style="color:${l.delta >= 0 ? '#22c55e' : '#ef4444'}">(${l.delta >= 0 ? '+' : ''}${(l.delta * 100).toFixed(1).replace('.', ',')})</span>`;
+      ` <span class="${l.delta >= 0 ? 'tono-alto' : 'tono-bajo'}" style="color:${l.delta >= 0 ? '#22c55e' : '#ef4444'}">(${l.delta >= 0 ? '+' : ''}${(l.delta * 100).toFixed(1).replace('.', ',')})</span>`;
     return escapeHtml(l.clave.replace('%', '')) + ': ' + escapeHtml(l.formateado) + d;
   }).join(' | ');
   /* La clase de resultado permite pintarle el borde en verde o rojo al
@@ -3102,7 +3139,7 @@ function scoutBloqueJugadores(inf) {
       ${t.columnas.map(c => {
         const cmp = comparar ? prom[c.id].comparacion : 'neutro';
         const col = cmp === 'mejor' ? '#22c55e' : cmp === 'peor' ? '#ef4444' : null;
-        return `<td class="px-2 py-1.5 text-center font-mono text-[11px] ${col ? 'font-semibold' : 'dato-sec'}"
+        return `<td class="px-2 py-1.5 text-center font-mono text-[11px] ${col ? 'font-semibold' + scoutTono(col) : 'dato-sec'}"
           ${col ? `style="color:${col}"` : ''}>${escapeHtml(prom[c.id].formateado)}</td>`;
       }).join('')}
     </tr>`;
@@ -3112,9 +3149,9 @@ function scoutBloqueJugadores(inf) {
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">👥 Jugadores clave · ${scoutNombreConLogo(t.equipo, 18)}</h4>
       <p class="text-[11px] text-muted mb-3">
         Top ${SGADD_SCOUT.TOP_SEMAFORO} de cada métrica dentro de este plantel:
-        <span style="color:#22c55e">1° amenaza principal</span> ·
-        <span style="color:#f97316">2° precaución</span> ·
-        <span style="color:#facc15">3° foco complementario</span>.
+        <span class="tono-alto" style="color:#22c55e">1° amenaza principal</span> ·
+        <span class="tono-medio" style="color:#f97316">2° precaución</span> ·
+        <span class="tono-aviso" style="color:#facc15">3° foco complementario</span>.
         Las columnas de uso se ordenan por intentos absolutos, no por el porcentaje:
         un 60% de uso externo sobre 2 tiros no es un tirador.
       </p>
@@ -3176,7 +3213,7 @@ function scoutBloqueFichas(inf) {
   if (!t || !t.filas.length) return '';
 
   const lista = (items, color) => items.map(x =>
-    `<li class="flex gap-1.5 items-start"><span class="shrink-0" style="color:${color}">•</span><span>${escapeHtml(x)}</span></li>`).join('');
+    `<li class="flex gap-1.5 items-start"><span class="shrink-0${scoutTono(color)}" style="color:${color}">•</span><span>${escapeHtml(x)}</span></li>`).join('');
 
   const fichas = t.filas.map(f => {
     const p = f.perfil;
@@ -3277,6 +3314,7 @@ function scoutInforme(idx) {
       ${scoutBloqueJugadores(inf)}
       ${scoutBloqueClaves(inf)}
       ${scoutBloqueFichas(inf)}
+      <footer class="informe-pie solo-imprimir">${SGADD_UI.pieInforme()}</footer>
       ${scoutModalExport()}
     </div>`;
 }

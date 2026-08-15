@@ -24,13 +24,13 @@ node test-boot.js          #  33 tests · arranque por club + sintaxis de los m�
 node test-jugadores.js     # 189 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
-node test-informe.js       #  39 tests · secciones del informe y su PDF
+node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  26 tests · detalle partido a partido y su PDF
-node test-scouting.js      # 440 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-scouting.js      # 447 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1185 tests en total. Todos tienen que dar verde antes de commitear.**
+**1198 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -106,7 +106,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=84`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=85`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -791,6 +791,39 @@ dan 2,3 · 2,9 · **1,4** de contraste — el amarillo del 3° es prácticamente
 invisible. Se repintan con los tonos oscuros del resto del papel y un fondo que
 sí se ve (`.top-1/2/3`). El `!important` es obligatorio: el color de pantalla
 va en un `style` inline.
+
+### El semáforo del informe · `scoutTono()`
+
+El informe de scouting pinta el mismo juego de tonos en **ocho lugares**
+—matriz de métricas, chip de puesto, rankings de liga, línea de tiro, fila de
+cierre, leyenda del top 3, viñetas de la ficha— y siempre con
+`style="color:…"` **inline**.
+
+Al imprimir, el aplanado (`body * { color: #111 !important }`) **le gana al
+inline**: un `!important` de autor gana a un estilo en línea sin `!important`.
+Resultado: todos los números salían en negro y se perdía la lectura rápida de
+*"esto lo hace bien / esto lo hace mal"*, que es para lo que están los colores.
+
+`scoutTono(color)` emite, junto al color de pantalla, una **clase que dice qué
+significa** ese color (`tono-alto`, `tono-bajo`, `tono-medio`, `tono-aviso`,
+`tono-neutro`). El CSS de impresión la repinta con la variante oscura. La clase
+no hace nada en pantalla: ahí sigue mandando el inline.
+
+**Al agregar un color al semáforo hay que sumarlo a `SCOUT_TONOS`**, o ese
+valor se imprime en negro sin que nadie se entere.
+
+### El pie de los tres PDF
+
+`SGADD_UI.pieInforme()` → **"MotorStats^AR · Generado el `<fecha>`"**, con el
+`AR` en `<sup>` porque es parte de la marca.
+
+Es la firma del **producto**, no la del club: antes salía de `CLUB.credito()`,
+o sea del JSON de cada cliente ("SGADD · Casañas & Freytes" para uno, "SGADD"
+para otro). El motor es el mismo para todos y el pie tiene que decir quién
+generó el informe; el nombre del cliente ya viaja en el encabezado.
+
+Vive en `sgadd-ui.js` y lo usan las tres exportaciones. En scouting y
+post-partido va con `.solo-imprimir`: en pantalla la firma no aporta.
 
 ### Sintaxis de los módulos · el test que faltaba
 
