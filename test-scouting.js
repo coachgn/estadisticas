@@ -1859,6 +1859,32 @@ check('y lo limpia al terminar de imprimir',
    después del nuestro, así que a igual especificidad (0,1,0) y con
    `!important` en las dos, gana la última del documento. Salían en gris
    oscuro sobre la tarjeta clara. */
+/* Los cuatro grupos del plan colectivo van al 40% de opacidad en pantalla,
+   que sobre el fondo oscuro alcanza. En papel se desdibujan y los cuatro
+   dejan de distinguirse, justo lo que hace legible el plan de un vistazo:
+   cada grupo es una decisión defensiva distinta. */
+check('los grupos del plan colectivo llevan borde sólido en el papel',
+  /body \.scout-grupo \{[\s\S]{0,120}border-width: 1\.5px !important/.test(idxHtml));
+check('y un color por grupo, para poder distinguirlos',
+  /grupo-foco\s+\{ border-color: #b91c1c/.test(idxHtml) &&
+  /grupo-intocable\s+\{ border-color: #15803d/.test(idxHtml) &&
+  /grupo-fuente\s+\{ border-color: #1d4ed8/.test(idxHtml) &&
+  /grupo-cristal\s+\{ border-color: #a16207/.test(idxHtml));
+check('el motor los marca con su tono',
+  /scout-grupo grupo-\$\{tono\}/.test(scoutJs) &&
+  /'foco'\)/.test(scoutJs) && /'cristal'\)/.test(scoutJs));
+
+/* EL MAPA DE CALOR DEL TOP 3. Los tonos de pantalla sobre papel blanco dan
+   2,3 · 2,9 · 1,4 de contraste — el amarillo es casi invisible. Se repintan
+   con los tonos oscuros del resto del papel y con un fondo que sí se ve.
+   El `!important` es obligatorio: el color de pantalla va inline. */
+check('el top 3 se repinta con tonos que se leen en papel',
+  /body \.top-1 \{ color: #15803d !important; background: #dcfce7/.test(idxHtml) &&
+  /body \.top-2 \{ color: #c2410c !important; background: #ffedd5/.test(idxHtml) &&
+  /body \.top-3 \{ color: #a16207 !important; background: #fef9c3/.test(idxHtml));
+check('y la celda lleva la clase de su puesto',
+  /' top-' \+ cel\.puestoInterno/.test(scoutJs));
+
 check('las tarjetas del ciclo van en tono claro',
   /body \.scout-ciclo-card \{[\s\S]{0,120}background: #f8fafc !important/.test(idxHtml));
 /* El borde las distingue de un vistazo, que es para lo que el DT las mira. */

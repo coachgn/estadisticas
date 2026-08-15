@@ -518,6 +518,19 @@ function equiposTab4F(idx, e) {
     </p>`;
 }
 
+/* El radar de este tab va con el ancho ACOTADO (`max-w-3xl`), aunque el
+   bloque tenga la fila entera para él.
+
+   Chart.js dibuja el canvas al ancho de su contenedor, y el radar sale del
+   lado MÁS CORTO. Con el contenedor a 1498px y 265 de alto, al escalarlo
+   para imprimir —manteniendo aspecto— el radar quedaba de 110px, contra los
+   164 de "Perfil ofensivo/defensivo", que van en media columna. O sea:
+   cuanto MÁS ANCHO el contenedor, más chico sale el radar. Agrandar la caja
+   en el CSS de impresión no alcanzaba; hay que igualar el contenedor.
+
+   OJO al comentar acá adentro: el cuerpo de esta función es un template
+   literal, así que un backtick en un comentario HTML lo cierra y rompe el
+   módulo entero. Por eso esta explicación vive afuera. */
 function equiposTabCondicion(idx, e) {
   const filas = ['eFG%', 'PePP%', 'RTL%', 'RO%', 'eFG Opp%', 'PP Opp%', 'RTL Opp%', 'RO Opp%'].map(k => {
     const l = e.split.LOCAL.factores[k], v = e.split.VISITANTE.factores[k];
@@ -557,7 +570,7 @@ function equiposTabCondicion(idx, e) {
       ${cab('De visitante', e.split.VISITANTE)}
     </div>
 
-    <div class="mb-6">
+    <div class="mb-6 max-w-3xl">
       ${equiposPanel('Local vs visitante · comparación por condición',
         SGADD_CHARTS.radar('chRadarCond', ejesRadar.map(k => SGADD.metrica(k).label + (SGADD.metrica(k).invertida ? ' (inv.)' : '')), [
           { label: 'Local', data: escala(e.split.LOCAL) },

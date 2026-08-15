@@ -2899,10 +2899,13 @@ function scoutBloqueCiclo(inf) {
  */
 function scoutPlanColectivo(plan) {
   if (!plan) return '';
-  const grupo = (titulo, lista, color, nota) => {
+  /* `scout-grupo` + el tono permiten darles al imprimir un borde SÓLIDO:
+     en pantalla van al 40% de opacidad, que sobre el fondo oscuro alcanza,
+     pero en papel se desdibujan y los cuatro grupos dejan de distinguirse. */
+  const grupo = (titulo, lista, color, nota, tono) => {
     if (!lista.length) return '';
     return `
-      <div class="rounded-lg border ${color} p-3 min-w-0">
+      <div class="scout-grupo grupo-${tono} rounded-lg border ${color} p-3 min-w-0">
         <p class="text-[10px] uppercase tracking-widest font-display mb-1.5">${escapeHtml(titulo)}</p>
         <ul class="space-y-1">
           ${lista.map(x => `<li class="text-[11px] leading-snug">
@@ -2924,10 +2927,10 @@ function scoutPlanColectivo(plan) {
       <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-1">Plan colectivo · ${escapeHtml(plan.escenario.label)}</p>
       <p class="text-xs text-ink leading-snug mb-3">${escapeHtml(plan.escenario.texto)}</p>
       <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
-        ${grupo('🎯 Focos · se dobla', plan.focos, 'border-red-400/40', 'La segunda marca llega acá.')}
-        ${grupo('🚫 No se sueltan', plan.intocables, 'border-green-400/40', 'Su defensor no ayuda nunca.')}
-        ${grupo('↩ Fuentes de ayuda', plan.fuentes, 'border-blue-400/40', 'Desde acá sale la rotación.')}
-        ${grupo('🏰 Box-out asignado', plan.cristal, 'border-yellow-400/40', 'Se los bloquea, no se rota desde ellos.')}
+        ${grupo('🎯 Focos · se dobla', plan.focos, 'border-red-400/40', 'La segunda marca llega acá.', 'foco')}
+        ${grupo('🚫 No se sueltan', plan.intocables, 'border-green-400/40', 'Su defensor no ayuda nunca.', 'intocable')}
+        ${grupo('↩ Fuentes de ayuda', plan.fuentes, 'border-blue-400/40', 'Desde acá sale la rotación.', 'fuente')}
+        ${grupo('🏰 Box-out asignado', plan.cristal, 'border-yellow-400/40', 'Se los bloquea, no se rota desde ellos.', 'cristal')}
       </div>
       ${aviso}${sobrecarga}
     </div>`;
@@ -3077,9 +3080,14 @@ function scoutBloqueJugadores(inf) {
         const col = !cel.destacado ? null
           : cel.puestoInterno === 1 ? '#22c55e'
             : cel.puestoInterno === 2 ? '#f97316' : '#facc15';
+        /* La clase de puesto deja repintar el semáforo para el papel: los
+           tonos de pantalla (verde #22c55e, naranja #f97316, amarillo
+           #facc15) sobre blanco dan 2,3 · 2,9 · 1,4 de contraste y se leen
+           lavados, sobre todo el amarillo. */
+        const clasePuesto = cel.destacado ? ' top-' + cel.puestoInterno : '';
         const tam = c.destacada ? 'text-sm' : 'text-xs';
         return `<td class="px-2 py-1.5 text-center">
-          <span class="font-mono ${tam} ${cel.destacado ? 'font-bold px-1 rounded' : 'text-ink'}"
+          <span class="font-mono ${tam}${clasePuesto} ${cel.destacado ? 'font-bold px-1 rounded' : 'text-ink'}"
             ${col ? `style="color:${col};background:${col}1a"` : ''}>${escapeHtml(cel.formateado)}</span>
           ${cel.sub ? `<span class="block text-[9px] font-mono dato-sec">${escapeHtml(cel.sub.clave)}: ${escapeHtml(cel.sub.formateado)}</span>` : ''}
         </td>`;

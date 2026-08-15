@@ -20,17 +20,17 @@ node test-core.js          # 170 tests · núcleo, índice, validador
 node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  22 tests · multi-cliente
-node test-boot.js          #  16 tests · arranque por club
+node test-boot.js          #  33 tests · arranque por club + sintaxis de los módulos
 node test-jugadores.js     # 189 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
-node test-informe.js       #  38 tests · secciones del informe y su PDF
+node test-informe.js       #  39 tests · secciones del informe y su PDF
 node test-partido.js       #  26 tests · detalle partido a partido y su PDF
-node test-scouting.js      # 435 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-scouting.js      # 440 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1162 tests en total. Todos tienen que dar verde antes de commitear.**
+**1185 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -106,7 +106,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=82`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=84`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -689,9 +689,14 @@ Los radares llevan además `.is-radar` (la pone la propia fábrica) y en el pape
 se acotan a **120mm centrados**: a todo el ancho quedaban chicos en el medio,
 con las etiquetas separadísimas del dibujo.
 
-**El de local/visitante es la excepción y va a 125×165mm.** Es el único radar
-que ocupa una fila entera —los otros van de a dos— así que con la hoja completa
-para él, 88mm lo dejaban diminuto. Se sube el ALTO, que es lo que fija el radio.
+**El de local/visitante se arregla en el HTML, no en el CSS de impresión.**
+Chart.js dibuja el canvas al ancho de su contenedor y el radar sale del lado
+más corto, así que **cuanto más ancho el contenedor, más chico sale el radar**:
+con 1498px quedaba de 110px contra los 164 de los otros dos. Agrandarle la caja
+en `@media print` no servía —al escalar manteniendo aspecto, un canvas más
+ancho se achica más—. La solución es acotar el contenedor (`max-w-3xl`) para
+que Chart.js lo dibuje con el mismo aspecto. Medido después: los tres canvas
+en **453×332**.
 
 **Los que no entran al gráfico salen más tenues.** En pantalla la fila lleva
 `.fila-flojo`; en el papel el aplanado los igualaba a todos y el plantel se
@@ -775,6 +780,32 @@ Mismo remedio: `body` adelante.
 Esas tarjetas llevan además `.ciclo-ganado` / `.ciclo-perdido`, que en el papel
 les pinta el **borde en verde o rojo**. Es lo que las distingue de un vistazo,
 que es para lo que el DT las mira.
+
+**Lo mismo con los cuatro grupos del plan colectivo** (`.scout-grupo` +
+`grupo-foco/intocable/fuente/cristal`): en pantalla van al 40% de opacidad, que
+sobre fondo oscuro alcanza; en papel se desdibujan y los cuatro dejan de
+distinguirse, justo lo que hace legible el plan de un vistazo.
+
+**Y con el mapa de calor del top 3.** Los tonos de pantalla sobre papel blanco
+dan 2,3 · 2,9 · **1,4** de contraste — el amarillo del 3° es prácticamente
+invisible. Se repintan con los tonos oscuros del resto del papel y un fondo que
+sí se ve (`.top-1/2/3`). El `!important` es obligatorio: el color de pantalla
+va en un `style` inline.
+
+### Sintaxis de los módulos · el test que faltaba
+
+La mitad de los archivos de `js/` no se puede `require()` desde Node —usan
+`document`, `window`, globals del navegador— así que **un error de sintaxis en
+ellos no lo cazaba ningún test**: se descubría con la sección en blanco en el
+navegador.
+
+Pasó con un **backtick dentro de un comentario HTML escrito adentro de un
+template literal**: cerró el string y tiró abajo `sgadd-equipos.js` entero
+(`SyntaxError` → `buildEquipos is not defined` → sección vacía). `test-boot.js`
+ahora compila los 16 módulos con `new vm.Script()`, que valida sintaxis sin
+ejecutar.
+
+**Al comentar dentro de un template literal, nunca usar backticks.**
 
 **El acento se OSCURECE por club, no se reemplaza por un color fijo.** El
 naranja de Reconquista da 2,08 de contraste sobre el gris de las tarjetas y se

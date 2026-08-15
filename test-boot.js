@@ -127,6 +127,33 @@ function crearEntorno({ clubOk, clubExplota, sinClub, sinApp, planillasClub, pla
   check('sin SGADD_APP (núcleo SGADD no cargado), corta temprano sin romper', !rompio5);
   check('y no toca SHEET_ID si no puede resolver planilla', e5.SHEET_ID === 'SHEET_DEFAULT_RECONQUISTA', e5.SHEET_ID);
 
+  /* =====================================================================
+     SINTAXIS DE TODOS LOS MÓDULOS
+
+     La mitad de los archivos de `js/` no se puede `require()` desde Node
+     —usan `document`, `window`, globals del navegador— así que un error de
+     sintaxis en ellos NO lo caza ningún test: se descubre recién con la
+     sección en blanco en el navegador.
+
+     Ya pasó: un backtick dentro de un comentario HTML, escrito adentro de
+     un template literal, cerró el string y tiró abajo `sgadd-equipos.js`
+     entero (`SyntaxError: Unexpected identifier 'max'` →
+     `buildEquipos is not defined` → la sección no renderiza).
+
+     `new vm.Script()` COMPILA sin ejecutar, así que valida la sintaxis de
+     cualquier módulo aunque dependa del DOM.
+     ===================================================================== */
+  console.log('\nSINTAXIS DE LOS MÓDULOS');
+  console.log('─'.repeat(70));
+  const modulos = fs.readdirSync('./js').filter(f => f.endsWith('.js')).sort();
+  check('hay módulos para revisar', modulos.length >= 10, modulos.length);
+  modulos.forEach(f => {
+    let error = null;
+    try { new vm.Script(fs.readFileSync('./js/' + f, 'utf8'), { filename: f }); }
+    catch (e) { error = e.message; }
+    check('js/' + f + ' compila', error === null, error);
+  });
+
   console.log('\n' + '═'.repeat(70));
   console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);

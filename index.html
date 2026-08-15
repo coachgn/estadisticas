@@ -725,16 +725,11 @@
       margin-left: auto;
       margin-right: auto;
     }
-    /* EXCEPCIÓN: el radar de local/visitante es el ÚNICO que va solo en su
-       fila; los otros van de a dos y por eso 88mm de alto les alcanza. A
-       este, con la hoja entera para él, esa medida lo dejaba diminuto en el
-       medio. Se le da más de las dos: el radio lo fija el lado más corto,
-       así que hay que subir el alto para que crezca de verdad. */
-    body.modo-impresion #informeSalida .chart-box.is-radar:has(#chRadarCond) {
-      height: 125mm !important;
-      max-height: 125mm !important;
-      max-width: 165mm;
-    }
+    /* El de local/visitante NO lleva excepción: se le acotó el contenedor en
+       el HTML (`max-w-3xl`) para que Chart.js lo dibuje con el mismo aspecto
+       que los otros dos, y así comparte estas mismas medidas. Darle una caja
+       más grande acá no servía: el radar sale del lado más corto del canvas,
+       y un canvas más ancho se escala más y termina MÁS chico. */
     /* El pie de figura no se separa de su gráfico. */
     body.modo-impresion #informeSalida .chart-box + p {
       page-break-before: avoid; break-before: avoid;
@@ -864,6 +859,43 @@
     }
     body .scout-ciclo-card.ciclo-ganado { border-color: #15803d !important; }
     body .scout-ciclo-card.ciclo-perdido { border-color: #b91c1c !important; }
+
+    /* -----------------------------------------------------------------
+       LOS CUATRO GRUPOS DEL PLAN COLECTIVO · borde sólido
+
+       En pantalla van al 40% de opacidad, que sobre el fondo oscuro
+       alcanza. En papel se desdibujan y los cuatro dejan de distinguirse
+       entre sí, justo lo que hace legible el plan de un vistazo: cada
+       grupo es una decisión defensiva distinta.
+       ----------------------------------------------------------------- */
+    body .scout-grupo {
+      border-width: 1.5px !important;
+      background: #f8fafc !important;
+    }
+    body .scout-grupo.grupo-foco      { border-color: #b91c1c !important; }
+    body .scout-grupo.grupo-intocable { border-color: #15803d !important; }
+    body .scout-grupo.grupo-fuente    { border-color: #1d4ed8 !important; }
+    body .scout-grupo.grupo-cristal   { border-color: #a16207 !important; }
+
+    /* -----------------------------------------------------------------
+       EL MAPA DE CALOR DEL TOP 3
+
+       El color dice "acá está el especialista", no "este número es bueno":
+       1° amenaza principal, 2° precaución, 3° foco complementario. Los
+       tonos de pantalla sobre papel blanco dan 2,3 · 2,9 · 1,4 de
+       contraste — el amarillo es prácticamente invisible.
+
+       Se repintan con los tonos oscuros del resto del papel y se les sube
+       el fondo del 10% a un tinte que sí se ve. El `!important` es
+       obligatorio: el color de pantalla va en un `style` inline.
+       ----------------------------------------------------------------- */
+    body .top-1 { color: #15803d !important; background: #dcfce7 !important; }
+    body .top-2 { color: #c2410c !important; background: #ffedd5 !important; }
+    body .top-3 { color: #a16207 !important; background: #fef9c3 !important; }
+    body .top-1, body .top-2, body .top-3 {
+      border-radius: 1mm;
+      padding: 0 1mm !important;
+    }
 
     /* -----------------------------------------------------------------
        PAGINADO POR GRUPOS
@@ -1212,22 +1244,22 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=82"></script>
-<script src="js/sgadd-core.js?v=82"></script>
-<script src="js/sgadd-ui.js?v=82"></script>
-<script src="js/sgadd-app.js?v=82"></script>
-<script src="js/sgadd-estados.js?v=82"></script>
-<script src="js/sgadd-buzon.js?v=82"></script>
-<script src="js/sgadd-charts.js?v=82"></script>
-<script src="js/sgadd-personalidad.js?v=82"></script>
-<script src="js/sgadd-rankings.js?v=82"></script>
-<script src="js/sgadd-partido.js?v=82"></script>
-<script src="js/sgadd-informe.js?v=82"></script>
-<script src="js/sgadd-equipos.js?v=82"></script>
-<script src="js/sgadd-jugadores.js?v=82"></script>
-<script src="js/sgadd-4factores.js?v=82"></script>
-<script src="js/sgadd-scouting.js?v=82"></script>
-<script src="js/sgadd-diagnostico.js?v=82"></script>
+<script src="js/sgadd-club.js?v=84"></script>
+<script src="js/sgadd-core.js?v=84"></script>
+<script src="js/sgadd-ui.js?v=84"></script>
+<script src="js/sgadd-app.js?v=84"></script>
+<script src="js/sgadd-estados.js?v=84"></script>
+<script src="js/sgadd-buzon.js?v=84"></script>
+<script src="js/sgadd-charts.js?v=84"></script>
+<script src="js/sgadd-personalidad.js?v=84"></script>
+<script src="js/sgadd-rankings.js?v=84"></script>
+<script src="js/sgadd-partido.js?v=84"></script>
+<script src="js/sgadd-informe.js?v=84"></script>
+<script src="js/sgadd-equipos.js?v=84"></script>
+<script src="js/sgadd-jugadores.js?v=84"></script>
+<script src="js/sgadd-4factores.js?v=84"></script>
+<script src="js/sgadd-scouting.js?v=84"></script>
+<script src="js/sgadd-diagnostico.js?v=84"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

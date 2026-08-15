@@ -171,8 +171,17 @@ check('y se atenúan con color, no bajando la opacidad de toda la fila',
 /* El radar de local/visitante es el ÚNICO que va solo en su fila; los otros
    van de a dos y por eso 88mm de alto les alcanza. Con la hoja entera para
    él, esa medida lo dejaba diminuto en el medio. */
-check('el radar de local/visitante tiene su propia medida, más grande',
-  /is-radar:has\(#chRadarCond\)[\s\S]{0,160}height: 125mm !important/.test(html));
+/* El radar de local/visitante NO lleva excepción de CSS: se le acotó el
+   CONTENEDOR en el HTML. Chart.js dibuja el canvas al ancho de su padre y
+   el radar sale del lado más corto, así que un canvas más ancho se escala
+   más al imprimir y termina MÁS chico — con 1498px de contenedor quedaba
+   de 110px contra los 164 de los otros dos. Darle una caja más grande en
+   el CSS no servía; hay que igualar el contenedor. Medido después del fix:
+   los tres canvas en 453×332. */
+check('el radar de local/visitante va en un contenedor acotado',
+  /<div class="mb-6 max-w-3xl">/.test(require('fs').readFileSync('./js/sgadd-equipos.js', 'utf8')));
+check('y por eso NO necesita una medida propia en el CSS',
+  !/is-radar:has\(#chRadarCond\)/.test(html));
 
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
