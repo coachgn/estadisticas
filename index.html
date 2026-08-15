@@ -543,6 +543,14 @@
     /* Un apellido largo parte de línea en vez de ensanchar su columna. */
     body.modo-partido-print #detallePartido th,
     body.modo-partido-print #detallePartido td { overflow-wrap: anywhere !important; }
+    /* Los que jugaron menos de 8 minutos van atenuados, pero en el papel la
+       OPACIDAD no sirve: destiñe el número y el borde de la fila por igual y
+       la tabla se lee sucia. Es la misma decisión que ya tomó el plantel del
+       informe de equipo — atenuar con TINTA, no con opacidad. */
+    body.modo-partido-print #detallePartido tr.fila-tenue { opacity: 1 !important; }
+    body.modo-partido-print #detallePartido tr.fila-tenue td,
+    body.modo-partido-print #detallePartido tr.fila-tenue td * { color: #94a3b8 !important; }
+
     /* Con `table-layout: fixed` las 15 columnas se reparten en partes
        iguales, y la de nombres necesita el triple que una de números:
        medido, "RUSSO NOWOSIESKI" y "GARCIA BARUCCO" se montaban encima de
@@ -674,8 +682,23 @@
        estaba neutralizado acá: daba texto gris #555 sobre casi negro, o sea
        encabezados de tabla ilegibles en el PDF en blanco y negro. */
     table thead th {
-      background: #ffffff !important;
+      /* TRANSPARENTE y no blanco: la tarjeta que contiene la tabla ya trae su
+         gris de papel, y un blanco duro dibujaba un recuadro que no cerraba
+         con el resto de la fila de encabezados. */
+      background: transparent !important;
       position: static !important;
+    }
+    /* Y lo mismo con la PRIMERA COLUMNA fija de las tablas que scrollean:
+       en el papel no hay scroll horizontal, así que la columna no se fija ni
+       arrastra su fondo oscuro. La media query que la define ya está acotada
+       a `screen`; esto es el cinturón además de los tiradores, porque cuando
+       se activó nadie lo notó hasta ver el PDF: los nombres salían en negro
+       sobre negro. */
+    .scrollbox table th:first-child,
+    .scrollbox table td:first-child {
+      position: static !important;
+      background: transparent !important;
+      box-shadow: none !important;
     }
 
     /* Nada de la app navegable entra al papel. `.no-imprimir` vale para las
@@ -1204,25 +1227,39 @@
   .chart-box { position: relative; width: 100%; height: 520px; }
   .chart-box.is-md { height: 420px; }
   .chart-box.is-sm { height: 380px; }
-  @media (max-width: 1023px) {
+  @media screen and (max-width: 1023px) {
     .chart-box { height: 440px; }
     .chart-box.is-md { height: 380px; }
     .chart-box.is-sm { height: 340px; }
   }
-  @media (max-width: 767px) {
+  @media screen and (max-width: 767px) {
     .chart-box { height: 400px; }
     .chart-box.is-md { height: 320px; }
     .chart-box.is-sm { height: 300px; }
   }
-  @media (max-width: 479px) {
+  @media screen and (max-width: 479px) {
     .chart-box { height: 360px; }
     .chart-box.is-md { height: 280px; }
     .chart-box.is-sm { height: 260px; }
   }
 
   /* Primera columna fija: sin esto perdes de vista que jugador estas mirando
-     apenas scrolleas la tabla a lo ancho. */
-  @media (max-width: 767px) {
+     apenas scrolleas la tabla a lo ancho.
+
+     VA EN `screen` Y NO A SECAS, y esto costó una tarde: al imprimir, Chrome
+     evalua las media queries contra el ANCHO DE HOJA del dialogo —A4 vertical
+     con margenes por defecto da ~717px, o sea MENOS de 767— asi que la regla
+     se activaba en el papel. Ahi no hay scroll horizontal que justifique la
+     columna fija, y su `background: #141414` pintaba la primera columna de
+     NEGRO: los nombres, ya aplanados a #111 por el papel blanco, quedaban
+     invisibles. Se veia en la tabla de marcas del scouting y en los dos box
+     scores del post-partido, en cualquier club.
+
+     Los PDF que se auditaron antes no lo mostraban porque se generaban con
+     `printToPDF` y margenes en 0, que da una hoja mas ancha que 767px y nunca
+     entraba en esta rama. Auditar con el papel del dialogo, no con el de la
+     automatizacion. */
+  @media screen and (max-width: 767px) {
     .scrollbox table th:first-child,
     .scrollbox table td:first-child {
       position: sticky; left: 0; z-index: 2;
@@ -1241,19 +1278,19 @@
   }
 
   /* Panel de logos faltantes: a lo ancho abajo en telefono */
-  @media (max-width: 639px) {
+  @media screen and (max-width: 639px) {
     #logosFaltantesPanel {
       left: .5rem; right: .5rem; bottom: .5rem; width: auto; max-width: none;
     }
   }
 
   /* Evita el zoom automatico de iOS al enfocar un input < 16px */
-  @media (max-width: 767px) {
+  @media screen and (max-width: 767px) {
     input, select, textarea { font-size: 16px; }
   }
 
 
-  @media (max-width: 767px) {
+  @media screen and (max-width: 767px) {
     #sidebar { transform: translateX(-100%); transition: transform .25s ease; }
     #sidebar.open { transform: translateX(0); }
   }
@@ -1358,22 +1395,22 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=88"></script>
-<script src="js/sgadd-core.js?v=88"></script>
-<script src="js/sgadd-ui.js?v=88"></script>
-<script src="js/sgadd-app.js?v=88"></script>
-<script src="js/sgadd-estados.js?v=88"></script>
-<script src="js/sgadd-buzon.js?v=88"></script>
-<script src="js/sgadd-charts.js?v=88"></script>
-<script src="js/sgadd-personalidad.js?v=88"></script>
-<script src="js/sgadd-rankings.js?v=88"></script>
-<script src="js/sgadd-partido.js?v=88"></script>
-<script src="js/sgadd-informe.js?v=88"></script>
-<script src="js/sgadd-equipos.js?v=88"></script>
-<script src="js/sgadd-jugadores.js?v=88"></script>
-<script src="js/sgadd-4factores.js?v=88"></script>
-<script src="js/sgadd-scouting.js?v=88"></script>
-<script src="js/sgadd-diagnostico.js?v=88"></script>
+<script src="js/sgadd-club.js?v=89"></script>
+<script src="js/sgadd-core.js?v=89"></script>
+<script src="js/sgadd-ui.js?v=89"></script>
+<script src="js/sgadd-app.js?v=89"></script>
+<script src="js/sgadd-estados.js?v=89"></script>
+<script src="js/sgadd-buzon.js?v=89"></script>
+<script src="js/sgadd-charts.js?v=89"></script>
+<script src="js/sgadd-personalidad.js?v=89"></script>
+<script src="js/sgadd-rankings.js?v=89"></script>
+<script src="js/sgadd-partido.js?v=89"></script>
+<script src="js/sgadd-informe.js?v=89"></script>
+<script src="js/sgadd-equipos.js?v=89"></script>
+<script src="js/sgadd-jugadores.js?v=89"></script>
+<script src="js/sgadd-4factores.js?v=89"></script>
+<script src="js/sgadd-scouting.js?v=89"></script>
+<script src="js/sgadd-diagnostico.js?v=89"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

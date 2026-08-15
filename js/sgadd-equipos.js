@@ -1152,7 +1152,7 @@ function equiposDetallePartido(idx, e, id) {
       const flojo = !d.fiable;
       const dest = d.destacado;
       return `
-        <tr class="border-b border-hairline/40 last:border-0 ${flojo ? 'opacity-50' : ''}
+        <tr class="border-b border-hairline/40 last:border-0 ${flojo ? 'opacity-50 fila-tenue' : ''}
                    ${dest ? (dest.z > 0 ? 'bg-green-400/5' : 'bg-red-400/5') : ''}">
           <td class="py-1.5 pr-3 text-xs whitespace-nowrap ${dest ? 'text-white font-medium' : 'text-white'}">
             ${escapeHtml(SGADD_PARTIDO.nombreCorto(j))}

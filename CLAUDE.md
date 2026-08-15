@@ -25,12 +25,12 @@ node test-jugadores.js     # 189 tests · rol, arquetipos, tiro, evolución, loc
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
-node test-partido.js       #  44 tests · detalle partido a partido, perfil de tiro y su PDF
-node test-scouting.js      # 447 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-partido.js       #  49 tests · detalle partido a partido, perfil de tiro y su PDF
+node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1216 tests en total. Todos tienen que dar verde antes de commitear.**
+**1222 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -106,7 +106,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=88`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=89`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -499,7 +499,11 @@ adivinar, y ya evitó tres diagnósticos equivocados. Chrome está en
 1. `chrome --headless=new --remote-debugging-port=9222 --user-data-dir=<tmp>`
 2. Por CDP (`fetch` a `127.0.0.1:9222/json/list` + `WebSocket`, ambos nativos
    en Node): `Page.navigate` → `Runtime.evaluate` para armar el cruce →
-   `Page.printToPDF` con `preferCSSPageSize: true`.
+   `Page.printToPDF` con `preferCSSPageSize: true`, **y con el papel del
+   diálogo, no con márgenes en 0**: `paperWidth: 8.27, paperHeight: 11.69` y
+   `margin*: 0.4`. Con márgenes en 0 la hoja mide más de 767px y **las media
+   queries de celular no se activan**, así que el PDF auditado no es el que
+   imprime el club (ver 7.4 bis: así se escapó el bug de la columna negra).
 3. El PDF se audita **sin librerías**, leyendo el archivo con Python: los
    `/MediaBox` dan el tamaño de cada hoja, `/Subtype /Image` cuenta los
    escudos incrustados, y descomprimiendo el primer stream con `zlib` se lee
@@ -659,6 +663,50 @@ neutralizado** en `@media print`: en el PDF blanco y negro daba texto gris
 `#555` sobre casi negro. Ahora se blanquea en el modo claro y pierde el
 `position: sticky` en los dos modos — en papel no sirve y desalinea la tabla al
 paginar.
+
+### 7.4 bis · La columna que salía NEGRA · las media queries de celular
+
+El defecto más caro que tuvo el papel, y estuvo en las **tres**
+exportaciones a la vez: la primera columna de las tablas —los nombres de los
+jugadores— salía como un **bloque negro** con el texto adentro invisible. Se
+veía en la tabla de marcas del scouting y en los dos box scores del
+post-partido, en Reconquista y en Jujuy por igual.
+
+**La causa: al imprimir, Chrome evalúa las media queries contra el ancho de
+HOJA del diálogo.** Un A4 vertical con márgenes por defecto deja ~717px, o
+sea **menos de 767**, así que se activaba
+
+```css
+@media (max-width: 767px) {          /* ← sin `screen` */
+  .scrollbox table td:first-child { position: sticky; background: #141414; }
+}
+```
+
+que es una afordancia de **celular** —la columna fija para no perder de
+vista a quién estás mirando mientras scrolleás la tabla a lo ancho—. En el
+papel no hay scroll horizontal que la justifique, y su fondo oscuro se
+comía los nombres, que el aplanado ya había pasado a `#111`.
+
+**Por qué no lo cazó ninguna auditoría anterior**: los PDF se generaban con
+`printToPDF` y **márgenes en 0**, que da una hoja más ancha que 767px y
+nunca entra en esa rama. El PDF que se auditaba no era el que imprimía el
+club. Ahora el generador usa el papel del diálogo (ver arriba).
+
+Se corrigió acotando **todos** los breakpoints de ancho a
+`@media screen and (max-width: …)` —son todos afordancias de pantalla, y el
+de `input { font-size: 16px }` también deformaba los campos editables de la
+tabla de marcas— más una neutralización explícita en `@media print`. Hay dos
+tests que lo fijan y un detector de rellenos oscuros: sobre los seis PDF
+(tres de cada club) quedan **0**, contra 67 y 19 que traían los del club.
+
+**El `thead th` del papel pasó de blanco a `transparent`**: la tarjeta ya
+trae su gris y un blanco duro dibujaba un recuadro que no cerraba con el
+resto de la fila de encabezados.
+
+**Y la fila atenuada se atenúa con TINTA, no con opacidad** (`.fila-tenue` →
+`#94a3b8`). La opacidad destiñe el número y el borde por igual y en papel se
+lee sucio; es la misma decisión que ya había tomado el plantel del informe
+de equipo.
 
 ### 7.5 · Escudos y campos manuales · lo que NO llegaba al papel
 

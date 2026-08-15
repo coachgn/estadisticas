@@ -238,6 +238,33 @@ check('y las tablas se fijan al ancho de la hoja en vez de estirarse',
 check('la columna de nombres se lleva más ancho y puede partir de línea',
   /modo-partido-print #detallePartido table td:first-child \{[^}]*white-space: normal !important/.test(htmlPartido));
 
+/* -----------------------------------------------------------------------
+   LA COLUMNA FIJA NO VA AL PAPEL
+
+   Al imprimir, Chrome evalúa las media queries contra el ANCHO DE HOJA del
+   diálogo: un A4 vertical con márgenes por defecto da ~717px, o sea MENOS
+   de 767. La regla de la primera columna fija —pensada para el celular— se
+   activaba en el papel y pintaba esa columna de #141414: los nombres, ya
+   aplanados a #111, salían negro sobre negro. Pasaba en el box score y en
+   la tabla de marcas del scouting, en cualquier club.
+   ----------------------------------------------------------------------- */
+check('la columna fija es una regla de PANTALLA, no del papel',
+  /@media screen and \(max-width: 767px\) \{\s*\.scrollbox table th:first-child/.test(htmlPartido));
+/* Todos los breakpoints responsive son afordancias de pantalla: si alguno
+   queda sin `screen`, se activa al imprimir en A4 y vuelve a pasar esto. */
+check('ningún breakpoint de ancho queda sin acotar a pantalla',
+  !/@media \(max-width:/.test(htmlPartido));
+check('y el modo impresión la neutraliza igual, por las dudas',
+  /@media print[\s\S]*?\.scrollbox table td:first-child \{[^}]*background: transparent !important/.test(htmlPartido));
+
+/* La opacidad destiñe el número Y el borde de la fila: en papel se lee
+   sucio. Se atenúa con tinta, igual que el plantel del informe de equipo. */
+check('los jugadores de pocos minutos se atenúan con tinta y no con opacidad',
+  /modo-partido-print #detallePartido tr\.fila-tenue \{ opacity: 1 !important/.test(htmlPartido) &&
+  /fila-tenue[\s\S]{0,200}color: #94a3b8 !important/.test(htmlPartido));
+check('y la fila lleva la clase que lo permite',
+  /flojo \? 'opacity-50 fila-tenue'/.test(equiposJs));
+
 /* Chart.js congela los colores en las OPCIONES al crear el gráfico, y el
    post-partido dibuja en pantalla y marca el modo papel recién al
    imprimir: sin repintar, la leyenda sale gris clarísimo sobre blanco. */

@@ -1841,7 +1841,7 @@ check('el acento del club se oscurece para el papel en vez de fijarse a mano',
   /--acento-papel/.test(idxHtml) &&
   /oscurecerHastaLegible/.test(require('fs').readFileSync('./js/sgadd-club.js', 'utf8')));
 check('el thead sticky pierde el sticky, que desalinea la tabla al paginar',
-  /table thead th \{[\s\S]{0,80}position: static !important/.test(idxHtml));
+  /table thead th \{[\s\S]{0,400}position: static !important/.test(idxHtml));
 
 /* La clase tiene que ir en el <html>: las reglas de papel blanco apuntan a
    `:root, html, body` y una clase del body no le gana al selector `html`. */
@@ -1930,8 +1930,16 @@ check('y el motor las marca según el resultado',
   /ciclo-perdido' : 'ciclo-ganado'/.test(scoutJs) &&
   /scout-ciclo-card \$\{tono\}/.test(scoutJs));
 
+/* TRANSPARENTE y no blanco: la tarjeta ya trae su gris de papel, y un
+   blanco duro dibujaba un recuadro que no cerraba con la fila. */
 check('el thead sticky deja de pintar oscuro en el papel',
-  /table thead th \{[\s\S]{0,120}background: #ffffff !important/.test(idxHtml));
+  /table thead th \{[\s\S]{0,400}background: transparent !important/.test(idxHtml));
+/* El mismo defecto pero en la PRIMERA COLUMNA: la regla de la columna fija
+   es de celular y al imprimir en A4 (~717px de hoja) se activaba, pintando
+   los nombres de negro sobre negro. */
+check('la columna fija tampoco pinta oscuro en el papel',
+  /@media screen and \(max-width: 767px\) \{\s*\.scrollbox table th:first-child/.test(idxHtml) &&
+  /\.scrollbox table td:first-child \{[\s\S]{0,120}background: transparent !important/.test(idxHtml));
 
 /* Las cards no se parten y el corte se pone con `before`: si el DT
    destilda una del medio, con `after` quedaba una hoja en blanco. */
