@@ -15,17 +15,22 @@ const SGADD_CHARTS = (function () {
   'use strict';
 
   /* ¿Se está dibujando para el PAPEL BLANCO?
-     El informe de equipo (`modo-impresion`) imprime sobre fondo claro, y los
-     grises pensados para el tema oscuro quedan invisibles ahí: el radar de
-     8 ejes salía con las etiquetas en #f5f4f2 sobre blanco, o sea en blanco
-     sobre blanco. Como los colores de Chart.js se fijan en JS y no en CSS,
+     Las TRES exportaciones imprimen sobre fondo claro, y los grises
+     pensados para el tema oscuro quedan invisibles ahí: el radar de 8 ejes
+     salía con las etiquetas en #f5f4f2 sobre blanco, o sea en blanco sobre
+     blanco. Como los colores de Chart.js se fijan en JS y no en CSS,
      `@media print` no los puede corregir: hay que resolverlos al dibujar.
 
-     El scouting NO entra acá: imprime con la paleta oscura de la app, así
-     que sus gráficos ya están sobre el fondo correcto. */
+     Van los tres modos y no solo `modo-impresion`: cuando el post-partido
+     sumó su gráfico de tiro, la leyenda "Convertidos / Errados" salió en
+     gris clarísimo justamente porque su clase (`modo-partido-print`) no
+     estaba en esta lista. Un modo nuevo que imprima en claro se agrega acá
+     o sus gráficos salen ilegibles sin que nadie lo note. */
+  const MODOS_PAPEL = ['modo-impresion', 'modo-partido-print', 'modo-scout-print'];
+
   function enPapelClaro() {
-    return typeof document !== 'undefined' && document.body &&
-      document.body.classList.contains('modo-impresion');
+    if (typeof document === 'undefined' || !document.body) return false;
+    return MODOS_PAPEL.some(m => document.body.classList.contains(m));
   }
 
   const COL = {
@@ -59,6 +64,43 @@ const SGADD_CHARTS = (function () {
   function limpiar() {
     Object.keys(instancias).forEach(k => { try { instancias[k].destroy(); } catch (e) {} delete instancias[k]; });
     pendientes = [];
+  }
+
+  /**
+   * Reaplica la paleta a los gráficos YA dibujados.
+   *
+   * Los getters de `COL` se resuelven al DIBUJAR, así que sirven cuando el
+   * modo de impresión se activa antes de crear el chart —el informe de
+   * equipo hace justo eso—. Pero el post-partido y el scouting dibujan sus
+   * gráficos al abrir la pantalla y recién marcan el modo al imprimir: ahí
+   * las opciones ya quedaron congeladas con los colores del tema oscuro.
+   *
+   * Se vio con la leyenda "Convertidos / Errados" del perfil de tiro, que
+   * salía en gris clarísimo sobre el papel blanco mientras la línea de
+   * referencia —que la dibuja un plugin en cada frame— sí se actualizaba.
+   *
+   * `update('none')` repinta sin animación: con animación, el `print()`
+   * puede dispararse a mitad de la transición y capturar el gráfico a medio
+   * dibujar.
+   */
+  function repintarParaPapel() {
+    Object.keys(instancias).forEach(k => {
+      const ch = instancias[k];
+      if (!ch || !ch.options) return;
+      const pl = ch.options.plugins;
+      if (pl && pl.legend && pl.legend.labels) pl.legend.labels.color = COL.tinta;
+      const escalas = ch.options.scales || {};
+      Object.keys(escalas).forEach(id => {
+        const e = escalas[id];
+        if (!e) return;
+        if (e.ticks) e.ticks.color = COL.texto;
+        if (e.grid) e.grid.color = COL.grilla;
+        if (e.title) e.title.color = COL.texto;
+        if (e.pointLabels) e.pointLabels.color = COL.tinta;   // radar
+        if (e.angleLines) e.angleLines.color = COL.grilla;    // radar
+      });
+      try { ch.update('none'); } catch (err) {}
+    });
   }
 
   function crear(id, config) {
@@ -215,6 +257,119 @@ const SGADD_CHARTS = (function () {
        deja chico en el centro con medio metro de aire a los lados, así que
        en impresión se le acota el ancho y se centra. */
     return `<div class="chart-box is-md is-radar"><canvas id="${id}"></canvas></div>`;
+  }
+
+  /* =====================================================================
+     4 bis. PERFIL DE TIRO DEL PARTIDO · con la liga DENTRO del gráfico
+
+     Barras apiladas por zona (2 puntos / 3 puntos / libres):
+
+         ┌─────────┐  ← errados (gris)
+         ├ ─ ─ ─ ─ ┤  ← marca: lo que habría convertido la LIGA
+         │█████████│  ← convertidos (color del equipo)
+         └─────────┘
+
+     La altura TOTAL es la distribución de lanzamientos, los dos segmentos
+     son convertidos vs errados, y la marca punteada dice con qué
+     efectividad: si el bloque sólido la pasa, tiraron mejor que la liga.
+
+     La referencia va DENTRO de la barra y no como una serie aparte —que es
+     lo que pidió el club— porque comparar dos barras de alturas distintas
+     obliga a hacer la cuenta mentalmente; una línea que corta la propia
+     barra se lee sin pensar.
+
+     El plugin dibuja las marcas: Chart.js no tiene "línea por barra", y un
+     dataset de tipo línea las uniría entre zonas, sugiriendo una
+     continuidad que no existe (el 52% de dos y el 35% de tres no son
+     puntos de una misma curva).
+     ===================================================================== */
+  const pluginMarcaLiga = {
+    id: 'marcaLiga',
+    afterDatasetsDraw: (chart) => {
+      const marcas = (chart.options.plugins && chart.options.plugins.marcaLiga &&
+        chart.options.plugins.marcaLiga.valores) || [];
+      if (!marcas.length) return;
+      const meta = chart.getDatasetMeta(0);
+      if (!meta || !meta.data) return;
+      const ctx = chart.ctx;
+      const eje = chart.scales.y;
+      ctx.save();
+      meta.data.forEach((barra, i) => {
+        const v = marcas[i];
+        if (v === null || v === undefined) return;
+        const y = eje.getPixelForValue(v);
+        /* Ancho de la barra: el mismo que ocupa el dato, un poco más para
+           que la marca "sobresalga" y se lea como referencia y no como
+           parte del apilado. */
+        const w = (barra.width || 24) * 0.62;
+        ctx.beginPath();
+        ctx.setLineDash([4, 3]);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = COL.tinta;
+        ctx.moveTo(barra.x - w, y);
+        ctx.lineTo(barra.x + w, y);
+        ctx.stroke();
+      });
+      ctx.restore();
+    },
+  };
+
+  /**
+   * @param {string} id      id del <canvas>
+   * @param {object} perfil  lo que devuelve SGADD_PARTIDO.perfilTiro()
+   * @param {object} o       { color, nombre }
+   */
+  function tiroPartido(id, perfil, opciones) {
+    const o = opciones || {};
+    if (!perfil || !perfil.zonas) return '';
+    const z = perfil.zonas;
+    const color = o.color || COL.equipo;
+
+    encolar(() => crear(id, {
+      type: 'bar',
+      data: {
+        labels: z.map(x => x.label),
+        datasets: [
+          { label: 'Convertidos', data: z.map(x => x.convertidos),
+            backgroundColor: color, borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 3, bottomRight: 3 } },
+          { label: 'Errados', data: z.map(x => x.errados),
+            backgroundColor: COL.ligaSuave, borderColor: COL.liga, borderWidth: 1,
+            borderRadius: { topLeft: 3, topRight: 3, bottomLeft: 0, bottomRight: 0 } },
+        ],
+      },
+      options: baseOpciones({
+        scales: {
+          x: { stacked: true, grid: { display: false },
+               ticks: { color: COL.texto, font: { family: 'Barlow', size: movil() ? 9 : 11 } } },
+          y: { stacked: true, beginAtZero: true,
+               grid: { color: COL.grilla },
+               title: { display: !movil(), text: 'Lanzamientos', color: COL.texto,
+                        font: { family: 'Barlow', size: 10 } },
+               ticks: { color: COL.texto, font: { family: 'DM Mono', size: movil() ? 9 : 10 } } },
+        },
+        plugins: Object.assign(baseOpciones().plugins, {
+          marcaLiga: { valores: z.map(x => x.convLiga) },
+          tooltip: Object.assign(baseOpciones().plugins.tooltip, {
+            callbacks: {
+              /* El tooltip cuenta las tres cosas del bloque: cuántos tiró,
+                 con qué acierto, y dónde estaba la liga. */
+              afterBody: (items) => {
+                const x = z[items[0].dataIndex];
+                if (!x || x.pct === null) return '';
+                const p = (v) => (v * 100).toFixed(1).replace('.', ',') + '%';
+                return x.pctLiga === null
+                  ? [x.convertidos + ' de ' + x.intentos + ' · ' + p(x.pct)]
+                  : [x.convertidos + ' de ' + x.intentos + ' · ' + p(x.pct),
+                     'Liga: ' + p(x.pctLiga) + ' → habría metido ' + x.convLiga.toFixed(1),
+                     (x.delta >= 0 ? '▲ +' : '▼ ') + p(Math.abs(x.delta)).replace('%', ' pp')];
+              },
+            },
+          }),
+        }),
+      }),
+      plugins: [pluginMarcaLiga],
+    }));
+    return `<div class="chart-box is-sm"><canvas id="${id}"></canvas></div>`;
   }
 
   /* =====================================================================
@@ -570,7 +725,8 @@ const SGADD_CHARTS = (function () {
 
   return {
     COL, crear, encolar, dibujarPendientes, limpiar, baseOpciones, ejes,
-    barrasRanking, barrasComparadas, convertidosErrados, radar, evolucion, evolucionJugador, scatterUsoEficiencia,
+    repintarParaPapel,
+    barrasRanking, barrasComparadas, convertidosErrados, radar, tiroPartido, evolucion, evolucionJugador, scatterUsoEficiencia,
     inicialesJugador, radioNodo, MIN_SCATTER,
     nota, narrarPerdidas, narrarPPT, narrarCondicion, narrarRebote, narrarAtaque,
   };

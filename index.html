@@ -425,9 +425,52 @@
     body.modo-partido-print #detallePartido .gap-3 { gap: 1.5mm !important; }
     body.modo-partido-print #detallePartido .space-y-2 > * + * { margin-top: 1mm !important; }
 
-    /* Nada se parte al medio, pero el informe SÍ puede ocupar dos hojas.
-       Forzar una sola carilla obligaba a apretar el box score; es mejor un
-       informe fluido de 1 o 2 páginas que uno amontonado. */
+    /* -----------------------------------------------------------------
+       DOS HOJAS, Y EL CORTE DONDE CORRESPONDE
+
+       Con el perfil de tiro adentro, el post-partido ya no entra en una
+       carilla — y está bien que no entre: son dos lecturas distintas.
+
+         hoja 1 · marcador, insight, 4 factores, eficiencia, perfil de tiro
+                  → el análisis de EQUIPO
+         hoja 2 · los dos box scores + el cierre
+                  → el detalle jugador por jugador
+
+       Sin el corte explícito, los box scores arrancaban al pie de la
+       primera y se partían al medio: la tabla de un equipo quedaba en una
+       hoja y la del otro en la siguiente, que es justo lo que impide
+       compararlas. `page-break-inside: avoid` sobre el grid no alcanza —
+       con las dos tablas juntas nunca entra en el hueco que sobra—.
+       ----------------------------------------------------------------- */
+    body.modo-partido-print #boxScores {
+      page-break-before: always; break-before: page;
+    }
+    /* El perfil de tiro cierra la primera hoja: no se parte ni arrastra. */
+    body.modo-partido-print #perfilTiro {
+      page-break-inside: avoid; break-inside: avoid;
+      page-break-after: avoid; break-after: avoid;
+    }
+    /* Los dos gráficos, uno al lado del otro: en el papel el breakpoint
+       `lg` (1024px) nunca se activa sobre una hoja de 794px. Mismo caso que
+       "Para el próximo cruce". */
+    body.modo-partido-print #perfilTiro > .grid {
+      display: grid !important;
+      grid-template-columns: 1fr 1fr !important;
+      gap: 3mm !important;
+    }
+    /* Con la hoja para él, el gráfico puede respirar. */
+    body.modo-partido-print #perfilTiro .chart-box {
+      height: 62mm !important;
+      position: relative;
+      overflow: hidden;
+    }
+    body.modo-partido-print #perfilTiro canvas {
+      max-width: 100% !important;
+      max-height: 100% !important;
+    }
+
+    /* Nada se parte al medio. El informe ocupa dos hojas: forzar una sola
+       obligaba a apretar el box score, que es lo que hay que poder leer. */
     body.modo-partido-print #detallePartido > *,
     body.modo-partido-print #detallePartido .card,
     body.modo-partido-print #detallePartido table,
@@ -473,13 +516,43 @@
     body.modo-partido-print #detallePartido .text-\[10px\],
     body.modo-partido-print #detallePartido .text-\[11px\] { font-size: 5.8pt !important; }
 
-    /* Box scores en paralelo: en columna se comen media hoja. */
+    /* Los box scores van UNO DEBAJO DEL OTRO, y esto cambió a propósito.
+
+       Mientras el informe tenía que entrar en UNA carilla iban en paralelo
+       —en columna se comían media hoja—, pero con 14 columnas cada tabla se
+       quedaba con ~357px de los 718 útiles y su ancho mínimo real es ~470:
+       medido, la tabla de la derecha llegaba a 882px sobre una hoja que
+       termina en 718, así que RT, AST, PR, PP y +/- caían FUERA del área de
+       página y Chromium directamente no las imprimía. Es el mismo defecto
+       que tenía "Restricción / alerta" en scouting (punto 7.3).
+
+       Ahora que los box scores abren su propia hoja hay altura de sobra
+       (620 de 1047), así que cada uno se lleva el ancho completo y entra
+       entero. */
     body.modo-partido-print #boxScores {
       display: grid !important;
-      grid-template-columns: 1fr 1fr !important;
-      gap: 3mm !important;
+      grid-template-columns: 1fr !important;
+      gap: 4mm !important;
     }
-    body.modo-partido-print #detallePartido table { font-size: 6pt !important; width: 100% !important; }
+    /* `width: 100%` solo no alcanza: con `table-layout: auto` el ancho
+       mínimo del contenido le gana y la tabla se ensancha igual. */
+    body.modo-partido-print #detallePartido table {
+      font-size: 6pt !important; width: 100% !important;
+      table-layout: fixed !important; min-width: 0 !important;
+    }
+    /* Un apellido largo parte de línea en vez de ensanchar su columna. */
+    body.modo-partido-print #detallePartido th,
+    body.modo-partido-print #detallePartido td { overflow-wrap: anywhere !important; }
+    /* Con `table-layout: fixed` las 15 columnas se reparten en partes
+       iguales, y la de nombres necesita el triple que una de números:
+       medido, "RUSSO NOWOSIESKI" y "GARCIA BARUCCO" se montaban encima de
+       los minutos. El `whitespace-nowrap` del nombre es de pantalla —ahí la
+       tabla puede scrollear— y en el papel lo único que hace es empujar el
+       texto fuera de su celda. */
+    body.modo-partido-print #detallePartido table th:first-child,
+    body.modo-partido-print #detallePartido table td:first-child {
+      width: 20% !important; white-space: normal !important;
+    }
     body.modo-partido-print #detallePartido th,
     body.modo-partido-print #detallePartido td {
       padding: 0.7mm 0.6mm !important;
@@ -1285,22 +1358,22 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=85"></script>
-<script src="js/sgadd-core.js?v=85"></script>
-<script src="js/sgadd-ui.js?v=85"></script>
-<script src="js/sgadd-app.js?v=85"></script>
-<script src="js/sgadd-estados.js?v=85"></script>
-<script src="js/sgadd-buzon.js?v=85"></script>
-<script src="js/sgadd-charts.js?v=85"></script>
-<script src="js/sgadd-personalidad.js?v=85"></script>
-<script src="js/sgadd-rankings.js?v=85"></script>
-<script src="js/sgadd-partido.js?v=85"></script>
-<script src="js/sgadd-informe.js?v=85"></script>
-<script src="js/sgadd-equipos.js?v=85"></script>
-<script src="js/sgadd-jugadores.js?v=85"></script>
-<script src="js/sgadd-4factores.js?v=85"></script>
-<script src="js/sgadd-scouting.js?v=85"></script>
-<script src="js/sgadd-diagnostico.js?v=85"></script>
+<script src="js/sgadd-club.js?v=88"></script>
+<script src="js/sgadd-core.js?v=88"></script>
+<script src="js/sgadd-ui.js?v=88"></script>
+<script src="js/sgadd-app.js?v=88"></script>
+<script src="js/sgadd-estados.js?v=88"></script>
+<script src="js/sgadd-buzon.js?v=88"></script>
+<script src="js/sgadd-charts.js?v=88"></script>
+<script src="js/sgadd-personalidad.js?v=88"></script>
+<script src="js/sgadd-rankings.js?v=88"></script>
+<script src="js/sgadd-partido.js?v=88"></script>
+<script src="js/sgadd-informe.js?v=88"></script>
+<script src="js/sgadd-equipos.js?v=88"></script>
+<script src="js/sgadd-jugadores.js?v=88"></script>
+<script src="js/sgadd-4factores.js?v=88"></script>
+<script src="js/sgadd-scouting.js?v=88"></script>
+<script src="js/sgadd-diagnostico.js?v=88"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

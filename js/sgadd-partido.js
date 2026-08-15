@@ -266,9 +266,102 @@ const SGADD_PARTIDO = (function () {
     };
   }
 
+  /* =====================================================================
+     PERFIL DE TIRO DEL PARTIDO
+
+     Contesta tres preguntas de una sola vez, que es lo que pidió el club:
+
+       1. ¿Cómo repartió los lanzamientos?  → el TOTAL de intentos por zona
+       2. ¿Cuántos metió y cuántos erró?    → convertidos / errados
+       3. ¿Con qué efectividad?             → la proporción, contra la liga
+
+     La referencia de liga NO va como una barra aparte: va como el número de
+     tiros que la MEDIANA de la liga habría convertido con esos MISMOS
+     intentos (`convLiga = intentos × %liga`). Así se lee de un vistazo si
+     la parte convertida quedó por encima o por debajo de esa marca, sin
+     tener que comparar dos barras de alturas distintas.
+
+     Las tres zonas son las del box score y no se derivan una de otra: T2 y
+     T3 son tiros de campo, T1 son libres, y un partido puede tener 40
+     intentos de 2 con 8 libres. Mezclarlas escondería justamente la
+     selección de tiro.
+     ===================================================================== */
+
+  const ZONAS_TIRO = [
+    { id: 'T2', label: '2 puntos', conv: 'T2C', int: 'T2I', pctLiga: 'T2%' },
+    { id: 'T3', label: '3 puntos', conv: 'T3C', int: 'T3I', pctLiga: 'T3%' },
+    { id: 'T1', label: 'Libres',   conv: 'T1C', int: 'T1I', pctLiga: 'T1%' },
+  ];
+
+  /**
+   * Perfil de tiro de UN lado del partido.
+   *
+   * `tipoLiga` es la fila EQUIPO TIPO de la liga (`idx.liga.tipo`); si no
+   * viene, o si no trae el porcentaje de una zona, esa zona sale sin marca
+   * de referencia en vez de con una inventada — misma regla que el resto
+   * del proyecto: un dato ausente se muestra ausente.
+   *
+   * Devuelve `null` si el lado no registró un solo lanzamiento: un gráfico
+   * de tiro con todo en cero no informa nada.
+   */
+  function perfilTiro(lado, tipoLiga) {
+    if (!lado || !lado.fila) return null;
+    const f = lado.fila;
+    const num = (v) => (typeof v === 'number' && isFinite(v)) ? v : null;
+    const tipo = tipoLiga || {};
+
+    const zonas = ZONAS_TIRO.map(z => {
+      const intentos = num(f[z.int]);
+      const convertidos = num(f[z.conv]);
+      if (intentos === null || convertidos === null || intentos <= 0) {
+        return { id: z.id, label: z.label, intentos: intentos || 0, convertidos: 0,
+                 errados: 0, pct: null, pctLiga: null, convLiga: null, delta: null };
+      }
+      const pct = convertidos / intentos;
+      const pl = num(tipo[z.pctLiga]);
+      return {
+        id: z.id,
+        label: z.label,
+        intentos: intentos,
+        convertidos: convertidos,
+        errados: Math.max(0, intentos - convertidos),
+        pct: pct,
+        pctLiga: pl,
+        /* Cuántos habría convertido la liga con estos mismos intentos: es
+           la marca que corta la barra. */
+        convLiga: pl === null ? null : intentos * pl,
+        delta: pl === null ? null : pct - pl,
+      };
+    });
+
+    const totalIntentos = zonas.reduce((s, z) => s + z.intentos, 0);
+    if (!totalIntentos) return null;
+
+    return {
+      zonas: zonas,
+      totalIntentos: totalIntentos,
+      totalConvertidos: zonas.reduce((s, z) => s + z.convertidos, 0),
+      /* Reparto de la selección de tiro, para el texto que acompaña. */
+      reparto: zonas.map(z => ({ id: z.id, cuota: z.intentos / totalIntentos })),
+      /* La zona donde más se despegó de la liga, para arriba o para abajo.
+         Se mide sobre el DELTA de porcentaje y no sobre los tiros de más,
+         porque tres triples extra convertidos pesan distinto que tres
+         libres. Solo cuenta si hubo volumen: con 2 intentos, un acierto
+         mueve el porcentaje 50 puntos y no dice nada. */
+      destacada: zonas
+        .filter(z => z.delta !== null && z.intentos >= MIN_INTENTOS_ZONA)
+        .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0] || null,
+    };
+  }
+
+  /** Con menos intentos que esto, el porcentaje de una zona es ruido. */
+  const MIN_INTENTOS_ZONA = 5;
+
   return {
     Z_ATIPICO, MIN_MINUTOS, MIN_PARTIDOS_JUGADOR, COLS_BOX, COLS_DESVIO, CONTRASTE_EQUIPO,
+    ZONAS_TIRO, MIN_INTENTOS_ZONA,
     analizar, desviosLado, contrasteEquipo, ajusteJugadores, nombreCorto, avanzadas,
+    perfilTiro,
   };
 })();
 

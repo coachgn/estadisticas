@@ -2454,6 +2454,9 @@ function scoutImprimir() {
      La del body se conserva porque hay reglas viejas que la usan. */
   document.documentElement.classList.add('modo-scout-print');
   document.body.classList.add('modo-scout-print');
+  /* Por si alguna vista de scouting suma un gráfico: los ya dibujados
+     tienen la paleta de pantalla congelada en sus opciones. */
+  if (typeof SGADD_CHARTS !== 'undefined') SGADD_CHARTS.repintarParaPapel();
   const limpiar = () => {
     document.documentElement.classList.remove('modo-scout-print');
     document.body.classList.remove('modo-scout-print');

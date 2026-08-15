@@ -1080,6 +1080,56 @@ function equiposDetallePartido(idx, e, id) {
       </div>`;
   })() : '';
 
+  /* --- Perfil de tiro: distribución, acierto y la liga en el mismo gráfico ---
+
+     Va acá, entre la eficiencia y los box scores, porque cierra la lectura
+     de EQUIPO —cómo repartió los tiros y con qué acierto— justo antes de
+     bajar al detalle jugador por jugador. En el papel abre la primera hoja
+     junto al resto del análisis y los box scores empiezan en la segunda. */
+  const perfilesTiro = (() => {
+    const tipo = (idx.liga && idx.liga.tipo) ? idx.liga.tipo : null;
+    const lados = [
+      { lado: propio, color: null, nombre: propio.equipo.nombre },
+      riv ? { lado: riv, color: SGADD_CHARTS.COL.acento, nombre: riv.equipo.nombre } : null,
+    ].filter(Boolean);
+
+    const paneles = lados.map((x, i) => {
+      const p = SGADD_PARTIDO.perfilTiro(x.lado, tipo);
+      if (!p) return '';
+      const pct = (v) => v === null ? '—' : (v * 100).toFixed(1).replace('.', ',') + '%';
+      /* Bajo el gráfico, la misma información en texto: el gráfico se lee
+         de un vistazo, la línea de abajo se puede citar en la charla. */
+      const detalle = p.zonas.map(z => {
+        if (!z.intentos) return '';
+        const cmp = z.delta === null ? ''
+          : ` <span class="${z.delta >= 0 ? 'tono-alto text-green-400' : 'tono-bajo text-red-400'}">${
+              z.delta >= 0 ? '+' : '−'}${Math.abs(z.delta * 100).toFixed(1).replace('.', ',')} pp</span>`;
+        return `<p class="text-[10px] font-mono dato-sec leading-snug">
+          ${escapeHtml(z.label)}: ${z.convertidos}/${z.intentos} · ${pct(z.pct)}${cmp}</p>`;
+      }).join('');
+
+      return `
+        <div>
+          <p class="text-[10px] uppercase tracking-wider dato-sec font-display mb-1">${escapeHtml(x.nombre)}</p>
+          ${SGADD_CHARTS.tiroPartido('chTiro' + i, p, { color: x.color })}
+          <div class="mt-1">${detalle}</div>
+        </div>`;
+    }).filter(Boolean).join('');
+
+    if (!paneles) return '';
+    return `
+      <div class="mb-6" id="perfilTiro">
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Perfil de tiro del partido</h5>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">${paneles}</div>
+        <p class="text-[11px] dato-sec mt-2 leading-snug">
+          La altura de cada barra son los <b>lanzamientos intentados</b> en esa zona: ahí se lee la
+          distribución. Abajo van los convertidos y arriba los errados. La <b>línea punteada</b> marca
+          cuántos habría convertido la <b>mediana de la liga</b> con esos mismos intentos: si el bloque
+          lleno la pasa, tiraron mejor que la liga en esa zona.
+        </p>
+      </div>`;
+  })();
+
   /* --- Box scores --- */
   const boxScore = (lado, desvios, titulo) => {
     if (!lado || !lado.box.length) {
@@ -1156,6 +1206,7 @@ function equiposDetallePartido(idx, e, id) {
       ${insight}
       ${factores}
       ${avanzadas}
+      ${perfilesTiro}
       <div class="grid grid-cols-1 xl:grid-cols-2 gap-6" id="boxScores">
         ${boxScore(propio, a.propios, 'Box score · ' + propio.equipo.nombre)}
         ${riv ? boxScore(riv, a.rivales, 'Box score · ' + riv.equipo.nombre) : ''}
@@ -1179,6 +1230,10 @@ function equiposImprimirPartido() {
      exportaciones. */
   SGADD_UI.embeberImagenes('#detallePartido');
   document.body.classList.add('modo-partido-print');
+  /* Los gráficos ya están dibujados con la paleta de PANTALLA: hay que
+     reaplicarles la del papel o su leyenda y sus ejes salen en gris
+     clarísimo sobre blanco. */
+  SGADD_CHARTS.repintarParaPapel();
   setTimeout(() => {
     window.print();
     setTimeout(() => {

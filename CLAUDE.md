@@ -25,12 +25,12 @@ node test-jugadores.js     # 189 tests · rol, arquetipos, tiro, evolución, loc
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
-node test-partido.js       #  26 tests · detalle partido a partido y su PDF
+node test-partido.js       #  44 tests · detalle partido a partido, perfil de tiro y su PDF
 node test-scouting.js      # 447 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1198 tests en total. Todos tienen que dar verde antes de commitear.**
+**1216 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -106,7 +106,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=85`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=88`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -400,6 +400,43 @@ JSON del club:
 
 ---
 
+## 4 bis. Perfil de tiro del partido · un gráfico, tres preguntas
+
+En el detalle de un partido (Equipos → Partidos → clic en una fila), entre
+*"Eficiencia del partido"* y los box scores, va un gráfico por equipo con
+las tres zonas del box score: **2 puntos, 3 puntos y libres**. El motor puro
+es `SGADD_PARTIDO.perfilTiro(lado, tipoLiga)`; la fábrica es
+`SGADD_CHARTS.tiroPartido()`.
+
+Es **un solo gráfico** y contesta las tres preguntas a la vez:
+
+| Pregunta | Cómo se lee |
+|---|---|
+| ¿De dónde tiró? | la **altura total** de la barra son los intentos |
+| ¿Cuántos metió? | el apilado: convertidos abajo, errados arriba |
+| ¿Con qué efectividad, contra la liga? | la **línea punteada** que corta la barra |
+
+**La referencia de liga NO es otra barra ni otro gráfico**, que era el
+pedido explícito. Es `convLiga = intentos × %liga`: cuántos habría
+convertido la mediana de la liga con **esos mismos intentos**. Queda en la
+misma unidad que la barra, así que se lee de un vistazo si el bloque lleno
+pasa la marca. Un porcentaje al lado obligaría a comparar dos escalas.
+
+Reglas que hay que respetar al tocarlo:
+
+- **Sin `%` de liga para una zona, esa zona sale sin marca**, no con una
+  inventada. Misma regla de siempre: un dato ausente se muestra ausente.
+- **Un lado sin un solo lanzamiento devuelve `null`**: un gráfico de tiro
+  con todo en cero no informa nada.
+- **`destacada` exige `MIN_INTENTOS_ZONA` (5) intentos.** Con 2 intentos un
+  acierto mueve el porcentaje 50 puntos y eso es ruido, no una zona
+  destacada. Se ordena por el **delta de porcentaje** y no por tiros de
+  más: tres triples de más pesan distinto que tres libres.
+- **Las tres zonas no se derivan una de otra.** T2 y T3 son tiros de campo,
+  T1 son libres; mezclarlas escondería justamente la selección de tiro.
+
+---
+
 ## 5. Validadores (sección Diagnóstico)
 
 0. **Guard de TORNEO** (`validarTorneo`) — se concatena al bloque 1. Error si una
@@ -448,7 +485,7 @@ Hay **tres** exportaciones, y no comparten criterio de color:
 |---|---|---|
 | **Scouting pre-partido** (`scoutImprimir()`) | `sgadd-scouting.js` | **la paleta de la app** |
 | **Informe de equipo** (`sgadd-informe.js`) | modal con checkboxes | papel blanco |
-| **Post-partido** (`equiposImprimirPartido()`) | una carilla A4 | papel blanco |
+| **Post-partido** (`equiposImprimirPartido()`) | dos carillas A4 | papel blanco |
 
 Enfoque: `window.print()` + `@media print`. **No usar html2pdf/jsPDF**: los
 canvas de Chart.js no rasterizan bien y los cortes de página quedan mal.
@@ -658,7 +695,7 @@ Auditadas generando sus PDF, igual que la de scouting.
 | | Antes | Ahora |
 |---|---|---|
 | **Informe de equipo** | *el informe se autodestruía* | 9 pág · **A3 apaisada** · 10 img |
-| **Post-partido** | 2 páginas | **1 carilla** · A4 vertical · 3 img |
+| **Post-partido** | 2 páginas sin control | **2 carillas con corte fijo** · A4 vertical · 8 img |
 
 **El informe de equipo también va en A3 apaisada**, por el mismo motivo que el
 de scouting: es ancho —tablas de métricas, barras comparadas, radar de 8
@@ -732,8 +769,14 @@ mismo antes de imprimirse** y salía la app en su lugar. Medido: a los 3,5 s no
 quedaba nada de `#informeSalida`. Ahora cuelga de `afterprint`, con un respaldo
 de 60 s por si ese evento no llega (pasa al cancelar en algunos navegadores).
 
-**El post-partido entra en una carilla**, que es su especificación. Lo que lo
-empujaba a la segunda hoja: *"Para el próximo cruce"* usa `lg:grid-cols-3`, y
+**El post-partido entra en DOS carillas, con el corte decidido.** Estuvo
+apuntando a una sola, y las reglas de compresión de aquella vuelta siguen
+valiendo —son las que hacen que todo el análisis entre en la primera hoja—;
+con el perfil de tiro adentro ya no entra junto, así que la especificación
+pasó a dos hojas y los box scores abren la segunda. Un corte elegido es
+mejor que uno del navegador: sin él la tabla de un equipo quedaba en una
+hoja y la del otro en la siguiente, que es justo lo que impide compararlas.
+Lo que en su momento lo empujaba a la segunda hoja: *"Para el próximo cruce"* usa `lg:grid-cols-3`, y
 el breakpoint `lg` de Tailwind es 1024px mientras que la hoja A4 vertical mide
 794 — **en el papel nunca se activaba** y los tres bloques quedaban apilados,
 ~210px de más. Se fuerzan las tres columnas en print y se comprimen los aires
@@ -744,9 +787,24 @@ que es todo el punto de llevar la hoja a la cancha.
 que `@media print` no los puede corregir: el radar de 8 ejes del informe de
 equipo pintaba las etiquetas en `#f5f4f2` sobre papel blanco. `COL.tinta`,
 `COL.grilla` y `COL.texto` pasaron a ser **getters** que consultan
-`enPapelClaro()` (la clase `modo-impresion` del body) y se resuelven al
-dibujar. Funciona porque `generar()` agrega la clase **antes** de llamar a
-`dibujarPendientes()`.
+`enPapelClaro()` y se resuelven al dibujar. Funciona porque `generar()`
+agrega la clase **antes** de llamar a `dibujarPendientes()`.
+
+**Los tres modos de papel están en una lista, `MODOS_PAPEL`**
+(`modo-impresion`, `modo-partido-print`, `modo-scout-print`). Un modo nuevo
+que imprima en claro se agrega ahí o sus gráficos salen ilegibles sin que
+nadie lo note: pasó con la leyenda del perfil de tiro, que salía en gris
+clarísimo justamente porque `modo-partido-print` no estaba en la lista.
+
+**Y con el getter solo NO alcanza cuando el gráfico se dibuja en pantalla.**
+El informe de equipo marca el modo antes de crear sus charts, pero el
+post-partido y el scouting dibujan al abrir la pantalla y recién marcan el
+modo al imprimir: para entonces Chart.js ya congeló los colores en las
+`options`. `SGADD_CHARTS.repintarParaPapel()` reasigna leyenda, ticks,
+grilla, título, `pointLabels` y `angleLines` de cada instancia viva y hace
+`update('none')` —sin animación, porque `print()` puede dispararse a mitad
+de la transición y capturar el gráfico a medio dibujar—. Se llama justo
+después de agregar la clase de modo.
 
 **Una sola utilidad de escudos para las tres.** `SGADD_UI.embeberImagenes()` /
 `restaurarImagenes()` viven en `sgadd-ui.js`, que carga antes que todos los
@@ -849,8 +907,8 @@ oscuro. Con un color fijo, el informe de Jujuy saldría con el naranja de
 Reconquista.
 
 **Tamaños de hoja:** scouting e informe de equipo en A3 apaisada; el
-post-partido en A4 vertical, porque su especificación es entrar en UNA
-carilla.
+post-partido en A4 vertical, en dos carillas — es la hoja que se lleva a la
+cancha.
 
 ### 7.7 · Lo que sigue abierto
 
@@ -862,29 +920,29 @@ carilla.
   post-partido; Scouting se sale de ahí con su `@page` nombrada. Un cambio en
   la vertical afecta a las otras dos: probarlas juntas.
 
-### Presupuesto medido (A4, margen 10mm = 277mm útiles)
+### Presupuesto medido (A4 vertical, margen 10mm = 1047px útiles de alto)
 
 ```
-Encabezado 22 · Insight 46 · 4 Factores 26 · Eficiencia 20
-Box scores EN PARALELO 68 · Nota 6 · Próximo cruce 30
-TOTAL 218mm
+HOJA 1 · Encabezado · Insight · 4 Factores · Eficiencia · Perfil de tiro
+         985px de 1047 — el perfil de tiro cierra la hoja
+HOJA 2 · Box score local · Box score visitante · Nota · Próximo cruce
+         847px de 1047
 ```
 
-Los box scores van lado a lado: en columna no entra. El bloque "Próximo cruce"
-va al final con `page-break-before: auto` — mejor dos hojas fluidas que una
-amontonada.
+Los dos box scores van **uno debajo del otro**, y eso cambió cuando el
+informe pasó a dos hojas: mientras tenía que entrar en una sola iban en
+paralelo, pero con 14 columnas cada tabla se quedaba con ~357px de los 718
+útiles de ancho y su ancho mínimo real es ~470. Medido: la tabla de la
+derecha llegaba a **882px sobre una hoja que termina en 718**, así que RT,
+AST, PR, PP y `+/-` **caían fuera del área de página y Chromium no las
+imprimía** — el mismo defecto que tenía "Restricción / alerta" en scouting.
 
-### Presupuesto medido (A4, margen 10mm = 277mm útiles)
-
-```
-Encabezado 22 · Insight 46 · 4 Factores 26 · Eficiencia 20
-Box scores EN PARALELO 68 · Nota 6 · Próximo cruce 30
-TOTAL 218mm
-```
-
-Los box scores van lado a lado: en columna no entra. El bloque "Próximo cruce"
-va al final con `page-break-before: auto` — mejor dos hojas fluidas que una
-amontonada.
+Apilados hay altura de sobra y cada uno se lleva el ancho completo. Hace
+falta además `table-layout: fixed` (con `auto`, el ancho mínimo del
+contenido le gana a `width: 100%` y la tabla se ensancha igual) y devolverle
+`white-space: normal` a la columna de nombres, que en pantalla va `nowrap`
+porque ahí la tabla puede scrollear: sin eso "RUSSO NOWOSIELSKI" se montaba
+encima de los minutos.
 
 ---
 

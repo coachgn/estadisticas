@@ -132,11 +132,69 @@ check('el margen del equipo sale de SGADD.masMenosEquipo, no de sumar la columna
 })());
 
 /* =====================================================================
-   EL PDF POST-PARTIDO · una carilla A4
+   PERFIL DE TIRO · distribución, convertidos/errados y marca de liga
 
-   Medido generando el archivo con Chrome: antes salía en DOS páginas.
+   Un solo gráfico contesta las tres preguntas: la ALTURA de la barra es la
+   distribución (cuántos tiró de cada zona), el apilado es convertidos vs
+   errados, y la línea punteada es cuántos habría convertido la liga con
+   ESOS MISMOS intentos. Por eso la referencia no es una barra aparte.
    ===================================================================== */
-console.log('\nPDF POST-PARTIDO · que entre en una carilla');
+console.log('\nPERFIL DE TIRO DEL PARTIDO');
+console.log('═'.repeat(70));
+
+const ladoTiro = part.lados[0];
+const tipoLiga = { 'T2%': 0.50, 'T3%': 0.30, 'T1%': 0.70 };
+const pt = P.perfilTiro(ladoTiro, tipoLiga);
+
+check('devuelve una entrada por zona del box score',
+  pt && pt.zonas.length === 3 && pt.zonas.map(z => z.id).join(',') === 'T2,T3,T1',
+  pt ? pt.zonas.map(z => z.id).join(',') : 'null');
+
+const zT3 = pt.zonas.find(z => z.id === 'T3');
+/* La fixture del último partido: 12/22 de 3. */
+check('convertidos + errados = intentos', pt.zonas.every(z => z.convertidos + z.errados === z.intentos),
+  zT3.convertidos + '+' + zT3.errados + ' vs ' + zT3.intentos);
+check('el porcentaje sale de esa misma división',
+  Math.abs(zT3.pct - 12 / 22) < 1e-9, String(zT3.pct));
+
+/* LA marca de la liga: no es "el % de la liga" pintado en otro eje, son los
+   TIROS que la liga habría metido con estos intentos. Es lo único que se
+   puede comparar contra la parte llena de la barra. */
+check('la marca de liga son intentos × %liga, en la misma unidad que la barra',
+  Math.abs(zT3.convLiga - 22 * 0.30) < 1e-9, String(zT3.convLiga));
+check('y el delta es la diferencia de porcentajes',
+  Math.abs(zT3.delta - (12 / 22 - 0.30)) < 1e-9, String(zT3.delta));
+
+/* Un dato ausente se muestra ausente, no se inventa. */
+const sinTipo = P.perfilTiro(ladoTiro, {});
+check('sin fila TIPO no hay marca de referencia, y el resto se calcula igual',
+  sinTipo && sinTipo.zonas.every(z => z.convLiga === null && z.delta === null) &&
+  sinTipo.totalIntentos === pt.totalIntentos);
+
+check('el reparto suma 1', Math.abs(pt.reparto.reduce((s, r) => s + r.cuota, 0) - 1) < 1e-9);
+
+/* Con 2 intentos, un acierto mueve el porcentaje 50 puntos: eso es ruido,
+   no una zona destacada. */
+const flaco = { fila: { T2I: 40, T2C: 20, T3I: 2, T3C: 2, T1I: 0, T1C: 0 } };
+const pf = P.perfilTiro(flaco, tipoLiga);
+check('una zona con menos de ' + P.MIN_INTENTOS_ZONA + ' intentos no puede ser la destacada',
+  pf.destacada && pf.destacada.id !== 'T3', pf.destacada ? pf.destacada.id : 'sin destacada');
+
+check('un lado sin un solo lanzamiento devuelve null, no un gráfico en cero',
+  P.perfilTiro({ fila: { T2I: 0, T2C: 0, T3I: 0, T3C: 0, T1I: 0, T1C: 0 } }, tipoLiga) === null);
+check('y un lado inexistente también', P.perfilTiro(null, tipoLiga) === null);
+
+/* =====================================================================
+   EL PDF POST-PARTIDO · DOS carillas A4, con corte fijo
+
+   Estuvo un tiempo apuntando a UNA sola carilla, y esas reglas de
+   compresión siguen valiendo: son las que hacen que el análisis entre en
+   la primera hoja. Con el perfil de tiro adentro ya no entra todo junto,
+   así que la especificación pasó a dos hojas con un corte DECIDIDO —los
+   box scores abren la segunda— en vez de dejar que el navegador parta la
+   tabla por donde le toque.
+   ===================================================================== */
+console.log('\nPDF POST-PARTIDO · dos carillas con corte fijo');
 console.log('═'.repeat(70));
 
 const htmlPartido = require('fs').readFileSync('./index.html', 'utf8');
@@ -157,6 +215,36 @@ check('los escudos se embeben antes de imprimir',
   /SGADD_UI\.embeberImagenes\('#detallePartido'\)/.test(equiposJs));
 check('y se restauran después',
   /SGADD_UI\.restaurarImagenes\('#detallePartido'\)/.test(equiposJs));
+
+/* El corte es explícito: sin esto el navegador parte el box score a la
+   mitad y la segunda hoja arranca con media tabla huérfana. */
+check('los box scores abren la segunda hoja',
+  /modo-partido-print #boxScores \{[^}]*page-break-before: always/.test(htmlPartido));
+/* El perfil de tiro es lo último de la primera hoja: si se parte, uno de
+   los dos equipos queda sin su gráfico al lado del otro. */
+check('el perfil de tiro no se parte entre hojas',
+  /modo-partido-print #perfilTiro \{[^}]*page-break-inside: avoid/.test(htmlPartido));
+check('y sus dos gráficos van lado a lado en el papel',
+  /modo-partido-print #perfilTiro > \.grid \{[^}]*grid-template-columns: *1fr 1fr !important/.test(htmlPartido));
+
+/* Con 14 columnas, media hoja no alcanza: la tabla de la derecha llegaba a
+   882px sobre un área de página que termina en 718 y Chromium no imprimía
+   RT, AST, PR, PP ni +/-. Mismo defecto que "Restricción / alerta" en
+   scouting: lo que cae fuera del área de página no se imprime. */
+check('en el papel los box scores van uno debajo del otro, a ancho completo',
+  /modo-partido-print #boxScores \{[^}]*grid-template-columns: *1fr *!important/.test(htmlPartido));
+check('y las tablas se fijan al ancho de la hoja en vez de estirarse',
+  /modo-partido-print #detallePartido table \{[^}]*table-layout: fixed !important/.test(htmlPartido));
+check('la columna de nombres se lleva más ancho y puede partir de línea',
+  /modo-partido-print #detallePartido table td:first-child \{[^}]*white-space: normal !important/.test(htmlPartido));
+
+/* Chart.js congela los colores en las OPCIONES al crear el gráfico, y el
+   post-partido dibuja en pantalla y marca el modo papel recién al
+   imprimir: sin repintar, la leyenda sale gris clarísimo sobre blanco. */
+check('los gráficos se repintan con la paleta del papel antes de imprimir',
+  /modo-partido-print'\);[\s\S]{0,220}SGADD_CHARTS\.repintarParaPapel\(\)/.test(equiposJs));
+check('el modo del post-partido está en la lista de modos de papel de charts',
+  /MODOS_PAPEL *= *\[[^\]]*'modo-partido-print'/.test(require('fs').readFileSync('./js/sgadd-charts.js', 'utf8')));
 
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
