@@ -1826,7 +1826,7 @@ check('y se apaga color-scheme: dark, que pintaba el lienzo de #121212',
 /* Las tarjetas van en GRIS y no en blanco: el blanco absoluto desarma la
    jerarquía y todo parece texto suelto. Mismo valor en los tres. */
 check('las tarjetas llevan el gris compartido con los otros dos informes',
-  /\.scout-card,[\s\S]{0,300}background: #f1f5f9 !important/.test(idxHtml));
+  /\.scout-card,[\s\S]{0,600}background: #f1f5f9 !important/.test(idxHtml));
 check('y el scouting NO tiene un aplanado propio que lo saque del criterio',
   !/html:not\(\.modo-scout-print\)/.test(idxHtml));
 /* El JIT del CDN de Tailwind genera sus utilidades de color CON

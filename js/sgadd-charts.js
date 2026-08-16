@@ -26,7 +26,7 @@ const SGADD_CHARTS = (function () {
      gris clarísimo justamente porque su clase (`modo-partido-print`) no
      estaba en esta lista. Un modo nuevo que imprima en claro se agrega acá
      o sus gráficos salen ilegibles sin que nadie lo note. */
-  const MODOS_PAPEL = ['modo-impresion', 'modo-partido-print', 'modo-scout-print'];
+  const MODOS_PAPEL = ['modo-impresion', 'modo-partido-print', 'modo-scout-print', 'modo-ficha-print'];
 
   function enPapelClaro() {
     if (typeof document === 'undefined' || !document.body) return false;

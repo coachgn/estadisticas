@@ -1439,6 +1439,11 @@ function jugadoresHeader(idx, j) {
             ${stat ? ' · consistencia en PTS: ' + stat.media.toFixed(1) + ' ± ' + stat.desvio.toFixed(1) + ' (' + stat.n + ' PJ)' : ''}
           </p>
         </div>
+        <button onclick="SGADD_FICHA.abrir()" data-no-print
+          class="shrink-0 text-xs font-semibold uppercase tracking-wider border border-hairline rounded px-4 py-2.5
+                 hover:border-accent hover:bg-surface2 transition-all duration-200" style="color:#fff">
+          📄 Ficha en PDF
+        </button>
       </div>
       <div class="mb-4 flex items-center gap-2 flex-wrap">
         ${badgeRol}
@@ -1671,8 +1676,13 @@ function jugadoresTabEvolucion(idx, j) {
     ? JUGADORES.metricaEvolucion : 'PTS';
   const metricaLbl = JUGADORES_METRICAS_EVOLUCION.find(m => m.id === metricaId).label;
 
+  /* `.no-imprimir` en el CONTENEDOR y no solo en el <select>: la regla
+     general de `@media print` esconde todo control de formulario, y sin
+     esto la etiqueta "MÉTRICA" quedaba huérfana flotando en la hoja —el
+     mismo defecto que tuvieron los selectores de scouting—. La métrica
+     elegida ya viaja en el título del gráfico. */
   const selector = `
-    <div class="flex items-center gap-2 mb-3">
+    <div class="flex items-center gap-2 mb-3 no-imprimir">
       <label class="text-[10px] uppercase tracking-wider text-muted font-display">Métrica</label>
       <select onchange="jugadoresElegirMetricaEvolucion(this.value)"
         class="bg-surface2 border border-hairline rounded-md px-3 py-1.5 text-xs focus:border-accent outline-none">

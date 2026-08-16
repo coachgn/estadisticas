@@ -613,6 +613,14 @@
   body.modo-impresion #informeSalida { display: block; }
   body.modo-impresion > *:not(#informeSalida) { display: none !important; }
 
+  /* La ficha individual del jugador: mismo mecanismo, contenedor propio.
+     Se queda con la @page VERTICAL por defecto —una ficha personal se
+     imprime, se dobla y se lleva a la charla— mientras los dos informes
+     largos van en A3 apaisada. */
+  #fichaSalida { display: none; }
+  body.modo-ficha-print #fichaSalida { display: block; }
+  body.modo-ficha-print > *:not(#fichaSalida) { display: none !important; }
+
   @media print {
     /* `@page` no se puede condicionar por clase del body, así que es
        compartida por las dos exportaciones (informe de equipo y scouting).
@@ -678,8 +686,11 @@
     .card,
     .scout-card,
     .scout-ficha,
-    .bg-surface2\/50,
-    .bg-surface2\/30,
+    /* Genérico y no una lista de opacidades: `bg-surface2/60` no estaba y
+       los chips de perfiles técnicos de la ficha salían en gris oscuro
+       sobre el papel. Enumerarlas a mano garantiza que la próxima variante
+       vuelva a escaparse. */
+    [class*="bg-surface2"],
     .bg-surface2,
     [class*="bg-accent/"],
     [class*="bg-green-400/"],
@@ -870,6 +881,77 @@
       page-break-before: avoid; break-before: avoid;
       margin-top: 0;
     }
+
+    /* -----------------------------------------------------------------
+       FICHA INDIVIDUAL · A4 VERTICAL
+
+       Hereda todo el papel claro de arriba; lo propio es el ancho de hoja.
+       Los gráficos van más bajos que en el informe de equipo (60mm contra
+       88): acá la hoja mide 190mm de ancho, no 400, así que un gráfico alto
+       se come la carilla sin ganar legibilidad.
+       ----------------------------------------------------------------- */
+    body.modo-ficha-print #fichaSalida {
+      max-width: none !important;
+      padding: 0 !important;
+    }
+    /* Los bloques de la ficha SE PUEDEN PARTIR entre hojas. La regla general
+       le pone `page-break-inside: avoid` a `.informe-bloque` —pensada para
+       los bloques cortos del informe de equipo— y acá el de percentiles mide
+       más de media carilla: con `avoid` se bajaba entero a la hoja
+       siguiente y la primera quedaba con 2/3 en blanco. Medido: 4 hojas
+       para una ficha que entra en 2.
+       Lo que sí sigue sin partirse es cada TARJETA y cada TABLA. */
+    body.modo-ficha-print #fichaSalida .informe-bloque {
+      page-break-inside: auto; break-inside: auto;
+      margin-bottom: 5mm;
+    }
+    body.modo-ficha-print #fichaSalida .card,
+    body.modo-ficha-print #fichaSalida table {
+      page-break-inside: avoid; break-inside: avoid;
+    }
+    body.modo-ficha-print #fichaSalida .chart-box {
+      height: 60mm !important;
+      max-height: 60mm !important;
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 3mm;
+      page-break-inside: avoid; break-inside: avoid;
+    }
+    /* Igual que en el informe de equipo: al canvas NO se le fuerza el
+       tamaño, o Chart.js dibuja el bitmap a una medida y el CSS lo escala a
+       otra y el gráfico sale deformado. */
+    body.modo-ficha-print #fichaSalida .chart-box canvas {
+      max-width: 100% !important;
+      max-height: 100% !important;
+    }
+    /* Los KPIs y las tarjetas de síntesis van en grillas de 2 y 4 columnas
+       con breakpoints `sm:`/`lg:` que en una hoja de 794px nunca se activan:
+       sin esto, cuatro tarjetas se apilan y se llevan media carilla. */
+    body.modo-ficha-print #fichaSalida .grid-cols-4,
+    body.modo-ficha-print #fichaSalida .lg\:grid-cols-4 {
+      display: grid !important;
+      grid-template-columns: repeat(4, 1fr) !important;
+      gap: 2mm !important;
+    }
+    body.modo-ficha-print #fichaSalida .lg\:grid-cols-3 {
+      display: grid !important;
+      grid-template-columns: repeat(3, 1fr) !important;
+      gap: 2mm !important;
+    }
+    body.modo-ficha-print #fichaSalida .lg\:grid-cols-2,
+    body.modo-ficha-print #fichaSalida .sm\:grid-cols-2 {
+      display: grid !important;
+      grid-template-columns: repeat(2, 1fr) !important;
+      gap: 2mm !important;
+    }
+    /* La sangría negativa del hover no hace falta en papel y corta el texto
+       alineado a la derecha contra el borde de la hoja. */
+    body.modo-ficha-print #fichaSalida .-mx-2 {
+      margin-left: 0 !important; margin-right: 0 !important;
+    }
+    .ficha-cabecera-fila { display: flex; align-items: center; gap: 4mm; }
+    .ficha-escudo { width: 16mm; height: 16mm; object-fit: contain; }
+    .ficha-aviso { font-size: 8pt; color: #a16207 !important; margin-top: 2mm; }
 
     /* Las filas de los 8 ejes usan `px-2 -mx-2`: una sangría negativa para
        que el hover cubra todo el ancho de la card. En pantalla el padre
@@ -1424,22 +1506,23 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=92"></script>
-<script src="js/sgadd-core.js?v=92"></script>
-<script src="js/sgadd-ui.js?v=92"></script>
-<script src="js/sgadd-app.js?v=92"></script>
-<script src="js/sgadd-estados.js?v=92"></script>
-<script src="js/sgadd-buzon.js?v=92"></script>
-<script src="js/sgadd-charts.js?v=92"></script>
-<script src="js/sgadd-personalidad.js?v=92"></script>
-<script src="js/sgadd-rankings.js?v=92"></script>
-<script src="js/sgadd-partido.js?v=92"></script>
-<script src="js/sgadd-informe.js?v=92"></script>
-<script src="js/sgadd-equipos.js?v=92"></script>
-<script src="js/sgadd-jugadores.js?v=92"></script>
-<script src="js/sgadd-4factores.js?v=92"></script>
-<script src="js/sgadd-scouting.js?v=92"></script>
-<script src="js/sgadd-diagnostico.js?v=92"></script>
+<script src="js/sgadd-club.js?v=94"></script>
+<script src="js/sgadd-core.js?v=94"></script>
+<script src="js/sgadd-ui.js?v=94"></script>
+<script src="js/sgadd-app.js?v=94"></script>
+<script src="js/sgadd-estados.js?v=94"></script>
+<script src="js/sgadd-buzon.js?v=94"></script>
+<script src="js/sgadd-charts.js?v=94"></script>
+<script src="js/sgadd-personalidad.js?v=94"></script>
+<script src="js/sgadd-rankings.js?v=94"></script>
+<script src="js/sgadd-partido.js?v=94"></script>
+<script src="js/sgadd-informe.js?v=94"></script>
+<script src="js/sgadd-ficha.js?v=94"></script>
+<script src="js/sgadd-equipos.js?v=94"></script>
+<script src="js/sgadd-jugadores.js?v=94"></script>
+<script src="js/sgadd-4factores.js?v=94"></script>
+<script src="js/sgadd-scouting.js?v=94"></script>
+<script src="js/sgadd-diagnostico.js?v=94"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

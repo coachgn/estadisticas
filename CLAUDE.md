@@ -21,7 +21,7 @@ node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  22 tests · multi-cliente
 node test-boot.js          #  45 tests · arranque por club + sintaxis de los módulos
-node test-jugadores.js     # 197 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
+node test-jugadores.js     # 211 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1242 tests en total. Todos tienen que dar verde antes de commitear.**
+**1257 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -89,6 +89,7 @@ js/
   sgadd-4factores.js    ← motor de regresión + sección Simulador (cruce A vs B)
   sgadd-scouting.js     ← informe pre-partido de equipos (motor + UI)
   sgadd-informe.js      ← modal de exportación PDF del informe de equipo
+  sgadd-ficha.js        ← modal + PDF de la ficha individual del jugador
   sgadd-estados.js      ← motor puro de estados de jugador y detección de alertas
   sgadd-buzon.js        ← UI del buzón: drawer, toast, badge (usa `document`)
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app
@@ -106,7 +107,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=92`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=94`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -479,13 +480,14 @@ Sumar un cliente = un JSON + su carpeta de escudos. Cero código.
 
 ## 7. Exportación a PDF
 
-Hay **tres** exportaciones, y no comparten criterio de color:
+Hay **cuatro** exportaciones, todas con el mismo criterio de papel:
 
-| Export | Dónde | Color |
+| Export | Dónde | Hoja |
 |---|---|---|
-| **Scouting pre-partido** (`scoutImprimir()`) | `sgadd-scouting.js` | **la paleta de la app** |
-| **Informe de equipo** (`sgadd-informe.js`) | modal con checkboxes | papel blanco |
-| **Post-partido** (`equiposImprimirPartido()`) | dos carillas A4 | papel blanco |
+| **Scouting pre-partido** (`scoutImprimir()`) | `sgadd-scouting.js` | A3 apaisada |
+| **Informe de equipo** (`sgadd-informe.js`) | modal con checkboxes | A3 apaisada |
+| **Post-partido** (`equiposImprimirPartido()`) | detalle del partido | dos carillas A4 |
+| **Ficha del jugador** (`sgadd-ficha.js`) | modal con checkboxes | A4 vertical |
 
 Enfoque: `window.print()` + `@media print`. **No usar html2pdf/jsPDF**: los
 canvas de Chart.js no rasterizan bien y los cortes de página quedan mal.
@@ -957,6 +959,45 @@ Reconquista.
 **Tamaños de hoja:** scouting e informe de equipo en A3 apaisada; el
 post-partido en A4 vertical, en dos carillas — es la hoja que se lleva a la
 cancha.
+
+### 7.6 ter · La ficha individual del jugador · la cuarta exportación
+
+Las otras tres hablan de EQUIPOS. Esta es la hoja que el DT se lleva a la
+charla con **un** jugador: quién es, dónde está por encima y por debajo de
+su liga, y qué le pide el cuerpo técnico.
+
+**A4 vertical y no A3 apaisada**: una ficha personal se imprime, se dobla y
+se lleva. Es el mismo criterio por el que el post-partido también es
+vertical. Sale en **3 hojas** con todo tildado (Reconquista, medido).
+
+**No reescribe ni un bloque**: pide los mismos `jugadoresTab()` que pinta la
+pantalla. Si mañana cambia el tab Tiro, cambia en los dos lados — que es
+justo el problema que tuvo el proyecto cuando el rol funcional vivía
+duplicado en dos módulos. Hay un test que lo fija.
+
+**El log de partidos viene DESTILDADO.** Con 13 fechas se lleva media hoja y
+la charla arranca por el perfil, no por la planilla.
+
+Tres cosas que se corrigieron auditando el PDF generado:
+
+- **Los bloques de la ficha SÍ se pueden partir entre hojas.** La regla
+  general le pone `page-break-inside: avoid` a `.informe-bloque` —pensada
+  para los bloques cortos del informe de equipo— y acá el de percentiles
+  mide más de media carilla: con `avoid` se bajaba entero a la hoja
+  siguiente. Medido: **4 hojas para una ficha que entra en 3**. Lo que sigue
+  sin partirse es cada tarjeta y cada tabla.
+- **El aplanado listaba las opacidades de `bg-surface2` una por una** y
+  `/60` no estaba: los chips de perfiles técnicos salían en gris oscuro
+  sobre el papel. Pasó a `[class*="bg-surface2"]`, genérico — enumerarlas a
+  mano garantiza que la próxima variante se vuelva a escapar.
+- **El selector de métrica dejaba su etiqueta huérfana.** La regla general
+  esconde todo control de formulario, así que "MÉTRICA" quedaba flotando
+  sola en la hoja; el contenedor lleva `.no-imprimir` y la métrica elegida
+  ya viaja en el título del gráfico. Es el mismo defecto que tuvieron los
+  selectores de scouting.
+
+**`modo-ficha-print` está en `MODOS_PAPEL`** y la clase se marca ANTES de
+`dibujarPendientes()`, así que los gráficos nacen con la paleta del papel.
 
 ### 7.7 · Lo que sigue abierto
 

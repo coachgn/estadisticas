@@ -1010,5 +1010,63 @@ check('"sin percentil" es una nota al costado, no un atenuado de toda la fila',
   /const sinPercentil = !j\.__califica;/.test(fuenteEq) && /sin percentil/.test(fuenteEq));
 
 console.log('\n' + '═'.repeat(70));
+/* =====================================================================
+   LA CUARTA EXPORTACIÓN · FICHA INDIVIDUAL EN PDF
+
+   Las otras tres hablan de EQUIPOS; esta es la hoja que el DT se lleva a la
+   charla con UN jugador. Lo que estos checks amarran es que NO reescriba los
+   bloques: reusa los mismos `jugadoresTab()` que pinta la pantalla, que es
+   justo el problema que tuvo el proyecto cuando el rol funcional vivía
+   duplicado en dos módulos.
+   ===================================================================== */
+console.log('\nZ. FICHA INDIVIDUAL EN PDF');
+console.log('═'.repeat(70));
+
+const FICHA = require('./js/sgadd-ficha.js');
+const htmlApp = require('fs').readFileSync('./index.html', 'utf8');
+const fichaJs = require('fs').readFileSync('./js/sgadd-ficha.js', 'utf8');
+
+check('cada sección de la ficha apunta a un tab real de Jugadores',
+  FICHA.SECCIONES.every(x => J.JUGADORES_TABS.some(t => t.id === x.tab)),
+  FICHA.SECCIONES.map(x => x.tab).join(','));
+/* El log de 13 fechas se lleva media hoja y la charla arranca por el perfil,
+   no por la planilla. El DT lo tilda cuando quiere revisar noche por noche. */
+check('el log de partidos viene destildado por defecto',
+  FICHA.SECCIONES.find(x => x.id === 'partidos').pre === false);
+check('y el resto viene tildado', FICHA.SECCIONES.filter(x => x.id !== 'partidos').every(x => x.pre));
+
+/* No reescribe los bloques: los pide al mismo render de la pantalla. */
+check('reusa jugadoresTab() en vez de armar su propio HTML',
+  /jugadoresTab\(idx, j, x\.tab\)/.test(fichaJs));
+check('y el pie es el compartido por las cuatro exportaciones',
+  /SGADD_UI\.pieInforme\(/.test(fichaJs));
+
+/* Mismas dos trampas que costaron en las otras tres. */
+check('los escudos se embeben antes de imprimir', /SGADD_UI\.embeberImagenes\('#fichaSalida'\)/.test(fichaJs));
+check('y se restauran después', /SGADD_UI\.restaurarImagenes\('#fichaSalida'\)/.test(fichaJs));
+check('la limpieza cuelga de afterprint y no de un setTimeout ciego',
+  /addEventListener\('afterprint'/.test(fichaJs));
+/* Chart.js congela los colores al crear el gráfico: si el modo no está en
+   MODOS_PAPEL, las etiquetas salen en gris clarísimo sobre papel blanco. */
+check('el modo de la ficha está en la lista de modos de papel de charts',
+  /MODOS_PAPEL *= *\[[^\]]*'modo-ficha-print'/.test(require('fs').readFileSync('./js/sgadd-charts.js', 'utf8')));
+check('y la clase se marca ANTES de dibujar los gráficos',
+  /classList\.add\('modo-ficha-print'\);[\s\S]{0,200}dibujarPendientes\(\)/.test(fichaJs));
+
+check('el módulo está cargado en el index', /sgadd-ficha\.js\?v=/.test(htmlApp));
+check('y tiene su contenedor de impresión',
+  /#fichaSalida \{ display: none; \}/.test(htmlApp) &&
+  /body\.modo-ficha-print > \*:not\(#fichaSalida\) \{ display: none !important; \}/.test(htmlApp));
+/* Los bloques del informe de equipo son cortos y no se parten; los de la
+   ficha miden más de media carilla y con `avoid` dejaban 2/3 de hoja en
+   blanco. Medido: 4 hojas para una ficha que entra en 3. */
+check('en la ficha los bloques se pueden partir, pero las tarjetas no',
+  /modo-ficha-print #fichaSalida \.informe-bloque \{[^}]*page-break-inside: auto/.test(htmlApp) &&
+  /modo-ficha-print #fichaSalida \.card,[\s\S]{0,80}page-break-inside: avoid/.test(htmlApp));
+/* La regla general esconde todo control de formulario: sin `.no-imprimir` en
+   el contenedor, la etiqueta "MÉTRICA" quedaba huérfana en la hoja. */
+check('el selector de métrica no deja su etiqueta huérfana en el papel',
+  /flex items-center gap-2 mb-3 no-imprimir/.test(require('fs').readFileSync('./js/sgadd-jugadores.js', 'utf8')));
+
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);
