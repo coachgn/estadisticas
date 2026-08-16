@@ -155,6 +155,76 @@ function crearEntorno({ clubOk, clubExplota, sinClub, sinApp, planillasClub, pla
   });
 
   console.log('\n' + '═'.repeat(70));
+  /* =====================================================================
+     ACCESIBILIDAD · lo que fija la checklist de Checklist Design
+
+     El catálogo completo vive en `.agents/skills/checklist-design`. Estos
+     checks amarran los items que un cambio de UI puede romper sin que se
+     note: "keyboard navigation patterns", "ARIA pattern library" y "focus
+     indicator design".
+     ===================================================================== */
+  console.log('\nACCESIBILIDAD · teclado, roles y foco');
+  console.log('─'.repeat(70));
+
+  const UI = require('./js/sgadd-ui.js');
+  const uiSrc = fs.readFileSync('./js/sgadd-ui.js', 'utf8');
+
+  /* Media app se navega clickeando una fila. Sin estos tres atributos esa
+     navegación NO EXISTE para el teclado: la fila no se enfoca, no se
+     activa con Enter y el lector de pantalla la lee como texto suelto. */
+  const attrs = UI.atributosFila('Ver el detalle del partido');
+  check('una fila clicable declara foco, rol y etiqueta',
+    /tabindex="0"/.test(attrs) && /role="button"/.test(attrs) &&
+    /aria-label="Ver el detalle del partido"/.test(attrs), attrs);
+  check('y se activa con el teclado reusando su propio onclick',
+    /onkeydown="SGADD_UI\.teclaActiva\(event\)"/.test(attrs) &&
+    /ev\.currentTarget\.click\(\)/.test(uiSrc));
+
+  /* Toda fila con `cursor-pointer` promete un clic: si lo promete y no trae
+     los atributos, es una acción que el teclado no puede alcanzar. */
+  const sinTeclado = [];
+  fs.readdirSync('./js').filter(f => f.endsWith('.js')).forEach(f => {
+    const src = fs.readFileSync('./js/' + f, 'utf8');
+    const re = /<tr[^>]*cursor-pointer[\s\S]{0,700}?>/g;
+    let m;
+    while ((m = re.exec(src))) {
+      if (!/atributosFila/.test(m[0])) sinTeclado.push(f + ': ' + m[0].slice(0, 70).replace(/\s+/g, ' '));
+    }
+  });
+  check('ninguna fila clicable queda sin teclado', sinTeclado.length === 0, sinTeclado.join(' | '));
+
+  /* Patrón estándar de tabs: un solo `aria-selected`, y tabindex rodante
+     para que el tabulador entre UNA vez al grupo y adentro manden las
+     flechas. Sin eso hay que tabular ocho veces para pasarlas de largo. */
+  const htmlTabs = UI.tabs([{ id: 'general', label: 'General' }, { id: 'tiro', label: 'Tiro' }], 'general', 'irA');
+  check('las tabs se anuncian como tabs',
+    /role="tablist"/.test(htmlTabs) && (htmlTabs.match(/role="tab"/g) || []).length === 2);
+  check('con una sola activa',
+    (htmlTabs.match(/aria-selected="true"/g) || []).length === 1 &&
+    (htmlTabs.match(/aria-selected="false"/g) || []).length === 1);
+  check('y tabindex rodante, no ocho paradas del tabulador',
+    (htmlTabs.match(/tabindex="0"/g) || []).length === 1 &&
+    (htmlTabs.match(/tabindex="-1"/g) || []).length === 1);
+  check('las flechas mueven entre pestañas', /onkeydown="SGADD_UI\.teclaTabs\(event\)"/.test(htmlTabs));
+
+  /* El foco de una fila NO se puede marcar con `outline` a secas: en
+     `display: table-row` los motores lo dibujan despareja, el mismo motivo
+     por el que el fondo de una fila va en los <td> y no en el <tr>. */
+  check('la fila enfocada se marca en sus celdas, no en el <tr>',
+    /tr\[role="button"\]:focus-visible > td \{/.test(html));
+  check('el anillo de foco sigue siendo :focus-visible y no :focus',
+    /button:focus-visible/.test(html) && !/[^-]button:focus\s*[,{]/.test(html));
+
+  /* Con un menú de seis secciones, sin salto el teclado lo atraviesa entero
+     en cada pantalla. Va como <button> porque el hash es la RUTA de la app:
+     un ancla a #view-root mandaría al DT a la pantalla de inicio. */
+  check('hay un salto al contenido', /class="salto-contenido/.test(html));
+  check('y no pisa la ruta con un ancla',
+    !/<a[^>]*href="#view-root"/.test(html) && /getElementById\('view-root'\)\.focus\(\)/.test(html));
+
+  check('las animaciones respetan prefers-reduced-motion',
+    /@media \(prefers-reduced-motion: reduce\)/.test(html));
+
   console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })();

@@ -247,6 +247,29 @@
     outline-offset: 2px;
     border-radius: 4px;
   }
+  /* Una FILA enfocada no se puede marcar solo con `outline`: en
+     `display: table-row` los motores lo dibujan de forma despareja, el mismo
+     motivo por el que el fondo de una fila va en los `<td>` y no en el `<tr>`
+     (punto 14). Se repite el tratamiento de la fila destacada, que ya está
+     medido en contraste, y la barra lateral del acento marca dónde arranca. */
+  tbody tr[role="button"]:focus-visible { outline: none; }
+  tbody tr[role="button"]:focus-visible > td {
+    background: color-mix(in srgb, var(--acento) 14%, #141414);
+  }
+  tbody tr[role="button"]:focus-visible > td:first-child {
+    box-shadow: inset 3px 0 0 0 var(--acento);
+  }
+
+  /* Saltar al contenido: con un menú lateral de seis secciones, sin esto el
+     teclado tiene que atravesarlo entero en CADA pantalla. Solo se ve cuando
+     recibe el foco. */
+  .salto-contenido {
+    position: absolute; left: .5rem; top: -3rem; z-index: 60;
+    background: var(--acento); color: #111; font-weight: 600;
+    padding: .5rem .9rem; border-radius: .5rem;
+    transition: top .15s ease;
+  }
+  .salto-contenido:focus-visible { top: .5rem; }
   @media (prefers-reduced-motion: reduce) {
     .buzon-fade, .buzon-slide, .toast-in, .toast-out, .buzon-saliendo,
     .buzon-saliendo .buzon-slide { animation: none !important; }
@@ -1302,6 +1325,12 @@
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
+<!-- Va como boton y no como ancla al #view-root: el hash es la RUTA de
+     la app (planilla/torneo/fase/sección) y un ancla lo pisaría, mandando al
+     DT a la pantalla de inicio en vez de saltarle el menú. -->
+<button type="button" class="salto-contenido no-imprimir"
+        onclick="document.getElementById('view-root').focus()">Saltar al contenido</button>
+
 <!-- ============ LOADER ============ -->
 <div id="loader" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-base gap-4">
   <div class="w-12 h-12 border-2 border-hairline border-t-accent rounded-full animate-spin-slow"></div>
@@ -1390,27 +1419,27 @@
         </div>
       </header>
 
-      <main id="view-root" class="flex-1 px-4 md:px-8 py-6 max-w-[1600px] w-full mx-auto"></main>
+      <main id="view-root" tabindex="-1" class="flex-1 px-4 md:px-8 py-6 max-w-[1600px] w-full mx-auto"></main>
     </div>
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=89"></script>
-<script src="js/sgadd-core.js?v=89"></script>
-<script src="js/sgadd-ui.js?v=89"></script>
-<script src="js/sgadd-app.js?v=89"></script>
-<script src="js/sgadd-estados.js?v=89"></script>
-<script src="js/sgadd-buzon.js?v=89"></script>
-<script src="js/sgadd-charts.js?v=89"></script>
-<script src="js/sgadd-personalidad.js?v=89"></script>
-<script src="js/sgadd-rankings.js?v=89"></script>
-<script src="js/sgadd-partido.js?v=89"></script>
-<script src="js/sgadd-informe.js?v=89"></script>
-<script src="js/sgadd-equipos.js?v=89"></script>
-<script src="js/sgadd-jugadores.js?v=89"></script>
-<script src="js/sgadd-4factores.js?v=89"></script>
-<script src="js/sgadd-scouting.js?v=89"></script>
-<script src="js/sgadd-diagnostico.js?v=89"></script>
+<script src="js/sgadd-club.js?v=90"></script>
+<script src="js/sgadd-core.js?v=90"></script>
+<script src="js/sgadd-ui.js?v=90"></script>
+<script src="js/sgadd-app.js?v=90"></script>
+<script src="js/sgadd-estados.js?v=90"></script>
+<script src="js/sgadd-buzon.js?v=90"></script>
+<script src="js/sgadd-charts.js?v=90"></script>
+<script src="js/sgadd-personalidad.js?v=90"></script>
+<script src="js/sgadd-rankings.js?v=90"></script>
+<script src="js/sgadd-partido.js?v=90"></script>
+<script src="js/sgadd-informe.js?v=90"></script>
+<script src="js/sgadd-equipos.js?v=90"></script>
+<script src="js/sgadd-jugadores.js?v=90"></script>
+<script src="js/sgadd-4factores.js?v=90"></script>
+<script src="js/sgadd-scouting.js?v=90"></script>
+<script src="js/sgadd-diagnostico.js?v=90"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

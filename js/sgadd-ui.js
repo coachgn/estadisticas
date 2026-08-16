@@ -161,17 +161,77 @@ const SGADD_UI = (function () {
   }
 
   /* ---------------------------------------------------------------------
+     FILAS Y CELDAS QUE SE COMPORTAN COMO BOTÓN
+
+     Media app se navega haciendo clic en una fila: un partido abre su
+     detalle, un jugador abre su ficha, un equipo abre la suya. Con `onclick`
+     sobre un `<tr>` eso funciona con el mouse y **no existe para el
+     teclado**: la fila no se enfoca, no se activa con Enter y un lector de
+     pantalla la lee como texto suelto.
+
+     `atributosFila()` emite las tres cosas que faltan —foco, rol y una
+     etiqueta que diga qué pasa al activarla— y `teclaActiva()` reusa el
+     `onclick` que la fila ya tiene, así no hay dos caminos que mantener
+     sincronizados. Es la parte de "keyboard navigation patterns" y "ARIA
+     pattern library" de la checklist de accesibilidad.
+     --------------------------------------------------------------------- */
+  function atributosFila(etiqueta) {
+    return 'tabindex="0" role="button" onkeydown="SGADD_UI.teclaActiva(event)"' +
+      (etiqueta ? ' aria-label="' + esc(etiqueta) + '"' : '');
+  }
+
+  function teclaActiva(ev) {
+    if (ev.key !== 'Enter' && ev.key !== ' ' && ev.key !== 'Spacebar') return;
+    /* Sin esto, la barra espaciadora scrollea la página además de activar. */
+    ev.preventDefault();
+    ev.currentTarget.click();
+  }
+
+  /* ---------------------------------------------------------------------
      TabbedPanel — tabs con el id en el hash, para que el link sea compartible.
+
+     Van con la semántica de tabs (`tablist`/`tab`/`aria-selected`) y con
+     tabindex rodante: el tabulador entra UNA vez al grupo —a la pestaña
+     activa— y adentro se navega con las flechas. Es el patrón estándar y es
+     lo que evita que el DT tenga que tabular ocho veces para pasar de largo
+     un grupo de pestañas.
      --------------------------------------------------------------------- */
   function tabs(lista, activo, onClick) {
     const items = lista.map(t => `
-      <button type="button" onclick="${esc(onClick)}('${escJs(t.id)}')"
+      <button type="button" role="tab" data-tab="${esc(t.id)}"
+        aria-selected="${t.id === activo ? 'true' : 'false'}"
+        tabindex="${t.id === activo ? '0' : '-1'}"
+        onclick="${esc(onClick)}('${escJs(t.id)}')"
+        onkeydown="SGADD_UI.teclaTabs(event)"
         class="px-3 py-2 text-xs font-display uppercase tracking-wider rounded-md transition-colors
                ${t.id === activo ? 'bg-accent text-base' : 'text-muted hover:text-ink hover:bg-surface2'}"
         ${t.disponible === false ? 'disabled title="Sin datos suficientes"' : ''}>
         ${esc(t.label)}
       </button>`).join('');
-    return `<div class="flex flex-wrap gap-1 border-b border-hairline pb-2 mb-4">${items}</div>`;
+    return `<div role="tablist" class="flex flex-wrap gap-1 border-b border-hairline pb-2 mb-4">${items}</div>`;
+  }
+
+  function teclaTabs(ev) {
+    const k = ev.key;
+    if (k !== 'ArrowRight' && k !== 'ArrowLeft' && k !== 'Home' && k !== 'End') return;
+    const grupo = ev.currentTarget.closest('[role="tablist"]');
+    if (!grupo) return;
+    const tabs = Array.prototype.slice.call(grupo.querySelectorAll('[role="tab"]:not([disabled])'));
+    const i = tabs.indexOf(ev.currentTarget);
+    if (i < 0) return;
+    ev.preventDefault();
+    const j = k === 'Home' ? 0
+      : k === 'End' ? tabs.length - 1
+        : (i + (k === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    /* Activar repinta la sección entera y destruye este nodo, así que el
+       foco se devuelve buscando la pestaña por su id después del repintado.
+       Sin esto el teclado queda en el <body> y hay que empezar de nuevo. */
+    const destino = tabs[j].getAttribute('data-tab');
+    tabs[j].click();
+    setTimeout(function () {
+      const n = document.querySelector('[role="tab"][data-tab="' + (window.CSS && CSS.escape ? CSS.escape(destino) : destino) + '"]');
+      if (n) n.focus();
+    }, 0);
   }
 
   /* ---------------------------------------------------------------------
@@ -294,6 +354,7 @@ const SGADD_UI = (function () {
   }
 
   return { esc, escJs, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, signoDelta, colorDelta, claseMasMenos,
+    atributosFila, teclaActiva, teclaTabs,
     embeberImagenes, restaurarImagenes, pieInforme, fechaHoy, MARCA };
 })();
 

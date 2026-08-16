@@ -1126,7 +1126,9 @@ function jugadoresTablaRanking(idx, r) {
     return `<th class="py-1 px-2 text-center align-middle whitespace-nowrap cursor-pointer select-none
         hover:text-accent transition-colors ${activa ? 'text-accent' : ''}"
         onclick="jugadoresOrdenarRanking('${SGADD_UI.escJs(k)}')"
-        title="Ordenar por ${SGADD_UI.esc(k)}">${SGADD_UI.esc(k)}
+        title="Ordenar por ${SGADD_UI.esc(k)}"
+        aria-sort="${activa ? (r.dir === 'asc' ? 'ascending' : 'descending') : 'none'}"
+        ${SGADD_UI.atributosFila('Ordenar por ' + k)}>${SGADD_UI.esc(k)}
       <span class="${activa ? 'text-accent' : 'opacity-40'}">${flecha}</span></th>`;
   }).join('');
 
@@ -1156,7 +1158,8 @@ function jugadoresTablaRanking(idx, r) {
 
     return `
       <tr class="border-b border-hairline/40 last:border-0 cursor-pointer hover:bg-surface2 ${propio ? 'bg-accent/5' : ''}"
-          onclick="jugadoresIrA('${SGADD_UI.escJs(f.slug)}')">
+          onclick="jugadoresIrA('${SGADD_UI.escJs(f.slug)}')"
+          ${SGADD_UI.atributosFila('Abrir la ficha de ' + f.jugador)}>
         <td class="py-1.5 pr-2 text-left align-middle font-mono text-xs ${colorPuesto}">${f.puesto}</td>
         <td class="py-1.5 pr-3 text-left align-middle">
           <div class="flex items-center gap-2 min-w-0">
@@ -1651,7 +1654,8 @@ function jugadoresTabPartidos(idx, j) {
 
     return `<tr class="border-b border-hairline/40 last:border-0 cursor-pointer hover:bg-surface2 transition-all duration-200 ${flojo ? 'opacity-50' : ''}"
                 onclick="jugadoresVerPartido('${SGADD_UI.escJs(p['EQUIPO'] || '')}', '${SGADD_UI.escJs(jugadoresIdCanonico(idx, p) || '')}')"
-                title="Ver el detalle de este partido en Equipos">
+                title="Ver el detalle de este partido en Equipos"
+                ${SGADD_UI.atributosFila('Ver el detalle del partido contra ' + jugadoresRival(p))}>
       <td class="py-1.5 pr-3 text-xs dato-sec font-mono whitespace-nowrap">${escapeHtml(SGADD.formatearFecha(p.__fecha))}</td>
       <td class="py-1.5 pr-3 text-xs text-white truncate max-w-[200px]">${escapeHtml(jugadoresRival(p))}</td>
       <td class="py-1.5 pr-3 text-xs text-muted">${escapeHtml(SGADD.texto(p['CONDICION']))}</td>

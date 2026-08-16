@@ -20,7 +20,7 @@ node test-core.js          # 170 tests · núcleo, índice, validador
 node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  22 tests · multi-cliente
-node test-boot.js          #  33 tests · arranque por club + sintaxis de los módulos
+node test-boot.js          #  45 tests · arranque por club + sintaxis de los módulos
 node test-jugadores.js     # 189 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1222 tests en total. Todos tienen que dar verde antes de commitear.**
+**1234 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -106,7 +106,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=89`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=90`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -2513,8 +2513,29 @@ animación— porque un hover con transición se siente roto.
 que sea interfaz. Ante una duda de UI —un estado que falta, una transición,
 un contraste dudoso— **se consulta ahí antes de inventar**.
 
-No es una librería ni una dependencia: es una lista de verificación por
-componente. Se usa como control, no como fuente de código.
+No es una librería de CSS: es una lista de verificación por componente. Se
+usa como control, no como fuente de código — de ahí no se copia ni un color
+ni una clase, porque el sistema visual del panel es propio y por club.
+
+### El catálogo está EN EL REPO, no hay que ir a buscarlo
+
+`.agents/skills/checklist-design/` trae las **118 checklists** publicadas
+como archivos, más los dos modos de revisión (`audit` item por item y
+`critique`). Es la skill oficial del sitio, MIT, instalada con:
+
+```bash
+npx skills add checklist-design/skills --tool claude-code
+```
+
+Reinstalar solo hace falta para actualizar el catálogo. El symlink que el
+instalador deja en `.claude/skills/` apunta a una ruta absoluta de la
+máquina y está en `.gitignore`; los archivos de verdad viven en `.agents/`
+y viajan con el repo, así que **un clon nuevo ya tiene el catálogo** y
+cualquier cliente que se sume arranca con el mismo criterio.
+
+Antes esto era un link en un documento: había que acordarse de entrar,
+buscar el componente y leerlo. Ahora la checklist que corresponde se lee
+desde el repo, sin red.
 
 ### Para qué se consulta
 
@@ -2551,6 +2572,52 @@ transiciones de fila.
 
 **Descartar tan fácil como confirmar.** Toda acción destructiva o de
 compromiso tiene su opción neutra igual de visible ("Mantener activo").
+
+**Todo lo que se puede clickear se puede usar con el teclado.** Media app se
+navega haciendo clic en una FILA —un partido abre su detalle, un jugador su
+ficha, un equipo la suya— y con un `onclick` sobre un `<tr>` esa navegación
+**no existía para el teclado**: la fila no se enfocaba, no se activaba con
+Enter y un lector de pantalla la leía como texto suelto.
+
+`SGADD_UI.atributosFila(etiqueta)` emite `tabindex`, `role="button"` y un
+`aria-label` que dice qué pasa al activarla; `teclaActiva()` reusa el
+`onclick` que la fila ya tiene, así no hay dos caminos que mantener
+sincronizados. Hay un test que recorre los módulos y **falla si aparece una
+fila con `cursor-pointer` sin esos atributos**.
+
+**Las tabs son tabs de verdad**: `role="tablist"`/`role="tab"`,
+`aria-selected` y **tabindex rodante** —el tabulador entra una vez al grupo,
+a la pestaña activa, y adentro mandan las flechas—. Activar repinta la
+sección y destruye el nodo, así que `teclaTabs()` devuelve el foco buscando
+la pestaña por su `data-tab` después del repintado; sin eso el teclado queda
+en el `<body>` y hay que empezar de nuevo.
+
+**El foco de una FILA no se marca con `outline`.** En `display: table-row`
+los motores lo dibujan despareja — el mismo motivo por el que el fondo de
+una fila va en los `<td>` (ver abajo). Se repite el tratamiento de la fila
+destacada, que ya tiene el contraste medido, más la barra del acento en la
+primera celda.
+
+**Salto al contenido.** Con un menú de seis secciones, sin él el teclado lo
+atraviesa entero en CADA pantalla. Va como `<button>` y no como ancla a
+`#view-root`: **el hash es la ruta de la app**, y un ancla lo pisaría
+mandando al DT a la pantalla de inicio.
+
+### Lo que la auditoría dejó abierto
+
+Honestidad sobre lo que NO está hecho, para no darlo por cerrado:
+
+- **Sin pruebas con lector de pantalla real** (VoiceOver/NVDA). Los roles y
+  las etiquetas están puestos y verificados en el DOM, pero eso no es lo
+  mismo que escuchar la pantalla.
+- **Las tabs no declaran `aria-controls`/`role="tabpanel"`**: el contenido
+  de cada pestaña no es un contenedor único y estable, así que apuntarle
+  sería mentir. Se anuncian como pestañas y se navegan con flechas, que es
+  la parte que el DT usa.
+- **Las tablas no tienen búsqueda ni paginación**, dos items de la checklist
+  de Table. Es deliberado: los rankings ya salen recortados al top 20 y el
+  filtro real del panel es el selector de equipo, que está arriba de todo.
+  Si alguna tabla crece, entra la búsqueda.
 
 ### El error de CSS que hay que recordar
 
