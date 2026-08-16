@@ -2606,10 +2606,14 @@ function scoutBadgesADN(perfil) {
   const badges = jugadoresBadges(perfil.adn);
   if (!badges.length) return '';
   return `<div class="flex flex-wrap gap-1 mt-1">${badges.map(b => {
-    const color = b.tipo === 'jerarquia' ? 'text-accent border-accent/40'
-      : b.tipo === 'rol' ? 'text-blue-400 border-blue-400/30'
-        : 'text-green-400 border-green-400/30';
-    return `<span class="text-[9px] leading-tight px-1.5 py-0.5 rounded-full border ${color} whitespace-nowrap">${escapeHtml(b.texto)}</span>`;
+    /* El `~` y el gris avisan que esa etiqueta se apoya en una comparación
+       contra la liga que este jugador, por minutos, no sostiene. */
+    const color = b.sinRespaldo ? 'text-muted border-hairline'
+      : b.tipo === 'jerarquia' ? 'text-accent border-accent/40'
+        : b.tipo === 'rol' ? 'text-blue-400 border-blue-400/30'
+          : 'text-green-400 border-green-400/30';
+    return `<span class="text-[9px] leading-tight px-1.5 py-0.5 rounded-full border ${color} whitespace-nowrap"
+      ${b.motivo ? `title="${escapeAttr(b.motivo)}"` : ''}>${escapeHtml(b.texto)}</span>`;
   }).join('')}</div>`;
 }
 

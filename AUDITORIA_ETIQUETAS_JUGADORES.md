@@ -808,6 +808,13 @@ un perfil real, no un residuo.
 
 ### P-7 · El umbral de calificación se aplica a la referencia pero no a la etiqueta
 
+> **RESUELTO (2026-08-16).** El badge de un jugador que no califica sale en
+> gris con `~` adelante y el motivo en el tooltip; la taxonomía no cambia, la
+> marca es de presentación. Se marcan TODAS sus etiquetas y no solo las
+> relativas: medido, acotarlo a las relativas dejaba 1 badge marcado sobre
+> 216 jugadores. Impacto real: 117 de 216 jugadores, 0 sobre los calificados.
+> Ver el punto 8 de CLAUDE.md.
+
 **Severidad: media, y es la más sutil.** Los promedios de liga
 (`jugadoresPromediosLiga`) y las bandas z (`statLiga`) se calculan **solo sobre
 los 97 calificados**, pero las etiquetas se asignan a **los 210**.

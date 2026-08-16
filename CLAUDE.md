@@ -21,7 +21,7 @@ node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  22 tests · multi-cliente
 node test-boot.js          #  45 tests · arranque por club + sintaxis de los módulos
-node test-jugadores.js     # 189 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
+node test-jugadores.js     # 197 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1234 tests en total. Todos tienen que dar verde antes de commitear.**
+**1242 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -106,7 +106,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=90`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=92`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -1067,6 +1067,38 @@ motores y dos recortes. Ahora:
   puede saber.
 - `jugadoresBadges(adn)` arma las etiquetas, así que las dos vistas pintan
   literalmente el mismo texto.
+
+### La etiqueta de un jugador que no califica lleva `~` (P-7)
+
+Las medias y las bandas de liga se calculan **solo sobre los calificados**,
+pero las etiquetas se le asignan a **todos**. Un jugador de 6 minutos con
+`AST-PP` de 2,0 sobre una muestra de tres pases recibía *🧠 Generador* con el
+mismo peso visual que uno de 30, mientras su propia ficha mostraba los
+percentiles en blanco: la etiqueta se veía firme y el dato que la sostiene,
+no.
+
+**Se marca, no se borra** — la regla de siempre: mostrar el dato y quitarle
+autoridad visual, igual que el `~` del percentil y las barras grises. El
+badge sale en gris con `~` adelante y el motivo en el `title`.
+
+**Se marcan TODAS las etiquetas del no calificado, no solo las que se
+comparan contra la liga**, y eso se corrigió después de medirlo: acotar la
+marca a las relativas dejaba **1 badge marcado sobre 216 jugadores**, o sea
+que no tocaba el caso que la auditoría denuncia. El ejemplo del punto ciego
+es de umbral **absoluto**: lo que lo vuelve poco confiable no es contra qué
+se compara sino que **su propio promedio se calculó sobre nada**. Es el
+mismo criterio que ya usa el percentil, que no aparece para ninguna métrica
+de un no calificado.
+
+Medido en Reconquista: **117 de 216 jugadores** y 247 de 549 etiquetas
+quedan marcadas — exactamente los que no califican, cero sobre los 99 que
+sí. En la grilla del plantel el corte se ve solo: las cards cambian de color
+justo donde empieza "Pocos Minutos".
+
+El flag `relativa` del catálogo sigue vivo y agrega una línea al tooltip:
+esas además se miden contra una mediana armada con los que sí califican.
+`jugadoresBadges()` es el único lugar que lo decide, así que la card del
+plantel, la ficha y el informe de scouting marcan lo mismo.
 
 Hay tests que recorren el plantel entero y exigen **igualdad estricta**
 (`===`, no tolerancia) de 19 métricas base, de los discriminantes de origen

@@ -356,7 +356,7 @@ function jugadoresReferenciasRebote(idx) {
    de uno (por ejemplo, un tirador que además rebotea bien). */
 const PERFILES_TECNICOS = [
   {
-    id: 'terminador', emoji: '🎯', label: 'Terminador de Élite',
+    id: 'terminador', emoji: '🎯', label: 'Terminador de Élite', relativa: true,
     calza: (j, prom) => prom.PLAYS !== null && prom['eFG%'] !== null &&
       j['PLAYS'] > prom.PLAYS && j['eFG%'] > 1.15 * prom['eFG%'] && j['PPP'] > 1.05,
     detalle: 'Alto volumen de plays con una eficiencia muy por encima de la liga: no solo participa, resuelve.',
@@ -367,7 +367,7 @@ const PERFILES_TECNICOS = [
     detalle: 'Reparte muchas más asistencias de las que pierde la pelota: hace mejor a los demás.',
   },
   {
-    id: 'puntal', emoji: '🏰', label: 'Puntal en la Pintura',
+    id: 'puntal', emoji: '🏰', label: 'Puntal en la Pintura', relativa: true,
     calza: (j, prom) => prom.RT !== null && jugadoresRT(j) > 1.20 * prom.RT,
     detalle: 'Domina el vidrio muy por encima del promedio de la liga, en ataque y en defensa.',
   },
@@ -377,7 +377,7 @@ const PERFILES_TECNICOS = [
     detalle: 'Volumen y acierto de triple genuinos: hay que salir a buscarlo afuera.',
   },
   {
-    id: 'especialistaDef', emoji: '🧤', label: 'Especialista Defensivo',
+    id: 'especialistaDef', emoji: '🧤', label: 'Especialista Defensivo', relativa: true,
     calza: (j, prom) => prom.PR !== null && j['PR'] > 1.30 * prom.PR,
     detalle: 'Roba muchas más pelotas que el resto de la liga: genera posesiones extra.',
   },
@@ -411,20 +411,20 @@ function jugadoresArquetipos(idx, j) {
   const prom = jugadoresPromediosLiga(idx);
   return PERFILES_TECNICOS
     .filter(p => { try { return !!p.calza(j, prom); } catch (e) { return false; } })
-    .map(p => ({ id: p.id, emoji: p.emoji, label: p.label, detalle: p.detalle }));
+    .map(p => ({ id: p.id, emoji: p.emoji, label: p.label, detalle: p.detalle, relativa: !!p.relativa }));
 }
 
 /* Jerarquía dentro del plantel: ACÁ SÍ son excluyentes entre sí, se evalúa
    en cascada y gana el primero que calce (de más a menos exigente). */
 const JERARQUIA = [
   {
-    id: 'franquicia', emoji: '⭐', label: 'Jugador Franquicia',
+    id: 'franquicia', emoji: '⭐', label: 'Jugador Franquicia', relativa: true,
     calza: (j, prom) => prom.PLAYS !== null && j['PLAYS'] > 1.20 * prom.PLAYS &&
       typeof j['MIN'] === 'number' && j['MIN'] > 28,
     descripcion: 'Líder absoluto del plantel: el equipo pasa por sus manos y por sus minutos.',
   },
   {
-    id: 'referente', emoji: '⚔️', label: 'Referente Ofensivo / Segunda Espada',
+    id: 'referente', emoji: '⚔️', label: 'Referente Ofensivo / Segunda Espada', relativa: true,
     calza: (j, prom) => prom.PLAYS !== null && j['PLAYS'] > prom.PLAYS,
     descripcion: 'Alto volumen de decisiones: carga una parte grande del ataque.',
   },
@@ -448,7 +448,7 @@ const JERARQUIA = [
 function jugadoresJerarquia(idx, j) {
   const prom = jugadoresPromediosLiga(idx);
   const nivel = JERARQUIA.find(n => { try { return !!n.calza(j, prom); } catch (e) { return false; } });
-  return { id: nivel.id, emoji: nivel.emoji, label: nivel.label, descripcion: nivel.descripcion };
+  return { id: nivel.id, emoji: nivel.emoji, label: nivel.label, descripcion: nivel.descripcion, relativa: !!nivel.relativa };
 }
 
 /* =====================================================================
@@ -539,14 +539,14 @@ const JUGADORES_ROLES_FUNCIONALES = [
     detalle: (p) => 'termina cerca del aro con ' + jugadoresNum(p.pptDoble, 2) + ' por doble intentado.',
   },
   {
-    id: 'ancla-defensiva', label: 'Ancla Defensiva',
+    id: 'ancla-defensiva', label: 'Ancla Defensiva', relativa: true,
     test: (p) => p.esInterior && p.reboteDefRel !== null && p.reboteRel !== null &&
       p.reboteDefRel >= JUGADORES_UMBRALES.reboteInterior && p.reboteDefRel > p.reboteRel,
     detalle: (p) => 'sostiene el rebote defensivo (' + jugadoresNum(p.reboteDefRel, 2) +
       'x la mediana de la liga en RD%) más de lo que carga el ofensivo (' + jugadoresNum(p.reboteRel, 2) + 'x).',
   },
   {
-    id: 'rim-runner', label: 'Rebotador de Impacto / Rim Runner',
+    id: 'rim-runner', label: 'Rebotador de Impacto / Rim Runner', relativa: true,
     test: (p) => p.esInterior && p.reboteRel !== null && p.reboteRel >= JUGADORES_UMBRALES.reboteOfensivoAlto,
     detalle: (p) => 'vive del cristal ofensivo: ' + jugadoresNum(p.reboteRel, 2) + 'x la mediana de la liga en RO%.',
   },
@@ -702,7 +702,7 @@ function jugadoresRolFuncional(perfil) {
   const r = JUGADORES_ROLES_FUNCIONALES.find(d => {
     try { return !!d.test(perfil); } catch (e) { return false; }
   }) || JUGADORES_ROLES_FUNCIONALES[JUGADORES_ROLES_FUNCIONALES.length - 1];
-  return { id: r.id, label: r.label, detalle: r.detalle(perfil) };
+  return { id: r.id, label: r.label, detalle: r.detalle(perfil), relativa: !!r.relativa };
 }
 
 /**
@@ -724,15 +724,64 @@ function jugadoresADN(idx, j) {
   };
 }
 
-/** Etiquetas cortas del ADN, para pintar badges iguales en todas las vistas. */
+/**
+ * Etiquetas cortas del ADN, para pintar badges iguales en todas las vistas.
+ *
+ * SIN RESPALDO (punto ciego P-7 de la auditoría). Las medias y las bandas de
+ * liga se calculan SOLO sobre los jugadores calificados, pero las etiquetas
+ * se le asignan a todos. Un jugador de 6 minutos con AST-PP de 2,0 sobre una
+ * muestra de tres pases recibía "🧠 Generador" con el mismo peso visual que
+ * uno de 30 minutos, mientras su propia ficha mostraba los percentiles en
+ * blanco: la etiqueta se veía firme y el dato que la sostiene, no.
+ *
+ * La regla del proyecto es mostrar el dato y quitarle autoridad, no
+ * esconderlo — igual que el `~` del percentil y las barras grises. Así que
+ * el badge se marca, no se borra.
+ *
+ * SE MARCAN TODAS, no solo las relativas, y esto se corrigió DESPUÉS de
+ * medirlo: acotar la marca a las etiquetas que se comparan contra la liga
+ * dejaba **1 badge marcado sobre 216 jugadores** en la liga real, o sea que
+ * no tocaba el caso que la auditoría denuncia. El ejemplo del punto ciego
+ * —"🧠 Generador con AST-PP 2,0 sobre una muestra de tres pases"— es de
+ * UMBRAL ABSOLUTO: lo que lo vuelve poco confiable no es contra qué se
+ * compara, sino que **su propio promedio se calculó sobre nada**. Un
+ * jugador que no llega al umbral de minutos tiene todas sus tasas flojas,
+ * así que toda etiqueta derivada de ellas tiene el mismo problema. Es
+ * exactamente el criterio que ya usa el percentil, que no aparece para
+ * NINGUNA métrica de un no calificado.
+ *
+ * El flag `relativa` del catálogo sigue vivo y sirve para decirlo con más
+ * precisión en el tooltip: esas además se miden contra una mediana armada
+ * con los que sí califican.
+ */
 function jugadoresBadges(adn) {
   if (!adn) return [];
+  const califica = !!(adn.perfil && adn.perfil.califica);
   const out = [];
-  if (adn.jerarquia) out.push({ tipo: 'jerarquia', texto: adn.jerarquia.emoji + ' ' + adn.jerarquia.label });
-  if (adn.rolFuncional) out.push({ tipo: 'rol', texto: adn.rolFuncional.label });
-  (adn.arquetipos || []).forEach(a => out.push({ tipo: 'arquetipo', texto: a.emoji + ' ' + a.label }));
+  const marca = (tipo, texto, relativa) => {
+    const sinRespaldo = !califica;
+    out.push({
+      tipo: tipo,
+      texto: sinRespaldo ? '~ ' + texto : texto,
+      sinRespaldo: sinRespaldo,
+      /* El motivo va en el objeto y no armado en cada vista: son tres
+         renders distintos —card del plantel, ficha y scouting— y un texto
+         duplicado tres veces termina diciendo tres cosas. */
+      motivo: sinRespaldo
+        ? (relativa ? JUGADORES_MOTIVO_SIN_RESPALDO + ' Además se mide contra una mediana armada con los que sí califican.'
+          : JUGADORES_MOTIVO_SIN_RESPALDO)
+        : null,
+    });
+  };
+  if (adn.jerarquia) marca('jerarquia', adn.jerarquia.emoji + ' ' + adn.jerarquia.label, adn.jerarquia.relativa);
+  if (adn.rolFuncional) marca('rol', adn.rolFuncional.label, adn.rolFuncional.relativa);
+  (adn.arquetipos || []).forEach(a => marca('arquetipo', a.emoji + ' ' + a.label, a.relativa));
   return out;
 }
+
+const JUGADORES_MOTIVO_SIN_RESPALDO =
+  'El jugador no llega al umbral de minutos de la liga: sus promedios salen de ' +
+  'una muestra chica, así que la etiqueta se muestra igual pero con menos respaldo.';
 
 /** El percentil más bajo entre un puñado de métricas de referencia: la
     lectura más corta de "por dónde se lo puede exponer o mejorar". */
@@ -793,7 +842,11 @@ function jugadoresSintesisPerfil(idx, j) {
   if (fuga) partesConclusion.push('Para optimizarlo, atender ' + fuga.label.toLowerCase() + '.');
   const conclusion = { nivel: nivelConclusion, titulo: 'Conclusión táctica', texto: partesConclusion.join(' ') };
 
-  return { rolMinutos, arquetipos, jerarquia, impacto, eficiencia, puntoDeFuga: fuga, conclusion };
+  /* Que el jugador califique o no viaja con la síntesis: la ficha marca con
+     `~` las etiquetas que se apoyan en una comparación contra la liga que su
+     muestra no sostiene (P-7). */
+  return { rolMinutos, arquetipos, jerarquia, impacto, eficiencia, puntoDeFuga: fuga, conclusion,
+    califica: !!j.__califica };
 }
 
 /** z-score de un valor puntual contra la media/desvío del propio jugador. */
@@ -1278,10 +1331,15 @@ function jugadoresPlantelEquipo(idx) {
        informe de Scouting. Se recortan a tres para que la card no se
        convierta en un párrafo. */
     const badges = jugadoresBadges(adn).slice(0, 3).map(b => {
-      const color = b.tipo === 'jerarquia' ? 'text-accent border-accent/40'
-        : b.tipo === 'rol' ? 'text-blue-400 border-blue-400/30'
-          : 'text-green-400 border-green-400/30';
-      return `<span class="text-[9px] leading-tight px-1.5 py-0.5 rounded-full border ${color} whitespace-nowrap">${escapeHtml(b.texto)}</span>`;
+      /* Sin respaldo va en gris: el mismo tratamiento que la barra de
+         percentil de una muestra pobre. El `~` lo dice sin depender del
+         color, que es la regla del punto 14. */
+      const color = b.sinRespaldo ? 'text-muted border-hairline'
+        : b.tipo === 'jerarquia' ? 'text-accent border-accent/40'
+          : b.tipo === 'rol' ? 'text-blue-400 border-blue-400/30'
+            : 'text-green-400 border-green-400/30';
+      return `<span class="text-[9px] leading-tight px-1.5 py-0.5 rounded-full border ${color} whitespace-nowrap"
+        ${b.motivo ? `title="${escapeAttr(b.motivo)}"` : ''}>${escapeHtml(b.texto)}</span>`;
     }).join('');
 
     const kpi = (k) => `<span class="whitespace-nowrap"><span class="dato-sec">${escapeHtml(k)}</span> <span class="${k === '+/-' ? SGADD_UI.claseMasMenos(j[k]) : ''}">${escapeHtml(SGADD.formatear(k, j[k]))}</span></span>`;
@@ -1434,21 +1492,30 @@ function jugadoresTarjetaSintesis(bloque) {
 }
 
 function jugadoresBloqueADN(sintesis) {
+  /* Una etiqueta RELATIVA sobre un jugador que no califica se muestra igual
+     —la regla es no esconder el dato— pero con `~` y en gris, como el
+     percentil de una muestra pobre. P-7 de la auditoría. */
+  const flojo = () => !sintesis.califica;
+  const nota = () => flojo() ? ' · ' + JUGADORES_MOTIVO_SIN_RESPALDO : '';
+
   const arqs = sintesis.arquetipos.length
     ? sintesis.arquetipos.map(a => `
-        <span class="inline-flex items-center gap-1 text-[11px] bg-surface2/60 border border-hairline rounded-full px-2.5 py-1 mr-1.5 mb-1.5"
-              title="${escapeAttr(a.detalle)}">
-          ${a.emoji} ${escapeHtml(a.label)}
+        <span class="inline-flex items-center gap-1 text-[11px] ${flojo() ? 'text-muted' : ''} bg-surface2/60 border border-hairline rounded-full px-2.5 py-1 mr-1.5 mb-1.5"
+              title="${escapeAttr(a.detalle + nota())}">
+          ${flojo() ? '~ ' : ''}${a.emoji} ${escapeHtml(a.label)}
         </span>`).join('')
     : `<p class="text-xs text-muted">Ningún perfil técnico se destaca lo suficiente todavía.</p>`;
 
   return `
     <div class="rounded-lg border border-accent/40 bg-accent/5 p-4 mb-5">
       <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-1">ADN del jugador</p>
-      <h4 class="font-display text-lg sm:text-xl uppercase tracking-wide text-ink leading-tight">
-        ${sintesis.jerarquia.emoji} ${escapeHtml(sintesis.jerarquia.label)}
+      <h4 class="font-display text-lg sm:text-xl uppercase tracking-wide ${flojo() ? 'text-muted' : 'text-ink'} leading-tight"
+          title="${escapeAttr(sintesis.jerarquia.descripcion + nota())}">
+        ${flojo() ? '~ ' : ''}${sintesis.jerarquia.emoji} ${escapeHtml(sintesis.jerarquia.label)}
       </h4>
       <p class="text-xs text-muted mt-1 mb-3 leading-snug">${escapeHtml(sintesis.jerarquia.descripcion)}</p>
+      ${flojo()
+        ? `<p class="text-[10px] text-yellow-400 mb-3 leading-snug">~ ${escapeHtml(JUGADORES_MOTIVO_SIN_RESPALDO)}</p>` : ''}
       <p class="text-[10px] uppercase tracking-wider text-muted font-display mb-1.5">Perfiles técnicos</p>
       <div>${arqs}</div>
     </div>`;
@@ -1688,6 +1755,7 @@ if (typeof module !== 'undefined' && module.exports) {
     JUGADORES_RANKINGS, JUGADORES_TOP_N, jugadoresRanking, jugadoresUmbralRanking,
     JUGADORES_UMBRALES, JUGADORES_ROLES_FUNCIONALES,
     jugadoresPerfilBase, jugadoresRolFuncional, jugadoresADN, jugadoresBadges,
+    JUGADORES_MOTIVO_SIN_RESPALDO,
     CLAVES_CONDICION, MIN_PJ_CONDICION, SENSIBILIDAD_CONDICION,
     jugadoresSlug, jugadoresBuscar, jugadoresZScore,
     jugadoresPartidosOrdenados, jugadoresRival, jugadoresIdCanonico,

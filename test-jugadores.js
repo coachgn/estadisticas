@@ -655,6 +655,87 @@ check('los badges traen jerarquía, rol y arquetipos con el mismo formato',
 check('cada badge trae texto listo para pintar', badges.every(b => typeof b.texto === 'string' && b.texto.length > 2));
 check('jugadoresBadges(null) da lista vacía, no rompe', J.jugadoresBadges(null).length === 0);
 
+/* =====================================================================
+   P-7 · UNA ETIQUETA RELATIVA SOBRE UNA MUESTRA QUE NO LA SOSTIENE
+
+   Las medias y las bandas de liga se calculan SOLO sobre los calificados,
+   pero las etiquetas se asignan a todos. Un jugador de 6 minutos recibía
+   arquetipos con el mismo peso visual que uno de 30, mientras su propia
+   ficha mostraba los percentiles en blanco.
+
+   La regla del proyecto es mostrar el dato y quitarle autoridad, no
+   esconderlo: el badge se MARCA, no se borra. Y solo el que se compara
+   contra la liga — un 75% en libres es bueno en cualquier categoría.
+   ===================================================================== */
+console.log('\nY bis. ETIQUETAS SIN RESPALDO (P-7)');
+console.log('═'.repeat(70));
+
+/* Índice propio para no correr las medianas de los otros bloques. */
+const filasP7 = [
+  jr('JUGADOR TIPO', '', { MIN: '20' }),
+  jr('TITULAR, PLENO', 'A', { MIN: '30', PLAYS: '30', 'RO%': '0,20', 'RD%': '0,30' }),
+  jr('OTRO, NORMAL', 'A', { MIN: '25', PLAYS: '10' }),
+  /* 6 minutos: NO califica, y aun así dispara etiquetas relativas porque
+     sus ratios son altísimos sobre una muestra mínima. */
+  jr('CAMEO, BRILLANTE', 'B', { MIN: '6', PLAYS: '30', 'eFG%': '0,80', PPP: '1,50',
+    'RO%': '0,30', 'RD%': '0,40', RO: '9', RD: '12', RT: '21', PR: '5' }),
+];
+const idxP7 = SGADD.construirIndice({
+  'PROMEDIOS E': { cols: colsE, filas: filasE },
+  'PROMEDIOS J': { cols: colsRk, filas: filasP7 },
+  'Base Datos E': { cols: colsBD, filas: filasBD },
+}, { fase: 'REGULAR' });
+
+const cameo = idxP7.liga.jugadores.find(x => x['NOMBRES'] === 'CAMEO, BRILLANTE');
+const titular = idxP7.liga.jugadores.find(x => x['NOMBRES'] === 'TITULAR, PLENO');
+check('el de 6 minutos no califica y el de 30 sí',
+  cameo.__califica === false && titular.__califica === true);
+
+const bCameo = J.jugadoresBadges(J.jugadoresADN(idxP7, cameo));
+const bTitular = J.jugadoresBadges(J.jugadoresADN(idxP7, titular));
+
+check('sigue recibiendo sus etiquetas: no se le esconde el dato', bCameo.length > 0,
+  bCameo.map(b => b.texto).join(' | '));
+/* SE MARCAN TODAS, y esto se corrigió después de MEDIRLO: acotar la marca a
+   las etiquetas relativas dejaba 1 badge marcado sobre 216 jugadores en la
+   liga real. El ejemplo del punto ciego —🧠 Generador con AST-PP 2,0 sobre
+   tres pases— es de umbral ABSOLUTO: lo que lo vuelve poco confiable no es
+   contra qué se compara, sino que su propio promedio se calculó sobre nada.
+   Es el mismo criterio del percentil, que no aparece para NINGUNA métrica
+   de un no calificado. */
+check('todas sus etiquetas salen marcadas, no solo las relativas',
+  bCameo.every(b => b.sinRespaldo && /^~ /.test(b.texto)),
+  bCameo.map(b => b.texto + (b.sinRespaldo ? ' [~]' : '')).join(' | '));
+check('y la marca explica por qué, sin que cada vista invente su texto',
+  bCameo.every(b => typeof b.motivo === 'string' && b.motivo.indexOf(J.JUGADORES_MOTIVO_SIN_RESPALDO) === 0));
+
+/* El flag `relativa` sigue sirviendo: esas se miden además contra una
+   mediana armada con los que sí califican, y el tooltip lo dice. */
+check('la etiqueta relativa aclara además contra qué se mide',
+  bCameo.filter(b => /Especialista Defensivo|Franquicia|Referente|Puntal|Terminador|Rim Runner|Ancla/.test(b.texto))
+    .every(b => /mediana armada con los que sí califican/.test(b.motivo)),
+  bCameo.map(b => b.texto).join(' | '));
+
+check('un jugador que califica no lleva ninguna marca',
+  bTitular.every(b => !b.sinRespaldo && !/^~ /.test(b.texto)),
+  bTitular.map(b => b.texto).join(' | '));
+
+/* Lo que NO puede pasar: que la marca cambie la taxonomía. Scouting y
+   Jugadores comparten el motor y tienen que seguir diciendo lo mismo. */
+const adnCameo = J.jugadoresADN(idxP7, cameo);
+check('la marca es de presentación: la taxonomía no cambia',
+  !/^~/.test(adnCameo.jerarquia.label) &&
+  adnCameo.arquetipos.every(a => !/^~/.test(a.label)) &&
+  !/^~/.test(adnCameo.rolFuncional.label));
+
+/* El flag vive en el catálogo, que es donde está la regla: si alguien suma
+   un perfil que compara contra la liga y se olvida del flag, esta cuenta
+   lo delata. */
+const relativos = J.JUGADORES_ROLES_FUNCIONALES.filter(r => r.relativa).map(r => r.id);
+check('los roles funcionales que miran el cristal contra la liga están declarados',
+  relativos.indexOf('ancla-defensiva') !== -1 && relativos.indexOf('rim-runner') !== -1,
+  relativos.join(','));
+
 /* --- El plantel del picker: orden estricto por MIN --- */
 const plantelA = (idxRk.liga.jugadoresPorEquipo.get('A') || [])
   .slice().sort((a, b) => (b['MIN'] || 0) - (a['MIN'] || 0));
