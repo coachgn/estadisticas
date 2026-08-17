@@ -98,13 +98,15 @@ check('el informe se imprime en la hoja A3 apaisada',
 check('y el ancho de la app deja de topearlo',
   /body\.modo-impresion #informeSalida \{ max-width: none !important; \}/.test(html));
 
-/* --- Las tarjetas, con el gris del post-partido ---------------------- */
-/* El blanco absoluto desarmaba la jerarquía: todo parecía texto suelto.
-   Mismos valores que el post-partido, así los dos PDF se leen igual. */
-check('las tarjetas llevan el mismo gris que las del post-partido',
-  /body\.modo-impresion #informeSalida \.card,[\s\S]{0,400}background: #f1f5f9 !important;[\s\S]{0,80}border: 1px solid #cbd5e1/.test(html));
-check('y el mismo valor que usa el post-partido, no uno parecido',
-  (html.match(/background: #f1f5f9 !important/g) || []).length >= 2);
+/* --- Las tarjetas: BLANCAS con borde sólido -------------------------- */
+/* Estuvieron en gris (#f1f5f9). Con el blanco y un borde de 1px todo parecía
+   texto suelto, pero la corrección no fue volver al gris: fue CARGAR el
+   borde. 1,4px de un slate que se ve separa los bloques igual y en papel
+   gasta muchísima menos tinta, que es para lo que se imprime. */
+check('las tarjetas van blancas con borde sólido',
+  /body\.modo-impresion #informeSalida \.card,[\s\S]{0,400}background: #ffffff !important;[\s\S]{0,80}border: 1\.4px solid #94a3b8/.test(html));
+check('y con el mismo valor en las cuatro exportaciones, no uno parecido',
+  (html.match(/border: 1\.4px solid #94a3b8 !important/g) || []).length >= 3);
 check('el verde y el rojo significan lo mismo en los dos informes',
   /body\.modo-impresion #informeSalida \.text-green-400 \{ color: #15803d/.test(html) &&
   /body\.modo-impresion #informeSalida \.text-red-400 \{ color: #b91c1c/.test(html));

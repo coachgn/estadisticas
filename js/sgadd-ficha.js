@@ -25,21 +25,41 @@ const SGADD_FICHA = (function () {
   'use strict';
 
   /* `tab` mapea al id de JUGADORES_TABS. La ficha de identidad no es un tab:
-     es el encabezado con los KPIs y el ADN, y va siempre. */
+     es el encabezado con los KPIs y el ADN, y va siempre.
+
+     La evolución es la única con SUBSECCIONES: no es "sí o no" sino "cuáles
+     de las 14 métricas". Antes se exportaba una sola —la que estuviera
+     elegida en pantalla— y el DT que quería puntos, plays y T3% tenía que
+     generar tres PDF. */
   const SECCIONES = [
-    { id: 'general',   label: 'Perfil, ADN y percentiles', tab: 'general',   pre: true },
-    { id: 'tiro',      label: 'De dónde anota',            tab: 'tiro',      pre: true },
-    { id: 'evolucion', label: 'Evolución partido a partido', tab: 'evolucion', pre: true },
-    { id: 'partidos',  label: 'Log de partidos',           tab: 'partidos',  pre: false },
+    { id: 'general',   label: 'Perfil, ADN y percentiles',   tab: 'general',   pre: true },
+    { id: 'tiro',      label: 'De dónde anota',              tab: 'tiro',      pre: true },
+    { id: 'evolucion', label: 'Evolución partido a partido', tab: 'evolucion', pre: true, metricas: true },
   ];
 
+  /* El log de partidos SALIÓ de la lista: con 13 fechas se llevaba media
+     hoja repitiendo lo que el gráfico de evolución ya cuenta, y el lugar lo
+     ocupan ahora las métricas que el DT sí eligió. */
+
   let seleccion = null;
+  let metricas = null;
 
   function elegidas() {
     if (seleccion) return seleccion;
     seleccion = {};
     SECCIONES.forEach(x => { seleccion[x.id] = x.pre; });
     return seleccion;
+  }
+
+  /** Qué métricas de evolución entran. Arranca con la que está en pantalla:
+      lo que el DT está mirando es lo que espera encontrar en la hoja. */
+  function metricasElegidas() {
+    if (metricas) return metricas;
+    metricas = {};
+    const enPantalla = (typeof JUGADORES !== 'undefined' && JUGADORES.metricaEvolucion) || 'PTS';
+    JUGADORES_METRICAS_EVOLUCION.forEach(m => { metricas[m.id] = (m.id === enPantalla); });
+    if (!Object.keys(metricas).some(k => metricas[k])) metricas.PTS = true;
+    return metricas;
   }
 
   function jugadorActual() {
@@ -61,9 +81,11 @@ const SGADD_FICHA = (function () {
     if (!ctx) return;
     const sel = elegidas();
 
+    const met = metricasElegidas();
+
     const items = SECCIONES.map(x => {
       const hay = jugadoresTabDisponible(ctx.idx, ctx.j, x.tab);
-      return `
+      const fila = `
       <label class="flex items-center gap-2.5 py-1.5 rounded px-2 -mx-2 transition-all duration-200
                     ${hay ? 'cursor-pointer hover:bg-surface2' : 'opacity-40'}">
         <input type="checkbox" data-sec="${SGADD_UI.esc(x.id)}" ${sel[x.id] && hay ? 'checked' : ''}
@@ -71,6 +93,29 @@ const SGADD_FICHA = (function () {
         <span class="text-sm text-white">${SGADD_UI.esc(x.label)}</span>
         ${hay ? '' : '<span class="text-[10px] text-muted">sin datos suficientes</span>'}
       </label>`;
+      if (!x.metricas || !hay) return fila;
+      /* Las 14 métricas, sangradas debajo de su sección. Un gráfico por
+         métrica tildada: el DT que quiere puntos, plays y T3% ya no genera
+         tres PDF distintos. */
+      const subs = JUGADORES_METRICAS_EVOLUCION.map(m => `
+        <label class="flex items-center gap-2 py-1 rounded px-2 cursor-pointer hover:bg-surface2 transition-all duration-200">
+          <input type="checkbox" data-met="${SGADD_UI.esc(m.id)}" ${met[m.id] ? 'checked' : ''}
+                 class="w-3.5 h-3.5" style="accent-color:var(--acento)">
+          <span class="text-xs text-muted">${SGADD_UI.esc(m.label)}</span>
+        </label>`).join('');
+      return fila + `
+        <div class="ml-6 pl-3 border-l border-hairline mt-1 mb-2">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-[10px] uppercase tracking-wider text-muted font-display">Un gráfico por métrica</span>
+            <span class="flex gap-2">
+              <button type="button" onclick="SGADD_FICHA.marcarMetricas(true)"
+                class="text-[10px] uppercase tracking-wider text-accent hover:underline">Todas</button>
+              <button type="button" onclick="SGADD_FICHA.marcarMetricas(false)"
+                class="text-[10px] uppercase tracking-wider text-muted hover:underline">Ninguna</button>
+            </span>
+          </div>
+          <div class="grid grid-cols-2 gap-x-2">${subs}</div>
+        </div>`;
     }).join('');
 
     const previo = document.getElementById('modalFicha');
@@ -114,6 +159,9 @@ const SGADD_FICHA = (function () {
 
     document.querySelectorAll('#modalFicha input[data-sec]').forEach(i => {
       elegidas()[i.dataset.sec] = i.checked;
+    });
+    document.querySelectorAll('#modalFicha input[data-met]').forEach(i => {
+      metricasElegidas()[i.dataset.met] = i.checked;
     });
     cerrar();
 
@@ -209,13 +257,22 @@ const SGADD_FICHA = (function () {
       </section>`);
 
     /* --- Los tabs elegidos, con el MISMO render de la pantalla --- */
+    const met = metricasElegidas();
     SECCIONES.filter(x => sel[x.id] && jugadoresTabDisponible(idx, j, x.tab)).forEach(x => {
       const def = JUGADORES_TABS.find(t => t.id === x.tab);
+      /* La evolución no usa el tab entero: el tab trae UN gráfico —el de la
+         métrica que está en pantalla— y acá van los que el DT eligió, cada
+         uno con su canvas. El bloque en sí es el mismo que pinta la app. */
+      const cuerpo = x.metricas
+        ? JUGADORES_METRICAS_EVOLUCION.filter(m => met[m.id])
+            .map((m, i) => jugadoresBloqueEvolucion(idx, j, m.id, 'chFichaEvol' + i)).join('')
+        : jugadoresTab(idx, j, x.tab);
+      if (x.metricas && !cuerpo) return;
       bloques.push(`
         <section class="informe-bloque" data-bloque="${SGADD_UI.esc(x.id)}">
           <h2>${SGADD_UI.esc(x.label)}</h2>
           ${def ? `<p class="informe-pregunta">${SGADD_UI.esc(def.pregunta)}</p>` : ''}
-          ${jugadoresTab(idx, j, x.tab)}
+          ${cuerpo}
         </section>`);
     });
 
@@ -226,7 +283,12 @@ const SGADD_FICHA = (function () {
     return bloques.join('');
   }
 
-  return { SECCIONES, abrir, cerrar, generar, elegidas };
+  /** Atajo del modal: tildar o destildar las 14 de una. */
+  function marcarMetricas(valor) {
+    document.querySelectorAll('#modalFicha input[data-met]').forEach(i => { i.checked = !!valor; });
+  }
+
+  return { SECCIONES, abrir, cerrar, generar, elegidas, metricasElegidas, marcarMetricas };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_FICHA;

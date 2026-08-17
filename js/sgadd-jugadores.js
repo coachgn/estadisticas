@@ -1690,10 +1690,24 @@ function jugadoresTabEvolucion(idx, j) {
       </select>
     </div>`;
 
+  return selector + jugadoresBloqueEvolucion(idx, j, metricaId, 'chEvolJugador');
+}
+
+/**
+ * UN gráfico de evolución, para UNA métrica.
+ *
+ * Se separó del tab porque la ficha en PDF exporta VARIAS métricas —el DT
+ * elige cuáles— y cada una necesita su propio canvas. El tab sigue siendo
+ * el mismo bloque con el selector arriba: si el gráfico cambia, cambia en
+ * los dos lados.
+ */
+function jugadoresBloqueEvolucion(idx, j, metricaId, idCanvas) {
+  const def = JUGADORES_METRICAS_EVOLUCION.find(m => m.id === metricaId);
+  const metricaLbl = def ? def.label : metricaId;
   const partidos = jugadoresPartidosOrdenados(idx, j.__clave);
   const stat = idx.statJugador(j.__clave, metricaId);
   if (!stat) {
-    return selector + SGADD_UI.aviso('Todavía no hay suficientes partidos',
+    return SGADD_UI.aviso('Todavía no hay suficientes partidos',
       'Hacen falta al menos 3 partidos con box score para calcular una banda de consistencia en ' + metricaLbl.toLowerCase() + '.');
   }
 
@@ -1703,16 +1717,21 @@ function jugadoresTabEvolucion(idx, j) {
   });
   // Fecha + rival + condición (L/V) en el tooltip: "14/10/2025 - vs X (L)".
   const etiquetas = partidos.map(jugadoresEtiquetaEvolucion);
+  /* Cada punto lleva el ESCUDO del rival de esa noche. En pantalla el rival
+     salía en el tooltip, pero en papel no hay hover: el escudo es lo único
+     que dice contra quién fue ese pico sin agregar una tabla al lado. */
+  const rivales = partidos.map(jugadoresRival);
 
   return `
-    ${selector}
     <div class="mb-2">
       ${equiposPanel(metricaLbl + ' por partido · banda de ±1 desvío',
-        SGADD_CHARTS.evolucionJugador('chEvolJugador', partidos, metricaId, { media: stat.media, desvio: stat.desvio, atipicos: atipicos, label: metricaLbl, etiquetas: etiquetas }),
+        SGADD_CHARTS.evolucionJugador(idCanvas, partidos, metricaId,
+          { media: stat.media, desvio: stat.desvio, atipicos: atipicos, label: metricaLbl,
+            etiquetas: etiquetas, rivales: rivales }),
         `<p class="text-[11px] text-muted mt-3 leading-snug">
            Media ${escapeHtml(SGADD.formatear(metricaId, stat.media))} · desvío ${escapeHtml(SGADD.formatear(metricaId, stat.desvio))}
-           sobre ${stat.n} partidos con box score.
-           Los puntos resaltados están a más de ${SGADD_PARTIDO.Z_ATIPICO} desvíos de su propio promedio: ni el umbral
+           sobre ${stat.n} partidos con box score. Cada punto es el escudo del rival de esa noche.
+           Los resaltados están a más de ${SGADD_PARTIDO.Z_ATIPICO} desvíos de su propio promedio: ni el umbral
            ni el desvío son fijos, se recalculan solos a medida que juega más partidos.
          </p>`)}
     </div>`;
@@ -1765,6 +1784,7 @@ if (typeof module !== 'undefined' && module.exports) {
     JUGADORES_RANKINGS, JUGADORES_TOP_N, jugadoresRanking, jugadoresUmbralRanking,
     JUGADORES_UMBRALES, JUGADORES_ROLES_FUNCIONALES,
     jugadoresPerfilBase, jugadoresRolFuncional, jugadoresADN, jugadoresBadges,
+    JUGADORES_METRICAS_EVOLUCION,
     JUGADORES_MOTIVO_SIN_RESPALDO,
     CLAVES_CONDICION, MIN_PJ_CONDICION, SENSIBILIDAD_CONDICION,
     jugadoresSlug, jugadoresBuscar, jugadoresZScore,

@@ -1022,18 +1022,38 @@ console.log('\n' + '═'.repeat(70));
 console.log('\nZ. FICHA INDIVIDUAL EN PDF');
 console.log('═'.repeat(70));
 
+/* `sgadd-ficha.js` lee el catálogo de métricas como GLOBAL —en el navegador
+   lo es— así que acá se publica antes de requerirlo, igual que con SGADD. */
+global.JUGADORES_METRICAS_EVOLUCION = J.JUGADORES_METRICAS_EVOLUCION;
 const FICHA = require('./js/sgadd-ficha.js');
 const htmlApp = require('fs').readFileSync('./index.html', 'utf8');
 const fichaJs = require('fs').readFileSync('./js/sgadd-ficha.js', 'utf8');
+const jugJs = require('fs').readFileSync('./js/sgadd-jugadores.js', 'utf8');
 
 check('cada sección de la ficha apunta a un tab real de Jugadores',
   FICHA.SECCIONES.every(x => J.JUGADORES_TABS.some(t => t.id === x.tab)),
   FICHA.SECCIONES.map(x => x.tab).join(','));
-/* El log de 13 fechas se lleva media hoja y la charla arranca por el perfil,
-   no por la planilla. El DT lo tilda cuando quiere revisar noche por noche. */
-check('el log de partidos viene destildado por defecto',
-  FICHA.SECCIONES.find(x => x.id === 'partidos').pre === false);
-check('y el resto viene tildado', FICHA.SECCIONES.filter(x => x.id !== 'partidos').every(x => x.pre));
+/* El log de partidos SALIÓ de la lista: repetía con 13 filas lo que el
+   gráfico de evolución ya cuenta, y ese lugar lo ocupan las métricas. */
+check('el log de partidos ya no es una opción de la hoja',
+  !FICHA.SECCIONES.some(x => x.id === 'partidos'),
+  FICHA.SECCIONES.map(x => x.id).join(','));
+check('las tres secciones vienen tildadas', FICHA.SECCIONES.every(x => x.pre));
+
+/* La evolución es la única con SUBSECCIONES: no es "sí o no" sino cuáles de
+   las 14 métricas. Antes se exportaba solo la que estaba en pantalla y el DT
+   que quería puntos, plays y T3% tenía que generar tres PDF. */
+check('la evolución declara subsecciones por métrica',
+  FICHA.SECCIONES.find(x => x.id === 'evolucion').metricas === true);
+const metsFicha = FICHA.metricasElegidas();
+check('hay una entrada por cada métrica de evolución',
+  J.JUGADORES_METRICAS_EVOLUCION.every(m => m.id in metsFicha),
+  Object.keys(metsFicha).length + ' de ' + J.JUGADORES_METRICAS_EVOLUCION.length);
+/* Lo que el DT está mirando es lo que espera encontrar en la hoja. */
+check('arranca con una sola tildada y nunca con ninguna',
+  Object.keys(metsFicha).filter(k => metsFicha[k]).length === 1 && metsFicha['PTS'] === true);
+check('un gráfico por métrica elegida, cada uno con su canvas',
+  /jugadoresBloqueEvolucion\(idx, j, m\.id, 'chFichaEvol' \+ i\)/.test(fichaJs));
 
 /* No reescribe los bloques: los pide al mismo render de la pantalla. */
 check('reusa jugadoresTab() en vez de armar su propio HTML',
@@ -1066,7 +1086,50 @@ check('en la ficha los bloques se pueden partir, pero las tarjetas no',
 /* La regla general esconde todo control de formulario: sin `.no-imprimir` en
    el contenedor, la etiqueta "MÉTRICA" quedaba huérfana en la hoja. */
 check('el selector de métrica no deja su etiqueta huérfana en el papel',
-  /flex items-center gap-2 mb-3 no-imprimir/.test(require('fs').readFileSync('./js/sgadd-jugadores.js', 'utf8')));
+  /flex items-center gap-2 mb-3 no-imprimir/.test(jugJs));
+
+/* El título quedaba al pie de una hoja y el gráfico arrancaba en la
+   siguiente. Y ahora que son varios gráficos, el bloque es largo. */
+check('la evolución abre hoja propia',
+  /modo-ficha-print #fichaSalida \[data-bloque="evolucion"\] \{[^}]*page-break-before: always/.test(htmlApp));
+
+/* ---------------------------------------------------------------------
+   LOS PUNTOS DEL GRÁFICO SON EL ESCUDO DEL RIVAL
+
+   En pantalla el rival salía en el tooltip; en papel no hay hover, así que
+   un pico de 38 puntos no decía contra quién fue.
+   --------------------------------------------------------------------- */
+const chartsJs = require('fs').readFileSync('./js/sgadd-charts.js', 'utf8');
+check('el bloque de evolución le pasa el rival de cada noche al gráfico',
+  /rivales: rivales/.test(jugJs) && /const rivales = partidos\.map\(jugadoresRival\)/.test(jugJs));
+check('y el gráfico los dibuja con el mismo tratamiento que el scatter de Principal',
+  /function pluginEscudosRival/.test(chartsJs) &&
+  /ctx\.clip\(\);[\s\S]{0,120}drawImage/.test(chartsJs));
+/* Sin escudo resuelto van las INICIALES, no un hueco: es lo que pasa cuando
+   el manifiesto de logos no se puede leer. */
+check('sin escudo resuelto caen las iniciales',
+  /LOGOS\.iniciales\(rival\)/.test(chartsJs));
+/* El disco de base es opaco (los escudos con transparencia lo necesitan) y
+   cambia con el fondo: uno #0B1121 sobre hoja blanca es una mancha negra. */
+check('el disco de base se adapta al papel',
+  /claro \? '#ffffff' : '#0B1121'/.test(chartsJs));
+check('el semáforo de atípicos sigue en el anillo',
+  /at > 0 \? COL\.bien : COL\.mal/.test(chartsJs));
+/* En Node y sin manifiesto el gráfico tiene que seguir saliendo. */
+check('sin rivales el gráfico vuelve al punto redondo de siempre',
+  /conEscudos \? 0 : \(atipicos\[c\.dataIndex\] \? 6 : 3\)/.test(chartsJs));
+
+/* ---------------------------------------------------------------------
+   LAS CARDS DEL PAPEL · blancas con borde sólido
+
+   Estuvieron en gris: con el blanco y un borde de 1px todo parecía texto
+   suelto. La corrección no fue volver al gris sino cargar el borde.
+   --------------------------------------------------------------------- */
+check('las tarjetas van blancas con borde sólido en las cuatro exportaciones',
+  /\.scout-card,[\s\S]{0,700}background: #ffffff !important;\s*border: 1\.4px solid #94a3b8 !important/.test(htmlApp));
+check('y las que ya traen un borde de color lo conservan',
+  /\.scout-grupo\.grupo-foco *\{ border-color: #b91c1c !important; \}/.test(htmlApp) &&
+  /\.scout-ciclo-card\.ciclo-ganado \{ border-color: #15803d !important; \}/.test(htmlApp));
 
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

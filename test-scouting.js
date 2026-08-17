@@ -1825,8 +1825,8 @@ check('y se apaga color-scheme: dark, que pintaba el lienzo de #121212',
   /html \{ color-scheme: light !important; \}/.test(idxHtml));
 /* Las tarjetas van en GRIS y no en blanco: el blanco absoluto desarma la
    jerarquía y todo parece texto suelto. Mismo valor en los tres. */
-check('las tarjetas llevan el gris compartido con los otros dos informes',
-  /\.scout-card,[\s\S]{0,600}background: #f1f5f9 !important/.test(idxHtml));
+check('las tarjetas van blancas con borde sólido, igual que las otras tres',
+  /\.scout-card,[\s\S]{0,900}background: #ffffff !important;\s*border: 1\.4px solid #94a3b8/.test(idxHtml));
 check('y el scouting NO tiene un aplanado propio que lo saque del criterio',
   !/html:not\(\.modo-scout-print\)/.test(idxHtml));
 /* El JIT del CDN de Tailwind genera sus utilidades de color CON
@@ -1920,8 +1920,8 @@ check('el top 3 se repinta con tonos que se leen en papel',
 check('y la celda lleva la clase de su puesto',
   /' top-' \+ cel\.puestoInterno/.test(scoutJs));
 
-check('las tarjetas del ciclo van en tono claro',
-  /body \.scout-ciclo-card \{[\s\S]{0,120}background: #f8fafc !important/.test(idxHtml));
+check('las tarjetas del ciclo van en blanco, como el resto del papel',
+  /body \.scout-ciclo-card \{[\s\S]{0,120}background: #ffffff !important/.test(idxHtml));
 /* El borde las distingue de un vistazo, que es para lo que el DT las mira. */
 check('con borde verde las de ganados y rojo las de perdidos',
   /\.scout-ciclo-card\.ciclo-ganado \{ border-color: #15803d !important; \}/.test(idxHtml) &&

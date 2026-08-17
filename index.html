@@ -381,8 +381,8 @@
     body.modo-partido-print #detallePartido [class*="bg-accent/"],
     body.modo-partido-print #detallePartido [class*="bg-green-400/"],
     body.modo-partido-print #detallePartido [class*="bg-red-400/"] {
-      background: #f1f5f9 !important;
-      border: 1px solid #cbd5e1 !important;
+      background: #ffffff !important;
+      border: 1.4px solid #94a3b8 !important;
       border-radius: 1.5mm !important;
     }
     body.modo-partido-print #detallePartido .border-green-400 { border-left: 2.5px solid #15803d !important; }
@@ -680,23 +680,32 @@
     body .text-white,
     body .text-ink { color: #111 !important; }
 
-    /* LAS TARJETAS VAN EN GRIS, NO EN BLANCO. El blanco absoluto desarma
-       la jerarquía: todo parece texto suelto. Es el mismo valor que usaba
-       el post-partido, ahora compartido por los tres informes. */
-    .card,
-    .scout-card,
-    .scout-ficha,
-    /* Genérico y no una lista de opacidades: `bg-surface2/60` no estaba y
+    /* LAS TARJETAS VAN EN BLANCO CON BORDE SÓLIDO.
+
+       Estuvieron en gris (#f1f5f9) un tiempo: con el blanco absoluto y un
+       borde finito de 1px todo parecía texto suelto. La corrección no fue
+       volver al gris sino **cargar el borde**: 1,4px de un slate que sí se
+       ve (#94a3b8) separa los bloques igual o mejor que un fondo, y en papel
+       gasta muchísima menos tinta — que es para lo que se imprime.
+
+       Las tarjetas que YA traen un borde de color (el verde/rojo del ciclo,
+       los cuatro grupos del plan colectivo, el acento del ADN) lo conservan:
+       sus reglas van después y con `!important`.
+
+       Genérico y no una lista de opacidades: `bg-surface2/60` no estaba y
        los chips de perfiles técnicos de la ficha salían en gris oscuro
        sobre el papel. Enumerarlas a mano garantiza que la próxima variante
        vuelva a escaparse. */
+    .card,
+    .scout-card,
+    .scout-ficha,
     [class*="bg-surface2"],
     .bg-surface2,
     [class*="bg-accent/"],
     [class*="bg-green-400/"],
     [class*="bg-red-400/"] {
-      background: #f1f5f9 !important;
-      border: 1px solid #cbd5e1 !important;
+      background: #ffffff !important;
+      border: 1.4px solid #94a3b8 !important;
       border-radius: 1.5mm !important;
       box-shadow: none !important;
     }
@@ -811,8 +820,8 @@
     body.modo-impresion #informeSalida [class*="bg-accent/"],
     body.modo-impresion #informeSalida [class*="bg-green-400/"],
     body.modo-impresion #informeSalida [class*="bg-red-400/"] {
-      background: #f1f5f9 !important;
-      border: 1px solid #cbd5e1 !important;
+      background: #ffffff !important;
+      border: 1.4px solid #94a3b8 !important;
       border-radius: 1.5mm !important;
       box-shadow: none !important;
     }
@@ -894,6 +903,18 @@
       max-width: none !important;
       padding: 0 !important;
     }
+    /* La evolución ABRE HOJA. Con el corte automático el título quedaba al
+       pie de una hoja y el gráfico arrancaba en la siguiente; y ahora que
+       son varios gráficos —uno por métrica elegida— el bloque es largo y
+       conviene que empiece limpio. */
+    body.modo-ficha-print #fichaSalida [data-bloque="evolucion"] {
+      page-break-before: always; break-before: page;
+    }
+    /* Cada gráfico con su pie no se parte del título de su panel. */
+    body.modo-ficha-print #fichaSalida [data-bloque="evolucion"] > div {
+      page-break-inside: avoid; break-inside: avoid;
+    }
+
     /* Los bloques de la ficha SE PUEDEN PARTIR entre hojas. La regla general
        le pone `page-break-inside: avoid` a `.informe-bloque` —pensada para
        los bloques cortos del informe de equipo— y acá el de percentiles mide
@@ -1071,8 +1092,8 @@
        El BORDE las distingue de un vistazo, que es para lo que el DT las
        mira: verde el bloque de ganados, rojo el de perdidos. */
     body .scout-ciclo-card {
-      background: #f8fafc !important;
-      border: 1px solid #cbd5e1 !important;
+      background: #ffffff !important;
+      border: 1.4px solid #94a3b8 !important;
     }
     body .scout-ciclo-card.ciclo-ganado { border-color: #15803d !important; }
     body .scout-ciclo-card.ciclo-perdido { border-color: #b91c1c !important; }
@@ -1087,7 +1108,7 @@
        ----------------------------------------------------------------- */
     body .scout-grupo {
       border-width: 1.5px !important;
-      background: #f8fafc !important;
+      background: #ffffff !important;
     }
     body .scout-grupo.grupo-foco      { border-color: #b91c1c !important; }
     body .scout-grupo.grupo-intocable { border-color: #15803d !important; }
@@ -1506,23 +1527,23 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=94"></script>
-<script src="js/sgadd-core.js?v=94"></script>
-<script src="js/sgadd-ui.js?v=94"></script>
-<script src="js/sgadd-app.js?v=94"></script>
-<script src="js/sgadd-estados.js?v=94"></script>
-<script src="js/sgadd-buzon.js?v=94"></script>
-<script src="js/sgadd-charts.js?v=94"></script>
-<script src="js/sgadd-personalidad.js?v=94"></script>
-<script src="js/sgadd-rankings.js?v=94"></script>
-<script src="js/sgadd-partido.js?v=94"></script>
-<script src="js/sgadd-informe.js?v=94"></script>
-<script src="js/sgadd-ficha.js?v=94"></script>
-<script src="js/sgadd-equipos.js?v=94"></script>
-<script src="js/sgadd-jugadores.js?v=94"></script>
-<script src="js/sgadd-4factores.js?v=94"></script>
-<script src="js/sgadd-scouting.js?v=94"></script>
-<script src="js/sgadd-diagnostico.js?v=94"></script>
+<script src="js/sgadd-club.js?v=97"></script>
+<script src="js/sgadd-core.js?v=97"></script>
+<script src="js/sgadd-ui.js?v=97"></script>
+<script src="js/sgadd-app.js?v=97"></script>
+<script src="js/sgadd-estados.js?v=97"></script>
+<script src="js/sgadd-buzon.js?v=97"></script>
+<script src="js/sgadd-charts.js?v=97"></script>
+<script src="js/sgadd-personalidad.js?v=97"></script>
+<script src="js/sgadd-rankings.js?v=97"></script>
+<script src="js/sgadd-partido.js?v=97"></script>
+<script src="js/sgadd-informe.js?v=97"></script>
+<script src="js/sgadd-ficha.js?v=97"></script>
+<script src="js/sgadd-equipos.js?v=97"></script>
+<script src="js/sgadd-jugadores.js?v=97"></script>
+<script src="js/sgadd-4factores.js?v=97"></script>
+<script src="js/sgadd-scouting.js?v=97"></script>
+<script src="js/sgadd-diagnostico.js?v=97"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

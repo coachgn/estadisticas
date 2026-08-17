@@ -21,7 +21,7 @@ node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  22 tests · multi-cliente
 node test-boot.js          #  45 tests · arranque por club + sintaxis de los módulos
-node test-jugadores.js     # 211 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
+node test-jugadores.js     # 224 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1257 tests en total. Todos tienen que dar verde antes de commitear.**
+**1270 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -107,7 +107,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=94`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=97`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -860,10 +860,18 @@ después de agregar la clase de modo.
 `restaurarImagenes()` viven en `sgadd-ui.js`, que carga antes que todos los
 módulos de sección. Duplicarla en cada exportación las desincroniza.
 
-**UN SOLO CRITERIO DE COLOR PARA LAS TRES.** Hoja blanca, tarjetas grises
-(`#f1f5f9` con borde `#cbd5e1`) y acentos. El DT abre cualquiera de los tres
-y encuentra la misma jerarquía visual. Scouting estuvo un tiempo con la paleta
-oscura de la app; se revirtió a pedido del club.
+**UN SOLO CRITERIO DE COLOR PARA LAS CUATRO.** Hoja blanca, **tarjetas
+blancas con borde sólido** (`1,4px #94a3b8`) y acentos. El DT abre cualquiera
+de las cuatro y encuentra la misma jerarquía visual. Scouting estuvo un
+tiempo con la paleta oscura de la app; se revirtió a pedido del club.
+
+**Las tarjetas estuvieron en gris (`#f1f5f9`) y volvieron al blanco**, a
+pedido del club y por un motivo concreto: en papel el fondo gris gasta tinta
+en toda la superficie de cada bloque. El problema original del blanco —"todo
+parece texto suelto"— no se resuelve con un fondo sino **cargando el borde**:
+1,4px de un slate que se ve separa los bloques igual o mejor. Las que ya
+traen borde de color (el verde/rojo del ciclo, los cuatro grupos del plan
+colectivo) lo conservan: sus reglas van después y con `!important`.
 
 **Dos trampas de especificidad que costaron encontrar**, las dos por el mismo
 motivo — **el JIT del CDN de Tailwind genera sus utilidades de color CON
@@ -998,6 +1006,50 @@ Tres cosas que se corrigieron auditando el PDF generado:
 
 **`modo-ficha-print` está en `MODOS_PAPEL`** y la clase se marca ANTES de
 `dibujarPendientes()`, así que los gráficos nacen con la paleta del papel.
+
+#### La evolución es la única sección con SUBSECCIONES
+
+No es "sí o no" sino **cuáles de las 14 métricas**: el modal muestra la
+lista sangrada debajo de la sección, con atajos *Todas / Ninguna*, y arma
+**un gráfico por métrica tildada**. Antes se exportaba solo la que estuviera
+elegida en pantalla, así que el DT que quería puntos, plays y T3% tenía que
+generar tres PDF distintos.
+
+Arranca tildada la que está **en pantalla**: lo que el DT viene mirando es
+lo que espera encontrar en la hoja. Y nunca arranca con ninguna.
+
+`jugadoresBloqueEvolucion(idx, j, metricaId, idCanvas)` se separó del tab
+justamente para esto: el tab es ese mismo bloque con el selector arriba, así
+que un cambio en el gráfico cambia en los dos lados.
+
+**El bloque abre hoja** (`page-break-before: always`). Con el corte
+automático el título quedaba al pie de una hoja y el gráfico arrancaba en la
+siguiente, y con varios gráficos el bloque es largo de por sí.
+
+#### Los puntos del gráfico son el ESCUDO DEL RIVAL
+
+En pantalla el rival de cada noche salía en el tooltip; **en papel no hay
+hover**, así que un pico de 38 puntos no decía contra quién fue.
+`pluginEscudosRival()` en `sgadd-charts.js` los dibuja con el mismo
+tratamiento que el scatter *ORTG vs DRTG* de Principal: disco opaco de base
+(los escudos con transparencia lo necesitan), recorte circular, y un anillo
+que **conserva el semáforo de atípicos** —verde arriba, rojo abajo, color del
+equipo si la noche fue normal—.
+
+Tres reglas que hay que respetar al tocarlo:
+
+- **El disco de base cambia con el fondo.** El `#0B1121` del tema oscuro
+  sobre hoja blanca convierte cada punto en una mancha negra: va blanco
+  cuando `enPapelClaro()`.
+- **Sin escudo resuelto van las INICIALES**, no un hueco. Es lo que pasa
+  siempre que el manifiesto de logos no se pueda leer (`file://`, por
+  ejemplo). Y si falta alguno porque la imagen no terminó de cargar, se
+  reintenta **una** vez: sin eso el gráfico queda con iniciales para
+  siempre, y en el PDF eso ya no se puede corregir.
+- **Sin `rivales` el gráfico vuelve al punto redondo de siempre.** El
+  radio se pone en 0 solo cuando hay escudo, o quedaría un círculo debajo.
+  El `hitRadius` mantiene el tooltip, que en pantalla sigue siendo la forma
+  rápida de leer fecha y marcador.
 
 ### 7.7 · Lo que sigue abierto
 

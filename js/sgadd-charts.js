@@ -283,6 +283,91 @@ const SGADD_CHARTS = (function () {
      continuidad que no existe (el 52% de dos y el 35% de tres no son
      puntos de una misma curva).
      ===================================================================== */
+  /* =====================================================================
+     ESCUDOS COMO PUNTOS · evolución partido a partido
+
+     En pantalla el rival de cada noche salía en el tooltip; en papel no hay
+     hover, así que un pico de 38 puntos no decía contra quién fue. El punto
+     pasa a ser el ESCUDO del rival, con el mismo tratamiento que el scatter
+     ORTG vs DRTG de Principal: disco opaco de base (los escudos con
+     transparencia necesitan fondo), recorte circular, y un anillo que
+     conserva el semáforo de atípicos —verde arriba, rojo abajo, color del
+     equipo si la noche fue normal—.
+
+     Sin escudo resuelto van las INICIALES, no un hueco: es lo que pasa
+     siempre que el manifiesto de logos no se pueda leer.
+
+     El disco se pinta claro en el papel y oscuro en pantalla: sobre hoja
+     blanca un disco #0B1121 convierte cada punto en una mancha negra.
+     ===================================================================== */
+  function pluginEscudosRival(rivales, atipicos) {
+    return {
+      id: 'escudosRival',
+      afterDatasetsDraw: (chart) => {
+        const meta = chart.getDatasetMeta(2);   // 0 y 1 son la banda de desvío
+        if (!meta || meta.hidden) return;
+        const ctx = chart.ctx;
+        const claro = enPapelClaro();
+        /* `LOGOS.getImage()` devuelve null hasta que la imagen terminó de
+           cargar. Si en este frame falta alguna se reintenta UNA vez: sin
+           esto el gráfico se queda con las iniciales para siempre, y en el
+           PDF eso no se puede corregir después. */
+        let faltantes = 0;
+        const area = chart.chartArea ? (chart.chartArea.right - chart.chartArea.left) : 600;
+        /* El escudo se dimensiona sobre el ancho REAL del área de dibujo y
+           sobre la cantidad de partidos: con 26 fechas en una card angosta,
+           un radio fijo los superpone. */
+        const paso = area / Math.max(1, meta.data.length);
+        const r = Math.max(6, Math.min(13, paso * 0.42));
+
+        meta.data.forEach((punto, i) => {
+          if (!punto || punto.skip) return;
+          const rival = rivales[i];
+          if (!rival) return;
+          const img = LOGOS.getImage(rival);
+          const at = atipicos[i];
+          const anillo = at ? (at > 0 ? COL.bien : COL.mal) : COL.equipo;
+          const x = punto.x, y = punto.y;
+          const rr = at ? r * 1.15 : r;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(x, y, rr, 0, Math.PI * 2);
+          ctx.fillStyle = claro ? '#ffffff' : '#0B1121';
+          ctx.fill();
+
+          if (img) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(x, y, rr - 1, 0, Math.PI * 2);
+            ctx.clip();
+            ctx.drawImage(img, x - rr + 1, y - rr + 1, (rr - 1) * 2, (rr - 1) * 2);
+            ctx.restore();
+          } else {
+            faltantes++;
+            ctx.fillStyle = claro ? '#334155' : '#F9FAFB';
+            ctx.font = '600 ' + Math.round(rr * 0.8) + 'px Barlow, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(LOGOS.iniciales(rival), x, y + 0.5);
+          }
+
+          ctx.beginPath();
+          ctx.arc(x, y, rr, 0, Math.PI * 2);
+          ctx.lineWidth = at ? 2.4 : 1.6;
+          ctx.strokeStyle = anillo;
+          ctx.stroke();
+          ctx.restore();
+        });
+
+        if (faltantes && !chart.$escudosReintento) {
+          chart.$escudosReintento = true;
+          setTimeout(() => { try { chart.update('none'); } catch (e) {} }, 500);
+        }
+      },
+    };
+  }
+
   const pluginMarcaLiga = {
     id: 'marcaLiga',
     afterDatasetsDraw: (chart) => {
@@ -417,6 +502,10 @@ const SGADD_CHARTS = (function () {
     const abajo = valores.map(() => hayBanda ? Math.max(0, o.media - o.desvio) : null);
     const atipicos = o.atipicos || [];
     const etiqueta = o.label || (SGADD.metrica(clave) ? SGADD.metrica(clave).label : clave);
+    /* Los escudos solo si hay módulo de logos Y rivales: en Node y con el
+       manifiesto sin resolver el gráfico tiene que seguir saliendo. */
+    const rivales = o.rivales || null;
+    const conEscudos = !!(rivales && typeof LOGOS !== 'undefined');
     // El selector de métrica del tab Evolución mezcla puntos, minutos y
     // porcentajes en el mismo gráfico: sin formatear por métrica, un eFG%
     // de 0,45 se lee como "45" en vez de "45%".
@@ -432,11 +521,17 @@ const SGADD_CHARTS = (function () {
           {
             label: etiqueta,
             data: valores, borderColor: COL.equipo, backgroundColor: 'transparent', tension: 0.25,
-            pointRadius: (c) => atipicos[c.dataIndex] ? 6 : 3,
+            /* Con escudo el punto se dibuja en el plugin: acá se deja el
+               radio en 0 para que no quede un círculo abajo del escudo. El
+               `hitRadius` mantiene el tooltip, que en pantalla sigue siendo
+               la forma rápida de leer fecha y marcador. */
+            pointRadius: (c) => conEscudos ? 0 : (atipicos[c.dataIndex] ? 6 : 3),
+            hitRadius: 12,
             pointBackgroundColor: (c) => atipicos[c.dataIndex] ? (atipicos[c.dataIndex] > 0 ? COL.bien : COL.mal) : COL.equipo,
           },
         ],
       },
+      plugins: conEscudos ? [pluginEscudosRival(rivales, atipicos)] : [],
       options: baseOpciones({
         scales: Object.assign(ejes({ desdeCero: false }), {
           y: Object.assign({}, ejes({ desdeCero: false }).y, {
