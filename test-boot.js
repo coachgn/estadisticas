@@ -166,6 +166,26 @@ function crearEntorno({ clubOk, clubExplota, sinClub, sinApp, planillasClub, pla
   console.log('\nACCESIBILIDAD · teclado, roles y foco');
   console.log('─'.repeat(70));
 
+  /* -----------------------------------------------------------------
+     LA VERSIÓN DE ASSETS, A LA VISTA
+
+     `index.html` no lleva `?v=`: es el archivo que trae el CSS y el mapa de
+     versiones de todos los `.js`. Cuando queda cacheado —en el navegador o
+     en el CDN de Pages, que lo sirve con `max-age=600`— la app entera se
+     queda en la versión anterior y los cambios "no aparecen" sin ningún
+     síntoma. Con el número en pantalla eso se diagnostica de un vistazo.
+     ----------------------------------------------------------------- */
+  check('el pie del menú muestra la versión de assets',
+    /id="asset-version"/.test(html));
+  /* En init() y NO en refreshData(), que corre solo al tocar el botón: es
+     el mismo error que ya se cometió con el arranque del buzón. */
+  check('y se rellena en el arranque, no al tocar "Actualizar datos"',
+    /asset-version/.test(srcInit) && !/asset-version/.test(srcRefresh));
+  /* Del `?v=` de un <script> real: una constante se puede olvidar de subir
+     y mentiría justo cuando más importa. */
+  check('la versión sale de un <script> real y no de una constante',
+    /querySelector\('script\[src\*="sgadd-core\.js\?v="\]'\)/.test(srcInit));
+
   const UI = require('./js/sgadd-ui.js');
   const uiSrc = fs.readFileSync('./js/sgadd-ui.js', 'utf8');
 

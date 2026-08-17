@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1270 tests en total. Todos tienen que dar verde antes de commitear.**
+**1273 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -107,9 +107,23 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=97`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=98`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
+
+**El número se muestra en el pie del menú lateral** (`#asset-version`, se
+rellena en `init()` leyendo el `?v=` de un `<script>` real). Es el
+diagnóstico de treinta segundos para la trampa de siempre: `index.html` NO
+lleva `?v=` —es el archivo que trae el CSS y el mapa de versiones— así que
+cuando queda cacheado, en el navegador o en el CDN de Pages (`max-age=600`),
+la app entera se queda en la entrega anterior y los cambios "no aparecen"
+sin ningún síntoma. Si el pie dice una versión vieja, es caché: Ctrl+F5.
+
+**Y ojo con la otra mitad: que el repo tenga el código no quiere decir que
+Pages lo haya publicado.** Se separan mirando `raw.githubusercontent.com`
+(el repo, inmediato) contra `coachgn.github.io` (el build). Medido: una
+entrega se publicó 41 segundos después del push y la siguiente tardó más de
+media hora.
 
 ### Orden de carga (importa)
 

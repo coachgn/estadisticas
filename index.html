@@ -1492,6 +1492,18 @@
              "Datos actualizados" con texto y el pie la hora, o sea el mismo
              dato dos veces. La campana va arriba, en el header. -->
         <p id="last-updated" class="text-[11px] text-muted mt-2 text-center font-mono tabular-nums"></p>
+        <!-- LA VERSIÓN DE ASSETS, A LA VISTA.
+
+             `index.html` NO lleva `?v=`: es el archivo que trae el CSS y el
+             mapa de versiones de todos los `.js`, así que cuando queda
+             cacheado —en el navegador o en el CDN de Pages, que lo sirve con
+             `max-age=600`— la app entera se queda en la versión anterior y
+             los cambios "no aparecen" sin ningún síntoma.
+
+             Con el número acá, eso se diagnostica de un vistazo en vez de
+             debuggear fantasmas: si dice una versión vieja, es caché. -->
+        <p id="asset-version" class="text-[10px] text-muted/70 mt-1 text-center font-mono"
+           title="Versión de los archivos que está usando este navegador. Si no coincide con la última entrega, hacé Ctrl+F5."></p>
       </div>
     </aside>
 
@@ -1527,23 +1539,23 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=97"></script>
-<script src="js/sgadd-core.js?v=97"></script>
-<script src="js/sgadd-ui.js?v=97"></script>
-<script src="js/sgadd-app.js?v=97"></script>
-<script src="js/sgadd-estados.js?v=97"></script>
-<script src="js/sgadd-buzon.js?v=97"></script>
-<script src="js/sgadd-charts.js?v=97"></script>
-<script src="js/sgadd-personalidad.js?v=97"></script>
-<script src="js/sgadd-rankings.js?v=97"></script>
-<script src="js/sgadd-partido.js?v=97"></script>
-<script src="js/sgadd-informe.js?v=97"></script>
-<script src="js/sgadd-ficha.js?v=97"></script>
-<script src="js/sgadd-equipos.js?v=97"></script>
-<script src="js/sgadd-jugadores.js?v=97"></script>
-<script src="js/sgadd-4factores.js?v=97"></script>
-<script src="js/sgadd-scouting.js?v=97"></script>
-<script src="js/sgadd-diagnostico.js?v=97"></script>
+<script src="js/sgadd-club.js?v=98"></script>
+<script src="js/sgadd-core.js?v=98"></script>
+<script src="js/sgadd-ui.js?v=98"></script>
+<script src="js/sgadd-app.js?v=98"></script>
+<script src="js/sgadd-estados.js?v=98"></script>
+<script src="js/sgadd-buzon.js?v=98"></script>
+<script src="js/sgadd-charts.js?v=98"></script>
+<script src="js/sgadd-personalidad.js?v=98"></script>
+<script src="js/sgadd-rankings.js?v=98"></script>
+<script src="js/sgadd-partido.js?v=98"></script>
+<script src="js/sgadd-informe.js?v=98"></script>
+<script src="js/sgadd-ficha.js?v=98"></script>
+<script src="js/sgadd-equipos.js?v=98"></script>
+<script src="js/sgadd-jugadores.js?v=98"></script>
+<script src="js/sgadd-4factores.js?v=98"></script>
+<script src="js/sgadd-scouting.js?v=98"></script>
+<script src="js/sgadd-diagnostico.js?v=98"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -3304,6 +3316,7 @@ async function refreshData() {
   if (label) label.textContent = 'Actualizar datos';
   renderSection(currentSection);
 
+
   /* El buzón vive en el header global, así que tiene que tener alertas
      ANTES de que el usuario entre a una sección SGADD. Principal usa la
      capa de datos vieja y nunca dispara `SGADD_APP.cargar()`, así que se
@@ -3370,6 +3383,21 @@ async function resolverClubYPlanilla() {
 async function init() {
   const initial = (window.location.hash || '#principal').replace('#', '');
   currentSection = VALID_SECTIONS.includes(initial) ? initial : 'principal';
+
+  /* La versión de assets, a la vista en el pie del menú.
+
+     Va en `init()` y NO en `refreshData()`, que corre solo al tocar el botón
+     — es exactamente el error que ya se cometió con el arranque del buzón y
+     que está anotado en el punto 13. Y sale del `?v=` de un <script> REAL en
+     vez de una constante: una constante se puede olvidar de subir y mentiría
+     justo cuando más importa. */
+  (function () {
+    const p = document.getElementById('asset-version');
+    if (!p) return;
+    const sc = document.querySelector('script[src*="sgadd-core.js?v="]');
+    const m = sc && sc.getAttribute('src').match(/\?v=(\d+)/);
+    p.textContent = m ? 'v' + m[1] : '';
+  })();
 
   // Primero el club: define de QUE planilla se bajan los datos.
   await resolverClubYPlanilla();
