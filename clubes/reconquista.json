@@ -30,12 +30,21 @@
     },
     {
       "id": "negra-u21-clausura-2026",
-      "label": "Masculina Negra · U21",
+      "label": "Masculina Naranja · U21",
       "sheetId": "1CD7FEDcLkmZRI0tGkU67IjCmkxhnnIN2AKHhA4lWJT4",
       "categoria": "U21",
       "faseTorneo": "CLAUSURA",
       "rama": "masculina",
-      "tira": "negra"
+      "tira": "naranja"
+    },
+    {
+      "id": "naranja-u23-clausura-2026",
+      "label": "Masculina Naranja · U23",
+      "sheetId": "",
+      "categoria": "U23",
+      "faseTorneo": "CLAUSURA",
+      "rama": "masculina",
+      "tira": "naranja"
     }
   ]
 }

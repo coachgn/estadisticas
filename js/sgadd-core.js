@@ -615,20 +615,27 @@
         label: 'Primera · Clausura 2026',
         activo: true,
       },
-      /* Las 9 del SGADD. Completar sheetId y poner activo: true.
-         tira: femenina | negra | naranja   ·   categoria: U15 | U19 | U21 */
+      /* El ANDAMIO del SGADD, por tira y categoría. Completar sheetId y
+         poner activo: true.
+         tira: femenina | negra | naranja   ·   categoria: U15 | U17 | U21 | U23
+
+         Esto es solo el RESPALDO: la verdad son las planillas del JSON del
+         club (`clubes/<club>.json`), que además es donde viven los `id`
+         reales — y el `id` no es cosmético, es la clave de los estados de
+         jugador en localStorage y lo que viaja en los links compartidos. */
       ...['femenina', 'negra', 'naranja'].flatMap(tira =>
-        ['U15', 'U17', 'U21'].map(cat => ({
+        ['U15', 'U17', 'U21', 'U23'].map(cat => ({
           id: tira + '-' + cat.toLowerCase() + '-clausura-2026',
-          // U21 ya tiene planilla. Falta confirmar a qué tira pertenece.
-          sheetId: (tira === 'negra' && cat === 'U21') ? '1CD7FEDcLkmZRI0tGkU67IjCmkxhnnIN2AKHhA4lWJT4' : '',
+          /* La U21 de Reconquista es de la tira NARANJA (confirmado por el
+             club en 2026-08-17, cuando pasó de llamarse Negra a Naranja). */
+          sheetId: (tira === 'naranja' && cat === 'U21') ? '1CD7FEDcLkmZRI0tGkU67IjCmkxhnnIN2AKHhA4lWJT4' : '',
           anio: 2026, torneo: 'TORNEO LOCAL', categoria: cat,
           faseTorneo: 'CLAUSURA',
           rama: tira === 'femenina' ? 'femenina' : 'masculina',
           tira: tira,
           modulo: 'sgadd',
           label: ({ femenina: 'Femenina', negra: 'Masculina Negra', naranja: 'Masculina Naranja' })[tira] + ' · ' + cat,
-          activo: (tira === 'negra' && cat === 'U21'),
+          activo: (tira === 'naranja' && cat === 'U21'),
         }))
       ),
     ],

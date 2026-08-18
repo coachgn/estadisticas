@@ -19,7 +19,7 @@ aplicadas en el punto 14.
 node test-core.js          # 170 tests · núcleo, índice, validador
 node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
-node test-clubes.js        #  22 tests · multi-cliente
+node test-clubes.js        #  26 tests · multi-cliente
 node test-boot.js          #  45 tests · arranque por club + sintaxis de los módulos
 node test-jugadores.js     # 224 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1273 tests en total. Todos tienen que dar verde antes de commitear.**
+**1277 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -99,7 +99,7 @@ PROPUESTA_ESTADOS_JUGADOR.md ← diseño original de estados (ya implementado, v
 generar-manual-etiquetas.js  ← genera MANUAL_ETIQUETADO_SGADD.html para el
                           cuerpo técnico. Se corre a mano: `node generar-manual-etiquetas.js`
 clubes/
-  reconquista.json      ← 2 planillas (Primera + U21 Negra), liga la-plata
+  reconquista.json      ← 3 planillas (Primera + Naranja U21/U23), liga la-plata
   jujuy.json            ← 1 planilla (Conferencia Norte), liga liga-argentina
 logos/<liga>/           ← escudos + index.json (manifiesto)
 test-fixtures/          ← prom.tsv + p4f.tsv, 12 equipos de La Plata (committeados)
@@ -107,7 +107,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=98`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=99`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -489,6 +489,31 @@ marca, color, liga, patrón de equipo propio, sufijos y planillas.
   abajo del mínimo WCAG de 4.5. Se mezcla con blanco hasta que pasa.
 
 Sumar un cliente = un JSON + su carpeta de escudos. Cero código.
+
+### Renombrar una tira o sumar una categoría · se toca el JSON, no el código
+
+La etiqueta del grupo del selector sale de un mapa por `tira` en
+`sgadd-app.js` (`femenina` → Femenina, `negra` → Masculina Negra, `naranja`
+→ Masculina Naranja), así que **cambiar de tira es cambiar un campo del
+JSON**, no tocar la UI. Reconquista pasó de *Negra* a **Naranja** en
+2026-08-17 así: `tira: "naranja"` y el `label` de la planilla.
+
+**El `id` de la planilla NO se renombra.** Parece cosmético y no lo es:
+
+1. es la clave con la que se guardan los estados de jugador
+   (`sgadd.estados.<club>.<planilla>` — punto 13), así que renombrarlo
+   borra de un saque las lesiones y las bajas que el DT confirmó, y
+2. viaja en la RUTA (`#/<planilla>/…`), o sea en cada link que el cuerpo
+   técnico compartió.
+
+Por eso la U21 sigue siendo `negra-u21-clausura-2026` con la etiqueta
+*Masculina Naranja · U21*. El id es interno; el label es lo que se lee.
+
+**Una planilla SIN `sheetId` entra igual, como inactiva.** `activo: !!sheetId`
+en `sgadd-club.js`, y el selector la muestra deshabilitada con *"— sin
+datos"*. Así la categoría nueva ya aparece en la lista —el DT ve que existe—
+sin dejar entrar a una sección vacía. Es lo que pasa hoy con la U23 hasta que
+el club pase el id de su planilla.
 
 ---
 

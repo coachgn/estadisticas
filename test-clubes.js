@@ -89,8 +89,33 @@ function crearClub(clubId, opciones) {
   console.log('═'.repeat(70));
   const c3 = crearClub('reconquista', { sgadd: true, logos: true, dom: {} }); // SIN clubNombre en el DOM
   await c3.CLUB.cargar();
+  /* Las del JSON de Reconquista: Primera, Naranja U21 y Naranja U23. El
+     número sale del archivo a propósito — si alguien suma una planilla y el
+     catálogo no crece, el mapeo de `aplicarDatos()` se rompió. */
+  const planillasJson = require('./clubes/reconquista.json').planillas.length;
   check('el catálogo de planillas se aplica AUNQUE el header no esté en el DOM',
-    c3.ctx.SGADD.CATALOGO.planillas.length === 2, c3.ctx.SGADD.CATALOGO.planillas.length);
+    c3.ctx.SGADD.CATALOGO.planillas.length === planillasJson,
+    c3.ctx.SGADD.CATALOGO.planillas.length + ' de ' + planillasJson);
+
+  /* --- La tira del club y su etiqueta en el selector ------------------- */
+  /* La tira de Reconquista pasó de NEGRA a NARANJA. El `id` de la planilla
+     NO se tocó a propósito: es la clave con la que se guardan los estados de
+     jugador en `localStorage` y la que viaja en los links que el DT comparte.
+     Renombrarlo perdería las dos cosas por un cambio de nombre visible. */
+  const pl = require('./clubes/reconquista.json').planillas;
+  const u21 = pl.find(x => x.id === 'negra-u21-clausura-2026');
+  check('la U21 quedó en la tira naranja sin cambiar su id',
+    u21 && u21.tira === 'naranja' && /Naranja/.test(u21.label), u21 && u21.tira);
+  const u23 = pl.find(x => x.categoria === 'U23');
+  check('la U23 está en el catálogo, en la misma tira',
+    u23 && u23.tira === 'naranja' && /U23/.test(u23.label), u23 && u23.id);
+  /* Sin sheetId queda INACTIVA: el selector la muestra deshabilitada con
+     "— sin datos" en vez de dejar entrar a una sección vacía. */
+  check('y sin sheetId entra como inactiva, no como planilla vacía',
+    u23 && !u23.sheetId &&
+    c3.ctx.SGADD.CATALOGO.planillas.find(x => x.categoria === 'U23').activo === false);
+  check('ninguna tira quedó como negra en el club',
+    !pl.some(x => x.tira === 'negra'), pl.map(x => x.tira).join(','));
   check('patronEquipoPropio del club también se aplica sin DOM',
     c3.ctx.SGADD.CATALOGO.patronEquipoPropio.test('RECONQUISTA A'));
 
