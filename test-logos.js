@@ -127,6 +127,41 @@ fs.unlinkSync(EXTRAIDO);
   L.reset();
   console.log = () => {}; await L.resolver(['ASTILLERO']); console.log = realLog;
   check('alResolver() se dispara después de cada tanda', avisado === true);
+
+  /* -----------------------------------------------------------------
+     EL AVISO SOLO CUANDO LLEGA ALGO NUEVO
+
+     Cuelgue real reportado por el club: al cambiar de categoría, Chrome
+     decía "la página no responde". El ciclo:
+
+       drawOrtgDrtgChart() → LOGOS.resolver() → alResolverFns →
+       renderSection('principal') → drawOrtgDrtgChart() → …
+
+     Con todo ya en caché esas promesas resuelven en microtasks, así que
+     el bucle nunca cede el hilo. Si no entró ningún escudo nuevo no hay
+     nada que repintar: la segunda vuelta no avisa y el ciclo se corta.
+     ----------------------------------------------------------------- */
+  let avisos = 0;
+  L.reset();
+  L.CFG.basePaths = ['logos/la-plata/', 'logos/'];
+  L.alResolver(() => { avisos++; });
+  console.log = () => {}; await L.resolver(['ASTILLERO']); console.log = realLog;
+  const trasPrimera = avisos;
+  console.log = () => {}; await L.resolver(['ASTILLERO']); console.log = realLog;
+  check('la segunda tanda con TODO cacheado no vuelve a avisar',
+    avisos === trasPrimera, 'avisos ' + trasPrimera + ' → ' + avisos);
+  /* Y un equipo nuevo SÍ tiene que avisar: si no, los escudos que llegan
+     tarde no se pintarían nunca, que es para lo que existe el hook. */
+  console.log = () => {}; await L.resolver(['ASTILLERO', "RECONQUISTA 'A' - MM"]); console.log = realLog;
+  check('pero un escudo nuevo sí dispara el repintado',
+    avisos > trasPrimera, 'avisos ' + trasPrimera + ' → ' + avisos);
+  /* Los que NO tienen archivo tampoco pueden avisar en cada vuelta. */
+  const antesFaltante = avisos;
+  console.log = () => {}; await L.resolver(['EQUIPO QUE NO EXISTE']); console.log = realLog;
+  const trasFaltante = avisos;
+  console.log = () => {}; await L.resolver(['EQUIPO QUE NO EXISTE']); console.log = realLog;
+  check('un equipo sin archivo avisa a lo sumo una vez, no en cada tanda',
+    avisos === trasFaltante, 'avisos ' + antesFaltante + ' → ' + trasFaltante + ' → ' + avisos);
   check('generarManifiesto() sin resolver nada explica por qué, no da {} mudo',
     L.reset() || L.generarManifiesto().indexOf('{') === -1, L.generarManifiesto());
   L.CFG.basePaths = ['logos/la-plata/', 'logos/'];

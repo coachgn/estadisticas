@@ -1539,23 +1539,23 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=106"></script>
-<script src="js/sgadd-core.js?v=106"></script>
-<script src="js/sgadd-ui.js?v=106"></script>
-<script src="js/sgadd-app.js?v=106"></script>
-<script src="js/sgadd-estados.js?v=106"></script>
-<script src="js/sgadd-buzon.js?v=106"></script>
-<script src="js/sgadd-charts.js?v=106"></script>
-<script src="js/sgadd-personalidad.js?v=106"></script>
-<script src="js/sgadd-rankings.js?v=106"></script>
-<script src="js/sgadd-partido.js?v=106"></script>
-<script src="js/sgadd-informe.js?v=106"></script>
-<script src="js/sgadd-ficha.js?v=106"></script>
-<script src="js/sgadd-equipos.js?v=106"></script>
-<script src="js/sgadd-jugadores.js?v=106"></script>
-<script src="js/sgadd-4factores.js?v=106"></script>
-<script src="js/sgadd-scouting.js?v=106"></script>
-<script src="js/sgadd-diagnostico.js?v=106"></script>
+<script src="js/sgadd-club.js?v=107"></script>
+<script src="js/sgadd-core.js?v=107"></script>
+<script src="js/sgadd-ui.js?v=107"></script>
+<script src="js/sgadd-app.js?v=107"></script>
+<script src="js/sgadd-estados.js?v=107"></script>
+<script src="js/sgadd-buzon.js?v=107"></script>
+<script src="js/sgadd-charts.js?v=107"></script>
+<script src="js/sgadd-personalidad.js?v=107"></script>
+<script src="js/sgadd-rankings.js?v=107"></script>
+<script src="js/sgadd-partido.js?v=107"></script>
+<script src="js/sgadd-informe.js?v=107"></script>
+<script src="js/sgadd-ficha.js?v=107"></script>
+<script src="js/sgadd-equipos.js?v=107"></script>
+<script src="js/sgadd-jugadores.js?v=107"></script>
+<script src="js/sgadd-4factores.js?v=107"></script>
+<script src="js/sgadd-scouting.js?v=107"></script>
+<script src="js/sgadd-diagnostico.js?v=107"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -1744,6 +1744,10 @@ const LOGOS = (function () {
 
   const cache = new Map();      // CLAVE -> { img: HTMLImageElement|null, url: string|null }
   const alResolverFns = [];     // callbacks para repintar cuando llegan los escudos
+  /* Cuántos escudos se resolvieron DESDE QUE ARRANCÓ la app. Es lo que
+     distingue "llegaron escudos nuevos" de "se releyó el caché", y lo que
+     corta el ciclo infinito descrito en `resolver()`. */
+  let resueltos = 0;
   const enVuelo = new Map();    // CLAVE -> Promise
   let mapaRemoto = null;        // CLAVE -> URL (del JSONP)
   let promesaRemota = null;
@@ -1949,7 +1953,7 @@ const LOGOS = (function () {
         try {
           const img = await cargarImagen(enManifiesto);
           const r = { img: img, url: enManifiesto };
-          cache.set(clave, r);
+          cache.set(clave, r); if (r.img) resueltos++;
           return r;
         } catch (e) {
           /* El manifiesto apunta a un archivo que no existe. Seguimos
@@ -1963,7 +1967,7 @@ const LOGOS = (function () {
       const tandas = candidatos(nombreEquipo);
       for (let i = 0; i < tandas.length; i++) {
         const hit = await primeraQueCargue(tandas[i]);
-        if (hit) { cache.set(clave, hit); return hit; }
+        if (hit) { cache.set(clave, hit); resueltos++; return hit; }
       }
       const r = { img: null, url: null };
       cache.set(clave, r);
@@ -1980,6 +1984,7 @@ const LOGOS = (function () {
    * Llamalo con los nombres que salen de la planilla, no antes.
    */
   async function resolver(nombres) {
+    const resueltosAlEmpezar = resueltos;
     const unicos = Array.from(new Set((nombres || []).map(n => String(n || '')).filter(Boolean)));
     const res = await Promise.all(unicos.map(resolverUno));
     const faltantes = unicos.filter((n, i) => !res[i].img);
@@ -1989,8 +1994,25 @@ const LOGOS = (function () {
     } else if (unicos.length) {
       console.log('[LOGOS] ' + unicos.length + '/' + unicos.length + ' logos OK');
     }
-    // Los escudos llegan DESPUES del primer pintado: hay que avisar.
-    alResolverFns.forEach(fn => { try { fn(); } catch (e) { console.warn('[LOGOS]', e); } });
+    /* SE AVISA SOLO SI LLEGÓ ALGO NUEVO, y esto arregla un cuelgue total
+       de la página.
+
+       El hook existe porque los escudos llegan DESPUÉS del primer
+       pintado y hay que repintar. Pero avisar SIEMPRE cierra un ciclo:
+
+         drawOrtgDrtgChart() → LOGOS.resolver() → alResolverFns →
+         renderSection('principal') → drawOrtgDrtgChart() → …
+
+       Con todo ya en caché, esas promesas resuelven en microtasks y el
+       bucle NUNCA cede el hilo: Chrome muestra "la página no responde".
+       Se disparaba al CAMBIAR de categoría —ahí el callback ya está
+       registrado— y no en el arranque, que es justo lo que se veía.
+
+       Si no entró ningún escudo nuevo no hay nada que repintar, así que
+       la segunda vuelta no avisa y el ciclo se corta solo. */
+    if (resueltos !== resueltosAlEmpezar) {
+      alResolverFns.forEach(fn => { try { fn(); } catch (e) { console.warn('[LOGOS]', e); } });
+    }
 
     if (manifiestoRoto.length) {
       console.warn('[LOGOS] el manifiesto apunta a ' + manifiestoRoto.length +

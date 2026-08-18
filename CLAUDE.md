@@ -17,7 +17,7 @@ aplicadas en el punto 14.
 
 ```bash
 node test-core.js          # 180 tests · núcleo, índice, validador
-node test-logos.js         #  18 tests · resolución de escudos
+node test-logos.js         #  21 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  27 tests · multi-cliente
 node test-boot.js          #  55 tests · arranque por club + sintaxis de los módulos
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1294 tests en total. Todos tienen que dar verde antes de commitear.**
+**1297 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -107,7 +107,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=106`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=107`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -506,6 +506,41 @@ cuerpo técnico compartió. Renombrarlo pierde las dos cosas.
 Con la U21 se hizo igual (`negra-…` → `naranja-u21-clausura-2026`) porque el
 club confirmó que en esa planilla no había estados cargados. Es una decisión
 de datos, no de estética: preguntar antes.
+
+### El cuelgue total de la página · un ciclo de repintado
+
+Síntoma: *"La página no responde"* de Chrome al cambiar de categoría
+estando en **Principal**. No es lento: es el hilo tomado, medido con un
+`eval` trivial que dejaba de contestar a los 8 s y no volvía nunca.
+
+El ciclo:
+
+```
+drawOrtgDrtgChart() → LOGOS.resolver() → alResolverFns →
+renderSection('principal') → drawOrtgDrtgChart() → …
+```
+
+`resolver()` avisaba **siempre** al terminar, y el callback global repinta
+la sección entera; el gráfico de Principal vuelve a pedir los escudos al
+dibujarse. Con todo ya en caché esas promesas resuelven en **microtasks**,
+así que el bucle nunca cede el hilo — por eso cuelga en vez de solo
+parpadear.
+
+**Por qué al cambiar y no al arrancar**: el callback lo registra
+`precargarLogos()`, que en el arranque corre en paralelo con el primer
+render. Cuando el DT cambia de categoría ya está registrado, así que el
+ciclo arranca sí o sí.
+
+**El arreglo va en `resolver()`, no en el gráfico**: se avisa **solo si
+entró algún escudo nuevo** (`resueltos` cambió). Si todo salió de caché no
+hay nada que repintar, la segunda vuelta no avisa y el ciclo se corta solo.
+El hook sigue cumpliendo su trabajo —los escudos que llegan tarde se
+pintan— y protege igual a Scouting, que también llama a `resolver()`.
+
+Medido: `drawOrtgDrtgChart` pasó de correr sin fin a **una sola vez** por
+cambio de categoría, y la página responde en todo momento. Hay tres tests
+en `test-logos.js` que lo fijan, incluido el caso del equipo **sin
+archivo**: tampoco puede avisar en cada tanda.
 
 ### El cambio de categoría no puede dejar al DT sin controles
 
