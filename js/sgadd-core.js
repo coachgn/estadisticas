@@ -848,7 +848,12 @@
       if (!k) return null;
       if (!equipos.has(k)) {
         equipos.set(k, {
-          clave: k, nombre: texto(nombreCrudo).replace(/\s*-\s*MM\s*$/i, '').trim(),
+          /* `limpiarNombre` y NO una regex propia de `- MM`: esa recortaba
+             solo el sufijo de Primera, así que en U21 y U23 el nombre
+             llegaba a la UI como "ATENAS - U23" mientras los escudos —que
+             sí usan el normalizador— lo resolvían como "ATENAS". Se veía en
+             la grilla, en los rankings y en el título de la ficha. */
+          clave: k, nombre: limpiarNombre(nombreCrudo),
           promedios: null, acumulado: null, factores: null, factoresTotal: null,
           partidos: [], factoresPartido: [], jugadores: [],
         });

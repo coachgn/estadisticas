@@ -1013,13 +1013,16 @@ function jugadoresSensibilidadCondicion(localM, visitanteM) {
 
 function jugadoresLeerRuta() {
   const r = SGADD.Ruta.parse(window.location.hash);
-  if (r.seccion !== 'jugadores') return false;
+  if (r.seccion !== 'jugadores') return null;
   if (r.planilla) JUGADORES.planillaId = r.planilla;
   if (r.fase) JUGADORES.fase = r.fase;
   SGADD_APP.aplicarTorneoRuta(r.torneo);
   JUGADORES.jugador = r.entidad || null;
   JUGADORES.tab = r.tab || 'general';
-  return true;
+  /* Devuelve la ruta PARSEADA: quien llama necesita saber si la planilla
+     vino de la URL en ESTA lectura, no si la sección guardó una de un
+     render anterior (ver el build). */
+  return r;
 }
 
 function jugadoresEscribirRuta(reemplazar) {
@@ -1068,9 +1071,11 @@ function jugadoresVerPartido(equipoCrudo, idPartido) {
 
 function buildJugadores() {
   SGADD_APP.inicializar();
-  jugadoresLeerRuta();
-  if (JUGADORES.planillaId) SGADD_APP.estado.planillaId = JUGADORES.planillaId;
-  if (JUGADORES.fase) SGADD_APP.estado.fase = JUGADORES.fase;
+  const r = jugadoresLeerRuta();
+  /* Solo lo que trae LA RUTA pisa la decisión global. Con la copia de la
+     sección, cambiar de categoría en el selector la revertía al repintar. */
+  if (r && r.planilla) SGADD_APP.estado.planillaId = r.planilla;
+  if (r && r.fase) SGADD_APP.estado.fase = r.fase;
   setTimeout(() => SGADD_APP.cargar(), 0);
   return `<section id="jugadoresRoot" class="space-y-5">${SGADD_APP.barra()}</section>`;
 }

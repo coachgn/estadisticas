@@ -39,14 +39,17 @@ const EQUIPOS_TABS = [
 
 function equiposLeerRuta() {
   const r = SGADD.Ruta.parse(window.location.hash);
-  if (r.seccion !== 'equipos') return false;
+  if (r.seccion !== 'equipos') return null;
   if (r.planilla) EQUIPOS.planillaId = r.planilla;
   if (r.fase) EQUIPOS.fase = r.fase;
   SGADD_APP.aplicarTorneoRuta(r.torneo);
   EQUIPOS.equipo = r.entidad || null;
   EQUIPOS.tab = r.tab || 'general';
   EQUIPOS.partido = r.sub || null;   // id del partido abierto, si hay
-  return true;
+  /* Devuelve la ruta PARSEADA y no un booleano: quien llama necesita saber
+     si la planilla vino de la URL en ESTA lectura, no si la sección tiene
+     una guardada de un render anterior. Ver `buildEquipos()`. */
+  return r;
 }
 
 function equiposEscribirRuta(reemplazar) {
@@ -99,10 +102,17 @@ function equiposVolver() { equiposIrA(null); }
 
 function buildEquipos() {
   SGADD_APP.inicializar();
-  equiposLeerRuta();
-  // La categoría es una decisión global: si la ruta trae una, manda.
-  if (EQUIPOS.planillaId) SGADD_APP.estado.planillaId = EQUIPOS.planillaId;
-  if (EQUIPOS.fase) SGADD_APP.estado.fase = EQUIPOS.fase;
+  const r = equiposLeerRuta();
+  /* La categoría es una decisión global: si LA RUTA trae una, manda.
+
+     Antes acá iba `EQUIPOS.planillaId`, que es la copia que la sección
+     guarda entre repintados — y eso REVERTÍA el selector: al cambiar de
+     categoría, `onCategoriaCambiada` repinta la sección, `buildEquipos`
+     volvía a imponer la planilla vieja y el DT quedaba con la etiqueta de
+     una categoría y los datos de la otra. Se ve con dos planillas
+     activas; con una sola no se nota. */
+  if (r && r.planilla) SGADD_APP.estado.planillaId = r.planilla;
+  if (r && r.fase) SGADD_APP.estado.fase = r.fase;
   setTimeout(() => SGADD_APP.cargar(), 0);
   return `<section id="equiposRoot" class="space-y-5">${SGADD_APP.barra()}</section>`;
 }

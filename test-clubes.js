@@ -98,24 +98,34 @@ function crearClub(clubId, opciones) {
     c3.ctx.SGADD.CATALOGO.planillas.length + ' de ' + planillasJson);
 
   /* --- La tira del club y su etiqueta en el selector ------------------- */
-  /* La tira de Reconquista pasó de NEGRA a NARANJA. El `id` de la planilla
-     NO se tocó a propósito: es la clave con la que se guardan los estados de
-     jugador en `localStorage` y la que viaja en los links que el DT comparte.
-     Renombrarlo perdería las dos cosas por un cambio de nombre visible. */
+  /* La tira de Reconquista pasó de NEGRA a NARANJA (2026-08-17). El `id` de
+     la U21 se renombró TAMBIÉN, y eso solo es seguro porque el club
+     confirmó que en esa planilla no había estados de jugador confirmados:
+     el id es la clave de `sgadd.estados.<club>.<planilla>` en localStorage y
+     lo que viaja en la ruta de los links compartidos, así que renombrarlo
+     pierde las dos cosas. Es una decisión de datos, no cosmética. */
   const pl = require('./clubes/reconquista.json').planillas;
-  const u21 = pl.find(x => x.id === 'negra-u21-clausura-2026');
-  check('la U21 quedó en la tira naranja sin cambiar su id',
-    u21 && u21.tira === 'naranja' && /Naranja/.test(u21.label), u21 && u21.tira);
+  const u21 = pl.find(x => x.categoria === 'U21');
+  check('la U21 quedó en la tira naranja, id y etiqueta incluidos',
+    u21 && u21.tira === 'naranja' && u21.id === 'naranja-u21-clausura-2026' &&
+    /Naranja/.test(u21.label), u21 && u21.id);
   const u23 = pl.find(x => x.categoria === 'U23');
   check('la U23 está en el catálogo, en la misma tira',
     u23 && u23.tira === 'naranja' && /U23/.test(u23.label), u23 && u23.id);
-  /* Sin sheetId queda INACTIVA: el selector la muestra deshabilitada con
-     "— sin datos" en vez de dejar entrar a una sección vacía. */
-  check('y sin sheetId entra como inactiva, no como planilla vacía',
-    u23 && !u23.sheetId &&
-    c3.ctx.SGADD.CATALOGO.planillas.find(x => x.categoria === 'U23').activo === false);
-  check('ninguna tira quedó como negra en el club',
-    !pl.some(x => x.tira === 'negra'), pl.map(x => x.tira).join(','));
+  check('y con su planilla cargada, o sea activa',
+    u23 && !!u23.sheetId &&
+    c3.ctx.SGADD.CATALOGO.planillas.find(x => x.categoria === 'U23').activo === true);
+  /* `activo` sale de `!!sheetId`: una categoría sin planilla entra igual a
+     la lista pero deshabilitada, en vez de dejar entrar a una sección
+     vacía. Se prueba con un catálogo de mentira para no depender de que el
+     club tenga siempre alguna sin cargar. */
+  const catFalso = [{ id: 'x', label: 'X', sheetId: '' }, { id: 'y', label: 'Y', sheetId: 'abc' }];
+  const mapeado = catFalso.map(x => Object.assign({ activo: !!x.sheetId }, x));
+  check('una planilla sin sheetId nace inactiva',
+    mapeado[0].activo === false && mapeado[1].activo === true);
+  check('ninguna tira ni ningún id quedó como negro en el club',
+    !pl.some(x => x.tira === 'negra' || /negra/.test(x.id)),
+    pl.map(x => x.id).join(','));
   check('patronEquipoPropio del club también se aplica sin DOM',
     c3.ctx.SGADD.CATALOGO.patronEquipoPropio.test('RECONQUISTA A'));
 

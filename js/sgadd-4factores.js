@@ -569,13 +569,16 @@ const SIMULADOR = {
 
 function simuladorLeerRuta() {
   const r = SGADD.Ruta.parse(window.location.hash);
-  if (r.seccion !== 'simulador') return false;
+  if (r.seccion !== 'simulador') return null;
   if (r.planilla) SIMULADOR.planillaId = r.planilla;
   if (r.fase) SIMULADOR.fase = r.fase;
   SGADD_APP.aplicarTorneoRuta(r.torneo);
   SIMULADOR.equipoLocal = r.entidad || null;
   SIMULADOR.equipoVisitante = r.tab || null;
-  return true;
+  /* Devuelve la ruta PARSEADA: quien llama necesita saber si la planilla
+     vino de la URL en ESTA lectura, no si la sección guardó una de un
+     render anterior (ver el build). */
+  return r;
 }
 
 function simuladorEscribirRuta(reemplazar) {
@@ -606,9 +609,11 @@ function simuladorIntercambiar() {
 
 function buildSimulador() {
   SGADD_APP.inicializar();
-  simuladorLeerRuta();
-  if (SIMULADOR.planillaId) SGADD_APP.estado.planillaId = SIMULADOR.planillaId;
-  if (SIMULADOR.fase) SGADD_APP.estado.fase = SIMULADOR.fase;
+  const r = simuladorLeerRuta();
+  /* Solo lo que trae LA RUTA pisa la decisión global. Con la copia de la
+     sección, cambiar de categoría en el selector la revertía al repintar. */
+  if (r && r.planilla) SGADD_APP.estado.planillaId = r.planilla;
+  if (r && r.fase) SGADD_APP.estado.fase = r.fase;
   setTimeout(() => SGADD_APP.cargar(), 0);
   return `<section id="simuladorRoot" class="space-y-5">${SGADD_APP.barra()}</section>`;
 }

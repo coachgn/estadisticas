@@ -16,10 +16,10 @@ aplicadas en el punto 14.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 170 tests · núcleo, índice, validador
+node test-core.js          # 174 tests · núcleo, índice, validador
 node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
-node test-clubes.js        #  26 tests · multi-cliente
+node test-clubes.js        #  27 tests · multi-cliente
 node test-boot.js          #  45 tests · arranque por club + sintaxis de los módulos
 node test-jugadores.js     # 224 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1277 tests en total. Todos tienen que dar verde antes de commitear.**
+**1282 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -107,7 +107,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=99`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=102`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -498,16 +498,34 @@ La etiqueta del grupo del selector sale de un mapa por `tira` en
 JSON**, no tocar la UI. Reconquista pasó de *Negra* a **Naranja** en
 2026-08-17 así: `tira: "naranja"` y el `label` de la planilla.
 
-**El `id` de la planilla NO se renombra.** Parece cosmético y no lo es:
+**Renombrar el `id` de una planilla NO es cosmético.** Es la clave con la
+que se guardan los estados de jugador (`sgadd.estados.<club>.<planilla>` —
+punto 13) y viaja en la RUTA (`#/<planilla>/…`), o sea en cada link que el
+cuerpo técnico compartió. Renombrarlo pierde las dos cosas.
 
-1. es la clave con la que se guardan los estados de jugador
-   (`sgadd.estados.<club>.<planilla>` — punto 13), así que renombrarlo
-   borra de un saque las lesiones y las bajas que el DT confirmó, y
-2. viaja en la RUTA (`#/<planilla>/…`), o sea en cada link que el cuerpo
-   técnico compartió.
+Con la U21 se hizo igual (`negra-…` → `naranja-u21-clausura-2026`) porque el
+club confirmó que en esa planilla no había estados cargados. Es una decisión
+de datos, no de estética: preguntar antes.
 
-Por eso la U21 sigue siendo `negra-u21-clausura-2026` con la etiqueta
-*Masculina Naranja · U21*. El id es interno; el label es lo que se lee.
+### Dos bugs que destapó la categoría nueva
+
+Los dos estaban latentes desde que existe la segunda planilla y solo se ven
+con **más de una activa**:
+
+1. **El selector revertía la categoría.** `buildEquipos()` imponía al estado
+   global `EQUIPOS.planillaId` —la copia que la sección guarda entre
+   repintados— en vez de lo que trae la RUTA. Al cambiar de categoría, el
+   repintado volvía a imponer la vieja: el DT quedaba con la etiqueta de una
+   y los datos de la otra. Ahora `equiposLeerRuta()` devuelve la ruta
+   parseada y solo `r.planilla` pisa la decisión global. Mismo arreglo en
+   Jugadores y en Simulador, que tenían el patrón calcado.
+2. **El nombre del equipo conservaba el sufijo.** El índice recortaba solo
+   `- MM` con una regex propia (`sgadd-core.js`), así que Primera se veía
+   limpia y U21/U23 mostraban "ATENAS - U23" en la grilla, los rankings y el
+   título de la ficha — mientras los escudos, que sí usan el normalizador,
+   resolvían "ATENAS". El nombre sale ahora de `limpiarNombre()`, que conoce
+   `MM`, `MF` y `U\d{1,2}[MF]?`. Los paréntesis de Liga Argentina siguen sin
+   tocarse.
 
 **Una planilla SIN `sheetId` entra igual, como inactiva.** `activo: !!sheetId`
 en `sgadd-club.js`, y el selector la muestra deshabilitada con *"— sin

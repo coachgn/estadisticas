@@ -620,6 +620,36 @@ const libroConFecha = {
 check('con la fecha ya cargada el resultado es el mismo: el join no la pisa',
   SGADD.construirIndice(libroConFecha, { fase: 'REGULAR' }).partido(idEsperado).conBox === true);
 
+/* =====================================================================
+   EL NOMBRE DEL EQUIPO PIERDE EL SUFIJO DE CATEGORÍA, EN TODAS LAS TIRAS
+
+   El índice recortaba solo `- MM` con una regex propia, así que en Primera
+   se veía limpio y en U21/U23 la UI mostraba "ATENAS - U23" mientras los
+   escudos —que sí usan el normalizador— resolvían "ATENAS". El nombre sale
+   ahora de `limpiarNombre()`, que conoce las tres formas.
+   ===================================================================== */
+console.log('\nSUFIJO DE CATEGORIA EN EL NOMBRE');
+console.log('='.repeat(70));
+
+const colsSuf = ['EQUIPO', 'FASE', 'PJ', 'PTS'];
+const filasSuf = [
+  { EQUIPO: "ATENAS 'A' - MM", FASE: 'REGULAR', PJ: '5', PTS: '70' },
+  { EQUIPO: 'ATENAS - U23', FASE: 'REGULAR', PJ: '5', PTS: '60' },
+  { EQUIPO: 'C.C TOLOSANO - U23M', FASE: 'REGULAR', PJ: '5', PTS: '65' },
+  { EQUIPO: 'HINDU (C)', FASE: 'REGULAR', PJ: '5', PTS: '68' },
+];
+const idxSuf = S.construirIndice({ 'PROMEDIOS E': { cols: colsSuf, filas: filasSuf } }, { fase: 'REGULAR' });
+const nombresSuf = idxSuf.lista().map(e => e.nombre);
+check('el sufijo de Primera se recorta', nombresSuf.indexOf("ATENAS 'A'") !== -1, nombresSuf.join(' | '));
+check('y tambien el de U23 y U23M',
+  nombresSuf.indexOf('ATENAS') !== -1 && nombresSuf.indexOf('C.C TOLOSANO') !== -1, nombresSuf.join(' | '));
+/* Liga Argentina: los parentesis son la PROVINCIA y distinguen equipos. */
+check('los parentesis de Liga Argentina no se tocan',
+  nombresSuf.indexOf('HINDU (C)') !== -1, nombresSuf.join(' | '));
+check('el nombre limpio no colisiona con la clave',
+  !!idxSuf.get('ATENAS A') && !!idxSuf.get('ATENAS') &&
+  idxSuf.get('ATENAS A').nombre === "ATENAS 'A'" && idxSuf.get('ATENAS').nombre === 'ATENAS');
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);
