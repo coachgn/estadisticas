@@ -155,6 +155,43 @@ function crearEntorno({ clubOk, clubExplota, sinClub, sinApp, planillasClub, pla
   });
 
   console.log('\n' + '═'.repeat(70));
+  /* -----------------------------------------------------------------
+     CAMBIAR DE CATEGORÍA NO PUEDE DEJAR AL DT SIN CONTROLES
+
+     Reporte del club: al pasar a U21 o U23 la barra quedaba en "Cargando…"
+     y no se podía usar; con Primera no pasaba. Tres causas distintas, las
+     tres reproducidas en el navegador.
+     ----------------------------------------------------------------- */
+  const appJs = fs.readFileSync('./js/sgadd-app.js', 'utf8');
+  const srcCambio = html.slice(html.indexOf('window.onCategoriaCambiada'),
+    html.indexOf('window.addEventListener(\'hashchange\''));
+
+  /* 1 · El handler de la capa vieja pisaba #view-root con un cartel aunque
+     el DT estuviera en Equipos, y ahí se lleva puesta la BARRA: sin
+     selector en pantalla no se puede ni volver atrás ni elegir otra. */
+  check('el cartel de "cambiando de categoría" solo pisa la pantalla en Principal',
+    /if \(currentSection === 'principal'\) \{[\s\S]{0,260}Cambiando de categoria/.test(srcCambio));
+  /* La ÚNICA escritura del root vive dentro del guard: si alguien la
+     saca afuera, la barra vuelve a desaparecer en Equipos. */
+  check('y las secciones SGADD conservan su barra mientras cargan',
+    (srcCambio.match(/root\.innerHTML/g) || []).length === 1 &&
+    srcCambio.indexOf("currentSection === 'principal'") < srcCambio.indexOf('root.innerHTML'));
+
+  /* 2 · Dos cambios seguidos: la carga vieja no puede pisar a la nueva ni
+     apagarle el cartel. Medido: sin esto, pedir U21 y a los 300ms U23
+     terminaba en U21. */
+  check('cada carga se queda con su ficha y comprueba si sigue vigente',
+    /const ficha = \+\+_cargaId;/.test(appJs) && /const vigente = \(\) => \(ficha === _cargaId\);/.test(appJs));
+  check('una carga que ya no es la vigente se retira sin tocar el estado',
+    /if \(!vigente\(\)\) return;/.test(appJs));
+  check('y tampoco apaga el cartel de la que sí está esperando',
+    /if \(vigente\(\)\) \{ estado\.cargando = false; avisar\(\); \}/.test(appJs));
+
+  /* 3 · Si no entró NINGUNA hoja el problema es de red o de permisos: antes
+     se armaba un índice vacío y la sección quedaba muda. */
+  check('sin una sola hoja se avisa en vez de indexar la nada',
+    /if \(!Object\.keys\(hojas\)\.length\) \{[\s\S]{0,320}throw new Error/.test(appJs));
+
   /* =====================================================================
      ACCESIBILIDAD · lo que fija la checklist de Checklist Design
 

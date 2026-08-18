@@ -629,7 +629,7 @@ check('con la fecha ya cargada el resultado es el mismo: el join no la pisa',
    ahora de `limpiarNombre()`, que conoce las tres formas.
    ===================================================================== */
 console.log('\nSUFIJO DE CATEGORIA EN EL NOMBRE');
-console.log('='.repeat(70));
+console.log('═'.repeat(70));
 
 const colsSuf = ['EQUIPO', 'FASE', 'PJ', 'PTS'];
 const filasSuf = [
@@ -650,6 +650,74 @@ check('el nombre limpio no colisiona con la clave',
   !!idxSuf.get('ATENAS A') && !!idxSuf.get('ATENAS') &&
   idxSuf.get('ATENAS A').nombre === "ATENAS 'A'" && idxSuf.get('ATENAS').nombre === 'ATENAS');
 
-console.log('\n' + '═'.repeat(70));
-console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
-process.exit(fail ? 1 : 0);
+/* =====================================================================
+   LA CARGA DE UNA CATEGORIA NO SE PUEDE COLGAR
+
+   Sintoma real reportado por el club: al cambiar a U21 o U23 la barra
+   quedaba en "Cargando..." y no se recuperaba nunca; Primera funcionaba
+   porque ya estaba cargada. La causa: `cargarCategoria` cachea la PROMESA
+   por sheetId, asi que un `fetch` que no resuelve nunca —conexion a medio
+   abrir— dejaba esa categoria muerta hasta recargar la pagina.
+   ===================================================================== */
+console.log('\nCARGA DE CATEGORIA: TECHO, CACHE Y FRACASO');
+console.log('='.repeat(70));
+
+const fetchOriginal = global.fetch;
+const respuestaOk = (nombre) => ({
+  ok: true,
+  text: () => Promise.resolve(")]}'\n" + JSON.stringify({
+    status: 'ok',
+    table: { cols: [{ label: 'EQUIPO' }, { label: 'FASE' }], rows: [{ c: [{ v: 'A' }, { v: 'REGULAR' }] }] },
+  })),
+});
+
+(async function pruebasDeCarga() {
+  /* 1 · Un fetch que NO resuelve nunca tiene que cortar por techo. */
+  let pedidos = 0;
+  global.fetch = () => { pedidos++; return new Promise(() => {}); };   // jamas settle
+  S.limpiarCache();
+  const t0 = Date.now();
+  const r1 = await S.cargarCategoria('COLGADA', { hojas: ['PROMEDIOS E'], timeout: 120 });
+  const tardo = Date.now() - t0;
+  check('un fetch que nunca contesta se corta por techo y no cuelga la app',
+    Object.keys(r1.hojas).length === 0 && r1.errores.length === 1 && tardo < 3000, tardo + 'ms');
+  check('y el error dice que no hubo respuesta, no "error desconocido"',
+    /sin respuesta/.test(r1.errores[0].mensaje), r1.errores[0].mensaje);
+
+  /* 2 · Un fracaso TOTAL no se cachea: el proximo intento vuelve a pedir.
+     Sin esto, una caida momentanea dejaba esa categoria muerta hasta
+     recargar la pagina, que es exactamente lo que reporto el club. */
+  const pedidosAntes = pedidos;
+  await S.cargarCategoria('COLGADA', { hojas: ['PROMEDIOS E'], timeout: 120 });
+  check('un fracaso total NO queda cacheado: se reintenta de verdad',
+    pedidos > pedidosAntes, 'pedidos ' + pedidosAntes + ' -> ' + pedidos);
+
+  /* 3 · Una carga que SI sirvio se cachea, que es para lo que esta el cache. */
+  global.fetch = () => { pedidos++; return Promise.resolve(respuestaOk()); };
+  S.limpiarCache();
+  await S.cargarCategoria('BUENA', { hojas: ['PROMEDIOS E'] });
+  const pedidosTrasBuena = pedidos;
+  const r3 = await S.cargarCategoria('BUENA', { hojas: ['PROMEDIOS E'] });
+  check('una carga que funciono se sirve del cache, sin volver a pedir',
+    pedidos === pedidosTrasBuena && !!r3.hojas['PROMEDIOS E'], 'pedidos ' + pedidos);
+
+  /* 4 · Una hoja caida NO tira abajo al resto: la planilla incompleta sigue
+     sirviendo y el Diagnostico avisa. */
+  S.limpiarCache();
+  global.fetch = (url) => (/Base%20Datos%20J|Base Datos J/.test(url)
+    ? Promise.reject(new Error('HTTP 500'))
+    : Promise.resolve(respuestaOk()));
+  const r4 = await S.cargarCategoria('MIXTA', { hojas: ['PROMEDIOS E', 'Base Datos J'] });
+  check('una hoja caida se degrada sola y el resto entra igual',
+    !!r4.hojas['PROMEDIOS E'] && r4.errores.length === 1, JSON.stringify(Object.keys(r4.hojas)));
+
+  check('el techo por hoja es explicito y no un numero magico suelto',
+    typeof S.TIMEOUT_HOJA === 'number' && S.TIMEOUT_HOJA >= 5000, S.TIMEOUT_HOJA);
+
+  global.fetch = fetchOriginal;
+  S.limpiarCache();
+
+  console.log('\n' + '='.repeat(70));
+  console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
+  process.exit(fail ? 1 : 0);
+})();

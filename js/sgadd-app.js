@@ -42,6 +42,9 @@ const SGADD_APP = (function () {
   }
 
   /** Carga la planilla activa. Idempotente: si ya está, resuelve al toque. */
+  /** Ficha de la última carga pedida: ver el guard de carrera. */
+  let _cargaId = 0;
+
   async function cargar(forzar) {
     inicializar();
     const p = planillaActual();
@@ -50,9 +53,34 @@ const SGADD_APP = (function () {
 
     estado.cargando = true; estado.error = null;
     avisar();
+
+    /* GUARD DE CARRERA. Cambiar de categoría dos veces seguidas dispara dos
+       cargas, y la primera puede volver DESPUÉS de la segunda: ahí deja en
+       pantalla los datos de la planilla que el DT ya abandonó, o —peor—
+       apaga el "Cargando…" de la que sí está esperando. Cada carga se queda
+       con su ficha y al volver comprueba que siga siendo la vigente. */
+    const ficha = ++_cargaId;
+    const vigente = () => (ficha === _cargaId);
+
     try {
       if (forzar) SGADD.limpiarCache(p.sheetId);
-      const { hojas } = await SGADD.cargarCategoria(p.sheetId);
+      const { hojas, errores } = await SGADD.cargarCategoria(p.sheetId);
+      if (!vigente()) return;
+
+      /* SIN UNA SOLA HOJA NO SE INDEXA: se avisa.
+
+         Cada hoja que falla se degrada sola a un `{error}` para que una
+         planilla incompleta siga sirviendo, pero si NO entró ninguna el
+         problema es de red o de permisos, no del libro. Antes se armaba
+         igual un índice vacío: la sección quedaba en blanco, sin equipos
+         y sin un cartel que dijera por qué. Medido cortando la red en el
+         navegador: 0 equipos, error null, y la pantalla muda. */
+      if (!Object.keys(hojas).length) {
+        const detalle = (errores && errores.length) ? errores[0].mensaje : "";
+        throw new Error("No se pudo leer ninguna hoja de esta categoría. " +
+          "Puede ser la conexión, o que la planilla dejó de estar compartida. " + detalle);
+      }
+
       estado.hojas = hojas;
       const fases = SGADD.fasesDisponibles(hojas);
       if (fases.length && !fases.some(f => f.id === estado.fase)) estado.fase = fases[0].id;
@@ -63,10 +91,11 @@ const SGADD_APP = (function () {
       if (!estado.torneo || !torneos.some(t => t.id === estado.torneo)) estado.torneo = torneos[0].id;
       reindexar();
     } catch (e) {
-      estado.error = e.message || String(e);
+      if (vigente()) estado.error = e.message || String(e);
     } finally {
-      estado.cargando = false;
-      avisar();
+      /* Solo la carga vigente apaga el cartel: si lo apagara una vieja, la
+         barra diría "sin datos" mientras la nueva sigue bajando. */
+      if (vigente()) { estado.cargando = false; avisar(); }
     }
   }
 

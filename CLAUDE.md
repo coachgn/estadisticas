@@ -16,11 +16,11 @@ aplicadas en el punto 14.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 174 tests · núcleo, índice, validador
+node test-core.js          # 180 tests · núcleo, índice, validador
 node test-logos.js         #  18 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  27 tests · multi-cliente
-node test-boot.js          #  45 tests · arranque por club + sintaxis de los módulos
+node test-boot.js          #  55 tests · arranque por club + sintaxis de los módulos
 node test-jugadores.js     # 224 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1282 tests en total. Todos tienen que dar verde antes de commitear.**
+**1294 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -107,7 +107,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=102`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=106`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -506,6 +506,48 @@ cuerpo técnico compartió. Renombrarlo pierde las dos cosas.
 Con la U21 se hizo igual (`negra-…` → `naranja-u21-clausura-2026`) porque el
 club confirmó que en esa planilla no había estados cargados. Es una decisión
 de datos, no de estética: preguntar antes.
+
+### El cambio de categoría no puede dejar al DT sin controles
+
+Con tres planillas activas apareció un síntoma que con una sola no existe:
+al pasar a U21 o U23 la barra quedaba en *"Cargando…"* y **el selector
+desaparecía de la pantalla**. Con Primera no pasaba porque ya estaba
+cargada y volvía en el acto. Son tres causas distintas, las tres
+reproducidas en el navegador:
+
+1. **El cartel de la capa vieja se llevaba puesta la barra.**
+   `onCategoriaCambiada` —que es de la capa de datos de Principal— pisaba
+   `#view-root` con *"Cambiando de categoria…"* aunque el DT estuviera en
+   Equipos. Ahí se va el selector: no se puede volver atrás ni elegir otra
+   mientras baja. Ahora ese cartel **solo se pinta en Principal**; las
+   secciones SGADD ya muestran su propio estado *debajo* de la barra.
+
+2. **Una petición que no contesta dejaba la categoría muerta.**
+   `cargarCategoria` cachea la **promesa** por `sheetId`, así que un
+   `fetch` que nunca resuelve dejaba esa planilla en "Cargando…" **para
+   siempre**: cambiar de ida y vuelta no la revivía porque el caché
+   devolvía la misma promesa colgada, y solo se recuperaba recargando.
+   Ahora cada hoja tiene un techo de `TIMEOUT_HOJA` (20 s) y **un fracaso
+   total no se cachea**.
+
+   El techo son **dos** mecanismos y hacen falta los dos: `AbortController`
+   corta la conexión de verdad —para no dejarla abierta consumiendo una de
+   las seis que el navegador da por host— y la **carrera** es la que
+   garantiza el corte, porque abortar solo funciona si el `fetch` respeta
+   la señal. Medido con un `fetch` que la ignora: sin la carrera no cortaba
+   nunca.
+
+3. **Sin una sola hoja se armaba un índice vacío.** Cada hoja que falla se
+   degrada sola —una planilla incompleta sigue sirviendo— pero si no entra
+   **ninguna**, el problema es de red o de permisos y hay que decirlo.
+   Antes la sección quedaba en blanco, con 0 equipos y sin cartel. Medido
+   cortando la red en el navegador.
+
+**Y un guard de carrera en `cargar()`**: dos cambios seguidos disparan dos
+cargas, y la primera puede volver DESPUÉS de la segunda. Cada una se queda
+con su ficha (`_cargaId`) y al volver comprueba si sigue siendo la vigente;
+si no, se retira sin tocar el estado ni apagar el cartel de la otra.
+Medido: sin esto, pedir U21 y a los 300 ms U23 terminaba mostrando la U21.
 
 ### Dos bugs que destapó la categoría nueva
 

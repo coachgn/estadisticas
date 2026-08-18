@@ -1520,25 +1520,69 @@
    * Baja todas las hojas del ESQUEMA para una planilla.
    * Nunca baja las 9 categorías: solo la que se está mirando.
    */
+  /** Techo por hoja. Sin esto, un `fetch` que no resuelve nunca —conexión a
+      medio abrir, Google que no contesta— deja la promesa PENDIENTE, y como
+      se cachea por `sheetId`, esa categoría queda en "Cargando…" para
+      siempre: cambiar de ida y vuelta no la revive porque el caché devuelve
+      la misma promesa muerta. Solo se recuperaba recargando la página. */
+  const TIMEOUT_HOJA = 20000;
+
+  function bajarHoja(sheetId, nombre, techo) {
+    const url = urlGviz(sheetId, nombre);
+    const ms = techo || TIMEOUT_HOJA;
+
+    /* DOS mecanismos, y hacen falta los dos:
+
+         · `AbortController` corta la conexión de verdad, para no dejarla
+           abierta consumiendo una de las seis que el navegador da por
+           host mientras el usuario sigue cambiando de categoría.
+         · La CARRERA es la que garantiza el techo. Abortar solo funciona
+           si el `fetch` respeta la señal; si por lo que sea no la
+           respeta, la promesa nunca settle y volvemos al cuelgue que
+           esto vino a arreglar. La carrera no depende de nadie.
+    */
+    const ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    let reloj = null;
+    const vencimiento = new Promise((_, rechazar) => {
+      reloj = setTimeout(() => {
+        if (ctrl) { try { ctrl.abort(); } catch (e) {} }
+        rechazar(new Error("sin respuesta en " + Math.round(ms / 1000) + "s"));
+      }, ms);
+    });
+
+    const pedido = fetch(url, ctrl ? { signal: ctrl.signal } : undefined)
+      .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+      .then(t => ({ nombre: nombre, hoja: parsearGviz(t) }));
+
+    return Promise.race([pedido, vencimiento])
+      .catch(e => ({
+        nombre: nombre,
+        error: (e && e.name === "AbortError")
+          ? ("sin respuesta en " + Math.round(ms / 1000) + "s")
+          : (e.message || String(e)),
+      }))
+      .then(r => { clearTimeout(reloj); return r; });
+  }
   function cargarCategoria(sheetId, opciones) {
     const opt = opciones || {};
     if (!sheetId) return Promise.reject(new Error('Falta el sheetId'));
     if (_cache.has(sheetId) && !opt.forzar) return _cache.get(sheetId);
 
     const nombres = opt.hojas || Object.keys(ESQUEMA);
-    const tarea = Promise.all(nombres.map(nombre =>
-      fetch(urlGviz(sheetId, nombre))
-        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
-        .then(t => ({ nombre, hoja: parsearGviz(t) }))
-        .catch(e => ({ nombre, error: e.message || String(e) }))
-    )).then(res => {
-      const hojas = {}, errores = [];
-      res.forEach(r => {
-        if (r.error) errores.push({ nivel: 'error', hoja: r.nombre, mensaje: 'No se pudo leer: ' + r.error });
-        else hojas[r.nombre] = r.hoja;
-      });
-      return { hojas, errores };
-    });
+    const tarea = Promise.all(nombres.map(nombre => bajarHoja(sheetId, nombre, opt.timeout)))
+      .then(res => {
+        const hojas = {}, errores = [];
+        res.forEach(r => {
+          if (r.error) errores.push({ nivel: 'error', hoja: r.nombre, mensaje: 'No se pudo leer: ' + r.error });
+          else hojas[r.nombre] = r.hoja;
+        });
+        /* Un fallo TOTAL no se cachea: si no entró ni una hoja fue un
+           problema de red o de permisos, no del libro, y el próximo intento
+           tiene que volver a pedir en vez de servir el fracaso guardado. */
+        if (!Object.keys(hojas).length) _cache.delete(sheetId);
+        return { hojas, errores };
+      })
+      .catch(e => { _cache.delete(sheetId); throw e; });
 
     _cache.set(sheetId, tarea);
     return tarea;
@@ -1877,7 +1921,7 @@
     CATALOGO, FASES, SECCIONES, TORNEO_GENERAL, planilla, planillasVisibles, esEquipoPropio, agrupar,
     fasesDisponibles, torneosDisponibles, torneoDeFila, Ruta,
     // 4
-    normalizarHoja, construirIndice, esFilaTipo, tipoDeLiga, cargarCategoria, limpiarCache, parsearGviz, urlGviz,
+    normalizarHoja, construirIndice, esFilaTipo, tipoDeLiga, cargarCategoria, limpiarCache, TIMEOUT_HOJA, parsearGviz, urlGviz,
     // 5
     validarEsquema, validarTorneo, validarCoherencia, testSimetria, testTotales, testCrucePartidos,
     PARES_SIMETRIA, PARES_HOJAS, INVARIANTES_TOTALES, CRUCES_PARTIDO,

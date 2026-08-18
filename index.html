@@ -1539,23 +1539,23 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=102"></script>
-<script src="js/sgadd-core.js?v=102"></script>
-<script src="js/sgadd-ui.js?v=102"></script>
-<script src="js/sgadd-app.js?v=102"></script>
-<script src="js/sgadd-estados.js?v=102"></script>
-<script src="js/sgadd-buzon.js?v=102"></script>
-<script src="js/sgadd-charts.js?v=102"></script>
-<script src="js/sgadd-personalidad.js?v=102"></script>
-<script src="js/sgadd-rankings.js?v=102"></script>
-<script src="js/sgadd-partido.js?v=102"></script>
-<script src="js/sgadd-informe.js?v=102"></script>
-<script src="js/sgadd-ficha.js?v=102"></script>
-<script src="js/sgadd-equipos.js?v=102"></script>
-<script src="js/sgadd-jugadores.js?v=102"></script>
-<script src="js/sgadd-4factores.js?v=102"></script>
-<script src="js/sgadd-scouting.js?v=102"></script>
-<script src="js/sgadd-diagnostico.js?v=102"></script>
+<script src="js/sgadd-club.js?v=106"></script>
+<script src="js/sgadd-core.js?v=106"></script>
+<script src="js/sgadd-ui.js?v=106"></script>
+<script src="js/sgadd-app.js?v=106"></script>
+<script src="js/sgadd-estados.js?v=106"></script>
+<script src="js/sgadd-buzon.js?v=106"></script>
+<script src="js/sgadd-charts.js?v=106"></script>
+<script src="js/sgadd-personalidad.js?v=106"></script>
+<script src="js/sgadd-rankings.js?v=106"></script>
+<script src="js/sgadd-partido.js?v=106"></script>
+<script src="js/sgadd-informe.js?v=106"></script>
+<script src="js/sgadd-ficha.js?v=106"></script>
+<script src="js/sgadd-equipos.js?v=106"></script>
+<script src="js/sgadd-jugadores.js?v=106"></script>
+<script src="js/sgadd-4factores.js?v=106"></script>
+<script src="js/sgadd-scouting.js?v=106"></script>
+<script src="js/sgadd-diagnostico.js?v=106"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -3435,8 +3435,25 @@ async function init() {
     const p = SGADD.planilla(idPlanilla);
     if (!p || !p.sheetId) return;
     SHEET_ID = p.sheetId;
-    const root = document.getElementById('view-root');
-    if (root) root.innerHTML = '<div class="card rounded-xl p-8 border border-hairline text-center text-muted text-sm">Cambiando de categoria...</div>';
+
+    /* EL CARTEL SOLO EN PRINCIPAL, y esto es un fix, no un detalle.
+
+       Este handler es de la capa de datos VIEJA, que solo usa Principal.
+       Pisaba `#view-root` con "Cambiando de categoria..." aunque el DT
+       estuviera en Equipos o Jugadores, y ahí se lleva puesta la BARRA:
+       mientras baja la planilla nueva no hay selector en pantalla, así
+       que no se puede volver atrás ni elegir otra. Si además la carga
+       tardaba, la sección quedaba muda y sin controles — el "se traba y
+       no puedo usarla" que reportó el club. Con Primera no se notaba
+       porque ya estaba cacheada y volvía en el acto.
+
+       Las secciones SGADD ya muestran su propio estado sin perder la
+       barra: pintan "Cargando la categoría…" DEBAJO del selector. */
+    if (currentSection === 'principal') {
+      const root = document.getElementById('view-root');
+      if (root) root.innerHTML = '<div class="card rounded-xl p-8 border border-hairline text-center text-muted text-sm">Cambiando de categoria...</div>';
+    }
+
     lastErrors = await fetchAllData();
     renderSection(currentSection);
     precargarLogos();
