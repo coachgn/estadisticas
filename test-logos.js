@@ -170,6 +170,35 @@ fs.unlinkSync(EXTRAIDO);
   check('generarManifiesto() da JSON válido con lo ya resuelto',
     manifiestoGenerado['astillero'] === 'astillero.webp', L.generarManifiesto());
 
+  /* -----------------------------------------------------------------
+     EL MANIFIESTO NO PUEDE APUNTAR A ARCHIVOS QUE NO EXISTEN
+
+     Pasó de verdad: al subir los escudos de la U23 por la web de GitHub
+     se renombró `atenas-a.jpg` y se borraron `reconquista-a.png` y
+     `banco-provincia-a.webp`, pero el manifiesto seguía apuntando a los
+     nombres viejos. Resultado: la U23 ganó sus escudos y PRIMERA perdió
+     tres, sin ningún aviso — el panel de faltantes solo mira la
+     categoría abierta.
+     ----------------------------------------------------------------- */
+  console.log('\n7. MANIFIESTOS DEL REPO');
+  console.log('─'.repeat(70));
+  const ligas = fs.readdirSync('./logos').filter(d => {
+    try { return fs.statSync('./logos/' + d).isDirectory(); } catch (e) { return false; }
+  });
+  check('hay al menos una liga con escudos', ligas.length > 0, ligas.join(','));
+  ligas.forEach(liga => {
+    const dir = './logos/' + liga;
+    const ruta = dir + '/index.json';
+    if (!fs.existsSync(ruta)) return;
+    const archivos = fs.readdirSync(dir).filter(f => f !== 'index.json');
+    let man = null;
+    try { man = JSON.parse(fs.readFileSync(ruta, 'utf8')); }
+    catch (e) { check(liga + ': index.json es JSON válido', false, e.message); return; }
+    const rotas = Object.keys(man).filter(k => archivos.indexOf(man[k]) === -1);
+    check(liga + ': ninguna entrada del manifiesto apunta a un archivo inexistente',
+      rotas.length === 0, rotas.map(k => k + ' → ' + man[k]).join(' | '));
+  });
+
   console.log('\n' + '═'.repeat(70));
   console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);

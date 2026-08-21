@@ -17,7 +17,7 @@ aplicadas en el punto 14.
 
 ```bash
 node test-core.js          # 180 tests · núcleo, índice, validador
-node test-logos.js         #  21 tests · resolución de escudos
+node test-logos.js         #  24 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  27 tests · multi-cliente
 node test-boot.js          #  55 tests · arranque por club + sintaxis de los módulos
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1297 tests en total. Todos tienen que dar verde antes de commitear.**
+**1300 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -489,6 +489,18 @@ marca, color, liga, patrón de equipo propio, sufijos y planillas.
   abajo del mínimo WCAG de 4.5. Se mezcla con blanco hasta que pasa.
 
 Sumar un cliente = un JSON + su carpeta de escudos. Cero código.
+
+**El manifiesto (`logos/<liga>/index.json`) mapea clave → archivo**, así que
+el nombre del archivo NO tiene que ser el slug. Eso permite subir el escudo
+como venga, pero tiene un filo: al subir los de la U23 por la web de GitHub
+se renombró `atenas-a.jpg` y se borraron `reconquista-a.png` y
+`banco-provincia-a.webp`, y el manifiesto quedó apuntando a los nombres
+viejos. Resultado: **la U23 ganó sus escudos y Primera perdió tres**, sin
+aviso — el panel de faltantes solo mira la categoría abierta. Un club puede
+estar en varias categorías con claves distintas (`reconquista` en U23,
+`reconquista a` en Primera), así que **el manifiesto tiene que cubrirlas
+todas**. Hay un test en `test-logos.js` que falla si alguna entrada apunta a
+un archivo que no existe.
 
 ### Renombrar una tira o sumar una categoría · se toca el JSON, no el código
 
