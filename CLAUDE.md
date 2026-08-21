@@ -27,10 +27,10 @@ node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  49 tests · detalle partido a partido, perfil de tiro y su PDF
 node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
-node test-estados.js       # 147 tests · estados de jugador, alertas, buzon, sync grafico-tabla
+node test-estados.js       # 155 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1338 tests en total. Todos tienen que dar verde antes de commitear.**
+**1346 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -107,7 +107,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=111`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=112`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -2745,6 +2745,41 @@ jugadores, U21 1 / 0 sobre 91, U23 26 / 32 sobre 252.
 `scoutEstadoJugador()` se van en silencio si el jugador ya tiene un estado
 distinto de ACTIVO: el estado manda sobre la sospecha, y mostrar los dos
 juntos es pedirle al DT que resuelva algo que ya resolvió.
+
+### La sección *En observación* se pliega, y toda tarjeta lleva su atajo
+
+Los avisos van en un `<details>` (`#buzonObservacion`) con el número en el
+encabezado. **Con 26 en observación —la U23 real— la lista empujaba a las
+alertas fuera de la pantalla**, y las alertas son lo único que pide
+respuesta. Medido en Primera: el drawer pasa de 3556 a **2747px** de alto
+con la sección plegada.
+
+**Arranca plegada solo si hay alertas que tapar.** Sin alertas se abre
+sola: si no, el drawer se abriría prácticamente vacío y habría que
+adivinar que hay algo adentro. Cuando el DT la pliega o la despliega, su
+decisión manda (`estado.obsAbierta`) y sobrevive a los repintados — es el
+mismo problema que ya tuvo el `<details>` de confirmados, donde un
+desplegable que volvía cerrado acortaba el contenido y recortaba el
+scroll a 0.
+
+**`Ficha →` va en las dos listas.** El aviso dice que alguien lleva tres
+fechas sin entrar y ahí se corta: para saber si eso importa hay que ver
+sus minutos, su rol y su log. Sin el botón había que cerrar el drawer,
+entrar a Jugadores, elegir el equipo y buscarlo en la grilla. En las
+tarjetas de alerta va por el mismo motivo: marcar BAJA es la decisión más
+cara del buzón y mirar la ficha antes es justo lo que hay que poder hacer
+sin perder la lista.
+
+Dos reglas al tocarlo:
+
+- **El slug NO se arma en el buzón.** Se busca el jugador en el índice por
+  su clave y se le pide a `jugadoresSlug()`. Repetir la fórmula sería un
+  segundo lugar que se desincroniza — el bug que ya tuvo el rol funcional
+  (punto 8). Si el jugador no está en la categoría abierta, avisa con un
+  toast en vez de navegar a una ficha vacía.
+- **El foco NO vuelve a la campana.** `cerrar()` normalmente lo devuelve
+  al disparador, pero acá el drawer se cierra porque el DT se está yendo a
+  otra pantalla: se limpia `estado.disparador` y el foco va a `#view-root`.
 
 ### Marcar a mano, sin esperar las cuatro fechas
 

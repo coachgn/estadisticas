@@ -446,6 +446,36 @@ check('la ficha del jugador ofrece los cuatro estados',
 /* Es un CONTROL, no contenido: en el PDF de la ficha no va. */
 check('y ese control no se imprime', /border-hairline" data-no-print/.test(jug));
 
+/* --- La sección de observación se pliega, y el atajo a la ficha --- */
+/* Con 26 en observación (la U23 real) la lista empuja a las alertas
+   —lo único que pide respuesta— fuera de la pantalla. */
+check('la sección En observación es un desplegable',
+  /<details id="buzonObservacion"/.test(buzon));
+check('y el encabezado dice cuántos hay sin tener que abrirla',
+  /En observación · \$\{lista\.length\}/.test(buzon));
+/* Sin alertas que tapar se abre sola: si no, el drawer se abriría
+   prácticamente vacío y habría que adivinar que hay algo adentro. */
+check('arranca plegada solo si hay alertas que tapar',
+  /estado\.obsAbierta === null[\s\S]{0,80}!alertasQuePiden\(\)\.length/.test(buzon));
+check('y una vez que el DT decide, su decisión manda y sobrevive al repintado',
+  /ontoggle="SGADD_BUZON\.recordarObservacion\(this\.open\)"/.test(buzon) &&
+  /function recordarObservacion\(abierta\) \{ estado\.obsAbierta = !!abierta; \}/.test(buzon));
+
+check('cada alerta y cada aviso llevan su atajo a la ficha',
+  /function botonFicha\(clave, nombre\)/.test(buzon) &&
+  (buzon.match(/\$\{botonFicha\(a\.clave, a\.nombre\)\}/g) || []).length === 2);
+/* El slug NO se arma en el buzón: se busca el jugador y se le pide a
+   `jugadoresSlug()`. Repetir la fórmula sería un segundo lugar que se
+   desincroniza, que es el bug que ya tuvo el rol funcional. */
+check('el slug sale de jugadoresSlug(), no de una fórmula duplicada',
+  /function irAFicha[\s\S]{0,1600}entidad: jugadoresSlug\(j\)/.test(buzon));
+check('y si el jugador no está en la categoría abierta, avisa en vez de romper',
+  /function irAFicha[\s\S]{0,800}if \(!j\) \{ toast\(/.test(buzon));
+/* El drawer se cierra porque el DT se va a otra pantalla: el foco tiene
+   que ir al contenido nuevo, no volver a la campana que abrió el modal. */
+check('al ir a la ficha el foco NO vuelve al disparador',
+  /function irAFicha[\s\S]{0,900}estado\.disparador = null;\s*\r?\n\s*cerrar\(\);/.test(buzon));
+
 /* Lo pendiente se ve DONDE ESTÁ EL JUGADOR, no solo dentro del drawer. */
 check('el aviso se muestra en la ficha y en la card del plantel',
   /function jugadoresBadgePendiente/.test(jug) && /function jugadoresLineaPendiente/.test(jug));

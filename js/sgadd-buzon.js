@@ -30,6 +30,10 @@ const SGADD_BUZON = (function () {
     alertas: [],
     planillaId: null,
     disparador: null,  // a quién devolverle el foco al cerrar
+    /* null = el DT todavía no decidió: la sección de observación se abre
+       o se pliega según haya alertas que tapar. Un booleano fija su
+       decisión y sobrevive a los repintados del drawer. */
+    obsAbierta: null,
   };
 
   /**
@@ -153,6 +157,27 @@ const SGADD_BUZON = (function () {
     inactividad: { icono: '⏸', titulo: 'Inactividad',    tono: 'text-yellow-400 border-yellow-400/40' },
   };
 
+  /**
+   * "Ficha →" · el atajo del buzón a la pantalla del jugador.
+   *
+   * El aviso dice que alguien lleva tres fechas sin entrar y ahí se corta:
+   * para saber si eso importa hay que ver sus minutos, su rol y su log, o
+   * sea la ficha. Sin el botón el DT tenía que cerrar el drawer, entrar a
+   * Jugadores, elegir el equipo y buscarlo en la grilla.
+   *
+   * Va también en las tarjetas de alerta: marcar BAJA es la decisión más
+   * cara del buzón y mirar la ficha antes es justo lo que hay que poder
+   * hacer sin perder la lista.
+   */
+  function botonFicha(clave, nombre) {
+    return `<button type="button" onclick="SGADD_BUZON.irAFicha('${SGADD_UI.escJs(clave)}')"
+      aria-label="Ver la ficha de ${SGADD_UI.esc(nombre)}"
+      class="shrink-0 text-[10px] px-2 py-1 rounded border border-hairline text-muted
+             hover:text-ink hover:border-accent/50 active:scale-95 transition-all duration-150
+             focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-base">
+      Ficha →</button>`;
+  }
+
   function tarjeta(a) {
     const t = TIPOS[a.tipo] || TIPOS.inactividad;
     const icono = t.icono, titulo = t.titulo, tono = t.tono;
@@ -202,6 +227,7 @@ const SGADD_BUZON = (function () {
             <p class="text-sm text-white font-medium leading-tight truncate">${SGADD_UI.esc(a.nombre)}</p>
             <p class="text-[11px] text-muted">${SGADD_UI.esc(a.equipo)}</p>
           </div>
+          ${botonFicha(a.clave, a.nombre)}
         </div>
         <p class="text-[11px] dato-sec leading-snug mb-2.5">${SGADD_UI.esc(a.detalle)}</p>
         <div class="flex flex-wrap gap-1.5">
@@ -294,30 +320,50 @@ const SGADD_BUZON = (function () {
   /* Los avisos van en su propia sección y SIN botones de estado: no son
      una decisión pendiente, son un "prestale atención". Mezclarlos con
      las alertas devolvería el buzón de cincuenta tarjetas que nadie
-     contesta. Cada uno linkea a la ficha, que es donde el DT puede
-     marcarlo a mano si ya sabe qué pasó. */
+     contesta.
+
+     Y va PLEGADA: con 26 en observación (la U23 real) la lista empuja
+     las alertas —lo único que pide respuesta— fuera de la pantalla. El
+     encabezado con el número ya dice todo lo que el aviso tiene que
+     decir de un vistazo; el detalle se abre si el DT lo quiere. */
   function bloqueAvisos() {
     const lista = avisos();
     if (!lista.length) return '';
-    const items = lista.map(a => `
-      <li class="rounded-lg border border-hairline bg-surface2/30 px-3 py-2">
-        <p class="text-sm text-white leading-tight truncate">${SGADD_UI.esc(a.nombre)}</p>
-        <p class="text-[11px] text-muted">${SGADD_UI.esc(a.equipo)} · ${a.racha} fechas sin entrar</p>
-      </li>`).join('');
-    return `
-      <section class="mt-4">
-        <h3 class="text-[10px] uppercase tracking-widest text-muted font-display mb-2">
-          En observación · ${lista.length}
-        </h3>
-        <ul class="space-y-1.5">${items}</ul>
-        <p class="text-[10px] dato-sec leading-snug mt-2">
-          Dos o tres fechas sin entrar casi nunca es una baja: puede ser un golpe,
-          un viaje o una sanción. No hace falta decidir nada — si ya sabés qué pasó,
-          marcalo desde su ficha.
-        </p>
-      </section>`;
-  }
 
+    /* Sin alertas que tapar, se abre sola: si no, el drawer se abriría
+       prácticamente vacío y habría que adivinar que hay algo adentro.
+       Una vez que el DT la pliega o la despliega, manda su decisión. */
+    const abierta = estado.obsAbierta === null
+      ? !alertasQuePiden().length : estado.obsAbierta;
+
+    const items = lista.map(a => `
+      <li class="flex items-center justify-between gap-2 rounded-lg border border-hairline bg-surface2/30 px-3 py-2">
+        <div class="min-w-0">
+          <p class="text-sm text-white leading-tight truncate">${SGADD_UI.esc(a.nombre)}</p>
+          <p class="text-[11px] text-muted truncate">${SGADD_UI.esc(a.equipo)} · ${a.racha} fechas sin entrar</p>
+        </div>
+        ${botonFicha(a.clave, a.nombre)}
+      </li>`).join('');
+
+    return `
+      <details id="buzonObservacion" ${abierta ? 'open' : ''}
+        ontoggle="SGADD_BUZON.recordarObservacion(this.open)"
+        class="mt-4 rounded-lg border border-hairline bg-surface2/20">
+        <summary class="cursor-pointer select-none px-3 py-2 text-[10px] uppercase tracking-widest
+                        font-display text-muted hover:text-ink transition-colors
+                        focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-base">
+          En observación · ${lista.length}
+        </summary>
+        <div class="px-3 pb-3">
+          <ul class="space-y-1.5">${items}</ul>
+          <p class="text-[10px] dato-sec leading-snug mt-2">
+            Dos o tres fechas sin entrar casi nunca es una baja: puede ser un golpe,
+            un viaje o una sanción. No hace falta decidir nada — si ya sabés qué pasó,
+            marcalo desde su ficha.
+          </p>
+        </div>
+      </details>`;
+  }
   function panel() {
     const pendientes = alertasQuePiden();
     const n = pendientes.length;
@@ -512,6 +558,42 @@ const SGADD_BUZON = (function () {
     if (nuevo) nuevo.scrollTop = Math.min(y, Math.max(0, nuevo.scrollHeight - nuevo.clientHeight));
   }
 
+  /** Recuerda si el DT dejó la sección de observación abierta o plegada. */
+  function recordarObservacion(abierta) { estado.obsAbierta = !!abierta; }
+
+  /**
+   * Cierra el drawer y abre la ficha del jugador de esa alerta.
+   *
+   * El slug NO se arma acá: se busca el jugador en el índice y se le pide
+   * a `jugadoresSlug()`. Repetir la fórmula sería un segundo lugar que se
+   * desincroniza, y ya pasó con el rol funcional.
+   */
+  function irAFicha(clave) {
+    const idx = (typeof SGADD_APP !== 'undefined') ? SGADD_APP.estado.idx : null;
+    if (!E || !idx || typeof jugadoresSlug !== 'function' || typeof navigate !== 'function') {
+      toast('No se pudo abrir la ficha: el panel todavía está cargando', 'aviso');
+      return;
+    }
+    const j = (idx.liga.jugadores || [])
+      .find(x => E.claveJugador(x['NOMBRES'], x['EQUIPO']) === clave);
+    if (!j) { toast('Ese jugador no está en la categoría abierta', 'aviso'); return; }
+
+    /* El foco NO vuelve a la campana: el drawer se cierra porque el DT se
+       está yendo a otra pantalla, así que el foco tiene que ir al
+       contenido nuevo y no al control que abrió el modal. */
+    estado.disparador = null;
+    cerrar();
+
+    history.pushState(null, '', SGADD.Ruta.build({
+      planilla: SGADD_APP.estado.planillaId, torneo: SGADD_APP.estado.torneo,
+      fase: SGADD_APP.estado.fase, seccion: 'jugadores',
+      entidad: jugadoresSlug(j), tab: 'general',
+    }));
+    navigate('jugadores');
+    const root = document.getElementById('view-root');
+    if (root) { root.setAttribute('tabindex', '-1'); root.focus({ preventScroll: true }); }
+  }
+
   /**
    * Marca el estado de un jugador SIN que exista una alerta.
    *
@@ -612,7 +694,7 @@ const SGADD_BUZON = (function () {
 
   return {
     estado, sincronizar, badge, pintarBadge, estadoDe, enPlan,
-    pendienteDe, avisos, alertasQuePiden, marcar,
+    pendienteDe, avisos, alertasQuePiden, marcar, irAFicha, recordarObservacion,
     abrir, cerrar, resolver, revertir, listaConfirmados, toast,
   };
 })();
