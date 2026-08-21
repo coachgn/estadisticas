@@ -1590,7 +1590,10 @@ al orden del grupo en vez de romper.
 
 1. Tab **Comparar** (contra otro jugador o contra el JUGADOR TIPO).
 2. **Curva de carga**: minutos vs eficiencia partido a partido.
-3. PDF de ficha individual (después de resolver el punto 7).
+3. ~~PDF de ficha individual.~~ **HECHO** — es la cuarta exportación
+   (`sgadd-ficha.js`, punto 7.6 ter).
+
+El resto de lo que pidió el cuerpo técnico está en el punto **10 bis**.
 
 ---
 
@@ -2503,6 +2506,83 @@ factor — a diferencia del Pearson crudo del original).
   de cero en cada carga: no hay memoria de aciertos pasados. Retomar esto
   necesita backend para persistir resultados (mismo problema que el punto
   anterior).
+
+---
+
+## 10 bis. Pedidos del cuerpo técnico · backlog
+
+Distinto de la deuda técnica del punto 10: eso es lo que sabemos que está
+flojo, esto es lo que el club pidió. Entregado en `mejoras.pdf` el
+**2026-08-18**. Cada punto anota **de qué depende**, que es lo que decide si
+se puede hacer o hay que pedirlo a MotorStats.
+
+### Se pueden hacer ya · el dato está
+
+**B-1 · Comparativa por períodos o ciclos, para equipos Y jugadores.**
+Cortar la temporada en tramos —primeras N fechas contra últimas N— y
+comparar. El dato está en `Base Datos E` y `Base Datos J`, partido a
+partido, y el patrón ya existe dos veces: `e.split` (local/visitante) en
+Equipos y `jugadoresSplitCondicion()` en Jugadores. El scouting además ya
+tiene el *ciclo reciente* de 4 partidos, que es un caso particular de esto.
+Lo que hay que definir con el club es el corte: mitad y mitad, últimos 5, o
+elegible. **Cuidado con la muestra**: con 13 fechas, dos tramos de 6 son dos
+muestras chicas, así que aplica la regla de siempre —mostrar el dato y
+quitarle autoridad cuando no alcanza—.
+
+**B-2 · La alerta de la campana, visible en la ficha y en scouting; y poder
+marcar a un jugador ANTES de que salte la alerta.** Son dos cosas:
+
+- Hoy la ficha muestra el estado **confirmado** (🟡 🔵 🔴) pero no la alerta
+  **pendiente**: el DT tiene que abrir el buzón para enterarse. La ficha y
+  la ficha de scouting del rival tendrían que mostrar que hay algo sin
+  responder sobre ese jugador.
+- Y al revés: el DT **sabe hoy** que un jugador se lesionó, y el detector
+  recién lo ve después de 4 fechas sin minutos. Falta marcar el estado a
+  mano desde la ficha, sin esperar la alerta. El motor ya lo soporta —
+  `origen: "usuario"` gana siempre y el detector saltea a los que ya tienen
+  respuesta (punto 13)—; lo que falta es el control en la UI.
+
+**B-3 · En la cronología, que los porcentajes muestren también los
+intentos.** Un T3% de 100% con un intento y otro con seis se leen igual y no
+son lo mismo. Va en el tab Partidos y en el de Evolución: `C/I` al lado del
+porcentaje, que es lo que ya hace la tabla de distribución de tiro.
+
+**B-4 · Por qué esta marca defensiva y no otra.** El caso que trajo el club:
+dos jugadores con etiquetas ofensivas IDÉNTICAS —*Spacing / Tirador de
+Descarga* + *Referente Ofensivo / Segunda Espada*— reciben marcas distintas
+(*Contenedor de Volumen* uno, *Hostigador / Ball-Screen Pest* el otro).
+
+No es un error: `PERFILES_MARCA` es una cascada que mira más cosas que el
+rol, y en ese ejemplo lo que los separa son las **pérdidas** (19,4%, 1,34x
+la liga, dispara `generador-riesgoso`). El problema es que **la ficha no lo
+dice**: muestra el número que justifica la marca elegida, pero no cuál fue
+el discriminante contra la anterior de la cascada. Con eso el DT no puede
+auditar el informe, y un informe que no se puede auditar se deja de usar.
+
+Junto con esto pidió **regularidad**: si el jugador sostiene ese
+comportamiento o es una noche suelta. El dato ya está —`statJugador()`
+devuelve media ± desvío— y es el mismo criterio del `~` del punto 8.
+
+**B-5 · Que la media de la liga se vincule al ARQUETIPO.** Comparar a un
+tirador contra tiradores y no contra los 216 de la liga. Es el pedido más
+ambicioso y el de mejor lectura, pero tiene una trampa conocida: **el
+universo se achica**. En La Plata hay 2 *Anclas Defensivas* sobre 210
+jugadores; un percentil sobre 2 no significa nada. Si se hace, hay que fijar
+un mínimo de calificados por grupo y **degradar a la liga entera** cuando no
+se llega, igual que `jugadoresReferenciasRebote()` degrada al `JUGADOR TIPO`
+con menos de 3 calificados (punto 8).
+
+### Bloqueados por el dato · hay que pedirlos a MotorStats
+
+**B-6 · Fixture y partidos por zona.** No existe hoja de calendario: la
+fecha del partido, el torneo y el próximo rival son campos MANUALES en
+scouting justamente por esto (punto 9). Con una hoja de fixture, esos tres
+campos salen solos.
+
+**B-7 · Play-by-play de la CABB.** Está fuera de SGADD: el panel consume lo
+que MotorStats escribe (punto 3). Si algún día entra, habilita de una vez
+los **cuartos y parciales**, que ya tienen un hook comentado esperando en el
+detalle de partido.
 
 ---
 
