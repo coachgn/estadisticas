@@ -27,10 +27,10 @@ node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  49 tests · detalle partido a partido, perfil de tiro y su PDF
 node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
-node test-estados.js       # 155 tests · estados de jugador, alertas, buzon, sync grafico-tabla
+node test-estados.js       # 168 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1346 tests en total. Todos tienen que dar verde antes de commitear.**
+**1359 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -107,7 +107,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=112`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=113`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -2746,29 +2746,71 @@ jugadores, U21 1 / 0 sobre 91, U23 26 / 32 sobre 252.
 distinto de ACTIVO: el estado manda sobre la sospecha, y mostrar los dos
 juntos es pedirle al DT que resuelva algo que ya resolvió.
 
-### La sección *En observación* se pliega, y toda tarjeta lleva su atajo
+### El drawer se abre como un ÍNDICE · tres secciones plegadas
 
-Los avisos van en un `<details>` (`#buzonObservacion`) con el número en el
-encabezado. **Con 26 en observación —la U23 real— la lista empujaba a las
-alertas fuera de la pantalla**, y las alertas son lo único que pide
-respuesta. Medido en Primera: el drawer pasa de 3556 a **2747px** de alto
-con la sección plegada.
+Alertas, *En observación* y *Estados confirmados* son tres `<details>`
+armados por **el mismo** helper (`seccion(id, titulo, cuenta, cuerpo,
+tono)`), y **las tres arrancan plegadas**. Arriba de todo va el buscador.
+Medido en Primera (14 alertas + 13 avisos): el contenido del drawer baja
+de **2747 a 828px**.
 
-**Arranca plegada solo si hay alertas que tapar.** Sin alertas se abre
-sola: si no, el drawer se abriría prácticamente vacío y habría que
-adivinar que hay algo adentro. Cuando el DT la pliega o la despliega, su
-decisión manda (`estado.obsAbierta`) y sobrevive a los repintados — es el
-mismo problema que ya tuvo el `<details>` de confirmados, donde un
-desplegable que volvía cerrado acortaba el contenido y recortaba el
-scroll a 0.
+La lectura del buzón pasó de "scrolleá catorce tarjetas para descubrir
+qué hay abajo" a tres renglones con sus números y el DT eligiendo a dónde
+ir. Con la sección plegada **ese número ES la información**, así que
+`resolver()` baja el contador del encabezado al sacar la tarjeta; resuelta
+la última, repinta (que trae el cierre positivo).
 
-**`Ficha →` va en las dos listas.** El aviso dice que alguien lleva tres
-fechas sin entrar y ahí se corta: para saber si eso importa hay que ver
-sus minutos, su rol y su log. Sin el botón había que cerrar el drawer,
-entrar a Jugadores, elegir el equipo y buscarlo en la grilla. En las
-tarjetas de alerta va por el mismo motivo: marcar BAJA es la decisión más
-cara del buzón y mirar la ficha antes es justo lo que hay que poder hacer
-sin perder la lista.
+**El plegado vive en `estado.secciones`, no en el DOM.** Es la misma
+trampa que ya había dado el desplegable de confirmados: si viviera en el
+DOM, un repintado volvería a plegar lo que el DT acababa de abrir, el
+contenido se acortaría de golpe y el `scrollTop` guardado se recortaría a
+0. `repintarPanel()` ya no lee el DOM para esto.
+
+### El buscador · llegar a cualquier jugador del torneo
+
+El detector solo trae a los que **dejaron de jugar**. El DT sabe cosas que
+el box score no registra —una lesión de ayer, un refuerzo que llega el
+sábado, una sanción— y para anotarlas tenía que salir del drawer, entrar a
+Jugadores, elegir el equipo y abrir la ficha.
+
+Busca sobre **toda la categoría** (`idx.liga.jugadores`), no solo sobre
+los que ya tienen alerta: sirve para las dos cosas que pidió el club —
+ubicar a uno que ya está en las listas de abajo, y sumar a mano a uno que
+no está. Elegido un resultado, salen los cuatro botones de estado y su
+`Ficha →`.
+
+Reglas que hay que respetar al tocarlo:
+
+- **Tipear NO repinta el drawer.** `buscar()` escribe el estado y
+  reemplaza solo `#buzonResultados`. Un repintado por tecla le saca el
+  foco al input y hace imposible escribir un apellido — es la misma regla
+  que ya cumplen `scoutMeta()` y `scoutMarca()` (punto 9). Marcar un
+  estado sí repinta, y ahí `repintarPanel()` **devuelve el foco y el
+  cursor** al buscador, porque esos no viajan solos.
+- **Se busca por nombre Y por equipo**, sin acentos ni mayúsculas
+  (`normalizar()` con `NFD`): escribiendo *atenas* sale su plantel, que es
+  como piensa el DT cuando no recuerda el apellido. Con menos de dos
+  letras no devuelve nada, y el corte es `MAX_RESULTADOS` (8) con aviso de
+  cuántos quedaron afuera.
+- **`marcarPorClave()` reusa `marcar()`**, no escribe el mapa por su
+  cuenta. Las dos mitades de la clave ya están normalizadas y
+  `claveJugador()` es idempotente, así que el split la reconstruye igual.
+  Dos caminos de escritura terminan con uno que se olvida de persistir o
+  de sincronizar.
+- **No toda alerta tiene `racha`.** Un reingreso o un traspaso no son una
+  cuenta de fechas, y asumir que sí imprimía **"🔔 undefined fechas"** —
+  justo en el caso más común del buscador: marcar SUSPENSO a alguien que
+  jugó hace poco dispara la alerta de reingreso. `resumenPendiente()` mira
+  el tipo antes de escribir el texto.
+
+### `Ficha →` · el atajo, en las tres listas
+
+El aviso dice que alguien lleva tres fechas sin entrar y ahí se corta:
+para saber si eso importa hay que ver sus minutos, su rol y su log. Sin el
+botón había que cerrar el drawer, entrar a Jugadores, elegir el equipo y
+buscarlo en la grilla. En las tarjetas de alerta va por el mismo motivo:
+marcar BAJA es la decisión más cara del buzón y mirar la ficha antes es
+justo lo que hay que poder hacer sin perder la lista.
 
 Dos reglas al tocarlo:
 
@@ -2780,28 +2822,6 @@ Dos reglas al tocarlo:
 - **El foco NO vuelve a la campana.** `cerrar()` normalmente lo devuelve
   al disparador, pero acá el drawer se cierra porque el DT se está yendo a
   otra pantalla: se limpia `estado.disparador` y el foco va a `#view-root`.
-
-### Marcar a mano, sin esperar las cuatro fechas
-
-La otra mitad de B-2: el DT **sabe hoy** que un jugador se lesionó y el
-detector recién lo ve a las 4 fechas. La ficha del jugador trae los cuatro
-botones de estado debajo de los KPIs (`jugadoresControlEstado`), con el
-vigente destacado.
-
-**`marcar(nombre, equipo, idEstado)` es una función aparte de
-`resolver()`**, no un parámetro más: `resolver()` arranca **buscando la
-alerta** por su clave, y acá justamente no hay ninguna — ese es el punto.
-Escribe con `origen: 'usuario'`, así que gana sobre el detector y lo
-saltea en los escaneos siguientes (regla de arriba).
-
-Después de marcar **se sincroniza**: marcar a mano puede tapar una alerta
-que estaba pendiente sobre ese mismo jugador, y el badge tiene que
-reflejarlo en el acto.
-
-**El control lleva `data-no-print`.** Es un CONTROL, no contenido del
-informe: en el PDF de la ficha (punto 7.6 ter) no va. Es el mismo defecto
-que ya tuvieron los selectores de scouting y el de métrica.
-
 ### El filtro anti-spam de inactividad
 
 La regla de los 4 partidos **sola** marcaba **50 de 210 jugadores (24%)** en

@@ -449,18 +449,72 @@ check('y ese control no se imprime', /border-hairline" data-no-print/.test(jug))
 /* --- La sección de observación se pliega, y el atajo a la ficha --- */
 /* Con 26 en observación (la U23 real) la lista empuja a las alertas
    —lo único que pide respuesta— fuera de la pantalla. */
-check('la sección En observación es un desplegable',
-  /<details id="buzonObservacion"/.test(buzon));
-check('y el encabezado dice cuántos hay sin tener que abrirla',
-  /En observación · \$\{lista\.length\}/.test(buzon));
-/* Sin alertas que tapar se abre sola: si no, el drawer se abriría
-   prácticamente vacío y habría que adivinar que hay algo adentro. */
-check('arranca plegada solo si hay alertas que tapar',
-  /estado\.obsAbierta === null[\s\S]{0,80}!alertasQuePiden\(\)\.length/.test(buzon));
-check('y una vez que el DT decide, su decisión manda y sobrevive al repintado',
-  /ontoggle="SGADD_BUZON\.recordarObservacion\(this\.open\)"/.test(buzon) &&
-  /function recordarObservacion\(abierta\) \{ estado\.obsAbierta = !!abierta; \}/.test(buzon));
+/* El drawer se abre como un ÍNDICE: buscador arriba y las tres listas
+   plegadas con su número. Con 14 alertas + 13 avisos, la altura del
+   contenido baja de 2747 a 828px medidos en Primera. */
+check('las tres listas usan el MISMO componente plegable',
+  /function seccion\(id, titulo, cuenta, cuerpo, tono\)/.test(buzon) &&
+  /seccion\('alertas',/.test(buzon) && /seccion\('obs',/.test(buzon) && /seccion\('conf',/.test(buzon));
+check('las tres arrancan plegadas',
+  /secciones: \{ alertas: false, obs: false, conf: false \}/.test(buzon));
+check('y cada encabezado dice cuántos hay sin tener que abrirlo',
+  /<span class="ml-auto tabular-nums text-ink">\$\{cuenta\}<\/span>/.test(buzon));
+/* El plegado vive en el ESTADO y no en el DOM: si viviera en el DOM, un
+   repintado volvería a plegar lo que el DT acababa de abrir. */
+check('lo que el DT abre queda abierto y sobrevive al repintado',
+  /ontoggle="SGADD_BUZON\.recordarSeccion\(/.test(buzon) &&
+  /function recordarSeccion\(id, abierta\)[\s\S]{0,150}estado\.secciones\[id\] = !!abierta/.test(buzon));
+check('y recordarSeccion() ignora un id que no existe en vez de inventarlo',
+  /if \(id in estado\.secciones\)/.test(buzon));
 
+/* Con la sección plegada, ESE número es toda la información: dejarlo en
+   14 después de resolver tres es peor que no mostrarlo. */
+check('resolver una alerta baja el contador del encabezado',
+  /#buzonSec-alertas summary span:last-child/.test(buzon));
+check('y resuelta la última se repinta, que trae el cierre positivo',
+  /if \(!quedan\) \{ repintarPanel\(\); return; \}/.test(buzon));
+
+/* --- El buscador: llegar a CUALQUIER jugador del torneo --- */
+check('el drawer abre con un buscador arriba de las tres listas',
+  /function bloqueBuscador\(\)/.test(buzon) &&
+  /const lista = bloqueBuscador\(\)/.test(buzon));
+check('busca sobre toda la categoría, no solo sobre los que ya tienen alerta',
+  /function buscarJugadores[\s\S]{0,600}idx\.liga\.jugadores/.test(buzon));
+/* "MUÑOZ" tiene que aparecer escribiendo "munoz". */
+check('la búsqueda ignora acentos y mayúsculas',
+  /normalize\('NFD'\)\.replace\(\/\[\\u0300-\\u036f\]\/g, ''\)\.toLowerCase\(\)/.test(buzon));
+check('y busca por nombre Y por equipo',
+  /normalizar\(nombre\)\.indexOf\(q\) < 0 && normalizar\(equipo\)\.indexOf\(q\) < 0/.test(buzon));
+check('con menos de dos letras no devuelve media liga',
+  /if \(q\.length < 2\) return \[\];/.test(buzon));
+check('y los resultados se recortan, con aviso de cuántos quedaron afuera',
+  /slice\(0, MAX_RESULTADOS\)/.test(buzon) && /afiná la búsqueda/.test(buzon));
+
+/* El input NO puede repintar el drawer entero: un repintado por tecla le
+   saca el foco y hace imposible escribir un apellido. Es la misma regla
+   que ya cumplen `scoutMeta()` y `scoutMarca()`. */
+check('tipear repinta SOLO los resultados, no el drawer',
+  /function buscar\(texto\)[\s\S]{0,300}getElementById\('buzonResultados'\)/.test(buzon) &&
+  !/function buscar\(texto\)[\s\S]{0,300}repintarPanel\(\)/.test(buzon));
+/* Marcar un estado sí repinta: ahí el foco y el cursor no viajan solos. */
+check('y el repintado devuelve el foco y el cursor al buscador',
+  /function repintarPanel[\s\S]{0,900}setSelectionRange\(cursor, cursor\)/.test(buzon));
+
+check('desde el buscador se marca cualquier estado a mano',
+  /function marcarPorClave\(clave, idEstado\)/.test(buzon) &&
+  /marcarPorClave[\s\S]{0,600}marcar\(partes\[0\], partes\[1\] \|\| '', idEstado\)/.test(buzon));
+/* Reusa `marcar()` para no tener dos caminos de escritura: uno de los dos
+   se olvidaría de persistir o de sincronizar. */
+check('y reusa marcar(), no escribe el mapa por su cuenta',
+  !/function marcarPorClave[\s\S]{0,400}E\.aplicar\(/.test(buzon));
+
+/* NO todas las alertas tienen `racha`: un reingreso o un traspaso no son
+   una cuenta de fechas, y asumir que sí imprimía "🔔 undefined fechas" —
+   justo en el caso más común, marcar SUSPENSO a alguien que jugó hace
+   poco, que dispara la alerta de reingreso. */
+check('el resumen de lo pendiente no asume que toda alerta tiene racha',
+  /function resumenPendiente[\s\S]{0,400}a\.tipo === 'inactividad'/.test(buzon) &&
+  /function resumenPendiente[\s\S]{0,500}TIPOS\[a\.tipo\]/.test(buzon));
 check('cada alerta y cada aviso llevan su atajo a la ficha',
   /function botonFicha\(clave, nombre\)/.test(buzon) &&
   (buzon.match(/\$\{botonFicha\(a\.clave, a\.nombre\)\}/g) || []).length === 2);
@@ -559,15 +613,14 @@ check('y colapsa también margen, padding y borde, o queda un hueco fantasma',
 check('la posición de lectura se restaura acotada al alto nuevo',
   /scrollTop = Math\.min\([\s\S]{0,80}scrollHeight - [\s\S]{0,30}clientHeight/.test(buzon));
 check('el repintado completo, cuando hace falta, también conserva el scroll',
-  /function repintarPanel[\s\S]{0,900}scrollTop = Math\.min/.test(buzon));
-/* Preservar el scroll SIN preservar el desplegable no alcanza: al repintar,
-   el <details> vuelve cerrado, el contenido se acorta y el scrollTop
-   guardado queda por encima del máximo nuevo, así que se recorta a 0.
-   Medido: reactivar desde el fondo devolvía al tope igual. */
-check('y reabre el desplegable de confirmados, o el scroll se recorta a 0 igual',
-  /detNuevo && abierto\) detNuevo\.open = true/.test(buzon));
-check('resuelta la última, se muestra el empty state y no una lista vacía',
-  /!ul\.querySelector\('\[data-alerta\]'\)[\s\S]{0,200}vacio\(\)/.test(buzon));
+  /function repintarPanel[\s\S]{0,1600}scrollTop = Math\.min/.test(buzon));
+/* Preservar el scroll SIN preservar los desplegables no alcanza: si el
+   plegado viviera en el DOM, al repintar volverían cerrados, el contenido
+   se acortaría y el scrollTop guardado quedaría por encima del máximo
+   nuevo, así que el navegador lo recorta a 0. Por eso vive en el estado. */
+check('los plegados sobreviven al repintado porque viven en el estado',
+  /estado\.secciones\[id\]/.test(buzon) &&
+  /const abierta = !!estado\.secciones\[id\];/.test(buzon));
 check('prefers-reduced-motion saltea la animación de salida',
   /function sinMovimiento[\s\S]{0,200}prefers-reduced-motion/.test(buzon) &&
   /\.buzon-tarjeta-saliendo \{ transition: none !important/.test(indexHtml));

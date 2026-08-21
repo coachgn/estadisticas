@@ -30,10 +30,12 @@ const SGADD_BUZON = (function () {
     alertas: [],
     planillaId: null,
     disparador: null,  // a quién devolverle el foco al cerrar
-    /* null = el DT todavía no decidió: la sección de observación se abre
-       o se pliega según haya alertas que tapar. Un booleano fija su
-       decisión y sobrevive a los repintados del drawer. */
-    obsAbierta: null,
+    /* El drawer se abre como un ÍNDICE: las tres listas plegadas, con su
+       número en el encabezado. Lo que el DT abra queda abierto mientras
+       dure la sesión y sobrevive a los repintados. */
+    secciones: { alertas: false, obs: false, conf: false },
+    busqueda: '',      // texto tipeado en el buscador
+    buscado: null,     // clave del jugador elegido de los resultados
   };
 
   /**
@@ -158,6 +160,38 @@ const SGADD_BUZON = (function () {
   };
 
   /**
+   * Una sección plegable del drawer. Las tres —alertas, observación y
+   * confirmados— usan esta, así que se ven y se comportan igual.
+   *
+   * Arrancan PLEGADAS a propósito: el drawer se abre como un índice de
+   * tres renglones con sus números, y el DT elige a dónde ir en vez de
+   * scrollear catorce tarjetas para descubrir qué hay abajo. El estado
+   * de cada una vive en `estado.secciones` y no en el DOM, así que un
+   * repintado no vuelve a plegar lo que él acababa de abrir.
+   */
+  function seccion(id, titulo, cuenta, cuerpo, tono) {
+    const abierta = !!estado.secciones[id];
+    return `
+      <details id="buzonSec-${id}" ${abierta ? 'open' : ''}
+        ontoggle="SGADD_BUZON.recordarSeccion('${SGADD_UI.escJs(id)}', this.open)"
+        class="mt-3 rounded-lg border border-hairline bg-surface2/20">
+        <summary class="cursor-pointer select-none flex items-center gap-2 px-3 py-2
+                        text-[10px] uppercase tracking-widest font-display
+                        ${tono || 'text-muted'} hover:text-ink transition-colors
+                        focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-base">
+          <span>${SGADD_UI.esc(titulo)}</span>
+          <span class="ml-auto tabular-nums text-ink">${cuenta}</span>
+        </summary>
+        <div class="px-3 pb-3">${cuerpo}</div>
+      </details>`;
+  }
+
+  /** Recuerda si el DT dejó una sección abierta o plegada. */
+  function recordarSeccion(id, abierta) {
+    if (id in estado.secciones) estado.secciones[id] = !!abierta;
+  }
+
+  /**
    * "Ficha →" · el atajo del buzón a la pantalla del jugador.
    *
    * El aviso dice que alguien lleva tres fechas sin entrar y ahí se corta:
@@ -253,36 +287,52 @@ const SGADD_BUZON = (function () {
       .sort((a, b) => a.clave.localeCompare(b.clave));
   }
 
+  /**
+   * Una línea que resume lo pendiente sobre un jugador, para el buscador.
+   *
+   * NO todas las alertas tienen `racha`: un reingreso o un traspaso no son
+   * una cuenta de fechas. Asumir que sí imprimía "🔔 undefined fechas", y
+   * pasa en el caso más común del buscador — marcar SUSPENSO a alguien que
+   * jugó hace poco dispara justamente la alerta de reingreso.
+   */
+  function resumenPendiente(a) {
+    if (!a) return '';
+    const icono = a.nivel === 'aviso' ? '⏳' : '🔔';
+    if (a.tipo === 'inactividad') return icono + ' ' + a.racha + ' fechas sin entrar';
+    const t = TIPOS[a.tipo];
+    return icono + ' ' + (t ? t.titulo : 'Alerta pendiente');
+  }
+
+  /** Lo pendiente sobre una CLAVE ya armada (el público toma nombre+equipo). */
+  function pendienteDeClave(clave) {
+    return E ? E.pendienteDe(estado.alertas, clave) : null;
+  }
+
   function bloqueConfirmados() {
     const lista = listaConfirmados();
     if (!lista.length) return '';
-    return `
-      <details class="mt-4 rounded-lg border border-hairline bg-surface2/30">
-        <summary class="cursor-pointer select-none px-3 py-2 text-[11px] uppercase tracking-widest
-                        font-display text-muted hover:text-ink transition-colors
-                        focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-base">
-          Estados confirmados (${lista.length})
-        </summary>
-        <ul class="px-3 pb-3 space-y-1.5">
-          ${lista.map(x => {
-            const e = E.estado(x.reg.estado);
-            const nombre = x.clave.split('|')[0];
-            const equipo = x.clave.split('|')[1] || '';
-            return `<li class="flex items-center justify-between gap-2 py-1 border-b border-hairline/40 last:border-0">
-              <div class="min-w-0">
-                <p class="text-[11px] text-white truncate">${SGADD_UI.esc(nombre)}</p>
-                <p class="text-[10px] ${e.color}">${e.emoji} ${SGADD_UI.esc(e.label)}
-                  <span class="text-muted">· ${SGADD_UI.esc(equipo)}${x.reg.desde ? ' · desde ' + SGADD_UI.esc(x.reg.desde) : ''}</span></p>
-              </div>
-              <button type="button" onclick="SGADD_BUZON.revertir('${SGADD_UI.escJs(x.clave)}')"
-                class="shrink-0 text-[10px] px-2 py-1 rounded border border-green-400/40 text-green-400
-                       hover:bg-green-400/10 active:scale-95 transition-all duration-150
-                       focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-base">
-                🟢 Reactivar</button>
-            </li>`;
-          }).join('')}
-        </ul>
-      </details>`;
+    const items = lista.map(x => {
+      const e = E.estado(x.reg.estado);
+      const nombre = x.clave.split('|')[0];
+      const equipo = x.clave.split('|')[1] || '';
+      return `<li class="flex items-center justify-between gap-2 py-1 border-b border-hairline/40 last:border-0">
+        <div class="min-w-0">
+          <p class="text-[11px] text-white truncate">${SGADD_UI.esc(nombre)}</p>
+          <p class="text-[10px] ${e.color}">${e.emoji} ${SGADD_UI.esc(e.label)}
+            <span class="text-muted">· ${SGADD_UI.esc(equipo)}${x.reg.desde ? ' · desde ' + SGADD_UI.esc(x.reg.desde) : ''}</span></p>
+        </div>
+        <div class="shrink-0 flex items-center gap-1">
+          ${botonFicha(x.clave, nombre)}
+          <button type="button" onclick="SGADD_BUZON.revertir('${SGADD_UI.escJs(x.clave)}')"
+            class="text-[10px] px-2 py-1 rounded border border-green-400/40 text-green-400
+                   hover:bg-green-400/10 active:scale-95 transition-all duration-150
+                   focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-base">
+            🟢 Reactivar</button>
+        </div>
+      </li>`;
+    }).join('');
+    return seccion('conf', 'Estados confirmados', lista.length,
+      `<ul class="space-y-1.5">${items}</ul>`);
   }
 
   /** Vuelve a ACTIVO a un jugador ya confirmado, desde la lista de estados. */
@@ -320,22 +370,10 @@ const SGADD_BUZON = (function () {
   /* Los avisos van en su propia sección y SIN botones de estado: no son
      una decisión pendiente, son un "prestale atención". Mezclarlos con
      las alertas devolvería el buzón de cincuenta tarjetas que nadie
-     contesta.
-
-     Y va PLEGADA: con 26 en observación (la U23 real) la lista empuja
-     las alertas —lo único que pide respuesta— fuera de la pantalla. El
-     encabezado con el número ya dice todo lo que el aviso tiene que
-     decir de un vistazo; el detalle se abre si el DT lo quiere. */
+     contesta. */
   function bloqueAvisos() {
     const lista = avisos();
     if (!lista.length) return '';
-
-    /* Sin alertas que tapar, se abre sola: si no, el drawer se abriría
-       prácticamente vacío y habría que adivinar que hay algo adentro.
-       Una vez que el DT la pliega o la despliega, manda su decisión. */
-    const abierta = estado.obsAbierta === null
-      ? !alertasQuePiden().length : estado.obsAbierta;
-
     const items = lista.map(a => `
       <li class="flex items-center justify-between gap-2 rounded-lg border border-hairline bg-surface2/30 px-3 py-2">
         <div class="min-w-0">
@@ -344,26 +382,161 @@ const SGADD_BUZON = (function () {
         </div>
         ${botonFicha(a.clave, a.nombre)}
       </li>`).join('');
-
-    return `
-      <details id="buzonObservacion" ${abierta ? 'open' : ''}
-        ontoggle="SGADD_BUZON.recordarObservacion(this.open)"
-        class="mt-4 rounded-lg border border-hairline bg-surface2/20">
-        <summary class="cursor-pointer select-none px-3 py-2 text-[10px] uppercase tracking-widest
-                        font-display text-muted hover:text-ink transition-colors
-                        focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-base">
-          En observación · ${lista.length}
-        </summary>
-        <div class="px-3 pb-3">
-          <ul class="space-y-1.5">${items}</ul>
-          <p class="text-[10px] dato-sec leading-snug mt-2">
-            Dos o tres fechas sin entrar casi nunca es una baja: puede ser un golpe,
-            un viaje o una sanción. No hace falta decidir nada — si ya sabés qué pasó,
-            marcalo desde su ficha.
-          </p>
-        </div>
-      </details>`;
+    return seccion('obs', 'En observación', lista.length, `
+      <ul class="space-y-1.5">${items}</ul>
+      <p class="text-[10px] dato-sec leading-snug mt-2">
+        Dos o tres fechas sin entrar casi nunca es una baja: puede ser un golpe,
+        un viaje o una sanción. No hace falta decidir nada — si ya sabés qué pasó,
+        marcalo desde su ficha.
+      </p>`);
   }
+  /* =====================================================================
+     BUSCADOR · llegar a CUALQUIER jugador del torneo desde el buzón
+
+     El detector solo trae a los que dejaron de jugar. El DT sabe cosas
+     que el box score no registra —una lesión de ayer, un refuerzo que
+     llega el sábado, una sanción— y para anotarlas tenía que salir del
+     drawer, entrar a Jugadores, elegir el equipo y buscar la ficha.
+
+     Sirve para las dos cosas que pidió el club: ubicar a uno que YA está
+     en las listas de abajo, y sumar a mano a uno que no está.
+     ===================================================================== */
+
+  const MAX_RESULTADOS = 8;
+
+  /** Sin acentos y en minúsculas: "MUÑOZ" tiene que aparecer con "munoz". */
+  function normalizar(t) {
+    return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  }
+
+  /** Los jugadores de la categoría abierta que matchean el texto. */
+  function buscarJugadores(texto) {
+    const idx = (typeof SGADD_APP !== 'undefined') ? SGADD_APP.estado.idx : null;
+    if (!idx || !E) return [];
+    const q = normalizar(texto).trim();
+    if (q.length < 2) return [];
+    /* Se busca por nombre Y por equipo: escribiendo "atenas" sale su
+       plantel, que es como el DT piensa cuando no recuerda el apellido. */
+    const out = [];
+    (idx.liga.jugadores || []).forEach(j => {
+      const nombre = j['NOMBRES'] || '';
+      const equipo = SGADD.limpiarNombre(j['EQUIPO'] || '');
+      if (normalizar(nombre).indexOf(q) < 0 && normalizar(equipo).indexOf(q) < 0) return;
+      out.push({ clave: E.claveJugador(nombre, j['EQUIPO']), nombre: nombre, equipo: equipo, j: j });
+    });
+    return out.sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }
+
+  /* El input NO repinta el drawer entero: un repintado por tecla le saca
+     el foco y hace imposible escribir un apellido completo. Se reemplaza
+     solo el contenedor de resultados, que es la misma cirugía que hace
+     `quitarTarjeta` al resolver una alerta. */
+  function buscar(texto) {
+    estado.busqueda = texto || '';
+    estado.buscado = null;
+    const cont = document.getElementById('buzonResultados');
+    if (cont) cont.innerHTML = resultados();
+  }
+
+  function elegirBuscado(clave) {
+    estado.buscado = clave || null;
+    const cont = document.getElementById('buzonResultados');
+    if (cont) cont.innerHTML = resultados();
+  }
+
+  function limpiarBusqueda() {
+    estado.busqueda = '';
+    estado.buscado = null;
+    const inp = document.getElementById('buzonBuscar');
+    if (inp) { inp.value = ''; inp.focus(); }
+    const cont = document.getElementById('buzonResultados');
+    if (cont) cont.innerHTML = resultados();
+  }
+
+  /** Marca un estado a mano desde el buscador, sin pasar por la ficha. */
+  function marcarPorClave(clave, idEstado) {
+    /* Las dos mitades de la clave YA están normalizadas y `claveJugador`
+       es idempotente, así que volver a armarla desde el split da la
+       misma clave. Se reusa `marcar()` para no tener dos caminos de
+       escritura: uno se olvidaría de sincronizar o de persistir. */
+    const partes = String(clave || '').split('|');
+    marcar(partes[0], partes[1] || '', idEstado);
+  }
+
+  /** La tarjeta de acción del jugador elegido en los resultados. */
+  function tarjetaBuscado(clave) {
+    const est = E.estado(E.registroDe(estado.mapa, clave).estado);
+    const pend = pendienteDeClave(clave);
+    const nombre = clave.split('|')[0], equipo = clave.split('|')[1] || '';
+    const botones = E.ESTADOS.map(e => `
+      <button type="button" onclick="SGADD_BUZON.marcarPorClave('${SGADD_UI.escJs(clave)}', '${SGADD_UI.escJs(e.id)}')"
+        aria-pressed="${e.id === est.id}"
+        class="text-[10px] px-2 py-1.5 rounded border transition-all duration-150 active:scale-95
+               focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-base
+               ${e.id === est.id ? 'border-accent text-ink bg-surface2' : 'border-hairline text-muted hover:text-ink hover:bg-surface2'}">
+        ${e.emoji} ${SGADD_UI.esc(e.label)}</button>`).join('');
+    return `
+      <div class="rounded-lg border border-accent/40 bg-surface2/40 p-3">
+        <div class="flex items-start gap-2">
+          <div class="min-w-0 flex-1">
+            <p class="text-sm text-white font-medium leading-tight truncate">${SGADD_UI.esc(nombre)}</p>
+            <p class="text-[11px] text-muted truncate">${SGADD_UI.esc(equipo)} ·
+              <span class="${est.color}">${est.emoji} ${SGADD_UI.esc(est.label)}</span>
+              ${pend ? ' · ' + resumenPendiente(pend) : ''}</p>
+          </div>
+          ${botonFicha(clave, nombre)}
+        </div>
+        <div class="grid grid-cols-2 gap-1.5 mt-2.5">${botones}</div>
+        <button type="button" onclick="SGADD_BUZON.limpiarBusqueda()"
+          class="mt-2 text-[10px] text-muted hover:text-ink underline underline-offset-2
+                 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded">
+          ← Buscar otro</button>
+      </div>`;
+  }
+
+  function resultados() {
+    if (estado.buscado) return tarjetaBuscado(estado.buscado);
+    const q = (estado.busqueda || '').trim();
+    if (q.length < 2) return '';
+    const hall = buscarJugadores(q);
+    if (!hall.length) {
+      return `<p class="text-[11px] text-muted px-1 py-2">Nadie con ese nombre en
+        ${SGADD_UI.esc((typeof SGADD_APP !== 'undefined' && SGADD_APP.planillaActual()) ? SGADD_APP.planillaActual().label : 'esta categoría')}.</p>`;
+    }
+    const items = hall.slice(0, MAX_RESULTADOS).map(r => {
+      const est = E.estado(E.registroDe(estado.mapa, r.clave).estado);
+      const pend = pendienteDeClave(r.clave);
+      return `<li>
+        <button type="button" onclick="SGADD_BUZON.elegirBuscado('${SGADD_UI.escJs(r.clave)}')"
+          class="w-full text-left rounded-md border border-hairline bg-surface2/30 px-2.5 py-1.5
+                 hover:border-accent/50 hover:bg-surface2 transition-all duration-150
+                 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-base">
+          <span class="block text-[12px] text-white truncate">${SGADD_UI.esc(r.nombre)}</span>
+          <span class="block text-[10px] text-muted truncate">${SGADD_UI.esc(r.equipo)}
+            ${est.id !== 'ACTIVO' ? '· ' + est.emoji + ' ' + SGADD_UI.esc(est.label) : ''}
+            ${pend ? '· ' + resumenPendiente(pend) : ''}</span>
+        </button></li>`;
+    }).join('');
+    const resto = hall.length - MAX_RESULTADOS;
+    return `<ul class="space-y-1">${items}</ul>` + (resto > 0
+      ? `<p class="text-[10px] text-muted mt-1.5 px-1">y ${resto} más — afiná la búsqueda</p>` : '');
+  }
+
+  function bloqueBuscador() {
+    return `
+      <div class="mb-1">
+        <label for="buzonBuscar" class="block text-[10px] uppercase tracking-widest font-display text-muted mb-1">
+          Buscar jugador</label>
+        <input id="buzonBuscar" type="search" autocomplete="off" placeholder="Apellido o equipo…"
+          value="${SGADD_UI.esc(estado.busqueda)}"
+          oninput="SGADD_BUZON.buscar(this.value)"
+          class="w-full rounded-lg border border-hairline bg-surface2/40 px-3 py-2 text-sm text-ink
+                 placeholder:text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+        <p class="text-[10px] dato-sec mt-1">Cualquier jugador de la categoría, esté o no en las listas de abajo.</p>
+        <div id="buzonResultados" class="mt-2">${resultados()}</div>
+      </div>`;
+  }
+
   function panel() {
     const pendientes = alertasQuePiden();
     const n = pendientes.length;
@@ -371,9 +544,15 @@ const SGADD_BUZON = (function () {
        siquiera avisos: decir que está todo bien con seis jugadores en
        observación abajo se contradice solo. */
     const hayAvisos = avisos().length > 0;
-    const lista = (n
-      ? `<ul id="buzonLista" class="space-y-2.5">${pendientes.map(tarjeta).join('')}</ul>`
-      : (hayAvisos ? '' : vacio())) + bloqueAvisos();
+    const bloqueAlertas = n
+      ? seccion('alertas', 'Sin responder', n,
+          `<ul id="buzonLista" class="space-y-2.5">${pendientes.map(tarjeta).join('')}</ul>`,
+          'text-yellow-400')
+      : '';
+    /* El cierre positivo solo si NO hay NADA: ni alertas, ni avisos, ni
+       estados confirmados que revisar. */
+    const nada = !n && !hayAvisos && !listaConfirmados().length;
+    const lista = bloqueBuscador() + (nada ? vacio() : '') + bloqueAlertas + bloqueAvisos();
 
     return `
       <div id="buzonOverlay" onclick="if(event.target===this)SGADD_BUZON.cerrar()"
@@ -549,17 +728,24 @@ const SGADD_BUZON = (function () {
     if (!root) return;
     const prev = document.getElementById('buzonScroll');
     const y = prev ? prev.scrollTop : 0;
-    const det = document.querySelector('#buzonConfirmados details');
-    const abierto = !!(det && det.open);
+    /* Qué secciones estaban abiertas ya lo sabe `estado.secciones`, así
+       que el repintado las devuelve como estaban sin leer el DOM. */
+    const inp = document.getElementById('buzonBuscar');
+    const teniaFoco = !!(inp && document.activeElement === inp);
+    const cursor = teniaFoco ? inp.selectionStart : null;
     root.innerHTML = panel();
-    const detNuevo = document.querySelector('#buzonConfirmados details');
-    if (detNuevo && abierto) detNuevo.open = true;
+    /* El buscador se repinta con su texto (vive en `estado.busqueda`),
+       pero el foco y el cursor no viajan solos: sin esto, marcar un
+       estado desde los resultados dejaba al DT tipeando en el vacío. */
+    const nuevoInp = document.getElementById('buzonBuscar');
+    if (nuevoInp && teniaFoco) {
+      nuevoInp.focus();
+      try { nuevoInp.setSelectionRange(cursor, cursor); } catch (e) {}
+    }
     const nuevo = document.getElementById('buzonScroll');
     if (nuevo) nuevo.scrollTop = Math.min(y, Math.max(0, nuevo.scrollHeight - nuevo.clientHeight));
   }
 
-  /** Recuerda si el DT dejó la sección de observación abierta o plegada. */
-  function recordarObservacion(abierta) { estado.obsAbierta = !!abierta; }
 
   /**
    * Cierra el drawer y abre la ficha del jugador de esa alerta.
@@ -652,14 +838,16 @@ const SGADD_BUZON = (function () {
       /* El conteo de confirmados cambió: se actualiza ese bloque solo. */
       const conf = document.getElementById('buzonConfirmados');
       if (conf) conf.innerHTML = bloqueConfirmados();
-      /* Resuelta la última, la lista vacía no se muestra como un hueco: va
-         el cierre positivo del empty state. */
+      /* El número del encabezado tiene que bajar con la tarjeta. Con la
+         sección plegada ese número ES la información: dejarlo en 14
+         después de resolver tres es peor que no mostrarlo. */
       const ul = document.getElementById('buzonLista');
-      if (ul && !ul.querySelector('[data-alerta]')) {
-        const envoltorio = document.createElement('div');
-        envoltorio.innerHTML = vacio();
-        ul.parentNode.replaceChild(envoltorio.firstElementChild, ul);
-      }
+      const quedan = ul ? ul.querySelectorAll('[data-alerta]').length : 0;
+      const cuenta = document.querySelector('#buzonSec-alertas summary span:last-child');
+      if (cuenta) cuenta.textContent = String(quedan);
+      /* Resuelta la última, la sección entera sobra: se repinta —conserva
+         scroll y plegados— y aparece el cierre positivo si no queda nada. */
+      if (!quedan) { repintarPanel(); return; }
       /* Al acortarse el contenido el navegador puede recortar el scroll solo;
          se lo reacomoda al máximo posible en vez de dejarlo saltar. */
       if (cont) cont.scrollTop = Math.min(cont.scrollTop, Math.max(0, cont.scrollHeight - cont.clientHeight));
@@ -694,7 +882,8 @@ const SGADD_BUZON = (function () {
 
   return {
     estado, sincronizar, badge, pintarBadge, estadoDe, enPlan,
-    pendienteDe, avisos, alertasQuePiden, marcar, irAFicha, recordarObservacion,
+    pendienteDe, avisos, alertasQuePiden, marcar, irAFicha, recordarSeccion,
+    buscar, elegirBuscado, limpiarBusqueda, marcarPorClave, buscarJugadores,
     abrir, cerrar, resolver, revertir, listaConfirmados, toast,
   };
 })();
