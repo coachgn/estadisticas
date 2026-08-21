@@ -2593,6 +2593,18 @@ function scoutRecord(r) { return r.ganados + ' - ' + r.perdidos; }
 function scoutEstadoJugador(perfil) {
   if (typeof SGADD_BUZON === 'undefined' || !perfil) return '';
   const est = SGADD_BUZON.estadoDe(perfil.nombre, perfil.equipo || '');
+
+  /* Sin estado confirmado, lo PENDIENTE igual se avisa: preparar un cruce
+     sin saber que el tirador del rival lleva tres fechas sin entrar es
+     repartir una marca sobre alguien que capaz no juega. Es un aviso, no
+     un veredicto — por eso va en tono neutro y dice la racha. */
+  if ((!est || est.id === 'ACTIVO') && SGADD_BUZON.pendienteDe) {
+    const a = SGADD_BUZON.pendienteDe(perfil.nombre, perfil.equipo || '');
+    if (a && a.tipo === 'inactividad') {
+      return `<p class="mt-1 text-[10px] leading-snug px-2 py-1 rounded border border-hairline text-muted">
+        ${a.nivel === 'aviso' ? '⏳' : '🔔'} <b>${a.racha} fechas sin entrar</b> · ${escapeHtml(a.detalle)}</p>`;
+    }
+  }
   if (!est || !est.avisaEnScouting) return '';
   const detalle = est.id === 'ALTA'
     ? 'Incorporación reciente: sus promedios salen de pocos partidos.'

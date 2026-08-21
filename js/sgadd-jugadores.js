@@ -182,22 +182,41 @@ const JUGADORES_TABS = [
 /** Métricas seleccionables en el gráfico de evolución. T2/T3/T1 se leen como
     porcentaje de acierto (T2%/T3%/T1%): es lo que tiene sentido ver
     evolucionar partido a partido, no el conteo crudo. */
+/* `conv`/`int` son las columnas del box score que forman ese porcentaje.
+
+   Un 100% de triple con UN intento y otro con seis se leen igual en el
+   gráfico y no son lo mismo, así que donde el C/I es inequívoco se
+   muestra al lado. `TS%` no lo lleva a propósito: mezcla tiros de campo
+   con libres ponderados (0,44), así que no hay un par convertidos/
+   intentos que lo describa sin mentir. Antes que inventar uno, no va. */
 const JUGADORES_METRICAS_EVOLUCION = [
   { id: 'PTS',    label: 'Puntos' },
   { id: 'MIN',    label: 'Minutos' },
   { id: 'PLAYS',  label: 'Plays' },
-  { id: 'eFG%',   label: 'eFG%' },
+  { id: 'eFG%',   label: 'eFG%',   conv: 'TCC', int: 'TCI' },
   { id: 'TS%',    label: 'True Shooting' },
   { id: 'USG%',   label: 'Uso' },
   { id: 'RTL%',   label: 'Ratio de libres' },
-  { id: 'T2%',    label: 'T2%' },
-  { id: 'T3%',    label: 'T3%' },
-  { id: 'T1%',    label: 'T1%' },
+  { id: 'T2%',    label: 'T2%',    conv: 'T2C', int: 'T2I' },
+  { id: 'T3%',    label: 'T3%',    conv: 'T3C', int: 'T3I' },
+  { id: 'T1%',    label: 'T1%',    conv: 'T1C', int: 'T1I' },
   { id: 'AST-PP', label: 'Ast. por pérdida' },
   { id: 'RO',     label: 'Rebotes ofensivos' },
   { id: 'RD',     label: 'Rebotes defensivos' },
   { id: 'RT',     label: 'Rebotes totales' },
 ];
+
+/** "3/8" para la métrica y el partido dados, o null si no corresponde. */
+function jugadoresConvIntento(metricaId, p) {
+  const def = JUGADORES_METRICAS_EVOLUCION.find(m => m.id === metricaId);
+  if (!def || !def.conv) return null;
+  const c = p[def.conv], i = p[def.int];
+  if (typeof c !== 'number' || typeof i !== 'number') return null;
+  /* Sin intentos no hay nada que contextualizar, y "0/0" se lee como un
+     fracaso cuando en realidad es una zona que no usó. */
+  if (i <= 0) return null;
+  return SGADD.num(c) + '/' + SGADD.num(i);
+}
 
 /* =====================================================================
    LÓGICA PURA — sin DOM. Testeada directamente en Node (test-jugadores.js).
@@ -1305,6 +1324,87 @@ function jugadoresBloqueRankings(idx) {
  * ACTIVO no dibuja nada a propósito: si el 90% del plantel lleva un badge
  * verde, el badge deja de significar algo y solo agrega ruido a la card.
  */
+/**
+ * Lo que el buzón tiene PENDIENTE sobre este jugador, al lado suyo.
+ *
+ * Hasta acá el aviso vivía solo adentro del drawer: el DT tenía que
+ * abrirlo para enterarse de que el pibe llevaba fechas sin entrar. Son
+ * dos niveles y se ven distinto a propósito:
+ *
+ *   ⏳ aviso  (2-3 fechas) — informa. Casi nunca es una baja: un golpe,
+ *                            un viaje, una fecha de sanción.
+ *   🔔 alerta (4 o más)    — pide una decisión, y por eso lleva el color
+ *                            de advertencia y manda al buzón.
+ */
+function jugadoresBadgePendiente(j) {
+  if (typeof SGADD_BUZON === 'undefined' || !SGADD_BUZON.pendienteDe) return '';
+  const a = SGADD_BUZON.pendienteDe(j['NOMBRES'], j['EQUIPO']);
+  if (!a) return '';
+  const aviso = (a.nivel === 'aviso');
+  const clase = aviso ? 'text-muted border-hairline' : 'text-yellow-400 border-yellow-400/40';
+  const texto = a.tipo === 'inactividad'
+    ? (a.racha + ' fechas sin entrar')
+    : (a.tipo === 'reingreso' ? 'volvió a jugar' : 'posible traspaso');
+  return `<span class="text-[10px] font-display uppercase tracking-wider px-2.5 py-1 rounded border ${clase}"
+    title="${escapeAttr(a.detalle)}">${aviso ? '⏳' : '🔔'} ${escapeHtml(texto)}</span>`;
+}
+
+/**
+ * Marcar el estado a mano, sin esperar al detector.
+ *
+ * El motor necesita cuatro fechas para sospechar; el DT sabe HOY que se
+ * lesionó. Queda con `origen: "usuario"`, así que ningún escaneo
+ * posterior lo pisa ni le vuelve a preguntar (punto 13).
+ */
+function jugadoresMarcarEstado(slug, idEstado) {
+  const idx = SGADD_APP.estado.idx;
+  const j = idx ? jugadoresBuscar(idx, slug) : null;
+  if (!j || typeof SGADD_BUZON === 'undefined' || !SGADD_BUZON.marcar) return;
+  SGADD_BUZON.marcar(j['NOMBRES'], j['EQUIPO'], idEstado);
+  jugadoresPintar();
+}
+
+/** El control de estado de la ficha: los cuatro, el vigente resaltado. */
+function jugadoresControlEstado(j, slug) {
+  if (typeof SGADD_ESTADOS === 'undefined' || typeof SGADD_BUZON === 'undefined') return '';
+  const actual = SGADD_BUZON.estadoDe(j['NOMBRES'], j['EQUIPO']);
+  const botones = SGADD_ESTADOS.ESTADOS.map(e => {
+    const vigente = actual && actual.id === e.id;
+    return `<button type="button" onclick="jugadoresMarcarEstado('${SGADD_UI.escJs(slug)}', '${SGADD_UI.escJs(e.id)}')"
+      title="${escapeAttr(e.descripcion)}" ${vigente ? 'aria-current="true"' : ''}
+      class="text-[10px] font-display uppercase tracking-wider px-2 py-1 rounded border transition-colors
+             ${vigente ? e.color + ' ' + e.borde + ' bg-surface2' : 'text-muted border-hairline hover:bg-surface2'}">
+      ${e.emoji} ${escapeHtml(e.label)}</button>`;
+  }).join('');
+  return `
+    <div class="mt-3 pt-3 border-t border-hairline" data-no-print>
+      <p class="text-[10px] uppercase tracking-wider text-muted font-display mb-1.5">Estado del jugador</p>
+      <div class="flex flex-wrap gap-1.5">${botones}</div>
+      <p class="text-[10px] dato-sec leading-snug mt-1.5">
+        Lo que marques acá manda sobre el detector automático y queda guardado en este navegador.
+      </p>
+    </div>`;
+}
+
+/**
+ * El aviso en la CARD del plantel: una línea corta, sin borde.
+ *
+ * Es el mismo dato que el badge de la ficha pero acá compite con el
+ * nombre, los badges del ADN y cuatro KPIs, así que va como texto y no
+ * como pastilla. Si el jugador ya tiene un estado confirmado no se
+ * repite: el estado manda sobre la sospecha.
+ */
+function jugadoresLineaPendiente(j) {
+  if (typeof SGADD_BUZON === 'undefined' || !SGADD_BUZON.pendienteDe) return '';
+  const est = SGADD_BUZON.estadoDe(j['NOMBRES'], j['EQUIPO']);
+  if (est && est.id !== 'ACTIVO') return '';
+  const a = SGADD_BUZON.pendienteDe(j['NOMBRES'], j['EQUIPO']);
+  if (!a || a.tipo !== 'inactividad') return '';
+  const clase = a.nivel === 'aviso' ? 'text-muted' : 'text-yellow-400';
+  return `<p class="text-[9px] mt-0.5 ${clase} truncate" title="${escapeAttr(a.detalle)}">
+    ${a.nivel === 'aviso' ? '⏳' : '🔔'} ${a.racha} fechas sin entrar</p>`;
+}
+
 function jugadoresBadgeEstado(j) {
   if (typeof SGADD_BUZON === 'undefined') return '';
   const est = SGADD_BUZON.estadoDe(j['NOMBRES'], j['EQUIPO']);
@@ -1361,6 +1461,7 @@ function jugadoresPlantelEquipo(idx) {
             <p class="text-xs text-white font-medium truncate">${escapeHtml(j['NOMBRES'])}</p>
             ${rolMin ? `<p class="text-[10px] ${rolMin.color} truncate" title="${escapeAttr(rolMin.rol)}">${escapeHtml(rolMin.label)}</p>` : ''}
             ${jugadoresBadgeEstado(j)}
+            ${jugadoresLineaPendiente(j)}
           </div>
         </div>
         ${badges ? `<div class="flex flex-wrap gap-1">${badges}</div>` : ''}
@@ -1462,9 +1563,11 @@ function jugadoresHeader(idx, j) {
           return `<span class="text-[10px] font-display uppercase tracking-wider px-2.5 py-1 rounded border ${est.borde} ${est.color}"
             title="${escapeAttr(est.descripcion)}">${est.emoji} ${escapeHtml(est.label)}${est.desde ? ' · desde ' + escapeHtml(est.desde) : ''}</span>`;
         })()}
+        ${jugadoresBadgePendiente(j)}
         ${rolMin && rolMin.urgente ? `<span class="text-[10px] text-yellow-400">⚠ menos de 10 min de promedio: muestra muy chica</span>` : ''}
       </div>
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">${hero}</div>
+      ${jugadoresControlEstado(j, jugadoresSlug(j))}
     </div>`;
 }
 
@@ -1726,13 +1829,16 @@ function jugadoresBloqueEvolucion(idx, j, metricaId, idCanvas) {
      salía en el tooltip, pero en papel no hay hover: el escudo es lo único
      que dice contra quién fue ese pico sin agregar una tabla al lado. */
   const rivales = partidos.map(jugadoresRival);
+  /* Los convertidos sobre intentos de ESA noche, para que el tooltip
+     ponga el porcentaje en contexto (B-3 del backlog). */
+  const convInt = partidos.map(p => jugadoresConvIntento(metricaId, p));
 
   return `
     <div class="mb-2">
       ${equiposPanel(metricaLbl + ' por partido · banda de ±1 desvío',
         SGADD_CHARTS.evolucionJugador(idCanvas, partidos, metricaId,
           { media: stat.media, desvio: stat.desvio, atipicos: atipicos, label: metricaLbl,
-            etiquetas: etiquetas, rivales: rivales }),
+            etiquetas: etiquetas, rivales: rivales, convInt: convInt }),
         `<p class="text-[11px] text-muted mt-3 leading-snug">
            Media ${escapeHtml(SGADD.formatear(metricaId, stat.media))} · desvío ${escapeHtml(SGADD.formatear(metricaId, stat.desvio))}
            sobre ${stat.n} partidos con box score. Cada punto es el escudo del rival de esa noche.
@@ -1740,6 +1846,14 @@ function jugadoresBloqueEvolucion(idx, j, metricaId, idCanvas) {
            ni el desvío son fijos, se recalculan solos a medida que juega más partidos.
          </p>`)}
     </div>`;
+}
+
+/* El tiro de una zona como "3/8". Sin intentos va "—" y no "0/0": un
+   cero sobre cero se lee como un fracaso y es una zona que no usó. */
+function tiroDe(p, zona) {
+  const c = p[zona + 'C'], i = p[zona + 'I'];
+  if (typeof i !== 'number' || i <= 0) return '—';
+  return SGADD.num(c || 0) + '/' + SGADD.num(i);
 }
 
 function jugadoresTabPartidos(idx, j) {
@@ -1762,6 +1876,8 @@ function jugadoresTabPartidos(idx, j) {
       <td class="py-1.5 pr-3 text-xs text-muted">${escapeHtml(SGADD.texto(p['CONDICION']))}</td>
       <td class="py-1.5 pr-3 font-mono text-xs">${escapeHtml(SGADD.formatear('MIN', p['MIN']))}</td>
       <td class="py-1.5 pr-3 font-mono text-xs ${colorPts}">${escapeHtml(SGADD.formatear('PTS', p['PTS']))}</td>
+      ${['T2', 'T3', 'T1'].map(z => `<td class="py-1.5 pr-3 font-mono text-xs dato-sec whitespace-nowrap">${
+        escapeHtml(tiroDe(p, z))}</td>`).join('')}
       <td class="py-1.5 pr-3 font-mono text-xs ${SGADD_UI.claseMasMenos(p['+/-'])}">${escapeHtml(SGADD.formatear('+/-', p['+/-']))}</td>
       <td class="py-1.5 text-xs font-semibold ${gano ? 'text-green-400' : 'text-red-400'}">${gano ? 'G' : 'P'}</td>
     </tr>`;
@@ -1771,14 +1887,20 @@ function jugadoresTabPartidos(idx, j) {
     <div class="scrollbox"><table class="w-full text-left">
       <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
         <th class="pb-1 pr-3">Fecha</th><th class="pb-1 pr-3">Rival</th><th class="pb-1 pr-3">Cond.</th>
-        <th class="pb-1 pr-3">MIN</th><th class="pb-1 pr-3">PTS</th><th class="pb-1 pr-3">+/-</th><th class="pb-1"></th>
+        <th class="pb-1 pr-3">MIN</th><th class="pb-1 pr-3">PTS</th>
+        <th class="pb-1 pr-3" title="Convertidos sobre intentos">T2 C/I</th>
+        <th class="pb-1 pr-3" title="Convertidos sobre intentos">T3 C/I</th>
+        <th class="pb-1 pr-3" title="Convertidos sobre intentos">T1 C/I</th>
+        <th class="pb-1 pr-3">+/-</th><th class="pb-1"></th>
       </tr></thead>
-      <tbody>${filas || '<tr><td class="text-xs text-muted py-2" colspan="7">Sin partidos con box score.</td></tr>'}</tbody>
+      <tbody>${filas || '<tr><td class="text-xs text-muted py-2" colspan="10">Sin partidos con box score.</td></tr>'}</tbody>
     </table></div>
     <p class="text-[11px] text-muted mt-3 leading-snug">
       En verde o rojo, los partidos a más de ${SGADD_PARTIDO.Z_ATIPICO} desvíos de su propio promedio de puntos.
       Los atenuados jugaron menos de ${SGADD_PARTIDO.MIN_MINUTOS} minutos. Clic en cualquier fila para ver el
       detalle completo de ese partido (box score de los dos equipos) en Equipos.
+      <b>C/I</b> son convertidos sobre intentos de esa noche: un 100% con un intento y otro con seis
+      no son lo mismo, y el porcentaje solo no lo dice.
       <b>+/-</b> es la diferencia de puntos con él en cancha: no es el margen del partido, que es del equipo.
     </p>`;
 }
@@ -1795,6 +1917,7 @@ if (typeof module !== 'undefined' && module.exports) {
     jugadoresSlug, jugadoresBuscar, jugadoresZScore,
     jugadoresPartidosOrdenados, jugadoresRival, jugadoresIdCanonico,
     jugadoresRolMinutos, jugadoresPromedioMetrica, jugadoresPromediosLiga, jugadoresRT,
+    jugadoresConvIntento,
     jugadoresReferenciasRebote, jugadoresMediana, MIN_CALIFICADOS_REFERENCIA,
     jugadoresArquetipos, jugadoresJerarquia, jugadoresPuntoDeFuga, jugadoresSintesisPerfil,
     jugadoresCondicionCorta, jugadoresEtiquetaEvolucion, jugadoresSplitCondicion, jugadoresSensibilidadCondicion,

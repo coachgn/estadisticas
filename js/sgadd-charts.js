@@ -544,7 +544,13 @@ const SGADD_CHARTS = (function () {
             filter: (item) => item.datasetIndex === 2,
             callbacks: {
               title: (items) => (o.etiquetas ? o.etiquetas[items[0].dataIndex] : items[0].label),
-              label: (c) => etiqueta + ': ' + fmt(c.raw),
+              /* El porcentaje SOLO no alcanza: 100% puede ser 1/1 o 6/6.
+                 Cuando la métrica tiene un par convertidos/intentos que la
+                 describa sin ambigüedad, va al lado (B-3). */
+              label: (c) => {
+                const ci = o.convInt && o.convInt[c.dataIndex];
+                return etiqueta + ': ' + fmt(c.raw) + (ci ? '  (' + ci + ')' : '');
+              },
             },
           }),
         }),

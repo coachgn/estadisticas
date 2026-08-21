@@ -76,6 +76,30 @@ const SGADD_BUZON = (function () {
     return Object.assign({}, E.estado(r.estado), { origen: r.origen, desde: r.desde, nota: r.nota });
   }
 
+  /** Las alertas que piden decisión (las que cuentan para la campana). */
+  function alertasQuePiden() {
+    return E ? E.soloAlertas(estado.alertas) : [];
+  }
+
+  /** Los avisos de contexto: dos o tres fechas sin entrar. */
+  function avisos() {
+    return E ? E.soloAvisos(estado.alertas) : [];
+  }
+
+  /**
+   * Lo que haya pendiente sobre UN jugador, para pintarlo al lado suyo.
+   *
+   * Hasta acá el estado confirmado se veía en la ficha pero lo PENDIENTE
+   * solo dentro del buzón: el DT tenía que abrir el drawer para enterarse
+   * de que ese jugador llevaba fechas sin entrar. Ahora la ficha, la card
+   * del plantel y el informe de scouting lo pueden mostrar donde está el
+   * jugador, que es donde se lo mira.
+   */
+  function pendienteDe(nombre, equipo) {
+    if (!E) return null;
+    return E.pendienteDe(estado.alertas, E.claveJugador(nombre, equipo));
+  }
+
   /** ¿Entra a planes defensivos y rotaciones futuras? */
   function enPlan(nombre, equipo) {
     if (!E) return true;
@@ -87,17 +111,30 @@ const SGADD_BUZON = (function () {
      ===================================================================== */
 
   function badge() {
-    const n = estado.alertas.length;
-    /* Sin alertas la campana NO se muestra. Un icono permanentemente vacío
-       entrena a ignorarlo, y después no se ve el que sí importa. */
-    if (!n) return '';
+    /* El número cuenta las que piden DECISIÓN. Los avisos de dos fechas
+       se ven al lado del jugador y en su propia sección del drawer, pero
+       no inflan un contador que el DT lee como "tenés esto sin
+       contestar": eso volvería a entrenarlo para ignorar la campana. */
+    const n = alertasQuePiden().length;
+    const nAvisos = avisos().length;
+    /* Sin NADA la campana no se muestra. Un icono permanentemente vacío
+       entrena a ignorarlo, y después no se ve el que sí importa.
+
+       Con avisos pero sin alertas SÍ se muestra —si no, el DT no tendría
+       cómo abrir el drawer para verlos— pero va sin número: el badge
+       significa "esto espera una respuesta tuya" y un aviso no la
+       espera. */
+    if (!n && !nAvisos) return '';
+    const etiqueta = n
+      ? (n + ' alerta' + (n === 1 ? '' : 's') + ' de plantel pendiente' + (n === 1 ? '' : 's'))
+      : (nAvisos + ' jugador' + (nAvisos === 1 ? '' : 'es') + ' en observación');
     return `
       <button type="button" id="buzonBoton" onclick="SGADD_BUZON.abrir(this)"
-        aria-label="${n} alerta${n === 1 ? '' : 's'} de plantel pendiente${n === 1 ? '' : 's'}"
-        title="Alertas de plantel"
+        aria-label="${SGADD_UI.esc(etiqueta)}"
+        title="${SGADD_UI.esc(etiqueta)}"
         class="buzon-boton focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-2 focus-visible:ring-offset-base">
         <span aria-hidden="true">🔔</span>
-        <span class="buzon-badge">${n}</span>
+        ${n ? `<span class="buzon-badge">${n}</span>` : ''}
       </button>`;
   }
 
@@ -254,11 +291,43 @@ const SGADD_BUZON = (function () {
       </div>`;
   }
 
+  /* Los avisos van en su propia sección y SIN botones de estado: no son
+     una decisión pendiente, son un "prestale atención". Mezclarlos con
+     las alertas devolvería el buzón de cincuenta tarjetas que nadie
+     contesta. Cada uno linkea a la ficha, que es donde el DT puede
+     marcarlo a mano si ya sabe qué pasó. */
+  function bloqueAvisos() {
+    const lista = avisos();
+    if (!lista.length) return '';
+    const items = lista.map(a => `
+      <li class="rounded-lg border border-hairline bg-surface2/30 px-3 py-2">
+        <p class="text-sm text-white leading-tight truncate">${SGADD_UI.esc(a.nombre)}</p>
+        <p class="text-[11px] text-muted">${SGADD_UI.esc(a.equipo)} · ${a.racha} fechas sin entrar</p>
+      </li>`).join('');
+    return `
+      <section class="mt-4">
+        <h3 class="text-[10px] uppercase tracking-widest text-muted font-display mb-2">
+          En observación · ${lista.length}
+        </h3>
+        <ul class="space-y-1.5">${items}</ul>
+        <p class="text-[10px] dato-sec leading-snug mt-2">
+          Dos o tres fechas sin entrar casi nunca es una baja: puede ser un golpe,
+          un viaje o una sanción. No hace falta decidir nada — si ya sabés qué pasó,
+          marcalo desde su ficha.
+        </p>
+      </section>`;
+  }
+
   function panel() {
-    const n = estado.alertas.length;
-    const lista = n
-      ? `<ul id="buzonLista" class="space-y-2.5">${estado.alertas.map(tarjeta).join('')}</ul>`
-      : vacio();
+    const pendientes = alertasQuePiden();
+    const n = pendientes.length;
+    /* El cierre positivo ("Plantel al día") solo si NO hay nada, ni
+       siquiera avisos: decir que está todo bien con seis jugadores en
+       observación abajo se contradice solo. */
+    const hayAvisos = avisos().length > 0;
+    const lista = (n
+      ? `<ul id="buzonLista" class="space-y-2.5">${pendientes.map(tarjeta).join('')}</ul>`
+      : (hayAvisos ? '' : vacio())) + bloqueAvisos();
 
     return `
       <div id="buzonOverlay" onclick="if(event.target===this)SGADD_BUZON.cerrar()"
@@ -443,6 +512,33 @@ const SGADD_BUZON = (function () {
     if (nuevo) nuevo.scrollTop = Math.min(y, Math.max(0, nuevo.scrollHeight - nuevo.clientHeight));
   }
 
+  /**
+   * Marca el estado de un jugador SIN que exista una alerta.
+   *
+   * El detector necesita cuatro fechas para sospechar; el DT sabe HOY que
+   * el pibe se rompió el tobillo. Esto le deja anotarlo en el momento, y
+   * como queda con `origen: "usuario"` ningún escaneo posterior lo pisa
+   * (punto 13) ni le vuelve a preguntar.
+   *
+   * `resolver()` no sirve para esto: arranca buscando la alerta y se va
+   * si no la encuentra.
+   */
+  function marcar(nombre, equipo, idEstado) {
+    if (!E) return;
+    const clave = E.claveJugador(nombre, equipo);
+    estado.mapa = E.aplicar(estado.mapa, clave, idEstado, { origen: 'usuario' });
+    persistir();
+
+    const e = E.estado(idEstado);
+    toast(e.emoji + ' ' + nombre + ' · ' + e.label, idEstado === 'BAJA' ? 'aviso' : 'ok');
+
+    /* Se recalcula: marcarlo a mano puede sacar una alerta que estaba
+       pendiente sobre él, y el badge tiene que reflejarlo. */
+    sincronizar();
+    repintarSecciones();
+    if (estado.abierto) repintarPanel();
+  }
+
   function resolver(clave, idEstado) {
     /* Se busca por CLAVE y no por índice: ver el comentario en `tarjeta`. */
     const a = estado.alertas.filter(x => x.clave === clave)[0];
@@ -516,6 +612,7 @@ const SGADD_BUZON = (function () {
 
   return {
     estado, sincronizar, badge, pintarBadge, estadoDe, enPlan,
+    pendienteDe, avisos, alertasQuePiden, marcar,
     abrir, cerrar, resolver, revertir, listaConfirmados, toast,
   };
 })();

@@ -21,16 +21,16 @@ node test-logos.js         #  24 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  27 tests · multi-cliente
 node test-boot.js          #  55 tests · arranque por club + sintaxis de los módulos
-node test-jugadores.js     # 224 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
+node test-jugadores.js     # 240 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  49 tests · detalle partido a partido, perfil de tiro y su PDF
 node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
-node test-estados.js       # 125 tests · estados de jugador, alertas, buzon, sync grafico-tabla
+node test-estados.js       # 147 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1300 tests en total. Todos tienen que dar verde antes de commitear.**
+**1338 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -107,7 +107,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=107`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=111`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -1491,6 +1491,30 @@ esa función pura, el resto del módulo sigue sin testearse directo (usa
 `dd/mm/aaaa`) — es la convención que ya usa toda la app, no se tocó para
 no meter una inconsistencia en el resto de las tablas de partidos.
 
+### El porcentaje solo no alcanza · convertidos sobre intentos
+
+B-3. Un T3% de 100% con **un** intento y otro con **seis** se leen igual y
+no son lo mismo. Va en las dos superficies de la cronología:
+
+- **Tab Partidos**: tres columnas nuevas, `T2 C/I`, `T3 C/I`, `T1 C/I`.
+- **Tab Evolución**: el tooltip pega el par al porcentaje — `T3%: 25,0%
+  (2/8)`. Sin par, el tooltip queda exactamente como estaba: no aparece un
+  paréntesis vacío.
+
+**El catálogo declara de dónde sale** (`conv`/`int` en
+`JUGADORES_METRICAS_EVOLUCION`), así que agregar una métrica de acierto es
+agregar dos campos y nada más. **`TS%` NO lo lleva a propósito**: mezcla
+tiros de campo con libres ponderados por 0,44, así que no existe un par
+convertidos/intentos que lo describa sin mentir. Antes que inventar uno,
+no va ninguno — la misma regla de siempre.
+
+**Una zona sin intentos va `—` y no `0/0`.** Un cero sobre cero se lee
+como un fracaso y es una zona que el jugador no usó.
+
+Ojo al tocar el log: son **tres columnas más**, así que el `colspan` de la
+fila de "sin box score" tiene que acompañar (7 → 10) o el estado vacío
+queda corto y desarma la tabla. Hay un test que lo fija.
+
 ### Landing de la sección: picker + plantel filtrado + rankings
 
 Al entrar a Jugadores (sin ficha abierta):
@@ -2541,23 +2565,15 @@ elegible. **Cuidado con la muestra**: con 13 fechas, dos tramos de 6 son dos
 muestras chicas, así que aplica la regla de siempre —mostrar el dato y
 quitarle autoridad cuando no alcanza—.
 
-**B-2 · La alerta de la campana, visible en la ficha y en scouting; y poder
-marcar a un jugador ANTES de que salte la alerta.** Son dos cosas:
+**B-2 · ~~La alerta de la campana, visible en la ficha y en scouting; y
+poder marcar a un jugador ANTES de que salte la alerta.~~ HECHO
+(2026-08-21).** Se resolvió con **dos niveles** —aviso a las 2 fechas,
+alerta a las 4— más el control de estado en la ficha. Detalle y las
+decisiones que hay que respetar, en el punto 13.
 
-- Hoy la ficha muestra el estado **confirmado** (🟡 🔵 🔴) pero no la alerta
-  **pendiente**: el DT tiene que abrir el buzón para enterarse. La ficha y
-  la ficha de scouting del rival tendrían que mostrar que hay algo sin
-  responder sobre ese jugador.
-- Y al revés: el DT **sabe hoy** que un jugador se lesionó, y el detector
-  recién lo ve después de 4 fechas sin minutos. Falta marcar el estado a
-  mano desde la ficha, sin esperar la alerta. El motor ya lo soporta —
-  `origen: "usuario"` gana siempre y el detector saltea a los que ya tienen
-  respuesta (punto 13)—; lo que falta es el control en la UI.
-
-**B-3 · En la cronología, que los porcentajes muestren también los
-intentos.** Un T3% de 100% con un intento y otro con seis se leen igual y no
-son lo mismo. Va en el tab Partidos y en el de Evolución: `C/I` al lado del
-porcentaje, que es lo que ya hace la tabla de distribución de tiro.
+**B-3 · ~~En la cronología, que los porcentajes muestren también los
+intentos.~~ HECHO (2026-08-21).** Columnas C/I en el tab Partidos y el par
+en el tooltip de Evolución. Detalle en el punto 8.
 
 **B-4 · Por qué esta marca defensiva y no otra.** El caso que trajo el club:
 dos jugadores con etiquetas ofensivas IDÉNTICAS —*Spacing / Tirador de
@@ -2699,6 +2715,57 @@ que entrar después a Equipos no vuelve a pedir nada.
    que jugó, los jugó: borrarla de la competencia sería reescribir el
    torneo. `jugadoresClave()` la filtra del plan defensivo; el índice y los
    percentiles no se tocan.
+
+### Dos niveles · el aviso INFORMA, la alerta PREGUNTA
+
+Pedido del club (B-2): *"cada 2 fechas una alerta al lado del jugador…
+no estar en 2 fechas puede ser una lesión leve, un viaje o algo así"*.
+
+| | Racha | Dónde se ve | Botones de estado | Badge |
+|---|---|---|---|---|
+| ⏳ **aviso** | `RACHA_AVISO` = 2 | ficha, card del plantel, scouting, sección *En observación* del drawer | **no** | no suma |
+| 🔔 **alerta** | `RACHA_INACTIVIDAD` = 4 | ídem + tarjeta con acciones | sí (SUSPENSO / BAJA) | sí |
+
+**El aviso no propone estados y por eso no infla el badge.** Si los
+contara, el número volvería a ser el que nadie contesta — que es
+exactamente el problema que el filtro anti-spam vino a resolver. La
+campana **sí se dibuja** habiendo solo avisos (si no, no habría cómo abrir
+el drawer para verlos), pero va **sin número**: el badge significa *"esto
+espera una respuesta tuya"* y un aviso no la espera.
+
+`soloAlertas()` / `soloAvisos()` parten la lista y `pendienteDe(alertas,
+clave)` contesta qué hay sobre UN jugador — es lo que permite pintarlo
+**donde está el jugador** y no solo adentro del drawer. Con las dos cosas
+encima gana la que pide decisión.
+
+Medido con datos reales: Primera 13 avisos / 14 alertas sobre 218
+jugadores, U21 1 / 0 sobre 91, U23 26 / 32 sobre 252.
+
+**Un estado confirmado calla el aviso.** `jugadoresLineaPendiente()` y
+`scoutEstadoJugador()` se van en silencio si el jugador ya tiene un estado
+distinto de ACTIVO: el estado manda sobre la sospecha, y mostrar los dos
+juntos es pedirle al DT que resuelva algo que ya resolvió.
+
+### Marcar a mano, sin esperar las cuatro fechas
+
+La otra mitad de B-2: el DT **sabe hoy** que un jugador se lesionó y el
+detector recién lo ve a las 4 fechas. La ficha del jugador trae los cuatro
+botones de estado debajo de los KPIs (`jugadoresControlEstado`), con el
+vigente destacado.
+
+**`marcar(nombre, equipo, idEstado)` es una función aparte de
+`resolver()`**, no un parámetro más: `resolver()` arranca **buscando la
+alerta** por su clave, y acá justamente no hay ninguna — ese es el punto.
+Escribe con `origen: 'usuario'`, así que gana sobre el detector y lo
+saltea en los escaneos siguientes (regla de arriba).
+
+Después de marcar **se sincroniza**: marcar a mano puede tapar una alerta
+que estaba pendiente sobre ese mismo jugador, y el badge tiene que
+reflejarlo en el acto.
+
+**El control lleva `data-no-print`.** Es un CONTROL, no contenido del
+informe: en el PDF de la ficha (punto 7.6 ter) no va. Es el mismo defecto
+que ya tuvieron los selectores de scouting y el de métrica.
 
 ### El filtro anti-spam de inactividad
 

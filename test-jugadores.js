@@ -1131,5 +1131,66 @@ check('y las que ya traen un borde de color lo conservan',
   /\.scout-grupo\.grupo-foco *\{ border-color: #b91c1c !important; \}/.test(htmlApp) &&
   /\.scout-ciclo-card\.ciclo-ganado \{ border-color: #15803d !important; \}/.test(htmlApp));
 
+/* =====================================================================
+   B-3 · EL PORCENTAJE SOLO NO ALCANZA: CONVERTIDOS SOBRE INTENTOS
+
+   Un 100% de triple con UN intento y otro con seis se leen igual en el
+   gráfico y en la tabla, y no son lo mismo. Donde el par C/I describe la
+   métrica sin ambigüedad, se muestra al lado.
+   ===================================================================== */
+console.log('\nB-3 · CONVERTIDOS SOBRE INTENTOS');
+console.log('═'.repeat(70));
+
+const noche = { 'T2C': 4, 'T2I': 9, 'T3C': 2, 'T3I': 8, 'T1C': 3, 'T1I': 4, 'TCC': 6, 'TCI': 17 };
+check('T3% trae su C/I de la noche', J.jugadoresConvIntento('T3%', noche) === '2/8',
+  J.jugadoresConvIntento('T3%', noche));
+check('T2% también', J.jugadoresConvIntento('T2%', noche) === '4/9');
+check('T1% también', J.jugadoresConvIntento('T1%', noche) === '3/4');
+check('eFG% sale de los tiros de campo', J.jugadoresConvIntento('eFG%', noche) === '6/17');
+
+/* TS% NO lo lleva a propósito: mezcla tiros de campo con libres
+   ponderados por 0,44, así que no hay un par convertidos/intentos que lo
+   describa sin mentir. Antes que inventar uno, no va ninguno. */
+check('TS% no inventa un C/I que no existe', J.jugadoresConvIntento('TS%', noche) === null);
+check('ni las métricas que no son de tiro',
+  J.jugadoresConvIntento('PTS', noche) === null && J.jugadoresConvIntento('RO', noche) === null);
+check('sin la columna en la planilla devuelve null, no "undefined/undefined"',
+  J.jugadoresConvIntento('T3%', { 'T2C': 4, 'T2I': 9 }) === null);
+check('y una métrica desconocida no rompe',
+  J.jugadoresConvIntento('NO_EXISTE', noche) === null);
+
+/* Toda métrica del catálogo con `conv` tiene que declarar también `int`,
+   o el helper leería una columna inexistente y devolvería null en
+   silencio justo donde el dato sí está. */
+check('en el catálogo, conv e int van siempre juntas',
+  J.JUGADORES_METRICAS_EVOLUCION.every(m => !!m.conv === !!m.int));
+check('las cuatro métricas de acierto lo declaran',
+  ['eFG%', 'T2%', 'T3%', 'T1%'].every(id =>
+    !!J.JUGADORES_METRICAS_EVOLUCION.find(m => m.id === id && m.conv)));
+
+/* --- Las dos superficies donde se muestra --- */
+const fuenteJug = require('fs').readFileSync('./js/sgadd-jugadores.js', 'utf8');
+check('el log de partidos suma las tres columnas de tiro',
+  /\['T2', 'T3', 'T1'\]\.map\(z => `<td/.test(fuenteJug) &&
+  /T2 C\/I<\/th>/.test(fuenteJug) && /T3 C\/I<\/th>/.test(fuenteJug) && /T1 C\/I<\/th>/.test(fuenteJug));
+/* Tres columnas más: el colspan del vacío tiene que acompañar o la fila
+   de "sin datos" queda corta y la tabla se desarma. */
+check('y el colspan del estado vacío acompaña',
+  /colspan="10">Sin partidos con box score/.test(fuenteJug));
+
+/* Sin intentos va "—" y no "0/0": un cero sobre cero se lee como un
+   fracaso, y es una zona que el jugador no usó. */
+check('una zona sin intentos se muestra vacía, no como 0/0',
+  /function tiroDe[\s\S]{0,300}i <= 0\) return '—';/.test(fuenteJug));
+
+check('el bloque de evolución le pasa el C/I al gráfico',
+  /const convInt = partidos\.map\(p => jugadoresConvIntento\(metricaId, p\)\)/.test(fuenteJug) &&
+  /convInt: convInt/.test(fuenteJug));
+const fuenteCharts = require('fs').readFileSync('./js/sgadd-charts.js', 'utf8');
+check('y el tooltip lo pega al porcentaje',
+  /o\.convInt && o\.convInt\[c\.dataIndex\]/.test(fuenteCharts));
+check('sin C/I el tooltip queda como estaba: no muestra un paréntesis vacío',
+  /\(ci \? '  \(' \+ ci \+ '\)' : ''\)/.test(fuenteCharts));
+
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

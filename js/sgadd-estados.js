@@ -187,6 +187,20 @@ const SGADD_ESTADOS = (function () {
 
   /** Partidos consecutivos sin minutos antes de sospechar. Pedido del club. */
   const RACHA_INACTIVIDAD = 4;
+
+  /* AVISO INTERMEDIO · dos fechas.
+
+     Faltar a dos partidos casi nunca es una baja: es una lesión leve, un
+     viaje, una sanción de una fecha. Por eso el aviso NO pide decisión —
+     eso sigue siendo cosa de la alerta de 4— y solo se para al lado del
+     jugador para que el DT le preste atención.
+
+     La distinción importa: si los avisos entraran al buzón como alertas,
+     volvería el problema que el filtro anti-spam vino a resolver (una
+     lista de tarjetas que nadie contesta y que se ignora para siempre).
+     Una tarjeta del buzón es UNA decisión pendiente; un aviso es un dato
+     de contexto. */
+  const RACHA_AVISO = 2;
   /* --- Filtro anti-spam ---
      Sin esto, la regla de 4 partidos marcaba 50 de 210 jugadores. Los dos
      umbrales descartan al que nunca fue parte de la rotación: si jamás
@@ -214,7 +228,7 @@ const SGADD_ESTADOS = (function () {
     (idx.liga.jugadores || []).forEach(j => {
       const eqClave = SGADD.claveEquipo(j['EQUIPO']);
       const ids = partidosPorEquipo.get(eqClave) || [];
-      if (ids.length < RACHA_INACTIVIDAD + 1) return;
+      if (ids.length < RACHA_AVISO + 1) return;
 
       const suyos = (idx.liga.jugadorPartidos.get(j.__clave) || [])
         .filter(p => (p['MIN'] || 0) > 0);
@@ -225,7 +239,7 @@ const SGADD_ESTADOS = (function () {
         if (jugados.has(ids[i])) break;
         racha++;
       }
-      if (racha < RACHA_INACTIVIDAD) return;
+      if (racha < RACHA_AVISO) return;
 
       /* --- ANTI-SPAM --- */
       const pjPrevios = suyos.length;
@@ -236,13 +250,18 @@ const SGADD_ESTADOS = (function () {
       const clave = claveJugador(j['NOMBRES'], j['EQUIPO']);
       if (registroDe(mapa, clave).origen === 'usuario') return;   // ya contestado
 
+      /* El nivel lo decide la racha, y con él cambia lo que se pide: el
+         aviso informa, la alerta pregunta. */
+      const esAlerta = racha >= RACHA_INACTIVIDAD;
       out.push({
-        tipo: 'inactividad', clave: clave,
+        tipo: 'inactividad', nivel: esAlerta ? 'alerta' : 'aviso', clave: clave,
         nombre: j['NOMBRES'], equipo: SGADD.limpiarNombre(j['EQUIPO']),
         racha: racha, pjPrevios: pjPrevios, minPrevio: minPrevio,
         detalle: racha + ' partidos seguidos sin ingresar. Antes jugó ' + pjPrevios +
           ' con ' + minPrevio.toFixed(1) + ' min de promedio.',
-        sugerencias: ['SUSPENSO', 'BAJA'],
+        /* Sin sugerencias no hay botones de estado: el aviso no pide que
+           el DT decida nada todavía. */
+        sugerencias: esAlerta ? ['SUSPENSO', 'BAJA'] : [],
       });
     });
     return out.sort((a, b) => b.racha - a.racha);
@@ -281,7 +300,7 @@ const SGADD_ESTADOS = (function () {
         const clave = claveJugador(filas[0]['NOMBRES'], eq);
         if (registroDe(mapa, clave).origen === 'usuario') return;
         out.push({
-          tipo: 'traspaso', clave: clave,
+          tipo: 'traspaso', nivel: 'alerta', clave: clave,
           nombre: filas[0]['NOMBRES'], equipo: SGADD.limpiarNombre(eq),
           equipos: orden.map(e => SGADD.limpiarNombre(e)),
           esActual: eq === orden[0],
@@ -337,7 +356,7 @@ const SGADD_ESTADOS = (function () {
 
       const est = estado(r.estado);
       out.push({
-        tipo: 'reingreso', clave: clave,
+        tipo: 'reingreso', nivel: 'alerta', clave: clave,
         nombre: j['NOMBRES'], equipo: SGADD.limpiarNombre(j['EQUIPO']),
         estadoActual: r.estado, partidosJugados: reingresos.length,
         detalle: 'Está marcado como ' + est.emoji + ' ' + est.label.toLowerCase() +
@@ -365,6 +384,24 @@ const SGADD_ESTADOS = (function () {
      5. RESUMEN PARA LA UI
      ===================================================================== */
 
+  /** Las que piden decisión: son las que cuentan para el badge del buzón. */
+  function soloAlertas(alertas) {
+    return (alertas || []).filter(a => a.nivel !== 'aviso');
+  }
+
+  /** Los avisos de contexto, que se paran al lado del jugador. */
+  function soloAvisos(alertas) {
+    return (alertas || []).filter(a => a.nivel === 'aviso');
+  }
+
+  /** Lo que haya pendiente sobre UN jugador, para pintarlo en su ficha. */
+  function pendienteDe(alertas, clave) {
+    const suyas = (alertas || []).filter(a => a.clave === clave);
+    if (!suyas.length) return null;
+    /* Si tiene las dos cosas manda la que pide decisión. */
+    return suyas.find(a => a.nivel !== 'aviso') || suyas[0];
+  }
+
   function resumen(mapa, alertas) {
     const cuenta = {};
     ESTADOS.forEach(e => { cuenta[e.id] = 0; });
@@ -376,7 +413,11 @@ const SGADD_ESTADOS = (function () {
     (alertas || []).forEach(a => { porTipo[a.tipo] = (porTipo[a.tipo] || 0) + 1; });
     return {
       porEstado: cuenta,
-      alertas: (alertas || []).length,
+      /* El badge de la campana cuenta las que piden DECISIÓN. Los avisos
+         se muestran, pero no inflan un número que el DT lee como
+         "tenés esto sin contestar". */
+      alertas: soloAlertas(alertas).length,
+      avisos: soloAvisos(alertas).length,
       porTipo: porTipo,
       marcadosPorUsuario: Object.keys(mapa || {})
         .filter(k => registroDe(mapa, k).origen === 'usuario').length,
@@ -385,10 +426,11 @@ const SGADD_ESTADOS = (function () {
 
   return {
     ESTADOS, POR_ID, DEFECTO, estado,
-    RACHA_INACTIVIDAD, MIN_PJ_PREVIOS, MIN_MINUTOS_PREVIOS,
+    RACHA_INACTIVIDAD, RACHA_AVISO, MIN_PJ_PREVIOS, MIN_MINUTOS_PREVIOS,
     claveJugador, claveAlmacen, leerTodos, guardarTodos,
     registroDe, aplicar, fusionarDeteccion, enPlan, enMedianas,
     detectarInactividad, detectarTraspasos, detectarReingresos, detectarAlertas, resumen,
+    soloAlertas, soloAvisos, pendienteDe,
   };
 })();
 

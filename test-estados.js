@@ -354,10 +354,116 @@ check('revertir marca ACTIVO como decisión del usuario y avisa con toast',
   /vuelve a Activo/.test(buzon));
 check('la lista solo muestra lo que confirmó el DT, no lo que detectó el motor',
   /reg\.origen === 'usuario' && x\.reg\.estado !== 'ACTIVO'/.test(buzon));
+/* =====================================================================
+   DOS NIVELES · EL AVISO INFORMA, LA ALERTA PREGUNTA
+
+   Pedido del club: faltar a dos fechas casi nunca es una baja —un golpe,
+   un viaje, una sanción— pero merece que el DT lo tenga a la vista. Si
+   esos avisos entraran al buzón como alertas volvería el problema que el
+   filtro anti-spam vino a resolver: una lista que nadie contesta.
+   ===================================================================== */
+console.log('\n11. NIVELES · AVISO vs ALERTA');
+console.log('═'.repeat(70));
+
+check('el umbral del aviso es menor que el de la alerta',
+  E.RACHA_AVISO < E.RACHA_INACTIVIDAD, E.RACHA_AVISO + ' < ' + E.RACHA_INACTIVIDAD);
+
+/* Fixture propia: 8 fechas, uno que falta a 2 y otro que falta a 5. No se
+   toca la de arriba para no mover las cuentas que ya fija el resto. */
+const filasBDn = [], filasBJn = [];
+for (let i = 1; i <= 8; i++) {
+  ['C', 'D'].forEach(eq => filasBDn.push({ FECHA: fecha(i), PARTIDO: 'C vs D ' + i,
+    EQUIPO: eq, FASE: 'REGULAR', CONDICION: 'LOCAL', RESULTADO: 'GANADO', PTS: '80', PTSopp: '70' }));
+}
+const jugoN = (nombre, i) => filasBJn.push({ FECHA: fecha(i), PARTIDO: 'C vs D ' + i,
+  NOMBRES: nombre, EQUIPO: 'C', FASE: 'REGULAR', CONDICION: 'LOCAL',
+  RESULTADO: 'GANADO', MIN: '20', PTS: '8' });
+for (let i = 1; i <= 6; i++) jugoN('AVISADO, DOS', i);        // racha 2 → aviso
+for (let i = 1; i <= 3; i++) jugoN('ALERTADO, CINCO', i);     // racha 5 → alerta
+for (let i = 1; i <= 8; i++) jugoN('REGULAR, TODAS', i);      // racha 0 → nada
+const idxNiv = SGADD.construirIndice({
+  'PROMEDIOS E': { cols: colsE, filas: [{ EQUIPO: 'C', FASE: 'REGULAR', PJ: '8' }, { EQUIPO: 'D', FASE: 'REGULAR', PJ: '8' }] },
+  'PROMEDIOS J': { cols: colsJ, filas: [
+    { NOMBRES: 'AVISADO, DOS', EQUIPO: 'C', FASE: 'REGULAR', PJ: '6', MIN: '20', PTS: '8' },
+    { NOMBRES: 'ALERTADO, CINCO', EQUIPO: 'C', FASE: 'REGULAR', PJ: '3', MIN: '20', PTS: '8' },
+    { NOMBRES: 'REGULAR, TODAS', EQUIPO: 'C', FASE: 'REGULAR', PJ: '8', MIN: '20', PTS: '8' },
+  ] },
+  'Base Datos E': { cols: colsBD, filas: filasBDn },
+  'Base Datos J': { cols: colsBJ, filas: filasBJn },
+}, { fase: 'REGULAR' });
+const detNiv = E.detectarInactividad(idxNiv, {});
+const avisado = detNiv.find(a => /AVISADO/.test(a.nombre));
+const alertado = detNiv.find(a => /ALERTADO/.test(a.nombre));
+
+check('el de dos fechas entra como AVISO', !!avisado && avisado.nivel === 'aviso',
+  avisado ? avisado.nivel + ' · racha ' + avisado.racha : 'no detectado');
+check('el de cinco entra como ALERTA', !!alertado && alertado.nivel === 'alerta',
+  alertado ? alertado.nivel + ' · racha ' + alertado.racha : 'no detectado');
+check('el que jugó todas no aparece', !detNiv.some(a => /REGULAR/.test(a.nombre)));
+
+/* La diferencia que importa: el aviso NO propone estados, así que su
+   tarjeta no le puede pedir una decisión al DT. */
+check('el aviso no trae sugerencias de estado', !!avisado && avisado.sugerencias.length === 0);
+check('la alerta sí las trae', !!alertado && alertado.sugerencias.length === 2,
+  alertado ? alertado.sugerencias.join(',') : '');
+
+check('soloAlertas() y soloAvisos() parten el total sin perder ninguna',
+  E.soloAlertas(detNiv).every(a => a.nivel !== 'aviso') &&
+  E.soloAvisos(detNiv).every(a => a.nivel === 'aviso') &&
+  E.soloAlertas(detNiv).length + E.soloAvisos(detNiv).length === detNiv.length);
+
+/* El badge de la campana cuenta DECISIONES pendientes, no avisos: si los
+   sumara, el número volvería a ser el que nadie contesta. */
+const resNiv = E.resumen({}, detNiv);
+check('el resumen separa alertas de avisos',
+  resNiv.alertas === E.soloAlertas(detNiv).length && resNiv.avisos === E.soloAvisos(detNiv).length,
+  JSON.stringify({ alertas: resNiv.alertas, avisos: resNiv.avisos }));
+check('el badge del buzón cuenta solo las que piden decisión',
+  /function badge\(\)[\s\S]{0,600}const n = alertasQuePiden\(\)/.test(buzon));
+check('pero la campana igual se dibuja si solo hay avisos',
+  /if \(!n && !nAvisos\) return '';/.test(buzon));
+
+/* Para pintarlo AL LADO del jugador hace falta poder preguntarlo por clave. */
+check('pendienteDe() devuelve lo que hay sobre un jugador',
+  E.pendienteDe(detNiv, avisado.clave) === avisado);
+check('y null para el que no tiene nada',
+  E.pendienteDe(detNiv, E.claveJugador('REGULAR, TODAS', 'C')) === null);
+/* Con las dos cosas encima manda la que pide decisión. */
+check('si tiene aviso y alerta, gana la alerta',
+  E.pendienteDe([{ clave: 'X', nivel: 'aviso' }, { clave: 'X', nivel: 'alerta' }], 'X').nivel === 'alerta');
+
+/* --- Marcar a mano, sin esperar las cuatro fechas del detector --- */
+check('el buzón expone marcar() para adelantarse a la alerta',
+  /function marcar\(nombre, equipo, idEstado\)/.test(buzon));
+check('y lo guarda como decisión del usuario, que gana sobre el detector',
+  /function marcar\([\s\S]{0,300}origen: 'usuario'/.test(buzon));
+check('marcar a mano recalcula: puede tapar una alerta que estaba pendiente',
+  /function marcar\([\s\S]{0,600}sincronizar\(\)/.test(buzon));
+
+const jug = fs.readFileSync('./js/sgadd-jugadores.js', 'utf8');
+check('la ficha del jugador ofrece los cuatro estados',
+  /function jugadoresControlEstado/.test(jug) && /function jugadoresMarcarEstado/.test(jug));
+/* Es un CONTROL, no contenido: en el PDF de la ficha no va. */
+check('y ese control no se imprime', /border-hairline" data-no-print/.test(jug));
+
+/* Lo pendiente se ve DONDE ESTÁ EL JUGADOR, no solo dentro del drawer. */
+check('el aviso se muestra en la ficha y en la card del plantel',
+  /function jugadoresBadgePendiente/.test(jug) && /function jugadoresLineaPendiente/.test(jug));
+check('y también en la ficha de scouting del rival',
+  /SGADD_BUZON\.pendienteDe/.test(fs.readFileSync('./js/sgadd-scouting.js', 'utf8')));
+/* El estado confirmado manda sobre la sospecha: no se muestran los dos. */
+check('con un estado confirmado la línea de aviso se calla',
+  /function jugadoresLineaPendiente[\s\S]{0,400}est\.id !== 'ACTIVO'\) return '';/.test(jug));
+
 check('el buzón conoce los tres tipos de alerta',
   /reingreso:\s*\{/.test(buzon) && /traspaso:\s*\{/.test(buzon) && /inactividad:\s*\{/.test(buzon));
-check('la campana no se dibuja cuando no hay nada pendiente',
-  /if \(!n\) return '';/.test(buzon));
+/* Sin NADA la campana no se dibuja: un icono permanentemente vacío entrena
+   a ignorarlo. Con avisos pero sin alertas SÍ se dibuja —si no, no habría
+   cómo abrir el drawer para verlos— pero va sin número. */
+check('la campana no se dibuja cuando no hay nada, ni alertas ni avisos',
+  /if \(!n && !nAvisos\) return '';/.test(buzon));
+check('con avisos pero sin alertas se dibuja igual, y sin número',
+  /\$\{n \? `<span class="buzon-badge">\$\{n\}<\/span>` : ''\}/.test(buzon));
 /* La campana vive en el HEADER, donde antes estaba el cartel "Datos
    actualizados". Así se ve desde cualquier sección, incluida Principal, que
    usa la capa de datos vieja y no pinta la barra de SGADD_APP. */
@@ -385,8 +491,10 @@ check('el punto verde de "datos actualizados" acompaña a la hora',
    la hora. Ahora el header queda para los errores, que sí necesitan verse. */
 check('el header solo se usa para avisos de error, no repite el estado OK',
   /Sin errores el header queda vacío/.test(indexHtml));
-check('el badge dice cuántas alertas hay en su etiqueta accesible',
-  /aria-label="\$\{n\} alerta/.test(buzon));
+check('el badge dice en su etiqueta accesible qué hay pendiente',
+  /const etiqueta = n/.test(buzon) &&
+  /alerta' \+ \(n === 1 \? '' : 's'\) \+ ' de plantel pendiente/.test(buzon) &&
+  /en observación/.test(buzon));
 check('resolver() marca la decisión como del usuario',
   /aplicar\(estado\.mapa, a\.clave, idEstado, \{ origen: 'usuario' \}\)/.test(buzon));
 check('y confirma con un toast', /toast\(e\.emoji/.test(buzon));
