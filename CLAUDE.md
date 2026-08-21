@@ -27,10 +27,10 @@ node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  49 tests · detalle partido a partido, perfil de tiro y su PDF
 node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
-node test-estados.js       # 168 tests · estados de jugador, alertas, buzon, sync grafico-tabla
+node test-estados.js       # 176 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1359 tests en total. Todos tienen que dar verde antes de commitear.**
+**1367 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -107,7 +107,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=113`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=114`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -2802,6 +2802,29 @@ Reglas que hay que respetar al tocarlo:
   justo en el caso más común del buscador: marcar SUSPENSO a alguien que
   jugó hace poco dispara la alerta de reingreso. `resumenPendiente()` mira
   el tipo antes de escribir el texto.
+
+### Las cards de *En observación* se abren y marcan el estado ahí mismo
+
+Un clic en el nombre despliega **los mismos cuatro botones del buscador**
+dentro de la card. La sección **no** los muestra de entrada: con los
+cuatro desplegados en trece tarjetas volvería el buzón que nadie contesta,
+que es justo lo que separa un aviso de una alerta. Pero cuando el DT ya
+sabe qué pasó —y de eso se trata el aviso— tiene que poder anotarlo sin ir
+hasta la ficha.
+
+- **Se abre UNA por vez** (`estado.avisoAbierto`), y volver a tocar la
+  misma la cierra. Trece abiertas son exactamente la lista que la sección
+  plegable vino a evitar.
+- **Abrir una card repinta solo `#buzonAvisos`**, no el drawer: si
+  repintara todo se perdería el scroll y el texto del buscador.
+- **`botonesEstado(clave)` es la única fuente de esos botones.** Los usan
+  el buscador y las cards, y es el mismo gesto —elegir a alguien y decir
+  qué le pasa—, así que tiene que verse igual en los dos lados.
+  Duplicarlo terminaría con dos juegos que se desincronizan, el bug que ya
+  tuvo el rol funcional (punto 8). Hay un test que cuenta las ocurrencias
+  de `marcarPorClave` en el fuente y falla si aparece una segunda.
+- **El chevron `▸`/`▾` acompaña al borde**: ningún estado se comunica solo
+  con color (punto 14), y además va `aria-expanded`.
 
 ### `Ficha →` · el atajo, en las tres listas
 

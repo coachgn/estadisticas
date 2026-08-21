@@ -498,7 +498,7 @@ check('tipear repinta SOLO los resultados, no el drawer',
   !/function buscar\(texto\)[\s\S]{0,300}repintarPanel\(\)/.test(buzon));
 /* Marcar un estado sí repinta: ahí el foco y el cursor no viajan solos. */
 check('y el repintado devuelve el foco y el cursor al buscador',
-  /function repintarPanel[\s\S]{0,900}setSelectionRange\(cursor, cursor\)/.test(buzon));
+  /function repintarPanel[\s\S]{0,1600}setSelectionRange\(cursor, cursor\)/.test(buzon));
 
 check('desde el buscador se marca cualquier estado a mano',
   /function marcarPorClave\(clave, idEstado\)/.test(buzon) &&
@@ -515,6 +515,38 @@ check('y reusa marcar(), no escribe el mapa por su cuenta',
 check('el resumen de lo pendiente no asume que toda alerta tiene racha',
   /function resumenPendiente[\s\S]{0,400}a\.tipo === 'inactividad'/.test(buzon) &&
   /function resumenPendiente[\s\S]{0,500}TIPOS\[a\.tipo\]/.test(buzon));
+/* --- Las cards de observación se abren y marcan el estado ahí mismo --- */
+/* Los avisos no llevan los botones a la vista: con los cuatro desplegados
+   en trece tarjetas volvería el buzón que nadie contesta. Pero cuando el
+   DT ya sabe qué pasó —y de eso se trata el aviso— tiene que poder
+   anotarlo sin ir hasta la ficha. */
+check('una card de observación se abre con un clic',
+  /onclick="SGADD_BUZON\.abrirAviso\(/.test(buzon) &&
+  /function abrirAviso\(clave\)/.test(buzon));
+check('y abierta muestra los cuatro estados',
+  /\$\{abierto \? botonesEstado\(a\.clave\) : ''\}/.test(buzon));
+/* Trece abiertas es exactamente la lista que la sección plegable vino a
+   evitar, así que se abre UNA por vez y la misma card la cierra. */
+check('se abre una sola por vez, y volver a tocarla la cierra',
+  /estado\.avisoAbierto = \(estado\.avisoAbierto === clave\) \? null : clave;/.test(buzon));
+check('abrir una card repinta SOLO la lista, no el drawer',
+  /function abrirAviso[\s\S]{0,300}getElementById\('buzonAvisos'\)/.test(buzon) &&
+  !/function abrirAviso[\s\S]{0,300}repintarPanel/.test(buzon));
+check('el estado de apertura se anuncia con aria-expanded',
+  /aria-expanded="\$\{abierto\}"/.test(buzon));
+/* No solo color: el chevron dice si está abierta o cerrada. */
+check('y no se comunica solo con el borde',
+  /\$\{abierto \? '▾' : '▸'\}/.test(buzon));
+
+/* Es el MISMO gesto que en el buscador —elegir a alguien y decir qué le
+   pasa— así que tiene que verse igual: un solo juego de botones. */
+check('el buscador y las cards usan los MISMOS botones de estado',
+  /function botonesEstado\(clave\)/.test(buzon) &&
+  /const botones = botonesEstado\(clave\);/.test(buzon) &&
+  (buzon.match(/onclick="SGADD_BUZON\.marcarPorClave\(/g) || []).length === 1);
+check('y marcan el estado vigente para no repetir lo que ya está puesto',
+  /aria-pressed="\$\{e\.id === actual\}"/.test(buzon));
+
 check('cada alerta y cada aviso llevan su atajo a la ficha',
   /function botonFicha\(clave, nombre\)/.test(buzon) &&
   (buzon.match(/\$\{botonFicha\(a\.clave, a\.nombre\)\}/g) || []).length === 2);
