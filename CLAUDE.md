@@ -16,7 +16,7 @@ aplicadas en el punto 14.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 213 tests · núcleo, índice, validador
+node test-core.js          # 222 tests · núcleo, índice, validador
 node test-logos.js         #  24 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  27 tests · multi-cliente
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 176 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1400 tests en total. Todos tienen que dar verde antes de commitear.**
+**1409 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -109,7 +109,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=116`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=117`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -247,6 +247,50 @@ colapsan— sin tocar nada de eso. Hay tests que fijan las dos cosas.
 - **`validarTorneo()` bajó de error a AVISO** en el caso de dos torneos en una
   hoja: con el índice scopeado ya no se pisan. Queda como aviso informativo de
   que se está viendo un recorte.
+
+### El recálculo A MEDIAS · las derivadas contra la MAESTRA
+
+Medido en el libro **U21 de Reconquista** el 2026-08-24:
+
+```
+Base Datos E  →  132 filas · 12 equipos · 66 partidos
+PROMEDIOS E   →  3 filas: UN equipo (el primero del abecedario) + 2 TIPO
+PROMEDIOS J   →  21 filas: los jugadores de ESE equipo
+```
+
+Las maestras completas y las derivadas a mitad de camino, como si el motor
+se hubiera cortado durante el recálculo. **La app no se rompe** —12
+equipos, 66 partidos, 18 jugadores— y eso es exactamente el problema:
+parece que funciona. Un plantel de 18 para una liga entera no se lee como
+un error, se lee como una liga chica, y **todos los percentiles, medianas
+y bandas de la categoría salían de esa muestra**.
+
+**Ningún validador lo veía.** El bloque 2 compara `PROMEDIOS E` contra
+`ACUMULADO E` y ahí *coincidían*: los dos tenían 3 filas. Nadie comparaba
+las derivadas contra la **maestra**, que es la única que sabe cuántos
+equipos hay de verdad. Se agregó ese cruce a `validarTorneo()` y sale como
+**error**, nombrando a los equipos que faltan.
+
+Los nombres se comparan con `claveEquipo()`: la maestra escribe
+`"ATENAS 'A' - U21M"` y la derivada puede escribir otra variante, así que
+sin normalizar daría doce falsos positivos. Y la fila `EQUIPO TIPO` no
+cuenta como equipo — si contara, un libro sano daría siempre una
+diferencia de uno.
+
+### El `sheetId` de una planilla puede apuntar a la nada
+
+El JSON de Reconquista tenía la U21 en `1CD7FEDc…`, que devuelve **401 por
+GViz y *entity not found* por la API de Drive**: ese archivo no existe. El
+libro real es `1wNpSkd…`, corregido el 2026-08-24.
+
+El síntoma en pantalla era el correcto —*"No se pudo leer ninguna hoja de
+esta categoría"*, el guard del punto 6— pero el mensaje sugiere permisos y
+acá era un id equivocado. **Para distinguirlos hay que mirar Drive**, no
+GViz: los dos casos dan 401.
+
+**El `sheetId` se corrige en DOS lugares**: `clubes/<club>.json` y el
+catálogo de respaldo de `sgadd-core.js`, que es el que se usa si el JSON
+no carga. Dejar uno viejo hace que el fallback resucite el id muerto.
 
 ### `Base Datos J` trae 0 donde va blanco · el panel lo corrige al indexar
 

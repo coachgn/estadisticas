@@ -795,7 +795,7 @@
           id: tira + '-' + cat.toLowerCase() + '-clausura-2026',
           /* La U21 de Reconquista es de la tira NARANJA (confirmado por el
              club en 2026-08-17, cuando pasó de llamarse Negra a Naranja). */
-          sheetId: (tira === 'naranja' && cat === 'U21') ? '1CD7FEDcLkmZRI0tGkU67IjCmkxhnnIN2AKHhA4lWJT4' : '',
+          sheetId: (tira === 'naranja' && cat === 'U21') ? '1wNpSkdIOeoXTxaAQBH9UI3q1nR9J-4oek4MKO6m4TpE' : '',
           anio: 2026, torneo: 'TORNEO LOCAL', categoria: cat,
           faseTorneo: 'CLAUSURA',
           rama: tira === 'femenina' ? 'femenina' : 'masculina',
@@ -1918,6 +1918,57 @@
       });
       return set.size ? set : null;
     };
+    /* =====================================================================
+       EL RECÁLCULO A MEDIAS · la derivada cubre menos equipos que la maestra
+
+       Medido en el libro U21 de Reconquista el 2026-08-24:
+
+         Base Datos E  →  132 filas · 12 equipos · 66 partidos
+         PROMEDIOS E   →  3 filas: UN equipo (el primero del abecedario)
+         PROMEDIOS J   →  21 filas: los jugadores de ESE equipo
+
+       Las maestras están completas y las derivadas quedaron a mitad de
+       camino, como si el motor se hubiera cortado durante el recálculo. La
+       app no se rompe —muestra 12 equipos, 66 partidos y 18 jugadores— y
+       eso es justamente el problema: **parece que funciona**. Un plantel de
+       18 jugadores para una liga entera no se lee como un error, se lee
+       como una liga chica, y todos los percentiles salen de esa muestra.
+
+       Ningún validador lo veía: el bloque 2 compara PROMEDIOS contra
+       ACUMULADO —y ahí coinciden, los dos tienen 3 filas— pero nadie
+       compara las derivadas contra la MAESTRA, que es la que sabe cuántos
+       equipos hay de verdad.
+       ===================================================================== */
+    const equiposDe = (nombre, col) => {
+      const h = hojas[nombre];
+      if (!h || !h.filas) return null;
+      const idTipo = ESQUEMA[nombre] ? ESQUEMA[nombre].filaTipo : null;
+      const set = new Set();
+      h.filas.forEach(f => {
+        if (esFilaTipo(f, idTipo)) return;
+        const e = claveEquipo(f[col || 'EQUIPO']);
+        if (e) set.add(e);
+      });
+      return set.size ? set : null;
+    };
+    const eMaestra = equiposDe('Base Datos E');
+    [['PROMEDIOS E', 'los promedios'], ['ACUMULADO E', 'los acumulados'],
+     ['PROMEDIOS 4F', 'los 4 factores']].forEach(([nombre, que]) => {
+      const eDerivada = equiposDe(nombre);
+      if (!eMaestra || !eDerivada) return;
+      const faltan = Array.from(eMaestra).filter(e => !eDerivada.has(e));
+      if (!faltan.length) return;
+      out.push({
+        nivel: 'error', hoja: nombre,
+        mensaje: 'Base Datos E tiene ' + eMaestra.size + ' equipos y ' + nombre + ' solo ' +
+          eDerivada.size + '. Faltan ' + que + ' de: ' + faltan.sort().slice(0, 6).join(', ') +
+          (faltan.length > 6 ? ' y ' + (faltan.length - 6) + ' más' : '') + '. ' +
+          'El libro quedó a mitad de un recálculo: los partidos están cargados pero las ' +
+          'hojas derivadas no se rehicieron. Hay que reprocesarlo en el motor (MotorStats) — ' +
+          'mientras tanto los percentiles salen de una muestra incompleta.',
+      });
+    });
+
     const maestra = torneosDe('Base Datos E');
     const derivada = torneosDe('PROMEDIOS E');
     if (maestra && derivada) {

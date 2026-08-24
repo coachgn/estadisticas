@@ -840,6 +840,70 @@ check('el defecto del libro sale de torneoPorDefecto, no de torneos[0]',
   !/estado\.torneo = torneos\[0\]\.id/.test(appJs));
 
 /* =====================================================================
+   EL RECÁLCULO A MEDIAS · la derivada cubre menos equipos que la maestra
+
+   Caso real, libro U21 de Reconquista al 2026-08-24:
+
+     Base Datos E  →  132 filas · 12 equipos · 66 partidos
+     PROMEDIOS E   →  3 filas: UN equipo, el primero del abecedario
+     PROMEDIOS J   →  21 filas: los jugadores de ESE equipo
+
+   Las maestras completas y las derivadas a mitad de camino, como si el
+   motor se hubiera cortado durante el recálculo. La app NO se rompe —12
+   equipos, 66 partidos, 18 jugadores— y eso es el problema: parece que
+   funciona. Un plantel de 18 para una liga entera se lee como una liga
+   chica, no como un error, y todos los percentiles salen de ahí.
+
+   Ningún validador lo veía: el bloque 2 compara PROMEDIOS contra
+   ACUMULADO —y ahí coinciden, los dos tienen 3 filas— pero nadie comparaba
+   las derivadas contra la MAESTRA, que es la que sabe cuántos equipos hay.
+   ===================================================================== */
+console.log('\nCOBERTURA · derivadas contra la maestra');
+console.log('═'.repeat(70));
+
+const maestra12 = { cols: ['PARTIDO', 'EQUIPO', 'FASE'],
+  filas: Array.from({ length: 12 }, (_, i) => ({ PARTIDO: 'x', EQUIPO: 'EQ' + i, FASE: 'REGULAR' })) };
+const derivada = (n) => ({ cols: ['EQUIPO', 'FASE'],
+  filas: Array.from({ length: n }, (_, i) => ({ EQUIPO: 'EQ' + i, FASE: 'REGULAR' }))
+    .concat([{ EQUIPO: 'EQUIPO TIPO', FASE: 'REGULAR' }]) });
+
+const vMedias = SGADD.validarTorneo({
+  'Base Datos E': maestra12, 'PROMEDIOS E': derivada(1), 'ACUMULADO E': derivada(1),
+});
+const errCob = vMedias.find(v => v.hoja === 'PROMEDIOS E');
+check('el Diagnóstico caza la derivada incompleta', !!errCob);
+/* ERROR y no aviso: los percentiles de toda la sección salen de esa
+   muestra, así que no es un detalle cosmético. */
+check('y lo hace como ERROR', errCob && errCob.nivel === 'error');
+check('dice cuántos hay de cada lado',
+  errCob && /12 equipos y PROMEDIOS E solo 1/.test(errCob.mensaje), errCob && errCob.mensaje);
+check('y nombra a los que faltan, sin escupir los doce',
+  errCob && /EQ1, EQ10/.test(errCob.mensaje) && /más/.test(errCob.mensaje));
+check('dice que se reprocesa en el motor, no en el panel',
+  errCob && /MotorStats/.test(errCob.mensaje));
+check('revisa las tres derivadas de equipo',
+  vMedias.filter(v => /solo \d+\./.test(v.mensaje)).length === 2 &&
+  !!vMedias.find(v => v.hoja === 'ACUMULADO E'));
+
+/* La fila EQUIPO TIPO no es un equipo: si contara, un libro sano daría
+   siempre una diferencia de uno. */
+check('la fila TIPO no se cuenta como equipo',
+  !SGADD.validarTorneo({ 'Base Datos E': maestra12, 'PROMEDIOS E': derivada(12) })
+    .some(v => /solo \d+\./.test(v.mensaje)));
+/* Y no puede haber falsos positivos por el normalizador de nombres: la
+   maestra escribe "ATENAS 'A' - U21M" y la derivada lo mismo. */
+check('los nombres se comparan normalizados',
+  !SGADD.validarTorneo({
+    'Base Datos E': { cols: ['PARTIDO', 'EQUIPO', 'FASE'],
+      filas: [{ PARTIDO: 'x', EQUIPO: "ATENAS 'A' - U21M", FASE: 'REGULAR' }] },
+    'PROMEDIOS E': { cols: ['EQUIPO', 'FASE'], filas: [{ EQUIPO: 'ATENAS A', FASE: 'REGULAR' }] },
+  }).some(v => /solo \d+\./.test(v.mensaje)));
+
+/* Sin una de las dos hojas no se puede comparar, y no poder no es un
+   error: una planilla incompleta ya se degrada sola. */
+check('sin la maestra no inventa un error',
+  !SGADD.validarTorneo({ 'PROMEDIOS E': derivada(1) }).length);
+/* =====================================================================
    LA TASA SIN DENOMINADOR NO ES CERO, ES QUE NO PASÓ
 
    `Base Datos J` escribe 0 donde debería ir blanco: el motor blanquea

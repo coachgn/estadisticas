@@ -13,7 +13,8 @@
 | # | Qué | Dueño | Estado |
 |---|---|---|---|
 | 1 | **U23 desalineado**: 7 hojas en `APERTURA`, 2 en `IDA`/`VUELTA` | **MotorStats** | 🔴 abierto |
-| 2 | **U21 devuelve HTTP 401**: dejó de estar compartida | **el club** | 🔴 abierto |
+| 2a | **U21**: el `sheetId` de la web apuntaba a un archivo inexistente | Web | 🟢 **corregido** |
+| 2b | **U21 a mitad de un recálculo**: derivadas con 1 equipo de 12 | **MotorStats** | 🔴 abierto |
 | 3 | `+/-` de `Base Datos J` viene **100% vacía** | **MotorStats** | 🟡 abierto |
 | 4 | Hueco 6.2 (`Base Datos J` con 0 en vez de blanco) | MotorStats | 🟢 **la web ya lo corrige** |
 | 5 | Celda vacía en columna numérica rompía una pantalla | Web | 🟢 **corregido** |
@@ -82,28 +83,53 @@ porque los promedios no describen a esos partidos.
 
 ---
 
-## 2 · 🔴 El libro U21 devuelve HTTP 401 · `1CD7FEDc…`
+## 2 · 🔴 El libro U21 · dos problemas, ninguno era el que pensábamos
 
-Es el libro de la sección 0.5, el que MotorStats nunca auditó. **Hoy no se
-puede leer**:
+> **Corrección.** La primera versión de este aviso decía *"devuelve 401,
+> la planilla dejó de estar compartida"*. Con acceso a Drive se pudo mirar
+> de verdad y **no es eso**. Van los dos problemas reales.
 
-```
-GET .../1CD7FEDc…/gviz/tq?tqx=out:json&sheet=PROMEDIOS%20E   →  HTTP 401
-GET .../1CD7FEDc…/gviz/tq?tqx=out:json&sheet=Base%20Datos%20E →  HTTP 401
-```
+### 2.1 · El `sheetId` que usaba la web no existe
 
-Las nueve hojas dan 401. Los otros dos libros del mismo club responden 200
-con la misma llamada, así que **no es la red ni GViz: la planilla dejó de
-estar compartida**.
+La web apuntaba a `1CD7FEDcLkmZRI0tGkU67IjCmkxhnnIN2AKHhA4lWJT4`, que da
+**401 por GViz y "entity not found" por la API de Drive**: no es un
+problema de permisos, ese archivo no está.
 
-**Esto no es de MotorStats, es del club**: hay que volver a poner el permiso
-en *Cualquiera con el enlace · Lector*. Se avisa acá porque figura en el
-inventario de la web y porque, cuando vuelva, conviene auditarlo antes de
-que aparezcan diferencias entre categorías.
+El libro U21 real es **`1wNpSkdIOeoXTxaAQBH9UI3q1nR9J-4oek4MKO6m4TpE`**
+(título `U21`, dueño `reconquistamenores@gmail.com`, carpeta
+`1CFH21I8z9no_GXnghAlg92xYmfRhBlIT`), y está vivo: **se modificó el
+2026-08-24 a las 09:01**. Sus equipos son los U21M de La Plata, así que es
+el correcto.
 
-El panel se degrada como corresponde: muestra *"No se pudo leer ninguna hoja
-de esta categoría. Puede ser la conexión, o que la planilla dejó de estar
-compartida"* y conserva el selector para poder volver a otra categoría.
+**Ya está corregido en la web.** Se informa por si el id viejo quedó
+anotado en algún lado del motor o de las licencias.
+
+### 2.2 · 🔴 Y ese libro está a MITAD DE UN RECÁLCULO
+
+Este es el que hay que atender. Conteo de filas leyendo el libro real:
+
+| Hoja | Filas | Qué tiene |
+|---|---|---|
+| `Base Datos E` | 132 | ✅ 12 equipos · 66 partidos |
+| `Base Datos J` | 1421 | ✅ completa |
+| `4 FACTORES` | 132 | ✅ completa |
+| `PROMEDIOS 4F` / `ACUMULADO 4F` | 14 | ✅ los 13 equipos + TIPO |
+| `ACUMULADO J` | 203 | ✅ completa |
+| **`PROMEDIOS E`** | **3** | 🔴 **UN equipo** + 2 filas TIPO |
+| **`ACUMULADO E`** | **3** | 🔴 **UN equipo** + 2 filas TIPO |
+| **`PROMEDIOS J`** | **21** | 🔴 los jugadores de **ese** equipo |
+
+El único equipo que quedó en las derivadas es **BANCO PROVINCIA 'A' -
+U21M**, o sea **el primero del abecedario**. Eso apunta a un recálculo que
+arrancó y se cortó, no a un filtro mal puesto.
+
+**Lo peligroso es que la app no se rompe.** Muestra 12 equipos, 66
+partidos y **18 jugadores**, y un plantel de 18 para una liga entera no se
+lee como un error: se lee como una liga chica. Todos los percentiles, las
+medianas y las bandas de la categoría salían de esa muestra.
+
+Del lado de la web se agregó un validador que lo denuncia (ver punto 4
+bis). Del lado de MotorStats: **reprocesar el libro**.
 
 ---
 
@@ -156,6 +182,21 @@ después: 361 filas blanqueadas contra 277 ceros legítimos.
 Las cuentas (`PTS`, `T3C`, `RD`, `AST`) se dejan en 0, que sí es un dato.
 
 ---
+
+## 4 bis · 🟢 Validador nuevo · derivadas contra la maestra
+
+El caso del U21 (2.2) no lo veía **ningún** control, ni del motor ni de la
+web, y por un motivo entendible: el validador de coherencia compara
+`PROMEDIOS E` contra `ACUMULADO E`, y ahí **coincidían** — los dos tenían
+3 filas. Nadie comparaba las derivadas contra la **maestra**, que es la
+única que sabe cuántos equipos hay de verdad.
+
+La web ahora cruza `Base Datos E` contra `PROMEDIOS E`, `ACUMULADO E` y
+`PROMEDIOS 4F`, y tira **error** nombrando a los equipos que faltan.
+
+**Sugerencia para el motor**: el mismo control del lado de MotorStats,
+al terminar de escribir las derivadas, cerraría el problema en el origen —
+un recálculo que se corta a mitad hoy no deja ningún rastro.
 
 ## 5 · 🟢 La celda vacía que rompía una pantalla · corregido en la web
 
