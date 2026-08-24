@@ -94,6 +94,8 @@ js/
   sgadd-buzon.js        ← UI del buzón: drawer, toast, badge (usa `document`)
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app
 INTEGRACION_MOTORSTATS.md ← auditoría del motor que escribe las planillas
+AVISO_MOTORSTATS_2026-08-24.md ← lo que la web le reporta al motor: libros
+                          desalineados, la U21 en 401 y dos correcciones a su prompt
 AUDITORIA_ETIQUETAS_JUGADORES.md ← glosario y auditoría de TODAS las etiquetas
 PROPUESTA_ESTADOS_JUGADOR.md ← diseño original de estados (ya implementado, ver punto 13)
 generar-manual-etiquetas.js  ← genera MANUAL_ETIQUETADO_SGADD.html para el
