@@ -718,6 +718,127 @@ const respuestaOk = (nombre) => ({
   S.limpiarCache();
 
   console.log('\n' + '='.repeat(70));
-  console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
+  /* =====================================================================
+   EL LIBRO DESALINEADO · maestras y derivadas con torneos distintos
+
+   Caso real, libro U23 de Reconquista al 2026-08-24:
+
+     Base Datos E  (maestra)  → IDA 134 filas · VUELTA 30
+     PROMEDIOS E   (derivada) → APERTURA 13 filas
+
+   Intersección VACÍA. Cada hoja por separado se ve impecable, y sin
+   embargo ningún torneo elegible tiene a la vez promedios y partidos: se
+   abría una vista con 12 equipos, 252 jugadores y CERO partidos, sin
+   decir por qué. Se arregla en el motor; el panel tiene que denunciarlo.
+   ===================================================================== */
+console.log('\nTORNEOS · maestras vs derivadas');
+console.log('═'.repeat(70));
+
+const hDesal = {
+  'PROMEDIOS E':  { cols: ['EQUIPO', 'FASE', 'TORNEO'], filas: [
+    { EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'APERTURA' },
+    { EQUIPO: 'B', FASE: 'REGULAR', TORNEO: 'APERTURA' }] },
+  'PROMEDIOS 4F': { cols: ['EQUIPO', 'FASE', 'TORNEO'], filas: [
+    { EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'APERTURA' }] },
+  'PROMEDIOS J':  { cols: ['NOMBRES', 'EQUIPO', 'FASE', 'TORNEO'], filas: [
+    { NOMBRES: 'X, Y', EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'APERTURA' }] },
+  'Base Datos E': { cols: ['FECHA', 'PARTIDO', 'EQUIPO', 'FASE', 'TORNEO'], filas: [
+    { FECHA: '01/05/2026', PARTIDO: 'A vs B', EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'IDA' },
+    { FECHA: '08/05/2026', PARTIDO: 'B vs A', EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'VUELTA' }] },
+};
+const tDesal = SGADD.torneosDisponibles(hDesal);
+
+check('el selector ofrece los tres torneos que existen en el libro',
+  tDesal.map(t => t.id).join(',') === 'APERTURA,IDA,VUELTA', tDesal.map(t => t.id).join(','));
+/* El orden es alfabético a propósito: el selector es una lista, no un
+   ranking, y reordenarlo movería de lugar los torneos de un libro sano. */
+check('y en orden alfabético, no por disponibilidad',
+  tDesal[0].id === 'APERTURA');
+
+check('cada torneo dice en cuántas hojas clave aparece',
+  tDesal.find(t => t.id === 'APERTURA').cobertura === 3 &&
+  tDesal.find(t => t.id === 'IDA').cobertura === 1,
+  tDesal.map(t => t.id + ':' + t.cobertura).join(' '));
+check('y si tiene partidos cargados',
+  tDesal.find(t => t.id === 'APERTURA').conPartidos === false &&
+  tDesal.find(t => t.id === 'IDA').conPartidos === true);
+
+/* El defecto NO es "el que tenga partidos": se probó contra el libro real
+   y eso cambiaba 252 jugadores / 0 partidos por 67 partidos / 0 jugadores.
+   Cambiar un agujero por otro no es arreglarlo, y encima elige por el DT
+   sin decírselo. Gana el recorte que MÁS muestra. */
+check('el libro abre por el torneo de mayor cobertura',
+  SGADD.torneoPorDefecto(tDesal) === 'APERTURA', SGADD.torneoPorDefecto(tDesal));
+/* En un libro sano todos cubren todo y gana el primero, o sea exactamente
+   lo que hacía la app hasta ahora: nadie ve cambiar su categoría. */
+const tSano = SGADD.torneosDisponibles({
+  'PROMEDIOS E':  { cols: ['EQUIPO', 'FASE', 'TORNEO'], filas: [
+    { EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'APERTURA' },
+    { EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'CLAUSURA' }] },
+  'Base Datos E': { cols: ['PARTIDO', 'EQUIPO', 'FASE', 'TORNEO'], filas: [
+    { PARTIDO: 'A vs B', EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'APERTURA' },
+    { PARTIDO: 'A vs B', EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'CLAUSURA' }] },
+});
+check('en un libro sano el defecto no cambia: el primero',
+  SGADD.torneoPorDefecto(tSano) === 'APERTURA');
+check('y una planilla sin la columna sigue cayendo a GENERAL',
+  SGADD.torneoPorDefecto(SGADD.torneosDisponibles({
+    'PROMEDIOS E': { cols: ['EQUIPO', 'FASE'], filas: [{ EQUIPO: 'A', FASE: 'REGULAR' }] },
+  })) === SGADD.TORNEO_GENERAL);
+
+/* --- El validador: es el ÚNICO que puede ver este cruce --- */
+const vDesal = SGADD.validarTorneo(hDesal);
+const errCruce = vDesal.find(v => v.nivel === 'error' && /no coinciden en/.test(v.mensaje));
+check('el Diagnóstico denuncia la intersección vacía', !!errCruce);
+/* ERROR y no aviso: no es un recorte incompleto, es un libro que no se
+   puede leer entero desde ninguna posición del selector. */
+check('y lo hace como ERROR, no como aviso',
+  errCruce && errCruce.nivel === 'error');
+check('nombra las dos hojas y qué trae cada una',
+  errCruce && /IDA, VUELTA/.test(errCruce.mensaje) && /APERTURA/.test(errCruce.mensaje));
+/* El DT no puede arreglarlo desde el panel: tiene que saber a quién ir. */
+check('y dice que se arregla en el motor, no en el panel',
+  errCruce && /MotorStats/.test(errCruce.mensaje));
+
+/* El caso a medias —algunos torneos cruzan y otros no— es aviso: el libro
+   se puede leer, pero hay recortes que quedan mudos. */
+const vParcial = SGADD.validarTorneo({
+  'PROMEDIOS E':  { cols: ['EQUIPO', 'FASE', 'TORNEO'], filas: [
+    { EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'APERTURA' },
+    { EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'CLAUSURA' }] },
+  'Base Datos E': { cols: ['PARTIDO', 'EQUIPO', 'FASE', 'TORNEO'], filas: [
+    { PARTIDO: 'A vs B', EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'APERTURA' }] },
+});
+const avParcial = vParcial.find(v => /ningún partido cargado/.test(v.mensaje));
+check('los torneos con promedios pero sin partidos salen como aviso',
+  !!avParcial && avParcial.nivel === 'aviso' && /CLAUSURA/.test(avParcial.mensaje));
+
+/* Un libro sano no puede generar ruido: si el Diagnóstico avisa siempre,
+   se deja de leer. */
+check('un libro alineado no dispara ninguno de los dos',
+  !SGADD.validarTorneo({
+    'PROMEDIOS E':  { cols: ['EQUIPO', 'FASE', 'TORNEO'], filas: [
+      { EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'VUELTA' }] },
+    'Base Datos E': { cols: ['PARTIDO', 'EQUIPO', 'FASE', 'TORNEO'], filas: [
+      { PARTIDO: 'A vs B', EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'VUELTA' }] },
+  }).length);
+/* Y una planilla pre-v44, sin la columna, tampoco. */
+check('ni una planilla sin la columna TORNEO',
+  !SGADD.validarTorneo({
+    'PROMEDIOS E':  { cols: ['EQUIPO', 'FASE'], filas: [{ EQUIPO: 'A', FASE: 'REGULAR' }] },
+    'Base Datos E': { cols: ['PARTIDO', 'EQUIPO', 'FASE'], filas: [{ PARTIDO: 'A vs B', EQUIPO: 'A', FASE: 'REGULAR' }] },
+  }).length);
+
+/* El aviso va DONDE EL DT MIRA, no solo en Diagnóstico. */
+const appJs = require('fs').readFileSync('./js/sgadd-app.js', 'utf8');
+check('la barra avisa cuando el recorte elegido queda mudo',
+  /const avisoTorneo =/.test(appJs) && /\$\{avisoTorneo\}/.test(appJs));
+check('y distingue si lo que falta son partidos o jugadores',
+  /const faltante = [\s\S]{0,300}'partidos'[\s\S]{0,200}'jugadores'/.test(appJs));
+check('el defecto del libro sale de torneoPorDefecto, no de torneos[0]',
+  /SGADD\.torneoPorDefecto\(torneos\)/.test(appJs) &&
+  !/estado\.torneo = torneos\[0\]\.id/.test(appJs));
+
+console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })();

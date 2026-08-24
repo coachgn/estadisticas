@@ -88,7 +88,15 @@ const SGADD_APP = (function () {
          se cambió de categoría): se cae al primero disponible en vez de
          indexar una competencia vacía. */
       const torneos = SGADD.torneosDisponibles(hojas);
-      if (!estado.torneo || !torneos.some(t => t.id === estado.torneo)) estado.torneo = torneos[0].id;
+      /* `torneos[0]` es el primero del ABECEDARIO, no el primero útil. En
+         un libro donde la maestra y la derivada quedaron con torneos
+         distintos, eso abre justo el recorte sin partidos (ver la nota de
+         `torneosDisponibles`). El defecto es el primero que traiga
+         partidos; si ninguno los trae, el primero a secas y el
+         Diagnóstico lo explica. */
+      if (!estado.torneo || !torneos.some(t => t.id === estado.torneo)) {
+        estado.torneo = SGADD.torneoPorDefecto(torneos);
+      }
       reindexar();
     } catch (e) {
       if (vigente()) estado.error = e.message || String(e);
@@ -175,6 +183,29 @@ const SGADD_APP = (function () {
       ? `${estado.idx.liga.n} equipos · ${estado.idx.liga.partidos} partidos · PJ mediano ${estado.idx.liga.pjMediano}`
       : (estado.cargando ? 'Cargando…' : '');
 
+    /* El recorte MUDO tiene que decir por qué está mudo.
+
+       Un libro puede traer un torneo en las derivadas y otro en la
+       maestra —pasa hoy con el U23 de Reconquista: PROMEDIOS con APERTURA
+       y Base Datos E con IDA/VUELTA—. Elijas el que elijas, falta una
+       mitad, y el encabezado decía '0 partidos' a secas mientras el
+       resumen de Principal mostraba 82 (esa capa no filtra por torneo).
+       Dos números distintos para la misma pregunta y ninguna explicación.
+
+       Va acá y no solo en Diagnóstico: el DT lee la barra, no entra a
+       Diagnóstico salvo que algo lo mande. Se arregla en el motor; el
+       panel solamente deja de callarlo. */
+    const l = estado.idx ? estado.idx.liga : null;
+    const faltante = !l ? null
+      : (!l.partidos && l.jugadores && l.jugadores.length ? 'partidos'
+      : (l.partidos && (!l.jugadores || !l.jugadores.length) ? 'jugadores' : null));
+    const avisoTorneo = !faltante ? '' : `
+          <p class="text-[11px] leading-snug text-yellow-400 mt-2">
+            ⚠ El torneo <b>${SGADD_UI.esc(estado.torneo || '')}</b> no tiene ${faltante} cargados en esta planilla.
+            Probá otro en el selector Torneo; si ninguno los trae, el libro está mal etiquetado
+            en el motor — el detalle está en <b>Diagnóstico</b>.
+          </p>`;
+
     /* El selector de torneo aparece SOLO si el libro trae más de uno. Con
        una planilla por torneo —que es como trabajan todos los clubes hoy—
        sería un desplegable de una sola opción ocupando lugar. */
@@ -214,6 +245,7 @@ const SGADD_APP = (function () {
           ${o.extra || ''}
         </div>
         ${info ? `<p class="text-[11px] text-muted mt-2 font-mono">${SGADD_UI.esc(p ? p.label : '')} · ${SGADD_UI.esc(info)}</p>` : ''}
+        ${avisoTorneo}
       </div>`;
   }
 

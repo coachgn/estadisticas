@@ -342,10 +342,15 @@
    * único `GENERAL`, así que la UI puede tratar los dos casos igual y
    * simplemente no mostrar el selector cuando hay uno solo.
    */
+  /* Las cuatro hojas que definen si un torneo se puede ver entero: dos
+     derivadas de equipo, una de jugador y la maestra de partidos. Si una
+     de ellas no trae ese torneo, esa parte del panel queda vacía. */
+  const HOJAS_TORNEO = ['PROMEDIOS E', 'PROMEDIOS 4F', 'Base Datos E', 'PROMEDIOS J'];
+
   function torneosDisponibles(hojas) {
     const vistos = new Set();
     let hayColumna = false;
-    ['PROMEDIOS E', 'PROMEDIOS 4F', 'Base Datos E', 'PROMEDIOS J'].forEach(n => {
+    HOJAS_TORNEO.forEach(n => {
       const h = hojas[n];
       if (!h) return;
       if (h.cols.indexOf('TORNEO') === -1) return;
@@ -358,8 +363,74 @@
       });
     });
     if (!hayColumna || !vistos.size) return [{ id: TORNEO_GENERAL, label: 'Todos', unico: true }];
-    return Array.from(vistos).sort()
-      .map(id => ({ id: id, label: id.charAt(0) + id.slice(1).toLowerCase(), unico: false }));
+
+    /* En qué hojas aparece cada torneo, que no siempre son todas.
+
+       Medido en el libro U23 de Reconquista (2026-08-24): `PROMEDIOS E`
+       trae 13 filas de APERTURA y `Base Datos E` trae 134 de IDA y 30 de
+       VUELTA. La intersección es VACÍA: la maestra y la derivada del
+       mismo libro quedaron etiquetadas con torneos distintos. Elegir
+       APERTURA —el primero del abecedario— daba una vista con 12 equipos
+       y CERO partidos, sin box scores, sin cronología y sin decir por qué.
+
+       Es un problema del DATO y hay que arreglarlo en el motor. Acá se
+       mide la cobertura de cada torneo para poder abrir el libro por el
+       recorte que más muestra, y el Diagnóstico lo denuncia con nombre y
+       apellido (`validarTorneo`). */
+    const cobertura = {};
+    const conPartidos = new Set();
+    HOJAS_TORNEO.forEach(n => {
+      const h = hojas[n];
+      if (!h || h.cols.indexOf('TORNEO') === -1) return;
+      const idTipo = ESQUEMA[n] ? ESQUEMA[n].filaTipo : null;
+      const enEsta = new Set();
+      h.filas.forEach(f => {
+        if (esFilaTipo(f, idTipo)) return;
+        const v = texto(f['TORNEO']).toUpperCase();
+        if (v) enEsta.add(v);
+      });
+      enEsta.forEach(v => {
+        cobertura[v] = (cobertura[v] || 0) + 1;
+        if (n === 'Base Datos E') conPartidos.add(v);
+      });
+    });
+
+    /* El ORDEN es alfabético a propósito: el selector es una lista, no un
+       ranking, y reordenarlo por disponibilidad movería de lugar los
+       torneos sanos de un libro bien cargado. Quien elige el defecto mira
+       `cobertura`. */
+    return Array.from(vistos).sort().map(id => ({
+      id: id, label: id.charAt(0) + id.slice(1).toLowerCase(), unico: false,
+      cobertura: cobertura[id] || 0,
+      /* Sin la columna en `Base Datos E` no se sabe, y no saber no es un
+         'no': se lo deja pasar como candidato. */
+      conPartidos: conPartidos.size ? conPartidos.has(id) : true,
+    }));
+  }
+
+  /**
+   * El torneo con el que conviene abrir un libro.
+   *
+   * NO es "el que tenga partidos": se probó y en el libro U23 real eso
+   * cambiaba 252 jugadores / 0 partidos por 67 partidos / 0 jugadores.
+   * Cambiar un agujero por otro no es arreglarlo, y encima elige por el DT
+   * sin decírselo.
+   *
+   * El criterio es la COBERTURA: en cuántas de las hojas clave aparece ese
+   * torneo. En un libro sano todos cubren todo y gana el primero, o sea
+   * exactamente lo de antes. En uno roto gana el recorte que muestra más,
+   * y si empatan queda el alfabético — que es lo mismo que hacía la app
+   * hasta ahora, así que nadie ve cambiar su categoría de un día para el
+   * otro. El Diagnóstico es el que denuncia que el libro está mal.
+   */
+  function torneoPorDefecto(lista) {
+    const l = lista || [];
+    if (!l.length) return TORNEO_GENERAL;
+    let mejor = l[0], mejorCob = (l[0].cobertura || 0);
+    l.forEach(t => {
+      if ((t.cobertura || 0) > mejorCob) { mejor = t; mejorCob = (t.cobertura || 0); }
+    });
+    return mejor.id;
   }
 
   /* =====================================================================
@@ -1714,6 +1785,61 @@
         });
       }
     });
+
+    /* =====================================================================
+       El cruce que NINGUNA hoja sola puede ver: que los torneos de las
+       MAESTRAS no aparezcan en las DERIVADAS, o al revés.
+
+       Medido en el libro U23 de Reconquista el 2026-08-24:
+
+         Base Datos E  (maestra)  → IDA 134 filas · VUELTA 30
+         PROMEDIOS E   (derivada) → APERTURA 13 filas
+
+       Intersección vacía. Cada hoja por separado se ve impecable y el
+       validador de arriba no dice nada, pero NINGÚN torneo elegible tiene
+       a la vez promedios y partidos: se abría una vista con 12 equipos,
+       252 jugadores y CERO partidos —sin box scores ni cronología— y el
+       resumen de Principal decía 82, porque esa capa no filtra por torneo.
+
+       Va como ERROR y no como aviso: no es un recorte incompleto, es un
+       libro que no se puede leer entero desde ninguna posición del
+       selector. Se arregla en el motor, no acá.
+       ===================================================================== */
+    const torneosDe = (nombre) => {
+      const h = hojas[nombre];
+      if (!h || !h.filas || h.cols.indexOf('TORNEO') === -1) return null;
+      const idTipo = ESQUEMA[nombre] ? ESQUEMA[nombre].filaTipo : null;
+      const set = new Set();
+      h.filas.forEach(f => {
+        if (esFilaTipo(f, idTipo)) return;
+        const t = texto(f['TORNEO']).toUpperCase();
+        if (t) set.add(t);
+      });
+      return set.size ? set : null;
+    };
+    const maestra = torneosDe('Base Datos E');
+    const derivada = torneosDe('PROMEDIOS E');
+    if (maestra && derivada) {
+      const comun = Array.from(derivada).filter(t => maestra.has(t));
+      if (!comun.length) {
+        out.push({
+          nivel: 'error', hoja: 'Base Datos E ↔ PROMEDIOS E',
+          mensaje: 'Los torneos de la maestra y los de la derivada no coinciden en ' +
+            'ninguno: Base Datos E trae ' + Array.from(maestra).sort().join(', ') +
+            ' y PROMEDIOS E trae ' + Array.from(derivada).sort().join(', ') + '. ' +
+            'Elijas el torneo que elijas, la vista queda sin promedios o sin partidos. ' +
+            'Es un problema de etiquetado en el motor (MotorStats), no del panel.',
+        });
+      } else if (comun.length < derivada.size) {
+        const huerfanos = Array.from(derivada).filter(t => !maestra.has(t)).sort();
+        out.push({
+          nivel: 'aviso', hoja: 'Base Datos E ↔ PROMEDIOS E',
+          mensaje: 'Estos torneos tienen promedios pero ningún partido cargado: ' +
+            huerfanos.join(', ') + '. Al elegirlos, la cronología y los box scores ' +
+            'quedan vacíos.',
+        });
+      }
+    }
     return out;
   }
 
@@ -1919,7 +2045,7 @@
     METRICAS, METRICAS_LISTA, VISTAS, GRUPOS_DESCRIPTIVOS, metrica, vista, formatear, masMenosEquipo,
     // 3
     CATALOGO, FASES, SECCIONES, TORNEO_GENERAL, planilla, planillasVisibles, esEquipoPropio, agrupar,
-    fasesDisponibles, torneosDisponibles, torneoDeFila, Ruta,
+    fasesDisponibles, torneosDisponibles, torneoPorDefecto, torneoDeFila, Ruta,
     // 4
     normalizarHoja, construirIndice, esFilaTipo, tipoDeLiga, cargarCategoria, limpiarCache, TIMEOUT_HOJA, parsearGviz, urlGviz,
     // 5

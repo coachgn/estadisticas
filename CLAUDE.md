@@ -16,7 +16,7 @@ aplicadas en el punto 14.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 180 tests · núcleo, índice, validador
+node test-core.js          # 197 tests · núcleo, índice, validador
 node test-logos.js         #  24 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  27 tests · multi-cliente
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 176 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1367 tests en total. Todos tienen que dar verde antes de commitear.**
+**1384 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -107,7 +107,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=114`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=115`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -245,6 +245,58 @@ colapsan— sin tocar nada de eso. Hay tests que fijan las dos cosas.
 - **`validarTorneo()` bajó de error a AVISO** en el caso de dos torneos en una
   hoja: con el índice scopeado ya no se pisan. Queda como aviso informativo de
   que se está viendo un recorte.
+
+### Cuando el libro viene DESALINEADO · maestras contra derivadas
+
+Medido en el libro **U23 de Reconquista** el 2026-08-24, después de que
+MotorStats lo migrara:
+
+```
+Base Datos E  (maestra)   → IDA 134 filas · VUELTA 30
+PROMEDIOS E   (derivada)  → APERTURA 13 filas
+```
+
+**La intersección es vacía.** Cada hoja por separado se ve impecable —y
+`validarTorneo` no decía nada, porque miraba hoja por hoja— pero ningún
+torneo elegible tiene a la vez promedios y partidos. Síntoma: la barra
+decía **`12 equipos · 0 partidos`** mientras el RESUMEN de Principal decía
+**82**, porque esa capa de datos vieja no filtra por torneo. Dos números
+distintos para la misma pregunta y ninguna explicación.
+
+**Es un problema del DATO, no del panel**, y se arregla en el motor. Lo
+que sí es responsabilidad del panel es no callarlo. Tres piezas:
+
+1. **`torneosDisponibles()` mide COBERTURA**: en cuántas de las cuatro
+   hojas clave (`HOJAS_TORNEO`) aparece cada torneo, más un flag
+   `conPartidos`.
+2. **`torneoPorDefecto()` abre por el de mayor cobertura.** No por "el
+   que tenga partidos": se probó contra el libro real y ese criterio
+   cambiaba *252 jugadores / 0 partidos* por *67 partidos / 0 jugadores*.
+   Cambiar un agujero por otro no es arreglarlo, y encima elige por el DT
+   sin decírselo. **En un libro sano todos cubren todo y gana el primero,
+   o sea exactamente lo que hacía la app antes**: nadie ve moverse su
+   categoría de un día para el otro.
+3. **La barra avisa** cuando el recorte elegido queda mudo, distinguiendo
+   si lo que falta son partidos o jugadores, y manda a Diagnóstico. Va ahí
+   y no solo en Diagnóstico porque **el DT lee la barra**; a Diagnóstico
+   entra si algo lo manda.
+
+`validarTorneo()` suma el cruce que ninguna hoja sola puede ver: sin
+intersección es **error** (el libro no se puede leer entero desde ninguna
+posición del selector); con intersección parcial es **aviso** (hay
+recortes que quedan vacíos). Un libro alineado no dispara ninguno de los
+dos — si el Diagnóstico avisa siempre, se deja de leer.
+
+### `faseTorneo` del JSON del club NO se lee en ninguna parte
+
+Está declarado en las tres planillas de Reconquista y en la de Jujuy, y
+**ningún módulo lo consulta**: el torneo sale siempre de los datos
+(`torneosDisponibles`). Es metadata muerta, así que un desajuste entre ese
+campo y la columna `TORNEO` real **no rompe nada**.
+
+Lo que sí ve el usuario es el `label`. Y **renombrar el `id` de una
+planilla no es cosmético** (punto 6): es la clave de los estados de
+jugador y viaja en cada link compartido.
 
 ### Estado global y selector
 
