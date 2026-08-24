@@ -19,7 +19,7 @@ aplicadas en el punto 14.
 node test-core.js          # 252 tests · núcleo, índice, validador
 node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
-node test-clubes.js        #  38 tests · multi-cliente
+node test-clubes.js        #  48 tests · multi-cliente
 node test-boot.js          #  55 tests · arranque por club + sintaxis de los módulos
 node test-jugadores.js     # 240 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 176 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1452 tests en total. Todos tienen que dar verde antes de commitear.**
+**1462 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -112,7 +112,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=119`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=120`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -770,6 +770,38 @@ estar en varias categorías con claves distintas (`reconquista` en U23,
 `reconquista a` en Primera), así que **el manifiesto tiene que cubrirlas
 todas**. Hay un test en `test-logos.js` que falla si alguna entrada apunta a
 un archivo que no existe.
+
+### El acento de marca NUNCA se pinta crudo sobre la card
+
+`CLUB.TEMA.acento` es la marca tal cual la declaró el cliente: sirve para
+un escudo o un borde grueso. Como **color de texto o de línea fina** sobre
+la card oscura depende de cuán oscuro sea, y eso cambia por cliente.
+
+Medido con DEPORTIVO, cuyo azul de escudo es `#09086E`: la tabla de
+métricas clave pintaba los valores del tercil medio en **contraste 1,12**,
+o sea invisibles. Con el naranja de Reconquista el mismo código se veía
+bien, **así que el defecto entró con el tercer cliente y no antes** — y al
+medirlo apareció que **Jujuy también estaba por debajo** (3,56) desde
+siempre, sin que nadie lo notara.
+
+`COL.acento` devuelve ahora el color que el sistema ya calcula para que se
+LEA sobre este fondo, y se resuelve en cada lectura igual que `grilla` y
+`texto`, porque el fondo cambia al entrar en modo papel:
+
+```
+pantalla  →  TEMA.acentoTexto   (aclarado hasta 4,5 sobre #141414)
+papel     →  TEMA.acentoPapel   (oscurecido hasta 4,5 sobre blanco)
+```
+
+| Cliente | Marca | Antes | Ahora |
+|---|---|---|---|
+| DEPORTIVO | `#09086E` | **1,12** | **6,07** |
+| Jujuy | `#2563eb` | **3,56** | **6,09** |
+| Reconquista | `#f7941e` | 8,08 | 8,08 |
+
+Alcanza a todo lo que dibuja con el acento: barras de ranking, radares,
+gráficos de barras y comparativas de equipo. Hay tests que fijan que los
+tres clientes pasen AA y que `COL.acento` no vuelva a leer el crudo.
 
 ### El escudo de un club se llama como el CLUB ENTERO
 

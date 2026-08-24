@@ -213,6 +213,66 @@ function crearClub(clubId, opciones) {
   check('no hay ids de planilla repetidos entre clientes',
     new Set(idsPl).size === idsPl.length, idsPl.join(' · '));
 
+  /* =====================================================================
+     EL COLOR DE MARCA NO SE PINTA CRUDO SOBRE FONDO OSCURO
+
+     `CLUB.TEMA.acento` es la marca tal cual la declaró el cliente y sirve
+     para un escudo o un borde grueso. Como color de TEXTO o de línea fina
+     sobre la card depende de cuán oscuro sea: con el azul de escudo de
+     DEPORTIVO (#09086E) la tabla de métricas clave pintaba los valores del
+     tercil medio en **contraste 1,12** — invisibles. Con el naranja de
+     Reconquista el mismo código se veía bien, así que el defecto entró con
+     el tercer cliente y no antes; medido después, Jujuy también estaba por
+     debajo del mínimo (3,56) y nadie lo había notado.
+     ===================================================================== */
+  console.log('\n9. CONTRASTE DEL ACENTO POR CLIENTE');
+  console.log('═'.repeat(70));
+
+  const FONDO_CARD = '#141414';
+  const aHex = (c) => { c = c.replace('#',''); if (c.length===3) c = c.split('').map(x=>x+x).join('');
+    return [0,2,4].map(i => parseInt(c.substr(i,2),16)); };
+  const lumin = (c) => { const v = aHex(c).map(x => { x/=255;
+      return x <= 0.03928 ? x/12.92 : Math.pow((x+0.055)/1.055, 2.4); });
+    return 0.2126*v[0] + 0.7152*v[1] + 0.0722*v[2]; };
+  const contraste = (a, b) => { const L1 = lumin(a), L2 = lumin(b);
+    return (Math.max(L1,L2) + 0.05) / (Math.min(L1,L2) + 0.05); };
+
+  /* Control del medidor: dos casos conocidos. */
+  check('el medidor de contraste da los valores de la norma',
+    Math.abs(contraste('#ffffff', '#000000') - 21) < 0.1 &&
+    Math.abs(contraste('#141414', '#141414') - 1) < 0.01);
+
+  /* La marca CRUDA de dos de los tres clientes NO pasa: por eso existe el
+     aclarado, y por eso los gráficos no pueden usar el crudo. */
+  const CHARTS = require('./js/sgadd-charts.js');
+  const marcas = { deportivo: '#09086E', jujuy: '#2563eb', reconquista: '#f7941e' };
+  check('el azul de DEPORTIVO crudo es ilegible sobre la card',
+    contraste(marcas.deportivo, FONDO_CARD) < 1.5,
+    contraste(marcas.deportivo, FONDO_CARD).toFixed(2));
+  check('y el de Jujuy tampoco llega al mínimo',
+    contraste(marcas.jujuy, FONDO_CARD) < 4.5,
+    contraste(marcas.jujuy, FONDO_CARD).toFixed(2));
+
+  /* El aclarado que ya calcula el club es el que hay que usar. */
+  Object.keys(marcas).forEach(id => {
+    const claro = crearClub(null).CLUB.aclararHastaLegible(marcas[id], FONDO_CARD, 4.5);
+    check(id + ': el acento aclarado SÍ pasa AA sobre la card',
+      contraste(claro, FONDO_CARD) >= 4.5,
+      marcas[id] + ' → ' + claro + ' · ' + contraste(claro, FONDO_CARD).toFixed(2));
+  });
+
+  /* Y el que los gráficos leen tiene que ser ese, no el crudo. */
+  const fuenteCharts = require('fs').readFileSync('./js/sgadd-charts.js', 'utf8');
+  check('COL.acento devuelve el color LEGIBLE, no la marca cruda',
+    /get acento\(\)[\s\S]{0,320}acentoTexto/.test(fuenteCharts));
+  /* En papel el fondo es blanco y hace falta el simétrico oscurecido. */
+  check('y en modo papel usa el oscurecido',
+    /get acento\(\)[\s\S]{0,320}enPapelClaro\(\)[\s\S]{0,80}acentoPapel/.test(fuenteCharts));
+  check('acentoSuave se deriva del mismo, no del crudo',
+    /get acentoSuave\(\) \{ return this\.acento \+ '40'; \}/.test(fuenteCharts));
+  check('sin CLUB cargado sigue habiendo un color por defecto',
+    typeof CHARTS.COL.acento === 'string' && CHARTS.COL.acento.charAt(0) === '#');
+
   console.log('\n' + '═'.repeat(70));
   console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);

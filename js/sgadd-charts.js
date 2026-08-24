@@ -38,9 +38,28 @@ const SGADD_CHARTS = (function () {
     equipoSuave: 'rgba(96,165,250,0.28)',
     liga: '#6b7280',
     ligaSuave: 'rgba(107,114,128,0.35)',
-    /* Se resuelve en cada lectura: el color de marca sale del JSON del club. */
-    get acento() { return (typeof CLUB !== 'undefined') ? CLUB.TEMA.acento : '#f7941e'; },
-    get acentoSuave() { return ((typeof CLUB !== 'undefined') ? CLUB.TEMA.acento : '#f7941e') + '40'; },
+    /* El color de marca sale del JSON del club, pero acá NUNCA va el crudo:
+       va el que el sistema ya calculó para que se LEA sobre este fondo.
+
+       `CLUB.TEMA.acento` es la marca tal cual la declaró el cliente, y sirve
+       para un escudo o un borde grueso. Como color de TEXTO o de línea fina
+       sobre la card oscura depende de qué tan oscuro sea: medido con
+       DEPORTIVO, cuyo azul de escudo es `#09086E`, la tabla de métricas
+       clave pintaba los valores del tercil medio en **contraste 1,13** —
+       invisibles. Con el naranja de Reconquista el mismo código se veía
+       bien, así que el defecto entró con el tercer cliente y no antes.
+
+       `acentoTexto` es ese mismo color aclarado hasta pasar 4,5 sobre la
+       card (DEPORTIVO: `#9090be`, contraste 6,07) y `acentoPapel` es el
+       simétrico oscurecido para el informe impreso. Se resuelven en cada
+       lectura, igual que `grilla` y `texto`, porque el fondo cambia al
+       entrar en modo papel. */
+    get acento() {
+      if (typeof CLUB === 'undefined') return '#f7941e';
+      const t = CLUB.TEMA;
+      return enPapelClaro() ? (t.acentoPapel || t.acento) : (t.acentoTexto || t.acento);
+    },
+    get acentoSuave() { return this.acento + '40'; },
 
     bien: '#22c55e',
     mal: '#ef4444',
