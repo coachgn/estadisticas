@@ -228,8 +228,12 @@ check('ningún escudo tiene un nombre que sea prefijo de otro',
   colisiones.length === 0, colisiones.join(' · '));
 
 /* El caso concreto, por si alguien vuelve a acortar el nombre. */
+/* Se mira el NOMBRE, no la extension: el club cambia los archivos por la
+   web de GitHub y un .png puede volver como .webp sin que eso sea un error.
+   Lo que no puede volver es el generico. */
 check('el escudo de Deportivo La Plata lleva el nombre completo',
-  archivos.indexOf('deportivo-la-plata.png') >= 0 && archivos.indexOf('deportivo.png') < 0,
+  archivos.some(f => base(f) === 'deportivo-la-plata') &&
+  !archivos.some(f => base(f) === 'deportivo'),
   archivos.filter(f => /deportivo/.test(f)).join(','));
 
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
