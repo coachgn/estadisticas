@@ -342,6 +342,85 @@
    * único `GENERAL`, así que la UI puede tratar los dos casos igual y
    * simplemente no mostrar el selector cuando hay uno solo.
    */
+  /* =====================================================================
+     LA TASA SIN DENOMINADOR NO ES CERO, ES QUE NO PASÓ
+
+     `Base Datos J` escribe **0** donde debería ir blanco: el motor blanquea
+     recién en la etapa de PROMEDIOS, no en el registro crudo por partido.
+     Es un hueco conocido y abierto del lado de MotorStats (su punto 6.2),
+     así que el panel lo corrige al indexar.
+
+     Medido en Primera · Vuelta 2026 el 2026-08-24: **247 de 1965 filas**
+     (12,6%) traen `MIN = 0` con eFG%, TS%, T2%, T3%, T1%, PPP, USG% y RTL%
+     todos en 0 duro. Entran a `liga.jugadorPartidos`, o sea a la media y al
+     desvío de `statJugador()`, a la banda del tab Evolución y al split de
+     local/visitante. Peor caso: CARLOTTO, MARCO, 5 noches de las cuales 4
+     en cero → su eFG% medio daba **0,30** contra **1,50** real.
+
+     Y eso infla el desvío, así que además **fabrica atípicos**: contra una
+     media hundida por noches que no existieron, cualquier partido normal
+     supera el z de 1,5 y se pinta como rendimiento excepcional.
+
+     El criterio NO es "filtrar por MIN > 0", que es lo que pide el
+     documento del motor: se blanquea la tasa **cuando su propio
+     denominador es 0**. Es estrictamente mejor y caza además al que sí
+     jugó y no lanzó de tres — hoy ese T3% de 0 se lee como "tiró y erró"
+     cuando no tiró nunca. Es la misma distinción que el proyecto ya aplica
+     en el C/I del log (punto 8) y en el perfil de tiro (punto 4 bis).
+
+     Las CUENTAS no se tocan: PTS, T3C, RD, AST en 0 son datos reales de
+     una noche sin minutos. Lo que no es un dato es el porcentaje.
+     ===================================================================== */
+
+  /* tasa -> las columnas que forman su denominador. Basta que UNA tenga
+     valor para que la tasa sea legítima: TS% mezcla tiros de campo con
+     libres, así que con solo libres lanzados sigue estando definida. */
+  const DENOMINADOR_TASA = {
+    'eFG%':  ['TCI'],
+    'TS%':   ['TCI', 'T1I'],
+    'TC%':   ['TCI'],
+    'RTL%':  ['TCI'],
+    'T2%':   ['T2I'],
+    'PPT2':  ['T2I'],
+    'T3%':   ['T3I'],
+    'PPT3':  ['T3I'],
+    'T1%':   ['T1I'],
+    'PPT1':  ['T1I'],
+    'PPP':   ['PLAYS'],
+    'PePP%': ['PLAYS'],
+    'PT2%':  ['PLAYS'],
+    'PT3%':  ['PLAYS'],
+    'PT1%':  ['PLAYS'],
+    'USG%':  ['PLAYS'],
+  };
+
+  /**
+   * Blanquea las tasas sin denominador de UNA fila jugador-partido.
+   *
+   * Muta y devuelve la misma fila: se la llama una vez por fila al indexar
+   * y clonar 1965 objetos por libro no aporta nada.
+   *
+   * `AST-PP` queda AFUERA a propósito: su denominador son las pérdidas, y
+   * el motor tiene su propia convención para el caso sin pérdidas (devuelve
+   * las asistencias, no una división por cero). Pisarlo acá contradiría a
+   * la hoja que el club audita.
+   */
+  function blanquearTasasSinDenominador(f) {
+    Object.keys(DENOMINADOR_TASA).forEach(tasa => {
+      if (typeof f[tasa] !== 'number') return;
+      const cols = DENOMINADOR_TASA[tasa];
+      /* Si la planilla no trae NINGUNA columna del denominador no se puede
+         saber, y no saber no habilita a borrar un dato: se deja como está. */
+      let hayColumna = false, hayVolumen = false;
+      cols.forEach(c => {
+        if (!(c in f)) return;
+        hayColumna = true;
+        if (num(f[c])) hayVolumen = true;
+      });
+      if (hayColumna && !hayVolumen) f[tasa] = null;
+    });
+    return f;
+  }
   /* Las cuatro hojas que definen si un torneo se puede ver entero: dos
      derivadas de equipo, una de jugador y la maestra de partidos. Si una
      de ellas no trae ese torneo, esa parte del panel queda vacía. */
@@ -619,7 +698,24 @@
   function metrica(clave) { return METRICAS[clave] || null; }
 
   function formatear(clave, valor) {
-    if (valor === null || valor === undefined || !isFinite(valor)) return '—';
+    /* `typeof === 'number'` y NO `!isFinite(valor)`.
+
+       `isFinite('')` devuelve **true** —el string vacío se convierte a 0—,
+       así que una celda vacía de una columna numérica pasaba la guarda y
+       reventaba abajo con `valor.toFixed is not a function`. El índice
+       guarda el texto crudo cuando `num()` no puede convertir, así que un
+       `''` llega hasta acá.
+
+       Lo destapó la migración de MotorStats del 2026-08-24: el libro de
+       Primera pasó a traer la columna `+/-` (v30+) con celdas vacías en
+       las filas de jugadores que no entraron. Antes la columna no existía
+       y el valor era `undefined`, que sí caía en la guarda. Resultado: el
+       tab **Partidos** de cualquier jugador con una noche sin `+/-`
+       lanzaba y la sección quedaba sin pintar.
+
+       La guarda por tipo cierra la clase entera: toda columna numérica que
+       venga vacía se muestra ausente en vez de tumbar la vista. */
+    if (typeof valor !== 'number' || !isFinite(valor)) return '—';
     const m = METRICAS[clave];
     const f = m ? m.formato : 'num2';
     switch (f) {
@@ -1354,6 +1450,11 @@
           const v = num(fila[c]);
           datos[c] = (v !== null) ? v : texto(fila[c]);
         });
+        /* `Base Datos J` trae 0 donde debería ir blanco (ver la nota de
+           `blanquearTasasSinDenominador`). Se corrige ACÁ, antes de que la
+           fila entre a `jugadorPartidos` y contamine media, desvío y
+           atípicos. */
+        blanquearTasasSinDenominador(datos);
         datos['FECHA'] = fEfectiva;
         datos.__id = id;
         datos.__partido = texto(fila['PARTIDO']);
@@ -2046,6 +2147,7 @@
     // 3
     CATALOGO, FASES, SECCIONES, TORNEO_GENERAL, planilla, planillasVisibles, esEquipoPropio, agrupar,
     fasesDisponibles, torneosDisponibles, torneoPorDefecto, torneoDeFila, Ruta,
+    blanquearTasasSinDenominador, DENOMINADOR_TASA,
     // 4
     normalizarHoja, construirIndice, esFilaTipo, tipoDeLiga, cargarCategoria, limpiarCache, TIMEOUT_HOJA, parsearGviz, urlGviz,
     // 5

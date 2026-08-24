@@ -839,6 +839,101 @@ check('el defecto del libro sale de torneoPorDefecto, no de torneos[0]',
   /SGADD\.torneoPorDefecto\(torneos\)/.test(appJs) &&
   !/estado\.torneo = torneos\[0\]\.id/.test(appJs));
 
+/* =====================================================================
+   LA TASA SIN DENOMINADOR NO ES CERO, ES QUE NO PASÓ
+
+   `Base Datos J` escribe 0 donde debería ir blanco: el motor blanquea
+   recién en PROMEDIOS, no en el registro crudo por partido (hueco abierto
+   del lado de MotorStats). Medido en Primera · Vuelta 2026 el 2026-08-24:
+   247 de 1965 filas con MIN = 0 traían eFG%, TS%, T2%, T3%, T1%, PPP,
+   USG% y RTL% en cero duro, y entraban a la media y al desvío.
+   ===================================================================== */
+console.log('\nTASAS SIN DENOMINADOR');
+console.log('═'.repeat(70));
+
+/* Una noche sin minutos: no tiró, no jugó, no hay porcentaje. */
+const nocheVacia = SGADD.blanquearTasasSinDenominador({
+  MIN: 0, PTS: 0, PLAYS: 0, TCC: 0, TCI: 0, T2C: 0, T2I: 0, T3C: 0, T3I: 0,
+  T1C: 0, T1I: 0, RD: 0, AST: 0,
+  'eFG%': 0, 'TS%': 0, 'T2%': 0, 'T3%': 0, 'T1%': 0, 'PPP': 0, 'USG%': 0, 'RTL%': 0,
+});
+check('sin un solo tiro, las tasas quedan en blanco',
+  ['eFG%', 'TS%', 'T2%', 'T3%', 'T1%', 'PPP', 'USG%', 'RTL%']
+    .every(k => nocheVacia[k] === null),
+  JSON.stringify(nocheVacia));
+/* Las CUENTAS no se tocan: 0 puntos en una noche sin minutos es un dato
+   real. Lo que no es un dato es el porcentaje. */
+check('pero las cuentas siguen en cero, que sí es un dato',
+  nocheVacia.PTS === 0 && nocheVacia.T3C === 0 && nocheVacia.RD === 0 && nocheVacia.AST === 0);
+
+/* La distinción que importa, y que un filtro por MIN > 0 no ve. */
+const tiroYErro = SGADD.blanquearTasasSinDenominador({
+  MIN: 12, PLAYS: 7, TCC: 0, TCI: 5, T2C: 0, T2I: 5, T3C: 0, T3I: 0, T1C: 1, T1I: 2,
+  'eFG%': 0, 'T2%': 0, 'T3%': 0, 'T1%': 0.5, 'PPP': 0,
+});
+check('tiró y erró: el 0 se conserva, es un dato',
+  tiroYErro['eFG%'] === 0 && tiroYErro['T2%'] === 0 && tiroYErro['PPP'] === 0);
+check('y no tiró de tres: ESO sí se blanquea, aunque haya jugado',
+  tiroYErro['T3%'] === null);
+check('el T1% real no se toca', tiroYErro['T1%'] === 0.5);
+
+/* TS% mezcla tiros de campo con libres: con solo libres lanzados sigue
+   estando definido, así que basta que UNA columna del denominador tenga
+   volumen. */
+const soloLibres = SGADD.blanquearTasasSinDenominador({
+  MIN: 5, TCI: 0, T1I: 4, T1C: 3, 'TS%': 0.75, 'eFG%': 0, 'T1%': 0.75,
+});
+check('TS% sobrevive si tiró libres aunque no tiros de campo',
+  soloLibres['TS%'] === 0.75);
+check('y eFG%, que solo mira tiros de campo, se blanquea',
+  soloLibres['eFG%'] === null);
+
+/* Sin la columna del denominador no se puede saber, y no saber no
+   habilita a borrar un dato. */
+check('sin la columna del denominador, la tasa se deja como está',
+  SGADD.blanquearTasasSinDenominador({ 'T3%': 0.4 })['T3%'] === 0.4);
+/* AST-PP queda AFUERA: su denominador son las pérdidas y el motor tiene su
+   propia convención para el caso sin pérdidas. */
+check('AST-PP no entra: el motor tiene su convención y manda la planilla',
+  !('AST-PP' in SGADD.DENOMINADOR_TASA));
+
+/* =====================================================================
+   `formatear` GUARDA POR TIPO, NO CON isFinite
+
+   `isFinite('')` es **true** —el string vacío se convierte a 0—, así que
+   una celda vacía de una columna numérica pasaba la guarda y reventaba
+   con `valor.toFixed is not a function`.
+
+   Lo destapó la migración del 2026-08-24: el libro de Primera pasó a
+   traer `+/-` (v30+) con celdas vacías. Antes la columna no existía y el
+   valor era `undefined`, que sí caía en la guarda. El tab Partidos de
+   cualquier jugador con una noche sin `+/-` lanzaba y no se pintaba.
+   ===================================================================== */
+console.log('\nformatear · guarda por tipo');
+console.log('═'.repeat(70));
+
+check('una celda VACÍA de una columna numérica no tumba la vista',
+  SGADD.formatear('+/-', '') === '—' && SGADD.formatear('PTS', '') === '—');
+check('ni una que traiga espacios', SGADD.formatear('PTS', '   ') === '—');
+check('null y undefined siguen dando ausente',
+  SGADD.formatear('+/-', null) === '—' && SGADD.formatear('+/-', undefined) === '—');
+/* El cero es un DATO y tiene que verse: no llegar a ninguno de los dos es
+   distinto de no haber estado. */
+check('pero el cero se sigue mostrando, que es un dato',
+  SGADD.formatear('+/-', 0) === '0' && SGADD.formatear('PTS', 0) === '0,0');
+check('y los números de siempre no cambiaron',
+  SGADD.formatear('+/-', 12) === '+12' && SGADD.formatear('+/-', -5) === '-5' &&
+  SGADD.formatear('PTS', 3.456) === '3,5');
+
+/* La corrección se aplica al INDEXAR, antes de que la fila entre a
+   `jugadorPartidos` y contamine media, desvío y atípicos. */
+const coreJs = require('fs').readFileSync('./js/sgadd-core.js', 'utf8');
+check('el blanqueo corre al indexar Base Datos J',
+  /blanquearTasasSinDenominador\(datos\);/.test(coreJs));
+check('y antes de meter la fila en jugadorPartidos',
+  coreJs.indexOf('blanquearTasasSinDenominador(datos);') <
+  coreJs.indexOf('liga.jugadorPartidos.get(datos.__clave).push(datos)'));
+
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })();

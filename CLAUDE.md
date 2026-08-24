@@ -16,7 +16,7 @@ aplicadas en el punto 14.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 197 tests · núcleo, índice, validador
+node test-core.js          # 213 tests · núcleo, índice, validador
 node test-logos.js         #  24 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  27 tests · multi-cliente
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 176 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1384 tests en total. Todos tienen que dar verde antes de commitear.**
+**1400 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -107,7 +107,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=115`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=116`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -245,6 +245,71 @@ colapsan— sin tocar nada de eso. Hay tests que fijan las dos cosas.
 - **`validarTorneo()` bajó de error a AVISO** en el caso de dos torneos en una
   hoja: con el índice scopeado ya no se pisan. Queda como aviso informativo de
   que se está viendo un recorte.
+
+### `Base Datos J` trae 0 donde va blanco · el panel lo corrige al indexar
+
+Hueco **conocido y abierto** del lado de MotorStats (su punto 6.2): el
+motor blanquea las tasas recién en la etapa de PROMEDIOS, no en el
+registro crudo por partido. Su documento pide *"filtrar por `MIN > 0` del
+lado de la web"*.
+
+Medido en **Primera · Vuelta 2026** el 2026-08-24: **247 de 1965 filas**
+(12,6%) traen `MIN = 0` con `eFG%`, `TS%`, `T2%`, `T3%`, `T1%`, `PPP`,
+`USG%` y `RTL%` en **cero duro**. Entran a `liga.jugadorPartidos`, o sea a
+la media y al desvío de `statJugador()`, a la banda del tab Evolución y al
+split de local/visitante. Peor caso: **CARLOTTO, MARCO** — 5 noches, 4 en
+cero → su `eFG%` medio daba **0,30** contra **1,50** real.
+
+Y como infla el desvío, además **fabrica atípicos**: contra una media
+hundida por noches que no existieron, cualquier partido normal supera el z
+de 1,5 y se pinta como rendimiento excepcional.
+
+**El criterio NO es `MIN > 0`.** `blanquearTasasSinDenominador()` blanquea
+cada tasa **cuando su propio denominador es 0** (`DENOMINADOR_TASA`). Es
+estrictamente mejor: caza además al que **sí jugó y no lanzó de tres** —
+ese `T3%` de 0 se leía como "tiró y erró" cuando no tiró nunca. Es la
+misma distinción que el proyecto ya aplica en el C/I del log (punto 8) y
+en el perfil de tiro (punto 4 bis):
+
+```
+tiró y erró   →  0     (es un dato)
+no tiró       →  null  (no es un dato)
+```
+
+Medido después del fix, mismo libro: **361 filas blanqueadas** contra
+**277 ceros legítimos**. Las 361 son más que las 247 sin minutos porque
+incluyen a los que jugaron y no lanzaron.
+
+Dos cosas que hay que respetar al tocarlo:
+
+- **Las CUENTAS no se tocan.** `PTS`, `T3C`, `RD`, `AST` en 0 son datos
+  reales de una noche sin minutos. Lo que no es un dato es el porcentaje.
+- **`AST-PP` queda AFUERA a propósito.** Su denominador son las pérdidas y
+  el motor tiene su propia convención para el caso sin pérdidas (devuelve
+  las asistencias, no una división por cero). Pisarlo acá contradiría a la
+  hoja que el club audita.
+
+La fila **no se descarta**, solo se le blanquean las tasas: el detector de
+inactividad del punto 13 se apoya justamente en esas filas de `MIN = 0`
+para contar la racha.
+
+### `formatear()` guarda por TIPO, no con `isFinite`
+
+**`isFinite('')` devuelve `true`** —el string vacío se convierte a 0—, así
+que una celda vacía de una columna numérica pasaba la guarda y reventaba
+abajo con `valor.toFixed is not a function`. El índice guarda el texto
+crudo cuando `num()` no puede convertir, así que un `''` llega hasta ahí.
+
+**Lo destapó la migración de MotorStats del 2026-08-24**, y es el ejemplo
+de manual de por qué una columna nueva no es gratis: el libro de Primera
+pasó a traer `+/-` (v30+) con celdas vacías en las filas de los que no
+entraron. Antes la columna **no existía** y el valor era `undefined`, que
+sí caía en la guarda. Resultado: el tab **Partidos** de cualquier jugador
+con una noche sin `+/-` lanzaba y la sección quedaba sin pintar.
+
+`typeof valor !== 'number'` cierra la clase entera: toda columna numérica
+que venga vacía se muestra ausente en vez de tumbar la vista. El **cero se
+sigue mostrando**: no llegar a ninguno es distinto de no haber estado.
 
 ### Cuando el libro viene DESALINEADO · maestras contra derivadas
 
@@ -561,6 +626,17 @@ La etiqueta del grupo del selector sale de un mapa por `tira` en
 → Masculina Naranja), así que **cambiar de tira es cambiar un campo del
 JSON**, no tocar la UI. Reconquista pasó de *Negra* a **Naranja** en
 2026-08-17 así: `tira: "naranja"` y el `label` de la planilla.
+
+El **`label` sí es cosmético y se cambia solo**: Primera pasó de *"Primera
+· Clausura 2026"* a **"Primera · Vuelta 2026"** el 2026-08-24, para que la
+etiqueta diga lo mismo que la columna `TORNEO` del libro migrado. El `id`
+quedó en `primera-clausura-2026` a propósito — ver abajo.
+
+**`faseTorneo` del JSON no lo lee ningún módulo.** Está declarado en las
+cuatro planillas y el torneo sale siempre de los datos
+(`torneosDisponibles`), así que un desajuste entre ese campo y la columna
+real **no rompe nada**. Se mantiene alineado por prolijidad, no porque
+haga falta.
 
 **Renombrar el `id` de una planilla NO es cosmético.** Es la clave con la
 que se guardan los estados de jugador (`sgadd.estados.<club>.<planilla>` —
