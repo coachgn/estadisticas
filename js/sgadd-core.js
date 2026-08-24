@@ -1814,12 +1814,115 @@
       }))
       .then(r => { clearTimeout(reloj); return r; });
   }
+  /* =====================================================================
+     CACHÉ PERSISTENTE · sobrevive al F5, no a cerrar la pestaña
+
+     El `_cache` de arriba guarda la PROMESA y vive en memoria: evita pedir
+     dos veces en la misma sesión, pero se pierde en cada recarga. Medido en
+     producción, cada recarga vuelve a costar entre 0,6 y 2,9 s de GViz
+     —nueve hojas en paralelo, la más lenta manda— y el libro no cambió.
+
+     Se usa **sessionStorage y no localStorage** a propósito. El dato de la
+     planilla cambia cuando corre MotorStats, y nadie avisa: con
+     `localStorage` un DT podría abrir el panel el domingo y ver la fecha
+     del jueves sin enterarse. `sessionStorage` muere al cerrar la pestaña,
+     así que el techo del dato viejo es una sesión de trabajo, y adentro de
+     esa sesión igual hay un TTL.
+     ===================================================================== */
+
+  const CACHE_PREFIJO = 'sgadd.hojas.';
+  /* Sube cuando cambia la FORMA de lo que se guarda. Un caché escrito por
+     una versión vieja del parser se descarta en vez de reventar abajo. */
+  const CACHE_FORMATO = 1;
+  const CACHE_TTL_MS = 30 * 60 * 1000;   // 30 minutos
+
+  /** El almacén, o null si no se puede usar (Node, modo privado, bloqueado). */
+  function almacen() {
+    try {
+      if (typeof sessionStorage === 'undefined' || !sessionStorage) return null;
+      /* Safari en privado deja leer y tira al escribir: se prueba de verdad. */
+      const k = CACHE_PREFIJO + '__test__';
+      sessionStorage.setItem(k, '1');
+      sessionStorage.removeItem(k);
+      return sessionStorage;
+    } catch (e) { return null; }
+  }
+
+  function leerCachePersistente(sheetId) {
+    const ls = almacen();
+    if (!ls) return null;
+    let crudo;
+    try { crudo = ls.getItem(CACHE_PREFIJO + sheetId); } catch (e) { return null; }
+    if (!crudo) return null;
+    let d;
+    try { d = JSON.parse(crudo); } catch (e) { borrarCachePersistente(sheetId); return null; }
+    if (!d || d.formato !== CACHE_FORMATO || !d.hojas) { borrarCachePersistente(sheetId); return null; }
+    if (!d.guardado || (Date.now() - d.guardado) > CACHE_TTL_MS) {
+      borrarCachePersistente(sheetId);
+      return null;
+    }
+    return d.hojas;
+  }
+
+  /**
+   * Guarda las hojas de un libro. Devuelve true si quedaron guardadas.
+   *
+   * Un libro real ronda los 2 MB serializados y el cupo típico son 5 MB,
+   * así que dos libros grandes en la misma pestaña pueden no entrar. Que no
+   * entre NO es un error: el panel funciona igual, solo vuelve a pedirle a
+   * GViz. Se limpia lo propio y se sigue.
+   */
+  function guardarCachePersistente(sheetId, hojas) {
+    const ls = almacen();
+    if (!ls) return false;
+    const payload = JSON.stringify({ formato: CACHE_FORMATO, guardado: Date.now(), hojas: hojas });
+    try {
+      ls.setItem(CACHE_PREFIJO + sheetId, payload);
+      return true;
+    } catch (e) {
+      /* Sin lugar: se tiran los libros de OTRAS categorías —el que se está
+         mirando es el que importa— y se prueba una sola vez más. */
+      borrarCachePersistente(null, sheetId);
+      try { ls.setItem(CACHE_PREFIJO + sheetId, payload); return true; }
+      catch (e2) { return false; }
+    }
+  }
+
+  /** Borra el caché de un libro, o el de todos menos `excepto`. */
+  function borrarCachePersistente(sheetId, excepto) {
+    const ls = almacen();
+    if (!ls) return;
+    try {
+      if (sheetId) { ls.removeItem(CACHE_PREFIJO + sheetId); return; }
+      const fuera = [];
+      for (let i = 0; i < ls.length; i++) {
+        const k = ls.key(i);
+        if (k && k.indexOf(CACHE_PREFIJO) === 0 && k !== CACHE_PREFIJO + excepto) fuera.push(k);
+      }
+      fuera.forEach(k => ls.removeItem(k));
+    } catch (e) {}
+  }
+
   function cargarCategoria(sheetId, opciones) {
     const opt = opciones || {};
     if (!sheetId) return Promise.reject(new Error('Falta el sheetId'));
     if (_cache.has(sheetId) && !opt.forzar) return _cache.get(sheetId);
 
     const nombres = opt.hojas || Object.keys(ESQUEMA);
+
+    /* El caché persistente solo sirve para la carga COMPLETA: si alguien
+       pidió un subconjunto de hojas, servirle el libro entero guardado
+       devolvería más de lo que pidió. */
+    const completa = !opt.hojas;
+    if (completa && !opt.forzar) {
+      const guardadas = leerCachePersistente(sheetId);
+      if (guardadas) {
+        const listo = Promise.resolve({ hojas: guardadas, errores: [], deCache: true });
+        _cache.set(sheetId, listo);
+        return listo;
+      }
+    }
+    if (opt.forzar) borrarCachePersistente(sheetId);
     const tarea = Promise.all(nombres.map(nombre => bajarHoja(sheetId, nombre, opt.timeout)))
       .then(res => {
         const hojas = {}, errores = [];
@@ -1831,6 +1934,13 @@
            problema de red o de permisos, no del libro, y el próximo intento
            tiene que volver a pedir en vez de servir el fracaso guardado. */
         if (!Object.keys(hojas).length) _cache.delete(sheetId);
+
+        /* Se guarda solo la carga LIMPIA. Con hojas que fallaron, cachear
+           serviría el mismo libro incompleto durante media hora en vez de
+           reintentar — y una hoja que falla suele ser un timeout puntual. */
+        if (completa && !errores.length && Object.keys(hojas).length) {
+          guardarCachePersistente(sheetId, hojas);
+        }
         return { hojas, errores };
       })
       .catch(e => { _cache.delete(sheetId); throw e; });
@@ -1839,9 +1949,29 @@
     return tarea;
   }
 
+  /**
+   * Limpia el caché.
+   *
+   * CON `sheetId` limpia las DOS capas: es lo que hace "Actualizar datos",
+   * y si solo vaciara la memoria el caché persistente volvería a servir el
+   * libro viejo — el gesto del DT no haría nada visible.
+   *
+   * SIN `sheetId` limpia SOLO la memoria. Lo llama `aplicarDatos()` del
+   * club en CADA arranque, para que dos ligas no compartan índice; si de
+   * paso borrara el disco, el caché persistente moriría en el arranque
+   * siguiente al que lo escribió y no serviría jamás. Medido con un espía
+   * sobre `Storage`: sin esta distinción, el F5 volvía a pedirle las nueve
+   * hojas a GViz igual, y el caché parecía andar porque se reescribía solo.
+   *
+   * Y no hace falta que lo borre: el caché va por `sheetId`, así que dos
+   * clubes nunca se pisan — al contrario, conservarlo hace que volver al
+   * club anterior sea instantáneo.
+   */
   function limpiarCache(sheetId) {
-    if (sheetId) _cache.delete(sheetId); else _cache.clear();
+    if (sheetId) { _cache.delete(sheetId); borrarCachePersistente(sheetId); }
+    else _cache.clear();
   }
+
 
   /* =====================================================================
      5. VALIDADOR
@@ -2278,6 +2408,8 @@
     CATALOGO, FASES, SECCIONES, TORNEO_GENERAL, planilla, planillasVisibles, esEquipoPropio, agrupar,
     fasesDisponibles, torneosDisponibles, torneoPorDefecto, torneoDeFila, Ruta,
     combinacionesTorneoFase, tramoPorDefecto,
+    leerCachePersistente, guardarCachePersistente, borrarCachePersistente,
+    CACHE_PREFIJO, CACHE_FORMATO, CACHE_TTL_MS,
     blanquearTasasSinDenominador, DENOMINADOR_TASA,
     // 4
     normalizarHoja, construirIndice, esFilaTipo, tipoDeLiga, cargarCategoria, limpiarCache, TIMEOUT_HOJA, parsearGviz, urlGviz,

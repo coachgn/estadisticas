@@ -1078,6 +1078,118 @@ check('y cambiarTramo escribe los dos y reindexa UNA sola vez',
 check('los dos setters viejos siguen existiendo para la ruta',
   /function cambiarFase\(/.test(appJs2) && /function cambiarTorneo\(/.test(appJs2));
 
+/* =====================================================================
+   CACHÉ PERSISTENTE · sobrevive al F5, no a cerrar la pestaña
+
+   Cada recarga volvía a costar entre 0,6 y 2,9 s de GViz por un libro que
+   no cambió. Medido después: las peticiones del arranque bajan de 20 a 11
+   —las 11 que quedan son de la capa de datos vieja de Principal, que no
+   pasa por el adaptador— y con GViz BLOQUEADO la app arranca igual:
+   12 equipos, 208 jugadores, 64 partidos.
+   ===================================================================== */
+console.log('\nCACHÉ PERSISTENTE');
+console.log('═'.repeat(70));
+
+/* En Node no hay sessionStorage: el módulo tiene que degradar, no romper. */
+check('sin almacén, leer devuelve null en vez de tirar',
+  SGADD.leerCachePersistente('x') === null);
+check('sin almacén, guardar devuelve false en vez de tirar',
+  SGADD.guardarCachePersistente('x', {}) === false);
+check('y borrar no rompe', (SGADD.borrarCachePersistente('x'), true));
+
+/* Se simula el almacén para probar el round-trip de verdad. */
+function almacenFalso(cupoBytes) {
+  const m = new Map();
+  return {
+    get length() { return m.size; },
+    key(i) { return Array.from(m.keys())[i]; },
+    getItem(k) { return m.has(k) ? m.get(k) : null; },
+    removeItem(k) { m.delete(k); },
+    setItem(k, v) {
+      let usado = 0; m.forEach(x => { usado += x.length; });
+      if (cupoBytes && usado + String(v).length > cupoBytes) {
+        const e = new Error('cupo'); e.name = 'QuotaExceededError'; throw e;
+      }
+      m.set(k, String(v));
+    },
+    _mapa: m,
+  };
+}
+const HOJAS_DEMO = { 'PROMEDIOS E': { cols: ['EQUIPO', 'FASE'], filas: [{ EQUIPO: 'A', FASE: 'REGULAR' }] } };
+
+global.sessionStorage = almacenFalso(0);
+check('guarda y vuelve a leer las mismas hojas',
+  SGADD.guardarCachePersistente('libro1', HOJAS_DEMO) === true &&
+  JSON.stringify(SGADD.leerCachePersistente('libro1')) === JSON.stringify(HOJAS_DEMO));
+check('y un libro que nunca se guardó devuelve null',
+  SGADD.leerCachePersistente('libro2') === null);
+
+/* Los tres motivos de descarte: TTL vencido, formato viejo, JSON roto. */
+const claveDe = (id) => SGADD.CACHE_PREFIJO + id;
+const guardadoCon = (id, obj) => sessionStorage.setItem(claveDe(id), JSON.stringify(obj));
+
+guardadoCon('viejo', { formato: SGADD.CACHE_FORMATO, hojas: HOJAS_DEMO,
+  guardado: Date.now() - SGADD.CACHE_TTL_MS - 1000 });
+check('un caché vencido se descarta', SGADD.leerCachePersistente('viejo') === null);
+check('y se borra solo, para no ocupar cupo al pedo',
+  sessionStorage.getItem(claveDe('viejo')) === null);
+
+/* Sube cuando cambia la FORMA de lo guardado: un caché escrito por un
+   parser viejo se descarta en vez de reventar abajo. */
+guardadoCon('otroFormato', { formato: SGADD.CACHE_FORMATO + 1, hojas: HOJAS_DEMO, guardado: Date.now() });
+check('un caché de otro formato se descarta',
+  SGADD.leerCachePersistente('otroFormato') === null);
+
+sessionStorage.setItem(claveDe('roto'), 'esto no es json {{{');
+check('un JSON corrupto no rompe la carga',
+  SGADD.leerCachePersistente('roto') === null);
+check('y también se limpia', sessionStorage.getItem(claveDe('roto')) === null);
+
+/* Sin lugar: se tiran los OTROS libros y se reintenta. Que no entre no es
+   un error — el panel funciona igual, solo vuelve a pedirle a GViz. */
+global.sessionStorage = almacenFalso(200);   /* entra uno, no dos */
+SGADD.guardarCachePersistente('otroLibro', HOJAS_DEMO);
+const entroApretado = SGADD.guardarCachePersistente('elQueImporta', HOJAS_DEMO);
+check('sin cupo, tira los otros libros y guarda el que se está mirando',
+  entroApretado === true && SGADD.leerCachePersistente('otroLibro') === null &&
+  !!SGADD.leerCachePersistente('elQueImporta'));
+
+global.sessionStorage = almacenFalso(10);   // no entra ni el más chico
+check('y si no entra nada, devuelve false sin tirar excepción',
+  SGADD.guardarCachePersistente('imposible', HOJAS_DEMO) === false);
+
+/* `limpiarCache()` SIN sheetId lo llama el arranque del club en CADA carga.
+   Si borrara el disco, el caché moriría en el arranque siguiente al que lo
+   escribió: medido con un espía sobre Storage, el F5 volvía a pedir las
+   nueve hojas y el caché parecía andar porque se reescribía solo. */
+global.sessionStorage = almacenFalso(0);
+SGADD.guardarCachePersistente('sobrevive', HOJAS_DEMO);
+SGADD.limpiarCache();
+check('limpiarCache() sin argumento NO toca el caché persistente',
+  !!SGADD.leerCachePersistente('sobrevive'));
+/* Con sheetId sí: es lo que hace "Actualizar datos", y si solo vaciara la
+   memoria el gesto del DT no haría nada visible. */
+SGADD.limpiarCache('sobrevive');
+check('limpiarCache(sheetId) borra las DOS capas',
+  SGADD.leerCachePersistente('sobrevive') === null);
+delete global.sessionStorage;
+
+/* El contrato del adaptador con la capa de arriba. */
+const coreJs2 = require('fs').readFileSync('./js/sgadd-core.js', 'utf8');
+check('solo se cachea la carga COMPLETA, no un subconjunto de hojas',
+  /const completa = !opt\.hojas;/.test(coreJs2));
+/* Con hojas que fallaron, cachear serviría el mismo libro incompleto media
+   hora en vez de reintentar — y suele ser un timeout puntual. */
+check('y solo si la carga salió limpia',
+  /if \(completa && !errores\.length && Object\.keys\(hojas\)\.length\)/.test(coreJs2));
+check('forzar saltea el caché y lo reemplaza',
+  /if \(opt\.forzar\) borrarCachePersistente\(sheetId\);/.test(coreJs2));
+/* sessionStorage y no localStorage: el dato cambia cuando corre MotorStats
+   y nadie avisa. El techo del dato viejo es una sesión de trabajo. */
+check('usa sessionStorage, no localStorage',
+  /typeof sessionStorage === 'undefined'/.test(coreJs2) &&
+  !/localStorage/.test(coreJs2.slice(coreJs2.indexOf('CACHE_PREFIJO'), coreJs2.indexOf('function cargarCategoria'))));
+
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })();

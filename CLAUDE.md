@@ -16,7 +16,7 @@ aplicadas en el punto 14.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 234 tests · núcleo, índice, validador
+node test-core.js          # 252 tests · núcleo, índice, validador
 node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  38 tests · multi-cliente
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 176 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1434 tests en total. Todos tienen que dar verde antes de commitear.**
+**1452 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -94,6 +94,8 @@ js/
   sgadd-buzon.js        ← UI del buzón: drawer, toast, badge (usa `document`)
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app
 INTEGRACION_MOTORSTATS.md ← auditoría del motor que escribe las planillas
+ESPECIFICACION_ADAPTADOR_GVIZ.md ← la Fase 1 documentada: parser, normalizaciones,
+                          scope, indice y las dos capas de cache
 AVISO_MOTORSTATS_2026-08-24.md ← lo que la web le reporta al motor: libros
                           desalineados, la U21 en 401 y dos correcciones a su prompt
 AUDITORIA_ETIQUETAS_JUGADORES.md ← glosario y auditoría de TODAS las etiquetas
@@ -110,7 +112,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=118`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=119`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -357,6 +359,38 @@ con una noche sin `+/-` lanzaba y la sección quedaba sin pintar.
 `typeof valor !== 'number'` cierra la clase entera: toda columna numérica
 que venga vacía se muestra ausente en vez de tumbar la vista. El **cero se
 sigue mostrando**: no llegar a ninguno es distinto de no haber estado.
+
+### Caché persistente · sobrevive al F5, no a cerrar la pestaña
+
+Hay **dos** capas. `_cache` guarda la **promesa** en memoria —dos llamadas
+concurrentes comparten un solo `fetch`— y muere con la página. Encima va un
+caché en **`sessionStorage`** bajo `sgadd.hojas.<sheetId>`, con TTL de 30
+minutos y versión de formato.
+
+**`sessionStorage` y no `localStorage` a propósito.** El dato cambia cuando
+corre MotorStats y nadie avisa: con `localStorage` el DT podría abrir el
+panel el domingo y ver la fecha del jueves. Así el techo del dato viejo es
+una sesión de trabajo.
+
+Medido en DEPORTIVO: el libro ocupa **2.336 KB** serializado y las
+peticiones GViz del arranque bajan de **20 a 11** tras un F5 (las 11 que
+quedan son de la capa vieja de Principal, que no pasa por el adaptador).
+Con GViz **bloqueado** y el caché poblado, la app arranca completa.
+
+**El bug que costó encontrar: `limpiarCache()` sin `sheetId` NO puede tocar
+el disco.** Lo llama `aplicarDatos()` del club en CADA arranque, así que si
+borrara el persistente, el caché moriría en el arranque siguiente al que lo
+escribió y no serviría jamás. El síntoma era perfecto: el caché *parecía*
+andar —la clave estaba en `sessionStorage` al terminar de cargar— porque se
+reescribía solo cada vez. Se encontró con un espía sobre `Storage.prototype`
+inyectado antes de que corriera un solo script de la app.
+
+Con `sheetId` sí limpia las dos: es lo que hace *Actualizar datos*, y si
+solo vaciara la memoria el gesto del DT no haría nada visible.
+
+Y dos reglas más: **solo se cachea la carga COMPLETA** (un subconjunto de
+hojas devolvería más de lo pedido) y **solo si salió limpia** (con hojas que
+fallaron serviría el libro incompleto media hora en vez de reintentar).
 
 ### Cuando el libro viene DESALINEADO · maestras contra derivadas
 

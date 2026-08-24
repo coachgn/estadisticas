@@ -19,6 +19,8 @@
 | 4 | Hueco 6.2 (`Base Datos J` con 0 en vez de blanco) | MotorStats | 🟢 **la web ya lo corrige** |
 | 5 | Celda vacía en columna numérica rompía una pantalla | Web | 🟢 **corregido** |
 | 6 | `EQUIPO TIPO` sigue siendo la mediana tras v38 | — | ✅ verificado |
+| 7 | **Filas `FASE = TOTAL` por equipo y jugador**: no existen | **MotorStats** | 🟡 pedido nuevo |
+| 8 | Anomalía `TORNEO = "135"` de su punto 4.2 | — | ✅ **ya corregida** |
 
 Los puntos 1 y 2 son los que hay que atacar. El 3 es barato y evita un
 sinsentido en el panel. Del 4 y el 5 no hace falta que hagan nada: se
@@ -218,6 +220,71 @@ lanzaba y la sección no se pintaba.** Estaba pasando en producción.
 Ya está corregido del lado de la web (guarda por tipo, no por `isFinite`).
 Lo interesante para MotorStats: **emitir una columna vacía no es lo mismo
 que no emitirla**, y en este caso costó una pantalla.
+
+---
+
+## 5 bis · 🟡 Las filas `FASE = TOTAL` por equipo y por jugador
+
+**Pedido nuevo, y es el que desbloquea la vista de temporada completa.**
+
+Primero, una confirmación: **la anomalía `TORNEO = "135"` ya no existe.**
+Leídas las 6 hojas derivadas de DEPORTIVO por GViz el 2026-08-24 después de
+su última corrida:
+
+```
+PROMEDIOS E / ACUMULADO E / PROMEDIOS 4F / ACUMULADO 4F
+   →  EQUIPO TIPO · TORNEO=''  FASE='TOTAL'   ✅
+PROMEDIOS J / ACUMULADO J
+   →  JUGADOR TIPO · TORNEO='' FASE='TOTAL'   ✅
+
+celdas con exactamente "135" en EQUIPO/NOMBRES/TORNEO/FASE:  0
+```
+
+Queda cerrado el bloqueante 1 de su punto 4.2.
+
+### Pero corregirlo NO alcanza para la vista de temporada completa
+
+Su documento dice que *"la web usa ese valor para ofrecer la vista de
+temporada completa"*. El diagnóstico de la causa es incorrecto. Conteo de
+filas por tramo en DEPORTIVO, con el libro ya corregido:
+
+| Hoja | `IDA+REGULAR` | `VUELTA+REGULAR` | `(vacío)+TOTAL` |
+|---|---|---|---|
+| `PROMEDIOS E` | 12 equipos + TIPO | 12 equipos + TIPO | **solo la fila TIPO** |
+| `PROMEDIOS J` | 208 jugadores + 13 TIPO | 165 + 13 TIPO | **solo la fila TIPO** |
+
+La fase `TOTAL` tiene **una sola fila en todo el libro**, y es la mediana de
+la liga. **Cero equipos, cero jugadores.** Si el panel ofreciera esa vista,
+mostraría una pantalla vacía.
+
+### Lo que pedimos
+
+Que `PROMEDIOS E`, `ACUMULADO E`, `PROMEDIOS 4F`, `ACUMULADO 4F`,
+`PROMEDIOS J` y `ACUMULADO J` escriban también **las filas por equipo y por
+jugador con `FASE = TOTAL`**, agregando las ruedas del torneo.
+
+**No lo podemos hacer del lado de la web**, y no es por costo: juntar `IDA` y
+`VUELTA` en el navegador corrompe los promedios. Medido en DEPORTIVO, que
+trae los mismos 13 equipos en las dos ruedas:
+
+```
+solo IDA     → 64 partidos · 208 jugadores · DLP con PJ 11, 75,6 PTS
+solo VUELTA  → 12 partidos · 165 jugadores · DLP con PJ  2, 66,5 PTS
+SIN scope    → 76 partidos · 373 jugadores · DLP con PJ  2, 66,5 PTS  ←
+```
+
+Los partidos se acumulan bien porque cada uno es una fila distinta, pero el
+índice agrupa los promedios por `EQUIPO + FASE` y **los de VUELTA pisan a los
+de IDA**: el equipo aparecería con 13 partidos en la cronología y un promedio
+calculado sobre 2. Y los jugadores se **duplican**, 373 contra 208, porque
+cada uno tiene una fila por torneo.
+
+Recalcularlo en el cliente además rompería la regla que sostiene la
+confianza en el panel: **SGADD no genera datos, los consume**. Un promedio
+calculado acá dejaría de coincidir con la hoja que el club audita.
+
+**Cuando esas filas existan, el selector va a ofrecer la vista sola**, sin
+tocar una línea: `combinacionesTorneoFase()` enumera los tramos que hay.
 
 ---
 
