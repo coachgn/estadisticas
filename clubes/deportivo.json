@@ -3,7 +3,7 @@
   "nombre": "Deportivo La Plata",
   "nombreCorto": "DEPORTIVO",
   "bajada": "Basquet · Scouting",
-  "escudo": "logos/la-plata/deportivo.png",
+  "escudo": "logos/la-plata/deportivo-la-plata.png",
 
   "//acento": "El azul del escudo, muestreado del propio PNG: cubre el 67% de su superficie. Es muy oscuro, asi que aclararHastaLegible() lo levanta para usarlo como texto sobre la card y oscurecerHastaLegible() lo baja para el papel; el JSON guarda el color de marca, no el que se pinta.",
   "acento": "#09086E",
@@ -27,10 +27,10 @@
   "planillas": [
     {
       "id": "deportivo-primera-2026",
-      "label": "Primera · Ida 2026",
+      "label": "Primera 2026",
       "sheetId": "14tjg3yVANe7DkfrJstGgOfNXffuJEt6Vylob6UqleaQ",
       "categoria": "PRIMERA",
-      "faseTorneo": "IDA",
+      "faseTorneo": null,
       "rama": "masculina",
       "tira": null
     }

@@ -16,8 +16,8 @@ aplicadas en el punto 14.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 222 tests · núcleo, índice, validador
-node test-logos.js         #  24 tests · resolución de escudos
+node test-core.js          # 234 tests · núcleo, índice, validador
+node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  38 tests · multi-cliente
 node test-boot.js          #  55 tests · arranque por club + sintaxis de los módulos
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 176 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1420 tests en total. Todos tienen que dar verde antes de commitear.**
+**1434 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -102,7 +102,7 @@ generar-manual-etiquetas.js  ← genera MANUAL_ETIQUETADO_SGADD.html para el
                           cuerpo técnico. Se corre a mano: `node generar-manual-etiquetas.js`
 clubes/
   reconquista.json      ← 3 planillas (Primera + Naranja U21/U23), liga la-plata
-  deportivo.json        ← 1 planilla (Primera · Ida 2026), liga la-plata
+  deportivo.json        ← 1 planilla (Primera 2026), liga la-plata
   jujuy.json            ← 1 planilla (Conferencia Norte), liga liga-argentina
 logos/<liga>/           ← escudos + index.json (manifiesto)
 test-fixtures/          ← prom.tsv + p4f.tsv, 12 equipos de La Plata (committeados)
@@ -110,7 +110,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=117`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=118`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -410,15 +410,57 @@ Lo que sí ve el usuario es el `label`. Y **renombrar el `id` de una
 planilla no es cosmético** (punto 6): es la clave de los estados de
 jugador y viaja en cada link compartido.
 
-### Estado global y selector
+### Estado global y UN SOLO selector · el TRAMO de competencia
 
-`SGADD_APP.estado.torneo` es global, igual que planilla y fase. El selector
-**Torneo** aparece en la barra superior SOLO si el libro trae más de uno: con
-una planilla por torneo —que es como trabajan todos los clubes hoy— sería un
-desplegable de una sola opción ocupando lugar. Cambiar de planilla resetea el
-torneo (es del libro anterior) y `cargar()` lo revalida contra los torneos
-reales del libro nuevo.
+`SGADD_APP.estado.torneo` y `.fase` son globales, igual que la planilla,
+**pero se eligen JUNTOS**: la barra tiene un solo desplegable rotulado
+*Fase* con los pares que existen en el libro — `Ida - Regular`,
+`Vuelta - Regular` —, que es la convención de la carpeta de Nivel 6 del
+motor (`TORNEO - FASE`).
 
+Con dos desplegables el DT tenía que armar el par a mano y, peor, podía
+elegir uno que **no existe** en el libro (Apertura + una fase que solo
+tuvo el Clausura): la vista quedaba vacía sin decir por qué.
+`combinacionesTorneoFase()` enumera solo los reales.
+
+Reglas al tocarlo:
+
+- **El estado sigue partido en dos, y la RUTA también.** Solo cambia la
+  forma de elegir. Los links compartidos con `/<torneo>/<fase>/` siguen
+  funcionando y `cambiarFase`/`cambiarTorneo` siguen existiendo porque los
+  usa el ruteo. `cambiarTramo()` escribe los dos y **reindexa una sola
+  vez**: encadenar los dos setters reindexaría dos veces, y la primera
+  pasada armaría el índice sobre un par que puede no existir.
+- **La fila TIPO no genera un tramo.** Viene con `FASE = TOTAL` y sin
+  torneo; ofrecerla llevaba a una vista con cero equipos.
+- **Sin columna `TORNEO` se muestra solo la fase.** Un `General - Regular`
+  sería inventar una etiqueta sobre un dato que no existe (Jujuy y la U21
+  son así).
+- **Con un solo tramo el selector igual se muestra**: es la etiqueta de lo
+  que se está viendo.
+
+### "Todas las fases" NO se ofrece, y no es un olvido
+
+Juntar dos torneos suena razonable y **rompe los promedios**. Medido en el
+libro de DEPORTIVO, que trae los mismos 13 equipos en `IDA` y en `VUELTA`:
+
+```
+solo IDA     → 64 partidos · 208 jugadores · DLP con PJ 11, 75,6 PTS
+solo VUELTA  → 12 partidos · 165 jugadores · DLP con PJ  2, 66,5 PTS
+SIN scope    → 76 partidos · 373 jugadores · DLP con PJ  2, 66,5 PTS  ←
+```
+
+Los **partidos** sí se acumulan bien (cada uno es una fila distinta), pero
+el índice agrupa los promedios por `EQUIPO + FASE` y **los de VUELTA pisan
+a los de IDA**: el equipo aparece con 13 partidos en la cronología y un
+promedio calculado sobre 2. Y los jugadores se **duplican** —373 contra
+208— porque cada uno tiene una fila por torneo.
+
+El agregado correcto es la fase **`TOTAL`**, que el motor ya define. Hoy
+MotorStats la escribe **solo para la fila `EQUIPO TIPO`**: en `PROMEDIOS
+E` de DEPORTIVO hay 1 sola fila con `FASE = TOTAL`. Cuando el motor la
+complete con las filas por equipo, **el selector la va a ofrecer sola**,
+sin tocar una línea: `combinacionesTorneoFase()` enumera lo que hay.
 ### Ruta: `#/<planilla>/<torneo>/<fase>/<seccion>/…`
 
 El torneo entra como **segundo** nivel. La retrocompatibilidad no es opcional:
@@ -694,6 +736,20 @@ estar en varias categorías con claves distintas (`reconquista` en U23,
 `reconquista a` en Primera), así que **el manifiesto tiene que cubrirlas
 todas**. Hay un test en `test-logos.js` que falla si alguna entrada apunta a
 un archivo que no existe.
+
+### El escudo de un club se llama como el CLUB ENTERO
+
+El resolutor prueba **recortes** del nombre cuando no hay match exacto,
+así que un archivo llamado `deportivo.png` se lo lleva cualquier club que
+empiece con esa palabra. Pasó al sumar el cliente DEPORTIVO: en su libro
+juegan **DEPORTIVO LA PLATA** y **DEPORTIVO SAN VICENTE**, y los dos
+salían en la grilla con el mismo escudo — sin figurar en el panel de
+faltantes, porque para el resolutor estaba resuelto.
+
+Se arregló renombrando a `deportivo-la-plata.png`. Ahora SAN VICENTE cae
+a sus iniciales, que es lo correcto: no tenemos su escudo. Hay un test que
+falla si algún archivo vuelve a tener un nombre que sea **prefijo** de
+otro.
 
 ### Renombrar una tira o sumar una categoría · se toca el JSON, no el código
 

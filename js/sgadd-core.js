@@ -487,6 +487,85 @@
     }));
   }
 
+  /* =====================================================================
+     LO QUE EL DT ELIGE ES UN TRAMO DE COMPETENCIA, NO DOS COSAS
+
+     La convención del motor es la carpeta de Nivel 6: `"IDA - REGULAR"`,
+     o sea **TORNEO - FASE**. Partirlo en dos desplegables obligaba al DT a
+     armar mentalmente el par, y peor: dejaba elegir combinaciones que no
+     existen en el libro (Apertura + una fase que solo tuvo el Clausura),
+     que devuelven una vista vacía sin decir por qué.
+
+     Acá se enumeran los pares que EXISTEN en los datos. El estado global
+     sigue guardando `torneo` y `fase` por separado —y la RUTA también, así
+     que los links compartidos siguen funcionando—: lo único que cambia es
+     que se eligen juntos.
+     ===================================================================== */
+
+  /** Los pares TORNEO+FASE presentes en el libro, en orden de lectura. */
+  function combinacionesTorneoFase(hojas) {
+    const vistas = new Map();
+    HOJAS_TORNEO.forEach(n => {
+      const h = hojas[n];
+      if (!h || !h.filas) return;
+      const idTipo = ESQUEMA[n] ? ESQUEMA[n].filaTipo : null;
+      h.filas.forEach(f => {
+        /* La fila TIPO no define un tramo: viene con FASE = TOTAL y sin
+           torneo en libros donde el agregado no existe como competencia. */
+        if (esFilaTipo(f, idTipo)) return;
+        const fase = texto(f['FASE']).toUpperCase();
+        if (!fase) return;
+        const torneo = torneoDeFila(f);
+        const id = torneo + '|' + fase;
+        if (!vistas.has(id)) {
+          vistas.set(id, { id: id, torneo: torneo, fase: fase, hojas: new Set() });
+        }
+        vistas.get(id).hojas.add(n);
+      });
+    });
+    if (!vistas.size) {
+      return [{ id: TORNEO_GENERAL + '|REGULAR', torneo: TORNEO_GENERAL, fase: 'REGULAR',
+        label: 'Fase regular', cobertura: 0, conPartidos: false, conPromedios: false }];
+    }
+
+    /* "IDA" -> "Ida", y tambien "regular" -> "Regular": el label de la
+       fase viene en minuscula despues de sacarle el "Fase " de adelante. */
+    const bonito = (t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
+    const orden = (fase) => (FASES[fase] ? FASES[fase].orden : 5);
+
+    return Array.from(vistas.values()).map(c => {
+      const f = FASES[c.fase];
+      return {
+        id: c.id, torneo: c.torneo, fase: c.fase,
+        /* Sin torneo real se muestra solo la fase: en una planilla pre-v44
+           un "General - Regular" sería ruido sobre un dato que no existe. */
+        label: c.torneo === TORNEO_GENERAL
+          ? (f ? f.label : bonito(c.fase))
+          : bonito(c.torneo) + ' - ' + bonito(f ? f.label.replace(/^Fase /, '') : c.fase),
+        agregado: !!(f && f.agregado),
+        cobertura: c.hojas.size,
+        conPartidos: c.hojas.has('Base Datos E'),
+        conPromedios: c.hojas.has('PROMEDIOS E'),
+        _orden: orden(c.fase),
+      };
+    }).sort((a, b) => (a._orden - b._orden) || a.torneo.localeCompare(b.torneo));
+  }
+
+  /**
+   * El tramo con el que conviene abrir un libro: el de mayor cobertura.
+   *
+   * Mismo criterio que `torneoPorDefecto` y por el mismo motivo: en un
+   * libro sano todos los tramos cubren todo y gana el primero —o sea lo de
+   * siempre— y en uno roto gana el que más muestra, en vez de abrir por el
+   * único recorte mudo.
+   */
+  function tramoPorDefecto(lista) {
+    const l = (lista || []).filter(c => !c.agregado);
+    if (!l.length) return (lista && lista[0]) || null;
+    let mejor = l[0];
+    l.forEach(c => { if (c.cobertura > mejor.cobertura) mejor = c; });
+    return mejor;
+  }
   /**
    * El torneo con el que conviene abrir un libro.
    *
@@ -2198,6 +2277,7 @@
     // 3
     CATALOGO, FASES, SECCIONES, TORNEO_GENERAL, planilla, planillasVisibles, esEquipoPropio, agrupar,
     fasesDisponibles, torneosDisponibles, torneoPorDefecto, torneoDeFila, Ruta,
+    combinacionesTorneoFase, tramoPorDefecto,
     blanquearTasasSinDenominador, DENOMINADOR_TASA,
     // 4
     normalizarHoja, construirIndice, esFilaTipo, tipoDeLiga, cargarCategoria, limpiarCache, TIMEOUT_HOJA, parsearGviz, urlGviz,

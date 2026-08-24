@@ -97,6 +97,15 @@ const SGADD_APP = (function () {
       if (!estado.torneo || !torneos.some(t => t.id === estado.torneo)) {
         estado.torneo = SGADD.torneoPorDefecto(torneos);
       }
+      /* Y que el PAR exista: un libro puede traer IDA y VUELTA en REGULAR
+         pero solo VUELTA en PLAYOFF, así que una fase heredada del libro
+         anterior puede no existir en este torneo. */
+      const tramos = SGADD.combinacionesTorneoFase(hojas);
+      const par = estado.torneo + '|' + estado.fase;
+      if (tramos.length && !tramos.some(t => t.id === par)) {
+        const mejor = SGADD.tramoPorDefecto(tramos);
+        if (mejor) { estado.torneo = mejor.torneo; estado.fase = mejor.fase; }
+      }
       reindexar();
     } catch (e) {
       if (vigente()) estado.error = e.message || String(e);
@@ -115,6 +124,24 @@ const SGADD_APP = (function () {
   function torneos() {
     return estado.hojas ? SGADD.torneosDisponibles(estado.hojas)
       : [{ id: SGADD.TORNEO_GENERAL, label: 'Todos', unico: true }];
+  }
+
+  /**
+   * Cambia torneo y fase de una sola vez, desde el selector combinado.
+   *
+   * Escribe los DOS y reindexa una sola vez. Llamar a `cambiarTorneo` y
+   * después a `cambiarFase` reindexaría dos veces, y la primera pasada
+   * armaría un índice sobre un par que puede no existir en el libro.
+   */
+  function cambiarTramo(id) {
+    const partes = String(id || '').split('|');
+    const torneo = partes[0] || SGADD.TORNEO_GENERAL;
+    const fase = partes[1] || 'REGULAR';
+    if (torneo === estado.torneo && fase === estado.fase) return;
+    estado.torneo = torneo;
+    estado.fase = fase;
+    reindexar();
+    avisar();
   }
 
   function cambiarTorneo(t) {
@@ -183,6 +210,9 @@ const SGADD_APP = (function () {
       ? `${estado.idx.liga.n} equipos · ${estado.idx.liga.partidos} partidos · PJ mediano ${estado.idx.liga.pjMediano}`
       : (estado.cargando ? 'Cargando…' : '');
 
+    const tramos = SGADD.combinacionesTorneoFase(estado.hojas || {});
+    const tramoActual = (estado.torneo || SGADD.TORNEO_GENERAL) + '|' + estado.fase;
+
     /* El recorte MUDO tiene que decir por qué está mudo.
 
        Un libro puede traer un torneo en las derivadas y otro en la
@@ -201,21 +231,29 @@ const SGADD_APP = (function () {
       : (l.partidos && (!l.jugadores || !l.jugadores.length) ? 'jugadores' : null));
     const avisoTorneo = !faltante ? '' : `
           <p class="text-[11px] leading-snug text-yellow-400 mt-2">
-            ⚠ El torneo <b>${SGADD_UI.esc(estado.torneo || '')}</b> no tiene ${faltante} cargados en esta planilla.
-            Probá otro en el selector Torneo; si ninguno los trae, el libro está mal etiquetado
+            ⚠ El tramo <b>${SGADD_UI.esc(tramoActual.replace('|', ' - '))}</b> no tiene ${faltante} cargados en esta planilla.
+            Probá otra en el selector Fase; si ninguna la trae, el libro está mal etiquetado
             en el motor — el detalle está en <b>Diagnóstico</b>.
           </p>`;
 
-    /* El selector de torneo aparece SOLO si el libro trae más de uno. Con
-       una planilla por torneo —que es como trabajan todos los clubes hoy—
-       sería un desplegable de una sola opción ocupando lugar. */
-    const listaTorneos = torneos();
-    const selectorTorneo = listaTorneos.length <= 1 ? '' : `
-          <div class="sm:w-44">
-            <label class="block text-[11px] uppercase tracking-wider text-muted font-display mb-1">Torneo</label>
-            <select onchange="SGADD_APP.cambiarTorneo(this.value)"
+    /* UN SOLO selector para el par TORNEO + FASE.
+
+       La convención del motor es la carpeta de Nivel 6 —`"IDA - REGULAR"`,
+       o sea TORNEO - FASE—, así que el DT piensa en un tramo de
+       competencia, no en dos coordenadas. Con dos desplegables tenía que
+       armar el par a mano y, peor, podía elegir uno que NO EXISTE en el
+       libro: la vista quedaba vacía sin decir por qué. Acá solo se ofrecen
+       los pares reales.
+
+       Con un solo tramo el selector igual se muestra: es la etiqueta de lo
+       que se está viendo, y en una planilla de una sola fase decir 'Fase
+       regular' es información, no ruido. */
+    const selectorTramo = `
+          <div class="sm:w-56">
+            <label for="selTramo" class="block text-[11px] uppercase tracking-wider text-muted font-display mb-1">Fase</label>
+            <select id="selTramo" onchange="SGADD_APP.cambiarTramo(this.value)"
               class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm focus:border-accent outline-none">
-              ${listaTorneos.map(t => `<option value="${SGADD_UI.esc(t.id)}" ${t.id === estado.torneo ? 'selected' : ''}>${SGADD_UI.esc(t.label)}</option>`).join('')}
+              ${tramos.map(t => `<option value="${SGADD_UI.esc(t.id)}" ${t.id === tramoActual ? 'selected' : ''}>${SGADD_UI.esc(t.label)}</option>`).join('')}
             </select>
           </div>`;
 
@@ -234,14 +272,7 @@ const SGADD_APP = (function () {
               ${opts}
             </select>
           </div>
-          ${selectorTorneo}
-          <div class="sm:w-44">
-            <label class="block text-[11px] uppercase tracking-wider text-muted font-display mb-1">Fase</label>
-            <select onchange="SGADD_APP.cambiarFase(this.value)"
-              class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm focus:border-accent outline-none">
-              ${fases().map(f => `<option value="${f.id}" ${f.id === estado.fase ? 'selected' : ''}>${SGADD_UI.esc(f.label)}</option>`).join('')}
-            </select>
-          </div>
+          ${selectorTramo}
           ${o.extra || ''}
         </div>
         ${info ? `<p class="text-[11px] text-muted mt-2 font-mono">${SGADD_UI.esc(p ? p.label : '')} · ${SGADD_UI.esc(info)}</p>` : ''}
@@ -271,7 +302,7 @@ const SGADD_APP = (function () {
   });
 
   return {
-    estado, inicializar, cargar, reindexar, cambiarPlanilla, cambiarFase, cambiarTorneo,
+    estado, inicializar, cargar, reindexar, cambiarPlanilla, cambiarFase, cambiarTorneo, cambiarTramo,
     aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, onCambio,
     get idx() { return estado.idx; },
   };

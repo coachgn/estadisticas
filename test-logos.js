@@ -200,6 +200,38 @@ fs.unlinkSync(EXTRAIDO);
   });
 
   console.log('\n' + '═'.repeat(70));
-  console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
+  /* =====================================================================
+   UN ARCHIVO CON NOMBRE GENÉRICO SE LO ROBA EL CLUB EQUIVOCADO
+
+   El resolutor prueba recortes del nombre cuando no hay match exacto, así
+   que un archivo llamado `deportivo.png` se lo lleva CUALQUIER club que
+   empiece con esa palabra. Pasó al sumar el cliente DEPORTIVO: en su libro
+   juegan DEPORTIVO LA PLATA y DEPORTIVO SAN VICENTE, y los dos aparecían
+   en la grilla con el mismo escudo — sin figurar en el panel de faltantes,
+   porque para el resolutor estaba resuelto.
+
+   El escudo de un club se llama como el club entero.
+   ===================================================================== */
+console.log('\nNOMBRES DE ARCHIVO QUE COLISIONAN');
+console.log('═'.repeat(70));
+
+const archivos = fs.readdirSync('./logos/la-plata').filter(f => !/\.json$/.test(f));
+const base = (f) => f.replace(/\.[^.]+$/, '');
+
+/* Dos archivos donde uno es prefijo del otro se pisan entre sí. */
+const colisiones = [];
+archivos.forEach(a => archivos.forEach(b => {
+  if (a === b) return;
+  if (base(b).indexOf(base(a) + '-') === 0) colisiones.push(base(a) + ' <- ' + base(b));
+}));
+check('ningún escudo tiene un nombre que sea prefijo de otro',
+  colisiones.length === 0, colisiones.join(' · '));
+
+/* El caso concreto, por si alguien vuelve a acortar el nombre. */
+check('el escudo de Deportivo La Plata lleva el nombre completo',
+  archivos.indexOf('deportivo-la-plata.png') >= 0 && archivos.indexOf('deportivo.png') < 0,
+  archivos.filter(f => /deportivo/.test(f)).join(','));
+
+console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })();

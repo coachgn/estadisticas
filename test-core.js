@@ -998,6 +998,86 @@ check('y antes de meter la fila en jugadorPartidos',
   coreJs.indexOf('blanquearTasasSinDenominador(datos);') <
   coreJs.indexOf('liga.jugadorPartidos.get(datos.__clave).push(datos)'));
 
+/* =====================================================================
+   EL TRAMO DE COMPETENCIA · TORNEO + FASE se eligen JUNTOS
+
+   La convención del motor es la carpeta de Nivel 6: "IDA - REGULAR", o
+   sea TORNEO - FASE. Partirlo en dos desplegables obligaba al DT a armar
+   el par a mano y dejaba elegir combinaciones que NO existen en el libro,
+   que devuelven una vista vacía sin decir por qué.
+   ===================================================================== */
+console.log('\nTRAMOS · TORNEO + FASE');
+console.log('═'.repeat(70));
+
+/* El libro de DEPORTIVO, que es el que motivó el cambio: dos ruedas en
+   la misma fase. */
+const hDep = {
+  'PROMEDIOS E': { cols: ['EQUIPO', 'FASE', 'TORNEO'], filas: [
+    { EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'IDA' },
+    { EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'VUELTA' },
+    { EQUIPO: 'EQUIPO TIPO', FASE: 'TOTAL', TORNEO: '' }] },
+  'Base Datos E': { cols: ['PARTIDO', 'EQUIPO', 'FASE', 'TORNEO'], filas: [
+    { PARTIDO: 'x', EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'IDA' },
+    { PARTIDO: 'y', EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'VUELTA' }] },
+};
+const tDep = SGADD.combinacionesTorneoFase(hDep);
+
+check('el selector ofrece los pares que EXISTEN, no el producto cartesiano',
+  tDep.map(t => t.id).join(' · ') === 'IDA|REGULAR · VUELTA|REGULAR',
+  tDep.map(t => t.id).join(' · '));
+check('y los rotula como la carpeta del motor: TORNEO - FASE',
+  tDep.map(t => t.label).join(' · ') === 'Ida - Regular · Vuelta - Regular',
+  tDep.map(t => t.label).join(' · '));
+
+/* La fila TIPO no es un tramo: viene con FASE = TOTAL y sin torneo en
+   libros donde ese agregado no existe como competencia. Ofrecerla llevaba
+   a una vista con cero equipos. */
+check('la fila TIPO no genera un tramo fantasma',
+  !tDep.some(t => t.fase === 'TOTAL'));
+
+/* En una planilla pre-v44 no hay torneo: mostrar "General - Regular"
+   sería inventar una etiqueta sobre un dato que no existe. */
+const tPre = SGADD.combinacionesTorneoFase({
+  'PROMEDIOS E': { cols: ['EQUIPO', 'FASE'], filas: [{ EQUIPO: 'A', FASE: 'REGULAR' }] },
+});
+check('sin columna TORNEO se muestra solo la fase',
+  tPre.length === 1 && tPre[0].label === 'Fase regular', JSON.stringify(tPre.map(t => t.label)));
+check('y su id sigue siendo GENERAL|FASE, que es lo que espera la ruta',
+  tPre[0].id === SGADD.TORNEO_GENERAL + '|REGULAR');
+
+/* El orden es el de lectura de una temporada: primero la fase regular. */
+const tOrden = SGADD.combinacionesTorneoFase({
+  'PROMEDIOS E': { cols: ['EQUIPO', 'FASE', 'TORNEO'], filas: [
+    { EQUIPO: 'A', FASE: 'PLAYOFF', TORNEO: 'VUELTA' },
+    { EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'VUELTA' }] },
+});
+check('la fase regular va antes que los playoffs',
+  tOrden[0].fase === 'REGULAR', tOrden.map(t => t.label).join(' · '));
+
+/* Mismo criterio que torneoPorDefecto: abre por el que más muestra, y en
+   un libro sano eso es el primero. */
+check('el libro abre por el tramo de mayor cobertura',
+  SGADD.tramoPorDefecto(tDep).id === 'IDA|REGULAR');
+check('y nunca por un agregado',
+  !SGADD.tramoPorDefecto(tDep).agregado);
+
+/* Cada tramo dice qué trae, para que el aviso de la barra sepa si lo que
+   falta son partidos o jugadores. */
+check('cada tramo declara si tiene partidos y promedios',
+  tDep.every(t => typeof t.conPartidos === 'boolean' && typeof t.conPromedios === 'boolean'));
+
+/* La barra: un solo selector, y el estado sigue partido en dos para que
+   la RUTA no cambie y los links compartidos sigan andando. */
+const appJs2 = require('fs').readFileSync('./js/sgadd-app.js', 'utf8');
+check('la barra tiene UN selector de tramo, no dos',
+  /const selectorTramo =/.test(appJs2) && !/const selectorTorneo =/.test(appJs2));
+check('y cambiarTramo escribe los dos y reindexa UNA sola vez',
+  /function cambiarTramo\(id\)[\s\S]{0,600}estado\.torneo = torneo;[\s\S]{0,120}estado\.fase = fase;/.test(appJs2) &&
+  (appJs2.match(/function cambiarTramo\(id\)[\s\S]{0,700}?reindexar\(\)/g) || []).length === 1);
+/* `cambiarFase` y `cambiarTorneo` siguen exportados: los usa la RUTA. */
+check('los dos setters viejos siguen existiendo para la ruta',
+  /function cambiarFase\(/.test(appJs2) && /function cambiarTorneo\(/.test(appJs2));
+
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })();
