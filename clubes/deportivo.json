@@ -1,0 +1,38 @@
+{
+  "id": "deportivo",
+  "nombre": "Deportivo La Plata",
+  "nombreCorto": "DEPORTIVO",
+  "bajada": "Basquet · Scouting",
+  "escudo": "logos/la-plata/deportivo.png",
+
+  "//acento": "El azul del escudo, muestreado del propio PNG: cubre el 67% de su superficie. Es muy oscuro, asi que aclararHastaLegible() lo levanta para usarlo como texto sobre la card y oscurecerHastaLegible() lo baja para el papel; el JSON guarda el color de marca, no el que se pinta.",
+  "acento": "#09086E",
+  "acentoOscuro": "#06054A",
+
+  "liga": "la-plata",
+
+  "//patronEquipoPropio": "DEPORTIVO LA PLATA completo, NO 'DEPORTIVO' a secas: en este mismo libro juega DEPORTIVO SAN VICENTE y el patron corto matchearia los dos, con lo cual el panel trataria al rival como equipo propio en scouting, informes y planteles.",
+  "patronEquipoPropio": "DEPORTIVO LA PLATA",
+
+  "//sufijosEquipo": "Misma convencion que el resto de La Plata: el sufijo de categoria (- MM, - U21M) se descarta porque no distingue clubes.",
+  "sufijosEquipo": ["\\s*-\\s*(MM|MF|U\\d{1,2}\\s*[MF]?)\\s*$"],
+
+  "//aliasLogos": "Solo para lo que el matching automatico no encuentre. Clave = nombre normalizado de la planilla.",
+  "aliasLogos": {},
+
+  "anio": 2026,
+  "torneo": "TORNEO LOCAL",
+  "credito": "SGADD",
+
+  "planillas": [
+    {
+      "id": "deportivo-primera-2026",
+      "label": "Primera · Ida 2026",
+      "sheetId": "14tjg3yVANe7DkfrJstGgOfNXffuJEt6Vylob6UqleaQ",
+      "categoria": "PRIMERA",
+      "faseTorneo": "IDA",
+      "rama": "masculina",
+      "tira": null
+    }
+  ]
+}

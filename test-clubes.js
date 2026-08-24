@@ -172,6 +172,47 @@ function crearClub(clubId, opciones) {
   check('dos llamadas concurrentes comparten la misma promesa (un solo fetch)', c7.llamadas.fetch === 1, c7.llamadas.fetch);
   check('y devuelven la misma config', p1 === p2);
 
+  /* =====================================================================
+     CADA CLIENTE, SU PATRÓN DE EQUIPO PROPIO
+
+     `patronEquipoPropio` decide qué equipo es "el nuestro" en scouting, en
+     los informes y en el plantel. Un patrón demasiado corto agarra de más
+     y el panel trata a un RIVAL como equipo propio, sin síntoma visible.
+     ===================================================================== */
+  console.log('\n8. PATRÓN DE EQUIPO PROPIO POR CLIENTE');
+  console.log('═'.repeat(70));
+
+  const clubes = ['reconquista', 'jujuy', 'deportivo'].map(id => require('./clubes/' + id + '.json'));
+  check('los tres clientes declaran su patrón',
+    clubes.every(c => typeof c.patronEquipoPropio === 'string' && c.patronEquipoPropio.length > 2),
+    clubes.map(c => c.id + ':' + c.patronEquipoPropio).join(' · '));
+
+  /* El caso concreto que casi se cuela: en el libro de DEPORTIVO juegan
+     DEPORTIVO LA PLATA y DEPORTIVO SAN VICENTE. Con el patrón corto
+     —"DEPORTIVO"— los dos serían el equipo propio. */
+  const dep = clubes.find(c => c.id === 'deportivo');
+  const rx = new RegExp(dep.patronEquipoPropio, 'i');
+  check('DEPORTIVO reconoce a su equipo', rx.test('DEPORTIVO LA PLATA'));
+  check('y NO se queda con DEPORTIVO SAN VICENTE, que es un rival del mismo libro',
+    !rx.test('DEPORTIVO SAN VICENTE'), dep.patronEquipoPropio);
+  check('su patrón no es la palabra suelta', dep.patronEquipoPropio !== 'DEPORTIVO');
+
+  /* Un cliente nuevo es un JSON y nada más —no hay lista de clubes en
+     ningún lado—, así que lo único que no puede faltar es esto. */
+  const REQUERIDOS = ['id', 'nombreCorto', 'acento', 'liga', 'patronEquipoPropio', 'planillas'];
+  clubes.forEach(c => {
+    check(c.id + ': trae todos los campos que la app necesita',
+      REQUERIDOS.every(k => c[k] !== undefined && c[k] !== null),
+      REQUERIDOS.filter(k => c[k] === undefined || c[k] === null).join(',') || 'ok');
+    check(c.id + ': cada planilla tiene id, label y sheetId',
+      c.planillas.every(pl => pl.id && pl.label && typeof pl.sheetId === 'string'));
+  });
+  /* Dos clientes con el mismo id de planilla compartirían los estados de
+     jugador guardados: la clave es `sgadd.estados.<club>.<planilla>`. */
+  const idsPl = clubes.flatMap(c => c.planillas.map(pl => pl.id));
+  check('no hay ids de planilla repetidos entre clientes',
+    new Set(idsPl).size === idsPl.length, idsPl.join(' · '));
+
   console.log('\n' + '═'.repeat(70));
   console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);

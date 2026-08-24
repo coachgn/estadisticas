@@ -19,7 +19,7 @@ aplicadas en el punto 14.
 node test-core.js          # 222 tests · núcleo, índice, validador
 node test-logos.js         #  24 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
-node test-clubes.js        #  27 tests · multi-cliente
+node test-clubes.js        #  38 tests · multi-cliente
 node test-boot.js          #  55 tests · arranque por club + sintaxis de los módulos
 node test-jugadores.js     # 240 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 176 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1409 tests en total. Todos tienen que dar verde antes de commitear.**
+**1420 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -102,6 +102,7 @@ generar-manual-etiquetas.js  ← genera MANUAL_ETIQUETADO_SGADD.html para el
                           cuerpo técnico. Se corre a mano: `node generar-manual-etiquetas.js`
 clubes/
   reconquista.json      ← 3 planillas (Primera + Naranja U21/U23), liga la-plata
+  deportivo.json        ← 1 planilla (Primera · Ida 2026), liga la-plata
   jujuy.json            ← 1 planilla (Conferencia Norte), liga liga-argentina
 logos/<liga>/           ← escudos + index.json (manifiesto)
 test-fixtures/          ← prom.tsv + p4f.tsv, 12 equipos de La Plata (committeados)
@@ -652,6 +653,35 @@ marca, color, liga, patrón de equipo propio, sufijos y planillas.
   abajo del mínimo WCAG de 4.5. Se mezcla con blanco hasta que pasa.
 
 Sumar un cliente = un JSON + su carpeta de escudos. Cero código.
+
+**Verificado sumando DEPORTIVO el 2026-08-24**: alcanzó con
+`clubes/deportivo.json`. No hay lista de clubes en ninguna parte —
+`?club=<id>` resuelve `clubes/<id>.json` por convención— así que no se tocó
+un solo `.js` ni hizo falta subir el `?v=`.
+
+Dos cosas que sí hay que mirar al sumar uno:
+
+- **El `patronEquipoPropio` tiene que discriminar dentro de SU libro.** En
+  el de DEPORTIVO juegan **DEPORTIVO LA PLATA** y **DEPORTIVO SAN**
+  **VICENTE**: con el patrón corto —`DEPORTIVO`— los dos serían el equipo
+  propio, y el panel trataría a un rival como propio en scouting, en los
+  informes y en el plantel, sin ningún síntoma visible. Hay un test que
+  falla si el patrón vuelve a ser la palabra suelta.
+- **La planilla tiene que ser pública.** El panel es estático y lee por
+  GViz anónimo: un libro compartido solo con su dueño da **401** y la
+  categoría no carga, aunque desde el navegador del dueño se vea perfecta.
+  Es lo que pasó con DEPORTIVO al darlo de alta. El permiso que hace falta
+  es *Cualquiera con el enlace · Lector*.
+
+**El acento sale del escudo, no de la intuición.** El azul de DEPORTIVO
+(`#09086E`) se muestreó de su propio PNG —cubre el 67% de la superficie— y
+el sistema lo acomoda solo: `aclararHastaLegible()` lo lleva a `#9090be`
+para texto sobre la card (**contraste 6,07**, medido) y para el papel lo
+deja como está, porque un azul tan oscuro sobre blanco ya pasa de sobra.
+
+**Los escudos son del CLUB, no del equipo.** `ATENAS 'B'` y `PLATENSE 'B'`
+usan el mismo archivo que sus `'A'`; se resuelve con una entrada más en el
+manifiesto, igual que ya existía `atenas` / `atenas a`.
 
 **El manifiesto (`logos/<liga>/index.json`) mapea clave → archivo**, así que
 el nombre del archivo NO tiene que ser el slug. Eso permite subir el escudo
