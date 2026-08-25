@@ -20,17 +20,17 @@ node test-core.js          # 252 tests · núcleo, índice, validador
 node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  48 tests · multi-cliente
-node test-boot.js          #  55 tests · arranque por club + sintaxis de los módulos
+node test-boot.js          #  64 tests · arranque por club + sintaxis de los módulos
 node test-jugadores.js     # 253 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
-node test-partido.js       #  49 tests · detalle partido a partido, perfil de tiro y su PDF
+node test-partido.js       #  54 tests · detalle partido a partido, perfil de tiro y su PDF
 node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 176 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1475 tests en total. Todos tienen que dar verde antes de commitear.**
+**1489 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -112,7 +112,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=121`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=123`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -359,6 +359,42 @@ con una noche sin `+/-` lanzaba y la sección quedaba sin pintar.
 `typeof valor !== 'number'` cierra la clase entera: toda columna numérica
 que venga vacía se muestra ausente en vez de tumbar la vista. El **cero se
 sigue mostrando**: no llegar a ninguno es distinto de no haber estado.
+
+### La capa de datos VIEJA de Principal · qué es y qué se le corrigió
+
+Principal es anterior al adaptador: tiene su propio `fetchSheet`, su propio
+`DATA` y su propio formato (`{cols:[{id,label,type}], rows:[{values,
+formatted}]}`, con el texto ya formateado por Google). Por eso **no pasa
+por `cargarCategoria` y no se beneficia del caché**.
+
+Se le corrigieron dos cosas el 2026-08-25:
+
+**1 · Ya no pide `RANKINGS J` ni `RANKINGS E`.** Su único consumidor era
+`buildEquiposLegacy()`, que quedó fuera del router cuando Equipos pasó a
+`sgadd-equipos.js` — o sea que eran **dos peticiones por arranque para
+llenar una clave que nadie leía**. La función se borró.
+
+**2 · `sheet()` scopea por tramo.** Sin eso, la misma pantalla daba dos
+respuestas a la misma pregunta con un libro de ida y vuelta:
+
+```
+barra superior  →  12 equipos · 64 partidos · 208 jugadores
+resumen general →  12 equipos · 76 partidos · 218 jugadores   ← 64 + 12
+```
+
+El filtro está en `sheet()`, el único punto por donde pasan todos los
+consumidores, y repite las **tres reglas del núcleo**: sin columna `TORNEO`
+no se filtra por torneo, una fila sin torneo pasa siempre, y la fila TIPO
+pasa siempre porque es la mediana y no un equipo. Si esas reglas divergen,
+la pantalla de entrada vuelve a contradecir al resto de la app.
+
+**Lo que queda abierto**: las 9 peticiones que la capa vieja sigue haciendo
+por su cuenta. Para eliminarlas hay que alimentarla desde el adaptador, y
+eso necesita un puente de formato — el adaptador **no guarda el `formatted`
+de Google**, así que los números se verían crudos (`0.4542382735812015` en
+vez de `45,42%`) salvo que se los formatee con `METRICAS`, que no cubre
+todas las columnas que Principal muestra. Es un refactor con riesgo de
+regresión visual en la pantalla de entrada; conviene hacerlo aparte.
 
 ### Caché persistente · sobrevive al F5, no a cerrar la pestaña
 

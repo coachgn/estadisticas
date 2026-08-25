@@ -1544,23 +1544,23 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=122"></script>
-<script src="js/sgadd-core.js?v=122"></script>
-<script src="js/sgadd-ui.js?v=122"></script>
-<script src="js/sgadd-app.js?v=122"></script>
-<script src="js/sgadd-estados.js?v=122"></script>
-<script src="js/sgadd-buzon.js?v=122"></script>
-<script src="js/sgadd-charts.js?v=122"></script>
-<script src="js/sgadd-personalidad.js?v=122"></script>
-<script src="js/sgadd-rankings.js?v=122"></script>
-<script src="js/sgadd-partido.js?v=122"></script>
-<script src="js/sgadd-informe.js?v=122"></script>
-<script src="js/sgadd-ficha.js?v=122"></script>
-<script src="js/sgadd-equipos.js?v=122"></script>
-<script src="js/sgadd-jugadores.js?v=122"></script>
-<script src="js/sgadd-4factores.js?v=122"></script>
-<script src="js/sgadd-scouting.js?v=122"></script>
-<script src="js/sgadd-diagnostico.js?v=122"></script>
+<script src="js/sgadd-club.js?v=123"></script>
+<script src="js/sgadd-core.js?v=123"></script>
+<script src="js/sgadd-ui.js?v=123"></script>
+<script src="js/sgadd-app.js?v=123"></script>
+<script src="js/sgadd-estados.js?v=123"></script>
+<script src="js/sgadd-buzon.js?v=123"></script>
+<script src="js/sgadd-charts.js?v=123"></script>
+<script src="js/sgadd-personalidad.js?v=123"></script>
+<script src="js/sgadd-rankings.js?v=123"></script>
+<script src="js/sgadd-partido.js?v=123"></script>
+<script src="js/sgadd-informe.js?v=123"></script>
+<script src="js/sgadd-ficha.js?v=123"></script>
+<script src="js/sgadd-equipos.js?v=123"></script>
+<script src="js/sgadd-jugadores.js?v=123"></script>
+<script src="js/sgadd-4factores.js?v=123"></script>
+<script src="js/sgadd-scouting.js?v=123"></script>
+<script src="js/sgadd-diagnostico.js?v=123"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -1579,9 +1579,19 @@ const SHEETS_CONFIG = [
   { name: '4 FACTORES',    key: '4factores'    },
   { name: 'PROMEDIOS 4F',  key: 'promedios4f'  },
   { name: 'ACUMULADO 4F',  key: 'acumulado4f'  },
-  { name: 'RANKINGS J',    key: 'rankingsJ'    },
-  { name: 'RANKINGS E',    key: 'rankingsE'    },
 ];
+
+/* `RANKINGS J` y `RANKINGS E` NO se piden, y no es una omisión.
+
+   No son tablas planas sino informes maquetados con encabezados repetidos:
+   GViz asume fila 1 = headers y devuelve basura. El núcleo las excluye
+   desde el principio (`HOJAS_EXCLUIDAS` en `sgadd-core.js`) y los rankings
+   se derivan en el cliente desde `PROMEDIOS J` / `PROMEDIOS E`.
+
+   Esta capa las seguía pidiendo por inercia: su único consumidor era
+   `buildEquiposLegacy()`, que quedó fuera del router cuando Equipos pasó a
+   `sgadd-equipos.js` y hoy no lo llama nadie. Eran dos peticiones por
+   arranque para llenar una clave que nadie leía. */
 
 const VALID_SECTIONS = ['principal', 'equipos', 'jugadores', 'scouting', 'simulador', 'diagnostico'];
 
@@ -1691,8 +1701,63 @@ function filterRows(rows, term) {
   return filtered.filter((r) => Object.values(r.formatted).some((v) => normalizeText(v).includes(t)));
 }
 
+/* =====================================================================
+   EL TRAMO TAMBIÉN MANDA ACÁ
+
+   Esta capa de datos es anterior al adaptador y leía el libro ENTERO, sin
+   scopear por torneo. Con DEPORTIVO, que trae Ida y Vuelta en el mismo
+   libro, eso daba dos respuestas distintas a la misma pregunta:
+
+     barra superior (índice scopeado)  →  12 equipos · 64 partidos · 208 jug
+     Principal (esta capa, sin scope)  →  12 equipos · 76 partidos · 218 jug
+
+   76 = 64 de Ida + 12 de Vuelta. Los dos números eran ciertos y se
+   contradecían en la misma pantalla. Ya había pasado con el U23, donde el
+   encabezado decía 0 partidos y el resumen 82.
+
+   Se filtra acá, en el único punto por donde pasan todos los consumidores,
+   con las mismas tres reglas del núcleo:
+     · sin columna TORNEO no se filtra por torneo (planilla pre-v44);
+     · una fila SIN torneo pasa siempre, aunque se esté filtrando;
+     · la fila TIPO pasa siempre: es la mediana de la liga, no un equipo.
+   ===================================================================== */
+function tramoActivo() {
+  if (typeof SGADD_APP === 'undefined' || !SGADD_APP.estado) return null;
+  const e = SGADD_APP.estado;
+  if (!e.fase) return null;
+  return { torneo: e.torneo || null, fase: String(e.fase).toUpperCase() };
+}
+
+function scoparTramo(d) {
+  const t = tramoActivo();
+  if (!t || !d || !d.rows || !d.rows.length) return d;
+  const etiquetas = (d.cols || []).map(c => String(c.label || '').toUpperCase());
+  const hayFase = etiquetas.indexOf('FASE') !== -1;
+  const hayTorneo = etiquetas.indexOf('TORNEO') !== -1;
+  if (!hayFase && !hayTorneo) return d;
+
+  const dato = (r, col) => {
+    const v = (r.formatted && r.formatted[col] !== undefined) ? r.formatted[col]
+      : (r.values ? r.values[col] : '');
+    return String(v === null || v === undefined ? '' : v).trim().toUpperCase();
+  };
+  const esTipo = (r) => Object.values(r.formatted || {})
+    .some(v => /^\s*(EQUIPO|JUGADOR)\s+TIPO\s*$/i.test(String(v || '')));
+
+  const rows = d.rows.filter(r => {
+    if (esTipo(r)) return true;
+    if (hayFase) { const f = dato(r, 'FASE'); if (f && f !== t.fase) return false; }
+    if (hayTorneo && t.torneo && t.torneo !== 'GENERAL') {
+      const tt = dato(r, 'TORNEO');
+      if (tt && tt !== String(t.torneo).toUpperCase()) return false;
+    }
+    return true;
+  });
+  return { cols: d.cols, rows: rows, error: d.error };
+}
+
 function sheet(key) {
-  return DATA[key] || { cols: [], rows: [], error: 'Sin datos' };
+  return scoparTramo(DATA[key] || { cols: [], rows: [], error: 'Sin datos' });
 }
 
 function cleanName(name) {
@@ -2650,22 +2715,15 @@ function buildPrincipal() {
 }
 
 /* ============ SECCIÓN: EQUIPOS / JUGADORES ============ */
-function buildEquiposLegacy() {
-  const tabs = [
-    { id: 'acumulado', label: 'Acumulado' },
-    { id: 'promedios', label: 'Promedios' },
-    { id: 'base', label: 'Base de Datos' },
-    { id: 'rankings', label: 'Rankings' },
-  ];
-  const keyMap = { acumulado: 'equipo', promedios: 'promediosE', base: 'baseDatosE', rankings: 'rankingsE' };
-  const active = tabState.equipos;
-  return `
-    <section class="space-y-4">
-      <div class="flex flex-wrap gap-2">${buildTabs('equipos', tabs)}</div>
-      ${renderTable(`equipos-${active}`, keyMap[active])}
-    </section>`;
-}
 
+/* `buildEquiposLegacy()` se borró el 2026-08-25. Era la tabla genérica de
+   solo lectura que mostraba ACUMULADO E / PROMEDIOS E / Base Datos E /
+   RANKINGS E en cuatro pestañas, y quedó fuera del router cuando Equipos
+   pasó a `sgadd-equipos.js` con su grilla, su ficha y sus ocho tabs.
+
+   No se borró por prolijidad: era el ÚNICO consumidor de `rankingsE`, y
+   mientras existía, esta capa seguía pidiéndole a GViz las dos hojas
+   `RANKINGS` en cada arranque para llenar una clave que nadie leía. */
 /* buildJugadores() vive ahora en js/sgadd-jugadores.js (grilla → ficha →
    tabs, sobre el núcleo SGADD), igual que Equipos. La versión vieja mostraba
    las hojas J crudas (Acumulado/Promedios/Base/Rankings); esa capa de datos

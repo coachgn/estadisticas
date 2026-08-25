@@ -282,6 +282,57 @@ function crearEntorno({ clubOk, clubExplota, sinClub, sinApp, planillasClub, pla
   check('las animaciones respetan prefers-reduced-motion',
     /@media \(prefers-reduced-motion: reduce\)/.test(html));
 
-  console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
+  /* =====================================================================
+   LA CAPA DE DATOS VIEJA TAMBIÉN RESPETA EL TRAMO
+
+   Principal es anterior al adaptador y leía el libro entero. Con
+   DEPORTIVO, que trae Ida y Vuelta en el mismo libro, eso daba dos
+   respuestas a la misma pregunta EN LA MISMA PANTALLA:
+
+     barra superior  →  12 equipos · 64 partidos · 208 jugadores
+     resumen general →  12 equipos · 76 partidos · 218 jugadores
+
+   76 = 64 de Ida + 12 de Vuelta. Ya había pasado con el U23, donde el
+   encabezado decía 0 partidos y el resumen 82.
+   ===================================================================== */
+console.log('\nSCOPE DE LA CAPA VIEJA');
+console.log('═'.repeat(70));
+
+check('sheet() pasa por el filtro de tramo',
+  /function sheet\(key\) \{[\s\S]{0,160}scoparTramo\(/.test(html));
+check('y el tramo sale del estado global, no de una copia local',
+  /function tramoActivo\(\)[\s\S]{0,300}SGADD_APP\.estado/.test(html));
+
+/* Las tres reglas son las MISMAS del núcleo: si divergen, la pantalla de
+   entrada vuelve a contradecir al resto de la app. */
+check('sin columna TORNEO no se filtra por torneo (planilla pre-v44)',
+  /const hayTorneo = etiquetas\.indexOf\('TORNEO'\) !== -1;/.test(html) &&
+  /if \(!hayFase && !hayTorneo\) return d;/.test(html));
+check('una fila SIN torneo pasa siempre, aunque se esté filtrando',
+  /const tt = dato\(r, 'TORNEO'\);[\s\S]{0,120}if \(tt && tt !==/.test(html));
+check('la fila TIPO pasa siempre: es la mediana, no un equipo',
+  /if \(esTipo\(r\)\) return true;/.test(html));
+check('y GENERAL no filtra: es la etiqueta del caso sin torneo',
+  /t\.torneo !== 'GENERAL'/.test(html));
+
+/* =====================================================================
+   LAS HOJAS RANKINGS YA NO SE PIDEN
+
+   No son tablas planas sino informes maquetados: GViz devuelve basura y el
+   núcleo las excluye desde el principio. Esta capa las seguía pidiendo por
+   inercia para llenar una clave cuyo único consumidor —`buildEquiposLegacy`—
+   había quedado fuera del router. Eran dos peticiones por arranque.
+   ===================================================================== */
+check('SHEETS_CONFIG ya no pide RANKINGS J ni RANKINGS E',
+  !/name: 'RANKINGS J'/.test(html) && !/name: 'RANKINGS E'/.test(html));
+check('y la función muerta que las consumía se borró',
+  !/^function buildEquiposLegacy/m.test(html));
+/* El núcleo las sigue excluyendo por su cuenta: son dos guardas
+   independientes y las dos tienen que seguir en pie. */
+check('el núcleo las mantiene en su lista de excluidas',
+  /HOJAS_EXCLUIDAS = \['RANKINGS J', 'RANKINGS E'\]/.test(
+    require('fs').readFileSync('./js/sgadd-core.js', 'utf8')));
+
+console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })();
