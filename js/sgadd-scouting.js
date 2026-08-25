@@ -2502,7 +2502,7 @@ function scoutPintar() {
   if (!root) return;
   const st = SGADD_APP.estado;
   if (st.error) { root.innerHTML = SGADD_UI.aviso('No se pudo cargar', st.error, 'error'); return; }
-  if (!st.idx) { root.innerHTML = '<div class="card rounded-xl p-8 border border-hairline text-center text-muted text-sm">Cargando la categoria…</div>'; return; }
+  if (!st.idx) { root.innerHTML = SGADD_UI.cargando('Cargando la categoría…', (SGADD_APP.planillaActual() || {}).label); return; }
   root.innerHTML = scoutSelectores(st.idx) + scoutInforme(st.idx);
 }
 

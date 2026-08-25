@@ -1143,7 +1143,7 @@ function jugadoresPintar() {
       ← Todos</button>` : '';
 
   if (st.error) { root.innerHTML = SGADD_APP.barra({ extra: volver }) + SGADD_UI.aviso('No se pudo cargar', st.error, 'error'); return; }
-  if (!st.idx) { root.innerHTML = SGADD_APP.barra({ extra: volver }) + jugadoresCartel('Cargando la categoría…'); return; }
+  if (!st.idx) { root.innerHTML = SGADD_APP.barra({ extra: volver }) + SGADD_UI.cargando('Cargando la categoría…', (SGADD_APP.planillaActual() || {}).label); return; }
 
   const idx = st.idx;
   JUGADORES.planillaId = st.planillaId;

@@ -20,7 +20,7 @@ node test-core.js          # 252 tests · núcleo, índice, validador
 node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  48 tests · multi-cliente
-node test-boot.js          #  77 tests · arranque por club + sintaxis de los módulos
+node test-boot.js          # 104 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 253 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 176 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1502 tests en total. Todos tienen que dar verde antes de commitear.**
+**1529 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -769,6 +769,92 @@ Reglas que hay que respetar al tocarlo:
 
 ---
 
+### El Diagnóstico mira el MISMO tramo que la app
+
+Armaba su índice con `{ fase }` y **sin torneo**, así que en un libro con
+IDA y VUELTA en la misma `FASE = REGULAR` los dos se colapsaban: los
+promedios del segundo pisan a los del primero y cada jugador entra una vez
+por torneo. Es exactamente el defecto que el resto de la app evita desde el
+punto 3 ter, y esta pantalla se lo comía entera.
+
+Medido en DEPORTIVO el 2026-08-25:
+
+```
+Diagnóstico (sin scope)  →  373 jugadores   ← 208 de IDA + 165 de VUELTA
+la app (IDA · REGULAR)   →  208 jugadores
+```
+
+**Es la pantalla que el DT abre justamente para auditar a las otras**, así
+que una foto distinta no es un detalle de presentación: es la auditoría
+contradiciendo a lo que audita, y sin ningún síntoma — 373 jugadores en una
+liga de 12 equipos se lee como una liga grande, no como un error.
+
+El selector pasó a ofrecer los **mismos pares** que la barra
+(`combinacionesTorneoFase`), abre por el de mayor cobertura
+(`tramoPorDefecto`) y `diagCambiarFase()` escribe torneo y fase **juntos**,
+por el mismo motivo que `cambiarTramo()`: encadenar los dos setters
+reindexaría dos veces y la primera pasada armaría el índice sobre un par que
+puede no existir en el libro.
+
+**Y el aviso de multi-torneo mandaba a un control que no existe.** Decía
+*"elegí cuál en el selector **Torneo** de la barra superior"*, texto anterior
+a la fusión de los dos desplegables en uno solo rotulado **Fase**. Un mensaje
+que nombra un control inexistente es peor que no decir nada: el DT lo busca,
+no lo encuentra y deja de leer los avisos.
+
+---
+
+## 5 bis. El cartel de espera · un solo componente
+
+`SGADD_UI.cargando(texto, detalle)` vive en `sgadd-ui.js`, que carga antes
+que todos los módulos de sección. Lo usan las cinco: Equipos, Jugadores,
+Scouting, Simulador y Diagnóstico.
+
+Antes cada una tenía su propio `<div>` con un texto quieto y nada más. **Un
+bloque de texto sin movimiento no distingue *"está bajando"* de *"se
+colgó"***, que es justo la pregunta del DT cuando la planilla tarda: el libro
+de DEPORTIVO son 157.596 celdas y con red lenta la espera es de segundos.
+
+- Lleva el **mismo disco** que el loader del arranque, así que la espera se
+  ve igual en todas las pantallas.
+- `role="status"` + `aria-live="polite"`: se anuncia sin robar el foco, que
+  puede estar en el selector mientras baja.
+- El `detalle` es opcional y dice QUÉ se está esperando (la categoría, las 9
+  hojas) sin ensuciar la línea principal.
+- **El CSS del disco va a mano en el `<style>`** (`.cargando-disco`): lo
+  inyecta un nodo dinámico y el JIT del CDN de Tailwind no le genera las
+  clases — la trampa del punto 12, otra vez.
+- Con `prefers-reduced-motion` **se queda quieto**, con `animation: none`
+  explícito: la regla global lleva la duración a 0.001ms y una animación
+  infinita a esa velocidad titila, que es peor que girar. El texto de al
+  lado sigue diciendo qué pasa.
+
+**La barra NO desaparece mientras se espera.** El cartel se pinta debajo del
+selector, así que el DT puede volver atrás o elegir otra categoría — es la
+misma regla del punto 6 que ya se había corregido para el cambio de
+categoría.
+
+### Los 26 segundos en blanco del arranque · es el CDN de Tailwind
+
+Medido con la red a 200 kbps y 500 ms de latencia: **la pantalla queda en
+blanco 26 segundos**, sin siquiera el loader. No es la planilla — GViz
+todavía no se pidió — son los dos `<script>` de CDN del `<head>`, que son
+sincronos y bloquean el parseo del `<body>` entero.
+
+**Chart.js pasó a `defer`** y es correcto —son ~200 KB que no hacen falta
+para parsear, ningún módulo lo toca al cargarse e `init()` cuelga de
+`DOMContentLoaded`, que dispara después de los diferidos—, pero hay que ser
+honesto con lo que arregla: **no movió el número** (27,1 s contra 26,4 s, o
+sea ruido). El bloqueante es el otro.
+
+**`cdn.tailwindcss.com` NO se puede diferir así como está**: el `<script>`
+de configuración que va abajo le escribe `tailwind.config`, y con `defer` ese
+objeto todavía no existe — la app entera se quedaría sin sus colores por
+club, que es el sistema visual completo. La salida real es dejar de servirlo
+por CDN (build o copia propia), y eso es un cambio de arquitectura. Anotado
+en el punto 10.
+
+---
 ## 6. Multi-cliente
 
 Un solo deploy. `index.html?club=jujuy` carga `clubes/jujuy.json`, que define
@@ -2964,6 +3050,15 @@ factor — a diferencia del Pearson crudo del original).
   (1805 líneas) que se auditó para construir `sgadd-4factores.js` — queda en el
   repo como referencia de qué fórmulas se corrigieron y por qué (ver punto 9).
   No lo toca ningún test ni ningún script de la app; es documentación, no código.
+- **Tailwind se sirve por CDN y bloquea el primer pintado.** Medido a 200
+  kbps con 500 ms de latencia: **26 segundos de pantalla en blanco**, sin
+  siquiera el loader, porque `cdn.tailwindcss.com` va sincrono en el `<head>`
+  y el `<script>` de config de abajo necesita que el objeto ya exista, así
+  que no se puede diferir sin perder los colores por club. Chart.js sí se
+  difirió y **no alcanzó** (27,1 s contra 26,4 s). Cerrarlo pide dejar de
+  servirlo por CDN: build o copia propia, o sea la primera dependencia de
+  compilación del proyecto. Es una decisión de arquitectura, no un parche —
+  candidata natural para la Fase 4.
 - **El simulador no tiene ciclo de aprendizaje.** El original ajustaba pesos
   comparando predicciones contra resultados reales (`retroalimentarSimulador`,
   con estado persistente en la hoja `HISTORIAL`). Acá los pesos se recalculan

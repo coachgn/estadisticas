@@ -2125,7 +2125,7 @@
           nivel: 'aviso', hoja: nombre,
           mensaje: 'La hoja trae ' + torneos.size + ' torneos (' +
             Array.from(torneos).sort().join(', ') + '). El índice se arma de a un torneo ' +
-            'por vez: elegí cuál en el selector Torneo de la barra superior. ' +
+            'por vez: elegí cuál en el selector Fase de la barra superior. ' +
             'Las filas de los otros no entran en los promedios ni en los percentiles.',
         });
       }

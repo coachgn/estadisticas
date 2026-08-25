@@ -631,7 +631,7 @@ function simuladorPintar() {
   const st = SGADD_APP.estado;
 
   if (st.error) { root.innerHTML = SGADD_APP.barra() + SGADD_UI.aviso('No se pudo cargar', st.error, 'error'); return; }
-  if (!st.idx) { root.innerHTML = SGADD_APP.barra() + simuladorCartel('Cargando la categoría…'); return; }
+  if (!st.idx) { root.innerHTML = SGADD_APP.barra() + SGADD_UI.cargando('Cargando la categoría…', (SGADD_APP.planillaActual() || {}).label); return; }
 
   const idx = st.idx;
   SIMULADOR.planillaId = st.planillaId;

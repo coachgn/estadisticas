@@ -336,6 +336,31 @@ const SGADD_UI = (function () {
     return dd + '/' + mm + '/' + d.getFullYear();
   }
 
+  /**
+   * El cartel de ESPERA de una sección, con el mismo disco que el arranque.
+   *
+   * Las cuatro secciones tenían su propio `<div>` con un texto plano y
+   * nada más. Un bloque de texto quieto no distingue *"está bajando"* de
+   * *"se colgó"*, que es justo la pregunta del DT cuando la planilla tarda:
+   * un libro como el de DEPORTIVO son 157.596 celdas y con red lenta la
+   * espera es de segundos. El disco que gira es la única señal de que el
+   * panel sigue trabajando.
+   *
+   * `role="status"` + `aria-live="polite"` para que se anuncie sin robar el
+   * foco: el DT puede estar tabulando el selector mientras baja.
+   *
+   * El `detalle` es opcional y va abajo, más chico: sirve para decir QUÉ se
+   * está esperando sin ensuciar la línea principal.
+   */
+  function cargando(texto, detalle) {
+    return '<div class="card rounded-xl p-8 border border-hairline flex flex-col items-center ' +
+      'justify-center gap-4 text-center" role="status" aria-live="polite">' +
+      '<div class="cargando-disco"></div>' +
+      '<p class="text-sm text-muted">' + esc(texto || 'Cargando…') + '</p>' +
+      (detalle ? '<p class="text-[11px] text-muted/70 font-mono">' + esc(detalle) + '</p>' : '') +
+      '</div>';
+  }
+
   /** Pie compartido por las tres exportaciones a PDF. */
   function pieInforme(fecha) {
     return '<span class="pie-marca">' + esc(MARCA) +
@@ -354,7 +379,7 @@ const SGADD_UI = (function () {
   }
 
   return { esc, escJs, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, signoDelta, colorDelta, claseMasMenos,
-    atributosFila, teclaActiva, teclaTabs,
+    atributosFila, teclaActiva, teclaTabs, cargando,
     embeberImagenes, restaurarImagenes, pieInforme, fechaHoy, MARCA };
 })();
 

@@ -13,6 +13,12 @@
 
 const SGADD_DIAG = {
   planillaId: null,
+  /* El TRAMO, no solo la fase: un libro con IDA y VUELTA en la misma
+     FASE = REGULAR se colapsa si el índice no se scopea, y el Diagnóstico
+     terminaba mostrando una foto que ninguna otra pantalla usa. Medido en
+     DEPORTIVO: 373 jugadores acá contra los 208 de la app, porque cada uno
+     tiene una fila por torneo. Es el mismo par que elige la barra. */
+  torneo: null,
   fase: 'REGULAR',
   estado: 'inicial',   // inicial | cargando | listo | error
   equipoSel: null,
@@ -42,7 +48,7 @@ function buildDiagnostico() {
               ${opciones}
             </select>
           </div>
-          <div class="sm:w-44">
+          <div class="sm:w-56">
             <label class="block text-[11px] uppercase tracking-wider text-muted font-display mb-1">Fase</label>
             <select id="diagFase" onchange="diagCambiarFase(this.value)"
               class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm focus:border-accent outline-none">
@@ -65,13 +71,26 @@ function buildDiagnostico() {
     </section>`;
 }
 
-function diagOpcionesFase() {
+/* Los mismos pares que ofrece la barra de la app (`combinacionesTorneoFase`),
+   y por el mismo motivo: con dos desplegables el DT podía elegir un par que
+   no existe en el libro y quedarse mirando una vista vacía sin saber por qué. */
+function diagTramos() {
   const d = SGADD_DIAG;
-  const disponibles = (d.datos && d.datos.fases && d.datos.fases.length)
-    ? d.datos.fases
-    : [SGADD.FASES.REGULAR];
-  return disponibles.map(f =>
-    `<option value="${f.id}" ${f.id === d.fase ? 'selected' : ''}>${escapeHtml(f.label)}</option>`
+  if (d.datos && d.datos.tramos && d.datos.tramos.length) return d.datos.tramos;
+  return [{ id: 'GENERAL|REGULAR', torneo: 'GENERAL', fase: 'REGULAR', label: 'Fase regular' }];
+}
+
+function diagTramoActual() {
+  const d = SGADD_DIAG;
+  const l = diagTramos();
+  const id = (d.torneo || 'GENERAL') + '|' + d.fase;
+  return l.find(t => t.id === id) || l[0];
+}
+
+function diagOpcionesFase() {
+  const act = diagTramoActual();
+  return diagTramos().map(t =>
+    `<option value="${escapeAttr(t.id)}" ${act && t.id === act.id ? 'selected' : ''}>${escapeHtml(t.label)}</option>`
   ).join('');
 }
 
@@ -81,7 +100,16 @@ function diagCartel(txt, tono) {
 }
 
 function diagCambiarPlanilla(id) { SGADD_DIAG.planillaId = id; SGADD_DIAG.datos = null; diagCorrer(); }
-function diagCambiarFase(f) { SGADD_DIAG.fase = f; diagPintar(); }
+/* Escribe los DOS de una sola vez: encadenar dos setters repintaría dos
+   veces, y la primera pasada armaría el índice sobre un par intermedio que
+   puede no existir en el libro. Es la misma regla que `cambiarTramo()`. */
+function diagCambiarFase(id) {
+  const t = diagTramos().find(x => x.id === id);
+  if (!t) return;
+  SGADD_DIAG.torneo = t.torneo;
+  SGADD_DIAG.fase = t.fase;
+  diagPintar();
+}
 
 async function diagCorrer(forzar) {
   const d = SGADD_DIAG;
@@ -90,7 +118,7 @@ async function diagCorrer(forzar) {
   if (!p || !p.sheetId) { if (cont) cont.innerHTML = diagCartel('Esa planilla todavía no tiene sheetId.', 'error'); return; }
 
   d.estado = 'cargando';
-  if (cont) cont.innerHTML = diagCartel('Bajando las 9 hojas de ' + p.label + '…');
+  if (cont) cont.innerHTML = SGADD_UI.cargando('Bajando las 9 hojas de ' + p.label + '…', 'Es la carga más pesada del panel');
 
   try {
     if (forzar) SGADD.limpiarCache(p.sheetId);
@@ -101,6 +129,7 @@ async function diagCorrer(forzar) {
     d.datos = {
       hojas, erroresCarga: errores, ms,
       fases: SGADD.fasesDisponibles(hojas),
+      tramos: SGADD.combinacionesTorneoFase(hojas),
       /* El guard de TORNEO va en el mismo bloque que el contrato de esquema:
          también es un problema de contrato con el productor (MotorStats), no
          de coherencia entre hojas. Se concatena en vez de abrir una card
@@ -111,7 +140,13 @@ async function diagCorrer(forzar) {
       totales: SGADD.testTotales(hojas, d.fase),
       cruces: SGADD.testCrucePartidos(hojas, d.fase),
     };
-    if (d.datos.fases.length && !d.datos.fases.some(f => f.id === d.fase)) d.fase = d.datos.fases[0].id;
+    /* Abre por el tramo de MAYOR COBERTURA, igual que la barra: en un libro
+       sano todos cubren todo y gana el primero, o sea lo de siempre. */
+    const act = d.datos.tramos.find(t => t.id === (d.torneo || 'GENERAL') + '|' + d.fase);
+    if (!act) {
+      const def = SGADD.tramoPorDefecto(d.datos.tramos);
+      if (def) { d.torneo = def.torneo; d.fase = def.fase; }
+    }
     d.estado = 'listo';
     diagPintar();
   } catch (e) {
@@ -129,7 +164,11 @@ function diagPintar() {
   d.datos.simetria = SGADD.testSimetria(hojas, d.fase);
   d.datos.totales = SGADD.testTotales(hojas, d.fase);
   d.datos.cruces = SGADD.testCrucePartidos(hojas, d.fase);
-  const idx = SGADD.construirIndice(hojas, { fase: d.fase });
+  /* CON torneo. Sin él, un libro de dos torneos con la misma FASE colapsa
+     —los promedios del segundo pisan a los del primero y los jugadores se
+     duplican— y el Diagnóstico mostraba un índice que ninguna otra pantalla
+     usa. La foto tiene que ser la de la app, o no sirve para auditarla. */
+  const idx = SGADD.construirIndice(hojas, { fase: d.fase, torneo: d.torneo });
 
   const selFase = document.getElementById('diagFase');
   if (selFase) selFase.innerHTML = diagOpcionesFase();

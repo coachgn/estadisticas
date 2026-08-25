@@ -383,6 +383,89 @@ check('el núcleo las mantiene en su lista de excluidas',
   /HOJAS_EXCLUIDAS = \['RANKINGS J', 'RANKINGS E'\]/.test(
     require('fs').readFileSync('./js/sgadd-core.js', 'utf8')));
 
+/* =====================================================================
+   EL DIAGNÓSTICO MIRA EL MISMO TRAMO QUE LA APP
+
+   Armaba su índice con `{ fase }` y sin torneo, así que en un libro con
+   IDA y VUELTA en la misma FASE = REGULAR los dos se colapsaban: las filas
+   del segundo pisan los promedios del primero y cada jugador entra una vez
+   por torneo. Medido en DEPORTIVO: el Diagnóstico decía 373 jugadores
+   mientras todas las demás pantallas trabajaban sobre 208.
+
+   Es la pantalla que el DT abre justamente para auditar a las otras, así
+   que una foto distinta no es un detalle: es la auditoría mintiendo.
+   ===================================================================== */
+const diagSrc = fs.readFileSync('./js/sgadd-diagnostico.js', 'utf8');
+const coreSrc = fs.readFileSync('./js/sgadd-core.js', 'utf8');
+
+check('el Diagnóstico scopea su índice al torneo',
+  /construirIndice\(hojas, \{ fase: d\.fase, torneo: d\.torneo \}\)/.test(diagSrc));
+check('y ya no arma ninguno sin torneo',
+  !/construirIndice\(hojas, \{ fase: d\.fase \}\)/.test(diagSrc));
+check('su selector ofrece los MISMOS pares que la barra',
+  /SGADD\.combinacionesTorneoFase\(hojas\)/.test(diagSrc));
+check('y abre por el tramo de mayor cobertura, igual que la barra',
+  /SGADD\.tramoPorDefecto\(d\.datos\.tramos\)/.test(diagSrc));
+/* Los dos setters de una sola vez: encadenarlos reindexaría dos veces y la
+   primera pasada armaría el índice sobre un par que puede no existir. */
+check('cambiar de tramo escribe torneo y fase juntos',
+  /function diagCambiarFase[\s\S]{0,400}SGADD_DIAG\.torneo = t\.torneo;[\s\S]{0,80}SGADD_DIAG\.fase = t\.fase;/.test(diagSrc));
+
+/* El aviso mandaba a un "selector Torneo" que dejó de existir cuando los
+   dos desplegables se fusionaron en uno solo rotulado Fase. Un mensaje de
+   error que nombra un control inexistente es peor que no decir nada. */
+check('el aviso de multi-torneo nombra el selector que existe',
+  /selector Fase de la barra superior/.test(coreSrc) &&
+  !/selector Torneo de la barra/.test(coreSrc));
+
+/* =====================================================================
+   UN SOLO CARTEL DE ESPERA PARA TODAS LAS SECCIONES
+
+   Las cuatro tenían su propio `<div>` con un texto quieto. Un bloque de
+   texto sin movimiento no distingue "está bajando" de "se colgó", que es
+   justo la pregunta del DT cuando la planilla tarda. `SGADD_UI.cargando()`
+   pone el mismo disco del arranque y lo anuncia a los lectores de pantalla.
+   ===================================================================== */
+const UI2 = require('./js/sgadd-ui.js');
+const cartel = UI2.cargando('Cargando la categoría…', 'Primera 2026');
+
+check('el cartel de espera trae el disco que gira',
+  /cargando-disco/.test(cartel));
+check('y se anuncia sin robar el foco',
+  /role="status"/.test(cartel) && /aria-live="polite"/.test(cartel));
+check('el detalle es opcional',
+  !/Primera 2026/.test(UI2.cargando('Cargando…')));
+check('y escapa lo que le pasen',
+  UI2.cargando('<img src=x onerror=1>').indexOf('<img') === -1);
+
+/* El disco lo inyecta un nodo dinámico, así que el JIT del CDN de Tailwind
+   no le genera las clases: la regla va a mano en el <style>. */
+check('el disco tiene su CSS propio en el index',
+  /\.cargando-disco \{/.test(html));
+check('y se queda quieto con movimiento reducido',
+  /prefers-reduced-motion[\s\S]{0,200}\.cargando-disco/.test(html));
+
+['sgadd-equipos', 'sgadd-jugadores', 'sgadd-4factores', 'sgadd-scouting',
+ 'sgadd-diagnostico'].forEach(m => {
+  const src = fs.readFileSync('./js/' + m + '.js', 'utf8');
+  check(m + ' usa el cartel compartido', /SGADD_UI\.cargando\(/.test(src));
+  check(m + ' no dejó su propio "Cargando la categoría" a mano',
+    !/Cargando la categor[íi]a…'\)/.test(src.replace(/SGADD_UI\.cargando\(/g, '')));
+});
+
+/* Chart.js son ~200 KB que no hacen falta para parsear el body. Es seguro
+   diferirlo porque ningún módulo lo toca al cargarse. Si alguno vuelve a
+   usarlo a nivel de módulo, el gráfico rompe en el arranque. */
+check('Chart.js va diferido',
+  /<script defer src="https:\/\/cdn\.jsdelivr\.net\/npm\/chart\.js/.test(html));
+['sgadd-charts', 'sgadd-equipos', 'sgadd-jugadores', 'sgadd-4factores'].forEach(m => {
+  const src = fs.readFileSync('./js/' + m + '.js', 'utf8');
+  /* `Chart` al principio de una línea es uso a nivel de módulo; adentro de
+     una función siempre viene indentado o precedido de algo. */
+  check(m + ' no toca Chart al cargarse',
+    !/^\s{0,2}Chart\s*\./m.test(src.replace(/\/\*[\s\S]*?\*\//g, '')));
+});
+
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })();

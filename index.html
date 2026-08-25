@@ -36,7 +36,24 @@
   href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap"
   rel="stylesheet"
 />
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<!-- `defer` y no sincrono: Chart.js son ~200 KB que NO hacen falta para
+     parsear el <body>. Ningun modulo toca `Chart` al cargarse —solo adentro
+     de funciones— e `init()` cuelga de DOMContentLoaded, que dispara DESPUES
+     de los diferidos, asi que la garantia se mantiene. El primer grafico se
+     dibuja cuando ya bajo la planilla, muchisimo despues.
+
+     OJO CON LO QUE ESTO **NO** ARREGLA. Medido con la red a 200 kbps: la
+     pantalla queda en blanco —ni siquiera el loader— durante 26 SEGUNDOS, y
+     sacar Chart.js del camino no movio ese numero (27,1 s contra 26,4 s, o
+     sea ruido). El bloqueante es el OTRO CDN: `cdn.tailwindcss.com`, que va
+     sincrono en el <head> porque el <script> de config de abajo le escribe
+     `tailwind.config` y necesita que el objeto ya exista. Diferirlo dejaria
+     a la app entera sin sus colores propios.
+
+     La salida de verdad es dejar de servir Tailwind por CDN (build o copia
+     propia), que es un cambio de arquitectura y no de este archivo. Queda
+     anotado en el punto 10 con la medicion. -->
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
 <style>
   :root { color-scheme: dark; }
@@ -1345,6 +1362,22 @@
   @keyframes spin-slow { to { transform: rotate(360deg); } }
   .animate-spin-slow { animation: spin-slow .9s linear infinite; }
 
+  /* El disco de espera de las secciones. Va a mano y no con utilidades de
+     Tailwind porque lo inyecta `SGADD_UI.cargando()` en un nodo dinámico y
+     el JIT del CDN no genera clases para eso — la trampa del punto 12. */
+  .cargando-disco {
+    width: 2rem; height: 2rem; border-radius: 9999px;
+    border: 2px solid #374151;   /* el mismo `hairline` de la config de Tailwind */
+    border-top-color: var(--acento-texto, var(--acento, #f7941e));
+    animation: spin-slow .9s linear infinite;
+  }
+  /* Con movimiento reducido el disco se queda quieto en vez de parpadear:
+     la regla global lleva la duración a 0.001ms y una animación infinita a
+     esa velocidad titila. El texto de al lado sigue diciendo qué pasa. */
+  @media (prefers-reduced-motion: reduce) {
+    .cargando-disco, .animate-spin-slow { animation: none !important; }
+  }
+
   /* overflow-hidden del contenedor pisaba el scroll horizontal: las tablas
      anchas quedaban CORTADAS en mobile en vez de scrollear. */
   .scrollbox {
@@ -1544,23 +1577,23 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=124"></script>
-<script src="js/sgadd-core.js?v=124"></script>
-<script src="js/sgadd-ui.js?v=124"></script>
-<script src="js/sgadd-app.js?v=124"></script>
-<script src="js/sgadd-estados.js?v=124"></script>
-<script src="js/sgadd-buzon.js?v=124"></script>
-<script src="js/sgadd-charts.js?v=124"></script>
-<script src="js/sgadd-personalidad.js?v=124"></script>
-<script src="js/sgadd-rankings.js?v=124"></script>
-<script src="js/sgadd-partido.js?v=124"></script>
-<script src="js/sgadd-informe.js?v=124"></script>
-<script src="js/sgadd-ficha.js?v=124"></script>
-<script src="js/sgadd-equipos.js?v=124"></script>
-<script src="js/sgadd-jugadores.js?v=124"></script>
-<script src="js/sgadd-4factores.js?v=124"></script>
-<script src="js/sgadd-scouting.js?v=124"></script>
-<script src="js/sgadd-diagnostico.js?v=124"></script>
+<script src="js/sgadd-club.js?v=125"></script>
+<script src="js/sgadd-core.js?v=125"></script>
+<script src="js/sgadd-ui.js?v=125"></script>
+<script src="js/sgadd-app.js?v=125"></script>
+<script src="js/sgadd-estados.js?v=125"></script>
+<script src="js/sgadd-buzon.js?v=125"></script>
+<script src="js/sgadd-charts.js?v=125"></script>
+<script src="js/sgadd-personalidad.js?v=125"></script>
+<script src="js/sgadd-rankings.js?v=125"></script>
+<script src="js/sgadd-partido.js?v=125"></script>
+<script src="js/sgadd-informe.js?v=125"></script>
+<script src="js/sgadd-ficha.js?v=125"></script>
+<script src="js/sgadd-equipos.js?v=125"></script>
+<script src="js/sgadd-jugadores.js?v=125"></script>
+<script src="js/sgadd-4factores.js?v=125"></script>
+<script src="js/sgadd-scouting.js?v=125"></script>
+<script src="js/sgadd-diagnostico.js?v=125"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
