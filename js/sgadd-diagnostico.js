@@ -319,7 +319,7 @@ function diagBloqueCompetencia(idx) {
   if (!formato) {
     return diagCard('0b · Formato de competencia', 'Sin zonas en este tramo',
       `<p class="text-sm text-muted">El tramo abierto no tiene formato asignado,
-       asi que la tabla sale sin zonas de color. Es lo esperable en playoffs.</p>` +
+       así que la tabla sale sin zonas de color. Es lo esperable en playoffs.</p>` +
       (problemas.length ? `<ul class="mt-3">${problemas.map(item).join('')}</ul>` : ''));
   }
 
@@ -358,7 +358,7 @@ function diagBloqueCompetencia(idx) {
     </div>` +
     (problemas.length
       ? `<ul class="mt-4 pt-3 border-t border-hairline">${errores.concat(avisos).map(item).join('')}</ul>`
-      : `<p class="text-xs text-green-400 mt-4 pt-3 border-t border-hairline">La configuracion y el libro coinciden.</p>`));
+      : `<p class="text-xs text-green-400 mt-4 pt-3 border-t border-hairline">La configuración y el libro coinciden.</p>`));
 }
 
 /* --- 2b. Coherencia entre hojas --- */
