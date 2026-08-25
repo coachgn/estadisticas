@@ -323,6 +323,56 @@ check('y GENERAL no filtra: es la etiqueta del caso sin torneo',
    inercia para llenar una clave cuyo único consumidor —`buildEquiposLegacy`—
    había quedado fuera del router. Eran dos peticiones por arranque.
    ===================================================================== */
+/* =====================================================================
+   LA CAPA VIEJA PIDE SOLO LO QUE USA
+
+   Pedía once hojas y consumía cuatro. Medido con un espía sobre `fetch`
+   inyectado antes de que corriera un solo script: las once peticiones del
+   arranque eran TODAS suyas —el adaptador ya sale de su caché— y siete no
+   alimentaban a nadie.
+
+     · `RANKINGS J` y `RANKINGS E`: su consumidor era `buildEquiposLegacy`,
+       que había quedado fuera del router.
+     · `ACUMULADO J`, `ACUMULADO E`, `4 FACTORES`, `ACUMULADO 4F`: cero usos.
+     · `Base Datos J`: la más pesada del libro —106.790 celdas en DEPORTIVO,
+       el 68% del volumen— y se usaba SOLO para contar jugadores distintos,
+       un número que el índice ya tiene hecho y scopeado al tramo.
+
+   Quedan cuatro peticiones, y son las chicas.
+   ===================================================================== */
+const hojasQuePide = (html.match(/name: '([^']+)',\s*key:/g) || [])
+  .map(x => (x.match(/name: '([^']+)'/) || [])[1]);
+
+check('la capa vieja pide exactamente cuatro hojas',
+  hojasQuePide.length === 4, hojasQuePide.join(' · '));
+check('y son las que consume de verdad',
+  ['PROMEDIOS J', 'PROMEDIOS E', 'Base Datos E', 'PROMEDIOS 4F']
+    .every(h => hojasQuePide.indexOf(h) >= 0), hojasQuePide.join(' · '));
+
+/* Cada una tiene que tener al menos un `sheet('clave')` que la lea, o
+   vuelve a ser una petición para llenar un hueco. */
+const CLAVES = { 'PROMEDIOS J': 'promediosJ', 'PROMEDIOS E': 'promediosE',
+  'Base Datos E': 'baseDatosE', 'PROMEDIOS 4F': 'promedios4f' };
+hojasQuePide.forEach(h => {
+  const k = CLAVES[h];
+  check('la hoja ' + h + ' tiene quien la lea',
+    !!k && html.indexOf("sheet('" + k + "')") >= 0);
+});
+/* Y ninguna de las que se sacaron puede volver por la ventana. */
+['acumuladoJ', 'acumulado4f', '4factores', 'baseDatosJ', 'equipo'].forEach(k => {
+  check('nadie volvió a pedir ' + k + ' desde sheet()',
+    html.indexOf("sheet('" + k + "')") === -1);
+});
+
+/* El KPI de jugadores sale del índice, con respaldo por si Principal se
+   pinta antes de que esté armado. */
+check('el KPI de jugadores lee el índice, no la hoja más pesada',
+  /const nJugadores = idxLiga \? String\(idxLiga\.jugadores\.length\)/.test(html));
+/* Sin índice se muestra ausente, no un cero: llega unos milisegundos
+   después y el número aparece solo. */
+check('y sin índice muestra ausente, no un cero',
+  /const nJugadores = idxLiga \? String\(idxLiga\.jugadores\.length\) : '—';/.test(html));
+
 check('SHEETS_CONFIG ya no pide RANKINGS J ni RANKINGS E',
   !/name: 'RANKINGS J'/.test(html) && !/name: 'RANKINGS E'/.test(html));
 check('y la función muerta que las consumía se borró',

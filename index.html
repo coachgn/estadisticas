@@ -1544,23 +1544,23 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=123"></script>
-<script src="js/sgadd-core.js?v=123"></script>
-<script src="js/sgadd-ui.js?v=123"></script>
-<script src="js/sgadd-app.js?v=123"></script>
-<script src="js/sgadd-estados.js?v=123"></script>
-<script src="js/sgadd-buzon.js?v=123"></script>
-<script src="js/sgadd-charts.js?v=123"></script>
-<script src="js/sgadd-personalidad.js?v=123"></script>
-<script src="js/sgadd-rankings.js?v=123"></script>
-<script src="js/sgadd-partido.js?v=123"></script>
-<script src="js/sgadd-informe.js?v=123"></script>
-<script src="js/sgadd-ficha.js?v=123"></script>
-<script src="js/sgadd-equipos.js?v=123"></script>
-<script src="js/sgadd-jugadores.js?v=123"></script>
-<script src="js/sgadd-4factores.js?v=123"></script>
-<script src="js/sgadd-scouting.js?v=123"></script>
-<script src="js/sgadd-diagnostico.js?v=123"></script>
+<script src="js/sgadd-club.js?v=124"></script>
+<script src="js/sgadd-core.js?v=124"></script>
+<script src="js/sgadd-ui.js?v=124"></script>
+<script src="js/sgadd-app.js?v=124"></script>
+<script src="js/sgadd-estados.js?v=124"></script>
+<script src="js/sgadd-buzon.js?v=124"></script>
+<script src="js/sgadd-charts.js?v=124"></script>
+<script src="js/sgadd-personalidad.js?v=124"></script>
+<script src="js/sgadd-rankings.js?v=124"></script>
+<script src="js/sgadd-partido.js?v=124"></script>
+<script src="js/sgadd-informe.js?v=124"></script>
+<script src="js/sgadd-ficha.js?v=124"></script>
+<script src="js/sgadd-equipos.js?v=124"></script>
+<script src="js/sgadd-jugadores.js?v=124"></script>
+<script src="js/sgadd-4factores.js?v=124"></script>
+<script src="js/sgadd-scouting.js?v=124"></script>
+<script src="js/sgadd-diagnostico.js?v=124"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -1569,16 +1569,22 @@
    aca, asi que cambiar de categoria cambia el dashboard entero. */
 let SHEET_ID = '1Zi2cBd0WGUTks-S0XCxR0hoGpB9KZGuqisFhzdtJl4s';
 
+/* SOLO las hojas que esta capa consume de verdad.
+
+   Pedía nueve y usaba cuatro. `ACUMULADO J`, `ACUMULADO E`, `4 FACTORES` y
+   `ACUMULADO 4F` no las lee nadie desde que Equipos y Jugadores pasaron a
+   sus módulos: eran cuatro peticiones por arranque para llenar claves
+   muertas, igual que las dos `RANKINGS` que ya se sacaron.
+
+   `Base Datos J` tampoco está: era la más pesada —el 68% del volumen— y su
+   único uso era contar jugadores, que ahora sale del índice.
+
+   De nueve peticiones quedan cuatro, y las que quedan son las chicas. */
 const SHEETS_CONFIG = [
-  { name: 'ACUMULADO J',   key: 'acumuladoJ'   },
-  { name: 'PROMEDIOS J',   key: 'promediosJ'   },
-  { name: 'ACUMULADO E',   key: 'equipo'       },
-  { name: 'PROMEDIOS E',   key: 'promediosE'   },
-  { name: 'Base Datos J',  key: 'baseDatosJ'   },
-  { name: 'Base Datos E',  key: 'baseDatosE'   },
-  { name: '4 FACTORES',    key: '4factores'    },
-  { name: 'PROMEDIOS 4F',  key: 'promedios4f'  },
-  { name: 'ACUMULADO 4F',  key: 'acumulado4f'  },
+  { name: 'PROMEDIOS J',   key: 'promediosJ'   },   // líderes
+  { name: 'PROMEDIOS E',   key: 'promediosE'   },   // mejor ataque
+  { name: 'Base Datos E',  key: 'baseDatosE'   },   // tabla de posiciones
+  { name: 'PROMEDIOS 4F',  key: 'promedios4f'  },   // scatter ORTG/DRTG
 ];
 
 /* `RANKINGS J` y `RANKINGS E` NO se piden, y no es una omisión.
@@ -2619,7 +2625,6 @@ function renderFullStandingsTable() {
 function buildPrincipal() {
   const promE = sheet('promediosE');
   const baseE = sheet('baseDatosE');
-  const baseJ = sheet('baseDatosJ');
   const promJ = sheet('promediosJ');
 
   const iconGrid = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>`;
@@ -2647,7 +2652,18 @@ function buildPrincipal() {
   }
 
   const validEquipos = promE.rows.filter(r => !isEquipoTipo(r));
-  const validJugadores = baseJ.rows.filter(r => !isEquipoTipo(r));
+  /* El KPI de jugadores sale del ÍNDICE, no de `Base Datos J`.
+
+     Esa hoja es la más pesada del libro —106.790 celdas en DEPORTIVO, el
+     68% del volumen total— y acá se usaba para UNA sola cosa: contar
+     nombres distintos. El índice ya tiene esa cuenta hecha, scopeada al
+     tramo y sin la fila TIPO, así que pedirla de nuevo era bajar dos megas
+     para un número que estaba a mano.
+
+     Si el índice todavía no está armado se cae a la hoja, que es el
+     comportamiento de antes: Principal puede pintarse antes que él. */
+  const idxLiga = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado && SGADD_APP.estado.idx)
+    ? SGADD_APP.estado.idx.liga : null;
   const validPartidos = baseE.rows.filter(r => !isEquipoTipo(r));
   /* Base Datos E trae DOS filas por partido, una por equipo. Contar filas
      duplica el numero: 130 filas son 65 partidos. Se cuenta por PARTIDO. */
@@ -2662,7 +2678,13 @@ function buildPrincipal() {
     : Math.round(validPartidos.length / 2);
 
   const kpiEquipos = renderModernCard('Equipos', promE.error ? '—' : String(countDistinct(validEquipos, findColumnLabel(promE.cols, ['EQUIPO', 'NOMBRE', 'RIVAL', 'TEAM']))), 'En competencia', iconGrid);
-  const kpiJugadores = renderModernCard('Jugadores', baseJ.error ? '—' : String(countDistinct(validJugadores, findColumnLabel(baseJ.cols, ['NOMBRE', 'JUGADOR']))), 'Con datos', iconUser);
+  /* Sin índice todavía se muestra ausente, no un cero: el índice llega
+     unos milisegundos después y el número aparece solo. Antes había un
+     respaldo que contaba sobre `Base Datos J`, pero esa hoja ya no se pide
+     —era el 68% del volumen para una sola cuenta— así que el respaldo
+     nunca podría haber funcionado. */
+  const nJugadores = idxLiga ? String(idxLiga.jugadores.length) : '—';
+  const kpiJugadores = renderModernCard('Jugadores', nJugadores, 'Con datos', iconUser);
   const kpiPartidos = renderModernCard('Partidos', baseE.error ? '—' : String(partidosUnicos), 'Disputados', iconGlobe);
 
   const leaderPts = buildLeaderCard('Líderes en Puntos', promJ, ['PTS', 'PUNTOS']);

@@ -20,7 +20,7 @@ node test-core.js          # 252 tests · núcleo, índice, validador
 node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  48 tests · multi-cliente
-node test-boot.js          #  64 tests · arranque por club + sintaxis de los módulos
+node test-boot.js          #  77 tests · arranque por club + sintaxis de los módulos
 node test-jugadores.js     # 253 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 176 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1489 tests en total. Todos tienen que dar verde antes de commitear.**
+**1502 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -112,7 +112,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=123`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=124`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -388,14 +388,35 @@ no se filtra por torneo, una fila sin torneo pasa siempre, y la fila TIPO
 pasa siempre porque es la mediana y no un equipo. Si esas reglas divergen,
 la pantalla de entrada vuelve a contradecir al resto de la app.
 
-**Lo que queda abierto**: las 9 peticiones que la capa vieja sigue haciendo
-por su cuenta. Para eliminarlas hay que alimentarla desde el adaptador, y
-eso necesita un puente de formato — el adaptador **no guarda el `formatted`
-de Google**, así que los números se verían crudos (`0.4542382735812015` en
-vez de `45,42%`) salvo que se los formatee con `METRICAS`, que no cubre
-todas las columnas que Principal muestra. Es un refactor con riesgo de
-regresión visual en la pantalla de entrada; conviene hacerlo aparte.
+**3 · Pide solo lo que usa.** Pedía once hojas y consumía cuatro. Medido
+con un espía sobre `fetch` inyectado antes de que corriera un solo script,
+las once peticiones del arranque eran **todas suyas** —el adaptador ya sale
+de su caché— y siete no alimentaban a nadie:
 
+| Hoja | Por qué se sacó |
+|---|---|
+| `RANKINGS J` · `RANKINGS E` | su consumidor quedó fuera del router |
+| `ACUMULADO J` · `ACUMULADO E` · `4 FACTORES` · `ACUMULADO 4F` | cero usos |
+| `Base Datos J` | **el 68% del volumen** para contar jugadores, que el índice ya tiene |
+
+**De 11 peticiones a 4**, y las que quedan son las chicas. El KPI de
+jugadores sale ahora del índice —scopeado al tramo y sin la fila TIPO— y
+sin él muestra `—`, no un cero: llega unos milisegundos después.
+
+**Por qué NO se unificaron las dos capas.** Se midió, y las tres vías
+fallan:
+
+- **Reproducir el `formatted` de Google**: 40% de precisión sobre 157.278
+  celdas. Cada columna tiene su propio formato en la planilla — `1 → "1"`
+  en una hoja, `16.05 → "16,05"` en otra, `0.1065 → "10,65%"` en las tasas.
+  Sin el `pattern` no se puede adivinar, y con él es reimplementar el
+  formateador de Sheets.
+- **Guardar el `formatted` en el caché**: 4.767 KB, que no entran junto con
+  los 2.336 del adaptador en los 5 MB de `sessionStorage`.
+- **Guardar el crudo de GViz**: 4.151 KB para DEPORTIVO y **~10 MB para
+  Jujuy**, que es el libro más grande. No escala.
+
+El beneficio que quedaba era ~1 s tras un F5. No lo vale.
 ### Caché persistente · sobrevive al F5, no a cerrar la pestaña
 
 Hay **dos** capas. `_cache` guarda la **promesa** en memoria —dos llamadas
