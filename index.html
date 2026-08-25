@@ -62,7 +62,10 @@
           /* Variante oscurecida para el PAPEL: el acento crudo da 2,08 de
              contraste sobre el gris de las tarjetas impresas y se lee lavado.
              `sgadd-club.js` la recalcula por club. */
-          --acento-papel: #a16014; }
+          --acento-papel: #a16014;
+          /* El acento como FONDO, con texto oscuro encima. Ver el comentario
+             de `.bg-accent` y el calculo en `sgadd-club.js`. */
+          --acento-fondo: #f7941e; }
 
   ::-webkit-scrollbar-thumb:hover { background: var(--acento); }
   * { scrollbar-color: #333 #141414; scrollbar-width: thin; }
@@ -80,7 +83,16 @@
   /* Como TEXTO se usa la variante aclarada: el color de marca crudo puede
      no tener contraste suficiente sobre fondo oscuro (ver sgadd-club.js). */
   .text-accent { color: var(--acento-texto) !important; }
-  .bg-accent { background-color: var(--acento); }
+  /* `!important` como `.text-accent`, y con `--acento-fondo` en vez de
+     `--acento`. Sin el !important gana el dorado del tema —la utilidad
+     compilada de Tailwind viene despues en el documento— y los tres
+     clientes tenian la pestaña activa del mismo color, que es justo lo que
+     el acento por club venia a evitar.
+
+     Y NO se pinta el acento crudo: encima va texto oscuro (`text-base`) y
+     medido da 8,25 en Reconquista, 3,64 en Jujuy y 1,14 en DEPORTIVO. Con
+     `var(--acento)` la pestaña activa de DEPORTIVO quedaria invisible. */
+  .bg-accent { background-color: var(--acento-fondo, var(--acento)) !important; }
   .border-accent { border-color: var(--acento); }
   .hover\:bg-accentdeep:hover { background-color: var(--acento-oscuro); }
   .bg-surface2 { background-color: #1F2937; }
@@ -1359,6 +1371,60 @@
   @keyframes spin-slow { to { transform: rotate(360deg); } }
   .animate-spin-slow { animation: spin-slow .9s linear infinite; }
 
+  /* =====================================================================
+     ZONAS DE LA TABLA DE POSICIONES
+
+     Los cinco tonos de `SGADD_CONFIG.TONOS`, uno por clase. Van a mano y
+     no con utilidades de Tailwind por dos motivos: la tabla la inyecta un
+     nodo dinamico —la trampa del punto 12— y, sobre todo, porque el tono
+     tiene que CAMBIAR en el papel. Un color de pantalla sobre hoja blanca
+     no se lee, y el aplanado de impresion pisa cualquier color inline.
+
+     Los diez valores estan medidos contra el fondo que les toca y los diez
+     pasan 4.5 (WCAG AA). Hay un test que los recalcula. */
+  .zona-exito    { --zona: #4ade80; }
+  .zona-positivo { --zona: #5eead4; }
+  .zona-aviso    { --zona: #fbbf24; }
+  .zona-peligro  { --zona: #f87171; }
+  .zona-neutro   { --zona: #94a3b8; }
+
+  /* El puesto lleva una barra del color de su zona en la primera celda.
+     Va en el <td> y no en el <tr>: en una tabla el fondo de la celda tapa
+     el de la fila, asi que una regla sobre el <tr> se aplica, se ve en el
+     getComputedStyle y NO se ve en pantalla (punto 14). */
+  tr[class*="zona-"] > td:first-child {
+    box-shadow: inset 3px 0 0 0 var(--zona);
+  }
+  .zona-punto {
+    display: inline-block; width: .5rem; height: .5rem;
+    border-radius: 9999px; background: var(--zona);
+  }
+  .zona-texto { color: var(--zona); }
+
+  /* EN PAPEL EL TONO CAMBIA, no se atenua. Los valores de pantalla estan
+     elegidos contra la card oscura y sobre hoja blanca no se leen: el verde
+     #4ade80 da 1,6 sobre blanco. Se reemplazan por la variante oscura del
+     mismo tono, que es exactamente la misma decision que ya tomo
+     `scoutTono()` para el semaforo del informe (punto 7.6).
+
+     El `!important` del color es obligatorio: el aplanado del papel hace
+     `body * { color: #111 !important }` y sin el la zona sale negra. Gana
+     por especificidad (0,1,0 contra 0,0,1), no por orden. */
+  @media print {
+    .zona-exito    { --zona: #15803d; }
+    .zona-positivo { --zona: #0f766e; }
+    .zona-aviso    { --zona: #8a5206; }
+    .zona-peligro  { --zona: #b91c1c; }
+    .zona-neutro   { --zona: #475569; }
+    .zona-texto    { color: var(--zona) !important; }
+    /* `box-shadow` no se imprime si el navegador descarta fondos, asi que
+       la barra del puesto pasa a borde, que si sobrevive. */
+    tr[class*="zona-"] > td:first-child {
+      box-shadow: none;
+      border-left: 3px solid var(--zona) !important;
+    }
+  }
+
   /* El disco de espera de las secciones. Va a mano y no con utilidades de
      Tailwind porque lo inyecta `SGADD_UI.cargando()` en un nodo dinámico y
      el JIT del CDN no genera clases para eso — la trampa del punto 12. */
@@ -1462,7 +1528,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=125" />
+<link rel="stylesheet" href="sgadd.css?v=126" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -1577,23 +1643,26 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=125"></script>
-<script src="js/sgadd-core.js?v=125"></script>
-<script src="js/sgadd-ui.js?v=125"></script>
-<script src="js/sgadd-app.js?v=125"></script>
-<script src="js/sgadd-estados.js?v=125"></script>
-<script src="js/sgadd-buzon.js?v=125"></script>
-<script src="js/sgadd-charts.js?v=125"></script>
-<script src="js/sgadd-personalidad.js?v=125"></script>
-<script src="js/sgadd-rankings.js?v=125"></script>
-<script src="js/sgadd-partido.js?v=125"></script>
-<script src="js/sgadd-informe.js?v=125"></script>
-<script src="js/sgadd-ficha.js?v=125"></script>
-<script src="js/sgadd-equipos.js?v=125"></script>
-<script src="js/sgadd-jugadores.js?v=125"></script>
-<script src="js/sgadd-4factores.js?v=125"></script>
-<script src="js/sgadd-scouting.js?v=125"></script>
-<script src="js/sgadd-diagnostico.js?v=125"></script>
+<script src="js/sgadd-club.js?v=126"></script>
+<!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
+     Diagnostico y, mas adelante, la tabla de posiciones. -->
+<script src="js/sgadd-config.js?v=126"></script>
+<script src="js/sgadd-core.js?v=126"></script>
+<script src="js/sgadd-ui.js?v=126"></script>
+<script src="js/sgadd-app.js?v=126"></script>
+<script src="js/sgadd-estados.js?v=126"></script>
+<script src="js/sgadd-buzon.js?v=126"></script>
+<script src="js/sgadd-charts.js?v=126"></script>
+<script src="js/sgadd-personalidad.js?v=126"></script>
+<script src="js/sgadd-rankings.js?v=126"></script>
+<script src="js/sgadd-partido.js?v=126"></script>
+<script src="js/sgadd-informe.js?v=126"></script>
+<script src="js/sgadd-ficha.js?v=126"></script>
+<script src="js/sgadd-equipos.js?v=126"></script>
+<script src="js/sgadd-jugadores.js?v=126"></script>
+<script src="js/sgadd-4factores.js?v=126"></script>
+<script src="js/sgadd-scouting.js?v=126"></script>
+<script src="js/sgadd-diagnostico.js?v=126"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

@@ -20,7 +20,8 @@ node test-core.js          # 252 tests · núcleo, índice, validador
 node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  48 tests · multi-cliente
-node test-boot.js          # 126 tests · arranque por club, sintaxis de los módulos, carteles de espera
+node test-config.js        # 108 tests · zonas de tabla, tramos, tonos AA
+node test-boot.js          # 127 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 253 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
@@ -30,7 +31,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 176 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1551 tests en total. Todos tienen que dar verde antes de commitear.**
+**1660 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -95,6 +96,8 @@ js/
   sgadd-ficha.js        ← modal + PDF de la ficha individual del jugador
   sgadd-estados.js      ← motor puro de estados de jugador y detección de alertas
   sgadd-buzon.js        ← UI del buzón: drawer, toast, badge (usa `document`)
+  sgadd-config.js       ← motor PURO de competencia: zonas de la tabla,
+                          tramos y tonos AA. Ver punto 15.
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app
 INTEGRACION_MOTORSTATS.md ← auditoría del motor que escribe las planillas
 ESPECIFICACION_ADAPTADOR_GVIZ.md ← la Fase 1 documentada: parser, normalizaciones,
@@ -3730,3 +3733,166 @@ Son dos cosas distintas y hubo que separarlas:
 La insignia con las iniciales (`.fila-inicial`) es el puente visual entre las
 dos vistas: sin ella hay que leer el nombre completo para saber qué punto del
 gráfico es cuál.
+
+---
+
+## 15. Configuración de competencia · `sgadd-config.js`
+
+Módulo **puro** (nada de `document`), requerible desde Node y testeado entero
+en `test-config.js`. Contesta lo que el box score NO puede saber: cuántos
+clasifican, cuántos descienden y con qué color se pinta cada zona de la tabla
+de posiciones.
+
+### La línea que no se cruza: la ESTRUCTURA sale del dato
+
+El bloque **no declara** cuántos equipos hay ni qué torneos existen. Eso ya lo
+dice el libro —`combinacionesTorneoFase()` enumera los tramos reales y el
+índice cuenta los equipos— y declararlo otra vez crea una segunda fuente de
+verdad que se desincroniza en silencio. Este proyecto ya se comió ese bug tres
+veces: el `sheetId` en dos lados resucitando un id muerto, el rol funcional en
+dos módulos dando etiquetas distintas, y el Diagnóstico armando su índice sin
+torneo y contando 373 jugadores donde la app usaba 208.
+
+`equiposEsperados` es la única excepción y es a propósito una **aserción**: no
+manda sobre el dato, solo hace que config y libro se contradigan a los gritos
+en el Diagnóstico en vez de callados.
+
+### El bloque
+
+```json
+"competencia": {
+  "ordenTabla": ["PCT", "DIF", "PF"],
+  "formatos": {
+    "regular-12": {
+      "label": "Regular · 12 equipos",
+      "equiposEsperados": 12,
+      "zonas": [
+        { "id": "campeon",   "desde":  1, "hasta":  1, "tono": "exito"    },
+        { "id": "playoffs",  "desde":  1, "hasta":  8, "tono": "positivo" },
+        { "id": "repechaje", "desde":  9, "hasta": 10, "tono": "aviso"    },
+        { "id": "descenso",  "desde": -2,              "tono": "peligro"  }
+      ]
+    }
+  },
+  "porTramo": { "*": "regular-12" }
+}
+```
+
+**Todo es opcional y el fallback es siempre seguro.** Sin bloque, con uno roto
+o con un JSON a medias, `parsear()` devuelve `null` y el panel se comporta
+exactamente como antes. Es la regla del punto 6 y no se negocia. Hoy solo
+DEPORTIVO lo declara; Reconquista y Jujuy no, y hay tests que fijan que eso
+siga siendo válido.
+
+### Los índices negativos no son azúcar sintáctica
+
+`desde: -2` son los dos últimos. La cantidad de equipos **cambia entre
+categorías del mismo club** —Primera 12, U21 13— y un `desde: 11` fijo marca
+mal en cuanto entra una con otro número, **sin ningún síntoma**: la tabla se ve
+perfecta y el descenso está corrido un puesto.
+
+`hasta` se puede omitir: con `desde` negativo llega hasta el final, con `desde`
+positivo la zona es de un solo puesto.
+
+### Gana la PRIMERA zona que calza
+
+Es una cascada, el mismo idioma que ya usan `PERFILES_MARCA` y `JERARQUIA`, así
+que las zonas se escriben de la más específica a la más general: Campeón 1-1
+vive adentro de Playoffs 1-8 y tiene que ir antes.
+
+**El choque que hay que entender antes de tocarlo**: con 10 equipos,
+Reclasificación (fija 9-10) y Descenso (`-2` → 9-10) piden los mismos puestos,
+gana Reclasificación y **el descenso desaparece de la tabla sin que nadie lo
+note** — los diez puestos salen pintados. No es un bug del motor, es una config
+equivocada para esa cantidad de equipos, y por eso `validar()` la denuncia. La
+herramienta no adivina: avisa.
+
+### `porTramo` y el `null` explícito
+
+La clave es **`TORNEO|FASE`, exactamente la que ya produce
+`combinacionesTorneoFase()`**. Cero traducción entre config y datos. Búsqueda
+de lo específico a lo general:
+
+```
+TORNEO|FASE   →   TORNEO|*   →   *|FASE   →   *
+```
+
+Una clave **presente gana aunque valga `null`**, y ese null significa *este
+tramo no lleva zonas*. Sin esa distinción, apagar la tabla en playoffs sería
+imposible: el comodín la volvería a encender. Por eso el lookup usa
+`hasOwnProperty` y no un chequeo de truthy.
+
+### Tonos · vocabulario CERRADO, no hex sueltos
+
+Una zona declara un **tono**, no un color. Misma decisión que `scoutTono()` y
+por los mismos dos motivos: un hex no sobrevive al aplanado del papel, y no
+garantiza contraste — lo que se lee sobre `#1F2937` no se lee sobre `#f1f5f9`.
+
+| tono | pantalla | /#1F2937 | papel | /#f1f5f9 | /#ffffff |
+|---|---|---|---|---|---|
+| `exito` | `#4ade80` | 8,42 | `#15803d` | 4,58 | 5,02 |
+| `positivo` | `#5eead4` | 9,92 | `#0f766e` | 5,00 | 5,47 |
+| `aviso` | `#fbbf24` | 8,79 | `#8a5206` | 5,83 | 6,38 |
+| `peligro` | `#f87171` | 5,31 | `#b91c1c` | 5,91 | 6,47 |
+| `neutro` | `#94a3b8` | 5,72 | `#475569` | 6,92 | 7,58 |
+
+Los diez pasan AA y hay un test que **los recalcula con la misma función que el
+panel usa para los acentos** (`CLUB.contraste`, cargada en un `vm`): un tono
+validado con otra fórmula no prueba nada sobre lo que el DT ve.
+
+El ámbar del papel es `#8a5206` y no el `#a16207` obvio porque ese daba
+**4,49**: dos centésimas por debajo. Un tono *casi* AA es un tono que no cumple.
+
+**Los tonos NO dependen del club**, y eso es la propiedad, no un descuido: un
+descenso no cambia de significado por cambiar de cliente. El acento de marca
+sigue siendo otra cosa.
+
+Las clases (`.zona-exito`…) van **a mano en el `<style>`**: la tabla la inyecta
+un nodo dinámico y el scan de Tailwind es estático (punto 5 bis). En
+`@media print` el tono **cambia al valor oscuro**, no se atenúa, y el
+`!important` del color es obligatorio porque el aplanado hace
+`body * { color: #111 !important }`.
+
+### `.bg-accent` · el acento del club NO se pinta crudo como fondo
+
+`.bg-accent` no llevaba `!important` (a diferencia de `.text-accent`), así que
+**el dorado del tema le ganaba al acento del club** y los tres clientes tenían
+la pestaña activa del mismo color — justo lo que el acento por club venía a
+evitar.
+
+Pero el arreglo **no es pintar `var(--acento)`**. Encima va texto oscuro
+(`text-base`, `#0B1121`), y medido contra la marca cruda:
+
+| club | marca | contraste del texto encima |
+|---|---|---|
+| Reconquista | `#f7941e` | 8,25 ✓ |
+| Jujuy | `#2563eb` | **3,64** ✗ |
+| DEPORTIVO | `#09086E` | **1,14** invisible |
+
+O sea que `var(--acento)` dejaría la pestaña activa de DEPORTIVO ilegible.
+Entra un token propio, **`--acento-fondo`**, que `sgadd-club.js` aclara hasta
+que el texto de encima pase 4,5.
+
+**No es un alias de `--acento-texto`**: se mide contra otro fondo y los valores
+ya se separan hoy — Jujuy `#467aee` contra `#6692f1`, DEPORTIVO `#7877af`
+contra `#9090be`. *"Se lee sobre la card oscura"* y *"deja leer texto oscuro
+encima"* son dos preguntas distintas.
+
+### Lo que valida el Diagnóstico
+
+Bloque **0b · Formato de competencia**, y **no se pinta si el club no declara
+el bloque**: una card diciendo "no hay nada configurado" en los dos clientes
+que no lo usan es ruido permanente, y un Diagnóstico que avisa siempre se deja
+de leer.
+
+- **Descuadre de `equiposEsperados` → ERROR**, no aviso. Corre las zonas de
+  puesto: con 12 declarados y 13 reales el que creías que descendía se salva, y
+  la tabla se ve perfecta. No hay síntoma que lo delate.
+- Zona que no alcanza ningún puesto → aviso (está declarada y no se ve).
+- Formato que ningún tramo usa → aviso (config muerta: se edita creyendo que
+  hace algo).
+- Tramo que apunta a un formato inexistente → error (es un typo en el JSON).
+
+**La leyenda se calcula sobre los equipos REALES**, no sobre los declarados: es
+la única forma de que el DT vea dónde caen los cortes de verdad y no dónde
+deberían caer.

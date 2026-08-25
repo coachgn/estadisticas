@@ -24,6 +24,30 @@
   "torneo": "TORNEO LOCAL",
   "credito": "SGADD",
 
+  "//competencia": "OPCIONAL. Declara REGLAS, no estructura: cuantos equipos hay y que tramos existen ya lo dice el libro (ver punto 3 ter). equiposEsperados es una ASERCION: no manda sobre el dato, solo hace que un descuadre salga a los gritos en el Diagnostico.",
+  "competencia": {
+    "ordenTabla": ["PCT", "DIF", "PF"],
+
+    "//formatos": "Las zonas son una CASCADA: gana la primera que calza, asi que van de la mas especifica a la mas general. Campeon 1-1 vive adentro de Playoffs 1-8 y por eso va antes. desde negativo cuenta desde el fondo: -2 son los dos ultimos, y se corre solo si la categoria tiene otra cantidad de equipos.",
+    "formatos": {
+      "regular-12": {
+        "label": "Regular · 12 equipos",
+        "equiposEsperados": 12,
+        "zonas": [
+          { "id": "campeon",   "desde":  1, "hasta":  1, "label": "Campeón",         "tono": "exito"    },
+          { "id": "playoffs",  "desde":  1, "hasta":  8, "label": "Playoffs",        "tono": "positivo" },
+          { "id": "repechaje", "desde":  9, "hasta": 10, "label": "Reclasificación", "tono": "aviso"    },
+          { "id": "descenso",  "desde": -2,              "label": "Descenso",        "tono": "peligro"  }
+        ]
+      }
+    },
+
+    "//porTramo": "La clave es TORNEO|FASE, la misma que produce combinacionesTorneoFase(). '*' es el comodin. Un null EXPLICITO apaga las zonas de ese tramo y le gana al comodin: en playoffs no hay tabla que pintar.",
+    "porTramo": {
+      "*": "regular-12"
+    }
+  },
+
   "planillas": [
     {
       "id": "deportivo-primera-2026",

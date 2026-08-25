@@ -22,6 +22,7 @@ const CLUB = (function () {
     acento: '#f7941e',
     acentoOscuro: '#d97706',
     acentoTexto: '#f7941e',
+    acentoFondo: '#f7941e',
     paleta: ['#f7941e', '#4ade80', '#60a5fa', '#f472b6'],
   };
 
@@ -168,12 +169,40 @@ const CLUB = (function () {
       /* Variante para el papel: el mismo acento, oscurecido hasta que se
          lea sobre el gris de las tarjetas impresas. */
       TEMA.acentoPapel = oscurecerHastaLegible(c.acento, FONDO_PAPEL, 4.5);
+      /* --- Y una tercera variante: el acento COMO FONDO.
+
+         `.bg-accent` pinta la pestaña activa y los botones llenos, con
+         texto oscuro (`text-base`, #0B1121) encima. Preguntarse si el
+         acento se LEE sobre la card es una cosa; preguntarse si el texto
+         oscuro se lee SOBRE el acento es otra, y con marcas oscuras la
+         respuesta cambia. Medido con el texto base encima del acento crudo:
+
+             Reconquista  #f7941e   8,25   sirve
+             Jujuy        #2563eb   3,64   NO llega a AA
+             DEPORTIVO    #09086E   1,14   invisible
+
+         O sea que `background-color: var(--acento)` dejaría la pestaña
+         activa de DEPORTIVO ilegible. Se aclara hasta que el texto de
+         encima pase 4.5, igual que se hace con las otras dos variantes.
+
+         NO es un alias de `--acento-texto`: se mide contra otro fondo y
+         los valores YA se separan hoy, medido en el navegador —
+
+             club          --acento-texto   --acento-fondo
+             Reconquista      #f7941e          #f7941e
+             Jujuy            #6692f1          #467aee
+             DEPORTIVO        #9090be          #7877af
+
+         que es lo esperable: 'se lee sobre la card oscura' y 'deja leer
+         texto oscuro encima' son dos preguntas distintas. */
+      TEMA.acentoFondo = aclararHastaLegible(c.acento, TEXTO_SOBRE_ACENTO, 4.5);
       TEMA.paleta = [TEMA.acento].concat(TEMA.paleta.slice(1));
       const raiz = document.documentElement;
       raiz.style.setProperty('--acento', TEMA.acento);
       raiz.style.setProperty('--acento-oscuro', TEMA.acentoOscuro);
       raiz.style.setProperty('--acento-texto', TEMA.acentoTexto);
       raiz.style.setProperty('--acento-papel', TEMA.acentoPapel);
+      raiz.style.setProperty('--acento-fondo', TEMA.acentoFondo);
     }
 
     ponerEscudo(c);
@@ -253,6 +282,9 @@ const CLUB = (function () {
      a PDF. El acento se oscurece contra ESTE fondo, no contra el blanco de
      la hoja: el texto de acento vive dentro de las tarjetas. */
   const FONDO_PAPEL = '#f1f5f9';
+  /* El color del texto que va ENCIMA del acento cuando el acento es el
+     FONDO: la pestaña activa, los botones llenos. Es `text-base`. */
+  const TEXTO_SOBRE_ACENTO = '#0B1121';
 
   function aRgb(hex) {
     const h = String(hex).replace('#', '');

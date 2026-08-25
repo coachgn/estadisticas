@@ -175,6 +175,7 @@ function diagPintar() {
 
   cont.innerHTML = [
     diagBloqueClub(),
+    diagBloqueCompetencia(idx),
     diagBloqueCarga(hojas, erroresCarga, ms),
     diagBloqueEsquema(d.datos.esquema),
     diagBloqueCoherencia(d.datos.coherencia),
@@ -280,6 +281,84 @@ function diagBloqueEsquema(problemas) {
   return diagCard('2 · Contrato de esquema',
     `${errores.length} error${errores.length === 1 ? '' : 'es'} · ${avisos.length} aviso${avisos.length === 1 ? '' : 's'}`,
     `<ul class="max-h-72 overflow-y-auto">${errores.concat(avisos).map(item).join('')}</ul>`);
+}
+
+/* --- 0b. Competencia · lo que la config declara contra lo que el libro trae
+
+   El unico lugar donde config y dato pueden contradecirse. La regla de
+   `sgadd-config.js` es que la ESTRUCTURA sale del dato, asi que aca no se
+   corrige nada: se denuncia. `equiposEsperados` existe justamente para que
+   un descuadre salga a los gritos en vez de callado — con 12 declarados y
+   13 reales las zonas se corren un puesto y la tabla se ve perfecta.
+   -------------------------------------------------------------------- */
+function diagBloqueCompetencia(idx) {
+  if (typeof SGADD_CONFIG === 'undefined') return '';
+  const cfgClub = (typeof CLUB !== 'undefined' && CLUB.cfg) ? CLUB.cfg : null;
+  const comp = SGADD_CONFIG.parsear(cfgClub);
+
+  /* Sin bloque no se pinta la card. Es config OPCIONAL: una card diciendo
+     'no hay nada configurado' en los dos clubes que no lo usan es ruido
+     permanente, y el Diagnostico que avisa siempre se deja de leer. */
+  if (!comp) return '';
+
+  const d = SGADD_DIAG;
+  const equipos = idx ? idx.lista().length : 0;
+  const formato = SGADD_CONFIG.formatoDeTramo(comp, d.torneo, d.fase);
+  const problemas = SGADD_CONFIG.validar(comp, {
+    torneo: d.torneo, fase: d.fase, equipos: equipos });
+
+  const errores = problemas.filter(p => p.nivel === 'error');
+  const avisos = problemas.filter(p => p.nivel === 'aviso');
+
+  const item = (p) => `
+    <li class="flex gap-3 py-2 border-b border-hairline/40 last:border-0">
+      <span class="shrink-0 w-1 rounded-full ${p.nivel === 'error' ? 'bg-red-400' : 'bg-yellow-400'}"></span>
+      <p class="text-xs text-muted break-words min-w-0">${escapeHtml(p.mensaje)}</p>
+    </li>`;
+
+  if (!formato) {
+    return diagCard('0b · Formato de competencia', 'Sin zonas en este tramo',
+      `<p class="text-sm text-muted">El tramo abierto no tiene formato asignado,
+       asi que la tabla sale sin zonas de color. Es lo esperable en playoffs.</p>` +
+      (problemas.length ? `<ul class="mt-3">${problemas.map(item).join('')}</ul>` : ''));
+  }
+
+  /* La leyenda se calcula sobre los equipos REALES, no sobre los
+     declarados: es la unica forma de que el DT vea donde caen los cortes
+     de verdad y no donde deberian caer. */
+  const leyenda = SGADD_CONFIG.leyenda(formato, equipos);
+  const zonas = leyenda.map(z => `
+    <li class="flex items-center gap-2 py-1.5 zona-${escapeAttr(z.tono)}">
+      <span class="zona-punto shrink-0"></span>
+      <span class="font-mono text-xs text-ink w-16 shrink-0">${z.desde}–${z.hasta}</span>
+      <span class="text-xs zona-texto">${escapeHtml(z.label)}</span>
+    </li>`).join('');
+
+  const declarados = formato.equiposEsperados;
+  const cuadra = !declarados || declarados === equipos;
+  const fila = (k, v, tono) => `<tr class="border-b border-hairline/40 last:border-0">
+    <td class="py-1.5 pr-3 text-xs text-muted">${escapeHtml(k)}</td>
+    <td class="py-1.5 font-mono text-xs ${tono || 'text-ink'}">${escapeHtml(String(v))}</td></tr>`;
+
+  return diagCard('0b · Formato de competencia',
+    `${errores.length} error${errores.length === 1 ? '' : 'es'} · ${avisos.length} aviso${avisos.length === 1 ? '' : 's'}`,
+    `<div class="grid sm:grid-cols-2 gap-5">
+      <table class="w-full"><tbody>
+        ${fila('Formato', formato.label)}
+        ${fila('Tramo', (d.torneo || 'GENERAL') + ' · ' + d.fase)}
+        ${fila('Equipos en el libro', equipos)}
+        ${fila('Equipos declarados', declarados === null ? '(no se declara)' : declarados,
+               cuadra ? 'text-green-400' : 'text-red-400')}
+        ${fila('Orden de la tabla', comp.ordenTabla.join(' › '))}
+      </tbody></table>
+      <div>
+        <p class="text-[11px] uppercase tracking-wider text-muted mb-1">Zonas sobre ${equipos} equipos</p>
+        <ul>${zonas || '<li class="text-xs text-muted py-1.5">Ninguna zona alcanza un puesto.</li>'}</ul>
+      </div>
+    </div>` +
+    (problemas.length
+      ? `<ul class="mt-4 pt-3 border-t border-hairline">${errores.concat(avisos).map(item).join('')}</ul>`
+      : `<p class="text-xs text-green-400 mt-4 pt-3 border-t border-hairline">La configuracion y el libro coinciden.</p>`));
 }
 
 /* --- 2b. Coherencia entre hojas --- */
