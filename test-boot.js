@@ -466,6 +466,69 @@ check('Chart.js va diferido',
     !/^\s{0,2}Chart\s*\./m.test(src.replace(/\/\*[\s\S]*?\*\//g, '')));
 });
 
+/* =====================================================================
+   TAILWIND SE SIRVE COMPILADO, NO POR CDN
+
+   El <script> de cdn.tailwindcss.com iba sincrono en el <head> y bajaba
+   ~400 KB de motor JIT antes de que el navegador parseara una linea del
+   <body>. Medido a 200 kbps: 26,4 s de pantalla en blanco, sin siquiera el
+   loader. Con el CSS compilado, 5,9 s.
+
+   El riesgo de la migracion es el scan ESTATICO: una clase armada por
+   concatenacion en runtime no aparece en el fuente y se pierde. Se midio
+   antes de migrar sobre 3 clubes x 6 secciones + ficha de equipo: de las
+   278 clases vivas del DOM, las 278 estaban literales. Por eso no hay
+   safelist — y por eso hay que REGENERAR al agregar una clase nueva.
+   ===================================================================== */
+check('el CDN de Tailwind ya no se pide',
+  html.indexOf('cdn.tailwindcss.com') === -1 ||
+  /<!--[\s\S]*cdn\.tailwindcss\.com[\s\S]*-->/.test(html));
+check('y no queda ningun <script> suyo',
+  !/<script[^>]+src="https:\/\/cdn\.tailwindcss\.com/.test(html));
+check('el CSS compilado se enlaza con su ?v=',
+  /<link rel="stylesheet" href="sgadd\.css\?v=\d+"/.test(html));
+
+/* El <link> va DESPUES de nuestro <style>, que es exactamente donde el CDN
+   inyectaba el suyo. Hay reglas de impresion que dependen de ganar o perder
+   un empate de especificidad por orden de documento (punto 7.6): moverlo
+   antes las daria vuelta sin ningun sintoma visible. */
+check('el <link> va despues del <style>, como estaba el del CDN',
+  html.indexOf('sgadd.css?v=') > html.indexOf('</style>'));
+
+/* La config es la MISMA que vivia en el <head>. Si alguien cambia un color
+   aca y no regenera, el CSS y la config dicen cosas distintas. */
+const twCfg = require('./tailwind.config.js');
+check('la config de Tailwind se mudo al repo',
+  !!(twCfg.theme && twCfg.theme.extend && twCfg.theme.extend.colors));
+check('y escanea el index y los modulos',
+  twCfg.content.indexOf('./index.html') >= 0 && twCfg.content.indexOf('./js/*.js') >= 0);
+['base', 'surface', 'surface2', 'hairline', 'accent', 'accentdeep', 'ink', 'muted']
+  .forEach(c => check('el color ' + c + ' sigue definido',
+    !!twCfg.theme.extend.colors[c]));
+['display', 'body', 'mono'].forEach(f =>
+  check('la familia ' + f + ' sigue definida', !!twCfg.theme.extend.fontFamily[f]));
+
+/* El CSS generado tiene que estar commiteado: es lo que sirve Pages. Un
+   repo sin el se ve sin un solo estilo, que es peor que lento. */
+const cssGen = fs.existsSync('./sgadd.css') ? fs.readFileSync('./sgadd.css', 'utf8') : '';
+check('sgadd.css esta en el repo', cssGen.length > 5000, cssGen.length + ' bytes');
+check('y trae las utilidades que la app usa de verdad',
+  ['.text-xs', '.bg-surface2', '.border-hairline', '.text-muted', '.font-display']
+    .every(u => cssGen.indexOf(u) >= 0));
+/* Los colores POR CLUB no van compilados: son variables que sgadd-club.js
+   escribe en runtime. Si alguna quedara horneada, los tres clientes se
+   verian iguales. */
+check('el acento del club sigue saliendo de una variable, no del CSS',
+  /\.bg-accent\s*\{[^}]*var\(--acento\)/.test(html));
+
+/* Y el generador tiene que seguir existiendo y apuntando a la major que
+   servia el CDN: con Tailwind 4 sobre una config de la 3 el CSS sale
+   distinto y la diferencia no se ve hasta abrir una seccion puntual. */
+const genSrc = fs.readFileSync('./generar-css.js', 'utf8');
+check('hay un generador y fija la version', /tailwindcss@3/.test(genSrc));
+check('y usa la misma config e input que el repo',
+  /tailwind\.config\.js/.test(genSrc) && /sgadd\.in\.css/.test(genSrc));
+
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })();

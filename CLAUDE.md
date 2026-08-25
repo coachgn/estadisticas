@@ -20,7 +20,7 @@ node test-core.js          # 252 tests · núcleo, índice, validador
 node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  48 tests · multi-cliente
-node test-boot.js          # 104 tests · arranque por club, sintaxis de los módulos, carteles de espera
+node test-boot.js          # 126 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 253 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 176 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1529 tests en total. Todos tienen que dar verde antes de commitear.**
+**1551 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -67,7 +67,10 @@ en `test-fixtures/prom.tsv` y `test-fixtures/p4f.tsv` (12 equipos de La Plata,
 PROMEDIOS E + PROMEDIOS 4F con fila EQUIPO TIPO). A diferencia de los
 `-extraido.js`, estas quedan en el repo: no se regeneran solas.
 
-No hay build ni bundler. Se edita, se sube, se ve.
+No hay bundler ni paso de compilación en el camino: se edita, se sube, se ve.
+La única pieza generada es `sgadd.css`, y se genera **a mano** (`node
+generar-css.js`) igual que el manual de etiquetas — hay que acordarse de
+correrlo al agregar una clase de Tailwind nueva.
 
 ---
 
@@ -100,6 +103,12 @@ AVISO_MOTORSTATS_2026-08-24.md ← lo que la web le reporta al motor: libros
                           desalineados, la U21 en 401 y dos correcciones a su prompt
 AUDITORIA_ETIQUETAS_JUGADORES.md ← glosario y auditoría de TODAS las etiquetas
 PROPUESTA_ESTADOS_JUGADOR.md ← diseño original de estados (ya implementado, ver punto 13)
+tailwind.config.js      ← la config que vivía en el <head> cuando Tailwind
+                          era CDN. sgadd.in.css es la entrada.
+sgadd.css               ← el CSS COMPILADO (27 KB). Se commitea: es lo que
+                          sirve Pages. Se regenera con `node generar-css.js`
+generar-css.js          ← el generador. Fija la version de Tailwind a mano
+                          para que dos personas no generen CSS distinto.
 generar-manual-etiquetas.js  ← genera MANUAL_ETIQUETADO_SGADD.html para el
                           cuerpo técnico. Se corre a mano: `node generar-manual-etiquetas.js`
 clubes/
@@ -834,27 +843,73 @@ selector, así que el DT puede volver atrás o elegir otra categoría — es la
 misma regla del punto 6 que ya se había corregido para el cambio de
 categoría.
 
-### Los 26 segundos en blanco del arranque · es el CDN de Tailwind
+### Los 26 segundos en blanco del arranque · RESUELTO
 
-Medido con la red a 200 kbps y 500 ms de latencia: **la pantalla queda en
-blanco 26 segundos**, sin siquiera el loader. No es la planilla — GViz
-todavía no se pidió — son los dos `<script>` de CDN del `<head>`, que son
-sincronos y bloquean el parseo del `<body>` entero.
+Medido con la red a 200 kbps y 500 ms de latencia, **la pantalla quedaba en
+blanco 26,4 segundos** sin siquiera el loader. No era la planilla —GViz
+todavía no se había pedido— eran los dos `<script>` de CDN del `<head>`,
+sincronos, que bloquean el parseo del `<body>` entero.
 
-**Chart.js pasó a `defer`** y es correcto —son ~200 KB que no hacen falta
-para parsear, ningún módulo lo toca al cargarse e `init()` cuelga de
-`DOMContentLoaded`, que dispara después de los diferidos—, pero hay que ser
-honesto con lo que arregla: **no movió el número** (27,1 s contra 26,4 s, o
-sea ruido). El bloqueante es el otro.
+```
+antes (CDN)        loader visible a los 26.400 ms
+ahora (compilado)  loader visible a los  5.855 ms
+```
 
-**`cdn.tailwindcss.com` NO se puede diferir así como está**: el `<script>`
-de configuración que va abajo le escribe `tailwind.config`, y con `defer` ese
-objeto todavía no existe — la app entera se quedaría sin sus colores por
-club, que es el sistema visual completo. La salida real es dejar de servirlo
-por CDN (build o copia propia), y eso es un cambio de arquitectura. Anotado
-en el punto 10.
+**Chart.js pasó a `defer`** —son ~200 KB que no hacen falta para parsear— y
+es correcto, pero hay que ser honesto: **no movió el número solo** (27,1 s
+contra 26,4 s, o sea ruido). El bloqueante era el otro.
+
+**Tailwind se sirve COMPILADO desde el repo.** `tailwind.config.js` +
+`sgadd.in.css` → `sgadd.css` (27 KB, commiteado), generado con
+`node generar-css.js`. Es la misma convención que `generar-manual-etiquetas.js`:
+un generador que se corre a mano, no un bundler en el camino crítico.
+
+No se podía simplemente diferir el CDN: el `<script>` de configuración que
+iba abajo le escribe `tailwind.config` y necesita que el objeto ya exista,
+así que con `defer` la app entera se quedaba sin sus colores.
+
+#### Las tres cosas que hay que respetar
+
+**1 · El scan es ESTÁTICO.** Solo ve lo que está literal en `index.html` y
+`js/*.js`. Una clase armada por concatenación en runtime no la encuentra —
+y el CDN sí la cazaba, porque observaba el DOM. Antes de migrar se midió:
+de las **278 clases vivas** del DOM (3 clubes × 6 secciones + ficha de
+equipo), las **278 estaban literales en el fuente**. Por eso hoy no hay
+safelist. **Al agregar una clase nueva hay que regenerar.**
+
+**2 · El `<link>` va DESPUÉS de nuestro `<style>`**, que es exactamente
+donde el CDN inyectaba el suyo. Hay reglas de impresión que dependen de
+ganar o perder un empate de especificidad **por orden de documento** (punto
+7.6, las tarjetas del ciclo con `bg-surface2/40`): moverlo arriba las daría
+vuelta sin ningún síntoma. Hay un test que lo fija.
+
+**3 · Los colores por club NO se compilan.** Viven en variables
+(`--acento`, `--acento-texto`, `--acento-papel`) que `sgadd-club.js` escribe
+en runtime. Si alguna quedara horneada en el CSS, los tres clientes se
+verían iguales.
+
+#### Lo que la migración ARREGLÓ sin buscarlo
+
+Se auditó con un diff de estilos computados: **36 vistas** (3 clubes × 6
+secciones × pantalla/papel), **14.806 elementos**, 22 propiedades cada uno.
+Cero diferencias de color, fondo, borde, tipografía o espaciado.
+
+La única diferencia real fueron **24 botones que pasaron de 16px a 12px**:
+las tabs y los dos botones del Diagnóstico, todos dentro de `#view-root`.
+Bajo el CDN **ignoraban su propio `text-xs`** porque son nodos inyectados
+dinámicamente y el JIT no llegaba a generarles la clase — la misma trampa
+que ya había obligado a escribir a mano los respaldos de `.text-accent` y
+`.bg-accent` en el `<style>` (punto 12). Con el CSS compilado la clase
+existe desde el arranque y el botón mide lo que el markup pide.
+
+**Queda uno de esa familia sin cerrar**: `.bg-accent` no lleva `!important`
+(a diferencia de `.text-accent`, que sí), así que el dorado del tema le gana
+al acento del club y en DEPORTIVO la pestaña activa sale amarilla en vez de
+azul. Es **preexistente** —el diff lo confirma en cero— y se cierra junto
+con los tokens de color de la Fase 4.
 
 ---
+
 ## 6. Multi-cliente
 
 Un solo deploy. `index.html?club=jujuy` carga `clubes/jujuy.json`, que define
@@ -3050,15 +3105,10 @@ factor — a diferencia del Pearson crudo del original).
   (1805 líneas) que se auditó para construir `sgadd-4factores.js` — queda en el
   repo como referencia de qué fórmulas se corrigieron y por qué (ver punto 9).
   No lo toca ningún test ni ningún script de la app; es documentación, no código.
-- **Tailwind se sirve por CDN y bloquea el primer pintado.** Medido a 200
-  kbps con 500 ms de latencia: **26 segundos de pantalla en blanco**, sin
-  siquiera el loader, porque `cdn.tailwindcss.com` va sincrono en el `<head>`
-  y el `<script>` de config de abajo necesita que el objeto ya exista, así
-  que no se puede diferir sin perder los colores por club. Chart.js sí se
-  difirió y **no alcanzó** (27,1 s contra 26,4 s). Cerrarlo pide dejar de
-  servirlo por CDN: build o copia propia, o sea la primera dependencia de
-  compilación del proyecto. Es una decisión de arquitectura, no un parche —
-  candidata natural para la Fase 4.
+- ~~Tailwind se sirve por CDN y bloquea el primer pintado.~~ **RESUELTO**
+  (ver punto 5 bis): se compila al repo con `node generar-css.js` y el
+  arranque a 200 kbps bajó de **26,4 s a 5,9 s**. Queda el límite del scan
+  estático: una clase nueva pide regenerar.
 - **El simulador no tiene ciclo de aprendizaje.** El original ajustaba pesos
   comparando predicciones contra resultados reales (`retroalimentarSimulador`,
   con estado persistente en la hoja `HISTORIAL`). Acá los pesos se recalculan

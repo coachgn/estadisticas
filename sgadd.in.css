@@ -1,0 +1,5 @@
+/* Entrada del generador. La salida es `sgadd.css`, que SÍ se commitea:
+   es lo que sirve GitHub Pages. Ver `generar-css.js`. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

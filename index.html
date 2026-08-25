@@ -5,30 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Panel de Scouting</title>
 
-<script src="https://cdn.tailwindcss.com"></script>
-<script>
-  tailwind.config = {
-    theme: {
-      extend: {
-        colors: {
-          base: '#0B1121',       /* Fondo principal oscuro navy */
-          surface: '#111827',    /* Fondo de las tarjetas */
-          surface2: '#1F2937',   /* Hover en filas y botones */
-          hairline: '#374151',   /* Bordes más suaves */
-          accent: '#FBBF24',     /* Amarillo dorado de la imagen */
-          accentdeep: '#D97706', 
-          ink: '#F9FAFB',        /* Texto principal blanco */
-          muted: '#9CA3AF',      /* Texto secundario gris */
-        },
-        fontFamily: {
-          display: ['"Barlow Condensed"', 'sans-serif'],
-          body: ['"Barlow"', 'sans-serif'],
-          mono: ['"DM Mono"', 'monospace'],
-        },
-      },
-    },
-  };
-</script>
+<!-- Tailwind se sirve COMPILADO desde el repo, no por CDN.
+
+     El <script> de cdn.tailwindcss.com era sincrono en el <head> y bajaba
+     ~400 KB de motor JIT antes de que el navegador parseara una linea del
+     <body>: medido a 200 kbps, la pantalla quedaba en blanco 26 SEGUNDOS,
+     sin siquiera el loader. Y no se podia diferir, porque el <script> de
+     configuracion que iba aca abajo le escribia `tailwind.config` y
+     necesitaba que el objeto ya existiera.
+
+     Esa configuracion se mudo tal cual a `tailwind.config.js` y el CSS se
+     genera de una vez con `node generar-css.js`. El <link> va DESPUES de
+     nuestro <style>, que es exactamente donde el CDN inyectaba el suyo: hay
+     reglas de impresion que dependen de ganar o perder un empate de
+     especificidad por orden de documento (ver punto 7.6), y moverlo antes
+     las daria vuelta sin ningun sintoma.
+
+     OJO: si se agrega una clase de Tailwind nueva hay que REGENERAR. El
+     scan es estatico y solo ve lo que esta literal en index.html y js/*.js.
+     Se midio sobre 3 clubes y 6 secciones: de las 278 clases vivas del DOM,
+     las 278 estan literales en el fuente, asi que hoy no hace falta ninguna
+     safelist. -->
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -1463,6 +1460,9 @@
     * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
   }
 </style>
+
+<!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
+<link rel="stylesheet" href="sgadd.css?v=125" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
