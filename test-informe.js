@@ -164,7 +164,7 @@ check('la sangría negativa del hover se anula en el papel',
    el papel: el aplanado los igualaba a todos y el plantel se leía como si
    los dieciocho pesaran lo mismo. */
 check('los jugadores fuera del gráfico van más tenues en el papel',
-  /tr\.fila-flojo td,[\s\S]{0,140}color: #94a3b8 !important/.test(html));
+  /tr\.fila-flojo td,[\s\S]{0,400}color: #64748b !important/.test(html));
 /* Con `color` y no con `opacity` en la fila entera: la opacidad afecta
    también a la insignia de iniciales y al borde, y en papel se ve sucio. */
 check('y se atenúan con color, no bajando la opacidad de toda la fila',

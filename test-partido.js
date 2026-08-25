@@ -258,10 +258,38 @@ check('y el modo impresión la neutraliza igual, por las dudas',
   /@media print[\s\S]*?\.scrollbox table td:first-child \{[^}]*background: transparent !important/.test(htmlPartido));
 
 /* La opacidad destiñe el número Y el borde de la fila: en papel se lee
-   sucio. Se atenúa con tinta, igual que el plantel del informe de equipo. */
+   sucio. Se atenúa con tinta, igual que el plantel del informe de equipo.
+
+   El TONO cambió el 2026-08-25: era `#94a3b8`, que medido sobre el PDF
+   real da **contraste 2,57** contra el papel blanco y no llega al 4,5 que
+   pide AA para texto. Atenuar no es esconder. `#64748b` da 4,76 y mantiene
+   la jerarquía, porque el texto principal del papel va en `#111` (18,87).
+   Los BORDES de tarjeta siguen en #94a3b8: son decorativos, y su tono fue
+   una decisión del club. */
 check('los jugadores de pocos minutos se atenúan con tinta y no con opacidad',
   /modo-partido-print #detallePartido tr\.fila-tenue \{ opacity: 1 !important/.test(htmlPartido) &&
-  /fila-tenue[\s\S]{0,200}color: #94a3b8 !important/.test(htmlPartido));
+  /fila-tenue[\s\S]{0,400}color: #64748b !important/.test(htmlPartido));
+
+/* El contraste, medido y no estimado. */
+const lumPapel = (hex) => { const c = hex.replace('#', '');
+  const v = [0, 2, 4].map(i => parseInt(c.substr(i, 2), 16) / 255)
+    .map(x => x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4));
+  return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+const ctPapel = (hex) => 1.05 / (lumPapel(hex) + 0.05);   // contra blanco
+
+check('el gris de texto atenuado pasa AA sobre papel blanco',
+  ctPapel('#64748b') >= 4.5, ctPapel('#64748b').toFixed(2));
+check('y el que se descartó no llegaba',
+  ctPapel('#94a3b8') < 4.5, ctPapel('#94a3b8').toFixed(2));
+check('atenuado sigue leyéndose como secundario frente al texto principal',
+  ctPapel('#111111') > ctPapel('#64748b') * 3,
+  ctPapel('#111111').toFixed(2) + ' vs ' + ctPapel('#64748b').toFixed(2));
+check('la fila floja del informe de equipo usa el mismo gris',
+  /fila-flojo td \* \{ color: #64748b !important; \}/.test(htmlPartido));
+/* Y el acento de marca en papel: con DEPORTIVO es el azul del escudo, que
+   sobre blanco da 16,53 — el caso inverso al de la pantalla. */
+check('el acento de DEPORTIVO es legible sobre papel blanco',
+  ctPapel('#09086E') >= 4.5, ctPapel('#09086E').toFixed(2));
 check('y la fila lleva la clase que lo permite',
   /flojo \? 'opacity-50 fila-tenue'/.test(equiposJs));
 

@@ -572,7 +572,11 @@
        informe de equipo — atenuar con TINTA, no con opacidad. */
     body.modo-partido-print #detallePartido tr.fila-tenue { opacity: 1 !important; }
     body.modo-partido-print #detallePartido tr.fila-tenue td,
-    body.modo-partido-print #detallePartido tr.fila-tenue td * { color: #94a3b8 !important; }
+    /* #64748b y no #94a3b8: el gris claro daba contraste 2,57 sobre el papel
+       blanco —medido sobre el PDF real— y no pasa el minimo de 4,5 para texto.
+       Este llega a 4,76 y conserva la jerarquia: el texto principal va en #111
+       (18,87), asi que la fila atenuada se sigue leyendo como secundaria. */
+    body.modo-partido-print #detallePartido tr.fila-tenue td * { color: #64748b !important; }
 
     /* Con `table-layout: fixed` las 15 columnas se reparten en partes
        iguales, y la de nombres necesita el triple que una de números:
@@ -1002,7 +1006,8 @@
        sucio. El gris elegido sigue siendo legible impreso.
        ----------------------------------------------------------------- */
     body.modo-impresion #informeSalida tr.fila-flojo td,
-    body.modo-impresion #informeSalida tr.fila-flojo td * { color: #94a3b8 !important; }
+    /* Mismo motivo que la fila-tenue del post-partido: 2,57 no es legible. */
+    body.modo-impresion #informeSalida tr.fila-flojo td * { color: #64748b !important; }
     body.modo-impresion #informeSalida tr.fila-flojo .fila-inicial {
       opacity: .55;
       border-color: #cbd5e1 !important;
@@ -1539,23 +1544,23 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=121"></script>
-<script src="js/sgadd-core.js?v=121"></script>
-<script src="js/sgadd-ui.js?v=121"></script>
-<script src="js/sgadd-app.js?v=121"></script>
-<script src="js/sgadd-estados.js?v=121"></script>
-<script src="js/sgadd-buzon.js?v=121"></script>
-<script src="js/sgadd-charts.js?v=121"></script>
-<script src="js/sgadd-personalidad.js?v=121"></script>
-<script src="js/sgadd-rankings.js?v=121"></script>
-<script src="js/sgadd-partido.js?v=121"></script>
-<script src="js/sgadd-informe.js?v=121"></script>
-<script src="js/sgadd-ficha.js?v=121"></script>
-<script src="js/sgadd-equipos.js?v=121"></script>
-<script src="js/sgadd-jugadores.js?v=121"></script>
-<script src="js/sgadd-4factores.js?v=121"></script>
-<script src="js/sgadd-scouting.js?v=121"></script>
-<script src="js/sgadd-diagnostico.js?v=121"></script>
+<script src="js/sgadd-club.js?v=122"></script>
+<script src="js/sgadd-core.js?v=122"></script>
+<script src="js/sgadd-ui.js?v=122"></script>
+<script src="js/sgadd-app.js?v=122"></script>
+<script src="js/sgadd-estados.js?v=122"></script>
+<script src="js/sgadd-buzon.js?v=122"></script>
+<script src="js/sgadd-charts.js?v=122"></script>
+<script src="js/sgadd-personalidad.js?v=122"></script>
+<script src="js/sgadd-rankings.js?v=122"></script>
+<script src="js/sgadd-partido.js?v=122"></script>
+<script src="js/sgadd-informe.js?v=122"></script>
+<script src="js/sgadd-ficha.js?v=122"></script>
+<script src="js/sgadd-equipos.js?v=122"></script>
+<script src="js/sgadd-jugadores.js?v=122"></script>
+<script src="js/sgadd-4factores.js?v=122"></script>
+<script src="js/sgadd-scouting.js?v=122"></script>
+<script src="js/sgadd-diagnostico.js?v=122"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
