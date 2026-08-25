@@ -17,6 +17,8 @@ const EQUIPOS = {
   fase: 'REGULAR',
   equipo: null,
   tab: 'general',
+  /* 'promedio' | 'total' — el toggle de la tabla de plantel. */
+  modoPlantel: 'promedio',
   partido: null,
   idx: null,
   hojas: null,
@@ -642,6 +644,59 @@ function equiposDestacarJugador(clave, origen) {
   ch.update('none');   // sin animación: el hover tiene que sentirse inmediato
 }
 
+/* =====================================================================
+   PROMEDIOS o TOTALES · el mismo plantel, dos preguntas
+
+   "¿Cuánto rinde por noche?" y "¿cuánto lleva aportado?" son preguntas
+   distintas y el DT necesita las dos: la primera compara jugadores entre
+   sí, la segunda mide la carga real de la temporada.
+
+   Solo cambian las CUENTAS. Las tasas —`eFG%`, `TS%`, `USG%`, `AST-PP`—
+   no se acumulan: el eFG% de la temporada no es la suma de los eFG% de
+   cada noche, es el mismo número. Por eso `ACUMULADO J` trae 32 columnas
+   contra las 53 de `PROMEDIOS J`, y las 21 que faltan son exactamente
+   esas. Al pasar a totales, la columna que no tiene acumulado muestra su
+   valor de siempre y se marca en el encabezado.
+   ===================================================================== */
+
+/** Columnas que SÍ cambian entre promedio y total. El resto es una tasa. */
+const PLANTEL_ACUMULABLES = ['MIN', 'PTS', 'PLAYS', 'PJ', 'RT', 'RD', 'RO',
+  'AST', 'PR', 'PP', 'TC', 'TR', 'FC', 'FR', 'VAL',
+  'T2C', 'T2I', 'T3C', 'T3I', 'T1C', 'T1I', 'TCC', 'TCI'];
+
+/**
+ * El valor de una columna según el modo elegido.
+ *
+ * En `total` se lee de `__acum` —que el índice cuelga de cada jugador— y
+ * solo para las columnas acumulables. Sin acumulado cargado, se cae al
+ * promedio en vez de mostrar un hueco: la fila sigue siendo legible y el
+ * encabezado ya avisa de qué se está hablando.
+ */
+function plantelValor(j, col, modo) {
+  if (modo !== 'total') return j[col];
+  if (PLANTEL_ACUMULABLES.indexOf(col) === -1) return j[col];
+  return (j.__acum && j.__acum[col] !== undefined) ? j.__acum[col] : j[col];
+}
+
+/**
+ * El texto ya formateado de una celda del plantel.
+ *
+ * En totales las cuentas van ENTERAS: `MIN` deja de ser 22,4 por noche y
+ * pasa a 246 de temporada, donde el decimal es ruido. Las tasas conservan
+ * su formato de siempre, que es el que las hace comparables.
+ */
+function plantelTexto(j, col, modo) {
+  const v = plantelValor(j, col, modo);
+  const acumulable = PLANTEL_ACUMULABLES.indexOf(col) >= 0;
+  if (modo === 'total' && acumulable && typeof v === 'number') return String(Math.round(v));
+  return SGADD.formatear(col, v);
+}
+
+function equiposCambiarModoPlantel(modo) {
+  EQUIPOS.modoPlantel = (modo === 'total') ? 'total' : 'promedio';
+  equiposPintar();
+}
+
 function equiposTabPlantel(idx, e) {
   /* El MISMO corte que el scatter (`SGADD_CHARTS.MIN_SCATTER`), no uno
      propio. La tabla y el gráfico son dos vistas del mismo conjunto y la
@@ -660,6 +715,17 @@ function equiposTabPlantel(idx, e) {
   const enGrafico = (j) => typeof j['MIN'] === 'number' && j['MIN'] >= pisoMin;
   const fueraDelGrafico = jug.filter(j => !enGrafico(j)).length;
   const cols = ['MIN', 'PTS', 'USG%', 'TS%', 'eFG%', 'AST-PP', 'VAL', '+/-'];
+  const modo = (EQUIPOS.modoPlantel === 'total') ? 'total' : 'promedio';
+  /* El toggle se ofrece solo si el acumulado cubre al plantel de verdad.
+
+     Con `some()` alcanzaba UN jugador para mostrarlo, y medido en el libro
+     de Jujuy `ACUMULADO J` trae 17 filas para 260 jugadores —otra derivada
+     a medio calcular, el mismo patrón que el U21— así que el botón habría
+     aparecido para dejar 244 filas cayendo al promedio en silencio. Un
+     control que promete cambiar la vista y no la cambia es peor que no
+     tenerlo; el Diagnóstico lo denuncia por separado. */
+  const conAcum = jug.filter(j => !!j.__acum).length;
+  const hayAcum = jug.length > 0 && conAcum >= Math.ceil(jug.length * 0.8);
 
   const filas = jug.map(j => {
     /* Dos preguntas distintas, dos marcas distintas:
@@ -689,7 +755,9 @@ function equiposTabPlantel(idx, e) {
         <span class="fila-inicial" aria-hidden="true">${escapeHtml(
           (typeof SGADD_CHARTS !== 'undefined' ? SGADD_CHARTS.inicialesJugador(j['NOMBRES']) : ''))}</span>
         ${escapeHtml(j['NOMBRES'])}${badgeEstado}</td>
-      ${cols.map(c => `<td class="py-1.5 pr-3 font-mono text-xs ${c === '+/-' ? SGADD_UI.claseMasMenos(j[c]) : ''}">${escapeHtml(SGADD.formatear(c, j[c]))}</td>`).join('')}
+      ${cols.map(c => `<td class="py-1.5 pr-3 font-mono text-xs ${
+        c === '+/-' ? SGADD_UI.claseMasMenos(plantelValor(j, c, modo)) : ''}">${
+        escapeHtml(plantelTexto(j, c, modo))}</td>`).join('')}
       <td class="py-1.5 text-[10px] whitespace-nowrap">${
         !cal ? `<span class="text-muted" title="Por debajo de ${pisoMin} minutos: no entra al gráfico">fuera del gráfico</span>`
         : sinPercentil ? `<span class="text-yellow-400" title="No llega al umbral de calificación de la liga: se muestra sin percentil">sin percentil</span>`
@@ -714,10 +782,27 @@ function equiposTabPlantel(idx, e) {
         SGADD_CHARTS.nota('Incluye a todo el que promedie 10 minutos o más, califique o no para percentiles.'))}
     </div>
 
+    ${hayAcum ? `
+    <div class="flex items-center justify-between gap-3 mb-2 flex-wrap">
+      <p class="text-[11px] uppercase tracking-wider text-muted font-display">Plantel</p>
+      <div class="inline-flex rounded-md border border-hairline overflow-hidden" role="group"
+           aria-label="Mostrar promedios por partido o totales de la temporada">
+        ${[['promedio', 'Promedios', 'Por partido'], ['total', 'Totales', 'De toda la fase']]
+          .map(([id, txt, ayuda]) => `
+          <button type="button" onclick="equiposCambiarModoPlantel('${id}')"
+            aria-pressed="${modo === id}" title="${ayuda}"
+            class="px-3 py-1.5 text-[11px] font-semibold transition-colors duration-150
+                   focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset
+                   ${modo === id ? 'bg-surface2 text-ink' : 'text-muted hover:text-ink'}">${txt}</button>`).join('')}
+      </div>
+    </div>` : ''}
     <div class="scrollbox"><table id="plantelTabla" class="w-full text-left">
       <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
         <th class="pb-1 pr-3">Jugador</th>
-        ${cols.map(c => `<th class="pb-1 pr-3">${escapeHtml(c)}</th>`).join('')}
+        ${cols.map(c => { const fija = modo === 'total' && PLANTEL_ACUMULABLES.indexOf(c) === -1;
+          return `<th class="pb-1 pr-3 ${fija ? 'text-muted/70' : ''}"${
+            fija ? ' title="Es una tasa: no se acumula, el valor es el mismo"' : ''
+          }>${escapeHtml(c)}${fija ? ' <span aria-hidden="true">≡</span>' : ''}</th>`; }).join('')}
         <th class="pb-1"></th>
       </tr></thead><tbody>${filas}</tbody></table></div>
     <p class="text-[11px] text-muted mt-3 leading-snug">

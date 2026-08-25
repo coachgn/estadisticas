@@ -36,6 +36,8 @@ const JUGADORES = {
   filtroEquipo: null,   // clave del equipo elegido en el picker, o null
   metricaEvolucion: 'PTS',
   rankingAbierto: 'produccion',
+  /* 'promedio' | 'total' — por partido o el total de la fase. */
+  rankingModo: 'promedio',
   /* null = usar el umbral de la liga (MIN del JUGADOR TIPO). El DT puede
      bajarlo para ver especialistas de pocos minutos. */
   rankingMinManual: null,
@@ -89,6 +91,16 @@ const JUGADORES_RANKINGS = [
 ];
 
 /** Umbral de minutos vigente: el manual si lo hay, si no el de la liga. */
+/* Columnas que cambian entre promedio y total; el resto es una tasa y no
+   se acumula. Es la misma lista que usa el plantel de Equipos, repetida
+   acá a propósito: los dos módulos son independientes y `sgadd-equipos.js`
+   no exporta nada que `sgadd-jugadores.js` pueda leer sin invertir la
+   dependencia, que hoy va en un solo sentido. Hay un test que falla si las
+   dos listas dejan de coincidir. */
+const RANKING_ACUMULABLES = ['MIN', 'PTS', 'PLAYS', 'PJ', 'RT', 'RD', 'RO',
+  'AST', 'PR', 'PP', 'TC', 'TR', 'FC', 'FR', 'VAL',
+  'T2C', 'T2I', 'T3C', 'T3I', 'T1C', 'T1I', 'TCC', 'TCI'];
+
 function jugadoresUmbralRanking(idx) {
   if (typeof JUGADORES.rankingMinManual === 'number') return JUGADORES.rankingMinManual;
   return (idx.liga && typeof idx.liga.minJugador === 'number') ? idx.liga.minJugador : 0;
@@ -108,12 +120,27 @@ function jugadoresRanking(idx, id, opciones) {
   const topN = o.topN || JUGADORES_TOP_N;
 
   /* El valor de orden sale del mismo extractor que las celdas, para que
-     no pueda pasar que la tabla ordene por una cosa y muestre otra. */
-  const valor = (j, k) => (k === 'RT') ? jugadoresRT(j)
-    : (typeof j[k] === 'number' && isFinite(j[k])) ? j[k] : null;
+     no pueda pasar que la tabla ordene por una cosa y muestre otra.
 
+     En modo `total` las CUENTAS se leen del acumulado que el índice cuelga
+     de cada jugador; las tasas no cambian, porque una tasa acumulada es la
+     misma tasa. Y como el extractor es el mismo que usa la selección del
+     top N, el ranking de totales es de verdad el de los máximos anotadores
+     de la fase y no el de los que más promedian: son dos preguntas
+     distintas y cada modo contesta la suya. */
+  const modo = (o.modo === 'total') ? 'total' : 'promedio';
+  const crudo = (j, k) => (modo === 'total' && RANKING_ACUMULABLES.indexOf(k) >= 0
+    && j.__acum && j.__acum[k] !== undefined) ? j.__acum[k] : j[k];
+  const valor = (j, k) => (k === 'RT')
+    ? (modo === 'total' && j.__acum ? jugadoresRT(j.__acum) : jugadoresRT(j))
+    : (typeof crudo(j, k) === 'number' && isFinite(crudo(j, k))) ? crudo(j, k) : null;
+
+  /* El umbral es de MINUTOS POR PARTIDO y se compara siempre contra el
+     promedio, incluso en modo total: en totales un suplente con 12
+     partidos cortos supera en minutos a un titular con 4, y el filtro
+     dejaría entrar justo a los que vino a excluir. */
   const elegibles = (idx.liga.jugadores || []).filter(j => {
-    const m = valor(j, 'MIN');
+    const m = (typeof j['MIN'] === 'number' && isFinite(j['MIN'])) ? j['MIN'] : null;
     return m !== null && m >= umbral && valor(j, g.orden) !== null;
   });
 
@@ -164,7 +191,7 @@ function jugadoresRanking(idx, id, opciones) {
   });
 
   return {
-    id: g.id, titulo: g.titulo, orden: g.orden, nota: g.nota || null,
+    id: g.id, titulo: g.titulo, orden: g.orden, nota: g.nota || null, modo: modo,
     columnas: g.cols, filas: filas, medianas: medianas,
     umbral: umbral, elegibles: elegibles.length,
     /* Con qué se está mostrando, que puede no ser con qué se seleccionó. */
@@ -1226,7 +1253,7 @@ function jugadoresTablaRanking(idx, r) {
       return `<td class="py-1.5 px-2 text-center align-middle font-mono text-xs whitespace-nowrap
         ${destaca ? 'text-white font-semibold' : base}${esMediana ? ' ring-1 ring-accent/50 rounded' : ''}"
         ${esMediana ? 'title="El más cercano a la mediana de este top"' : ''}
-        >${SGADD_UI.esc(SGADD.formatear(k, v))}</td>`;
+        >${SGADD_UI.esc(rankingTexto(k, v, r.modo))}</td>`;
     }).join('');
 
     const colorPuesto = f.puesto === 1 ? 'text-accent font-bold'
@@ -1262,7 +1289,8 @@ function jugadoresTablaRanking(idx, r) {
       <tbody>${filas}</tbody>
     </table></div>
     <p class="text-[11px] text-muted mt-3 leading-snug">
-      Top ${r.filas.length} de ${r.elegibles} jugadores con MIN ≥ ${r.umbral.toFixed(2).replace('.', ',')},
+      Top ${r.filas.length} de ${r.elegibles} jugadores con MIN ≥ ${r.umbral.toFixed(2).replace('.', ',')}
+      ${r.modo === 'total' ? '<b>de promedio por partido</b>' : ''},
       seleccionados por <span class="font-mono">${SGADD_UI.esc(r.orden)}</span>.
       ${reordenada ? 'Mostrados por <span class="font-mono">' + SGADD_UI.esc(r.ordenPor) + '</span> ' + dirTexto + '.' : ''}
       Clic en una cabecera para reordenar, clic en una fila para abrir la ficha.
@@ -1270,8 +1298,38 @@ function jugadoresTablaRanking(idx, r) {
     </p>`;
 }
 
+/**
+ * Cambia la escala de los rankings entre promedio y total.
+ *
+ * Y RESETEA el orden de columna a propósito: un "por RD descendente"
+ * elegido sobre promedios no significa lo mismo sobre totales, y
+ * arrastrarlo deja al DT mirando un cuadro que él no pidió. Es el mismo
+ * criterio que ya se aplica al cambiar de pestaña de ranking.
+ */
+function jugadoresCambiarModoRanking(modo) {
+  JUGADORES.rankingModo = (modo === 'total') ? 'total' : 'promedio';
+  JUGADORES.rankingOrdenPor = null;
+  JUGADORES.rankingOrdenDir = 'desc';
+  jugadoresPintar();
+}
+
+/** El texto de una celda de ranking: en totales las cuentas van enteras. */
+function rankingTexto(col, v, modo) {
+  if (modo === 'total' && RANKING_ACUMULABLES.indexOf(col) >= 0 && typeof v === 'number') {
+    return String(Math.round(v));
+  }
+  return SGADD.formatear(col, v);
+}
+
 function jugadoresBloqueRankings(idx) {
-  const op = { ordenPor: JUGADORES.rankingOrdenPor, dir: JUGADORES.rankingOrdenDir };
+  /* La cobertura decide si el toggle se puede ofrecer: con el acumulado a
+     medio calcular —Jujuy trae 17 filas para 260 jugadores— el botón
+     prometería un cambio que no puede hacer. */
+  const conAcum = (idx.liga.jugadores || []).filter(j => !!j.__acum).length;
+  const hayAcum = idx.liga.jugadores.length > 0 &&
+    conAcum >= Math.ceil(idx.liga.jugadores.length * 0.8);
+  const modo = (hayAcum && JUGADORES.rankingModo === 'total') ? 'total' : 'promedio';
+  const op = { ordenPor: JUGADORES.rankingOrdenPor, dir: JUGADORES.rankingOrdenDir, modo: modo };
   const r = jugadoresRanking(idx, JUGADORES.rankingAbierto, op) ||
             jugadoresRanking(idx, JUGADORES_RANKINGS[0].id, op);
   if (!r) return '';
@@ -1287,6 +1345,20 @@ function jugadoresBloqueRankings(idx) {
             Las mismas tablas de la hoja RANKINGS J, calculadas en vivo sobre ${idx.liga.jugadores.length} jugadores.
           </p>
         </div>
+        ${hayAcum ? `
+        <div>
+          <span class="block text-[10px] uppercase tracking-wider text-muted font-display mb-1">Escala</span>
+          <div class="inline-flex rounded-md border border-hairline overflow-hidden" role="group"
+               aria-label="Mostrar promedios por partido o totales de la fase">
+            ${[['promedio', 'Promedios', 'Por partido'], ['total', 'Totales', 'De toda la fase']]
+              .map(([id, txt, ayuda]) => `
+              <button type="button" onclick="jugadoresCambiarModoRanking('${id}')"
+                aria-pressed="${modo === id}" title="${ayuda}"
+                class="px-3 py-2 text-[11px] font-semibold transition-colors duration-150
+                       focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset
+                       ${modo === id ? 'bg-surface2 text-ink' : 'text-muted hover:text-ink'}">${txt}</button>`).join('')}
+          </div>
+        </div>` : ''}
         <div>
           <label class="block text-[10px] uppercase tracking-wider text-muted font-display mb-1">Minutos mínimos</label>
           <input type="number" step="0.5" min="0" value="${umbral.toFixed(1)}"
@@ -1908,7 +1980,7 @@ function jugadoresTabPartidos(idx, j) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     JUGADORES_TABS, JUGADORES_METRICAS_EVOLUCION, ROLES_MINUTOS, PERFILES_TECNICOS, JERARQUIA, ZONAS_TIRO,
-    JUGADORES_RANKINGS, JUGADORES_TOP_N, jugadoresRanking, jugadoresUmbralRanking,
+    JUGADORES_RANKINGS, JUGADORES_TOP_N, jugadoresRanking, jugadoresUmbralRanking, RANKING_ACUMULABLES,
     JUGADORES_UMBRALES, JUGADORES_ROLES_FUNCIONALES,
     jugadoresPerfilBase, jugadoresRolFuncional, jugadoresADN, jugadoresBadges,
     JUGADORES_METRICAS_EVOLUCION,

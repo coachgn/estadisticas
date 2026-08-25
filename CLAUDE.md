@@ -21,7 +21,7 @@ node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  48 tests · multi-cliente
 node test-boot.js          #  55 tests · arranque por club + sintaxis de los módulos
-node test-jugadores.js     # 240 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
+node test-jugadores.js     # 253 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
@@ -30,7 +30,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 176 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1462 tests en total. Todos tienen que dar verde antes de commitear.**
+**1475 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -112,7 +112,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=120`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=121`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -1840,6 +1840,51 @@ como un fracaso y es una zona que el jugador no usó.
 Ojo al tocar el log: son **tres columnas más**, así que el `colspan` de la
 fila de "sin box score" tiene que acompañar (7 → 10) o el estado vacío
 queda corto y desarma la tabla. Hay un test que lo fija.
+
+### Promedios ↔ Totales · el mismo plantel, dos preguntas
+
+*"¿Cuánto rinde por noche?"* compara jugadores entre sí; *"¿cuánto lleva
+aportado?"* mide la carga real de la fase. El toggle está en las **dos**
+superficies tabulares: el tab **Plantel** de Equipos y los **Rankings de
+la liga** en Jugadores.
+
+**Solo cambian las CUENTAS.** `ACUMULADO J` trae 32 columnas contra las 53
+de `PROMEDIOS J`, y las 21 que faltan son exactamente las tasas: una tasa
+acumulada es la misma tasa —el eFG% de la temporada no es la suma de los
+eFG% de cada noche—. En modo total esas columnas se marcan con `≡` en el
+encabezado en vez de mostrar un número que no cambió sin explicación.
+
+El índice cuelga el acumulado de cada jugador como **`__acum`**, enganchado
+por NOMBRE + EQUIPO —la misma clave compuesta del slug de la ficha: con el
+nombre solo, dos homónimos se llevarían el acumulado del otro—. No se arma
+una segunda lista de jugadores: así el toggle alterna el ORIGEN de unas
+columnas sin duplicar el plantel ni recalcular percentiles, arquetipos ni
+estados, que se resuelven una sola vez sobre promedios.
+
+Cuatro reglas que hay que respetar al tocarlo:
+
+- **En rankings, el modo cambia también QUIÉN entra al top 20.** Es
+  deliberado: el top de totales son los máximos anotadores de la fase y el
+  de promedios los que más rinden por noche. Medido con datos reales de
+  DEPORTIVO, YOUNG es 1° por promedio (17,9) y **5°** por total (161).
+- **El umbral de minutos se compara SIEMPRE contra el promedio**, incluso
+  en modo total: en totales un suplente con 12 partidos cortos supera en
+  minutos a un titular con 4, y el filtro dejaría entrar justo a los que
+  vino a excluir.
+- **Cambiar de escala resetea el orden de columna.** Un *"por RD
+  descendente"* elegido sobre promedios no significa lo mismo sobre
+  totales. Es el mismo criterio que ya se aplica al cambiar de pestaña.
+- **Las dos superficies acumulan las MISMAS columnas.** Las listas están
+  duplicadas —`PLANTEL_ACUMULABLES` y `RANKING_ACUMULABLES`— porque
+  `sgadd-jugadores.js` no puede leer a `sgadd-equipos.js` sin invertir la
+  dependencia. Hay un test que falla si dejan de coincidir.
+
+**El toggle no se ofrece si el acumulado está a medio calcular.** Se exige
+que cubra el **80%** del plantel: medido en el libro de Jujuy, `ACUMULADO
+J` trae 17 filas para 260 jugadores, y con la guarda laxa el botón habría
+aparecido para dejar 244 filas cayendo al promedio en silencio. Un control
+que promete cambiar la vista y no la cambia es peor que no tenerlo — y el
+Diagnóstico lo denuncia por separado (punto 5).
 
 ### Landing de la sección: picker + plantel filtrado + rankings
 

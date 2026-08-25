@@ -1192,5 +1192,101 @@ check('y el tooltip lo pega al porcentaje',
 check('sin C/I el tooltip queda como estaba: no muestra un paréntesis vacío',
   /\(ci \? '  \(' \+ ci \+ '\)' : ''\)/.test(fuenteCharts));
 
+/* =====================================================================
+   PROMEDIOS ↔ TOTALES · el mismo plantel, dos preguntas
+
+   "¿Cuánto rinde por noche?" compara jugadores entre sí; "¿cuánto lleva
+   aportado?" mide la carga real de la fase. Solo cambian las CUENTAS: una
+   tasa acumulada es la misma tasa, y por eso `ACUMULADO J` trae 32
+   columnas contra las 53 de `PROMEDIOS J`.
+   ===================================================================== */
+console.log('\nPROMEDIOS ↔ TOTALES');
+console.log('═'.repeat(70));
+
+const conAcum = (n, min, pts, pj) => ({ NOMBRES: n, EQUIPO: 'A', MIN: min, PTS: pts, PJ: pj,
+  PLAYS: 10, 'eFG%': 0.5, 'PPP': 1, 'USG%': 0.2, RO: 2, RD: 3,
+  __acum: { MIN: min * pj, PTS: pts * pj, PJ: pj, PLAYS: 10 * pj, RO: 2 * pj, RD: 3 * pj } });
+
+/* El caso que justifica el toggle: el que más promedia no es el que más
+   aportó. Con 4 partidos a 20 puntos y 12 a 12, gana uno por promedio y
+   el otro por total. */
+const ligaMixta = { liga: { jugadores: [
+  conAcum('ESTRELLA, POCOS', 30, 20, 4),
+  conAcum('OBRERO, MUCHOS', 25, 12, 12),
+], jugadorTipo: { MIN: 15 } } };
+
+const porProm = J.jugadoresRanking(ligaMixta, 'produccion', { umbral: 10 });
+const porTot  = J.jugadoresRanking(ligaMixta, 'produccion', { umbral: 10, modo: 'total' });
+
+check('por promedio gana el de más puntos por noche',
+  porProm.filas[0].jugador === 'ESTRELLA, POCOS', porProm.filas.map(f => f.jugador).join(' → '));
+check('por total gana el que más aportó en la fase',
+  porTot.filas[0].jugador === 'OBRERO, MUCHOS', porTot.filas.map(f => f.jugador).join(' → '));
+
+/* El extractor es el mismo para ordenar y para pintar: no puede pasar que
+   la tabla ordene por una cosa y muestre otra. */
+check('las celdas muestran el acumulado, no el promedio',
+  porTot.filas[0].celdas['PTS'] === 144 && porTot.filas[0].celdas['MIN'] === 300,
+  JSON.stringify(porTot.filas[0].celdas));
+check('y en promedios siguen siendo por partido',
+  porProm.filas[0].celdas['PTS'] === 20);
+
+/* Una tasa acumulada es la misma tasa: el eFG% de la temporada no es la
+   suma de los eFG% de cada noche. */
+check('las tasas NO cambian entre los dos modos',
+  J.RANKING_ACUMULABLES.indexOf('eFG%') === -1 &&
+  J.RANKING_ACUMULABLES.indexOf('PPP') === -1 &&
+  J.RANKING_ACUMULABLES.indexOf('USG%') === -1);
+check('pero las cuentas sí',
+  ['MIN','PTS','PLAYS','RO','RD','AST','T3C','T3I'].every(c => J.RANKING_ACUMULABLES.indexOf(c) >= 0));
+
+/* El umbral es de MINUTOS POR PARTIDO y se compara siempre contra el
+   promedio: en totales un suplente con 12 partidos cortos supera en
+   minutos a un titular con 4, y el filtro dejaría entrar justo a los que
+   vino a excluir. */
+const conSuplente = { liga: { jugadores: [
+  conAcum('TITULAR, CUATRO', 30, 20, 4),
+  conAcum('SUPLENTE, DOCE', 6, 2, 12),   // 72 min totales, más que los 120... pero 6 de promedio
+], jugadorTipo: { MIN: 15 } } };
+check('el umbral de minutos no se deja engañar por los totales',
+  J.jugadoresRanking(conSuplente, 'produccion', { umbral: 10, modo: 'total' })
+    .filas.every(f => f.jugador !== 'SUPLENTE, DOCE'));
+
+/* Sin acumulado cargado se cae al promedio en vez de mostrar un hueco. */
+const sinAcum = { liga: { jugadores: [
+  { NOMBRES: 'SIN, DATOS', EQUIPO: 'A', MIN: 20, PTS: 10, PJ: 5, PLAYS: 8, 'PPP': 1 },
+], jugadorTipo: { MIN: 15 } } };
+check('sin acumulado, el modo total no rompe ni vacía la tabla',
+  J.jugadoresRanking(sinAcum, 'produccion', { umbral: 10, modo: 'total' }).filas.length === 1);
+
+/* Las dos superficies —plantel de Equipos y rankings de liga— tienen que
+   coincidir en qué columna es acumulable, o el mismo jugador mostraría
+   totales distintos según dónde se lo mire. */
+const fuenteEqAcum = require("fs").readFileSync("./js/sgadd-equipos.js", "utf8");
+const listaEq = (fuenteEqAcum.match(/const PLANTEL_ACUMULABLES = \[([\s\S]*?)\];/) || [, ''])[1];
+check('el plantel y los rankings acumulan las MISMAS columnas',
+  J.RANKING_ACUMULABLES.every(c => listaEq.indexOf("'" + c + "'") >= 0) &&
+  (listaEq.match(/'/g) || []).length / 2 === J.RANKING_ACUMULABLES.length,
+  J.RANKING_ACUMULABLES.length + ' vs ' + (listaEq.match(/'/g) || []).length / 2);
+
+/* El toggle no se ofrece si el acumulado está a medio calcular: medido en
+   Jujuy, `ACUMULADO J` trae 17 filas para 260 jugadores. Un control que
+   promete cambiar la vista y no la cambia es peor que no tenerlo. */
+check('el toggle exige que el acumulado cubra el 80% del plantel',
+  /conAcum >= Math\.ceil\(jug\.length \* 0\.8\)/.test(fuenteEqAcum));
+const fuenteJug2 = require('fs').readFileSync('./js/sgadd-jugadores.js', 'utf8');
+check('y los rankings aplican el mismo corte',
+  /conAcum >= Math\.ceil\(idx\.liga\.jugadores\.length \* 0\.8\)/.test(fuenteJug2));
+
+/* Un "por RD descendente" elegido sobre promedios no significa lo mismo
+   sobre totales: arrastrarlo deja al DT mirando un cuadro que no pidió. */
+check('cambiar de escala resetea el orden de columna',
+  /function jugadoresCambiarModoRanking[\s\S]{0,400}rankingOrdenPor = null/.test(fuenteJug2));
+
+/* En totales las cuentas van ENTERAS: 246 minutos de fase, no 246,3. */
+check('los totales se muestran sin decimales',
+  /function rankingTexto[\s\S]{0,300}String\(Math\.round\(v\)\)/.test(fuenteJug2) &&
+  /function plantelTexto[\s\S]{0,300}String\(Math\.round\(v\)\)/.test(fuenteEqAcum));
+
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

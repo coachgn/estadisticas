@@ -1510,6 +1510,48 @@
        de memoria es la estructura y nada más. No hace falta lazy loading.
        --------------------------------------------------------------------- */
     liga.boxPorPartido = new Map();   // idPartido -> filas de jugador
+    /* =====================================================================
+       ACUMULADOS DE JUGADOR · los mismos jugadores, en totales
+
+       `PROMEDIOS J` trae 53 columnas y `ACUMULADO J` 32: las 21 que faltan
+       son TASAS —`eFG%`, `PPP`, `T3%`, `USG%`…— y no faltan por error. Una
+       tasa acumulada es la misma tasa: el eFG% de la temporada no es la
+       suma de los eFG% de cada noche. Lo que sí cambia entre las dos hojas
+       son las CUENTAS: `PTS`, `MIN`, `RT`, `AST` por partido contra el
+       total del torneo.
+
+       Se cuelga de cada jugador ya indexado como `__acum`, en vez de armar
+       una segunda lista: así el toggle de la UI alterna el ORIGEN de unas
+       columnas sin duplicar el plantel ni volver a resolver percentiles,
+       arquetipos ni estados, que se calculan una sola vez sobre promedios.
+       ===================================================================== */
+    const haj = hojas['ACUMULADO J'];
+    if (haj) {
+      const idTipoA = ESQUEMA['ACUMULADO J'].filaTipo;
+      const porClave = new Map();
+      haj.filas.forEach(fila => {
+        const faseFila = texto(fila['FASE']).toUpperCase();
+        if (faseFila && faseFila !== fase) return;
+        if (!enTorneo(fila)) return;
+        if (esFilaTipo(fila, idTipoA)) return;   // el TIPO no es un jugador
+        const k = clavePersona(fila['NOMBRES']) + '|' + claveEquipo(fila['EQUIPO']);
+        const datos = {};
+        Object.keys(fila).forEach(c => {
+          const v = num(fila[c]);
+          datos[c] = (v !== null) ? v : texto(fila[c]);
+        });
+        porClave.set(k, datos);
+      });
+      /* Se engancha por NOMBRE + EQUIPO, la misma clave compuesta que usa
+         el slug de la ficha: con el nombre solo, dos homónimos de equipos
+         distintos se llevarían el acumulado del otro. */
+      liga.jugadores.forEach(j => {
+        const k = clavePersona(j['NOMBRES']) + '|' + claveEquipo(j['EQUIPO']);
+        const a = porClave.get(k);
+        if (a) j.__acum = a;
+      });
+    }
+
     liga.jugadorPartidos = new Map(); // clavePersona -> filas de sus partidos
 
     const hbj = hojas['Base Datos J'];
@@ -2160,6 +2202,44 @@
       });
       return set.size ? set : null;
     };
+    /* Lo mismo para JUGADORES: `PROMEDIOS J` contra `ACUMULADO J`.
+
+       Medido en el libro de Jujuy el 2026-08-24: `PROMEDIOS J` trae 260
+       jugadores y `ACUMULADO J` **17**. Las dos hojas describen la misma
+       gente y una está a mitad de camino, pero como el bloque 2 las compara
+       entre sí por CANTIDAD DE FILAS y no por quiénes son, el desbalance
+       pasaba igual. Sin esto, la vista de totales del plantel se llenaba de
+       promedios disfrazados. */
+    const jugadoresDe = (nombre) => {
+      const h = hojas[nombre];
+      if (!h || !h.filas) return null;
+      const idTipo = ESQUEMA[nombre] ? ESQUEMA[nombre].filaTipo : null;
+      const set = new Set();
+      h.filas.forEach(f => {
+        if (esFilaTipo(f, idTipo)) return;
+        const n = clavePersona(f['NOMBRES']);
+        if (n) set.add(n + '|' + claveEquipo(f['EQUIPO']));
+      });
+      return set.size ? set : null;
+    };
+    const jProm = jugadoresDe('PROMEDIOS J');
+    const jAcum = jugadoresDe('ACUMULADO J');
+    if (jProm && jAcum) {
+      const faltanJ = Array.from(jProm).filter(k => !jAcum.has(k));
+      /* Un puñado de diferencia es normal —un refuerzo cargado a mitad de
+         semana— y avisar por eso entrena a ignorar el Diagnóstico. Se
+         denuncia cuando falta más del 20%. */
+      if (faltanJ.length > jProm.size * 0.2) {
+        out.push({
+          nivel: 'error', hoja: 'ACUMULADO J',
+          mensaje: 'PROMEDIOS J tiene ' + jProm.size + ' jugadores y ACUMULADO J solo ' +
+            jAcum.size + '. Faltan los totales de ' + faltanJ.length + '. El libro quedó a ' +
+            'mitad de un recálculo: hay que reprocesarlo en el motor (MotorStats). Mientras ' +
+            'tanto la vista de totales del plantel no se ofrece.',
+        });
+      }
+    }
+
     const eMaestra = equiposDe('Base Datos E');
     [['PROMEDIOS E', 'los promedios'], ['ACUMULADO E', 'los acumulados'],
      ['PROMEDIOS 4F', 'los 4 factores']].forEach(([nombre, que]) => {
