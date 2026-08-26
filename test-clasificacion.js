@@ -246,12 +246,27 @@ check('y su contenedor tiene id para repintarse solo',
 const app = fs.readFileSync('./js/sgadd-app.js', 'utf8');
 check('onCambio repinta la sección Clasificación',
   /currentSection === 'clasificacion'[\s\S]{0,160}buildClasificacion\(\)/.test(app));
-check('y el resumen de Principal, solo su contenedor',
-  /getElementById\('principalClasif'\)[\s\S]{0,120}renderClasificacionResumen\(\)/.test(app));
-/* Principal NO se repinta entero: su gráfico ya colgó la página una vez
-   con un ciclo de repintado (punto 6). */
-check('Principal no se repinta entero desde onCambio',
-  !/currentSection === 'principal'[\s\S]{0,200}renderSection\('principal'\)/.test(app));
+/* PRINCIPAL SE REPINTA ENTERA, y esta regla CAMBIÓ.
+
+   Al principio solo se reemplazaba `#principalClasif`, por miedo al ciclo
+   de repintado que colgó la página una vez (punto 6). Pero sus KPIs
+   —equipos, partidos, mejor ataque, líderes— TAMBIÉN dependen del tramo,
+   y al no repintarse quedaban con los valores del primer render. Medido
+   en DEPORTIVO: `PARTIDOS 76` —los dos torneos sumados— en las dos fases,
+   con el mismo mejor ataque y el mismo líder. Se veían idénticas.
+
+   Repintar desde `onCambio` no reabre aquel ciclo: el bucle era
+   gráfico → LOGOS.resolver → hook → repintado → gráfico, y a `onCambio`
+   solo lo disparan `cargar()` y `reindexar()`. */
+check('Principal se repinta entera al cambiar de tramo',
+  /currentSection === 'principal'[\s\S]{0,200}renderSection\('principal'\)/.test(app));
+check('y el repintado va protegido, no puede tumbar el resto',
+  /renderSection\('principal'\)[\s\S]{0,80}catch/.test(app));
+/* El contenedor con id sigue existiendo: lo usa `renderClasificacionResumen`
+   y es lo que hace que Principal y la sección no se contradigan. */
+check('y su resumen sigue usando el componente compartido',
+  /renderClasificacionResumen/.test(
+    require('fs').readFileSync('./index.html', 'utf8')));
 
 /* La sección está en el router y en el nav, o existe y no se puede abrir. */
 check('clasificacion está en VALID_SECTIONS',
