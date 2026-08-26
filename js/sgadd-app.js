@@ -295,6 +295,12 @@ const SGADD_APP = (function () {
     /* La pantalla de Configuración muestra la cantidad de equipos y la
        vista previa del tramo abierto: si no se repinta, queda mostrando
        la validación de otro recorte y contradice a Clasificación. */
+    /* Los escudos se resuelven cuando llega el índice o cambia el tramo,
+       no cuando se pinta Principal: son una pieza GLOBAL —los usan cinco
+       secciones y los cuatro PDF— y atarlos al render de una sola dejaba
+       a las demás esperando a que el DT pasara por ahí. `LOGOS.resolver`
+       sale de caché si ya los tiene, así que repetirlo no cuesta. */
+    if (typeof precargarLogos === 'function') { try { precargarLogos(); } catch (e) {} }
     if (currentSection === 'configuracion' && typeof configPintar === 'function') configPintar();
     if (currentSection === 'clasificacion' && typeof buildClasificacion === 'function') {
       const r = document.getElementById('view-root');

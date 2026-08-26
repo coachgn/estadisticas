@@ -3060,7 +3060,7 @@ function scoutBloqueMarcas(inf) {
       </p>
       <p class="text-[11px] text-muted mb-3 leading-snug">
         <b>De los nuestros</b> propone hasta tres jugadores del plantel rival para cada tarea —el
-        principal en naranja, los otros dos como recambio— en <b>dos pasos</b>: primero el
+        principal con el color del club, los otros dos como recambio— en <b>dos pasos</b>: primero el
         <b>match de biotipo</b> contra ese atacante (a un interior no se le manda un perimetral),
         y recién después el <b>ranking por métricas defensivas</b>, que cruza <b>tapas, recuperos,
         faltas, rebote y minutos</b> comparados dentro del propio plantel. Lo que el box score no

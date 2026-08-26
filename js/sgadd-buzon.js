@@ -124,23 +124,32 @@ const SGADD_BUZON = (function () {
        contestar": eso volvería a entrenarlo para ignorar la campana. */
     const n = alertasQuePiden().length;
     const nAvisos = avisos().length;
-    /* Sin NADA la campana no se muestra. Un icono permanentemente vacío
-       entrena a ignorarlo, y después no se ve el que sí importa.
+    /* LA CAMPANA ESTÁ SIEMPRE. Antes se escondía sin alertas ni avisos,
+       con el argumento de que un icono permanentemente vacío entrena a
+       ignorarlo. Ese argumento valía cuando el drawer era SOLO una lista
+       de alertas; desde que tiene buscador y lista de estados
+       confirmados (punto 13) es útil con cero pendientes, y esconderlo
+       deja al DT sin forma de marcar a nadie a mano.
 
-       Con avisos pero sin alertas SÍ se muestra —si no, el DT no tendría
-       cómo abrir el drawer para verlos— pero va sin número: el badge
-       significa "esto espera una respuesta tuya" y un aviso no la
-       espera. */
-    if (!n && !nAvisos) return '';
+       Y sobre todo: DESAPARECÍA AL CAMBIAR DE TRAMO. Medido en
+       DEPORTIVO, VUELTA tiene 12 partidos y 0 alertas, así que la
+       campana se iba al pasar de Ida a Vuelta y volvía sola al volver.
+       Un control que aparece y desaparece según el recorte se lee como
+       un bug, no como una señal.
+
+       Lo que sí se conserva es la regla que importa: EL NÚMERO significa
+       "esto espera una respuesta tuya". Sin alertas no hay badge. */
     const etiqueta = n
       ? (n + ' alerta' + (n === 1 ? '' : 's') + ' de plantel pendiente' + (n === 1 ? '' : 's'))
-      : (nAvisos + ' jugador' + (nAvisos === 1 ? '' : 'es') + ' en observación');
+      : nAvisos
+        ? (nAvisos + ' jugador' + (nAvisos === 1 ? '' : 'es') + ' en observación')
+        : 'Plantel al día · buscar un jugador o marcar su estado';
     return `
       <button type="button" id="buzonBoton" onclick="SGADD_BUZON.abrir(this)"
         aria-label="${SGADD_UI.esc(etiqueta)}"
         title="${SGADD_UI.esc(etiqueta)}"
         class="buzon-boton focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-2 focus-visible:ring-offset-base">
-        <span aria-hidden="true">🔔</span>
+        <span aria-hidden="true" class="${n || nAvisos ? '' : 'buzon-quieto'}">🔔</span>
         ${n ? `<span class="buzon-badge">${n}</span>` : ''}
       </button>`;
   }

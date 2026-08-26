@@ -179,7 +179,7 @@ function equiposGrilla(idx) {
   return `
     <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
       <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Elegí un equipo</h3>
-      <p class="text-[11px] text-muted mb-4">Por orden alfabético. El tuyo va en naranja.</p>
+      <p class="text-[11px] text-muted mb-4">Por orden alfabético. El tuyo va destacado con el color del club.</p>
       ${SGADD_UI.teamPicker(lista, { onClick: 'equiposIrA', seleccionado: EQUIPOS.equipo })}
     </div>
     ${SGADD_RANKINGS.render(idx)}`;

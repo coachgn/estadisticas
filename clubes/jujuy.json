@@ -3,7 +3,8 @@
   "nombre": "Jujuy Basquet",
   "nombreCorto": "JUJUY BASQUET",
   "bajada": "Analitica · Liga Argentina",
-  "escudo": "clubes/jujuy/escudo.png",
+  "//escudo": "Tiene que ser una ruta que EXISTA. Si no, es un 404 silencioso: ponerEscudo() cae al resolutor de LOGOS y el header se ve bien igual, asi que el archivo muerto no da la cara hasta que alguien toca el resolutor. Hay un test que falla si la ruta no existe.",
+  "escudo": "logos/liga-argentina/jujuy.jpg",
 
   "acento": "#2563eb",
   "acentoOscuro": "#1d4ed8",

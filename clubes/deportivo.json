@@ -3,11 +3,12 @@
   "nombre": "Deportivo La Plata",
   "nombreCorto": "DEPORTIVO",
   "bajada": "Basquet · Scouting",
-  "escudo": "logos/la-plata/deportivo-la-plata.png",
+  "//escudo": "OJO con la extension: el archivo es .webp. Decia .png y era un 404, asi que el isotipo del header nunca se mostraba — el <img> estaba bien puesto, lo que faltaba era la imagen.",
+  "escudo": "logos/la-plata/deportivo-la-plata.webp",
 
-  "//acento": "El azul del escudo, muestreado del propio PNG: cubre el 67% de su superficie. Es muy oscuro, asi que aclararHastaLegible() lo levanta para usarlo como texto sobre la card y oscurecerHastaLegible() lo baja para el papel; el JSON guarda el color de marca, no el que se pinta.",
-  "acento": "#09086E",
-  "acentoOscuro": "#06054A",
+  "//acento": "El azul del escudo, RE-MUESTREADO del .webp oficial en 2026-08-26: agrupando por bloques sobre los 37.761 pixeles opacos, #33348a cubre el 43,1% de la superficie (el blanco es el 26,7%). Antes decia #09086E, bastante mas oscuro que el logo real. El JSON guarda el color de MARCA, no el que se pinta: aclararHastaLegible() y oscurecerHastaLegible() derivan las variantes que se leen en cada superficie.",
+  "acento": "#33348a",
+  "acentoOscuro": "#252560",
 
   "liga": "la-plata",
 

@@ -140,14 +140,17 @@ const SGADD_UI = (function () {
       const url = hayLogos ? LOGOS.getUrl(e.nombre) : null;
       const activo = o.seleccionado && SGADD.claveEquipo(o.seleccionado) === e.clave;
       const propio = SGADD.esEquipoPropio(e.clave);
+      /* El escudo va SIEMPRE dentro del mismo disco, con o sin imagen:
+         asi la grilla no se desarma cuando a un club le falta el archivo
+         y las iniciales ocupan exactamente el mismo lugar. */
       const escudo = url
-        ? `<img src="${esc(url)}" alt="" class="w-10 h-10 object-contain">`
-        : `<span class="w-10 h-10 rounded-full grid place-items-center text-xs font-semibold bg-surface2 text-ink border border-accent/60">
+        ? `<span class="escudo-aro w-10 h-10"><img src="${esc(url)}" alt="" class="w-full h-full object-contain"></span>`
+        : `<span class="escudo-aro w-10 h-10 text-xs font-semibold text-ink">
              ${esc(hayLogos ? LOGOS.iniciales(e.nombre) : e.nombre.slice(0, 2))}
            </span>`;
       return `
         <button type="button" onclick="${esc(o.onClick || 'void 0')}('${escJs(e.clave)}')"
-          class="flex flex-col items-center gap-2 p-3 rounded-lg border transition-colors
+          class="card-equipo flex flex-col items-center gap-2 p-3 rounded-lg border
                  ${activo ? 'border-accent bg-surface2' : 'border-hairline hover:bg-surface2'}">
           ${escudo}
           <span class="text-[11px] text-center leading-tight ${propio ? 'text-accent font-semibold' : 'text-white'}">

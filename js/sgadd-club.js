@@ -253,9 +253,17 @@ const CLUB = (function () {
       if (url) candidatos.push(url);
     }
 
+    /* El que se muestra u oculta es el ARO, no el <img>: el disco con
+       borde no puede quedar dibujado y vacío si la imagen no carga. */
+    const aro = document.getElementById('clubEscudoAro');
+    const mostrar = (v) => {
+      const n = aro || img;
+      if (v) n.classList.remove('hidden'); else n.classList.add('hidden');
+    };
+
     (function probar(i) {
-      if (i >= candidatos.length) { img.classList.add('hidden'); return; }
-      img.onload = () => img.classList.remove('hidden');
+      if (i >= candidatos.length) { mostrar(false); return; }
+      img.onload = () => mostrar(true);
       img.onerror = () => probar(i + 1);
       img.src = candidatos[i];
     })(0);

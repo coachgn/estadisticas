@@ -420,8 +420,11 @@ check('el resumen separa alertas de avisos',
   JSON.stringify({ alertas: resNiv.alertas, avisos: resNiv.avisos }));
 check('el badge del buzón cuenta solo las que piden decisión',
   /function badge\(\)[\s\S]{0,600}const n = alertasQuePiden\(\)/.test(buzon));
-check('pero la campana igual se dibuja si solo hay avisos',
-  /if \(!n && !nAvisos\) return '';/.test(buzon));
+/* La campana se dibuja SIEMPRE (ver el bloque de más abajo: se iba al
+   cambiar de tramo). Lo que distingue un aviso de una alerta es el
+   badge, no la existencia del control. */
+check('y la campana se dibuja igual, haya avisos o no haya nada',
+  !/if \(!n && !nAvisos\) return '';/.test(buzon));
 
 /* Para pintarlo AL LADO del jugador hace falta poder preguntarlo por clave. */
 check('pendienteDe() devuelve lo que hay sobre un jugador',
@@ -573,13 +576,33 @@ check('con un estado confirmado la línea de aviso se calla',
 
 check('el buzón conoce los tres tipos de alerta',
   /reingreso:\s*\{/.test(buzon) && /traspaso:\s*\{/.test(buzon) && /inactividad:\s*\{/.test(buzon));
-/* Sin NADA la campana no se dibuja: un icono permanentemente vacío entrena
-   a ignorarlo. Con avisos pero sin alertas SÍ se dibuja —si no, no habría
-   cómo abrir el drawer para verlos— pero va sin número. */
-check('la campana no se dibuja cuando no hay nada, ni alertas ni avisos',
-  /if \(!n && !nAvisos\) return '';/.test(buzon));
-check('con avisos pero sin alertas se dibuja igual, y sin número',
+/* LA CAMPANA ESTÁ SIEMPRE · esta regla CAMBIÓ, y conviene saber por qué.
+
+   Antes no se dibujaba sin alertas ni avisos, con el argumento de que un
+   icono permanentemente vacío entrena a ignorarlo. Ese argumento valía
+   cuando el drawer era SOLO una lista de alertas.
+
+   Dos cosas lo invalidaron:
+
+     1. El drawer tiene buscador y lista de estados confirmados desde el
+        punto 13. Es útil con cero pendientes, y esconderlo deja al DT sin
+        forma de marcar a nadie a mano.
+     2. DESAPARECÍA AL CAMBIAR DE TRAMO. Medido en DEPORTIVO: VUELTA tiene
+        12 partidos y 0 alertas, así que la campana se iba al pasar de Ida
+        a Vuelta y volvía sola al volver. Un control que aparece y
+        desaparece según el recorte se lee como un bug, no como una señal.
+
+   Lo que NO cambió es la regla que importa: el NÚMERO significa "esto
+   espera una respuesta tuya". Sin alertas no hay badge, y el icono se
+   atenúa para que la ausencia se note igual. */
+check('la campana se dibuja siempre, también sin nada pendiente',
+  !/if \(!n && !nAvisos\) return '';/.test(buzon));
+check('pero el número sigue atado a las alertas que piden decisión',
   /\$\{n \? `<span class="buzon-badge">\$\{n\}<\/span>` : ''\}/.test(buzon));
+check('y sin nada pendiente el icono se atenúa en vez de irse',
+  /buzon-quieto/.test(buzon));
+check('con el título diciendo para qué sirve igual',
+  /Plantel al día/.test(buzon));
 /* La campana vive en el HEADER, donde antes estaba el cartel "Datos
    actualizados". Así se ve desde cualquier sección, incluida Principal, que
    usa la capa de datos vieja y no pinta la barra de SGADD_APP. */

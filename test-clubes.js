@@ -274,6 +274,134 @@ function crearClub(clubId, opciones) {
     typeof CHARTS.COL.acento === 'string' && CHARTS.COL.acento.charAt(0) === '#');
 
   console.log('\n' + '═'.repeat(70));
-  console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
+  /* =====================================================================
+   IDENTIDAD VISUAL DE DEPORTIVO · lo que se corrigió midiendo
+   ===================================================================== */
+(function () {
+  const fs2 = require('fs');
+  const dep = JSON.parse(fs2.readFileSync('./clubes/deportivo.json', 'utf8'));
+  const html2 = fs2.readFileSync('./index.html', 'utf8');
+  const c = crearClub(null).CLUB;
+
+  /* EL ESCUDO DEL HEADER NO SE VEÍA, y no era maquetación: el JSON
+     declaraba .png y el archivo es .webp. Un 404 silencioso. */
+  check('el escudo del club apunta a un archivo que EXISTE',
+    fs2.existsSync('./' + dep.escudo), dep.escudo);
+  ['reconquista', 'jujuy'].forEach(id => {
+    const j = JSON.parse(fs2.readFileSync('./clubes/' + id + '.json', 'utf8'));
+    check('el escudo de ' + id + ' también existe',
+      !j.escudo || fs2.existsSync('./' + j.escudo), j.escudo);
+  });
+
+  /* La marca se RE-MUESTREÓ del .webp oficial: #33348a cubre el 43,1%
+     de los 37.761 píxeles opacos. Antes decía #09086E, bastante más
+     oscuro que el logo real. */
+  check('el acento de DEPORTIVO es el muestreado del escudo',
+    dep.acento.toLowerCase() === '#33348a', dep.acento);
+  check('y su variante oscura acompaña',
+    dep.acentoOscuro.toLowerCase() === '#252560', dep.acentoOscuro);
+
+  /* SELECCIÓN DE TEXTO. Pintaba `var(--acento)` crudo con texto casi
+     negro encima. Medido antes del fix: 8,68 en Reconquista, 3,83 en
+     Jujuy y 1,20 en DEPORTIVO — o sea ilegible. */
+  check('::selection usa el token de FONDO, no el acento crudo',
+    /::selection\s*\{[^}]*--acento-fondo/.test(html2));
+  check('y el texto de encima es el oscuro del tema',
+    /::selection\s*\{[^}]*color:\s*#0B1121/.test(html2));
+
+  const TEXTO_SEL = '#0B1121';
+  const MARCAS_SEL = { reconquista: '#f7941e', jujuy: '#2563eb', deportivo: '#33348a' };
+  Object.keys(MARCAS_SEL).forEach(id => {
+    const crudo = c.contraste(TEXTO_SEL, MARCAS_SEL[id]);
+    const fondo = c.aclararHastaLegible(MARCAS_SEL[id], TEXTO_SEL, 4.5);
+    check('el texto seleccionado se lee en ' + id,
+      c.contraste(TEXTO_SEL, fondo) >= 4.5,
+      'crudo ' + crudo.toFixed(2) + ' → ' + fondo + ' ' + c.contraste(TEXTO_SEL, fondo).toFixed(2));
+  });
+
+  /* Los escudos van todos en el mismo disco, con o sin imagen: sin eso
+     la grilla se desarma cuando a un club le falta el archivo. */
+  const ui2 = fs2.readFileSync('./js/sgadd-ui.js', 'utf8');
+  check('el picker envuelve el escudo en el disco',
+    /escudo-aro[^`]*<img/.test(ui2));
+  check('y las iniciales usan el MISMO disco',
+    (ui2.match(/escudo-aro/g) || []).length >= 2);
+  check('la card de equipo lleva la clase del hover',
+    /card-equipo/.test(ui2));
+  check('el CSS del disco está a mano en el index',
+    /\.escudo-aro \{/.test(html2) && /border-radius: 9999px/.test(html2));
+  /* El resplandor va con box-shadow y no con `filter: brightness`: el
+     filtro afecta al texto de adentro y rompe el contraste medido. */
+  check('el hover usa box-shadow, no un filtro de brillo',
+    /\.card-equipo:hover[\s\S]{0,200}box-shadow/.test(html2) &&
+    !/\.card-equipo:hover[\s\S]{0,200}filter:/.test(html2));
+  check('y se ilumina con el acento del club, no con un color fijo',
+    /\.card-equipo:hover[\s\S]{0,240}var\(--acento-fondo/.test(html2));
+
+  /* El isotipo va a la IZQUIERDA del nombre, y lo que se oculta es el
+     ARO: un disco con borde dibujado y vacío es peor que nada. */
+  check('el isotipo va antes del nombre del club',
+    html2.indexOf('id="clubEscudoAro"') < html2.indexOf('id="clubNombre"'));
+  const club2 = fs2.readFileSync('./js/sgadd-club.js', 'utf8');
+  check('ponerEscudo muestra u oculta el aro, no solo la imagen',
+    /clubEscudoAro/.test(club2));
+
+  /* Ningún texto puede nombrar un color de marca: es de un solo club. */
+  ['sgadd-equipos', 'sgadd-scouting', 'sgadd-jugadores'].forEach(m => {
+    const src = fs2.readFileSync('./js/' + m + '.js', 'utf8');
+    check(m + ' no nombra un color de marca en el copy',
+      !/en naranja|en azul|en amarillo/i.test(src));
+  });
+})();
+
+/* =====================================================================
+   LA CAMPANA NO PUEDE DESAPARECER AL CAMBIAR DE TRAMO
+
+   Medido en DEPORTIVO: VUELTA tiene 12 partidos y 0 alertas, así que la
+   campana se iba al pasar de Ida a Vuelta y volvía sola al volver. Un
+   control que aparece y desaparece según el recorte se lee como un bug.
+
+   Lo que se conserva es la regla que importa: el NÚMERO significa "esto
+   espera una respuesta tuya", así que sin alertas no hay badge.
+   ===================================================================== */
+(function () {
+  const src = require('fs').readFileSync('./js/sgadd-buzon.js', 'utf8');
+  const i2 = src.indexOf('function badge()');
+  const cuerpo = src.slice(i2, src.indexOf('\n  }', i2));
+  check('badge() ya no devuelve vacío cuando no hay nada',
+    !/if \(!n && !nAvisos\) return '';/.test(cuerpo));
+  check('pero el badge numérico sigue atado a las alertas',
+    /\$\{n \? `<span class="buzon-badge">/.test(cuerpo));
+  check('y sin nada pendiente el icono se atenúa en vez de irse',
+    /buzon-quieto/.test(cuerpo));
+  check('la clase existe en el <style>',
+    /\.buzon-quieto \{/.test(require('fs').readFileSync('./index.html', 'utf8')));
+  check('el título dice para qué sirve cuando no hay alertas',
+    /Plantel al día/.test(cuerpo));
+})();
+
+/* =====================================================================
+   LOS ESCUDOS SE PRECARGAN A NIVEL GLOBAL, NO DESDE PRINCIPAL
+
+   Salían de `sheet('promedios4f')`, o sea de la capa de datos de
+   Principal. Eso ataba una pieza que usan cinco secciones y los cuatro
+   PDF al render de UNA. Ahora los nombres salen del ÍNDICE, con la hoja
+   como respaldo para el arranque.
+   ===================================================================== */
+(function () {
+  const html2 = require('fs').readFileSync('./index.html', 'utf8');
+  const app2 = require('fs').readFileSync('./js/sgadd-app.js', 'utf8');
+  check('los nombres para los escudos salen del índice',
+    /function nombresParaLogos[\s\S]{0,400}SGADD_APP\.estado[\s\S]{0,200}idx\.lista\(\)/.test(html2));
+  check('con la hoja vieja SOLO como respaldo',
+    /function nombresParaLogos[\s\S]{0,700}sheet\('promedios4f'\)/.test(html2));
+  check('y precargarLogos ya no lee la hoja directo',
+    !/async function precargarLogos\(\)[\s\S]{0,400}sheet\('promedios4f'\)/.test(html2));
+  /* Y se vuelve a resolver cuando llega el índice o cambia el tramo:
+     ahí es cuando la lista de equipos puede cambiar. */
+  check('se reprecargan al llegar el índice o cambiar de tramo',
+    /precargarLogos\(\)/.test(app2));
+})();
+console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })();

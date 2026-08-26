@@ -1363,7 +1363,22 @@
   tbody tr:hover { background: #1b1b1b; }
   tbody tr:hover td:first-child { box-shadow: inset 3px 0 0 var(--acento); }
 
-  ::selection { background: var(--acento); color: #0a0a0a; }
+  /* SELECCION DE TEXTO · el resalte tiene que dejar LEER lo seleccionado.
+
+     Pintaba `var(--acento)` crudo con texto casi negro encima, y eso
+     depende de cuan oscura sea la marca del cliente. Medido:
+
+         Reconquista  #f7941e   8,68  pasa
+         Jujuy        #2563eb   3,83  no llega
+         DEPORTIVO    #09086E   1,20  ilegible
+
+     `--acento-fondo` es exactamente el token que resuelve esto: se
+     calcula aclarando la marca hasta que el texto oscuro de encima pase
+     4,5 (punto 15). Con el: 8,25 / 4,73 / 4,76. */
+  ::selection {
+    background: var(--acento-fondo, var(--acento));
+    color: #0B1121;
+  }
   input:focus-visible, button:focus-visible, select:focus-visible, [tabindex]:focus-visible {
     outline: 2px solid var(--acento); outline-offset: 2px;
   }
@@ -1423,6 +1438,55 @@
       box-shadow: none;
       border-left: 3px solid var(--zona) !important;
     }
+  }
+
+  /* La campana sin nada pendiente se atenúa en vez de desaparecer: la
+     ausencia de alertas se nota igual, pero el control sigue estando
+     para buscar un jugador y marcarle el estado a mano. */
+  .buzon-quieto { opacity: .45; }
+  /* =====================================================================
+     ESCUDOS · disco con borde fino
+
+     Los escudos vienen de fuentes distintas y con fondos distintos (unos
+     con transparencia, otros con blanco pegado). Sin un contenedor comun
+     la grilla se ve despareja. El disco los iguala y el borde los separa
+     de la card sin competir con el acento del club.
+
+     Va a mano y no con utilidades de Tailwind porque lo inyectan nodos
+     dinamicos: el scan del generador es estatico (punto 5 bis).
+     ===================================================================== */
+  .escudo-aro {
+    display: grid; place-items: center;
+    border-radius: 9999px;
+    border: 1px solid #374151;
+    background: rgba(255, 255, 255, .04);
+    overflow: hidden;
+    transition: border-color .2s ease, background-color .2s ease;
+  }
+  .escudo-aro > img { padding: 2px; }
+
+  /* HOVER de las cards de equipo. `box-shadow` y no `filter: brightness`:
+     el filtro afecta al texto de adentro y con los tonos de zona eso
+     rompe el contraste que el punto 15 deja medido. El resplandor usa el
+     acento del club, asi que cada cliente se ilumina con SU color. */
+  .card-equipo {
+    transition: border-color .2s ease, box-shadow .25s ease, transform .2s ease;
+  }
+  .card-equipo:hover,
+  .card-equipo:focus-visible {
+    border-color: var(--acento-fondo, var(--acento));
+    box-shadow: 0 0 0 1px var(--acento-fondo, var(--acento)),
+                0 6px 22px -8px var(--acento-fondo, var(--acento));
+  }
+  .card-equipo:hover .escudo-aro,
+  .card-equipo:focus-visible .escudo-aro {
+    border-color: var(--acento-fondo, var(--acento));
+    background: rgba(255, 255, 255, .08);
+  }
+  /* Con movimiento reducido no hay transicion, pero el borde SI cambia:
+     el feedback no puede depender solo de la animacion. */
+  @media (prefers-reduced-motion: reduce) {
+    .card-equipo, .escudo-aro { transition: none !important; }
   }
 
   /* El disco de espera de las secciones. Va a mano y no con utilidades de
@@ -1528,7 +1592,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=129" />
+<link rel="stylesheet" href="sgadd.css?v=130" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -1554,7 +1618,13 @@
     <aside id="sidebar" class="fixed md:sticky top-0 left-0 h-screen w-64 z-40 bg-surface border-r border-hairline flex flex-col shrink-0">
       <div class="px-5 py-6 border-b border-hairline">
         <div class="flex items-center gap-3">
-          <img id="clubEscudo" src="" alt="" class="w-12 h-12 object-contain shrink-0 hidden">
+          <!-- El isotipo va a la IZQUIERDA del nombre, en un disco con borde fino:
+               el mismo tratamiento que los escudos de las grillas, asi la marca del
+               club se lee igual en todas las superficies. `hidden` lo saca
+               `ponerEscudo()` cuando la imagen carga de verdad. -->
+          <span id="clubEscudoAro" class="escudo-aro w-12 h-12 shrink-0 hidden">
+            <img id="clubEscudo" src="" alt="" class="w-full h-full object-contain">
+          </span>
           <div class="min-w-0">
             <p id="clubNombre" class="font-display text-2xl font-bold tracking-wide leading-none truncate">—</p>
             <p id="clubBajada" class="text-xs text-muted uppercase tracking-wider mt-1"></p>
@@ -1651,29 +1721,29 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=129"></script>
+<script src="js/sgadd-club.js?v=130"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=129"></script>
-<script src="js/sgadd-core.js?v=129"></script>
-<script src="js/sgadd-ui.js?v=129"></script>
-<script src="js/sgadd-app.js?v=129"></script>
-<script src="js/sgadd-clasificacion.js?v=129"></script>
+<script src="js/sgadd-config.js?v=130"></script>
+<script src="js/sgadd-core.js?v=130"></script>
+<script src="js/sgadd-ui.js?v=130"></script>
+<script src="js/sgadd-app.js?v=130"></script>
+<script src="js/sgadd-clasificacion.js?v=130"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-configui.js?v=129"></script>
-<script src="js/sgadd-estados.js?v=129"></script>
-<script src="js/sgadd-buzon.js?v=129"></script>
-<script src="js/sgadd-charts.js?v=129"></script>
-<script src="js/sgadd-personalidad.js?v=129"></script>
-<script src="js/sgadd-rankings.js?v=129"></script>
-<script src="js/sgadd-partido.js?v=129"></script>
-<script src="js/sgadd-informe.js?v=129"></script>
-<script src="js/sgadd-ficha.js?v=129"></script>
-<script src="js/sgadd-equipos.js?v=129"></script>
-<script src="js/sgadd-jugadores.js?v=129"></script>
-<script src="js/sgadd-4factores.js?v=129"></script>
-<script src="js/sgadd-scouting.js?v=129"></script>
-<script src="js/sgadd-diagnostico.js?v=129"></script>
+<script src="js/sgadd-configui.js?v=130"></script>
+<script src="js/sgadd-estados.js?v=130"></script>
+<script src="js/sgadd-buzon.js?v=130"></script>
+<script src="js/sgadd-charts.js?v=130"></script>
+<script src="js/sgadd-personalidad.js?v=130"></script>
+<script src="js/sgadd-rankings.js?v=130"></script>
+<script src="js/sgadd-partido.js?v=130"></script>
+<script src="js/sgadd-informe.js?v=130"></script>
+<script src="js/sgadd-ficha.js?v=130"></script>
+<script src="js/sgadd-equipos.js?v=130"></script>
+<script src="js/sgadd-jugadores.js?v=130"></script>
+<script src="js/sgadd-4factores.js?v=130"></script>
+<script src="js/sgadd-scouting.js?v=130"></script>
+<script src="js/sgadd-diagnostico.js?v=130"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -2304,19 +2374,47 @@ function registrarRepintadoPorLogos() {
    Antes esto vivia adentro de drawOrtgDrtgChart(), asi que solo pasaba si
    entrabas por Principal. Si ibas primero a Equipos, getUrl() devolvia null
    y no se veia ningun escudo; y al volver, otra vez a esperar. */
+/**
+ * Resuelve los escudos de todos los equipos del libro.
+ *
+ * LOS NOMBRES SALEN DEL ÍNDICE, con respaldo en la capa vieja.
+ *
+ * Antes salían SOLO de `sheet('promedios4f')`, o sea de la capa de datos
+ * de Principal. Eso ataba la precarga de una pieza global —los escudos se
+ * usan en Equipos, Jugadores, Scouting, Simulador y los cuatro PDF— al
+ * render de UNA sección. Si esa cadena de fetch no había terminado, o si
+ * la sección nunca se pintó, las demás quedaban sin escudos hasta que el
+ * DT pasara por Principal.
+ *
+ * El índice es la fuente correcta: ya está scopeado al tramo, ya tiene el
+ * nombre limpio de cada equipo y lo comparten todas las secciones. La
+ * capa vieja queda como respaldo para el arranque, donde Principal puede
+ * pintarse antes de que el índice esté armado.
+ */
 async function precargarLogos() {
   try {
     registrarRepintadoPorLogos();
-    const d = sheet('promedios4f');
-    if (d.error || !d.rows.length) return;
-    const col = findColumnLabel(d.cols, ['EQUIPO', 'NOMBRE']);
-    const nombres = d.rows.filter(r => !isEquipoTipo(r))
-      .map(r => cleanName(r.formatted[col] || '')).filter(Boolean);
+    const nombres = nombresParaLogos();
     if (!nombres.length) return;
 
     const res = await LOGOS.resolver(nombres);
     if (typeof renderPanelLogosFaltantes === 'function') renderPanelLogosFaltantes(res.faltantes);
   } catch (e) { console.warn('[LOGOS] precarga omitida:', e); }
+}
+
+/** Los equipos del libro, del índice si está y de la hoja si todavía no. */
+function nombresParaLogos() {
+  const idx = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado)
+    ? SGADD_APP.estado.idx : null;
+  if (idx) {
+    const del = idx.lista().map(e => e.nombre).filter(Boolean);
+    if (del.length) return del;
+  }
+  const d = sheet('promedios4f');
+  if (d.error || !d.rows.length) return [];
+  const col = findColumnLabel(d.cols, ['EQUIPO', 'NOMBRE']);
+  return d.rows.filter(r => !isEquipoTipo(r))
+    .map(r => cleanName(r.formatted[col] || '')).filter(Boolean);
 }
 
 /* ============ CAPA DE DATOS (GViz) ============ */
