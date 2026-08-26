@@ -529,6 +529,49 @@ check('hay un generador y fija la version', /tailwindcss@3/.test(genSrc));
 check('y usa la misma config e input que el repo',
   /tailwind\.config\.js/.test(genSrc) && /sgadd\.in\.css/.test(genSrc));
 
+/* =====================================================================
+   PRINCIPAL SE DIFERENCIA POR TRAMO
+
+   Se veía IGUAL en Ida que en Vuelta. La causa no era el scope —que
+   funciona, y filtra 128 filas contra 24— sino que Principal se pinta
+   ANTES de que el tramo se conozca (`init()` dispara `cargar()` sin
+   await) y después NUNCA volvía a pintarse. Sus KPIs quedaban con los
+   valores del primer render: medido en DEPORTIVO, `PARTIDOS 76` —los dos
+   torneos sumados— en las dos fases, con el mismo mejor ataque y el mismo
+   líder.
+
+   Verificado después del fix: 208/64 en Ida, 165/12 en Vuelta, 218/76 en
+   Total, con distinto líder y distinto mejor ataque.
+   ===================================================================== */
+const appSrcP = fs.readFileSync('./js/sgadd-app.js', 'utf8');
+check('Principal se repinta entera al cambiar de tramo',
+  /currentSection === 'principal'[\s\S]{0,200}renderSection\('principal'\)/.test(appSrcP));
+/* Repintar desde onCambio NO reabre el ciclo que colgó la página: aquel
+   bucle era gráfico → LOGOS.resolver → hook → repintado → gráfico, y a
+   `onCambio` solo lo disparan `cargar()` y `reindexar()`. */
+check('y el repintado va protegido, no puede tumbar el resto',
+  /renderSection\('principal'\)[\s\S]{0,80}catch/.test(appSrcP));
+check('los KPIs de Principal pasan por el scope del tramo',
+  /const promE = sheet\('promediosE'\)/.test(html) &&
+  /const baseE = sheet\('baseDatosE'\)/.test(html) &&
+  /const promJ = sheet\('promediosJ'\)/.test(html));
+
+/* =====================================================================
+   EL CENTINELA DEL TOTAL EN LA CAPA VIEJA
+
+   `scoparTramo` comparaba el torneo pedido contra el de cada fila. Con
+   `*TOTAL*` eso no coincide con NINGUNA y la pantalla quedaba en cero
+   filas — medido al sumarlo: 0 de 152. El TOTAL no filtra por torneo.
+   ===================================================================== */
+check('scoparTramo conoce el centinela del TOTAL',
+  /totalDeFase/.test(html) && /SGADD\.esTotal/.test(html));
+check('y con el TOTAL no filtra por torneo',
+  /t\.torneo !== 'GENERAL' && !totalDeFase/.test(html));
+/* Sigue filtrando por FASE: juntar una fase regular con unos playoffs no
+   significa nada, y el TOTAL es de UNA fase. */
+check('pero sigue filtrando por fase',
+  /if \(hayFase\) \{ const f = dato\(r, 'FASE'\);/.test(html));
+
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })();

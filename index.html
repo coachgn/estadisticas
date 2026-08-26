@@ -1936,7 +1936,13 @@ function scoparTramo(d) {
   const rows = d.rows.filter(r => {
     if (esTipo(r)) return true;
     if (hayFase) { const f = dato(r, 'FASE'); if (f && f !== t.fase) return false; }
-    if (hayTorneo && t.torneo && t.torneo !== 'GENERAL') {
+    /* El TOTAL de una fase NO filtra por torneo: los quiere a todos. Sin
+       esta rama el centinela `*TOTAL*` se compara contra el nombre real
+       de cada fila, no coincide con ninguna, y la pantalla queda en cero
+       filas — que es exactamente lo que pasó al sumarlo. */
+    const totalDeFase = (typeof SGADD !== 'undefined' && SGADD.esTotal)
+      ? SGADD.esTotal(t.torneo) : String(t.torneo || '') === '*TOTAL*';
+    if (hayTorneo && t.torneo && t.torneo !== 'GENERAL' && !totalDeFase) {
       const tt = dato(r, 'TORNEO');
       if (tt && tt !== String(t.torneo).toUpperCase()) return false;
     }

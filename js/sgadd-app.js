@@ -306,13 +306,27 @@ const SGADD_APP = (function () {
       const r = document.getElementById('view-root');
       if (r) r.innerHTML = buildClasificacion();
     }
-    /* Principal vive en la capa de datos vieja y NO se repinta entero acá:
-       su gráfico de ORTG/DRTG ya colgó la página una vez con un ciclo de
-       repintado (punto 6). Se reemplaza SOLO el contenedor de la tabla,
-       que es lo único suyo que depende del índice y del tramo. */
-    if (currentSection === 'principal' && typeof renderClasificacionResumen === 'function') {
-      const c = document.getElementById('principalClasif');
-      if (c) c.innerHTML = renderClasificacionResumen();
+    /* PRINCIPAL SE REPINTA ENTERA, y hubo que cambiar de opinión sobre
+       esto.
+
+       Antes solo se reemplazaba el contenedor de la tabla, por miedo al
+       ciclo de repintado que colgó la página una vez (punto 6). Pero sus
+       KPIs —equipos, partidos, mejor ataque, líderes— TAMBIÉN dependen
+       del tramo, y al no repintarse quedaban con los valores del primer
+       render. Medido en DEPORTIVO: la pantalla decía `PARTIDOS 76` —los
+       dos torneos sumados— tanto en Ida como en Vuelta, y el mismo mejor
+       ataque y el mismo líder en las dos. Se veían idénticas.
+
+       La causa no era el scope, que funciona: era que Principal se pinta
+       ANTES de que el tramo se conozca —`init()` dispara `cargar()` sin
+       await— y después nunca volvía a pintarse.
+
+       Repintar desde acá NO reabre aquel ciclo: el bucle era
+       gráfico → LOGOS.resolver → hook → repintado → gráfico, y `onCambio`
+       no lo dispara nada de eso. Solo lo disparan `cargar()` y
+       `reindexar()`, que son gestos del usuario o del arranque. */
+    if (currentSection === 'principal' && typeof renderSection === 'function') {
+      try { renderSection('principal'); } catch (e) { console.warn('[app]', e); }
     }
     if (currentSection === 'equipos' && typeof equiposPintar === 'function') equiposPintar();
     if (currentSection === 'jugadores' && typeof jugadoresPintar === 'function') jugadoresPintar();
