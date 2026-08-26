@@ -25,6 +25,30 @@
   "torneo": "TORNEO LOCAL",
   "credito": "SGADD",
 
+  "//torneo": "PRECONFIGURACION. Lo que el cliente declaro en la entrevista, ANTES de que entraran los box scores. No es una segunda fuente de verdad: es una hipotesis fechada contra la cual contrastar, y el dato manda siempre. Las claves de categoria y de tramo son LIBRES: no hay nombres asumidos en ningun lado.",
+  "torneo": {
+    "cliente": "Deportivo La Plata",
+    "declaradoEl": "2026-08-26",
+    "declaradoPor": "Entrevista inicial",
+
+    "//categorias": "Mapa indexado por el id que use el cliente. `planilla` lo ata a una planilla del catalogo; si se omite, se usa el propio id.",
+    "categorias": {
+      "primera-2026": {
+        "label": "Primera 2026",
+        "planilla": "deportivo-primera-2026",
+
+        "//tramos": "El id y el label son del cliente. `clave` es el VINCULO con el libro (TORNEO|FASE, la clave que produce combinacionesTorneoFase) y se declara a mano: emparejar por parecido de nombre certificaria el tramo equivocado sin que nadie lo note.",
+        "tramos": [
+          { "id": "ida",    "label": "Ida",    "clave": "IDA|REGULAR",    "equiposEsperados": 12, "fechasEsperadas": 11 },
+          { "id": "vuelta", "label": "Vuelta", "clave": "VUELTA|REGULAR", "equiposEsperados": 12, "fechasEsperadas": 11 }
+        ],
+
+        "//certificacion": "Lo escribe el sistema desde el Diagnostico, no la entrevista. Se guarda ACA y no en localStorage: certificar es un hito administrativo que el resto del cuerpo tecnico tiene que ver, y el historial de git es la trazabilidad que pide una auditoria.",
+        "certificacion": {}
+      }
+    }
+  },
+
   "//competencia": "OPCIONAL. Declara REGLAS, no estructura: cuantos equipos hay y que tramos existen ya lo dice el libro (ver punto 3 ter). equiposEsperados es una ASERCION: no manda sobre el dato, solo hace que un descuadre salga a los gritos en el Diagnostico.",
   "competencia": {
     "ordenTabla": ["PCT", "DIF", "PF"],

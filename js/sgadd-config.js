@@ -462,11 +462,358 @@ const SGADD_CONFIG = (function () {
     }, null, 2);
   }
 
+  /* ===================================================================
+     PRECONFIGURACIÓN Y CERTIFICACIÓN
+
+     Hasta acá la regla era dura: la ESTRUCTURA sale del dato. Sigue
+     valiendo — el dato nunca deja de mandar. Lo que se suma es la
+     posibilidad de declarar la estructura ANTES de que el dato exista,
+     que es otra cosa:
+
+         PROYECCIÓN   lo que el cliente dijo en la entrevista
+         REALIDAD     lo que el libro trae hoy
+         CERTIFICADO  la fecha en que las dos coincidieron
+
+     Una proyección no es una segunda fuente de verdad: es una hipótesis
+     fechada contra la cual contrastar. Si divergen, gana el libro y el
+     panel lo dice — nunca al revés.
+
+     ---------------------------------------------------------------------
+     CERO NOMBRES ASUMIDOS
+
+     No hay claves fijas de categoría ni de torneo. `categorias` es un
+     mapa indexado por el id que el cliente use, y los tramos de cada una
+     son una lista con ids libres. "Primera División", "Formativas U17",
+     "Súper 8", "Conferencia Sur" entran igual que "Ida" y "Vuelta".
+
+     ---------------------------------------------------------------------
+     EL PUNTO QUE HAY QUE ENTENDER ANTES DE TOCAR ESTO: EL VÍNCULO
+
+     La entrevista declara ids LIBRES. El libro, en cambio, produce una
+     clave que no se negocia: `TORNEO|FASE`, la misma que arma
+     `combinacionesTorneoFase()`. Son dos vocabularios distintos y hay
+     que unirlos para poder auditar.
+
+     Se unen con un campo EXPLÍCITO —`clave`— y NO adivinando. Un tramo
+     sin vincular se reporta como tal; nunca se lo empareja por parecido
+     de nombre. El motivo es el de siempre en este proyecto: una
+     vinculación equivocada certificaría el tramo equivocado y no se
+     notaría, que es peor que no certificar nada. `sugerirClave()` existe
+     para PROPONERLE una al administrador, que la confirma.
+     =================================================================== */
+
+  const ESTADOS = {
+    PROYECTADO: 'PROYECTADO',   // declarado, todavía sin datos
+    EN_CURSO:   'EN_CURSO',     // hay datos y encajan con lo declarado
+    CERTIFICADO:'CERTIFICADO',  // cerró, cuadró y se selló
+    DIVERGENTE: 'DIVERGENTE',   // hay datos y NO encajan
+    SIN_VINCULO:'SIN_VINCULO',  // declarado, sin clave que lo ate al libro
+  };
+
+  /**
+   * Huella de un tramo del libro: con qué se selló y contra qué se
+   * compara después.
+   *
+   * `hash` es sobre los IDS DE PARTIDO, no sobre los valores. Lo que se
+   * quiere detectar es que el libro CAMBIÓ después de darlo por bueno:
+   * un partido agregado, borrado o con la fecha corregida. Los valores
+   * de un box score pueden ajustarse sin que el torneo deje de ser el
+   * mismo; el conjunto de partidos, no.
+   */
+  function huella(idx) {
+    if (!idx || typeof idx.lista !== 'function') return null;
+    const ids = [];
+    idx.lista().forEach((e) => {
+      (e.partidos || []).forEach((p) => { if (p.__id) ids.push(p.__id); });
+    });
+    const unicos = Array.from(new Set(ids)).sort();
+    return {
+      equipos: idx.lista().length,
+      partidos: unicos.length,
+      hash: hashTexto(unicos.join('|')),
+    };
+  }
+
+  /* FNV-1a de 32 bits, en hexadecimal. No hace falta criptografía: acá
+     el hash solo tiene que cambiar cuando cambia el conjunto, y tiene
+     que ser el mismo en cualquier navegador y en Node. */
+  function hashTexto(s) {
+    let h = 0x811c9dc5;
+    const t = String(s || '');
+    for (let i = 0; i < t.length; i++) {
+      h ^= t.charCodeAt(i);
+      h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+    }
+    return ('00000000' + h.toString(16)).slice(-8);
+  }
+
+  /* ---------------------------------------------------------------
+     PARSEO de la proyección. Igual que `competencia`: todo opcional y
+     el fallback siempre seguro. Un club sin bloque se comporta
+     exactamente como antes de que esto existiera.
+     --------------------------------------------------------------- */
+  function parsearProyeccion(json) {
+    if (!json || typeof json !== 'object') return null;
+    const t = json.torneo;
+    if (!t || typeof t !== 'object') return null;
+
+    const cats = {};
+    const crudas = (t.categorias && typeof t.categorias === 'object') ? t.categorias : {};
+    Object.keys(crudas).forEach((id) => {
+      const c = crudas[id];
+      if (!c || typeof c !== 'object') return;
+      cats[id] = {
+        id: id,
+        label: texto(c.label) || id,
+        /* Con qué planilla del club se corresponde. Si no se declara, se
+           usa el propio id: la convención natural es que coincidan, pero
+           NO se obliga — un cliente puede llamar a su categoría como
+           quiera y atarla aparte. */
+        planilla: texto(c.planilla) || id,
+        tramos: normalizarTramos(c.tramos),
+        /* La config de zonas por categoría. Es el MISMO bloque del punto
+           15, anidado: así cada categoría puede tener su propio formato
+           sin repetir el archivo. */
+        competencia: c.competencia ? parsear({ competencia: c.competencia }) : null,
+        certificacion: normalizarCertificacion(c.certificacion),
+      };
+    });
+
+    return {
+      cliente: texto(t.cliente),
+      declaradoEl: texto(t.declaradoEl),
+      declaradoPor: texto(t.declaradoPor),
+      categorias: cats,
+    };
+  }
+
+  function normalizarTramos(lista) {
+    if (!Array.isArray(lista)) return [];
+    const out = [];
+    lista.forEach((t) => {
+      if (!t || typeof t !== 'object') return;
+      const id = texto(t.id);
+      if (!id) return;
+      out.push({
+        id: id,
+        label: texto(t.label) || id,
+        /* El vínculo con el libro. Vacío = todavía sin vincular, que es
+           el estado natural antes de que entre el primer box score. */
+        clave: texto(t.clave).toUpperCase(),
+        equiposEsperados: entero(t.equiposEsperados),
+        fechasEsperadas: entero(t.fechasEsperadas),
+        /* A qué formato de zonas responde. Se resuelve contra la
+           `competencia` de SU categoría. */
+        formato: t.formato === null ? null : (texto(t.formato) || null),
+      });
+    });
+    return out;
+  }
+
+  function normalizarCertificacion(c) {
+    const out = {};
+    if (!c || typeof c !== 'object') return out;
+    Object.keys(c).forEach((k) => {
+      const s = c[k];
+      if (!s || typeof s !== 'object') return;
+      out[k] = {
+        fecha: texto(s.fecha),
+        equipos: entero(s.equipos),
+        partidos: entero(s.partidos),
+        hash: texto(s.hash),
+      };
+    });
+    return out;
+  }
+
+  /** Las categorías declaradas, para poblar un selector. */
+  function categorias(json) {
+    const p = parsearProyeccion(json);
+    if (!p) return [];
+    return Object.keys(p.categorias).map((k) => ({
+      id: k, label: p.categorias[k].label, planilla: p.categorias[k].planilla,
+    }));
+  }
+
+  /**
+   * La proyección de UNA categoría.
+   *
+   * Se resuelve por id exacto y, si no, por la planilla que declara.
+   * Sin coincidencia devuelve null: inventar una categoría para que la
+   * pantalla tenga algo que mostrar sería exactamente el tipo de dato
+   * fabricado que este proyecto no admite.
+   */
+  function proyeccion(json, categoriaId) {
+    const p = parsearProyeccion(json);
+    if (!p) return null;
+    const k = texto(categoriaId);
+    let cat = k ? p.categorias[k] : null;
+    if (!cat && k) {
+      const porPlanilla = Object.keys(p.categorias)
+        .map((id) => p.categorias[id])
+        .filter((c) => c.planilla === k);
+      cat = porPlanilla[0] || null;
+    }
+    if (!cat) return null;
+    return {
+      cliente: p.cliente, declaradoEl: p.declaradoEl, declaradoPor: p.declaradoPor,
+      categoria: cat,
+    };
+  }
+
+  /**
+   * Propone con qué clave del libro se corresponde un tramo declarado.
+   *
+   * PROPONE, no decide. Compara el label normalizado contra los tramos
+   * reales; si hay una sola coincidencia razonable la devuelve, y si hay
+   * varias o ninguna devuelve null. El administrador confirma.
+   */
+  function sugerirClave(tramoDeclarado, tramosDelLibro) {
+    if (!tramoDeclarado || !Array.isArray(tramosDelLibro)) return null;
+    const norm = (s) => texto(s).toUpperCase()
+      .normalize ? texto(s).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^A-Z0-9]/g, '') : texto(s).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const objetivo = norm(tramoDeclarado.label) || norm(tramoDeclarado.id);
+    if (!objetivo) return null;
+    const hits = tramosDelLibro.filter((t) => {
+      const a = norm(t.label), b = norm(t.id);
+      return a === objetivo || b === objetivo ||
+             a.indexOf(objetivo) >= 0 || objetivo.indexOf(a) >= 0;
+    });
+    return hits.length === 1 ? hits[0].id : null;
+  }
+
+  /* ---------------------------------------------------------------
+     AUDITORÍA · el semáforo
+
+     `idxPorTramo` es una función `(clave) => idx` que devuelve el índice
+     de ESE tramo. Se pasa como función y no como un mapa ya armado
+     porque construir un índice no es gratis: así solo se arman los de
+     los tramos que están vinculados.
+     --------------------------------------------------------------- */
+  function auditar(proy, idxPorTramo, opciones) {
+    const o = opciones || {};
+    if (!proy || !proy.categoria) return [];
+    const cert = proy.categoria.certificacion || {};
+    const claves = Array.isArray(o.tramosDelLibro) ? o.tramosDelLibro.map((t) => t.id) : null;
+
+    return proy.categoria.tramos.map((t) => {
+      const base = {
+        id: t.id, label: t.label, clave: t.clave,
+        equiposEsperados: t.equiposEsperados, fechasEsperadas: t.fechasEsperadas,
+        sello: cert[t.id] || null, avisos: [],
+      };
+
+      /* Sin vínculo no se puede auditar nada, y decirlo es la respuesta
+         correcta: el tramo está declarado y todavía no se ató al libro. */
+      if (!t.clave) {
+        return Object.assign(base, { estado: ESTADOS.SIN_VINCULO,
+          detalle: 'Declarado, sin vincular a un tramo del libro.' });
+      }
+
+      /* Vinculado a una clave que el libro no tiene: o el torneo no
+         empezó, o la clave está mal escrita. Se distingue mirando si el
+         libro trae ALGÚN tramo. */
+      const existeEnLibro = !claves || claves.indexOf(t.clave) >= 0;
+      const idx = existeEnLibro ? idxPorTramo(t.clave) : null;
+      const hay = idx && typeof idx.lista === 'function' && idx.lista().length > 0;
+
+      if (!hay) {
+        return Object.assign(base, { estado: ESTADOS.PROYECTADO,
+          detalle: claves && claves.length && !existeEnLibro
+            ? 'La clave ' + t.clave + ' no está en el libro. Puede que el tramo no haya empezado, o que esté mal escrita.'
+            : 'Todavía no entraron datos de este tramo.' });
+      }
+
+      const h = huella(idx);
+      base.huella = h;
+
+      /* LA VERIFICACIÓN DEL SELLO va PRIMERO, y es el motivo por el que
+         existe todo esto. Un tramo ya certificado no se vuelve a juzgar
+         contra lo proyectado: se juzga contra SU PROPIA huella. Lo que
+         hay que detectar es que el libro cambió DESPUÉS de darlo por
+         bueno, no si sigue cumpliendo la proyección. */
+      if (base.sello && base.sello.hash) {
+        if (base.sello.hash === h.hash) {
+          return Object.assign(base, { estado: ESTADOS.CERTIFICADO,
+            detalle: 'Certificado el ' + base.sello.fecha + ' · ' +
+              h.equipos + ' equipos · ' + h.partidos + ' partidos.' });
+        }
+        const dEq = h.equipos - (base.sello.equipos || 0);
+        const dPa = h.partidos - (base.sello.partidos || 0);
+        return Object.assign(base, { estado: ESTADOS.DIVERGENTE,
+          detalle: 'EL LIBRO CAMBIÓ después de certificarse el ' + base.sello.fecha + '. ' +
+            'Entonces: ' + base.sello.equipos + ' equipos y ' + base.sello.partidos + ' partidos. ' +
+            'Ahora: ' + h.equipos + ' y ' + h.partidos +
+            (dEq || dPa ? ' (' + (dEq ? signo(dEq) + ' equipos' : '') +
+              (dEq && dPa ? ', ' : '') + (dPa ? signo(dPa) + ' partidos' : '') + ')'
+              : ' — mismos totales, pero otros partidos') + '.' });
+      }
+
+      /* Sin sello: se contrasta contra lo proyectado. */
+      const avisos = [];
+      if (t.equiposEsperados && h.equipos !== t.equiposEsperados) {
+        avisos.push('Declaraba ' + t.equiposEsperados + ' equipos y el libro trae ' + h.equipos + '.');
+      }
+      /* Cada fecha son `equipos / 2` partidos. Con un número impar de
+         equipos hay uno libre por fecha, así que se redondea para abajo:
+         es la cuenta que hace cualquier fixture. */
+      const eq = t.equiposEsperados || h.equipos;
+      const porFecha = Math.floor(eq / 2);
+      const esperados = (t.fechasEsperadas && porFecha) ? t.fechasEsperadas * porFecha : null;
+      if (esperados) {
+        base.partidosEsperados = esperados;
+        if (h.partidos > esperados) {
+          avisos.push('El libro trae ' + h.partidos + ' partidos y el tramo declaraba ' +
+            t.fechasEsperadas + ' fechas, o sea ' + esperados + '.');
+        }
+      }
+      base.avisos = avisos;
+
+      if (avisos.length) {
+        return Object.assign(base, { estado: ESTADOS.DIVERGENTE,
+          detalle: avisos.join(' ') });
+      }
+      const completo = esperados && h.partidos === esperados;
+      return Object.assign(base, { estado: ESTADOS.EN_CURSO,
+        detalle: h.equipos + ' equipos · ' + h.partidos + ' partidos' +
+          (esperados ? ' de ' + esperados : '') +
+          (completo ? ' · el tramo está completo y se puede certificar.' : '.') ,
+        certificable: !!completo });
+    });
+  }
+
+  function signo(n) { return (n > 0 ? '+' : '') + n; }
+
+  /**
+   * El sello de un tramo, listo para pegar en el JSON del club.
+   *
+   * Se guarda en el JSON y NO en localStorage: certificar es un hito
+   * administrativo que el resto del cuerpo técnico tiene que ver, y el
+   * historial de git es exactamente la trazabilidad que pide una
+   * auditoría.
+   */
+  function certificar(idx, fecha) {
+    const h = huella(idx);
+    if (!h) return null;
+    return { fecha: texto(fecha) || fechaHoyISO(), equipos: h.equipos,
+             partidos: h.partidos, hash: h.hash };
+  }
+
+  function fechaHoyISO() {
+    const d = new Date();
+    const dd = (n) => ('0' + n).slice(-2);
+    return d.getFullYear() + '-' + dd(d.getMonth() + 1) + '-' + dd(d.getDate());
+  }
+
   return {
     TONOS, TONO_POR_DEFECTO, TRAMO_CUALQUIERA, tono,
     parsear, formatoDeTramo, zonaDePuesto, zonasDeTabla, leyenda, validar,
     leerOverride, guardarOverride, borrarOverride, vigente, exportar, claveAlmacen,
     clubActivo, resolver,
+    /* Preconfiguración y certificación. Ver el bloque de arriba. */
+    ESTADOS, parsearProyeccion, proyeccion, categorias, sugerirClave,
+    huella, auditar, certificar, hashTexto,
     _rangoDeZona: rangoDeZona,
   };
 })();

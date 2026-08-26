@@ -19,6 +19,7 @@ const SGADD_DIAG = {
      DEPORTIVO: 373 jugadores acá contra los 208 de la app, porque cada uno
      tiene una fila por torneo. Es el mismo par que elige la barra. */
   torneo: null,
+  selloNuevo: null,   // el bloque JSON listo para pegar tras certificar
   fase: 'REGULAR',
   estado: 'inicial',   // inicial | cargando | listo | error
   equipoSel: null,
@@ -176,6 +177,7 @@ function diagPintar() {
   cont.innerHTML = [
     diagBloqueClub(),
     diagBloqueCompetencia(idx),
+    diagBloqueCertificacion(),
     diagBloqueCarga(hojas, erroresCarga, ms),
     diagBloqueEsquema(d.datos.esquema),
     diagBloqueCoherencia(d.datos.coherencia),
@@ -364,6 +366,125 @@ function diagBloqueCompetencia(idx) {
     (problemas.length
       ? `<ul class="mt-4 pt-3 border-t border-hairline">${errores.concat(avisos).map(item).join('')}</ul>`
       : `<p class="text-xs text-green-400 mt-4 pt-3 border-t border-hairline">La configuración y el libro coinciden.</p>`));
+}
+
+/* --- 0c. Certificación · lo PROYECTADO contra lo que trae el libro
+
+   El semáforo por tramo. No corrige nada: el dato sigue mandando y acá
+   solo se denuncia la divergencia.
+
+   Lo que hace útil a esta card no es "¿el torneo va bien?" sino
+   ¿CAMBIÓ ALGO DESPUÉS DE QUE LO DIMOS POR BUENO? Un tramo ya sellado
+   se compara contra su propia huella, no contra la proyección: que la
+   entrevista dijera 12 equipos y el torneo cerrara con 8 es historia,
+   pero que aparezca un partido nuevo en un torneo cerrado es un
+   problema hoy.
+   -------------------------------------------------------------------- */
+const DIAG_SEMAFORO = {
+  CERTIFICADO: { icono: '🟢', tono: 'zona-exito',    texto: 'Certificado' },
+  EN_CURSO:    { icono: '🟡', tono: 'zona-aviso',    texto: 'En curso' },
+  PROYECTADO:  { icono: '🔵', tono: 'zona-positivo', texto: 'Proyectado' },
+  DIVERGENTE:  { icono: '🔴', tono: 'zona-peligro',  texto: 'Divergente' },
+  SIN_VINCULO: { icono: '⚪', tono: 'zona-neutro',   texto: 'Sin vincular' },
+};
+
+function diagBloqueCertificacion() {
+  if (typeof SGADD_CONFIG === 'undefined' || !SGADD_CONFIG.proyeccion) return '';
+  const d = SGADD_DIAG;
+  const cfgClub = (typeof CLUB !== 'undefined' && CLUB.cfg) ? CLUB.cfg : null;
+
+  /* La categoría se resuelve por la PLANILLA abierta: es el vínculo
+     natural entre lo que declara la entrevista y lo que el DT está
+     mirando. Sin bloque `torneo` la card no se pinta — misma regla que
+     el bloque 0b: una card diciendo 'no hay nada configurado' en los
+     clubes que no lo usan es ruido permanente. */
+  const proy = SGADD_CONFIG.proyeccion(cfgClub, d.planillaId);
+  if (!proy) return '';
+
+  const hojas = d.datos ? d.datos.hojas : null;
+  const tramosLibro = (hojas && typeof SGADD !== 'undefined')
+    ? SGADD.combinacionesTorneoFase(hojas) : [];
+
+  /* Se construye el índice de CADA tramo vinculado, y solo de esos:
+     armar un índice no es gratis y los no vinculados no se auditan. */
+  const cache = {};
+  const idxDe = (clave) => {
+    if (!hojas || !clave) return null;
+    if (cache[clave] !== undefined) return cache[clave];
+    const p = String(clave).split('|');
+    try {
+      cache[clave] = SGADD.construirIndice(hojas, { torneo: p[0], fase: p[1] || 'REGULAR' });
+    } catch (e) { cache[clave] = null; }
+    return cache[clave];
+  };
+
+  const filas = SGADD_CONFIG.auditar(proy, idxDe, { tramosDelLibro: tramosLibro });
+  const cuenta = {};
+  filas.forEach(f => { cuenta[f.estado] = (cuenta[f.estado] || 0) + 1; });
+
+  const item = (f) => {
+    const sem = DIAG_SEMAFORO[f.estado] || DIAG_SEMAFORO.SIN_VINCULO;
+    /* El botón de certificar solo aparece cuando el tramo está COMPLETO
+       y sin sello. Certificar a mitad de camino sellaría una foto que va
+       a cambiar mañana. */
+    const puede = f.certificable && !f.sello;
+    return `
+      <li class="py-2.5 border-b border-hairline/40 last:border-0 ${sem.tono}">
+        <div class="flex items-center gap-2.5 flex-wrap">
+          <span aria-hidden="true">${sem.icono}</span>
+          <span class="text-xs text-ink font-medium">${escapeHtml(f.label)}</span>
+          <span class="text-[10px] uppercase tracking-wider zona-texto">${sem.texto}</span>
+          ${f.clave ? `<span class="font-mono text-[10px] text-muted">${escapeHtml(f.clave)}</span>` : ''}
+          ${puede ? `<button onclick="diagCertificar('${escapeAttr(f.id)}')"
+            class="ml-auto text-[10px] uppercase tracking-wider border border-hairline rounded px-2 py-1 text-muted hover:text-ink hover:border-ink/40">
+            Certificar</button>` : ''}
+        </div>
+        <p class="text-[11px] text-muted mt-1 break-words">${escapeHtml(f.detalle)}</p>
+      </li>`;
+  };
+
+  const resumen = Object.keys(cuenta)
+    .map(k => (DIAG_SEMAFORO[k] || {}).icono + ' ' + cuenta[k]).join(' · ');
+
+  return diagCard('0c · Certificación del torneo', resumen,
+    `<div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-3 text-[11px] text-muted">
+      <span>Cliente <span class="text-ink">${escapeHtml(proy.cliente || '—')}</span></span>
+      <span>Categoría <span class="text-ink">${escapeHtml(proy.categoria.label)}</span></span>
+      ${proy.declaradoEl ? `<span>Declarado el <span class="text-ink font-mono">${escapeHtml(proy.declaradoEl)}</span></span>` : ''}
+      ${proy.declaradoPor ? `<span>${escapeHtml(proy.declaradoPor)}</span>` : ''}
+    </div>
+    <ul>${filas.map(item).join('') ||
+      '<li class="text-xs text-muted py-2">Esta categoría no declara tramos.</li>'}</ul>
+    <p class="text-[11px] text-muted mt-3">El dato manda siempre: acá solo se contrasta. 
+      Un tramo ya certificado se compara contra su propia huella, no contra lo proyectado.</p>` +
+    (SGADD_DIAG.selloNuevo
+      ? `<pre class="scrollbox bg-surface2 border border-hairline rounded p-3 mt-3 text-[11px] font-mono text-ink overflow-x-auto whitespace-pre">${
+          escapeHtml(SGADD_DIAG.selloNuevo)}</pre>` : ''));
+}
+
+/**
+ * Sella un tramo y deja el bloque listo para pegar en el JSON.
+ *
+ * NO escribe nada por su cuenta: el panel es estático y el sello va al
+ * JSON del club, commiteado. Certificar es un hito administrativo que el
+ * resto del cuerpo técnico tiene que ver, y el historial de git es
+ * justamente la trazabilidad que pide una auditoría.
+ */
+function diagCertificar(tramoId) {
+  const d = SGADD_DIAG;
+  const cfgClub = (typeof CLUB !== 'undefined' && CLUB.cfg) ? CLUB.cfg : null;
+  const proy = SGADD_CONFIG.proyeccion(cfgClub, d.planillaId);
+  if (!proy || !d.datos) return;
+  const t = proy.categoria.tramos.find(x => x.id === tramoId);
+  if (!t || !t.clave) return;
+  const p = String(t.clave).split('|');
+  const idx = SGADD.construirIndice(d.datos.hojas, { torneo: p[0], fase: p[1] || 'REGULAR' });
+  const sello = SGADD_CONFIG.certificar(idx);
+  if (!sello) return;
+  d.selloNuevo = '"certificacion": {' + '\n  "' + tramoId + '": ' +
+    JSON.stringify(sello) + '\n}';
+  if (navigator.clipboard) navigator.clipboard.writeText(d.selloNuevo).catch(() => {});
+  diagPintar();
 }
 
 /* --- 2b. Coherencia entre hojas --- */

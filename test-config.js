@@ -638,5 +638,276 @@ const appSrc2 = fs.readFileSync('./js/sgadd-app.js', 'utf8');
 check('al cambiar de tramo la pantalla se repinta',
   /currentSection === 'configuracion'[\s\S]{0,120}configPintar\(\)/.test(appSrc2));
 
+
+/* =====================================================================
+   PRECONFIGURACIÓN Y CERTIFICACIÓN
+
+   Declarar el torneo ANTES de que existan los datos, y después poder
+   contrastar. La regla de oro sigue en pie —el dato manda— pero ahora
+   hay contra qué compararlo.
+
+   Lo que estos tests amarran, en orden de importancia:
+
+     1. CERO NOMBRES ASUMIDOS. Ninguna clave fija de categoría ni de
+        torneo: el fixture usa 'Súper 8', 'Conferencia Sur' y
+        'Formativas U17' justamente para que un hardcodeo falle.
+     2. El VÍNCULO se declara, no se adivina. La entrevista usa ids
+        libres y el libro produce TORNEO|FASE: emparejarlos por parecido
+        certificaría el tramo equivocado sin que nadie lo note.
+     3. Un tramo SELLADO no se re-juzga contra la proyección. Se juzga
+        contra su propia huella, porque lo que hay que detectar es que
+        el libro cambió DESPUÉS de darlo por bueno.
+   ===================================================================== */
+const tit2 = (t) => console.log('\n' + t + '\n' + '─'.repeat(66));
+
+/* Un cliente inventado, con nombres que NO son Ida/Vuelta ni Apertura:
+   la prueba de que no hay nada asumido. */
+const JSON_CLUB = {
+  id: 'nautico',
+  torneo: {
+    cliente: 'Club Náutico',
+    declaradoEl: '2026-08-26',
+    declaradoPor: 'Entrevista inicial con el DT',
+    categorias: {
+      'primera-caballeros': {
+        label: 'Primera División Caballeros',
+        planilla: 'nautico-primera-2026',
+        tramos: [
+          { id: 'super-8', label: 'Súper 8', clave: 'SUPER8|REGULAR',
+            equiposEsperados: 8, fechasEsperadas: 7 },
+          { id: 'conf-sur', label: 'Conferencia Sur', clave: 'CONFSUR|REGULAR',
+            equiposEsperados: 10, fechasEsperadas: 18 },
+          { id: 'cuadrangular', label: 'Cuadrangular Final' },   // sin vincular
+        ],
+        certificacion: {},
+      },
+      'formativas-u17': {
+        label: 'Formativas U17',
+        tramos: [{ id: 'torneo-nocturno', label: 'Torneo Nocturno',
+                   clave: 'NOCTURNO|REGULAR', equiposEsperados: 6, fechasEsperadas: 5 }],
+      },
+    },
+  },
+};
+
+
+/* Un índice de mentira con N equipos y M partidos.
+
+   OJO CON EL FIXTURE: en un índice de verdad los DOS equipos de un
+   partido comparten el mismo `__id` —`Base Datos E` trae dos filas por
+   partido, una por lado— y `huella()` los deduplica con un Set. Un
+   generador que le dé un id distinto a cada lado infla el conteo al
+   doble y hace fallar tests que en realidad están bien. */
+function idxFalso(nEquipos, nPartidos, semilla) {
+  const porEquipo = [];
+  for (let i = 0; i < nEquipos; i++) porEquipo.push([]);
+  for (let p = 0; p < nPartidos; p++) {
+    const id = (semilla || 'p') + '_' + p;
+    const a = (p * 2) % nEquipos;
+    const b = (a + 1 + Math.floor(p / nEquipos)) % nEquipos;
+    porEquipo[a].push({ __id: id });
+    porEquipo[b === a ? (a + 1) % nEquipos : b].push({ __id: id });
+  }
+  return { lista: () => porEquipo.map((ps, i) => ({
+    clave: 'E' + i, nombre: 'Equipo ' + i, partidos: ps })) };
+}
+
+tit2('CERO NOMBRES ASUMIDOS');
+const cats = C.categorias(JSON_CLUB);
+check('las categorías salen del mapa, con las claves del cliente',
+  cats.map(c => c.id).join() === 'primera-caballeros,formativas-u17', cats.map(c => c.id).join());
+check('y conservan el label que puso el usuario',
+  cats[0].label === 'Primera División Caballeros', cats[0].label);
+const p1 = C.proyeccion(JSON_CLUB, 'primera-caballeros');
+check('los tramos también son libres',
+  p1.categoria.tramos.map(t => t.label).join(' · ') === 'Súper 8 · Conferencia Sur · Cuadrangular Final',
+  p1.categoria.tramos.map(t => t.label).join(' · '));
+check('una categoría se resuelve por su PLANILLA además de por su id',
+  C.proyeccion(JSON_CLUB, 'nautico-primera-2026').categoria.id === 'primera-caballeros');
+check('una categoría que no existe devuelve null, no una inventada',
+  C.proyeccion(JSON_CLUB, 'no-existe') === null);
+
+tit2('FALLBACK · un club sin bloque se comporta como antes');
+[undefined, null, {}, { id: 'x' }, { torneo: null }, { torneo: 'texto' }].forEach((j, i) => {
+  check('parsearProyeccion(' + i + ') devuelve null', C.parsearProyeccion(j) === null);
+});
+check('categorias() de un club sin bloque devuelve lista vacía',
+  C.categorias({}).length === 0);
+check('proyeccion() también devuelve null', C.proyeccion({}, 'x') === null);
+check('auditar(null) devuelve lista vacía', C.auditar(null, () => null).length === 0);
+
+tit2('EL SEMÁFORO');
+const LIBRO = [{ id: 'SUPER8|REGULAR' }, { id: 'CONFSUR|REGULAR' }];
+/* Súper 8: 8 equipos, 7 fechas → 4 partidos por fecha → 28. Está completo. */
+const idxSuper8 = idxFalso(8, 28, 's8');
+/* Conferencia Sur: 10 equipos, 18 fechas → 90. Van 40: en curso. */
+const idxConf = idxFalso(10, 40, 'cs');
+
+const r1 = C.auditar(p1, (clave) => {
+  if (clave === 'SUPER8|REGULAR') return idxSuper8;
+  if (clave === 'CONFSUR|REGULAR') return idxConf;
+  return null;
+}, { tramosDelLibro: LIBRO });
+
+check('un tramo sin vincular se reporta como tal, no se adivina',
+  r1[2].estado === C.ESTADOS.SIN_VINCULO, r1[2].estado);
+check('un tramo completo y sin sello queda EN_CURSO y certificable',
+  r1[0].estado === C.ESTADOS.EN_CURSO && r1[0].certificable === true,
+  r1[0].estado + ' certificable=' + r1[0].certificable);
+check('uno a mitad de camino queda EN_CURSO sin certificar',
+  r1[1].estado === C.ESTADOS.EN_CURSO && !r1[1].certificable, r1[1].detalle);
+check('y dice cuántos van de cuántos',
+  /40 partidos de 90/.test(r1[1].detalle), r1[1].detalle);
+
+/* Un tramo declarado cuya clave el libro no tiene: PROYECTADO, y el
+   mensaje distingue "no empezó" de "está mal escrita". */
+const rSinLibro = C.auditar(p1, () => null, { tramosDelLibro: [] });
+check('sin datos el tramo queda PROYECTADO',
+  rSinLibro[0].estado === C.ESTADOS.PROYECTADO, rSinLibro[0].estado);
+const rClaveMala = C.auditar(p1, () => null, { tramosDelLibro: [{ id: 'OTRA|REGULAR' }] });
+check('una clave que el libro no tiene lo dice con todas las letras',
+  /no está en el libro/.test(rClaveMala[0].detalle), rClaveMala[0].detalle);
+
+tit2('DIVERGENCIA contra lo proyectado');
+const JSON_MAL = JSON.parse(JSON.stringify(JSON_CLUB));
+JSON_MAL.torneo.categorias['primera-caballeros'].tramos[0].equiposEsperados = 12;
+const rMal = C.auditar(C.proyeccion(JSON_MAL, 'primera-caballeros'),
+  () => idxSuper8, { tramosDelLibro: LIBRO });
+check('declarar 12 equipos y traer 8 es DIVERGENTE',
+  rMal[0].estado === C.ESTADOS.DIVERGENTE, rMal[0].estado);
+check('y el mensaje dice los dos números',
+  /12/.test(rMal[0].detalle) && /8/.test(rMal[0].detalle), rMal[0].detalle);
+/* El dato manda: la huella se calcula sobre lo REAL, no sobre lo declarado. */
+check('pero la huella sale del libro, no de la proyección',
+  rMal[0].huella.equipos === 8, rMal[0].huella.equipos);
+
+tit2('CERTIFICACIÓN Y HUELLA · el punto de todo esto');
+const sello = C.certificar(idxSuper8, '2026-09-14');
+check('el sello guarda equipos, partidos y hash',
+  sello.equipos === 8 && sello.partidos === 28 && !!sello.hash, JSON.stringify(sello));
+check('y la fecha con la que se selló', sello.fecha === '2026-09-14');
+check('sin fecha usa la de hoy', /^\d{4}-\d{2}-\d{2}$/.test(C.certificar(idxSuper8).fecha));
+
+const JSON_CERT = JSON.parse(JSON.stringify(JSON_CLUB));
+JSON_CERT.torneo.categorias['primera-caballeros'].certificacion = { 'super-8': sello };
+const pC = C.proyeccion(JSON_CERT, 'primera-caballeros');
+const rC = C.auditar(pC, () => idxSuper8, { tramosDelLibro: LIBRO });
+check('con el libro igual al sello queda CERTIFICADO',
+  rC[0].estado === C.ESTADOS.CERTIFICADO, rC[0].estado);
+check('y muestra la fecha del sello', /2026-09-14/.test(rC[0].detalle), rC[0].detalle);
+
+/* UN TRAMO CERTIFICADO NO SE VUELVE A JUZGAR CONTRA LA PROYECCIÓN. Si el
+   torneo cerró con 8 equipos, que la entrevista dijera 12 ya no importa:
+   es un hecho histórico. Lo que sí importa es si el libro cambió. */
+const JSON_CERT_MAL = JSON.parse(JSON.stringify(JSON_CERT));
+JSON_CERT_MAL.torneo.categorias['primera-caballeros'].tramos[0].equiposEsperados = 12;
+const rCM = C.auditar(C.proyeccion(JSON_CERT_MAL, 'primera-caballeros'),
+  () => idxSuper8, { tramosDelLibro: LIBRO });
+check('un tramo sellado NO se re-juzga contra lo proyectado',
+  rCM[0].estado === C.ESTADOS.CERTIFICADO, rCM[0].estado);
+
+/* Y ACÁ ESTÁ EL VALOR REAL: el libro cambió DESPUÉS del sello. */
+const idxCambiado = idxFalso(8, 29, 's8');
+const rDiv = C.auditar(pC, () => idxCambiado, { tramosDelLibro: LIBRO });
+check('si el libro cambia después de certificar, salta DIVERGENTE',
+  rDiv[0].estado === C.ESTADOS.DIVERGENTE, rDiv[0].estado);
+check('y dice que cambió DESPUÉS del sello, con la fecha',
+  /EL LIBRO CAMBIÓ después de certificarse el 2026-09-14/.test(rDiv[0].detalle),
+  rDiv[0].detalle);
+check('con el antes y el después', /28/.test(rDiv[0].detalle) && /29/.test(rDiv[0].detalle));
+
+/* El caso que un contador de partidos NO cazaría: mismos totales, otros
+   partidos. Por eso la huella es sobre los IDS y no sobre las cuentas. */
+const idxOtrosMismos = idxFalso(8, 28, 'XX');
+const rSilencioso = C.auditar(pC, () => idxOtrosMismos, { tramosDelLibro: LIBRO });
+check('cambiar partidos SIN cambiar los totales también se caza',
+  rSilencioso[0].estado === C.ESTADOS.DIVERGENTE, rSilencioso[0].estado);
+check('y se explica que los totales son los mismos',
+  /mismos totales, pero otros partidos/.test(rSilencioso[0].detalle),
+  rSilencioso[0].detalle);
+
+tit2('EL VÍNCULO SE PROPONE, NO SE ADIVINA');
+const declarado = { id: 'super-8', label: 'Súper 8' };
+check('con una sola coincidencia se propone',
+  C.sugerirClave(declarado, [{ id: 'SUPER8|REGULAR', label: 'Super8 - Regular' }]) === 'SUPER8|REGULAR');
+check('con varias NO se propone ninguna',
+  C.sugerirClave({ id: 'x', label: 'Regular' },
+    [{ id: 'A|REGULAR', label: 'Regular' }, { id: 'B|REGULAR', label: 'Regular' }]) === null);
+check('y sin coincidencia tampoco',
+  C.sugerirClave(declarado, [{ id: 'OTRA|COSA', label: 'Otra cosa' }]) === null);
+
+tit2('LA HUELLA');
+check('es estable: dos veces el mismo índice da el mismo hash',
+  C.huella(idxSuper8).hash === C.huella(idxSuper8).hash);
+check('y no depende del orden en que vengan los partidos',
+  C.huella(idxSuper8).hash === C.huella({
+    lista: () => idxSuper8.lista().slice().reverse() }).hash);
+check('huella(null) devuelve null', C.huella(null) === null);
+
+tit2('LA COMPETENCIA POR CATEGORÍA');
+const JSON_ZONAS = JSON.parse(JSON.stringify(JSON_CLUB));
+JSON_ZONAS.torneo.categorias['primera-caballeros'].competencia = {
+  formatos: { f: { label: 'F', zonas: [{ id: 'z', desde: 1, hasta: 2, tono: 'exito' }] } },
+  porTramo: { '*': 'f' },
+};
+const pZ = C.proyeccion(JSON_ZONAS, 'primera-caballeros');
+check('cada categoría puede traer su propio bloque de zonas',
+  !!pZ.categoria.competencia && !!pZ.categoria.competencia.formatos.f);
+check('y usa el MISMO parser del punto 15, no uno paralelo',
+  pZ.categoria.competencia.formatos.f.zonas[0].tono === 'exito');
+check('una categoría sin zonas lo deja en null',
+  C.proyeccion(JSON_CLUB, 'formativas-u17').categoria.competencia === null);
+
+
+tit2('EL BLOQUE 0c DEL DIAGNÓSTICO');
+const diagSrc3 = fs.readFileSync('./js/sgadd-diagnostico.js', 'utf8');
+/* Las claves del semáforo están alineadas con espacios en el fuente
+   (`EN_CURSO:    {`), así que se normaliza antes de buscar: un test que
+   se rompe al alinear una tabla obliga a desalinearla. */
+const semNorm = diagSrc3.replace(/:\s+\{/g, ': {');
+check('el semáforo declara los cinco estados',
+  ['CERTIFICADO', 'EN_CURSO', 'PROYECTADO', 'DIVERGENTE', 'SIN_VINCULO']
+    .every(k => semNorm.indexOf(k + ': {') >= 0));
+/* Y son exactamente los del motor: si la UI inventara un estado que
+   `auditar()` nunca devuelve, ese caso no se pintaría jamás y nadie se
+   enteraría. */
+check('y son exactamente los del motor',
+  Object.keys(C.ESTADOS).every(k => semNorm.indexOf(k + ': {') >= 0) &&
+  Object.keys(C.ESTADOS).length === 5, Object.keys(C.ESTADOS).join(','));
+check('y usa los tonos AA del punto 15, no colores sueltos',
+  /zona-exito/.test(diagSrc3) && /zona-peligro/.test(diagSrc3));
+/* Sin bloque `torneo` la card no se pinta: una card diciendo 'no hay
+   nada configurado' en los clubes que no lo usan es ruido permanente. */
+check('sin proyección la card no se pinta',
+  /function diagBloqueCertificacion[\s\S]{0,900}if \(!proy\) return '';/.test(diagSrc3));
+/* Solo se arma el índice de los tramos VINCULADOS: construir uno no es
+   gratis y los no vinculados no se auditan. */
+check('solo construye el índice de los tramos vinculados',
+  /const idxDe = \(clave\) => \{[\s\S]{0,200}if \(!hojas \|\| !clave\) return null;/.test(diagSrc3));
+check('y lo cachea, para no rearmarlo por tramo repetido',
+  /cache\[clave\] !== undefined/.test(diagSrc3));
+/* Certificar a mitad de camino sellaría una foto que cambia mañana. */
+check('el botón de certificar solo sale con el tramo completo y sin sello',
+  /const puede = f\.certificable && !f\.sello;/.test(diagSrc3));
+/* El sello va al JSON, no a localStorage: es un hito administrativo que
+   el resto del cuerpo técnico tiene que ver, y git es la trazabilidad. */
+check('certificar NO escribe solo: deja el bloque para commitear',
+  /function diagCertificar[\s\S]{0,900}selloNuevo/.test(diagSrc3) &&
+  !/function diagCertificar[\s\S]{0,900}localStorage/.test(diagSrc3));
+
+tit2('LA PRECONFIGURACIÓN REAL DE DEPORTIVO');
+const jDep2 = JSON.parse(fs.readFileSync('./clubes/deportivo.json', 'utf8'));
+const pDep = C.proyeccion(jDep2, 'deportivo-primera-2026');
+check('la categoría se resuelve por la planilla del catálogo', !!pDep);
+check('declara sus dos tramos con el vínculo explícito',
+  pDep.categoria.tramos.every(t => !!t.clave), JSON.stringify(pDep.categoria.tramos.map(t => t.clave)));
+check('y todavía no hay nada certificado',
+  Object.keys(pDep.categoria.certificacion).length === 0);
+/* Los otros dos clubes no declaran torneo, y eso tiene que seguir siendo
+   válido: la preconfiguración es opcional, como todo lo demás. */
+['reconquista', 'jujuy'].forEach(id => {
+  const j = JSON.parse(fs.readFileSync('./clubes/' + id + '.json', 'utf8'));
+  check(id + ' sin bloque torneo sigue siendo válido', C.parsearProyeccion(j) === null);
+});
 console.log('\n' + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);
