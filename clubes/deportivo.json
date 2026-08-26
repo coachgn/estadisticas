@@ -39,8 +39,11 @@
 
         "//tramos": "El id y el label son del cliente. `clave` es el VINCULO con el libro (TORNEO|FASE, la clave que produce combinacionesTorneoFase) y se declara a mano: emparejar por parecido de nombre certificaria el tramo equivocado sin que nadie lo note.",
         "tramos": [
-          { "id": "ida",    "label": "Ida",    "clave": "IDA|REGULAR",    "equiposEsperados": 12, "fechasEsperadas": 11 },
-          { "id": "vuelta", "label": "Vuelta", "clave": "VUELTA|REGULAR", "equiposEsperados": 12, "fechasEsperadas": 11 }
+          { "id": "ida",    "label": "Ida",    "clave": "IDA|REGULAR",    "equiposEsperados": 12, "fechasEsperadas": 11,
+            "//ventana": "Rango REAL del libro, no inventado: el primer partido de IDA es del 07/05 y el ultimo del 16/07. Las puntas se abren unos dias para que una reprogramacion no dispare un desvio.",
+            "ventanaTemporal": { "desde": "2026-05-01", "hasta": "2026-07-25" } },
+          { "id": "vuelta", "label": "Vuelta", "clave": "VUELTA|REGULAR", "equiposEsperados": 12, "fechasEsperadas": 11,
+            "ventanaTemporal": { "desde": "2026-08-01", "hasta": "2026-11-30" } }
         ],
 
         "//certificacion": "Lo escribe el sistema desde el Diagnostico, no la entrevista. Se guarda ACA y no en localStorage: certificar es un hito administrativo que el resto del cuerpo tecnico tiene que ver, y el historial de git es la trazabilidad que pide una auditoria.",

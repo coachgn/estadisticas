@@ -385,6 +385,10 @@ const DIAG_SEMAFORO = {
   EN_CURSO:    { icono: '🟡', tono: 'zona-aviso',    texto: 'En curso' },
   PROYECTADO:  { icono: '🔵', tono: 'zona-positivo', texto: 'Proyectado' },
   DIVERGENTE:  { icono: '🔴', tono: 'zona-peligro',  texto: 'Divergente' },
+  /* Hay datos y encajan, pero alguna fecha cae fuera de la ventana. Va
+     en amarillo y no en rojo: no hay nada mal calculado, hay algo que
+     mirar antes de certificar. */
+  DESVIO_CALENDARIO: { icono: '🟡', tono: 'zona-aviso', texto: 'Desvío de calendario' },
   SIN_VINCULO: { icono: '⚪', tono: 'zona-neutro',   texto: 'Sin vincular' },
 };
 

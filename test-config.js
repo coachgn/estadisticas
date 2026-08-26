@@ -865,15 +865,19 @@ const diagSrc3 = fs.readFileSync('./js/sgadd-diagnostico.js', 'utf8');
    (`EN_CURSO:    {`), así que se normaliza antes de buscar: un test que
    se rompe al alinear una tabla obliga a desalinearla. */
 const semNorm = diagSrc3.replace(/:\s+\{/g, ': {');
-check('el semáforo declara los cinco estados',
-  ['CERTIFICADO', 'EN_CURSO', 'PROYECTADO', 'DIVERGENTE', 'SIN_VINCULO']
-    .every(k => semNorm.indexOf(k + ': {') >= 0));
+/* Se compara contra las claves del MOTOR y no contra una lista fija: un
+   estado nuevo en `auditar()` que la UI no sepa pintar no se vería
+   jamás, y una lista hardcodeada acá no lo cazaría. Ya pasó al sumar
+   DESVIO_CALENDARIO. */
+check('el semáforo declara TODOS los estados del motor',
+  Object.keys(C.ESTADOS).every(k => semNorm.indexOf(k + ': {') >= 0),
+  Object.keys(C.ESTADOS).filter(k => semNorm.indexOf(k + ': {') === -1).join(',') || 'todos');
 /* Y son exactamente los del motor: si la UI inventara un estado que
    `auditar()` nunca devuelve, ese caso no se pintaría jamás y nadie se
    enteraría. */
-check('y son exactamente los del motor',
-  Object.keys(C.ESTADOS).every(k => semNorm.indexOf(k + ': {') >= 0) &&
-  Object.keys(C.ESTADOS).length === 5, Object.keys(C.ESTADOS).join(','));
+check('y la UI no inventa ninguno que el motor no devuelva',
+  (semNorm.match(/^  [A-Z_]+: \{ icono/gm) || []).length === Object.keys(C.ESTADOS).length,
+  Object.keys(C.ESTADOS).join(','));
 check('y usa los tonos AA del punto 15, no colores sueltos',
   /zona-exito/.test(diagSrc3) && /zona-peligro/.test(diagSrc3));
 /* Sin bloque `torneo` la card no se pinta: una card diciendo 'no hay
@@ -909,5 +913,179 @@ check('y todavía no hay nada certificado',
   const j = JSON.parse(fs.readFileSync('./clubes/' + id + '.json', 'utf8'));
   check(id + ' sin bloque torneo sigue siendo válido', C.parsearProyeccion(j) === null);
 });
+tit2('VENTANA TEMPORAL · el calendario como red de contención');
+
+/* Los box scores llegan con la etiqueta de torneo incompleta o mal
+   tipeada más seguido de lo que uno querría. El calendario es el
+   desempate natural: si el partido se jugó el 14/09 y el Clausura va de
+   agosto a noviembre, es del Clausura. */
+const TRAMOS_CAL = [
+  { id: 'apertura', clave: 'APERTURA|REGULAR',
+    ventana: { desde: new Date(2026, 2, 1), hasta: new Date(2026, 5, 30) } },
+  { id: 'clausura', clave: 'CLAUSURA|REGULAR',
+    ventana: { desde: new Date(2026, 7, 1), hasta: new Date(2026, 10, 30) } },
+];
+const aso = (clave, f) => C.asociarTramoPorFecha(TRAMOS_CAL, clave, f);
+
+check('un partido sin etiqueta se asocia por su fecha',
+  aso('', '2026-09-14').tramo.id === 'clausura', JSON.stringify(aso('', '2026-09-14')));
+check('y el motivo dice que lo dedujo el calendario',
+  aso('', '2026-09-14').motivo === 'calendario');
+check('la otra ventana también',
+  aso('', '2026-04-20').tramo.id === 'apertura');
+
+/* LA ETIQUETA GANA SIEMPRE. El calendario es un RESPALDO para lo que no
+   viene etiquetado, no una corrección de lo que sí viene: pisar un dato
+   explícito con una inferencia es lo que este proyecto no hace. */
+const conEtiqueta = aso('APERTURA|REGULAR', '2026-09-14');
+check('una fila etiquetada NO se corrige por más que la fecha diga otra cosa',
+  conEtiqueta.tramo.id === 'apertura' && conEtiqueta.motivo === 'etiqueta',
+  JSON.stringify(conEtiqueta));
+
+/* UNA FECHA EN DOS VENTANAS NO SE ASOCIA. Un partido mal atribuido
+   contamina los promedios de DOS tramos a la vez y no se nota. */
+const PISADOS = [
+  { id: 'a', ventana: { desde: new Date(2026, 0, 1), hasta: new Date(2026, 11, 31) } },
+  { id: 'b', ventana: { desde: new Date(2026, 5, 1), hasta: new Date(2026, 6, 31) } },
+];
+const amb = C.asociarTramoPorFecha(PISADOS, '', '2026-06-15');
+check('si cae en dos ventanas NO se elige ninguna',
+  amb.tramo === null && amb.motivo === 'ambiguo', JSON.stringify(amb));
+check('y se nombran los candidatos, para poder arreglar el calendario',
+  amb.candidatos.join() === 'a,b', JSON.stringify(amb.candidatos));
+
+check('sin caer en ninguna ventana queda fuera, no se inventa',
+  aso('', '2026-07-15').tramo === null && aso('', '2026-07-15').motivo === 'fuera');
+check('sin fecha tampoco se adivina',
+  aso('', '').motivo === 'sin-fecha' && aso('', 'no es fecha').motivo === 'sin-fecha');
+check('una lista de tramos vacía no revienta',
+  C.asociarTramoPorFecha([], '', '2026-09-14').tramo === null);
+check('ni una lista que no es lista',
+  C.asociarTramoPorFecha(null, '', '2026-09-14').tramo === null);
+
+/* Formatos de fecha: el mismo criterio que el núcleo — dd/mm/aaaa con el
+   DÍA primero, que es como viene de Liga Argentina. */
+check('lee ISO y dd/mm/aaaa, con el día primero',
+  aso('', '2026-09-14').tramo.id === 'clausura' &&
+  aso('', '14/09/2026').tramo.id === 'clausura');
+check('y una ventana con las puntas invertidas no se aplica',
+  C.asociarTramoPorFecha([{ id: 'x',
+    ventana: { desde: new Date(2026, 5, 1), hasta: new Date(2026, 1, 1), invertida: true } },
+  ], '', '2026-04-01').tramo === null);
+
+tit2('DESVÍO DE CALENDARIO · se reporta, no se corrige');
+
+/* Un partido etiquetado con un tramo pero con la fecha fuera de SU
+   ventana. No hay nada que inferir —la etiqueta manda— pero sí algo que
+   avisar: o la fecha está mal o el calendario quedó viejo. */
+function idxConFechas(fechas) {
+  return { lista: () => [{ clave: 'A', nombre: 'A',
+    partidos: fechas.map((f, i) => ({ __id: 'p' + i, __fecha: f, PARTIDO: 'A vs B' })) }] };
+}
+const TRAMO_VENT = { id: 'apertura',
+  ventana: { desde: new Date(2026, 2, 1), hasta: new Date(2026, 5, 30), invertida: false } };
+check('sin desvíos devuelve lista vacía',
+  C.desviosDeCalendario(TRAMO_VENT,
+    idxConFechas([new Date(2026, 3, 10), new Date(2026, 4, 5)])).length === 0);
+check('un partido fuera de la ventana se reporta',
+  C.desviosDeCalendario(TRAMO_VENT,
+    idxConFechas([new Date(2026, 3, 10), new Date(2026, 8, 1)])).length === 1);
+/* Un partido SIN fecha no es un desvío: es un dato ausente, y ya lo
+   denuncia el guard de FECHA del punto 3 quater. */
+check('un partido sin fecha no cuenta como desvío',
+  C.desviosDeCalendario(TRAMO_VENT, idxConFechas([null, new Date(2026, 3, 10)])).length === 0);
+check('un tramo sin ventana no puede tener desvíos',
+  C.desviosDeCalendario({ id: 'x' }, idxConFechas([new Date(2026, 8, 1)])).length === 0);
+
+/* Y el estado entra al semáforo. Va DESPUÉS de las aserciones de tamaño:
+   un tramo con la cantidad de equipos mal es un problema más grande que
+   uno con una fecha corrida. */
+check('DESVIO_CALENDARIO es un estado del semáforo',
+  C.ESTADOS.DESVIO_CALENDARIO === 'DESVIO_CALENDARIO');
+
+tit2('LA VENTANA EN EL SCHEMA');
+const JSON_VENT = {
+  torneo: { cliente: 'X', categorias: { c: {
+    label: 'C', ventanaTemporal: { desde: '2026-01-01', hasta: '2026-12-31' },
+    tramos: [
+      { id: 'con-propia', label: 'Con propia', clave: 'A|R',
+        ventanaTemporal: { desde: '2026-03-01', hasta: '2026-06-30' } },
+      { id: 'sin-propia', label: 'Sin propia', clave: 'B|R' },
+    ] } } },
+};
+const pV = C.proyeccion(JSON_VENT, 'c');
+check('un tramo con ventana propia la usa',
+  pV.categoria.tramos[0].ventanaPropia === true &&
+  pV.categoria.tramos[0].ventana.desde.getMonth() === 2);
+/* Sin fechas propias HEREDA la de la categoría, que suele ser la
+   temporada entera: es mejor una ventana amplia que ninguna. */
+check('uno sin ventana propia hereda la de la categoría',
+  pV.categoria.tramos[1].ventanaPropia === false &&
+  pV.categoria.tramos[1].ventana.desde.getMonth() === 0);
+check('y sin fechas por ningún lado queda en null, no se inventa una',
+  C.proyeccion({ torneo: { categorias: { c: { tramos: [{ id: 't' }] } } } }, 'c')
+    .categoria.tramos[0].ventana === null);
+
+tit2('LA PESTAÑA TORNEO');
+const uiSrc2 = fs.readFileSync('./js/sgadd-configui.js', 'utf8');
+check('la pantalla tiene las dos pestañas',
+  /Zonas de la tabla/.test(uiSrc2) && /Torneo \/ Preconfiguración/.test(uiSrc2));
+/* Los dos borradores viven separados: son dos bloques distintos del JSON
+   y mezclarlos obligaría a commitear los dos para publicar uno. */
+check('el borrador del torneo es independiente del de zonas',
+  /proy: null,/.test(uiSrc2) && /proySucia: false,/.test(uiSrc2));
+check('se guarda bajo su propia clave',
+  /configClubId\(\) \+ '\.torneo'/.test(uiSrc2));
+/* NADA de desplegables con nombres preconcebidos: si la UI ofreciera
+   'Ida / Vuelta / Apertura' volvería a meter el hardcodeo que el schema
+   evita. Los nombres se escriben. */
+check('los nombres se escriben, no se eligen de una lista',
+  !/<option[^>]*>\s*(Ida|Vuelta|Apertura|Clausura)\s*</i.test(uiSrc2));
+check('hay selectores de fecha de verdad',
+  /type="date"[\s\S]{0,200}configTramoCampo\(\$\{i\}, 'desde'/.test(uiSrc2));
+check('y campos de equipos y fechas esperadas',
+  /'equiposEsperados'/.test(uiSrc2) && /'fechasEsperadas'/.test(uiSrc2));
+check('hay línea de tiempo',
+  /function configTimelineHTML/.test(uiSrc2) && /configTimeline/.test(uiSrc2));
+/* La línea de tiempo tiene que denunciar las superposiciones: son
+   justamente el caso en que el calendario no puede desempatar. */
+check('y denuncia los tramos que se pisan',
+  /Se superponen/.test(uiSrc2));
+/* Tipear no repinta: le sacaría el foco al input. */
+check('tipear refresca solo la línea de tiempo',
+  cuerpoDe(uiSrc2, 'configTramoCampo').indexOf('configPintarTimeline()') >= 0);
+check('y NO repinta la pantalla entera',
+  cuerpoDe(uiSrc2, 'configTramoCampo')
+    .replace(/configPintarTimeline\(\)/g, '').indexOf('configPintar()') === -1);
+/* La clave del libro se PROPONE, nunca se aplica sola. */
+check('proponer una clave avisa que hay que revisarla',
+  /Revisala antes de guardar/.test(uiSrc2));
+
+/* Las tres acciones hacen cosas distintas y la diferencia importa: un DT
+   que las confunda cree que publicó algo que no publicó. */
+check('guardar aclara que es SOLO este navegador y dispositivo',
+  /SOLO en este navegador y en este dispositivo/.test(uiSrc2));
+check('exportar aclara que recién ahí le llega al resto',
+  /recién ahí le llega al resto/i.test(uiSrc2));
+check('restablecer aclara que descarta el borrador local',
+  /descartó el borrador local/.test(uiSrc2));
+check('y las tres están explicadas en la pantalla, no solo en el tooltip',
+  /localStorage<\/span>, solo en este dispositivo/.test(uiSrc2));
+
+tit2('LAS VENTANAS REALES DE DEPORTIVO');
+const pDep2 = C.proyeccion(
+  JSON.parse(fs.readFileSync('./clubes/deportivo.json', 'utf8')), 'deportivo-primera-2026');
+check('los dos tramos declaran ventana',
+  pDep2.categoria.tramos.every(t => !!t.ventana));
+/* Los rangos salen del LIBRO, no de la imaginación: el primer partido de
+   IDA es del 07/05 y el último del 16/07. */
+check('la ventana de Ida contiene su primer y último partido reales',
+  C.enVentana(C._aDia('2026-05-07'), pDep2.categoria.tramos[0].ventana) &&
+  C.enVentana(C._aDia('2026-07-16'), pDep2.categoria.tramos[0].ventana));
+check('y la de Vuelta arranca cuando arrancó de verdad',
+  C.enVentana(C._aDia('2026-08-06'), pDep2.categoria.tramos[1].ventana));
+check('las dos no se superponen: el calendario puede desempatar',
+  !C.enVentana(C._aDia('2026-08-06'), pDep2.categoria.tramos[0].ventana) &&
+  !C.enVentana(C._aDia('2026-05-07'), pDep2.categoria.tramos[1].ventana));
 console.log('\n' + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

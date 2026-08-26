@@ -508,7 +508,138 @@ const SGADD_CONFIG = (function () {
     CERTIFICADO:'CERTIFICADO',  // cerró, cuadró y se selló
     DIVERGENTE: 'DIVERGENTE',   // hay datos y NO encajan
     SIN_VINCULO:'SIN_VINCULO',  // declarado, sin clave que lo ate al libro
+    /* Hay datos y encajan, PERO algún partido cayó fuera de la ventana
+       declarada. No se corrige nada —la etiqueta manda— pero o la fecha
+       está mal cargada o el calendario quedó viejo, y las dos hay que
+       mirarlas antes de certificar. */
+    DESVIO_CALENDARIO: 'DESVIO_CALENDARIO',
   };
+
+  /* ===================================================================
+     VENTANA TEMPORAL · el calendario como red de contención
+
+     Los box scores llegan con la etiqueta de torneo incompleta, vacía o
+     mal tipeada más seguido de lo que uno querría — sobre todo en
+     formativas. Sin nada que los atrape, esos partidos quedan huérfanos:
+     el índice los deja pasar (una fila sin torneo pasa siempre, punto
+     3 ter) pero nadie sabe a qué tramo pertenecen.
+
+     El calendario es el desempate natural: si el partido se jugó el 14
+     de septiembre y el Clausura va del 1 de agosto al 30 de noviembre,
+     es del Clausura. No hace falta que la celda lo diga.
+
+     ---------------------------------------------------------------------
+     DOS REGLAS QUE NO SE NEGOCIAN
+
+     1. LA ETIQUETA GANA SIEMPRE. Si la fila trae torneo, se respeta
+        aunque la fecha caiga en otra ventana. El calendario es un
+        RESPALDO para lo que no viene etiquetado, no una corrección de
+        lo que sí viene: pisar un dato explícito con una inferencia es
+        exactamente lo que este proyecto no hace.
+
+     2. UNA FECHA EN DOS VENTANAS NO SE ASOCIA. Si dos tramos se
+        superponen y el partido cae en los dos, la respuesta correcta es
+        "no sé", no "el primero". Un partido mal atribuido contamina los
+        promedios de dos tramos a la vez y no se nota.
+
+     Y lo que sí se REPORTA aunque no se corrija: un partido que viene
+     etiquetado con un tramo pero cuya fecha cae fuera de la ventana de
+     ESE tramo. Ahí no hay nada que inferir —la etiqueta manda— pero hay
+     algo que avisar, porque o la fecha está mal o el calendario quedó
+     viejo. Es la DESVIACIÓN DE CALENDARIO del bloque 0c.
+     =================================================================== */
+
+  /** Fecha a medianoche, para comparar días sin que la hora moleste. */
+  function aDia(v) {
+    if (v instanceof Date) return isNaN(v.getTime())
+      ? null : new Date(v.getFullYear(), v.getMonth(), v.getDate());
+    const s = texto(v).trim();
+    if (!s) return null;
+    let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+    m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s);
+    if (m) return new Date(+m[3], +m[2] - 1, +m[1]);   // dd/mm/aaaa, día primero
+    return null;
+  }
+
+  function normalizarVentana(v) {
+    if (!v || typeof v !== 'object') return null;
+    const desde = aDia(v.desde), hasta = aDia(v.hasta);
+    if (!desde && !hasta) return null;
+    /* Una ventana con las puntas al revés no se aplica. Es un error de
+       carga y hay que decirlo, no interpretarlo. */
+    if (desde && hasta && desde > hasta) return { desde, hasta, invertida: true };
+    return { desde: desde, hasta: hasta, invertida: false };
+  }
+
+  function enVentana(dia, ventana) {
+    if (!dia || !ventana || ventana.invertida) return false;
+    if (ventana.desde && dia < ventana.desde) return false;
+    if (ventana.hasta && dia > ventana.hasta) return false;
+    return true;
+  }
+
+  /**
+   * A qué tramo pertenece un partido, mirando SU FECHA.
+   *
+   * Devuelve siempre un objeto con el motivo, no solo la respuesta: la
+   * UI necesita distinguir "lo trajo etiquetado" de "lo dedujo el
+   * calendario" para poder mostrarlo distinto.
+   *
+   *   { tramo, motivo: 'etiqueta' }      la fila lo dice y se respeta
+   *   { tramo, motivo: 'calendario' }    cayó en UNA sola ventana
+   *   { tramo: null, motivo: 'ambiguo' } cayó en varias: no se elige
+   *   { tramo: null, motivo: 'fuera' }   no cayó en ninguna
+   *   { tramo: null, motivo: 'sin-fecha' }
+   */
+  function asociarTramoPorFecha(tramos, claveDeLaFila, fechaDelPartido) {
+    const lista = Array.isArray(tramos) ? tramos : [];
+    const clave = texto(claveDeLaFila).toUpperCase();
+
+    /* LA ETIQUETA GANA. Si la fila trae un torneo que algún tramo
+       declara, se respeta y no se mira el calendario. */
+    if (clave) {
+      const porClave = lista.find(t => texto(t.clave).toUpperCase() === clave);
+      if (porClave) return { tramo: porClave, motivo: 'etiqueta' };
+    }
+
+    const dia = aDia(fechaDelPartido);
+    if (!dia) return { tramo: null, motivo: 'sin-fecha' };
+
+    const caen = lista.filter(t => enVentana(dia, t.ventana));
+    if (caen.length === 1) return { tramo: caen[0], motivo: 'calendario' };
+    if (caen.length > 1) {
+      return { tramo: null, motivo: 'ambiguo',
+        candidatos: caen.map(t => t.id) };
+    }
+    return { tramo: null, motivo: 'fuera' };
+  }
+
+  /**
+   * Los partidos de un tramo cuya FECHA cae fuera de su propia ventana.
+   *
+   * No se corrigen —la etiqueta manda— pero se reportan: o la fecha está
+   * mal cargada o el calendario quedó viejo, y las dos cosas hay que
+   * mirarlas antes de certificar.
+   */
+  function desviosDeCalendario(tramo, idx) {
+    if (!tramo || !tramo.ventana || tramo.ventana.invertida) return [];
+    if (!idx || typeof idx.lista !== 'function') return [];
+    const vistos = {}, fuera = [];
+    idx.lista().forEach((e) => {
+      (e.partidos || []).forEach((p) => {
+        const id = p.__id || p.__partido;
+        if (!id || vistos[id]) return;
+        vistos[id] = true;
+        const d = aDia(p.__fecha || p['FECHA']);
+        if (!d) return;                       // sin fecha no hay desvío que medir
+        if (!enVentana(d, tramo.ventana)) {
+          fuera.push({ id: id, fecha: d, partido: texto(p['PARTIDO']) });
+        }
+      });
+    });
+    return fuera;
+  }
 
   /**
    * Huella de un tramo del libro: con qué se selló y contra qué se
@@ -570,7 +701,11 @@ const SGADD_CONFIG = (function () {
            NO se obliga — un cliente puede llamar a su categoría como
            quiera y atarla aparte. */
         planilla: texto(c.planilla) || id,
-        tramos: normalizarTramos(c.tramos),
+        /* La ventana de la CATEGORÍA es el respaldo de sus tramos: un
+           tramo sin fechas propias hereda la de arriba, que suele ser la
+           temporada entera. */
+        ventana: normalizarVentana(c.ventanaTemporal),
+        tramos: normalizarTramos(c.tramos, normalizarVentana(c.ventanaTemporal)),
         /* La config de zonas por categoría. Es el MISMO bloque del punto
            15, anidado: así cada categoría puede tener su propio formato
            sin repetir el archivo. */
@@ -587,7 +722,7 @@ const SGADD_CONFIG = (function () {
     };
   }
 
-  function normalizarTramos(lista) {
+  function normalizarTramos(lista, ventanaCategoria) {
     if (!Array.isArray(lista)) return [];
     const out = [];
     lista.forEach((t) => {
@@ -605,6 +740,11 @@ const SGADD_CONFIG = (function () {
         /* A qué formato de zonas responde. Se resuelve contra la
            `competencia` de SU categoría. */
         formato: t.formato === null ? null : (texto(t.formato) || null),
+        /* Sin ventana propia hereda la de la categoría. Nunca se inventa
+           una: sin fechas por ningún lado queda null y el calendario
+           simplemente no participa. */
+        ventana: normalizarVentana(t.ventanaTemporal) || ventanaCategoria || null,
+        ventanaPropia: !!normalizarVentana(t.ventanaTemporal),
       });
     });
     return out;
@@ -774,6 +914,22 @@ const SGADD_CONFIG = (function () {
         return Object.assign(base, { estado: ESTADOS.DIVERGENTE,
           detalle: avisos.join(' ') });
       }
+      /* El calendario se mira DESPUÉS de las aserciones de tamaño: un
+         tramo con la cantidad de equipos mal es un problema más grande
+         que uno con una fecha corrida, y el semáforo tiene que mostrar
+         el peor. */
+      const fuera = desviosDeCalendario(t, idx);
+      if (fuera.length) {
+        base.desvios = fuera;
+        const ej = fuera[0];
+        return Object.assign(base, { estado: ESTADOS.DESVIO_CALENDARIO,
+          detalle: fuera.length + ' partido' + (fuera.length === 1 ? '' : 's') +
+            ' con fecha fuera de la ventana declarada (' + ventanaTexto(t.ventana) + ')' +
+            (ej ? ', por ejemplo ' + (ej.partido || ej.id) + ' el ' + diaTexto(ej.fecha) : '') +
+            '. La etiqueta manda: no se corrige nada, pero o la fecha está mal ' +
+            'cargada o el calendario quedó viejo.' });
+      }
+
       const completo = esperados && h.partidos === esperados;
       return Object.assign(base, { estado: ESTADOS.EN_CURSO,
         detalle: h.equipos + ' equipos · ' + h.partidos + ' partidos' +
@@ -784,6 +940,20 @@ const SGADD_CONFIG = (function () {
   }
 
   function signo(n) { return (n > 0 ? '+' : '') + n; }
+
+  function diaTexto(d) {
+    if (!(d instanceof Date)) return '—';
+    const dd = (n) => ('0' + n).slice(-2);
+    return dd(d.getDate()) + '/' + dd(d.getMonth() + 1) + '/' + d.getFullYear();
+  }
+
+  function ventanaTexto(v) {
+    if (!v) return 'sin fechas';
+    if (v.invertida) return 'fechas invertidas: ' + diaTexto(v.desde) + ' a ' + diaTexto(v.hasta);
+    if (v.desde && v.hasta) return diaTexto(v.desde) + ' a ' + diaTexto(v.hasta);
+    if (v.desde) return 'desde el ' + diaTexto(v.desde);
+    return 'hasta el ' + diaTexto(v.hasta);
+  }
 
   /**
    * El sello de un tramo, listo para pegar en el JSON del club.
@@ -814,6 +984,7 @@ const SGADD_CONFIG = (function () {
     /* Preconfiguración y certificación. Ver el bloque de arriba. */
     ESTADOS, parsearProyeccion, proyeccion, categorias, sugerirClave,
     huella, auditar, certificar, hashTexto,
+    asociarTramoPorFecha, desviosDeCalendario, enVentana, ventanaTexto, _aDia: aDia,
     _rangoDeZona: rangoDeZona,
   };
 })();
