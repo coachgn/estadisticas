@@ -517,12 +517,13 @@ check('un hash corto viejo (#/planilla/fase/seccion) se sigue entendiendo',
    Es seguro mientras ninguna FASE se llame igual que una sección — si
    alguna vez existiera una fase 'CLASIFICACION', `#/p/CLASIFICACION/equipos`
    se leería como formato nuevo y la ruta saldría mal. */
-check('SECCIONES trae las siete secciones del nav',
-  ['principal', 'clasificacion', 'equipos', 'jugadores', 'scouting',
-   'simulador', 'diagnostico'].every(s => SGADD.SECCIONES.indexOf(s) !== -1),
+const SECCIONES_NAV = ['principal', 'clasificacion', 'equipos', 'jugadores',
+  'scouting', 'simulador', 'configuracion', 'diagnostico'];
+check('SECCIONES trae las secciones del nav',
+  SECCIONES_NAV.every(s => SGADD.SECCIONES.indexOf(s) !== -1),
   SGADD.SECCIONES.join(','));
 check('y no trae ninguna de más',
-  SGADD.SECCIONES.length === 7, SGADD.SECCIONES.join(','));
+  SGADD.SECCIONES.length === SECCIONES_NAV.length, SGADD.SECCIONES.join(','));
 
 /* Ninguna fase puede llamarse como una sección, o el parser confunde los
    dos formatos. Se verifica contra las fases que el núcleo declara. */
@@ -540,7 +541,7 @@ check('y también en el formato viejo, sin torneo',
     return r.torneo === null && r.fase === 'REGULAR' && r.seccion === 'clasificacion'; })());
 /* El link viejo de OTRA sección no puede haberse movido al sumar una. */
 check('sumar una sección no corrió los links viejos de las demás',
-  ['equipos', 'jugadores', 'scouting', 'simulador', 'diagnostico'].every(sec => {
+  ['equipos', 'jugadores', 'scouting', 'simulador', 'configuracion', 'diagnostico'].every(sec => {
     const r = SGADD.Ruta.parse('#/primera/REGULAR/' + sec + '/atenas-a/plantel');
     return r.torneo === null && r.fase === 'REGULAR' && r.seccion === sec &&
            r.entidad === 'atenas-a' && r.tab === 'plantel';

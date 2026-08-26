@@ -143,12 +143,13 @@ if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_CLAS
    lo resuelve: si cada consumidor volviera a leer el JSON del club y a
    componer la clave TORNEO|FASE, tarde o temprano uno se queda viejo. */
 function clasifFormatoVigente() {
-  if (typeof SGADD_CONFIG === 'undefined') return { config: null, formato: null };
+  if (typeof SGADD_CONFIG === 'undefined') return { config: null, formato: null, origen: 'ninguno' };
   const cfgClub = (typeof CLUB !== 'undefined' && CLUB.cfg) ? CLUB.cfg : null;
-  const config = SGADD_CONFIG.parsear(cfgClub);
-  if (!config) return { config: null, formato: null };
   const st = SGADD_APP.estado;
-  return { config: config, formato: SGADD_CONFIG.formatoDeTramo(config, st.torneo, st.fase) };
+  /* `resolver()` y NO `parsear()`: el segundo se come el override local
+     y la tabla seguiría pintando el corte viejo después de que el DT lo
+     cambió desde Configuración, sin ningún síntoma. */
+  return SGADD_CONFIG.resolver(cfgClub, st.torneo, st.fase);
 }
 
 function clasifCartel(txt, tono) {

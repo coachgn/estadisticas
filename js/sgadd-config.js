@@ -318,9 +318,155 @@ const SGADD_CONFIG = (function () {
     return out;
   }
 
+  /* ===================================================================
+     OVERRIDE LOCAL · lo que el DT edita desde la pantalla
+
+     El JSON del club es el valor que viaja en el repo; el override vive
+     en `localStorage` y solo en el navegador de quien lo editó. Es un
+     sitio estático: no hay dónde guardar del lado del servidor y fingir
+     que sí sería mentir. Por eso la pantalla tiene 'Exportar JSON', que
+     es lo que se commitea para que el cambio le llegue a todos.
+
+     Misma convención de clave que los estados de jugador (punto 13):
+     `sgadd.config.<club>`. OJO con el id del club — ahí el bug fue usar
+     `CLUB.ID` en vez de `CLUB.estado.id` y que todos los clubes
+     escribieran en la misma clave.
+
+     A DIFERENCIA de los estados, el override es POR CLUB y no por
+     planilla: el formato de competencia lo declara `porTramo`, que ya
+     distingue torneo y fase adentro del mismo bloque.
+     =================================================================== */
+  const PREFIJO = 'sgadd.config';
+
+  function claveAlmacen(clubId) { return PREFIJO + '.' + (clubId || 'default'); }
+
+  /**
+   * El club activo. Vive acá para que TODOS los consumidores resuelvan
+   * la misma clave: si cada uno lo dedujera por su cuenta, uno leería el
+   * override de otro club y la pantalla mostraría reglas ajenas.
+   *
+   * OJO: `CLUB.estado.id`, NO `CLUB.ID` ni `CLUB.id`. Con la propiedad
+   * equivocada devuelve undefined, todos los clubes escriben en la misma
+   * clave y no se nota — el bug exacto que ya se comió el punto 13.
+   *
+   * En Node no hay `CLUB` y devuelve 'default': el módulo sigue puro.
+   */
+  function clubActivo() {
+    try {
+      if (typeof CLUB !== 'undefined' && CLUB.estado && CLUB.estado.id) return CLUB.estado.id;
+    } catch (e) { /* CLUB puede no haber cargado todavía */ }
+    return 'default';
+  }
+
+  /**
+   * LA config que la app tiene que usar, resuelta de punta a punta.
+   *
+   * Es el único punto de entrada para las pantallas: toma el club activo,
+   * su JSON y el override local, y devuelve el formato del tramo pedido.
+   * Antes cada consumidor llamaba a `parsear()` por su cuenta y se comía
+   * el override sin enterarse: se guardaba un corte nuevo y la tabla
+   * seguía pintando el viejo, sin ningún síntoma.
+   */
+  function resolver(jsonClub, torneo, fase) {
+    const v = vigente(jsonClub, clubActivo());
+    return {
+      config: v.config,
+      origen: v.origen,
+      formato: v.config ? formatoDeTramo(v.config, torneo, fase) : null,
+    };
+  }
+
+  function almacen() {
+    try {
+      if (typeof localStorage === 'undefined' || !localStorage) return null;
+      return localStorage;
+    } catch (e) { return null; }   // modo privado tira al leer, no al usar
+  }
+
+  /** El bloque `competencia` guardado a mano, o null si no hay ninguno. */
+  function leerOverride(clubId) {
+    const ls = almacen();
+    if (!ls) return null;
+    try {
+      const crudo = ls.getItem(claveAlmacen(clubId));
+      if (!crudo) return null;
+      const obj = JSON.parse(crudo);
+      return (obj && typeof obj === 'object') ? obj : null;
+    } catch (e) { return null; }   // un JSON corrupto se ignora, no rompe
+  }
+
+  function guardarOverride(clubId, competencia) {
+    const ls = almacen();
+    if (!ls) return false;
+    try { ls.setItem(claveAlmacen(clubId), JSON.stringify(competencia || {})); return true; }
+    catch (e) { return false; }    // cuota llena: se degrada, no rompe
+  }
+
+  function borrarOverride(clubId) {
+    const ls = almacen();
+    if (!ls) return false;
+    try { ls.removeItem(claveAlmacen(clubId)); return true; } catch (e) { return false; }
+  }
+
+  /**
+   * La config VIGENTE: el override local si existe, si no la del JSON.
+   *
+   * Es reemplazo entero y NO un merge campo por campo. Fusionar zonas de
+   * dos orígenes daría cascadas que ninguno de los dos declaró —y la
+   * cascada es justamente lo que decide qué zona gana— así que el
+   * resultado no se podría auditar contra ninguna de las dos fuentes.
+   *
+   * `origen` dice cuál se está usando, para que la pantalla lo muestre:
+   * un DT que edita y no ve el cambio tiene que poder saber por qué.
+   */
+  function vigente(jsonClub, clubId) {
+    const local = leerOverride(clubId);
+    if (local) {
+      const cfg = parsear({ competencia: local });
+      if (cfg) return { config: cfg, origen: 'local' };
+    }
+    const base = parsear(jsonClub);
+    return { config: base, origen: base ? 'json' : 'ninguno' };
+  }
+
+  /**
+   * El bloque listo para pegar en `clubes/<club>.json`.
+   *
+   * Sale como texto y no como objeto porque lo que el DT necesita es
+   * copiarlo: el sitio es estático y el cambio recién le llega al resto
+   * del cuerpo técnico cuando alguien lo commitea.
+   */
+  function exportar(cfg) {
+    if (!cfg) return '';
+    const formatos = {};
+    Object.keys(cfg.formatos).forEach((id) => {
+      const f = cfg.formatos[id];
+      const o = { label: f.label };
+      if (f.equiposEsperados) o.equiposEsperados = f.equiposEsperados;
+      o.zonas = f.zonas.map((z) => {
+        const zz = { id: z.id, desde: z.desde };
+        /* `hasta` solo si se declaró: omitirlo es semántico —con `desde`
+           negativo significa 'hasta el final'— y reponerlo resuelto
+           congelaría el corte a la cantidad de equipos de hoy. */
+        if (z.hasta !== null && z.hasta !== undefined) zz.hasta = z.hasta;
+        zz.label = z.label;
+        zz.tono = z.tono;
+        return zz;
+      });
+      formatos[id] = o;
+    });
+    return JSON.stringify({
+      ordenTabla: cfg.ordenTabla,
+      formatos: formatos,
+      porTramo: cfg.porTramo,
+    }, null, 2);
+  }
+
   return {
     TONOS, TONO_POR_DEFECTO, TRAMO_CUALQUIERA, tono,
     parsear, formatoDeTramo, zonaDePuesto, zonasDeTabla, leyenda, validar,
+    leerOverride, guardarOverride, borrarOverride, vigente, exportar, claveAlmacen,
+    clubActivo, resolver,
     _rangoDeZona: rangoDeZona,
   };
 })();

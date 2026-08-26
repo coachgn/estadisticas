@@ -20,9 +20,9 @@ node test-core.js          # 257 tests · núcleo, índice, validador
 node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  48 tests · multi-cliente
-node test-config.js        # 108 tests · zonas de tabla, tramos, tonos AA
+node test-config.js        # 160 tests · zonas de tabla, tramos, tonos AA
 node test-clasificacion.js # 45 tests · tabla de posiciones, orden y zonas
-node test-boot.js          # 128 tests · arranque por club, sintaxis de los módulos, carteles de espera
+node test-boot.js          # 129 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 253 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
@@ -32,7 +32,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 176 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1711 tests en total. Todos tienen que dar verde antes de commitear.**
+**1764 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -98,6 +98,8 @@ js/
   sgadd-estados.js      ← motor puro de estados de jugador y detección de alertas
   sgadd-buzon.js        ← UI del buzón: drawer, toast, badge (usa `document`)
   sgadd-clasificacion.js ← tabla de posiciones: motor + sección. Punto 16.
+  sgadd-configui.js     ← pantalla de Configuración: edita las reglas del
+                          punto 15 y las exporta. Punto 17.
   sgadd-config.js       ← motor PURO de competencia: zonas de la tabla,
                           tramos y tonos AA. Ver punto 15.
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app
@@ -3983,3 +3985,104 @@ Es seguro mientras ninguna FASE se llame igual que una sección, y hay un
 test que lo verifica contra `SGADD.FASES` — si alguna vez existiera una
 fase `CLASIFICACION`, `#/p/CLASIFICACION/equipos` se leería como formato
 nuevo y la ruta saldría mal.
+
+---
+
+## 17. Pantalla de CONFIGURACIÓN · `sgadd-configui.js`
+
+Donde el cuerpo técnico ve y edita las reglas del punto 15: cuántos
+clasifican, cuántos van a reclasificación, cuántos descienden y con qué
+tono se pinta cada zona.
+
+Motor puro en `sgadd-config.js`, todo lo que toca `document` acá. La
+dependencia va en un solo sentido, igual que `sgadd-estados.js` /
+`sgadd-buzon.js`.
+
+### Guardar NO le cambia nada a nadie más, y la pantalla lo dice
+
+El panel es estático: no hay backend al que escribirle. Lo que se guarda
+va a `localStorage` (`sgadd.config.<club>`) y vive **solo en el navegador
+de quien editó**. El botón **Exportar** da el bloque listo para pegar en
+`clubes/<club>.json`, que es lo que hace que el cambio le llegue al resto.
+
+Fingir que "Guardar" persiste para todos sería mentir, y un DT que cambia
+el corte de descenso creyendo que lo cambió para todo el cuerpo técnico es
+peor que uno que no tiene la pantalla. Por eso el aviso va arriba de todo.
+
+**El override es POR CLUB, no por planilla** (a diferencia de los estados
+de jugador): el formato ya lo distingue `porTramo` adentro del bloque.
+
+### `resolver()` es el único punto de entrada, y ese fue el bug
+
+`clasifFormatoVigente()` llamaba a `SGADD_CONFIG.parsear()` directo y **se
+comía el override**: el DT bajaba playoffs de 8 a 4, guardaba, y la tabla
+seguía pintando 8 sin ningún síntoma. Medido en el navegador antes del
+fix — los puestos 5 y 6 seguían en verde de playoffs después de guardar.
+
+`SGADD_CONFIG.resolver(jsonClub, torneo, fase)` toma el club activo,
+resuelve override → JSON y devuelve el formato del tramo. **Todas** las
+pantallas pasan por ahí, y hay un test que falla si aparece un `parsear()`
+suelto en un consumidor.
+
+`clubActivo()` también vive en el motor: con dos formas de deducir el id
+del club, una lee el override de otro. Y ojo con la propiedad —
+`CLUB.estado.id`, no `CLUB.ID` ni `CLUB.id`— que es el bug del punto 13.
+
+### El reemplazo es ENTERO, no un merge
+
+El override pisa la config del JSON completa. Fusionar zonas de dos
+orígenes daría cascadas que ninguno de los dos declaró, y la cascada es
+justamente lo que decide qué zona gana: el resultado no se podría auditar
+contra ninguna de las dos fuentes.
+
+Un override corrupto o vacío **se ignora y se cae al JSON**, no deja al
+panel sin config.
+
+### `hasta` se exporta OMITIDO cuando no se declaró
+
+Reponerlo resuelto congelaría el corte a la cantidad de equipos de hoy y
+el `-2` dejaría de correrse solo — que es el motivo entero de los índices
+negativos. Hay un test de ida y vuelta: exportar, volver a parsear y
+verificar que con 14 equipos el descenso sigue cayendo en 13-14.
+
+### La vista previa es la TABLA DE VERDAD
+
+Usa el mismo `clasifTablaHTML()` que pinta la sección Clasificación, no
+una maqueta. Una preview que no es el componente real miente en cuanto uno
+de los dos cambie, y este es justo el lugar donde el DT confía en lo que
+ve antes de guardar.
+
+### Tipear no repinta la pantalla
+
+`configZonaCampo()` escribe el borrador y refresca **solo** la vista
+previa y la validación. Un repintado por tecla le saca el foco al input y
+hace imposible escribir un nombre — es la misma regla que ya cumplen
+`scoutMeta()` (punto 9) y el buscador del buzón (punto 13). Los `select` y
+los botones sí repintan: ahí no se está tipeando.
+
+El borrador es una **copia profunda**: editar no puede tocar lo que el
+resto de la app está usando hasta que se guarde.
+
+### El rango resuelto se muestra al lado de cada zona
+
+Un `-2` abstracto se ve como **11–12** con los equipos de hoy, y una zona
+que no alcanza ningún puesto sale en rojo con una cruz. Es lo que deja ver
+el choque de cascada **antes** de guardar — el caso de 10 equipos donde
+Reclasificación se come al Descenso (punto 15).
+
+### Los tramos son de SOLO LECTURA
+
+Salen de `combinacionesTorneoFase()`, la misma fuente que la barra. La
+estructura sale del dato y acá no se declara: si esta pantalla armara la
+lista por otro camino, podría ofrecer un tramo que el selector no tiene.
+
+### Guardar y restablecer reindexan
+
+`SGADD_APP.reindexar()` dispara `onCambio`, que repinta Clasificación y el
+resumen de Principal. Sin eso el DT guarda, va a la tabla y ve el corte
+viejo.
+
+Verificado en el navegador con los tres clubes: DEPORTIVO abre desde su
+JSON con 4 zonas y las tres variantes de acento en AA; Jujuy y Reconquista
+abren sin configurar, con un formato vacío para empezar a escribir y la
+validación diciendo que la tabla sale sin colores.

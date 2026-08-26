@@ -419,5 +419,224 @@ check('las cuatro zonas cubren la tabla sin huecos',
   check(id + ' sin bloque competencia sigue siendo válido', C.parsear(j) === null);
 });
 
+
+/* ==================================================================== */
+titulo('OVERRIDE LOCAL · lo que el DT edita desde la pantalla');
+
+/* `localStorage` no existe en Node. Se simula con lo mínimo, porque lo
+   que hay que probar es la LÓGICA de precedencia, no el navegador. */
+function conAlmacen(fn, opciones) {
+  const o = opciones || {};
+  const datos = Object.assign({}, o.inicial || {});
+  const falso = {
+    getItem: (k) => (Object.prototype.hasOwnProperty.call(datos, k) ? datos[k] : null),
+    setItem: (k, v) => { if (o.lleno) throw new Error('QuotaExceeded'); datos[k] = String(v); },
+    removeItem: (k) => { delete datos[k]; },
+  };
+  const previo = global.localStorage;
+  if (o.roto) Object.defineProperty(global, 'localStorage', {
+    get() { throw new Error('modo privado'); }, configurable: true });
+  else global.localStorage = falso;
+  try { return fn(datos); }
+  finally {
+    delete global.localStorage;
+    if (previo !== undefined) global.localStorage = previo;
+  }
+}
+
+const CLAVE_DEP = C.claveAlmacen('deportivo');
+check('la clave es por CLUB, con el prefijo de siempre',
+  CLAVE_DEP === 'sgadd.config.deportivo', CLAVE_DEP);
+check('sin club cae a "default" en vez de a undefined',
+  C.claveAlmacen(null) === 'sgadd.config.default' &&
+  C.claveAlmacen('') === 'sgadd.config.default');
+/* Ese es el bug del punto 13: con la clave mal, TODOS los clubes
+   escriben en el mismo lugar y no se nota. */
+check('dos clubes no comparten clave',
+  C.claveAlmacen('deportivo') !== C.claveAlmacen('jujuy'));
+
+/* En Node, sin localStorage, todo se degrada sin tirar. */
+check('sin localStorage leer devuelve null', C.leerOverride('x') === null);
+check('sin localStorage guardar devuelve false', C.guardarOverride('x', {}) === false);
+check('sin localStorage borrar devuelve false', C.borrarOverride('x') === false);
+check('y vigente() cae al JSON del club',
+  C.vigente(JSON_OK, 'x').origen === 'json');
+
+conAlmacen((datos) => {
+  check('guardar escribe en la clave del club',
+    C.guardarOverride('deportivo', { formatos: {}, porTramo: {} }) === true &&
+    Object.prototype.hasOwnProperty.call(datos, CLAVE_DEP));
+  check('y leer lo devuelve', !!C.leerOverride('deportivo'));
+  check('borrar lo saca',
+    C.borrarOverride('deportivo') === true && C.leerOverride('deportivo') === null);
+});
+
+/* LA PRECEDENCIA. El override manda sobre el JSON, y eso es lo que hace
+   que editar desde la pantalla sirva de algo. */
+const OTRO = { formatos: { solo: { label: 'Solo playoffs',
+  zonas: [{ id: 'playoffs', desde: 1, hasta: 4, label: 'Playoffs', tono: 'positivo' }] } },
+  porTramo: { '*': 'solo' } };
+conAlmacen(() => {
+  C.guardarOverride('deportivo', OTRO);
+  const v = C.vigente(JSON_OK, 'deportivo');
+  check('con override guardado, vigente() lo devuelve a él', v.origen === 'local');
+  check('y trae SUS formatos, no los del JSON',
+    Object.keys(v.config.formatos).join() === 'solo', Object.keys(v.config.formatos).join());
+  /* Reemplazo ENTERO, no merge campo por campo: fusionar zonas de dos
+     orígenes daría cascadas que ninguno de los dos declaró, y la cascada
+     es justamente lo que decide qué zona gana. */
+  check('el JSON no se cuela por abajo: es reemplazo entero',
+    !v.config.formatos['regular-12']);
+  check('el formato del tramo sale del override',
+    C.formatoDeTramo(v.config, 'IDA', 'REGULAR').id === 'solo');
+});
+
+conAlmacen(() => {
+  check('un override CORRUPTO se ignora y se cae al JSON',
+    C.vigente(JSON_OK, 'deportivo').origen === 'json');
+}, { inicial: { [CLAVE_DEP]: '{esto no es json' } });
+
+conAlmacen(() => {
+  /* Un override que parsea a null —sin bloque útil— tampoco puede dejar
+     al panel sin config: se cae al JSON igual que si no existiera. */
+  check('un override vacío tampoco pisa al JSON',
+    C.vigente(JSON_OK, 'deportivo').origen === 'json');
+}, { inicial: { [CLAVE_DEP]: 'null' } });
+
+conAlmacen(() => {
+  check('con la cuota llena guardar devuelve false y no tira',
+    C.guardarOverride('deportivo', OTRO) === false);
+}, { lleno: true });
+
+conAlmacen(() => {
+  check('en modo privado, leer no tira', C.leerOverride('deportivo') === null);
+  check('y guardar tampoco', C.guardarOverride('deportivo', OTRO) === false);
+}, { roto: true });
+
+/* ==================================================================== */
+titulo('EXPORTAR · el bloque que se commitea');
+
+const texto = C.exportar(cfg);
+check('sale como texto, para copiar y pegar', typeof texto === 'string');
+const round = JSON.parse(texto);
+check('es JSON válido', !!round);
+check('conserva el orden de tabla', round.ordenTabla.join() === 'PCT,DIF,PF');
+check('conserva las cuatro zonas', round.formatos['regular-12'].zonas.length === 4);
+check('y el mapa de tramos', round.porTramo['*'] === 'regular-12');
+
+/* IDA Y VUELTA: exportar y volver a parsear tiene que dar lo mismo, o el
+   bloque que el DT commitea no es el que estaba viendo. */
+const round2 = C.parsear({ competencia: round });
+check('exportar y volver a parsear da el mismo formato',
+  JSON.stringify(C.formatoDeTramo(round2, 'IDA', 'REGULAR')) ===
+  JSON.stringify(C.formatoDeTramo(cfg, 'IDA', 'REGULAR')));
+check('y las mismas zonas por puesto con 12 equipos',
+  JSON.stringify(C.zonasDeTabla(C.formatoDeTramo(round2, 'IDA', 'REGULAR'), 12)) ===
+  JSON.stringify(C.zonasDeTabla(f12, 12)));
+
+/* `hasta` omitido se exporta OMITIDO, no resuelto. Reponerlo congelaría
+   el corte a la cantidad de equipos de hoy y el `-2` dejaría de correrse
+   solo — que es el motivo entero de los índices negativos. */
+const zDesc = round.formatos['regular-12'].zonas.find(z => z.id === 'descenso');
+check('un hasta no declarado se exporta sin hasta',
+  !Object.prototype.hasOwnProperty.call(zDesc, 'hasta'), JSON.stringify(zDesc));
+check('y el desde negativo se conserva tal cual', zDesc.desde === -2);
+check('así el descenso sigue corriéndose con otra cantidad de equipos',
+  C.zonasDeTabla(C.formatoDeTramo(round2, 'IDA', 'REGULAR'), 14)[13].id === 'descenso');
+
+check('exportar(null) devuelve vacío', C.exportar(null) === '');
+
+/* ==================================================================== */
+titulo('RESOLVER · el único punto de entrada de las pantallas');
+
+/* El bug que cerró: `clasifFormatoVigente()` llamaba a `parsear()` y se
+   comía el override. Se guardaba un corte nuevo desde Configuración y la
+   tabla seguía pintando el viejo, sin ningún síntoma. */
+conAlmacen(() => {
+  C.guardarOverride('default', OTRO);
+  const r = C.resolver(JSON_OK, 'IDA', 'REGULAR');
+  check('resolver() ve el override', r.origen === 'local' && r.formato.id === 'solo');
+  check('y devuelve el formato ya resuelto para el tramo', !!r.formato.zonas.length);
+});
+const rSin = C.resolver(JSON_OK, 'IDA', 'REGULAR');
+check('sin override, resolver() cae al JSON',
+  rSin.origen === 'json' && rSin.formato.id === 'regular-12');
+const rNada = C.resolver(null, 'IDA', 'REGULAR');
+check('sin JSON ni override devuelve todo en null, sin tirar',
+  rNada.config === null && rNada.formato === null && rNada.origen === 'ninguno');
+
+/* En Node no hay CLUB: el módulo sigue siendo requerible sin navegador. */
+check('clubActivo() devuelve "default" fuera del navegador',
+  C.clubActivo() === 'default');
+
+/* Y las pantallas TIENEN que pasar por acá. Un `parsear()` suelto en un
+   consumidor vuelve a comerse el override. */
+const clasifSrc = fs.readFileSync('./js/sgadd-clasificacion.js', 'utf8');
+check('Clasificación resuelve con resolver(), no con parsear()',
+  /SGADD_CONFIG\.resolver\(/.test(clasifSrc) && !/SGADD_CONFIG\.parsear\(/.test(clasifSrc));
+const diagSrc2 = fs.readFileSync('./js/sgadd-diagnostico.js', 'utf8');
+check('el Diagnóstico audita lo VIGENTE, no lo que declara el JSON',
+  /SGADD_CONFIG\.vigente\(/.test(diagSrc2) && !/SGADD_CONFIG\.parsear\(/.test(diagSrc2));
+const uiSrc = fs.readFileSync('./js/sgadd-configui.js', 'utf8');
+check('la pantalla delega el id del club en el motor',
+  /function configClubId\(\) \{ return SGADD_CONFIG\.clubActivo\(\); \}/.test(uiSrc));
+
+/* ==================================================================== */
+titulo('LA PANTALLA DE CONFIGURACIÓN');
+
+check('la vista previa usa la tabla de verdad, no una maqueta',
+  /clasifTablaHTML\(/.test(uiSrc) && /clasifLeyendaHTML\(/.test(uiSrc));
+/* Un repintado por tecla le saca el foco al input y hace imposible
+   escribir un nombre. Es la misma regla que ya cumplen scoutMeta() y el
+   buscador del buzón. */
+/* Se extrae el CUERPO de la función en vez de mirar una ventana de N
+   caracteres: los comentarios de este proyecto son largos y una ventana
+   fija hace que el test falle al documentar mejor, que es justo el
+   incentivo que no se quiere. */
+function cuerpoDe(src, nombre) {
+  const a = src.indexOf('function ' + nombre + '(');
+  if (a === -1) return '';
+  const b = src.indexOf('\n}', a);
+  return b === -1 ? src.slice(a) : src.slice(a, b);
+}
+const cZona = cuerpoDe(uiSrc, 'configZonaCampo');
+check('tipear refresca solo la vista previa',
+  cZona.indexOf('configPintarPreview()') >= 0, cZona.length + ' chars');
+check('y NO repinta la pantalla entera',
+  cZona.replace(/configPintarPreview\(\)/g, '').indexOf('configPintar()') === -1);
+check('y el estado vive en el módulo, no en el DOM',
+  /const CONFIGUI = \{[\s\S]{0,300}borrador/.test(uiSrc));
+/* El borrador es una COPIA: editar no puede tocar lo que el resto de la
+   app está usando hasta que se guarde. */
+check('el borrador es una copia profunda',
+  /JSON\.parse\(JSON\.stringify\(v\.config\)\)/.test(uiSrc));
+check('guardar reindexa para que las otras pantallas lo vean',
+  cuerpoDe(uiSrc, 'configGuardar').indexOf('SGADD_APP.reindexar()') >= 0);
+check('y restablecer también',
+  cuerpoDe(uiSrc, 'configRestablecer').indexOf('SGADD_APP.reindexar()') >= 0);
+
+/* El sitio es estático: "Guardar" no le cambia nada a nadie más, y la
+   pantalla tiene que decirlo. Un DT que cree que cambió el descenso para
+   todos es peor que uno que no tiene la pantalla. */
+check('la pantalla avisa que lo guardado es solo de este navegador',
+  /solo en este navegador|este navegador/.test(uiSrc));
+check('y ofrece exportar el bloque para commitearlo',
+  /SGADD_CONFIG\.exportar\(/.test(uiSrc) && /commitear/.test(uiSrc));
+
+const htmlIdx = fs.readFileSync('./index.html', 'utf8');
+check('configuracion está en VALID_SECTIONS',
+  /VALID_SECTIONS = \[[^\]]*'configuracion'/.test(htmlIdx));
+check('el router la sabe pintar',
+  /case 'configuracion': root\.innerHTML = buildConfiguracion\(\)/.test(htmlIdx));
+check('tiene su entrada en el menú', htmlIdx.indexOf('data-nav="configuracion"') >= 0);
+/* La preview usa el componente de Clasificación, así que tiene que
+   cargarse después. */
+check('el módulo carga después de sgadd-clasificacion',
+  htmlIdx.indexOf('sgadd-configui.js') > htmlIdx.indexOf('sgadd-clasificacion.js'));
+
+const appSrc2 = fs.readFileSync('./js/sgadd-app.js', 'utf8');
+check('al cambiar de tramo la pantalla se repinta',
+  /currentSection === 'configuracion'[\s\S]{0,120}configPintar\(\)/.test(appSrc2));
+
 console.log('\n' + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

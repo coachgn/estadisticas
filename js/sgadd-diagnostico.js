@@ -294,7 +294,12 @@ function diagBloqueEsquema(problemas) {
 function diagBloqueCompetencia(idx) {
   if (typeof SGADD_CONFIG === 'undefined') return '';
   const cfgClub = (typeof CLUB !== 'undefined' && CLUB.cfg) ? CLUB.cfg : null;
-  const comp = SGADD_CONFIG.parsear(cfgClub);
+  /* Lo VIGENTE, no lo que declara el JSON: si el DT editó desde
+     Configuración, el Diagnóstico tiene que auditar ESO. Una auditoría
+     que mira otra cosa que la app es el defecto que ya tuvo esta misma
+     pantalla con el índice sin torneo (punto 5). */
+  const vig = SGADD_CONFIG.vigente(cfgClub, SGADD_CONFIG.clubActivo());
+  const comp = vig.config;
 
   /* Sin bloque no se pinta la card. Es config OPCIONAL: una card diciendo
      'no hay nada configurado' en los dos clubes que no lo usan es ruido

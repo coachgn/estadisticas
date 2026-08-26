@@ -1528,7 +1528,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=127" />
+<link rel="stylesheet" href="sgadd.css?v=129" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -1586,6 +1586,10 @@
         <button onclick="navigate('simulador')" data-nav="simulador" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 21h8M12 17v4M5 3h14l-1.5 8.5a5.5 5.5 0 0 1-11 0L5 3Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 5H2.5A2.5 2.5 0 0 0 3.8 9.6M19 5h2.5a2.5 2.5 0 0 1-1.3 4.6"/></svg>
           Simulador
+        </button>
+        <button onclick="navigate('configuracion')" data-nav="configuracion" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+          Configuración
         </button>
         <button onclick="navigate('diagnostico')" data-nav="diagnostico" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path stroke-linecap="round" d="m20 20-4.3-4.3"/></svg>Diagnóstico</button>
@@ -1647,27 +1651,29 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=127"></script>
+<script src="js/sgadd-club.js?v=129"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=127"></script>
-<script src="js/sgadd-core.js?v=127"></script>
-<script src="js/sgadd-ui.js?v=127"></script>
-<script src="js/sgadd-app.js?v=127"></script>
-<script src="js/sgadd-clasificacion.js?v=127"></script>
-<script src="js/sgadd-estados.js?v=127"></script>
-<script src="js/sgadd-buzon.js?v=127"></script>
-<script src="js/sgadd-charts.js?v=127"></script>
-<script src="js/sgadd-personalidad.js?v=127"></script>
-<script src="js/sgadd-rankings.js?v=127"></script>
-<script src="js/sgadd-partido.js?v=127"></script>
-<script src="js/sgadd-informe.js?v=127"></script>
-<script src="js/sgadd-ficha.js?v=127"></script>
-<script src="js/sgadd-equipos.js?v=127"></script>
-<script src="js/sgadd-jugadores.js?v=127"></script>
-<script src="js/sgadd-4factores.js?v=127"></script>
-<script src="js/sgadd-scouting.js?v=127"></script>
-<script src="js/sgadd-diagnostico.js?v=127"></script>
+<script src="js/sgadd-config.js?v=129"></script>
+<script src="js/sgadd-core.js?v=129"></script>
+<script src="js/sgadd-ui.js?v=129"></script>
+<script src="js/sgadd-app.js?v=129"></script>
+<script src="js/sgadd-clasificacion.js?v=129"></script>
+<!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
+<script src="js/sgadd-configui.js?v=129"></script>
+<script src="js/sgadd-estados.js?v=129"></script>
+<script src="js/sgadd-buzon.js?v=129"></script>
+<script src="js/sgadd-charts.js?v=129"></script>
+<script src="js/sgadd-personalidad.js?v=129"></script>
+<script src="js/sgadd-rankings.js?v=129"></script>
+<script src="js/sgadd-partido.js?v=129"></script>
+<script src="js/sgadd-informe.js?v=129"></script>
+<script src="js/sgadd-ficha.js?v=129"></script>
+<script src="js/sgadd-equipos.js?v=129"></script>
+<script src="js/sgadd-jugadores.js?v=129"></script>
+<script src="js/sgadd-4factores.js?v=129"></script>
+<script src="js/sgadd-scouting.js?v=129"></script>
+<script src="js/sgadd-diagnostico.js?v=129"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -1706,7 +1712,7 @@ const SHEETS_CONFIG = [
    `sgadd-equipos.js` y hoy no lo llama nadie. Eran dos peticiones por
    arranque para llenar una clave que nadie leía. */
 
-const VALID_SECTIONS = ['principal', 'clasificacion', 'equipos', 'jugadores', 'scouting', 'simulador', 'diagnostico'];
+const VALID_SECTIONS = ['principal', 'clasificacion', 'equipos', 'jugadores', 'scouting', 'simulador', 'configuracion', 'diagnostico'];
 
 /* ============ ESTADO GLOBAL ============ */
 let DATA = {};
@@ -3293,6 +3299,7 @@ function renderSection(section) {
   if (!root) return;
   switch (section) {
     case 'principal': root.innerHTML = buildPrincipal(); drawOrtgDrtgChart(); break;
+    case 'configuracion': root.innerHTML = buildConfiguracion(); break;   // SGADD (js/sgadd-configui.js)
     case 'diagnostico': root.innerHTML = buildDiagnostico(); diagCorrer(); break;
     case 'clasificacion': root.innerHTML = buildClasificacion(); break;   // SGADD (js/sgadd-clasificacion.js)
     case 'equipos': root.innerHTML = buildEquipos(); break;   // SGADD (js/sgadd-equipos.js)

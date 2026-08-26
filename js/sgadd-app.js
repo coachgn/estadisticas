@@ -292,6 +292,10 @@ const SGADD_APP = (function () {
        planilla o de torneo cambia el plantel y por lo tanto las ausencias. */
     if (typeof SGADD_BUZON !== 'undefined') { try { SGADD_BUZON.sincronizar(); } catch (e) {} }
     if (typeof currentSection === 'undefined') return;
+    /* La pantalla de Configuración muestra la cantidad de equipos y la
+       vista previa del tramo abierto: si no se repinta, queda mostrando
+       la validación de otro recorte y contradice a Clasificación. */
+    if (currentSection === 'configuracion' && typeof configPintar === 'function') configPintar();
     if (currentSection === 'clasificacion' && typeof buildClasificacion === 'function') {
       const r = document.getElementById('view-root');
       if (r) r.innerHTML = buildClasificacion();
