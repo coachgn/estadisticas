@@ -1057,12 +1057,152 @@ const hDep = {
 };
 const tDep = SGADD.combinacionesTorneoFase(hDep);
 
+/* Los pares REALES del libro, más el TOTAL sintético al final. */
+const tReales = tDep.filter(t => !t.sintetico);
 check('el selector ofrece los pares que EXISTEN, no el producto cartesiano',
-  tDep.map(t => t.id).join(' · ') === 'IDA|REGULAR · VUELTA|REGULAR',
-  tDep.map(t => t.id).join(' · '));
+  tReales.map(t => t.id).join(' · ') === 'IDA|REGULAR · VUELTA|REGULAR',
+  tReales.map(t => t.id).join(' · '));
 check('y los rotula como la carpeta del motor: TORNEO - FASE',
-  tDep.map(t => t.label).join(' · ') === 'Ida - Regular · Vuelta - Regular',
-  tDep.map(t => t.label).join(' · '));
+  tReales.map(t => t.label).join(' · ') === 'Ida - Regular · Vuelta - Regular',
+  tReales.map(t => t.label).join(' · '));
+
+/* =====================================================================
+   TOTAL REGULAR · el tramo sintético
+
+   Es la UNIÓN de los torneos de una misma fase. NO se arma sacando el
+   scope: las hojas derivadas traen una fila por (equipo, torneo, fase) y
+   juntarlas hace que la del segundo pise a la del primero. Se reconstruye
+   desde los partidos, que es lo que hace el motor para su ACUMULADO.
+   ===================================================================== */
+const tTotal = tDep.filter(t => t.sintetico);
+check('con dos torneos en la misma fase se ofrece el TOTAL',
+  tTotal.length === 1 && tTotal[0].id === SGADD.TORNEO_TOTAL + '|REGULAR',
+  tDep.map(t => t.id).join(' · '));
+check('y se rotula Total - Regular', tTotal[0].label === 'Total - Regular', tTotal[0].label);
+check('va DESPUÉS de sus partes, que es como se lee',
+  tDep[tDep.length - 1].sintetico === true);
+
+/* Con UN SOLO torneo el total ES ese torneo: ofrecer dos opciones que
+   dan lo mismo es ruido. */
+const hUno = {
+  'PROMEDIOS E': { cols: ['EQUIPO', 'FASE', 'TORNEO'], filas: [
+    { EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'IDA' }] },
+};
+check('con un solo torneo NO se ofrece el TOTAL',
+  SGADD.combinacionesTorneoFase(hUno).every(t => !t.sintetico));
+/* Y sin columna TORNEO tampoco: todo el libro ya es una sola competencia. */
+const hSinT = {
+  'PROMEDIOS E': { cols: ['EQUIPO', 'FASE'], filas: [
+    { EQUIPO: 'A', FASE: 'REGULAR' }, { EQUIPO: 'B', FASE: 'REGULAR' }] },
+};
+check('sin columna TORNEO tampoco se ofrece',
+  SGADD.combinacionesTorneoFase(hSinT).every(t => !t.sintetico));
+
+/* EL TOTAL NO PUEDE SER EL DEFAULT. Es una decisión del DT, no el recorte
+   natural del libro: abrir por él cambiaría lo que ve el club de un día
+   para el otro sin que nadie lo pida. */
+check('el tramo por defecto nunca es el TOTAL',
+  SGADD.tramoPorDefecto(tDep).sintetico !== true,
+  SGADD.tramoPorDefecto(tDep).id);
+
+/* El centinela es un valor que ningún torneo real puede tener: los
+   nombres de torneo salen de una celda y no llevan asteriscos. */
+check('el centinela no colisiona con un torneo real',
+  /^\*.*\*$/.test(SGADD.TORNEO_TOTAL) && SGADD.esTotal(SGADD.TORNEO_TOTAL) &&
+  !SGADD.esTotal('IDA') && !SGADD.esTotal('TOTAL') && !SGADD.esTotal(''));
+
+/* =====================================================================
+   LA RECONSTRUCCIÓN · un TOTAL de UN torneo tiene que dar ese torneo
+
+   Es la prueba más fuerte que se puede escribir sin la planilla real:
+   si el libro trae un solo torneo, el TOTAL derivado desde los partidos
+   tiene que reproducir exactamente lo que dice la hoja de promedios.
+   ===================================================================== */
+(function () {
+  /* Dos partidos de A contra B, con las columnas que las fórmulas usan. */
+  const P = (partido, equipo, o) => Object.assign(
+    { PARTIDO: partido, EQUIPO: equipo, FASE: 'REGULAR', TORNEO: 'IDA',
+      FECHA: '2026-05-0' + partido, RESULTADO: 'GANADO', CONDICION: 'LOCAL' }, o);
+
+  const bde = [
+    P('1', 'A', { PTS: 80, TCC: 30, TCI: 60, T2C: 20, T2I: 35, T3C: 10, T3I: 25,
+                  T1C: 10, T1I: 12, PP: 12, PLAYS: 80, RO: 10, RD: 25, AST: 15,
+                  MIN: 200, PR: 8, POS: 70, RT: 35 }),
+    P('1', 'B', { PTS: 70, TCC: 25, TCI: 58, T2C: 18, T2I: 33, T3C: 7, T3I: 25,
+                  T1C: 13, T1I: 18, PP: 14, PLAYS: 78, RO: 8, RD: 22, AST: 11,
+                  MIN: 200, PR: 6, POS: 70, RT: 30, RESULTADO: 'PERDIDO', CONDICION: 'VISITANTE' }),
+    P('2', 'A', { PTS: 90, TCC: 34, TCI: 64, T2C: 22, T2I: 36, T3C: 12, T3I: 28,
+                  T1C: 10, T1I: 14, PP: 10, PLAYS: 84, RO: 12, RD: 27, AST: 18,
+                  MIN: 200, PR: 9, POS: 72, RT: 39 }),
+    P('2', 'B', { PTS: 75, TCC: 27, TCI: 60, T2C: 19, T2I: 34, T3C: 8, T3I: 26,
+                  T1C: 13, T1I: 16, PP: 15, PLAYS: 80, RO: 9, RD: 24, AST: 12,
+                  MIN: 200, PR: 7, POS: 71, RT: 33, RESULTADO: 'PERDIDO', CONDICION: 'VISITANTE' }),
+  ];
+
+  /* Los promedios que el motor escribiría para A: volumen sobre PJ y las
+     tasas recalculadas sobre los totales. */
+  const sA = { PTS: 170, TCC: 64, TCI: 124, T2C: 42, T2I: 71, T3C: 22, T3I: 53,
+               T1C: 20, T1I: 26, PP: 22, PLAYS: 164, RO: 22, RD: 52, AST: 33,
+               MIN: 400, PR: 17 };
+  const sB = { PP: 29, PLAYS: 158, RO: 17, RD: 46, PTS: 145 };
+
+  const hojasT = {
+    'Base Datos E': { cols: Object.keys(bde[0]), filas: bde },
+    'PROMEDIOS E': { cols: ['EQUIPO', 'FASE', 'TORNEO', 'PJ', 'PTS', 'eFG%'], filas: [
+      { EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'IDA', PJ: 2, PTS: 85,
+        'eFG%': (sA.TCC + 0.5 * sA.T3C) / sA.TCI },
+      { EQUIPO: 'B', FASE: 'REGULAR', TORNEO: 'IDA', PJ: 2, PTS: 72.5, 'eFG%': 0.5 }] },
+  };
+
+  const iHoja = SGADD.construirIndice(hojasT, { fase: 'REGULAR', torneo: 'IDA' });
+  const iTot  = SGADD.construirIndice(hojasT, { fase: 'REGULAR', torneo: SGADD.TORNEO_TOTAL });
+  const eH = iHoja.get('A'), eT = iTot.get('A');
+
+  check('el TOTAL indexa los mismos equipos', iTot.lista().length === iHoja.lista().length);
+  check('y los mismos partidos', iTot.liga.partidos === iHoja.liga.partidos);
+  check('el PJ derivado coincide con el de la hoja', eT.promedios.PJ === eH.promedios.PJ);
+
+  /* VOLUMEN: suma / PJ, idéntico a lo que declara la hoja. */
+  check('los PTS derivados reproducen los de la hoja',
+    Math.abs(eT.promedios.PTS - eH.promedios.PTS) < 1e-9,
+    eT.promedios.PTS + ' vs ' + eH.promedios.PTS);
+
+  /* TASA: se recalcula sobre totales. Promediar los eFG% de cada partido
+     daría OTRO número, y por eso la distinción importa. */
+  const efgReal = (sA.TCC + 0.5 * sA.T3C) / sA.TCI;
+  check('el eFG% se recalcula sobre totales, no se promedia',
+    Math.abs(eT.promedios['eFG%'] - efgReal) < 1e-9,
+    eT.promedios['eFG%'] + ' vs ' + efgReal);
+  const efgPorPartido = ((30 + 0.5 * 10) / 60 + (34 + 0.5 * 12) / 64) / 2;
+  check('y NO coincide con el promedio de los eFG% de cada partido',
+    Math.abs(efgPorPartido - efgReal) > 1e-6,
+    'promediado ' + efgPorPartido.toFixed(6) + ' vs ponderado ' + efgReal.toFixed(6));
+
+  /* Las tasas que dependen del RIVAL salen del otro lado del partido. */
+  check('RO% usa los rebotes defensivos del rival',
+    Math.abs(eT.promedios['RO%'] - sA.RO / (sA.RO + sB.RD)) < 1e-9,
+    eT.promedios['RO%']);
+  check('PR% va sobre las PÉRDIDAS del rival, como declara METRICAS',
+    Math.abs(eT.promedios['PR%'] - sA.PR / sB.PP) < 1e-9, eT.promedios['PR%']);
+  /* PACE es la fórmula de `_tasaPace_` del motor: posesiones promedio de
+     los dos equipos, llevadas a 40 minutos. */
+  const paceReal = ((sA.PLAYS - sA.RO) + (sB.PLAYS - sB.RO)) / 2 * 200 / sA.MIN;
+  check('PACE reproduce la fórmula del motor',
+    Math.abs(eT.promedios['PACE'] - paceReal) < 1e-9,
+    eT.promedios['PACE'] + ' vs ' + paceReal);
+  /* Y los 4F por 100 plays. */
+  check('RTNG OFF es por 100 PLAYS',
+    Math.abs(eT.factores['RTNG OFF'] - 100 * sA.PTS / sA.PLAYS) < 1e-9);
+  check('NET RTNG es la resta, sobre los totales de ESE equipo',
+    Math.abs(eT.factores['NET RTNG'] -
+      (eT.factores['RTNG OFF'] - eT.factores['RTNG DEF'])) < 1e-9);
+
+  /* La fila TIPO se RECALCULA: la del libro es la de un torneo suelto y
+     no sirve para el conjunto. */
+  check('el TIPO de liga se recalcula sobre los valores derivados',
+    typeof iTot.liga.tipo['PTS'] === 'number');
+})();
+
 
 /* La fila TIPO no es un tramo: viene con FASE = TOTAL y sin torneo en
    libros donde ese agregado no existe como competencia. Ofrecerla llevaba

@@ -16,7 +16,7 @@ aplicadas en el punto 14.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 257 tests · núcleo, índice, validador
+node test-core.js          # 276 tests · núcleo, índice, validador
 node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  94 tests · multi-cliente
@@ -32,7 +32,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 178 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1812 tests en total. Todos tienen que dar verde antes de commitear.**
+**1831 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.

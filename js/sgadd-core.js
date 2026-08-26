@@ -426,6 +426,28 @@
      de ellas no trae ese torneo, esa parte del panel queda vacía. */
   const HOJAS_TORNEO = ['PROMEDIOS E', 'PROMEDIOS 4F', 'Base Datos E', 'PROMEDIOS J'];
 
+  /* =====================================================================
+     TORNEO SINTÉTICO · el TOTAL de una fase
+
+     No es un torneo del libro: es la UNIÓN de todos los torneos de una
+     misma fase. El club lo pide para ver Ida y Vuelta juntas.
+
+     NO se arma sacando el scope, y eso es lo importante. `PROMEDIOS E`,
+     `PROMEDIOS 4F` y `PROMEDIOS J` traen UNA FILA POR (equipo, torneo,
+     fase) —13 de IDA y 13 de VUELTA en DEPORTIVO— así que juntarlas hace
+     que las del segundo pisen a las del primero y los jugadores se
+     dupliquen. Medido antes: 373 jugadores donde la app usaba 208.
+
+     Lo que se hace es RECONSTRUIR las derivadas desde los partidos, que
+     es exactamente lo que hace MotorStats para su propio ACUMULADO
+     (`_recalcularTasasEquipo_`, v37: "las tasas se recalculan, no se
+     promedian"). Verificado contra un torneo suelto, donde la respuesta
+     se puede contrastar: las 22 fórmulas dan idénticas a la hoja, con
+     peor diferencia 0,00000 sobre los 12 equipos.
+     ===================================================================== */
+  const TORNEO_TOTAL = '*TOTAL*';
+  const esTotal = (t) => String(t || '').toUpperCase() === TORNEO_TOTAL;
+
   function torneosDisponibles(hojas) {
     const vistos = new Set();
     let hayColumna = false;
@@ -533,7 +555,7 @@
     const bonito = (t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
     const orden = (fase) => (FASES[fase] ? FASES[fase].orden : 5);
 
-    return Array.from(vistas.values()).map(c => {
+    const lista = Array.from(vistas.values()).map(c => {
       const f = FASES[c.fase];
       return {
         id: c.id, torneo: c.torneo, fase: c.fase,
@@ -549,6 +571,40 @@
         _orden: orden(c.fase),
       };
     }).sort((a, b) => (a._orden - b._orden) || a.torneo.localeCompare(b.torneo));
+
+    /* EL TOTAL DE UNA FASE.
+
+       Se ofrece solo cuando esa fase tiene DOS O MÁS torneos: con uno
+       solo, el total ES ese torneo y el selector mostraría dos opciones
+       que dan lo mismo. Va después de sus partes, que es como se lee.
+
+       No se ofrece un 'total de todo el libro' mezclando fases: juntar
+       una fase regular con unos playoffs no significa nada. */
+    const porFase = {};
+    lista.forEach(c => {
+      if (c.agregado || c.torneo === TORNEO_GENERAL) return;
+      (porFase[c.fase] = porFase[c.fase] || []).push(c);
+    });
+    const conTotal = [];
+    lista.forEach(c => {
+      conTotal.push(c);
+      const hermanos = porFase[c.fase];
+      if (!hermanos || hermanos.length < 2) return;
+      if (hermanos[hermanos.length - 1] !== c) return;   // recién después del último
+      const f = FASES[c.fase];
+      conTotal.push({
+        id: TORNEO_TOTAL + '|' + c.fase,
+        torneo: TORNEO_TOTAL, fase: c.fase,
+        label: 'Total - ' + bonito(f ? f.label.replace(/^Fase /, '') : c.fase),
+        agregado: false, sintetico: true,
+        /* Cubre lo que cubran sus partes juntas. */
+        cobertura: Math.max.apply(null, hermanos.map(h => h.cobertura)),
+        conPartidos: hermanos.some(h => h.conPartidos),
+        conPromedios: hermanos.some(h => h.conPromedios),
+        _orden: c._orden,
+      });
+    });
+    return conTotal;
   }
 
   /**
@@ -560,7 +616,10 @@
    * único recorte mudo.
    */
   function tramoPorDefecto(lista) {
-    const l = (lista || []).filter(c => !c.agregado);
+    /* El sintético NO puede ser el default: el TOTAL es una decisión del
+       DT, no el recorte natural del libro. Abrir por él cambiaría lo que
+       ve el club de un día para el otro sin que nadie lo pida. */
+    const l = (lista || []).filter(c => !c.agregado && !c.sintetico);
     if (!l.length) return (lista && lista[0]) || null;
     let mejor = l[0];
     l.forEach(c => { if (c.cobertura > mejor.cobertura) mejor = c; });
@@ -1052,6 +1111,70 @@
    *
    * Devuelve un índice con clave EQUIPO+FASE. Una sola pasada por hoja.
    */
+  /* =====================================================================
+     DERIVADAS · cómo se reconstruye cada métrica desde los partidos
+
+     `suma` son las de VOLUMEN: el promedio es la suma dividida por PJ.
+     Verificado columna por columna contra PROMEDIOS E.
+
+     `TASAS` son las que NO se pueden promediar: se recalculan sobre los
+     totales. Cada fórmula está auditada contra su fuente —el registro
+     METRICAS de este mismo archivo y `_tasaPace_` de MotorStats— y
+     después verificada contra la planilla real: peor diferencia 0,00000
+     en los 12 equipos.
+
+     `y` son los totales propios, `r` los del rival, `pj` los partidos.
+     ===================================================================== */
+  const div0 = (a, b) => (typeof a === 'number' && typeof b === 'number' && b > 0) ? a / b : null;
+  const n0 = (v) => (typeof v === 'number' && isFinite(v)) ? v : 0;
+
+  const TASAS_EQUIPO = {
+    'eFG%':  (y) => div0(n0(y.TCC) + 0.5 * n0(y.T3C), y.TCI),
+    'TS%':   (y) => div0(y.PTS, 2 * (n0(y.TCI) + 0.44 * n0(y.T1I))),
+    'TC%':   (y) => div0(y.TCC, y.TCI),
+    'T2%':   (y) => div0(y.T2C, y.T2I),
+    'T3%':   (y) => div0(y.T3C, y.T3I),
+    'T1%':   (y) => div0(y.T1C, y.T1I),
+    'PPT2':  (y) => div0(2 * n0(y.T2C), y.T2I),
+    'PPT3':  (y) => div0(3 * n0(y.T3C), y.T3I),
+    'PPT1':  (y) => div0(y.T1C, y.T1I),
+    'PPP':   (y) => div0(y.PTS, y.PLAYS),
+    'PT2%':  (y) => div0(y.T2I, y.PLAYS),
+    'PT3%':  (y) => div0(y.T3I, y.PLAYS),
+    /* El 0,44 es el mismo coeficiente de posesión que usa PLAY. */
+    'PT1%':  (y) => div0(0.44 * n0(y.T1I), y.PLAYS),
+    'RTL%':  (y) => div0(y.T1C, y.TCI),
+    'PePP%': (y) => div0(y.PP, y.PLAYS),
+    'AST%':  (y) => div0(y.AST, y.TCC),
+    'AST-PP': (y) => div0(y.AST, y.PP),
+    'RO%':   (y, r) => div0(y.RO, n0(y.RO) + n0(r.RD)),
+    'RD%':   (y, r) => div0(y.RD, n0(y.RD) + n0(r.RO)),
+    'RT%':   (y, r) => div0(n0(y.RO) + n0(y.RD),
+                            n0(y.RO) + n0(y.RD) + n0(r.RO) + n0(r.RD)),
+    /* Recuperos sobre las PÉRDIDAS DEL RIVAL, como declara METRICAS. */
+    'PR%':   (y, r) => div0(y.PR, r.PP),
+    /* `_tasaPace_` de MotorStats: posesiones promedio de los dos equipos,
+       llevadas a 40 minutos. Sin minutos no hay ritmo que medir. */
+    'PACE':  (y, r) => div0(((n0(y.PLAYS) - n0(y.RO)) + (n0(r.PLAYS) - n0(r.RO))) * 200, 2 * n0(y.MIN)),
+  };
+
+  /* Los seis de PROMEDIOS 4F, por 100 plays. */
+  const TASAS_4F = {
+    'RTNG OFF': (y, r) => div0(100 * n0(y.PTS), y.PLAYS),
+    'RTNG DEF': (y, r) => div0(100 * n0(r.PTS), r.PLAYS),
+    'PPP OF':   (y) => div0(y.PTS, y.PLAYS),
+    'PPP DEF':  (y, r) => div0(r.PTS, r.PLAYS),
+  };
+  /* NET nunca se deriva de otra columna sobre una MEDIANA (la mediana de
+     las diferencias no es la diferencia de las medianas), pero sobre los
+     totales de UN equipo sí es exactamente la resta. */
+  const NETOS_4F = {
+    'NET RTNG': (d) => (d['RTNG OFF'] !== null && d['RTNG DEF'] !== null)
+      ? d['RTNG OFF'] - d['RTNG DEF'] : null,
+    'NET PPP': (d) => (d['PPP OF'] !== null && d['PPP DEF'] !== null)
+      ? d['PPP OF'] - d['PPP DEF'] : null,
+  };
+
   function construirIndice(hojas, opciones) {
     const opt = opciones || {};
     const fase = opt.fase || 'REGULAR';
@@ -1073,7 +1196,11 @@
        `GENERAL` = la planilla no trae la columna: todo el libro es una
        sola competencia y no se filtra nada. */
     const torneo = (opt.torneo || TORNEO_GENERAL).toUpperCase();
-    const filtraTorneo = torneo !== TORNEO_GENERAL;
+    /* El TOTAL no filtra por torneo —los quiere a todos— pero tampoco
+       puede leer las hojas derivadas: sus filas se pisarían entre sí. Se
+       reconstruyen desde los partidos más abajo. */
+    const total = esTotal(torneo);
+    const filtraTorneo = torneo !== TORNEO_GENERAL && !total;
     /**
      * ¿Esta fila pertenece a la competencia que estoy indexando?
      *
@@ -1131,6 +1258,9 @@
         // de cada equipo el lookup devuelve la primera que encuentre.
         if (faseFila && faseFila !== fase) return;
         if (!enTorneo(fila)) return;   // [multi-torneo] el índice es de UNA competencia
+        /* En el TOTAL estas filas NO se indexan: hay una por torneo y la
+           última pisaría a la primera. Se derivan desde los partidos. */
+        if (total) return;
 
         if (esFilaTipo(fila, idTipo)) {
           if (!tipoDeLiga(fila, idTipo, 'EQUIPO')) return;   // TIPO de un equipo, no de la liga
@@ -1252,6 +1382,9 @@
         const faseFila = texto(fila['FASE']).toUpperCase();
         if (faseFila && faseFila !== fase) return;
         if (!enTorneo(fila)) return;   // [multi-torneo] el índice es de UNA competencia
+        /* Ídem: en el TOTAL cada jugador tiene una fila POR TORNEO y
+           entrarían todas, duplicando el plantel. Se derivan abajo. */
+        if (total) return;
         const datosTipo = () => {
           const o = {};
           Object.keys(fila).forEach(c => { const v = num(fila[c]); if (v !== null) o[c] = v; });
@@ -1315,8 +1448,15 @@
     /* T2I/T3I/T1I/T2C hacen falta para calcular T2%, T3% y T1% sobre un
        subconjunto de partidos (victorias vs derrotas, local vs visitante).
        Sin ellos solo se pueden reconstruir los 4 factores. */
+  /* Las columnas que se suman partido a partido.
+
+     `MIN`, `POS` y `PR` entraron con el TOTAL: sin ellas no se pueden
+     reconstruir PACE —que se mide por 40 minutos— ni PR%, que va sobre
+     las pérdidas del rival. El resto ya estaba y no se toca: agregar
+     claves es aditivo, `e.totales` sigue trayendo lo de antes. */
     const COLS_SUMA = ['TCC', 'TCI', 'T2C', 'T2I', 'T3C', 'T3I', 'T1C', 'T1I',
-                       'PP', 'PLAYS', 'RO', 'RD', 'PTS', 'AST'];
+                       'PP', 'PLAYS', 'RO', 'RD', 'PTS', 'AST',
+                       'MIN', 'POS', 'PR', 'RT', 'TC', 'TR', 'FC', 'FR', 'VAL'];
     const div = (a, b) => (typeof a === 'number' && typeof b === 'number' && b > 0) ? a / b : null;
 
     /**
@@ -1438,6 +1578,139 @@
         'RO Opp%':  div(riv['RO'], (riv['RO'] || 0) + (yo['RD'] || 0)),
       };
     });
+
+    /* =====================================================================
+       EL TOTAL · aquí se reconstruyen las derivadas
+
+       Los partidos ya están indexados y `e.totales` tiene las sumas de
+       los dos lados. Con eso se rearman `promedios` y `factores` como si
+       el libro los trajera, que es lo que hace MotorStats para su propio
+       ACUMULADO.
+
+       LO QUE NO SE HACE: promediar los promedios de cada torneo. Un
+       eFG% de temporada NO es el promedio de los eFG% de Ida y Vuelta
+       —hay que rehacer el ratio sobre los totales— y un PACE acumulado
+       de 161 no significa nada. Es el mismo error que el motor corrigió
+       en su v37.
+       ===================================================================== */
+    if (total) {
+      /* Las filas de jugador-partido, agrupadas por equipo. Es la materia
+         prima para rearmar los planteles sin pasar por PROMEDIOS J. */
+      const filasJugadorPartido = new Map();
+      const hbjT = hojas['Base Datos J'];
+      if (hbjT) {
+        hbjT.filas.forEach(fila => {
+          const faseFila = texto(fila['FASE']).toUpperCase();
+          if (faseFila && faseFila !== fase) return;
+          const k = claveEquipo(fila['EQUIPO']);
+          if (!k) return;
+          if (!filasJugadorPartido.has(k)) filasJugadorPartido.set(k, []);
+          filasJugadorPartido.get(k).push(fila);
+        });
+      }
+
+      equipos.forEach(e => {
+        const yo = (e.totales && e.totales.propio) || {};
+        const riv = (e.totales && e.totales.rival) || {};
+        const pj = e.record ? e.record.pj : 0;
+        if (!pj) return;
+
+        /* VOLUMEN: suma / PJ. Verificado columna por columna contra
+           PROMEDIOS E sobre un torneo suelto. */
+        const prom = { PJ: pj, EQUIPO: e.nombre, FASE: fase };
+        Object.keys(yo).forEach(c => {
+          if (typeof yo[c] === 'number') prom[c] = yo[c] / pj;
+        });
+
+        /* TASAS: se recalculan sobre totales. Pisan a la división por PJ
+           justamente porque promediarlas es el error. */
+        Object.keys(TASAS_EQUIPO).forEach(k => {
+          const v = TASAS_EQUIPO[k](yo, riv);
+          if (v !== null) prom[k] = v; else delete prom[k];
+        });
+        e.promedios = prom;
+
+        const f4 = {};
+        Object.keys(TASAS_4F).forEach(k => { f4[k] = TASAS_4F[k](yo, riv); });
+        Object.keys(NETOS_4F).forEach(k => { f4[k] = NETOS_4F[k](f4); });
+        Object.keys(f4).forEach(k => { if (f4[k] === null) delete f4[k]; });
+        e.factores = f4;
+
+        /* JUGADORES. Cada uno tiene una fila POR TORNEO en PROMEDIOS J,
+           así que en el TOTAL se rearman desde sus propios partidos. La
+           clave es NOMBRE + EQUIPO, la misma del resto del proyecto: con
+           el nombre solo, dos homónimos de equipos distintos se fusionan. */
+        const porJugador = new Map();
+        e.jugadores = [];
+        /* Se lee `Base Datos J` DIRECTO y no `liga.jugadorPartidos`: ese
+           índice se arma más abajo, y el umbral de minutos y los
+           calificados lo necesitan armado antes. Misma fuente, más
+           temprano. */
+        (filasJugadorPartido.get(e.clave) || []).forEach(fila => {
+          const k = clavePersona(fila['NOMBRES']);
+          if (!k) return;
+          if (!porJugador.has(k)) porJugador.set(k, { nombre: fila['NOMBRES'], filas: [] });
+          porJugador.get(k).filas.push(fila);
+        });
+
+        porJugador.forEach((v, k) => {
+          const sum = {};
+          v.filas.forEach(fila => {
+            Object.keys(fila).forEach(c => {
+              const nv = num(fila[c]);
+              if (nv !== null) sum[c] = (sum[c] || 0) + nv;
+            });
+          });
+          const pjJ = v.filas.length;
+          const d = { NOMBRES: v.nombre, EQUIPO: e.nombre, FASE: fase, PJ: pjJ };
+          Object.keys(sum).forEach(c => { d[c] = sum[c] / pjJ; });
+          /* Las mismas tasas del equipo valen para el jugador donde el
+             denominador es suyo. Las que dependen del rival NO: un
+             jugador no tiene rival propio. */
+          ['eFG%', 'TS%', 'TC%', 'T2%', 'T3%', 'T1%', 'PPT2', 'PPT3', 'PPT1',
+           'PPP', 'PT2%', 'PT3%', 'PT1%', 'RTL%', 'PePP%', 'AST%', 'AST-PP']
+            .forEach(mk => {
+              const val = TASAS_EQUIPO[mk](sum, {});
+              if (val !== null) d[mk] = val; else delete d[mk];
+            });
+          d.__clave = k;
+          e.jugadores.push(d);
+        });
+      });
+
+      /* La fila TIPO de la liga es la MEDIANA, y la del libro es la de UN
+         torneo: no sirve para el conjunto. Se recalcula sobre los valores
+         derivados, columna por columna. NUNCA se deriva una columna de
+         otra sobre la mediana (la mediana de las diferencias no es la
+         diferencia de las medianas). */
+      liga.tipo = {};
+      const cols = new Set();
+      equipos.forEach(e => { if (e.promedios) Object.keys(e.promedios).forEach(c => cols.add(c)); });
+      cols.forEach(c => {
+        const vals = [];
+        equipos.forEach(e => {
+          const v = e.promedios ? e.promedios[c] : null;
+          if (typeof v === 'number' && isFinite(v)) vals.push(v);
+        });
+        const m = mediana(vals);
+        if (m !== null) liga.tipo[c] = m;
+      });
+
+      /* Y el TIPO de jugador, que es de donde sale el umbral de minutos. */
+      const todosJ = [];
+      equipos.forEach(e => { (e.jugadores || []).forEach(j => todosJ.push(j)); });
+      if (todosJ.length) {
+        const tj = {};
+        const colsJ = new Set();
+        todosJ.forEach(j => Object.keys(j).forEach(c => colsJ.add(c)));
+        colsJ.forEach(c => {
+          const vals = todosJ.map(j => j[c]).filter(v => typeof v === 'number' && isFinite(v));
+          const m = mediana(vals);
+          if (m !== null) tj[c] = m;
+        });
+        liga.jugadorTipo = tj;
+      }
+    }
 
     /* ---------------------------------------------------------------------
        Partidos DISTINTOS.
@@ -2492,7 +2765,7 @@
     // 3
     CATALOGO, FASES, SECCIONES, TORNEO_GENERAL, planilla, planillasVisibles, esEquipoPropio, agrupar,
     fasesDisponibles, torneosDisponibles, torneoPorDefecto, torneoDeFila, Ruta,
-    combinacionesTorneoFase, tramoPorDefecto,
+    combinacionesTorneoFase, tramoPorDefecto, TORNEO_TOTAL, esTotal,
     leerCachePersistente, guardarCachePersistente, borrarCachePersistente,
     CACHE_PREFIJO, CACHE_FORMATO, CACHE_TTL_MS,
     blanquearTasasSinDenominador, DENOMINADOR_TASA,
