@@ -19,7 +19,7 @@ aplicadas en el punto 14.
 node test-core.js          # 257 tests · núcleo, índice, validador
 node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
-node test-clubes.js        #  78 tests · multi-cliente
+node test-clubes.js        #  94 tests · multi-cliente
 node test-config.js        # 160 tests · zonas de tabla, tramos, tonos AA
 node test-clasificacion.js # 45 tests · tabla de posiciones, orden y zonas
 node test-boot.js          # 129 tests · arranque por club, sintaxis de los módulos, carteles de espera
@@ -32,7 +32,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 178 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1796 tests en total. Todos tienen que dar verde antes de commitear.**
+**1812 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.

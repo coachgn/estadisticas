@@ -42,7 +42,7 @@ const SGADD_RANKINGS = (function () {
    * Arma un grupo: valores, puesto por métrica y quién está más cerca de la
    * mediana (la celda que tu planilla pinta de naranja claro).
    */
-  function construir(idx, grupo) {
+  function construir(idx, grupo, opciones) {
     const equipos = idx.lista().filter(e => (e.pj || 0) >= PJ_MINIMO);
     const claves = grupo.metricas;
 
@@ -86,25 +86,48 @@ const SGADD_RANKINGS = (function () {
       }
     });
 
+    /* ORDEN NATURAL DEL GRUPO Y ORDEN ELEGIDO SON DOS COSAS DISTINTAS.
+
+       `claveOrden` es la métrica que define el grupo —en 'Ritmo + plays'
+       es PACE y no la primera columna— y es la que da el sentido a la
+       tabla. `opciones.ordenPor` es lo que el DT tocó en la cabecera.
+
+       Los PUESTOS (`f.puestos[k]`) ya se calcularon arriba, métrica por
+       métrica, y NO dependen de esto: el 1° en eFG% sigue siendo el 1° en
+       eFG% aunque la tabla se esté mirando ordenada por PACE. Es la misma
+       distinción que hace el ranking de jugadores, y es lo que evita que
+       tocar una cabecera convierta el cuadro en otro sin avisar. */
+    const o = opciones || {};
     const claveOrden = grupo.ordenPor || claves[0];
-    const mOrden = SGADD.metrica(claveOrden);
-    const invOrden = grupo.descriptiva ? false : (mOrden ? mOrden.invertida : false);
+    const pedido = (o.ordenPor && claves.indexOf(o.ordenPor) !== -1) ? o.ordenPor : null;
+    const usada = pedido || claveOrden;
+    const mOrden = SGADD.metrica(usada);
+    /* Sin dirección pedida manda la de la métrica: en las invertidas
+       —pérdidas, puntos recibidos— 'mejor' es MENOS, así que arrancan al
+       revés. Con dirección pedida manda el DT. */
+    const invNatural = grupo.descriptiva ? false : (mOrden ? mOrden.invertida : false);
+    const dir = o.dir || (invNatural ? 'asc' : 'desc');
+    const asc = dir === 'asc';
     filas.sort((a, b) => {
-      const va = a.valores[claveOrden], vb = b.valores[claveOrden];
+      const va = a.valores[usada], vb = b.valores[usada];
+      /* Los nulos SIEMPRE al fondo, ordene como ordene: un `—` arriba de
+         todo en ascendente parece el mejor y es el que no tiene dato. */
+      if (va === null && vb === null) return 0;
       if (va === null) return 1;
       if (vb === null) return -1;
-      return invOrden ? va - vb : vb - va;
+      return asc ? va - vb : vb - va;
     });
 
-    return { grupo, filas, cercaMediana, claveOrden, n: filas.length };
+    return { grupo, filas, cercaMediana, claveOrden, n: filas.length,
+             ordenPor: usada, dir: dir, reordenada: !!pedido };
   }
 
   /* ---------------------------------------------------------------------
      Render
      --------------------------------------------------------------------- */
 
-  function tabla(idx, grupo) {
-    const r = construir(idx, grupo);
+  function tabla(idx, grupo, opciones) {
+    const r = construir(idx, grupo, opciones);
     const claves = grupo.metricas;
 
     const cabecera = `
@@ -115,8 +138,17 @@ const SGADD_RANKINGS = (function () {
         ${claves.map(k => {
           const m = SGADD.metrica(k);
           const inv = m && m.invertida && !grupo.descriptiva;
-          return `<th class="pb-2 pr-1 whitespace-nowrap" title="${SGADD_UI.esc(m ? m.glosario || m.label : k)}">
-            ${SGADD_UI.esc(k)}${inv ? ' <span class="dato-sec">↓</span>' : ''}</th>
+          /* La flecha marca por cuál se ordena y en qué sentido; el resto
+             lleva un ⇅ tenue para que se note que también responden. */
+          const activa = (k === r.ordenPor);
+          const flecha = activa ? (r.dir === 'asc' ? '▲' : '▼') : '⇅';
+          return `<th class="pb-2 pr-1 whitespace-nowrap cursor-pointer select-none hover:text-accent transition-colors ${activa ? 'text-accent' : ''}"
+            onclick="SGADD_RANKINGS.ordenarPor('${SGADD_UI.escJs(k)}')"
+            title="Ordenar por ${SGADD_UI.esc(k)} · ${SGADD_UI.esc(m ? m.glosario || m.label : k)}"
+            aria-sort="${activa ? (r.dir === 'asc' ? 'ascending' : 'descending') : 'none'}"
+            ${SGADD_UI.atributosFila('Ordenar por ' + k)}>
+            ${SGADD_UI.esc(k)}${inv ? ' <span class="dato-sec">↓</span>' : ''}
+            <span class="${activa ? 'text-accent' : 'opacity-40'}">${flecha}</span></th>
             <th class="pb-2 pr-3 dato-sec">#</th>`;
         }).join('')}
       </tr>`;
@@ -174,6 +206,9 @@ const SGADD_RANKINGS = (function () {
         }).join('')}
       </tr>`;
 
+    /* La nota del pie tiene que decir lo que se VE. Antes afirmaba siempre
+       el criterio del grupo y quedaba contradiciendo a la tabla apenas el
+       DT tocaba una cabecera para reordenar. */
     return `
       <div class="scrollbox">
         <table class="w-full tabla-rank">
@@ -182,7 +217,10 @@ const SGADD_RANKINGS = (function () {
         </table>
       </div>
       <p class="text-[11px] text-muted mt-3 leading-snug">
-        Criterio: PJ ≥ ${PJ_MINIMO}, ordenado por ${SGADD_UI.esc(r.claveOrden)}.
+        Criterio: PJ ≥ ${PJ_MINIMO}. El grupo se ordena por
+        <span class="font-mono">${SGADD_UI.esc(r.claveOrden)}</span>${
+          r.reordenada ? ', y ahora se muestra por <span class="font-mono">' +
+            SGADD_UI.esc(r.ordenPor) + '</span>' : ''}.
         La columna <span class="font-mono">#</span> a la derecha de cada métrica es el puesto en la liga.
         El valor con anillo naranja es el más cercano a la mediana.
         ${grupo.nota ? '<br>' + SGADD_UI.esc(grupo.nota) : ''}
@@ -190,7 +228,34 @@ const SGADD_RANKINGS = (function () {
   }
 
   let abierto = 'of4f';
-  function verGrupo(id) { abierto = id; if (typeof equiposPintar === 'function') equiposPintar(); }
+  let ordenPor = null, ordenDir = null;
+
+  /* Cambiar de grupo RESETEA el orden. Un 'por T3% descendente' heredado
+     no significa nada en la tabla de rebotes, y peor: la columna ni
+     siquiera existe ahí. Es el mismo criterio que ya usa el ranking de
+     jugadores al cambiar de pestaña. */
+  function verGrupo(id) {
+    abierto = id;
+    ordenPor = null; ordenDir = null;
+    if (typeof equiposPintar === 'function') equiposPintar();
+  }
+
+  /** Click en una cabecera: ordena por esa métrica, y al repetir invierte. */
+  function ordenarPor(clave) {
+    if (ordenPor === clave) {
+      ordenDir = (ordenDir === 'asc') ? 'desc' : 'asc';
+    } else {
+      ordenPor = clave;
+      /* Arranca por el sentido NATURAL de la métrica: en las invertidas
+         —pérdidas, eFG% del rival— lo bueno es lo bajo, y empezar por lo
+         alto mostraría el peor arriba. */
+      const m = SGADD.metrica(clave);
+      const g = GRUPOS.find(x => x.id === abierto);
+      const inv = (g && g.descriptiva) ? false : !!(m && m.invertida);
+      ordenDir = inv ? 'asc' : 'desc';
+    }
+    if (typeof equiposPintar === 'function') equiposPintar();
+  }
 
   function render(idx) {
     if (!idx || !idx.lista().length) return '';
@@ -205,10 +270,26 @@ const SGADD_RANKINGS = (function () {
           Verde = top 25% · Rojo = bottom 25%. Clic en una fila para abrir la ficha.
         </p>
         ${SGADD_UI.tabs(tabs, g.id, 'SGADD_RANKINGS.verGrupo')}
-        <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-2">${SGADD_UI.esc(g.titulo)}</h4>
-        ${tabla(idx, g)}
+        <div class="flex items-baseline justify-between gap-3 flex-wrap mb-2">
+          <h4 class="font-display uppercase tracking-wide text-xs text-accent">${SGADD_UI.esc(g.titulo)}</h4>
+          ${ordenPor ? `<button onclick="SGADD_RANKINGS.resetOrden()" class="text-[11px] text-muted hover:text-ink">
+            Mostrado por <span class="font-mono text-accent">${SGADD_UI.esc(ordenPor)}</span>
+            ${ordenDir === 'asc' ? 'de menor a mayor' : 'de mayor a menor'} · volver al orden del grupo</button>` : ''}
+        </div>
+        ${tabla(idx, g, { ordenPor: ordenPor, dir: ordenDir })}
       </div>`;
   }
 
-  return { GRUPOS, construir, tabla, render, verGrupo, get abierto() { return abierto; } };
+  function resetOrden() {
+    ordenPor = null; ordenDir = null;
+    if (typeof equiposPintar === 'function') equiposPintar();
+  }
+
+  return { GRUPOS, construir, tabla, render, verGrupo, ordenarPor, resetOrden,
+           get abierto() { return abierto; },
+           get ordenPor() { return ordenPor; }, get ordenDir() { return ordenDir; } };
 })();
+
+/* Requerible desde Node para testear el motor de orden y de puestos. El
+   render usa `document` y se verifica en el navegador, como siempre. */
+if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_RANKINGS;

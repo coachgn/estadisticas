@@ -402,6 +402,120 @@ function crearClub(clubId, opciones) {
   check('se reprecargan al llegar el índice o cambiar de tramo',
     /precargarLogos\(\)/.test(app2));
 })();
+/* =====================================================================
+   RANKINGS DE EQUIPOS · orden interactivo por columna
+
+   Se replica el de Jugadores, y con él la distinción que lo hace
+   correcto: SELECCIONAR y MOSTRAR son dos pasos distintos.
+
+     · Los PUESTOS de cada métrica se calculan métrica por métrica y NO
+       dependen de por cuál se esté ordenando la pantalla. El 1° en eFG%
+       sigue siendo el 1° en eFG% aunque la tabla se mire por PACE.
+     · El ORDEN de las filas es lo único que cambia al tocar una
+       cabecera.
+
+   Si el orden de pantalla moviera los puestos, tocar una cabecera
+   convertiría el cuadro en otro sin avisar.
+   ===================================================================== */
+(function () {
+  /* `sgadd-rankings.js` consulta SGADD como global (en el navegador ya
+     está cargado). En Node se publica a mano: es la misma instancia que
+     require() devuelve, no una copia. */
+  global.SGADD = require('./js/sgadd-core.js');
+  const R = require('./js/sgadd-rankings.js');
+
+  /* Un índice de mentira con la forma que `construir` consume: `leer()`
+     devuelve el valor de la métrica y `lista()` los equipos. */
+  function idxFalso(datos) {
+    const lista = Object.keys(datos).map(k => ({ clave: k, nombre: k, pj: 10 }));
+    return {
+      lista: () => lista,
+      liga: { n: lista.length },
+      leer: (clave, met) => {
+        const v = datos[clave] ? datos[clave][met] : undefined;
+        return { valor: (v === undefined ? null : v) };
+      },
+    };
+  }
+
+  const G = R.GRUPOS[0];   // 4 Factores ofensivos: eFG% PePP% RTL% RO%
+  const IDX = idxFalso({
+    ALFA:  { 'eFG%': 0.50, 'PePP%': 0.20, 'RTL%': 0.30, 'RO%': 0.20 },
+    BRAVO: { 'eFG%': 0.45, 'PePP%': 0.10, 'RTL%': 0.25, 'RO%': 0.35 },
+    CHARL: { 'eFG%': 0.40, 'PePP%': 0.15, 'RTL%': 0.20, 'RO%': 0.30 },
+  });
+
+  /* Sin opciones, el grupo manda: eFG% de mayor a menor. */
+  const nat = R.construir(IDX, G);
+  check('sin orden pedido manda el criterio del grupo',
+    nat.filas.map(f => f.equipo.clave).join() === 'ALFA,BRAVO,CHARL',
+    nat.filas.map(f => f.equipo.clave).join());
+  check('y lo expone para que la UI lo pueda decir',
+    nat.ordenPor === 'eFG%' && nat.reordenada === false);
+
+  /* Tocar una cabecera cambia el orden de las FILAS. */
+  const porRO = R.construir(IDX, G, { ordenPor: 'RO%', dir: 'desc' });
+  check('ordenar por otra métrica reordena las filas',
+    porRO.filas.map(f => f.equipo.clave).join() === 'BRAVO,CHARL,ALFA',
+    porRO.filas.map(f => f.equipo.clave).join());
+  check('y queda marcado como reordenada', porRO.reordenada === true);
+
+  /* LA INVARIANTE. Los puestos son los mismos en los dos órdenes. */
+  const puestos = (r, k) => r.filas.reduce((o, f) => {
+    o[f.equipo.clave] = f.puestos[k]; return o; }, {});
+  let movidos = 0;
+  G.metricas.forEach(k => {
+    const a = puestos(nat, k), b = puestos(porRO, k);
+    Object.keys(a).forEach(cl => { if (a[cl] !== b[cl]) movidos++; });
+  });
+  check('los PUESTOS no dependen del orden de pantalla', movidos === 0, movidos + ' movidos');
+
+  /* Invertir da el espejo exacto. */
+  const asc = R.construir(IDX, G, { ordenPor: 'RO%', dir: 'asc' });
+  check('invertir el sentido da el orden espejo',
+    asc.filas.map(f => f.equipo.clave).join() ===
+    porRO.filas.map(f => f.equipo.clave).reverse().join());
+
+  /* Una métrica que no está en el grupo cae al criterio del grupo en vez
+     de romper el orden: la cabecera no existe, así que pedirla es un
+     estado viejo que sobrevivió a un cambio de pestaña. */
+  const ajena = R.construir(IDX, G, { ordenPor: 'T3%', dir: 'desc' });
+  check('una métrica ajena al grupo cae al criterio del grupo',
+    ajena.ordenPor === 'eFG%' && ajena.reordenada === false);
+
+  /* Los nulos SIEMPRE al fondo: un — arriba de todo en ascendente parece
+     el mejor y es el que no tiene dato. */
+  const CON_NULO = idxFalso({
+    UNO: { 'eFG%': 0.50, 'RO%': 0.20 },
+    DOS: { 'eFG%': 0.40 },                 // sin RO%
+    TRE: { 'eFG%': 0.30, 'RO%': 0.35 },
+  });
+  ['asc', 'desc'].forEach(dir => {
+    const r = R.construir(CON_NULO, G, { ordenPor: 'RO%', dir: dir });
+    const claves = r.filas.map(f => f.equipo.clave);
+    check('con dir=' + dir + ' el equipo sin dato queda último',
+      claves[claves.length - 1] === 'DOS', claves.join());
+  });
+
+  /* La UI: cabeceras clickeables, accesibles y con estado visible. */
+  const src = require('fs').readFileSync('./js/sgadd-rankings.js', 'utf8');
+  check('las cabeceras de métrica son clickeables',
+    /SGADD_RANKINGS\.ordenarPor\(/.test(src));
+  check('declaran aria-sort', /aria-sort=/.test(src));
+  check('y se pueden usar con el teclado',
+    /atributosFila\('Ordenar por '/.test(src));
+  check('la flecha marca la columna activa y el resto lleva ⇅',
+    /'▲' : '▼'/.test(src) && /'⇅'/.test(src));
+  /* Cambiar de grupo resetea: un 'por T3%' heredado no significa nada en
+     la tabla de rebotes, donde esa columna ni existe. */
+  check('cambiar de grupo resetea el orden',
+    /function verGrupo[\s\S]{0,300}ordenPor = null/.test(src));
+  /* Y una métrica invertida arranca por lo BUENO, que es lo bajo. */
+  check('una métrica invertida arranca en ascendente',
+    /function ordenarPor[\s\S]{0,600}inv \? 'asc' : 'desc'/.test(src));
+  check('la nota del pie dice por cuál se está mostrando',
+    /r\.reordenada \? ', y ahora se muestra por/.test(src));
+})();
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })();
