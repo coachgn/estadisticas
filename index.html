@@ -1592,7 +1592,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=132" />
+<link rel="stylesheet" href="sgadd.css?v=133" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -1721,29 +1721,29 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=132"></script>
+<script src="js/sgadd-club.js?v=133"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=132"></script>
-<script src="js/sgadd-core.js?v=132"></script>
-<script src="js/sgadd-ui.js?v=132"></script>
-<script src="js/sgadd-app.js?v=132"></script>
-<script src="js/sgadd-clasificacion.js?v=132"></script>
+<script src="js/sgadd-config.js?v=133"></script>
+<script src="js/sgadd-core.js?v=133"></script>
+<script src="js/sgadd-ui.js?v=133"></script>
+<script src="js/sgadd-app.js?v=133"></script>
+<script src="js/sgadd-clasificacion.js?v=133"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-configui.js?v=132"></script>
-<script src="js/sgadd-estados.js?v=132"></script>
-<script src="js/sgadd-buzon.js?v=132"></script>
-<script src="js/sgadd-charts.js?v=132"></script>
-<script src="js/sgadd-personalidad.js?v=132"></script>
-<script src="js/sgadd-rankings.js?v=132"></script>
-<script src="js/sgadd-partido.js?v=132"></script>
-<script src="js/sgadd-informe.js?v=132"></script>
-<script src="js/sgadd-ficha.js?v=132"></script>
-<script src="js/sgadd-equipos.js?v=132"></script>
-<script src="js/sgadd-jugadores.js?v=132"></script>
-<script src="js/sgadd-4factores.js?v=132"></script>
-<script src="js/sgadd-scouting.js?v=132"></script>
-<script src="js/sgadd-diagnostico.js?v=132"></script>
+<script src="js/sgadd-configui.js?v=133"></script>
+<script src="js/sgadd-estados.js?v=133"></script>
+<script src="js/sgadd-buzon.js?v=133"></script>
+<script src="js/sgadd-charts.js?v=133"></script>
+<script src="js/sgadd-personalidad.js?v=133"></script>
+<script src="js/sgadd-rankings.js?v=133"></script>
+<script src="js/sgadd-partido.js?v=133"></script>
+<script src="js/sgadd-informe.js?v=133"></script>
+<script src="js/sgadd-ficha.js?v=133"></script>
+<script src="js/sgadd-equipos.js?v=133"></script>
+<script src="js/sgadd-jugadores.js?v=133"></script>
+<script src="js/sgadd-4factores.js?v=133"></script>
+<script src="js/sgadd-scouting.js?v=133"></script>
+<script src="js/sgadd-diagnostico.js?v=133"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -2619,7 +2619,56 @@ function rerenderCurrentSection(opts = {}) {
 }
 
 /* ============ SECCIÓN: PRINCIPAL ============ */
+/* Una fila del top 5. Lo usan las DOS ramas —índice y hoja— para que no
+   se puedan ver distinto según de dónde salió el dato. */
+function itemLeaderHTML(i, nombre, equipo, valor) {
+  return `
+    <li class="flex items-center justify-between py-2 border-b border-hairline/60 last:border-0">
+      <div class="flex items-center gap-3 min-w-0">
+        <span class="font-mono tabular-nums text-accent text-sm w-4">${i + 1}</span>
+        <div class="min-w-0">
+          <p class="text-sm font-medium text-white truncate">${escapeHtml(nombre || '—')}</p>
+          ${equipo ? `<p class="text-[11px] text-muted truncate">${escapeHtml(equipo)}</p>` : ''}
+        </div>
+      </div>
+      <span class="font-mono tabular-nums text-base text-white font-bold shrink-0">${escapeHtml(String(valor))}</span>
+    </li>`;
+}
+
+function leaderCardHTML(title, filas) {
+  return `
+    <div class="card bg-surface border border-hairline rounded-lg shadow-sm p-5 transition hover:border-hairline/80">
+      <p class="font-display uppercase text-sm tracking-wide text-muted mb-2">${escapeHtml(title)}</p>
+      <ul>${filas.map((f, i) => itemLeaderHTML(i, f.nombre, f.equipo, f.valor)).join('')}</ul>
+    </div>`;
+}
+
+/**
+ * Top 5 de una métrica de jugador.
+ *
+ * SALE DEL ÍNDICE, con la hoja de respaldo. `PROMEDIOS J` trae una fila
+ * por (jugador, torneo, fase): en el tramo TOTAL devuelve 400 filas donde
+ * hay 218 jugadores, así que el mismo tipo aparecía dos veces y el valor
+ * mostrado era el de UN torneo, no el consolidado.
+ *
+ * El índice ya viene con un registro por jugador y con los promedios
+ * recalculados sobre sus partidos.
+ */
 function buildLeaderCard(title, promJ, statCandidates) {
+  const idxL = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado)
+    ? SGADD_APP.estado.idx : null;
+  if (idxL) {
+    const met = statCandidates[0];
+    const top = idxL.liga.jugadores
+      .map(j => ({ nombre: j.NOMBRES, equipo: j.EQUIPO, v: j[met] }))
+      .filter(x => typeof x.v === 'number' && isFinite(x.v))
+      .sort((a, b) => b.v - a.v)
+      .slice(0, 5);
+    if (top.length) return leaderCardHTML(title, top.map(x => ({
+      nombre: cleanName(x.nombre), equipo: x.equipo,
+      valor: SGADD.formatear(met, x.v),
+    })));
+  }
   if (promJ.error) return renderErrorCard(`PROMEDIOS J: ${promJ.error}`);
   const nameCol = findColumnLabel(promJ.cols, ['NOMBRE', 'JUGADOR']);
   const teamCol = findColumnLabel(promJ.cols, ['EQUIPO', 'TEAM']);
@@ -2634,17 +2683,10 @@ function buildLeaderCard(title, promJ, statCandidates) {
   const validRows = promJ.rows.filter((r) => toNumber(r.values[statCol]) !== null && !isEquipoTipo(r));
   const sorted = sortRows(validRows, statCol, 'desc').slice(0, 5);
   
-  const items = sorted.map((r, i) => `
-    <li class="flex items-center justify-between py-2 border-b border-hairline/60 last:border-0">
-      <div class="flex items-center gap-3 min-w-0">
-        <span class="font-mono tabular-nums text-accent text-sm w-4">${i + 1}</span>
-        <div class="min-w-0">
-          <p class="text-sm font-medium text-white truncate">${escapeHtml(nameCol ? cleanName(r.formatted[nameCol]) : '—')}</p>
-          ${teamCol ? `<p class="text-[11px] text-muted truncate">${escapeHtml(r.formatted[teamCol])}</p>` : ''}
-        </div>
-      </div>
-      <span class="font-mono tabular-nums text-base text-white font-bold shrink-0">${escapeHtml(r.formatted[statCol])}</span>
-    </li>`).join('');
+  const items = sorted.map((r, i) => itemLeaderHTML(i,
+    nameCol ? cleanName(r.formatted[nameCol]) : '—',
+    teamCol ? r.formatted[teamCol] : '',
+    r.formatted[statCol])).join('');
     
   return `
     <div class="card bg-surface border border-hairline rounded-lg shadow-sm p-5 transition hover:border-hairline/80">
@@ -2694,6 +2736,11 @@ function renderClasificacionResumen() {
     </div>`;
 }
 function buildPrincipal() {
+  /* El índice, arriba de todo: LO USAN los KPIs, el mejor ataque, los
+     líderes y el scatter. Estaba declarado a mitad de la función y con
+     `const` eso es zona muerta para todo lo que va antes. */
+  const idxLiga = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado && SGADD_APP.estado.idx)
+    ? SGADD_APP.estado.idx.liga : null;
   const promE = sheet('promediosE');
   const baseE = sheet('baseDatosE');
   const promJ = sheet('promediosJ');
@@ -2703,8 +2750,25 @@ function buildPrincipal() {
   const iconGlobe = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>`;
   const iconZap = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`;
 
+  /* MEJOR ATAQUE sale del ÍNDICE por el mismo motivo que el scatter.
+
+     `PROMEDIOS E` trae una fila por (equipo, torneo, fase), así que en el
+     tramo TOTAL el máximo se tomaba sobre los valores de UN torneo y se
+     mostraba como si fueran los del total. Medido en DEPORTIVO: decía
+     75,64 —el promedio de Ida de DLP— cuando su total consolidado es
+     74,23. El número existía, pero no era el de la vista abierta. */
   let kpi1;
-  if (promE.error) {
+  if (idxLiga) {
+    const mejor = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado.idx)
+      ? SGADD_APP.estado.idx.lista()
+          .map(e => ({ n: e.nombre, v: (e.promedios && typeof e.promedios['PTS'] === 'number') ? e.promedios['PTS'] : null }))
+          .filter(x => x.v !== null)
+          .sort((a, b) => b.v - a.v)[0]
+      : null;
+    kpi1 = mejor
+      ? renderModernCard('Mejor Ataque', SGADD.formatear('PTS', mejor.v), 'PTS/P', iconZap)
+      : renderEmptyCard('Sin valores numéricos');
+  } else if (promE.error) {
     kpi1 = renderErrorCard(`PROMEDIOS E: ${promE.error}`);
   } else if (!promE.rows.length) {
     kpi1 = renderEmptyCard('Sin datos');
@@ -2733,8 +2797,6 @@ function buildPrincipal() {
 
      Si el índice todavía no está armado se cae a la hoja, que es el
      comportamiento de antes: Principal puede pintarse antes que él. */
-  const idxLiga = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado && SGADD_APP.estado.idx)
-    ? SGADD_APP.estado.idx.liga : null;
   const validPartidos = baseE.rows.filter(r => !isEquipoTipo(r));
   /* Base Datos E trae DOS filas por partido, una por equipo. Contar filas
      duplica el numero: 130 filas son 65 partidos. Se cuenta por PARTIDO. */
@@ -2748,7 +2810,11 @@ function buildPrincipal() {
     ? new Set(validPartidos.map(clavePartido).filter(Boolean)).size
     : Math.round(validPartidos.length / 2);
 
-  const kpiEquipos = renderModernCard('Equipos', promE.error ? '—' : String(countDistinct(validEquipos, findColumnLabel(promE.cols, ['EQUIPO', 'NOMBRE', 'RIVAL', 'TEAM']))), 'En competencia', iconGrid);
+  /* Del índice si está: es la misma cuenta pero de la fuente que usa el
+     resto de la app, así que no puede contradecir a Clasificación. */
+  const nEquipos = idxLiga ? String(idxLiga.n || (SGADD_APP.estado.idx ? SGADD_APP.estado.idx.lista().length : 0))
+    : (promE.error ? '—' : String(countDistinct(validEquipos, findColumnLabel(promE.cols, ['EQUIPO', 'NOMBRE', 'RIVAL', 'TEAM']))));
+  const kpiEquipos = renderModernCard('Equipos', nEquipos, 'En competencia', iconGrid);
   /* Sin índice todavía se muestra ausente, no un cero: el índice llega
      unos milisegundos después y el número aparece solo. Antes había un
      respaldo que contaba sobre `Base Datos J`, pero esa hoja ya no se pide
@@ -2836,21 +2902,51 @@ function drawOrtgDrtgChart() {
   const canvas = document.getElementById('ortgDrtgChart');
   if (!canvas || typeof Chart === 'undefined') return;
 
-  const data = sheet('promedios4f');
-  if (data.error || !data.rows.length) return;
+  /* EL DATASET SALE DEL ÍNDICE, no de la hoja.
 
-  const colEquipo = findColumnLabel(data.cols, ['EQUIPO', 'NOMBRE']);
-  const colOff = findColumnLabel(data.cols, ['RTNG OFF', 'ORTG']);
-  const colDef = findColumnLabel(data.cols, ['RTNG DEF', 'DRTG']);
+     `PROMEDIOS 4F` trae UNA FILA POR (equipo, torneo, fase), así que en
+     el tramo TOTAL —que junta los torneos de una fase— devuelve 24 filas
+     para 12 equipos y el gráfico pintaba CADA CLUB DOS VECES, uno por
+     torneo. Se veía en pantalla: DEPORTIVO LA PLATA en dos coordenadas
+     distintas.
 
-  const chartData = data.rows
-    .filter(r => !isEquipoTipo(r))
-    .map((r) => ({
-      name: cleanName(r.formatted[colEquipo] || 'Desconocido'),
-      x: toNumber(r.values[colOff]),
-      y: toNumber(r.values[colDef])
-    }))
-    .filter(d => d.x !== null && d.y !== null);
+     Deduplicar la hoja no arreglaría nada: habría que elegir una de las
+     dos filas, y cualquiera de las dos son los números de UN torneo
+     rotulados como si fueran los del total.
+
+     El índice ya tiene los valores CONSOLIDADOS —recalculados sobre los
+     totales, no promediados— y trae un equipo por club por definición.
+     Es la misma fuente que usan Equipos, Clasificación y los rankings,
+     así que además el mapa deja de poder contradecirlos.
+
+     La hoja queda de respaldo para el arranque: Principal puede pintarse
+     antes de que el índice esté armado, y ahí no hay TOTAL posible
+     todavía. */
+  const idxG = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado)
+    ? SGADD_APP.estado.idx : null;
+
+  let chartData;
+  if (idxG) {
+    chartData = idxG.lista().map(e => ({
+      name: e.nombre,
+      x: (e.factores && typeof e.factores['RTNG OFF'] === 'number') ? e.factores['RTNG OFF'] : null,
+      y: (e.factores && typeof e.factores['RTNG DEF'] === 'number') ? e.factores['RTNG DEF'] : null,
+    })).filter(d => d.x !== null && d.y !== null);
+  } else {
+    const data = sheet('promedios4f');
+    if (data.error || !data.rows.length) return;
+    const colEquipo = findColumnLabel(data.cols, ['EQUIPO', 'NOMBRE']);
+    const colOff = findColumnLabel(data.cols, ['RTNG OFF', 'ORTG']);
+    const colDef = findColumnLabel(data.cols, ['RTNG DEF', 'DRTG']);
+    chartData = data.rows
+      .filter(r => !isEquipoTipo(r))
+      .map((r) => ({
+        name: cleanName(r.formatted[colEquipo] || 'Desconocido'),
+        x: toNumber(r.values[colOff]),
+        y: toNumber(r.values[colDef])
+      }))
+      .filter(d => d.x !== null && d.y !== null);
+  }
 
   if (!chartData.length) return;
 
@@ -3558,9 +3654,46 @@ async function resolverClubYPlanilla() {
   console.log('[BOOT] club=' + ((typeof CLUB !== 'undefined' && CLUB.estado.id) || '?') +
     ' · planilla=' + (p ? p.id : '—') + ' · sheet=' + SHEET_ID.slice(0, 14) + '…');
 }
+/**
+ * La sección que pide la URL, en cualquiera de los dos formatos.
+ *
+ * Hay DOS vocabularios de hash conviviendo y `init()` entendía uno solo:
+ *
+ *   #equipos                                    ← plano, el del menú
+ *   #/<planilla>/<torneo>/<fase>/equipos/…      ← ruta SGADD, la de las
+ *                                                 fichas y los links
+ *                                                 compartidos
+ *
+ * Con el segundo, `VALID_SECTIONS.includes('/deportivo-primera-2026/…')`
+ * daba false y la app abría en PRINCIPAL. Después una segunda pasada la
+ * corregía, así que el DT veía un parpadeo — y si esa pasada perdía la
+ * carrera (red lenta, error de carga), se quedaba en Principal sin más.
+ *
+ * `SGADD.Ruta.parse()` ya sabe leer los dos formatos y es el único lugar
+ * que conoce ese vocabulario. Reusarlo evita que exista un segundo
+ * parser que se quede viejo cuando se agregue una sección.
+ */
+function seccionDeLaUrl() {
+  const h = window.location.hash || '';
+  if (!h || h === '#') return 'principal';
+
+  /* Formato plano: #equipos */
+  const plano = h.replace('#', '');
+  if (VALID_SECTIONS.includes(plano)) return plano;
+
+  /* Ruta SGADD. Si el núcleo todavía no cargó, se cae al default en vez
+     de inventar un parser propio. */
+  try {
+    if (typeof SGADD !== 'undefined' && SGADD.Ruta && SGADD.Ruta.parse) {
+      const r = SGADD.Ruta.parse(h);
+      if (r && r.seccion && VALID_SECTIONS.includes(r.seccion)) return r.seccion;
+    }
+  } catch (e) { /* un hash raro no puede impedir que la app abra */ }
+  return 'principal';
+}
+
 async function init() {
-  const initial = (window.location.hash || '#principal').replace('#', '');
-  currentSection = VALID_SECTIONS.includes(initial) ? initial : 'principal';
+  currentSection = seccionDeLaUrl();
 
   /* La versión de assets, a la vista en el pie del menú.
 

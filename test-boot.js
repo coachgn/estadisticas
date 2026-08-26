@@ -572,6 +572,91 @@ check('y con el TOTAL no filtra por torneo',
 check('pero sigue filtrando por fase',
   /if \(hayFase\) \{ const f = dato\(r, 'FASE'\);/.test(html));
 
+/* =====================================================================
+   EL HASH RESTAURA LA SECCIÓN · los dos formatos
+
+   Conviven dos vocabularios de hash y `init()` entendía uno solo:
+
+     #equipos                                ← plano, el del menú
+     #/<planilla>/<torneo>/<fase>/equipos/…  ← ruta SGADD, la de las
+                                               fichas y los links
+
+   Con el segundo, `VALID_SECTIONS.includes('/deportivo-primera-…')` daba
+   false y la app abría en PRINCIPAL. Una segunda pasada la corregía, así
+   que el DT veía un parpadeo — y si esa pasada perdía la carrera se
+   quedaba en Principal.
+   ===================================================================== */
+check('hay una función que resuelve la sección desde la URL',
+  /function seccionDeLaUrl\(\)/.test(html));
+check('init la usa en vez de mirar solo el hash plano',
+  /currentSection = seccionDeLaUrl\(\);/.test(html) &&
+  !/const initial = \(window\.location\.hash/.test(html));
+/* Reusa `Ruta.parse`, que ya conoce los dos formatos. Un segundo parser
+   se queda viejo en cuanto se agregue una sección. */
+check('reusa el parser del núcleo, no escribe uno propio',
+  /function seccionDeLaUrl[\s\S]{0,900}SGADD\.Ruta\.parse\(h\)/.test(html));
+check('y solo acepta secciones que el router conoce',
+  /function seccionDeLaUrl[\s\S]{0,900}VALID_SECTIONS\.includes\(r\.seccion\)/.test(html));
+/* Un hash roto no puede impedir que la app abra. */
+check('un hash raro cae a principal sin tirar',
+  /function seccionDeLaUrl[\s\S]{0,900}catch \(e\)[\s\S]{0,120}return 'principal';/.test(html));
+
+/* =====================================================================
+   PRINCIPAL CONSUME EL ÍNDICE, NO LAS HOJAS DERIVADAS
+
+   `PROMEDIOS E`, `PROMEDIOS 4F` y `PROMEDIOS J` traen UNA FILA POR
+   (entidad, torneo, fase). En el tramo TOTAL eso significa dos filas por
+   equipo y dos por jugador, y se veía:
+
+     · el scatter ORTG/DRTG pintaba CADA CLUB DOS VECES (24 nodos para 12
+       equipos, medido);
+     · `Mejor Ataque` mostraba 75,64 —el promedio de Ida de DLP— cuando su
+       total consolidado es 74,23;
+     · los líderes salían de 400 filas donde hay 218 jugadores.
+
+   Deduplicar la hoja no arregla nada: habría que elegir una de las dos
+   filas, y las dos son los números de UN torneo rotulados como si fueran
+   los del total. El índice ya tiene los valores consolidados.
+   ===================================================================== */
+check('el scatter arma su dataset desde el índice',
+  /function drawOrtgDrtgChart[\s\S]{0,1800}idxG\.lista\(\)\.map/.test(html));
+check('y deja la hoja SOLO como respaldo del arranque',
+  /function drawOrtgDrtgChart[\s\S]{0,2600}\} else \{[\s\S]{0,200}sheet\('promedios4f'\)/.test(html));
+check('Mejor Ataque sale del índice',
+  /if \(idxLiga\) \{[\s\S]{0,500}renderModernCard\('Mejor Ataque'/.test(html));
+check('y los líderes también',
+  /function buildLeaderCard[\s\S]{0,900}idxL\.liga\.jugadores/.test(html));
+/* Las dos ramas de la card de líderes pintan con el MISMO helper: si
+   cada una armara su HTML, se verían distinto según de dónde salió el
+   dato y nadie lo notaría hasta comparar dos tramos. */
+check('las dos ramas de la card de líderes comparten el HTML',
+  /function itemLeaderHTML\(/.test(html) &&
+  (html.match(/itemLeaderHTML\(/g) || []).length >= 3);
+/* `idxLiga` se declara ARRIBA de todo: con `const` a mitad de la función,
+   todo lo que iba antes caía en zona muerta. */
+check('el índice se declara antes de su primer uso',
+  html.indexOf('const idxLiga') < html.indexOf("renderModernCard('Mejor Ataque'"));
+
+/* =====================================================================
+   JUGADORES · elegir un equipo es ENTRAR A OTRA VISTA
+
+   Antes se apilaba todo: el picker seguía ocupando media pantalla
+   después de elegir, y el top 20 de la liga quedaba debajo del plantel
+   contestando una pregunta que el DT ya no está haciendo.
+   ===================================================================== */
+const jugSrcV = fs.readFileSync('./js/sgadd-jugadores.js', 'utf8');
+check('con un equipo elegido se esconde el picker',
+  /function jugadoresGrilla[\s\S]{0,900}conEquipo \? '' : jugadoresPickerEquipos\(idx\)/.test(jugSrcV));
+check('y el top 20 de la liga también',
+  /function jugadoresGrilla[\s\S]{0,900}conEquipo \? '' : jugadoresBloqueRankings\(idx\)/.test(jugSrcV));
+check('el plantel se muestra siempre: es lo que decide la vista',
+  /function jugadoresGrilla[\s\S]{0,900}jugadoresPlantelEquipo\(idx\),/.test(jugSrcV));
+/* Con el picker escondido, el botón de la card del plantel es el ÚNICO
+   camino de vuelta: sin él, esconderlo dejaría al DT encerrado. */
+check('queda un camino de vuelta, y dice a dónde lleva',
+  /Elegir otro equipo/.test(jugSrcV) &&
+  /jugadoresElegirEquipo\(/.test(jugSrcV));
+
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })();

@@ -1549,9 +1549,11 @@ function jugadoresPlantelEquipo(idx) {
         <h3 class="font-display uppercase tracking-wide text-sm text-ink">
           Plantel · ${escapeHtml(e ? e.nombre : clave)}
         </h3>
+        <!-- Con el picker escondido este boton es el UNICO camino de vuelta,
+             asi que dice a donde lleva y no que hace por dentro. -->
         <button type="button" onclick="jugadoresElegirEquipo('${SGADD_UI.escJs(clave)}')"
           class="text-[11px] text-muted hover:text-accent border border-hairline hover:border-accent rounded px-2.5 py-1 transition-colors">
-          Quitar filtro
+          ← Elegir otro equipo
         </button>
       </div>
       <p class="text-[11px] text-muted mb-4">
@@ -1562,11 +1564,26 @@ function jugadoresPlantelEquipo(idx) {
     </div>`;
 }
 
+/**
+ * El landing de Jugadores tiene DOS estados, no uno con cosas encima.
+ *
+ *   sin equipo   → el picker y el top 20 de la liga.
+ *   con equipo   → el plantel de ese club, y nada más.
+ *
+ * Antes se apilaba todo: el picker seguía ocupando media pantalla
+ * después de elegir, y el top 20 de la liga quedaba debajo del plantel
+ * contestando una pregunta que el DT ya no está haciendo. Elegir un
+ * equipo es entrar a otra vista, no agregarle una card a la anterior.
+ *
+ * El camino de vuelta es el botón de la card del plantel, que saca el
+ * filtro: sin él, esconder el picker dejaría al DT encerrado.
+ */
 function jugadoresGrilla(idx) {
+  const conEquipo = !!JUGADORES.filtroEquipo;
   return [
-    jugadoresPickerEquipos(idx),
+    conEquipo ? '' : jugadoresPickerEquipos(idx),
     jugadoresPlantelEquipo(idx),
-    jugadoresBloqueRankings(idx),
+    conEquipo ? '' : jugadoresBloqueRankings(idx),
   ].filter(Boolean).join('');
 }
 
