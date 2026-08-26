@@ -882,8 +882,17 @@ check('y usa los tonos AA del punto 15, no colores sueltos',
   /zona-exito/.test(diagSrc3) && /zona-peligro/.test(diagSrc3));
 /* Sin bloque `torneo` la card no se pinta: una card diciendo 'no hay
    nada configurado' en los clubes que no lo usan es ruido permanente. */
-check('sin proyección la card no se pinta',
-  /function diagBloqueCertificacion[\s\S]{0,900}if \(!proy\) return '';/.test(diagSrc3));
+/* ESTA REGLA CAMBIÓ. Antes la card no se pintaba sin proyección, punto.
+   Pero eso la dejaba callada justo en el caso que importa: el club
+   conecta una hoja nueva, el DT la abre, funciona… y nadie declaró su
+   torneo. Ahora la card aparece igual para mostrar el hueco.
+
+   Lo que se conserva es que un club que NO usa la preconfiguración no
+   ve nada: eso sigue siendo config opcional. */
+check('sin proyección Y sin bloque torneo la card no se pinta',
+  /if \(!proy && !cob\.declarado\) return '';/.test(diagSrc3));
+check('pero con bloque declarado sí aparece, para mostrar el hueco',
+  /La categoría abierta no tiene torneo declarado/.test(diagSrc3));
 /* Solo se arma el índice de los tramos VINCULADOS: construir uno no es
    gratis y los no vinculados no se auditan. */
 check('solo construye el índice de los tramos vinculados',
@@ -905,8 +914,13 @@ const pDep = C.proyeccion(jDep2, 'deportivo-primera-2026');
 check('la categoría se resuelve por la planilla del catálogo', !!pDep);
 check('declara sus dos tramos con el vínculo explícito',
   pDep.categoria.tramos.every(t => !!t.clave), JSON.stringify(pDep.categoria.tramos.map(t => t.clave)));
-check('y todavía no hay nada certificado',
-  Object.keys(pDep.categoria.certificacion).length === 0);
+/* Ida quedó SELLADA el 2026-08-26. Ojo con el detalle: se selló con 64
+   partidos cuando el tramo declara 11 fechas (66), así que la huella
+   congeló un libro incompleto — y cuando entren los 2 que faltan el
+   semáforo va a pasar a DIVERGENTE. Es el motor haciendo su trabajo. */
+check('Ida está sellada y Vuelta no: el sello es POR TRAMO',
+  !!pDep.categoria.certificacion.ida && !pDep.categoria.certificacion.vuelta,
+  Object.keys(pDep.categoria.certificacion).join(','));
 /* Los otros dos clubes no declaran torneo, y eso tiene que seguir siendo
    válido: la preconfiguración es opcional, como todo lo demás. */
 ['reconquista', 'jujuy'].forEach(id => {
@@ -1087,5 +1101,118 @@ check('y la de Vuelta arranca cuando arrancó de verdad',
 check('las dos no se superponen: el calendario puede desempatar',
   !C.enVentana(C._aDia('2026-08-06'), pDep2.categoria.tramos[0].ventana) &&
   !C.enVentana(C._aDia('2026-05-07'), pDep2.categoria.tramos[1].ventana));
+tit2('COBERTURA DEL CATÁLOGO · un libro por categoría');
+
+/* Cada categoría de un club es un LIBRO APARTE, con su propio sheetId, y
+   se dan de alta de a una a medida que el club decide sumarlas. Eso abre
+   un hueco que no se ve solo: una planilla nueva entra al catálogo, el DT
+   la elige en el selector y funciona… pero nadie declaró su torneo, así
+   que no tiene calendario, ni zonas, ni auditoría. Y NO FALLA: no hay
+   nada que contrastar. Callarse ahí es lo peor que puede hacer una
+   auditoría. */
+const CAT_BASE = {
+  torneo: { cliente: 'X', categorias: {
+    'primera': { label: 'Primera', planilla: 'club-primera', tramos: [] },
+  } },
+};
+const PL = [
+  { id: 'club-primera', label: 'Primera', sheetId: 'AAA' },
+];
+
+const cob1 = C.cobertura(CAT_BASE, PL);
+check('una planilla declarada figura como cubierta',
+  cob1.cubiertas.length === 1 && cob1.cubiertas[0].categoria === 'primera');
+check('y no hay huecos', !cob1.sinDeclarar.length && !cob1.sinLibro.length);
+
+/* EL CASO DEL LAND AND EXPAND: el club conecta una hoja nueva y todavía
+   no la preconfiguró. */
+const cob2 = C.cobertura(CAT_BASE, PL.concat([
+  { id: 'club-u17', label: 'U17', sheetId: 'BBB' }]));
+check('un libro conectado sin torneo declarado se denuncia',
+  cob2.sinDeclarar.length === 1 && cob2.sinDeclarar[0].planilla === 'club-u17',
+  JSON.stringify(cob2.sinDeclarar));
+check('y no toca a la que sí está declarada',
+  cob2.cubiertas.length === 1 && cob2.cubiertas[0].planilla === 'club-primera');
+
+/* Una planilla SIN sheetId todavía no es un libro: está en el catálogo
+   como "viene en camino" y pedirle preconfiguración sería ruido. */
+const cob3 = C.cobertura(CAT_BASE, PL.concat([
+  { id: 'club-femenino', label: 'Femenino', sheetId: '' }]));
+check('una planilla sin sheetId no se reclama',
+  cob3.sinDeclarar.length === 0, JSON.stringify(cob3.sinDeclarar));
+
+/* El sentido inverso, que es OTRO error: se declaró una categoría para
+   una hoja que no está en el catálogo. O el id está mal escrito, o la
+   hoja todavía no se conectó. */
+const CAT_FANTASMA = JSON.parse(JSON.stringify(CAT_BASE));
+CAT_FANTASMA.torneo.categorias['femenino'] = {
+  label: 'Femenino', planilla: 'club-femenino-2026', tramos: [] };
+const cob4 = C.cobertura(CAT_FANTASMA, PL);
+check('una categoría que apunta a una planilla inexistente se denuncia',
+  cob4.sinLibro.length === 1 && cob4.sinLibro[0].categoria === 'femenino',
+  JSON.stringify(cob4.sinLibro));
+
+/* Un club que todavía no usa la preconfiguración no tiene huecos: es
+   config OPCIONAL y reclamarle algo sería ruido permanente. */
+const cobSin = C.cobertura({ id: 'x', planillas: [] }, PL);
+check('un club sin bloque torneo no se reclama',
+  cobSin.declarado === false && !cobSin.sinDeclarar.length);
+check('cobertura sin planillas no revienta',
+  C.cobertura(CAT_BASE, null).cubiertas.length === 0);
+
+/* AISLAMIENTO. Cada categoría se resuelve sola: pedir una NUNCA puede
+   devolver los tramos de otra. Es lo que impide que el calendario de
+   Primera pise al de las formativas. */
+const DOS_CAT = { torneo: { categorias: {
+  'a': { label: 'A', planilla: 'pa', tramos: [
+    { id: 'ta', label: 'Tramo A', clave: 'A|R' }] },
+  'b': { label: 'B', planilla: 'pb', tramos: [
+    { id: 'tb1', label: 'Tramo B1', clave: 'B1|R' },
+    { id: 'tb2', label: 'Tramo B2', clave: 'B2|R' }] },
+} } };
+const pa = C.proyeccion(DOS_CAT, 'pa'), pb = C.proyeccion(DOS_CAT, 'pb');
+check('cada categoría trae SOLO sus tramos',
+  pa.categoria.tramos.length === 1 && pb.categoria.tramos.length === 2);
+check('y ninguno de la otra',
+  pa.categoria.tramos.every(t => t.id.indexOf('tb') === -1) &&
+  pb.categoria.tramos.every(t => t.id !== 'ta'));
+/* Las certificaciones tampoco se cruzan: viven adentro de su categoría. */
+const CERT_CRUZ = JSON.parse(JSON.stringify(DOS_CAT));
+CERT_CRUZ.torneo.categorias.a.certificacion = { ta: { fecha: '2026-01-01', hash: 'zzz' } };
+check('un sello de una categoría no aparece en la otra',
+  !!C.proyeccion(CERT_CRUZ, 'pa').categoria.certificacion.ta &&
+  Object.keys(C.proyeccion(CERT_CRUZ, 'pb').categoria.certificacion).length === 0);
+/* Y las zonas: cada categoría puede tener su propio formato sin que el
+   de una se aplique a la otra. */
+const ZONAS_CRUZ = JSON.parse(JSON.stringify(DOS_CAT));
+ZONAS_CRUZ.torneo.categorias.a.competencia = {
+  formatos: { f: { zonas: [{ id: 'z', desde: 1, hasta: 4, tono: 'exito' }] } },
+  porTramo: { '*': 'f' } };
+check('las zonas de una categoría no alcanzan a la otra',
+  !!C.proyeccion(ZONAS_CRUZ, 'pa').categoria.competencia &&
+  C.proyeccion(ZONAS_CRUZ, 'pb').categoria.competencia === null);
+
+/* El Diagnóstico tiene que MOSTRAR el hueco, no callarlo. */
+const diagSrc4 = fs.readFileSync('./js/sgadd-diagnostico.js', 'utf8');
+check('el Diagnóstico cruza el catálogo contra lo declarado',
+  /SGADD_CONFIG\.cobertura\(cfgClub, planillas\)/.test(diagSrc4));
+check('y muestra la card aunque la planilla abierta no esté declarada',
+  /if \(!proy && !cob\.declarado\) return '';/.test(diagSrc4));
+check('nombrando los libros sin torneo declarado',
+  /NADIE declaró su torneo/.test(diagSrc4));
+check('y las categorías que apuntan a una hoja que no existe',
+  /no está en el catálogo/.test(diagSrc4));
+
+tit2('EL SELLO REAL DE IDA');
+const jDep3 = JSON.parse(fs.readFileSync('./clubes/deportivo.json', 'utf8'));
+const pDep3 = C.proyeccion(jDep3, 'deportivo-primera-2026');
+check('Ida quedó certificada', !!pDep3.categoria.certificacion.ida);
+check('con su huella completa',
+  pDep3.categoria.certificacion.ida.equipos === 12 &&
+  pDep3.categoria.certificacion.ida.partidos === 64 &&
+  !!pDep3.categoria.certificacion.ida.hash);
+/* Y Vuelta NO: sellar es por tramo, no por categoría. */
+check('y Vuelta sigue sin sellar',
+  !pDep3.categoria.certificacion.vuelta);
 console.log('\n' + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

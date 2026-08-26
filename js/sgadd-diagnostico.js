@@ -403,7 +403,45 @@ function diagBloqueCertificacion() {
      el bloque 0b: una card diciendo 'no hay nada configurado' en los
      clubes que no lo usan es ruido permanente. */
   const proy = SGADD_CONFIG.proyeccion(cfgClub, d.planillaId);
-  if (!proy) return '';
+
+  /* COBERTURA DEL CATÁLOGO. Cada categoría del club es un libro aparte y
+     se dan de alta de a una: una planilla nueva puede estar funcionando
+     sin que nadie haya declarado su torneo. No falla —simplemente no hay
+     nada que contrastar— y por eso hay que decirlo. */
+  const planillas = (typeof SGADD !== 'undefined' && SGADD.CATALOGO)
+    ? SGADD.CATALOGO.planillas : [];
+  const cob = SGADD_CONFIG.cobertura(cfgClub, planillas);
+
+  /* Sin bloque `torneo` el club no usa la preconfiguración y la card no
+     se pinta: es config OPCIONAL, igual que las zonas. Pero si SÍ la usa
+     y hay libros sin declarar, eso se muestra aunque la planilla abierta
+     no tenga proyección. */
+  if (!proy && !cob.declarado) return '';
+
+  const huecos = (cob.sinDeclarar.length || cob.sinLibro.length) ? `
+    <ul class="mt-3 pt-3 border-t border-hairline">
+      ${cob.sinDeclarar.map(x => `<li class="flex gap-2.5 py-1">
+        <span class="shrink-0 w-1 rounded-full bg-yellow-400"></span>
+        <span class="text-xs text-yellow-400 break-words">La categoría
+          <span class="text-ink">${escapeHtml(x.label)}</span> tiene libro conectado pero
+          NADIE declaró su torneo: no tiene calendario, ni zonas, ni auditoría.
+          Se declara en la pestaña Torneo de Configuración.</span></li>`).join('')}
+      ${cob.sinLibro.map(x => `<li class="flex gap-2.5 py-1">
+        <span class="shrink-0 w-1 rounded-full bg-red-400"></span>
+        <span class="text-xs text-red-400 break-words">La categoría
+          <span class="text-ink">${escapeHtml(x.categoria)}</span> apunta a la planilla
+          <span class="font-mono">${escapeHtml(x.planilla)}</span>, que no está en el catálogo
+          del club. O es un id mal escrito, o la hoja todavía no se conectó.</span></li>`).join('')}
+    </ul>` : '';
+
+  /* La planilla abierta no está declarada, pero otras sí: se muestra el
+     hueco en vez de no mostrar nada. */
+  if (!proy) {
+    return diagCard('0c · Certificación del torneo',
+      cob.cubiertas.length + ' de ' + (cob.cubiertas.length + cob.sinDeclarar.length) + ' con torneo declarado',
+      `<p class="text-sm text-muted">La categoría abierta no tiene torneo declarado,
+       así que no hay nada que auditar en ella.</p>` + huecos);
+  }
 
   const hojas = d.datos ? d.datos.hojas : null;
   const tramosLibro = (hojas && typeof SGADD !== 'undefined')
@@ -461,6 +499,7 @@ function diagBloqueCertificacion() {
       '<li class="text-xs text-muted py-2">Esta categoría no declara tramos.</li>'}</ul>
     <p class="text-[11px] text-muted mt-3">El dato manda siempre: acá solo se contrasta. 
       Un tramo ya certificado se compara contra su propia huella, no contra lo proyectado.</p>` +
+    huecos +
     (SGADD_DIAG.selloNuevo
       ? `<pre class="scrollbox bg-surface2 border border-hairline rounded p-3 mt-3 text-[11px] font-mono text-ink overflow-x-auto whitespace-pre">${
           escapeHtml(SGADD_DIAG.selloNuevo)}</pre>` : ''));

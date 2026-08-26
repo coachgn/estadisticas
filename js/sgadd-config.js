@@ -802,6 +802,61 @@ const SGADD_CONFIG = (function () {
   }
 
   /**
+   * COBERTURA · qué planillas del club están declaradas y cuáles no.
+   *
+   * Cada categoría de un club es un LIBRO APARTE —su propio sheetId— y
+   * se dan de alta de a una, a medida que el club decide sumarlas. Eso
+   * abre un hueco que no se ve solo: una planilla nueva entra al
+   * catálogo, el DT la elige en el selector y funciona… pero nadie
+   * declaró su torneo, así que no tiene calendario, ni zonas, ni
+   * auditoría. Y no falla: simplemente no hay nada que contrastar.
+   *
+   * Sin este cruce el Diagnóstico se quedaba callado justo en el caso
+   * que importa. Callarse es lo peor que puede hacer una auditoría.
+   *
+   * Se reporta en los DOS sentidos, porque son dos errores distintos:
+   *
+   *   sinDeclarar  el libro existe y nadie lo preconfiguró
+   *   sinLibro     se declaró una categoría para una planilla que no
+   *                está en el catálogo (un id mal escrito, o un alta
+   *                que se declaró antes de conectar la hoja)
+   */
+  function cobertura(json, planillas) {
+    const p = parsearProyeccion(json);
+    const lista = Array.isArray(planillas) ? planillas : [];
+    if (!p) {
+      /* Sin bloque `torneo` no hay nada que cruzar: el club todavía no
+         usa la preconfiguración y eso es válido. */
+      return { declarado: false, cubiertas: [], sinDeclarar: [], sinLibro: [] };
+    }
+    const porPlanilla = {};
+    Object.keys(p.categorias).forEach((id) => {
+      porPlanilla[p.categorias[id].planilla] = p.categorias[id];
+    });
+    const idsCatalogo = {};
+    lista.forEach((pl) => { if (pl && pl.id) idsCatalogo[pl.id] = pl; });
+
+    const cubiertas = [], sinDeclarar = [];
+    lista.forEach((pl) => {
+      if (!pl || !pl.id) return;
+      /* Una planilla SIN sheetId todavía no es un libro: está en el
+         catálogo como "viene en camino" y no tiene sentido pedirle
+         preconfiguración. */
+      if (!pl.sheetId) return;
+      if (porPlanilla[pl.id]) cubiertas.push({ planilla: pl.id, categoria: porPlanilla[pl.id].id });
+      else sinDeclarar.push({ planilla: pl.id, label: pl.label || pl.id });
+    });
+
+    const sinLibro = [];
+    Object.keys(p.categorias).forEach((id) => {
+      const c = p.categorias[id];
+      if (!idsCatalogo[c.planilla]) sinLibro.push({ categoria: id, planilla: c.planilla });
+    });
+
+    return { declarado: true, cubiertas, sinDeclarar, sinLibro };
+  }
+
+  /**
    * Propone con qué clave del libro se corresponde un tramo declarado.
    *
    * PROPONE, no decide. Compara el label normalizado contra los tramos
@@ -985,6 +1040,7 @@ const SGADD_CONFIG = (function () {
     ESTADOS, parsearProyeccion, proyeccion, categorias, sugerirClave,
     huella, auditar, certificar, hashTexto,
     asociarTramoPorFecha, desviosDeCalendario, enVentana, ventanaTexto, _aDia: aDia,
+    cobertura,
     _rangoDeZona: rangoDeZona,
   };
 })();

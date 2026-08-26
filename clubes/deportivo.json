@@ -47,7 +47,10 @@
         ],
 
         "//certificacion": "Lo escribe el sistema desde el Diagnostico, no la entrevista. Se guarda ACA y no en localStorage: certificar es un hito administrativo que el resto del cuerpo tecnico tiene que ver, y el historial de git es la trazabilidad que pide una auditoria.",
-        "certificacion": {}
+        "certificacion": {
+          "//ida": "Sellado el 2026-08-26 con 64 partidos. OJO: el tramo declara 11 fechas, o sea 66, asi que el sello congelo un libro INCOMPLETO. Cuando entren los 2 que faltan el semaforo va a pasar a DIVERGENTE avisando que el libro cambio despues del sello — y va a tener razon.",
+          "ida": { "fecha": "2026-08-26", "equipos": 12, "partidos": 64, "hash": "3bb12777" }
+        }
       }
     }
   },
