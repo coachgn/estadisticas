@@ -103,6 +103,8 @@ js/
   sgadd-config.js       ← motor PURO de competencia: zonas de la tabla,
                           tramos y tonos AA. Ver punto 15.
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app
+HOJA_DE_RUTA.md         ← qué está hecho, qué falta y por qué ese orden.
+                          La vista de PRODUCTO; el detalle técnico vive acá.
 INTEGRACION_MOTORSTATS.md ← auditoría del motor que escribe las planillas
 ESPECIFICACION_ADAPTADOR_GVIZ.md ← la Fase 1 documentada: parser, normalizaciones,
                           scope, indice y las dos capas de cache
@@ -3127,6 +3129,10 @@ factor — a diferencia del Pearson crudo del original).
 
 ## 10 bis. Pedidos del cuerpo técnico · backlog
 
+> El estado de cada uno y el orden en que conviene encararlos están en
+> [`HOJA_DE_RUTA.md`](HOJA_DE_RUTA.md). Acá va el detalle de QUÉ pidió el
+> club y de qué depende cada pedido.
+
 Distinto de la deuda técnica del punto 10: eso es lo que sabemos que está
 flojo, esto es lo que el club pidió. Entregado en `mejoras.pdf` el
 **2026-08-18**. Cada punto anota **de qué depende**, que es lo que decide si
@@ -4086,3 +4092,220 @@ Verificado en el navegador con los tres clubes: DEPORTIVO abre desde su
 JSON con 4 zonas y las tres variantes de acento en AA; Jujuy y Reconquista
 abren sin configurar, con un formato vacío para empezar a escribir y la
 validación diciendo que la tabla sale sin colores.
+
+---
+
+## 18. Preconfiguración, calendario y certificación
+
+Hasta el punto 15 la regla era dura: **la estructura sale del dato**. Sigue
+valiendo — el dato nunca deja de mandar. Lo que se suma es poder declarar
+la estructura **antes de que el dato exista**, que es otra cosa:
+
+```
+PROYECCIÓN   lo que el cliente dijo en la entrevista
+REALIDAD     lo que el libro trae hoy
+CERTIFICADO  la fecha en que las dos coincidieron
+```
+
+Una proyección **no es una segunda fuente de verdad**: es una hipótesis
+fechada contra la cual contrastar. Si divergen gana el libro y el panel lo
+dice, nunca al revés.
+
+Motor puro en `sgadd-config.js`; la pantalla en `sgadd-configui.js` (pestaña
+*Torneo*) y el semáforo en el bloque **0c** del Diagnóstico.
+
+### Cero nombres asumidos
+
+`categorias` es un **mapa indexado por el id que use el cliente** y los
+tramos de cada una son una lista con ids libres. "Primera División",
+"Formativas U17", "Súper 8", "Conferencia Sur" entran igual que "Ida".
+
+El fixture de `test-config.js` usa a propósito nombres que no son ninguno
+de los del proyecto, justamente para que un hardcodeo falle. Y hay un test
+que **falla si la UI ofrece un desplegable** con nombres preconcebidos: si
+la pantalla listara "Ida / Vuelta / Apertura" volvería a meter por la
+interfaz el hardcodeo que el schema evita.
+
+### EL VÍNCULO SE DECLARA, NO SE ADIVINA
+
+Es el punto que hay que entender antes de tocar nada de esto.
+
+La entrevista declara ids **libres**. El libro produce una clave que no se
+negocia: **`TORNEO|FASE`**, la misma que arma `combinacionesTorneoFase()`.
+Son dos vocabularios distintos y hay que unirlos para poder auditar.
+
+Se unen con un campo **explícito** —`clave`— y **NO** emparejando por
+parecido de nombre. Una vinculación equivocada certificaría el tramo
+equivocado y **no se notaría**, que es peor que no certificar nada.
+`sugerirClave()` existe para PROPONERLE una al administrador y devuelve
+`null` si hay más de una candidata o ninguna.
+
+### El bloque
+
+```json
+"torneo": {
+  "cliente": "Deportivo La Plata",
+  "declaradoEl": "2026-08-26",
+  "declaradoPor": "Entrevista inicial",
+  "categorias": {
+    "primera-2026": {
+      "label": "Primera 2026",
+      "planilla": "deportivo-primera-2026",
+      "tramos": [
+        { "id": "ida", "label": "Ida", "clave": "IDA|REGULAR",
+          "equiposEsperados": 12, "fechasEsperadas": 11,
+          "ventanaTemporal": { "desde": "2026-05-01", "hasta": "2026-07-25" } }
+      ],
+      "competencia": { "…": "el bloque del punto 15, por categoría" },
+      "certificacion": {
+        "ida": { "fecha": "2026-08-26", "equipos": 12, "partidos": 64, "hash": "3bb12777" }
+      }
+    }
+  }
+}
+```
+
+**Todo opcional y el fallback siempre seguro**, igual que `competencia`.
+Reconquista y Jujuy no declaran `torneo` y hay tests que fijan que eso siga
+siendo válido.
+
+La `competencia` anidada usa **el mismo parser del punto 15**, no uno
+paralelo: cada categoría puede tener su propio formato de zonas sin
+duplicar nada.
+
+### El semáforo
+
+| | Estado | Cuándo |
+|---|---|---|
+| 🔵 | `PROYECTADO` | Declarado, sin datos todavía |
+| 🟡 | `EN_CURSO` | Hay datos y encajan con lo declarado |
+| 🟡 | `DESVIO_CALENDARIO` | Encajan, pero alguna fecha cae fuera de la ventana |
+| 🟢 | `CERTIFICADO` | Se selló y el libro sigue igual |
+| 🔴 | `DIVERGENTE` | No encaja, o **el libro cambió después del sello** |
+| ⚪ | `SIN_VINCULO` | Declarado, sin `clave` que lo ate al libro |
+
+**El semáforo de la UI se compara contra las claves del MOTOR**, no contra
+una lista fija. Un estado nuevo en `auditar()` que la UI no sepa pintar no
+se vería jamás — ya pasó al sumar `DESVIO_CALENDARIO`, y lo cazó ese test.
+
+### La huella va sobre los IDS de partido
+
+Ahí está el valor real de la auditoría, y por eso no es un contador.
+
+Lo que hay que detectar es que **el libro cambió DESPUÉS de darlo por
+bueno**: un partido agregado, borrado o con la fecha corregida. Los valores
+de un box score pueden ajustarse sin que el torneo deje de ser el mismo; el
+conjunto de partidos, no. Un contador de totales no caza el caso silencioso
+—mismos totales, otros partidos— y hay un test que lo fabrica exactamente
+así.
+
+Es FNV-1a de 32 bits: no hace falta criptografía, solo que el hash cambie
+cuando cambia el conjunto y que dé lo mismo en Node y en el navegador.
+
+**Un tramo SELLADO no se re-juzga contra la proyección**, se juzga contra su
+propia huella. Que la entrevista dijera 12 equipos y el torneo cerrara con
+8 es historia; que aparezca un partido nuevo en un torneo cerrado es un
+problema hoy.
+
+### El sello va al JSON, no a `localStorage`
+
+Certificar es un **hito administrativo** que el resto del cuerpo técnico
+tiene que ver, y el historial de git es exactamente la trazabilidad que
+pide una auditoría. Por eso `diagCertificar()` **no escribe solo**: deja el
+bloque listo para pegar y commitear.
+
+El botón solo aparece con el tramo **completo y sin sello**: certificar a
+mitad de camino sella una foto que va a cambiar mañana.
+
+> **Nota sobre el sello de Ida.** Se certificó el 2026-08-26 con **64**
+> partidos cuando el tramo declara 11 fechas, o sea **66**. La huella
+> congeló un libro incompleto a pedido del club, así que cuando entren los
+> 2 que faltan el semáforo va a pasar a `DIVERGENTE` — y va a tener razón.
+> Queda por decidir si esos partidos faltan de verdad o si la declaración
+> de 11 fechas no es la correcta.
+
+### Ventana temporal · el calendario como red de contención
+
+Los box scores llegan con la etiqueta de torneo incompleta o mal tipeada
+más seguido de lo que uno querría, sobre todo en formativas. Sin nada que
+los atrape esos partidos quedan huérfanos: el índice los deja pasar (una
+fila sin torneo pasa siempre, punto 3 ter) pero nadie sabe a qué tramo
+pertenecen.
+
+`asociarTramoPorFecha()` los resuelve por fecha, con **dos reglas que no se
+negocian** y que tienen su test cada una:
+
+1. **LA ETIQUETA GANA SIEMPRE.** Si la fila trae torneo se respeta aunque
+   la fecha caiga en otra ventana. El calendario es un RESPALDO para lo que
+   no viene etiquetado, no una corrección de lo que sí viene: pisar un dato
+   explícito con una inferencia es lo que este proyecto no hace.
+2. **UNA FECHA EN DOS VENTANAS NO SE ASOCIA.** Si dos tramos se superponen
+   la respuesta correcta es *"no sé"*, no *"el primero"*: un partido mal
+   atribuido contamina los promedios de DOS tramos a la vez y no se nota.
+   Se devuelven los candidatos para poder arreglar el calendario.
+
+Un tramo **sin ventana propia hereda la de la categoría**, que suele ser la
+temporada entera. Sin fechas por ningún lado queda en `null` y el
+calendario simplemente no participa: nunca se inventa una.
+
+Las ventanas de DEPORTIVO **salen del libro, no de la imaginación**: el
+primer partido de Ida es del 07/05 y el último del 16/07, Vuelta arrancó el
+06/08. Hay tests que verifican que las ventanas declaradas contienen esos
+partidos reales y que **no se superponen**.
+
+### Un libro por categoría, y el hueco que eso abre
+
+**Cada categoría de un club es un Sheet aparte**, con su propio `sheetId`.
+Reconquista tiene tres. Se dan de alta de a una, a medida que el club
+decide sumarlas — ver la hoja de ruta.
+
+Eso deja un caso que no se ve solo: una planilla nueva entra al catálogo,
+el DT la elige en el selector y **funciona**… pero nadie declaró su torneo,
+así que no tiene calendario, ni zonas, ni auditoría. **No falla**:
+simplemente no hay nada que contrastar, y el Diagnóstico se quedaba callado
+justo ahí. Callarse es lo peor que puede hacer una auditoría.
+
+`cobertura()` cruza el catálogo contra lo declarado y reporta **los dos
+sentidos, porque son dos errores distintos**:
+
+| | Qué significa |
+|---|---|
+| `sinDeclarar` | El libro está conectado y nadie preconfiguró su torneo |
+| `sinLibro` | Se declaró una categoría para una planilla que **no está en el catálogo**: un id mal escrito, o un alta declarada antes de conectar la hoja |
+
+Una planilla **sin `sheetId` no se reclama**: está en el catálogo como
+"viene en camino" y pedirle preconfiguración sería ruido.
+
+La card del bloque 0c **aparece aunque la planilla abierta no esté
+declarada**, para poder mostrar el hueco. Un club que NO usa la
+preconfiguración sigue sin ver nada: eso es config opcional.
+
+### El aislamiento entre categorías, fijado con tests
+
+```
+✓ cada categoría trae SOLO sus tramos
+✓ y ninguno de la otra
+✓ un sello de una categoría no aparece en la otra
+✓ las zonas de una categoría no alcanzan a la otra
+```
+
+No hay estado compartido porque no hay dónde compartirlo: el índice se
+construye por planilla, y la proyección, los sellos y las zonas viven
+adentro de su categoría. El calendario de Primera no puede pisar al de las
+formativas porque `asociarTramoPorFecha()` recibe **los tramos de una
+categoría**, no los del club.
+
+### Las tres acciones de la pantalla, explicadas EN la pantalla
+
+No solo en un tooltip. Hacen cosas distintas y la diferencia importa: un DT
+que las confunda cree que publicó algo que no publicó.
+
+| Acción | Qué hace de verdad |
+|---|---|
+| **Guardar en este navegador** | Queda en `localStorage`, solo en ese dispositivo. Nadie más lo ve |
+| **Exportar el bloque JSON** | Copia el objeto limpio, listo para pegar en `clubes/<club>.json` y commitear. **Recién ahí le llega al resto** |
+| **Volver al JSON del club** | Descarta el borrador local y restablece la config oficial |
+
+El borrador del torneo es **independiente** del de zonas: son dos bloques
+distintos del JSON y mezclarlos obligaría a commitear los dos para publicar
+uno.
