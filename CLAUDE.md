@@ -16,12 +16,13 @@ aplicadas en el punto 14.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 252 tests · núcleo, índice, validador
+node test-core.js          # 257 tests · núcleo, índice, validador
 node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  48 tests · multi-cliente
 node test-config.js        # 108 tests · zonas de tabla, tramos, tonos AA
-node test-boot.js          # 127 tests · arranque por club, sintaxis de los módulos, carteles de espera
+node test-clasificacion.js # 45 tests · tabla de posiciones, orden y zonas
+node test-boot.js          # 128 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 253 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
@@ -31,7 +32,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 176 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1660 tests en total. Todos tienen que dar verde antes de commitear.**
+**1711 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -96,6 +97,7 @@ js/
   sgadd-ficha.js        ← modal + PDF de la ficha individual del jugador
   sgadd-estados.js      ← motor puro de estados de jugador y detección de alertas
   sgadd-buzon.js        ← UI del buzón: drawer, toast, badge (usa `document`)
+  sgadd-clasificacion.js ← tabla de posiciones: motor + sección. Punto 16.
   sgadd-config.js       ← motor PURO de competencia: zonas de la tabla,
                           tramos y tonos AA. Ver punto 15.
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app
@@ -3896,3 +3898,88 @@ de leer.
 **La leyenda se calcula sobre los equipos REALES**, no sobre los declarados: es
 la única forma de que el DT vea dónde caen los cortes de verdad y no dónde
 deberían caer.
+
+---
+
+## 16. Sección CLASIFICACIÓN · `sgadd-clasificacion.js`
+
+La tabla de posiciones, con las zonas que declara el punto 15. Motor puro
+(`SGADD_CLASIF`) más la UI, como el resto del proyecto.
+
+Ruta: `#/<planilla>/<torneo>/<fase>/clasificacion`.
+
+### Colapsó DOS funciones que hacían lo mismo
+
+Vivían en la capa de datos vieja del `index.html`:
+
+| | Qué calculaba | Zonas |
+|---|---|---|
+| `renderStandingsTable(limit)` | PJ/PG/PP/PCT/DIF y promedios | sí, **hardcodeadas** |
+| `renderFullStandingsTable()` | lo mismo **+** el desglose local/visitante | no |
+
+Cada una recorría `Base Datos E` por su cuenta y a su manera, y Principal
+las mostraba a las dos, una debajo de la otra. Las zonas eran esto:
+
+```js
+if (pos <= 8) '!border-green-500';
+else if (pos <= 10) '!border-yellow-500';
+else '!border-red-500';
+```
+
+Ocho a playoffs para todos los clientes, todas las categorías y todos los
+torneos, con colores crudos de Tailwind que además no sobreviven al papel.
+
+Ahora hay **un solo componente** (`clasifTablaHTML`) con dos juegos de
+columnas —`completa` y `resumida`— y esa era la única diferencia real que
+justificaba tener dos funciones enteras.
+
+### No recalcula nada que el índice ya tenga
+
+`e.record` trae el récord, `e.totales` los puntos a favor y en contra y
+`e.split` el desglose de local y visitante. Las dos funciones viejas
+rehacían esas tres sumas a mano sobre la hoja cruda. Y como sale del
+índice, la tabla queda **scopeada al tramo** sin hacer nada: antes leía de
+`sheet('baseDatosE')`, que es la capa vieja.
+
+### El desempate ahora existe
+
+Las dos ordenaban **solo por `pct`**, así que dos equipos empatados
+quedaban en el orden en que `Object.keys` los devolvía — o sea que podían
+intercambiarse entre repintados sin que cambiara un solo dato. Con un
+torneo que define descenso por posición eso no es cosmético.
+
+`ordenTabla` del punto 15 declara la cascada (`PCT › DIF › PF` por
+defecto) y **el último criterio es siempre el nombre**: alfabético es
+arbitrario, pero es estable y auditable, que es justo lo que hace falta
+cuando dos equipos empatan en todo.
+
+`PC` es el único criterio invertido: recibir menos puntos es mejor.
+
+### Principal resume, no duplica
+
+Conserva su tabla resumida pero **usa el mismo componente**, así que las
+dos superficies no se pueden contradecir. Su contenedor tiene `id`
+(`#principalClasif`) para que `onCambio` repinte **solo eso**: Principal
+vive en la capa vieja y su gráfico de ORTG/DRTG ya colgó la página una vez
+con un ciclo de repintado (punto 6), así que no se repinta entero.
+
+### Sin config la tabla sale igual
+
+Reconquista y Jujuy no declaran `competencia`: su tabla se pinta completa
+y sin colores, con un aviso que dice dónde se configura. Es la regla del
+punto 6 — la config es opcional y su ausencia no puede dejar la pantalla
+vacía. Verificado en el navegador con los tres clubes: DEPORTIVO 12 filas
+y 12 con zona, Jujuy 17 filas sin zona, Reconquista 12 sin zona.
+
+### Sumar una sección cambia cómo se leen los links VIEJOS
+
+`Ruta.parse()` distingue `#/<planilla>/<fase>/<seccion>` de
+`#/<planilla>/<torneo>/<fase>/<seccion>` preguntando si `partes[3]` es una
+sección conocida. Ese **vocabulario cerrado es lo único** que los separa,
+así que agregar un nombre a `SGADD.SECCIONES` toca la retrocompatibilidad
+de los favoritos del cuerpo técnico.
+
+Es seguro mientras ninguna FASE se llame igual que una sección, y hay un
+test que lo verifica contra `SGADD.FASES` — si alguna vez existiera una
+fase `CLASIFICACION`, `#/p/CLASIFICACION/equipos` se leería como formato
+nuevo y la ruta saldría mal.

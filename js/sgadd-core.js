@@ -942,7 +942,12 @@
      `Ruta.parse` las necesita para distinguir el formato viejo del nuevo
      (ver abajo). El router del index.html sigue siendo el dueño de a cuál
      navegar; esto es solo el vocabulario. */
-  const SECCIONES = ['principal', 'equipos', 'jugadores', 'scouting', 'simulador', 'diagnostico'];
+  /* Vocabulario CERRADO de secciones. `Ruta.parse()` lo usa para
+     distinguir el formato viejo (#/<planilla>/<fase>/<seccion>) del nuevo
+     (#/<planilla>/<torneo>/<fase>/<seccion>), asi que agregar un nombre
+     ACA cambia como se leen los links compartidos. Es seguro mientras
+     ninguna FASE se llame igual que una seccion. */
+  const SECCIONES = ['principal', 'clasificacion', 'equipos', 'jugadores', 'scouting', 'simulador', 'diagnostico'];
 
   const Ruta = {
     /**

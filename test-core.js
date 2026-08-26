@@ -507,10 +507,44 @@ check('en el formato viejo la entidad y el tab tampoco se corren',
 check('un hash corto viejo (#/planilla/fase/seccion) se sigue entendiendo',
   (() => { const r = SGADD.Ruta.parse('#/primera/REGULAR/jugadores');
     return r.torneo === null && r.fase === 'REGULAR' && r.seccion === 'jugadores'; })());
-check('SECCIONES es el vocabulario que decide el formato y están las 6',
-  SGADD.SECCIONES.length === 6 &&
-  ['principal', 'equipos', 'jugadores', 'scouting', 'simulador', 'diagnostico']
-    .every(s => SGADD.SECCIONES.indexOf(s) !== -1), SGADD.SECCIONES.join(','));
+/* SUMAR UNA SECCIÓN CAMBIA CÓMO SE LEEN LOS LINKS VIEJOS.
+
+   `Ruta.parse()` distingue el formato viejo del nuevo preguntando si
+   `partes[3]` es una sección conocida. Ese vocabulario es lo único que
+   los separa, así que agregar un nombre acá NO es cosmético: hay links
+   compartidos y favoritos del cuerpo técnico con el formato viejo.
+
+   Es seguro mientras ninguna FASE se llame igual que una sección — si
+   alguna vez existiera una fase 'CLASIFICACION', `#/p/CLASIFICACION/equipos`
+   se leería como formato nuevo y la ruta saldría mal. */
+check('SECCIONES trae las siete secciones del nav',
+  ['principal', 'clasificacion', 'equipos', 'jugadores', 'scouting',
+   'simulador', 'diagnostico'].every(s => SGADD.SECCIONES.indexOf(s) !== -1),
+  SGADD.SECCIONES.join(','));
+check('y no trae ninguna de más',
+  SGADD.SECCIONES.length === 7, SGADD.SECCIONES.join(','));
+
+/* Ninguna fase puede llamarse como una sección, o el parser confunde los
+   dos formatos. Se verifica contra las fases que el núcleo declara. */
+check('ninguna FASE colisiona con un nombre de sección',
+  Object.keys(SGADD.FASES).every(f => SGADD.SECCIONES.indexOf(f.toLowerCase()) === -1),
+  Object.keys(SGADD.FASES).join(','));
+
+/* Y los links viejos siguen leyéndose igual con el vocabulario más
+   grande: es la garantía concreta que protege a los favoritos. */
+check('la sección nueva se parsea en el formato nuevo',
+  (() => { const r = SGADD.Ruta.parse('#/primera/IDA/REGULAR/clasificacion');
+    return r.torneo === 'IDA' && r.fase === 'REGULAR' && r.seccion === 'clasificacion'; })());
+check('y también en el formato viejo, sin torneo',
+  (() => { const r = SGADD.Ruta.parse('#/primera/REGULAR/clasificacion');
+    return r.torneo === null && r.fase === 'REGULAR' && r.seccion === 'clasificacion'; })());
+/* El link viejo de OTRA sección no puede haberse movido al sumar una. */
+check('sumar una sección no corrió los links viejos de las demás',
+  ['equipos', 'jugadores', 'scouting', 'simulador', 'diagnostico'].every(sec => {
+    const r = SGADD.Ruta.parse('#/primera/REGULAR/' + sec + '/atenas-a/plantel');
+    return r.torneo === null && r.fase === 'REGULAR' && r.seccion === sec &&
+           r.entidad === 'atenas-a' && r.tab === 'plantel';
+  }));
 
 const hashNuevo = SGADD.Ruta.build({ planilla: 'primera', torneo: 'APERTURA', fase: 'REGULAR',
   seccion: 'equipos', entidad: 'atenas-a', tab: 'plantel' });

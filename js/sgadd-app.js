@@ -292,6 +292,18 @@ const SGADD_APP = (function () {
        planilla o de torneo cambia el plantel y por lo tanto las ausencias. */
     if (typeof SGADD_BUZON !== 'undefined') { try { SGADD_BUZON.sincronizar(); } catch (e) {} }
     if (typeof currentSection === 'undefined') return;
+    if (currentSection === 'clasificacion' && typeof buildClasificacion === 'function') {
+      const r = document.getElementById('view-root');
+      if (r) r.innerHTML = buildClasificacion();
+    }
+    /* Principal vive en la capa de datos vieja y NO se repinta entero acá:
+       su gráfico de ORTG/DRTG ya colgó la página una vez con un ciclo de
+       repintado (punto 6). Se reemplaza SOLO el contenedor de la tabla,
+       que es lo único suyo que depende del índice y del tramo. */
+    if (currentSection === 'principal' && typeof renderClasificacionResumen === 'function') {
+      const c = document.getElementById('principalClasif');
+      if (c) c.innerHTML = renderClasificacionResumen();
+    }
     if (currentSection === 'equipos' && typeof equiposPintar === 'function') equiposPintar();
     if (currentSection === 'jugadores' && typeof jugadoresPintar === 'function') jugadoresPintar();
     if (currentSection === 'simulador' && typeof simuladorPintar === 'function') simuladorPintar();

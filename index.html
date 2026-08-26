@@ -1528,7 +1528,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=126" />
+<link rel="stylesheet" href="sgadd.css?v=127" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -1574,6 +1574,10 @@
         <button onclick="navigate('jugadores')" data-nav="jugadores" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.2"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 20c0-3.6 3.1-6.5 7-6.5s7 2.9 7 6.5"/></svg>
           Jugadores
+        </button>
+        <button onclick="navigate('clasificacion')" data-nav="clasificacion" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+          Clasificación
         </button>
         <button onclick="navigate('scouting')" data-nav="scouting" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path stroke-linecap="round" d="m20 20-4.3-4.3"/></svg>
@@ -1643,26 +1647,27 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=126"></script>
+<script src="js/sgadd-club.js?v=127"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=126"></script>
-<script src="js/sgadd-core.js?v=126"></script>
-<script src="js/sgadd-ui.js?v=126"></script>
-<script src="js/sgadd-app.js?v=126"></script>
-<script src="js/sgadd-estados.js?v=126"></script>
-<script src="js/sgadd-buzon.js?v=126"></script>
-<script src="js/sgadd-charts.js?v=126"></script>
-<script src="js/sgadd-personalidad.js?v=126"></script>
-<script src="js/sgadd-rankings.js?v=126"></script>
-<script src="js/sgadd-partido.js?v=126"></script>
-<script src="js/sgadd-informe.js?v=126"></script>
-<script src="js/sgadd-ficha.js?v=126"></script>
-<script src="js/sgadd-equipos.js?v=126"></script>
-<script src="js/sgadd-jugadores.js?v=126"></script>
-<script src="js/sgadd-4factores.js?v=126"></script>
-<script src="js/sgadd-scouting.js?v=126"></script>
-<script src="js/sgadd-diagnostico.js?v=126"></script>
+<script src="js/sgadd-config.js?v=127"></script>
+<script src="js/sgadd-core.js?v=127"></script>
+<script src="js/sgadd-ui.js?v=127"></script>
+<script src="js/sgadd-app.js?v=127"></script>
+<script src="js/sgadd-clasificacion.js?v=127"></script>
+<script src="js/sgadd-estados.js?v=127"></script>
+<script src="js/sgadd-buzon.js?v=127"></script>
+<script src="js/sgadd-charts.js?v=127"></script>
+<script src="js/sgadd-personalidad.js?v=127"></script>
+<script src="js/sgadd-rankings.js?v=127"></script>
+<script src="js/sgadd-partido.js?v=127"></script>
+<script src="js/sgadd-informe.js?v=127"></script>
+<script src="js/sgadd-ficha.js?v=127"></script>
+<script src="js/sgadd-equipos.js?v=127"></script>
+<script src="js/sgadd-jugadores.js?v=127"></script>
+<script src="js/sgadd-4factores.js?v=127"></script>
+<script src="js/sgadd-scouting.js?v=127"></script>
+<script src="js/sgadd-diagnostico.js?v=127"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -1701,7 +1706,7 @@ const SHEETS_CONFIG = [
    `sgadd-equipos.js` y hoy no lo llama nadie. Eran dos peticiones por
    arranque para llenar una clave que nadie leía. */
 
-const VALID_SECTIONS = ['principal', 'equipos', 'jugadores', 'scouting', 'simulador', 'diagnostico'];
+const VALID_SECTIONS = ['principal', 'clasificacion', 'equipos', 'jugadores', 'scouting', 'simulador', 'diagnostico'];
 
 /* ============ ESTADO GLOBAL ============ */
 let DATA = {};
@@ -2538,192 +2543,46 @@ function buildLeaderCard(title, promJ, statCandidates) {
     </div>`;
 }
 
-/* ============ TABLAS DE POSICIONES (FORMATO 0.00 Y 0.00%) ============ */
-function renderStandingsTable(limit) {
-  const data = sheet('baseDatosE');
-  if (data.error) return renderErrorCard(`BASE DATOS E: ${data.error}`);
-  if (!data.rows.length) return renderEmptyCard('Sin datos para la tabla de posiciones.');
+/* ============ TABLA DE POSICIONES ============
 
-  const colEquipo = findColumnLabel(data.cols, ['EQUIPO']);
-  const colRes = findColumnLabel(data.cols, ['RESULTADO']);
-  const colPts = findColumnLabel(data.cols, ['PTS']);
-  const colPtsOpp = findColumnLabel(data.cols, ['PTSopp', 'PTSOPP', 'PUNTOS EN CONTRA', 'PTSC']);
+   Vivia aca en DOS funciones —`renderStandingsTable` y
+   `renderFullStandingsTable`— que calculaban lo mismo desde la misma hoja
+   con agregaciones distintas: una sumaba PJ/PG/PP y la otra ademas partia
+   el record en local y visitante, cada una con su propio recorrido sobre
+   `Base Datos E`. Solo la primera pintaba zonas, y las pintaba
+   HARDCODEADAS: `pos <= 8` verde, `<= 10` amarillo, resto rojo. Ocho a
+   playoffs para todos los clientes, todas las categorias y todos los
+   torneos.
 
-  const stats = {};
-  
-  data.rows.forEach(r => {
-    const equipo = r.formatted[colEquipo];
-    if (!equipo || isEquipoTipo(r)) return; 
+   Las dos se colapsaron en `sgadd-clasificacion.js`, que lee del INDICE
+   —ya scopeado al tramo, y con el record y el split ya calculados— y saca
+   los cortes de `sgadd-config.js`. Aca queda solo el resumen de la
+   pantalla de entrada, que es el MISMO componente con menos columnas.
+   ============================================================ */
+function renderClasificacionResumen() {
+  const idx = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado)
+    ? SGADD_APP.estado.idx : null;
+  /* Principal se pinta antes de que el indice este armado: `init()`
+     dispara `SGADD_APP.cargar()` sin await. No es un error, es que llega
+     unos milisegundos despues — y cuando llega, `onCambio` repinta este
+     mismo contenedor. Por eso se muestra ausente y no un cuadro vacio. */
+  if (!idx) return renderEmptyCard('Cargando la tabla de posiciones…');
+  if (typeof clasifTablaHTML !== 'function') return '';
 
-    if (!stats[equipo]) {
-      stats[equipo] = { pg: 0, pp: 0, pj: 0, ptsF: 0, ptsC: 0 };
-    }
-
-    const res = normalizeText(r.formatted[colRes]);
-    const pts = toNumber(r.values[colPts]) || 0;
-    const ptsOpp = toNumber(r.values[colPtsOpp]) || 0;
-
-    stats[equipo].pj += 1;
-    if (res.includes('GANADO')) stats[equipo].pg += 1;
-    else if (res.includes('PERDIDO')) stats[equipo].pp += 1;
-    
-    stats[equipo].ptsF += pts;
-    stats[equipo].ptsC += ptsOpp;
-  });
-
-  let processedRows = Object.keys(stats).map(key => {
-    const s = stats[key];
-    const pct = s.pj > 0 ? (s.pg / s.pj) : 0;
-    return {
-      nombre: key,
-      pj: s.pj,
-      pg: s.pg,
-      pp: s.pp,
-      pct: pct,
-      dif: (s.ptsF - s.ptsC),
-      avgPtsF: s.pj > 0 ? (s.ptsF / s.pj) : 0,
-      avgPtsC: s.pj > 0 ? (s.ptsC / s.pj) : 0
-    };
-  });
-
-  processedRows.sort((a, b) => b.pct - a.pct);
-  if (limit) processedRows = processedRows.slice(0, limit);
-
-  const thClass = "px-4 py-3 text-[11px] uppercase tracking-wider text-muted whitespace-nowrap font-display font-semibold border-b border-hairline bg-surface2/50 backdrop-blur";
-  const cellClass = "px-4 py-3 whitespace-nowrap text-sm border-b border-hairline/40 text-white font-mono tabular-nums";
-
-  const tbody = processedRows.map((row, i) => {
-    const pos = i + 1;
-    let borderClass = '!border-l-4'; 
-    let colorClass = '';
-    
-    if (pos <= 8) colorClass = '!border-green-500';
-    else if (pos <= 10) colorClass = '!border-yellow-500';
-    else colorClass = '!border-red-500';
-
-    return `<tr class="hover:bg-surface2/40 transition-colors cursor-default">
-      <td class="${cellClass} ${borderClass} ${colorClass} text-ink font-bold">${pos}</td>
-      <td class="${cellClass.replace('font-mono tabular-nums', 'font-body font-medium')} text-ink">${escapeHtml(cleanName(row.nombre))}</td>
-      <td class="${cellClass}">${row.pj}</td>
-      <td class="${cellClass}">${row.pg}</td>
-      <td class="${row.pp > 0 ? cellClass + ' text-red-400' : cellClass}">${row.pp}</td>
-      <td class="${cellClass}">${(row.pct * 100).toFixed(2)}%</td>
-      <td class="${cellClass}">${row.dif > 0 ? '+' : ''}${row.dif}</td>
-      <td class="${cellClass}">${row.avgPtsF.toFixed(2)}</td>
-      <td class="${cellClass}">${row.avgPtsC.toFixed(2)}</td>
-    </tr>`;
-  }).join('');
-
+  const vig = clasifFormatoVigente();
+  const total = idx.lista().length;
   return `
     <div class="bg-surface border border-hairline rounded-xl shadow-sm p-5">
-      <div class="scrollbox rounded-lg border border-hairline/50 overflow-hidden">
-        <table class="w-full border-collapse tabla-rank">
-          <thead>
-            <tr>
-              ${['Pos', 'Equipo', 'PJ', 'PG', 'PP', 'PCT%', 'Dif', 'PTS+/P', 'PTS-/P'].map(h => `<th class="${thClass}">${h}</th>`).join('')}
-            </tr>
-          </thead>
-          <tbody>${tbody || `<tr><td colspan="9" class=" text-muted p-4">Sin resultados</td></tr>`}</tbody>
-        </table>
-      </div>
-    </div>
-  `;
+      ${clasifLeyendaHTML(vig.formato, total)}
+      <div class="mt-3">${clasifTablaHTML(idx, { columnas: 'resumida',
+        formato: vig.formato, orden: (vig.config && vig.config.ordenTabla) || null })}</div>
+      <p class="text-[11px] text-muted mt-3">
+        <button onclick="navigate('clasificacion')" class="text-accent hover:underline">
+          Ver la tabla completa \u2192</button>
+        con el desglose de local y visitante.
+      </p>
+    </div>`;
 }
-
-function renderFullStandingsTable() {
-  const data = sheet('baseDatosE');
-  if (data.error) return renderErrorCard(`BASE DATOS E: ${data.error}`);
-  if (!data.rows.length) return renderEmptyCard('Sin datos para la clasificación completa.');
-
-  const colEquipo = findColumnLabel(data.cols, ['EQUIPO']);
-  const colRes = findColumnLabel(data.cols, ['RESULTADO']);
-  const colCond = findColumnLabel(data.cols, ['CONDICION', 'LOCAL/VISITANTE']);
-  const colPts = findColumnLabel(data.cols, ['PTS']);
-  const colPtsOpp = findColumnLabel(data.cols, ['PTSopp', 'PTSOPP', 'PUNTOS EN CONTRA', 'PTSC']);
-
-  const stats = {};
-
-  data.rows.forEach(r => {
-    const equipo = r.formatted[colEquipo];
-    if (!equipo || isEquipoTipo(r)) return;
-
-    if (!stats[equipo]) {
-      stats[equipo] = { pgL: 0, ppL: 0, pgV: 0, ppV: 0, ptsF: 0, ptsC: 0 };
-    }
-
-    const res = normalizeText(r.formatted[colRes]);
-    const cond = normalizeText(r.formatted[colCond]);
-    const pts = toNumber(r.values[colPts]) || 0;
-    const ptsOpp = toNumber(r.values[colPtsOpp]) || 0;
-
-    const isLocal = cond.includes('LOCAL');
-    const isGanado = res.includes('GANADO');
-
-    if (isLocal) {
-      if (isGanado) stats[equipo].pgL++; else stats[equipo].ppL++;
-    } else {
-      if (isGanado) stats[equipo].pgV++; else stats[equipo].ppV++;
-    }
-
-    stats[equipo].ptsF += pts;
-    stats[equipo].ptsC += ptsOpp;
-  });
-
-  const processedRows = Object.keys(stats).map(key => {
-    const s = stats[key];
-    const pg = s.pgL + s.pgV;
-    const pp = s.ppL + s.ppV;
-    const pj = pg + pp;
-    return {
-      nombre: key, pj, pg, pp, pgL: s.pgL, ppL: s.ppL, pgV: s.pgV, ppV: s.ppV,
-      ptsF: s.ptsF, ptsC: s.ptsC, dif: (s.ptsF - s.ptsC),
-      pct: pj > 0 ? (pg / pj) : 0,
-      avgF: pj > 0 ? (s.ptsF / pj) : 0,
-      avgC: pj > 0 ? (s.ptsC / pj) : 0
-    };
-  });
-
-  processedRows.sort((a, b) => b.pct - a.pct);
-
-  const thClass = "px-3 py-3 text-left text-[10px] uppercase tracking-wider text-muted whitespace-nowrap font-display font-semibold border-b border-hairline bg-surface2/50";
-  const cellClass = "px-3 py-3 whitespace-nowrap text-sm border-b border-hairline/40 text-white font-mono tabular-nums";
-
-  const rowsHtml = processedRows.map((row, i) => `
-    <tr class="hover:bg-surface2/40 transition-colors">
-      <td class="${cellClass} font-bold">${i + 1}</td>
-      <td class="${cellClass.replace('font-mono tabular-nums', 'font-body font-medium')} text-ink">${escapeHtml(cleanName(row.nombre))}</td>
-      <td class="${cellClass}">${row.pj}</td>
-      <td class="${cellClass} font-bold">${row.pg}</td>
-      <td class="${cellClass}">${row.pp}</td>
-      <td class="${cellClass}">${row.pgL}</td>
-      <td class="${cellClass}">${row.ppL}</td>
-      <td class="${cellClass}">${row.pgV}</td>
-      <td class="${cellClass}">${row.ppV}</td>
-      <td class="${cellClass}">${row.ptsF}</td>
-      <td class="${cellClass}">${row.ptsC}</td>
-      <td class="${cellClass}">${row.dif > 0 ? '+' : ''}${row.dif}</td>
-      <td class="${cellClass}">${(row.pct * 100).toFixed(2)}%</td>
-      <td class="${cellClass}">${row.avgF.toFixed(2)}</td>
-      <td class="${cellClass}">${row.avgC.toFixed(2)}</td>
-    </tr>`).join('');
-
-  return `
-    <div class="bg-surface border border-hairline rounded-xl shadow-sm p-5">
-      <h3 class="font-display text-lg uppercase tracking-wide mb-4 text-ink">Clasificación Completa · Temporada 2026</h3>
-      <div class="scrollbox rounded-lg border border-hairline/50 overflow-hidden">
-        <table class="w-full border-collapse tabla-rank">
-          <thead>
-            <tr>
-              ${['Pos', 'Equipo', 'PJ', 'PG', 'PP', 'PG L', 'PP L', 'PG V', 'PP V', 'PTS+', 'PTS-', 'Dif', 'Pct%', 'PTS+/P', 'PTS-/P'].map(h => `<th class="${thClass}">${h}</th>`).join('')}
-            </tr>
-          </thead>
-          <tbody>${rowsHtml}</tbody>
-        </table>
-      </div>
-    </div>
-  `;
-}
-
 function buildPrincipal() {
   const promE = sheet('promediosE');
   const baseE = sheet('baseDatosE');
@@ -2793,8 +2652,7 @@ function buildPrincipal() {
   const leaderReb = buildLeaderCard('Líderes en Rebotes', promJ, ['RT', 'REB', 'REBOTES', 'REBOTES TOTALES']);
   const leaderAst = buildLeaderCard('Líderes en Asistencias', promJ, ['AST', 'ASISTENCIAS']);
 
-  const standTable = renderStandingsTable(20);
-  const fullStandTable = renderFullStandingsTable();
+  const standTable = renderClasificacionResumen();
 
   return `
     <section class="space-y-8">
@@ -2814,12 +2672,11 @@ function buildPrincipal() {
       </div>
       <div class="space-y-6">
         <div>
-          <h2 class="font-display uppercase tracking-wide text-sm text-muted mb-3">Tabla de Posiciones Resumida</h2>
-          ${standTable}
-        </div>
-        <div>
-          <h2 class="font-display uppercase tracking-wide text-sm text-muted mb-3">Tabla de Clasificación Completa</h2>
-          ${fullStandTable}
+          <h2 class="font-display uppercase tracking-wide text-sm text-muted mb-3">Tabla de posiciones</h2>
+          <!-- Con id propio para que onCambio repinte SOLO esto cuando llega
+               el indice o cambia el tramo, sin tocar el resto de Principal ni
+               grafico de ORTG/DRTG (que ya colgo la pagina una vez, punto 6). -->
+          <div id="principalClasif">${standTable}</div>
         </div>
         <div class="card rounded-xl p-3 sm:p-5 border border-hairline">
            <h3 class="font-display text-base sm:text-lg uppercase tracking-wide mb-3 sm:mb-4" style="color:#F9FAFB">ORTG vs DRTG · Mapa de Rendimiento</h3>
@@ -3437,6 +3294,7 @@ function renderSection(section) {
   switch (section) {
     case 'principal': root.innerHTML = buildPrincipal(); drawOrtgDrtgChart(); break;
     case 'diagnostico': root.innerHTML = buildDiagnostico(); diagCorrer(); break;
+    case 'clasificacion': root.innerHTML = buildClasificacion(); break;   // SGADD (js/sgadd-clasificacion.js)
     case 'equipos': root.innerHTML = buildEquipos(); break;   // SGADD (js/sgadd-equipos.js)
     case 'jugadores': root.innerHTML = buildJugadores(); break;
     case 'simulador': root.innerHTML = buildSimulador(); break;   // SGADD (js/sgadd-4factores.js)
