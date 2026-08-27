@@ -143,6 +143,18 @@ function equiposPintar() {
   EQUIPOS.fase = st.fase;
   const e = EQUIPOS.equipo ? idx.get(EQUIPOS.equipo.replace(/-/g, ' ')) : null;
 
+  /* EL GUARD DE EQUIPO va DONDE SE RESUELVE, no solo en el picker: a la
+     ficha se llega también por hash pegado a mano y por el link cruzado
+     desde Jugadores, y ninguno de los dos pasa por la grilla. Un solo
+     punto de resolución es un solo lugar donde chequear.
+
+     OJO con qué es esto y qué no: filtra la INTERFAZ. Los datos de todos
+     los equipos están en el índice —hacen falta para los percentiles, los
+     rankings y la tabla de posiciones, que van completos a propósito— y
+     siguen a un `fetch` de distancia para cualquiera. Ver la cabecera de
+     `sgadd-auth.js`. */
+  if (e && !SGADD_AUTH.puedeVerEquipo(e.clave)) { equiposIrA(null); return; }
+
   SGADD_CHARTS.limpiar();
   root.innerHTML = [
     SGADD_APP.barra({ extra: volver }),
@@ -180,7 +192,8 @@ function equiposGrilla(idx) {
     <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
       <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Elegí un equipo</h3>
       <p class="text-[11px] text-muted mb-4">Por orden alfabético. El tuyo va destacado con el color del club.</p>
-      ${SGADD_UI.teamPicker(lista, { onClick: 'equiposIrA', seleccionado: EQUIPOS.equipo })}
+      ${SGADD_UI.avisoSinEquipo(lista) /* equiposAvisoSinEquipo */}
+      ${SGADD_UI.teamPicker(SGADD_AUTH.equiposVisibles(lista), { onClick: 'equiposIrA', seleccionado: EQUIPOS.equipo })}
     </div>
     ${SGADD_RANKINGS.render(idx)}`;
 }

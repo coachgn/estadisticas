@@ -2353,6 +2353,7 @@ const SCOUT_UI = {
   local: null,
   visitante: null,
   claveRival: null,      // null = lo decide el motor (nuestro equipo vs el otro)
+  forzado: null,         // 'local'|'visitante' si el gate corrigió ese lado
   fecha: '',             // metadata de fixture: la planilla no la tiene
   torneo: '',
   proximoRival: '',
@@ -2379,15 +2380,32 @@ const SCOUT_CARDS = [
 
 /* ===================== ESTADO Y EVENTOS ===================== */
 
+/* LA REGLA DE ORO: un cliente solo scoutea cruces donde juega SU equipo.
+
+   El lado que el DT acaba de tocar se RESPETA y el otro se fuerza a su
+   equipo. Al revés —pisar el que eligió— le borraría justo lo que acaba
+   de elegir, y la mitad de las veces parecería que el selector no anda.
+
+   `SCOUT_UI.forzado` guarda QUÉ lado se corrigió, para que la UI lo diga:
+   un selector que cambia solo y en silencio se lee como un bug. */
 function scoutElegir(lado, clave) {
   if (lado === 'local') SCOUT_UI.local = clave || null;
   else SCOUT_UI.visitante = clave || null;
+
+  const r = SGADD_AUTH.forzarCruce(SCOUT_UI.local, SCOUT_UI.visitante, lado);
+  SCOUT_UI.local = r.local;
+  SCOUT_UI.visitante = r.visitante;
+  SCOUT_UI.forzado = r.forzado ? (lado === 'local' ? 'visitante' : 'local') : null;
+
   SCOUT_UI.claveRival = null;   // cambió el cruce: que el motor vuelva a decidir
   scoutPintar();
 }
 
 function scoutIntercambiar() {
   const t = SCOUT_UI.local; SCOUT_UI.local = SCOUT_UI.visitante; SCOUT_UI.visitante = t;
+  /* Invertir un cruce válido da otro cruce válido: acá no hay nada que
+     forzar. Se limpia el aviso porque el cambio lo pidió el DT. */
+  SCOUT_UI.forzado = null;
   scoutPintar();
 }
 
@@ -2551,6 +2569,12 @@ function scoutSelectores(idx) {
           </select>
         </div>
       </div>
+      ${SCOUT_UI.forzado ? `
+        <p class="text-[11px] text-muted border-l-2 border-accent pl-2">
+          Se fijó <strong class="text-ink">${escapeHtml(SGADD_AUTH.equipoPropio() || '')}</strong>
+          como ${SCOUT_UI.forzado === 'local' ? 'local' : 'visitante'}: el informe pre-partido
+          prepara <strong class="text-ink">tus</strong> cruces, así que tu equipo va siempre de un lado.
+        </p>` : ''}
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         ${scoutInput('fecha', 'Fecha del partido', 'dd/mm/aaaa')}
         ${scoutInput('torneo', 'Torneo / instancia', 'Fase regular, Playoffs…')}

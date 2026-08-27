@@ -46,6 +46,11 @@ const SGADD_INFORME = (function () {
      MODAL
      --------------------------------------------------------------------- */
   function abrir() {
+    /* Mismo guard redundante que la ficha del jugador, por el mismo
+       motivo: el PDF sale del panel. */
+    const eq = (typeof EQUIPOS !== 'undefined' && SGADD_APP.estado.idx && EQUIPOS.equipo)
+      ? SGADD_APP.estado.idx.get(EQUIPOS.equipo.replace(/-/g, ' ')) : null;
+    if (eq && !SGADD_AUTH.puedeVerEquipo(eq.clave)) return;
     const sel = elegidas();
     const hoy = new Date();
     const fecha = String(hoy.getDate()).padStart(2, '0') + '/' +

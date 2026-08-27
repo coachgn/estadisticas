@@ -3,7 +3,7 @@
 Qué está hecho, qué falta y **por qué el orden es ese**. El detalle técnico
 de cada pieza vive en `CLAUDE.md`; acá va la vista de producto.
 
-Última revisión: **2026-08-26** · versión de assets `?v=138` · 2092 tests.
+Última revisión: **2026-08-27** · versión de assets `?v=139` · 2246 tests.
 
 ---
 
@@ -72,6 +72,7 @@ existe sin poder entrar a una vista vacía.
 | **Secciones** | Principal, Clasificación, Equipos, Jugadores, Scouting, Simulador, Configuración, Diagnóstico |
 | **Cuatro PDF** | Scouting, informe de equipo, post-partido y ficha del jugador |
 | **Nombre del PDF** | Cada exportación nombra su archivo por lo que muestra, en vez del título de la app |
+| **Roles y planes** | Admin / Cliente, Básico / Pro, con el cruce de scouting acotado al equipo propio. **Gate de interfaz, no seguridad** — ver abajo |
 | **Estados y buzón** | Alertas de inactividad en dos niveles, buscador, estados confirmados |
 | **Configuración de competencia** | Zonas de tabla con tonos AA en pantalla y papel, por tramo |
 | **`TOTAL REGULAR`** | La unión de los torneos de una fase, con las 22 fórmulas auditadas contra el motor |
@@ -104,6 +105,11 @@ Detalle en el punto 10 de `CLAUDE.md`. Lo que decide algo de producto:
   **dos homónimos de equipos distintos mezclan sus estadísticas**. Bloquea
   el histórico plurianual: evolución de camadas, detección de similares.
   Decisión del cliente: postergado.
+- **Los roles son un gate de INTERFAZ.** `sgadd-auth.js` decide qué se
+  muestra, no a qué se puede llegar: el panel corre entero en el navegador
+  del usuario. Vender el Plan Pro como una barrera técnica sería vender
+  algo que todavía no existe — lo que hoy sostiene la diferencia entre
+  planes es el acuerdo comercial, no el código.
 - **El acceso es público.** Los `sheetId` están en archivos públicos y un
   sitio estático no puede filtrar nada. Membresías por niveles necesitan
   backend; `planillasVisibles(scope)` ya está preparado para recibirlo.

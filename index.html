@@ -1592,7 +1592,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=138" />
+<link rel="stylesheet" href="sgadd.css?v=139" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -1684,6 +1684,7 @@
 
              Con el número acá, eso se diagnostica de un vistazo en vez de
              debuggear fantasmas: si dice una versión vieja, es caché. -->
+        <div id="sesion-slot" class="text-center mb-2"></div>
         <p id="asset-version" class="text-[10px] text-muted/70 mt-1 text-center font-mono"
            title="Versión de los archivos que está usando este navegador. Si no coincide con la última entrega, hacé Ctrl+F5."></p>
       </div>
@@ -1721,29 +1722,30 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=138"></script>
+<script src="js/sgadd-club.js?v=139"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=138"></script>
-<script src="js/sgadd-core.js?v=138"></script>
-<script src="js/sgadd-ui.js?v=138"></script>
-<script src="js/sgadd-app.js?v=138"></script>
-<script src="js/sgadd-clasificacion.js?v=138"></script>
+<script src="js/sgadd-config.js?v=139"></script>
+<script src="js/sgadd-core.js?v=139"></script>
+<script src="js/sgadd-auth.js?v=139"></script>
+<script src="js/sgadd-ui.js?v=139"></script>
+<script src="js/sgadd-app.js?v=139"></script>
+<script src="js/sgadd-clasificacion.js?v=139"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-configui.js?v=138"></script>
-<script src="js/sgadd-estados.js?v=138"></script>
-<script src="js/sgadd-buzon.js?v=138"></script>
-<script src="js/sgadd-charts.js?v=138"></script>
-<script src="js/sgadd-personalidad.js?v=138"></script>
-<script src="js/sgadd-rankings.js?v=138"></script>
-<script src="js/sgadd-partido.js?v=138"></script>
-<script src="js/sgadd-informe.js?v=138"></script>
-<script src="js/sgadd-ficha.js?v=138"></script>
-<script src="js/sgadd-equipos.js?v=138"></script>
-<script src="js/sgadd-jugadores.js?v=138"></script>
-<script src="js/sgadd-4factores.js?v=138"></script>
-<script src="js/sgadd-scouting.js?v=138"></script>
-<script src="js/sgadd-diagnostico.js?v=138"></script>
+<script src="js/sgadd-configui.js?v=139"></script>
+<script src="js/sgadd-estados.js?v=139"></script>
+<script src="js/sgadd-buzon.js?v=139"></script>
+<script src="js/sgadd-charts.js?v=139"></script>
+<script src="js/sgadd-personalidad.js?v=139"></script>
+<script src="js/sgadd-rankings.js?v=139"></script>
+<script src="js/sgadd-partido.js?v=139"></script>
+<script src="js/sgadd-informe.js?v=139"></script>
+<script src="js/sgadd-ficha.js?v=139"></script>
+<script src="js/sgadd-equipos.js?v=139"></script>
+<script src="js/sgadd-jugadores.js?v=139"></script>
+<script src="js/sgadd-4factores.js?v=139"></script>
+<script src="js/sgadd-scouting.js?v=139"></script>
+<script src="js/sgadd-diagnostico.js?v=139"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -3491,12 +3493,28 @@ function renderSection(section) {
     btn.classList.toggle('bg-surface2', isActive);
     btn.classList.toggle('text-accent', isActive);
   });
-  const titles = { principal: 'Principal', equipos: 'Equipos', jugadores: 'Jugadores', scouting: 'Scouting', simulador: 'Simulador', diagnostico: 'Diagnóstico' };
+  const titles = { principal: 'Principal', clasificacion: 'Clasificación', equipos: 'Equipos',
+    jugadores: 'Jugadores', scouting: 'Scouting', simulador: 'Simulador',
+    configuracion: 'Configuración', diagnostico: 'Diagnóstico' };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = titles[section] || '';
 
   const root = document.getElementById('view-root');
   if (!root) return;
+
+  /* EL GUARD DEL ROUTER. Va acá y no solo en `navigate()` porque a una
+     sección se llega también por hash pegado a mano y por el ruteo
+     inicial, y esos no pasan por `navigate()`. Un solo punto de entrada
+     al render es un solo lugar donde chequear. */
+  const permiso = SGADD_AUTH.puedoAcceder(section);
+  if (!permiso.ok) {
+    root.innerHTML = SGADD_UI.sinAcceso({
+      motivo: permiso.motivo, plan: permiso.plan,
+      seccion: titles[section] || section,
+    });
+    return;
+  }
+
   switch (section) {
     case 'principal': root.innerHTML = buildPrincipal(); drawOrtgDrtgChart(); break;
     case 'configuracion': root.innerHTML = buildConfiguracion(); break;   // SGADD (js/sgadd-configui.js)
@@ -3525,6 +3543,31 @@ function navigate(section) {
   if (root) root.scrollTop = 0;
   window.scrollTo(0, 0);
   if (!rutaSgadd) history.replaceState(null, '', `#${section}`);
+}
+
+/* Esconde del menú lo que esta sesión no puede abrir.
+
+   Se ESCONDE en vez de deshabilitarse: un botón gris que no hace nada
+   invita a clickearlo y no explica por qué. El que llega por URL sí ve
+   la explicación completa, que es donde tiene sentido darla.
+
+   Scouting es la excepción: al Básico se le MUESTRA, porque el punto es
+   justamente que sepa que el módulo existe. Al entrar encuentra la card
+   del plan con su acción. */
+function aplicarPermisosNav() {
+  document.querySelectorAll('[data-nav]').forEach((btn) => {
+    const sec = btn.getAttribute('data-nav');
+    const p = SGADD_AUTH.puedoAcceder(sec);
+    const mostrar = p.ok || p.motivo === SGADD_AUTH.MOTIVOS.REQUIERE_PLAN;
+    btn.classList.toggle('hidden', !mostrar);
+  });
+  const d = SGADD_AUTH.descripcionSesion();
+  const cont = document.getElementById('sesion-slot');
+  if (cont) {
+    cont.innerHTML = d ? `<span class="block text-[10px] uppercase tracking-wider text-muted">${
+      SGADD_UI.esc(d.texto)}</span><span class="block text-[10px] text-muted/70 font-mono">${
+      SGADD_UI.esc(d.detalle)}</span>` : '';
+  }
 }
 
 /* ============ SIDEBAR MÓVIL ============ */
@@ -3673,20 +3716,33 @@ async function resolverClubYPlanilla() {
  * que conoce ese vocabulario. Reusarlo evita que exista un segundo
  * parser que se quede viejo cuando se agregue una sección.
  */
+/* Un hash a mano no puede abrir una sección que esta sesión no tiene.
+
+   Devuelve PRINCIPAL en vez de la denegada solo cuando el motivo es que
+   la pantalla es interna: ahí el link no es para este usuario y llevarlo
+   a la pantalla de entrada es lo correcto. Con REQUIERE_PLAN se deja
+   pasar y el router pinta la card del plan — el link SÍ era para él y
+   merece ver qué se está perdiendo, no un rebote mudo. */
+function permitida(sec) {
+  const p = SGADD_AUTH.puedoAcceder(sec);
+  if (p.ok || p.motivo === SGADD_AUTH.MOTIVOS.REQUIERE_PLAN) return sec;
+  return 'principal';
+}
+
 function seccionDeLaUrl() {
   const h = window.location.hash || '';
   if (!h || h === '#') return 'principal';
 
   /* Formato plano: #equipos */
   const plano = h.replace('#', '');
-  if (VALID_SECTIONS.includes(plano)) return plano;
+  if (VALID_SECTIONS.includes(plano)) return permitida(plano);
 
   /* Ruta SGADD. Si el núcleo todavía no cargó, se cae al default en vez
      de inventar un parser propio. */
   try {
     if (typeof SGADD !== 'undefined' && SGADD.Ruta && SGADD.Ruta.parse) {
       const r = SGADD.Ruta.parse(h);
-      if (r && r.seccion && VALID_SECTIONS.includes(r.seccion)) return r.seccion;
+      if (r && r.seccion && VALID_SECTIONS.includes(r.seccion)) return permitida(r.seccion);
     }
   } catch (e) { /* un hash raro no puede impedir que la app abra */ }
   return 'principal';
@@ -3730,6 +3786,12 @@ async function init() {
       categoria: pl && pl.label,
     }));
   });
+
+  /* La sesión primero: de ella dependen el menú, el router y los
+     pickers, así que tiene que estar resuelta antes del primer render.
+     Es síncrona (URL + localStorage), no agrega latencia. */
+  SGADD_AUTH.cargarSesion();
+  aplicarPermisosNav();
 
   // Primero el club: define de QUE planilla se bajan los datos.
   await resolverClubYPlanilla();

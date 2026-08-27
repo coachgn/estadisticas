@@ -79,6 +79,12 @@ const SGADD_FICHA = (function () {
   function abrir() {
     const ctx = jugadorActual();
     if (!ctx) return;
+    /* Guard redundante con el de la sección, y a propósito: el PDF es una
+       salida que se comparte fuera del panel, así que es el último lugar
+       donde conviene confiar en que alguien filtró río arriba. No es
+       seguridad —ver la cabecera de `sgadd-auth.js`— es no armar el
+       archivo por un camino que se nos escape. */
+    if (!SGADD_AUTH.puedeVerEquipo(ctx.j && ctx.j['EQUIPO'])) return;
     const sel = elegidas();
 
     const met = metricasElegidas();

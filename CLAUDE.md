@@ -22,7 +22,7 @@ node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  94 tests · multi-cliente
 node test-config.js        # 307 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  46 tests · tabla de posiciones, orden y zonas
-node test-boot.js          # 150 tests · arranque por club, sintaxis de los módulos, carteles de espera
+node test-boot.js          # 151 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 253 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
@@ -31,9 +31,10 @@ node test-partido.js       #  54 tests · detalle partido a partido, perfil de t
 node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 178 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
+node test-permisos.js      # 153 tests · roles, planes y el gate de interfaz
 ```
 
-**2092 tests en total. Todos tienen que dar verde antes de commitear.**
+**2246 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -103,6 +104,8 @@ js/
                           punto 15 y las exporta. Punto 17.
   sgadd-config.js       ← motor PURO de competencia: zonas de la tabla,
                           tramos y tonos AA. Ver punto 15.
+  sgadd-auth.js         ← roles, planes y permisos. Motor PURO. Punto 19.
+                          NO es seguridad: leer el punto 19 antes de tocarlo.
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app
 HOJA_DE_RUTA.md         ← qué está hecho, qué falta y por qué ese orden.
                           La vista de PRODUCTO; el detalle técnico vive acá.
@@ -4418,3 +4421,165 @@ que las confunda cree que publicó algo que no publicó.
 El borrador del torneo es **independiente** del de zonas: son dos bloques
 distintos del JSON y mezclarlos obligaría a commitear los dos para publicar
 uno.
+
+---
+
+## 19. Roles, planes y permisos · `sgadd-auth.js`
+
+### ESTO NO ES SEGURIDAD, Y LA DIFERENCIA IMPORTA
+
+Es un **gate de interfaz**. El panel es estático y lee por GViz anónimo,
+así que:
+
+- los `sheetId` viven en `clubes/<club>.json`, que es un archivo
+  **público**: cualquiera lo abre y lee la planilla entera sin pasar por
+  el panel;
+- todo el módulo corre en el navegador del usuario, así que cualquiera
+  con la consola abierta se pone `plan: "PRO"` o se cambia el
+  `equipoAsignado`.
+
+Lo que **sí** hace, y es lo que vale para el producto: cada club abre su
+link y encuentra SU vista sin tener que ignorar once equipos que no le
+importan, el Básico ve que el módulo Pro existe y cómo pedirlo, y un cruce
+de scouting no se puede armar mal por accidente.
+
+Lo que **no** hace: impedir que alguien que quiera mirar los datos de otro
+club los mire. Es la deuda del punto 10 y se cierra con backend, no con
+más código acá.
+
+Consecuencia práctica al escribir la UI: se dice *"tu plan no incluye este
+módulo"*, **nunca** *"tus datos están protegidos"*. Hay tests que fijan
+que el módulo declare esto por escrito.
+
+### Los tres roles
+
+| Rol | Cuándo | Qué ve |
+|---|---|---|
+| `ADMIN` | el mail está en `ADMINS` | todo |
+| `CLIENTE` | hay sesión y no es admin | su equipo, según el plan |
+| `ABIERTO` | **no hay sesión** | todo, como antes de que existiera este módulo |
+
+**`ABIERTO` no es un descuido, es la única opción honesta.** No hay
+autenticación: un *deny by default* no protegería nada —los datos siguen a
+un `fetch` de distancia— y en cambio rompería el panel para los tres
+clubes que lo usan hoy. Se llama distinto de `ADMIN` a propósito, para
+poder distinguir en los tests quién entró por la puerta y quién porque no
+hay puerta.
+
+### La matriz vive en UN lugar
+
+`MODULOS` mapea sección → requisito. No está repartida por los módulos
+porque con la regla escrita en cada sección, **una sección nueva queda sin
+gate y nadie se entera**. Una que falte en el mapa cae a *abierta* —igual
+que antes— pero hay un test que compara las claves contra
+`SGADD.SECCIONES` en los dos sentidos y falla si alguna sobra o falta.
+
+```
+principal · clasificacion · equipos · jugadores   →  abiertas
+scouting                                          →  Plan PRO
+simulador · configuracion · diagnostico           →  solo ADMIN
+```
+
+**Los rankings de liga NO se filtran**, y eso es la propiedad: comparar
+contra la liga entera es el valor del panel, y no expone nada que la tabla
+de posiciones no muestre ya. `equiposVisibles()` es para los **pickers**,
+que es donde se elige a quién analizar en profundidad.
+
+### El motivo viaja con el veredicto
+
+`puedoAcceder()` devuelve `{ok, motivo, plan}`. Un *"no tenés permiso"*
+cuando lo que falta es el plan manda al DT a pedirle acceso a alguien en
+vez de mejorar el plan; y al revés, ofrecerle el Plan Pro a un cliente que
+choca con el Diagnóstico lo manda a comprar algo que **no le va a dar
+acceso**. Por eso `SOLO_ADMIN` y `REQUIERE_PLAN` son motivos distintos y
+`SGADD_UI.sinAcceso()` escribe un texto distinto para cada uno.
+
+Por lo mismo, **Scouting se le MUESTRA en el menú al Plan Básico**: el
+punto es justamente que sepa que el módulo existe. Las tres internas se
+esconden — un botón gris que no hace nada invita a clickearlo y no explica
+por qué.
+
+### El gate va DONDE SE RESUELVE la entidad, no solo en el picker
+
+Por el picker filtrado no se llega a un equipo ajeno, pero por un **hash
+pegado a mano** sí, y por el **link cruzado de Jugadores a Equipos**
+también. Los dos guards están donde el módulo resuelve la entidad
+(`idx.get(...)` en Equipos, `jugadoresBuscar(...)` en Jugadores), que es
+el único punto por el que pasan todos los caminos.
+
+La ficha de un jugador se resuelve **por su `EQUIPO`**, no por su nombre:
+con el nombre solo, dos homónimos de equipos distintos abrirían el que no
+es (punto 8).
+
+Las dos exportaciones a PDF llevan su **propio** guard, redundante a
+propósito: el archivo sale del panel y se comparte, así que es el último
+lugar donde conviene confiar en que alguien filtró río arriba.
+
+### LA REGLA DE ORO DEL SCOUTING · el lado tocado se respeta
+
+Un cliente solo scoutea cruces donde juega su equipo. `forzarCruce(local,
+visitante, ladoTocado)` **respeta el lado que el DT acaba de tocar y
+fuerza el otro**. Al revés le borraría justo lo que acaba de elegir, y la
+mitad de las veces parecería que el selector no anda.
+
+```
+toca LOCAL = A. Mayo        →  visitante pasa a ser su equipo
+toca VISITANTE = U.N.L.P.   →  local pasa a ser su equipo
+toca LOCAL = su equipo      →  el rival queda libre, no se fuerza nada
+```
+
+**Y la UI lo dice.** `SCOUT_UI.forzado` guarda qué lado se corrigió: un
+selector que cambia solo y en silencio se lee como un bug. Un cruce que ya
+era válido **no avisa**, porque informar de un cambio que no ocurrió es
+ruido.
+
+El motivo de la regla no es de privacidad —los dos rivales están en la
+misma planilla que el cliente ya ve— sino de producto: el informe
+pre-partido es para preparar UN partido propio, y armar cruces ajenos
+convierte la herramienta en un servicio de scouting para toda la liga.
+
+### De dónde sale la sesión
+
+Sin backend no hay login, así que se **configura**. La URL gana sobre
+`localStorage` para que un link armado a mano abra la vista de ese club en
+cualquier navegador, y se **persiste** para que un F5 no devuelva a la
+vista completa a mitad de trabajo.
+
+```
+?usuario=<mail>&equipo=<EQUIPO>&plan=BASICO|PRO
+```
+
+**`?usuario=` vacío LIMPIA la sesión**, y esa salida no es opcional: sin
+ella, un cliente que entró una vez por link se quedaba con esa vista para
+siempre. Es también el escape del admin que probó una sesión de cliente.
+
+### Dos cosas que fallan cerrado a propósito
+
+- **Un plan que no se reconoce cae a BÁSICO**, nunca a PRO. Un typo en el
+  JSON no puede regalar el módulo que se cobra aparte.
+- **El mail se normaliza en mayúsculas y espacios, y nada más.** NO se
+  normalizan los puntos ni los alias con `+`, aunque en Gmail
+  `f.reytesgn@gmail.com` sea la misma casilla: esto es una **lista de
+  permitidos** y toda normalización de más ensancha quién entra. Que un
+  admin tenga que escribir su mail exacto es barato.
+
+Y la lista de admins son **mails literales**, no un patrón de dominio: un
+patrón le daría admin a cualquier mail nuevo de ese dominio sin que nadie
+lo decida.
+
+### LA TRAMPA AL DAR DE ALTA UN CLIENTE · la letra del equipo
+
+`equipoAsignado` se compara con **`claveEquipo()`**, el normalizador de
+todo el proyecto, así que `DEPORTIVO LA PLATA` reconoce a `DEPORTIVO LA
+PLATA - MM`. Pero **la comilla de la letra NO es decorativa**: distingue
+el equipo A del B y `claveEquipo()` la conserva (punto 3).
+
+O sea que un cliente dado de alta como `RECONQUISTA` a secas **no**
+reconoce al `RECONQUISTA A` de la planilla y se queda sin ver NINGÚN
+equipo — el peor modo de fallar, porque parece que el panel está roto y no
+que la config lo está. `SGADD_UI.avisoSinEquipo()` lo denuncia en
+pantalla, con esas palabras, en vez de mostrar una grilla vacía.
+
+Un cliente **sin** `equipoAsignado` tampoco ve ninguno, por lo mismo:
+dejarlo ver todo convertiría un error de config en acceso total sin ningún
+síntoma.

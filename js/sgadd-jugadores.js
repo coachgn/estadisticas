@@ -1150,6 +1150,13 @@ function jugadoresPintar() {
   JUGADORES.fase = st.fase;
   const j = JUGADORES.jugador ? jugadoresBuscar(idx, JUGADORES.jugador) : null;
 
+  /* Mismo guard que en Equipos y por el mismo motivo: a una ficha se
+     llega por hash pegado a mano. La ficha de un jugador es la de su
+     equipo, así que el permiso se resuelve por `EQUIPO` — con el nombre
+     solo, dos homónimos de equipos distintos abrirían el que no es
+     (punto 8). */
+  if (j && !SGADD_AUTH.puedeVerEquipo(j['EQUIPO'])) { jugadoresIrA(null); return; }
+
   SGADD_CHARTS.limpiar();
   root.innerHTML = [
     SGADD_APP.barra({ extra: volver }),
@@ -1212,7 +1219,8 @@ function jugadoresPickerEquipos(idx) {
       <p class="text-[11px] text-muted mb-4">
         Muestra el plantel del club acá mismo, ordenado por minutos. Volvé a tocarlo para quitar el filtro.
       </p>
-      ${SGADD_UI.teamPicker(lista, { onClick: 'jugadoresElegirEquipo', seleccionado: JUGADORES.filtroEquipo })}
+      ${SGADD_UI.avisoSinEquipo(lista) /* equiposAvisoSinEquipo */}
+      ${SGADD_UI.teamPicker(SGADD_AUTH.equiposVisibles(lista), { onClick: 'jugadoresElegirEquipo', seleccionado: JUGADORES.filtroEquipo })}
     </div>`;
 }
 

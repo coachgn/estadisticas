@@ -583,6 +583,80 @@ const SGADD_UI = (function () {
       Ctrl+P para no pisar un nombre que una exportación puso a propósito. */
   function tituloPdfActivo() { return pdfTituloPrevio !== null; }
 
+  /* =====================================================================
+     PANTALLA DE ACCESO · lo que ve quien no llega
+
+     Un solo componente para los dos casos, porque son el mismo gesto —
+     decir por qué no y qué hacer al respecto— y con dos se desincronizan.
+     Lo que cambia es el MOTIVO, y de eso depende el texto: "no tenés
+     permiso" cuando en realidad falta el plan manda al DT a pedirle acceso
+     a alguien en vez de mejorar el plan.
+
+     Es un empty state, no un error (punto 14): tiene su acción y no deja
+     al usuario en una pantalla en blanco.
+     ===================================================================== */
+  const SIN_ACCESO_MAIL = 'motorstats.ar@gmail.com';
+
+  /* EL CLIENTE QUE NO SE ENCUENTRA A SÍ MISMO.
+
+     Si `equipoAsignado` no matchea con ningún equipo del libro, el picker
+     queda vacío y la sección se ve rota. Pasa por una razón concreta: la
+     comilla de `RECONQUISTA 'A'` NO es decorativa —distingue el A del B— y
+     `claveEquipo()` la conserva, así que un cliente dado de alta como
+     `RECONQUISTA` a secas no reconoce a `RECONQUISTA 'A'`.
+
+     Es un error de CONFIGURACIÓN y hay que decirlo con esas palabras: una
+     grilla vacía manda al DT a reportar que el panel no anda. */
+  function avisoSinEquipo(lista) {
+    if (typeof SGADD_AUTH === 'undefined') return '';
+    const propio = SGADD_AUTH.equipoPropio();
+    if (!propio) return '';
+    if (SGADD_AUTH.equiposVisibles(lista || []).length) return '';
+    return aviso('Tu equipo no está en esta categoría',
+      /* `aviso()` ya escapa su texto: escapar acá lo haría dos veces y el
+         nombre saldría con entidades a la vista. */
+      'La sesión está asignada a «' + propio + '» y este libro no trae ningún equipo con ese '
+      + 'nombre. Puede ser que la categoría abierta no sea la tuya, o que el nombre asignado no '
+      + 'coincida con el de la planilla (ojo con la letra del equipo: A y B son distintos). '
+      + 'Escribile a motorstats.ar@gmail.com.', 'aviso');
+  }
+
+  function sinAcceso(o) {
+    const op = o || {};
+    const seccion = op.seccion || 'esta sección';
+    const esPlan = op.motivo === 'REQUIERE_PLAN';
+    const plan = op.plan === 'PRO' ? 'Pro' : op.plan || 'Pro';
+
+    const titulo = esPlan
+      ? seccion + ' está en el Plan ' + plan
+      : seccion + ' es de uso interno';
+    const cuerpo = esPlan
+      ? 'El informe pre-partido arma el plan defensivo del cruce: marcas por jugador, '
+        + 'perfil de defensor sugerido, claves estratégicas y el PDF listo para la charla. '
+        + 'Tu plan actual no lo incluye.'
+      : 'Esta pantalla es de administración del sistema y no forma parte de los planes. '
+        + 'Todo lo que necesitás para el análisis está en Principal, Clasificación, Equipos y Jugadores.';
+
+    /* El asunto y el cuerpo van armados: un `mailto:` vacío deja al DT
+       escribiendo el pedido desde cero y la mitad no lo manda. */
+    const asunto = encodeURIComponent('SGADD · Quiero el Plan ' + plan);
+    const accion = esPlan
+      ? `<a href="mailto:${SIN_ACCESO_MAIL}?subject=${asunto}"
+           class="inline-block text-xs font-semibold uppercase tracking-wider rounded px-4 py-2 bg-accent text-base hover:opacity-90">
+           Pedir el Plan ${esc(plan)}</a>`
+      : `<button onclick="navigate('principal')"
+           class="text-xs font-semibold uppercase tracking-wider rounded px-4 py-2 border border-hairline hover:bg-surface2 transition-colors">
+           Volver a Principal</button>`;
+
+    return `
+      <div class="card rounded-xl p-6 sm:p-8 border border-hairline text-center">
+        <div class="text-3xl mb-2" aria-hidden="true">${esPlan ? '⭐' : '🔒'}</div>
+        <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-2">${esc(titulo)}</h3>
+        <p class="text-xs text-muted max-w-lg mx-auto mb-5">${esc(cuerpo)}</p>
+        ${accion}
+      </div>`;
+  }
+
   function restaurarImagenes(raiz) {
     const cont = typeof raiz === 'string' ? document.querySelector(raiz) : raiz;
     if (!cont) return;
@@ -595,7 +669,8 @@ const SGADD_UI = (function () {
   return { esc, escJs, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, signoDelta, colorDelta, claseMasMenos,
     atributosFila, teclaActiva, teclaTabs, cargando,
     embeberImagenes, restaurarImagenes, pieInforme, fechaHoy, MARCA,
-    sanearNombreArchivo, nombrePersona, nombrePdf, tituloPdf, tituloPdfActivo };
+    sanearNombreArchivo, nombrePersona, nombrePdf, tituloPdf, tituloPdfActivo,
+    sinAcceso, avisoSinEquipo };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_UI;
