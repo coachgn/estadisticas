@@ -143,6 +143,10 @@ const SGADD_INFORME = (function () {
        exportaciones. */
     SGADD_UI.embeberImagenes('#informeSalida');
 
+    /* Ficha <equipo>: el nombre del archivo sale del equipo abierto, no
+       del título de la app. Se restaura solo en `afterprint`. */
+    SGADD_UI.tituloPdf(SGADD_UI.nombrePdf('equipo', { equipo: e && e.nombre }));
+
     /* La limpieza cuelga de `afterprint`, NO de un setTimeout ciego.
 
        Antes era `setTimeout(limpiar, 400)` disparado justo después de

@@ -1592,7 +1592,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=137" />
+<link rel="stylesheet" href="sgadd.css?v=138" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -1721,29 +1721,29 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=137"></script>
+<script src="js/sgadd-club.js?v=138"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=137"></script>
-<script src="js/sgadd-core.js?v=137"></script>
-<script src="js/sgadd-ui.js?v=137"></script>
-<script src="js/sgadd-app.js?v=137"></script>
-<script src="js/sgadd-clasificacion.js?v=137"></script>
+<script src="js/sgadd-config.js?v=138"></script>
+<script src="js/sgadd-core.js?v=138"></script>
+<script src="js/sgadd-ui.js?v=138"></script>
+<script src="js/sgadd-app.js?v=138"></script>
+<script src="js/sgadd-clasificacion.js?v=138"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-configui.js?v=137"></script>
-<script src="js/sgadd-estados.js?v=137"></script>
-<script src="js/sgadd-buzon.js?v=137"></script>
-<script src="js/sgadd-charts.js?v=137"></script>
-<script src="js/sgadd-personalidad.js?v=137"></script>
-<script src="js/sgadd-rankings.js?v=137"></script>
-<script src="js/sgadd-partido.js?v=137"></script>
-<script src="js/sgadd-informe.js?v=137"></script>
-<script src="js/sgadd-ficha.js?v=137"></script>
-<script src="js/sgadd-equipos.js?v=137"></script>
-<script src="js/sgadd-jugadores.js?v=137"></script>
-<script src="js/sgadd-4factores.js?v=137"></script>
-<script src="js/sgadd-scouting.js?v=137"></script>
-<script src="js/sgadd-diagnostico.js?v=137"></script>
+<script src="js/sgadd-configui.js?v=138"></script>
+<script src="js/sgadd-estados.js?v=138"></script>
+<script src="js/sgadd-buzon.js?v=138"></script>
+<script src="js/sgadd-charts.js?v=138"></script>
+<script src="js/sgadd-personalidad.js?v=138"></script>
+<script src="js/sgadd-rankings.js?v=138"></script>
+<script src="js/sgadd-partido.js?v=138"></script>
+<script src="js/sgadd-informe.js?v=138"></script>
+<script src="js/sgadd-ficha.js?v=138"></script>
+<script src="js/sgadd-equipos.js?v=138"></script>
+<script src="js/sgadd-jugadores.js?v=138"></script>
+<script src="js/sgadd-4factores.js?v=138"></script>
+<script src="js/sgadd-scouting.js?v=138"></script>
+<script src="js/sgadd-diagnostico.js?v=138"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -3709,6 +3709,27 @@ async function init() {
     const m = sc && sc.getAttribute('src').match(/\?v=(\d+)/);
     p.textContent = m ? 'v' + m[1] : '';
   })();
+
+  /* RESPALDO DE Ctrl+P · el nombre del PDF cuando NO se usó un botón.
+
+     Las cuatro exportaciones nombran su archivo antes de imprimir, pero el
+     DT también hace Ctrl+P parado en la tabla de posiciones o en el
+     resumen, y ahí Chrome propone el título de la app.
+
+     Se acota a Principal y Clasificación A PROPÓSITO. En una sección con
+     su propia exportación, un Ctrl+P a mano imprime la pantalla sin el
+     modo de papel: llamarlo 'Resumen' sería ponerle nombre de informe a
+     algo que no es el informe. Y nunca pisa a una exportación en curso —
+     eso lo decide `tituloPdfActivo()`. */
+  window.addEventListener('beforeprint', () => {
+    if (typeof SGADD_UI === 'undefined' || SGADD_UI.tituloPdfActivo()) return;
+    if (currentSection !== 'principal' && currentSection !== 'clasificacion') return;
+    const pl = (typeof SGADD_APP !== 'undefined') ? SGADD_APP.planillaActual() : null;
+    SGADD_UI.tituloPdf(SGADD_UI.nombrePdf('resumen', {
+      club: (typeof CLUB !== 'undefined' && CLUB.cfg) ? CLUB.cfg.nombre : '',
+      categoria: pl && pl.label,
+    }));
+  });
 
   // Primero el club: define de QUE planilla se bajan los datos.
   await resolverClubYPlanilla();

@@ -2447,6 +2447,11 @@ function scoutImprimir() {
   SCOUT_CARDS.forEach(c => scoutCard(c.id, SCOUT_UI.cards[c.id]));
   scoutActualizarCabeceraImpresa();
   scoutEmbeberEscudos();
+  /* `Scouting vs <rival>`. El rival sale de `__claveRival`, que
+     `scoutCabeceraImpresa()` ya dejó guardado con el cruce vigente: es el
+     equipo scouteado de verdad, no el visitante por convención — el DT
+     puede haberlo cambiado a mano. */
+  SGADD_UI.tituloPdf(SGADD_UI.nombrePdf('scouting', { rival: SCOUT_UI.__claveRival }));
   /* La clase va en el <html> ADEMÁS del <body>. Las reglas de papel blanco
      de `@media print` apuntan a `:root, html, body` con `!important`, y una
      clase del body no le puede ganar al selector `html`: el informe salía

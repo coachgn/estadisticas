@@ -3,7 +3,7 @@
 Qué está hecho, qué falta y **por qué el orden es ese**. El detalle técnico
 de cada pieza vive en `CLAUDE.md`; acá va la vista de producto.
 
-Última revisión: **2026-08-26** · versión de assets `?v=137` · 2000 tests.
+Última revisión: **2026-08-26** · versión de assets `?v=138` · 2092 tests.
 
 ---
 
@@ -71,6 +71,7 @@ existe sin poder entrar a una vista vacía.
 | **Rendimiento** | Tailwind compilado al repo: primer pintado de **26,4 s a 5,9 s** a 200 kbps |
 | **Secciones** | Principal, Clasificación, Equipos, Jugadores, Scouting, Simulador, Configuración, Diagnóstico |
 | **Cuatro PDF** | Scouting, informe de equipo, post-partido y ficha del jugador |
+| **Nombre del PDF** | Cada exportación nombra su archivo por lo que muestra, en vez del título de la app |
 | **Estados y buzón** | Alertas de inactividad en dos niveles, buscador, estados confirmados |
 | **Configuración de competencia** | Zonas de tabla con tonos AA en pantalla y papel, por tramo |
 | **`TOTAL REGULAR`** | La unión de los torneos de una fase, con las 22 fórmulas auditadas contra el motor |

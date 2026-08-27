@@ -372,6 +372,217 @@ const SGADD_UI = (function () {
   }
 
   /** Devuelve las imágenes a su ruta original después de imprimir. */
+  /* =====================================================================
+     NOMBRE DEL ARCHIVO PDF
+
+     Las cuatro exportaciones usan `window.print()`, así que el nombre que
+     Chrome propone en "Guardar como PDF" es el `document.title` — que
+     hasta acá decía siempre lo mismo ("Deportivo La Plata · Panel de
+     Scouting"). El DT terminaba con una carpeta de archivos homónimos y
+     tenía que abrirlos para saber cuál era cuál.
+
+     El nombre se arma acá, en un solo lugar, y no en cada exportación:
+     cinco copias de la misma sanitización terminan divergiendo, que es el
+     bug que ya tuvo el rol funcional (punto 8).
+     ===================================================================== */
+
+  /* Los prohibidos son la UNIÓN de lo que rechaza cada sistema, no la
+     intersección: un informe se comparte por WhatsApp y termina abierto en
+     Windows, en Mac y en Android. Alcanza con que UNO lo rechace para que
+     el archivo no se pueda guardar.
+
+       · `/` lo rechazan los tres,
+       · `\ : * ? " < > |` los rechaza Windows,
+       · los de control (0x00-0x1F) rompen en cualquier lado. */
+  const PDF_PROHIBIDOS = /[\/\\:*?"<>|\u0000-\u001F]/g;
+
+  /* Nombres de dispositivo de MS-DOS que Windows SIGUE reservando: un
+     archivo llamado `CON.pdf` o `AUX.pdf` no se puede crear, y el error que
+     tira el navegador no explica por qué. Es rebuscado hasta que un equipo
+     se llama así. */
+  const PDF_RESERVADOS = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
+
+  /* Techo de largo. No es el límite real del sistema (255 bytes en la
+     mayoría) sino uno cómodo: un nombre de 200 caracteres se corta en la
+     lista de archivos y deja de servir para lo único que sirve, que es
+     reconocerlo de un vistazo. */
+  const PDF_LARGO_MAX = 120;
+
+  /**
+   * Limpia un nombre para que sirva de nombre de archivo en cualquier
+   * sistema. Pura: no toca el documento ni depende de él.
+   *
+   * @param {string} nombre    el candidato
+   * @param {string} respaldo  qué usar si no queda nada utilizable
+   */
+  function sanearNombreArchivo(nombre, respaldo) {
+    const fallback = String(respaldo === undefined || respaldo === null || respaldo === ''
+      ? 'Informe' : respaldo);
+
+    let t = String(nombre === undefined || nombre === null ? '' : nombre);
+
+    /* Los prohibidos se reemplazan por un ESPACIO y no por vacío: sin eso
+       "ATENAS/PLATENSE" quedaba "ATENASPLATENSE", que es un equipo que no
+       existe. Un espacio conserva que eran dos cosas. */
+    t = t.replace(PDF_PROHIBIDOS, ' ');
+
+    /* Separadores flotantes: al sacar un prohibido queda " -  - " en el
+       medio. Se colapsan a uno solo, y los de las puntas se van. */
+    t = t.replace(/\s+/g, ' ')
+      .replace(/\s*([-–·])\s*(?:[-–·]\s*)+/g, ' $1 ')
+      .replace(/^[\s\-–·.]+/, '')
+      /* Los puntos del final van con los espacios: Windows los descarta en
+         silencio, así que "Ficha Atenas ." se guardaría como otro archivo
+         del que el usuario escribió. */
+      .replace(/[\s\-–·.]+$/, '');
+
+    if (!t) return fallback;
+    if (PDF_RESERVADOS.test(t)) t = t + ' (informe)';
+
+    if (t.length > PDF_LARGO_MAX) {
+      const corte = t.slice(0, PDF_LARGO_MAX);
+      const esp = corte.lastIndexOf(' ');
+      /* Se corta por palabra si hay una cerca; si no, duro. Cortar siempre
+         por palabra dejaría un nombre de 3 letras cuando alguien pega un
+         párrafo sin espacios. */
+      t = (esp > PDF_LARGO_MAX * 0.6 ? corte.slice(0, esp) : corte)
+        .replace(/[\s\-–·.]+$/, '');
+    }
+    return t || fallback;
+  }
+
+  /**
+   * "RUSSO NOWOSIELSKI, JUAN CRUZ" → "Juan Cruz Russo Nowosielski".
+   *
+   * La planilla escribe APELLIDO, NOMBRE y todo en mayúsculas; un archivo
+   * se busca por el nombre como se dice en voz alta. Es el mismo giro que
+   * ya hace `inicialesJugador()` para la insignia del scatter.
+   *
+   * NO se inventan acentos: si la planilla escribe "PEREZ" el archivo dice
+   * "Perez". Un dato que no está no se completa a ojo — misma regla que el
+   * resto del proyecto.
+   */
+  function nombrePersona(crudo) {
+    const t = String(crudo === undefined || crudo === null ? '' : crudo).trim();
+    if (!t) return '';
+    const partes = t.indexOf(',') !== -1
+      ? (() => {
+        const p = t.split(',');
+        return [p.slice(1).join(' ').trim(), p[0].trim()].filter(Boolean);
+      })()
+      : [t];
+    return partes.join(' ')
+      .replace(/\s+/g, ' ')
+      .toLowerCase()
+      /* Se capitaliza después de espacio, guión o apóstrofe: "O'CONNOR" y
+         "SAINT-JEAN" son una palabra sola con dos mayúsculas. */
+      .replace(/(^|[\s\-'’])([a-záéíóúüñ])/g, (m, sep, c) => sep + c.toUpperCase());
+  }
+
+  /* Las cuatro convenciones, en un solo lugar. Cada una devuelve el nombre
+     YA saneado y con su respaldo: una vista a medio cargar no puede dejar
+     el archivo sin nombre, y un genérico limpio es mejor que el título de
+     la app repetido diez veces. */
+  const PDF_NOMBRES = {
+    /* Ficha de jugador → "Juan Pérez" */
+    jugador: (d) => sanearNombreArchivo(nombrePersona(d && d.jugador), 'Ficha_Jugador'),
+
+    /* Informe pre-partido → "Scouting vs Atenas" */
+    scouting: (d) => {
+      const r = d && d.rival ? nombreEquipoPdf(d.rival) : '';
+      return sanearNombreArchivo(r ? 'Scouting vs ' + r : '', 'Informe_Scouting');
+    },
+
+    /* Ficha de equipo → "Ficha Reconquista" */
+    equipo: (d) => {
+      const e = d && d.equipo ? nombreEquipoPdf(d.equipo) : '';
+      return sanearNombreArchivo(e ? 'Ficha ' + e : '', 'Ficha_Equipo');
+    },
+
+    /* Post-partido. NO estaba en la convención pedida y se agrega por la
+       misma razón que las otras: es la cuarta exportación y dejarla con el
+       nombre del navegador la volvía la única sin identificar. El marcador
+       NO entra en el nombre —el archivo se busca por el cruce, no por el
+       resultado— pero sí la fecha, que es lo que separa la ida de la
+       vuelta contra el mismo rival. */
+    partido: (d) => {
+      const l = d && d.local ? nombreEquipoPdf(d.local) : '';
+      const v = d && d.visitante ? nombreEquipoPdf(d.visitante) : '';
+      if (!l || !v) return sanearNombreArchivo('', 'Informe_Partido');
+      const f = d.fecha ? ' - ' + String(d.fecha).replace(/\//g, '-') : '';
+      return sanearNombreArchivo(l + ' vs ' + v + f, 'Informe_Partido');
+    },
+
+    /* Dashboard y tabla de posiciones → "Deportivo La Plata - Primera - Resumen" */
+    resumen: (d) => {
+      const partes = [d && d.club, d && d.categoria, 'Resumen']
+        .map(x => String(x === undefined || x === null ? '' : x).trim())
+        .filter(Boolean);
+      /* Con el club solo, "Club - Resumen" ya identifica; sin ninguno de
+         los dos el genérico dice más que un guión suelto. */
+      return sanearNombreArchivo(partes.length > 1 ? partes.join(' - ') : '', 'Resumen');
+    },
+  };
+
+  /* Los equipos vienen como `ATENAS 'A' - MM` o ya limpios según de dónde
+     salgan. Para el archivo se saca la comilla decorativa y se deja el
+     nombre como se lo nombra. El sufijo de categoría ya lo recortó
+     `limpiarNombre()` río arriba; acá no se vuelve a adivinar. */
+  function nombreEquipoPdf(v) {
+    return String(v === undefined || v === null ? '' : v)
+      .replace(/['’]/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * El nombre de archivo para una exportación. Puro.
+   * @param {string} tipo  jugador | scouting | equipo | partido | resumen
+   */
+  function nombrePdf(tipo, datos) {
+    const f = PDF_NOMBRES[tipo];
+    return f ? f(datos || {}) : sanearNombreArchivo('', 'Informe');
+  }
+
+  /* El título que había antes de la exportación. Vive acá y no en una
+     variable local porque las llamadas se pueden pisar: si `tituloPdf()`
+     corriera dos veces sin un `afterprint` en el medio, la segunda tomaría
+     como "original" el nombre que puso la primera y la pestaña del
+     navegador quedaría con el nombre de un informe para siempre. */
+  let pdfTituloPrevio = null;
+
+  /**
+   * Deja el `document.title` con el nombre del informe justo antes de
+   * imprimir, y lo devuelve a su lugar al terminar.
+   *
+   * La restauración cuelga de `afterprint` y NO de un `setTimeout` ciego,
+   * por el mismo motivo que la limpieza de las otras exportaciones: si el
+   * diálogo tarda en abrir, el título ya volvió atrás y el archivo sale con
+   * el nombre genérico. El timeout queda de respaldo porque `afterprint` no
+   * llega siempre (pasa al cancelar en algunos navegadores).
+   *
+   * @returns {Function} restaurar — para llamarla a mano si hace falta.
+   */
+  function tituloPdf(nombre) {
+    if (typeof document === 'undefined') return function () {};
+    const limpio = sanearNombreArchivo(nombre, 'Informe');
+    if (pdfTituloPrevio === null) pdfTituloPrevio = document.title;
+    document.title = limpio;
+
+    const restaurar = () => {
+      if (pdfTituloPrevio === null) return;
+      document.title = pdfTituloPrevio;
+      pdfTituloPrevio = null;
+      if (typeof window !== 'undefined') window.removeEventListener('afterprint', restaurar);
+      clearTimeout(respaldo);
+    };
+    if (typeof window !== 'undefined') window.addEventListener('afterprint', restaurar);
+    const respaldo = setTimeout(restaurar, 60000);
+    return restaurar;
+  }
+
+  /** ¿Hay una exportación que ya nombró el archivo? La usa el respaldo de
+      Ctrl+P para no pisar un nombre que una exportación puso a propósito. */
+  function tituloPdfActivo() { return pdfTituloPrevio !== null; }
+
   function restaurarImagenes(raiz) {
     const cont = typeof raiz === 'string' ? document.querySelector(raiz) : raiz;
     if (!cont) return;
@@ -383,7 +594,8 @@ const SGADD_UI = (function () {
 
   return { esc, escJs, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, signoDelta, colorDelta, claseMasMenos,
     atributosFila, teclaActiva, teclaTabs, cargando,
-    embeberImagenes, restaurarImagenes, pieInforme, fechaHoy, MARCA };
+    embeberImagenes, restaurarImagenes, pieInforme, fechaHoy, MARCA,
+    sanearNombreArchivo, nombrePersona, nombrePdf, tituloPdf, tituloPdfActivo };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_UI;

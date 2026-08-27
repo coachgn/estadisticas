@@ -30,9 +30,10 @@ node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  54 tests · detalle partido a partido, perfil de tiro y su PDF
 node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 178 tests · estados de jugador, alertas, buzon, sync grafico-tabla
+node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
 ```
 
-**2000 tests en total. Todos tienen que dar verde antes de commitear.**
+**2092 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -1606,6 +1607,73 @@ no hace nada en pantalla: ahí sigue mandando el inline.
 
 **Al agregar un color al semáforo hay que sumarlo a `SCOUT_TONOS`**, o ese
 valor se imprime en negro sin que nadie se entere.
+
+### 7.8 · El NOMBRE del archivo · `document.title` antes de imprimir
+
+Las cinco superficies que imprimen usan `window.print()`, así que el
+nombre que Chrome propone en *Guardar como PDF* **es el `document.title`**.
+Hasta acá decía siempre lo mismo —*"Deportivo La Plata · Panel de
+Scouting"*— y el DT terminaba con una carpeta de archivos homónimos que
+había que abrir para saber cuál era cuál.
+
+| Superficie | Nombre | Respaldo |
+|---|---|---|
+| Ficha del jugador | `Juan Pérez` | `Ficha_Jugador` |
+| Informe pre-partido | `Scouting vs Atenas` | `Informe_Scouting` |
+| Informe de equipo | `Ficha Reconquista` | `Ficha_Equipo` |
+| Post-partido | `Universitario vs A. Mayo - 07-05` | `Informe_Partido` |
+| Principal / Clasificación (Ctrl+P) | `Deportivo La Plata - Primera 2026 - Resumen` | `Resumen` |
+
+Todo vive en `sgadd-ui.js` —`sanearNombreArchivo`, `nombrePersona`,
+`nombrePdf`, `tituloPdf`— que es el módulo que las cinco ya comparten.
+Cinco copias de la misma sanitización terminan divergiendo: es el bug que
+ya tuvo el rol funcional (punto 8).
+
+#### Lo que hay que respetar al tocarlo
+
+- **Los prohibidos son la UNIÓN de lo que rechaza cada sistema**, no la
+  intersección: un informe se comparte por WhatsApp y termina abierto en
+  Windows, en Mac y en Android, y alcanza con que **uno** lo rechace. Van
+  `/ \ : * ? " < > |` más los de control. Se reemplazan por **espacio y no
+  por vacío**: sin eso `ATENAS/PLATENSE` quedaba `ATENASPLATENSE`, un
+  equipo que no existe.
+- **Los puntos del final se recortan.** Windows los descarta en silencio,
+  así que `Ficha Atenas .` se guardaría como otro archivo del que el
+  usuario escribió. Lo mismo con los nombres de dispositivo de MS-DOS
+  (`CON`, `PRN`, `AUX`, `NUL`, `COM1-9`, `LPT1-9`): un `CON.pdf` **no se
+  puede crear** y el error del navegador no explica por qué.
+- **El título se pone ANTES de `window.print()`.** Chrome lo lee al
+  resolver el nombre; ponerlo después no cambia nada. Medido en Chrome
+  real: durante `beforeprint` el título ya es el del informe, y el
+  `/Title` del PDF generado sale con ese mismo valor.
+- **La restauración cuelga de `afterprint`**, con respaldo de 60 s — el
+  mismo patrón que la limpieza de las otras exportaciones, y por el mismo
+  motivo: `afterprint` no llega siempre (headless no lo dispara, y algunos
+  navegadores tampoco al cancelar). Sin el respaldo la pestaña queda con
+  el nombre de un informe para siempre.
+- **`tituloPdf()` guarda el título previo en un estado del MÓDULO**, no en
+  una variable local: dos llamadas sin un `afterprint` en el medio harían
+  que la segunda tomara como "original" el nombre que puso la primera.
+- **El respaldo de Ctrl+P se acota a Principal y Clasificación.** En una
+  sección con su propia exportación, un Ctrl+P a mano imprime la pantalla
+  sin el modo de papel: llamarlo *Resumen* sería ponerle nombre de informe
+  a algo que no es el informe. Y nunca pisa a una exportación en curso —
+  eso lo decide `tituloPdfActivo()`.
+- **El nombre de persona se da vuelta y se capitaliza** (`PEREZ, JUAN` →
+  `Juan Perez`): la planilla escribe APELLIDO, NOMBRE en mayúsculas y un
+  archivo se busca por el nombre como se dice en voz alta. **NO se
+  inventan acentos**: si la planilla escribe `PEREZ`, el archivo dice
+  `Perez`.
+- **El post-partido lleva la fecha y NO el marcador.** La fecha es lo
+  único que separa la ida de la vuelta contra el mismo rival —sin ella los
+  dos informes pisan el mismo archivo—; el marcador no, porque el archivo
+  se busca por el cruce.
+
+**El bug que destapó la verificación en el navegador**: `EQUIPOS.idx` está
+declarado en el estado local de la sección y **no lo escribe nadie** —el
+módulo entero lee de `SGADD_APP.estado`—, así que el resolvedor del
+post-partido caía al genérico sin ningún síntoma. Ni la suite ni el chequeo
+de sintaxis lo podían ver: hay que ejercer la exportación.
 
 ### El pie de los tres PDF
 

@@ -183,6 +183,11 @@ const SGADD_FICHA = (function () {
        cualquier fallo ahí deja el escudo afuera del PDF sin avisar. */
     SGADD_UI.embeberImagenes('#fichaSalida');
 
+    /* El nombre del archivo: sin esto Chrome propone el título de la app
+       y el DT termina con diez PDF homónimos. Se restaura solo en
+       `afterprint`. */
+    SGADD_UI.tituloPdf(SGADD_UI.nombrePdf('jugador', { jugador: ctx.j && ctx.j['NOMBRES'] }));
+
     /* La limpieza cuelga de `afterprint` y NO de un setTimeout ciego: si el
        diálogo tarda en abrir, la hoja se borraba a sí misma antes de
        imprimirse. El timeout queda de respaldo por si `afterprint` no llega

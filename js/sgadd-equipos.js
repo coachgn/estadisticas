@@ -1320,12 +1320,42 @@ function equiposDetallePartido(idx, e, id) {
    No reusa el modal del informe de equipo: acá no hay nada que elegir, el
    informe post-partido es siempre el mismo. Un clic y afuera.
    --------------------------------------------------------------------- */
+/* El nombre del PDF del post-partido: los dos equipos y la fecha.
+
+   La fecha entra porque es lo ÚNICO que separa la ida de la vuelta contra
+   el mismo rival — sin ella los dos informes pisan el mismo archivo. El
+   marcador NO entra: el archivo se busca por el cruce, no por el
+   resultado, y un nombre con el resultado adentro se vuelve incómodo de
+   compartir cuando se perdió. */
+function equiposNombrePdfPartido() {
+  /* El índice sale de `SGADD_APP.estado`, que es de donde lo lee TODO el
+     módulo (`equiposPintar`). `EQUIPOS.idx` está declarado en el estado
+     local pero no lo escribe nadie: leerlo devolvía null y el nombre del
+     archivo caía al genérico sin ningún síntoma. */
+  const idx = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado)
+    ? SGADD_APP.estado.idx : null;
+  const part = (idx && EQUIPOS.partido) ? idx.partido(EQUIPOS.partido) : null;
+  const lados = (part && part.lados) || [];
+  /* La condición se normaliza igual que en `equiposCondicionCorta()`: la
+     planilla la escribe con mayúsculas y acentos variables. Sin un lado
+     marcado LOCAL se cae al primero, que es el orden del cruce. */
+  const esLocal = (l) => SGADD.texto(l.fila && l.fila['CONDICION']).toUpperCase() === 'LOCAL';
+  const local = lados.find(esLocal) || lados[0];
+  const visita = lados.find(l => l !== local);
+  return SGADD_UI.nombrePdf('partido', {
+    local: local && local.equipo && local.equipo.nombre,
+    visitante: visita && visita.equipo && visita.equipo.nombre,
+    fecha: part && part.fecha ? SGADD.formatearFecha(part.fecha) : '',
+  });
+}
+
 function equiposImprimirPartido() {
   /* Los escudos se serializan antes de imprimir: al imprimir, el navegador
      vuelve a resolver el `src` de cada <img> y cualquier fallo ahí los deja
      afuera del PDF sin avisar. Misma utilidad que usan las otras dos
      exportaciones. */
   SGADD_UI.embeberImagenes('#detallePartido');
+  SGADD_UI.tituloPdf(equiposNombrePdfPartido());
   document.body.classList.add('modo-partido-print');
   /* Los gráficos ya están dibujados con la paleta de PANTALLA: hay que
      reaplicarles la del papel o su leyenda y sus ejes salen en gris
