@@ -664,7 +664,7 @@ const tit2 = (t) => console.log('\n' + t + '\n' + '─'.repeat(66));
    la prueba de que no hay nada asumido. */
 const JSON_CLUB = {
   id: 'nautico',
-  torneo: {
+  preconfiguracion: {
     cliente: 'Club Náutico',
     declaradoEl: '2026-08-26',
     declaradoPor: 'Entrevista inicial con el DT',
@@ -770,7 +770,7 @@ check('una clave que el libro no tiene lo dice con todas las letras',
 
 tit2('DIVERGENCIA contra lo proyectado');
 const JSON_MAL = JSON.parse(JSON.stringify(JSON_CLUB));
-JSON_MAL.torneo.categorias['primera-caballeros'].tramos[0].equiposEsperados = 12;
+JSON_MAL.preconfiguracion.categorias['primera-caballeros'].tramos[0].equiposEsperados = 12;
 const rMal = C.auditar(C.proyeccion(JSON_MAL, 'primera-caballeros'),
   () => idxSuper8, { tramosDelLibro: LIBRO });
 check('declarar 12 equipos y traer 8 es DIVERGENTE',
@@ -789,7 +789,7 @@ check('y la fecha con la que se selló', sello.fecha === '2026-09-14');
 check('sin fecha usa la de hoy', /^\d{4}-\d{2}-\d{2}$/.test(C.certificar(idxSuper8).fecha));
 
 const JSON_CERT = JSON.parse(JSON.stringify(JSON_CLUB));
-JSON_CERT.torneo.categorias['primera-caballeros'].certificacion = { 'super-8': sello };
+JSON_CERT.preconfiguracion.categorias['primera-caballeros'].certificacion = { 'super-8': sello };
 const pC = C.proyeccion(JSON_CERT, 'primera-caballeros');
 const rC = C.auditar(pC, () => idxSuper8, { tramosDelLibro: LIBRO });
 check('con el libro igual al sello queda CERTIFICADO',
@@ -800,7 +800,7 @@ check('y muestra la fecha del sello', /2026-09-14/.test(rC[0].detalle), rC[0].de
    torneo cerró con 8 equipos, que la entrevista dijera 12 ya no importa:
    es un hecho histórico. Lo que sí importa es si el libro cambió. */
 const JSON_CERT_MAL = JSON.parse(JSON.stringify(JSON_CERT));
-JSON_CERT_MAL.torneo.categorias['primera-caballeros'].tramos[0].equiposEsperados = 12;
+JSON_CERT_MAL.preconfiguracion.categorias['primera-caballeros'].tramos[0].equiposEsperados = 12;
 const rCM = C.auditar(C.proyeccion(JSON_CERT_MAL, 'primera-caballeros'),
   () => idxSuper8, { tramosDelLibro: LIBRO });
 check('un tramo sellado NO se re-juzga contra lo proyectado',
@@ -846,7 +846,7 @@ check('huella(null) devuelve null', C.huella(null) === null);
 
 tit2('LA COMPETENCIA POR CATEGORÍA');
 const JSON_ZONAS = JSON.parse(JSON.stringify(JSON_CLUB));
-JSON_ZONAS.torneo.categorias['primera-caballeros'].competencia = {
+JSON_ZONAS.preconfiguracion.categorias['primera-caballeros'].competencia = {
   formatos: { f: { label: 'F', zonas: [{ id: 'z', desde: 1, hasta: 2, tono: 'exito' }] } },
   porTramo: { '*': 'f' },
 };
@@ -1019,7 +1019,7 @@ check('DESVIO_CALENDARIO es un estado del semáforo',
 
 tit2('LA VENTANA EN EL SCHEMA');
 const JSON_VENT = {
-  torneo: { cliente: 'X', categorias: { c: {
+  preconfiguracion: { cliente: 'X', categorias: { c: {
     label: 'C', ventanaTemporal: { desde: '2026-01-01', hasta: '2026-12-31' },
     tramos: [
       { id: 'con-propia', label: 'Con propia', clave: 'A|R',
@@ -1037,7 +1037,7 @@ check('uno sin ventana propia hereda la de la categoría',
   pV.categoria.tramos[1].ventanaPropia === false &&
   pV.categoria.tramos[1].ventana.desde.getMonth() === 0);
 check('y sin fechas por ningún lado queda en null, no se inventa una',
-  C.proyeccion({ torneo: { categorias: { c: { tramos: [{ id: 't' }] } } } }, 'c')
+  C.proyeccion({ preconfiguracion: { categorias: { c: { tramos: [{ id: 't' }] } } } }, 'c')
     .categoria.tramos[0].ventana === null);
 
 tit2('LA PESTAÑA TORNEO');
@@ -1049,7 +1049,7 @@ check('la pantalla tiene las dos pestañas',
 check('el borrador del torneo es independiente del de zonas',
   /proy: null,/.test(uiSrc2) && /proySucia: false,/.test(uiSrc2));
 check('se guarda bajo su propia clave',
-  /configClubId\(\) \+ '\.torneo'/.test(uiSrc2));
+  /configClubId\(\) \+ '\.preconfig'/.test(uiSrc2));
 /* NADA de desplegables con nombres preconcebidos: si la UI ofreciera
    'Ida / Vuelta / Apertura' volvería a meter el hardcodeo que el schema
    evita. Los nombres se escriben. */
@@ -1111,7 +1111,7 @@ tit2('COBERTURA DEL CATÁLOGO · un libro por categoría');
    nada que contrastar. Callarse ahí es lo peor que puede hacer una
    auditoría. */
 const CAT_BASE = {
-  torneo: { cliente: 'X', categorias: {
+  preconfiguracion: { cliente: 'X', categorias: {
     'primera': { label: 'Primera', planilla: 'club-primera', tramos: [] },
   } },
 };
@@ -1145,7 +1145,7 @@ check('una planilla sin sheetId no se reclama',
    una hoja que no está en el catálogo. O el id está mal escrito, o la
    hoja todavía no se conectó. */
 const CAT_FANTASMA = JSON.parse(JSON.stringify(CAT_BASE));
-CAT_FANTASMA.torneo.categorias['femenino'] = {
+CAT_FANTASMA.preconfiguracion.categorias['femenino'] = {
   label: 'Femenino', planilla: 'club-femenino-2026', tramos: [] };
 const cob4 = C.cobertura(CAT_FANTASMA, PL);
 check('una categoría que apunta a una planilla inexistente se denuncia',
@@ -1163,7 +1163,7 @@ check('cobertura sin planillas no revienta',
 /* AISLAMIENTO. Cada categoría se resuelve sola: pedir una NUNCA puede
    devolver los tramos de otra. Es lo que impide que el calendario de
    Primera pise al de las formativas. */
-const DOS_CAT = { torneo: { categorias: {
+const DOS_CAT = { preconfiguracion: { categorias: {
   'a': { label: 'A', planilla: 'pa', tramos: [
     { id: 'ta', label: 'Tramo A', clave: 'A|R' }] },
   'b': { label: 'B', planilla: 'pb', tramos: [
@@ -1178,14 +1178,14 @@ check('y ninguno de la otra',
   pb.categoria.tramos.every(t => t.id !== 'ta'));
 /* Las certificaciones tampoco se cruzan: viven adentro de su categoría. */
 const CERT_CRUZ = JSON.parse(JSON.stringify(DOS_CAT));
-CERT_CRUZ.torneo.categorias.a.certificacion = { ta: { fecha: '2026-01-01', hash: 'zzz' } };
+CERT_CRUZ.preconfiguracion.categorias.a.certificacion = { ta: { fecha: '2026-01-01', hash: 'zzz' } };
 check('un sello de una categoría no aparece en la otra',
   !!C.proyeccion(CERT_CRUZ, 'pa').categoria.certificacion.ta &&
   Object.keys(C.proyeccion(CERT_CRUZ, 'pb').categoria.certificacion).length === 0);
 /* Y las zonas: cada categoría puede tener su propio formato sin que el
    de una se aplique a la otra. */
 const ZONAS_CRUZ = JSON.parse(JSON.stringify(DOS_CAT));
-ZONAS_CRUZ.torneo.categorias.a.competencia = {
+ZONAS_CRUZ.preconfiguracion.categorias.a.competencia = {
   formatos: { f: { zonas: [{ id: 'z', desde: 1, hasta: 4, tono: 'exito' }] } },
   porTramo: { '*': 'f' } };
 check('las zonas de una categoría no alcanzan a la otra',
@@ -1202,6 +1202,141 @@ check('nombrando los libros sin torneo declarado',
   /NADIE declaró su torneo/.test(diagSrc4));
 check('y las categorías que apuntan a una hoja que no existe',
   /no está en el catálogo/.test(diagSrc4));
+
+tit2('LA PESTAÑA TORNEO SE ABRE EN CUALQUIER CLUB');
+
+/* EL BUG QUE ESTO FIJA, porque no se ve venir leyendo el código.
+
+   El JSON del club ya tenía un campo `torneo`: un STRING con el nombre
+   del torneo ('TORNEO LOCAL', 'CONFERENCIA NORTE') que alimenta
+   `CATALOGO.planillas[].torneo`. El bloque de preconfiguración se bautizó
+   con esa misma clave, así que:
+
+     · en DEPORTIVO convivían las dos y ganaba la última — el nombre del
+       torneo desaparecía sin que nadie lo notara;
+     · en Reconquista y Jujuy, que solo tienen el string, la pestaña
+       reventaba con `Cannot convert undefined or null to object` al
+       pedirle `.categorias` a un texto. Muerta justo en los clubes que
+       MÁS la necesitan: los que todavía no configuraron nada.
+
+   Por eso el test NO se conforma con leer el fuente: RENDERIZA la pestaña
+   de verdad en un vm y falla si tira. Un grep sobre el código no habría
+   cazado esto nunca. */
+function pantallaConfig(cfgClub, planillaAbierta) {
+  const SRC = fs.readFileSync('./js/sgadd-configui.js', 'utf8');
+  const guardado = {};
+  const ctx = {
+    console: { log() {}, warn() {}, error() {} },
+    JSON, Object, Array, String, Number, Math, Date, RegExp, isNaN, parseInt, parseFloat,
+    SGADD_CONFIG: C,
+    SGADD_UI: {
+      esc: (v) => String(v === undefined || v === null ? '' : v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;'),
+      escJs: (v) => String(v === undefined || v === null ? '' : v)
+        .replace(/\\/g, '\\\\').replace(/'/g, "\\'"),
+      cargando: () => '',
+    },
+    CLUB: { cfg: cfgClub, estado: { id: 'clubtest' } },
+    SGADD: { planilla: (id) => (planillaAbierta && planillaAbierta.id === id) ? planillaAbierta : null },
+    SGADD_APP: {
+      estado: { planillaId: planillaAbierta ? planillaAbierta.id : null,
+                torneo: 'IDA', fase: 'REGULAR' },
+      reindexar() {}, indice: () => null,
+    },
+    localStorage: {
+      getItem: (k) => (k in guardado ? guardado[k] : null),
+      setItem: (k, v) => { guardado[k] = String(v); },
+      removeItem: (k) => { delete guardado[k]; },
+    },
+    document: { getElementById: () => null, querySelector: () => null },
+  };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(SRC, ctx, { filename: 'sgadd-configui.js' });
+  /* Un repintado real toca el DOM y acá no hay: se anula, que es
+     exactamente lo que hace falta para poder ejercer las acciones. */
+  vm.runInContext('configPintar = function () {};', ctx);
+  return {
+    ctx,
+    pintar: () => vm.runInContext('configPestanaTorneo()', ctx),
+    correr: (js) => vm.runInContext(js, ctx),
+  };
+}
+
+const PLANILLA = { id: 'primera-2026', label: 'Primera 2026', activo: true };
+
+/* --- 1 · el club QUE SÍ declaró (forma de DEPORTIVO) --------------- */
+const CON_BLOQUE = {
+  nombre: 'Club Test',
+  torneo: 'TORNEO LOCAL',          // ← el string viejo, tiene que convivir
+  preconfiguracion: {
+    cliente: 'Club Test', categorias: {
+      'primera-2026': { label: 'Primera 2026', planilla: 'primera-2026',
+        tramos: [{ id: 'ida', label: 'Ida', clave: 'IDA|REGULAR' }] } }
+  }
+};
+let pantT = pantallaConfig(CON_BLOQUE, PLANILLA);
+let htmlT = '';
+let tiroT = null;
+try { htmlT = pantT.pintar(); } catch (e) { tiroT = e; }
+check('con bloque declarado, la pestaña pinta sin tirar', tiroT === null, tiroT && tiroT.message);
+check('y muestra la categoría declarada', /Primera 2026/.test(htmlT));
+check('sin caer en el estado vacío', !/No hay categorías preconfiguradas/.test(htmlT));
+
+/* --- 2 · el club que NO declaró (forma de Reconquista / Jujuy) ----- */
+[
+  ['solo el string viejo', { nombre: 'C', torneo: 'TORNEO LOCAL' }],
+  ['sin ningún campo', { nombre: 'C' }],
+  ['con el bloque en basura', { nombre: 'C', preconfiguracion: 'TORNEO LOCAL' }],
+  ['con el bloque en un array', { nombre: 'C', preconfiguracion: [] }],
+  ['con el bloque vacío', { nombre: 'C', preconfiguracion: {} }],
+].forEach(([nom, cfg]) => {
+  const p2 = pantallaConfig(cfg, PLANILLA);
+  let h = '', err = null;
+  try { h = p2.pintar(); } catch (e) { err = e; }
+  check(nom + ' · la pestaña abre sin tirar', err === null, err && err.message);
+  check(nom + ' · muestra el estado vacío', /No hay categorías preconfiguradas/.test(h));
+  check(nom + ' · con el botón para empezar', /Agregar primera categoría/.test(h));
+});
+
+/* --- 3 · y desde el estado vacío se puede EDITAR ------------------- */
+pantT = pantallaConfig({ nombre: 'C', torneo: 'TORNEO LOCAL' }, PLANILLA);
+pantT.correr('configCatAgregar()');
+htmlT = pantT.pintar();
+check('agregar la primera categoría deja la pestaña utilizable',
+  !/No hay categorías preconfiguradas/.test(htmlT));
+/* SEMILLA: el id sale de la planilla ABIERTA, que es el dato que ata la
+   categoría a su libro. No es un nombre asumido — lo escribió el club en
+   su propio catálogo. Los nombres del TORNEO se siguen escribiendo. */
+check('y la siembra con la planilla abierta, no con un nombre inventado',
+  pantT.correr('CONFIGUI.proy.categorias["primera-2026"].planilla') === 'primera-2026');
+check('sin inventarle un solo tramo',
+  pantT.correr('CONFIGUI.proy.categorias["primera-2026"].tramos.length') === 0);
+check('y queda marcada como sucia, para que el DT sepa que falta guardar',
+  pantT.correr('CONFIGUI.proySucia') === true);
+
+/* Sin planilla abierta NO se inventa el vínculo: queda en blanco y el
+   usuario lo escribe. Es la misma regla que `sugerirClave()`. */
+pantT = pantallaConfig({ nombre: 'C' }, null);
+pantT.correr('configCatAgregar()');
+check('sin planilla abierta, el vínculo queda vacío en vez de inventado',
+  pantT.correr('Object.keys(CONFIGUI.proy.categorias)[0]') === 'categoria' &&
+  pantT.correr('CONFIGUI.proy.categorias.categoria.planilla') === '');
+
+/* --- 4 · la colisión de claves, fijada en los JSON reales ---------- */
+['reconquista', 'jujuy', 'deportivo'].forEach(id => {
+  const crudo = fs.readFileSync('./clubes/' + id + '.json', 'utf8');
+  const veces = (crudo.match(/^\s*"torneo":/gm) || []).length;
+  check(id + ' declara el `torneo` (nombre) una sola vez', veces <= 1, veces);
+  const j = JSON.parse(crudo);
+  check(id + ' conserva el nombre del torneo',
+    j.torneo === undefined || typeof j.torneo === 'string', typeof j.torneo);
+  check(id + ' · la preconfiguración es un objeto o no está',
+    j.preconfiguracion === undefined ||
+    (typeof j.preconfiguracion === 'object' && !Array.isArray(j.preconfiguracion)));
+});
+
 
 tit2('EL SELLO REAL DE IDA');
 const jDep3 = JSON.parse(fs.readFileSync('./clubes/deportivo.json', 'utf8'));

@@ -683,10 +683,29 @@ const SGADD_CONFIG = (function () {
      el fallback siempre seguro. Un club sin bloque se comporta
      exactamente como antes de que esto existiera.
      --------------------------------------------------------------- */
+  /* LA CLAVE ES `preconfiguracion` Y NO `torneo`, Y ESO NO ES ESTÉTICO.
+
+     El JSON del club YA TENÍA un campo `torneo`: un string con el nombre
+     del torneo ('TORNEO LOCAL', 'CONFERENCIA NORTE') que alimenta
+     `CATALOGO.planillas[].torneo`. Al bautizar así el bloque nuevo se
+     pisaron entre ellos, y el resultado fue de manual:
+
+       · en `deportivo.json` quedaron DOS claves `torneo` —el string y el
+         objeto— y gana la última, así que el nombre del torneo
+         desapareció sin que nadie lo notara;
+       · en Reconquista y Jujuy, que solo tienen el string, la pestaña de
+         preconfiguración tiraba `Cannot convert undefined or null to
+         object` al pedirle `.categorias` a un texto.
+
+     Se renombró en vez de convivir: dos cosas distintas con el mismo
+     nombre en el mismo objeto es un bug esperando. */
   function parsearProyeccion(json) {
     if (!json || typeof json !== 'object') return null;
-    const t = json.torneo;
-    if (!t || typeof t !== 'object') return null;
+    const t = json.preconfiguracion;
+    /* La guarda de tipo se queda igual: cierra la clase entera, no solo
+       este caso. Cualquier cosa que no sea un objeto acá devuelve null y
+       el panel se comporta como si no hubiera bloque. */
+    if (!t || typeof t !== 'object' || Array.isArray(t)) return null;
 
     const cats = {};
     const crudas = (t.categorias && typeof t.categorias === 'object') ? t.categorias : {};

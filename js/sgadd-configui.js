@@ -527,13 +527,29 @@ function buildConfiguracion() {
 function configProyBorrador(forzar) {
   if (CONFIGUI.proy && !forzar) return CONFIGUI.proy;
   const jsonClub = (typeof CLUB !== 'undefined' && CLUB.cfg) ? CLUB.cfg : null;
-  const local = SGADD_CONFIG.leerOverride(configClubId() + '.torneo');
-  const crudo = local || (jsonClub && jsonClub.torneo) || null;
+  const local = SGADD_CONFIG.leerOverride(configClubId() + '.preconfig');
+  const delJson = (jsonClub && jsonClub.preconfiguracion) || null;
+
+  /* LA GUARDA DE TIPO ES OBLIGATORIA, no una precaución. Acá se pisaron
+     una vez el bloque nuevo y el campo `torneo` viejo —un string con el
+     nombre del torneo— y esto reventaba con `Cannot convert undefined or
+     null to object` al pedirle `.categorias` a un texto. La pantalla
+     quedaba muerta justo en los clubes que MÁS la necesitan: los que
+     todavía no configuraron nada. */
+  const util = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? v : null;
+  const crudo = util(local) || util(delJson);
+
   CONFIGUI.proy = crudo
     ? JSON.parse(JSON.stringify(crudo))
     : { cliente: (jsonClub && jsonClub.nombre) || '', declaradoEl: '',
         declaradoPor: '', categorias: {} };
-  CONFIGUI.proyOrigen = local ? 'local' : (jsonClub && jsonClub.torneo ? 'json' : 'ninguno');
+  /* Y el borrador SIEMPRE tiene un mapa de categorías, aunque el bloque
+     venga a medias: sin esto un JSON con `preconfiguracion: {}` volvería
+     a romper el render. */
+  if (!CONFIGUI.proy.categorias || typeof CONFIGUI.proy.categorias !== 'object') {
+    CONFIGUI.proy.categorias = {};
+  }
+  CONFIGUI.proyOrigen = util(local) ? 'local' : (util(delJson) ? 'json' : 'ninguno');
   if (!CONFIGUI.catSel || !CONFIGUI.proy.categorias[CONFIGUI.catSel]) {
     CONFIGUI.catSel = Object.keys(CONFIGUI.proy.categorias)[0] || null;
   }
@@ -551,13 +567,29 @@ function configProySucio() { CONFIGUI.proySucia = true; }
 
 function configCatElegir(id) { CONFIGUI.catSel = id; configPintar(); }
 
+/* SIEMBRA desde la planilla abierta, y solo el VÍNCULO —id, nombre y
+   planilla—, nunca los tramos ni la `clave` del libro. El id de la
+   planilla no es un nombre asumido: es el que el propio club ya escribió
+   en su catálogo, y es justo el dato que ata la categoría a su Sheet
+   (punto 18). Los nombres del TORNEO se siguen escribiendo a mano: ahí
+   proponer sería inventar. */
 function configCatAgregar() {
   const p = configProyBorrador();
+  const vacia = Object.keys(p.categorias).length === 0;
+  const abierta = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado)
+    ? SGADD.planilla(SGADD_APP.estado.planillaId) : null;
+  const semilla = (vacia && abierta && abierta.id) ? abierta : null;
+
   /* El id se propone, no se impone: es una clave que el usuario puede
      querer que coincida con la de su planilla. */
-  let base = 'categoria', i = 1, id = base;
+  let base = semilla ? semilla.id : 'categoria';
+  let i = 1, id = base;
   while (p.categorias[id]) { i++; id = base + '-' + i; }
-  p.categorias[id] = { label: 'Categoría nueva', planilla: '', tramos: [] };
+  p.categorias[id] = {
+    label: semilla ? (semilla.label || semilla.id) : 'Categoría nueva',
+    planilla: semilla ? semilla.id : '',
+    tramos: []
+  };
   CONFIGUI.catSel = id;
   configProySucio();
   configPintar();
@@ -663,7 +695,7 @@ function configTramoSugerir(i) {
 /* ---------------- guardar, exportar, restablecer ---------------- */
 
 function configProyGuardar() {
-  const ok = SGADD_CONFIG.guardarOverride(configClubId() + '.torneo', CONFIGUI.proy);
+  const ok = SGADD_CONFIG.guardarOverride(configClubId() + '.preconfig', CONFIGUI.proy);
   CONFIGUI.proySucia = false;
   if (ok) CONFIGUI.proyOrigen = 'local';
   configAvisar(ok
@@ -673,7 +705,7 @@ function configProyGuardar() {
 }
 
 function configProyRestablecer() {
-  SGADD_CONFIG.borrarOverride(configClubId() + '.torneo');
+  SGADD_CONFIG.borrarOverride(configClubId() + '.preconfig');
   configProyBorrador(true);
   configAvisar('Se descartó el borrador local. La pantalla vuelve a lo que declara clubes/' +
     configClubId() + '.json, que es la configuración oficial del proyecto.', true);
@@ -900,7 +932,17 @@ function configPestanaTorneo() {
             class="px-3 py-1.5 text-xs rounded-md transition-colors ${
               id === CONFIGUI.catSel ? 'bg-accent text-base' : 'text-muted hover:text-ink hover:bg-surface2'}">
             ${SGADD_UI.esc(p.categorias[id].label || id)}</button>`).join('')}
-        </div>` : '<p class="text-xs text-muted mb-3">Sin categorías. Agregá la primera.</p>'}
+        </div>` : `
+        <div class="text-center py-8 px-4">
+          <div class="text-3xl mb-2" aria-hidden="true">🗂️</div>
+          <p class="font-display uppercase tracking-wide text-sm text-ink mb-1">No hay categorías preconfiguradas</p>
+          <p class="text-xs text-muted max-w-md mx-auto mb-4">
+            Todavía nadie declaró cómo se organiza este torneo. El panel funciona igual,
+            pero sin declaración no hay contra qué contrastar lo que trae el libro.
+          </p>
+          <button onclick="configCatAgregar()" class="${btn} bg-accent text-base hover:opacity-90">
+            + Agregar primera categoría</button>
+        </div>`}
 
       ${c ? `
         <div class="flex flex-wrap items-center gap-2 pb-3 mb-3 border-b border-hairline">
@@ -971,7 +1013,7 @@ function configPestanaTorneo() {
       </ul>
       ${CONFIGUI.proyExportando ? `
         <pre id="configProyExport" class="scrollbox bg-surface2 border border-hairline rounded p-3 mt-4 text-[11px] font-mono text-ink overflow-x-auto whitespace-pre">${
-          SGADD_UI.esc('"torneo": ' + JSON.stringify(CONFIGUI.proy, null, 2))}</pre>` : ''}
+          SGADD_UI.esc('"preconfiguracion": ' + JSON.stringify(CONFIGUI.proy, null, 2))}</pre>` : ''}
     </div>`;
 }
 

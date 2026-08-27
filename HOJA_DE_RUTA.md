@@ -3,7 +3,7 @@
 Qué está hecho, qué falta y **por qué el orden es ese**. El detalle técnico
 de cada pieza vive en `CLAUDE.md`; acá va la vista de producto.
 
-Última revisión: **2026-08-26** · versión de assets `?v=136` · 1968 tests.
+Última revisión: **2026-08-26** · versión de assets `?v=137` · 2000 tests.
 
 ---
 
@@ -49,8 +49,9 @@ Eso no es un detalle de implementación: es lo que permite vender el sistema
 2. Se agrega la planilla a `clubes/<club>.json` con su `sheetId`.
 3. El Diagnóstico la reclama: *"tiene libro conectado pero nadie declaró su
    torneo"*.
-4. Se declara en la pestaña **Torneo** de Configuración: tramos, fechas,
-   equipos esperados y la `clave` que la ata al libro.
+4. Se declara en la pestaña **Torneo** de Configuración —que abre en
+   cualquier club, con o sin bloque previo—: tramos, fechas, equipos
+   esperados y la `clave` que la ata al libro.
 5. Se exporta el bloque y se commitea. Ahí le llega al resto.
 
 Una planilla **sin `sheetId`** entra igual, como inactiva: aparece en el

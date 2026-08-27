@@ -25,8 +25,8 @@
   "torneo": "TORNEO LOCAL",
   "credito": "SGADD",
 
-  "//torneo": "PRECONFIGURACION. Lo que el cliente declaro en la entrevista, ANTES de que entraran los box scores. No es una segunda fuente de verdad: es una hipotesis fechada contra la cual contrastar, y el dato manda siempre. Las claves de categoria y de tramo son LIBRES: no hay nombres asumidos en ningun lado.",
-  "torneo": {
+  "//preconfiguracion": "PRECONFIGURACION. Lo que el cliente declaro en la entrevista, ANTES de que entraran los box scores. No es una segunda fuente de verdad: es una hipotesis fechada contra la cual contrastar, y el dato manda siempre. Las claves de categoria y de tramo son LIBRES: no hay nombres asumidos en ningun lado.",
+  "preconfiguracion": {
     "cliente": "Deportivo La Plata",
     "declaradoEl": "2026-08-26",
     "declaradoPor": "Entrevista inicial",

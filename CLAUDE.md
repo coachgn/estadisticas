@@ -20,7 +20,7 @@ node test-core.js          # 276 tests · núcleo, índice, validador
 node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  94 tests · multi-cliente
-node test-config.js        # 275 tests · zonas de tabla, tramos, tonos AA
+node test-config.js        # 307 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  46 tests · tabla de posiciones, orden y zonas
 node test-boot.js          # 150 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 253 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
@@ -32,7 +32,7 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 178 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 ```
 
-**1968 tests en total. Todos tienen que dar verde antes de commitear.**
+**2000 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -4143,7 +4143,7 @@ equivocado y **no se notaría**, que es peor que no certificar nada.
 ### El bloque
 
 ```json
-"torneo": {
+"preconfiguracion": {
   "cliente": "Deportivo La Plata",
   "declaradoEl": "2026-08-26",
   "declaradoPor": "Entrevista inicial",
@@ -4166,8 +4166,49 @@ equivocado y **no se notaría**, que es peor que no certificar nada.
 ```
 
 **Todo opcional y el fallback siempre seguro**, igual que `competencia`.
-Reconquista y Jujuy no declaran `torneo` y hay tests que fijan que eso siga
+Reconquista y Jujuy no declaran `preconfiguracion` y hay tests que fijan
+que eso siga
 siendo válido.
+
+### `preconfiguracion` y NO `torneo` · la colisión que costó una pantalla
+
+El JSON del club **ya tenía** un campo `torneo`: un string con el nombre
+del torneo (`"TORNEO LOCAL"`, `"CONFERENCIA NORTE"`) que baja a cada
+planilla del catálogo (`CATALOGO.planillas[].torneo`, lo arma
+`sgadd-club.js`). El bloque de preconfiguración se bautizó con esa misma
+clave y el resultado fue de manual:
+
+- en `deportivo.json` quedaron **dos claves `torneo`** en el mismo objeto,
+  el string y el bloque. Gana la última, así que **el nombre del torneo
+  desapareció del catálogo sin que nadie lo notara**;
+- en Reconquista y Jujuy, que solo tienen el string, la pestaña reventaba
+  con `Cannot convert undefined or null to object` al pedirle
+  `.categorias` a un texto — **muerta justo en los clubes que más la
+  necesitan**, los que todavía no configuraron nada.
+
+Se renombró en vez de hacerlas convivir: dos cosas distintas con el mismo
+nombre en el mismo objeto es un bug esperando. Y **la guarda de tipo se
+quedó igual**, porque cierra la clase entera y no solo este caso: un
+`preconfiguracion` que no sea un objeto —un string, un array, `{}`—
+devuelve `null` y el panel se comporta como si no hubiera bloque.
+
+**El test no se conforma con leer el fuente: RENDERIZA la pestaña** en un
+`vm` con `document` y `localStorage` de mentira, y falla si tira. Un grep
+sobre el código no habría cazado esto nunca — la clave estaba bien escrita
+en los dos lados.
+
+### El estado vacío siembra el VÍNCULO, no los nombres
+
+Sin categorías la pestaña no muestra una lista en blanco sino un cierre
+con su acción (*Agregar primera categoría*), que es la regla de empty
+states del punto 14.
+
+Ese primer alta se siembra con la **planilla abierta**: id, label y
+`planilla`. No contradice el "cero nombres asumidos" —el id de la planilla
+lo escribió el propio club en su catálogo, y es justo el dato que ata la
+categoría a su libro—. Lo que **no** se siembra es un solo tramo ni una
+`clave`: ahí proponer sería inventar. Sin planilla abierta el vínculo
+queda vacío, misma regla que `sugerirClave()`.
 
 La `competencia` anidada usa **el mismo parser del punto 15**, no uno
 paralelo: cada categoría puede tener su propio formato de zonas sin
