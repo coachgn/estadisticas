@@ -156,6 +156,45 @@ function tablaCompleta(filas) { return filas; }
  *
  * @returns {{hojas, recortadas: string[], completas: string[]}}
  */
+/* COLUMNAS QUE NO SALEN NUNCA, para NADIE — ni para un admin.
+
+   `ID_ARCHIVO` la escribe MotorStats desde su v43 en las tres maestras:
+   es el id de Drive del box score de origen. El panel la lee y NO la usa
+   en ninguna vista (punto 3 de CLAUDE.md).
+
+   Mandarla al navegador contradice el objetivo entero de la migración —
+   sacar los ids de Google del lado del cliente— por una columna que
+   nadie mira. Medido contra la planilla real de DEPORTIVO: **76 ids
+   distintos en 460 filas**, y 152 de esas van en `Base Datos E`, que se
+   entrega COMPLETA hasta al cliente más restringido porque de ahí sale
+   la tabla de posiciones.
+
+   Se corta para todos y no solo para los clientes: el navegador de un
+   admin sigue siendo un navegador, y la columna no le sirve tampoco.
+
+   El día que el panel necesite `ID_ARCHIVO` para algo, lo que hay que
+   servir es un identificador propio, no el de Drive. */
+const COLUMNAS_OCULTAS = ['ID_ARCHIVO'];
+
+/**
+ * Saca las columnas ocultas de una matriz.
+ *
+ * Se resuelve por NOMBRE de encabezado y no por posición: el motor
+ * agrega columnas entre versiones (punto 3), así que un índice fijo
+ * empezaría a cortar la columna equivocada sin ningún síntoma.
+ */
+function sinColumnasOcultas(filas) {
+  const m = Array.isArray(filas) ? filas : [];
+  if (!m.length) return m;
+  const cab = m[0] || [];
+  const fuera = [];
+  cab.forEach((c, k) => {
+    if (COLUMNAS_OCULTAS.indexOf(String(c || '').trim().toUpperCase()) !== -1) fuera.push(k);
+  });
+  if (!fuera.length) return m;
+  return m.map(fila => (fila || []).filter((_, k) => fuera.indexOf(k) === -1));
+}
+
 function recortarLibro(libro, sesion) {
   const hojas = (libro && libro.hojas) || {};
   const texto = (libro && libro.hojasTexto) || {};
@@ -177,8 +216,8 @@ function recortarLibro(libro, sesion) {
       || (POR_EQUIPO.indexOf(h) === -1 && POR_JUGADOR.indexOf(h) === -1
           && POR_PARTIDO.indexOf(h) === -1);
     if (libre) {
-      salida[h] = hojas[h];
-      if (texto[h]) salidaTexto[h] = texto[h];
+      salida[h] = sinColumnasOcultas(hojas[h]);
+      if (texto[h]) salidaTexto[h] = sinColumnasOcultas(texto[h]);
       completas.push(h);
       return;
     }
@@ -187,13 +226,20 @@ function recortarLibro(libro, sesion) {
        fila con el texto de otra. */
     const idx = indicesPermitidos(hojas[h], sesion,
       { soloPropio: POR_PARTIDO.indexOf(h) !== -1 });
-    salida[h] = tomar(hojas[h], idx);
-    if (texto[h]) salidaTexto[h] = tomar(texto[h], idx);
+    salida[h] = sinColumnasOcultas(tomar(hojas[h], idx));
+    if (texto[h]) salidaTexto[h] = sinColumnasOcultas(tomar(texto[h], idx));
     recortadas.push(h);
   });
 
   return { hojas: salida, hojasTexto: salidaTexto, recortadas, completas };
 }
+/** Aplica una transformación a cada hoja de un objeto {nombre: matriz}. */
+function mapear(hojas, fn) {
+  const out = {};
+  Object.keys(hojas || {}).forEach(h => { out[h] = fn(hojas[h]); });
+  return out;
+}
+
 /** ¿El equipo que se pide es uno que esta sesión puede analizar? */
 function puedeAnalizarEquipo(equipo, sesion) {
   if (!equipo) return true;
@@ -205,6 +251,6 @@ function clave(v) { return NUCLEO.claveEquipo(v || ''); }
 
 module.exports = {
   BLOQUES, puedeBloque, filasDeEquipo, filasDeJugador, partidosDeEquipo,
-  indicesPermitidos, tomar,
+  indicesPermitidos, tomar, COLUMNAS_OCULTAS, sinColumnasOcultas, mapear,
   tablaCompleta, recortarLibro, puedeAnalizarEquipo, clave,
 };

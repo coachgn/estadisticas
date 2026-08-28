@@ -68,6 +68,20 @@ function banner(nombre) {
   ].join(NL);
 }
 
+/* La comparación NORMALIZA los fines de línea, y no es un detalle: git
+   está configurado para convertir a CRLF al hacer checkout en Windows,
+   así que el archivo en disco nunca coincide byte a byte con lo que
+   genera este script. Comparando crudo, el test fallaba EN FALSO apenas
+   alguien clonaba el repo — y un test que falla sin motivo se termina
+   ignorando, que es peor que no tenerlo.
+
+   Lo que importa es el CONTENIDO: si el cuerpo difiere, las reglas del
+   servidor y las del navegador divergieron. */
+function normalizar(t) {
+  return String(t).split(String.fromCharCode(13) + String.fromCharCode(10))
+    .join(String.fromCharCode(10));
+}
+
 function contenidoEsperado(nombre) {
   const fuente = fs.readFileSync(path.join(ORIGEN, nombre), 'utf8');
   return banner(nombre) + fuente;
@@ -80,7 +94,7 @@ function sincronizar() {
     const destino = path.join(DESTINO, nombre);
     const esperado = contenidoEsperado(nombre);
     const actual = fs.existsSync(destino) ? fs.readFileSync(destino, 'utf8') : null;
-    if (actual !== esperado) {
+    if (actual === null || normalizar(actual) !== normalizar(esperado)) {
       fs.writeFileSync(destino, esperado);
       cambios.push(nombre);
     }
@@ -93,7 +107,7 @@ function desincronizados() {
   return MODULOS.filter(nombre => {
     const destino = path.join(DESTINO, nombre);
     if (!fs.existsSync(destino)) return true;
-    return fs.readFileSync(destino, 'utf8') !== contenidoEsperado(nombre);
+    return normalizar(fs.readFileSync(destino, 'utf8')) !== normalizar(contenidoEsperado(nombre));
   });
 }
 

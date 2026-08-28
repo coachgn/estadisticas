@@ -969,6 +969,94 @@ titulo('EL BUNDLE DE VERCEL · nada puede salir de server/');
     vercelJson.framework === null, JSON.stringify(vercelJson.framework));
 }
 
+
+titulo('NINGÚN ID DE GOOGLE SALE · detector genérico');
+
+/* EL AGUJERO QUE ESTO CIERRA, y que la suite tenía en verde.
+
+   El check original buscaba los DOS sheetId de la fixture. Pasaba — y
+   mientras tanto el backend mandaba al navegador la columna `ID_ARCHIVO`
+   entera: el id de Drive del box score de origen que MotorStats escribe
+   en las tres maestras desde su v43.
+
+   Medido contra la planilla REAL de DEPORTIVO: **76 ids distintos en 460
+   filas**, y 152 de esas en `Base Datos E`, que se entrega COMPLETA hasta
+   al cliente más restringido porque de ahí sale la tabla de posiciones.
+
+   Buscar los ids que uno ya conoce no prueba nada sobre los que no. El
+   detector de abajo busca la FORMA de un id de Google, así que caza
+   también el que aparezca mañana en una columna nueva. */
+{
+  /* Un id de Drive son 33+ caracteres de [A-Za-z0-9_-] que arrancan con 1
+     o 0. El patrón es laxo a propósito: un falso positivo se revisa a
+     mano, un falso negativo es una fuga que nadie ve. */
+  const ID_GOOGLE = /\b[01][A-Za-z0-9_-]{28,}\b/;
+
+  const fixture = [
+    ['PARTIDO', 'EQUIPO', 'ID_ARCHIVO', 'PTS'],
+    ['A vs B', 'DEPORTIVO LA PLATA - MM', '1iVoCxBDFejThgUfG3-0srDwyeBbj_OMc3gu_NC9JS8M', 78],
+    ['A vs B', 'A. MAYO - MM', '1EdDPUKETWmUWSAatDe_yWAvdpS82OIguSyneuOW-yBQ', 71],
+  ];
+  /* El detector tiene que servir: si no encuentra el id en la fixture
+     cruda, tampoco lo encontraría en una respuesta y el test sería un
+     adorno. */
+  check('el detector reconoce un id de Drive de verdad',
+    ID_GOOGLE.test(JSON.stringify(fixture)));
+
+  const limpia = reglas.sinColumnasOcultas(fixture);
+  check('ID_ARCHIVO se saca de la matriz', !ID_GOOGLE.test(JSON.stringify(limpia)));
+  check('y las demás columnas quedan intactas',
+    JSON.stringify(limpia[0]) === JSON.stringify(['PARTIDO', 'EQUIPO', 'PTS']) &&
+    limpia[1][2] === 78);
+
+  /* Se resuelve por NOMBRE y no por posición: el motor agrega columnas
+     entre versiones, y un índice fijo cortaría la equivocada sin síntoma. */
+  const movida = [['ID_ARCHIVO', 'EQUIPO'], ['1iVoCxBDFejThgUfG3-0srDwyeBbj_OMc3gu_NC9JS8M', 'X']];
+  check('se corta por nombre de encabezado, no por posición',
+    JSON.stringify(reglas.sinColumnasOcultas(movida)) === JSON.stringify([['EQUIPO'], ['X']]));
+  check('una hoja sin esa columna no se toca',
+    JSON.stringify(reglas.sinColumnasOcultas([['A', 'B'], [1, 2]])) ===
+    JSON.stringify([['A', 'B'], [1, 2]]));
+  check('y una matriz vacía no rompe',
+    reglas.sinColumnasOcultas([]).length === 0 && reglas.sinColumnasOcultas(null).length === 0);
+
+  /* LO QUE IMPORTA: sobre las respuestas REALES de los tres perfiles. */
+  const conId = Object.assign({}, LIBRO, {
+    'Base Datos E': [
+      ['PARTIDO', 'EQUIPO', 'FECHA', 'ID_ARCHIVO', 'PTS'],
+      ['A vs B', 'DEPORTIVO LA PLATA - MM', '07/05/2026', '1iVoCxBDFejThgUfG3-0srDwyeBbj_OMc3gu_NC9JS8M', 78],
+      ['A vs B', 'A. MAYO - MM', '07/05/2026', '1EdDPUKETWmUWSAatDe_yWAvdpS82OIguSyneuOW-yBQ', 71],
+    ],
+  });
+  const original = LIBRO['Base Datos E'];
+  LIBRO['Base Datos E'] = conId['Base Datos E'];
+
+  for (const [quien, token] of [['admin', T_ADMIN], ['básico', T_BASICO], ['pro', T_PRO]]) {
+    const r = await pedir(handlers.manejarEquipos, { token });
+    const json = JSON.stringify(r.body);
+    check('la respuesta de equipos para ' + quien + ' no trae ningún id de Google',
+      !ID_GOOGLE.test(json), (json.match(ID_GOOGLE) || [])[0]);
+  }
+  /* Incluido el scouting, que NO recorta filas —necesita al rival— pero sí
+     tiene que sacar las columnas ocultas. */
+  const sc = await pedir(handlers.manejarScouting, { token: T_PRO,
+    query: { local: 'DEPORTIVO LA PLATA', visitante: 'A. MAYO' } });
+  check('y la de scouting tampoco, aunque no recorte filas',
+    !ID_GOOGLE.test(JSON.stringify(sc.body)),
+    (JSON.stringify(sc.body).match(ID_GOOGLE) || [])[0]);
+
+  /* Las dos vistas tienen que quedar con las MISMAS columnas: si a una se
+     le saca ID_ARCHIVO y a la otra no, el texto se desalinea del valor. */
+  const rr = await pedir(handlers.manejarEquipos, { token: T_ADMIN });
+  Object.keys(rr.body.hojasTexto || {}).forEach(h => {
+    check(h + ': valores y texto quedan con las mismas columnas',
+      JSON.stringify(rr.body.hojas[h][0]) === JSON.stringify(rr.body.hojasTexto[h][0]),
+      JSON.stringify(rr.body.hojas[h][0]) + ' vs ' + JSON.stringify(rr.body.hojasTexto[h][0]));
+  });
+
+  LIBRO['Base Datos E'] = original;
+}
+
   console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +
     '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);

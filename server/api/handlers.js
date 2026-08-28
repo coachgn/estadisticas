@@ -189,8 +189,11 @@ async function manejarScouting(peticion, deps) {
       cruce: { local: q.local || null, visitante: q.visitante || null },
       alcance: { rol: ctx.rol, plan: ctx.sesion.plan },
       leidoEn: libro.leidoEn,
-      hojas: libro.hojas,
-      hojasTexto: libro.hojasTexto,
+      /* El informe pre-partido necesita los datos del RIVAL —es su objeto—
+         así que acá no se recortan FILAS. Las columnas ocultas sí: son
+         ids de Drive que ninguna vista usa. */
+      hojas: reglas.mapear(libro.hojas, reglas.sinColumnasOcultas),
+      hojasTexto: reglas.mapear(libro.hojasTexto, reglas.sinColumnasOcultas),
     },
   };
 }
