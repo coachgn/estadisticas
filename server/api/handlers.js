@@ -21,6 +21,7 @@
 const { resolverCategoria, catalogoPublico } = require('../lib/config.js');
 const { verificarToken, tokenDeLaPeticion } = require('../lib/auth.js');
 const reglas = require('../lib/reglas.js');
+const alertas = require('../lib/alertas.js');
 const sheets = require('../lib/google-sheets.js');
 const AUTH = require('../lib/compartido/sgadd-auth.js');
 
@@ -107,6 +108,23 @@ async function manejarEquipos(peticion, deps) {
     return fallaDeDatos(e);
   }
 
+  /* Se calculan sobre `libro` (completo) y NO sobre `rec` (recortado):
+     el punto es justamente detectar a los jugadores que el recorte saca.
+
+     El tramo llega del cliente porque una racha se cuenta DENTRO de una
+     competencia: los mismos equipos en IDA y en VUELTA son dos torneos
+     distintos y mezclarlos daría rachas inventadas (punto 3 ter). */
+  let alertasDelTramo = { alertas: [], fase: null, torneo: null };
+  try {
+    alertasDelTramo = alertas.alertasDeLaLiga(libro,
+      { fase: q.fase, torneo: q.torneo }, { claveCache: cat.slug });
+  } catch (e) {
+    /* Un fallo del detector NO puede tumbar la carga de la categoría: el
+       panel sin alertas sirve, el panel sin datos no. Se loguea y se
+       sigue con la lista vacía. */
+    console.error('[sgadd] alertas:', e && e.stack ? e.stack : e);
+  }
+
   const rec = reglas.recortarLibro(libro, ctx.sesion);
   return {
     status: 200,
@@ -133,6 +151,12 @@ async function manejarEquipos(peticion, deps) {
          es justamente que traiga a los jugadores que el recorte sacó.
          Son dos columnas y ningún número — ver `reglas.js`. */
       padron: reglas.padronLiga(libro.hojas),
+      /* LAS ALERTAS, YA CALCULADAS. El detector necesita el log partido a
+         partido de cada jugador, que es justo lo que el recorte no manda:
+         se corre acá, sobre el libro COMPLETO, y viaja solo el resultado.
+         Ninguna fila de `Base Datos J` de un rival cruza al navegador. */
+      alertas: alertasDelTramo.alertas,
+      tramoAlertas: { fase: alertasDelTramo.fase, torneo: alertasDelTramo.torneo },
       faltantes: libro.faltantes,
       leidoEn: libro.leidoEn,
       hojas: rec.hojas,

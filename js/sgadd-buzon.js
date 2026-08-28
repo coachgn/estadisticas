@@ -67,7 +67,24 @@ const SGADD_BUZON = (function () {
     if (!st.idx) return;
     estado.planillaId = st.planillaId;
     estado.mapa = E.leerTodos(clubId(), st.planillaId);
-    estado.alertas = E.detectarAlertas(st.idx, estado.mapa);
+
+    /* DE DÓNDE SALEN LAS ALERTAS.
+
+       Con backend, el servidor manda la lista YA CALCULADA para toda la
+       liga: el detector de inactividad necesita el log partido a partido
+       de cada jugador, y de los rivales el cliente no lo tiene —el recorte
+       se lo saca a propósito—. Acá solo queda lo que el servidor no puede
+       hacer: los REINGRESOS, que dependen del mapa de estados de ESTE
+       navegador.
+
+       Sin lista del servidor (modo GViz, donde no hay recorte) se detecta
+       todo localmente, exactamente como antes. */
+    const delServidor = st.alertas || [];
+    estado.alertas = delServidor.length
+      ? E.combinarAlertas(
+        E.detectarReingresos(st.idx, estado.mapa),
+        E.filtrarRespondidas(delServidor, estado.mapa))
+      : E.detectarAlertas(st.idx, estado.mapa);
     pintarBadge();
   }
 

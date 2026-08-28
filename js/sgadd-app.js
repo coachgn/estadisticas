@@ -20,6 +20,7 @@ const SGADD_APP = (function () {
     alcance: null,
     textos: null,
     padron: [],
+    alertas: [],
     crudas: null,
     torneo: null,        // null = todavía no se resolvió contra el libro
     fase: 'REGULAR',
@@ -92,6 +93,7 @@ const SGADD_APP = (function () {
       /* El padrón de la liga, para el buzón. Vacío en modo GViz: ahí el
          índice ya tiene a todos. */
       estado.padron = r.padron || [];
+      estado.alertas = r.alertas || [];
       estado.crudas = r.crudas || null;
 
       /* SIN UNA SOLA HOJA NO SE INDEXA: se avisa.

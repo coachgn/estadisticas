@@ -1,3 +1,13 @@
+/* ARCHIVO GENERADO · NO EDITAR ACÁ.
+ *
+ * Copia mecánica de js/sgadd-data.js, que es la fuente de verdad.
+ * Existe porque Vercel despliega con raíz en `server/` y no sube el
+ * resto del repo. Para regenerar:
+ *
+ *     node server/bin/sincronizar-compartido.js
+ *
+ * `test-backend.js` falla si este archivo difiere del original.
+ */
 /* =====================================================================
    SGADD · De dónde salen los datos
 

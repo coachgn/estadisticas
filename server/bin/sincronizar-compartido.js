@@ -39,11 +39,28 @@
 const fs = require('fs');
 const path = require('path');
 
-/* Los dos módulos que el servidor necesita. `sgadd-auth.js` requiere a
-   `sgadd-core.js` con una ruta relativa (`./sgadd-core.js`), así que
-   copiando los dos al mismo directorio el require sigue resolviendo sin
-   tocar una línea. */
-const MODULOS = ['sgadd-core.js', 'sgadd-auth.js'];
+/* Los módulos que el servidor necesita, TODOS puros y ya testeados:
+
+     sgadd-core.js      el índice, con la herencia de fecha y el guard de
+                        ambigüedad del punto 3 quater
+     sgadd-auth.js      roles, planes y la normalización de equipos
+     sgadd-estados.js   los detectores de alertas del punto 13
+     sgadd-data.js      `matrizAFilas`, para pasar de la matriz cruda de
+                        Sheets a la forma que consume el índice
+
+   Se requieren entre ellos con rutas relativas (`./sgadd-core.js`), así
+   que copiándolos al mismo directorio los require siguen resolviendo sin
+   tocar una línea.
+
+   EL PUNTO DE COPIARLOS EN VEZ DE REIMPLEMENTAR: el join partido-a-
+   jugador tiene reglas que costaron encontrar —la fecha se hereda de
+   `Base Datos E` ANTES de calcular el `__id`, y un `PARTIDO` con dos
+   fechas distintas no se hereda para no inventar un dato— y el detector
+   de inactividad tiene su filtro anti-spam calibrado contra la liga real.
+   Reescribir cualquiera de las dos cosas del lado del servidor era
+   garantizar que las alertas del navegador y las del servidor
+   divergieran. Acá corre EL MISMO código. */
+const MODULOS = ['sgadd-core.js', 'sgadd-auth.js', 'sgadd-estados.js', 'sgadd-data.js'];
 
 const ORIGEN = path.join(__dirname, '..', '..', 'js');
 const DESTINO = path.join(__dirname, '..', 'lib', 'compartido');

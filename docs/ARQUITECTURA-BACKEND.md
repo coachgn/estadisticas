@@ -433,6 +433,67 @@ botones que llevan a un 403.
 
 ---
 
+## 10.5 · Las alertas del buzón se calculan en el SERVIDOR
+
+El detector de inactividad cuenta partidos seguidos sin ingresar, y para
+eso necesita el log partido a partido de cada jugador — que es
+exactamente lo que el recorte NO manda de los rivales. Con el backend, el
+buzón se quedaba viendo solo el plantel propio.
+
+Se resolvió calculando **en el servidor** y mandando **solo la lista de
+alertas ya procesada**: texto y unos pocos números. Ninguna fila de
+`Base Datos J` de un rival cruza al navegador, y hay un test que lo
+verifica sobre el payload entero.
+
+### NO SE REIMPLEMENTA NADA, y ahí está la solidez
+
+La tentación era escribir un join y un contador de rachas del lado del
+servidor. Habría sido una segunda implementación de dos cosas que en este
+proyecto costaron caro:
+
+- **el join**: la `FECHA` de `Base Datos J` puede venir vacía y se hereda
+  de `Base Datos E` ANTES de calcular el `__id` —parchearla después no
+  sirve—, y si un mismo `PARTIDO` aparece con dos fechas distintas **no
+  se hereda nada**, porque atribuirle a un jugador la noche equivocada no
+  se nota y le contamina el log, el desvío y los atípicos (punto 3
+  quater de `CLAUDE.md`);
+- **el anti-spam del detector**: la regla de los 4 partidos sola marcaba
+  al 24% de la liga, y sus dos filtros están calibrados contra datos
+  reales (punto 13).
+
+Así que el servidor **corre el mismo código**: `construirIndice()` arma
+el índice y `detectarAlertas()` detecta. Los cuatro módulos compartidos
+—`sgadd-core`, `sgadd-auth`, `sgadd-estados`, `sgadd-data`— vienen de
+`js/` por `bin/sincronizar-compartido.js`, con su test de drift. Si mañana
+cambia una regla, cambia en los dos lados a la vez o la suite falla.
+
+### El mapa de estados NO viaja al servidor
+
+`detectarAlertas` saltea a los que el DT ya contestó, y esas respuestas
+viven en el `localStorage` de SU navegador. El servidor detecta todo y el
+cliente filtra con `filtrarRespondidas()` — que además es lo correcto si
+dos personas del cuerpo técnico usan el panel con estados distintos.
+
+### Lo que queda del lado del cliente
+
+Los **reingresos**. Ese detector dispara solo sobre jugadores que el DT
+marcó como ausentes, así que sin su mapa no tiene sobre quién correr.
+Consecuencia práctica: si el DT marca a un RIVAL como lesionado, no va a
+recibir el aviso automático de que volvió a jugar. Se puede cerrar
+mandando esas claves al servidor; hoy no está.
+
+### El costo, medido
+
+Construir el índice es lo más caro del endpoint. Sobre un libro **2,4×
+más grande que el real** (4.752 filas de log, 216 jugadores): **194 ms**
+la primera vez y **4 ms** desde el caché, que usa el mismo TTL que las
+hojas. La lista pesa **33 KB**.
+
+La clave del caché lleva el TRAMO: los mismos equipos en IDA y en VUELTA
+son dos competencias, y una racha se cuenta dentro de una sola.
+
+---
+
 ## 11. EL CORTE · lo que hay que hacer, en este orden
 
 **Mergear esto a `main` sin haber hecho los pasos 1 a 3 deja a los tres

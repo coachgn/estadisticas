@@ -1170,6 +1170,207 @@ titulo('LA CAMPANITA · toda la liga, pero la ficha ajena no se abre');
     !/construirIndice[\s\S]{0,120}padron/.test(appSrc));
 }
 
+
+titulo('ALERTAS EN EL SERVIDOR · se detecta al rival sin mandar su log');
+
+/* LA INVARIANTE DE ESTE BLOQUE, en una línea:
+   la alerta SÍ viaja, el historial de partidos que la produjo NO. */
+{
+  const A = require('./server/lib/alertas.js');
+  const ESTADOS = require('./server/lib/compartido/sgadd-estados.js');
+
+  /* Un libro con DOS equipos y un jugador de CADA UNO que dejó de jugar.
+     El de `A. MAYO` es el que importa: es un rival del cliente, y antes de
+     esto su alerta no se podía calcular. */
+  const f = (i) => (i < 10 ? '0' + i : i) + '/05/2026';
+  const bdE = [['FECHA', 'PARTIDO', 'EQUIPO', 'FASE', 'CONDICION', 'PTS', 'PTSopp']];
+  const bdJ = [['FECHA', 'PARTIDO', 'NOMBRES', 'EQUIPO', 'FASE', 'MIN', 'PTS']];
+  for (let i = 1; i <= 12; i++) {
+    const p = 'DEPORTIVO LA PLATA vs A. MAYO ' + i;
+    bdE.push([f(i), p, 'DEPORTIVO LA PLATA - MM', 'REGULAR', 'LOCAL', 80, 70]);
+    bdE.push([f(i), p, 'A. MAYO - MM', 'REGULAR', 'VISITANTE', 70, 80]);
+    bdJ.push([f(i), p, 'BOTTE, IGNACIO', 'DEPORTIVO LA PLATA - MM', 'REGULAR', 30, 15]);
+    if (i <= 8) {
+      bdJ.push([f(i), p, 'PROPIO, PARADO', 'DEPORTIVO LA PLATA - MM', 'REGULAR', 21, 10]);
+      bdJ.push([f(i), p, 'RIVAL, PARADO', 'A. MAYO - MM', 'REGULAR', 24, 12]);
+    }
+  }
+  const LIBRO_ALERTAS = {
+    hojas: {
+      'PROMEDIOS E': [['EQUIPO', 'FASE', 'PJ'],
+        ['DEPORTIVO LA PLATA - MM', 'REGULAR', 12], ['A. MAYO - MM', 'REGULAR', 12]],
+      'PROMEDIOS J': [['NOMBRES', 'EQUIPO', 'FASE', 'PJ', 'MIN'],
+        ['BOTTE, IGNACIO', 'DEPORTIVO LA PLATA - MM', 'REGULAR', 12, 30],
+        ['PROPIO, PARADO', 'DEPORTIVO LA PLATA - MM', 'REGULAR', 8, 21],
+        ['RIVAL, PARADO', 'A. MAYO - MM', 'REGULAR', 8, 24]],
+      'Base Datos E': bdE, 'Base Datos J': bdJ,
+      'ACUMULADO E': [], 'ACUMULADO J': [],
+      'PROMEDIOS 4F': [], 'ACUMULADO 4F': [], '4 FACTORES': [],
+    },
+    hojasTexto: {}, faltantes: [], leidoEn: new Date().toISOString(),
+  };
+
+  A.limpiarCache();
+  const r = A.alertasDeLaLiga(LIBRO_ALERTAS, {}, { claveCache: 'test' });
+  const nombres = r.alertas.map(a => a.nombre);
+
+  check('detecta al jugador del propio club', nombres.indexOf('PROPIO, PARADO') !== -1,
+    JSON.stringify(nombres));
+  /* EL PUNTO DE TODO ESTO: sin cálculo en el servidor, la alerta de un
+     rival no se puede computar — su log lo recorta el backend. */
+  check('Y TAMBIÉN al del rival, que es lo que el cliente no puede calcular',
+    nombres.indexOf('RIVAL, PARADO') !== -1, JSON.stringify(nombres));
+  check('la alerta trae el texto listo para mostrar',
+    /4 partidos seguidos sin ingresar/.test(
+      (r.alertas.find(a => a.nombre === 'RIVAL, PARADO') || {}).detalle || ''),
+    (r.alertas.find(a => a.nombre === 'RIVAL, PARADO') || {}).detalle);
+  check('y el que juega todas no genera ninguna', nombres.indexOf('BOTTE, IGNACIO') === -1);
+
+  /* LISTA BLANCA de campos: con una lista negra, el campo que el detector
+     agregue mañana viaja solo. */
+  const campos = new Set();
+  r.alertas.forEach(a => Object.keys(a).forEach(k => campos.add(k)));
+  check('cada alerta trae solo campos declarados',
+    [...campos].every(k => A.CAMPOS.indexOf(k) !== -1), JSON.stringify([...campos]));
+  /* Lo que NO puede aparecer: de dónde salió la alerta. */
+  const json = JSON.stringify(r.alertas);
+  check('ninguna alerta trae ids de partido', !/__id|A\. MAYO vs|vs DEPORTIVO/.test(json));
+  check('ni filas del log partido a partido',
+    !/FECHA|PARTIDO|CONDICION/.test(json));
+
+  /* ------------------------------------------------------------------
+     LA INVARIANTE QUE PIDIERON CONGELAR: sobre la RESPUESTA REAL.
+     ------------------------------------------------------------------ */
+  const original = LIBRO.hojas ? null : null;
+  const guardar = {};
+  Object.keys(LIBRO_ALERTAS.hojas).forEach(h => { guardar[h] = LIBRO[h]; LIBRO[h] = LIBRO_ALERTAS.hojas[h]; });
+
+  sheets.limpiarCache(); A.limpiarCache();
+  const resp = await pedir(handlers.manejarEquipos, { token: T_BASICO });
+  const cuerpo = JSON.stringify(resp.body);
+
+  check('la respuesta trae la lista de alertas', Array.isArray(resp.body.alertas));
+  const delRival = (resp.body.alertas || []).filter(a => /A\. MAYO/.test(a.equipo || ''));
+  check('con la alerta del rival adentro', delRival.length === 1, JSON.stringify(resp.body.alertas));
+
+  /* Y AL MISMO TIEMPO, su log sigue sin viajar. Se verifica sobre el
+     payload ENTERO y no solo sobre `hojas`: el día que alguien agregue un
+     campo de debug, este check lo caza. */
+  const bdjCliente = resp.body.hojas['Base Datos J'].slice(1);
+  check('el log de Base Datos J sigue recortado al propio plantel',
+    bdjCliente.every(fila => /DEPORTIVO LA PLATA/.test(fila[3])),
+    JSON.stringify(bdjCliente.map(x => x[3])));
+  check('el rival NO tiene una sola fila de log en el payload',
+    bdjCliente.every(fila => !/A\. MAYO/.test(fila[3])));
+  /* Su nombre sí aparece —en el padrón y en la alerta— pero sus minutos
+     partido a partido no: es exactamente la línea del diseño. */
+  check('su nombre aparece (padrón y alerta) pero no su historial',
+    /RIVAL, PARADO/.test(cuerpo) &&
+    !/"A\. MAYO - MM","REGULAR",24/.test(cuerpo));
+  check('y PROMEDIOS J tampoco lo trae',
+    resp.body.hojas['PROMEDIOS J'].slice(1).every(x => !/A\. MAYO/.test(x[1])));
+
+  /* El tramo viaja con la respuesta: una racha se cuenta DENTRO de una
+     competencia, y si el cliente no sabe cuál se usó no puede saber si
+     está mirando lo mismo. */
+  check('la respuesta declara sobre qué tramo se calcularon',
+    !!resp.body.tramoAlertas && !!resp.body.tramoAlertas.fase,
+    JSON.stringify(resp.body.tramoAlertas));
+
+  Object.keys(guardar).forEach(h => { LIBRO[h] = guardar[h]; });
+  sheets.limpiarCache(); A.limpiarCache();
+}
+
+titulo('EL SERVIDOR NO REIMPLEMENTA EL JOIN NI EL DETECTOR');
+
+/* La razón por la que esto es sólido y no una segunda implementación con
+   los mismos bugs esperando. */
+{
+  const src = fs.readFileSync('./server/lib/alertas.js', 'utf8');
+
+  check('el servidor arma el índice con construirIndice(), no a mano',
+    /NUCLEO\.construirIndice\(/.test(src));
+  check('y detecta con los detectores de sgadd-estados.js',
+    /ESTADOS\.detectarInactividad\(/.test(src) && /ESTADOS\.detectarTraspasos\(/.test(src));
+  /* Si alguien vuelve a escribir un join acá, se pierden la herencia de
+     fecha y el guard de ambigüedad del punto 3 quater — que es donde este
+     proyecto ya se quemó una vez. */
+  check('no hay un join partido-a-jugador escrito a mano',
+    !/idPartido\(|__fecha\s*=|FECHA['"]\]\s*\|\|/.test(src));
+  check('ni una racha contada a mano',
+    !/racha\s*\+\+|RACHA_INACTIVIDAD\s*=/.test(src));
+  /* Y el adaptador de matriz a filas es el MISMO del frontend: si cada uno
+     convirtiera por su cuenta, un día una fila vacía se descartaría de un
+     lado y del otro no. */
+  check('usa el mismo adaptador de matrices que el frontend',
+    /DATOS\.matrizAFilas\(/.test(src));
+
+  /* Los cuatro módulos compartidos están al día. El de estados es nuevo:
+     si alguien toca la regla de los 4 partidos en `js/` y no regenera, el
+     servidor detectaría con la regla vieja. */
+  const sync = require('./server/bin/sincronizar-compartido.js');
+  check('sgadd-estados.js está entre los módulos vendorizados',
+    sync.MODULOS.indexOf('sgadd-estados.js') !== -1, JSON.stringify(sync.MODULOS));
+  check('y sgadd-data.js también, por el adaptador',
+    sync.MODULOS.indexOf('sgadd-data.js') !== -1);
+  check('los cuatro están sincronizados con js/',
+    sync.desincronizados().length === 0,
+    sync.desincronizados().join(', '));
+
+  /* EL MISMO CÓDIGO DE LOS DOS LADOS: se compara el detector vendorizado
+     contra el del navegador sobre el mismo índice. */
+  const ESTADOS_SERVIDOR = require('./server/lib/compartido/sgadd-estados.js');
+  const ESTADOS_CLIENTE = require('./js/sgadd-estados.js');
+  check('la regla de inactividad es la misma en los dos lados',
+    ESTADOS_SERVIDOR.RACHA_INACTIVIDAD === ESTADOS_CLIENTE.RACHA_INACTIVIDAD &&
+    ESTADOS_SERVIDOR.RACHA_AVISO === ESTADOS_CLIENTE.RACHA_AVISO);
+  check('y el filtro anti-spam también',
+    ESTADOS_SERVIDOR.MIN_PJ_PREVIOS === ESTADOS_CLIENTE.MIN_PJ_PREVIOS &&
+    ESTADOS_SERVIDOR.MIN_MINUTOS_PREVIOS === ESTADOS_CLIENTE.MIN_MINUTOS_PREVIOS);
+}
+
+titulo('EL CLIENTE · qué hace con la lista del servidor');
+
+{
+  const EST = require('./js/sgadd-estados.js');
+  const buzon = fs.readFileSync('./js/sgadd-buzon.js', 'utf8');
+
+  /* El servidor NO tiene el mapa de estados: vive en el localStorage de
+     cada navegador. Detecta todo y el cliente filtra lo que ya contestó. */
+  const lista = [{ tipo: 'inactividad', clave: 'A|X', nombre: 'A' },
+    { tipo: 'inactividad', clave: 'B|X', nombre: 'B' }];
+  const mapa = EST.aplicar({}, 'A|X', 'SUSPENSO');
+  const filtradas = EST.filtrarRespondidas(lista, mapa);
+  check('el cliente descarta las que el DT ya contestó',
+    filtradas.length === 1 && filtradas[0].clave === 'B|X');
+  check('y con el mapa vacío no descarta ninguna',
+    EST.filtrarRespondidas(lista, {}).length === 2);
+
+  /* Ante la misma clave y tipo gana la LOCAL: si el navegador pudo
+     calcularla, tiene el dato completo delante. */
+  const local = [{ tipo: 'inactividad', clave: 'A|X', nombre: 'A', racha: 9 }];
+  const servidor = [{ tipo: 'inactividad', clave: 'A|X', nombre: 'A', racha: 4 },
+    { tipo: 'inactividad', clave: 'C|Y', nombre: 'C' }];
+  const unidas = EST.combinarAlertas(local, servidor);
+  check('no se duplica al mismo jugador', unidas.length === 2, unidas.length);
+  check('y gana la local, que tiene el dato completo',
+    unidas.find(a => a.clave === 'A|X').racha === 9);
+  check('las del servidor que el cliente no pudo calcular sí entran',
+    !!unidas.find(a => a.clave === 'C|Y'));
+
+  /* Los REINGRESOS quedan locales: ese detector dispara solo sobre
+     jugadores que el DT marcó, así que sin su mapa no hay sobre quién
+     correr. */
+  check('el buzón calcula los reingresos localmente',
+    /E\.detectarReingresos\(st\.idx, estado\.mapa\)/.test(buzon));
+  check('y toma del servidor el resto',
+    /E\.filtrarRespondidas\(delServidor, estado\.mapa\)/.test(buzon));
+  /* Sin lista del servidor —modo GViz, donde no hay recorte— se comporta
+     exactamente como antes. */
+  check('sin lista del servidor detecta todo localmente, como antes',
+    /: E\.detectarAlertas\(st\.idx, estado\.mapa\)/.test(buzon));
+}
+
   console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +
     '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
