@@ -207,6 +207,10 @@ const SGADD_DATA = (function () {
         crudas: crudas,
         textos: textos,
         alcance: (cuerpo && cuerpo.alcance) || null,
+        /* El padrón de la liga: nombre y equipo de TODOS, sin una sola
+           estadística. Lo consume el buzón para que el buscador global
+           funcione aunque las filas de los rivales estén recortadas. */
+        padron: (cuerpo && cuerpo.padron) || [],
         faltantes: (cuerpo && cuerpo.faltantes) || [],
         leidoEn: cuerpo && cuerpo.leidoEn,
         errores: ((cuerpo && cuerpo.faltantes) || []).map(h => ({
@@ -242,6 +246,8 @@ const SGADD_DATA = (function () {
     if (modo === 'gviz') {
       if (o.forzar) SGADD.limpiarCache(planilla.sheetId);
       const r = await SGADD.cargarCategoria(planilla.sheetId, o);
+      /* Sin `padron`: en modo GViz el índice ya trae la liga entera
+         porque no hay recorte, así que el buzón lo saca de ahí. */
       return { hojas: r.hojas, errores: r.errores || [], alcance: null, crudas: null, textos: null };
     }
 

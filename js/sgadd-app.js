@@ -19,6 +19,7 @@ const SGADD_APP = (function () {
        hay recorte porque no hay quien lo haga. */
     alcance: null,
     textos: null,
+    padron: [],
     crudas: null,
     torneo: null,        // null = todavía no se resolvió contra el libro
     fase: 'REGULAR',
@@ -88,6 +89,9 @@ const SGADD_APP = (function () {
       estado.alcance = r.alcance || null;
       /* Las matrices en TEXTO, para la capa vieja de Principal. */
       estado.textos = r.textos || null;
+      /* El padrón de la liga, para el buzón. Vacío en modo GViz: ahí el
+         índice ya tiene a todos. */
+      estado.padron = r.padron || [];
       estado.crudas = r.crudas || null;
 
       /* SIN UNA SOLA HOJA NO SE INDEXA: se avisa.

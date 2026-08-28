@@ -29,15 +29,15 @@ node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  54 tests · detalle partido a partido, perfil de tiro y su PDF
 node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
-node test-estados.js       # 178 tests · estados de jugador, alertas, buzon, sync grafico-tabla
+node test-estados.js       # 181 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
 node test-permisos.js      # 153 tests · roles, planes y el gate de interfaz
 
 # Solo en la rama `poc/backend` — no está en main:
-node test-backend.js       # 212 tests · el proxy, el desacople, el cableado y el deploy
+node test-backend.js       # 234 tests · el proxy, el padrón de liga y el deploy
 ```
 
-**2466 tests en total. Todos tienen que dar verde antes de commitear.**
+**2491 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.

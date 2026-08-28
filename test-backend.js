@@ -1057,6 +1057,119 @@ titulo('NINGÚN ID DE GOOGLE SALE · detector genérico');
   LIBRO['Base Datos E'] = original;
 }
 
+
+titulo('EL PADRÓN DE LA LIGA · listado 200, ficha ajena 403');
+
+/* La distinción entera de este bloque:
+
+     QUIÉNES juegan en la liga    →  público, va completo
+     CÓMO juega un rival          →  eso es el análisis, y va 403
+
+   El buzón necesita lo primero para que el DT pueda marcarle una lesión o
+   una baja a cualquiera. Lo segundo es lo que el recorte protege. */
+{
+  const rCli = await pedir(handlers.manejarEquipos, { token: T_BASICO });
+  const rAdm = await pedir(handlers.manejarEquipos, { token: T_ADMIN });
+
+  check('el listado de la liga responde 200', rCli.status === 200, rCli.status);
+  check('y viene el padrón', Array.isArray(rCli.body.padron), typeof rCli.body.padron);
+
+  const enPadron = rCli.body.padron.map(p => p.nombre);
+  check('trae a los jugadores del club',
+    enPadron.indexOf('BOTTE, IGNACIO') !== -1, JSON.stringify(enPadron));
+  /* LO QUE ESTE BLOQUE VIENE A ARREGLAR: antes el cliente solo recibía su
+     plantel y el buscador del buzón no encontraba a nadie más. */
+  check('Y TAMBIÉN a los de los rivales, que es el punto',
+    enPadron.indexOf('BORRAJO, FRANCISCO') !== -1, JSON.stringify(enPadron));
+
+  /* El padrón del cliente y el del admin son el MISMO: no hay recorte acá,
+     porque quién juega en cada club es público. */
+  check('el padrón del cliente y el del admin coinciden',
+    JSON.stringify(rCli.body.padron) === JSON.stringify(rAdm.body.padron));
+
+  /* La fila JUGADOR TIPO es la MEDIANA de la liga, no una persona:
+     ofrecerla en el buscador dejaría marcarle una lesión a una
+     estadística. */
+  check('la fila JUGADOR TIPO no entra al padrón',
+    !enPadron.some(n => /JUGADOR TIPO/i.test(n)));
+
+  /* Un jugador aparece una vez por FASE y por TORNEO. Sin deduplicar, el
+     buscador mostraría al mismo tres veces. */
+  const claves = rCli.body.padron.map(p => p.nombre + '|' + p.equipo);
+  check('y no viene repetido por fase', claves.length === new Set(claves).size,
+    claves.length + ' filas · ' + new Set(claves).size + ' únicas');
+
+  /* LA LÍNEA ESTÁ EN LAS COLUMNAS. Se verifica por LISTA BLANCA y no por
+     lista negra: con una lista negra, la columna que alguien agregue mañana
+     pasa sola. */
+  const campos = new Set();
+  rCli.body.padron.forEach(p => Object.keys(p).forEach(k => campos.add(k)));
+  check('el padrón trae SOLO nombre y equipo',
+    JSON.stringify([...campos].sort()) === JSON.stringify(reglas.PADRON_CAMPOS.slice().sort()),
+    JSON.stringify([...campos]));
+  /* Y ninguno de esos dos es un número: si mañana entra `MIN` o `PTS` acá,
+     se filtró justo lo que el recorte de PROMEDIOS J bloquea. */
+  check('y ningún valor del padrón es una estadística',
+    rCli.body.padron.every(p => Object.values(p).every(v => typeof v === 'string')));
+
+  /* EL OTRO LADO, que es el que no se toca: el análisis del rival. */
+  const ficha = await pedir(handlers.manejarEquipos, { token: T_BASICO, query: { equipo: 'A. MAYO' } });
+  check('pero la ficha de un equipo ajeno sigue dando 403', ficha.status === 403, ficha.status);
+  check('con su motivo', ficha.body.codigo === AUTH.MOTIVOS.OTRO_EQUIPO);
+  check('y sin una sola fila de datos', !ficha.body.hojas && !ficha.body.padron);
+
+  /* Estar en el padrón NO afloja el recorte de las filas: el rival aparece
+     por nombre y sus números siguen sin viajar. */
+  const pj = rCli.body.hojas['PROMEDIOS J'].slice(1);
+  check('el recorte de PROMEDIOS J sigue igual de cerrado',
+    pj.every(f => /DEPORTIVO LA PLATA/.test(f[1]) || f[1] === ''),
+    JSON.stringify(pj.map(f => f[1])));
+  check('y el del log partido a partido también',
+    rCli.body.hojas['Base Datos J'].slice(1).every(f => /DEPORTIVO LA PLATA/.test(f[2])));
+}
+
+titulo('LA CAMPANITA · toda la liga, pero la ficha ajena no se abre');
+
+{
+  const buzonSrc = fs.readFileSync('./js/sgadd-buzon.js', 'utf8');
+
+  /* El buscador une el índice (recortado) con el padrón (completo) y
+     deduplica: en modo GViz el padrón viene vacío y el índice ya tiene a
+     todos, así que se comporta igual en los dos modos. */
+  check('el buscador del buzón usa el padrón y no solo el índice',
+    /function padronCompleto/.test(buzonSrc) &&
+    /padronCompleto\(\)\.forEach/.test(buzonSrc));
+  check('y el del índice gana sobre el del padrón, que no trae la fila',
+    /vistos\.has\(clave\)\) return;/.test(buzonSrc));
+
+  /* El botón de la ficha se DESHABILITA para un equipo ajeno. Se
+     deshabilita en vez de esconderse: un botón que desaparece en unas
+     tarjetas y en otras no se lee como un bug. */
+  check('la ficha de un jugador ajeno queda deshabilitada',
+    /function puedeVerFicha/.test(buzonSrc) && /cursor-not-allowed/.test(buzonSrc));
+  check('con el motivo a la vista, no un botón muerto',
+    /title="Su ficha completa no está incluida/.test(buzonSrc));
+  /* El equipo sale de la CLAVE y no de un parámetro extra: así el permiso
+     se resuelve en un solo lugar y ningún llamador se puede olvidar. */
+  check('el permiso se resuelve desde la clave, no de un argumento opcional',
+    /function equipoDeLaClave/.test(buzonSrc) &&
+    /puedeVerFicha\(clave\)/.test(buzonSrc));
+  /* Y el guard va TAMBIÉN en `irAFicha`: un botón deshabilitado no impide
+     invocar la función desde la consola. */
+  check('y `irAFicha` chequea igual, no confía en el botón',
+    /function irAFicha\(clave\) \{[\s\S]{0,200}puedeVerFicha\(clave\)/.test(buzonSrc));
+
+  /* El padrón viaja del backend al estado de la app sin pasar por el
+     índice: si entrara al índice, los rivales contarían para los
+     percentiles y las medianas de la liga saldrían mal. */
+  const dataSrc = fs.readFileSync('./js/sgadd-data.js', 'utf8');
+  const appSrc = fs.readFileSync('./js/sgadd-app.js', 'utf8');
+  check('el cliente de datos pasa el padrón', /padron: \(cuerpo && cuerpo\.padron\)/.test(dataSrc));
+  check('y la app lo guarda aparte del índice',
+    /estado\.padron = r\.padron/.test(appSrc) &&
+    !/construirIndice[\s\S]{0,120}padron/.test(appSrc));
+}
+
   console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +
     '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);

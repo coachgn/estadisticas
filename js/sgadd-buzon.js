@@ -213,11 +213,42 @@ const SGADD_BUZON = (function () {
    * cara del buzón y mirar la ficha antes es justo lo que hay que poder
    * hacer sin perder la lista.
    */
+  /* La ficha de un jugador AJENO no se abre, y el botón lo dice.
+
+     El buzón muestra a toda la liga para poder gestionar altas y bajas,
+     pero la ficha es análisis en profundidad —minutos, evolución, log
+     partido a partido— y eso es exactamente lo que el plan del club no
+     cubre. El servidor devuelve 403 igual; acá se evita el viaje y, sobre
+     todo, se evita el botón que promete algo que no va a pasar.
+
+     Se DESHABILITA en vez de esconderse: un botón que desaparece en unas
+     tarjetas y en otras no se lee como un bug. Deshabilitado con su
+     motivo en el `title` se lee como una regla. */
+  /* El equipo sale de la CLAVE, que es `NOMBRE|EQUIPO` ya normalizado por
+     `claveJugador()`. Así el permiso se resuelve en un solo lugar y los
+     cuatro llamadores de `botonFicha` no tienen que acordarse de pasarlo —
+     el que se olvide es justo el que filtra. */
+  function equipoDeLaClave(clave) {
+    const i = String(clave || '').indexOf('|');
+    return i === -1 ? '' : String(clave).slice(i + 1);
+  }
+
+  function puedeVerFicha(clave) {
+    if (typeof SGADD_AUTH === 'undefined') return true;
+    return SGADD_AUTH.puedeVerEquipo(equipoDeLaClave(clave));
+  }
+
   function botonFicha(clave, nombre) {
+    const base = 'shrink-0 text-[10px] px-2 py-1 rounded border transition-all duration-150';
+    if (!puedeVerFicha(clave)) {
+      return `<span class="${base} border-hairline text-muted/40 cursor-not-allowed"
+        title="Su ficha completa no está incluida: tu acceso cubre el análisis de tu equipo."
+        aria-disabled="true">Ficha —</span>`;
+    }
     return `<button type="button" onclick="SGADD_BUZON.irAFicha('${SGADD_UI.escJs(clave)}')"
       aria-label="Ver la ficha de ${SGADD_UI.esc(nombre)}"
-      class="shrink-0 text-[10px] px-2 py-1 rounded border border-hairline text-muted
-             hover:text-ink hover:border-accent/50 active:scale-95 transition-all duration-150
+      class="${base} border-hairline text-muted
+             hover:text-ink hover:border-accent/50 active:scale-95
              focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-base">
       Ficha →</button>`;
   }
@@ -446,20 +477,50 @@ const SGADD_BUZON = (function () {
     return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   }
 
-  /** Los jugadores de la categoría abierta que matchean el texto. */
+  /**
+   * TODOS los jugadores del torneo, no solo los del índice.
+   *
+   * Con el backend, el índice trae SOLO el plantel propio: las filas de
+   * los rivales las recorta el servidor. Pero el buzón tiene que poder
+   * marcarle una lesión o una baja a cualquiera —el DT sabe cosas que el
+   * box score no registra— así que el servidor manda aparte un PADRÓN con
+   * nombre y equipo de toda la liga, sin una sola estadística.
+   *
+   * Las dos fuentes se unen y se deduplican por clave: en modo GViz el
+   * padrón viene vacío y el índice ya tiene a todos, así que el buscador
+   * se comporta igual en los dos modos.
+   */
+  function padronCompleto() {
+    const st = (typeof SGADD_APP !== 'undefined') ? SGADD_APP.estado : null;
+    const idx = st ? st.idx : null;
+    const vistos = new Map();
+    (idx && idx.liga.jugadores || []).forEach(j => {
+      const clave = E.claveJugador(j['NOMBRES'], j['EQUIPO']);
+      /* El del índice gana sobre el del padrón: trae la fila completa,
+         que es lo que hace falta para abrir su ficha. */
+      vistos.set(clave, { clave: clave, nombre: j['NOMBRES'] || '',
+        equipo: SGADD.limpiarNombre(j['EQUIPO'] || ''), equipoCrudo: j['EQUIPO'], j: j });
+    });
+    ((st && st.padron) || []).forEach(p => {
+      const clave = E.claveJugador(p.nombre, p.equipo);
+      if (vistos.has(clave)) return;
+      vistos.set(clave, { clave: clave, nombre: p.nombre,
+        equipo: SGADD.limpiarNombre(p.equipo || ''), equipoCrudo: p.equipo, j: null });
+    });
+    return vistos;
+  }
+
+  /** Los jugadores del torneo que matchean el texto. */
   function buscarJugadores(texto) {
-    const idx = (typeof SGADD_APP !== 'undefined') ? SGADD_APP.estado.idx : null;
-    if (!idx || !E) return [];
+    if (!E) return [];
     const q = normalizar(texto).trim();
     if (q.length < 2) return [];
     /* Se busca por nombre Y por equipo: escribiendo "atenas" sale su
        plantel, que es como el DT piensa cuando no recuerda el apellido. */
     const out = [];
-    (idx.liga.jugadores || []).forEach(j => {
-      const nombre = j['NOMBRES'] || '';
-      const equipo = SGADD.limpiarNombre(j['EQUIPO'] || '');
-      if (normalizar(nombre).indexOf(q) < 0 && normalizar(equipo).indexOf(q) < 0) return;
-      out.push({ clave: E.claveJugador(nombre, j['EQUIPO']), nombre: nombre, equipo: equipo, j: j });
+    padronCompleto().forEach(r => {
+      if (normalizar(r.nombre).indexOf(q) < 0 && normalizar(r.equipo).indexOf(q) < 0) return;
+      out.push(r);
     });
     return out.sort((a, b) => a.nombre.localeCompare(b.nombre));
   }
@@ -804,7 +865,15 @@ const SGADD_BUZON = (function () {
    * a `jugadoresSlug()`. Repetir la fórmula sería un segundo lugar que se
    * desincroniza, y ya pasó con el rol funcional.
    */
+  /* El guard va TAMBIÉN acá y no solo en el botón: a `irAFicha` se llega
+     desde el HTML, y un botón deshabilitado no impide que alguien invoque
+     la función desde la consola. Es redundante a propósito — el servidor
+     devuelve 403 igual, esto evita el viaje y el cartel confuso. */
   function irAFicha(clave) {
+    if (!puedeVerFicha(clave)) {
+      toast('Su ficha completa no está incluida en tu acceso.');
+      return;
+    }
     const idx = (typeof SGADD_APP !== 'undefined') ? SGADD_APP.estado.idx : null;
     if (!E || !idx || typeof jugadoresSlug !== 'function' || typeof navigate !== 'function') {
       toast('No se pudo abrir la ficha: el panel todavía está cargando', 'aviso');

@@ -128,6 +128,11 @@ async function manejarEquipos(peticion, deps) {
         hojasRecortadas: rec.recortadas,
         hojasCompletas: rec.completas,
       },
+      /* EL PADRÓN va con el libro RECORTADO a propósito: se arma sobre
+         `libro.hojas` (completo) y no sobre `rec.hojas`, porque el punto
+         es justamente que traiga a los jugadores que el recorte sacó.
+         Son dos columnas y ningún número — ver `reglas.js`. */
+      padron: reglas.padronLiga(libro.hojas),
       faltantes: libro.faltantes,
       leidoEn: libro.leidoEn,
       hojas: rec.hojas,

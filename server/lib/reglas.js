@@ -240,6 +240,59 @@ function mapear(hojas, fn) {
   return out;
 }
 
+/* --------------------------------------------------------------------
+   EL PADRÓN DE LA LIGA
+
+   Nombre y equipo de TODOS los jugadores del torneo, sin una sola
+   estadística. Es lo que el buzón necesita para que el buscador global
+   funcione: el DT tiene que poder marcarle una lesión o una baja a
+   cualquiera, esté o no en su plantel.
+
+   POR QUÉ ESTO NO ABRE EL AGUJERO QUE EL RECORTE CERRÓ
+
+   Lo que se protege es el ANÁLISIS de un plantel ajeno —minutos,
+   eficiencia, evolución, el log partido a partido—, no la existencia de
+   sus jugadores. Quién juega en cada club es público: está en la tabla
+   de posiciones, en los box scores de la federación y en cualquier
+   transmisión. Ocultar el nombre no protege nada y rompe una
+   funcionalidad real.
+
+   La línea está en las COLUMNAS: acá van dos, y ninguna es un número.
+   Si alguna vez alguien agrega `MIN` o `PTS` a este bloque, se filtró
+   justo lo que el recorte de `PROMEDIOS J` bloquea — hay un test que lo
+   fija por lista blanca, no por lista negra.
+   -------------------------------------------------------------------- */
+const PADRON_CAMPOS = ['nombre', 'equipo'];
+
+function padronLiga(hojas) {
+  const filas = (hojas && hojas['PROMEDIOS J']) || [];
+  if (filas.length < 2) return [];
+  const cab = filas[0] || [];
+  const iNombre = cab.findIndex(c => String(c || '').trim().toUpperCase() === 'NOMBRES');
+  const iEquipo = cab.findIndex(c => String(c || '').trim().toUpperCase() === 'EQUIPO');
+  if (iNombre === -1 || iEquipo === -1) return [];
+
+  /* Un jugador aparece una vez por FASE y por TORNEO, así que la misma
+     persona viene repetida. Se deduplica por nombre + equipo, que es la
+     clave con la que el buzón guarda los estados (punto 13). */
+  const vistos = new Set();
+  const out = [];
+  for (let i = 1; i < filas.length; i++) {
+    const nombre = String(filas[i][iNombre] || '').trim();
+    const equipo = String(filas[i][iEquipo] || '').trim();
+    if (!nombre || !equipo) continue;
+    /* La fila JUGADOR TIPO es la MEDIANA de la liga, no una persona:
+       ofrecerla en el buscador dejaría marcarle una lesión a una
+       estadística. */
+    if (nombre.toUpperCase().indexOf('JUGADOR TIPO') !== -1) continue;
+    const k = nombre + '|' + equipo;
+    if (vistos.has(k)) continue;
+    vistos.add(k);
+    out.push({ nombre: nombre, equipo: equipo });
+  }
+  return out;
+}
+
 /** ¿El equipo que se pide es uno que esta sesión puede analizar? */
 function puedeAnalizarEquipo(equipo, sesion) {
   if (!equipo) return true;
@@ -252,5 +305,6 @@ function clave(v) { return NUCLEO.claveEquipo(v || ''); }
 module.exports = {
   BLOQUES, puedeBloque, filasDeEquipo, filasDeJugador, partidosDeEquipo,
   indicesPermitidos, tomar, COLUMNAS_OCULTAS, sinColumnasOcultas, mapear,
+  padronLiga, PADRON_CAMPOS,
   tablaCompleta, recortarLibro, puedeAnalizarEquipo, clave,
 };

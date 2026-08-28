@@ -481,13 +481,31 @@ check('y resuelta la última se repinta, que trae el cierre positivo',
 check('el drawer abre con un buscador arriba de las tres listas',
   /function bloqueBuscador\(\)/.test(buzon) &&
   /const lista = bloqueBuscador\(\)/.test(buzon));
+/* Busca sobre TODO el torneo, y con el backend eso ya no es lo mismo que
+   el índice: el servidor recorta las filas de los rivales, así que el
+   índice trae solo el plantel propio. El padrón —nombre y equipo de toda
+   la liga, sin una sola estadística— viene aparte y se une acá.
+
+   En modo GViz el padrón viene vacío y el índice ya tiene a todos, así
+   que el buscador se comporta igual en los dos modos. */
 check('busca sobre toda la categoría, no solo sobre los que ya tienen alerta',
-  /function buscarJugadores[\s\S]{0,600}idx\.liga\.jugadores/.test(buzon));
+  /function padronCompleto[\s\S]{0,900}idx\.liga\.jugadores/.test(buzon) &&
+  /function padronCompleto[\s\S]{0,900}st\.padron/.test(buzon));
+check('y el jugador del índice gana sobre el del padrón, que no trae su fila',
+  /vistos\.has\(clave\)\) return;/.test(buzon));
 /* "MUÑOZ" tiene que aparecer escribiendo "munoz". */
 check('la búsqueda ignora acentos y mayúsculas',
   /normalize\('NFD'\)\.replace\(\/\[\\u0300-\\u036f\]\/g, ''\)\.toLowerCase\(\)/.test(buzon));
 check('y busca por nombre Y por equipo',
-  /normalizar\(nombre\)\.indexOf\(q\) < 0 && normalizar\(equipo\)\.indexOf\(q\) < 0/.test(buzon));
+  /normalizar\(r\.nombre\)\.indexOf\(q\) < 0 && normalizar\(r\.equipo\)\.indexOf\(q\) < 0/.test(buzon));
+/* Pero mostrar a un rival en el buscador NO abre su ficha: eso es
+   análisis en profundidad y es justo lo que el plan del club no cubre.
+   El botón queda deshabilitado con su motivo, y `irAFicha` chequea
+   igual — un botón deshabilitado no impide llamar a la función. */
+check('mostrar a un rival no habilita su ficha',
+  /function puedeVerFicha/.test(buzon) && /cursor-not-allowed/.test(buzon));
+check('y el guard está también en irAFicha, no solo en el botón',
+  /function irAFicha\(clave\) \{[\s\S]{0,200}puedeVerFicha\(clave\)/.test(buzon));
 check('con menos de dos letras no devuelve media liga',
   /if \(q\.length < 2\) return \[\];/.test(buzon));
 check('y los resultados se recortan, con aviso de cuántos quedaron afuera',
