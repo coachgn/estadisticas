@@ -7,7 +7,7 @@
    Contenido:
      1. ESQUEMA    — contrato de columnas de cada hoja
      2. METRICAS   — registro único: hoja dueña, dirección, formato, glosario
-     3. CATALOGO   — cliente → tira → categoría → sheetId, + Ruta (routing)
+     3. CATALOGO   — cliente → tira → categoría → slug, + Ruta (routing)
      4. INDICE     — construirIndice(), clave EQUIPO+FASE, percentiles
      5. VALIDADOR  — contrato de esquema + test de simetría de liga
    ===================================================================== */
@@ -905,6 +905,22 @@
      un eje es agregar una propiedad, no rehacer la estructura.
      --------------------------------------------------------------------- */
 
+  /* EL CATÁLOGO YA NO TIENE `sheetId`, Y ESE ES EL PUNTO.
+
+     Hasta la migración al backend, cada planilla traía el id de su libro
+     de Google acá y en `clubes/<club>.json`. Los dos son archivos que
+     GitHub Pages sirve PÚBLICOS: con ese id, cualquiera leía la planilla
+     entera por GViz sin pasar por el panel.
+
+     Ahora traen un `slug` OPACO —`reconquista-primera`— que no sirve para
+     nada sin el servidor: la resolución slug → sheetId vive en
+     `server/lib/config.js`, del lado del servidor y con las planillas ya
+     privadas. Ver docs/ARQUITECTURA-BACKEND.md.
+
+     Al agregar una categoría hay que declarar el slug en LOS DOS lados:
+     acá (o en el JSON del club) y en el catálogo del servidor. Si falta
+     el del servidor, la categoría aparece en el selector y la carga
+     devuelve 404 — que es ruidoso a propósito, mejor que un silencio. */
   const CATALOGO = {
     /* Reconquista no se llama igual en todas las tiras, pero siempre contiene
        "RECONQUISTA". Por eso el equipo propio es un patrón, no un literal. */
@@ -913,14 +929,14 @@
     planillas: [
       {
         id: 'primera-clausura-2026',
-        sheetId: '1Zi2cBd0WGUTks-S0XCxR0hoGpB9KZGuqisFhzdtJl4s',
+        slug: 'reconquista-primera',
         anio: 2026, torneo: 'TORNEO LOCAL', categoria: 'PRIMERA',
         faseTorneo: 'CLAUSURA', rama: 'masculina', tira: null,
         modulo: 'adicional',            // Primera se factura aparte del SGADD
         label: 'Primera · Clausura 2026',
         activo: true,
       },
-      /* El ANDAMIO del SGADD, por tira y categoría. Completar sheetId y
+      /* El ANDAMIO del SGADD, por tira y categoría. Completar `slug` y
          poner activo: true.
          tira: femenina | negra | naranja   ·   categoria: U15 | U17 | U21 | U23
 
@@ -933,7 +949,7 @@
           id: tira + '-' + cat.toLowerCase() + '-clausura-2026',
           /* La U21 de Reconquista es de la tira NARANJA (confirmado por el
              club en 2026-08-17, cuando pasó de llamarse Negra a Naranja). */
-          sheetId: (tira === 'naranja' && cat === 'U21') ? '1wNpSkdIOeoXTxaAQBH9UI3q1nR9J-4oek4MKO6m4TpE' : '',
+          slug: (tira === 'naranja' && cat === 'U21') ? 'reconquista-u21' : '',
           anio: 2026, torneo: 'TORNEO LOCAL', categoria: cat,
           faseTorneo: 'CLAUSURA',
           rama: tira === 'femenina' ? 'femenina' : 'masculina',

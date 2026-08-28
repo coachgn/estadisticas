@@ -22,6 +22,16 @@
    va literal porque es un PoC y porque tenerlo a la vista hace evidente
    qué es lo que NO puede cruzar al cliente.
    -------------------------------------------------------------------- */
+/* EL CATÁLOGO PRIVADO · slug → sheetId
+
+   El frontend conoce SOLO el slug (`deportivo-primera`), que es una
+   cadena opaca: no sirve para nada sin este mapa. El `sheetId` real vive
+   en el entorno del servidor y no se serializa NUNCA.
+
+   Los slugs van literales y los ids salen del entorno, no al revés: así
+   el catálogo se puede leer para saber qué categorías existen sin tener
+   una sola credencial a mano, y un `.env` incompleto se nota (la
+   categoría queda `activo: false`) en vez de romper. */
 const CATALOGO = {
   deportivo: {
     nombre: 'Deportivo La Plata',
@@ -29,10 +39,10 @@ const CATALOGO = {
     /* El equipo propio del club, para el gate de "su" ficha. Se compara
        con `claveEquipo()`, así que va como lo escribe la planilla —
        OJO con la letra: `RECONQUISTA A` y `RECONQUISTA` no son lo mismo
-       (punto 19). */
+       (punto 19 de CLAUDE.md). */
     equipoPropio: 'DEPORTIVO LA PLATA',
     categorias: {
-      'primera-2026': {
+      'deportivo-primera': {
         label: 'Primera 2026',
         sheetId: process.env.SHEET_DEPORTIVO_PRIMERA || '',
       },
@@ -43,14 +53,50 @@ const CATALOGO = {
     liga: 'la-plata',
     equipoPropio: 'RECONQUISTA A',
     categorias: {
-      'primera-2026': {
+      'reconquista-primera': {
         label: 'Primera · Vuelta 2026',
         sheetId: process.env.SHEET_RECONQUISTA_PRIMERA || '',
+      },
+      /* OJO: el JSON público traía para la U21 un id que devuelve 401 por
+         GViz y *entity not found* por Drive — el archivo no existe. El
+         bueno es `1wNpSkd…` y estaba SOLO en el respaldo de
+         `sgadd-core.js` (el bug de las dos fuentes del punto 6, que la
+         migración a slugs cierra de raíz). Al completar el `.env` va el
+         BUENO. */
+      'reconquista-u21': {
+        label: 'Masculina Naranja · U21',
+        sheetId: process.env.SHEET_RECONQUISTA_U21 || '',
+      },
+      'reconquista-u23': {
+        label: 'Masculina Naranja · U23',
+        sheetId: process.env.SHEET_RECONQUISTA_U23 || '',
+      },
+    },
+  },
+  jujuy: {
+    nombre: 'Jujuy Basquet',
+    liga: 'liga-argentina',
+    equipoPropio: 'JUJUY BASQUET',
+    categorias: {
+      'jujuy-primera': {
+        label: 'Conferencia Norte',
+        sheetId: process.env.SHEET_JUJUY_PRIMERA || '',
       },
     },
   },
 };
 
+/* Las hojas que la capa vieja de Principal necesita EN TEXTO, además de
+   los valores crudos.
+
+   Esa capa consume el `formatted` que le daba GViz —el texto ya armado
+   por Sheets— y reproducirlo del lado del cliente da 40% de precisión
+   sobre 157.278 celdas: cada columna tiene su propio patrón en la
+   planilla y sin el `pattern` no se adivina (punto 3 de CLAUDE.md).
+
+   Así que no se reproduce: se le pide a Google la segunda vista. Son
+   cuatro hojas y una petición más, no las nueve. */
+const HOJAS_TEXTO = ['PROMEDIOS E', 'Base Datos E', 'PROMEDIOS J', 'PROMEDIOS 4F'];
 /* Las 9 hojas del contrato (punto 3 de CLAUDE.md). `RANKINGS J` y
    `RANKINGS E` quedan afuera a propósito: no son tablas, son bloques
    apilados con encabezados repetidos, y la API devuelve basura. Los
@@ -93,11 +139,13 @@ function entorno() {
  * contestar 404 sin distinguir "club que no existe" de "categoría que no
  * existe" — las dos son lo mismo para quien pregunta.
  */
-function resolverCategoria(clubId, categoriaId) {
+function resolverCategoria(clubId, slugCategoria) {
   const club = CATALOGO[String(clubId || '').trim().toLowerCase()];
   if (!club) return null;
   const ids = Object.keys(club.categorias);
-  const catId = String(categoriaId || ids[0] || '').trim().toLowerCase();
+  /* Sin categoría se abre la primera del club. Es lo mismo que hace el
+     selector del panel al arrancar. */
+  const catId = String(slugCategoria || ids[0] || '').trim().toLowerCase();
   const cat = club.categorias[catId];
   if (!cat) return null;
   return {
@@ -105,7 +153,7 @@ function resolverCategoria(clubId, categoriaId) {
     club: club.nombre,
     liga: club.liga,
     equipoPropio: club.equipoPropio,
-    categoriaId: catId,
+    slug: catId,
     label: cat.label,
     sheetId: cat.sheetId,
   };
@@ -118,7 +166,7 @@ function catalogoPublico() {
     nombre: CATALOGO[id].nombre,
     liga: CATALOGO[id].liga,
     categorias: Object.keys(CATALOGO[id].categorias).map(c => ({
-      id: c,
+      slug: c,
       label: CATALOGO[id].categorias[c].label,
       /* `activo` reemplaza al `sheetId` como señal de "esta categoría ya
          tiene libro". Es la misma idea que `activo: !!sheetId` del
@@ -128,4 +176,4 @@ function catalogoPublico() {
   }));
 }
 
-module.exports = { CATALOGO, HOJAS, entorno, resolverCategoria, catalogoPublico };
+module.exports = { CATALOGO, HOJAS, HOJAS_TEXTO, entorno, resolverCategoria, catalogoPublico };

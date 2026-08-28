@@ -95,7 +95,12 @@ function googleFalso(url, opciones) {
     return Promise.resolve({ ok: true, status: 200,
       json: () => Promise.resolve({ access_token: 'token-falso', expires_in: 3600 }) });
   }
-  const nombres = config.HOJAS;
+  /* Devuelve EXACTAMENTE los rangos que se pidieron, no las nueve hojas
+     siempre: la segunda llamada (la de texto) pide solo cuatro, y un mock
+     que ignora la query no probaría que se piden las que corresponden. */
+  const pedidos = String(url).split('ranges=').slice(1)
+    .map(x => decodeURIComponent(x.split('&')[0]));
+  const nombres = pedidos.length ? pedidos : config.HOJAS;
   return Promise.resolve({ ok: true, status: 200,
     json: () => Promise.resolve({
       valueRanges: nombres.map(h => ({ range: h, values: LIBRO[h] || [] })),
@@ -451,8 +456,27 @@ titulo('EL sheetId NO SALE · el objetivo entero del backend');
   const libro = await sheets.obtenerLibro(SHEET_DEPORTIVO, DEPS);
   check('trae las 9 hojas del contrato',
     Object.keys(libro.hojas).length === 9, Object.keys(libro.hojas).length);
-  check('en UNA sola llamada, con batchGet',
-    llamadasAGoogle.filter(u => /batchGet/.test(u)).length === 1);
+  /* DOS batchGet y no nueve GET sueltos: la cuota de Sheets se mide en
+     peticiones por minuto y el arranque pide el libro entero.
+
+     Son dos y no uno porque hacen falta dos VISTAS de las mismas hojas —
+     los valores crudos para el índice y el texto ya formateado para la
+     capa vieja de Principal, que no se puede reproducir del lado del
+     cliente (40% de precisión sobre 157.278 celdas, punto 3). */
+  const batch = llamadasAGoogle.filter(u => /batchGet/.test(u));
+  check('dos batchGet: valores y texto', batch.length === 2, batch.length);
+  check('y van en paralelo, no encadenados',
+    /Promise[.]all\([[]/.test(fs.readFileSync('./server/lib/google-sheets.js', 'utf8')));
+  /* OJO al distinguirlos: `UNFORMATTED_VALUE` CONTIENE la subcadena
+     `FORMATTED_VALUE`, así que hay que matchear el parámetro entero o el
+     find devuelve la URL equivocada. */
+  const urlValores = batch.find(u => /valueRenderOption=UNFORMATTED_VALUE/.test(u));
+  const urlTexto = batch.find(u => /valueRenderOption=FORMATTED_VALUE/.test(u));
+  check('el de valores pide las 9 hojas',
+    (urlValores.match(/ranges=/g) || []).length === 9);
+  /* Solo cuatro: pedir las nueve en texto duplicaría el payload para nada. */
+  check('y el de texto solo las 4 que usa Principal',
+    (urlTexto.match(/ranges=/g) || []).length === 4);
   check('y pide solo lectura',
     /spreadsheets\.readonly/.test(fs.readFileSync('./server/lib/google-sheets.js', 'utf8')));
 
@@ -480,6 +504,238 @@ titulo('EL sheetId NO SALE · el objetivo entero del backend');
   const rFalla = await pedir(handlers.manejarEquipos, { token: T_ADMIN });
   check('y el handler no propaga el detalle crudo de Google',
     rFalla.status === 200 || !/gserviceaccount/.test(JSON.stringify(rFalla.body)));
+
+
+/* ==================================================================== */
+titulo('EL FRONTEND CONSUME LO QUE EL BACKEND MANDA · E2E');
+
+/* Estos checks son el puente: toman el payload REAL que devuelve un
+   handler y lo pasan por el adaptador REAL del frontend. Si el servidor
+   cambia la forma de la respuesta, o el adaptador deja de entenderla,
+   fallan acá — que es el único lugar donde las dos mitades se tocan. */
+{
+  const DATA = require('./js/sgadd-data.js');
+
+  const rCli = await pedir(handlers.manejarEquipos, { token: T_BASICO });
+  const rAdm = await pedir(handlers.manejarEquipos, { token: T_ADMIN });
+
+  /* --- la forma del índice --- */
+  const pe = DATA.matrizAFilas(rCli.body.hojas['PROMEDIOS E']);
+  check('el adaptador saca los encabezados de la fila 0',
+    pe.cols[0] === 'EQUIPO' && pe.cols.indexOf('eFG%') !== -1, JSON.stringify(pe.cols));
+  check('y arma un objeto por fila, con la clave = encabezado',
+    pe.filas.length > 0 && typeof pe.filas[0]['EQUIPO'] === 'string');
+  check('los números llegan como números, no como texto',
+    typeof pe.filas[0]['PTS'] === 'number', typeof pe.filas[0]['PTS']);
+  /* Las tasas vienen como FRACCIÓN, igual que el `v` de GViz para una
+     celda con formato %: si llegaran como 48 en vez de 0,48, todos los
+     percentiles del panel saldrían por las nubes sin ningún síntoma. */
+  check('y las tasas como fracción, igual que GViz',
+    pe.filas[0]['eFG%'] > 0 && pe.filas[0]['eFG%'] < 1, pe.filas[0]['eFG%']);
+
+  /* El recorte del servidor tiene que sobrevivir al adaptador: es el
+     punto entero de que el filtrado sea server-side. */
+  const nombres = pe.filas.map(f => f['EQUIPO']);
+  check('el recorte del servidor llega intacto al índice',
+    !nombres.some(n => /A\. MAYO|UNIVERSITARIO/.test(n)), JSON.stringify(nombres));
+  check('y la fila TIPO sigue ahí, que es la mediana de la liga',
+    nombres.some(n => /EQUIPO TIPO/.test(n)));
+
+  const peAdm = DATA.matrizAFilas(rAdm.body.hojas['PROMEDIOS E']);
+  check('el admin recibe la liga entera', peAdm.filas.length > pe.filas.length,
+    peAdm.filas.length + ' vs ' + pe.filas.length);
+
+  /* Una fila enteramente vacía no es un dato: GViz ya las descartaba, y si
+     entraran el índice contaría equipos fantasma. */
+  const conVacias = DATA.matrizAFilas([['EQUIPO', 'PTS'], ['A', 1], ['', ''], [], ['B', 2]]);
+  check('las filas vacías se descartan', conVacias.filas.length === 2, conVacias.filas.length);
+  /* Sheets manda filas CORTAS cuando las últimas celdas están vacías: sin
+     rellenar, esas columnas quedarían `undefined` en vez de ''. */
+  const cortas = DATA.matrizAFilas([['A', 'B', 'C'], ['x']]);
+  check('las filas cortas se rellenan en vez de quedar undefined',
+    cortas.filas[0]['C'] === '', JSON.stringify(cortas.filas[0]));
+  check('una matriz vacía no rompe',
+    DATA.matrizAFilas([]).filas.length === 0 && DATA.matrizAFilas(null).cols.length === 0);
+
+  /* --- la forma de la capa vieja de Principal --- */
+  const leg = DATA.matrizALegacy(rCli.body.hojas['PROMEDIOS E'],
+    rCli.body.hojasTexto['PROMEDIOS E']);
+  check('la forma legacy trae cols con {id,label,type}',
+    leg.cols[0] && leg.cols[0].label === 'EQUIPO' && !!leg.cols[0].id);
+  check('y rows con {values, formatted}',
+    leg.rows[0] && 'values' in leg.rows[0] && 'formatted' in leg.rows[0]);
+  check('el valor crudo es número y el formateado es texto',
+    typeof leg.rows[0].values['PTS'] === 'number' &&
+    typeof leg.rows[0].formatted['PTS'] === 'string');
+  /* Sin la vista en texto, `formatted` cae al valor crudo — que es
+     EXACTAMENTE lo que hacía GViz con una celda sin `f`. No se inventa un
+     formato: reproducir el de Sheets da 40% de precisión (punto 3). */
+  const sinTexto = DATA.matrizALegacy(rCli.body.hojas['PROMEDIOS E'], null);
+  check('sin la vista en texto, formatted cae al crudo en vez de inventarse',
+    sinTexto.rows[0].formatted['PTS'] === String(sinTexto.rows[0].values['PTS']));
+
+  /* LAS DOS VISTAS TIENEN QUE ESTAR ALINEADAS. Si el servidor filtrara
+     cada una por su cuenta, el panel mostraría el número de una fila con
+     el texto de otra — y eso no se ve, se lee mal. */
+  const crudas = rCli.body.hojas['PROMEDIOS E'];
+  const textos = rCli.body.hojasTexto['PROMEDIOS E'];
+  check('el servidor recorta las dos vistas con los mismos índices',
+    crudas.length === textos.length, crudas.length + ' vs ' + textos.length);
+  check('y fila por fila hablan del mismo equipo',
+    crudas.every((f, i) => String(f[0]) === String(textos[i][0])));
+
+  /* Las hojas que Principal consume son exactamente las que el servidor
+     manda en texto. Si divergen, Principal pierde el formato de una hoja
+     sin que nadie se entere. */
+  const idxSrc2 = fs.readFileSync('./index.html', 'utf8');
+  const cfg = (idxSrc2.match(/const SHEETS_CONFIG = \[([\s\S]*?)\];/) || [])[1] || '';
+  const usadas = (cfg.match(/name: '([^']+)'/g) || []).map(x => x.slice(7, -1));
+  check('SHEETS_CONFIG y HOJAS_TEXTO piden las MISMAS hojas',
+    usadas.slice().sort().join('|') === config.HOJAS_TEXTO.slice().sort().join('|'),
+    JSON.stringify(usadas) + ' vs ' + JSON.stringify(config.HOJAS_TEXTO));
+
+  /* --- el 403 del Básico llega como error, no como datos rotos --- */
+  const sc403 = await pedir(handlers.manejarScouting, { token: T_BASICO,
+    query: { local: 'DEPORTIVO LA PLATA', visitante: 'A. MAYO' } });
+  check('un 403 no trae `hojas` que el adaptador pueda malinterpretar',
+    !sc403.body.hojas && !sc403.body.hojasTexto);
+  check('y el adaptador sobre un cuerpo de error devuelve vacío, no basura',
+    DATA.matrizAFilas(sc403.body.hojas).filas.length === 0);
+}
+
+titulo('EL TOKEN EN EL NAVEGADOR');
+
+{
+  const AUTHF = require('./js/sgadd-auth.js');
+
+  /* El navegador DECODIFICA sin verificar: no tiene el secreto ni puede
+     tenerlo. Sirve para pintar la interfaz antes de la primera respuesta;
+     quien decide es el servidor. */
+  const p = AUTHF.leerPayload(T_PRO);
+  check('el frontend puede leer el payload de su token',
+    p && p.email === 'dt@deportivo.com' && p.plan === 'PRO', JSON.stringify(p));
+  check('y el club al que está atado', p.club === 'deportivo');
+  check('basura no rompe el lector',
+    AUTHF.leerPayload('no-es-jwt') === null && AUTHF.leerPayload(null) === null &&
+    AUTHF.leerPayload('') === null);
+
+  /* QUE EL FRONTEND LO LEA NO SIGNIFICA QUE LO DECIDA. Este es el check
+     que separa el gate de interfaz de la seguridad: un payload editado
+     engaña a la UI y el servidor lo rechaza igual. */
+  const partes = T_BASICO.split('.');
+  const truchado = JSON.parse(jwtLib.deB64url(partes[1]).toString('utf8'));
+  truchado.plan = 'PRO';
+  const falso = partes[0] + '.' + jwtLib.b64url(JSON.stringify(truchado)) + '.' + partes[2];
+  check('un token editado SÍ engaña al lector del frontend',
+    AUTHF.leerPayload(falso).plan === 'PRO');
+  check('pero el servidor lo rechaza', auth.verificarToken(falso).ok === false);
+  /* Y no es que devuelva menos datos: no devuelve NINGUNO. */
+  const conFalso = await pedir(handlers.manejarEquipos, { token: falso });
+  check('y no le entrega un solo dato', conFalso.status === 401 && !conFalso.body.hojas,
+    conFalso.status);
+
+  /* Un token vencido no se acepta del lado del cliente tampoco: pintar la
+     interfaz de una sesión que el servidor ya no atiende deja al DT
+     mirando 401. */
+  const vencido2 = jwtLib.firmar({ email: 'x@y.com', plan: 'PRO' },
+    process.env.JWT_SECRET, { expiraEn: 1 });
+  await new Promise(r => setTimeout(r, 1100));
+  const rv = AUTHF.establecerToken(vencido2);
+  check('un token vencido no se establece en el navegador',
+    rv && rv.vencido === true && AUTHF.token() === null);
+
+  /* El token se saca de la URL apenas se lee y va a sessionStorage. */
+  const authSrc = fs.readFileSync('./js/sgadd-auth.js', 'utf8');
+  check('el token se borra del query string al leerlo',
+    /function sacarTokenDeLaUrl/.test(authSrc) &&
+    /searchParams\.delete\('access_token'\)/.test(authSrc));
+  /* El HASH se conserva: es la ruta de la app, y perderlo mandaría al DT a
+     la pantalla de inicio cada vez que abre un link compartido. */
+  check('y el hash se conserva, porque es la ruta de la app',
+    /u\.pathname \+ u\.search \+ u\.hash/.test(authSrc));
+  check('el token va a sessionStorage, no a localStorage',
+    /sessionStorage/.test(authSrc) && !/localStorage\.setItem\(CLAVE_TOKEN/.test(authSrc));
+  check('y gana sobre el ?usuario= editable',
+    authSrc.indexOf("q.has('access_token')") < authSrc.indexOf("q.has('usuario')"));
+}
+
+titulo('DE DÓNDE SALEN LOS DATOS · los tres modos');
+
+{
+  const DATA = require('./js/sgadd-data.js');
+  const AUTHF = require('./js/sgadd-auth.js');
+  AUTHF.limpiarToken();
+
+  DATA.configurar('');
+  check('sin API configurada y sin token, no hay origen',
+    DATA.origen({ slug: 'x' }) === 'ninguno');
+  /* El modo GViz sigue vivo SOLO mientras dure el corte: una planilla con
+     `sheetId` es hoy una config local, porque los JSON públicos ya no lo
+     traen. Se borra cuando el backend esté desplegado. */
+  check('con sheetId y sin API, cae a GViz (legacy de la transición)',
+    DATA.origen({ sheetId: 'abc' }) === 'gviz');
+
+  DATA.configurar('https://api.ejemplo.com/');
+  check('la barra final de la URL de la API se normaliza',
+    DATA.base() === 'https://api.ejemplo.com');
+  check('con API pero sin token, tampoco va al backend',
+    DATA.origen({ slug: 'x' }) === 'ninguno');
+
+  AUTHF.establecerToken(T_PRO);
+  check('con API y token, va al backend', DATA.origen({ slug: 'x' }) === 'backend');
+  /* El backend GANA sobre GViz aunque la planilla traiga sheetId: si no,
+     una config vieja seguiría leyendo la planilla pública por la espalda —
+     que es justo el agujero que esto vino a cerrar. */
+  check('y el backend gana sobre un sheetId que haya quedado dando vueltas',
+    DATA.origen({ slug: 'x', sheetId: 'abc' }) === 'backend');
+  AUTHF.limpiarToken();
+
+  /* Sin nada, el error DICE QUÉ FALTA: un "no se pudieron cargar los
+     datos" manda al DT a reportar que el panel no anda. */
+  DATA.configurar('https://api.ejemplo.com');
+  let msg = null;
+  try { await DATA.cargarCategoria({ slug: 'x' }); } catch (e) { msg = e.codigo; }
+  check('sin token, el error dice que hace falta un link de acceso',
+    msg === 'SIN_TOKEN', msg);
+  DATA.configurar('');
+  let msg2 = null;
+  try { await DATA.cargarCategoria({ id: 'x' }); } catch (e) { msg2 = e.codigo; }
+  check('y sin libro conectado lo dice distinto', msg2 === 'SIN_LIBRO', msg2);
+}
+
+titulo('EL sheetId NO ESTÁ EN NINGÚN ARCHIVO PÚBLICO');
+
+{
+  /* El objetivo de la migración, verificado sobre los archivos que
+     GitHub Pages sirve tal cual. Un id de Google son 44 caracteres que
+     arrancan con 1; el patrón es laxo a propósito para que un id nuevo
+     escrito a mano también salte. */
+  const ID_GOOGLE = /[\"'][01][A-Za-z0-9_-]{25,}[\"']/;
+  ['clubes/deportivo.json', 'clubes/reconquista.json', 'clubes/jujuy.json',
+   'index.html', 'js/sgadd-core.js', 'js/sgadd-club.js', 'js/sgadd-app.js',
+   'js/sgadd-data.js'].forEach(f => {
+    const txt = fs.readFileSync('./' + f, 'utf8');
+    const m = txt.match(ID_GOOGLE);
+    check(f + ' no trae ningún id de planilla', !m, m && m[0]);
+  });
+  ['clubes/deportivo.json', 'clubes/reconquista.json', 'clubes/jujuy.json'].forEach(f => {
+    const j = JSON.parse(fs.readFileSync('./' + f, 'utf8'));
+    check(f + ' declara slug en todas sus planillas',
+      (j.planillas || []).every(p => typeof p.slug === 'string' && p.slug));
+  });
+
+  /* Y el slug del JSON tiene que existir en el catálogo del servidor: si
+     no, la categoría aparece en el selector y la carga devuelve 404. */
+  const declarados = [];
+  ['deportivo', 'reconquista', 'jujuy'].forEach(c => {
+    const j = JSON.parse(fs.readFileSync('./clubes/' + c + '.json', 'utf8'));
+    (j.planillas || []).forEach(p => declarados.push([c, p.slug]));
+  });
+  declarados.forEach(([club, slug]) => {
+    check('el slug ' + slug + ' existe en el catálogo del servidor',
+      !!config.resolverCategoria(club, slug), club + '/' + slug);
+  });
+}
 
   console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +
     '   ' + ok + ' pasaron, ' + fail + ' fallaron');

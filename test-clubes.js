@@ -113,15 +113,19 @@ function crearClub(clubId, opciones) {
   check('la U23 está en el catálogo, en la misma tira',
     u23 && u23.tira === 'naranja' && /U23/.test(u23.label), u23 && u23.id);
   check('y con su planilla cargada, o sea activa',
-    u23 && !!u23.sheetId &&
+    u23 && !!u23.slug &&
     c3.ctx.SGADD.CATALOGO.planillas.find(x => x.categoria === 'U23').activo === true);
-  /* `activo` sale de `!!sheetId`: una categoría sin planilla entra igual a
-     la lista pero deshabilitada, en vez de dejar entrar a una sección
-     vacía. Se prueba con un catálogo de mentira para no depender de que el
-     club tenga siempre alguna sin cargar. */
-  const catFalso = [{ id: 'x', label: 'X', sheetId: '' }, { id: 'y', label: 'Y', sheetId: 'abc' }];
-  const mapeado = catFalso.map(x => Object.assign({ activo: !!x.sheetId }, x));
-  check('una planilla sin sheetId nace inactiva',
+  /* `activo` sale de `!!slug`: una categoría sin libro conectado entra
+     igual a la lista pero deshabilitada, en vez de dejar entrar a una
+     sección vacía. Se prueba con un catálogo de mentira para no depender
+     de que el club tenga siempre alguna sin cargar.
+
+     El `slug` reemplazó al `sheetId` en la migración al backend: el id
+     real de Google salió de todos los archivos que GitHub Pages sirve
+     públicos y vive solo en el servidor. */
+  const catFalso = [{ id: 'x', label: 'X', slug: '' }, { id: 'y', label: 'Y', slug: 'club-primera' }];
+  const mapeado = catFalso.map(x => Object.assign({ activo: !!x.slug }, x));
+  check('una planilla sin slug nace inactiva',
     mapeado[0].activo === false && mapeado[1].activo === true);
   check('ninguna tira ni ningún id quedó como negro en el club',
     !pl.some(x => x.tira === 'negra' || /negra/.test(x.id)),
@@ -204,8 +208,12 @@ function crearClub(clubId, opciones) {
     check(c.id + ': trae todos los campos que la app necesita',
       REQUERIDOS.every(k => c[k] !== undefined && c[k] !== null),
       REQUERIDOS.filter(k => c[k] === undefined || c[k] === null).join(',') || 'ok');
-    check(c.id + ': cada planilla tiene id, label y sheetId',
-      c.planillas.every(pl => pl.id && pl.label && typeof pl.sheetId === 'string'));
+    check(c.id + ': cada planilla tiene id, label y slug',
+      c.planillas.every(pl => pl.id && pl.label && typeof pl.slug === 'string'));
+    /* Y NINGUNA trae ya el id de Google: es el objetivo de la migración al
+       backend, y estos archivos son los que GitHub Pages sirve públicos. */
+    check(c.id + ': y NINGUNA trae el sheetId, que ahora vive en el servidor',
+      c.planillas.every(pl => !('sheetId' in pl)));
   });
   /* Dos clientes con el mismo id de planilla compartirían los estados de
      jugador guardados: la clave es `sgadd.estados.<club>.<planilla>`. */

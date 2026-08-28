@@ -65,33 +65,61 @@ function puedeBloque(bloque, sesion) {
  * es exactamente el valor del producto. No es el dato de otro club: es el
  * agregado de la competencia.
  */
-function filasDeEquipo(filas, sesion, opciones) {
+/**
+ * QUÉ FILAS SOBREVIVEN, por índice.
+ *
+ * Devuelve los índices que se conservan en vez de la matriz recortada, y
+ * eso NO es un detalle de implementación: el servidor manda DOS vistas de
+ * la misma hoja (los valores crudos y el texto formateado), y si cada una
+ * se filtrara por su cuenta podrían desalinearse — el panel mostraría el
+ * número de una fila con el texto de otra, sin ningún síntoma.
+ *
+ * Se decide UNA vez, sobre los valores, y se aplica a las dos.
+ */
+function indicesPermitidos(filas, sesion, opciones) {
   const o = opciones || {};
   const arr = Array.isArray(filas) ? filas : [];
-  if (!arr.length) return arr;
-  if (AUTH.sinRestricciones(sesion)) return arr;
+  if (!arr.length) return [];
+  if (AUTH.sinRestricciones(sesion)) return arr.map((_, i) => i);
 
   const cab = arr[0] || [];
   const iEquipo = cab.findIndex(c => String(c || '').trim().toUpperCase() === 'EQUIPO');
-  /* Sin columna EQUIPO no se puede filtrar por equipo. Se devuelve VACÍO y
-     no todo: no saber a quién pertenece una fila no es motivo para
-     entregarla. El handler lo reporta como hoja no disponible. */
-  if (iEquipo === -1) return o.sinColumna === 'todo' ? arr : [cab];
+  /* Sin columna EQUIPO no se puede filtrar por equipo. Se devuelve solo el
+     encabezado y no todo: no saber a quién pertenece una fila no es motivo
+     para entregarla. */
+  if (iEquipo === -1) return [0];
 
-  const salida = [cab];
+  const out = [0];
   for (let i = 1; i < arr.length; i++) {
     const bruto = String(arr[i][iEquipo] || '').trim();
-    const esTipo = bruto.toUpperCase().indexOf('EQUIPO TIPO') !== -1 || bruto === '';
-    if (esTipo || AUTH.puedeVerEquipo(bruto, sesion)) salida.push(arr[i]);
+    /* LA FILA TIPO SE CONSERVA SIEMPRE, y no es una excepción menor: es la
+       MEDIANA de la liga (punto 3 de CLAUDE.md) y de ella salen todos los
+       percentiles, las bandas z y los umbrales del panel. Sin ella el
+       cliente recibe sus propios números sin nada contra qué compararlos,
+       que es exactamente el valor del producto. No es el dato de otro
+       club: es el agregado de la competencia. */
+    const esTipo = !o.soloPropio &&
+      (bruto.toUpperCase().indexOf('EQUIPO TIPO') !== -1 || bruto === '');
+    if (esTipo || AUTH.puedeVerEquipo(bruto, sesion)) out.push(i);
   }
-  return salida;
+  return out;
+}
+
+/** Aplica una lista de índices a una matriz. */
+function tomar(filas, indices) {
+  const arr = Array.isArray(filas) ? filas : [];
+  return indices.filter(i => i < arr.length).map(i => arr[i]);
+}
+
+function filasDeEquipo(filas, sesion, opciones) {
+  return tomar(filas, indicesPermitidos(filas, sesion, opciones));
 }
 
 /**
- * Recorta las filas de jugador al plantel autorizado.
- * Misma lógica, pero la columna de referencia sigue siendo `EQUIPO`: un
- * jugador se autoriza por su equipo y NO por su nombre, porque dos
- * homónimos de equipos distintos abrirían el que no es (punto 8).
+ * Recorta las filas de jugador al plantel autorizado. Misma lógica, pero
+ * la columna de referencia sigue siendo `EQUIPO`: un jugador se autoriza
+ * por su equipo y NO por su nombre, porque dos homónimos de equipos
+ * distintos abrirían el que no es (punto 8).
  */
 function filasDeJugador(filas, sesion) {
   return filasDeEquipo(filas, sesion);
@@ -105,22 +133,13 @@ function filasDeJugador(filas, sesion) {
  * fue. Lo que sí se recorta son los partidos AJENOS, que es donde estaría
  * el scouting encubierto — mirar la liga entera partido a partido es
  * exactamente lo que separa al Pro.
+ *
+ * `soloPropio` porque acá NO hay fila TIPO que preservar: en una hoja
+ * partido a partido, una fila sin equipo es una fila rota, no la mediana.
  */
 function partidosDeEquipo(filas, sesion) {
-  const arr = Array.isArray(filas) ? filas : [];
-  if (!arr.length || AUTH.sinRestricciones(sesion)) return arr;
-
-  const cab = arr[0] || [];
-  const iEquipo = cab.findIndex(c => String(c || '').trim().toUpperCase() === 'EQUIPO');
-  if (iEquipo === -1) return [cab];
-
-  const salida = [cab];
-  for (let i = 1; i < arr.length; i++) {
-    if (AUTH.puedeVerEquipo(String(arr[i][iEquipo] || ''), sesion)) salida.push(arr[i]);
-  }
-  return salida;
+  return tomar(filas, indicesPermitidos(filas, sesion, { soloPropio: true }));
 }
-
 /**
  * La tabla de posiciones y los rankings de liga van COMPLETOS, y eso es
  * la propiedad, no un agujero.
@@ -139,7 +158,9 @@ function tablaCompleta(filas) { return filas; }
  */
 function recortarLibro(libro, sesion) {
   const hojas = (libro && libro.hojas) || {};
+  const texto = (libro && libro.hojasTexto) || {};
   const salida = {};
+  const salidaTexto = {};
   const recortadas = [];
   const completas = [];
 
@@ -152,17 +173,27 @@ function recortarLibro(libro, sesion) {
   const ENTERAS = ['Base Datos E', '4 FACTORES'];
 
   Object.keys(hojas).forEach(h => {
-    if (AUTH.sinRestricciones(sesion)) { salida[h] = hojas[h]; completas.push(h); return; }
-    if (POR_EQUIPO.indexOf(h) !== -1) { salida[h] = filasDeEquipo(hojas[h], sesion); recortadas.push(h); }
-    else if (POR_JUGADOR.indexOf(h) !== -1) { salida[h] = filasDeJugador(hojas[h], sesion); recortadas.push(h); }
-    else if (POR_PARTIDO.indexOf(h) !== -1) { salida[h] = partidosDeEquipo(hojas[h], sesion); recortadas.push(h); }
-    else if (ENTERAS.indexOf(h) !== -1) { salida[h] = tablaCompleta(hojas[h]); completas.push(h); }
-    else { salida[h] = hojas[h]; completas.push(h); }
+    const libre = AUTH.sinRestricciones(sesion) || ENTERAS.indexOf(h) !== -1
+      || (POR_EQUIPO.indexOf(h) === -1 && POR_JUGADOR.indexOf(h) === -1
+          && POR_PARTIDO.indexOf(h) === -1);
+    if (libre) {
+      salida[h] = hojas[h];
+      if (texto[h]) salidaTexto[h] = texto[h];
+      completas.push(h);
+      return;
+    }
+    /* LOS MISMOS ÍNDICES para las dos vistas: si cada una se filtrara por
+       su cuenta podrían desalinearse y el panel mostraría el número de una
+       fila con el texto de otra. */
+    const idx = indicesPermitidos(hojas[h], sesion,
+      { soloPropio: POR_PARTIDO.indexOf(h) !== -1 });
+    salida[h] = tomar(hojas[h], idx);
+    if (texto[h]) salidaTexto[h] = tomar(texto[h], idx);
+    recortadas.push(h);
   });
 
-  return { hojas: salida, recortadas, completas };
+  return { hojas: salida, hojasTexto: salidaTexto, recortadas, completas };
 }
-
 /** ¿El equipo que se pide es uno que esta sesión puede analizar? */
 function puedeAnalizarEquipo(equipo, sesion) {
   if (!equipo) return true;
@@ -174,5 +205,6 @@ function clave(v) { return NUCLEO.claveEquipo(v || ''); }
 
 module.exports = {
   BLOQUES, puedeBloque, filasDeEquipo, filasDeJugador, partidosDeEquipo,
+  indicesPermitidos, tomar,
   tablaCompleta, recortarLibro, puedeAnalizarEquipo, clave,
 };

@@ -49,15 +49,34 @@ check('refreshData() NO duplica la resolución llamando a CLUB.cargar() por su c
 check('resolverClubYPlanilla() sigue inicializando SGADD_APP', /SGADD_APP\.inicializar\(\)/.test(srcResolver));
 check('resolverClubYPlanilla() sigue con el fallback a la primera planilla activa del catálogo',
   /SGADD\.planillasVisibles\(\{\}\)/.test(srcResolver));
-check('resolverClubYPlanilla() es la única que reasigna SHEET_ID a partir de la planilla resuelta',
-  /SHEET_ID = p\.sheetId/.test(srcResolver));
+/* Antes esto fijaba que `resolverClubYPlanilla()` era la ÚNICA que
+   reasignaba `SHEET_ID`. Con el backend la invariante es más fuerte: ese
+   id ya no existe del lado del cliente. La planilla se identifica por un
+   `slug` opaco y la resolución slug → sheetId vive en el servidor.
+
+   Se verifica sobre el archivo ENTERO y no solo sobre esa función: el
+   punto es que no quede ninguno en ningún lado. */
+check('resolverClubYPlanilla() deja activa la planilla resuelta',
+  /PLANILLA_ACTIVA = p;/.test(srcResolver));
+check('y NO existe ningún sheetId literal en el index.html',
+  !/["']1[A-Za-z0-9_-]{20,}["']/.test(html), (html.match(/["']1[A-Za-z0-9_-]{20,}["']/) || [])[0]);
+check('ni se asigna un sheetId de una planilla en ningún lado',
+  !/=\s*p\.sheetId/.test(html));
+/* Y el log de arranque tampoco lo imprime: la consola es un lado del
+   cliente, y ahí es justo donde se filtraría sin que nadie lo mire. */
+check('el log de arranque no imprime ningún id de planilla',
+  !/SHEET_ID.slice/.test(html) && /origen=/.test(srcResolver));
 
 fs.unlinkSync(EXTRAIDO);
 
 /* --- Entorno de ejecución para correr resolverClubYPlanilla() de verdad --- */
 function crearEntorno({ clubOk, clubExplota, sinClub, sinApp, planillasClub, planillaPrevia }) {
-  const catalogo = planillasClub.map(p => ({ id: p.id, sheetId: p.sheetId, activo: true }));
+  const catalogo = planillasClub.map(p => ({ id: p.id, slug: p.slug, activo: true }));
   const consola = [];
+  /* `SGADD_DATA` decide de dónde salen los datos y el log de arranque lo
+     consulta. Se stubea para poder ejercer el resolver sin levantar la app
+     entera — lo que este test verifica es la RESOLUCIÓN, no la carga. */
+  const datosStub = { origen: () => 'gviz', configurar: () => {} };
   const SGADD_mock = {
     planillasVisibles: () => catalogo,
     planilla: (id) => catalogo.find(p => p.id === id) || null,
@@ -73,8 +92,12 @@ function crearEntorno({ clubOk, clubExplota, sinClub, sinApp, planillasClub, pla
 
   const contexto = {
     console: { log: (...a) => consola.push(a.join(' ')), warn: (...a) => consola.push(a.join(' ')) },
-    SHEET_ID: 'SHEET_DEFAULT_RECONQUISTA',
+    /* Arranca SIN planilla activa: lo que el resolver tiene que hacer
+       es dejarla puesta. Antes se verificaba sobre un `SHEET_ID` que
+       ya no existe del lado del cliente. */
+    PLANILLA_ACTIVA: null,
     SGADD: SGADD_mock,
+    SGADD_DATA: datosStub,
     SGADD_APP: sinApp ? undefined : SGADD_APP_mock,
     CLUB: sinClub ? undefined : CLUB_mock,
   };
@@ -87,10 +110,15 @@ function crearEntorno({ clubOk, clubExplota, sinClub, sinApp, planillasClub, pla
 (async () => {
   console.log('\n2. ARRANQUE LIMPIO: sin planilla previa, cae a la primera del catálogo');
   console.log('═'.repeat(70));
-  const e1 = crearEntorno({ clubOk: true, planillasClub: [{ id: 'jujuy-apertura-2025', sheetId: 'SHEET_JUJUY' }], planillaPrevia: null });
+  const e1 = crearEntorno({ clubOk: true, planillasClub: [{ id: 'jujuy-apertura-2025', slug: 'jujuy-primera' }], planillaPrevia: null });
   await e1.resolverClubYPlanilla();
-  check('SHEET_ID pasa a ser el de la planilla del club, no el default',
-    e1.SHEET_ID === 'SHEET_JUJUY', e1.SHEET_ID);
+  check('la planilla activa pasa a ser la del club',
+    e1.PLANILLA_ACTIVA && e1.PLANILLA_ACTIVA.id === 'jujuy-apertura-2025',
+    e1.PLANILLA_ACTIVA && e1.PLANILLA_ACTIVA.id);
+  /* Y lo que queda puesto es el SLUG, no un id de Google: ese ya no
+     existe de este lado. */
+  check('y lo que la identifica es su slug opaco',
+    e1.PLANILLA_ACTIVA.slug === 'jujuy-primera', e1.PLANILLA_ACTIVA.slug);
 
   console.log('\n3. BUG HISTÓRICO: cambiar de club con una planilla vieja seleccionada');
   console.log('═'.repeat(70));
@@ -98,34 +126,38 @@ function crearEntorno({ clubOk, clubExplota, sinClub, sinApp, planillasClub, pla
   // el catálogo del club nuevo: SGADD.planilla() la resuelve a null.
   const e2 = crearEntorno({
     clubOk: true,
-    planillasClub: [{ id: 'jujuy-apertura-2025', sheetId: 'SHEET_JUJUY' }],
+    planillasClub: [{ id: 'jujuy-apertura-2025', slug: 'jujuy-primera' }],
     planillaPrevia: 'primera-clausura-2026',
   });
   await e2.resolverClubYPlanilla();
   check('la planilla del club anterior se descarta y toma la primera del catálogo nuevo',
-    e2.SHEET_ID === 'SHEET_JUJUY', e2.SHEET_ID);
-  check('NO se queda pegado al SHEET_ID por defecto (el bug original)',
-    e2.SHEET_ID !== 'SHEET_DEFAULT_RECONQUISTA');
+    e2.PLANILLA_ACTIVA && e2.PLANILLA_ACTIVA.id === 'jujuy-apertura-2025',
+    e2.PLANILLA_ACTIVA && e2.PLANILLA_ACTIVA.id);
+  check('NO se queda con la planilla del club anterior (el bug original)',
+    !e2.PLANILLA_ACTIVA || e2.PLANILLA_ACTIVA.id !== 'primera-clausura-2026');
 
   console.log('\n4. ROBUSTEZ: la config del club es una mejora opcional');
   console.log('═'.repeat(70));
-  const e3 = crearEntorno({ clubExplota: true, planillasClub: [{ id: 'jujuy-apertura-2025', sheetId: 'SHEET_JUJUY' }], planillaPrevia: null });
+  const e3 = crearEntorno({ clubExplota: true, planillasClub: [{ id: 'jujuy-apertura-2025', slug: 'jujuy-primera' }], planillaPrevia: null });
   let rompio3 = false;
   try { await e3.resolverClubYPlanilla(); } catch (err) { rompio3 = true; }
   check('si CLUB.cargar() rechaza, resolverClubYPlanilla() NO explota (sigue con los defaults)', !rompio3);
-  check('y aun así resuelve la planilla activa disponible', e3.SHEET_ID === 'SHEET_JUJUY', e3.SHEET_ID);
+  check('y aun así resuelve la planilla activa disponible',
+    e3.PLANILLA_ACTIVA && e3.PLANILLA_ACTIVA.id === 'jujuy-apertura-2025');
 
-  const e4 = crearEntorno({ sinClub: true, planillasClub: [{ id: 'jujuy-apertura-2025', sheetId: 'SHEET_JUJUY' }], planillaPrevia: null });
+  const e4 = crearEntorno({ sinClub: true, planillasClub: [{ id: 'jujuy-apertura-2025', slug: 'jujuy-primera' }], planillaPrevia: null });
   let rompio4 = false;
   try { await e4.resolverClubYPlanilla(); } catch (err) { rompio4 = true; }
   check('sin módulo CLUB cargado en la página, tampoco rompe', !rompio4);
-  check('y sigue resolviendo la planilla vía SGADD_APP', e4.SHEET_ID === 'SHEET_JUJUY', e4.SHEET_ID);
+  check('y sigue resolviendo la planilla vía SGADD_APP',
+    e4.PLANILLA_ACTIVA && e4.PLANILLA_ACTIVA.id === 'jujuy-apertura-2025');
 
-  const e5 = crearEntorno({ sinApp: true, planillasClub: [{ id: 'jujuy-apertura-2025', sheetId: 'SHEET_JUJUY' }], planillaPrevia: null });
+  const e5 = crearEntorno({ sinApp: true, planillasClub: [{ id: 'jujuy-apertura-2025', slug: 'jujuy-primera' }], planillaPrevia: null });
   let rompio5 = false;
   try { await e5.resolverClubYPlanilla(); } catch (err) { rompio5 = true; }
   check('sin SGADD_APP (núcleo SGADD no cargado), corta temprano sin romper', !rompio5);
-  check('y no toca SHEET_ID si no puede resolver planilla', e5.SHEET_ID === 'SHEET_DEFAULT_RECONQUISTA', e5.SHEET_ID);
+  check('y no deja ninguna planilla activa si no puede resolverla',
+    !e5.PLANILLA_ACTIVA, e5.PLANILLA_ACTIVA && e5.PLANILLA_ACTIVA.id);
 
   /* =====================================================================
      SINTAXIS DE TODOS LOS MÓDULOS

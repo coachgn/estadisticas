@@ -1,6 +1,7 @@
 # Arquitectura del backend · SGADD
 
-> **Estado: PoC funcionando, SIN probar contra Google todavía.** Vive en
+> **Estado: verificado contra Google y cableado al frontend. SIN mergear.**
+> Vive en
 > `server/` y en la rama `poc/backend`. La app de producción sigue siendo
 > el sitio estático de GitHub Pages con el gate de interfaz del punto 19 de
 > [`CLAUDE.md`](../CLAUDE.md). Nada de esto está en `main` todavía.
@@ -113,6 +114,9 @@ server/
   app.js                envoltorio Express (CORS, rate limit, rutas)
   index.js              arranque local
   bin/generar-link.js   CLI del paso C
+  bin/probar-google.js  la lectura real contra la planilla privada
+  bin/servidor-de-prueba.js  el mismo servidor con un Google de mentira
+js/sgadd-data.js        el cliente: backend o GViz, y los adaptadores
 test-backend.js         la suite, corre sin instalar dependencias
 ```
 
@@ -193,41 +197,28 @@ Honestidad sobre el alcance, para no darlo por cerrado.
 
 ### 7.1 · Qué se probó y qué NO
 
-Sé exacto acá, porque la diferencia importa antes de migrar nada.
+**Probado contra Google, con la Service Account real:** `probar-google.js`
+leyó **9/9 hojas y 157.628 celdas** de la planilla PRIVADA de Deportivo La
+Plata. O sea que están ejercidos la firma RS256, el intercambio OAuth2 y
+la lectura por Sheets API v4.
 
-**Probado, y medido:**
+**Probado sobre el servidor corriendo:** `401` sin token, `403` con su
+código para cada caso, CORS aceptando el origen de la lista y rechazando
+el resto, y el rate limit cortando en el cupo (52 × `200` y 13 × `429`
+sobre 65 peticiones).
 
-- los handlers de punta a punta con un `fetch` de mentira: 95 checks en
-  `test-backend.js`, incluidos los ataques de JWT (`alg:none`, confusión
-  RS256/HS256, payload manipulado, token vencido);
-- el servidor Express **corriendo de verdad**: `401` sin token, `403` con
-  su código para cada caso, CORS aceptando el origen de la lista y
-  rechazando el resto con `403 ORIGEN`, y el rate limit cortando en el
-  cupo (52 × `200` y 13 × `429` sobre 65 peticiones);
-- la firma **RS256 con una clave RSA real** generada al vuelo, que es la
-  única parte de la cadena con Google que se puede ejercer sin red;
-- la conversión de los `
-` del `.env`, con el error reproducido: con
-  saltos reales el archivo se corta en la primera línea y la firma
-  revienta con `ERR_OSSL_UNSUPPORTED`.
+**Probado con el panel entero contra la API** (`servidor-de-prueba.js`,
+que es el mismo `crearApp()` con un `fetch` de mentira): el token se lee
+del link y **se borra de la URL**, queda en `sessionStorage`, el origen
+pasa a `backend`, y las cinco secciones renderizan **sin un solo error de
+JavaScript**. Con Plan Básico llegan 1 equipo y 1 jugador —el recorte del
+servidor— más los 3 equipos de la tabla de posiciones, que va completa a
+propósito. Scouting devuelve la card del Plan Pro.
 
-**NO probado todavía, y hace falta la Service Account del cliente:**
-
-- el intercambio OAuth2 real contra `oauth2.googleapis.com`;
-- la lectura real de una planilla privada por Sheets API v4;
-- el panel entero contra el backend — la app sigue leyendo por GViz.
-
-Lo primero y lo segundo se cierran en un minuto, con las credenciales
-puestas en `server/.env`:
-
-```bash
-node server/bin/probar-google.js
-```
-
-Tiene que listar las 9 hojas con su cantidad de filas. Hasta que eso dé
-verde, **este PoC no está probado contra Google** y no se puede planificar
-la migración sobre él.
-
+**NO probado:** el panel contra el backend con la planilla REAL y
+desplegado. Eso es el corte del punto 11, y ahí entran las 157.628 celdas
+de verdad — un libro de ese tamaño puede destapar cosas que un fixture de
+cuatro filas no muestra (tiempos de respuesta, tamaño del payload).
 ### 7.2 · Un token en la URL se filtra
 
 `?access_token=…` queda en el historial del navegador, en el `Referer` de
@@ -265,3 +256,215 @@ node test-backend.js         # la suite, desde la raíz, SIN instalar nada
 node server/bin/probar-google.js       # lectura real contra Google
 node server/bin/generar-link.js --help # generar un link de cliente
 ```
+
+---
+
+## 9. Los endpoints
+
+Todos piden token en `Authorization: Bearer <token>`. `?access_token=` se
+acepta solo para el primer ingreso por link — el frontend lo saca de la
+URL apenas lo lee (ver 7.2).
+
+### `GET /api/v1/salud`
+
+Sin token. Para health checks.
+
+```json
+{ "ok": true, "servicio": "sgadd-api" }
+```
+
+### `GET /api/v1/catalogo`
+
+Qué clubes y categorías existen. **Sin un solo `sheetId`** — es lo que
+reemplaza a leer `clubes/*.json` para saber qué hay.
+
+```json
+{
+  "ok": true,
+  "usuario": { "email": "dt@club.com", "rol": "CLIENTE", "plan": "PRO",
+               "equipoAsignado": "DEPORTIVO LA PLATA",
+               "expiraEn": "2026-09-27T12:00:00.000Z" },
+  "clubes": [{
+    "id": "deportivo", "nombre": "Deportivo La Plata", "liga": "la-plata",
+    "categorias": [{ "slug": "deportivo-primera", "label": "Primera 2026", "activo": true }]
+  }]
+}
+```
+
+`activo` reemplaza al `sheetId` como señal de *"esta categoría ya tiene
+libro"*: dice lo mismo sin revelar cuál.
+
+### `GET /api/v1/equipos/:clubId?categoria=<slug>&equipo=<EQUIPO>`
+
+El libro, **ya recortado**. Con `?equipo=` valida además que sea uno que
+la sesión puede analizar.
+
+```json
+{
+  "ok": true,
+  "club": "deportivo", "categoria": "deportivo-primera",
+  "label": "Primera 2026", "liga": "la-plata",
+  "alcance": {
+    "rol": "CLIENTE", "plan": "BASICO", "equipoAsignado": "DEPORTIVO LA PLATA",
+    "hojasRecortadas": ["PROMEDIOS E", "PROMEDIOS J", "…"],
+    "hojasCompletas":  ["Base Datos E", "4 FACTORES"]
+  },
+  "faltantes": [], "leidoEn": "2026-08-28T13:05:00.000Z",
+  "hojas":      { "PROMEDIOS E": [["EQUIPO","PTS"], ["…", 75.6]] },
+  "hojasTexto": { "PROMEDIOS E": [["EQUIPO","PTS"], ["…", "75,6"]] }
+}
+```
+
+**`alcance` no es decorativo.** Un panel que recibe menos filas sin saberlo
+calcularía percentiles sobre una liga fantasma, y el DT tiene derecho a
+saber que está viendo un recorte.
+
+**`hojasTexto` son las mismas hojas con el texto que arma Sheets**, para la
+capa vieja de Principal. Van las cuatro que esa capa usa, no las nueve.
+
+### `GET /api/v1/scouting/:clubId?categoria=&local=&visitante=`
+
+El informe pre-partido. Plan Pro, y solo cruces donde juega su equipo.
+
+### Los códigos
+
+| | Cuándo | Qué hacer |
+|---|---|---|
+| `401 SIN_TOKEN` | no vino token | pedir el link |
+| `401 VENCIDO` | el token expiró | pedir uno nuevo |
+| `401 FIRMA_INVALIDA` | firma o payload manipulados | nada: no es un error del usuario |
+| `403 OTRO_EQUIPO` | pidió un equipo que no es el suyo | la tabla y los rankings sí están |
+| `403 REQUIERE_PLAN` | Básico pidiendo scouting | ofrecer el Plan Pro |
+| `403 CRUCE_AJENO` | Pro armando un cruce sin su equipo | corregir el cruce |
+| `403 OTRO_CLUB` | token de un club pidiendo otro libro | nada |
+| `404 SIN_CATEGORIA` | slug que no existe | revisar el catálogo del servidor |
+| `429` | rate limit | reintentar en un minuto |
+| `502` | Google no respondió, o la planilla no está compartida | revisar la Service Account |
+
+---
+
+## 10. El frontend, después del desacople
+
+### 10.1 · Los `clubes/*.json` ya no traen el id
+
+```diff
+- "sheetId": "1Zi2cBd0…",   ← 44 caracteres, el id real del libro
++ "slug": "reconquista-primera",
+```
+
+El `slug` es **opaco**: no sirve para nada sin el servidor. Y **no se
+reusó el `id` de la planilla** a propósito: ese es la clave de los estados
+de jugador en `localStorage` y viaja en cada link que el cuerpo técnico
+compartió (punto 6 de `CLAUDE.md`), así que atarlo al identificador de la
+API haría que rotar uno rompa lo otro.
+
+El mismo cambio va en el catálogo de respaldo de `sgadd-core.js`, que era
+la **segunda** fuente pública de los ids.
+
+> **Un hallazgo del camino:** el JSON de la U21 de Reconquista traía
+> `1CD7FEDc…`, el id muerto que el punto 3 ter da por corregido —el bueno,
+> `1wNpSkd…`, estaba solo en el respaldo de `sgadd-core.js`—. Es
+> exactamente el bug de las dos fuentes que el punto 6 documenta, y la
+> migración a slugs lo cierra de raíz: ahora hay un solo lugar. **Al
+> completar el `.env` va el bueno.**
+
+### 10.2 · `js/sgadd-data.js` decide de dónde salen los datos
+
+Un solo módulo, tres modos:
+
+```
+backend   hay token Y hay API configurada  → planillas privadas
+gviz      la planilla trae `sheetId`       → legacy de la transición
+ninguno   ni una cosa ni la otra           → se avisa, no se rompe
+```
+
+**El modo `gviz` está condenado.** Cuando los JSON dejaron de traer
+`sheetId` quedó sin combustible: solo se activa con una config local. Se
+conserva mientras dure el corte y después **se borra entero** — no se deja
+"por las dudas", porque una vía alternativa a los datos privados es
+exactamente el agujero que el backend vino a cerrar.
+
+**El backend gana sobre GViz** aunque una planilla traiga `sheetId`. Si
+fuera al revés, una config vieja seguiría leyendo la planilla pública por
+la espalda.
+
+### 10.3 · Las dos formas del dato siguen siendo dos
+
+El panel tiene dos capas (punto 3 de `CLAUDE.md`) y **no se unificaron**:
+
+```
+índice     {cols, filas:[{COLUMNA: valor}]}    valores CRUDOS
+Principal  {cols, rows:[{values, formatted}]}  con el TEXTO de Sheets
+```
+
+Reproducir el `formatted` del lado del cliente da **40% de precisión sobre
+157.278 celdas**. Así que no se reproduce: el servidor manda la segunda
+vista y `matrizALegacy()` la usa tal cual. Sin ella, `formatted` cae al
+valor crudo — que es EXACTAMENTE lo que hacía GViz con una celda sin `f`.
+
+Medido en el navegador contra el servidor: `crudo 0.48` / `texto "48,00%"`.
+
+### 10.4 · El token, en el navegador
+
+```
+1. el DT abre  ?access_token=eyJ…
+2. `cargarSesion()` lo lee, lo mete en `sessionStorage` y LO SACA DE LA URL
+3. cada petición lo manda en el header `Authorization`
+```
+
+**Se saca de la URL** porque ahí queda en el historial, en el `Referer` de
+cualquier recurso externo y en los logs de todo proxy. **El hash se
+conserva**: es la ruta de la app, y perderlo mandaría al DT a la pantalla
+de inicio cada vez que abre un link compartido.
+
+**`sessionStorage` y no `localStorage`**: es una credencial, no una
+preferencia. En una computadora compartida —la del club, la del profe— la
+diferencia entre las dos es quién puede seguir mirando mañana.
+
+**El frontend DECODIFICA el token sin verificarlo, y está bien.** La firma
+se verifica con `JWT_SECRET`, que el navegador no tiene ni puede tener. Lo
+decodificado sirve para UNA cosa: pintar la interfaz que corresponde antes
+de que llegue la primera respuesta. Hay un test que lo dice sin vueltas:
+un token con el payload editado **sí** engaña al lector del frontend, y el
+servidor lo rechaza con 401 sin entregar un solo dato.
+
+Por eso el gate del punto 19 sigue existiendo: sin él, el cliente vería
+botones que llevan a un 403.
+
+---
+
+## 11. EL CORTE · lo que hay que hacer, en este orden
+
+**Mergear esto a `main` sin haber hecho los pasos 1 a 3 deja a los tres
+clubes sin panel.** No es una precaución: el `sheetId` salió de los
+archivos públicos, así que sin backend desplegado y sin tokens repartidos
+no hay de dónde sacar los datos.
+
+```
+1. DESPLEGAR el backend            → queda una URL
+2. CONFIGURAR el `.env` en Vercel  → los 5 sheetId, el JWT_SECRET, los orígenes
+3. EMITIR los tokens               → uno por club, con su equipo y su plan
+4. APUNTAR el panel a la API       → `window.SGADD_API` en el index.html
+5. MERGEAR y publicar `?v=140`
+6. RECIÉN AHÍ: sacar el acceso público de las planillas
+```
+
+El paso 6 va **último** y no primero: mientras el panel viejo siga vivo en
+`main`, lee por GViz y necesita que las planillas sean públicas. Al revés
+se rompe el panel en el medio de la ventana.
+
+### Verificar antes de cada paso
+
+```bash
+node server/bin/probar-google.js       # las 9 hojas contra la planilla privada
+node test-backend.js                   # 152 checks, sin instalar nada
+node server/bin/servidor-de-prueba.js  # el panel entero contra la API, sin credenciales
+```
+
+### La vuelta atrás
+
+`git revert` del merge y las planillas siguen siendo públicas: el panel
+vuelve a GViz. **Por eso el paso 6 es el último** — es el único
+irreversible en el corto plazo, porque volver a hacer públicas las
+planillas es una decisión de datos del club.
+

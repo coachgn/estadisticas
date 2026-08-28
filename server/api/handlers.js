@@ -115,7 +115,7 @@ async function manejarEquipos(peticion, deps) {
       /* Se devuelven los SLUGS, nunca el sheetId. Hay un test que recorre
          el JSON entero y falla si aparece uno. */
       club: cat.clubId,
-      categoria: cat.categoriaId,
+      categoria: cat.slug,
       label: cat.label,
       liga: cat.liga,
       alcance: {
@@ -131,6 +131,9 @@ async function manejarEquipos(peticion, deps) {
       faltantes: libro.faltantes,
       leidoEn: libro.leidoEn,
       hojas: rec.hojas,
+      /* La segunda vista, en TEXTO, para la capa vieja de Principal. Va
+       * recortada con los MISMOS índices que `hojas` — ver `reglas.js`. */
+      hojasTexto: rec.hojasTexto,
     },
   };
 }
@@ -182,11 +185,12 @@ async function manejarScouting(peticion, deps) {
     body: {
       ok: true,
       club: cat.clubId,
-      categoria: cat.categoriaId,
+      categoria: cat.slug,
       cruce: { local: q.local || null, visitante: q.visitante || null },
       alcance: { rol: ctx.rol, plan: ctx.sesion.plan },
       leidoEn: libro.leidoEn,
       hojas: libro.hojas,
+      hojasTexto: libro.hojasTexto,
     },
   };
 }

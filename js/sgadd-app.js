@@ -15,6 +15,11 @@ const SGADD_APP = (function () {
 
   const estado = {
     planillaId: null,
+    /* Lo que el servidor declaró haber recortado. `null` con GViz: ahí no
+       hay recorte porque no hay quien lo haga. */
+    alcance: null,
+    textos: null,
+    crudas: null,
     torneo: null,        // null = todavía no se resolvió contra el libro
     fase: 'REGULAR',
     hojas: null,
@@ -48,7 +53,14 @@ const SGADD_APP = (function () {
   async function cargar(forzar) {
     inicializar();
     const p = planillaActual();
-    if (!p || !p.sheetId) { estado.error = 'Esa planilla todavía no tiene sheetId.'; avisar(); return; }
+    /* `slug` reemplazó al `sheetId`: la planilla se identifica por una
+       clave opaca y el id real vive en el servidor. Una planilla sin slug
+       es la que todavía no tiene libro conectado — aparece deshabilitada
+       en el selector y no se puede abrir. */
+    if (!p || !(p.slug || p.sheetId)) {
+      estado.error = 'Esa categoría todavía no tiene libro conectado.';
+      avisar(); return;
+    }
     if (estado.idx && !forzar) { avisar(); return; }
 
     estado.cargando = true; estado.error = null;
@@ -63,9 +75,20 @@ const SGADD_APP = (function () {
     const vigente = () => (ficha === _cargaId);
 
     try {
-      if (forzar) SGADD.limpiarCache(p.sheetId);
-      const { hojas, errores } = await SGADD.cargarCategoria(p.sheetId);
+      /* De dónde salen los datos lo decide UN solo módulo: si hay token y
+         backend configurado va por la API con la planilla privada, si no
+         cae a GViz mientras dure la transición. Acá no se elige nada — el
+         día que GViz se apague, esta línea no cambia. */
+      const r = await SGADD_DATA.cargarCategoria(p, { forzar: forzar });
       if (!vigente()) return;
+      const hojas = r.hojas, errores = r.errores;
+      /* Qué recortó el servidor, para que las secciones lo puedan decir en
+         pantalla: un panel que recibe menos filas sin saberlo calcularía
+         percentiles sobre una liga fantasma. */
+      estado.alcance = r.alcance || null;
+      /* Las matrices en TEXTO, para la capa vieja de Principal. */
+      estado.textos = r.textos || null;
+      estado.crudas = r.crudas || null;
 
       /* SIN UNA SOLA HOJA NO SE INDEXA: se avisa.
 

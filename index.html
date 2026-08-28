@@ -1592,7 +1592,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=139" />
+<link rel="stylesheet" href="sgadd.css?v=140" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -1722,37 +1722,49 @@
   </div>
 </div>
 
-<script src="js/sgadd-club.js?v=139"></script>
+<script src="js/sgadd-club.js?v=140"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=139"></script>
-<script src="js/sgadd-core.js?v=139"></script>
-<script src="js/sgadd-auth.js?v=139"></script>
-<script src="js/sgadd-ui.js?v=139"></script>
-<script src="js/sgadd-app.js?v=139"></script>
-<script src="js/sgadd-clasificacion.js?v=139"></script>
+<script src="js/sgadd-config.js?v=140"></script>
+<script src="js/sgadd-core.js?v=140"></script>
+<script src="js/sgadd-auth.js?v=140"></script>
+<script src="js/sgadd-data.js?v=140"></script>
+<script src="js/sgadd-ui.js?v=140"></script>
+<script src="js/sgadd-app.js?v=140"></script>
+<script src="js/sgadd-clasificacion.js?v=140"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-configui.js?v=139"></script>
-<script src="js/sgadd-estados.js?v=139"></script>
-<script src="js/sgadd-buzon.js?v=139"></script>
-<script src="js/sgadd-charts.js?v=139"></script>
-<script src="js/sgadd-personalidad.js?v=139"></script>
-<script src="js/sgadd-rankings.js?v=139"></script>
-<script src="js/sgadd-partido.js?v=139"></script>
-<script src="js/sgadd-informe.js?v=139"></script>
-<script src="js/sgadd-ficha.js?v=139"></script>
-<script src="js/sgadd-equipos.js?v=139"></script>
-<script src="js/sgadd-jugadores.js?v=139"></script>
-<script src="js/sgadd-4factores.js?v=139"></script>
-<script src="js/sgadd-scouting.js?v=139"></script>
-<script src="js/sgadd-diagnostico.js?v=139"></script>
+<script src="js/sgadd-configui.js?v=140"></script>
+<script src="js/sgadd-estados.js?v=140"></script>
+<script src="js/sgadd-buzon.js?v=140"></script>
+<script src="js/sgadd-charts.js?v=140"></script>
+<script src="js/sgadd-personalidad.js?v=140"></script>
+<script src="js/sgadd-rankings.js?v=140"></script>
+<script src="js/sgadd-partido.js?v=140"></script>
+<script src="js/sgadd-informe.js?v=140"></script>
+<script src="js/sgadd-ficha.js?v=140"></script>
+<script src="js/sgadd-equipos.js?v=140"></script>
+<script src="js/sgadd-jugadores.js?v=140"></script>
+<script src="js/sgadd-4factores.js?v=140"></script>
+<script src="js/sgadd-scouting.js?v=140"></script>
+<script src="js/sgadd-diagnostico.js?v=140"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
 /* La planilla ya no es fija: la elige el usuario en el selector de categoría.
    Toda la capa de datos (Principal, Jugadores, 4 Factores, Scouting) lee de
    aca, asi que cambiar de categoria cambia el dashboard entero. */
-let SHEET_ID = '1Zi2cBd0WGUTks-S0XCxR0hoGpB9KZGuqisFhzdtJl4s';
+/* LA CAPA DE DATOS VIEJA DE PRINCIPAL, después del backend.
+
+   Ya no hay un `SHEET_ID` literal: los ids salieron de todo lo que
+   GitHub Pages sirve público. Esta capa pasa a leer del mismo origen que
+   el resto (`SGADD_DATA`), que decide entre el backend y GViz.
+
+   Sigue siendo una capa APARTE y no se unificó con el índice, por el
+   motivo de siempre (punto 3 de CLAUDE.md): consume el TEXTO ya
+   formateado por Sheets y reproducirlo del lado del cliente da 40% de
+   precisión. Lo que cambió es de dónde viene ese texto: antes del `f` de
+   GViz, ahora del segundo render que manda el servidor. */
+let PLANILLA_ACTIVA = null;
 
 /* SOLO las hojas que esta capa consume de verdad.
 
@@ -2425,72 +2437,72 @@ function nombresParaLogos() {
     .map(r => cleanName(r.formatted[col] || '')).filter(Boolean);
 }
 
-/* ============ CAPA DE DATOS (GViz) ============ */
-async function fetchSheet(sheetName) {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const text = await res.text();
-  const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);?\s*$/);
-  if (!match) throw new Error('Formato de respuesta no reconocido');
-  let json;
-  try {
-    json = JSON.parse(match[1]);
-  } catch (e) {
-    throw new Error('No se pudo interpretar el JSON de la hoja');
-  }
-  if (json.status === 'error') {
-    const detail = json.errors && json.errors[0]
-      ? (json.errors[0].detailed_message || json.errors[0].message)
-      : 'Error desconocido de GViz';
-    throw new Error(detail);
-  }
-  const table = json.table || { cols: [], rows: [] };
-  const cols = (table.cols || []).map((c, i) => ({
-    id: c.id || `c${i}`,
-    label: (c.label && String(c.label).trim()) ? String(c.label).trim() : (c.id || `Columna ${i + 1}`),
-    type: c.type || 'string',
-  }));
-  const rows = (table.rows || []).map((r) => {
-    const values = {};
-    const formatted = {};
-    const cells = r.c || [];
-    cols.forEach((col, i) => {
-      const cell = cells[i];
-      const rawVal = cell && cell.v !== undefined ? cell.v : null;
-      const fmtVal = cell && cell.f !== undefined && cell.f !== null ? cell.f : rawVal;
-      values[col.label] = rawVal;
-      formatted[col.label] = fmtVal === null || fmtVal === undefined ? '' : fmtVal;
-    });
-    return { values, formatted };
-  });
-  return { cols, rows };
-}
+/* ============ CAPA DE DATOS DE PRINCIPAL ============ */
 
+/* Baja las hojas que Principal necesita.
+
+   Pide solo CUATRO de las nueve: llegó a pedir once y consumir cuatro,
+   y las siete de más eran el 68% del volumen del arranque (punto 3). El
+   recorte se conserva — con el backend, además, el servidor ya sabe
+   cuáles mandar en texto y son exactamente estas. */
 async function fetchAllData() {
-  const results = await Promise.all(SHEETS_CONFIG.map(async (cfg) => {
-    try {
-      const data = await fetchSheet(cfg.name);
-      return { key: cfg.key, name: cfg.name, ok: true, data };
-    } catch (err) {
-      return { key: cfg.key, name: cfg.name, ok: false, error: (err && err.message) || String(err) };
-    }
-  }));
+  const p = SGADD_APP.planillaActual();
+  PLANILLA_ACTIVA = p;
+  if (!p) {
+    DATA = {};
+    return [{ key: 'todas', name: 'planilla', ok: false, error: 'No hay categoría activa.' }];
+  }
+
+  let r;
+  try {
+    r = await SGADD_DATA.cargarCategoria(p);
+  } catch (err) {
+    DATA = {};
+    SHEETS_CONFIG.forEach(cfg => { DATA[cfg.key] = { cols: [], rows: [], error: err.message }; });
+    return [{ key: 'todas', name: 'planilla', ok: false, error: (err && err.message) || String(err) }];
+  }
+
   const nextData = {};
   const errors = [];
-  results.forEach((r) => {
-    if (r.ok) {
-      nextData[r.key] = r.data;
-    } else {
-      nextData[r.key] = { cols: [], rows: [], error: r.error };
-      errors.push(r);
+  SHEETS_CONFIG.forEach((cfg) => {
+    /* `crudas` viene del backend (matrices de Sheets); con GViz no hay, y
+       ahí se cae a la forma del índice — que no trae `formatted`, así que
+       Principal formatea con lo que tiene. Es la degradación de la
+       transición y desaparece cuando GViz se apague. */
+    const cruda = r.crudas && r.crudas[cfg.name];
+    if (cruda) {
+      nextData[cfg.key] = SGADD_DATA.matrizALegacy(cruda, r.textos && r.textos[cfg.name]);
+      return;
     }
+    const hoja = r.hojas && r.hojas[cfg.name];
+    if (hoja) {
+      nextData[cfg.key] = legacyDesdeIndice(hoja);
+      return;
+    }
+    nextData[cfg.key] = { cols: [], rows: [], error: 'La hoja no vino en la respuesta.' };
+    errors.push({ key: cfg.key, name: cfg.name, ok: false, error: 'La hoja no vino en la respuesta.' });
   });
+
   DATA = nextData;
   lastUpdated = new Date();
   return errors;
 }
 
+/* Puente para el modo GViz: la forma del índice no trae `formatted`, así
+   que se usa el valor crudo como texto. NO se inventa un formato — es
+   exactamente lo que hacía GViz con una celda sin `f`. */
+function legacyDesdeIndice(hoja) {
+  const cols = (hoja.cols || []).map((label, k) => ({ id: 'c' + k, label: label, type: 'string' }));
+  const rows = (hoja.filas || []).map(f => {
+    const values = {}, formatted = {};
+    (hoja.cols || []).forEach(c => {
+      values[c] = (f[c] === undefined || f[c] === '') ? null : f[c];
+      formatted[c] = (f[c] === null || f[c] === undefined) ? '' : String(f[c]);
+    });
+    return { values: values, formatted: formatted };
+  });
+  return { cols: cols, rows: rows };
+}
 /* ============ BLOQUES DE UI REUTILIZABLES ============ */
 function renderErrorCard(msg) {
   return `<div class="card rounded-lg p-4 border-red-900/60 bg-red-950/10">
@@ -3668,10 +3680,10 @@ function removeHighlight() {
 
 /* ============ INICIALIZACIÓN ============ */
 
-/* Resuelve el club de la URL y apunta SHEET_ID a SU planilla.
+/* Resuelve el club de la URL y deja activa SU planilla.
 
    Este paso vivia SOLO dentro de refreshData(), asi que en el ARRANQUE
-   SHEET_ID se quedaba con el valor por defecto y ?club=jujuy terminaba
+   la planilla se quedaba con la de por defecto y ?club=jujuy terminaba
    mostrando los datos de Reconquista. Ahora es una sola funcion que llaman
    los dos caminos. */
 async function resolverClubYPlanilla() {
@@ -3685,17 +3697,21 @@ async function resolverClubYPlanilla() {
   /* Si la planilla seleccionada no pertenece a ESTE club (pasa al cambiar de
      ?club=), se descarta y se toma la primera del catalogo nuevo. */
   let p = SGADD_APP.planillaActual();
-  if (!p || !p.sheetId) {
+  if (!p || !(p.slug || p.sheetId)) {
     const activas = SGADD.planillasVisibles({});
     if (activas.length) {
       SGADD_APP.estado.planillaId = activas[0].id;
       p = SGADD_APP.planillaActual();
     }
   }
-  if (p && p.sheetId) SHEET_ID = p.sheetId;
+  PLANILLA_ACTIVA = p;
 
+  /* El log NO imprime el id de la planilla: con el backend eso es
+     justamente el dato que no tiene que estar en ningún lado del cliente,
+     y la consola es un lado del cliente. Va el slug, que es opaco. */
   console.log('[BOOT] club=' + ((typeof CLUB !== 'undefined' && CLUB.estado.id) || '?') +
-    ' · planilla=' + (p ? p.id : '—') + ' · sheet=' + SHEET_ID.slice(0, 14) + '…');
+    ' · planilla=' + (p ? p.id : '—') + ' · origen=' +
+    (typeof SGADD_DATA !== 'undefined' ? SGADD_DATA.origen(p) : '?'));
 }
 /**
  * La sección que pide la URL, en cualquiera de los dos formatos.
@@ -3790,6 +3806,26 @@ async function init() {
   /* La sesión primero: de ella dependen el menú, el router y los
      pickers, así que tiene que estar resuelta antes del primer render.
      Es síncrona (URL + localStorage), no agrega latencia. */
+  /* LA URL DEL BACKEND.
+
+     Tres orígenes, en este orden: `?api=` (para probar contra un servidor
+     local sin tocar el deploy), `window.SGADD_API` (lo que pone el
+     `<script>` de configuración en producción) y vacío.
+
+     VACÍO ES UN ESTADO VÁLIDO, no un error: mientras el backend no esté
+     desplegado, el panel cae al modo que pueda y lo dice. Un panel que
+     exige un backend que todavía no existe no se puede desplegar por
+     partes, y esta migración se hace por partes sí o sí — son tres clubes
+     en producción. */
+  (function () {
+    var api = '';
+    try {
+      var q = new URLSearchParams(window.location.search);
+      api = q.get('api') || window.SGADD_API || '';
+    } catch (e) { api = window.SGADD_API || ''; }
+    SGADD_DATA.configurar(api);
+  })();
+
   SGADD_AUTH.cargarSesion();
   aplicarPermisosNav();
 
@@ -3827,8 +3863,8 @@ async function init() {
      --------------------------------------------------------------------- */
   window.onCategoriaCambiada = async function (idPlanilla) {
     const p = SGADD.planilla(idPlanilla);
-    if (!p || !p.sheetId) return;
-    SHEET_ID = p.sheetId;
+    if (!p || !(p.slug || p.sheetId)) return;
+    PLANILLA_ACTIVA = p;
 
     /* EL CARTEL SOLO EN PRINCIPAL, y esto es un fix, no un detalle.
 

@@ -858,10 +858,10 @@ const SGADD_CONFIG = (function () {
     const cubiertas = [], sinDeclarar = [];
     lista.forEach((pl) => {
       if (!pl || !pl.id) return;
-      /* Una planilla SIN sheetId todavía no es un libro: está en el
+      /* Una planilla SIN slug todavía no es un libro: está en el
          catálogo como "viene en camino" y no tiene sentido pedirle
          preconfiguración. */
-      if (!pl.sheetId) return;
+      if (!(pl.slug || pl.sheetId)) return;
       if (porPlanilla[pl.id]) cubiertas.push({ planilla: pl.id, categoria: porPlanilla[pl.id].id });
       else sinDeclarar.push({ planilla: pl.id, label: pl.label || pl.id });
     });

@@ -319,6 +319,76 @@ const SGADD_AUTH = (function () {
      sesión de cliente.
      -------------------------------------------------------------------- */
   const CLAVE_SESION = 'sgadd.sesion';
+  const CLAVE_TOKEN = 'sgadd.token';
+
+  /* --------------------------------------------------------------------
+     EL TOKEN FIRMADO
+
+     Con backend, la sesión ya NO sale de `?usuario=&plan=PRO` —que
+     cualquiera edita— sino de un JWT que firma el servidor. El navegador
+     puede LEERLO pero no puede fabricar uno que valide.
+
+     ACÁ SE DECODIFICA SIN VERIFICAR, Y ESTÁ BIEN QUE ASÍ SEA: la firma
+     se verifica con `JWT_SECRET`, que el navegador no tiene ni puede
+     tener. Lo que se decodifica sirve para UNA sola cosa: pintar la
+     interfaz que corresponde (esconder Scouting, filtrar el picker) antes
+     de que llegue la primera respuesta.
+
+     QUIEN DECIDE ES EL SERVIDOR. Si alguien edita el payload de su token
+     para verse Pro, el panel le va a MOSTRAR el módulo y el backend le va
+     a devolver 403 sin un solo dato. Esa es exactamente la diferencia
+     entre el gate de interfaz y la seguridad, y por eso el gate del punto
+     19 sigue existiendo sin ser lo que protege.
+     -------------------------------------------------------------------- */
+  let tokenActual = null;
+
+  function token() { return tokenActual; }
+
+  /** Lee el payload de un JWT SIN verificar la firma. Solo para la UI. */
+  function leerPayload(jwt) {
+    try {
+      const p = String(jwt || '').split('.')[1];
+      if (!p) return null;
+      const b64 = p.replace(/-/g, '+').replace(/_/g, '/');
+      const relleno = b64 + '='.repeat((4 - b64.length % 4) % 4);
+      /* `decodeURIComponent(escape(atob(...)))` y no `atob` a secas: sin
+         eso un nombre con acento sale con la codificación rota. */
+      const txt = decodeURIComponent(escape(atob(relleno)));
+      const o = JSON.parse(txt);
+      return (o && typeof o === 'object') ? o : null;
+    } catch (e) { return null; }
+  }
+
+  /**
+   * Guarda el token y arma la sesión que va a usar la UI.
+   *
+   * Un token VENCIDO no se acepta: el servidor lo iba a rechazar igual, y
+   * pintar la interfaz de un cliente cuya sesión ya no vale es peor que
+   * pedirle un link nuevo — se pasaría el rato viendo 401.
+   */
+  function establecerToken(jwt) {
+    const p = leerPayload(jwt);
+    if (!p || !p.email) return null;
+    if (typeof p.exp === 'number' && p.exp * 1000 <= Date.now()) {
+      tokenActual = null;
+      return { vencido: true };
+    }
+    tokenActual = jwt;
+    return establecerSesion({
+      email: p.email,
+      equipoAsignado: p.equipoAsignado,
+      plan: p.plan,
+    });
+  }
+
+  function limpiarToken() { tokenActual = null; }
+
+  /* El club al que está atado el token. El panel lo necesita para no
+     ofrecerle al cliente un club que su token no cubre. */
+  function clubDelToken() {
+    const p = leerPayload(tokenActual);
+    return (p && p.club) || null;
+  }
 
   function almacen() {
     try {
@@ -333,6 +403,35 @@ const SGADD_AUTH = (function () {
         : (typeof window !== 'undefined' && window.location ? window.location.search : '');
       q = new URLSearchParams(cadena || '');
     } catch (e) { q = null; }
+
+    /* EL TOKEN GANA sobre `?usuario=`, y no es un empate de precedencia:
+       son dos cosas distintas. `?usuario=` es la configuración de
+       demostración que se puede editar; el token es una credencial
+       firmada. Donde hay credencial, la configuración manual sobra.
+
+       Y SE SACA DE LA URL apenas se lee: un token en el query string
+       queda en el historial del navegador, en el `Referer` de cualquier
+       recurso externo y en los logs de todo proxy en el camino. Se pasa a
+       `sessionStorage`, que muere con la pestaña. */
+    if (q && (q.has('access_token') || q.has('token'))) {
+      const jwt = q.get('access_token') || q.get('token');
+      if (!jwt) { limpiarToken(); limpiarSesion(); borrarGuardada(); return null; }
+      const r = establecerToken(jwt);
+      sacarTokenDeLaUrl();
+      if (r && r.vencido) return null;
+      guardarToken(jwt);
+      return sesionActual;
+    }
+
+    const guardado = leerTokenGuardado();
+    if (guardado) {
+      const r = establecerToken(guardado);
+      /* Un token guardado que venció se borra en vez de arrastrarse: si
+         no, el DT vuelve al día siguiente y ve una interfaz de cliente
+         que el servidor ya no atiende. */
+      if (!r || r.vencido) { borrarTokenGuardado(); limpiarToken(); }
+      else return sesionActual;
+    }
 
     if (q && q.has('usuario')) {
       const email = q.get('usuario');
@@ -369,6 +468,41 @@ const SGADD_AUTH = (function () {
 
   function borrarGuardada() { guardar(null); }
 
+  /* El token va a `sessionStorage` y NO a `localStorage`: muere al cerrar
+     la pestaña. Es una credencial, no una preferencia — y en una
+     computadora compartida (la del club, la del profe) la diferencia
+     entre las dos es quién puede seguir mirando mañana. */
+  function almacenSesion() {
+    try { return (typeof sessionStorage !== 'undefined') ? sessionStorage : null; }
+    catch (e) { return null; }
+  }
+  function guardarToken(jwt) {
+    const ls = almacenSesion();
+    try { if (ls) ls.setItem(CLAVE_TOKEN, jwt); } catch (e) { /* sin storage dura lo que la página */ }
+  }
+  function leerTokenGuardado() {
+    const ls = almacenSesion();
+    try { return ls ? ls.getItem(CLAVE_TOKEN) : null; } catch (e) { return null; }
+  }
+  function borrarTokenGuardado() {
+    const ls = almacenSesion();
+    try { if (ls) ls.removeItem(CLAVE_TOKEN); } catch (e) { /* nada que borrar */ }
+  }
+
+  /** Borra el token del query string sin recargar ni tocar el hash. */
+  function sacarTokenDeLaUrl() {
+    try {
+      if (typeof window === 'undefined' || !window.history || !window.history.replaceState) return;
+      const u = new URL(window.location.href);
+      if (!u.searchParams.has('access_token') && !u.searchParams.has('token')) return;
+      u.searchParams.delete('access_token');
+      u.searchParams.delete('token');
+      /* El HASH se conserva: es la ruta de la app, y perderlo mandaría al
+         DT a la pantalla de inicio cada vez que abre un link compartido. */
+      window.history.replaceState(null, '', u.pathname + u.search + u.hash);
+    } catch (e) { /* una URL rara no puede impedir que la app abra */ }
+  }
+
   /** Etiqueta para la UI: quién está mirando y con qué plan. */
   function descripcionSesion(s) {
     const ses = normalizarSes(s);
@@ -389,6 +523,8 @@ const SGADD_AUTH = (function () {
     puedeVerEquipo, tieneModulo, puedoAcceder, puedeScoutearCruce,
     forzarCruce, equiposVisibles, equipoPropio,
     cargarSesion, descripcionSesion,
+    token, establecerToken, limpiarToken, leerPayload, clubDelToken,
+    sacarTokenDeLaUrl, CLAVE_TOKEN,
   };
 })();
 

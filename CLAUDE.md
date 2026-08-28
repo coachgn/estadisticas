@@ -19,10 +19,10 @@ aplicadas en el punto 14.
 node test-core.js          # 276 tests · núcleo, índice, validador
 node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
-node test-clubes.js        #  94 tests · multi-cliente
+node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 307 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  46 tests · tabla de posiciones, orden y zonas
-node test-boot.js          # 151 tests · arranque por club, sintaxis de los módulos, carteles de espera
+node test-boot.js          # 156 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 253 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
@@ -34,10 +34,10 @@ node test-pdf.js           #  92 tests · nombre del archivo en las exportacione
 node test-permisos.js      # 153 tests · roles, planes y el gate de interfaz
 
 # Solo en la rama `poc/backend` — no está en main:
-node test-backend.js       #  95 tests · el proxy con RBAC server-side
+node test-backend.js       # 152 tests · el proxy, el desacople y el cableado
 ```
 
-**2246 tests en total. Todos tienen que dar verde antes de commitear.**
+**2406 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -107,6 +107,8 @@ js/
                           punto 15 y las exporta. Punto 17.
   sgadd-config.js       ← motor PURO de competencia: zonas de la tabla,
                           tramos y tonos AA. Ver punto 15.
+  sgadd-data.js         ← de dónde salen los datos: backend o GViz.
+                          Solo en la rama `poc/backend`.
   sgadd-auth.js         ← roles, planes y permisos. Motor PURO. Punto 19.
                           NO es seguridad: leer el punto 19 antes de tocarlo.
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app

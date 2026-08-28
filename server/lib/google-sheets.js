@@ -23,7 +23,7 @@
 'use strict';
 
 const jwt = require('./jwt.js');
-const { entorno, HOJAS } = require('./config.js');
+const { entorno, HOJAS, HOJAS_TEXTO } = require('./config.js');
 
 const OAUTH_URL = 'https://oauth2.googleapis.com/token';
 const SHEETS_URL = 'https://sheets.googleapis.com/v4/spreadsheets';
@@ -168,31 +168,46 @@ async function obtenerLibro(sheetId, deps) {
   const token = await obtenerAccessToken(d);
   const traer = d.fetch || fetch;
 
-  const qs = HOJAS.map(h => 'ranges=' + encodeURIComponent(h)).join('&');
-  const url = SHEETS_URL + '/' + encodeURIComponent(sheetId) + '/values:batchGet?' + qs
-    + '&valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING';
+  /* DOS RENDERS, y hacen falta los dos.
 
-  const r = await traer(url, { headers: { Authorization: 'Bearer ' + token } });
-  if (r.status === 403) {
-    throw Object.assign(
-      new Error('La planilla no está compartida con la Service Account'),
-      { codigo: 'SIN_PERMISO_SHEET' });
-  }
-  if (!r.ok) {
-    throw Object.assign(new Error('Google respondió ' + r.status), { codigo: 'GOOGLE_' + r.status });
-  }
+     `UNFORMATTED_VALUE` da el número crudo, que es lo que consume el
+     índice del panel. Pero la capa vieja de Principal consume el TEXTO ya
+     formateado por Sheets —el `formatted` que le daba GViz— y
+     reproducirlo del lado del cliente da 40% de precisión: cada columna
+     tiene su propio patrón en la planilla (punto 3 de CLAUDE.md).
 
-  const cuerpo = await r.json();
-  const rangos = cuerpo.valueRanges || [];
-  const hojas = {};
-  const faltantes = [];
-  HOJAS.forEach((h, i) => {
-    const v = (rangos[i] && rangos[i].values) || [];
-    hojas[h] = v;
-    if (!v.length) faltantes.push(h);
-  });
+     Así que no se reproduce, se le pide a Google. Es UNA petición más y
+     solo por las cuatro hojas que Principal usa, no por las nueve. */
+  const pedir = async (nombres, render) => {
+    const qs = nombres.map(h => 'ranges=' + encodeURIComponent(h)).join('&');
+    const url = SHEETS_URL + '/' + encodeURIComponent(sheetId) + '/values:batchGet?' + qs
+      + '&valueRenderOption=' + render + '&dateTimeRenderOption=FORMATTED_STRING';
+    const r = await traer(url, { headers: { Authorization: 'Bearer ' + token } });
+    if (r.status === 403) {
+      throw Object.assign(
+        new Error('La planilla no está compartida con la Service Account'),
+        { codigo: 'SIN_PERMISO_SHEET' });
+    }
+    if (!r.ok) {
+      throw Object.assign(new Error('Google respondió ' + r.status), { codigo: 'GOOGLE_' + r.status });
+    }
+    const cuerpo = await r.json();
+    const rangos = cuerpo.valueRanges || [];
+    const out = {};
+    nombres.forEach((h, k) => { out[h] = (rangos[k] && rangos[k].values) || []; });
+    return out;
+  };
 
-  const datos = { hojas, faltantes, leidoEn: new Date().toISOString() };
+  /* En PARALELO: son dos peticiones independientes y encadenarlas
+     duplicaría la latencia del arranque, que ya es lo más caro. */
+  const [hojas, texto] = await Promise.all([
+    pedir(HOJAS, 'UNFORMATTED_VALUE'),
+    pedir(HOJAS_TEXTO, 'FORMATTED_VALUE'),
+  ]);
+
+  const faltantes = HOJAS.filter(h => !(hojas[h] || []).length);
+
+  const datos = { hojas, hojasTexto: texto, faltantes, leidoEn: new Date().toISOString() };
   /* Solo se cachea la carga que salió LIMPIA. Con hojas que fallaron,
      guardarla serviría el libro incompleto durante todo el TTL en vez de
      reintentar — misma regla que el caché del frontend. */

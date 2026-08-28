@@ -22,7 +22,7 @@
     {
       "id": "primera-clausura-2026",
       "label": "Primera · Vuelta 2026",
-      "sheetId": "1Zi2cBd0WGUTks-S0XCxR0hoGpB9KZGuqisFhzdtJl4s",
+      "slug": "reconquista-primera",
       "categoria": "PRIMERA",
       "faseTorneo": "VUELTA",
       "rama": "masculina",
@@ -32,7 +32,7 @@
     {
       "id": "naranja-u21-clausura-2026",
       "label": "Masculina Naranja · U21",
-      "sheetId": "1CD7FEDcLkmZRI0tGkU67IjCmkxhnnIN2AKHhA4lWJT4",
+      "slug": "reconquista-u21",
       "categoria": "U21",
       "faseTorneo": "CLAUSURA",
       "rama": "masculina",
@@ -41,7 +41,7 @@
     {
       "id": "naranja-u23-clausura-2026",
       "label": "Masculina Naranja · U23",
-      "sheetId": "1MgrxhENjnybOsl7fVHG2G0rI4kifs2l_P3o9N6LwILA",
+      "slug": "reconquista-u23",
       "categoria": "U23",
       "faseTorneo": "CLAUSURA",
       "rama": "masculina",

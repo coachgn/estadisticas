@@ -125,7 +125,7 @@ const CLUB = (function () {
           anio: c.anio || new Date().getFullYear(),
           torneo: c.torneo || '',
           modulo: 'sgadd',
-          activo: !!p.sheetId,
+          activo: !!(p.slug || p.sheetId),
         }, p));
       }
     }
