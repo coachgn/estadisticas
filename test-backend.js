@@ -935,13 +935,38 @@ titulo('EL BUNDLE DE VERCEL · nada puede salir de server/');
 
   /* 5 · El arranque local NO se sube. Vercel trata un `index.js` en la
      raíz del proyecto como entrypoint, y ese llama a `.listen()` en vez de
-     exportar un handler: la raíz del deploy devolvía 500. */
+     exportar un handler: la raíz del deploy devolvía 500.
+
+     LA BARRA INICIAL ES OBLIGATORIA. `.vercelignore` es sintaxis gitignore:
+     un patrón `index.js` SIN barra excluye ese nombre en CUALQUIER
+     profundidad — incluido `server/api/index.js`, el entrypoint de
+     verdad. Con esa forma, el build local (`vercel build`) ni siquiera
+     genera la función `api/index.func`: solo queda `api/handlers.func`
+     (que no sirve nada) y el deploy entero da 404. Costó un segundo deploy
+     roto encontrarlo, porque el primer check de esta suite pasaba igual
+     (buscaba la palabra "index.js" en el archivo, sin mirar si estaba
+     anclada) y el bug no se veía hasta correr `vercel build` de verdad. */
   const ign = fs.readFileSync('./server/.vercelignore', 'utf8');
-  check('el arranque local (index.js) está excluido del deploy',
-    /^index\.js$/m.test(ign));
+  check('el arranque local (/index.js) está excluido, ANCLADO a la raíz',
+    /^\/index\.js$/m.test(ign));
+  check('y NO con el patrón sin barra, que en gitignore es recursivo y se comería a api/index.js',
+    !/^index\.js$/m.test(ign));
   /* Pero `api/index.js` SÍ tiene que subir: es el entrypoint de verdad. */
   check('y api/index.js no queda excluido por eso',
     fs.existsSync('./server/api/index.js') && !/^api\//m.test(ign));
+
+  /* 6 · Vercel autodetecta "framework: express" a partir del `main` de
+     package.json (acá, `index.js`) y --desde esa detección-- usa `app.js`
+     como handler de TODO lo que no sea `/api/*`, pisando el rewrite de
+     este mismo archivo y dejando a `api/index.js` sin ninguna ruta. Pero
+     `app.js` exporta `{ crearApp }` (una fábrica), no una app invocable:
+     la raíz del deploy daba `FUNCTION_INVOCATION_FAILED` y `/api/v1/salud`
+     daba 404, los dos con el código intacto. `"framework": null` apaga esa
+     autodetección y deja el ruteo clásico por archivos de `api/`, que es
+     el que esta suite y el bundle aislado ya verifican. */
+  const vercelJson = JSON.parse(fs.readFileSync('./server/vercel.json', 'utf8'));
+  check('vercel.json desactiva la autodetección de framework (pisaba a api/index.js)',
+    vercelJson.framework === null, JSON.stringify(vercelJson.framework));
 }
 
   console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +

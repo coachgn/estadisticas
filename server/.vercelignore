@@ -2,7 +2,12 @@
 # como un entrypoint, y este llama a .listen() en vez de exportar un
 # handler: la raiz del deploy devolvia 500. En Vercel se entra por
 # `api/index.js`, que si exporta la app.
-index.js
+#
+# La barra inicial es OBLIGATORIA: sin ella, `index.js` es sintaxis
+# gitignore y excluye TODO archivo con ese nombre en cualquier profundidad
+# — incluido `api/index.js`, que es el handler real. Con la barra, el
+# patron ancla a la raiz del proyecto y deja intacto `api/index.js`.
+/index.js
 
 # Herramientas de linea de comandos: se corren en la maquina de quien
 # administra, no en el servidor. Ninguna la referencia `api/index.js`.
