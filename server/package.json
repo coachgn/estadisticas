@@ -1,0 +1,17 @@
+{
+  "name": "sgadd-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PoC del backend de SGADD: proxy a Google Sheets con RBAC server-side",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "probar-google": "node bin/probar-google.js",
+    "generar-link": "node bin/generar-link.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5"
+  }
+}

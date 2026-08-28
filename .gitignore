@@ -4,3 +4,7 @@
 # absoluta de esta máquina: se regenera solo con el mismo comando (punto 14).
 # La skill EN SÍ sí va al repo, en .agents/skills/.
 .claude/skills/
+
+# Backend (PoC)
+server/.env
+server/node_modules/

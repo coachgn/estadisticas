@@ -32,6 +32,9 @@ node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, s
 node test-estados.js       # 178 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
 node test-permisos.js      # 153 tests · roles, planes y el gate de interfaz
+
+# Solo en la rama `poc/backend` — no está en main:
+node test-backend.js       #  95 tests · el proxy con RBAC server-side
 ```
 
 **2246 tests en total. Todos tienen que dar verde antes de commitear.**
