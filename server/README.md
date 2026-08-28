@@ -143,15 +143,160 @@ El token va en `Authorization: Bearer <token>` o como `?access_token=`.
 | `502` | Google no respondió o la planilla no está compartida |
 
 ---
+---
 
-## Desplegar en Vercel
+## Desplegar en Vercel · paso a paso
 
-`server/api/index.js` exporta la app de Express, que es lo que Vercel
-espera. Las variables van en **Settings → Environment Variables** (ahí
-`GOOGLE_PRIVATE_KEY` se pega con los `\n` literales, igual que en el
-`.env`).
+Todo se corre desde `server/`. **Los cuatro comandos que piden credenciales
+los tenés que correr vos**: son un login y tres secretos, y ninguna de las
+dos cosas puede pasar por un asistente ni quedar en un historial de chat.
 
-**Dos cosas no se comportan igual que en local**, y están anotadas en el
-punto 6.4 de la arquitectura: el **rate limit** y el **caché de hojas**
-viven en la memoria de una instancia, y en serverless hay muchas. Para
-producción, Upstash/Redis o el rate limiting del borde.
+```bash
+cd server
+```
+
+### 1 · Login
+
+```bash
+npx vercel login
+```
+
+Abre el navegador o manda un código por mail. Se hace una sola vez por
+máquina.
+
+### 2 · Vincular el proyecto
+
+```bash
+npx vercel link
+```
+
+Preguntas y qué contestar:
+
+| | |
+|---|---|
+| *Set up and deploy?* | **Y** |
+| *Which scope?* | tu cuenta |
+| *Link to existing project?* | **N** la primera vez |
+| *Project name* | `sgadd-api` |
+| *In which directory is your code located?* | **`./`** — ya estás parado en `server/` |
+| *Want to modify these settings?* | **N** — `vercel.json` ya trae lo que hace falta |
+
+### 3 · Las variables
+
+**No las pases por la línea de comandos**: quedan en el historial del
+shell. `vercel env add` las lee de la entrada estándar, así que se pegan
+cuando las pide o se le pasa un archivo.
+
+```bash
+npx vercel env add GOOGLE_SERVICE_ACCOUNT_EMAIL production
+npx vercel env add GOOGLE_PRIVATE_KEY production
+npx vercel env add SHEET_DEPORTIVO_PRIMERA production
+npx vercel env add ORIGENES_PERMITIDOS production
+```
+
+Qué va en cada una:
+
+| Variable | Valor |
+|---|---|
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | el `client_email` del JSON de la cuenta |
+| `GOOGLE_PRIVATE_KEY` | el `private_key` **entero** |
+| `SHEET_DEPORTIVO_PRIMERA` | el id del libro de Primera de DEPORTIVO |
+| `ORIGENES_PERMITIDOS` | `https://coachgn.github.io` |
+
+**La clave privada acepta las dos formas** y conviene saberlo antes de
+pelearse con el panel de Vercel: con los `\n` literales tal cual salen del
+JSON, o pegada con saltos de línea reales. `config.js` convierte la
+primera y deja la segunda como está — hay un test que lo fija.
+
+El `JWT_SECRET` se genera y se manda sin que aparezca en pantalla:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))" | npx vercel env add JWT_SECRET production
+```
+
+**Guardalo también en tu `server/.env` local**, con el MISMO valor: es el
+que firma los links de cliente, y si el que firma y el que verifica no
+coinciden, todos los tokens dan `401 FIRMA_INVALIDA`. Rotarlo invalida
+todos los links emitidos.
+
+Las otras cuatro categorías (`SHEET_RECONQUISTA_PRIMERA`,
+`SHEET_RECONQUISTA_U21`, `SHEET_RECONQUISTA_U23`, `SHEET_JUJUY_PRIMERA`)
+van igual, cuando se conecten esos libros. **Una categoría sin su variable
+aparece en el selector y su carga devuelve 404** — ruidoso a propósito,
+mejor que un silencio.
+
+### 4 · Desplegar
+
+```bash
+npx vercel --prod
+```
+
+Devuelve la URL de producción. Anotala: es la que va en el paso 5.
+
+### 5 · Verificar, en este orden
+
+```bash
+curl https://<tu-url>/api/v1/salud
+```
+
+Tiene que dar `{"ok":true,"servicio":"sgadd-api"}`. Si da **404**, el
+`vercel.json` no se subió: sin él, Vercel publica la función en `/api` a
+secas y todas las rutas dan 404 con el código perfectamente bien.
+
+```bash
+curl -o /dev/null -w "%{http_code}\n" https://<tu-url>/api/v1/catalogo
+```
+
+Tiene que dar **401**: sin token, el servidor no atiende.
+
+Y el que importa — un link real de cliente:
+
+```bash
+node bin/generar-link.js \
+  --email dt@deportivo.com --club deportivo \
+  --equipo "DEPORTIVO LA PLATA" --plan BASICO --expira 7d
+```
+
+```bash
+curl -H "Authorization: Bearer <token>" "https://<tu-url>/api/v1/equipos/deportivo?categoria=deportivo-primera" | head -c 300
+```
+
+Con eso ya se sabe que la Service Account lee la planilla privada desde
+Vercel, que es lo único que el PoC probó en tu máquina y no en el
+servidor.
+
+### 6 · Apuntar el panel
+
+En el `index.html`, antes de los `<script src="js/…">`:
+
+```html
+<script>window.SGADD_API = 'https://<tu-url>';</script>
+```
+
+Y ahí sí van el merge y el `?v=140`. **El orden completo del corte está en
+el punto 11 de [`../docs/ARQUITECTURA-BACKEND.md`](../docs/ARQUITECTURA-BACKEND.md)** —
+sacarle el acceso público a las planillas va **último**, porque mientras
+el panel viejo siga en `main` lee por GViz.
+
+### Si algo sale mal
+
+| Síntoma | Qué mirar |
+|---|---|
+| **404 en todo** | `vercel.json` no se subió, o el directorio raíz del proyecto no es `server/` |
+| **401 con un token recién generado** | el `JWT_SECRET` local y el de Vercel no coinciden |
+| **502 `SIN_PERMISO_SHEET`** | la planilla no está compartida con el `client_email` |
+| **502 `AUTH_GOOGLE`** | la clave privada quedó cortada, o falta habilitar la Sheets API |
+| **El panel no llega: error de CORS** | falta su origen en `ORIGENES_PERMITIDOS` |
+| **404 `SIN_CATEGORIA`** | falta la variable `SHEET_…` de ese slug |
+
+```bash
+npx vercel logs <tu-url>
+```
+
+### Dos cosas que NO se comportan igual que en local
+
+Están anotadas en el punto 6.4 de la arquitectura: el **rate limit** y el
+**caché de hojas** viven en la memoria de UNA instancia, y en serverless
+hay muchas. El límite efectivo termina siendo *(límite × instancias)* y
+una instancia fría arranca sin caché. Para producción de verdad,
+Upstash/Redis o el rate limiting del propio borde.

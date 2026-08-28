@@ -1,0 +1,40 @@
+{
+  "//": "SIN ESTE ARCHIVO, TODOS LOS ENDPOINTS DAN 404 EN VERCEL.",
+
+  "//porque": [
+    "Vercel convierte cada archivo de `api/` en una función y la publica en",
+    "la ruta que le da su NOMBRE: `api/index.js` queda en `/api` y nada más.",
+    "Pero las rutas de esta API son `/api/v1/equipos/:clubId`, que Vercel",
+    "buscaría como `api/v1/equipos/[clubId].js` — un archivo que no existe.",
+    "Resultado: 404 en todo, con el código perfectamente bien.",
+    "",
+    "El `rewrite` manda CUALQUIER path a la única función, y ahí Express",
+    "hace su propio ruteo como en local. Vercel conserva la URL original al",
+    "reescribir, así que `req.url` llega entero y `app.get('/api/v1/...')`",
+    "matchea igual que corriendo `node index.js`."
+  ],
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api" }
+  ],
+
+  "//headers": [
+    "CORS lo maneja Express con su lista de permitidos (`ORIGENES_PERMITIDOS`),",
+    "NO se declara acá: dos lugares que responden headers de CORS terminan",
+    "contradiciéndose, y el que gana depende del orden. Lo que sí va acá es",
+    "lo que Express no puede: que ninguna respuesta de la API se cachee.",
+    "",
+    "Es importante: lo que devuelve `/api/v1/equipos` DEPENDE DE QUIÉN",
+    "PREGUNTA. Un intermediario que cachee por URL le serviría el recorte de",
+    "un cliente a otro — el token va en un header, así que la URL de dos",
+    "usuarios distintos es la MISMA."
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, private" },
+        { "key": "Vary", "value": "Origin, Authorization" }
+      ]
+    }
+  ]
+}

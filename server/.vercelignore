@@ -1,0 +1,10 @@
+# Herramientas de linea de comandos: se corren en la maquina de quien
+# administra, no en el servidor. Ninguna la referencia `api/index.js`.
+bin/
+
+# El .env NUNCA se sube: en Vercel las variables van en Settings ->
+# Environment Variables. Ya esta en .gitignore, esto es la segunda reja.
+.env
+.env.*
+
+node_modules/

@@ -21,7 +21,7 @@ la especificación del adaptador, el glosario de etiquetas de jugador.
 
 ## Correr los tests
 
-Todo desde la raíz del repo. **Los 2406 tienen que dar verde antes de
+Todo desde la raíz del repo. **Los 2438 tienen que dar verde antes de
 commitear** — es la única red de seguridad que tiene el proyecto, porque el
 push va directo a `main`.
 

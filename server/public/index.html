@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SGADD · API</title>
+<meta name="robots" content="noindex">
+<style>
+  body { font: 15px/1.6 system-ui, sans-serif; max-width: 34rem;
+         margin: 12vh auto; padding: 0 1.5rem; color: #1f2937; }
+  code { background: #f1f5f9; padding: .1em .35em; border-radius: 3px; }
+  .ok { color: #15803d; font-weight: 600; }
+</style>
+<h1>SGADD · API</h1>
+<p class="ok">El servicio está desplegado.</p>
+<p>
+  Esto es el backend del panel de scouting: no tiene interfaz. Sirve datos
+  a <a href="https://coachgn.github.io/estadisticas/">coachgn.github.io/estadisticas</a>
+  y todos sus endpoints piden un token de acceso.
+</p>
+<p>
+  Para confirmar que responde: <code>/api/v1/salud</code>.
+</p>
+<!-- Esta página existe por UN motivo concreto: sin nada estático, la raíz
+     del deploy devuelve 404 y no hay forma rápida de distinguir "no se
+     desplegó" de "se desplegó y no tiene home". Con esto, abrir la URL en
+     el navegador ya contesta esa pregunta.
+
+     NO dice qué clubes existen, ni qué categorías, ni una sola ruta más
+     que la de salud: es una página pública. -->

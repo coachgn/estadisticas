@@ -737,6 +737,115 @@ titulo('EL sheetId NO ESTÁ EN NINGÚN ARCHIVO PÚBLICO');
   });
 }
 
+
+titulo('LA CONFIGURACIÓN DEL DEPLOY');
+
+/* SIN `vercel.json` TODOS LOS ENDPOINTS DAN 404, con el código
+   perfectamente bien: Vercel publica cada archivo de `api/` en la ruta
+   que le da su NOMBRE, así que `api/index.js` queda en `/api` y las rutas
+   reales (`/api/v1/equipos/:clubId`) las buscaría como archivos que no
+   existen. Es el tipo de cosa que solo se descubre desplegando, y por eso
+   se fija acá. */
+{
+  const vercel = JSON.parse(fs.readFileSync('./server/vercel.json', 'utf8'));
+
+  const rw = (vercel.rewrites || [])[0];
+  check('vercel.json manda todo /api/* a la única función',
+    !!rw && rw.source === '/api/(.*)' && rw.destination === '/api',
+    JSON.stringify(rw));
+
+  /* El handler tiene que ser una función `(req, res)`: es el contrato de
+     Vercel, y una app de Express lo cumple tal cual. */
+  const idxSrc = fs.readFileSync('./server/api/index.js', 'utf8');
+  check('api/index.js exporta la app, que es un handler (req,res)',
+    /module\.exports = crearApp\(\)/.test(idxSrc));
+
+  /* Las respuestas de la API NO se pueden cachear, y esto no es una
+     optimización al revés: lo que devuelve `/api/v1/equipos` DEPENDE DE
+     QUIÉN PREGUNTA. El token va en un header, así que dos usuarios
+     distintos piden la MISMA URL — un intermediario que cachee por URL le
+     serviría el recorte de uno al otro. */
+  const h = (vercel.headers || [])[0];
+  const claves = ((h && h.headers) || []).reduce((o, x) => (o[x.key] = x.value, o), {});
+  check('y ninguna respuesta de la API se cachea',
+    /no-store/.test(claves['Cache-Control'] || ''), claves['Cache-Control']);
+  check('con Vary en Authorization, que es lo que distingue a un usuario de otro',
+    /Authorization/.test(claves.Vary || ''), claves.Vary);
+
+  /* CORS lo maneja Express con su lista de permitidos. Declararlo TAMBIÉN
+     en vercel.json daría dos lugares que responden headers de CORS, y cuál
+     gana depende del orden. */
+  const cors = JSON.stringify(vercel.headers || []);
+  check('CORS NO se declara en vercel.json, lo maneja Express',
+    !/Access-Control/i.test(cors));
+
+  /* Lo que NO se sube. Un `.env` en el bundle es la credencial completa */
+  const ign = fs.readFileSync('./server/.vercelignore', 'utf8');
+  check('el .env está excluido del deploy', /^\.env$/m.test(ign));
+  check('y los CLI de administración también, que se corren en local',
+    /^bin\/$/m.test(ign));
+
+  /* La raíz devuelve algo: sin nada estático no hay forma rápida de
+     distinguir "no se desplegó" de "se desplegó y no tiene home". */
+  const home = fs.readFileSync('./server/public/index.html', 'utf8');
+  check('la raíz del deploy tiene una página que confirma que está vivo',
+    /salud/.test(home));
+  /* Pero es PÚBLICA: no puede decir qué clubes existen ni qué endpoints
+     de datos hay. El nombre del producto sí puede aparecer — el panel ya
+     está publicado y se llama así; lo que no puede aparecer es el mapa. */
+  check('y no nombra ningún club',
+    !/deportivo|reconquista|jujuy/i.test(home));
+  check('ni ningún endpoint de datos: solo el de salud',
+    (home.match(/\/api\/v1\/[a-z]+/gi) || []).every(r => /salud/.test(r)),
+    JSON.stringify(home.match(/\/api\/v1\/[a-z]+/gi)));
+  check('ni se indexa', /noindex/.test(home));
+}
+
+titulo('LAS VARIABLES QUE HAY QUE CONFIGURAR');
+
+{
+  /* Si `.env.example` y lo que el código lee se separan, alguien despliega
+     con una variable faltante y el error aparece recién en producción. */
+  const ej = fs.readFileSync('./server/.env.example', 'utf8');
+  const cfg = fs.readFileSync('./server/lib/config.js', 'utf8');
+  const usadas = (cfg.match(/process\.env\.([A-Z_0-9]+)/g) || [])
+    .map(x => x.replace('process.env.', ''));
+  [...new Set(usadas)].forEach(v => {
+    check('.env.example declara ' + v, ej.indexOf(v) !== -1);
+  });
+
+  /* Los 5 slugs de los JSON de club tienen que tener su variable: si falta
+     una, esa categoría aparece en el selector y la carga da 404. */
+  const slugs = [];
+  ['deportivo', 'reconquista', 'jujuy'].forEach(c => {
+    const j = JSON.parse(fs.readFileSync('./clubes/' + c + '.json', 'utf8'));
+    (j.planillas || []).forEach(p => slugs.push([c, p.slug]));
+  });
+  slugs.forEach(([club, slug]) => {
+    const cat = config.resolverCategoria(club, slug);
+    check(slug + ' resuelve, y su sheetId sale del entorno',
+      !!cat && /process\.env\.SHEET_/.test(cfg));
+  });
+
+  /* CORS vacío = ningún origen de navegador aceptado. Es el default
+     correcto (mejor no responderle a nadie que responderle a todos) pero
+     hay que decir en el ejemplo cuál va. */
+  check('el ejemplo trae el origen del panel publicado',
+    /coachgn\.github\.io/.test(ej));
+
+  /* LA CLAVE PRIVADA ACEPTA LAS DOS FORMAS, y conviene saberlo antes de
+     pelearse con el panel de Vercel: con `\\n` literales (como sale del
+     JSON de Google) o con saltos reales (como queda al pegarla en un
+     textarea). El `replace` es un no-op sobre la segunda. */
+  const conEscapes = 'A\\nB';
+  const conSaltos = 'A' + String.fromCharCode(10) + 'B';
+  const convertir = (v) => v.replace(/\\n/g, String.fromCharCode(10));
+  check('la clave privada funciona con \\n literales',
+    convertir(conEscapes) === conSaltos);
+  check('y también pegada con saltos reales',
+    convertir(conSaltos) === conSaltos);
+}
+
   console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +
     '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
