@@ -243,6 +243,22 @@ Tiene que dar `{"ok":true,"servicio":"sgadd-api"}`. Si da **404**, el
 `vercel.json` no se subió: sin él, Vercel publica la función en `/api` a
 secas y todas las rutas dan 404 con el código perfectamente bien.
 
+`vercel.json` no acepta comentarios (Vercel rechaza cualquier propiedad
+que no sea de su schema, incluida una `"//"` a mano), así que la razón de
+cada bloque queda documentada acá y no en el archivo:
+
+- **`rewrites`** manda cualquier `/api/*` a la única función
+  (`api/index.js`). Vercel conserva la URL original al reescribir, así
+  que `req.url` llega entero y el ruteo de Express matchea igual que en
+  local.
+- **`headers`** fuerza `Cache-Control: no-store, private` y
+  `Vary: Origin, Authorization` en toda la API. Lo que devuelve
+  `/api/v1/equipos` depende de QUIÉN pregunta —el token va en un header,
+  no en la URL—, así que un intermediario que cachee por URL le serviría
+  el recorte de un cliente a otro. CORS NO se declara acá: lo maneja
+  Express con `ORIGENES_PERMITIDOS`, y dos lugares respondiendo headers
+  de CORS terminan contradiciéndose según el orden.
+
 ```bash
 curl -o /dev/null -w "%{http_code}\n" https://<tu-url>/api/v1/catalogo
 ```

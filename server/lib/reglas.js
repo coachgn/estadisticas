@@ -10,8 +10,8 @@
    ===================================================================== */
 'use strict';
 
-const AUTH = require('../../js/sgadd-auth.js');
-const NUCLEO = require('../../js/sgadd-core.js');
+const AUTH = require('./compartido/sgadd-auth.js');
+const NUCLEO = require('./compartido/sgadd-core.js');
 
 /* Qué bloques de la respuesta pide cada plan. Es el equivalente de datos
    de la matriz `MODULOS` del frontend, que es de secciones.

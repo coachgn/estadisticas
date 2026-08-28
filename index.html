@@ -1722,6 +1722,16 @@
   </div>
 </div>
 
+<!-- LA URL DEL BACKEND.
+
+     Va ANTES de los módulos porque `init()` la lee al arrancar, y va como
+     `<script>` inline y no dentro de un .js para poder cambiarla sin
+     tocar el mapa de versiones: si viviera en un módulo, apuntar a otro
+     backend obligaría a subir el `?v=` de todo.
+
+     `?api=` en la URL la pisa, para probar contra un servidor local sin
+     tocar el deploy. -->
+<script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
 <script src="js/sgadd-club.js?v=140"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->

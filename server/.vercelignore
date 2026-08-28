@@ -1,3 +1,9 @@
+# EL ARRANQUE LOCAL. Vercel trata un `index.js` en la raiz del proyecto
+# como un entrypoint, y este llama a .listen() en vez de exportar un
+# handler: la raiz del deploy devolvia 500. En Vercel se entra por
+# `api/index.js`, que si exporta la app.
+index.js
+
 # Herramientas de linea de comandos: se corren en la maquina de quien
 # administra, no en el servidor. Ninguna la referencia `api/index.js`.
 bin/

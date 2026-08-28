@@ -81,7 +81,7 @@ try {
 
   console.log('');
   console.log('  mail      ' + r.sesion.email);
-  console.log('  rol       ' + (require('../../js/sgadd-auth.js').rol(r.sesion)));
+  console.log('  rol       ' + (require('../lib/compartido/sgadd-auth.js').rol(r.sesion)));
   console.log('  plan      ' + r.sesion.plan);
   console.log('  equipo    ' + (r.sesion.equipoAsignado || '(ninguno)'));
   console.log('  vence     ' + r.expiraEn);

@@ -357,9 +357,16 @@ titulo('EL sheetId NO SALE · el objetivo entero del backend');
      divergirían y la divergencia sería SILENCIOSA. */
   const srcAuth = fs.readFileSync('./server/lib/auth.js', 'utf8');
   const srcReglas = fs.readFileSync('./server/lib/reglas.js', 'utf8');
-  check('el servidor IMPORTA js/sgadd-auth.js, no lo reimplementa',
-    /require\('\.\.\/\.\.\/js\/sgadd-auth\.js'\)/.test(srcAuth) &&
-    /require\('\.\.\/\.\.\/js\/sgadd-auth\.js'\)/.test(srcReglas));
+  /* El servidor USA el módulo del navegador, no una reimplementación.
+
+     Lo importa de `compartido/` y no de `../../js/` porque eso último
+     cruza el límite del deploy —Vercel sube solo `server/`— y hacía que
+     la función muriera al cargar. La copia es mecánica y hay checks más
+     abajo que fallan si difiere del original: la fuente de verdad sigue
+     siendo `js/`. */
+  check('el servidor usa el módulo del navegador, no lo reimplementa',
+    /require\('\.\/compartido\/sgadd-auth\.js'\)/.test(srcAuth) &&
+    /require\('\.\/compartido\/sgadd-auth\.js'\)/.test(srcReglas));
   check('y no tiene su propia lista de admins',
     !/freytesgn@gmail\.com/.test(srcAuth + srcReglas));
   check('ni su propia cascada de planes',
@@ -844,6 +851,97 @@ titulo('LAS VARIABLES QUE HAY QUE CONFIGURAR');
     convertir(conEscapes) === conSaltos);
   check('y también pegada con saltos reales',
     convertir(conSaltos) === conSaltos);
+}
+
+
+titulo('EL BUNDLE DE VERCEL · nada puede salir de server/');
+
+/* EL BUG QUE ESTO FIJA, y costó un deploy roto.
+
+   `server/lib/auth.js` importaba `../../js/sgadd-auth.js` para no
+   reescribir las reglas. La intención es correcta y sigue vigente. Lo que
+   no se vio es que cruza el LÍMITE DEL DEPLOY: Vercel tiene como raíz
+   `server/` y sube SOLO ese directorio, así que `../../js/` no existe del
+   otro lado.
+
+   Síntoma: `FUNCTION_INVOCATION_FAILED` en TODOS los endpoints, incluido
+   `/api/v1/salud` — que no toca Google ni pide credenciales. La función
+   moría al cargar, con el código perfectamente bien.
+
+   Se resolvió copiando los dos módulos a `server/lib/compartido/` con
+   `bin/sincronizar-compartido.js`. La fuente de verdad sigue siendo
+   `js/`: el copiado es mecánico y los checks de abajo fallan si difieren. */
+{
+  const path = require('path');
+  const sync = require('./server/bin/sincronizar-compartido.js');
+
+  /* 1 · NINGÚN require puede salir de `server/`. Es la invariante que
+     hace imposible repetir el bug: si mañana alguien vuelve a importar de
+     `../../js/`, este check falla ANTES de desplegar. */
+  const archivosServidor = [];
+  (function recorrer(dir) {
+    fs.readdirSync(dir, { withFileTypes: true }).forEach(e => {
+      if (e.name === 'node_modules' || e.name === 'compartido') return;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) recorrer(p);
+      else if (e.name.endsWith('.js')) archivosServidor.push(p);
+    });
+  })('./server');
+
+  const fugas = [];
+  archivosServidor.forEach(p => {
+    const txt = fs.readFileSync(p, 'utf8');
+    const m = txt.match(/require\(['"](\.\.\/)+(?!\.)[^'"]*['"]\)/g) || [];
+    m.forEach(r => {
+      /* `../lib/…` o `../app.js` son internos: suben un nivel pero siguen
+         adentro de `server/`. Lo que no puede haber es un `../../`. */
+      if (/\.\.\/\.\./.test(r)) fugas.push(p.replace(/\\/g, '/') + ' → ' + r);
+    });
+  });
+  check('ningún módulo del servidor importa fuera de server/',
+    fugas.length === 0, fugas.join(' | '));
+
+  /* 2 · Las copias están al día. Si alguien toca `js/sgadd-auth.js` y no
+     regenera, el servidor aplicaría reglas VIEJAS — y esa divergencia
+     sería silenciosa, que es justo lo que la importación directa evitaba. */
+  const viejos = sync.desincronizados();
+  check('las copias de server/lib/compartido/ están al día',
+    viejos.length === 0,
+    viejos.length ? viejos.join(', ') + '  → corré: node server/bin/sincronizar-compartido.js' : '');
+
+  /* 3 · Y son copias EXACTAS, no una versión editada a mano. */
+  sync.MODULOS.forEach(nombre => {
+    const copia = fs.readFileSync(path.join(sync.DESTINO, nombre), 'utf8');
+    const fuente = fs.readFileSync('./js/' + nombre, 'utf8');
+    check(nombre + ' es la fuente completa, sin editar',
+      copia.indexOf(fuente) !== -1 && copia.length === copia.indexOf(fuente) + fuente.length);
+    check('y lo declara arriba de todo, para el que abra el archivo',
+      /ARCHIVO GENERADO · NO EDITAR/.test(copia.slice(0, 200)));
+  });
+
+  /* 4 · El servidor y el navegador siguen dando el MISMO veredicto. El
+     punto de todo el rodeo: la copia no puede volverse una segunda fuente
+     de verdad. */
+  const AUTH_SERVIDOR = require('./server/lib/compartido/sgadd-auth.js');
+  const ses = { email: 'dt@x.com', equipoAsignado: 'DEPORTIVO LA PLATA', plan: 'BASICO' };
+  check('la copia y el original coinciden en el equipo',
+    AUTH_SERVIDOR.puedeVerEquipo('A. MAYO', ses) === AUTH.puedeVerEquipo('A. MAYO', ses));
+  check('en el plan',
+    AUTH_SERVIDOR.tieneModulo('scouting', ses) === AUTH.tieneModulo('scouting', ses));
+  check('y en la matriz de secciones entera',
+    JSON.stringify(Object.keys(AUTH_SERVIDOR.MODULOS)) === JSON.stringify(Object.keys(AUTH.MODULOS)));
+  check('la lista de admins es la misma',
+    AUTH_SERVIDOR.ADMINS.join(',') === AUTH.ADMINS.join(','));
+
+  /* 5 · El arranque local NO se sube. Vercel trata un `index.js` en la
+     raíz del proyecto como entrypoint, y ese llama a `.listen()` en vez de
+     exportar un handler: la raíz del deploy devolvía 500. */
+  const ign = fs.readFileSync('./server/.vercelignore', 'utf8');
+  check('el arranque local (index.js) está excluido del deploy',
+    /^index\.js$/m.test(ign));
+  /* Pero `api/index.js` SÍ tiene que subir: es el entrypoint de verdad. */
+  check('y api/index.js no queda excluido por eso',
+    fs.existsSync('./server/api/index.js') && !/^api\//m.test(ign));
 }
 
   console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +

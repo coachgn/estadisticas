@@ -22,7 +22,7 @@ const { resolverCategoria, catalogoPublico } = require('../lib/config.js');
 const { verificarToken, tokenDeLaPeticion } = require('../lib/auth.js');
 const reglas = require('../lib/reglas.js');
 const sheets = require('../lib/google-sheets.js');
-const AUTH = require('../../js/sgadd-auth.js');
+const AUTH = require('../lib/compartido/sgadd-auth.js');
 
 /* Los mensajes de error NO dicen de más. "La firma no valida" y "el token
    venció" son distintos para el usuario (uno pide un link nuevo, el otro

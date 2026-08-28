@@ -23,8 +23,15 @@
 const jwt = require('./jwt.js');
 const { entorno } = require('./config.js');
 
-/* El MISMO módulo que corre en el navegador. */
-const AUTH = require('../../js/sgadd-auth.js');
+/* El MISMO módulo que corre en el navegador, copiado a `compartido/`
+   por `bin/sincronizar-compartido.js`.
+
+   La copia NO es una segunda fuente de verdad: es mecánica, byte por
+   byte, y `test-backend.js` falla si difiere del original. Existe porque
+   Vercel despliega con raíz en `server/` y no sube `../../js/` — importar
+   de ahí hacía que la función muriera al cargar, con
+   FUNCTION_INVOCATION_FAILED en todos los endpoints. */
+const AUTH = require('./compartido/sgadd-auth.js');
 
 const ALGORITMO = 'HS256';
 const EXPIRA_POR_DEFECTO = '7d';
