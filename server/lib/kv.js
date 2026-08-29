@@ -20,22 +20,26 @@
    ===================================================================== */
 'use strict';
 
-/* Dos juegos de nombres, y hay que aceptar los dos:
+/* TRES juegos de nombres, y hay que aceptar los tres:
 
-     UPSTASH_REDIS_REST_*  las que crea Upstash en su propio panel
-     KV_REST_API_*         las que INYECTA Vercel al conectar la
-                           integración desde el marketplace
+     UPSTASH_REDIS_REST_*     las del panel propio de Upstash
+     UPSTASH_KV_REST_API_*    las de la integración Upstash en Vercel
+     KV_REST_API_*            las del Vercel KV clásico
 
-   Quien conecte por la integración de Vercel se encuentra las segundas y
-   ninguna de las primeras. Exigir un nombre concreto sería mandarlo a
-   copiar valores a mano para nada. */
+   Según por dónde se conecte la base, el que la crea se encuentra UNO de
+   los tres juegos y ninguno de los otros. Exigir un nombre concreto es
+   mandarlo a copiar valores a mano para nada — y ya pasó: la primera
+   versión aceptaba dos y llegaron las del tercero. */
 function credenciales(env) {
   const e = env || process.env;
-  const url = e.UPSTASH_REDIS_REST_URL || e.KV_REST_API_URL || '';
-  const token = e.UPSTASH_REDIS_REST_TOKEN || e.KV_REST_API_TOKEN || '';
+  const url = e.UPSTASH_REDIS_REST_URL || e.UPSTASH_KV_REST_API_URL
+    || e.KV_REST_API_URL || '';
+  const token = e.UPSTASH_REDIS_REST_TOKEN || e.UPSTASH_KV_REST_API_TOKEN
+    || e.KV_REST_API_TOKEN || '';
   /* Para el CLI: si hay un token de solo lectura configurado aparte, el
      servidor puede usar ese y el CLI el completo. */
-  const tokenLectura = e.KV_REST_API_READ_ONLY_TOKEN || '';
+  const tokenLectura = e.KV_REST_API_READ_ONLY_TOKEN
+    || e.UPSTASH_KV_REST_API_READ_ONLY_TOKEN || '';
   return {
     url: String(url).replace(/\/+$/, ''),
     token: String(token),

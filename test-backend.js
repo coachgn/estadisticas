@@ -1530,8 +1530,11 @@ titulo('EL CATÁLOGO · la cascada KV → env → código');
       .categorias[0].activo === false);
 
   /* --- el cliente de KV --- */
-  check('acepta los nombres de Upstash y los que inyecta Vercel',
+  /* TRES juegos de nombres según por dónde se cree la base. Ya pasó que
+     llegaran los del tercero y el cliente no los reconociera. */
+  check('acepta los tres juegos de nombres de credenciales',
     KV.configurado({ UPSTASH_REDIS_REST_URL: 'u', UPSTASH_REDIS_REST_TOKEN: 't' }) &&
+    KV.configurado({ UPSTASH_KV_REST_API_URL: 'u', UPSTASH_KV_REST_API_TOKEN: 't' }) &&
     KV.configurado({ KV_REST_API_URL: 'u', KV_REST_API_TOKEN: 't' }));
   check('y sin ninguno se declara sin configurar', KV.configurado({}) === false);
   /* La LECTURA nunca lanza: es lo que permite que el catálogo se caiga al
@@ -1570,8 +1573,11 @@ titulo('LA CLI DEL CATÁLOGO');
   /* Se valida ANTES de escribir: un catálogo roto en KV se ignora al leer,
      pero dejarlo escrito confunde al que después mire por qué su alta "no
      tomó". */
+  /* El margen es más largo que antes porque entre la validación y la
+     escritura ahora está también `revisarLibros`. Lo que se fija es el
+     ORDEN: primero se valida, después se escribe. */
   check('valida antes de guardar, no después',
-    /catalogo\.validar\(cat\)[\s\S]{0,200}kv\.escribir/.test(cli));
+    cli.indexOf('catalogo.validar(cat)') < cli.indexOf('kv.escribir(catalogo.CLAVE_KV'));
 
   /* Un `sheetId` no se imprime entero ni en la terminal del admin: la
      salida de un comando termina pegada en un chat más seguido de lo que
@@ -1587,6 +1593,34 @@ titulo('LA CLI DEL CATÁLOGO');
     /function exigirKV/.test(cli) && (cli.match(/exigirKV\(\);/g) || []).length >= 3);
   check('y dicen exactamente qué variables faltan',
     /UPSTASH_REDIS_REST_URL/.test(cli) && /KV_REST_API_URL/.test(cli));
+
+  /* EL GUARD QUE EVITA ROMPER PRODUCCIÓN, y por qué está donde está.
+
+     El catálogo del CÓDIGO resuelve cada `sheetId` desde una variable de
+     entorno que vive en Vercel, no en la máquina del administrador. Un
+     comando corrido desde ahí escribe en KV un catálogo con los sheetId
+     VACÍOS — y como KV le gana al código, los clubes que hoy funcionan
+     pasan a 502 sin que nadie toque su planilla.
+
+     Va en `guardar()` y NO en un comando: los tres escriben el catálogo
+     entero. La primera versión solo cuidaba `sembrar`, y `alta` volvió a
+     armar la bomba a los dos minutos. */
+  check('el guard vive en guardar(), por donde pasan los tres comandos',
+    /function revisarLibros/.test(cli) &&
+    /revisarLibros\(cat, opciones && opciones\.forzar\)[\s\S]{0,120}kv\.escribir/.test(cli));
+  check('y los tres comandos pasan por ahí',
+    (cli.match(/await guardar\(cat, \{ forzar/g) || []).length === 4,
+    (cli.match(/await guardar\(cat, \{ forzar/g) || []).length);
+  /* La señal que distingue un catálogo legítimamente incompleto de uno
+     escrito desde el lugar equivocado: si la máquina no tiene NINGUNA
+     SHEET_*, los vacíos no son una decisión. */
+  check('se distingue por si la máquina tiene alguna SHEET_*',
+    /indexOf\('SHEET_'\) === 0/.test(cli));
+  check('y se puede forzar a propósito con --sin-libros',
+    /sin-libros/.test(cli));
+  /* Nunca escribe y después avisa: aborta ANTES del kv.escribir. */
+  check('aborta ANTES de escribir, no después',
+    cli.indexOf('revisarLibros(cat') < cli.indexOf('kv.escribir(catalogo.CLAVE_KV'));
 
   /* Dar de baja un club NO invalida los links ya emitidos: no hay
      revocación individual. Conviene que el CLI lo diga. */

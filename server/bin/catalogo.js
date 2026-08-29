@@ -73,16 +73,70 @@ OJO con --equipo: se compara con claveEquipo(), así que la LETRA importa.
 ver ningún equipo (punto 19 de CLAUDE.md).
 `;
 
+/* EL GUARD QUE EVITA ROMPER PRODUCCIÓN.
+
+   Va en `guardar()` y no en un comando: `alta`, `baja` y `sembrar`
+   escriben el catálogo ENTERO, así que los tres pueden pisar los
+   `sheetId` — la primera versión solo cuidaba `sembrar` y `alta` volvió
+   a armar la bomba a los dos minutos.
+
+   El catálogo del CÓDIGO resuelve cada `sheetId` desde una variable de
+   entorno (`SHEET_DEPORTIVO_PRIMERA` y compañía). Esas viven en Vercel,
+   no en la máquina de quien administra: escribir desde acá guarda un
+   catálogo con los sheetId VACÍOS.
+
+   Y KV le gana al código, así que apenas el servidor lo lea, esa
+   categoría queda `activo: false` y su carga devuelve 502. Un club que
+   hoy funciona se rompe sin que nadie haya tocado su planilla.
+
+   La señal que lo distingue de un catálogo legítimamente incompleto: si
+   esta máquina no tiene NINGUNA `SHEET_*` definida, los vacíos no son una
+   decisión — son el síntoma de estar escribiendo desde el lugar
+   equivocado. */
+function revisarLibros(cat, forzar) {
+  const todas = [];
+  Object.keys(cat).forEach(c => Object.keys(cat[c].categorias || {})
+    .forEach(s => todas.push(c + '/' + s + (cat[c].categorias[s].sheetId ? '' : '  ← SIN LIBRO'))));
+  const sinLibro = todas.filter(x => /SIN LIBRO/.test(x));
+  if (!sinLibro.length) return;
+
+  const hayVariables = Object.keys(process.env).some(k => k.indexOf('SHEET_') === 0);
+  if (hayVariables || forzar) {
+    console.log('  AVISO · quedan sin libro:');
+    sinLibro.forEach(x => console.log('      ' + x.replace('  ← SIN LIBRO', '')));
+    return;
+  }
+
+  console.error('');
+  console.error('  NO se guardó nada, y es a propósito.');
+  console.error('');
+  console.error('  Estas categorías quedarían SIN sheetId:');
+  sinLibro.forEach(x => console.error('      ' + x));
+  console.error('');
+  console.error('  Esta máquina no tiene ninguna variable SHEET_* definida, así que');
+  console.error('  el catálogo del código no puede resolverlos: viven en Vercel.');
+  console.error('');
+  console.error('  KV le gana al código. Apenas el servidor lo leyera, esos clubes');
+  console.error('  pasarían de funcionar a 502, sin que nadie tocara su planilla.');
+  console.error('');
+  console.error('  Dos salidas:');
+  console.error('    a) poné las SHEET_* en server/.env y repetí el comando');
+  console.error('    b) repetilo con --sin-libros si de verdad querés dejarlas vacías');
+  console.error('');
+  process.exit(1);
+}
+
 /* Escribe el catálogo entero en KV, validando ANTES. Un catálogo roto en
    KV se ignora al leer —la cascada baja sola— pero dejarlo escrito
    confunde al que después mire por qué su alta "no tomó". */
-async function guardar(cat) {
+async function guardar(cat, opciones) {
   const mal = catalogo.validar(cat);
   if (mal) {
     console.error('  El catálogo quedaría inválido: ' + mal);
     console.error('  No se guardó nada.');
     process.exit(1);
   }
+  revisarLibros(cat, opciones && opciones.forzar);
   await kv.escribir(catalogo.CLAVE_KV, cat);
   catalogo.limpiarCache();
 }
@@ -145,7 +199,8 @@ function exigirKV() {
   /* -------------------------------------------------- sembrar */
   if (cmd === 'sembrar') {
     exigirKV();
-    await guardar(cat);
+
+    await guardar(cat, { forzar: !!o['sin-libros'] });
     console.log('  catálogo copiado a KV desde: ' + cascada.origen);
     console.log('  a partir de ahora manda KV, y los cambios NO piden redeploy.');
     return;
@@ -188,7 +243,7 @@ function exigirKV() {
       process.exit(1);
     }
 
-    await guardar(cat);
+    await guardar(cat, { forzar: !!o['sin-libros'] });
     console.log('');
     console.log('  ' + (existia ? 'actualizado' : 'ALTA') + ': ' + club + ' · ' + cat[club].nombre);
     Object.keys(cat[club].categorias).forEach(s => {
@@ -221,11 +276,11 @@ function exigirKV() {
         process.exit(1);
       }
       delete cat[club].categorias[slug];
-      await guardar(cat);
+      await guardar(cat, { forzar: !!o['sin-libros'] });
       console.log('  baja de la categoría ' + slug + ' en ' + club);
     } else {
       delete cat[club];
-      await guardar(cat);
+      await guardar(cat, { forzar: !!o['sin-libros'] });
       console.log('  baja del club ' + club + ' entero');
     }
     /* Los tokens ya emitidos siguen siendo válidos hasta vencer: no hay
