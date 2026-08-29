@@ -14,7 +14,8 @@
 
 require('../lib/env.js').cargar();
 const { obtenerDatosPlanilla, obtenerLibro } = require('../lib/google-sheets.js');
-const { resolverCategoria, entorno, CATALOGO } = require('../lib/config.js');
+const { entorno } = require('../lib/config.js');
+const catalogo = require('../lib/catalogo.js');
 
 function args(argv) {
   const o = {};
@@ -46,8 +47,11 @@ function args(argv) {
   let sheetId = o.sheet;
   let etiqueta = 'planilla suelta';
   if (!sheetId) {
-    const clubId = o.club || Object.keys(CATALOGO)[0];
-    const cat = resolverCategoria(clubId, o.categoria);
+    const clubId = o.club || 'deportivo';
+    const cascada = await catalogo.cargar();
+    if (cascada.aviso) console.log('  AVISO · ' + cascada.aviso);
+    console.log('  catálogo desde     ' + cascada.origen);
+    const cat = catalogo.resolver(cascada.catalogo, clubId, o.categoria);
     if (!cat) { console.error('\n  No existe esa categoría.\n'); process.exit(1); }
     if (!cat.sheetId) {
       console.error('\n  ' + clubId + ' no tiene sheetId configurado. Completá server/.env\n');

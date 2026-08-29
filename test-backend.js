@@ -1404,6 +1404,202 @@ titulo('EL CLIENTE · qué hace con la lista del servidor');
     /: E\.detectarAlertas\(st\.idx, estado\.mapa\)/.test(buzon));
 }
 
+
+titulo('EL CATÁLOGO · la cascada KV → env → código');
+
+/* LO QUE ESTA CASCADA COMPRA: dar de alta un club deja de ser un cambio
+   de código y un redeploy.
+
+   Y LO QUE NO SE NEGOCIA: el nivel 3 —el literal del código— no se saca
+   nunca. Es lo que hace que mover el catálogo a un servicio externo no
+   vuelva frágil al servidor. Si Upstash no contesta, la cascada baja sola
+   y los clubes que ya estaban siguen funcionando; lo único que deja de
+   poder hacerse es dar de alta uno nuevo, que puede esperar. */
+{
+  const CAT = require('./server/lib/catalogo.js');
+  const KV = require('./server/lib/kv.js');
+
+  const DE_KV = {
+    nuevoclub: { nombre: 'Club Nuevo', liga: 'la-plata', equipoPropio: 'NUEVO A',
+      categorias: { 'nuevoclub-primera': { label: 'Primera', sheetId: '1DESDE_KV' } } },
+  };
+  const DE_ENV = {
+    otroclub: { nombre: 'Otro', liga: 'x', equipoPropio: 'OTRO',
+      categorias: { 'otroclub-primera': { label: 'Primera', sheetId: '1DESDE_ENV' } } },
+  };
+
+  /* Un Upstash de mentira: `fetch` inyectado, igual que con Google. Así la
+     cascada se ejerce entera sin una cuenta ni red — que es la convención
+     de toda esta suite. */
+  const kvFalso = (respuesta) => ({
+    env: { UPSTASH_REDIS_REST_URL: 'https://falso.upstash.io', UPSTASH_REDIS_REST_TOKEN: 't' },
+    fetch: () => Promise.resolve({ ok: true, status: 200,
+      json: () => Promise.resolve({ result: respuesta === null ? null : JSON.stringify(respuesta) }) }),
+  });
+  const kvCaido = {
+    env: { UPSTASH_REDIS_REST_URL: 'https://falso.upstash.io', UPSTASH_REDIS_REST_TOKEN: 't' },
+    fetch: () => Promise.reject(new Error('ECONNREFUSED')),
+  };
+
+  /* --- nivel 1 · KV manda --- */
+  CAT.limpiarCache();
+  let r = await CAT.cargar(kvFalso(DE_KV));
+  check('con KV disponible, el catálogo sale de KV', r.origen === 'kv', r.origen);
+  check('y trae el club que solo está ahí', !!r.catalogo.nuevoclub);
+
+  /* --- nivel 2 · sin KV, la variable de entorno --- */
+  CAT.limpiarCache();
+  process.env.SGADD_CATALOGO = JSON.stringify(DE_ENV);
+  r = await CAT.cargar({});
+  check('sin KV configurado, cae a SGADD_CATALOGO', r.origen === 'env', r.origen);
+  check('y trae su club', !!r.catalogo.otroclub);
+
+  /* --- nivel 3 · el respaldo del código --- */
+  CAT.limpiarCache();
+  delete process.env.SGADD_CATALOGO;
+  r = await CAT.cargar({});
+  check('sin nada, cae al literal del código', r.origen === 'codigo', r.origen);
+  check('que trae los tres clubes de siempre',
+    !!r.catalogo.deportivo && !!r.catalogo.reconquista && !!r.catalogo.jujuy);
+
+  /* --- EL CASO QUE IMPORTA: Upstash caído --- */
+  CAT.limpiarCache();
+  r = await CAT.cargar(kvCaido);
+  check('si Upstash NO responde, el servidor NO se cae', r.origen === 'codigo', r.origen);
+  check('y lo dice en un aviso, en vez de callarlo', !!r.aviso, r.aviso);
+  check('los clubes que ya estaban siguen ahí', !!r.catalogo.deportivo);
+
+  /* --- un blob corrupto se IGNORA, no envenena --- */
+  const corruptos = [
+    ['no es un objeto', 'texto suelto'],
+    ['un array', [1, 2]],
+    ['un club sin nombre', { x: { categorias: { a: { label: 'A' } } } }],
+    ['un club sin categorías', { x: { nombre: 'X' } }],
+    ['una categoría sin label', { x: { nombre: 'X', categorias: { a: {} } } }],
+    ['un sheetId que no es texto', { x: { nombre: 'X', categorias: { a: { label: 'A', sheetId: 5 } } } }],
+  ];
+  for (const [nombre, malo] of corruptos) {
+    CAT.limpiarCache();
+    const rr = await CAT.cargar(kvFalso(malo));
+    check('KV con ' + nombre + ' → se ignora y baja la cascada',
+      rr.origen === 'codigo' && !!rr.aviso, rr.origen);
+  }
+  /* Pero un `sheetId` VACÍO sí es válido: es la categoría que todavía no
+     tiene libro, y aparece deshabilitada en el selector (punto 6). */
+  CAT.limpiarCache();
+  const sinLibro = { x: { nombre: 'X', categorias: { a: { label: 'A', sheetId: '' } } } };
+  check('pero una categoría sin libro es válida', CAT.validar(sinLibro) === null);
+
+  /* La clave que todavía no existe NO es un error: es el estado normal
+     antes de la primera alta, y no tiene que ensuciar con un aviso. */
+  CAT.limpiarCache();
+  r = await CAT.cargar(kvFalso(null));
+  check('una clave que aún no existe no genera aviso',
+    r.origen === 'codigo' && !r.aviso, JSON.stringify(r.aviso));
+
+  /* --- el caché evita una ida a Upstash por request --- */
+  CAT.limpiarCache();
+  let llamadas = 0;
+  const contando = { env: kvFalso(DE_KV).env,
+    fetch: () => { llamadas++; return kvFalso(DE_KV).fetch(); } };
+  await CAT.cargar(contando);
+  await CAT.cargar(contando);
+  await CAT.cargar(contando);
+  check('el catálogo se lee UNA vez y se cachea', llamadas === 1, llamadas);
+
+  /* --- resolución: funciones puras sobre el catálogo --- */
+  CAT.limpiarCache();
+  const base = (await CAT.cargar({})).catalogo;
+  const dep = CAT.resolver(base, 'deportivo', 'deportivo-primera');
+  check('resolver() encuentra la categoría', !!dep && dep.slug === 'deportivo-primera');
+  check('sin categoría abre la primera del club',
+    CAT.resolver(base, 'deportivo').slug === 'deportivo-primera');
+  check('un club que no existe devuelve null', CAT.resolver(base, 'nada') === null);
+  check('y una categoría que no existe también',
+    CAT.resolver(base, 'deportivo', 'no-existe') === null);
+
+  /* EL sheetId SIGUE SIN SALIR, venga de donde venga el catálogo. Es lo
+     que no puede aflojarse al mover el catálogo de lugar. */
+  const pub = CAT.publico({ x: { nombre: 'X', liga: 'l',
+    categorias: { a: { label: 'A', sheetId: '1SECRETO_DE_GOOGLE_AAAA' } } } });
+  check('el catálogo público no trae el sheetId',
+    JSON.stringify(pub).indexOf('1SECRETO') === -1, JSON.stringify(pub));
+  check('pero sí dice si la categoría tiene libro', pub[0].categorias[0].activo === true);
+  check('y `activo` es false cuando no lo tiene',
+    CAT.publico({ x: { nombre: 'X', categorias: { a: { label: 'A' } } } })[0]
+      .categorias[0].activo === false);
+
+  /* --- el cliente de KV --- */
+  check('acepta los nombres de Upstash y los que inyecta Vercel',
+    KV.configurado({ UPSTASH_REDIS_REST_URL: 'u', UPSTASH_REDIS_REST_TOKEN: 't' }) &&
+    KV.configurado({ KV_REST_API_URL: 'u', KV_REST_API_TOKEN: 't' }));
+  check('y sin ninguno se declara sin configurar', KV.configurado({}) === false);
+  /* La LECTURA nunca lanza: es lo que permite que el catálogo se caiga al
+     respaldo en vez de tumbar el request. */
+  const fallo = await KV.leer('x', kvCaido);
+  check('leer() devuelve el error en vez de lanzarlo',
+    fallo.valor === null && !!fallo.error, JSON.stringify(fallo));
+  /* La ESCRITURA sí lanza: la usa el CLI, y un fallo silencioso ahí haría
+     creer que un alta se guardó cuando no. */
+  let tiro = false;
+  try { await KV.escribir('x', { a: 1 }, kvCaido); } catch (e) { tiro = true; }
+  check('escribir() SÍ lanza, para que el CLI no mienta', tiro === true);
+
+  CAT.limpiarCache();
+  await CAT.cargar({});
+}
+
+titulo('LA CLI DEL CATÁLOGO');
+
+{
+  const cli = fs.readFileSync('./server/bin/catalogo.js', 'utf8');
+
+  ['listar', 'alta', 'baja'].forEach(c => {
+    check("el comando `" + c + "` existe", new RegExp("cmd === '" + c + "'").test(cli));
+  });
+  /* `sembrar` promueve el catálogo del código a KV sin cambios: es el
+     primer paso, y sin él la primera alta tendría que reescribir todo. */
+  check('y `sembrar`, para promover el catálogo del código a KV',
+    /cmd === 'sembrar'/.test(cli));
+
+  /* LEE LA CASCADA Y ESCRIBE SOLO EN KV: si además tocara el código haría
+     falta un commit, que es justo lo que esto viene a evitar. */
+  check('lee el catálogo vigente antes de modificarlo',
+    /await catalogo\.cargar\(\{ forzar: true \}\)/.test(cli));
+  check('y escribe solo en KV', /kv\.escribir\(catalogo\.CLAVE_KV/.test(cli));
+  /* Se valida ANTES de escribir: un catálogo roto en KV se ignora al leer,
+     pero dejarlo escrito confunde al que después mire por qué su alta "no
+     tomó". */
+  check('valida antes de guardar, no después',
+    /catalogo\.validar\(cat\)[\s\S]{0,200}kv\.escribir/.test(cli));
+
+  /* Un `sheetId` no se imprime entero ni en la terminal del admin: la
+     salida de un comando termina pegada en un chat más seguido de lo que
+     uno quiere. */
+  check('los sheetId salen enmascarados en `listar`',
+    /function enmascarar/.test(cli) && /enmascarar\(k\.sheetId\)/.test(cli));
+  /* `exportar` sí los muestra —para eso está— pero lo avisa. */
+  check('y `exportar` avisa que trae secretos en claro',
+    /trae los sheetId en claro/.test(cli));
+
+  /* Sin Upstash configurado, `alta` NO puede fingir que guardó. */
+  check('sin KV, los comandos de escritura se niegan',
+    /function exigirKV/.test(cli) && (cli.match(/exigirKV\(\);/g) || []).length >= 3);
+  check('y dicen exactamente qué variables faltan',
+    /UPSTASH_REDIS_REST_URL/.test(cli) && /KV_REST_API_URL/.test(cli));
+
+  /* Dar de baja un club NO invalida los links ya emitidos: no hay
+     revocación individual. Conviene que el CLI lo diga. */
+  check('la baja avisa que los links emitidos siguen firmados',
+    /siguen firmados/.test(cli));
+
+  /* Y el generador de links lee la cascada: sin esto, dar de alta un club
+     por CLI y después emitirle un link fallaba mirando una copia vieja. */
+  const gen = fs.readFileSync('./server/bin/generar-link.js', 'utf8');
+  check('generar-link.js valida el club contra la cascada, no contra el código',
+    /await catalogo\.cargar\(\)/.test(gen) && !/require\('\.\.\/lib\/config\.js'\)/.test(gen));
+}
+
   console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +
     '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);

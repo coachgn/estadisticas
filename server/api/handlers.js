@@ -18,7 +18,7 @@
    ===================================================================== */
 'use strict';
 
-const { resolverCategoria, catalogoPublico } = require('../lib/config.js');
+const catalogo = require('../lib/catalogo.js');
 const { verificarToken, tokenDeLaPeticion } = require('../lib/auth.js');
 const reglas = require('../lib/reglas.js');
 const alertas = require('../lib/alertas.js');
@@ -51,16 +51,18 @@ function contexto(peticion) {
  * El catálogo que el frontend SÍ puede conocer: slugs y etiquetas.
  * Sin un solo `sheetId` — es el objetivo entero del backend.
  */
-async function manejarCatalogo(peticion) {
+async function manejarCatalogo(peticion, deps) {
   const ctx = contexto(peticion);
   if (ctx.error) return ctx.error;
+  /* La cascada se resuelve UNA vez por request y queda cacheada. */
+  const cat = await catalogo.cargar(deps);
   return {
     status: 200,
     body: {
       ok: true,
       usuario: { email: ctx.sesion.email, rol: ctx.rol, plan: ctx.sesion.plan,
         equipoAsignado: ctx.sesion.equipoAsignado, expiraEn: ctx.expiraEn },
-      clubes: catalogoPublico(),
+      clubes: catalogo.publico(cat.catalogo),
     },
   };
 }
@@ -77,7 +79,8 @@ async function manejarEquipos(peticion, deps) {
 
   const q = (peticion && peticion.query) || {};
   const params = (peticion && peticion.params) || {};
-  const cat = resolverCategoria(params.clubId, q.categoria);
+  const cascada = await catalogo.cargar(deps);
+  const cat = catalogo.resolver(cascada.catalogo, params.clubId, q.categoria);
   if (!cat) return error(404, 'SIN_CATEGORIA', 'No existe esa categoría.');
 
   /* EL TOKEN ESTÁ ATADO A UN CLUB. Sin esto, el token de un cliente de
@@ -187,7 +190,8 @@ async function manejarScouting(peticion, deps) {
 
   const q = (peticion && peticion.query) || {};
   const params = (peticion && peticion.params) || {};
-  const cat = resolverCategoria(params.clubId, q.categoria);
+  const cascada = await catalogo.cargar(deps);
+  const cat = catalogo.resolver(cascada.catalogo, params.clubId, q.categoria);
   if (!cat) return error(404, 'SIN_CATEGORIA', 'No existe esa categoría.');
 
   /* LA REGLA DE ORO DEL SCOUTING, del lado del servidor: solo cruces donde
