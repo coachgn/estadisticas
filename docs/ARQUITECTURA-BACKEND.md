@@ -433,6 +433,61 @@ botones que llevan a un 403.
 
 ---
 
+## 10.4 · QUÉ SE RECORTA · el benchmark no, el log sí
+
+La línea NO está en "propio contra ajeno": está entre el **benchmark de
+la competencia** y el **análisis de un plantel**.
+
+Todo el valor del panel es comparativo. Un PACE de 76 no dice nada; lo
+que dice algo es el percentil contra la liga (punto 4 de `CLAUDE.md`).
+El primer recorte tocaba los agregados de temporada, y eso no protegía un
+dato sensible: le sacaba al cliente la mitad del producto.
+
+**Medido en producción antes de corregirlo**, con la sesión de DEPORTIVO:
+
+| | |
+|---|---|
+| Scatter ORTG/DRTG de Principal | **1 punto** de 12 |
+| Rankings de Equipos | **1 equipo** |
+| Top 20 de Jugadores | **1 plantel** (16 de 218) |
+| Informe de scouting | se armaba igual, con el rival en `—` |
+| **Percentiles del propio equipo** | **50 en TODAS las métricas** |
+
+Lo último es lo peor y no estaba en el pedido: con la distribución en
+n=1, el percentil no salía vacío — salía **50**. No se lee como "falta el
+dato", se lee como "está en el promedio". Un número inventado que parece
+real es exactamente lo que este proyecto no hace.
+
+### La regla, ahora
+
+```
+HOJAS_RECORTADAS = ['Base Datos J']      ← y nada más
+```
+
+El default pasó a ser **servir**, no esconder, y agregar una hoja a la
+lista tiene que ser explícito.
+
+`Base Datos J` es el log partido a partido, y es lo que hace **profunda**
+a una ficha: de ahí salen la evolución, el tab Partidos, los rendimientos
+atípicos, el split local/visitante y el perfil de tiro. Sin eso, un rival
+tiene su promedio de temporada —el mismo número que muestra cualquier
+ranking— y nada más.
+
+### La consecuencia, dicha sin vueltas
+
+Con `PROMEDIOS J` completa, un cliente con la consola abierta puede leer
+los promedios de temporada de cualquier jugador de la liga. Es el mismo
+dato que el Top 20 le muestra en pantalla, pero para los 218 y no para
+los 20 primeros.
+
+Es una decisión de PRODUCTO tomada a conciencia: lo que separa los planes
+es el módulo de Scouting y el gate de interfaz, no la retención del
+benchmark. Si algún día hay que cerrarlo, la vía es calcular los rankings
+del lado del servidor —como ya se hace con las alertas— y no volver a
+recortar la hoja.
+
+---
+
 ## 10.5 · Las alertas del buzón se calculan en el SERVIDOR
 
 El detector de inactividad cuenta partidos seguidos sin ingresar, y para

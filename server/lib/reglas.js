@@ -195,6 +195,43 @@ function sinColumnasOcultas(filas) {
   return m.map(fila => (fila || []).filter((_, k) => fuera.indexOf(k) === -1));
 }
 
+/* --------------------------------------------------------------------
+   QUÉ SE RECORTA Y QUÉ NO
+
+   La línea NO está en "propio contra ajeno": está entre el BENCHMARK de
+   la competencia y el ANÁLISIS de un plantel.
+
+   Todo el valor del panel es comparativo. Un PACE de 76 no dice nada; lo
+   que dice algo es el percentil contra la liga (punto 4 de CLAUDE.md).
+   Recortar los agregados de temporada no protegía un dato sensible: le
+   sacaba al cliente la mitad del producto y —peor— lo hacía en silencio.
+
+   MEDIDO en producción antes de este cambio, con la sesión de DEPORTIVO:
+
+     · el scatter ORTG/DRTG de Principal quedaba con UN punto de 12;
+     · los rankings de Equipos y el Top 20 de Jugadores, con un equipo y
+       un plantel;
+     · el informe de scouting se armaba igual pero con el rival en `—`;
+     · y lo peor: los percentiles del PROPIO equipo salían 50 en TODAS
+       las métricas, porque la distribución tenía n=1. Eso no se lee como
+       "falta el dato", se lee como "está en el promedio".
+
+   LO QUE SIGUE BLOQUEADO es el log partido a partido (`Base Datos J`),
+   que es lo que hace "profunda" a una ficha: la evolución, el tab
+   Partidos, los rendimientos atípicos, el split local/visitante y el
+   perfil de tiro salen todos de ahí. Sin eso, un rival tiene su promedio
+   de temporada —el mismo número que muestra cualquier ranking— y nada
+   más.
+
+   Y la interfaz sigue bloqueando la ficha del rival, que es lo que
+   separa un plan del otro.
+   -------------------------------------------------------------------- */
+
+/* La ÚNICA hoja que se recorta. Va como lista para que agregar otra sea
+   explícito: el default es servir, no esconder — al revés que antes, y a
+   propósito. */
+const HOJAS_RECORTADAS = ['Base Datos J'];
+
 function recortarLibro(libro, sesion) {
   const hojas = (libro && libro.hojas) || {};
   const texto = (libro && libro.hojasTexto) || {};
@@ -203,19 +240,9 @@ function recortarLibro(libro, sesion) {
   const recortadas = [];
   const completas = [];
 
-  const POR_EQUIPO = ['PROMEDIOS E', 'ACUMULADO E', 'PROMEDIOS 4F', 'ACUMULADO 4F'];
-  const POR_JUGADOR = ['PROMEDIOS J', 'ACUMULADO J'];
-  const POR_PARTIDO = ['Base Datos J'];
-  /* `Base Datos E` y `4 FACTORES` van completas: de ahí sale la tabla de
-     posiciones y los factores de liga, que son públicos. Recortarlas
-     dejaría al cliente sin poder ver el torneo. */
-  const ENTERAS = ['Base Datos E', '4 FACTORES'];
-
   Object.keys(hojas).forEach(h => {
-    const libre = AUTH.sinRestricciones(sesion) || ENTERAS.indexOf(h) !== -1
-      || (POR_EQUIPO.indexOf(h) === -1 && POR_JUGADOR.indexOf(h) === -1
-          && POR_PARTIDO.indexOf(h) === -1);
-    if (libre) {
+    const recortar = !AUTH.sinRestricciones(sesion) && HOJAS_RECORTADAS.indexOf(h) !== -1;
+    if (!recortar) {
       salida[h] = sinColumnasOcultas(hojas[h]);
       if (texto[h]) salidaTexto[h] = sinColumnasOcultas(texto[h]);
       completas.push(h);
@@ -223,9 +250,11 @@ function recortarLibro(libro, sesion) {
     }
     /* LOS MISMOS ÍNDICES para las dos vistas: si cada una se filtrara por
        su cuenta podrían desalinearse y el panel mostraría el número de una
-       fila con el texto de otra. */
-    const idx = indicesPermitidos(hojas[h], sesion,
-      { soloPropio: POR_PARTIDO.indexOf(h) !== -1 });
+       fila con el texto de otra.
+
+       `soloPropio` porque en una hoja partido a partido una fila sin
+       equipo es una fila rota, no la mediana de la liga. */
+    const idx = indicesPermitidos(hojas[h], sesion, { soloPropio: true });
     salida[h] = sinColumnasOcultas(tomar(hojas[h], idx));
     if (texto[h]) salidaTexto[h] = sinColumnasOcultas(tomar(texto[h], idx));
     recortadas.push(h);
@@ -305,6 +334,6 @@ function clave(v) { return NUCLEO.claveEquipo(v || ''); }
 module.exports = {
   BLOQUES, puedeBloque, filasDeEquipo, filasDeJugador, partidosDeEquipo,
   indicesPermitidos, tomar, COLUMNAS_OCULTAS, sinColumnasOcultas, mapear,
-  padronLiga, PADRON_CAMPOS,
+  padronLiga, PADRON_CAMPOS, HOJAS_RECORTADAS,
   tablaCompleta, recortarLibro, puedeAnalizarEquipo, clave,
 };

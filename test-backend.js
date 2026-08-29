@@ -298,9 +298,23 @@ titulo('EL sheetId NO SALE · el objetivo entero del backend');
 
   const equiposDe = (filas) => filas.slice(1).map(f => f[0]);
   const pe = equiposDe(rCli.body.hojas['PROMEDIOS E']);
-  check('PROMEDIOS E solo trae su equipo',
-    pe.filter(e => /A\. MAYO|UNIVERSITARIO/.test(e)).length === 0, JSON.stringify(pe));
-  check('y el suyo sí está', pe.some(e => /DEPORTIVO LA PLATA/.test(e)));
+  /* EL BENCHMARK DE LA LIGA VA COMPLETO, y ese es el cambio.
+
+     Todo el valor del panel es comparativo: un PACE de 76 no dice nada, lo
+     que dice algo es el percentil contra la liga. Recortar los agregados
+     de temporada no protegía un dato sensible — le sacaba al cliente la
+     mitad del producto, y en silencio. */
+  check('PROMEDIOS E trae la liga ENTERA, que es lo que hace comparables los números',
+    pe.some(e => /A\. MAYO/.test(e)) && pe.some(e => /UNIVERSITARIO/.test(e)),
+    JSON.stringify(pe));
+  check('y el suyo también, obviamente', pe.some(e => /DEPORTIVO LA PLATA/.test(e)));
+  /* EL DAÑO COLATERAL QUE ESTO CIERRA: con un solo equipo, la distribución
+     tenía n=1 y el percentil del PROPIO equipo salía 50 en todas las
+     métricas. Eso no se lee como "falta el dato", se lee como "está en el
+     promedio" — un número inventado que parece real. */
+  check('con más de un equipo, los percentiles vuelven a significar algo',
+    new Set(pe.filter(e => !/TIPO/.test(e))).size > 1,
+    new Set(pe).size + ' equipos');
 
   /* LA FILA `EQUIPO TIPO` SE CONSERVA: es la MEDIANA de la liga y de ella
      salen todos los percentiles del panel. Sin ella el cliente recibe sus
@@ -310,13 +324,21 @@ titulo('EL sheetId NO SALE · el objetivo entero del backend');
     pe.some(e => /EQUIPO TIPO/.test(e)), JSON.stringify(pe));
 
   const pj = rCli.body.hojas['PROMEDIOS J'].slice(1);
-  check('PROMEDIOS J solo trae su plantel',
-    pj.every(f => /DEPORTIVO LA PLATA/.test(f[1]) || f[1] === ''), JSON.stringify(pj.map(f => f[1])));
+  /* Los promedios de temporada de los jugadores también: sin ellos no hay
+     Top 20 de la liga, ni percentiles de jugador, ni jugadores clave del
+     rival en el informe de scouting. Son las MISMAS columnas que muestra
+     cualquier ranking. */
+  check('PROMEDIOS J trae a los jugadores de toda la liga',
+    pj.some(f => /A\. MAYO/.test(f[1])), JSON.stringify(pj.map(f => f[1])));
   check('y conserva el JUGADOR TIPO, que también es la mediana',
     pj.some(f => /JUGADOR TIPO/.test(f[0])));
 
+  /* LO QUE SIGUE BLOQUEADO, y es lo que hace "profunda" a una ficha: el
+     log partido a partido. De ahí salen la evolución, el tab Partidos, los
+     rendimientos atípicos, el split local/visitante y el perfil de tiro.
+     Sin eso, un rival tiene su promedio de temporada y nada más. */
   const bdj = rCli.body.hojas['Base Datos J'].slice(1);
-  check('el box score de partidos ajenos no viaja',
+  check('el log partido a partido de un rival NO viaja',
     bdj.every(f => /DEPORTIVO LA PLATA/.test(f[2])), JSON.stringify(bdj.map(f => f[2])));
 
   /* La tabla de posiciones va COMPLETA a propósito: comparar contra la
@@ -325,13 +347,23 @@ titulo('EL sheetId NO SALE · el objetivo entero del backend');
   check('Base Datos E va completa, para que exista la tabla de posiciones',
     rCli.body.hojas['Base Datos E'].length === LIBRO['Base Datos E'].length);
   check('y el admin recibe todo, sin recortes',
-    rAdm.body.hojas['PROMEDIOS E'].length === LIBRO['PROMEDIOS E'].length);
+    rAdm.body.hojas['Base Datos J'].length === LIBRO['Base Datos J'].length);
+  /* El benchmark es IDÉNTICO para los dos: no hay nada que recortar ahí. */
+  check('el benchmark de la liga es el mismo para cliente y admin',
+    JSON.stringify(rCli.body.hojas['PROMEDIOS E']) ===
+    JSON.stringify(rAdm.body.hojas['PROMEDIOS E']));
+  /* Y el log NO: es la única diferencia entre los dos payloads. */
+  check('pero el log del cliente es más corto que el del admin',
+    rCli.body.hojas['Base Datos J'].length < rAdm.body.hojas['Base Datos J'].length,
+    rCli.body.hojas['Base Datos J'].length + ' vs ' + rAdm.body.hojas['Base Datos J'].length);
 
   /* El panel tiene que SABER que está viendo un recorte: sin eso
      calcularía percentiles sobre una liga fantasma. */
-  check('la respuesta declara qué hojas se recortaron',
-    rCli.body.alcance.hojasRecortadas.indexOf('PROMEDIOS E') !== -1);
-  check('y cuáles vienen completas',
+  check('la respuesta declara qué hoja se recortó',
+    JSON.stringify(rCli.body.alcance.hojasRecortadas) === JSON.stringify(['Base Datos J']),
+    JSON.stringify(rCli.body.alcance.hojasRecortadas));
+  check('y que el resto viene completo',
+    rCli.body.alcance.hojasCompletas.indexOf('PROMEDIOS E') !== -1 &&
     rCli.body.alcance.hojasCompletas.indexOf('Base Datos E') !== -1);
   check('el admin no tiene ninguna recortada',
     rAdm.body.alcance.hojasRecortadas.length === 0);
@@ -543,13 +575,14 @@ titulo('EL FRONTEND CONSUME LO QUE EL BACKEND MANDA · E2E');
   /* El recorte del servidor tiene que sobrevivir al adaptador: es el
      punto entero de que el filtrado sea server-side. */
   const nombres = pe.filas.map(f => f['EQUIPO']);
-  check('el recorte del servidor llega intacto al índice',
-    !nombres.some(n => /A\. MAYO|UNIVERSITARIO/.test(n)), JSON.stringify(nombres));
+  check('la liga entera llega al índice, que es lo que hace comparables los números',
+    nombres.some(n => /A\. MAYO/.test(n)) && nombres.some(n => /UNIVERSITARIO/.test(n)),
+    JSON.stringify(nombres));
   check('y la fila TIPO sigue ahí, que es la mediana de la liga',
     nombres.some(n => /EQUIPO TIPO/.test(n)));
 
   const peAdm = DATA.matrizAFilas(rAdm.body.hojas['PROMEDIOS E']);
-  check('el admin recibe la liga entera', peAdm.filas.length > pe.filas.length,
+  check('cliente y admin ven el mismo benchmark', peAdm.filas.length === pe.filas.length,
     peAdm.filas.length + ' vs ' + pe.filas.length);
 
   /* Una fila enteramente vacía no es un dato: GViz ya las descartaba, y si
@@ -1118,13 +1151,11 @@ titulo('EL PADRÓN DE LA LIGA · listado 200, ficha ajena 403');
   check('con su motivo', ficha.body.codigo === AUTH.MOTIVOS.OTRO_EQUIPO);
   check('y sin una sola fila de datos', !ficha.body.hojas && !ficha.body.padron);
 
-  /* Estar en el padrón NO afloja el recorte de las filas: el rival aparece
-     por nombre y sus números siguen sin viajar. */
-  const pj = rCli.body.hojas['PROMEDIOS J'].slice(1);
-  check('el recorte de PROMEDIOS J sigue igual de cerrado',
-    pj.every(f => /DEPORTIVO LA PLATA/.test(f[1]) || f[1] === ''),
-    JSON.stringify(pj.map(f => f[1])));
-  check('y el del log partido a partido también',
+  /* El padrón sigue siendo útil aunque el benchmark vaya completo: trae a
+     los jugadores que NO están en `PROMEDIOS J` de este tramo —altas
+     recientes, cambios de fase— y es la lista que el buzón usa sin tener
+     que recorrer el índice. Lo que NO afloja es el log. */
+  check('el log partido a partido sigue recortado al plantel propio',
     rCli.body.hojas['Base Datos J'].slice(1).every(f => /DEPORTIVO LA PLATA/.test(f[2])));
 }
 
@@ -1267,8 +1298,10 @@ titulo('ALERTAS EN EL SERVIDOR · se detecta al rival sin mandar su log');
   check('su nombre aparece (padrón y alerta) pero no su historial',
     /RIVAL, PARADO/.test(cuerpo) &&
     !/"A\. MAYO - MM","REGULAR",24/.test(cuerpo));
-  check('y PROMEDIOS J tampoco lo trae',
-    resp.body.hojas['PROMEDIOS J'].slice(1).every(x => !/A\. MAYO/.test(x[1])));
+  /* Su promedio de temporada SÍ viaja —es el número que muestra cualquier
+     ranking— pero su historial partido a partido no. Esa es la línea. */
+  check('su promedio de temporada sí, porque es el benchmark',
+    resp.body.hojas['PROMEDIOS J'].slice(1).some(x => /A\. MAYO/.test(x[1])));
 
   /* El tramo viaja con la respuesta: una racha se cuenta DENTRO de una
      competencia, y si el cliente no sabe cuál se usó no puede saber si

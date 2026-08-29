@@ -34,10 +34,10 @@ node test-pdf.js           #  92 tests · nombre del archivo en las exportacione
 node test-permisos.js      # 153 tests · roles, planes y el gate de interfaz
 
 # Solo en la rama `poc/backend` — no está en main:
-node test-backend.js       # 270 tests · el proxy, el padrón, las alertas y el deploy
+node test-backend.js       # 272 tests · el proxy, el benchmark de liga, las alertas y el deploy
 ```
 
-**2527 tests en total. Todos tienen que dar verde antes de commitear.**
+**2529 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
