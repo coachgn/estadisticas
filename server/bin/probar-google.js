@@ -60,7 +60,7 @@ function args(argv) {
         return i === -1 ? { etiqueta: x.slice(0, 12) + '…', id: x }
                         : { etiqueta: x.slice(0, i), id: x.slice(i + 1) };
       });
-    let fallaron = 0;
+    let fallaron = 0, pasajeros = 0;
     for (const l of libros) {
       try {
         const libro = await obtenerLibro(l.id);
@@ -70,7 +70,14 @@ function args(argv) {
           + '  ' + l.etiqueta.padEnd(24) + ok + '/' + hojas.length + ' hojas'
           + (libro.faltantes.length ? '   faltan: ' + libro.faltantes.join(', ') : ''));
       } catch (e) {
-        fallaron++;
+        /* UN 5xx DE GOOGLE NO ES UN PROBLEMA DE PERMISOS, y confundirlos
+           manda a compartir un libro que ya está compartido. Pasó en la
+           primera corrida real: la U21 dio 503 y a los segundos leía sus
+           109.722 celdas sin tocar nada. Se cuenta aparte para que el
+           resumen no diga "sin acceso" cuando lo que hubo fue un mal
+           momento del otro lado. */
+        const transitorio = /^GOOGLE_5/.test(e.codigo || '');
+        if (transitorio) pasajeros++; else fallaron++;
         const porque = e.codigo === 'SIN_PERMISO_SHEET'
           ? 'NO COMPARTIDA con ' + env.googleEmail
           /* `SIN_HOJA` es el 404 de Google, y acá significa que el ARCHIVO
@@ -79,14 +86,21 @@ function args(argv) {
              distinto que la falta de permiso justamente porque se arreglan
              de maneras opuestas: uno se comparte, el otro se corrige. */
           : (e.codigo === 'SIN_HOJA' ? 'NO EXISTE ese archivo · revisá el sheetId'
-                                     : (e.message || ''));
-        console.log('  FALLA   ' + l.etiqueta.padEnd(24) + porque);
+             : (transitorio ? 'Google no contestó (' + e.codigo + ') · REINTENTÁ, no es permiso'
+                            : (e.message || '')));
+        console.log('  ' + (transitorio ? 'CORTE ' : 'FALLA ') + '  '
+          + l.etiqueta.padEnd(24) + porque);
       }
     }
     console.log('');
     if (fallaron) {
       console.log('  ' + fallaron + ' de ' + libros.length + ' sin acceso.');
       console.log('  Compartilas con ' + env.googleEmail + ' en modo Lector y repetí.');
+      console.log('');
+      process.exit(1);
+    }
+    if (pasajeros) {
+      console.log('  ' + pasajeros + ' con un corte pasajero de Google. Repetí: no es permiso.');
       console.log('');
       process.exit(1);
     }
