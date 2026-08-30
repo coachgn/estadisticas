@@ -31,7 +31,7 @@ node test-partido.js       #  54 tests · detalle partido a partido, perfil de t
 node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
-node test-permisos.js      # 189 tests · roles, planes, el gate, el selector de cliente y el hub
+node test-permisos.js      # 190 tests · roles, planes, el gate, el selector de cliente y el hub
 
 node test-backend.js       # 335 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -43,7 +43,7 @@ node test-backend.js       # 335 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**2658 tests en total. Todos tienen que dar verde antes de commitear.**
+**2659 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -145,7 +145,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=147`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=148`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 

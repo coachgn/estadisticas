@@ -37,7 +37,12 @@ const CONFIGUI = {
      distintos del JSON —`torneo` y `competencia`— y se guardan y
      exportan por separado. Mezclarlos obligaría a commitear los dos
      para publicar uno. */
-  pestana: 'zonas',    // 'zonas' | 'torneo'
+  /* ABRE EN CLIENTES. El Panel Master contesta primero "qué clientes
+     tengo"; las otras dos pestañas editan al club que está abierto. Con
+     Zonas por defecto, el admin entraba y veía la config de UN club sin
+     una pista de dónde estaban los demás — que es exactamente el problema
+     que esta pantalla vino a resolver. */
+  pestana: 'clientes',   // 'clientes' | 'zonas' | 'torneo'
   proy: null,
   proyOrigen: 'ninguno',
   proySucia: false,

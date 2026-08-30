@@ -242,9 +242,8 @@ const SGADD_HUB = (function () {
         </div>
         <p class="text-xs text-muted mt-2">
           Sale de <code>/api/v1/catalogo</code>, que es la única fuente: el repo no tiene
-          un listado de clubes. Los <code>sheetId</code> se muestran recortados a propósito —
-          los <code>sheetId</code> no viajan al navegador: para verlos está
-          <code>catalogo.js listar</code>.
+          un listado de clubes. Los <code>sheetId</code> no viajan al navegador —
+          para verlos está <code>catalogo.js listar</code>, que corre con tus credenciales.
         </p>
       </div>
 

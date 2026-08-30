@@ -528,6 +528,11 @@ titulo('EL HUB DE CLIENTES · consulta todo, y NO finge que publica');
   const configui = fs.readFileSync('./js/sgadd-configui.js', 'utf8');
   check('la pestaña Clientes va primera en el Panel Master',
     /id: 'clientes'[\s\S]{0,80}id: 'zonas'/.test(configui));
+  /* Y ES LA QUE ABRE. Con Zonas por defecto el admin entraba y veía la
+     config de UN club sin una pista de dónde estaban los demás, que es
+     justo el problema que esta pantalla vino a resolver. */
+  check('y es la pestaña por defecto',
+    /pestana: 'clientes'/.test(configui));
 
   /* EL ACCESO SE LLAMA "PANEL MASTER", que es lo que es: la sección es
      soloAdmin y es el único lugar de gestión del producto. Con el nombre
