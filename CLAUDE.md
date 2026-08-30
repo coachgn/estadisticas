@@ -21,7 +21,7 @@ node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 307 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
-node test-clasificacion.js #  52 tests · tabla de posiciones, orden, zonas y escudos
+node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
 node test-boot.js          # 156 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 253 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
@@ -37,7 +37,7 @@ node test-permisos.js      # 153 tests · roles, planes y el gate de interfaz
 node test-backend.js       # 319 tests · el proxy, el benchmark, las alertas y el catálogo en KV
 ```
 
-**2584 tests en total. Todos tienen que dar verde antes de commitear.**
+**2589 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -139,7 +139,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=143`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=144`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -615,6 +615,36 @@ audita (punto 5).
 libro de uno solo —Jujuy, la U21— abre exactamente como antes. Y la fila
 `agregado` (la TIPO, con `FASE = TOTAL`) sigue afuera del default: esa no
 es un tramo sino la mediana, y abrir por ella daría cero equipos.
+
+**Y solo si el TOTAL tiene PARTIDOS.** Como se reconstruye desde las
+maestras, un libro con `PROMEDIOS E` de los dos torneos y sin `Base Datos
+E` abriría con **cero equipos** — medido. Con partidos ausentes gana un
+torneo real, que al menos muestra sus promedios, y el Diagnóstico denuncia
+el libro. El TOTAL se sigue **ofreciendo** en el selector: lo que la guarda
+decide es solo por dónde se abre.
+
+#### La decisión del tramo estaba PARTIDA EN DOS
+
+El arreglo de arriba no alcanzó, y el modo de fallar vale anotarlo:
+`tramoPorDefecto()` devolvía `*TOTAL*|REGULAR` y la app **seguía abriendo
+en `IDA`**, medido en producción con el token de admin.
+
+`cargar()` hacía dos pasos: `torneoPorDefecto()` resolvía el torneo, y
+`tramoPorDefecto()` corregía el PAR **solo si no existía**. En un arranque
+limpio el primero ya había puesto un torneo válido, así que el segundo
+nunca corría: **el criterio del tramo vivía en una función que no se
+ejecutaba**. Y `torneosDisponibles()` no conoce al sintético — no sale de
+ninguna celda —, así que por ese camino el TOTAL era inalcanzable.
+
+Ahora manda el tramo: `combinacionesTorneoFase()` enumera los pares que
+existen, `tramoPorDefecto()` elige, y el par del hash gana si es válido en
+ese libro. `torneoPorDefecto()` queda como respaldo para el caso sin un
+solo tramo enumerable.
+
+**El test de esto EJERCE `cargar()` en un `vm`, no lee el fuente.** Un grep
+no lo habría cazado nunca: las dos funciones estaban ahí y las dos decían
+lo correcto. Es el mismo aprendizaje que dejó la pestaña de Torneo (punto
+18) — cuando el defecto es *qué se ejecuta*, hay que ejecutarlo.
 
 Alcance real del cambio: **DEPORTIVO Primera** y **Reconquista Primera**,
 que son las dos planillas con ida y vuelta. Las otras tres no se mueven.

@@ -643,8 +643,19 @@
     if (!vivos.length) return (lista && lista[0]) || null;
 
     /* El sintético ya cubre lo que cubren sus partes juntas, así que no
-       hace falta compararlo por cobertura: si existe, gana. */
-    const total = vivos.find(c => c.sintetico);
+       hace falta compararlo por cobertura: si existe, gana.
+
+       PERO SOLO SI TIENE PARTIDOS. El TOTAL no lee las hojas de promedios:
+       las RECONSTRUYE desde `Base Datos E` y `Base Datos J`, porque el
+       índice agrupa por `EQUIPO + FASE` y los promedios del segundo torneo
+       pisan a los del primero. Sin partidos no hay nada que reconstruir y
+       el TOTAL abre con CERO equipos — medido con un libro que traía
+       `PROMEDIOS E` de los dos torneos y ninguna maestra.
+
+       Es la misma regla que ya aplica `torneoPorDefecto`: no se abre por
+       el recorte mudo. Con partidos ausentes gana un torneo real, que al
+       menos muestra sus promedios, y el Diagnóstico denuncia el libro. */
+    const total = vivos.find(c => c.sintetico && c.conPartidos);
     if (total) return total;
 
     let mejor = vivos[0];

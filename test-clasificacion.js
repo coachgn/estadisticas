@@ -13,6 +13,7 @@
 const fs = require('fs');
 const CL = require('./js/sgadd-clasificacion.js');
 const CFG = require('./js/sgadd-config.js');
+const SGADD = require('./js/sgadd-core.js');
 
 /* `sgadd-clasificacion.js` consulta `SGADD_CONFIG` como global (en el
    navegador ya está cargado). En Node se publica a mano: es la misma
@@ -309,6 +310,124 @@ check('y el hover no se la come',
 /* La regla de escritorio sigue intacta: esto AGREGA, no reemplaza. */
 check('la regla de escritorio sigue estando',
   /tr\[class\*="zona-"\] > td:first-child \{[\s\S]{0,80}box-shadow: inset 3px 0 0 0 var\(--zona\);/.test(htmlIdx));
+
+
+titulo('EL TRAMO SE ELIGE EN UN SOLO LUGAR · se EJERCE cargar(), no se lee');
+
+/* Este bloque existe por un bug concreto: `tramoPorDefecto()` devolvía
+   `*TOTAL*|REGULAR` y la app abría igual en `IDA`, medido en producción.
+   La regla estaba bien y vivía en una función que NO se ejecutaba —
+   `torneoPorDefecto()` ya había puesto un torneo válido y el segundo paso
+   solo corregía el par si no existía.
+
+   Un test que lea el fuente no lo caza: las dos funciones estaban ahí y
+   las dos decían lo correcto. Hay que CORRER el arranque. */
+(function () {
+  const vm = require('vm');
+
+  /* Un libro con IDA y VUELTA en la misma fase, que es cuando existe el
+     TOTAL sintético. Los nombres de equipo son reales (punto: un club que
+     no existe no se puede contrastar contra la planilla). */
+  const fila = (eq, t) => ({ EQUIPO: eq, FASE: 'REGULAR', TORNEO: t, PJ: 4, PTS: 70 });
+  /* Y la MAESTRA, que no es opcional: el TOTAL no lee los promedios, los
+     RECONSTRUYE desde los partidos. Sin `Base Datos E` abriría con cero
+     equipos — de ahí la guarda `conPartidos` de `tramoPorDefecto`. */
+  const juego = (n, eq, t, pts, rival) => ({
+    PARTIDO: 'ATENAS A vs PLATENSE A', EQUIPO: eq, FASE: 'REGULAR', TORNEO: t,
+    FECHA: '2026-0' + n + '-05', PTS: pts, PLAYS: 80, TCC: 30, TCI: 60,
+    T2C: 20, T2I: 35, T3C: 10, T3I: 25, T1C: 10, T1I: 12, PP: 12,
+    RO: 10, RD: 25, AST: 15, MIN: 200, PR: 8, POS: 70, RT: 35,
+    RESULTADO: pts > rival ? 'GANADO' : 'PERDIDO',
+    CONDICION: eq === 'ATENAS A' ? 'LOCAL' : 'VISITANTE',
+  });
+  const bde = [
+    juego(5, 'ATENAS A', 'IDA', 80, 70), juego(5, 'PLATENSE A', 'IDA', 70, 80),
+    juego(8, 'ATENAS A', 'VUELTA', 90, 75), juego(8, 'PLATENSE A', 'VUELTA', 75, 90),
+  ];
+  const hojas = {
+    'PROMEDIOS E': { cols: ['EQUIPO', 'FASE', 'TORNEO', 'PJ', 'PTS'], filas: [
+      fila('ATENAS A', 'IDA'), fila('PLATENSE A', 'IDA'),
+      fila('ATENAS A', 'VUELTA'), fila('PLATENSE A', 'VUELTA')] },
+    'Base Datos E': { cols: Object.keys(bde[0]), filas: bde },
+  };
+
+  /* El mismo libro SIN la maestra: el TOTAL no podría reconstruir nada. */
+  const hojasMudas = { 'PROMEDIOS E': hojas['PROMEDIOS E'] };
+
+  function arrancar(hash) {
+    const ctx = {
+      console: console, Math: Math, Date: Date, JSON: JSON,
+      Promise: Promise, Object: Object, Array: Array, String: String,
+      Number: Number, Map: Map, Set: Set, isNaN: isNaN, parseFloat: parseFloat,
+      setTimeout: setTimeout,
+      SGADD: SGADD,
+      SGADD_DATA: { cargarCategoria: async () => ({ hojas: hojas, errores: [] }) },
+      window: { location: { hash: hash || '' } },
+    };
+    ctx.window.SGADD = SGADD;
+    vm.createContext(ctx);
+    /* `const SGADD_APP = …` en el tope de un script crea un binding LÉXICO,
+       no una propiedad del contexto: hay que devolverlo con una expresión
+       final o desde afuera no se ve. */
+    ctx.SGADD_APP = vm.runInContext(
+      fs.readFileSync('./js/sgadd-app.js', 'utf8') + ';SGADD_APP;', ctx);
+    return ctx;
+  }
+
+  /* SGADD.planilla() lee el catálogo real; acá se apunta a una de mentira
+     con slug, que es lo único que `cargar()` exige. */
+  const catalogoReal = SGADD.planilla;
+  const visiblesReal = SGADD.planillasVisibles;
+  const falsa = { id: 'x', label: 'X', slug: 's', activo: true };
+  SGADD.planilla = (id) => (id === 'x' ? falsa : null);
+  SGADD.planillasVisibles = () => [falsa];
+
+  const ctx = arrancar('');
+  const listo = ctx.SGADD_APP.cargar();
+
+  /* Y uno con el par en el hash, para verificar que el link GANA. */
+  const ctx2 = arrancar('#/x/VUELTA/REGULAR/clasificacion');
+  const listo2 = ctx2.SGADD_APP.cargar();
+
+  Promise.all([listo, listo2]).then(() => {
+    SGADD.planilla = catalogoReal;
+    SGADD.planillasVisibles = visiblesReal;
+
+    const e = ctx.SGADD_APP.estado;
+    /* EL ARRANQUE LIMPIO ABRE POR EL TOTAL. Es el pedido del club: con la
+       Ida cerrada y la Vuelta en curso, abrir por IDA muestra las
+       posiciones de hace un mes. */
+    check('un arranque limpio abre por el TOTAL de la fase',
+      e.torneo === SGADD.TORNEO_TOTAL && e.fase === 'REGULAR',
+      e.torneo + '|' + e.fase);
+    check('y el índice del TOTAL trae los equipos de los dos torneos',
+      !!e.idx && e.idx.lista().length === 2, e.idx && e.idx.lista().length);
+
+    /* EL LINK COMPARTIDO GANA. Un par válido en el hash no se pisa: hay
+       favoritos del cuerpo técnico apuntando a un tramo concreto. */
+    const e2 = ctx2.SGADD_APP.estado;
+    /* LA GUARDA: sin partidos el TOTAL no tiene qué reconstruir, así que
+       NO puede ser el default. Antes que abrir por un recorte mudo, gana
+       un torneo real que al menos muestra sus promedios. */
+    const mudos = SGADD.combinacionesTorneoFase(hojasMudas);
+    check('sin partidos, el TOTAL no abre el libro',
+      SGADD.tramoPorDefecto(mudos).sintetico !== true,
+      SGADD.tramoPorDefecto(mudos).id);
+    check('y el TOTAL se sigue OFRECIENDO en el selector',
+      mudos.some(x => x.sintetico));
+
+    check('el par del hash le gana al default',
+      e2.torneo === 'VUELTA' && e2.fase === 'REGULAR', e2.torneo + '|' + e2.fase);
+
+    console.log('');
+    console.log(fail === 0 ? '✓ TODO OK   ' + ok + ' pasaron, 0 fallaron'
+      : '✗ HAY FALLAS   ' + ok + ' pasaron, ' + fail + ' fallaron');
+    process.exit(fail ? 1 : 0);
+  });
+})();
+
+/* La salida la imprime el bloque asíncrono de arriba. */
+return;
 
 console.log('\n' + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

@@ -113,27 +113,47 @@ const SGADD_APP = (function () {
       estado.hojas = hojas;
       const fases = SGADD.fasesDisponibles(hojas);
       if (fases.length && !fases.some(f => f.id === estado.fase)) estado.fase = fases[0].id;
-      /* El torneo del hash puede no existir en ESTE libro (link viejo, o
-         se cambió de categoría): se cae al primero disponible en vez de
-         indexar una competencia vacía. */
-      const torneos = SGADD.torneosDisponibles(hojas);
-      /* `torneos[0]` es el primero del ABECEDARIO, no el primero útil. En
-         un libro donde la maestra y la derivada quedaron con torneos
-         distintos, eso abre justo el recorte sin partidos (ver la nota de
-         `torneosDisponibles`). El defecto es el primero que traiga
-         partidos; si ninguno los trae, el primero a secas y el
-         Diagnóstico lo explica. */
-      if (!estado.torneo || !torneos.some(t => t.id === estado.torneo)) {
-        estado.torneo = SGADD.torneoPorDefecto(torneos);
-      }
-      /* Y que el PAR exista: un libro puede traer IDA y VUELTA en REGULAR
-         pero solo VUELTA en PLAYOFF, así que una fase heredada del libro
-         anterior puede no existir en este torneo. */
+
+      /* EL TRAMO SE ELIGE EN UN SOLO LUGAR, y esto estuvo partido en dos.
+
+         Antes iban dos pasos: `torneoPorDefecto()` resolvía el torneo y
+         después `tramoPorDefecto()` corregía el PAR solo si no existía. Con
+         eso el segundo nunca corría en un arranque limpio —el primero ya
+         había puesto un torneo válido— así que el criterio del tramo
+         quedaba escrito en una función que no se ejecutaba.
+
+         Se notó al hacer que el TOTAL abriera el libro: `tramoPorDefecto`
+         devolvía `*TOTAL*|REGULAR` y la app seguía abriendo en `IDA`,
+         medido en producción. El defecto no estaba en la regla nueva sino
+         en que había DOS decisiones para una sola pregunta.
+
+         Ahora manda el tramo: `combinacionesTorneoFase()` enumera los pares
+         que EXISTEN —incluido el TOTAL sintético, que `torneosDisponibles`
+         no conoce porque no sale de ninguna celda— y `tramoPorDefecto()`
+         elige entre ellos. */
       const tramos = SGADD.combinacionesTorneoFase(hojas);
+
+      /* El par del hash gana si existe en ESTE libro. Puede no existir por
+         un link viejo, por un cambio de categoría, o porque la fase
+         heredada del libro anterior no está en este torneo. */
       const par = estado.torneo + '|' + estado.fase;
-      if (tramos.length && !tramos.some(t => t.id === par)) {
+      const delHash = !!estado.torneo && tramos.some(t => t.id === par);
+
+      if (!delHash) {
         const mejor = SGADD.tramoPorDefecto(tramos);
-        if (mejor) { estado.torneo = mejor.torneo; estado.fase = mejor.fase; }
+        if (mejor) {
+          estado.torneo = mejor.torneo;
+          estado.fase = mejor.fase;
+        } else {
+          /* Sin un solo tramo enumerable —un libro sin `PROMEDIOS E`, por
+             ejemplo— se cae al criterio de torneo suelto, que es lo que
+             hacía la app antes de que existieran los tramos. Antes que
+             quedarse sin torneo y no indexar nada. */
+          const torneos = SGADD.torneosDisponibles(hojas);
+          if (!estado.torneo || !torneos.some(t => t.id === estado.torneo)) {
+            estado.torneo = SGADD.torneoPorDefecto(torneos);
+          }
+        }
       }
       reindexar();
     } catch (e) {
