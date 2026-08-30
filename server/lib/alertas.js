@@ -76,15 +76,41 @@ function alertasDeLaLiga(libro, tramo, opciones) {
   const t = tramo || {};
   const hojas = aFormatoIndice((libro && libro.hojas) || {});
 
-  /* Sin fase explícita se usa la primera del libro, que es lo mismo que
-     hace el panel al abrir. Con una fase que el libro no tiene, el índice
-     saldría vacío y no habría alertas — mejor caer a una real. */
+  /* EL TRAMO SE RESUELVE COMO EN EL PANEL, Y ESTO ESTABA MAL DE DOS FORMAS.
+
+     1 · `torneoPorDefecto()` recibía `hojas` donde espera la LISTA de
+     torneos. Con un objeto en vez de un array, `l.length` es `undefined` y
+     la función devolvía siempre `GENERAL` — que NO es un torneo sino el
+     centinela de "no scopear". O sea que las alertas se calculaban sobre
+     un índice SIN SCOPE cada vez que el cliente no mandaba un torneo
+     válido: IDA y VUELTA colapsados, los promedios del segundo pisando a
+     los del primero y cada jugador contado dos veces. Es exactamente el
+     defecto que el punto 3 ter existe para evitar, y no daba ningún
+     síntoma: salían alertas, solo que de una liga que no existe.
+
+     2 · `torneosDisponibles()` NO conoce al torneo sintético `*TOTAL*`,
+     porque no sale de ninguna celda. Desde que el panel abre por el TOTAL,
+     el cliente lo pide en cada carga y acá se rechazaba por inexistente.
+
+     La lista buena es la de TRAMOS —la misma que enumera el selector—, que
+     incluye al sintético y además valida el PAR: un libro puede traer IDA y
+     VUELTA en REGULAR y solo VUELTA en PLAYOFF. */
   const fases = NUCLEO.fasesDisponibles(hojas).map(f => f.id);
   const fase = (t.fase && fases.indexOf(t.fase) !== -1) ? t.fase : (fases[0] || 'REGULAR');
 
-  const torneos = NUCLEO.torneosDisponibles(hojas).map(x => x.id);
-  const torneo = (t.torneo && torneos.indexOf(t.torneo) !== -1)
-    ? t.torneo : NUCLEO.torneoPorDefecto(hojas);
+  const tramos = NUCLEO.combinacionesTorneoFase(hojas);
+  const pedido = t.torneo ? (t.torneo + '|' + fase) : null;
+  let torneo;
+  if (pedido && tramos.some(x => x.id === pedido)) {
+    torneo = t.torneo;
+  } else {
+    /* El mismo criterio que el panel, para que las alertas describan el
+       tramo que el DT tiene delante. Sin un solo tramo enumerable se cae a
+       la lista de torneos sueltos, que es de donde venía. */
+    const mejor = NUCLEO.tramoPorDefecto(tramos.filter(x => x.fase === fase));
+    torneo = mejor ? mejor.torneo
+      : NUCLEO.torneoPorDefecto(NUCLEO.torneosDisponibles(hojas));
+  }
 
   const clave = (o.claveCache || '') + '|' + fase + '|' + torneo;
   const ahora = Date.now();

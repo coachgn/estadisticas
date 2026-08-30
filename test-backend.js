@@ -1405,6 +1405,93 @@ titulo('EL CLIENTE · qué hace con la lista del servidor');
 }
 
 
+titulo('EL TRAMO DE LAS ALERTAS · el servidor mira lo mismo que el panel');
+
+/* Esto existe por dos bugs que convivían y que NINGÚN test veía, porque
+   las alertas SALÍAN: solo que de una liga que no existe.
+
+   1 · `torneoPorDefecto()` recibía `hojas` donde espera la LISTA de
+   torneos, así que devolvía siempre `GENERAL` — que no es un torneo sino
+   el centinela de "no scopear". El índice salía SIN SCOPE: IDA y VUELTA
+   colapsados, los promedios del segundo pisando a los del primero y cada
+   jugador contado dos veces (el defecto del punto 3 ter).
+
+   2 · `torneosDisponibles()` no conoce al sintético `*TOTAL*`, que desde
+   que abre el libro por defecto el cliente pide en CADA carga.
+
+   Medido en producción antes del fix: pidiendo `torneo=*TOTAL*`, el
+   servidor contestaba `tramoAlertas: { torneo: 'GENERAL' }`. */
+{
+  const A2 = require('./server/lib/alertas.js');
+
+  /* Un libro de IDA y VUELTA, que es cuando existe el TOTAL sintético. */
+  const g = (i) => (i < 10 ? '0' + i : i);
+  const bdE2 = [['FECHA', 'PARTIDO', 'EQUIPO', 'FASE', 'TORNEO', 'CONDICION', 'PTS', 'PTSopp']];
+  const bdJ2 = [['FECHA', 'PARTIDO', 'NOMBRES', 'EQUIPO', 'FASE', 'TORNEO', 'MIN', 'PTS']];
+  [['IDA', '05'], ['VUELTA', '08']].forEach(([tor, mes]) => {
+    for (let i = 1; i <= 6; i++) {
+      const fe = g(i) + '/' + mes + '/2026';
+      const pa = 'ATENAS A vs PLATENSE A ' + tor + i;
+      bdE2.push([fe, pa, "ATENAS 'A' - MM", 'REGULAR', tor, 'LOCAL', 80, 70]);
+      bdE2.push([fe, pa, "PLATENSE 'A' - MM", 'REGULAR', tor, 'VISITANTE', 70, 80]);
+      bdJ2.push([fe, pa, 'FIJO, TITULAR', "ATENAS 'A' - MM", 'REGULAR', tor, 30, 15]);
+      /* Jugó toda la IDA y ni un minuto de la VUELTA: la alerta solo se ve
+         mirando el tramo completo. */
+      if (tor === 'IDA') bdJ2.push([fe, pa, 'PARADO, ENLAVUELTA', "ATENAS 'A' - MM", 'REGULAR', tor, 22, 11]);
+    }
+  });
+  const LIBRO2 = { hojas: {
+      'PROMEDIOS E': [['EQUIPO', 'FASE', 'TORNEO', 'PJ'],
+        ["ATENAS 'A' - MM", 'REGULAR', 'IDA', 6], ["PLATENSE 'A' - MM", 'REGULAR', 'IDA', 6],
+        ["ATENAS 'A' - MM", 'REGULAR', 'VUELTA', 6], ["PLATENSE 'A' - MM", 'REGULAR', 'VUELTA', 6]],
+      'PROMEDIOS J': [['NOMBRES', 'EQUIPO', 'FASE', 'TORNEO', 'PJ', 'MIN'],
+        ['FIJO, TITULAR', "ATENAS 'A' - MM", 'REGULAR', 'IDA', 6, 30],
+        ['PARADO, ENLAVUELTA', "ATENAS 'A' - MM", 'REGULAR', 'IDA', 6, 22]],
+      'Base Datos E': bdE2, 'Base Datos J': bdJ2,
+      'ACUMULADO E': [], 'ACUMULADO J': [],
+      'PROMEDIOS 4F': [], 'ACUMULADO 4F': [], '4 FACTORES': [] },
+    hojasTexto: {}, faltantes: [], leidoEn: new Date().toISOString() };
+
+  /* EL SINTÉTICO SE ACEPTA. Antes se rechazaba por "inexistente" y se caía
+     al centinela sin scope. */
+  A2.limpiarCache();
+  const rT = A2.alertasDeLaLiga(LIBRO2, { fase: 'REGULAR', torneo: '*TOTAL*' }, { claveCache: 't1' });
+  check('el servidor acepta el torneo sintético que pide el panel',
+    rT.torneo === '*TOTAL*', rT.torneo);
+
+  /* NUNCA `GENERAL`. Es el centinela de "no scopear", no un torneo: si
+     aparece acá, las alertas describen un índice con los dos torneos
+     colapsados. */
+  A2.limpiarCache();
+  const rNada = A2.alertasDeLaLiga(LIBRO2, {}, { claveCache: 't2' });
+  check('sin tramo pedido NO cae en GENERAL, que colapsaría los torneos',
+    rNada.torneo !== 'GENERAL', rNada.torneo);
+  /* Y elige EL MISMO tramo que abriría el panel, que en este libro —dos
+     torneos en la misma fase— es el TOTAL. Que coincidan es la propiedad:
+     si el servidor calculara las alertas sobre otro recorte, el buzón
+     hablaría de una liga distinta de la que el DT tiene delante. */
+  check('y elige el mismo tramo que abriría el panel',
+    rNada.torneo === '*TOTAL*' && rNada.fase === 'REGULAR',
+    rNada.torneo + '|' + rNada.fase);
+
+  /* Un torneo REAL pedido explícitamente se respeta, como siempre. */
+  A2.limpiarCache();
+  const rIda = A2.alertasDeLaLiga(LIBRO2, { fase: 'REGULAR', torneo: 'IDA' }, { claveCache: 't3' });
+  check('un torneo real pedido se respeta', rIda.torneo === 'IDA', rIda.torneo);
+
+  /* Y uno que NO existe en el libro no se cuela. */
+  A2.limpiarCache();
+  const rMal = A2.alertasDeLaLiga(LIBRO2, { fase: 'REGULAR', torneo: 'CLAUSURA' }, { claveCache: 't4' });
+  check('un torneo inexistente cae a uno real, no al centinela',
+    rMal.torneo !== 'CLAUSURA' && rMal.torneo !== 'GENERAL', rMal.torneo);
+
+  /* LO QUE EL SCOPE COMPRA: mirando el TOTAL se ve al que jugó la Ida
+     entera y desapareció en la Vuelta. */
+  check('en el TOTAL se detecta al que dejó de jugar en la Vuelta',
+    rT.alertas.some(a => /PARADO, ENLAVUELTA/.test(a.nombre)),
+    JSON.stringify(rT.alertas.map(a => a.nombre)));
+}
+
 titulo('EL TOKEN DE SOLO LECTURA · el servidor lee, el CLI escribe');
 
 /* Vercel no tiene por qué poder escribir el catálogo: lo único que hace

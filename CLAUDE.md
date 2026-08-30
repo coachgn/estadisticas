@@ -33,7 +33,7 @@ node test-estados.js       # 181 tests · estados de jugador, alertas, buzon, sy
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
 node test-permisos.js      # 153 tests · roles, planes y el gate de interfaz
 
-node test-backend.js       # 329 tests · el proxy, el benchmark, las alertas, el catálogo en KV
+node test-backend.js       # 335 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
 
 # OJO: `test-backend.js` ESTÁ EN MAIN desde que se integró el backend.
@@ -43,7 +43,7 @@ node test-backend.js       # 329 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**2613 tests en total. Todos tienen que dar verde antes de commitear.**
+**2619 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -4590,6 +4590,46 @@ que las confunda cree que publicó algo que no publicó.
 El borrador del torneo es **independiente** del de zonas: son dos bloques
 distintos del JSON y mezclarlos obligaría a commitear los dos para publicar
 uno.
+
+---
+
+## 18 ter. El tramo de las ALERTAS del servidor
+
+El proxy calcula las alertas de toda la liga (punto 13) y para eso arma su
+propio índice. **Tiene que mirar el mismo tramo que el panel**: si calcula
+sobre otro recorte, el buzón habla de una liga distinta de la que el DT
+tiene delante.
+
+Estaba mal de dos formas a la vez, y ningún test lo veía porque **las
+alertas salían** — solo que de una liga que no existe:
+
+1. **`torneoPorDefecto()` recibía `hojas` donde espera la LISTA de
+   torneos.** Con un objeto en vez de un array, `l.length` es `undefined` y
+   la función devolvía siempre `GENERAL`, que **no es un torneo sino el
+   centinela de "no scopear"**. O sea que el índice salía sin scope: IDA y
+   VUELTA colapsados, los promedios del segundo pisando a los del primero y
+   cada jugador contado dos veces — el defecto del punto 3 ter, adentro del
+   servidor.
+2. **`torneosDisponibles()` no conoce al sintético `*TOTAL*`**, porque no
+   sale de ninguna celda. Desde que el panel abre por el TOTAL, el cliente
+   lo pide en cada carga y acá se rechazaba por inexistente — que es lo que
+   destapaba el bug 1 en todas las cargas.
+
+Medido en producción antes del fix:
+
+```
+pedí torneo=*TOTAL*   →  el servidor calculó en GENERAL   (38 alertas)
+pedí torneo=IDA       →  IDA                              (31)
+pedí torneo=VUELTA    →  VUELTA                           ( 0)
+```
+
+La lista buena es la de **TRAMOS** (`combinacionesTorneoFase`), la misma
+que enumera el selector: incluye al sintético y además valida el PAR, que
+un libro puede traer IDA y VUELTA en REGULAR y solo VUELTA en PLAYOFF.
+
+**`GENERAL` no puede aparecer nunca como resultado de un respaldo.** Hay un
+test que lo fija: es un centinela, y verlo ahí significa que las alertas
+describen un índice colapsado.
 
 ---
 
