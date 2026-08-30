@@ -22,16 +22,16 @@ node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 311 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
-node test-boot.js          # 156 tests · arranque por club, sintaxis de los módulos, carteles de espera
+node test-boot.js          # 157 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 253 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  54 tests · detalle partido a partido, perfil de tiro y su PDF
 node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
-node test-estados.js       # 181 tests · estados de jugador, alertas, buzon, sync grafico-tabla
+node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
-node test-permisos.js      # 153 tests · roles, planes y el gate de interfaz
+node test-permisos.js      # 173 tests · roles, planes, el gate de interfaz y el selector de cliente
 
 node test-backend.js       # 335 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -43,7 +43,7 @@ node test-backend.js       # 335 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**2619 tests en total. Todos tienen que dar verde antes de commitear.**
+**2641 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -145,7 +145,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=145`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=146`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 

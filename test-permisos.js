@@ -383,6 +383,93 @@ check('y explica por qué: sitio estático, GViz anónimo, sheetId público',
 check('y aclara que los rankings de liga NO se filtran',
   /NO se usa en los rankings/.test(src));
 
+titulo('EL SELECTOR DE CLIENTE · solo admin, y la lista sale del catálogo');
+
+/* Con tres clubes se cambiaba de cliente editando el `?club=` a mano. Con
+   cincuenta eso no es incómodo: es el gesto donde uno se equivoca y
+   termina mirando los datos del cliente que no era, sin ningún síntoma. */
+{
+  const CLI = require('./js/sgadd-clientes.js');
+
+  /* SOLO ADMIN. A un CLIENTE una lista de clubes le sugiere un acceso que
+     no tiene, y como esto NO es seguridad (punto 19), mostrársela sería
+     mentirle sobre qué lo separa de esos datos. */
+  check('el admin lo ve', CLI.seMuestra('ADMIN', [{}, {}], true));
+  check('el cliente NO', !CLI.seMuestra('CLIENTE', [{}, {}], true));
+  check('y una sesión abierta tampoco', !CLI.seMuestra('ABIERTO', [{}, {}], true));
+
+  /* Sin backend no hay catálogo que pedir, y un desplegable vacío es peor
+     que ninguno. */
+  check('sin backend no se dibuja', !CLI.seMuestra('ADMIN', [{}, {}], false));
+  check('sin lista tampoco', !CLI.seMuestra('ADMIN', null, true));
+
+  /* Con UN club el control no lleva a ningún lado: solo gasta lugar en el
+     header. Misma regla por la que el TOTAL no se ofrece con un torneo. */
+  check('con un solo club no se dibuja', !CLI.seMuestra('ADMIN', [{}], true));
+
+  /* EL TOKEN NO VIAJA EN LA URL. Vive en sessionStorage, que sobrevive a
+     una recarga en la misma pestaña; volver a ponerlo en el query string
+     solo lo dejaría otra vez en el historial y en los logs de cualquier
+     proxy — justo de donde `sacarTokenDeLaUrl()` lo saca al leerlo. */
+  const u = CLI.urlDeClub('jujuy', '?club=deportivo&access_token=SECRETO');
+  check('el switch NO arrastra el token', u.indexOf('SECRETO') === -1 &&
+    u.indexOf('access_token') === -1, u);
+  check('y sí lleva el club nuevo', /(^|[?&])club=jujuy($|&)/.test(u), u);
+
+  /* `?api=` SÍ se conserva: es lo que permite probar contra un servidor
+     local, y perderlo mandaría la prueba a producción sin avisar. */
+  check('conserva ?api= para poder probar contra un servidor local',
+    CLI.urlDeClub('x', '?api=http://localhost:3000').indexOf('api=') !== -1);
+
+  /* EL HASH SE DESCARTA. Lleva planilla, tramo y entidad, y nada de eso
+     existe en el club nuevo: la planilla es de otro libro. Arrastrarlo
+     abriría una ficha que no está. */
+  check('no arrastra la ruta del club anterior', CLI.urlDeClub('x', '').indexOf('#') === -1);
+
+  /* LOS INACTIVOS SE LISTAN IGUAL, marcados. El admin tiene que ver que el
+     club existe y que le falta el libro, en vez de no encontrarlo y no
+     saber si está mal dado de alta o si directamente no está. Es la misma
+     decisión del selector de categorías (punto 6). */
+  const ops = CLI.opciones([
+    { id: 'zeta', nombre: 'Zeta', categorias: [{ activo: false }] },
+    { id: 'alfa', nombre: 'Alfa', categorias: [{ activo: true }, { activo: false }] },
+  ], 'alfa');
+  check('el inactivo entra a la lista', ops.length === 2);
+  check('y dice que no tiene datos', /sin datos/.test(ops.find(o => o.id === 'zeta').etiqueta));
+  check('el activo cuenta sus categorías CON libro',
+    /1 categoría/.test(ops.find(o => o.id === 'alfa').etiqueta),
+    ops.find(o => o.id === 'alfa').etiqueta);
+  check('se ordena alfabético, no por orden del catálogo', ops[0].id === 'alfa');
+  check('y marca cuál es el que se está mirando',
+    ops.find(o => o.id === 'alfa').actual && !ops.find(o => o.id === 'zeta').actual);
+
+  /* LA LISTA SALE DEL CATÁLOGO Y DE NINGÚN OTRO LADO. El proyecto no tiene
+     un listado de clubes —`?club=<id>` resuelve por convención (punto 6)—
+     y hardcodear uno acá sería la segunda fuente de verdad de siempre, en
+     el lugar donde más se nota: el club nuevo sería justo el que falta. */
+  const fuente = fs.readFileSync('./js/sgadd-clientes.js', 'utf8');
+  check('no hay una lista de clubes hardcodeada',
+    !/(deportivo|reconquista|jujuy)/i.test(fuente));
+  check('la lista se pide al catálogo', /SGADD_DATA\.catalogo\(\)/.test(fuente));
+
+  /* CAMBIAR DE CLUB RECARGA, no repinta: hay que limpiar LOGOS, el caché
+     de hojas y los tres tokens de color, y ese camino ya existe y está
+     probado. Reproducir la limpieza acá sería una segunda implementación
+     de las que se olvidan un paso. */
+  check('el cambio de cliente recarga la página',
+    /window\.location\.href = urlDeClub/.test(fuente));
+  /* Se miran las LLAMADAS, no el texto: el módulo nombra `LOGOS.reset()`
+     en un comentario justamente para explicar por qué NO lo llama, y un
+     grep crudo lo daría por incumplido. */
+  const sinComentarios = fuente.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  check('y no intenta limpiar el estado por su cuenta',
+    !/LOGOS\.reset\s*\(|limpiarCache\s*\(/.test(sinComentarios));
+
+  /* Y DICE QUE NO ES SEGURIDAD, como todo el módulo de permisos. */
+  check('el módulo declara que NO es un control de acceso',
+    /NO ES UN CONTROL DE ACCESO/.test(fuente));
+}
+
 console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +
   '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

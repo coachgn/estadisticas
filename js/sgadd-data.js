@@ -264,10 +264,48 @@ const SGADD_DATA = (function () {
     throw e;
   }
 
+  /* --------------------------------------------------------------------
+     EL CATÁLOGO DE CLUBES
+
+     Lo consume el selector de cliente del admin. Es la ÚNICA fuente de la
+     lista: el proyecto no tiene un listado de clubes en ninguna parte
+     —`?club=<id>` resuelve `clubes/<id>.json` por convención (punto 6)— y
+     hardcodear uno acá sería la segunda fuente de verdad de siempre, la
+     que se desincroniza el día que se da de alta un cliente.
+
+     NUNCA LANZA: sin backend, sin token o con la red caída devuelve
+     `null` y el selector simplemente no se dibuja. Es la misma regla que
+     el resto del proyecto — un control que no se puede poblar es peor que
+     no tenerlo.
+     -------------------------------------------------------------------- */
+  let _catalogo = null;
+
+  function catalogo(opciones) {
+    const o = opciones || {};
+    if (_catalogo && !o.forzar) return _catalogo;
+    if (!baseApi || !(auth && auth.token())) return Promise.resolve(null);
+
+    const traer = o.fetch || ((typeof fetch !== 'undefined') ? fetch : null);
+    if (!traer) return Promise.resolve(null);
+
+    _catalogo = traer(baseApi + '/api/v1/catalogo', {
+      headers: { Authorization: 'Bearer ' + auth.token() },
+    }).then(async (r) => {
+      const cuerpo = await r.json().catch(() => null);
+      if (!r.ok || !cuerpo || !cuerpo.ok) return null;
+      return cuerpo;
+    }).catch(() => null);
+
+    /* Un fallo NO se cachea: el selector se puede volver a pedir cuando la
+       red vuelva, igual que hace `cargarCategoria` con las hojas. */
+    _catalogo = _catalogo.then((v) => { if (!v) _catalogo = null; return v; });
+    return _catalogo;
+  }
+
   return {
     configurar, apiConfigurada, origen, base: () => baseApi,
     matrizAFilas, matrizALegacy, tipoDeColumna,
-    cargarCategoria, cargarDelBackend, limpiarCache,
+    cargarCategoria, cargarDelBackend, limpiarCache, catalogo,
   };
 })();
 

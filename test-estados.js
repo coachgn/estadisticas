@@ -632,7 +632,13 @@ check('el slot del buzón está en el header, al lado del banner de estado',
    flotando en el MEDIO de la barra en vez de anclada a la derecha. El buzón
    va último dentro del grupo, o sea pegado al borde. */
 check('van agrupados y anclados al extremo derecho, no repartidos por el flex',
-  /<div class="flex items-center gap-3 shrink-0 ml-auto">[\s\S]{0,200}id="buzonSlot"/.test(indexHtml));
+  /<div class="flex items-center gap-3 shrink-0 ml-auto">[\s\S]{0,900}id="buzonSlot"/.test(indexHtml));
+/* Y EL ORDEN DENTRO DEL GRUPO. El selector de CLIENTE va primero: es el
+   contexto más amplio de la pantalla —de qué club son todos los demás
+   datos— así que se lee antes que el estado y que las alertas, que hablan
+   de ESE club. El buzón queda último, pegado al borde. */
+check('el selector de cliente va antes del estado y del buzón',
+  /id="clientesSlot"[\s\S]{0,400}id="status-banner-holder"[\s\S]{0,400}id="buzonSlot"/.test(indexHtml));
 check('y NO en la barra de sección, que Principal no pinta',
   !/buzonSlot/.test(fs.readFileSync('./js/sgadd-app.js', 'utf8')));
 /* El arranque del índice tiene que colgar de `init()`, NO de `refreshData()`:

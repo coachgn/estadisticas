@@ -159,6 +159,44 @@
      clases para nodos dinámicos, así que `w-10 h-10` no se aplicaba y el
      botón quedaba del ancho del emoji (21px). Mismo motivo que .mm-pos y
      .fila-inicial. */
+  /* EL SELECTOR DE CLIENTE del admin. Va a mano y no con utilidades de
+     Tailwind porque lo inyecta un nodo dinamico: el scan es ESTATICO y
+     solo ve lo que esta literal en el fuente, asi que una clase armada al
+     vuelo no se genera (punto 5 bis). Es la misma razon por la que
+     `.buzon-boton` esta aca abajo.
+
+     El ancho maximo lo acota a proposito: los nombres de club son largos
+     y sin tope el desplegable empuja al buzon fuera del header en
+     pantallas medianas. */
+  .sel-cliente {
+    background: #1b1b1b;
+    color: var(--acento-texto, #f5f4f2);
+    border: 1px solid #333;
+    border-radius: .5rem;
+    padding: .35rem 1.6rem .35rem .6rem;
+    font-size: 12px;
+    font-family: inherit;
+    max-width: 15rem;
+    cursor: pointer;
+    /* La flecha propia: la nativa cambia de forma y de color en cada
+       sistema y sobre el header oscuro a veces no se ve. */
+    appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath fill='%23a3a3a3' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right .55rem center;
+    background-size: .6rem;
+  }
+  .sel-cliente:hover { border-color: #4a4a4a; }
+  /* `:focus-visible` y no `:focus`: el anillo aparece al navegar con
+     teclado y no en cada clic del mouse (punto 14). */
+  .sel-cliente:focus-visible {
+    outline: 2px solid var(--acento-texto, #f5f4f2);
+    outline-offset: 2px;
+  }
+  .sel-cliente option { background: #1b1b1b; color: #f5f4f2; }
+  .sel-cliente option:disabled { color: #8a8a8a; }
+  @media screen and (max-width: 640px) { .sel-cliente { max-width: 8.5rem; } }
+
   .buzon-boton {
     position: relative; display: grid; place-items: center;
     width: 40px; height: 40px; flex-shrink: 0;
@@ -1613,7 +1651,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=145" />
+<link rel="stylesheet" href="sgadd.css?v=146" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -1732,6 +1770,11 @@
                quedaba flotando en el medio del header en vez de anclada a la
                derecha. El buzón va último, o sea pegado al borde. -->
           <div class="flex items-center gap-3 shrink-0 ml-auto">
+            <!-- El selector de CLIENTE va primero: es el contexto mas
+                 amplio de la pantalla —de que club son todos los demas
+                 datos— asi que se lee antes que el estado y las alertas,
+                 que hablan de ESE club. Solo se dibuja para el admin. -->
+            <div id="clientesSlot" class="shrink-0"></div>
             <div id="status-banner-holder" class="shrink-0"></div>
             <div id="buzonSlot" class="shrink-0"></div>
           </div>
@@ -1753,31 +1796,32 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=145"></script>
+<script src="js/sgadd-club.js?v=146"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=145"></script>
-<script src="js/sgadd-core.js?v=145"></script>
-<script src="js/sgadd-auth.js?v=145"></script>
-<script src="js/sgadd-data.js?v=145"></script>
-<script src="js/sgadd-ui.js?v=145"></script>
-<script src="js/sgadd-app.js?v=145"></script>
-<script src="js/sgadd-clasificacion.js?v=145"></script>
+<script src="js/sgadd-config.js?v=146"></script>
+<script src="js/sgadd-core.js?v=146"></script>
+<script src="js/sgadd-auth.js?v=146"></script>
+<script src="js/sgadd-data.js?v=146"></script>
+<script src="js/sgadd-clientes.js?v=146"></script>
+<script src="js/sgadd-ui.js?v=146"></script>
+<script src="js/sgadd-app.js?v=146"></script>
+<script src="js/sgadd-clasificacion.js?v=146"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-configui.js?v=145"></script>
-<script src="js/sgadd-estados.js?v=145"></script>
-<script src="js/sgadd-buzon.js?v=145"></script>
-<script src="js/sgadd-charts.js?v=145"></script>
-<script src="js/sgadd-personalidad.js?v=145"></script>
-<script src="js/sgadd-rankings.js?v=145"></script>
-<script src="js/sgadd-partido.js?v=145"></script>
-<script src="js/sgadd-informe.js?v=145"></script>
-<script src="js/sgadd-ficha.js?v=145"></script>
-<script src="js/sgadd-equipos.js?v=145"></script>
-<script src="js/sgadd-jugadores.js?v=145"></script>
-<script src="js/sgadd-4factores.js?v=145"></script>
-<script src="js/sgadd-scouting.js?v=145"></script>
-<script src="js/sgadd-diagnostico.js?v=145"></script>
+<script src="js/sgadd-configui.js?v=146"></script>
+<script src="js/sgadd-estados.js?v=146"></script>
+<script src="js/sgadd-buzon.js?v=146"></script>
+<script src="js/sgadd-charts.js?v=146"></script>
+<script src="js/sgadd-personalidad.js?v=146"></script>
+<script src="js/sgadd-rankings.js?v=146"></script>
+<script src="js/sgadd-partido.js?v=146"></script>
+<script src="js/sgadd-informe.js?v=146"></script>
+<script src="js/sgadd-ficha.js?v=146"></script>
+<script src="js/sgadd-equipos.js?v=146"></script>
+<script src="js/sgadd-jugadores.js?v=146"></script>
+<script src="js/sgadd-4factores.js?v=146"></script>
+<script src="js/sgadd-scouting.js?v=146"></script>
+<script src="js/sgadd-diagnostico.js?v=146"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -3859,6 +3903,12 @@ async function init() {
 
   SGADD_AUTH.cargarSesion();
   aplicarPermisosNav();
+
+  /* El selector de cliente se pide SIN await: es una comodidad de
+     navegación del admin y esperarlo demoraría el primer pintado por un
+     control que no hace falta para leer los datos. Aparece un instante
+     después, que es exactamente lo que hace el buzón. */
+  if (typeof SGADD_CLIENTES !== 'undefined') SGADD_CLIENTES.iniciar();
 
   // Primero el club: define de QUE planilla se bajan los datos.
   await resolverClubYPlanilla();
