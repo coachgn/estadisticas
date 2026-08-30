@@ -5,80 +5,109 @@
   "bajada": "Basquet · Scouting",
   "//escudo": "OJO con la extension: el archivo es .webp. Decia .png y era un 404, asi que el isotipo del header nunca se mostraba — el <img> estaba bien puesto, lo que faltaba era la imagen.",
   "escudo": "logos/la-plata/deportivo-la-plata.webp",
-
   "//acento": "El azul del escudo, RE-MUESTREADO del .webp oficial en 2026-08-26: agrupando por bloques sobre los 37.761 pixeles opacos, #33348a cubre el 43,1% de la superficie (el blanco es el 26,7%). Antes decia #09086E, bastante mas oscuro que el logo real. El JSON guarda el color de MARCA, no el que se pinta: aclararHastaLegible() y oscurecerHastaLegible() derivan las variantes que se leen en cada superficie.",
   "acento": "#33348a",
   "acentoOscuro": "#252560",
-
   "liga": "la-plata",
-
   "//patronEquipoPropio": "DEPORTIVO LA PLATA completo, NO 'DEPORTIVO' a secas: en este mismo libro juega DEPORTIVO SAN VICENTE y el patron corto matchearia los dos, con lo cual el panel trataria al rival como equipo propio en scouting, informes y planteles.",
   "patronEquipoPropio": "DEPORTIVO LA PLATA",
-
   "//sufijosEquipo": "Misma convencion que el resto de La Plata: el sufijo de categoria (- MM, - U21M) se descarta porque no distingue clubes.",
-  "sufijosEquipo": ["\\s*-\\s*(MM|MF|U\\d{1,2}\\s*[MF]?)\\s*$"],
-
+  "sufijosEquipo": [
+    "\\s*-\\s*(MM|MF|U\\d{1,2}\\s*[MF]?)\\s*$"
+  ],
   "//aliasLogos": "Solo para lo que el matching automatico no encuentre. Clave = nombre normalizado de la planilla.",
   "aliasLogos": {},
-
   "anio": 2026,
   "torneo": "TORNEO LOCAL",
   "credito": "SGADD",
-
   "//preconfiguracion": "PRECONFIGURACION. Lo que el cliente declaro en la entrevista, ANTES de que entraran los box scores. No es una segunda fuente de verdad: es una hipotesis fechada contra la cual contrastar, y el dato manda siempre. Las claves de categoria y de tramo son LIBRES: no hay nombres asumidos en ningun lado.",
   "preconfiguracion": {
     "cliente": "Deportivo La Plata",
     "declaradoEl": "2026-08-26",
     "declaradoPor": "Entrevista inicial",
-
     "//categorias": "Mapa indexado por el id que use el cliente. `planilla` lo ata a una planilla del catalogo; si se omite, se usa el propio id.",
     "categorias": {
       "primera-2026": {
         "label": "Primera 2026",
         "planilla": "deportivo-primera-2026",
-
         "//tramos": "El id y el label son del cliente. `clave` es el VINCULO con el libro (TORNEO|FASE, la clave que produce combinacionesTorneoFase) y se declara a mano: emparejar por parecido de nombre certificaria el tramo equivocado sin que nadie lo note.",
         "tramos": [
-          { "id": "ida",    "label": "Ida",    "clave": "IDA|REGULAR",    "equiposEsperados": 12, "fechasEsperadas": 11,
+          {
+            "id": "ida",
+            "label": "Ida",
+            "clave": "IDA|REGULAR",
+            "equiposEsperados": 12,
+            "fechasEsperadas": 11,
             "//ventana": "Rango REAL del libro, no inventado: el primer partido de IDA es del 07/05 y el ultimo del 16/07. Las puntas se abren unos dias para que una reprogramacion no dispare un desvio.",
-            "ventanaTemporal": { "desde": "2026-05-01", "hasta": "2026-07-25" } },
-          { "id": "vuelta", "label": "Vuelta", "clave": "VUELTA|REGULAR", "equiposEsperados": 12, "fechasEsperadas": 11,
-            "ventanaTemporal": { "desde": "2026-08-01", "hasta": "2026-11-30" } }
+            "ventanaTemporal": {
+              "desde": "2026-05-01",
+              "hasta": "2026-07-25"
+            }
+          },
+          {
+            "id": "vuelta",
+            "label": "Vuelta",
+            "clave": "VUELTA|REGULAR",
+            "equiposEsperados": 12,
+            "fechasEsperadas": 11,
+            "ventanaTemporal": {
+              "desde": "2026-08-01",
+              "hasta": "2026-11-30"
+            }
+          }
         ],
-
         "//certificacion": "Lo escribe el sistema desde el Diagnostico, no la entrevista. Se guarda ACA y no en localStorage: certificar es un hito administrativo que el resto del cuerpo tecnico tiene que ver, y el historial de git es la trazabilidad que pide una auditoria.",
         "certificacion": {
           "//ida": "Sellado el 2026-08-26 con 64 partidos. OJO: el tramo declara 11 fechas, o sea 66, asi que el sello congelo un libro INCOMPLETO. Cuando entren los 2 que faltan el semaforo va a pasar a DIVERGENTE avisando que el libro cambio despues del sello — y va a tener razon.",
-          "ida": { "fecha": "2026-08-26", "equipos": 12, "partidos": 64, "hash": "3bb12777" }
+          "ida": {
+            "fecha": "2026-08-26",
+            "equipos": 12,
+            "partidos": 64,
+            "hash": "3bb12777"
+          }
         }
       }
     }
   },
-
   "//competencia": "OPCIONAL. Declara REGLAS, no estructura: cuantos equipos hay y que tramos existen ya lo dice el libro (ver punto 3 ter). equiposEsperados es una ASERCION: no manda sobre el dato, solo hace que un descuadre salga a los gritos en el Diagnostico.",
   "competencia": {
-    "ordenTabla": ["PCT", "DIF", "PF"],
-
-    "//formatos": "Las zonas son una CASCADA: gana la primera que calza, asi que van de la mas especifica a la mas general. Campeon 1-1 vive adentro de Playoffs 1-8 y por eso va antes. desde negativo cuenta desde el fondo: -2 son los dos ultimos, y se corre solo si la categoria tiene otra cantidad de equipos.",
+    "ordenTabla": [
+      "PCT",
+      "DIF",
+      "PF"
+    ],
     "formatos": {
       "regular-12": {
         "label": "Regular · 12 equipos",
         "equiposEsperados": 12,
         "zonas": [
-          { "id": "campeon",   "desde":  1, "hasta":  1, "label": "Campeón",         "tono": "exito"    },
-          { "id": "playoffs",  "desde":  1, "hasta":  8, "label": "Playoffs",        "tono": "positivo" },
-          { "id": "repechaje", "desde":  9, "hasta": 10, "label": "Reclasificación", "tono": "aviso"    },
-          { "id": "descenso",  "desde": -2,              "label": "Descenso",        "tono": "peligro"  }
+          {
+            "id": "campeon",
+            "desde": 1,
+            "hasta": 2,
+            "label": "Ascenso Zona A",
+            "tono": "exito"
+          },
+          {
+            "id": "repechaje",
+            "desde": 3,
+            "hasta": 4,
+            "label": "Repechaje Zona A",
+            "tono": "aviso"
+          },
+          {
+            "id": "descenso",
+            "desde": -2,
+            "label": "Descenso",
+            "tono": "peligro"
+          }
         ]
       }
     },
-
-    "//porTramo": "La clave es TORNEO|FASE, la misma que produce combinacionesTorneoFase(). '*' es el comodin. Un null EXPLICITO apaga las zonas de ese tramo y le gana al comodin: en playoffs no hay tabla que pintar.",
     "porTramo": {
       "*": "regular-12"
     }
   },
-
   "planillas": [
     {
       "id": "deportivo-primera-2026",

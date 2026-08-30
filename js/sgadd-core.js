@@ -1647,8 +1647,33 @@
        en su v37.
        ===================================================================== */
     if (total) {
-      /* Las filas de jugador-partido, agrupadas por equipo. Es la materia
-         prima para rearmar los planteles sin pasar por PROMEDIOS J. */
+      /* DE DÓNDE SALEN LOS PLANTELES DEL TOTAL.
+
+         `PROMEDIOS J` no sirve: cada jugador tiene una fila POR TORNEO y
+         las del segundo pisan a las del primero (mismo defecto que en los
+         equipos). Hay que sumar y volver a dividir.
+
+         La fuente PRIMARIA es `ACUMULADO J`, y no `Base Datos J`, por dos
+         motivos. El bueno: un acumulado por torneo es exactamente lo que
+         el TOTAL necesita —los totales SUMAN— y no hace falta recorrer
+         partido por partido para reconstruirlos.
+
+         El que costó una regresión: `Base Datos J` es la ÚNICA hoja que el
+         backend recorta al plantel propio, porque es la que sostiene las
+         fichas profundas de un rival (el gate del punto 19). Mientras el
+         TOTAL no era el default eso no se veía; al ponerlo por defecto, un
+         cliente entraba al panel y la liga entera se le reducía a su propio
+         plantel — medido en producción: 18 jugadores de 1 equipo contra los
+         218 de 12 que muestra `IDA`.
+
+         `ACUMULADO J` viaja COMPLETA para todos los planes: son totales de
+         temporada, la misma información agregada que ya publican la tabla
+         de posiciones y los rankings. Lo que sigue bloqueado es el detalle
+         partido a partido del rival, que es lo que el plan cobra.
+
+         `Base Datos J` queda de RESPALDO para el libro que no traiga el
+         acumulado. Ahí un cliente ve solo su plantel, pero es degradar,
+         no romper — y el Diagnóstico ya denuncia la hoja faltante. */
       const filasJugadorPartido = new Map();
       const hbjT = hojas['Base Datos J'];
       if (hbjT) {
@@ -1659,6 +1684,28 @@
           if (!k) return;
           if (!filasJugadorPartido.has(k)) filasJugadorPartido.set(k, []);
           filasJugadorPartido.get(k).push(fila);
+        });
+      }
+
+      /* El acumulado por torneo, agrupado por equipo. Una fila por jugador
+         y por torneo, con su PJ adentro.
+
+         La fila `JUGADOR TIPO` se descarta: es la mediana del libro para UN
+         torneo suelto, así que sumarla no da la mediana del conjunto — y
+         además entraría al plantel como si fuera una persona. La del TOTAL
+         se recalcula más abajo sobre los valores ya derivados. */
+      const filasAcumuladoJugador = new Map();
+      const hajT = hojas['ACUMULADO J'];
+      if (hajT) {
+        const idTipoJ = ESQUEMA['ACUMULADO J'].filaTipo;
+        hajT.filas.forEach(fila => {
+          if (esFilaTipo(fila, idTipoJ)) return;
+          const faseFila = texto(fila['FASE']).toUpperCase();
+          if (faseFila && faseFila !== fase) return;
+          const k = claveEquipo(fila['EQUIPO']);
+          if (!k) return;
+          if (!filasAcumuladoJugador.has(k)) filasAcumuladoJugador.set(k, []);
+          filasAcumuladoJugador.get(k).push(fila);
         });
       }
 
@@ -1689,17 +1736,20 @@
         Object.keys(f4).forEach(k => { if (f4[k] === null) delete f4[k]; });
         e.factores = f4;
 
-        /* JUGADORES. Cada uno tiene una fila POR TORNEO en PROMEDIOS J,
-           así que en el TOTAL se rearman desde sus propios partidos. La
-           clave es NOMBRE + EQUIPO, la misma del resto del proyecto: con
-           el nombre solo, dos homónimos de equipos distintos se fusionan. */
+        /* JUGADORES. Cada uno tiene una fila POR TORNEO, así que en el
+           TOTAL se suman y se vuelve a dividir. La clave es NOMBRE +
+           EQUIPO, la misma del resto del proyecto: con el nombre solo, dos
+           homónimos de equipos distintos se fusionan. */
         const porJugador = new Map();
         e.jugadores = [];
-        /* Se lee `Base Datos J` DIRECTO y no `liga.jugadorPartidos`: ese
-           índice se arma más abajo, y el umbral de minutos y los
-           calificados lo necesitan armado antes. Misma fuente, más
-           temprano. */
-        (filasJugadorPartido.get(e.clave) || []).forEach(fila => {
+
+        /* Del acumulado, cada fila ya trae UN torneo entero y su PJ. Del
+           respaldo por partidos, cada fila es UNA noche y el PJ es la
+           cantidad de filas. Por eso el PJ se lleva aparte y no se deriva
+           de `filas.length`: con el acumulado eso daría 2 (los torneos). */
+        const acumT = filasAcumuladoJugador.get(e.clave);
+        const deAcumulado = !!(acumT && acumT.length);
+        (deAcumulado ? acumT : (filasJugadorPartido.get(e.clave) || [])).forEach(fila => {
           const k = clavePersona(fila['NOMBRES']);
           if (!k) return;
           if (!porJugador.has(k)) porJugador.set(k, { nombre: fila['NOMBRES'], filas: [] });
@@ -1714,9 +1764,15 @@
               if (nv !== null) sum[c] = (sum[c] || 0) + nv;
             });
           });
-          const pjJ = v.filas.length;
+          const pjJ = deAcumulado ? (sum['PJ'] || 0) : v.filas.length;
+          if (!pjJ) return;   // un acumulado en cero no describe a nadie
           const d = { NOMBRES: v.nombre, EQUIPO: e.nombre, FASE: fase, PJ: pjJ };
-          Object.keys(sum).forEach(c => { d[c] = sum[c] / pjJ; });
+          /* `PJ` NO se promedia: es el denominador. Con el respaldo por
+             partidos la columna no existe y esto no hacía falta; con el
+             acumulado sí existe, y dividirla por sí misma dejaba a TODOS
+             los jugadores con PJ = 1 — o sea sin muestra, con el umbral de
+             3 partidos apagado y cada promedio leyéndose como una noche. */
+          Object.keys(sum).forEach(c => { if (c !== 'PJ') d[c] = sum[c] / pjJ; });
           /* Las mismas tasas del equipo valen para el jugador donde el
              denominador es suyo. Las que dependen del rival NO: un
              jugador no tiene rival propio. */

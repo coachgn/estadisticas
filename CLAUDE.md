@@ -16,11 +16,11 @@ aplicadas en el punto 14.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 278 tests · núcleo, índice, validador
+node test-core.js          # 288 tests · núcleo, índice, validador
 node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
-node test-config.js        # 307 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
+node test-config.js        # 311 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
 node test-boot.js          # 156 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 253 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
@@ -37,7 +37,7 @@ node test-permisos.js      # 153 tests · roles, planes y el gate de interfaz
 node test-backend.js       # 319 tests · el proxy, el benchmark, las alertas y el catálogo en KV
 ```
 
-**2589 tests en total. Todos tienen que dar verde antes de commitear.**
+**2603 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -139,7 +139,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=144`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=145`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -594,6 +594,52 @@ nada.
 El torneo sintético es `*TOTAL*`. El centinela lleva asteriscos **a
 propósito**: los nombres de torneo salen de una celda y ninguno real puede
 tenerlos, así que no colisiona. Viaja en la ruta sin encodearse.
+
+#### LOS PLANTELES DEL TOTAL SALEN DE `ACUMULADO J`
+
+Los equipos se rearman desde `Base Datos E`, pero los **jugadores** no
+salen de `Base Datos J` sino del acumulado. Dos motivos.
+
+El bueno: un acumulado **por torneo es exactamente lo que el TOTAL
+necesita** —los totales SUMAN— y no hace falta recorrer partido por
+partido para reconstruirlos.
+
+El que costó una regresión: **`Base Datos J` es la ÚNICA hoja que el
+backend recorta** al plantel propio, porque es la que sostiene la ficha
+profunda de un rival (el gate del punto 19). Mientras el TOTAL no era el
+default eso no se veía; al ponerlo por defecto, un cliente entraba al
+panel y **la liga entera se le reducía a su propio plantel**. Medido en
+producción con un token de cliente:
+
+```
+IDA|REGULAR      →  208 jugadores · 12 equipos
+*TOTAL*|REGULAR  →   18 jugadores ·  1 equipo   ←
+```
+
+Y el modo de fallar era el peor: 18 jugadores en el plantel propio se lee
+como una vista filtrada a propósito, no como datos que faltan.
+
+`ACUMULADO J` viaja **completa para todos los planes**: son totales de
+temporada, la misma información agregada que ya publican la tabla de
+posiciones y los rankings. Lo que sigue bloqueado es el detalle partido a
+partido del rival, que es lo que el plan cobra.
+
+Dos cosas que hay que respetar al tocarlo:
+
+- **`PJ` no se promedia: es el denominador.** Con el respaldo por partidos
+  la columna no existe y esto no hacía falta; con el acumulado sí existe, y
+  dividirla por sí misma dejaba a todos con `PJ = 1` — o sea sin muestra,
+  con el umbral de 3 partidos apagado y cada promedio leyéndose como una
+  noche suelta. Por lo mismo el PJ se **suma** en vez de contar filas: con
+  el acumulado hay una fila por torneo, así que contar daría 2.
+- **La fila `JUGADOR TIPO` se descarta.** Es la mediana de UN torneo
+  suelto, así que sumarla no da la mediana del conjunto — y encima entraría
+  al plantel como si fuera una persona. La del TOTAL se recalcula sobre los
+  valores ya derivados.
+
+`Base Datos J` queda de **respaldo** para el libro que no traiga el
+acumulado. Ahí un cliente ve solo su plantel, pero es degradar y no romper,
+y el Diagnóstico ya denuncia la hoja faltante.
 
 #### Y es el que ABRE el libro · esto estuvo al revés
 

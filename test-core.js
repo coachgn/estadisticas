@@ -1217,6 +1217,109 @@ check('el centinela no colisiona con un torneo real',
     typeof iTot.liga.tipo['PTS'] === 'number');
 })();
 
+/* =====================================================================
+   EL TOTAL ARMA LOS PLANTELES DESDE `ACUMULADO J`, NO DESDE LOS PARTIDOS
+
+   Esto existe por una regresión medida en producción. `Base Datos J` es
+   la ÚNICA hoja que el backend recorta al plantel propio —es la que
+   sostiene la ficha profunda de un rival, que es lo que el plan cobra— y
+   el TOTAL reconstruía los jugadores justamente desde ahí. Mientras el
+   TOTAL no era el default no se veía; al ponerlo por defecto, un cliente
+   entraba y la liga entera se le reducía a su propio plantel: 18
+   jugadores de 1 equipo contra los 218 de 12 que muestra IDA.
+
+   `ACUMULADO J` viaja completa para todos los planes y encima es la
+   fuente correcta: un acumulado por torneo es exactamente lo que el
+   TOTAL necesita, porque los totales SUMAN.
+   ===================================================================== */
+(function () {
+  const acum = (nom, eq, tor, o) => Object.assign(
+    { NOMBRES: nom, EQUIPO: eq, FASE: 'REGULAR', TORNEO: tor }, o);
+
+  /* Dos torneos, dos equipos. TIRADOR juega los dos; SUPLENTE solo la Ida. */
+  const filasAcum = [
+    acum('TIRADOR, ELITE', 'ATENAS A', 'IDA',    { PJ: 8, MIN: 240, PTS: 160, TCC: 60, TCI: 100, T3C: 20, PLAYS: 120 }),
+    acum('TIRADOR, ELITE', 'ATENAS A', 'VUELTA', { PJ: 2, MIN:  60, PTS:  40, TCC: 15, TCI:  25, T3C:  5, PLAYS:  30 }),
+    acum('SUPLENTE, CORTO', 'ATENAS A', 'IDA',   { PJ: 4, MIN:  40, PTS:  12, TCC:  5, TCI:  20, T3C:  1, PLAYS:  20 }),
+    acum('PIVOT, INTERNO', 'PLATENSE A', 'IDA',  { PJ: 8, MIN: 200, PTS:  80, TCC: 35, TCI:  70, T3C:  0, PLAYS:  90 }),
+    acum('PIVOT, INTERNO', 'PLATENSE A', 'VUELTA', { PJ: 2, MIN: 50, PTS: 20, TCC:  9, TCI:  18, T3C:  0, PLAYS:  22 }),
+    /* La fila TIPO no es una persona: no puede entrar al plantel. */
+    acum('JUGADOR TIPO', '', 'IDA', { PJ: 6, MIN: 150, PTS: 60, TCC: 25, TCI: 50, T3C: 5, PLAYS: 70 }),
+  ];
+
+  const partido = (pa, eq, tor, f) => Object.assign(
+    { PARTIDO: pa, EQUIPO: eq, FASE: 'REGULAR', TORNEO: tor, FECHA: f }, {
+      PTS: 80, PLAYS: 80, TCC: 30, TCI: 60, T2C: 20, T2I: 35, T3C: 10, T3I: 25,
+      T1C: 10, T1I: 12, PP: 12, RO: 10, RD: 25, AST: 15, MIN: 200, PR: 8, POS: 70, RT: 35 });
+
+  const bdeA = [
+    partido('ATENAS A vs PLATENSE A', 'ATENAS A',   'IDA',    '2026-05-05'),
+    partido('ATENAS A vs PLATENSE A', 'PLATENSE A', 'IDA',    '2026-05-05'),
+    partido('ATENAS A vs PLATENSE A', 'ATENAS A',   'VUELTA', '2026-08-05'),
+    partido('ATENAS A vs PLATENSE A', 'PLATENSE A', 'VUELTA', '2026-08-05'),
+  ];
+
+  /* EL LIBRO QUE VE UN CLIENTE: `Base Datos J` recortada a UN equipo, que
+     es exactamente lo que manda el backend con un plan de cliente. */
+  const soloPropio = [{
+    NOMBRES: 'PIVOT, INTERNO', EQUIPO: 'PLATENSE A', FASE: 'REGULAR', TORNEO: 'IDA',
+    PARTIDO: 'ATENAS A vs PLATENSE A', FECHA: '2026-05-05',
+    MIN: 25, PTS: 10, TCC: 4, TCI: 9, T3C: 0, PLAYS: 11,
+  }];
+
+  const libro = (extra) => Object.assign({
+    'Base Datos E': { cols: Object.keys(bdeA[0]), filas: bdeA },
+    'ACUMULADO J': { cols: Object.keys(filasAcum[0]).concat(['PJ', 'MIN', 'PTS', 'TCC', 'TCI', 'T3C', 'PLAYS']), filas: filasAcum },
+  }, extra || {});
+
+  const T = SGADD.TORNEO_TOTAL;
+
+  /* CASO CLIENTE: `Base Datos J` trae UN solo equipo y el acumulado los
+     trae a todos. El plantel de la liga tiene que salir completo. */
+  const iCli = SGADD.construirIndice(
+    libro({ 'Base Datos J': { cols: Object.keys(soloPropio[0]), filas: soloPropio } }),
+    { fase: 'REGULAR', torneo: T });
+
+  check('con Base Datos J recortada, el TOTAL igual trae la liga entera',
+    iCli.liga.jugadores.length === 3, iCli.liga.jugadores.length);
+  check('y de los dos equipos, no solo del propio',
+    new Set(iCli.liga.jugadores.map(j => j.EQUIPO)).size === 2);
+
+  /* EL PJ SE SUMA, NO SE CUENTAN LAS FILAS. Con el acumulado hay una fila
+     por TORNEO, así que contar filas daría 2 para el que jugó 10 partidos
+     — y con PJ = 2 se apaga el umbral de 3 partidos del desvío. */
+  const tir = iCli.liga.jugadores.find(j => /TIRADOR/.test(j.NOMBRES));
+  check('el PJ del TOTAL es la SUMA de los PJ de cada torneo',
+    tir.PJ === 10, tir.PJ);
+  check('y no la cantidad de filas del acumulado', tir.PJ !== 2);
+
+  /* VOLUMEN: total sobre PJ. 200 puntos en 10 partidos son 20 por noche. */
+  check('los PTS salen del total sobre el PJ sumado',
+    Math.abs(tir.PTS - 20) < 1e-9, tir.PTS);
+  check('y los MIN también', Math.abs(tir.MIN - 30) < 1e-9, tir.MIN);
+
+  /* TASA: se recalcula sobre los totales de los dos torneos juntos, que
+     no es promediar la tasa de cada uno. */
+  const efgReal = (75 + 0.5 * 25) / 125;
+  check('el eFG% se recalcula sobre los totales de los dos torneos',
+    Math.abs(tir['eFG%'] - efgReal) < 1e-9, tir['eFG%'] + ' vs ' + efgReal);
+
+  /* La fila TIPO del acumulado es la mediana de UN torneo suelto: no es
+     una persona y sumarla tampoco daría la mediana del conjunto. */
+  check('la fila JUGADOR TIPO no entra al plantel',
+    !iCli.liga.jugadores.some(j => /TIPO/.test(j.NOMBRES)));
+
+  /* RESPALDO: sin acumulado se vuelve a los partidos, que es como venía
+     funcionando. Degrada, no rompe. */
+  const sinAcum = libro({ 'Base Datos J': { cols: Object.keys(soloPropio[0]), filas: soloPropio } });
+  delete sinAcum['ACUMULADO J'];
+  const iSin = SGADD.construirIndice(sinAcum, { fase: 'REGULAR', torneo: T });
+  check('sin ACUMULADO J se cae a los partidos, sin romperse',
+    iSin.liga.jugadores.length === 1, iSin.liga.jugadores.length);
+  check('y ahí el PJ vuelve a ser la cantidad de noches',
+    iSin.liga.jugadores[0].PJ === 1);
+})();
+
 
 /* La fila TIPO no es un tramo: viene con FASE = TOTAL y sin torneo en
    libros donde ese agregado no existe como competencia. Ofrecerla llevaba

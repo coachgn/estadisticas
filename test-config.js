@@ -410,8 +410,28 @@ check('el tramo IDA|REGULAR resuelve un formato', !!fDep);
 check('declara los 12 equipos del libro', fDep.equiposEsperados === 12);
 check('y contra el libro real no hay descuadre',
   C.validar(cfgDep, { torneo: 'IDA', fase: 'REGULAR', equipos: 12 }).length === 0);
-check('las cuatro zonas cubren la tabla sin huecos',
-  C.zonasDeTabla(fDep, 12).every(z => z !== null));
+/* EL MEDIO DE LA TABLA VA SIN ZONA, Y ES A PROPÓSITO.
+
+   El formato real del club (2026-08-30) es 1-2 Ascenso, 3-4 Repechaje y
+   los dos últimos Descenso: del 5 al 10 no pasa nada, así que pintarlos
+   sería inventar una zona que el torneo no tiene. El test viejo exigía
+   que las zonas cubrieran la tabla entera —cierto para el formato
+   anterior, con Playoffs 1-8— y esa no es una propiedad del sistema. */
+const zonasDep = C.zonasDeTabla(fDep, 12);
+check('el ascenso se lleva los dos primeros',
+  zonasDep[0] && zonasDep[1] && zonasDep[0].id === 'campeon' && zonasDep[1].id === 'campeon');
+check('el repechaje, el 3 y el 4',
+  zonasDep[2] && zonasDep[3] && zonasDep[2].id === 'repechaje' && zonasDep[3].id === 'repechaje');
+check('el medio de la tabla queda sin zona',
+  zonasDep.slice(4, 10).every(z => z === null));
+check('y el descenso son los dos últimos',
+  zonasDep[10] && zonasDep[11] && zonasDep[10].id === 'descenso' && zonasDep[11].id === 'descenso');
+
+/* El `desde: -2` se corre solo si cambia la cantidad de equipos, que es el
+   motivo entero de los índices negativos: con un 11 fijo, el día que entre
+   una categoría de 13 el descenso queda corrido SIN ningún síntoma. */
+check('con 14 equipos el descenso sigue siendo los dos últimos',
+  C.zonasDeTabla(fDep, 14).slice(12).every(z => z && z.id === 'descenso'));
 /* Los otros dos clubes no declaran competencia todavía y eso tiene que
    seguir siendo válido: la config es opcional. */
 ['reconquista', 'jujuy'].forEach((id) => {
