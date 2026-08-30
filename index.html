@@ -1651,7 +1651,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=146" />
+<link rel="stylesheet" href="sgadd.css?v=147" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -1718,7 +1718,13 @@
         </button>
         <button onclick="navigate('configuracion')" data-nav="configuracion" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
-          Configuración
+          <!-- "Panel Master" y no "Configuracion": la seccion es
+               `soloAdmin` (punto 19) y es el unico lugar de gestion del
+               producto. Con el nombre viejo el admin la leia como los
+               ajustes de SU club y no encontraba donde administrar a los
+               clientes. El ID de la seccion NO cambia —`configuracion`—
+               porque viaja en la ruta y en los links compartidos. -->
+          Panel Master
         </button>
         <button onclick="navigate('diagnostico')" data-nav="diagnostico" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path stroke-linecap="round" d="m20 20-4.3-4.3"/></svg>Diagnóstico</button>
@@ -1796,32 +1802,33 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=146"></script>
+<script src="js/sgadd-club.js?v=147"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=146"></script>
-<script src="js/sgadd-core.js?v=146"></script>
-<script src="js/sgadd-auth.js?v=146"></script>
-<script src="js/sgadd-data.js?v=146"></script>
-<script src="js/sgadd-clientes.js?v=146"></script>
-<script src="js/sgadd-ui.js?v=146"></script>
-<script src="js/sgadd-app.js?v=146"></script>
-<script src="js/sgadd-clasificacion.js?v=146"></script>
+<script src="js/sgadd-config.js?v=147"></script>
+<script src="js/sgadd-core.js?v=147"></script>
+<script src="js/sgadd-auth.js?v=147"></script>
+<script src="js/sgadd-data.js?v=147"></script>
+<script src="js/sgadd-clientes.js?v=147"></script>
+<script src="js/sgadd-ui.js?v=147"></script>
+<script src="js/sgadd-app.js?v=147"></script>
+<script src="js/sgadd-clasificacion.js?v=147"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-configui.js?v=146"></script>
-<script src="js/sgadd-estados.js?v=146"></script>
-<script src="js/sgadd-buzon.js?v=146"></script>
-<script src="js/sgadd-charts.js?v=146"></script>
-<script src="js/sgadd-personalidad.js?v=146"></script>
-<script src="js/sgadd-rankings.js?v=146"></script>
-<script src="js/sgadd-partido.js?v=146"></script>
-<script src="js/sgadd-informe.js?v=146"></script>
-<script src="js/sgadd-ficha.js?v=146"></script>
-<script src="js/sgadd-equipos.js?v=146"></script>
-<script src="js/sgadd-jugadores.js?v=146"></script>
-<script src="js/sgadd-4factores.js?v=146"></script>
-<script src="js/sgadd-scouting.js?v=146"></script>
-<script src="js/sgadd-diagnostico.js?v=146"></script>
+<script src="js/sgadd-hub.js?v=147"></script>
+<script src="js/sgadd-configui.js?v=147"></script>
+<script src="js/sgadd-estados.js?v=147"></script>
+<script src="js/sgadd-buzon.js?v=147"></script>
+<script src="js/sgadd-charts.js?v=147"></script>
+<script src="js/sgadd-personalidad.js?v=147"></script>
+<script src="js/sgadd-rankings.js?v=147"></script>
+<script src="js/sgadd-partido.js?v=147"></script>
+<script src="js/sgadd-informe.js?v=147"></script>
+<script src="js/sgadd-ficha.js?v=147"></script>
+<script src="js/sgadd-equipos.js?v=147"></script>
+<script src="js/sgadd-jugadores.js?v=147"></script>
+<script src="js/sgadd-4factores.js?v=147"></script>
+<script src="js/sgadd-scouting.js?v=147"></script>
+<script src="js/sgadd-diagnostico.js?v=147"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -3582,7 +3589,7 @@ function renderSection(section) {
   });
   const titles = { principal: 'Principal', clasificacion: 'Clasificación', equipos: 'Equipos',
     jugadores: 'Jugadores', scouting: 'Scouting', simulador: 'Simulador',
-    configuracion: 'Configuración', diagnostico: 'Diagnóstico' };
+    configuracion: 'Panel Master', diagnostico: 'Diagnóstico' };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = titles[section] || '';
 

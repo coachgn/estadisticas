@@ -407,6 +407,11 @@ function buildConfiguracion() {
       </div>
 
       ${SGADD_UI.tabs([
+        /* CLIENTES va PRIMERA: el Panel Master se abre en "qué clientes
+           tengo", y las otras dos editan al club que está abierto. Con
+           Zonas primero, el admin entraba y veía la config de UN club sin
+           una pista de dónde estaban los demás. */
+        { id: 'clientes', label: 'Clientes' },
         { id: 'zonas',  label: 'Zonas de la tabla' },
         { id: 'torneo', label: 'Torneo / Preconfiguración' },
       ], CONFIGUI.pestana, 'configPestana')}
@@ -414,7 +419,9 @@ function buildConfiguracion() {
       <!-- Cliente y tramos van al lado; el FORMATO se lleva el ancho completo:
            cada fila de zona tiene nombre, dos rangos, un tono, el rango resuelto y
            tres botones, y apretada en media pantalla se parte en dos lineas. -->
-      ${CONFIGUI.pestana === 'torneo' ? configPestanaTorneo() : `
+      ${CONFIGUI.pestana === 'clientes'
+        ? '<div id="hubClientes" class="space-y-5">' + SGADD_HUB.html() + '</div>'
+        : CONFIGUI.pestana === 'torneo' ? configPestanaTorneo() : `
       <div class="grid lg:grid-cols-2 gap-5">
 
         <div class="space-y-5">

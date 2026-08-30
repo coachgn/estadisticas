@@ -470,6 +470,76 @@ titulo('EL SELECTOR DE CLIENTE · solo admin, y la lista sale del catálogo');
     /NO ES UN CONTROL DE ACCESO/.test(fuente));
 }
 
+titulo('EL HUB DE CLIENTES · consulta todo, y NO finge que publica');
+
+{
+  const HUB = require('./js/sgadd-hub.js');
+  const hub = fs.readFileSync('./js/sgadd-hub.js', 'utf8');
+
+  /* NO SE MUESTRA EL `sheetId`. `catalogo.publico()` los borra a propósito
+     antes de mandar la lista —"activo dice lo mismo sin revelar cuál"— y
+     ese recorte es el punto entero del backend: sacar los ids del alcance
+     del navegador. Agregarlos acá para que el hub se vea más completo
+     sería desarmar la garantía desde adentro. */
+  check('el hub no pinta ningún sheetId',
+    !/k\.sheetId|categorias\[[^\]]*\]\.sheetId/.test(hub));
+  const publico = fs.readFileSync('./server/lib/catalogo.js', 'utf8');
+  check('y el catálogo público sigue sin mandarlos',
+    /activo: !!c\[id\]\.categorias\[s\]\.sheetId/.test(publico) &&
+    !/sheetId: c\[id\]/.test(publico));
+
+  /* UN COMANDO A MEDIAS NO SE EMITE. Falla en la terminal con un error de
+     la CLI, que es peor que un formulario diciendo qué falta. */
+  check('sin los tres campos obligatorios no hay comando',
+    HUB.comandoAlta({ club: 'x', categoria: 'y' }) === null);
+  check('y se dice QUÉ falta, en castellano',
+    HUB.faltantesAlta({ club: 'x' }).join(' ').indexOf('sheetId') !== -1);
+
+  const cmd = HUB.comandoAlta({ club: 'nuevo', categoria: 'nuevo-primera', sheet: '1ABC' });
+  check('el comando es el de la CLI real', /catalogo\.js alta/.test(cmd), cmd);
+  check('y cita los tres campos', /--club/.test(cmd) && /--categoria/.test(cmd) && /--sheet/.test(cmd));
+
+  /* LAS COMILLAS SE ESCAPAN. Un label lleva espacios —"Primera · Vuelta
+     2026"— así que va entrecomillado, y una comilla adentro partiría el
+     comando en dos sin que se note hasta pegarlo. */
+  const conComilla = HUB.comandoAlta({ club: 'a', categoria: 'b', sheet: 'c', label: 'Primera "A"' });
+  check('las comillas del label se escapan', /\\"A\\"/.test(conComilla), conComilla);
+
+  /* UN ID ES UNA CLAVE, NO UN TÍTULO: viaja en `?club=<id>` y nombra
+     `clubes/<id>.json`. Se valida al escribir, no al desplegar. */
+  check('un id con mayúsculas o espacios no pasa',
+    !HUB.idValido('Club Nuevo') && !HUB.idValido('CLUB') && !HUB.idValido('con espacio'));
+  check('y uno normal sí', HUB.idValido('reconquista-u21') && HUB.idValido('jujuy'));
+  check('no puede empezar con guión', !HUB.idValido('-x'));
+
+  /* NO FINGE QUE PUBLICA. Un "Guardar" que no publica es peor que no
+     tenerlo: el que lo aprieta se va convencido de que dio de alta un
+     cliente. Misma decisión que la pestaña de Zonas (punto 17). */
+  check('la pantalla dice que todavía no publica',
+    /todavía no se[\s\S]{0,40}publica/i.test(hub));
+  check('y no hay ningún fetch de escritura',
+    !/method:\s*'POST'|method:\s*"POST"/.test(hub));
+
+  /* TIPEAR NO REPINTA LA PESTAÑA: le sacaría el foco al input y haría
+     imposible escribir un sheetId de 44 caracteres. Se refresca SOLO el
+     bloque del alta. Misma regla que scoutMeta() y el buzón. */
+  check('tipear refresca solo el bloque del alta',
+    /getElementById\('hubAlta'\)/.test(hub));
+  const configui = fs.readFileSync('./js/sgadd-configui.js', 'utf8');
+  check('la pestaña Clientes va primera en el Panel Master',
+    /id: 'clientes'[\s\S]{0,80}id: 'zonas'/.test(configui));
+
+  /* EL ACCESO SE LLAMA "PANEL MASTER", que es lo que es: la sección es
+     soloAdmin y es el único lugar de gestión del producto. Con el nombre
+     viejo el admin la leía como los ajustes de SU club. El ID de sección
+     NO cambia: viaja en la ruta y en los links compartidos. */
+  const idx = fs.readFileSync('./index.html', 'utf8');
+  check('el nav dice Panel Master', /Panel Master/.test(idx));
+  check('y la ruta sigue siendo /configuracion',
+    /navigate\('configuracion'\)/.test(idx) &&
+    A.MODULOS.configuracion && A.MODULOS.configuracion.soloAdmin === true);
+}
+
 console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +
   '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);
