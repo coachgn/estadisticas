@@ -19,6 +19,7 @@
 'use strict';
 
 const catalogo = require('../lib/catalogo.js');
+const mutar = require('../lib/catalogo-mutar.js');
 const { verificarToken, tokenDeLaPeticion } = require('../lib/auth.js');
 const reglas = require('../lib/reglas.js');
 const alertas = require('../lib/alertas.js');
@@ -63,6 +64,13 @@ async function manejarCatalogo(peticion, deps) {
       usuario: { email: ctx.sesion.email, rol: ctx.rol, plan: ctx.sesion.plan,
         equipoAsignado: ctx.sesion.equipoAsignado, expiraEn: ctx.expiraEn },
       clubes: catalogo.publico(cat.catalogo),
+      /* DE DÓNDE SALE, para el hub. Sin esto no hay forma de saber desde
+         afuera si el catálogo viene de KV o del código, y esa es
+         justamente la pregunta al dar de alta un cliente: un alta que
+         escribe en KV no cambia nada si el servidor sigue leyendo del
+         código. Es metadato de operación, no un dato del club. */
+      origen: cat.origen,
+      aviso: cat.aviso || null,
     },
   };
 }
@@ -248,4 +256,79 @@ function fallaDeDatos(e) {
   return error(502, c || 'DATOS', 'No se pudieron leer los datos de la categoría.');
 }
 
-module.exports = { manejarCatalogo, manejarEquipos, manejarScouting, ERRORES };
+/**
+ * POST /api/v1/catalogo · alta y baja de clientes desde el Panel Master.
+ *
+ * ES LA ÚNICA RUTA QUE ESCRIBE, y la única cuyo mal uso rompe a TODOS los
+ * clubes a la vez: KV le gana al código, así que un catálogo deteriorado
+ * acá deja los libros en 502 sin que nadie haya tocado una planilla.
+ *
+ * Tres capas, en este orden:
+ *
+ *   1. SOLO ADMIN, re-derivado contra la lista del servidor. El `rol` del
+ *      token no se cree por venir firmado: `verificarToken` lo recalcula
+ *      contra `ADMINS`, así que un token viejo de alguien que dejó de ser
+ *      admin no sirve.
+ *   2. La mutación es QUIRÚRGICA. Nunca se acepta un catálogo entero desde
+ *      el navegador: entra una intención («dar de alta esta categoría») y
+ *      el servidor la aplica sobre lo que HAY. Aceptar el objeto completo
+ *      convertiría cualquier bug del frontend en una pérdida de datos.
+ *   3. Los guards de `catalogo-mutar`, que corren SIEMPRE — el validador
+ *      de la cascada y el que impide que una categoría pierda su libro.
+ */
+async function manejarCatalogoEscribir(peticion, deps) {
+  const ctx = contexto(peticion);
+  if (ctx.error) return ctx.error;
+
+  if (ctx.rol !== AUTH.ROLES.ADMIN) {
+    /* Se dice que hace falta ser admin, NO que los datos están
+       protegidos: es un permiso de operación, y confundirlos manda al
+       cliente a pedir un plan que no le va a dar acceso (punto 19). */
+    return error(403, 'SOLO_ADMIN', 'El catálogo lo edita un administrador.');
+  }
+
+  const cuerpo = (peticion && peticion.body) || {};
+  const accion = String(cuerpo.accion || '');
+
+  const cascada = await catalogo.cargar(deps);
+  const r = mutar.aplicar(cascada.catalogo, accion, cuerpo, catalogo.validar);
+  if (!r.ok) return error(400, 'CATALOGO_INVALIDO', r.motivo);
+
+  /* SI KV NO ESTÁ, NO SE FINGE QUE SE GUARDÓ. Sin credenciales la
+     escritura es un no-op silencioso y el admin se iría convencido de que
+     dio de alta un cliente — el mismo modo de fallar que el sembrado que
+     no tuvo efecto porque Vercel no leía KV. */
+  const kv = deps && deps.kv ? deps.kv : require('../lib/kv.js');
+  if (!kv.configurado()) {
+    return error(503, 'SIN_KV', 'El servidor no tiene Upstash configurado, '
+      + 'así que no puede publicar el catálogo. Se puede dar de alta por CLI.');
+  }
+
+  try {
+    await kv.escribir(catalogo.CLAVE_KV, r.catalogo);
+  } catch (e) {
+    return error(502, e.codigo || 'KV', 'No se pudo escribir el catálogo: ' + e.message);
+  }
+  catalogo.limpiarCache();
+
+  /* SE DEVUELVE EL CATÁLOGO NUEVO, público. Así el hub repinta con lo que
+     el servidor tiene de verdad y no con lo que el formulario creyó
+     mandar: si un guard recortó algo, se ve. */
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      accion: accion,
+      creoClub: !!r.creoClub,
+      clubes: catalogo.publico(r.catalogo),
+      origen: 'kv',
+      /* El caché vive por INSTANCIA y en Vercel hay muchas, así que el
+         cambio puede tardar en verse en otra. Se dice, en vez de dejar al
+         admin pensando que no tomó. */
+      aviso: 'Guardado. Otras instancias del servidor pueden tardar hasta '
+        + 'cinco minutos en verlo.',
+    },
+  };
+}
+
+module.exports = { manejarCatalogo, manejarCatalogoEscribir, manejarEquipos, manejarScouting, ERRORES };

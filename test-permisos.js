@@ -515,10 +515,29 @@ titulo('EL HUB DE CLIENTES · consulta todo, y NO finge que publica');
   /* NO FINGE QUE PUBLICA. Un "Guardar" que no publica es peor que no
      tenerlo: el que lo aprieta se va convencido de que dio de alta un
      cliente. Misma decisión que la pestaña de Zonas (punto 17). */
-  check('la pantalla dice que todavía no publica',
-    /todavía no se[\s\S]{0,40}publica/i.test(hub));
-  check('y no hay ningún fetch de escritura',
-    !/method:\s*'POST'|method:\s*"POST"/.test(hub));
+  /* ETAPA 2: AHORA SÍ PUBLICA, y por eso el texto de "todavía no" se fue.
+     El botón manda una INTENCIÓN, nunca un catálogo: mandar el objeto
+     entero convertiría cualquier bug de esta pantalla en pérdida de datos
+     de todos los clubes a la vez. */
+  check('el botón guarda de verdad', /SGADD_DATA\.guardarCatalogo\(/.test(hub));
+  check('y manda una intención, no el catálogo',
+    /accion: 'alta'/.test(hub) && !/catalogo: /.test(hub));
+  check('ya no dice que no publica', !/todavía no se[\s\S]{0,40}publica/i.test(hub));
+
+  /* EL MOTIVO DEL SERVIDOR SE MUESTRA TAL CUAL. Están escritos para que el
+     admin sepa qué corregir ("pegá el id, no la URL entera"); traducirlos
+     acá los degradaría a un "error al guardar" genérico. */
+  check('el error del servidor se muestra tal cual',
+    /guardado\.mensaje = e\.message/.test(hub));
+  /* Y en la pantalla, no en un `alert()`: el motivo hay que poder leerlo
+     MIENTRAS se corrige el campo. */
+  const hubSinComentarios = hub.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  check('y no en un alert', !/alert\(/.test(hubSinComentarios));
+
+  /* LA LISTA SE REPINTA CON LO QUE DEVOLVIÓ EL SERVIDOR, no con lo que el
+     formulario creyó mandar: si un guard recortó algo, se ve. */
+  check('la lista se repinta con la respuesta del servidor',
+    /SGADD_CLIENTES\.estado\.clubes = r\.clubes/.test(hub));
 
   /* TIPEAR NO REPINTA LA PESTAÑA: le sacaría el foco al input y haría
      imposible escribir un sheetId de 44 caracteres. Se refresca SOLO el

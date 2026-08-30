@@ -44,13 +44,21 @@ function crearApp(opciones) {
       if (env.origenes.indexOf(origen) !== -1) return cb(null, true);
       return cb(new Error('Origen no permitido: ' + origen));
     },
-    methods: ['GET', 'OPTIONS'],
+    /* POST entra por el alta del Panel Master. Sin él, el preflight del
+       navegador falla ANTES de la petición y el error que se ve no habla
+       de CORS: habla de red. */
+    methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Authorization', 'Content-Type'],
     credentials: false,
     maxAge: 600,
   }));
 
   app.use(limitador(env.rateMax, env.rateVentanaMs));
+
+  /* El cuerpo JSON, SOLO para el alta. El tope es chico a propósito: por
+     acá entra un objeto de cinco campos, y aceptar megabytes sería regalar
+     una forma de ocupar memoria a cualquiera que tenga un token. */
+  app.use(express.json({ limit: '16kb' }));
 
   const responder = (fn) => async (req, res) => {
     try {
@@ -68,6 +76,10 @@ function crearApp(opciones) {
   app.get('/api/v1/catalogo', responder(h.manejarCatalogo));
   app.get('/api/v1/equipos/:clubId', responder(h.manejarEquipos));
   app.get('/api/v1/scouting/:clubId', responder(h.manejarScouting));
+  /* La ÚNICA ruta que escribe. Va separada del GET y no como un verbo
+     dentro del mismo handler para que se vea de un vistazo cuál es la que
+     puede romper a todos los clubes. */
+  app.post('/api/v1/catalogo', responder(h.manejarCatalogoEscribir));
 
   app.use((req, res) => res.status(404).json({ ok: false, codigo: 'SIN_RUTA' }));
 

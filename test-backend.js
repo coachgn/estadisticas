@@ -1492,6 +1492,130 @@ titulo('EL TRAMO DE LAS ALERTAS · el servidor mira lo mismo que el panel');
     JSON.stringify(rT.alertas.map(a => a.nombre)));
 }
 
+titulo('ESCRIBIR EL CATÁLOGO · la unica ruta que puede romper a todos');
+
+/* El catálogo es la única pieza cuyo deterioro rompe a TODOS los clubes a
+   la vez: KV le gana al código, así que un catálogo malo deja los libros
+   en 502 sin que nadie haya tocado una planilla. Esa bomba ya se armó dos
+   veces desde la CLI, y desde una pantalla web es MÁS fácil de armar, no
+   menos: un formulario invita a probar. */
+{
+  const M = require('./server/lib/catalogo-mutar.js');
+  const CATV = require('./server/lib/catalogo.js');
+  const SHEET_OK = '1Zi2cBd0WGUTks-S0XCxR0hoGpB9KZGuqisFhzdtJl4s';
+
+  const VIGENTE = {
+    deportivo: { nombre: 'Deportivo', liga: 'la-plata', equipoPropio: 'DEPORTIVO LA PLATA',
+      categorias: { 'deportivo-primera': { label: 'Primera', sheetId: SHEET_OK } } },
+  };
+
+  /* ALTA de una categoría en un club que ya existe. */
+  const r1 = M.aplicar(VIGENTE, 'alta', {
+    club: 'deportivo', categoria: 'deportivo-u21', label: 'U21', sheetId: SHEET_OK,
+  }, CATV.validar);
+  check('el alta agrega la categoría', r1.ok &&
+    !!r1.catalogo.deportivo.categorias['deportivo-u21'], r1.motivo);
+  check('y NO toca las que ya estaban',
+    r1.catalogo.deportivo.categorias['deportivo-primera'].sheetId === SHEET_OK);
+  check('no dice que creó un club', r1.creoClub === false);
+
+  /* NO SE MUTA EL CATÁLOGO DE ENTRADA. Si `aplicar` escribiera sobre el
+     objeto vigente, un guard que después aborta ya lo habría dejado sucio
+     en el caché del proceso. */
+  check('el catálogo vigente queda intacto',
+    Object.keys(VIGENTE.deportivo.categorias).length === 1);
+
+  /* CLUB NUEVO: sin nombre no se puede mostrar en ningún selector. */
+  const sinNombre = M.aplicar(VIGENTE, 'alta', {
+    club: 'nuevo', categoria: 'nuevo-primera', label: 'Primera', sheetId: SHEET_OK }, CATV.validar);
+  check('un club nuevo sin nombre no entra', !sinNombre.ok, sinNombre.motivo);
+  const conNombre = M.aplicar(VIGENTE, 'alta', {
+    club: 'nuevo', nombre: 'Club Nuevo', categoria: 'nuevo-primera',
+    label: 'Primera', sheetId: SHEET_OK }, CATV.validar);
+  check('con nombre sí, y avisa que creó el club', conNombre.ok && conNombre.creoClub);
+
+  /* UN ID ES UNA CLAVE: viaja en `?club=<id>` y nombra clubes/<id>.json. */
+  const idMalo = M.aplicar(VIGENTE, 'alta', {
+    club: 'Club Nuevo', nombre: 'x', categoria: 'y', label: 'z', sheetId: SHEET_OK }, CATV.validar);
+  check('un id con espacios o mayúsculas se rechaza', !idMalo.ok, idMalo.motivo);
+
+  /* PEGAR LA URL EN VEZ DEL ID es el error de dedo más común, y da un 502
+     críptico media hora después en vez de un mensaje al guardar. */
+  const urlEntera = M.aplicar(VIGENTE, 'alta', {
+    club: 'deportivo', categoria: 'x', label: 'X',
+    sheetId: 'https://docs.google.com/spreadsheets/d/' + SHEET_OK + '/edit' }, CATV.validar);
+  check('pegar la URL entera se rechaza', !urlEntera.ok, urlEntera.motivo);
+  check('y el mensaje dice qué pegar', /pegá el id|no la URL/i.test(urlEntera.motivo));
+
+  /* EL GUARD QUE NO SE NEGOCIA: ninguna categoría pierde su libro. Es la
+     versión servidor del guard de la CLI, y existe por lo mismo — KV le
+     gana al código, así que una categoría sin sheetId pasa a activo:false
+     y su carga devuelve 502. */
+  const perdido = M.librosPerdidos(VIGENTE, {
+    deportivo: { nombre: 'Deportivo', categorias: { 'deportivo-primera': { label: 'Primera', sheetId: '' } } },
+  });
+  check('se detecta la categoría que quedaría sin libro',
+    perdido.length === 1 && perdido[0] === 'deportivo/deportivo-primera', JSON.stringify(perdido));
+  check('y con el libro puesto no denuncia nada',
+    M.librosPerdidos(VIGENTE, VIGENTE).length === 0);
+
+  /* LA BAJA es la excepción explícita: ahí perder la categoría ES el
+     pedido, no un accidente, así que el guard no puede bloquearla. */
+  const DOS = Object.assign({}, VIGENTE, {
+    jujuy: { nombre: 'Jujuy', liga: 'liga-argentina', equipoPropio: 'JUJUY BASQUET',
+      categorias: { 'jujuy-primera': { label: 'Conferencia Norte', sheetId: SHEET_OK } } },
+  });
+  const b = M.aplicar(DOS, 'baja', { club: 'deportivo', categoria: 'deportivo-primera' }, CATV.validar);
+  check('la baja de una categoría no la bloquea el guard', b.ok, b.motivo);
+  check('y el club se va con su última categoría', b.ok && !b.catalogo.deportivo);
+  check('sin tocar al otro club', b.ok && !!b.catalogo.jujuy);
+
+  /* PERO EL CATÁLOGO NO PUEDE QUEDAR VACÍO, y se dice con esas palabras:
+     el mensaje de `validar()` —"no tiene ningún club"— desde una pantalla
+     de baja se lee como un error del sistema, no como el límite que es. */
+  const ultimo = M.aplicar(VIGENTE, 'baja', { club: 'deportivo', categoria: 'deportivo-primera' }, CATV.validar);
+  check('dar de baja el ÚLTIMO club se rechaza', !ultimo.ok, ultimo.motivo);
+  check('y el mensaje lo explica', /último club|no puede quedar vac/i.test(ultimo.motivo));
+
+  /* NO SE BORRA UN CLUB CON CATEGORÍAS DE UN GESTO. Un club es un cliente,
+     y ese es el click que uno lamenta. */
+  const bClub = M.aplicar(VIGENTE, 'baja', { club: 'deportivo' }, CATV.validar);
+  check('borrar un club con categorías se rechaza', !bClub.ok, bClub.motivo);
+  check('y dice cuántas quedan', /1 categoría/.test(bClub.motivo));
+
+  /* Una acción desconocida no puede caer en un default que escriba. */
+  check('una acción desconocida no escribe nada',
+    !M.aplicar(VIGENTE, 'reemplazar-todo', { catalogo: {} }, CATV.validar).ok);
+
+  /* Y EL VALIDADOR ES EL MISMO QUE USA LA CASCADA AL LEER. Dos validadores
+     terminan discrepando, y el que se relaja es siempre el de escritura. */
+  const src = fs.readFileSync('./server/api/handlers.js', 'utf8');
+  check('el endpoint valida con el validador de la cascada',
+    /mutar\.aplicar\([\s\S]{0,80}catalogo\.validar\)/.test(src));
+
+  /* SOLO ADMIN, y se re-deriva contra la lista del servidor: el rol del
+     token no se cree por venir firmado. */
+  check('el endpoint exige rol ADMIN',
+    /ctx\.rol !== AUTH\.ROLES\.ADMIN[\s\S]{0,600}403, 'SOLO_ADMIN'/.test(src));
+
+  /* NUNCA SE ACEPTA UN CATÁLOGO ENTERO DESDE EL NAVEGADOR: entra una
+     intención y el servidor la aplica sobre lo que HAY. Aceptar el objeto
+     completo convertiría cualquier bug del frontend en pérdida de datos. */
+  check('el handler no toma un catálogo del cuerpo',
+    !/cuerpo\.catalogo|body\.catalogo/.test(src));
+
+  /* SIN KV NO SE FINGE QUE SE GUARDÓ. Es el modo de fallar del sembrado
+     que no tuvo efecto porque Vercel no leía KV. */
+  check('sin Upstash configurado responde 503 y lo explica',
+    /kv\.configurado\(\)[\s\S]{0,200}503/.test(src));
+
+  /* CORS tiene que dejar pasar POST o el preflight falla ANTES de la
+     petición, con un error que habla de red y no de CORS. */
+  const appSrc2 = fs.readFileSync('./server/app.js', 'utf8');
+  check('CORS permite POST', /methods: \['GET', 'POST', 'OPTIONS'\]/.test(appSrc2));
+  check('y hay parser de JSON con tope', /express\.json\(\{ limit/.test(appSrc2));
+}
+
 titulo('EL TOKEN DE SOLO LECTURA · el servidor lee, el CLI escribe');
 
 /* Vercel no tiene por qué poder escribir el catálogo: lo único que hace

@@ -312,10 +312,50 @@ const SGADD_DATA = (function () {
     return _catalogo;
   }
 
+  /**
+   * Escribe el catálogo · alta y baja de clientes desde el Panel Master.
+   *
+   * SE MANDA UNA INTENCIÓN, NO UN CATÁLOGO. El servidor la aplica sobre lo
+   * que HAY y corre sus guards; mandar el objeto entero convertiría
+   * cualquier bug de esta pantalla en una pérdida de datos de todos los
+   * clubes a la vez.
+   *
+   * A DIFERENCIA DE `catalogo()`, ESTA SÍ LANZA. Un alta que falla en
+   * silencio deja al admin creyendo que dio de alta un cliente — el modo
+   * de fallar más caro de esta pantalla. El motivo del servidor viaja en
+   * el error para poder mostrarlo tal cual: son mensajes escritos para que
+   * el admin sepa qué corregir.
+   */
+  async function guardarCatalogo(intencion, opciones) {
+    const o = opciones || {};
+    if (!baseApi) throw Object.assign(new Error('No hay backend configurado.'), { codigo: 'SIN_API' });
+    if (!(auth && auth.token())) throw Object.assign(new Error('Falta el token.'), { codigo: 'SIN_TOKEN' });
+
+    const traer = o.fetch || fetch;
+    const r = await traer(baseApi + '/api/v1/catalogo', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + auth.token(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(intencion || {}),
+    });
+    const cuerpo = await r.json().catch(() => null);
+    if (!r.ok || !cuerpo || !cuerpo.ok) {
+      const e = new Error((cuerpo && cuerpo.mensaje) || ('El servidor respondió ' + r.status));
+      e.codigo = (cuerpo && cuerpo.codigo) || ('HTTP_' + r.status);
+      throw e;
+    }
+    /* El catálogo cacheado quedó viejo: lo que vale es lo que devolvió el
+       servidor, que ya pasó por los guards. */
+    _catalogo = Promise.resolve(cuerpo);
+    return cuerpo;
+  }
+
   return {
     configurar, apiConfigurada, origen, base: () => baseApi,
     matrizAFilas, matrizALegacy, tipoDeColumna,
-    cargarCategoria, cargarDelBackend, limpiarCache, catalogo,
+    cargarCategoria, cargarDelBackend, limpiarCache, catalogo, guardarCatalogo,
   };
 })();
 

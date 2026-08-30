@@ -1,19 +1,18 @@
 /* =====================================================================
    SGADD · Hub de clientes · la pestaña Clientes del Panel Master
 
-   ETAPA 1: se CONSULTA todo desde un solo lugar y se genera el comando
-   exacto para cada cambio. No escribe.
+   Se consulta el catálogo entero de clientes y se da de alta desde acá.
 
-   POR QUÉ NO ESCRIBE, que es la pregunta obvia: el panel es estático y el
-   token de escritura de KV NO puede llegar al navegador. Un alta desde la
-   UI necesita que el servidor escriba por nosotros —`POST /api/v1/catalogo`,
-   solo admin, validando con `catalogo.validar()` antes de tocar nada— y eso
-   es la Etapa 2.
+   EL ALTA ESCRIBE DE VERDAD, y por eso conviene saber por dónde. El panel
+   es estático y el token de escritura de KV NO puede llegar al navegador,
+   así que el guardado NO escribe: le manda una INTENCIÓN a
+   `POST /api/v1/catalogo` —solo admin, re-derivado contra la lista del
+   servidor— y el servidor la aplica sobre lo que HAY, con sus guards.
 
-   Y NO SE FINGE. Un botón "Guardar" que en realidad no publica es peor que
-   no tenerlo: el que lo aprieta se va convencido de que dio de alta un
-   cliente. Es la misma decisión que ya tomó la pestaña de Zonas, que dice
-   con todas las letras que "Guardar" queda en este navegador (punto 17).
+   NUNCA SE MANDA UN CATÁLOGO ENTERO. Es la diferencia que importa: el
+   catálogo es la única pieza cuyo deterioro rompe a TODOS los clubes a la
+   vez, y aceptar el objeto completo convertiría cualquier bug de esta
+   pantalla en una pérdida de datos general.
 
    LA LISTA SALE DEL CATÁLOGO DEL SERVIDOR. No hay un listado de clubes en
    el repo —`?club=<id>` resuelve por convención (punto 6)— y escribir uno
@@ -30,7 +29,14 @@ const SGADD_HUB = (function () {
      repinta —le sacaría el foco al input, la regla de siempre (punto 17)—
      así que el valor tiene que estar en algún lado cuando se arme el
      comando. */
-  const alta = { club: '', nombre: '', categoria: '', label: '', sheet: '' };
+  const alta = { club: '', nombre: '', categoria: '', label: '', sheet: '',
+                 liga: '', equipoPropio: '' };
+
+  /* El resultado del último guardado. Se muestra en la pantalla y no en un
+     `alert()`: el motivo de rechazo del servidor es un texto que dice qué
+     corregir, y un alert lo hace desaparecer justo cuando hay que leerlo
+     mientras se arregla el campo. */
+  const guardado = { estado: null, mensaje: '' };   // null | 'yendo' | 'ok' | 'error'
 
   /* =====================================================================
      MOTOR · puro, sin `document`
@@ -170,14 +176,15 @@ const SGADD_HUB = (function () {
     const faltan = faltantesAlta(alta);
     const malClub = !!alta.club && !idValido(alta.club);
     const malCat = !!alta.categoria && !idValido(alta.categoria);
+    const puede = cmd && !malClub && !malCat;
 
     return `<div class="card rounded-xl p-4 sm:p-5 border border-hairline">
       <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Alta de cliente o categoría</h3>
       <p class="text-xs text-muted mb-4">
-        Armá el alta acá y llevate el comando. <strong class="text-ink">Todavía no se
-        publica desde la pantalla</strong>: el panel es estático y el token de escritura
-        del catálogo no puede vivir en el navegador. Cuando exista el endpoint de
-        escritura, este mismo formulario deja de emitir texto y hace la petición.
+        Da de alta un cliente nuevo o agrega una categoría a uno que ya está. Guardar
+        <strong class="text-ink">publica para todos los usuarios de ese club</strong>.
+        Un <code>sheetId</code> que la cuenta de servicio no pueda leer da 502 al abrir
+        la categoría: probalo antes con <code>probar-google.js --sheets</code>.
       </p>
       <div class="grid sm:grid-cols-2 gap-3">
         ${campo('club', 'id del club', alta.club,
@@ -189,6 +196,13 @@ const SGADD_HUB = (function () {
         ${campo('label', 'etiqueta de la categoría', alta.label,
           'lo que dice el selector, ej. <code>Primera · Vuelta 2026</code>.')}
       </div>
+      <div class="grid sm:grid-cols-2 gap-3 mt-3">
+        ${campo('liga', 'liga', alta.liga,
+          'la carpeta de escudos: <code>logos/&lt;liga&gt;/</code>. Solo para un club nuevo.')}
+        ${campo('equipoPropio', 'equipo propio', alta.equipoPropio,
+          'como lo escribe la planilla. <strong class="text-ink">La letra importa</strong>: ' +
+          '<code>RECONQUISTA</code> no reconoce a <code>RECONQUISTA A</code>.')}
+      </div>
       <div class="mt-3">
         ${campo('sheet', 'sheetId del libro', alta.sheet,
           'el id de Google Sheets. <strong class="text-ink">Probalo antes</strong> con ' +
@@ -199,15 +213,23 @@ const SGADD_HUB = (function () {
         Un id es una CLAVE, no un título: va en minúsculas, sin espacios ni acentos.
         Viaja en la URL y nombra el archivo de marca.</p>` : ''}
 
-      ${cmd && !malClub && !malCat ? `
-        <div class="mt-4">
-          <span class="block text-[10px] uppercase tracking-wider text-muted font-display mb-1">Comando</span>
-          <pre class="bg-surface2 border border-hairline rounded-md p-3 text-[11px] text-ink overflow-x-auto"><code>${esc(cmd)}</code></pre>
-          <p class="text-[11px] text-muted mt-2">
-            Corrélo desde la raíz del repo. Después, <code>catalogo.js listar</code> para verificar.
-          </p>
-        </div>`
+      ${puede ? `
+        <div class="mt-4 flex items-center gap-3 flex-wrap">
+          <button onclick="SGADD_HUB.guardar()"
+            ${guardado.estado === 'yendo' ? 'disabled' : ''}
+            class="px-3 py-1.5 rounded-md text-xs font-display uppercase tracking-wider
+                   bg-accent text-base hover:opacity-90 disabled:opacity-50">
+            ${guardado.estado === 'yendo' ? 'Guardando…' : 'Guardar en el catálogo'}</button>
+          <span class="text-[11px] text-muted">Se publica para todos los usuarios de ese club.</span>
+        </div>
+        <details class="mt-3">
+          <summary class="text-[11px] text-muted cursor-pointer">o hacerlo por CLI</summary>
+          <pre class="bg-surface2 border border-hairline rounded-md p-3 text-[11px] text-ink overflow-x-auto mt-2"><code>${esc(cmd)}</code></pre>
+        </details>`
         : `<p class="text-xs text-muted mt-4">Falta ${esc(faltan.join(', '))}.</p>`}
+
+      ${guardado.estado === 'ok' ? `<p class="text-xs mt-3 zona-texto zona-exito">${esc(guardado.mensaje)}</p>` : ''}
+      ${guardado.estado === 'error' ? `<p class="text-xs mt-3 zona-texto zona-peligro">${esc(guardado.mensaje)}</p>` : ''}
     </div>`;
   }
 
@@ -260,18 +282,60 @@ const SGADD_HUB = (function () {
      imposible escribir un sheetId de 44 caracteres. Se refresca SOLO el
      bloque del alta, que es lo único que depende del valor. Misma regla que
      `scoutMeta()` y el buscador del buzón. */
+  /**
+   * Guarda de verdad. Manda una INTENCIÓN, no un catálogo.
+   *
+   * El motivo de rechazo del servidor se muestra TAL CUAL: están escritos
+   * para que el admin sepa qué corregir («pegá el id, no la URL entera»),
+   * y traducirlos acá los degradaría a un «error al guardar» genérico.
+   */
+  function guardar() {
+    if (guardado.estado === 'yendo') return;
+    guardado.estado = 'yendo'; guardado.mensaje = '';
+    refrescarAlta();
+
+    SGADD_DATA.guardarCatalogo({
+      accion: 'alta',
+      club: alta.club, nombre: alta.nombre,
+      categoria: alta.categoria, label: alta.label,
+      sheetId: alta.sheet,
+      liga: alta.liga, equipoPropio: alta.equipoPropio,
+    }).then((r) => {
+      guardado.estado = 'ok';
+      guardado.mensaje = (r.creoClub ? 'Cliente creado. ' : 'Categoría guardada. ')
+        + (r.aviso || '');
+      /* La lista se repinta con lo que devolvió el SERVIDOR, no con lo que
+         este formulario creyó mandar: si un guard recortó algo, se ve. */
+      if (typeof SGADD_CLIENTES !== 'undefined' && r.clubes) {
+        SGADD_CLIENTES.estado.clubes = r.clubes;
+        SGADD_CLIENTES.pintar();
+      }
+      const n = document.getElementById('hubClientes');
+      if (n) n.innerHTML = html();
+    }).catch((e) => {
+      guardado.estado = 'error';
+      guardado.mensaje = e.message || 'No se pudo guardar.';
+      refrescarAlta();
+    });
+  }
+
+  function refrescarAlta() {
+    const n = document.getElementById('hubAlta');
+    if (n) n.innerHTML = bloqueAlta();
+  }
+
   function campoAlta(id, valor) {
     if (!(id in alta)) return;
     alta[id] = String(valor == null ? '' : valor);
-    const n = document.getElementById('hubAlta');
-    if (n) n.innerHTML = bloqueAlta();
+    guardado.estado = null;   // tocar un campo borra el resultado anterior
+    refrescarAlta();
   }
 
   return {
     /* motor */
     comandoAlta, faltantesAlta, idValido,
     /* ui */
-    html, bloqueAlta, campoAlta, alta,
+    html, bloqueAlta, campoAlta, guardar, alta, guardado,
   };
 })();
 
