@@ -278,5 +278,37 @@ check('y tiene su entrada en el menú',
 check('el módulo se carga después de sgadd-app, que es de quien depende',
   html.indexOf('sgadd-clasificacion.js') > html.indexOf('sgadd-app.js'));
 
+
+titulo('EL ESCUDO Y LA BARRA DE ZONA EN CELULAR');
+
+const src = fs.readFileSync('./js/sgadd-clasificacion.js', 'utf8');
+const htmlIdx = fs.readFileSync('./index.html', 'utf8');
+
+/* El escudo va DENTRO de la celda del nombre y no en una columna propia:
+   una columna más empuja la tabla a lo ancho, y en celular ya scrollea. */
+check('el escudo va en la celda del nombre, no en una columna nueva',
+  /clasifEscudo\(r\.nombre\)\}\$\{SGADD_UI\.esc\(r\.nombre\)/.test(src));
+check('y la cantidad de cabeceras no cambió',
+  /'Pos', 'Equipo', 'PJ'/.test(src));
+/* Sin escudo resuelto van las INICIALES, no un hueco: es lo que pasa
+   siempre que el manifiesto de logos no se pueda leer. */
+check('sin escudo resuelto, van las iniciales',
+  /function clasifEscudo[\s\S]{0,700}toUpperCase\(\)/.test(src));
+
+/* LA BARRA DE ZONA SE PERDÍA EN CELULAR, y no era el color: era la
+   PROPIEDAD. La barra usa `box-shadow: inset` sobre el td:first-child, y
+   la columna fija de celular usa `box-shadow` TAMBIÉN para su separador —
+   misma propiedad, regla posterior, la pisaba entera. En escritorio la
+   media query no se activa, y por eso se veía solo en el teléfono. */
+const mq = htmlIdx.slice(htmlIdx.indexOf('@media screen and (max-width: 767px)'));
+const bloqueMovil = mq.slice(0, mq.indexOf('  }' + String.fromCharCode(10) + String.fromCharCode(10)) + 4000);
+check('en celular la barra de zona convive con el separador de la columna fija',
+  /zona-"\] > td:first-child \{[\s\S]{0,120}inset 3px 0 0 0 var\(--zona\), 1px 0 0/.test(bloqueMovil));
+check('y el hover no se la come',
+  /tr\[class\*="zona-"\]:hover td:first-child \{[\s\S]{0,120}var\(--zona\)/.test(bloqueMovil));
+/* La regla de escritorio sigue intacta: esto AGREGA, no reemplaza. */
+check('la regla de escritorio sigue estando',
+  /tr\[class\*="zona-"\] > td:first-child \{[\s\S]{0,80}box-shadow: inset 3px 0 0 0 var\(--zona\);/.test(htmlIdx));
+
 console.log('\n' + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

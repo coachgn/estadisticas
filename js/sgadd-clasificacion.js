@@ -157,6 +157,38 @@ function clasifCartel(txt, tono) {
   return `<div class="card rounded-xl p-8 border border-hairline text-center ${c} text-sm">${SGADD_UI.esc(txt)}</div>`;
 }
 
+/* EL ESCUDO DE LA TABLA DE POSICIONES.
+
+   Va entre el puesto y el nombre, dentro de la MISMA celda del nombre y
+   no en una columna propia: una columna mas empuja la tabla a lo ancho, y
+   en celular la tabla ya scrollea. Asi el escudo viaja pegado al nombre y
+   la cantidad de columnas no cambia.
+
+   SIN ESCUDO RESUELTO VAN LAS INICIALES, no un hueco. Es lo que pasa
+   siempre que el manifiesto de logos no se pueda leer —abriendo el panel
+   como `file://`, por ejemplo— y es la misma decision que ya tomaron el
+   scouting y el scatter de Principal (punto 7.5).
+
+   El tamaño es chico a proposito: la tabla tiene doce filas y el escudo
+   es una ayuda para encontrar la propia, no el protagonista. */
+function clasifEscudo(nombre) {
+  const url = (typeof LOGOS !== 'undefined' && LOGOS.getUrl) ? LOGOS.getUrl(nombre) : null;
+  if (url) {
+    return '<img src="' + SGADD_UI.esc(url) + '" alt="" loading="lazy" ' +
+      'class="w-5 h-5 object-contain shrink-0">';
+  }
+  /* Las iniciales salen de LOGOS, no de una fórmula propia: es la misma
+     insignia que ya usan el scouting, el scatter y los PDF, y dos
+     implementaciones terminan dando insignias distintas para el mismo
+     club. */
+  const ini = (typeof LOGOS !== 'undefined' && LOGOS.iniciales)
+    ? LOGOS.iniciales(nombre)
+    : String(nombre || '?').trim().slice(0, 2).toUpperCase();
+  return '<span class="w-5 h-5 shrink-0 rounded-full bg-surface2 text-muted ' +
+    'text-[9px] font-display inline-flex items-center justify-center">' +
+    SGADD_UI.esc(ini) + '</span>';
+}
+
 /**
  * La tabla, en HTML. La usan la sección y el resumen de Principal.
  *
@@ -203,7 +235,9 @@ function clasifTablaHTML(idx, opciones) {
          (r.dif > 0 ? '+' : '') + r.dif, r.pfProm.toFixed(1), r.pcProm.toFixed(1)];
     return `<tr class="hover:bg-surface2/40 transition-colors${zc}"${titulo}>
       <td class="${td} font-bold">${r.puesto}</td>
-      <td class="${td.replace('font-mono tabular-nums', 'font-body font-medium')} text-ink">${SGADD_UI.esc(r.nombre)}</td>
+      <td class="${td.replace('font-mono tabular-nums', 'font-body font-medium')} text-ink">
+        <span class="inline-flex items-center gap-2">${clasifEscudo(r.nombre)}${SGADD_UI.esc(r.nombre)}</span>
+      </td>
       ${cols.map(v => `<td class="${td}">${SGADD_UI.esc(String(v))}</td>`).join('')}
     </tr>`;
   }).join('');

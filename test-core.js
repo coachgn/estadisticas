@@ -1098,12 +1098,26 @@ const hSinT = {
 check('sin columna TORNEO tampoco se ofrece',
   SGADD.combinacionesTorneoFase(hSinT).every(t => !t.sintetico));
 
-/* EL TOTAL NO PUEDE SER EL DEFAULT. Es una decisión del DT, no el recorte
-   natural del libro: abrir por él cambiaría lo que ve el club de un día
-   para el otro sin que nadie lo pida. */
-check('el tramo por defecto nunca es el TOTAL',
-  SGADD.tramoPorDefecto(tDep).sintetico !== true,
+/* EL TOTAL ABRE EL LIBRO, Y ESTO ESTUVO AL REVÉS.
+
+   El default excluía al sintético con este argumento: el TOTAL es una
+   decisión del DT y no el recorte natural del libro. El club lo pidió al
+   revés (2026-08-30) y tiene razón sobre su caso: con la Ida cerrada y la
+   Vuelta en curso, abrir por IDA muestra las posiciones de hace un mes. */
+check('el tramo por defecto ES el TOTAL cuando existe',
+  SGADD.tramoPorDefecto(tDep).sintetico === true,
   SGADD.tramoPorDefecto(tDep).id);
+
+/* DEGRADA SOLO: el sintético existe únicamente cuando una fase tiene DOS
+   O MÁS torneos, así que un libro de un torneo solo —Jujuy, la U21— abre
+   exactamente como antes. */
+check('sin TOTAL disponible, abre por el de mayor cobertura como siempre',
+  SGADD.tramoPorDefecto(tDep.filter(t => !t.sintetico)).id === 'IDA|REGULAR');
+
+/* La fila TIPO viene con FASE = TOTAL y sin torneo: no es un tramo, es la
+   mediana. Abrir por ella daría cero equipos. */
+check('y el agregado sigue afuera del default',
+  !SGADD.tramoPorDefecto(tDep).agregado);
 
 /* El centinela es un valor que ningún torneo real puede tener: los
    nombres de torneo salen de una celda y no llevan asteriscos. */
@@ -1229,10 +1243,10 @@ const tOrden = SGADD.combinacionesTorneoFase({
 check('la fase regular va antes que los playoffs',
   tOrden[0].fase === 'REGULAR', tOrden.map(t => t.label).join(' · '));
 
-/* Mismo criterio que torneoPorDefecto: abre por el que más muestra, y en
-   un libro sano eso es el primero. */
-check('el libro abre por el tramo de mayor cobertura',
-  SGADD.tramoPorDefecto(tDep).id === 'IDA|REGULAR');
+/* Con TOTAL disponible gana el TOTAL; sin él, el criterio de cobertura
+   sigue mandando igual que antes. */
+check('el libro abre por el TOTAL de la fase',
+  SGADD.tramoPorDefecto(tDep).id === '*TOTAL*|REGULAR');
 check('y nunca por un agregado',
   !SGADD.tramoPorDefecto(tDep).agregado);
 

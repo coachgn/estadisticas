@@ -16,12 +16,12 @@ aplicadas en el punto 14.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 276 tests · núcleo, índice, validador
+node test-core.js          # 278 tests · núcleo, índice, validador
 node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 307 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
-node test-clasificacion.js #  46 tests · tabla de posiciones, orden y zonas
+node test-clasificacion.js #  52 tests · tabla de posiciones, orden, zonas y escudos
 node test-boot.js          # 156 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 253 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
@@ -37,7 +37,7 @@ node test-permisos.js      # 153 tests · roles, planes y el gate de interfaz
 node test-backend.js       # 319 tests · el proxy, el benchmark, las alertas y el catálogo en KV
 ```
 
-**2576 tests en total. Todos tienen que dar verde antes de commitear.**
+**2584 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -139,7 +139,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=124`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=143`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -557,10 +557,10 @@ Reglas al tocarlo:
 - **Con un solo tramo el selector igual se muestra**: es la etiqueta de lo
   que se está viendo.
 
-### "Todas las fases" NO se ofrece, y no es un olvido
+### El TOTAL de una fase · se DERIVA de los partidos, y ABRE el libro
 
-Juntar dos torneos suena razonable y **rompe los promedios**. Medido en el
-libro de DEPORTIVO, que trae los mismos 13 equipos en `IDA` y en `VUELTA`:
+Juntar dos torneos a lo bruto **rompe los promedios**. Medido en el libro
+de DEPORTIVO, que trae los mismos equipos en `IDA` y en `VUELTA`:
 
 ```
 solo IDA     → 64 partidos · 208 jugadores · DLP con PJ 11, 75,6 PTS
@@ -574,11 +574,50 @@ a los de IDA**: el equipo aparece con 13 partidos en la cronología y un
 promedio calculado sobre 2. Y los jugadores se **duplican** —373 contra
 208— porque cada uno tiene una fila por torneo.
 
-El agregado correcto es la fase **`TOTAL`**, que el motor ya define. Hoy
-MotorStats la escribe **solo para la fila `EQUIPO TIPO`**: en `PROMEDIOS
-E` de DEPORTIVO hay 1 sola fila con `FASE = TOTAL`. Cuando el motor la
-complete con las filas por equipo, **el selector la va a ofrecer sola**,
-sin tocar una línea: `combinacionesTorneoFase()` enumera lo que hay.
+Por eso el TOTAL **no lee las hojas de promedios: las reconstruye** desde
+`Base Datos E` y `Base Datos J`. El volumen se suma y se divide por PJ; las
+**tasas se recalculan sobre los totales**, que no es lo mismo que promediar
+la tasa de cada noche. Las que dependen del rival (`RO%`, `PR%`, `PACE`)
+salen del otro lado de cada partido.
+
+Hay un bloque de tests que arma un libro de UN solo torneo y exige que el
+TOTAL derivado **reproduzca exactamente lo que declara la hoja de
+promedios** — es la prueba más fuerte que se puede escribir sin la planilla
+real, y de paso verifica que el eFG% ponderado NO coincide con el
+promediado.
+
+**Se ofrece solo cuando la fase tiene DOS O MÁS torneos.** Con uno solo el
+total ES ese torneo y el selector mostraría dos opciones que dan lo mismo.
+Y nunca se mezclan fases: juntar una regular con unos playoffs no significa
+nada.
+
+El torneo sintético es `*TOTAL*`. El centinela lleva asteriscos **a
+propósito**: los nombres de torneo salen de una celda y ninguno real puede
+tenerlos, así que no colisiona. Viaja en la ruta sin encodearse.
+
+#### Y es el que ABRE el libro · esto estuvo al revés
+
+`tramoPorDefecto()` EXCLUÍA al sintético, con este argumento: el TOTAL es
+una decisión del DT y no el recorte natural del libro, así que abrir por él
+cambiaría lo que ve el club de un día para el otro sin que nadie lo pida.
+
+El club lo pidió al revés (**2026-08-30**) y tiene razón sobre su caso: con
+la Ida cerrada y la Vuelta en curso, abrir por `IDA|REGULAR` muestra una
+tabla que ya no describe el torneo — el DT entra y ve las posiciones de
+hace un mes. El TOTAL es la foto de hoy.
+
+Se cambió **en el núcleo y no en cada sección**, justamente para que la
+barra, el Diagnóstico y la Configuración abran por el mismo tramo: tres
+defaults distintos es la pantalla de auditoría contradiciendo a lo que
+audita (punto 5).
+
+**DEGRADA SOLO.** Como el sintético solo existe con dos torneos o más, un
+libro de uno solo —Jujuy, la U21— abre exactamente como antes. Y la fila
+`agregado` (la TIPO, con `FASE = TOTAL`) sigue afuera del default: esa no
+es un tramo sino la mediana, y abrir por ella daría cero equipos.
+
+Alcance real del cambio: **DEPORTIVO Primera** y **Reconquista Primera**,
+que son las dos planillas con ida y vuelta. Las otras tres no se mueven.
 ### Ruta: `#/<planilla>/<torneo>/<fase>/<seccion>/…`
 
 El torneo entra como **segundo** nivel. La retrocompatibilidad no es opcional:
@@ -4054,6 +4093,49 @@ y sin colores, con un aviso que dice dónde se configura. Es la regla del
 punto 6 — la config es opcional y su ausencia no puede dejar la pantalla
 vacía. Verificado en el navegador con los tres clubes: DEPORTIVO 12 filas
 y 12 con zona, Jujuy 17 filas sin zona, Reconquista 12 sin zona.
+
+### El escudo va en la celda del NOMBRE, no en una columna propia
+
+Entre el puesto y el nombre. Una columna más empuja la tabla a lo ancho y
+en celular ya scrollea; así el escudo viaja pegado al nombre y la cantidad
+de columnas no cambia.
+
+**Sin escudo resuelto van las INICIALES**, y salen de `LOGOS.iniciales()`,
+no de una fórmula propia: es la misma insignia que ya usan el scouting, el
+scatter de Principal y los cuatro PDF, y dos implementaciones terminan
+dando insignias distintas para el mismo club.
+
+Los escudos llegan **después** del primer pintado —`getUrl()` devuelve
+`null` hasta que el manifiesto baja— y eso no hace falta manejarlo acá: el
+hook global `registrarRepintadoPorLogos()` repinta la sección cuando entra
+alguno nuevo. Es el mismo camino que ya usan las demás.
+
+### LA BARRA DE ZONA SE PERDÍA EN CELULAR · y no era el color, era la PROPIEDAD
+
+Medido a 375px: la fila salía con su clase `zona-exito` correcta y el
+`--zona` resuelto en `#4ade80`… y en pantalla no se veía nada.
+
+La barra del puesto se pinta con `box-shadow: inset` sobre el
+`td:first-child` (va en el `<td>` y no en el `<tr>` por el motivo del punto
+14: el fondo de la celda tapa el de la fila). La **columna fija de**
+**celular** usa `box-shadow` TAMBIÉN, para su separador:
+
+```css
+@media screen and (max-width: 767px) {
+  .scrollbox table td:first-child { box-shadow: 1px 0 0 #282828; }  /* ← pisa */
+}
+```
+
+Misma propiedad, regla posterior en el documento: la pisaba entera. En
+escritorio la media query no se activa, **y por eso el bug se veía SOLO en**
+**el teléfono** — que es donde el DT mira la tabla.
+
+Se arregla **combinando las dos sombras**, no eligiendo una: la barra de
+zona adentro, el separador afuera. La regla de escritorio queda intacta —
+esto agrega, no reemplaza— y hay tests que fijan las tres cosas.
+
+Es la misma familia de trampa que el punto 7.4 bis: una afordancia de
+celular pisando algo que no tiene nada que ver con el celular.
 
 ### Sumar una sección cambia cómo se leen los links VIEJOS
 

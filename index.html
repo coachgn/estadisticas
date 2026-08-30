@@ -1559,6 +1559,27 @@
     }
     .scrollbox table thead th:first-child { z-index: 3; }
     .scrollbox tbody tr:hover td:first-child { background: #1b1b1b; }
+
+    /* LA BARRA DE ZONA SE PERDIA EN CELULAR, y no era el color: era la
+       PROPIEDAD.
+
+       La barra del puesto se pinta con `box-shadow: inset` sobre el
+       `td:first-child` (ver la regla de `.zona-*` arriba). La columna
+       fija de celular usa `box-shadow` TAMBIEN, para su separador — y
+       como es la misma propiedad y esta regla viene despues en el
+       documento, la pisaba entera.
+
+       En escritorio no pasa porque esta media query no se activa, y por
+       eso el bug se veia SOLO en el telefono.
+
+       Se arregla combinando las dos sombras en vez de elegir una: la
+       barra de zona adentro, el separador de la columna fija afuera. */
+    .scrollbox tr[class*="zona-"] > td:first-child {
+      box-shadow: inset 3px 0 0 0 var(--zona), 1px 0 0 #282828;
+    }
+    .scrollbox tbody tr[class*="zona-"]:hover td:first-child {
+      box-shadow: inset 3px 0 0 0 var(--zona), 1px 0 0 #282828;
+    }
     .scrollbox table th, .scrollbox table td { padding-left: .625rem; padding-right: .625rem; }
   }
 
@@ -1592,7 +1613,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=142" />
+<link rel="stylesheet" href="sgadd.css?v=143" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -1732,31 +1753,31 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=142"></script>
+<script src="js/sgadd-club.js?v=143"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=142"></script>
-<script src="js/sgadd-core.js?v=142"></script>
-<script src="js/sgadd-auth.js?v=142"></script>
-<script src="js/sgadd-data.js?v=142"></script>
-<script src="js/sgadd-ui.js?v=142"></script>
-<script src="js/sgadd-app.js?v=142"></script>
-<script src="js/sgadd-clasificacion.js?v=142"></script>
+<script src="js/sgadd-config.js?v=143"></script>
+<script src="js/sgadd-core.js?v=143"></script>
+<script src="js/sgadd-auth.js?v=143"></script>
+<script src="js/sgadd-data.js?v=143"></script>
+<script src="js/sgadd-ui.js?v=143"></script>
+<script src="js/sgadd-app.js?v=143"></script>
+<script src="js/sgadd-clasificacion.js?v=143"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-configui.js?v=142"></script>
-<script src="js/sgadd-estados.js?v=142"></script>
-<script src="js/sgadd-buzon.js?v=142"></script>
-<script src="js/sgadd-charts.js?v=142"></script>
-<script src="js/sgadd-personalidad.js?v=142"></script>
-<script src="js/sgadd-rankings.js?v=142"></script>
-<script src="js/sgadd-partido.js?v=142"></script>
-<script src="js/sgadd-informe.js?v=142"></script>
-<script src="js/sgadd-ficha.js?v=142"></script>
-<script src="js/sgadd-equipos.js?v=142"></script>
-<script src="js/sgadd-jugadores.js?v=142"></script>
-<script src="js/sgadd-4factores.js?v=142"></script>
-<script src="js/sgadd-scouting.js?v=142"></script>
-<script src="js/sgadd-diagnostico.js?v=142"></script>
+<script src="js/sgadd-configui.js?v=143"></script>
+<script src="js/sgadd-estados.js?v=143"></script>
+<script src="js/sgadd-buzon.js?v=143"></script>
+<script src="js/sgadd-charts.js?v=143"></script>
+<script src="js/sgadd-personalidad.js?v=143"></script>
+<script src="js/sgadd-rankings.js?v=143"></script>
+<script src="js/sgadd-partido.js?v=143"></script>
+<script src="js/sgadd-informe.js?v=143"></script>
+<script src="js/sgadd-ficha.js?v=143"></script>
+<script src="js/sgadd-equipos.js?v=143"></script>
+<script src="js/sgadd-jugadores.js?v=143"></script>
+<script src="js/sgadd-4factores.js?v=143"></script>
+<script src="js/sgadd-scouting.js?v=143"></script>
+<script src="js/sgadd-diagnostico.js?v=143"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

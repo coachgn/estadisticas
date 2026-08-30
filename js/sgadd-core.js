@@ -616,13 +616,39 @@
    * único recorte mudo.
    */
   function tramoPorDefecto(lista) {
-    /* El sintético NO puede ser el default: el TOTAL es una decisión del
-       DT, no el recorte natural del libro. Abrir por él cambiaría lo que
-       ve el club de un día para el otro sin que nadie lo pida. */
-    const l = (lista || []).filter(c => !c.agregado && !c.sintetico);
-    if (!l.length) return (lista && lista[0]) || null;
-    let mejor = l[0];
-    l.forEach(c => { if (c.cobertura > mejor.cobertura) mejor = c; });
+    /* EL TOTAL ABRE EL LIBRO, Y ESTO ESTUVO AL REVÉS.
+
+       Hasta acá el sintético estaba EXCLUIDO del default, con este
+       argumento: el TOTAL es una decisión del DT y no el recorte natural
+       del libro, así que abrir por él cambiaría lo que ve el club de un
+       día para el otro sin que nadie lo pida.
+
+       El club lo pidió (2026-08-30) y tiene razón sobre su caso: con la
+       Ida cerrada y la Vuelta en curso, abrir por `IDA|REGULAR` muestra
+       una tabla que ya no describe el torneo — el DT entra y ve las
+       posiciones de hace un mes. El TOTAL es la foto de HOY.
+
+       Se cambia acá y no en cada sección justamente para que la barra, el
+       Diagnóstico y la Configuración abran por el mismo tramo: tres
+       defaults distintos es la pantalla de auditoría contradiciendo a lo
+       que audita (punto 5).
+
+       DEGRADA SOLO: el sintético existe únicamente cuando una fase tiene
+       DOS O MÁS torneos, así que en un libro de un torneo solo —Jujuy, la
+       U21— no hay TOTAL que elegir y el default sigue siendo exactamente
+       el de antes. Y la fila `agregado` (la TIPO, con FASE = TOTAL) queda
+       afuera igual: esa no es un tramo, es la mediana, y abrir por ella
+       daría cero equipos. */
+    const vivos = (lista || []).filter(c => !c.agregado);
+    if (!vivos.length) return (lista && lista[0]) || null;
+
+    /* El sintético ya cubre lo que cubren sus partes juntas, así que no
+       hace falta compararlo por cobertura: si existe, gana. */
+    const total = vivos.find(c => c.sintetico);
+    if (total) return total;
+
+    let mejor = vivos[0];
+    vivos.forEach(c => { if (c.cobertura > mejor.cobertura) mejor = c; });
     return mejor;
   }
   /**
