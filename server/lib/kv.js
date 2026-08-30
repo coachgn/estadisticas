@@ -36,10 +36,23 @@ function credenciales(env) {
     || e.KV_REST_API_URL || '';
   const token = e.UPSTASH_REDIS_REST_TOKEN || e.UPSTASH_KV_REST_API_TOKEN
     || e.KV_REST_API_TOKEN || '';
-  /* Para el CLI: si hay un token de solo lectura configurado aparte, el
-     servidor puede usar ese y el CLI el completo. */
+  /* EL TOKEN DE SOLO LECTURA · el servidor lee, el CLI escribe.
+
+     Vercel no tiene por qué poder escribir el catálogo: lo único que hace
+     con KV es leerlo. Con el token completo ahí arriba, cualquier fallo de
+     la API podría pisar el catálogo de los tres clubes.
+
+     Y ACÁ VAN LAS CUATRO VARIANTES DE NOMBRE, por lo mismo que el token
+     completo acepta tres: Upstash bautiza distinto según por dónde se cree
+     la base. La consola nativa muestra `UPSTASH_REDIS_REST_READONLY_TOKEN`
+     —todo junto, sin `API`— y la integración estilo Vercel KV muestra
+     `KV_REST_API_READ_ONLY_TOKEN`, con guión bajo en medio. Exigir uno
+     concreto es mandar a copiar valores a mano para nada, y ya pasó dos
+     veces con el token completo. */
   const tokenLectura = e.KV_REST_API_READ_ONLY_TOKEN
-    || e.UPSTASH_KV_REST_API_READ_ONLY_TOKEN || '';
+    || e.UPSTASH_KV_REST_API_READ_ONLY_TOKEN
+    || e.UPSTASH_REDIS_REST_READONLY_TOKEN
+    || e.UPSTASH_REDIS_REST_READ_ONLY_TOKEN || '';
   return {
     url: String(url).replace(/\/+$/, ''),
     token: String(token),
@@ -59,6 +72,21 @@ async function comando(partes, opciones) {
   if (!c.url || !token) {
     const e = new Error('Upstash no está configurado (falta UPSTASH_REDIS_REST_URL o su token)');
     e.codigo = 'SIN_KV';
+    throw e;
+  }
+
+  /* ESCRIBIR CON UN TOKEN DE SOLO LECTURA FALLA ACÁ, NO EN UPSTASH.
+
+     Sin esto la petición sale igual y vuelve un `NOPERM` crudo que no
+     dice cuál es el problema: el administrador ve un error de red donde
+     lo que pasa es que está corriendo el CLI contra el entorno que solo
+     lee. Es el mismo criterio que el guard de `guardar()`, que aborta
+     antes de escribir en vez de dejar a medias. */
+  if (!o.soloLectura && !c.token && c.tokenLectura) {
+    const e = new Error('Este entorno solo tiene el token de LECTURA de Upstash: '
+      + 'no puede escribir el catálogo. El token completo va en la máquina '
+      + 'que corre el CLI, nunca en el servidor.');
+    e.codigo = 'KV_SOLO_LECTURA';
     throw e;
   }
   const traer = o.fetch || fetch;

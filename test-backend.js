@@ -1405,6 +1405,66 @@ titulo('EL CLIENTE · qué hace con la lista del servidor');
 }
 
 
+titulo('EL TOKEN DE SOLO LECTURA · el servidor lee, el CLI escribe');
+
+/* Vercel no tiene por qué poder escribir el catálogo: lo único que hace
+   con KV es leerlo. Con el token completo arriba, cualquier fallo de la
+   API podría pisar el catálogo de los tres clubes. */
+{
+  const KVT = require('./server/lib/kv.js');
+
+  /* LAS CUATRO VARIANTES DE NOMBRE. Upstash bautiza distinto según por
+     dónde se cree la base, y esto ya costó dos vueltas con el token
+     completo: llegaron credenciales con el tercer nombre y el cliente no
+     las reconocía. */
+  const variantes = ['KV_REST_API_READ_ONLY_TOKEN', 'UPSTASH_KV_REST_API_READ_ONLY_TOKEN',
+                     'UPSTASH_REDIS_REST_READONLY_TOKEN', 'UPSTASH_REDIS_REST_READ_ONLY_TOKEN'];
+  variantes.forEach((nombre) => {
+    const env = { UPSTASH_REDIS_REST_URL: 'https://x' };
+    env[nombre] = 'RO';
+    check('reconoce ' + nombre, KVT.configurado(env));
+  });
+
+  /* El servidor con SOLO el token de lectura tiene que poder leer. */
+  const soloRO = { UPSTASH_REDIS_REST_URL: 'https://x', KV_REST_API_READ_ONLY_TOKEN: 'RO' };
+  let usado = null;
+  const espia = async (url, o) => {
+    usado = o.headers.Authorization;
+    return { ok: true, json: async () => ({ result: null }) };
+  };
+  {
+    const r = await KVT.leer('sgadd:catalogo', { env: soloRO, fetch: espia });
+    check('con solo el token de lectura, leer funciona', r.error === null);
+    check('y va con ESE token', usado === 'Bearer RO', usado);
+
+    /* ESCRIBIR FALLA ACÁ, NO EN UPSTASH. Sin la guarda sale la petición y
+       vuelve un NOPERM crudo: el administrador ve un error de red donde lo
+       que pasa es que está corriendo el CLI contra el entorno del
+       servidor. */
+    usado = null;
+    let codigo = null;
+    try { await KVT.escribir('sgadd:catalogo', { a: 1 }, { env: soloRO, fetch: espia }); }
+    catch (e) { codigo = e.codigo; }
+    check('escribir con token de solo lectura falla con un código propio',
+      codigo === 'KV_SOLO_LECTURA', codigo);
+    check('y NI SIQUIERA sale a la red', usado === null, usado);
+
+    /* Con el token completo, escribir sigue funcionando igual que antes:
+       la guarda solo mira el caso en que el completo NO está. */
+    const completo = { UPSTASH_REDIS_REST_URL: 'https://x', UPSTASH_REDIS_REST_TOKEN: 'RW',
+                       KV_REST_API_READ_ONLY_TOKEN: 'RO' };
+    usado = null;
+    await KVT.escribir('sgadd:catalogo', { a: 1 }, { env: completo, fetch: espia });
+    check('con el token completo escribe, y usa el completo', usado === 'Bearer RW', usado);
+
+    /* Y leer sigue prefiriendo el de lectura aunque estén los dos: es lo
+       que hace que el CLI no gaste el permiso de escritura en un GET. */
+    usado = null;
+    await KVT.leer('sgadd:catalogo', { env: completo, fetch: espia });
+    check('teniendo los dos, leer usa el de lectura', usado === 'Bearer RO', usado);
+  }
+}
+
 titulo('EL CATÁLOGO · la cascada KV → env → código');
 
 /* LO QUE ESTA CASCADA COMPRA: dar de alta un club deja de ser un cambio

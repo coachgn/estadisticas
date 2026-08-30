@@ -33,11 +33,17 @@ node test-estados.js       # 181 tests · estados de jugador, alertas, buzon, sy
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
 node test-permisos.js      # 153 tests · roles, planes y el gate de interfaz
 
-# Solo en la rama `poc/backend` — no está en main:
-node test-backend.js       # 319 tests · el proxy, el benchmark, las alertas y el catálogo en KV
+node test-backend.js       # 329 tests · el proxy, el benchmark, las alertas, el catálogo en KV
+                           #             y el reparto de tokens de Upstash
+
+# OJO: `test-backend.js` ESTÁ EN MAIN desde que se integró el backend.
+# Decía acá que vivía solo en `poc/backend` y por eso quedó fuera de dos
+# vueltas de suite (v144 y v145): su test de deriva —el que compara byte
+# a byte `server/lib/compartido/` contra `js/`— venía en rojo desde que se
+# tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**2603 tests en total. Todos tienen que dar verde antes de commitear.**
+**2613 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -4584,6 +4590,53 @@ que las confunda cree que publicó algo que no publicó.
 El borrador del torneo es **independiente** del de zonas: son dos bloques
 distintos del JSON y mezclarlos obligaría a commitear los dos para publicar
 uno.
+
+---
+
+## 18 bis. Los dos tokens de Upstash · el servidor lee, el CLI escribe
+
+Vercel **no tiene por qué poder escribir el catálogo**: lo único que hace
+con KV es leerlo. Escribirlo es tarea del CLI, que corre en la máquina de
+quien administra. Con el token completo arriba, cualquier fallo de la API
+podría pisar el catálogo de los tres clubes — que es exactamente la bomba
+que ya se armó dos veces con `sembrar` (punto 17 de la CLI).
+
+```
+Vercel  →  URL + SOLO el token de lectura
+local   →  URL + el token completo
+```
+
+`leer()` pide siempre `soloLectura: true`, así que **teniendo los dos usa
+el de lectura**: el CLI no gasta el permiso de escritura en un GET.
+
+**Una escritura con solo el token de lectura falla ANTES de salir a la
+red**, con código `KV_SOLO_LECTURA`. Sin esa guarda la petición sale y
+vuelve un `NOPERM` crudo: el administrador ve un error de red donde lo que
+pasa es que está corriendo el CLI contra el entorno del servidor. Es el
+mismo criterio que el guard de `guardar()`, que aborta antes de escribir en
+vez de dejar a medias.
+
+**Se aceptan CUATRO nombres** para el token de lectura, por lo mismo que el
+completo acepta tres: Upstash bautiza distinto según por dónde se cree la
+base —la consola nativa dice `UPSTASH_REDIS_REST_READONLY_TOKEN`, todo
+junto y sin `API`; la integración estilo Vercel KV dice
+`KV_REST_API_READ_ONLY_TOKEN`—. Exigir uno concreto es mandar a copiar
+valores a mano para nada, y ya pasó dos veces con el completo.
+
+### Dar de alta un club · probar los libros ANTES
+
+`probar-google.js --sheets "etiqueta=ID,etiqueta=ID"` prueba varios libros
+de una y **no se corta en el primero que falla**: lo que se quiere saber es
+cuáles pasan y cuáles no. Distingue los dos modos de fallar, que se
+arreglan de maneras opuestas:
+
+| | Qué pasó | Cómo se arregla |
+|---|---|---|
+| `NO COMPARTIDA` | la Service Account no tiene acceso | compartir el libro con su mail, modo Lector |
+| `NO EXISTE` | el `sheetId` apunta a la nada | corregir el id |
+
+Los dos daban **401 por GViz**, que es lo que hizo perder una tarde con la
+U21 (punto 3 ter). Por la API de Sheets se distinguen solos.
 
 ---
 

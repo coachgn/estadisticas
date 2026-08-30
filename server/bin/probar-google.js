@@ -4,6 +4,13 @@
 
      node server/bin/probar-google.js [--club deportivo]
      node server/bin/probar-google.js --sheet <ID> --rango "PROMEDIOS E"
+     node server/bin/probar-google.js --sheets "etiqueta=ID,etiqueta=ID"
+
+   El modo `--sheets` es para el ALTA de un club: se prueban varios libros
+   de una y se reporta cuál falta compartir. Uno por uno son cuatro
+   comandos y cuatro salidas que hay que comparar a ojo; acá sale la tabla
+   entera y NO se corta en el primero que falla — justamente lo que se
+   quiere saber es cuáles pasan y cuáles no.
 
    Es el chequeo de treinta segundos que separa "el código compila" de
    "Google nos deja leer": los tests corren con un `fetch` de mentira a
@@ -42,6 +49,50 @@ function args(argv) {
   if (!env.googleEmail || !env.googleKey) {
     console.error('\n  Falta configurar server/.env. Ver server/.env.example y server/README.md\n');
     process.exit(1);
+  }
+
+  /* MODO TANDA. Devuelve un código de salida distinto de cero si alguno
+     falla, para que sirva en un script, pero recién al final. */
+  if (o.sheets && o.sheets !== true) {
+    const libros = String(o.sheets).split(',').map(x => x.trim()).filter(Boolean)
+      .map(x => {
+        const i = x.indexOf('=');
+        return i === -1 ? { etiqueta: x.slice(0, 12) + '…', id: x }
+                        : { etiqueta: x.slice(0, i), id: x.slice(i + 1) };
+      });
+    let fallaron = 0;
+    for (const l of libros) {
+      try {
+        const libro = await obtenerLibro(l.id);
+        const hojas = Object.keys(libro.hojas);
+        const ok = hojas.length - libro.faltantes.length;
+        console.log('  ' + (ok === hojas.length ? 'OK    ' : 'PARCIAL')
+          + '  ' + l.etiqueta.padEnd(24) + ok + '/' + hojas.length + ' hojas'
+          + (libro.faltantes.length ? '   faltan: ' + libro.faltantes.join(', ') : ''));
+      } catch (e) {
+        fallaron++;
+        const porque = e.codigo === 'SIN_PERMISO_SHEET'
+          ? 'NO COMPARTIDA con ' + env.googleEmail
+          /* `SIN_HOJA` es el 404 de Google, y acá significa que el ARCHIVO
+             no existe — es el caso del id muerto de la U21, que daba 401
+             por GViz y hacía pensar en permisos (punto 3 ter). Se nombra
+             distinto que la falta de permiso justamente porque se arreglan
+             de maneras opuestas: uno se comparte, el otro se corrige. */
+          : (e.codigo === 'SIN_HOJA' ? 'NO EXISTE ese archivo · revisá el sheetId'
+                                     : (e.message || ''));
+        console.log('  FALLA   ' + l.etiqueta.padEnd(24) + porque);
+      }
+    }
+    console.log('');
+    if (fallaron) {
+      console.log('  ' + fallaron + ' de ' + libros.length + ' sin acceso.');
+      console.log('  Compartilas con ' + env.googleEmail + ' en modo Lector y repetí.');
+      console.log('');
+      process.exit(1);
+    }
+    console.log('  Los ' + libros.length + ' libros se leen. Ya se pueden dar de alta.');
+    console.log('');
+    return;
   }
 
   let sheetId = o.sheet;
