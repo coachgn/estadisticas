@@ -1288,5 +1288,82 @@ check('los totales se muestran sin decimales',
   /function rankingTexto[\s\S]{0,300}String\(Math\.round\(v\)\)/.test(fuenteJug2) &&
   /function plantelTexto[\s\S]{0,300}String\(Math\.round\(v\)\)/.test(fuenteEqAcum));
 
+/* =====================================================================
+   EL RANKING DEL PLANTEL
+
+   Las mismas tablas del top 20 pero ADENTRO de un equipo. Se comparte el
+   motor a propósito: dos implementaciones que ordenen distinto son el bug
+   que este proyecto ya se comió con el rol funcional (CLAUDE.md, punto 8).
+   ===================================================================== */
+console.log('\n' + 'EL RANKING DEL PLANTEL' + '\n' + '─'.repeat(70));
+
+{
+  const srcJ = require('fs').readFileSync('./js/sgadd-jugadores.js', 'utf8');
+
+  const planA = idxRk.liga.jugadoresPorEquipo.get('A') || [];
+  const rP = J.jugadoresRanking(idxRk, 'rebotes',
+    { pool: planA, ambito: 'plantel', umbral: 0, topN: planA.length });
+
+  /* NO ENTRA NADIE DE OTRO EQUIPO. Es la propiedad entera del bloque: una
+     tabla titulada «ranking del plantel» con un rival adentro no se lee
+     como un bug, se lee como un dato. */
+  check('el ranking del plantel trae SOLO a los de ese equipo',
+    rP.filas.length > 0 && rP.filas.every(f => f.claveEquipo === 'A'),
+    rP.filas.map(f => f.jugador + '@' + f.claveEquipo).join('|'));
+  check('y trae a TODOS los del equipo', rP.filas.length === planA.length,
+    rP.filas.length + ' de ' + planA.length);
+
+  /* SIN UMBRAL DE MINUTOS. Adentro de un plantel el umbral de liga deja
+     afuera a media lista, y el DT que abrió el plantel quiere el plantel:
+     una tabla que muestra la mitad se lee como datos que faltan. */
+  check('el suplente de 6 minutos SÍ entra al ranking de su plantel',
+    rP.filas.some(f => f.jugador === 'SUPLENTE, CORTO'),
+    rP.filas.map(f => f.jugador).join('|'));
+  check('y queda primero, porque lidera la métrica del grupo',
+    rP.filas[0].jugador === 'SUPLENTE, CORTO', rP.filas[0].jugador);
+
+  /* EL MOTOR ES EL MISMO: misma forma, mismo orden, mismo desempate. */
+  check('el resultado tiene la misma forma que el de liga',
+    !!rP.columnas && !!rP.medianas && typeof rP.elegibles === 'number');
+  check('viene ordenado descendente por la métrica del grupo',
+    rP.filas.every((f, k2, a) => k2 === 0 || a[k2 - 1].valorOrden >= f.valorOrden));
+  check('el ámbito viaja en el resultado, para que la tabla sepa qué pintar',
+    rP.ambito === 'plantel' && J.jugadoresRanking(idxRk, 'rebotes').ambito === 'liga');
+
+  /* SIN `pool` NADA CAMBIA: el default sigue siendo la liga entera. Es lo
+     que garantiza que el top 20 no se movió al abrir el parámetro. */
+  const rkAntes = J.jugadoresRanking(idxRk, 'rebotes');
+  const rkIgual = J.jugadoresRanking(idxRk, 'rebotes', { pool: null });
+  check('sin pool el universo sigue siendo la liga',
+    rkAntes.filas.map(f => f.jugador).join('|') === rkIgual.filas.map(f => f.jugador).join('|'));
+
+  /* LAS DOS TABLAS NUNCA CONVIVEN: con equipo elegido va la del plantel,
+     sin equipo la de la liga. */
+  check('con equipo se pinta la del plantel y no la de liga',
+    /conEquipo \? jugadoresBloqueRankingPlantel\(idx\) : ''/.test(srcJ) &&
+    /conEquipo \? '' : jugadoresBloqueRankings\(idx\)/.test(srcJ));
+
+  /* Y SE VA SOLA AL ABRIR UNA FICHA, sin guarda propia: `jugadoresGrilla`
+     no se llama cuando hay un jugador abierto. Una segunda condición para
+     lo mismo es un lugar más donde desincronizarse. */
+  check('la ficha reemplaza a la grilla entera',
+    /j \? jugadoresFicha\(idx, j\) : jugadoresGrilla\(idx\)/.test(srcJ));
+
+  /* CADA TABLA CON SU ESTADO. Un «por RD» elegido en la liga no significa
+     lo mismo adentro de un plantel de doce. */
+  check('el orden del plantel no comparte estado con el de liga',
+    /plantelRankingOrdenPor/.test(srcJ) && /plantelRankingAbierto/.test(srcJ));
+  check('y el toggle de escala tampoco', /plantelRankingModo/.test(srcJ));
+
+  /* La columna Equipo se saca: adentro de un plantel dice doce veces lo
+     mismo, y en una tabla de nueve columnas el ancho no sobra. */
+  check('la columna Equipo no se pinta en el ranking del plantel',
+    /dePlantel \? '' : '<th/.test(srcJ));
+
+  /* Con tres jugadores no hay nada que rankear. */
+  check('un plantel de menos de 4 no dibuja la tabla',
+    /if \(plantel\.length < 4\) return '';/.test(srcJ));
+}
+
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

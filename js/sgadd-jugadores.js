@@ -119,6 +119,15 @@ function jugadoresRanking(idx, id, opciones) {
   const umbral = (typeof o.umbral === 'number') ? o.umbral : jugadoresUmbralRanking(idx);
   const topN = o.topN || JUGADORES_TOP_N;
 
+  /* EL UNIVERSO ES UN PARÁMETRO, no siempre la liga entera. Con `pool` se
+     puede rankear el plantel de un solo equipo sin duplicar una línea del
+     motor: el criterio de selección, el desempate, los nulos al fondo y la
+     mediana del propio top valen igual adentro de un plantel que adentro
+     de la liga. Dos motores que ordenen distinto es lo que este proyecto
+     ya se comió con el rol funcional (CLAUDE.md, punto 8). */
+  const universo = o.pool || (idx.liga.jugadores || []);
+  const ambito = o.ambito === 'plantel' ? 'plantel' : 'liga';
+
   /* El valor de orden sale del mismo extractor que las celdas, para que
      no pueda pasar que la tabla ordene por una cosa y muestre otra.
 
@@ -139,7 +148,7 @@ function jugadoresRanking(idx, id, opciones) {
      promedio, incluso en modo total: en totales un suplente con 12
      partidos cortos supera en minutos a un titular con 4, y el filtro
      dejaría entrar justo a los que vino a excluir. */
-  const elegibles = (idx.liga.jugadores || []).filter(j => {
+  const elegibles = universo.filter(j => {
     const m = (typeof j['MIN'] === 'number' && isFinite(j['MIN'])) ? j['MIN'] : null;
     return m !== null && m >= umbral && valor(j, g.orden) !== null;
   });
@@ -191,7 +200,7 @@ function jugadoresRanking(idx, id, opciones) {
   });
 
   return {
-    id: g.id, titulo: g.titulo, orden: g.orden, nota: g.nota || null, modo: modo,
+    id: g.id, titulo: g.titulo, orden: g.orden, nota: g.nota || null, modo: modo, ambito: ambito,
     columnas: g.cols, filas: filas, medianas: medianas,
     umbral: umbral, elegibles: elegibles.length,
     /* Con qué se está mostrando, que puede no ser con qué se seleccionó. */
@@ -1229,6 +1238,13 @@ function jugadoresTablaRanking(idx, r) {
     return `<p class="text-xs text-muted py-4">Ningún jugador llega al umbral de minutos.</p>`;
   }
 
+  /* La MISMA tabla sirve a la liga y a un plantel. Lo único que cambia:
+     a quién le habla el clic de la cabecera, y que adentro de un plantel
+     la columna Equipo dice doce veces lo mismo — es ancho gastado en una
+     pantalla donde ya sobra poco. */
+  const dePlantel = (r.ambito === 'plantel');
+  const alOrdenar = dePlantel ? 'jugadoresOrdenarRankingPlantel' : 'jugadoresOrdenarRanking';
+
   /* Cabeceras de métrica ordenables. La flecha marca por cuál se está
      ordenando y en qué sentido; el resto queda con un ⇅ tenue para que se
      note que también se pueden tocar. */
@@ -1237,7 +1253,7 @@ function jugadoresTablaRanking(idx, r) {
     const flecha = activa ? (r.dir === 'asc' ? '▲' : '▼') : '⇅';
     return `<th class="py-1 px-2 text-center align-middle whitespace-nowrap cursor-pointer select-none
         hover:text-accent transition-colors ${activa ? 'text-accent' : ''}"
-        onclick="jugadoresOrdenarRanking('${SGADD_UI.escJs(k)}')"
+        onclick="${alOrdenar}('${SGADD_UI.escJs(k)}')"
         title="Ordenar por ${SGADD_UI.esc(k)}"
         aria-sort="${activa ? (r.dir === 'asc' ? 'ascending' : 'descending') : 'none'}"
         ${SGADD_UI.atributosFila('Ordenar por ' + k)}>${SGADD_UI.esc(k)}
@@ -1279,7 +1295,7 @@ function jugadoresTablaRanking(idx, r) {
             <span class="text-xs truncate ${propio ? 'text-accent font-semibold' : 'text-white'}">${SGADD_UI.esc(f.jugador)}</span>
           </div>
         </td>
-        <td class="py-1.5 px-2 text-center align-middle text-[11px] text-muted truncate max-w-[9rem]">${SGADD_UI.esc(f.equipo)}</td>
+        ${dePlantel ? '' : `<td class="py-1.5 px-2 text-center align-middle text-[11px] text-muted truncate max-w-[9rem]">${SGADD_UI.esc(f.equipo)}</td>`}
         ${celdas}
       </tr>`;
   }).join('');
@@ -1292,17 +1308,19 @@ function jugadoresTablaRanking(idx, r) {
       <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
         <th class="py-1 pr-2 text-left">#</th>
         <th class="py-1 pr-3 text-left">Jugador</th>
-        <th class="py-1 px-2 text-center">Equipo</th>${th}
+        ${dePlantel ? '' : '<th class="py-1 px-2 text-center">Equipo</th>'}${th}
       </tr></thead>
       <tbody>${filas}</tbody>
     </table></div>
     <p class="text-[11px] text-muted mt-3 leading-snug">
-      Top ${r.filas.length} de ${r.elegibles} jugadores con MIN ≥ ${r.umbral.toFixed(2).replace('.', ',')}
-      ${r.modo === 'total' ? '<b>de promedio por partido</b>' : ''},
-      seleccionados por <span class="font-mono">${SGADD_UI.esc(r.orden)}</span>.
+      ${dePlantel
+        ? `Los ${r.filas.length} del plantel, ordenados por <span class="font-mono">${SGADD_UI.esc(r.orden)}</span>.`
+        : `Top ${r.filas.length} de ${r.elegibles} jugadores con MIN ≥ ${r.umbral.toFixed(2).replace('.', ',')}
+           ${r.modo === 'total' ? '<b>de promedio por partido</b>' : ''},
+           seleccionados por <span class="font-mono">${SGADD_UI.esc(r.orden)}</span>.`}
       ${reordenada ? 'Mostrados por <span class="font-mono">' + SGADD_UI.esc(r.ordenPor) + '</span> ' + dirTexto + '.' : ''}
       Clic en una cabecera para reordenar, clic en una fila para abrir la ficha.
-      El valor con anillo naranja es el más cercano a la mediana de este top.${r.nota ? '<br>' + SGADD_UI.esc(r.nota) : ''}
+      El valor con anillo naranja es el más cercano a la mediana ${dePlantel ? 'del plantel' : 'de este top'}.${r.nota ? '<br>' + SGADD_UI.esc(r.nota) : ''}
     </p>`;
 }
 
@@ -1375,6 +1393,117 @@ function jugadoresBloqueRankings(idx) {
         </div>
       </div>
       ${SGADD_UI.tabs(tabs, r.id, 'jugadoresVerRanking')}
+      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-2">${SGADD_UI.esc(r.titulo)}</h4>
+      ${jugadoresTablaRanking(idx, r)}
+    </div>`;
+}
+
+/* =====================================================================
+   RANKING DEL PLANTEL
+
+   Las mismas ocho tablas del top 20, pero ADENTRO de un equipo. Contesta
+   otra pregunta: no «quién manda en la liga» sino «cómo se reparte esto
+   entre los míos» — que es la que el DT tiene cuando ya eligió un club y
+   está mirando su plantel.
+
+   NO SE FILTRA POR MINUTOS. En la liga el umbral existe para que el top
+   20 signifique algo: sin él, un especialista de tres noches se cuela
+   arriba de los titulares. Adentro de un plantel de quince el umbral de
+   liga deja seis, y el DT que abrió el plantel quiere ver el plantel —
+   las cards de arriba ya los muestran a todos, y una tabla que muestra la
+   mitad se lee como datos que faltan. Los que juegan poco quedan al fondo
+   solos, que es exactamente lo que el orden tiene que decir.
+
+   Y SE VA SOLO AL ABRIR UNA FICHA: `jugadoresGrilla` no se llama cuando
+   hay un jugador abierto, así que la tabla desaparece sin ninguna guarda
+   propia. Colgarla de una condición aparte sería un segundo lugar que se
+   desincroniza del primero.
+   ===================================================================== */
+
+function jugadoresVerRankingPlantel(id) {
+  JUGADORES.plantelRankingAbierto = id;
+  JUGADORES.plantelRankingOrdenPor = null;
+  JUGADORES.plantelRankingOrdenDir = 'desc';
+  jugadoresPintar();
+}
+
+function jugadoresOrdenarRankingPlantel(clave) {
+  if (JUGADORES.plantelRankingOrdenPor === clave) {
+    JUGADORES.plantelRankingOrdenDir = (JUGADORES.plantelRankingOrdenDir === 'desc') ? 'asc' : 'desc';
+  } else {
+    JUGADORES.plantelRankingOrdenPor = clave;
+    JUGADORES.plantelRankingOrdenDir = 'desc';
+  }
+  jugadoresPintar();
+}
+
+function jugadoresCambiarModoRankingPlantel(modo) {
+  JUGADORES.plantelRankingModo = (modo === 'total') ? 'total' : 'promedio';
+  JUGADORES.plantelRankingOrdenPor = null;
+  JUGADORES.plantelRankingOrdenDir = 'desc';
+  jugadoresPintar();
+}
+
+function jugadoresBloqueRankingPlantel(idx) {
+  const clave = JUGADORES.filtroEquipo;
+  if (!clave || !idx || !idx.liga) return '';
+  const plantel = (idx.liga.jugadoresPorEquipo.get(clave) || []);
+  /* Con dos o tres jugadores no hay nada que rankear: la tabla diría lo
+     mismo que las cards de arriba, con más ruido. */
+  if (plantel.length < 4) return '';
+
+  const e = idx.get(clave);
+  const nombre = e ? e.nombre : SGADD.limpiarNombre(plantel[0]['EQUIPO'] || '');
+
+  /* El toggle de escala se ofrece solo si el acumulado cubre a ESTE
+     plantel, no a la liga entera: un equipo puede tenerlo completo en un
+     libro donde el resto no. Un botón que promete un cambio y no lo hace
+     es peor que no tenerlo (CLAUDE.md, punto 8). */
+  const conAcum = plantel.filter(j => !!j.__acum).length;
+  const hayAcum = conAcum >= Math.ceil(plantel.length * 0.8);
+  const modo = (hayAcum && JUGADORES.plantelRankingModo === 'total') ? 'total' : 'promedio';
+
+  const op = {
+    pool: plantel, ambito: 'plantel',
+    umbral: 0, topN: plantel.length,
+    ordenPor: JUGADORES.plantelRankingOrdenPor,
+    dir: JUGADORES.plantelRankingOrdenDir,
+    modo: modo,
+  };
+  const r = jugadoresRanking(idx, JUGADORES.plantelRankingAbierto, op) ||
+            jugadoresRanking(idx, JUGADORES_RANKINGS[0].id, op);
+  if (!r) return '';
+
+  const tabs = JUGADORES_RANKINGS.map(g => ({ id: g.id, label: g.titulo }));
+
+  return `
+    <div class="card rounded-xl p-4 sm:p-5 border border-hairline" id="jugadoresRankingPlantel">
+      <div class="flex flex-wrap items-end gap-3 mb-3">
+        <div class="flex-1 min-w-[200px]">
+          <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">
+            Ranking del plantel · ${SGADD_UI.esc(nombre)}</h3>
+          <p class="text-[11px] text-muted">
+            Cómo se reparte cada cosa adentro del equipo. Los ${plantel.length} del
+            plantel, sin filtro de minutos: los que juegan poco quedan al fondo,
+            que es lo que el orden tiene que decir.
+          </p>
+        </div>
+        ${hayAcum ? `
+        <div>
+          <span class="block text-[10px] uppercase tracking-wider text-muted font-display mb-1">Escala</span>
+          <div class="inline-flex rounded-md border border-hairline overflow-hidden" role="group"
+               aria-label="Mostrar promedios por partido o totales de la fase">
+            ${[['promedio', 'Promedios', 'Por partido'], ['total', 'Totales', 'De toda la fase']]
+              .map(([id, txt, ayuda]) => `
+              <button type="button" onclick="jugadoresCambiarModoRankingPlantel('${id}')"
+                aria-pressed="${modo === id}" title="${ayuda}"
+                class="px-3 py-2 text-[11px] font-semibold transition-colors duration-150
+                       focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset
+                       ${modo === id ? 'bg-surface2 text-ink' : 'text-muted hover:text-ink'}">${txt}</button>`).join('')}
+          </div>
+        </div>` : ''}
+      </div>
+      ${SGADD_UI.tabs(tabs, r.id, 'jugadoresVerRankingPlantel')}
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-2">${SGADD_UI.esc(r.titulo)}</h4>
       ${jugadoresTablaRanking(idx, r)}
     </div>`;
@@ -1591,6 +1720,11 @@ function jugadoresGrilla(idx) {
   return [
     conEquipo ? '' : jugadoresPickerEquipos(idx),
     jugadoresPlantelEquipo(idx),
+    /* El ranking del plantel va DEBAJO de las cards y solo con un equipo
+       elegido; el de la liga, solo sin equipo. Nunca conviven: son la
+       misma tabla contestando preguntas distintas, y verlas juntas obliga
+       a mirar dos veces para saber cuál es cuál. */
+    conEquipo ? jugadoresBloqueRankingPlantel(idx) : '',
     conEquipo ? '' : jugadoresBloqueRankings(idx),
   ].filter(Boolean).join('');
 }
@@ -2005,7 +2139,7 @@ function jugadoresTabPartidos(idx, j) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     JUGADORES_TABS, JUGADORES_METRICAS_EVOLUCION, ROLES_MINUTOS, PERFILES_TECNICOS, JERARQUIA, ZONAS_TIRO,
-    JUGADORES_RANKINGS, JUGADORES_TOP_N, jugadoresRanking, jugadoresUmbralRanking, RANKING_ACUMULABLES,
+    JUGADORES_RANKINGS, JUGADORES_TOP_N, jugadoresRanking, jugadoresUmbralRanking, RANKING_ACUMULABLES, JUGADORES,
     JUGADORES_UMBRALES, JUGADORES_ROLES_FUNCIONALES,
     jugadoresPerfilBase, jugadoresRolFuncional, jugadoresADN, jugadoresBadges,
     JUGADORES_METRICAS_EVOLUCION,
