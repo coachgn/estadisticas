@@ -22,8 +22,8 @@ node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 311 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
-node test-boot.js          # 157 tests · arranque por club, sintaxis de los módulos, carteles de espera
-node test-jugadores.js     # 253 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
+node test-boot.js          # 163 tests · arranque por club, sintaxis de los módulos, carteles de espera
+node test-jugadores.js     # 267 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
@@ -31,7 +31,8 @@ node test-partido.js       #  54 tests · detalle partido a partido, perfil de t
 node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
-node test-permisos.js      # 281 tests · roles, planes, el gate, el selector, el hub, el ciclo y la sesión
+node test-permisos.js      # 318 tests · roles, planes, el gate, el selector, el hub, el ciclo,
+                           #             la sesión, la landing y el glosario
 
 node test-backend.js       # 439 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -43,7 +44,7 @@ node test-backend.js       # 439 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**2860 tests en total. Todos tienen que dar verde antes de commitear.**
+**2913 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -4839,3 +4840,126 @@ pantalla, con esas palabras, en vez de mostrar una grilla vacía.
 Un cliente **sin** `equipoAsignado` tampoco ve ninguno, por lo mismo:
 dejarlo ver todo convertiría un error de config en acceso total sin ningún
 síntoma.
+
+---
+
+## 20. GLOSARIO de métricas · `sgadd-glosario.js` + `sgadd-glosarioui.js`
+
+Qué mide cada columna, en castellano. **Es público**: son definiciones, no
+números de un club, y un DT que quiere saber qué mide `eFG%` no debería
+necesitar un link (`MODULOS.glosario: null`).
+
+### El archivo se GENERA, no se escribe
+
+```bash
+node generar-glosario.js     # lee el manual del MOTOR, escribe js/sgadd-glosario.js
+```
+
+Sale de `MOTORSTATS_MANUAL_3_RECORRIDO_Y_GLOSARIO.html`, que vive en
+`C:\\Users\\Pc\\mi-motor-stats\\manuales` — o sea en el otro proyecto. Se copia y no se
+lee en vivo por dos motivos: el panel es estático y no tiene acceso al disco
+de nadie, y el manual cambia con el calendario del motor. Misma convención que
+`generar-css.js` y `generar-manual-etiquetas.js`: se corre a mano y el
+resultado se commitea. **77 entradas, cobertura 100% de las 59 `METRICAS`** del
+panel, y hay un test que falla si alguna queda sin definición.
+
+**Las columnas se mapean por NOMBRE de encabezado, no por posición.** Las
+tablas del manual no tienen todas la misma forma —unas traen *Fórmula*, otras
+*Para qué se usa*— y una tabla con otro formato se **saltea** en vez de
+producir filas con los campos corridos, que es el modo de fallar que nadie
+nota hasta que lee una definición equivocada.
+
+**Se descarta lo que no define nada.** La tabla de referencias cruzadas repite
+siglas con la hoja donde vive cada una (`4F: NET PPP`), sin nombre ni
+explicación: son punteros. En el glosario salían como filas de guiones, que es
+peor que no estar — el que las ve concluye que el glosario está incompleto. El
+corte es tener al menos una de las tres cosas que a alguien le sirven: cómo se
+lee, para qué se usa, o el nombre completo.
+
+### El tooltip se engancha UNA vez, por delegación
+
+En el `document`, no por celda. Las tablas se repintan enteras en cada cambio
+de tramo: con listeners por nodo habría cientos y cada repintado dejaría los
+viejos colgados. Un listener, sobrevive a cualquier repintado, y no hay nada
+que limpiar.
+
+**No es un `title=""`.** El nativo tarda un segundo largo, no se puede leer con
+el teclado y en una tabla de veinte columnas queda tapado por el cursor.
+
+Reglas que hay que respetar al tocarlo:
+
+- **Una cabecera ordenable se marca con `data-metrica`, no se deja al
+  reconocimiento por texto.** La flecha de orden (`⇅` `▲` `▼`) vive DENTRO
+  del `th`, así que su `textContent` deja de coincidir con la sigla. Medido en
+  producción antes del fix: **cero cabeceras reconocibles** en los dos
+  rankings. Hay un test que exige además que las 35 columnas rankeables tengan
+  definición — sin eso el subrayado punteado promete un tooltip que no aparece.
+- **El texto suelto solo se acepta si coincide EXACTO** con una sigla y mide
+  ≤ 12 caracteres: sin eso, cualquier celda que dijera "PTS" —el apodo de un
+  jugador, una nota— abriría un tooltip donde no corresponde.
+- **Responde al foco además del mouse** y cierra con ESC (punto 14).
+- **En papel no se imprime**: sin hover sería un recuadro suelto en la hoja.
+- **La definición corta prefiere `lectura` sobre `nombre`.** El nombre completo
+  de `eFG%` no le dice nada a quien no lo sabe ya; lo que sirve es qué
+  significa el número.
+- **Tipear no repinta la sección**, solo la tabla: la misma regla del buscador
+  del buzón y de los campos de scouting.
+
+### Sumar una sección toca DOS listas
+
+`SGADD.SECCIONES` (el vocabulario del router, punto 16) **y** `VALID_SECTIONS`
+en el `index.html`. Con la segunda sin actualizar el item del menú se dibuja y
+no navega — sin ningún síntoma.
+
+---
+
+## 21. El RANKING DEL PLANTEL
+
+Las mismas ocho tablas del top 20, pero adentro de un equipo. Va debajo de las
+cards de Jugadores y solo con un equipo elegido. Contesta otra pregunta: no
+*«quién manda en la liga»* sino *«cómo se reparte esto entre los míos»*.
+
+**Se comparte el motor.** `jugadoresRanking()` recibe un `pool`: el criterio de
+selección, el desempate, los nulos al fondo y la mediana del propio top valen
+igual adentro de un plantel que adentro de la liga. Dos implementaciones que
+ordenen distinto son el bug que este proyecto ya se comió con el rol funcional
+(punto 8). Sin `pool` el universo sigue siendo la liga, y hay un test que
+compara el top 20 fila por fila para fijarlo.
+
+**NO se filtra por minutos.** En la liga el umbral existe para que el top 20
+signifique algo; adentro de un plantel de quince deja seis, y el DT que abrió
+el plantel quiere el plantel — las cards de arriba ya los muestran a todos, así
+que una tabla con la mitad se lee como datos que faltan. Los que juegan poco
+quedan al fondo solos, que es lo que el orden tiene que decir.
+
+**Se va sola al abrir una ficha**, sin guarda propia: `jugadoresGrilla` no se
+llama cuando hay un jugador abierto. Una segunda condición para lo mismo es un
+lugar más donde desincronizarse.
+
+Tres detalles más: la columna **Equipo se saca** (adentro de un plantel dice
+doce veces lo mismo y el ancho no sobra); el **estado es propio**
+(`plantelRanking*`), porque un *«por RD»* elegido en la liga no significa lo
+mismo en un plantel de doce; y con **menos de 4 jugadores no se dibuja**, que
+ahí la tabla diría lo mismo que las cards con más ruido.
+
+El **toggle de promedios/totales se ofrece según la cobertura de ESTE plantel**,
+no la de la liga: un equipo puede tener el acumulado completo en un libro donde
+el resto no.
+
+---
+
+## 22. Módulo COMPARATIVA · especificado, no implementado
+
+[`ESPECIFICACION_COMPARATIVA.md`](ESPECIFICACION_COMPARATIVA.md) traduce a
+estructura de datos los **6 informes reales de Jujuy** que el cuerpo técnico
+armaba a mano en Canva. La misma relación que hay entre los PDF de *REPORTE
+SCOUTING* y la sección Scouting.
+
+Lo que hay que entender antes de encararlo: **un informe de ciclo no es una
+foto de la temporada, es la comparación de dos cortes** de N partidos (4 en los
+informes 4 y 5, 5 en el 6 — la ventana es un parámetro, no una constante). Y
+**tendencia y status son ejes distintos**: la primera es el delta contra el
+ciclo anterior, el segundo el nivel contra la liga. Un equipo puede venir
+subiendo y seguir último.
+
+Los PDF están en `.gitignore`: pesan 7,4 MB y son material del cliente.
