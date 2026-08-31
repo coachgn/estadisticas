@@ -235,8 +235,18 @@ const SGADD_AUTH = (function () {
          las de `SGADD.SECCIONES`, para que no pase inadvertido. */
       : null;
     if (!regla) return true;
+    /* `soloAdmin` SE MIRA ANTES QUE `sinRestricciones`, y el orden es el
+       arreglo.
+
+       `sinRestricciones` es `rol !== CLIENTE`, o sea que un visitante sin
+       sesión —el rol ABIERTO— pasaba por ese `return true` y veía
+       Simulador, Panel Master y Diagnóstico en el menú. Eran las tres
+       herramientas internas ofrecidas a cualquiera que abriera la URL.
+
+       ABIERTO sigue viendo todo lo demás: esa parte no cambia y es lo que
+       mantiene funcionando a quien entra sin token. */
+    if (regla.soloAdmin) return rol(s) === ROLES.ADMIN;
     if (sinRestricciones(s)) return true;
-    if (regla.soloAdmin) return false;
     if (regla.plan) {
       const ses = normalizarSes(s);
       if (!ses) return false;
@@ -261,8 +271,16 @@ const SGADD_AUTH = (function () {
   function puedoAcceder(seccion, s) {
     const regla = Object.prototype.hasOwnProperty.call(MODULOS, seccion)
       ? MODULOS[seccion] : null;
-    if (!regla || sinRestricciones(s)) return { ok: true, motivo: MOTIVOS.OK, plan: null };
-    if (regla.soloAdmin) return { ok: false, motivo: MOTIVOS.SOLO_ADMIN, plan: null };
+    if (!regla) return { ok: true, motivo: MOTIVOS.OK, plan: null };
+    /* `soloAdmin` PRIMERO, igual que en `tieneModulo` y por lo mismo:
+       `sinRestricciones` es `rol !== CLIENTE`, así que un visitante sin
+       sesión pasaba por ahí y entraba a las tres internas. */
+    if (regla.soloAdmin) {
+      return (rol(s) === ROLES.ADMIN)
+        ? { ok: true, motivo: MOTIVOS.OK, plan: null }
+        : { ok: false, motivo: MOTIVOS.SOLO_ADMIN, plan: null };
+    }
+    if (sinRestricciones(s)) return { ok: true, motivo: MOTIVOS.OK, plan: null };
     if (regla.plan && !tieneModulo(seccion, s)) {
       return { ok: false, motivo: MOTIVOS.REQUIERE_PLAN, plan: regla.plan };
     }

@@ -51,6 +51,24 @@ const CLUB = (function () {
     } catch (e) { return POR_DEFECTO; }
   }
 
+  /**
+   * Sin `?club=` no se esta mirando ningun cliente: es la landing.
+   *
+   * LA DECISION VIVE ACA Y NO EN `sgadd-landing.js`, y es por el orden de
+   * carga: este modulo va PRIMERO y se auto-arranca, asi que cuando
+   * `aplicarUI` necesita saberlo `SGADD_LANDING` todavia no existe. Con la
+   * pregunta en el otro modulo, `enLanding` daba siempre false y la marca
+   * del club por defecto se pintaba igual — medido en el navegador.
+   *
+   * `SGADD_LANDING.activa()` delega aca: una sola implementacion, sin
+   * carrera de scripts y sin dos formas de contestar lo mismo.
+   */
+  function esLanding() {
+    try {
+      return !new URLSearchParams(window.location.search).get('club');
+    } catch (e) { return false; }
+  }
+
   let promesa = null;
 
   /* Idempotente: si alguien la llama dos veces, comparten la misma promesa. */
@@ -150,13 +168,38 @@ const CLUB = (function () {
       return;
     }
 
-    /* --- Marca visible: es la del CLUB, no la del producto --- */
-    if (c.nombre) {
+    /* EN LA LANDING NO SE PINTA LA MARCA DE NINGUN CLUB.
+
+       Sin `?club=` se carga igual el club por defecto —el catalogo y los
+       colores hacen falta para que la app no quede sin tema— pero pintar
+       SU nombre y SU escudo en la barra pondria la marca de un cliente en
+       la pantalla de bienvenida del producto.
+
+       Se corta aca, en el unico lugar que escribe esos nodos: pisarlo
+       despues desde afuera es una carrera contra este `aplicarUI`, que
+       corre en diferido si el DOM todavia no estaba. */
+    const enLanding = esLanding();
+
+    /* --- Marca visible: es la del CLUB, no la del producto ---
+
+       EN LA LANDING NO SE PINTA. Sin `?club=` se carga igual el club por
+       defecto —el catalogo y los colores hacen falta para que la app no
+       quede sin tema— pero pintar SU nombre y SU escudo pondria la marca
+       de un cliente en la pantalla de bienvenida del producto.
+
+       Se decide aca, en el unico lugar que escribe esos nodos: pisarlo
+       despues desde afuera es una carrera contra este mismo `aplicarUI`,
+       que corre en diferido si el DOM todavia no estaba. El TEMA sigue
+       aplicandose: sin el, la landing sale sin colores. */
+    if (enLanding && typeof SGADD_LANDING !== 'undefined') SGADD_LANDING.aplicarMarca();
+    if (c.nombre && !enLanding) {
       document.title = c.nombre + ' · Panel de Scouting';
       const t = document.getElementById('clubNombre');
       if (t) t.textContent = c.nombreCorto || c.nombre;
     }
-    if (c.bajada) {
+    /* La bajada tambien es del club: iba fuera del guard y pisaba la de
+       la landing, que ya se habia escrito dos lineas mas arriba. */
+    if (c.bajada && !enLanding) {
       const b = document.getElementById('clubBajada');
       if (b) b.textContent = c.bajada;
     }
@@ -240,6 +283,9 @@ const CLUB = (function () {
      Así no hay que subir un archivo extra: el club ya tiene su escudo
      cargado como equipo de la liga. */
   function ponerEscudo(c) {
+    /* El escudo del club tampoco. El TEMA ya se aplico mas arriba, asi
+       que cortar aca deja los colores puestos y la marca sin pintar. */
+    if (enLanding) return;
     const img = document.getElementById('clubEscudo');
     if (!img) return;
 
@@ -393,7 +439,7 @@ const CLUB = (function () {
   /** El index avisa cuando ya pintó una vez, para saber si hay que repintar. */
   function marcarRender() { yaHuboRender = true; }
 
-  return { TEMA, estado, cargar, aplicar: aplicarSeguro, credito, idDesdeUrl, debug, marcarRender,
+  return { TEMA, estado, cargar, aplicar: aplicarSeguro, credito, idDesdeUrl, esLanding, debug, marcarRender,
            reintentarEscudo, aclararHastaLegible, oscurecerHastaLegible, contraste,
            get cfg() { return estado.cfg; }, get aplicado() { return aplicado; } };
 })();

@@ -467,8 +467,19 @@ check('y se anuncia sin robar el foco',
   /role="status"/.test(cartel) && /aria-live="polite"/.test(cartel));
 check('el detalle es opcional',
   !/Primera 2026/.test(UI2.cargando('Cargando…')));
-check('y escapa lo que le pasen',
-  UI2.cargando('<img src=x onerror=1>').indexOf('<img') === -1);
+/* SE MIRA EL PAYLOAD, no si hay algún `<img`: el cartel ahora trae el logo
+   de MotorStats, que es un `<img>` legítimo del propio componente. Lo que
+   no puede pasar es que el TEXTO recibido entre como markup. */
+check('y escapa lo que le pasen', (function () {
+  const h = UI2.cargando('<img src=x onerror=1>');
+  /* La palabra `onerror` SÍ aparece —dentro del texto ya escapado, que es
+     inofensivo—; lo que no puede aparecer es como markup. Se busca la
+     etiqueta cruda, no la palabra. */
+  return /&lt;img src=x onerror=1&gt;/.test(h) && !/<img src=x/.test(h);
+})());
+/* Y el logo del componente sí está, con su animación. */
+check('el cartel trae el logo de MotorStats',
+  /motorlogo-\d+\.png/.test(UI2.cargando('x')) && /cargando-logo/.test(UI2.cargando('x')));
 
 /* El disco lo inyecta un nodo dinámico, así que el JIT del CDN de Tailwind
    no le genera las clases: la regla va a mano en el <style>. */

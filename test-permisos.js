@@ -89,8 +89,18 @@ titulo('SIN SESIÓN · el panel se comporta como antes');
    El rol se llama ABIERTO y no ADMIN para poder distinguir en los tests
    quién entró por la puerta y quién porque no hay puerta. */
 check('sin sesión el rol es ABIERTO, no ADMIN', A.rol(null) === A.ROLES.ABIERTO);
+/* ABIERTO ENTRA A LAS PÚBLICAS, NO A LAS INTERNAS. Esto cambió: antes
+   `sinRestricciones` (que es `rol !== CLIENTE`) lo dejaba pasar a todo, y
+   un visitante cualquiera veía Simulador, Panel Master y Diagnóstico en el
+   menú — las tres herramientas internas ofrecidas a quien abriera la URL.
+
+   Lo que NO cambió es lo que sostiene el punto 19: el panel sigue abriendo
+   sin sesión y las cinco secciones públicas siguen andando igual, así que
+   los clubes que entran sin token no pierden nada. */
 SGADD.SECCIONES.forEach(sec => {
-  check('sin sesión entra a ' + sec, A.puedoAcceder(sec, null).ok === true);
+  const interna = !!(A.MODULOS[sec] && A.MODULOS[sec].soloAdmin);
+  check('sin sesión ' + (interna ? 'NO entra a ' : 'entra a ') + sec,
+    A.puedoAcceder(sec, null).ok === !interna);
 });
 check('sin sesión ve todos los equipos', A.puedeVerEquipo('ATENAS A', null) === true);
 check('y la lista no se filtra', A.equiposVisibles(listaAdmin, null).length === 2);
@@ -864,6 +874,142 @@ titulo('LA SESIÓN DESPUÉS DEL LOGIN · los tres síntomas eran uno solo');
 
   check('y al leer se miran los dos',
     /localStorage[\s\S]{0,200}sessionStorage/.test(auth.slice(auth.indexOf('function leerTokenGuardado'))));
+}
+
+titulo('LA LANDING NEUTRA · lo que ve quien entra sin club');
+
+{
+  const LAN = require('./js/sgadd-landing.js');
+  const lan = fs.readFileSync('./js/sgadd-landing.js', 'utf8');
+  const club = fs.readFileSync('./js/sgadd-club.js', 'utf8');
+  const idx3 = fs.readFileSync('./index.html', 'utf8');
+
+  /* SE DECIDE POR LA AUSENCIA DE `?club=`, no por si hay sesión: un admin
+     logueado que entra a la URL limpia también ve la landing, porque
+     todavía no eligió cliente. */
+  check('sin ?club= es landing', LAN.activa(''));
+  check('con ?club= no', !LAN.activa('?club=deportivo'));
+  check('otros parámetros no la desactivan', LAN.activa('?api=x&cb=1'));
+
+  /* LA DECISIÓN VIVE EN `CLUB`, y esto es por el ORDEN DE CARGA:
+     `sgadd-club.js` va PRIMERO y se auto-arranca, así que cuando
+     `aplicarUI` necesita saberlo `SGADD_LANDING` todavía no existe. Con la
+     pregunta en el otro módulo, `enLanding` daba siempre false y la marca
+     del club por defecto se pintaba igual — medido en el navegador. */
+  check('CLUB expone esLanding()', /function esLanding\(\)/.test(club));
+  check('y la landing delega en él', /CLUB\.esLanding\(\)/.test(lan));
+
+  /* NO SE PINTA LA MARCA DE NINGÚN CLUB, pero SÍ el tema: sin los colores
+     la landing sale en gris. Las dos cosas viven en `aplicarUI` y por eso
+     se condiciona el bloque de marca y no la función entera. */
+  check('el nombre del club no se pinta en la landing',
+    /if \(c\.nombre && !enLanding\)/.test(club));
+  check('la bajada tampoco', /if \(c\.bajada && !enLanding\)/.test(club));
+  check('ni el escudo', /if \(enLanding\) return;/.test(club));
+  /* El tema queda: se aplica ANTES del corte. */
+  check('pero el acento sí se aplica',
+    club.indexOf("setProperty('--acento'") < club.indexOf('if (enLanding) return;'));
+
+  /* NO SE PIDEN DATOS. Sin club no hay libro que bajar, y el intento
+     terminaba en la pantalla llena de carteles rojos que la landing vino a
+     reemplazar. */
+  check('el arranque no baja datos en la landing',
+    /const errors = enLanding \? \[\] : await fetchAllData\(\)/.test(idx3));
+  check('ni arma el índice para el buzón',
+    /SGADD_APP !== 'undefined' && !enLanding/.test(idx3));
+  /* Y hay DOS secuencias de arranque —`init` y `refreshData`— así que las
+     dos tienen que estar cubiertas: editar una sola fue el error que dejó
+     el cartel de "1 hoja con errores" arriba de la bienvenida. */
+  check('las dos secuencias de arranque lo respetan',
+    (idx3.match(/enLanding \? \[\] : await fetchAllData\(\)/g) || []).length === 2,
+    String((idx3.match(/enLanding \? \[\] : await fetchAllData\(\)/g) || []).length));
+
+  /* CADA SECCIÓN EXPLICA QUÉ SE VE AHÍ. Las cinco públicas, ni una más:
+     las internas no se listan porque desde la landing no se llega. */
+  check('hay una explicación por sección pública',
+    LAN.ORDEN.length === 5 && LAN.ORDEN.every(k => !!LAN.SECCIONES[k]));
+  check('y ninguna es una sección interna',
+    !LAN.ORDEN.some(k => ['simulador', 'configuracion', 'diagnostico'].indexOf(k) !== -1));
+  check('cada una dice qué es y qué trae',
+    LAN.ORDEN.every(k => LAN.SECCIONES[k].que && LAN.SECCIONES[k].detalle
+      && LAN.SECCIONES[k].items.length));
+
+  /* SE USA LA VERSIÓN CHICA DEL LOGO. El original pesa 1,3 MB y acá se
+     muestra a 72 px: cargarlo entero desharía el trabajo del arranque. */
+  check('la landing usa el logo procesado, no el original',
+    /motorlogo-\d+\.png/.test(lan) && !/motorlogo\.PNG/.test(lan));
+  check('y el archivo existe', fs.existsSync('./logos/motorlogo-64.png')
+    && fs.existsSync('./logos/motorlogo-128.png'));
+  /* El tamaño es la razón de ser del generador: si alguien commitea el
+     original con otro nombre, esto lo caza. */
+  check('el logo chico pesa menos de 40 KB',
+    fs.statSync('./logos/motorlogo-128.png').size < 40 * 1024,
+    Math.round(fs.statSync('./logos/motorlogo-128.png').size / 1024) + ' KB');
+}
+
+
+titulo('LAS TRES SECCIONES INTERNAS · ocultas hasta que entre un ADMIN');
+
+/* `sinRestricciones` es `rol !== CLIENTE`, así que un visitante SIN sesión
+   —el rol ABIERTO— pasaba por ese `return true` y veía Simulador, Panel
+   Master y Diagnóstico en el menú. Eran las tres herramientas internas
+   ofrecidas a cualquiera que abriera la URL. */
+{
+  const internas = ['simulador', 'configuracion', 'diagnostico'];
+  const publicas = ['principal', 'equipos', 'jugadores', 'clasificacion', 'scouting'];
+  const admin = { email: 'freytesgn@gmail.com', plan: 'ORO' };
+  const cliente = { email: 'dt@club.com', plan: 'PLATA', equipoAsignado: 'X' };
+
+  check('un visitante sin sesión NO ve las internas',
+    internas.every(m => !A.puedoAcceder(m, undefined).ok));
+  check('un cliente tampoco',
+    internas.every(m => !A.puedoAcceder(m, cliente).ok));
+  check('un admin sí', internas.every(m => A.puedoAcceder(m, admin).ok));
+
+  /* Y EL MOTIVO ES SOLO_ADMIN, no REQUIERE_PLAN: el nav muestra las de
+     plan justamente para que el cliente sepa que existen, así que si estas
+     devolvieran ese motivo volverían a aparecer. */
+  check('el motivo es SOLO_ADMIN, que es el que el nav esconde',
+    internas.every(m => A.puedoAcceder(m, undefined).motivo === A.MOTIVOS.SOLO_ADMIN));
+
+  /* LO DEMÁS NO CAMBIA: ABIERTO sigue viendo las cinco públicas, que es lo
+     que mantiene funcionando a quien entra sin token. */
+  check('un visitante sigue viendo las cinco públicas',
+    publicas.every(m => A.puedoAcceder(m, undefined).ok));
+  check('y tieneModulo dice lo mismo que puedoAcceder',
+    internas.every(m => !A.tieneModulo(m, undefined) && A.tieneModulo(m, admin)));
+}
+
+
+titulo('EL PIE INSTITUCIONAL · la misma firma en pantalla y en papel');
+
+{
+  const U = require('./js/sgadd-ui.js');
+  const pie = U.pieInforme('31/08/2026');
+  const web = U.pieWeb('31/08/2026');
+
+  check('lleva el logo', /motorlogo-\d+\.png/.test(pie));
+  check('la marca y la fecha', /MotorStats/.test(pie) && /31\/08\/2026/.test(pie));
+  check('el mail', pie.indexOf(U.MAIL) !== -1);
+  check('el usuario de Instagram', pie.indexOf(U.ARROBA) !== -1);
+  check('y su icono', /<svg[^>]*pie-ig/.test(pie));
+
+  /* EL DE PANTALLA LLEVA LOS ENLACES VIVOS; el de papel no, porque en un
+     PDF un `mailto:` no se puede tocar y el subrayado solo ensucia. */
+  check('la versión web enlaza el mail', /href="mailto:/.test(web));
+  check('y el perfil', /href="https:\/\/www\.instagram\.com/.test(web));
+  check('la de papel NO enlaza nada', !/<a /.test(pie));
+
+  /* MISMO TEXTO EN LAS DOS: quien mira la pantalla y quien recibe el
+     informe tienen que leer la misma firma. */
+  const pelar = (h) => h.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+  check('el texto es idéntico en pantalla y en papel',
+    pelar(pie) === pelar(web), pelar(pie) + '  ||  ' + pelar(web));
+
+  /* SE USA LA VERSIÓN DE 64 px: el original pesa 1,3 MB y acá se muestra a
+     14. Cargarlo entero en cada informe es el error que el generador
+     existe para evitar. */
+  check('el pie no carga el logo original', !/motorlogo\.PNG/.test(pie + web));
 }
 
 console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +

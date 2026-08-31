@@ -209,6 +209,50 @@
   }
   @media (prefers-reduced-motion: reduce) { .login-fondo { backdrop-filter: none; } }
 
+  /* El logo de la pantalla de carga. Pulso suave, no giro: el disco de al
+     lado ya gira, y dos cosas girando a distinta velocidad se leen como
+     un error de render. */
+  .cargando-logo {
+    width: 48px; height: 48px; object-fit: contain;
+    animation: pulso-logo 2.2s ease-in-out infinite;
+  }
+  @keyframes pulso-logo {
+    0%, 100% { opacity: .55; transform: scale(.96); }
+    50%      { opacity: 1;   transform: scale(1); }
+  }
+  /* Con `prefers-reduced-motion` se queda quieto y OPACO, con
+     `animation: none` explicito: la regla global lleva la duracion a
+     0.001ms y una animacion infinita a esa velocidad titila, que es peor
+     que no moverse (punto 5 bis). */
+  @media (prefers-reduced-motion: reduce) {
+    .cargando-logo { animation: none; opacity: 1; transform: none; }
+  }
+
+  .landing-logo { width: 72px; height: 72px; object-fit: contain; }
+
+  /* EL PIE INSTITUCIONAL. Va a mano por lo mismo que el resto: lo inyecta
+     un nodo dinamico y el scan de Tailwind es ESTATICO. */
+  .pie-bloque {
+    display: inline-flex; align-items: center; gap: .35rem;
+    flex-wrap: wrap; justify-content: center;
+  }
+  .pie-logo { width: 14px; height: 14px; object-fit: contain; vertical-align: middle; }
+  .pie-ig { width: 13px; height: 13px; display: inline-block; vertical-align: middle; }
+  .pie-enlace { color: inherit; text-decoration: none; }
+  .pie-enlace:hover { text-decoration: underline; }
+  /* En papel el logo tiene que imprimirse: sin esto Chromium descarta
+     toda imagen de fondo y buena parte de los graficos (punto 7.1). */
+  @media print {
+    .pie-logo, .pie-ig { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .pie-enlace { text-decoration: none; }
+  }
+
+  /* El pie de la app, al fondo del menu lateral. */
+  .pie-app {
+    font-size: 10px; line-height: 1.5; color: #8a8a8a;
+    text-align: center; padding: .6rem .4rem 0;
+  }
+
   .sel-cliente {
     background: #1b1b1b;
     color: var(--acento-texto, #f5f4f2);
@@ -1692,7 +1736,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=155" />
+<link rel="stylesheet" href="sgadd.css?v=158" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -1792,6 +1836,10 @@
              debuggear fantasmas: si dice una versión vieja, es caché. -->
         <div id="sesion-slot" class="text-center mb-2"></div>
           <div id="ingresoSlot" class="mt-2"></div>
+          <!-- El pie institucional del panel. Mismo texto que el de los
+               PDF: quien mira la pantalla y quien recibe el informe leen
+               la misma firma. -->
+          <div id="pieApp" class="pie-app"></div>
         <p id="asset-version" class="text-[10px] text-muted/70 mt-1 text-center font-mono"
            title="Versión de los archivos que está usando este navegador. Si no coincide con la última entrega, hacé Ctrl+F5."></p>
       </div>
@@ -1850,34 +1898,35 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=155"></script>
+<script src="js/sgadd-club.js?v=158"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=155"></script>
-<script src="js/sgadd-core.js?v=155"></script>
-<script src="js/sgadd-auth.js?v=155"></script>
-<script src="js/sgadd-login.js?v=155"></script>
-<script src="js/sgadd-data.js?v=155"></script>
-<script src="js/sgadd-clientes.js?v=155"></script>
-<script src="js/sgadd-ui.js?v=155"></script>
-<script src="js/sgadd-app.js?v=155"></script>
-<script src="js/sgadd-clasificacion.js?v=155"></script>
+<script src="js/sgadd-config.js?v=158"></script>
+<script src="js/sgadd-core.js?v=158"></script>
+<script src="js/sgadd-auth.js?v=158"></script>
+<script src="js/sgadd-landing.js?v=158"></script>
+<script src="js/sgadd-login.js?v=158"></script>
+<script src="js/sgadd-data.js?v=158"></script>
+<script src="js/sgadd-clientes.js?v=158"></script>
+<script src="js/sgadd-ui.js?v=158"></script>
+<script src="js/sgadd-app.js?v=158"></script>
+<script src="js/sgadd-clasificacion.js?v=158"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=155"></script>
-<script src="js/sgadd-configui.js?v=155"></script>
-<script src="js/sgadd-estados.js?v=155"></script>
-<script src="js/sgadd-buzon.js?v=155"></script>
-<script src="js/sgadd-charts.js?v=155"></script>
-<script src="js/sgadd-personalidad.js?v=155"></script>
-<script src="js/sgadd-rankings.js?v=155"></script>
-<script src="js/sgadd-partido.js?v=155"></script>
-<script src="js/sgadd-informe.js?v=155"></script>
-<script src="js/sgadd-ficha.js?v=155"></script>
-<script src="js/sgadd-equipos.js?v=155"></script>
-<script src="js/sgadd-jugadores.js?v=155"></script>
-<script src="js/sgadd-4factores.js?v=155"></script>
-<script src="js/sgadd-scouting.js?v=155"></script>
-<script src="js/sgadd-diagnostico.js?v=155"></script>
+<script src="js/sgadd-hub.js?v=158"></script>
+<script src="js/sgadd-configui.js?v=158"></script>
+<script src="js/sgadd-estados.js?v=158"></script>
+<script src="js/sgadd-buzon.js?v=158"></script>
+<script src="js/sgadd-charts.js?v=158"></script>
+<script src="js/sgadd-personalidad.js?v=158"></script>
+<script src="js/sgadd-rankings.js?v=158"></script>
+<script src="js/sgadd-partido.js?v=158"></script>
+<script src="js/sgadd-informe.js?v=158"></script>
+<script src="js/sgadd-ficha.js?v=158"></script>
+<script src="js/sgadd-equipos.js?v=158"></script>
+<script src="js/sgadd-jugadores.js?v=158"></script>
+<script src="js/sgadd-4factores.js?v=158"></script>
+<script src="js/sgadd-scouting.js?v=158"></script>
+<script src="js/sgadd-diagnostico.js?v=158"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -3658,6 +3707,16 @@ function renderSection(section) {
     return;
   }
 
+  /* MODO LANDING. Sin `?club=` no hay planilla que mostrar, así que cada
+     sección explica qué se ve ahí en vez de intentar pintar datos que no
+     existen. Va DESPUÉS del guard de permisos —un visitante tampoco entra
+     a las internas desde la landing— y antes del switch, que es el único
+     punto por el que pasan todas las secciones. */
+  if (typeof SGADD_LANDING !== 'undefined' && SGADD_LANDING.activa()) {
+    root.innerHTML = SGADD_LANDING.vista(section);
+    return;
+  }
+
   switch (section) {
     case 'principal': root.innerHTML = buildPrincipal(); drawOrtgDrtgChart(); break;
     case 'configuracion': root.innerHTML = buildConfiguracion(); break;   // SGADD (js/sgadd-configui.js)
@@ -3706,6 +3765,8 @@ function aplicarPermisosNav() {
   });
   pintarDistintivoPlan();
   pintarBotonIngreso();
+  const pie = document.getElementById('pieApp');
+  if (pie && typeof SGADD_UI !== 'undefined') pie.innerHTML = SGADD_UI.pieWeb();
   const d = SGADD_AUTH.descripcionSesion();
   const cont = document.getElementById('sesion-slot');
   if (cont) {
@@ -3814,7 +3875,17 @@ async function refreshData() {
      Nunca mas un archivo de configuracion puede tumbar el dashboard. */
   await resolverClubYPlanilla();
 
-  const errors = await fetchAllData();
+  /* EN LA LANDING NO SE PIDE NADA. Sin club no hay libro que bajar, y el
+     intento terminaba en la pantalla llena de carteles rojos que la
+     landing vino a reemplazar. Además así carga instantánea y no puede
+     fallar por red. */
+  const enLanding = (typeof SGADD_LANDING !== 'undefined') && SGADD_LANDING.activa();
+  const errors = enLanding ? [] : await fetchAllData();
+  /* La marca de MotorStats se pone DESPUÉS de `fetchAllData`, que es
+     cuando `sgadd-club.js` ya terminó de pintar la del club por defecto.
+     Al revés, la del club la pisaba y el sidebar seguía diciendo el
+     nombre de un cliente que no es el que se está mirando. */
+  if (enLanding) SGADD_LANDING.aplicarMarca();
   lastErrors = errors;
   precargarLogos();
   renderStatusBanner(errors);
@@ -3829,7 +3900,11 @@ async function refreshData() {
      dispara acá — sin await, para no demorar el primer render. La carga
      está cacheada por `SGADD.cargarCategoria`, así que entrar después a
      Equipos no vuelve a pedir nada. */
-  if (typeof SGADD_APP !== 'undefined') {
+  /* TAMPOCO EN LA LANDING. Este disparo es el que arma el índice para el
+     buzón, y sin club no hay plantel del que detectar ausencias: lo único
+     que lograba era pedir una planilla que no corresponde y dejar el
+     cartel de "1 hoja con errores" arriba de la bienvenida. */
+  if (typeof SGADD_APP !== 'undefined' && !enLanding) {
     Promise.resolve(SGADD_APP.cargar()).then(() => {
       if (typeof SGADD_BUZON !== 'undefined') SGADD_BUZON.sincronizar();
     }).catch(() => {});
@@ -4011,11 +4086,18 @@ async function init() {
      control que no hace falta para leer los datos. Aparece un instante
      después, que es exactamente lo que hace el buzón. */
   if (typeof SGADD_CLIENTES !== 'undefined') SGADD_CLIENTES.iniciar();
+  /* El selector de cliente SÍ se pide en la landing: un admin que entra a
+     la URL limpia tiene que poder elegir a quién mirar desde ahí. */
 
   // Primero el club: define de QUE planilla se bajan los datos.
   await resolverClubYPlanilla();
 
-  const errors = await fetchAllData();
+  /* EN LA LANDING NO SE PIDE NADA. Sin `?club=` no hay libro que bajar, y
+     el intento terminaba en la pantalla llena de carteles rojos que la
+     landing vino a reemplazar. Además así carga instantánea y no puede
+     fallar por red. */
+  const enLanding = (typeof SGADD_LANDING !== 'undefined') && SGADD_LANDING.activa();
+  const errors = enLanding ? [] : await fetchAllData();
   lastErrors = errors;
 
   document.getElementById('loader').classList.add('hidden');
@@ -4031,7 +4113,11 @@ async function init() {
      — sin await, para no demorar el primer render. La carga queda cacheada en
      `SGADD.cargarCategoria`, asi que entrar despues a Equipos no vuelve a
      pedir nada. */
-  if (typeof SGADD_APP !== 'undefined') {
+  /* TAMPOCO EN LA LANDING: este disparo arma el índice para el buzón, y
+     sin club no hay plantel del que detectar ausencias. Lo único que
+     lograba era pedir una planilla que no corresponde y dejar el cartel de
+     "1 hoja con errores" arriba de la bienvenida. */
+  if (typeof SGADD_APP !== 'undefined' && !enLanding) {
     Promise.resolve(SGADD_APP.cargar()).then(function () {
       if (typeof SGADD_BUZON !== 'undefined') SGADD_BUZON.sincronizar();
     }).catch(function () {});

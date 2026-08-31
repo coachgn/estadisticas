@@ -358,6 +358,14 @@ const SGADD_UI = (function () {
   function cargando(texto, detalle) {
     return '<div class="card rounded-xl p-8 border border-hairline flex flex-col items-center ' +
       'justify-center gap-4 text-center" role="status" aria-live="polite">' +
+      /* EL LOGO ARRIBA DEL DISCO, no en lugar del disco: el disco es lo
+         que distingue "está bajando" de "se colgó" (punto 5 bis), que es
+         la pregunta del DT cuando la planilla tarda. El logo agrega marca
+         a ese momento; reemplazarlo devolvería el bloque quieto que no
+         dice nada. Va con `loading="eager"` porque es lo único en
+         pantalla, y con medidas fijas para que no salte al cargar. */
+      '<img src="' + LOGO + '" alt="" width="48" height="48" ' +
+        'class="cargando-logo" loading="eager">' +
       '<div class="cargando-disco"></div>' +
       '<p class="text-sm text-muted">' + esc(texto || 'Cargando…') + '</p>' +
       (detalle ? '<p class="text-[11px] text-muted/70 font-mono">' + esc(detalle) + '</p>' : '') +
@@ -365,10 +373,61 @@ const SGADD_UI = (function () {
   }
 
   /** Pie compartido por las tres exportaciones a PDF. */
+  /* EL PIE INSTITUCIONAL · logo, marca, fecha y contacto.
+
+   Es la firma del PRODUCTO, no la del club: el nombre del cliente ya
+   viaja en el encabezado, y el pie tiene que decir quién generó el
+   informe. Lo usan las cinco exportaciones y el pie de la app.
+
+   EL LOGO VA COMO `<img>` Y NO COMO FONDO CSS: los fondos se descartan al
+   imprimir salvo que se pida `print-color-adjust: exact`, y un pie que se
+   ve en pantalla y desaparece en el PDF es peor que ninguno.
+
+   Y SE USA LA VERSIÓN DE 64 px. El original pesa 1,3 MB y acá se muestra
+   a 14: cargarlo entero en cada informe es el error que `generar-logo.js`
+   existe para evitar.
+*/
+  const MAIL = 'motorstats.ar@gmail.com';
+  const INSTAGRAM = 'https://www.instagram.com/motorstats.ar/';
+  const ARROBA = '@motorstats.ar';
+  const LOGO = 'logos/motorlogo-64.png';
+
+  /* El icono de Instagram va en SVG y no como imagen: son 300 bytes
+     inline, escala sin pixelarse y se imprime con el color del texto en
+     vez de quedar como un recuadro. */
+  const ICONO_IG = '<svg class="pie-ig" viewBox="0 0 24 24" fill="none" ' +
+    'stroke="currentColor" stroke-width="1.8" aria-hidden="true">' +
+    '<rect x="3" y="3" width="18" height="18" rx="5"/>' +
+    '<circle cx="12" cy="12" r="4"/>' +
+    '<circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg>';
+
   function pieInforme(fecha) {
-    return '<span class="pie-marca">' + esc(MARCA) +
+    return '<span class="pie-bloque">' +
+      '<img src="' + LOGO + '" alt="" width="14" height="14" class="pie-logo">' +
+      '<span class="pie-marca">' + esc(MARCA) +
       '<sup class="pie-marca-sup">AR</sup></span> · Generado el ' +
-      esc(fecha || fechaHoy());
+      esc(fecha || fechaHoy()) +
+      ' - ' + esc(MAIL) + ' | ' + esc(ARROBA) + ICONO_IG +
+      '</span>';
+  }
+
+  /**
+   * El mismo pie, con los enlaces vivos. Para la pantalla, no para el PDF.
+   *
+   * En papel un `mailto:` no se puede tocar y el subrayado solo ensucia,
+   * así que la versión impresa deja el texto pelado. Acá sí se puede
+   * escribir o abrir el perfil de un click.
+   */
+  function pieWeb(fecha) {
+    return '<span class="pie-bloque">' +
+      '<img src="' + LOGO + '" alt="" width="14" height="14" class="pie-logo">' +
+      '<span class="pie-marca">' + esc(MARCA) +
+      '<sup class="pie-marca-sup">AR</sup></span> · Generado el ' +
+      esc(fecha || fechaHoy()) + ' - ' +
+      '<a href="mailto:' + MAIL + '" class="pie-enlace">' + esc(MAIL) + '</a> | ' +
+      '<a href="' + INSTAGRAM + '" target="_blank" rel="noopener noreferrer" ' +
+        'class="pie-enlace">' + esc(ARROBA) + ICONO_IG + '</a>' +
+      '</span>';
   }
 
   /** Devuelve las imágenes a su ruta original después de imprimir. */
@@ -668,7 +727,7 @@ const SGADD_UI = (function () {
 
   return { esc, escJs, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, signoDelta, colorDelta, claseMasMenos,
     atributosFila, teclaActiva, teclaTabs, cargando,
-    embeberImagenes, restaurarImagenes, pieInforme, fechaHoy, MARCA,
+    embeberImagenes, restaurarImagenes, pieInforme, pieWeb, MAIL, INSTAGRAM, ARROBA, LOGO, fechaHoy, MARCA,
     sanearNombreArchivo, nombrePersona, nombrePdf, tituloPdf, tituloPdfActivo,
     sinAcceso, avisoSinEquipo };
 })();
