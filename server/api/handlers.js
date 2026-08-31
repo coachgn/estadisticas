@@ -91,11 +91,27 @@ function guardSuscripcion(club, ctx) {
  * vencer, o sea que el downgrade no tenía efecto hasta entonces. Con el
  * plan en el catálogo el cambio es inmediato.
  *
- * EL CLUB ACOTA, NO AMPLÍA: se toma el MENOR de los dos. Un token viejo
- * emitido en PRO no puede darle PRO a un club que hoy es Básico; y al
- * revés, subirle el plan al club sin reemitir el token tampoco desbloquea
- * nada, porque el token es lo que el usuario aceptó. Para subir de plan se
- * emite un link nuevo, que es un gesto barato y deja rastro.
+ * EL DEL CLUB GANA, EN LOS DOS SENTIDOS. Y esto estuvo al revés.
+ *
+ * La primera versión tomaba el MENOR de los dos —el club acotaba pero no
+ * ampliaba— con el argumento de que el token es lo que el usuario aceptó.
+ * Se vio en la verificación: con el club en ORO y un token emitido en PRO,
+ * el plan efectivo salía PLATA y el distintivo de ORO no aparecía. O sea
+ * que el cliente pagaba ORO y no lo veía hasta que alguien se acordara de
+ * reemitirle el link.
+ *
+ * El argumento del tope solo vale para el DOWNGRADE, que es donde un token
+ * viejo podría dar más de lo que se paga. Para el upgrade no protege nada:
+ * el club es la entidad que contrata, y el plan del token es en realidad un
+ * atributo del club que quedó horneado el día que se emitió el link.
+ *
+ * Este producto no tiene planes por usuario dentro de un mismo club —el
+ * plan es comercial y por cliente— así que el token no aporta información
+ * que el catálogo no tenga más fresca.
+ *
+ * SIN PLAN EN EL CLUB manda el del token: es el caso de los clubes que
+ * todavía no tienen plan asignado en el catálogo, y ahí lo único que se
+ * sabe es lo que dice su link.
  */
 /* El orden sale de `AUTH`, que es el mismo motor que usa el frontend: dos
    tablas de orden terminan discrepando y la que se relaja es siempre la
@@ -103,13 +119,11 @@ function guardSuscripcion(club, ctx) {
 const ORDEN_PLAN = AUTH.ORDEN_PLAN;
 
 function planEfectivo(club, sesion) {
-  /* Los dos se normalizan: el token puede traer un nombre viejo (`PRO`) y
-     el catalogo tambien, asi que compararlos crudos daria `undefined` en
-     la tabla de orden y el club dejaria de acotar sin ningun sintoma. */
-  const delToken = AUTH.normalizarPlan(sesion && sesion.plan);
-  if (!club || !club.plan) return delToken;
-  const delClub = AUTH.normalizarPlan(club.plan);
-  return (ORDEN_PLAN[delClub] < ORDEN_PLAN[delToken]) ? delClub : delToken;
+  /* Se normaliza: el catalogo puede traer un nombre viejo (`PRO`) y sin
+     pasarlo por el alias caeria a BRONCE, bajandole el plan al cliente sin
+     que nadie lo haya tocado. */
+  if (club && club.plan) return AUTH.normalizarPlan(club.plan);
+  return AUTH.normalizarPlan(sesion && sesion.plan);
 }
 
 /**

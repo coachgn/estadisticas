@@ -1713,26 +1713,28 @@ titulo('EL CICLO DE VIDA DEL CLIENTE · pausar, vencer y el plan del club');
 
   /* ================= EL PLAN EFECTIVO ================= */
 
-  /* EL CLUB ACOTA, NO AMPLÍA. Un token viejo emitido en PRO no puede darle
-     PRO a un club que hoy es Bronce — ese era el agujero de tener el plan
-     solo en el JWT: el downgrade no tenía efecto hasta que venciera. */
-  check('el club en Bronce baja a un token PRO',
+  /* EL DEL CLUB GANA, EN LOS DOS SENTIDOS. La primera versión tomaba el
+     MENOR y eso se vio mal en la verificación: con el club en ORO y un
+     token emitido en PRO, el efectivo salía PLATA y el cliente pagaba ORO
+     sin verlo. El tope solo protege del DOWNGRADE; para el upgrade no
+     protege nada, porque el club es la entidad que contrata. */
+  check('el club en Bronce baja a un token PLATA',
     H.planEfectivo({ plan: 'BRONCE' }, { plan: 'PLATA' }) === 'BRONCE');
-  check('el club en ORO NO sube a un token Bronce',
-    H.planEfectivo({ plan: 'ORO' }, { plan: 'BRONCE' }) === 'BRONCE');
+  check('y el club en ORO SUBE a un token Bronce',
+    H.planEfectivo({ plan: 'ORO' }, { plan: 'BRONCE' }) === 'ORO');
   check('sin plan en el club manda el del token',
     H.planEfectivo({}, { plan: 'PLATA' }) === 'PLATA');
-  /* UN PLAN RARO EN EL CLUB ACOTA A BRONCE, no se ignora. Antes se caía al
+  /* UN PLAN RARO EN EL CLUB CAE A BRONCE, no se ignora. Antes se caía al
      plan del token, y eso es la regla al revés: un valor que nadie
      reconoce no puede terminar habilitando lo que el token diga. La
      dirección conservadora es la misma que ya aplica el parser de
      sesiones, y el motor de mutaciones rechaza los planes desconocidos al
      escribir, así que uno malo solo entra editando KV a mano. */
-  check('un plan raro en el club acota a BRONCE, no se ignora',
+  check('un plan raro en el club cae a BRONCE, no se ignora',
     H.planEfectivo({ plan: 'GRATIS' }, { plan: 'PLATA' }) === 'BRONCE');
   check('y los nombres VIEJOS del catálogo se siguen entendiendo',
-    H.planEfectivo({ plan: 'PRO' }, { plan: 'ORO' }) === 'PLATA' &&
-    H.planEfectivo({ plan: 'MASTER' }, { plan: 'ORO' }) === 'ORO');
+    H.planEfectivo({ plan: 'PRO' }, { plan: 'BRONCE' }) === 'PLATA' &&
+    H.planEfectivo({ plan: 'MASTER' }, { plan: 'BRONCE' }) === 'ORO');
 
   /* ================= EL ESTADO COMERCIAL NO SE FILTRA ================= */
 
