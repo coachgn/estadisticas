@@ -486,7 +486,16 @@ async function manejarLogin(peticion, deps) {
     return error(400, 'FALTAN_DATOS', 'Hacen falta el mail y la clave.');
   }
 
-  const padron = await admins.cargar(deps);
+  /* SI EL PADRÓN NO SE PUEDE LEER, NO SE OPINA SOBRE LA CLAVE. Contestar
+     «incorrecta» sería inventar un veredicto sobre algo que no se pudo
+     mirar, y además manda a la rama de fallo, que ESCRIBE — y escribir un
+     padrón vacío borraba las claves de los tres. */
+  let padron;
+  try { padron = await admins.cargar(deps); }
+  catch (e) {
+    return error(503, e.codigo || 'KV',
+      'No se puede verificar la clave ahora mismo. Probá de nuevo en un minuto.');
+  }
   const v = await admins.verificar(padron, email, clave);
 
   if (!v.ok) {
@@ -545,7 +554,15 @@ async function manejarClave(peticion, deps) {
 
   if (!email || !nueva) return error(400, 'FALTAN_DATOS', 'Hacen falta el mail y la clave nueva.');
 
-  const padron = await admins.cargar(deps);
+  /* Igual que en el login: sin padrón legible no se puede saber si hay
+     invitación pendiente, y decir que no la hay mandaría a pedir otra por
+     un problema que no es ese. */
+  let padron;
+  try { padron = await admins.cargar(deps); }
+  catch (e) {
+    return error(503, e.codigo || 'KV',
+      'No se puede guardar la clave ahora mismo. Probá de nuevo en un minuto.');
+  }
   const r = cuerpo.codigo
     ? await admins.fijarClave(padron, email, String(cuerpo.codigo), nueva)
     : await admins.cambiarClave(padron, email, String(cuerpo.claveActual || ''), nueva);

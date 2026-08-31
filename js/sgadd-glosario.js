@@ -24,17 +24,16 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Diferencia de puntos con el jugador en cancha",
     hoja: "J",
     familia: "C · Anotación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "4F",
     nombre: "Las tres hojas de Cuatro Factores",
-    grupo: "Celdas vacías: no es un error",
+    familia: "K · Hojas",
   },
   {
     sigla: "AC",
     nombre: "Acumulado E / J / 4F",
-    grupo: "Celdas vacías: no es un error",
+    familia: "K · Hojas",
   },
   {
     sigla: "AST",
@@ -43,7 +42,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Volumen",
     hoja: "todas",
     familia: "G · Creación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "AST-PP",
@@ -52,7 +50,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: ">1.5 es buen manejo. <1.0 es preocupante",
     hoja: "todas",
     familia: "G · Creación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "AST%",
@@ -61,12 +58,11 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Qué proporción de los tiros convertidos vino de asistencia. Mide juego colectivo",
     hoja: "BD · PR",
     familia: "G · Creación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "BD",
     nombre: "Base Datos E / Base Datos J",
-    grupo: "Celdas vacías: no es un error",
+    familia: "K · Hojas",
   },
   {
     sigla: "CONDICION",
@@ -74,19 +70,17 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Ver la advertencia debajo de esta tabla",
     hoja: "BD · 4F",
     familia: "A · Identificación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "E / J",
     nombre: "Sólo equipos / sólo jugadores",
-    grupo: "Celdas vacías: no es un error",
+    familia: "K · Hojas",
   },
   {
     sigla: "eFG Opp%",
     nombre: "eFG% concedido",
     formula: "ídem, del rival",
     familia: "I · 4 Factores",
-    grupo: "Los cuatro factores propiamente dichos",
   },
   {
     sigla: "eFG%",
@@ -95,7 +89,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "El TC% corregido: reconoce que un triple vale más. La métrica de tiro más útil",
     hoja: "BD · PR · 4F",
     familia: "C · Anotación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "EQUIPO",
@@ -103,7 +96,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Es la clave que agrupa toda la temporada",
     hoja: "todas",
     familia: "A · Identificación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "FASE",
@@ -111,7 +103,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "REGULAR, PLAYOFF, FINAL…",
     hoja: "todas",
     familia: "A · Identificación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "FC",
@@ -120,7 +111,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Disciplina",
     hoja: "todas",
     familia: "G · Creación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "FECHA",
@@ -128,7 +118,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "El motor no la completa. Es para que la cargues vos si querés",
     hoja: "BD · 4F",
     familia: "A · Identificación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "FR",
@@ -137,7 +126,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Capacidad de generar contacto",
     hoja: "todas",
     familia: "G · Creación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "ID_ARCHIVO",
@@ -145,7 +133,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "No lo borres. Es lo que impide los duplicados",
     hoja: "BD · 4F",
     familia: "A · Identificación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "MIN",
@@ -154,21 +141,20 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Minutos en cancha. Un equipo suma 200 por partido (5 jugadores × 40′)",
     hoja: "todas",
     familia: "B · Volumen",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "NET PPP",
     nombre: "Diferencial por posesión",
     formula: "PPP OF − PPP DEF",
     lectura: "Tu ventaja neta por jugada",
-    grupo: "Ratings",
+    familia: "J · Ratings",
   },
   {
     sigla: "NET RTNG",
     nombre: "Rating neto",
     formula: "RTNG OFF − RTNG DEF",
     lectura: "El mejor indicador único de la calidad de un equipo",
-    grupo: "Ratings",
+    familia: "J · Ratings",
   },
   {
     sigla: "NOMBRES",
@@ -176,7 +162,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Agrupa por texto exacto: cuidado con los espacios",
     hoja: "J",
     familia: "A · Identificación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PACE",
@@ -185,7 +170,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Posesiones por partido de 40′. Más alto = juego más rápido",
     hoja: "E",
     familia: "B · Volumen",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PARTIDO",
@@ -193,7 +177,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "AMANCAY vs VILLA SAN MARTIN",
     hoja: "BD · 4F",
     familia: "A · Identificación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PePP%",
@@ -202,7 +185,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Cuántas jugadas regalás",
     hoja: "BD · PR",
     familia: "E · Distribución",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PJ",
@@ -211,7 +193,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Cuántos partidos entran en ese acumulado. El detector de duplicados",
     hoja: "AC · PR",
     familia: "B · Volumen",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PLAYS",
@@ -220,7 +201,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Cuántas veces terminaste una jugada. Sí cuenta cada segunda oportunidad",
     hoja: "todas",
     familia: "B · Volumen",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PLAYSopp",
@@ -228,7 +208,6 @@ const SGADD_GLOSARIO = (function () {
     uso: "PACE, PPP DEF",
     hoja: "todas",
     familia: "H · Rival",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "POS",
@@ -237,7 +216,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Cuántas veces tuviste la pelota. El rebote ofensivo no genera posesión nueva",
     hoja: "E",
     familia: "B · Volumen",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PP",
@@ -246,21 +224,18 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Volumen",
     hoja: "todas",
     familia: "G · Creación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PP Opp%",
     nombre: "TOV% forzado",
     formula: "ídem, del rival",
     familia: "I · 4 Factores",
-    grupo: "Los cuatro factores propiamente dichos",
   },
   {
     sigla: "PP%",
     nombre: "Turnover Rate (TOV%)",
     formula: "pérdidas sobre jugadas",
     familia: "I · 4 Factores",
-    grupo: "Los cuatro factores propiamente dichos",
   },
   {
     sigla: "PPopp",
@@ -268,7 +243,6 @@ const SGADD_GLOSARIO = (function () {
     uso: "PR%, PP Opp%",
     hoja: "todas",
     familia: "H · Rival",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PPP",
@@ -277,21 +251,20 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Cuánto rinde cada jugada. ~0.90 es la media formativa; por encima de 1.00 es muy bueno",
     hoja: "BD · PR",
     familia: "C · Anotación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PPP DEF",
     nombre: "Puntos por posesión defensivos",
     formula: "PTSopp / PLAYSopp",
     lectura: "Cuánto te anotan por jugada",
-    grupo: "Ratings",
+    familia: "J · Ratings",
   },
   {
     sigla: "PPP OF",
     nombre: "Puntos por posesión ofensivos",
     formula: "PTS / PLAYS",
     lectura: "Cuánto anotás por jugada",
-    grupo: "Ratings",
+    familia: "J · Ratings",
   },
   {
     sigla: "PPT1",
@@ -300,7 +273,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Coincide con T1% porque cada libre vale 1",
     hoja: "BD · PR",
     familia: "D · Tiro",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PPT2",
@@ -309,7 +281,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Cuánto rinde cada intento de dos",
     hoja: "BD · PR",
     familia: "D · Tiro",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PPT3",
@@ -318,7 +289,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Cuánto rinde cada intento de tres",
     hoja: "BD · PR",
     familia: "D · Tiro",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PR",
@@ -327,7 +297,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Robos",
     hoja: "todas",
     familia: "G · Creación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PR%",
@@ -336,7 +305,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "De las pérdidas del rival, cuántas forzaste vos",
     hoja: "BD · PR",
     familia: "G · Creación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PT1%",
@@ -345,7 +313,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Cuánto vivís de la línea",
     hoja: "BD · PR",
     familia: "E · Distribución",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PT2%",
@@ -354,7 +321,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Peso del juego interior y de media distancia",
     hoja: "BD · PR",
     familia: "E · Distribución",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PT3%",
@@ -363,7 +329,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Peso del juego exterior",
     hoja: "BD · PR",
     familia: "E · Distribución",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PTS",
@@ -372,7 +337,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Puntos anotados",
     hoja: "todas",
     familia: "C · Anotación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "PTSopp",
@@ -380,7 +344,6 @@ const SGADD_GLOSARIO = (function () {
     uso: "RESULTADO, PPP DEF, RTNG DEF",
     hoja: "todas",
     familia: "H · Rival",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "RD",
@@ -389,7 +352,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Volumen",
     hoja: "todas",
     familia: "F · Rebotes",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "RD%",
@@ -398,7 +360,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "De los rebotes disponibles en tu tablero, cuántos tomaste. >75 % es sólido",
     hoja: "BD · PR",
     familia: "F · Rebotes",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "RDopp",
@@ -406,7 +367,6 @@ const SGADD_GLOSARIO = (function () {
     uso: "RO%, RT%",
     hoja: "todas",
     familia: "H · Rival",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "RESULTADO",
@@ -414,7 +374,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Calculado comparando PTS contra PTSopp",
     hoja: "BD · 4F",
     familia: "A · Identificación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "RO",
@@ -423,14 +382,12 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Volumen",
     hoja: "todas",
     familia: "F · Rebotes",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "RO Opp%",
     nombre: "ORB% concedido",
     formula: "ídem, del rival",
     familia: "I · 4 Factores",
-    grupo: "Los cuatro factores propiamente dichos",
   },
   {
     sigla: "RO%",
@@ -439,7 +396,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "De los disponibles en el tablero rival, cuántos tomaste. >30 % es agresivo",
     hoja: "BD · PR",
     familia: "F · Rebotes",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "ROopp",
@@ -447,7 +403,6 @@ const SGADD_GLOSARIO = (function () {
     uso: "RD%, RT%, PACE",
     hoja: "todas",
     familia: "H · Rival",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "RT",
@@ -456,7 +411,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Volumen",
     hoja: "todas",
     familia: "F · Rebotes",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "RT%",
@@ -465,14 +419,12 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Tu dominio general del rebote",
     hoja: "BD · PR",
     familia: "F · Rebotes",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "RTL Opp%",
     nombre: "FTR concedido",
     formula: "ídem, del rival",
     familia: "I · 4 Factores",
-    grupo: "Los cuatro factores propiamente dichos",
   },
   {
     sigla: "RTL%",
@@ -481,21 +433,20 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Cuántos puntos de libre sacás por cada tiro de campo",
     hoja: "BD · PR · 4F",
     familia: "D · Tiro / 4F",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "RTNG DEF",
     nombre: "Rating defensivo",
     formula: "PPP DEF × 100",
     lectura: "Puntos recibidos cada 100 posesiones",
-    grupo: "Ratings",
+    familia: "J · Ratings",
   },
   {
     sigla: "RTNG OFF",
     nombre: "Rating ofensivo",
     formula: "PPP OF × 100",
     lectura: "Puntos cada 100 posesiones",
-    grupo: "Ratings",
+    familia: "J · Ratings",
   },
   {
     sigla: "T1%",
@@ -504,7 +455,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Efectividad desde la línea",
     hoja: "BD · PR",
     familia: "D · Tiro",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "T1C",
@@ -513,7 +463,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Volumen",
     hoja: "todas",
     familia: "D · Tiro",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "T1I",
@@ -522,7 +471,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Volumen",
     hoja: "todas",
     familia: "D · Tiro",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "T2%",
@@ -531,7 +479,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Efectividad en la zona y la media distancia",
     hoja: "BD · PR",
     familia: "D · Tiro",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "T2C",
@@ -540,7 +487,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Volumen",
     hoja: "todas",
     familia: "D · Tiro",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "T2I",
@@ -549,7 +495,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Volumen",
     hoja: "todas",
     familia: "D · Tiro",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "T3%",
@@ -558,7 +503,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Efectividad desde el perímetro",
     hoja: "BD · PR",
     familia: "D · Tiro",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "T3C",
@@ -567,7 +511,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Volumen",
     hoja: "todas",
     familia: "D · Tiro",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "T3I",
@@ -576,7 +519,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Volumen",
     hoja: "todas",
     familia: "D · Tiro",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "TC",
@@ -585,7 +527,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Tal como lo registra el acta de la CABB",
     hoja: "todas",
     familia: "G · Creación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "TC%",
@@ -594,7 +535,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "El porcentaje clásico. Preferí el eFG%",
     hoja: "BD · PR",
     familia: "D · Tiro",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "TCC",
@@ -603,7 +543,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Volumen",
     hoja: "todas",
     familia: "D · Tiro",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "TCI",
@@ -612,7 +551,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Volumen",
     hoja: "todas",
     familia: "D · Tiro",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "TORNEO",
@@ -620,7 +558,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "APERTURA, CLAUSURA… o vacío si no usás el separador",
     hoja: "todas",
     familia: "A · Identificación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "TR",
@@ -629,7 +566,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Tal como lo registra el acta de la CABB",
     hoja: "todas",
     familia: "G · Creación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "TS%",
@@ -638,7 +574,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Como el eFG% pero además cuenta los libres. La foto más completa del tirador",
     hoja: "BD · PR",
     familia: "C · Anotación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "USG%",
@@ -647,7 +582,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Qué porcentaje de las jugadas del equipo termina este jugador mientras está en cancha",
     hoja: "J",
     familia: "C · Anotación",
-    grupo: "Celdas vacías: no es un error",
   },
   {
     sigla: "VAL",
@@ -656,7 +590,6 @@ const SGADD_GLOSARIO = (function () {
     lectura: "Índice global: suma lo bueno y resta lo malo. Útil de un vistazo, engañoso si se lee solo",
     hoja: "todas",
     familia: "C · Anotación",
-    grupo: "Celdas vacías: no es un error",
   },
   ];
 
@@ -691,18 +624,18 @@ const SGADD_GLOSARIO = (function () {
       .toLowerCase().trim();
     if (!t) return ENTRADAS.slice();
     return ENTRADAS.filter((e) => {
-      const todo = [e.sigla, e.nombre, e.lectura, e.uso, e.formula, e.grupo]
+      const todo = [e.sigla, e.nombre, e.lectura, e.uso, e.formula, e.familia]
         .filter(Boolean).join(' ')
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
       return todo.indexOf(t) !== -1;
     });
   }
 
-  /** Los grupos del manual, en el orden en que aparecen ahí. */
+  /** Las familias del manual, en su propio orden (la letra las ordena). */
   function grupos() {
     const vistos = [];
     ENTRADAS.forEach((e) => {
-      if (e.grupo && vistos.indexOf(e.grupo) === -1) vistos.push(e.grupo);
+      if (e.familia && vistos.indexOf(e.familia) === -1) vistos.push(e.familia);
     });
     return vistos;
   }

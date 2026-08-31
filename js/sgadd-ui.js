@@ -401,13 +401,26 @@ const SGADD_UI = (function () {
     '<circle cx="12" cy="12" r="4"/>' +
     '<circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg>';
 
+  /* EL ÍCONO VA DELANTE DEL ARROBA, no detrás: se lee «Instagram
+     @motorstats.ar», que es el orden en que se dice. Detrás parecía un
+     botón suelto al final de la línea. */
+  const IG_CON_ICONO = ICONO_IG + ' ' + esc(ARROBA);
+
+  /**
+   * El pie del PDF. LLEVA LA FECHA y el de pantalla no.
+   *
+   * Un informe se comparte, se archiva y se mira semanas después: sin
+   * fecha no se sabe de qué corte habla, y ese es justamente el dato que
+   * lo vuelve auditable. En la web no: ahí la fecha es SIEMPRE hoy, así
+   * que no informa nada y ocupa la línea del pie.
+   */
   function pieInforme(fecha) {
     return '<span class="pie-bloque">' +
       '<img src="' + LOGO + '" alt="" width="14" height="14" class="pie-logo">' +
       '<span class="pie-marca">' + esc(MARCA) +
       '<sup class="pie-marca-sup">AR</sup></span> · Generado el ' +
       esc(fecha || fechaHoy()) +
-      ' - ' + esc(MAIL) + ' | ' + esc(ARROBA) + ICONO_IG +
+      ' - ' + esc(MAIL) + ' | ' + IG_CON_ICONO +
       '</span>';
   }
 
@@ -418,15 +431,25 @@ const SGADD_UI = (function () {
    * así que la versión impresa deja el texto pelado. Acá sí se puede
    * escribir o abrir el perfil de un click.
    */
-  function pieWeb(fecha) {
+  /**
+   * El pie de PANTALLA. SIN fecha, con los enlaces vivos.
+   *
+   * La fecha de generación en la web es siempre la de hoy: no dice nada
+   * de lo que se está mirando y confundía con la actualización de los
+   * datos, que es otra cosa y vive en el pie del menú. En el PDF sí va,
+   * porque ese archivo se comparte y se mira semanas después.
+   *
+   * En papel un `mailto:` no se puede tocar y el subrayado solo ensucia;
+   * acá sí se puede escribir o abrir el perfil de un clic.
+   */
+  function pieWeb() {
     return '<span class="pie-bloque">' +
       '<img src="' + LOGO + '" alt="" width="14" height="14" class="pie-logo">' +
       '<span class="pie-marca">' + esc(MARCA) +
-      '<sup class="pie-marca-sup">AR</sup></span> · Generado el ' +
-      esc(fecha || fechaHoy()) + ' - ' +
+      '<sup class="pie-marca-sup">AR</sup></span> · ' +
       '<a href="mailto:' + MAIL + '" class="pie-enlace">' + esc(MAIL) + '</a> | ' +
       '<a href="' + INSTAGRAM + '" target="_blank" rel="noopener noreferrer" ' +
-        'class="pie-enlace">' + esc(ARROBA) + ICONO_IG + '</a>' +
+        'class="pie-enlace">' + IG_CON_ICONO + '</a>' +
       '</span>';
   }
 

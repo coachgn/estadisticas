@@ -24,6 +24,15 @@ const SGADD_LOGIN = (function () {
   const esc = (v) => (typeof SGADD_UI !== 'undefined' && SGADD_UI.esc)
     ? SGADD_UI.esc(v) : String(v == null ? '' : v);
 
+  /* Los dos ojos, en SVG inline. No hay librería de iconos en el proyecto y
+     un emoji cambia de dibujo en cada sistema. */
+  const OJO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">'
+    + '<path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z"/>'
+    + '<circle cx="12" cy="12" r="2.8"/></svg>';
+  const OJO_TACHADO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">'
+    + '<path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z"/>'
+    + '<circle cx="12" cy="12" r="2.8"/><path d="M4 20 20 4"/></svg>';
+
   const estado = {
     abierto: false,
     modo: 'ingresar',        // 'ingresar' | 'fijar'
@@ -32,6 +41,9 @@ const SGADD_LOGIN = (function () {
     error: '',
     ok: '',
     disparador: null,
+    /* Qué campo de clave se está mostrando. Por campo y no global: en el
+       alta conviven el código y la clave nueva. */
+    verClave: {},
   };
 
   /* =====================================================================
@@ -79,25 +91,45 @@ const SGADD_LOGIN = (function () {
       codigo: campos.codigo, claveNueva: campos.claveNueva });
     const corta = estado.modo === 'fijar' && campos.claveNueva && claveCorta(campos.claveNueva);
 
-    const input = (id, etiqueta, tipo, ayuda) => `<label class="block mb-3">
+    /* EL OJO NO ES UN LUJO: la clave se elige una vez, a ciegas, y después
+       hay que reproducirla exacta. Un espacio de más al final o una letra
+       cambiada dejan a la persona afuera de su propia cuenta sin forma de
+       darse cuenta — el servidor contesta lo mismo para «clave incorrecta»
+       que para «mail que no existe», a propósito.
+
+       Arranca OCULTA: mostrarla por defecto la pondría en pantalla delante
+       de quien esté al lado. */
+    const input = (id, etiqueta, tipo, ayuda) => {
+      const esClave = (tipo === 'password');
+      const visible = !!estado.verClave[id];
+      const tipoReal = esClave && visible ? 'text' : tipo;
+      return `<label class="block mb-3">
       <span class="block text-[10px] uppercase tracking-wider text-muted font-display mb-1">${esc(etiqueta)}</span>
-      <input type="${tipo}" value="${esc(campos[id])}" id="login_${id}"
-        autocomplete="${tipo === 'password' ? (estado.modo === 'fijar' ? 'new-password' : 'current-password') : 'email'}"
-        oninput="SGADD_LOGIN.campo('${id}', this.value)"
-        onkeydown="if(event.key==='Enter')SGADD_LOGIN.enviar()"
-        class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm text-ink">
+      <span class="login-campo">
+        <input type="${tipoReal}" value="${esc(campos[id])}" id="login_${id}"
+          autocomplete="${esClave ? (estado.modo === 'fijar' ? 'new-password' : 'current-password') : 'email'}"
+          oninput="SGADD_LOGIN.campo('${id}', this.value)"
+          onkeydown="if(event.key==='Enter')SGADD_LOGIN.enviar()"
+          class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm text-ink${esClave ? ' pr-10' : ''}">
+        ${esClave ? `<button type="button" class="login-ojo" tabindex="0"
+          onclick="SGADD_LOGIN.verClave('${id}')"
+          aria-pressed="${visible}"
+          aria-label="${visible ? 'Ocultar la clave' : 'Mostrar la clave'}"
+          title="${visible ? 'Ocultar la clave' : 'Mostrar la clave'}">${visible ? OJO_TACHADO : OJO}</button>` : ''}
+      </span>
       ${ayuda ? `<span class="block text-[10px] text-muted mt-1">${ayuda}</span>` : ''}
     </label>`;
+    };
 
     return `<div class="login-fondo" onclick="if(event.target===this)SGADD_LOGIN.cerrar()">
       <div class="login-caja card rounded-xl p-5 border border-hairline" role="dialog"
            aria-modal="true" aria-labelledby="loginTitulo">
         <h2 id="loginTitulo" class="font-display uppercase tracking-wide text-sm text-ink mb-1">
-          ${estado.modo === 'fijar' ? 'Fijá tu clave' : 'Ingreso de administrador'}</h2>
+          ${estado.modo === 'fijar' ? 'Fijá tu clave' : 'Ingreso a plataforma MotorStats'}</h2>
         <p class="text-xs text-muted mb-4">
           ${estado.modo === 'fijar'
             ? 'Con el código que te pasaron, elegí tu propia clave. El código sirve una sola vez.'
-            : 'Los clubes entran por su link; esto es para el equipo de MotorStats.'}
+            : 'Sitio web dedicado al análisis estadístico.'}
         </p>
 
         ${input('email', 'mail', 'email')}
@@ -156,6 +188,24 @@ const SGADD_LOGIN = (function () {
     }
   }
 
+  /**
+   * Muestra u oculta la clave.
+   *
+   * REPINTA Y DEVUELVE EL FOCO AL INPUT, con el cursor al final. El
+   * `type` de un input no se puede cambiar sin recrear el nodo en el
+   * markup de esta pantalla, y sin reponer el foco la persona queda
+   * escribiendo en el vacío justo después de tocar el ojo.
+   */
+  function verClave(id) {
+    estado.verClave[id] = !estado.verClave[id];
+    pintar();
+    const el = document.getElementById('login_' + id);
+    if (el) {
+      el.focus();
+      try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) {}
+    }
+  }
+
   function abrir(modo) {
     estado.abierto = true;
     estado.modo = modo || 'ingresar';
@@ -169,6 +219,9 @@ const SGADD_LOGIN = (function () {
     /* La clave se borra del estado al cerrar. No se guarda ni se recuerda:
        lo único que sobrevive a esta pantalla es el token firmado. */
     campos.clave = ''; campos.claveNueva = ''; campos.codigo = '';
+    /* Y se vuelve a ocultar: la próxima vez que se abra el modal no tiene
+       por qué heredar que alguien decidió mostrarla. */
+    estado.verClave = {};
     pintar();
     try { if (estado.disparador && estado.disparador.focus) estado.disparador.focus(); } catch (e) {}
   }
@@ -300,7 +353,7 @@ const SGADD_LOGIN = (function () {
   }
   return {
     destino, faltantes, claveCorta, LARGO_MINIMO,
-    abrir, cerrar, alternar, enviar, campo, pintar, salir, estado,
+    abrir, cerrar, alternar, enviar, campo, verClave, pintar, salir, estado,
   };
 })();
 

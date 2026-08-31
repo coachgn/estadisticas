@@ -1026,11 +1026,21 @@ titulo('EL PIE INSTITUCIONAL · la misma firma en pantalla y en papel');
   check('y el perfil', /href="https:\/\/www\.instagram\.com/.test(web));
   check('la de papel NO enlaza nada', !/<a /.test(pie));
 
-  /* MISMO TEXTO EN LAS DOS: quien mira la pantalla y quien recibe el
-     informe tienen que leer la misma firma. */
+  /* LA MISMA FIRMA EN LAS DOS, SALVO LA FECHA.
+
+     El PDF la lleva y la pantalla no. Un informe se comparte, se archiva
+     y se mira semanas después: sin fecha no se sabe de qué corte habla, y
+     ese es justo el dato que lo vuelve auditable. En la web la fecha es
+     SIEMPRE hoy, así que no informa nada y encima se confundía con la
+     actualización de los datos, que es otra cosa y vive en el pie del
+     menú. Lo demás —marca, mail y perfil— tiene que coincidir. */
   const pelar = (h) => h.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-  check('el texto es idéntico en pantalla y en papel',
-    pelar(pie) === pelar(web), pelar(pie) + '  ||  ' + pelar(web));
+  const sinFecha = (t) => t.replace(/ · Generado el \d{2}\/\d{2}\/\d{4} -/, ' ·').trim();
+  check('la firma es la misma sacando la fecha',
+    sinFecha(pelar(pie)) === sinFecha(pelar(web)),
+    sinFecha(pelar(pie)) + '  ||  ' + sinFecha(pelar(web)));
+  check('solo el PDF lleva la fecha de generación',
+    /Generado el/.test(pie) && !/Generado el/.test(web));
 
   /* SE USA LA VERSIÓN DE 64 px: el original pesa 1,3 MB y acá se muestra a
      14. Cargarlo entero en cada informe es el error que el generador
@@ -1185,6 +1195,144 @@ titulo('EL GLOSARIO · las definiciones salen del manual del motor');
   /* EMPTY STATE CON SALIDA, no un contenedor vacío (punto 14). */
   check('sin resultados ofrece volver a la lista',
     /Sin resultados[\s\S]{0,400}Ver los/.test(ui));
+}
+
+titulo('EL MODAL DE INGRESO, LOS CUPOS Y EL PIE');
+
+{
+  const LOG = require('./js/sgadd-login.js');
+  const LAN2 = require('./js/sgadd-landing.js');
+  const srcLog = fs.readFileSync('./js/sgadd-login.js', 'utf8');
+  const idxL = fs.readFileSync('./index.html', 'utf8');
+
+  /* EL OJO NO ES UN LUJO. La clave se elige una vez, a ciegas, y después
+     hay que reproducirla exacta; el servidor contesta lo mismo para «clave
+     incorrecta» que para «mail que no existe», a propósito, así que un
+     espacio de más deja a la persona afuera sin forma de darse cuenta. */
+  check('el campo de clave trae el botón de ojo', /class="login-ojo"/.test(srcLog));
+  check('que alterna password/text', /tipoReal = esClave && visible/.test(srcLog));
+  check('arranca OCULTA', /const visible = !!estado\.verClave\[id\]/.test(srcLog));
+  check('y el estado es POR CAMPO, no global',
+    /verClave: \{\}/.test(srcLog) && /estado\.verClave\[id\]/.test(srcLog));
+  /* Cambiar el `type` recrea el nodo, así que sin reponer el foco la
+     persona queda escribiendo en el vacío justo después de tocar el ojo. */
+  check('al alternar devuelve el foco al input',
+    /function verClave\(id\)[\s\S]{0,400}el\.focus\(\)/.test(srcLog));
+  check('y el cursor al final', /setSelectionRange\(el\.value\.length/.test(srcLog));
+  check('cerrar vuelve a ocultarla', /estado\.verClave = \{\};/.test(srcLog));
+  check('el botón dice qué hace', /aria-label="\$\{visible \? 'Ocultar/.test(srcLog));
+  check('y su CSS va a mano, que es un nodo inyectado', /\.login-ojo \{/.test(idxL));
+
+  /* El texto que pidió el club. */
+  check('el título es el de la plataforma',
+    /Ingreso a plataforma MotorStats/.test(srcLog));
+  check('con su bajada', /Sitio web dedicado al análisis estadístico/.test(srcLog));
+
+  /* CADA PLAN CON SU METAL, y no con un tono del semáforo: verde y
+     amarillo significan «bien» y «atención» en todo el panel, y un plan no
+     es mejor ni peor — es otro. */
+  const metales = { Bronce: '#CD7F32', Plata: '#C0C0C0', Oro: '#FFD700' };
+  check('los tres planes traen su color de metal',
+    LAN2.PLANES_MAILS.every(x => metales[x.nombre] === x.color),
+    LAN2.PLANES_MAILS.map(x => x.nombre + '=' + x.color).join(' '));
+  check('y ninguno usa un tono del semáforo',
+    LAN2.PLANES_MAILS.every(x => !x.tono));
+  /* El contraste de los tres metales se mide en `test-config.js`, que es
+     donde vive `CLUB.contraste` cargado en un vm — la misma función que
+     usa el panel. Un color validado con otra fórmula no prueba nada sobre
+     lo que el cliente ve. */
+  /* El orden de lectura: el cliente sabe cuál es su plan y viene a buscar
+     cuántos mails le tocan, no al revés. */
+  const cardPlan = LAN2.bienvenida ? LAN2.bienvenida() : '';
+  check('el nombre del plan va ARRIBA del número',
+    cardPlan.indexOf('landing-plan-t') < cardPlan.indexOf('landing-plan-n'),
+    't=' + cardPlan.indexOf('landing-plan-t') + ' n=' + cardPlan.indexOf('landing-plan-n'));
+
+  /* LA FECHA SOLO EN EL PDF. En la web es siempre hoy: no dice nada de lo
+     que se está mirando y se confundía con la actualización de los datos,
+     que es otra cosa y vive en el pie del menú. */
+  const UIP = require('./js/sgadd-ui.js');
+  check('el pie de pantalla NO lleva la fecha',
+    !/Generado el/.test(UIP.pieWeb()), UIP.pieWeb());
+  check('el del PDF sí', /Generado el/.test(UIP.pieInforme()));
+  /* Se lee «Instagram @motorstats.ar», que es el orden en que se dice. */
+  const w = UIP.pieWeb();
+  check('el ícono de Instagram va DELANTE del arroba',
+    w.indexOf('</svg>') !== -1 && w.indexOf('</svg>') < w.indexOf('@motorstats'));
+  check('y el arroba está linkeado al perfil',
+    /href="https:\/\/www\.instagram\.com\/motorstats\.ar/.test(w));
+
+  /* EL ARO NO PUEDE COMERLE LAS PUNTAS AL LOGO. Recorta a propósito —un
+     escudo con fondo propio necesita la máscara circular— así que la
+     imagen se acota a la caja en vez de salirse. */
+  check('la imagen del aro se acota con object-fit: contain',
+    /\.escudo-aro > img \{[\s\S]{0,320}object-fit: contain/.test(idxL));
+  check('y con max-width/height al 100%',
+    /\.escudo-aro > img \{[\s\S]{0,320}max-width: 100%; max-height: 100%/.test(idxL));
+  check('el box-sizing hace que el padding descuente',
+    /\.escudo-aro > img \{[\s\S]{0,320}box-sizing: border-box/.test(idxL));
+  check('y el de la pantalla de carga no recorta',
+    /\.cargando-logo \{[\s\S]{0,400}overflow: visible/.test(idxL));
+}
+
+
+titulo('EL GLOSARIO SE AGRUPA COMO EL MANUAL');
+
+{
+  const GL2 = require('./js/sgadd-glosario.js');
+  const UI2 = fs.readFileSync('./js/sgadd-glosarioui.js', 'utf8');
+  const gen2 = fs.readFileSync('./generar-glosario.js', 'utf8');
+
+  /* LA FAMILIA ES LA CLASIFICACIÓN, NO EL `grupo`. El grupo salía del <h2>
+     anterior a cada tabla, que en el manual puede ser una nota al pie
+     («Celdas vacías: no es un error») y no una categoría: 66 de las 77
+     entradas caían ahí. */
+  check('ninguna entrada arrastra el grupo del <h2>',
+    GL2.ENTRADAS.every(e => e.grupo === undefined));
+  const sinFamilia = GL2.ENTRADAS.filter(e => !e.familia);
+  check('todas tienen familia', sinFamilia.length === 0,
+    sinFamilia.map(e => e.sigla).join(', '));
+  check('y son las del manual, más de ocho', GL2.grupos().length >= 8,
+    String(GL2.grupos().length));
+
+  /* La letra ordena y después se saca del título: `C · Anotación` no le
+     dice nada a nadie, pero es lo que pone Anotación después de Volumen. */
+  const conLetra = GL2.grupos().filter(f => /^[A-Z] · /.test(f));
+  check('la familia trae la letra que la ordena',
+    conLetra.length === GL2.grupos().length, GL2.grupos().join(' | '));
+  check('y la vista la saca del título', /replace\(\/\^\[A-Z\] · \//.test(UI2));
+
+  /* UNA TABLA POR FAMILIA. Una sola de 77 filas alfabéticas ponía `AST` al
+     lado de `+/-`, que no tienen nada que ver. */
+  check('se pinta una sección por familia', /function bloqueFamilia/.test(UI2));
+  check('con índice arriba', /aria-label="Familias del glosario"/.test(UI2));
+  /* El hash ES la ruta de la app: un ancla mandaría a la pantalla de
+     inicio. Misma razón que el salto al contenido (punto 14). */
+  check('el índice usa <button>, no un ancla al hash',
+    /<button type="button" onclick="SGADD_GLOSARIOUI\.irA/.test(UI2)
+    && !/href="#\$\{idFamilia/.test(UI2));
+  check('fórmula y hoja van centradas',
+    (UI2.match(/text-center p-3 font-display/g) || []).length === 2);
+
+  /* Cada sigla se marca para el tooltip: en esta tabla el texto de la
+     celda ES la sigla, pero marcarla explícita no depende de eso. */
+  check('cada sigla lleva data-metrica', /<td[^>]*data-metrica=/.test(UI2));
+
+  /* Tipear repinta SOLO el cuerpo, y con su propia función: antes se
+     recortaba el HTML entero con una expresión regular sobre el markup,
+     que se rompe al tocar el encabezado sin que lo note nadie. */
+  check('buscar repinta con cuerpo(), no recortando markup',
+    /cont\.innerHTML = cuerpo\(\);/.test(UI2)
+    && !/html\(\)\.replace\(/.test(UI2));
+
+  /* Las cuatro abreviaturas de hoja y los seis ratings no traen columna
+     de familia en el manual: se completan desde el título de SU sección,
+     no se inventa un nombre nuevo. */
+  check('las siglas de hoja quedan en su propia familia',
+    ['4F', 'AC', 'BD'].every(k => GL2.buscar(k) && /Hojas/.test(GL2.buscar(k).familia)));
+  check('y los ratings en la suya',
+    ['RTNG OFF', 'NET RTNG'].every(k => GL2.buscar(k) && /Ratings/.test(GL2.buscar(k).familia)));
+  check('el generador lo completa, no la vista', /FAMILIA_POR_GRUPO/.test(gen2));
 }
 
 console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +

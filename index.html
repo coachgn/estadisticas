@@ -209,11 +209,36 @@
   }
   @media (prefers-reduced-motion: reduce) { .login-fondo { backdrop-filter: none; } }
 
+  /* EL OJO DE LA CLAVE. Va a mano por lo mismo que el resto: el modal es
+     un nodo inyectado y el scan de Tailwind es estatico.
+
+     El boton se posiciona SOBRE el input, no al lado: al lado empuja el
+     campo y en el ancho del modal la clave queda en dos renglones. */
+  .login-campo { position: relative; display: block; }
+  .login-ojo {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    width: 28px; height: 28px; padding: 5px;
+    display: grid; place-items: center;
+    color: #8a8a8a; background: transparent; border: 0; border-radius: .375rem;
+    cursor: pointer; transition: color .15s ease, background-color .15s ease;
+  }
+  .login-ojo:hover { color: #f5f4f2; background: rgba(255,255,255,.06); }
+  .login-ojo:focus-visible {
+    outline: 2px solid var(--acento-fondo, var(--acento)); outline-offset: 1px;
+  }
+  .login-ojo svg { width: 100%; height: 100%; }
+  @media (prefers-reduced-motion: reduce) { .login-ojo { transition: none; } }
+
   /* El logo de la pantalla de carga. Pulso suave, no giro: el disco de al
      lado ya gira, y dos cosas girando a distinta velocidad se leen como
      un error de render. */
   .cargando-logo {
-    width: 48px; height: 48px; object-fit: contain;
+    /* Sin aro y sin recorte: acá el logo se muestra entero, que es lo
+       único que hay en pantalla mientras se espera. El `scale(.96)` del
+       pulso lo achica un pelín, así que el padding evita que el borde
+       llegue justo al límite de la caja. */
+    width: 56px; height: 56px; object-fit: contain; padding: 2px;
+    box-sizing: border-box; overflow: visible;
     animation: pulso-logo 2.2s ease-in-out infinite;
   }
   @keyframes pulso-logo {
@@ -240,7 +265,9 @@
     background: #ffffff;
     border-color: rgba(255, 255, 255, .25);
   }
-  .escudo-aro.aro-motorstats > img { padding: 5px; }
+  /* Mas padding que el de un club: su grafica es un circulo que toca el
+     borde del lienzo, asi que a igual tamaño el aro le corta las puntas. */
+  .escudo-aro.aro-motorstats > img { padding: 6px; }
 
   /* En la card de bienvenida el fondo se deja como esta —el logo se luce
      sobre el oscuro— pero se le suma padding por lo mismo: sin el, el
@@ -306,12 +333,21 @@
      pregunta del cliente es "cuantos", no "como se llama el mio". */
   .landing-plan {
     display: flex; flex-direction: column; align-items: center; gap: .1rem;
-    padding: .6rem .4rem; border-radius: .5rem;
+    padding: .8rem .5rem; border-radius: .5rem;
     background: #1b1b1b; border: 1px solid #282828;
   }
-  .landing-plan-n { font-family: inherit; font-size: 20px; font-weight: 700; line-height: 1; }
-  .landing-plan-t { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #f5f4f2; }
-  .landing-plan-d { font-size: 10px; color: #8a8a8a; }
+  /* El orden de lectura es NOMBRE → NÚMERO → unidad: el cliente sabe cual
+     es su plan y viene a buscar cuantos mails le tocan, no al reves. */
+  .landing-plan-t {
+    font-family: inherit; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .1em; color: #f5f4f2;
+  }
+  .landing-plan-n {
+    font-family: inherit; font-size: 34px; font-weight: 700; line-height: 1.05;
+    /* El color va inline, con el metal del plan. Los tres pasan AA sobre
+       este fondo, medido con la misma funcion que el resto del panel. */
+  }
+  .landing-plan-d { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #8a8a8a; }
 
   /* EL PIE INSTITUCIONAL. Va a mano por lo mismo que el resto: lo inyecta
      un nodo dinamico y el scan de Tailwind es ESTATICO. */
@@ -1669,7 +1705,24 @@
     overflow: hidden;
     transition: border-color .2s ease, background-color .2s ease;
   }
-  .escudo-aro > img { padding: 2px; }
+  /* LA IMAGEN SE ENCOGE AL ARO, no al reves.
+
+     El aro recorta (`overflow: hidden`) porque un escudo rectangular con
+     fondo propio necesita la mascara circular. Pero sin acotar la imagen,
+     un archivo mas grande que la caja se sale y el aro le come las puntas
+     — se vio con el logo de MotorStats, cuya grafica llega al borde del
+     lienzo, y con los escudos que traen texto abajo.
+
+     `object-fit: contain` mas `max-width/height: 100%` garantizan que
+     entre entera SIEMPRE, sea cual sea el tamaño del archivo, y el
+     `box-sizing` hace que el padding descuente en vez de sumar. */
+  .escudo-aro > img {
+    padding: 2px;
+    box-sizing: border-box;
+    max-width: 100%; max-height: 100%;
+    width: auto; height: auto;
+    object-fit: contain;
+  }
 
   /* HOVER de las cards de equipo. `box-shadow` y no `filter: brightness`:
      el filtro afecta al texto de adentro y con los tonos de zona eso
@@ -1819,7 +1872,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=164" />
+<link rel="stylesheet" href="sgadd.css?v=165" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -1985,37 +2038,37 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=164"></script>
+<script src="js/sgadd-club.js?v=165"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=164"></script>
-<script src="js/sgadd-core.js?v=164"></script>
-<script src="js/sgadd-auth.js?v=164"></script>
-<script src="js/sgadd-glosario.js?v=164"></script>
-<script src="js/sgadd-glosarioui.js?v=164"></script>
-<script src="js/sgadd-landing.js?v=164"></script>
-<script src="js/sgadd-login.js?v=164"></script>
-<script src="js/sgadd-data.js?v=164"></script>
-<script src="js/sgadd-clientes.js?v=164"></script>
-<script src="js/sgadd-ui.js?v=164"></script>
-<script src="js/sgadd-app.js?v=164"></script>
-<script src="js/sgadd-clasificacion.js?v=164"></script>
+<script src="js/sgadd-config.js?v=165"></script>
+<script src="js/sgadd-core.js?v=165"></script>
+<script src="js/sgadd-auth.js?v=165"></script>
+<script src="js/sgadd-glosario.js?v=165"></script>
+<script src="js/sgadd-glosarioui.js?v=165"></script>
+<script src="js/sgadd-landing.js?v=165"></script>
+<script src="js/sgadd-login.js?v=165"></script>
+<script src="js/sgadd-data.js?v=165"></script>
+<script src="js/sgadd-clientes.js?v=165"></script>
+<script src="js/sgadd-ui.js?v=165"></script>
+<script src="js/sgadd-app.js?v=165"></script>
+<script src="js/sgadd-clasificacion.js?v=165"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=164"></script>
-<script src="js/sgadd-configui.js?v=164"></script>
-<script src="js/sgadd-estados.js?v=164"></script>
-<script src="js/sgadd-buzon.js?v=164"></script>
-<script src="js/sgadd-charts.js?v=164"></script>
-<script src="js/sgadd-personalidad.js?v=164"></script>
-<script src="js/sgadd-rankings.js?v=164"></script>
-<script src="js/sgadd-partido.js?v=164"></script>
-<script src="js/sgadd-informe.js?v=164"></script>
-<script src="js/sgadd-ficha.js?v=164"></script>
-<script src="js/sgadd-equipos.js?v=164"></script>
-<script src="js/sgadd-jugadores.js?v=164"></script>
-<script src="js/sgadd-4factores.js?v=164"></script>
-<script src="js/sgadd-scouting.js?v=164"></script>
-<script src="js/sgadd-diagnostico.js?v=164"></script>
+<script src="js/sgadd-hub.js?v=165"></script>
+<script src="js/sgadd-configui.js?v=165"></script>
+<script src="js/sgadd-estados.js?v=165"></script>
+<script src="js/sgadd-buzon.js?v=165"></script>
+<script src="js/sgadd-charts.js?v=165"></script>
+<script src="js/sgadd-personalidad.js?v=165"></script>
+<script src="js/sgadd-rankings.js?v=165"></script>
+<script src="js/sgadd-partido.js?v=165"></script>
+<script src="js/sgadd-informe.js?v=165"></script>
+<script src="js/sgadd-ficha.js?v=165"></script>
+<script src="js/sgadd-equipos.js?v=165"></script>
+<script src="js/sgadd-jugadores.js?v=165"></script>
+<script src="js/sgadd-4factores.js?v=165"></script>
+<script src="js/sgadd-scouting.js?v=165"></script>
+<script src="js/sgadd-diagnostico.js?v=165"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

@@ -1816,6 +1816,43 @@
               const val = TASAS_EQUIPO[mk](sum, {});
               if (val !== null) d[mk] = val; else delete d[mk];
             });
+
+          /* LAS TRES QUE TIENEN DENOMINADOR DE EQUIPO.
+
+             `ACUMULADO J` trae 32 columnas contra las 53 de `PROMEDIOS J`,
+             y de las 21 que faltan estas tres son las ÚNICAS que el bucle
+             de arriba no puede reponer: su denominador no es del jugador
+             sino de su equipo. Sin esto, el TOTAL dejaba `USG%`, `RO%` y
+             `RD%` en blanco para todos — y como el TOTAL abre el libro,
+             la tarjeta USO de la ficha salía vacía de entrada.
+
+             LAS TRES FÓRMULAS SE VERIFICARON CONTRA LA PLANILLA REAL
+             (DEPORTIVO, IDA), no se dedujeron. Y la de rebote NO es la
+             tasa on-court que uno esperaría: MotorStats mide la porción
+             que el jugador se lleva de TODO lo que el equipo tuvo
+             disponible en la fase, sin prorratear por minutos. Reproducir
+             al motor manda sobre mejorarlo: la hoja es lo que el club
+             audita.
+
+                 RO% = RO_jug / (RO_equipo + RD_rival)
+                 RD% = RD_jug / (RD_equipo + RO_rival)
+                 USG% = (PLAYS_jug × MIN_equipo/5) / (PLAYS_equipo × MIN_jug)
+
+             Se trabaja con TOTALES de los dos lados —`sum` es del jugador,
+             `yo` y `riv` del equipo—: mezclar un total con un promedio da
+             un número que parece razonable y está mal por un factor PJ. */
+          const cociente = (a, b) => (typeof a === 'number' && typeof b === 'number'
+            && isFinite(a) && isFinite(b) && b > 0) ? a / b : null;
+          const tasasDeEquipo = {
+            'RO%': cociente(sum['RO'], (yo['RO'] || 0) + (riv['RD'] || 0)),
+            'RD%': cociente(sum['RD'], (yo['RD'] || 0) + (riv['RO'] || 0)),
+            'USG%': (typeof yo['MIN'] === 'number' && typeof yo['PLAYS'] === 'number')
+              ? cociente(sum['PLAYS'] * yo['MIN'] / 5, yo['PLAYS'] * sum['MIN'])
+              : null,
+          };
+          Object.keys(tasasDeEquipo).forEach(mk => {
+            if (tasasDeEquipo[mk] !== null) d[mk] = tasasDeEquipo[mk]; else delete d[mk];
+          });
           d.__clave = k;
           e.jugadores.push(d);
         });

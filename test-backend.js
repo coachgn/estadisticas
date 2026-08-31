@@ -1965,11 +1965,29 @@ titulo('INGRESO DE ADMINISTRADORES · claves, bloqueo y lo que NO se filtra');
   check('y se borra del estado al cerrar', /campos\.clave = ''/.test(lg));
   check('el token no se pone en la URL', !/searchParams\.set|access_token=/.test(lg));
 
-  /* LOS CLIENTES NO PASAN POR ACÁ: un club entra por su link firmado, y
-     pedirle registro para ver sus propios datos sería empeorarle el
-     producto. La pantalla lo dice. */
-  check('la pantalla aclara que los clubes entran por su link',
-    /clubes entran por su link/i.test(lg));
+  /* LOS CLIENTES NO PASAN POR ACÁ: un club entra con su mail y su código,
+     y pedirle que se registre en la pantalla del administrador sería
+     mandarlo a la puerta equivocada.
+
+     ESA ACLARACIÓN SE MUDÓ AL LUGAR DONDE EL CLIENTE LA LEE. Estaba en la
+     bajada del modal —o sea adentro de una pantalla a la que el cliente no
+     tiene por qué llegar— y ahora vive en la landing, en los tres pasos de
+     «¿Cómo se entra?». El modal quedó con el texto de la plataforma, que
+     es lo que pidió el club.
+
+     El test apunta a los DOS lados justamente para que la información no
+     se pierda al mover el texto: si mañana alguien reescribe la landing,
+     esto falla en vez de dejar al cliente sin instrucciones. */
+  check('el modal se presenta como la plataforma',
+    /Ingreso a plataforma MotorStats/.test(lg)
+    && /Sitio web dedicado al análisis estadístico/.test(lg));
+  {
+    const lan = fs.readFileSync('./js/sgadd-landing.js', 'utf8');
+    check('y la landing es la que le explica al cliente cómo entra',
+      /¿Cómo se entra\?/.test(lan) && /código/i.test(lan) && /landing-paso-n/.test(lan));
+    check('con su mail atado a la cuenta del club, sin registrarse',
+      /cuenta de tu club/i.test(lan) && /no hay que registrar nada/i.test(lan));
+  }
 
   /* Y NO ES UN MURO: el panel sigue abriendo sin sesión —el rol ABIERTO
      del punto 19— así que los tres clubes que hoy entran sin token siguen
@@ -2267,7 +2285,103 @@ titulo('LA CLI DEL CATÁLOGO');
     /await catalogo\.cargar\(\)/.test(gen) && !/require\('\.\.\/lib\/config\.js'\)/.test(gen));
 }
 
-  console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +
+  /* =====================================================================
+   UN KV ILEGIBLE NO PUEDE BORRAR LAS CLAVES
+
+   El defecto que dejó a un administrador afuera con su propia clave, y el
+   modo de fallar era perfecto: entraba bien la vez que la fijaba —la
+   escritura y la lectura siguiente son consecutivas— y no podía volver a
+   entrar después.
+
+     lectura de KV falla  →  padron {}  →  «mail o clave incorrectos»
+                          →  anotarFallo({})  →  se ESCRIBE {mail:{fallos:1}}
+
+   y ahí se iban los hashes de los tres, sin ningún síntoma.
+   ===================================================================== */
+titulo('EL PADRÓN NO SE PISA CON UNA LECTURA QUE FALLÓ');
+
+{
+  const kvm = require('./server/lib/kv.js');
+  const ADM = require('./server/lib/admins.js');
+  const HH = require('./server/api/handlers.js');
+  const leerOriginal = kvm.leer, escribirOriginal = kvm.escribir, confOriginal = kvm.configurado;
+
+  const correr = async (fn) => { try { return await fn(); } finally {
+    kvm.leer = leerOriginal; kvm.escribir = escribirOriginal; kvm.configurado = confOriginal; } };
+
+  /* SECUENCIALES, no en paralelo: cada bloque cambia los stubs de `kv` y
+     los restaura al terminar, asi que dos a la vez se pisan entre si.
+     Corriendo juntos, el `finally` del primero devolvia el `kv` real
+     mientras el segundo todavia lo estaba usando. */
+
+  /* 1 · CON LA LECTURA CAÍDA NO SE OPINA SOBRE LA CLAVE Y NO SE ESCRIBE. */
+  await correr(async () => {
+    let escrito = 'NADA';
+    kvm.configurado = () => true;
+    kvm.leer = async () => ({ valor: null, error: 'KV' });
+    kvm.escribir = async (k, v) => { escrito = v; };
+
+    const r = await HH.manejarLogin({ body: { email: 'freytesgn@gmail.com', clave: 'lo que sea largo' } });
+    check('con KV caído el login NO dice «clave incorrecta»',
+      r.status === 503, r.status + ' ' + (r.body && r.body.mensaje));
+    check('y NO escribe nada en el padrón', escrito === 'NADA', JSON.stringify(escrito));
+
+    escrito = 'NADA';
+    const r2 = await HH.manejarClave({ body: { email: 'freytesgn@gmail.com', codigo: 'x', claveNueva: 'una clave bien larga' } });
+    check('el canje tampoco inventa que no hay invitación', r2.status === 503, r2.status);
+    check('y tampoco escribe', escrito === 'NADA', JSON.stringify(escrito));
+  });
+
+  /* 2 · `cargar` DISTINGUE «vacío» DE «no se pudo leer». Son dos cosas
+     distintas y confundirlas es todo el bug. */
+  await correr(async () => {
+    kvm.leer = async () => ({ valor: null, error: 'KV' });
+    let lanzo = false;
+    try { await ADM.cargar(); } catch (e) { lanzo = (e.codigo === 'KV'); }
+    check('cargar LANZA cuando la lectura falla', lanzo);
+
+    kvm.leer = async () => ({ valor: null, error: null });
+    const vacio = await ADM.cargar();
+    check('y devuelve {} cuando de verdad no hay nadie',
+      vacio && typeof vacio === 'object' && Object.keys(vacio).length === 0);
+  });
+
+  /* 3 · EL CIRCUITO COMPLETO: fijar → entrar → salir → volver a entrar.
+     Con la misma clave, y con un intento fallido en el medio. Es el caso
+     que reportó el cliente, ejercido sobre los handlers de verdad. */
+  await correr(async () => {
+    const store = {};
+    kvm.configurado = () => true;
+    kvm.leer = async (k) => ({ valor: store[k] !== undefined ? JSON.parse(store[k]) : null, error: null });
+    kvm.escribir = async (k, v) => { store[k] = JSON.stringify(v); };
+
+    const mail = 'freytesgn@gmail.com', clave = 'una frase larga de prueba';
+    const inv = ADM.invitar({}, mail, 7);
+    store[ADM.CLAVE_KV] = JSON.stringify(inv.padron);
+
+    const a = await HH.manejarClave({ body: { email: mail, codigo: inv.codigo, claveNueva: clave } });
+    check('se fija la clave con el código de invitación', a.status === 200, a.status + ' ' + (a.body && a.body.mensaje));
+
+    const b1 = await HH.manejarLogin({ body: { email: mail, clave: clave } });
+    check('entra en el acto', b1.status === 200 && b1.body.ok);
+
+    const b2 = await HH.manejarLogin({ body: { email: mail, clave: clave } });
+    check('y vuelve a entrar después de cerrar sesión', b2.status === 200 && b2.body.ok,
+      b2.status + ' ' + (b2.body && b2.body.mensaje));
+
+    await HH.manejarLogin({ body: { email: mail, clave: 'una clave equivocada' } });
+    const b3 = await HH.manejarLogin({ body: { email: mail, clave: clave } });
+    check('un intento fallido en el medio no le rompe la clave',
+      b3.status === 200 && b3.body.ok, b3.status + ' ' + (b3.body && b3.body.mensaje));
+
+    const fin = JSON.parse(store[ADM.CLAVE_KV]);
+    check('y el hash sigue en el padrón al final', !!(fin[mail] && fin[mail].clave));
+    check('con el contador de fallos limpio', !fin[mail].fallos);
+  });
+
+}
+
+console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +
     '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })().catch(e => {

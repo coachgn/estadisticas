@@ -1507,6 +1507,85 @@ check('usa sessionStorage, no localStorage',
   /typeof sessionStorage === 'undefined'/.test(coreJs2) &&
   !/localStorage/.test(coreJs2.slice(coreJs2.indexOf('CACHE_PREFIJO'), coreJs2.indexOf('function cargarCategoria'))));
 
+/* =====================================================================
+   LAS TRES TASAS DEL JUGADOR CON DENOMINADOR DE EQUIPO
+
+   `ACUMULADO J` trae 32 columnas contra las 53 de `PROMEDIOS J`. De las
+   21 que faltan, el TOTAL puede reponer casi todas recalculando sobre los
+   totales del propio jugador — salvo estas tres, cuyo denominador es del
+   EQUIPO. Sin ellas el TOTAL dejaba `USG%`, `RO%` y `RD%` en blanco para
+   todos, y como el TOTAL abre el libro, la tarjeta USO de la ficha salía
+   vacía de entrada.
+
+   LOS NÚMEROS SALEN DE LA PLANILLA REAL (DEPORTIVO · IDA), no de una
+   fixture inventada: es la única forma de probar que se reproduce al
+   motor y no que se reproduce a uno mismo.
+   ===================================================================== */
+(function () {
+  const nP = (t, eq, o) => Object.assign({
+    /* El MISMO `PARTIDO` de los dos lados: es lo que hace que el indice
+       encuentre al rival. Con uno distinto por equipo, `riv` queda vacio
+       y RO% sale sobre el propio rebote, que es un numero plausible y
+       equivocado. */
+    PARTIDO: 'p' + t, EQUIPO: eq, FASE: 'REGULAR', TORNEO: t,
+    FECHA: '2026-0' + (t === 'IDA' ? 5 : 8) + '-01',
+    RESULTADO: 'GANADO', CONDICION: 'LOCAL' }, o);
+
+  /* Equipo A en la fase completa: RO 111 · RD 297 · MIN 2200 · PLAYS 959,24
+     Rival:                        RO  75 · RD 302   (los de su libro real) */
+  const bde = [];
+  ['IDA', 'VUELTA'].forEach((t) => {
+    bde.push(nP(t, 'A', { RO: 55.5, RD: 148.5, MIN: 1100, PLAYS: 479.62, PTS: 400,
+      PP: 50, TCC: 150, TCI: 330, T3C: 40, T3I: 120, T2C: 110, T2I: 210,
+      T1C: 60, T1I: 80, AST: 80, PR: 40, POS: 400, RT: 204 }));
+    bde.push(nP(t, 'B', { RO: 37.5, RD: 151, MIN: 1100, PLAYS: 470, PTS: 390,
+      PP: 55, TCC: 145, TCI: 325, T3C: 38, T3I: 118, T2C: 107, T2I: 207,
+      T1C: 62, T1I: 84, AST: 75, PR: 38, POS: 395, RT: 188,
+      RESULTADO: 'PERDIDO', CONDICION: 'VISITANTE' }));
+  });
+
+  /* Un jugador real de ese libro: RO 16 · RD 29 · MIN 257,09 · PLAYS 106,24 */
+  const acj = ['IDA', 'VUELTA'].map(t => ({
+    NOMBRES: 'BOTTE, IGNACIO', EQUIPO: 'A', FASE: 'REGULAR', TORNEO: t, PJ: 11,
+    RO: 8, RD: 14.5, MIN: 128.545, PLAYS: 53.12, PTS: 80, TCC: 30, TCI: 70,
+    T3C: 8, T3I: 24, T2C: 22, T2I: 46, T1C: 12, T1I: 16, AST: 15, PP: 10 }));
+
+  const iT = SGADD.construirIndice({
+    'Base Datos E': { cols: Object.keys(bde[0]), filas: bde },
+    'ACUMULADO J': { cols: Object.keys(acj[0]), filas: acj },
+  }, { fase: 'REGULAR', torneo: SGADD.TORNEO_TOTAL });
+
+  const jt = (iT.get('A').jugadores || [])[0];
+  check('el TOTAL arma el plantel desde el acumulado', !!jt, jt && jt.NOMBRES);
+
+  /* La de rebote NO es la tasa on-court que uno esperaría: el motor mide
+     la porción que el jugador se lleva de TODO lo que el equipo tuvo
+     disponible, sin prorratear por minutos. Reproducirlo manda sobre
+     mejorarlo — la hoja es lo que el club audita. */
+  check('RO% del jugador sale sobre lo disponible del EQUIPO',
+    Math.abs(jt['RO%'] - 16 / (111 + 302)) < 1e-9, jt['RO%']);
+  check('RD% también', Math.abs(jt['RD%'] - 29 / (297 + 75)) < 1e-9, jt['RD%']);
+  check('USG% reproduce la fórmula del manual',
+    Math.abs(jt['USG%'] - (106.24 * 2200 / 5) / (959.24 * 257.09)) < 1e-9, jt['USG%']);
+
+  /* Y NO es lo que da prorratear por minutos, que es el error que uno
+     comete si deduce la fórmula en vez de medirla. */
+  const prorrateado = 16 / (16 + 302 * (257.09 / 2200));
+  check('y no coincide con la versión prorrateada por minutos',
+    Math.abs(jt['RO%'] - prorrateado) > 1e-3,
+    'motor ' + jt['RO%'].toFixed(5) + ' vs prorrateado ' + prorrateado.toFixed(5));
+
+  /* Sin los datos del equipo no se inventa un número: la columna se va. */
+  const iSin = SGADD.construirIndice({
+    'Base Datos E': { cols: Object.keys(bde[0]),
+      filas: bde.map(f => { const g = Object.assign({}, f); delete g.MIN; delete g.PLAYS; return g; }) },
+    'ACUMULADO J': { cols: Object.keys(acj[0]), filas: acj },
+  }, { fase: 'REGULAR', torneo: SGADD.TORNEO_TOTAL });
+  const jSin = ((iSin.get('A') || {}).jugadores || [])[0];
+  check('sin MIN ni PLAYS del equipo, USG% se omite en vez de mentir',
+    !jSin || jSin['USG%'] === undefined, jSin && jSin['USG%']);
+})();
+
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })();

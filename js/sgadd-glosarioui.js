@@ -32,29 +32,97 @@ const SGADD_GLOSARIOUI = (function () {
      LA SECCIÓN
      ===================================================================== */
 
+  /* La letra que ordena las familias del manual (`C · Anotación`) no le
+     dice nada a nadie: ordena, y después se saca del título. */
+  const sinLetra = (f) => String(f || '').replace(/^[A-Z] · /, '');
+  const idFamilia = (f) => 'glos_' + String(f || '').replace(/[^A-Za-z0-9]+/g, '_');
+
   function fila(e) {
     return `<tr class="border-t border-hairline/40 align-top">
-      <td class="py-2 pr-3 font-mono text-xs text-accent whitespace-nowrap">${esc(e.sigla)}</td>
-      <td class="py-2 pr-3 text-xs text-ink">${esc(e.nombre || '—')}</td>
-      <td class="py-2 pr-3 text-xs text-muted">${esc(e.lectura || e.uso || '')}</td>
-      <td class="py-2 font-mono text-[11px] text-muted">${esc(e.formula || '')}</td>
+      <td class="py-2 px-3 font-mono text-xs text-accent whitespace-nowrap" data-metrica="${esc(e.sigla)}">${esc(e.sigla)}</td>
+      <td class="py-2 px-3 text-xs text-ink">${esc(e.nombre || '—')}</td>
+      <td class="py-2 px-3 text-xs text-muted">${esc(e.lectura || e.uso || '—')}</td>
+      <td class="py-2 px-3 font-mono text-[11px] text-muted text-center">${esc(e.formula || '—')}</td>
+      <td class="py-2 px-3 font-mono text-[10px] text-muted/70 text-center whitespace-nowrap">${esc(e.hoja || '—')}</td>
     </tr>`;
+  }
+
+  /* UNA TABLA POR FAMILIA, en el orden del manual.
+
+     Una sola tabla de 77 filas ordenada alfabéticamente ponía `AST` al
+     lado de `AST-PP` y de `+/-`, que no tienen nada que ver entre sí. El
+     manual agrupa por familia justamente porque así se estudia: primero de
+     qué habla el bloque, después cada sigla. */
+  function bloqueFamilia(nombre, filas) {
+    return `<section class="card rounded-xl border border-hairline overflow-hidden" id="${idFamilia(nombre)}">
+      <header class="flex items-baseline justify-between gap-3 px-4 py-3 border-b border-hairline">
+        <h3 class="font-display uppercase tracking-wide text-xs text-accent">${esc(sinLetra(nombre))}</h3>
+        <span class="font-mono text-[10px] text-muted">${filas.length}</span>
+      </header>
+      <div class="scrollbox">
+        <table class="w-full border-collapse">
+          <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+            <th class="text-left p-3 font-display">Sigla</th>
+            <th class="text-left p-3 font-display">Nombre completo</th>
+            <th class="text-left p-3 font-display">Cómo se lee</th>
+            <th class="text-center p-3 font-display">Fórmula</th>
+            <th class="text-center p-3 font-display">Hoja</th>
+          </tr></thead>
+          <tbody>${filas.map(fila).join('')}</tbody>
+        </table>
+      </div>
+    </section>`;
+  }
+
+  /** El cuerpo: las familias que sobreviven al filtro. Se repinta solo. */
+  function cuerpo() {
+    const res = G.filtrar(estado.busqueda);
+    if (!res.length) {
+      /* Empty state positivo y con salida, no un contenedor vacío (punto
+         14): dice qué se buscó y ofrece volver a la lista. */
+      return `<div class="card rounded-xl p-6 border border-hairline text-center">
+        <p class="text-sm text-ink mb-1">Sin resultados para «${esc(estado.busqueda)}»</p>
+        <p class="text-xs text-muted mb-3">Probá con la sigla, o con una palabra suelta.</p>
+        <button onclick="SGADD_GLOSARIOUI.buscar('')"
+          class="text-[11px] font-display uppercase tracking-wider text-accent hover:underline">
+          Ver los ${G.ENTRADAS.length} términos</button>
+      </div>`;
+    }
+
+    const porFamilia = new Map();
+    res.forEach((e) => {
+      const f = e.familia || 'Otras';
+      if (!porFamilia.has(f)) porFamilia.set(f, []);
+      porFamilia.get(f).push(e);
+    });
+    /* El orden es el del manual (`grupos()` respeta la letra) y no el de
+       aparición en el resultado del filtro: así el glosario se lee igual
+       buscando o sin buscar. */
+    const orden = G.grupos().filter(f => porFamilia.has(f));
+    porFamilia.forEach((v, k) => { if (orden.indexOf(k) === -1) orden.push(k); });
+
+    const indice = orden.length > 1 ? `<nav class="flex flex-wrap gap-2" aria-label="Familias del glosario">
+      ${orden.map(f => `<button type="button" onclick="SGADD_GLOSARIOUI.irA('${SGADD_UI.escJs(idFamilia(f))}')"
+        class="text-[10px] font-display uppercase tracking-wider px-2.5 py-1 rounded border
+               border-hairline text-muted hover:text-ink hover:border-accent transition-colors">
+        ${esc(sinLetra(f))} <span class="opacity-50">${porFamilia.get(f).length}</span></button>`).join('')}
+    </nav>` : '';
+
+    return indice + orden.map(f => bloqueFamilia(f, porFamilia.get(f))).join('');
   }
 
   function html() {
     if (!G) return '';
-    const res = G.filtrar(estado.busqueda);
-
     return `<div class="space-y-5">
       <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
         <div class="flex items-baseline justify-between gap-3 flex-wrap mb-2">
           <h2 class="font-display uppercase tracking-wide text-sm text-ink">Glosario de métricas</h2>
-          <span class="font-mono text-[11px] text-muted">${G.ENTRADAS.length} términos</span>
+          <span class="font-mono text-[11px] text-muted">${G.ENTRADAS.length} términos · ${G.grupos().length} familias</span>
         </div>
         <p class="text-xs text-muted">
-          Qué mide cada columna y cómo se lee. Sale del manual de MotorStats, que es
-          el mismo documento con el que se audita la planilla — así que si una
-          definición cambia allá, cambia acá.
+          Qué mide cada columna y cómo se lee, agrupado igual que el manual de
+          MotorStats — que es el mismo documento con el que se audita la planilla,
+          así que si una definición cambia allá, cambia acá.
         </p>
         <label class="block mt-4">
           <span class="sr-only">Buscar una métrica</span>
@@ -64,31 +132,17 @@ const SGADD_GLOSARIOUI = (function () {
             class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm text-ink">
         </label>
       </div>
-
-      ${res.length ? `
-        <div class="card rounded-xl border border-hairline overflow-hidden">
-          <div class="scrollbox">
-            <table class="w-full border-collapse">
-              <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
-                <th class="text-left p-3 font-display">Sigla</th>
-                <th class="text-left p-3 font-display">Nombre</th>
-                <th class="text-left p-3 font-display">Cómo se lee</th>
-                <th class="text-left p-3 font-display">Fórmula</th>
-              </tr></thead>
-              <tbody>${res.map(fila).join('')}</tbody>
-            </table>
-          </div>
-        </div>`
-        /* Empty state positivo y con salida, no un contenedor vacío
-           (punto 14): dice qué se buscó y ofrece volver a la lista. */
-        : `<div class="card rounded-xl p-6 border border-hairline text-center">
-            <p class="text-sm text-ink mb-1">Sin resultados para «${esc(estado.busqueda)}»</p>
-            <p class="text-xs text-muted mb-3">Probá con la sigla, o con una palabra suelta.</p>
-            <button onclick="SGADD_GLOSARIOUI.buscar('')"
-              class="text-[11px] font-display uppercase tracking-wider text-accent hover:underline">
-              Ver los ${G.ENTRADAS.length} términos</button>
-          </div>`}
+      <div id="glosarioCuerpo" class="space-y-5">${cuerpo()}</div>
     </div>`;
+  }
+
+  /* EL ÍNDICE VA CON <button> Y NO CON UN ANCLA. El hash ES la ruta de la
+     app: un `href="#glos_Tiro"` la mandaría a la pantalla de inicio. Es la
+     misma razón por la que el salto al contenido tampoco es un ancla
+     (punto 14). */
+  function irA(id) {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   /* Tipear repinta SOLO la tabla, no la sección: repintar todo le sacaría
@@ -98,7 +152,11 @@ const SGADD_GLOSARIOUI = (function () {
     estado.busqueda = String(q == null ? '' : q);
     const cont = document.getElementById('glosarioCuerpo');
     if (!cont) { pintar(); return; }
-    cont.innerHTML = html().replace(/^[\s\S]*?<\/label>\s*<\/div>/, '');
+    /* Se repinta SOLO el cuerpo, con su propia función. Antes se recortaba
+       el HTML entero con una expresión regular sobre el markup, que es
+       frágil de la peor manera: se rompe al tocar el encabezado y no lo
+       nota nadie hasta que el buscador deja de andar. */
+    cont.innerHTML = cuerpo();
     const inp = document.getElementById('glosarioBuscar');
     if (inp && document.activeElement !== inp) { inp.value = estado.busqueda; }
   }
@@ -225,7 +283,7 @@ const SGADD_GLOSARIOUI = (function () {
     window.addEventListener('scroll', ocultar, { passive: true });
   }
 
-  return { html, pintar, buscar, iniciar, mostrar, ocultar, siglaDe, estado };
+  return { html, pintar, buscar, cuerpo, irA, iniciar, mostrar, ocultar, siglaDe, estado };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_GLOSARIOUI;

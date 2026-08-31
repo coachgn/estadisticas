@@ -1369,5 +1369,40 @@ check('con su huella completa',
 /* Y Vuelta NO: sellar es por tramo, no por categoría. */
 check('y Vuelta sigue sin sellar',
   !pDep3.categoria.certificacion.vuelta);
+/* =====================================================================
+   LOS COLORES DE PLAN DE LA LANDING
+
+   Cada plan lleva SU metal y no un tono del semáforo: verde y amarillo
+   significan «bien» y «atención» en todo el panel, y un plan no es mejor
+   ni peor — es otro. Se miden acá porque acá está `CLUB.contraste`, la
+   misma función con la que se validan los tonos de zona y los acentos.
+   ===================================================================== */
+titulo('LOS METALES DE LOS PLANES · contraste AA');
+
+{
+  const LAN = require('./js/sgadd-landing.js');
+  /* El fondo de la tarjeta de cupos, definido a mano en el <style>. */
+  const FONDO = '#1b1b1b';
+  const esperados = { Bronce: '#CD7F32', Plata: '#C0C0C0', Oro: '#FFD700' };
+
+  check('los tres planes traen su color de metal',
+    LAN.PLANES_MAILS.every(p => esperados[p.nombre] === p.color),
+    LAN.PLANES_MAILS.map(p => p.nombre + '=' + p.color).join(' '));
+  check('y ninguno usa un tono del semáforo',
+    LAN.PLANES_MAILS.every(p => !p.tono));
+
+  LAN.PLANES_MAILS.forEach((p) => {
+    const c = CLUB.contraste(p.color, FONDO);
+    check('  ' + p.nombre + ' pasa AA sobre la tarjeta', c >= 4.5, c.toFixed(2));
+  });
+
+  /* Y los cupos son los que el club declaró. Están acá y no en el motor de
+     permisos porque HOY NO SE HACEN CUMPLIR: es la condición comercial
+     escrita, no un límite que el sistema imponga. */
+  check('los cupos son 2 · 3 · 4',
+    LAN.PLANES_MAILS.map(p => p.mails).join(',') === '2,3,4',
+    LAN.PLANES_MAILS.map(p => p.mails).join(','));
+}
+
 console.log('\n' + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

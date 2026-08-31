@@ -172,12 +172,41 @@ const descartadas = entradas.length - utiles.length;
 entradas.length = 0;
 utiles.forEach(e => entradas.push(e));
 
+/* CADA ENTRADA CON SU FAMILIA.
+
+   El manual agrupa las métricas en familias con letra (`A · Identificación`,
+   `C · Anotación`…) y esa letra ES el orden. Dos tablas del manual no
+   traen esa columna:
+
+     · los seis ratings, que viven bajo el título «Ratings»;
+     · las cuatro abreviaturas de HOJA (`4F`, `AC`, `BD`, `E / J`), que no
+       son métricas sino cómo el manual nombra las planillas.
+
+   Se completan desde el título de su sección, con la letra que les
+   corresponde por orden de lectura. NO se inventa una familia nueva: se
+   usa el nombre que el propio manual les da. */
+const FAMILIA_POR_GRUPO = {
+  'Ratings': 'J · Ratings',
+};
+const SIGLAS_DE_HOJA = ['4F', 'AC', 'BD', 'E / J'];
+entradas.forEach((e) => {
+  if (e.familia) return;
+  if (SIGLAS_DE_HOJA.indexOf(e.sigla) !== -1) { e.familia = 'K · Hojas'; return; }
+  if (FAMILIA_POR_GRUPO[e.grupo]) e.familia = FAMILIA_POR_GRUPO[e.grupo];
+});
+
+/* Y el `grupo` se descarta: es el título del <h2> anterior a cada tabla,
+   que en el manual puede ser una nota al pie («Celdas vacías: no es un
+   error») y no una categoría. Sesenta y seis entradas caían ahí. La
+   familia es la clasificación de verdad. */
+entradas.forEach((e) => { delete e.grupo; });
+
 entradas.sort((a, b) => a.sigla.localeCompare(b.sigla, 'es'));
 
 /* ------------------------------------------------------------- escribir */
 
 const cuerpo = entradas.map((e) => {
-  const campos = ['sigla', 'nombre', 'formula', 'lectura', 'uso', 'hoja', 'familia', 'grupo']
+  const campos = ['sigla', 'nombre', 'formula', 'lectura', 'uso', 'hoja', 'familia']
     .filter(k => e[k])
     .map(k => '    ' + k + ': ' + JSON.stringify(e[k]) + ',')
     .join('\n');
@@ -237,18 +266,18 @@ ${cuerpo}
       .toLowerCase().trim();
     if (!t) return ENTRADAS.slice();
     return ENTRADAS.filter((e) => {
-      const todo = [e.sigla, e.nombre, e.lectura, e.uso, e.formula, e.grupo]
+      const todo = [e.sigla, e.nombre, e.lectura, e.uso, e.formula, e.familia]
         .filter(Boolean).join(' ')
         .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
       return todo.indexOf(t) !== -1;
     });
   }
 
-  /** Los grupos del manual, en el orden en que aparecen ahí. */
+  /** Las familias del manual, en su propio orden (la letra las ordena). */
   function grupos() {
     const vistos = [];
     ENTRADAS.forEach((e) => {
-      if (e.grupo && vistos.indexOf(e.grupo) === -1) vistos.push(e.grupo);
+      if (e.familia && vistos.indexOf(e.familia) === -1) vistos.push(e.familia);
     });
     return vistos;
   }

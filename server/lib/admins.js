@@ -36,9 +36,32 @@ const BLOQUEO_MS = 15 * 60 * 1000;
 
 function normalizar(email) { return AUTH.normalizarEmail(email); }
 
-/** Lee el padrón. NUNCA lanza: sin KV devuelve un padrón vacío. */
+/**
+ * Lee el padrón. LANZA si KV no se pudo leer.
+
+ * ANTES DEVOLVÍA UN PADRÓN VACÍO Y ESO BORRABA LAS CLAVES DE LOS TRES.
+ * `kv.leer` se traga el error y devuelve `{valor: null}`, o sea que un
+ * fallo de red era indistinguible de «todavía no hay nadie». La cadena
+ * completa:
+ *
+ *   lectura falla  →  padrón {}  →  «mail o clave incorrectos»
+ *                  →  anotarFallo({})  →  se ESCRIBE {mail:{fallos:1}}
+ *
+ * y ahí se fueron los hashes de los tres administradores, sin ningún
+ * síntoma. El modo de fallar era perfecto: el que acababa de fijar su
+ * clave entraba bien esa vez —la escritura y la lectura siguiente son
+ * consecutivas— y no podía volver a entrar después.
+ *
+ * Con esto, un KV ilegible da 503 y NO se escribe nada: es la misma regla
+ * que el resto del proyecto — un dato ausente se muestra ausente, no se
+ * reemplaza por uno inventado.
+ */
 async function cargar(opciones) {
   const r = await kv.leer(CLAVE_KV, opciones);
+  if (r && r.error) {
+    throw Object.assign(new Error('No se pudo leer el padrón de administradores.'),
+      { codigo: r.error === 'JSON inválido en ' + CLAVE_KV ? 'KV_CORRUPTO' : 'KV' });
+  }
   const v = r && r.valor;
   return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
 }

@@ -136,10 +136,15 @@ const SGADD_LANDING = (function () {
    * que digan cosas distintas es exactamente el reclamo que uno no quiere
    * tener con un cliente que paga.
    */
+  /* CADA PLAN CON SU METAL, y no con un tono del semáforo: verde/amarillo
+     significan «bien/atención» en todo el panel, y un plan no es mejor ni
+     peor — es otro. Los tres pasan AA sobre la tarjeta (#1b1b1b), medido
+     con la misma `contraste()` que usa el resto: bronce 5,48 · plata 9,47 ·
+     oro 12,28. Hay un test que lo vuelve a medir. */
   const PLANES_MAILS = [
-    { nombre: 'Bronce', mails: 2, tono: 'zona-neutro' },
-    { nombre: 'Plata', mails: 3, tono: 'zona-positivo' },
-    { nombre: 'Oro', mails: 4, tono: 'zona-aviso' },
+    { nombre: 'Bronce', mails: 2, color: '#CD7F32' },
+    { nombre: 'Plata', mails: 3, color: '#C0C0C0' },
+    { nombre: 'Oro', mails: 4, color: '#FFD700' },
   ];
 
   /** El orden en que se listan. Es el mismo del menú. */
@@ -221,7 +226,7 @@ const SGADD_LANDING = (function () {
           <p class="text-[10px] uppercase tracking-wider text-muted font-display mb-2">
             Cuántas personas del club pueden entrar</p>
           <div class="grid sm:grid-cols-3 gap-2">
-            ${PLANES_MAILS.map(p => `<div class="landing-plan"><span class="landing-plan-n zona-texto ${p.tono}">${p.mails}</span><span class="landing-plan-t">${esc(p.nombre)}</span><span class="landing-plan-d">${p.mails === 1 ? "mail" : "mails"}</span></div>`).join('')}
+            ${PLANES_MAILS.map(p => `<div class="landing-plan"><span class="landing-plan-t">${esc(p.nombre)}</span><span class="landing-plan-n" style="color:${p.color}">${p.mails}</span><span class="landing-plan-d">${p.mails === 1 ? "mail" : "mails"}</span></div>`).join('')}
           </div>
           <p class="text-[11px] text-muted mt-2">
             Cada mail es una persona del cuerpo técnico con su propia clave.

@@ -70,7 +70,16 @@ crear un administrador nuevo.
     process.exit(1);
   }
 
-  const padron = await admins.cargar();
+  /* Si KV no se puede leer, `cargar` LANZA. Antes devolvía un padrón vacío
+     y `estado` imprimía «sin acceso» para los tres — que es lo que uno
+     hace justo antes de invitarlos de nuevo y pisarles la clave. */
+  let padron;
+  try { padron = await admins.cargar(); }
+  catch (e) {
+    console.error('\n  No se pudo leer el padrón: ' + (e.codigo || 'KV') + '.');
+    console.error('  Revisá las credenciales de Upstash antes de tocar nada.\n');
+    process.exit(1);
+  }
 
   if (cmd === 'estado') {
     console.log('');
