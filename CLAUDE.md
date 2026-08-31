@@ -16,11 +16,11 @@ aplicadas en el punto 14.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 291 tests · núcleo, índice, validador
+node test-core.js          # 297 tests · núcleo, índice, validador
 node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
-node test-config.js        # 311 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
+node test-config.js        # 317 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
 node test-boot.js          # 163 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 267 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
@@ -31,10 +31,10 @@ node test-partido.js       #  54 tests · detalle partido a partido, perfil de t
 node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
-node test-permisos.js      # 318 tests · roles, planes, el gate, el selector, el hub, el ciclo,
+node test-permisos.js      # 360 tests · roles, planes, el gate, el selector, el hub, el ciclo,
                            #             la sesión, la landing y el glosario
 
-node test-backend.js       # 439 tests · el proxy, el benchmark, las alertas, el catálogo en KV
+node test-backend.js       # 453 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
 
 # OJO: `test-backend.js` ESTÁ EN MAIN desde que se integró el backend.
@@ -44,7 +44,7 @@ node test-backend.js       # 439 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**2913 tests en total. Todos tienen que dar verde antes de commitear.**
+**2981 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -4963,3 +4963,110 @@ ciclo anterior, el segundo el nivel contra la liga. Un equipo puede venir
 subiendo y seguir último.
 
 Los PDF están en `.gitignore`: pesan 7,4 MB y son material del cliente.
+
+---
+
+## 23. EL BUG QUE BORRABA LAS CLAVES · un KV ilegible
+
+Dejó a un administrador afuera con su propia clave, y el modo de fallar era
+perfecto: **entraba bien la vez que la fijaba** —la escritura y la lectura
+siguiente son consecutivas— y no podía volver a entrar después.
+
+`kv.leer` se traga el error y devuelve `{valor: null}`, así que
+`admins.cargar()` no podía distinguir *«KV no contesta»* de *«todavía no hay
+nadie»*. La cadena completa:
+
+```
+la lectura falla  →  padrón {}  →  «mail o clave incorrectos»
+                  →  anotarFallo({})  →  se ESCRIBE {mail:{fallos:1}}
+```
+
+y ahí se iban los hashes de los tres administradores, **sin ningún síntoma**.
+
+Ahora `cargar()` **lanza**, el login contesta **503** en vez de opinar sobre
+una clave que no pudo mirar, y no se escribe nada. Es la misma regla de
+siempre: un dato ausente se muestra ausente, no se reemplaza por uno
+inventado.
+
+**La CLI también.** Antes imprimía «sin acceso» para los tres, que es justo
+lo que uno hace antes de invitarlos de nuevo y pisarles la clave.
+
+Hay un test que lo caza al revertir el fix. Y el circuito completo —fijar →
+entrar → salir → volver a entrar, con un intento fallido en el medio— se
+ejerce sobre los handlers de verdad con un KV de mentira.
+
+### El ojo del campo de clave
+
+Ataca la otra mitad del problema: la clave se elige **una vez, a ciegas**, y
+después hay que reproducirla exacta contra un servidor que contesta lo mismo
+para «clave incorrecta» que para «mail que no existe» (eso es a propósito:
+distinguirlos diría cuáles de los tres mails son administradores). Un espacio
+de más al final deja a la persona afuera sin forma de darse cuenta.
+
+Arranca **oculta**, el estado es **por campo** (en el alta conviven el código
+y la clave nueva), y al alternar **devuelve el foco con el cursor al final**:
+cambiar el `type` recrea el nodo, y sin reponerlo se sigue escribiendo en el
+vacío.
+
+**Y el ojo se deshabilitaba solo al tipear.** `campo()` refresca el botón de
+enviar en cada tecla y lo buscaba con `.login-caja button` — el PRIMER botón
+de la caja, que con la llegada del ojo dejó de ser el de enviar. Andaba
+perfecto hasta que hacía falta, y no dejaba un error en consola. Un selector
+posicional se rompe callado en cuanto alguien agrega un elemento antes: ahora
+el botón tiene `id`.
+
+Lo destapó verificar en producción con la **secuencia real** —tipear y
+después tocar el ojo— y no con el clic suelto, que funcionaba.
+
+---
+
+## 24. LAS TRES TASAS DEL JUGADOR CON DENOMINADOR DE EQUIPO
+
+`ACUMULADO J` trae 32 columnas contra las 53 de `PROMEDIOS J`. El TOTAL
+repone casi todas recalculando sobre los totales del propio jugador, **salvo
+tres**: `USG%`, `RO%` y `RD%`, cuyo denominador es del equipo. Sin ellas el
+TOTAL las dejaba en blanco para todos — y como el TOTAL abre el libro (punto
+3 ter), la tarjeta **USO** de la ficha salía vacía de entrada.
+
+```
+RO%  = RO_jug   / (RO_equipo + RD_rival)
+RD%  = RD_jug   / (RD_equipo + RO_rival)
+USG% = (PLAYS_jug × MIN_equipo/5) / (PLAYS_equipo × MIN_jug)
+```
+
+**LAS TRES SE VERIFICARON CONTRA LA PLANILLA REAL** (DEPORTIVO · IDA), no se
+dedujeron. Y la de rebote **no es la tasa on-court que uno esperaría**: el
+motor mide la porción que el jugador se lleva de TODO lo que el equipo tuvo
+disponible en la fase, sin prorratear por minutos. Reproducir al motor manda
+sobre mejorarlo — la hoja es lo que el club audita. Hay un test que exige que
+el número NO coincida con la versión prorrateada, que es el error que uno
+comete si deduce la fórmula en vez de medirla.
+
+Se trabaja con **totales de los dos lados**: mezclar un total con un promedio
+da un número plausible y equivocado por un factor PJ.
+
+---
+
+## 25. EL PIE, LOS METALES Y EL ARO
+
+**La fecha va solo en el PDF.** Un informe se comparte, se archiva y se mira
+semanas después: sin fecha no se sabe de qué corte habla. En la web es
+siempre hoy, así que no informa nada y se confundía con la actualización de
+los datos, que es otra cosa y vive en el pie del menú. Hay un test que compara
+las dos firmas sacando la fecha y exige que el resto coincida.
+
+El **ícono de Instagram va DELANTE del arroba**: se lee «Instagram
+@motorstats.ar», que es el orden en que se dice. Detrás parecía un botón
+suelto al final de la línea.
+
+**Cada plan lleva su metal** (bronce `#CD7F32`, plata `#C0C0C0`, oro
+`#FFD700`) y no un tono del semáforo: verde y amarillo significan «bien» y
+«atención» en todo el panel, y un plan no es mejor ni peor — es otro. Los tres
+pasan AA sobre la tarjeta (5,48 · 9,47 · 12,28), medido en `test-config.js`
+con la misma `contraste()` que usa el panel.
+
+**El aro no puede comerle las puntas al logo.** Recorta a propósito —un escudo
+con fondo propio necesita la máscara circular— así que la imagen se acota a la
+caja (`object-fit: contain` + `max-width/height: 100%` + `box-sizing:
+border-box`) en vez de salirse. El de la pantalla de carga no lleva aro y no
+recorta: ahí el logo es lo único que hay mientras se espera.
