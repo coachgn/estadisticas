@@ -20,6 +20,8 @@
 
 const catalogo = require('../lib/catalogo.js');
 const mutar = require('../lib/catalogo-mutar.js');
+const admins = require('../lib/admins.js');
+const AUTHS = require('../lib/auth.js');
 const { verificarToken, tokenDeLaPeticion } = require('../lib/auth.js');
 const reglas = require('../lib/reglas.js');
 const alertas = require('../lib/alertas.js');
@@ -446,5 +448,121 @@ async function manejarCatalogoEscribir(peticion, deps) {
   };
 }
 
+/* =====================================================================
+   INGRESO DE ADMINISTRADORES
+
+   Reemplaza al link con token para los tres administradores. Los links
+   firmados SIGUEN EXISTIENDO y son el mecanismo de los CLIENTES: un club
+   no tiene por qué tener una cuenta, y pedirle que se registre para ver
+   sus propios datos sería empeorarle el producto.
+
+   Lo que cambia para el admin es que su acceso deje de depender de un
+   link que circula por WhatsApp, que no se puede revocar y que caduca
+   cuando menos conviene.
+   ===================================================================== */
+
+/* La sesión que devuelve el login dura MENOS que un link de cliente.
+
+   Un link de cliente vive en el teléfono de un DT y renovarlo cuesta un
+   mensaje; una sesión de admin se renueva escribiendo la clave, que es
+   gratis. Doce horas cubre una jornada de trabajo entera y hace que un
+   navegador prestado no sea un problema mañana. */
+const SESION_ADMIN = '12h';
+
+/**
+ * POST /api/v1/login · mail + clave → token firmado.
+ *
+ * EL ROL NO SALE DE ACÁ. El token se firma sin rol, y `verificarToken` lo
+ * re-deriva contra `ADMINS` en cada petición, como siempre. Así que este
+ * endpoint no otorga privilegios: solo confirma que quien pide el token es
+ * el dueño de un mail que la lista del código YA reconoce.
+ */
+async function manejarLogin(peticion, deps) {
+  const cuerpo = (peticion && peticion.body) || {};
+  const email = String(cuerpo.email || '');
+  const clave = String(cuerpo.clave || '');
+
+  if (!email || !clave) {
+    return error(400, 'FALTAN_DATOS', 'Hacen falta el mail y la clave.');
+  }
+
+  const padron = await admins.cargar(deps);
+  const v = await admins.verificar(padron, email, clave);
+
+  if (!v.ok) {
+    if (v.motivo === 'BLOQUEADO') {
+      /* El bloqueo SÍ se distingue, y es el único caso: el dueño legítimo
+         necesita saber por qué no entra con la clave correcta. */
+      return error(429, 'BLOQUEADO', 'Demasiados intentos. Probá de nuevo en '
+        + Math.ceil(v.esperaMs / 60000) + ' minutos.');
+    }
+    /* El fallo se anota ANTES de contestar. Si se anotara después, dos
+       intentos en paralelo se pisarían y el contador nunca llegaría al
+       tope. */
+    try { await admins.guardar(admins.anotarFallo(padron, email), deps); }
+    catch (e) { /* sin KV no hay contador, pero el login igual falló */ }
+    /* MISMO MENSAJE PARA TODO: mail que no existe, clave incorrecta o
+       admin que todavía no fijó su clave. Distinguirlos diría cuáles de
+       los mails son administradores. */
+    return error(401, 'CREDENCIALES', 'Mail o clave incorrectos.');
+  }
+
+  try { await admins.guardar(admins.anotarExito(padron, email), deps); }
+  catch (e) { /* que no se pueda anotar el ingreso no impide entrar */ }
+
+  const token = AUTHS.firmarToken({ email: v.email, plan: 'ORO' },
+    { expiraEn: SESION_ADMIN });
+  const datos = AUTHS.verificarToken(token);
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      token: token,
+      /* Se devuelve el rol RE-DERIVADO, no el que pidió nadie: si el mail
+         dejó de estar en la lista, el token sale como cliente y la
+         pantalla lo va a mostrar así. */
+      rol: datos.rol,
+      email: v.email,
+      expiraEn: datos.expiraEn,
+    },
+  };
+}
+
+/**
+ * POST /api/v1/clave · fijar la primera clave, o cambiar la que hay.
+ *
+ * Con `codigo` es un alta (primera vez); con `claveActual` es un cambio.
+ * NUNCA se inventa una clave provisoria: el administrador elige la suya y
+ * el código de invitación muere al usarse. Así la clave no existe en texto
+ * plano en ningún momento — ni en el código, ni en un chat, ni en la
+ * cabeza de quien la generó.
+ */
+async function manejarClave(peticion, deps) {
+  const cuerpo = (peticion && peticion.body) || {};
+  const email = String(cuerpo.email || '');
+  const nueva = String(cuerpo.claveNueva || '');
+
+  if (!email || !nueva) return error(400, 'FALTAN_DATOS', 'Hacen falta el mail y la clave nueva.');
+
+  const padron = await admins.cargar(deps);
+  const r = cuerpo.codigo
+    ? await admins.fijarClave(padron, email, String(cuerpo.codigo), nueva)
+    : await admins.cambiarClave(padron, email, String(cuerpo.claveActual || ''), nueva);
+
+  if (!r.ok) return error(400, 'CLAVE', r.motivo);
+
+  const kvm = deps && deps.kv ? deps.kv : require('../lib/kv.js');
+  if (!kvm.configurado()) {
+    /* Sin KV no se puede guardar, y decir que sí dejaría al admin
+       creyendo que ya tiene clave. Es el mismo criterio del catálogo. */
+    return error(503, 'SIN_KV', 'El servidor no puede guardar la clave ahora mismo.');
+  }
+  try { await admins.guardar(r.padron, deps); }
+  catch (e) { return error(502, e.codigo || 'KV', 'No se pudo guardar la clave.'); }
+
+  return { status: 200, body: { ok: true, mensaje: 'Clave guardada. Ya podés ingresar.' } };
+}
+
 module.exports = { manejarCatalogo, manejarCatalogoEscribir, manejarEquipos,
-  manejarScouting, guardSuscripcion, planEfectivo, ERRORES };
+  manejarScouting, manejarLogin, manejarClave, guardSuscripcion, planEfectivo, ERRORES };

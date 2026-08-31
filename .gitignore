@@ -8,3 +8,7 @@
 # Backend (PoC)
 server/.env
 server/node_modules/
+
+# Los informes de referencia del plan ORO: material de trabajo, no codigo.
+# Son 7 MB de PDF y no los necesita el sitio.
+COMPARATIVAS EJEMPLOS/

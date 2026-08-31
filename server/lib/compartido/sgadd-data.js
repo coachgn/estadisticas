@@ -352,10 +352,46 @@ const SGADD_DATA = (function () {
     return cuerpo;
   }
 
+  /* --------------------------------------------------------------------
+     INGRESO DE ADMINISTRADORES
+
+     Las dos únicas llamadas que van SIN token: `login` lo emite y
+     `fijarClave` lo habilita por primera vez. Exigirlo sería pedir la
+     llave para entrar a buscar la llave.
+
+     LAS DOS LANZAN con el motivo del servidor tal cual. Están escritos
+     para que la persona sepa qué corregir —"demasiados intentos, probá
+     en 15 minutos"— y traducirlos acá los degradaría a un "no se pudo".
+     -------------------------------------------------------------------- */
+  async function postSinToken(ruta, cuerpo, opciones) {
+    const o = opciones || {};
+    if (!baseApi) {
+      throw Object.assign(new Error('No hay backend configurado, así que no hay dónde ingresar.'),
+        { codigo: 'SIN_API' });
+    }
+    const traer = o.fetch || fetch;
+    const r = await traer(baseApi + ruta, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cuerpo || {}),
+    });
+    const b = await r.json().catch(() => null);
+    if (!r.ok || !b || !b.ok) {
+      const e = new Error((b && b.mensaje) || ('El servidor respondió ' + r.status));
+      e.codigo = (b && b.codigo) || ('HTTP_' + r.status);
+      throw e;
+    }
+    return b;
+  }
+
+  function login(datos, opciones) { return postSinToken('/api/v1/login', datos, opciones); }
+  function fijarClave(datos, opciones) { return postSinToken('/api/v1/clave', datos, opciones); }
+
   return {
     configurar, apiConfigurada, origen, base: () => baseApi,
     matrizAFilas, matrizALegacy, tipoDeColumna,
     cargarCategoria, cargarDelBackend, limpiarCache, catalogo, guardarCatalogo,
+    login, fijarClave,
   };
 })();
 

@@ -186,6 +186,29 @@
     .distintivo-oro::first-letter { font-size: 12px; }
   }
 
+  /* La pantalla de ingreso. Va a mano por lo mismo que `.sel-cliente`: la
+     inyecta un nodo dinamico y el scan de Tailwind es ESTATICO. */
+  .login-fondo {
+    position: fixed; inset: 0; z-index: 60;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.66); backdrop-filter: blur(3px);
+    padding: 1rem;
+  }
+  .login-caja { width: 100%; max-width: 24rem; }
+  .boton-ingreso {
+    width: 100%; padding: .45rem .6rem; border-radius: .4rem;
+    font-family: inherit; font-size: 11px;
+    text-transform: uppercase; letter-spacing: .08em;
+    color: var(--acento-texto, #f5f4f2);
+    border: 1px solid #333; background: #1b1b1b;
+    cursor: pointer;
+  }
+  .boton-ingreso:hover { border-color: var(--acento-texto, #4a4a4a); }
+  .boton-ingreso:focus-visible {
+    outline: 2px solid var(--acento-texto, #f5f4f2); outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) { .login-fondo { backdrop-filter: none; } }
+
   .sel-cliente {
     background: #1b1b1b;
     color: var(--acento-texto, #f5f4f2);
@@ -1669,7 +1692,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=151" />
+<link rel="stylesheet" href="sgadd.css?v=152" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -1768,6 +1791,7 @@
              Con el número acá, eso se diagnostica de un vistazo en vez de
              debuggear fantasmas: si dice una versión vieja, es caché. -->
         <div id="sesion-slot" class="text-center mb-2"></div>
+          <div id="ingresoSlot" class="mt-2"></div>
         <p id="asset-version" class="text-[10px] text-muted/70 mt-1 text-center font-mono"
            title="Versión de los archivos que está usando este navegador. Si no coincide con la última entrega, hacé Ctrl+F5."></p>
       </div>
@@ -1826,33 +1850,34 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=151"></script>
+<script src="js/sgadd-club.js?v=152"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=151"></script>
-<script src="js/sgadd-core.js?v=151"></script>
-<script src="js/sgadd-auth.js?v=151"></script>
-<script src="js/sgadd-data.js?v=151"></script>
-<script src="js/sgadd-clientes.js?v=151"></script>
-<script src="js/sgadd-ui.js?v=151"></script>
-<script src="js/sgadd-app.js?v=151"></script>
-<script src="js/sgadd-clasificacion.js?v=151"></script>
+<script src="js/sgadd-config.js?v=152"></script>
+<script src="js/sgadd-core.js?v=152"></script>
+<script src="js/sgadd-auth.js?v=152"></script>
+<script src="js/sgadd-login.js?v=152"></script>
+<script src="js/sgadd-data.js?v=152"></script>
+<script src="js/sgadd-clientes.js?v=152"></script>
+<script src="js/sgadd-ui.js?v=152"></script>
+<script src="js/sgadd-app.js?v=152"></script>
+<script src="js/sgadd-clasificacion.js?v=152"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=151"></script>
-<script src="js/sgadd-configui.js?v=151"></script>
-<script src="js/sgadd-estados.js?v=151"></script>
-<script src="js/sgadd-buzon.js?v=151"></script>
-<script src="js/sgadd-charts.js?v=151"></script>
-<script src="js/sgadd-personalidad.js?v=151"></script>
-<script src="js/sgadd-rankings.js?v=151"></script>
-<script src="js/sgadd-partido.js?v=151"></script>
-<script src="js/sgadd-informe.js?v=151"></script>
-<script src="js/sgadd-ficha.js?v=151"></script>
-<script src="js/sgadd-equipos.js?v=151"></script>
-<script src="js/sgadd-jugadores.js?v=151"></script>
-<script src="js/sgadd-4factores.js?v=151"></script>
-<script src="js/sgadd-scouting.js?v=151"></script>
-<script src="js/sgadd-diagnostico.js?v=151"></script>
+<script src="js/sgadd-hub.js?v=152"></script>
+<script src="js/sgadd-configui.js?v=152"></script>
+<script src="js/sgadd-estados.js?v=152"></script>
+<script src="js/sgadd-buzon.js?v=152"></script>
+<script src="js/sgadd-charts.js?v=152"></script>
+<script src="js/sgadd-personalidad.js?v=152"></script>
+<script src="js/sgadd-rankings.js?v=152"></script>
+<script src="js/sgadd-partido.js?v=152"></script>
+<script src="js/sgadd-informe.js?v=152"></script>
+<script src="js/sgadd-ficha.js?v=152"></script>
+<script src="js/sgadd-equipos.js?v=152"></script>
+<script src="js/sgadd-jugadores.js?v=152"></script>
+<script src="js/sgadd-4factores.js?v=152"></script>
+<script src="js/sgadd-scouting.js?v=152"></script>
+<script src="js/sgadd-diagnostico.js?v=152"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -3680,6 +3705,7 @@ function aplicarPermisosNav() {
     btn.classList.toggle('hidden', !mostrar);
   });
   pintarDistintivoPlan();
+  pintarBotonIngreso();
   const d = SGADD_AUTH.descripcionSesion();
   const cont = document.getElementById('sesion-slot');
   if (cont) {
@@ -3687,6 +3713,22 @@ function aplicarPermisosNav() {
       SGADD_UI.esc(d.texto)}</span><span class="block text-[10px] text-muted/70 font-mono">${
       SGADD_UI.esc(d.detalle)}</span>` : '';
   }
+}
+
+/* EL BOTON DE INGRESO.
+
+   Solo se ofrece cuando NO hay sesion: con una abierta, lo util es
+   salir, no volver a entrar. Y solo con backend, porque sin el no hay
+   contra que autenticar — una puerta que no lleva a ningun lado es peor
+   que ninguna. */
+function pintarBotonIngreso() {
+  const cont = document.getElementById("ingresoSlot");
+  if (!cont) return;
+  const haySesion = !!SGADD_AUTH.token() || !!SGADD_AUTH.sesion();
+  const hayApi = (typeof SGADD_DATA !== "undefined") && SGADD_DATA.apiConfigurada();
+  cont.innerHTML = (!haySesion && hayApi)
+    ? '<button onclick="SGADD_LOGIN.abrir()" class="boton-ingreso">Ingresar</button>'
+    : '';
 }
 
 /* EL DISTINTIVO DEL PLAN ORO.
@@ -4080,5 +4122,10 @@ if (document.readyState === 'loading') {
   init();
 }
 </script>
+<!-- La pantalla de ingreso vive al final del body y NO dentro del header:
+     es un modal a pantalla completa, y adentro del grupo flex del header
+     quedaba encajonado en una columna de cien pixeles. -->
+<div id="loginSlot"></div>
+
 </body>
 </html>

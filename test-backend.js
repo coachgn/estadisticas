@@ -1780,6 +1780,197 @@ titulo('EL CICLO DE VIDA DEL CLIENTE · pausar, vencer y el plan del club');
 }
 
 
+titulo('INGRESO DE ADMINISTRADORES · claves, bloqueo y lo que NO se filtra');
+
+{
+  const CL = require('./server/lib/claves.js');
+  const AD = require('./server/lib/admins.js');
+  const LOGIN = require('./js/sgadd-login.js');
+
+  /* ================= EL HASH ================= */
+
+  /* `scrypt` de `node:crypto` y no bcrypt/argon2: los dos son mejores en
+     abstracto y los dos son una dependencia npm nueva —con binarios
+     nativos— en un proyecto cuya regla es no sumar ninguna. */
+  const fuente = fs.readFileSync('./server/lib/claves.js', 'utf8');
+  check('el hash usa scrypt de node:crypto', /crypto\.scrypt\(/.test(fuente));
+  check('y no se sumó ninguna dependencia',
+    !/require\('bcrypt|require\('argon2|require\('@node-rs/.test(fuente));
+
+  /* LA COMPARACIÓN VA EN TIEMPO CONSTANTE. Con `===` el tiempo que tarda
+     en fallar depende de cuántos bytes coincidieron, y eso alcanza para
+     reconstruir el hash byte a byte a fuerza de intentos. */
+  check('la comparación es timingSafeEqual', /timingSafeEqual/.test(fuente));
+
+  /* LOS PARÁMETROS VIAJAN CON EL HASH: sin eso, subirlos mañana
+     invalidaría todas las claves guardadas hoy, porque no habría forma de
+     saber con cuáles se derivó cada una. */
+  const h = await CL.hashear('una frase larga de prueba');
+  check('el registro guarda N, r y p', h.N > 0 && h.r > 0 && h.p > 0, JSON.stringify(h.N));
+  check('y el salt es distinto en cada hash',
+    (await CL.hashear('x')).salt !== (await CL.hashear('x')).salt);
+  check('la clave correcta verifica', await CL.verificar('una frase larga de prueba', h));
+  check('una incorrecta no', !(await CL.verificar('otra cosa', h)));
+  check('un registro corrupto no lanza, devuelve false',
+    !(await CL.verificar('x', { alg: 'md5' })) && !(await CL.verificar('x', null)));
+
+  /* SOLO LARGO MÍNIMO, sin reglas de mayúsculas ni símbolos: esas empujan
+     a `Password1!`, que es de las primeras que prueba un diccionario,
+     mientras que el largo es lo único que sube el costo de verdad. */
+  check('una clave corta se rechaza', !!CL.revisar('corta'));
+  check('una frase larga pasa', CL.revisar('mi frase de acceso larga') === null);
+  check('y no se exigen símbolos ni mayúsculas',
+    CL.revisar('todo en minusculas y sin nada raro') === null);
+
+  /* ================= EL PADRÓN ================= */
+
+  /* LA LISTA DE ADMINS NO ESTÁ EN KV. Es lo que hace que un KV
+     comprometido no alcance para escalar: se podría cambiar la clave de
+     uno que YA existe —y el dueño lo nota, porque deja de entrar— pero no
+     inventar uno nuevo. */
+  const inventado = AD.invitar({}, 'cualquiera@gmail.com', 7);
+  check('no se puede invitar a un mail que no está en ADMINS', !inventado.ok);
+  check('ni siquiera escribiendo el registro a mano',
+    AD.registro({ 'ajeno@gmail.com': { clave: { alg: 'scrypt' } } }, 'ajeno@gmail.com') === null);
+
+  const inv = AD.invitar({}, 'freytesgn@gmail.com', 7);
+  check('a un admin sí', inv.ok);
+
+  /* EL CÓDIGO SE GUARDA HASHEADO. Si se pudiera leer de KV, KV pasaría a
+     ser suficiente para entrar. */
+  check('la invitación NO queda en claro en el padrón',
+    JSON.stringify(inv.padron).indexOf(inv.codigo) === -1);
+
+  const conCorta = await AD.fijarClave(inv.padron, 'freytesgn@gmail.com', inv.codigo, 'corta');
+  check('fijar con clave corta se rechaza', !conCorta.ok);
+  const conMalCodigo = await AD.fijarClave(inv.padron, 'freytesgn@gmail.com', 'inventado', 'una frase larga de prueba');
+  check('con un código inventado también', !conMalCodigo.ok);
+
+  const fijada = await AD.fijarClave(inv.padron, 'freytesgn@gmail.com', inv.codigo, 'una frase larga de prueba');
+  check('con el código bueno se fija', fijada.ok, fijada.motivo);
+
+  /* LA INVITACIÓN SE CONSUME: dejarla viva sería una segunda llave
+     permanente para una puerta que ya tiene dueño. */
+  check('y la invitación se consume',
+    !fijada.catalogo && !fijada.padron['freytesgn@gmail.com'].invitacion);
+  const reuso = await AD.fijarClave(fijada.padron, 'freytesgn@gmail.com', inv.codigo, 'otra frase larga distinta');
+  check('el mismo código no sirve dos veces', !reuso.ok, reuso.motivo);
+
+  /* UNA INVITACIÓN VENCIDA no sirve, aunque el código sea el correcto. */
+  const vieja = AD.invitar({}, 'francasa09@gmail.com', 7);
+  const futuro = Date.now() + 8 * 86400000;
+  const caduca = await AD.fijarClave(vieja.padron, 'francasa09@gmail.com', vieja.codigo,
+    'una frase larga de prueba', futuro);
+  check('una invitación vencida se rechaza', !caduca.ok, caduca.motivo);
+
+  /* ================= LO QUE NO SE FILTRA ================= */
+
+  /* EL MISMO RESULTADO PARA "NO EXISTE", "CLAVE INCORRECTA" Y "TODAVÍA
+     NO FIJÓ SU CLAVE". Distinguirlos le diría a cualquiera cuáles de los
+     mails son administradores, que es media entrada. */
+  const P = fijada.padron;
+  const malaClave = await AD.verificar(P, 'freytesgn@gmail.com', 'no es');
+  const noAdmin = await AD.verificar(P, 'cualquiera@gmail.com', 'no es');
+  const sinFijar = await AD.verificar(P, 'motorstats.ar@gmail.com', 'no es');
+  check('los tres fallos dicen exactamente lo mismo',
+    malaClave.motivo === noAdmin.motivo && noAdmin.motivo === sinFijar.motivo,
+    [malaClave.motivo, noAdmin.motivo, sinFijar.motivo].join('/'));
+
+  /* Y TARDAN LO MISMO. Sin el señuelo, un mail que no existe contesta en
+     un milisegundo y uno que sí existe tarda cien: la diferencia se mide
+     desde afuera y delata el padrón entero. */
+  const cronometrar = async (mail) => {
+    const t = Date.now();
+    await AD.verificar(P, mail, 'loquesea');
+    return Date.now() - t;
+  };
+  const tAdmin = await cronometrar('freytesgn@gmail.com');
+  const tAjeno = await cronometrar('nadie@gmail.com');
+  /* El umbral es generoso a propósito: lo que se descarta es la diferencia
+     de DOS ÓRDENES de magnitud (1 ms contra 100), no el ruido de la
+     máquina. */
+  check('un mail ajeno tarda lo mismo que uno del padrón',
+    tAjeno > tAdmin / 3, tAjeno + ' ms vs ' + tAdmin + ' ms');
+
+  /* La clave correcta SÍ entra. */
+  check('la clave correcta entra',
+    (await AD.verificar(P, 'freytesgn@gmail.com', 'una frase larga de prueba')).ok);
+
+  /* ================= EL BLOQUEO ================= */
+
+  let bloq = P;
+  for (let i = 0; i < AD.INTENTOS_MAX; i++) bloq = AD.anotarFallo(bloq, 'freytesgn@gmail.com');
+  const trasFallos = await AD.verificar(bloq, 'freytesgn@gmail.com', 'una frase larga de prueba');
+  check('tras ' + AD.INTENTOS_MAX + ' fallos no entra ni con la clave correcta',
+    !trasFallos.ok && trasFallos.motivo === 'BLOQUEADO', trasFallos.motivo);
+
+  /* EL BLOQUEO SÍ SE DISTINGUE, y es el único caso: el dueño legítimo
+     necesita saber por qué no entra con su clave. */
+  check('y el bloqueo se distingue de una clave incorrecta',
+    trasFallos.motivo !== malaClave.motivo);
+  check('un ingreso correcto limpia el contador',
+    !AD.bloqueado(AD.anotarExito(bloq, 'freytesgn@gmail.com')['freytesgn@gmail.com']));
+
+  /* NO SE LLEVA CUENTA DE LOS QUE NO SON ADMIN: si se anotara, el padrón
+     crecería con cada mail que alguien pruebe. */
+  check('un mail ajeno no crea registro al fallar',
+    !AD.anotarFallo(P, 'spam@gmail.com')['spam@gmail.com']);
+
+  /* ================= EL ENDPOINT ================= */
+
+  const hs = fs.readFileSync('./server/api/handlers.js', 'utf8');
+  /* EL ROL NO SALE DEL LOGIN: el token se firma sin rol y
+     `verificarToken` lo re-deriva contra ADMINS en cada petición. Así este
+     endpoint no otorga privilegios, solo confirma identidad. */
+  check('el login no firma un rol', !/firmarToken\(\{[^}]*rol:/.test(hs));
+  check('y devuelve el rol re-derivado', /rol: datos\.rol/.test(hs));
+
+  /* El fallo se anota ANTES de contestar: si se anotara después, dos
+     intentos en paralelo se pisarían y el contador nunca llegaría al tope. */
+  check('el fallo se anota antes de responder',
+    /anotarFallo[\s\S]{0,600}return error\(401/.test(hs));
+
+  const app2 = fs.readFileSync('./server/app.js', 'utf8');
+  check('login y clave son las dos únicas rutas sin token',
+    /app\.post\('\/api\/v1\/login'/.test(app2) && /app\.post\('\/api\/v1\/clave'/.test(app2));
+
+  /* ================= LA PANTALLA ================= */
+
+  /* EL MÍNIMO DE LA UI Y EL DEL SERVIDOR SON EL MISMO NÚMERO. Si
+     divergieran, la persona vería un rechazo que la pantalla no anticipó
+     — o peor, una pantalla que acepta algo que el servidor rechaza. */
+  check('el largo mínimo coincide entre la UI y el servidor',
+    LOGIN.LARGO_MINIMO === CL.LARGO_MINIMO, LOGIN.LARGO_MINIMO + ' vs ' + CL.LARGO_MINIMO);
+
+  /* AL ENTRAR VA AL PANEL MASTER: quien entra con clave está
+     administrando, no mirando un partido. */
+  check('el ingreso lleva al Panel Master', LOGIN.destino() === 'configuracion');
+
+  const lg = fs.readFileSync('./js/sgadd-login.js', 'utf8');
+  /* LA CLAVE NO SE GUARDA NI VIAJA EN LA URL: va del input al servidor y
+     se descarta. Lo único que sobrevive es el token firmado. */
+  /* Se mira el CÓDIGO, no el texto: el módulo nombra `sessionStorage` en
+     un comentario justamente para explicar dónde queda el token —que no
+     es la clave— y un grep crudo lo daría por incumplido. */
+  const lgSinComentarios = lg.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  check('la clave no se persiste en ningún storage',
+    !/localStorage|sessionStorage/.test(lgSinComentarios));
+  check('y se borra del estado al cerrar', /campos\.clave = ''/.test(lg));
+  check('el token no se pone en la URL', !/searchParams\.set|access_token=/.test(lg));
+
+  /* LOS CLIENTES NO PASAN POR ACÁ: un club entra por su link firmado, y
+     pedirle registro para ver sus propios datos sería empeorarle el
+     producto. La pantalla lo dice. */
+  check('la pantalla aclara que los clubes entran por su link',
+    /clubes entran por su link/i.test(lg));
+
+  /* Y NO ES UN MURO: el panel sigue abriendo sin sesión —el rol ABIERTO
+     del punto 19— así que los tres clubes que hoy entran sin token siguen
+     entrando igual. */
+  check('el módulo declara que no es un muro', /no es un gate|NO ES UN MURO|no es una que se cruza/i.test(lg));
+}
+
+
 titulo('EL TOKEN DE SOLO LECTURA · el servidor lee, el CLI escribe');
 
 /* Vercel no tiene por qué poder escribir el catálogo: lo único que hace

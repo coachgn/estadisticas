@@ -81,6 +81,13 @@ function crearApp(opciones) {
      puede romper a todos los clubes. */
   app.post('/api/v1/catalogo', responder(h.manejarCatalogoEscribir));
 
+  /* LAS DOS RUTAS SIN TOKEN. Son las únicas: todo lo demás exige uno.
+     `login` lo emite y `clave` lo fija por primera vez, así que exigirlo
+     sería pedir la llave para entrar a buscar la llave. Lo que las cuida
+     es el limitador, el bloqueo por intentos y el codigo de invitación. */
+  app.post('/api/v1/login', responder(h.manejarLogin));
+  app.post('/api/v1/clave', responder(h.manejarClave));
+
   app.use((req, res) => res.status(404).json({ ok: false, codigo: 'SIN_RUTA' }));
 
   /* El error de CORS llega acá como excepción del middleware: sin este
