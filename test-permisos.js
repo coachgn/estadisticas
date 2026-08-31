@@ -905,10 +905,27 @@ titulo('LA LANDING NEUTRA · lo que ve quien entra sin club');
   check('el nombre del club no se pinta en la landing',
     /if \(c\.nombre && !enLanding\)/.test(club));
   check('la bajada tampoco', /if \(c\.bajada && !enLanding\)/.test(club));
-  check('ni el escudo', /if \(enLanding\) return;/.test(club));
+  check('ni el escudo', /if \(esLanding\(\)\) return;/.test(club));
+
+  /* Y `ponerEscudo` PREGUNTA DE NUEVO en vez de heredar la variable de
+     `aplicarUI`: a esa función también la llama `marcarRender`, donde
+     `enLanding` no existe. Cuando lo hacía, el ReferenceError reventaba
+     `aplicar()` entero y el club se quedaba SIN CATÁLOGO — la sección
+     clavada en "Cargando la categoría…" para siempre, sin que el síntoma
+     nombrara a la landing por ningún lado.
+
+     Se mira el CUERPO de la función, no el archivo: en `aplicarUI` la
+     variable sí existe y ahí usarla es correcto. */
+  {
+    const desde = club.indexOf('function ponerEscudo');
+    const cuerpo = club.slice(desde).split(/\n  function /)[0];
+    check('ponerEscudo no hereda una variable que no es suya',
+      desde !== -1 && !/[^.\w]enLanding[^\w]/.test(cuerpo.replace(/\/\*[\s\S]*?\*\//g, '')));
+  }
+
   /* El tema queda: se aplica ANTES del corte. */
   check('pero el acento sí se aplica',
-    club.indexOf("setProperty('--acento'") < club.indexOf('if (enLanding) return;'));
+    club.indexOf("setProperty('--acento'") < club.indexOf('if (esLanding()) return;'));
 
   /* NO SE PIDEN DATOS. Sin club no hay libro que bajar, y el intento
      terminaba en la pantalla llena de carteles rojos que la landing vino a
@@ -926,8 +943,17 @@ titulo('LA LANDING NEUTRA · lo que ve quien entra sin club');
 
   /* CADA SECCIÓN EXPLICA QUÉ SE VE AHÍ. Las cinco públicas, ni una más:
      las internas no se listan porque desde la landing no se llega. */
-  check('hay una explicación por sección pública',
-    LAN.ORDEN.length === 5 && LAN.ORDEN.every(k => !!LAN.SECCIONES[k]));
+  /* CADA SECCION LISTADA TIENE SU EXPLICACION. Se comprueba la
+     correspondencia y no un numero fijo: al sumar el Glosario, `ORDEN`
+     quedo con una seccion que `SECCIONES` no definia y la landing pintaba
+     una card vacia — un largo hardcodeado no lo habria cazado, solo habria
+     obligado a cambiarlo. */
+  check('hay una explicación por sección listada',
+    LAN.ORDEN.length > 0 && LAN.ORDEN.every(k => !!LAN.SECCIONES[k]),
+    LAN.ORDEN.filter(k => !LAN.SECCIONES[k]).join(',') || 'todas');
+  check('y no sobra ninguna definición sin listar',
+    Object.keys(LAN.SECCIONES).every(k => LAN.ORDEN.indexOf(k) !== -1),
+    Object.keys(LAN.SECCIONES).filter(k => LAN.ORDEN.indexOf(k) === -1).join(','));
   check('y ninguna es una sección interna',
     !LAN.ORDEN.some(k => ['simulador', 'configuracion', 'diagnostico'].indexOf(k) !== -1));
   check('cada una dice qué es y qué trae',
@@ -1010,6 +1036,129 @@ titulo('EL PIE INSTITUCIONAL · la misma firma en pantalla y en papel');
      14. Cargarlo entero en cada informe es el error que el generador
      existe para evitar. */
   check('el pie no carga el logo original', !/motorlogo\.PNG/.test(pie + web));
+}
+
+titulo('EL GLOSARIO · las definiciones salen del manual del motor');
+
+{
+  const GL = require('./js/sgadd-glosario.js');
+  const GUI = require('./js/sgadd-glosarioui.js');
+  const NUC = require('./js/sgadd-core.js');
+
+  /* LA COBERTURA ES LO QUE HACE UTIL AL TOOLTIP. Con la mitad de las
+     metricas sin definicion, pasar el mouse se vuelve una loteria y el DT
+     deja de intentarlo. */
+  const metricas = Object.keys(NUC.METRICAS || {});
+  const sin = metricas.filter(k => !GL.buscar(k));
+  check('todas las métricas del panel tienen definición',
+    sin.length === 0, sin.join(', '));
+  check('y son unas cuantas', metricas.length > 40, String(metricas.length));
+
+  /* LA BUSQUEDA POR SIGLA NO DISTINGUE MAYUSCULAS: el panel escribe
+     `eFG%` y el manual puede escribir `EFG%`. Sin normalizar, la mitad de
+     los tooltips no abriria. */
+  check('la sigla se busca sin distinguir mayúsculas',
+    !!GL.buscar('efg%') && !!GL.buscar('EFG%') && !!GL.buscar(' eFG% '));
+  check('una sigla que no existe devuelve null',
+    GL.buscar('NOEXISTE') === null && GL.buscar('') === null && GL.buscar(null) === null);
+
+  /* LA DEFINICION CORTA PREFIERE `lectura` SOBRE `nombre`: el nombre
+     completo de eFG% es "Efectividad de tiro ajustada", que no le dice
+     nada a quien no lo sabe ya. En un tooltip sirve qué significa el
+     número. */
+  const corta = GL.corta('eFG%');
+  check('la definición corta dice cómo se lee el número',
+    !!corta && corta.length > 15, corta);
+  check('y existe para todas', metricas.every(k => !!GL.corta(k)));
+
+  /* LA BUSQUEDA POR TEXTO IGNORA ACENTOS: nadie escribe "posesión" con
+     tilde en un buscador. */
+  check('buscar sin acento encuentra igual',
+    GL.filtrar('posesion').length > 0 && GL.filtrar('rebote').length > 0);
+  check('sin término devuelve todo', GL.filtrar('').length === GL.ENTRADAS.length);
+  check('un término imposible devuelve vacío', GL.filtrar('zzzzqqq').length === 0);
+
+  /* EL ARCHIVO ES GENERADO Y LO DICE. Editarlo a mano se pierde en la
+     próxima corrida, así que la advertencia va arriba de todo. */
+  const gen = fs.readFileSync('./js/sgadd-glosario.js', 'utf8');
+  check('el archivo avisa que es generado', /GENERADO, no editar a mano/.test(gen));
+  check('y dice con qué se regenera', /generar-glosario\.js/.test(gen));
+
+  /* ================= EL TOOLTIP ================= */
+
+  const ui = fs.readFileSync('./js/sgadd-glosarioui.js', 'utf8');
+
+  /* SE ENGANCHA UNA VEZ, POR DELEGACION. Las tablas se repintan enteras en
+     cada cambio de tramo: con un listener por celda habría cientos y cada
+     repintado dejaría los viejos colgados. */
+  check('el tooltip usa delegación en el document',
+    /document\.addEventListener\('mouseover'/.test(ui));
+  check('y no engancha por celda',
+    !/querySelectorAll[\s\S]{0,80}addEventListener/.test(ui));
+  check('es idempotente', /if \(enganchado/.test(ui));
+
+  /* CON TECLADO TAMBIEN. Un tooltip que solo responde al mouse deja afuera
+     a quien navega tabulando (punto 14). */
+  check('responde al foco, no solo al mouse',
+    /addEventListener\('focusin'/.test(ui));
+  check('y se cierra con ESC', /key === 'Escape'/.test(ui));
+
+  /* EL TEXTO SUELTO SOLO SE ACEPTA SI COINCIDE EXACTO con una sigla: sin
+     eso, cualquier celda que dijera "PTS" —el apodo de un jugador, una
+     nota— abriría un tooltip donde no corresponde. */
+  check('una sigla exacta se reconoce',
+    GUI.siglaDe({ getAttribute: () => null, textContent: 'eFG%' }) === 'eFG%');
+  check('un texto cualquiera NO',
+    GUI.siglaDe({ getAttribute: () => null, textContent: 'Juan Pérez' }) === null);
+  check('y un texto largo tampoco',
+    GUI.siglaDe({ getAttribute: () => null,
+      textContent: 'una frase larga que contiene PTS adentro' }) === null);
+  /* `data-metrica` gana sobre el texto: es la forma de marcar una celda
+     cuyo texto no es la sigla. */
+  check('data-metrica manda sobre el texto',
+    GUI.siglaDe({ getAttribute: (a) => a === 'data-metrica' ? 'PACE' : null,
+      textContent: 'Ritmo' }) === 'PACE');
+
+  /* EN PAPEL NO HAY HOVER: un tooltip impreso sería un recuadro suelto en
+     el medio de la hoja. */
+  const idx4 = fs.readFileSync('./index.html', 'utf8');
+  check('el tooltip no se imprime',
+    /@media print \{ \.glosario-tip \{ display: none/.test(idx4));
+
+  /* ================= LA SECCION ================= */
+
+  /* ES PUBLICA: son definiciones, no números de un club. Un DT que quiere
+     saber qué mide eFG% no debería necesitar un link. */
+  check('el glosario es público', A.puedoAcceder('glosario', null).ok);
+  check('y también para un cliente',
+    A.puedoAcceder('glosario', { email: 'dt@club.com', plan: 'BRONCE', equipoAsignado: 'X' }).ok);
+  /* HAY DOS LISTAS DE SECCIONES y tienen que coincidir: `SGADD.SECCIONES`,
+     que el ruteo usa para distinguir el formato viejo del nuevo, y
+     `VALID_SECTIONS` del index, que valida lo que llega por el hash. Al
+     sumar el Glosario quedó en una sola y el ítem del menú no navegaba: el
+     `navigate()` lo mandaba de vuelta a Principal sin decir nada. */
+  const validas = (idx4.match(/const VALID_SECTIONS = \[([^\]]*)\]/) || [])[1] || '';
+  check('las dos listas de secciones coinciden',
+    NUC.SECCIONES.every(x => validas.indexOf("'" + x + "'") !== -1),
+    NUC.SECCIONES.filter(x => validas.indexOf("'" + x + "'") === -1).join(','));
+
+  /* Y EN LA LANDING SE MUESTRA ENTERO, no como vista previa: es la única
+     sección que no depende de los datos de un club. */
+  const lan2 = fs.readFileSync('./js/sgadd-landing.js', 'utf8');
+  check('en la landing el glosario se muestra completo',
+    /seccion === 'glosario'[\s\S]{0,120}SGADD_GLOSARIOUI\.html\(\)/.test(lan2));
+
+  check('está en el vocabulario de secciones',
+    NUC.SECCIONES.indexOf('glosario') !== -1);
+
+  /* TIPEAR NO REPINTA LA SECCION: le sacaría el foco al buscador. Misma
+     regla que el buzón y los campos de scouting. */
+  check('tipear refresca solo la tabla',
+    /getElementById\('glosarioCuerpo'\)/.test(ui));
+
+  /* EMPTY STATE CON SALIDA, no un contenedor vacío (punto 14). */
+  check('sin resultados ofrece volver a la lista',
+    /Sin resultados[\s\S]{0,400}Ver los/.test(ui));
 }
 
 console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +

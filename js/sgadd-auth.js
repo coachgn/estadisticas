@@ -93,6 +93,10 @@ const SGADD_AUTH = (function () {
     equipos: null,          // completa, pero el picker se filtra
     jugadores: null,        // ídem
     scouting: { plan: PLANES.PLATA },
+    /* El glosario es PUBLICO y no depende de datos: son definiciones, no
+       numeros de un club. Un DT que quiere saber que mide `eFG%` no
+       deberia necesitar un link. */
+    glosario: null,
     simulador: { soloAdmin: true },
     configuracion: { soloAdmin: true },
     diagnostico: { soloAdmin: true },

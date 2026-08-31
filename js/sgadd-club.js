@@ -284,8 +284,16 @@ const CLUB = (function () {
      cargado como equipo de la liga. */
   function ponerEscudo(c) {
     /* El escudo del club tampoco. El TEMA ya se aplico mas arriba, asi
-       que cortar aca deja los colores puestos y la marca sin pintar. */
-    if (enLanding) return;
+       que cortar aca deja los colores puestos y la marca sin pintar.
+
+       SE PREGUNTA DE NUEVO, no se hereda la variable de `aplicarUI`: a
+       esta funcion tambien la llama `marcarRender`, y ahi `enLanding` no
+       existe. Cuando lo hacia, el ReferenceError reventaba `aplicar()`
+       ENTERO — o sea que el club se quedaba sin catalogo, sin ninguna
+       planilla que bajar, con la seccion clavada en "Cargando la
+       categoria..." para siempre. El sintoma no nombraba a la landing por
+       ningun lado. */
+    if (esLanding()) return;
     const img = document.getElementById('clubEscudo');
     if (!img) return;
 

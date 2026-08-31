@@ -1068,7 +1068,7 @@
      (#/<planilla>/<torneo>/<fase>/<seccion>), asi que agregar un nombre
      ACA cambia como se leen los links compartidos. Es seguro mientras
      ninguna FASE se llame igual que una seccion. */
-  const SECCIONES = ['principal', 'clasificacion', 'equipos', 'jugadores', 'scouting', 'simulador', 'configuracion', 'diagnostico'];
+  const SECCIONES = ['principal', 'clasificacion', 'equipos', 'jugadores', 'scouting', 'simulador', 'configuracion', 'diagnostico', 'glosario'];
 
   const Ruta = {
     /**

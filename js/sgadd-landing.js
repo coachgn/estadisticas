@@ -112,10 +112,38 @@ const SGADD_LANDING = (function () {
         'Claves estratégicas', 'Informe en PDF'],
       plan: 'Plata',
     },
+    glosario: {
+      titulo: 'Glosario',
+      que: 'Qué mide cada columna, en castellano.',
+      detalle: 'Las métricas del panel con su nombre completo, su fórmula y cómo se '
+        + 'lee cada número. Sale del mismo manual con el que se audita la planilla, '
+        + 'así que dice exactamente lo que el dato significa. Se busca por sigla o '
+        + 'por palabra suelta.',
+      items: ['Buscador', 'Fórmula de cada métrica', 'Cómo leer el número'],
+    },
   };
 
+  /**
+   * Cuántos mails admite cada plan.
+   *
+   * SE MUESTRA EN LA LANDING PORQUE ES LO QUE EL CLIENTE PREGUNTA: "¿lo
+   * puede usar mi ayudante?". Está acá y no en el motor de permisos porque
+   * HOY NO SE HACE CUMPLIR EN NINGÚN LADO: es la condición comercial
+   * escrita, no un límite que el sistema imponga.
+   *
+   * Cuando el alta de clientes lo controle, el número tiene que salir de
+   * un solo lugar y esta tabla pasa a leerlo de ahí — dos listas de cupos
+   * que digan cosas distintas es exactamente el reclamo que uno no quiere
+   * tener con un cliente que paga.
+   */
+  const PLANES_MAILS = [
+    { nombre: 'Bronce', mails: 2, tono: 'zona-neutro' },
+    { nombre: 'Plata', mails: 3, tono: 'zona-positivo' },
+    { nombre: 'Oro', mails: 4, tono: 'zona-aviso' },
+  ];
+
   /** El orden en que se listan. Es el mismo del menú. */
-  const ORDEN = ['principal', 'equipos', 'jugadores', 'clasificacion', 'scouting'];
+  const ORDEN = ['principal', 'equipos', 'jugadores', 'clasificacion', 'scouting', 'glosario'];
 
   /* =====================================================================
      UI
@@ -160,14 +188,46 @@ const SGADD_LANDING = (function () {
         ${ORDEN.map(tarjetaSeccion).join('')}
       </div>
 
-      <div class="card rounded-xl p-5 border border-hairline">
-        <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-2">¿Cómo se entra?</h3>
-        <p class="text-xs text-muted leading-relaxed">
-          Cada club recibe un <strong class="text-ink">link propio</strong> que abre su
-          categoría directamente — no hace falta registrarse ni recordar una clave.
-          El equipo de MotorStats ingresa con mail y clave desde
-          <strong class="text-ink">Ingresar</strong>, abajo a la izquierda.
+      <div class="card rounded-xl p-5 sm:p-6 border border-hairline">
+        <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-3">¿Cómo se entra?</h3>
+
+        <ol class="landing-pasos">
+          <li>
+            <span class="landing-paso-n">1</span>
+            <span>Entrá a esta misma dirección y tocá
+              <strong class="text-ink">Ingresar</strong>, abajo a la izquierda.</span>
+          </li>
+          <li>
+            <span class="landing-paso-n">2</span>
+            <span>Elegí <strong class="text-ink">&laquo;Tengo un código de invitación&raquo;</strong>
+              y poné tu mail junto con el código que te pasamos.</span>
+          </li>
+          <li>
+            <span class="landing-paso-n">3</span>
+            <span>Definí tu propia clave. Nadie más la conoce, y la podés
+              cambiar cuando quieras.</span>
+          </li>
+        </ol>
+
+        <p class="text-xs text-muted leading-relaxed mt-4">
+          El sistema une tu <strong class="text-ink">mail</strong> y el
+          <strong class="text-ink">código</strong> con la cuenta de tu club, que ya
+          quedó configurada de antemano: no hay que registrar nada ni elegir plan.
+          El código sirve <strong class="text-ink">una sola vez</strong> y vence, así
+          que si se te pasó la fecha pedinos otro.
         </p>
+
+        <div class="mt-5">
+          <p class="text-[10px] uppercase tracking-wider text-muted font-display mb-2">
+            Cuántas personas del club pueden entrar</p>
+          <div class="grid sm:grid-cols-3 gap-2">
+            ${PLANES_MAILS.map(p => `<div class="landing-plan"><span class="landing-plan-n zona-texto ${p.tono}">${p.mails}</span><span class="landing-plan-t">${esc(p.nombre)}</span><span class="landing-plan-d">${p.mails === 1 ? "mail" : "mails"}</span></div>`).join('')}
+          </div>
+          <p class="text-[11px] text-muted mt-2">
+            Cada mail es una persona del cuerpo técnico con su propia clave.
+          </p>
+        </div>
+
         ${contacto()}
       </div>`;
   }
@@ -190,6 +250,14 @@ const SGADD_LANDING = (function () {
    * "¿qué hay acá?" sin prometer datos que sin club no existen.
    */
   function vista(seccion) {
+    /* EL GLOSARIO SE MUESTRA ENTERO, no como vista previa: es la unica
+       seccion que no depende de los datos de ningun club —son
+       definiciones— asi que en la landing funciona igual de bien que
+       adentro. Darle una vista previa seria esconder algo que ya esta
+       listo para usar. */
+    if (seccion === 'glosario' && typeof SGADD_GLOSARIOUI !== 'undefined') {
+      return SGADD_GLOSARIOUI.html();
+    }
     if (seccion === 'principal' || !SECCIONES[seccion]) {
       return '<div class="space-y-5">' + bienvenida() + '</div>';
     }
@@ -216,7 +284,7 @@ const SGADD_LANDING = (function () {
     const t = document.getElementById('clubNombre');
     if (t) t.textContent = MARCA;
     const b = document.getElementById('clubBajada');
-    if (b) b.textContent = 'ANÁLISIS · BÁSQUET';
+    if (b) b.textContent = 'SCOUTING · BÁSQUET';
     /* EL QUE ESTA OCULTO ES EL ARO, no la imagen: el `<img>` vive adentro
        de un contenedor con `hidden` que solo se muestra cuando el club
        tiene escudo resuelto. Sacarle la clase a la imagen no alcanzaba —
@@ -230,9 +298,12 @@ const SGADD_LANDING = (function () {
     const aroEl = document.getElementById('clubEscudoAro');
     if (aroEl) {
       aroEl.classList.remove('hidden');
-      /* Sin borde de acento: ese anillo es la marca de un club y acá el
-         logo se sostiene solo. */
-      aroEl.style.borderColor = 'transparent';
+      /* `aro-motorstats` le pone fondo blanco y mas padding: la grafica es
+         un circulo que llega al borde del lienzo, asi que dentro de un aro
+         redondo del mismo tamaño se le recortaban las puntas. El fondo
+         blanco ademas lo despega del sidebar oscuro, donde el azul marino
+         de los bordes se perdia. */
+      aroEl.classList.add('aro-motorstats');
     }
     /* Y EL TÍTULO DE LA PESTAÑA. `sgadd-club.js` lo pone con el nombre del
        club por defecto, así que sin esto una pestaña abierta en la landing
@@ -244,7 +315,7 @@ const SGADD_LANDING = (function () {
 
   return {
     activa, vista, bienvenida, tarjetaSeccion, contacto, aplicarMarca,
-    SECCIONES, ORDEN, MARCA, MAIL, INSTAGRAM, ARROBA, LOGO, LOGO_GRANDE,
+    SECCIONES, ORDEN, PLANES_MAILS, MARCA, MAIL, INSTAGRAM, ARROBA, LOGO, LOGO_GRANDE,
   };
 })();
 

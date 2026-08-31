@@ -518,7 +518,7 @@ check('un hash corto viejo (#/planilla/fase/seccion) se sigue entendiendo',
    alguna vez existiera una fase 'CLASIFICACION', `#/p/CLASIFICACION/equipos`
    se leería como formato nuevo y la ruta saldría mal. */
 const SECCIONES_NAV = ['principal', 'clasificacion', 'equipos', 'jugadores',
-  'scouting', 'simulador', 'configuracion', 'diagnostico'];
+  'scouting', 'glosario', 'simulador', 'configuracion', 'diagnostico'];
 check('SECCIONES trae las secciones del nav',
   SECCIONES_NAV.every(s => SGADD.SECCIONES.indexOf(s) !== -1),
   SGADD.SECCIONES.join(','));

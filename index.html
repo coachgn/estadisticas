@@ -228,7 +228,90 @@
     .cargando-logo { animation: none; opacity: 1; transform: none; }
   }
 
-  .landing-logo { width: 72px; height: 72px; object-fit: contain; }
+  /* EL LOGO DE MOTORSTATS EN LA BARRA. Fondo blanco y mas padding que el
+     escudo de un club, y las dos cosas por el mismo motivo: la grafica es
+     un circulo que llega al borde del lienzo, asi que dentro de un aro
+     redondo del mismo tamaño se le recortan las puntas. El padding lo
+     encoge lo justo para que entre entero.
+
+     El fondo blanco ademas lo despega del sidebar oscuro: el logo tiene
+     azul marino en los bordes y sobre el fondo del panel se perdia. */
+  .escudo-aro.aro-motorstats {
+    background: #ffffff;
+    border-color: rgba(255, 255, 255, .25);
+  }
+  .escudo-aro.aro-motorstats > img { padding: 5px; }
+
+  /* En la card de bienvenida el fondo se deja como esta —el logo se luce
+     sobre el oscuro— pero se le suma padding por lo mismo: sin el, el
+     circulo toca el borde de la caja y se ve cortado. */
+  .landing-logo { width: 72px; height: 72px; object-fit: contain; padding: 6px; }
+
+  /* EL TOOLTIP DE METRICA. Va a mano por lo mismo que el resto: lo
+     inyecta un nodo dinamico y el scan de Tailwind es ESTATICO.
+
+     `position: absolute` sobre el body y no `fixed`: al scrollear se
+     cierra igual, y con `absolute` no hay que recalcular en cada cuadro
+     mientras esta abierto. */
+  .glosario-tip {
+    position: absolute; z-index: 70;
+    max-width: 20rem; padding: .6rem .7rem;
+    border-radius: .5rem;
+    background: #1b1b1b; border: 1px solid #3a3a3a;
+    box-shadow: 0 6px 24px rgba(0,0,0,.45);
+    display: flex; flex-direction: column; gap: .2rem;
+    pointer-events: none;   /* no roba el hover de lo que hay debajo */
+  }
+  .glosario-tip[hidden] { display: none; }
+  .glosario-tip-sigla {
+    font-family: inherit; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .06em;
+    color: var(--acento-texto, #f5f4f2);
+  }
+  .glosario-tip-nombre { font-size: 11px; color: #f5f4f2; }
+  .glosario-tip-texto { font-size: 11px; line-height: 1.5; color: #a3a3a3; }
+  .glosario-tip-formula {
+    font-size: 10px; color: #8a8a8a; margin-top: .15rem;
+    padding-top: .3rem; border-top: 1px solid #2a2a2a;
+  }
+  /* En papel no hay hover: un tooltip impreso seria un recuadro suelto en
+     el medio de la hoja. */
+  @media print { .glosario-tip { display: none !important; } }
+
+  /* La sigla con definicion se marca con un subrayado punteado: sin una
+     señal, nadie descubre que se puede pasar el mouse. */
+  th[data-metrica], [data-metrica] {
+    text-decoration: underline dotted rgba(255,255,255,.25);
+    text-underline-offset: 3px;
+  }
+
+  /* Los tres pasos de "como se entra". Lista numerada a mano y no un `ol`
+     con marcadores: el numero va en un disco de color y el nativo no se
+     puede estilar de forma pareja entre navegadores. */
+  .landing-pasos { list-style: none; margin: 0; padding: 0; }
+  .landing-pasos > li {
+    display: flex; align-items: flex-start; gap: .6rem;
+    font-size: 12px; line-height: 1.6; color: #a3a3a3;
+    padding: .35rem 0;
+  }
+  .landing-paso-n {
+    flex: 0 0 auto;
+    width: 1.35rem; height: 1.35rem; border-radius: 9999px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: inherit; font-size: 10px; font-weight: 700;
+    background: var(--acento-fondo, #4a4a4a); color: #0B1121;
+  }
+
+  /* Los cupos por plan. El numero manda y el nombre lo acompaña: la
+     pregunta del cliente es "cuantos", no "como se llama el mio". */
+  .landing-plan {
+    display: flex; flex-direction: column; align-items: center; gap: .1rem;
+    padding: .6rem .4rem; border-radius: .5rem;
+    background: #1b1b1b; border: 1px solid #282828;
+  }
+  .landing-plan-n { font-family: inherit; font-size: 20px; font-weight: 700; line-height: 1; }
+  .landing-plan-t { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #f5f4f2; }
+  .landing-plan-d { font-size: 10px; color: #8a8a8a; }
 
   /* EL PIE INSTITUCIONAL. Va a mano por lo mismo que el resto: lo inyecta
      un nodo dinamico y el scan de Tailwind es ESTATICO. */
@@ -1736,7 +1819,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=158" />
+<link rel="stylesheet" href="sgadd.css?v=162" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -1796,6 +1879,10 @@
         <button onclick="navigate('scouting')" data-nav="scouting" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path stroke-linecap="round" d="m20 20-4.3-4.3"/></svg>
           Scouting
+        </button>
+        <button onclick="navigate('glosario')" data-nav="glosario" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 5.5A1.5 1.5 0 0 1 5.5 4H19v16H5.5A1.5 1.5 0 0 1 4 18.5v-13Z"/><path stroke-linecap="round" d="M8 8h7M8 12h7"/></svg>
+          Glosario
         </button>
         <button onclick="navigate('simulador')" data-nav="simulador" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 21h8M12 17v4M5 3h14l-1.5 8.5a5.5 5.5 0 0 1-11 0L5 3Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 5H2.5A2.5 2.5 0 0 0 3.8 9.6M19 5h2.5a2.5 2.5 0 0 1-1.3 4.6"/></svg>
@@ -1898,35 +1985,37 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=158"></script>
+<script src="js/sgadd-club.js?v=162"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=158"></script>
-<script src="js/sgadd-core.js?v=158"></script>
-<script src="js/sgadd-auth.js?v=158"></script>
-<script src="js/sgadd-landing.js?v=158"></script>
-<script src="js/sgadd-login.js?v=158"></script>
-<script src="js/sgadd-data.js?v=158"></script>
-<script src="js/sgadd-clientes.js?v=158"></script>
-<script src="js/sgadd-ui.js?v=158"></script>
-<script src="js/sgadd-app.js?v=158"></script>
-<script src="js/sgadd-clasificacion.js?v=158"></script>
+<script src="js/sgadd-config.js?v=162"></script>
+<script src="js/sgadd-core.js?v=162"></script>
+<script src="js/sgadd-auth.js?v=162"></script>
+<script src="js/sgadd-glosario.js?v=162"></script>
+<script src="js/sgadd-glosarioui.js?v=162"></script>
+<script src="js/sgadd-landing.js?v=162"></script>
+<script src="js/sgadd-login.js?v=162"></script>
+<script src="js/sgadd-data.js?v=162"></script>
+<script src="js/sgadd-clientes.js?v=162"></script>
+<script src="js/sgadd-ui.js?v=162"></script>
+<script src="js/sgadd-app.js?v=162"></script>
+<script src="js/sgadd-clasificacion.js?v=162"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=158"></script>
-<script src="js/sgadd-configui.js?v=158"></script>
-<script src="js/sgadd-estados.js?v=158"></script>
-<script src="js/sgadd-buzon.js?v=158"></script>
-<script src="js/sgadd-charts.js?v=158"></script>
-<script src="js/sgadd-personalidad.js?v=158"></script>
-<script src="js/sgadd-rankings.js?v=158"></script>
-<script src="js/sgadd-partido.js?v=158"></script>
-<script src="js/sgadd-informe.js?v=158"></script>
-<script src="js/sgadd-ficha.js?v=158"></script>
-<script src="js/sgadd-equipos.js?v=158"></script>
-<script src="js/sgadd-jugadores.js?v=158"></script>
-<script src="js/sgadd-4factores.js?v=158"></script>
-<script src="js/sgadd-scouting.js?v=158"></script>
-<script src="js/sgadd-diagnostico.js?v=158"></script>
+<script src="js/sgadd-hub.js?v=162"></script>
+<script src="js/sgadd-configui.js?v=162"></script>
+<script src="js/sgadd-estados.js?v=162"></script>
+<script src="js/sgadd-buzon.js?v=162"></script>
+<script src="js/sgadd-charts.js?v=162"></script>
+<script src="js/sgadd-personalidad.js?v=162"></script>
+<script src="js/sgadd-rankings.js?v=162"></script>
+<script src="js/sgadd-partido.js?v=162"></script>
+<script src="js/sgadd-informe.js?v=162"></script>
+<script src="js/sgadd-ficha.js?v=162"></script>
+<script src="js/sgadd-equipos.js?v=162"></script>
+<script src="js/sgadd-jugadores.js?v=162"></script>
+<script src="js/sgadd-4factores.js?v=162"></script>
+<script src="js/sgadd-scouting.js?v=162"></script>
+<script src="js/sgadd-diagnostico.js?v=162"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -1976,7 +2065,13 @@ const SHEETS_CONFIG = [
    `sgadd-equipos.js` y hoy no lo llama nadie. Eran dos peticiones por
    arranque para llenar una clave que nadie leía. */
 
-const VALID_SECTIONS = ['principal', 'clasificacion', 'equipos', 'jugadores', 'scouting', 'simulador', 'configuracion', 'diagnostico'];
+/* HAY DOS LISTAS DE SECCIONES Y TIENEN QUE COINCIDIR: esta, que valida lo
+   que llega por el hash, y `SGADD.SECCIONES`, que el ruteo usa para
+   distinguir el formato viejo del nuevo (punto 16). Al sumar el Glosario
+   quedo en una sola y el item del menu no navegaba a ningun lado: el
+   `navigate()` lo mandaba de vuelta a Principal sin decir nada. Hay un
+   test que compara las dos. */
+const VALID_SECTIONS = ['principal', 'clasificacion', 'equipos', 'jugadores', 'scouting', 'glosario', 'simulador', 'configuracion', 'diagnostico'];
 
 /* ============ ESTADO GLOBAL ============ */
 let DATA = {};
@@ -3687,7 +3782,8 @@ function renderSection(section) {
   });
   const titles = { principal: 'Principal', clasificacion: 'Clasificación', equipos: 'Equipos',
     jugadores: 'Jugadores', scouting: 'Scouting', simulador: 'Simulador',
-    configuracion: 'Panel Master', diagnostico: 'Diagnóstico' };
+    configuracion: 'Panel Master', diagnostico: 'Diagnóstico',
+    glosario: 'Glosario' };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = titles[section] || '';
 
@@ -3726,6 +3822,7 @@ function renderSection(section) {
     case 'jugadores': root.innerHTML = buildJugadores(); break;
     case 'simulador': root.innerHTML = buildSimulador(); break;   // SGADD (js/sgadd-4factores.js)
     case 'scouting': root.innerHTML = buildScouting(); drawScoutingCharts(); break;
+    case 'glosario': root.innerHTML = SGADD_GLOSARIOUI.html(); break;   // SGADD (js/sgadd-glosarioui.js)
     default: root.innerHTML = '';
   }
 }
@@ -4085,6 +4182,9 @@ async function init() {
      navegación del admin y esperarlo demoraría el primer pintado por un
      control que no hace falta para leer los datos. Aparece un instante
      después, que es exactamente lo que hace el buzón. */
+  /* Los tooltips de metrica se enganchan UNA vez, por delegacion en el
+     `document`: sobreviven a cualquier repintado de tabla. */
+  if (typeof SGADD_GLOSARIOUI !== 'undefined') SGADD_GLOSARIOUI.iniciar();
   if (typeof SGADD_CLIENTES !== 'undefined') SGADD_CLIENTES.iniciar();
   /* El selector de cliente SÍ se pide en la landing: un admin que entra a
      la URL limpia tiene que poder elegir a quién mirar desde ahí. */
