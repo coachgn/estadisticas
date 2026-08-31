@@ -201,7 +201,18 @@ entradas.forEach((e) => {
    familia es la clasificación de verdad. */
 entradas.forEach((e) => { delete e.grupo; });
 
-entradas.sort((a, b) => a.sigla.localeCompare(b.sigla, 'es'));
+/* SE ORDENA POR FAMILIA Y DESPUÉS POR SIGLA.
+
+   La letra de la familia (`A · Identificación`, `C · Anotación`) ES el
+   orden del manual, y ordenar solo por sigla lo perdía: `grupos()` mira el
+   orden en que aparecen las familias en esta lista, así que con las
+   entradas alfabéticas devolvía «Anotación, Hojas, Creación…», que no es
+   ningún orden. Adentro de cada familia sí manda la sigla. */
+entradas.sort((a, b) => {
+  const fa = String(a.familia || 'ZZ'), fb = String(b.familia || 'ZZ');
+  if (fa !== fb) return fa.localeCompare(fb, 'es');
+  return a.sigla.localeCompare(b.sigla, 'es');
+});
 
 /* ------------------------------------------------------------- escribir */
 

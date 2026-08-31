@@ -1223,6 +1223,25 @@ titulo('EL MODAL DE INGRESO, LOS CUPOS Y EL PIE');
   check('el botón dice qué hace', /aria-label="\$\{visible \? 'Ocultar/.test(srcLog));
   check('y su CSS va a mano, que es un nodo inyectado', /\.login-ojo \{/.test(idxL));
 
+  /* EL OJO SE DESHABILITABA SOLO AL TIPEAR.
+
+     `campo()` refresca el botón de enviar en cada tecla y lo buscaba con
+     `.login-caja button`, o sea EL PRIMER botón de la caja — que con la
+     llegada del ojo dejó de ser el de enviar. Resultado: escribías la
+     clave y el ojo quedaba `disabled`, sin responder al clic y sin dejar
+     un error en consola. Andaba perfecto hasta que hacía falta.
+
+     Un selector posicional se rompe callado en cuanto alguien agrega un
+     elemento antes. El id dice cuál es. */
+  check('el botón de enviar tiene id propio', /<button id="loginEnviar"/.test(srcLog));
+  check('y campo() lo busca por id, no por posición',
+    /getElementById\('loginEnviar'\)/.test(srcLog)
+    && !/querySelector\('\.login-caja button'\)/.test(srcLog));
+  /* El ojo NUNCA se deshabilita: mostrar la clave no depende de que el
+     formulario esté completo. */
+  check('el ojo no se toca al refrescar el botón',
+    !/login-ojo[\s\S]{0,200}disabled/.test(srcLog));
+
   /* El texto que pidió el club. */
   check('el título es el de la plataforma',
     /Ingreso a plataforma MotorStats/.test(srcLog));
@@ -1298,6 +1317,23 @@ titulo('EL GLOSARIO SE AGRUPA COMO EL MANUAL');
   /* La letra ordena y después se saca del título: `C · Anotación` no le
      dice nada a nadie, pero es lo que pone Anotación después de Volumen. */
   const conLetra = GL2.grupos().filter(f => /^[A-Z] · /.test(f));
+  /* Y EL ORDEN ES EL DEL MANUAL, no el alfabético de las siglas.
+
+     `grupos()` mira en qué orden aparecen las familias en `ENTRADAS`, así
+     que con las entradas ordenadas solo por sigla devolvía «Anotación,
+     Hojas, Creación…», que no es ningún orden. El generador ordena por
+     familia y después por sigla. */
+  const letras = GL2.grupos().map(f => f.charAt(0));
+  const ordenadas = letras.slice().sort();
+  check('las familias salen en el orden del manual',
+    letras.join('') === ordenadas.join(''), GL2.grupos().join(' | '));
+  check('y adentro de cada una, las siglas alfabéticas',
+    (() => {
+      const f0 = GL2.grupos()[0];
+      const ss = GL2.ENTRADAS.filter(e => e.familia === f0).map(e => e.sigla);
+      return ss.join('|') === ss.slice().sort((a, b) => a.localeCompare(b, 'es')).join('|');
+    })());
+
   check('la familia trae la letra que la ordena',
     conLetra.length === GL2.grupos().length, GL2.grupos().join(' | '));
   check('y la vista la saca del título', /replace\(\/\^\[A-Z\] · \//.test(UI2));

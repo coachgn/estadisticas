@@ -145,7 +145,7 @@ const SGADD_LOGIN = (function () {
         ${estado.ok ? `<p class="text-xs zona-texto zona-exito mb-2">${esc(estado.ok)}</p>` : ''}
 
         <div class="flex items-center gap-3 flex-wrap mt-4">
-          <button onclick="SGADD_LOGIN.enviar()" ${estado.yendo || f.length || corta ? 'disabled' : ''}
+          <button id="loginEnviar" onclick="SGADD_LOGIN.enviar()" ${estado.yendo || f.length || corta ? 'disabled' : ''}
             class="px-3 py-2 rounded-md text-xs font-display uppercase tracking-wider
                    bg-accent text-base hover:opacity-90 disabled:opacity-40">
             ${estado.yendo ? 'Un momento…' : (estado.modo === 'fijar' ? 'Guardar y entrar' : 'Entrar')}</button>
@@ -178,8 +178,19 @@ const SGADD_LOGIN = (function () {
     if (!(id in campos)) return;
     campos[id] = String(v == null ? '' : v);
     /* El botón se habilita o no según los faltantes, así que hay que
-       refrescarlo; se toca SOLO el botón, no el formulario. */
-    const b = document.querySelector('.login-caja button');
+       refrescarlo; se toca SOLO el botón, no el formulario.
+
+       SE BUSCA POR ID Y NO POR `.login-caja button`.
+
+       Ese selector devolvía el PRIMER botón de la caja, y con la llegada
+       del ojo ese dejó de ser el de enviar: al tipear la clave se
+       deshabilitaba el OJO, que después no respondía al clic. El síntoma
+       era desconcertante —el ojo andaba perfecto hasta que escribías algo,
+       o sea siempre que hacía falta— y no dejaba ningún error en consola.
+
+       Un selector posicional se rompe callado en cuanto alguien agrega un
+       elemento antes; el id dice cuál es. */
+    const b = document.getElementById('loginEnviar');
     if (b) {
       const f = faltantes({ modo: estado.modo, email: campos.email, clave: campos.clave,
         codigo: campos.codigo, claveNueva: campos.claveNueva });
