@@ -340,6 +340,12 @@ const SGADD_APP = (function () {
     /* El buzón recalcula sus alertas contra el índice nuevo: cambiar de
        planilla o de torneo cambia el plantel y por lo tanto las ausencias. */
     if (typeof SGADD_BUZON !== 'undefined') { try { SGADD_BUZON.sincronizar(); } catch (e) {} }
+    /* El distintivo del plan sale de `estado.alcance`, que lo declara el
+       servidor con los datos: al arrancar todavía no está, así que sin
+       esto un club ORO no lo vería hasta cambiar de categoría. */
+    if (typeof pintarDistintivoPlan === 'function') {
+      try { pintarDistintivoPlan(); } catch (e) {}
+    }
     if (typeof currentSection === 'undefined') return;
     /* La pantalla de Configuración muestra la cantidad de equipos y la
        vista previa del tramo abierto: si no se repinta, queda mostrando

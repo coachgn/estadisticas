@@ -162,6 +162,8 @@ function resolver(cat, clubId, slugCategoria) {
       estado: club.estado || 'activo',
       plan: club.plan || null,
       vence: club.vence || null,
+      cicloDesde: club.cicloDesde || 0,
+      informesEntregados: club.informesEntregados || 0,
     },
     slug: catId,
     label: k.label,
@@ -198,6 +200,12 @@ function publico(cat, opciones) {
     plan: c[id].plan || null,
     vence: c[id].vence || null,
     equipoPropio: c[id].equipoPropio || null,
+    /* El seguimiento de informes del plan ORO. Van los dos campos crudos y
+       NO la posicion calculada: esta depende de los partidos jugados, que
+       el catalogo no conoce —salen del libro— asi que la cuenta la hace
+       quien tenga el indice delante. */
+    cicloDesde: c[id].cicloDesde || 0,
+    informesEntregados: c[id].informesEntregados || 0,
   } : {}));
 }
 

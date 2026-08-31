@@ -15,7 +15,7 @@
      1. que el `sheetId` se filtre en alguna respuesta — el objetivo
         entero del backend,
      2. que un token manipulado pase la verificación,
-     3. que un Básico reciba datos de scouting,
+     3. que un Bronce reciba datos de scouting,
      4. que un cliente reciba filas de un equipo ajeno,
      5. que el servidor y el navegador apliquen reglas DISTINTAS.
    ===================================================================== */
@@ -130,10 +130,10 @@ const pedir = (handler, o) => {
 
 /* Los tres perfiles, con tokens de verdad. */
 const T_ADMIN = auth.firmarToken({ email: 'freytesgn@gmail.com', club: 'deportivo' }, { expiraEn: '1h' });
-const T_BASICO = auth.firmarToken({ email: 'dt@deportivo.com', club: 'deportivo',
-  equipoAsignado: 'DEPORTIVO LA PLATA', plan: 'BASICO' }, { expiraEn: '1h' });
+const T_BRONCE = auth.firmarToken({ email: 'dt@deportivo.com', club: 'deportivo',
+  equipoAsignado: 'DEPORTIVO LA PLATA', plan: 'BRONCE' }, { expiraEn: '1h' });
 const T_PRO = auth.firmarToken({ email: 'dt@deportivo.com', club: 'deportivo',
-  equipoAsignado: 'DEPORTIVO LA PLATA', plan: 'PRO' }, { expiraEn: '1h' });
+  equipoAsignado: 'DEPORTIVO LA PLATA', plan: 'PLATA' }, { expiraEn: '1h' });
 
 /* ==================================================================== */
 titulo('EL sheetId NO SALE · el objetivo entero del backend');
@@ -144,7 +144,7 @@ titulo('EL sheetId NO SALE · el objetivo entero del backend');
   const casos = [
     ['catálogo', await pedir(handlers.manejarCatalogo, { token: T_ADMIN })],
     ['equipos · admin', await pedir(handlers.manejarEquipos, { token: T_ADMIN })],
-    ['equipos · cliente', await pedir(handlers.manejarEquipos, { token: T_BASICO })],
+    ['equipos · cliente', await pedir(handlers.manejarEquipos, { token: T_BRONCE })],
     ['scouting · pro', await pedir(handlers.manejarScouting, { token: T_PRO,
       query: { local: 'DEPORTIVO LA PLATA', visitante: 'A. MAYO' } })],
   ];
@@ -157,7 +157,7 @@ titulo('EL sheetId NO SALE · el objetivo entero del backend');
       json.indexOf(SHEET_DEPORTIVO) === -1 && json.indexOf(SHEET_RECONQUISTA) === -1);
   });
 
-  const cat = await pedir(handlers.manejarCatalogo, { token: T_BASICO });
+  const cat = await pedir(handlers.manejarCatalogo, { token: T_BRONCE });
   check('el catálogo entrega slugs, no ids',
     cat.body.clubes.every(c => typeof c.id === 'string' && !('sheetId' in c)));
   check('y dice qué categorías tienen libro sin revelar cuál',
@@ -191,14 +191,14 @@ titulo('EL sheetId NO SALE · el objetivo entero del backend');
   const rs = jwtLib.b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' })) + '.' + pay + '.' + firma;
   check('la confusión RS256/HS256 se rechaza', auth.verificarToken(rs).ok === false);
 
-  /* Payload manipulado: BASICO que se asciende a PRO. Es exactamente lo
+  /* Payload manipulado: BRONCE que se asciende a PRO. Es exactamente lo
      que hoy se puede hacer editando la URL. */
-  const [c2, p2] = T_BASICO.split('.');
+  const [c2, p2] = T_BRONCE.split('.');
   const robado = JSON.parse(jwtLib.deB64url(p2).toString('utf8'));
-  robado.plan = 'PRO';
-  const falsificado = c2 + '.' + jwtLib.b64url(JSON.stringify(robado)) + '.' + T_BASICO.split('.')[2];
+  robado.plan = 'PLATA';
+  const falsificado = c2 + '.' + jwtLib.b64url(JSON.stringify(robado)) + '.' + T_BRONCE.split('.')[2];
   const vf = auth.verificarToken(falsificado);
-  check('un Básico NO se puede ascender a Pro editando el payload', vf.ok === false, vf.motivo);
+  check('un Bronce NO se puede ascender a Pro editando el payload', vf.ok === false, vf.motivo);
 
   check('una firma manipulada se rechaza',
     auth.verificarToken(cab + '.' + pay + '.' + 'x'.repeat(firma.length)).ok === false);
@@ -236,12 +236,12 @@ titulo('EL sheetId NO SALE · el objetivo entero del backend');
   /* ================================================================== */
   titulo('BÁSICO EN SCOUTING · 403 antes de tocar Google');
 
-  const sc = await pedir(handlers.manejarScouting, { token: T_BASICO,
+  const sc = await pedir(handlers.manejarScouting, { token: T_BRONCE,
     query: { local: 'DEPORTIVO LA PLATA', visitante: 'A. MAYO' } });
-  check('el Plan Básico recibe 403 en scouting', sc.status === 403, sc.status);
+  check('el Plan Bronce recibe 403 en scouting', sc.status === 403, sc.status);
   check('con el motivo REQUIERE_PLAN, no un genérico',
     sc.body.codigo === AUTH.MOTIVOS.REQUIERE_PLAN, sc.body.codigo);
-  check('y le dice qué plan pedir', sc.body.planRequerido === 'PRO');
+  check('y le dice qué plan pedir', sc.body.planRequerido === 'PLATA');
   /* Sin una sola fila de datos en el cuerpo. */
   check('el 403 no trae datos', !sc.body.hojas);
   /* Y NI SIQUIERA SE PIDIÓ EL DATO: si el gate estuviera después de la
@@ -250,7 +250,7 @@ titulo('EL sheetId NO SALE · el objetivo entero del backend');
 
   const scPro = await pedir(handlers.manejarScouting, { token: T_PRO,
     query: { local: 'DEPORTIVO LA PLATA', visitante: 'A. MAYO' } });
-  check('el Plan Pro sí recibe el informe', scPro.status === 200, scPro.status);
+  check('el Plan Plata sí recibe el informe', scPro.status === 200, scPro.status);
   check('y con los datos del rival, que es el objeto del informe',
     !!scPro.body.hojas['PROMEDIOS J']);
 
@@ -268,7 +268,7 @@ titulo('EL sheetId NO SALE · el objetivo entero del backend');
   /* ================================================================== */
   titulo('EQUIPO AJENO · 403, con la tabla de posiciones a mano');
 
-  const eqAjeno = await pedir(handlers.manejarEquipos, { token: T_BASICO,
+  const eqAjeno = await pedir(handlers.manejarEquipos, { token: T_BRONCE,
     query: { equipo: 'A. MAYO' } });
   check('pedir la ficha de un rival da 403', eqAjeno.status === 403, eqAjeno.status);
   check('con el motivo OTRO_EQUIPO', eqAjeno.body.codigo === AUTH.MOTIVOS.OTRO_EQUIPO);
@@ -277,13 +277,13 @@ titulo('EL sheetId NO SALE · el objetivo entero del backend');
   check('y dice qué sí está disponible',
     Array.isArray(eqAjeno.body.disponible) && eqAjeno.body.disponible.indexOf('clasificacion') !== -1);
 
-  const eqPropio = await pedir(handlers.manejarEquipos, { token: T_BASICO,
+  const eqPropio = await pedir(handlers.manejarEquipos, { token: T_BRONCE,
     query: { equipo: 'DEPORTIVO LA PLATA - MM' } });
   check('su propio equipo, con sufijo de categoría, sí abre', eqPropio.status === 200, eqPropio.status);
 
   /* El token está atado a un club: sin esto, el token de DEPORTIVO
      serviría para pedir el libro de Reconquista. */
-  const otroClub = await pedir(handlers.manejarEquipos, { token: T_BASICO, club: 'reconquista' });
+  const otroClub = await pedir(handlers.manejarEquipos, { token: T_BRONCE, club: 'reconquista' });
   check('el token de un club no sirve para otro', otroClub.status === 403, otroClub.status);
   check('con el motivo OTRO_CLUB', otroClub.body.codigo === 'OTRO_CLUB');
   const admOtro = await pedir(handlers.manejarEquipos, { token: T_ADMIN, club: 'reconquista' });
@@ -292,7 +292,7 @@ titulo('EL sheetId NO SALE · el objetivo entero del backend');
   /* ================================================================== */
   titulo('EL RECORTE · qué filas viajan de verdad');
 
-  const rCli = await pedir(handlers.manejarEquipos, { token: T_BASICO });
+  const rCli = await pedir(handlers.manejarEquipos, { token: T_BRONCE });
   const rAdm = await pedir(handlers.manejarEquipos, { token: T_ADMIN });
   check('el cliente recibe 200 sin pedir equipo', rCli.status === 200);
 
@@ -402,10 +402,10 @@ titulo('EL sheetId NO SALE · el objetivo entero del backend');
   check('y no tiene su propia lista de admins',
     !/freytesgn@gmail\.com/.test(srcAuth + srcReglas));
   check('ni su propia cascada de planes',
-    !/BASICO['"]?\s*:\s*['"]BASICO/.test(srcAuth + srcReglas));
+    !/BRONCE['"]?\s*:\s*['"]BRONCE/.test(srcAuth + srcReglas));
 
   /* El mismo veredicto de los dos lados, sobre los mismos datos. */
-  const ses = auth.verificarToken(T_BASICO).sesion;
+  const ses = auth.verificarToken(T_BRONCE).sesion;
   check('cliente y servidor coinciden en el equipo',
     AUTH.puedeVerEquipo('A. MAYO', ses) === false &&
     reglas.puedeAnalizarEquipo('A. MAYO', ses) === false);
@@ -472,21 +472,21 @@ titulo('EL sheetId NO SALE · el objetivo entero del backend');
   const link = auth.generarLinkCliente({
     base: 'https://coachgn.github.io/estadisticas/',
     email: 'DT@Deportivo.com ', club: 'deportivo',
-    equipo: 'DEPORTIVO LA PLATA', plan: 'PRO', expiraEn: '30d',
+    equipo: 'DEPORTIVO LA PLATA', plan: 'PLATA', expiraEn: '30d',
   });
   check('devuelve una URL con el token', /access_token=/.test(link.url));
   check('y el club, que el panel necesita para pintar la marca antes de responder',
     /club=deportivo/.test(link.url));
   check('el mail se normaliza', link.sesion.email === 'dt@deportivo.com');
-  check('el plan viaja firmado', link.sesion.plan === 'PRO');
+  check('el plan viaja firmado', link.sesion.plan === 'PLATA');
   check('y tiene vencimiento', !!link.expiraEn && new Date(link.expiraEn) > new Date());
   /* Un plan mal escrito cae a BÁSICO, nunca a PRO — la misma regla del
      frontend, y acá vale plata. */
   const malPlan = auth.generarLinkCliente({ base: 'https://x.com/', email: 'a@b.com', plan: 'PROO' });
-  check('un plan mal escrito cae a Básico, no a Pro', malPlan.sesion.plan === 'BASICO');
+  check('un plan mal escrito cae a Bronce, no a Plata', malPlan.sesion.plan === 'BRONCE');
 
   let e1 = null;
-  try { auth.firmarToken({ plan: 'PRO' }, { expiraEn: '1h' }); } catch (e) { e1 = e.codigo; }
+  try { auth.firmarToken({ plan: 'PLATA' }, { expiraEn: '1h' }); } catch (e) { e1 = e.codigo; }
   check('un token sin mail no se firma', e1 === 'SIN_EMAIL', e1);
 
   /* ================================================================== */
@@ -555,7 +555,7 @@ titulo('EL FRONTEND CONSUME LO QUE EL BACKEND MANDA · E2E');
 {
   const DATA = require('./js/sgadd-data.js');
 
-  const rCli = await pedir(handlers.manejarEquipos, { token: T_BASICO });
+  const rCli = await pedir(handlers.manejarEquipos, { token: T_BRONCE });
   const rAdm = await pedir(handlers.manejarEquipos, { token: T_ADMIN });
 
   /* --- la forma del índice --- */
@@ -634,8 +634,8 @@ titulo('EL FRONTEND CONSUME LO QUE EL BACKEND MANDA · E2E');
     usadas.slice().sort().join('|') === config.HOJAS_TEXTO.slice().sort().join('|'),
     JSON.stringify(usadas) + ' vs ' + JSON.stringify(config.HOJAS_TEXTO));
 
-  /* --- el 403 del Básico llega como error, no como datos rotos --- */
-  const sc403 = await pedir(handlers.manejarScouting, { token: T_BASICO,
+  /* --- el 403 del Bronce llega como error, no como datos rotos --- */
+  const sc403 = await pedir(handlers.manejarScouting, { token: T_BRONCE,
     query: { local: 'DEPORTIVO LA PLATA', visitante: 'A. MAYO' } });
   check('un 403 no trae `hojas` que el adaptador pueda malinterpretar',
     !sc403.body.hojas && !sc403.body.hojasTexto);
@@ -653,7 +653,7 @@ titulo('EL TOKEN EN EL NAVEGADOR');
      quien decide es el servidor. */
   const p = AUTHF.leerPayload(T_PRO);
   check('el frontend puede leer el payload de su token',
-    p && p.email === 'dt@deportivo.com' && p.plan === 'PRO', JSON.stringify(p));
+    p && p.email === 'dt@deportivo.com' && p.plan === 'PLATA', JSON.stringify(p));
   check('y el club al que está atado', p.club === 'deportivo');
   check('basura no rompe el lector',
     AUTHF.leerPayload('no-es-jwt') === null && AUTHF.leerPayload(null) === null &&
@@ -662,12 +662,12 @@ titulo('EL TOKEN EN EL NAVEGADOR');
   /* QUE EL FRONTEND LO LEA NO SIGNIFICA QUE LO DECIDA. Este es el check
      que separa el gate de interfaz de la seguridad: un payload editado
      engaña a la UI y el servidor lo rechaza igual. */
-  const partes = T_BASICO.split('.');
+  const partes = T_BRONCE.split('.');
   const truchado = JSON.parse(jwtLib.deB64url(partes[1]).toString('utf8'));
-  truchado.plan = 'PRO';
+  truchado.plan = 'PLATA';
   const falso = partes[0] + '.' + jwtLib.b64url(JSON.stringify(truchado)) + '.' + partes[2];
   check('un token editado SÍ engaña al lector del frontend',
-    AUTHF.leerPayload(falso).plan === 'PRO');
+    AUTHF.leerPayload(falso).plan === 'PLATA');
   check('pero el servidor lo rechaza', auth.verificarToken(falso).ok === false);
   /* Y no es que devuelva menos datos: no devuelve NINGUNO. */
   const conFalso = await pedir(handlers.manejarEquipos, { token: falso });
@@ -677,7 +677,7 @@ titulo('EL TOKEN EN EL NAVEGADOR');
   /* Un token vencido no se acepta del lado del cliente tampoco: pintar la
      interfaz de una sesión que el servidor ya no atiende deja al DT
      mirando 401. */
-  const vencido2 = jwtLib.firmar({ email: 'x@y.com', plan: 'PRO' },
+  const vencido2 = jwtLib.firmar({ email: 'x@y.com', plan: 'PLATA' },
     process.env.JWT_SECRET, { expiraEn: 1 });
   await new Promise(r => setTimeout(r, 1100));
   const rv = AUTHF.establecerToken(vencido2);
@@ -956,7 +956,7 @@ titulo('EL BUNDLE DE VERCEL · nada puede salir de server/');
      punto de todo el rodeo: la copia no puede volverse una segunda fuente
      de verdad. */
   const AUTH_SERVIDOR = require('./server/lib/compartido/sgadd-auth.js');
-  const ses = { email: 'dt@x.com', equipoAsignado: 'DEPORTIVO LA PLATA', plan: 'BASICO' };
+  const ses = { email: 'dt@x.com', equipoAsignado: 'DEPORTIVO LA PLATA', plan: 'BRONCE' };
   check('la copia y el original coinciden en el equipo',
     AUTH_SERVIDOR.puedeVerEquipo('A. MAYO', ses) === AUTH.puedeVerEquipo('A. MAYO', ses));
   check('en el plan',
@@ -1064,7 +1064,7 @@ titulo('NINGÚN ID DE GOOGLE SALE · detector genérico');
   const original = LIBRO['Base Datos E'];
   LIBRO['Base Datos E'] = conId['Base Datos E'];
 
-  for (const [quien, token] of [['admin', T_ADMIN], ['básico', T_BASICO], ['pro', T_PRO]]) {
+  for (const [quien, token] of [['admin', T_ADMIN], ['básico', T_BRONCE], ['pro', T_PRO]]) {
     const r = await pedir(handlers.manejarEquipos, { token });
     const json = JSON.stringify(r.body);
     check('la respuesta de equipos para ' + quien + ' no trae ningún id de Google',
@@ -1101,7 +1101,7 @@ titulo('EL PADRÓN DE LA LIGA · listado 200, ficha ajena 403');
    El buzón necesita lo primero para que el DT pueda marcarle una lesión o
    una baja a cualquiera. Lo segundo es lo que el recorte protege. */
 {
-  const rCli = await pedir(handlers.manejarEquipos, { token: T_BASICO });
+  const rCli = await pedir(handlers.manejarEquipos, { token: T_BRONCE });
   const rAdm = await pedir(handlers.manejarEquipos, { token: T_ADMIN });
 
   check('el listado de la liga responde 200', rCli.status === 200, rCli.status);
@@ -1146,7 +1146,7 @@ titulo('EL PADRÓN DE LA LIGA · listado 200, ficha ajena 403');
     rCli.body.padron.every(p => Object.values(p).every(v => typeof v === 'string')));
 
   /* EL OTRO LADO, que es el que no se toca: el análisis del rival. */
-  const ficha = await pedir(handlers.manejarEquipos, { token: T_BASICO, query: { equipo: 'A. MAYO' } });
+  const ficha = await pedir(handlers.manejarEquipos, { token: T_BRONCE, query: { equipo: 'A. MAYO' } });
   check('pero la ficha de un equipo ajeno sigue dando 403', ficha.status === 403, ficha.status);
   check('con su motivo', ficha.body.codigo === AUTH.MOTIVOS.OTRO_EQUIPO);
   check('y sin una sola fila de datos', !ficha.body.hojas && !ficha.body.padron);
@@ -1277,7 +1277,7 @@ titulo('ALERTAS EN EL SERVIDOR · se detecta al rival sin mandar su log');
   Object.keys(LIBRO_ALERTAS.hojas).forEach(h => { guardar[h] = LIBRO[h]; LIBRO[h] = LIBRO_ALERTAS.hojas[h]; });
 
   sheets.limpiarCache(); A.limpiarCache();
-  const resp = await pedir(handlers.manejarEquipos, { token: T_BASICO });
+  const resp = await pedir(handlers.manejarEquipos, { token: T_BRONCE });
   const cuerpo = JSON.stringify(resp.body);
 
   check('la respuesta trae la lista de alertas', Array.isArray(resp.body.alertas));
@@ -1671,9 +1671,9 @@ titulo('EL CICLO DE VIDA DEL CLIENTE · pausar, vencer y el plan del club');
   /* UN PLAN QUE NO SE RECONOCE NO CAE A PRO: un typo no puede regalar el
      módulo que se cobra aparte. Misma regla que el frontend. */
   check('un plan inventado se rechaza', !ap('cambiar_plan', { club: 'uno', plan: 'GRATIS' }).ok);
-  check('MASTER se acepta', ap('cambiar_plan', { club: 'uno', plan: 'MASTER' }).catalogo.uno.plan === 'MASTER');
+  check('ORO se acepta', ap('cambiar_plan', { club: 'uno', plan: 'ORO' }).catalogo.uno.plan === 'ORO');
   check('y se normaliza a mayúsculas',
-    ap('cambiar_plan', { club: 'uno', plan: 'pro' }).catalogo.uno.plan === 'PRO');
+    ap('cambiar_plan', { club: 'uno', plan: 'pro' }).catalogo.uno.plan === 'PLATA');
 
   /* NINGUNA DE ESTAS ACCIONES PUEDE PERDER UN LIBRO: el guard de siempre
      corre igual, porque `aplicar` es el único punto de entrada. */
@@ -1682,8 +1682,8 @@ titulo('EL CICLO DE VIDA DEL CLIENTE · pausar, vencer y el plan del club');
 
   /* ================= EL GUARD DEL SERVIDOR ================= */
 
-  const admin = { rol: 'ADMIN', sesion: { plan: 'PRO' } };
-  const cliente = { rol: 'CLIENTE', sesion: { plan: 'PRO' } };
+  const admin = { rol: 'ADMIN', sesion: { plan: 'PLATA' } };
+  const cliente = { rol: 'CLIENTE', sesion: { plan: 'PLATA' } };
 
   check('un club activo no se bloquea',
     H.guardSuscripcion({ estado: 'activo' }, cliente) === null);
@@ -1714,29 +1714,38 @@ titulo('EL CICLO DE VIDA DEL CLIENTE · pausar, vencer y el plan del club');
   /* ================= EL PLAN EFECTIVO ================= */
 
   /* EL CLUB ACOTA, NO AMPLÍA. Un token viejo emitido en PRO no puede darle
-     PRO a un club que hoy es Básico — ese era el agujero de tener el plan
+     PRO a un club que hoy es Bronce — ese era el agujero de tener el plan
      solo en el JWT: el downgrade no tenía efecto hasta que venciera. */
-  check('el club en Básico baja a un token PRO',
-    H.planEfectivo({ plan: 'BASICO' }, { plan: 'PRO' }) === 'BASICO');
-  check('el club en MASTER NO sube a un token Básico',
-    H.planEfectivo({ plan: 'MASTER' }, { plan: 'BASICO' }) === 'BASICO');
+  check('el club en Bronce baja a un token PRO',
+    H.planEfectivo({ plan: 'BRONCE' }, { plan: 'PLATA' }) === 'BRONCE');
+  check('el club en ORO NO sube a un token Bronce',
+    H.planEfectivo({ plan: 'ORO' }, { plan: 'BRONCE' }) === 'BRONCE');
   check('sin plan en el club manda el del token',
-    H.planEfectivo({}, { plan: 'PRO' }) === 'PRO');
-  check('un plan raro en el club no rompe ni regala',
-    H.planEfectivo({ plan: 'GRATIS' }, { plan: 'PRO' }) === 'PRO');
+    H.planEfectivo({}, { plan: 'PLATA' }) === 'PLATA');
+  /* UN PLAN RARO EN EL CLUB ACOTA A BRONCE, no se ignora. Antes se caía al
+     plan del token, y eso es la regla al revés: un valor que nadie
+     reconoce no puede terminar habilitando lo que el token diga. La
+     dirección conservadora es la misma que ya aplica el parser de
+     sesiones, y el motor de mutaciones rechaza los planes desconocidos al
+     escribir, así que uno malo solo entra editando KV a mano. */
+  check('un plan raro en el club acota a BRONCE, no se ignora',
+    H.planEfectivo({ plan: 'GRATIS' }, { plan: 'PLATA' }) === 'BRONCE');
+  check('y los nombres VIEJOS del catálogo se siguen entendiendo',
+    H.planEfectivo({ plan: 'PRO' }, { plan: 'ORO' }) === 'PLATA' &&
+    H.planEfectivo({ plan: 'MASTER' }, { plan: 'ORO' }) === 'ORO');
 
   /* ================= EL ESTADO COMERCIAL NO SE FILTRA ================= */
 
   /* `manejarCatalogo` NO tiene gate de rol: cualquier usuario con token
      recibe la lista de clubes. Mandarle plan y vencimiento a todos le
      contaría a cada cliente la situación de facturación de los demás. */
-  const conEstado = { uno: Object.assign({}, BASE.uno, { estado: 'pausado', plan: 'PRO', vence: '2027-01-01' }) };
+  const conEstado = { uno: Object.assign({}, BASE.uno, { estado: 'pausado', plan: 'PLATA', vence: '2027-01-01' }) };
   const paraCliente = CV.publico(conEstado)[0];
   const paraAdmin = CV.publico(conEstado, { admin: true })[0];
   check('un cliente NO ve el estado comercial de nadie',
     paraCliente.estado === undefined && paraCliente.plan === undefined
     && paraCliente.vence === undefined, JSON.stringify(paraCliente));
-  check('el admin sí', paraAdmin.estado === 'pausado' && paraAdmin.plan === 'PRO');
+  check('el admin sí', paraAdmin.estado === 'pausado' && paraAdmin.plan === 'PLATA');
 
   /* Y LA RESPUESTA DEL GUARDADO TAMBIÉN LO TRAE. El hub repinta la lista
      con lo que devolvió el servidor, así que sin la bandera de admin los

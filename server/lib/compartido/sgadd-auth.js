@@ -62,12 +62,33 @@ const SGADD_AUTH = (function () {
      el admin pueda etiquetar la relacion comercial desde el Panel Master,
      y queda anotado que sigue siendo una etiqueta hasta que se decida que
      incluye. Inventarle un modulo seria peor que dejarlo explicito. */
-  const PLANES = { BASICO: 'BASICO', PRO: 'PRO', MASTER: 'MASTER' };
+  const PLANES = { BRONCE: 'BRONCE', PLATA: 'PLATA', ORO: 'ORO' };
 
   /* El orden importa para comparar planes: el del CLUB acota al del token
      (ver `planEfectivo` del servidor), y para eso hay que saber cual es
      menor. */
-  const ORDEN_PLAN = { BASICO: 0, PRO: 1, MASTER: 2 };
+  const ORDEN_PLAN = { BRONCE: 0, PLATA: 1, ORO: 2 };
+
+  /* LOS NOMBRES VIEJOS SIGUEN ENTRANDO, Y NO ES POR NOSTALGIA.
+
+     Los tokens ya emitidos llevan `plan: "PRO"` o `"BASICO"` FIRMADO, y un
+     JWT no se puede editar: sigue diciendo eso hasta que venza —el master
+     del admin vence en 2027—. Sin estos alias cada uno de esos tokens
+     caeria al plan mas bajo por "plan desconocido", que es la regla
+     correcta para un typo y la PEOR posible para un rename: todos los
+     clientes bajados de plan a la vez, en silencio y sin que nadie toque
+     nada. Lo mismo con el catalogo en KV, donde hoy hay clubes en `PRO`.
+
+     No se sacan hasta que no quede un token viejo vivo. */
+  const ALIAS_PLAN = { BASICO: 'BRONCE', PRO: 'PLATA', MASTER: 'ORO' };
+
+  /** Un plan que no se reconoce cae al MAS BAJO y nunca al mas alto: ante
+   *  la duda, un typo no puede regalar el modulo que se cobra aparte. */
+  function normalizarPlan(p) {
+    const v = String(p == null ? '' : p).trim().toUpperCase();
+    const canonico = ALIAS_PLAN[v] || v;
+    return ORDEN_PLAN[canonico] !== undefined ? canonico : PLANES.BRONCE;
+  }
   const ROLES = { ADMIN: 'ADMIN', CLIENTE: 'CLIENTE', ABIERTO: 'ABIERTO' };
 
   /* Qué pide cada sección. `null` = no pide nada.
@@ -81,7 +102,7 @@ const SGADD_AUTH = (function () {
     clasificacion: null,
     equipos: null,          // completa, pero el picker se filtra
     jugadores: null,        // ídem
-    scouting: { plan: PLANES.PRO },
+    scouting: { plan: PLANES.PLATA },
     simulador: { soloAdmin: true },
     configuracion: { soloAdmin: true },
     diagnostico: { soloAdmin: true },
@@ -151,7 +172,7 @@ const SGADD_AUTH = (function () {
       /* Un plan que no se reconoce cae a BÁSICO y no a PRO: ante la duda,
          el menos permisivo. Un typo en el JSON no puede regalar el módulo
          que se cobra aparte. */
-      plan: (plan === PLANES.PRO || plan === PLANES.MASTER) ? plan : PLANES.BASICO,
+      plan: normalizarPlan(plan),
       nombre: crudo.nombre ? String(crudo.nombre).trim() : '',
     };
   }
@@ -208,9 +229,10 @@ const SGADD_AUTH = (function () {
   /** ¿Tiene el módulo que pide esta sección? */
   /** El plan como se escribe en pantalla. */
   function nombrePlan(p) {
-    if (p === PLANES.MASTER) return 'Master';
-    if (p === PLANES.PRO) return 'Pro';
-    return 'Básico';
+    const c = normalizarPlan(p);
+    if (c === PLANES.ORO) return 'Oro';
+    if (c === PLANES.PLATA) return 'Plata';
+    return 'Bronce';
   }
 
   function tieneModulo(modulo, s) {
@@ -233,8 +255,8 @@ const SGADD_AUTH = (function () {
          PRO: un plan superior perdiendo un modulo del inferior es la
          clase de bug que nadie reporta porque parece un permiso mal
          puesto. Un plan desconocido no tiene orden y no alcanza nada. */
-      const tengo = ORDEN_PLAN[ses.plan];
-      const pide = ORDEN_PLAN[regla.plan];
+      const tengo = ORDEN_PLAN[normalizarPlan(ses.plan)];
+      const pide = ORDEN_PLAN[normalizarPlan(regla.plan)];
       return tengo !== undefined && pide !== undefined && tengo >= pide;
     }
     return true;
@@ -340,7 +362,7 @@ const SGADD_AUTH = (function () {
      Sin backend no hay login, así que la sesión se CONFIGURA. Dos vías,
      y la URL gana:
 
-       ?usuario=<mail>&equipo=<EQUIPO>&plan=BASICO|PRO
+       ?usuario=<mail>&equipo=<EQUIPO>&plan=BRONCE|PLATA|ORO
        localStorage['sgadd.sesion']
 
      La URL manda para que un link armado a mano abra la vista de ese
@@ -552,7 +574,7 @@ const SGADD_AUTH = (function () {
   }
 
   return {
-    ADMINS, PLANES, ORDEN_PLAN, nombrePlan, ROLES, MODULOS, MOTIVOS, CLAVE_SESION,
+    ADMINS, PLANES, ORDEN_PLAN, ALIAS_PLAN, normalizarPlan, nombrePlan, ROLES, MODULOS, MOTIVOS, CLAVE_SESION,
     normalizarEmail, parsearSesion, establecerSesion, limpiarSesion, sesion,
     esAdmin, rol, sinRestricciones,
     puedeVerEquipo, tieneModulo, puedoAcceder, puedeScoutearCruce,

@@ -16,7 +16,7 @@ aplicadas en el punto 14.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 288 tests · núcleo, índice, validador
+node test-core.js          # 291 tests · núcleo, índice, validador
 node test-logos.js         #  26 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
@@ -31,9 +31,9 @@ node test-partido.js       #  54 tests · detalle partido a partido, perfil de t
 node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
-node test-permisos.js      # 211 tests · roles, planes, el gate, el selector, el hub y el ciclo de vida
+node test-permisos.js      # 228 tests · roles, planes, el gate, el selector, el hub y el ciclo de vida
 
-node test-backend.js       # 397 tests · el proxy, el benchmark, las alertas, el catálogo en KV
+node test-backend.js       # 399 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
 
 # OJO: `test-backend.js` ESTÁ EN MAIN desde que se integró el backend.
@@ -43,7 +43,7 @@ node test-backend.js       # 397 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**2742 tests en total. Todos tienen que dar verde antes de commitear.**
+**2764 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -145,7 +145,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=150`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=151`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 

@@ -26,7 +26,7 @@ const BLOQUES = {
   clasificacion: { plan: null },
   rankings: { plan: null },
   /* El informe pre-partido es lo que separa Básico de Pro. */
-  scouting: { plan: AUTH.PLANES.PRO },
+  scouting: { plan: AUTH.PLANES.PLATA },
 };
 
 /**

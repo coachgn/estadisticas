@@ -45,12 +45,15 @@ const SHEET = /^[A-Za-z0-9_-]{20,}$/;
    ===================================================================== */
 const ESTADOS = ['activo', 'pausado', 'inactivo'];
 
-/* MASTER es un plan declarado que HOY NO DESBLOQUEA NADA que PRO no tenga:
-   ningun modulo lo distingue. Se acepta para que el admin pueda etiquetar
-   la relacion comercial, y queda anotado que sigue siendo una etiqueta
-   hasta que se decida que incluye. Inventarle un modulo seria peor que
-   dejarlo explicito. */
-const PLANES = ['BASICO', 'PRO', 'MASTER'];
+/* Los tres planes, en orden. ORO hereda todo PLATA e incluye ademas el
+   analisis de scouters de MotorStats — que no es un modulo del panel sino
+   una entrega cada cuatro partidos, por eso no aparece en `MODULOS`.
+
+   LOS NOMBRES VIEJOS SE ACEPTAN AL ESCRIBIR: el catalogo en KV tiene hoy
+   clubes en `"PRO"`, y rechazarlos obligaria a migrarlos a mano antes de
+   poder tocar cualquier otra cosa del club. Se normalizan al canonico. */
+const PLANES = ['BRONCE', 'PLATA', 'ORO'];
+const ALIAS_PLAN = { BASICO: 'BRONCE', PRO: 'PLATA', MASTER: 'ORO' };
 
 /** `AAAA-MM-DD`. Se guarda como texto y no como timestamp: es una fecha de
  *  calendario —"vence el 30"— y un timestamp la ata a una zona horaria. */
@@ -164,6 +167,68 @@ function baja(cat, d) {
   return { ok: true, catalogo: nuevo };
 }
 
+/* EL CICLO DE INFORMES DEL PLAN ORO.
+
+   Lo que ORO agrega no es una pantalla del panel: es una ENTREGA que hace
+   MotorStats cada cuatro partidos. Por eso no vive en `MODULOS` —no hay
+   nada que desbloquear— sino acá, como un contador que dice a que altura
+   del ciclo esta cada cliente.
+
+   SE GUARDA EL PARTIDO EN QUE ARRANCO EL CICLO, no el numero 1..4. Con el
+   numero suelto habria que acordarse de resetearlo a mano cada cuatro, y
+   el dia que no se hace el contador queda mintiendo para siempre. Con el
+   punto de partida, la posicion se DERIVA de los partidos jugados y no
+   hace falta tocar nada entre informe e informe.
+*/
+const PARTIDOS_POR_CICLO = 4;
+
+/**
+ * En que punto del ciclo esta un club, dados los partidos que lleva.
+ *
+ * `pj` sale del libro —no se declara— asi que el contador avanza solo a
+ * medida que el club juega.
+ */
+function ciclo(club, pj) {
+  const c = club || {};
+  const jugados = Number(pj);
+  if (!isFinite(jugados) || jugados < 0) return null;
+  const desde = Number(c.cicloDesde);
+  const base = (isFinite(desde) && desde >= 0) ? desde : 0;
+  const enCiclo = Math.max(0, jugados - base);
+  const posicion = enCiclo % PARTIDOS_POR_CICLO;
+  return {
+    de: PARTIDOS_POR_CICLO,
+    /* `4/4` y no `0/4` cuando se completo: el informe se debe DESPUES del
+       cuarto partido, y un cartel en 0 se lee como "recien arranca". */
+    en: (posicion === 0 && enCiclo > 0) ? PARTIDOS_POR_CICLO : posicion,
+    completos: Math.floor(enCiclo / PARTIDOS_POR_CICLO),
+    /* Cuantos faltan para el proximo informe. 0 = toca ahora. */
+    faltan: (posicion === 0 && enCiclo > 0) ? 0 : (PARTIDOS_POR_CICLO - posicion),
+    entregados: Number(c.informesEntregados) || 0,
+    /* TOCA cuando el ciclo se completo y ese informe todavia no se marco
+       como entregado. Es la pregunta que el admin le hace a la pantalla:
+       a quien le tengo que mandar el informe esta semana. */
+    toca: Math.floor(enCiclo / PARTIDOS_POR_CICLO) > (Number(c.informesEntregados) || 0),
+  };
+}
+
+/**
+ * Marca un informe como entregado.
+ *
+ * NO MUEVE `cicloDesde`: el ciclo lo marcan los partidos jugados, no la
+ * fecha en que se mando el informe. Si se corriera el arranque, un informe
+ * entregado tarde desplazaria todos los siguientes y el cliente terminaria
+ * recibiendo menos de los que pago.
+ */
+function informe(cat, d) {
+  const v = d || {};
+  const nuevo = copiar(cat);
+  if (!nuevo[v.club]) return malo('Ese club no esta en el catalogo.');
+  const hoy = Number(nuevo[v.club].informesEntregados) || 0;
+  nuevo[v.club].informesEntregados = Math.max(0, hoy + (v.deshacer ? -1 : 1));
+  return { ok: true, catalogo: nuevo };
+}
+
 /** Cambia el estado del club. `pausar` y `reactivar` son la misma cosa. */
 function estado(cat, d) {
   const v = d || {};
@@ -188,7 +253,8 @@ function plan(cat, d) {
   const v = d || {};
   const nuevo = copiar(cat);
   if (!nuevo[v.club]) return malo('Ese club no esta en el catalogo.');
-  const p = String(v.plan || '').toUpperCase();
+  const crudo = String(v.plan || '').trim().toUpperCase();
+  const p = ALIAS_PLAN[crudo] || crudo;
   if (PLANES.indexOf(p) === -1) {
     /* Un plan que no se reconoce NO cae a PRO. Es la misma regla que el
        frontend: un typo no puede regalar el modulo que se cobra aparte. */
@@ -270,6 +336,7 @@ function aplicar(vigente, accion, datos, validar) {
     reactivar: (c, d) => estado(c, Object.assign({}, d, { estado: 'activo' })),
     desactivar: (c, d) => estado(c, Object.assign({}, d, { estado: 'inactivo' })),
     cambiar_plan: plan,
+    informe_entregado: informe,
     renovar: renovar,
   };
   const fn = acciones[accion];
@@ -304,5 +371,6 @@ function aplicar(vigente, accion, datos, validar) {
   return r;
 }
 
-module.exports = { alta, baja, estado, plan, renovar, aplicar, librosPerdidos,
+module.exports = { alta, baja, estado, plan, renovar, informe, ciclo, aplicar,
+  librosPerdidos, ALIAS_PLAN, PARTIDOS_POR_CICLO,
   vencido, estadoEfectivo, ESTADOS, PLANES, ID, SHEET, FECHA };

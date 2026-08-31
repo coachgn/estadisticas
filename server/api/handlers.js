@@ -97,12 +97,18 @@ function guardSuscripcion(club, ctx) {
  * nada, porque el token es lo que el usuario aceptó. Para subir de plan se
  * emite un link nuevo, que es un gesto barato y deja rastro.
  */
-const ORDEN_PLAN = { BASICO: 0, PRO: 1, MASTER: 2 };
+/* El orden sale de `AUTH`, que es el mismo motor que usa el frontend: dos
+   tablas de orden terminan discrepando y la que se relaja es siempre la
+   del servidor, que es la que decide de verdad. */
+const ORDEN_PLAN = AUTH.ORDEN_PLAN;
 
 function planEfectivo(club, sesion) {
-  const delClub = (club && club.plan) ? String(club.plan).toUpperCase() : null;
-  const delToken = (sesion && sesion.plan) ? String(sesion.plan).toUpperCase() : 'BASICO';
-  if (!delClub || ORDEN_PLAN[delClub] === undefined) return delToken;
+  /* Los dos se normalizan: el token puede traer un nombre viejo (`PRO`) y
+     el catalogo tambien, asi que compararlos crudos daria `undefined` en
+     la tabla de orden y el club dejaria de acotar sin ningun sintoma. */
+  const delToken = AUTH.normalizarPlan(sesion && sesion.plan);
+  if (!club || !club.plan) return delToken;
+  const delClub = AUTH.normalizarPlan(club.plan);
   return (ORDEN_PLAN[delClub] < ORDEN_PLAN[delToken]) ? delClub : delToken;
 }
 
@@ -216,8 +222,17 @@ async function manejarEquipos(peticion, deps) {
       liga: cat.liga,
       alcance: {
         rol: ctx.rol,
-        plan: ctx.sesion.plan,
+        /* EL PLAN EFECTIVO, no el del token: es el que se hace valer, así
+           que es el que el panel tiene que mostrar. Con el del token, un
+           club bajado a Bronce seguiría luciendo el distintivo del plan
+           que ya no tiene hasta que el link venciera. */
+        plan: planEfectivo(cat.suscripcion || {}, ctx.sesion),
         equipoAsignado: ctx.sesion.equipoAsignado,
+        /* El ciclo de informes del plan ORO, para el distintivo del
+           encabezado. Van los contadores crudos: la posición depende de
+           los partidos jugados, que los sabe el panel y no el catálogo. */
+        cicloDesde: (cat.suscripcion || {}).cicloDesde || 0,
+        informesEntregados: (cat.suscripcion || {}).informesEntregados || 0,
         /* Se declara QUÉ se recortó. Un panel que recibe menos filas sin
            saberlo calcularía percentiles sobre una liga fantasma; y el DT
            tiene derecho a saber que está viendo un recorte. */

@@ -50,7 +50,7 @@ Opciones:
   --email    <mail>     obligatorio
   --club     <slug>     ${Object.keys(CAT).join(' | ')}
   --equipo   <EQUIPO>   el equipo asignado, como lo escribe la planilla
-  --plan     BASICO|PRO  por defecto BASICO
+  --plan     BRONCE|PLATA|ORO  por defecto BASICO
   --expira   <7d|30d|12h> por defecto 7d
   --base     <url>      por defecto https://coachgn.github.io/estadisticas/
 

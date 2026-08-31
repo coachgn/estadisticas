@@ -101,7 +101,30 @@ const SGADD_HUB = (function () {
   function idValido(v) { return /^[a-z0-9][a-z0-9-]*$/.test(String(v || '')); }
 
   const ESTADOS = ['activo', 'pausado', 'inactivo'];
-  const PLANES = ['BASICO', 'PRO', 'MASTER'];
+  const PLANES = ['BRONCE', 'PLATA', 'ORO'];
+
+  /* Los nombres viejos siguen viniendo del catálogo —hay clubes guardados
+     en `"PRO"`— así que el desplegable tiene que poder marcar cuál está
+     elegido. Sin esto, un club en PRO mostraría BRONCE seleccionado y el
+     admin lo leería como un downgrade que nadie hizo. */
+  const ALIAS_PLAN = { BASICO: 'BRONCE', PRO: 'PLATA', MASTER: 'ORO' };
+  function planCanonico(p) {
+    const v = String(p == null ? '' : p).trim().toUpperCase();
+    const c = ALIAS_PLAN[v] || v;
+    return PLANES.indexOf(c) !== -1 ? c : 'BRONCE';
+  }
+
+  /* QUÉ INCLUYE CADA PLAN, en la pantalla donde se elige. Sin esto el
+     desplegable son tres palabras y el admin tiene que acordarse de qué
+     vendió. ORO es el que más lo necesita: lo que agrega no es una
+     pantalla del panel sino un servicio que se entrega aparte. */
+  const QUE_INCLUYE = {
+    BRONCE: 'Equipos, jugadores, clasificación y rankings de la liga.',
+    PLATA: 'Todo Bronce + informe de scouting pre-partido.',
+    ORO: 'Todo Plata + análisis de scouters de MotorStats.ar en ciclos cada '
+      + '4 partidos del equipo y jugadores: puntos de fuga, factores de mejora '
+      + 'y plan de ajuste para el siguiente ciclo.',
+  };
 
   /**
    * El estado EFECTIVO, calculado igual que en el servidor.
@@ -130,6 +153,55 @@ const SGADD_HUB = (function () {
     const fin = Date.parse(vence + 'T23:59:59.999Z');
     if (!isFinite(fin)) return null;
     return Math.ceil((fin - (ahora === undefined ? Date.now() : ahora)) / 86400000);
+  }
+
+  const PARTIDOS_POR_CICLO = 4;
+
+  /**
+   * En qué punto del ciclo de informes está un club. Réplica de la del
+   * servidor, y por el mismo motivo que `estadoEfectivo`: acá es SOLO para
+   * pintar. Hay un test que compara las dos.
+   *
+   * SE DERIVA DE LOS PARTIDOS JUGADOS y del partido en que arrancó el
+   * ciclo, no de un contador 1..4 guardado. Con el contador suelto habría
+   * que resetearlo a mano cada cuatro, y el día que no se hace queda
+   * mintiendo para siempre.
+   */
+  function ciclo(c, pj) {
+    const jugados = Number(pj);
+    if (!isFinite(jugados) || jugados < 0) return null;
+    const desde = Number(c && c.cicloDesde);
+    const base = (isFinite(desde) && desde >= 0) ? desde : 0;
+    const enCiclo = Math.max(0, jugados - base);
+    const posicion = enCiclo % PARTIDOS_POR_CICLO;
+    const completos = Math.floor(enCiclo / PARTIDOS_POR_CICLO);
+    const entregados = Number(c && c.informesEntregados) || 0;
+    return {
+      de: PARTIDOS_POR_CICLO,
+      en: (posicion === 0 && enCiclo > 0) ? PARTIDOS_POR_CICLO : posicion,
+      completos: completos,
+      faltan: (posicion === 0 && enCiclo > 0) ? 0 : (PARTIDOS_POR_CICLO - posicion),
+      entregados: entregados,
+      toca: completos > entregados,
+    };
+  }
+
+  /**
+   * Los partidos jugados por el equipo propio de un club.
+   *
+   * SOLO SE SABEN DEL CLUB ABIERTO: los partidos salen del índice, y el
+   * panel tiene UN índice por vez. Para los demás devuelve `null` y la
+   * pantalla lo dice —"abrí el cliente para ver el ciclo"— en vez de
+   * mostrar un 0/4 que se leería como "recién arranca".
+   */
+  function pjDelClub(c) {
+    if (typeof CLUB === 'undefined' || !CLUB.estado || CLUB.estado.id !== c.id) return null;
+    const idx = (typeof SGADD_APP !== 'undefined') ? SGADD_APP.estado.idx : null;
+    if (!idx || !c.equipoPropio) return null;
+    try {
+      const e = idx.get(SGADD.claveEquipo(c.equipoPropio));
+      return e ? (e.record ? e.record.pj : null) : null;
+    } catch (err) { return null; }
   }
 
   const TONO_ESTADO = {
@@ -213,6 +285,40 @@ const SGADD_HUB = (function () {
    * cliente por error es de las pocas cosas de esta pantalla que se notan
    * del otro lado en el acto.
    */
+  /**
+   * El seguimiento del servicio ORO.
+   *
+   * Solo se pinta para los clubes en ORO: para los demás no hay ciclo que
+   * seguir y sería una fila muerta permanente en cada tarjeta.
+   */
+  function bloqueOro(c) {
+    if (planCanonico(c.plan) !== 'ORO') return '';
+    const pj = pjDelClub(c);
+    const ci = ciclo(c, pj);
+    const yendo = pendiente.club === c.id;
+
+    return `<div class="mt-2 rounded-md border border-hairline/60 p-2">
+      <div class="flex items-center gap-2 flex-wrap text-[11px]">
+        <span class="font-display uppercase tracking-wider zona-texto zona-aviso">◆ Oro</span>
+        ${ci
+          ? `<span class="text-ink font-mono">ciclo ${ci.en}/${ci.de}</span>
+             ${ci.toca
+               ? '<span class="zona-texto zona-peligro">toca informe</span>'
+               : `<span class="text-muted">faltan ${ci.faltan} partido${ci.faltan === 1 ? '' : 's'}</span>`}
+             <span class="text-muted">· ${ci.entregados} entregado${ci.entregados === 1 ? '' : 's'}</span>`
+          /* Sin índice de ese club no se puede saber en qué partido va, y
+             un 0/4 inventado se leería como "recién arranca". */
+          : `<span class="text-muted">${c.informesEntregados || 0} informe${(c.informesEntregados || 0) === 1 ? '' : 's'} entregado${(c.informesEntregados || 0) === 1 ? '' : 's'} · abrí el cliente para ver el ciclo</span>`}
+        <button onclick="SGADD_HUB.accionClub('${esc(c.id)}','informe_entregado')"
+          ${yendo ? 'disabled' : ''}
+          class="ml-auto text-[10px] font-display uppercase tracking-wider px-2 py-0.5 rounded
+                 border border-hairline hover:border-accent hover:text-accent disabled:opacity-40">
+          Marcar entregado</button>
+      </div>
+      <p class="text-[10px] text-muted mt-1">${esc(QUE_INCLUYE.ORO)}</p>
+    </div>`;
+  }
+
   function bloqueSuscripcion(c) {
     /* Solo se pinta si el servidor mandó el estado comercial, o sea si
        quien mira es admin. Para un cliente ese campo no viaja. */
@@ -236,7 +342,7 @@ const SGADD_HUB = (function () {
         <span class="text-muted">plan</span>
         <select onchange="SGADD_HUB.accionClub('${esc(c.id)}','cambiar_plan',this.value)"
           ${yendo ? 'disabled' : ''} class="sel-cliente" style="max-width:8rem">
-          ${PLANES.map(p => `<option value="${p}"${(c.plan || 'BASICO') === p ? ' selected' : ''}>${p}</option>`).join('')}
+          ${PLANES.map(p => `<option value="${p}"${(planCanonico(c.plan) === p) ? ' selected' : ''}>${p}</option>`).join('')}
         </select>
         <span class="text-muted">·</span>
         <span class="text-muted">vence</span>
@@ -251,6 +357,10 @@ const SGADD_HUB = (function () {
           : dias <= 30 ? `<span class="zona-texto zona-aviso">faltan ${dias} d</span>`
           : `<span class="text-muted">en ${dias} d</span>`}
       </div>
+      <p class="text-[10px] text-muted mt-1">${esc(QUE_INCLUYE[planCanonico(c.plan)] || '')}</p>
+
+      ${bloqueOro(c)}
+
       <div class="flex items-center gap-2 flex-wrap mt-2">
         ${(c.estado || 'activo') === 'activo' ? btn('pausar', 'Pausar') : btn('reactivar', 'Reactivar')}
         ${(c.estado || 'activo') !== 'inactivo' ? btn('desactivar', 'Dar de baja') : ''}
@@ -483,7 +593,8 @@ const SGADD_HUB = (function () {
     /* motor */
     comandoAlta, faltantesAlta, idValido,
     /* ui */
-    estadoEfectivo, diasPara, ESTADOS, PLANES,
+    estadoEfectivo, diasPara, planCanonico, ciclo, ESTADOS, PLANES,
+    QUE_INCLUYE, PARTIDOS_POR_CICLO,
     html, bloqueAlta, campoAlta, guardar, accionClub, alta, guardado, pendiente,
   };
 })();

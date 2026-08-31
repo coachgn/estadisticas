@@ -1162,10 +1162,11 @@ check('el centinela no colisiona con un torneo real',
 
   const hojasT = {
     'Base Datos E': { cols: Object.keys(bde[0]), filas: bde },
-    'PROMEDIOS E': { cols: ['EQUIPO', 'FASE', 'TORNEO', 'PJ', 'PTS', 'eFG%'], filas: [
+    'PROMEDIOS E': { cols: ['EQUIPO', 'FASE', 'TORNEO', 'PJ', 'PTS', 'eFG%', 'PTSopp'], filas: [
       { EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'IDA', PJ: 2, PTS: 85,
-        'eFG%': (sA.TCC + 0.5 * sA.T3C) / sA.TCI },
-      { EQUIPO: 'B', FASE: 'REGULAR', TORNEO: 'IDA', PJ: 2, PTS: 72.5, 'eFG%': 0.5 }] },
+        'eFG%': (sA.TCC + 0.5 * sA.T3C) / sA.TCI, PTSopp: sB.PTS / 2 },
+      { EQUIPO: 'B', FASE: 'REGULAR', TORNEO: 'IDA', PJ: 2, PTS: 72.5, 'eFG%': 0.5,
+        PTSopp: sA.PTS / 2 }] },
   };
 
   const iHoja = SGADD.construirIndice(hojasT, { fase: 'REGULAR', torneo: 'IDA' });
@@ -1213,6 +1214,30 @@ check('el centinela no colisiona con un torneo real',
 
   /* La fila TIPO se RECALCULA: la del libro es la de un torneo suelto y
      no sirve para el conjunto. */
+  /* LAS COLUMNAS `*opp*` TIENEN QUE ESTAR. El bucle que arma los promedios
+     recorre los totales PROPIOS, así que sin traerlas del otro lado del
+     partido el TOTAL se quedaba sin `PTSopp`, `RDopp`, `ROopp`, `PPopp` ni
+     `PLAYSopp` — cinco columnas que la hoja SÍ trae y que el panel muestra.
+     Medido en producción: la tarjeta "Puntos recibidos" del tab Defensiva
+     salía vacía en el TOTAL y con su número en IDA.
+
+     No se veía hasta que el TOTAL pasó a abrir el libro. */
+  check('el TOTAL trae las columnas del rival',
+    typeof eT.promedios['PTSopp'] === 'number', Object.keys(eT.promedios).filter(k => /opp/i.test(k)).join(','));
+  check('y reproducen las de la hoja',
+    Math.abs(eT.promedios['PTSopp'] - eH.promedios['PTSopp']) < 1e-9,
+    eT.promedios['PTSopp'] + ' vs ' + eH.promedios['PTSopp']);
+
+  /* LAS MISMAS QUE UN TORNEO REAL, ni una más: una métrica que existe en
+     el TOTAL y no en IDA es una divergencia que se descubre tarde. La
+     lista sale del ESQUEMA justamente para que no se puedan separar. */
+  const oppT = Object.keys(eT.promedios).filter(k => /opp$/i.test(k)).sort();
+  const oppEsquema = SGADD.ESQUEMA['PROMEDIOS E'].req
+    .concat(SGADD.ESQUEMA['PROMEDIOS E'].opt || [])
+    .filter(c => /opp$/i.test(c)).sort();
+  check('el TOTAL emite EXACTAMENTE las que declara el esquema',
+    oppT.join(',') === oppEsquema.join(','), oppT + ' vs ' + oppEsquema);
+
   check('el TIPO de liga se recalcula sobre los valores derivados',
     typeof iTot.liga.tipo['PTS'] === 'number');
 })();

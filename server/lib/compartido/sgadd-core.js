@@ -709,6 +709,15 @@
 
   const P4F = 'PROMEDIOS 4F', PE = 'PROMEDIOS E', CALC = 'CALCULADO';
 
+  /* Las columnas que describen al RIVAL, derivadas del propio ESQUEMA en
+     vez de escritas a mano: son las que el contrato declara para
+     `PROMEDIOS E`, así que el TOTAL reconstruido reproduce exactamente las
+     de un torneo real. Con una lista aparte, el día que el motor sume una
+     `*opp*` habría que acordarse de tocar dos lugares. */
+  const COLS_OPP = ESQUEMA['PROMEDIOS E'].req
+    .concat(ESQUEMA['PROMEDIOS E'].opt || [])
+    .filter(c => /opp$/i.test(c));
+
   const METRICAS_LISTA = [
     /* --- Índices de eficiencia (solo viven en 4F) --- */
     M('RTNG OFF', 'Rating ofensivo', P4F, 'num1', false, 'eficiencia',
@@ -1730,6 +1739,31 @@
         const prom = { PJ: pj, EQUIPO: e.nombre, FASE: fase };
         Object.keys(yo).forEach(c => {
           if (typeof yo[c] === 'number') prom[c] = yo[c] / pj;
+        });
+
+        /* LAS COLUMNAS `*opp*` SALEN DEL OTRO LADO DEL PARTIDO.
+
+           El bucle de arriba recorre `yo`, que son los totales del propio
+           equipo, así que sin esto el TOTAL se quedaba sin `PTSopp`,
+           `RDopp`, `ROopp`, `PPopp` ni `PLAYSopp` — cinco columnas que la
+           hoja SÍ trae y que el panel muestra. Medido: la tarjeta "Puntos
+           recibidos" del tab Defensiva salía vacía en el TOTAL y con su
+           número en IDA.
+
+           No se veía hasta que el TOTAL pasó a abrir el libro: antes había
+           que elegirlo a mano.
+
+           LA LISTA SALE DEL ESQUEMA y no de una constante nueva: son las
+           que el contrato declara para `PROMEDIOS E`, así que el TOTAL
+           reproduce exactamente las columnas de un torneo real. Con una
+           lista propia, el día que el motor sume una `*opp*` habría que
+           acordarse de tocar dos lados — y el que se olvida es siempre
+           este, que no tiene una planilla que lo delate. */
+        Object.keys(riv).forEach(c => {
+          if (typeof riv[c] !== 'number') return;
+          const k = c + 'opp';
+          if (COLS_OPP.indexOf(k) === -1) return;
+          prom[k] = riv[c] / pj;
         });
 
         /* TASAS: se recalculan sobre totales. Pisan a la división por PJ

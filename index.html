@@ -168,6 +168,24 @@
      El ancho maximo lo acota a proposito: los nombres de club son largos
      y sin tope el desplegable empuja al buzon fuera del header en
      pantallas medianas. */
+  /* El distintivo del plan ORO. Va a mano por lo mismo que `.sel-cliente`:
+     lo inyecta un nodo dinamico y el scan de Tailwind es ESTATICO. */
+  .distintivo-oro {
+    display: inline-flex; align-items: center; gap: .3rem;
+    font-family: inherit; font-size: 10px;
+    text-transform: uppercase; letter-spacing: .08em;
+    padding: .3rem .55rem; border-radius: .4rem;
+    color: #fbbf24; border: 1px solid rgba(251,191,36,.35);
+    background: rgba(251,191,36,.08);
+    white-space: nowrap;
+  }
+  /* En pantalla chica queda el rombo solo: el texto entero empuja al buzon
+     fuera del header. */
+  @media screen and (max-width: 900px) {
+    .distintivo-oro { font-size: 0; gap: 0; padding: .3rem .4rem; }
+    .distintivo-oro::first-letter { font-size: 12px; }
+  }
+
   .sel-cliente {
     background: #1b1b1b;
     color: var(--acento-texto, #f5f4f2);
@@ -1651,7 +1669,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=150" />
+<link rel="stylesheet" href="sgadd.css?v=151" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -1780,7 +1798,13 @@
                  amplio de la pantalla —de que club son todos los demas
                  datos— asi que se lee antes que el estado y las alertas,
                  que hablan de ESE club. Solo se dibuja para el admin. -->
-            <div id="clientesSlot" class="shrink-0"></div>
+              <!-- El distintivo del plan ORO. Va en el header y no en el pie
+                 del menu porque el punto es que el cuerpo tecnico lo vea
+                 CADA VEZ que entra: lo que ORO agrega no es una pantalla
+                 sino un servicio que se entrega aparte, y un servicio que
+                 no se ve no se percibe como contratado. -->
+            <div id="planSlot" class="shrink-0"></div>
+          <div id="clientesSlot" class="shrink-0"></div>
             <div id="status-banner-holder" class="shrink-0"></div>
             <div id="buzonSlot" class="shrink-0"></div>
           </div>
@@ -1802,33 +1826,33 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=150"></script>
+<script src="js/sgadd-club.js?v=151"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=150"></script>
-<script src="js/sgadd-core.js?v=150"></script>
-<script src="js/sgadd-auth.js?v=150"></script>
-<script src="js/sgadd-data.js?v=150"></script>
-<script src="js/sgadd-clientes.js?v=150"></script>
-<script src="js/sgadd-ui.js?v=150"></script>
-<script src="js/sgadd-app.js?v=150"></script>
-<script src="js/sgadd-clasificacion.js?v=150"></script>
+<script src="js/sgadd-config.js?v=151"></script>
+<script src="js/sgadd-core.js?v=151"></script>
+<script src="js/sgadd-auth.js?v=151"></script>
+<script src="js/sgadd-data.js?v=151"></script>
+<script src="js/sgadd-clientes.js?v=151"></script>
+<script src="js/sgadd-ui.js?v=151"></script>
+<script src="js/sgadd-app.js?v=151"></script>
+<script src="js/sgadd-clasificacion.js?v=151"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=150"></script>
-<script src="js/sgadd-configui.js?v=150"></script>
-<script src="js/sgadd-estados.js?v=150"></script>
-<script src="js/sgadd-buzon.js?v=150"></script>
-<script src="js/sgadd-charts.js?v=150"></script>
-<script src="js/sgadd-personalidad.js?v=150"></script>
-<script src="js/sgadd-rankings.js?v=150"></script>
-<script src="js/sgadd-partido.js?v=150"></script>
-<script src="js/sgadd-informe.js?v=150"></script>
-<script src="js/sgadd-ficha.js?v=150"></script>
-<script src="js/sgadd-equipos.js?v=150"></script>
-<script src="js/sgadd-jugadores.js?v=150"></script>
-<script src="js/sgadd-4factores.js?v=150"></script>
-<script src="js/sgadd-scouting.js?v=150"></script>
-<script src="js/sgadd-diagnostico.js?v=150"></script>
+<script src="js/sgadd-hub.js?v=151"></script>
+<script src="js/sgadd-configui.js?v=151"></script>
+<script src="js/sgadd-estados.js?v=151"></script>
+<script src="js/sgadd-buzon.js?v=151"></script>
+<script src="js/sgadd-charts.js?v=151"></script>
+<script src="js/sgadd-personalidad.js?v=151"></script>
+<script src="js/sgadd-rankings.js?v=151"></script>
+<script src="js/sgadd-partido.js?v=151"></script>
+<script src="js/sgadd-informe.js?v=151"></script>
+<script src="js/sgadd-ficha.js?v=151"></script>
+<script src="js/sgadd-equipos.js?v=151"></script>
+<script src="js/sgadd-jugadores.js?v=151"></script>
+<script src="js/sgadd-4factores.js?v=151"></script>
+<script src="js/sgadd-scouting.js?v=151"></script>
+<script src="js/sgadd-diagnostico.js?v=151"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -3655,6 +3679,7 @@ function aplicarPermisosNav() {
     const mostrar = p.ok || p.motivo === SGADD_AUTH.MOTIVOS.REQUIERE_PLAN;
     btn.classList.toggle('hidden', !mostrar);
   });
+  pintarDistintivoPlan();
   const d = SGADD_AUTH.descripcionSesion();
   const cont = document.getElementById('sesion-slot');
   if (cont) {
@@ -3662,6 +3687,27 @@ function aplicarPermisosNav() {
       SGADD_UI.esc(d.texto)}</span><span class="block text-[10px] text-muted/70 font-mono">${
       SGADD_UI.esc(d.detalle)}</span>` : '';
   }
+}
+
+/* EL DISTINTIVO DEL PLAN ORO.
+
+   El plan que se muestra es el EFECTIVO que declara el servidor
+   (`estado.alcance.plan`), no el del token: es el que se hace valer, asi
+   que con el del token un club bajado a Bronce seguiria luciendo un
+   distintivo que ya no le corresponde hasta que su link venciera.
+
+   Sin backend no se pinta nada: ahi no hay plan efectivo que consultar y
+   un distintivo inventado seria peor que ninguno. */
+function pintarDistintivoPlan() {
+  const slot = document.getElementById('planSlot');
+  if (!slot) return;
+  const al = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado)
+    ? SGADD_APP.estado.alcance : null;
+  const plan = al && al.plan ? SGADD_AUTH.normalizarPlan(al.plan) : null;
+  if (plan !== 'ORO') { slot.innerHTML = ''; return; }
+  slot.innerHTML = '<span class="distintivo-oro" title="Analisis de scouters de '
+    + 'MotorStats.ar en ciclos cada 4 partidos">&#9670; Plan ORO &middot; '
+    + 'Auditoria MotorStats activa</span>';
 }
 
 /* ============ SIDEBAR MÓVIL ============ */

@@ -32,8 +32,8 @@ const titulo = (t) => console.log(NL + t + NL + '─'.repeat(70));
    de fuga que hace que una suite de permisos pase por el motivo
    equivocado. */
 const ADMIN = { email: 'freytesgn@gmail.com' };
-const BASICO = { email: 'dt@deportivo.com', equipoAsignado: 'DEPORTIVO LA PLATA', plan: 'BASICO' };
-const PRO = { email: 'dt@deportivo.com', equipoAsignado: 'DEPORTIVO LA PLATA', plan: 'PRO' };
+const BRONCE = { email: 'dt@deportivo.com', equipoAsignado: 'DEPORTIVO LA PLATA', plan: 'BRONCE' };
+const PRO = { email: 'dt@deportivo.com', equipoAsignado: 'DEPORTIVO LA PLATA', plan: 'PLATA' };
 
 titulo('LOS TRES ADMINISTRADORES');
 
@@ -97,9 +97,9 @@ check('y la lista no se filtra', A.equiposVisibles(listaAdmin, null).length === 
 
 titulo('CLIENTE · el equipo asignado');
 
-check('el rol de un cliente es CLIENTE', A.rol(BASICO) === A.ROLES.CLIENTE);
-check('ve su equipo', A.puedeVerEquipo('DEPORTIVO LA PLATA', BASICO) === true);
-check('NO ve un rival', A.puedeVerEquipo('ATENAS A', BASICO) === false);
+check('el rol de un cliente es CLIENTE', A.rol(BRONCE) === A.ROLES.CLIENTE);
+check('ve su equipo', A.puedeVerEquipo('DEPORTIVO LA PLATA', BRONCE) === true);
+check('NO ve un rival', A.puedeVerEquipo('ATENAS A', BRONCE) === false);
 
 /* El equipo se compara con `claveEquipo()`, el mismo normalizador que usa
    toda la app: la planilla escribe el sufijo de categoría y el JSON del
@@ -109,7 +109,7 @@ check('NO ve un rival', A.puedeVerEquipo('ATENAS A', BASICO) === false);
 ['DEPORTIVO LA PLATA - MM', 'deportivo la plata',
  '  DEPORTIVO LA PLATA  '].forEach(v => {
   check('reconoce su equipo escrito como ' + JSON.stringify(v),
-    A.puedeVerEquipo(v, BASICO) === true);
+    A.puedeVerEquipo(v, BRONCE) === true);
 });
 
 /* LA TRAMPA DE CONFIGURACIÓN, y hay que entenderla antes de dar de alta un
@@ -122,8 +122,8 @@ check('NO ve un rival', A.puedeVerEquipo('ATENAS A', BASICO) === false);
    fallar: parece que el panel está roto y no que la config lo está. Por eso
    la sección lo denuncia en pantalla en vez de mostrar una grilla vacía. */
 check("DEPORTIVO LA PLATA 'A' es OTRO equipo, y la comilla no se ignora",
-  A.puedeVerEquipo("DEPORTIVO LA PLATA 'A' - MM", BASICO) === false);
-const CON_LETRA = { email: 'dt@r.com', equipoAsignado: 'RECONQUISTA A', plan: 'PRO' };
+  A.puedeVerEquipo("DEPORTIVO LA PLATA 'A' - MM", BRONCE) === false);
+const CON_LETRA = { email: 'dt@r.com', equipoAsignado: 'RECONQUISTA A', plan: 'PLATA' };
 check('un cliente asignado a RECONQUISTA A sí lo reconoce con su sufijo',
   A.puedeVerEquipo("RECONQUISTA 'A' - MM", CON_LETRA) === true);
 check('y no se lleva puesto al B',
@@ -132,23 +132,23 @@ check('y no se lleva puesto al B',
    mismo filo que ya tuvo la resolución de escudos con DEPORTIVO LA PLATA
    contra DEPORTIVO SAN VICENTE (punto 6). */
 check('pero DEPORTIVO SAN VICENTE NO es su equipo',
-  A.puedeVerEquipo('DEPORTIVO SAN VICENTE', BASICO) === false);
+  A.puedeVerEquipo('DEPORTIVO SAN VICENTE', BRONCE) === false);
 
 /* Un cliente sin equipo asignado no ve ninguno: es una config incompleta,
    y dejarlo ver todo convertiría el error en acceso total sin síntoma. */
-const SIN_EQUIPO = { email: 'dt@club.com', plan: 'PRO' };
+const SIN_EQUIPO = { email: 'dt@club.com', plan: 'PLATA' };
 check('un cliente sin equipo asignado no ve ninguno',
   A.puedeVerEquipo('ATENAS A', SIN_EQUIPO) === false &&
   A.puedeVerEquipo('DEPORTIVO LA PLATA', SIN_EQUIPO) === false);
 
 check('la lista de equipos le queda en uno solo',
-  A.equiposVisibles(listaAdmin, BASICO).length === 1 &&
-  A.equiposVisibles(listaAdmin, BASICO)[0].clave === 'DEPORTIVO LA PLATA');
+  A.equiposVisibles(listaAdmin, BRONCE).length === 1 &&
+  A.equiposVisibles(listaAdmin, BRONCE)[0].clave === 'DEPORTIVO LA PLATA');
 check('y filtra igual una lista de strings',
-  A.equiposVisibles(['ATENAS A', 'DEPORTIVO LA PLATA'], BASICO).length === 1);
+  A.equiposVisibles(['ATENAS A', 'DEPORTIVO LA PLATA'], BRONCE).length === 1);
 check('una lista vacía o inválida no rompe',
-  A.equiposVisibles(null, BASICO).length === 0 &&
-  A.equiposVisibles([], BASICO).length === 0);
+  A.equiposVisibles(null, BRONCE).length === 0 &&
+  A.equiposVisibles([], BRONCE).length === 0);
 
 titulo('CLIENTE · la matriz de secciones');
 
@@ -156,15 +156,15 @@ titulo('CLIENTE · la matriz de secciones');
    contra la liga entera es el valor del panel, y no expone nada que la
    tabla de posiciones no muestre ya. */
 ['principal', 'clasificacion', 'equipos', 'jugadores'].forEach(sec => {
-  check('cliente entra a ' + sec, A.puedoAcceder(sec, BASICO).ok === true);
-  check('  y con Plan Pro también', A.puedoAcceder(sec, PRO).ok === true);
+  check('cliente entra a ' + sec, A.puedoAcceder(sec, BRONCE).ok === true);
+  check('  y con Plan Plata también', A.puedoAcceder(sec, PRO).ok === true);
 });
 
 /* Simulador, Configuración y Diagnóstico son de administración. */
 ['simulador', 'configuracion', 'diagnostico'].forEach(sec => {
-  const b = A.puedoAcceder(sec, BASICO);
+  const b = A.puedoAcceder(sec, BRONCE);
   const pr = A.puedoAcceder(sec, PRO);
-  check('cliente Básico NO entra a ' + sec, b.ok === false, JSON.stringify(b));
+  check('cliente Bronce NO entra a ' + sec, b.ok === false, JSON.stringify(b));
   check('cliente Pro TAMPOCO entra a ' + sec, pr.ok === false, JSON.stringify(pr));
   /* El motivo importa: el Pro no puede creer que le falta plan cuando lo
      que pasa es que la pantalla es interna. Un mensaje equivocado lo manda
@@ -175,29 +175,35 @@ titulo('CLIENTE · la matriz de secciones');
 
 titulo('CLIENTE BÁSICO · rebotado en Scouting');
 
-const sc = A.puedoAcceder('scouting', BASICO);
-check('el Plan Básico NO entra a Scouting', sc.ok === false);
+const sc = A.puedoAcceder('scouting', BRONCE);
+check('el Plan Bronce NO entra a Scouting', sc.ok === false);
 check('y el motivo es que falta el plan, no un permiso',
   sc.motivo === A.MOTIVOS.REQUIERE_PLAN, sc.motivo);
-check('el mensaje sabe qué plan pedir', sc.plan === A.PLANES.PRO, sc.plan);
-check('tieneModulo lo dice igual', A.tieneModulo('scouting', BASICO) === false);
+check('el mensaje sabe qué plan pedir', sc.plan === A.PLANES.PLATA, sc.plan);
+check('tieneModulo lo dice igual', A.tieneModulo('scouting', BRONCE) === false);
 check('y no puede armar NINGÚN cruce, ni el suyo',
-  A.puedeScoutearCruce('DEPORTIVO LA PLATA', 'ATENAS A', BASICO) === false);
+  A.puedeScoutearCruce('DEPORTIVO LA PLATA', 'ATENAS A', BRONCE) === false);
 
-/* Un plan mal escrito cae a BÁSICO y no a PRO: ante la duda, el menos
-   permisivo. Un typo en el JSON no puede regalar el módulo que se cobra. */
-['PROO', 'pro ', 'PREMIUM', '', null, undefined, 'BASICO', 0, 'true'].forEach(v => {
+/* Un plan mal escrito cae a BRONCE y no a PLATA: ante la duda, el menos
+   permisivo. Un typo en el JSON no puede regalar el módulo que se cobra.
+
+   `'pro '` SALIÓ DE ESTA LISTA a propósito con el rebranding: los nombres
+   viejos ahora se normalizan (`PRO` → `PLATA`) y de paso se les saca el
+   espacio, porque un blanco de más al copiar un valor no puede bajarle el
+   plan a un cliente que paga. Lo que sigue cayendo a BRONCE es lo que no
+   se parece a NINGÚN plan, viejo o nuevo. */
+['PROO', 'PREMIUM', '', null, undefined, 'BRONCE', 0, 'true'].forEach(v => {
   const ses = A.parsearSesion({ email: 'x@y.com', equipoAsignado: 'X', plan: v });
-  const esPro = String(v).trim().toUpperCase() === 'PRO';
-  check('plan ' + JSON.stringify(v) + ' → ' + (esPro ? 'PRO' : 'BASICO'),
-    ses.plan === (esPro ? 'PRO' : 'BASICO'), ses.plan);
+  const esPro = String(v).trim().toUpperCase() === 'PLATA';
+  check('plan ' + JSON.stringify(v) + ' → ' + (esPro ? 'PLATA' : 'BRONCE'),
+    ses.plan === (esPro ? 'PLATA' : 'BRONCE'), ses.plan);
 });
 check('y "pro" en minúscula SÍ es Pro, que es un tipeo razonable',
-  A.parsearSesion({ email: 'x@y.com', plan: 'pro' }).plan === A.PLANES.PRO);
+  A.parsearSesion({ email: 'x@y.com', plan: 'pro' }).plan === A.PLANES.PLATA);
 
 titulo('CLIENTE PRO · la regla de oro del cruce');
 
-check('el Plan Pro entra a Scouting', A.puedoAcceder('scouting', PRO).ok === true);
+check('el Plan Plata entra a Scouting', A.puedoAcceder('scouting', PRO).ok === true);
 check('puede scoutear su cruce de local',
   A.puedeScoutearCruce('DEPORTIVO LA PLATA', 'ATENAS A', PRO) === true);
 check('y de visitante',
@@ -275,12 +281,12 @@ Object.keys(A.MODULOS).forEach(sec => {
     SGADD.SECCIONES.indexOf(sec) !== -1, 'sobra en MODULOS');
 });
 check('una sección inventada no rompe el guard',
-  A.puedoAcceder('finanzas', BASICO).ok === true);
+  A.puedoAcceder('finanzas', BRONCE).ok === true);
 
 titulo('LA SESIÓN · parseo y precedencia');
 
 check('una sesión sin mail no es una sesión',
-  A.parsearSesion({ equipoAsignado: 'X', plan: 'PRO' }) === null);
+  A.parsearSesion({ equipoAsignado: 'X', plan: 'PLATA' }) === null);
 [null, undefined, 'texto', [], 0, true].forEach(v => {
   check('parsearSesion(' + JSON.stringify(v) + ') es null', A.parsearSesion(v) === null);
 });
@@ -295,11 +301,11 @@ global.localStorage = {
   setItem: (k, v) => { almacen[k] = String(v); },
   removeItem: (k) => { delete almacen[k]; },
 };
-almacen[A.CLAVE_SESION] = JSON.stringify({ email: 'viejo@club.com', equipoAsignado: 'ATENAS A', plan: 'BASICO' });
+almacen[A.CLAVE_SESION] = JSON.stringify({ email: 'viejo@club.com', equipoAsignado: 'ATENAS A', plan: 'BRONCE' });
 let s2 = A.cargarSesion('?usuario=nuevo@club.com&equipo=DEPORTIVO%20LA%20PLATA&plan=PRO');
 check('la URL gana sobre lo guardado', s2.email === 'nuevo@club.com', JSON.stringify(s2));
 check('y trae su equipo y su plan',
-  s2.equipoAsignado === 'DEPORTIVO LA PLATA' && s2.plan === 'PRO');
+  s2.equipoAsignado === 'DEPORTIVO LA PLATA' && s2.plan === 'PLATA');
 /* Se persiste para que un F5 no devuelva a la vista completa a mitad de
    trabajo. */
 check('la sesión de la URL queda guardada',
@@ -340,9 +346,9 @@ check('y el hash a mano no abre una sección interna',
   /function permitida\(sec\)/.test(idxSrc));
 check('el menú esconde lo que la sesión no puede abrir',
   /function aplicarPermisosNav\(\)/.test(idxSrc));
-/* Scouting se le MUESTRA al Básico a propósito: el punto es que sepa que
+/* Scouting se le MUESTRA al Bronce a propósito: el punto es que sepa que
    el módulo existe y cómo pedirlo. */
-check('pero Scouting se le sigue mostrando al Plan Básico',
+check('pero Scouting se le sigue mostrando al Plan Bronce',
   /p\.motivo === SGADD_AUTH\.MOTIVOS\.REQUIERE_PLAN/.test(idxSrc));
 
 const scoSrc = fs.readFileSync('./js/sgadd-scouting.js', 'utf8');
@@ -553,7 +559,7 @@ titulo('EL HUB DE CLIENTES · consulta todo, y NO finge que publica');
   check('y es la pestaña por defecto',
     /pestana: 'clientes'/.test(configui));
 
-  /* EL ACCESO SE LLAMA "PANEL MASTER", que es lo que es: la sección es
+  /* EL ACCESO SE LLAMA "PANEL ORO", que es lo que es: la sección es
      soloAdmin y es el único lugar de gestión del producto. Con el nombre
      viejo el admin la leía como los ajustes de SU club. El ID de sección
      NO cambia: viaja en la ruta y en los links compartidos. */
@@ -644,13 +650,13 @@ titulo('EL CICLO DE VIDA EN LA UI · y que NO diverja del servidor');
     Object.keys(A.PLANES).sort().join(',') === MSRV.PLANES.slice().sort().join(','),
     Object.keys(A.PLANES) + ' vs ' + MSRV.PLANES);
 
-  /* MASTER TIENE QUE SER SUPERCONJUNTO DE PRO. Con `===` en vez de orden,
-     MASTER se quedaba sin Scouting porque no es literalmente PRO — un plan
+  /* ORO TIENE QUE SER SUPERCONJUNTO DE PRO. Con `===` en vez de orden,
+     ORO se quedaba sin Scouting porque no es literalmente PRO — un plan
      superior perdiendo un módulo del inferior es la clase de bug que nadie
      reporta porque parece un permiso mal puesto. */
   const ses = (p) => ({ email: 'x@y.com', plan: p, equipoAsignado: 'X' });
-  check('MASTER abre Scouting, igual que PRO', A.tieneModulo('scouting', ses('MASTER')));
-  check('BÁSICO no', !A.tieneModulo('scouting', ses('BASICO')));
+  check('ORO abre Scouting, igual que PRO', A.tieneModulo('scouting', ses('ORO')));
+  check('BÁSICO no', !A.tieneModulo('scouting', ses('BRONCE')));
   check('y un plan desconocido tampoco', !A.tieneModulo('scouting', ses('GRATIS')));
 
   /* SOLO LA BAJA PIDE CONFIRMACIÓN. Pausar y cambiar el plan son
@@ -674,6 +680,87 @@ titulo('EL CICLO DE VIDA EN LA UI · y que NO diverja del servidor');
     /pendiente\.club === c\.id/.test(hub2));
   check('y el error se muestra en la tarjeta del club que falló',
     /pendiente\.clubError === c\.id/.test(hub2));
+}
+
+titulo('EL REBRANDING · los tokens ya emitidos NO se degradan');
+
+/* ESTE ES EL BLOQUE QUE JUSTIFICA LOS ALIAS. Los tokens emitidos llevan
+   `plan: "PRO"` o `"BASICO"` FIRMADO, y un JWT no se puede editar: sigue
+   diciendo eso hasta que venza — el master del admin vence en 2027, y el
+   catálogo en KV tiene clubes guardados en `"PRO"`.
+
+   Sin alias, cada uno caería al plan más bajo por "plan desconocido": la
+   regla correcta para un typo y la PEOR posible para un rename. Serían
+   todos los clientes bajados de plan a la vez, en silencio, sin que nadie
+   toque nada. */
+{
+  const ses = (p) => ({ email: 'x@y.com', plan: p, equipoAsignado: 'X' });
+
+  check('BASICO sigue entrando como BRONCE', A.normalizarPlan('BASICO') === 'BRONCE');
+  check('PRO sigue entrando como PLATA', A.normalizarPlan('PRO') === 'PLATA');
+  check('MASTER sigue entrando como ORO', A.normalizarPlan('MASTER') === 'ORO');
+
+  /* Y lo que importa no es el nombre sino el ACCESO: un token viejo en PRO
+     tiene que seguir abriendo Scouting exactamente igual que antes. */
+  check('un token viejo en PRO sigue abriendo Scouting',
+    A.tieneModulo('scouting', ses('PRO')));
+  check('uno en BASICO sigue sin abrirlo', !A.tieneModulo('scouting', ses('BASICO')));
+  check('y uno en MASTER lo abre', A.tieneModulo('scouting', ses('MASTER')));
+
+  /* LA JERARQUÍA, que es lo que el rename no podía romper. */
+  check('BRONCE < PLATA < ORO',
+    A.ORDEN_PLAN.BRONCE < A.ORDEN_PLAN.PLATA && A.ORDEN_PLAN.PLATA < A.ORDEN_PLAN.ORO);
+  check('ORO hereda todo lo de PLATA',
+    Object.keys(A.MODULOS).every(m => !A.tieneModulo(m, ses('PLATA')) || A.tieneModulo(m, ses('ORO'))));
+  check('y PLATA todo lo de BRONCE',
+    Object.keys(A.MODULOS).every(m => !A.tieneModulo(m, ses('BRONCE')) || A.tieneModulo(m, ses('PLATA'))));
+
+  /* ORO NO APARECE EN `MODULOS`, y es a propósito: lo que agrega no es una
+     pantalla sino una entrega que hace MotorStats cada cuatro partidos.
+     Inventarle un módulo para que "se note" sería peor — un cliente
+     pagando ORO y encontrando una sección vacía. */
+  check('ningún módulo pide ORO',
+    Object.keys(A.MODULOS).every(m => !A.MODULOS[m] || A.MODULOS[m].plan !== 'ORO'));
+  check('y el hub explica qué incluye ORO en su lugar',
+    /scouters de MotorStats/.test(require('./js/sgadd-hub.js').QUE_INCLUYE.ORO));
+
+  /* Nada del sistema puede seguir hablando de los nombres viejos EN
+     PANTALLA: los alias son para entender lo que entra, no para mostrarlo. */
+  check('el nombre en pantalla es el nuevo',
+    A.nombrePlan('PRO') === 'Plata' && A.nombrePlan('BASICO') === 'Bronce'
+    && A.nombrePlan('MASTER') === 'Oro');
+
+  /* EL CICLO DEL PLAN ORO, comparado contra el del servidor: es la misma
+     regla escrita dos veces, y acá solo se pinta. */
+  const HUBC = require('./js/sgadd-hub.js');
+  const MC2 = require('./server/lib/catalogo-mutar.js');
+  let dif = [];
+  for (let pj = 0; pj <= 12; pj++) {
+    [0, 2].forEach((desde) => [0, 1, 2].forEach((ent) => {
+      const c = { cicloDesde: desde, informesEntregados: ent };
+      if (JSON.stringify(HUBC.ciclo(c, pj)) !== JSON.stringify(MC2.ciclo(c, pj))) {
+        dif.push('pj=' + pj + ' desde=' + desde + ' ent=' + ent);
+      }
+    }));
+  }
+  check('el ciclo de la UI coincide con el del servidor en 78 casos',
+    dif.length === 0, dif.slice(0, 2).join(' | '));
+
+  /* `4/4` Y NO `0/4` cuando se completó: el informe se debe DESPUÉS del
+     cuarto partido, y un cartel en 0 se lee como "recién arranca". */
+  check('al cuarto partido dice 4/4, no 0/4', HUBC.ciclo({}, 4).en === 4);
+  check('y al quinto vuelve a 1/4', HUBC.ciclo({}, 5).en === 1);
+  check('toca informe recién al completar el ciclo',
+    !HUBC.ciclo({}, 3).toca && HUBC.ciclo({}, 4).toca);
+  check('y deja de tocar cuando se marca entregado',
+    !HUBC.ciclo({ informesEntregados: 1 }, 4).toca);
+
+  /* MARCAR UN INFORME NO MUEVE EL ARRANQUE DEL CICLO: si lo corriera, un
+     informe entregado tarde desplazaría todos los siguientes y el cliente
+     recibiría menos de los que pagó. */
+  const traz = MC2.informe({ x: { nombre: 'X', categorias: {} } }, { club: 'x' });
+  check('marcar entregado no toca cicloDesde',
+    traz.ok && traz.catalogo.x.cicloDesde === undefined && traz.catalogo.x.informesEntregados === 1);
 }
 
 console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +
