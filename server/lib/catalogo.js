@@ -151,16 +151,38 @@ function resolver(cat, clubId, slugCategoria) {
     club: club.nombre,
     liga: club.liga || '',
     equipoPropio: club.equipoPropio || null,
+    /* EL ESTADO COMERCIAL DEL CLUB, para el guard de suscripción.
+
+       Va aparte y NO aplanado junto a `club` porque `club` es el NOMBRE,
+       un string: un guard que hiciera `cat.club.estado` leería una
+       propiedad de un texto, daría `undefined` y no dispararía nunca. Es
+       el modo de fallar más caro que puede tener un guard —parece puesto
+       y no está— así que los campos viajan en su propio objeto. */
+    suscripcion: {
+      estado: club.estado || 'activo',
+      plan: club.plan || null,
+      vence: club.vence || null,
+    },
     slug: catId,
     label: k.label,
     sheetId: k.sheetId || '',
   };
 }
 
-/** Lo que el frontend SÍ puede conocer. Sin un solo `sheetId`. */
-function publico(cat) {
+/**
+ * Lo que el frontend SÍ puede conocer. Sin un solo `sheetId`.
+ *
+ * `opciones.admin` agrega el estado comercial —estado, plan, vencimiento—.
+ * Va detrás de esa bandera porque `manejarCatalogo` NO tiene gate de rol:
+ * cualquier usuario con token recibe la lista de clubes, así que mandarlo
+ * siempre le contaría a cada cliente la situación de facturación de los
+ * demás. Es el mismo criterio que el `sheetId`: se manda lo que hace falta
+ * para la pantalla de quien pregunta, y nada más.
+ */
+function publico(cat, opciones) {
+  const admin = !!(opciones && opciones.admin);
   const c = cat || {};
-  return Object.keys(c).map(id => ({
+  return Object.keys(c).map(id => Object.assign({
     id: id,
     nombre: c[id].nombre,
     liga: c[id].liga || '',
@@ -171,7 +193,12 @@ function publico(cat) {
          tiene libro": dice lo mismo sin revelar cuál. */
       activo: !!c[id].categorias[s].sheetId,
     })),
-  }));
+  }, admin ? {
+    estado: c[id].estado || 'activo',
+    plan: c[id].plan || null,
+    vence: c[id].vence || null,
+    equipoPropio: c[id].equipoPropio || null,
+  } : {}));
 }
 
 module.exports = {

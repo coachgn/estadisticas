@@ -38,6 +38,12 @@ const SGADD_HUB = (function () {
      mientras se arregla el campo. */
   const guardado = { estado: null, mensaje: '' };   // null | 'yendo' | 'ok' | 'error'
 
+  /* Qué club tiene una acción en vuelo, y su error si falló. Se guarda el
+     ID y no un booleano para poder deshabilitar SOLO los controles de esa
+     tarjeta: con un flag global, tocar el plan de un cliente congelaría
+     los botones de los otros cuarenta y nueve. */
+  const pendiente = { club: null, clubError: null, error: '' };
+
   /* =====================================================================
      MOTOR · puro, sin `document`
      ===================================================================== */
@@ -94,6 +100,43 @@ const SGADD_HUB = (function () {
    */
   function idValido(v) { return /^[a-z0-9][a-z0-9-]*$/.test(String(v || '')); }
 
+  const ESTADOS = ['activo', 'pausado', 'inactivo'];
+  const PLANES = ['BASICO', 'PRO', 'MASTER'];
+
+  /**
+   * El estado EFECTIVO, calculado igual que en el servidor.
+   *
+   * SE REPITE LA REGLA A PROPÓSITO, y conviene saber por qué: el servidor
+   * es el que la hace valer —devuelve 403— y esta copia existe solo para
+   * PINTAR. Si divergieran, la pantalla mostraría "activo" sobre un club
+   * al que el backend ya le está negando los datos, que es la peor forma
+   * de fallar: el admin ve todo bien y el cliente no puede entrar.
+   *
+   * Hay un test que las compara sobre los mismos casos.
+   */
+  function estadoEfectivo(c, ahora) {
+    const e = ESTADOS.indexOf(c && c.estado) !== -1 ? c.estado : 'activo';
+    if (e !== 'activo') return e;
+    if (!c || !c.vence || !/^\d{4}-\d{2}-\d{2}$/.test(c.vence)) return 'activo';
+    /* Fin del día, no su comienzo: contra la medianoche, el cliente
+       figuraría vencido el mismo día que dice su factura. */
+    const fin = Date.parse(c.vence + 'T23:59:59.999Z');
+    return (ahora === undefined ? Date.now() : ahora) > fin ? 'vencido' : 'activo';
+  }
+
+  /** Cuántos días faltan. Negativo = ya pasó. `null` si no hay fecha. */
+  function diasPara(vence, ahora) {
+    if (!vence || !/^\d{4}-\d{2}-\d{2}$/.test(vence)) return null;
+    const fin = Date.parse(vence + 'T23:59:59.999Z');
+    if (!isFinite(fin)) return null;
+    return Math.ceil((fin - (ahora === undefined ? Date.now() : ahora)) / 86400000);
+  }
+
+  const TONO_ESTADO = {
+    activo: 'zona-exito', pausado: 'zona-aviso',
+    vencido: 'zona-peligro', inactivo: 'zona-neutro',
+  };
+
   /* =====================================================================
      UI
      ===================================================================== */
@@ -149,15 +192,75 @@ const SGADD_HUB = (function () {
         <tbody>${cats.map(k => filaCategoria(c, k)).join('')
           || '<tr><td colspan="3" class="py-2 text-xs text-muted">Sin categorías declaradas.</td></tr>'}</tbody>
       </table>
+      ${bloqueSuscripcion(c)}
+
       <div class="mt-3 flex items-center gap-3 flex-wrap">
         ${actual
           ? '<span class="text-[11px] text-muted">Sus zonas y su torneo se editan en las otras dos pestañas.</span>'
           : `<button onclick="SGADD_CLIENTES.elegir('${esc(c.id)}')"
                class="text-[11px] font-display uppercase tracking-wider text-accent hover:underline">
-               Abrir este cliente →</button>
-             <span class="text-[11px] text-muted">para ver y editar sus zonas</span>`}
+               Abrir este cliente →</button>`}
         <span class="text-[11px] text-muted ml-auto">${conDatos}/${cats.length} con libro</span>
       </div>
+    </div>`;
+  }
+
+  /**
+   * Los controles de suscripción de un club.
+   *
+   * TODO CAMBIO ES INMEDIATO Y PARA TODOS LOS USUARIOS DE ESE CLUB, así que
+   * el texto lo dice y los botones no se agrupan con el resto: pausar a un
+   * cliente por error es de las pocas cosas de esta pantalla que se notan
+   * del otro lado en el acto.
+   */
+  function bloqueSuscripcion(c) {
+    /* Solo se pinta si el servidor mandó el estado comercial, o sea si
+       quien mira es admin. Para un cliente ese campo no viaja. */
+    if (c.estado === undefined && c.plan === undefined && c.vence === undefined) return '';
+
+    const ef = estadoEfectivo(c);
+    const dias = diasPara(c.vence);
+    const yendo = pendiente.club === c.id;
+
+    const btn = (accion, texto, extra) => `<button
+      onclick="SGADD_HUB.accionClub('${esc(c.id)}','${accion}'${extra || ''})"
+      ${yendo ? 'disabled' : ''}
+      class="text-[11px] font-display uppercase tracking-wider px-2 py-1 rounded
+             border border-hairline hover:border-accent hover:text-accent disabled:opacity-40">
+      ${texto}</button>`;
+
+    return `<div class="mt-3 pt-3 border-t border-hairline/40">
+      <div class="flex items-center gap-2 flex-wrap text-[11px]">
+        <span class="zona-texto ${TONO_ESTADO[ef] || 'zona-neutro'}">● ${esc(ef)}</span>
+        <span class="text-muted">·</span>
+        <span class="text-muted">plan</span>
+        <select onchange="SGADD_HUB.accionClub('${esc(c.id)}','cambiar_plan',this.value)"
+          ${yendo ? 'disabled' : ''} class="sel-cliente" style="max-width:8rem">
+          ${PLANES.map(p => `<option value="${p}"${(c.plan || 'BASICO') === p ? ' selected' : ''}>${p}</option>`).join('')}
+        </select>
+        <span class="text-muted">·</span>
+        <span class="text-muted">vence</span>
+        <input type="date" value="${esc(c.vence || '')}"
+          onchange="SGADD_HUB.accionClub('${esc(c.id)}','renovar',this.value)"
+          ${yendo ? 'disabled' : ''}
+          class="bg-surface2 border border-hairline rounded px-2 py-1 text-[11px] text-ink">
+        ${dias === null ? '<span class="text-muted">sin vencimiento</span>'
+          : dias < 0 ? `<span class="zona-texto zona-peligro">venció hace ${-dias} d</span>`
+          /* El aviso arranca a los 30 días: es el tiempo que da para
+             llamar al cliente antes de que se corte, no después. */
+          : dias <= 30 ? `<span class="zona-texto zona-aviso">faltan ${dias} d</span>`
+          : `<span class="text-muted">en ${dias} d</span>`}
+      </div>
+      <div class="flex items-center gap-2 flex-wrap mt-2">
+        ${(c.estado || 'activo') === 'activo' ? btn('pausar', 'Pausar') : btn('reactivar', 'Reactivar')}
+        ${(c.estado || 'activo') !== 'inactivo' ? btn('desactivar', 'Dar de baja') : ''}
+        <span class="text-[10px] text-muted">
+          ${(c.estado || 'activo') === 'activo'
+            ? 'Pausar conserva todo y solo corta el acceso.'
+            : 'La configuración está intacta: reactivar es un click.'}</span>
+      </div>
+      ${pendiente.clubError === c.id && pendiente.error
+        ? `<p class="text-[11px] mt-2 zona-texto zona-peligro">${esc(pendiente.error)}</p>` : ''}
     </div>`;
   }
 
@@ -319,6 +422,51 @@ const SGADD_HUB = (function () {
     });
   }
 
+  /**
+   * Pausar, reactivar, dar de baja, cambiar el plan o renovar.
+   *
+   * SIN CONFIRMACIÓN para pausar y cambiar el plan —son reversibles de un
+   * click y el estado queda a la vista— pero SÍ para la baja: es la única
+   * que el cliente lee como el final de la relación, y un `confirm()` es
+   * barato al lado de tener que explicar por qué se cortó.
+   */
+  function accionClub(club, accion, valor) {
+    if (pendiente.club) return;
+    if (accion === 'desactivar' &&
+        typeof confirm === 'function' &&
+        !confirm('Dar de baja a este cliente le corta el acceso a todos sus usuarios. '
+          + 'La configuración se conserva. ¿Seguimos?')) return;
+
+    pendiente.club = club; pendiente.error = ''; pendiente.clubError = null;
+    repintarLista();
+
+    const cuerpo = { accion: accion, club: club };
+    if (accion === 'cambiar_plan') cuerpo.plan = valor;
+    if (accion === 'renovar') cuerpo.vence = valor || '';
+
+    SGADD_DATA.guardarCatalogo(cuerpo).then((r) => {
+      pendiente.club = null;
+      if (typeof SGADD_CLIENTES !== 'undefined' && r.clubes) {
+        SGADD_CLIENTES.estado.clubes = r.clubes;
+        SGADD_CLIENTES.pintar();
+      }
+      repintarLista();
+    }).catch((e) => {
+      /* El motivo del servidor se muestra en la tarjeta del club, no en un
+         cartel general: con cincuenta clientes en pantalla hay que poder
+         ver CUÁL falló sin buscarlo. */
+      pendiente.club = null;
+      pendiente.clubError = club;
+      pendiente.error = e.message || 'No se pudo aplicar el cambio.';
+      repintarLista();
+    });
+  }
+
+  function repintarLista() {
+    const n = document.getElementById('hubClientes');
+    if (n) n.innerHTML = html();
+  }
+
   function refrescarAlta() {
     const n = document.getElementById('hubAlta');
     if (n) n.innerHTML = bloqueAlta();
@@ -335,7 +483,8 @@ const SGADD_HUB = (function () {
     /* motor */
     comandoAlta, faltantesAlta, idValido,
     /* ui */
-    html, bloqueAlta, campoAlta, guardar, alta, guardado,
+    estadoEfectivo, diasPara, ESTADOS, PLANES,
+    html, bloqueAlta, campoAlta, guardar, accionClub, alta, guardado, pendiente,
   };
 })();
 

@@ -29,6 +29,63 @@ const ID = /^[a-z0-9][a-z0-9-]*$/;
    media hora después. */
 const SHEET = /^[A-Za-z0-9_-]{20,}$/;
 
+/* =====================================================================
+   EL CICLO DE VIDA DE UN CLIENTE
+
+   `activo` · paga y usa.
+   `pausado` · dejo de pagar, o el torneo termino. SE CONSERVA TODO
+     —categorias, libros, zonas— y solo se corta el acceso. Es lo que lo
+     distingue de la baja: reactivar es un click y no un alta de nuevo.
+   `inactivo` · dado de baja. Igual de bloqueado, pero dice otra cosa: uno
+     es temporal y el otro es el final de la relacion. Se separan porque el
+     admin necesita saber a cual llamar para renovar.
+
+   NINGUNO BORRA DATOS. La baja destructiva sigue siendo `baja`, que saca
+   la categoria del catalogo; esto solo cambia un campo.
+   ===================================================================== */
+const ESTADOS = ['activo', 'pausado', 'inactivo'];
+
+/* MASTER es un plan declarado que HOY NO DESBLOQUEA NADA que PRO no tenga:
+   ningun modulo lo distingue. Se acepta para que el admin pueda etiquetar
+   la relacion comercial, y queda anotado que sigue siendo una etiqueta
+   hasta que se decida que incluye. Inventarle un modulo seria peor que
+   dejarlo explicito. */
+const PLANES = ['BASICO', 'PRO', 'MASTER'];
+
+/** `AAAA-MM-DD`. Se guarda como texto y no como timestamp: es una fecha de
+ *  calendario —"vence el 30"— y un timestamp la ata a una zona horaria. */
+const FECHA = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Vencio? SE COMPARA CONTRA EL FIN DEL DIA, no contra su comienzo.
+ *
+ * `Date.parse('2026-09-30')` da la medianoche UTC de ese dia, asi que a las
+ * nueve de la maniana del 30 el cliente ya figuraria vencido — un dia antes
+ * de lo que dice su factura. Se le suma el dia entero.
+ */
+function vencido(vence, ahora) {
+  if (!vence || !FECHA.test(String(vence))) return false;   // sin fecha no vence
+  const fin = Date.parse(vence + 'T23:59:59.999Z');
+  if (!isFinite(fin)) return false;
+  return (ahora === undefined ? Date.now() : ahora) > fin;
+}
+
+/**
+ * El estado EFECTIVO de un club: lo que el servidor tiene que hacer valer.
+ *
+ * Un club `activo` con la fecha pasada esta vencido en los hechos, y
+ * tratarlo como activo seria dar el servicio de un mes que no se pago. Se
+ * DERIVA en vez de guardarse para que no haga falta un proceso que pase
+ * clientes a vencido todas las noches: la fecha sola alcanza, y un proceso
+ * que no corrio deja el estado mintiendo.
+ */
+function estadoEfectivo(club, ahora) {
+  const c = club || {};
+  const e = ESTADOS.indexOf(c.estado) !== -1 ? c.estado : 'activo';
+  if (e !== 'activo') return e;
+  return vencido(c.vence, ahora) ? 'vencido' : 'activo';
+}
+
 function copiar(cat) { return JSON.parse(JSON.stringify(cat || {})); }
 
 function malo(motivo) { return { ok: false, motivo: motivo }; }
@@ -107,6 +164,69 @@ function baja(cat, d) {
   return { ok: true, catalogo: nuevo };
 }
 
+/** Cambia el estado del club. `pausar` y `reactivar` son la misma cosa. */
+function estado(cat, d) {
+  const v = d || {};
+  const nuevo = copiar(cat);
+  if (!nuevo[v.club]) return malo('Ese club no esta en el catalogo.');
+  if (ESTADOS.indexOf(v.estado) === -1) {
+    return malo('Estado desconocido: ' + v.estado + '. Va ' + ESTADOS.join(', ') + '.');
+  }
+  nuevo[v.club].estado = v.estado;
+  return { ok: true, catalogo: nuevo };
+}
+
+/**
+ * El plan del CLUB, que es el que manda.
+ *
+ * Hasta aca el plan viajaba solo en el token, asi que bajarle el plan a un
+ * cliente obligaba a reemitir su link — y el viejo seguia firmado y valido
+ * hasta vencer. Con el plan en el catalogo el cambio es inmediato para
+ * todos sus usuarios y no depende de que nadie recambie nada.
+ */
+function plan(cat, d) {
+  const v = d || {};
+  const nuevo = copiar(cat);
+  if (!nuevo[v.club]) return malo('Ese club no esta en el catalogo.');
+  const p = String(v.plan || '').toUpperCase();
+  if (PLANES.indexOf(p) === -1) {
+    /* Un plan que no se reconoce NO cae a PRO. Es la misma regla que el
+       frontend: un typo no puede regalar el modulo que se cobra aparte. */
+    return malo('Plan desconocido: ' + v.plan + '. Va ' + PLANES.join(', ') + '.');
+  }
+  nuevo[v.club].plan = p;
+  return { ok: true, catalogo: nuevo };
+}
+
+/** Extiende (o fija) la fecha de vencimiento. */
+function renovar(cat, d) {
+  const v = d || {};
+  const nuevo = copiar(cat);
+  if (!nuevo[v.club]) return malo('Ese club no esta en el catalogo.');
+
+  /* Vaciar la fecha es legitimo: un cliente sin vencimiento es uno que no
+     lo tiene, no un error. Se pide explicito para que no pase por descuido
+     de un campo en blanco. */
+  if (v.vence === null || v.vence === '') {
+    delete nuevo[v.club].vence;
+    return { ok: true, catalogo: nuevo };
+  }
+
+  if (!FECHA.test(String(v.vence || ''))) return malo('La fecha va como AAAA-MM-DD.');
+  if (!isFinite(Date.parse(v.vence + 'T00:00:00Z'))) return malo('Esa fecha no existe.');
+
+  /* UNA FECHA PASADA NO SE ACEPTA ACA. Renovar hacia atras deja al cliente
+     cortado con una etiqueta que dice "renovado", que es la peor
+     combinacion posible: el admin cree que lo arreglo. Para cortar el
+     acceso esta `pausar`, que lo dice con todas las letras. */
+  if (vencido(v.vence, v.ahora)) {
+    return malo('Esa fecha ya paso. Para cortar el acceso usa Pausar, que lo dice claro; '
+      + 'renovar hacia atras deja al cliente cortado con una etiqueta que dice renovado.');
+  }
+  nuevo[v.club].vence = String(v.vence);
+  return { ok: true, catalogo: nuevo };
+}
+
 /**
  * EL GUARD QUE NO SE NEGOCIA · ninguna categoría pierde su libro.
  *
@@ -141,7 +261,17 @@ function librosPerdidos(vigente, nuevo, borrada) {
 
 /** Aplica una acción y corre TODOS los guards. Es el único punto de entrada. */
 function aplicar(vigente, accion, datos, validar) {
-  const acciones = { alta: alta, baja: baja };
+  const acciones = {
+    alta: alta, baja: baja,
+    /* `pausar` y `reactivar` son `estado` con el valor puesto: el admin
+       piensa en verbos y el motor en un campo. Se traduce aca y no en el
+       endpoint para que la CLI, si alguna vez los suma, use lo mismo. */
+    pausar: (c, d) => estado(c, Object.assign({}, d, { estado: 'pausado' })),
+    reactivar: (c, d) => estado(c, Object.assign({}, d, { estado: 'activo' })),
+    desactivar: (c, d) => estado(c, Object.assign({}, d, { estado: 'inactivo' })),
+    cambiar_plan: plan,
+    renovar: renovar,
+  };
   const fn = acciones[accion];
   if (!fn) return malo('Acción desconocida: ' + accion);
 
@@ -174,4 +304,5 @@ function aplicar(vigente, accion, datos, validar) {
   return r;
 }
 
-module.exports = { alta, baja, aplicar, librosPerdidos, ID, SHEET };
+module.exports = { alta, baja, estado, plan, renovar, aplicar, librosPerdidos,
+  vencido, estadoEfectivo, ESTADOS, PLANES, ID, SHEET, FECHA };

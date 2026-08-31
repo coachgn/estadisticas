@@ -57,7 +57,17 @@ const SGADD_AUTH = (function () {
     'motorstats.ar@gmail.com',
   ];
 
-  const PLANES = { BASICO: 'BASICO', PRO: 'PRO' };
+  /* MASTER es un plan declarado que HOY no desbloquea nada que PRO no
+     tenga: ningun modulo lo distingue en `MODULOS`. Se reconoce para que
+     el admin pueda etiquetar la relacion comercial desde el Panel Master,
+     y queda anotado que sigue siendo una etiqueta hasta que se decida que
+     incluye. Inventarle un modulo seria peor que dejarlo explicito. */
+  const PLANES = { BASICO: 'BASICO', PRO: 'PRO', MASTER: 'MASTER' };
+
+  /* El orden importa para comparar planes: el del CLUB acota al del token
+     (ver `planEfectivo` del servidor), y para eso hay que saber cual es
+     menor. */
+  const ORDEN_PLAN = { BASICO: 0, PRO: 1, MASTER: 2 };
   const ROLES = { ADMIN: 'ADMIN', CLIENTE: 'CLIENTE', ABIERTO: 'ABIERTO' };
 
   /* Qué pide cada sección. `null` = no pide nada.
@@ -141,7 +151,7 @@ const SGADD_AUTH = (function () {
       /* Un plan que no se reconoce cae a BÁSICO y no a PRO: ante la duda,
          el menos permisivo. Un typo en el JSON no puede regalar el módulo
          que se cobra aparte. */
-      plan: plan === PLANES.PRO ? PLANES.PRO : PLANES.BASICO,
+      plan: (plan === PLANES.PRO || plan === PLANES.MASTER) ? plan : PLANES.BASICO,
       nombre: crudo.nombre ? String(crudo.nombre).trim() : '',
     };
   }
@@ -196,6 +206,13 @@ const SGADD_AUTH = (function () {
   }
 
   /** ¿Tiene el módulo que pide esta sección? */
+  /** El plan como se escribe en pantalla. */
+  function nombrePlan(p) {
+    if (p === PLANES.MASTER) return 'Master';
+    if (p === PLANES.PRO) return 'Pro';
+    return 'Básico';
+  }
+
   function tieneModulo(modulo, s) {
     const regla = Object.prototype.hasOwnProperty.call(MODULOS, modulo)
       ? MODULOS[modulo]
@@ -210,7 +227,15 @@ const SGADD_AUTH = (function () {
     if (regla.soloAdmin) return false;
     if (regla.plan) {
       const ses = normalizarSes(s);
-      return !!ses && ses.plan === regla.plan;
+      if (!ses) return false;
+      /* SE COMPARA POR ORDEN, NO POR IGUALDAD. Con `===`, MASTER se
+         quedaba sin Scouting —que pide PRO— porque no es literalmente
+         PRO: un plan superior perdiendo un modulo del inferior es la
+         clase de bug que nadie reporta porque parece un permiso mal
+         puesto. Un plan desconocido no tiene orden y no alcanza nada. */
+      const tengo = ORDEN_PLAN[ses.plan];
+      const pide = ORDEN_PLAN[regla.plan];
+      return tengo !== undefined && pide !== undefined && tengo >= pide;
     }
     return true;
   }
@@ -522,12 +547,12 @@ const SGADD_AUTH = (function () {
     return {
       rol: r,
       texto: ses.equipoAsignado || 'Sin equipo asignado',
-      detalle: ses.email + ' · Plan ' + (ses.plan === PLANES.PRO ? 'Pro' : 'Básico'),
+      detalle: ses.email + ' · Plan ' + nombrePlan(ses.plan),
     };
   }
 
   return {
-    ADMINS, PLANES, ROLES, MODULOS, MOTIVOS, CLAVE_SESION,
+    ADMINS, PLANES, ORDEN_PLAN, nombrePlan, ROLES, MODULOS, MOTIVOS, CLAVE_SESION,
     normalizarEmail, parsearSesion, establecerSesion, limpiarSesion, sesion,
     esAdmin, rol, sinRestricciones,
     puedeVerEquipo, tieneModulo, puedoAcceder, puedeScoutearCruce,

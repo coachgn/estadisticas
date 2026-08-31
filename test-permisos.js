@@ -564,6 +564,118 @@ titulo('EL HUB DE CLIENTES · consulta todo, y NO finge que publica');
     A.MODULOS.configuracion && A.MODULOS.configuracion.soloAdmin === true);
 }
 
+titulo('EL CICLO DE VIDA EN LA UI · y que NO diverja del servidor');
+
+{
+  const HUB2 = require('./js/sgadd-hub.js');
+  const MSRV = require('./server/lib/catalogo-mutar.js');
+  const hub2 = fs.readFileSync('./js/sgadd-hub.js', 'utf8');
+
+  /* EL RIESGO DE ESTE BLOQUE, en una línea: el servidor es el que hace
+     valer la suscripción —devuelve 403— y el hub tiene su propia copia de
+     la regla solo para PINTAR. Si divergieran, la pantalla mostraría
+     'activo' sobre un club al que el backend ya le niega los datos: el
+     admin ve todo bien y el cliente no puede entrar, que es la peor forma
+     de fallar que tiene esto.
+
+     Así que se comparan las DOS implementaciones sobre los mismos casos,
+     incluidos los bordes. */
+  const casos = [
+    { estado: 'activo' },
+    { estado: 'pausado' },
+    { estado: 'inactivo' },
+    { estado: 'activo', vence: '2020-01-01' },
+    { estado: 'activo', vence: '2099-12-31' },
+    { estado: 'pausado', vence: '2099-12-31' },
+    { estado: 'inactivo', vence: '2020-01-01' },
+    { },
+    { vence: '' },
+    { vence: 'no-es-fecha' },
+    { estado: 'inventado' },
+    { estado: 'activo', vence: '2026-09-30' },
+  ];
+  const momentos = [
+    Date.parse('2026-09-30T00:00:00Z'),
+    Date.parse('2026-09-30T09:00:00Z'),
+    Date.parse('2026-09-30T23:59:59Z'),
+    Date.parse('2026-10-01T00:00:01Z'),
+  ];
+  let distintos = [];
+  casos.forEach((c) => momentos.forEach((m) => {
+    const a = HUB2.estadoEfectivo(c, m);
+    const b = MSRV.estadoEfectivo(c, m);
+    if (a !== b) distintos.push(JSON.stringify(c) + ' @' + m + ': ui=' + a + ' srv=' + b);
+  }));
+  check('la UI y el servidor coinciden en los ' + (casos.length * momentos.length) + ' casos',
+    distintos.length === 0, distintos.slice(0, 3).join(' | '));
+
+  /* EL BORDE DEL DÍA, explícito: contra la medianoche el cliente figuraría
+     vencido el mismo día que dice su factura, un día antes. */
+  const nueve = Date.parse('2026-09-30T09:00:00Z');
+  check('el día que vence sigue activo en la UI',
+    HUB2.estadoEfectivo({ vence: '2026-09-30' }, nueve) === 'activo');
+  check('y al día siguiente sale vencido',
+    HUB2.estadoEfectivo({ vence: '2026-09-30' }, nueve + 86400000) === 'vencido');
+
+  /* Los días que faltan se redondean HACIA ARRIBA: a doce horas del corte
+     todavía queda 'un día', no cero. Un cartel que dice 0 sobre un cliente
+     que todavía entra manda a renovar algo que no venció. */
+  check('faltando 12 horas dice 1 día',
+    HUB2.diasPara('2026-09-30', Date.parse('2026-09-30T12:00:00Z')) === 1);
+  check('el día después dice -1 o menos',
+    HUB2.diasPara('2026-09-30', Date.parse('2026-10-02T00:00:00Z')) < 0);
+  check('sin fecha no hay cuenta', HUB2.diasPara(null) === null && HUB2.diasPara('') === null);
+
+  /* LOS TRES ESTADOS Y LOS TRES PLANES son los mismos de los dos lados: si
+     la UI ofreciera uno que el motor no acepta, el admin lo elegiría y
+     recibiría un rechazo sin entender por qué está en la lista. */
+  check('los estados de la UI son los del servidor',
+    HUB2.ESTADOS.join(',') === MSRV.ESTADOS.join(','),
+    HUB2.ESTADOS + ' vs ' + MSRV.ESTADOS);
+  check('y los planes también',
+    HUB2.PLANES.join(',') === MSRV.PLANES.join(','),
+    HUB2.PLANES + ' vs ' + MSRV.PLANES);
+
+  /* Y LOS PLANES DEL MOTOR DE PERMISOS son esos mismos: `PLANES` de
+     `sgadd-auth` es lo que decide qué módulo abre cada uno. Un plan que el
+     Panel Master puede asignar y el gate no conoce es un cliente pagando
+     algo que no se le habilita. */
+  check('el motor de permisos conoce los mismos planes',
+    Object.keys(A.PLANES).sort().join(',') === MSRV.PLANES.slice().sort().join(','),
+    Object.keys(A.PLANES) + ' vs ' + MSRV.PLANES);
+
+  /* MASTER TIENE QUE SER SUPERCONJUNTO DE PRO. Con `===` en vez de orden,
+     MASTER se quedaba sin Scouting porque no es literalmente PRO — un plan
+     superior perdiendo un módulo del inferior es la clase de bug que nadie
+     reporta porque parece un permiso mal puesto. */
+  const ses = (p) => ({ email: 'x@y.com', plan: p, equipoAsignado: 'X' });
+  check('MASTER abre Scouting, igual que PRO', A.tieneModulo('scouting', ses('MASTER')));
+  check('BÁSICO no', !A.tieneModulo('scouting', ses('BASICO')));
+  check('y un plan desconocido tampoco', !A.tieneModulo('scouting', ses('GRATIS')));
+
+  /* SOLO LA BAJA PIDE CONFIRMACIÓN. Pausar y cambiar el plan son
+     reversibles de un click y el estado queda a la vista; la baja es la
+     única que el cliente lee como el final de la relación. */
+  check('dar de baja pide confirmación',
+    /accion === 'desactivar'[\s\S]{0,120}confirm\(/.test(hub2));
+  check('pausar NO la pide',
+    !/accion === 'pausar'[\s\S]{0,120}confirm\(/.test(hub2));
+
+  /* EL BLOQUE COMERCIAL NO SE PINTA SI EL SERVIDOR NO LO MANDÓ, o sea para
+     un no-admin: `publico()` omite esos campos y la tarjeta no puede
+     inventarlos. */
+  check('sin estado comercial no se pinta el bloque',
+    /c\.estado === undefined && c\.plan === undefined/.test(hub2));
+
+  /* UNA ACCIÓN EN VUELO DESHABILITA SOLO SU TARJETA. Con un flag global,
+     tocar el plan de un cliente congelaría los controles de los otros
+     cuarenta y nueve. */
+  check('el pendiente se guarda por club, no como booleano',
+    /pendiente\.club === c\.id/.test(hub2));
+  check('y el error se muestra en la tarjeta del club que falló',
+    /pendiente\.clubError === c\.id/.test(hub2));
+}
+
 console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +
   '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

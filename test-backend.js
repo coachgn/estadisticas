@@ -1616,6 +1616,151 @@ titulo('ESCRIBIR EL CATÁLOGO · la unica ruta que puede romper a todos');
   check('y hay parser de JSON con tope', /express\.json\(\{ limit/.test(appSrc2));
 }
 
+titulo('EL CICLO DE VIDA DEL CLIENTE · pausar, vencer y el plan del club');
+
+{
+  const MC = require('./server/lib/catalogo-mutar.js');
+  const CV = require('./server/lib/catalogo.js');
+  const H = require('./server/api/handlers.js');
+  const SH2 = new Array(41).join('a');
+  const BASE = {
+    uno: { nombre: 'Uno', categorias: { 'uno-p': { label: 'P', sheetId: SH2 } } },
+    dos: { nombre: 'Dos', categorias: { 'dos-p': { label: 'P', sheetId: SH2 } } },
+  };
+  const ap = (a, d) => MC.aplicar(BASE, a, d, CV.validar);
+
+  /* PAUSAR CONSERVA TODO. Es lo que lo distingue de la baja: reactivar
+     tiene que ser un click y no un alta de nuevo. */
+  const pausado = ap('pausar', { club: 'uno' });
+  check('pausar deja el club en pausado', pausado.ok && pausado.catalogo.uno.estado === 'pausado');
+  check('y NO le toca las categorías',
+    !!pausado.catalogo.uno.categorias['uno-p'].sheetId);
+  check('reactivar lo devuelve a activo',
+    ap('reactivar', { club: 'uno' }).catalogo.uno.estado === 'activo');
+  check('desactivar lo da de baja sin borrarlo',
+    ap('desactivar', { club: 'uno' }).catalogo.uno.estado === 'inactivo');
+
+  /* EL LÍMITE DEL DÍA. `Date.parse('2026-09-30')` da la MEDIANOCHE UTC, así
+     que comparando contra eso el cliente figura vencido a las nueve de la
+     mañana del día que dice su factura — un día antes. */
+  const nueve = Date.parse('2026-09-30T09:00:00Z');
+  check('el día que vence, a la mañana, sigue vigente', !MC.vencido('2026-09-30', nueve));
+  check('y al día siguiente ya no', MC.vencido('2026-09-30', nueve + 86400000));
+  check('sin fecha no vence nunca', !MC.vencido(null, nueve) && !MC.vencido('', nueve));
+
+  /* EL ESTADO EFECTIVO SE DERIVA, no se guarda: un proceso nocturno que
+     pase clientes a vencido es un proceso que puede no correr, y ahí el
+     estado guardado miente. */
+  check('un activo con la fecha pasada está vencido',
+    MC.estadoEfectivo({ estado: 'activo', vence: '2020-01-01' }) === 'vencido');
+  check('un pausado no se convierte en vencido',
+    MC.estadoEfectivo({ estado: 'pausado', vence: '2020-01-01' }) === 'pausado');
+  check('sin estado declarado se asume activo',
+    MC.estadoEfectivo({}) === 'activo');
+
+  /* RENOVAR HACIA ATRÁS NO SE ACEPTA: deja al cliente cortado con una
+     etiqueta que dice "renovado", y el admin cree que lo arregló. */
+  const atras = ap('renovar', { club: 'uno', vence: '2020-01-01' });
+  check('renovar a una fecha pasada se rechaza', !atras.ok, atras.motivo);
+  check('y manda a Pausar, que dice lo que hace', /Pausar/.test(atras.motivo));
+  check('una fecha con otro formato se rechaza',
+    !ap('renovar', { club: 'uno', vence: '30/09/2026' }).ok);
+  check('vaciar la fecha es legítimo',
+    ap('renovar', { club: 'uno', vence: '' }).catalogo.uno.vence === undefined);
+
+  /* UN PLAN QUE NO SE RECONOCE NO CAE A PRO: un typo no puede regalar el
+     módulo que se cobra aparte. Misma regla que el frontend. */
+  check('un plan inventado se rechaza', !ap('cambiar_plan', { club: 'uno', plan: 'GRATIS' }).ok);
+  check('MASTER se acepta', ap('cambiar_plan', { club: 'uno', plan: 'MASTER' }).catalogo.uno.plan === 'MASTER');
+  check('y se normaliza a mayúsculas',
+    ap('cambiar_plan', { club: 'uno', plan: 'pro' }).catalogo.uno.plan === 'PRO');
+
+  /* NINGUNA DE ESTAS ACCIONES PUEDE PERDER UN LIBRO: el guard de siempre
+     corre igual, porque `aplicar` es el único punto de entrada. */
+  check('pausar no dispara el guard de libros perdidos', pausado.ok);
+  check('y el otro club queda intacto', pausado.catalogo.dos.categorias['dos-p'].sheetId === SH2);
+
+  /* ================= EL GUARD DEL SERVIDOR ================= */
+
+  const admin = { rol: 'ADMIN', sesion: { plan: 'PRO' } };
+  const cliente = { rol: 'CLIENTE', sesion: { plan: 'PRO' } };
+
+  check('un club activo no se bloquea',
+    H.guardSuscripcion({ estado: 'activo' }, cliente) === null);
+  const bloq = H.guardSuscripcion({ estado: 'pausado' }, cliente);
+  check('un club pausado bloquea al cliente con 403',
+    bloq && bloq.status === 403 && bloq.body.codigo === 'SUSCRIPCION_PAUSADO',
+    bloq && bloq.body.codigo);
+  const venc = H.guardSuscripcion({ estado: 'activo', vence: '2020-01-01' }, cliente);
+  check('y uno vencido también, con su propio código',
+    venc && venc.body.codigo === 'SUSCRIPCION_VENCIDO', venc && venc.body.codigo);
+  check('el mensaje del vencido dice la fecha', /2020-01-01/.test(venc.body.mensaje));
+
+  /* TRES MENSAJES DISTINTOS porque el que los recibe hace cosas distintas:
+     renovar, llamar a comercial, o nada. */
+  const inact = H.guardSuscripcion({ estado: 'inactivo' }, cliente);
+  check('pausado, inactivo y vencido dicen cosas distintas',
+    bloq.body.mensaje !== inact.body.mensaje && inact.body.mensaje !== venc.body.mensaje);
+
+  /* EL ADMIN PASA IGUAL, y es la condición para poder arreglar: si pausar
+     también lo escondiera del admin, la única forma de revisar por qué no
+     anda sería reactivarlo — o sea dar el servicio para ver si hay que
+     darlo. */
+  check('el admin entra a un club pausado',
+    H.guardSuscripcion({ estado: 'pausado' }, admin) === null);
+  check('y a uno vencido',
+    H.guardSuscripcion({ estado: 'activo', vence: '2020-01-01' }, admin) === null);
+
+  /* ================= EL PLAN EFECTIVO ================= */
+
+  /* EL CLUB ACOTA, NO AMPLÍA. Un token viejo emitido en PRO no puede darle
+     PRO a un club que hoy es Básico — ese era el agujero de tener el plan
+     solo en el JWT: el downgrade no tenía efecto hasta que venciera. */
+  check('el club en Básico baja a un token PRO',
+    H.planEfectivo({ plan: 'BASICO' }, { plan: 'PRO' }) === 'BASICO');
+  check('el club en MASTER NO sube a un token Básico',
+    H.planEfectivo({ plan: 'MASTER' }, { plan: 'BASICO' }) === 'BASICO');
+  check('sin plan en el club manda el del token',
+    H.planEfectivo({}, { plan: 'PRO' }) === 'PRO');
+  check('un plan raro en el club no rompe ni regala',
+    H.planEfectivo({ plan: 'GRATIS' }, { plan: 'PRO' }) === 'PRO');
+
+  /* ================= EL ESTADO COMERCIAL NO SE FILTRA ================= */
+
+  /* `manejarCatalogo` NO tiene gate de rol: cualquier usuario con token
+     recibe la lista de clubes. Mandarle plan y vencimiento a todos le
+     contaría a cada cliente la situación de facturación de los demás. */
+  const conEstado = { uno: Object.assign({}, BASE.uno, { estado: 'pausado', plan: 'PRO', vence: '2027-01-01' }) };
+  const paraCliente = CV.publico(conEstado)[0];
+  const paraAdmin = CV.publico(conEstado, { admin: true })[0];
+  check('un cliente NO ve el estado comercial de nadie',
+    paraCliente.estado === undefined && paraCliente.plan === undefined
+    && paraCliente.vence === undefined, JSON.stringify(paraCliente));
+  check('el admin sí', paraAdmin.estado === 'pausado' && paraAdmin.plan === 'PRO');
+  check('y ninguno de los dos ve el sheetId',
+    !/aaaa/.test(JSON.stringify(paraAdmin)) && !/aaaa/.test(JSON.stringify(paraCliente)));
+
+  /* EL GUARD MIRA UN OBJETO, NO UN STRING. `resolver()` devuelve `club`
+     como el NOMBRE del club, así que un guard que hiciera `cat.club.estado`
+     leería una propiedad de un texto, daría undefined y NO DISPARARÍA
+     NUNCA — el modo de fallar más caro que puede tener un guard, porque
+     parece puesto. Por eso los campos viajan en `suscripcion`. */
+  const res = CV.resolver(conEstado, 'uno', 'uno-p');
+  check('resolver() expone la suscripción como objeto',
+    !!res.suscripcion && res.suscripcion.estado === 'pausado');
+  check('y `club` sigue siendo el nombre, como esperan los demás',
+    res.club === 'Uno');
+  const hSrc = fs.readFileSync('./server/api/handlers.js', 'utf8');
+  check('los handlers le pasan al guard la suscripción, no el nombre',
+    /guardSuscripcion\(cat\.suscripcion/.test(hSrc) && !/guardSuscripcion\(cat\.club/.test(hSrc));
+
+  /* Y LAS DOS RUTAS DE DATOS lo corren: si solo lo corriera una, el club
+     pausado seguiría entregando por la otra. */
+  check('las dos rutas de datos corren el guard',
+    (hSrc.match(/guardSuscripcion\(cat\.suscripcion/g) || []).length === 2);
+}
+
+
 titulo('EL TOKEN DE SOLO LECTURA · el servidor lee, el CLI escribe');
 
 /* Vercel no tiene por qué poder escribir el catálogo: lo único que hace

@@ -49,6 +49,64 @@ function contexto(peticion) {
 }
 
 /**
+ * EL GUARD DE SUSCRIPCIÓN · un club pausado, dado de baja o vencido no
+ * entrega datos.
+ *
+ * Va acá, en el servidor, y no en el frontend: el gate de interfaz del
+ * punto 19 NO es seguridad —cualquiera con la consola se pone `rol:
+ * ADMIN`— pero esto SÍ lo es, porque el que decide si las hojas salen de
+ * Google es este proceso. Es la primera vez que el proyecto tiene una
+ * restricción comercial que se puede hacer valer de verdad.
+ *
+ * EL ADMIN PASA IGUAL, y no es un agujero: es la condición para poder
+ * arreglar. Si pausar un cliente también lo escondiera del admin, la única
+ * forma de revisar por qué no anda sería reactivarlo — o sea darle el
+ * servicio para poder mirar si hay que dárselo. La respuesta lleva el
+ * estado para que el Panel Master lo pueda decir en pantalla.
+ */
+function guardSuscripcion(club, ctx) {
+  const efectivo = mutar.estadoEfectivo(club);
+  if (efectivo === 'activo') return null;
+  if (ctx.rol === AUTH.ROLES.ADMIN) return null;
+
+  /* Tres mensajes distintos porque son tres situaciones distintas, y el
+     que las recibe hace cosas distintas con cada una: renovar, llamar a
+     comercial, o nada. Un "acceso denegado" genérico obliga a preguntar. */
+  const textos = {
+    pausado: 'El acceso de este club está pausado. Hablá con el administrador para reactivarlo.',
+    inactivo: 'Este club no tiene el servicio activo.',
+    vencido: 'La suscripción de este club venció el ' + (club.vence || '—')
+      + '. Hablá con el administrador para renovarla.',
+  };
+  return error(403, 'SUSCRIPCION_' + efectivo.toUpperCase(),
+    textos[efectivo] || 'Este club no tiene el servicio activo.',
+    { estado: efectivo, vence: club.vence || null });
+}
+
+/**
+ * EL PLAN EFECTIVO · el del CLUB manda sobre el del token.
+ *
+ * El plan viajaba solo en el JWT, así que bajarle el plan a un cliente
+ * obligaba a reemitir su link — y el viejo seguía firmado y válido hasta
+ * vencer, o sea que el downgrade no tenía efecto hasta entonces. Con el
+ * plan en el catálogo el cambio es inmediato.
+ *
+ * EL CLUB ACOTA, NO AMPLÍA: se toma el MENOR de los dos. Un token viejo
+ * emitido en PRO no puede darle PRO a un club que hoy es Básico; y al
+ * revés, subirle el plan al club sin reemitir el token tampoco desbloquea
+ * nada, porque el token es lo que el usuario aceptó. Para subir de plan se
+ * emite un link nuevo, que es un gesto barato y deja rastro.
+ */
+const ORDEN_PLAN = { BASICO: 0, PRO: 1, MASTER: 2 };
+
+function planEfectivo(club, sesion) {
+  const delClub = (club && club.plan) ? String(club.plan).toUpperCase() : null;
+  const delToken = (sesion && sesion.plan) ? String(sesion.plan).toUpperCase() : 'BASICO';
+  if (!delClub || ORDEN_PLAN[delClub] === undefined) return delToken;
+  return (ORDEN_PLAN[delClub] < ORDEN_PLAN[delToken]) ? delClub : delToken;
+}
+
+/**
  * El catálogo que el frontend SÍ puede conocer: slugs y etiquetas.
  * Sin un solo `sheetId` — es el objetivo entero del backend.
  */
@@ -63,7 +121,11 @@ async function manejarCatalogo(peticion, deps) {
       ok: true,
       usuario: { email: ctx.sesion.email, rol: ctx.rol, plan: ctx.sesion.plan,
         equipoAsignado: ctx.sesion.equipoAsignado, expiraEn: ctx.expiraEn },
-      clubes: catalogo.publico(cat.catalogo),
+      /* EL ESTADO COMERCIAL VA SOLO PARA EL ADMIN. `manejarCatalogo` no
+         tiene gate de rol —cualquier usuario con token recibe la lista de
+         clubes— así que mandarle plan y vencimiento a todos le contaría a
+         cada cliente la situación de facturación de los demás. */
+      clubes: catalogo.publico(cat.catalogo, { admin: ctx.rol === AUTH.ROLES.ADMIN }),
       /* DE DÓNDE SALE, para el hub. Sin esto no hay forma de saber desde
          afuera si el catálogo viene de KV o del código, y esa es
          justamente la pregunta al dar de alta un cliente: un alta que
@@ -96,6 +158,11 @@ async function manejarEquipos(peticion, deps) {
      `equipoAsignado` no está ahí, así que el recorte por equipo le
      devolvería una cáscara vacía… pero con los encabezados, los partidos y
      la tabla de posiciones de un club que no contrató. */
+  /* La suscripción ANTES que el equipo: un club pausado no entrega datos
+     ni siquiera de su propio equipo. */
+  const bloqueo = guardSuscripcion(cat.suscripcion || {}, ctx);
+  if (bloqueo) return bloqueo;
+
   if (!AUTH.sinRestricciones(ctx.sesion) && ctx.tokenClub && ctx.tokenClub !== cat.clubId) {
     return error(403, 'OTRO_CLUB', 'Tu acceso no incluye ese club.');
   }
@@ -188,19 +255,33 @@ async function manejarScouting(peticion, deps) {
   const ctx = contexto(peticion);
   if (ctx.error) return ctx.error;
 
-  const permiso = reglas.puedeBloque('scouting', ctx.sesion);
-  if (!permiso.ok) {
-    return error(403, permiso.motivo,
-      'El informe pre-partido está en el Plan Pro. Tu plan actual es '
-      + (ctx.sesion.plan === AUTH.PLANES.PRO ? 'Pro' : 'Básico') + '.',
-      { planRequerido: permiso.plan });
-  }
-
   const q = (peticion && peticion.query) || {};
   const params = (peticion && peticion.params) || {};
   const cascada = await catalogo.cargar(deps);
   const cat = catalogo.resolver(cascada.catalogo, params.clubId, q.categoria);
   if (!cat) return error(404, 'SIN_CATEGORIA', 'No existe esa categoría.');
+
+  /* LA SUSCRIPCIÓN ANTES QUE EL PLAN, y en ese orden: a un club pausado no
+     se le contesta "tu plan no incluye esto" —lo mandaría a mejorar un
+     plan que igual no le va a abrir nada— sino que está pausado.
+
+     Y las dos comprobaciones van DESPUÉS de resolver la categoría porque
+     el estado y el plan viven en el club, que sale del catálogo. */
+  const bloqueoS = guardSuscripcion(cat.suscripcion || {}, ctx);
+  if (bloqueoS) return bloqueoS;
+
+  /* El plan que se hace valer es el EFECTIVO, no el del token: si el
+     cliente bajó de Pro a Básico, el link que ya tiene deja de abrir el
+     scouting sin esperar a que venza. */
+  const sesionEfectiva = Object.assign({}, ctx.sesion,
+    { plan: planEfectivo(cat.suscripcion || {}, ctx.sesion) });
+  const permiso = reglas.puedeBloque('scouting', sesionEfectiva);
+  if (!permiso.ok) {
+    return error(403, permiso.motivo,
+      'El informe pre-partido está en el Plan Pro. Tu plan actual es '
+      + AUTH.nombrePlan(sesionEfectiva.plan) + '.',
+      { planRequerido: permiso.plan });
+  }
 
   /* LA REGLA DE ORO DEL SCOUTING, del lado del servidor: solo cruces donde
      juega su equipo. El frontend ya fuerza el otro lado del selector
@@ -331,4 +412,5 @@ async function manejarCatalogoEscribir(peticion, deps) {
   };
 }
 
-module.exports = { manejarCatalogo, manejarCatalogoEscribir, manejarEquipos, manejarScouting, ERRORES };
+module.exports = { manejarCatalogo, manejarCatalogoEscribir, manejarEquipos,
+  manejarScouting, guardSuscripcion, planEfectivo, ERRORES };
