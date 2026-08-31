@@ -1737,6 +1737,14 @@ titulo('EL CICLO DE VIDA DEL CLIENTE · pausar, vencer y el plan del club');
     paraCliente.estado === undefined && paraCliente.plan === undefined
     && paraCliente.vence === undefined, JSON.stringify(paraCliente));
   check('el admin sí', paraAdmin.estado === 'pausado' && paraAdmin.plan === 'PRO');
+
+  /* Y LA RESPUESTA DEL GUARDADO TAMBIÉN LO TRAE. El hub repinta la lista
+     con lo que devolvió el servidor, así que sin la bandera de admin los
+     controles de suscripción desaparecían después de cada acción — se vio
+     en producción al pausar un club. */
+  check('el POST devuelve el catálogo con estado comercial',
+    /clubes: catalogo\.publico\(r\.catalogo, \{ admin: true \}\)/.test(
+      fs.readFileSync('./server/api/handlers.js', 'utf8')));
   check('y ninguno de los dos ve el sheetId',
     !/aaaa/.test(JSON.stringify(paraAdmin)) && !/aaaa/.test(JSON.stringify(paraCliente)));
 

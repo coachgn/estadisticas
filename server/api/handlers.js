@@ -401,7 +401,12 @@ async function manejarCatalogoEscribir(peticion, deps) {
       ok: true,
       accion: accion,
       creoClub: !!r.creoClub,
-      clubes: catalogo.publico(r.catalogo),
+      /* CON LA BANDERA DE ADMIN, igual que el GET. Sin ella la respuesta
+         del guardado vuelve sin estado, plan ni vencimiento — y como el
+         hub repinta la lista con LO QUE DEVOLVIO EL SERVIDOR, los
+         controles de suscripcion desaparecian despues de cada accion.
+         Acá siempre es admin: el handler ya rechazó a cualquier otro. */
+      clubes: catalogo.publico(r.catalogo, { admin: true }),
       origen: 'kv',
       /* El caché vive por INSTANCIA y en Vercel hay muchas, así que el
          cambio puede tardar en verse en otra. Se dice, en vez de dejar al
