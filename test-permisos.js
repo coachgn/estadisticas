@@ -818,8 +818,17 @@ titulo('LA SESIÓN DESPUÉS DEL LOGIN · los tres síntomas eran uno solo');
   /* Se recarga en vez de repintar: al salir hay que soltar el índice y los
      cachés de las dos capas, y ese camino ya existe y está probado. */
   check('y recarga en vez de intentar repintar', /window\.location\.href = u\.toString\(\)/.test(lg));
-  check('sin arrastrar el token en la URL',
-    /searchParams\.delete\('access_token'\)/.test(lg));
+  /* SALIR LIMPIA TODO LO DE `sgadd.*`, no solo el token: los estados de
+     jugador, el override de config y el caché quedan bajo ese prefijo, y
+     dejarlos deja el trabajo de un club en la máquina del siguiente. Se
+     borra por prefijo porque la lista crece y la que se olvida es siempre
+     la que se agregó después. */
+  check('salir limpia todas las claves sgadd.*',
+    /indexOf\('sgadd\.'\) === 0[\s\S]{0,80}removeItem/.test(lg));
+  /* Y SE VA A LA RAÍZ, sin `?club=`: con el club puesto, salir volvía a
+     cargar los datos de ese cliente. */
+  check('y sale a la raíz, sin club',
+    /u\.search = '';[\s\S]{0,60}u\.hash = '';/.test(lg));
 
   /* 5 · DÓNDE VIVE EL TOKEN, que era la causa de tener que re-loguearse en
      cada pestaña nueva. */

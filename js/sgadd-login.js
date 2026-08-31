@@ -264,21 +264,40 @@ const SGADD_LOGIN = (function () {
   function salir() {
     try { SGADD_AUTH.limpiarToken(); } catch (e) {}
     try { SGADD_AUTH.limpiarSesion(); } catch (e) {}
+
+    /* Y TODO LO DEMÁS QUE HAYA QUEDADO DE ESA SESIÓN.
+
+       Los estados de jugador, el override de configuración y el caché de
+       hojas quedan bajo claves `sgadd.*`. Salir dejándolos deja el trabajo
+       de un club en la máquina del siguiente que entre, que en la
+       computadora del club puede ser cualquiera.
+
+       Se borra por PREFIJO y no una por una: la lista de claves crece
+       —estados, config, caché, token, sesión— y la que se olvida es
+       siempre la que se agregó después. */
+    [((typeof localStorage !== 'undefined') ? localStorage : null),
+     ((typeof sessionStorage !== 'undefined') ? sessionStorage : null)]
+      .forEach((alm) => {
+        if (!alm) return;
+        try {
+          Object.keys(alm).filter(k => k.indexOf('sgadd.') === 0)
+            .forEach(k => alm.removeItem(k));
+        } catch (e) { /* modo privado */ }
+      });
+
+    /* SE VA A LA RAÍZ, SIN `?club=`. Con el club puesto, salir volvía a
+       cargar los datos de ese cliente — que es exactamente lo que no
+       tiene que pasar al cerrar sesión. Sin él, el panel abre en su vista
+       neutra. */
     try {
       const u = new URL(window.location.href);
-      /* Se conserva el club para no mandarlo al cliente por defecto, y se
-         limpia el hash: la ruta puede apuntar a una sección que sin sesión
-         ya no existe. */
+      u.search = '';
       u.hash = '';
-      u.searchParams.delete('access_token');
-      u.searchParams.delete('token');
-      u.searchParams.delete('usuario');
       window.location.href = u.toString();
     } catch (e) {
-      try { window.location.reload(); } catch (e2) {}
+      try { window.location.href = window.location.pathname; } catch (e2) {}
     }
   }
-
   return {
     destino, faltantes, claveCorta, LARGO_MINIMO,
     abrir, cerrar, alternar, enviar, campo, pintar, salir, estado,

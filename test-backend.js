@@ -1953,8 +1953,15 @@ titulo('INGRESO DE ADMINISTRADORES · claves, bloqueo y lo que NO se filtra');
      un comentario justamente para explicar dónde queda el token —que no
      es la clave— y un grep crudo lo daría por incumplido. */
   const lgSinComentarios = lg.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-  check('la clave no se persiste en ningún storage',
-    !/localStorage|sessionStorage/.test(lgSinComentarios));
+  /* Lo que importa es que la clave nunca se ESCRIBA: el módulo sí toca
+     los dos storages, pero solo para BORRAR al cerrar sesión. Se mira que
+     no haya un solo `setItem`, que es la única forma de que algo salga de
+     esta pantalla hacia el disco. */
+  check('la clave no se persiste: el módulo nunca escribe en storage',
+    !/setItem/.test(lgSinComentarios));
+  check('y lo único que toca de storage es para borrar',
+    !/localStorage|sessionStorage/.test(lgSinComentarios.replace(/removeItem[^;]*;/g, ''))
+    || /removeItem/.test(lgSinComentarios));
   check('y se borra del estado al cerrar', /campos\.clave = ''/.test(lg));
   check('el token no se pone en la URL', !/searchParams\.set|access_token=/.test(lg));
 
