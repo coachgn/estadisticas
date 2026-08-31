@@ -844,6 +844,15 @@ titulo('LA SESIÓN DESPUÉS DEL LOGIN · los tres síntomas eran uno solo');
      volvería a entrar sola. */
   check('borrar el token limpia localStorage y sessionStorage',
     /localStorage\.removeItem\(CLAVE_TOKEN\)[\s\S]{0,200}sessionStorage\.removeItem\(CLAVE_TOKEN\)/.test(auth));
+  /* EL TOKEN SE PERSISTE AL PONERLO. Hasta el login el único camino que
+     ponía uno era el `?access_token=` de la URL, que llamaba a
+     `guardarToken()` aparte; al entrar con clave se llamaba a
+     `establecerToken()` directo, el token quedaba en memoria y la primera
+     recarga lo perdía. Medido en producción: después de entrar, los dos
+     storages estaban vacíos y todo lo demás funcionaba. */
+  check('establecerToken persiste el token',
+    /tokenActual = jwt;[\s\S]{0,900}guardarToken\(jwt\);/.test(auth));
+
   check('y al leer se miran los dos',
     /localStorage[\s\S]{0,200}sessionStorage/.test(auth.slice(auth.indexOf('function leerTokenGuardado'))));
 }

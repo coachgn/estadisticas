@@ -431,6 +431,19 @@ const SGADD_AUTH = (function () {
       return { vencido: true };
     }
     tokenActual = jwt;
+    /* SE PERSISTE ACÁ, y esto faltaba.
+
+       Hasta el login, el único camino que ponía un token era el
+       `?access_token=` de la URL, y ese SÍ llamaba a `guardarToken()`
+       aparte. Al entrar con clave se llamaba a `establecerToken()`
+       directo: el token quedaba en memoria, todo andaba, y la primera
+       recarga lo perdía. Medido en producción — despues de entrar, los
+       dos storages estaban vacíos.
+
+       Va acá y no en cada llamador: es el único punto por el que pasa un
+       token nuevo, que es donde se pone algo para que no se lo olvide el
+       que agregue el tercer camino. */
+    guardarToken(jwt);
     return establecerSesion({
       email: p.email,
       equipoAsignado: p.equipoAsignado,
