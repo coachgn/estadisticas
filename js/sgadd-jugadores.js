@@ -1251,7 +1251,12 @@ function jugadoresTablaRanking(idx, r) {
   const th = r.columnas.map(k => {
     const activa = (k === r.ordenPor);
     const flecha = activa ? (r.dir === 'asc' ? '▲' : '▼') : '⇅';
-    return `<th class="py-1 px-2 text-center align-middle whitespace-nowrap cursor-pointer select-none
+    /* `data-metrica` y no el texto: la flecha de orden vive DENTRO del `th`,
+       asi que su `textContent` ya no coincide con la sigla y el tooltip del
+       glosario no la reconoce. El atributo dice cual es la metrica sin
+       depender de como se dibuje la celda. */
+    return `<th data-metrica="${SGADD_UI.esc(k)}"
+        class="py-1 px-2 text-center align-middle whitespace-nowrap cursor-pointer select-none
         hover:text-accent transition-colors ${activa ? 'text-accent' : ''}"
         onclick="${alOrdenar}('${SGADD_UI.escJs(k)}')"
         title="Ordenar por ${SGADD_UI.esc(k)}"

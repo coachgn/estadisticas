@@ -1156,6 +1156,32 @@ titulo('EL GLOSARIO · las definiciones salen del manual del motor');
   check('tipear refresca solo la tabla',
     /getElementById\('glosarioCuerpo'\)/.test(ui));
 
+  /* LAS CABECERAS ORDENABLES SE MARCAN CON `data-metrica`, no se dejan al
+     reconocimiento por texto: la flecha de orden (⇅ / ▲ / ▼) vive DENTRO
+     del `th`, así que su `textContent` deja de coincidir con la sigla y el
+     tooltip no abre. Medido en producción: ninguna cabecera del ranking era
+     reconocible por texto.
+
+     Y todas las columnas rankeables tienen definición, o el subrayado
+     punteado prometería un tooltip que no aparece. */
+  {
+    const JG = require('./js/sgadd-jugadores.js');
+    const RK = require('./js/sgadd-rankings.js');
+    const srcJ2 = fs.readFileSync('./js/sgadd-jugadores.js', 'utf8');
+    const srcR2 = fs.readFileSync('./js/sgadd-rankings.js', 'utf8');
+
+    check('la cabecera del ranking de jugadores lleva data-metrica',
+      /<th data-metrica=/.test(srcJ2));
+    check('y la del de equipos también', /<th data-metrica=/.test(srcR2));
+
+    const cols = new Set();
+    JG.JUGADORES_RANKINGS.forEach(g => g.cols.forEach(c => cols.add(c)));
+    (RK.GRUPOS || []).forEach(g => (g.cols || []).forEach(c => cols.add(typeof c === 'string' ? c : (c.k || c.id))));
+    const sinDef = [...cols].filter(c => c && !GL.buscar(c));
+    check('todas las columnas rankeables tienen definición',
+      cols.size > 25 && sinDef.length === 0, sinDef.join(', '));
+  }
+
   /* EMPTY STATE CON SALIDA, no un contenedor vacío (punto 14). */
   check('sin resultados ofrece volver a la lista',
     /Sin resultados[\s\S]{0,400}Ver los/.test(ui));

@@ -142,7 +142,10 @@ const SGADD_RANKINGS = (function () {
              lleva un ⇅ tenue para que se note que también responden. */
           const activa = (k === r.ordenPor);
           const flecha = activa ? (r.dir === 'asc' ? '▲' : '▼') : '⇅';
-          return `<th class="pb-2 pr-1 whitespace-nowrap cursor-pointer select-none hover:text-accent transition-colors ${activa ? 'text-accent' : ''}"
+          /* `data-metrica` y no el texto: la flecha de orden vive DENTRO del
+             `th`, asi que su `textContent` ya no coincide con la sigla. */
+          return `<th data-metrica="${SGADD_UI.esc(k)}"
+            class="pb-2 pr-1 whitespace-nowrap cursor-pointer select-none hover:text-accent transition-colors ${activa ? 'text-accent' : ''}"
             onclick="SGADD_RANKINGS.ordenarPor('${SGADD_UI.escJs(k)}')"
             title="Ordenar por ${SGADD_UI.esc(k)} · ${SGADD_UI.esc(m ? m.glosario || m.label : k)}"
             aria-sort="${activa ? (r.dir === 'asc' ? 'ascending' : 'descending') : 'none'}"
