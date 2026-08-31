@@ -437,6 +437,24 @@ const SGADD_AUTH = (function () {
     return (p && p.club) || null;
   }
 
+  /** Decodifica el payload de un JWT cualquiera SIN verificar la firma.
+   *
+   *  Se usa solo para decidir DÓNDE guardarlo, que es una comodidad del
+   *  navegador. Quien valida la firma es el servidor, en cada petición: si
+   *  alguien falsifica un payload para que se guarde en `localStorage`, lo
+   *  único que logra es persistir un token que el backend va a rechazar. */
+  function leerPayloadDe(jwt) {
+    try {
+      const partes = String(jwt || '').split('.');
+      if (partes.length !== 3) return null;
+      const b = partes[1].replace(/-/g, '+').replace(/_/g, '/');
+      const json = (typeof atob === 'function')
+        ? decodeURIComponent(escape(atob(b)))
+        : Buffer.from(b, 'base64').toString('utf8');
+      return JSON.parse(json);
+    } catch (e) { return null; }
+  }
+
   function almacen() {
     try {
       return (typeof localStorage !== 'undefined') ? localStorage : null;
@@ -519,21 +537,65 @@ const SGADD_AUTH = (function () {
      la pestaña. Es una credencial, no una preferencia — y en una
      computadora compartida (la del club, la del profe) la diferencia
      entre las dos es quién puede seguir mirando mañana. */
-  function almacenSesion() {
-    try { return (typeof sessionStorage !== 'undefined') ? sessionStorage : null; }
-    catch (e) { return null; }
+  /* DÓNDE VIVE EL TOKEN DEPENDE DE QUIÉN ES.
+
+     El de un CLIENTE va a `sessionStorage` y muere al cerrar la pestaña:
+     es una credencial que llegó por WhatsApp y la computadora puede ser
+     la del club o la del profe, así que la diferencia entre una y otra es
+     quién puede seguir mirando mañana.
+
+     El de un ADMIN va a `localStorage`, y eso es un cambio deliberado:
+     con `sessionStorage` cada pestaña nueva pedía la clave de nuevo —una
+     pestaña para el Panel Master y otra para mirar un club es exactamente
+     cómo se trabaja acá— y eso empuja a dejar la clave anotada, que es
+     peor que persistirla. Es su propia máquina y su propia clave; la
+     sesión dura 12 h de todas formas.
+
+     SE DECIDE LEYENDO EL TOKEN, no confiando en un flag: si el mail no
+     está en `ADMINS`, va a `sessionStorage` aunque alguien pida lo
+     contrario. */
+  function almacenSesion(jwt) {
+    const persistente = esTokenDeAdmin(jwt);
+    try {
+      if (persistente && typeof localStorage !== 'undefined') return localStorage;
+      return (typeof sessionStorage !== 'undefined') ? sessionStorage : null;
+    } catch (e) { return null; }
   }
+
+  /** ¿El payload de este token es de un administrador? Se re-deriva contra
+   *  `ADMINS`, igual que el rol: el token no dice qué es, dice quién. */
+  function esTokenDeAdmin(jwt) {
+    if (!jwt) return false;
+    try {
+      const p = leerPayloadDe(jwt);
+      return !!(p && esAdmin(p.email));
+    } catch (e) { return false; }
+  }
+
   function guardarToken(jwt) {
-    const ls = almacenSesion();
+    const ls = almacenSesion(jwt);
     try { if (ls) ls.setItem(CLAVE_TOKEN, jwt); } catch (e) { /* sin storage dura lo que la página */ }
   }
   function leerTokenGuardado() {
-    const ls = almacenSesion();
+    /* Se busca en LOS DOS: no se sabe de antemano si el guardado es de
+       admin, y mirar solo uno dejaría al otro invisible. Gana el
+       persistente, que es el de admin. */
+    try {
+      const l = (typeof localStorage !== 'undefined') ? localStorage.getItem(CLAVE_TOKEN) : null;
+      if (l) return l;
+    } catch (e) { /* modo privado */ }
+    const ls = (function () {
+      try { return (typeof sessionStorage !== 'undefined') ? sessionStorage : null; }
+      catch (e) { return null; }
+    })();
     try { return ls ? ls.getItem(CLAVE_TOKEN) : null; } catch (e) { return null; }
   }
   function borrarTokenGuardado() {
-    const ls = almacenSesion();
-    try { if (ls) ls.removeItem(CLAVE_TOKEN); } catch (e) { /* nada que borrar */ }
+    /* Se borra de LOS DOS almacenes: si solo se limpiara uno, cerrar
+       sesión dejaría la credencial viva en el otro y la pestaña siguiente
+       volvería a entrar sola. */
+    try { if (typeof localStorage !== 'undefined') localStorage.removeItem(CLAVE_TOKEN); } catch (e) {}
+    try { if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(CLAVE_TOKEN); } catch (e) {}
   }
 
   /** Borra el token del query string sin recargar ni tocar el hash. */
@@ -571,7 +633,7 @@ const SGADD_AUTH = (function () {
     forzarCruce, equiposVisibles, equipoPropio,
     cargarSesion, descripcionSesion,
     token, establecerToken, limpiarToken, leerPayload, clubDelToken,
-    sacarTokenDeLaUrl, CLAVE_TOKEN,
+    sacarTokenDeLaUrl, CLAVE_TOKEN, esTokenDeAdmin, leerPayloadDe,
   };
 })();
 

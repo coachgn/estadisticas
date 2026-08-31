@@ -456,7 +456,7 @@ titulo('EL SELECTOR DE CLIENTE · solo admin, y la lista sale del catálogo');
   const fuente = fs.readFileSync('./js/sgadd-clientes.js', 'utf8');
   check('no hay una lista de clubes hardcodeada',
     !/(deportivo|reconquista|jujuy)/i.test(fuente));
-  check('la lista se pide al catálogo', /SGADD_DATA\.catalogo\(\)/.test(fuente));
+  check('la lista se pide al catálogo', /SGADD_DATA\.catalogo\(/.test(fuente));
 
   /* CAMBIAR DE CLUB RECARGA, no repinta: hay que limpiar LOGOS, el caché
      de hojas y los tres tokens de color, y ese camino ya existe y está
@@ -761,6 +761,91 @@ titulo('EL REBRANDING · los tokens ya emitidos NO se degradan');
   const traz = MC2.informe({ x: { nombre: 'X', categorias: {} } }, { club: 'x' });
   check('marcar entregado no toca cicloDesde',
     traz.ok && traz.catalogo.x.cicloDesde === undefined && traz.catalogo.x.informesEntregados === 1);
+}
+
+titulo('LA SESIÓN DESPUÉS DEL LOGIN · los tres síntomas eran uno solo');
+
+/* MEDIDO EN PRODUCCIÓN: el admin entraba bien —el pie decía
+   ADMINISTRADOR con su mail— y el panel seguía diciendo "hace falta un
+   link de acceso para ver esta categoría", y la pestaña Clientes decía
+   que no tenía el catálogo a mano.
+
+   No eran tres bugs: era uno. El panel arranca SIN token, `origen()` da
+   `ninguno`, la carga falla y ese fallo queda cacheado y en pantalla.
+   Poner el token después no reintenta nada.
+
+   Y NO ERA UN GATE DEL SERVIDOR: el bypass de admin ya estaba —
+   `sinRestricciones()` saltea el chequeo de club— así que "darle acceso
+   al admin" no requería tocar ningún permiso. */
+{
+  const LG = require('./js/sgadd-login.js');
+  const lg = fs.readFileSync('./js/sgadd-login.js', 'utf8');
+  const cli = fs.readFileSync('./js/sgadd-clientes.js', 'utf8');
+  const hs = fs.readFileSync('./server/api/handlers.js', 'utf8');
+
+  /* 1 · ENTRAR TIENE QUE VOLVER A BAJAR LOS DATOS. */
+  check('al entrar se limpian los dos cachés de datos',
+    /SGADD_DATA\.limpiarCache\(\)/.test(lg) && /SGADD\.limpiarCache\(\)/.test(lg));
+  check('y se recarga la categoría FORZANDO',
+    /SGADD_APP\.cargar\(true\)/.test(lg));
+  /* La capa vieja de Principal no pasa por `SGADD_APP`, así que si no se
+     la refresca aparte el resumen general queda con el error del arranque. */
+  check('y también la capa vieja de Principal',
+    /refreshData\(\)/.test(lg));
+
+  /* 2 · EL BYPASS DE ADMIN YA EXISTÍA EN EL SERVIDOR. Se fija para que no
+     se lo saque creyendo que hace falta agregarlo. */
+  check('un admin saltea el chequeo de club en el servidor',
+    /!AUTH\.sinRestricciones\(ctx\.sesion\) && ctx\.tokenClub/.test(hs));
+  check('y el guard de suscripción también lo deja pasar',
+    /ctx\.rol === AUTH\.ROLES\.ADMIN\) return null/.test(hs));
+
+  /* 3 · EL HUB SE REPINTA CUANDO LLEGA EL CATÁLOGO. Es asíncrono y la
+     pestaña ya se pintó, así que sin esto había que ir a otra solapa y
+     volver para verlo. */
+  check('al llegar el catálogo se repinta el hub si está abierto',
+    /getElementById\('hubClientes'\)[\s\S]{0,160}SGADD_HUB\.html\(\)/.test(cli));
+  check('y se puede volver a pedir tras un login', /forzar/.test(cli));
+
+  /* 4 · CERRAR SESIÓN. Antes no había ninguno: la única forma de salir era
+     vaciar el storage a mano desde la consola, que no es una salida. */
+  const idx2 = fs.readFileSync('./index.html', 'utf8');
+  check('con sesión abierta el botón dice Cerrar sesión',
+    /haySesion[\s\S]{0,260}Cerrar sesión/.test(idx2));
+  check('y sin sesión dice Ingresar', /boton-ingreso">Ingresar/.test(idx2));
+  check('salir limpia el token y la sesión',
+    /limpiarToken\(\)[\s\S]{0,120}limpiarSesion\(\)/.test(lg));
+  /* Se recarga en vez de repintar: al salir hay que soltar el índice y los
+     cachés de las dos capas, y ese camino ya existe y está probado. */
+  check('y recarga en vez de intentar repintar', /window\.location\.href = u\.toString\(\)/.test(lg));
+  check('sin arrastrar el token en la URL',
+    /searchParams\.delete\('access_token'\)/.test(lg));
+
+  /* 5 · DÓNDE VIVE EL TOKEN, que era la causa de tener que re-loguearse en
+     cada pestaña nueva. */
+  const jwt = (payload) => {
+    const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64')
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return b64({ alg: 'HS256' }) + '.' + b64(payload) + '.firma';
+  };
+  check('un token de admin se reconoce como persistente',
+    A.esTokenDeAdmin(jwt({ email: 'freytesgn@gmail.com' })));
+  /* SE RE-DERIVA CONTRA `ADMINS`: el token dice quién es, no qué es. Un
+     payload que se declare admin sin estar en la lista no persiste — y
+     tampoco entra, porque el servidor lo rechaza igual. */
+  check('uno de un cliente NO',
+    !A.esTokenDeAdmin(jwt({ email: 'dt@club.com' })));
+  check('y un token roto tampoco',
+    !A.esTokenDeAdmin('no-es-un-jwt') && !A.esTokenDeAdmin('') && !A.esTokenDeAdmin(null));
+
+  const auth = fs.readFileSync('./js/sgadd-auth.js', 'utf8');
+  /* Cerrar sesión tiene que limpiar LOS DOS almacenes: si solo se limpiara
+     uno, la credencial quedaría viva en el otro y la pestaña siguiente
+     volvería a entrar sola. */
+  check('borrar el token limpia localStorage y sessionStorage',
+    /localStorage\.removeItem\(CLAVE_TOKEN\)[\s\S]{0,200}sessionStorage\.removeItem\(CLAVE_TOKEN\)/.test(auth));
+  check('y al leer se miran los dos',
+    /localStorage[\s\S]{0,200}sessionStorage/.test(auth.slice(auth.indexOf('function leerTokenGuardado'))));
 }
 
 console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +

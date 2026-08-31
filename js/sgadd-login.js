@@ -219,18 +219,69 @@ const SGADD_LOGIN = (function () {
   function entrar(r) {
     if (!r || !r.token) return;
     SGADD_AUTH.establecerToken(r.token);
+
+    /* HAY QUE VOLVER A BAJAR LOS DATOS, y esto faltaba.
+
+       El panel arrancó SIN token, así que `SGADD_DATA.origen()` dio
+       `ninguno` y la carga falló con "hace falta un link de acceso". Ese
+       fallo queda cacheado y en pantalla: poner el token después no lo
+       reintenta solo, así que el admin entraba bien y seguía viendo el
+       cartel de que no tiene acceso. Medido en producción.
+
+       Se limpian los DOS cachés —el del adaptador y el de la capa vieja de
+       Principal— porque los dos guardaron el fallo. */
+    try { SGADD_DATA.limpiarCache(); } catch (e) {}
+    try { if (typeof SGADD !== 'undefined') SGADD.limpiarCache(); } catch (e) {}
+
     if (typeof navigate === 'function') {
       try { navigate(destino()); } catch (e) {}
     }
     /* El nav y el selector de cliente dependen del rol, que recién ahora
        existe. */
     if (typeof aplicarPermisosNav === 'function') { try { aplicarPermisosNav(); } catch (e) {} }
+
+    /* `forzar` es obligatorio: sin él, `cargar()` ve que ya intentó y sale
+       por el atajo del caché. */
+    if (typeof SGADD_APP !== 'undefined') {
+      try { SGADD_APP.cargar(true); } catch (e) {}
+    }
+    /* Y la capa vieja de Principal, que no pasa por `SGADD_APP`. */
+    if (typeof refreshData === 'function') { try { refreshData(); } catch (e) {} }
+
     if (typeof SGADD_CLIENTES !== 'undefined') { try { SGADD_CLIENTES.iniciar(); } catch (e) {} }
+  }
+
+  /**
+   * Cerrar sesión.
+   *
+   * SE RECARGA LA PÁGINA en vez de repintar. Al salir hay que soltar el
+   * índice, los cachés de las dos capas de datos y el catálogo de clientes;
+   * ese camino ya existe y está probado — es el mismo que usa el cambio de
+   * club (punto 6). Reproducirlo acá sería una segunda limpieza de las que
+   * se olvidan un paso, y la que se olvida deja datos de un club en
+   * pantalla después de salir.
+   */
+  function salir() {
+    try { SGADD_AUTH.limpiarToken(); } catch (e) {}
+    try { SGADD_AUTH.limpiarSesion(); } catch (e) {}
+    try {
+      const u = new URL(window.location.href);
+      /* Se conserva el club para no mandarlo al cliente por defecto, y se
+         limpia el hash: la ruta puede apuntar a una sección que sin sesión
+         ya no existe. */
+      u.hash = '';
+      u.searchParams.delete('access_token');
+      u.searchParams.delete('token');
+      u.searchParams.delete('usuario');
+      window.location.href = u.toString();
+    } catch (e) {
+      try { window.location.reload(); } catch (e2) {}
+    }
   }
 
   return {
     destino, faltantes, claveCorta, LARGO_MINIMO,
-    abrir, cerrar, alternar, enviar, campo, pintar, estado,
+    abrir, cerrar, alternar, enviar, campo, pintar, salir, estado,
   };
 })();
 

@@ -188,17 +188,29 @@ const SGADD_CLIENTES = (function () {
    * instante después y eso no molesta a nadie, mientras que esperarlo
    * demoraría el primer pintado por un control de comodidad.
    */
-  function iniciar() {
-    if (estado.pidiendo || estado.clubes) return Promise.resolve(estado.clubes);
+  function iniciar(opciones) {
+    /* `forzar` para después de un login: al arrancar sin sesión esto salió
+       por el atajo de "no soy admin", y sin poder reintentar el selector no
+       aparecía nunca. */
+    const o = opciones || {};
+    if (!o.forzar && (estado.pidiendo || estado.clubes)) return Promise.resolve(estado.clubes);
     if (!auth || auth.rol() !== auth.ROLES.ADMIN) return Promise.resolve(null);
     if (typeof SGADD_DATA === 'undefined' || !SGADD_DATA.apiConfigurada()) {
       return Promise.resolve(null);
     }
     estado.pidiendo = true;
-    return SGADD_DATA.catalogo().then((cat) => {
+    return SGADD_DATA.catalogo({ forzar: !!o.forzar }).then((cat) => {
       estado.pidiendo = false;
       estado.clubes = (cat && cat.clubes) ? cat.clubes : [];
       pintar();
+      /* Y EL HUB, si está abierto. El catálogo llega DESPUÉS de que la
+         pestaña Clientes se pintó —es asíncrono— así que sin esto el admin
+         entraba al Panel Master, veía "el catálogo no lo tiene a mano" y
+         tenía que ir a otra pestaña y volver para que apareciera. */
+      try {
+        const n = (typeof document !== 'undefined') ? document.getElementById('hubClientes') : null;
+        if (n && typeof SGADD_HUB !== 'undefined') n.innerHTML = SGADD_HUB.html();
+      } catch (e) { /* el hub puede no estar en pantalla */ }
       return estado.clubes;
     }).catch(() => {
       estado.pidiendo = false;
