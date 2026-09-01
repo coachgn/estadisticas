@@ -276,8 +276,12 @@ check('el router la sabe pintar',
   /case 'clasificacion': root\.innerHTML = buildClasificacion\(\)/.test(html));
 check('y tiene su entrada en el menú',
   html.indexOf(`data-nav="clasificacion"`) >= 0);
+/* Se comparan las etiquetas <script>, no la primera aparicion del nombre:
+   los comentarios del <head> nombran modulos y estan mucho antes. Es la
+   trampa que este proyecto ya se comio varias veces. */
 check('el módulo se carga después de sgadd-app, que es de quien depende',
-  html.indexOf('sgadd-clasificacion.js') > html.indexOf('sgadd-app.js'));
+  html.indexOf('src="js/sgadd-clasificacion.js')
+    > html.indexOf('src="js/sgadd-app.js'));
 
 
 titulo('EL ESCUDO Y LA BARRA DE ZONA EN CELULAR');

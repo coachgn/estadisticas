@@ -35,7 +35,8 @@ node test-permisos.js      # 364 tests · roles, planes, el gate, el selector, e
                            #             la sesión, la landing y el glosario
 node test-comparativa.js   #  65 tests · ciclos, tendencia contra nivel, cara a cara
 node test-clientes.js      #  69 tests · el padrón de clientes, los cupos y el login
-node test-confirmar.js     #  72 tests · el diff, publicar zonas, subclientes y tooltips
+node test-confirmar.js     #  86 tests · el diff, publicar zonas, subclientes y tooltips
+node test-acumulacion.js   #  42 tests · la suma entre tramos · REGRESIÓN, no tocar
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -47,7 +48,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**3210 tests en total. Todos tienen que dar verde antes de commitear.**
+**3266 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -5399,3 +5400,107 @@ ocupado.
 Las catorce columnas de la tabla de posiciones la llevan. `Equipo` no: no es
 una sigla y explicarla sería ruido — sin `data-glosa` el tooltip ni la
 considera.
+
+---
+
+## 34. EL ACUMULADO DE UN JUGADOR SE QUEDABA CON UN SOLO TORNEO
+
+El bug más caro de esta vuelta, y el que mejor ilustra por qué en este
+proyecto hay que medir contra la planilla real.
+
+`ACUMULADO J` trae **una fila por torneo**. El índice hacía
+`porClave.set(k, datos)`: en un tramo con dos torneos, la segunda fila
+**borraba** a la primera.
+
+```
+DEPORTIVO · GARCÍA ARAGON, NAHUEL
+  IDA       9 PJ · 139 PTS · 36/68 T2
+  VUELTA    3 PJ ·  45 PTS ·  8/15 T2
+  esperado 12 PJ · 184 PTS · 44/83 T2
+  __acum    3 PJ ·  45 PTS          ← solo la VUELTA
+```
+
+**Y EL MODO DE FALLAR ERA EL PEOR.** El promedio del TOTAL estaba bien —12
+PJ, 15,3 PTS por partido, derivado por otro camino— así que la pantalla
+mostraba el número correcto hasta que alguien tocaba «Totales». Un total de
+45 puntos sobre 3 partidos no se lee como un error: se lee como un jugador
+de rotación.
+
+### Cómo se suma
+
+Con las MISMAS reglas que el TOTAL derivado (punto 3 ter), porque son el
+mismo cálculo por otro camino:
+
+- **las CUENTAS se suman**, `PJ` incluido — es el denominador, no un
+  promedio;
+- **el TEXTO se toma del primero** (nombre, equipo, fase): concatenar el
+  nombre es el error tonto que esto evita;
+- **las TASAS no se suman NUNCA.** Se recalculan sobre los totales, que no
+  es lo mismo que promediar la tasa de cada torneo. En esta hoja la única es
+  `AST-PP`, y vale 1,5 en los dos tramos: sumarla daría 3,0.
+
+### La mitad que no se puede romper
+
+Con **un** torneo, sumar una fila tiene que dar exactamente esa fila. Si no,
+el arreglo del TOTAL habría roto la vista que sí funcionaba. `test-acumulacion.js`
+lo fija, y fija además el caso de **tres** torneos: con dos, un `set` sobre el
+segundo y un `+=` sobre el tercero dan lo mismo, así que un test de dos no
+distingue el bug de su arreglo.
+
+Los números de las fixtures son los **reales** del caso reportado: si algún
+día se «arregla» con una fórmula que da otra cosa, esto lo canta.
+
+---
+
+## 35. LOS ENCABEZADOS YA IBAN CENTRADOS
+
+`table th, table td { text-align: center }` está en el `<style>` desde
+siempre, con `:first-child` a la izquierda para el nombre y una excepción
+para `.tabla-rank`, cuya primera columna es un número.
+
+Las tablas que se veían desalineadas —la de posiciones, la de la captura que
+llegó— lo estaban porque **pedían `text-left` a mano en TODAS sus
+cabeceras**, y una clase le gana a un selector de elemento.
+
+Se corrigió ahí, decidiendo la alineación **por columna**: las dos primeras
+a la izquierda, el resto centradas. Se decide por índice y no por nombre
+porque el juego de cabeceras cambia entre la tabla completa y la resumida.
+
+**Una regla nueva con más especificidad habría tapado el síntoma** y de paso
+pisado a cualquier tabla que pida la izquierda a propósito. Se escribió, se
+midió que era redundante, y se sacó.
+
+---
+
+## 36. EL RESALTE DEL EQUIPO PROPIO NO VA EN EL RANKING DEL PLANTEL
+
+Sirve para encontrar a los tuyos entre doce equipos rivales, que es lo que
+hace el top 20 de la liga. Adentro de un plantel son **todos** del mismo
+club: pintarlos a todos de naranja no distingue a nadie, y encima le compite
+al único resalte que ahí sí informa — la columna por la que se está
+ordenando.
+
+Se decide por `r.ambito`, que ya viajaba en el resultado del motor.
+
+---
+
+## 37. PUBLICAR, GUARDAR Y EXPORTAR · las tres, explicadas en la pantalla
+
+| | Qué hace de verdad |
+|---|---|
+| **Publicar en el cliente** | Lo escribe en el servidor. El cliente lo ve en su próxima carga, sin que nadie toque el repositorio. **Es la vía automática.** |
+| **Guardar en este navegador** | Queda en ESE navegador, para probar. Nadie más lo ve. |
+| **Exportar el bloque JSON** | El bloque para pegar en `clubes/<club>.json` y commitear. Deja el cambio en el historial de git. |
+
+**Publicar va solo arriba y en el color de acento.** Las cuatro estaban en
+fila, del mismo tamaño y con «Guardar en este navegador» primero: la única
+que le cambia algo al cliente quedaba tercera y parecía una más.
+
+Y se dice **por qué exportar es manual**: el navegador no puede escribir
+archivos del repositorio. Sin esa línea, el paso se lee como una molestia y
+no como un límite.
+
+La preconfiguración lleva su propia nota arriba de todo: es la pantalla más
+abstracta del panel —declara una estructura que todavía no tiene datos— y sin
+decir que de ahí salen las Posiciones, la Clasificación, las rachas y el
+Simulador, se lee como un formulario administrativo.

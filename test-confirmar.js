@@ -299,30 +299,29 @@ titulo('LOS ENCABEZADOS, EL RESALTE Y LA BARRA DE ACCIONES');
 {
   const idx2 = fs.readFileSync('./index.html', 'utf8');
 
-  /* Los valores van centrados y los titulos a la izquierda: en una
-     columna angosta el titulo queda colgado del borde y no se lee sobre su
-     propia columna. */
-  check('los encabezados de tabla van centrados',
-    idx2.indexOf('.scrollbox table th:not(:first-child):not(.text-left) { text-align: center') !== -1);
-  /* LA PRIMERA COLUMNA NO: es el nombre, y ahi la izquierda es lo
-     correcto — un nombre centrado en una columna de ancho variable baila
-     de fila en fila. */
-  check('menos la primera, que es el nombre',
-    /:not\(:first-child\)/.test(idx2));
-  /* Y un `th` que pide `text-left` a mano tampoco: hay columnas de texto
-     que no son la primera. */
-  /* Y LA TABLA DE POSICIONES NO PIDE `text-left` PARA TODAS. Pedia, y por
-     eso la regla de arriba la respetaba y la dejaba sin centrar — que es
-     justo la tabla de la captura. Ahora la alineacion se decide por
-     columna: las dos primeras a la izquierda, el resto centradas. */
+  /* LOS ENCABEZADOS YA IBAN CENTRADOS: `table th, table td` los centra
+     desde siempre. Las tablas que se veian desalineadas lo estaban porque
+     pedian `text-left` a mano en TODAS sus cabeceras, y una clase le gana
+     a un selector de elemento. Se corrigio ahi y no con una regla nueva de
+     mas especificidad, que habria tapado el sintoma y pisado a cualquier
+     tabla que pida la izquierda a proposito. */
+  check('la regla base centra los encabezados',
+    idx2.indexOf('table th, table td { text-align: center; }') !== -1);
+  check('menos la primera columna, que es el nombre',
+    idx2.indexOf('table th:first-child, table td:first-child { text-align: left; }') !== -1);
+  check('y no se agrego una regla que pise a las que piden izquierda',
+    idx2.indexOf('.scrollbox table th:not') === -1);
+
   const clasif2 = fs.readFileSync('./js/sgadd-clasificacion.js', 'utf8');
   check('la tabla de posiciones centra de la tercera en adelante',
     /i < 2 \? ' text-left' : ' text-center'/.test(clasif2));
   check('y su clase base ya no fuerza la izquierda',
     /const thBase = 'px-3 py-2\.5 text-\[10px\]/.test(clasif2));
 
-  check('y las que piden alinearse a mano se respetan',
-    /:not\(\.text-left\)/.test(idx2));
+  /* Y la tabla con la primera columna NUMERICA (`tabla-rank`) la centra
+     tambien: ahi el nombre es la segunda. */
+  check('y la de ranking centra su primera columna, que es un numero',
+    idx2.indexOf('table.tabla-rank th:first-child') !== -1);
 
   /* EL RESALTE DEL EQUIPO PROPIO sirve para encontrar a los tuyos entre
      doce rivales. Adentro de un plantel son TODOS del mismo club:
