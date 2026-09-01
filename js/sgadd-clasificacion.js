@@ -242,8 +242,18 @@ function clasifTablaHTML(idx, opciones) {
     'PC/P': 'Puntos en Contra por Partido',
   };
 
-  const th = 'px-3 py-2.5 text-left text-[10px] uppercase tracking-wider text-muted ' +
+  /* EL ENCABEZADO SE ALINEA COMO SU COLUMNA.
+
+     Los valores van centrados y los titulos iban todos a la izquierda:
+     en columnas de tres caracteres el titulo quedaba colgado del borde y
+     no se leia sobre su propia columna.
+
+     Las dos primeras se quedan a la izquierda —el puesto y el nombre del
+     equipo— porque ahi es lo correcto: un nombre centrado en una columna
+     de ancho variable baila de fila en fila. */
+  const thBase = 'px-3 py-2.5 text-[10px] uppercase tracking-wider text-muted ' +
     'whitespace-nowrap font-display font-semibold border-b border-hairline bg-surface2/50';
+  const th = thBase + ' text-left';
   const td = 'px-3 py-2.5 whitespace-nowrap text-sm border-b border-hairline/40 ' +
     'text-white font-mono tabular-nums';
 
@@ -273,11 +283,15 @@ function clasifTablaHTML(idx, opciones) {
 
   return `<div class="scrollbox rounded-lg border border-hairline/50 overflow-hidden">
       <table class="w-full border-collapse tabla-rank">
-        <thead><tr>${cabeceras.map((h) => {
+        <thead><tr>${cabeceras.map((h, i) => {
           const g = GLOSA[h];
           /* `Equipo` no lleva glosa: no es una sigla y explicarla seria
              ruido. Sin `data-glosa` el tooltip ni siquiera la considera. */
-          return `<th class="${th}"${g ? ` data-glosa="${SGADD_UI.esc(g)}"` : ''}>${SGADD_UI.esc(h)}</th>`;
+          /* Las dos primeras a la izquierda; el resto, centradas sobre
+             sus numeros. `i` y no el nombre de la columna: el juego de
+             cabeceras cambia entre la tabla completa y la resumida. */
+          const cls = thBase + (i < 2 ? ' text-left' : ' text-center');
+          return `<th class="${cls}"${g ? ` data-glosa="${SGADD_UI.esc(g)}"` : ''}>${SGADD_UI.esc(h)}</th>`;
         }).join('')}</tr></thead>
         <tbody>${cuerpo}</tbody>
       </table>

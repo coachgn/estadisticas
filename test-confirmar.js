@@ -311,6 +311,16 @@ titulo('LOS ENCABEZADOS, EL RESALTE Y LA BARRA DE ACCIONES');
     /:not\(:first-child\)/.test(idx2));
   /* Y un `th` que pide `text-left` a mano tampoco: hay columnas de texto
      que no son la primera. */
+  /* Y LA TABLA DE POSICIONES NO PIDE `text-left` PARA TODAS. Pedia, y por
+     eso la regla de arriba la respetaba y la dejaba sin centrar — que es
+     justo la tabla de la captura. Ahora la alineacion se decide por
+     columna: las dos primeras a la izquierda, el resto centradas. */
+  const clasif2 = fs.readFileSync('./js/sgadd-clasificacion.js', 'utf8');
+  check('la tabla de posiciones centra de la tercera en adelante',
+    /i < 2 \? ' text-left' : ' text-center'/.test(clasif2));
+  check('y su clase base ya no fuerza la izquierda',
+    /const thBase = 'px-3 py-2\.5 text-\[10px\]/.test(clasif2));
+
   check('y las que piden alinearse a mano se respetan',
     /:not\(\.text-left\)/.test(idx2));
 
