@@ -47,7 +47,7 @@
           "id": "zona3",
           "desde": -2,
           "label": "Descenso",
-          "tono": "neutro"
+          "tono": "peligro"
         }
       ]
     }
