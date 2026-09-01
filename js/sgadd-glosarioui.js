@@ -203,8 +203,21 @@ const SGADD_GLOSARIOUI = (function () {
     caja.style.left = (left + window.scrollX) + 'px';
   }
 
+  /**
+   * Muestra el tooltip de un elemento.
+   *
+   * `data-glosa` GANA SOBRE EL GLOSARIO, y hace falta: la misma sigla no
+   * significa lo mismo en todas las tablas. En la tabla de posiciones `PP`
+   * es «Partidos Perdidos» y en el glosario del motor es «Pérdidas» — sin
+   * esta salida, el tooltip de la clasificación diría algo que es cierto
+   * en otra pantalla y falso en esta, que es peor que no decir nada.
+   *
+   * La glosa es literal y de la tabla que la escribe: no se agrega al
+   * glosario, porque ahí `PP` ya está y significa otra cosa.
+   */
   function mostrar(el, sigla) {
-    const e = G && G.buscar(sigla);
+    const glosa = (el && el.getAttribute) ? el.getAttribute('data-glosa') : null;
+    const e = glosa ? { sigla: sigla, lectura: glosa } : (G && G.buscar(sigla));
     if (!e) return;
     asegurarCaja();
     caja.innerHTML =
@@ -234,6 +247,10 @@ const SGADD_GLOSARIOUI = (function () {
     if (!el || !el.getAttribute) return null;
     const d = el.getAttribute('data-metrica');
     if (d) return d;
+    /* Con `data-glosa` y sin `data-metrica`, la sigla es el propio texto:
+       la celda que escribe su definición a mano no tiene por qué repetir
+       la sigla en un segundo atributo. */
+    if (el.getAttribute('data-glosa')) return (el.textContent || '').trim();
     const t = (el.textContent || '').trim();
     if (!t || t.length > 12) return null;
     return (G && G.buscar(t)) ? t : null;
@@ -256,7 +273,7 @@ const SGADD_GLOSARIOUI = (function () {
          cualquier celda haría aparecer el tooltip sobre los NÚMEROS, que
          es justo donde molesta. */
       if (!t || !t.closest) return null;
-      const el = t.closest('th, [data-metrica]');
+      const el = t.closest('th, [data-metrica], [data-glosa]');
       if (!el) return null;
       return siglaDe(el) ? el : null;
     };

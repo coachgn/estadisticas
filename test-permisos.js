@@ -669,13 +669,23 @@ titulo('EL CICLO DE VIDA EN LA UI · y que NO diverja del servidor');
   check('BÁSICO no', !A.tieneModulo('scouting', ses('BRONCE')));
   check('y un plan desconocido tampoco', !A.tieneModulo('scouting', ses('GRATIS')));
 
-  /* SOLO LA BAJA PIDE CONFIRMACIÓN. Pausar y cambiar el plan son
-     reversibles de un click y el estado queda a la vista; la baja es la
-     única que el cliente lee como el final de la relación. */
-  check('dar de baja pide confirmación',
-    /accion === 'desactivar'[\s\S]{0,120}confirm\(/.test(hub2));
-  check('pausar NO la pide',
-    !/accion === 'pausar'[\s\S]{0,120}confirm\(/.test(hub2));
+  /* AHORA CONFIRMAN TODOS, Y CON DETALLE.
+
+     Antes solo la baja pedía confirmación, con un `confirm()` nativo
+     que preguntaba «¿seguimos?» sin decir qué. El resto se aplicaba de
+     una: un clic en «Pausar» le cortaba el acceso al cliente en el acto.
+
+     El modal enumera el cambio campo por campo —«Plan: PLATA → ORO»— y
+     avisa que se ve en la sesión del cliente. Eso es lo que separa
+     confirmar de leer, y por eso vale la pena para todos y no solo para
+     el más caro. La baja conserva su aviso propio, que es más duro.
+     Detalle en `test-confirmar.js`. */
+  check('ningún cambio de suscripción se manda sin confirmar',
+    /function accionClub[\s\S]{0,900}SGADD_CONFIRMAR\.abrir\(/.test(hub2));
+  check('y la baja sigue teniendo su aviso propio',
+    /accion === 'desactivar'[\s\S]{0,200}corta el acceso/.test(hub2));
+  check('el confirm() nativo se fue',
+    !/confirm\('Dar de baja/.test(hub2));
 
   /* EL BLOQUE COMERCIAL NO SE PINTA SI EL SERVIDOR NO LO MANDÓ, o sea para
      un no-admin: `publico()` omite esos campos y la tarjeta no puede

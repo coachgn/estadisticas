@@ -312,9 +312,36 @@ const SGADD_HUB = (function () {
     if (accesosAbierto.yendo) return;
     const mail = String(email !== undefined ? email : accesosAbierto.nuevo).trim();
     if (!mail) return;
-    if (accion === 'baja' && typeof confirm === 'function' &&
-        !confirm('Sacar a ' + mail + ' le corta el acceso y borra su clave. ¿Seguimos?')) return;
+    if (typeof SGADD_CONFIRMAR === 'undefined') return aplicarAcceso(club, accion, mail);
 
+    /* LA BAJA ES LA QUE HAY QUE MIRAR DOS VECES: le corta el acceso a una
+       persona y borra su clave. El alta y la reinvitación se confirman
+       igual —son cambios que el cliente ve— pero su aviso es otro. */
+    const previos = ((accesos[club] || {}).mails || []);
+    const nuevos = accion === 'baja'
+      ? previos.filter(m => m.email !== mail)
+      : (accion === 'alta' ? previos.concat([{ email: mail }]) : previos);
+
+    const textos = {
+      alta: 'Le vas a dar acceso a esta persona. Va a recibir un código para elegir su clave.',
+      baja: 'Le corta el acceso YA y le borra la clave. Si vuelve, hay que invitarlo de nuevo.',
+      reinvitar: 'Genera un código nuevo. NO le borra la clave que ya tenga: la vieja sigue'
+        + ' sirviendo hasta que canjee el código.',
+    };
+
+    SGADD_CONFIRMAR.abrir({
+      titulo: 'Accesos · ' + club,
+      aviso: textos[accion] || '',
+      confirmar: accion === 'baja' ? 'Sacar el acceso' : 'Guardar cambios',
+      cambios: accion === 'reinvitar'
+        ? [{ label: 'Código nuevo para', antes: '—', despues: mail }]
+        : SGADD_CONFIRMAR.cambiosDeAccesos(previos, nuevos),
+      alConfirmar: () => aplicarAcceso(club, accion, mail),
+    });
+  }
+
+  function aplicarAcceso(club, accion, mail) {
+    if (accesosAbierto.yendo) return;
     accesosAbierto.yendo = true; accesosAbierto.error = ''; accesosAbierto.codigo = null;
     repintarLista();
 
@@ -721,13 +748,43 @@ const SGADD_HUB = (function () {
    * que el cliente lee como el final de la relación, y un `confirm()` es
    * barato al lado de tener que explicar por qué se cortó.
    */
+  /**
+   * Un cambio de suscripción. NO SE MANDA HASTA QUE EL ADMIN CONFIRMA.
+   *
+   * Antes se aplicaba de una: un clic en «Pausar» le cortaba el acceso al
+   * cliente en el acto, sin decir qué estaba por pasar. El modal enumera
+   * el cambio campo por campo —«Plan: PLATA → ORO»— y avisa que se ve en
+   * la sesión del cliente en la próxima carga.
+   *
+   * El `confirm()` nativo que tenía la baja se va: preguntaba «¿seguimos?»
+   * sin decir qué, que es lo que este modal vino a reemplazar.
+   */
   function accionClub(club, accion, valor) {
     if (pendiente.club) return;
-    if (accion === 'desactivar' &&
-        typeof confirm === 'function' &&
-        !confirm('Dar de baja a este cliente le corta el acceso a todos sus usuarios. '
-          + 'La configuración se conserva. ¿Seguimos?')) return;
+    if (typeof SGADD_CONFIRMAR === 'undefined') return aplicarClub(club, accion, valor);
 
+    const c = (SGADD_CLIENTES && SGADD_CLIENTES.estado.clubes || []).find(x => x.id === club) || {};
+    const despues = Object.assign({}, c);
+    if (accion === 'cambiar_plan') despues.plan = valor;
+    if (accion === 'renovar') despues.vence = valor || '';
+    if (accion === 'pausar') despues.estado = 'pausado';
+    if (accion === 'reactivar') despues.estado = 'activo';
+    if (accion === 'desactivar') despues.estado = 'inactivo';
+
+    SGADD_CONFIRMAR.abrir({
+      titulo: (c.nombre || club) + ' · confirmar el cambio',
+      aviso: 'Se aplica ya: el cliente lo ve en su próxima carga.'
+        + (accion === 'desactivar' ? ' Dar de baja le corta el acceso a todos sus usuarios;'
+          + ' la configuración se conserva.' : ''),
+      confirmar: 'Guardar cambios',
+      cambios: SGADD_CONFIRMAR.cambiosDeClub(c, despues),
+      alConfirmar: () => aplicarClub(club, accion, valor),
+    });
+  }
+
+  /** La petición de verdad. Solo la llama el modal, o el fallback sin él. */
+  function aplicarClub(club, accion, valor) {
+    if (pendiente.club) return;
     pendiente.club = club; pendiente.error = ''; pendiente.clubError = null;
     repintarLista();
 
@@ -778,7 +835,8 @@ const SGADD_HUB = (function () {
     QUE_INCLUYE, PARTIDOS_POR_CICLO,
     html, bloqueAlta, campoAlta, guardar, accionClub, alta, guardado, pendiente,
     /* accesos */
-    verAccesos, campoAcceso, accionAcceso, copiarCodigo, estadoMail, bloqueAccesos,
+    verAccesos, campoAcceso, accionAcceso, aplicarAcceso, aplicarClub,
+    copiarCodigo, estadoMail, bloqueAccesos,
     accesos, accesosAbierto,
   };
 })();

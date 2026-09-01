@@ -331,7 +331,7 @@
 
   /* La sigla con definicion se marca con un subrayado punteado: sin una
      señal, nadie descubre que se puede pasar el mouse. */
-  th[data-metrica], [data-metrica] {
+  th[data-metrica], [data-metrica], [data-glosa] {
     text-decoration: underline dotted rgba(255,255,255,.25);
     text-underline-offset: 3px;
   }
@@ -1896,7 +1896,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=170" />
+<link rel="stylesheet" href="sgadd.css?v=171" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2074,39 +2074,40 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=170"></script>
+<script src="js/sgadd-club.js?v=171"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=170"></script>
-<script src="js/sgadd-core.js?v=170"></script>
-<script src="js/sgadd-auth.js?v=170"></script>
-<script src="js/sgadd-glosario.js?v=170"></script>
-<script src="js/sgadd-glosarioui.js?v=170"></script>
-<script src="js/sgadd-comparativa.js?v=170"></script>
-<script src="js/sgadd-comparativaui.js?v=170"></script>
-<script src="js/sgadd-landing.js?v=170"></script>
-<script src="js/sgadd-login.js?v=170"></script>
-<script src="js/sgadd-data.js?v=170"></script>
-<script src="js/sgadd-clientes.js?v=170"></script>
-<script src="js/sgadd-ui.js?v=170"></script>
-<script src="js/sgadd-app.js?v=170"></script>
-<script src="js/sgadd-clasificacion.js?v=170"></script>
+<script src="js/sgadd-config.js?v=171"></script>
+<script src="js/sgadd-core.js?v=171"></script>
+<script src="js/sgadd-auth.js?v=171"></script>
+<script src="js/sgadd-glosario.js?v=171"></script>
+<script src="js/sgadd-glosarioui.js?v=171"></script>
+<script src="js/sgadd-comparativa.js?v=171"></script>
+<script src="js/sgadd-comparativaui.js?v=171"></script>
+<script src="js/sgadd-confirmar.js?v=171"></script>
+<script src="js/sgadd-landing.js?v=171"></script>
+<script src="js/sgadd-login.js?v=171"></script>
+<script src="js/sgadd-data.js?v=171"></script>
+<script src="js/sgadd-clientes.js?v=171"></script>
+<script src="js/sgadd-ui.js?v=171"></script>
+<script src="js/sgadd-app.js?v=171"></script>
+<script src="js/sgadd-clasificacion.js?v=171"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=170"></script>
-<script src="js/sgadd-configui.js?v=170"></script>
-<script src="js/sgadd-estados.js?v=170"></script>
-<script src="js/sgadd-buzon.js?v=170"></script>
-<script src="js/sgadd-charts.js?v=170"></script>
-<script src="js/sgadd-personalidad.js?v=170"></script>
-<script src="js/sgadd-rankings.js?v=170"></script>
-<script src="js/sgadd-partido.js?v=170"></script>
-<script src="js/sgadd-informe.js?v=170"></script>
-<script src="js/sgadd-ficha.js?v=170"></script>
-<script src="js/sgadd-equipos.js?v=170"></script>
-<script src="js/sgadd-jugadores.js?v=170"></script>
-<script src="js/sgadd-4factores.js?v=170"></script>
-<script src="js/sgadd-scouting.js?v=170"></script>
-<script src="js/sgadd-diagnostico.js?v=170"></script>
+<script src="js/sgadd-hub.js?v=171"></script>
+<script src="js/sgadd-configui.js?v=171"></script>
+<script src="js/sgadd-estados.js?v=171"></script>
+<script src="js/sgadd-buzon.js?v=171"></script>
+<script src="js/sgadd-charts.js?v=171"></script>
+<script src="js/sgadd-personalidad.js?v=171"></script>
+<script src="js/sgadd-rankings.js?v=171"></script>
+<script src="js/sgadd-partido.js?v=171"></script>
+<script src="js/sgadd-informe.js?v=171"></script>
+<script src="js/sgadd-ficha.js?v=171"></script>
+<script src="js/sgadd-equipos.js?v=171"></script>
+<script src="js/sgadd-jugadores.js?v=171"></script>
+<script src="js/sgadd-4factores.js?v=171"></script>
+<script src="js/sgadd-scouting.js?v=171"></script>
+<script src="js/sgadd-diagnostico.js?v=171"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -4287,6 +4288,7 @@ async function init() {
   /* Los tooltips de metrica se enganchan UNA vez, por delegacion en el
      `document`: sobreviven a cualquier repintado de tabla. */
   if (typeof SGADD_GLOSARIOUI !== 'undefined') SGADD_GLOSARIOUI.iniciar();
+  if (typeof SGADD_CONFIRMAR !== 'undefined') SGADD_CONFIRMAR.iniciar();
   if (typeof SGADD_CLIENTES !== 'undefined') SGADD_CLIENTES.iniciar();
   /* El selector de cliente SÍ se pide en la landing: un admin que entra a
      la URL limpia tiene que poder elegir a quién mirar desde ahí. */

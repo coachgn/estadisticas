@@ -115,11 +115,32 @@ const SGADD_CONFIG = (function () {
     const pt = c.porTramo && typeof c.porTramo === 'object' ? c.porTramo : {};
     Object.keys(pt).forEach((k) => { porTramo[k.toUpperCase()] = pt[k]; });
 
+    /* LAS CATEGORIAS SE PARSEAN CON EL MISMO PARSER, recursivamente.
+
+       Cada sub-bloque tiene la forma de un `competencia` entero —sus
+       formatos, su `porTramo`, su orden de desempate— porque una
+       categoria es una competencia distinta y no un recorte de otra.
+       Reusar el parser es lo que garantiza que las validaciones y los
+       defaults sean los mismos: con un parser propio, el dia que se
+       agregue un campo habria que acordarse de tocar dos lados, y el que
+       se olvida es siempre el de abajo.
+
+       La recursion es de UN nivel: un `porCategoria` adentro de una
+       categoria se ignora, porque una categoria no tiene sub-categorias
+       y aceptarlo seria prometer una jerarquia que nada mas soporta. */
+    const porCategoria = {};
+    const pc = c.porCategoria && typeof c.porCategoria === 'object' ? c.porCategoria : {};
+    Object.keys(pc).forEach((id) => {
+      const sub = parsear({ competencia: pc[id] });
+      if (sub) { delete sub.porCategoria; porCategoria[id] = sub; }
+    });
+
     return {
       ordenTabla: Array.isArray(c.ordenTabla) && c.ordenTabla.length
         ? c.ordenTabla.map(texto) : ['PCT', 'DIF', 'PF'],
       formatos: formatos,
       porTramo: porTramo,
+      porCategoria: porCategoria,
     };
   }
 
@@ -367,12 +388,78 @@ const SGADD_CONFIG = (function () {
    * el override sin enterarse: se guardaba un corte nuevo y la tabla
    * seguía pintando el viejo, sin ningún síntoma.
    */
-  function resolver(jsonClub, torneo, fase) {
+  /**
+   * La categoría abierta. Igual que `clubActivo()`, vive acá para que
+   * todos los consumidores resuelvan la misma: si cada uno la dedujera,
+   * uno leería las zonas de otra categoría y la tabla mostraría reglas
+   * ajenas sin ningún síntoma.
+   */
+  function categoriaActiva() {
+    try {
+      if (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado && SGADD_APP.estado.planillaId) {
+        return SGADD_APP.estado.planillaId;
+      }
+    } catch (e) { /* SGADD_APP puede no haber cargado todavía */ }
+    return null;
+  }
+
+  /**
+   * EL BLOQUE DE UNA CATEGORÍA · los subclientes de un club.
+   *
+   * Un club puede tener varias categorías con torneos y formatos que no
+   * tienen nada que ver: Reconquista corre Primera, U21 y U23, cada una
+   * con su propio libro. Hasta acá el bloque `competencia` era del CLUB
+   * entero, y como las claves de `porTramo` son `TORNEO|FASE`, dos
+   * categorías con la misma clave —`GENERAL|REGULAR` es lo más común de
+   * todo— compartían zonas sin que nadie lo pidiera. Bajar el descenso en
+   * Primera se lo bajaba también a la U21.
+   *
+   * `porCategoria` lo scopea. Es ADITIVO y degrada solo: un club que no
+   * lo declara se comporta exactamente como antes, y una categoría que no
+   * está en el mapa cae al bloque del club — que es lo correcto para un
+   * club de una sola categoría, donde separarlas sería pedirle al DT que
+   * declare dos veces lo mismo.
+   *
+   * NO SE FUSIONAN los dos niveles. Mezclar zonas de dos orígenes daría
+   * cascadas que ninguno de los dos declaró, y la cascada es justo lo que
+   * decide qué zona gana: el resultado no se podría auditar contra
+   * ninguna de las dos fuentes. Es la misma regla que ya vale para el
+   * override local (punto 17).
+   */
+  function bloqueDeCategoria(config, categoria) {
+    if (!config) return null;
+    const mapa = config.porCategoria;
+    if (!categoria || !mapa || typeof mapa !== 'object') return config;
+    const propio = mapa[categoria];
+    if (!propio || typeof propio !== 'object') return config;
+    return propio;
+  }
+
+  /**
+   * LA config que la app tiene que usar, resuelta de punta a punta.
+   *
+   * Es el único punto de entrada para las pantallas: toma el club activo,
+   * su JSON, el override local y la CATEGORÍA abierta, y devuelve el
+   * formato del tramo pedido. Antes cada consumidor llamaba a `parsear()`
+   * por su cuenta y se comía el override sin enterarse: se guardaba un
+   * corte nuevo y la tabla seguía pintando el viejo, sin ningún síntoma.
+   */
+  function resolver(jsonClub, torneo, fase, categoria) {
     const v = vigente(jsonClub, clubActivo());
+    const cat = (categoria === undefined) ? categoriaActiva() : categoria;
+    const bloque = bloqueDeCategoria(v.config, cat);
     return {
       config: v.config,
+      /* El bloque que MANDA en esta categoría, que puede ser el del club
+         o el suyo propio. La pantalla de Configuración edita este. */
+      bloque: bloque,
+      categoria: cat,
+      /* `propio` dice si la categoría tiene reglas suyas o hereda las del
+         club: sin eso, el DT no puede saber si lo que está editando le va
+         a cambiar la tabla a las otras categorías. */
+      propio: !!(bloque && bloque !== v.config),
       origen: v.origen,
-      formato: v.config ? formatoDeTramo(v.config, torneo, fase) : null,
+      formato: bloque ? formatoDeTramo(bloque, torneo, fase) : null,
     };
   }
 
@@ -419,14 +506,55 @@ const SGADD_CONFIG = (function () {
    * `origen` dice cuál se está usando, para que la pantalla lo muestre:
    * un DT que edita y no ve el cambio tiene que poder saber por qué.
    */
+  /**
+   * LA CASCADA DE TRES NIVELES, de lo mas local a lo mas general:
+   *
+   *   1. el BORRADOR de este navegador   — lo que el admin esta probando
+   *   2. lo PUBLICADO en el catalogo     — lo que el club ve hoy
+   *   3. `clubes/<club>.json`            — el respaldo del repo
+   *
+   * El borrador gana para que el que edita vea su cambio antes de
+   * publicarlo; lo publicado gana sobre el archivo para que publicar
+   * sirva de algo; y el archivo queda de respaldo para el club que nunca
+   * publico nada y para el dia que el backend no conteste — que es
+   * exactamente como funcionaba todo hasta ahora.
+   *
+   * NUNCA SE FUSIONAN dos niveles: el que gana, gana entero. Mezclar
+   * zonas de dos origenes daria cascadas que ninguno de los dos declaro,
+   * y la cascada es lo que decide que zona gana.
+   */
   function vigente(jsonClub, clubId) {
     const local = leerOverride(clubId);
     if (local) {
       const cfg = parsear({ competencia: local });
       if (cfg) return { config: cfg, origen: 'local' };
     }
+    const pub = publicado(clubId);
+    if (pub) {
+      const cfg = parsear({ competencia: pub });
+      if (cfg) return { config: cfg, origen: 'publicado' };
+    }
     const base = parsear(jsonClub);
     return { config: base, origen: base ? 'json' : 'ninguno' };
+  }
+
+  /**
+   * El bloque que el admin publico para este club, si lo hay.
+   *
+   * Sale del catalogo que el backend ya bajo, no de una peticion nueva:
+   * `resolver()` la llaman los repintados y una llamada de red ahi
+   * convertiria pintar la tabla en algo que puede fallar.
+   *
+   * En Node no hay `SGADD_DATA` y devuelve null: el modulo sigue puro.
+   */
+  function publicado(clubId) {
+    try {
+      if (typeof SGADD_CLIENTES === 'undefined') return null;
+      const lista = SGADD_CLIENTES.estado && SGADD_CLIENTES.estado.clubes;
+      if (!Array.isArray(lista)) return null;
+      const c = lista.find(x => x && x.id === clubId);
+      return (c && c.competencia) ? c.competencia : null;
+    } catch (e) { return null; }
   }
 
   /**
@@ -1051,6 +1179,8 @@ const SGADD_CONFIG = (function () {
   }
 
   return {
+    publicado,
+    categoriaActiva, bloqueDeCategoria,
     TONOS, TONO_POR_DEFECTO, TRAMO_CUALQUIERA, tono,
     parsear, formatoDeTramo, zonaDePuesto, zonasDeTabla, leyenda, validar,
     leerOverride, guardarOverride, borrarOverride, vigente, exportar, claveAlmacen,

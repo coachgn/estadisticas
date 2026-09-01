@@ -213,6 +213,35 @@ function clasifTablaHTML(idx, opciones) {
   const completa = o.columnas === 'completa';
   const recorte = o.limite ? filas.slice(0, o.limite) : filas;
 
+  /* =====================================================================
+     QUE DICE CADA COLUMNA
+
+     Va como `data-glosa` y NO como `data-metrica`, y esa es la decision
+     que importa: la misma sigla no significa lo mismo en todas las
+     tablas. Aca `PP` es «Partidos Perdidos»; en el glosario del motor
+     `PP` es «Perdidas», que es cierto en el box score y falso en esta
+     pantalla. Un tooltip que dice algo verdadero en otro lado es peor que
+     no decir nada.
+
+     Por lo mismo NO se agregan al glosario: ahi `PP` ya esta, y ocupado.
+     ===================================================================== */
+  const GLOSA = {
+    'Pos': 'Posicion en la tabla',
+    'PJ': 'Partidos Jugados',
+    'PG': 'Partidos Ganados',
+    'PP': 'Partidos Perdidos',
+    'PG L': 'Partidos Ganados de Local',
+    'PP L': 'Partidos Perdidos de Local',
+    'PG V': 'Partidos Ganados de Visitante',
+    'PP V': 'Partidos Perdidos de Visitante',
+    'PF': 'Puntos a Favor',
+    'PC': 'Puntos en Contra',
+    'Dif': 'Diferencia de Puntos (PF menos PC)',
+    'PCT%': 'Porcentaje de Victorias',
+    'PF/P': 'Puntos a Favor por Partido',
+    'PC/P': 'Puntos en Contra por Partido',
+  };
+
   const th = 'px-3 py-2.5 text-left text-[10px] uppercase tracking-wider text-muted ' +
     'whitespace-nowrap font-display font-semibold border-b border-hairline bg-surface2/50';
   const td = 'px-3 py-2.5 whitespace-nowrap text-sm border-b border-hairline/40 ' +
@@ -244,7 +273,12 @@ function clasifTablaHTML(idx, opciones) {
 
   return `<div class="scrollbox rounded-lg border border-hairline/50 overflow-hidden">
       <table class="w-full border-collapse tabla-rank">
-        <thead><tr>${cabeceras.map(h => `<th class="${th}">${SGADD_UI.esc(h)}</th>`).join('')}</tr></thead>
+        <thead><tr>${cabeceras.map((h) => {
+          const g = GLOSA[h];
+          /* `Equipo` no lleva glosa: no es una sigla y explicarla seria
+             ruido. Sin `data-glosa` el tooltip ni siquiera la considera. */
+          return `<th class="${th}"${g ? ` data-glosa="${SGADD_UI.esc(g)}"` : ''}>${SGADD_UI.esc(h)}</th>`;
+        }).join('')}</tr></thead>
         <tbody>${cuerpo}</tbody>
       </table>
     </div>`;

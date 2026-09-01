@@ -264,6 +264,55 @@ function plan(cat, d) {
   return { ok: true, catalogo: nuevo };
 }
 
+/**
+ * PUBLICA EL BLOQUE `competencia` DE UN CLUB.
+ *
+ * Hasta aca las zonas de la tabla vivian en `clubes/<club>.json`, o sea
+ * en un archivo del repo: cambiarlas era editar, commitear y esperar a
+ * que Pages publique. La pantalla de Configuracion las guardaba en el
+ * `localStorage` del que editaba y le daba el JSON para pegar a mano.
+ *
+ * Con esto el admin publica y le llega al cliente en la proxima carga.
+ * El JSON del repo NO se toca y sigue siendo el respaldo: si KV se cae o
+ * el club nunca publico nada, la tabla se pinta con lo que dice el
+ * archivo, que es exactamente como funciona hoy.
+ *
+ * SE GUARDA EL BLOQUE ENTERO, no un parche. Fusionar zonas de dos
+ * origenes daria cascadas que ninguno de los dos declaro, y la cascada es
+ * justo lo que decide que zona gana: el resultado no se podria auditar
+ * contra ninguna de las dos fuentes. Es la misma regla del override local
+ * (punto 17).
+ *
+ * Un bloque VACIO borra lo publicado y devuelve el club al JSON del repo.
+ * Es la unica forma de deshacer sin tener que adivinar como era antes.
+ */
+function zonas(cat, d) {
+  const v = d || {};
+  const nuevo = copiar(cat);
+  if (!nuevo[v.club]) return malo('Ese club no esta en el catalogo.');
+
+  const bloque = v.competencia;
+  if (bloque === null || bloque === undefined || bloque === '') {
+    delete nuevo[v.club].competencia;
+    return { ok: true, catalogo: nuevo, borrado: true };
+  }
+  if (typeof bloque !== 'object' || Array.isArray(bloque)) {
+    return malo('El bloque de zonas tiene que ser un objeto.');
+  }
+  /* Se exige que declare formatos: un bloque sin ellos no pinta ninguna
+     zona y publicarlo se leeria como "se rompio", no como "lo vacie".
+     Para vaciarlo esta la rama de arriba, que es explicita. */
+  const tieneFormatos = bloque.formatos && typeof bloque.formatos === 'object'
+    && Object.keys(bloque.formatos).length;
+  const tieneCategorias = bloque.porCategoria && typeof bloque.porCategoria === 'object'
+    && Object.keys(bloque.porCategoria).length;
+  if (!tieneFormatos && !tieneCategorias) {
+    return malo('El bloque no declara ningun formato. Para dejarlo sin zonas, publicalo vacio.');
+  }
+  nuevo[v.club].competencia = bloque;
+  return { ok: true, catalogo: nuevo };
+}
+
 /** Extiende (o fija) la fecha de vencimiento. */
 function renovar(cat, d) {
   const v = d || {};
@@ -338,6 +387,7 @@ function aplicar(vigente, accion, datos, validar) {
     cambiar_plan: plan,
     informe_entregado: informe,
     renovar: renovar,
+    zonas: zonas,
   };
   const fn = acciones[accion];
   if (!fn) return malo('Acción desconocida: ' + accion);
@@ -371,6 +421,7 @@ function aplicar(vigente, accion, datos, validar) {
   return r;
 }
 
-module.exports = { alta, baja, estado, plan, renovar, informe, ciclo, aplicar,
+module.exports = {
+  zonas, alta, baja, estado, plan, renovar, informe, ciclo, aplicar,
   librosPerdidos, ALIAS_PLAN, PARTIDOS_POR_CICLO,
   vencido, estadoEfectivo, ESTADOS, PLANES, ID, SHEET, FECHA };

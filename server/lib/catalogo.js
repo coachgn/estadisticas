@@ -188,6 +188,15 @@ function publico(cat, opciones) {
     id: id,
     nombre: c[id].nombre,
     liga: c[id].liga || '',
+    /* LAS ZONAS VAN PARA TODOS, no solo para el admin.
+
+       No es informacion comercial: es COMO SE PINTA la tabla de
+       posiciones de ese club, y el que la mira es justamente el cliente.
+       Dejarla del lado del admin haria que publicar no sirviera de nada.
+
+       Y no revela nada que el cliente no pueda ver igual: hasta ahora
+       vivia en `clubes/<club>.json`, que es un archivo publico. */
+    competencia: c[id].competencia || null,
     categorias: Object.keys(c[id].categorias || {}).map(s => ({
       slug: s,
       label: c[id].categorias[s].label,

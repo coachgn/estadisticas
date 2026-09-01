@@ -175,12 +175,73 @@ function configGuardar() {
   CONFIGUI.sucio = false;
   CONFIGUI.origen = ok ? 'local' : CONFIGUI.origen;
   configAvisar(ok
-    ? 'Guardado en este navegador. Para que le llegue al resto, exportá el bloque y commiteálo.'
+    ? 'Guardado en este navegador. Para que le llegue al cliente, tocá «Publicar».'
     : 'No se pudo guardar: el navegador no deja escribir (modo privado o cuota llena).', ok);
   /* Las otras pantallas tienen que ver el cambio ya: reindexar dispara
      `onCambio`, que repinta Clasificación y el resumen de Principal. */
   if (ok && typeof SGADD_APP !== 'undefined') { try { SGADD_APP.reindexar(); } catch (e) {} }
   configPintar();
+}
+
+/* =====================================================================
+   PUBLICAR · que el cambio le llegue al cliente
+
+   «Guardar en este navegador» sigue siendo lo que era: el borrador de
+   quien edita, que no le cambia nada a nadie más. Publicar escribe el
+   bloque en el catálogo y el cliente lo ve en su próxima carga.
+
+   SON DOS ACCIONES Y NO UNA CON UN TILDE. Probar un corte y publicarlo
+   son momentos distintos del trabajo: el admin mueve zonas varias veces
+   antes de estar conforme, y cada una de esas veces NO tiene por qué
+   verla el club.
+
+   El JSON del repo queda de respaldo y la exportación también: es lo que
+   sirve para dejar el cambio en el historial de git, que sigue siendo la
+   única trazabilidad real que tiene el proyecto.
+   ===================================================================== */
+
+/** Solo un ADMIN con backend puede publicar. */
+function configPuedePublicar() {
+  try {
+    if (typeof SGADD_DATA === 'undefined' || !SGADD_DATA.apiConfigurada()) return false;
+    return typeof SGADD_AUTH !== 'undefined' && SGADD_AUTH.rol() === 'ADMIN';
+  } catch (e) { return false; }
+}
+
+function configPublicar() {
+  const b = CONFIGUI.borrador;
+  if (!b) return;
+  const bloque = JSON.parse(SGADD_CONFIG.exportar(b)).competencia;
+
+  const lanzar = () => {
+    configAvisar('Publicando…', true);
+    SGADD_DATA.guardarCatalogo({ accion: 'zonas', club: configClubId(), competencia: bloque })
+      .then((r) => {
+        /* El catálogo que devuelve el servidor es el que vale: el que
+           tenía la pantalla quedó viejo en cuanto se escribió. */
+        if (typeof SGADD_CLIENTES !== 'undefined' && r.clubes) {
+          SGADD_CLIENTES.estado.clubes = r.clubes;
+        }
+        configAvisar('Publicado. El cliente lo ve en su próxima carga.', true);
+        /* Y se repinta lo que depende de las zonas, para que el admin vea
+           lo mismo que va a ver el club sin recargar. */
+        if (typeof SGADD_APP !== 'undefined') { try { SGADD_APP.reindexar(); } catch (e) {} }
+        configPintar();
+      })
+      .catch((e) => {
+        configAvisar('No se pudo publicar: ' + (e.message || 'error del servidor'), false);
+        configPintar();
+      });
+  };
+
+  if (typeof SGADD_CONFIRMAR === 'undefined') return lanzar();
+  SGADD_CONFIRMAR.abrir({
+    titulo: 'Publicar las zonas de ' + configClubId(),
+    aviso: 'Se actualiza la tabla de posiciones que ve el cliente en su próxima carga.',
+    confirmar: 'Publicar',
+    zonas: SGADD_CONFIRMAR.resumenZonas(b),
+    alConfirmar: lanzar,
+  });
 }
 
 function configRestablecer() {
@@ -501,8 +562,11 @@ function buildConfiguracion() {
 
       <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
         <div class="flex flex-wrap items-center gap-3">
-          <button onclick="configGuardar()" class="${btn} bg-accent text-base hover:bg-accentdeep">
+          <button onclick="configGuardar()" class="${btn} border border-hairline text-muted hover:text-ink hover:border-ink/30">
             Guardar en este navegador</button>
+          ${configPuedePublicar() ? `<button onclick="configPublicar()"
+            class="${btn} bg-accent text-base hover:bg-accentdeep">
+            Publicar en el cliente</button>` : ''}
           <button onclick="configExportarToggle()" class="${btn} border border-hairline text-muted hover:text-ink hover:border-ink/30">
             ${CONFIGUI.exportando ? 'Ocultar' : 'Exportar'} el bloque JSON</button>
           <button onclick="configRestablecer()" class="${btn} border border-hairline text-muted hover:text-ink hover:border-ink/30">
