@@ -46,6 +46,20 @@ const JUGADORES = {
      arrastrado a la tabla de triples no significa nada. */
   rankingOrdenPor: null,
   rankingOrdenDir: 'desc',
+
+  /* EL RANKING DEL PLANTEL LLEVA SU PROPIO ESTADO, no comparte el de la
+     liga. Son dos preguntas distintas —«quién manda en la liga» y «cómo se
+     reparte esto adentro del equipo»— y arrastrar el orden de una a la
+     otra deja al DT mirando un cuadro que no pidió.
+
+     VA DECLARADO Y NO IMPLÍCITO. Andaba sin estar acá —los setters lo
+     creaban al vuelo y los lectores caían a 'promedio' por `undefined`—
+     pero una clave de estado que no figura en el objeto es de las que se
+     pierden en la próxima edición sin que nadie lo note. */
+  plantelRankingAbierto: 'produccion',
+  plantelRankingModo: 'promedio',
+  plantelRankingOrdenPor: null,
+  plantelRankingOrdenDir: 'desc',
 };
 
 /* =====================================================================

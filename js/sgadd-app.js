@@ -24,6 +24,9 @@ const SGADD_APP = (function () {
     crudas: null,
     torneo: null,        // null = todavía no se resolvió contra el libro
     fase: 'REGULAR',
+    /* El tramo que el DT eligió A MANO, para no perdérselo al cambiar de
+       categoría. `null` mientras no haya elegido ninguno. */
+    preferencia: null,
     hojas: null,
     idx: null,
     cargando: false,
@@ -140,7 +143,9 @@ const SGADD_APP = (function () {
       const delHash = !!estado.torneo && tramos.some(t => t.id === par);
 
       if (!delHash) {
-        const mejor = SGADD.tramoPorDefecto(tramos);
+        /* El orden es: el hash, después lo que el DT venía mirando, y
+           recién ahí el default del libro. */
+        const mejor = tramoPreferido(tramos) || SGADD.tramoPorDefecto(tramos);
         if (mejor) {
           estado.torneo = mejor.torneo;
           estado.fase = mejor.fase;
@@ -189,6 +194,12 @@ const SGADD_APP = (function () {
     if (torneo === estado.torneo && fase === estado.fase) return;
     estado.torneo = torneo;
     estado.fase = fase;
+    /* Es la eleccion EXPLICITA del DT: se recuerda para el cambio de
+       categoria. Los otros dos setters (`cambiarFase`, `cambiarTorneo`)
+       los usa el RUTEO, y ahi lo que manda es el hash — recordar una
+       navegacion como si fuera una decision haria que un link viejo le
+       fijara la preferencia a quien lo abre. */
+    recordarTramo();
     reindexar();
     avisar();
   }
@@ -212,10 +223,50 @@ const SGADD_APP = (function () {
     if (estado.hojas) reindexar();
   }
 
+  /**
+   * EL TRAMO QUE EL USUARIO ELIGIÓ A MANO, para no perdérselo al cambiar
+   * de categoría.
+   *
+   * Un club multicategoría —Reconquista corre Primera, U21 y U23— hace que
+   * el DT salte entre libros todo el tiempo. Cada salto lo devolvía al
+   * tramo por defecto del libro nuevo, así que si estaba mirando los
+   * PLAYOFFS tenía que volver a elegirlos en cada categoría.
+   *
+   * SE GUARDA SOLO LO ELEGIDO A MANO. Si se guardara también el default,
+   * la preferencia sería siempre la del primer libro que se abrió y el
+   * criterio de `tramoPorDefecto` —que elige por cobertura, y por eso
+   * cambia de libro en libro— dejaría de correr.
+   */
+  function recordarTramo() {
+    estado.preferencia = { torneo: estado.torneo, fase: estado.fase };
+  }
+
+  /**
+   * El tramo del libro nuevo que más se parece al que se estaba mirando.
+   *
+   * Se prueba el PAR exacto y después la misma FASE con el mejor torneo
+   * del libro nuevo. La fase es lo que el DT eligió conceptualmente
+   * —«quiero ver los playoffs»— y el torneo es cómo lo llama cada
+   * categoría, que no tiene por qué coincidir.
+   *
+   * Si no hay nada parecido devuelve null y manda el default: inventar un
+   * tramo que no existe deja la vista vacía sin decir por qué.
+   */
+  function tramoPreferido(tramos) {
+    const p = estado.preferencia;
+    if (!p || !p.fase || !tramos || !tramos.length) return null;
+    const exacto = tramos.find(t => t.id === p.torneo + '|' + p.fase);
+    if (exacto) return exacto;
+    const mismaFase = tramos.filter(t => t.fase === p.fase);
+    if (!mismaFase.length) return null;
+    return SGADD.tramoPorDefecto(mismaFase) || mismaFase[0];
+  }
+
   function cambiarPlanilla(id) {
     if (id === estado.planillaId) return;
     estado.planillaId = id;
-    /* El torneo es del libro anterior: se vuelve a resolver al cargar. */
+    /* El torneo es del libro anterior: se vuelve a resolver al cargar. La
+       preferencia NO se borra — es justo lo que hay que conservar. */
     estado.hojas = null; estado.idx = null; estado.torneo = null;
     // La capa de datos vieja también tiene que seguir al selector.
     if (typeof window !== 'undefined' && typeof window.onCategoriaCambiada === 'function') {
@@ -393,8 +444,15 @@ const SGADD_APP = (function () {
   });
 
   return {
+    tramoPreferido, recordarTramo,
     estado, inicializar, cargar, reindexar, cambiarPlanilla, cambiarFase, cambiarTorneo, cambiarTramo,
     aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, onCambio,
     get idx() { return estado.idx; },
   };
 })();
+
+/* Se exporta SOLO para poder testear `tramoPreferido`, que es logica pura
+   y decide que ve el DT al cambiar de categoria. El resto del modulo usa
+   `document` y `SGADD.CATALOGO`, y se sigue verificando en el navegador —
+   igual que Equipos, que tiene su export por el mismo motivo (punto 8). */
+if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_APP;

@@ -32,6 +32,13 @@ const SGADD_CLIENTES = (function () {
     clubes: null,      // null = todavía no se pidió · [] = se pidió y no hay
     pidiendo: false,
     error: null,
+    /* DE DÓNDE SALIÓ EL CATÁLOGO. El servidor lo dice en cada respuesta:
+       `kv` cuando lo leyó de Upstash, `env` o `codigo` cuando no pudo y se
+       cayó al respaldo. Sin guardarlo, el Panel Master no puede distinguir
+       «no hay nada publicado» de «no se pudo leer lo publicado», que son
+       dos situaciones muy distintas para el que está por publicar. */
+    origen: null,
+    aviso: null,
   };
 
   /* =====================================================================
@@ -202,6 +209,8 @@ const SGADD_CLIENTES = (function () {
     return SGADD_DATA.catalogo({ forzar: !!o.forzar }).then((cat) => {
       estado.pidiendo = false;
       estado.clubes = (cat && cat.clubes) ? cat.clubes : [];
+      estado.origen = (cat && cat.origen) || null;
+      estado.aviso = (cat && cat.aviso) || null;
       pintar();
       /* Y EL HUB, si está abierto. El catálogo llega DESPUÉS de que la
          pestaña Clientes se pintó —es asíncrono— así que sin esto el admin

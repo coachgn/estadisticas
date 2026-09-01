@@ -449,6 +449,44 @@ const SGADD_HUB = (function () {
     </div>`;
   }
 
+/* =====================================================================
+   EL ESTADO DEL SERVICIO
+
+   KV es de donde salen el padrón de clientes, las zonas publicadas y el
+   catálogo. Cuando no contesta, el panel NO se cae: el catálogo se cae al
+   respaldo del código y las zonas al JSON del repo, así que el cliente
+   sigue viendo su tabla con lo último que quedó commiteado.
+
+   PERO EL ADMIN TIENE QUE SABERLO, y por un motivo concreto: en modo
+   respaldo, publicar y dar de alta NO se van a guardar. Sin el aviso, el
+   admin toca «Publicar», ve el error y no sabe si es su cambio o el
+   servicio.
+
+   Va como badge discreto y no como cartel rojo: el 99% de las veces está
+   en línea, y un cartel permanente se deja de leer.
+   ===================================================================== */
+  function badgeServicio() {
+    if (typeof SGADD_CLIENTES === 'undefined') return '';
+    const st = SGADD_CLIENTES.estado;
+    if (!st || !st.clubes) return '';        // todavía no se pidió
+
+    const enLinea = st.origen === 'kv';
+    const tono = enLinea ? 'zona-exito' : 'zona-aviso';
+    const txt = enLinea ? 'Servicio KV en línea' : 'Modo respaldo JSON activo';
+    const detalle = enLinea
+      ? 'Lo que publiques se guarda y le llega al cliente.'
+      : (st.aviso || 'No se pudo leer Upstash.')
+        + ' Los clientes siguen viendo su última configuración del repo, pero'
+        + ' publicar y dar de alta NO se van a guardar.';
+
+    return `<div class="flex items-baseline gap-2 flex-wrap text-[11px] mb-3">
+      <span class="zona-texto ${tono} font-display uppercase tracking-wider">
+        ${enLinea ? '●' : '▲'} ${esc(txt)}</span>
+      <span class="text-muted">${esc(detalle)}</span>
+      ${st.origen && !enLinea ? `<span class="font-mono text-muted/70">origen: ${esc(st.origen)}</span>` : ''}
+    </div>`;
+  }
+
   function tarjetaClub(c) {
     const cats = c.categorias || [];
     const conDatos = cats.filter(k => k.activo).length;
@@ -683,6 +721,7 @@ const SGADD_HUB = (function () {
           <span class="font-mono text-[11px] text-muted">
             ${cs.length} clubes · ${conLibro}/${totalCat} categorías con libro</span>
         </div>
+        ${badgeServicio()}
         <p class="text-xs text-muted mt-2">
           Sale de <code>/api/v1/catalogo</code>, que es la única fuente: el repo no tiene
           un listado de clubes. Los <code>sheetId</code> no viajan al navegador —
@@ -836,6 +875,7 @@ const SGADD_HUB = (function () {
     html, bloqueAlta, campoAlta, guardar, accionClub, alta, guardado, pendiente,
     /* accesos */
     verAccesos, campoAcceso, accionAcceso, aplicarAcceso, aplicarClub,
+    badgeServicio,
     copiarCodigo, estadoMail, bloqueAccesos,
     accesos, accesosAbierto,
   };
