@@ -54,6 +54,36 @@ Comprobá que sigue todo verde: `node server/bin/kv-salud.js`
 
 ---
 
+## ⚠ Antes del paso 2 · leer esto
+
+**En Upstash, «Rotate token» REVOCA el viejo en el acto.** No hay periodo de
+gracia: en cuanto se genera el nuevo, el que está en producción empieza a
+contestar `401 WRONGPASS`.
+
+Eso rompe la premisa del paso 1: el legacy solo sirve si el token viejo
+**sigue vivo**. Si ya rotaste en la consola, el legacy no aporta nada y el
+orden correcto es el corto:
+
+1. poner el token nuevo en `UPSTASH_REDIS_REST_TOKEN`,
+2. desplegar,
+3. verificar,
+4. **no** configurar ningún legacy.
+
+Pasó en la rotación del 2026-09-01: el token nuevo llegó ya generado, así
+que el viejo estaba muerto antes de empezar y producción estuvo sirviendo
+desde el respaldo (`origen: codigo`) hasta que entró el nuevo. **Nadie se
+quedó sin panel** —para eso está la cascada— pero durante esa ventana el
+login por clave, el alta de clientes y publicar zonas no funcionaban.
+
+El slot legacy sigue teniendo sentido para el caso en que Upstash permita
+**dos tokens vivos a la vez** (crear uno nuevo sin revocar el anterior).
+Si tu plan lo permite, usá el procedimiento largo. Si no, el corto.
+
+Y en los dos casos, la regla no cambia: **generá el token nuevo recién
+cuando estés en la máquina lista para ponerlo**, no antes.
+
+---
+
 ## 2 · Generar el token nuevo en Upstash
 
 En la consola de Upstash, en la base de datos del proyecto:

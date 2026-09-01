@@ -5537,6 +5537,26 @@ viejo si hace falta.
 - **Es una variable de TRANSICIÓN.** Si queda puesta, el token que se quiso
   revocar sigue vivo y la rotación no rotó nada. El healthcheck lo dice.
 
+### LO QUE PASÓ AL ROTAR DE VERDAD (2026-09-01)
+
+**«Rotate token» de Upstash revoca el viejo en el acto.** No hay periodo de
+gracia, así que el slot legacy —que existe para cubrir la ventana entre
+generar y desplegar— no sirvió: el viejo ya contestaba `401 WRONGPASS` antes
+de empezar.
+
+Producción estuvo sirviendo desde el respaldo (`origen: codigo`) hasta que
+entró el nuevo. **El panel no se cayó** —para eso está la cascada, y los
+`sheetId` viven también en las variables de entorno— pero durante esa ventana
+el login por clave, el alta de clientes y publicar zonas no funcionaban.
+
+Se detectó por el aviso que ya viajaba en la respuesta del catálogo:
+`No se pudo leer el catálogo de KV (KV_TOKEN)`. Sin ese aviso, el síntoma
+habría sido «el Panel Master no guarda nada» sin ninguna pista.
+
+**La regla que queda**: generar el token nuevo recién cuando se está en la
+máquina lista para ponerlo. Y el slot legacy sigue valiendo solo para el caso
+en que se puedan tener dos tokens vivos a la vez.
+
 ### El healthcheck prueba permisos, no conectividad
 
 ```bash
