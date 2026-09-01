@@ -37,6 +37,7 @@ node test-comparativa.js   #  65 tests · ciclos, tendencia contra nivel, cara a
 node test-clientes.js      #  69 tests · el padrón de clientes, los cupos y el login
 node test-confirmar.js     #  86 tests · el diff, publicar zonas, subclientes y tooltips
 node test-acumulacion.js   #  42 tests · la suma entre tramos · REGRESIÓN, no tocar
+node test-resiliencia.js   #  50 tests · rotación del token, KV caído, el tramo que se conserva
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -48,7 +49,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**3266 tests en total. Todos tienen que dar verde antes de commitear.**
+**3316 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -5504,3 +5505,112 @@ La preconfiguración lleva su propia nota arriba de todo: es la pantalla más
 abstracta del panel —declara una estructura que todavía no tiene datos— y sin
 decir que de ahí salen las Posiciones, la Clasificación, las rachas y el
 Simulador, se lee como un formulario administrativo.
+
+---
+
+## 38. ROTAR EL TOKEN DE UPSTASH SIN CORTAR NADA
+
+El procedimiento está en
+[`ROTAR_TOKEN_UPSTASH.md`](ROTAR_TOKEN_UPSTASH.md). Acá va por qué es así.
+
+Rotar una credencial de un servicio **que está sirviendo** tiene un agujero
+conocido: entre que se genera la nueva y que el servidor la lee hay
+peticiones en vuelo. Y en Vercel «el servidor» son varias instancias que se
+reciclan cuando quieren, así que la ventana **no es un instante** — puede
+durar minutos.
+
+Con un segundo nombre de variable —`*_TOKEN_LEGACY`— esa ventana desaparece:
+se pone el nuevo, se deja el viejo, y cada petición prueba el nuevo y cae al
+viejo si hace falta.
+
+### Las reglas del fallback
+
+- **El NUEVO se prueba primero.** Al revés, el viejo seguiría sirviendo todo
+  y la rotación no se completaría nunca: el healthcheck diría que anda y el
+  token que se quiso revocar seguiría siendo el que trabaja.
+- **Solo se reintenta por PERMISOS** (401, 403, `NOPERM`). Un timeout o un
+  500 no: ahí el token está bien y repetir solo duplica la espera del que
+  está del otro lado.
+- **El legacy cuenta para `configurado()`**: durante la rotación puede ser
+  el único que anda, y un `false` ahí apagaría la escritura entera.
+- **Un token repetido en las dos variables se prueba una sola vez.**
+- **Es una variable de TRANSICIÓN.** Si queda puesta, el token que se quiso
+  revocar sigue vivo y la rotación no rotó nada. El healthcheck lo dice.
+
+### El healthcheck prueba permisos, no conectividad
+
+```bash
+node server/bin/kv-salud.js              # solo lee
+node server/bin/kv-salud.js --escribir   # ida y vuelta completo
+```
+
+Un token nuevo puede entrar con permisos distintos —solo lectura, o sin
+acceso a una base— y eso **no se nota hasta que alguien da de alta un
+cliente y el alta se pierde**. Por eso lee las dos claves que sostienen el
+producto (el padrón de clientes y el catálogo con sus zonas publicadas) y
+verifica la tabla de cupos.
+
+**La escritura va sobre una clave PROPIA** (`sgadd:salud`), nunca sobre el
+padrón ni el catálogo: una verificación que puede romper lo que verifica no
+sirve. Y la limpia al terminar.
+
+---
+
+## 39. CON KV CAÍDO EL PANEL NO SE CAE · y ahora lo dice
+
+La cascada ya era la resiliencia —KV → variable de entorno → el literal del
+código para el catálogo, y borrador → publicado → `clubes/<club>.json` para
+las zonas— así que el cliente **siempre** ve su tabla con el último respaldo
+del repo. Lo que faltaba era decírselo al admin.
+
+El Panel Master muestra **«Servicio KV en línea»** o **«Modo respaldo JSON
+activo»**. Y en el segundo caso lo importante no es que KV se cayó sino
+**qué deja de poder hacer**: publicar y dar de alta NO se van a guardar. Sin
+eso, el admin toca «Publicar», ve el error y no sabe si es su cambio o el
+servicio.
+
+Va como badge discreto y no como cartel: el 99% de las veces está en línea, y
+un cartel permanente se deja de leer.
+
+**Lo que SÍ deja de andar con KV caído**: alta y baja de clientes, publicar
+zonas, el login por mail y clave (el padrón vive en KV) y las alertas que
+calcula el servidor. Los links firmados siguen funcionando: no tocan KV.
+
+---
+
+## 40. EL TRAMO SE CONSERVA AL CAMBIAR DE CATEGORÍA
+
+Un club multicategoría —Reconquista corre Primera, U21 y U23— hace que el DT
+salte entre libros todo el tiempo. Cada salto lo devolvía al tramo por
+defecto del libro nuevo: si estaba mirando la IDA, tenía que volver a
+elegirla en cada categoría.
+
+`estado.preferencia` guarda lo que eligió **a mano** y `tramoPreferido()` lo
+traduce al libro nuevo:
+
+1. el **par exacto** `TORNEO|FASE`, si existe;
+2. si no, la **misma FASE** con el mejor torneo del libro nuevo — la fase es
+   lo que el DT eligió conceptualmente («quiero ver los playoffs») y el
+   torneo es cómo lo llama cada categoría, que no tiene por qué coincidir;
+3. si no hay nada parecido, el default. Inventar un tramo que no existe deja
+   la vista vacía sin decir por qué.
+
+**Se guarda SOLO lo elegido a mano**, en `cambiarTramo()`. Si se guardara el
+default, la preferencia sería siempre la del primer libro que se abrió y el
+criterio de `tramoPorDefecto` —que elige por cobertura y cambia de libro en
+libro— dejaría de correr. Y NO se graba desde `cambiarFase`/`cambiarTorneo`,
+que los usa el ruteo: recordar una navegación como si fuera una decisión
+haría que un link viejo le fijara la preferencia a quien lo abre.
+
+**El hash sigue ganando** sobre la preferencia: un link compartido tiene que
+abrir donde dice el link.
+
+Verificado en producción con las tres categorías reales: eligió `IDA`, la
+U21 (que solo tiene `GENERAL|REGULAR`) cayó a su único tramo, y al volver a
+Primera recuperó `IDA` en vez de abrir en el `*TOTAL*` por defecto.
+
+**El toggle de promedios/totales ya sobrevivía**: vive en el estado del
+módulo y nada lo resetea. Lo que sí faltaba era que `plantelRankingModo`
+estuviera DECLARADO — andaba por `undefined` cayendo a `'promedio'`, y una
+clave de estado que no figura en el objeto es de las que se pierden en la
+próxima edición sin que nadie lo note.
