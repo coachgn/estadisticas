@@ -17,7 +17,7 @@ aplicadas en el punto 14.
 
 ```bash
 node test-core.js          # 297 tests · núcleo, índice, validador
-node test-logos.js         #  36 tests · resolución de escudos
+node test-logos.js         #  37 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 317 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
@@ -34,6 +34,7 @@ node test-pdf.js           #  92 tests · nombre del archivo en las exportacione
 node test-permisos.js      # 364 tests · roles, planes, el gate, el selector, el hub, el ciclo,
                            #             la sesión, la landing y el glosario
 node test-comparativa.js   #  65 tests · ciclos, tendencia contra nivel, cara a cara
+node test-clientes.js      #  69 tests · el padrón de clientes, los cupos y el login
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -45,7 +46,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**3066 tests en total. Todos tienen que dar verde antes de commitear.**
+**3136 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -5189,3 +5190,86 @@ Hay un test que decodifica el PNG con `zlib` —lo mismo que hace el generador�
 verifica que el dibujo llegue al borde a lo ancho, que conserve su aspecto y que
 con el padding del CSS no se pierda un solo píxel. Y que **sin** padding sí se
 perdería, que es lo que justifica que el padding exista.
+
+---
+
+## 29. LOGIN DE CLIENTES · `server/lib/clientes.js`
+
+Un club entra ahora con su mail y su clave. El link firmado sigue
+funcionando —es lo que usan los tres clubes de hoy— pero deja de ser el
+único camino, y sobre todo deja de ser uno que no se puede revocar.
+
+### Por qué son DOS padrones y no uno
+
+```
+QUIÉN ES ADMIN     →  `ADMINS`, en el CÓDIGO. Re-derivado en cada petición.
+QUIÉN ES CLIENTE   →  KV. Es dato: el Panel Master lo edita todos los días.
+```
+
+No es un detalle de implementación, es la propiedad de seguridad: un KV
+comprometido **no alcanza para inventar un administrador**. Sí alcanza para
+darse de alta como cliente de un club — y eso da lo que ese club ve, que es
+exactamente lo que el gate de interfaz protege (punto 19). No da
+administración, y no da otro club.
+
+**Los hashes NO viven en el catálogo.** El catálogo se sirve por
+`GET /api/v1/catalogo` a cualquiera con token; los mails de un club ahí
+adentro le contarían a cada cliente quiénes son los del resto. Van en
+`sgadd:clientes` y solo salen por `/api/v1/clientes`, con gate de ADMIN.
+
+### El cupo
+
+**Una sola tabla**, `SGADD_AUTH.CUPO_MAILS` (Bronce 2 · Plata 3 · Oro 4), en
+el motor compartido. La landing la **lee** en vez de repetirla y el servidor
+la hace cumplir. Con dos tablas la que se relaja es siempre la del servidor
+—que es la que decide— y el cliente termina con más accesos de los que paga,
+o con menos de los que le prometieron.
+
+**El plan sale del CATÁLOGO, no del pedido.** Si lo mandara el navegador, el
+cupo lo decidiría justamente quien lo quiere saltear. Hay un test que lo
+intenta.
+
+Y **el cupo lo valida el servidor**, no la pantalla: la pantalla lo muestra
+para que el admin no llegue al tope de sorpresa, pero una validación que solo
+vive en el navegador no es una validación.
+
+### Reglas que hay que respetar al tocarlo
+
+- **Un mail está en UN club.** Con el mismo en dos, el login tendría que
+  adivinar cuál abrir. Si alguien trabaja en dos clubes, se le da un mail por
+  club.
+- **Un administrador no se da de alta como cliente**: ya entra por su puerta
+  y con más permisos, así que darlo de alta le ACOTARÍA la vista y gastaría
+  un cupo del club.
+- **El plan y el equipo del token salen del catálogo**, no del registro del
+  mail: guardarlos ahí los congelaría el día del alta y un upgrade no le
+  llegaría a quien ya estaba dado de alta — que es el caso que más importa.
+- **`FALTA_CLAVE` se distingue del resto**, y no filtra el padrón: para
+  llegar ahí hay que traer el código, que es un secreto de 256 bits. Sin esa
+  rama, el cliente recién invitado lee «mail o clave incorrectos», mira el
+  formulario que le pide una clave que no tiene, y concluye que le dieron mal
+  el acceso. La pantalla lo lleva derecho a elegirla.
+- **Reinvitar NO le borra la clave** que ya tenga: mientras no canjee el
+  código nuevo, la vieja sigue sirviendo. Invalidarla de entrada dejaría
+  afuera a alguien que está entrando bien, por un click de más.
+- **El código se muestra UNA vez.** El servidor guarda su huella, no el
+  código: si se pudiera volver a leer, KV pasaría a ser suficiente para
+  entrar como cualquier cliente.
+- **Un KV ilegible no borra accesos.** `cargar()` lanza y el login contesta
+  503, igual que el padrón de admins — es el bug del punto 23 y no se repite.
+
+### La sesión del cliente dura MÁS que la del admin
+
+Siete días contra doce horas, y es a propósito: el DT abre el panel en el
+banco de suplentes y en el vestuario, muchas veces por semana, y hacerlo
+escribir la clave cada doce horas convierte la herramienta en un trámite. El
+riesgo también es menor — lo que ve es su propio club, que es lo mismo que
+ya veía con un link firmado que no se podía revocar.
+
+### El helper que no estaba declarado
+
+`escJs` se usó en los handlers inline de la lista de mails sin declararlo, y
+cada repintado tiraba un `ReferenceError` que **el `.catch` del fetch se
+tragaba**: el alta funcionaba y la pantalla mostraba «escJs is not defined».
+Medido en producción. Hay un test genérico que verifica que todo helper que
+el hub usa esté declarado — no solo ese.

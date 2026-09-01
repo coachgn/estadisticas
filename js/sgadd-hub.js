@@ -25,6 +25,16 @@ const SGADD_HUB = (function () {
   const esc = (v) => (typeof SGADD_UI !== 'undefined' && SGADD_UI.esc)
     ? SGADD_UI.esc(v) : String(v == null ? '' : v);
 
+  /* Un mail no lleva comillas, pero el handler inline se interpola igual
+     con `escJs`: el dia que alguien pegue un valor raro, la comilla cierra
+     el literal de JS y el clic deja de hacer nada, en silencio (punto 3
+     quinquies). Y sin declararlo, cada repintado de la lista tira un
+     ReferenceError que se traga el `.catch` del fetch — medido en
+     produccion: el alta funcionaba y la pantalla mostraba "escJs is not
+     defined". */
+  const escJs = (v) => (typeof SGADD_UI !== 'undefined' && SGADD_UI.escJs)
+    ? SGADD_UI.escJs(v) : esc(v);
+
   /* El borrador del alta. Vive en el módulo y no en el DOM: tipear no
      repinta —le sacaría el foco al input, la regla de siempre (punto 17)—
      así que el valor tiene que estar en algún lado cuando se arme el

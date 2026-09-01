@@ -324,6 +324,21 @@ const comoAdmin = (body, query) => ({ body: body || {}, query: query || {},
   check('tipear el mail no repinta la lista',
     /function campoAcceso[\s\S]{0,300}accesosAbierto\.nuevo = String/.test(hub)
     && !/function campoAcceso[\s\S]{0,300}repintarLista\(\)/.test(hub));
+  /* TODO HELPER QUE EL MODULO USA TIENE QUE ESTAR DECLARADO.
+
+     `escJs` se uso en los handlers inline de la lista de mails y no se
+     habia declarado: cada repintado tiraba un ReferenceError que el
+     `.catch` del fetch se tragaba, asi que el alta FUNCIONABA y la
+     pantalla mostraba «escJs is not defined». Medido en produccion.
+
+     El chequeo es generico a proposito: cualquier helper que se use sin
+     declarar cae acá, no solo este. */
+  ['esc', 'escJs'].forEach((h) => {
+    const usa = new RegExp('[^A-Za-z0-9_.]' + h + '\\(').test(hub);
+    const declara = new RegExp('const ' + h + ' =').test(hub);
+    check('  el hub declara `' + h + '`, que usa', !usa || declara);
+  });
+
   check('el código se avisa que se muestra una sola vez',
     /Se muestra UNA vez/.test(hub));
 
