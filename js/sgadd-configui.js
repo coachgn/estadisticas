@@ -561,18 +561,56 @@ function buildConfiguracion() {
       </div>
 
       <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
+        <!-- LA ACCION PRINCIPAL ES PUBLICAR, y va sola arriba.
+
+             Las cuatro estaban en fila, del mismo tamaño y con «Guardar en
+             este navegador» primero: la que le cambia algo al cliente
+             quedaba tercera y parecía una más. El resto son auxiliares
+             —probar, mandarle el bloque al que mantiene el repo, deshacer—
+             y bajan a una fila secundaria. -->
+        ${configPuedePublicar() ? `<div class="flex flex-wrap items-center gap-3 mb-3">
+          <button onclick="configPublicar()" class="${btn} bg-accent text-base hover:bg-accentdeep">
+            Publicar en el cliente</button>
+          <span class="text-[11px] text-muted flex-1 min-w-[16rem]">
+            Guarda en el servidor y la tabla del cliente cambia en su próxima carga.
+            <b class="text-ink">Es la vía automática</b>: no hace falta tocar código.
+          </span>
+        </div>` : `<p class="text-[11px] zona-texto zona-aviso mb-3">
+          Publicar en el cliente necesita sesión de administrador y backend.
+          Sin eso, el cambio viaja por el bloque JSON.</p>`}
+
         <div class="flex flex-wrap items-center gap-3">
           <button onclick="configGuardar()" class="${btn} border border-hairline text-muted hover:text-ink hover:border-ink/30">
             Guardar en este navegador</button>
-          ${configPuedePublicar() ? `<button onclick="configPublicar()"
-            class="${btn} bg-accent text-base hover:bg-accentdeep">
-            Publicar en el cliente</button>` : ''}
           <button onclick="configExportarToggle()" class="${btn} border border-hairline text-muted hover:text-ink hover:border-ink/30">
             ${CONFIGUI.exportando ? 'Ocultar' : 'Exportar'} el bloque JSON</button>
           <button onclick="configRestablecer()" class="${btn} border border-hairline text-muted hover:text-ink hover:border-ink/30">
             Volver al JSON del club</button>
           ${CONFIGUI.sucio ? '<span class="text-[11px] text-yellow-400">Hay cambios sin guardar.</span>' : ''}
         </div>
+
+        <!-- QUE HACE CADA UNA, en la pantalla y no en un tooltip: la
+             diferencia entre las tres es la que hace que un cambio le
+             llegue al club o se quede en una computadora. -->
+        <dl class="mt-4 space-y-2 text-[11px]">
+          <div class="flex gap-2">
+            <dt class="text-accent font-display uppercase tracking-wider shrink-0 min-w-[9rem]">Publicar</dt>
+            <dd class="text-muted">Lo escribe en el servidor. El cliente lo ve en su próxima
+              carga, sin que nadie toque el repositorio.</dd>
+          </div>
+          <div class="flex gap-2">
+            <dt class="text-ink font-display uppercase tracking-wider shrink-0 min-w-[9rem]">Guardar acá</dt>
+            <dd class="text-muted">Queda en ESTE navegador, para probar. Nadie más lo ve.</dd>
+          </div>
+          <div class="flex gap-2">
+            <dt class="text-ink font-display uppercase tracking-wider shrink-0 min-w-[9rem]">Exportar JSON</dt>
+            <dd class="text-muted">El bloque para pegar en
+              <span class="font-mono">clubes/${SGADD_UI.esc(configClubId())}.json</span> y
+              commitear. Es para quien mantiene el código, y deja el cambio en el
+              historial de git. <b class="text-ink">El navegador no puede escribir
+              archivos del repositorio</b> — por eso este paso es manual.</dd>
+          </div>
+        </dl>
         ${CONFIGUI.exportando ? `
           <p class="text-[11px] text-muted mt-4 mb-2">Pegar dentro de
             <span class="font-mono text-ink">clubes/${SGADD_UI.esc(configClubId())}.json</span>,
@@ -979,6 +1017,15 @@ function configPestanaTorneo() {
           CONFIGUI.proyOrigen === 'local' ? 'borrador en este navegador'
           : CONFIGUI.proyOrigen === 'json' ? 'desde el JSON del club' : 'sin declarar'}</span>
       </div>
+      <!-- PARA QUE SIRVE, arriba de todo. Es la pantalla mas abstracta del
+           panel —declara una estructura que todavia no tiene datos— y sin
+           decir que decide, se lee como un formulario administrativo. -->
+      <p class="text-xs text-ink mb-3 rounded-md border border-accent/30 bg-accent/5 p-3">
+        La preconfiguración define la <strong>estructura del torneo</strong>: fases, zonas,
+        cortes de clasificación y desempates. Lo que se configure acá determina cómo el
+        sistema calcula las <strong>Posiciones</strong>, la <strong>Clasificación</strong>,
+        las <strong>rachas</strong> y el <strong>Simulador</strong>.
+      </p>
       <p class="text-xs text-muted mb-3">
         Lo que el cliente declara en la <strong class="text-ink">entrevista</strong>, antes de que entre
         el primer box score. <strong class="text-ink">Los nombres son libres</strong>: escribí las

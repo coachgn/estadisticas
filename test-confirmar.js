@@ -291,6 +291,68 @@ check('y un elemento con solo glosa es candidato',
 check('la columna Equipo no lleva glosa',
   !/'Equipo': '/.test(clasif));
 
+/* =====================================================================
+   UI · lo que se pidio con una captura
+   ===================================================================== */
+titulo('LOS ENCABEZADOS, EL RESALTE Y LA BARRA DE ACCIONES');
+
+{
+  const idx2 = fs.readFileSync('./index.html', 'utf8');
+
+  /* Los valores van centrados y los titulos a la izquierda: en una
+     columna angosta el titulo queda colgado del borde y no se lee sobre su
+     propia columna. */
+  check('los encabezados de tabla van centrados',
+    idx2.indexOf('.scrollbox table th:not(:first-child):not(.text-left) { text-align: center') !== -1);
+  /* LA PRIMERA COLUMNA NO: es el nombre, y ahi la izquierda es lo
+     correcto — un nombre centrado en una columna de ancho variable baila
+     de fila en fila. */
+  check('menos la primera, que es el nombre',
+    /:not\(:first-child\)/.test(idx2));
+  /* Y un `th` que pide `text-left` a mano tampoco: hay columnas de texto
+     que no son la primera. */
+  check('y las que piden alinearse a mano se respetan',
+    /:not\(\.text-left\)/.test(idx2));
+
+  /* EL RESALTE DEL EQUIPO PROPIO sirve para encontrar a los tuyos entre
+     doce rivales. Adentro de un plantel son TODOS del mismo club:
+     pintarlos a todos no distingue a nadie y le compite al unico resalte
+     que ahi si informa, la columna por la que se ordena. */
+  const jug = fs.readFileSync('./js/sgadd-jugadores.js', 'utf8');
+  check('el ranking del plantel no resalta al equipo propio',
+    /const propio = \(r\.ambito !== 'plantel'\) && SGADD\.esEquipoPropio/.test(jug));
+  check('pero el de la liga si', /esEquipoPropio\(f\.claveEquipo\)/.test(jug));
+
+  /* PUBLICAR es la accion principal y va sola arriba: las cuatro estaban
+     en fila y la unica que le cambia algo al cliente quedaba tercera. */
+  const cui2 = fs.readFileSync('./js/sgadd-configui.js', 'utf8');
+  /* Se comparan los BOTONES, no las apariciones en el archivo: el texto
+     tambien aparece en los comentarios que explican la diferencia, y ahi
+     el orden no significa nada. Es la trampa de siempre. */
+  const botones = (cui2.match(/>\s*(Publicar en el cliente|Guardar en este navegador)</g) || [])
+    .map(x => x.replace(/[><\s]/g, ''));
+  check('publicar va primero y solo',
+    botones[0] === 'Publicarenelcliente', botones.join(' | '));
+  check('y se explica que es la via automatica',
+    /Es la v\u00eda autom\u00e1tica|Es la vía automática/.test(cui2));
+  /* La diferencia entre las tres es la que hace que un cambio le llegue al
+     club o se quede en una computadora. Va en la pantalla, no en un
+     tooltip. */
+  check('las tres acciones se explican en pantalla',
+    /<dt[^>]*>Publicar</.test(cui2) && /<dt[^>]*>Guardar ac/.test(cui2)
+    && /<dt[^>]*>Exportar JSON</.test(cui2));
+  check('y se dice por que exportar es manual',
+    /no puede escribir[\s\S]{0,60}archivos del repositorio/.test(cui2));
+
+  /* La preconfiguracion es la pantalla mas abstracta del panel: declara
+     una estructura que todavia no tiene datos. Sin decir que decide, se
+     lee como un formulario administrativo. */
+  check('la preconfiguracion dice para que sirve',
+    /estructura del torneo<\/strong>: fases, zonas/.test(cui2));
+  check('y que calcula con eso',
+    /Posiciones<[\s\S]{0,200}Simulador</.test(cui2));
+}
+
 console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +
   '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

@@ -1267,7 +1267,14 @@ function jugadoresTablaRanking(idx, r) {
 
   const filas = r.filas.map(f => {
     const logo = (typeof LOGOS !== 'undefined') ? LOGOS.getUrl(f.equipo) : null;
-    const propio = SGADD.esEquipoPropio(f.claveEquipo);
+    /* EL RESALTE DEL EQUIPO PROPIO NO VA EN EL RANKING DEL PLANTEL.
+
+       Sirve para encontrar a los tuyos entre doce equipos rivales, que es
+       lo que hace el top 20 de la liga. Adentro de un plantel son TODOS
+       del mismo club: pintarlos a todos de naranja no distingue a nadie,
+       y encima le compite al unico resalte que ahi si informa — la columna
+       por la que se esta ordenando. */
+    const propio = (r.ambito !== 'plantel') && SGADD.esEquipoPropio(f.claveEquipo);
     /* Anillo en el más cercano a la mediana del propio top, igual que en
        los rankings de equipos. La columna por la que se ordena va en
        blanco para que se lea de un vistazo cuál manda. */

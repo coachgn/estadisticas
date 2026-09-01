@@ -1983,6 +1983,14 @@
        columnas sin duplicar el plantel ni volver a resolver percentiles,
        arquetipos ni estados, que se calculan una sola vez sobre promedios.
        ===================================================================== */
+    /* Las tasas de `ACUMULADO J` que NO se pueden sumar. La hoja trae 32
+       columnas y esta es la única: el resto son cuentas. Se recalcula con
+       la misma fórmula que el resto del proyecto (`div0`, que respeta la
+       convención del motor cuando el denominador es cero). */
+    const TASAS_ACUMULADO = {
+      'AST-PP': (d) => TASAS_EQUIPO['AST-PP'](d, {}),
+    };
+
     const haj = hojas['ACUMULADO J'];
     if (haj) {
       const idTipoA = ESQUEMA['ACUMULADO J'].filaTipo;
@@ -1993,12 +2001,58 @@
         if (!enTorneo(fila)) return;
         if (esFilaTipo(fila, idTipoA)) return;   // el TIPO no es un jugador
         const k = clavePersona(fila['NOMBRES']) + '|' + claveEquipo(fila['EQUIPO']);
-        const datos = {};
+
+        /* LAS FILAS SE SUMAN, NO SE PISAN.
+
+           `ACUMULADO J` trae UNA FILA POR TORNEO. Acá se hacía
+           `porClave.set(k, datos)`, o sea que en un tramo con dos torneos
+           —el TOTAL, que además abre el libro— la segunda borraba a la
+           primera y el acumulado del jugador quedaba siendo el de UN
+           torneo suelto.
+
+           Medido en producción con DEPORTIVO · GARCÍA ARAGON, NAHUEL:
+
+             IDA     9 PJ · 139 PTS · 36/68 T2
+             VUELTA  3 PJ ·  45 PTS ·  8/15 T2
+             `__acum`  3 PJ · 45 PTS      ← solo la VUELTA
+
+           Y el modo de fallar era el peor: el promedio del TOTAL sí estaba
+           bien (12 PJ · 15,3 PTS), así que la pantalla mostraba el número
+           correcto hasta que alguien tocaba «Totales» — y ahí un total de
+           45 puntos sobre 3 partidos se lee como un jugador de rotación,
+           no como un error.
+
+           SE SUMA CON LAS MISMAS REGLAS QUE EL TOTAL DERIVADO (punto 3
+           ter), porque son el mismo cálculo por otro camino:
+
+             · las CUENTAS se suman, `PJ` incluido — es el denominador;
+             · el TEXTO se toma del primero (nombre, equipo, fase);
+             · las TASAS no se suman NUNCA: se recalculan sobre los
+               totales, que no es lo mismo que promediar la tasa de cada
+               torneo. En esta hoja la única es `AST-PP`. */
+        const previo = porClave.get(k);
+        const datos = previo || {};
         Object.keys(fila).forEach(c => {
           const v = num(fila[c]);
-          datos[c] = (v !== null) ? v : texto(fila[c]);
+          if (v === null) {
+            /* El texto no se acumula: se queda con el que ya estaba. */
+            if (datos[c] === undefined) datos[c] = texto(fila[c]);
+            return;
+          }
+          if (TASAS_ACUMULADO[c]) return;   // se recalculan al final
+          datos[c] = (typeof datos[c] === 'number') ? datos[c] + v : v;
         });
         porClave.set(k, datos);
+      });
+
+      /* Y las tasas, una vez que los totales están completos. Con un solo
+         torneo esto reproduce exactamente la columna de la hoja; con dos,
+         da la del conjunto — que es lo que la hoja NO puede traer. */
+      porClave.forEach((datos) => {
+        Object.keys(TASAS_ACUMULADO).forEach((c) => {
+          const v = TASAS_ACUMULADO[c](datos);
+          if (v !== null) datos[c] = v; else delete datos[c];
+        });
       });
       /* Se engancha por NOMBRE + EQUIPO, la misma clave compuesta que usa
          el slug de la ficha: con el nombre solo, dos homónimos de equipos

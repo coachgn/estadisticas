@@ -1625,6 +1625,27 @@
   .card:hover { border-color: #3a3a3a; }
 
   table thead th { position: sticky; top: 0; background: #141414; z-index: 1; }
+
+  /* LOS ENCABEZADOS VAN CENTRADOS SOBRE SUS NUMEROS.
+
+     Las tablas de estadisticas tienen los valores centrados y los titulos
+     alineados a la izquierda: en una columna angosta el titulo queda
+     colgado del borde y no se lee sobre su propia columna. Es la queja
+     que llego con una captura.
+
+     LA PRIMERA COLUMNA NO SE TOCA: es el nombre —jugador, equipo, sigla—
+     y ahi la izquierda es lo correcto. Un nombre centrado en una columna
+     de ancho variable baila de fila en fila.
+
+     Y un `th` que pide `text-left` a mano tampoco: hay columnas de texto
+     que no son la primera (el equipo en los rankings de liga). El
+     `:not()` respeta esa decision en vez de pisarla, que es lo que haria
+     una regla de mas especificidad puesta a la fuerza. */
+  .scrollbox table th:not(:first-child):not(.text-left) { text-align: center; }
+
+  /* El `td` que lleva `text-center` ya viene centrado por Tailwind; el
+     resto se deja como esta — mover los VALORES es otro cambio y no es el
+     que se pidio. */
   tbody tr { transition: background-color .1s ease; }
   tbody tr:hover { background: #1b1b1b; }
   tbody tr:hover td:first-child { box-shadow: inset 3px 0 0 var(--acento); }
@@ -1896,7 +1917,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=171" />
+<link rel="stylesheet" href="sgadd.css?v=172" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2074,40 +2095,40 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=171"></script>
+<script src="js/sgadd-club.js?v=172"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=171"></script>
-<script src="js/sgadd-core.js?v=171"></script>
-<script src="js/sgadd-auth.js?v=171"></script>
-<script src="js/sgadd-glosario.js?v=171"></script>
-<script src="js/sgadd-glosarioui.js?v=171"></script>
-<script src="js/sgadd-comparativa.js?v=171"></script>
-<script src="js/sgadd-comparativaui.js?v=171"></script>
-<script src="js/sgadd-confirmar.js?v=171"></script>
-<script src="js/sgadd-landing.js?v=171"></script>
-<script src="js/sgadd-login.js?v=171"></script>
-<script src="js/sgadd-data.js?v=171"></script>
-<script src="js/sgadd-clientes.js?v=171"></script>
-<script src="js/sgadd-ui.js?v=171"></script>
-<script src="js/sgadd-app.js?v=171"></script>
-<script src="js/sgadd-clasificacion.js?v=171"></script>
+<script src="js/sgadd-config.js?v=172"></script>
+<script src="js/sgadd-core.js?v=172"></script>
+<script src="js/sgadd-auth.js?v=172"></script>
+<script src="js/sgadd-glosario.js?v=172"></script>
+<script src="js/sgadd-glosarioui.js?v=172"></script>
+<script src="js/sgadd-comparativa.js?v=172"></script>
+<script src="js/sgadd-comparativaui.js?v=172"></script>
+<script src="js/sgadd-confirmar.js?v=172"></script>
+<script src="js/sgadd-landing.js?v=172"></script>
+<script src="js/sgadd-login.js?v=172"></script>
+<script src="js/sgadd-data.js?v=172"></script>
+<script src="js/sgadd-clientes.js?v=172"></script>
+<script src="js/sgadd-ui.js?v=172"></script>
+<script src="js/sgadd-app.js?v=172"></script>
+<script src="js/sgadd-clasificacion.js?v=172"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=171"></script>
-<script src="js/sgadd-configui.js?v=171"></script>
-<script src="js/sgadd-estados.js?v=171"></script>
-<script src="js/sgadd-buzon.js?v=171"></script>
-<script src="js/sgadd-charts.js?v=171"></script>
-<script src="js/sgadd-personalidad.js?v=171"></script>
-<script src="js/sgadd-rankings.js?v=171"></script>
-<script src="js/sgadd-partido.js?v=171"></script>
-<script src="js/sgadd-informe.js?v=171"></script>
-<script src="js/sgadd-ficha.js?v=171"></script>
-<script src="js/sgadd-equipos.js?v=171"></script>
-<script src="js/sgadd-jugadores.js?v=171"></script>
-<script src="js/sgadd-4factores.js?v=171"></script>
-<script src="js/sgadd-scouting.js?v=171"></script>
-<script src="js/sgadd-diagnostico.js?v=171"></script>
+<script src="js/sgadd-hub.js?v=172"></script>
+<script src="js/sgadd-configui.js?v=172"></script>
+<script src="js/sgadd-estados.js?v=172"></script>
+<script src="js/sgadd-buzon.js?v=172"></script>
+<script src="js/sgadd-charts.js?v=172"></script>
+<script src="js/sgadd-personalidad.js?v=172"></script>
+<script src="js/sgadd-rankings.js?v=172"></script>
+<script src="js/sgadd-partido.js?v=172"></script>
+<script src="js/sgadd-informe.js?v=172"></script>
+<script src="js/sgadd-ficha.js?v=172"></script>
+<script src="js/sgadd-equipos.js?v=172"></script>
+<script src="js/sgadd-jugadores.js?v=172"></script>
+<script src="js/sgadd-4factores.js?v=172"></script>
+<script src="js/sgadd-scouting.js?v=172"></script>
+<script src="js/sgadd-diagnostico.js?v=172"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
