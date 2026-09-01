@@ -18,44 +18,44 @@
   "torneo": "TORNEO LOCAL",
   "credito": "SGADD · Casañas & Freytes",
   
-"competencia": {
-  "ordenTabla": [
-    "PCT",
-    "DIF",
-    "PF"
-  ],
-  "formatos": {
-    "regular": {
-      "label": "Fase regular",
-      "equiposEsperados": 12,
-      "zonas": [
-        {
-          "id": "zona1",
-          "desde": 1,
-          "hasta": 8,
-          "label": "Octavos de final",
-          "tono": "exito"
-        },
-        {
-          "id": "zona2",
-          "desde": 9,
-          "hasta": 10,
-          "label": "Repechaje",
-          "tono": "aviso"
-        },
-        {
-          "id": "zona3",
-          "desde": -2,
-          "label": "Descenso",
-          "tono": "peligro"
-        }
-      ]
+  "competencia": {
+    "ordenTabla": [
+      "PCT",
+      "DIF",
+      "PF"
+    ],
+    "formatos": {
+      "regular": {
+        "label": "Fase regular",
+        "equiposEsperados": 12,
+        "zonas": [
+          {
+            "id": "zona1",
+            "desde": 1,
+            "hasta": 8,
+            "label": "Octavos de final",
+            "tono": "exito"
+          },
+          {
+            "id": "zona2",
+            "desde": 9,
+            "hasta": 10,
+            "label": "Repechaje",
+            "tono": "aviso"
+          },
+          {
+            "id": "zona3",
+            "desde": -2,
+            "label": "Descenso",
+            "tono": "peligro"
+          }
+        ]
+      }
+    },
+    "porTramo": {
+      "*": "regular"
     }
   },
-  "porTramo": {
-    "*": "regular"
-  }
-}
   "planillas": [
     {
       "id": "primera-clausura-2026",
