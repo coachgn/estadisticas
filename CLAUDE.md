@@ -35,6 +35,7 @@ node test-permisos.js      # 364 tests · roles, planes, el gate, el selector, e
                            #             la sesión, la landing y el glosario
 node test-comparativa.js   #  65 tests · ciclos, tendencia contra nivel, cara a cara
 node test-clientes.js      #  69 tests · el padrón de clientes, los cupos y el login
+node test-confirmar.js     #  72 tests · el diff, publicar zonas, subclientes y tooltips
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -46,7 +47,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**3136 tests en total. Todos tienen que dar verde antes de commitear.**
+**3210 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -5273,3 +5274,128 @@ cada repintado tiraba un `ReferenceError` que **el `.catch` del fetch se
 tragaba**: el alta funcionaba y la pantalla mostraba «escJs is not defined».
 Medido en producción. Hay un test genérico que verifica que todo helper que
 el hub usa esté declarado — no solo ese.
+
+---
+
+## 30. NADA DEL PANEL MASTER SE APLICA EN SILENCIO · `sgadd-confirmar.js`
+
+Todo cambio del Panel Master se ve en la sesión del cliente en su próxima
+carga. No hay staging: lo que se manda, manda. Antes un clic en «Pausar» le
+cortaba el acceso en el acto, y la baja preguntaba «¿seguimos?» con un
+`confirm()` nativo que no decía QUÉ.
+
+El modal **enumera** el cambio campo por campo —«Plan: PLATA → ORO», «Acceso
+eliminado: mail@ejemplo.com»— y avisa que repercute en el cliente. Esa es la
+diferencia entre confirmar y leer.
+
+### Lo que hay que respetar al tocarlo
+
+- **La petición vive en `alConfirmar`, no en `abrir`.** Si saliera antes, el
+  modal sería un cartel y no una confirmación. Es la propiedad entera del
+  módulo y hay un test que la fija.
+- **No se compara el objeto entero.** Un `JSON.stringify` distinto no le dice
+  nada a nadie, y dispararía por cualquier campo que el servidor toque por su
+  cuenta —un contador, una fecha de último ingreso— que no es un cambio del
+  admin. Se compara campo por campo, con etiquetas en castellano.
+- **Vacío contra vacío no es un cambio**, aunque uno sea `null` y el otro
+  `''`: el servidor y el formulario representan «sin dato» distinto y eso no
+  es una decisión de nadie.
+- **Los mails se comparan como CONJUNTOS**: el orden en que el servidor los
+  devuelve no es una decisión del admin.
+- **Sin cambios, el botón se apaga.** Mandar una petición que no cambia nada
+  es ruido en el log y una escritura de más en KV.
+- **Se cierra ANTES de disparar.** La petición puede tardar, y un modal
+  congelado encima de la pantalla que se está actualizando se lee como que
+  algo se colgó. El resultado lo muestra la tarjeta del club.
+- **Sin el módulo cargado la pantalla sigue andando**: es una mejora, no una
+  dependencia dura.
+
+### Las zonas no se difean zona por zona
+
+Se contaron los intentos y no vale la pena: una zona se identifica por su
+`id`, y el DT le cambia el id tanto como los cortes, así que el diff fino
+termina diciendo «se borró playoffs, se creó playoff» para un cambio de
+nombre. Lo que sirve —y es lo que hay que confirmar antes de publicar— es el
+**resumen**: qué formatos hay, cuántas zonas tiene cada uno y con qué cortes,
+con los negativos leídos en castellano («los 2 últimos»).
+
+---
+
+## 31. PUBLICAR LAS ZONAS · la cascada de tres niveles
+
+```
+1. BORRADOR de este navegador   ·  lo que el admin está probando
+2. PUBLICADO en el catálogo     ·  lo que el club ve hoy
+3. clubes/<club>.json           ·  el respaldo del repo
+```
+
+**Son dos acciones y no una con un tilde.** Probar un corte y publicarlo son
+momentos distintos del trabajo: el admin mueve zonas varias veces antes de
+estar conforme, y cada una de esas veces no tiene por qué verla el club.
+
+El JSON del repo **no se toca** y sigue siendo el respaldo: un club que nunca
+publicó nada funciona exactamente como antes, y la exportación sigue estando
+porque el historial de git es la única trazabilidad real del proyecto.
+
+**Nunca se fusionan dos niveles**: el que gana, gana entero. Mezclar zonas de
+dos orígenes daría cascadas que ninguno declaró, y la cascada es justo lo que
+decide qué zona gana.
+
+**Publicar vacío borra lo publicado** y devuelve el club al archivo: es la
+única forma de deshacer sin tener que adivinar cómo era antes. Un bloque sin
+formatos se rechaza con ese mensaje, porque publicarlo se leería como «se
+rompió» y no como «lo vacié».
+
+**Las zonas van para TODOS y no solo para el admin.** No son información
+comercial: son cómo se pinta la tabla del cliente, y dejarlas del lado del
+admin haría que publicar no sirviera de nada. El plan y el vencimiento sí
+siguen siendo solo del admin.
+
+---
+
+## 32. SUBCLIENTES · cada categoría con sus propias zonas
+
+Un club puede correr varias categorías con torneos que no tienen nada que
+ver: Reconquista tiene Primera, U21 y U23, cada una con su libro.
+
+**El bloque `competencia` era del CLUB entero**, y como las claves de
+`porTramo` son `TORNEO|FASE`, dos categorías con la misma clave —y
+`GENERAL|REGULAR` es lo más común de todo— compartían zonas sin que nadie lo
+pidiera: **bajar el descenso en Primera se lo bajaba también a la U21**.
+
+`competencia.porCategoria[<planillaId>]` lo scopea. Tres reglas:
+
+- **Es ADITIVO y degrada solo.** Un club que no lo declara se comporta
+  exactamente como antes, y una categoría que no está en el mapa cae al
+  bloque del club — que es lo correcto para un club de una sola categoría,
+  donde separarlas sería pedirle al DT que declare dos veces lo mismo.
+- **Se parsea con el MISMO parser, recursivamente.** Cada sub-bloque tiene la
+  forma de un `competencia` entero porque una categoría es una competencia
+  distinta, no un recorte de otra. Con un parser propio, el día que se agregue
+  un campo habría que acordarse de tocar dos lados.
+- **La recursión es de UN nivel**: una categoría no tiene sub-categorías, y
+  aceptarlo sería prometer una jerarquía que nada más soporta.
+
+**El cupo de mails sigue siendo del CLUB entero**, no por categoría: se cuenta
+por `club` en el padrón y las categorías no participan. Reconquista en ORO
+tiene 4 mails para las tres categorías, no 4 por cada una.
+
+`resolver()` devuelve además `propio`, que dice si la categoría tiene reglas
+suyas o hereda las del club: sin eso el DT no puede saber si lo que edita le
+cambia la tabla a las otras.
+
+---
+
+## 33. `data-glosa` · cuando la misma sigla significa otra cosa
+
+En la tabla de posiciones `PP` es **Partidos Perdidos**. En el glosario del
+motor, `PP` es **Pérdidas** — cierto en el box score y falso en esa tabla.
+
+Un tooltip que dice algo verdadero en otra pantalla es peor que no decir nada,
+así que `data-glosa` lleva la definición literal de la tabla que la escribe y
+**gana sobre el glosario**. No se agregan al glosario: ahí `PP` ya está, y
+ocupado.
+
+Las catorce columnas de la tabla de posiciones la llevan. `Equipo` no: no es
+una sigla y explicarla sería ruido — sin `data-glosa` el tooltip ni la
+considera.
