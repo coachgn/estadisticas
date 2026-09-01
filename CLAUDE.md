@@ -17,12 +17,12 @@ aplicadas en el punto 14.
 
 ```bash
 node test-core.js          # 297 tests · núcleo, índice, validador
-node test-logos.js         #  26 tests · resolución de escudos
+node test-logos.js         #  36 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 317 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
-node test-boot.js          # 163 tests · arranque por club, sintaxis de los módulos, carteles de espera
+node test-boot.js          # 165 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 267 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
@@ -31,10 +31,11 @@ node test-partido.js       #  54 tests · detalle partido a partido, perfil de t
 node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
-node test-permisos.js      # 360 tests · roles, planes, el gate, el selector, el hub, el ciclo,
+node test-permisos.js      # 364 tests · roles, planes, el gate, el selector, el hub, el ciclo,
                            #             la sesión, la landing y el glosario
+node test-comparativa.js   #  65 tests · ciclos, tendencia contra nivel, cara a cara
 
-node test-backend.js       # 453 tests · el proxy, el benchmark, las alertas, el catálogo en KV
+node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
 
 # OJO: `test-backend.js` ESTÁ EN MAIN desde que se integró el backend.
@@ -44,7 +45,7 @@ node test-backend.js       # 453 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**2981 tests en total. Todos tienen que dar verde antes de commitear.**
+**3066 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -5070,3 +5071,121 @@ con fondo propio necesita la máscara circular— así que la imagen se acota a 
 caja (`object-fit: contain` + `max-width/height: 100%` + `box-sizing:
 border-box`) en vez de salirse. El de la pantalla de carga no lleva aro y no
 recorta: ahí el logo es lo único que hay mientras se espera.
+
+---
+
+## 26. Sección COMPARATIVA · `sgadd-comparativa.js` + `sgadd-comparativaui.js`
+
+La réplica calculada de los 6 informes de ciclo que el cuerpo técnico armaba a
+mano en Canva. La especificación de dónde sale cada bloque está en
+[`ESPECIFICACION_COMPARATIVA.md`](ESPECIFICACION_COMPARATIVA.md).
+
+**Es exclusiva de ADMIN** (`soloAdmin`), como Simulador, Panel Master y
+Diagnóstico: cruza ciclos de cualquier equipo de la liga, que es justo lo que el
+gate del cliente acota.
+
+### La distinción que sostiene el módulo entero
+
+```
+TENDENCIA  =  el delta contra el ciclo ANTERIOR   ¿mejoró?
+NIVEL      =  dónde está parado contra la LIGA    ¿alcanza?
+```
+
+**Son dos ejes y van en dos columnas.** Un equipo puede venir subiendo y seguir
+último, y puede caer fuerte y seguir siendo primero. Medido con DEPORTIVO real:
+su ciclo actual es **4-0** y aun así el `eFG%` se derrumbó de 57,4% a 39,9% —
+tendencia en rojo— mientras el `NET RTNG` sigue **2º de la liga**. Colapsarlos en
+un solo semáforo pierde exactamente esa lectura.
+
+### Lo que hay que respetar al tocarlo
+
+- **La ventana es un PARÁMETRO**, no una constante: 4 en los informes 4º y 5º, 5
+  en el 6º. El default es el `PARTIDOS_POR_CICLO` del plan ORO.
+- **El signo se corrige por la DIRECCIÓN de cada métrica.** Bajar las pérdidas
+  es mejorar; pintarlo de rojo por «bajó» es el error que el proyecto ya evita
+  en los rankings invertidos. Las invertidas son `PePP%`, `RO Opp%`, `RTNG DEF`
+  y `eFG Opp%`.
+- **Las críticas se ordenan por el cambio RELATIVO.** Con el absoluto ganarían
+  siempre las de escala grande —un rating se mueve en decenas y un porcentaje en
+  centésimas— y la lista sería siempre la misma.
+- **El NIVEL se mide contra la temporada de los rivales, no contra su ciclo.** Un
+  puesto calculado sobre cuatro partidos de cada equipo sería ruido. La fila
+  mezcla dos ventanas a propósito y la pantalla lo rotula.
+- **Un partido sin fecha no entra a ningún rango**, y se cuenta aparte para
+  avisarlo (misma regla que el calendario del punto 18). A un ciclo sí entra:
+  ahí el corte es por posición.
+- **El volumen del corte se muestra siempre.** Un `T3%` de 24,8% con 113
+  intentos y otro con 20 no significan lo mismo, y sobre cuatro partidos eso
+  pesa más que en ninguna otra pantalla.
+
+### Jugadores · NO se ordena de mejor a peor
+
+Dos jugadores no se ordenan: se distinguen. El bloque dice **en qué se separan**,
+medido en relación a la escala de cada métrica, y **sin contar `MIN` ni `PJ`** —
+describen la muestra, no el juego, y separan siempre. Con empate no gana nadie:
+marcar uno al azar diría algo que el dato no dice.
+
+El tope son **tres**: con cuatro la tabla deja de entrar a lo ancho. Al llegar al
+tope se descarta el más viejo en vez de ignorar el clic — ignorarlo se siente
+como si la pantalla estuviera rota.
+
+### El tab «Comparar Jugadores» de Scouting se mudó acá
+
+Era la comparativa legacy de dos filas de `PROMEDIOS J` y contestaba otra
+pregunta que el informe pre-partido. Tenerla ahí obligaba a entrar a Scouting
+para algo que no es scouting, y dejaba **dos comparadores distintos** en la app.
+Scouting quedó como una sola cosa y perdió su barra de pestañas: una pestaña
+sola no es una elección.
+
+`buildScoutingCompare` y su cadena quedan en el `index.html` sin llamador. Se
+limpian aparte: sacar ese hilo entero en la misma vuelta que se agrega una
+sección es cambiar dos cosas a la vez.
+
+---
+
+## 27. La redirección post-login, y por qué no pasaba nada
+
+**El destino lo decide el ROL**: el admin va al Panel Master —entra a
+administrar— y el cliente a Principal con su `?club=`, que sale de su token.
+Sin ese parámetro el panel cargaría el club por defecto, que no es el suyo.
+
+Dos defectos en el camino, los dos silenciosos:
+
+1. **`esLanding()` seguía siendo `true`.** Miraba solo si había `?club=`, y el
+   token del admin no lleva club —el Panel Master es de todos los clientes—, así
+   que entraba, se quedaba sin `?club=` y el router le devolvía la tarjeta
+   explicativa de la landing en TODAS las secciones, el Panel Master incluido.
+   Ahora **con sesión abierta no hay landing**: la bienvenida es la puerta del
+   que todavía no entró.
+2. **`rol()` devuelve un string, no un objeto.** `rol().rol` daba `undefined`,
+   el `try/catch` ni se enteraba y todos iban a Principal.
+
+El test EJERCE `destino()` con un token de admin y otro de cliente, y para eso
+tiene que exponer `global.SGADD_AUTH`: sin eso el `try/catch` se traga el
+`ReferenceError` y el test pasaría por el camino equivocado sin probar nada.
+
+---
+
+## 28. EL LOGO SE RECORTABA EN EL ARCHIVO, no en el CSS
+
+`generar-logo.js` tomaba el **cuadrado central** de un original de 1536×1024.
+Medido sobre el PNG: tiraba **77 px de contenido a la izquierda y 75 a la
+derecha**. Se veía como un logo mal encuadrado dentro de su aro y ninguna
+cantidad de padding lo podía arreglar — lo que faltaba no estaba en el archivo.
+
+Ahora descarta el **aire transparente** (no el dibujo), encaja el dibujo entero
+en el lienzo cuadrado y rellena el sobrante con transparente — no con un color:
+el logo se usa sobre el aro blanco de la barra, sobre la card oscura y sobre el
+papel de los PDF, así que cualquier color horneado se vería en al menos uno.
+
+**El padding del aro se MIDE, no se calcula.** La fórmula de la diagonal supone
+esquinas opacas y este dibujo las tiene transparentes, así que exagera.
+Rasterizando el PNG y contando los píxeles opacos que caen fuera del círculo, el
+mínimo que da cero cortados es **4 px** sobre un aro de 48; se usan 5 y no más,
+porque cada píxel de padding es un píxel menos de logo. El escudo de un club
+necesita 2, que es justo lo que tiene.
+
+Hay un test que decodifica el PNG con `zlib` —lo mismo que hace el generador— y
+verifica que el dibujo llegue al borde a lo ancho, que conserve su aspecto y que
+con el padding del CSS no se pierda un solo píxel. Y que **sin** padding sí se
+perdería, que es lo que justifica que el padding exista.

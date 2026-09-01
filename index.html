@@ -270,14 +270,20 @@
      El logo es 3:2 y el marco es un circulo, asi que lo que tiene que
      entrar no es el ancho sino la DIAGONAL del dibujo. Con el lado del
      recuadro en B, la mitad de la diagonal mide 0,642·B; para un aro de
-     48 px (radio 24) eso obliga a B <= 37, o sea ~5,5 px de padding por
-     lado. Se usan 7 para no quedar al filo.
+     48 px (radio 24) eso obliga a B <= 37.
+
+     MEDIDO SOBRE EL ARCHIVO y no con la formula: el dibujo tiene las
+     esquinas transparentes, asi que lo que importa no es su recuadro sino
+     donde hay pixeles opacos. Rasterizando el PNG y contando cuantos caen
+     fuera del circulo, el minimo que da CERO cortados es 4 px. Se usan 5
+     para no quedar al filo, y no mas: cada pixel de padding es un pixel
+     menos de logo.
 
      Con el PNG viejo esto NO alcanzaba: aquel venia recortado al cuadrado
      central, asi que el dibujo era 1:1 y su diagonal se salia del circulo
      con cualquier padding razonable. El arreglo de verdad fue regenerar la
      imagen sin recortar (`node generar-logo.js`). */
-  .escudo-aro.aro-motorstats > img { padding: 7px; }
+  .escudo-aro.aro-motorstats > img { padding: 5px; }
 
   /* En la card de bienvenida no hay marco que recorte, asi que el logo va
      sin padding y a mayor tamaño: es la primera imagen que ve alguien que
@@ -1882,7 +1888,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=167" />
+<link rel="stylesheet" href="sgadd.css?v=168" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2061,39 +2067,39 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=167"></script>
+<script src="js/sgadd-club.js?v=168"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=167"></script>
-<script src="js/sgadd-core.js?v=167"></script>
-<script src="js/sgadd-auth.js?v=167"></script>
-<script src="js/sgadd-glosario.js?v=167"></script>
-<script src="js/sgadd-glosarioui.js?v=167"></script>
-<script src="js/sgadd-comparativa.js?v=167"></script>
-<script src="js/sgadd-comparativaui.js?v=167"></script>
-<script src="js/sgadd-landing.js?v=167"></script>
-<script src="js/sgadd-login.js?v=167"></script>
-<script src="js/sgadd-data.js?v=167"></script>
-<script src="js/sgadd-clientes.js?v=167"></script>
-<script src="js/sgadd-ui.js?v=167"></script>
-<script src="js/sgadd-app.js?v=167"></script>
-<script src="js/sgadd-clasificacion.js?v=167"></script>
+<script src="js/sgadd-config.js?v=168"></script>
+<script src="js/sgadd-core.js?v=168"></script>
+<script src="js/sgadd-auth.js?v=168"></script>
+<script src="js/sgadd-glosario.js?v=168"></script>
+<script src="js/sgadd-glosarioui.js?v=168"></script>
+<script src="js/sgadd-comparativa.js?v=168"></script>
+<script src="js/sgadd-comparativaui.js?v=168"></script>
+<script src="js/sgadd-landing.js?v=168"></script>
+<script src="js/sgadd-login.js?v=168"></script>
+<script src="js/sgadd-data.js?v=168"></script>
+<script src="js/sgadd-clientes.js?v=168"></script>
+<script src="js/sgadd-ui.js?v=168"></script>
+<script src="js/sgadd-app.js?v=168"></script>
+<script src="js/sgadd-clasificacion.js?v=168"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=167"></script>
-<script src="js/sgadd-configui.js?v=167"></script>
-<script src="js/sgadd-estados.js?v=167"></script>
-<script src="js/sgadd-buzon.js?v=167"></script>
-<script src="js/sgadd-charts.js?v=167"></script>
-<script src="js/sgadd-personalidad.js?v=167"></script>
-<script src="js/sgadd-rankings.js?v=167"></script>
-<script src="js/sgadd-partido.js?v=167"></script>
-<script src="js/sgadd-informe.js?v=167"></script>
-<script src="js/sgadd-ficha.js?v=167"></script>
-<script src="js/sgadd-equipos.js?v=167"></script>
-<script src="js/sgadd-jugadores.js?v=167"></script>
-<script src="js/sgadd-4factores.js?v=167"></script>
-<script src="js/sgadd-scouting.js?v=167"></script>
-<script src="js/sgadd-diagnostico.js?v=167"></script>
+<script src="js/sgadd-hub.js?v=168"></script>
+<script src="js/sgadd-configui.js?v=168"></script>
+<script src="js/sgadd-estados.js?v=168"></script>
+<script src="js/sgadd-buzon.js?v=168"></script>
+<script src="js/sgadd-charts.js?v=168"></script>
+<script src="js/sgadd-personalidad.js?v=168"></script>
+<script src="js/sgadd-rankings.js?v=168"></script>
+<script src="js/sgadd-partido.js?v=168"></script>
+<script src="js/sgadd-informe.js?v=168"></script>
+<script src="js/sgadd-ficha.js?v=168"></script>
+<script src="js/sgadd-equipos.js?v=168"></script>
+<script src="js/sgadd-jugadores.js?v=168"></script>
+<script src="js/sgadd-4factores.js?v=168"></script>
+<script src="js/sgadd-scouting.js?v=168"></script>
+<script src="js/sgadd-diagnostico.js?v=168"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

@@ -236,6 +236,134 @@ check('el escudo de Deportivo La Plata lleva el nombre completo',
   !archivos.some(f => base(f) === 'deportivo'),
   archivos.filter(f => /deportivo/.test(f)).join(','));
 
+/* =====================================================================
+   EL LOGO DEL PRODUCTO · que el archivo no venga recortado
+
+   `generar-logo.js` tomaba el CUADRADO CENTRAL de un original 3:2 y
+   tiraba 77 px de contenido a la izquierda y 75 a la derecha. Se veía
+   como un logo mal encuadrado dentro de su aro, y ninguna cantidad de
+   padding en el CSS lo podía arreglar: lo que faltaba no estaba en el
+   archivo.
+
+   Se mide sobre el PNG generado, decodificándolo con `zlib` — que es lo
+   mismo que hace el generador — en vez de confiar en que el script hizo
+   lo que dice.
+   ===================================================================== */
+console.log(String.fromCharCode(10) + 'EL LOGO GENERADO · sin recortes' + String.fromCharCode(10) + '─'.repeat(70));
+
+{
+  const zlib = require('zlib');
+
+  /* Decodifica un PNG RGBA de 8 bits sin interlace. Alcanza para los que
+     escribe `generar-logo.js`, que es el único caso que se mide acá. */
+  function leerPng(ruta) {
+    const d = fs.readFileSync(ruta);
+    const w = d.readUInt32BE(16), h = d.readUInt32BE(20);
+    let idat = Buffer.alloc(0), i = 8;
+    while (i < d.length) {
+      const len = d.readUInt32BE(i);
+      if (d.toString('latin1', i + 4, i + 8) === 'IDAT') {
+        idat = Buffer.concat([idat, d.slice(i + 8, i + 8 + len)]);
+      }
+      i += 12 + len;
+    }
+    const raw = zlib.inflateSync(idat);
+    const stride = w * 4, px = Buffer.alloc(w * h * 4);
+    let prev = Buffer.alloc(stride), o = 0;
+    for (let y = 0; y < h; y++) {
+      const f = raw[o]; o++;
+      const line = Buffer.from(raw.slice(o, o + stride)); o += stride;
+      for (let x = 0; x < stride; x++) {
+        const a = x >= 4 ? line[x - 4] : 0, b = prev[x], c = x >= 4 ? prev[x - 4] : 0;
+        if (f === 1) line[x] = (line[x] + a) & 255;
+        else if (f === 2) line[x] = (line[x] + b) & 255;
+        else if (f === 3) line[x] = (line[x] + ((a + b) >> 1)) & 255;
+        else if (f === 4) {
+          const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+          line[x] = (line[x] + ((pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c))) & 255;
+        }
+      }
+      line.copy(px, y * stride); prev = line;
+    }
+    return { w: w, h: h, px: px };
+  }
+
+  const im = leerPng('./logos/motorlogo-64.png');
+  check('el logo generado es cuadrado', im.w === 64 && im.h === 64, im.w + 'x' + im.h);
+
+  /* Los límites del dibujo dentro del PNG. */
+  let x0 = im.w, x1 = -1, y0 = im.h, y1 = -1;
+  for (let y = 0; y < im.h; y++) {
+    for (let x = 0; x < im.w; x++) {
+      if (im.px[(y * im.w + x) * 4 + 3] > 10) {
+        if (x < x0) x0 = x; if (x > x1) x1 = x;
+        if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+    }
+  }
+
+  /* EL DIBUJO LLEGA AL BORDE A LO ANCHO. Es la señal de que no quedó aire
+     transparente adentro del archivo: el respiro lo pone el CSS, que es
+     donde se puede ajustar sin regenerar nada. */
+  check('el dibujo aprovecha todo el ancho del PNG',
+    x0 === 0 && x1 === im.w - 1, x0 + '-' + x1);
+  /* Y NO llega al borde a lo alto: es 3:2, así que el cuadrado le sobra
+     arriba y abajo. Si llegara, estaría deformado o recortado. */
+  check('y NO a lo alto, porque es 3:2 y entra entero',
+    y0 > 0 && y1 < im.h - 1, y0 + '-' + y1);
+
+  /* EL ASPECTO QUE SE CONSERVA ES EL DEL DIBUJO, no el del lienzo.
+
+     El original mide 1536x1024 (1,5) pero trae aire transparente a los
+     costados: el dibujo ocupa 1176x954, o sea 1,233. Ese es el que tiene
+     que sobrevivir — comparar contra el 1,5 del lienzo daria un test que
+     falla justo porque el generador hace bien su trabajo. */
+  const alto = y1 - y0 + 1;
+  const aspecto = im.w / alto;
+  check('conserva el aspecto del DIBUJO (1176x954 = 1,233)',
+    Math.abs(aspecto - 1176 / 954) < 0.05, aspecto.toFixed(3));
+
+  /* CUÁNTO SE CORTA DENTRO DEL ARO CIRCULAR, medido sobre los píxeles
+     opacos y no sobre el recuadro: las esquinas son transparentes, así que
+     el recuadro exagera. Con el padding del CSS no se pierde ninguno.
+
+     El aro mide 48 px y el `img` lleva `padding: 5px` con `box-sizing:
+     border-box`, así que el dibujo se dibuja dentro de 38. */
+  function cortados(im2, lado) {
+    const R = 24;                     // radio del aro de 48 px
+    const s = Math.min(lado / im2.w, lado / im2.h);
+    let fuera = 0;
+    for (let y = 0; y < im2.h; y++) {
+      for (let x = 0; x < im2.w; x++) {
+        if (im2.px[(y * im2.w + x) * 4 + 3] <= 10) continue;
+        const dx = (x - im2.w / 2 + 0.5) * s, dy = (y - im2.h / 2 + 0.5) * s;
+        if (Math.sqrt(dx * dx + dy * dy) > R) fuera++;
+      }
+    }
+    return fuera;
+  }
+  check('con el padding del CSS no se corta ni un píxel',
+    cortados(im, 38) === 0, cortados(im, 38) + ' píxeles fuera del círculo');
+  /* Y sin padding SÍ se cortaría: es lo que justifica que el padding esté. */
+  check('sin padding sí se cortaría, que es para lo que está',
+    cortados(im, 48) > 0, cortados(im, 48));
+
+  const gen = fs.readFileSync('./generar-logo.js', 'utf8');
+  check('el generador ya no recorta el cuadrado central',
+    !/const corte = Math\.min\(img\.ancho, img\.alto\)/.test(gen));
+  check('y descarta el aire transparente antes de encajar',
+    /function recorteDelDibujo/.test(gen));
+
+  /* EL LOGO VA ARRIBA DEL DISCO en la pantalla de carga, y en el HTML: ese
+     bloque se pinta ANTES de que corra un solo script. */
+  const idxL = fs.readFileSync('./index.html', 'utf8');
+  const loader = idxL.slice(idxL.indexOf('<div id="loader"'), idxL.indexOf('APP SHELL'));
+  check('la pantalla de carga muestra el logo',
+    /motorlogo-128\.png/.test(loader));
+  check('y va ARRIBA del disco que gira',
+    loader.indexOf('motorlogo') < loader.indexOf('animate-spin-slow'));
+}
+
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })();
