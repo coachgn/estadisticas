@@ -237,7 +237,7 @@
        único que hay en pantalla mientras se espera. El `scale(.96)` del
        pulso lo achica un pelín, así que el padding evita que el borde
        llegue justo al límite de la caja. */
-    width: 56px; height: 56px; object-fit: contain; padding: 2px;
+    width: 88px; height: 88px; object-fit: contain;
     box-sizing: border-box; overflow: visible;
     animation: pulso-logo 2.2s ease-in-out infinite;
   }
@@ -265,14 +265,24 @@
     background: #ffffff;
     border-color: rgba(255, 255, 255, .25);
   }
-  /* Mas padding que el de un club: su grafica es un circulo que toca el
-     borde del lienzo, asi que a igual tamaño el aro le corta las puntas. */
-  .escudo-aro.aro-motorstats > img { padding: 6px; }
+  /* MAS PADDING QUE EL DE UN CLUB, Y ES GEOMETRIA, NO GUSTO.
 
-  /* En la card de bienvenida el fondo se deja como esta —el logo se luce
-     sobre el oscuro— pero se le suma padding por lo mismo: sin el, el
-     circulo toca el borde de la caja y se ve cortado. */
-  .landing-logo { width: 72px; height: 72px; object-fit: contain; padding: 6px; }
+     El logo es 3:2 y el marco es un circulo, asi que lo que tiene que
+     entrar no es el ancho sino la DIAGONAL del dibujo. Con el lado del
+     recuadro en B, la mitad de la diagonal mide 0,642·B; para un aro de
+     48 px (radio 24) eso obliga a B <= 37, o sea ~5,5 px de padding por
+     lado. Se usan 7 para no quedar al filo.
+
+     Con el PNG viejo esto NO alcanzaba: aquel venia recortado al cuadrado
+     central, asi que el dibujo era 1:1 y su diagonal se salia del circulo
+     con cualquier padding razonable. El arreglo de verdad fue regenerar la
+     imagen sin recortar (`node generar-logo.js`). */
+  .escudo-aro.aro-motorstats > img { padding: 7px; }
+
+  /* En la card de bienvenida no hay marco que recorte, asi que el logo va
+     sin padding y a mayor tamaño: es la primera imagen que ve alguien que
+     entra por la URL limpia. */
+  .landing-logo { width: 88px; height: 88px; object-fit: contain; }
 
   /* EL TOOLTIP DE METRICA. Va a mano por lo mismo que el resto: lo
      inyecta un nodo dinamico y el scan de Tailwind es ESTATICO.
@@ -1872,7 +1882,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=166" />
+<link rel="stylesheet" href="sgadd.css?v=167" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -1883,7 +1893,16 @@
         onclick="document.getElementById('view-root').focus()">Saltar al contenido</button>
 
 <!-- ============ LOADER ============ -->
+<!-- EL LOGO VA ARRIBA DEL DISCO. Es la unica pantalla que alguien mira
+     entera antes de que exista nada mas, asi que es donde la marca del
+     producto tiene mas sentido; y ademas le da algo que mirar a una espera
+     que puede ser de segundos con la planilla grande.
+
+     Va en el HTML y no inyectado: este bloque se pinta ANTES de que corra
+     un solo script, que es justo para lo que existe. -->
 <div id="loader" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-base gap-4">
+  <img src="logos/motorlogo-128.png" alt="MotorStats" width="88" height="88"
+       class="cargando-logo" fetchpriority="high">
   <div class="w-12 h-12 border-2 border-hairline border-t-accent rounded-full animate-spin-slow"></div>
   <p class="font-display uppercase tracking-[0.25em] text-sm text-muted">Cargando datos del club…</p>
 </div>
@@ -1936,6 +1955,10 @@
         <button onclick="navigate('glosario')" data-nav="glosario" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 5.5A1.5 1.5 0 0 1 5.5 4H19v16H5.5A1.5 1.5 0 0 1 4 18.5v-13Z"/><path stroke-linecap="round" d="M8 8h7M8 12h7"/></svg>
           Glosario
+        </button>
+        <button onclick="navigate('comparativa')" data-nav="comparativa" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" d="M4 19V9M10 19V5M16 19v-7M20 19H3"/></svg>
+          Comparativa
         </button>
         <button onclick="navigate('simulador')" data-nav="simulador" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 21h8M12 17v4M5 3h14l-1.5 8.5a5.5 5.5 0 0 1-11 0L5 3Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 5H2.5A2.5 2.5 0 0 0 3.8 9.6M19 5h2.5a2.5 2.5 0 0 1-1.3 4.6"/></svg>
@@ -2038,37 +2061,39 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=166"></script>
+<script src="js/sgadd-club.js?v=167"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=166"></script>
-<script src="js/sgadd-core.js?v=166"></script>
-<script src="js/sgadd-auth.js?v=166"></script>
-<script src="js/sgadd-glosario.js?v=166"></script>
-<script src="js/sgadd-glosarioui.js?v=166"></script>
-<script src="js/sgadd-landing.js?v=166"></script>
-<script src="js/sgadd-login.js?v=166"></script>
-<script src="js/sgadd-data.js?v=166"></script>
-<script src="js/sgadd-clientes.js?v=166"></script>
-<script src="js/sgadd-ui.js?v=166"></script>
-<script src="js/sgadd-app.js?v=166"></script>
-<script src="js/sgadd-clasificacion.js?v=166"></script>
+<script src="js/sgadd-config.js?v=167"></script>
+<script src="js/sgadd-core.js?v=167"></script>
+<script src="js/sgadd-auth.js?v=167"></script>
+<script src="js/sgadd-glosario.js?v=167"></script>
+<script src="js/sgadd-glosarioui.js?v=167"></script>
+<script src="js/sgadd-comparativa.js?v=167"></script>
+<script src="js/sgadd-comparativaui.js?v=167"></script>
+<script src="js/sgadd-landing.js?v=167"></script>
+<script src="js/sgadd-login.js?v=167"></script>
+<script src="js/sgadd-data.js?v=167"></script>
+<script src="js/sgadd-clientes.js?v=167"></script>
+<script src="js/sgadd-ui.js?v=167"></script>
+<script src="js/sgadd-app.js?v=167"></script>
+<script src="js/sgadd-clasificacion.js?v=167"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=166"></script>
-<script src="js/sgadd-configui.js?v=166"></script>
-<script src="js/sgadd-estados.js?v=166"></script>
-<script src="js/sgadd-buzon.js?v=166"></script>
-<script src="js/sgadd-charts.js?v=166"></script>
-<script src="js/sgadd-personalidad.js?v=166"></script>
-<script src="js/sgadd-rankings.js?v=166"></script>
-<script src="js/sgadd-partido.js?v=166"></script>
-<script src="js/sgadd-informe.js?v=166"></script>
-<script src="js/sgadd-ficha.js?v=166"></script>
-<script src="js/sgadd-equipos.js?v=166"></script>
-<script src="js/sgadd-jugadores.js?v=166"></script>
-<script src="js/sgadd-4factores.js?v=166"></script>
-<script src="js/sgadd-scouting.js?v=166"></script>
-<script src="js/sgadd-diagnostico.js?v=166"></script>
+<script src="js/sgadd-hub.js?v=167"></script>
+<script src="js/sgadd-configui.js?v=167"></script>
+<script src="js/sgadd-estados.js?v=167"></script>
+<script src="js/sgadd-buzon.js?v=167"></script>
+<script src="js/sgadd-charts.js?v=167"></script>
+<script src="js/sgadd-personalidad.js?v=167"></script>
+<script src="js/sgadd-rankings.js?v=167"></script>
+<script src="js/sgadd-partido.js?v=167"></script>
+<script src="js/sgadd-informe.js?v=167"></script>
+<script src="js/sgadd-ficha.js?v=167"></script>
+<script src="js/sgadd-equipos.js?v=167"></script>
+<script src="js/sgadd-jugadores.js?v=167"></script>
+<script src="js/sgadd-4factores.js?v=167"></script>
+<script src="js/sgadd-scouting.js?v=167"></script>
+<script src="js/sgadd-diagnostico.js?v=167"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -2124,7 +2149,7 @@ const SHEETS_CONFIG = [
    quedo en una sola y el item del menu no navegaba a ningun lado: el
    `navigate()` lo mandaba de vuelta a Principal sin decir nada. Hay un
    test que compara las dos. */
-const VALID_SECTIONS = ['principal', 'clasificacion', 'equipos', 'jugadores', 'scouting', 'glosario', 'simulador', 'configuracion', 'diagnostico'];
+const VALID_SECTIONS = ['principal', 'clasificacion', 'equipos', 'jugadores', 'scouting', 'glosario', 'simulador', 'configuracion', 'diagnostico', 'comparativa'];
 
 /* ============ ESTADO GLOBAL ============ */
 let DATA = {};
@@ -3634,42 +3659,44 @@ const iniciales = LOGOS.iniciales;
 
 /* ============ SECCIÓN: SCOUTING ============ */
 function buildScouting() {
-  const tabs = [
-    { id: 'equipos', label: 'Informe pre-partido' },
-    { id: 'jugadores', label: 'Comparar Jugadores' },
-  ];
-  const active = tabState.scouting;
+  /* SCOUTING ES UNA SOLA COSA: el informe pre-partido.
 
-  /* El tab de equipos ya no es la comparativa genérica de dos filas de
-     PROMEDIOS E: es el informe pre-partido completo (sgadd-scouting.js),
-     que se apoya en `idx` y no en la capa de datos vieja. Por eso pinta
-     asincrónico igual que Equipos/Jugadores/Simulador, en vez de devolver
-     el HTML ya armado. El tab de jugadores sigue con la comparativa
-     legacy: es otra pregunta (dos jugadores cara a cara) y no la tocamos. */
-  if (active === 'equipos') {
-    SGADD_APP.inicializar();
-    /* Se encadena a la promesa de `cargar()` en vez de confiar solo en el
-       hook de onCambio de sgadd-app.js: si se entra a la sección antes de
-       que la categoría termine de bajar, el hook es el único que repinta
-       y cualquier desincronización entre los dos archivos deja la vista
-       clavada en "Cargando…". Con el .then() el repintado es local a
-       quien lo necesita. */
-    setTimeout(() => { scoutPintar(); Promise.resolve(SGADD_APP.cargar()).then(scoutPintar); }, 0);
-    return `
-      <section class="space-y-4">
-        <div class="flex flex-wrap gap-2">${buildTabs('scouting', tabs)}</div>
-        ${SGADD_APP.barra()}
-        <div id="scoutRoot" class="space-y-4"></div>
-      </section>`;
-  }
+     Tenía un segundo tab, "Comparar Jugadores", con la comparativa legacy
+     de dos filas de `PROMEDIOS J`. Contestaba otra pregunta —no "cómo
+     defiendo a este equipo" sino "en qué se diferencian estos dos"— y por
+     eso se mudó a la sección COMPARATIVA, que es donde vive esa pregunta
+     para equipos y para jugadores. Tener dos comparadores distintos en la
+     app era pedirle al DT que eligiera entre dos caminos al mismo lugar.
 
+     Con un solo contenido la barra de pestañas se va: una pestaña sola no
+     es una elección, es un adorno que ocupa una línea.
+
+     Se encadena a la promesa de `cargar()` en vez de confiar solo en el
+     hook de `onCambio` de sgadd-app.js: entrando a la sección antes de que
+     la categoría termine de bajar, el hook es el único que repinta y
+     cualquier desincronización entre los dos archivos deja la vista
+     clavada en "Cargando…". */
+  SGADD_APP.inicializar();
+  setTimeout(() => { scoutPintar(); Promise.resolve(SGADD_APP.cargar()).then(scoutPintar); }, 0);
   return `
     <section class="space-y-4">
-      <div class="flex flex-wrap gap-2">${buildTabs('scouting', tabs)}</div>
-      ${buildScoutingCompare('promediosJ', ['NOMBRE', 'JUGADOR'], 'scoutingPlayers', 'jugadores')}
+      ${SGADD_APP.barra()}
+      <div id="scoutRoot" class="space-y-4"></div>
     </section>`;
 }
 
+/* LA COMPARATIVA LEGACY DE DOS FILAS · YA NO LA LLAMA NADIE.
+
+   Era el tab "Comparar Jugadores" de Scouting y se mudó a COMPARATIVA,
+   que hace lo mismo mejor: lee de `idx` en vez de la capa de datos vieja,
+   compara hasta tres, respeta la dirección de cada métrica y dice en qué
+   se separan.
+
+   Queda acá, sin borrar, a propósito: arrastra `factorSelection`,
+   `onCompareChange` y `drawScoutingCharts`, y sacar ese hilo entero en la
+   misma vuelta que se agrega una sección es cambiar dos cosas a la vez.
+   `drawScoutingCharts` ya no encuentra su canvas y sale por el guard.
+   Se limpia aparte, cuando el módulo nuevo esté rodado. */
 function buildScoutingCompare(sheetKey, nameCandidates, selectionKey, chartSuffix) {
   const data = sheet(sheetKey);
   if (data.error) return renderErrorCard(`${sheetKey}: ${data.error}`);
@@ -3836,7 +3863,7 @@ function renderSection(section) {
   const titles = { principal: 'Principal', clasificacion: 'Clasificación', equipos: 'Equipos',
     jugadores: 'Jugadores', scouting: 'Scouting', simulador: 'Simulador',
     configuracion: 'Panel Master', diagnostico: 'Diagnóstico',
-    glosario: 'Glosario' };
+    glosario: 'Glosario', comparativa: 'Comparativa' };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = titles[section] || '';
 
@@ -3876,6 +3903,15 @@ function renderSection(section) {
     case 'simulador': root.innerHTML = buildSimulador(); break;   // SGADD (js/sgadd-4factores.js)
     case 'scouting': root.innerHTML = buildScouting(); drawScoutingCharts(); break;
     case 'glosario': root.innerHTML = SGADD_GLOSARIOUI.html(); break;   // SGADD (js/sgadd-glosarioui.js)
+    /* COMPARATIVA necesita el índice, así que se engancha a la promesa de
+       `cargar()` igual que Equipos/Jugadores/Scouting: entrando antes de
+       que baje la categoría, el hook de `onCambio` es el único que
+       repinta y la vista quedaría clavada en "Cargando…". */
+    case 'comparativa':
+      SGADD_APP.inicializar();
+      SGADD_COMPUI.pintar();
+      SGADD_APP.cargar().then(() => { if (currentSection === 'comparativa') SGADD_COMPUI.pintar(); });
+      break;   // SGADD (js/sgadd-comparativaui.js)
     default: root.innerHTML = '';
   }
 }

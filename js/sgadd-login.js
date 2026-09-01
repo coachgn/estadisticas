@@ -58,7 +58,25 @@ const SGADD_LOGIN = (function () {
    * partido. Se arma con la ruta y no con un `location.reload()` para no
    * perder la planilla y el tramo que ya estaban abiertos.
    */
-  function destino() { return 'configuracion'; }
+  /**
+   * A dónde va cada uno después de entrar. LO DECIDE EL ROL.
+   *
+   * El admin entra para administrar: su primera pantalla es el Panel
+   * Master, donde están los clientes. El cliente entra a mirar SU equipo,
+   * así que va a Principal — mandarlo a una pantalla de gestión que no
+   * puede usar sería peor que no redirigir.
+   *
+   * El rol se pregunta DESPUÉS de guardar el token, nunca antes: `rol()`
+   * lo re-deriva del mail contra `ADMINS`, así que sin token en memoria
+   * contesta `ABIERTO` y todos irían a Principal.
+   */
+  function destino() {
+    try {
+      /* `rol()` devuelve el string, no un objeto: `rol().rol` da `undefined`
+         y el try/catch ni se entera — todos iban a Principal, callado. */
+      return (SGADD_AUTH.rol() === 'ADMIN') ? 'configuracion' : 'principal';
+    } catch (e) { return 'principal'; }
+  }
 
   /** Qué falta para poder enviar. En castellano y ANTES de apretar. */
   function faltantes(d) {
@@ -296,6 +314,29 @@ const SGADD_LOGIN = (function () {
        Principal— porque los dos guardaron el fallo. */
     try { SGADD_DATA.limpiarCache(); } catch (e) {}
     try { if (typeof SGADD !== 'undefined') SGADD.limpiarCache(); } catch (e) {}
+
+    /* UN CLIENTE VUELVE CON SU `?club=` EN LA URL.
+
+       Su token dice a qué club está atado, y sin ese parámetro el panel
+       cargaría el club por defecto —que no es el suyo— y le mostraría
+       otra planilla. Se recarga en vez de navegar: `?club=` decide de qué
+       libro se baja todo, y eso se resuelve una sola vez en el arranque
+       (`resolverClubYPlanilla`).
+
+       El ADMIN no lleva club: el Panel Master es de todos los clientes y
+       ahí elige a cuál entrar. */
+    let club = null;
+    try { club = SGADD_AUTH.clubDelToken(); } catch (e) {}
+    let enUrl = null;
+    try { enUrl = new URLSearchParams(window.location.search).get('club'); } catch (e) {}
+    if (club && club !== enUrl) {
+      const u = new URL(window.location.href);
+      u.searchParams.set('club', club);
+      u.searchParams.delete('access_token');   // el token ya está guardado
+      u.hash = '';
+      window.location.href = u.toString();
+      return;
+    }
 
     if (typeof navigate === 'function') {
       try { navigate(destino()); } catch (e) {}

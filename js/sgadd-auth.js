@@ -97,6 +97,12 @@ const SGADD_AUTH = (function () {
        numeros de un club. Un DT que quiere saber que mide `eFG%` no
        deberia necesitar un link. */
     glosario: null,
+    /* COMPARATIVA es de administración: cruza ciclos de cualquier equipo
+       de la liga, que es justo lo que el gate del cliente acota. Va con
+       los otros tres internos y por eso NO se le muestra en el menú: un
+       botón gris que no hace nada invita a clickearlo y no explica por
+       qué (punto 19). */
+    comparativa: { soloAdmin: true },
     simulador: { soloAdmin: true },
     configuracion: { soloAdmin: true },
     diagnostico: { soloAdmin: true },

@@ -1942,9 +1942,41 @@ titulo('INGRESO DE ADMINISTRADORES · claves, bloqueo y lo que NO se filtra');
   check('el largo mínimo coincide entre la UI y el servidor',
     LOGIN.LARGO_MINIMO === CL.LARGO_MINIMO, LOGIN.LARGO_MINIMO + ' vs ' + CL.LARGO_MINIMO);
 
-  /* AL ENTRAR VA AL PANEL MASTER: quien entra con clave está
-     administrando, no mirando un partido. */
-  check('el ingreso lleva al Panel Master', LOGIN.destino() === 'configuracion');
+  /* EL DESTINO LO DECIDE EL ROL.
+
+     El admin entra para administrar: su primera pantalla es el Panel
+     Master. El cliente entra a mirar SU equipo, así que va a Principal —
+     mandarlo a una pantalla de gestión que no puede usar sería peor que no
+     redirigir.
+
+     Se pregunta DESPUÉS de guardar el token: `rol()` lo re-deriva del mail
+     contra `ADMINS`, así que sin token en memoria contesta `ABIERTO` y
+     todos irían a Principal. */
+  check('sin sesión el destino es Principal', LOGIN.destino() === 'principal',
+    LOGIN.destino());
+  {
+    /* `destino()` lee el rol del GLOBAL `SGADD_AUTH`, que es como lo ve en
+       el navegador. Sin exponerlo, su try/catch se traga el ReferenceError
+       y devuelve 'principal' — o sea que el test pasaría por el camino
+       equivocado y no probaría nada. */
+    const AU = require('./js/sgadd-auth.js');
+    global.SGADD_AUTH = AU;
+    const tk = auth.firmarToken({ email: 'freytesgn@gmail.com', plan: 'ORO' },
+      { expiraEn: '1h' });
+    AU.establecerToken(tk);
+    check('con sesión de ADMIN, el Panel Master',
+      LOGIN.destino() === 'configuracion', LOGIN.destino());
+    const tkc = auth.firmarToken({ email: 'dt@club.com', club: 'deportivo',
+      equipoAsignado: 'DEPORTIVO LA PLATA', plan: 'ORO' }, { expiraEn: '1h' });
+    AU.establecerToken(tkc);
+    check('y con sesión de CLIENTE, Principal',
+      LOGIN.destino() === 'principal', LOGIN.destino());
+    /* Su token dice a qué club está atado: sin ese `?club=` el panel
+       cargaría el club por defecto, que no es el suyo. */
+    check('el club del cliente sale de su token',
+      AU.clubDelToken() === 'deportivo', AU.clubDelToken());
+    AU.limpiarToken(); AU.limpiarSesion(); delete global.SGADD_AUTH;
+  }
 
   const lg = fs.readFileSync('./js/sgadd-login.js', 'utf8');
   /* LA CLAVE NO SE GUARDA NI VIAJA EN LA URL: va del input al servidor y
@@ -1963,7 +1995,14 @@ titulo('INGRESO DE ADMINISTRADORES · claves, bloqueo y lo que NO se filtra');
     !/localStorage|sessionStorage/.test(lgSinComentarios.replace(/removeItem[^;]*;/g, ''))
     || /removeItem/.test(lgSinComentarios));
   check('y se borra del estado al cerrar', /campos\.clave = ''/.test(lg));
-  check('el token no se pone en la URL', !/searchParams\.set|access_token=/.test(lg));
+  /* EL TOKEN NO VIAJA EN LA URL. Lo único que se le escribe es el `?club=`
+     del cliente —su token dice cuál es— y el `access_token` se BORRA si
+     venía de un link firmado: ya quedó guardado, y dejarlo en la barra lo
+     mete en el historial y en los logs de cualquier proxy. */
+  check('el token no se escribe en la URL',
+    !/searchParams\.set\('access_token'|access_token=' \+/.test(lg));
+  check('y si venía en el link, se saca',
+    /searchParams\.delete\('access_token'\)/.test(lg));
 
   /* LOS CLIENTES NO PASAN POR ACÁ: un club entra con su mail y su código,
      y pedirle que se registre en la pantalla del administrador sería

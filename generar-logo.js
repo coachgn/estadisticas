@@ -111,25 +111,68 @@ function decodificar(buf) {
 /* --------------------------------------------------------------- escalar */
 
 /**
- * Recorta el cuadrado central y lo achica promediando.
+ * Encaja la imagen ENTERA en un lienzo cuadrado y la achica promediando.
  *
- * EL RECORTE NO ES OPCIONAL: el original es 3:2 y el logo redondo está en
- * el medio, así que un reescalado directo lo dejaría ovalado y con dos
- * franjas de fondo a los costados.
+ * ANTES RECORTABA EL CUADRADO CENTRAL Y ESO CORTABA EL LOGO. El original
+ * es 1536x1024, o sea 3:2, así que quedarse con los 1024 del medio tiraba
+ * 256 píxeles de CADA lado — justo donde vive parte de la gráfica y el
+ * texto de la marca. Se veía como un logo mal encuadrado dentro de su aro,
+ * y ninguna cantidad de padding en el CSS lo podía arreglar: lo que
+ * faltaba no estaba en el archivo.
+ *
+ * Ahora se recorta el AIRE transparente del original —no el dibujo— y el
+ * dibujo entero entra en el cuadrado; el sobrante se rellena con
+ * TRANSPARENTE,
+ * no con un color: el logo se usa sobre el aro blanco de la barra, sobre la
+ * card oscura y sobre el papel de los PDF. Cualquier color horneado se
+ * vería como un rectángulo en al menos uno de los tres.
  *
  * Se promedia el bloque entero de origen en vez de tomar un píxel suelto:
- * bajando de 1024 a 64 cada píxel de salida cubre 16x16 de entrada, y
+ * bajando de 1536 a 64 cada píxel de salida cubre 24x24 de entrada, y
  * quedarse con uno solo da un resultado con escalones y ruido.
  *
  * EL ALFA SE PREMULTIPLICA. Sin eso, un píxel transparente aporta su color
  * al promedio y aparece un halo alrededor de los bordes.
  */
+/**
+ * El rectángulo que ocupa el DIBUJO, sin el aire transparente de alrededor.
+ *
+ * El original trae margen propio: 179 px de aire a la izquierda y 181 a la
+ * derecha sobre 1536. Encajando el lienzo entero, ese aire se suma al
+ * padding del CSS y el logo termina diminuto adentro de su aro. Recortando
+ * primero, la gráfica llega al borde del PNG y el respiro lo decide la
+ * hoja de estilos, que es donde se puede ajustar sin regenerar nada.
+ *
+ * El umbral es 10 y no 0: los bordes suavizados dejan un halo de alfa muy
+ * bajo que no se ve pero cuenta como contenido.
+ */
+function recorteDelDibujo(img) {
+  let x0 = img.ancho, x1 = -1, y0 = img.alto, y1 = -1;
+  for (let y = 0; y < img.alto; y++) {
+    for (let x = 0; x < img.ancho; x++) {
+      if (img.px[(y * img.ancho + x) * 4 + 3] > 10) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  /* Sin un solo píxel opaco no hay nada que recortar: se devuelve la
+     imagen entera en vez de un rectángulo vacío. */
+  if (x1 < x0 || y1 < y0) return { x: 0, y: 0, ancho: img.ancho, alto: img.alto };
+  return { x: x0, y: y0, ancho: x1 - x0 + 1, alto: y1 - y0 + 1 };
+}
+
 function reescalarCuadrado(img, lado) {
-  const corte = Math.min(img.ancho, img.alto);
-  const x0 = Math.floor((img.ancho - corte) / 2);
-  const y0 = Math.floor((img.alto - corte) / 2);
-  const paso = corte / lado;
-  const out = Buffer.alloc(lado * lado * 4);
+  /* Primero se descarta el aire transparente del original, y recién sobre
+     el dibujo se arma el lienzo cuadrado. */
+  const rec = recorteDelDibujo(img);
+  const lienzo = Math.max(rec.ancho, rec.alto);
+  const x0 = rec.x + Math.floor((rec.ancho - lienzo) / 2);
+  const y0 = rec.y + Math.floor((rec.alto - lienzo) / 2);
+  const paso = lienzo / lado;
+  const out = Buffer.alloc(lado * lado * 4);         // arranca en 0: transparente
 
   for (let y = 0; y < lado; y++) {
     for (let x = 0; x < lado; x++) {
@@ -137,7 +180,12 @@ function reescalarCuadrado(img, lado) {
       const ya = y0 + Math.floor(y * paso), yb = y0 + Math.floor((y + 1) * paso);
       let r = 0, g = 0, b = 0, a = 0, n = 0;
       for (let sy = ya; sy < yb; sy++) {
+        /* Fuera del original NO se lee: ese píxel del bloque queda
+           transparente y baja el alfa promedio, que es exactamente lo que
+           tiene que pasar en el borde de la franja. */
+        if (sy < 0 || sy >= img.alto) { n += (xb - xa); continue; }
         for (let sx = xa; sx < xb; sx++) {
+          if (sx < 0 || sx >= img.ancho) { n++; continue; }
           const i = (sy * img.ancho + sx) * 4;
           const al = img.px[i + 3] / 255;
           r += img.px[i] * al; g += img.px[i + 1] * al; b += img.px[i + 2] * al;
@@ -145,6 +193,7 @@ function reescalarCuadrado(img, lado) {
           n++;
         }
       }
+      if (!n) continue;
       const o = (y * lado + x) * 4;
       const alfa = a / n;
       const f = alfa > 0 ? 255 / alfa : 0;          // deshacer la premultiplicación

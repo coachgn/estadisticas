@@ -65,8 +65,26 @@ const CLUB = (function () {
    */
   function esLanding() {
     try {
-      return !new URLSearchParams(window.location.search).get('club');
+      if (new URLSearchParams(window.location.search).get('club')) return false;
     } catch (e) { return false; }
+
+    /* CON SESION ABIERTA NO HAY LANDING. La bienvenida es la puerta de
+       entrada del que todavia no entro; al que ya se autentico hay que
+       mostrarle la app, aunque no haya elegido club.
+
+       Es el caso del ADMIN: su token no lleva club —el Panel Master es de
+       todos los clientes— asi que sin esta linea entraba, quedaba sin
+       `?club=` y el router le devolvia la tarjeta explicativa de la
+       landing en TODAS las secciones, incluido el Panel Master. Medido en
+       produccion: iniciaba sesion y no pasaba nada visible.
+
+       Se pregunta con `typeof` porque este modulo carga PRIMERO: si
+       `SGADD_AUTH` todavia no existe se cae al criterio de siempre, que
+       es el que valia hasta ahora. */
+    try {
+      if (typeof SGADD_AUTH !== 'undefined' && SGADD_AUTH.token()) return false;
+    } catch (e) {}
+    return true;
   }
 
   let promesa = null;
