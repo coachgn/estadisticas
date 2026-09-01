@@ -1290,8 +1290,10 @@ titulo('EL MODAL DE INGRESO, LOS CUPOS Y EL PIE');
     /\.escudo-aro > img \{[\s\S]{0,320}max-width: 100%; max-height: 100%/.test(idxL));
   check('el box-sizing hace que el padding descuente',
     /\.escudo-aro > img \{[\s\S]{0,320}box-sizing: border-box/.test(idxL));
+  /* El de la pantalla de carga no va adentro de ningun aro: ahi el logo es
+     lo unico que hay, asi que se muestra entero y sin recorte. */
   check('y el de la pantalla de carga no recorta',
-    /\.cargando-logo \{[\s\S]{0,400}overflow: visible/.test(idxL));
+    /\.cargando-logo \{[^}]*overflow: visible/.test(idxL));
 }
 
 

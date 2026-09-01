@@ -82,6 +82,26 @@ const SGADD_AUTH = (function () {
      No se sacan hasta que no quede un token viejo vivo. */
   const ALIAS_PLAN = { BASICO: 'BRONCE', PRO: 'PLATA', MASTER: 'ORO' };
 
+  /**
+   * CUÁNTAS PERSONAS DEL CLUB PUEDEN ENTRAR, por plan.
+   *
+   * VIVE ACÁ, EN EL MOTOR COMPARTIDO, y no en la landing ni en el
+   * servidor: la landing se lo promete al cliente y el servidor lo hace
+   * cumplir al dar de alta un mail. Con dos tablas, la que se relaja es
+   * siempre la del servidor —que es la que decide— y el cliente termina
+   * con más accesos de los que paga, o con menos de los que se le
+   * prometieron. Es el mismo bug que ya tuvo el rol funcional (punto 8).
+   *
+   * `server/lib/compartido/sgadd-auth.js` es la copia vendorizada, con su
+   * test de deriva byte a byte.
+   */
+  const CUPO_MAILS = { BRONCE: 2, PLATA: 3, ORO: 4 };
+
+  /** El cupo de un plan, ya normalizado. Un plan desconocido cae a BRONCE. */
+  function cupoDeMails(plan) {
+    return CUPO_MAILS[normalizarPlan(plan)];
+  }
+
   /** Un plan que no se reconoce cae al MAS BAJO y nunca al mas alto: ante
    *  la duda, un typo no puede regalar el modulo que se cobra aparte. */
   function normalizarPlan(p) {
@@ -678,6 +698,7 @@ const SGADD_AUTH = (function () {
 
   return {
     ADMINS, PLANES, ORDEN_PLAN, ALIAS_PLAN, normalizarPlan, nombrePlan, ROLES, MODULOS, MOTIVOS, CLAVE_SESION,
+    CUPO_MAILS, cupoDeMails,
     normalizarEmail, parsearSesion, establecerSesion, limpiarSesion, sesion,
     esAdmin, rol, sinRestricciones,
     puedeVerEquipo, tieneModulo, puedoAcceder, puedeScoutearCruce,

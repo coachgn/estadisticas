@@ -88,6 +88,11 @@ function crearApp(opciones) {
   app.post('/api/v1/login', responder(h.manejarLogin));
   app.post('/api/v1/clave', responder(h.manejarClave));
 
+  /* Los accesos de cada club. Las dos con gate de ADMIN adentro del
+     handler, re-derivado contra la lista del servidor. */
+  app.get('/api/v1/clientes', responder(h.manejarClientes));
+  app.post('/api/v1/clientes', responder(h.manejarClientesEscribir));
+
   app.use((req, res) => res.status(404).json({ ok: false, codigo: 'SIN_RUTA' }));
 
   /* El error de CORS llega acá como excepción del middleware: sin este

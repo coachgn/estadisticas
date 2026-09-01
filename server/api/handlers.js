@@ -21,6 +21,7 @@
 const catalogo = require('../lib/catalogo.js');
 const mutar = require('../lib/catalogo-mutar.js');
 const admins = require('../lib/admins.js');
+const clientes = require('../lib/clientes.js');
 const AUTHS = require('../lib/auth.js');
 const { verificarToken, tokenDeLaPeticion } = require('../lib/auth.js');
 const reglas = require('../lib/reglas.js');
@@ -469,6 +470,14 @@ async function manejarCatalogoEscribir(peticion, deps) {
    navegador prestado no sea un problema mañana. */
 const SESION_ADMIN = '12h';
 
+/* La del CLIENTE dura mas, y es a proposito: el DT abre el panel en el
+   banco de suplentes y en el vestuario, muchas veces por semana, y
+   hacerlo escribir la clave cada doce horas convierte la herramienta en
+   un tramite. El riesgo tambien es menor — lo que ve es su propio club,
+   que es lo mismo que ya veia con un link firmado que no se podia
+   revocar. Siete dias es una semana de competencia. */
+const SESION_CLIENTE = '7d';
+
 /**
  * POST /api/v1/login · mail + clave → token firmado.
  *
@@ -497,6 +506,54 @@ async function manejarLogin(peticion, deps) {
       'No se puede verificar la clave ahora mismo. Probá de nuevo en un minuto.');
   }
   const v = await admins.verificar(padron, email, clave);
+
+  /* SI NO ES ADMINISTRADOR, SE PRUEBA COMO CLIENTE.
+
+     Los dos padrones están separados a propósito (ver `clientes.js`): la
+     lista de admins vive en el código y la de clientes en KV, porque una
+     es una propiedad de seguridad y la otra es dato que el Panel Master
+     edita todos los días.
+
+     El orden importa poco pero no es arbitrario: un mail de `ADMINS` no
+     puede estar en el padrón de clientes —el alta lo rechaza— así que no
+     hay ambigüedad posible. Se prueba admin primero porque son tres y
+     está en memoria.
+
+     Y LOS DOS CAMINOS TARDAN LO MISMO: el que falla como admin igual
+     derivó su hash contra el señuelo, y después deriva otro contra el
+     padrón de clientes. Sin eso, la diferencia de tiempo diría de qué
+     lado está cada mail. */
+  let comoCliente = null;
+  if (!v.ok && v.motivo !== 'BLOQUEADO') {
+    let padronC;
+    try { padronC = await clientes.cargar(deps); }
+    catch (e) {
+      return error(503, e.codigo || 'KV',
+        'No se puede verificar la clave ahora mismo. Probá de nuevo en un minuto.');
+    }
+    const c = await clientes.verificar(padronC, email, clave);
+    if (c.ok) {
+      comoCliente = c;
+      try { await clientes.guardar(clientes.anotarExito(padronC, email), deps); }
+      catch (e) { /* que no se pueda anotar el ingreso no impide entrar */ }
+      return await tokenDeCliente(c, deps);
+    }
+    if (c.motivo === 'BLOQUEADO') {
+      return error(429, 'BLOQUEADO', 'Demasiados intentos. Probá de nuevo en '
+        + Math.ceil(c.esperaMs / 60000) + ' minutos.');
+    }
+    /* TIENE INVITACIÓN Y TODAVÍA NO FIJÓ SU CLAVE. Se distingue porque el
+       mensaje genérico lo manda a pensar que le dieron mal el acceso,
+       cuando lo que falta es un paso que él tiene que dar. No filtra el
+       padrón: para llegar acá hay que traer el código, que es un secreto
+       de 256 bits. */
+    if (c.motivo === 'FALTA_CLAVE') {
+      return error(409, 'FALTA_CLAVE',
+        'Todavía no elegiste tu clave. Entrá con el código de invitación que te pasamos.');
+    }
+    try { await clientes.guardar(clientes.anotarFallo(padronC, email), deps); }
+    catch (e) { /* sin KV no hay contador, pero el login igual falló */ }
+  }
 
   if (!v.ok) {
     if (v.motivo === 'BLOQUEADO') {
@@ -538,6 +595,181 @@ async function manejarLogin(peticion, deps) {
   };
 }
 
+/* =====================================================================
+   LOS MAILS DE CADA CLUB · gestión desde el Panel Master
+
+   SOLO ADMIN, y re-derivado contra la lista del servidor: el `rol` del
+   token no se cree por venir firmado.
+
+   NUNCA SALE UN HASH NI UN CÓDIGO GUARDADO. El código de invitación se
+   devuelve UNA vez, en la respuesta del alta, y después no hay forma de
+   recuperarlo — si se pudiera leer, KV pasaría a ser suficiente para
+   entrar como cualquier cliente. Es el mismo criterio que los admins.
+   ===================================================================== */
+
+/** GET /api/v1/clientes?club=… · quiénes pueden entrar, y cuánto cupo queda. */
+async function manejarClientes(peticion, deps) {
+  const ctx = contexto(peticion);
+  if (ctx.error) return ctx.error;
+  if (ctx.rol !== AUTH.ROLES.ADMIN) {
+    return error(403, 'SOLO_ADMIN', 'Los accesos de un club los administra un administrador.');
+  }
+
+  let padron;
+  try { padron = await clientes.cargar(deps); }
+  catch (e) { return error(503, e.codigo || 'KV', 'No se pudo leer el padrón de clientes.'); }
+
+  const cat = await catalogo.cargar(deps);
+  /* EL CATÁLOGO ES UN MAPA POR ID, no una lista: `publico()` es la que lo
+     aplana, y es la misma vista que ya consume el Panel Master. Se pide
+     con `admin: true` porque acá hace falta el PLAN — es lo que decide el
+     cupo — y este handler ya tiene su gate de rol arriba. */
+  const todos = catalogo.publico(cat.catalogo, { admin: true });
+  const pedido = String((peticion && peticion.query && peticion.query.club) || '').trim().toLowerCase();
+  const clubes = todos.filter(c => !pedido || c.id === pedido);
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      clubes: clubes.map(c => ({
+        id: c.id, nombre: c.nombre, plan: AUTH.normalizarPlan(c.plan),
+        cupo: clientes.cupo(padron, c.id, c.plan),
+        mails: clientes.delClub(padron, c.id),
+      })),
+    },
+  };
+}
+
+/**
+ * POST /api/v1/clientes · alta, baja y reinvitación.
+ *
+ * La mutación es QUIRÚRGICA, igual que la del catálogo: entra una
+ * intención («dar de alta este mail en este club») y el servidor la
+ * aplica sobre lo que hay. Aceptar el padrón entero desde el navegador
+ * convertiría cualquier bug del frontend en una pérdida de accesos.
+ */
+async function manejarClientesEscribir(peticion, deps) {
+  const ctx = contexto(peticion);
+  if (ctx.error) return ctx.error;
+  if (ctx.rol !== AUTH.ROLES.ADMIN) {
+    return error(403, 'SOLO_ADMIN', 'Los accesos de un club los administra un administrador.');
+  }
+
+  const cuerpo = (peticion && peticion.body) || {};
+  const accion = String(cuerpo.accion || '').trim().toLowerCase();
+  const email = String(cuerpo.email || '');
+  const clubId = String(cuerpo.club || '').trim().toLowerCase();
+
+  const kvm = deps && deps.kv ? deps.kv : require('../lib/kv.js');
+  if (!kvm.configurado()) {
+    /* Sin KV no se puede guardar, y decir que sí dejaría al admin
+       creyendo que dio de alta a alguien. Mismo criterio que el catálogo. */
+    return error(503, 'SIN_KV', 'El servidor no puede guardar los accesos ahora mismo.');
+  }
+
+  let padron;
+  try { padron = await clientes.cargar(deps); }
+  catch (e) { return error(503, e.codigo || 'KV', 'No se pudo leer el padrón de clientes.'); }
+
+  let r = null, extra = {};
+
+  if (accion === 'alta') {
+    /* EL PLAN SALE DEL CATÁLOGO, no del cuerpo del pedido: si lo mandara
+       el navegador, el cupo lo decidiría quien lo quiere saltear. */
+    const cat = await catalogo.cargar(deps);
+    const club = (cat.catalogo || {})[clubId];
+    if (!club) return error(404, 'CLUB', 'Ese club no está en el catálogo.');
+    r = clientes.alta(padron, email, clubId, {
+      plan: club.plan,
+      equipoAsignado: cuerpo.equipoAsignado ? String(cuerpo.equipoAsignado) : null,
+      dias: cuerpo.dias,
+    });
+    if (r.ok) extra = { codigo: r.codigo, venceEn: r.venceEn, cupo: r.cupo };
+  } else if (accion === 'baja') {
+    r = clientes.baja(padron, email);
+  } else if (accion === 'reinvitar') {
+    r = clientes.reinvitar(padron, email, cuerpo.dias);
+    if (r.ok) extra = { codigo: r.codigo, venceEn: r.venceEn };
+  } else {
+    return error(400, 'ACCION', 'Acción desconocida: ' + (accion || '(vacía)') + '.');
+  }
+
+  if (!r.ok) return error(400, 'CLIENTES', r.motivo);
+
+  try { await clientes.guardar(r.padron, deps); }
+  catch (e) { return error(502, e.codigo || 'KV', 'No se pudieron guardar los accesos.'); }
+
+  /* Se devuelve el estado NUEVO del club, para que la pantalla no tenga
+     que volver a pedirlo y no pueda quedar mostrando el anterior — el
+     mismo motivo por el que el POST del catálogo devuelve el catálogo. */
+  const cat2 = await catalogo.cargar(deps);
+  const id2 = clubId || r.club || '';
+  const club2 = (cat2.catalogo || {})[id2];
+  return {
+    status: 200,
+    body: Object.assign({
+      ok: true,
+      club: id2 || null,
+      mails: club2 ? clientes.delClub(r.padron, id2) : [],
+      cupoActual: club2 ? clientes.cupo(r.padron, id2, club2.plan) : null,
+    }, extra),
+  };
+}
+
+/**
+ * El token de un CLIENTE que acaba de autenticarse.
+ *
+ * EL PLAN Y EL EQUIPO SALEN DEL CATÁLOGO, no del padrón ni de lo que pida
+ * nadie: el plan es la condición comercial vigente y el equipo propio es
+ * del club. Guardarlos en el registro del mail los congelaría el día del
+ * alta, y un upgrade de plan no le llegaría a quien ya estaba dado de
+ * alta — que es justo el caso que más importa que ande.
+ *
+ * Un club que no está en el catálogo NO recibe token: el mail quedó
+ * apuntando a un club que se dio de baja, y darle una sesión que después
+ * no puede cargar nada es peor que decírselo acá.
+ */
+async function tokenDeCliente(c, deps) {
+  let cat;
+  try { cat = await catalogo.cargar(deps); }
+  catch (e) { cat = null; }
+  const club = cat && (cat.catalogo || {})[c.club];
+  if (!club) {
+    return error(403, 'CLUB_INEXISTENTE',
+      'Tu acceso apunta a un club que ya no está disponible. Escribinos.');
+  }
+
+  /* EL GUARD DE SUSCRIPCIÓN TAMBIÉN ACÁ, y no solo al pedir datos: dejarlo
+     entrar para que después cada pantalla le diga que no, es peor que
+     decírselo en la puerta. */
+  const veto = guardSuscripcion(club, { rol: AUTH.ROLES.CLIENTE });
+  if (veto) return veto;
+
+  const token = AUTHS.firmarToken({
+    email: c.email,
+    club: c.club,
+    equipoAsignado: c.equipoAsignado || club.equipoPropio || null,
+    plan: AUTH.normalizarPlan(club.plan),
+  }, { expiraEn: SESION_CLIENTE });
+  const datos = AUTHS.verificarToken(token);
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      token: token,
+      rol: datos.rol,
+      email: c.email,
+      /* EL CLUB VIAJA EN LA RESPUESTA para que la pantalla sepa a dónde
+         mandarlo sin tener que abrir el token. */
+      club: c.club,
+      plan: AUTH.normalizarPlan(club.plan),
+      expiraEn: datos.expiraEn,
+    },
+  };
+}
+
 /**
  * POST /api/v1/clave · fijar la primera clave, o cambiar la que hay.
  *
@@ -563,9 +795,25 @@ async function manejarClave(peticion, deps) {
     return error(503, e.codigo || 'KV',
       'No se puede guardar la clave ahora mismo. Probá de nuevo en un minuto.');
   }
+  /* SI NO ES ADMINISTRADOR, SE INTENTA COMO CLIENTE. El flujo es el mismo
+     —código de invitación de un solo uso, o clave actual— y por eso vale
+     la pena que la pantalla sea una sola: el cliente no tiene por qué
+     saber en qué padrón está. */
+  const esAdm = AUTH.esAdmin(email);
+  const mod = esAdm ? admins : clientes;
+
+  let padronC = padron;
+  if (!esAdm) {
+    try { padronC = await clientes.cargar(deps); }
+    catch (e) {
+      return error(503, e.codigo || 'KV',
+        'No se puede guardar la clave ahora mismo. Probá de nuevo en un minuto.');
+    }
+  }
+
   const r = cuerpo.codigo
-    ? await admins.fijarClave(padron, email, String(cuerpo.codigo), nueva)
-    : await admins.cambiarClave(padron, email, String(cuerpo.claveActual || ''), nueva);
+    ? await mod.fijarClave(padronC, email, String(cuerpo.codigo), nueva)
+    : await mod.cambiarClave(padronC, email, String(cuerpo.claveActual || ''), nueva);
 
   if (!r.ok) return error(400, 'CLAVE', r.motivo);
 
@@ -575,11 +823,12 @@ async function manejarClave(peticion, deps) {
        creyendo que ya tiene clave. Es el mismo criterio del catálogo. */
     return error(503, 'SIN_KV', 'El servidor no puede guardar la clave ahora mismo.');
   }
-  try { await admins.guardar(r.padron, deps); }
+  try { await mod.guardar(r.padron, deps); }
   catch (e) { return error(502, e.codigo || 'KV', 'No se pudo guardar la clave.'); }
 
   return { status: 200, body: { ok: true, mensaje: 'Clave guardada. Ya podés ingresar.' } };
 }
 
 module.exports = { manejarCatalogo, manejarCatalogoEscribir, manejarEquipos,
+  manejarClientes, manejarClientesEscribir,
   manejarScouting, manejarLogin, manejarClave, guardSuscripcion, planEfectivo, ERRORES };

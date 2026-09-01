@@ -360,8 +360,13 @@ console.log(String.fromCharCode(10) + 'EL LOGO GENERADO · sin recortes' + Strin
   const loader = idxL.slice(idxL.indexOf('<div id="loader"'), idxL.indexOf('APP SHELL'));
   check('la pantalla de carga muestra el logo',
     /motorlogo-128\.png/.test(loader));
-  check('y va ARRIBA del disco que gira',
-    loader.indexOf('motorlogo') < loader.indexOf('animate-spin-slow'));
+  /* Y ES LO UNICO QUE HAY. Tenia un disco girando debajo y se saco: dos
+     cosas moviendose a distinta velocidad compiten por la mirada y ninguna
+     dice nada mas que la otra. El pulso sobre la marca alcanza para
+     contestar la unica pregunta de esa pantalla — esta bajando o se colgo. */
+  check('y es lo unico que se mueve: sin disco',
+    !/animate-spin-slow/.test(loader));
+  check('el logo conserva su pulso', /class="cargando-logo"/.test(loader));
 }
 
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');

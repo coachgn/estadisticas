@@ -384,6 +384,55 @@ const SGADD_DATA = (function () {
     return b;
   }
 
+  /* =====================================================================
+     LOS ACCESOS DE UN CLUB
+
+     Van por su propio endpoint y no dentro del catalogo: el catalogo se
+     sirve a cualquiera con token, asi que los mails de un club adentro le
+     contarian a cada cliente quienes son los del resto. Las dos llamadas
+     tienen gate de ADMIN del lado del servidor.
+     ===================================================================== */
+
+  /** Los mails y el cupo de un club, o de todos si no se pasa ninguno. */
+  async function clientes(club, opciones) {
+    const o = opciones || {};
+    if (!baseApi) throw Object.assign(new Error('No hay backend configurado.'), { codigo: 'SIN_API' });
+    if (!(auth && auth.token())) throw Object.assign(new Error('Falta el token.'), { codigo: 'SIN_TOKEN' });
+    const traer = o.fetch || fetch;
+    const url = baseApi + '/api/v1/clientes' + (club ? '?club=' + encodeURIComponent(club) : '');
+    const r = await traer(url, { headers: { Authorization: 'Bearer ' + auth.token() } });
+    const cuerpo = await r.json().catch(() => null);
+    if (!r.ok || !cuerpo || !cuerpo.ok) {
+      const e = new Error((cuerpo && cuerpo.mensaje) || ('El servidor respondio ' + r.status));
+      e.codigo = (cuerpo && cuerpo.codigo) || 'HTTP_' + r.status;
+      throw e;
+    }
+    return cuerpo;
+  }
+
+  /** Alta, baja o reinvitacion de un mail. La mutacion es quirurgica. */
+  async function guardarClientes(intencion, opciones) {
+    const o = opciones || {};
+    if (!baseApi) throw Object.assign(new Error('No hay backend configurado.'), { codigo: 'SIN_API' });
+    if (!(auth && auth.token())) throw Object.assign(new Error('Falta el token.'), { codigo: 'SIN_TOKEN' });
+    const traer = o.fetch || fetch;
+    const r = await traer(baseApi + '/api/v1/clientes', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + auth.token(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(intencion || {}),
+    });
+    const cuerpo = await r.json().catch(() => null);
+    if (!r.ok || !cuerpo || !cuerpo.ok) {
+      const e = new Error((cuerpo && cuerpo.mensaje) || ('El servidor respondio ' + r.status));
+      e.codigo = (cuerpo && cuerpo.codigo) || 'HTTP_' + r.status;
+      throw e;
+    }
+    return cuerpo;
+  }
+
   function login(datos, opciones) { return postSinToken('/api/v1/login', datos, opciones); }
   function fijarClave(datos, opciones) { return postSinToken('/api/v1/clave', datos, opciones); }
 
@@ -391,7 +440,7 @@ const SGADD_DATA = (function () {
     configurar, apiConfigurada, origen, base: () => baseApi,
     matrizAFilas, matrizALegacy, tipoDeColumna,
     cargarCategoria, cargarDelBackend, limpiarCache, catalogo, guardarCatalogo,
-    login, fijarClave,
+    login, fijarClave, clientes, guardarClientes,
   };
 })();
 

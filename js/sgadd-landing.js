@@ -141,10 +141,16 @@ const SGADD_LANDING = (function () {
      peor — es otro. Los tres pasan AA sobre la tarjeta (#1b1b1b), medido
      con la misma `contraste()` que usa el resto: bronce 5,48 · plata 9,47 ·
      oro 12,28. Hay un test que lo vuelve a medir. */
+  /* EL NUMERO DE MAILS NO SE ESCRIBE ACA: sale de `SGADD_AUTH.CUPO_MAILS`,
+     que es la misma tabla que el servidor hace cumplir al dar de alta un
+     mail. Con dos listas, la landing le prometeria al cliente un cupo que
+     el backend no respeta — y el que se relaja es siempre el que decide. */
+  const CUPOS = (typeof SGADD_AUTH !== 'undefined' && SGADD_AUTH.CUPO_MAILS)
+    ? SGADD_AUTH.CUPO_MAILS : { BRONCE: 2, PLATA: 3, ORO: 4 };
   const PLANES_MAILS = [
-    { nombre: 'Bronce', mails: 2, color: '#CD7F32' },
-    { nombre: 'Plata', mails: 3, color: '#C0C0C0' },
-    { nombre: 'Oro', mails: 4, color: '#FFD700' },
+    { nombre: 'Bronce', mails: CUPOS.BRONCE, color: '#CD7F32' },
+    { nombre: 'Plata', mails: CUPOS.PLATA, color: '#C0C0C0' },
+    { nombre: 'Oro', mails: CUPOS.ORO, color: '#FFD700' },
   ];
 
   /** El orden en que se listan. Es el mismo del menú. */

@@ -242,6 +242,176 @@ const SGADD_HUB = (function () {
     </tr>`;
   }
 
+/* =====================================================================
+   LOS ACCESOS DE CADA CLUB
+
+   Qué mails pueden entrar, y cuántos permite su plan. Se piden aparte del
+   catálogo y por su propio endpoint (`/api/v1/clientes`), no porque sea
+   más cómodo sino porque el catálogo se sirve a CUALQUIERA con token: los
+   mails de un club adentro del catálogo le contarían a cada cliente
+   quiénes son los del resto.
+
+   Se carga por demanda, al desplegar la sección de un club: pedir los
+   accesos de los tres clubes en cada pintado es tráfico para una lista
+   que casi nunca se mira.
+   ===================================================================== */
+
+  /* club -> { cargando, error, plan, cupo, mails[] } */
+  const accesos = {};
+  /* Qué club tiene la sección desplegada. UNO por vez: con tres abiertas
+     la lista de clubes deja de ser una lista y hay que scrollear para
+     comparar dos. */
+  const accesosAbierto = { club: null, nuevo: '', yendo: false, error: '', codigo: null };
+
+  function verAccesos(club) {
+    if (accesosAbierto.club === club) { accesosAbierto.club = null; repintarLista(); return; }
+    accesosAbierto.club = club;
+    accesosAbierto.nuevo = ''; accesosAbierto.error = ''; accesosAbierto.codigo = null;
+    if (!accesos[club]) cargarAccesos(club); else repintarLista();
+  }
+
+  function cargarAccesos(club) {
+    accesos[club] = { cargando: true };
+    repintarLista();
+    SGADD_DATA.clientes(club).then((r) => {
+      const c = (r.clubes || [])[0];
+      accesos[club] = c ? { plan: c.plan, cupo: c.cupo, mails: c.mails || [] }
+        : { error: 'Ese club no está en el catálogo.' };
+      repintarLista();
+    }).catch((e) => {
+      accesos[club] = { error: e.message || 'No se pudieron leer los accesos.' };
+      repintarLista();
+    });
+  }
+
+  function campoAcceso(v) {
+    /* Tipear NO repinta: le sacaría el foco al input. Misma regla que el
+       buscador del buzón y los campos de scouting. */
+    accesosAbierto.nuevo = String(v == null ? '' : v);
+  }
+
+  /**
+   * Alta, baja o reinvitación de un mail.
+   *
+   * EL CÓDIGO SE MUESTRA UNA SOLA VEZ. No se puede volver a leer —el
+   * servidor guarda su hash— así que la pantalla lo deja a la vista con
+   * un botón de copiar hasta que el admin haga otra cosa. Si se pierde,
+   * se reinvita: es barato y no rompe la clave que el cliente ya tenga.
+   */
+  function accionAcceso(club, accion, email) {
+    if (accesosAbierto.yendo) return;
+    const mail = String(email !== undefined ? email : accesosAbierto.nuevo).trim();
+    if (!mail) return;
+    if (accion === 'baja' && typeof confirm === 'function' &&
+        !confirm('Sacar a ' + mail + ' le corta el acceso y borra su clave. ¿Seguimos?')) return;
+
+    accesosAbierto.yendo = true; accesosAbierto.error = ''; accesosAbierto.codigo = null;
+    repintarLista();
+
+    SGADD_DATA.guardarClientes({ accion: accion, club: club, email: mail }).then((r) => {
+      accesosAbierto.yendo = false;
+      accesos[club] = { plan: (accesos[club] || {}).plan, cupo: r.cupoActual, mails: r.mails || [] };
+      if (accion === 'alta') accesosAbierto.nuevo = '';
+      if (r.codigo) accesosAbierto.codigo = { email: mail, codigo: r.codigo, venceEn: r.venceEn };
+      repintarLista();
+    }).catch((e) => {
+      accesosAbierto.yendo = false;
+      accesosAbierto.error = e.message || 'No se pudo aplicar el cambio.';
+      repintarLista();
+    });
+  }
+
+  function copiarCodigo(ev) {
+    const c = accesosAbierto.codigo;
+    if (!c || typeof navigator === 'undefined' || !navigator.clipboard) return;
+    navigator.clipboard.writeText(c.codigo).then(() => {
+      if (ev && ev.target) ev.target.textContent = 'Copiado';
+    }).catch(() => {
+      if (ev && ev.target) ev.target.textContent = 'No se pudo copiar';
+    });
+  }
+
+  function estadoMail(m) {
+    if (m.bloqueado) return { txt: 'Bloqueado', tono: 'zona-peligro' };
+    if (m.tieneClave) return { txt: 'Con clave', tono: 'zona-exito' };
+    if (m.invitacionPendiente) return { txt: 'Invitado', tono: 'zona-aviso' };
+    return { txt: 'Sin acceso', tono: 'zona-neutro' };
+  }
+
+  function bloqueAccesos(c) {
+    const abierto = accesosAbierto.club === c.id;
+    const d = accesos[c.id];
+
+    const resumen = d && d.cupo
+      ? d.cupo.usados + '/' + d.cupo.tope
+      : (d && d.cargando ? '…' : '');
+
+    const cabecera = `<button type="button" onclick="SGADD_HUB.verAccesos('${esc(c.id)}')"
+      aria-expanded="${abierto}"
+      class="w-full flex items-center gap-2 text-left mt-3 pt-3 border-t border-hairline/60
+             text-[11px] text-muted hover:text-ink transition-colors">
+      <span class="opacity-60">${abierto ? '▾' : '▸'}</span>
+      <span class="font-display uppercase tracking-wider">Quiénes pueden entrar</span>
+      ${resumen ? `<span class="font-mono ml-auto">${esc(resumen)} mails</span>` : ''}
+    </button>`;
+
+    if (!abierto) return cabecera;
+    if (!d || d.cargando) return cabecera + '<p class="text-[11px] text-muted mt-2">Leyendo los accesos…</p>';
+    if (d.error) return cabecera + `<p class="text-[11px] zona-texto zona-peligro mt-2">${esc(d.error)}</p>`;
+
+    const lleno = d.cupo && d.cupo.libres <= 0;
+
+    return cabecera + `<div class="mt-2 space-y-2">
+      <p class="text-[11px] text-muted">
+        El plan <b>${esc(d.cupo.plan)}</b> admite <b>${d.cupo.tope}</b>
+        ${d.cupo.tope === 1 ? 'mail' : 'mails'}. Cada uno entra con su propia clave.
+      </p>
+
+      ${d.mails.length ? `<ul class="space-y-1">${d.mails.map(m => {
+        const e2 = estadoMail(m);
+        return `<li class="flex items-center gap-2 text-[11px]">
+          <span class="font-mono text-ink truncate">${esc(m.email)}</span>
+          <span class="zona-texto ${e2.tono} shrink-0">${e2.txt}</span>
+          <span class="ml-auto flex items-center gap-2 shrink-0">
+            <button type="button" onclick="SGADD_HUB.accionAcceso('${esc(c.id)}', 'reinvitar', '${escJs(m.email)}')"
+              class="text-accent hover:underline" title="Genera un código nuevo. No le borra la clave que ya tenga.">Reinvitar</button>
+            <button type="button" onclick="SGADD_HUB.accionAcceso('${esc(c.id)}', 'baja', '${escJs(m.email)}')"
+              class="text-muted hover:text-ink">Sacar</button>
+          </span>
+        </li>`;
+      }).join('')}</ul>` : '<p class="text-[11px] text-muted">Todavía no hay ningún mail dado de alta.</p>'}
+
+      ${lleno
+        ? `<p class="text-[11px] zona-texto zona-aviso">El plan está lleno. Sacá un mail, o subile el plan al club.</p>`
+        : `<div class="flex items-center gap-2">
+            <input type="email" value="${esc(accesosAbierto.nuevo)}" id="hubMail_${esc(c.id)}"
+              placeholder="mail del cuerpo técnico"
+              oninput="SGADD_HUB.campoAcceso(this.value)"
+              onkeydown="if(event.key==='Enter')SGADD_HUB.accionAcceso('${escJs(c.id)}','alta')"
+              class="flex-1 min-w-0 bg-surface2 border border-hairline rounded-md px-2 py-1.5 text-[11px] text-ink">
+            <button type="button" onclick="SGADD_HUB.accionAcceso('${escJs(c.id)}','alta')"
+              ${accesosAbierto.yendo ? 'disabled' : ''}
+              class="px-2.5 py-1.5 rounded-md text-[11px] font-display uppercase tracking-wider
+                     bg-accent text-base hover:opacity-90 disabled:opacity-40 shrink-0">
+              ${accesosAbierto.yendo ? 'Un momento…' : 'Invitar'}</button>
+          </div>`}
+
+      ${accesosAbierto.error ? `<p class="text-[11px] zona-texto zona-peligro">${esc(accesosAbierto.error)}</p>` : ''}
+
+      ${accesosAbierto.codigo ? `<div class="rounded-md border border-accent/40 bg-accent/5 p-2">
+        <p class="text-[10px] uppercase tracking-wider text-accent font-display mb-1">
+          Código para ${esc(accesosAbierto.codigo.email)}</p>
+        <p class="font-mono text-[10px] text-ink break-all">${esc(accesosAbierto.codigo.codigo)}</p>
+        <p class="text-[10px] text-muted mt-1">
+          Se muestra UNA vez y no se puede volver a leer: el servidor guarda su huella, no el código.
+          Pasáselo por un canal privado. Vence el ${esc(String(accesosAbierto.codigo.venceEn || '').slice(0, 10))}.
+          <button type="button" onclick="SGADD_HUB.copiarCodigo(event)"
+            class="text-accent hover:underline ml-1">Copiar</button>
+        </p>
+      </div>` : ''}
+    </div>`;
+  }
+
   function tarjetaClub(c) {
     const cats = c.categorias || [];
     const conDatos = cats.filter(k => k.activo).length;
@@ -265,6 +435,7 @@ const SGADD_HUB = (function () {
           || '<tr><td colspan="3" class="py-2 text-xs text-muted">Sin categorías declaradas.</td></tr>'}</tbody>
       </table>
       ${bloqueSuscripcion(c)}
+      ${bloqueAccesos(c)}
 
       <div class="mt-3 flex items-center gap-3 flex-wrap">
         ${actual
@@ -596,6 +767,9 @@ const SGADD_HUB = (function () {
     estadoEfectivo, diasPara, planCanonico, ciclo, ESTADOS, PLANES,
     QUE_INCLUYE, PARTIDOS_POR_CICLO,
     html, bloqueAlta, campoAlta, guardar, accionClub, alta, guardado, pendiente,
+    /* accesos */
+    verAccesos, campoAcceso, accionAcceso, copiarCodigo, estadoMail, bloqueAccesos,
+    accesos, accesosAbierto,
   };
 })();
 

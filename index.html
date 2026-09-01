@@ -233,11 +233,19 @@
      lado ya gira, y dos cosas girando a distinta velocidad se leen como
      un error de render. */
   .cargando-logo {
-    /* Sin aro y sin recorte: acá el logo se muestra entero, que es lo
+    /* EL LOGO ES LO UNICO QUE HAY EN LA PANTALLA DE CARGA.
+
+       Tenia un disco girando debajo y se saco: dos cosas moviendose a
+       distinta velocidad compiten por la mirada y ninguna dice nada mas
+       que la otra. El pulso sobre la marca alcanza para contestar la
+       unica pregunta de esa pantalla — esta bajando o se colgo — y de paso
+       es la marca la que ocupa el lugar.
+
+       Sin aro y sin recorte: aca el logo se muestra entero, que es lo
        único que hay en pantalla mientras se espera. El `scale(.96)` del
        pulso lo achica un pelín, así que el padding evita que el borde
        llegue justo al límite de la caja. */
-    width: 88px; height: 88px; object-fit: contain;
+    width: 104px; height: 104px; object-fit: contain;
     box-sizing: border-box; overflow: visible;
     animation: pulso-logo 2.2s ease-in-out infinite;
   }
@@ -1888,7 +1896,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=168" />
+<link rel="stylesheet" href="sgadd.css?v=169" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -1907,9 +1915,8 @@
      Va en el HTML y no inyectado: este bloque se pinta ANTES de que corra
      un solo script, que es justo para lo que existe. -->
 <div id="loader" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-base gap-4">
-  <img src="logos/motorlogo-128.png" alt="MotorStats" width="88" height="88"
+  <img src="logos/motorlogo-128.png" alt="MotorStats" width="104" height="104"
        class="cargando-logo" fetchpriority="high">
-  <div class="w-12 h-12 border-2 border-hairline border-t-accent rounded-full animate-spin-slow"></div>
   <p class="font-display uppercase tracking-[0.25em] text-sm text-muted">Cargando datos del club…</p>
 </div>
 
@@ -2067,39 +2074,39 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=168"></script>
+<script src="js/sgadd-club.js?v=169"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=168"></script>
-<script src="js/sgadd-core.js?v=168"></script>
-<script src="js/sgadd-auth.js?v=168"></script>
-<script src="js/sgadd-glosario.js?v=168"></script>
-<script src="js/sgadd-glosarioui.js?v=168"></script>
-<script src="js/sgadd-comparativa.js?v=168"></script>
-<script src="js/sgadd-comparativaui.js?v=168"></script>
-<script src="js/sgadd-landing.js?v=168"></script>
-<script src="js/sgadd-login.js?v=168"></script>
-<script src="js/sgadd-data.js?v=168"></script>
-<script src="js/sgadd-clientes.js?v=168"></script>
-<script src="js/sgadd-ui.js?v=168"></script>
-<script src="js/sgadd-app.js?v=168"></script>
-<script src="js/sgadd-clasificacion.js?v=168"></script>
+<script src="js/sgadd-config.js?v=169"></script>
+<script src="js/sgadd-core.js?v=169"></script>
+<script src="js/sgadd-auth.js?v=169"></script>
+<script src="js/sgadd-glosario.js?v=169"></script>
+<script src="js/sgadd-glosarioui.js?v=169"></script>
+<script src="js/sgadd-comparativa.js?v=169"></script>
+<script src="js/sgadd-comparativaui.js?v=169"></script>
+<script src="js/sgadd-landing.js?v=169"></script>
+<script src="js/sgadd-login.js?v=169"></script>
+<script src="js/sgadd-data.js?v=169"></script>
+<script src="js/sgadd-clientes.js?v=169"></script>
+<script src="js/sgadd-ui.js?v=169"></script>
+<script src="js/sgadd-app.js?v=169"></script>
+<script src="js/sgadd-clasificacion.js?v=169"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=168"></script>
-<script src="js/sgadd-configui.js?v=168"></script>
-<script src="js/sgadd-estados.js?v=168"></script>
-<script src="js/sgadd-buzon.js?v=168"></script>
-<script src="js/sgadd-charts.js?v=168"></script>
-<script src="js/sgadd-personalidad.js?v=168"></script>
-<script src="js/sgadd-rankings.js?v=168"></script>
-<script src="js/sgadd-partido.js?v=168"></script>
-<script src="js/sgadd-informe.js?v=168"></script>
-<script src="js/sgadd-ficha.js?v=168"></script>
-<script src="js/sgadd-equipos.js?v=168"></script>
-<script src="js/sgadd-jugadores.js?v=168"></script>
-<script src="js/sgadd-4factores.js?v=168"></script>
-<script src="js/sgadd-scouting.js?v=168"></script>
-<script src="js/sgadd-diagnostico.js?v=168"></script>
+<script src="js/sgadd-hub.js?v=169"></script>
+<script src="js/sgadd-configui.js?v=169"></script>
+<script src="js/sgadd-estados.js?v=169"></script>
+<script src="js/sgadd-buzon.js?v=169"></script>
+<script src="js/sgadd-charts.js?v=169"></script>
+<script src="js/sgadd-personalidad.js?v=169"></script>
+<script src="js/sgadd-rankings.js?v=169"></script>
+<script src="js/sgadd-partido.js?v=169"></script>
+<script src="js/sgadd-informe.js?v=169"></script>
+<script src="js/sgadd-ficha.js?v=169"></script>
+<script src="js/sgadd-equipos.js?v=169"></script>
+<script src="js/sgadd-jugadores.js?v=169"></script>
+<script src="js/sgadd-4factores.js?v=169"></script>
+<script src="js/sgadd-scouting.js?v=169"></script>
+<script src="js/sgadd-diagnostico.js?v=169"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

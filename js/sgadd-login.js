@@ -286,6 +286,21 @@ const SGADD_LOGIN = (function () {
       entrar(r);
     }).catch((e) => {
       estado.yendo = false;
+      /* EL QUE TODAVÍA NO ELIGIÓ SU CLAVE VA DERECHO A ELEGIRLA.
+
+         El servidor lo distingue con `FALTA_CLAVE` justamente para que la
+         pantalla pueda hacer esto: sin el salto, el cliente recién
+         invitado lee «todavía no elegiste tu clave», mira el formulario
+         que le pide una clave que no tiene, y concluye que le dieron mal
+         el acceso. Se le cambia el modo y se le deja el mail escrito. */
+      if (e.codigo === 'FALTA_CLAVE') {
+        estado.modo = 'fijar';
+        estado.error = '';
+        estado.ok = 'Elegí tu clave con el código que te pasamos.';
+        campos.clave = '';
+        pintar();
+        return;
+      }
       estado.error = e.message || 'No se pudo ingresar.';
       pintar();
     });
@@ -325,8 +340,11 @@ const SGADD_LOGIN = (function () {
 
        El ADMIN no lleva club: el Panel Master es de todos los clientes y
        ahí elige a cuál entrar. */
-    let club = null;
-    try { club = SGADD_AUTH.clubDelToken(); } catch (e) {}
+    /* EL CLUB SALE DE LA RESPUESTA y, si no vino, del token. El servidor
+       lo manda aparte para que la pantalla no tenga que abrir el JWT, y
+       el respaldo cubre al que entra por un link firmado. */
+    let club = r.club || null;
+    if (!club) { try { club = SGADD_AUTH.clubDelToken(); } catch (e) {} }
     let enUrl = null;
     try { enUrl = new URLSearchParams(window.location.search).get('club'); } catch (e) {}
     if (club && club !== enUrl) {
