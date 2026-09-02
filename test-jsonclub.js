@@ -45,6 +45,17 @@ function bloque(t) { console.log('\n' + t); }
 
 const clonar = (o) => JSON.parse(JSON.stringify(o));
 
+/* El bloque con dos categorías hermanas, que varios tests reusan para
+   verificar que editar una no toca a la otra. */
+const BASE = {
+  formatos: { club: { id: 'club', label: 'Del club', zonas: [] } },
+  porTramo: { '*': 'club' },
+  porCategoria: {
+    u21: { formatos: { a: { id: 'a', label: 'U21', zonas: [] } }, porTramo: { '*': 'a' } },
+    u23: { formatos: { b: { id: 'b', label: 'U23', zonas: [] } }, porTramo: { '*': 'b' } },
+  },
+};
+
 /* =====================================================================
    1 · TODOS LOS JSON DE CLUB PARSEAN
    ===================================================================== */
@@ -187,14 +198,7 @@ if (rec) {
    ===================================================================== */
 bloque('4 · fusionarCategoria: una categoría no pisa a las otras');
 
-const BASE = {
-  formatos: { club: { id: 'club', label: 'Del club', zonas: [] } },
-  porTramo: { '*': 'club' },
-  porCategoria: {
-    u21: { formatos: { a: { id: 'a', label: 'U21', zonas: [] } }, porTramo: { '*': 'a' } },
-    u23: { formatos: { b: { id: 'b', label: 'U23', zonas: [] } }, porTramo: { '*': 'b' } },
-  },
-};
+
 
 const f1 = CONFIG.fusionarCategoria(BASE, 'u21',
   { formatos: { z: { id: 'z', label: 'NUEVO', zonas: [] } }, porTramo: { '*': 'z' } });
@@ -347,8 +351,13 @@ if (rec) {
   ok(!!P.ctx.CONFIGUI.borrador, 'la pantalla carga el borrador del club');
   igual(P.ctx.CONFIGUI.categoria, rec.planillas[0].id,
         'y sabe qué categoría está abierta');
-  igual(P.ctx.CONFIGUI.propia, false,
-        'que hoy hereda del club: reconquista no declara porCategoria');
+  /* Si la categoria hereda del club o tiene reglas propias lo decide el
+     ARCHIVO, y el club lo cambia cuando quiere. Se verifica la REGLA
+     —que la pantalla lea el nivel correcto— y no cual esta hoy. */
+  const declarada = !!(rec.competencia && rec.competencia.porCategoria
+    && rec.competencia.porCategoria[rec.planillas[0].id]);
+  igual(P.ctx.CONFIGUI.propia, declarada,
+        'la pantalla detecta si la categoria tiene reglas propias');
 
   /* EL BUG. Antes esto mandaba `competencia: undefined`, el servidor lo
      entendía como «vaciar» y publicar BORRABA las zonas — contestando
@@ -361,11 +370,19 @@ if (rec) {
   igual(g.bloque.formatos.regular.equiposEsperados, 12,
         'y con los valores editados, no con otros');
 
+  /* SE FUERZA EL NIVEL DEL CLUB. Cuál de las dos vías toma la pantalla
+     depende del ARCHIVO —si la categoría abierta declara `porCategoria`,
+     publica su slot— y eso lo cambia el club sin avisar. Un test que
+     dependa de cómo esté el JSON hoy se pone en rojo el día que alguien
+     separa una categoría, que es una operación normal del producto. Acá
+     se ejercen las DOS vías, cada una con su fixture. */
+  P.ctx.CONFIGUI.propia = false;
   P.ctx.configPublicar();
   igual(P.enviado.length, 1, 'publicar manda un pedido');
   const d = P.enviado[0];
   igual(d.accion, 'zonas', 'con la acción correcta');
   igual(d.club, rec.id, 'y el club correcto');
+  igual(d.categoria, null, 'en el nivel del club no viaja categoría');
   ok(d.competencia && typeof d.competencia === 'object',
      'LA REGRESIÓN: la competencia viaja, no va undefined');
   ok(!!(d.competencia.formatos && d.competencia.formatos.regular),
@@ -379,6 +396,27 @@ if (rec) {
   igual(!!res.borrado, false, 'y NO lo interpreta como un borrado');
   igual(res.catalogo[rec.id].competencia.formatos.regular.equiposEsperados, 12,
         'el catálogo queda con lo que el admin publicó');
+
+  /* LA OTRA VÍA · la categoría separada. El servidor exige que el club ya
+     tenga bloque: sin eso, un `porCategoria` quedaría colgando de la nada
+     y ninguna pantalla sabría leerlo. */
+  const P2 = pantalla(rec, rec.planillas[0].id);
+  P2.ctx.configCargarBorrador(true);
+  P2.ctx.CONFIGUI.propia = true;
+  P2.ctx.configPublicar();
+  const d2 = P2.enviado[0];
+  igual(d2.categoria, rec.planillas[0].id, 'en el nivel de categoría, la categoría viaja');
+  ok(!!(d2.competencia && d2.competencia.formatos), 'con su bloque');
+
+  const catCon = { [rec.id]: { nombre: 'R', competencia: clonar(BASE) } };
+  const res2 = MUTAR.aplicar(catCon, 'zonas', d2);
+  igual(res2.ok, true, 'el servidor acepta la publicación de la categoría');
+  igual(res2.catalogo[rec.id].competencia.porCategoria.u23.formatos.b.label, 'U23',
+        'y las hermanas siguen intactas');
+
+  const res3 = MUTAR.aplicar({ [rec.id]: { nombre: 'R' } }, 'zonas', d2);
+  igual(res3.ok, false,
+        'sin bloque del club, publicar una categoría se rechaza en vez de dejar un huérfano');
 
   /* Lo que el cliente lee después de publicar tiene que ser eso mismo. */
   const cfgPub = CONFIG.parsear({ competencia: res.catalogo[rec.id].competencia });
