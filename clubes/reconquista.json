@@ -5,19 +5,17 @@
   "bajada": "Basquet · Scouting",
   "//escudo": "Tiene que ser una ruta que EXISTA. Si no, es un 404 silencioso: ponerEscudo() cae al resolutor de LOGOS y el header se ve bien igual, asi que el archivo muerto no da la cara hasta que alguien toca el resolutor. Hay un test que falla si la ruta no existe.",
   "escudo": "logos/la-plata/reconquista.webp",
-
   "acento": "#f7941e",
   "acentoOscuro": "#d97706",
-
   "liga": "la-plata",
   "patronEquipoPropio": "RECONQUISTA",
-  "sufijosEquipo": ["\\s*-\\s*(MM|MF|U\\d{1,2}\\s*[MF]?)\\s*$"],
+  "sufijosEquipo": [
+    "\\s*-\\s*(MM|MF|U\\d{1,2}\\s*[MF]?)\\s*$"
+  ],
   "aliasLogos": {},
-
   "anio": 2026,
   "torneo": "TORNEO LOCAL",
   "credito": "SGADD · Casañas & Freytes",
-  
   "competencia": {
     "ordenTabla": [
       "PCT",
@@ -26,34 +24,76 @@
     ],
     "formatos": {
       "regular": {
+        "id": "regular",
         "label": "Fase regular",
         "equiposEsperados": 12,
         "zonas": [
           {
             "id": "zona1",
-            "desde": 1,
-            "hasta": 8,
             "label": "Octavos de final",
-            "tono": "exito"
+            "tono": "exito",
+            "desde": 1,
+            "hasta": 8
           },
           {
             "id": "zona2",
-            "desde": 9,
-            "hasta": 10,
             "label": "Repechaje",
-            "tono": "aviso"
+            "tono": "aviso",
+            "desde": 9,
+            "hasta": 10
           },
           {
             "id": "zona3",
-            "desde": -2,
             "label": "Descenso",
-            "tono": "peligro"
+            "tono": "peligro",
+            "desde": -2,
+            "hasta": null
           }
         ]
       }
     },
     "porTramo": {
       "*": "regular"
+    },
+    "porCategoria": {
+      "primera-clausura-2026": {
+        "ordenTabla": [
+          "PCT",
+          "DIF",
+          "PF"
+        ],
+        "formatos": {
+          "regular": {
+            "label": "Fase regular",
+            "equiposEsperados": 12,
+            "zonas": [
+              {
+                "id": "zona1",
+                "desde": 1,
+                "hasta": 8,
+                "label": "Octavos de final",
+                "tono": "exito"
+              },
+              {
+                "id": "zona2",
+                "desde": 9,
+                "hasta": 10,
+                "label": "Repechaje",
+                "tono": "aviso"
+              },
+              {
+                "id": "zona3",
+                "desde": -2,
+                "label": "Descenso",
+                "tono": "peligro"
+              }
+            ]
+          }
+        },
+        "porTramo": {
+          "*": "regular"
+        }
+      }
     }
   },
   "planillas": [
