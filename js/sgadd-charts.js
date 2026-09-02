@@ -202,7 +202,11 @@ const SGADD_CHARTS = (function () {
         labels: labels,
         datasets: [
           { label: o.nombreEquipo || 'Equipo', data: serieEquipo, backgroundColor: COL.equipo, borderRadius: 3, barPercentage: 0.8 },
-          { label: 'Liga (mediana)', data: serieLiga, backgroundColor: COL.ligaSuave, borderColor: COL.liga, borderWidth: 1, borderRadius: 3, barPercentage: 0.8 },
+          /* El nombre de la referencia es CONFIGURABLE: puede ser la
+             liga entera o el grupo de pares del jugador, y decir
+             'Liga (mediana)' cuando son 17 jugadores de su mismo rol
+             seria mentir sobre la muestra. */
+          { label: o.nombreLiga || 'Liga (mediana)', data: serieLiga, backgroundColor: COL.ligaSuave, borderColor: COL.liga, borderWidth: 1, borderRadius: 3, barPercentage: 0.8 },
         ],
       },
       options: baseOpciones({
@@ -210,7 +214,15 @@ const SGADD_CHARTS = (function () {
         scales: ejes(),
         plugins: Object.assign(baseOpciones().plugins, {
           tooltip: Object.assign(baseOpciones().plugins.tooltip, {
-            callbacks: { label: (c) => c.dataset.label + ': ' + (o.formato ? SGADD.formatear(o.formato, c.raw) : c.raw.toFixed(2)) },
+            callbacks: {
+              label: (c) => c.dataset.label + ': ' + (o.formato ? SGADD.formatear(o.formato, c.raw) : c.raw.toFixed(2)),
+              /* SOBRE LA BARRA DE REFERENCIA se dice de que muestra
+                 salio. Sin eso, el DT ve una barra gris y no tiene
+                 como saber si son 17 jugadores de su rol o los 390
+                 del libro — que es justo lo que cambia la lectura. */
+              afterLabel: (c) => (o.notaLiga && c.datasetIndex === 1)
+                ? o.notaLiga : undefined,
+            },
           }),
         }),
       }),

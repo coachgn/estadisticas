@@ -39,6 +39,7 @@ node test-confirmar.js     #  86 tests · el diff, publicar zonas, subclientes y
 node test-acumulacion.js   #  42 tests · la suma entre tramos · REGRESIÓN, no tocar
 node test-resiliencia.js   #  50 tests · rotación del token, KV caído, el tramo que se conserva
 node test-jsonclub.js      #  99 tests · los JSON de club, el validador, el aislamiento y publicar
+node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -50,7 +51,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**3416 tests en total. Todos tienen que dar verde antes de commitear.**
+**3634 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -5752,3 +5753,104 @@ válido; lo que falló fue pedirle a una persona que acertara una coma.
 Cuando el formato del entregable admite un error silencioso, el error
 llega — y acá llegó por la vía más difícil de auditar, que es un commit
 hecho fuera del flujo de trabajo del punto 11.
+
+---
+
+## 42. EL GRUPO DE PARES · contra QUIÉN se compara un jugador
+
+Es **B-5** del punto 10 bis, y la trampa que ese punto anticipaba —que el
+universo se achica— resultó ser la menor de las dos.
+
+### Lo que se midió antes de escribir nada
+
+Libro real de Primera: 221 jugadores, 111 calificados, umbral 12,7 min.
+Para el de más minutos:
+
+```
+METRICA        él     PARES    GLOBAL     TIPO
+T2I         11,21      6,92      3,77     1,64
+AST          0,86      2,19      1,14     0,47
+eFG%         0,57      0,48      0,47     0,46
+PePP%        0,08      0,16      0,16     0,16
+```
+
+**LA DISTORSIÓN ES SOLO DE VOLUMEN.** Las tasas —eFG%, TS%, PPP, PePP%—
+casi no se mueven entre referencias (0,96–0,99x): un porcentaje no
+depende de cuánto juega el que lo produce. Las CUENTAS por partido sí, y
+mucho: el `JUGADOR TIPO` vale **0,42–0,53x** la mediana de los
+calificados, porque incluye a los 211 que no llegan al umbral.
+
+Ahí estaba el «1,0 contra 6,2» del pedido, y por eso **el modo global
+tampoco usa el `JUGADOR TIPO`**: usa la mediana de los calificados, que
+es el universo con el que el proyecto ya construye percentiles y bandas z
+(punto 8) y con el que `jugadoresReferenciasRebote()` ya corrigió este
+mismo sesgo. El TIPO queda de último respaldo: viene de la planilla y es
+lo que el club audita, así que no se descarta, se degrada a él.
+
+### La cascada
+
+```
+exacto    misma banda de minutos Y misma jerarquía
+primaria  solo la banda de minutos          (si el exacto < 3)
+global    mediana de los calificados        (si la primaria < 3)
+tipo      la fila JUGADOR TIPO              (si no hay calificados)
+```
+
+El mínimo es 3 y es el mismo `MIN_CALIFICADOS_REFERENCIA` del rebote: una
+«mediana» de dos jugadores no es una mediana.
+
+**La muestra alcanza más de lo que temía B-5.** Medido: en Primera los 9
+grupos del cruce tienen 3 o más y **ningún jugador cae al fallback**; en
+U21 caen 2 de 201. Pero el nivel viaja en el resultado y **se dice en la
+pantalla**: una referencia degradada en silencio es peor que ninguna.
+
+### Lo que NO entró, y por qué
+
+El pedido incluía «Net Rating / On-Off +/-» por jugador:
+
+- `NET RTNG` y `RTNG OFF/DEF` son columnas de **EQUIPO** (`PROMEDIOS 4F`).
+  No existen por jugador y derivarlas sería inventarlas.
+- El **On-Off** necesita saber quiénes estaban en cancha, o sea el
+  play-by-play que la planilla no trae (B-7, trabado en MotorStats).
+- `+/-` sí existe y **se muestra en la card de Uso, pero sin barra de
+  referencia**. El punto 3 bis ya fijó que no entra a rankings ni a
+  desvíos porque depende de los otros cuatro que estaban en cancha; una
+  mediana de pares sobre `+/-` ordenaría equipos disfrazados de
+  jugadores. La card lo dice con todas las letras.
+
+Las traducciones del pedido a columnas reales: **`TOV%` → `PePP%`**
+(PP/PLAYS) y **«Ratio AST/TO» → `AST-PP`**.
+
+### Los intentos NO llevan semáforo
+
+`T2I`, `T3I`, `T1I`, `USG%`, `PLAYS` y `MIN` salen en tinte neutro
+(`JUGADORES_REF_NEUTRAS`). Es la regla del punto 4: **ningún eje tiene
+lado bueno y lado malo**. Tirar menos triples que sus pares no es peor,
+es otro jugador, y pintarlo de rojo convierte una descripción de estilo
+en un reproche. Lo destapó mirar la pantalla: `Triples int. 0,38x` salía
+en rojo.
+
+El número se muestra igual — **se saca el color, no el dato**, que es el
+mismo criterio del `~` del percentil.
+
+### Dos detalles que costaron
+
+- **El semáforo necesita DOS clases.** `tono-alto`/`tono-bajo` viven
+  dentro de `@media print` (punto 7.6): solas no pintan nada en pantalla.
+  Y la clase de Tailwind sola se la come el aplanado del papel
+  (`body * { color: #111 !important }`). Van las dos juntas.
+- **`SGADD.formatear` toma una CLAVE DE MÉTRICA, no un nombre de
+  formato.** Pasarle `'num1'` cae a un default de dos decimales y el
+  delta salía «+12,00 pp», que para puntos porcentuales es ruido.
+
+### El toggle es UNO solo para las tres cards
+
+`JUGADORES.refModo` es compartido y el conmutador se dibuja en el
+encabezado de cada card. Tocarlo en cualquiera las mueve a las tres: es
+lo que pedía «unificado» sin obligar al DT a subir a buscar un control
+que está en otra pestaña.
+
+**Y los dos gráficos del tab Tiro usan la misma referencia que su tabla.**
+Antes leían `r.tipo`; si el gráfico y la tabla de la misma pestaña
+salieran de referencias distintas, la pestaña se contradiría sola. El
+tooltip de la barra gris dice de qué muestra salió.

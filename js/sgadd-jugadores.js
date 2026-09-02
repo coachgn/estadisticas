@@ -44,6 +44,12 @@ const JUGADORES = {
   /* Orden de la tabla abierta. null = el de la propia tabla (la métrica
      que define el top). Se resetea al cambiar de tab: un orden por RD
      arrastrado a la tabla de triples no significa nada. */
+  /* CONTRA QUIÉN se comparan las tres cards de referencia. Es UNO solo
+     para las tres a propósito: el pedido lo llamó «unificado», y tener
+     Tiro contra pares y Uso contra la liga entera daría dos lecturas del
+     mismo jugador en la misma ficha. */
+  refModo: 'pares',      // 'pares' | 'global'
+
   rankingOrdenPor: null,
   rankingOrdenDir: 'desc',
 
@@ -846,6 +852,185 @@ function jugadoresBadges(adn) {
   if (adn.rolFuncional) marca('rol', adn.rolFuncional.label, adn.rolFuncional.relativa);
   (adn.arquetipos || []).forEach(a => marca('arquetipo', a.emoji + ' ' + a.label, a.relativa));
   return out;
+}
+
+/* =====================================================================
+   GRUPO DE PARES · contra QUIÉN se compara un jugador
+
+   Es el pedido B-5 del punto 10 bis. El problema, medido contra el libro
+   real de Primera (221 jugadores, 111 calificados, umbral 12,7 min):
+
+     CARUSO · Jugador Clave / Franquicia   él    TIPO   calif.  PARES
+       T2I                              11,21    1,64    3,77   6,92
+       AST                               0,86    0,47    1,14   2,19
+       eFG%                              0,57    0,46    0,47   0,48
+       PePP%                             0,08    0,16    0,16   0,16
+
+   DOS HALLAZGOS QUE MANDAN SOBRE EL DISEÑO:
+
+   1. LA DISTORSIÓN ES SOLO DE VOLUMEN. Las tasas —eFG%, TS%, PPP,
+      PePP%— casi no se mueven entre referencias (0,96–0,99x): un
+      porcentaje no depende de cuánto juega el que lo produce. Las
+      CUENTAS por partido sí: el `JUGADOR TIPO` de la planilla vale
+      0,42–0,53x la mediana de los calificados, porque incluye a los 211
+      que no llegan al umbral. Ahí está el «1,0 contra 6,2» del pedido.
+
+   2. POR ESO EL MODO GLOBAL TAMPOCO ES EL `JUGADOR TIPO`. Se usa la
+      mediana de los CALIFICADOS, que es el universo con el que este
+      proyecto ya construye percentiles y bandas z (punto 8), y con el
+      que `jugadoresReferenciasRebote()` ya corrigió el mismo sesgo. El
+      TIPO queda de último respaldo: viene de la planilla y es lo que el
+      club audita, así que no se descarta, se degrada a él.
+
+   LA CASCADA, con su fallback:
+
+     exacto    misma banda de minutos Y misma jerarquía
+     primaria  solo la banda de minutos          (si el exacto < 3)
+     global    mediana de los calificados        (si la primaria < 3)
+     tipo      la fila JUGADOR TIPO              (si no hay calificados)
+
+   El mínimo es 3 y es el mismo `MIN_CALIFICADOS_REFERENCIA` que ya usa
+   el rebote: una «mediana» de dos jugadores no es una mediana. Medido en
+   el libro real, los 9 grupos del cruce tienen 3 o más y NINGÚN jugador
+   cae al fallback — pero un libro chico (la U21 tiene 91) sí lo va a
+   necesitar, y por eso el nivel viaja en el resultado y se dice en la
+   pantalla. Una referencia degradada en silencio es peor que ninguna.
+   ===================================================================== */
+
+const PEER_MIN = MIN_CALIFICADOS_REFERENCIA;
+
+const PEER_MODOS = [
+  { id: 'pares', label: 'Mismo rol', titulo: 'Mediana de la liga · mismo rol y etiquetas' },
+  { id: 'global', label: 'Liga completa', titulo: 'Mediana de la liga · todos los que califican' },
+];
+
+/* El ADN de la liga entera se calcula UNA vez por índice. `jugadoresADN`
+   recorre la liga por dentro —promedios y referencias de rebote— así que
+   llamarlo por jugador para armar un grupo lo volvería cuadrático, y se
+   llama en cada repintado de una card. */
+const PEER_CACHE = (typeof WeakMap !== 'undefined') ? new WeakMap() : null;
+
+function jugadoresAdnLiga(idx) {
+  if (!idx || !idx.liga) return new Map();
+  if (PEER_CACHE && PEER_CACHE.has(idx)) return PEER_CACHE.get(idx);
+  const m = new Map();
+  (idx.liga.jugadores || []).forEach(j => {
+    try { m.set(j, jugadoresADN(idx, j)); } catch (e) { /* un jugador roto no tumba el grupo */ }
+  });
+  if (PEER_CACHE) PEER_CACHE.set(idx, m);
+  return m;
+}
+
+/** Las etiquetas que definen el grupo de un jugador, en texto. */
+function jugadoresEtiquetasPeer(adn) {
+  if (!adn) return [];
+  const out = [];
+  if (adn.rolMinutos) out.push(adn.rolMinutos.label);
+  if (adn.jerarquia) out.push(adn.jerarquia.label);
+  return out;
+}
+
+/**
+ * EL GRUPO DE PARES de un jugador.
+ *
+ * Devuelve {jugadores, n, nivel, etiquetas, label, motivo}. `nivel` dice
+ * por qué escalón de la cascada salió, y `motivo` es el texto que la
+ * pantalla muestra en el tooltip: sin eso, el DT no puede auditar contra
+ * qué muestra se lo está midiendo.
+ */
+function jugadoresPeerGroup(idx, j, modo) {
+  const liga = (idx && idx.liga) || {};
+  const todos = liga.jugadores || [];
+  const cal = liga.jugadoresCalificados || [];
+
+  const global = () => ({
+    jugadores: cal, n: cal.length, nivel: 'global', etiquetas: [],
+    label: 'Liga (mediana)',
+    /* Se formatea a mano y no con `SGADD.formatear`: este modulo no
+       requiere el nucleo —vive del global del navegador— y el motor
+       tiene que poder correr en Node para poder testearse. */
+    motivo: 'Mediana sobre ' + cal.length + ' jugadores de la liga que llegan al umbral de minutos'
+      + (typeof liga.minJugador === 'number'
+         ? ' (' + (Math.round(liga.minJugador * 10) / 10).toFixed(1).replace('.', ',') + ').' : '.'),
+  });
+  /* Último respaldo: sin calificados, la fila de la planilla. No tiene
+     lista de jugadores detrás, así que la mediana la resuelve el que
+     llama leyendo el TIPO. */
+  const tipo = () => ({
+    jugadores: [], n: 0, nivel: 'tipo', etiquetas: [],
+    label: 'Liga (mediana)',
+    motivo: 'La liga no tiene jugadores suficientes por encima del umbral, '
+      + 'así que se usa la fila JUGADOR TIPO de la planilla.',
+  });
+
+  if (!cal.length && !todos.length) return tipo();
+  if (modo === 'global') return cal.length >= PEER_MIN ? global() : tipo();
+
+  const adnMapa = jugadoresAdnLiga(idx);
+  const mio = adnMapa.get(j) || (function () {
+    try { return jugadoresADN(idx, j); } catch (e) { return null; }
+  })();
+  if (!mio || !mio.rolMinutos) return cal.length >= PEER_MIN ? global() : tipo();
+
+  const mismos = (fn) => todos.filter(x => { const a = adnMapa.get(x); return a && fn(a); });
+
+  /* 1 · coincidencia EXACTA de etiquetas */
+  if (mio.jerarquia) {
+    const g = mismos(a => a.rolMinutos && a.jerarquia
+      && a.rolMinutos.id === mio.rolMinutos.id && a.jerarquia.id === mio.jerarquia.id);
+    if (g.length >= PEER_MIN) {
+      const et = jugadoresEtiquetasPeer(mio);
+      return { jugadores: g, n: g.length, nivel: 'exacto', etiquetas: et,
+        label: 'Pares (' + g.length + ')',
+        motivo: 'Mediana calculada sobre ' + g.length + ' jugadores con etiqueta «'
+          + et.join(' / ') + '».' };
+    }
+  }
+
+  /* 2 · solo la etiqueta PRIMARIA, que es la banda de minutos */
+  const g2 = mismos(a => a.rolMinutos && a.rolMinutos.id === mio.rolMinutos.id);
+  if (g2.length >= PEER_MIN) {
+    const et = [mio.rolMinutos.label];
+    return { jugadores: g2, n: g2.length, nivel: 'primaria', etiquetas: et,
+      label: 'Pares (' + g2.length + ')',
+      motivo: 'Mediana calculada sobre ' + g2.length + ' jugadores con etiqueta «'
+        + et.join(' / ') + '». No hubo ' + PEER_MIN + ' con la combinación completa «'
+        + jugadoresEtiquetasPeer(mio).join(' / ') + '», así que se agrupó por el rol principal.' };
+  }
+
+  /* 3 · la liga entera, DICIÉNDOLO */
+  if (cal.length >= PEER_MIN) {
+    const g = global();
+    g.nivel = 'global';
+    g.motivo = 'No hubo ' + PEER_MIN + ' jugadores con el rol «' + mio.rolMinutos.label
+      + '», así que se compara contra la liga entera: ' + g.motivo.charAt(0).toLowerCase()
+      + g.motivo.slice(1);
+    return g;
+  }
+  return tipo();
+}
+
+/**
+ * La referencia para un puñado de claves, ya resuelta.
+ *
+ * Con `nivel: 'tipo'` no hay grupo del que sacar la mediana y se lee la
+ * fila de la planilla — que es exactamente lo que hacía la app antes de
+ * que existiera todo esto, así que un libro sin muestra se comporta como
+ * siempre.
+ */
+function jugadoresPeerReferencia(idx, j, claves, modo) {
+  const g = jugadoresPeerGroup(idx, j, modo);
+  const tipo = (idx && idx.liga && idx.liga.jugadorTipo) || {};
+  const valores = {};
+  (claves || []).forEach(k => {
+    if (g.nivel === 'tipo') {
+      const v = jugadoresNN(tipo[k]);
+      valores[k] = (v === null && k === 'RT') ? jugadoresNN(jugadoresRT(tipo)) : v;
+      return;
+    }
+    valores[k] = jugadoresMediana(g.jugadores.map(x => (k === 'RT') ? jugadoresRT(x) : x[k]));
+  });
+  return { valores: valores, grupo: g };
 }
 
 const JUGADORES_MOTIVO_SIN_RESPALDO =
@@ -1938,6 +2123,7 @@ function jugadoresBloqueCondicion(idx, j) {
 }
 
 function jugadoresTabGeneral(idx, j) {
+  const carta = (id) => jugadoresCardRef(idx, j, JUGADORES_CARDS_REF.find(c => c.id === id));
   const sintesis = jugadoresSintesisPerfil(idx, j);
   const conclusionBloque = {
     nivel: sintesis.conclusion.nivel, titulo: sintesis.conclusion.titulo,
@@ -1970,6 +2156,10 @@ function jugadoresTabGeneral(idx, j) {
     </div>
     ${jugadoresBloqueCondicion(idx, j)}
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">${cards}</div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      ${carta('uso')}
+      ${carta('pases')}
+    </div>
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       ${SGADD_UI.metricTable(vistaMarcador)}
       ${SGADD_UI.metricTable(vistaOtras)}
@@ -1978,6 +2168,190 @@ function jugadoresTabGeneral(idx, j) {
       Percentiles contra el resto de la liga que llega al umbral de minutos.
       ${j.__califica ? '' : 'Este jugador está debajo de ese umbral: sus datos se muestran, pero sin percentil, para no mentir con poca muestra.'}
     </p>`;
+}
+
+/* =====================================================================
+   LAS TRES CARDS COMPARADAS
+
+   Qué mide cada una y con qué claves REALES de la planilla. El pedido
+   nombró algunas por su nombre de la NBA; acá va la traducción, que no
+   es cosmética:
+
+     «TOV%»            → `PePP%`   (PP / PLAYS, tasa de pérdidas)
+     «Ratio AST/TO»    → `AST-PP`  (asistencias por pérdida)
+     «Puntos por Posesión» → `PPP`
+
+   LO QUE NO ENTRA, Y POR QUÉ. El pedido también pedía «Net Rating /
+   On-Off +/-» para el jugador:
+
+   - `NET RTNG` y `RTNG OFF/DEF` son columnas de EQUIPO (`PROMEDIOS 4F`).
+     No existen por jugador y derivarlas sería inventarlas.
+   - El On-Off necesita saber quiénes estaban en cancha, o sea el
+     play-by-play que la planilla no trae (B-7 del punto 10 bis, trabado
+     del lado de MotorStats).
+   - `+/-` SÍ existe, y por eso se muestra en la card de Uso — pero SIN
+     barra de referencia. El punto 3 bis ya fijó que no entra a rankings
+     ni a desvíos porque depende de los otros cuatro que estaban en
+     cancha; una mediana de pares sobre `+/-` ordenaría equipos
+     disfrazados de jugadores, que es el mismo error con otra ropa.
+   ===================================================================== */
+
+/* MÉTRICAS SIN LADO BUENO NI LADO MALO.
+
+   Es la regla del punto 4: «ningún eje tiene lado bueno y lado malo;
+   cuidar el balón no es mejor que arriesgar, es distinto». Los
+   INTENTOS y la CARGA son selección de tiro y decisión del cuerpo
+   técnico, no rendimiento: tirar menos triples que sus pares no es
+   peor, es otro jugador. Pintarlo de rojo convertiría una
+   descripción de estilo en un reproche.
+
+   Lo que SÍ lleva semáforo son los RESULTADOS —convertidos, eFG%,
+   TS%, PPP, puntos, asistencias, pérdidas—, donde más (o menos, si la
+   métrica está invertida) es inequívocamente mejor.
+
+   El número igual se muestra: lo que se saca es el color, no el dato.
+   Es el mismo criterio del `~` del percentil (punto 8) — mostrar y
+   quitarle autoridad, nunca esconder. */
+const JUGADORES_REF_NEUTRAS = ['T2I', 'T3I', 'T1I', 'USG%', 'PLAYS', 'MIN'];
+
+const JUGADORES_CARDS_REF = [
+  { id: 'tiro', label: 'Tiro · volumen y eficiencia',
+    pregunta: '¿Tira más o menos que sus pares, y le entra mejor?',
+    claves: ['T2I', 'T2C', 'T3I', 'T3C', 'eFG%', 'TS%', 'PPP'] },
+  { id: 'uso', label: 'Uso e impacto',
+    pregunta: '¿Cuánta carga ofensiva se lleva, y qué rinde con ella?',
+    claves: ['USG%', 'PLAYS', 'PPP', 'PTS'], suelta: '+/-' },
+  { id: 'pases', label: 'Pases y pérdidas',
+    pregunta: '¿Crea para los demás y cuida la pelota?',
+    claves: ['AST', 'AST%', 'PePP%', 'AST-PP'] },
+];
+
+function jugadoresCambiarRef(modo) {
+  if (JUGADORES.refModo === modo) return;
+  JUGADORES.refModo = modo;
+  jugadoresPintar();
+}
+
+/* El conmutador. Va en el encabezado de CADA card y escribe un estado
+   compartido, así que tocarlo en una las cambia a las tres: es lo que
+   pedía «unificado» sin obligar al DT a subir a buscar un control que
+   está en otra pestaña. */
+function jugadoresToggleRef() {
+  return `<div class="flex items-center gap-1" role="group" aria-label="Contra quién se compara">
+    ${PEER_MODOS.map(m => `<button onclick="jugadoresCambiarRef('${m.id}')"
+      title="${escapeHtml(m.titulo)}"
+      aria-pressed="${JUGADORES.refModo === m.id}"
+      class="px-2 py-1 rounded text-[10px] uppercase tracking-wider transition-colors ${
+        JUGADORES.refModo === m.id
+          ? 'bg-accent text-base' : 'border border-hairline text-muted hover:text-ink'}">${
+      escapeHtml(m.label)}</button>`).join('')}
+  </div>`;
+}
+
+/* La comparación de UNA métrica. El delta se expresa en la unidad de la
+   métrica —puntos porcentuales para las tasas, múltiplo para las
+   cuentas— porque un «+0,09» sobre un eFG% y un «+0,09» sobre T2I no
+   significan lo mismo ni de lejos. */
+function jugadoresFilaRef(idx, j, clave, ref) {
+  const m = SGADD.METRICAS[clave] || {};
+  const propio = (clave === 'RT') ? jugadoresRT(j) : jugadoresNN(j[clave]);
+  const base = ref.valores[clave];
+  const fmt = (x) => (x === null || x === undefined) ? '—' : SGADD.formatear(clave, x);
+
+  /* DOS CLASES, y hacen falta las dos. `tono-*` solo existe dentro de
+     `@media print` (punto 7.6): en pantalla no pinta nada, y ahi manda
+     la clase de Tailwind. Al reves, el aplanado del papel
+     (`body * { color: #111 !important }`) se comeria el verde y el
+     rojo, y la lectura rapida de «esto lo hace mejor / peor que sus
+     pares» es justo para lo que estan los colores. */
+  let delta = '—', tono = 'text-muted tono-neutro';
+  if (propio !== null && base !== null && base !== undefined) {
+    const esTasa = m.formato === 'pct';
+    const dif = propio - base;
+    /* `invertida` es la dirección de la métrica: en PePP% perder menos es
+       mejor. Pintar de verde «superó el valor» contradiría al resto del
+       sistema, donde el verde siempre significa ventaja. */
+    const bueno = m.invertida ? dif < 0 : dif > 0;
+    const nulo = Math.abs(dif) < 1e-9;
+    const neutra = JUGADORES_REF_NEUTRAS.indexOf(clave) > -1;
+    tono = (nulo || neutra) ? 'text-muted tono-neutro'
+      : (bueno ? 'text-green-400 tono-alto' : 'text-red-400 tono-bajo');
+    /* `SGADD.formatear` toma una CLAVE DE METRICA, no un nombre de
+       formato: pasarle 'num1' cae a un default de dos decimales, que
+       para puntos porcentuales es ruido («+12,00 pp»). El delta se
+       arma a mano, con la coma decimal del resto del panel. */
+    const uno = (x) => (Math.round(x * 10) / 10).toFixed(1).replace('.', ',');
+    const signo = dif >= 0 ? '+' : '−';
+    if (esTasa) {
+      delta = signo + uno(Math.abs(dif) * 100) + ' pp';
+    } else if (base) {
+      delta = (Math.round((propio / base) * 100) / 100).toFixed(2).replace('.', ',') + 'x';
+    } else {
+      /* Sin referencia con la que dividir, la diferencia cruda es lo
+         unico honesto: un multiplo contra cero no existe. */
+      delta = signo + uno(Math.abs(dif));
+    }
+  }
+
+  /* La barra compara contra la referencia y se recorta al doble: un
+     jugador que triplica a sus pares llenaría la barra y taparía la
+     diferencia entre los que están cerca, que es lo que hay que leer. */
+  const pct = (propio !== null && base) ? Math.max(0, Math.min(100, (propio / base) * 50)) : null;
+
+  return `<tr class="border-b border-hairline/40 last:border-0">
+    <td class="py-1.5 pr-3 text-xs text-white font-medium" data-metrica="${escapeHtml(clave)}">${
+      escapeHtml(m.label || clave)}</td>
+    <td class="py-1.5 pr-3 font-mono text-xs text-ink text-right">${escapeHtml(fmt(propio))}</td>
+    <td class="py-1.5 pr-3 font-mono text-xs text-muted text-right"
+      title="${escapeHtml(ref.grupo.motivo)}">${escapeHtml(fmt(base))}</td>
+    <td class="py-1.5 pr-3 font-mono text-xs text-right ${tono}">${escapeHtml(delta)}</td>
+    <td class="py-1.5 w-24">${pct === null ? '' :
+      `<div class="h-1.5 rounded bg-surface2 overflow-hidden" aria-hidden="true">
+        <div class="h-full rounded" style="width:${pct.toFixed(1)}%;background:var(--acento)"></div>
+      </div>`}</td>
+  </tr>`;
+}
+
+/**
+ * UNA de las tres cards comparadas.
+ *
+ * El nivel de la cascada se DICE en la card, no solo en el tooltip: una
+ * referencia que se degradó de «pares» a «la liga entera» sigue siendo
+ * una respuesta válida, pero a otra pregunta.
+ */
+function jugadoresCardRef(idx, j, card) {
+  const ref = jugadoresPeerReferencia(idx, j, card.claves, JUGADORES.refModo);
+  const g = ref.grupo;
+  const degradado = JUGADORES.refModo === 'pares' && g.nivel !== 'exacto';
+  const filas = card.claves.map(k => jugadoresFilaRef(idx, j, k, ref)).join('');
+
+  /* `+/-` va suelto y sin comparar: ver el comentario de
+     `JUGADORES_CARDS_REF`. Solo si la planilla lo trae. */
+  const suelta = (card.suelta && typeof j[card.suelta] === 'number')
+    ? `<p class="text-[11px] text-muted mt-2 leading-snug">
+        <b class="text-ink">+/-</b> ${escapeHtml(SGADD.formatear('+/-', j['+/-']))} ·
+        va sin comparar a propósito: depende de los otros cuatro que estaban en cancha,
+        así que una mediana de pares ordenaría equipos disfrazados de jugadores.</p>`
+    : '';
+
+  return `<section class="card rounded-xl p-4 border border-hairline">
+    <div class="flex items-baseline justify-between gap-3 flex-wrap mb-1">
+      <h5 class="font-display uppercase tracking-wide text-xs text-accent">${escapeHtml(card.label)}</h5>
+      ${jugadoresToggleRef()}
+    </div>
+    <p class="text-[11px] text-muted mb-3">${escapeHtml(card.pregunta)}</p>
+    <div class="scrollbox"><table class="w-full text-left">
+      <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+        <th class="pb-1 pr-3">Métrica</th>
+        <th class="pb-1 pr-3 text-right">Él</th>
+        <th class="pb-1 pr-3 text-right" title="${escapeHtml(g.motivo)}">${escapeHtml(g.label)}</th>
+        <th class="pb-1 pr-3 text-right">Dif.</th>
+        <th class="pb-1"></th>
+      </tr></thead><tbody>${filas}</tbody></table></div>
+    ${suelta}
+    <p class="text-[11px] mt-2 leading-snug ${degradado ? 'zona-texto zona-aviso' : 'text-muted'}">${
+      escapeHtml(g.motivo)}</p>
+  </section>`;
 }
 
 /* ---------- Tab Tiro ---------- */
@@ -1989,6 +2363,7 @@ const ZONAS_TIRO = [
 ];
 
 function jugadoresTabTiro(idx, j) {
+  const carta = (id) => jugadoresCardRef(idx, j, JUGADORES_CARDS_REF.find(c => c.id === id));
   const filas = ZONAS_TIRO.map(z => {
     const peso = idx.leerJugador(j, z.peso);
     const conv = idx.leerJugador(j, z.conv);
@@ -2003,12 +2378,24 @@ function jugadoresTabTiro(idx, j) {
   }).join('');
 
   const valorDe = k => { const r = idx.leerJugador(j, k); return r && r.valor !== null ? r.valor : 0; };
-  const tipoDe = k => { const r = idx.leerJugador(j, k); return r && r.tipo !== null ? r.tipo : 0; };
   const etiquetas = ZONAS_TIRO.map(z => z.label);
+
+  /* LOS DOS GRÁFICOS USAN LA MISMA REFERENCIA QUE LA CARD DE ARRIBA.
+     Antes leían `r.tipo`, o sea la fila JUGADOR TIPO de la planilla, que
+     incluye a los que no llegan al umbral de minutos: medido en Primera,
+     su T2I vale 1,64 contra 3,77 de la mediana de los calificados y 6,92
+     de los pares de un titular. La barra gris quedaba a la mitad de
+     donde corresponde y el jugador parecía tirar el triple de todos.
+
+     Si el gráfico y la tabla de la misma pestaña usaran referencias
+     distintas, la pestaña se contradiría sola. */
+  const clavesTiro = ZONAS_TIRO.map(z => z.i).concat(ZONAS_TIRO.map(z => z.conv));
+  const refTiro = jugadoresPeerReferencia(idx, j, clavesTiro, JUGADORES.refModo);
+  const refDe = k => { const v = refTiro.valores[k]; return (v === null || v === undefined) ? 0 : v; };
   const volEq = ZONAS_TIRO.map(z => valorDe(z.i));
-  const volLg = ZONAS_TIRO.map(z => tipoDe(z.i));
+  const volLg = ZONAS_TIRO.map(z => refDe(z.i));
   const cvEq = ZONAS_TIRO.map(z => valorDe(z.conv));
-  const cvLg = ZONAS_TIRO.map(z => tipoDe(z.conv));
+  const cvLg = ZONAS_TIRO.map(z => refDe(z.conv));
 
   return `
     <div class="mb-6">
@@ -2023,11 +2410,16 @@ function jugadoresTabTiro(idx, j) {
         (no por convertido). C/I son promedios por partido, no acumulado de temporada.
       </p>
     </div>
+    <div class="mb-6">${carta('tiro')}</div>
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       ${equiposPanel('Volumen por zona · intentos por partido',
-        SGADD_CHARTS.barrasComparadas('chTiroVol', etiquetas, volEq, volLg, { nombreEquipo: j['NOMBRES'] }))}
+        SGADD_CHARTS.barrasComparadas('chTiroVol', etiquetas, volEq, volLg,
+          { nombreEquipo: j['NOMBRES'], nombreLiga: refTiro.grupo.label,
+            notaLiga: refTiro.grupo.motivo }))}
       ${equiposPanel('Acierto por zona · CONV%',
-        SGADD_CHARTS.barrasComparadas('chTiroConv', etiquetas, cvEq, cvLg, { nombreEquipo: j['NOMBRES'], formato: 'T2%' }))}
+        SGADD_CHARTS.barrasComparadas('chTiroConv', etiquetas, cvEq, cvLg,
+          { nombreEquipo: j['NOMBRES'], formato: 'T2%', nombreLiga: refTiro.grupo.label,
+            notaLiga: refTiro.grupo.motivo }))}
     </div>`;
 }
 
@@ -2176,6 +2568,9 @@ if (typeof module !== 'undefined' && module.exports) {
     jugadoresRolMinutos, jugadoresPromedioMetrica, jugadoresPromediosLiga, jugadoresRT,
     jugadoresConvIntento,
     jugadoresReferenciasRebote, jugadoresMediana, MIN_CALIFICADOS_REFERENCIA,
+    jugadoresPeerGroup, jugadoresPeerReferencia, jugadoresEtiquetasPeer, jugadoresAdnLiga,
+    JUGADORES_CARDS_REF, JUGADORES_REF_NEUTRAS,
+    PEER_MIN, PEER_MODOS,
     jugadoresArquetipos, jugadoresJerarquia, jugadoresPuntoDeFuga, jugadoresSintesisPerfil,
     jugadoresCondicionCorta, jugadoresEtiquetaEvolucion, jugadoresSplitCondicion, jugadoresSensibilidadCondicion,
   };
