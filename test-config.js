@@ -432,11 +432,22 @@ check('y el descenso son los dos últimos',
    una categoría de 13 el descenso queda corrido SIN ningún síntoma. */
 check('con 14 equipos el descenso sigue siendo los dos últimos',
   C.zonasDeTabla(fDep, 14).slice(12).every(z => z && z.id === 'descenso'));
-/* Los otros dos clubes no declaran competencia todavía y eso tiene que
-   seguir siendo válido: la config es opcional. */
-['reconquista', 'jujuy'].forEach((id) => {
+/* Un club que NO declara competencia sigue siendo válido: la config es
+   opcional y su ausencia no puede dejar la tabla vacía (punto 6).
+
+   La lista se deriva del ARCHIVO, no se escribe a mano. Cuando estaba
+   fija —`['reconquista', 'jujuy']`— este test se puso en rojo el día que
+   Reconquista sumó sus zonas: un club configurándose es exactamente lo
+   que el producto espera que pase, y el test lo trataba como una
+   regresión. Lo que hay que fijar es la REGLA (con bloque parsea, sin
+   bloque devuelve null), no qué clubes lo tienen hoy. */
+['reconquista', 'jujuy', 'deportivo'].forEach((id) => {
   const j = JSON.parse(fs.readFileSync('./clubes/' + id + '.json', 'utf8'));
-  check(id + ' sin bloque competencia sigue siendo válido', C.parsear(j) === null);
+  if (j.competencia) {
+    check(id + ' declara competencia y el motor la parsea', C.parsear(j) !== null);
+  } else {
+    check(id + ' sin bloque competencia sigue siendo válido', C.parsear(j) === null);
+  }
 });
 
 

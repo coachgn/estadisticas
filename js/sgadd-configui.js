@@ -47,6 +47,16 @@ const CONFIGUI = {
   proyOrigen: 'ninguno',
   proySucia: false,
   proyExportando: false,
+  /* LA CATEGORIA QUE SE ESTA EDITANDO, y si tiene reglas propias.
+     Un club puede correr Primera, U21 y U23 con formatos que no tienen
+     nada que ver. Sin esto, guardar desde la pantalla de una le pisaba
+     las zonas a las otras dos. */
+  categoria: null,
+  /* El bloque ENTERO del club, con todas sus categorías. El borrador es
+     solo la parte que esta pantalla muestra; al grabar se fusiona sobre
+     éste para no perder lo que no se está viendo. */
+  completo: null,
+  propia: false,
   catSel: null,
 };
 
@@ -60,9 +70,18 @@ function configCargarBorrador(forzar) {
   if (CONFIGUI.borrador && !forzar) return;
   const jsonClub = (typeof CLUB !== 'undefined' && CLUB.cfg) ? CLUB.cfg : null;
   const v = SGADD_CONFIG.vigente(jsonClub, configClubId());
+  /* EL BLOQUE COMPLETO DEL CLUB se guarda aparte: es sobre él que se
+     fusiona lo editado al guardar y al publicar, así las categorías
+     hermanas viajan enteras aunque esta pantalla no las muestre. */
+  CONFIGUI.completo = v.config ? JSON.parse(JSON.stringify(v.config)) : null;
+  const r = SGADD_CONFIG.resolver(jsonClub, null, null);
+  CONFIGUI.categoria = r.categoria || null;
+  CONFIGUI.propia = !!r.propio;
   /* Copia profunda: el borrador se edita y no puede tocar lo que el
      resto de la app está usando hasta que se guarde. */
-  CONFIGUI.borrador = v.config ? JSON.parse(JSON.stringify(v.config)) : configVacio();
+  const arranque = CONFIGUI.propia ? r.bloque : v.config;
+  CONFIGUI.borrador = arranque ? JSON.parse(JSON.stringify(arranque)) : configVacio();
+  delete CONFIGUI.borrador.porCategoria;
   CONFIGUI.origen = v.origen;
   CONFIGUI.sucio = false;
   const ids = Object.keys(CONFIGUI.borrador.formatos);
@@ -168,10 +187,49 @@ function configEquiposEsperados(valor) {
   configPintarPreview();
 }
 
+/* =====================================================================
+   EL BLOQUE QUE SE GRABA · una sola fuente para guardar y para publicar
+
+   Las dos acciones escriben lo MISMO, así que lo arman en un solo lugar.
+   Cuando estaban duplicadas, publicar leía `.competencia` de un objeto
+   que no tiene esa clave: viajaba `undefined`, el servidor lo entendía
+   como «vaciar» y publicar BORRABA las zonas en vez de publicarlas. Sin
+   ningún síntoma, además: la respuesta venía `ok: true`.
+
+   Devuelve {ok, bloque, error} — nunca lanza.
+   ===================================================================== */
+function configBloqueAGrabar() {
+  const b = CONFIGUI.borrador;
+  if (!b) return { ok: false, bloque: null, error: 'No hay nada que guardar.' };
+
+  /* El borrador se serializa con el mismo exportador que ve el usuario:
+     si lo que se copia y lo que se graba salieran de dos caminos
+     distintos, uno de los dos se desincroniza sin que nadie lo note. */
+  const propio = SGADD_CONFIG.serializar(JSON.parse(SGADD_CONFIG.exportar(b)));
+  if (!propio.ok) return { ok: false, bloque: null, error: propio.error };
+
+  const bloque = SGADD_CONFIG.fusionarCategoria(
+    CONFIGUI.completo,
+    CONFIGUI.propia ? CONFIGUI.categoria : null,
+    JSON.parse(propio.texto));
+
+  /* LA GUARDA. Se valida lo que REALMENTE se va a escribir, ya fusionado
+     — validar el fragmento y grabar el compuesto es validar otra cosa. */
+  const final = SGADD_CONFIG.serializar(bloque);
+  if (!final.ok) return { ok: false, bloque: null, error: final.error };
+  return { ok: true, bloque: JSON.parse(final.texto), error: null };
+}
+
 function configGuardar() {
   const b = CONFIGUI.borrador;
   if (!b) return;
-  const ok = SGADD_CONFIG.guardarOverride(configClubId(), JSON.parse(SGADD_CONFIG.exportar(b)));
+  const g = configBloqueAGrabar();
+  if (!g.ok) {
+    configAvisar('No se guardó nada: ' + g.error, false);
+    return;
+  }
+  CONFIGUI.completo = g.bloque;
+  const ok = SGADD_CONFIG.guardarOverride(configClubId(), g.bloque);
   CONFIGUI.sucio = false;
   CONFIGUI.origen = ok ? 'local' : CONFIGUI.origen;
   configAvisar(ok
@@ -211,11 +269,21 @@ function configPuedePublicar() {
 function configPublicar() {
   const b = CONFIGUI.borrador;
   if (!b) return;
-  const bloque = JSON.parse(SGADD_CONFIG.exportar(b)).competencia;
+  const g = configBloqueAGrabar();
+  if (!g.ok) {
+    configAvisar('No se publicó nada: ' + g.error, false);
+    return;
+  }
+  const bloque = g.bloque;
 
   const lanzar = () => {
     configAvisar('Publicando…', true);
-    SGADD_DATA.guardarCatalogo({ accion: 'zonas', club: configClubId(), competencia: bloque })
+    /* La `categoria` viaja para que el servidor escriba SOLO ese slot y
+       no el bloque entero: es la segunda mitad del aislamiento, del lado
+       en que el dato de verdad se guarda. */
+    SGADD_DATA.guardarCatalogo({ accion: 'zonas', club: configClubId(),
+      categoria: CONFIGUI.propia ? CONFIGUI.categoria : null,
+      competencia: CONFIGUI.propia ? JSON.parse(SGADD_CONFIG.exportar(b)) : bloque })
       .then((r) => {
         /* El catálogo que devuelve el servidor es el que vale: el que
            tenía la pantalla quedó viejo en cuanto se escribió. */
@@ -252,14 +320,155 @@ function configRestablecer() {
   configPintar();
 }
 
+/* =====================================================================
+   EL EXPORT ES EL ARCHIVO ENTERO, no el bloque suelto
+
+   Daba `"competencia": {…}` para empalmar a mano al lado de
+   `"planillas"`, y acertarle a la coma quedaba del lado del que pega. El
+   2026-09-01 alguien no le acertó: `clubes/reconquista.json` quedó sin
+   la coma, dejó de parsear entero y el club estuvo viendo la marca y las
+   zonas de OTRO club, porque la app se cae a los valores por defecto sin
+   decir nada.
+
+   Se devuelve el archivo completo, listo para REEMPLAZAR. No hay coma
+   que acertar, y lo que se copia ya pasó por `JSON.parse()`.
+   ===================================================================== */
+function configPanelExport() {
+  const r = configTextoExport();
+  const clase = 'scrollbox bg-surface2 border border-hairline rounded p-3'
+    + ' text-[11px] font-mono overflow-x-auto whitespace-pre';
+  if (!r.ok) {
+    return `<p class="text-[11px] zona-texto zona-peligro mt-4">
+      No se puede exportar: ${SGADD_UI.esc(r.error)}</p>`;
+  }
+  return `
+    <p class="text-[11px] text-muted mt-4 mb-2">Es el archivo
+      <span class="font-mono text-ink">clubes/${SGADD_UI.esc(configClubId())}.json</span>
+      COMPLETO: reemplazalo entero y commiteá. No hay que empalmar nada.
+      Ya está copiado al portapapeles.</p>
+    <pre id="configExport" class="${clase} text-ink">${SGADD_UI.esc(r.texto)}</pre>`;
+}
+
+/** El texto a copiar: {ok, texto, error}. */
+function configTextoExport() {
+  const g = configBloqueAGrabar();
+  if (!g.ok) return { ok: false, texto: null, error: g.error };
+  const jsonClub = (typeof CLUB !== 'undefined' && CLUB.cfg) ? CLUB.cfg : null;
+  return SGADD_CONFIG.exportarArchivo(jsonClub, g.bloque);
+}
+
+/* =====================================================================
+   EL ALCANCE · a quién le cambia las zonas lo que se está editando
+
+   Un club puede correr varias categorías con formatos que no tienen
+   nada que ver: Reconquista tiene Primera, U21 y U23, y como las claves
+   de `porTramo` son `TORNEO|FASE` —y `GENERAL|REGULAR` es lo más común
+   de todo— las tres compartían zonas sin que nadie lo pidiera. Bajar el
+   descenso en Primera se lo bajaba también a la U21.
+
+   LO IMPORTANTE ES QUE SE VEA ANTES DE GUARDAR. El motor ya sabía
+   scopear (`porCategoria`), pero la pantalla no decía sobre qué nivel
+   estaba escribiendo, así que el admin no tenía forma de saber si su
+   cambio alcanzaba a una categoría o a las tres.
+   ===================================================================== */
+function configAlcanceHTML() {
+  const cat = CONFIGUI.categoria;
+  if (!cat) return '';
+  const otras = configOtrasCategorias();
+  const nombre = configNombreCategoria(cat);
+  const tono = CONFIGUI.propia ? 'zona-exito' : (otras.length ? 'zona-aviso' : 'zona-neutro');
+  const texto = CONFIGUI.propia
+    ? 'Solo ' + nombre
+    : (otras.length
+        ? 'Todas las categorías del club (' + (otras.length + 1) + ')'
+        : 'Todo el club');
+  const detalle = CONFIGUI.propia
+    ? 'Esta categoría tiene sus propias zonas. Guardar y publicar no tocan a las otras.'
+    : (otras.length
+        ? 'Lo que edites acá también le cambia la tabla a ' + otras.map(configNombreCategoria).join(' y ') + '.'
+        : 'El club tiene una sola categoría, así que no hay nada que separar.');
+
+  return `
+    <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
+      <div class="flex items-baseline justify-between gap-3 flex-wrap mb-2">
+        <h3 class="font-display uppercase tracking-wide text-sm text-ink">Alcance del cambio</h3>
+        <span class="zona-texto ${tono} text-[10px] uppercase tracking-wider">${SGADD_UI.esc(texto)}</span>
+      </div>
+      <p class="text-[11px] text-muted mb-3">${SGADD_UI.esc(detalle)}</p>
+      ${otras.length ? `<label class="flex items-center gap-2 text-xs text-ink cursor-pointer">
+        <input type="checkbox" onchange="configAlcancePropio(this.checked)"
+          ${CONFIGUI.propia ? 'checked' : ''} class="accent-current">
+        <span>${SGADD_UI.esc(nombre)} tiene sus propias zonas</span>
+      </label>` : ''}
+    </div>`;
+}
+
+/** Las otras categorías del club, para poder nombrarlas. */
+function configOtrasCategorias() {
+  try {
+    /* El catalogo vive en SGADD, no en CLUB: `sgadd-club.js` lo escribe
+       ahi al aplicar la config del club. */
+    const pl = (typeof SGADD !== 'undefined' && SGADD.CATALOGO && SGADD.CATALOGO.planillas)
+      ? SGADD.CATALOGO.planillas : [];
+    return pl.map(x => x.id).filter(id => id && id !== CONFIGUI.categoria);
+  } catch (e) { return []; }
+}
+
+function configNombreCategoria(id) {
+  try {
+    /* El catalogo vive en SGADD, no en CLUB: `sgadd-club.js` lo escribe
+       ahi al aplicar la config del club. */
+    const pl = (typeof SGADD !== 'undefined' && SGADD.CATALOGO && SGADD.CATALOGO.planillas)
+      ? SGADD.CATALOGO.planillas : [];
+    const p = pl.filter(x => x.id === id)[0];
+    return (p && p.label) || id;
+  } catch (e) { return id; }
+}
+
+/**
+   * Separar o volver a unir la categoría.
+   *
+   * Al SEPARAR se arranca con una copia de lo que ya se estaba viendo, no
+   * con un formato vacío: el admin separa para retocar, no para escribir
+   * todo de nuevo, y una pantalla en blanco haría parecer que se perdió
+   * la config.
+   *
+   * Al UNIR se vuelve al bloque del club — que sigue estando, porque el
+   * nivel de la categoría nunca lo pisó.
+   */
+function configAlcancePropio(propia) {
+  CONFIGUI.propia = !!propia;
+  if (!propia) {
+    const club = CONFIGUI.completo
+      ? JSON.parse(JSON.stringify(CONFIGUI.completo)) : configVacio();
+    delete club.porCategoria;
+    CONFIGUI.borrador = (club.formatos && Object.keys(club.formatos).length)
+      ? club : configVacio();
+    const ids = Object.keys(CONFIGUI.borrador.formatos);
+    if (ids.indexOf(CONFIGUI.formatoSel) === -1) CONFIGUI.formatoSel = ids[0] || null;
+  }
+  configMarcarSucio();
+  configPintar();
+}
+
 function configExportarToggle() {
+  /* LA GUARDA, antes de abrir el panel: si el objeto no sobrevive a
+     `JSON.parse()` no se copia nada. Copiar un JSON roto al portapapeles
+     es peor que no copiar: termina pegado en el repo. */
+  if (!CONFIGUI.exportando) {
+    const r = configTextoExport();
+    if (!r.ok) {
+      configAvisar('No se exportó nada: ' + r.error, false);
+      return;
+    }
+  }
   CONFIGUI.exportando = !CONFIGUI.exportando;
   configPintar();
   if (CONFIGUI.exportando) {
     const pre = document.getElementById('configExport');
     if (pre && navigator.clipboard) {
       navigator.clipboard.writeText(pre.textContent).then(
-        () => configAvisar('Copiado al portapapeles.', true), () => {});
+        () => configAvisar('Copiado: es el archivo entero, reemplazalo.', true), () => {});
     }
   }
 }
@@ -510,6 +719,8 @@ function buildConfiguracion() {
         </div>
       </div>
 
+      ${configAlcanceHTML()}
+
       <!-- FORMATO · lo editable, a ancho completo -->
       <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
           <div class="flex items-baseline justify-between gap-3 flex-wrap mb-3">
@@ -611,12 +822,7 @@ function buildConfiguracion() {
               archivos del repositorio</b> — por eso este paso es manual.</dd>
           </div>
         </dl>
-        ${CONFIGUI.exportando ? `
-          <p class="text-[11px] text-muted mt-4 mb-2">Pegar dentro de
-            <span class="font-mono text-ink">clubes/${SGADD_UI.esc(configClubId())}.json</span>,
-            al mismo nivel que <span class="font-mono">"planillas"</span>. Ya está copiado al portapapeles.</p>
-          <pre id="configExport" class="scrollbox bg-surface2 border border-hairline rounded p-3 text-[11px] font-mono text-ink overflow-x-auto whitespace-pre">${
-            SGADD_UI.esc('"competencia": ' + SGADD_CONFIG.exportar(b))}</pre>` : ''}
+        ${CONFIGUI.exportando ? configPanelExport() : ''}
       </div>
       `}
     </section>`;

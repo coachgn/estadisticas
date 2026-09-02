@@ -38,6 +38,7 @@ node test-clientes.js      #  69 tests · el padrón de clientes, los cupos y el
 node test-confirmar.js     #  86 tests · el diff, publicar zonas, subclientes y tooltips
 node test-acumulacion.js   #  42 tests · la suma entre tramos · REGRESIÓN, no tocar
 node test-resiliencia.js   #  50 tests · rotación del token, KV caído, el tramo que se conserva
+node test-jsonclub.js      #  99 tests · los JSON de club, el validador, el aislamiento y publicar
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -49,7 +50,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**3316 tests en total. Todos tienen que dar verde antes de commitear.**
+**3416 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -5634,3 +5635,120 @@ módulo y nada lo resetea. Lo que sí faltaba era que `plantelRankingModo`
 estuviera DECLARADO — andaba por `undefined` cayendo a `'promedio'`, y una
 clave de estado que no figura en el objeto es de las que se pierden en la
 próxima edición sin que nadie lo note.
+
+---
+
+## 41. EL JSON DEL CLUB · el archivo que rompió y las cuatro guardas
+
+El 2026-09-01 `clubes/reconquista.json` dejó de parsear. El bloque de
+zonas se había pegado a mano por la web de GitHub y quedó cerrando el
+objeto raíz: la llave del final de `competencia` **no llevaba coma**
+antes de `"planillas"`.
+
+**El síntoma es lo que hay que recordar: la app NO se cayó.** `cargar()`
+del club atrapa el error y sigue con los valores por defecto, así que
+Reconquista estuvo viendo la marca, los colores y las zonas de otro club
+—y su Panel Master mostrando «EQUIPOS ESPERADOS —» y «Sin zonas»— sin que
+nada dijera que su configuración estaba rota. Es el peor modo de fallar
+que tiene este proyecto: no se rompe, miente.
+
+La degradación es correcta y se queda (punto 6: la config es opcional y
+no puede tumbar el panel). Lo que faltaba era todo lo demás.
+
+### 1 · Un JSON de club roto no puede llegar a `main`
+
+`test-jsonclub.js` recorre `clubes/*.json` y exige que **cada uno**
+parsee, declare `id` y `planillas`, y no arranque con BOM —que es
+invisible al ojo y lo puede meter un editor web—. Era el test barato que
+no estaba.
+
+### 2 · El export es el ARCHIVO ENTERO, no un fragmento
+
+Ésta es la corrección de fondo. La pantalla daba `"competencia": {…}`
+para empalmar al lado de `"planillas"`, o sea que **acertarle a la coma
+quedaba del lado del que pega**. El generador nunca produjo JSON
+inválido; el formato del entregable era el que invitaba al error.
+
+`exportarArchivo(jsonClub, competencia)` devuelve
+`clubes/<club>.json` completo, listo para **reemplazar**. No hay nada que
+empalmar.
+
+Dos detalles que no son cosméticos:
+
+- **El bloque se reemplaza EN SU LUGAR**, conservando el orden de claves
+  del archivo. Un diff que mueve treinta líneas esconde el cambio real.
+- **Se conservan TODAS las claves**, incluidas las `//` de comentario. Si
+  al pegarlo se perdiera una planilla o el escudo, el remedio sería peor
+  que la enfermedad.
+
+### 3 · La guarda: nada sale sin sobrevivir a `JSON.parse()`
+
+`serializar(valor)` devuelve `{ok, texto, error}` y **nunca lanza**: una
+pantalla de configuración que revienta al copiar es peor que una que dice
+que no puede. Cubre los tres modos de fallar —referencia circular,
+`undefined`, JSON que no parsea— y se aplica **sobre lo que realmente se
+va a escribir, ya fusionado**. Validar el fragmento y grabar el compuesto
+es validar otra cosa.
+
+Si no pasa, no se copia, no se guarda y no se publica. Copiar un JSON
+roto al portapapeles es peor que no copiar: termina pegado en el repo.
+
+La rama de `undefined` no es defensiva: `JSON.stringify(undefined)`
+devuelve `undefined` y no un string, y es exactamente el caso que rompió
+publicar.
+
+### 4 · PUBLICAR BORRABA LAS ZONAS · el bug que destapó la auditoría
+
+`configPublicar()` hacía
+`JSON.parse(SGADD_CONFIG.exportar(b)).competencia`, y `exportar()`
+devuelve `{ordenTabla, formatos, porTramo}` — **no tiene esa clave**. O
+sea que viajaba `competencia: undefined`, el servidor lo entendía como
+«vaciar» (que es una rama legítima) y el botón **borraba** las zonas en
+vez de publicarlas.
+
+Y contestaba `ok: true`. El admin publicaba, veía «Publicado», y el
+cliente se quedaba sin colores en la tabla.
+
+Guardar y publicar arman ahora el bloque en **un solo lugar**
+(`configBloqueAGrabar()`): dos caminos que escriben lo mismo terminan
+divergiendo, que es el bug que ya tuvo el rol funcional (punto 8).
+
+**Este defecto no lo caza un grep**: la línea se leía perfecta. Hay que
+ejercer el flujo, y por eso el test corre la pantalla en un `vm` con un
+espía sobre `guardarCatalogo` y verifica el efecto en el catálogo.
+
+### 5 · Aislamiento por categoría, en los DOS lados
+
+Reconquista corre Primera, U21 y U23, y como las claves de `porTramo`
+son `TORNEO|FASE` —y `GENERAL|REGULAR` es lo más común de todo— las tres
+compartían zonas sin que nadie lo pidiera.
+
+El motor ya sabía scopear (`porCategoria`, punto 17). Faltaban las dos
+mitades que lo vuelven real:
+
+- **En el cliente**, `fusionarCategoria(base, categoria, bloque)`: lo
+  editado entra en su slot y el resto del bloque viaja tal cual. Sin
+  `categoria` se reemplaza el nivel del club y **`porCategoria` se
+  conserva** — editar un nivel no es una decisión sobre el otro.
+- **En el servidor**, la acción `zonas` acepta `categoria` y escribe **un
+  solo slot**. Es la garantía que no depende de la pantalla: aunque una
+  versión vieja mandara el bloque de una categoría como si fuera el del
+  club, no puede pisar a las hermanas.
+
+Y una tercera pieza que es de producto: **la pantalla dice a quién le
+cambia las zonas lo que se está editando** («Todas las categorías del
+club (3)» / «Solo Primera»), con el conmutador para separarla. El motor
+sabía scopear y el admin no tenía cómo saber sobre qué nivel escribía.
+
+Verificado en el navegador con las tres categorías reales: separada
+Primera con 9 equipos esperados, U21 y U23 siguieron resolviendo 12 desde
+el bloque del club.
+
+### Lo que este episodio deja como regla
+
+**Un entregable que se copia y se pega tiene que ser reemplazable, no
+empalmable.** El generador estaba bien y el JSON que producía era
+válido; lo que falló fue pedirle a una persona que acertara una coma.
+Cuando el formato del entregable admite un error silencioso, el error
+llega — y acá llegó por la vía más difícil de auditar, que es un commit
+hecho fuera del flujo de trabajo del punto 11.

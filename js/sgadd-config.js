@@ -587,8 +587,132 @@ const SGADD_CONFIG = (function () {
       ordenTabla: cfg.ordenTabla,
       formatos: formatos,
       porTramo: cfg.porTramo,
+      /* `porCategoria` viaja con el bloque. Omitirlo era el modo
+         silencioso de borrarle las zonas a las OTRAS categorias: se
+         exportaba el club entero desde la pantalla de una sola. */
+      ...(cfg.porCategoria && Object.keys(cfg.porCategoria).length
+          ? { porCategoria: exportarCategorias(cfg.porCategoria) } : {}),
     }, null, 2);
   }
+
+  /* Cada categoria se exporta con el MISMO serializador que el club, asi
+     no hay dos formas de escribir el mismo bloque. */
+  function exportarCategorias(mapa) {
+    const out = {};
+    Object.keys(mapa).forEach(id => {
+      const b = mapa[id];
+      if (b && typeof b === 'object') out[id] = JSON.parse(exportar(b));
+    });
+    return out;
+  }
+
+  /* ===================================================================
+     LA GUARDA · nada sale de aca sin sobrevivir a JSON.parse()
+
+     El 2026-09-01 el JSON de Reconquista quedo sin la coma entre
+     `competencia` y `planillas` y el archivo entero dejo de parsear. El
+     sintoma fue el peor posible: el panel NO se cayo, se fue a los
+     valores por defecto, asi que el club estuvo viendo la marca y las
+     zonas de otro sin que nada dijera que su config estaba rota.
+
+     El empalme lo hizo una persona, no el generador — pero eso es
+     exactamente el argumento para la guarda: lo que se copia y se pega a
+     mano tiene que salir de aca ya validado y COMPLETO, no como un
+     fragmento al que hay que acertarle la coma. Ver `exportarArchivo`.
+
+     Devuelve {ok, texto, error} y NUNCA lanza: el que llama decide si
+     avisa o aborta, y una pantalla de configuracion que revienta al
+     copiar es peor que una que dice que no puede.
+     =================================================================== */
+  function serializar(valor) {
+    let texto;
+    try { texto = JSON.stringify(valor, null, 2); }
+    catch (e) {
+      /* Referencias circulares y BigInt entran por aca. */
+      return { ok: false, texto: null, error: 'No se pudo serializar: ' + e.message };
+    }
+    /* `JSON.stringify(undefined)` devuelve undefined, no un string: sin
+       esta rama el `JSON.parse` de abajo tira un error que no explica
+       nada. Es justo el caso que rompio publicar. */
+    if (typeof texto !== 'string') {
+      return { ok: false, texto: null,
+        error: 'El objeto a exportar esta vacio o es undefined.' };
+    }
+    try { JSON.parse(texto); }
+    catch (e) {
+      return { ok: false, texto: null, error: 'El JSON generado no parsea: ' + e.message };
+    }
+    return { ok: true, texto: texto, error: null };
+  }
+
+  /**
+   * EL BLOQUE DE UNA CATEGORIA, FUSIONADO SOBRE EL DEL CLUB.
+   *
+   * Publicar desde la pantalla de una categoria no puede pisar a las
+   * otras, y la unica forma de garantizarlo es no mandar nunca el bloque
+   * de una sola como si fuera el del club entero.
+   *
+   * Con `categoria`, lo editado entra en `porCategoria[categoria]` y todo
+   * lo demas —el bloque del club y las categorias hermanas— viaja tal
+   * cual. Sin `categoria` se reemplaza el nivel del club y `porCategoria`
+   * SE CONSERVA: son dos niveles distintos y editar uno no es una
+   * decision sobre el otro.
+   */
+  function fusionarCategoria(base, categoria, bloque) {
+    const previo = (base && typeof base === 'object') ? JSON.parse(JSON.stringify(base)) : {};
+    const nuevo = (bloque && typeof bloque === 'object') ? JSON.parse(JSON.stringify(bloque)) : null;
+    if (!categoria) {
+      const hermanas = previo.porCategoria;
+      const out = nuevo || {};
+      if (hermanas && Object.keys(hermanas).length) out.porCategoria = hermanas;
+      else delete out.porCategoria;
+      return out;
+    }
+    /* Una categoria no lleva su propio `porCategoria`: la recursion es de
+       un nivel y anidar mas seria una jerarquia que nadie declara. */
+    if (nuevo) delete nuevo.porCategoria;
+    const mapa = (previo.porCategoria && typeof previo.porCategoria === 'object')
+      ? previo.porCategoria : {};
+    if (nuevo) mapa[categoria] = nuevo;
+    else delete mapa[categoria];        // vaciar una categoria la devuelve al club
+    if (Object.keys(mapa).length) previo.porCategoria = mapa;
+    else delete previo.porCategoria;
+    return previo;
+  }
+
+  /**
+   * EL ARCHIVO ENTERO, no un fragmento.
+   *
+   * El export daba el bloque suelto para empalmar a mano al lado de
+   * `planillas`, y acertarle a la coma quedaba del lado del que pega. Ya
+   * fallo una vez y no hay motivo para volver a pedirlo: se devuelve
+   * `clubes/<club>.json` completo, listo para reemplazar, con el bloque
+   * ya en su lugar y el orden de claves del archivo original intacto.
+   *
+   * Devuelve {ok, texto, error} igual que `serializar`.
+   */
+  function exportarArchivo(jsonClub, competencia) {
+    if (!jsonClub || typeof jsonClub !== 'object' || Array.isArray(jsonClub)) {
+      return { ok: false, texto: null,
+        error: 'No se pudo leer el JSON del club, asi que no hay archivo que exportar.' };
+    }
+    const vale = !!(competencia && typeof competencia === 'object'
+      && Object.keys(competencia).length);
+    const out = {};
+    let puesto = false;
+    Object.keys(jsonClub).forEach(k => {
+      if (k === 'competencia') {
+        /* Se reemplaza EN SU LUGAR para no reordenar el archivo: un diff
+           de git que mueve treinta lineas esconde el cambio real. */
+        if (vale) { out.competencia = competencia; puesto = true; }
+        return;
+      }
+      out[k] = jsonClub[k];
+    });
+    if (vale && !puesto) out.competencia = competencia;
+    return serializar(out);
+  }
+
 
   /* ===================================================================
      PRECONFIGURACIÓN Y CERTIFICACIÓN
@@ -1184,6 +1308,7 @@ const SGADD_CONFIG = (function () {
     TONOS, TONO_POR_DEFECTO, TRAMO_CUALQUIERA, tono,
     parsear, formatoDeTramo, zonaDePuesto, zonasDeTabla, leyenda, validar,
     leerOverride, guardarOverride, borrarOverride, vigente, exportar, claveAlmacen,
+    serializar, fusionarCategoria, exportarArchivo,
     clubActivo, resolver,
     /* Preconfiguración y certificación. Ver el bloque de arriba. */
     ESTADOS, parsearProyeccion, proyeccion, categorias, sugerirClave,

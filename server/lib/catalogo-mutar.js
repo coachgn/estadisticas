@@ -286,13 +286,65 @@ function plan(cat, d) {
  * Un bloque VACIO borra lo publicado y devuelve el club al JSON del repo.
  * Es la unica forma de deshacer sin tener que adivinar como era antes.
  */
+/* =====================================================================
+   AISLAMIENTO POR CATEGORIA
+
+   Un club corre varias categorias —Reconquista tiene Primera, U21 y
+   U23— y cada una puede declarar sus propias zonas en
+   `competencia.porCategoria[<planilla>]`.
+
+   CON `categoria`, ACA SE ESCRIBE UN SOLO SLOT. El resto del bloque
+   —el nivel del club y las categorias hermanas— se conserva tal cual,
+   lea lo que lea el cliente que mando el pedido. Es la garantia del
+   lado del servidor: aunque una pantalla vieja mandara el bloque de una
+   categoria como si fuera el del club, no podria pisar a las otras.
+
+   Sin `categoria` se reemplaza el nivel del club y `porCategoria` SE
+   CONSERVA: editar un nivel no es una decision sobre el otro.
+   ===================================================================== */
 function zonas(cat, d) {
   const v = d || {};
   const nuevo = copiar(cat);
   if (!nuevo[v.club]) return malo('Ese club no esta en el catalogo.');
 
+  const categoria = (typeof v.categoria === 'string' && v.categoria.trim())
+    ? v.categoria.trim() : null;
+  const previo = (nuevo[v.club].competencia && typeof nuevo[v.club].competencia === 'object')
+    ? nuevo[v.club].competencia : null;
+
   const bloque = v.competencia;
-  if (bloque === null || bloque === undefined || bloque === '') {
+  const vacio = bloque === null || bloque === undefined || bloque === '';
+
+  if (categoria) {
+    if (!previo) {
+      /* Sin bloque del club no hay donde colgar la categoria. Crear uno
+         vacio dejaria un `porCategoria` huerfano que ninguna pantalla
+         sabe leer. */
+      return malo('El club todavia no tiene bloque de competencia: publica primero el del club.');
+    }
+    const mapa = (previo.porCategoria && typeof previo.porCategoria === 'object')
+      ? previo.porCategoria : {};
+    if (vacio) {
+      delete mapa[categoria];        // vaciarla la devuelve al bloque del club
+    } else {
+      if (typeof bloque !== 'object' || Array.isArray(bloque)) {
+        return malo('El bloque de zonas tiene que ser un objeto.');
+      }
+      if (!bloque.formatos || typeof bloque.formatos !== 'object'
+          || !Object.keys(bloque.formatos).length) {
+        return malo('El bloque no declara ningun formato. Para dejarlo sin zonas, publicalo vacio.');
+      }
+      const propio = JSON.parse(JSON.stringify(bloque));
+      delete propio.porCategoria;    // la recursion es de UN nivel
+      mapa[categoria] = propio;
+    }
+    if (Object.keys(mapa).length) previo.porCategoria = mapa;
+    else delete previo.porCategoria;
+    nuevo[v.club].competencia = previo;
+    return { ok: true, catalogo: nuevo, categoria: categoria, borrado: vacio };
+  }
+
+  if (vacio) {
     delete nuevo[v.club].competencia;
     return { ok: true, catalogo: nuevo, borrado: true };
   }
@@ -309,7 +361,16 @@ function zonas(cat, d) {
   if (!tieneFormatos && !tieneCategorias) {
     return malo('El bloque no declara ningun formato. Para dejarlo sin zonas, publicalo vacio.');
   }
-  nuevo[v.club].competencia = bloque;
+  /* Las categorias hermanas se conservan aunque el que publica no las
+     haya mandado: la pantalla edita un nivel y no puede decidir sobre el
+     otro. Si el bloque entrante YA trae `porCategoria`, ese manda —es
+     una publicacion del bloque completo, no de un nivel suelto. */
+  const compuesto = JSON.parse(JSON.stringify(bloque));
+  const hermanas = previo && previo.porCategoria;
+  if (!compuesto.porCategoria && hermanas && Object.keys(hermanas).length) {
+    compuesto.porCategoria = hermanas;
+  }
+  nuevo[v.club].competencia = compuesto;
   return { ok: true, catalogo: nuevo };
 }
 
