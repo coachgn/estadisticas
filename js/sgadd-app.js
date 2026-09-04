@@ -40,13 +40,82 @@ const SGADD_APP = (function () {
 
   function planillaActual() { return SGADD.planilla(estado.planillaId); }
 
+/* =====================================================================
+   LA CATEGORÍA SOBREVIVE AL F5
+
+   Un club multicategoría —Reconquista corre Primera, U21 y U23— hace que
+   el DT trabaje media hora en una y al recargar aparezca en otra: el
+   arranque caía a la PRIMERA ACTIVA del catálogo.
+
+   POR QUÉ NO VA EN LA URL, que era la otra opción del pedido. El hash ya
+   es la ruta de la app y las secciones SGADD (`#/<planilla>/…`) SÍ lo
+   llevan; el problema es que el Panel Master, Principal y el Diagnóstico
+   escriben `#<seccion>` a secas —`#configuracion` parsea como
+   `planilla: 'configuracion'`, que no existe y por eso degrada bien—.
+   Darles ruta completa obliga a meter esos nombres donde `Ruta.parse()`
+   decide qué formato es un hash, y eso toca la lectura de los links
+   VIEJOS que el cuerpo técnico ya tiene guardados (punto 16). No vale el
+   riesgo para recordar una preferencia de una persona.
+
+   Así que va en `localStorage`, y el orden de precedencia es el que
+   importa:
+
+     1. la RUTA, si trae una planilla válida — un link compartido tiene
+        que abrir donde dice el link, no donde estaba el que lo abre;
+     2. lo último que ESTE usuario eligió en ESTE club;
+     3. la primera activa, como siempre.
+
+   LA CLAVE ES POR CLUB. Con una sola, entrar con `?club=jujuy` intentaría
+   abrir una planilla de Reconquista: no existe en ese catálogo, así que
+   degradaría bien, pero es un cruce que no tiene por qué existir.
+   ===================================================================== */
+
+  const CLAVE_CATEGORIA = 'sgadd.categoria.';
+
+  function clubId() {
+    try {
+      if (typeof CLUB !== 'undefined' && CLUB.estado && CLUB.estado.id) return CLUB.estado.id;
+    } catch (e) { /* CLUB puede no haber cargado todavía */ }
+    return 'default';
+  }
+
+  function almacen() {
+    try {
+      if (typeof localStorage === 'undefined' || !localStorage) return null;
+      return localStorage;
+    } catch (e) { return null; }   // modo privado tira al leer, no al usar
+  }
+
+  /** Lo elegido A MANO, igual que `recordarTramo`: guardar el default
+      congelaría el criterio de arranque y dejaría de correr. */
+  function recordarCategoria(id) {
+    const ls = almacen();
+    if (!ls || !id) return false;
+    try { ls.setItem(CLAVE_CATEGORIA + clubId(), id); return true; }
+    catch (e) { return false; }    // cuota llena: se degrada, no rompe
+  }
+
+  function categoriaRecordada() {
+    const ls = almacen();
+    if (!ls) return null;
+    let id = null;
+    try { id = ls.getItem(CLAVE_CATEGORIA + clubId()); } catch (e) { return null; }
+    /* Se valida contra el catálogo de HOY: una planilla que se dio de baja
+       —o que quedó sin `sheetId`— no puede dejar al DT en una sección
+       vacía por algo que eligió la semana pasada. */
+    const p = id ? SGADD.planilla(id) : null;
+    return (p && p.activo) ? id : null;
+  }
+
   function inicializar() {
     if (estado.planillaId) return;
     const r = SGADD.Ruta.parse(window.location.hash);
     const activas = SGADD.planillasVisibles({});
-    estado.planillaId = (r.planilla && SGADD.planilla(r.planilla) && SGADD.planilla(r.planilla).activo)
-      ? r.planilla
-      : (activas.length ? activas[0].id : null);
+    const deRuta = (r.planilla && SGADD.planilla(r.planilla) && SGADD.planilla(r.planilla).activo)
+      ? r.planilla : null;
+    estado.planillaId = deRuta
+      || categoriaRecordada()
+      || (activas.length ? activas[0].id : null);
     if (r.fase) estado.fase = r.fase;
     if (r.torneo) estado.torneo = r.torneo;
   }
@@ -265,6 +334,9 @@ const SGADD_APP = (function () {
   function cambiarPlanilla(id) {
     if (id === estado.planillaId) return;
     estado.planillaId = id;
+    /* Se recuerda SOLO acá: esta función es el gesto explícito del DT
+       eligiendo en el selector. */
+    recordarCategoria(id);
     /* El torneo es del libro anterior: se vuelve a resolver al cargar. La
        preferencia NO se borra — es justo lo que hay que conservar. */
     estado.hojas = null; estado.idx = null; estado.torneo = null;
@@ -447,6 +519,7 @@ const SGADD_APP = (function () {
     tramoPreferido, recordarTramo,
     estado, inicializar, cargar, reindexar, cambiarPlanilla, cambiarFase, cambiarTorneo, cambiarTramo,
     aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, onCambio,
+    recordarCategoria, categoriaRecordada,
     get idx() { return estado.idx; },
   };
 })();

@@ -994,7 +994,10 @@ const SGADD_BUZON = (function () {
      TOAST · feedback inmediato
      ===================================================================== */
 
-  function toast(texto, tono) {
+  /* `ms` es opcional y existe para los avisos que hay que LEER: el de
+     publicar nombra la categoria y el servidor, y en 2,6 s no se llega.
+     Los del buzon, que son de dos palabras, se quedan con el default. */
+  function toast(texto, tono, ms) {
     let cont = document.getElementById('toastSlot');
     if (!cont) {
       cont = document.createElement('div');
@@ -1013,7 +1016,7 @@ const SGADD_BUZON = (function () {
     setTimeout(() => {
       el.classList.add('toast-out');
       setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 220);
-    }, 2600);
+    }, Math.max(1200, ms || 2600));
   }
 
   return {

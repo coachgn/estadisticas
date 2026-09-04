@@ -66,8 +66,63 @@ const CONFIGUI = {
 function configClubId() { return SGADD_CONFIG.clubActivo(); }
 
 /** Carga el borrador desde el override local o desde el JSON del club. */
+/* =====================================================================
+   EL ESTADO DERIVADO SE TIRA AL CAMBIAR DE CATEGORÍA
+
+   `configCargarBorrador()` sale temprano si ya hay borrador —para no
+   pisar lo que el DT está editando en cada repintado— y `buildConfiguracion`
+   la llama SIN forzar. Consecuencia: al pasar de Primera a U21 el estado
+   global cambiaba de planilla y esta pantalla se quedaba con TODO lo
+   derivado de la anterior.
+
+   Medido antes del fix, parado en U21:
+
+     estado.planillaId   naranja-u21-clausura-2026   ← el global sí cambió
+     CONFIGUI.categoria  primera-clausura-2026       ← viejo
+     CONFIGUI.propia     true                        ← viejo (U21 hereda)
+     equiposEsperados    12                          ← el formato de Primera
+     la tarjeta decía    «Solo Primera · Vuelta 2026»
+
+   Y la validación cruzaba los 12 equipos declarados por Primera contra
+   los que trae el libro de U21, o sea dos categorías distintas en la
+   misma frase.
+
+   NINGUNA de esas cadenas estaba hardcodeada: todas interpolan
+   `CONFIGUI.categoria`. Lo que estaba viejo era la variable, así que el
+   arreglo va en el único lugar por donde pasa —el punto de entrada del
+   borrador— y no en cada texto.
+   ===================================================================== */
+
+/** Tira TODO lo derivado de la categoría. Lo que no se limpia acá es lo
+    que se ve viejo en pantalla. */
+function resetEstadoCategoria() {
+  CONFIGUI.borrador = null;
+  CONFIGUI.completo = null;
+  CONFIGUI.categoria = null;
+  CONFIGUI.propia = false;
+  CONFIGUI.origen = 'ninguno';
+  CONFIGUI.sucio = false;
+  CONFIGUI.formatoSel = null;
+  /* El panel de export queda abierto mostrando el archivo de la categoría
+     anterior, y ése es de los residuos caros: se copia y se commitea. */
+  CONFIGUI.exportando = false;
+}
+
 function configCargarBorrador(forzar) {
-  if (CONFIGUI.borrador && !forzar) return;
+  /* La categoría la resuelve el motor, no se deduce acá: dos formas de
+     deducirla terminan leyendo cosas distintas (punto 17). */
+  const actual = SGADD_CONFIG.categoriaActiva();
+  const cambio = !!CONFIGUI.borrador && actual !== CONFIGUI.categoria;
+  if (CONFIGUI.borrador && !forzar && !cambio) return;
+  if (cambio) {
+    /* Si había cambios sin guardar eran de la OTRA categoría, así que se
+       descartan — pero se avisa. Perderlos en silencio es peor que
+       perderlos: el DT vuelve, no los encuentra y no sabe qué pasó. */
+    const perdidos = CONFIGUI.sucio;
+    const deQuien = configNombreCategoria(CONFIGUI.categoria);
+    resetEstadoCategoria();
+    if (perdidos) configToast('Se descartaron los cambios sin guardar de ' + deQuien, 'aviso');
+  }
   const jsonClub = (typeof CLUB !== 'undefined' && CLUB.cfg) ? CLUB.cfg : null;
   const v = SGADD_CONFIG.vigente(jsonClub, configClubId());
   /* EL BLOQUE COMPLETO DEL CLUB se guarda aparte: es sobre él que se
@@ -276,6 +331,12 @@ function configPublicar() {
   }
   const bloque = g.bloque;
 
+  /* Se resuelven ANTES de disparar: para cuando la promesa vuelva, el
+     repintado ya pudo haber cambiado el estado de la pantalla. */
+  const alcance = CONFIGUI.propia ? CONFIGUI.categoria : null;
+  const nombreClub = (typeof CLUB !== 'undefined' && CLUB.cfg && CLUB.cfg.nombre)
+    ? CLUB.cfg.nombre : configClubId();
+
   const lanzar = () => {
     configAvisar('Publicando…', true);
     /* La `categoria` viaja para que el servidor escriba SOLO ese slot y
@@ -290,15 +351,21 @@ function configPublicar() {
         if (typeof SGADD_CLIENTES !== 'undefined' && r.clubes) {
           SGADD_CLIENTES.estado.clubes = r.clubes;
         }
-        configAvisar('Publicado. El cliente lo ve en su próxima carga.', true);
         /* Y se repinta lo que depende de las zonas, para que el admin vea
            lo mismo que va a ver el club sin recargar. */
         if (typeof SGADD_APP !== 'undefined') { try { SGADD_APP.reindexar(); } catch (e) {} }
         configPintar();
+        /* EL ORDEN IMPORTA: primero se repinta y DESPUÉS se avisa. Al revés,
+           el repintado se lleva puesto el nodo del aviso. */
+        const donde = alcance ? configNombreCategoria(alcance) : nombreClub;
+        configToast('Configuración de ' + donde + ' publicada en el servidor', 'ok', 5000);
+        configAvisar('Publicado. El cliente lo ve en su próxima carga.', true);
       })
       .catch((e) => {
-        configAvisar('No se pudo publicar: ' + (e.message || 'error del servidor'), false);
         configPintar();
+        const detalle = e.message || 'error del servidor';
+        configToast('No se pudo publicar: ' + detalle, 'error', 6000);
+        configAvisar('No se pudo publicar: ' + detalle, false);
       });
   };
 
@@ -471,6 +538,35 @@ function configExportarToggle() {
         () => configAvisar('Copiado: es el archivo entero, reemplazalo.', true), () => {});
     }
   }
+}
+
+/* =====================================================================
+   EL TOAST · el aviso que sobrevive al repintado
+
+   `configAvisar()` escribe en `#configAviso`, que vive DENTRO de
+   `#view-root`. Publicar hacía:
+
+       configAvisar('Publicado…');
+       configPintar();            ← reconstruye #view-root entero
+
+   o sea que el mensaje se borraba en la línea siguiente a escribirlo. El
+   admin tocaba «Publicar», el modal se cerraba y no pasaba nada visible:
+   ni éxito ni error.
+
+   Se arregla con las dos mitades. El toast del buzón se cuelga de
+   `document.body`, así que ningún repintado de sección lo toca, y ya
+   trae `role="status"` + `aria-live="polite"` (punto 14). Se REUSA en vez
+   de escribir un segundo: dos implementaciones del mismo aviso terminan
+   viéndose distinto, que es el bug que ya tuvo el rol funcional.
+   ===================================================================== */
+function configToast(txt, tono, ms) {
+  try {
+    if (typeof SGADD_BUZON !== 'undefined' && SGADD_BUZON.toast) {
+      SGADD_BUZON.toast(txt, tono || 'ok', ms);
+      return true;
+    }
+  } catch (e) { /* el buzón es una mejora, no una dependencia dura */ }
+  return false;
 }
 
 function configAvisar(txt, ok) {

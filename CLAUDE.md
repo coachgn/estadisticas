@@ -40,6 +40,7 @@ node test-acumulacion.js   #  42 tests · la suma entre tramos · REGRESIÓN, no
 node test-resiliencia.js   #  50 tests · rotación del token, KV caído, el tramo que se conserva
 node test-jsonclub.js      # 105 tests · los JSON de club, el validador, el aislamiento y publicar
 node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
+node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -51,7 +52,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**3640 tests en total. Todos tienen que dar verde antes de commitear.**
+**3697 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -5854,3 +5855,127 @@ que está en otra pestaña.
 Antes leían `r.tipo`; si el gráfico y la tabla de la misma pestaña
 salieran de referencias distintas, la pestaña se contradiría sola. El
 tooltip de la barra gris dice de qué muestra salió.
+
+---
+
+## 43. EL ESTADO REACTIVO DEL PANEL MASTER
+
+Cuatro defectos reportados desde producción, y **dos de los cuatro eran
+el mismo**.
+
+### 1 · La categoría no sobrevivía al F5
+
+`inicializar()` lee la planilla de la RUTA, y las secciones SGADD
+(`#/<planilla>/…`) sí la llevan. El problema es el Panel Master, que
+—como Principal y el Diagnóstico— escribe `#<seccion>` a secas.
+`#configuracion` parsea como `planilla: 'configuracion'`, que no existe
+en el catálogo, así que degrada a **la primera activa**: el DT trabajaba
+media hora en U21, recargaba y aparecía en Primera.
+
+**No se arregló con la URL, que era la otra opción del pedido.** Darle
+ruta completa a esas secciones obliga a meter sus nombres donde
+`Ruta.parse()` decide qué formato tiene un hash, y eso toca la lectura de
+los links VIEJOS que el cuerpo técnico ya tiene guardados (punto 16). No
+vale el riesgo para recordar la preferencia de una persona.
+
+Va en `localStorage` bajo `sgadd.categoria.<club>`, y **el orden de
+precedencia es lo que importa**:
+
+```
+1. la RUTA, si trae una planilla válida   ← un link abre donde dice el link
+2. lo último que ESTE usuario eligió       ← en ESTE club
+3. la primera activa                       ← como siempre
+```
+
+- **Se graba SOLO en `cambiarPlanilla`**, que es el gesto explícito del
+  DT en el selector. Es la misma regla que `recordarTramo` (punto 40):
+  grabar el default congelaría el criterio de arranque.
+- **Abrir un link NO pisa el recuerdo.** Ver el link de otro no es
+  cambiar de categoría.
+- **La clave es por club**, y el valor se valida contra el catálogo de
+  HOY: una planilla dada de baja o que ya no existe degrada a la primera
+  activa en vez de dejar la pantalla vacía.
+
+### 2 y 4 · El estado contaminado, que era un solo defecto
+
+`buildConfiguracion()` llama a `configCargarBorrador()` **sin forzar**, y
+esa función sale temprano si ya hay borrador — cosa que tiene que seguir
+haciendo, porque es lo que permite tipear sin perder lo escrito en cada
+repintado. Consecuencia: al cambiar de categoría, el estado global se
+movía y esta pantalla se quedaba con todo lo derivado de la anterior.
+
+Medido parado en U21, antes del fix:
+
+```
+estado.planillaId   naranja-u21-clausura-2026   ← el global sí cambió
+CONFIGUI.categoria  primera-clausura-2026       ← viejo
+CONFIGUI.propia     true                        ← viejo (U21 hereda)
+equiposEsperados    12                          ← el formato de Primera
+la tarjeta decía    «Solo Primera · Vuelta 2026»
+```
+
+Y la validación cruzaba los equipos declarados por **Primera** contra los
+que trae el libro de **U21**: dos categorías distintas en la misma frase.
+
+**NINGUNA de esas cadenas estaba hardcodeada** —todas interpolan
+`CONFIGUI.categoria` y los nombres salen de `SGADD.CATALOGO.planillas`,
+la misma fuente que el selector—. Lo que estaba viejo era la variable, así
+que el punto 4 del reporte es el punto 2 visto desde la pantalla, y el
+arreglo va en el único lugar por donde pasa: el punto de entrada del
+borrador. Hay un test que igual verifica que no aparezca un nombre de
+categoría literal en la UI, porque ese hardcodeo no daría ningún síntoma
+hasta que alguien lo mire.
+
+`resetEstadoCategoria()` tira `borrador`, `completo`, `categoria`,
+`propia`, `origen`, `sucio`, `formatoSel` y **`exportando`** — ése último
+es de los residuos caros: deja el panel de export abierto mostrando el
+archivo de la OTRA categoría, y eso se copia y se commitea.
+
+**Los cambios sin guardar se descartan, pero se avisa.** Eran de la otra
+categoría, así que descartarlos es correcto; perderlos en silencio no,
+porque el DT vuelve, no los encuentra y no sabe qué pasó.
+
+### 3 · Publicar no avisaba nada, y el orden era el motivo
+
+```js
+configAvisar('Publicado…');   // escribe DENTRO de #view-root
+configPintar();               // …y lo reconstruye entero
+```
+
+El mensaje se borraba en la línea siguiente a escribirse. El admin tocaba
+«Publicar», el modal se cerraba y no pasaba nada visible: ni éxito ni
+error.
+
+Se arregla con las dos mitades:
+
+- **Se repinta ANTES de avisar**, así el nodo del aviso inline es nuevo y
+  el texto sobrevive.
+- **Y va un toast**, que se cuelga de `document.body` y por lo tanto
+  ningún repintado de sección lo toca. Se **reusa el del buzón** en vez de
+  escribir un segundo: dos implementaciones del mismo aviso terminan
+  viéndose distinto, que es el bug que ya tuvo el rol funcional (punto 8).
+
+El toast nombra la categoría publicada y dice que subió al servidor, y en
+el fallo trae el motivo que devolvió el servidor. **El nombre se resuelve
+ANTES de disparar el pedido**: para cuando la promesa vuelve, el repintado
+ya pudo haber cambiado el estado de la pantalla.
+
+`toast()` acepta ahora una duración opcional: el aviso de publicar es una
+frase larga y en los 2,6 s del default no se llega a leer. Los del buzón,
+que son de dos palabras, se quedan con el default.
+
+### Los tests se verificaron AL REVÉS
+
+No alcanza con que pasen: se revirtió cada arreglo por separado y se
+comprobó que el test lo caza — **2, 11 y 5 fallas** respectivamente. Un
+test de regresión que no falla sin el arreglo no está probando nada.
+
+### Y una lección sobre los tests que miden por distancia
+
+`test-confirmar.js` verificaba que `configPublicar` abriera el modal con
+`/function configPublicar[\s\S]{0,1600}SGADD_CONFIRMAR\.abrir\(/`. Los
+comentarios que sumó este arreglo empujaron la llamada más allá de esos
+1600 caracteres y el test se puso en rojo **sin que la propiedad hubiera
+cambiado**. Ahora recorta el CUERPO de la función y busca ahí dentro: una
+ventana fija de caracteres es una bomba de tiempo en un archivo que se
+edita.

@@ -124,8 +124,14 @@ check('sin el módulo, el hub sigue andando',
   /typeof SGADD_CONFIRMAR === 'undefined'\) return aplicarClub/.test(hub));
 
 const cui = fs.readFileSync('./js/sgadd-configui.js', 'utf8');
+/* Se recorta el CUERPO de la funcion en vez de mirar N caracteres
+   desde su nombre: con una ventana fija, agregar un comentario
+   adentro empuja lo que se busca fuera del rango y el test se pone
+   en rojo sin que la propiedad haya cambiado. Ya paso. */
+const cuerpoPublicar = cui.slice(cui.indexOf('function configPublicar'),
+                                 cui.indexOf('function configRestablecer'));
 check('publicar también confirma',
-  /function configPublicar[\s\S]{0,1600}SGADD_CONFIRMAR\.abrir\(/.test(cui));
+  /SGADD_CONFIRMAR\.abrir\(/.test(cuerpoPublicar));
 check('y muestra el resumen de zonas, no una lista de campos',
   /zonas: SGADD_CONFIRMAR\.resumenZonas\(b\)/.test(cui));
 /* Publicar es de ADMIN y necesita backend: sin las dos cosas, el botón no
