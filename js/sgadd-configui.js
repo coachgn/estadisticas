@@ -62,6 +62,11 @@ const CONFIGUI = {
   manuales: null,
   manualNuevo: null,
   manualAbierto: false,
+  /* A qué TRAMO va el partido que se está cargando. Arranca en el
+     abierto en la barra, pero se puede cambiar sin salir del formulario:
+     si no, para cargar uno de la VUELTA había que ir a mover el selector
+     principal, volver, y acordarse de que lo moviste. */
+  manualTramo: null,
   propia: false,
   catSel: null,
 };
@@ -117,6 +122,7 @@ function resetEstadoCategoria() {
   CONFIGUI.manuales = null;
   CONFIGUI.manualNuevo = null;
   CONFIGUI.manualAbierto = false;
+  CONFIGUI.manualTramo = null;
 }
 
 function configCargarBorrador(forzar) {
@@ -560,6 +566,41 @@ function configEquiposDelTramo() {
   } catch (e) { return []; }
 }
 
+/**
+ * Los TRAMOS reales del libro, para el desplegable de fase.
+ *
+ * Salen de `combinacionesTorneoFase()`, la MISMA fuente que la barra: la
+ * estructura sale del dato y no se declara en ningún lado (punto 15). Un
+ * desplegable con «IDA / VUELTA / PLAYOFFS» fijas ofrecería tramos que
+ * este libro no tiene, y el partido quedaría cargado en la nada.
+ *
+ * El sintético `*TOTAL*` se excluye: no es un tramo donde se juegue nada,
+ * es la suma de los otros. Un partido cargado ahí se contaría dos veces o
+ * ninguna, según por dónde se mire.
+ */
+function configTramosDisponibles() {
+  try {
+    const hojas = SGADD_APP.estado.hojas;
+    if (!hojas) return [];
+    return SGADD.combinacionesTorneoFase(hojas)
+      .filter(t => String(t.torneo || '').indexOf('*') === -1);
+  } catch (e) { return []; }
+}
+
+/** El tramo al que va el partido: el elegido, o el abierto en la barra. */
+function configManualTramoDestino() {
+  if (CONFIGUI.manualTramo) return CONFIGUI.manualTramo;
+  return configTramoActual();
+}
+
+function configManualElegirTramo(id) {
+  CONFIGUI.manualTramo = id || null;
+  /* Cambiar de tramo cambia QUÉ partidos se están editando: hay que
+     releer la lista o se publicaría la del tramo anterior sobre éste. */
+  configManualesCargar(true);
+  configPintar();
+}
+
 function configManualesCargar(forzar) {
   if (CONFIGUI.manuales && !forzar) return;
   CONFIGUI.manuales = [];
@@ -568,7 +609,7 @@ function configManualesCargar(forzar) {
     const club = (SGADD_CLIENTES.estado.clubes || [])
       .filter(c => c.slug === clubId || c.id === clubId)[0];
     const mapa = club && club.partidosManuales && club.partidosManuales[CONFIGUI.categoria];
-    const t = configTramoActual();
+    const t = configManualTramoDestino();
     if (mapa && t && Array.isArray(mapa[t])) {
       CONFIGUI.manuales = JSON.parse(JSON.stringify(mapa[t]));
     }
@@ -635,13 +676,73 @@ function configManualToggle() {
   configPintar();
 }
 
+/** Clave estable de un partido, para poder difear dos listas. */
+function configManualClave(p) {
+  return [p.fecha, p.local, p.puntosLocal, p.visitante, p.puntosVisitante].join('|');
+}
+
+/** Lo que ya está publicado en ESE tramo, según el catálogo. */
+function configManualesPublicados(tramo) {
+  try {
+    const clubId = configClubId();
+    const club = (SGADD_CLIENTES.estado.clubes || [])
+      .filter(c => c.slug === clubId || c.id === clubId)[0];
+    const mapa = club && club.partidosManuales && club.partidosManuales[CONFIGUI.categoria];
+    return (mapa && Array.isArray(mapa[tramo])) ? mapa[tramo] : [];
+  } catch (e) { return []; }
+}
+
+/**
+ * El diff para el modal, en el formato que el modal entiende.
+ *
+ * ESTO ERA UN BUG: se le pasaba una lista de STRINGS por el campo
+ * `zonas`, que espera objetos con `{label, zonas:[…]}`. `bloqueZonas`
+ * reventaba con «cannot read length of undefined» adentro de `abrir()`,
+ * así que el modal NO se pintaba y no se mandaba nada — el botón no hacía
+ * absolutamente nada y no dejaba ni un error visible. El campo correcto
+ * es `cambios`, que es un antes→después.
+ */
+function configManualesDiff(publicados, nuevos) {
+  const antes = new Map((publicados || []).map(p => [configManualClave(p), p]));
+  const ahora = new Map((nuevos || []).map(p => [configManualClave(p), p]));
+  const filas = [{
+    label: 'Partidos', antes: String(antes.size), despues: String(ahora.size),
+  }];
+  const texto = (p) => (p.fecha || '—') + ' · ' + p.local + ' ' + p.puntosLocal
+    + '-' + p.puntosVisitante + ' ' + p.visitante;
+  ahora.forEach((p, k) => {
+    if (!antes.has(k)) filas.push({ label: 'Se agrega', antes: '—', despues: texto(p) });
+  });
+  antes.forEach((p, k) => {
+    if (!ahora.has(k)) filas.push({ label: 'Se quita', antes: texto(p), despues: '—' });
+  });
+  return filas;
+}
+
 /** Publica la lista del tramo. Mismo circuito que las zonas. */
 function configManualesPublicar() {
-  const tramo = configTramoActual();
-  if (!tramo) { configAvisar('No hay un tramo abierto: elegí uno en la barra.', false); return; }
+  const tramo = configManualTramoDestino();
+  if (!tramo) {
+    configToast('No hay una fase elegida: seleccionala en el formulario.', 'error', 5000);
+    configAvisar('No hay una fase elegida.', false);
+    return;
+  }
   configManualesCargar();
   const lista = CONFIGUI.manuales.slice();
   const nombreCat = configNombreCategoria(CONFIGUI.categoria);
+  const nombreTramo = tramo.replace('|', ' · ');
+
+  /* La misma validación que el servidor, corrida antes de salir: es más
+     barato decirle al admin qué le falta que hacerlo esperar un 400. */
+  for (let i = 0; i < lista.length; i++) {
+    const err = configManualError(lista[i]);
+    if (err) {
+      const donde = 'Partido ' + (i + 1) + ' (' + (lista[i].fecha || 'sin fecha') + '): ';
+      configToast(donde + err, 'error', 6000);
+      configAvisar(donde + err, false);
+      return;
+    }
+  }
 
   const lanzar = () => {
     configAvisar('Publicando…', true);
@@ -651,11 +752,16 @@ function configManualesPublicar() {
     }).then((r) => {
       if (typeof SGADD_CLIENTES !== 'undefined' && r.clubes) SGADD_CLIENTES.estado.clubes = r.clubes;
       if (typeof SGADD_APP !== 'undefined') { try { SGADD_APP.reindexar(); } catch (e) {} }
+      /* El orden: primero se repinta y DESPUÉS se avisa, o el repintado
+         se lleva puesto el nodo del aviso (punto 43). */
       configPintar();
-      configToast(lista.length
-        ? (lista.length + ' partido' + (lista.length === 1 ? '' : 's') + ' de ' + nombreCat
-           + ' publicado' + (lista.length === 1 ? '' : 's') + ' en el servidor')
-        : ('Se vaciaron los partidos manuales de ' + nombreCat), 'ok', 5000);
+      const msg = lista.length
+        ? ('El partido fue guardado y publicado con éxito · ' + lista.length
+           + ' partido' + (lista.length === 1 ? '' : 's') + ' en ' + nombreTramo
+           + ' de ' + nombreCat)
+        : ('Se vaciaron los partidos manuales de ' + nombreCat + ' en ' + nombreTramo);
+      configToast(msg, 'ok', 5500);
+      configAvisar(msg, true);
     }).catch((e) => {
       configPintar();
       const d = e.message || 'error del servidor';
@@ -666,17 +772,19 @@ function configManualesPublicar() {
 
   if (typeof SGADD_CONFIRMAR === 'undefined') return lanzar();
   SGADD_CONFIRMAR.abrir({
-    titulo: 'Publicar partidos sin estadísticas · ' + nombreCat,
+    titulo: 'Publicar partidos sin estadísticas · ' + nombreTramo,
     aviso: 'Suman a la tabla de posiciones que ve el cliente en su próxima carga. '
       + 'No afectan a ninguna métrica de jugadores ni avanzada de equipo.',
     confirmar: 'Publicar',
-    zonas: [lista.length + ' partido(s) en ' + tramo.replace('|', ' · ')],
+    /* `cambios` y NO `zonas`: ese campo espera objetos de formato y
+       reventaba al pintarlos, dejando el botón sin hacer nada. */
+    cambios: configManualesDiff(configManualesPublicados(tramo), lista),
     alConfirmar: lanzar,
   });
 }
-
 function configManualesHTML() {
-  const tramo = configTramoActual();
+  const tramo = configManualTramoDestino();
+  const tramos = configTramosDisponibles();
   configManualesCargar();
   const lista = CONFIGUI.manuales || [];
   const eqs = configEquiposDelTramo();
@@ -705,8 +813,16 @@ function configManualesHTML() {
   return `<div class="card rounded-xl p-4 sm:p-5 border border-hairline">
     <div class="flex items-baseline justify-between gap-3 flex-wrap mb-2">
       <h3 class="font-display uppercase tracking-wide text-sm text-ink">Partidos sin estadísticas</h3>
-      <span class="text-[10px] uppercase tracking-wider text-muted">${
-        tramo ? SGADD_UI.esc(tramo.replace('|', ' · ')) : 'sin tramo abierto'}</span>
+      ${tramos.length > 1
+        ? `<label class="flex items-center gap-2">
+            <span class="text-[10px] uppercase tracking-wider text-muted">Fase</span>
+            <select onchange="configManualElegirTramo(this.value)"
+              class="bg-surface2 border border-hairline rounded px-2 py-1 text-xs text-ink outline-none">
+              ${tramos.map(t => `<option value="${SGADD_UI.esc(t.id)}" ${
+                t.id === tramo ? 'selected' : ''}>${SGADD_UI.esc(t.label || t.id)}</option>`).join('')}
+            </select></label>`
+        : `<span class="text-[10px] uppercase tracking-wider text-muted">${
+            tramo ? SGADD_UI.esc(tramo.replace('|', ' · ')) : 'sin fase abierta'}</span>`}
     </div>
     <p class="text-[11px] text-muted mb-3 leading-snug">
       Para los partidos que GES no publica con box score. <b class="text-ink">Suman a la tabla</b>
@@ -757,7 +873,8 @@ function configManualesHTML() {
           Publicar partidos</button>
         <button onclick="configManualToggle()" class="${btn} border border-hairline text-muted hover:text-ink hover:border-ink/30">
           Cerrar</button>
-        <span class="text-[11px] text-muted">Agregar y quitar no publica nada:
+        <span class="text-[11px] text-muted">Se publica sobre la fase elegida arriba.
+          Agregar y quitar no publica nada:
           el cliente lo ve recién al tocar «Publicar partidos».</span>
       </div>`}
   </div>`;

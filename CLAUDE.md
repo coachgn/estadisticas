@@ -41,7 +41,7 @@ node test-resiliencia.js   #  50 tests · rotación del token, KV caído, el tra
 node test-jsonclub.js      # 105 tests · los JSON de club, el validador, el aislamiento y publicar
 node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
-node test-manuales.js      # 125 tests · partidos sin box score: suman a la tabla, no a las métricas
+node test-manuales.js      # 162 tests · partidos sin box score: suman a la tabla, no a las métricas
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -53,7 +53,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**3822 tests en total. Todos tienen que dar verde antes de commitear.**
+**3859 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -6030,6 +6030,50 @@ la fila lo trae calculado, pero **el orden por defecto sigue siendo
 `PCT · DIF · PF`**: meterlo en la cascada reordenaría la tabla de los tres
 clientes sin que nadie lo pidiera. Un club lo usa declarando
 `ordenTabla: ["PTS", …]`.
+
+### El botón que no hacía nada · un campo del modal con la forma equivocada
+
+`configManualesPublicar()` le pasaba al modal de confirmación una lista de
+**strings** por el campo `zonas`, que espera objetos `{label, zonas:[…]}`.
+`bloqueZonas()` reventaba con «cannot read length of undefined» **adentro
+de `abrir()`**, así que el modal no se pintaba, la petición nunca salía y
+el botón no hacía absolutamente nada — sin dejar un error visible.
+
+El campo correcto es `cambios`, que es un antes→después. Y de paso es más
+útil: ahora el modal enumera el diff real contra lo que YA está publicado
+en ese tramo (`configManualesDiff`), en vez de un cartel con el total.
+
+**El test que había no lo cazaba porque leía el fuente.** La línea se leía
+perfecta. Hay que EJERCER el modal —`abrir()` y `html()` en un `vm` con un
+DOM mínimo— que es lo que hace ahora `test-manuales.js`.
+
+### El selector de fase · elige el TRAMO destino, no un campo aparte
+
+El formulario tiene un desplegable de fase que sale de
+`combinacionesTorneoFase()` —la misma fuente que la barra— y **excluye el
+sintético `*TOTAL*`**: no es un tramo donde se juegue, y un partido
+cargado ahí se contaría dos veces o ninguna.
+
+Elegir una fase **no mueve el selector principal**: antes, para cargar un
+partido de la VUELTA había que ir a mover la barra, volver, y acordarse de
+que la moviste.
+
+**NO se agregó un campo `fase` por partido que venga del cliente.** El
+registro ya vive bajo la clave `TORNEO|FASE`, así que aceptar además un
+campo del pedido daría DOS fuentes de verdad para el mismo hecho: un
+partido guardado en `IDA|REGULAR` que dijera `fase: "VUELTA"` no se podría
+auditar contra nada, y la tabla lo contaría en IDA mientras la ficha diría
+VUELTA. Es el bug del `sheetId` en dos lados y del rol funcional en dos
+módulos, otra vez.
+
+Quedan **registrados igual** —el pedido lo pedía— pero los escribe el
+SERVIDOR derivándolos de la clave, así que no pueden divergir: lo que
+mande el cliente en `torneo` y `fase` se ignora. Hay un test que manda
+`fase: "VUELTA"` sobre el tramo `IDA|REGULAR` y exige que se guarde
+`REGULAR`.
+
+Y el filtrado sigue siendo por la CLAVE, no por ese campo:
+`manualesDelTramo()` toma solo los del tramo abierto en la barra.
 
 ### El badge
 

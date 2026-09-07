@@ -411,7 +411,21 @@ function _partidoManualValido_(p) {
 
 /* Se guarda SOLO lo que el panel usa. Un objeto entero del cliente podria
    traer cualquier cosa y el catalogo se sirve a todos los clientes. */
-function _limpiarPartidoManual_(p) {
+/* EL TORNEO Y LA FASE SE DERIVAN DE LA CLAVE, no se copian del pedido.
+
+   El partido ya vive bajo `<TORNEO|FASE>`, asi que aceptar ademas un
+   campo `fase` del cliente crearia DOS fuentes de verdad para el mismo
+   hecho: un registro guardado en `IDA|REGULAR` que dijera `fase:
+   "VUELTA"` no se podria auditar contra nada, y la tabla lo contaria en
+   IDA mientras la ficha diria VUELTA. Es el bug que este proyecto ya se
+   comio con el sheetId en dos lados y con el rol funcional en dos
+   modulos.
+
+   Se estampan igual —el pedido pidio que quedaran registrados junto a la
+   fecha y el resultado— pero los escribe el SERVIDOR desde la clave, asi
+   que no pueden divergir. Lo que mande el cliente en esos campos se
+   ignora. */
+function _limpiarPartidoManual_(p, torneo, fase) {
   const o = {
     id: String(p.id || '').trim() || ('m' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7)),
     fecha: String(p.fecha).trim(),
@@ -419,6 +433,8 @@ function _limpiarPartidoManual_(p) {
     puntosLocal: Number(p.puntosLocal),
     visitante: String(p.visitante).trim(),
     puntosVisitante: Number(p.puntosVisitante),
+    torneo: torneo,
+    fase: fase,
   };
   const nota = String(p.nota || '').trim();
   if (nota) o.nota = nota.slice(0, 200);
@@ -463,7 +479,8 @@ function partidosManuales(cat, d) {
       const err = _partidoManualValido_(lista[i]);
       if (err) return malo('Partido ' + (i + 1) + ': ' + err);
     }
-    deCat[tramo] = lista.map(_limpiarPartidoManual_);
+    const [torneo, fase] = tramo.split('|');
+    deCat[tramo] = lista.map(x => _limpiarPartidoManual_(x, torneo, fase));
   }
 
   if (Object.keys(deCat).length) mapa[categoria] = deCat;

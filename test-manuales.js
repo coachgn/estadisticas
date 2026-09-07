@@ -221,8 +221,10 @@ r = MUTAR.aplicar(CAT(), 'partidos_manuales', {
 });
 const limpio = r.catalogo.rec.partidosManuales.u23['IDA|REGULAR'][0];
 igual(Object.keys(limpio).sort(),
-      ['fecha', 'id', 'local', 'puntosLocal', 'puntosVisitante', 'visitante'],
+      ['fase', 'fecha', 'id', 'local', 'puntosLocal', 'puntosVisitante', 'torneo', 'visitante'],
       'el registro guardado tiene solo los campos del modelo');
+ok(limpio.torneo === 'IDA' && limpio.fase === 'REGULAR',
+   'y torneo/fase los estampa el servidor desde la clave del tramo');
 
 /* AISLAMIENTO, la garantía del lado del servidor. */
 let cat = MUTAR.aplicar(CAT(), 'partidos_manuales',
@@ -364,12 +366,236 @@ ok(reset.indexOf('manuales') > -1,
    'resetEstadoCategoria limpia los partidos de la categoría anterior');
 
 /* =====================================================================
-   RESUMEN
+   8 · EL MODAL DE CONFIRMACIÓN · la regresión que no daba ningún síntoma
+
+   `configManualesPublicar()` le pasaba al modal una lista de STRINGS por
+   el campo `zonas`, que espera objetos `{label, zonas:[…]}`.
+   `bloqueZonas()` reventaba con «cannot read length of undefined» ADENTRO
+   de `abrir()`, así que el modal no se pintaba y no se mandaba nada: el
+   botón «Publicar partidos» no hacía absolutamente nada, y sin dejar un
+   error visible en ningún lado.
+
+   Reproducido en el navegador antes de arreglarlo. Estos tests EJERCEN el
+   modal de verdad: leer el fuente no lo habría cazado nunca, porque la
+   línea se leía perfecta.
    ===================================================================== */
-console.log('\n' + '─'.repeat(60));
-if (fallados === 0) {
-  console.log('✓ TODO OK · ' + pasados + ' tests');
-} else {
-  console.log('✗ ' + fallados + ' FALLARON de ' + (pasados + fallados));
-  process.exitCode = 1;
+bloque('8 · El modal de confirmación se pinta');
+
+function pantallaConfig() {
+  const toasts = [], avisos = [];
+  const SG = require('./js/sgadd-core.js');
+  const PLANILLAS = [{ id: 'u23', label: 'U23', activo: true, tira: 'n' }];
+  const ctx = {
+    console, JSON, Object, Array, Math, Number, String, Date, isFinite, Map, Set,
+    Promise, setTimeout,
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    /* DOM mínimo: `SGADD_CONFIRMAR.pintar()` crea su slot y le escribe
+       el HTML. Sin esto el modal no se puede ejercer, que es justamente
+       lo que hay que probar. */
+    document: (() => {
+      const nodos = {};
+      const nuevo = () => ({
+        id: '', innerHTML: '', className: '', style: {},
+        setAttribute() {}, removeAttribute() {}, appendChild() {},
+        querySelector: () => null, querySelectorAll: () => [], focus() {},
+        addEventListener() {}, contains: () => false,
+      });
+      return {
+        getElementById: (id) => nodos[id] || null,
+        createElement: () => nuevo(),
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        addEventListener() {},
+        activeElement: null,
+        body: { appendChild: (n2) => { if (n2 && n2.id) nodos[n2.id] = n2; } },
+        _nodos: nodos,
+      };
+    })(),
+    SGADD: Object.assign(Object.create(SG), {
+      CATALOGO: { planillas: PLANILLAS },
+      planilla: (id) => PLANILLAS.filter(x => x.id === id)[0] || null,
+      combinacionesTorneoFase: () => ([
+        { id: 'IDA|REGULAR', torneo: 'IDA', fase: 'REGULAR', label: 'Ida - Regular' },
+        { id: 'VUELTA|REGULAR', torneo: 'VUELTA', fase: 'REGULAR', label: 'Vuelta - Regular' },
+      ]),
+    }),
+    SGADD_UI: { esc: (x) => String(x == null ? '' : x) },
+    escapeHtml: (x) => String(x == null ? '' : x),
+    CLUB: { cfg: { id: 'rec', nombre: 'R', planillas: PLANILLAS }, estado: { id: 'rec' } },
+    SGADD_APP: {
+      estado: { planillaId: 'u23', torneo: 'IDA', fase: 'REGULAR', hojas: {}, idx: null },
+      reindexar() {},
+    },
+    SGADD_CLIENTES: { estado: { clubes: [{ slug: 'rec', partidosManuales: {} }] } },
+    SGADD_BUZON: { toast: (t, tono) => toasts.push({ t, tono }) },
+    SGADD_DATA: { apiConfigurada: () => true, guardarCatalogo: () => Promise.resolve({}) },
+    SGADD_AUTH: { rol: () => 'ADMIN' },
+    currentSection: 'configuracion',
+  };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'js/sgadd-config.js'), 'utf8'), ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'js/sgadd-confirmar.js'), 'utf8'), ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'js/sgadd-configui.js'), 'utf8'), ctx);
+  ctx.CONFIGUI = vm.runInContext('CONFIGUI', ctx);
+  ctx.SGADD_CONFIRMAR = vm.runInContext('SGADD_CONFIRMAR', ctx);
+  ctx.configPintar = () => {};
+  ctx.configPintarPreview = () => {};
+  ctx.configAvisar = (t, ok2) => { avisos.push({ t, ok: ok2 }); };
+  ctx.toasts = toasts; ctx.avisos = avisos;
+  return ctx;
 }
+
+const C8 = pantallaConfig();
+C8.configCargarBorrador(true);
+C8.CONFIGUI.manuales = [P()];
+
+/* LA REGRESIÓN: abrir el modal no puede lanzar. */
+let lanzo8 = null;
+try { C8.configManualesPublicar(); } catch (e) { lanzo8 = e.message; }
+igual(lanzo8, null, 'LA REGRESIÓN: publicar no lanza al abrir el modal');
+
+const est = C8.SGADD_CONFIRMAR.estado;
+igual(est.abierto, true, 'y el modal queda abierto');
+ok(est.cambios && est.cambios.length > 0, 'con un diff que enumera el cambio');
+ok(!est.zonas, 'y NO usa el campo de zonas, que espera otra forma');
+ok(typeof est.alConfirmar === 'function', 'con la petición esperando la confirmación');
+
+/* El diff dice lo que se agrega y lo que se quita. */
+const d1 = C8.configManualesDiff([], [P()]);
+ok(d1.some(x => /Se agrega/.test(x.label)), 'el diff marca lo que se agrega');
+igual(d1[0].antes, '0', 'y cuenta lo publicado hoy');
+igual(d1[0].despues, '1', 'contra lo que se va a publicar');
+const d2 = C8.configManualesDiff([P()], []);
+ok(d2.some(x => /Se quita/.test(x.label)), 'y marca lo que se quita');
+igual(C8.configManualesDiff([P()], [P()]).length, 1,
+      'sin cambios, solo queda la línea del total');
+
+(async () => {
+  /* EL FEEDBACK. Al resolver la promesa avisa, y al fallar también. */
+  const A = pantallaConfig();
+  A.configCargarBorrador(true);
+  A.CONFIGUI.manuales = [P()];
+  A.SGADD_DATA.guardarCatalogo = () => Promise.resolve({ clubes: [] });
+  A.configManualesPublicar();
+  A.SGADD_CONFIRMAR.confirmar();
+  await new Promise(r => setTimeout(r, 30));
+  ok(A.toasts.some(x => x.tono === 'ok'), 'publicar OK dispara un toast de éxito',
+     JSON.stringify(A.toasts));
+  ok(A.toasts.some(x => /guardado y publicado con éxito/i.test(x.t)),
+     'con el mensaje que pidió el pedido', JSON.stringify(A.toasts));
+  ok(A.avisos.some(x => x.ok === true), 'y el aviso inline también');
+
+  const B = pantallaConfig();
+  B.configCargarBorrador(true);
+  B.CONFIGUI.manuales = [P()];
+  B.SGADD_DATA.guardarCatalogo = () => Promise.reject(new Error('KV no responde'));
+  B.configManualesPublicar();
+  B.SGADD_CONFIRMAR.confirmar();
+  await new Promise(r => setTimeout(r, 30));
+  ok(B.toasts.some(x => x.tono === 'error'), 'y un fallo dispara un toast de error');
+  ok(B.toasts.some(x => /KV no responde/.test(x.t)), 'con el motivo del servidor');
+
+  /* Un campo obligatorio que falta se avisa ANTES de salir a la red. */
+  const C = pantallaConfig();
+  C.configCargarBorrador(true);
+  let salio = false;
+  C.SGADD_DATA.guardarCatalogo = () => { salio = true; return Promise.resolve({}); };
+  C.CONFIGUI.manuales = [P({ fecha: '' })];
+  C.configManualesPublicar();
+  await new Promise(r => setTimeout(r, 20));
+  igual(salio, false, 'con un campo faltante NO se manda nada al servidor');
+  ok(C.toasts.some(x => x.tono === 'error' && /fecha/i.test(x.t)),
+     'y se dice qué falta', JSON.stringify(C.toasts));
+  ok(C.toasts.some(x => /Partido 1/.test(x.t)), 'y en cuál de los partidos');
+
+  /* ==================================================================
+     9 · EL SELECTOR DE FASE
+     ================================================================== */
+  bloque('9 · El selector de fase del formulario');
+
+  const D = pantallaConfig();
+  D.configCargarBorrador(true);
+  igual(D.configManualTramoDestino(), 'IDA|REGULAR',
+        'por defecto va al tramo abierto en la barra');
+  D.configManualElegirTramo('VUELTA|REGULAR');
+  igual(D.configManualTramoDestino(), 'VUELTA|REGULAR',
+        'se puede cambiar sin tocar el selector principal');
+  igual(D.SGADD_APP.estado.torneo, 'IDA',
+        'y elegir otra fase NO mueve el tramo de la barra');
+  igual(D.configTramosDisponibles().map(t => t.id), ['IDA|REGULAR', 'VUELTA|REGULAR'],
+        'el desplegable ofrece los tramos del libro');
+
+  /* Las opciones salen del LIBRO, no de una lista fija. */
+  const fuenteUi = fs.readFileSync(path.join(__dirname, 'js/sgadd-configui.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  ok(fuenteUi.indexOf('combinacionesTorneoFase') > -1,
+     'los tramos del desplegable salen del libro');
+  ['IDA', 'VUELTA', 'PLAYOFF'].forEach(f =>
+    ok(fuenteUi.indexOf("['" + f) === -1,
+       'ninguna fase arranca una lista hardcodeada: ' + f));
+
+  /* El sintético *TOTAL* no es un tramo donde se juegue: un partido ahí se
+     contaría dos veces o ninguna. */
+  const E2 = pantallaConfig();
+  E2.SGADD.combinacionesTorneoFase = () => ([
+    { id: 'IDA|REGULAR', torneo: 'IDA', fase: 'REGULAR', label: 'Ida' },
+    { id: '*TOTAL*|REGULAR', torneo: '*TOTAL*', fase: 'REGULAR', label: 'Total' },
+  ]);
+  igual(E2.configTramosDisponibles().map(t => t.id), ['IDA|REGULAR'],
+        'el *TOTAL* no se ofrece como destino');
+
+  /* Cambiar de fase relee la lista: si no, se publicaría la del tramo
+     anterior sobre el nuevo. */
+  const elegir = fuenteUi.slice(fuenteUi.indexOf('function configManualElegirTramo'),
+                                fuenteUi.indexOf('function configManualesCargar'));
+  ok(elegir.indexOf('configManualesCargar(true)') > -1,
+     'cambiar de fase fuerza releer los partidos de esa fase');
+
+  /* Y publicar usa el tramo ELEGIDO, no el de la barra. */
+  const F = pantallaConfig();
+  F.configCargarBorrador(true);
+  F.CONFIGUI.manuales = [P()];
+  F.configManualElegirTramo('VUELTA|REGULAR');
+  let mandado = null;
+  F.SGADD_DATA.guardarCatalogo = (d) => { mandado = d; return Promise.resolve({}); };
+  F.configManualesPublicar();
+  F.SGADD_CONFIRMAR.confirmar();
+  await new Promise(r => setTimeout(r, 30));
+  igual(mandado && mandado.tramo, 'VUELTA|REGULAR',
+        'se publica sobre la fase elegida en el formulario');
+
+  /* ==================================================================
+     10 · EL SERVIDOR ESTAMPA torneo Y fase DESDE LA CLAVE
+     ================================================================== */
+  bloque('10 · torneo y fase se derivan, no se copian del pedido');
+
+  const mentiroso = Object.assign(P(), { fase: 'VUELTA', torneo: 'INVENTADO' });
+  const rr = MUTAR.aplicar({ rec: { nombre: 'R' } }, 'partidos_manuales',
+    { club: 'rec', categoria: 'u23', tramo: 'IDA|REGULAR', partidos: [mentiroso] });
+  const gg = rr.catalogo.rec.partidosManuales.u23['IDA|REGULAR'][0];
+  igual(gg.torneo, 'IDA', 'el torneo sale de la clave, no del pedido');
+  igual(gg.fase, 'REGULAR', 'y la fase también');
+  ok(gg.fase !== 'VUELTA',
+     'LA PROPIEDAD: un cliente no puede guardar una fase que contradiga su tramo');
+  igual(Object.keys(gg).sort(),
+        ['fase', 'fecha', 'id', 'local', 'puntosLocal', 'puntosVisitante', 'torneo', 'visitante'],
+        'y quedan registrados junto a la fecha y el resultado');
+
+  /* Y la tabla sigue filtrando por el TRAMO abierto, no por ese campo. */
+  const MEZCLA = {
+    'IDA|REGULAR': [Object.assign(P(), { torneo: 'IDA', fase: 'REGULAR' })],
+    'VUELTA|REGULAR': [Object.assign(P({ fecha: '2026-08-01' }), { torneo: 'VUELTA', fase: 'REGULAR' })],
+  };
+  igual(CLASIF.manualesDelTramo(MEZCLA, 'IDA', 'REGULAR').length, 1,
+        'fusionarManuales toma solo los del tramo abierto');
+  igual(CLASIF.manualesDelTramo(MEZCLA, 'IDA', 'REGULAR')[0].fecha, '2026-05-10',
+        'y son los correctos');
+  const soloIda = CLASIF.tabla(idx, { manuales: CLASIF.manualesDelTramo(MEZCLA, 'IDA', 'REGULAR') });
+  igual(soloIda.filter(r => r.clave === 'ATENAS A')[0].manuales, 1,
+        'la tabla de la IDA cuenta uno solo, no los dos');
+
+  console.log('\n' + '─'.repeat(60));
+  if (fallados === 0) console.log('✓ TODO OK · ' + pasados + ' tests');
+  else { console.log('✗ ' + fallados + ' FALLARON de ' + (pasados + fallados)); process.exitCode = 1; }
+})();
