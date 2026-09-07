@@ -33,55 +33,86 @@ const S = require('./js/sgadd-scouting.js');
 
 const SALIDA = path.join(__dirname, 'MANUAL_ETIQUETADO_SGADD.html');
 
+const N = require('./js/sgadd-niveles.js');
+
+/* Los valores se redondean para el papel: el percentil vivo trae
+   catorce decimales y ninguno de ellos informa nada. */
+const num = (v) => (typeof v === 'number'
+  ? String(Math.round(v * 1000) / 1000) : String(v)).replace('.', ',');
+
 /* --------------------------------------------------------------------
-   Umbrales citados en el manual. Se declaran acá porque viven adentro de
-   closures y no se pueden leer del objeto; el test los amarra contra las
-   constantes reales para que no puedan divergir.
+   LOS UMBRALES DEL MANUAL SE RESUELVEN POR NIVEL
+
+   Hasta acá el manual imprimía un número pelado y decía que era
+   absoluto. Desde que los umbrales se adaptan (etapas 3 y 4) eso pasó a
+   ser falso para veintinueve de los treinta y dos: el mismo corte vale
+   distinto en Liga Argentina que en una U21, y un manual que declara un
+   número que el motor no usa es peor que no tener manual.
+
+   Cada corte se emite con su CLAVE (`data-u`), así que el documento
+   trae los seis niveles adentro y el selector reescribe los números sin
+   volver a generar nada. Impreso queda el nivel elegido más la matriz
+   completa de la sección 4, que es la que sobrevive al papel.
+
+   EL NIVEL DE ARRANQUE ES LIGA ARGENTINA a propósito: es la vara con la
+   que se escribieron las reglas y con la que se validaron las fixtures,
+   así que el manual impreso sin tocar nada dice lo mismo que decía.
    -------------------------------------------------------------------- */
-const U = J.JUGADORES_UMBRALES;
-const SU = S.UMBRALES;
+const NIVEL_BASE = 'LIGA_ARGENTINA';
+const MAPAS = {};
+N.IDS.forEach(id => { MAPAS[id] = N.mapaDe(id); });
+
+/* Un corte que se adapta. `un('astPPGenerador')` imprime el valor del
+   nivel activo y deja el ancla para que el selector lo reescriba. */
+function un(clave) {
+  const d = N.definicion(clave);
+  const v = MAPAS[NIVEL_BASE][clave];
+  const fijo = d && d.tipo === N.TIPOS.ABSOLUTO;
+  return '<span class="u' + (fijo ? ' fijo' : '') + '" data-u="' + clave + '"'
+    + ' title="' + (fijo ? 'Fijo: vale igual en cualquier liga.'
+        : 'Se adapta al nivel de competencia.') + '">'
+    + num(v) + '</span>';
+}
 
 const CORTES_ARQUETIPO = {
-  terminador: 'PLAYS > promedio de liga · eFG% > 1,15× promedio · PPP > 1,05',
-  generador: 'AST-PP > 1,40',
-  puntal: 'RO+RD > 1,20× el promedio de la liga',
-  amenaza: 'T3I > 3,0 y T3% > 34%',
-  especialistaDef: 'PR > 1,30× el promedio de la liga',
-  buscadorContacto: 'RTL% ≥ ' + U.rtlContacto + ' y FR ≥ ' + U.frContacto +
-    ' y PT1% ≥ ' + U.usoLibreContacto + ' y T1% ≥ ' + U.t1Contacto,
+  terminador: 'PLAYS &gt; promedio de liga · eFG% &gt; 1,15× promedio · PPP &gt; 1,05',
+  generador: 'AST-PP &gt; ' + un('astPPGenerador'),
+  puntal: 'RO+RD &gt; 1,20× el promedio de la liga',
+  amenaza: 'T3I &gt; ' + un('amenazaVolumenT3') + ' y T3% &gt; ' + un('amenazaT3'),
+  especialistaDef: 'PR &gt; 1,30× el promedio de la liga',
+  buscadorContacto: 'RTL% ≥ ' + un('rtlContacto') + ' y FR ≥ ' + un('frContacto') +
+    ' y PT1% ≥ ' + un('usoLibreContacto') + ' y T1% ≥ ' + un('t1Contacto'),
 };
 
 const CORTES_ROL = {
-  'generador-primario': 'AST-PP ≥ ' + U.astPPGenerador + ' · AST ≥ ' + U.astVolumenGenerador + ' · MIN ≥ ' + U.minutosClave,
-  'finalizador-corto': 'interior · PPT2 ≥ ' + U.pptDobleAlto,
-  'ancla-defensiva': 'interior · RD rel ≥ ' + U.reboteInterior + ' y RD rel > RO rel',
-  'rim-runner': 'interior · RO rel ≥ ' + U.reboteOfensivoAlto,
+  'generador-primario': 'AST-PP ≥ ' + un('astPPGenerador') + ' · AST ≥ ' + un('astVolumenGenerador') + ' · MIN ≥ ' + un('minutosClave'),
+  'finalizador-corto': 'interior · PPT2 ≥ ' + un('pptDobleAlto'),
+  'ancla-defensiva': 'interior · RD rel ≥ ' + un('reboteInterior') + ' · RD rel / RO rel &gt; ' + un('anclaRatioDefensivo'),
+  'rim-runner': 'interior · RO rel ≥ ' + un('reboteOfensivoAlto'),
   'poste-bajo': 'interior sin dimensión dominante (fallback interior)',
-  spacing: 'perimetral · PT3% ≥ ' + U.usoTripleAlto,
+  spacing: 'perimetral · PT3% ≥ ' + un('usoTripleAlto'),
   slasher: 'perimetral · PPT2 ≥ 1,00',
-  'manejador-secundario': 'AST-PP ≥ 1,00 · MIN ≥ ' + U.minutosClave,
+  'manejador-secundario': 'AST-PP ≥ 1,00 · MIN ≥ ' + un('minutosClave'),
   'perimetral-media': 'perimetral, sin volumen de triple',
   complementario: 'fallback: ninguna función domina',
 };
 
 const CORTES_MARCA = {
-  'tirador-elite': 'PT3% ≥ ' + SU.usoTripleAlto + ' y PPT3 ≥ ' + SU.pptTripleElite,
-  'volumen-sin-eficiencia': 'concentración ≥ ' + SU.concentracionAlta + ' · sin tiro rentable · eFG% por debajo de la liga',
+  'tirador-elite': 'PT3% ≥ ' + un('usoTripleAlto') + ' y PPT3 ≥ ' + un('pptTripleElite'),
+  'volumen-sin-eficiencia': 'concentración ≥ ' + un('concentracionAlta') + ' · sin tiro rentable · eFG% por debajo de la liga',
   'tirador-eficiente-bajo-volumen': 'T3I ≥ 1,0 y tiro externo rentable',
-  'interior-dominante': 'interior · PPT2 ≥ ' + SU.pptDobleAlto,
-  slasher: 'perimetral · PPT2 ≥ ' + SU.pptDobleAlto,
-  'generador-riesgoso': 'pérdidas ≥ ' + SU.perdidasAltas + '× la liga · MIN ≥ ' + SU.minutosClave,
-  'tirador-sistematico-frio': 'T3I ≥ ' + SU.volumenTripleSistematico + ' y tiro externo frío',
-  'castigable-en-la-linea': 'T1% < ' + SU.t1Regalable + ' y PT2% ≥ ' + SU.usoDobleInterno,
-  'tirador-ineficiente': 'PT3% ≥ ' + SU.usoTripleAlto + ' · PPT3 ≤ ' + SU.pptTriplePobre + ' · no rentable · no es la vía principal',
-  rebotador: 'RO rel ≥ ' + SU.reboteOfensivoAlto,
+  'interior-dominante': 'interior · PPT2 ≥ ' + un('pptDobleAlto'),
+  slasher: 'perimetral · PPT2 ≥ ' + un('pptDobleAlto'),
+  'generador-riesgoso': 'pérdidas ≥ ' + un('perdidasAltas') + '× la liga · MIN ≥ ' + un('minutosClave'),
+  'tirador-sistematico-frio': 'T3I ≥ ' + un('volumenTripleSistematico') + ' y tiro externo frío',
+  'castigable-en-la-linea': 'T1% &lt; ' + un('t1Regalable') + ' y PT2% ≥ ' + un('usoDobleInterno'),
+  'tirador-ineficiente': 'PT3% ≥ ' + un('usoTripleAlto') + ' · PPT3 ≤ ' + un('pptTriplePobre') + ' · no rentable · no es la vía principal',
+  rebotador: 'RO rel ≥ ' + un('reboteOfensivoAlto'),
   contencion: 'fallback: ninguna amenaza domina',
 };
-
 const esc = (v) => String(v === null || v === undefined ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-const num = (v) => String(v).replace('.', ',');
 
 function tabla(cabeceras, filas, clase) {
   return `<table class="${clase || ''}">
@@ -135,7 +166,7 @@ function seccionJerarquia() {
 function seccionArquetipos() {
   const filas = J.PERFILES_TECNICOS.map(p => [
     `<b>${esc(p.emoji + ' ' + p.label)}</b>`,
-    `<span class="corte">${esc(CORTES_ARQUETIPO[p.id] || '')}</span>`,
+    `<span class="corte">${(CORTES_ARQUETIPO[p.id] || '')}</span>`,
     esc(p.detalle),
   ]);
   return `
@@ -149,7 +180,7 @@ function seccionArquetipos() {
 function seccionRoles() {
   const filas = J.JUGADORES_ROLES_FUNCIONALES.map((r, i) => [
     `<b>${i + 1}. ${esc(r.label)}</b>`,
-    `<span class="corte">${esc(CORTES_ROL[r.id] || '')}</span>`,
+    `<span class="corte">${(CORTES_ROL[r.id] || '')}</span>`,
   ]);
   return `
     <h3>1.4 · Rol funcional <span class="sub">¿qué función cumple?</span></h3>
@@ -161,9 +192,9 @@ function seccionRoles() {
       <b>Cómo se decide si es interior o perimetral.</b> Sobre <b>intentos</b>, no sobre
       aciertos: de dónde tira no depende de si le entra.
       <div class="mono">mezcla = T3I / (T3I + T2I)
-menor a ${num(U.mezclaTripleInterior)} → interior
-${num(U.mezclaTripleInterior)} a ${num(U.mezclaTripleaPerimetral)} → desempate por rebote total (≥ ${num(U.reboteDesempate)}× la mediana → interior)
-${num(U.mezclaTripleaPerimetral)} o más → perimetral
+menor a ${un('mezclaTripleInterior')} → interior
+${un('mezclaTripleInterior')} a ${un('mezclaTripleaPerimetral')} → desempate por rebote total (≥ ${un('reboteDesempate')}× la mediana → interior)
+${un('mezclaTripleaPerimetral')} o más → perimetral
 sin tiros de campo → sin origen (no se infiere)</div>
     </div>`;
 }
@@ -186,7 +217,7 @@ function seccionBandasZ() {
 function seccionMarcas() {
   const filas = S.PERFILES_MARCA.map((m, i) => [
     `<b>${i + 1}. ${esc(m.etiqueta)}</b>`,
-    `<span class="corte">${esc(CORTES_MARCA[m.id] || '')}</span>`,
+    `<span class="corte">${(CORTES_MARCA[m.id] || '')}</span>`,
     (m.defensores || []).map(c => esc(S.PERFILES_DEFENSOR[c.id])).join('<br>'),
   ]);
   return `
@@ -208,7 +239,7 @@ function seccionMarcas() {
         dos anteriores.</li>
       </ol>
       <b>Mandar a la línea no es la respuesta para todo.</b> Es un solo perfil y con
-      umbral duro (T1% &lt; ${num(SU.t1Regalable)} <i>y</i> volumen interno): a alguien que
+      umbral duro (T1% &lt; ${un('t1Regalable')} <i>y</i> volumen interno): a alguien que
       convierte 60% de libres le estás regalando 1,20 puntos por posesión.
     </div>`;
 }
@@ -232,10 +263,10 @@ function seccionDefensores() {
 
 function seccionPlan() {
   const grupos = [
-    ['🎯 Focos · se dobla', 'marca de tirador de élite, referencia interna o slasher; o concentra ≥ ' + num(SU.concentracionAlta) + ' de los plays; o es franquicia', 'su celda dice desde dónde sale la ayuda'],
+    ['🎯 Focos · se dobla', 'marca de tirador de élite, referencia interna o slasher; o concentra ≥ ' + un('concentracionAlta') + ' de los plays; o es franquicia', 'su celda dice desde dónde sale la ayuda'],
     ['🚫 Intocables · no se sueltan', 'tiene tiro externo rentable', 'su defensor no participa de las ayudas'],
     ['↩ Fuentes de ayuda', 'tiro frío o sin renta', 'es el lado desde donde se dobla'],
-    ['🏰 Box-out asignado', 'RO rel ≥ ' + num(SU.reboteOfensivoAlto), 'su defensor no rota: bloquea'],
+    ['🏰 Box-out asignado', 'RO rel ≥ ' + un('reboteOfensivoAlto'), 'su defensor no rota: bloquea'],
   ];
   const filasEsc = S.ESCENARIOS.map(e => [`<b>${esc(e.label)}</b>`, esc({
     'franquicia-solitaria': 'un solo foco y hay fuente de ayuda',
@@ -249,7 +280,7 @@ function seccionPlan() {
     <p>Una defensa no es la suma de once marcas individuales: si a cuatro rivales les
     ponés <i>"doblar"</i>, te quedaste sin nadie para doblar. El plan clasifica al
     plantel rival y después cada celda se escribe <b>sabiendo qué hacen las otras diez</b>.</p>
-    ${tabla(['Grupo', 'Quién entra', 'Qué dice su celda'], grupos.map(g => [`<b>${esc(g[0])}</b>`, `<span class="corte">${esc(g[1])}</span>`, esc(g[2])]), 'ancha')}
+    ${tabla(['Grupo', 'Quién entra', 'Qué dice su celda'], grupos.map(g => [`<b>${esc(g[0])}</b>`, `<span class="corte">${g[1]}</span>`, esc(g[2])]), 'ancha')}
     <p class="nota"><b>El orden de los vetos es la lógica del plan.</b> Un intocable
     nunca puede ser fuente de ayuda (soltarlo es el error más caro). Un foco tampoco
     (el que exige doblaje no puede ayudar en otro lado). Un reboteador tampoco: no se
@@ -265,20 +296,20 @@ function seccionPlan() {
 
 function seccionClaves() {
   const cortes = {
-    'ejes-eficiencia': 'concentra ≥ ' + num(SU.concentracionAlta) + ' de los plays del equipo',
-    'clausura-tiradores': 'PT3% ≥ ' + num(SU.usoTripleAlto) + ' y PPT3 ≥ ' + num(SU.pptTripleElite),
-    'invitacion-triple': 'PT3% ≥ ' + num(SU.usoTripleAlto) + ' y PPT3 ≤ ' + num(SU.pptTriplePobre),
-    'disciplina-bonus': 'PT1% ≥ ' + num(SU.usoLibreAlto) + ' y T1% ≥ ' + num(SU.t1Confiable),
-    'castigo-linea': 'PT1% ≥ ' + num(SU.usoLibreAlto) + ' y T1% ≤ ' + num(SU.t1Pobre),
-    'presion-conduccion': 'pérdidas ≥ ' + num(SU.perdidasAltas) + '× la liga',
-    cristal: 'RO rel ≥ ' + num(SU.reboteOfensivoAlto),
-    pintura: 'PPT2 ≥ ' + num(SU.pptDobleAlto) + ' y PT2% ≥ 0,40',
+    'ejes-eficiencia': 'concentra ≥ ' + un('concentracionAlta') + ' de los plays del equipo',
+    'clausura-tiradores': 'PT3% ≥ ' + un('usoTripleAlto') + ' y PPT3 ≥ ' + un('pptTripleElite'),
+    'invitacion-triple': 'PT3% ≥ ' + un('usoTripleAlto') + ' y PPT3 ≤ ' + un('pptTriplePobre'),
+    'disciplina-bonus': 'PT1% ≥ ' + un('usoLibreAlto') + ' y T1% ≥ ' + un('t1Confiable'),
+    'castigo-linea': 'PT1% ≥ ' + un('usoLibreAlto') + ' y T1% ≤ ' + un('t1Pobre'),
+    'presion-conduccion': 'pérdidas ≥ ' + un('perdidasAltas') + '× la liga',
+    cristal: 'RO rel ≥ ' + un('reboteOfensivoAlto'),
+    pintura: 'PPT2 ≥ ' + un('pptDobleAlto') + ' y PT2% ≥ 0,40',
     'lineas-de-pase': 'recuperos por encima de la liga',
-    'concesion-perimetral': 'tira entre 1 y ' + num(SU.volumenTripleSistematico) + ' triples sin renta',
+    'concesion-perimetral': 'tira entre 1 y ' + un('volumenTripleSistematico') + ' triples sin renta',
   };
   const filas = S.REGLAS_CLAVE.map(r => [
     `<b>${esc(r.icono + ' ' + r.titulo)}</b>`,
-    `<span class="corte">${esc(cortes[r.id] || '')}</span>`,
+    `<span class="corte">${cortes[r.id] || ''}</span>`,
   ]);
   return `
     <h3>2.5 · Claves estratégicas <span class="sub">se activan solas</span></h3>
@@ -340,6 +371,67 @@ function seccionLimites() {
 }
 
 /* ===================== DOCUMENTO ===================== */
+
+/* ====================================================================
+   SECCIÓN 4 · LA MATRIZ POR NIVEL
+
+   Es la que sobrevive al papel: el selector de arriba reescribe los
+   cortes de todo el documento, pero un PDF congela UN nivel. Esta tabla
+   imprime los seis, así que el manual impreso sigue sirviendo para
+   auditar cualquier categoría.
+   ==================================================================== */
+function seccionNiveles() {
+  const filasNivel = N.NIVELES.map(n => [
+    '<b>' + esc(n.label) + '</b>',
+    esc(n.nota),
+    N.CALIBRADOS.indexOf(n.id) > -1
+      ? '<b>medido</b> contra un libro real'
+      : 'heredado del nivel calibrado más cercano',
+  ]);
+
+  const filas = N.claves().map(k => {
+    const d = N.definicion(k);
+    const fijo = d.tipo === N.TIPOS.ABSOLUTO;
+    return ['<span class="mono" style="display:inline;padding:1px 4px">' + esc(k) + '</span>',
+            esc(d.metrica || '—'),
+            fijo ? '<b>fijo</b>' : 'p' + (d.p !== undefined ? d.p : '—')]
+      .concat(N.IDS.map(id => (fijo && id !== N.IDS[0])
+        ? '<span style="color:#bbb">=</span>'
+        : num(MAPAS[id][k])));
+  });
+
+  return `
+    <h3>4.1 · Los seis niveles</h3>
+    <p>El nivel <b>se declara por categoría</b> en <span class="mono" style="display:inline;padding:1px 4px">clubes/&lt;club&gt;.json</span>
+    y se puede publicar desde el Panel Master. <b>No se infiere del campo
+    <i>liga</i></b>: ése distingue La Plata de Liga Argentina, pero no mayores de
+    formativas, que es justo el corte que importa.</p>
+    ${tabla(['Nivel', 'Qué cubre', 'Semilla'], filasNivel, 'ancha')}
+
+    <h3>4.2 · De dónde sale cada número</h3>
+    <p>Un umbral no vale siempre lo mismo, y confundir los cuatro casos es lo que
+    hacía que una etiqueta cambiara sin que nadie supiera si cambió el jugador o
+    cambió la vara.</p>
+    ${tabla(['Procedencia', 'Cuándo'], [
+      ['<b>Fijo</b>', 'Describe economía del básquet. Vale igual en las seis. Son tres.'],
+      ['<b>Nivel</b>', 'La semilla medida del nivel declarado, porque la competencia todavía no tiene muestra.'],
+      ['<b>En transición</b>', 'Hay muestra parcial: se interpola entre la semilla y el percentil real. Sin esto, el partido que cruza el umbral reetiqueta a media liga de un día para el otro.'],
+      ['<b>Medido</b>', 'El percentil real sobre los calificados de esta competencia.'],
+    ])}
+    <div class="aviso"><b>Los topes no son una traba, son el ancla de significado.</b>
+    Sin ellos el sistema sería puramente auto-referencial: toda liga tendría
+    exactamente un 10% de «tiradores de élite», incluida una donde nadie convierte,
+    y la etiqueta pasaría a decir <i>«de los peores, el mejor»</i>.</div>
+
+    <h3>4.3 · La matriz completa</h3>
+    <p>El valor de arranque de cada nivel. En la app estos números son el piso: si la
+    competencia tiene muestra suficiente, se mueven hacia su percentil real y la ficha
+    del jugador lo dice en <i>Vara de medición</i>.</p>
+    ${tabla(['Umbral', 'Métrica', 'Corte'].concat(N.NIVELES.map(n => n.label.replace(/ /g, '<br>'))), filas, 'ancha')}
+    <p class="nota">El <span style="color:#bbb">=</span> quiere decir «lo mismo»: un
+    umbral fijo no cambia de nivel en nivel, y repetirlo seis veces invitaría a
+    moverlo.</p>`;
+}
 
 function documento() {
   const hoy = new Date();
@@ -416,6 +508,18 @@ function documento() {
     font-size: 8.5pt; color: #888;
   }
   .salto { page-break-before: always; }
+  .u { font-weight: 600; }
+  .u.fijo { border-bottom: 1px dotted #8A4200; }
+  .selector {
+    background: #1a1a1a; color: #fff; border-radius: 3px;
+    padding: 10px 12px; margin: 14px 0; font-size: 9.5pt;
+  }
+  .selector select {
+    font: inherit; font-weight: 700; padding: 3px 6px; border-radius: 3px;
+    border: 1px solid #555; background: #fff; color: #1a1a1a;
+  }
+  .selector .aclara { display: block; color: #bbb; margin-top: 5px; font-size: 8.5pt; }
+  @media print { .selector select { border: none; background: none; -webkit-appearance: none; appearance: none; } }
   @media print { body { max-width: none; } a { color: inherit; text-decoration: none; } }
 </style>
 </head>
@@ -440,6 +544,17 @@ con un número detrás, y acá están todas.</p>
   una nacional.
 </div>
 
+<div class="selector">
+  Los cortes de este manual se muestran para el nivel
+  <select id="nivelSel" onchange="pintarNivel(this.value)">
+    ${N.NIVELES.map(n => `<option value="${n.id}"${n.id === NIVEL_BASE ? ' selected' : ''}>${esc(n.label)}</option>`).join('')}
+  </select>
+  <span class="aclara">Los tres cortes <b>fijos</b> van subrayados: describen economía
+  del básquet y no se mueven. El resto es la semilla del nivel — en la app se
+  adapta al percentil real cuando la competencia tiene muestra, y la ficha del
+  jugador dice de dónde salió cada uno. La matriz de los seis está en 4.3.</span>
+</div>
+
 <div class="indice">
   <b>Contenido</b><br>
   1. Clasificación ofensiva<br>
@@ -456,6 +571,10 @@ con un número detrás, y acá están todas.</p>
   3. Cómo leer los números<br>
   &nbsp;&nbsp;3.1 Contra qué se compara cada cosa<br>
   &nbsp;&nbsp;3.2 Lo que el sistema no sabe<br>
+  4. Nivel de competencia<br>
+  &nbsp;&nbsp;4.1 Los seis niveles<br>
+  &nbsp;&nbsp;4.2 De dónde sale cada número<br>
+  &nbsp;&nbsp;4.3 La matriz completa<br>
 </div>
 
 <h2>1 · Clasificación ofensiva</h2>
@@ -476,6 +595,29 @@ ${seccionClaves()}
 <h2 class="salto">3 · Cómo leer los números</h2>
 ${seccionReferencias()}
 ${seccionLimites()}
+
+<h2 class="salto">4 · Nivel de competencia</h2>
+<p>Las mismas reglas de arriba con la vara de <b>su</b> categoría. Un <span
+class="mono" style="display:inline;padding:1px 4px">T1% &lt; 0,60</span> marca al 15%
+peor en Liga Argentina y al <b>60%</b> en una U23: escrito como constante, la etiqueta
+dice cosas distintas según dónde se use.</p>
+${seccionNiveles()}
+
+<script>
+/* Los seis mapas viajan en el documento: el selector no vuelve a
+   generar nada, solo reescribe los anclas. Así el manual sigue siendo
+   un HTML suelto que se abre con doble clic. */
+var MAPAS = ${JSON.stringify(MAPAS)};
+function pintarNivel(id) {
+  var m = MAPAS[id]; if (!m) return;
+  var ns = document.querySelectorAll('.u');
+  for (var i = 0; i < ns.length; i++) {
+    var k = ns[i].getAttribute('data-u');
+    if (m[k] === undefined) continue;
+    ns[i].textContent = String(Math.round(m[k] * 1000) / 1000).replace('.', ',');
+  }
+}
+</script>
 
 <footer>
   Generado automáticamente desde el código del panel

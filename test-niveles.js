@@ -144,9 +144,16 @@ N.claves().forEach(k => {
    ===================================================================== */
 bloque('4 · Qué se movió y qué no');
 
-/* Los catorce literales históricos, escritos a mano. Siguen siendo el
-   RESPALDO —el mapa estático que se usa sin índice— y la semilla de Liga
-   Argentina, que es la vara con la que se escribieron las reglas. */
+/* Los literales históricos, escritos a mano. Siguen siendo el RESPALDO
+   —el mapa estático que se usa sin índice— y la semilla de Liga
+   Argentina, que es la vara con la que se escribieron las reglas.
+
+   LAS TRES ÚLTIMAS ENTRARON DESPUÉS y por eso van separadas: no vivían
+   en este mapa sino escritas EN LÍNEA dentro de `PERFILES_TECNICOS`,
+   fuera del registro, así que la adaptación por nivel no las alcanzaba.
+   Su literal es el que tenían ahí, para que la equivalencia siga
+   valiendo: mover un número y unificarlo a la vez haría imposible saber
+   cuál de las dos cosas cambió una incidencia. */
 const HISTORICOS = {
   minutosClave: 20,
   astPPGenerador: 1.40,
@@ -162,9 +169,24 @@ const HISTORICOS = {
   frContacto: 2.5,
   usoLibreContacto: 0.12,
   t1Contacto: 0.72,
+
+  /* Los que estaban dentro de los arquetipos. */
+  amenazaVolumenT3: 3.0,       // era `j['T3I'] > 3.0` en «amenaza»
+  amenazaT3: 0.34,             // era `j['T3%'] > 0.34` en «amenaza»
+  anclaRatioDefensivo: 1.00,   // era el `RD rel > RO rel` de `ancla-defensiva`
 };
 igual(Object.keys(J.JUGADORES_UMBRALES).sort(), Object.keys(HISTORICOS).sort(),
-      'JUGADORES_UMBRALES conserva exactamente sus catorce claves');
+      'JUGADORES_UMBRALES conserva exactamente sus diecisiete claves');
+
+/* El 1,40 de `generador` era el MISMO número que `astPPGenerador`,
+   duplicado a mano en dos lugares. Que exista una sola clave es lo que
+   impide que vuelvan a quedar distintos. */
+const FUENTE_JUG = fs.readFileSync(
+  path.join(__dirname, 'js', 'sgadd-jugadores.js'), 'utf8');
+ok(!/AST-PP'\]\s*>\s*1\.40/.test(FUENTE_JUG),
+   'el arquetipo «generador» ya no lleva el 1,40 escrito a mano');
+ok(!/T3I'\]\s*>\s*3\.0\s*&&/.test(FUENTE_JUG),
+   'ni «amenaza» sus dos literales');
 
 /* EL MAPA ESTÁTICO NO SE MOVIÓ. Es el respaldo sin contexto y scouting lo
    lee por COMPARTIDOS: resolverlo a un nivel cambiaría la vara de sus
@@ -334,6 +356,140 @@ ok(/COMPARTIDOS/.test(fsc), 'scouting sigue leyendo los compartidos de jugadores
 ['minutosClave', 'astPPGenerador', 'mezclaTripleInterior'].forEach(k =>
   ok(new RegExp(k + ':\\s*COMPARTIDOS\\.' + k).test(fsc),
      '  ' + k + ' se lee de COMPARTIDOS, no se copia'));
+
+/* =====================================================================
+   8 · ETAPA 5 · LA PROCEDENCIA ES AUDITABLE
+
+   Un umbral que se movio solo y uno escrito a mano se ven exactamente
+   igual en pantalla: los dos son un numero. Sin esta capa, el DT que ve
+   una etiqueta nueva no puede saber si cambio el jugador o cambio la
+   vara — y una herramienta que no se puede auditar se deja de usar.
+   ===================================================================== */
+bloque('8 · Procedencia');
+
+const SIN_CTX = N.procedencia('astPPGenerador', 'LOCAL_MENORES');
+igual(SIN_CTX.origen, 'tier',
+      'sin contexto la procedencia es la de tabla: la semilla del nivel');
+igual(SIN_CTX.valor, N.valorDe('astPPGenerador', 'LOCAL_MENORES'),
+      'y el valor es el de esa tabla');
+igual(N.procedencia('pptTripleElite', 'LOCAL_MENORES').origen, 'absoluto',
+      'un absoluto se declara absoluto en cualquier nivel');
+
+/* Con muestra de sobra el origen tiene que ser `vivo`, no `tier`: si
+   siguiera diciendo `tier` el numero se estaria moviendo y la pantalla
+   mentiria sobre de donde salio, que es peor que no mostrarlo. */
+const VALS = [];
+for (let i = 0; i < 120; i++) VALS.push(i / 100);
+const CTX = { partidos: 90, valores: VALS };
+const VIVO = N.procedencia('astPPGenerador', 'LOCAL_MENORES', CTX);
+igual(VIVO.origen, 'vivo', 'con muestra plena la procedencia es `vivo`');
+ok(VIVO.semilla === N.valorDe('astPPGenerador', 'LOCAL_MENORES'),
+   'y sigue exponiendo la semilla contra la que se movio', VIVO.semilla);
+ok(VIVO.muestra && VIVO.muestra.n === VALS.length,
+   'y cuanta muestra la respalda');
+igual(N.procedencia('pptTripleElite', 'LOCAL_MENORES', CTX).origen, 'absoluto',
+      'un absoluto NO se mueve por mas muestra que haya: es el punto');
+
+/* En transicion tiene que decirse en transicion. Con un corte duro, el
+   partido que cruza el umbral reetiqueta a media liga de un dia para el
+   otro y el DT ve cambiar las fichas sin que haya pasado nada. */
+const MEDIO = N.procedencia('astPPGenerador', 'LOCAL_MENORES',
+  { partidos: 25, valores: VALS.slice(0, 45) });
+igual(MEDIO.origen, 'mezcla', 'con muestra parcial la procedencia es `mezcla`');
+ok(MEDIO.mezcla > 0 && MEDIO.mezcla < 1, '  y dice cuanto pesa la liga', MEDIO.mezcla);
+
+igual(Object.keys(N.ORIGENES).sort(), ['absoluto', 'mezcla', 'tier', 'vivo'],
+      'los cuatro origenes estan declarados en un solo lugar');
+/* La UI pinta por esta tabla: un origen que el motor devuelva y la tabla
+   no conozca saldria sin explicacion y nadie se enteraria. */
+igual(Object.keys(J.VARA_ORIGENES).sort(), Object.keys(N.ORIGENES).sort(),
+      'y la UI conoce exactamente esos cuatro');
+
+/* --- LA VARA · el motor puro que la ficha imprime --- */
+const SGADD_T = require('./js/sgadd-core.js');
+const colsEV = ['EQUIPO', 'FASE', 'PJ', 'PTS'];
+const filasEV = [{ EQUIPO: 'A', FASE: 'REGULAR', PJ: '10', PTS: '70' },
+                 { EQUIPO: 'B', FASE: 'REGULAR', PJ: '10', PTS: '68' }];
+const colsJV = ['NOMBRES', 'EQUIPO', 'FASE', 'MIN', 'PTS', 'PLAYS', 'AST-PP', 'T3I', 'T3%'];
+const filasJV = [];
+for (let i = 0; i < 70; i++) {
+  filasJV.push({ NOMBRES: 'J' + i, EQUIPO: i % 2 ? 'A' : 'B', FASE: 'REGULAR',
+    MIN: '24', PTS: '10', PLAYS: '12',
+    'AST-PP': String(0.5 + i / 50).replace('.', ','),
+    T3I: String(1 + i / 20).replace('.', ','),
+    'T3%': String(0.2 + i / 400).replace('.', ',') });
+}
+filasJV.push({ NOMBRES: 'JUGADOR TIPO', EQUIPO: '', FASE: 'REGULAR', MIN: '20', PTS: '8' });
+const hojasV = () => ({
+  'PROMEDIOS E': { cols: colsEV, filas: filasEV },
+  'PROMEDIOS J': { cols: colsJV, filas: filasJV },
+});
+const idxV = SGADD_T.construirIndice(hojasV(), { fase: 'REGULAR' });
+idxV.liga.nivel = 'LOCAL_MENORES';
+
+const VARA = J.jugadoresVara(idxV);
+ok(!!VARA, 'jugadoresVara devuelve la foto de la competencia');
+igual(VARA.nivel, 'LOCAL_MENORES', 'con el nivel que rige');
+igual(VARA.origenNivel, 'indice', 'y de donde salio esa declaracion');
+ok(!!VARA.origenNivelTexto, '  con su explicacion en castellano');
+igual(VARA.umbrales.length, N.claves().length,
+      'trae TODOS los umbrales, no un recorte: uno que no se lista es uno que no se audita');
+VARA.umbrales.forEach(u => {
+  ok(!!u.origen, u.clave + ' declara su procedencia');
+  ok(u.valor !== null && u.valor !== undefined, u.clave + ' tiene valor');
+});
+igual(VARA.umbrales.filter(u => u.origen === 'absoluto').length, 3,
+      'y los tres absolutos salen marcados como fijos');
+
+/* Sin nivel declarado la vara igual se arma: lo que cambia es que dice
+   que nadie lo declaro, que es exactamente lo que hay que poder ver. */
+const VARA2 = J.jugadoresVara(SGADD_T.construirIndice(hojasV(), { fase: 'REGULAR' }));
+ok(VARA2 && VARA2.nivel === N.POR_DEFECTO, 'sin declaracion cae al nivel por defecto');
+ok(VARA2 && ['defecto', 'json', 'kv'].indexOf(VARA2.origenNivel) > -1,
+   '  y lo dice en vez de hacerlo pasar por declarado', VARA2 && VARA2.origenNivel);
+
+/* --- LOS DOS DEFECTOS QUE SOLO SE VEN MIRANDO LA PANTALLA --- */
+const FJUG = fs.readFileSync(path.join(__dirname, 'js/sgadd-jugadores.js'), 'utf8');
+const BLOQUE = FJUG.slice(FJUG.indexOf('function jugadoresBloqueVara'),
+                          FJUG.indexOf('function jugadoresBloqueCondicion'));
+
+/* `zona-<tono>` solo define la VARIABLE `--zona`; el color lo pinta
+   `zona-texto`. Con una sola de las dos el chip sale del color heredado
+   y el semaforo no existe — medido en el navegador antes del arreglo. */
+ok(/zona-\$\{o\.tono\} zona-texto/.test(BLOQUE),
+   'el chip de procedencia lleva zona-<tono> Y zona-texto');
+
+/* El PDF de la ficha reusa estos mismos bloques (punto 7.6 ter). Treinta
+   y dos filas de auditoria en la hoja que el DT se lleva a la charla con
+   un jugador son ruido, y encima la empujan a una carilla mas. */
+ok(/<details class="no-imprimir/.test(BLOQUE),
+   'y el bloque entero no se imprime: es auditoria, no contenido de la ficha');
+
+/* --- EL MANUAL SE GENERA POR NIVEL --- */
+const FGEN = fs.readFileSync(path.join(__dirname, 'generar-manual-etiquetas.js'), 'utf8');
+ok(/data-u=/.test(FGEN),
+   'el generador emite cada corte con su clave, para poder reescribirlo');
+ok(!/const U = J\.JUGADORES_UMBRALES/.test(FGEN),
+   'y ya no lee el mapa estatico: el manual no puede declarar un numero que el motor no usa');
+
+const MAN = path.join(__dirname, 'MANUAL_ETIQUETADO_SGADD.html');
+if (fs.existsSync(MAN)) {
+  const html = fs.readFileSync(MAN, 'utf8');
+  ok(/id="nivelSel"/.test(html), 'el manual generado trae el selector de nivel');
+  N.IDS.forEach(id => ok(html.indexOf('value="' + id + '"') > -1, '  ofrece ' + id));
+  /* Los seis mapas viajan ADENTRO del documento: sin eso el selector
+     tendria que salir a buscar algo y el manual dejaria de ser un HTML
+     suelto que se abre con doble clic. */
+  ok(/var MAPAS = \{/.test(html), 'y los seis mapas viajan en el documento');
+  N.IDS.forEach(id => ok(html.indexOf('"' + id + '"') > -1, '  con los valores de ' + id));
+  /* La matriz impresa es lo que sobrevive al PDF, que congela un nivel. */
+  ok(html.indexOf('La matriz completa') > -1,
+     'y la matriz de los seis se imprime, porque un PDF congela uno solo');
+  ok(html.indexOf('&lt;span class="u') === -1,
+     'los cortes no salen escapados dos veces');
+} else {
+  ok(false, 'el manual esta generado (correr node generar-manual-etiquetas.js)');
+}
 
 /* =====================================================================
    RESUMEN

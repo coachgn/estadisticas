@@ -20,10 +20,10 @@ node test-core.js          # 297 tests · núcleo, índice, validador
 node test-logos.js         #  37 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
-node test-config.js        # 317 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
+node test-config.js        # 318 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
-node test-boot.js          # 165 tests · arranque por club, sintaxis de los módulos, carteles de espera
-node test-jugadores.js     # 267 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
+node test-boot.js          # 167 tests · arranque por club, sintaxis de los módulos, carteles de espera
+node test-jugadores.js     # 270 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
@@ -31,7 +31,7 @@ node test-partido.js       #  54 tests · detalle partido a partido, perfil de t
 node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
-node test-permisos.js      # 364 tests · roles, planes, el gate, el selector, el hub, el ciclo,
+node test-permisos.js      # 365 tests · roles, planes, el gate, el selector, el hub, el ciclo,
                            #             la sesión, la landing y el glosario
 node test-comparativa.js   #  65 tests · ciclos, tendencia contra nivel, cara a cara
 node test-clientes.js      #  69 tests · el padrón de clientes, los cupos y el login
@@ -42,7 +42,8 @@ node test-jsonclub.js      # 105 tests · los JSON de club, el validador, el ais
 node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 162 tests · partidos sin box score: suman a la tabla, no a las métricas
-node test-niveles.js       # 495 tests · registro de umbrales y los 6 niveles · REGRESIÓN de equivalencia
+node test-niveles.js       # 653 tests · registro de umbrales, los 6 niveles, la resolución
+                           #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -54,7 +55,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4356 tests en total. Todos tienen que dar verde antes de commitear.**
+**4514 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -6271,10 +6272,159 @@ que uno medido.
 
 - **Los tres absolutos no llevan `semillas` por nivel.** Si las tuvieran,
   alguien las movería y dejarían de ser absolutos sin que se note.
-- **`JUGADORES_UMBRALES` conserva sus catorce claves exactas.** Es el
-  contrato que `sgadd-scouting.js` lee por `COMPARTIDOS`; agrandarlo le
-  cambiaría la forma sin avisar.
+- **`JUGADORES_UMBRALES` es el CONTRATO con scouting.** Es lo que
+  `sgadd-scouting.js` lee por `COMPARTIDOS`, así que una clave que se
+  saca le apaga una regla en silencio. Pasó de catorce a diecisiete al
+  absorber los literales que vivían dentro de los arquetipos; **agregar
+  se puede, sacar no**.
 - **Sin el registro se cae a los literales**, no a `undefined`: una
   comparación contra `undefined` es siempre falsa y apagaría la regla en
   silencio.
 - **`sgadd-niveles.js` carga ANTES que `sgadd-jugadores.js`.**
+
+### Los literales que vivían DENTRO de los arquetipos
+
+`generador` y `amenaza` no se movieron ni un punto en la etapa 4, y el
+motivo era que sus números estaban **escritos en línea dentro de**
+**`PERFILES_TECNICOS`**, fuera del registro. El de `generador` era además
+el MISMO `1.40` de `astPPGenerador`, duplicado a mano — el bug del punto
+8 otra vez, esperando a que alguien moviera uno de los dos.
+
+Los tres entraron al registro (`astPPGenerador` ya estaba; se suman
+`amenazaVolumenT3` y `amenazaT3`) y la regla los lee por `prom.U`. Medido
+sobre los cinco libros:
+
+```
+                        JUJUY  RQ 1ª  DEP.   U21    U23
+arq:generador   antes    29%    12%    6%     7%    10%
+                ahora    29%    31%   30%    30%    29%
+arq:amenaza     antes    16%     4%    4%     5%     5%
+                ahora    16%    11%   14%    12%    13%
+```
+
+`generador` pasó de significar cosas distintas según la categoría a
+marcar a ~30% en las cinco. Hay dos tests que leen el fuente y fallan si
+un literal vuelve a aparecer adentro de un arquetipo.
+
+### `ancla-defensiva` · el bloqueo NO era el nivel, era la COMPARACIÓN
+
+La regla exigía `RD rel > RO rel`, o sea ratio > 1. Los dos relativos se
+miden contra **medianas distintas**, y el rebote ofensivo está mucho más
+concentrado en los interiores que el defensivo: medido, la mediana del
+ratio entre interiores es **0,51–0,82** en los cinco libros. Pedir `> 1`
+era pedir algo **atípico por construcción**, y por eso la etiqueta daba
+0% en tres de las cinco ligas — no porque no hubiera anclas, sino porque
+la comparación no podía encontrarlas.
+
+Ahora se compara contra la distribución del propio torneo
+(`anclaRatioDefensivo`, p60). **El p60 se eligió midiendo, no a ojo**: es
+el único percentil que desbloquea la U21 —de p70 en adelante la deja en
+0— y da incidencias consistentes en los cinco libros.
+
+```
+                        JUJUY  RQ 1ª  DEP.   U21    U23
+fun:ancla-defensiva  →   3,1%   0,0%  2,2%   3,1%   1,1%     (antes 0 · 2 · 0 · 0 · 0)
+fun:rim-runner       →   3,1%   1,3%  4,0%   5,2%   3,1%
+```
+
+Dos cosas honestas sobre esto:
+
+- **RQ Primera sigue en 0%, y no es el umbral.** Sus cinco interiores
+  calificados se los llevan `finalizador-corto` (4) y `generador-primario`
+  (1), que van antes en la cascada — verificado uno por uno. Es un
+  problema de ORDEN, y el orden tiene sus propios tests y es una decisión
+  de básquet: cambiarlo de pasada, para que un número quede lindo, sería
+  exactamente lo que este proyecto no hace.
+- **`rim-runner` bajó** (5/3/8/8/7% → 4/1/4/3/3%). Es el efecto correcto
+  —los que absorbía por defecto ahora caen donde corresponde— pero es un
+  movimiento y conviene mirarlo.
+
+Va `>` y no `>=` **a propósito**: con el respaldo estático, que vale 1,00
+—el número viejo—, la regla se comporta exactamente como antes, así que el
+cambio de vara vive entero en el umbral y no en el operador.
+
+Y el `detalle` de la etiqueta se reescribió: decía *«sostiene el rebote
+defensivo más de lo que carga el ofensivo»*, que con un umbral por debajo
+de 1 **es falso**. Un texto que ya no describe la condición que lo
+disparó es peor que ninguno.
+
+---
+
+## 45 bis. LA PROCEDENCIA DEL UMBRAL · lo que hace auditable al sistema
+
+**Un umbral que se movió solo y uno escrito a mano se ven exactamente
+igual en pantalla: los dos son un número.** Mientras los treinta y dos
+valían un literal eso no importaba; desde que se adaptan, el DT que ve una
+etiqueta nueva no puede saber si cambió el jugador o cambió la vara — y
+una herramienta que no se puede auditar se deja de usar.
+
+| origen | qué significa |
+|---|---|
+| `absoluto` | Fijo. Describe economía del básquet. Son tres |
+| `tier` | La semilla medida del nivel: todavía no hay muestra |
+| `mezcla` | En transición entre esa semilla y el percentil real |
+| `vivo` | El percentil real sobre los calificados de esta competencia |
+
+`SGADD_NIVELES.procedencia(clave, nivel, contexto)` los resuelve. **Sin
+`contexto` contesta la pregunta de TABLA** —qué diría este nivel en frío—
+y por eso ahí solo puede salir `absoluto` o `tier`; **con contexto**
+contesta la pregunta real y aparecen los otros dos. Los cuatro se declaran
+en `ORIGENES`, y hay un test que exige que la UI conozca exactamente esos
+cuatro: un origen que el motor devuelva y la tabla no sepa pintar saldría
+sin explicación y nadie se enteraría.
+
+### El bloque de la ficha
+
+`jugadoresVara(idx)` es **puro** y devuelve la foto completa: qué nivel
+rige, de dónde salió esa declaración, cuánta muestra hay y, por cada
+umbral, su valor con su procedencia. `jugadoresBloqueVara(idx)` lo pinta
+al pie del tab General.
+
+- **Va PLEGADO**: es auditoría, no lectura de cancha.
+- **Lista LOS TREINTA Y DOS**, no un recorte. Un umbral que no se lista es
+  uno que no se audita.
+- **Lleva `.no-imprimir`.** El PDF de la ficha reusa estos mismos bloques
+  (punto 7.6 ter) y es la hoja que el DT se lleva a la charla con UN
+  jugador: treinta y dos filas de auditoría ahí son ruido y empujan la
+  ficha a una carilla más. Quien audita lo hace en pantalla.
+- **Sin `__detalle` devuelve vacío.** Ahí el mapa es el respaldo estático
+  y no hay procedencia que mostrar: decir que la hay sería peor.
+
+**Los dos defectos que solo se vieron MIRANDO LA PANTALLA** —ninguno de
+los dos deja error en consola, y los dos tienen su test ahora:
+
+1. **`zona-<tono>` solo define la variable `--zona`**; el color lo pinta
+   `zona-texto` (punto 15). Con una sola de las dos, el chip salía del
+   color heredado y **el semáforo no existía**.
+2. El bloque entraba al **PDF de la ficha** sin que nadie lo pidiera.
+
+### El manual se imprime POR NIVEL
+
+`generar-manual-etiquetas.js` leía `JUGADORES_UMBRALES` e imprimía un
+número pelado. Desde las etapas 3 y 4 eso pasó a ser **falso para
+veintinueve de los treinta y dos**, y un manual que declara un número que
+el motor no usa es peor que no tener manual.
+
+Cada corte se emite con su clave (`data-u`) y los **seis mapas viajan**
+**adentro del documento**: el selector reescribe los números sin volver a
+generar nada, así que el manual sigue siendo un HTML suelto que se abre
+con doble clic.
+
+- **Arranca en LIGA ARGENTINA** a propósito: es la vara con la que se
+  escribieron las reglas y con la que se validaron las fixtures, así que
+  el manual impreso sin tocar nada dice lo mismo que decía.
+- **La sección 4 imprime la MATRIZ de los seis.** Un PDF congela un nivel;
+  la matriz es lo que sobrevive al papel y permite auditar cualquier
+  categoría desde una hoja.
+- **Los tres fijos van subrayados** y en la matriz se repiten como `=`:
+  escribir seis veces el mismo número invita a moverlo.
+- **Los cortes traen markup ahora**, así que **no se vuelven a escapar**
+  al renderizar. Hay un test que falla si aparece un `&lt;span class="u`
+  en el HTML generado.
+
+### El mapa estático NO se toca, y por eso sigue siendo el respaldo
+
+Los tres literales nuevos entraron a `JUGADORES_UMBRALES` con **el valor
+que tenían adentro del arquetipo** (3,0 · 0,34 · 1,00), no con la semilla
+de ningún nivel. Mover un número y unificarlo a la vez haría imposible
+saber cuál de las dos cosas cambió una incidencia.

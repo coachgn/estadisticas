@@ -391,6 +391,20 @@ function jugadoresValoresDe(idx, clave) {
         const v = jugadoresNN(j['RO%']);
         return (v !== null && refs['RO%']) ? v / refs['RO%'] : null;
       }
+      case 'RDrel / ROrel': {
+        /* OJO CON LA RECURSIÓN: esto NO puede pasar por
+           `jugadoresPerfilBase`, que a su vez pide los umbrales. El
+           «es interior» se decide con la mezcla de tiro, que usa solo
+           los umbrales ABSOLUTOS y por lo tanto no depende de nada que
+           estemos resolviendo. */
+        const a = jugadoresNN(j['T3I']), b = jugadoresNN(j['T2I']);
+        const mezcla = (a !== null && b !== null && (a + b) > 0) ? a / (a + b) : null;
+        if (mezcla === null || mezcla >= N.valorDe('mezclaTripleaPerimetral')) return null;
+        const rd = jugadoresNN(j['RD%']), ro = jugadoresNN(j['RO%']);
+        if (rd === null || ro === null || !refs['RD%'] || !refs['RO%']) return null;
+        const roRel = ro / refs['RO%'];
+        return roRel > 0 ? (rd / refs['RD%']) / roRel : null;
+      }
       case 'RT / mediana': {
         const v = jugadoresNN(jugadoresRT(j));
         return (v !== null && refs.RT) ? v / refs.RT : null;
@@ -461,6 +475,83 @@ function jugadoresUmbrales(idx, opciones) {
   try { Object.defineProperty(mapa, '__nivel', { value: nv, enumerable: false }); } catch (e) {}
   if (cacheable) JUGADORES_UMBRALES_CACHE.set(idx, mapa);
   return mapa;
+}
+
+/* =====================================================================
+   LA VARA DE MEDICIÓN · etapa 5
+
+   Un umbral que se movió solo y uno escrito a mano se ven EXACTAMENTE
+   IGUAL en pantalla: los dos son un número. Mientras los treinta valían
+   un literal eso no importaba; desde que se adaptan, sí — el DT que ve
+   una etiqueta nueva tiene derecho a saber si cambió el jugador o cambió
+   la vara.
+
+   `jugadoresVara(idx)` es PURA y devuelve la foto completa: qué nivel
+   rige, de dónde salió esa declaración, cuánta muestra hay y, por cada
+   umbral, su valor con su procedencia. La UI la pinta; el manual la
+   imprime; un test la puede leer sin navegador.
+   ===================================================================== */
+const VARA_ORIGENES = {
+  absoluto: { label: 'Fijo', tono: 'neutro' },
+  tier:     { label: 'Nivel', tono: 'aviso' },
+  mezcla:   { label: 'En transición', tono: 'aviso' },
+  vivo:     { label: 'Medido', tono: 'exito' },
+};
+
+/* De dónde salió la DECLARACIÓN del nivel, que es otra pregunta que de
+   dónde salió el número. Un `defecto` no es un error, pero sí es algo
+   que nadie declaró, y eso hay que poder verlo. */
+const VARA_ORIGEN_NIVEL = {
+  forzado: 'Forzado a mano (vista previa o test).',
+  indice:  'Lo declara el índice de esta competencia.',
+  kv:      'Publicado desde el Panel Master.',
+  json:    'Declarado en clubes/<club>.json.',
+  defecto: 'Nadie lo declaró: se usa el nivel por defecto.',
+};
+
+function jugadoresVara(idx, opciones) {
+  const N = JUGADORES_NIVELES;
+  if (!N || !idx || !idx.liga) return null;
+  const U = jugadoresUmbrales(idx, opciones);
+  const det = U && U.__detalle;
+  /* Sin detalle el mapa es el RESPALDO estático: no hay procedencia que
+     mostrar y decir que la hay sería peor que no mostrar nada. */
+  if (!det) return null;
+  const nv = U.__nivel || { nivel: N.POR_DEFECTO, origen: 'defecto' };
+  const info = N.nivel(nv.nivel);
+
+  const umbrales = N.claves().map(k => {
+    const r = det[k] || {};
+    const d = N.definicion(k) || {};
+    return {
+      clave: k,
+      metrica: d.metrica || null,
+      dir: d.dir || null,
+      tipo: d.tipo || null,
+      valor: (r.valor === undefined ? null : r.valor),
+      origen: r.origen || null,
+      mezcla: r.mezcla || 0,
+      semilla: (r.semilla === undefined ? null : r.semilla),
+      base: N.baseDe(k),
+      acotado: !!r.acotado,
+      nota: r.nota || null,
+    };
+  });
+
+  const cuenta = {};
+  umbrales.forEach(u => { if (u.origen) cuenta[u.origen] = (cuenta[u.origen] || 0) + 1; });
+  const muestra = (det[N.claves()[0]] && det[N.claves()[0]].muestra) || { partidos: 0, n: 0 };
+
+  return {
+    nivel: nv.nivel,
+    nivelLabel: info ? info.label : nv.nivel,
+    nivelNota: info ? info.nota : null,
+    origenNivel: nv.origen,
+    origenNivelTexto: VARA_ORIGEN_NIVEL[nv.origen] || null,
+    muestra: muestra,
+    umbrales: umbrales,
+    cuenta: cuenta,
+  };
 }
 
 function jugadoresPromediosLiga(idx) {
@@ -545,7 +636,9 @@ const PERFILES_TECNICOS = [
   },
   {
     id: 'generador', emoji: '🧠', label: 'Generador',
-    calza: (j) => j['AST-PP'] > 1.40,
+    /* El 1,40 estaba duplicado a mano acá y en `astPPGenerador`. Se lee
+       de una sola fuente para que no puedan quedar distintos. */
+    calza: (j, prom) => j['AST-PP'] > ((prom && prom.U) || JUGADORES_UMBRALES).astPPGenerador,
     detalle: 'Reparte muchas más asistencias de las que pierde la pelota: hace mejor a los demás.',
   },
   {
@@ -555,7 +648,8 @@ const PERFILES_TECNICOS = [
   },
   {
     id: 'amenaza', emoji: '🎯', label: 'Amenaza Perimetral Real',
-    calza: (j) => j['T3I'] > 3.0 && j['T3%'] > 0.34,
+    calza: (j, prom) => { const U = (prom && prom.U) || JUGADORES_UMBRALES;
+      return j['T3I'] > U.amenazaVolumenT3 && j['T3%'] > U.amenazaT3; },
     detalle: 'Volumen y acierto de triple genuinos: hay que salir a buscarlo afuera.',
   },
   {
@@ -691,6 +785,7 @@ const JUGADORES_UMBRALES = (function () {
     'reboteInterior', 'reboteDesempate', 'mezclaTripleaPerimetral',
     'mezclaTripleInterior', 'rtlContacto', 'frContacto',
     'usoLibreContacto', 't1Contacto',
+    'amenazaVolumenT3', 'amenazaT3', 'anclaRatioDefensivo',
   ];
   const RESPALDO = {
     minutosClave: 20,              // debajo de esto no condiciona un plan
@@ -719,6 +814,9 @@ const JUGADORES_UMBRALES = (function () {
     frContacto: 2.5,               // faltas recibidas por partido
     usoLibreContacto: 0.12,        // PT1%: porción de SUS plays que son libres
     t1Contacto: 0.72,              // efectividad mínima en el cobro
+    amenazaVolumenT3: 3.0,
+    amenazaT3: 0.34,
+    anclaRatioDefensivo: 1.00,
   };
   if (!JUGADORES_NIVELES) return RESPALDO;
   const o = {};
@@ -778,10 +876,26 @@ const JUGADORES_ROLES_FUNCIONALES = [
   },
   {
     id: 'ancla-defensiva', label: 'Ancla Defensiva', relativa: true,
+    /* EL COMPARATIVO ES CONTRA LA LIGA, NO UN `RD rel > RO rel` CRUDO.
+
+       Los dos relativos se miden contra medianas DISTINTAS, y el rebote
+       ofensivo está mucho más concentrado en los interiores que el
+       defensivo: medido sobre los cinco libros, la mediana del ratio
+       entre interiores es 0,51–0,82. O sea que pedir `> 1` era pedir
+       algo atípico POR CONSTRUCCIÓN, y por eso la etiqueta daba 0% en
+       tres de las cinco ligas.
+
+       Va `>` y no `>=` a propósito: con el respaldo estático —que vale
+       1,00, el número viejo— la regla se comporta exactamente como
+       antes, así que el cambio de vara vive entero en el umbral y no
+       en el operador. */
     test: (p) => p.esInterior && p.reboteDefRel !== null && p.reboteRel !== null &&
-      p.reboteDefRel >= jugadoresU(p).reboteInterior && p.reboteDefRel > p.reboteRel,
-    detalle: (p) => 'sostiene el rebote defensivo (' + jugadoresNum(p.reboteDefRel, 2) +
-      'x la mediana de la liga en RD%) más de lo que carga el ofensivo (' + jugadoresNum(p.reboteRel, 2) + 'x).',
+      p.reboteDefRel >= jugadoresU(p).reboteInterior &&
+      p.reboteRel > 0 &&
+      (p.reboteDefRel / p.reboteRel) > jugadoresU(p).anclaRatioDefensivo,
+    detalle: (p) => 'sostiene el cristal defensivo (' + jugadoresNum(p.reboteDefRel, 2) +
+      'x la mediana de la liga en RD%) por encima de lo que su liga espera de un ' +
+      'interior con ese rebote ofensivo (' + jugadoresNum(p.reboteRel, 2) + 'x).',
   },
   {
     id: 'rim-runner', label: 'Rebotador de Impacto / Rim Runner', relativa: true,
@@ -2245,6 +2359,90 @@ function jugadoresBloqueADN(sintesis) {
 }
 
 /** Tarjeta comparativa Local vs. Visitante, con el badge de sensibilidad. */
+/* =====================================================================
+   EL BLOQUE «VARA DE MEDICIÓN»
+
+   Va PLEGADO y al final del tab: es auditoría, no lectura de cancha. El
+   DT abre la ficha para mirar al jugador; el que viene a preguntarse por
+   qué el motor decidió lo que decidió abre esto.
+
+   Los tonos son los del punto 15 —vocabulario cerrado, contraste ya
+   medido— y NO colores sueltos: este bloque también se imprime, y un hex
+   crudo no sobrevive al aplanado del papel.
+   ===================================================================== */
+/* VA CON `.no-imprimir`. El PDF de la ficha reusa estos mismos bloques
+   (punto 7.6 ter) y es la hoja que el DT se lleva a la charla con UN
+   jugador: treinta y dos filas de auditoría ahí adentro son ruido, y
+   encima empujan la ficha a una carilla más. Quien audita lo hace en
+   pantalla; el manual imprime la matriz de los seis niveles. */
+function jugadoresBloqueVara(idx) {
+  const v = jugadoresVara(idx);
+  if (!v) return '';
+
+  const chip = (origen) => {
+    const o = VARA_ORIGENES[origen] || { label: origen || '—', tono: 'neutro' };
+    /* `zona-<tono>` solo define la VARIABLE; el color lo pinta
+       `zona-texto`. Sin las dos el chip sale del color heredado y el
+       semáforo no se ve — y en papel tampoco, que es donde se audita. */
+    return `<span class="zona-${o.tono} zona-texto text-[10px] uppercase tracking-wider">${escapeHtml(o.label)}</span>`;
+  };
+  const nf = (x) => (x === null || x === undefined) ? '—'
+    : String(Math.round(x * 1000) / 1000).replace('.', ',');
+
+  const filas = v.umbrales.map(u => {
+    /* El valor de referencia que se muestra al lado NO es el mismo en
+       los dos casos: para un absoluto no existe semilla —vale igual en
+       las seis ligas— y mostrar el literal ahí sugeriría que se movió. */
+    const ref = u.origen === 'absoluto' ? '—' : nf(u.semilla === null ? u.base : u.semilla);
+    return `<tr>
+        <td class="font-mono">${escapeHtml(u.clave)}</td>
+        <td>${escapeHtml(u.metrica || '—')}</td>
+        <td class="font-mono">${nf(u.valor)}</td>
+        <td class="font-mono text-muted">${ref}</td>
+        <td>${chip(u.origen)}${u.acotado
+          ? ' <span class="text-[10px] text-muted" title="El percentil real caía fuera del rango observado en libros reales y se acotó: es lo que impide que una liga floja fabrique «tiradores de élite».">acotado</span>'
+          : ''}</td>
+      </tr>`;
+  }).join('');
+
+  const resumen = ['vivo', 'mezcla', 'tier', 'absoluto']
+    .filter(k => v.cuenta[k])
+    .map(k => v.cuenta[k] + ' ' + (VARA_ORIGENES[k] ? VARA_ORIGENES[k].label.toLowerCase() : k))
+    .join(' · ');
+
+  return `
+    <details class="no-imprimir mt-6 rounded-lg border border-hairline bg-surface2/40">
+      <summary class="cursor-pointer select-none px-4 py-2.5 text-[11px] uppercase tracking-widest font-display text-muted">
+        Vara de medición · ${escapeHtml(v.nivelLabel)}
+        <span class="normal-case tracking-normal">(${escapeHtml(resumen)})</span>
+      </summary>
+      <div class="px-4 pb-4">
+        <p class="text-xs text-muted leading-snug mb-1">
+          Con qué números se decidieron las etiquetas de esta pantalla.
+          ${escapeHtml(v.nivelNota || '')}
+        </p>
+        <p class="text-[11px] text-muted leading-snug mb-3">
+          ${escapeHtml(v.origenNivelTexto || '')}
+          Muestra: ${v.muestra.partidos} partidos · ${v.muestra.n} jugadores calificados.
+        </p>
+        <div class="scrollbox">
+          <table class="w-full text-xs">
+            <thead><tr>
+              <th>Umbral</th><th>Métrica</th><th>Vigente</th><th>Semilla</th><th>Procedencia</th>
+            </tr></thead>
+            <tbody>${filas}</tbody>
+          </table>
+        </div>
+        <p class="text-[11px] text-muted leading-snug mt-3">
+          <b>Fijo</b>: describe economía del básquet y vale igual en cualquier liga.
+          <b>Nivel</b>: la semilla medida del nivel declarado, porque todavía no hay muestra.
+          <b>En transición</b>: se está pasando de esa semilla al percentil real.
+          <b>Medido</b>: el percentil sobre los calificados de esta competencia.
+        </p>
+      </div>
+    </details>`;
+}
+
 function jugadoresBloqueCondicion(idx, j) {
   const split = jugadoresSplitCondicion(idx, j);
   if (!split.suficiente) {
@@ -2335,7 +2533,8 @@ function jugadoresTabGeneral(idx, j) {
     <p class="text-[11px] text-muted mt-4 leading-snug">
       Percentiles contra el resto de la liga que llega al umbral de minutos.
       ${j.__califica ? '' : 'Este jugador está debajo de ese umbral: sus datos se muestran, pero sin percentil, para no mentir con poca muestra.'}
-    </p>`;
+    </p>
+    ${jugadoresBloqueVara(idx)}`;
 }
 
 /* =====================================================================
@@ -2729,6 +2928,7 @@ if (typeof module !== 'undefined' && module.exports) {
     JUGADORES_UMBRALES, JUGADORES_ROLES_FUNCIONALES,
     JUGADORES_NIVELES,
     jugadoresUmbrales, jugadoresNivelActivo, jugadoresValoresDe,
+    jugadoresVara, VARA_ORIGENES, VARA_ORIGEN_NIVEL,
     jugadoresPerfilBase, jugadoresRolFuncional, jugadoresADN, jugadoresBadges,
     JUGADORES_METRICAS_EVOLUCION,
     JUGADORES_MOTIVO_SIN_RESPALDO,

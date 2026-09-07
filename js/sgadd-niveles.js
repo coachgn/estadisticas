@@ -314,6 +314,56 @@ const SGADD_NIVELES = (function () {
     },
 
     /* ---------------------------------------------------------------
+       LOS QUE ESTABAN ESCRITOS EN LÍNEA DENTRO DE `PERFILES_TECNICOS`
+
+       Los arquetipos tenían sus propios números sueltos, fuera del
+       registro, así que la adaptación por nivel no los alcanzaba: en la
+       etapa 4 `generador` y `amenaza` no se movieron ni un punto.
+
+       El de `generador` era además el MISMO 1,40 que `astPPGenerador`,
+       duplicado a mano. Ahora el arquetipo lee esa clave y no hay dos
+       números que puedan quedar distintos.
+       --------------------------------------------------------------- */
+    amenazaVolumenT3: {
+      tipo: TIPOS.PERCENTIL, p: 38, metrica: 'T3I', dir: 'mayor',
+      base: 3.0,
+      calibrado: { LIGA_ARGENTINA: 2.906, LOCAL_MAYORES: 2.125, LOCAL_MENORES: 1.727 },
+      clamp: [1.727, 3.0],
+      medido: 'p38 en Liga Argentina · era un literal dentro del arquetipo «amenaza»',
+    },
+    amenazaT3: {
+      tipo: TIPOS.PERCENTIL, p: 64, metrica: 'T3%', dir: 'mayor',
+      base: 0.34,
+      calibrado: { LIGA_ARGENTINA: 0.338, LOCAL_MAYORES: 0.300, LOCAL_MENORES: 0.286 },
+      clamp: [0.286, 0.34],
+      medido: 'p64 en Liga Argentina · ídem',
+    },
+
+    /* ---------------------------------------------------------------
+       EL RATIO DEL ANCLA DEFENSIVA
+
+       `ancla-defensiva` exigía `RD rel > RO rel`, o sea ratio > 1. Eso
+       la dejaba en 0% en tres de los cinco libros, y el motivo no era
+       el nivel sino la CONSTRUCCIÓN de la comparación: los dos son
+       relativos a medianas distintas, y el rebote ofensivo está mucho
+       más concentrado en los interiores que el defensivo. Medido, la
+       mediana del ratio entre interiores es 0,51–0,82 en las cinco
+       ligas: pedir > 1 es pedir algo atípico POR CONSTRUCCIÓN.
+
+       Ahora se compara contra la distribución del propio torneo. Se
+       eligió p60 midiendo, no a ojo: es el ÚNICO percentil que
+       desbloquea la U21 —p70 en adelante la deja en 0— y da incidencias
+       consistentes de 2,1% a 6,5% en los cinco libros.
+       --------------------------------------------------------------- */
+    anclaRatioDefensivo: {
+      tipo: TIPOS.PERCENTIL, p: 60, metrica: 'RDrel / ROrel', dir: 'mayor',
+      base: 1.00,
+      calibrado: { LIGA_ARGENTINA: 0.644, LOCAL_MAYORES: 0.704, LOCAL_MENORES: 0.699 },
+      clamp: [0.60, 1.00],
+      medido: 'p60 del ratio entre interiores · el `> 1` viejo dejaba la etiqueta muerta',
+    },
+
+    /* ---------------------------------------------------------------
        RELATIVOS A LA MEDIANA · ya eran múltiplos de una referencia de
        liga, así que no tienen el problema de los de arriba. Se declaran
        para que el registro esté completo y para poder auditarlos.
@@ -559,27 +609,60 @@ const SGADD_NIVELES = (function () {
    * indistinguible de un bug — es la misma regla que ya cumplen
    * `refRebote` y el `nivel` del grupo de pares.
    */
-  function procedencia(clave, nivelId) {
+  /**
+   * De dónde sale el número que rige HOY para un umbral. Es la pieza
+   * auditable del sistema: sin ella, un umbral que se movió solo y uno
+   * escrito a mano se ven exactamente igual en pantalla.
+   *
+   * SIN `contexto` contesta la pregunta de tabla —qué diría este nivel
+   * en frío— y por eso el origen solo puede ser `absoluto` o `tier`.
+   * CON `contexto` (el mismo que toma `umbralVigente`) contesta la
+   * pregunta real, y ahí aparecen `mezcla` y `vivo`.
+   */
+  function procedencia(clave, nivelId, contexto) {
     const d = REGISTRO[clave];
     if (!d) return null;
     const n = normalizarNivel(nivelId);
-    return {
+    const comun = {
       clave: clave,
-      valor: valorDe(clave, n),
       tipo: d.tipo,
       nivel: n,
-      /* En la etapa 4 esto pasa a ser 'vivo' o 'mezcla' cuando la liga
-         tenga muestra suficiente. Hoy siempre sale de la tabla. */
-      origen: d.tipo === TIPOS.ABSOLUTO ? 'absoluto' : 'tier',
       metrica: d.metrica || null,
+      dir: d.dir || null,
       calibradoDisponible: !!(d.calibrado && d.calibrado[n] !== undefined),
     };
+    if (contexto) {
+      const r = umbralVigente(clave, Object.assign({}, contexto, { nivel: n }));
+      return Object.assign(comun, {
+        valor: r ? r.valor : null,
+        origen: r ? r.origen : null,
+        mezcla: r ? (r.mezcla || 0) : 0,
+        semilla: r ? r.semilla : null,
+        vivo: r ? (r.vivo === undefined ? null : r.vivo) : null,
+        acotado: !!(r && r.acotado),
+        muestra: r ? r.muestra : null,
+        nota: (r && r.nota) || null,
+      });
+    }
+    return Object.assign(comun, {
+      valor: valorDe(clave, n),
+      origen: d.tipo === TIPOS.ABSOLUTO ? 'absoluto' : 'tier',
+      mezcla: 0,
+    });
   }
+
+  /** Los cuatro orígenes posibles, en castellano y en un solo lugar. */
+  const ORIGENES = {
+    absoluto: 'Fijo: describe economía del juego y vale igual en cualquier liga.',
+    tier: 'La semilla del nivel declarado. Todavía no hay muestra para medir en vivo.',
+    mezcla: 'En transición: se está pasando de la semilla del nivel al percentil real.',
+    vivo: 'El percentil real sobre los calificados de esta competencia.',
+  };
 
   return {
     TIPOS, NIVELES, IDS, POR_DEFECTO, CALIBRADOS, REGISTRO,
     nivel, esNivel, normalizarNivel,
-    definicion, claves, valorDe, mapaDe, procedencia,
+    definicion, claves, valorDe, mapaDe, procedencia, ORIGENES,
     MUESTRA, semillaDe, percentilDe, factorMezcla, acotar,
     baseDe,
     nivelDeCategoria,

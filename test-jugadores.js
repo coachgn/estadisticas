@@ -191,6 +191,14 @@ const idxArq = SGADD.construirIndice({
   'PROMEDIOS J': { cols: colsArq, filas: filasArq },
 }, { fase: 'REGULAR' });
 
+/* LA FIXTURE ESTÁ CALIBRADA CONTRA LIGA ARGENTINA y hay que decirlo, o
+   la resolución por nivel la mide con otra vara: sin esta línea el
+   índice cae al nivel por defecto (LOCAL_MAYORES) y ahí `astPPGenerador`
+   vale 0,89, así que el jugador «promedio» —AST-PP 1,00— pasaría a ser
+   Generador y el test dejaría de probar que el motor discrimina.
+   Los números de arriba (1,40 · 3,0 T3I · 0,34 T3%) son los de esa liga. */
+idxArq.liga.nivel = 'LIGA_ARGENTINA';
+
 const jugArq = (nombre) => idxArq.liga.jugadores.find(j => j['NOMBRES'] === nombre);
 const idsDe = (arqs) => arqs.map(a => a.id);
 
@@ -911,9 +919,47 @@ check('el interior sin dimensión dominante cae en Poste Bajo, no en Rol Complem
 /* El comparativo es lo que impide que ancla y rim runner sean el mismo test
    con otro nombre: en esta liga el que rebotea en defensa casi siempre
    rebotea también en ataque. */
-check('con RD y RO igual de altos gana Rim Runner: el ancla exige que el defensivo pese MÁS',
+check('con RD y RO igual de altos gana Rim Runner bajo la vara HISTÓRICA (ratio 1,00)',
   J.jugadoresRolFuncional(Object.assign({}, interior,
     { pptDoble: 0.85, reboteRel: 1.60, reboteDefRel: 1.60 })).id === 'rim-runner');
+
+/* =====================================================================
+   EL COMPARATIVO DEL ANCLA ES CONTRA LA LIGA, NO UN `RD rel > RO rel`
+
+   Los dos relativos se miden contra medianas DISTINTAS, y el rebote
+   ofensivo está mucho más concentrado en los interiores que el
+   defensivo: medido sobre los cinco libros, la mediana del ratio entre
+   interiores es 0,51–0,82. O sea que pedir `> 1` era pedir algo atípico
+   POR CONSTRUCCIÓN, y por eso la etiqueta daba 0% en tres de las cinco
+   ligas — no porque no hubiera anclas, sino porque la comparación no
+   podía encontrarlas.
+
+   Estos dos checks son los que fallan si alguien vuelve al `>` crudo.
+   ===================================================================== */
+const varaAncla = (ratio) => Object.assign({}, J.JUGADORES_UMBRALES,
+  { anclaRatioDefensivo: ratio });
+
+/* Rebotea MENOS en defensa que en ataque en términos absolutos (1,30
+   contra 1,50) y aun así su ratio —0,87— está por encima de lo que su
+   liga espera. Con la regla vieja esto era imposible de etiquetar. */
+check('un interior por encima del ratio de SU liga es Ancla aunque RD rel < RO rel',
+  J.jugadoresRolFuncional(Object.assign({}, interior, {
+    pptDoble: 0.85, reboteRel: 1.50, reboteDefRel: 1.30, U: varaAncla(0.70),
+  })).id === 'ancla-defensiva',
+  J.jugadoresRolFuncional(Object.assign({}, interior, {
+    pptDoble: 0.85, reboteRel: 1.50, reboteDefRel: 1.30, U: varaAncla(0.70),
+  })).id);
+
+/* Y la otra mitad, que es la que impide que ancla y rim runner sean el
+   mismo test con otro nombre: el que vive del cristal OFENSIVO queda
+   abajo del ratio de su liga y sigue siendo Rim Runner. */
+check('el que vive del cristal ofensivo queda debajo de ese ratio y sigue siendo Rim Runner',
+  J.jugadoresRolFuncional(Object.assign({}, interior, {
+    pptDoble: 0.85, reboteRel: 2.40, reboteDefRel: 1.20, U: varaAncla(0.70),
+  })).id === 'rim-runner',
+  J.jugadoresRolFuncional(Object.assign({}, interior, {
+    pptDoble: 0.85, reboteRel: 2.40, reboteDefRel: 1.20, U: varaAncla(0.70),
+  })).id);
 
 /* --- P-6 / P-9: la zona gris de origen se resuelve por cristal --- */
 const colsZG = ['NOMBRES', 'EQUIPO', 'FASE', 'MIN', 'RO%', 'RD%', 'RO', 'RD', 'RT', 'T3I', 'T2I', 'PPT2'];
