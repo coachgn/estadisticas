@@ -112,6 +112,7 @@
     {
       "id": "deportivo-primera-2026",
       "label": "Primera 2026",
+      "nivel": "LOCAL_MAYORES",
       "slug": "deportivo-primera",
       "categoria": "PRIMERA",
       "faseTorneo": null,

@@ -42,7 +42,7 @@ node test-jsonclub.js      # 105 tests · los JSON de club, el validador, el ais
 node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 162 tests · partidos sin box score: suman a la tabla, no a las métricas
-node test-niveles.js       # 565 tests · registro de umbrales y los 6 niveles · REGRESIÓN de equivalencia
+node test-niveles.js       # 495 tests · registro de umbrales y los 6 niveles · REGRESIÓN de equivalencia
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -54,7 +54,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4425 tests en total. Todos tienen que dar verde antes de commitear.**
+**4356 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -1769,7 +1769,79 @@ Todo vive en `sgadd-ui.js` —`sanearNombreArchivo`, `nombrePersona`,
 Cinco copias de la misma sanitización terminan divergiendo: es el bug que
 ya tuvo el rol funcional (punto 8).
 
-#### Lo que hay que respetar al tocarlo
+#### Etapas 3 y 4 · el nivel se declara y los umbrales se adaptan
+
+**El nivel se declara por categoría** en `clubes/<club>.json`
+(`planillas[].nivel`) y se puede publicar por KV. La cascada es
+`KV → JSON → por defecto`, y el puente entre los dos mundos es el `slug`
+de la planilla: el JSON la indexa por `id` y el catálogo del servidor por
+`slug`. Un valor inválido en KV degrada al JSON en vez de romper.
+
+NO se infiere del campo `liga`: ése distingue La Plata de Liga Argentina
+pero **no** mayores de formativas, que es justo el corte que importa.
+
+`umbralVigente(clave, contexto)` resuelve con cuatro orígenes:
+
+| origen | cuándo |
+|---|---|
+| `absoluto` | siempre, para los tres blindados |
+| `tier` | warm-up: la semilla MEDIDA del nivel |
+| `mezcla` | interpolación lineal entre semilla y percentil vivo |
+| `vivo` | el percentil real sobre los calificados del torneo |
+
+El warm-up tiene **dos gates y hacen falta los dos**: partidos (15→40) y
+calificados (30→60). La U21 tiene 49 calificados, así que un p90 ahí son
+cinco jugadores.
+
+### LO QUE SE REACTIVÓ, MEDIDO
+
+```
+                        JUJUY  RQ 1ª  DEP.   U21    U23
+generador-primario  antes 10%    3%    1%     1%     0%
+                    ahora 10%   10%   12%    10%     8%
+perimetral-media    antes  7%   16%   23%    23%    23%
+                    ahora  7%   13%   18%    16%    17%
+```
+
+`generador-primario` pasó de estar **muerto en formativas** a marcar al
+~10% en las cinco ligas. Y el cubo de descarte (`perimetral-media`) se
+achicó, porque las reglas de arriba ahora sí disparan.
+
+### LO QUE **NO** SE ARREGLÓ, Y POR QUÉ
+
+- **`ancla-defensiva` sigue en 0%** en tres de los cinco libros. Sus dos
+  umbrales ya eran múltiplos de una mediana, así que el trabajo de
+  niveles no los toca; su condición discriminante es COMPARATIVA
+  (`RD rel > RO rel`), no un umbral. Es un problema de cascada, no de
+  nivel.
+- **`manejador-secundario` bajó** (4%→1%): `generador-primario` va antes
+  en la cascada y ahora absorbe a los que antes caían ahí. Es el efecto
+  correcto, pero conviene mirarlo.
+- **Los ARQUETIPOS no se movieron.** `generador` usa `AST-PP > 1.40` y
+  `amenaza` usa `T3I > 3.0 && T3% > 0.34` **escritos en línea dentro de
+  `PERFILES_TECNICOS`**, no en `JUGADORES_UMBRALES`. Están fuera del
+  registro, así que la adaptación no los alcanza. El 1,40 de `generador`
+  es además el MISMO número que `astPPGenerador` duplicado a mano.
+
+### El mapa estático NO se adapta, y es deliberado
+
+`JUGADORES_UMBRALES` sigue devolviendo los literales históricos (`baseDe`)
+y no la semilla del nivel por defecto. Es el respaldo sin contexto y
+**scouting lo lee por `COMPARTIDOS`**: resolverlo a un nivel cambiaría la
+vara de sus once reglas de marca en silencio. Lo comprobé al revés — con
+el mapa estático resuelto a `LOCAL_MAYORES`, `test-scouting.js` daba 12
+fallas porque sus fixtures están calibradas contra Liga Argentina.
+
+La adaptación vive en `jugadoresUmbrales(idx)`, que cuelga el mapa
+resuelto en `prom.U` y `p.U`. Las reglas lo leen por `jugadoresU(p)`, que
+**degrada al estático** si el perfil se armó a mano: hay llamadores que
+construyen perfiles sueltos y sin eso reventaban con TypeError.
+
+El índice puede declarar su propio nivel (`idx.liga.nivel`), y eso importa
+más de lo que parece: hace que la resolución NO dependa de un global, así
+que se puede testear y se podría resolver del lado del servidor.
+
+### Lo que hay que respetar al tocarlo
 
 - **Los prohibidos son la UNIÓN de lo que rechaza cada sistema**, no la
   intersección: un informe se comparte por WhatsApp y termina abierto en

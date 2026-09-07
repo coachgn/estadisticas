@@ -142,10 +142,11 @@ N.claves().forEach(k => {
 /* =====================================================================
    4 · LA EQUIVALENCIA · esta entrega NO mueve un solo número
    ===================================================================== */
-bloque('4 · Nada cambió de valor');
+bloque('4 · Qué se movió y qué no');
 
-/* Los catorce valores históricos, escritos a mano. Si el registro se
-   equivoca en uno, esto lo canta con nombre y apellido. */
+/* Los catorce literales históricos, escritos a mano. Siguen siendo el
+   RESPALDO —el mapa estático que se usa sin índice— y la semilla de Liga
+   Argentina, que es la vara con la que se escribieron las reglas. */
 const HISTORICOS = {
   minutosClave: 20,
   astPPGenerador: 1.40,
@@ -164,8 +165,12 @@ const HISTORICOS = {
 };
 igual(Object.keys(J.JUGADORES_UMBRALES).sort(), Object.keys(HISTORICOS).sort(),
       'JUGADORES_UMBRALES conserva exactamente sus catorce claves');
+
+/* EL MAPA ESTÁTICO NO SE MOVIÓ. Es el respaldo sin contexto y scouting lo
+   lee por COMPARTIDOS: resolverlo a un nivel cambiaría la vara de sus
+   reglas en silencio. La adaptación vive en `jugadoresUmbrales(idx)`. */
 Object.entries(HISTORICOS).forEach(([k, v]) =>
-  igual(J.JUGADORES_UMBRALES[k], v, 'JUGADORES_UMBRALES.' + k + ' sigue valiendo ' + v));
+  igual(J.JUGADORES_UMBRALES[k], v, 'el mapa estático conserva ' + k + ' = ' + v));
 
 const HIST_SCOUT = {
   concentracionAlta: 0.15, pptTripleElite: 1.20, pptTriplePobre: 0.90,
@@ -175,24 +180,58 @@ const HIST_SCOUT = {
   volumenTripleSistematico: 2.5, viaPrincipalTriple: 0.25,
 };
 Object.entries(HIST_SCOUT).forEach(([k, v]) =>
-  igual(scoutU[k], v, 'SCOUTING.' + k + ' sigue valiendo ' + v));
+  igual(scoutU[k], v, 'SCOUTING conserva ' + k + ' = ' + v));
 
-/* LA PROPIEDAD DE ESTA ENTREGA: los seis niveles dan el mismo número.
-   Cuando la etapa 4 mueva las semillas, este test va a fallar — y ahí
-   habrá que actualizarlo A PROPÓSITO, no por accidente. */
-N.claves().forEach(k => {
+/* Y `baseDe` devuelve ese mismo literal, sin nivel. */
+Object.entries(HISTORICOS).forEach(([k, v]) =>
+  igual(N.baseDe(k), v, 'baseDe(' + k + ') = el literal histórico'));
+
+/* ---------------------------------------------------------------
+   LO QUE SÍ SE MOVIÓ · las semillas por nivel
+
+   Antes valían todas lo mismo (etapa 2). Ahora cada nivel usa su
+   equivalente MEDIDO, que es el punto de la etapa 4.
+   --------------------------------------------------------------- */
+igual(N.valorDe('astPPGenerador', 'LIGA_ARGENTINA'), 1.40,
+      'Liga Argentina conserva su valor: es la vara original');
+ok(N.valorDe('astPPGenerador', 'LOCAL_MAYORES') < 1.40,
+   'y en local mayores baja, porque allá 1,40 es el p84–p93',
+   N.valorDe('astPPGenerador', 'LOCAL_MAYORES'));
+ok(N.valorDe('astPPGenerador', 'LOCAL_MENORES')
+   < N.valorDe('astPPGenerador', 'LOCAL_MAYORES'),
+   'y en formativas baja todavía más');
+
+/* LA REGRESIÓN DE LA ETAPA 2, DADA VUELTA: ahora los relativos DEBEN
+   diferir entre niveles. Si volvieran a ser todos iguales, la adaptación
+   se apagó sin que nadie lo note. */
+const RELATIVOS_MEDIDOS = N.claves().filter(k => {
+  const d = N.definicion(k);
+  return d.tipo === N.TIPOS.PERCENTIL && d.calibrado
+    && Object.keys(d.calibrado).length > 1;
+});
+ok(RELATIVOS_MEDIDOS.length >= 15, 'hay al menos quince relativos medidos',
+   RELATIVOS_MEDIDOS.length);
+RELATIVOS_MEDIDOS.forEach(k => {
   const vals = N.IDS.map(id => N.valorDe(k, id));
-  igual(new Set(vals).size, 1,
-        k + ' vale lo mismo en los seis niveles (todavía no se adapta)');
+  ok(new Set(vals).size > 1, k + ': la semilla YA cambia según el nivel',
+     JSON.stringify(vals));
 });
 
-/* El mapa completo de cualquier nivel reproduce los valores de hoy. */
-N.IDS.forEach(id => {
-  const m = N.mapaDe(id);
-  Object.entries(HISTORICOS).forEach(([k, v]) =>
-    igual(m[k], v, 'mapaDe(' + id + ').' + k + ' = ' + v));
+/* Los ABSOLUTOS, en cambio, siguen iguales en los seis. */
+Object.keys(ABSOLUTOS).forEach(k => {
+  const vals = N.IDS.map(id => N.valorDe(k, id));
+  igual(new Set(vals).size, 1, k + ': sigue valiendo lo mismo en los seis niveles');
 });
 
+/* HERENCIA: un nivel sin libro toma el del más cercano en la escala, no
+   el literal. FEDERAL_MENORES se parece a LOCAL_MENORES, no a Liga
+   Argentina — y el literal ES el de Liga Argentina. */
+igual(N.valorDe('astPPGenerador', 'FEDERAL_MENORES'),
+      N.valorDe('astPPGenerador', 'LOCAL_MAYORES'),
+      'FEDERAL_MENORES hereda del calibrado más cercano (orden 5)');
+igual(N.valorDe('astPPGenerador', 'LIGA_NACIONAL'),
+      N.valorDe('astPPGenerador', 'LIGA_ARGENTINA'),
+      'y LIGA_NACIONAL hereda de Liga Argentina');
 /* =====================================================================
    5 · LO CALIBRADO ESTÁ, PERO TODAVÍA NO SE CONSUME
    ===================================================================== */
@@ -219,13 +258,12 @@ CON_CALIBRADO.forEach(k => {
   }
 });
 
-/* Y lo importante: lo calibrado NO afecta a lo que corre hoy. */
+/* Y ahora el calibrado SÍ es la semilla: es lo que la etapa 4 activó. */
 CON_CALIBRADO.forEach(k => {
   const d = N.definicion(k);
-  const menores = d.calibrado.LOCAL_MENORES;
-  if (menores === undefined) return;
-  igual(N.valorDe(k, 'LOCAL_MENORES'), HISTORICOS[k] !== undefined ? HISTORICOS[k] : HIST_SCOUT[k],
-        k + ': LOCAL_MENORES todavía usa la semilla, no el calibrado');
+  if (d.calibrado.LOCAL_MENORES === undefined) return;
+  igual(N.valorDe(k, 'LOCAL_MENORES'), d.calibrado.LOCAL_MENORES,
+        k + ': LOCAL_MENORES usa su equivalente medido');
 });
 
 /* El clamp encierra lo observado: es lo que en la etapa 4 impide que una

@@ -227,6 +227,19 @@ const idx = SGADD.construirIndice({
   'PROMEDIOS J': { cols: colsPJ, filas: filasPJ },
 }, { fase: 'REGULAR' });
 
+/* LA FIXTURE ESTÁ CALIBRADA CONTRA LIGA ARGENTINA.
+
+   Sus jugadores son sintéticos y se eligieron para caer justo por
+   encima o por debajo de umbrales concretos —AST-PP 1,10 NO es un
+   generador primario, porque el umbral era 1,40—. Desde que los
+   umbrales dependen del nivel (punto 45), esa premisa hay que
+   declararla: en LOCAL_MAYORES el equivalente medido es 0,89 y ese
+   mismo jugador SÍ sería un generador primario.
+
+   O sea que no es que el test se rompió: es que estaba midiendo contra
+   una vara que ahora hay que nombrar. */
+idx.liga.nivel = 'LIGA_ARGENTINA';
+
 console.log('\n0. LA FIXTURE ES SANA (si esto falla, el resto miente)');
 console.log('═'.repeat(70));
 check('la liga tiene los 4 equipos', idx.lista().length === 4, idx.lista().length);

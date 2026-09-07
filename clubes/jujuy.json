@@ -26,6 +26,7 @@
     {
       "id": "jujuy-apertura-2025",
       "label": "Conferencia Norte · Apertura 2025",
+      "nivel": "LIGA_ARGENTINA",
       "slug": "jujuy-primera",
       "categoria": "PRIMERA",
       "faseTorneo": "APERTURA",

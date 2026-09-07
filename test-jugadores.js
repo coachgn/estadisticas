@@ -219,8 +219,19 @@ check('con T1% de élite pero sin volumen de línea tampoco',
     Object.assign({}, jugArq('CONTACTO'), { 'RTL%': 0.10, FR: 0.8, 'PT1%': 0.04 }))).indexOf('buscadorContacto') === -1);
 check('el umbral de PT1% es alcanzable en la liga real (el viejo, 0,25, no lo era)',
   J.JUGADORES_UMBRALES.usoLibreContacto <= 0.20, J.JUGADORES_UMBRALES.usoLibreContacto);
-check('el filtro de efectividad quedó en 0,72 como se pidió',
-  J.JUGADORES_UMBRALES.t1Contacto === 0.72);
+/* EL UMBRAL YA NO ES UN LITERAL: depende del nivel de competencia
+   (punto 45). 0,72 es el valor de Liga Argentina, que es la vara con la
+   que se validó la regla; en formativas locales el equivalente medido es
+   0,56, porque ahí un 72% de libres es el p88 y no el p52.
+
+   Lo que se fija es la REGLA —que exista puntería en la línea— y que la
+   semilla de la vara original siga siendo la de siempre. */
+check('el filtro de efectividad de Liga Argentina sigue en 0,72',
+  J.JUGADORES_NIVELES.valorDe('t1Contacto', 'LIGA_ARGENTINA') === 0.72,
+  J.JUGADORES_NIVELES.valorDe('t1Contacto', 'LIGA_ARGENTINA'));
+check('y en formativas locales baja, porque allá 0,72 es el p88',
+  J.JUGADORES_NIVELES.valorDe('t1Contacto', 'LOCAL_MENORES') < 0.72,
+  J.JUGADORES_NIVELES.valorDe('t1Contacto', 'LOCAL_MENORES'));
 check('un jugador "promedio" no calza en NINGÚN perfil (el motor discrimina, no siempre da positivo)',
   J.jugadoresArquetipos(idxArq, jugArq('BASE 1')).length === 0,
   J.jugadoresArquetipos(idxArq, jugArq('BASE 1')));

@@ -360,12 +360,119 @@ function jugadoresRT(j) {
 
 /** Promedios de liga que necesitan los arquetipos y la jerarquía, en un
     solo lugar para no recalcular la distribución completa por cada check. */
+/* =====================================================================
+   LOS UMBRALES VIGENTES DE ESTA COMPETENCIA
+
+   `JUGADORES_UMBRALES` son las semillas del nivel por defecto. Acá se
+   resuelven contra la liga que se está mirando: el nivel declarado de la
+   categoría más, si hay muestra suficiente, el percentil real.
+
+   SE CACHEA POR ÍNDICE. Resolver 27 umbrales implica ordenar 27 muestras
+   de un par de cientos de jugadores, y esto se llama una vez por jugador
+   al armar el ADN: sin caché sería cuadrático.
+   ===================================================================== */
+const JUGADORES_UMBRALES_CACHE = (typeof WeakMap !== 'undefined') ? new WeakMap() : null;
+
+/** La métrica de cada umbral, sobre los calificados. Lo que el motor de
+    niveles no puede saber solo: sabe QUÉ pedir, no cómo leer el índice. */
+function jugadoresValoresDe(idx, clave) {
+  const N = JUGADORES_NIVELES;
+  const d = N && N.definicion(clave);
+  if (!d) return [];
+  const cal = (idx && idx.liga && idx.liga.jugadoresCalificados) || [];
+  const refs = jugadoresReferenciasRebote(idx);
+  const tipo = (j) => {
+    switch (d.metrica) {
+      case 'T3I/(T3I+T2I)': {
+        const a = jugadoresNN(j['T3I']), b = jugadoresNN(j['T2I']);
+        return (a !== null && b !== null && (a + b) > 0) ? a / (a + b) : null;
+      }
+      case 'RO% / mediana': {
+        const v = jugadoresNN(j['RO%']);
+        return (v !== null && refs['RO%']) ? v / refs['RO%'] : null;
+      }
+      case 'RT / mediana': {
+        const v = jugadoresNN(jugadoresRT(j));
+        return (v !== null && refs.RT) ? v / refs.RT : null;
+      }
+      /* Estas tres dependen del PLANTEL o del equipo rival, no del
+         jugador suelto: el índice no las expone por jugador, así que no
+         se pueden calcular acá. Se quedan en la semilla del nivel, que
+         es lo correcto — inventarlas sería peor. */
+      case 'PePP% / JUGADOR TIPO':
+      case 'PLAYS jugador / Σ plantel':
+      case 'T3I jugador / T3I equipo':
+        return null;
+      default:
+        return jugadoresNN(j[d.metrica]);
+    }
+  };
+  const out = [];
+  cal.forEach(j => { const v = tipo(j); if (v !== null) out.push(v); });
+  return out;
+}
+
+/** El nivel declarado para la categoría abierta. */
+function jugadoresNivelActivo() {
+  const N = JUGADORES_NIVELES;
+  if (!N) return { nivel: 'LOCAL_MAYORES', origen: 'defecto' };
+  let pl = null, clubKV = null;
+  try {
+    if (typeof SGADD !== 'undefined' && SGADD.planilla && typeof SGADD_APP !== 'undefined') {
+      pl = SGADD.planilla(SGADD_APP.estado.planillaId);
+    }
+  } catch (e) { /* fuera del navegador no hay estado */ }
+  try {
+    if (typeof SGADD_CLIENTES !== 'undefined' && typeof SGADD_CONFIG !== 'undefined') {
+      const id = SGADD_CONFIG.clubActivo();
+      clubKV = (SGADD_CLIENTES.estado.clubes || [])
+        .filter(c => c.id === id || c.slug === id)[0] || null;
+    }
+  } catch (e) { /* sin catálogo, manda el JSON */ }
+  return N.nivelDeCategoria(pl, clubKV);
+}
+
+/**
+ * El mapa de umbrales que rige para ESTE índice, con su procedencia.
+ *
+ * Se puede forzar el nivel —`opciones.nivel`— para poder testear y para
+ * la vista previa del Panel Master, pero por defecto sale de la
+ * declaración de la categoría.
+ */
+function jugadoresUmbrales(idx, opciones) {
+  const N = JUGADORES_NIVELES;
+  if (!N || !idx || !idx.liga) return JUGADORES_UMBRALES;
+  const o = opciones || {};
+  const cacheable = !o.nivel && JUGADORES_UMBRALES_CACHE;
+  if (cacheable && JUGADORES_UMBRALES_CACHE.has(idx)) return JUGADORES_UMBRALES_CACHE.get(idx);
+
+  /* PRECEDENCIA: lo forzado, lo que declare el propio índice, y recién
+     ahí el estado de la app. Que el índice pueda declararlo importa:
+     hace que la resolución NO dependa de un global, así que se puede
+     testear y se puede resolver del lado del servidor. */
+  const nv = o.nivel ? { nivel: o.nivel, origen: 'forzado' }
+    : (idx.liga.nivel ? { nivel: idx.liga.nivel, origen: 'indice' }
+       : jugadoresNivelActivo());
+  const partidos = (idx.liga.partidos && idx.liga.partidos.length)
+    || (idx.liga.filasPartido || 0) || 0;
+  const mapa = N.mapaVigente(
+    { nivel: nv.nivel, partidos: partidos },
+    (clave) => jugadoresValoresDe(idx, clave));
+  try { Object.defineProperty(mapa, '__nivel', { value: nv, enumerable: false }); } catch (e) {}
+  if (cacheable) JUGADORES_UMBRALES_CACHE.set(idx, mapa);
+  return mapa;
+}
+
 function jugadoresPromediosLiga(idx) {
   return {
     PLAYS: jugadoresPromedioMetrica(idx, 'PLAYS'),
     'eFG%': jugadoresPromedioMetrica(idx, 'eFG%'),
     RT: jugadoresPromedioMetrica(idx, null, jugadoresRT),
     PR: jugadoresPromedioMetrica(idx, 'PR'),
+    /* Los umbrales VIAJAN con el contexto de liga del que salieron. Sin
+       esto habría que pasarlos por parámetro a cada regla, o —peor—
+       mutar el global y depender del orden de las llamadas. */
+    U: jugadoresUmbrales(idx),
   };
 }
 
@@ -473,10 +580,9 @@ const PERFILES_TECNICOS = [
        real; el T1% es el único absoluto, porque convertir 72% de libres es
        bueno en cualquier categoría. */
     id: 'buscadorContacto', emoji: '📏', label: 'Buscador de Contacto',
-    calza: (j) => j['RTL%'] >= JUGADORES_UMBRALES.rtlContacto &&
-      j['FR'] >= JUGADORES_UMBRALES.frContacto &&
-      j['PT1%'] >= JUGADORES_UMBRALES.usoLibreContacto &&
-      j['T1%'] >= JUGADORES_UMBRALES.t1Contacto,
+    calza: (j, prom) => { const U = (prom && prom.U) || JUGADORES_UMBRALES;
+      return j['RTL%'] >= U.rtlContacto && j['FR'] >= U.frContacto &&
+        j['PT1%'] >= U.usoLibreContacto && j['T1%'] >= U.t1Contacto; },
     detalle: 'Ataca el contacto con volumen real (tasa de libres y faltas recibidas por encima de la liga) y además convierte.',
   },
 ];
@@ -617,7 +723,11 @@ const JUGADORES_UMBRALES = (function () {
   if (!JUGADORES_NIVELES) return RESPALDO;
   const o = {};
   CLAVES.forEach(k => {
-    const v = JUGADORES_NIVELES.valorDe(k, JUGADORES_NIVELES.POR_DEFECTO);
+    /* El LITERAL histórico, no la semilla del nivel por defecto: este
+       mapa es el respaldo sin contexto, y scouting lo lee por
+       COMPARTIDOS. Resolverlo a un nivel cambiaría la vara de sus
+       reglas en silencio. La adaptación vive en `jugadoresUmbrales`. */
+    const v = JUGADORES_NIVELES.baseDe(k);
     /* Un umbral que el registro no conozca cae a su literal en vez de
        quedar `undefined`: una comparación contra undefined es siempre
        falsa y apagaría la regla en silencio. */
@@ -627,13 +737,20 @@ const JUGADORES_UMBRALES = (function () {
 })();
 
 /** Rol funcional: cascada excluyente, sin posiciones tradicionales. */
+/* Los umbrales de un perfil, con respaldo. `jugadoresPerfilBase` le
+   cuelga `.U` con los vigentes de esa liga, pero hay llamadores que
+   arman el perfil a mano —los tests, y cualquiera que quiera evaluar
+   una regla suelta—: sin esto, la regla revienta con TypeError en vez
+   de evaluar contra las semillas. Degradar, no romper. */
+function jugadoresU(p) { return (p && p.U) || JUGADORES_UMBRALES; }
+
 const JUGADORES_ROLES_FUNCIONALES = [
   {
     id: 'generador-primario', label: 'Generador Primario',
     test: (p) => p.astPP !== null && p.ast !== null &&
-      p.astPP >= JUGADORES_UMBRALES.astPPGenerador &&
-      p.ast >= JUGADORES_UMBRALES.astVolumenGenerador &&
-      p.min >= JUGADORES_UMBRALES.minutosClave,
+      p.astPP >= jugadoresU(p).astPPGenerador &&
+      p.ast >= jugadoresU(p).astVolumenGenerador &&
+      p.min >= jugadoresU(p).minutosClave,
     detalle: (p) => 'conduce el ataque: ' + jugadoresNum(p.ast, 1) + ' AST con ' + jugadoresNum(p.astPP, 2) + ' de AST-PP.',
   },
   /* ------------------------------------------------------------------
@@ -656,19 +773,19 @@ const JUGADORES_ROLES_FUNCIONALES = [
      ------------------------------------------------------------------ */
   {
     id: 'finalizador-corto', label: 'Finalizador Corto / Short Roll',
-    test: (p) => p.esInterior && p.pptDoble !== null && p.pptDoble >= JUGADORES_UMBRALES.pptDobleAlto,
+    test: (p) => p.esInterior && p.pptDoble !== null && p.pptDoble >= jugadoresU(p).pptDobleAlto,
     detalle: (p) => 'termina cerca del aro con ' + jugadoresNum(p.pptDoble, 2) + ' por doble intentado.',
   },
   {
     id: 'ancla-defensiva', label: 'Ancla Defensiva', relativa: true,
     test: (p) => p.esInterior && p.reboteDefRel !== null && p.reboteRel !== null &&
-      p.reboteDefRel >= JUGADORES_UMBRALES.reboteInterior && p.reboteDefRel > p.reboteRel,
+      p.reboteDefRel >= jugadoresU(p).reboteInterior && p.reboteDefRel > p.reboteRel,
     detalle: (p) => 'sostiene el rebote defensivo (' + jugadoresNum(p.reboteDefRel, 2) +
       'x la mediana de la liga en RD%) más de lo que carga el ofensivo (' + jugadoresNum(p.reboteRel, 2) + 'x).',
   },
   {
     id: 'rim-runner', label: 'Rebotador de Impacto / Rim Runner', relativa: true,
-    test: (p) => p.esInterior && p.reboteRel !== null && p.reboteRel >= JUGADORES_UMBRALES.reboteOfensivoAlto,
+    test: (p) => p.esInterior && p.reboteRel !== null && p.reboteRel >= jugadoresU(p).reboteOfensivoAlto,
     detalle: (p) => 'vive del cristal ofensivo: ' + jugadoresNum(p.reboteRel, 2) + 'x la mediana de la liga en RO%.',
   },
   {
@@ -683,7 +800,7 @@ const JUGADORES_ROLES_FUNCIONALES = [
   },
   {
     id: 'spacing', label: 'Spacing / Tirador de Descarga',
-    test: (p) => p.esPerimetral && p.usoTriple !== null && p.usoTriple >= JUGADORES_UMBRALES.usoTripleAlto,
+    test: (p) => p.esPerimetral && p.usoTriple !== null && p.usoTriple >= jugadoresU(p).usoTripleAlto,
     detalle: (p) => 'abre la cancha: ' + jugadoresPct(p.usoTriple) + ' de sus plays terminan en triple.',
   },
   {
@@ -696,7 +813,7 @@ const JUGADORES_ROLES_FUNCIONALES = [
   },
   {
     id: 'manejador-secundario', label: 'Manejador Secundario',
-    test: (p) => p.astPP !== null && p.astPP >= 1.00 && p.min >= JUGADORES_UMBRALES.minutosClave,
+    test: (p) => p.astPP !== null && p.astPP >= 1.00 && p.min >= jugadoresU(p).minutosClave,
     detalle: (p) => 'segunda línea de conducción: ' + jugadoresNum(p.astPP, 2) + ' de AST-PP.',
   },
   {
@@ -730,6 +847,10 @@ function jugadoresDiv(a, b) {
  * Es la base compartida: las dos secciones parten de los mismos números.
  */
 function jugadoresPerfilBase(idx, j) {
+  /* Los umbrales de ESTA liga viajan con el perfil: las reglas los leen
+     de `p.U` y no del global, así que no dependen de que alguien haya
+     resuelto el nivel antes ni del orden en que se llamen. */
+  const U_VIG = jugadoresUmbrales(idx);
   const tipo = (idx && idx.liga && idx.liga.jugadorTipo) ? idx.liga.jugadorTipo : {};
   const ref = jugadoresReferenciasRebote(idx);
   const rebote = jugadoresNN(j['RO%']);
@@ -791,7 +912,7 @@ function jugadoresPerfilBase(idx, j) {
      que define si alguien juega adentro es cuánto vidrio toma, no de qué
      lado del aro lo toma.
      ------------------------------------------------------------------ */
-  const U = JUGADORES_UMBRALES;
+  const U = U_VIG;
   if (mezclaTriple === null) {
     // Sin un solo tiro de campo no hay origen que inferir. No se inventa.
     p.esInterior = false;
@@ -815,6 +936,7 @@ function jugadoresPerfilBase(idx, j) {
     p.esPerimetral = true;
     p.esInterior = false;
   }
+  p.U = U_VIG;
   return p;
 }
 
@@ -2606,6 +2728,7 @@ if (typeof module !== 'undefined' && module.exports) {
     JUGADORES_RANKINGS, JUGADORES_TOP_N, jugadoresRanking, jugadoresUmbralRanking, RANKING_ACUMULABLES, JUGADORES,
     JUGADORES_UMBRALES, JUGADORES_ROLES_FUNCIONALES,
     JUGADORES_NIVELES,
+    jugadoresUmbrales, jugadoresNivelActivo, jugadoresValoresDe,
     jugadoresPerfilBase, jugadoresRolFuncional, jugadoresADN, jugadoresBadges,
     JUGADORES_METRICAS_EVOLUCION,
     JUGADORES_MOTIVO_SIN_RESPALDO,

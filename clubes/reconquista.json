@@ -100,6 +100,7 @@
     {
       "id": "primera-clausura-2026",
       "label": "Primera · Vuelta 2026",
+      "nivel": "LOCAL_MAYORES",
       "slug": "reconquista-primera",
       "categoria": "PRIMERA",
       "faseTorneo": "VUELTA",
@@ -110,6 +111,7 @@
     {
       "id": "naranja-u21-clausura-2026",
       "label": "Masculina Naranja · U21",
+      "nivel": "LOCAL_MENORES",
       "slug": "reconquista-u21",
       "categoria": "U21",
       "faseTorneo": "CLAUSURA",
@@ -119,6 +121,7 @@
     {
       "id": "naranja-u23-clausura-2026",
       "label": "Masculina Naranja · U23",
+      "nivel": "LOCAL_MENORES",
       "slug": "reconquista-u23",
       "categoria": "U23",
       "faseTorneo": "CLAUSURA",

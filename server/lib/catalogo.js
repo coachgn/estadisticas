@@ -208,6 +208,11 @@ function publico(cat, opciones) {
       /* `activo` reemplaza al `sheetId` como señal de "esta categoría ya
          tiene libro": dice lo mismo sin revelar cuál. */
       activo: !!c[id].categorias[s].sheetId,
+      /* EL NIVEL DE COMPETENCIA. Viaja para todos: decide con qué vara
+         se etiqueta a los jugadores de esa categoria, y sin el la U21
+         se mediria con la de Liga Argentina. Publicarlo por KV permite
+         corregirlo sin tocar el repo. */
+      nivel: c[id].categorias[s].nivel || null,
     })),
   }, admin ? {
     estado: c[id].estado || 'activo',
