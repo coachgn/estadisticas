@@ -844,7 +844,7 @@ function jugadoresU(p) { return (p && p.U) || JUGADORES_UMBRALES; }
 
 const JUGADORES_ROLES_FUNCIONALES = [
   {
-    id: 'generador-primario', label: 'Generador Primario',
+    id: 'generador-primario', eje: 'creacion', label: 'Generador Primario',
     test: (p) => p.astPP !== null && p.ast !== null &&
       p.astPP >= jugadoresU(p).astPPGenerador &&
       p.ast >= jugadoresU(p).astVolumenGenerador &&
@@ -858,24 +858,33 @@ const JUGADORES_ROLES_FUNCIONALES = [
      referencia inflada, así que se llevaba el 100% del grupo interior:
      `finalizador-corto` y `ancla-defensiva` daban CERO sobre 210 jugadores.
 
-     Ahora cada uno pide su ESPECIALIDAD DOMINANTE, y el orden va del rol
-     más específico al más genérico:
-       1. finalizador-corto → termina cerca del aro (PPT2)
-       2. ancla-defensiva   → su fuerte es el cristal DEFENSIVO, y lo es
-                              más que el ofensivo (`reboteDefRel > reboteRel`)
+     Ahora cada uno pide su ESPECIALIDAD DOMINANTE:
+       1. ancla-defensiva   → protege el aro y sostiene el cristal DEFENSIVO
+       2. finalizador-corto → termina cerca del aro (PPT2)
        3. rim-runner        → vive del cristal OFENSIVO
        4. poste-bajo        → interior sin una dimensión dominante
-     Sin el comparativo del punto 2, el ancla y el rim runner vuelven a ser
-     el mismo test con otro nombre: en esta liga el que rebotea en defensa
-     casi siempre también rebotea en ataque.
+
+     EL ANCLA VA PRIMERA, Y ES UNA DECISIÓN DE BÁSQUET, no un ajuste para
+     que un número quede lindo. La cascada ordena por lo que CONDICIONA
+     el plan del rival, y la protección de aro condiciona más que la
+     finalización: contra un ancla se cambia a qué mano se penetra y
+     desde dónde se ayuda; contra un finalizador se cambia quién lo
+     bloquea. Medido en RQ Primera, `finalizador-corto` se llevaba a 4 de
+     sus 5 interiores calificados y dejaba la etiqueta defensiva en 0%.
+
+     LO QUE FINALIZA NO SE PIERDE: `jugadoresRolFuncional` devuelve
+     además los roles que TAMBIÉN dispararon (`secundarios`), así que un
+     interior que protege y finaliza muestra sus dos facetas en la ficha.
+     La cascada sigue eligiendo UNA para el plan defensivo —ahí hay que
+     decidir una marca, no describir— y la ficha muestra las dos.
+
+     Sin el comparativo contra la liga, el ancla y el rim runner vuelven a
+     ser el mismo test con otro nombre: en esta liga el que rebotea en
+     defensa casi siempre también rebotea en ataque.
      ------------------------------------------------------------------ */
+
   {
-    id: 'finalizador-corto', label: 'Finalizador Corto / Short Roll',
-    test: (p) => p.esInterior && p.pptDoble !== null && p.pptDoble >= jugadoresU(p).pptDobleAlto,
-    detalle: (p) => 'termina cerca del aro con ' + jugadoresNum(p.pptDoble, 2) + ' por doble intentado.',
-  },
-  {
-    id: 'ancla-defensiva', label: 'Ancla Defensiva', relativa: true,
+    id: 'ancla-defensiva', eje: 'defensa', label: 'Ancla Defensiva', relativa: true,
     /* EL COMPARATIVO ES CONTRA LA LIGA, NO UN `RD rel > RO rel` CRUDO.
 
        Los dos relativos se miden contra medianas DISTINTAS, y el rebote
@@ -898,7 +907,12 @@ const JUGADORES_ROLES_FUNCIONALES = [
       'interior con ese rebote ofensivo (' + jugadoresNum(p.reboteRel, 2) + 'x).',
   },
   {
-    id: 'rim-runner', label: 'Rebotador de Impacto / Rim Runner', relativa: true,
+    id: 'finalizador-corto', eje: 'finalizacion', label: 'Finalizador Corto / Short Roll',
+    test: (p) => p.esInterior && p.pptDoble !== null && p.pptDoble >= jugadoresU(p).pptDobleAlto,
+    detalle: (p) => 'termina cerca del aro con ' + jugadoresNum(p.pptDoble, 2) + ' por doble intentado.',
+  },
+  {
+    id: 'rim-runner', eje: 'cristal', label: 'Rebotador de Impacto / Rim Runner', relativa: true,
     test: (p) => p.esInterior && p.reboteRel !== null && p.reboteRel >= jugadoresU(p).reboteOfensivoAlto,
     detalle: (p) => 'vive del cristal ofensivo: ' + jugadoresNum(p.reboteRel, 2) + 'x la mediana de la liga en RO%.',
   },
@@ -913,12 +927,12 @@ const JUGADORES_ROLES_FUNCIONALES = [
       ' de sus tiros de campo salen de la línea de 3.',
   },
   {
-    id: 'spacing', label: 'Spacing / Tirador de Descarga',
+    id: 'spacing', eje: 'tiro', label: 'Spacing / Tirador de Descarga',
     test: (p) => p.esPerimetral && p.usoTriple !== null && p.usoTriple >= jugadoresU(p).usoTripleAlto,
     detalle: (p) => 'abre la cancha: ' + jugadoresPct(p.usoTriple) + ' de sus plays terminan en triple.',
   },
   {
-    id: 'slasher', label: 'Slasher / Penetrador',
+    id: 'slasher', eje: 'penetracion', label: 'Slasher / Penetrador',
     /* PPT2 alto pero origen perimetral: ataca el aro DESDE afuera, no
        juega de espaldas. */
     test: (p) => p.esPerimetral && p.pptDoble !== null && p.pptDoble >= 1.00,
@@ -926,7 +940,7 @@ const JUGADORES_ROLES_FUNCIONALES = [
       ' por doble intentado con ' + jugadoresPct(p.mezclaTriple) + ' de sus tiros de campo desde la línea de 3.',
   },
   {
-    id: 'manejador-secundario', label: 'Manejador Secundario',
+    id: 'manejador-secundario', eje: 'creacion', label: 'Manejador Secundario',
     test: (p) => p.astPP !== null && p.astPP >= 1.00 && p.min >= jugadoresU(p).minutosClave,
     detalle: (p) => 'segunda línea de conducción: ' + jugadoresNum(p.astPP, 2) + ' de AST-PP.',
   },
@@ -1055,11 +1069,47 @@ function jugadoresPerfilBase(idx, j) {
 }
 
 /** Rol funcional: primera de la cascada que calza (excluyente). */
+/* UN SECUNDARIO SOLO INFORMA SI ES OTRA FACETA.
+
+   Cada rol declara su `eje`. Dos roles del MISMO eje son el mismo rasgo
+   con distinta exigencia —`generador-primario` pide AST-PP ≥ 1,40 y
+   `manejador-secundario` ≥ 1,00— así que «es Generador Primario, +
+   Manejador Secundario» no dice nada: el segundo está contenido en el
+   primero por construcción.
+
+   Medido antes de poner este filtro: los secundarios saltaban en el
+   27–45% de los planteles y la mitad eran ese par tautológico. Con el
+   eje quedan los que describen dos cosas distintas — proteger el aro y
+   finalizar cerca, abrir la cancha y penetrar.
+
+   Los roles SIN eje son los fallbacks: calzan siempre, para eso están,
+   así que listarlos como «además es...» sería listar la ausencia de un
+   rasgo. */
+
+/**
+ * El rol funcional, más los que TAMBIÉN dispararon.
+ *
+ * La cascada tiene que elegir UNO: el plan defensivo asigna una marca y
+ * no once matices. Pero un interior que protege el aro Y finaliza cerca
+ * tiene dos facetas reales, y quedarse con la primera de la cascada las
+ * borraba — que es justo lo que pasaba cuando `finalizador-corto` iba
+ * antes que `ancla-defensiva`.
+ *
+ * `secundarios` es ADITIVO: quien ya leía `.id` y `.label` sigue leyendo
+ * lo mismo. Scouting no lo usa a propósito — ahí se decide una marca.
+ */
 function jugadoresRolFuncional(perfil) {
-  const r = JUGADORES_ROLES_FUNCIONALES.find(d => {
-    try { return !!d.test(perfil); } catch (e) { return false; }
-  }) || JUGADORES_ROLES_FUNCIONALES[JUGADORES_ROLES_FUNCIONALES.length - 1];
-  return { id: r.id, label: r.label, detalle: r.detalle(perfil), relativa: !!r.relativa };
+  const calza = (d) => { try { return !!d.test(perfil); } catch (e) { return false; } };
+  const r = JUGADORES_ROLES_FUNCIONALES.find(calza)
+    || JUGADORES_ROLES_FUNCIONALES[JUGADORES_ROLES_FUNCIONALES.length - 1];
+
+  const secundarios = JUGADORES_ROLES_FUNCIONALES
+    .filter(d => d.id !== r.id && d.eje && d.eje !== r.eje && calza(d))
+    .map(d => ({ id: d.id, eje: d.eje, label: d.label, detalle: d.detalle(perfil),
+                 relativa: !!d.relativa }));
+
+  return { id: r.id, eje: r.eje || null, label: r.label, detalle: r.detalle(perfil),
+           relativa: !!r.relativa, secundarios: secundarios };
 }
 
 /**
@@ -1381,7 +1431,13 @@ function jugadoresSintesisPerfil(idx, j) {
   /* Que el jugador califique o no viaja con la síntesis: la ficha marca con
      `~` las etiquetas que se apoyan en una comparación contra la liga que su
      muestra no sostiene (P-7). */
+  /* El rol funcional viaja con la síntesis para que la ficha pueda
+     mostrar sus SECUNDARIOS. No se recalcula en la vista: dos motores
+     que se contradigan entre secciones es peor que ninguno (punto 8). */
+  const rolFuncional = jugadoresRolFuncional(jugadoresPerfilBase(idx, j));
+
   return { rolMinutos, arquetipos, jerarquia, impacto, eficiencia, puntoDeFuga: fuga, conclusion,
+    rolFuncional: rolFuncional,
     califica: !!j.__califica };
 }
 
@@ -2335,6 +2391,33 @@ function jugadoresBloqueADN(sintesis) {
   const flojo = () => !sintesis.califica;
   const nota = () => flojo() ? ' · ' + JUGADORES_MOTIVO_SIN_RESPALDO : '';
 
+  /* LA FUNCIÓN EN CANCHA, CON SUS DOS CARAS.
+
+     La cascada elige UNA para el plan defensivo —ahí hay que decidir una
+     marca, no describir— pero un interior que protege el aro Y finaliza
+     cerca tiene dos facetas reales, y mostrar solo la primera las borra.
+     El secundario va visualmente subordinado: sigue siendo una etiqueta,
+     no un segundo rol. */
+  const rolBloque = () => {
+    const rf = sintesis.rolFuncional;
+    if (!rf) return '';
+    const sec = (rf.secundarios || []).map(x => `
+        <span class="inline-flex items-center gap-1 text-[10px] ${flojo() ? 'text-muted' : 'text-blue-400/80'}
+                     border border-hairline rounded-full px-2 py-0.5 mr-1.5"
+              title="${escapeAttr('También ' + x.detalle + nota())}">
+          ${flojo() ? '~ ' : ''}+ ${escapeHtml(x.label)}
+        </span>`).join('');
+    return `
+      <p class="text-[10px] uppercase tracking-wider text-muted font-display mt-3 mb-1.5">Función en cancha</p>
+      <div>
+        <span class="inline-flex items-center gap-1 text-[11px] ${flojo() ? 'text-muted' : 'text-blue-400'}
+                     bg-surface2/60 border border-hairline rounded-full px-2.5 py-1 mr-1.5 mb-1.5"
+              title="${escapeAttr(rf.detalle + nota())}">
+          ${flojo() ? '~ ' : ''}${escapeHtml(rf.label)}
+        </span>${sec}
+      </div>`;
+  };
+
   const arqs = sintesis.arquetipos.length
     ? sintesis.arquetipos.map(a => `
         <span class="inline-flex items-center gap-1 text-[11px] ${flojo() ? 'text-muted' : ''} bg-surface2/60 border border-hairline rounded-full px-2.5 py-1 mr-1.5 mb-1.5"
@@ -2355,6 +2438,7 @@ function jugadoresBloqueADN(sintesis) {
         ? `<p class="text-[10px] text-yellow-400 mb-3 leading-snug">~ ${escapeHtml(JUGADORES_MOTIVO_SIN_RESPALDO)}</p>` : ''}
       <p class="text-[10px] uppercase tracking-wider text-muted font-display mb-1.5">Perfiles técnicos</p>
       <div>${arqs}</div>
+      ${rolBloque()}
     </div>`;
 }
 
@@ -2375,7 +2459,28 @@ function jugadoresBloqueADN(sintesis) {
    jugador: treinta y dos filas de auditoría ahí adentro son ruido, y
    encima empujan la ficha a una carilla más. Quien audita lo hace en
    pantalla; el manual imprime la matriz de los seis niveles. */
+/**
+ * Solo ADMIN, y `ABIERTO` tampoco.
+ *
+ * La vara contesta «con qué números se decidió esto», que es una
+ * pregunta sobre el MOTOR y no sobre el jugador. Al cliente le suma
+ * treinta y dos filas de ruido debajo de su ficha, y al que entra sin
+ * sesión también — así que acá no vale `sinRestricciones()`, que deja
+ * pasar al público junto con el admin.
+ *
+ * Falla CERRADO: sin `SGADD_AUTH` cargado no se pinta. No es una
+ * frontera de seguridad —nada de esto lo es, punto 19— pero el modo de
+ * equivocarse barato es no mostrarlo.
+ */
+function jugadoresVaraVisible() {
+  try {
+    return typeof SGADD_AUTH !== 'undefined'
+      && SGADD_AUTH.rol() === SGADD_AUTH.ROLES.ADMIN;
+  } catch (e) { return false; }
+}
+
 function jugadoresBloqueVara(idx) {
+  if (!jugadoresVaraVisible()) return '';
   const v = jugadoresVara(idx);
   if (!v) return '';
 

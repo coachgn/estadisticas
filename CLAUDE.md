@@ -23,7 +23,7 @@ node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 318 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
 node test-boot.js          # 167 tests · arranque por club, sintaxis de los módulos, carteles de espera
-node test-jugadores.js     # 270 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
+node test-jugadores.js     # 281 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
@@ -31,7 +31,7 @@ node test-partido.js       #  54 tests · detalle partido a partido, perfil de t
 node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
-node test-permisos.js      # 365 tests · roles, planes, el gate, el selector, el hub, el ciclo,
+node test-permisos.js      # 367 tests · roles, planes, el gate, el selector, el hub, el ciclo,
                            #             la sesión, la landing y el glosario
 node test-comparativa.js   #  65 tests · ciclos, tendencia contra nivel, cara a cara
 node test-clientes.js      #  69 tests · el padrón de clientes, los cupos y el login
@@ -41,8 +41,8 @@ node test-resiliencia.js   #  50 tests · rotación del token, KV caído, el tra
 node test-jsonclub.js      # 105 tests · los JSON de club, el validador, el aislamiento y publicar
 node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
-node test-manuales.js      # 162 tests · partidos sin box score: suman a la tabla, no a las métricas
-node test-niveles.js       # 653 tests · registro de umbrales, los 6 niveles, la resolución
+node test-manuales.js      # 175 tests · partidos sin box score: suman a la tabla, no a las métricas
+node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
@@ -55,7 +55,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4514 tests en total. Todos tienen que dar verde antes de commitear.**
+**4546 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -6383,6 +6383,13 @@ al pie del tab General.
 - **Va PLEGADO**: es auditoría, no lectura de cancha.
 - **Lista LOS TREINTA Y DOS**, no un recorte. Un umbral que no se lista es
   uno que no se audita.
+- **ES SOLO PARA EL ADMIN, y el público tampoco.** La vara contesta «con
+  qué números se decidió esto», que es una pregunta sobre el MOTOR y no
+  sobre el jugador: al cliente le suma treinta y dos filas de ruido
+  debajo de su ficha. Acá **no vale `sinRestricciones()`**, que deja
+  pasar a `ABIERTO` junto con el admin. Falla **cerrado**: sin
+  `SGADD_AUTH` cargado no se pinta. El motor puro (`jugadoresVara`) no se
+  toca — lo que se acota es la vista.
 - **Lleva `.no-imprimir`.** El PDF de la ficha reusa estos mismos bloques
   (punto 7.6 ter) y es la hoja que el DT se lleva a la charla con UN
   jugador: treinta y dos filas de auditoría ahí son ruido y empujan la
@@ -6428,3 +6435,136 @@ Los tres literales nuevos entraron a `JUGADORES_UMBRALES` con **el valor
 que tenían adentro del arquetipo** (3,0 · 0,34 · 1,00), no con la semilla
 de ningún nivel. Mover un número y unificarlo a la vez haría imposible
 saber cuál de las dos cosas cambió una incidencia.
+
+---
+
+## 46. EL ANCLA VA ANTES QUE EL FINALIZADOR · y lo que pierde no se pierde
+
+La cascada de rol funcional ordena por **lo que condiciona el plan del**
+**rival**, y la protección de aro condiciona más que la finalización:
+contra un ancla se cambia a qué mano se penetra y desde dónde se ayuda;
+contra un finalizador se cambia quién lo bloquea.
+
+Medido antes del cambio, `finalizador-corto` se llevaba **4 de los 5**
+interiores calificados de RQ Primera y dejaba la etiqueta defensiva en 0%
+— el residuo que el punto 45 había dejado abierto a propósito, porque
+cambiar el orden de la cascada es una decisión de básquet y no un ajuste
+para que un número quede lindo.
+
+```
+                        JUJUY  RQ 1ª  DEP.   U21    U23
+ancla-defensiva   antes   3,1%   0,0%  2,2%   3,1%   1,1%
+                  ahora   4,6%   1,8%  4,5%   3,1%   2,3%
+finalizador-corto antes  10,0%   9,9%  9,8%   5,2%  10,3%
+                  ahora   8,5%   8,1%  7,6%   5,2%   9,2%
+```
+
+El finalizador cede exactamente el solapamiento, no más.
+
+### Los SECUNDARIOS · la cascada elige una, la ficha muestra las dos
+
+Un interior que protege el aro **y** finaliza cerca tiene dos facetas
+reales, y quedarse con la primera de la cascada las borraba.
+`jugadoresRolFuncional` devuelve ahora también los roles que TAMBIÉN
+dispararon, en `secundarios`.
+
+- **Es ADITIVO**: quien ya leía `.id` y `.label` sigue leyendo lo mismo.
+- **Scouting no lo usa a propósito.** Ahí hay que decidir UNA marca, no
+  describir: el plan defensivo asigna un defensor por rival.
+- **La lista viene siempre**, aunque esté vacía.
+
+### UN SECUNDARIO SOLO INFORMA SI ES OTRA FACETA
+
+Cada rol declara su **`eje`** (`creacion`, `defensa`, `finalizacion`,
+`cristal`, `tiro`, `penetracion`), y un secundario solo se lista si su eje
+difiere del primario.
+
+El motivo se midió: sin ese filtro los secundarios saltaban en el
+**27–45%** de los planteles y la mitad eran `generador-primario +`
+**`manejador-secundario`**, que es el mismo rasgo con distinta exigencia
+—AST-PP ≥ 1,40 contra ≥ 1,00— o sea que el segundo está contenido en el
+primero por construcción y listarlo no dice nada. Con el eje quedan los
+pares que describen dos cosas distintas: proteger y finalizar, abrir la
+cancha y penetrar.
+
+**Los fallbacks NO declaran eje** (`poste-bajo`, `perimetral-media`,
+`complementario`): calzan siempre —para eso están— así que listarlos como
+«además es…» sería listar la ausencia de un rasgo.
+
+El chip secundario va subordinado y con su propio `title`. Contraste
+medido sobre la card: **7,25** el primario y **5,04** el secundario al
+80% — los dos pasan AA.
+
+---
+
+## 47. EL TOTAL ES LA SUMA DE SUS TORNEOS, TAMBIÉN PARA LOS MANUALES
+
+Reportado desde producción: un partido cargado en la **IDA** sumaba en la
+tabla **TOTAL** y no en la vista de IDA. Medido contra el KV, eran **dos**
+defectos encadenados y opuestos.
+
+### 1 · El formulario archivaba en el sintético
+
+`configTramosDisponibles()` ya excluye `*TOTAL*` —no es un tramo donde se
+juegue— pero `configManualTramoDestino()` caía al tramo **abierto en la**
+**barra**, y desde el punto 3 ter el panel abre justamente en TOTAL.
+
+O sea: el admin veía un desplegable que ofrecía solo IDA y VUELTA, no lo
+tocaba, y el partido se archivaba **en una llave que ese mismo**
+**desplegable se negaba a ofrecer**. Ahora el respaldo cae al primer
+tramo real de la misma fase — lo que se publica es lo que se ve.
+
+**Y la guarda va también en el SERVIDOR**, por lo mismo que la acción de
+zonas escribe un solo slot (punto 32): aunque una versión vieja del panel
+siga mandando `*TOTAL*`, no puede archivar ahí.
+
+### 2 · Y `manualesDelTramo` buscaba por llave EXACTA
+
+Con eso, un partido correctamente archivado en `IDA|REGULAR` quedaba
+invisible en la vista que el panel **abre por defecto**. O sea que
+arreglar solo lo primero habría dado vuelta el síntoma en vez de cerrarlo.
+
+El TOTAL junta ahora las llaves de la **misma FASE**. Tres reglas:
+
+- **Nunca se mezclan fases**, por el mismo motivo que el TOTAL derivado
+  del núcleo no las mezcla: una regular con unos playoffs no significa
+  nada.
+- **La llave sintética se sigue leyendo**, por retrocompatibilidad: hubo
+  una ventana en la que el formulario dejaba caer partidos ahí, y
+  descartarla borraría de la tabla resultados que el club ya cargó.
+- **Un mismo `id` no se cuenta dos veces.** Si un partido quedara en dos
+  llaves de la misma fase, el TOTAL lo sumaría duplicado y **PJ dejaría
+  de cuadrar contra PG+PP**.
+
+### Los cuatro partidos ya archivados
+
+Quedaron bajo `*TOTAL*|REGULAR`: dos de DEPORTIVO y dos de Reconquista,
+todos del **2026-07-09**. Con el arreglo el TOTAL los sigue contando, pero
+la vista de IDA no los ve hasta que se reubiquen en KV.
+
+El tramo destino **no se asume: se mide**. DEPORTIVO declara su calendario
+(punto 18) y Reconquista no, así que el rango sale del propio libro:
+
+```
+DEPORTIVO     IDA 07/05 → 16/07   ·   VUELTA 06/08 → 03/09
+RECONQUISTA   IDA 05/05 → 14/07   ·   VUELTA 04/08 → 01/09
+```
+
+El 09/07 cae sin ambigüedad en la IDA de los dos, y a más de tres semanas
+del arranque de la VUELTA. Vale la regla del punto 18: **una fecha en dos
+ventanas no se asocia** — un partido mal atribuido contamina los
+promedios de dos tramos y no se nota.
+
+---
+
+## 48. LOS ENCABEZADOS DEL GLOSARIO
+
+Sus tablas pedían `text-left` a mano en tres de las cinco cabeceras, y una
+clase le gana a la regla de elemento: la fila de encabezados salía
+desalineada **contra su propio cuerpo**, que no declara alineación y por
+lo tanto la resuelve la regla general del panel —centrada, con la primera
+a la izquierda (punto 35)—.
+
+Se centran las cinco. **El cuerpo no se toca**: no pedía nada. Hay un test
+que cuenta contra el total de `<th>` y no contra un número fijo, así que
+una columna nueva sin centrar lo rompe.

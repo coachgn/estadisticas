@@ -961,6 +961,61 @@ check('el que vive del cristal ofensivo queda debajo de ese ratio y sigue siendo
     pptDoble: 0.85, reboteRel: 2.40, reboteDefRel: 1.20, U: varaAncla(0.70),
   })).id);
 
+/* =====================================================================
+   EL ANCLA VA ANTES QUE EL FINALIZADOR, Y LO QUE PIERDE NO SE PIERDE
+
+   La cascada ordena por lo que CONDICIONA el plan del rival, y la
+   proteccion de aro condiciona mas que la finalizacion: contra un ancla
+   se cambia a que mano se penetra y desde donde se ayuda; contra un
+   finalizador se cambia quien lo bloquea. Medido en RQ Primera,
+   `finalizador-corto` se llevaba 4 de sus 5 interiores calificados y
+   dejaba la etiqueta defensiva en 0%.
+   ===================================================================== */
+check('ancla-defensiva se evalúa ANTES que finalizador-corto',
+  pos('ancla-defensiva') < pos('finalizador-corto'), rolesIds.join(' > '));
+
+/* Un interior que protege Y finaliza tiene DOS facetas reales. La
+   cascada elige una para el plan defensivo —ahí hay que decidir una
+   marca, no describir— y la ficha muestra las dos. */
+const dobleFaceta = Object.assign({}, interior,
+  { pptDoble: 1.30, reboteRel: 1.05, reboteDefRel: 1.60 });
+const rDoble = J.jugadoresRolFuncional(dobleFaceta);
+check('con las dos facetas gana el ancla',
+  rDoble.id === 'ancla-defensiva', rDoble.id);
+check('y el finalizador sobrevive como secundario',
+  (rDoble.secundarios || []).some(x => x.id === 'finalizador-corto'),
+  (rDoble.secundarios || []).map(x => x.id).join(','));
+check('el secundario trae su propio detalle, no una etiqueta pelada',
+  (rDoble.secundarios || []).every(x => !!x.detalle && !!x.label));
+
+/* UN SECUNDARIO SOLO INFORMA SI ES OTRA FACETA. Dos roles del mismo
+   `eje` son el mismo rasgo con distinta exigencia —`generador-primario`
+   pide AST-PP ≥ 1,40 y `manejador-secundario` ≥ 1,00— así que listarlos
+   juntos no dice nada: el segundo está contenido en el primero. Medido
+   sin este filtro, ese par tautológico era la mitad de los secundarios
+   de los cinco libros. */
+const conductor = { esInterior: false, esPerimetral: true, mezclaTriple: 0.35,
+  pptDoble: 0.90, reboteRel: 0.9, reboteDefRel: 0.9,
+  astPP: 2.00, ast: 5, min: 30, usoTriple: 0.20 };
+const rCond = J.jugadoresRolFuncional(conductor);
+check('el conductor es Generador Primario', rCond.id === 'generador-primario', rCond.id);
+check('y NO se le lista «manejador secundario»: es el mismo eje',
+  !(rCond.secundarios || []).some(x => x.id === 'manejador-secundario'),
+  (rCond.secundarios || []).map(x => x.id).join(','));
+
+/* Los fallbacks no pueden ser secundarios: calzan siempre —para eso
+   están— así que listarlos sería listar la ausencia de un rasgo. */
+['poste-bajo', 'perimetral-media', 'complementario'].forEach(id =>
+  check('  ' + id + ' no declara eje: nunca es secundario',
+    !J.JUGADORES_ROLES_FUNCIONALES.filter(r => r.id === id)[0].eje));
+
+/* Y `secundarios` es ADITIVO: quien ya leía `.id` y `.label` sigue
+   leyendo lo mismo. Scouting no lo usa a propósito. */
+check('el rol sigue devolviendo id, label y detalle',
+  !!rDoble.id && !!rDoble.label && !!rDoble.detalle);
+check('siempre trae la lista, aunque esté vacía',
+  Array.isArray(J.jugadoresRolFuncional(posteP).secundarios));
+
 /* --- P-6 / P-9: la zona gris de origen se resuelve por cristal --- */
 const colsZG = ['NOMBRES', 'EQUIPO', 'FASE', 'MIN', 'RO%', 'RD%', 'RO', 'RD', 'RT', 'T3I', 'T2I', 'PPT2'];
 const zg = (n, t3i, t2i, rt) => ({ NOMBRES: n, EQUIPO: 'A', FASE: 'REGULAR', MIN: '24',

@@ -61,10 +61,17 @@ const SGADD_GLOSARIOUI = (function () {
       </header>
       <div class="scrollbox">
         <table class="w-full border-collapse">
+          <!-- Los encabezados van CENTRADOS, que es lo que ya hace el
+               resto del panel por defecto (punto 35). Acá pedían la
+               izquierda a mano en las tres primeras, y una clase le gana
+               a la regla de elemento: la fila de encabezados salía
+               desalineada contra su propia tabla. El CUERPO no se toca:
+               ahí la sigla y la definición se leen alineadas a la
+               izquierda, que es como se lee un texto. -->
           <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
-            <th class="text-left p-3 font-display">Sigla</th>
-            <th class="text-left p-3 font-display">Nombre completo</th>
-            <th class="text-left p-3 font-display">Cómo se lee</th>
+            <th class="text-center p-3 font-display">Sigla</th>
+            <th class="text-center p-3 font-display">Nombre completo</th>
+            <th class="text-center p-3 font-display">Cómo se lee</th>
             <th class="text-center p-3 font-display">Fórmula</th>
             <th class="text-center p-3 font-display">Hoja</th>
           </tr></thead>

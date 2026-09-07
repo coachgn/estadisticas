@@ -459,6 +459,18 @@ function partidosManuales(cat, d) {
   if (!/^[^|]+\|[^|]+$/.test(tramo)) {
     return malo('El tramo tiene que ser TORNEO|FASE, la misma clave que usa el selector.');
   }
+  /* EL SINTETICO NO ES UN TRAMO DONDE SE JUEGUE: es la suma de los
+     torneos reales. Un partido archivado ahi no pertenece a ninguno, asi
+     que no aparece en la vista de su fecha — que fue exactamente lo que
+     paso en produccion con dos partidos de la IDA.
+
+     La guarda va ACA y no solo en la pantalla, por lo mismo que la
+     accion de zonas escribe un solo slot (punto 32): aunque una version
+     vieja del panel siga mandando `*TOTAL*`, no puede archivar ahi. */
+  if (tramo.split('|')[0].indexOf('*') !== -1) {
+    return malo('Un partido manual va al torneo donde se jugo (IDA, VUELTA...), '
+      + 'no al TOTAL: el TOTAL es la suma de esos torneos y los cuenta solo.');
+  }
 
   const lista = v.partidos;
   if (lista !== null && lista !== undefined && !Array.isArray(lista)) {

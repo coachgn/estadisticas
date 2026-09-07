@@ -92,17 +92,58 @@ const SGADD_CLASIF = (function () {
    * dejarlo pasar daría un partido que no suma ni a ganados ni a
    * perdidos y descuadraría PJ contra PG+PP.
    */
+  const TOTAL = '*TOTAL*';
+  const esTramoTotal = (t) => String(t || '').toUpperCase() === TOTAL;
+
+  function manualValido(p) {
+    if (!p || typeof p !== 'object') return false;
+    const pl = Number(p.puntosLocal), pv = Number(p.puntosVisitante);
+    return !!String(p.local || '').trim() && !!String(p.visitante || '').trim()
+      && isFinite(pl) && isFinite(pv) && pl !== pv;
+  }
+
   function manualesDelTramo(mapa, torneo, fase) {
     if (!mapa || typeof mapa !== 'object') return [];
-    const clave = String(torneo || '').toUpperCase() + '|' + String(fase || '').toUpperCase();
-    const lista = mapa[clave];
-    if (!Array.isArray(lista)) return [];
-    return lista.filter(p => {
-      if (!p || typeof p !== 'object') return false;
-      const pl = Number(p.puntosLocal), pv = Number(p.puntosVisitante);
-      return !!String(p.local || '').trim() && !!String(p.visitante || '').trim()
-        && isFinite(pl) && isFinite(pv) && pl !== pv;
+    const f = String(fase || '').toUpperCase();
+
+    /* EL TOTAL NO ES UNA LLAVE MÁS: ES LA SUMA DE SUS TORNEOS.
+
+       Un partido manual se carga en un tramo donde SE JUEGA —IDA,
+       VUELTA— porque el sintético no es un torneo sino la suma de los
+       reales. Con una búsqueda por llave exacta ese partido quedaba
+       invisible justo en la vista que el panel abre por defecto (punto
+       3 ter), o sea que el DT cargaba un resultado y la tabla que ve al
+       entrar seguía sin contarlo.
+
+       Se juntan SOLO los de la MISMA FASE, por el mismo motivo que el
+       TOTAL derivado del núcleo no mezcla fases: sumar una regular con
+       unos playoffs no significa nada.
+
+       La llave sintética se sigue leyendo por RETROCOMPATIBILIDAD: hubo
+       una ventana en la que el formulario dejaba caer ahí un partido
+       (el destino por defecto era el tramo abierto en la barra, y el
+       panel abre en TOTAL). Descartarla ahora borraría de la tabla
+       partidos que el club ya cargó. */
+    const claves = esTramoTotal(torneo)
+      ? Object.keys(mapa).filter(k => k.toUpperCase().split('|')[1] === f)
+      : [String(torneo || '').toUpperCase() + '|' + f];
+
+    /* Un mismo `id` no se cuenta dos veces: si alguna vez un partido
+       quedara en dos llaves de la misma fase, el TOTAL lo sumaría
+       duplicado y PJ dejaría de cuadrar contra PG+PP. */
+    const vistos = {};
+    const out = [];
+    claves.forEach(k => {
+      const lista = mapa[k];
+      if (!Array.isArray(lista)) return;
+      lista.forEach(p => {
+        if (!manualValido(p)) return;
+        const id = p.id ? String(p.id) : null;
+        if (id) { if (vistos[id]) return; vistos[id] = true; }
+        out.push(p);
+      });
     });
+    return out;
   }
 
   /** Una fila vacía, para el equipo que SOLO tiene partidos manuales. */
@@ -281,7 +322,7 @@ const SGADD_CLASIF = (function () {
   }
 
   return { CRITERIOS, ORDEN_POR_DEFECTO, filas, ordenar, tabla,
-           fusionarManuales, manualesDelTramo, puntosDeTabla,
+           fusionarManuales, manualesDelTramo, puntosDeTabla, esTramoTotal,
            PUNTOS_GANADO, PUNTOS_PERDIDO };
 })();
 

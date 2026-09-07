@@ -465,6 +465,50 @@ ok(/zona-\$\{o\.tono\} zona-texto/.test(BLOQUE),
 ok(/<details class="no-imprimir/.test(BLOQUE),
    'y el bloque entero no se imprime: es auditoria, no contenido de la ficha');
 
+/* --- LA VARA ES SOLO PARA EL ADMIN --- */
+const vm = require('vm');
+function jugadoresCon(rolFn) {
+  const ctx = {
+    console: console, module: { exports: {} }, require: require,
+    SGADD: require('./js/sgadd-core.js'),
+    SGADD_NIVELES: N,
+    escapeHtml: String, escapeAttr: String,
+    SGADD_UI: {}, SGADD_APP: { estado: {} }, LOGOS: {},
+  };
+  if (rolFn) ctx.SGADD_AUTH = {
+    ROLES: { ADMIN: 'ADMIN', CLIENTE: 'CLIENTE', ABIERTO: 'ABIERTO' }, rol: rolFn };
+  ctx.global = ctx;
+  vm.createContext(ctx);
+  new vm.Script(fs.readFileSync(path.join(__dirname, 'js/sgadd-jugadores.js'), 'utf8'))
+    .runInContext(ctx);
+  return ctx;
+}
+
+/* La vara contesta «con que numeros se decidio esto», que es una
+   pregunta sobre el MOTOR y no sobre el jugador. Al cliente le suma
+   treinta y dos filas de ruido debajo de su ficha, y al que entra sin
+   sesion tambien. */
+ok(jugadoresCon(() => 'ADMIN').jugadoresVaraVisible(),
+   'el admin ve la vara de medicion');
+ok(!jugadoresCon(() => 'CLIENTE').jugadoresVaraVisible(),
+   'el cliente NO');
+/* `ABIERTO` tampoco, asi que aca no vale `sinRestricciones()`: esa deja
+   pasar al publico junto con el admin. */
+ok(!jugadoresCon(() => 'ABIERTO').jugadoresVaraVisible(),
+   'y el publico sin sesion tampoco');
+/* Falla CERRADO: no es una frontera de seguridad (punto 19), pero el
+   modo de equivocarse barato es no mostrarlo. */
+ok(!jugadoresCon(null).jugadoresVaraVisible(),
+   'sin SGADD_AUTH cargado no se pinta: falla cerrado');
+
+/* Y el gate esta en el RENDER, no solo en un `if` de la vista: el motor
+   puro se sigue pudiendo testear y resolver del lado del servidor. */
+ok(/function jugadoresBloqueVara\(idx\) \{[\s\S]{0,120}jugadoresVaraVisible\(\)/.test(
+     fs.readFileSync(path.join(__dirname, 'js/sgadd-jugadores.js'), 'utf8')),
+   'el bloque chequea el rol antes de armar nada');
+ok(!!jugadoresCon(() => 'CLIENTE').jugadoresVara,
+   'pero el motor puro sigue existiendo para el cliente: lo que se acota es la vista');
+
 /* --- EL MANUAL SE GENERA POR NIVEL --- */
 const FGEN = fs.readFileSync(path.join(__dirname, 'generar-manual-etiquetas.js'), 'utf8');
 ok(/data-u=/.test(FGEN),

@@ -1359,8 +1359,25 @@ titulo('EL GLOSARIO SE AGRUPA COMO EL MANUAL');
   check('el índice usa <button>, no un ancla al hash',
     /<button type="button" onclick="SGADD_GLOSARIOUI\.irA/.test(UI2)
     && !/href="#\$\{idFamilia/.test(UI2));
-  check('fórmula y hoja van centradas',
-    (UI2.match(/text-center p-3 font-display/g) || []).length === 2);
+  /* LOS ENCABEZADOS VAN TODOS CENTRADOS, que es lo que ya hace el resto
+     del panel por defecto (punto 35). Tres pedían la izquierda a mano y
+     una clase le gana a la regla de elemento, así que la fila salía
+     desalineada contra su propia tabla. Se cuenta contra el total de
+     `<th>` y no contra un número fijo: una columna nueva sin centrar
+     tiene que romper esto. */
+  const THS = (UI2.match(/<th class="[^"]*"/g) || []);
+  check('la tabla del glosario declara sus cinco encabezados', THS.length === 5, THS.length);
+  check('y van TODOS centrados',
+    THS.length > 0 && THS.every(t => /text-center/.test(t)),
+    THS.filter(t => !/text-center/.test(t)).join(' | '));
+  /* EL CUERPO NO SE TOCA, y el motivo es que no pedía nada: sus celdas
+     no declaran alineación, así que las resuelve la regla general del
+     panel —centradas, con la primera a la izquierda (punto 35)—. Ahí
+     estaba el desajuste: el encabezado pedía la izquierda a mano y el
+     cuerpo salía centrado. Si alguna celda empieza a forzar `text-left`
+     vuelve la contradicción, ahora al revés. */
+  check('el cuerpo no fuerza su propia alineación',
+    !/<td class="[^"]*text-left/.test(UI2));
 
   /* Cada sigla se marca para el tooltip: en esta tabla el texto de la
      celda ES la sigla, pero marcarla explícita no depende de eso. */

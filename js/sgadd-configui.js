@@ -587,10 +587,31 @@ function configTramosDisponibles() {
   } catch (e) { return []; }
 }
 
-/** El tramo al que va el partido: el elegido, o el abierto en la barra. */
+/**
+ * El tramo al que va el partido: el elegido, o el abierto en la barra.
+ *
+ * EL DESTINO POR DEFECTO NO PUEDE SER EL SINTÉTICO, y esto costó dos
+ * partidos mal archivados en producción. `configTramosDisponibles()` ya
+ * excluye `*TOTAL*` —no es un tramo donde se juegue— pero el respaldo
+ * caía al tramo ABIERTO en la barra, y desde el punto 3 ter el panel
+ * abre justamente en TOTAL. Resultado: el admin veía un desplegable que
+ * ofrecía solo IDA y VUELTA, no lo tocaba, y el partido se archivaba en
+ * una llave que el desplegable se negaba a ofrecer.
+ *
+ * Se cae al PRIMER tramo real de la misma fase, que es el que el
+ * desplegable muestra seleccionado: lo que se publica es lo que se ve.
+ */
 function configManualTramoDestino() {
   if (CONFIGUI.manualTramo) return CONFIGUI.manualTramo;
-  return configTramoActual();
+  const act = configTramoActual();
+  if (act && act.indexOf('*') === -1) return act;
+  const reales = configTramosDisponibles();
+  if (!reales.length) return null;
+  /* Misma FASE que la vista, si existe: el DT está mirando la regular y
+     el partido que carga es de la regular. */
+  const fase = act ? act.split('|')[1] : null;
+  const mismaFase = reales.filter(t => String(t.fase).toUpperCase() === fase)[0];
+  return (mismaFase || reales[0]).id;
 }
 
 function configManualElegirTramo(id) {

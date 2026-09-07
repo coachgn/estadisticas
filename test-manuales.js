@@ -595,6 +595,93 @@ igual(C8.configManualesDiff([P()], [P()]).length, 1,
   igual(soloIda.filter(r => r.clave === 'ATENAS A')[0].manuales, 1,
         'la tabla de la IDA cuenta uno solo, no los dos');
 
+  /* ===================================================================
+     EL TOTAL ES LA SUMA DE SUS TORNEOS, NO UNA LLAVE MAS
+
+     Reportado desde produccion: un partido cargado en la IDA sumaba en
+     la tabla TOTAL y NO en la vista de IDA. Medido contra el KV, la
+     causa eran dos defectos encadenados y opuestos:
+
+       1. el formulario lo archivaba bajo `*TOTAL*|REGULAR`, porque el
+          destino por defecto era el tramo ABIERTO en la barra y el
+          panel abre justamente en TOTAL (punto 3 ter) — un desplegable
+          que ofrecia solo IDA y VUELTA, escribiendo en una llave que el
+          propio desplegable se negaba a ofrecer;
+       2. y aun archivandolo bien, `manualesDelTramo` buscaba por llave
+          EXACTA, asi que un partido de la IDA quedaba invisible en la
+          vista que el panel abre por defecto.
+     =================================================================== */
+  bloque('11 · El TOTAL suma los torneos reales');
+
+  const MAPA_T = {
+    'IDA|REGULAR': [P({ id: 'a' })],
+    'VUELTA|REGULAR': [P({ id: 'b', local: 'PLATENSE A', puntosLocal: 80,
+                          visitante: 'ATENAS A', puntosVisitante: 70 })],
+    'IDA|PLAYOFF': [P({ id: 'c', puntosLocal: 90, puntosVisitante: 88 })],
+  };
+  const idsT = (l) => l.map(x => x.id).sort().join(',');
+
+  igual(idsT(CLASIF.manualesDelTramo(MAPA_T, 'IDA', 'REGULAR')), 'a',
+        'un tramo real sigue viendo SOLO lo suyo');
+  igual(idsT(CLASIF.manualesDelTramo(MAPA_T, 'VUELTA', 'REGULAR')), 'b',
+        'y el otro tambien');
+  igual(idsT(CLASIF.manualesDelTramo(MAPA_T, '*TOTAL*', 'REGULAR')), 'a,b',
+        'el TOTAL suma los dos torneos de esa fase');
+
+  /* NUNCA se mezclan fases, por el mismo motivo que el TOTAL derivado
+     del nucleo no las mezcla: juntar una regular con unos playoffs no
+     significa nada. */
+  igual(idsT(CLASIF.manualesDelTramo(MAPA_T, '*TOTAL*', 'PLAYOFF')), 'c',
+        'y no mezcla fases: el playoff queda aparte');
+
+  /* RETROCOMPATIBILIDAD. Hubo una ventana en la que el formulario dejaba
+     caer partidos en la llave sintetica. Descartarla ahora los borraria
+     de la tabla del club. */
+  const MAPA_V = { '*TOTAL*|REGULAR': [P({ id: 'viejo' })] };
+  igual(idsT(CLASIF.manualesDelTramo(MAPA_V, '*TOTAL*', 'REGULAR')), 'viejo',
+        'lo ya archivado bajo la llave sintetica se sigue contando');
+
+  /* Y no se cuenta dos veces: si un mismo partido quedara en dos llaves
+     de la misma fase, PJ dejaria de cuadrar contra PG+PP. */
+  const MAPA_D = {
+    'IDA|REGULAR': [P({ id: 'x' })],
+    '*TOTAL*|REGULAR': [P({ id: 'x' })],
+  };
+  igual(CLASIF.manualesDelTramo(MAPA_D, '*TOTAL*', 'REGULAR').length, 1,
+        'un mismo id no se cuenta dos veces en el TOTAL');
+
+  /* Y la tabla del TOTAL tiene que reflejarlo de punta a punta, no solo
+     el filtro: es lo que el club mira. */
+  const FILAS_T = CLASIF.tabla(idx,
+    { manuales: CLASIF.manualesDelTramo(MAPA_T, '*TOTAL*', 'REGULAR') });
+  const filaT = FILAS_T.filter(f => f.clave === 'ATENAS A')[0];
+  igual(filaT && filaT.manuales, 2,
+        'la tabla del TOTAL cuenta los dos partidos');
+  igual(filaT && filaT.pj, 6, '  sobre los 4 que ya tenia');
+
+  /* EL SERVIDOR NO ACEPTA EL SINTETICO. La garantia no puede depender de
+     la pantalla: aunque una version vieja del panel siga mandando
+     `*TOTAL*`, no puede archivar ahi (mismo criterio que el punto 32). */
+  const catBase = { deportivo: { nombre: 'D', categorias: {} } };
+  const pedidoT = (t) => MUTAR.partidosManuales(catBase, {
+    club: 'deportivo', categoria: 'cat-1', tramo: t, partidos: [P()],
+  });
+  ok(pedidoT('IDA|REGULAR').ok, 'el servidor acepta un tramo real');
+  ok(!pedidoT('*TOTAL*|REGULAR').ok, 'y RECHAZA el sintetico');
+  ok(/TOTAL/.test(pedidoT('*TOTAL*|REGULAR').motivo || ''),
+     '  diciendo por que, no con un error generico',
+     pedidoT('*TOTAL*|REGULAR').motivo);
+
+  /* Y la pantalla tampoco puede elegirlo por defecto, que es de donde
+     salio el partido mal archivado. */
+  const FUI = fs.readFileSync(path.join(__dirname, 'js/sgadd-configui.js'), 'utf8');
+  const DEST = FUI.slice(FUI.indexOf('function configManualTramoDestino'),
+                         FUI.indexOf('function configManualElegirTramo'));
+  ok(/indexOf\('\*'\) === -1/.test(DEST),
+     'el destino por defecto descarta el tramo sintetico');
+  ok(/configTramosDisponibles\(\)/.test(DEST),
+     '  y cae a la misma lista que muestra el desplegable');
+
   console.log('\n' + '─'.repeat(60));
   if (fallados === 0) console.log('✓ TODO OK · ' + pasados + ' tests');
   else { console.log('✗ ' + fallados + ' FALLARON de ' + (pasados + fallados)); process.exitCode = 1; }
