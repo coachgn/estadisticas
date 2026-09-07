@@ -35,10 +35,156 @@ const SGADD_CLASIF = (function () {
     DIF: { dir: -1, valor: (r) => r.dif },
     PF:  { dir: -1, valor: (r) => r.pf },
     PC:  { dir:  1, valor: (r) => r.pc },
+    /* Puntos de tabla a la argentina: 2 por ganado, 1 por perdido. Es
+       OPT-IN — un club lo usa declarando `ordenTabla: ["PTS", …]`. El
+       default sigue siendo PCT, porque cambiarlo reordenaría la tabla de
+       los tres clientes sin que nadie lo pidiera. */
+    PTS: { dir: -1, valor: (r) => r.puntos },
   };
   const ORDEN_POR_DEFECTO = ['PCT', 'DIF', 'PF'];
 
+  /* Los puntos que reparte cada partido. Van acá y no en la vista para
+     que la columna, el criterio de orden y el badge digan lo mismo. */
+  const PUNTOS_GANADO = 2;
+  const PUNTOS_PERDIDO = 1;
+  function puntosDeTabla(pg, pp) { return pg * PUNTOS_GANADO + pp * PUNTOS_PERDIDO; }
+
   function num(v) { return typeof v === 'number' && isFinite(v) ? v : 0; }
+
+/* =====================================================================
+   PARTIDOS SIN ESTADÍSTICAS · la carga manual
+
+   Cuando GES no registra el box score, el partido existió igual: cuenta
+   para la tabla y no puede faltar. Pero NO puede entrar por donde entran
+   los demás.
+
+   POR QUÉ NO VAN AL ÍNDICE. `construirIndice()` alimenta TODO: eFG%,
+   PACE, percentiles, bandas z, arquetipos, el grupo de pares. Un partido
+   del que solo se sabe el marcador metido ahí produciría un equipo con
+   PJ mayor y los mismos totales de tiro — o sea eFG% y PACE diluidos, y
+   un jugador con menos minutos por partido sin haber faltado a ninguno.
+   Serían números plausibles y falsos, que es lo que este proyecto no
+   hace.
+
+   Por eso viven aparte y se fusionan SOLO acá, sobre las filas ya
+   armadas de la tabla. Lo que tocan es exactamente: PJ, PG, PP, PF, PC
+   y el split local/visitante — de donde salen PCT, DIF y los puntos de
+   tabla. Nada más.
+
+   EL SCOPE ES club + categoría + TRAMO. Sin el tramo, un partido de la
+   IDA contaría también en la VUELTA: las claves de `porTramo` ya son
+   `TORNEO|FASE` y acá se usa la misma (punto 32).
+   ===================================================================== */
+
+  /** Normaliza como el resto del proyecto, para que matchee con el índice. */
+  function claveDe(nombre) {
+    try {
+      if (typeof SGADD !== 'undefined' && SGADD.claveEquipo) return SGADD.claveEquipo(nombre);
+    } catch (e) { /* el núcleo puede no haber cargado */ }
+    return String(nombre || '').trim().toUpperCase();
+  }
+
+  /**
+   * Los partidos manuales de UN tramo, ya validados.
+   *
+   * Se descarta lo que no se puede contar: sin los dos equipos o sin los
+   * dos marcadores no hay resultado, y un empate no existe en básquet —
+   * dejarlo pasar daría un partido que no suma ni a ganados ni a
+   * perdidos y descuadraría PJ contra PG+PP.
+   */
+  function manualesDelTramo(mapa, torneo, fase) {
+    if (!mapa || typeof mapa !== 'object') return [];
+    const clave = String(torneo || '').toUpperCase() + '|' + String(fase || '').toUpperCase();
+    const lista = mapa[clave];
+    if (!Array.isArray(lista)) return [];
+    return lista.filter(p => {
+      if (!p || typeof p !== 'object') return false;
+      const pl = Number(p.puntosLocal), pv = Number(p.puntosVisitante);
+      return !!String(p.local || '').trim() && !!String(p.visitante || '').trim()
+        && isFinite(pl) && isFinite(pv) && pl !== pv;
+    });
+  }
+
+  /** Una fila vacía, para el equipo que SOLO tiene partidos manuales. */
+  function filaVacia(clave, nombre) {
+    return {
+      clave: clave, nombre: nombre || clave,
+      pj: 0, pg: 0, pp: 0, pct: 0, pf: 0, pc: 0, dif: 0,
+      pfProm: 0, pcProm: 0,
+      local: { pg: 0, pp: 0 }, visitante: { pg: 0, pp: 0 },
+      manuales: 0, detalleManual: [],
+    };
+  }
+
+  /**
+   * Fusiona los partidos manuales sobre las filas de la tabla.
+   *
+   * Devuelve filas NUEVAS: no muta las que vienen del índice, que las
+   * usan otras pantallas.
+   */
+  function fusionarManuales(base, manuales) {
+    const filas = (base || []).map(f => Object.assign({}, f, {
+      local: Object.assign({}, f.local),
+      visitante: Object.assign({}, f.visitante),
+      manuales: 0, detalleManual: [],
+    }));
+    if (!manuales || !manuales.length) {
+      filas.forEach(recalcular);
+      return filas;
+    }
+
+    const porClave = new Map();
+    filas.forEach(f => porClave.set(claveDe(f.clave), f));
+    const traer = (nombre) => {
+      const k = claveDe(nombre);
+      if (!porClave.has(k)) {
+        /* Un equipo que SOLO tiene partidos manuales igual va a la tabla:
+           si no, desaparece del torneo por no tener box score. */
+        const nueva = filaVacia(k, String(nombre || '').trim());
+        porClave.set(k, nueva);
+        filas.push(nueva);
+      }
+      return porClave.get(k);
+    };
+
+    manuales.forEach(p => {
+      const pl = Number(p.puntosLocal), pv = Number(p.puntosVisitante);
+      const fl = traer(p.local), fv = traer(p.visitante);
+      const ganaLocal = pl > pv;
+
+      [[fl, pl, pv, ganaLocal, 'local', p.visitante],
+       [fv, pv, pl, !ganaLocal, 'visitante', p.local]].forEach(([f, pro, con, gano, rol, rival]) => {
+        f.pj += 1;
+        f.pf += pro;
+        f.pc += con;
+        if (gano) { f.pg += 1; f[rol === 'local' ? 'local' : 'visitante'].pg += 1; }
+        else { f.pp += 1; f[rol === 'local' ? 'local' : 'visitante'].pp += 1; }
+        f.manuales += 1;
+        /* El desglose que pide el badge: fecha, rol, rival y resultado. */
+        f.detalleManual.push({
+          fecha: p.fecha || null,
+          rol: rol === 'local' ? 'Local' : 'Visitante',
+          rival: String(rival || '').trim(),
+          puntosPropios: pro,
+          puntosRival: con,
+          gano: !!gano,
+        });
+      });
+    });
+
+    filas.forEach(recalcular);
+    return filas;
+  }
+
+  /* Lo derivado se recalcula DESPUÉS de sumar, nunca se suma: un
+     porcentaje o una diferencia acumulados darían cualquier cosa. */
+  function recalcular(f) {
+    f.dif = f.pf - f.pc;
+    f.pct = f.pj > 0 ? f.pg / f.pj : 0;
+    f.pfProm = f.pj > 0 ? f.pf / f.pj : 0;
+    f.pcProm = f.pj > 0 ? f.pc / f.pj : 0;
+    f.puntos = puntosDeTabla(f.pg, f.pp);
+  }
 
   /**
    * Una fila por equipo, con todo lo que las dos tablas necesitaban.
@@ -117,7 +263,12 @@ const SGADD_CLASIF = (function () {
   function tabla(idx, opciones) {
     const o = opciones || {};
     const orden = o.orden || (o.config && o.config.ordenTabla) || ORDEN_POR_DEFECTO;
-    const filasOrdenadas = ordenar(filas(idx), orden);
+    /* LOS MANUALES SE FUSIONAN ACÁ, y solo acá: es el único punto por el
+       que pasan las dos tablas (la sección y el resumen de Principal),
+       así que no pueden mostrar totales distintos. Sin `manuales` la
+       fusión igual corre, porque es la que calcula `puntos`. */
+    const conManuales = fusionarManuales(filas(idx), o.manuales || []);
+    const filasOrdenadas = ordenar(conManuales, orden);
     const total = filasOrdenadas.length;
     const zonaDe = (typeof SGADD_CONFIG !== 'undefined' && o.formato)
       ? (p) => SGADD_CONFIG.zonaDePuesto(o.formato, p, total)
@@ -129,7 +280,9 @@ const SGADD_CLASIF = (function () {
     });
   }
 
-  return { CRITERIOS, ORDEN_POR_DEFECTO, filas, ordenar, tabla };
+  return { CRITERIOS, ORDEN_POR_DEFECTO, filas, ordenar, tabla,
+           fusionarManuales, manualesDelTramo, puntosDeTabla,
+           PUNTOS_GANADO, PUNTOS_PERDIDO };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_CLASIF;
@@ -142,6 +295,68 @@ if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_CLAS
 /* El formato de competencia vigente para el tramo abierto. Un solo lugar
    lo resuelve: si cada consumidor volviera a leer el JSON del club y a
    componer la clave TORNEO|FASE, tarde o temprano uno se queda viejo. */
+/* =====================================================================
+   DE DÓNDE SALEN LOS PARTIDOS MANUALES
+
+   Del catálogo publicado, con la misma cascada y el mismo scope que las
+   zonas: club → categoría → tramo. Se resuelve en UN solo lugar porque
+   lo consumen dos tablas —la sección y el resumen de Principal— y dos
+   resolvedores darían dos totales para el mismo equipo.
+   ===================================================================== */
+function clasifManualesVigentes() {
+  try {
+    if (typeof SGADD_CLIENTES === 'undefined' || !SGADD_CLIENTES.estado) return [];
+    const clubId = SGADD_CONFIG.clubActivo();
+    const club = (SGADD_CLIENTES.estado.clubes || []).filter(c => c.slug === clubId || c.id === clubId)[0];
+    if (!club || !club.partidosManuales) return [];
+    const cat = SGADD_CONFIG.categoriaActiva();
+    const mapa = club.partidosManuales[cat];
+    if (!mapa) return [];
+    const st = SGADD_APP.estado;
+    return SGADD_CLASIF.manualesDelTramo(mapa, st.torneo, st.fase);
+  } catch (e) { return []; }   // es una mejora, no una dependencia dura
+}
+
+/**
+ * El badge amarillo de «partidos sin registro de estadísticas».
+ *
+ * Va en la fila de la tabla y en la ficha del equipo. El desglose
+ * —fecha, rol, rival y resultado— viaja en el `title` para que también
+ * se lea con el teclado y en el papel, donde no hay hover.
+ */
+function clasifBadgeManual(fila) {
+  const n = (fila && fila.manuales) || 0;
+  if (!n) return '';
+  const det = (fila.detalleManual || []).map(d =>
+    (d.fecha ? SGADD_UI.esc(String(d.fecha)) + ' · ' : '')
+    + d.rol + ' vs ' + SGADD_UI.esc(d.rival)
+    + ' · ' + d.puntosPropios + '-' + d.puntosRival
+    + ' (' + (d.gano ? 'ganado' : 'perdido') + ')').join('\n');
+  const texto = 'Este equipo cuenta con ' + n + ' partido'
+    + (n === 1 ? '' : 's') + ' sin registro de estadísticas.';
+  return '<span class="badge-manual" title="' + SGADD_UI.esc(texto + '\n\n' + det) + '"'
+    + ' tabindex="0" role="note" aria-label="' + SGADD_UI.esc(texto) + '">⚠ ' + n + '</span>';
+}
+
+/** El banner, para la ficha del equipo (donde hay lugar para la frase). */
+function clasifBannerManual(fila) {
+  const n = (fila && fila.manuales) || 0;
+  if (!n) return '';
+  const filas = (fila.detalleManual || []).map(d => `<li>
+      <span class="font-mono">${d.fecha ? SGADD_UI.esc(String(d.fecha)) : '—'}</span>
+      · ${d.rol} vs <b>${SGADD_UI.esc(d.rival)}</b>
+      · <span class="font-mono">${d.puntosPropios}-${d.puntosRival}</span>
+      ${d.gano ? '✓' : '✗'}</li>`).join('');
+  return `<details class="aviso-manual rounded-lg px-3 py-2 mb-4 text-xs">
+    <summary class="cursor-pointer">⚠ Este equipo cuenta con ${n} partido${n === 1 ? '' : 's'}
+      sin registro de estadísticas.</summary>
+    <p class="mt-2 opacity-80">Cuentan para la tabla —resultado, diferencia y puntos— pero
+      no para las métricas: no tienen box score, así que no entran a eFG%, PACE ni a nada
+      de jugadores.</p>
+    <ul class="mt-2 space-y-1">${filas}</ul>
+  </details>`;
+}
+
 function clasifFormatoVigente() {
   if (typeof SGADD_CONFIG === 'undefined') return { config: null, formato: null, origen: 'ninguno' };
   const cfgClub = (typeof CLUB !== 'undefined' && CLUB.cfg) ? CLUB.cfg : null;
@@ -207,7 +422,10 @@ function clasifTablaHTML(idx, opciones) {
     ? { formato: o.formato || null, config: null } : clasifFormatoVigente();
   const formato = o.formato !== undefined ? o.formato : vig.formato;
   const orden = o.orden || (vig.config && vig.config.ordenTabla) || null;
-  const filas = SGADD_CLASIF.tabla(idx, { formato: formato, orden: orden });
+  /* Si el que llama no los pasa, se resuelven acá: así el resumen de
+     Principal y la sección muestran lo mismo sin que cada uno se acuerde. */
+  const manuales = o.manuales !== undefined ? o.manuales : clasifManualesVigentes();
+  const filas = SGADD_CLASIF.tabla(idx, { formato: formato, orden: orden, manuales: manuales });
   if (!filas.length) return clasifCartel('Sin partidos cargados en este tramo.');
 
   const completa = o.columnas === 'completa';
@@ -275,7 +493,7 @@ function clasifTablaHTML(idx, opciones) {
     return `<tr class="hover:bg-surface2/40 transition-colors${zc}"${titulo}>
       <td class="${td} font-bold">${r.puesto}</td>
       <td class="${td.replace('font-mono tabular-nums', 'font-body font-medium')} text-ink">
-        <span class="inline-flex items-center gap-2">${clasifEscudo(r.nombre)}${SGADD_UI.esc(r.nombre)}</span>
+        <span class="inline-flex items-center gap-2">${clasifEscudo(r.nombre)}${SGADD_UI.esc(r.nombre)}${clasifBadgeManual(r)}</span>
       </td>
       ${cols.map(v => `<td class="${td}">${SGADD_UI.esc(String(v))}</td>`).join('')}
     </tr>`;

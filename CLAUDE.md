@@ -41,6 +41,7 @@ node test-resiliencia.js   #  50 tests · rotación del token, KV caído, el tra
 node test-jsonclub.js      # 105 tests · los JSON de club, el validador, el aislamiento y publicar
 node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
+node test-manuales.js      # 125 tests · partidos sin box score: suman a la tabla, no a las métricas
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -52,7 +53,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**3697 tests en total. Todos tienen que dar verde antes de commitear.**
+**3822 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -5979,3 +5980,71 @@ comentarios que sumó este arreglo empujaron la llamada más allá de esos
 cambiado**. Ahora recorta el CUERPO de la función y busca ahí dentro: una
 ventana fija de caracteres es una bomba de tiempo en un archivo que se
 edita.
+
+---
+
+## 44. PARTIDOS SIN ESTADÍSTICAS · la carga manual
+
+Cuando GES no publica el box score, el partido existió igual: cuenta para
+la tabla y no puede faltar. Pero **no puede entrar por donde entran los
+demás**.
+
+### Por qué NO van al índice
+
+`construirIndice()` alimenta todo: eFG%, PACE, percentiles, bandas z,
+arquetipos, el grupo de pares. Un partido del que solo se sabe el marcador
+metido ahí daría un equipo con **más PJ y los mismos totales de tiro** —o
+sea eFG% y PACE diluidos— y jugadores con menos minutos por partido sin
+haber faltado a ninguno. Números plausibles y falsos.
+
+Viven aparte, en `catalogo[club].partidosManuales[<categoría>][<TORNEO|FASE>]`,
+y se fusionan **solo** en `SGADD_CLASIF.tabla()`. Tocan exactamente PJ, PG,
+PP, PF, PC y el split local/visitante — de donde salen PCT, DIF y los
+puntos de tabla. Nada más.
+
+El grueso de `test-manuales.js` no verifica lo que el partido manual HACE
+sino **lo que no toca**: que la fila de la tabla no lleve ninguna métrica
+avanzada, que el motor no las nombre, y que 20 partidos cargados sigan sin
+mover una tasa.
+
+### Las reglas
+
+- **El scope es categoría + TRAMO.** Sin el tramo, un partido de la IDA
+  contaría en la VUELTA. Es la misma clave `TORNEO|FASE` del selector, y
+  el servidor escribe **un solo slot** — la garantía no depende de que la
+  pantalla mande bien el pedido (punto 32).
+- **Un empate se rechaza.** En básquet no existe, y dejarlo pasar daría un
+  partido que no suma ni a ganados ni a perdidos: PJ dejaría de ser PG+PP
+  sin que nadie se entere.
+- **Lo derivado se recalcula, nunca se acumula.** PCT y DIF se rehacen
+  después de sumar.
+- **Un equipo que SOLO tiene partidos manuales entra a la tabla.** Si no,
+  desaparece del torneo por no tener box score.
+- **Se guarda solo el modelo**, no el objeto que manda el cliente: el
+  catálogo se sirve a todos.
+
+### Los puntos de tabla son OPT-IN
+
+`PTS` (2 por ganado, 1 por perdido) entra como criterio de `ordenTabla` y
+la fila lo trae calculado, pero **el orden por defecto sigue siendo
+`PCT · DIF · PF`**: meterlo en la cascada reordenaría la tabla de los tres
+clientes sin que nadie lo pidiera. Un club lo usa declarando
+`ordenTabla: ["PTS", …]`.
+
+### El badge
+
+Chip amarillo con `⚠` —ningún estado se comunica solo con color (punto
+14)— y el desglose en el `title`, que también se lee con teclado y en
+papel, donde no hay hover. Contraste medido con `CLUB.contraste`: **6,38**
+el texto sobre el chip, **17,15** el chip sobre la card, **8,07** en papel.
+
+El CSS va **a mano en el `<style>`** y con su regla de `@media print`: son
+nodos inyectados (punto 12) y sin la regla de papel el aplanado
+(`body * { color: #111 !important }`) se lo come.
+
+> **Ojo al insertar CSS en `index.html` con un script.** `s.index('<style>')`
+> matchea primero la MENCIÓN dentro del comentario de la cabecera, no la
+> etiqueta real: el bloque quedó inerte adentro del comentario y encima lo
+> partió. Hay que anclar a `
+<style>
+`.

@@ -197,6 +197,11 @@ function publico(cat, opciones) {
        Y no revela nada que el cliente no pueda ver igual: hasta ahora
        vivia en `clubes/<club>.json`, que es un archivo publico. */
     competencia: c[id].competencia || null,
+    /* LOS PARTIDOS MANUALES VIAJAN PARA TODOS, igual que las zonas: no
+       son informacion comercial sino resultados que ya se jugaron, y
+       sin ellos la tabla del cliente no cuadra. Lo que sigue siendo
+       solo del admin es el plan y el vencimiento. */
+    partidosManuales: c[id].partidosManuales || null,
     categorias: Object.keys(c[id].categorias || {}).map(s => ({
       slug: s,
       label: c[id].categorias[s].label,

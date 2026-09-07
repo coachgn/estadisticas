@@ -374,6 +374,108 @@ function zonas(cat, d) {
   return { ok: true, catalogo: nuevo };
 }
 
+/* =====================================================================
+   PARTIDOS SIN ESTADISTICAS · carga manual
+
+   Cuando GES no registra el box score, el partido existio igual y tiene
+   que contar para la tabla. Se guardan APARTE del libro, en el catalogo,
+   y el panel los fusiona SOLO al armar la clasificacion: no entran al
+   indice, asi que no tocan eFG%, PACE, percentiles ni nada de jugadores.
+
+   FORMA:  catalogo[club].partidosManuales[<categoria>][<TORNEO|FASE>] = []
+
+   EL SCOPE ES categoria + TRAMO, por lo mismo que las zonas (punto 32):
+   un club corre varias categorias y un partido de la IDA no puede contar
+   en la VUELTA. Aca se escribe UN SOLO slot, asi que publicar la U21
+   nunca puede pisar los partidos de Primera — la garantia vive del lado
+   del servidor y no depende de que la pantalla mande bien el pedido.
+   ===================================================================== */
+
+/* Un empate no existe en basquet. Dejarlo pasar daria un partido que no
+   suma ni a ganados ni a perdidos, y PJ dejaria de ser PG+PP sin que
+   nadie se entere. */
+function _partidoManualValido_(p) {
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return 'cada partido tiene que ser un objeto';
+  const local = String(p.local || '').trim();
+  const visitante = String(p.visitante || '').trim();
+  if (!local || !visitante) return 'faltan los nombres de los dos equipos';
+  if (local.toUpperCase() === visitante.toUpperCase()) return 'un equipo no puede jugar contra si mismo';
+  const pl = Number(p.puntosLocal), pv = Number(p.puntosVisitante);
+  if (!isFinite(pl) || !isFinite(pv)) return 'los puntos tienen que ser numeros';
+  if (pl < 0 || pv < 0) return 'los puntos no pueden ser negativos';
+  if (!Number.isInteger(pl) || !Number.isInteger(pv)) return 'los puntos son enteros';
+  if (pl === pv) return 'en basquet no hay empates: revisa el marcador';
+  if (!String(p.fecha || '').trim()) return 'falta la fecha';
+  return null;
+}
+
+/* Se guarda SOLO lo que el panel usa. Un objeto entero del cliente podria
+   traer cualquier cosa y el catalogo se sirve a todos los clientes. */
+function _limpiarPartidoManual_(p) {
+  const o = {
+    id: String(p.id || '').trim() || ('m' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7)),
+    fecha: String(p.fecha).trim(),
+    local: String(p.local).trim(),
+    puntosLocal: Number(p.puntosLocal),
+    visitante: String(p.visitante).trim(),
+    puntosVisitante: Number(p.puntosVisitante),
+  };
+  const nota = String(p.nota || '').trim();
+  if (nota) o.nota = nota.slice(0, 200);
+  return o;
+}
+
+/**
+ * Reemplaza la lista de partidos manuales de UN tramo de UNA categoria.
+ *
+ * Es un reemplazo y no un append: la pantalla edita la lista entera y la
+ * manda completa, igual que las zonas. Un append obligaria a inventar un
+ * borrado aparte y a resolver conflictos de id entre dos admins.
+ */
+function partidosManuales(cat, d) {
+  const v = d || {};
+  const nuevo = copiar(cat);
+  if (!nuevo[v.club]) return malo('Ese club no esta en el catalogo.');
+
+  const categoria = String(v.categoria || '').trim();
+  const tramo = String(v.tramo || '').trim().toUpperCase();
+  if (!categoria) return malo('Falta la categoria: un partido manual siempre es de una planilla.');
+  if (!/^[^|]+\|[^|]+$/.test(tramo)) {
+    return malo('El tramo tiene que ser TORNEO|FASE, la misma clave que usa el selector.');
+  }
+
+  const lista = v.partidos;
+  if (lista !== null && lista !== undefined && !Array.isArray(lista)) {
+    return malo('Los partidos tienen que venir en una lista.');
+  }
+
+  const mapa = (nuevo[v.club].partidosManuales && typeof nuevo[v.club].partidosManuales === 'object')
+    ? nuevo[v.club].partidosManuales : {};
+  const deCat = (mapa[categoria] && typeof mapa[categoria] === 'object') ? mapa[categoria] : {};
+
+  if (!lista || !lista.length) {
+    /* Vaciar el tramo es legitimo y explicito: es como se borra el ultimo
+       partido cargado sin tener que adivinar una accion de borrado. */
+    delete deCat[tramo];
+  } else {
+    if (lista.length > 200) return malo('Demasiados partidos manuales para un tramo.');
+    for (let i = 0; i < lista.length; i++) {
+      const err = _partidoManualValido_(lista[i]);
+      if (err) return malo('Partido ' + (i + 1) + ': ' + err);
+    }
+    deCat[tramo] = lista.map(_limpiarPartidoManual_);
+  }
+
+  if (Object.keys(deCat).length) mapa[categoria] = deCat;
+  else delete mapa[categoria];
+
+  if (Object.keys(mapa).length) nuevo[v.club].partidosManuales = mapa;
+  else delete nuevo[v.club].partidosManuales;
+
+  return { ok: true, catalogo: nuevo, categoria: categoria, tramo: tramo,
+           cuantos: (deCat[tramo] || []).length };
+}
+
 /** Extiende (o fija) la fecha de vencimiento. */
 function renovar(cat, d) {
   const v = d || {};
@@ -449,6 +551,7 @@ function aplicar(vigente, accion, datos, validar) {
     informe_entregado: informe,
     renovar: renovar,
     zonas: zonas,
+    partidos_manuales: partidosManuales,
   };
   const fn = acciones[accion];
   if (!fn) return malo('Acción desconocida: ' + accion);
@@ -483,6 +586,6 @@ function aplicar(vigente, accion, datos, validar) {
 }
 
 module.exports = {
-  zonas, alta, baja, estado, plan, renovar, informe, ciclo, aplicar,
+  zonas, partidosManuales, alta, baja, estado, plan, renovar, informe, ciclo, aplicar,
   librosPerdidos, ALIAS_PLAN, PARTIDOS_POR_CICLO,
   vencido, estadoEfectivo, ESTADOS, PLANES, ID, SHEET, FECHA };

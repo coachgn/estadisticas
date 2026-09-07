@@ -1,0 +1,375 @@
+/* =====================================================================
+   SGADD · PARTIDOS SIN ESTADÍSTICAS (carga manual)
+
+   Cuando GES no publica el box score, el partido existió igual: cuenta
+   para la tabla y no puede faltar. Pero NO puede entrar por donde entran
+   los demás.
+
+   LA PROPIEDAD QUE SOSTIENE TODO EL DISEÑO: un partido manual toca
+   exactamente PJ, PG, PP, PF, PC y el split local/visitante —de donde
+   salen PCT, DIF y los puntos de tabla— y NADA MÁS. Si entrara al
+   índice, un partido del que solo se sabe el marcador daría un equipo
+   con más PJ y los mismos totales de tiro: eFG% y PACE diluidos, y
+   jugadores con menos minutos por partido sin haber faltado a ninguno.
+   Números plausibles y falsos.
+
+   Por eso el grueso de estos tests no verifica lo que el partido manual
+   HACE, sino lo que NO toca.
+   ===================================================================== */
+
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const CLASIF = require('./js/sgadd-clasificacion.js');
+const MUTAR = require('./server/lib/catalogo-mutar.js');
+
+let pasados = 0, fallados = 0;
+function ok(cond, nombre, detalle) {
+  if (cond) { pasados++; return; }
+  fallados++;
+  console.log('  ✗ ' + nombre + (detalle ? '  →  ' + detalle : ''));
+}
+function igual(a, b, nombre) {
+  ok(JSON.stringify(a) === JSON.stringify(b), nombre,
+     'esperaba ' + JSON.stringify(b) + ' y dio ' + JSON.stringify(a));
+}
+function bloque(t) { console.log('\n' + t); }
+const clonar = (o) => JSON.parse(JSON.stringify(o));
+
+/* --------------------------------------------------------- fixture */
+function equipo(clave, pg, pp, pf, pc, split) {
+  return {
+    clave: clave, nombre: clave,
+    record: { ganados: pg, perdidos: pp, pj: pg + pp },
+    totales: { propio: { PTS: pf }, rival: { PTS: pc } },
+    split: split || {
+      LOCAL: { ganados: pg, perdidos: 0 },
+      VISITANTE: { ganados: 0, perdidos: pp },
+    },
+  };
+}
+const LISTA = [
+  equipo('ATENAS A', 3, 1, 300, 280),
+  equipo('PLATENSE A', 1, 3, 260, 290),
+];
+const idx = { lista: () => clonar(LISTA) };
+const P = (o) => Object.assign({
+  fecha: '2026-05-10', local: 'ATENAS A', puntosLocal: 80,
+  visitante: 'PLATENSE A', puntosVisitante: 70,
+}, o || {});
+
+/* =====================================================================
+   1 · LO QUE EL PARTIDO MANUAL SÍ SUMA
+   ===================================================================== */
+bloque('1 · Suma a la tabla');
+
+const t0 = CLASIF.tabla(idx, {});
+const base = t0.filter(r => r.clave === 'ATENAS A')[0];
+igual(base.pj, 4, 'sin manuales, ATENAS tiene sus 4 partidos');
+igual(base.pf, 300, 'y sus 300 puntos a favor');
+
+const t1 = CLASIF.tabla(idx, { manuales: [P()] });
+const a = t1.filter(r => r.clave === 'ATENAS A')[0];
+const b = t1.filter(r => r.clave === 'PLATENSE A')[0];
+
+igual(a.pj, 5, 'el ganador suma un partido jugado');
+igual(a.pg, 4, 'y uno ganado');
+igual(a.pp, 1, 'sin tocar los perdidos');
+igual(a.pf, 380, 'suma sus puntos a favor');
+igual(a.pc, 350, 'y los del rival en contra');
+igual(a.dif, 30, 'la diferencia se RECALCULA, no se acumula');
+ok(Math.abs(a.pct - 0.8) < 1e-9, 'el porcentaje también', 'pct=' + a.pct);
+
+igual(b.pj, 5, 'el perdedor también suma partido jugado');
+igual(b.pp, 4, 'y uno perdido');
+igual(b.pg, 1, 'sin tocar los ganados');
+igual(b.pf, 330, 'con sus puntos a favor');
+igual(b.pc, 370, 'y en contra');
+
+/* El split, que alimenta las columnas de local y visitante. */
+igual(a.local.pg, 4, 'el local ganador suma a su columna de local');
+igual(b.visitante.pp, 4, 'y el visitante perdedor a la suya');
+
+/* Y al revés: gana el visitante. */
+const t2 = CLASIF.tabla(idx, { manuales: [P({ puntosLocal: 60, puntosVisitante: 90 })] });
+const a2 = t2.filter(r => r.clave === 'ATENAS A')[0];
+const b2 = t2.filter(r => r.clave === 'PLATENSE A')[0];
+igual(a2.pp, 2, 'si gana el visitante, el local suma perdido');
+igual(a2.local.pp, 1, 'en su columna de local');
+igual(b2.pg, 2, 'y el visitante suma ganado');
+igual(b2.visitante.pg, 1, 'en su columna de visitante');
+
+/* =====================================================================
+   2 · LOS PUNTOS DE TABLA
+   ===================================================================== */
+bloque('2 · Puntos de tabla (+2 / +1)');
+
+igual(CLASIF.PUNTOS_GANADO, 2, 'un ganado vale 2');
+igual(CLASIF.PUNTOS_PERDIDO, 1, 'un perdido vale 1');
+igual(CLASIF.puntosDeTabla(4, 1), 9, '4 ganados y 1 perdido son 9 puntos');
+igual(a.puntos, 9, 'la fila trae sus puntos ya calculados');
+igual(b.puntos, 6, 'y el perdedor los suyos');
+igual(t0.filter(r => r.clave === 'ATENAS A')[0].puntos, 7,
+      'los puntos se calculan aunque no haya ningún partido manual');
+
+/* EL ORDEN POR DEFECTO NO CAMBIA. Meter PTS en la cascada por defecto
+   reordenaría la tabla de los tres clubes sin que nadie lo pidiera. */
+igual(CLASIF.ORDEN_POR_DEFECTO, ['PCT', 'DIF', 'PF'],
+      'el orden por defecto sigue siendo PCT · DIF · PF');
+ok(!!CLASIF.CRITERIOS.PTS, 'pero PTS existe como criterio opt-in');
+
+/* Y ordena de verdad cuando se lo pide. */
+const porPuntos = CLASIF.tabla(idx, { orden: ['PTS'] });
+ok(porPuntos[0].puntos >= porPuntos[1].puntos, 'ordenar por PTS pone arriba al de más puntos');
+
+/* =====================================================================
+   3 · LO QUE **NO** TOCA · la propiedad que sostiene el diseño
+   ===================================================================== */
+bloque('3 · No contamina las métricas');
+
+/* El índice no se toca: las filas que devuelve `lista()` tienen que salir
+   intactas, porque las usan las otras pantallas. */
+const antes = clonar(LISTA);
+CLASIF.tabla(idx, { manuales: [P(), P({ fecha: '2026-06-01' })] });
+igual(clonar(LISTA), antes, 'la fusión NO muta las filas del índice');
+
+/* Ninguna métrica avanzada aparece en la fila de la tabla: si alguien
+   agregara eFG% acá, un partido manual lo diluiría sin decirlo. */
+const PROHIBIDAS = ['eFG%', 'PACE', 'POS', 'TS%', 'PPP', 'RTNG OFF', 'NET RTNG', 'USG%'];
+PROHIBIDAS.forEach(k => ok(a[k] === undefined,
+  'la fila de la tabla no lleva ' + k + ': un manual lo falsearía'));
+
+/* Y el motor de manuales no conoce ninguna de esas claves. */
+const fuente = fs.readFileSync(path.join(__dirname, 'js/sgadd-clasificacion.js'), 'utf8');
+const motor = fuente.slice(fuente.indexOf('function fusionarManuales'),
+                           fuente.indexOf('function recalcular'));
+PROHIBIDAS.forEach(k => ok(motor.indexOf(k) === -1,
+  'fusionarManuales no menciona ' + k));
+
+/* El caso que da miedo: MUCHOS manuales no pueden mover una tasa. */
+const muchos = [];
+for (let i = 0; i < 20; i++) muchos.push(P({ fecha: '2026-0' + (i % 9 + 1) + '-01' }));
+const tm = CLASIF.tabla(idx, { manuales: muchos });
+const am = tm.filter(r => r.clave === 'ATENAS A')[0];
+igual(am.pj, 24, '20 partidos manuales suman 20 al PJ de la tabla');
+PROHIBIDAS.forEach(k => ok(am[k] === undefined,
+  'y con 20 cargados sigue sin haber ' + k + ' en la fila'));
+
+/* =====================================================================
+   4 · UN EQUIPO QUE SOLO TIENE PARTIDOS MANUALES
+   ===================================================================== */
+bloque('4 · El equipo sin box score entra igual');
+
+const t3 = CLASIF.tabla(idx, { manuales: [P({ visitante: 'UNIVERSAL' })] });
+const u = t3.filter(r => r.clave === 'UNIVERSAL')[0];
+ok(!!u, 'un equipo que solo aparece en manuales entra a la tabla');
+if (u) {
+  igual(u.pj, 1, 'con su único partido');
+  igual(u.pp, 1, 'perdido');
+  igual(u.pf, 70, 'y sus puntos');
+  igual(u.puntos, 1, 'y su punto de tabla');
+}
+igual(t3.length, 3, 'la tabla crece en una fila, no más');
+
+/* =====================================================================
+   5 · EL SCOPE · categoría y TRAMO
+   ===================================================================== */
+bloque('5 · Un partido de la IDA no cuenta en la VUELTA');
+
+const MAPA = {
+  'IDA|REGULAR': [P()],
+  'VUELTA|REGULAR': [P({ fecha: '2026-08-01' }), P({ fecha: '2026-08-08' })],
+};
+igual(CLASIF.manualesDelTramo(MAPA, 'IDA', 'REGULAR').length, 1, 'la IDA trae el suyo');
+igual(CLASIF.manualesDelTramo(MAPA, 'VUELTA', 'REGULAR').length, 2, 'y la VUELTA los suyos');
+igual(CLASIF.manualesDelTramo(MAPA, 'PLAYOFF', 'REGULAR').length, 0,
+      'un tramo sin partidos no hereda los de otro');
+igual(CLASIF.manualesDelTramo(MAPA, 'ida', 'regular').length, 1,
+      'la clave no distingue mayúsculas');
+igual(CLASIF.manualesDelTramo(null, 'IDA', 'REGULAR').length, 0, 'sin mapa, ninguno');
+
+/* Lo que no se puede contar, se descarta antes de sumar. */
+const sucio = { 'IDA|REGULAR': [
+  P(), P({ puntosLocal: 70, puntosVisitante: 70 }), P({ local: '' }),
+  P({ puntosLocal: 'x' }), null, 'no soy un partido',
+] };
+igual(CLASIF.manualesDelTramo(sucio, 'IDA', 'REGULAR').length, 1,
+      'un empate, un equipo vacío y la basura se descartan');
+
+/* =====================================================================
+   6 · EL SERVIDOR · escribe un solo slot
+   ===================================================================== */
+bloque('6 · Persistencia y aislamiento');
+
+const CAT = () => ({ rec: { nombre: 'R' } });
+
+let r = MUTAR.aplicar(CAT(), 'partidos_manuales',
+  { club: 'rec', categoria: 'u23', tramo: 'IDA|REGULAR', partidos: [P()] });
+igual(r.ok, true, 'se guarda un partido');
+igual(r.cuantos, 1, 'y lo dice');
+const guardado = r.catalogo.rec.partidosManuales.u23['IDA|REGULAR'][0];
+ok(!!guardado.id, 'se le pone un id');
+igual(guardado.local, 'ATENAS A', 'con el equipo local');
+igual(guardado.puntosLocal, 80, 'y los puntos como número');
+ok(guardado.basura === undefined, 'y no se guarda nada que no sea del modelo');
+
+/* Un campo colado no puede llegar al catálogo, que se sirve a todos. */
+r = MUTAR.aplicar(CAT(), 'partidos_manuales', {
+  club: 'rec', categoria: 'u23', tramo: 'IDA|REGULAR',
+  partidos: [Object.assign(P(), { basura: '<script>', otro: 1 })],
+});
+const limpio = r.catalogo.rec.partidosManuales.u23['IDA|REGULAR'][0];
+igual(Object.keys(limpio).sort(),
+      ['fecha', 'id', 'local', 'puntosLocal', 'puntosVisitante', 'visitante'],
+      'el registro guardado tiene solo los campos del modelo');
+
+/* AISLAMIENTO, la garantía del lado del servidor. */
+let cat = MUTAR.aplicar(CAT(), 'partidos_manuales',
+  { club: 'rec', categoria: 'u23', tramo: 'IDA|REGULAR', partidos: [P()] }).catalogo;
+cat = MUTAR.aplicar(cat, 'partidos_manuales',
+  { club: 'rec', categoria: 'u23', tramo: 'VUELTA|REGULAR', partidos: [P()] }).catalogo;
+cat = MUTAR.aplicar(cat, 'partidos_manuales',
+  { club: 'rec', categoria: 'primera', tramo: 'IDA|REGULAR', partidos: [P(), P()] }).catalogo;
+
+igual(Object.keys(cat.rec.partidosManuales).sort(), ['primera', 'u23'],
+      'conviven dos categorías');
+igual(Object.keys(cat.rec.partidosManuales.u23).sort(), ['IDA|REGULAR', 'VUELTA|REGULAR'],
+      'y dos tramos dentro de una');
+
+/* Escribir uno no toca a los otros tres. */
+const tras = MUTAR.aplicar(clonar(cat), 'partidos_manuales',
+  { club: 'rec', categoria: 'u23', tramo: 'IDA|REGULAR', partidos: [] }).catalogo;
+igual(Object.keys(tras.rec.partidosManuales.u23), ['VUELTA|REGULAR'],
+      'vaciar un tramo borra ese tramo');
+igual(tras.rec.partidosManuales.primera['IDA|REGULAR'].length, 2,
+      'y la otra categoría queda intacta');
+
+/* Vaciar el último deja el club limpio, sin un objeto huérfano. */
+let solo = MUTAR.aplicar(CAT(), 'partidos_manuales',
+  { club: 'rec', categoria: 'u23', tramo: 'IDA|REGULAR', partidos: [P()] }).catalogo;
+solo = MUTAR.aplicar(solo, 'partidos_manuales',
+  { club: 'rec', categoria: 'u23', tramo: 'IDA|REGULAR', partidos: [] }).catalogo;
+igual(solo.rec.partidosManuales, undefined,
+      'sin partidos, la clave desaparece del club');
+
+/* --- las validaciones, que son la garantía real --- */
+const RECHAZOS = [
+  ['un empate', P({ puntosLocal: 70, puntosVisitante: 70 })],
+  ['sin fecha', P({ fecha: '' })],
+  ['el mismo equipo de los dos lados', P({ visitante: 'atenas a' })],
+  ['puntos negativos', P({ puntosLocal: -1 })],
+  ['puntos con decimales', P({ puntosLocal: 70.5 })],
+  ['puntos que no son número', P({ puntosLocal: 'ochenta' })],
+  ['sin equipo local', P({ local: '   ' })],
+];
+RECHAZOS.forEach(([eti, p]) => {
+  const x = MUTAR.aplicar(CAT(), 'partidos_manuales',
+    { club: 'rec', categoria: 'u23', tramo: 'IDA|REGULAR', partidos: [p] });
+  ok(!x.ok, 'se rechaza ' + eti);
+  ok(typeof x.motivo === 'string' && x.motivo.length > 10,
+     '  con un motivo legible: ' + eti, x.motivo);
+});
+
+igual(MUTAR.aplicar(CAT(), 'partidos_manuales',
+  { club: 'rec', categoria: '', tramo: 'IDA|REGULAR', partidos: [P()] }).ok, false,
+  'sin categoría se rechaza: un partido siempre es de una planilla');
+igual(MUTAR.aplicar(CAT(), 'partidos_manuales',
+  { club: 'rec', categoria: 'u23', tramo: 'REGULAR', partidos: [P()] }).ok, false,
+  'un tramo sin la barra se rechaza: la clave es TORNEO|FASE');
+igual(MUTAR.aplicar(CAT(), 'partidos_manuales',
+  { club: 'nadie', categoria: 'u23', tramo: 'IDA|REGULAR', partidos: [P()] }).ok, false,
+  'un club que no está en el catálogo se rechaza');
+
+/* El catálogo público tiene que llevarlos, o el cliente no puede sumarlos. */
+const catalogo = fs.readFileSync(path.join(__dirname, 'server/lib/catalogo.js'), 'utf8');
+ok(/partidosManuales:/.test(catalogo), 'el catálogo público expone partidosManuales');
+const antesDeAdmin = catalogo.slice(0, catalogo.indexOf('}, admin ?'));
+ok(antesDeAdmin.indexOf('partidosManuales') > -1,
+   'y viajan para TODOS los planes, no solo para el admin');
+
+/* =====================================================================
+   7 · LA UI · badge, banner y formulario
+   ===================================================================== */
+bloque('7 · Lo que ve el usuario');
+
+function pantalla() {
+  const ctx = {
+    console, JSON, Object, Array, Math, Number, String, Date, isFinite,
+    document: { getElementById: () => null },
+    SGADD: { claveEquipo: (x) => String(x || '').trim().toUpperCase() },
+    SGADD_UI: {
+      esc: (x) => String(x == null ? '' : x)
+        .replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
+    },
+    LOGOS: null,
+  };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'js/sgadd-clasificacion.js'), 'utf8'), ctx);
+  return ctx;
+}
+const P7 = pantalla();
+
+igual(P7.clasifBadgeManual({ manuales: 0 }), '', 'sin manuales no hay badge');
+const badge = P7.clasifBadgeManual(a);
+ok(badge.indexOf('badge-manual') > -1, 'el badge usa su clase propia');
+ok(badge.indexOf('⚠') > -1, 'lleva un símbolo además del color (punto 14)');
+ok(/aria-label=/.test(badge), 'y una etiqueta para lectores de pantalla');
+ok(/tabindex="0"/.test(badge), 'se puede alcanzar con el teclado, no solo con el mouse');
+ok(badge.indexOf('sin registro de estad') > -1, 'dice de qué se trata');
+ok(badge.indexOf('PLATENSE A') > -1, 'y el tooltip enumera el rival');
+ok(/\d+-\d+/.test(badge), 'con el resultado');
+ok(/Local|Visitante/.test(badge), 'y el rol');
+
+const banner = P7.clasifBannerManual(a);
+ok(banner.indexOf('aviso-manual') > -1, 'el banner de la ficha usa su clase');
+ok(banner.indexOf('<details') > -1, 'y se despliega sin JavaScript');
+ok(banner.indexOf('no entran a eFG%') > -1,
+   'y explica que NO alimentan las métricas');
+igual(P7.clasifBannerManual({ manuales: 0 }), '', 'sin manuales tampoco hay banner');
+
+/* El nombre del rival se escapa: lo escribe un humano en un formulario. */
+const conMarkup = CLASIF.tabla(idx, { manuales: [P({ visitante: '<script>x</script>' })] });
+const fx = conMarkup.filter(r => r.clave === 'ATENAS A')[0];
+const badgeRaro = P7.clasifBadgeManual(fx);
+ok(badgeRaro.indexOf('<script>x</script>') === -1, 'el markup del rival se escapa');
+
+/* El CSS va a mano: son nodos inyectados y el scan es estático (punto 12). */
+const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+ok(/\.badge-manual\s*\{/.test(html), 'la clase del badge está en el <style>');
+ok(/\.aviso-manual\s*\{/.test(html), 'y la del banner también');
+ok(/body \.badge-manual/.test(html),
+   'con su regla de @media print: el aplanado del papel se la comería');
+
+/* El formulario del Panel Master. */
+const ui = fs.readFileSync(path.join(__dirname, 'js/sgadd-configui.js'), 'utf8');
+const sinComentarios = ui.replace(/\/\*[\s\S]*?\*\//g, '');
+['configManualesHTML', 'configManualAgregar', 'configManualQuitar',
+ 'configManualesPublicar', 'configTramoActual'].forEach(f =>
+  ok(sinComentarios.indexOf('function ' + f) > -1, 'existe ' + f + '()'));
+ok(sinComentarios.indexOf("accion: 'partidos_manuales'") > -1,
+   'publicar manda la acción que el servidor entiende');
+ok(/tramo: tramo/.test(sinComentarios), 'con el tramo');
+ok(/categoria: CONFIGUI\.categoria/.test(sinComentarios), 'y la categoría abierta');
+/* Tipear no puede repintar: le sacaría el foco al input. */
+const campo = sinComentarios.slice(sinComentarios.indexOf('function configManualCampo'),
+                                   sinComentarios.indexOf('function configManualError'));
+ok(campo.indexOf('configPintar') === -1,
+   'configManualCampo NO repinta: un repintado por tecla saca el foco');
+/* Y el estado se tira al cambiar de categoría, como el resto. */
+const reset = ui.slice(ui.indexOf('function resetEstadoCategoria'),
+                       ui.indexOf('function configCargarBorrador'));
+ok(reset.indexOf('manuales') > -1,
+   'resetEstadoCategoria limpia los partidos de la categoría anterior');
+
+/* =====================================================================
+   RESUMEN
+   ===================================================================== */
+console.log('\n' + '─'.repeat(60));
+if (fallados === 0) {
+  console.log('✓ TODO OK · ' + pasados + ' tests');
+} else {
+  console.log('✗ ' + fallados + ' FALLARON de ' + (pasados + fallados));
+  process.exitCode = 1;
+}

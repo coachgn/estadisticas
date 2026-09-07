@@ -56,6 +56,12 @@ const CONFIGUI = {
      solo la parte que esta pantalla muestra; al grabar se fusiona sobre
      éste para no perder lo que no se está viendo. */
   completo: null,
+  /* La carga de partidos sin estadísticas. `manuales` es la lista del
+     tramo abierto y `manualNuevo` el formulario a medio llenar: viven
+     separados para que tipear no toque lo ya cargado. */
+  manuales: null,
+  manualNuevo: null,
+  manualAbierto: false,
   propia: false,
   catSel: null,
 };
@@ -106,6 +112,11 @@ function resetEstadoCategoria() {
   /* El panel de export queda abierto mostrando el archivo de la categoría
      anterior, y ése es de los residuos caros: se copia y se commitea. */
   CONFIGUI.exportando = false;
+  /* Los partidos son de la categoría que se estaba viendo: dejarlos
+     colgados haría que se publicaran en la otra. */
+  CONFIGUI.manuales = null;
+  CONFIGUI.manualNuevo = null;
+  CONFIGUI.manualAbierto = false;
 }
 
 function configCargarBorrador(forzar) {
@@ -518,6 +529,240 @@ function configAlcancePropio(propia) {
   configPintar();
 }
 
+/* =====================================================================
+   PARTIDOS SIN ESTADÍSTICAS · la carga manual
+
+   Cuando GES no publica el box score, el partido se carga a mano acá.
+   Suma a la tabla —resultado, diferencia y puntos— y NO entra al índice,
+   así que no toca eFG%, PACE ni nada de jugadores. La pantalla lo dice,
+   porque un admin que cargue diez creyendo que alimentan las métricas se
+   va a llevar una sorpresa cara.
+
+   EL SCOPE ES categoría + TRAMO, el que está abierto en la barra. Es la
+   misma clave `TORNEO|FASE` del selector, así que un partido de la IDA
+   no puede aparecer en la VUELTA.
+   ===================================================================== */
+
+function configTramoActual() {
+  try {
+    const st = SGADD_APP.estado;
+    if (!st.torneo || !st.fase) return null;
+    return String(st.torneo).toUpperCase() + '|' + String(st.fase).toUpperCase();
+  } catch (e) { return null; }
+}
+
+/** Los equipos del tramo, para no escribir el nombre a mano y que no matchee. */
+function configEquiposDelTramo() {
+  try {
+    const idx = SGADD_APP.estado.idx;
+    if (!idx || typeof idx.lista !== 'function') return [];
+    return idx.lista().map(e => e.nombre || e.clave).sort((a, b) => String(a).localeCompare(b));
+  } catch (e) { return []; }
+}
+
+function configManualesCargar(forzar) {
+  if (CONFIGUI.manuales && !forzar) return;
+  CONFIGUI.manuales = [];
+  try {
+    const clubId = configClubId();
+    const club = (SGADD_CLIENTES.estado.clubes || [])
+      .filter(c => c.slug === clubId || c.id === clubId)[0];
+    const mapa = club && club.partidosManuales && club.partidosManuales[CONFIGUI.categoria];
+    const t = configTramoActual();
+    if (mapa && t && Array.isArray(mapa[t])) {
+      CONFIGUI.manuales = JSON.parse(JSON.stringify(mapa[t]));
+    }
+  } catch (e) { /* sin catálogo se arranca vacío */ }
+}
+
+function configManualVacio() {
+  return { fecha: '', local: '', puntosLocal: '', visitante: '', puntosVisitante: '' };
+}
+
+function configManualCampo(campo, valor) {
+  if (!CONFIGUI.manualNuevo) CONFIGUI.manualNuevo = configManualVacio();
+  CONFIGUI.manualNuevo[campo] = valor;
+  /* NO se repinta: un repintado por tecla le saca el foco al input, que
+     es la regla que ya cumplen scoutMeta() y el buscador del buzón. */
+}
+
+/** La misma validación que el servidor, para avisar antes de mandar. */
+function configManualError(p) {
+  if (!p) return 'Completá el partido.';
+  if (!String(p.fecha || '').trim()) return 'Falta la fecha.';
+  if (!String(p.local || '').trim() || !String(p.visitante || '').trim()) {
+    return 'Faltan los dos equipos.';
+  }
+  if (String(p.local).trim().toUpperCase() === String(p.visitante).trim().toUpperCase()) {
+    return 'Un equipo no puede jugar contra sí mismo.';
+  }
+  const pl = Number(p.puntosLocal), pv = Number(p.puntosVisitante);
+  if (!isFinite(pl) || !isFinite(pv) || String(p.puntosLocal) === '' || String(p.puntosVisitante) === '') {
+    return 'Faltan los puntos.';
+  }
+  if (pl < 0 || pv < 0) return 'Los puntos no pueden ser negativos.';
+  if (!Number.isInteger(pl) || !Number.isInteger(pv)) return 'Los puntos son enteros.';
+  if (pl === pv) return 'En básquet no hay empates: revisá el marcador.';
+  return null;
+}
+
+function configManualAgregar() {
+  const p = CONFIGUI.manualNuevo;
+  const err = configManualError(p);
+  if (err) { configAvisar(err, false); return; }
+  configManualesCargar();
+  CONFIGUI.manuales.push({
+    fecha: String(p.fecha).trim(),
+    local: String(p.local).trim(),
+    puntosLocal: Number(p.puntosLocal),
+    visitante: String(p.visitante).trim(),
+    puntosVisitante: Number(p.puntosVisitante),
+  });
+  CONFIGUI.manualNuevo = configManualVacio();
+  configPintar();
+  configAvisar('Partido agregado. Todavía NO le llegó al cliente: tocá «Publicar partidos».', true);
+}
+
+function configManualQuitar(i) {
+  configManualesCargar();
+  CONFIGUI.manuales.splice(i, 1);
+  configPintar();
+}
+
+function configManualToggle() {
+  CONFIGUI.manualAbierto = !CONFIGUI.manualAbierto;
+  if (CONFIGUI.manualAbierto) configManualesCargar(true);
+  configPintar();
+}
+
+/** Publica la lista del tramo. Mismo circuito que las zonas. */
+function configManualesPublicar() {
+  const tramo = configTramoActual();
+  if (!tramo) { configAvisar('No hay un tramo abierto: elegí uno en la barra.', false); return; }
+  configManualesCargar();
+  const lista = CONFIGUI.manuales.slice();
+  const nombreCat = configNombreCategoria(CONFIGUI.categoria);
+
+  const lanzar = () => {
+    configAvisar('Publicando…', true);
+    SGADD_DATA.guardarCatalogo({
+      accion: 'partidos_manuales', club: configClubId(),
+      categoria: CONFIGUI.categoria, tramo: tramo, partidos: lista,
+    }).then((r) => {
+      if (typeof SGADD_CLIENTES !== 'undefined' && r.clubes) SGADD_CLIENTES.estado.clubes = r.clubes;
+      if (typeof SGADD_APP !== 'undefined') { try { SGADD_APP.reindexar(); } catch (e) {} }
+      configPintar();
+      configToast(lista.length
+        ? (lista.length + ' partido' + (lista.length === 1 ? '' : 's') + ' de ' + nombreCat
+           + ' publicado' + (lista.length === 1 ? '' : 's') + ' en el servidor')
+        : ('Se vaciaron los partidos manuales de ' + nombreCat), 'ok', 5000);
+    }).catch((e) => {
+      configPintar();
+      const d = e.message || 'error del servidor';
+      configToast('No se pudo publicar: ' + d, 'error', 6000);
+      configAvisar('No se pudo publicar: ' + d, false);
+    });
+  };
+
+  if (typeof SGADD_CONFIRMAR === 'undefined') return lanzar();
+  SGADD_CONFIRMAR.abrir({
+    titulo: 'Publicar partidos sin estadísticas · ' + nombreCat,
+    aviso: 'Suman a la tabla de posiciones que ve el cliente en su próxima carga. '
+      + 'No afectan a ninguna métrica de jugadores ni avanzada de equipo.',
+    confirmar: 'Publicar',
+    zonas: [lista.length + ' partido(s) en ' + tramo.replace('|', ' · ')],
+    alConfirmar: lanzar,
+  });
+}
+
+function configManualesHTML() {
+  const tramo = configTramoActual();
+  configManualesCargar();
+  const lista = CONFIGUI.manuales || [];
+  const eqs = configEquiposDelTramo();
+  const n = CONFIGUI.manualNuevo || configManualVacio();
+  const inp = 'bg-surface2 border border-hairline rounded px-2 py-1 text-xs '
+    + 'text-ink focus:border-accent outline-none';
+  const btn = 'text-xs font-semibold uppercase tracking-wider rounded px-3 py-1.5 transition-colors';
+
+  const opciones = (sel) => '<option value="">—</option>' + eqs.map(e =>
+    `<option value="${SGADD_UI.esc(e)}" ${e === sel ? 'selected' : ''}>${SGADD_UI.esc(e)}</option>`).join('');
+
+  const filas = lista.length ? lista.map((p, i) => `<tr class="border-b border-hairline/40 last:border-0">
+      <td class="py-1.5 pr-3 font-mono text-xs text-muted">${SGADD_UI.esc(String(p.fecha || '—'))}</td>
+      <td class="py-1.5 pr-3 text-xs text-white">${SGADD_UI.esc(p.local)}</td>
+      <td class="py-1.5 pr-2 font-mono text-xs text-ink text-right">${p.puntosLocal}</td>
+      <td class="py-1.5 px-1 text-[10px] text-muted">vs</td>
+      <td class="py-1.5 pl-2 font-mono text-xs text-ink">${p.puntosVisitante}</td>
+      <td class="py-1.5 pr-3 text-xs text-white">${SGADD_UI.esc(p.visitante)}</td>
+      <td class="py-1.5 text-right"><button onclick="configManualQuitar(${i})"
+        class="text-[10px] uppercase tracking-wider text-red-400 hover:text-red-300"
+        aria-label="Quitar el partido del ${SGADD_UI.esc(String(p.fecha || ''))}">Quitar</button></td>
+    </tr>`).join('')
+    : `<tr><td colspan="7" class="py-3 text-xs text-muted">
+        Todavía no hay partidos cargados en este tramo.</td></tr>`;
+
+  return `<div class="card rounded-xl p-4 sm:p-5 border border-hairline">
+    <div class="flex items-baseline justify-between gap-3 flex-wrap mb-2">
+      <h3 class="font-display uppercase tracking-wide text-sm text-ink">Partidos sin estadísticas</h3>
+      <span class="text-[10px] uppercase tracking-wider text-muted">${
+        tramo ? SGADD_UI.esc(tramo.replace('|', ' · ')) : 'sin tramo abierto'}</span>
+    </div>
+    <p class="text-[11px] text-muted mb-3 leading-snug">
+      Para los partidos que GES no publica con box score. <b class="text-ink">Suman a la tabla</b>
+      —resultado, diferencia y puntos— y <b class="text-ink">no tocan ninguna métrica</b>:
+      no entran a eFG%, PACE, percentiles ni a nada de jugadores, porque no hay estadísticas que cargar.
+    </p>
+
+    ${!CONFIGUI.manualAbierto
+      ? `<button onclick="configManualToggle()" class="${btn} border border-hairline text-muted hover:text-ink hover:border-ink/30">
+          Cargar resultado manual${lista.length ? (' (' + lista.length + ' cargado' + (lista.length === 1 ? '' : 's') + ')') : ''}</button>`
+      : `
+      <div class="scrollbox mb-3"><table class="w-full text-left">
+        <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+          <th class="pb-1 pr-3">Fecha</th><th class="pb-1 pr-3">Local</th>
+          <th class="pb-1 pr-2 text-right">Pts</th><th class="pb-1"></th>
+          <th class="pb-1 pl-2">Pts</th><th class="pb-1 pr-3">Visitante</th>
+          <th class="pb-1"></th>
+        </tr></thead><tbody>${filas}</tbody></table></div>
+
+      <div class="flex flex-wrap items-end gap-2 pt-3 border-t border-hairline">
+        <label class="flex flex-col gap-1">
+          <span class="text-[10px] uppercase tracking-wider text-muted">Fecha</span>
+          <input type="date" value="${SGADD_UI.esc(n.fecha)}"
+            oninput="configManualCampo('fecha', this.value)" class="${inp}"></label>
+        <label class="flex flex-col gap-1">
+          <span class="text-[10px] uppercase tracking-wider text-muted">Local</span>
+          <select onchange="configManualCampo('local', this.value)" class="${inp}">${opciones(n.local)}</select></label>
+        <label class="flex flex-col gap-1">
+          <span class="text-[10px] uppercase tracking-wider text-muted">Pts</span>
+          <input type="number" min="0" step="1" value="${SGADD_UI.esc(String(n.puntosLocal))}"
+            oninput="configManualCampo('puntosLocal', this.value)" class="${inp} w-16"></label>
+        <label class="flex flex-col gap-1">
+          <span class="text-[10px] uppercase tracking-wider text-muted">Visitante</span>
+          <select onchange="configManualCampo('visitante', this.value)" class="${inp}">${opciones(n.visitante)}</select></label>
+        <label class="flex flex-col gap-1">
+          <span class="text-[10px] uppercase tracking-wider text-muted">Pts</span>
+          <input type="number" min="0" step="1" value="${SGADD_UI.esc(String(n.puntosVisitante))}"
+            oninput="configManualCampo('puntosVisitante', this.value)" class="${inp} w-16"></label>
+        <button onclick="configManualAgregar()" class="${btn} border border-hairline text-muted hover:text-ink hover:border-ink/30">
+          Agregar</button>
+      </div>
+
+      ${eqs.length ? '' : `<p class="text-[11px] zona-texto zona-aviso mt-2">
+        Todavía no cargó la categoría, así que los desplegables están vacíos.</p>`}
+
+      <div class="flex flex-wrap items-center gap-3 mt-4 pt-3 border-t border-hairline">
+        <button onclick="configManualesPublicar()" class="${btn} bg-accent text-base hover:bg-accentdeep">
+          Publicar partidos</button>
+        <button onclick="configManualToggle()" class="${btn} border border-hairline text-muted hover:text-ink hover:border-ink/30">
+          Cerrar</button>
+        <span class="text-[11px] text-muted">Agregar y quitar no publica nada:
+          el cliente lo ve recién al tocar «Publicar partidos».</span>
+      </div>`}
+  </div>`;
+}
+
 function configExportarToggle() {
   /* LA GUARDA, antes de abrir el panel: si el objeto no sobrevive a
      `JSON.parse()` no se copia nada. Copiar un JSON roto al portapapeles
@@ -816,6 +1061,8 @@ function buildConfiguracion() {
       </div>
 
       ${configAlcanceHTML()}
+
+      ${configManualesHTML()}
 
       <!-- FORMATO · lo editable, a ancho completo -->
       <div class="card rounded-xl p-4 sm:p-5 border border-hairline">

@@ -53,6 +53,35 @@
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
 <style>
+    /* =================================================================
+       PARTIDO SIN ESTADÍSTICAS · el chip y el banner
+
+       A mano y no con clases de Tailwind porque los pinta un nodo
+       inyectado y el scan del CSS compilado es estático (punto 5 bis).
+
+       Contraste medido con `CLUB.contraste`: texto sobre el chip 6,38 ·
+       chip sobre la card oscura 17,15 · texto sobre el chip en papel
+       8,07. Los tres pasan AA.
+
+       El ⚠ va además del color: ningún estado se comunica solo con
+       color (punto 14).
+       ================================================================= */
+    .badge-manual {
+      display: inline-flex; align-items: center; gap: .2rem;
+      background: #fef9c3; color: #854d0e;
+      border: 1px solid #ca8a04;
+      border-radius: 9999px;
+      padding: 0 .4rem; margin-left: .35rem;
+      font-size: 10px; line-height: 1.5; font-weight: 600;
+      white-space: nowrap; cursor: help;
+    }
+    .badge-manual:focus-visible { outline: 2px solid #ca8a04; outline-offset: 2px; }
+    .aviso-manual {
+      background: #fef9c3; color: #854d0e;
+      border: 1px solid #ca8a04;
+    }
+    .aviso-manual summary { font-weight: 600; }
+    .aviso-manual b { color: #713f12; }
   :root { color-scheme: dark; }
   html, body { background: #0a0a0a; }
   ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -1438,6 +1467,13 @@
        SIGNIFICA ese color (`scoutTono()`); acá se repinta con la variante
        oscura, que sobre papel blanco sí se lee. Son los mismos tonos que ya
        usan el verde y el rojo del resto del papel: un solo vocabulario. */
+    /* El chip de partido manual sobrevive al aplanado del papel: sin
+       esto, `body * { color: #111 !important }` le come el texto y el
+       fondo, y en el PDF de la tabla no se distingue del resto. */
+    body .badge-manual { background: #fef9c3 !important; color: #713f12 !important;
+                         border-color: #ca8a04 !important; }
+    body .aviso-manual { background: #fef9c3 !important; color: #713f12 !important;
+                         border-color: #ca8a04 !important; }
     body .tono-alto   { color: #15803d !important; }
     body .tono-bajo   { color: #b91c1c !important; }
     body .tono-medio  { color: #c2410c !important; }
@@ -1909,7 +1945,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=178" />
+<link rel="stylesheet" href="sgadd.css?v=179" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2087,40 +2123,40 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=178"></script>
+<script src="js/sgadd-club.js?v=179"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=178"></script>
-<script src="js/sgadd-core.js?v=178"></script>
-<script src="js/sgadd-auth.js?v=178"></script>
-<script src="js/sgadd-glosario.js?v=178"></script>
-<script src="js/sgadd-glosarioui.js?v=178"></script>
-<script src="js/sgadd-comparativa.js?v=178"></script>
-<script src="js/sgadd-comparativaui.js?v=178"></script>
-<script src="js/sgadd-confirmar.js?v=178"></script>
-<script src="js/sgadd-landing.js?v=178"></script>
-<script src="js/sgadd-login.js?v=178"></script>
-<script src="js/sgadd-data.js?v=178"></script>
-<script src="js/sgadd-clientes.js?v=178"></script>
-<script src="js/sgadd-ui.js?v=178"></script>
-<script src="js/sgadd-app.js?v=178"></script>
-<script src="js/sgadd-clasificacion.js?v=178"></script>
+<script src="js/sgadd-config.js?v=179"></script>
+<script src="js/sgadd-core.js?v=179"></script>
+<script src="js/sgadd-auth.js?v=179"></script>
+<script src="js/sgadd-glosario.js?v=179"></script>
+<script src="js/sgadd-glosarioui.js?v=179"></script>
+<script src="js/sgadd-comparativa.js?v=179"></script>
+<script src="js/sgadd-comparativaui.js?v=179"></script>
+<script src="js/sgadd-confirmar.js?v=179"></script>
+<script src="js/sgadd-landing.js?v=179"></script>
+<script src="js/sgadd-login.js?v=179"></script>
+<script src="js/sgadd-data.js?v=179"></script>
+<script src="js/sgadd-clientes.js?v=179"></script>
+<script src="js/sgadd-ui.js?v=179"></script>
+<script src="js/sgadd-app.js?v=179"></script>
+<script src="js/sgadd-clasificacion.js?v=179"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=178"></script>
-<script src="js/sgadd-configui.js?v=178"></script>
-<script src="js/sgadd-estados.js?v=178"></script>
-<script src="js/sgadd-buzon.js?v=178"></script>
-<script src="js/sgadd-charts.js?v=178"></script>
-<script src="js/sgadd-personalidad.js?v=178"></script>
-<script src="js/sgadd-rankings.js?v=178"></script>
-<script src="js/sgadd-partido.js?v=178"></script>
-<script src="js/sgadd-informe.js?v=178"></script>
-<script src="js/sgadd-ficha.js?v=178"></script>
-<script src="js/sgadd-equipos.js?v=178"></script>
-<script src="js/sgadd-jugadores.js?v=178"></script>
-<script src="js/sgadd-4factores.js?v=178"></script>
-<script src="js/sgadd-scouting.js?v=178"></script>
-<script src="js/sgadd-diagnostico.js?v=178"></script>
+<script src="js/sgadd-hub.js?v=179"></script>
+<script src="js/sgadd-configui.js?v=179"></script>
+<script src="js/sgadd-estados.js?v=179"></script>
+<script src="js/sgadd-buzon.js?v=179"></script>
+<script src="js/sgadd-charts.js?v=179"></script>
+<script src="js/sgadd-personalidad.js?v=179"></script>
+<script src="js/sgadd-rankings.js?v=179"></script>
+<script src="js/sgadd-partido.js?v=179"></script>
+<script src="js/sgadd-informe.js?v=179"></script>
+<script src="js/sgadd-ficha.js?v=179"></script>
+<script src="js/sgadd-equipos.js?v=179"></script>
+<script src="js/sgadd-jugadores.js?v=179"></script>
+<script src="js/sgadd-4factores.js?v=179"></script>
+<script src="js/sgadd-scouting.js?v=179"></script>
+<script src="js/sgadd-diagnostico.js?v=179"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
