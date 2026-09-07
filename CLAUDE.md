@@ -42,6 +42,7 @@ node test-jsonclub.js      # 105 tests · los JSON de club, el validador, el ais
 node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 162 tests · partidos sin box score: suman a la tabla, no a las métricas
+node test-niveles.js       # 565 tests · registro de umbrales y los 6 niveles · REGRESIÓN de equivalencia
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -53,7 +54,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**3859 tests en total. Todos tienen que dar verde antes de commitear.**
+**4425 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -6092,3 +6093,116 @@ nodos inyectados (punto 12) y sin la regla de papel el aplanado
 > partió. Hay que anclar a `
 <style>
 `.
+
+---
+
+## 45. NIVEL DE COMPETENCIA · el registro de umbrales
+
+Las etiquetas de jugador se deciden con ~34 números duros repartidos entre
+`sgadd-jugadores.js` y `sgadd-scouting.js`. Se validaron contra Liga
+Argentina y La Plata, y **nunca contra formativas**.
+
+### Lo que se midió
+
+Cinco libros reales —Jujuy (Liga Argentina), Reconquista Primera,
+Deportivo, Reconquista U21 y U23— mirando en qué percentil cae cada
+umbral sobre los calificados de cada liga:
+
+```
+pptTripleElite           1,20    p88–p94    6pp   ← legítimo
+mezclaTripleInterior     0,12    p10–p18    8pp   ← legítimo
+mezclaTripleaPerimetral  0,30    p26–p37   11pp   ← legítimo
+
+t1Pobre                  0,60    p15–p60   45pp
+t1Contacto               0,72    p52–p88   36pp
+astPPGenerador           1,40    p59–p93   34pp
+pptTripleFrio/Pobre      0,88    p35–p67   32pp
+minutosClave               20    p13–p42   29pp
+```
+
+**El criterio del punto 9 se confirma con más ligas**: un umbral absoluto
+es legítimo cuando cae en el mismo percentil en cualquier categoría —o
+sea cuando describe economía del básquet— y es ilegítimo cuando describe
+«por debajo del promedio» disfrazado de constante.
+
+El caso más caro es `t1Pobre`: marca al 15% peor en Liga Argentina y al
+60% en la U23. Pasa de decir «tirador de libres flojo» a «jugador
+promedio».
+
+### Etiquetas rotas por incidencia
+
+Aparte de los percentiles, hay etiquetas que directamente no se emiten:
+
+```
+ancla-defensiva       2% · 0% · 2% · 0% · 0%   muerta en 3 de 5 libros
+generador-primario   10% · 3% · 1% · 1% · 0%   colapsa fuera de Liga Argentina
+generador (arq.)     28% · 12% · 6% · 7% · 10%  brecha 22pp
+```
+
+Y dos fallbacks que saturan: `especialista` (jerarquía) se lleva el 67–73%
+y `pocos` (minutos) el 45–57%. **No es el mismo problema** —no depende del
+nivel— así que se trata aparte.
+
+### LAS ETIQUETAS DE EQUIPO NO ENTRAN ACÁ
+
+`sgadd-personalidad.js` ya trabaja 100% con percentiles contra su propia
+liga, y hay un test que fija que «una liga 25% más rápida NO cambia el
+perfil». Son agnósticas de nivel por diseño: tocarlas sería trabajo sin
+beneficio. El problema está concentrado en las etiquetas de JUGADOR.
+
+### `server/lib/etiquetas.js` NO es esto
+
+Ese archivo reescribe las columnas `TORNEO`/`FASE` en la lectura y hoy no
+tiene ninguna regla activa. Comparte el nombre y nada más.
+
+### El registro · `js/sgadd-niveles.js`
+
+Motor puro. Cada umbral declara su **tipo**:
+
+| tipo | qué significa |
+|---|---|
+| `absoluto` | economía del juego · no se toca en ninguna liga |
+| `percentil` | marca una porción de la población · el número crudo cambia por nivel |
+| `z` | desvíos contra la media de la liga (lo que ya usa `bandaLiga`) |
+
+Y seis niveles, de mayor a menor exigencia: `LIGA_NACIONAL`,
+`LIGA_ARGENTINA`, `FEDERAL_MAYORES`, `FEDERAL_MENORES`, `LOCAL_MAYORES`,
+`LOCAL_MENORES`. El orden **no es decorativo**: la etapa 4 lo va a usar
+para que un nivel sin libro herede del más cercano que sí tenga.
+
+### Esta entrega no mueve un solo número
+
+Etapas 1 y 2. **Las semillas de los seis niveles valen lo mismo que valía
+el literal**, así que el comportamiento es idéntico y la suite entera
+sirve de prueba de equivalencia. Lo que cambia es dónde viven.
+
+`calibrado` guarda los equivalentes MEDIDOS —el valor que da el mismo
+percentil en cada nivel— y **todavía no lo consume nadie**. Está separado
+de `semillas` justamente para que se vea que son dos cosas: lo que hoy
+corre y lo que la evidencia dice que debería correr.
+
+**Solo tres niveles tienen libro con el que calibrar** (`CALIBRADOS`). A
+los otros tres no se les inventan números: un umbral inventado se ve igual
+que uno medido.
+
+### Dos decisiones de producto que ya se tomaron
+
+- **El nivel se DECLARA por categoría**, no se infiere. El campo `liga`
+  existe pero no distingue mayores de formativas.
+- **Los clamps se aceptaron.** El valor vivo se acota al rango observado
+  en libros reales. Sin eso, un sistema puramente auto-referencial le da a
+  toda liga exactamente un 10% de «tiradores de élite», incluida una donde
+  nadie convierte: la etiqueta pasaría a decir «de los peores, el mejor».
+  El tier deja de ser una semilla y pasa a ser el ancla de significado.
+
+### Lo que hay que respetar al tocarlo
+
+- **Los tres absolutos no llevan `semillas` por nivel.** Si las tuvieran,
+  alguien las movería y dejarían de ser absolutos sin que se note.
+- **`JUGADORES_UMBRALES` conserva sus catorce claves exactas.** Es el
+  contrato que `sgadd-scouting.js` lee por `COMPARTIDOS`; agrandarlo le
+  cambiaría la forma sin avisar.
+- **Sin el registro se cae a los literales**, no a `undefined`: una
+  comparación contra `undefined` es siempre falsa y apagaría la regla en
+  silencio.
+- **`sgadd-niveles.js` carga ANTES que `sgadd-jugadores.js`.**

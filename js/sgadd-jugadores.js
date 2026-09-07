@@ -548,37 +548,83 @@ function jugadoresJerarquia(idx, j) {
 /* Umbrales del rol funcional. Viven acá porque el rol vive acá: si
    quedaran en scouting, cambiar uno movería la etiqueta en una sección y
    no en la otra, que es justo el bug que esto cierra. */
-const JUGADORES_UMBRALES = {
-  minutosClave: 20,              // debajo de esto no condiciona un plan
-  astPPGenerador: 1.40,          // asistencias por pérdida de un conductor real
-  astVolumenGenerador: 2.5,      // el ratio solo no alcanza: hace falta volumen
-  usoTripleAlto: 0.40,           // 40% de sus plays terminan en triple
-  pptDobleAlto: 1.10,            // finaliza de verdad cerca del aro (p75 de la liga)
+/* =====================================================================
+   LOS NÚMEROS SALEN DEL REGISTRO DE NIVELES
 
-  /* --- Rebote, todo x la MEDIANA DE LOS CALIFICADOS ---
-     Ver `jugadoresReferenciasRebote()`: antes se medía contra el JUGADOR
-     TIPO, que es la mediana de TODOS (incluidos los de 0 minutos) y venía
-     1,7x abajo. Con la referencia corregida estos números por fin
-     significan lo que dicen; en percentiles de la liga real:
-       1,10 ≈ p57 · 1,15 ≈ p62 · 1,30 ≈ p68 */
-  reboteOfensivoAlto: 1.30,      // rim runner: vive del cristal OFENSIVO
-  reboteInterior: 1.15,          // ancla defensiva y origen interior, sobre RD%
-  reboteDesempate: 1.10,         // zona gris de mezcla: define interior vs perimetral
+   Hasta acá eran catorce literales. Medido sobre cinco libros reales, la
+   mitad se corre entre 20 y 45 puntos percentiles entre Liga Argentina y
+   formativas locales: `astPPGenerador` = 1,40 marca al p59 en Liga
+   Argentina y al p93 en Deportivo, así que «generador» pasa de ser el 28%
+   de la liga a ser el 6%.
 
-  /* Discriminantes de ORIGEN. El bug que cerraron: clasificar por PPT2
-     solo mete a cualquier slasher eficiente en la bolsa de "referencia
-     interna". De dónde LANZA se mide sobre intentos, no sobre aciertos. */
-  mezclaTripleaPerimetral: 0.30, // T3I / (T3I + T2I): de acá arriba, tira de afuera
-  mezclaTripleInterior: 0.12,    // debajo, prácticamente no sale del área
+   `sgadd-niveles.js` declara, para cada umbral, si es ABSOLUTO —economía
+   del básquet, mismo percentil en cualquier liga— o RELATIVO, y qué
+   número le toca a cada nivel de competencia.
 
-  /* --- Viaje a la línea (arquetipo Buscador de Contacto) ---
-     Los tres primeros salen del percentil ~70 de la liga real; el T1% es
-     absoluto porque convertir 72% es bueno en cualquier categoría. */
-  rtlContacto: 0.28,             // RTL%: frecuencia con que el ataque termina en la línea
-  frContacto: 2.5,               // faltas recibidas por partido
-  usoLibreContacto: 0.12,        // PT1%: porción de SUS plays que son libres
-  t1Contacto: 0.72,              // efectividad mínima en el cobro
-};
+   ESTA ENTREGA NO MUEVE NINGÚN NÚMERO: las semillas de los seis niveles
+   valen lo mismo que valía el literal, y hay un test que compara el mapa
+   entero contra los valores históricos. Lo que cambia es dónde viven.
+
+   El nivel todavía no se declara por categoría (es la etapa 3), así que
+   se pide el de por defecto. Como las semillas son iguales en los seis,
+   el resultado es idéntico corra donde corra.
+   ===================================================================== */
+const JUGADORES_NIVELES = (function () {
+  if (typeof SGADD_NIVELES !== 'undefined') return SGADD_NIVELES;
+  try { return require('./sgadd-niveles.js'); } catch (e) { return null; }
+})();
+
+const JUGADORES_UMBRALES = (function () {
+  /* Las catorce claves de siempre, en el mismo orden. Se listan a mano y
+     no se toma el registro entero porque ese trae además los de scouting:
+     este mapa es el contrato que `sgadd-scouting.js` lee por
+     `COMPARTIDOS`, y agrandarlo le cambiaría la forma sin avisar. */
+  const CLAVES = [
+    'minutosClave', 'astPPGenerador', 'astVolumenGenerador',
+    'usoTripleAlto', 'pptDobleAlto', 'reboteOfensivoAlto',
+    'reboteInterior', 'reboteDesempate', 'mezclaTripleaPerimetral',
+    'mezclaTripleInterior', 'rtlContacto', 'frContacto',
+    'usoLibreContacto', 't1Contacto',
+  ];
+  const RESPALDO = {
+    minutosClave: 20,              // debajo de esto no condiciona un plan
+    astPPGenerador: 1.40,          // asistencias por pérdida de un conductor real
+    astVolumenGenerador: 2.5,      // el ratio solo no alcanza: hace falta volumen
+    usoTripleAlto: 0.40,           // 40% de sus plays terminan en triple
+    pptDobleAlto: 1.10,            // finaliza de verdad cerca del aro (p75 de la liga)
+    /* --- Rebote, todo x la MEDIANA DE LOS CALIFICADOS ---
+       Ver `jugadoresReferenciasRebote()`: antes se medía contra el JUGADOR
+       TIPO, que es la mediana de TODOS (incluidos los de 0 minutos) y venía
+       1,7x abajo. Con la referencia corregida estos números por fin
+       significan lo que dicen; en percentiles de la liga real:
+         1,10 ≈ p57 · 1,15 ≈ p62 · 1,30 ≈ p68 */
+    reboteOfensivoAlto: 1.30,      // rim runner: vive del cristal OFENSIVO
+    reboteInterior: 1.15,          // ancla defensiva y origen interior, sobre RD%
+    reboteDesempate: 1.10,         // zona gris de mezcla: define interior vs perimetral
+    /* Discriminantes de ORIGEN. El bug que cerraron: clasificar por PPT2
+       solo mete a cualquier slasher eficiente en la bolsa de "referencia
+       interna". De dónde LANZA se mide sobre intentos, no sobre aciertos. */
+    mezclaTripleaPerimetral: 0.30, // T3I / (T3I + T2I): de acá arriba, tira de afuera
+    mezclaTripleInterior: 0.12,    // debajo, prácticamente no sale del área
+    /* --- Viaje a la línea (arquetipo Buscador de Contacto) ---
+       Los tres primeros salen del percentil ~70 de la liga real; el T1% es
+       absoluto porque convertir 72% es bueno en cualquier categoría. */
+    rtlContacto: 0.28,             // RTL%: frecuencia con que el ataque termina en la línea
+    frContacto: 2.5,               // faltas recibidas por partido
+    usoLibreContacto: 0.12,        // PT1%: porción de SUS plays que son libres
+    t1Contacto: 0.72,              // efectividad mínima en el cobro
+  };
+  if (!JUGADORES_NIVELES) return RESPALDO;
+  const o = {};
+  CLAVES.forEach(k => {
+    const v = JUGADORES_NIVELES.valorDe(k, JUGADORES_NIVELES.POR_DEFECTO);
+    /* Un umbral que el registro no conozca cae a su literal en vez de
+       quedar `undefined`: una comparación contra undefined es siempre
+       falsa y apagaría la regla en silencio. */
+    o[k] = (typeof v === 'number') ? v : RESPALDO[k];
+  });
+  return o;
+})();
 
 /** Rol funcional: cascada excluyente, sin posiciones tradicionales. */
 const JUGADORES_ROLES_FUNCIONALES = [
@@ -2559,6 +2605,7 @@ if (typeof module !== 'undefined' && module.exports) {
     JUGADORES_TABS, JUGADORES_METRICAS_EVOLUCION, ROLES_MINUTOS, PERFILES_TECNICOS, JERARQUIA, ZONAS_TIRO,
     JUGADORES_RANKINGS, JUGADORES_TOP_N, jugadoresRanking, jugadoresUmbralRanking, RANKING_ACUMULABLES, JUGADORES,
     JUGADORES_UMBRALES, JUGADORES_ROLES_FUNCIONALES,
+    JUGADORES_NIVELES,
     jugadoresPerfilBase, jugadoresRolFuncional, jugadoresADN, jugadoresBadges,
     JUGADORES_METRICAS_EVOLUCION,
     JUGADORES_MOTIVO_SIN_RESPALDO,
