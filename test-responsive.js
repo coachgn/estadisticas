@@ -316,6 +316,29 @@ igual(sinReserva, [],
   ok(re.test(ESTILO), m + ' exceptúa al pie de su ocultado');
 });
 
+/* --- LA VISTA PREVIA, para no tener que generar un PDF para saberlo ---
+
+   El pie SOLO se ve al imprimir, asi que «¿quedo aplicado?» no se podia
+   contestar sin generar un PDF y auditarlo. Eso convirtio una entrega en
+   tres idas y vueltas con el club: reportaba que no salia, y la
+   diferencia era la version cacheada. */
+ok(/function pieVistaPrevia/.test(UI), 'existe la vista previa del pie');
+/* Usa el MISMO `pieInforme()` que se imprime: una maqueta aparte mentiria
+   en cuanto una de las dos cambie (punto 8). */
+ok(/pieInforme\(\)/.test(UI.slice(UI.indexOf('function pieVistaPrevia'),
+                                   UI.indexOf('function pieVistaPrevia') + 900)),
+   '  y arma el contenido con el mismo helper que imprime');
+/* Y trae la VERSION de assets, que es el diagnostico de la trampa del
+   cache (punto 2): si dice una vieja, lo que se imprime es codigo viejo. */
+ok(/asset-version/.test(UI.slice(UI.indexOf('function pieVistaPrevia'),
+                                 UI.indexOf('function pieVistaPrevia') + 900)),
+   '  y muestra la version de assets al lado');
+const RANK = fs.readFileSync(path.join(__dirname, 'js/sgadd-rankingpdf.js'), 'utf8');
+ok(/pieVistaPrevia\(\)/.test(RANK), 'y el modal del ranking la pinta');
+/* En papel la previa no va: seria el pie dos veces. */
+ok(/@media print \{ \.pie-previa \{ display: none !important; \} \}/.test(ESTILO),
+   'la previa no se imprime: seria el pie dos veces');
+
 /* --- EL MANUAL, que es un HTML SUELTO --- */
 const GEN = fs.readFileSync(path.join(__dirname, 'generar-manual-etiquetas.js'), 'utf8');
 ok(/function pieMotorStats/.test(GEN),

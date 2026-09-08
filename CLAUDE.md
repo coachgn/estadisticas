@@ -42,7 +42,7 @@ node test-jsonclub.js      # 105 tests · los JSON de club, el validador, el ais
 node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 175 tests · partidos sin box score: suman a la tabla, no a las métricas
-node test-responsive.js    #  72 tests · desborde, targets táctiles, modales, el papel y el PIE
+node test-responsive.js    #  77 tests · desborde, targets táctiles, modales, el papel y el PIE
 node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
@@ -57,7 +57,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4734 tests en total. Todos tienen que dar verde antes de commitear.**
+**4739 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -7005,3 +7005,36 @@ aviso** — el panel de faltantes solo mira la categoría abierta.
 Es exactamente el episodio del punto 6, y lo cazó `test-logos.js`, que
 existe justamente para eso. Se apuntaron las doce a los `.webp` que ya
 estaban subidos.
+
+### La vista previa del pie · y por qué hizo falta
+
+**El pie solo se ve al imprimir**, así que «¿quedó aplicado?» no se podía
+contestar sin generar un PDF y auditarlo. Eso convirtió una entrega en
+tres idas y vueltas: el club reportaba que no salía en tres clubes, y la
+diferencia era la versión cacheada de su navegador.
+
+El modal de exportación muestra ahora **el pie tal cual se va a imprimir**
+—sobre blanco, que es el fondo de la hoja— con la **versión de assets** al
+lado. Si dice una versión vieja, lo que se va a imprimir es código viejo:
+es el diagnóstico de treinta segundos del punto 2, puesto donde se toma
+la decisión.
+
+Usa el MISMO `pieInforme()` que se imprime: una maqueta aparte mentiría en
+cuanto una de las dos cambie (punto 8). Y no se imprime, que sería el pie
+dos veces.
+
+### La lección de medición
+
+Yo había verificado el pie contando **imágenes por hoja** (8/8) y di el
+trabajo por cerrado. Eso probaba que se dibujaba *algo*, no que se viera
+— un logo sin texto habría dado el mismo número. Cuando el club volvió,
+la medición que decidió fue contar **glifos de texto por hoja**:
+
+```
+ranking · 8 hojas    CON pie  8492 glifos · 9 imágenes
+                     SIN pie  7932 glifos · 1 imagen
+                     delta    +70 glifos y +1 imagen POR HOJA
+```
+
+Setenta glifos es exactamente el largo de la firma. **Al verificar algo
+visual, contar la cosa que se quiere ver, no una proxy.**

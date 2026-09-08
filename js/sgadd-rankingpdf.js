@@ -288,6 +288,8 @@ const SGADD_RANKPDF = (function () {
         <div class="mb-2">${bloques}</div>
 
         <p id="rankPdfPie" class="text-xs text-muted mb-1"></p>
+        ${typeof SGADD_UI !== 'undefined' && SGADD_UI.pieVistaPrevia
+          ? SGADD_UI.pieVistaPrevia() : ''}
 
         <div class="modal-acciones flex gap-2 justify-end">
           <button type="button" onclick="SGADD_RANKPDF.cerrar()"

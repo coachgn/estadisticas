@@ -475,6 +475,35 @@ const SGADD_UI = (function () {
     return n;
   }
 
+  /**
+   * El pie, para MIRARLO en pantalla antes de generar.
+   *
+   * Existe porque el pie solo se ve al imprimir, asi que «¿quedo
+   * aplicado?» no se podia contestar sin generar un PDF y auditarlo — y
+   * eso convirtio una entrega en tres idas y vueltas. Con la vista
+   * previa la respuesta se lee en el modal.
+   *
+   * Usa el MISMO `pieInforme()` que se imprime: una maqueta aparte
+   * mentiria en cuanto una de las dos cambie, que es el bug del rol
+   * funcional (punto 8).
+   *
+   * Trae ademas la VERSION de assets, que es el diagnostico de treinta
+   * segundos de la trampa del cache (punto 2): si dice una vieja, lo que
+   * se va a imprimir es codigo viejo.
+   */
+  function pieVistaPrevia() {
+    let v = '';
+    try {
+      const n = (typeof document !== 'undefined') && document.getElementById('asset-version');
+      v = (n && n.textContent) ? n.textContent.trim() : '';
+    } catch (e) { /* sin DOM, se muestra sin version */ }
+    return '<div class="pie-previa">'
+      + '<span class="pie-previa-rotulo">Asi se firma cada hoja del PDF'
+      + (v ? ' \u00b7 ' + esc(v) : '') + '</span>'
+      + '<span class="pie-previa-caja">' + pieInforme() + '</span>'
+      + '</div>';
+  }
+
   /** Lo saca. Va en la misma limpieza que el resto de la exportación. */
   function quitarPieMotorStats() {
     if (typeof document === 'undefined') return;
@@ -809,7 +838,7 @@ const SGADD_UI = (function () {
   return { esc, escJs, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, signoDelta, colorDelta, claseMasMenos,
     atributosFila, teclaActiva, teclaTabs, cargando,
     embeberImagenes, restaurarImagenes, pieInforme, pieWeb, MAIL, INSTAGRAM, ARROBA, LOGO, fechaHoy, MARCA,
-    inyectarPieMotorStats, quitarPieMotorStats, ID_PIE,
+    inyectarPieMotorStats, quitarPieMotorStats, pieVistaPrevia, ID_PIE,
     sanearNombreArchivo, nombrePersona, nombrePdf, tituloPdf, tituloPdfActivo,
     sinAcceso, avisoSinEquipo };
 })();
