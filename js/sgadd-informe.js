@@ -137,6 +137,11 @@ const SGADD_INFORME = (function () {
     document.body.appendChild(salida);
 
     document.body.classList.add('modo-impresion');
+    /* EL PIE INSTITUCIONAL, EN TODAS LAS HOJAS. Va colgado del body y no
+    adentro del contenedor: `position: fixed` se ancla al primer ancestro
+    con `transform` o `filter`, y ahi dejaria de repetirse sin ningun
+    sintoma. La fecha se calcula ACA, al imprimir. */
+    SGADD_UI.inyectarPieMotorStats();
 
     /* Los canvas se dibujan recién después del innerHTML, y para que no
        salgan borrosos en papel hay que forzar más resolución. */
@@ -177,6 +182,7 @@ const SGADD_INFORME = (function () {
 
   function limpiar() {
     document.body.classList.remove('modo-impresion');
+    SGADD_UI.quitarPieMotorStats();
     SGADD_UI.restaurarImagenes('#informeSalida');
     const s = document.getElementById('informeSalida');
     if (s) s.remove();

@@ -217,6 +217,116 @@ ok(/color-scheme:\s*light\s*!important/.test(ESTILO),
    'el modo papel sigue forzando `color-scheme: light`');
 
 /* =====================================================================
+   4 bis · EL PIE INSTITUCIONAL, EN TODAS LAS HOJAS
+
+   `pieInforme()` iba EN EL FLUJO: salía una vez, al final, o sea en la
+   última hoja. Con un informe de nueve páginas eso deja ocho sin firmar,
+   y una hoja suelta de un PDF compartido no dice de dónde salió.
+
+   MEDIDO SOBRE LOS PDF REALES, generando el MISMO documento con y sin
+   el pie y contando los dibujos de imagen:
+
+     ficha    9 hojas · 17 imágenes sin pie → 26 con pie · +9
+     ranking  8 hojas · una imagen por hoja en las ocho
+
+   O sea: el logo del pie se dibuja EXACTAMENTE una vez por hoja.
+   ===================================================================== */
+bloque('4 bis · El pie institucional');
+
+const UI = fs.readFileSync(path.join(__dirname, 'js/sgadd-ui.js'), 'utf8');
+
+ok(/function inyectarPieMotorStats/.test(UI), 'existe el helper de inyección');
+ok(/function quitarPieMotorStats/.test(UI), 'y el que lo saca');
+
+/* VA COLGADO DEL BODY. `position: fixed` se ancla al primer ancestro con
+   `transform`, `filter` o `contain`: adentro de una card con
+   `backdrop-filter` dejaría de repetirse sin ningún síntoma. */
+/* Se mira el CUERPO del helper y se exige que el unico destino sea el
+   body: un `(otro || document.body).appendChild(n)` pasaria un regex
+   laxo y colgaria el pie de otro nodo — que es justo lo que rompe la
+   repeticion por hoja. */
+const CUERPO_PIE = UI.slice(UI.indexOf('function inyectarPieMotorStats'),
+                            UI.indexOf('function quitarPieMotorStats'));
+const DESTINOS = (CUERPO_PIE.match(/[\w.()\[\]'"|? ]+\.appendChild\(n\)/g) || [])
+  .map(t => t.trim());
+igual([...new Set(DESTINOS)], ['document.body.appendChild(n)'],
+      'el pie cuelga SOLO del body, no de un contenedor de salida');
+
+/* Idempotente: se llama desde cinco exportaciones y llamarla dos veces
+   no puede apilar dos pies. */
+ok(/getElementById\(ID_PIE\)/.test(UI),
+   'reusa el nodo si ya existe: no apila dos pies');
+
+/* LA FECHA SE CALCULA AL IMPRIMIR y no al armar el documento: entre que
+   se abre el modal y se toca Generar puede pasar la medianoche. */
+ok(/n\.innerHTML = pieInforme\(fecha\)/.test(UI),
+   'el contenido se rearma en cada inyección, con la fecha de ese momento');
+
+/* --- EL CSS --- */
+ok(/\.pie-motorstats \{ display: none; \}/.test(ESTILO),
+   'en PANTALLA no se ve: la firma no aporta navegando y taparía la última fila');
+const BLOQUE_PIE = (ESTILO.match(/\.pie-motorstats \{[\s\S]{0,400}?\}/g) || []).join('\n');
+ok(/display: flex !important/.test(BLOQUE_PIE), 'y al imprimir sí, con !important');
+ok(/position: fixed/.test(BLOQUE_PIE), 'fijo, que es lo que lo repite hoja por hoja');
+ok(/bottom: 0/.test(BLOQUE_PIE), 'abajo');
+ok(/z-index: 9999/.test(BLOQUE_PIE), 'y por encima del contenido');
+
+/* Y el del FLUJO se esconde al imprimir: sale al final del documento, o
+   sea en la última hoja, y ahí coincidiría con el fijo. */
+ok(/\.informe-pie \{ display: none !important; \}/.test(ESTILO),
+   'el pie del flujo se esconde: si no, la última hoja saldría con dos');
+
+/* LAS DOS MITADES. El pie ocupa la franja de abajo Y cada `@page` se la
+   reserva. Con una sola, el texto de la última línea queda debajo de la
+   barra — y no se ve auditando en pantalla, solo en el PDF.
+
+   Medido: el pie mide 9,2mm en los tres anchos de hoja (A4 vertical, A4
+   apaisada y A3 apaisada) contra los 15mm reservados. */
+const PAGES = ESTILO.match(/@page[^{]*\{[^}]*\}/g) || [];
+ok(PAGES.length >= 4, 'se parsearon las reglas @page', PAGES.length);
+const sinReserva = PAGES.filter(r => /size:/.test(r) && !/margin-bottom: 15mm/.test(r));
+igual(sinReserva, [],
+      'TODA @page que declara tamaño reserva los 15mm del pie');
+
+/* --- LAS CINCO EXPORTACIONES --- */
+[['sgadd-ficha.js', 'la ficha del jugador'],
+ ['sgadd-informe.js', 'el informe de equipo'],
+ ['sgadd-rankingpdf.js', 'el ranking del plantel'],
+ ['sgadd-scouting.js', 'el informe pre-partido'],
+ ['sgadd-equipos.js', 'el post-partido']].forEach(([f, eti]) => {
+  const src = fs.readFileSync(path.join(__dirname, 'js', f), 'utf8');
+  ok(/inyectarPieMotorStats\(\)/.test(src), eti + ' inyecta el pie');
+  ok(/quitarPieMotorStats\(\)/.test(src), '  y lo saca al terminar');
+});
+
+/* EL PIE SE EXCEPTÚA DE LOS TRES OCULTADOS. Esas reglas esconden todo lo
+   que no es el contenedor de salida, y el pie es hermano del contenedor,
+   así que sin la excepción desaparece del PDF. */
+['modo-impresion', 'modo-ficha-print', 'modo-ranking-print'].forEach(m => {
+  const re = new RegExp('body\\.' + m + ' > \\*:not\\([^)]+\\):not\\(\\.pie-motorstats\\)');
+  ok(re.test(ESTILO), m + ' exceptúa al pie de su ocultado');
+});
+
+/* --- EL MANUAL, que es un HTML SUELTO --- */
+const GEN = fs.readFileSync(path.join(__dirname, 'generar-manual-etiquetas.js'), 'utf8');
+ok(/function pieMotorStats/.test(GEN),
+   'el manual emite su propio pie: no carga un solo `.js` del panel');
+ok(/data:image\/png;base64/.test(GEN),
+   '  con el logo embebido, porque el archivo se comparte solo');
+ok(/margin: 16mm 14mm 15mm/.test(GEN),
+   '  y su @page reserva los mismos 15mm');
+
+const MANUAL = path.join(__dirname, 'MANUAL_ETIQUETADO_SGADD.html');
+if (fs.existsSync(MANUAL)) {
+  const m = fs.readFileSync(MANUAL, 'utf8');
+  ok(/class="pie-motorstats"/.test(m), 'y el manual generado lo trae');
+  ok(/position: fixed; bottom: 0/.test(m), '  fijo, o sea en todas las hojas');
+  ok(/Generado el \d{2}\/\d{2}\/\d{4}/.test(m), '  con la fecha del día');
+} else {
+  ok(false, 'el manual está generado (correr `node generar-manual-etiquetas.js`)');
+}
+
+/* =====================================================================
    5 · LO QUE NO SE TOCO
 
    El escritorio no cambia: todo lo de arriba vive dentro del bloque

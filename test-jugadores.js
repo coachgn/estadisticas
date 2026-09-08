@@ -1182,13 +1182,29 @@ check('la limpieza cuelga de afterprint y no de un setTimeout ciego',
    MODOS_PAPEL, las etiquetas salen en gris clarísimo sobre papel blanco. */
 check('el modo de la ficha está en la lista de modos de papel de charts',
   /MODOS_PAPEL *= *\[[^\]]*'modo-ficha-print'/.test(require('fs').readFileSync('./js/sgadd-charts.js', 'utf8')));
+/* SE MIDE EL ORDEN, NO LA DISTANCIA. La versión anterior pedía que
+   `dibujarPendientes()` cayera dentro de los 200 caracteres siguientes,
+   y un comentario en el medio la ponía en rojo sin que la propiedad
+   hubiera cambiado — es la lección del punto 43, y volvió a pasar al
+   sumar el pie institucional. Lo que importa es que la clase esté
+   ANTES: los colores de Chart.js se resuelven al crear el gráfico. */
+const iClaseFicha = fichaJs.indexOf("classList.add('modo-ficha-print')");
+const iDibujaFicha = fichaJs.indexOf('dibujarPendientes()');
 check('y la clase se marca ANTES de dibujar los gráficos',
-  /classList\.add\('modo-ficha-print'\);[\s\S]{0,200}dibujarPendientes\(\)/.test(fichaJs));
+  iClaseFicha > -1 && iDibujaFicha > iClaseFicha,
+  'clase en ' + iClaseFicha + ', dibujarPendientes en ' + iDibujaFicha);
 
 check('el módulo está cargado en el index', /sgadd-ficha\.js\?v=/.test(htmlApp));
 check('y tiene su contenedor de impresión',
   /#fichaSalida \{ display: none; \}/.test(htmlApp) &&
-  /body\.modo-ficha-print > \*:not\(#fichaSalida\) \{ display: none !important; \}/.test(htmlApp));
+  /body\.modo-ficha-print > \*:not\(#fichaSalida\)[^{]*\{ display: none !important; \}/.test(htmlApp));
+/* Y el PIE se exceptúa de ese ocultado: cuelga del body para que
+   `position: fixed` se ancle a la hoja, así que es hermano del
+   contenedor y sin la excepción desaparece del PDF. */
+check('  con el pie institucional exceptuado',
+  /body\.modo-ficha-print > \*:not\(#fichaSalida\):not\(\.pie-motorstats\)/.test(htmlApp));
+check('  y la ficha lo inyecta antes de imprimir',
+  /inyectarPieMotorStats\(\)/.test(fichaJs) && /quitarPieMotorStats\(\)/.test(fichaJs));
 /* Los bloques del informe de equipo son cortos y no se parten; los de la
    ficha miden más de media carilla y con `avoid` dejaban 2/3 de hoja en
    blanco. Medido: 4 hojas para una ficha que entra en 3. */

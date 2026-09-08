@@ -233,8 +233,12 @@ const ESTILO = (HTML.match(/\n<style>\n[\s\S]*?<\/style>/) || [''])[0];
 /* Va con `@page` NOMBRADA: `@page` a secas no se puede condicionar por
    clase (punto 7.7), y la vertical la comparten el informe de equipo y
    el post-partido. Girarla de raíz les cambiaría el tamaño a los dos. */
-ok(/@page rankingAncho \{ size: A4 landscape; margin: 8mm; \}/.test(ESTILO),
+ok(/@page rankingAncho \{ size: A4 landscape; margin: 8mm;[^}]*\}/.test(ESTILO),
    'existe la `@page` apaisada del ranking, con el margen pedido');
+/* Y le reserva abajo los 15mm del pie fijo: sin eso la barra pisa la
+   última línea de cada hoja, y eso NO se ve auditando en pantalla. */
+ok(/@page rankingAncho \{[^}]*margin-bottom: 15mm/.test(ESTILO),
+   '  y reserva abajo el espacio del pie institucional');
 ok(/\.rank-hoja\.rank-ancha \{ page: rankingAncho; \}/.test(ESTILO),
    'y se aplica por clase, no de raíz');
 ok(/@page \{[^}]*A4 portrait/.test(ESTILO) || /size: A4 portrait/.test(ESTILO),

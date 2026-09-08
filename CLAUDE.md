@@ -23,11 +23,11 @@ node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 318 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
 node test-boot.js          # 167 tests · arranque por club, sintaxis de los módulos, carteles de espera
-node test-jugadores.js     # 281 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
+node test-jugadores.js     # 283 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
-node test-partido.js       #  54 tests · detalle partido a partido, perfil de tiro y su PDF
+node test-partido.js       #  55 tests · detalle partido a partido, perfil de tiro y su PDF
 node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
@@ -42,8 +42,8 @@ node test-jsonclub.js      # 105 tests · los JSON de club, el validador, el ais
 node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 175 tests · partidos sin box score: suman a la tabla, no a las métricas
-node test-responsive.js    #  40 tests · desborde, targets táctiles, modales y el papel
-node test-rankingpdf.js    # 111 tests · la quinta exportación: una tabla por CARD, con su orden
+node test-responsive.js    #  72 tests · desborde, targets táctiles, modales, el papel y el PIE
+node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
 
@@ -57,7 +57,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4698 tests en total. Todos tienen que dar verde antes de commitear.**
+**4734 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -6872,3 +6872,105 @@ El PDF salía con las columnas vacías **después** de arreglar el motor: el
 `?v=` no se había subido tras editar el `.js`, así que Chrome servía el
 archivo cacheado. Es el punto 2 al pie de la letra — al tocar un `.js`
 hay que subir el `?v=`, **aunque ya se haya subido en esa misma vuelta**.
+
+---
+
+## 51. EL PIE INSTITUCIONAL, EN TODAS LAS HOJAS
+
+`SGADD_UI.pieInforme()` ya existía y armaba el contenido correcto —logo,
+**MotorStats^AR**, fecha, mail e Instagram— pero iba **en el flujo**: una
+vez, al final, o sea en la última hoja. Con una ficha de nueve páginas
+eso deja ocho sin firmar, y una hoja suelta de un PDF compartido no dice
+de dónde salió.
+
+### El mecanismo
+
+`inyectarPieMotorStats()` cuelga un nodo del `<body>` y en `@media print`
+va `position: fixed; bottom: 0`. **En medios paginados un elemento fijo
+se repite en cada hoja**: es el mecanismo estándar y no hay que contar
+páginas a mano.
+
+Tres cosas que hay que respetar:
+
+- **VA COLGADO DEL BODY, no adentro del contenedor de salida.** `position:
+  fixed` se ancla al primer ancestro con `transform`, `filter` o
+  `contain`, y adentro de una card con `backdrop-filter` **dejaría de
+  repetirse sin ningún síntoma**. Hay un test que exige que el único
+  destino del `appendChild` sea `document.body`: un
+  `(otro || document.body)` pasaría un regex laxo.
+- **Es idempotente.** Lo llaman cinco exportaciones y llamarlo dos veces
+  no puede apilar dos pies.
+- **La fecha se calcula AL IMPRIMIR**, no al armar el documento: entre
+  que se abre el modal y se toca Generar puede pasar la medianoche, y un
+  informe fechado ayer no se puede auditar.
+
+### LAS DOS MITADES, o el pie pisa el contenido
+
+El pie ocupa la franja de abajo **y** cada `@page` se la reserva con su
+`margin-bottom: 15mm`. Con una sola de las dos, el texto de la última
+línea de cada hoja queda debajo de la barra — **y eso no se ve auditando
+en pantalla, solo en el PDF**.
+
+Van las **cuatro** `@page` (`partido`, la vertical por defecto,
+`apaisada` y `rankingAncho`): el pie se repite en toda hoja de toda
+exportación, así que una que se olvide lo deja pisando. Hay un test que
+recorre las reglas y falla si alguna que declara `size` no reserva los
+15mm.
+
+Medido: el pie mide **9,2mm** en los tres anchos de hoja —A4 vertical,
+A4 apaisada y A3 apaisada— contra los 15mm reservados. Entra con 5,8mm
+de holgura.
+
+### El del FLUJO se esconde
+
+`.informe-pie { display: none !important }` en `@media print`. Sale al
+final del documento, o sea en la última hoja, y ahí coincidiría con el
+fijo: dos pies en la misma página. Se deja en el DOM —lo emiten las
+cuatro exportaciones y es el mismo helper— y se apaga solo al imprimir.
+
+### Y SE EXCEPTÚA DE LOS TRES OCULTADOS
+
+`modo-impresion`, `modo-ficha-print` y `modo-ranking-print` esconden todo
+lo que no es su contenedor de salida:
+
+```css
+body.modo-ficha-print > *:not(#fichaSalida):not(.pie-motorstats) { display: none !important; }
+```
+
+El pie es **hermano** del contenedor —tiene que colgar del body para que
+el `fixed` se ancle a la hoja— así que sin el `:not()` desaparece del
+PDF. Un modo nuevo que hide hermanos tiene que exceptuarlo.
+
+### El MANUAL emite el suyo
+
+`MANUAL_ETIQUETADO_SGADD.html` es un **HTML suelto**: se abre con doble
+clic y no carga un solo `.js` del panel, así que no puede llamar al
+helper. `generar-manual-etiquetas.js` emite el mismo contenido con las
+mismas clases, y el **logo va como `data:` URI** — el archivo se comparte
+solo, así que una ruta relativa no sobrevive a moverlo de carpeta.
+
+### MEDIDO SOBRE LOS PDF REALES
+
+No alcanza con leer el CSS: se generó el **mismo** documento con y sin el
+pie y se contaron los dibujos de imagen del PDF.
+
+```
+ficha     9 hojas · 17 imágenes SIN pie · 26 CON pie · diferencia +9
+ranking   8 hojas · reparto [2,1,1,1,1,1,1,1]
+          (la hoja 1 lleva escudo del membrete + logo del pie)
+informe   9 hojas · A3 apaisada
+```
+
+O sea: **el logo del pie se dibuja exactamente una vez por hoja**, en las
+tres exportaciones y en los dos tamaños de papel.
+
+### La trampa de siempre, dos veces
+
+1. **Backticks dentro de un template literal**, al comentar el CSS nuevo
+   del manual: tiró abajo el generador entero. Es el punto 7.6 al pie de
+   la letra, y ya había pasado en esta misma sesión con `sgadd-ficha.js`.
+2. **Tres tests que medían por DISTANCIA EN CARACTERES** (`{0,200}`,
+   `{0,220}`) se pusieron en rojo porque el comentario de la inyección
+   corrió la llamada fuera de la ventana — **sin que la propiedad hubiera
+   cambiado**. Es la lección del punto 43. Se reescribieron para medir el
+   ORDEN (`indexOf` de uno contra el otro), que es la propiedad real.

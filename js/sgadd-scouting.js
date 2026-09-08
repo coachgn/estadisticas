@@ -2477,12 +2477,18 @@ function scoutImprimir() {
      La del body se conserva porque hay reglas viejas que la usan. */
   document.documentElement.classList.add('modo-scout-print');
   document.body.classList.add('modo-scout-print');
+  /* EL PIE INSTITUCIONAL, EN TODAS LAS HOJAS. Va colgado del body y no
+  adentro del contenedor: `position: fixed` se ancla al primer ancestro
+  con `transform` o `filter`, y ahi dejaria de repetirse sin ningun
+  sintoma. La fecha se calcula ACA, al imprimir. */
+  SGADD_UI.inyectarPieMotorStats();
   /* Por si alguna vista de scouting suma un gráfico: los ya dibujados
      tienen la paleta de pantalla congelada en sus opciones. */
   if (typeof SGADD_CHARTS !== 'undefined') SGADD_CHARTS.repintarParaPapel();
   const limpiar = () => {
     document.documentElement.classList.remove('modo-scout-print');
     document.body.classList.remove('modo-scout-print');
+    SGADD_UI.quitarPieMotorStats();
     scoutRestaurarEscudos();
     window.removeEventListener('afterprint', limpiar);
   };

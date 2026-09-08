@@ -1370,6 +1370,11 @@ function equiposImprimirPartido() {
   SGADD_UI.embeberImagenes('#detallePartido');
   SGADD_UI.tituloPdf(equiposNombrePdfPartido());
   document.body.classList.add('modo-partido-print');
+  /* EL PIE INSTITUCIONAL, EN TODAS LAS HOJAS. Va colgado del body y no
+  adentro del contenedor: `position: fixed` se ancla al primer ancestro
+  con `transform` o `filter`, y ahi dejaria de repetirse sin ningun
+  sintoma. La fecha se calcula ACA, al imprimir. */
+  SGADD_UI.inyectarPieMotorStats();
   /* Los gráficos ya están dibujados con la paleta de PANTALLA: hay que
      reaplicarles la del papel o su leyenda y sus ejes salen en gris
      clarísimo sobre blanco. */
@@ -1378,6 +1383,7 @@ function equiposImprimirPartido() {
     window.print();
     setTimeout(() => {
       document.body.classList.remove('modo-partido-print');
+      SGADD_UI.quitarPieMotorStats();
       SGADD_UI.restaurarImagenes('#detallePartido');
     }, 400);
   }, 250);

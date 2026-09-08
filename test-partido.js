@@ -296,8 +296,15 @@ check('y la fila lleva la clase que lo permite',
 /* Chart.js congela los colores en las OPCIONES al crear el gráfico, y el
    post-partido dibuja en pantalla y marca el modo papel recién al
    imprimir: sin repintar, la leyenda sale gris clarísimo sobre blanco. */
+/* Por ORDEN y no por distancia: un comentario en el medio ponía esto en
+   rojo sin que la propiedad cambiara (punto 43). */
+const iClasePart = equiposJs.indexOf("classList.add('modo-partido-print')");
+const iRepinta = equiposJs.indexOf('SGADD_CHARTS.repintarParaPapel()');
 check('los gráficos se repintan con la paleta del papel antes de imprimir',
-  /modo-partido-print'\);[\s\S]{0,220}SGADD_CHARTS\.repintarParaPapel\(\)/.test(equiposJs));
+  iClasePart > -1 && iRepinta > iClasePart,
+  'clase en ' + iClasePart + ', repintar en ' + iRepinta);
+check('y el post-partido inyecta el pie institucional',
+  /inyectarPieMotorStats\(\)/.test(equiposJs) && /quitarPieMotorStats\(\)/.test(equiposJs));
 check('el modo del post-partido está en la lista de modos de papel de charts',
   /MODOS_PAPEL *= *\[[^\]]*'modo-partido-print'/.test(require('fs').readFileSync('./js/sgadd-charts.js', 'utf8')));
 

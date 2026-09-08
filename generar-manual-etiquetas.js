@@ -33,6 +33,35 @@ const S = require('./js/sgadd-scouting.js');
 
 const SALIDA = path.join(__dirname, 'MANUAL_ETIQUETADO_SGADD.html');
 
+/* EL PIE INSTITUCIONAL. El manual es un HTML SUELTO —se abre con doble
+   clic y no carga un solo `.js` del panel— asi que no puede llamar a
+   `SGADD_UI.inyectarPieMotorStats()`. Se emite el mismo contenido, con
+   las mismas clases, para que el PDF del manual se firme igual que los
+   otros cuatro.
+
+   El logo va como `data:` URI por el mismo motivo que en las otras
+   exportaciones (punto 7.5): al imprimir, el navegador vuelve a resolver
+   el `src` y cualquier fallo lo deja afuera del PDF sin avisar. Aca
+   ademas el archivo se comparte solo, asi que una ruta relativa no
+   sobrevive a moverlo de carpeta. */
+const LOGO_PIE = (() => {
+  try {
+    const b = fs.readFileSync(path.join(__dirname, 'logos', 'motorlogo-64.png'));
+    return 'data:image/png;base64,' + b.toString('base64');
+  } catch (e) { return null; }
+})();
+
+function pieMotorStats() {
+  const d = new Date(), z = (n) => String(n).padStart(2, '0');
+  const hoy = z(d.getDate()) + '/' + z(d.getMonth() + 1) + '/' + d.getFullYear();
+  return '<div class="pie-motorstats">'
+    + (LOGO_PIE ? '<img src="' + LOGO_PIE + '" alt="" class="pie-logo">' : '')
+    + '<span class="pie-marca">MotorStats<sup class="pie-marca-sup">AR</sup></span>'
+    + ' · Generado el ' + hoy
+    + ' - motorstats.ar@gmail.com | @motorstats.ar'
+    + '</div>';
+}
+
 const N = require('./js/sgadd-niveles.js');
 
 /* Los valores se redondean para el papel: el percentil vivo trae
@@ -444,7 +473,10 @@ function documento() {
 <meta charset="utf-8">
 <title>SGADD · Manual de etiquetado de jugadores</title>
 <style>
-  @page { size: A4 portrait; margin: 16mm 14mm; }
+  /* Los 15mm de abajo son para el pie fijo: sin reservarlos, la barra
+     pisa la ultima linea de cada hoja y eso NO se ve auditando en
+     pantalla, solo en el PDF. */
+  @page { size: A4 portrait; margin: 16mm 14mm 15mm; }
   * { box-sizing: border-box; }
   body {
     font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -508,6 +540,29 @@ function documento() {
     font-size: 8.5pt; color: #888;
   }
   .salto { page-break-before: always; }
+
+  /* La firma, fija abajo y en TODAS las hojas. Un elemento fijo en
+     medios paginados se repite hoja por hoja; en pantalla no se muestra
+     porque el manual se lee scrolleando y una barra fija taparia el pie
+     de cada tabla. */
+  .pie-motorstats { display: none; }
+  .pie-logo { width: 14px; height: 14px; object-fit: contain; vertical-align: middle; }
+  .pie-marca { font-weight: 700; color: #334155; }
+  .pie-marca-sup { font-size: .62em; vertical-align: super; line-height: 0; margin-left: .5px; }
+  @media print {
+    .pie-motorstats {
+      display: flex !important;
+      position: fixed; bottom: 0; left: 0; width: 100%;
+      align-items: center; justify-content: center; gap: 5px;
+      padding: 2mm 10mm 3mm;
+      font-size: 7.5pt; color: #4b5563;
+      background: #fff; border-top: 1px solid #cbd5e1; z-index: 9999;
+      print-color-adjust: exact; -webkit-print-color-adjust: exact;
+    }
+    /* El selector de nivel no se imprime: es un control, y el PDF queda
+       congelado en el nivel que estaba elegido. */
+    .selector select { pointer-events: none; }
+  }
   .u { font-weight: 600; }
   .u.fijo { border-bottom: 1px dotted #8A4200; }
   .selector {
@@ -625,6 +680,8 @@ function pintarNivel(id) {
   Si un umbral cambia en el motor, cambia acá: el manual no puede contradecir al sistema.
   <br>SGADD · Club Reconquista La Plata.
 </footer>
+
+${pieMotorStats()}
 
 </body>
 </html>`;

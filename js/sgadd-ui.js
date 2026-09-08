@@ -424,6 +424,64 @@ const SGADD_UI = (function () {
       '</span>';
   }
 
+  /* ===================================================================
+     EL PIE INSTITUCIONAL, EN TODAS LAS HOJAS
+
+     `pieInforme()` arma el contenido y va EN EL FLUJO: sale una vez, al
+     final, o sea en la última hoja. Con informes de ocho páginas eso
+     deja siete sin firmar, y una hoja suelta de un PDF compartido no
+     dice de dónde salió.
+
+     Éste es el mismo contenido montado en un nodo APARTE, hijo directo
+     del `<body>`, que en `@media print` va `position: fixed; bottom: 0`.
+     En medios paginados un elemento fijo se repite en CADA hoja: es el
+     mecanismo estándar y no hace falta contar páginas a mano.
+
+     VA COLGADO DEL BODY Y NO DENTRO DEL CONTENEDOR DE SALIDA, y esto no
+     es cosmético: `position: fixed` se ancla al primer ancestro con
+     `transform`, `filter` o `contain`, y adentro de una card con
+     `backdrop-filter` dejaría de repetirse sin ningún síntoma.
+
+     El `.informe-pie` del flujo se esconde al imprimir (ver el CSS): si
+     no, la última hoja saldría con dos.
+     =================================================================== */
+  const ID_PIE = 'pieMotorStats';
+
+  /**
+   * Deja el pie institucional listo para imprimir. Idempotente: llamarla
+   * dos veces no apila dos pies.
+   *
+   * LA FECHA SE CALCULA ACÁ, en el momento de imprimir, y no al armar el
+   * documento: entre que se abre el modal y se toca Generar puede pasar
+   * la medianoche, y un informe fechado ayer no se puede auditar.
+   */
+  function inyectarPieMotorStats(fecha) {
+    if (typeof document === 'undefined') return null;
+    let n = document.getElementById(ID_PIE);
+    if (!n) {
+      n = document.createElement('div');
+      n.id = ID_PIE;
+      n.className = 'pie-motorstats';
+      n.setAttribute('aria-hidden', 'true');   // es una firma, no contenido
+      document.body.appendChild(n);
+    }
+    n.innerHTML = pieInforme(fecha);
+    /* Al final del body a propósito: si otro nodo se agrega después, el
+       pie tiene que seguir siendo el último para que el z-index no
+       dependa del orden de inserción. */
+    if (n.parentNode === document.body && document.body.lastChild !== n) {
+      document.body.appendChild(n);
+    }
+    return n;
+  }
+
+  /** Lo saca. Va en la misma limpieza que el resto de la exportación. */
+  function quitarPieMotorStats() {
+    if (typeof document === 'undefined') return;
+    const n = document.getElementById(ID_PIE);
+    if (n) n.remove();
+  }
+
   /**
    * El mismo pie, con los enlaces vivos. Para la pantalla, no para el PDF.
    *
@@ -751,6 +809,7 @@ const SGADD_UI = (function () {
   return { esc, escJs, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, signoDelta, colorDelta, claseMasMenos,
     atributosFila, teclaActiva, teclaTabs, cargando,
     embeberImagenes, restaurarImagenes, pieInforme, pieWeb, MAIL, INSTAGRAM, ARROBA, LOGO, fechaHoy, MARCA,
+    inyectarPieMotorStats, quitarPieMotorStats, ID_PIE,
     sanearNombreArchivo, nombrePersona, nombrePdf, tituloPdf, tituloPdfActivo,
     sinAcceso, avisoSinEquipo };
 })();

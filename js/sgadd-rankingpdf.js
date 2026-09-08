@@ -457,6 +457,11 @@ const SGADD_RANKPDF = (function () {
     document.body.appendChild(salida);
 
     document.body.classList.add('modo-ranking-print');
+    /* EL PIE INSTITUCIONAL, EN TODAS LAS HOJAS. Va colgado del body y no
+    adentro del contenedor: `position: fixed` se ancla al primer ancestro
+    con `transform` o `filter`, y ahi dejaria de repetirse sin ningun
+    sintoma. La fecha se calcula ACA, al imprimir. */
+    SGADD_UI.inyectarPieMotorStats();
     /* El escudo se serializa: al imprimir, el navegador vuelve a resolver
        el `src` y cualquier fallo lo deja afuera del PDF sin avisar
        (punto 7.5). */
@@ -490,6 +495,7 @@ const SGADD_RANKPDF = (function () {
 
   function limpiar() {
     document.body.classList.remove('modo-ranking-print');
+    SGADD_UI.quitarPieMotorStats();
     if (typeof SGADD_UI !== 'undefined') SGADD_UI.restaurarImagenes('#rankingSalida');
     const s = document.getElementById('rankingSalida');
     if (s) s.remove();

@@ -450,6 +450,25 @@
 
   /* EL PIE INSTITUCIONAL. Va a mano por lo mismo que el resto: lo inyecta
      un nodo dinamico y el scan de Tailwind es ESTATICO. */
+  /* ===================================================================
+     EL PIE INSTITUCIONAL, EN TODAS LAS HOJAS DEL PDF
+
+     Lo inyecta `SGADD_UI.inyectarPieMotorStats()` como hijo DIRECTO del
+     body. En `@media print`, `position: fixed` se repite en cada hoja:
+     es el mecanismo de los medios paginados y no hay que contar páginas.
+
+     EN PANTALLA NO EXISTE. La firma no aporta nada navegando —el pie del
+     menú ya dice qué versión corre y cuándo se actualizaron los datos— y
+     una barra fija abajo taparía la última fila de cada tabla.
+
+     PARA QUE NO PISE EL CONTENIDO hacen falta las DOS mitades: el pie
+     ocupa la franja de abajo y cada `@page` le reserva ese espacio con
+     su `margin-bottom`. Con una sola, el texto de la última línea de
+     cada hoja queda debajo de la barra — y no se ve al auditar en
+     pantalla, solo en el PDF.
+     =================================================================== */
+  .pie-motorstats { display: none; }
+
   .pie-bloque {
     display: inline-flex; align-items: center; gap: .35rem;
     flex-wrap: wrap; justify-content: center;
@@ -462,6 +481,27 @@
      toda imagen de fondo y buena parte de los graficos (punto 7.1). */
   @media print {
     .pie-logo, .pie-ig { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    /* La firma, fija abajo y en TODAS las hojas. */
+    .pie-motorstats {
+      display: flex !important;
+      position: fixed; bottom: 0; left: 0; width: 100%;
+      align-items: center; justify-content: center;
+      padding: 2mm 10mm 3mm;
+      font-size: 7.5pt; color: #4b5563 !important;
+      background: #fff;
+      border-top: 1px solid #cbd5e1;
+      z-index: 9999;
+    }
+    .pie-motorstats .pie-marca { font-weight: 700; color: #334155 !important; }
+    .pie-motorstats .pie-marca-sup {
+      font-size: .62em; vertical-align: super; line-height: 0;
+      margin-left: .5px; letter-spacing: .02em;
+    }
+    /* Y EL DEL FLUJO SE VA: sale al final del documento, o sea en la
+       ultima hoja, y ahi coincidiria con el fijo. Se deja en el DOM
+       —lo arma el mismo helper y las tres exportaciones lo emiten— y
+       se esconde solo al imprimir. */
+    .informe-pie { display: none !important; }
     .pie-enlace { text-decoration: none; }
   }
 
@@ -666,7 +706,7 @@
      mm para que el resultado no dependa del zoom del navegador.
      ===================================================================== */
   /* El lienzo de la hoja: blanco de borde a borde. */
-  @page partido { size: A4; margin: 10mm; background: #ffffff; }
+  @page partido { size: A4; margin: 10mm; margin-bottom: 15mm; background: #ffffff; }
 
   /* =====================================================================
      INFORME POST-PARTIDO · exactamente UNA hoja A4
@@ -982,7 +1022,11 @@
   #informeSalida { display: none; }
 
   body.modo-impresion #informeSalida { display: block; }
-  body.modo-impresion > *:not(#informeSalida) { display: none !important; }
+  /* EL PIE SE EXCEPTUA EN LOS TRES MODOS. Estas reglas esconden todo lo
+     que no es el contenedor de salida, y el pie institucional es hermano
+     del contenedor —tiene que colgar del body para que `position: fixed`
+     se ancle a la hoja— asi que sin la excepcion desaparece del PDF. */
+  body.modo-impresion > *:not(#informeSalida):not(.pie-motorstats) { display: none !important; }
 
   /* La ficha individual del jugador: mismo mecanismo, contenedor propio.
      Se queda con la @page VERTICAL por defecto —una ficha personal se
@@ -990,13 +1034,17 @@
      largos van en A3 apaisada. */
   #fichaSalida { display: none; }
   body.modo-ficha-print #fichaSalida { display: block; }
-  body.modo-ficha-print > *:not(#fichaSalida) { display: none !important; }
+  body.modo-ficha-print > *:not(#fichaSalida):not(.pie-motorstats) { display: none !important; }
 
   @media print {
     /* `@page` no se puede condicionar por clase del body, así que es
        compartida por las dos exportaciones (informe de equipo y scouting).
        Vertical explícito para que no dependa del default del navegador. */
-    @page { size: A4 portrait; margin: 12mm 10mm; }
+    /* LOS 15mm DE ABAJO SON PARA EL PIE FIJO, y van en LAS CUATRO
+       `@page`: el pie se repite en toda hoja de toda exportacion, asi
+       que una que se olvide lo deja pisando la ultima linea. Es el mismo
+       criterio que el `size`: la hoja se declara entera o no se declara. */
+    @page { size: A4 portrait; margin: 12mm 10mm; margin-bottom: 15mm; }
     /* El post-partido necesita cada milimetro para entrar en una carilla. */
     body.modo-partido-print { }
 
@@ -1619,7 +1667,7 @@
        tamaños dentro de un mismo PDF obliga al DT a rotar hojas para
        leerlo, y la carpeta del cuerpo técnico es de un solo formato.
        ----------------------------------------------------------------- */
-    @page apaisada { size: A3 landscape; margin: 10mm; }
+    @page apaisada { size: A3 landscape; margin: 10mm; margin-bottom: 15mm; }
     /* LA HOJA DEL RANKING DEL PLANTEL.
 
        A4 y no A3: es una planilla de nombres y numeros, no un informe
@@ -1631,7 +1679,7 @@
        condicionar por clase (punto 7.7): la vertical la comparten el
        informe de equipo y el post-partido, y girarla de raiz les
        cambiaria el tamano a los dos. */
-    @page rankingAncho { size: A4 landscape; margin: 8mm; }
+    @page rankingAncho { size: A4 landscape; margin: 8mm; margin-bottom: 15mm; }
     /* La `page` va en el BODY y no solo en las cards. `@page` a secas no se
        puede condicionar por clase, así que la hoja por defecto sigue siendo
        la A4 vertical que usan las otras dos exportaciones; sin esta línea,
@@ -1659,7 +1707,7 @@
                       columnas se eligieron; con las 35 va `.rank-
                       apretada`.
        =================================================================== */
-    body.modo-ranking-print > *:not(#rankingSalida) { display: none !important; }
+    body.modo-ranking-print > *:not(#rankingSalida):not(.pie-motorstats) { display: none !important; }
     body.modo-ranking-print #rankingSalida { display: block !important; }
     #rankingSalida { display: none; }
 
@@ -2181,7 +2229,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=190" />
+<link rel="stylesheet" href="sgadd.css?v=191" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2359,43 +2407,43 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=190"></script>
+<script src="js/sgadd-club.js?v=191"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=190"></script>
-<script src="js/sgadd-core.js?v=190"></script>
-<script src="js/sgadd-auth.js?v=190"></script>
-<script src="js/sgadd-glosario.js?v=190"></script>
-<script src="js/sgadd-glosarioui.js?v=190"></script>
-<script src="js/sgadd-comparativa.js?v=190"></script>
-<script src="js/sgadd-comparativaui.js?v=190"></script>
-<script src="js/sgadd-confirmar.js?v=190"></script>
-<script src="js/sgadd-landing.js?v=190"></script>
-<script src="js/sgadd-login.js?v=190"></script>
-<script src="js/sgadd-data.js?v=190"></script>
-<script src="js/sgadd-clientes.js?v=190"></script>
-<script src="js/sgadd-ui.js?v=190"></script>
-<script src="js/sgadd-app.js?v=190"></script>
-<script src="js/sgadd-clasificacion.js?v=190"></script>
+<script src="js/sgadd-config.js?v=191"></script>
+<script src="js/sgadd-core.js?v=191"></script>
+<script src="js/sgadd-auth.js?v=191"></script>
+<script src="js/sgadd-glosario.js?v=191"></script>
+<script src="js/sgadd-glosarioui.js?v=191"></script>
+<script src="js/sgadd-comparativa.js?v=191"></script>
+<script src="js/sgadd-comparativaui.js?v=191"></script>
+<script src="js/sgadd-confirmar.js?v=191"></script>
+<script src="js/sgadd-landing.js?v=191"></script>
+<script src="js/sgadd-login.js?v=191"></script>
+<script src="js/sgadd-data.js?v=191"></script>
+<script src="js/sgadd-clientes.js?v=191"></script>
+<script src="js/sgadd-ui.js?v=191"></script>
+<script src="js/sgadd-app.js?v=191"></script>
+<script src="js/sgadd-clasificacion.js?v=191"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=190"></script>
-<script src="js/sgadd-configui.js?v=190"></script>
-<script src="js/sgadd-estados.js?v=190"></script>
-<script src="js/sgadd-buzon.js?v=190"></script>
-<script src="js/sgadd-charts.js?v=190"></script>
-<script src="js/sgadd-personalidad.js?v=190"></script>
-<script src="js/sgadd-rankings.js?v=190"></script>
-<script src="js/sgadd-partido.js?v=190"></script>
-<script src="js/sgadd-informe.js?v=190"></script>
-<script src="js/sgadd-ficha.js?v=190"></script>
-  <script src="js/sgadd-rankingpdf.js?v=190"></script>
-<script src="js/sgadd-equipos.js?v=190"></script>
+<script src="js/sgadd-hub.js?v=191"></script>
+<script src="js/sgadd-configui.js?v=191"></script>
+<script src="js/sgadd-estados.js?v=191"></script>
+<script src="js/sgadd-buzon.js?v=191"></script>
+<script src="js/sgadd-charts.js?v=191"></script>
+<script src="js/sgadd-personalidad.js?v=191"></script>
+<script src="js/sgadd-rankings.js?v=191"></script>
+<script src="js/sgadd-partido.js?v=191"></script>
+<script src="js/sgadd-informe.js?v=191"></script>
+<script src="js/sgadd-ficha.js?v=191"></script>
+  <script src="js/sgadd-rankingpdf.js?v=191"></script>
+<script src="js/sgadd-equipos.js?v=191"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=190"></script>
-<script src="js/sgadd-jugadores.js?v=190"></script>
-<script src="js/sgadd-4factores.js?v=190"></script>
-<script src="js/sgadd-scouting.js?v=190"></script>
-<script src="js/sgadd-diagnostico.js?v=190"></script>
+<script src="js/sgadd-niveles.js?v=191"></script>
+<script src="js/sgadd-jugadores.js?v=191"></script>
+<script src="js/sgadd-4factores.js?v=191"></script>
+<script src="js/sgadd-scouting.js?v=191"></script>
+<script src="js/sgadd-diagnostico.js?v=191"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

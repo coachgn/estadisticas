@@ -188,6 +188,11 @@ const SGADD_FICHA = (function () {
        crear el gráfico, y `modo-ficha-print` tiene que estar en MODOS_PAPEL
        para que las etiquetas salgan oscuras sobre el papel blanco. */
     document.body.classList.add('modo-ficha-print');
+    /* EL PIE INSTITUCIONAL, EN TODAS LAS HOJAS. Va colgado del body y no
+    adentro del contenedor: `position: fixed` se ancla al primer ancestro
+    con `transform` o `filter`, y ahi dejaria de repetirse sin ningun
+    sintoma. La fecha se calcula ACA, al imprimir. */
+    SGADD_UI.inyectarPieMotorStats();
     if (typeof SGADD_CHARTS !== 'undefined') SGADD_CHARTS.dibujarPendientes();
 
     /* Al imprimir, el navegador vuelve a resolver el `src` de cada <img> y
@@ -217,6 +222,7 @@ const SGADD_FICHA = (function () {
 
   function limpiar() {
     document.body.classList.remove('modo-ficha-print');
+    SGADD_UI.quitarPieMotorStats();
     SGADD_UI.restaurarImagenes('#fichaSalida');
     const s = document.getElementById('fichaSalida');
     if (s) s.remove();
