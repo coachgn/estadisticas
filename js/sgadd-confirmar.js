@@ -215,7 +215,7 @@ const SGADD_CONFIRMAR = (function () {
           ${bloqueZonas(estado.zonas)}</div>` : ''}
         ${nada ? '<p class="text-xs text-muted mb-3">No hay nada distinto para mandar.</p>' : ''}
 
-        <div class="flex items-center gap-3 flex-wrap mt-4">
+        <div class="modal-acciones flex items-center gap-3 flex-wrap mt-4">
           <button id="confAceptar" onclick="SGADD_CONFIRMAR.confirmar()"
             ${estado.yendo || nada ? 'disabled' : ''}
             class="px-3 py-2 rounded-md text-xs font-display uppercase tracking-wider

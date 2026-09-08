@@ -223,7 +223,53 @@
     background: rgba(0,0,0,.66); backdrop-filter: blur(3px);
     padding: 1rem;
   }
-  .login-caja { width: 100%; max-width: 24rem; }
+  /* EL MODAL TIENE QUE PODER SCROLLEAR, Y ESTO ROMPIA DE VERDAD.
+
+     `.login-fondo` centra con flex y `.login-caja` no declaraba alto,
+     asi que un contenido mas alto que la pantalla desbordaba para los
+     DOS lados y no scrolleaba ninguno. Medido con el modal de
+     confirmacion y un diff de 16 cambios a 320x568: la caja media
+     1053px, arrancaba en -242 y los botones Confirmar y Cancelar
+     quedaban en y=746, fuera de la pantalla y sin forma de llegar.
+     O sea: el admin no podia publicar desde el telefono.
+
+     Va aca y no en cada llamador porque `.login-caja` la comparten el
+     login y el modal de confirmacion — dos arreglos separados se
+     desincronizan (punto 8). */
+  .login-caja {
+    width: 100%; max-width: 24rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  /* LA FILA DE ACCIONES DE UN MODAL NO SE VA CON EL SCROLL.
+
+     Con la caja acotada (arriba) los botones ya se ALCANZAN, pero en un
+     telefono corto arrancan debajo del pliegue: el admin abre el modal y
+     no ve ni Confirmar ni Cancelar hasta que scrollea, que es justo la
+     duda que un modal no tiene que generar. Pegados abajo estan siempre
+     a la vista.
+
+     El fondo es OPACO a proposito: sin el, el contenido pasa por detras
+     y los botones quedan sobre texto. Y el margen negativo mas el
+     padding devuelven el aire que el `p-5` de la caja ya daba, para que
+     la barra llegue de borde a borde en vez de flotar en el medio. */
+  .modal-acciones {
+    position: sticky; bottom: 0; z-index: 1;
+    background: var(--surface, #141414);
+    margin: 0 -1.25rem; padding: .75rem 1.25rem;
+    border-top: 1px solid var(--hairline, #282828);
+  }
+  /* Y su contenedor pierde el padding de abajo. `bottom: 0` de una
+     barra pegajosa se ancla a la caja de PADDING, asi que con el
+     `p-5` intacto quedan 20px por debajo de los botones y el
+     contenido se ve pasando por ahi — medido, se leia media fila
+     asomando bajo la barra. El `:has(>)` lo resuelve por contenedor,
+     que es lo que hace falta: los tres modales tienen paddings
+     distintos y una constante a mano acertaria en uno solo. */
+  .login-caja:has(> .modal-acciones),
+  [role="dialog"]:has(> .modal-acciones) { padding-bottom: 0; }
+
   .boton-ingreso {
     width: 100%; padding: .45rem .6rem; border-radius: .4rem;
     font-family: inherit; font-size: 11px;
@@ -1074,9 +1120,16 @@
        control y no contenido. Sin esto, esconder los `<select>` dejaba sus
        etiquetas huérfanas ("CATEGORÍA", "FASE", "LOCAL", "VISITANTE")
        flotando sobre una card vacía al principio del PDF. */
+    /* LOS MODALES SE OCULTAN POR ROL, NO POR ID. La lista nombraba a
+       `#modalInforme` y dejaba afuera al de la ficha, al de confirmacion
+       y al de login: un Ctrl+P con uno abierto imprimia su tarjeta encima
+       de la pagina. Sus botones y campos ya caian por `button, select,
+       input`, asi que salia una caja con el titulo y las etiquetas
+       sueltas, que es peor que la caja entera. Todos declaran
+       `role="dialog"`, asi que el que se agregue manana entra solo. */
     aside, nav, header.sticky, button, select, input,
     .no-imprimir,
-    #modalInforme, #logosFaltantesPanel, [data-no-print] { display: none !important; }
+    #modalInforme, [role="dialog"], .login-fondo, #logosFaltantesPanel, [data-no-print] { display: none !important; }
 
     /* Cortes: una tarjeta o una tabla partida al medio arruina el informe. */
     .informe-bloque, .card, table, tr, .chart-box { page-break-inside: avoid; break-inside: avoid; }
@@ -1915,9 +1968,58 @@
     .scrollbox table th, .scrollbox table td { padding-left: .625rem; padding-right: .625rem; }
   }
 
-  /* Targets tactiles: 44px es el minimo comodo con el dedo */
-  @media (pointer: coarse) {
-    button, select, [role="button"] { min-height: 44px; }
+  /* =====================================================================
+     TARGETS TACTILES · 44px es el minimo comodo con el dedo
+
+     VA EN `screen` Y NO A SECAS, por lo mismo que la columna fija de
+     celular (ver arriba): al imprimir, Chrome sigue evaluando `pointer`
+     contra el DISPOSITIVO, asi que un PDF generado desde un telefono
+     entraba en esta rama y se llevaba 44px de alto por fila y por
+     cabecera — mas alto de tabla, otra paginacion, y una ficha que no
+     es la que sale de escritorio. El papel no tiene dedos.
+
+     Cubre lo que el dedo toca de verdad. La version anterior solo
+     listaba `button`, `select` y `[role=button]`, y medido a 375px con
+     puntero grueso quedaban afuera las cabeceras ordenables (23px de
+     alto), los `input` (30px), los `summary` (31px) y los enlaces del
+     pie (15px).
+     ===================================================================== */
+  @media screen and (pointer: coarse) {
+    button, select, summary, [role="button"] { min-height: 44px; }
+
+    /* Los de icono tienen el alto pero no el ancho: 40px de lado da un
+       target de 40x44, que falla el minimo por el lado angosto. Va
+       sobre TODOS los botones y no sobre una lista de clases: los de
+       un solo caracter (la campana, el hamburguesa, el ⇄ del cruce)
+       no comparten ninguna, y una lista a mano se queda corta apenas
+       aparece el siguiente. Medido despues: ningun boton del panel
+       desborda su caja por esto — los de texto ya pasaban los 44. */
+    button { min-width: 44px; }
+
+    /* Las casillas NO: un checkbox de 44px es una caja gigante. Lo que
+       tiene que crecer ahi es su etiqueta, que es lo que se toca. */
+    input:not([type="checkbox"]):not([type="radio"]) { min-height: 44px; }
+    label:has(> input[type="checkbox"]), label:has(> input[type="radio"]) { min-height: 44px; }
+
+    /* CABECERA ORDENABLE. Es el peor caso de todos: son targets chicos
+       PEGADOS entre si, y errarle reordena el ranking por otra columna
+       sin que se note. `min-height` no manda en `display: table-cell`,
+       asi que va `height`, que en tablas se comporta como minimo. */
+    table th[aria-sort] { height: 44px; }
+
+    /* FILAS INTERACTIVAS. Abren la ficha o el detalle del partido, o
+       sea que son el target mas usado de la app en cancha, y median
+       32,5px. El alto se da con PADDING en las celdas: en
+       `display: table-row` el alto del `tr` lo decide su contenido.
+
+       Cuesta scroll —veinte filas pasan de 660 a 890px— y se paga a
+       proposito: errarle a una fila abre la ficha de otro jugador. */
+    tr[role="button"] > td { padding-top: .75rem; padding-bottom: .75rem; }
+
+    /* Inline por defecto: sin caja no hay alto que estirar. */
+    .pie-enlace { display: inline-flex; align-items: center; min-height: 44px; }
+
+    /* Los chips de leyenda no son botones: no se tocan. */
     .legend-chip { min-height: 0; }
   }
 
@@ -1945,7 +2047,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=183" />
+<link rel="stylesheet" href="sgadd.css?v=187" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2123,42 +2225,42 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=183"></script>
+<script src="js/sgadd-club.js?v=187"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=183"></script>
-<script src="js/sgadd-core.js?v=183"></script>
-<script src="js/sgadd-auth.js?v=183"></script>
-<script src="js/sgadd-glosario.js?v=183"></script>
-<script src="js/sgadd-glosarioui.js?v=183"></script>
-<script src="js/sgadd-comparativa.js?v=183"></script>
-<script src="js/sgadd-comparativaui.js?v=183"></script>
-<script src="js/sgadd-confirmar.js?v=183"></script>
-<script src="js/sgadd-landing.js?v=183"></script>
-<script src="js/sgadd-login.js?v=183"></script>
-<script src="js/sgadd-data.js?v=183"></script>
-<script src="js/sgadd-clientes.js?v=183"></script>
-<script src="js/sgadd-ui.js?v=183"></script>
-<script src="js/sgadd-app.js?v=183"></script>
-<script src="js/sgadd-clasificacion.js?v=183"></script>
+<script src="js/sgadd-config.js?v=187"></script>
+<script src="js/sgadd-core.js?v=187"></script>
+<script src="js/sgadd-auth.js?v=187"></script>
+<script src="js/sgadd-glosario.js?v=187"></script>
+<script src="js/sgadd-glosarioui.js?v=187"></script>
+<script src="js/sgadd-comparativa.js?v=187"></script>
+<script src="js/sgadd-comparativaui.js?v=187"></script>
+<script src="js/sgadd-confirmar.js?v=187"></script>
+<script src="js/sgadd-landing.js?v=187"></script>
+<script src="js/sgadd-login.js?v=187"></script>
+<script src="js/sgadd-data.js?v=187"></script>
+<script src="js/sgadd-clientes.js?v=187"></script>
+<script src="js/sgadd-ui.js?v=187"></script>
+<script src="js/sgadd-app.js?v=187"></script>
+<script src="js/sgadd-clasificacion.js?v=187"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=183"></script>
-<script src="js/sgadd-configui.js?v=183"></script>
-<script src="js/sgadd-estados.js?v=183"></script>
-<script src="js/sgadd-buzon.js?v=183"></script>
-<script src="js/sgadd-charts.js?v=183"></script>
-<script src="js/sgadd-personalidad.js?v=183"></script>
-<script src="js/sgadd-rankings.js?v=183"></script>
-<script src="js/sgadd-partido.js?v=183"></script>
-<script src="js/sgadd-informe.js?v=183"></script>
-<script src="js/sgadd-ficha.js?v=183"></script>
-<script src="js/sgadd-equipos.js?v=183"></script>
+<script src="js/sgadd-hub.js?v=187"></script>
+<script src="js/sgadd-configui.js?v=187"></script>
+<script src="js/sgadd-estados.js?v=187"></script>
+<script src="js/sgadd-buzon.js?v=187"></script>
+<script src="js/sgadd-charts.js?v=187"></script>
+<script src="js/sgadd-personalidad.js?v=187"></script>
+<script src="js/sgadd-rankings.js?v=187"></script>
+<script src="js/sgadd-partido.js?v=187"></script>
+<script src="js/sgadd-informe.js?v=187"></script>
+<script src="js/sgadd-ficha.js?v=187"></script>
+<script src="js/sgadd-equipos.js?v=187"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=183"></script>
-<script src="js/sgadd-jugadores.js?v=183"></script>
-<script src="js/sgadd-4factores.js?v=183"></script>
-<script src="js/sgadd-scouting.js?v=183"></script>
-<script src="js/sgadd-diagnostico.js?v=183"></script>
+<script src="js/sgadd-niveles.js?v=187"></script>
+<script src="js/sgadd-jugadores.js?v=187"></script>
+<script src="js/sgadd-4factores.js?v=187"></script>
+<script src="js/sgadd-scouting.js?v=187"></script>
+<script src="js/sgadd-diagnostico.js?v=187"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

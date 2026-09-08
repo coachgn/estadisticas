@@ -132,12 +132,17 @@ const SGADD_FICHA = (function () {
     m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4';
     m.innerHTML = `
       <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="SGADD_FICHA.cerrar()"></div>
-      <div class="relative card rounded-xl border border-hairline p-5 w-full max-w-md" role="dialog" aria-modal="true"
+      <!-- max-h + overflow-y como ya hace sgadd-informe.js: sin eso,
+           con Evolucion tildada el panel mide mas que la pantalla y los
+           botones Generar y Cancelar quedan afuera, sin scroll. Medido a
+           360x420 (telefono con el teclado abierto): panel 502px, top -41.
+           Es el mismo defecto que tenia el modal de confirmacion. -->
+      <div class="relative card rounded-xl border border-hairline p-5 w-full max-w-md max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true"
            aria-labelledby="modalFichaTitulo">
         <h3 id="modalFichaTitulo" class="font-display uppercase tracking-wide text-sm text-accent mb-1">Ficha del jugador · PDF</h3>
         <p class="text-xs text-muted mb-3">${SGADD_UI.esc(ctx.j['NOMBRES'])} · ${SGADD_UI.esc(SGADD.limpiarNombre(ctx.j['EQUIPO']))}</p>
         <div class="mb-4">${items}</div>
-        <div class="flex gap-2 justify-end">
+        <div class="modal-acciones flex gap-2 justify-end">
           <button type="button" onclick="SGADD_FICHA.cerrar()"
             class="text-xs uppercase tracking-wider px-3 py-2 rounded border border-hairline hover:bg-surface2">Cancelar</button>
           <button type="button" onclick="SGADD_FICHA.generar()"

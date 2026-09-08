@@ -68,7 +68,7 @@ const SGADD_INFORME = (function () {
     cont.className = 'fixed inset-0 z-50 flex items-center justify-center p-4';
     cont.innerHTML = `
       <div class="absolute inset-0 bg-black/70" onclick="SGADD_INFORME.cerrar()"></div>
-      <div class="relative card rounded-xl border border-hairline w-full max-w-lg max-h-[90vh] overflow-y-auto p-5">
+      <div class="relative card rounded-xl border border-hairline w-full max-w-lg max-h-[90vh] overflow-y-auto p-5" role="dialog" aria-modal="true">
         <h3 class="font-display uppercase tracking-wide text-base mb-1" style="color:#fff">Generar informe PDF</h3>
         <p class="text-[11px] dato-sec mb-4">Elegí qué incluir. Se abre el diálogo de impresión: elegí "Guardar como PDF".</p>
 
@@ -80,7 +80,7 @@ const SGADD_INFORME = (function () {
         <p class="text-[11px] uppercase tracking-wider text-muted font-display mb-1">Secciones</p>
         <div class="mb-4">${items}</div>
 
-        <div class="flex items-center justify-between gap-3 pt-3 border-t border-hairline">
+        <div class="modal-acciones flex items-center justify-between gap-3 pt-3 border-t border-hairline">
           <button onclick="SGADD_INFORME.marcarTodas()"
             class="text-[11px] uppercase tracking-wider dato-sec hover:text-white transition-all duration-200">
             Marcar todas

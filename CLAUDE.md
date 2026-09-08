@@ -42,6 +42,7 @@ node test-jsonclub.js      # 105 tests · los JSON de club, el validador, el ais
 node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 175 tests · partidos sin box score: suman a la tabla, no a las métricas
+node test-responsive.js    #  40 tests · desborde, targets táctiles, modales y el papel
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
 
@@ -55,7 +56,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4546 tests en total. Todos tienen que dar verde antes de commitear.**
+**4586 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -6568,3 +6569,136 @@ a la izquierda (punto 35)—.
 Se centran las cinco. **El cuerpo no se toca**: no pedía nada. Hay un test
 que cuenta contra el total de `<th>` y no contra un número fijo, así que
 una columna nueva sin centrar lo rompe.
+---
+
+## 49. RESPONSIVE · lo que se midió y lo que estaba roto
+
+Auditoría de 320 a 768px sobre la app REAL —datos de DEPORTIVO, 12
+equipos y 224 jugadores— con puntero grueso emulado. No se leyó el CSS:
+se midió el DOM.
+
+### Cómo se corre la app sin red
+
+El panel de vista previa tiene la red aislada: **no sale una sola
+petición a GViz**. Se siembra el caché persistente que el propio panel
+usa (punto 3 ter) — se baja el libro con la API de Sheets, se guarda con
+la forma exacta de `sgadd.hojas.<sheetId>` y la app arranca completa
+desde ahí. Es el mismo camino que el F5 con caché poblado.
+
+El `sheetId` NO viaja en `clubes/<club>.json` —lo resuelve el backend—
+así que hay que escribirlo a mano en `SGADD.CATALOGO.planillas[0]` antes
+de `cargar()`. Y las secciones de admin necesitan sesión:
+`?usuario=<mail de ADMINS>`.
+
+### LA BASE ESTABA BIEN
+
+```
+                        320px   375px   768px
+desborde horizontal        0       0       0
+tablas sin `.scrollbox`    0       0       0
+```
+
+Nueve secciones, tres anchos, cero. La disciplina de `.scrollbox` aguanta,
+las pestañas envuelven solas (`flex-wrap`), el drawer del buzón ocupa el
+ancho completo con scroll interno, y los bloques nuevos —los chips de
+**Función en cancha** y la **Vara de medición**— entran en la tarjeta sin
+desbordar: su tabla de 488px scrollea dentro de una caja de 275.
+
+### LO QUE SÍ ESTABA ROTO
+
+**1 · El modal de confirmación no se podía usar en un teléfono.**
+`.login-fondo` centra con flex y `.login-caja` no declaraba alto, así que
+un contenido más alto que la pantalla desbordaba para los **dos** lados
+sin scrollear ninguno. Medido a 320×568 con un diff de 16 cambios:
+
+```
+caja 1053px · top -242 · botones en y=746   →  FUERA de pantalla
+scroll interno: no · scroll del overlay: no
+```
+
+O sea: **el admin no podía publicar desde el teléfono.** ESC cerraba, así
+que no era una trampa, pero Confirmar era inalcanzable. El de la ficha
+tenía el mismo defecto (medido a 360×420: panel 502px, top −41); el del
+informe ya estaba bien y fue el modelo.
+
+El arreglo va en `.login-caja` y no en cada llamador: la comparten el
+login y el de confirmación, y dos arreglos separados se desincronizan
+(punto 8).
+
+**Y la barra de acciones quedó PEGAJOSA**, porque alcanzarlos scrolleando
+no alcanza: un modal que se abre sin mostrar sus botones genera justo la
+duda que un modal no tiene que generar. Con un detalle que costó — el
+`bottom: 0` de una barra pegajosa se ancla a la caja de **padding**, así
+que con el `p-5` intacto quedaban 20px por debajo y se veía el contenido
+pasando por ahí. El contenedor pierde ese padding con `:has(>)`, que
+resuelve por contenedor: los tres modales tienen paddings distintos y una
+constante a mano acertaría en uno solo.
+
+**2 · El bloque táctil iba SIN `screen`, y eso rompía el PDF del
+teléfono.** Es la familia del punto 7.4 bis y esta vez del lado del
+dispositivo: al imprimir, Chrome sigue evaluando `pointer` contra el
+aparato, así que un PDF generado desde un celular entraba en la rama de
+44px y salía con otra altura de fila, otra de cabecera y **otra
+paginación** que el mismo PDF desde escritorio.
+
+Medido después del arreglo, sobre TODAS las hojas cargadas —el `<style>`
+y `sgadd.css` compilado— las reglas activas al imprimir que dependen del
+dispositivo son **cero**. Un PDF desde el teléfono y desde el escritorio
+son el mismo, para el mismo tamaño de hoja.
+
+**3 · Los modales se imprimían.** La lista de ocultado nombraba
+`#modalInforme` y dejaba afuera al de la ficha, al de confirmación y al
+de login: un Ctrl+P con uno abierto imprimía su tarjeta encima de la
+página. Y como sus botones y campos ya caían por `button, select,
+input`, salía una caja con el título y las etiquetas sueltas — peor que
+la caja entera. Ahora se ocultan por **rol**, así que el modal que se
+agregue mañana entra solo.
+
+### LOS TARGETS TÁCTILES · 87 → 1
+
+Ya existía un `@media (pointer: coarse)` con `button, select,
+[role=button]`. Medido a 375px con dedo, lo que quedaba afuera:
+
+| | alto | dónde |
+|---|---|---|
+| cabecera ordenable | **23px** | Jugadores ×6, Equipos ×4 |
+| fila interactiva | 32,5px | Jugadores ×20, Equipos ×12 |
+| `input` | 30px | Configuración ×7 |
+| `summary` | 31px | drawer del buzón |
+| enlace del pie | 15px | todas |
+| botón de icono | 40px **de ancho** | campana, hamburguesa, ⇄ |
+
+La peor es la **cabecera ordenable**: son targets chicos PEGADOS entre
+sí, y errarle reordena el ranking por otra columna sin que se note.
+
+Tres decisiones al escribirlo:
+
+- **La cabecera va con `height` y la fila con `padding`.** En
+  `display: table-cell` el `min-height` no manda, y el alto de un `tr` lo
+  decide su contenido.
+- **`min-width` sobre TODOS los botones**, no sobre una lista de clases:
+  los de un solo carácter no comparten ninguna y una lista a mano se
+  queda corta apenas aparece el siguiente. Medido después: ninguno
+  desborda su caja.
+- **Las casillas quedan afuera.** Un checkbox de 44px es una caja
+  gigante; lo que tiene que crecer es su etiqueta, que es lo que se toca.
+
+El único que queda bajo el mínimo es la columna **PJ**: 43,6px de ancho
+por 44 de alto. Es una COLUMNA, no un botón — ensancharla empujaría la
+tabla entera para ganar 0,4px.
+
+**El bloque no lleva tope de ancho a propósito**: una tablet de 1024px
+con dedo necesita los 44px igual que un teléfono de 320. Eso sí, se midió
+a 375 con puntero grueso emulado; **en una tablet real no se probó** —
+la herramienta solo emula táctil por debajo de 768.
+
+### Lo que NO se tocó, y por qué
+
+**Tailwind emite sus breakpoints sin `screen`** (`@media (min-width:
+640px)`), así que en el papel se evalúan contra la HOJA: en A4 vertical
+(~717px) las utilidades `sm:` se activan y `md:`/`lg:`/`xl:` no. Eso ya
+está documentado caso por caso en el punto 7.6 y **no depende del
+dispositivo** —una hoja A4 mide lo mismo desde un teléfono que desde una
+PC— así que no rompe la garantía de arriba. Acotarlo a `screen` apagaría
+las `sm:` en el papel y movería los cuatro PDF, que están medidos y
+presupuestados. Se deja como está y se anota.
