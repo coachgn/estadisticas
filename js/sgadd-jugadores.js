@@ -196,9 +196,26 @@ function jugadoresRanking(idx, id, opciones) {
     return (va - vb) * signo;
   });
 
+  /* LAS COLUMNAS SON UN PARÁMETRO, igual que el universo.
+
+     Por defecto son las del grupo —que es lo que pinta la pantalla— pero
+     la exportación a PDF deja elegir métricas de VARIOS grupos, y sin
+     esto el resultado traía las celdas de UNO solo: el PDF salía con las
+     seis del grupo abierto y las otras veintinueve en «—». Lo cazó el
+     render de papel, no la suite: las columnas estaban, con guiones.
+
+     Se resuelven con el MISMO extractor que la pantalla. Un segundo
+     camino para leer una celda es el bug del rol funcional (punto 8). */
+  const columnas = (Array.isArray(o.cols) && o.cols.length)
+    ? o.cols.filter(k => typeof k === 'string')
+    : g.cols;
+
   const filas = top.map((j, i) => {
     const celdas = {};
-    g.cols.forEach(k => { celdas[k] = valor(j, k); });
+    columnas.forEach(k => { celdas[k] = valor(j, k); });
+    /* La de ORDEN entra siempre, aunque no se muestre: la usa el
+       desempate y el anillo de la mediana. */
+    if (celdas[g.orden] === undefined) celdas[g.orden] = valor(j, g.orden);
     return {
       puesto: i + 1,
       jugador: String(j['NOMBRES'] || '').trim(),
@@ -213,7 +230,7 @@ function jugadoresRanking(idx, id, opciones) {
   /* Mediana del propio top, para el anillo de referencia: la de la liga
      entera no sirve acá porque estos veinte ya son la cola de arriba. */
   const medianas = {};
-  g.cols.forEach(k => {
+  columnas.forEach(k => {
     const vals = filas.map(f => f.celdas[k]).filter(v => v !== null).sort((a, b) => a - b);
     medianas[k] = vals.length ? (vals.length % 2 ? vals[(vals.length - 1) / 2]
       : (vals[vals.length / 2 - 1] + vals[vals.length / 2]) / 2) : null;
@@ -221,7 +238,7 @@ function jugadoresRanking(idx, id, opciones) {
 
   return {
     id: g.id, titulo: g.titulo, orden: g.orden, nota: g.nota || null, modo: modo, ambito: ambito,
-    columnas: g.cols, filas: filas, medianas: medianas,
+    columnas: columnas, filas: filas, medianas: medianas,
     umbral: umbral, elegibles: elegibles.length,
     /* Con qué se está mostrando, que puede no ser con qué se seleccionó. */
     ordenPor: ordenPor, dir: dir,
@@ -2050,6 +2067,15 @@ function jugadoresBloqueRankingPlantel(idx) {
                        focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset
                        ${modo === id ? 'bg-surface2 text-ink' : 'text-muted hover:text-ink'}">${txt}</button>`).join('')}
           </div>
+        </div>` : ''}
+        ${typeof SGADD_RANKPDF !== 'undefined' ? `
+        <div>
+          <span class="block text-[10px] uppercase tracking-wider text-muted font-display mb-1">Exportar</span>
+          <button type="button" onclick="SGADD_RANKPDF.abrir(SGADD_APP.estado.idx)"
+            class="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider rounded-md
+                   border border-hairline hover:border-accent hover:bg-surface2 transition-colors
+                   focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            title="Elegir columnas y generar el PDF de este ranking">🖨 PDF</button>
         </div>` : ''}
       </div>
       ${SGADD_UI.tabs(tabs, r.id, 'jugadoresVerRankingPlantel')}

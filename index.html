@@ -1620,6 +1620,18 @@
        leerlo, y la carpeta del cuerpo técnico es de un solo formato.
        ----------------------------------------------------------------- */
     @page apaisada { size: A3 landscape; margin: 10mm; }
+    /* LA HOJA DEL RANKING DEL PLANTEL.
+
+       A4 y no A3: es una planilla de nombres y numeros, no un informe
+       con graficos, y la A3 obliga al club a elegir el tamano a mano en
+       el dialogo. Se gira sola cuando las columnas elegidas no entran
+       en vertical (`.rank-ancha`, mas de 6).
+
+       Va con `@page` NOMBRADA porque `@page` a secas no se puede
+       condicionar por clase (punto 7.7): la vertical la comparten el
+       informe de equipo y el post-partido, y girarla de raiz les
+       cambiaria el tamano a los dos. */
+    @page rankingAncho { size: A4 landscape; margin: 8mm; }
     /* La `page` va en el BODY y no solo en las cards. `@page` a secas no se
        puede condicionar por clase, así que la hoja por defecto sigue siendo
        la A4 vertical que usan las otras dos exportaciones; sin esta línea,
@@ -1628,6 +1640,109 @@
        con los dos tamaños. */
     html.modo-scout-print body,
     html.modo-scout-print .scout-card { page: apaisada; }
+
+    /* ===================================================================
+       RANKING DEL PLANTEL · la quinta exportacion
+
+       NINGUNA TABLA CORTADA, que es el requisito entero. Se ataca por
+       los tres lados por los que una tabla se corta:
+
+         a lo ANCHO   `table-layout: auto` + `width: 100%` + la hoja
+                      girada cuando hay mas de 6 columnas. El
+                      `min-width` de `.scrollbox` se anula con
+                      `!important` porque es un estilo INLINE (misma
+                      trampa que la tabla de marcas, punto 7.3).
+         entre HOJAS  `break-inside: avoid` en cada `<tr>`, para que no
+                      se parta el nombre de un jugador por la mitad, y
+                      `thead` que se repite arriba de cada hoja.
+         por TIPO     la tipografia baja por tramos segun cuantas
+                      columnas se eligieron; con las 35 va `.rank-
+                      apretada`.
+       =================================================================== */
+    body.modo-ranking-print > *:not(#rankingSalida) { display: none !important; }
+    body.modo-ranking-print #rankingSalida { display: block !important; }
+    #rankingSalida { display: none; }
+
+    body.modo-ranking-print .rank-hoja.rank-ancha { page: rankingAncho; }
+
+    body.modo-ranking-print,
+    body.modo-ranking-print .rank-hoja {
+      background: #fff !important; color: #111 !important;
+      max-width: none !important; margin: 0 !important; padding: 0 !important;
+    }
+
+    .rank-membrete {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 10mm; padding-bottom: 3mm; margin-bottom: 4mm;
+      border-bottom: 2px solid #111;
+    }
+    .rank-membrete-izq { display: flex; align-items: center; gap: 4mm; }
+    .rank-escudo { width: 14mm; height: 14mm; object-fit: contain; }
+    .rank-titulo { font-size: 15pt; font-weight: 700; margin: 0; line-height: 1.1; }
+    .rank-sub { font-size: 9pt; color: #444; margin: 1mm 0 0; }
+    .rank-membrete-der { text-align: right; }
+    .rank-meta { font-size: 8.5pt; color: #444; margin: 0 0 .6mm; }
+
+    .rank-tabla {
+      width: 100%; border-collapse: collapse;
+      /* `auto` y NO `fixed`: con `fixed` las 35 columnas se reparten el
+         ancho en partes iguales y la de nombres queda del mismo tamano
+         que la de PJ, asi que los apellidos se parten. Con `auto` cada
+         columna pide lo que necesita. */
+      table-layout: auto;
+      font-size: 8.5pt;
+    }
+    .rank-tabla th, .rank-tabla td {
+      border-bottom: 1px solid #d4d4d4; padding: 1.6mm 1.4mm;
+      text-align: center; white-space: nowrap;
+    }
+    .rank-tabla thead th {
+      background: #ececec !important; color: #111 !important;
+      font-size: 7.5pt; text-transform: uppercase; letter-spacing: .3px;
+      border-bottom: 1.4px solid #94a3b8;
+      position: static !important;
+    }
+    .rank-tabla .rank-puesto { width: 7mm; text-align: right; color: #666; }
+    .rank-tabla .rank-nombre {
+      text-align: left; white-space: normal; overflow-wrap: anywhere;
+      font-weight: 600; max-width: 46mm;
+    }
+    .rank-tabla .rank-dato { font-variant-numeric: tabular-nums; }
+    .rank-tabla tbody tr:nth-child(even) td { background: #f7f7f7 !important; }
+
+    /* Escalado por cantidad de columnas. Los cortes se midieron sobre el
+       ancho imprimible real, no a ojo. */
+    .rank-hoja.rank-ancha .rank-tabla { font-size: 8pt; }
+    .rank-hoja.rank-ancha .rank-tabla th, .rank-hoja.rank-ancha .rank-tabla td { padding: 1.3mm 1mm; }
+    .rank-hoja.rank-apretada .rank-tabla { font-size: 6.6pt; }
+    .rank-hoja.rank-apretada .rank-tabla th, .rank-hoja.rank-apretada .rank-tabla td { padding: .9mm .6mm; }
+    .rank-hoja.rank-apretada .rank-tabla thead th { font-size: 6pt; letter-spacing: 0; }
+    .rank-hoja.rank-apretada .rank-tabla .rank-nombre { max-width: 34mm; }
+
+    .rank-nota { font-size: 7.5pt; color: #555; margin: 3mm 0 0; }
+
+    @media print {
+      /* NINGUNA FILA SE PARTE. Sin esto, un jugador puede quedar con el
+         nombre en una hoja y sus numeros en la siguiente. */
+      #rankingSalida .rank-tabla tr,
+      #rankingSalida .rank-tabla thead { break-inside: avoid; page-break-inside: avoid; }
+      /* Y el encabezado se repite arriba de cada hoja: una tabla larga
+         sin cabecera en la hoja 2 son columnas de numeros sin nombre. */
+      #rankingSalida .rank-tabla thead { display: table-header-group; }
+      #rankingSalida .rank-tabla tbody { display: table-row-group; }
+      /* El membrete no se despega de las primeras filas. */
+      #rankingSalida .rank-membrete { break-after: avoid; page-break-after: avoid; }
+      /* El `min-width` de la caja scrollable es INLINE y sin !important
+         no se le puede ganar; en papel no hay scroll que lo justifique. */
+      #rankingSalida .scrollbox, #rankingSalida table {
+        min-width: 0 !important; overflow: visible !important;
+      }
+      /* El aplanado a papel (`body * { color: #111 !important }`) le
+         ganaria a los grises del membrete: se repiten con !important. */
+      #rankingSalida .rank-sub, #rankingSalida .rank-meta,
+      #rankingSalida .rank-nota { color: #444 !important; }
+      #rankingSalida .rank-puesto { color: #666 !important; }
+    }
     html.modo-scout-print .scrollbox {
       overflow: visible !important;
       max-width: none !important;
@@ -2047,7 +2162,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=187" />
+<link rel="stylesheet" href="sgadd.css?v=189" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2225,42 +2340,43 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=187"></script>
+<script src="js/sgadd-club.js?v=189"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=187"></script>
-<script src="js/sgadd-core.js?v=187"></script>
-<script src="js/sgadd-auth.js?v=187"></script>
-<script src="js/sgadd-glosario.js?v=187"></script>
-<script src="js/sgadd-glosarioui.js?v=187"></script>
-<script src="js/sgadd-comparativa.js?v=187"></script>
-<script src="js/sgadd-comparativaui.js?v=187"></script>
-<script src="js/sgadd-confirmar.js?v=187"></script>
-<script src="js/sgadd-landing.js?v=187"></script>
-<script src="js/sgadd-login.js?v=187"></script>
-<script src="js/sgadd-data.js?v=187"></script>
-<script src="js/sgadd-clientes.js?v=187"></script>
-<script src="js/sgadd-ui.js?v=187"></script>
-<script src="js/sgadd-app.js?v=187"></script>
-<script src="js/sgadd-clasificacion.js?v=187"></script>
+<script src="js/sgadd-config.js?v=189"></script>
+<script src="js/sgadd-core.js?v=189"></script>
+<script src="js/sgadd-auth.js?v=189"></script>
+<script src="js/sgadd-glosario.js?v=189"></script>
+<script src="js/sgadd-glosarioui.js?v=189"></script>
+<script src="js/sgadd-comparativa.js?v=189"></script>
+<script src="js/sgadd-comparativaui.js?v=189"></script>
+<script src="js/sgadd-confirmar.js?v=189"></script>
+<script src="js/sgadd-landing.js?v=189"></script>
+<script src="js/sgadd-login.js?v=189"></script>
+<script src="js/sgadd-data.js?v=189"></script>
+<script src="js/sgadd-clientes.js?v=189"></script>
+<script src="js/sgadd-ui.js?v=189"></script>
+<script src="js/sgadd-app.js?v=189"></script>
+<script src="js/sgadd-clasificacion.js?v=189"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=187"></script>
-<script src="js/sgadd-configui.js?v=187"></script>
-<script src="js/sgadd-estados.js?v=187"></script>
-<script src="js/sgadd-buzon.js?v=187"></script>
-<script src="js/sgadd-charts.js?v=187"></script>
-<script src="js/sgadd-personalidad.js?v=187"></script>
-<script src="js/sgadd-rankings.js?v=187"></script>
-<script src="js/sgadd-partido.js?v=187"></script>
-<script src="js/sgadd-informe.js?v=187"></script>
-<script src="js/sgadd-ficha.js?v=187"></script>
-<script src="js/sgadd-equipos.js?v=187"></script>
+<script src="js/sgadd-hub.js?v=189"></script>
+<script src="js/sgadd-configui.js?v=189"></script>
+<script src="js/sgadd-estados.js?v=189"></script>
+<script src="js/sgadd-buzon.js?v=189"></script>
+<script src="js/sgadd-charts.js?v=189"></script>
+<script src="js/sgadd-personalidad.js?v=189"></script>
+<script src="js/sgadd-rankings.js?v=189"></script>
+<script src="js/sgadd-partido.js?v=189"></script>
+<script src="js/sgadd-informe.js?v=189"></script>
+<script src="js/sgadd-ficha.js?v=189"></script>
+  <script src="js/sgadd-rankingpdf.js?v=189"></script>
+<script src="js/sgadd-equipos.js?v=189"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=187"></script>
-<script src="js/sgadd-jugadores.js?v=187"></script>
-<script src="js/sgadd-4factores.js?v=187"></script>
-<script src="js/sgadd-scouting.js?v=187"></script>
-<script src="js/sgadd-diagnostico.js?v=187"></script>
+<script src="js/sgadd-niveles.js?v=189"></script>
+<script src="js/sgadd-jugadores.js?v=189"></script>
+<script src="js/sgadd-4factores.js?v=189"></script>
+<script src="js/sgadd-scouting.js?v=189"></script>
+<script src="js/sgadd-diagnostico.js?v=189"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
