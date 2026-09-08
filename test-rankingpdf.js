@@ -228,7 +228,11 @@ igual(rSinOrden.columnas, ['MIN'], '  pero no se muestra');
 bloque('4 · Orientación y cortes');
 
 const HTML = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-const ESTILO = (HTML.match(/\n<style>\n[\s\S]*?<\/style>/) || [''])[0];
+/* `\r?\n` y no `\n`: el repo alterna entre LF y CRLF —git normaliza al
+   hacer checkout— y con el ancla dura un rebase dejaba el bloque sin
+   extraer, asi que TODAS las verificaciones de CSS pasaban a fallar de
+   golpe sin que hubiera cambiado una sola regla. */
+const ESTILO = (HTML.match(/\r?\n<style>\r?\n[\s\S]*?<\/style>/) || [''])[0];
 
 /* Va con `@page` NOMBRADA: `@page` a secas no se puede condicionar por
    clase (punto 7.7), y la vertical la comparten el informe de equipo y

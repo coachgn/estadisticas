@@ -43,7 +43,11 @@ function bloque(t) { console.log('\n' + t); }
 const RAIZ = __dirname;
 const HTML = fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8');
 const CSS = fs.readFileSync(path.join(RAIZ, 'sgadd.css'), 'utf8');
-const ESTILO = (HTML.match(/\n<style>\n[\s\S]*?<\/style>/) || [''])[0];
+/* `\r?\n` y no `\n`: el repo alterna entre LF y CRLF —git normaliza al
+   hacer checkout— y con el ancla dura un rebase dejaba el bloque sin
+   extraer, asi que TODAS las verificaciones de CSS pasaban a fallar de
+   golpe sin que hubiera cambiado una sola regla. */
+const ESTILO = (HTML.match(/\r?\n<style>\r?\n[\s\S]*?<\/style>/) || [''])[0];
 
 /* =====================================================================
    1 · NINGUNA MEDIA QUERY DEL PANEL SE CUELA EN EL PAPEL
@@ -79,7 +83,12 @@ ok(!/@media \(pointer: coarse\)/.test(ESTILO),
 /* No lleva tope de ancho A PROPOSITO: una tablet de 1024px con dedo
    necesita los 44px igual que un telefono de 320. */
 const TACTIL = ESTILO.slice(ESTILO.indexOf('@media screen and (pointer: coarse)'));
-const CUERPO_TACTIL = TACTIL.slice(0, TACTIL.indexOf('\n  }\n') + 5);
+/* El cierre del bloque se busca con un regex tolerante al fin de linea:
+   con `'\n  }\n'` a mano, un checkout que normaliza a CRLF dejaba el
+   cuerpo vacio y las doce verificaciones de abajo fallaban juntas sin
+   que hubiera cambiado una regla. */
+const CIERRE = /\r?\n  \}\r?\n/.exec(TACTIL);
+const CUERPO_TACTIL = TACTIL.slice(0, CIERRE ? CIERRE.index + CIERRE[0].length : 0);
 ok(!/max-width/.test(CUERPO_TACTIL.split('{')[0]),
    'el bloque tactil no se acota por ancho: la tablet tambien tiene dedos');
 

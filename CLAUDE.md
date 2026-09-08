@@ -6974,3 +6974,34 @@ tres exportaciones y en los dos tamaños de papel.
    corrió la llamada fuera de la ventana — **sin que la propiedad hubiera
    cambiado**. Es la lección del punto 43. Se reescribieron para medir el
    ORDEN (`indexOf` de uno contra el otro), que es la propiedad real.
+
+### Y una tercera trampa: los tests anclados a `
+`
+
+Dos tests extraían el bloque `<style>` con `/
+<style>
+/` y uno cortaba
+el bloque táctil con `'
+  }
+'`. **El repo alterna entre LF y CRLF** —git
+normaliza al hacer checkout, y los `warning: LF will be replaced by CRLF`
+salen en cada commit— así que un `git pull --rebase` dejó el bloque sin
+extraer y **45 verificaciones de CSS fallaron de golpe sin que hubiera
+cambiado una sola regla**.
+
+Van con `?
+`. Es la misma familia que medir por distancia en
+caracteres: un ancla frágil que se rompe por algo que no tiene nada que
+ver con la propiedad que defiende.
+
+### El manifiesto de escudos, otra vez
+
+La migración a `.webp` se subió por la web de GitHub —fuera del flujo del
+punto 11— y dejó **12 entradas del manifiesto apuntando a archivos
+borrados**: Atenas A/B, C.C. Tolosano, Gonnet, Estudiantes, Juventud,
+Meridiano, Náutico y Platense A/B se quedaban **sin escudo, sin ningún
+aviso** — el panel de faltantes solo mira la categoría abierta.
+
+Es exactamente el episodio del punto 6, y lo cazó `test-logos.js`, que
+existe justamente para eso. Se apuntaron las doce a los `.webp` que ya
+estaban subidos.
