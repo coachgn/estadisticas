@@ -43,7 +43,7 @@ node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 175 tests · partidos sin box score: suman a la tabla, no a las métricas
 node test-responsive.js    #  40 tests · desborde, targets táctiles, modales y el papel
-node test-rankingpdf.js    # 173 tests · la quinta exportación: columnas reales, presets y la hoja
+node test-rankingpdf.js    # 111 tests · la quinta exportación: una tabla por CARD, con su orden
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
 
@@ -57,7 +57,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4759 tests en total. Todos tienen que dar verde antes de commitear.**
+**4698 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -6707,12 +6707,32 @@ presupuestados. Se deja como está y se anota.
 
 ## 50. EXPORTAR EL RANKING DEL PLANTEL · la quinta exportación
 
-### LA AUDITORÍA PRIMERO, porque cambió el diseño entero
+### LA UNIDAD ES LA CARD, NO LA MÉTRICA SUELTA
 
-El pedido llegó con una lista de columnas de ejemplo —«PER, %USG, %TS,
-%AST, %REB»— y el club aclaró de entrada que **los Four Factors no son
-de jugador**. Tenía razón, y auditando el código apareció que la lista
-de ejemplo tampoco existía:
+Esto costó una vuelta entera y es el corazón del módulo. La primera
+versión juntaba las métricas elegidas en UNA tabla ancha, y el club la
+corrigió: **cada card tiene sus métricas, así que exportar todas es
+exportar cada card como una tabla independiente.**
+
+Tenía razón, y no es una decisión de formato. Cada card tiene su propio
+**`orden`** —`PTS` en participación, `eFG%` en eficiencia, `RO` en
+rebotes, `AST-PP` en creación— así que una tabla única colapsa ocho
+rankings en uno y **el `#` deja de significar nada en los otros siete**.
+Medido en ATENAS 'B': MARCATILI es 1° en producción, DESTEFANO en
+eficiencia y RIVELLI en triples. El primero de «Rebotes» no es el
+primero de «Tiro de 3», y ésa es la pregunta que cada card contesta.
+
+Exportar «todas» son **ocho tablas**, cada una con su título, su orden y
+su numeración. Adentro de cada una se pueden destildar columnas, que es
+el ajuste fino. Y **cada tabla dice por qué está ordenada así**: ocho
+tablas con la misma pinta y numeraciones distintas se leen como un error
+si no se explica.
+
+### LA AUDITORÍA PRIMERO, porque descartó media lista del pedido
+
+El pedido llegó con una lista de ejemplo —«PER, %USG, %TS, %AST, %REB»—
+y el club aclaró de entrada que los Four Factors no son de jugador.
+Auditando el código apareció que la lista tampoco existía:
 
 | pedida | qué hay de verdad |
 |---|---|
@@ -6720,121 +6740,135 @@ de ejemplo tampoco existía:
 | `%REB` | **no existe**: el grupo de rebotes trae CUENTAS (`RO`, `RD`, `RT`) |
 | `%USG` `%TS` `%AST` `%eFG` | existen, pero se escriben `USG%` `TS%` `AST%` `eFG%` |
 | Four Factors | de EQUIPO, viven en `PROMEDIOS 4F` |
-| «Asistencias» | `AST` a secas **no es columna** de ningún grupo; hay `AST-PP` y `AST%` |
+| «Asistencias» | `AST` a secas **no es columna** de ninguna card; hay `AST-PP` y `AST%` |
 
-### Y EL RANKING NO ES UNA TABLA ANCHA
+Las ocho cards, con su orden y su ancho:
 
-Es el hallazgo que decidió la implementación. Son **ocho grupos**
-(`JUGADORES_RANKINGS`) de 4 a 6 columnas y en pantalla se ve **uno por
-vez**, el de la pestaña abierta. Entre los ocho hay **35 métricas
-distintas**, todas de jugador. Verificado en el navegador con ATENAS 'B'
-(24 jugadores): la tabla tenía `# · Jugador · PJ · MIN · PTS · PLAYS ·
-PPP · +/-`, o sea **seis** métricas.
+```
+produccion   orden PTS      6 cols   PJ MIN PTS PLAYS PPP +/-
+eficiencia   orden eFG%     6 cols   PJ MIN USG% eFG% TS% RTL%
+tiro         orden TCI      6 cols   PJ MIN PTS TC% TCC TCI
+t2           orden T2I      6 cols   MIN PT2% T2% T2C T2I PPT2
+t3           orden T3I      6 cols   MIN PT3% T3% T3C T3I PPT3
+libres       orden T1I      6 cols   MIN PT1% T1% T1C T1I PPT1
+rebotes      orden RO       4 cols   MIN RO RD RT
+creacion     orden AST-PP   5 cols   MIN AST-PP AST% FC FR
+```
 
-Por eso el export **RENDERIZA su tabla** en vez de esconder columnas del
-DOM, que era el paso 1 del pedido: «ocultar las desmarcadas» solo podría
-llegar a esas seis. Se arma una tabla nueva con las columnas elegidas,
-sobre las MISMAS filas y con el MISMO motor — que es lo que garantiza
-que el papel no pueda contradecir a la pantalla (punto 8). Es además el
-patrón que ya usan las otras cuatro (`#fichaSalida`, `#informeSalida`).
+**Las columnas NO se deduplican entre cards.** `MIN` está en las ocho y
+en las ocho tiene que salir, porque cada tabla se lee sola. La primera
+versión las deduplicaba —tenía sentido con una tabla única— y acá
+dejaría siete tablas sin minutos.
+
+### Por qué RENDERIZA en vez de esconder columnas del DOM
+
+Era el paso 1 del pedido, y no se puede: en pantalla se ve **una card
+por vez**, así que «ocultar las desmarcadas» solo podría llegar a esa.
+Cada tabla sale del MISMO motor con el mismo pool y la misma escala —lo
+que garantiza que el papel no contradiga a la pantalla (punto 8)— y es
+además el patrón de las otras cuatro (`#fichaSalida`, `#informeSalida`).
+
+**El orden MANUAL de la pantalla NO se propaga.** Vale para la card que
+el DT tiene abierta; aplicárselo a las ocho reordenaría siete por una
+métrica que ni siquiera tienen.
 
 ### LAS COLUMNAS SON UN PARÁMETRO DEL MOTOR · el bug que solo vio el papel
 
-`jugadoresRanking()` armaba `celdas` con `g.cols`, las del grupo abierto.
-Con las 35 tildadas, el PDF salía con **seis columnas llenas y**
+`jugadoresRanking()` armaba `celdas` con `g.cols`, las de la card. Con
+columnas de varias cards pedidas, el PDF salía con **seis llenas y**
 **veintinueve en «—»**.
 
 Ni la suite ni el chequeo de sintaxis lo veían: las columnas estaban,
 con guiones. **Se cazó renderizando el modo papel y mirándolo** — el
-MediaBox del PDF decía que la hoja se giraba bien y no decía nada de
+`/MediaBox` del PDF decía que la hoja se giraba bien y no decía nada de
 esto. Ahora `o.cols` viaja al motor, las medianas se calculan sobre las
-pedidas y la métrica de ORDEN entra siempre aunque no se muestre,
-porque la usa el desempate.
+pedidas y la métrica de ORDEN entra siempre aunque no se muestre, porque
+la usa el desempate. Sigue valiendo con la card como unidad: es lo que
+permite destildar columnas adentro de una.
 
-Hay un test que lo caza: pide métricas de tres grupos y exige que ninguna
-venga vacía **y** que valgan exactamente lo mismo que si se pidiera su
-grupo. Verificado al revés: revertir el fix da 2 fallas.
+### Los tres presets agrupan CARDS
 
-### Los tres presets, con las métricas reales
-
-| preset | columnas | hoja |
+| preset | cards | hojas |
 |---|---|---|
-| **Métricas básicas** | `PJ MIN PTS RT AST-PP eFG%` | 6 → **vertical** |
-| **Métricas avanzadas** | `MIN USG% eFG% TS% PPP RTL% AST% AST-PP` | 8 → apaisada |
-| **Seleccionar todas** | las 35 del catálogo vivo | 35 → apaisada + compacta |
+| **Métricas básicas** | producción · rebotes · creación | 3 |
+| **Métricas avanzadas** | eficiencia · tiro · T2 · T3 · libres | 5 |
+| **Seleccionar todas** | las ocho | 8 |
 
-**Básicas son seis exactas a propósito**: es el preset que el DT usa
-siempre y no tiene por qué salir apaisado. Y **«Todas» se resuelve
-contra el catálogo**, no contra una lista escrita a mano que se
-desactualiza; los otros dos se intersectan con él, así que si mañana se
-saca una columna del ranking el preset deja de pedirla en vez de tildar
-una casilla que no existe.
+Básicas y avanzadas **parten las ocho sin superponerse ni dejar huecos**,
+y hay un test que lo fija: si una card quedara en los dos, elegir un
+preset y después el otro daría dos veces la misma tabla. «Todas» se
+resuelve contra el catálogo vivo, y los otros dos se intersectan con él,
+así que sacar una card del ranking no deja un preset pidiendo una que no
+existe.
 
-El modal agrupa las casillas por los **ocho grupos**, que son las
-«categorías lógicas» que ya existen. Una métrica se lista **una vez**:
-`MIN` está en los ocho, y ocho casillas para la misma columna es una
-forma segura de que el DT destilde una y crea que sacó la columna.
+Un preset **reemplaza** y trae cada card **con todas sus columnas**:
+media card es una tabla a la que le faltan datos sin que nadie lo haya
+pedido. Y **una card sin columnas no sale**: un título sin tabla no es
+una card.
 
-### La hoja se gira sola, y NINGUNA TABLA SE CORTA
+### La hoja y los cortes
 
-Va con **`@page` NOMBRADA** (`rankingAncho`, A4 landscape 8mm): `@page`
-a secas no se puede condicionar por clase (punto 7.7), y la vertical la
-comparten el informe de equipo y el post-partido. Se ataca por los tres
-lados por los que una tabla se corta:
+Con la card como unidad **ninguna tabla pasa de seis columnas**, así que
+el documento sale **A4 vertical**. La `@page` apaisada (`rankingAncho`)
+queda igual, decidida por la tabla MÁS ANCHA —un solo documento no puede
+tener dos orientaciones— para el día que una card crezca. Va con `@page`
+NOMBRADA porque `@page` a secas no se puede condicionar por clase (punto
+7.7) y la vertical la comparten el informe de equipo y el post-partido.
 
-- **a lo ANCHO** · `table-layout: auto` —con `fixed` las 35 columnas se
-  reparten en partes iguales y la de nombres mide lo mismo que `PJ`, así
-  que los apellidos se parten— más el `min-width` de `.scrollbox`
-  anulado con `!important`, que es **inline** (misma trampa que la tabla
-  de marcas, punto 7.3).
-- **entre HOJAS** · `break-inside: avoid` en cada `<tr>` y `thead` que
-  se repite arriba de cada hoja: una tabla larga sin cabecera en la hoja
-  2 son columnas de números sin nombre.
-- **por TIPO** · la tipografía baja por tramos (8,5pt → 8pt apaisada →
-  6,6pt con muchas columnas).
+Ninguna tabla se corta, por los tres lados:
 
-**A4 y no A3** como el scouting: es una planilla de nombres y números,
-no un informe con gráficos, y la A3 obliga al club a elegir el tamaño a
-mano en el diálogo.
+- **a lo ANCHO** · `table-layout: auto` —con `fixed` la columna de
+  nombres mide lo mismo que `PJ` y los apellidos se parten— más el
+  `min-width` de `.scrollbox` anulado con `!important`, que es **inline**
+  (misma trampa que la tabla de marcas, punto 7.3).
+- **entre HOJAS** · `break-inside: avoid` en cada `<tr>`, `thead`
+  repetido arriba de cada hoja, y `break-after: avoid` en el título de
+  cada card para que no se despegue de su tabla. **No** se le pone
+  `break-inside` a la card entera: una de 24 filas puede no entrar en una
+  hoja y forzarla dejaría media página en blanco.
+- **por TIPO** · la tipografía baja por tramos si alguna tabla se
+  ensancha.
+
+**A4 y no A3** como el scouting: es una planilla de nombres y números, no
+un informe con gráficos, y la A3 obliga al club a elegir el tamaño a mano
+en el diálogo.
 
 ### Medido sobre los PDF REALES
 
 Generados con Chrome headless por CDP y auditados leyendo el `/MediaBox`
-—el estándar del punto 7— más el render de papel al ancho imprimible:
+—el estándar del punto 7—, sobre el plantel de ATENAS 'B' (24 jugadores):
 
 ```
-preset      cols   hoja del PDF        celdas cortadas
-basicas       6    1 × A4 vertical            0
-avanzadas     8    2 × A4 APAISADA            0
-todas        35    1 × A4 APAISADA            0
+preset      cards  filas   hojas del PDF
+basicas       3      66    3 × A4 vertical
+avanzadas     5     119    5 × A4 vertical
+todas         8     185    8 × A4 vertical
 ```
 
-Fondo `RGB(255,255,255)` en los tres: sin márgenes negros. Y midiendo
-celda por celda contra los 718px del A4 vertical y los 1062px del
-apaisado, **cero** con el contenido fuera de su caja.
-
-**«Avanzadas» sale en dos hojas** y está bien: 24 filas a 26px más el
-membrete dan 819px contra 733 imprimibles. Es una paginación limpia —
-con `break-inside: avoid` ninguna fila se parte y el encabezado se
-repite—, no una tabla cortada.
+Fondo `RGB(255,255,255)`: sin márgenes negros. Y midiendo celda por
+celda contra los 718px imprimibles del A4 vertical, **cero** con el
+contenido fuera de su caja.
 
 ### El membrete y la limpieza
 
-Club, categoría, grupo, **tramo y fecha**. El tramo sale de
+El membrete va **una sola vez** arriba: club, categoría, cantidad de
+jugadores, **tramo y fecha**. El tramo sale de
 `combinacionesTorneoFase()`, que es la que ya arma el `label` del
 selector: componerlo a mano daría `*TOTAL*|REGULAR` —una clave interna—
 o una etiqueta parecida pero distinta de la que el DT tiene en la barra.
 
+El nombre del archivo lleva el título de la tabla **solo si hay una**:
+con ocho, meter los títulos daría un nombre ilegible en la carpeta.
+
 La limpieza cuelga de `afterprint` con respaldo de 60 s, se serializan
-los escudos y se restauran, y el archivo sale con nombre propio: es el
-mismo contrato que las otras cuatro (puntos 7.5 y 7.8). **`modo-ranking-
-print` está en `MODOS_PAPEL`**, o los colores que se resuelven contra el
-fondo saldrían con la paleta oscura.
+los escudos y se restauran, y el archivo sale con nombre propio: el mismo
+contrato que las otras cuatro (puntos 7.5 y 7.8). **`modo-ranking-print`
+está en `MODOS_PAPEL`**, o los colores que se resuelven contra el fondo
+saldrían con la paleta oscura.
 
 ### La trampa de siempre, otra vez
 
-El PDF salía con las 29 columnas vacías **después** de arreglar el
-motor: el `?v=` no se había subido tras editar el `.js`, así que Chrome
-servía el archivo cacheado. Es el punto 2 al pie de la letra — al tocar
-un `.js` hay que subir el `?v=`, aunque ya se haya subido en esa misma
-vuelta.
+El PDF salía con las columnas vacías **después** de arreglar el motor: el
+`?v=` no se había subido tras editar el `.js`, así que Chrome servía el
+archivo cacheado. Es el punto 2 al pie de la letra — al tocar un `.js`
+hay que subir el `?v=`, **aunque ya se haya subido en esa misma vuelta**.

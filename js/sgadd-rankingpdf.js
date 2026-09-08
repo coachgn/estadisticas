@@ -5,74 +5,81 @@
    UN cruce o de UN jugador; ésta es la planilla del plantel entero, que
    es lo que el cuerpo técnico pega en la carpeta de la categoría.
 
-   LO QUE LA AUDITORÍA DEL CÓDIGO REAL DEVOLVIÓ, y que manda sobre todo
-   lo demás de este archivo:
+   LA UNIDAD ES LA CARD, NO LA MÉTRICA SUELTA. Esto costó una vuelta y es
+   el corazón del módulo:
 
-   El ranking NO es una tabla ancha con muchas columnas. Son OCHO grupos
-   (`JUGADORES_RANKINGS`) de 4 a 6 columnas cada uno, y en pantalla se ve
-   UNO por vez — el de la pestaña abierta. Entre los ocho hay **35
-   métricas distintas**, todas de JUGADOR:
+   El ranking son OCHO cards (`JUGADORES_RANKINGS`) y **cada una tiene su
+   propio ORDEN** — `PTS` en participación, `eFG%` en eficiencia, `RO` en
+   rebotes, `AST-PP` en creación. Juntar las 35 métricas en una sola
+   tabla no es una decisión de formato: colapsa ocho rankings distintos
+   en uno, ordenado por un criterio, y el `#` deja de significar nada en
+   los otros siete. El primero de «Rebotes» no es el primero de «Tiro de
+   3», y ésa es justamente la pregunta que cada card contesta.
 
-     PJ MIN PTS PLAYS PPP +/-            participación y puntos
-     USG% eFG% TS% RTL%                  eficiencia
-     TC% TCC TCI                         tiro de campo
-     PT2% T2% T2C T2I PPT2               tiro de 2
-     PT3% T3% T3C T3I PPT3               tiro de 3
-     PT1% T1% T1C T1I PPT1               tiros libres
-     RO RD RT                            rebotes
-     AST-PP AST% FC FR                   creación y disciplina
+   Así que exportar «todas» son OCHO TABLAS, cada una con su título, su
+   orden y su numeración. Adentro de cada una se pueden destildar
+   columnas, que es el ajuste fino.
+
+   LO QUE LA AUDITORÍA DEL CÓDIGO REAL DEVOLVIÓ:
+
+     PJ MIN PTS PLAYS PPP +/-            participación y puntos   (orden PTS)
+     USG% eFG% TS% RTL% + MIN PJ         eficiencia               (orden eFG%)
+     TC% TCC TCI + MIN PJ PTS            tiro de campo            (orden TCI)
+     PT2% T2% T2C T2I PPT2 + MIN         tiro de 2                (orden T2I)
+     PT3% T3% T3C T3I PPT3 + MIN         tiro de 3                (orden T3I)
+     PT1% T1% T1C T1I PPT1 + MIN         tiros libres             (orden T1I)
+     RO RD RT + MIN                      rebotes                  (orden RO)
+     AST-PP AST% FC FR + MIN             creación y disciplina    (orden AST-PP)
 
    NO EXISTEN acá: los Four Factors (son de equipo, viven en
    `PROMEDIOS 4F`), `PER` —que no está en `METRICAS` ni la escribe
    MotorStats— ni una tasa de rebote tipo `%REB`: el grupo de rebotes
    trae CUENTAS por partido (RO, RD, RT). Y `AST` a secas tampoco es
-   columna de ningún grupo; lo que hay es `AST-PP` y `AST%`.
+   columna de ninguna card; lo que hay es `AST-PP` y `AST%`.
 
-   POR ESO EL EXPORT RENDERIZA SU TABLA en vez de esconder columnas del
-   DOM: la tabla de pantalla nunca tiene más de seis, así que "ocultar
-   las desmarcadas" solo podría llegar a esas seis. Se arma una tabla
-   nueva con las columnas elegidas, sobre las MISMAS filas que están en
-   pantalla y con el MISMO motor (`jugadoresRanking`), que es lo que
+   POR ESO EL EXPORT RENDERIZA SUS TABLAS en vez de esconder columnas del
+   DOM: en pantalla se ve UNA card por vez, así que "ocultar las
+   desmarcadas" solo podría llegar a esa. Cada tabla sale del MISMO motor
+   (`jugadoresRanking`) con el mismo pool y la misma escala, que es lo que
    garantiza que el papel no pueda contradecir a la pantalla.
    ===================================================================== */
 const SGADD_RANKPDF = (function () {
   'use strict';
 
-  /* El corte que decide la orientación. Con seis columnas más el puesto y
-     el nombre, la tabla entra holgada en los 190mm de un A4 vertical;
-     medido, la séptima es la que empieza a apretar. */
+  /* El corte que gira la hoja. Ninguna card llega a siete columnas, así
+     que con la selección completa el documento sale vertical; la regla
+     queda para el día que una card crezca o para el que quiera armarse
+     una tabla ancha destildando de a poco. */
   const COLS_VERTICAL = 6;
 
-  /* Los tres presets salen de las métricas REALES del ranking. Ninguno
-     inventa una columna: cada clave de acá tiene que estar en alguno de
-     los ocho grupos, y hay un test que lo verifica contra el catálogo. */
+  /* Los presets agrupan CARDS, que es la unidad. Los ids salen del
+     catálogo y hay un test que falla si alguno deja de existir. */
   const PRESETS = [
     {
       id: 'basicas', label: 'Métricas básicas',
-      ayuda: 'Lo que se lee de un vistazo. Entra en vertical.',
-      /* Seis exactas, para que el preset más usado NO fuerce apaisada.
-         `AST-PP` ocupa el lugar de "asistencias": el ranking no tiene una
-         columna `AST` suelta, y de las dos que sí tiene es la que el
-         proyecto ya usa para separar a un conductor real de uno que solo
-         tiene la pelota. */
-      cols: ['PJ', 'MIN', 'PTS', 'RT', 'AST-PP', 'eFG%'],
+      ayuda: 'Lo que se lee de un vistazo: producción, cristal y creación.',
+      cards: ['produccion', 'rebotes', 'creacion'],
     },
     {
       id: 'avanzadas', label: 'Métricas avanzadas',
-      ayuda: 'Uso, eficiencia real y creación. Sale apaisada.',
-      cols: ['MIN', 'USG%', 'eFG%', 'TS%', 'PPP', 'RTL%', 'AST%', 'AST-PP'],
+      ayuda: 'Eficiencia y selección de tiro, zona por zona.',
+      cards: ['eficiencia', 'tiro', 't2', 't3', 'libres'],
     },
     {
       id: 'todas', label: 'Seleccionar todas',
-      ayuda: 'Las 35 del ranking. Apaisada y con tipografía compacta.',
-      cols: null,   // se resuelve contra el catálogo vivo
+      ayuda: 'Las ocho cards, cada una como su propia tabla.',
+      cards: null,   // se resuelve contra el catálogo vivo
     },
   ];
 
   const estado = {
     abierto: false,
     idx: null,
-    elegidas: null,      // { clave: bool }
+    /* `cards[id] = true` y `cols[id] = { clave: bool }`. Se guardan por
+       separado porque son dos decisiones distintas: qué tablas entran, y
+       qué columnas lleva cada una. */
+    cards: null,
+    cols: null,
     disparador: null,
   };
 
@@ -80,46 +87,53 @@ const SGADD_RANKPDF = (function () {
   const escJs = (v) => (typeof SGADD_UI !== 'undefined' ? SGADD_UI.escJs(v) : String(v == null ? '' : v));
 
   /* ===================================================================
-     EL UNIVERSO SALE DEL CATÁLOGO, NO DE UNA LISTA PROPIA
+     EL CATÁLOGO MANDA
 
-     Si se copiara acá, un grupo nuevo en `JUGADORES_RANKINGS` no
+     Si se copiara acá, una card nueva en `JUGADORES_RANKINGS` no
      aparecería en el modal y nadie se enteraría — es el bug del rol
-     funcional (punto 8) otra vez. Se lee en cada apertura.
+     funcional (punto 8). Se lee en cada apertura.
+
+     Y a diferencia de la versión anterior, las columnas NO se deduplican
+     entre cards: `MIN` está en las ocho y en las ocho tiene que salir,
+     porque cada tabla se lee sola.
      =================================================================== */
-  function grupos() {
+  function cards() {
     if (typeof JUGADORES_RANKINGS === 'undefined') return [];
-    /* Una métrica se lista UNA vez, en el primer grupo que la declara:
-       `MIN` está en los ocho y ocho casillas para la misma columna es una
-       forma segura de que el DT destilde una y crea que sacó la columna. */
-    const vistas = {};
     return JUGADORES_RANKINGS.map(g => ({
-      id: g.id,
-      titulo: g.titulo,
-      cols: g.cols.filter(k => { if (vistas[k]) return false; vistas[k] = true; return true; }),
-    })).filter(g => g.cols.length);
+      id: g.id, titulo: g.titulo, orden: g.orden, cols: g.cols.slice(),
+    }));
   }
 
-  function todasLasClaves() {
-    const out = [];
-    grupos().forEach(g => g.cols.forEach(k => out.push(k)));
-    return out;
+  function cardsIds() { return cards().map(c => c.id); }
+
+  function colsDeCard(id) {
+    const c = cards().filter(x => x.id === id)[0];
+    if (!c) return [];
+    const e = (estado.cols && estado.cols[id]) || {};
+    /* En el orden del catálogo, no en el que se tildaron: dos
+       exportaciones con las mismas columnas dan la misma tabla. */
+    return c.cols.filter(k => e[k]);
   }
 
-  /** Las elegidas, en el ORDEN del catálogo — no en el que se tildaron. */
+  /** Las cards que de verdad van a salir: tildadas Y con alguna columna. */
   function seleccion() {
-    const e = estado.elegidas || {};
-    return todasLasClaves().filter(k => e[k]);
+    const e = estado.cards || {};
+    return cardsIds().filter(id => e[id] && colsDeCard(id).length > 0);
   }
 
-  function colsDePreset(id) {
+  function cardsDePreset(id) {
     const p = PRESETS.filter(x => x.id === id)[0];
     if (!p) return [];
-    if (!p.cols) return todasLasClaves();
-    /* Se INTERSECTA con el catálogo vivo: si un día se saca una columna
-       del ranking, el preset la deja de pedir en vez de tildar una casilla
-       que no existe. */
-    const hay = todasLasClaves();
-    return p.cols.filter(k => hay.indexOf(k) > -1);
+    if (!p.cards) return cardsIds();
+    /* Se INTERSECTA con el catálogo vivo: si un día se saca una card, el
+       preset la deja de pedir en vez de tildar una que no existe. */
+    const hay = cardsIds();
+    return p.cards.filter(k => hay.indexOf(k) > -1);
+  }
+
+  /** Cuántas columnas tiene la tabla más ancha: decide la orientación. */
+  function maxColumnas() {
+    return seleccion().reduce((m, id) => Math.max(m, colsDeCard(id).length), 0);
   }
 
   /* ===================================================================
@@ -130,10 +144,7 @@ const SGADD_RANKPDF = (function () {
     if (!idx || !JUGADORES.filtroEquipo) return;
     estado.idx = idx;
     estado.disparador = document.activeElement;
-    if (!estado.elegidas) {
-      estado.elegidas = {};
-      colsDePreset('basicas').forEach(k => estado.elegidas[k] = true);
-    }
+    if (!estado.cards) preset('basicas', true);
     estado.abierto = true;
     pintar();
     const b = document.getElementById('rankPdfGenerar');
@@ -152,18 +163,44 @@ const SGADD_RANKPDF = (function () {
 
   function escapar(ev) { if (ev.key === 'Escape') cerrar(); }
 
-  function preset(id) {
-    const cols = colsDePreset(id);
-    estado.elegidas = {};
-    cols.forEach(k => estado.elegidas[k] = true);
+  /**
+   * Un preset REEMPLAZA: tilda sus cards con TODAS sus columnas y apaga
+   * el resto. Acumular haría que «Básicas» después de «Todas» dejara las
+   * ocho, que es justo lo contrario de lo que el botón promete.
+   */
+  function preset(id, callado) {
+    const elegidas = cardsDePreset(id);
+    estado.cards = {};
+    estado.cols = {};
+    cards().forEach(c => {
+      estado.cards[c.id] = elegidas.indexOf(c.id) > -1;
+      estado.cols[c.id] = {};
+      c.cols.forEach(k => estado.cols[c.id][k] = true);
+    });
+    if (!callado) pintar();
+  }
+
+  /** Tilda o destilda una card entera. */
+  function alternarCard(id) {
+    estado.cards = estado.cards || {};
+    estado.cards[id] = !estado.cards[id];
+    /* Al reactivarla vuelven TODAS sus columnas: una card que se prende
+       vacía es un título sin tabla. */
+    if (estado.cards[id] && colsDeCard(id).length === 0) {
+      const c = cards().filter(x => x.id === id)[0];
+      estado.cols[id] = {};
+      if (c) c.cols.forEach(k => estado.cols[id][k] = true);
+    }
     pintar();
   }
 
-  function alternar(clave) {
-    estado.elegidas = estado.elegidas || {};
-    estado.elegidas[clave] = !estado.elegidas[clave];
-    /* Solo se refresca el pie: repintar el modal entero le sacaría el foco
-       a la casilla que se acaba de tocar, y con treinta y cinco eso hace
+  /** Tilda o destilda UNA columna adentro de su card. */
+  function alternarCol(id, clave) {
+    estado.cols = estado.cols || {};
+    estado.cols[id] = estado.cols[id] || {};
+    estado.cols[id][clave] = !estado.cols[id][clave];
+    /* Solo se refresca el pie: repintar el modal entero le sacaría el
+       foco a la casilla recién tocada, y con cuarenta y tres eso hace
        imposible recorrerlas con el teclado. Es la misma regla que ya
        cumplen `scoutMeta()` y el buscador del buzón (punto 13). */
     refrescarPie();
@@ -179,14 +216,14 @@ const SGADD_RANKPDF = (function () {
   function piePreview() {
     const n = seleccion().length;
     if (!n) {
-      return '<span class="zona-peligro zona-texto">Elegí al menos una métrica.</span>';
+      return '<span class="zona-peligro zona-texto">Elegí al menos una card.</span>';
     }
-    const apaisada = n > COLS_VERTICAL;
-    return esc(n + (n === 1 ? ' métrica' : ' métricas'))
+    const cols = seleccion().reduce((a, id) => a + colsDeCard(id).length, 0);
+    const apaisada = maxColumnas() > COLS_VERTICAL;
+    return esc(n + (n === 1 ? ' tabla' : ' tablas') + ' · ' + cols + ' columnas en total')
       + ' · <b>' + (apaisada ? 'A4 apaisada' : 'A4 vertical') + '</b>'
-      + (apaisada
-        ? ' <span class="text-muted">(más de ' + COLS_VERTICAL + ' columnas: se gira la hoja para que entren todas)</span>'
-        : '');
+      + ' <span class="text-muted">(cada card sale como su propia tabla, '
+      + 'con su orden)</span>';
   }
 
   function pintar() {
@@ -203,21 +240,30 @@ const SGADD_RANKPDF = (function () {
   }
 
   function html() {
-    const e = estado.elegidas || {};
-    const bloques = grupos().map(g => `
-      <div class="mb-3">
-        <p class="text-[10px] uppercase tracking-wider text-muted font-display mb-1.5">${esc(g.titulo)}</p>
-        <div class="flex flex-wrap gap-1.5">
-          ${g.cols.map(k => `
+    const marcadas = estado.cards || {};
+    const bloques = cards().map(c => {
+      const activa = !!marcadas[c.id];
+      const elegidas = (estado.cols && estado.cols[c.id]) || {};
+      return `
+      <div class="mb-3 rounded-md border ${activa ? 'border-hairline' : 'border-hairline/40'} p-2.5">
+        <label class="flex items-center gap-2 cursor-pointer mb-1.5">
+          <input type="checkbox" data-card="${esc(c.id)}" ${activa ? 'checked' : ''}
+                 onchange="SGADD_RANKPDF.alternarCard('${escJs(c.id)}')">
+          <span class="text-xs font-display uppercase tracking-wider ${activa ? 'text-ink' : 'text-muted'}">
+            ${esc(c.titulo)}</span>
+          <span class="text-[10px] text-muted font-mono">orden: ${esc(c.orden)}</span>
+        </label>
+        ${activa ? `<div class="flex flex-wrap gap-1.5 pl-6">
+          ${c.cols.map(k => `
             <label class="inline-flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-md border cursor-pointer
-                          ${e[k] ? 'border-accent/50 bg-accent/10 text-ink' : 'border-hairline text-muted hover:text-ink'}">
-              <input type="checkbox" data-col="${esc(k)}" ${e[k] ? 'checked' : ''}
-                     onchange="SGADD_RANKPDF.alternar('${escJs(k)}')"
-                     class="accent-current">
+                          ${elegidas[k] ? 'border-accent/50 bg-accent/10 text-ink' : 'border-hairline text-muted hover:text-ink'}">
+              <input type="checkbox" data-col="${esc(c.id)}|${esc(k)}" ${elegidas[k] ? 'checked' : ''}
+                     onchange="SGADD_RANKPDF.alternarCol('${escJs(c.id)}','${escJs(k)}')">
               <span class="font-mono">${esc(k)}</span>
             </label>`).join('')}
-        </div>
-      </div>`).join('');
+        </div>` : ''}
+      </div>`;
+    }).join('');
 
     return `
       <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="SGADD_RANKPDF.cerrar()"></div>
@@ -226,8 +272,9 @@ const SGADD_RANKPDF = (function () {
         <h3 id="rankPdfTitulo" class="font-display uppercase tracking-wide text-sm text-accent mb-1">
           Ranking del plantel · PDF</h3>
         <p class="text-xs text-muted mb-3">
-          Elegí qué columnas entran. Son las métricas del ranking: no hay
-          Four Factors acá, que son de equipo.
+          Cada card sale como <b>su propia tabla</b>, con su orden y su
+          numeración: el primero en rebotes no es el primero en triples.
+          Adentro de cada una podés sacar columnas.
         </p>
 
         <div class="flex flex-wrap gap-2 mb-4">
@@ -255,12 +302,11 @@ const SGADD_RANKPDF = (function () {
   /* ===================================================================
      EL DOCUMENTO
 
-     Se arma con `jugadoresRanking()`, el MISMO motor de la pantalla, con
-     el mismo pool, el mismo modo y el mismo orden. Recalcularlo por otro
-     camino daría un papel que puede contradecir a la tabla que el DT
-     tiene delante.
+     Una llamada al motor POR CARD, cada una con SU id — o sea con su
+     `orden`. Recalcularlo por otro camino daría un papel que puede
+     contradecir a la tabla que el DT tiene delante.
      =================================================================== */
-  function datos(cols) {
+  function datos() {
     const idx = estado.idx;
     const clave = JUGADORES.filtroEquipo;
     if (!idx || !clave) return null;
@@ -271,39 +317,42 @@ const SGADD_RANKPDF = (function () {
     const hayAcum = conAcum >= Math.ceil(plantel.length * 0.8);
     const modo = (hayAcum && JUGADORES.plantelRankingModo === 'total') ? 'total' : 'promedio';
 
-    const r = jugadoresRanking(idx, JUGADORES.plantelRankingAbierto, {
-      pool: plantel, ambito: 'plantel',
-      umbral: 0, topN: plantel.length,
-      /* Las columnas elegidas viajan al MOTOR: sin esto el resultado
-         trae solo las del grupo abierto y el resto sale en «—».
-         Medido sobre el render de papel antes del arreglo: 29 de 35
-         columnas vacías. */
-      cols: cols,
-      ordenPor: JUGADORES.plantelRankingOrdenPor,
-      dir: JUGADORES.plantelRankingOrdenDir,
-      modo: modo,
+    const tablas = [];
+    seleccion().forEach(id => {
+      const cols = colsDeCard(id);
+      /* CADA CARD CON SU PROPIO `id`: es lo que le da su `orden` y por lo
+         tanto su numeración. Con un id fijo, las ocho tablas saldrían
+         ordenadas por lo mismo y el `#` no diría nada.
+
+         El orden manual de la pantalla NO se propaga: vale para la card
+         que el DT tiene abierta, y aplicárselo a las ocho reordenaría
+         siete por una métrica que ni siquiera tienen. */
+      const r = jugadoresRanking(idx, id, {
+        pool: plantel, ambito: 'plantel',
+        umbral: 0, topN: plantel.length,
+        cols: cols, modo: modo,
+      });
+      if (r) tablas.push(r);
     });
-    if (!r) return null;
+    if (!tablas.length) return null;
 
     const e = idx.get(clave);
     return {
-      r: r,
-      cols: cols,
-      modo: modo,
+      tablas: tablas, modo: modo,
+      ancha: maxColumnas() > COLS_VERTICAL,
       equipo: e ? e.nombre : SGADD.limpiarNombre(plantel[0]['EQUIPO'] || ''),
       logo: (typeof LOGOS !== 'undefined') ? LOGOS.getUrl(clave) : null,
+      jugadores: plantel.length,
     };
   }
 
-  /** El membrete: club, categoría, tramo y fecha. */
+  /** El membrete: club, categoría, tramo y fecha. Va UNA vez arriba. */
   function membrete(d) {
     const club = (typeof CLUB !== 'undefined' && CLUB.estado && CLUB.estado.nombre)
       ? CLUB.estado.nombre : '';
     const pl = (typeof SGADD !== 'undefined' && SGADD.CATALOGO)
       ? (SGADD.CATALOGO.planillas || []).filter(p => p.id === SGADD_APP.estado.planillaId)[0]
       : null;
-    const tramo = etiquetaTramo();
-
     return `
       <header class="rank-membrete">
         <div class="rank-membrete-izq">
@@ -314,8 +363,8 @@ const SGADD_RANKPDF = (function () {
           </div>
         </div>
         <div class="rank-membrete-der">
-          <p class="rank-meta">${esc(d.r.titulo)}</p>
-          <p class="rank-meta">${esc(tramo)}</p>
+          <p class="rank-meta">Ranking del plantel · ${d.jugadores} jugadores</p>
+          <p class="rank-meta">${esc(etiquetaTramo())}</p>
           <p class="rank-meta">${esc(fechaHoy())} · ${esc(d.modo === 'total' ? 'Totales de la fase' : 'Promedios por partido')}</p>
         </div>
       </header>`;
@@ -346,32 +395,42 @@ const SGADD_RANKPDF = (function () {
     return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear();
   }
 
-  function armar(d) {
-    const cols = d.cols;
+  function tabla(r, modo) {
+    const cols = r.columnas;
     const th = cols.map(k => `<th>${esc(k)}</th>`).join('');
-    const filas = d.r.filas.map(f => `
+    const filas = r.filas.map(f => `
       <tr>
         <td class="rank-puesto">${f.puesto}</td>
         <td class="rank-nombre">${esc(f.jugador)}</td>
-        ${cols.map(k => `<td class="rank-dato">${esc(textoCelda(k, f.celdas[k], d.modo))}</td>`).join('')}
+        ${cols.map(k => `<td class="rank-dato">${esc(textoCelda(k, f.celdas[k], modo))}</td>`).join('')}
       </tr>`).join('');
-
-    /* La hoja se gira sola cuando las columnas no entran en vertical. Va
-       con una `@page` NOMBRADA porque `@page` a secas no se puede
-       condicionar por clase (punto 7.7), y sin la clase el resto de las
-       exportaciones —que comparten la vertical— cambiarían de tamaño. */
-    const ancha = cols.length > COLS_VERTICAL;
-
     return `
-      <div class="rank-hoja ${ancha ? 'rank-ancha' : ''} ${cols.length > 12 ? 'rank-apretada' : ''}">
-        ${membrete(d)}
+      <section class="rank-card">
+        <h2 class="rank-card-titulo">${esc(r.titulo)}
+          <span class="rank-card-orden">ordenado por ${esc(r.orden)}</span></h2>
+        ${r.nota ? `<p class="rank-card-nota">${esc(r.nota)}</p>` : ''}
         <table class="rank-tabla">
           <thead><tr><th class="rank-puesto">#</th><th class="rank-nombre">Jugador</th>${th}</tr></thead>
           <tbody>${filas}</tbody>
         </table>
+      </section>`;
+  }
+
+  function armar(d) {
+    /* La hoja se gira solo si alguna tabla no entra en vertical. Va con
+       una `@page` NOMBRADA porque `@page` a secas no se puede condicionar
+       por clase (punto 7.7), y sin la clase el resto de las
+       exportaciones —que comparten la vertical— cambiarían de tamaño. */
+    const apretada = maxColumnas() > 12;
+    return `
+      <div class="rank-hoja ${d.ancha ? 'rank-ancha' : ''} ${apretada ? 'rank-apretada' : ''}">
+        ${membrete(d)}
+        ${d.tablas.map(r => tabla(r, d.modo)).join('')}
         <p class="rank-nota">
-          ${esc(d.r.filas.length)} jugadores del plantel, sin filtro de minutos.
-          ${d.modo === 'total' ? 'Las tasas no se acumulan: una tasa de la fase es la misma tasa.' : ''}
+          ${esc(d.jugadores)} jugadores del plantel, sin filtro de minutos.
+          Cada tabla tiene su propio orden, así que el puesto de un jugador
+          cambia de una a otra.
+          ${d.modo === 'total' ? ' Las tasas no se acumulan: una tasa de la fase es la misma tasa.' : ''}
         </p>
         <footer class="informe-pie">${typeof SGADD_UI !== 'undefined' ? SGADD_UI.pieInforme() : ''}</footer>
       </div>`;
@@ -384,9 +443,8 @@ const SGADD_RANKPDF = (function () {
   }
 
   function generar() {
-    const cols = seleccion();
-    if (!cols.length) return;
-    const d = datos(cols);
+    if (!seleccion().length) return;
+    const d = datos();
     cerrar();
     if (!d) return;
 
@@ -420,7 +478,12 @@ const SGADD_RANKPDF = (function () {
   }
 
   function nombreArchivo(d) {
-    const base = 'Ranking ' + (d.equipo || '') + ' - ' + (d.r.titulo || '');
+    /* Con una sola tabla se nombra por ella; con varias, el nombre es del
+       ranking entero. Meter ocho títulos en el nombre daría un archivo
+       que no se puede leer en la carpeta. */
+    const base = d.tablas.length === 1
+      ? 'Ranking ' + (d.equipo || '') + ' - ' + (d.tablas[0].titulo || '')
+      : 'Ranking ' + (d.equipo || '');
     return (typeof SGADD_UI !== 'undefined')
       ? SGADD_UI.sanearNombreArchivo(base, 'Ranking_Plantel') : 'Ranking_Plantel';
   }
@@ -433,9 +496,9 @@ const SGADD_RANKPDF = (function () {
   }
 
   return {
-    abrir, cerrar, generar, preset, alternar,
+    abrir, cerrar, generar, preset, alternarCard, alternarCol,
     PRESETS, COLS_VERTICAL,
-    grupos, todasLasClaves, colsDePreset, seleccion,
+    cards, cardsIds, colsDeCard, cardsDePreset, seleccion, maxColumnas,
     estado,
   };
 })();
