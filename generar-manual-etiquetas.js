@@ -550,15 +550,20 @@ function documento() {
   .pie-marca { font-weight: 700; color: #334155; }
   .pie-marca-sup { font-size: .62em; vertical-align: super; line-height: 0; margin-left: .5px; }
   @media print {
+    /* Los mismos 9pt que el panel: 7,5pt en papel no se leen (ver el
+       comentario del bloque en index.html). Un manual y un informe
+       firmados con dos cuerpos distintos se notan al ponerlos juntos. */
     .pie-motorstats {
       display: flex !important;
       position: fixed; bottom: 0; left: 0; width: 100%;
-      align-items: center; justify-content: center; gap: 5px;
-      padding: 2mm 10mm 3mm;
-      font-size: 7.5pt; color: #4b5563;
-      background: #fff; border-top: 1px solid #cbd5e1; z-index: 9999;
+      align-items: center; justify-content: center; gap: 6px;
+      padding: 2.2mm 10mm 2.6mm;
+      font-size: 9pt; line-height: 1.25; color: #1f2937;
+      background: #fff; border-top: .4mm solid #94a3b8; z-index: 9999;
       print-color-adjust: exact; -webkit-print-color-adjust: exact;
     }
+    .pie-motorstats .pie-logo { width: 17px; height: 17px; }
+    .pie-motorstats .pie-marca { font-size: 10pt; color: #0f172a; }
     /* El selector de nivel no se imprime: es un control, y el PDF queda
        congelado en el nivel que estaba elegido. */
     .selector select { pointer-events: none; }

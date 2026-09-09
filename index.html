@@ -483,13 +483,14 @@
     display: flex; align-items: center; justify-content: center;
     background: #fff; color: #4b5563;
     border: 1px solid var(--hairline, #282828); border-radius: .375rem;
-    padding: .5rem .75rem; font-size: 10px; line-height: 1.3;
+    padding: .5rem .75rem; font-size: 12px; line-height: 1.25;
   }
-  .pie-previa-caja .pie-marca { font-weight: 700; color: #334155; }
+  .pie-previa-caja .pie-marca { font-weight: 700; font-size: 13px; color: #0f172a; }
   .pie-previa-caja .pie-marca-sup {
     font-size: .62em; vertical-align: super; line-height: 0; margin-left: .5px;
   }
-  .pie-previa-caja .pie-logo { width: 14px; height: 14px; object-fit: contain; }
+  .pie-previa-caja .pie-logo { width: 17px; height: 17px; object-fit: contain; }
+  .pie-previa-caja .pie-ig { width: 15px; height: 15px; }
   @media print { .pie-previa { display: none !important; } }
 
   .pie-bloque {
@@ -504,22 +505,46 @@
      toda imagen de fondo y buena parte de los graficos (punto 7.1). */
   @media print {
     .pie-logo, .pie-ig { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-    /* La firma, fija abajo y en TODAS las hojas. */
+    /* La firma, fija abajo y en TODAS las hojas.
+
+       EL TAMANO SE MIDIO CONTRA LA HOJA, no contra la pantalla. La
+       especificacion original pedia `font-size: 10px`, que en pantalla
+       se lee bien; en papel esos mismos 10px son 7,5pt, o sea el cuerpo
+       mas chico de todo el documento —el de las notas al pie de cada
+       card— puesto ademas solo en el medio de una franja de 9mm. En la
+       vista previa de impresion, que dibuja el A4 a unos 56dpi, 7,5pt
+       son 5,8px de alto: no se resuelve una sola letra y la linea entera
+       se lee como una mancha. Por eso el club reporto tres veces que el
+       pie no salia cuando SI estaba en las ocho hojas del PDF.
+
+       Va a 9pt con la marca a 10pt, y el filete de arriba pasa a #94a3b8
+       —el mismo gris con el que el papel dibuja el borde de las
+       tarjetas— porque #cbd5e1 da 1,48 de contraste sobre blanco, o sea
+       una linea que en papel no existe. */
     .pie-motorstats {
       display: flex !important;
       position: fixed; bottom: 0; left: 0; width: 100%;
       align-items: center; justify-content: center;
-      padding: 2mm 10mm 3mm;
-      font-size: 7.5pt; color: #4b5563 !important;
+      padding: 2.2mm 10mm 2.6mm;
+      font-size: 9pt; line-height: 1.25; color: #1f2937 !important;
       background: #fff;
-      border-top: 1px solid #cbd5e1;
+      border-top: .4mm solid #94a3b8;
       z-index: 9999;
     }
-    .pie-motorstats .pie-marca { font-weight: 700; color: #334155 !important; }
+    .pie-motorstats .pie-bloque { gap: .45rem; }
+    .pie-motorstats .pie-marca {
+      font-weight: 700; font-size: 10pt; color: #0f172a !important;
+    }
     .pie-motorstats .pie-marca-sup {
       font-size: .62em; vertical-align: super; line-height: 0;
       margin-left: .5px; letter-spacing: .02em;
     }
+    /* El logo y el icono acompanan al cuerpo: son lo unico que se
+       resuelve a cualquier zoom, asi que si el texto crece y ellos no,
+       la linea queda desbalanceada. Se acotan ACA y no en la regla base
+       de `.pie-logo`, que la comparte el pie del menu lateral. */
+    .pie-motorstats .pie-logo { width: 17px; height: 17px; }
+    .pie-motorstats .pie-ig { width: 15px; height: 15px; }
     /* Y EL DEL FLUJO SE VA: sale al final del documento, o sea en la
        ultima hoja, y ahi coincidiria con el fijo. Se deja en el DOM
        —lo arma el mismo helper y las tres exportaciones lo emiten— y
@@ -2252,7 +2277,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=192" />
+<link rel="stylesheet" href="sgadd.css?v=193" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2430,43 +2455,43 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=192"></script>
+<script src="js/sgadd-club.js?v=193"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=192"></script>
-<script src="js/sgadd-core.js?v=192"></script>
-<script src="js/sgadd-auth.js?v=192"></script>
-<script src="js/sgadd-glosario.js?v=192"></script>
-<script src="js/sgadd-glosarioui.js?v=192"></script>
-<script src="js/sgadd-comparativa.js?v=192"></script>
-<script src="js/sgadd-comparativaui.js?v=192"></script>
-<script src="js/sgadd-confirmar.js?v=192"></script>
-<script src="js/sgadd-landing.js?v=192"></script>
-<script src="js/sgadd-login.js?v=192"></script>
-<script src="js/sgadd-data.js?v=192"></script>
-<script src="js/sgadd-clientes.js?v=192"></script>
-<script src="js/sgadd-ui.js?v=192"></script>
-<script src="js/sgadd-app.js?v=192"></script>
-<script src="js/sgadd-clasificacion.js?v=192"></script>
+<script src="js/sgadd-config.js?v=193"></script>
+<script src="js/sgadd-core.js?v=193"></script>
+<script src="js/sgadd-auth.js?v=193"></script>
+<script src="js/sgadd-glosario.js?v=193"></script>
+<script src="js/sgadd-glosarioui.js?v=193"></script>
+<script src="js/sgadd-comparativa.js?v=193"></script>
+<script src="js/sgadd-comparativaui.js?v=193"></script>
+<script src="js/sgadd-confirmar.js?v=193"></script>
+<script src="js/sgadd-landing.js?v=193"></script>
+<script src="js/sgadd-login.js?v=193"></script>
+<script src="js/sgadd-data.js?v=193"></script>
+<script src="js/sgadd-clientes.js?v=193"></script>
+<script src="js/sgadd-ui.js?v=193"></script>
+<script src="js/sgadd-app.js?v=193"></script>
+<script src="js/sgadd-clasificacion.js?v=193"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=192"></script>
-<script src="js/sgadd-configui.js?v=192"></script>
-<script src="js/sgadd-estados.js?v=192"></script>
-<script src="js/sgadd-buzon.js?v=192"></script>
-<script src="js/sgadd-charts.js?v=192"></script>
-<script src="js/sgadd-personalidad.js?v=192"></script>
-<script src="js/sgadd-rankings.js?v=192"></script>
-<script src="js/sgadd-partido.js?v=192"></script>
-<script src="js/sgadd-informe.js?v=192"></script>
-<script src="js/sgadd-ficha.js?v=192"></script>
-  <script src="js/sgadd-rankingpdf.js?v=192"></script>
-<script src="js/sgadd-equipos.js?v=192"></script>
+<script src="js/sgadd-hub.js?v=193"></script>
+<script src="js/sgadd-configui.js?v=193"></script>
+<script src="js/sgadd-estados.js?v=193"></script>
+<script src="js/sgadd-buzon.js?v=193"></script>
+<script src="js/sgadd-charts.js?v=193"></script>
+<script src="js/sgadd-personalidad.js?v=193"></script>
+<script src="js/sgadd-rankings.js?v=193"></script>
+<script src="js/sgadd-partido.js?v=193"></script>
+<script src="js/sgadd-informe.js?v=193"></script>
+<script src="js/sgadd-ficha.js?v=193"></script>
+  <script src="js/sgadd-rankingpdf.js?v=193"></script>
+<script src="js/sgadd-equipos.js?v=193"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=192"></script>
-<script src="js/sgadd-jugadores.js?v=192"></script>
-<script src="js/sgadd-4factores.js?v=192"></script>
-<script src="js/sgadd-scouting.js?v=192"></script>
-<script src="js/sgadd-diagnostico.js?v=192"></script>
+<script src="js/sgadd-niveles.js?v=193"></script>
+<script src="js/sgadd-jugadores.js?v=193"></script>
+<script src="js/sgadd-4factores.js?v=193"></script>
+<script src="js/sgadd-scouting.js?v=193"></script>
+<script src="js/sgadd-diagnostico.js?v=193"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

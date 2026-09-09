@@ -359,6 +359,70 @@ if (fs.existsSync(MANUAL)) {
 }
 
 /* =====================================================================
+   4 ter · Y EL PIE TIENE QUE LEERSE, no solo estar
+
+   Los checks de arriba pasaban en verde mientras el club reportaba tres
+   veces que el pie no salia — y tenian razon a medias: el pie SI estaba
+   en las ocho hojas del PDF, medido, pero a 7,5pt.
+
+   MEDIDO a la resolucion de la vista previa de impresion, que dibuja un
+   A4 de 794px CSS sobre unos 463px de pantalla (~56dpi):
+
+     7,5pt  ->  5,8px de alto  ->  no se resuelve una letra: es una mancha
+     9pt    ->  7,0px de alto  ->  se lee la linea entera
+
+   `position: fixed` y `z-index` no eran la propiedad que hacia falta
+   defender: era el CUERPO. Un test que solo mira el mecanismo deja pasar
+   una firma invisible, que es exactamente lo que paso.
+   ===================================================================== */
+bloque('4 ter · El pie se lee');
+
+const PIE_PRINT = (ESTILO.match(/[.]pie-motorstats [{][^}]*[}]/g) || []).join('|');
+ok(/font-size: 9pt/.test(PIE_PRINT), 'la linea del pie va a 9pt');
+ok(!/font-size: 7[.]5pt/.test(PIE_PRINT),
+   '  y NO a 7,5pt, que es el cuerpo que no se leia');
+ok(/[.]pie-motorstats [.]pie-marca [{][^}]*font-size: 10pt/.test(ESTILO),
+   'la marca va un punto mas grande que el resto de la linea');
+
+/* El filete de arriba en #cbd5e1 da 1,48 de contraste sobre blanco: en
+   papel es una linea que no existe. #94a3b8 (2,56) es el mismo gris con
+   el que el papel ya dibuja el borde de las tarjetas. */
+ok(/border-top: [.]4mm solid #94a3b8/.test(PIE_PRINT), 'el filete se ve en papel');
+ok(!/border-top: 1px solid #cbd5e1/.test(PIE_PRINT),
+   '  y ya no es el gris invisible');
+
+/* LA FRANJA DECLARADA TIENE QUE ENTRAR EN LOS 15mm RESERVADOS, y se
+   calcula de las propias declaraciones: si alguien agranda el cuerpo sin
+   mirar el `@page`, el pie pisa la ultima linea de cada hoja — y eso no
+   se ve auditando en pantalla, solo en el PDF. */
+const unoDe = (fuente, re) => { const m = fuente.match(re); return m ? parseFloat(m[1]) : null; };
+const pad = PIE_PRINT.match(/padding: ([0-9.]+)mm 10mm ([0-9.]+)mm/);
+const cuerpoPt = unoDe(PIE_PRINT, /font-size: ([0-9.]+)pt/);
+const marcaPt = unoDe(ESTILO, /[.]pie-motorstats [.]pie-marca [{][^}]*font-size: ([0-9.]+)pt/);
+const interlinea = unoDe(PIE_PRINT, /line-height: ([0-9.]+)/);
+const borde = unoDe(PIE_PRINT, /border-top: ([0-9.]+)mm/);
+ok(!!pad && cuerpoPt && marcaPt && interlinea && borde,
+   'se pudieron leer las seis medidas del pie');
+const altoPie = parseFloat(pad[1]) + parseFloat(pad[2]) + borde
+              + (Math.max(cuerpoPt, marcaPt) * interlinea) / 72 * 25.4;
+ok(altoPie < 15, 'la franja del pie entra en los 15mm reservados',
+   altoPie.toFixed(2) + 'mm');
+ok(altoPie > 6, '  y no queda tan fina que la firma se pegue al borde',
+   altoPie.toFixed(2) + 'mm');
+
+/* LA VISTA PREVIA DEL MODAL NO PUEDE MENTIR SOBRE EL TAMANO: es lo que
+   el admin mira para decidir si generar. Si se imprime a 9pt (12px) y la
+   previa se dibuja a 10px, la previa promete otra cosa. */
+ok(/[.]pie-previa-caja [{][^}]*font-size: 12px/.test(ESTILO),
+   'la previa se dibuja al mismo cuerpo que se imprime');
+
+/* Y EL MANUAL FIRMA IGUAL: son dos documentos del mismo producto y
+   terminan uno al lado del otro en la carpeta de la categoria. */
+const GEN_PIE = fs.readFileSync(path.join(__dirname, 'generar-manual-etiquetas.js'), 'utf8');
+ok(/font-size: 9pt; line-height: 1[.]25/.test(GEN_PIE),
+   'el manual firma con el mismo cuerpo que los cinco PDF');
+ok(/border-top: [.]4mm solid #94a3b8/.test(GEN_PIE), '  y con el mismo filete');
+/* =====================================================================
    5 · LO QUE NO SE TOCO
 
    El escritorio no cambia: todo lo de arriba vive dentro del bloque

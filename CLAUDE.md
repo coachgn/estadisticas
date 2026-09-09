@@ -42,7 +42,7 @@ node test-jsonclub.js      # 105 tests · los JSON de club, el validador, el ais
 node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 175 tests · partidos sin box score: suman a la tabla, no a las métricas
-node test-responsive.js    #  77 tests · desborde, targets táctiles, modales, el papel y el PIE
+node test-responsive.js    #  88 tests · desborde, targets táctiles, modales, el papel y el PIE
 node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
@@ -57,7 +57,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4739 tests en total. Todos tienen que dar verde antes de commitear.**
+**4750 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -7038,3 +7038,69 @@ ranking · 8 hojas    CON pie  8492 glifos · 9 imágenes
 
 Setenta glifos es exactamente el largo de la firma. **Al verificar algo
 visual, contar la cosa que se quiere ver, no una proxy.**
+
+### Y AUN ASÍ FALTABA LA MITAD · el pie estaba, pero no se leía
+
+El club volvió una tercera vez, con la captura del diálogo de impresión:
+al pie de la hoja había **una manchita** donde tenía que ir la firma. Lo
+que se auditó esta vez, sobre el ranking real de ATENAS 'A' con datos de
+GViz y el código publicado:
+
+```
+ancestros del pie      body y html · overflow visible · sin transform,
+                       filter, backdrop-filter, contain ni will-change
+nada en el documento   crea un bloque contenedor para el `fixed`
+franja del pie         9,23mm contra los 15mm que reserva cada @page
+el PDF                 6 hojas · una imagen del logo en CADA una
+```
+
+O sea: **el mecanismo estaba bien y el pie estaba en todas las hojas.**
+Las tres cosas que el club pidió revisar —un `overflow: hidden` que lo
+cortara, el `@page` sin espacio, el `fixed` roto por un ancestro— dieron
+limpias las tres.
+
+**Lo que fallaba era el CUERPO.** La especificación original pedía
+`font-size: 10px`, que en pantalla se lee bien; en papel esos mismos
+10px son **7,5pt**, el cuerpo más chico de todo el documento —el de las
+notas al pie de cada card— puesto además solo en el medio de una franja
+de 9mm. Y la vista previa de impresión dibuja el A4 de 794px CSS sobre
+unos 463px de pantalla, o sea a **~56dpi**:
+
+```
+7,5pt  →  5,8px de alto  →  no se resuelve una letra: es una mancha
+9pt    →  7,0px de alto  →  se lee la línea entera
+```
+
+Se reprodujo el síntoma exacto rasterizando la hoja a esa misma
+resolución (DPR 0,583 sobre un viewport de 794px, que da los 463px del
+diálogo) con los valores viejos y con los nuevos. Con los viejos la
+firma es un borrón gris con un punto oscuro —el logo, que es lo único
+que se resuelve a cualquier zoom— y **eso es exactamente lo que el club
+estuvo mirando tres veces**.
+
+Va a **9pt**, la marca a 10pt, el logo a 17px y el ícono a 15px. El
+filete de arriba pasa de `#cbd5e1` a `#94a3b8`: el primero da **1,48**
+de contraste sobre blanco, o sea una línea que en papel no existe, y el
+segundo es el mismo gris con el que el papel ya dibuja el borde de las
+tarjetas. El color de texto no era el problema —`#4b5563` ya daba 7,56—
+pero se cargó a `#1f2937` (14,68) porque a 9pt sobre una franja aislada
+conviene que pese.
+
+La franja quedó en **9,56mm**, así que sigue entrando holgada en los
+15mm reservados, y hay un test que **recalcula esa altura desde las
+propias declaraciones** (padding + borde + cuerpo × interlínea): si
+alguien agranda la tipografía sin mirar el `@page`, el pie pisa la
+última línea de cada hoja y eso no se ve auditando en pantalla.
+
+**La lección, que es la del punto 51 llevada un paso más:** los once
+tests del pie estaban en verde —`position: fixed`, `bottom: 0`,
+`z-index`, la excepción de los tres ocultados, los 15mm de las cuatro
+`@page`— mientras la firma era ilegible. Todos defendían el MECANISMO y
+ninguno el RESULTADO. *Que el elemento esté no es que se vea, igual que
+que se dibuje algo no es que se lea.* Los tests nuevos fijan el cuerpo,
+el filete y la altura; verificados al revés, revirtiendo el arreglo,
+caen **5**.
+
+Y la vista previa del modal se subió al mismo cuerpo: si se imprime a
+9pt y la previa se dibuja a 10px, la previa promete otra cosa que la que
+sale.
