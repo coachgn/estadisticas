@@ -42,7 +42,7 @@ node test-jsonclub.js      # 105 tests · los JSON de club, el validador, el ais
 node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 175 tests · partidos sin box score: suman a la tabla, no a las métricas
-node test-responsive.js    # 123 tests · desborde, targets táctiles, modales, el papel, el PIE
+node test-responsive.js    # 126 tests · desborde, targets táctiles, modales, el papel, el PIE
                            #             el aviso de version y el diagnostico del pie
 node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
@@ -58,7 +58,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4785 tests en total. Todos tienen que dar verde antes de commitear.**
+**4788 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -7237,6 +7237,64 @@ Cuatro cosas que hay que respetar al tocarlo:
   propiedades y el `catch`, pero la verificación de verdad fue correr los
   cuatro caminos en el navegador: sano `ok: true`; con `transform` en el
   body y con `filter` en el html, el motivo exacto.
+
+### LA SEXTA VUELTA · el PDF del club, decodificado
+
+El club mandó el archivo generado, que era el dato que faltaba desde la
+primera vuelta. Auditado con la enumeración de páginas correcta y
+decodificando el **ToUnicode** de cada fuente —contar glifos no alcanza:
+hay que LEER la firma—:
+
+```
+el de acá, con SUS parametros de dialogo   8 hojas · img [2,1,1,1,1,1,1,1]
+Ranking VILLA SAN CARLOS 'A'               8 hojas · img [1,0,0,0,0,0,0,0]
+Ranking C.E.Y E                            8 hojas · img [1,0,0,0,0,0,0,0]
+```
+
+**El logo del pie no se dibuja en ninguna hoja de sus dos archivos**, y de
+toda la firma sobrevive UNA SOLA COSA: el **«AR»** del `<sup>`. Las ocho
+hojas de los dos PDF terminan exactamente en «AR», y en ninguna aparece
+«MotorStats» ni «Generado el».
+
+Eso es a la vez el síntoma y la pista. El `<sup>` lleva
+`vertical-align: super` con `line-height: 0`: es **el único glifo del pie
+que se dibuja por encima de la línea de base y cuya caja no empuja la
+línea**. O sea que el elemento fijo SÍ se alcanza y SÍ se repite hoja por
+hoja —el «AR» lo prueba, está en las ocho— y lo que falla es dónde cae el
+resto de la línea respecto del borde que Chromium considera imprimible.
+
+Y es la manchita que el club venía describiendo desde la primera captura.
+
+#### Lo que se probó y NO sirve
+
+- **`<tfoot>` / `table-footer-group`**, que era el pedido explícito.
+  Medido: sale **solo en la última hoja**. Chromium repite `<thead>` en
+  cada página pero **no** repite el footer group. Se descartó con el
+  experimento hecho, no de memoria.
+- **Reproducir con sus parámetros de diálogo** (A4, márgenes por defecto
+  0,4in, fondos desactivados). Da las mismas **8 hojas** que su PDF —o sea
+  que el paginado sí se reprodujo— y aun así la firma sale entera en las
+  ocho. El defecto no se reproduce de este lado.
+
+#### Lo que se hizo
+
+Se le saca a Chromium la decisión. El elemento fijo pasa de ser una barra
+de 9,5mm anclada con `bottom: 0` a **cubrir la hoja entera**
+(`top: 0; bottom: 0`), con la firma apoyada abajo por
+`align-items: flex-end`. La posición deja de salir de resolver un borde y
+pasa a salir del layout, que es lo que no cambia entre motores.
+
+- **El elemento exterior va SIN FONDO.** Cubre la hoja entera: un fondo
+  ahí taparía el contenido. El blanco y el filete viven en
+  `.pie-motorstats-barra`, que es lo único que se ve.
+- **Medido después**: mismas 8 hojas, `img [2,1,1,1,1,1,1,1]`, firma
+  completa en las ocho y a los mismos 18,9mm del borde. Cero regresión.
+
+**Honestidad sobre esto:** no se pudo reproducir el defecto, así que no se
+puede afirmar que esto lo cierra. Lo que sí se puede afirmar es que quita
+la dependencia del único punto que la evidencia señala —cómo se resuelve
+`bottom: 0` contra el borde imprimible— sin mover nada de lo que ya
+funciona.
 
 #### Y por qué NO se movió el pie adentro de `#rankingSalida`
 

@@ -465,7 +465,11 @@ const SGADD_UI = (function () {
       n.setAttribute('aria-hidden', 'true');   // es una firma, no contenido
       document.body.appendChild(n);
     }
-    n.innerHTML = pieInforme(fecha);
+    /* LA FIRMA VA EN UNA BARRA INTERIOR, y el elemento fijo cubre la
+       hoja entera. Ver el comentario del CSS: es lo que saca la
+       posicion de la firma de la resolucion de `bottom: 0`. */
+    n.innerHTML = '<div class="pie-motorstats-barra">'
+      + pieInforme(fecha) + '</div>';
     /* Al final del body a propósito: si otro nodo se agrega después, el
        pie tiene que seguir siendo el último para que el z-index no
        dependa del orden de inserción. */

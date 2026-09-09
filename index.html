@@ -528,15 +528,49 @@
        —el mismo gris con el que el papel dibuja el borde de las
        tarjetas— porque #cbd5e1 da 1,48 de contraste sobre blanco, o sea
        una linea que en papel no existe. */
+    /* EL ELEMENTO FIJO CUBRE LA HOJA ENTERA Y LA FIRMA SE APOYA ABAJO.
+
+       Antes era una barra de 9,5mm con `bottom: 0`, y eso resultó ser
+       un filo de navaja. MEDIDO sobre dos PDF que mandó el club, con
+       la enumeración de páginas y el ToUnicode decodificados:
+
+         el de acá, mismos parámetros   8 hojas · img [2,1,1,1,1,1,1,1]
+         VILLA SAN CARLOS               8 hojas · img [1,0,0,0,0,0,0,0]
+         C.E.Y E                        8 hojas · img [1,0,0,0,0,0,0,0]
+
+       O sea que en su Chrome el logo del pie NO se dibuja en ninguna
+       hoja, y de toda la firma sobrevive UNA SOLA COSA: el «AR» del
+       `<sup>` —el único glifo que se pinta por encima de la línea de
+       base, porque lleva `vertical-align: super` con `line-height: 0`—.
+       Las ocho hojas de sus dos archivos terminan exactamente en «AR» y
+       en ninguna aparece «MotorStats» ni «Generado el».
+
+       El elemento se alcanza y se repite hoja por hoja —el «AR» lo
+       prueba— así que lo que falla es DÓNDE cae el resto de la línea
+       respecto del borde que Chromium considera imprimible. Acá no se
+       reproduce ni forzando sus mismos parámetros de diálogo, así que
+       en vez de seguir persiguiendo el borde se le saca la decisión:
+       el elemento fijo cubre la hoja entera (`top: 0; bottom: 0`) y la
+       firma se apoya abajo con `align-items: flex-end`. La posición
+       deja de salir de resolver un borde y pasa a salir del layout.
+
+       El elemento exterior va SIN FONDO a propósito: cubre la hoja
+       entera y un fondo ahí taparía el contenido. El blanco y el filete
+       viven en la barra interior, que es lo único que se ve. */
     .pie-motorstats {
       display: flex !important;
-      position: fixed; bottom: 0; left: 0; width: 100%;
-      align-items: center; justify-content: center;
+      position: fixed; top: 0; bottom: 0; left: 0; right: 0; width: 100%;
+      align-items: flex-end; justify-content: center;
+      padding: 0; margin: 0; border: 0; background: none;
+      z-index: 9999; pointer-events: none;
+    }
+    .pie-motorstats-barra {
+      display: flex; align-items: center; justify-content: center;
+      width: 100%;
       padding: 2.2mm 10mm 2.6mm;
       font-size: 9pt; line-height: 1.25; color: #1f2937 !important;
       background: #fff;
       border-top: .4mm solid #94a3b8;
-      z-index: 9999;
     }
     .pie-motorstats .pie-bloque { gap: .45rem; }
     .pie-motorstats .pie-marca {
@@ -2284,7 +2318,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=195" />
+<link rel="stylesheet" href="sgadd.css?v=196" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2462,43 +2496,43 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=195"></script>
+<script src="js/sgadd-club.js?v=196"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=195"></script>
-<script src="js/sgadd-core.js?v=195"></script>
-<script src="js/sgadd-auth.js?v=195"></script>
-<script src="js/sgadd-glosario.js?v=195"></script>
-<script src="js/sgadd-glosarioui.js?v=195"></script>
-<script src="js/sgadd-comparativa.js?v=195"></script>
-<script src="js/sgadd-comparativaui.js?v=195"></script>
-<script src="js/sgadd-confirmar.js?v=195"></script>
-<script src="js/sgadd-landing.js?v=195"></script>
-<script src="js/sgadd-login.js?v=195"></script>
-<script src="js/sgadd-data.js?v=195"></script>
-<script src="js/sgadd-clientes.js?v=195"></script>
-<script src="js/sgadd-ui.js?v=195"></script>
-<script src="js/sgadd-app.js?v=195"></script>
-<script src="js/sgadd-clasificacion.js?v=195"></script>
+<script src="js/sgadd-config.js?v=196"></script>
+<script src="js/sgadd-core.js?v=196"></script>
+<script src="js/sgadd-auth.js?v=196"></script>
+<script src="js/sgadd-glosario.js?v=196"></script>
+<script src="js/sgadd-glosarioui.js?v=196"></script>
+<script src="js/sgadd-comparativa.js?v=196"></script>
+<script src="js/sgadd-comparativaui.js?v=196"></script>
+<script src="js/sgadd-confirmar.js?v=196"></script>
+<script src="js/sgadd-landing.js?v=196"></script>
+<script src="js/sgadd-login.js?v=196"></script>
+<script src="js/sgadd-data.js?v=196"></script>
+<script src="js/sgadd-clientes.js?v=196"></script>
+<script src="js/sgadd-ui.js?v=196"></script>
+<script src="js/sgadd-app.js?v=196"></script>
+<script src="js/sgadd-clasificacion.js?v=196"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=195"></script>
-<script src="js/sgadd-configui.js?v=195"></script>
-<script src="js/sgadd-estados.js?v=195"></script>
-<script src="js/sgadd-buzon.js?v=195"></script>
-<script src="js/sgadd-charts.js?v=195"></script>
-<script src="js/sgadd-personalidad.js?v=195"></script>
-<script src="js/sgadd-rankings.js?v=195"></script>
-<script src="js/sgadd-partido.js?v=195"></script>
-<script src="js/sgadd-informe.js?v=195"></script>
-<script src="js/sgadd-ficha.js?v=195"></script>
-  <script src="js/sgadd-rankingpdf.js?v=195"></script>
-<script src="js/sgadd-equipos.js?v=195"></script>
+<script src="js/sgadd-hub.js?v=196"></script>
+<script src="js/sgadd-configui.js?v=196"></script>
+<script src="js/sgadd-estados.js?v=196"></script>
+<script src="js/sgadd-buzon.js?v=196"></script>
+<script src="js/sgadd-charts.js?v=196"></script>
+<script src="js/sgadd-personalidad.js?v=196"></script>
+<script src="js/sgadd-rankings.js?v=196"></script>
+<script src="js/sgadd-partido.js?v=196"></script>
+<script src="js/sgadd-informe.js?v=196"></script>
+<script src="js/sgadd-ficha.js?v=196"></script>
+  <script src="js/sgadd-rankingpdf.js?v=196"></script>
+<script src="js/sgadd-equipos.js?v=196"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=195"></script>
-<script src="js/sgadd-jugadores.js?v=195"></script>
-<script src="js/sgadd-4factores.js?v=195"></script>
-<script src="js/sgadd-scouting.js?v=195"></script>
-<script src="js/sgadd-diagnostico.js?v=195"></script>
+<script src="js/sgadd-niveles.js?v=196"></script>
+<script src="js/sgadd-jugadores.js?v=196"></script>
+<script src="js/sgadd-4factores.js?v=196"></script>
+<script src="js/sgadd-scouting.js?v=196"></script>
+<script src="js/sgadd-diagnostico.js?v=196"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

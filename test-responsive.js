@@ -268,7 +268,8 @@ ok(/getElementById\(ID_PIE\)/.test(UI),
 
 /* LA FECHA SE CALCULA AL IMPRIMIR y no al armar el documento: entre que
    se abre el modal y se toca Generar puede pasar la medianoche. */
-ok(/n\.innerHTML = pieInforme\(fecha\)/.test(UI),
+ok(/n\.innerHTML = '<div class="pie-motorstats-barra">'/.test(UI)
+   && /pieInforme\(fecha\)/.test(UI),
    'el contenido se rearma en cada inyección, con la fecha de ese momento');
 
 /* --- EL CSS --- */
@@ -377,7 +378,25 @@ if (fs.existsSync(MANUAL)) {
    ===================================================================== */
 bloque('4 ter · El pie se lee');
 
-const PIE_PRINT = (ESTILO.match(/[.]pie-motorstats [{][^}]*[}]/g) || []).join('|');
+/* El CUERPO y el FILETE viven ahora en `.pie-motorstats-barra`: el
+   elemento fijo cubre la hoja entera y no lleva ni fondo ni borde, asi
+   que medir sobre el exterior seria medir la caja equivocada. */
+const PIE_PRINT = (ESTILO.match(/[.]pie-motorstats-barra [{][^}]*[}]/g) || []).join('|');
+const PIE_CAJA = (ESTILO.match(/[.]pie-motorstats [{][^}]*[}]/g) || []).join('|');
+
+/* EL ANCLA. Antes era una barra de 9,5mm con `bottom: 0` y eso resulto un
+   filo de navaja: en los dos PDF que mando el club el logo no se dibuja en
+   ninguna hoja y de la firma solo sobrevive el «AR» del <sup>, que es el
+   unico glifo que se pinta por encima de la linea de base. Ahora el
+   elemento fijo cubre la HOJA ENTERA y la firma se apoya abajo por layout,
+   asi que la posicion deja de depender de como se resuelva un borde. */
+ok(/top: 0/.test(PIE_CAJA) && /bottom: 0/.test(PIE_CAJA),
+   'el elemento fijo cubre la hoja entera, de arriba a abajo');
+ok(/align-items: flex-end/.test(PIE_CAJA),
+   '  y la firma se apoya abajo por layout, no por resolver el borde');
+/* Cubre la hoja entera: un fondo ahi taparia el contenido. */
+ok(/background: none/.test(PIE_CAJA),
+   '  sin fondo: el blanco y el filete van en la barra interior');
 ok(/font-size: 9pt/.test(PIE_PRINT), 'la linea del pie va a 9pt');
 ok(!/font-size: 7[.]5pt/.test(PIE_PRINT),
    '  y NO a 7,5pt, que es el cuerpo que no se leia');
