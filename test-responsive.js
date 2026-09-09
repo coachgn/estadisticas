@@ -480,6 +480,69 @@ ok(/\\u26a0/.test(UI) || /\u26a0/.test(UI),
    '  y lleva un simbolo, no solo color');
 
 /* =====================================================================
+   4 quinquies · EL DIAGNOSTICO DEL PIE, en el navegador de quien imprime
+
+   El pie se repite hoja por hoja porque es `position: fixed` colgado del
+   `body`. Se rompe de tres maneras y NINGUNA deja un error en consola:
+
+     1. el nodo no llega a inyectarse;
+     2. la REGLA de @media print no esta en el CSS cargado —`index.html`
+        no lleva `?v=`, asi que su <style> es justo lo que se queda viejo;
+     3. un ancestro declara transform / filter / perspective / contain /
+        will-change / backdrop-filter, y el fixed se ancla A ESE ELEMENTO
+        en vez de a la hoja: el pie deja de repetirse.
+
+   Existe porque el defecto se reporto CUATRO veces sin poder reproducirse
+   de este lado, con la auditoria dando limpia las cuatro. Cuando no se
+   puede medir el caso, hay que darle al otro lado la forma de medirlo.
+   ===================================================================== */
+bloque('4 quinquies · El diagnostico del pie');
+
+['diagnosticarPie', 'reglaPieImpresion', 'excepcionesDelPie',
+ 'ancestrosQueRompenElPie'].forEach(f => {
+  ok(new RegExp('function ' + f).test(UI), 'existe ' + f + '()');
+  ok(new RegExp('\\b' + f + '\\b[,\\s]').test(UI.slice(UI.lastIndexOf('return {'))),
+     '  y esta exportado');
+});
+
+/* Las SEIS propiedades que crean un bloque contenedor para `fixed`. Si se
+   saca una, el diagnostico deja de ver justo el caso que denuncia. */
+const CUERPO_ANC = (UI.match(/function ancestrosQueRompenElPie[\s\S]*?\n  \}/) || [''])[0];
+['transform', 'filter', 'perspective', 'contain', 'willChange',
+ 'backdropFilter'].forEach(k => {
+  ok(CUERPO_ANC.indexOf(k) > -1, 'se mira ' + k);
+});
+
+/* Solo `body` y `html` pueden ser ancestros: el pie cuelga del body. */
+ok(/document\.body, document\.documentElement/.test(CUERPO_ANC),
+   'se recorre body y html, que son los unicos ancestros posibles');
+
+/* EL CSSOM DE CHROME SERIALIZA `> *:not(...)` SIN EL UNIVERSAL, o sea
+   `> :not(...)`. Exigir el `*` daba un falso positivo que denunciaba las
+   tres reglas estando bien — medido en el navegador antes de corregirlo. */
+const CUERPO_EXC = (UI.match(/function excepcionesDelPie[\s\S]*?\n  \}/) || [''])[0];
+ok(CUERPO_EXC.indexOf("' > \\\\*") === -1,
+   'la deteccion NO exige el selector universal, que Chrome no serializa');
+ok(/modo-impresion/.test(CUERPO_EXC) && /modo-ficha-print/.test(CUERPO_EXC)
+   && /modo-ranking-print/.test(CUERPO_EXC),
+   'se comprueban los tres modos de papel');
+
+/* Una hoja de otro origen —la de las tipografias— lanza al leer cssRules.
+   Sin el catch, el diagnostico se cae antes de mirar la nuestra. */
+const CUERPO_REG = (UI.match(/function reglaPieImpresion[\s\S]*?\n  \}/) || [''])[0];
+ok(/catch \(e\) \{ continue; \}/.test(CUERPO_REG),
+   'una hoja de otro origen se saltea en vez de tumbar el diagnostico');
+ok(/print/i.test(CUERPO_REG) && /conditionText/.test(CUERPO_REG),
+   'la regla se busca DENTRO de un @media print');
+
+/* En el modal, y SOLO cuando algo falla: un cartel que aparece siempre se
+   deja de leer (punto 14). */
+const RANKPDF2 = fs.readFileSync(path.join(__dirname, 'js/sgadd-rankingpdf.js'), 'utf8');
+const ABRIR2 = (RANKPDF2.match(/function abrir\([\s\S]*?\n  \}/) || [''])[0];
+ok(/diagnosticarPie\(\)/.test(ABRIR2), 'el modal diagnostica al abrirse');
+ok(/if \(!d\.ok/.test(ABRIR2), '  y solo escribe cuando algo falla');
+
+/* =====================================================================
    5 · LO QUE NO SE TOCO
 
    El escritorio no cambia: todo lo de arriba vive dentro del bloque

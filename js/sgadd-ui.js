@@ -569,6 +569,137 @@ const SGADD_UI = (function () {
       + ' generar: el PDF sale con el codigo que esta cargado.';
   }
 
+  /* ===================================================================
+     EL DIAGNOSTICO DEL PIE · lo que no se puede medir desde acá
+
+     El pie se repite hoja por hoja porque es `position: fixed` colgado
+     del `body`. Eso se rompe de exactamente tres maneras, y ninguna deja
+     un error en consola:
+
+       1. el nodo no llega a inyectarse;
+       2. la REGLA de `@media print` no está en el CSS que el navegador
+          tiene cargado —`index.html` no lleva `?v=`, así que su `<style>`
+          es justo lo que se queda viejo cuando el CDN cachea (punto 2);
+       3. un ancestro del pie declara `transform`, `filter`, `perspective`,
+          `contain`, `will-change` o `backdrop-filter`, y entonces el
+          `fixed` se ancla A ESE ELEMENTO en vez de a la hoja: el pie deja
+          de repetirse y aparece una sola vez, o en ninguna.
+
+     Las tres se pueden preguntar EN VIVO, en el navegador de quien
+     imprime. Existe porque el defecto se reportó cuatro veces sin poder
+     reproducirse de este lado: cuando no se puede medir el caso, hay que
+     darle al otro lado la forma de medirlo.
+     =================================================================== */
+
+  /** Los ancestros del pie son SIEMPRE `body` y `html`: cuelga del body. */
+  function ancestrosQueRompenElPie() {
+    const rompen = [];
+    if (typeof document === 'undefined' || typeof getComputedStyle !== 'function') return rompen;
+    const props = ['transform', 'filter', 'perspective', 'contain',
+                   'willChange', 'backdropFilter'];
+    [document.body, document.documentElement].forEach(e => {
+      if (!e) return;
+      let c;
+      try { c = getComputedStyle(e); } catch (x) { return; }
+      props.forEach(k => {
+        const v = c[k];
+        if (v && v !== 'none' && v !== 'auto' && v !== 'normal') {
+          rompen.push(e.tagName.toLowerCase() + ' ' + k + ': ' + v);
+        }
+      });
+    });
+    return rompen;
+  }
+
+  /**
+   * Busca la regla de `.pie-motorstats` DENTRO de un `@media print` en el
+   * CSS que el navegador tiene cargado de verdad. Es la unica forma de
+   * saber, desde la pagina, si el `<style>` que llego es el de esta
+   * entrega o el que quedo cacheado.
+   */
+  function reglaPieImpresion() {
+    if (typeof document === 'undefined' || !document.styleSheets) return null;
+    const mirar = (reglas, enPrint) => {
+      for (let i = 0; i < reglas.length; i++) {
+        const r = reglas[i];
+        if (r.media && r.cssRules) {
+          const esPrint = enPrint || /print/i.test(r.conditionText || r.media.mediaText || '');
+          const hallado = mirar(r.cssRules, esPrint);
+          if (hallado) return hallado;
+          continue;
+        }
+        if (r.cssRules && !r.selectorText) {
+          const hallado = mirar(r.cssRules, enPrint);
+          if (hallado) return hallado;
+          continue;
+        }
+        if (!enPrint || !r.selectorText) continue;
+        if (!/\.pie-motorstats(\s|,|$|\{)/.test(r.selectorText + ' ')) continue;
+        if (!r.style || !r.style.getPropertyValue('position')) continue;
+        return { selector: r.selectorText,
+                 position: r.style.getPropertyValue('position'),
+                 bottom: r.style.getPropertyValue('bottom'),
+                 display: r.style.getPropertyValue('display'),
+                 fontSize: r.style.getPropertyValue('font-size') };
+      }
+      return null;
+    };
+    for (let h = 0; h < document.styleSheets.length; h++) {
+      let reglas;
+      /* Una hoja de otro origen —la de las tipografias— lanza al leer
+         `cssRules`. Se saltea: no es la nuestra. */
+      try { reglas = document.styleSheets[h].cssRules; } catch (e) { continue; }
+      if (!reglas) continue;
+      const hallado = mirar(reglas, false);
+      if (hallado) return hallado;
+    }
+    return null;
+  }
+
+  /** Las tres reglas de ocultado tienen que exceptuar al pie. */
+  function excepcionesDelPie() {
+    const modos = ['modo-impresion', 'modo-ficha-print', 'modo-ranking-print'];
+    const falta = [];
+    if (typeof document === 'undefined' || !document.styleSheets) return falta;
+    let texto = '';
+    const juntar = (reglas) => {
+      for (let i = 0; i < reglas.length; i++) {
+        const r = reglas[i];
+        if (r.selectorText) texto += r.selectorText + '|';
+        if (r.cssRules) juntar(r.cssRules);
+      }
+    };
+    for (let h = 0; h < document.styleSheets.length; h++) {
+      try { if (document.styleSheets[h].cssRules) juntar(document.styleSheets[h].cssRules); }
+      catch (e) { /* otro origen */ }
+    }
+    modos.forEach(m => {
+      /* OJO: el CSSOM de Chrome serializa `> *:not(...)` SIN el universal,
+         o sea `> :not(...)`. Exigir el `*` da un falso positivo que
+         denunciaria las tres reglas estando bien. Medido en el navegador. */
+      const re = new RegExp('body\\.' + m + ' > [^|]*pie-motorstats');
+      if (!re.test(texto)) falta.push(m);
+    });
+    return falta;
+  }
+
+  /**
+   * La foto completa. `ok` es falso si algo de lo que hace que el pie se
+   * repita no esta en su lugar EN ESTE NAVEGADOR.
+   */
+  function diagnosticarPie() {
+    const regla = reglaPieImpresion();
+    const rompen = ancestrosQueRompenElPie();
+    const falta = excepcionesDelPie();
+    const motivos = [];
+    if (!regla) motivos.push('el CSS cargado no trae la regla de impresion del pie');
+    else if (regla.position !== 'fixed') motivos.push('la regla del pie no es position: fixed');
+    if (rompen.length) motivos.push('un ancestro rompe el fixed (' + rompen.join(', ') + ')');
+    if (falta.length) motivos.push('sin excepcion en ' + falta.join(', '));
+    return { ok: motivos.length === 0, version: versionCargada(),
+             regla: regla, ancestros: rompen, sinExcepcion: falta, motivos: motivos };
+  }
+
   /** Lo saca. Va en la misma limpieza que el resto de la exportación. */
   function quitarPieMotorStats() {
     if (typeof document === 'undefined') return;
@@ -905,6 +1036,8 @@ const SGADD_UI = (function () {
     embeberImagenes, restaurarImagenes, pieInforme, pieWeb, MAIL, INSTAGRAM, ARROBA, LOGO, fechaHoy, MARCA,
     inyectarPieMotorStats, quitarPieMotorStats, pieVistaPrevia, ID_PIE,
     versionCargada, comprobarVersionPublicada, avisarVersion,
+    diagnosticarPie, reglaPieImpresion, excepcionesDelPie,
+    ancestrosQueRompenElPie,
     sanearNombreArchivo, nombrePersona, nombrePdf, tituloPdf, tituloPdfActivo,
     sinAcceso, avisoSinEquipo };
 })();

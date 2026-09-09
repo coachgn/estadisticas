@@ -42,8 +42,8 @@ node test-jsonclub.js      # 105 tests · los JSON de club, el validador, el ais
 node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 175 tests · partidos sin box score: suman a la tabla, no a las métricas
-node test-responsive.js    # 102 tests · desborde, targets táctiles, modales, el papel, el PIE
-                           #             y el aviso de version atrasada
+node test-responsive.js    # 123 tests · desborde, targets táctiles, modales, el papel, el PIE
+                           #             el aviso de version y el diagnostico del pie
 node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
@@ -58,7 +58,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4764 tests en total. Todos tienen que dar verde antes de commitear.**
+**4785 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -7177,3 +7177,73 @@ VERIFICA —contar la cosa y no una proxy, medir a la resolución en que se
 mira, y poner el diagnóstico donde se toma la decisión—. Cuando un reporte
 se repite sin que el código cambie, lo que falta no es un arreglo: es una
 forma de que el otro lado pueda ver lo mismo que uno mide.
+
+### LA QUINTA VUELTA · el diagnóstico se muda al navegador del club
+
+El club confirmó estar en **v194** y que fichas e informes sí firman en el
+mismo navegador. Eso descarta el caché y deja una hipótesis concreta: que
+algo del maquetado del Ranking cree un **bloque contenedor** y le rompa el
+`position: fixed` al pie.
+
+Se auditó exactamente eso, con **PLATENSE 'A'** —el plantel de la captura—
+comparando los dos modos de papel lado a lado:
+
+```
+                         RANKING              FICHA
+contenedor               #rankingSalida       #fichaSalida
+  display / position     block / static       block / static
+  overflow               visible              visible
+  transform·contain      none                 none
+  will-change·filter     auto / none          auto / none
+pie                      fixed · bottom 0 · z 9999 · 9,56mm · ultimo del body
+ancestros (body, html)   sin una sola propiedad que cree bloque contenedor
+en TODO el documento     solo header.sticky con backdrop-filter, que es
+                         HERMANO del pie y ademas se oculta al imprimir
+el PDF                   6 hojas · 1 logo c/u  3 hojas · 1 logo c/u
+```
+
+**Los dos modos son equivalentes en todo lo que se preguntó**, y el pie
+sale en todas las hojas de los dos. Quinta auditoría limpia.
+
+#### Lo que se hizo en vez de seguir adivinando
+
+`SGADD_UI.diagnosticarPie()` contesta, **en el navegador de quien**
+**imprime**, las tres maneras en que el pie puede dejar de repetirse — y
+ninguna de las tres deja un error en consola:
+
+| | Qué se pregunta |
+|---|---|
+| el NODO | ¿se inyectó? |
+| la REGLA | ¿está `.pie-motorstats { position: fixed }` dentro de un `@media print` **del CSS que este navegador tiene cargado**? Se lee del CSSOM, así que también delata un `<style>` viejo |
+| los ANCESTROS | ¿`body` o `html` declaran `transform`, `filter`, `perspective`, `contain`, `will-change` o `backdrop-filter`? Cualquiera de las seis ancla el `fixed` a ese elemento en vez de a la hoja |
+| las EXCEPCIONES | ¿las tres reglas de ocultado llevan `:not(.pie-motorstats)`? |
+
+El modal de exportación lo corre al abrirse y **solo dice algo si algo
+falla**: un cartel que aparece siempre se deja de leer (punto 14).
+
+Cuatro cosas que hay que respetar al tocarlo:
+
+- **Los ancestros son SIEMPRE `body` y `html`.** El pie cuelga del body,
+  así que recorrer el árbol entero sería trabajo de más y ruido: lo que
+  importa es si alguno de esos dos crea el bloque contenedor.
+- **Una hoja de otro origen lanza al leer `cssRules`** —la de las
+  tipografías— y hay que saltearla, no dejar que tumbe el diagnóstico.
+- **EL CSSOM DE CHROME SERIALIZA `> *:not(...)` SIN EL UNIVERSAL**, o sea
+  `> :not(...)`. La primera versión exigía el `*` y **denunciaba las tres
+  reglas estando bien** — un diagnóstico con falso positivo es peor que no
+  tenerlo, porque manda a buscar donde no hay nada. Lo cazó ejercerlo en el
+  navegador, no leerlo; hay un test que revierte esa línea y falla.
+- **Se ejerce, no se lee.** El test recorre el fuente para fijar las seis
+  propiedades y el `catch`, pero la verificación de verdad fue correr los
+  cuatro caminos en el navegador: sano `ok: true`; con `transform` en el
+  body y con `filter` en el html, el motivo exacto.
+
+#### Y por qué NO se movió el pie adentro de `#rankingSalida`
+
+Era el pedido literal, y habría roto lo único que hace que el pie se
+repita. Un elemento adentro del contenedor está **en el flujo**, y algo en
+el flujo se imprime **una vez, donde cae** — o sea en la última hoja. Es
+exactamente el defecto original que el pie fijo vino a resolver: ocho
+firmas volverían a ser una. El `position: fixed` colgado del `body` es el
+mecanismo, y para eso el nodo tiene que ser HERMANO del contenedor, no
+hijo — de ahí que las tres reglas de ocultado lo exceptúen.

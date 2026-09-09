@@ -154,6 +154,19 @@ const SGADD_RANKPDF = (function () {
     if (typeof SGADD_UI !== 'undefined' && SGADD_UI.comprobarVersionPublicada) {
       SGADD_UI.comprobarVersionPublicada();
     }
+    /* Y el diagnostico del pie, que contesta EN ESTE NAVEGADOR si las
+       tres condiciones que lo repiten hoja por hoja estan en su lugar.
+       Solo dice algo cuando alguna falla: un cartel que aparece siempre
+       se deja de leer (punto 14). */
+    if (typeof SGADD_UI !== 'undefined' && SGADD_UI.diagnosticarPie) {
+      const d = SGADD_UI.diagnosticarPie();
+      const n = document.getElementById('pieVersionRotulo');
+      if (!d.ok && n) {
+        n.classList.add('pie-previa-atrasada');
+        n.textContent = '\u26a0 El pie puede no repetirse en todas las hojas: '
+          + d.motivos.join(' \u00b7 ') + '. Recarga con Ctrl+F5 y volve a probar.';
+      }
+    }
     document.addEventListener('keydown', escapar);
   }
 
