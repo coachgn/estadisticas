@@ -423,6 +423,63 @@ ok(/font-size: 9pt; line-height: 1[.]25/.test(GEN_PIE),
    'el manual firma con el mismo cuerpo que los cinco PDF');
 ok(/border-top: [.]4mm solid #94a3b8/.test(GEN_PIE), '  y con el mismo filete');
 /* =====================================================================
+   4 quater · EL AVISO DE VERSION ATRASADA
+
+   `index.html` NO lleva `?v=` —es el archivo que trae el CSS y el mapa de
+   versiones— asi que cuando queda cacheado, en el navegador o en el CDN de
+   Pages (max-age=600), la app entera se queda en la entrega anterior SIN
+   NINGUN SINTOMA.
+
+   El pie institucional costo TRES vueltas por esto: el club imprimia con
+   codigo viejo y el PDF salia distinto del que se habia medido, sin nada
+   que lo dijera. El diagnostico existia —la version en el pie del menu—
+   pero estaba lejos del lugar donde se decide imprimir.
+   ===================================================================== */
+bloque('4 quater · El aviso de version');
+
+ok(/function versionCargada/.test(UI), 'existe el lector de la version cargada');
+ok(/function comprobarVersionPublicada/.test(UI), 'y el que la contrasta con el server');
+
+const CUERPO_VER = (UI.match(/function comprobarVersionPublicada[\s\S]*?\n  \}/) || [''])[0];
+ok(CUERPO_VER.length > 100, 'se pudo recortar el cuerpo de la comprobacion');
+
+/* EL CACHE-BUSTER VA EN LOS DOS LADOS: el CDN responde por URL y el
+   navegador por su propia politica. Con uno solo se vuelve a leer la copia
+   vieja, que es justo lo que se esta tratando de detectar. */
+ok(/index\.html\?cb=/.test(CUERPO_VER), 'la URL lleva cache-buster');
+ok(/cache: 'no-store'/.test(CUERPO_VER), '  y el fetch pide no-store');
+
+/* FALLA EN SILENCIO. Un aviso de version que aparece porque fallo una
+   peticion es peor que no tener aviso. */
+ok(/\.catch\(/.test(CUERPO_VER), 'sin red no se opina sobre la version');
+ok(/typeof fetch === 'undefined'/.test(CUERPO_VER),
+   '  y sin fetch (Node, file://) se retira antes de intentar');
+
+/* Solo avisa si esta ATRAS. Estar adelantado —un dev con su propia copia—
+   no es un problema del que imprime. */
+const CUERPO_AV = (UI.match(/function avisarVersion[\s\S]*?\n  \}/) || [''])[0];
+ok(/!dato\.atrasada/.test(CUERPO_AV), 'solo avisa cuando el navegador quedo atras');
+ok(/pieVersionRotulo/.test(CUERPO_AV), 'y reescribe el rotulo de la vista previa');
+ok(/id=\"pieVersionRotulo\"/.test(UI), 'que la previa emite con su id');
+
+/* SE COMPRUEBA AL ABRIR EL MODAL, no en el arranque: es el momento en que
+   la version importa —de ahi sale el PDF— y es un gesto del usuario, asi
+   que la peticion de mas no esta en el camino critico del primer pintado. */
+const RANKPDF = fs.readFileSync(path.join(__dirname, 'js/sgadd-rankingpdf.js'), 'utf8');
+const ABRIR = (RANKPDF.match(/function abrir\([\s\S]*?\n  \}/) || [''])[0];
+ok(/comprobarVersionPublicada\(\)/.test(ABRIR),
+   'el modal de exportacion comprueba la version al abrirse');
+ok(!/comprobarVersionPublicada/.test(RANKPDF.replace(ABRIR, '')),
+   '  y en ningun otro lado del modulo');
+
+/* El aviso va en ambar —el tono `aviso` del punto 15— y con el simbolo
+   delante: ningun estado se comunica solo con color (punto 14). */
+ok(/\.pie-previa-rotulo\.pie-previa-atrasada \{[^}]*color: #fbbf24/.test(ESTILO),
+   'el aviso se pinta con el ambar del semaforo');
+ok(/\\u26a0/.test(UI) || /\u26a0/.test(UI),
+   '  y lleva un simbolo, no solo color');
+
+/* =====================================================================
    5 · LO QUE NO SE TOCO
 
    El escritorio no cambia: todo lo de arriba vive dentro del bloque

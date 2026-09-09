@@ -42,7 +42,8 @@ node test-jsonclub.js      # 105 tests · los JSON de club, el validador, el ais
 node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 175 tests · partidos sin box score: suman a la tabla, no a las métricas
-node test-responsive.js    #  88 tests · desborde, targets táctiles, modales, el papel y el PIE
+node test-responsive.js    # 102 tests · desborde, targets táctiles, modales, el papel, el PIE
+                           #             y el aviso de version atrasada
 node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
@@ -57,7 +58,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4750 tests en total. Todos tienen que dar verde antes de commitear.**
+**4764 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -7104,3 +7105,75 @@ caen **5**.
 Y la vista previa del modal se subió al mismo cuerpo: si se imprime a
 9pt y la previa se dibuja a 10px, la previa promete otra cosa que la que
 sale.
+
+### LA CUARTA VUELTA · «solo falla en el Ranking»
+
+El club volvió con un dato que parecía cerrar el caso: el pie **sí** sale
+en fichas, informes y manual, y **solo** falla en el Ranking. De ahí una
+hipótesis razonable —que la regla que aísla `#rankingSalida` al imprimir
+se lleva puesto al pie— y un pedido concreto: inyectar el pie DENTRO de
+`#rankingSalida`.
+
+**Las dos mitades del pedido se midieron y las dos dieron limpias:**
+
+```
+git show 0055493 · 08f22f8 · 71dd56f · 1bf7e88
+  las TRES reglas de ocultado llevan :not(.pie-motorstats)
+  desde el commit que creó el pie, sin excepción
+
+el mismo plantel de la captura (UNIVERSAL · 17 jugadores):
+  RANKING  6 hojas · una imagen del logo en CADA una · pie 9,56mm
+  FICHA    3 hojas · una imagen del logo en CADA una
+  el nodo: hijo directo de body · display flex · sin hijos ocultos
+```
+
+**Y HACER LO QUE PEDÍA HABRÍA ROTO EL PIE.** Un elemento adentro de
+`#rankingSalida` está EN EL FLUJO, y algo en el flujo se imprime **una
+vez, donde cae** — o sea en la última hoja. Es exactamente el defecto que
+el pie fijo vino a resolver: el `position: fixed` colgado del `body` es lo
+único que lo repite hoja por hoja en medios paginados. Mover el nodo
+adentro del contenedor convierte ocho firmas en una.
+
+La captura, comparada contra el render propio a la misma resolución del
+diálogo, era la de **7,5pt**: una mancha. O sea la cuarta vuelta del
+mismo problema —el navegador imprimiendo con código viejo— y no un
+defecto nuevo.
+
+### EL AVISO DE VERSIÓN, que es lo que faltaba de verdad
+
+El diagnóstico de treinta segundos del punto 2 —la versión en el pie del
+menú lateral— **existía y no alcanzó cuatro veces seguidas**, porque está
+lejos del lugar donde se decide imprimir. Nadie mira el pie del menú antes
+de tocar «Exportar».
+
+`SGADD_UI.comprobarVersionPublicada()` se dispara **al abrir el modal de
+exportación**: pide `index.html?cb=<ts>` con `cache: 'no-store'`, saca el
+`?v=` más alto y lo compara con el que el navegador tiene cargado. Si
+quedó atrás, el rótulo de la vista previa se reescribe en ámbar diciendo
+las dos versiones y que hay que recargar antes de generar.
+
+Cuatro reglas al tocarlo:
+
+- **El cache-buster va en los DOS lados.** El CDN responde por URL y el
+  navegador por su propia política: con uno solo se vuelve a leer la copia
+  vieja, que es justo lo que se está tratando de detectar.
+- **Se comprueba al ABRIR EL MODAL y no en el arranque.** Es el momento en
+  que la versión importa —de ahí sale el PDF— y es un gesto del usuario,
+  así que la petición de más no entra al camino crítico del primer pintado
+  (punto 5 bis).
+- **FALLA EN SILENCIO.** Sin red, en `file://` o con un `index.html` que no
+  se pueda leer, no se dice nada: un aviso de versión que aparece porque
+  falló una petición es peor que no tener aviso.
+- **Solo avisa si está ATRÁS.** Estar adelantado —alguien con su propia
+  copia— no es un problema del que imprime.
+
+Ejercido en el navegador, los tres caminos: al día el rótulo no se toca;
+atrasado sale el aviso en `#fbbf24` con las dos versiones; con `fetch`
+rechazando, el rótulo queda intacto.
+
+**La lección de las cuatro vueltas juntas:** el pie estaba bien desde la
+primera, y las tres correcciones que siguieron fueron sobre cómo se
+VERIFICA —contar la cosa y no una proxy, medir a la resolución en que se
+mira, y poner el diagnóstico donde se toma la decisión—. Cuando un reporte
+se repite sin que el código cambie, lo que falta no es un arreglo: es una
+forma de que el otro lado pueda ver lo mismo que uno mide.

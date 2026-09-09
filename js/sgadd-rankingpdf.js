@@ -149,6 +149,11 @@ const SGADD_RANKPDF = (function () {
     pintar();
     const b = document.getElementById('rankPdfGenerar');
     if (b) b.focus();
+    /* La version se comprueba ACA y no en el arranque: es el momento en
+       que importa, porque de este modal sale el PDF. Falla en silencio. */
+    if (typeof SGADD_UI !== 'undefined' && SGADD_UI.comprobarVersionPublicada) {
+      SGADD_UI.comprobarVersionPublicada();
+    }
     document.addEventListener('keydown', escapar);
   }
 

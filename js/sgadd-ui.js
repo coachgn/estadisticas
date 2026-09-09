@@ -498,10 +498,75 @@ const SGADD_UI = (function () {
       v = (n && n.textContent) ? n.textContent.trim() : '';
     } catch (e) { /* sin DOM, se muestra sin version */ }
     return '<div class="pie-previa">'
-      + '<span class="pie-previa-rotulo">Asi se firma cada hoja del PDF'
+      + '<span class="pie-previa-rotulo" id="pieVersionRotulo">'
+      + 'Asi se firma cada hoja del PDF'
       + (v ? ' \u00b7 ' + esc(v) : '') + '</span>'
       + '<span class="pie-previa-caja">' + pieInforme() + '</span>'
       + '</div>';
+  }
+
+  /**
+   * ¿EL NAVEGADOR TIENE LA ULTIMA VERSION?
+   *
+   * `index.html` NO lleva `?v=` —es el archivo que trae el CSS y el mapa
+   * de versiones— asi que cuando queda cacheado, en el navegador o en el
+   * CDN de Pages (`max-age=600`), la app entera se queda en la entrega
+   * anterior SIN NINGUN SINTOMA. El pie institucional costo tres vueltas
+   * justo por esto: el club imprimia con codigo viejo y el PDF salia
+   * distinto del que se habia medido, sin nada que lo dijera.
+   *
+   * Se comprueba AL ABRIR EL MODAL DE EXPORTACION y no en el arranque:
+   * es el momento en que la version importa —de ahi sale el PDF— y es un
+   * gesto del usuario, asi que la peticion de mas no esta en el camino
+   * critico del primer pintado (punto 5 bis).
+   *
+   * FALLA EN SILENCIO. Sin red, en `file://` o con un `index.html` que no
+   * se pueda leer, no se dice nada: un aviso de version que aparece
+   * porque fallo una peticion es peor que no tener aviso.
+   */
+  function versionCargada() {
+    try {
+      const n = (typeof document !== 'undefined') && document.getElementById('asset-version');
+      const m = n && n.textContent && n.textContent.match(/v(\d+)/);
+      return m ? parseInt(m[1], 10) : null;
+    } catch (e) { return null; }
+  }
+
+  function comprobarVersionPublicada(alSaber) {
+    const local = versionCargada();
+    if (local == null || typeof fetch === 'undefined') return;
+    /* El cache-buster va en la URL Y en el modo de fetch: el CDN responde
+       por URL y el navegador por su propia politica, y hacen falta los dos
+       para no volver a leer la copia vieja que justamente se esta
+       tratando de detectar. */
+    fetch('index.html?cb=' + Date.now(), { cache: 'no-store' })
+      .then(r => (r && r.ok) ? r.text() : null)
+      .then(txt => {
+        if (!txt) return;
+        let remota = null;
+        const re = /\?v=(\d+)/g;
+        let m;
+        while ((m = re.exec(txt))) {
+          const n = parseInt(m[1], 10);
+          if (remota == null || n > remota) remota = n;
+        }
+        if (remota == null) return;
+        const dato = { local: local, remota: remota, atrasada: remota > local };
+        if (typeof alSaber === 'function') alSaber(dato);
+        else avisarVersion(dato);
+      })
+      .catch(() => { /* sin red no se opina sobre la version */ });
+  }
+
+  /** Reescribe el rotulo de la vista previa cuando el navegador quedo atras. */
+  function avisarVersion(dato) {
+    if (!dato || !dato.atrasada || typeof document === 'undefined') return;
+    const n = document.getElementById('pieVersionRotulo');
+    if (!n) return;
+    n.classList.add('pie-previa-atrasada');
+    n.textContent = '\u26a0 Hay una version mas nueva (v' + dato.remota + ') y este'
+      + ' navegador tiene la v' + dato.local + '. Recarga con Ctrl+F5 antes de'
+      + ' generar: el PDF sale con el codigo que esta cargado.';
   }
 
   /** Lo saca. Va en la misma limpieza que el resto de la exportación. */
@@ -839,6 +904,7 @@ const SGADD_UI = (function () {
     atributosFila, teclaActiva, teclaTabs, cargando,
     embeberImagenes, restaurarImagenes, pieInforme, pieWeb, MAIL, INSTAGRAM, ARROBA, LOGO, fechaHoy, MARCA,
     inyectarPieMotorStats, quitarPieMotorStats, pieVistaPrevia, ID_PIE,
+    versionCargada, comprobarVersionPublicada, avisarVersion,
     sanearNombreArchivo, nombrePersona, nombrePdf, tituloPdf, tituloPdfActivo,
     sinAcceso, avisoSinEquipo };
 })();
