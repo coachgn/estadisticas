@@ -346,9 +346,50 @@ check('el modal se anuncia como diálogo',
   /role="dialog"/.test(modal) && /aria-modal="true"/.test(modal));
 
 /* =====================================================================
-   7 · EL GENERADOR
+   7 · EL CONTACTO Y LOS ESCUDOS · lo que el club vio en la demo publicada
    ===================================================================== */
-titulo('7 · EL GENERADOR · corre a mano y no puede filtrar');
+titulo('7 · EL WHATSAPP REAL Y EL ISOTIPO COMO ESCUDO');
+
+/* EL MODO DE FALLAR MAS CARO DE ESTA PIEZA: el formulario anda, el
+   mensaje se arma, el enlace abre WhatsApp — y cada lead se va a un
+   telefono que no es de nadie. No deja error, no deja sintoma. */
+check('el número de contacto es el comercial, no el de ejemplo',
+  DEMO.WHATSAPP === '5492216143994', DEMO.WHATSAPP);
+check('y el enlace lo lee de ahí, no de una constante propia',
+  DEMO.enlace({ club: 'X' }).indexOf('wa.me/' + DEMO.WHATSAPP) !== -1,
+  DEMO.enlace({ club: 'X' }).slice(0, 40));
+check('vive en UN solo lugar del módulo',
+  (codigoDemo.match(/549\d{10}/g) || []).length === 1,
+  (codigoDemo.match(/549\d{10}/g) || []).join(' '));
+
+/* EL PANEL DE FALTANTES ES PARA QUIEN ADMINISTRA EL REPOSITORIO: le dice
+   qué archivos subir. Un visitante que entra a ver el producto no tiene
+   el repo ni por qué enterarse de que existe — y en la demo saltaba
+   pidiendo `equipo-1.png` … `equipo-17.png`. */
+check('en demo, el isotipo se resuelve en resolverUno y no se sondea nada',
+  /const tarea = \(async \(\) => \{[\s\S]{0,1400}?SGADD_DEMO\.activo\(\)[\s\S]{0,200}?cargarImagen\(SGADD_DEMO\.logo\(\)\)/.test(idx));
+check('y la sustitución entra ANTES del manifiesto y del sondeo',
+  idx.indexOf('cargarImagen(SGADD_DEMO.logo())') < idx.indexOf('await cargarManifiesto();'),
+  idx.indexOf('cargarImagen(SGADD_DEMO.logo())') + ' < ' + idx.indexOf('await cargarManifiesto();'));
+/* Y por eso `getImage` contesta lo mismo que `getUrl`: son dos lecturas
+   del MISMO caché, y la sustitución de `getUrl` sola dejaba los gráficos
+   con iniciales en vez del logo. */
+check('el isotipo entra al CACHÉ, así que getImage también lo ve',
+  /cache\.set\(clave, r\); if \(r\.img\) resueltos\+\+;[\s\S]{0,120}return r;[\s\S]{0,200}sin isotipo/.test(idx));
+
+check('el panel de faltantes NO se pinta en la demo',
+  /function renderPanelLogosFaltantes[\s\S]{0,700}?SGADD_DEMO\.activo\(\)\) return;/.test(idx));
+/* La guarda del panel va ANTES de mirar la lista: si fuera después,
+   dependería de que la lista esté vacía, que es justo lo que puede
+   dejar de pasar si el que no carga es el isotipo mismo. */
+check('y esa guarda va antes de mirar si la lista está vacía',
+  idx.indexOf("SGADD_DEMO.activo()) return;") <
+  idx.indexOf('if (!faltantes || !faltantes.length) return;'));
+
+/* =====================================================================
+   8 · EL GENERADOR
+   ===================================================================== */
+titulo('8 · EL GENERADOR · corre a mano y no puede filtrar');
 
 check('lee el sheetId del entorno y NO de un archivo del repo',
   /server\/\.env|SHEET_JUJUY_PRIMERA/.test(srcGen) && !/1[A-Za-z0-9_-]{30,}/.test(srcGen));

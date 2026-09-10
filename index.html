@@ -2528,7 +2528,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=198" />
+<link rel="stylesheet" href="sgadd.css?v=199" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2706,46 +2706,46 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=198"></script>
+<script src="js/sgadd-club.js?v=199"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=198"></script>
-<script src="js/sgadd-core.js?v=198"></script>
-<script src="js/sgadd-auth.js?v=198"></script>
+<script src="js/sgadd-config.js?v=199"></script>
+<script src="js/sgadd-core.js?v=199"></script>
+<script src="js/sgadd-auth.js?v=199"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=198"></script>
-<script src="js/sgadd-glosario.js?v=198"></script>
-<script src="js/sgadd-glosarioui.js?v=198"></script>
-<script src="js/sgadd-comparativa.js?v=198"></script>
-<script src="js/sgadd-comparativaui.js?v=198"></script>
-<script src="js/sgadd-confirmar.js?v=198"></script>
-<script src="js/sgadd-landing.js?v=198"></script>
-<script src="js/sgadd-login.js?v=198"></script>
-<script src="js/sgadd-data.js?v=198"></script>
-<script src="js/sgadd-clientes.js?v=198"></script>
-<script src="js/sgadd-ui.js?v=198"></script>
-<script src="js/sgadd-app.js?v=198"></script>
-<script src="js/sgadd-clasificacion.js?v=198"></script>
+<script src="js/sgadd-demo.js?v=199"></script>
+<script src="js/sgadd-glosario.js?v=199"></script>
+<script src="js/sgadd-glosarioui.js?v=199"></script>
+<script src="js/sgadd-comparativa.js?v=199"></script>
+<script src="js/sgadd-comparativaui.js?v=199"></script>
+<script src="js/sgadd-confirmar.js?v=199"></script>
+<script src="js/sgadd-landing.js?v=199"></script>
+<script src="js/sgadd-login.js?v=199"></script>
+<script src="js/sgadd-data.js?v=199"></script>
+<script src="js/sgadd-clientes.js?v=199"></script>
+<script src="js/sgadd-ui.js?v=199"></script>
+<script src="js/sgadd-app.js?v=199"></script>
+<script src="js/sgadd-clasificacion.js?v=199"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=198"></script>
-<script src="js/sgadd-configui.js?v=198"></script>
-<script src="js/sgadd-estados.js?v=198"></script>
-<script src="js/sgadd-buzon.js?v=198"></script>
-<script src="js/sgadd-charts.js?v=198"></script>
-<script src="js/sgadd-personalidad.js?v=198"></script>
-<script src="js/sgadd-rankings.js?v=198"></script>
-<script src="js/sgadd-partido.js?v=198"></script>
-<script src="js/sgadd-informe.js?v=198"></script>
-<script src="js/sgadd-ficha.js?v=198"></script>
-  <script src="js/sgadd-rankingpdf.js?v=198"></script>
-<script src="js/sgadd-equipos.js?v=198"></script>
+<script src="js/sgadd-hub.js?v=199"></script>
+<script src="js/sgadd-configui.js?v=199"></script>
+<script src="js/sgadd-estados.js?v=199"></script>
+<script src="js/sgadd-buzon.js?v=199"></script>
+<script src="js/sgadd-charts.js?v=199"></script>
+<script src="js/sgadd-personalidad.js?v=199"></script>
+<script src="js/sgadd-rankings.js?v=199"></script>
+<script src="js/sgadd-partido.js?v=199"></script>
+<script src="js/sgadd-informe.js?v=199"></script>
+<script src="js/sgadd-ficha.js?v=199"></script>
+  <script src="js/sgadd-rankingpdf.js?v=199"></script>
+<script src="js/sgadd-equipos.js?v=199"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=198"></script>
-<script src="js/sgadd-jugadores.js?v=198"></script>
-<script src="js/sgadd-4factores.js?v=198"></script>
-<script src="js/sgadd-scouting.js?v=198"></script>
-<script src="js/sgadd-diagnostico.js?v=198"></script>
+<script src="js/sgadd-niveles.js?v=199"></script>
+<script src="js/sgadd-jugadores.js?v=199"></script>
+<script src="js/sgadd-4factores.js?v=199"></script>
+<script src="js/sgadd-scouting.js?v=199"></script>
+<script src="js/sgadd-diagnostico.js?v=199"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -3228,6 +3228,27 @@ const LOGOS = (function () {
     if (enVuelo.has(clave)) return enVuelo.get(clave);
 
     const tarea = (async () => {
+      /* EN LA DEMO EL ISOTIPO **ES** EL ESCUDO, y se resuelve ACA —el
+         unico punto por el que pasa cada equipo— y no solo en `getUrl`.
+
+         Con la sustitucion puesta abajo, `getUrl` devolvia el isotipo
+         pero esta funcion seguia SONDEANDO `equipo-1.png` … `equipo-17
+         .png`: diecisiete pedidos fallidos por carga, `getImage`
+         devolviendo `null` —o sea los graficos con iniciales en vez del
+         logo— y, sobre todo, una lista de diecisiete faltantes que
+         disparaba el panel de diagnostico ENCIMA de la demo publica.
+
+         Ese panel es para quien administra el repositorio: le dice que
+         archivos subir. Un visitante que entra a ver el producto no
+         tiene ni el repo ni por que enterarse de que existe. */
+      if (typeof SGADD_DEMO !== 'undefined' && SGADD_DEMO.activo()) {
+        try {
+          const img = await cargarImagen(SGADD_DEMO.logo());
+          const r = { img: img, url: SGADD_DEMO.logo() };
+          cache.set(clave, r); if (r.img) resueltos++;
+          return r;
+        } catch (e) { /* sin isotipo se sigue por el camino normal */ }
+      }
       await asegurarMapaRemoto();
       await cargarManifiesto();
 
@@ -4272,6 +4293,14 @@ function recortar(txt, max) {
 function renderPanelLogosFaltantes(faltantes) {
   const previo = document.getElementById('logosFaltantesPanel');
   if (previo) previo.remove();
+
+  /* EN LA DEMO NO SE PINTA NUNCA, y no es redundante con el arreglo de
+     `resolverUno`: ese hace que no falte ninguno, y este cubre el caso
+     en que el que no cargue sea el isotipo mismo —ahi volverian a faltar
+     los diecisiete y el cartel saltaria de nuevo encima de la demo—.
+     Defienden dos fallas distintas. */
+  if (typeof SGADD_DEMO !== 'undefined' && SGADD_DEMO.activo()) return;
+
   if (!faltantes || !faltantes.length) return;
 
   const filas = faltantes.map(n =>

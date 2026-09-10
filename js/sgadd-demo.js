@@ -52,7 +52,7 @@ const SGADD_DEMO = (function () {
     plan: 'PLATA',
   };
 
-  const WHATSAPP = '5492215551234';   // el número comercial de MotorStats
+  const WHATSAPP = '5492216143994';   // el número comercial de MotorStats
 
   const estado = { hojas: null, promesa: null };
 

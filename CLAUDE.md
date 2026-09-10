@@ -45,7 +45,7 @@ node test-manuales.js      # 175 tests · partidos sin box score: suman a la tab
 node test-responsive.js    # 136 tests · desborde, targets táctiles, modales, el papel, el PIE
                            #             el aviso de version y el diagnostico del pie
 node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
-node test-demo.js          #  66 tests · la demo publica: el snapshot anonimizado, el
+node test-demo.js          #  74 tests · la demo publica: el snapshot anonimizado, el
                            #             contrato cols↔filas, las cards y el modal
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
@@ -60,7 +60,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4903 tests en total. Todos tienen que dar verde antes de commitear.**
+**4911 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -7555,9 +7555,46 @@ mensaje y abre WhatsApp: queda en la conversación, que además es donde el
 club lo quiere atender. Prometer un «te contactamos» sin nada que lo
 cumpla sería peor que no tener el formulario.
 
-> **PENDIENTE:** `WHATSAPP` en `js/sgadd-demo.js` es un número de
-> ejemplo (`5492215551234`). Hay que reemplazarlo por el comercial real
-> antes de publicar, o cada lead se pierde.
+El número comercial es **`5492216143994`** y vive en UN solo lugar
+(`WHATSAPP`, en `js/sgadd-demo.js`): lo usan la barra de la demo y las
+tres cards. Estuvo un rato con un número de ejemplo, que es el modo de
+fallar más caro de esta pieza —el formulario anda, el mensaje se arma, y
+cada lead se va a un teléfono que no es—. Hay un test que exige que no
+sea el de ejemplo y que el enlace lo lea de ahí y no de una constante
+propia.
+
+### EN LA DEMO EL ISOTIPO **ES** EL ESCUDO, y se resuelve en `resolverUno`
+
+Reportado desde la demo publicada: al entrar saltaba el panel de
+diagnóstico **«Faltan 17 logos»**, pidiendo subir `equipo-1.png` …
+`equipo-17.png` al repositorio.
+
+La sustitución estaba puesta en `LOGOS.getUrl()`, que es el punto por el
+que pasan la grilla, la tabla y los PDF — pero **`resolverUno()` seguía
+sondeando los diecisiete archivos**. Tres consecuencias, y la tercera es
+la que se vio:
+
+1. **17 pedidos fallidos por carga**, con su tanda de extensiones cada uno;
+2. **`getImage()` devolvía `null`**, así que el scatter de Principal y los
+   puntos del gráfico de evolución salían con INICIALES en vez del logo —
+   `getUrl` y `getImage` son dos lecturas distintas del mismo caché, y la
+   sustitución cubría una sola;
+3. **una lista de 17 faltantes**, que es exactamente lo que dispara el panel.
+
+Ahora se resuelve en `resolverUno()`, que es el único punto por el que
+pasa cada equipo: el isotipo entra al caché como la imagen del equipo, así
+que `getUrl` y `getImage` contestan lo mismo, no se pide un solo archivo
+de más y **no falta ninguno por construcción**.
+
+**El panel lleva además su propia guarda, y no es redundante.** El arreglo
+de arriba hace que no falte ninguno; la guarda cubre el caso en que el que
+no cargue sea **el isotipo mismo** —ahí volverían a faltar los diecisiete
+y el cartel saltaría otra vez encima de la demo—. Defienden dos fallas
+distintas.
+
+Y vale para cualquier visitante, no solo para la demo: ese panel le dice a
+**quien administra el repositorio** qué archivos subir. Alguien que entra a
+ver el producto no tiene el repo ni por qué enterarse de que existe.
 
 ### Dos trampas viejas que volvieron a morder
 
