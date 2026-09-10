@@ -289,10 +289,46 @@ check('y pregunta por los datos propios, que es el gancho',
 check('con su CTA para agendar',
   /demo-cta/.test(barra) && /abrirModal/.test(barra));
 
-/* EL ALTO SE RESERVA EN EL BODY: una barra fija sin reserva le tapa a la
-   app el header, que es donde viven el selector y la campana. */
+/* LA RESERVA SE MIDE, NO SE ESCRIBE. La barra va fija, asi que el body
+   tiene que reservarle su alto o le tapa el header — donde viven el
+   selector y la campana. Estaba como constante en el CSS, y son DOS
+   numeros para el mismo hecho: al sumarle el "Volver al inicio" la barra
+   paso de 44 a 49px y se comio 5px del header, sin mas sintoma que eso. */
 check('el body reserva el alto de la barra',
   /body\.con-demo-barra \{ padding-top/.test(idx));
+/* SE RECORTA EL CUERPO DE `reservarAlto`, no una ventana de caracteres:
+   una ventana fija es una bomba de tiempo en un archivo que se edita
+   (punto 43), y este test ya cayo una vez porque un comentario nuevo
+   corrio la llamada mas alla de los 400. */
+const cuerpoReserva = srcDemo.slice(srcDemo.indexOf('function reservarAlto'),
+                                    srcDemo.indexOf('function vigilarAlto'));
+check('y ese alto sale de MEDIR la barra, no de un número a mano',
+  /getBoundingClientRect\(\)\.height/.test(cuerpoReserva)
+  && /body\.style\.paddingTop = alto/.test(cuerpoReserva),
+  cuerpoReserva.length + ' chars');
+check('se mide al montar la barra',
+  /classList\.add\('con-demo-barra'\);[\s\S]{0,60}reservarAlto\(\);/.test(srcDemo));
+/* NO ALCANZA CON MEDIR UNA VEZ: la barra envuelve en varios renglones
+   segun el ancho y las tipografias entran DESPUES del primer layout.
+   Medido en el telefono antes del observador: al montar reservaba 147px
+   y la barra terminaba en 107 — sin solaparse, pero con 40px de aire
+   muerto arriba de la app. */
+check('y se OBSERVA la barra, que un alto no se mide una sola vez',
+  /new ResizeObserver\([\s\S]{0,80}reservarAlto\(\)[\s\S]{0,40}\.observe\(n\)/.test(srcDemo));
+check('con el resize de ventana como respaldo',
+  /addEventListener\('resize'[\s\S]{0,120}reservarAlto\(\)/.test(srcDemo));
+/* Y SE MIDE LA BARRA, NO SU CONTENEDOR. La barra va `position: fixed`, o
+   sea FUERA DEL FLUJO, así que el wrapper mide CERO. La primera versión
+   leía el wrapper, la guarda de alto positivo la salteaba, y la reserva se
+   quedaba en la constante del CSS — sin más síntoma que los 5px de header
+   tapados que se venían a arreglar. */
+check('y mide la BARRA y no el contenedor, que va fuera del flujo',
+  /querySelector\('\.demo-barra'\)[\s\S]{0,200}getBoundingClientRect/.test(srcDemo)
+  && !/getElementById\('demoBarra'\)[\s\S]{0,120}getBoundingClientRect/.test(srcDemo));
+/* EN PAPEL NO VA NINGUNA: la barra se esconde y la reserva la escribe el
+   JS como estilo INLINE, que le gana a la media query. */
+check('y en papel la reserva se anula con !important, que el inline gana',
+  /@media print \{ body\.con-demo-barra \{ padding-top: 0 !important; \} \}/.test(idx));
 check('y en papel la demo no existe: son controles comerciales',
   /@media print \{ \.demo-barra, #demoModalHost \{ display: none !important; \} \}/.test(idx));
 
@@ -376,6 +412,67 @@ check('y la sustitución entra ANTES del manifiesto y del sondeo',
    con iniciales en vez del logo. */
 check('el isotipo entra al CACHÉ, así que getImage también lo ve',
   /cache\.set\(clave, r\); if \(r\.img\) resueltos\+\+;[\s\S]{0,120}return r;[\s\S]{0,200}sin isotipo/.test(idx));
+
+/* ---------------------------------------------------------------------
+   LA DEMO NO MUESTRA AVISOS DE DATO
+
+   El «1 hoja con errores» del header salía de la capa de datos VIEJA de
+   Principal, que lee por su cuenta y necesita un libro conectado. Medido
+   en el navegador: devolvía UN error —«Hace falta un link de acceso para
+   ver esta categoría»— y CERO filas en sus cuatro hojas, o sea que no
+   alimentaba una sola celda. Principal se dibuja entero desde el índice.
+   --------------------------------------------------------------------- */
+check('en demo no se pide nada por la capa vieja de Principal',
+  /async function fetchAllData\(\)[\s\S]{0,1600}?SGADD_DEMO\.activo\(\)\) return \[\];/.test(idx));
+/* Va en `fetchAllData` y no en sus tres llamadores —`init`, `refreshData`
+   y el cambio de categoría— porque es el único punto por el que pasan los
+   tres: con la guarda repartida, el llamador que se agregue mañana queda
+   sin ella. */
+check('y la guarda está en el punto único, no repartida por llamador',
+  (idx.match(/SGADD_DEMO\.activo\(\)\) return \[\];/g) || []).length === 1);
+
+check('y el cartel del header tampoco se pinta',
+  /function renderStatusBanner[\s\S]{0,900}?SGADD_DEMO\.activo\(\)\) \{[\s\S]{0,120}?innerHTML = '';/.test(idx));
+/* Las dos guardas defienden fallas distintas: una apaga la petición que
+   HOY los produce, la otra cubre cualquier otro origen — el libro de
+   muestra sale de un club real y arrastra sus rarezas. */
+check('la guarda del cartel va ANTES de mirar la lista de errores',
+  idx.indexOf("SGADD_DEMO.activo()) {") < idx.indexOf("if (!errors || !errors.length) {"));
+
+/* ---------------------------------------------------------------------
+   VOLVER AL INICIO
+   --------------------------------------------------------------------- */
+const barra2 = DEMO.banner();
+check('la barra ofrece volver al inicio',
+  /class="demo-volver"/.test(barra2) && /Volver al inicio/.test(barra2), barra2.slice(0, 60));
+check('y apunta a la landing, sin arrastrar el modo demo',
+  DEMO.INICIO === 'index.html' && barra2.indexOf('href="index.html"') !== -1,
+  DEMO.INICIO);
+/* RELATIVA A PROPOSITO: el panel vive en un subdirectorio
+   (`/estadisticas/`), así que un `/` absoluto se iría a la raíz del
+   dominio, que no es este sitio. */
+check('la ruta es relativa, no absoluta',
+  DEMO.INICIO.charAt(0) !== '/' && DEMO.INICIO.indexOf('http') !== 0, DEMO.INICIO);
+
+/* EL CTA CONSERVA SU LUGAR: en una barra que se lee de izquierda a
+   derecha el ÚLTIMO elemento es el que pesa, y el que paga la demo es el
+   de WhatsApp. */
+check('la salida va ANTES del CTA, para no restarle protagonismo',
+  barra2.indexOf('demo-volver') < barra2.indexOf('demo-cta'));
+check('y es un ENLACE, no un botón: se puede abrir en otra pestaña',
+  /<a href="[^"]*" class="demo-volver"/.test(barra2));
+
+check('su CSS va a mano en el <style>, que es un nodo inyectado',
+  idx.indexOf('.demo-volver {') !== -1);
+/* SU MINIMO TACTIL SE NOMBRA APARTE porque es un `<a>`: la regla
+   general apunta a `button`, `select`, `summary` y `[role=button]`, y un
+   enlace no cae en ninguno. Pero va DENTRO del bloque que ya existe: los
+   minimos tactiles viven en un solo lugar (punto 49). */
+check('declara su mínimo táctil, que la regla general no lo cubre',
+  /@media screen and \(pointer: coarse\)[\s\S]{0,1800}?\.demo-volver \{ min-height: 44px; \}/.test(idx));
+check('y hay UN solo bloque de targets táctiles, no dos',
+  (idx.match(/@media screen and \(pointer: coarse\)/g) || []).length === 1,
+  (idx.match(/@media screen and \(pointer: coarse\)/g) || []).length + ' bloques');
 
 check('el panel de faltantes NO se pinta en la demo',
   /function renderPanelLogosFaltantes[\s\S]{0,700}?SGADD_DEMO\.activo\(\)\) return;/.test(idx));

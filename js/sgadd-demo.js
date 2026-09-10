@@ -54,6 +54,11 @@ const SGADD_DEMO = (function () {
 
   const WHATSAPP = '5492216143994';   // el número comercial de MotorStats
 
+  /* La landing. Relativa a proposito: el panel se publica en un
+     subdirectorio (`/estadisticas/`), asi que un `/` absoluto se iria a la
+     raiz del dominio, que no es este sitio. */
+  const INICIO = 'index.html';
+
   const estado = { hojas: null, promesa: null };
 
   const esc = (v) => (typeof SGADD_UI !== 'undefined' && SGADD_UI.esc)
@@ -165,6 +170,17 @@ const SGADD_DEMO = (function () {
       + '<span class="demo-barra-pregunta">¿Querés ver cómo se ve el dashboard '
       + 'con las estadísticas de tu equipo?</span>'
       + '</span>'
+      /* LA SALIDA VA ANTES DEL CTA, y en outline. Dos motivos:
+
+         · en una barra que se lee de izquierda a derecha el ULTIMO
+           elemento es el que pesa, asi que el CTA conserva su lugar;
+         · y es un ENLACE de verdad, no un boton con `onclick`: se puede
+           abrir en otra pestaña, copiar y ver a donde va antes de tocar,
+           que es lo que uno espera de «volver al inicio».
+
+         Apunta a `index.html` a secas —sin `?demo=1`— que desde la URL de
+         la demo (`…/index.html?demo=1`) resuelve a la landing. */
+      + '<a href="' + INICIO + '" class="demo-volver">Volver al inicio</a>'
       + '<button type="button" class="demo-cta" onclick="SGADD_DEMO.abrirModal()">'
       + 'Agendar demo con mis datos</button>'
       + '</div>';
@@ -178,6 +194,67 @@ const SGADD_DEMO = (function () {
     n.innerHTML = banner();
     document.body.insertBefore(n, document.body.firstChild);
     document.body.classList.add('con-demo-barra');
+    reservarAlto();
+    vigilarAlto();
+  }
+
+  /**
+   * LA RESERVA SALE DE LA BARRA MEDIDA, no de un numero escrito a mano.
+   *
+   * La barra va FIJA, asi que el `<body>` tiene que reservarle su alto o
+   * le tapa el header a la app —donde viven el selector de categoria y la
+   * campana—. Ese alto estaba en el CSS como una constante (44px en
+   * escritorio, 64 en telefono) y **son dos numeros para el mismo hecho**:
+   * al sumarle el «Volver al inicio» la barra paso a medir 49px y se comio
+   * 5px del header, sin ningun sintoma mas que eso.
+   *
+   * Midiendola se acabo la clase entera de bug: cambie el texto, entre un
+   * boton mas o se parta en dos renglones, la reserva acompaña. El CSS
+   * conserva sus constantes como PISO —es lo que vale entre que la barra
+   * se pinta y este calculo corre, y en un `<body>` sin layout todavia
+   * `getBoundingClientRect` puede devolver 0—.
+   */
+  function reservarAlto() {
+    /* SE MIDE `.demo-barra` Y NO SU CONTENEDOR. `#demoBarra` es el `<div>`
+       que se inserta en el body, pero la barra de adentro va
+       `position: fixed`, o sea FUERA DEL FLUJO: el contenedor mide CERO.
+       Medido en el navegador — la primera version leia el wrapper, daba 0,
+       la guarda `alto > 0` la salteaba y la reserva se quedaba en la
+       constante del CSS sin ningun sintoma mas que los 5px de header
+       tapados que se venian a arreglar. */
+    const n = document.querySelector('.demo-barra');
+    if (!n) return;
+    const alto = Math.ceil(n.getBoundingClientRect().height);
+    if (alto > 0) document.body.style.paddingTop = alto + 'px';
+  }
+
+  /**
+   * SE OBSERVA LA BARRA, no se mide una vez y listo.
+   *
+   * Medir al montar da un numero que todavia no es el definitivo: la barra
+   * envuelve en varios renglones segun el ancho y las tipografias entran
+   * DESPUES del primer layout. Medido en el telefono: al montar daba 147px
+   * y la barra terminaba en 107 — sin solaparse, pero con 40px de aire
+   * muerto arriba de la app.
+   *
+   * `ResizeObserver` cubre las dos causas de una: dispara cuando cambia el
+   * ancho Y cuando cambia el contenido. El `resize` de ventana queda de
+   * respaldo para el navegador que no lo tenga.
+   */
+  function vigilarAlto() {
+    if (typeof window === 'undefined') return;
+    const n = document.querySelector('.demo-barra');
+    if (n && typeof ResizeObserver === 'function') {
+      try {
+        new ResizeObserver(function () { reservarAlto(); }).observe(n);
+        return;
+      } catch (e) { /* sin observador, queda el respaldo de abajo */ }
+    }
+    if (window.addEventListener) {
+      window.addEventListener('resize', function () {
+        if (activo()) reservarAlto();
+      });
+    }
   }
 
   /* ===================================================================
@@ -355,8 +432,8 @@ const SGADD_DEMO = (function () {
 
   return {
     activo, club, logo, sesion, cargarCategoria, rehidratar,
-    banner, montarBanner, modal, abrirModal, cerrarModal, enviar,
-    mensaje, enlace, EQUIPO, DATOS, WHATSAPP, SESION,
+    banner, montarBanner, reservarAlto, vigilarAlto, modal, abrirModal, cerrarModal, enviar,
+    mensaje, enlace, EQUIPO, DATOS, WHATSAPP, SESION, INICIO,
   };
 })();
 

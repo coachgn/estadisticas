@@ -618,16 +618,45 @@
   .demo-cta:hover { opacity: .9; }
   .demo-cta:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
+  /* LA SALIDA · outline, para no competirle al CTA. Mismas medidas que
+     `.demo-cta` para que las dos apoyen en la misma linea de base. */
+  .demo-volver {
+    flex: none; display: inline-flex; align-items: center; justify-content: center;
+    padding: .4rem .8rem; border-radius: .4rem;
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .06em; text-decoration: none;
+    color: #d4d0cb; background: transparent;
+    /* EL BORDE ES LO QUE LO IDENTIFICA COMO CONTROL, asi que va contra el
+       3:1 de WCAG 1.4.11 y no contra el 4,5 del texto. Arranco en #55504b,
+       que da 1,97 sobre el lado claro del degradado (#232323) — o sea un
+       recuadro que casi no esta. #757068 da 3,20 ahi y 3,51 sobre el lado
+       oscuro: pasa en los dos extremos de la barra. */
+    border: 1px solid #757068;
+  }
+  .demo-volver:hover { border-color: var(--acento, #f7941e); color: #f5f4f2; }
+  .demo-volver:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
   /* EL ALTO SE RESERVA EN EL BODY. Una barra fija sin reserva le tapa el
      header a la app, que es donde viven el selector de categoria y la
-     campana — y en el telefono la barra ocupa dos renglones. */
-  /* VA ACOTADO A `screen`, LAS DOS. Al imprimir, la barra se esconde
+     campana — y en el telefono la barra ocupa dos renglones.
+
+     ESTOS DOS NUMEROS SON UN PISO, NO LA MEDIDA: el alto de verdad lo
+     escribe `SGADD_DEMO.reservarAlto()`, que MIDE la barra. Tenerlo solo
+     acá eran dos numeros para el mismo hecho, y al sumarle el «Volver al
+     inicio» la barra paso a 49px y se comio 5px del header. El piso vale
+     entre que la barra se pinta y esa medicion corre.
+
+     VA ACOTADO A `screen`, LAS DOS. Al imprimir, la barra se esconde
      —tres lineas mas abajo— pero la RESERVA no se escondia: el papel
      salia con 64px de aire arriba de la primera hoja. Y una consulta de
      ancho sin `screen` se evalua contra la HOJA, asi que ademas elegia
      cual de los dos aires poner segun el tamaño del papel (punto 49). */
   @media screen { body.con-demo-barra { padding-top: 64px; } }
   @media screen and (min-width: 640px) { body.con-demo-barra { padding-top: 44px; } }
+  /* Y EN PAPEL la reserva medida tampoco puede quedar: la escribe el JS
+     como estilo INLINE, asi que le gana a la media query de arriba y hace
+     falta `!important` para sacarla. */
+  @media print { body.con-demo-barra { padding-top: 0 !important; } }
 
   .demo-campo { display: block; margin-bottom: .6rem; }
   .demo-campo > span {
@@ -2468,6 +2497,14 @@
   @media screen and (pointer: coarse) {
     button, select, summary, [role="button"] { min-height: 44px; }
 
+    /* El "Volver al inicio" de la barra de la demo es un <a> —es
+       navegacion, se abre en otra pestaña— asi que no cae en ninguno de
+       los cuatro selectores de arriba y necesita nombrarse. Va ACA y no
+       en un bloque propio: los minimos tactiles viven en UN solo lugar,
+       y un segundo bloque ademas rompia el recorte de test-responsive,
+       que toma el PRIMER `pointer: coarse` del <style>. */
+    .demo-volver { min-height: 44px; }
+
     /* Los de icono tienen el alto pero no el ancho: 40px de lado da un
        target de 40x44, que falla el minimo por el lado angosto. Va
        sobre TODOS los botones y no sobre una lista de clases: los de
@@ -2528,7 +2565,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=199" />
+<link rel="stylesheet" href="sgadd.css?v=200" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2706,46 +2743,46 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=199"></script>
+<script src="js/sgadd-club.js?v=200"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=199"></script>
-<script src="js/sgadd-core.js?v=199"></script>
-<script src="js/sgadd-auth.js?v=199"></script>
+<script src="js/sgadd-config.js?v=200"></script>
+<script src="js/sgadd-core.js?v=200"></script>
+<script src="js/sgadd-auth.js?v=200"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=199"></script>
-<script src="js/sgadd-glosario.js?v=199"></script>
-<script src="js/sgadd-glosarioui.js?v=199"></script>
-<script src="js/sgadd-comparativa.js?v=199"></script>
-<script src="js/sgadd-comparativaui.js?v=199"></script>
-<script src="js/sgadd-confirmar.js?v=199"></script>
-<script src="js/sgadd-landing.js?v=199"></script>
-<script src="js/sgadd-login.js?v=199"></script>
-<script src="js/sgadd-data.js?v=199"></script>
-<script src="js/sgadd-clientes.js?v=199"></script>
-<script src="js/sgadd-ui.js?v=199"></script>
-<script src="js/sgadd-app.js?v=199"></script>
-<script src="js/sgadd-clasificacion.js?v=199"></script>
+<script src="js/sgadd-demo.js?v=200"></script>
+<script src="js/sgadd-glosario.js?v=200"></script>
+<script src="js/sgadd-glosarioui.js?v=200"></script>
+<script src="js/sgadd-comparativa.js?v=200"></script>
+<script src="js/sgadd-comparativaui.js?v=200"></script>
+<script src="js/sgadd-confirmar.js?v=200"></script>
+<script src="js/sgadd-landing.js?v=200"></script>
+<script src="js/sgadd-login.js?v=200"></script>
+<script src="js/sgadd-data.js?v=200"></script>
+<script src="js/sgadd-clientes.js?v=200"></script>
+<script src="js/sgadd-ui.js?v=200"></script>
+<script src="js/sgadd-app.js?v=200"></script>
+<script src="js/sgadd-clasificacion.js?v=200"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=199"></script>
-<script src="js/sgadd-configui.js?v=199"></script>
-<script src="js/sgadd-estados.js?v=199"></script>
-<script src="js/sgadd-buzon.js?v=199"></script>
-<script src="js/sgadd-charts.js?v=199"></script>
-<script src="js/sgadd-personalidad.js?v=199"></script>
-<script src="js/sgadd-rankings.js?v=199"></script>
-<script src="js/sgadd-partido.js?v=199"></script>
-<script src="js/sgadd-informe.js?v=199"></script>
-<script src="js/sgadd-ficha.js?v=199"></script>
-  <script src="js/sgadd-rankingpdf.js?v=199"></script>
-<script src="js/sgadd-equipos.js?v=199"></script>
+<script src="js/sgadd-hub.js?v=200"></script>
+<script src="js/sgadd-configui.js?v=200"></script>
+<script src="js/sgadd-estados.js?v=200"></script>
+<script src="js/sgadd-buzon.js?v=200"></script>
+<script src="js/sgadd-charts.js?v=200"></script>
+<script src="js/sgadd-personalidad.js?v=200"></script>
+<script src="js/sgadd-rankings.js?v=200"></script>
+<script src="js/sgadd-partido.js?v=200"></script>
+<script src="js/sgadd-informe.js?v=200"></script>
+<script src="js/sgadd-ficha.js?v=200"></script>
+  <script src="js/sgadd-rankingpdf.js?v=200"></script>
+<script src="js/sgadd-equipos.js?v=200"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=199"></script>
-<script src="js/sgadd-jugadores.js?v=199"></script>
-<script src="js/sgadd-4factores.js?v=199"></script>
-<script src="js/sgadd-scouting.js?v=199"></script>
-<script src="js/sgadd-diagnostico.js?v=199"></script>
+<script src="js/sgadd-niveles.js?v=200"></script>
+<script src="js/sgadd-jugadores.js?v=200"></script>
+<script src="js/sgadd-4factores.js?v=200"></script>
+<script src="js/sgadd-scouting.js?v=200"></script>
+<script src="js/sgadd-diagnostico.js?v=200"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -3478,6 +3515,29 @@ function nombresParaLogos() {
    recorte se conserva — con el backend, además, el servidor ya sabe
    cuáles mandar en texto y son exactamente estas. */
 async function fetchAllData() {
+  /* EN LA DEMO NO SE PIDE NADA POR ACA, igual que en la landing.
+
+     Esta es la capa de datos VIEJA de Principal (punto 3 ter), que lee
+     por su cuenta y necesita un libro conectado. La demo no tiene: sus
+     datos salen del snapshot committeado. Medido en el navegador antes
+     de tocar esto:
+
+       DATA.promediosJ · promediosE · baseDatosE · promedios4f  →  0 filas
+       el error que volvia: «Hace falta un link de acceso para ver
+       esta categoria», que es el que pintaba «1 hoja con errores»
+       ARRIBA DE LA DEMO PUBLICA
+
+     O sea que la peticion no alimentaba una sola celda —Principal se
+     dibuja entero desde el indice: 17 equipos, 260 jugadores y las 17
+     filas de la tabla— y lo unico que producia era el cartel.
+
+     VA ACA Y NO EN LOS TRES LLAMADORES (`init`, `refreshData` y el
+     cambio de categoria): es el unico punto por el que pasan los tres,
+     y con la guarda repartida el que se agregue manana queda sin ella.
+     El de la landing sigue en el llamador porque ahi se saltea ademas
+     el orden de `aplicarMarca()`. */
+  if (typeof SGADD_DEMO !== 'undefined' && SGADD_DEMO.activo()) return [];
+
   const p = SGADD_APP.planillaActual();
   PLANILLA_ACTIVA = p;
   if (!p) {
@@ -4709,6 +4769,21 @@ function closeSidebar() {
 function renderStatusBanner(errors) {
   const holder = document.getElementById('status-banner-holder');
   if (!holder) return;
+
+  /* LA DEMO NO MUESTRA AVISOS DE DATO, y no es redundante con la guarda
+     de `fetchAllData`: esa apaga la peticion que hoy los produce, y esta
+     cubre cualquier OTRO origen —el libro de muestra sale de un club real
+     y arrastra sus rarezas, como el `ACUMULADO J` incompleto de Jujuy—.
+
+     Ese cartel es para el cuerpo tecnico de un club, que puede ir a
+     Diagnostico y hacer algo con el. Quien entra a ver el producto no
+     tiene ese libro, no tiene esa pantalla y lo unico que se lleva es la
+     impresion de que el panel viene con errores. */
+  if (typeof SGADD_DEMO !== 'undefined' && SGADD_DEMO.activo()) {
+    holder.innerHTML = '';
+    return;
+  }
+
   if (!errors || !errors.length) {
     /* Sin errores el header queda vacío: el estado "todo bien" ya lo dice el
        punto verde del pie del menú, y repetirlo arriba era ruido. */

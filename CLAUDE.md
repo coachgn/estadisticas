@@ -45,7 +45,7 @@ node test-manuales.js      # 175 tests · partidos sin box score: suman a la tab
 node test-responsive.js    # 136 tests · desborde, targets táctiles, modales, el papel, el PIE
                            #             el aviso de version y el diagnostico del pie
 node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
-node test-demo.js          #  74 tests · la demo publica: el snapshot anonimizado, el
+node test-demo.js          #  92 tests · la demo publica: el snapshot anonimizado, el
                            #             contrato cols↔filas, las cards y el modal
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
@@ -60,7 +60,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4911 tests en total. Todos tienen que dar verde antes de commitear.**
+**4929 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -7595,6 +7595,109 @@ distintas.
 Y vale para cualquier visitante, no solo para la demo: ese panel le dice a
 **quien administra el repositorio** qué archivos subir. Alguien que entra a
 ver el producto no tiene el repo ni por qué enterarse de que existe.
+
+### LA DEMO NO MUESTRA AVISOS DE DATO
+
+Reportado desde la demo publicada: el header traía **«1 hoja con
+errores»**. Medido antes de tocar nada, que es lo que decidió el arreglo:
+
+```
+lastErrors            1 · «Hace falta un link de acceso para ver esta categoría»
+DATA.promediosJ · promediosE · baseDatosE · promedios4f      →  0 filas
+lo que Principal muestra igual   17 equipos · 260 jugadores · 17 filas de tabla
+```
+
+Sale de la **capa de datos vieja de Principal** (punto 3 ter), que lee por
+su cuenta y necesita un libro conectado. La demo no tiene: sus datos salen
+del snapshot. O sea que esa petición **no alimentaba una sola celda** —el
+panel se dibuja entero desde el índice— y lo único que producía era el
+cartel.
+
+Se apaga en **`fetchAllData()`**, que es el único punto por el que pasan
+sus tres llamadores (`init`, `refreshData` y el cambio de categoría). Con
+la guarda repartida, el llamador que se agregue mañana queda sin ella — el
+de la landing sigue en el llamador porque ahí se saltea además el orden de
+`aplicarMarca()`.
+
+**Y `renderStatusBanner()` lleva su propia guarda**, que no es redundante:
+la primera apaga la petición que HOY los produce, la segunda cubre
+cualquier otro origen — el libro de muestra sale de un club real y arrastra
+sus rarezas, como el `ACUMULADO J` incompleto de Jujuy (punto 8). Es la
+misma pareja que las dos guardas del panel de escudos.
+
+Ese cartel es para el cuerpo técnico de un club, que puede ir a Diagnóstico
+y hacer algo con él. Quien entra a ver el producto no tiene ese libro, no
+tiene esa pantalla, y lo único que se lleva es la impresión de que el panel
+viene con errores.
+
+**La campana SÍ se queda.** Sus 30 alertas no son un error: son el buzón
+del punto 13 funcionando sobre datos de muestra, que es justamente uno de
+los módulos que la demo vende.
+
+### «VOLVER AL INICIO» · y la reserva que se MIDE
+
+La barra fija llevaba una sola salida —ninguna—: quien entraba a la demo
+desde un link no tenía cómo volver a la landing sin editar la URL. Va como
+**enlace y no como botón** (es navegación: se abre en otra pestaña, se
+copia, se ve a dónde lleva antes de tocar), **antes del CTA** —en una barra
+que se lee de izquierda a derecha el último elemento es el que pesa, y el
+que paga la demo es el de WhatsApp— y en **outline**.
+
+Apunta a `index.html` **relativo**: el panel se publica en un subdirectorio
+(`/estadisticas/`), así que un `/` absoluto se iría a la raíz del dominio,
+que no es este sitio.
+
+#### El alto de la barra ya no está escrito en dos lados
+
+La barra va fija, así que el `<body>` tiene que reservarle su alto o le
+tapa el header a la app. Ese alto era una **constante en el CSS** (44px en
+escritorio, 64 en teléfono) y son **dos números para el mismo hecho**: al
+sumarle el «Volver al inicio» la barra pasó a 49px y se comió 5px del
+header, sin más síntoma que eso.
+
+`reservarAlto()` la MIDE y escribe el `padding-top` del body. Las dos
+constantes del CSS quedan como **piso**: es lo que vale entre que la barra
+se pinta y esa medición corre.
+
+Tres cosas que costaron, y las tres solo se vieron MIDIENDO:
+
+1. **Se mide `.demo-barra`, NO su contenedor.** `#demoBarra` es el `<div>`
+   que se inserta en el body, pero la barra de adentro va `position:
+   fixed`, o sea FUERA DEL FLUJO: **el contenedor mide cero**. La primera
+   versión leía el wrapper, la guarda de alto positivo la salteaba y la
+   reserva se quedaba en la constante — o sea que el arreglo no arreglaba
+   nada y no dejaba ningún rastro.
+2. **Medir una vez no alcanza.** La barra envuelve en varios renglones
+   según el ancho y las tipografías entran DESPUÉS del primer layout.
+   Medido en el teléfono: al montar reservaba **147px** y la barra
+   terminaba en **107** — sin solaparse, pero con 40px de aire muerto
+   arriba de la app. Va un `ResizeObserver` sobre la barra, que cubre las
+   dos causas de una: cambia el ancho o cambia el contenido. El `resize`
+   de ventana queda de respaldo.
+3. **En papel la reserva se anula con `!important`.** La escribe el JS como
+   estilo **inline**, así que le gana a la media query: sin eso el PDF
+   generado desde la demo saldría con ese aire arriba de la primera hoja.
+
+Medido después, sin solapamiento y sin aire muerto:
+
+```
+           barra   reserva   header arranca en
+1400px      49px     50px          50   ·  13% de una pantalla de 812
+ 375px     107px    108px         108
+```
+
+**Lo que NO se pudo verificar acá**: el mínimo táctil de 44px del enlace
+vive en `@media screen and (pointer: coarse)`, y la emulación de CDP no
+activa esa rama —medido: los dos botones de la barra siguen dando 28 y
+30px de alto con `mobile: true`—. La regla está donde corresponde y hay un
+test que lo fija, pero en un teléfono real no se probó. Es el mismo límite
+que ya anota el punto 49 para la tablet.
+
+**Y va DENTRO del bloque táctil que ya existe, no en uno propio.** Los
+mínimos táctiles viven en un solo lugar — y además un segundo bloque rompía
+el recorte de `test-responsive.js`, que toma el PRIMER `pointer: coarse`
+del `<style>`: doce verificaciones se cayeron juntas sin que hubiera
+cambiado una sola regla de las que defienden. Otra vez el ancla frágil.
 
 ### Dos trampas viejas que volvieron a morder
 
