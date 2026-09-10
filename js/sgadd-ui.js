@@ -282,6 +282,88 @@ const SGADD_UI = (function () {
       .replace(/'/g, "\\'"));
   }
 
+  /* ===================================================================
+     EL PIE POR HOJA · un <tfoot> REAL, no `position: fixed`
+
+     EL FIJO NO ALCANZA, y el PDF del club lo probó tres veces. Decodificando
+     su archivo con el ToUnicode de cada fuente, las ocho hojas terminan
+     exactamente en «AR» y en ninguna aparece «MotorStats» ni «Generado el».
+     Comparados bloque a bloque contra el PDF de acá, los dos emiten el pie
+     con LA MISMA transformación y en LAS MISMAS coordenadas —`3.125 0 0
+     3.125 118.75 140.625 cm`, el «AR» en x≈200 y=997— pero el de acá emite
+     además el logo, la marca, la fecha y el arroba, y el suyo no.
+
+     O sea: mismo código, misma versión, misma posición, y su motor pinta
+     una sola corrida. El `<sup>` es la única del pie que lleva
+     `vertical-align: super` con `line-height: 0` — se dibuja por encima de
+     la línea de base y su caja no empuja la línea.
+
+     MEDIDO: un `<tfoot>` de verdad se repite en las 6 hojas de una prueba
+     de 220 filas. Y es el MISMO mecanismo que ya repite los `<thead>` de
+     las tablas del ranking, que en el PDF del club SÍ salen en las ocho
+     hojas. O sea que está probado en su navegador, que es lo que el
+     `fixed` no estaba.
+
+     OJO: `display: table-footer-group` sobre un `<div>` NO se repite —se
+     midió, sale solo en la última hoja—. Tiene que ser un `<tfoot>` de
+     verdad dentro de un `<table>`. La diferencia es el ELEMENTO, no la
+     propiedad.
+     =================================================================== */
+  const CLASE_TABLA = 'hoja-firmada';
+
+  function hijoPorClase(padre, clase) {
+    for (let i = 0; i < padre.children.length; i++) {
+      if (padre.children[i].classList.contains(clase)) return padre.children[i];
+    }
+    return null;
+  }
+
+  /**
+   * Envuelve el contenido del contenedor en una tabla de una sola celda y
+   * le cuelga el `<tfoot>` que Chromium repite al pie de cada hoja.
+   * Idempotente: llamarla dos veces no envuelve dos veces.
+   *
+   * LA FECHA SE CALCULA ACÁ, en el momento de imprimir: entre que se abre
+   * el modal y se toca Generar puede pasar la medianoche.
+   */
+  function inyectarPieDeHoja(contenedorId, fecha) {
+    if (typeof document === 'undefined') return null;
+    const c = document.getElementById(contenedorId);
+    if (!c) return null;
+    let tabla = hijoPorClase(c, CLASE_TABLA);
+    if (!tabla) {
+      tabla = document.createElement('table');
+      tabla.className = CLASE_TABLA;
+      /* El `<tfoot>` va ANTES del `<tbody>`: es la forma clásica y la que
+         se midió. Chromium lo dibuja abajo igual, y repetido. */
+      const tf = document.createElement('tfoot');
+      tf.innerHTML = '<tr><td class="pie-hoja-celda"></td></tr>';
+      const tb = document.createElement('tbody');
+      tb.innerHTML = '<tr><td class="hoja-cuerpo-celda"></td></tr>';
+      tabla.appendChild(tf);
+      tabla.appendChild(tb);
+      const celda = tb.querySelector('.hoja-cuerpo-celda');
+      while (c.firstChild) celda.appendChild(c.firstChild);
+      c.appendChild(tabla);
+    }
+    const celdaPie = tabla.querySelector('.pie-hoja-celda');
+    if (celdaPie) celdaPie.innerHTML = pieInforme(fecha);
+    return tabla;
+  }
+
+  /** Deshace el envoltorio. El contenedor suele recrearse entero, pero las
+   *  cinco exportaciones limpian y ésta tiene que poder limpiar. */
+  function quitarPieDeHoja(contenedorId) {
+    if (typeof document === 'undefined') return;
+    const c = document.getElementById(contenedorId);
+    if (!c) return;
+    const tabla = hijoPorClase(c, CLASE_TABLA);
+    if (!tabla) return;
+    const celda = tabla.querySelector('.hoja-cuerpo-celda');
+    if (celda) while (celda.firstChild) c.insertBefore(celda.firstChild, tabla);
+    tabla.remove();
+  }
+
   /* =====================================================================
      ESCUDOS EN EL PAPEL
 
@@ -1040,6 +1122,7 @@ const SGADD_UI = (function () {
     embeberImagenes, restaurarImagenes, pieInforme, pieWeb, MAIL, INSTAGRAM, ARROBA, LOGO, fechaHoy, MARCA,
     inyectarPieMotorStats, quitarPieMotorStats, pieVistaPrevia, ID_PIE,
     versionCargada, comprobarVersionPublicada, avisarVersion,
+    inyectarPieDeHoja, quitarPieDeHoja, CLASE_TABLA,
     diagnosticarPie, reglaPieImpresion, excepcionesDelPie,
     ancestrosQueRompenElPie,
     sanearNombreArchivo, nombrePersona, nombrePdf, tituloPdf, tituloPdfActivo,

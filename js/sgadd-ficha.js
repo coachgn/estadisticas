@@ -192,7 +192,7 @@ const SGADD_FICHA = (function () {
     adentro del contenedor: `position: fixed` se ancla al primer ancestro
     con `transform` o `filter`, y ahi dejaria de repetirse sin ningun
     sintoma. La fecha se calcula ACA, al imprimir. */
-    SGADD_UI.inyectarPieMotorStats();
+    SGADD_UI.inyectarPieDeHoja('fichaSalida');
     if (typeof SGADD_CHARTS !== 'undefined') SGADD_CHARTS.dibujarPendientes();
 
     /* Al imprimir, el navegador vuelve a resolver el `src` de cada <img> y
@@ -222,7 +222,7 @@ const SGADD_FICHA = (function () {
 
   function limpiar() {
     document.body.classList.remove('modo-ficha-print');
-    SGADD_UI.quitarPieMotorStats();
+    SGADD_UI.quitarPieDeHoja('fichaSalida');
     SGADD_UI.restaurarImagenes('#fichaSalida');
     const s = document.getElementById('fichaSalida');
     if (s) s.remove();

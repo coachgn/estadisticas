@@ -298,16 +298,57 @@ const sinReserva = PAGES.filter(r => /size:/.test(r) && !/margin-bottom: 15mm/.t
 igual(sinReserva, [],
       'TODA @page que declara tamaño reserva los 15mm del pie');
 
-/* --- LAS CINCO EXPORTACIONES --- */
-[['sgadd-ficha.js', 'la ficha del jugador'],
- ['sgadd-informe.js', 'el informe de equipo'],
- ['sgadd-rankingpdf.js', 'el ranking del plantel'],
- ['sgadd-scouting.js', 'el informe pre-partido'],
+/* --- LAS CINCO EXPORTACIONES, CON DOS MECANISMOS --- */
+
+/* Las TRES que tienen contenedor propio firman con un <tfoot> REAL, que
+   es la misma maquinaria que repite los <thead> de las tablas — y el PDF
+   del club prueba que su Chrome la respeta: sus ocho hojas traen la fila
+   de encabezados. El `position: fixed` no le funcionaba: de todo el pie
+   le salia unicamente el <sup>. */
+[['sgadd-ficha.js', 'la ficha del jugador', 'fichaSalida'],
+ ['sgadd-informe.js', 'el informe de equipo', 'informeSalida'],
+ ['sgadd-rankingpdf.js', 'el ranking del plantel', 'rankingSalida']].forEach(
+  ([f, eti, cid]) => {
+    const src = fs.readFileSync(path.join(__dirname, 'js', f), 'utf8');
+    ok(src.indexOf("inyectarPieDeHoja('" + cid + "')") > -1,
+       eti + ' firma con el <tfoot> de su contenedor');
+    ok(src.indexOf("quitarPieDeHoja('" + cid + "')") > -1,
+       '  y lo saca al terminar');
+    /* Y NO el fijo: los dos juntos darian dos firmas en la misma hoja. */
+    ok(!/inyectarPieMotorStats\(/.test(src),
+       '  y no inyecta ademas el fijo');
+  });
+
+/* Scouting y post-partido imprimen la seccion viva, sin contenedor propio,
+   asi que siguen con el fijo. */
+[['sgadd-scouting.js', 'el informe pre-partido'],
  ['sgadd-equipos.js', 'el post-partido']].forEach(([f, eti]) => {
   const src = fs.readFileSync(path.join(__dirname, 'js', f), 'utf8');
-  ok(/inyectarPieMotorStats\(\)/.test(src), eti + ' inyecta el pie');
+  ok(/inyectarPieMotorStats\(\)/.test(src), eti + ' inyecta el pie fijo');
   ok(/quitarPieMotorStats\(\)/.test(src), '  y lo saca al terminar');
 });
+
+/* EL ELEMENTO IMPORTA, NO LA PROPIEDAD. `display: table-footer-group`
+   sobre un <div> NO se repite —medido: sale solo en la ultima hoja—; un
+   <tfoot> de verdad si, en las 6 hojas de una prueba de 220 filas. */
+const CUERPO_HOJA = (UI.match(/function inyectarPieDeHoja[\s\S]*?\n  \}/) || [''])[0];
+ok(/createElement\('table'\)/.test(CUERPO_HOJA),
+   'el envoltorio es una <table> de verdad');
+ok(/createElement\('tfoot'\)/.test(CUERPO_HOJA),
+   '  con un <tfoot> de verdad, que es lo que Chromium repite');
+ok(/createElement\('tbody'\)/.test(CUERPO_HOJA),
+   '  y el contenido dentro de un <tbody>');
+ok(/pieInforme\(fecha\)/.test(CUERPO_HOJA),
+   'la fecha se calcula al imprimir, no al armar el documento');
+ok(/hijoPorClase\(c, CLASE_TABLA\)/.test(CUERPO_HOJA),
+   'es idempotente: no envuelve dos veces');
+
+/* La celda del cuerpo va SIN padding: el maquetado de las tres
+   exportaciones esta medido y presupuestado (puntos 7.6 y 50). */
+ok(/[.]hoja-firmada > tbody > tr > td[.]hoja-cuerpo-celda \{[^}]*padding: 0/.test(ESTILO),
+   'la celda del cuerpo no mueve el maquetado');
+ok(/[.]hoja-firmada \{[^}]*width: 100%/.test(ESTILO),
+   'la tabla ocupa el ancho: si no, encoge al contenido');
 
 /* EL PIE SE EXCEPTÚA DE LOS TRES OCULTADOS. Esas reglas esconden todo lo
    que no es el contenedor de salida, y el pie es hermano del contenedor,

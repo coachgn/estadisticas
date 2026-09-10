@@ -42,7 +42,7 @@ node test-jsonclub.js      # 105 tests · los JSON de club, el validador, el ais
 node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 175 tests · partidos sin box score: suman a la tabla, no a las métricas
-node test-responsive.js    # 126 tests · desborde, targets táctiles, modales, el papel, el PIE
+node test-responsive.js    # 136 tests · desborde, targets táctiles, modales, el papel, el PIE
                            #             el aviso de version y el diagnostico del pie
 node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
@@ -58,7 +58,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4788 tests en total. Todos tienen que dar verde antes de commitear.**
+**4798 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -7295,6 +7295,95 @@ puede afirmar que esto lo cierra. Lo que sí se puede afirmar es que quita
 la dependencia del único punto que la evidencia señala —cómo se resuelve
 `bottom: 0` contra el borde imprimible— sin mover nada de lo que ya
 funciona.
+
+### LA SÉPTIMA VUELTA · el `<tfoot>` REAL, que es lo único probado en su Chrome
+
+El club cortó la discusión bien: *«basta de variantes de CSS; hay vistas en
+este proyecto que SÍ imprimen el pie en todas las hojas — buscá cuál y copiá
+esa estructura»*. Tenía razón, y el mecanismo probado estaba **adentro de su
+propio PDF**.
+
+#### La comparación bloque a bloque, que es la que cerró el caso
+
+Decodificando los dos archivos —el suyo y el de acá— y listando cada bloque
+de contenido que usa la transformación del pie:
+
+```
+EL DE ACÁ (el pie sale)          EL SUYO (el pie no sale)
+3 bloques                        1 bloque
+  [IMAGEN X10]  el logo            —
+  y=1006 x=133  «MotorStats»       —
+  y=1006 x=218  «· Generado el…»   —
+  y=1006 x=527  «@motorstats.ar»   —
+  y=997  x=200  «AR»             y=997  x=201  «AR»
+```
+
+**La misma transformación (`3.125 0 0 3.125 118.75 140.625 cm`), el mismo
+color (#111, que es el aplanado del papel) y prácticamente la misma
+coordenada.** O sea que su motor coloca el pie exactamente donde lo coloca
+el de acá, y pinta UNA sola corrida: el `<sup>`, que es la única del pie
+con `vertical-align: super` y `line-height: 0`.
+
+Mismo código, misma versión (v196, confirmada en su barra lateral), misma
+posición, distinto resultado. `position: fixed` en medios paginados no es
+confiable en su Chrome, y no hay CSS que lo arregle desde acá.
+
+#### Lo que SÍ está probado en su navegador
+
+En sus ocho hojas **la fila de encabezados de cada tabla se repite**. Eso es
+`table-header-group`, y `<tfoot>` es la misma maquinaria.
+
+Medido acá con una prueba de 220 filas:
+
+```
+<tfoot> de VERDAD dentro de <table>   →  6 de 6 hojas   ✓
+display: table-footer-group en un div →  solo la ULTIMA  ✗
+```
+
+**La diferencia es el ELEMENTO, no la propiedad.** El primer intento de esta
+vuelta usó la versión CSS sobre divs y salió solo en la última hoja; por eso
+se había descartado el mecanismo entero. Estaba mal descartado.
+
+#### El mecanismo, y las dos exportaciones que NO lo usan
+
+`inyectarPieDeHoja(contenedorId)` envuelve el contenido del contenedor en
+una `<table class="hoja-firmada">` de una sola celda, con un `<tfoot>` que
+lleva la firma. Lo usan las **tres** exportaciones que tienen contenedor
+propio: ranking, ficha e informe.
+
+**Scouting y post-partido siguen con el fijo**: imprimen la sección viva, sin
+contenedor, y envolver eso en una tabla movería un maquetado A3 que está
+medido y presupuestado (puntos 7.2 y 7.6). Conviven dos mecanismos a
+propósito, y hay tests que fijan cuál usa cada una — **una exportación no
+puede tener los dos**, o firmaría dos veces la misma hoja.
+
+Cuatro cosas que hay que respetar al tocarlo:
+
+- **La celda del cuerpo va SIN padding y la tabla con `width: 100%`.** Una
+  tabla encoge al contenido si no se le dice, y cualquier padding movería un
+  maquetado que ya está medido hoja por hoja.
+- **Es idempotente**: no envuelve dos veces.
+- **La fecha se calcula al imprimir**, igual que antes.
+- **El `@page margin-bottom: 15mm` se queda.** Con el `<tfoot>` el pie está
+  en el flujo y no necesitaría la reserva, pero post-partido y scouting
+  siguen con el fijo y sí la necesitan — y bajarla movería el paginado de
+  las cinco.
+
+#### Medido después
+
+```
+ranking  8 hojas · firma en las OCHO · img [2,1,1,1,1,1,1,1]
+ficha    5 hojas · firma en las CINCO · img [2,1,1,3,2]
+y exactamente UNA «MotorStats» y UN «Generado el» por hoja
+```
+
+#### Y la falla que casi se me escapa
+
+Mi barrido de la suite detectaba fallas buscando la palabra «FALLARON», y
+`test-jugadores.js` cierra con **«HAY FALLAS»**. Reportó *ok* con un test en
+rojo. Los contadores lo delataron —283 pasó a 282— y por eso conviene mirar
+el número y no solo el cartel: **un barrido que busca UNA sola forma de decir
+«falló» es un barrido que miente en cuanto una suite la diga distinto.**
 
 #### Y por qué NO se movió el pie adentro de `#rankingSalida`
 

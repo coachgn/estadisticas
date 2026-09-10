@@ -1203,8 +1203,13 @@ check('y tiene su contenedor de impresión',
    contenedor y sin la excepción desaparece del PDF. */
 check('  con el pie institucional exceptuado',
   /body\.modo-ficha-print > \*:not\(#fichaSalida\):not\(\.pie-motorstats\)/.test(htmlApp));
-check('  y la ficha lo inyecta antes de imprimir',
-  /inyectarPieMotorStats\(\)/.test(fichaJs) && /quitarPieMotorStats\(\)/.test(fichaJs));
+/* Y LA FICHA FIRMA CON UN <tfoot> REAL, no con el fijo. El PDF que mando el
+   club probo que `position: fixed` no le pinta el pie —de toda la firma le
+   salia unicamente el <sup>— y que en cambio los <thead> de las tablas SI
+   se repiten en sus ocho hojas: es la misma maquinaria. */
+check('  y la ficha firma con el <tfoot> de su contenedor',
+  fichaJs.indexOf("inyectarPieDeHoja('fichaSalida')") > -1
+  && fichaJs.indexOf("quitarPieDeHoja('fichaSalida')") > -1);
 /* Los bloques del informe de equipo son cortos y no se parten; los de la
    ficha miden más de media carilla y con `avoid` dejaban 2/3 de hoja en
    blanco. Medido: 4 hojas para una ficha que entra en 3. */
