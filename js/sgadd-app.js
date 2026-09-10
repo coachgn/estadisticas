@@ -131,7 +131,10 @@ const SGADD_APP = (function () {
        clave opaca y el id real vive en el servidor. Una planilla sin slug
        es la que todavía no tiene libro conectado — aparece deshabilitada
        en el selector y no se puede abrir. */
-    if (!p || !(p.slug || p.sheetId)) {
+    /* La guarda del libro conectado no aplica a la demo: su planilla no
+       resuelve contra ningun libro a proposito. */
+    const demo = (typeof SGADD_DEMO !== 'undefined' && SGADD_DEMO.activo());
+    if (!demo && (!p || !(p.slug || p.sheetId))) {
       estado.error = 'Esa categoría todavía no tiene libro conectado.';
       avisar(); return;
     }
@@ -153,7 +156,14 @@ const SGADD_APP = (function () {
          backend configurado va por la API con la planilla privada, si no
          cae a GViz mientras dure la transición. Acá no se elige nada — el
          día que GViz se apague, esta línea no cambia. */
-      const r = await SGADD_DATA.cargarCategoria(p, { forzar: forzar });
+      /* EN LA DEMO LOS DATOS SALEN DE UN SNAPSHOT COMMITTEADO y no de un
+         libro: la demo es publica y desde que el catalogo dejo de traer
+         `sheetId` no hay forma de leer uno sin token. `SGADD_DEMO`
+         devuelve exactamente la misma forma que `SGADD_DATA`, asi que de
+         aca para abajo no cambia una linea. */
+      const r = (typeof SGADD_DEMO !== 'undefined' && SGADD_DEMO.activo())
+        ? await SGADD_DEMO.cargarCategoria()
+        : await SGADD_DATA.cargarCategoria(p, { forzar: forzar });
       if (!vigente()) return;
       const hojas = r.hojas, errores = r.errores;
       /* Qué recortó el servidor, para que las secciones lo puedan decir en

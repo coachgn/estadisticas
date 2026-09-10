@@ -44,7 +44,24 @@ const CLUB = (function () {
     return '';
   })();
 
+  /**
+   * ¿Estamos en la DEMO publica?
+   *
+   * SE PREGUNTA ACA Y NO EN `SGADD_DEMO`, por el mismo motivo que
+   * `esLanding()`: este modulo carga PRIMERO y se auto-arranca, asi que
+   * cuando `idDesdeUrl()` corre, `SGADD_DEMO` todavia no existe. Con la
+   * pregunta en el otro modulo, la demo abriria el club por defecto.
+   */
+  function enDemo() {
+    try {
+      return new URLSearchParams(window.location.search).get('demo') === '1';
+    } catch (e) { return false; }
+  }
+
   function idDesdeUrl() {
+    /* La demo fuerza su propio club: marca de MotorStats, equipo propio
+       `EQUIPO 1` y una sola planilla, la del snapshot anonimizado. */
+    if (enDemo()) return 'demo';
     try {
       const p = new URLSearchParams(window.location.search).get('club');
       return (p && /^[a-z0-9-]+$/i.test(p)) ? p.toLowerCase() : POR_DEFECTO;
@@ -64,6 +81,10 @@ const CLUB = (function () {
    * carrera de scripts y sin dos formas de contestar lo mismo.
    */
   function esLanding() {
+    /* EN LA DEMO NO HAY LANDING: se entra a ver el panel, que es todo el
+       punto. Sin esto el router devolveria la tarjeta explicativa en cada
+       seccion —la demo no lleva `?club=`— y no se veria un solo dato. */
+    if (enDemo()) return false;
     try {
       if (new URLSearchParams(window.location.search).get('club')) return false;
     } catch (e) { return false; }
@@ -465,7 +486,7 @@ const CLUB = (function () {
   /** El index avisa cuando ya pintó una vez, para saber si hay que repintar. */
   function marcarRender() { yaHuboRender = true; }
 
-  return { TEMA, estado, cargar, aplicar: aplicarSeguro, credito, idDesdeUrl, esLanding, debug, marcarRender,
+  return { TEMA, estado, cargar, aplicar: aplicarSeguro, credito, idDesdeUrl, esLanding, enDemo, debug, marcarRender,
            reintentarEscudo, aclararHastaLegible, oscurecerHastaLegible, contraste,
            get cfg() { return estado.cfg; }, get aplicado() { return aplicado; } };
 })();

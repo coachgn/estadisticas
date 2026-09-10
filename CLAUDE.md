@@ -22,7 +22,7 @@ node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 318 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
-node test-boot.js          # 167 tests · arranque por club, sintaxis de los módulos, carteles de espera
+node test-boot.js          # 169 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 283 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
@@ -31,20 +31,22 @@ node test-partido.js       #  55 tests · detalle partido a partido, perfil de t
 node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
-node test-permisos.js      # 367 tests · roles, planes, el gate, el selector, el hub, el ciclo,
+node test-permisos.js      # 401 tests · roles, planes, el gate, el selector, el hub, el ciclo,
                            #             la sesión, la landing y el glosario
 node test-comparativa.js   #  65 tests · ciclos, tendencia contra nivel, cara a cara
 node test-clientes.js      #  69 tests · el padrón de clientes, los cupos y el login
 node test-confirmar.js     #  86 tests · el diff, publicar zonas, subclientes y tooltips
 node test-acumulacion.js   #  42 tests · la suma entre tramos · REGRESIÓN, no tocar
 node test-resiliencia.js   #  50 tests · rotación del token, KV caído, el tramo que se conserva
-node test-jsonclub.js      # 105 tests · los JSON de club, el validador, el aislamiento y publicar
+node test-jsonclub.js      # 109 tests · los JSON de club, el validador, el aislamiento y publicar
 node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 175 tests · partidos sin box score: suman a la tabla, no a las métricas
 node test-responsive.js    # 136 tests · desborde, targets táctiles, modales, el papel, el PIE
                            #             el aviso de version y el diagnostico del pie
 node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
+node test-demo.js          #  66 tests · la demo publica: el snapshot anonimizado, el
+                           #             contrato cols↔filas, las cards y el modal
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
 
@@ -58,7 +60,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4798 tests en total. Todos tienen que dar verde antes de commitear.**
+**4903 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -7394,3 +7396,191 @@ exactamente el defecto original que el pie fijo vino a resolver: ocho
 firmas volverían a ser una. El `position: fixed` colgado del `body` es el
 mecanismo, y para eso el nodo tiene que ser HERMANO del contenedor, no
 hijo — de ahí que las tres reglas de ocultado lo exceptúen.
+
+---
+
+## 52. LA DEMO PÚBLICA Y LAS CARDS DE PLANES
+
+Dos piezas comerciales que comparten un solo formulario: una vuelta
+entera del panel sin login (`/demo`) y las tres cards de planes de la
+landing. Motor y runtime en `js/sgadd-demo.js`; el generador del
+snapshot es `generar-demo.js`, que se corre **a mano**.
+
+### El snapshot está COMMITEADO, y esa es la decisión
+
+Desde que el catálogo dejó de traer `sheetId` —«EL CATÁLOGO YA NO TIENE
+sheetId, Y ESE ES EL PUNTO»— leer un libro exige pasar por el backend,
+que pide token. La demo es pública por definición, así que no lo tiene.
+
+Poner el id de un libro real en un `clubes/*.json` para que la demo
+leyera en vivo **desharía esa decisión**: esos archivos son públicos.
+Por eso el libro se lee UNA vez desde `generar-demo.js`, con la
+credencial local (`SHEET_JUJUY_PRIMERA` de `server/.env`), y lo único que
+entra al repo es el resultado ya anonimizado.
+
+```
+17 equipos · 259 jugadores · 21.104 celdas reescritas · 2.839 KB
+```
+
+**Las filas se guardan como ARRAYS, indexadas por `cols`.** Con objetos
+el archivo pesaba **5.549 KB**: la mitad eran los nombres de las 53
+columnas repetidos en cada una de las 2.000 y pico de filas. El precio es
+que el generador y `rehidratar()` tienen que estar de acuerdo sobre el
+orden, y un desacuerdo **no rompe**: corre las columnas y muestra el
+`PACE` en la casilla de los puntos. Hay un test que ejerce la ida y
+vuelta sobre el archivo real y no sobre una fixture de tres columnas —
+el corrimiento aparece justo donde hay muchas.
+
+### LOS NÚMEROS NO SE TOCAN · solo los NOMBRES
+
+El valor de la demo es que el dashboard se vea **real**: percentiles
+contra la liga, eFG%, PACE, arquetipos, bandas de desvío. Con números
+inventados las etiquetas dirían cualquier cosa y la demo enseñaría a
+desconfiar del producto.
+
+Se reescriben `EQUIPO`, `NOMBRES` y el texto de `PARTIDO`. Lo que **no**
+se toca: ningún valor numérico y los dos centinelas, `EQUIPO TIPO` y
+`JUGADOR TIPO`, que son la MEDIANA (punto 3). Renombrarlas como si
+fueran un equipo más dejaría al panel sin percentiles, sin bandas y sin
+umbral de minutos.
+
+**La guarda de fuga corre DOS veces.** El generador se niega a escribir
+si algo se filtró, pero eso corre en la máquina de quien genera;
+`test-demo.js` recorre el archivo **entero** en cada suite —no una
+muestra— y exige que todo `EQUIPO` matchee `^EQUIPO \d+$`, todo `NOMBRES`
+`^JUGADOR \d+$`, y que no viaje ninguna cadena con pinta de id de Google
+ni una sola mención del club de origen. Es el archivo que se publica en
+un repo público: la verificación tiene que estar del lado del repo.
+
+### EL PATRÓN DEL EQUIPO PROPIO VA ANCLADO
+
+`"patronEquipoPropio": "^EQUIPO 1$"`. Es la trampa del punto 6 —la de
+DEPORTIVO— pero acá se da **sí o sí**: con 17 equipos llamados `EQUIPO
+1..17`, un patrón sin anclar trata a **ocho rivales como equipo propio**
+en scouting, en los informes y en el plantel, sin ningún síntoma visible.
+
+### Tres enganches, cada uno en el único punto por el que se pasa
+
+| Qué | Dónde | Por qué ahí |
+|---|---|---|
+| el club forzado | `sgadd-club.js` | carga PRIMERO y se auto-arranca: cuando `idDesdeUrl()` corre, `SGADD_DEMO` todavía no existe. Por eso `enDemo()` mira la URL **inline** |
+| la sesión | `SGADD_AUTH.cargarSesion()` | es el ÚNICO punto que decide de dónde sale una sesión |
+| los escudos | `LOGOS.getUrl()` | por ahí pasan la grilla, la tabla, el scatter, el scouting y los cinco PDF |
+
+**La sesión estableciéndose desde el módulo de la demo NO funcionaba**, y
+el modo de fallar era el caro: `cargarSesion()` corre DESPUÉS, en el
+`init()` del arranque, y la pisaba. Medido en el navegador — la demo
+abría con `sesion: null`, o sea **rol ABIERTO**, que ve TODO: se le
+habrían mostrado Simulador, Configuración y Diagnóstico a cualquiera que
+entrara por el link público.
+
+**Es plan PLATA y no se persiste.** Plata porque es el plan que la demo
+vende: incluye Scouting, que es el módulo que más se mira. Y no se
+persiste —`establecerSesion` solo escribe en memoria— porque si quedara
+en `localStorage`, el que probó la demo abriría el panel al día siguiente
+convencido de que tiene una cuenta.
+
+### `/demo` es una CARPETA con un redirect
+
+Y no un `?demo=1` pelado: lo que se comparte por WhatsApp es una **ruta**
+—`motorstats.ar/demo` se lee y se dicta— y un query string se corta al
+pegarlo. `demo/index.html` hace `location.replace('../index.html?demo=1')`
+y lleva `noindex`, para que la demo no le compita a la landing en Google.
+
+### LAS CARDS DE PLANES SE DERIVAN DE `MODULOS`, NO SE ESCRIBEN
+
+La tentación es listar a mano lo que trae cada plan. No se hace: la
+matriz de qué pide cada sección ya vive en `SGADD_AUTH.MODULOS`, que es
+la que el router **hace cumplir**. Con una segunda lista, la landing le
+promete al cliente un módulo que el gate le niega —o al revés, le esconde
+uno que ya tiene— y la que se relaja es siempre la de la pantalla. Es el
+bug del rol funcional (punto 8) con un cliente que paga del otro lado.
+
+`SGADD_LANDING.planes()` es puro y resuelve las tres cards:
+
+```
+Bronce  base    Principal · Equipos · Jugadores · Clasificación · Glosario   2 mails
+Plata   +       Scouting                                                     3 mails
+Oro     +       Análisis de scouters (servicio, no módulo)                   4 mails
+```
+
+**El test no compara contra una lista escrita en el test** —eso sería una
+TERCERA copia— sino contra `puedoAcceder()`, ejecutándolo con una sesión
+de cada plan sobre cada sección. Si alguien mueve Scouting de plan y no
+toca la landing, cae. Y hay otro que lee el cuerpo de `planes()` y falla
+si aparece el nombre de un módulo escrito a mano.
+
+**Lo único escrito a mano es el servicio del plan Oro**, y no se puede
+evitar: no es un módulo del panel sino trabajo humano —un informe por
+ciclo de 4 partidos— y ningún `MODULOS` lo puede declarar. Lo que sí sale
+del código es **su número**: `SGADD_HUB.PARTIDOS_POR_CICLO`, que es el
+que el hub hace correr. Hay un test que los ata.
+
+**El cupo de mails se dice UNA sola vez.** Estaba en las cards y otra vez
+abajo, en «cómo se entra»: la misma cifra en dos lugares de la misma
+pantalla es la que el día que cambie deja una vieja, y el cliente lee la
+que le conviene. Sale de `SGADD_AUTH.CUPO_MAILS`, la misma tabla que el
+servidor hace cumplir al dar de alta un mail.
+
+**Ningún estado se comunica solo con color** (punto 14): lo que el plan
+suma va con `✓`, el servicio con `＋` y lo que está un escalón más arriba
+con `→`. Y lo que falta **no se tacha**: un tachado se lee como «esto ya
+no existe» y lo que hay que comunicar es «esto está más arriba».
+
+**La destacada no crece ni se mueve.** En una grilla de tres, escalar una
+card le desalinea el borde a las otras dos, y en el teléfono —donde van
+apiladas— no se nota que es distinta. Se marca con el borde de acento y
+un badge, que se ven igual en las dos disposiciones.
+
+### UN SOLO MODAL PARA LOS DOS ORÍGENES
+
+La barra de la demo y las tres cards abren el **mismo** formulario de
+tres campos —nombre y rol, club, WhatsApp— y solo el club es obligatorio:
+es el único que cambia el mensaje, y pedir los tres para poder escribir
+un WhatsApp es fricción sin contrapartida.
+
+**Lo que sí cambia es el encabezado del mensaje**, y no es un detalle:
+con un solo texto, el que toca una card en la landing —sin haber entrado
+nunca a la demo— le escribiría «probé la demo», y el que atiende arranca
+la conversación con un dato falso.
+
+```
+desde la demo   Hola MotorStats, probé la demo y quiero ver cómo funciona
+                con los datos de <club>.
+desde una card  Hola MotorStats, quiero consultar por el plan <X> para <club>.
+```
+
+**No hay backend al que mandar el lead**, así que el envío arma el
+mensaje y abre WhatsApp: queda en la conversación, que además es donde el
+club lo quiere atender. Prometer un «te contactamos» sin nada que lo
+cumpla sería peor que no tener el formulario.
+
+> **PENDIENTE:** `WHATSAPP` en `js/sgadd-demo.js` es un número de
+> ejemplo (`5492215551234`). Hay que reemplazarlo por el comercial real
+> antes de publicar, o cada lead se pierde.
+
+### Dos trampas viejas que volvieron a morder
+
+1. **Una consulta de ancho sin `screen`** (punto 49). El bloque de la
+   demo traía `@media (min-width: 640px)` y las cards `(min-width:
+   768px)`: al imprimir se evalúan contra la HOJA. Peor, la reserva de
+   alto de la barra fija se aplicaba en papel —la barra se esconde, la
+   reserva no— y el PDF salía con 64px de aire arriba de la primera hoja.
+
+2. **`test-responsive.js` matcheaba un `@page` que estaba DENTRO de un**
+   **comentario.** El bloque del pie explica su mecanismo nombrando
+   `@page` en prosa, y el matcher —`@page` … `{` … `}`— arrancaba ahí y
+   se comía el comentario entero hasta la primera llave que encontrara,
+   que resultó ser la de un `.demo-barra` con un `font-size` adentro.
+   Resultado: denunciaba una `@page` sin reserva que no existe, y recién
+   cuando alguien insertaba una regla nueva en el medio — o sea lejísimos
+   de la causa. Ahora se parsea el CSS **sin comentarios**. Es la misma
+   familia que el ancla `\r?\n` del punto 51: no cambia la propiedad que
+   se defiende, cambia que se pueda romper por algo que no tiene nada que
+   ver con ella.
+
+Y una tercera, la de siempre: **el gris de lo bloqueado arrancó en**
+**`#6f6f6f`, que da 3,43 sobre la tarjeta** —medido con la misma
+`CLUB.contraste()` que usa el panel— o sea por debajo del 4,5 de AA. Lo
+que está un escalón más arriba tiene que poder LEERSE: es justamente lo
+que se le está ofreciendo al cliente.

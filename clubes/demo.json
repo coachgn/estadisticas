@@ -1,0 +1,42 @@
+{
+  "id": "demo",
+  "nombre": "MotorStats · Demo",
+  "nombreCorto": "EQUIPO 1",
+  "bajada": "Datos anonimos de muestra",
+
+  "//escudo": "El isotipo de MotorStats: en la demo NINGUN equipo muestra su escudo real. La sustitucion de los escudos de la grilla la hace sgadd-demo.js sobre LOGOS.getUrl(); esto es solo el del header.",
+  "escudo": "logos/motorlogo-64.png",
+
+  "acento": "#f7941e",
+  "acentoOscuro": "#c2740f",
+
+  "liga": "liga-argentina",
+
+  "//patronEquipoPropio": "ANCLADO A PROPOSITO. Sin el ^...$, 'EQUIPO 1' matchearia tambien EQUIPO 10..17 y el panel trataria a ocho rivales como equipo propio, sin ningun sintoma visible. Es la trampa del punto 6 con DEPORTIVO, que aca se da si o si porque hay 17 equipos.",
+  "patronEquipoPropio": "^EQUIPO 1$",
+
+  "//sufijosEquipo": "VACIO: los nombres de la demo ya vienen limpios, no traen sufijo de categoria.",
+  "sufijosEquipo": [],
+
+  "aliasLogos": {},
+
+  "anio": 2025,
+  "torneo": "LIGA DE MUESTRA",
+  "credito": "MotorStats",
+
+  "//planillas": "UNA sola. El `slug` no resuelve contra ningun libro: en demo los datos NO salen del backend ni de GViz sino de demo/datos-demo.json, que es un snapshot anonimizado y committeado. Ver generar-demo.js.",
+  "planillas": [
+    {
+      "id": "demo-liga-2025",
+      "slug": "demo",
+      "anio": 2025,
+      "torneo": "LIGA DE MUESTRA",
+      "categoria": "PRIMERA",
+      "rama": "masculina",
+      "tira": null,
+      "nivel": "LIGA_ARGENTINA",
+      "label": "Liga de muestra · Temporada",
+      "activo": true
+    }
+  ]
+}

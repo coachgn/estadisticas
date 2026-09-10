@@ -48,6 +48,20 @@ const CSS = fs.readFileSync(path.join(RAIZ, 'sgadd.css'), 'utf8');
    extraer, asi que TODAS las verificaciones de CSS pasaban a fallar de
    golpe sin que hubiera cambiado una sola regla. */
 const ESTILO = (HTML.match(/\r?\n<style>\r?\n[\s\S]*?<\/style>/) || [''])[0];
+/* LOS COMENTARIOS NO SON REGLAS, Y ESTE TEST PARSEA REGLAS.
+
+   El bloque del pie explica su mecanismo nombrando `@page` en prosa, y
+   el matcher de abajo —`@page` … `{` … `}`— arrancaba AHI: se comia el
+   comentario entero hasta la primera llave que encontrara, que resulto
+   ser la de un `.demo-barra` con un `font-size` adentro. Resultado: el
+   test denunciaba una `@page` sin reserva que no existe, y lo hacia
+   recien cuando alguien insertaba una regla nueva en el medio — o sea
+   lejisimos de la causa.
+
+   Es la misma familia que el ancla `\r?\n` de arriba: no cambia la
+   propiedad que se defiende, cambia que se pueda romper por algo que no
+   tiene nada que ver con ella. */
+const REGLAS = ESTILO.replace(/\/\*[\s\S]*?\*\//g, '');
 
 /* =====================================================================
    1 · NINGUNA MEDIA QUERY DEL PANEL SE CUELA EN EL PAPEL
@@ -62,7 +76,7 @@ const ESTILO = (HTML.match(/\r?\n<style>\r?\n[\s\S]*?<\/style>/) || [''])[0];
    ===================================================================== */
 bloque('1 · Las media queries del panel no entran al papel');
 
-const CONSULTAS = (ESTILO.match(/@media[^{]+/g) || []).map(m =>
+const CONSULTAS = (REGLAS.match(/@media[^{]+/g) || []).map(m =>
   m.replace(/^@media\s*/, '').trim().toLowerCase());
 
 ok(CONSULTAS.length > 10, 'se parsearon las media queries del <style>', CONSULTAS.length);
@@ -292,7 +306,7 @@ ok(/\.informe-pie \{ display: none !important; \}/.test(ESTILO),
 
    Medido: el pie mide 9,2mm en los tres anchos de hoja (A4 vertical, A4
    apaisada y A3 apaisada) contra los 15mm reservados. */
-const PAGES = ESTILO.match(/@page[^{]*\{[^}]*\}/g) || [];
+const PAGES = REGLAS.match(/@page[^{]*\{[^}]*\}/g) || [];
 ok(PAGES.length >= 4, 'se parsearon las reglas @page', PAGES.length);
 const sinReserva = PAGES.filter(r => /size:/.test(r) && !/margin-bottom: 15mm/.test(r));
 igual(sinReserva, [],

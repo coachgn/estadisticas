@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>MotorStats · Demo</title>
+<!--
+  LA "RUTA" /demo, en un sitio estatico.
+
+  GitHub Pages no rutea: no hay servidor que traduzca /demo al index. Lo
+  que si sirve es un index propio en la carpeta, asi que `/demo/` existe
+  de verdad y redirige al modo, que es `?demo=1` sobre la app.
+
+  Va con `replace` y no con un link para que el boton Atras del navegador
+  vuelva a donde el visitante estaba y no a esta pagina puente, que no
+  tiene nada que mirar.
+-->
+<meta name="robots" content="noindex">
+<link rel="canonical" href="../index.html?demo=1">
+<script>location.replace('../index.html?demo=1');</script>
+<p style="font:14px system-ui;padding:2rem">
+  Abriendo la demo… <a href="../index.html?demo=1">Entrar</a>
+</p>

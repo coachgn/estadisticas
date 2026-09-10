@@ -523,6 +523,20 @@ const SGADD_AUTH = (function () {
   }
 
   function cargarSesion(busqueda) {
+    /* LA DEMO PUBLICA TRAE SU PROPIA SESION, y se resuelve ACA porque
+       este es el unico punto que decide de donde sale una sesion. La
+       primera version la establecia desde `sgadd-demo.js` al cargar el
+       modulo y no servia: `cargarSesion()` corre despues, en el `init()`
+       del arranque, y la pisaba. Medido en el navegador — la demo abria
+       con `sesion: null`, o sea rol ABIERTO, que ve TODO: se le habrian
+       mostrado Simulador, Configuracion y Diagnostico a cualquiera.
+
+       No se persiste: `establecerSesion` solo escribe en memoria. Si
+       quedara en `localStorage`, el que probo la demo abriria el panel al
+       dia siguiente convencido de que tiene una cuenta. */
+    if (typeof SGADD_DEMO !== 'undefined' && SGADD_DEMO.activo && SGADD_DEMO.activo()) {
+      return establecerSesion(SGADD_DEMO.sesion());
+    }
     let q = null;
     try {
       const cadena = (busqueda !== undefined) ? busqueda

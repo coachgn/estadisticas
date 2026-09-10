@@ -31,6 +31,12 @@ const SGADD_LANDING = (function () {
   const LOGO = 'logos/motorlogo-64.png';
   const LOGO_GRANDE = 'logos/motorlogo-128.png';
 
+  /* LA DEMO PUBLICA. Es una CARPETA con un redirect adentro y no un
+     `?demo=1` pelado, porque lo que se comparte en un WhatsApp es una
+     ruta: `motorstats.ar/demo` se lee y se dicta, y un query string se
+     corta al pegarlo. El redirect deja la app en un solo archivo. */
+  const RUTA_DEMO = 'demo/index.html';
+
   /* =====================================================================
      MOTOR · puro
      ===================================================================== */
@@ -153,6 +159,101 @@ const SGADD_LANDING = (function () {
     { nombre: 'Oro', mails: CUPOS.ORO, color: '#FFD700' },
   ];
 
+  /* =====================================================================
+     QUE INCLUYE CADA PLAN · SE DERIVA, NO SE ESCRIBE
+
+     La tentacion es listar a mano lo que trae cada card. No se hace: la
+     matriz de que pide cada seccion ya vive en `SGADD_AUTH.MODULOS`, que
+     es la que el panel HACE CUMPLIR. Con una segunda lista, la landing le
+     promete al cliente un modulo que el gate le niega —o al reves, le
+     esconde uno que ya tiene— y la que se relaja es siempre la de la
+     pantalla. Es el bug del rol funcional (punto 8) con un cliente que
+     paga del otro lado.
+
+     Lo unico que se escribe aca es el SERVICIO del plan Oro, que no es un
+     modulo del panel sino trabajo humano: no hay ningun `MODULOS` que lo
+     pueda declarar. Su numero de partidos si sale del codigo.
+     ===================================================================== */
+
+  /** El plan inmediatamente anterior. `null` para el primero. */
+  const ANTERIOR = { BRONCE: null, PLATA: 'BRONCE', ORO: 'PLATA' };
+
+  /**
+   * ¿Un plan alcanza para esta seccion? Misma pregunta que se hace el
+   * gate, con la misma tabla. Sin `SGADD_AUTH` cargado devuelve `false`,
+   * que falla CERRADO: una card que no promete nada es mejor que una que
+   * promete lo que no se puede verificar.
+   */
+  function alcanza(plan, seccionId) {
+    if (!plan) return false;
+    const A = (typeof SGADD_AUTH !== 'undefined') ? SGADD_AUTH : null;
+    if (!A || !A.MODULOS) return false;
+    const tiene = Object.prototype.hasOwnProperty.call(A.MODULOS, seccionId);
+    const regla = tiene ? A.MODULOS[seccionId] : null;
+    if (!regla) return true;                 // seccion abierta
+    if (regla.soloAdmin) return false;       // no se ofrece en ningun plan
+    if (!regla.plan) return true;
+    return A.ORDEN_PLAN[A.normalizarPlan(plan)]
+        >= A.ORDEN_PLAN[A.normalizarPlan(regla.plan)];
+  }
+
+  /** El ciclo de informes del plan Oro. Sale del hub, que es el que lo
+   *  hace correr; el respaldo es para Node, donde ese modulo no esta. */
+  function partidosPorCiclo() {
+    return (typeof SGADD_HUB !== 'undefined' && SGADD_HUB.PARTIDOS_POR_CICLO)
+      ? SGADD_HUB.PARTIDOS_POR_CICLO : 4;
+  }
+
+  /* EL SERVICIO DEL PLAN ORO. No es un modulo: es un informe que escribe
+     un scouter de MotorStats. Por eso lleva otro icono que los modulos —
+     prometer trabajo humano con el mismo tilde que una pantalla que ya
+     esta hecha confunde lo que se entrega. */
+  function servicioOro() {
+    return {
+      titulo: 'Análisis de scouters de MotorStats',
+      detalle: 'Un informe por ciclo de ' + partidosPorCiclo() + ' partidos del equipo '
+        + 'y de sus jugadores: puntos de fuga, factores de mejora y el plan de '
+        + 'ajuste para el ciclo siguiente.',
+      servicio: true,
+    };
+  }
+
+  /**
+   * Las tres cards, ya resueltas. PURA y exportada, para poder verificar
+   * sin navegador que lo que promete cada plan es lo que el gate concede.
+   */
+  function planes() {
+    return PLANES_MAILS.map((base) => {
+      const clave = base.nombre.toUpperCase();
+      const previo = ANTERIOR[clave];
+      /* NUEVAS = lo que este plan suma sobre el anterior. Para Bronce el
+         anterior es `null`, asi que «suma» todo lo abierto: es su base y
+         se lee igual de rapido. */
+      const nuevas = ORDEN.filter(id => alcanza(clave, id) && !alcanza(previo, id));
+      const bloqueadas = ORDEN.filter(id => !alcanza(clave, id));
+      const suma = [];
+      const falta = [];
+      nuevas.forEach(id => suma.push({
+        titulo: SECCIONES[id].titulo, detalle: SECCIONES[id].que,
+      }));
+      bloqueadas.forEach(id => falta.push({
+        titulo: SECCIONES[id].titulo, detalle: SECCIONES[id].que,
+      }));
+      if (clave === 'ORO') suma.push(servicioOro());
+      else falta.push(servicioOro());
+      return {
+        clave, nombre: base.nombre, color: base.color, mails: base.mails,
+        anterior: previo ? PLANES_MAILS[ORDEN_PLANES.indexOf(previo)].nombre : null,
+        heredadas: previo ? ORDEN.filter(id => alcanza(previo, id)).length : 0,
+        suma, falta,
+        destacado: clave === 'PLATA',
+        cta: clave === 'PLATA' ? 'Elegir Plata' : ('Consultar por ' + base.nombre),
+      };
+    });
+  }
+
+  const ORDEN_PLANES = ['BRONCE', 'PLATA', 'ORO'];
+
   /** El orden en que se listan. Es el mismo del menú. */
   const ORDEN = ['principal', 'equipos', 'jugadores', 'clasificacion', 'scouting', 'glosario'];
 
@@ -178,6 +279,88 @@ const SGADD_LANDING = (function () {
       </div>`;
   }
 
+  /**
+   * Una card de plan.
+   *
+   * LO QUE EL PLAN AGREGA VA ARRIBA Y EN COLOR; lo que hereda va abajo,
+   * atenuado y contado en una linea; y lo que NO tiene va tachado con su
+   * flecha. Los tres niveles se distinguen ademas del color por el icono
+   * (✓ · ＋ · →), porque ningun estado se comunica solo con color
+   * (punto 14): el que no distingue verde de gris tiene que poder leer
+   * igual que Plata suma scouting.
+   */
+  function tarjetaPlan(p) {
+    const item = (x, clase, icono) => `
+      <li class="plan-item ${clase}">
+        <span class="plan-ic" aria-hidden="true">${icono}</span>
+        <span><strong>${esc(x.titulo)}</strong>
+          <span class="plan-item-d">${esc(x.detalle)}</span></span>
+      </li>`;
+    return `
+      <article class="plan-card${p.destacado ? ' plan-card-pop' : ''}">
+        ${p.destacado ? '<span class="plan-badge">Más elegido</span>' : ''}
+        <header class="plan-cab">
+          <span class="landing-plan-t" style="color:${p.color}">${esc(p.nombre)}</span>
+          <span class="plan-metal" style="background:${p.color}" aria-hidden="true"></span>
+        </header>
+
+        <p class="plan-suma">${p.anterior
+          ? 'Todo lo de ' + esc(p.anterior) + ' <span class="plan-mas">+</span>'
+          : 'El panel completo de la liga'}</p>
+
+        <ul class="plan-lista">
+          ${p.suma.map(x => item(x, x.servicio ? 'plan-nuevo plan-servicio' : 'plan-nuevo',
+                                 x.servicio ? '＋' : '✓')).join('')}
+        </ul>
+
+        ${p.heredadas ? `<p class="plan-heredado">
+          ✓ Las ${p.heredadas} secciones del plan ${esc(p.anterior)}, incluidas.</p>` : ''}
+
+        ${p.falta.length ? `<ul class="plan-lista plan-lista-falta">
+          ${p.falta.map(x => item(x, 'plan-bloq', '→')).join('')}
+        </ul>` : ''}
+
+        <p class="plan-mails">
+          <span class="landing-plan-n" style="color:${p.color}">${p.mails}</span>
+          <span class="landing-plan-d">${p.mails === 1 ? 'mail del cuerpo técnico' : 'mails del cuerpo técnico'}</span>
+        </p>
+
+        <button type="button" class="plan-cta${p.destacado ? ' plan-cta-pop' : ''}"
+          onclick="SGADD_LANDING.consultar('${esc(p.nombre)}')">${esc(p.cta)}</button>
+      </article>`;
+  }
+
+  /** La seccion entera de planes. */
+  function seccionPlanes() {
+    return `
+      <div class="card rounded-xl p-5 sm:p-6 border border-hairline">
+        <div class="flex items-baseline justify-between gap-3 flex-wrap mb-1">
+          <h3 class="font-display uppercase tracking-wide text-sm text-ink">Planes</h3>
+          <span class="text-[11px] text-muted">Cada mail es una persona del cuerpo técnico, con su propia clave.</span>
+        </div>
+        <p class="text-xs text-muted mb-4">Cada plan suma sobre el anterior: nadie pierde nada al subir.</p>
+        <div class="plan-grid">${planes().map(tarjetaPlan).join('')}</div>
+      </div>`;
+  }
+
+  /**
+   * FASE 3 · el mismo modal de captura que usa la demo.
+   *
+   * SE REUSA Y NO SE ESCRIBE OTRO: son el mismo gesto —dejar tres datos y
+   * seguir por WhatsApp— y dos formularios terminan pidiendo cosas
+   * distintas. Sin el modulo cargado se cae al mail, que es degradar y no
+   * romper: un boton que no hace nada es peor que uno que abre el correo.
+   */
+  function consultar(plan) {
+    if (typeof SGADD_DEMO !== 'undefined' && SGADD_DEMO.abrirModal) {
+      return SGADD_DEMO.abrirModal({ plan: plan });
+    }
+    if (typeof window !== 'undefined') {
+      window.location.href = 'mailto:' + MAIL
+        + '?subject=' + encodeURIComponent('Consulta por el plan ' + plan);
+    }
+  }
+
   /** La bienvenida, que es lo que se ve al abrir la URL limpia. */
   function bienvenida() {
     return `
@@ -190,6 +373,16 @@ const SGADD_LANDING = (function () {
           propio acceso y ve su categoría: equipos, jugadores, posiciones y el informe
           pre-partido, calculados sobre los box scores oficiales.
         </p>
+        <div class="landing-hero-acciones">
+          <a href="${RUTA_DEMO}" class="landing-hero-cta">Probá la demo ahora</a>
+          <button type="button" class="landing-hero-sec"
+            onclick="SGADD_LANDING.consultar('a medida')">Agendar demo con mis datos</button>
+        </div>
+        <p class="text-[11px] text-muted mt-3">
+          La demo abre el panel entero con datos anónimos de muestra. No pide
+          registro ni clave.
+        </p>
+
         <p class="text-xs text-muted mt-4">
           Recorré el menú de la izquierda para ver qué hay en cada sección.
         </p>
@@ -198,6 +391,8 @@ const SGADD_LANDING = (function () {
       <div class="grid lg:grid-cols-2 gap-4">
         ${ORDEN.map(tarjetaSeccion).join('')}
       </div>
+
+      ${seccionPlanes()}
 
       <div class="card rounded-xl p-5 sm:p-6 border border-hairline">
         <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-3">¿Cómo se entra?</h3>
@@ -228,16 +423,6 @@ const SGADD_LANDING = (function () {
           que si se te pasó la fecha pedinos otro.
         </p>
 
-        <div class="mt-5">
-          <p class="text-[10px] uppercase tracking-wider text-muted font-display mb-2">
-            Cuántas personas del club pueden entrar</p>
-          <div class="grid sm:grid-cols-3 gap-2">
-            ${PLANES_MAILS.map(p => `<div class="landing-plan"><span class="landing-plan-t">${esc(p.nombre)}</span><span class="landing-plan-n" style="color:${p.color}">${p.mails}</span><span class="landing-plan-d">${p.mails === 1 ? "mail" : "mails"}</span></div>`).join('')}
-          </div>
-          <p class="text-[11px] text-muted mt-2">
-            Cada mail es una persona del cuerpo técnico con su propia clave.
-          </p>
-        </div>
 
         ${contacto()}
       </div>`;
@@ -326,6 +511,8 @@ const SGADD_LANDING = (function () {
 
   return {
     activa, vista, bienvenida, tarjetaSeccion, contacto, aplicarMarca,
+    planes, tarjetaPlan, seccionPlanes, consultar, alcanza, partidosPorCiclo,
+    RUTA_DEMO, ANTERIOR,
     SECCIONES, ORDEN, PLANES_MAILS, MARCA, MAIL, INSTAGRAM, ARROBA, LOGO, LOGO_GRANDE,
   };
 })();

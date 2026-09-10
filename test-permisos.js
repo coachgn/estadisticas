@@ -1400,6 +1400,153 @@ titulo('EL GLOSARIO SE AGRUPA COMO EL MANUAL');
   check('el generador lo completa, no la vista', /FAMILIA_POR_GRUPO/.test(gen2));
 }
 
+titulo('LAS CARDS DE PLANES · lo que promete la landing es lo que el gate concede');
+
+{
+  /* EN EL NAVEGADOR, SGADD_AUTH ES UN GLOBAL y la landing lo lee de ahi.
+     Sin exponerlo, alcanza() falla CERRADO —que es lo correcto en
+     produccion— y este bloque estaria midiendo tres cards vacias en vez
+     de la derivacion. Es el mismo motivo por el que destino() necesita
+     el global para poder testearse (punto 27). */
+  global.SGADD_AUTH = A;
+  const LAN3 = require('./js/sgadd-landing.js');
+  const lan3 = fs.readFileSync('./js/sgadd-landing.js', 'utf8');
+  const idx3 = fs.readFileSync('./index.html', 'utf8');
+  const cards = LAN3.planes();
+
+  check('son los tres planes, en orden',
+    cards.map(p => p.nombre).join(' ') === 'Bronce Plata Oro',
+    cards.map(p => p.nombre).join(' '));
+
+  /* ===================================================================
+     LA PRUEBA QUE IMPORTA · la card NO puede prometer lo que el gate niega
+
+     No se compara contra una lista escrita en el test —eso seria una
+     TERCERA copia de la matriz— sino contra `puedoAcceder()`, que es la
+     funcion que el router ejecuta de verdad. Si alguien le agrega un
+     modulo a un plan en la landing sin tocar `MODULOS`, esto cae.
+     =================================================================== */
+  const SES = (plan) => ({ email: 'cliente@ejemplo.com', equipoAsignado: 'X', plan: plan });
+  let mentiras = [];
+  cards.forEach((card) => {
+    const prometidas = card.suma.filter(x => !x.servicio).map(x => x.titulo)
+      .concat(LAN3.ORDEN.filter(id => LAN3.alcanza(LAN3.ANTERIOR[card.clave], id))
+        .map(id => LAN3.SECCIONES[id].titulo));
+    LAN3.ORDEN.forEach((id) => {
+      const concede = SGADD_AUTH.puedoAcceder(id, SES(card.clave)).ok;
+      const promete = prometidas.indexOf(LAN3.SECCIONES[id].titulo) !== -1;
+      if (concede !== promete) mentiras.push(card.nombre + '/' + id
+        + ' gate=' + concede + ' card=' + promete);
+    });
+  });
+  check('ninguna card promete un modulo que el gate le niega, ni esconde uno que le da',
+    mentiras.length === 0, mentiras.join(' · '));
+
+  /* Y AL REVES: que lo bloqueado sea exactamente lo que falta. Sin esto,
+     una card podria no prometer de mas y aun asi no mostrar el escalon
+     siguiente, que es lo que la hace vender. */
+  const bronce = cards[0], plata = cards[1], oro = cards[2];
+  check('Bronce muestra Scouting como el escalon que le falta',
+    bronce.falta.some(x => x.titulo === 'Scouting'),
+    bronce.falta.map(x => x.titulo).join(','));
+  check('Plata lo suma, y es SU diferencia sobre Bronce',
+    plata.suma.filter(x => !x.servicio).map(x => x.titulo).join(',') === 'Scouting',
+    plata.suma.map(x => x.titulo).join(','));
+  check('y Oro ya no tiene nada bloqueado', oro.falta.length === 0,
+    oro.falta.map(x => x.titulo).join(','));
+
+  /* EL NOMBRE DEL MODULO NO ESTA ESCRITO EN LA LANDING. Si apareciera
+     literal, el dia que Scouting cambie de plan la card seguiria diciendo
+     lo de siempre — con el gate ya diciendo otra cosa. */
+  /* SE RECORTA EL CUERPO DE `planes()` Y NO UNA VENTANA DE CARACTERES:
+     una ventana fija es una bomba de tiempo en un archivo que se edita
+     (punto 43). Y el corte llega hasta `ORDEN_PLANES` y no hasta la UI,
+     porque `ORDEN` —que viene despues— lista los IDS de seccion en
+     minuscula: `'scouting'` ahi es la clave del router, no una promesa
+     escrita a mano. */
+  const motor = lan3.slice(lan3.indexOf('function planes()'),
+                           lan3.indexOf('const ORDEN_PLANES'));
+  check('la card se DERIVA: no nombra a Scouting a mano',
+    !/Scouting/i.test(motor), motor.length + ' chars');
+  check('y lee la matriz del motor de permisos, no una copia',
+    /SGADD_AUTH/.test(lan3) && /MODULOS/.test(lan3) && /ORDEN_PLAN/.test(lan3));
+
+  /* LA PROGRESION, que es lo que el club pidio leer en tres segundos. */
+  check('cada plan dice sobre cual construye',
+    bronce.anterior === null && plata.anterior === 'Bronce' && oro.anterior === 'Plata',
+    [bronce.anterior, plata.anterior, oro.anterior].join(' '));
+  const html3 = LAN3.seccionPlanes();
+  check('y lo dice con todas las letras en la card',
+    /Todo lo de Bronce/.test(html3) && /Todo lo de Plata/.test(html3));
+  check('Plata es la destacada',
+    plata.destacado && !bronce.destacado && !oro.destacado);
+  check('y se marca con un badge, no solo con el borde',
+    /plan-badge/.test(html3) && /Más elegido/.test(html3));
+
+  /* NINGUN ESTADO SE COMUNICA SOLO CON COLOR (punto 14): los tres
+     niveles se distinguen tambien por el icono. */
+  check('lo que suma, lo que es servicio y lo que falta llevan iconos distintos',
+    /✓/.test(html3) && /＋/.test(html3) && /→/.test(html3));
+
+  /* EL SERVICIO DEL PLAN ORO no es un modulo y no se puede derivar de
+     `MODULOS`, pero SU NUMERO sale del codigo que lo hace correr. */
+  check('Oro suma el analisis de scouters',
+    oro.suma.some(x => x.servicio), oro.suma.map(x => x.titulo).join(','));
+  const HUB = require('./js/sgadd-hub.js');
+  check('y el ciclo que nombra es el que el hub hace correr',
+    oro.suma.filter(x => x.servicio)[0].detalle
+      .indexOf('ciclo de ' + HUB.PARTIDOS_POR_CICLO + ' partidos') !== -1,
+    'hub=' + HUB.PARTIDOS_POR_CICLO);
+  check('el hub sigue siendo el que lo declara',
+    /PARTIDOS_POR_CICLO/.test(lan3));
+
+  /* EL CUPO SALE DE LA MISMA TABLA QUE EL SERVIDOR HACE CUMPLIR. */
+  check('los mails de cada card son los del motor compartido',
+    cards.every(c => c.mails === SGADD_AUTH.cupoDeMails(c.clave)),
+    cards.map(c => c.nombre + '=' + c.mails).join(' '));
+  /* Y NO SE DICE DOS VECES EN LA MISMA PANTALLA: estaba en las cards y
+     abajo otra vez en «como se entra». El dia que cambie, una de las dos
+     queda vieja y el cliente lee la que le conviene. */
+  const bien3 = LAN3.bienvenida();
+  check('el cupo se dice UNA sola vez',
+    (bien3.match(/landing-plan-n/g) || []).length === 3,
+    (bien3.match(/landing-plan-n/g) || []).length + ' apariciones');
+
+  /* FASE 3 · las cards entran al MISMO modal que la barra de la demo. */
+  check('cada card tiene su boton, y llama a consultar()',
+    (html3.match(/SGADD_LANDING\.consultar\(/g) || []).length === 3,
+    (html3.match(/SGADD_LANDING\.consultar\(/g) || []).length + '');
+  check('y consultar() reusa el modal de la demo, no escribe otro',
+    /SGADD_DEMO\.abrirModal\(\{ plan/.test(lan3));
+  check('con respaldo al mail si ese modulo no esta',
+    /function consultar[\s\S]{0,600}mailto:/.test(lan3));
+
+  /* FASE 1 · el CTA del hero. */
+  check('el hero lleva a la demo', /landing-hero-cta/.test(bien3)
+    && bien3.indexOf(LAN3.RUTA_DEMO) !== -1, LAN3.RUTA_DEMO);
+  check('y esa ruta existe en el repo',
+    fs.existsSync('./' + LAN3.RUTA_DEMO), LAN3.RUTA_DEMO);
+  check('el CTA de la demo va ANTES que el de agendar: se entra a ver, no a pedir',
+    bien3.indexOf('landing-hero-cta') < bien3.indexOf('landing-hero-sec'));
+
+  /* EL CSS DE UN NODO INYECTADO VA A MANO (punto 12): el scan de Tailwind
+     es estatico y no genera clases para lo que se arma en runtime. */
+  ['plan-grid', 'plan-card', 'plan-card-pop', 'plan-badge', 'plan-nuevo',
+   'plan-bloq', 'plan-cta', 'landing-hero-cta', 'landing-hero-sec'].forEach((c) => {
+    check('  .' + c + ' esta definida a mano en el <style>',
+      idx3.indexOf('.' + c + ' ') !== -1 || idx3.indexOf('.' + c + ',') !== -1
+      || idx3.indexOf('.' + c + ':') !== -1);
+  });
+
+  /* EL BOTON SE PUEDE TOCAR CON EL DEDO (punto 49). El del hero es un
+     `<a>`, asi que la regla de `pointer: coarse` —que apunta a `button`,
+     `select` y `[role=button]`— NO lo alcanza: lleva su propio minimo. */
+  check('el CTA del hero declara su alto minimo, que es un <a>',
+    /\.landing-hero-cta \{[\s\S]{0,300}min-height: 44px/.test(idx3));
+  check('y el de cada card tambien',
+    /\.plan-cta \{[\s\S]{0,300}min-height: 44px/.test(idx3));
+}
+
 console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +
   '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);
