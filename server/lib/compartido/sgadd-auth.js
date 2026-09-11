@@ -263,6 +263,26 @@ const SGADD_AUTH = (function () {
 
   function sesion() { return sesionActual; }
 
+  /**
+   * EL PLAN QUE MANDA ES EL DEL CATÁLOGO, no el que quedó firmado en el link.
+   *
+   * El token trae el plan con el que se emitió, y el Panel Master lo puede
+   * haber cambiado después. El servidor declara el EFECTIVO —en el
+   * catálogo (`usuario.plan`) y con los datos (`alcance.plan`)— y la
+   * sesión lo adopta: así el menú, el guard del router y el pie dicen lo
+   * mismo que el servidor hace cumplir. Sin esto, un cliente bajado a
+   * Bronce seguía viendo Scouting en el menú y chocaba contra un 403.
+   *
+   * Devuelve si cambió algo, para que la pantalla sepa si repintar.
+   */
+  function fijarPlanEfectivo(plan) {
+    if (!sesionActual || !plan) return false;
+    const p = normalizarPlan(plan);
+    if (sesionActual.plan === p) return false;
+    sesionActual = Object.assign({}, sesionActual, { plan: p });
+    return true;
+  }
+
   /* --------------------------------------------------------------------
      LOS CUATRO GUARDS. Todos PUROS: reciben la sesión o la toman del
      módulo, y no tocan el DOM. Se pueden testear enteros desde Node.
@@ -761,7 +781,7 @@ const SGADD_AUTH = (function () {
     ADMINS, PLANES, ORDEN_PLAN, ALIAS_PLAN, normalizarPlan, nombrePlan, ROLES, MODULOS, MOTIVOS, CLAVE_SESION,
     CUPO_MAILS, cupoDeMails,
     ALCANCES, ALCANCES_POR_ACCION, alcancesDe, motivoSinAlcance,
-    normalizarEmail, parsearSesion, establecerSesion, limpiarSesion, sesion,
+    normalizarEmail, parsearSesion, establecerSesion, limpiarSesion, sesion, fijarPlanEfectivo,
     esAdmin, rol, sinRestricciones,
     puedeVerEquipo, tieneModulo, puedoAcceder, puedeScoutearCruce,
     forzarCruce, equiposVisibles, equipoPropio,

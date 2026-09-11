@@ -229,8 +229,11 @@ function equiposHeader(idx, e) {
   const fila = (typeof clasifFilaDe === 'function') ? clasifFilaDe(idx, e.clave) : null;
   const rec = fila ? { ganados: fila.pg, perdidos: fila.pp, pj: fila.pj }
     : (e.record || { ganados: 0, perdidos: 0, pj: 0 });
-  const racha = e.racha
-    ? (e.racha.tipo === 'GANADO' ? e.racha.n + ' ganados al hilo' : e.racha.n + ' perdidos al hilo')
+  /* LA RACHA TAMBIÉN, con los partidos sin estadísticas en su fecha: uno
+     cargado a mano corta o estira la racha como cualquier otro. */
+  const rachaE = (typeof clasifRachaDe === 'function') ? clasifRachaDe(idx, e) : e.racha;
+  const racha = rachaE
+    ? (rachaE.tipo === 'GANADO' ? rachaE.n + ' ganados al hilo' : rachaE.n + ' perdidos al hilo')
     : '—';
 
   const hero = ['NET RTNG', 'RTNG OFF', 'RTNG DEF', 'eFG%']

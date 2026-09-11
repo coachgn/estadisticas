@@ -379,8 +379,58 @@ const SGADD_CLASIF = (function () {
     return out;
   }
 
+  /* Una fecha `AAAA-MM-DD` como medianoche LOCAL: es como el núcleo lee
+     las de la planilla (`Date(2026,4,5)`), y comparar una UTC contra una
+     local correría un partido de día en la zona horaria de acá. */
+  function aTiempo(f) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(f || '').trim());
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime();
+    const t = Date.parse(f);
+    return isFinite(t) ? t : null;
+  }
+
+  /**
+   * LA RACHA CON LOS PARTIDOS SIN ESTADÍSTICAS.
+   *
+   * El núcleo la calcula sobre los partidos con box score (`e.racha`), así
+   * que un partido cargado a mano no la cortaba ni la estiraba: la ficha
+   * decía «2 ganados al hilo» con una derrota del sábado cargada a mano.
+   *
+   * Se ordena como el núcleo —por fecha, los partidos sin fecha al final
+   * en su orden— y los manuales entran en SU fecha. Sin manuales da
+   * exactamente la racha del núcleo. Con dos en el mismo día va primero
+   * el que tiene box score.
+   */
+  function rachaConManuales(partidos, manuales) {
+    const lista = [];
+    (partidos || []).forEach((p, i) => {
+      const r = String((p && p['RESULTADO']) || '').trim().toUpperCase();
+      if (!r) return;
+      const f = p.__fecha;
+      const t = f instanceof Date ? f.getTime() : (f ? Number(f) : null);
+      lista.push({ t: isFinite(t) ? t : null, k: 0, i: i, r: r });
+    });
+    (manuales || []).forEach((d, j) => {
+      if (!d) return;
+      lista.push({ t: aTiempo(d.fecha), k: 1, i: j, r: d.gano ? 'GANADO' : 'PERDIDO' });
+    });
+    lista.sort((a, b) => {
+      if (a.t !== null && b.t !== null) return (a.t - b.t) || (a.k - b.k) || (a.i - b.i);
+      if (a.t !== null) return -1;
+      if (b.t !== null) return 1;
+      return (a.k - b.k) || (a.i - b.i);
+    });
+    let n = 0, tipo = null;
+    for (let x = lista.length - 1; x >= 0; x--) {
+      if (tipo === null) { tipo = lista[x].r; n = 1; }
+      else if (lista[x].r === tipo) n++;
+      else break;
+    }
+    return tipo ? { tipo: tipo, n: n } : null;
+  }
+
   return { CRITERIOS, ORDEN_POR_DEFECTO, filas, ordenar, tabla,
-           filasPorEquipo, conPjDeTabla, condicionConManuales,
+           filasPorEquipo, conPjDeTabla, condicionConManuales, rachaConManuales,
            fusionarManuales, manualesDelTramo, puntosDeTabla, esTramoTotal,
            PUNTOS_GANADO, PUNTOS_PERDIDO };
 })();
@@ -435,6 +485,13 @@ function clasifFilaDe(idx, clave) {
 /** La lista para un picker de equipos, con el PJ de la tabla. */
 function clasifConPjDeTabla(idx, lista) {
   return SGADD_CLASIF.conPjDeTabla(lista, clasifFilasVigentes(idx));
+}
+
+/** La racha de un equipo con los partidos sin estadísticas del tramo. */
+function clasifRachaDe(idx, e) {
+  if (!e) return null;
+  const f = clasifFilaDe(idx, e.clave);
+  return SGADD_CLASIF.rachaConManuales(e.partidos, f ? f.detalleManual : []);
 }
 
 /**

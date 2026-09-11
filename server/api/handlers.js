@@ -112,20 +112,29 @@ function guardSuscripcion(club, ctx) {
  * plan es comercial y por cliente— así que el token no aporta información
  * que el catálogo no tenga más fresca.
  *
- * SIN PLAN EN EL CLUB manda el del token: es el caso de los clubes que
- * todavía no tienen plan asignado en el catálogo, y ahí lo único que se
- * sabe es lo que dice su link.
+ * SIN PLAN EN EL CLUB, depende de DE DÓNDE salió el catálogo:
+ *
+ *   · de KV —el que escribe el Panel Master— es BRONCE. El Panel Master
+ *     pinta un plan vacío como Bronce, así que eso es lo que el admin ve
+ *     y lo que se tiene que imponer. Antes mandaba el plan del token, y un
+ *     club que el Panel Master mostraba en Bronce lucía el distintivo ORO
+ *     del link del admin (medido en producción el 2026-09-11, con
+ *     Universitario y Hogar Social recién dados de alta).
+ *   · del RESPALDO (variable de entorno o código, cuando KV no contesta),
+ *     el del link: esos catálogos no traen planes, y castigar a todos los
+ *     clientes con Bronce por una caída de Upstash sería peor.
  */
 /* El orden sale de `AUTH`, que es el mismo motor que usa el frontend: dos
    tablas de orden terminan discrepando y la que se relaja es siempre la
    del servidor, que es la que decide de verdad. */
 const ORDEN_PLAN = AUTH.ORDEN_PLAN;
 
-function planEfectivo(club, sesion) {
+function planEfectivo(club, sesion, origen) {
   /* Se normaliza: el catalogo puede traer un nombre viejo (`PRO`) y sin
      pasarlo por el alias caeria a BRONCE, bajandole el plan al cliente sin
      que nadie lo haya tocado. */
   if (club && club.plan) return AUTH.normalizarPlan(club.plan);
+  if (origen === 'kv') return AUTH.normalizarPlan('BRONCE');
   return AUTH.normalizarPlan(sesion && sesion.plan);
 }
 
@@ -138,11 +147,18 @@ async function manejarCatalogo(peticion, deps) {
   if (ctx.error) return ctx.error;
   /* La cascada se resuelve UNA vez por request y queda cacheada. */
   const cat = await catalogo.cargar(deps);
+  /* EL PLAN DEL USUARIO ES EL EFECTIVO DE SU CLUB, no el que quedó firmado
+     en su link: el Panel Master lo pudo cambiar después. Es lo que el
+     panel adopta para el menú, el guard y el pie (`adoptarPlanEfectivo`),
+     así que tiene que ser el mismo que el servidor hace cumplir. El admin
+     no tiene club en el token y conserva el suyo. */
+  const clubDelToken = ctx.tokenClub ? (cat.catalogo || {})[ctx.tokenClub] : null;
+  const planUsuario = clubDelToken ? planEfectivo(clubDelToken, ctx.sesion, cat.origen) : ctx.sesion.plan;
   return {
     status: 200,
     body: {
       ok: true,
-      usuario: { email: ctx.sesion.email, rol: ctx.rol, plan: ctx.sesion.plan,
+      usuario: { email: ctx.sesion.email, rol: ctx.rol, plan: planUsuario,
         equipoAsignado: ctx.sesion.equipoAsignado, expiraEn: ctx.expiraEn },
       /* EL ESTADO COMERCIAL VA SOLO PARA EL ADMIN. `manejarCatalogo` no
          tiene gate de rol —cualquier usuario con token recibe la lista de
@@ -243,7 +259,7 @@ async function manejarEquipos(peticion, deps) {
            que es el que el panel tiene que mostrar. Con el del token, un
            club bajado a Bronce seguiría luciendo el distintivo del plan
            que ya no tiene hasta que el link venciera. */
-        plan: planEfectivo(cat.suscripcion || {}, ctx.sesion),
+        plan: planEfectivo(cat.suscripcion || {}, ctx.sesion, cascada.origen),
         equipoAsignado: ctx.sesion.equipoAsignado,
         /* El ciclo de informes del plan ORO, para el distintivo del
            encabezado. Van los contadores crudos: la posición depende de
@@ -306,7 +322,7 @@ async function manejarScouting(peticion, deps) {
      cliente bajó de Pro a Básico, el link que ya tiene deja de abrir el
      scouting sin esperar a que venza. */
   const sesionEfectiva = Object.assign({}, ctx.sesion,
-    { plan: planEfectivo(cat.suscripcion || {}, ctx.sesion) });
+    { plan: planEfectivo(cat.suscripcion || {}, ctx.sesion, cascada.origen) });
   const permiso = reglas.puedeBloque('scouting', sesionEfectiva);
   if (!permiso.ok) {
     return error(403, permiso.motivo,
@@ -341,7 +357,9 @@ async function manejarScouting(peticion, deps) {
       club: cat.clubId,
       categoria: cat.slug,
       cruce: { local: q.local || null, visitante: q.visitante || null },
-      alcance: { rol: ctx.rol, plan: ctx.sesion.plan },
+      /* El EFECTIVO, igual que en equipos: con el del token el panel
+         mostraría un plan que el servidor no hace valer. */
+      alcance: { rol: ctx.rol, plan: sesionEfectiva.plan },
       leidoEn: libro.leidoEn,
       /* El informe pre-partido necesita los datos del RIVAL —es su objeto—
          así que acá no se recortan FILAS. Las columnas ocultas sí: son

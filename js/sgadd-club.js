@@ -137,6 +137,38 @@ const CLUB = (function () {
     return estado.cfg;
   }
 
+  /* =====================================================================
+     EL CARTEL ROJO ESPERA AL CATÁLOGO
+
+     Un club dado de alta desde el Panel Master no tiene `clubes/<id>.json`
+     —su config sale del catálogo del servidor (punto 53)— así que este
+     fetch da 404 en CADA carga. El cartel salía a los 0,3–1 s y el cruce
+     con el catálogo lo retiraba un momento después: un destello rojo de
+     «Configuración del club no encontrada» en cada F5, medido en
+     producción con Universitario el 2026-09-11.
+
+     Con backend y token, la ausencia del JSON TODAVÍA NO ES UN ERROR: el
+     cartel queda PENDIENTE y lo confirma `confirmarSinConfig()` recién si
+     ni el JSON ni el catálogo trajeron al club. Sin backend sigue saliendo
+     en el acto, como siempre: ahí no hay nada más que esperar.
+     ===================================================================== */
+  function esperaCatalogo() {
+    try {
+      if (esLanding() || enDemo()) return false;
+      return typeof SGADD_DATA !== 'undefined' && SGADD_DATA.apiConfigurada()
+        && typeof SGADD_AUTH !== 'undefined' && !!SGADD_AUTH.token();
+    } catch (e) { return false; }
+  }
+
+  /** Muestra el cartel si quedó pendiente y el club sigue sin config. */
+  function confirmarSinConfig() {
+    if (!estado.cartelPendiente) return false;
+    estado.cartelPendiente = false;
+    if (estado.cfg || !estado.error) return false;
+    cartelError();
+    return true;
+  }
+
   /** Si la config no carga, el dashboard queda con los defaults y NO se nota.
       Mejor un cartel visible que un tablero mostrando datos del club equivocado. */
   function cartelError() {
@@ -166,7 +198,11 @@ const CLUB = (function () {
      Ahora los datos se aplican SIEMPRE, sin depender del DOM. */
   function aplicar() {
     const c = estado.cfg;
-    if (!c) { cartelError(); return; }
+    if (!c) {
+      if (esperaCatalogo()) { estado.cartelPendiente = true; return; }
+      cartelError();
+      return;
+    }
     aplicarDatos(c);
     aplicarUI(c);
     aplicado = true;
@@ -646,6 +682,7 @@ const CLUB = (function () {
     if (cambioColor && !sinJson) aplicarUI(nuevo);
     if (sinJson) {
       estado.error = null;
+      estado.cartelPendiente = false;
       try {
         const cartel = document.getElementById('clubCartelError');
         if (cartel) cartel.remove();
@@ -656,7 +693,7 @@ const CLUB = (function () {
     return true;
   }
 
-  return { TEMA, estado, cargar, aplicar: aplicarSeguro, reconciliar, reconciliarConfig, credito, idDesdeUrl, esLanding, enDemo, debug, marcarRender,
+  return { TEMA, estado, cargar, aplicar: aplicarSeguro, reconciliar, confirmarSinConfig, reconciliarConfig, credito, idDesdeUrl, esLanding, enDemo, debug, marcarRender,
            reintentarEscudo, aclararHastaLegible, oscurecerHastaLegible, contraste,
            mezclarHex, colorDeEscudo, colorDeImagen,
            get cfg() { return estado.cfg; }, get aplicado() { return aplicado; } };

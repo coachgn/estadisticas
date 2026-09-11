@@ -170,6 +170,12 @@ const SGADD_APP = (function () {
          pantalla: un panel que recibe menos filas sin saberlo calcularía
          percentiles sobre una liga fantasma. */
       estado.alcance = r.alcance || null;
+      /* Y la sesión del CLIENTE adopta el plan efectivo que declara el
+         servidor: el menú y el guard tienen que decir lo mismo que el
+         servidor hace cumplir (ver `adoptarPlanEfectivo` en el index). */
+      if (estado.alcance && estado.alcance.plan && typeof adoptarPlanEfectivo === 'function') {
+        try { adoptarPlanEfectivo(estado.alcance.plan); } catch (e) { /* es una mejora */ }
+      }
       /* Las matrices en TEXTO, para la capa vieja de Principal. */
       estado.textos = r.textos || null;
       /* El padrón de la liga, para el buzón. Vacío en modo GViz: ahí el

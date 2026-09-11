@@ -2587,7 +2587,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=205" />
+<link rel="stylesheet" href="sgadd.css?v=206" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2765,46 +2765,46 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=205"></script>
+<script src="js/sgadd-club.js?v=206"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=205"></script>
-<script src="js/sgadd-core.js?v=205"></script>
-<script src="js/sgadd-auth.js?v=205"></script>
+<script src="js/sgadd-config.js?v=206"></script>
+<script src="js/sgadd-core.js?v=206"></script>
+<script src="js/sgadd-auth.js?v=206"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=205"></script>
-<script src="js/sgadd-glosario.js?v=205"></script>
-<script src="js/sgadd-glosarioui.js?v=205"></script>
-<script src="js/sgadd-comparativa.js?v=205"></script>
-<script src="js/sgadd-comparativaui.js?v=205"></script>
-<script src="js/sgadd-confirmar.js?v=205"></script>
-<script src="js/sgadd-landing.js?v=205"></script>
-<script src="js/sgadd-login.js?v=205"></script>
-<script src="js/sgadd-data.js?v=205"></script>
-<script src="js/sgadd-clientes.js?v=205"></script>
-<script src="js/sgadd-ui.js?v=205"></script>
-<script src="js/sgadd-app.js?v=205"></script>
-<script src="js/sgadd-clasificacion.js?v=205"></script>
+<script src="js/sgadd-demo.js?v=206"></script>
+<script src="js/sgadd-glosario.js?v=206"></script>
+<script src="js/sgadd-glosarioui.js?v=206"></script>
+<script src="js/sgadd-comparativa.js?v=206"></script>
+<script src="js/sgadd-comparativaui.js?v=206"></script>
+<script src="js/sgadd-confirmar.js?v=206"></script>
+<script src="js/sgadd-landing.js?v=206"></script>
+<script src="js/sgadd-login.js?v=206"></script>
+<script src="js/sgadd-data.js?v=206"></script>
+<script src="js/sgadd-clientes.js?v=206"></script>
+<script src="js/sgadd-ui.js?v=206"></script>
+<script src="js/sgadd-app.js?v=206"></script>
+<script src="js/sgadd-clasificacion.js?v=206"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=205"></script>
-<script src="js/sgadd-configui.js?v=205"></script>
-<script src="js/sgadd-estados.js?v=205"></script>
-<script src="js/sgadd-buzon.js?v=205"></script>
-<script src="js/sgadd-charts.js?v=205"></script>
-<script src="js/sgadd-personalidad.js?v=205"></script>
-<script src="js/sgadd-rankings.js?v=205"></script>
-<script src="js/sgadd-partido.js?v=205"></script>
-<script src="js/sgadd-informe.js?v=205"></script>
-<script src="js/sgadd-ficha.js?v=205"></script>
-  <script src="js/sgadd-rankingpdf.js?v=205"></script>
-<script src="js/sgadd-equipos.js?v=205"></script>
+<script src="js/sgadd-hub.js?v=206"></script>
+<script src="js/sgadd-configui.js?v=206"></script>
+<script src="js/sgadd-estados.js?v=206"></script>
+<script src="js/sgadd-buzon.js?v=206"></script>
+<script src="js/sgadd-charts.js?v=206"></script>
+<script src="js/sgadd-personalidad.js?v=206"></script>
+<script src="js/sgadd-rankings.js?v=206"></script>
+<script src="js/sgadd-partido.js?v=206"></script>
+<script src="js/sgadd-informe.js?v=206"></script>
+<script src="js/sgadd-ficha.js?v=206"></script>
+  <script src="js/sgadd-rankingpdf.js?v=206"></script>
+<script src="js/sgadd-equipos.js?v=206"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=205"></script>
-<script src="js/sgadd-jugadores.js?v=205"></script>
-<script src="js/sgadd-4factores.js?v=205"></script>
-<script src="js/sgadd-scouting.js?v=205"></script>
-<script src="js/sgadd-diagnostico.js?v=205"></script>
+<script src="js/sgadd-niveles.js?v=206"></script>
+<script src="js/sgadd-jugadores.js?v=206"></script>
+<script src="js/sgadd-4factores.js?v=206"></script>
+<script src="js/sgadd-scouting.js?v=206"></script>
+<script src="js/sgadd-diagnostico.js?v=206"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -4765,6 +4765,31 @@ function pintarBotonIngreso() {
     : '';
 }
 
+/* LA SESIÓN DEL CLIENTE ADOPTA EL PLAN EFECTIVO.
+
+   El link trae el plan con el que se emitió; el que manda es el del
+   catálogo, que el Panel Master cambia cuando quiere. El servidor lo
+   declara (`usuario.plan` en el catálogo, `alcance.plan` con los datos)
+   y acá se adopta, y se repinta lo que depende de él: el menú, el pie y
+   la sección abierta si su permiso cambió.
+
+   SOLO EL CLIENTE. Para un admin `alcance.plan` es el plan del CLUB que
+   está mirando, no el suyo: adoptarlo le haría decir «Plan Bronce» en su
+   propio pie. */
+function adoptarPlanEfectivo(plan) {
+  if (typeof SGADD_AUTH === 'undefined' || !SGADD_AUTH.fijarPlanEfectivo) return false;
+  if (SGADD_AUTH.rol() !== SGADD_AUTH.ROLES.CLIENTE) return false;
+  if (!SGADD_AUTH.fijarPlanEfectivo(plan)) return false;
+  try { aplicarPermisosNav(); } catch (e) { /* el menú puede no estar todavía */ }
+  try {
+    const root = document.getElementById('view-root');
+    const regla = (typeof currentSection !== 'undefined' && currentSection)
+      ? SGADD_AUTH.MODULOS[currentSection] : null;
+    if (root && root.childElementCount && regla && regla.plan) renderSection(currentSection);
+  } catch (e) { /* sin sección pintada no hay nada que repintar */ }
+  return true;
+}
+
 /* EL DISTINTIVO DEL PLAN ORO.
 
    El plan que se muestra es el EFECTIVO que declara el servidor
@@ -4937,6 +4962,11 @@ async function reconciliarConCatalogo() {
   if (cat && typeof SGADD_CLIENTES !== 'undefined' && SGADD_CLIENTES.recibir) {
     try { SGADD_CLIENTES.recibir(cat); } catch (e) { /* es una mejora */ }
   }
+  /* Y el PLAN EFECTIVO del cliente, antes del primer pintado: el menú no
+     puede ofrecer lo que el servidor no le va a dar. */
+  if (cat && cat.usuario && cat.usuario.plan) {
+    try { adoptarPlanEfectivo(cat.usuario.plan); } catch (e) { /* es una mejora */ }
+  }
   const id = CLUB.estado.id;
   const s = (cat && Array.isArray(cat.clubes)) ? cat.clubes.find(c => c.id === id) : null;
   if (!s) return;
@@ -4960,6 +4990,10 @@ async function resolverClubYPlanilla() {
   if (typeof CLUB !== 'undefined') {
     try { await CLUB.cargar(); } catch (e) { console.warn('[CLUB] omitido:', e); }
     try { await reconciliarConCatalogo(); } catch (e) { console.warn('[CLUB] catálogo omitido:', e); }
+    /* RECIÉN ACÁ se sabe si el club no tiene config: ni JSON ni catálogo.
+       Antes el cartel rojo salía con el 404 del JSON y el catálogo lo
+       retiraba un instante después — un destello en cada F5. */
+    if (CLUB.confirmarSinConfig) { try { CLUB.confirmarSinConfig(); } catch (e) {} }
   }
   if (typeof SGADD_APP === 'undefined') return;
 

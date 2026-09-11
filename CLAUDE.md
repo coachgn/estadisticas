@@ -54,6 +54,8 @@ node test-alcance.js       # 122 tests · los clientes del mismo libro: el alcan
                            #             lea lo publicado
 node test-pj.js            #  34 tests · el PJ de la sección Equipos es el de la tabla
                            #             de posiciones, con los partidos sin estadísticas
+node test-plan-racha.js    #  43 tests · la racha con partidos manuales, el plan
+                           #             efectivo del catálogo y el arranque sin destello
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
 
@@ -67,7 +69,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5227 tests en total. Todos tienen que dar verde antes de commitear.**
+**5270 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -8092,4 +8094,69 @@ de planilla: es la que acaba de editar la pantalla.
 La **preconfiguración** (calendario, equipos esperados, sellos) vive solo
 en el JSON y en el navegador, no en el catálogo: un cliente sin JSON no la
 tiene. Es la misma deuda de la pestaña Torneo — no se publica.
+
+---
+
+## 55. EL PLAN EFECTIVO, LA RACHA Y EL ARRANQUE SIN DESTELLO
+
+Tres correcciones del 2026-09-11, las tres medidas en producción.
+
+### 1 · El plan que se muestra y se hace valer es el del CATÁLOGO
+
+Síntoma: un admin mirando Universitario —que el Panel Master pinta en
+**Bronce**— veía «◆ Plan ORO · Auditoria MotorStats activa». Dos causas:
+
+- **`planEfectivo` sin plan en el club mandaba el del TOKEN**, o sea el
+  del link de quien mira: para el admin, ORO. El Panel Master, en cambio,
+  pinta un plan vacío como Bronce. Ahora, **con el catálogo de KV, un club
+  sin plan es BRONCE**; con el de RESPALDO (entorno o código, cuando
+  Upstash no contesta) sigue mandando el del link, porque esos catálogos
+  no traen planes y castigar a todos con Bronce por una caída sería peor.
+  `planEfectivo(club, sesion, origen)` recibe el origen; sin él se
+  comporta como antes.
+- **El panel decidía el menú con el plan del LINK.** `tieneModulo` lee la
+  sesión, que sale del token, así que un cliente bajado a Bronce seguía
+  viendo Scouting y chocaba contra un 403. El servidor declara ahora el
+  efectivo en `usuario.plan` del catálogo (el del club del token) y en
+  `alcance.plan` con los datos, y `adoptarPlanEfectivo()` lo pone en la
+  sesión (`SGADD_AUTH.fijarPlanEfectivo`) y repinta menú, pie y la sección
+  abierta si depende del plan.
+
+**Solo el CLIENTE adopta.** Para un admin `alcance.plan` es el plan del
+club que está mirando, no el suyo: adoptarlo le haría decir «Plan Bronce»
+en su propio pie. El admin no tiene restricciones de todos modos.
+
+El scouting declaraba en su respuesta el plan del token aun después de
+decidir con el efectivo: ahora declara el efectivo.
+
+### 2 · La racha con los partidos sin estadísticas
+
+`e.racha` sale del núcleo, que solo ve los partidos con box score: un
+partido cargado a mano no cortaba ni estiraba la racha del encabezado.
+`SGADD_CLASIF.rachaConManuales(partidos, detalleManual)` los ordena como
+el núcleo —por fecha, los sin fecha al final— con los manuales en SU
+fecha; sin manuales da exactamente la racha del núcleo. La fecha manual
+se lee como medianoche LOCAL, que es como el núcleo lee las de la
+planilla. `clasifRachaDe(idx, e)` le pasa los del tramo abierto.
+
+**El informe de scouting sigue con la racha y el récord del núcleo**
+(`SGADD_SCOUT.fichaEquipo`): el motor es puro y no conoce el catálogo.
+
+### 3 · El cartel rojo espera al catálogo
+
+Un club dado de alta desde el Panel Master no tiene `clubes/<id>.json`
+(punto 53), así que el fetch del JSON da 404 en CADA carga. El cartel
+«Configuración del club no encontrada» salía a los 0,3–1 s y el cruce con
+el catálogo lo retiraba enseguida: un destello rojo en cada F5.
+
+Medido con un observador de mutaciones instalado antes del primer script
+(`Page.addScriptToEvaluateOnNewDocument`) sobre tres arranques: era el
+**único** nodo rojo transitorio. El resto de lo que se pinta en rojo son
+datos (porcentajes por debajo de la liga), no avisos.
+
+Con backend y token el cartel queda PENDIENTE (`estado.cartelPendiente`)
+y `CLUB.confirmarSinConfig()` lo muestra recién si ni el JSON ni el
+catálogo trajeron al club; lo llama `resolverClubYPlanilla()` después de
+`reconciliarConCatalogo()`. **Sin backend sale en el acto, como siempre**:
+ahí no hay nada más que esperar.
 
