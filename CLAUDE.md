@@ -38,7 +38,7 @@ node test-clientes.js      #  69 tests · el padrón de clientes, los cupos y el
 node test-confirmar.js     #  86 tests · el diff, publicar zonas, subclientes y tooltips
 node test-acumulacion.js   #  42 tests · la suma entre tramos · REGRESIÓN, no tocar
 node test-resiliencia.js   #  50 tests · rotación del token, KV caído, el tramo que se conserva
-node test-jsonclub.js      # 109 tests · los JSON de club, el validador, el aislamiento y publicar
+node test-jsonclub.js      # 115 tests · los JSON de club, el validador, el aislamiento y publicar
 node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 175 tests · partidos sin box score: suman a la tabla, no a las métricas
@@ -60,7 +60,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4964 tests en total. Todos tienen que dar verde antes de commitear.**
+**4970 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
