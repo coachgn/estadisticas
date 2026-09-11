@@ -332,33 +332,103 @@ check('y en papel la reserva se anula con !important, que el inline gana',
 check('y en papel la demo no existe: son controles comerciales',
   /@media print \{ \.demo-barra, #demoModalHost \{ display: none !important; \} \}/.test(idx));
 
-/* --- EL MODAL · tres campos y nada más --- */
+/* --- EL MODAL · quién es, de qué club y de dónde --- */
 const modal = DEMO.modal();
-['demoNombre', 'demoClub', 'demoTel'].forEach((id) => {
+['demoNombre', 'demoRol', 'demoClub', 'demoPais', 'demoCiudad', 'demoPaisOtro'].forEach((id) => {
   check('  el modal pide ' + id, modal.indexOf('id="' + id + '"') !== -1);
 });
-check('y no pide un cuarto dato',
-  (modal.match(/<input /g) || []).length === 3,
-  (modal.match(/<input /g) || []).length + ' campos');
 
-/* SOLO EL CLUB ES OBLIGATORIO: es el único que cambia el mensaje. Pedir
-   los tres para poder escribir un WhatsApp es fricción sin
-   contrapartida. */
-check('solo el club es obligatorio',
-  /if \(!datos\.club\)/.test(srcDemo) && !/if \(!datos\.tel\)/.test(srcDemo));
+/* EL TELÉFONO SE SACÓ: el mensaje sale desde el WhatsApp del propio
+   interesado, así que su número ya viaja con él. Pedirlo era fricción
+   que no aportaba un dato. */
+check('el modal ya NO pide el teléfono',
+  !/id="demoTel"/.test(modal) && !/type="tel"/.test(modal) && !/WhatsApp de contacto/.test(modal));
+check('y enviar() tampoco lo lee', !/demoTel/.test(codigoDemo));
 
-/* --- EL MENSAJE · dice la verdad sobre de dónde viene --- */
-const mDemo = DEMO.mensaje({ club: 'Club Atlético Prueba', nombre: 'Ana Pérez', tel: '+54 9 221' });
-check('desde la demo, el mensaje dice que probó la demo',
-  /probé la demo/.test(mDemo) && /Club Atlético Prueba/.test(mDemo), mDemo);
-check('y arrastra el nombre y el teléfono si los dejaron',
-  /Ana Pérez/.test(mDemo) && /\+54 9 221/.test(mDemo));
+/* EL PAÍS · un desplegable con Argentina elegida por defecto. */
+check('el país es un <select>', /<select id="demoPais"/.test(modal));
+check('con Argentina elegida por defecto',
+  /<option value="Argentina" selected>/.test(modal) && DEMO.PAIS_DEFECTO === 'Argentina');
+['Argentina', 'Uruguay', 'Chile', 'Colombia', 'México', 'España', 'Brasil', 'Otro'].forEach((p) => {
+  check('  ofrece ' + p, DEMO.PAISES.some(x => x.nombre === p));
+});
+check('y «Otro» va último', DEMO.PAISES[DEMO.PAISES.length - 1].nombre === 'Otro');
+check('«Otro» abre un campo para escribir el país, que arranca oculto',
+  /id="demoPaisOtroCampo" hidden/.test(modal));
 
-const mPlan = DEMO.mensaje({ club: 'Club Atlético Prueba', plan: 'Oro' });
+/* LA CIUDAD · sugerencias, no una lista cerrada. Un select con ciudades
+   dejaría afuera a cientos de localidades con básquet. */
+check('la ciudad es texto libre con sugerencias (datalist), no un select',
+  /<input type="text" id="demoCiudad"[\s\S]{0,160}list="demoCiudades"/.test(modal)
+  && /<datalist id="demoCiudades">/.test(modal));
+check('las sugerencias arrancan con las del país por defecto',
+  /<datalist id="demoCiudades"><option value="La Plata">|<datalist id="demoCiudades">[^<]*<option value="Buenos Aires">/.test(modal));
+check('cada país con ciudades tiene sugerencias propias, y «Otro» ninguna',
+  DEMO.PAISES.filter(p => p.nombre !== 'Otro').every(p => DEMO.ciudadesDe(p.nombre).length >= 3)
+  && DEMO.ciudadesDe('Otro').length === 0);
+/* CAMBIAR EL PAÍS NO REPINTA EL MODAL: se perderían el foco y lo ya
+   escrito. Solo se tocan el datalist y el campo de «Otro». */
+const cuerpoPais = srcDemo.slice(srcDemo.indexOf('function paisCambio'),
+                                 srcDemo.indexOf('function paisElegido'));
+check('cambiar el país rehace SOLO las sugerencias, sin repintar el modal',
+  /demoCiudades/.test(cuerpoPais) && !/innerHTML = modal\(\)/.test(cuerpoPais)
+  && !/demoCiudad'\)\.value = /.test(cuerpoPais), cuerpoPais.length + ' chars');
+check('y el select lo dispara al cambiar', /onchange="SGADD_DEMO\.paisCambio\(\)"/.test(modal));
+
+/* EL ROL · en su propio desplegable. Pegado al nombre, el navegador le
+   sugería «Entrenador» a quien escribía su nombre. */
+check('el rol es un <select> aparte, con una opción vacía para no elegir',
+  /<select id="demoRol"/.test(modal) && /<option value="">/.test(modal));
+check('y el nombre ya no arrastra la lista de roles', !/list="demoRoles"/.test(modal));
+
+/* --- LA VALIDACIÓN · exige club, país y ciudad --- */
+const campos = (f) => f.map(x => x.id).join(',');
+check('sin nada, faltan el club, el país y la ciudad, en el orden del formulario',
+  campos(DEMO.faltantes({})) === 'demoClub,demoPais,demoCiudad', campos(DEMO.faltantes({})));
+check('con los tres, no falta nada',
+  DEMO.faltantes({ club: 'Atenas', pais: 'Argentina', ciudad: 'La Plata' }).length === 0);
+check('el nombre y el rol NO son obligatorios: llegan con el propio contacto',
+  DEMO.faltantes({ club: 'Atenas', pais: 'Argentina', ciudad: 'La Plata', nombre: '', rol: '' }).length === 0);
+check('espacios en blanco no cuentan como dato',
+  campos(DEMO.faltantes({ club: '  ', pais: 'Chile', ciudad: ' ' })) === 'demoClub,demoCiudad');
+/* Con «Otro» el país es el escrito, y el foco va a ESE campo. */
+check('«Otro» sin escribir el país falta, y apunta al campo de texto',
+  campos(DEMO.faltantes({ club: 'A', pais: '', paisOtro: true, ciudad: 'Lisboa' })) === 'demoPaisOtro');
+check('enviar() valida con faltantes() antes de abrir WhatsApp',
+  /const falta = faltantes\(datos\)/.test(srcDemo)
+  && srcDemo.indexOf('const falta = faltantes(datos)') < srcDemo.indexOf("window.open(enlace(datos)"));
+check('y si falta algo, vuelve SIN abrir el enlace',
+  /if \(falta\.length\) \{[\s\S]*?return;\s*\}\s*window\.open\(enlace\(datos\)/.test(srcDemo));
+check('el campo vacío se marca con aria-invalid, no solo con el aviso del pie',
+  /setAttribute\('aria-invalid'/.test(srcDemo)
+  && /\.demo-input\[aria-invalid="true"\] \{ border-color: #f87171; \}/.test(idx));
+check('y la marca se va al escribir en el campo',
+  /removeAttribute\('aria-invalid'\)/.test(srcDemo));
+
+/* --- EL MENSAJE · dice la verdad sobre de dónde viene y desde dónde --- */
+const mDemo = DEMO.mensaje({ nombre: 'Ana Pérez', rol: 'Entrenador/a', club: 'Atenas',
+                             ciudad: 'La Plata', pais: 'Argentina' });
+check('desde la demo, el mensaje sigue el formato pedido',
+  mDemo === 'Hola MotorStats, probé la demo. Soy Ana Pérez (Entrenador/a) del club Atenas, '
+    + 'de la ciudad de La Plata, Argentina. Quiero ver cómo funciona el dashboard con las '
+    + 'estadísticas de mi equipo.', mDemo);
+check('y ya no menciona un teléfono', !/WhatsApp es/.test(mDemo));
+
+const mClub = DEMO.mensaje({ nombre: 'Ana', club: 'Club Atlético Prueba', ciudad: 'X', pais: 'Y' });
+check('un club que ya se llama «Club…» no sale «del club Club…»',
+  /del Club Atlético Prueba/.test(mClub) && !/club Club/i.test(mClub), mClub);
+check('«Otro» como rol no se escribe en el mensaje',
+  !/\(Otro\)/.test(DEMO.mensaje({ nombre: 'Ana', rol: 'Otro', club: 'A', ciudad: 'B', pais: 'C' })));
+check('sin nombre ni rol la frase cambia de sujeto, no queda «Soy  del»',
+  /Te escribo desde el club Atenas, de la ciudad de Salto, Uruguay\./.test(
+    DEMO.mensaje({ club: 'Atenas', ciudad: 'Salto', pais: 'Uruguay' })));
+
+const mPlan = DEMO.mensaje({ club: 'Club Atlético Prueba', plan: 'Oro', ciudad: 'Rosario', pais: 'Argentina' });
 check('desde una card de plan, dice por qué plan consulta',
   /plan Oro/.test(mPlan) && !/probé la demo/.test(mPlan), mPlan);
-check('sin club, el mensaje no queda colgado',
-  /mi club/.test(DEMO.mensaje({})), DEMO.mensaje({}));
+check('y también dice desde dónde', /de la ciudad de Rosario, Argentina/.test(mPlan));
+check('sin datos, el mensaje no queda colgado',
+  /mi club/.test(DEMO.mensaje({})) && !/ciudad de ,/.test(DEMO.mensaje({})), DEMO.mensaje({}));
 
 check('el enlace va a wa.me con el texto encodeado',
   DEMO.enlace({ club: 'A B' }).indexOf('https://wa.me/' + DEMO.WHATSAPP + '?text=') === 0

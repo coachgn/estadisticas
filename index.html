@@ -669,6 +669,28 @@
     border: 1px solid var(--hairline, #282828); font: inherit; font-size: 13px;
   }
   .demo-input:focus-visible { outline: 2px solid var(--acento, #f7941e); outline-offset: 1px; }
+  /* El select y el input MIDEN LO MISMO: medido, 34 contra 36px, y dos
+     campos de la misma fila con alturas distintas se leen como un error
+     de maquetado. */
+  .demo-input { min-height: 36px; }
+  select.demo-input { cursor: pointer; }
+  /* Nombre y rol, pais y ciudad: DOS por fila cuando entran y apilados
+     cuando no. Se decide por el ancho de la CAJA (auto-fit), no por el
+     de la pantalla: el modal mide lo mismo en una tablet que en una PC, y
+     una media query de ancho encima se evaluaria contra la hoja al
+     imprimir (punto 49). */
+  /* 10rem y no menos: medido a 375px, con 9rem entraban dos de 145px y
+     «Preparador/a físico/a» no se leia entero. Con 10rem el telefono los
+     APILA y el escritorio (caja de 342px) sigue con dos por fila. */
+  .demo-fila { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); column-gap: .75rem; }
+  /* El preflight compilado trae [hidden] con la MISMA especificidad que
+     `.demo-campo`, y el que gana es el ultimo en el documento: sin esto
+     el campo de «Otro» quedaria visible o no segun el orden de las hojas. */
+  .demo-campo[hidden] { display: none; }
+  /* El campo que falta se marca con el borde, no solo con el aviso del
+     pie: ningun estado se comunica solo con un texto lejos del campo
+     (punto 14). #f87171 da 6,4 sobre el fondo del campo. */
+  .demo-input[aria-invalid="true"] { border-color: #f87171; }
 
   /* En papel la demo no existe: son controles comerciales. */
   @media print { .demo-barra, #demoModalHost { display: none !important; } }
@@ -2565,7 +2587,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=200" />
+<link rel="stylesheet" href="sgadd.css?v=201" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2743,46 +2765,46 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=200"></script>
+<script src="js/sgadd-club.js?v=201"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=200"></script>
-<script src="js/sgadd-core.js?v=200"></script>
-<script src="js/sgadd-auth.js?v=200"></script>
+<script src="js/sgadd-config.js?v=201"></script>
+<script src="js/sgadd-core.js?v=201"></script>
+<script src="js/sgadd-auth.js?v=201"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=200"></script>
-<script src="js/sgadd-glosario.js?v=200"></script>
-<script src="js/sgadd-glosarioui.js?v=200"></script>
-<script src="js/sgadd-comparativa.js?v=200"></script>
-<script src="js/sgadd-comparativaui.js?v=200"></script>
-<script src="js/sgadd-confirmar.js?v=200"></script>
-<script src="js/sgadd-landing.js?v=200"></script>
-<script src="js/sgadd-login.js?v=200"></script>
-<script src="js/sgadd-data.js?v=200"></script>
-<script src="js/sgadd-clientes.js?v=200"></script>
-<script src="js/sgadd-ui.js?v=200"></script>
-<script src="js/sgadd-app.js?v=200"></script>
-<script src="js/sgadd-clasificacion.js?v=200"></script>
+<script src="js/sgadd-demo.js?v=201"></script>
+<script src="js/sgadd-glosario.js?v=201"></script>
+<script src="js/sgadd-glosarioui.js?v=201"></script>
+<script src="js/sgadd-comparativa.js?v=201"></script>
+<script src="js/sgadd-comparativaui.js?v=201"></script>
+<script src="js/sgadd-confirmar.js?v=201"></script>
+<script src="js/sgadd-landing.js?v=201"></script>
+<script src="js/sgadd-login.js?v=201"></script>
+<script src="js/sgadd-data.js?v=201"></script>
+<script src="js/sgadd-clientes.js?v=201"></script>
+<script src="js/sgadd-ui.js?v=201"></script>
+<script src="js/sgadd-app.js?v=201"></script>
+<script src="js/sgadd-clasificacion.js?v=201"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=200"></script>
-<script src="js/sgadd-configui.js?v=200"></script>
-<script src="js/sgadd-estados.js?v=200"></script>
-<script src="js/sgadd-buzon.js?v=200"></script>
-<script src="js/sgadd-charts.js?v=200"></script>
-<script src="js/sgadd-personalidad.js?v=200"></script>
-<script src="js/sgadd-rankings.js?v=200"></script>
-<script src="js/sgadd-partido.js?v=200"></script>
-<script src="js/sgadd-informe.js?v=200"></script>
-<script src="js/sgadd-ficha.js?v=200"></script>
-  <script src="js/sgadd-rankingpdf.js?v=200"></script>
-<script src="js/sgadd-equipos.js?v=200"></script>
+<script src="js/sgadd-hub.js?v=201"></script>
+<script src="js/sgadd-configui.js?v=201"></script>
+<script src="js/sgadd-estados.js?v=201"></script>
+<script src="js/sgadd-buzon.js?v=201"></script>
+<script src="js/sgadd-charts.js?v=201"></script>
+<script src="js/sgadd-personalidad.js?v=201"></script>
+<script src="js/sgadd-rankings.js?v=201"></script>
+<script src="js/sgadd-partido.js?v=201"></script>
+<script src="js/sgadd-informe.js?v=201"></script>
+<script src="js/sgadd-ficha.js?v=201"></script>
+  <script src="js/sgadd-rankingpdf.js?v=201"></script>
+<script src="js/sgadd-equipos.js?v=201"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=200"></script>
-<script src="js/sgadd-jugadores.js?v=200"></script>
-<script src="js/sgadd-4factores.js?v=200"></script>
-<script src="js/sgadd-scouting.js?v=200"></script>
-<script src="js/sgadd-diagnostico.js?v=200"></script>
+<script src="js/sgadd-niveles.js?v=201"></script>
+<script src="js/sgadd-jugadores.js?v=201"></script>
+<script src="js/sgadd-4factores.js?v=201"></script>
+<script src="js/sgadd-scouting.js?v=201"></script>
+<script src="js/sgadd-diagnostico.js?v=201"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

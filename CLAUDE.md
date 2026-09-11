@@ -45,7 +45,7 @@ node test-manuales.js      # 175 tests · partidos sin box score: suman a la tab
 node test-responsive.js    # 136 tests · desborde, targets táctiles, modales, el papel, el PIE
                            #             el aviso de version y el diagnostico del pie
 node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
-node test-demo.js          #  92 tests · la demo publica: el snapshot anonimizado, el
+node test-demo.js          # 127 tests · la demo publica: el snapshot anonimizado, el
                            #             contrato cols↔filas, las cards y el modal
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
@@ -60,7 +60,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4929 tests en total. Todos tienen que dar verde antes de commitear.**
+**4964 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -7534,10 +7534,37 @@ un badge, que se ven igual en las dos disposiciones.
 
 ### UN SOLO MODAL PARA LOS DOS ORÍGENES
 
-La barra de la demo y las tres cards abren el **mismo** formulario de
-tres campos —nombre y rol, club, WhatsApp— y solo el club es obligatorio:
-es el único que cambia el mensaje, y pedir los tres para poder escribir
-un WhatsApp es fricción sin contrapartida.
+La barra de la demo y las tres cards abren el **mismo** formulario:
+nombre, rol, club, país y ciudad. **Se exigen el club, el país y la
+ciudad** —son lo que el que atiende no puede deducir de la conversación—
+y el nombre y el rol no, porque llegan con el propio contacto.
+
+**El teléfono se sacó.** El mensaje sale desde el WhatsApp del propio
+interesado, así que su número ya viaja con él: pedirlo era un campo que
+no aportaba un solo dato.
+
+- **El país es un `<select>`** con Argentina elegida y «Otro» último;
+  «Otro» abre un campo para escribirlo, o el mensaje diría «de la ciudad
+  de Lisboa, Otro».
+- **La ciudad es texto libre con sugerencias** (`<datalist>` por país),
+  NO un `<select>`: el básquet argentino se juega en cientos de
+  localidades, y el que no encuentra la suya en una lista cerrada
+  abandona.
+- **Cambiar el país no repinta el modal**: rehace el datalist y nada más.
+  Un repintado perdería el foco y lo ya escrito (la regla de
+  `scoutMeta()`). Y la ciudad escrita no se borra.
+- **El rol va en su propio desplegable.** Estuvo pegado al nombre con un
+  datalist de roles, y el navegador le sugería «Entrenador» a quien
+  escribía su nombre; además el mensaje no podía armar «Nombre (Rol)».
+- **La validación es `faltantes()`, pura**: nombra todo lo que falta de
+  una vez, marca cada campo con `aria-invalid` —el borde, no solo el
+  aviso del pie— y la marca se va apenas se escribe.
+- **País y ciudad van de a dos por fila cuando entran**, con
+  `auto-fit`: se decide por el ancho de la CAJA y no por una media query,
+  que al imprimir se evaluaría contra la hoja (punto 49). El mínimo es
+  **10rem y se midió**: con 9rem el teléfono metía dos campos de 145px y
+  «Preparador/a físico/a» no entraba; con 10rem se apilan en el teléfono y
+  el escritorio sigue de a dos.
 
 **Lo que sí cambia es el encabezado del mensaje**, y no es un detalle:
 con un solo texto, el que toca una card en la landing —sin haber entrado
@@ -7545,10 +7572,14 @@ nunca a la demo— le escribiría «probé la demo», y el que atiende arranca
 la conversación con un dato falso.
 
 ```
-desde la demo   Hola MotorStats, probé la demo y quiero ver cómo funciona
-                con los datos de <club>.
-desde una card  Hola MotorStats, quiero consultar por el plan <X> para <club>.
+desde la demo   Hola MotorStats, probé la demo. Soy <nombre> (<rol>) del club
+                <club>, de la ciudad de <ciudad>, <país>. Quiero ver cómo
+                funciona el dashboard con las estadísticas de mi equipo.
+desde una card  Hola MotorStats, quiero consultar por el plan <X>. Soy …
 ```
+
+Un club que ya se llama «Club Atlético…» no sale «del club Club…»: la
+palabra se antepone solo si falta.
 
 **No hay backend al que mandar el lead**, así que el envío arma el
 mensaje y abre WhatsApp: queda en la conversación, que además es donde el

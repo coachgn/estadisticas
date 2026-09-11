@@ -258,18 +258,72 @@ const SGADD_DEMO = (function () {
   }
 
   /* ===================================================================
-     EL MODAL DE CAPTURA · tres datos y nada más
+     EL MODAL DE CAPTURA · quién es, de qué club y de dónde
 
-     Cada campo de más es gente que abandona. Con el nombre, el club y el
-     WhatsApp alcanza para devolver el mensaje, que es lo único que este
-     formulario tiene que lograr.
+     Cada campo de más es gente que abandona, así que cada uno tiene que
+     cambiar el mensaje. El TELÉFONO SE SACÓ por eso: el mensaje sale
+     desde el WhatsApp del propio interesado, así que su número ya viaja
+     con él. Pedirlo era fricción que no aportaba un solo dato.
+
+     La UBICACIÓN sí entra, y es la que más le sirve al que atiende: dice
+     de qué liga se habla antes de preguntar, y en qué huso horario
+     contestar.
 
      NO HAY BACKEND al que mandarlo, así que el envío ARMA EL MENSAJE y
      abre WhatsApp: el lead queda en la conversación, que además es donde
      el club quiere atenderlo. Prometer un "te contactamos" sin nada que
      lo cumpla sería peor que no tener el formulario.
      =================================================================== */
-  const ROLES = ['Entrenador', 'Asistente', 'Preparador físico', 'Dirigente', 'Analista', 'Otro'];
+  /* EL ROL VA EN SU PROPIO DESPLEGABLE, no pegado al nombre. Estuvo en
+     un solo campo con un datalist de roles, y eso tenia dos defectos: al
+     escribir el NOMBRE el navegador sugeria «Entrenador», y el mensaje
+     no podia decir «Ana Pérez (Entrenadora)» porque no sabia donde
+     terminaba uno y empezaba el otro. «Otro» no se escribe en el
+     mensaje: «(Otro)» no le dice nada al que atiende. */
+  const ROLES = ['Entrenador/a', 'Asistente', 'Preparador/a físico/a', 'Dirigente', 'Analista', 'Otro'];
+  const OTRO_ROL = 'Otro';
+
+  /* LOS PAÍSES son los mercados de básquet a los que se apunta, con
+     Argentina primero y elegido: es donde está hoy cada cliente.
+
+     LAS CIUDADES SON SUGERENCIAS, NO UNA LISTA CERRADA. Van en un
+     datalist: el que es de La Plata la toca y listo, y el que es de
+     Olavarría la escribe. Un select con las ciudades dejaría afuera a
+     casi todos los clubes del país —el básquet argentino se juega en
+     cientos de localidades— y el que no encuentra la suya abandona. */
+  const OTRO_PAIS = 'Otro';
+  const PAISES = [
+    { nombre: 'Argentina', ciudades: ['Buenos Aires', 'La Plata', 'Córdoba', 'Rosario',
+      'Mar del Plata', 'Mendoza', 'Bahía Blanca', 'Santa Fe', 'San Miguel de Tucumán',
+      'Salta', 'San Salvador de Jujuy', 'Neuquén', 'Corrientes', 'Resistencia',
+      'Paraná', 'San Juan', 'Junín', 'Olavarría'] },
+    { nombre: 'Uruguay', ciudades: ['Montevideo', 'Salto', 'Paysandú', 'Maldonado', 'Rivera'] },
+    { nombre: 'Paraguay', ciudades: ['Asunción', 'Ciudad del Este', 'Encarnación', 'Luque'] },
+    { nombre: 'Chile', ciudades: ['Santiago', 'Valparaíso', 'Concepción', 'Antofagasta',
+      'Temuco', 'Valdivia'] },
+    { nombre: 'Bolivia', ciudades: ['La Paz', 'Santa Cruz de la Sierra', 'Cochabamba', 'Sucre'] },
+    { nombre: 'Perú', ciudades: ['Lima', 'Arequipa', 'Trujillo', 'Cusco'] },
+    { nombre: 'Brasil', ciudades: ['São Paulo', 'Río de Janeiro', 'Brasilia', 'Belo Horizonte',
+      'Porto Alegre', 'Curitiba', 'Franca'] },
+    { nombre: 'Colombia', ciudades: ['Bogotá', 'Medellín', 'Cali', 'Barranquilla', 'Cartagena'] },
+    { nombre: 'Venezuela', ciudades: ['Caracas', 'Maracaibo', 'Valencia', 'Barquisimeto'] },
+    { nombre: 'Ecuador', ciudades: ['Quito', 'Guayaquil', 'Cuenca'] },
+    { nombre: 'México', ciudades: ['Ciudad de México', 'Guadalajara', 'Monterrey', 'Puebla',
+      'Mérida', 'Tijuana'] },
+    { nombre: 'España', ciudades: ['Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Málaga',
+      'Bilbao', 'Zaragoza'] },
+    { nombre: OTRO_PAIS, ciudades: [] },
+  ];
+  const PAIS_DEFECTO = 'Argentina';
+
+  function ciudadesDe(pais) {
+    const p = PAISES.find(x => x.nombre === pais);
+    return p ? p.ciudades : [];
+  }
+
+  function opcionesCiudad(pais) {
+    return ciudadesDe(pais).map(c => '<option value="' + esc(c) + '"></option>').join('');
+  }
 
   /* DE DONDE SE ABRIO. Lo escribe `abrirModal` y lo leen el titulo y el
      mensaje: es la unica diferencia entre los dos origenes, asi que
@@ -286,19 +340,25 @@ const SGADD_DEMO = (function () {
           <h2 id="demoModalTitulo" class="font-display uppercase tracking-wide text-base text-ink mb-1">
             ${plan ? 'Consultar por el plan ' + esc(plan) : 'Agendar demo con mis datos'}</h2>
           <p class="text-xs text-muted mb-4 leading-relaxed">
-            Te armamos el panel con los box scores de tu equipo. Tres datos y
-            seguimos por WhatsApp.
+            Te armamos el panel con los box scores de tu equipo. Contanos
+            quién sos y de dónde, y seguimos por WhatsApp.
           </p>
 
-          <label class="demo-campo">
-            <span>Tu nombre y rol</span>
-            <input type="text" id="demoNombre" autocomplete="name"
-                   placeholder="Ana Pérez · Entrenadora"
-                   list="demoRoles" class="demo-input">
-          </label>
-          <datalist id="demoRoles">
-            ${ROLES.map(r => `<option value="${esc(r)}"></option>`).join('')}
-          </datalist>
+          <div class="demo-fila">
+            <label class="demo-campo">
+              <span>Tu nombre</span>
+              <input type="text" id="demoNombre" autocomplete="name"
+                     placeholder="Ana Pérez" class="demo-input">
+            </label>
+
+            <label class="demo-campo">
+              <span>Rol</span>
+              <select id="demoRol" class="demo-input">
+                <option value="">Elegí…</option>
+                ${ROLES.map(r => '<option value="' + esc(r) + '">' + esc(r) + '</option>').join('')}
+              </select>
+            </label>
+          </div>
 
           <label class="demo-campo">
             <span>Club o equipo</span>
@@ -306,10 +366,33 @@ const SGADD_DEMO = (function () {
                    placeholder="Club Atlético…" class="demo-input">
           </label>
 
-          <label class="demo-campo">
-            <span>WhatsApp de contacto</span>
-            <input type="tel" id="demoTel" autocomplete="tel" inputmode="tel"
-                   placeholder="+54 9 221 555 1234" class="demo-input">
+          <!-- PAIS Y CIUDAD van en una FILA desde 480px y apilados en el
+               telefono: son un solo dato, de donde sos, partido en dos. -->
+          <div class="demo-fila">
+            <label class="demo-campo">
+              <span>País</span>
+              <select id="demoPais" autocomplete="country-name" class="demo-input"
+                      onchange="SGADD_DEMO.paisCambio()">
+                ${PAISES.map(p => '<option value="' + esc(p.nombre) + '"'
+                  + (p.nombre === PAIS_DEFECTO ? ' selected' : '') + '>'
+                  + esc(p.nombre) + '</option>').join('')}
+              </select>
+            </label>
+
+            <label class="demo-campo">
+              <span>Ciudad</span>
+              <input type="text" id="demoCiudad" autocomplete="address-level2"
+                     placeholder="Escribí tu ciudad" list="demoCiudades" class="demo-input">
+            </label>
+          </div>
+          <datalist id="demoCiudades">${opcionesCiudad(PAIS_DEFECTO)}</datalist>
+
+          <!-- «Otro» abre un campo para escribirlo: sin el, el mensaje diria
+               «de la ciudad de Lisboa, Otro», que no es un pais. -->
+          <label class="demo-campo" id="demoPaisOtroCampo" hidden>
+            <span>¿Qué país?</span>
+            <input type="text" id="demoPaisOtro" autocomplete="country-name"
+                   placeholder="Portugal" class="demo-input">
           </label>
 
           <p id="demoAviso" class="text-[11px] text-muted mt-1" role="status" aria-live="polite"></p>
@@ -341,6 +424,14 @@ const SGADD_DEMO = (function () {
     n.id = 'demoModalHost';
     n.innerHTML = modal();
     document.body.appendChild(n);
+    /* La marca de campo vacío se va apenas se escribe en él: un borde
+       rojo que sigue ahí después de corregir se lee como otro error. Un
+       solo listener en el modal, por delegación. */
+    const quitarMarca = (ev) => {
+      if (ev.target && ev.target.removeAttribute) ev.target.removeAttribute('aria-invalid');
+    };
+    n.addEventListener('input', quitarMarca);
+    n.addEventListener('change', quitarMarca);
     const primero = document.getElementById('demoNombre');
     if (primero) primero.focus();
     document.addEventListener('keydown', escapar);
@@ -363,47 +454,136 @@ const SGADD_DEMO = (function () {
   };
 
   /**
+   * Cambió el país: se rehacen las sugerencias de ciudad y se muestra o
+   * esconde el campo de «Otro».
+   *
+   * NO SE REPINTA EL MODAL. Un repintado le saca el foco al select y
+   * borra lo que ya se escribió en los otros campos — la misma regla de
+   * scoutMeta() y del buscador del buzón. Solo se tocan el datalist y el
+   * campo de «Otro».
+   *
+   * Y LA CIUDAD ESCRITA NO SE BORRA: si quedó «La Plata» con España
+   * elegida, está a la vista y se corrige de un toque; borrarla sin
+   * avisar es perder lo que la persona escribió.
+   */
+  function paisCambio() {
+    if (typeof document === 'undefined') return;
+    const pais = valor('demoPais');
+    const lista = document.getElementById('demoCiudades');
+    if (lista) lista.innerHTML = opcionesCiudad(pais);
+    const otro = document.getElementById('demoPaisOtroCampo');
+    if (otro) {
+      otro.hidden = pais !== OTRO_PAIS;
+      const campo = document.getElementById('demoPaisOtro');
+      if (!otro.hidden && campo) campo.focus();
+    }
+  }
+
+  /** El país que va al mensaje: con «Otro», el que la persona escribió. */
+  function paisElegido() {
+    const p = valor('demoPais');
+    return p === OTRO_PAIS ? valor('demoPaisOtro') : p;
+  }
+
+  /**
    * El mensaje que se le manda al club. PURO y exportado, para poder
    * testearlo sin navegador.
    */
   function mensaje(datos) {
     const d = datos || {};
-    const club = String(d.club || '').trim() || 'mi club';
-    const plan = String(d.plan || '').trim();
+    const t = (v) => String(v === undefined || v === null ? '' : v).trim();
+    const club = t(d.club);
+    const plan = t(d.plan);
+    const nombre = t(d.nombre);
+    const rol = t(d.rol) === OTRO_ROL ? '' : t(d.rol);
+    const ciudad = t(d.ciudad);
+    const pais = t(d.pais);
     /* EL ENCABEZADO DICE LA VERDAD SOBRE DE DONDE VIENE. Con un solo
        texto, el que toca una card de plan en la landing —sin haber
        entrado nunca a la demo— le escribiria al club «probé la demo», y
        el que atiende el WhatsApp arranca la conversacion con un dato
        falso. El resto del mensaje es identico en los dos casos. */
     const cabeza = plan
-      ? 'Hola MotorStats, quiero consultar por el plan ' + plan + ' para ' + club + '.'
-      : 'Hola MotorStats, probé la demo y quiero ver cómo funciona con los datos de '
-        + club + '.';
-    return cabeza
-      + (d.nombre ? ' Soy ' + String(d.nombre).trim() + '.' : '')
-      + (d.tel ? ' Mi WhatsApp es ' + String(d.tel).trim() + '.' : '');
+      ? 'Hola MotorStats, quiero consultar por el plan ' + plan + '.'
+      : 'Hola MotorStats, probé la demo.';
+    /* LA UBICACION SE ARMA CON LO QUE HAYA. El formulario exige los dos
+       datos, pero la funcion es pura y se llama tambien sin formulario:
+       un «de la ciudad de , » colgado es peor que no nombrar el lugar. */
+    const lugar = (ciudad && pais) ? ', de la ciudad de ' + ciudad + ', ' + pais
+      : ciudad ? ', de la ciudad de ' + ciudad
+      : pais ? ', de ' + pais
+      : '';
+    /* «DEL CLUB CLUB ATLÉTICO…»: casi todos escriben el nombre oficial,
+       que ya arranca con «Club». Se antepone la palabra solo si falta. */
+    const esClub = /^club\b/i.test(club);
+    const del = !club ? 'de mi club' : (esClub ? 'del ' : 'del club ') + club;
+    const desde = !club ? 'desde mi club' : (esClub ? 'desde el ' : 'desde el club ') + club;
+    /* Nombre y rol son opcionales: sin ninguno de los dos la frase cambia
+       de sujeto en vez de quedar «Soy  del club…». */
+    const soy = (nombre && rol) ? nombre + ' (' + rol + ')'
+      : nombre || rol.toLowerCase();
+    const quien = soy
+      ? ' Soy ' + soy + ' ' + del + lugar + '.'
+      : ' Te escribo ' + desde + lugar + '.';
+    return cabeza + quien
+      + ' Quiero ver cómo funciona el dashboard con las estadísticas de mi equipo.';
   }
 
   function enlace(datos) {
     return 'https://wa.me/' + WHATSAPP + '?text=' + encodeURIComponent(mensaje(datos));
   }
 
+  /**
+   * Qué falta para poder mandar, en el orden del formulario. PURA y
+   * exportada: es la regla de la validación, y así se testea sin DOM.
+   *
+   * SE EXIGEN EL CLUB, EL PAÍS Y LA CIUDAD: son los tres datos que el que
+   * atiende no puede deducir de la conversación. El nombre y el rol no:
+   * llegan con el propio contacto de WhatsApp, y el mensaje se arma igual
+   * sin ellos.
+   *
+   * Con «Otro» el país que cuenta es el escrito: elegir «Otro» y dejarlo
+   * vacío es no haber dicho el país.
+   */
+  function faltantes(d) {
+    const x = d || {};
+    const f = [];
+    if (!String(x.club || '').trim()) f.push({ id: 'demoClub', dato: 'el club o equipo' });
+    if (!String(x.pais || '').trim()) {
+      f.push({ id: x.paisOtro ? 'demoPaisOtro' : 'demoPais', dato: 'el país' });
+    }
+    if (!String(x.ciudad || '').trim()) f.push({ id: 'demoCiudad', dato: 'la ciudad' });
+    return f;
+  }
+
   function enviar() {
     const datos = {
-      nombre: valor('demoNombre'), club: valor('demoClub'), tel: valor('demoTel'),
+      nombre: valor('demoNombre'), rol: valor('demoRol'), club: valor('demoClub'),
+      pais: paisElegido(), ciudad: valor('demoCiudad'),
+      paisOtro: valor('demoPais') === OTRO_PAIS,
       plan: contexto.plan,
     };
-    const aviso = document.getElementById('demoAviso');
-    /* SOLO EL CLUB ES OBLIGATORIO: es el único dato que cambia el mensaje.
-       Pedir los tres para poder escribir un WhatsApp es fricción sin
-       contrapartida, y el que no quiere dar el teléfono lo va a dar en la
-       conversación igual. */
-    if (!datos.club) {
+    const falta = faltantes(datos);
+    if (falta.length) {
+      const aviso = document.getElementById('demoAviso');
       if (aviso) {
-        aviso.textContent = 'Poné al menos el club o equipo: es lo que va en el mensaje.';
+        /* Se nombra TODO lo que falta de una vez: avisar de a uno obliga
+           a tocar «Seguir» tres veces para descubrir el formulario. */
+        const lista = falta.map(x => x.dato);
+        const texto = lista.length === 1 ? lista[0]
+          : lista.slice(0, -1).join(', ') + ' y ' + lista[lista.length - 1];
+        aviso.textContent = (lista.length === 1 ? 'Falta ' : 'Faltan ') + texto
+          + ': van en el mensaje.';
         aviso.className = 'text-[11px] mt-1 zona-texto zona-aviso';
       }
-      const n = document.getElementById('demoClub');
+      /* Cada campo vacío se marca además con aria-invalid: el lector de
+         pantalla lo anuncia al llegar al campo, y el borde lo marca sin
+         depender de leer el aviso del pie (punto 14). */
+      ['demoClub', 'demoPais', 'demoPaisOtro', 'demoCiudad'].forEach(id => {
+        const n = document.getElementById(id);
+        if (n) n.setAttribute('aria-invalid', falta.some(x => x.id === id) ? 'true' : 'false');
+      });
+      const n = document.getElementById(falta[0].id);
       if (n) n.focus();
       return;
     }
@@ -433,7 +613,8 @@ const SGADD_DEMO = (function () {
   return {
     activo, club, logo, sesion, cargarCategoria, rehidratar,
     banner, montarBanner, reservarAlto, vigilarAlto, modal, abrirModal, cerrarModal, enviar,
-    mensaje, enlace, EQUIPO, DATOS, WHATSAPP, SESION, INICIO,
+    paisCambio, faltantes, ciudadesDe, ROLES,
+    mensaje, enlace, EQUIPO, DATOS, WHATSAPP, SESION, INICIO, PAISES, PAIS_DEFECTO,
   };
 })();
 
