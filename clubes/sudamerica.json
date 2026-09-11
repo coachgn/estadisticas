@@ -1,0 +1,110 @@
+{
+  "id": "sud-america",
+  "nombre": "Sud América La Plata",
+  "nombreCorto": "SUD AMERICA",
+  "bajada": "Básquet · Scouting",
+  "//escudo": "Formato .webp optimizado cargado desde el repositorio de logos locales.",
+  "escudo": "logos/la-plata/sud-america-lp.webp",
+  "//acento": "Verde institucional extraído del escudo oficial (#0d5e27). Las funciones del sistema derivan las variantes de contraste para lectura en pantalla.",
+  "acento": "#0d5e27",
+  "acentoOscuro": "#083e1a",
+  "liga": "la-plata",
+  "//patronEquipoPropio": "Matcheo limpio para 'SUD AMERICA' en planillas de la APB / Torneo Local.",
+  "patronEquipoPropio": "SUD AMERICA",
+  "//sufijosEquipo": "Misma convención que el resto de La Plata: el sufijo de categoría (- MM, - U21M) se descarta porque no distingue clubes.",
+  "sufijosEquipo": [
+    "\\s*-\\s*(MM|MF|U\\d{1,2}\\s*[MF]?)\\s*$"
+  ],
+  "//aliasLogos": "Solo para lo que el matching automático no encuentre. Clave = nombre normalizado de la planilla.",
+  "aliasLogos": {},
+  "anio": 2026,
+  "torneo": "TORNEO LOCAL",
+  "credito": "SGADD",
+  "//preconfiguracion": "PRECONFIGURACION. Declarado por el club antes de sincronizar planillas.",
+  "preconfiguracion": {
+    "cliente": "Sud América La Plata",
+    "declaradoEl": "2026-09-10",
+    "declaradoPor": "Entrevista inicial",
+    "categorias": {
+      "primera-2026": {
+        "label": "Primera 2026",
+        "planilla": "sud-america-primera-2026",
+        "tramos": [
+          {
+            "id": "ida",
+            "label": "Ida",
+            "clave": "IDA|REGULAR",
+            "equiposEsperados": 12,
+            "fechasEsperadas": 11,
+            "ventanaTemporal": {
+              "desde": "2026-05-01",
+              "hasta": "2026-07-25"
+            }
+          },
+          {
+            "id": "vuelta",
+            "label": "Vuelta",
+            "clave": "VUELTA|REGULAR",
+            "equiposEsperados": 12,
+            "fechasEsperadas": 11,
+            "ventanaTemporal": {
+              "desde": "2026-08-01",
+              "hasta": "2026-11-30"
+            }
+          }
+        ],
+        "certificacion": {}
+      }
+    }
+  },
+  "competencia": {
+    "ordenTabla": [
+      "PCT",
+      "DIF",
+      "PF"
+    ],
+    "formatos": {
+      "regular-12": {
+        "label": "Regular · 12 equipos",
+        "equiposEsperados": 12,
+        "zonas": [
+          {
+            "id": "campeon",
+            "desde": 1,
+            "hasta": 2,
+            "label": "Ascenso Zona A",
+            "tono": "exito"
+          },
+          {
+            "id": "repechaje",
+            "desde": 3,
+            "hasta": 4,
+            "label": "Repechaje Zona A",
+            "tono": "aviso"
+          },
+          {
+            "id": "descenso",
+            "desde": -2,
+            "label": "Descenso",
+            "tono": "peligro"
+          }
+        ]
+      }
+    },
+    "porTramo": {
+      "*": "regular-12"
+    }
+  },
+  "planillas": [
+    {
+      "id": "sud-america-primera-2026",
+      "label": "Primera 2026",
+      "nivel": "LOCAL_MAYORES",
+      "slug": "sud-america-primera",
+      "categoria": "PRIMERA",
+      "faseTorneo": null,
+      "rama": "masculina",
+      "tira": null
+    }
+  ]
+}
