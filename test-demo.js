@@ -402,6 +402,15 @@ check('y si falta algo, vuelve SIN abrir el enlace',
 check('el campo vacío se marca con aria-invalid, no solo con el aviso del pie',
   /setAttribute\('aria-invalid'/.test(srcDemo)
   && /\.demo-input\[aria-invalid="true"\] \{ border-color: #f87171; \}/.test(idx));
+/* LA CONCORDANCIA · se escapó una vez en el sitio publicado. */
+check('con un solo faltante, el aviso va en singular',
+  DEMO.avisoFaltantes([{ dato: 'el país' }]) === 'Falta el país: va en el mensaje.',
+  DEMO.avisoFaltantes([{ dato: 'el país' }]));
+check('con varios, en plural y enumerados en castellano',
+  DEMO.avisoFaltantes(DEMO.faltantes({}))
+    === 'Faltan el club o equipo, el país y la ciudad: van en el mensaje.',
+  DEMO.avisoFaltantes(DEMO.faltantes({})));
+check('sin faltantes no hay aviso', DEMO.avisoFaltantes([]) === '');
 check('y la marca se va al escribir en el campo',
   /removeAttribute\('aria-invalid'\)/.test(srcDemo));
 

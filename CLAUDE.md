@@ -45,7 +45,7 @@ node test-manuales.js      # 175 tests · partidos sin box score: suman a la tab
 node test-responsive.js    # 136 tests · desborde, targets táctiles, modales, el papel, el PIE
                            #             el aviso de version y el diagnostico del pie
 node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
-node test-demo.js          # 127 tests · la demo publica: el snapshot anonimizado, el
+node test-demo.js          # 130 tests · la demo publica: el snapshot anonimizado, el
                            #             contrato cols↔filas, las cards y el modal
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
@@ -60,7 +60,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4970 tests en total. Todos tienen que dar verde antes de commitear.**
+**4973 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.

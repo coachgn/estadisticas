@@ -556,6 +556,23 @@ const SGADD_DEMO = (function () {
     return f;
   }
 
+  /**
+   * El aviso de lo que falta. PURA: la concordancia se escapó una vez
+   * —medido en el sitio publicado, «Falta el país: van en el mensaje»— y
+   * un texto que se arma con plurales tiene que poder testearse.
+   *
+   * Se nombra TODO lo que falta de una vez: avisar de a uno obliga a
+   * tocar «Seguir» tres veces para descubrir el formulario.
+   */
+  function avisoFaltantes(falta) {
+    const lista = (falta || []).map(x => x.dato);
+    if (!lista.length) return '';
+    const uno = lista.length === 1;
+    const texto = uno ? lista[0]
+      : lista.slice(0, -1).join(', ') + ' y ' + lista[lista.length - 1];
+    return (uno ? 'Falta ' : 'Faltan ') + texto + (uno ? ': va' : ': van') + ' en el mensaje.';
+  }
+
   function enviar() {
     const datos = {
       nombre: valor('demoNombre'), rol: valor('demoRol'), club: valor('demoClub'),
@@ -567,13 +584,7 @@ const SGADD_DEMO = (function () {
     if (falta.length) {
       const aviso = document.getElementById('demoAviso');
       if (aviso) {
-        /* Se nombra TODO lo que falta de una vez: avisar de a uno obliga
-           a tocar «Seguir» tres veces para descubrir el formulario. */
-        const lista = falta.map(x => x.dato);
-        const texto = lista.length === 1 ? lista[0]
-          : lista.slice(0, -1).join(', ') + ' y ' + lista[lista.length - 1];
-        aviso.textContent = (lista.length === 1 ? 'Falta ' : 'Faltan ') + texto
-          + ': van en el mensaje.';
+        aviso.textContent = avisoFaltantes(falta);
         aviso.className = 'text-[11px] mt-1 zona-texto zona-aviso';
       }
       /* Cada campo vacío se marca además con aria-invalid: el lector de
@@ -613,7 +624,7 @@ const SGADD_DEMO = (function () {
   return {
     activo, club, logo, sesion, cargarCategoria, rehidratar,
     banner, montarBanner, reservarAlto, vigilarAlto, modal, abrirModal, cerrarModal, enviar,
-    paisCambio, faltantes, ciudadesDe, ROLES,
+    paisCambio, faltantes, avisoFaltantes, ciudadesDe, ROLES,
     mensaje, enlace, EQUIPO, DATOS, WHATSAPP, SESION, INICIO, PAISES, PAIS_DEFECTO,
   };
 })();
