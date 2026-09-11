@@ -1783,7 +1783,7 @@ function jugadoresPickerEquipos(idx) {
         Muestra el plantel del club acá mismo, ordenado por minutos. Volvé a tocarlo para quitar el filtro.
       </p>
       ${SGADD_UI.avisoSinEquipo(lista) /* equiposAvisoSinEquipo */}
-      ${SGADD_UI.teamPicker(SGADD_AUTH.equiposVisibles(lista), { onClick: 'jugadoresElegirEquipo', seleccionado: JUGADORES.filtroEquipo })}
+      ${SGADD_UI.teamPicker(SGADD_AUTH.equiposVisibles(typeof clasifConPjDeTabla === 'function' ? clasifConPjDeTabla(idx, lista) : lista), { onClick: 'jugadoresElegirEquipo', seleccionado: JUGADORES.filtroEquipo })}
     </div>`;
 }
 

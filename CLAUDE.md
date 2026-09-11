@@ -52,6 +52,8 @@ node test-alta.js          #  98 tests · el alta de clientes: reusar un libro, 
 node test-alcance.js       # 122 tests · los clientes del mismo libro: el alcance de un
                            #             cambio, la herencia, el color y que el cliente
                            #             lea lo publicado
+node test-pj.js            #  34 tests · el PJ de la sección Equipos es el de la tabla
+                           #             de posiciones, con los partidos sin estadísticas
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
 
@@ -65,7 +67,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5193 tests en total. Todos tienen que dar verde antes de commitear.**
+**5227 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -6171,6 +6173,42 @@ mande el cliente en `torneo` y `fase` se ignora. Hay un test que manda
 
 Y el filtrado sigue siendo por la CLAVE, no por ese campo:
 `manualesDelTramo()` toma solo los del tramo abierto en la barra.
+
+### El PJ que se MUESTRA es el de la tabla, en toda la app
+
+Reportado el 2026-09-11: un equipo con **7 PJ en la tabla de posiciones
+mostraba 6 en su tarjeta de Equipos**. La tabla suma los partidos
+manuales (`tabla` → `fusionarManuales`) y la tarjeta leía el `pj` del
+índice, que solo cuenta los partidos con box score. Y el banner de la
+ficha, que este punto daba por puesto, no lo llamaba nadie.
+
+**El `pj` del índice NO se toca**: es la muestra de los promedios, del PJ
+mediano y de la muestra suficiente (punto 4), y es justo lo que este
+punto protege. Lo que se unificó es lo que se MUESTRA como partidos
+jugados, y sale de la MISMA fusión que la tabla:
+
+- `SGADD_CLASIF.filasPorEquipo(idx, manuales)` — las filas de la tabla,
+  por equipo. `clasifFilasVigentes(idx)` y `clasifFilaDe(idx, clave)` le
+  pasan los manuales del tramo abierto.
+- `SGADD_CLASIF.conPjDeTabla(lista, mapa)` — COPIAS de la lista con
+  `pjTabla` y `manuales` al lado; el `pj` sigue siendo el del índice.
+  `teamPicker` pinta `pjTabla` si viene, con el `⚠`.
+- `SGADD_CLASIF.condicionConManuales(split, fila)` — el récord de local y
+  visitante como las columnas PG L / PP L de la tabla. Los puntos del
+  split son totales, así que los del manual se suman sin mezclar escalas.
+
+Lo usan las tarjetas de Equipos y de Jugadores (es el mismo
+`teamPicker`), el encabezado de la ficha (`16 PJ · 9-7`, con el banner),
+la pestaña Local/Visitante y la columna PJ de los rankings, que lleva un
+`data-glosa` diciendo que sus promedios salen solo de los partidos con
+estadísticas. **Lo que decide quién entra al ranking y sobre cuántos
+partidos se promedia sigue siendo el `pj` del índice.**
+
+El Diagnóstico sigue mostrando el PJ del libro: audita el libro, y los
+manuales no están en él.
+
+La RACHA del encabezado sigue saliendo de los partidos con box score: un
+partido manual todavía no la corta.
 
 ### El badge
 

@@ -193,7 +193,7 @@ function equiposGrilla(idx) {
       <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Elegí un equipo</h3>
       <p class="text-[11px] text-muted mb-4">Por orden alfabético. El tuyo va destacado con el color del club.</p>
       ${SGADD_UI.avisoSinEquipo(lista) /* equiposAvisoSinEquipo */}
-      ${SGADD_UI.teamPicker(SGADD_AUTH.equiposVisibles(lista), { onClick: 'equiposIrA', seleccionado: EQUIPOS.equipo })}
+      ${SGADD_UI.teamPicker(SGADD_AUTH.equiposVisibles(typeof clasifConPjDeTabla === 'function' ? clasifConPjDeTabla(idx, lista) : lista), { onClick: 'equiposIrA', seleccionado: EQUIPOS.equipo })}
     </div>
     ${SGADD_RANKINGS.render(idx)}`;
 }
@@ -222,7 +222,13 @@ function equiposTabDisponible(idx, e, id) {
 function equiposHeader(idx, e) {
   const logo = (typeof LOGOS !== 'undefined') ? LOGOS.getUrl(e.nombre) : null;
   const rk = idx.ranking(e.clave, 'NET RTNG');
-  const rec = e.record || { ganados: 0, perdidos: 0 };
+  /* EL RÉCORD Y EL PJ SON LOS DE LA TABLA DE POSICIONES, con los partidos
+     sin estadísticas: la ficha no puede decir 6 PJ si la tabla dice 7. Las
+     métricas de abajo siguen saliendo solo de los partidos con box score
+     (punto 44), y el banner lo explica. */
+  const fila = (typeof clasifFilaDe === 'function') ? clasifFilaDe(idx, e.clave) : null;
+  const rec = fila ? { ganados: fila.pg, perdidos: fila.pp, pj: fila.pj }
+    : (e.record || { ganados: 0, perdidos: 0, pj: 0 });
   const racha = e.racha
     ? (e.racha.tipo === 'GANADO' ? e.racha.n + ' ganados al hilo' : e.racha.n + ' perdidos al hilo')
     : '—';
@@ -237,7 +243,7 @@ function equiposHeader(idx, e) {
         <div class="min-w-0 flex-1">
           <h2 class="font-display text-xl sm:text-2xl uppercase tracking-wide text-white truncate">${escapeHtml(e.nombre)}</h2>
           <p class="text-xs text-muted font-mono">
-            ${rec.ganados}-${rec.perdidos} · ${racha}${rk ? ' · ' + rk.puesto + '° de ' + rk.de + ' en rating neto' : ''}
+            ${rec.pj} PJ · ${rec.ganados}-${rec.perdidos} · ${racha}${rk ? ' · ' + rk.puesto + '° de ' + rk.de + ' en rating neto' : ''}
           </p>
         </div>
         <button onclick="SGADD_INFORME.abrir()" data-no-print
@@ -246,6 +252,7 @@ function equiposHeader(idx, e) {
           📄 Generar informe PDF
         </button>
       </div>
+      ${fila && typeof clasifBannerManual === 'function' ? clasifBannerManual(fila) : ''}
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">${hero}</div>
     </div>`;
 }
@@ -573,10 +580,16 @@ function equiposTabCondicion(idx, e) {
     </tr>`;
   }).join('');
 
+  /* EL RÉCORD DE LOCAL Y DE VISITANTE, igual que las columnas PG L / PP L
+     de la tabla: con los partidos sin estadísticas. Los factores de abajo
+     NO los llevan, porque no tienen box score. */
+  const cond = (typeof clasifFilaDe === 'function' && typeof SGADD_CLASIF !== 'undefined')
+    ? SGADD_CLASIF.condicionConManuales(e.split, clasifFilaDe(idx, e.clave)) : e.split;
   const cab = (t, s2) => `<div class="bg-surface2/50 rounded-lg p-3">
       <p class="text-[10px] uppercase tracking-wider text-muted font-display">${t}</p>
       <p class="font-display text-2xl text-ink leading-tight">${s2.ganados}-${s2.perdidos}</p>
-      <p class="text-[11px] text-muted font-mono">${s2.pj} PJ · ${s2.ptsFavor}-${s2.ptsContra}</p>
+      <p class="text-[11px] text-muted font-mono">${s2.pj} PJ · ${s2.ptsFavor}-${s2.ptsContra}${s2.manuales
+        ? ` · <span class="badge-manual" title="Sin estadísticas: cuentan en el récord, no en los factores">⚠ ${s2.manuales}</span>` : ''}</p>
     </div>`;
 
   /* Radar Local vs Visitante. Las métricas van escaladas a una base común
@@ -592,8 +605,8 @@ function equiposTabCondicion(idx, e) {
 
   return `
     <div class="grid grid-cols-2 gap-3 mb-5">
-      ${cab('De local', e.split.LOCAL)}
-      ${cab('De visitante', e.split.VISITANTE)}
+      ${cab('De local', cond.LOCAL)}
+      ${cab('De visitante', cond.VISITANTE)}
     </div>
 
     <div class="mb-6 max-w-3xl">

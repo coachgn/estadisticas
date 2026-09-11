@@ -140,6 +140,10 @@ const SGADD_UI = (function () {
       const url = hayLogos ? LOGOS.getUrl(e.nombre) : null;
       const activo = o.seleccionado && SGADD.claveEquipo(o.seleccionado) === e.clave;
       const propio = SGADD.esEquipoPropio(e.clave);
+      /* EL PJ DE LA TABLA si viene (`pjTabla`, ver SGADD_CLASIF.conPjDeTabla),
+         que incluye los partidos sin estadísticas; si no, el del índice. */
+      const pj = (e.pjTabla !== undefined) ? e.pjTabla : e.pj;
+      const nMan = e.manuales || 0;
       /* El escudo va SIEMPRE dentro del mismo disco, con o sin imagen:
          asi la grilla no se desarma cuando a un club le falta el archivo
          y las iniciales ocupan exactamente el mismo lugar. */
@@ -156,7 +160,9 @@ const SGADD_UI = (function () {
           <span class="text-[11px] text-center leading-tight ${propio ? 'text-accent font-semibold' : 'text-white'}">
             ${esc(e.nombre)}
           </span>
-          ${e.pj ? `<span class="text-[10px] text-muted font-mono">PJ ${e.pj}</span>` : ''}
+          ${pj ? `<span class="text-[10px] text-muted font-mono">PJ ${pj}${nMan
+            ? ` <span class="badge-manual" title="${esc(nMan + (nMan === 1 ? ' partido' : ' partidos')
+              + ' sin estadísticas: cuentan para la tabla, no para las métricas')}">⚠ ${nMan}</span>` : ''}</span>` : ''}
         </button>`;
     }).join('');
 

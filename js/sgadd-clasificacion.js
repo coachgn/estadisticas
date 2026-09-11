@@ -321,7 +321,66 @@ const SGADD_CLASIF = (function () {
     });
   }
 
+  /* =====================================================================
+     EL PJ DE LA TABLA ES EL PJ DE TODA LA APP
+
+     La tabla de posiciones suma los partidos sin estadísticas (`tabla` →
+     `fusionarManuales`); la tarjeta de la sección Equipos mostraba el
+     `pj` del ÍNDICE, que solo cuenta los partidos con box score. Mismo
+     equipo, dos números: 7 PJ en la tabla y 6 en su tarjeta.
+
+     El `pj` del índice NO se toca, y es a propósito: es el tamaño de
+     muestra de los promedios, del PJ mediano y de la muestra suficiente
+     (punto 4), y un partido del que solo se sabe el marcador no puede
+     entrar ahí (punto 44). Lo que se unifica es lo que se MUESTRA como
+     partidos jugados: sale de la misma fusión que la tabla, así que no
+     pueden volver a divergir.
+     ===================================================================== */
+
+  /** Las filas de la tabla, con los manuales ya sumados, por equipo. */
+  function filasPorEquipo(idx, manuales) {
+    const m = new Map();
+    fusionarManuales(filas(idx), manuales || []).forEach(f => m.set(f.clave, f));
+    return m;
+  }
+
+  /**
+   * La lista de equipos con el PJ de la tabla al lado (`pjTabla`) y los
+   * partidos sin estadísticas de cada uno (`manuales`). Devuelve COPIAS:
+   * el `pj` de cada equipo sigue siendo el del índice, que es la muestra.
+   */
+  function conPjDeTabla(lista, mapa) {
+    return (lista || []).map((e) => {
+      const f = mapa && e ? mapa.get(e.clave) : null;
+      return f ? Object.assign({}, e, { pjTabla: f.pj, manuales: f.manuales || 0 }) : e;
+    });
+  }
+
+  /**
+   * El récord de local y de visitante con los partidos sin estadísticas,
+   * igual que las columnas PG L / PP L / PG V / PP V de la tabla. Los
+   * puntos del split son TOTALES (`agregarPartidos`), así que los del
+   * partido manual se suman sin mezclar escalas.
+   */
+  function condicionConManuales(split, fila) {
+    const base = (s) => ({
+      ganados: num(s && s.ganados), perdidos: num(s && s.perdidos), pj: num(s && s.pj),
+      ptsFavor: num(s && s.ptsFavor), ptsContra: num(s && s.ptsContra), manuales: 0,
+    });
+    const out = { LOCAL: base(split && split.LOCAL), VISITANTE: base(split && split.VISITANTE) };
+    ((fila && fila.detalleManual) || []).forEach((d) => {
+      const c = out[d.rol === 'Local' ? 'LOCAL' : 'VISITANTE'];
+      c.pj += 1;
+      c.manuales += 1;
+      if (d.gano) c.ganados += 1; else c.perdidos += 1;
+      c.ptsFavor += num(d.puntosPropios);
+      c.ptsContra += num(d.puntosRival);
+    });
+    return out;
+  }
+
   return { CRITERIOS, ORDEN_POR_DEFECTO, filas, ordenar, tabla,
+           filasPorEquipo, conPjDeTabla, condicionConManuales,
            fusionarManuales, manualesDelTramo, puntosDeTabla, esTramoTotal,
            PUNTOS_GANADO, PUNTOS_PERDIDO };
 })();
@@ -359,6 +418,23 @@ function clasifManualesVigentes() {
     const st = SGADD_APP.estado;
     return SGADD_CLASIF.manualesDelTramo(mapa, st.torneo, st.fase);
   } catch (e) { return []; }   // es una mejora, no una dependencia dura
+}
+
+/* LAS FILAS DE LA TABLA DEL TRAMO ABIERTO, por equipo. La usan la
+   sección Equipos (tarjetas, ficha, local/visitante), el picker de
+   Jugadores y los rankings, para mostrar el MISMO PJ que la tabla. */
+function clasifFilasVigentes(idx) {
+  try { return SGADD_CLASIF.filasPorEquipo(idx, clasifManualesVigentes()); }
+  catch (e) { return new Map(); }
+}
+
+function clasifFilaDe(idx, clave) {
+  return clasifFilasVigentes(idx).get(clave) || null;
+}
+
+/** La lista para un picker de equipos, con el PJ de la tabla. */
+function clasifConPjDeTabla(idx, lista) {
+  return SGADD_CLASIF.conPjDeTabla(lista, clasifFilasVigentes(idx));
 }
 
 /**

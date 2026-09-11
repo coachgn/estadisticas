@@ -129,12 +129,20 @@ const SGADD_RANKINGS = (function () {
   function tabla(idx, grupo, opciones) {
     const r = construir(idx, grupo, opciones);
     const claves = grupo.metricas;
+    /* EL PJ QUE SE MUESTRA ES EL DE LA TABLA DE POSICIONES, con los
+       partidos sin estadísticas. El que decide quién entra al ranking y
+       sobre cuántos partidos se promedia sigue siendo el del índice. */
+    const pjTabla = (typeof clasifFilasVigentes === 'function') ? clasifFilasVigentes(idx) : null;
+    const pjDe = (eq) => {
+      const fi = pjTabla && pjTabla.get(eq.clave);
+      return fi ? { pj: fi.pj, manuales: fi.manuales || 0 } : { pj: eq.pj || 0, manuales: 0 };
+    };
 
     const cabecera = `
       <tr class="text-[10px] uppercase tracking-wider text-muted">
         <th class="pb-2 pr-2">#</th>
         <th class="pb-2 pr-3">Equipo</th>
-        <th class="pb-2 pr-3">PJ</th>
+        <th class="pb-2 pr-3" data-glosa="Partidos jugados, igual que en la tabla de posiciones: incluye los que no tienen estadísticas. Los promedios de esta tabla salen solo de los que sí las tienen.">PJ</th>
         ${claves.map(k => {
           const m = SGADD.metrica(k);
           const inv = m && m.invertida && !grupo.descriptiva;
@@ -190,7 +198,8 @@ const SGADD_RANKINGS = (function () {
               <span class="text-xs truncate ${propio ? 'text-accent font-semibold' : ''}">${SGADD_UI.esc(f.equipo.nombre)}</span>
             </div>
           </td>
-          <td class="py-1.5 pr-3 font-mono text-xs text-muted">${f.equipo.pj || 0}</td>
+          <td class="py-1.5 pr-3 font-mono text-xs text-muted">${pjDe(f.equipo).pj}${pjDe(f.equipo).manuales
+            ? ` <span class="badge-manual" title="Sin estadísticas: cuentan en la tabla, no en estos promedios">⚠ ${pjDe(f.equipo).manuales}</span>` : ''}</td>
           ${celdas}
         </tr>`;
     }).join('');
