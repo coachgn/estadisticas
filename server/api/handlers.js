@@ -433,6 +433,12 @@ async function manejarCatalogoEscribir(peticion, deps) {
       ok: true,
       accion: accion,
       creoClub: !!r.creoClub,
+      /* A QUIÉNES LLEGÓ el cambio y qué heredó el cliente nuevo, dichos
+         por el servidor: calculados con la copia del catálogo que tiene la
+         pantalla, podrían anunciar un alcance que no fue. */
+      alcance: r.alcance || 'club',
+      aplicadoA: r.aplicadoA || null,
+      herencia: r.herencia || null,
       /* CON LA BANDERA DE ADMIN, igual que el GET. Sin ella la respuesta
          del guardado vuelve sin estado, plan ni vencimiento — y como el
          hub repinta la lista con LO QUE DEVOLVIO EL SERVIDOR, los

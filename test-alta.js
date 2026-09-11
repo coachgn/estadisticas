@@ -456,7 +456,7 @@ const cfgui = fs.readFileSync('./js/sgadd-configui.js', 'utf8');
 const cuerpoPintar = cfgui.slice(cfgui.indexOf('function configPintar()'), cfgui.indexOf('function configPintarPreview'));
 check('configPintar() también', /SGADD_UI\.conservarFoco\(pintar\)/.test(cuerpoPintar));
 check('y el catálogo que llega tarde al Panel Master también',
-  /SGADD_UI\.conservarFoco\(pintar\)/.test(fs.readFileSync('./js/sgadd-clientes.js', 'utf8')));
+  /SGADD_UI\.conservarFoco\((pintar|repintarHub)\)/.test(fs.readFileSync('./js/sgadd-clientes.js', 'utf8')));
 
 /* =====================================================================
    7 · NADA SE APLICA EN SILENCIO · guardar pasa por la confirmación

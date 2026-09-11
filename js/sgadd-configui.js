@@ -338,6 +338,29 @@ function configPuedePublicar() {
   } catch (e) { return false; }
 }
 
+/* Las opciones de alcance para el modal —¿en qué clientes se aplica?—
+   con el catálogo que ya tiene la pantalla. Se SUGIERE el libro: las
+   zonas y los resultados son del torneo. Sin otros clientes en ese libro
+   la opción sale gris con su motivo y queda «solo este cliente». */
+function configAlcance(accion, slugCat) {
+  if (typeof SGADD_CONFIRMAR === 'undefined' || !SGADD_CONFIRMAR.opcionesAlcance) return null;
+  const clubes = (typeof SGADD_CLIENTES !== 'undefined' && SGADD_CLIENTES.estado.clubes) || [];
+  return {
+    opciones: SGADD_CONFIRMAR.opcionesAlcance({ clubes: clubes, club: configClubId(),
+      slug: slugCat, accion: accion }),
+    sugerido: 'libro',
+  };
+}
+
+/* Los OTROS clientes a los que llegó el cambio, según lo que devolvió el
+   SERVIDOR (`aplicadoA`) y no según lo que la pantalla creyó mandar. */
+function configOtrosClientes(r) {
+  const lista = (r && r.aplicadoA) || [];
+  const clubes = (r && r.clubes) || [];
+  const nombres = lista.slice(1).map(x => ((clubes.filter(c => c.id === x.club)[0] || {}).nombre || x.club));
+  return Array.from(new Set(nombres)).join(', ');
+}
+
 function configPublicar() {
   const b = CONFIGUI.borrador;
   if (!b) return;
@@ -350,18 +373,28 @@ function configPublicar() {
 
   /* Se resuelven ANTES de disparar: para cuando la promesa vuelva, el
      repintado ya pudo haber cambiado el estado de la pantalla. */
-  const alcance = CONFIGUI.propia ? CONFIGUI.categoria : null;
+  const alcanceCat = CONFIGUI.propia ? CONFIGUI.categoria : null;
+  const slugCat = SGADD_CONFIG.slugDe ? SGADD_CONFIG.slugDe(CONFIGUI.categoria) : CONFIGUI.categoria;
   const nombreClub = (typeof CLUB !== 'undefined' && CLUB.cfg && CLUB.cfg.nombre)
     ? CLUB.cfg.nombre : configClubId();
 
-  const lanzar = () => {
+  const lanzar = (alcance) => {
     configAvisar('Publicando…', true);
     /* La `categoria` viaja para que el servidor escriba SOLO ese slot y
        no el bloque entero: es la segunda mitad del aislamiento, del lado
-       en que el dato de verdad se guarda. */
+       en que el dato de verdad se guarda.
+
+       Va el SLUG del catálogo y no el id de planilla del JSON: es la única
+       clave que el servidor conoce, y sin ella no podría llevar el cambio
+       a los otros clientes del mismo libro. La vieja viaja para que el
+       servidor la borre (ver `zonas` en catalogo-mutar.js). */
     SGADD_DATA.guardarCatalogo({ accion: 'zonas', club: configClubId(),
-      categoria: CONFIGUI.propia ? CONFIGUI.categoria : null,
-      competencia: CONFIGUI.propia ? JSON.parse(SGADD_CONFIG.exportar(b)) : bloque })
+      categoria: CONFIGUI.propia ? slugCat : null,
+      claveVieja: (CONFIGUI.propia && slugCat !== CONFIGUI.categoria) ? CONFIGUI.categoria : null,
+      libroDeCategoria: slugCat,
+      alcance: alcance || 'club',
+      competencia: CONFIGUI.propia ? JSON.parse(SGADD_CONFIG.exportar(b))
+        : (SGADD_CONFIG.porCategoriaASlugs ? SGADD_CONFIG.porCategoriaASlugs(bloque) : bloque) })
       .then((r) => {
         /* El catálogo que devuelve el servidor es el que vale: el que
            tenía la pantalla quedó viejo en cuanto se escribió. */
@@ -374,9 +407,12 @@ function configPublicar() {
         configPintar();
         /* EL ORDEN IMPORTA: primero se repinta y DESPUÉS se avisa. Al revés,
            el repintado se lleva puesto el nodo del aviso. */
-        const donde = alcance ? configNombreCategoria(alcance) : nombreClub;
-        configToast('Configuración de ' + donde + ' publicada en el servidor', 'ok', 5000);
-        configAvisar('Publicado. El cliente lo ve en su próxima carga.', true);
+        const donde = alcanceCat ? configNombreCategoria(alcanceCat) : nombreClub;
+        const otros = configOtrosClientes(r);
+        configToast('Configuración de ' + donde + ' publicada en el servidor'
+          + (otros ? ' · también en ' + otros : ''), 'ok', 6000);
+        configAvisar('Publicado' + (otros ? ' en ' + donde + ' y en ' + otros : '')
+          + '. El cliente lo ve en su próxima carga: no hace falta exportar ni commitear.', true);
       })
       .catch((e) => {
         configPintar();
@@ -392,6 +428,9 @@ function configPublicar() {
     aviso: 'Se actualiza la tabla de posiciones que ve el cliente en su próxima carga.',
     confirmar: 'Publicar',
     zonas: SGADD_CONFIRMAR.resumenZonas(b),
+    /* EL FORMATO DE LA TABLA ES DEL TORNEO: se sugiere llevarlo a los
+       clientes que leen el mismo libro. */
+    alcance: configAlcance('zonas', slugCat),
     alConfirmar: lanzar,
   });
 }
@@ -428,7 +467,8 @@ function configPanelExport() {
   return `
     <p class="text-[11px] text-muted mt-4 mb-2">Es el archivo
       <span class="font-mono text-ink">clubes/${SGADD_UI.esc(configClubId())}.json</span>
-      COMPLETO: reemplazalo entero y commiteá. No hay que empalmar nada.
+      COMPLETO, como respaldo: reemplazalo entero y commiteá. No hay que empalmar nada,
+      y el cliente no lo necesita para ver lo que ya publicaste.
       Ya está copiado al portapapeles.</p>
     <pre id="configExport" class="${clase} text-ink">${SGADD_UI.esc(r.texto)}</pre>`;
 }
@@ -622,6 +662,15 @@ function configManualElegirTramo(id) {
   configPintar();
 }
 
+/* Los partidos de la categoría que se está editando, por el slug o por
+   la clave vieja del JSON (ver `SGADD_CONFIG.deCategoria`). */
+function configManualesDeCategoria(club) {
+  if (!club || !club.partidosManuales) return null;
+  return SGADD_CONFIG.deCategoria
+    ? SGADD_CONFIG.deCategoria(club.partidosManuales, CONFIGUI.categoria)
+    : club.partidosManuales[CONFIGUI.categoria];
+}
+
 function configManualesCargar(forzar) {
   if (CONFIGUI.manuales && !forzar) return;
   CONFIGUI.manuales = [];
@@ -629,7 +678,7 @@ function configManualesCargar(forzar) {
     const clubId = configClubId();
     const club = (SGADD_CLIENTES.estado.clubes || [])
       .filter(c => c.slug === clubId || c.id === clubId)[0];
-    const mapa = club && club.partidosManuales && club.partidosManuales[CONFIGUI.categoria];
+    const mapa = configManualesDeCategoria(club);
     const t = configManualTramoDestino();
     if (mapa && t && Array.isArray(mapa[t])) {
       CONFIGUI.manuales = JSON.parse(JSON.stringify(mapa[t]));
@@ -708,7 +757,7 @@ function configManualesPublicados(tramo) {
     const clubId = configClubId();
     const club = (SGADD_CLIENTES.estado.clubes || [])
       .filter(c => c.slug === clubId || c.id === clubId)[0];
-    const mapa = club && club.partidosManuales && club.partidosManuales[CONFIGUI.categoria];
+    const mapa = configManualesDeCategoria(club);
     return (mapa && Array.isArray(mapa[tramo])) ? mapa[tramo] : [];
   } catch (e) { return []; }
 }
@@ -765,22 +814,30 @@ function configManualesPublicar() {
     }
   }
 
-  const lanzar = () => {
+  const slugCat = SGADD_CONFIG.slugDe ? SGADD_CONFIG.slugDe(CONFIGUI.categoria) : CONFIGUI.categoria;
+  const lanzar = (alcance) => {
     configAvisar('Publicando…', true);
     SGADD_DATA.guardarCatalogo({
       accion: 'partidos_manuales', club: configClubId(),
-      categoria: CONFIGUI.categoria, tramo: tramo, partidos: lista,
+      /* El slug, y la clave vieja para que se borre (ver `configPublicar`). */
+      categoria: slugCat,
+      claveVieja: slugCat !== CONFIGUI.categoria ? CONFIGUI.categoria : null,
+      libroDeCategoria: slugCat,
+      alcance: alcance || 'club',
+      tramo: tramo, partidos: lista,
     }).then((r) => {
       if (typeof SGADD_CLIENTES !== 'undefined' && r.clubes) SGADD_CLIENTES.estado.clubes = r.clubes;
       if (typeof SGADD_APP !== 'undefined') { try { SGADD_APP.reindexar(); } catch (e) {} }
       /* El orden: primero se repinta y DESPUÉS se avisa, o el repintado
          se lleva puesto el nodo del aviso (punto 43). */
       configPintar();
-      const msg = lista.length
+      const otros = configOtrosClientes(r);
+      const msg = (lista.length
         ? ('El partido fue guardado y publicado con éxito · ' + lista.length
            + ' partido' + (lista.length === 1 ? '' : 's') + ' en ' + nombreTramo
            + ' de ' + nombreCat)
-        : ('Se vaciaron los partidos manuales de ' + nombreCat + ' en ' + nombreTramo);
+        : ('Se vaciaron los partidos manuales de ' + nombreCat + ' en ' + nombreTramo))
+        + (otros ? ' · también en ' + otros : '');
       configToast(msg, 'ok', 5500);
       configAvisar(msg, true);
     }).catch((e) => {
@@ -800,6 +857,10 @@ function configManualesPublicar() {
     /* `cambios` y NO `zonas`: ese campo espera objetos de formato y
        reventaba al pintarlos, dejando el botón sin hacer nada. */
     cambios: configManualesDiff(configManualesPublicados(tramo), lista),
+    /* Un resultado es del TORNEO: lo natural es que lo vean todos los
+       clientes que leen ese libro. «Todos los clientes» sale gris: en otro
+       libro esos equipos no existen. */
+    alcance: configAlcance('partidos_manuales', slugCat),
     alConfirmar: lanzar,
   });
 }
@@ -1292,7 +1353,8 @@ function buildConfiguracion() {
           <div class="flex gap-2">
             <dt class="text-accent font-display uppercase tracking-wider shrink-0 min-w-[9rem]">Publicar</dt>
             <dd class="text-muted">Lo escribe en el servidor. El cliente lo ve en su próxima
-              carga, sin que nadie toque el repositorio.</dd>
+              carga, sin que nadie toque el repositorio.
+              <b class="text-ink">Alcanza con esto: no hace falta exportar ni commitear.</b></dd>
           </div>
           <div class="flex gap-2">
             <dt class="text-ink font-display uppercase tracking-wider shrink-0 min-w-[9rem]">Guardar acá</dt>
@@ -1300,11 +1362,11 @@ function buildConfiguracion() {
           </div>
           <div class="flex gap-2">
             <dt class="text-ink font-display uppercase tracking-wider shrink-0 min-w-[9rem]">Exportar JSON</dt>
-            <dd class="text-muted">El bloque para pegar en
-              <span class="font-mono">clubes/${SGADD_UI.esc(configClubId())}.json</span> y
-              commitear. Es para quien mantiene el código, y deja el cambio en el
-              historial de git. <b class="text-ink">El navegador no puede escribir
-              archivos del repositorio</b> — por eso este paso es manual.</dd>
+            <dd class="text-muted"><b class="text-ink">Opcional · respaldo del repositorio.</b>
+              El archivo <span class="font-mono">clubes/${SGADD_UI.esc(configClubId())}.json</span>
+              completo, para commitear. El cliente NO lo necesita para ver lo publicado: sirve si el
+              servidor no contesta —el panel cae a ese archivo— y deja el cambio en el historial de
+              git. El navegador no puede escribir archivos del repositorio, por eso es manual.</dd>
           </div>
         </dl>
         ${CONFIGUI.exportando ? configPanelExport() : ''}

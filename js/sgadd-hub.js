@@ -42,6 +42,7 @@ const SGADD_HUB = (function () {
   const alta = {
     modo: 'nuevo',        // 'nuevo', o el id del club que se está editando
     club: '', nombre: '', liga: '', equipoPropio: '',
+    acento: '',           // el color de marca, #rrggbb · vacío = el del JSON, si hay
     categoria: '', label: '',
     catElegida: '',       // editando: la categoría existente, o '' para una nueva
     fuente: 'existente',  // 'mantener' | 'existente' | 'nuevo'
@@ -64,6 +65,12 @@ const SGADD_HUB = (function () {
      corregir, y un alert lo hace desaparecer justo cuando hay que leerlo
      mientras se arregla el campo. */
   const guardado = { estado: null, mensaje: '' };   // null | 'yendo' | 'ok' | 'error'
+
+  /* La ayuda del color: qué pasó al tocar «Del escudo». Vive acá y no en
+     el DOM para sobrevivir a un repintado del formulario. */
+  const colorAyuda = { texto: '' };
+
+  const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
   /* Qué club tiene una acción en vuelo, y su error si falló. Se guarda el
      ID y no un booleano para poder deshabilitar SOLO los controles de esa
@@ -789,6 +796,33 @@ const SGADD_HUB = (function () {
     </label>`;
   }
 
+  /* EL COLOR DE MARCA. Un selector de color con el hex al lado —el que
+     lo tiene anotado lo pega— y un botón que lo saca del escudo del
+     equipo. Ninguno repinta el formulario: escriben sobre los nodos que
+     ya están (ver `campoAlta`). Sin color, un club sin JSON se pintaba con
+     el naranja de Reconquista. */
+  function campoColor() {
+    const ok = HEX_COLOR.test(alta.acento);
+    const ayuda = colorAyuda.texto
+      || 'El color del club en su panel: pestañas, botones y gráficos. «Del escudo» lo saca del escudo del equipo propio.';
+    return `<label class="block">
+      <span class="${ROTULO}">Color de marca</span>
+      <span class="flex items-center gap-2">
+        <input type="color" id="alta-acentoSelector" value="${ok ? esc(alta.acento.toLowerCase()) : '#808080'}"
+          oninput="SGADD_HUB.campoAlta('acentoSelector', this.value)" aria-label="Elegir el color de marca"
+          class="h-8 w-10 shrink-0 rounded border border-hairline bg-surface2 cursor-pointer">
+        <input type="text" id="alta-acento" value="${esc(alta.acento)}" placeholder="#rrggbb"
+          oninput="SGADD_HUB.campoAlta('acento', this.value)" autocomplete="off" spellcheck="false"
+          aria-label="Color de marca en hexadecimal"
+          class="${CLASE_INPUT} font-mono ${alta.acento && !ok ? 'border-red-500/70' : 'border-hairline'}">
+        <button type="button" onclick="SGADD_HUB.colorDelEscudo()"
+          class="shrink-0 px-2 py-1.5 rounded-md text-[11px] font-display uppercase tracking-wider
+                 border border-hairline text-ink hover:opacity-90">Del escudo</button>
+      </span>
+      <span id="alta-acentoAyuda" class="block text-[10px] text-muted mt-1">${esc(ayuda)}</span>
+    </label>`;
+  }
+
   function radio(valor, texto) {
     return `<label class="flex items-start gap-2 text-xs text-ink">
       <input type="radio" name="altaFuente" value="${valor}" class="mt-0.5"
@@ -853,6 +887,7 @@ const SGADD_HUB = (function () {
           ${campo('liga', 'Liga', alta.liga,
             'La carpeta de escudos. Los clubes de La Plata van en <code>la-plata</code>.',
             { placeholder: 'la-plata', lista: 'altaLigas', mono: true })}
+          ${campoColor()}
         </div>
         <datalist id="altaLigas">${ligas.map(l => `<option value="${esc(l)}"></option>`).join('')}</datalist>
       </fieldset>
@@ -951,6 +986,9 @@ const SGADD_HUB = (function () {
     if (alta.categoria && !idValido(alta.categoria)) {
       avisos.push(['peligro', 'El ID de la categoría es una clave: minúsculas, sin espacios ni acentos.']);
     }
+    if (alta.acento && !HEX_COLOR.test(alta.acento)) {
+      avisos.push(['peligro', 'El color de marca va como #rrggbb, por ejemplo #0d5e27.']);
+    }
     const yaExiste = alta.modo === 'nuevo' && alta.club && cs.find(c => c.id === alta.club);
     if (yaExiste) {
       avisos.push(['aviso', 'Ese ID ya es de ' + (yaExiste.nombre || yaExiste.id) + ': guardar lo EDITA, no crea otro. '
@@ -1047,6 +1085,11 @@ const SGADD_HUB = (function () {
 
   /** La intención que se manda. Nunca un catálogo (punto 30). */
   function intencionAlta() {
+    /* El color solo viaja si hay uno o si se BORRÓ el que tenía: mandar
+       siempre un vacío le borraría el color a un club editado desde una
+       pantalla que no lo tocó. */
+    const previo = (clubesCatalogo().filter(x => x.id === alta.club)[0] || {}).acento || '';
+    const color = (alta.acento || previo) ? { acento: alta.acento } : {};
     return Object.assign({
       accion: 'alta',
       club: alta.club, nombre: alta.nombre, liga: alta.liga,
@@ -1054,7 +1097,7 @@ const SGADD_HUB = (function () {
          «Sud America LP - MM» pegado a mano entra igual que elegido. */
       equipoPropio: alta.equipoPropio ? claveEq(alta.equipoPropio) : '',
       categoria: alta.categoria, label: alta.label,
-    }, alta.fuente === 'mantener' ? {} : intencionLibro());
+    }, alta.fuente === 'mantener' ? {} : intencionLibro(), color);
   }
 
   /** Qué cambia, en castellano, para el modal de confirmación. */
@@ -1071,6 +1114,9 @@ const SGADD_HUB = (function () {
       ['Categoría', k ? (k.label || k.slug) + ' (' + k.slug + ')' : '', i.label + ' (' + i.categoria + ')'],
     ];
     if (libroNuevo) filas.push(['Libro', k ? (k.activo ? 'el que tiene' : 'sin libro') : '', libroNuevo]);
+    if (i.acento !== undefined && String(i.acento || '') !== String(c.acento || '')) {
+      filas.push(['Color de marca', c.acento || '', i.acento || 'el de su JSON, o el del panel']);
+    }
     return filas
       .filter(f => f[2] && String(f[1] || '') !== String(f[2]))
       .map(f => ({ campo: f[0], label: f[0], antes: f[1] || '—', despues: f[2] }));
@@ -1093,6 +1139,12 @@ const SGADD_HUB = (function () {
         + ' toma estos datos en su próxima carga.',
       confirmar: nuevo ? 'Dar de alta' : 'Guardar cambios',
       cambios: cambiosAlta(intencion),
+      /* La pregunta de siempre, con las otras dos opciones grises y su
+         motivo: la identidad de un cliente no se copia a otro. */
+      alcance: SGADD_CONFIRMAR.opcionesAlcance ? {
+        opciones: SGADD_CONFIRMAR.opcionesAlcance({ clubes: clubesCatalogo(), club: alta.club,
+          slug: alta.categoria, accion: 'alta' }),
+        sugerido: 'club' } : null,
       alConfirmar: enviar,
     });
   }
@@ -1110,7 +1162,8 @@ const SGADD_HUB = (function () {
     SGADD_DATA.guardarCatalogo(intencion).then((r) => {
       guardado.estado = 'ok';
       guardado.club = intencion.club;
-      guardado.mensaje = (r.creoClub ? 'Cliente dado de alta. ' : 'Cambios guardados. ') + (r.aviso || '');
+      guardado.mensaje = (r.creoClub ? 'Cliente dado de alta. ' : 'Cambios guardados. ')
+        + textoHerencia(r.herencia, r.clubes) + (r.aviso || '');
       /* La lista se repinta con lo que devolvió el SERVIDOR, no con lo que
          este formulario creyó mandar: si un guard recortó algo, se ve. */
       if (typeof SGADD_CLIENTES !== 'undefined' && r.clubes) {
@@ -1171,17 +1224,24 @@ const SGADD_HUB = (function () {
           + ' la configuración se conserva.' : ''),
       confirmar: 'Guardar cambios',
       cambios: SGADD_CONFIRMAR.cambiosDeClub(c, despues),
-      alConfirmar: () => aplicarClub(club, accion, valor),
+      /* ¿En qué clientes? El plan y el vencimiento se pueden llevar a los
+         del mismo torneo o a todos; pausar y dar de baja, nunca de a
+         varios (el modal dice por qué). Arranca en «solo este cliente». */
+      alcance: SGADD_CONFIRMAR.opcionesAlcance ? {
+        opciones: SGADD_CONFIRMAR.opcionesAlcance({ clubes: (SGADD_CLIENTES && SGADD_CLIENTES.estado.clubes) || [],
+          club: club, accion: accion, deClub: true }),
+        sugerido: 'club' } : null,
+      alConfirmar: (alcance) => aplicarClub(club, accion, valor, alcance),
     });
   }
 
   /** La petición de verdad. Solo la llama el modal, o el fallback sin él. */
-  function aplicarClub(club, accion, valor) {
+  function aplicarClub(club, accion, valor, alcance) {
     if (pendiente.club) return;
     pendiente.club = club; pendiente.error = ''; pendiente.clubError = null;
     repintarLista();
 
-    const cuerpo = { accion: accion, club: club };
+    const cuerpo = { accion: accion, club: club, alcance: alcance || 'club' };
     if (accion === 'cambiar_plan') cuerpo.plan = valor;
     if (accion === 'renovar') cuerpo.vence = valor || '';
 
@@ -1255,6 +1315,18 @@ const SGADD_HUB = (function () {
    * refresca solo la zona de estado. Ver el comentario de `bloqueAlta`.
    */
   function campoAlta(id, valor) {
+    /* EL COLOR: el selector y el hex se escriben uno al otro, nunca sobre
+       el que se está usando (reescribirle el valor al que se tipea le mueve
+       el cursor). */
+    if (id === 'acento' || id === 'acentoSelector') {
+      alta.acento = String(valor == null ? '' : valor).trim();
+      if (id === 'acentoSelector') ponerValor('alta-acento', alta.acento);
+      else if (HEX_COLOR.test(alta.acento)) ponerValor('alta-acentoSelector', alta.acento.toLowerCase());
+      marcar('alta-acento', !!alta.acento && !HEX_COLOR.test(alta.acento));
+      guardado.estado = null;
+      refrescarEstado();
+      return;
+    }
     if (!(id in alta) || id === 'tocado') return;
     alta[id] = String(valor == null ? '' : valor);
     if (id === 'club') alta.tocado.club = true;
@@ -1281,6 +1353,60 @@ const SGADD_HUB = (function () {
     refrescarEstado();
   }
 
+  /**
+   * Saca el color de marca del ESCUDO del equipo propio, con el mismo
+   * criterio con que se midieron a mano los de DEPORTIVO y Sud América
+   * (`CLUB.colorDeEscudo`). Se PROPONE en el campo: el admin lo ve antes
+   * de guardar, y lo cambia si no es.
+   *
+   * `silencioso` es la propuesta automática al elegir el equipo: ahí no
+   * pisa un color que el admin ya haya puesto, ni dice nada si falla.
+   */
+  function colorDelEscudo(silencioso) {
+    const eq = alta.equipoPropio;
+    const decir = (t) => {
+      colorAyuda.texto = t;
+      const n = (typeof document !== 'undefined') && document.getElementById('alta-acentoAyuda');
+      if (n) n.textContent = t;
+    };
+    if (!eq) {
+      if (!silencioso) decir('Primero elegí el equipo propio: el color sale de su escudo.');
+      return Promise.resolve(null);
+    }
+    if (typeof LOGOS === 'undefined' || typeof CLUB === 'undefined' || !CLUB.colorDeImagen) {
+      return Promise.resolve(null);
+    }
+    if (!silencioso) decir('Buscando el escudo de ' + eq + '…');
+    return Promise.resolve(LOGOS.resolver([eq])).then(() => {
+      const img = LOGOS.getImage(eq);
+      const hex = img ? CLUB.colorDeImagen(img) : null;
+      if (!hex) {
+        if (!silencioso) decir('No encontré un color en el escudo de ' + eq + ': elegilo a mano.');
+        return null;
+      }
+      if (silencioso && alta.acento) return null;   // el admin eligió uno mientras tanto
+      alta.acento = hex;
+      ponerValor('alta-acento', hex);
+      ponerValor('alta-acentoSelector', hex);
+      marcar('alta-acento', false);
+      decir('Sacado del escudo de ' + eq + '. Revisalo antes de guardar.');
+      refrescarEstado();
+      return hex;
+    }).catch(() => null);
+  }
+
+  /* Lo que el cliente nuevo heredó de su torneo, tal como lo dice el
+     servidor. Sin esto el admin no sabe si tiene que cargar las zonas y
+     los partidos de nuevo. */
+  function textoHerencia(h, clubes) {
+    if (!h || (!h.zonasDe && !h.partidos)) return '';
+    const nom = (id) => ((clubes || []).filter(c => c.id === id)[0] || {}).nombre || id;
+    const partes = [];
+    if (h.zonasDe) partes.push('las zonas de la tabla de ' + nom(h.zonasDe));
+    if (h.partidos) partes.push(h.partidos + ' partido' + (h.partidos === 1 ? '' : 's') + ' sin estadísticas');
+    return 'Heredó de su torneo ' + partes.join(' y ') + '. ';
+  }
+
   function olvidarLibro() {
     libro.estado = null; libro.equipos = null; libro.mensaje = '';
     libro.pedido = null; libro.propuesto = null;
@@ -1288,7 +1414,8 @@ const SGADD_HUB = (function () {
 
   function reiniciarAlta() {
     Object.assign(alta, { modo: 'nuevo', club: '', nombre: '', liga: '', equipoPropio: '',
-      categoria: '', label: '', catElegida: '', fuente: 'existente', libroDe: '', sheet: '' });
+      acento: '', categoria: '', label: '', catElegida: '', fuente: 'existente', libroDe: '', sheet: '' });
+    colorAyuda.texto = '';
     alta.tocado = { club: false, categoria: false };
     olvidarLibro();
     guardado.estado = null; guardado.mensaje = ''; guardado.club = null;
@@ -1311,6 +1438,7 @@ const SGADD_HUB = (function () {
     if (c) {
       alta.modo = c.id; alta.club = c.id; alta.nombre = c.nombre || '';
       alta.liga = c.liga || ''; alta.equipoPropio = c.equipoPropio || '';
+      alta.acento = c.acento || '';
       alta.tocado.club = true;
       const k = (c.categorias || [])[0];
       if (k) ponerCategoria(k);
@@ -1345,6 +1473,8 @@ const SGADD_HUB = (function () {
   function elegirEquipo(v) {
     alta.equipoPropio = v; libro.propuesto = null; guardado.estado = null;
     refrescarEstado();
+    /* Sin color elegido, se propone el del escudo del equipo. */
+    if (!alta.acento && v) colorDelEscudo(true);
   }
 
   /**
@@ -1376,6 +1506,7 @@ const SGADD_HUB = (function () {
         }
       }
       refrescarEquipo(); refrescarEstado();
+      if (!alta.acento && alta.equipoPropio) colorDelEscudo(true);
     }).catch((e) => {
       if (libro.pedido !== ficha) return;
       libro.estado = 'error';
@@ -1395,7 +1526,7 @@ const SGADD_HUB = (function () {
     slug, idCategoriaSugerido, idDeLibro, sugerirEquipo, librosDisponibles,
     intencionAlta, cambiosAlta, estadoAlta, zonaEquipo, libro,
     elegirModo, elegirCategoria, elegirFuente, elegirLibro, elegirEquipo, leerEquipos,
-    reiniciarAlta,
+    reiniciarAlta, campoColor, colorDelEscudo, textoHerencia, HEX_COLOR, colorAyuda,
     /* accesos */
     verAccesos, campoAcceso, accionAcceso, aplicarAcceso, aplicarClub,
     badgeServicio,

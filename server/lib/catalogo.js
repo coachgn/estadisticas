@@ -181,6 +181,25 @@ function resolver(cat, clubId, slugCategoria) {
  * demás. Es el mismo criterio que el `sheetId`: se manda lo que hace falta
  * para la pantalla de quien pregunta, y nada más.
  */
+/**
+ * La HUELLA de un libro: 8 hex de FNV-1a sobre el sheetId.
+ *
+ * Le dice al Panel Master qué categorías comparten libro —para ofrecer
+ * «aplicar a los clientes del mismo torneo»— sin que el sheetId viaje al
+ * navegador (punto 29). 32 bits no alcanzan para reconstruir un id de
+ * 44 caracteres, y es solo para el admin.
+ */
+function huellaLibro(sheetId) {
+  if (!sheetId) return null;
+  let h = 0x811c9dc5;
+  const t = String(sheetId);
+  for (let i = 0; i < t.length; i++) {
+    h ^= t.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return ('0000000' + h.toString(16)).slice(-8);
+}
+
 function publico(cat, opciones) {
   const admin = !!(opciones && opciones.admin);
   const c = cat || {};
@@ -188,6 +207,10 @@ function publico(cat, opciones) {
     id: id,
     nombre: c[id].nombre,
     liga: c[id].liga || '',
+    /* EL COLOR DE MARCA va para todos: es cómo se ve el panel del propio
+       cliente, y sin él un club sin `clubes/<id>.json` se pintaba con el
+       naranja de Reconquista. No revela nada: el del JSON ya es público. */
+    acento: c[id].acento || null,
     /* LAS ZONAS VAN PARA TODOS, no solo para el admin.
 
        No es informacion comercial: es COMO SE PINTA la tabla de
@@ -202,7 +225,7 @@ function publico(cat, opciones) {
        sin ellos la tabla del cliente no cuadra. Lo que sigue siendo
        solo del admin es el plan y el vencimiento. */
     partidosManuales: c[id].partidosManuales || null,
-    categorias: Object.keys(c[id].categorias || {}).map(s => ({
+    categorias: Object.keys(c[id].categorias || {}).map(s => Object.assign({
       slug: s,
       label: c[id].categorias[s].label,
       /* `activo` reemplaza al `sheetId` como señal de "esta categoría ya
@@ -213,7 +236,11 @@ function publico(cat, opciones) {
          se mediria con la de Liga Argentina. Publicarlo por KV permite
          corregirlo sin tocar el repo. */
       nivel: c[id].categorias[s].nivel || null,
-    })),
+    }, (admin && c[id].categorias[s].sheetId) ? {
+      /* Solo para el admin: el modal de alcance la usa para saber qué
+         clientes leen el mismo libro. Ver `huellaLibro`. */
+      libro: huellaLibro(c[id].categorias[s].sheetId),
+    } : {})),
   }, admin ? {
     estado: c[id].estado || 'activo',
     plan: c[id].plan || null,
@@ -229,5 +256,5 @@ function publico(cat, opciones) {
 }
 
 module.exports = {
-  CLAVE_KV, cargar, limpiarCache, validar, resolver, publico, desdeEntorno,
+  CLAVE_KV, cargar, limpiarCache, validar, resolver, publico, desdeEntorno, huellaLibro,
 };

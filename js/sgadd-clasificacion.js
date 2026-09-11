@@ -350,8 +350,11 @@ function clasifManualesVigentes() {
     const clubId = SGADD_CONFIG.clubActivo();
     const club = (SGADD_CLIENTES.estado.clubes || []).filter(c => c.slug === clubId || c.id === clubId)[0];
     if (!club || !club.partidosManuales) return [];
-    const cat = SGADD_CONFIG.categoriaActiva();
-    const mapa = club.partidosManuales[cat];
+    /* Por el slug del catálogo o, de respaldo, por el id de planilla del
+       JSON: son las dos claves con las que se guardaron (`deCategoria`). */
+    const mapa = SGADD_CONFIG.deCategoria
+      ? SGADD_CONFIG.deCategoria(club.partidosManuales)
+      : club.partidosManuales[SGADD_CONFIG.categoriaActiva()];
     if (!mapa) return [];
     const st = SGADD_APP.estado;
     return SGADD_CLASIF.manualesDelTramo(mapa, st.torneo, st.fase);

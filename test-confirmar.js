@@ -96,7 +96,7 @@ const src = fs.readFileSync('./js/sgadd-confirmar.js', 'utf8');
    un aviso y no una confirmación. */
 check('la petición vive en `alConfirmar` y no en `abrir`',
   /estado\.alConfirmar = typeof o\.alConfirmar === 'function'/.test(src)
-  && /function confirmar\(\)[\s\S]{0,600}fn\(\)/.test(src));
+  && /function confirmar\(\)[\s\S]{0,900}fn\((elegido)?\)/.test(src));
 check('cancelar no dispara nada',
   /function cerrar\(\)[\s\S]{0,200}estado\.alConfirmar = null;/.test(src));
 /* Sin cambios no hay nada que confirmar: el botón queda apagado en vez de

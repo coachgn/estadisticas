@@ -81,6 +81,13 @@
             "desde": 3,
             "hasta": 4,
             "label": "Repechaje Zona A",
+            "tono": "positivo"
+          },
+          {
+            "id": "zona4",
+            "desde": 9,
+            "hasta": 10,
+            "label": "Repechaje Zona C",
             "tono": "aviso"
           },
           {

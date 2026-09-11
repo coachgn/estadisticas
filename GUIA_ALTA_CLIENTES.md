@@ -29,6 +29,10 @@ próxima carga.
      link del cliente y **después no se puede cambiar**.
    - En **Liga** poné `la-plata` para los clubes de La Plata (es la carpeta de
      escudos).
+   - **Color de marca:** es el color del club en su panel (pestañas, botones,
+     gráficos). Cuando elijas el equipo en el paso 3 se propone solo, sacado
+     del escudo; también podés tocar **«Del escudo»** o elegirlo a mano. Si el
+     escudo es blanco y negro la pantalla te lo avisa: ahí elegilo vos.
 
 3. **Paso 2 · La categoría**
    - Escribí cómo se llama la categoría (ej. *Primera 2026*). Su ID también se
@@ -47,6 +51,8 @@ próxima carga.
    leelo y confirmá.
 
 6. Listo. Aparece **«Abrir su panel →»** para verlo como lo va a ver el club.
+   Si se sumó a un torneo que ya tenía otro cliente, el mensaje dice qué
+   **heredó** (ver abajo).
 
 7. **Falta darle acceso a las personas.** En la tarjeta del club, abrí
    **«Quiénes pueden entrar»** y cargá sus mails. Ahí mismo se elige el plan
@@ -54,10 +60,24 @@ próxima carga.
 
 ---
 
+## Si se suma a un torneo que ya tiene otro cliente
+
+Cuando elegís **«Usar un libro ya cargado»** (o pegás el link de un libro que
+otro cliente ya usa), el cliente nuevo **arranca con lo que el torneo ya
+tiene**:
+
+- **Las zonas de la tabla** (quiénes ascienden, repechaje, descenso).
+- **Los partidos sin estadísticas** que ya se cargaron en ese torneo.
+
+No hay que volver a cargarlos. Si el cliente ya tenía zonas o partidos
+propios, se respetan: heredar es solo para el que llega vacío.
+
+---
+
 ## Modificar un cliente que ya existe
 
-Sirve para corregir un nombre mal escrito, cambiar el equipo o la etiqueta
-de una categoría, sin rehacer el alta.
+Sirve para corregir un nombre mal escrito, cambiar el equipo, el color o la
+etiqueta de una categoría, sin rehacer el alta.
 
 1. En **«¿Qué querés hacer?»** elegí **«Editar · (nombre del club)»**. El
    formulario se llena con lo que ya tiene.
@@ -80,6 +100,40 @@ categoría nueva»**, y en el paso 3 elegí su libro (uno ya cargado o uno nuevo
 
 ---
 
+## ¿En qué clientes se aplica un cambio?
+
+Antes de guardar cualquier cambio, el resumen pregunta **«¿En qué clientes
+querés aplicar este cambio?»**:
+
+| Opción | Qué hace |
+|---|---|
+| **Solo en este cliente** | Cambia únicamente el cliente que estás editando. |
+| **Clientes que comparten este Sheet ID** | Lo lleva a todos los clientes del mismo torneo (el mismo libro). |
+| **Todos los clientes del sistema** | Lo aplica a todos los clientes. |
+
+Las opciones que no corresponden aparecen en gris con el motivo. Por
+ejemplo, **pausar** o **dar de baja** se hace siempre de a un cliente, y los
+**partidos sin estadísticas** no se pueden llevar a todos (en otro torneo esos
+equipos no existen). El botón dice a cuántos clientes llega
+(ej. *Publicar · 4 clientes*).
+
+Para las **zonas de la tabla** y los **partidos sin estadísticas** se sugiere
+*«Clientes que comparten este Sheet ID»*: son del torneo, así que lo normal
+es que todos los clientes de ese torneo los vean igual.
+
+---
+
+## Publicar o exportar (zonas de la tabla)
+
+En la pestaña de las zonas, **«Publicar en el cliente»** alcanza: el cliente
+ve el cambio en su próxima carga. **No hace falta exportar ni commitear
+nada.** Lo mismo con **«Publicar partidos»** en los partidos sin estadísticas.
+
+**«Exportar el bloque JSON»** es opcional: es un respaldo para el equipo
+técnico, que lo guarda en el repositorio. El cliente no lo necesita.
+
+---
+
 ## Si la pantalla te frena
 
 | Lo que dice | Qué hacer |
@@ -88,14 +142,18 @@ categoría nueva»**, y en el paso 3 elegí su libro (uno ya cargado o uno nuevo
 | *Ese libro no existe* | El link está mal copiado. Volvé a copiarlo desde Google Sheets. |
 | *«…» no figura en el libro* | El equipo no coincide letra por letra con la planilla. Elegilo de la lista después de leer el libro. |
 | *Ese ID ya es de…* | Ese club ya está dado de alta. Elegilo en «¿Qué querés hacer?» para editarlo. |
+| *No encontré un color en el escudo* | El escudo es blanco y negro (o no está cargado): elegí el color a mano. |
+| *El color de marca va como #rrggbb* | Escribilo con numeral y seis letras o números, ej. `#0d5e27`, o usá el selector. |
 | *Falta …* | La línea al lado del botón dice qué dato falta completar. |
 
 ---
 
 ## Lo que esta pantalla no hace
 
-- **El escudo y los colores del club.** Sin ellos el panel funciona igual, con
-  los colores por defecto y las iniciales del club en lugar del escudo. Para
-  sumarlos hay que pedírselo al equipo técnico (van en el archivo de marca del club).
+- **El escudo del club.** Si el equipo no tiene escudo en la carpeta de la
+  liga, el panel muestra sus iniciales. Para sumarlo hay que pedírselo al
+  equipo técnico.
+- **El calendario del torneo** (pestaña Torneo): no se publica desde acá; se
+  exporta y lo guarda el equipo técnico.
 - **Borrar un cliente.** Para cortarle el acceso se usa **Pausar** o **Dar de
   baja** en su tarjeta: los dos conservan toda la configuración.

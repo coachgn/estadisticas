@@ -353,7 +353,8 @@ const sinComentarios = ui.replace(/\/\*[\s\S]*?\*\//g, '');
 ok(sinComentarios.indexOf("accion: 'partidos_manuales'") > -1,
    'publicar manda la acción que el servidor entiende');
 ok(/tramo: tramo/.test(sinComentarios), 'con el tramo');
-ok(/categoria: CONFIGUI\.categoria/.test(sinComentarios), 'y la categoría abierta');
+ok(/categoria: slugCat/.test(sinComentarios) && /slugDe\(CONFIGUI\.categoria\)/.test(sinComentarios),
+   'y la categoría abierta, por su slug del catálogo');
 /* Tipear no puede repintar: le sacaría el foco al input. */
 const campo = sinComentarios.slice(sinComentarios.indexOf('function configManualCampo'),
                                    sinComentarios.indexOf('function configManualError'));

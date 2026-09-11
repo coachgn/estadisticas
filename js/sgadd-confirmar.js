@@ -22,6 +22,11 @@ const SGADD_CONFIRMAR = (function () {
   const esc = (v) => (typeof SGADD_UI !== 'undefined' && SGADD_UI.esc)
     ? SGADD_UI.esc(v) : String(v == null ? '' : v);
 
+  /* La tabla de alcances es la de sgadd-auth.js, la MISMA que hace cumplir
+     el servidor. Desde Node se requiere. */
+  const auth = (typeof SGADD_AUTH !== 'undefined') ? SGADD_AUTH
+    : (function () { try { return require('./sgadd-auth.js'); } catch (e) { return null; } })();
+
   /* =====================================================================
      EL DIFF
 
@@ -118,6 +123,68 @@ const SGADD_CONFIRMAR = (function () {
   }
 
   /* =====================================================================
+     EL ALCANCE · ¿en qué clientes se aplica el cambio?
+
+     Las TRES opciones van siempre a la vista: las que no corresponden
+     salen grises CON EL MOTIVO (`motivoSinAlcance`, la misma tabla que
+     hace cumplir el servidor). Una opción que aparece y desaparece según
+     la acción obliga a adivinar por qué; una gris con su motivo se lee.
+
+     Los clientes del mismo libro se reconocen por la HUELLA del libro que
+     manda el servidor (`libro`, solo al admin): el sheetId no viaja al
+     navegador (punto 29), y la huella alcanza para saber que dos
+     categorías leen el mismo sin decir cuál.
+     ===================================================================== */
+  const ETIQUETAS_ALCANCE = {
+    club: 'Solo en este cliente',
+    libro: 'Clientes que comparten este Sheet ID',
+    todos: 'Todos los clientes del sistema',
+  };
+
+  /**
+   * Las opciones de alcance de una acción. PURA.
+   *
+   * @param {{clubes, club, slug?, accion, deClub?}} o `slug` es la
+   *   categoría del cambio; `deClub` dice que la acción es del club entero
+   *   (plan, vencimiento) y cuenta todos sus libros.
+   */
+  function opcionesAlcance(o) {
+    const v = o || {};
+    const clubes = Array.isArray(v.clubes) ? v.clubes : [];
+    const permitidos = (auth && auth.alcancesDe) ? auth.alcancesDe(v.accion) : ['club'];
+    const motivoDe = (a) => (auth && auth.motivoSinAlcance) ? auth.motivoSinAlcance(v.accion, a) : '';
+    const nombre = (c) => c.nombre || c.id;
+    const propio = clubes.filter(c => c.id === v.club)[0] || { id: v.club, nombre: v.club, categorias: [] };
+    const cats = propio.categorias || [];
+    const base = cats.filter(k => k.slug === v.slug)[0] || (cats.length === 1 ? cats[0] : null);
+    const libros = base ? [base.libro].filter(Boolean)
+      : (v.deClub ? cats.map(k => k.libro).filter(Boolean) : []);
+    const hermanos = libros.length
+      ? clubes.filter(c => c.id !== propio.id
+          && (c.categorias || []).some(k => k.libro && libros.indexOf(k.libro) !== -1))
+      : [];
+    const otros = clubes.filter(c => c.id !== propio.id);
+    const yo = [nombre(propio)];
+    const motivoLibro = permitidos.indexOf('libro') === -1 ? motivoDe('libro')
+      : !libros.length ? 'Esta categoría todavía no tiene libro, o el servidor no mandó su huella.'
+      : !hermanos.length ? 'Ningún otro cliente lee este libro.' : '';
+    const motivoTodos = permitidos.indexOf('todos') === -1 ? motivoDe('todos')
+      : !otros.length ? 'No hay otros clientes en el catálogo.' : '';
+    return [
+      { valor: 'club', titulo: ETIQUETAS_ALCANCE.club, clientes: yo, habilitado: true, motivo: '' },
+      { valor: 'libro', titulo: ETIQUETAS_ALCANCE.libro, clientes: yo.concat(hermanos.map(nombre)),
+        habilitado: !motivoLibro, motivo: motivoLibro },
+      { valor: 'todos', titulo: ETIQUETAS_ALCANCE.todos, clientes: yo.concat(otros.map(nombre)),
+        habilitado: !motivoTodos, motivo: motivoTodos },
+    ];
+  }
+
+  function listaNombres(l) {
+    const max = 6;
+    return l.length <= max ? l.join(', ') : l.slice(0, max).join(', ') + ' y ' + (l.length - max) + ' más';
+  }
+
+  /* =====================================================================
      EL MODAL
      ===================================================================== */
 
@@ -125,6 +192,7 @@ const SGADD_CONFIRMAR = (function () {
     abierto: false,
     titulo: '', aviso: '', confirmar: 'Confirmar',
     cambios: [], zonas: null, alConfirmar: null, yendo: false,
+    alcance: null,
     disparador: null,
   };
 
@@ -145,6 +213,16 @@ const SGADD_CONFIRMAR = (function () {
     estado.cambios = o.cambios || [];
     estado.zonas = o.zonas || null;
     estado.alConfirmar = typeof o.alConfirmar === 'function' ? o.alConfirmar : null;
+    /* El alcance, si el llamador lo ofrece. Arranca en lo SUGERIDO solo si
+       esa opción está habilitada; si no, en «solo este cliente», que es lo
+       que hacía todo cambio antes de que existiera la pregunta. */
+    if (o.alcance && Array.isArray(o.alcance.opciones) && o.alcance.opciones.length) {
+      const ops = o.alcance.opciones;
+      const sug = ops.filter(x => x.valor === o.alcance.sugerido && x.habilitado)[0];
+      estado.alcance = { opciones: ops, elegido: sug ? sug.valor : 'club' };
+    } else {
+      estado.alcance = null;
+    }
     estado.yendo = false;
     try { estado.disparador = document.activeElement; } catch (e) { estado.disparador = null; }
     pintar();
@@ -162,6 +240,9 @@ const SGADD_CONFIRMAR = (function () {
     estado.yendo = true;
     pintar();
     const fn = estado.alConfirmar;
+    /* El alcance elegido viaja a quien dispara la petición: el modal no
+       sabe armar pedidos, solo pregunta. */
+    const elegido = estado.alcance ? estado.alcance.elegido : undefined;
     /* Se cierra ANTES de disparar y no después: la petición puede tardar,
        y un modal congelado con el botón en «Un momento…» encima de la
        pantalla que se está actualizando se lee como que algo se colgó. El
@@ -170,7 +251,7 @@ const SGADD_CONFIRMAR = (function () {
     estado.abierto = false;
     estado.alConfirmar = null;
     pintar();
-    try { fn(); } catch (e) { /* el llamador maneja su propio error */ }
+    try { fn(elegido); } catch (e) { /* el llamador maneja su propio error */ }
   }
 
   function filaCambio(c) {
@@ -200,6 +281,47 @@ const SGADD_CONFIRMAR = (function () {
     </li>`).join('')}</ul>`;
   }
 
+  function bloqueAlcance() {
+    const a = estado.alcance;
+    if (!a || !a.opciones || !a.opciones.length) return '';
+    return `<fieldset class="mb-3 rounded-md border border-hairline/60 p-3">
+      <legend class="text-xs text-ink font-semibold px-1">¿En qué clientes querés aplicar este cambio?</legend>
+      ${a.opciones.map(op => `<label class="flex items-start gap-2 text-xs py-1 ${op.habilitado ? 'text-ink cursor-pointer' : 'text-muted'}">
+        <input type="radio" name="confAlcance" value="${esc(op.valor)}" class="mt-0.5"
+          ${a.elegido === op.valor ? 'checked' : ''} ${op.habilitado ? '' : 'disabled'}
+          onchange="SGADD_CONFIRMAR.elegirAlcance(this.value)">
+        <span><span class="font-semibold">${esc(op.titulo)}</span>
+          <span class="text-muted"> · ${op.clientes.length} cliente${op.clientes.length === 1 ? '' : 's'}</span>
+          <span class="block text-[11px] text-muted">${esc(op.habilitado ? listaNombres(op.clientes) : op.motivo)}</span>
+        </span>
+      </label>`).join('')}
+    </fieldset>`;
+  }
+
+  /* El botón dice a CUÁNTOS clientes llega: «Publicar · 4 clientes» no se
+     confunde con un cambio de uno solo. */
+  function textoConfirmar() {
+    if (estado.yendo) return 'Un momento…';
+    const a = estado.alcance;
+    const op = a && a.opciones ? a.opciones.filter(x => x.valor === a.elegido)[0] : null;
+    const n = op ? op.clientes.length : 1;
+    return estado.confirmar + (n > 1 ? ' · ' + n + ' clientes' : '');
+  }
+
+  function elegirAlcance(v) {
+    const a = estado.alcance;
+    if (!a) return;
+    const op = a.opciones.filter(x => x.valor === v)[0];
+    if (!op || !op.habilitado) return;
+    a.elegido = v;
+    /* NO SE REPINTA: el foco está en el radio, y un repintado lo manda al
+       botón de confirmar. Se reescribe solo el texto del botón. */
+    try {
+      const b = document.getElementById('confAceptar');
+      if (b) b.textContent = textoConfirmar();
+    } catch (e) { /* sin DOM no hay botón */ }
+  }
+
   function html() {
     if (!estado.abierto) return '';
     const nada = !estado.cambios.length && !estado.zonas;
@@ -214,13 +336,14 @@ const SGADD_CONFIRMAR = (function () {
         ${estado.zonas ? `<div class="mb-3 rounded-md border border-hairline/60 p-3">
           ${bloqueZonas(estado.zonas)}</div>` : ''}
         ${nada ? '<p class="text-xs text-muted mb-3">No hay nada distinto para mandar.</p>' : ''}
+        ${nada ? '' : bloqueAlcance()}
 
         <div class="modal-acciones flex items-center gap-3 flex-wrap mt-4">
           <button id="confAceptar" onclick="SGADD_CONFIRMAR.confirmar()"
             ${estado.yendo || nada ? 'disabled' : ''}
             class="px-3 py-2 rounded-md text-xs font-display uppercase tracking-wider
                    bg-accent text-base hover:opacity-90 disabled:opacity-40">
-            ${estado.yendo ? 'Un momento…' : esc(estado.confirmar)}</button>
+            ${esc(textoConfirmar())}</button>
           <button onclick="SGADD_CONFIRMAR.cerrar()"
             class="text-[11px] text-muted hover:text-ink ml-auto">Cancelar</button>
         </div>
@@ -262,6 +385,7 @@ const SGADD_CONFIRMAR = (function () {
 
   return {
     CAMPOS, cambiosDeClub, cambiosDeAccesos, resumenZonas, corte,
+    ETIQUETAS_ALCANCE, opcionesAlcance, elegirAlcance, bloqueAlcance, textoConfirmar,
     abrir, cerrar, confirmar, html, pintar, iniciar, estado,
   };
 })();

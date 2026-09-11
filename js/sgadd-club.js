@@ -343,6 +343,10 @@ const CLUB = (function () {
     if (c.escudo) candidatos.push(c.escudo);
 
     // El logo del equipo propio, si LOGOS ya lo resolvió.
+    if (typeof LOGOS !== 'undefined' && c.equipoEscudo) {
+      const url = LOGOS.getUrl(c.equipoEscudo);
+      if (url) candidatos.push(url);
+    }
     if (typeof LOGOS !== 'undefined' && c.patronEquipoPropio) {
       const propio = (c.nombreCorto || c.patronEquipoPropio);
       const url = LOGOS.getUrl(propio) || LOGOS.getUrl(c.patronEquipoPropio + " 'A'");
@@ -411,6 +415,55 @@ const CLUB = (function () {
 
   function aHex(rgb) {
     return '#' + rgb.map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
+  }
+
+  /** Mezcla dos colores: `f` es cuánto del segundo, de 0 a 1. */
+  function mezclarHex(a, b, f) {
+    const x = aRgb(a), y = aRgb(b);
+    return aHex(x.map((v, i) => v + (y[i] - v) * f));
+  }
+
+  /**
+   * EL COLOR DE MARCA DE UN ESCUDO: el tono que más superficie cubre.
+   *
+   * Es el mismo criterio con que se midieron a mano los de DEPORTIVO
+   * (#33348a) y Sud América (#0d5e27): se agrupan los píxeles opacos en
+   * cubos de 32 niveles por canal y gana el que más tiene, SIN contar
+   * blancos, grises ni negros —el fondo y el contorno de casi cualquier
+   * escudo—. Se devuelve el PROMEDIO del cubo ganador y no su centro: el
+   * centro de un cubo es un color que el escudo no tiene.
+   *
+   * PURA: recibe los píxeles RGBA en un arreglo plano (lo que devuelve
+   * `getImageData().data`), así se prueba desde Node. Sin un solo píxel
+   * con color devuelve null: un escudo blanco y negro no tiene un tono
+   * que proponer, y ahí el admin elige.
+   */
+  function colorDeEscudo(px) {
+    const cubos = {};
+    let mejor = null;
+    for (let i = 0; i + 3 < (px ? px.length : 0); i += 4) {
+      if (px[i + 3] < 128) continue;
+      const r = px[i], g = px[i + 1], b = px[i + 2];
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      if (max - min < 48 || max < 40) continue;   // blanco, gris o negro
+      const k = (r >> 5) + ',' + (g >> 5) + ',' + (b >> 5);
+      const c = cubos[k] || (cubos[k] = { n: 0, r: 0, g: 0, b: 0 });
+      c.n++; c.r += r; c.g += g; c.b += b;
+      if (!mejor || c.n > mejor.n) mejor = c;
+    }
+    return mejor ? aHex([mejor.r / mejor.n, mejor.g / mejor.n, mejor.b / mejor.n]) : null;
+  }
+
+  /** El color de un <img> ya cargado. Null si el navegador no deja leerlo. */
+  function colorDeImagen(img) {
+    try {
+      const lado = 64;
+      const cv = document.createElement('canvas');
+      cv.width = lado; cv.height = lado;
+      const cx = cv.getContext('2d', { willReadFrequently: true });
+      cx.drawImage(img, 0, 0, lado, lado);
+      return colorDeEscudo(cx.getImageData(0, 0, lado, lado).data);
+    } catch (e) { return null; }   // una imagen de otro origen ensucia el canvas y getImageData lanza
   }
 
   /** Mezcla el color con blanco hasta alcanzar el contraste pedido. */
@@ -546,6 +599,21 @@ const CLUB = (function () {
         ? SGADD.claveEquipo(equipo) : String(equipo).trim().toUpperCase();
       base.patronEquipoPropio = '^' + escRegex(clave) + '$';
     }
+    /* EL COLOR DE MARCA PUBLICADO GANA sobre el del JSON, por la misma
+       cascada que las zonas (punto 31): publicado → archivo. Sin JSON y
+       sin color publicado, el club quedaba con el naranja de Reconquista,
+       que es el tema por defecto — medido con Universitario en producción
+       el 2026-09-11. La variante oscura se DERIVA: pedirle al admin un
+       segundo color es pedirle un dato que no tiene. */
+    if (s.acento && /^#[0-9a-f]{6}$/i.test(String(s.acento))
+        && String(base.acento || '').toLowerCase() !== String(s.acento).toLowerCase()) {
+      base.acento = String(s.acento).toLowerCase();
+      base.acentoOscuro = mezclarHex(base.acento, '#000000', 0.3);
+    }
+    /* Y EL ESCUDO del header sale del EQUIPO propio: el nombre del club
+       («Sud América La Plata») no es la clave del manifiesto de escudos
+       («SUD AMERICA LP»). */
+    if (equipo && !base.equipoEscudo) base.equipoEscudo = equipo;
     const delJson = (cfg && Array.isArray(cfg.planillas)) ? cfg.planillas : [];
     base.planillas = s.categorias.map((k) => {
       const j = delJson.find(p => p && p.slug === k.slug) || null;
@@ -569,9 +637,13 @@ const CLUB = (function () {
     const nuevo = reconciliarConfig(estado.cfg, clubServidor, extra);
     if (!nuevo || nuevo === estado.cfg) return false;
     const sinJson = !estado.cfg;
+    const cambioColor = !!nuevo.acento && (!estado.cfg || estado.cfg.acento !== nuevo.acento);
     estado.cfg = nuevo;
     estado.origenCategorias = 'catalogo';
     aplicarDatos(nuevo);
+    /* Con JSON la marca ya estaba pintada: se repinta SOLO si el color
+       publicado es otro. */
+    if (cambioColor && !sinJson) aplicarUI(nuevo);
     if (sinJson) {
       estado.error = null;
       try {
@@ -586,5 +658,6 @@ const CLUB = (function () {
 
   return { TEMA, estado, cargar, aplicar: aplicarSeguro, reconciliar, reconciliarConfig, credito, idDesdeUrl, esLanding, enDemo, debug, marcarRender,
            reintentarEscudo, aclararHastaLegible, oscurecerHastaLegible, contraste,
+           mezclarHex, colorDeEscudo, colorDeImagen,
            get cfg() { return estado.cfg; }, get aplicado() { return aplicado; } };
 })();

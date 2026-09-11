@@ -102,6 +102,53 @@ const SGADD_AUTH = (function () {
     return CUPO_MAILS[normalizarPlan(plan)];
   }
 
+  /* =====================================================================
+     EL ALCANCE DE UN CAMBIO DEL PANEL MASTER · una sola tabla
+
+     Todo cambio del Panel Master pregunta en qué clientes aplicarse: solo
+     en este, en los que comparten su libro (el mismo torneo) o en todos.
+     Qué acción admite qué alcance vive ACÁ, en el módulo que comparten el
+     navegador y el servidor —igual que `CUPO_MAILS`—: el modal lo lee
+     para ofrecer las opciones y el servidor lo hace cumplir. Con dos
+     tablas, la que se relaja es siempre la del servidor.
+
+     Lo que NO se propaga se dice en el modal con las palabras de
+     `motivoSinAlcance`: una opción gris sin motivo se lee como un bug.
+     ===================================================================== */
+  const ALCANCES = ['club', 'libro', 'todos'];
+
+  const ALCANCES_POR_ACCION = {
+    /* Hechos del TORNEO: el formato de la tabla y los resultados sin box
+       score son los mismos para todos los clientes de ese libro. */
+    zonas: ['club', 'libro', 'todos'],
+    partidos_manuales: ['club', 'libro'],
+    /* Comerciales, pero se pueden querer en bloque: una promo para todo un
+       torneo, una renovación de temporada. */
+    cambiar_plan: ['club', 'libro', 'todos'],
+    renovar: ['club', 'libro', 'todos'],
+  };
+
+  const MOTIVOS_SIN_ALCANCE = {
+    partidos_manuales: 'Los partidos son de UN torneo: en otro libro esos equipos no existen.',
+    alta: 'Es la identidad de este cliente: su nombre, su equipo, su color y su libro son suyos.',
+    pausar: 'Cortar el acceso se hace de a un cliente: de un click a varios es el gesto que se lamenta.',
+    reactivar: 'Devolver el acceso se hace de a un cliente, igual que cortarlo.',
+    desactivar: 'Dar de baja se hace de a un cliente: de un click a varios es el gesto que se lamenta.',
+    informe_entregado: 'El informe del plan ORO es un servicio de este cliente.',
+    baja: 'Una baja se hace de a un cliente.',
+  };
+
+  /** Los alcances que admite una acción. Una que no figura, solo `club`. */
+  function alcancesDe(accion) {
+    return (ALCANCES_POR_ACCION[accion] || ['club']).slice();
+  }
+
+  /** Por qué una acción NO admite un alcance ('' si lo admite). */
+  function motivoSinAlcance(accion, alcance) {
+    if (alcance === 'club' || alcancesDe(accion).indexOf(alcance) !== -1) return '';
+    return MOTIVOS_SIN_ALCANCE[accion] || 'Este cambio se aplica de a un cliente.';
+  }
+
   /** Un plan que no se reconoce cae al MAS BAJO y nunca al mas alto: ante
    *  la duda, un typo no puede regalar el modulo que se cobra aparte. */
   function normalizarPlan(p) {
@@ -713,6 +760,7 @@ const SGADD_AUTH = (function () {
   return {
     ADMINS, PLANES, ORDEN_PLAN, ALIAS_PLAN, normalizarPlan, nombrePlan, ROLES, MODULOS, MOTIVOS, CLAVE_SESION,
     CUPO_MAILS, cupoDeMails,
+    ALCANCES, ALCANCES_POR_ACCION, alcancesDe, motivoSinAlcance,
     normalizarEmail, parsearSesion, establecerSesion, limpiarSesion, sesion,
     esAdmin, rol, sinRestricciones,
     puedeVerEquipo, tieneModulo, puedoAcceder, puedeScoutearCruce,

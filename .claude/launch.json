@@ -6,6 +6,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "8765"],
       "port": 8765
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["-e", "process.env.PORT='3011';process.env.ORIGENES_PERMITIDOS='http://localhost:8765';require('./server/index.js')"],
+      "port": 3011
     }
   ]
 }

@@ -430,9 +430,74 @@ const SGADD_CONFIG = (function () {
     if (!config) return null;
     const mapa = config.porCategoria;
     if (!categoria || !mapa || typeof mapa !== 'object') return config;
-    const propio = mapa[categoria];
-    if (!propio || typeof propio !== 'object') return config;
-    return propio;
+    /* Acepta VARIAS claves, en orden: el slug del catálogo y el id de
+       planilla del JSON. Ver `clavesDeCategoria`. */
+    const claves = Array.isArray(categoria) ? categoria : [categoria];
+    for (let i = 0; i < claves.length; i++) {
+      const propio = claves[i] ? mapa[claves[i]] : null;
+      if (propio && typeof propio === 'object') return propio;
+    }
+    return config;
+  }
+
+  /* =====================================================================
+     LA CLAVE DE UNA CATEGORÍA · el slug, y el id de planilla de respaldo
+
+     Las zonas propias de una categoría (`porCategoria`) y sus partidos
+     sin estadísticas se guardaban con el id de planilla del JSON
+     (`naranja-u21-clausura-2026`). El servidor no conoce ese id: conoce
+     el SLUG del catálogo (`reconquista-u21`). Mientras cada cliente
+     editaba solo lo suyo no importaba; para llevar un cambio a los
+     clientes del mismo libro, el servidor tiene que poder nombrar la
+     categoría de cada uno — y solo puede con el slug.
+
+     Se lee por las DOS claves, el slug primero: lo guardado antes sigue
+     valiendo, y lo que se publica de ahora en más va por slug (el
+     servidor borra la clave vieja al escribir la nueva).
+     ===================================================================== */
+  function slugDe(planillaId) {
+    if (!planillaId) return null;
+    try {
+      if (typeof SGADD !== 'undefined' && SGADD.planilla) {
+        const p = SGADD.planilla(planillaId);
+        if (p && p.slug) return p.slug;
+      }
+    } catch (e) { /* sin catálogo cargado, la clave queda como vino */ }
+    return planillaId;
+  }
+
+  function clavesDeCategoria(planillaId) {
+    if (!planillaId) return [];
+    const s = slugDe(planillaId);
+    return (s && s !== planillaId) ? [s, planillaId] : [planillaId];
+  }
+
+  /** Lo de UNA categoría en un mapa por categoría, por cualquiera de sus claves. */
+  function deCategoria(mapa, planillaId) {
+    if (!mapa || typeof mapa !== 'object') return null;
+    const claves = clavesDeCategoria(planillaId === undefined ? categoriaActiva() : planillaId);
+    for (let i = 0; i < claves.length; i++) {
+      if (mapa[claves[i]]) return mapa[claves[i]];
+    }
+    return null;
+  }
+
+  /**
+   * El bloque con las claves de `porCategoria` pasadas a slug, para
+   * publicarlo. Si una categoría figura con las dos claves, gana la del
+   * id de planilla: es la que acaba de editar la pantalla (el borrador se
+   * arma con ese id); la del slug es lo que estaba publicado.
+   */
+  function porCategoriaASlugs(bloque) {
+    if (!bloque || typeof bloque !== 'object' || !bloque.porCategoria
+        || typeof bloque.porCategoria !== 'object') return bloque;
+    const out = JSON.parse(JSON.stringify(bloque));
+    const nuevo = {};
+    const ks = Object.keys(out.porCategoria);
+    ks.forEach((k) => { if (slugDe(k) === k) nuevo[k] = out.porCategoria[k]; });
+    ks.forEach((k) => { const s = slugDe(k); if (s !== k) nuevo[s] = out.porCategoria[k]; });
+    out.porCategoria = nuevo;
+    return out;
   }
 
   /**
@@ -447,7 +512,7 @@ const SGADD_CONFIG = (function () {
   function resolver(jsonClub, torneo, fase, categoria) {
     const v = vigente(jsonClub, clubActivo());
     const cat = (categoria === undefined) ? categoriaActiva() : categoria;
-    const bloque = bloqueDeCategoria(v.config, cat);
+    const bloque = bloqueDeCategoria(v.config, clavesDeCategoria(cat));
     return {
       config: v.config,
       /* El bloque que MANDA en esta categoría, que puede ser el del club
@@ -1305,6 +1370,7 @@ const SGADD_CONFIG = (function () {
   return {
     publicado,
     categoriaActiva, bloqueDeCategoria,
+    slugDe, clavesDeCategoria, deCategoria, porCategoriaASlugs,
     TONOS, TONO_POR_DEFECTO, TRAMO_CUALQUIERA, tono,
     parsear, formatoDeTramo, zonaDePuesto, zonasDeTabla, leyenda, validar,
     leerOverride, guardarOverride, borrarOverride, vigente, exportar, claveAlmacen,

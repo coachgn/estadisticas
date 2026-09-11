@@ -49,6 +49,9 @@ node test-demo.js          # 130 tests · la demo publica: el snapshot anonimiza
                            #             contrato cols↔filas, las cards y el modal
 node test-alta.js          #  98 tests · el alta de clientes: reusar un libro, los equipos
                            #             del libro, el catálogo manda y el tipeo del formulario
+node test-alcance.js       # 122 tests · los clientes del mismo libro: el alcance de un
+                           #             cambio, la herencia, el color y que el cliente
+                           #             lea lo publicado
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
 
@@ -62,7 +65,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5071 tests en total. Todos tienen que dar verde antes de commitear.**
+**5193 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -5445,6 +5448,12 @@ comercial: son cómo se pinta la tabla del cliente, y dejarlas del lado del
 admin haría que publicar no sirviera de nada. El plan y el vencimiento sí
 siguen siendo solo del admin.
 
+> **Y durante semanas publicar NO SIRVIÓ DE NADA**, que es justo lo que
+> este párrafo decía evitar: el servidor mandaba las zonas a todos, pero
+> el PANEL solo pedía el catálogo con sesión de admin. Un cliente nunca lo
+> leía y su tabla caía al JSON. Medido y corregido el 2026-09-11 — ver el
+> punto 54.
+
 ---
 
 ## 32. SUBCLIENTES · cada categoría con sus propias zonas
@@ -7910,4 +7919,139 @@ letras perdidas sobre 20. Antes del arreglo se perdían 13.
 - **La guía nombra botones, y un test verifica que existan** en la
   pantalla. Una guía que manda a buscar un botón que no está es peor que
   no tener guía.
+
+---
+
+## 54. LOS CLIENTES DEL MISMO LIBRO · alcance, herencia y color
+
+Auditoría del 2026-09-11 sobre los clientes dados de alta desde el Panel
+Master (Hogar Social y Universitario, sobre el libro de DEPORTIVO), medida
+en producción con links de cliente de verdad. Tres defectos, y ninguno
+dejaba un error visible.
+
+### 1 · «PUBLICAR» NO LE LLEGABA A NINGÚN CLIENTE
+
+`SGADD_CLIENTES.iniciar()` pedía el catálogo **solo con rol ADMIN**
+—nació para el selector de clientes— y de ese catálogo leen las zonas
+publicadas (`SGADD_CONFIG.publicado`), los partidos sin estadísticas
+(`clasifManualesVigentes`) y el nivel. Para un cliente la lista era
+`null` y todo caía al JSON del repo:
+
+```
+                  catálogo   zonas desde   zonas   partidos manuales
+cliente DEPORTIVO    no        el JSON        3            0
+admin DEPORTIVO      sí        publicado      4          2 (4 badges)
+```
+
+O sea que la respuesta a «¿alcanza con Publicar?» era **no**, aunque la
+pantalla dijera que sí. Ahora **toda sesión con token pide el catálogo**;
+lo que sigue siendo solo del admin es el SELECTOR (`seMuestra`), y lo
+comercial el servidor ya no se lo manda a quien no es admin.
+
+- El arranque lo entrega ANTES de inicializar la categoría
+  (`reconciliarConCatalogo` → `SGADD_CLIENTES.recibir`): el primer
+  pintado ya sale con lo publicado.
+- Si llega tarde, `recibir()` repinta **una vez** la sección que lo
+  muestra (Clasificación o Principal).
+
+**Publicar alcanza. Exportar el JSON es un respaldo opcional** del repo:
+sirve si el servidor no contesta —el panel cae a ese archivo— y deja el
+cambio en el historial. La pantalla lo dice con esas palabras. La
+PRECONFIGURACIÓN (pestaña Torneo) es la excepción: no tiene publicación,
+así que ahí sí hay que exportar y commitear.
+
+### 2 · EL COLOR DE MARCA · un club sin JSON salía con el naranja de Reconquista
+
+Es el tema por defecto del panel. El catálogo guarda ahora `acento` por
+club (lo escribe el alta, lo publica `publico()` para todos) y
+`CLUB.reconciliarConfig` lo aplica: **el publicado le gana al del JSON**,
+por la misma cascada que las zonas (punto 31). La variante oscura se
+DERIVA — pedirle al admin un segundo color es pedirle un dato que no tiene.
+
+El formulario de alta tiene **«Color de marca»** con un botón **«Del
+escudo»**: `CLUB.colorDeEscudo()` agrupa los píxeles opacos en cubos de 32
+niveles, descarta blancos, grises y negros, y devuelve el **promedio** del
+cubo ganador (el centro del cubo es un color que el escudo no tiene).
+Contrastado contra los dos colores medidos a mano:
+
+```
+DEPORTIVO     escudo #34358a   JSON #33348a
+Sud América   escudo #075c1d   JSON #0d5e27
+```
+
+**Un escudo blanco y negro no propone ningún color** — el de Universitario
+lo es — y la pantalla lo dice: ahí el admin elige. El escudo del header,
+sin JSON, sale del EQUIPO propio (`equipoEscudo`) y no del nombre del club.
+
+### 3 · LO QUE ES DEL TORNEO VIVÍA EN UN CLIENTE
+
+Las zonas y los partidos sin estadísticas son hechos del TORNEO, pero se
+guardaban en el cliente que los cargó: el que se sumaba al mismo libro
+arrancaba sin zonas y con una tabla que no cuadraba. En producción, los
+cuatro clientes del libro de DEPORTIVO tenían **tres formatos distintos**
+(uno sin zonas, uno con la última zona rotulada «Zona nueva», uno —el
+JSON de Sud América— sin la Zona C) y solo DEPORTIVO tenía los 2 partidos.
+
+Dos piezas, las dos en `catalogo-mutar.js`:
+
+- **HERENCIA** (`heredarDelLibro`): una categoría que ESTRENA libro trae
+  las zonas del libro elegido con `libroDe` —o del primero de ese libro
+  que tenga— y los partidos de TODOS los clientes del libro, sin repetir.
+  **No pisa nada**: si ya tenía zonas o partidos, se quedan. Corregir la
+  etiqueta de una que ya estaba no hereda.
+- **ALCANCE**: todo cambio del Panel Master pregunta **«¿En qué clientes
+  querés aplicar este cambio?»** — solo este, los que comparten su Sheet ID,
+  o todos.
+
+### La tabla de alcances es UNA, en sgadd-auth.js
+
+```
+zonas              este · libro · todos
+partidos_manuales  este · libro          (en otro libro esos equipos no existen)
+cambiar_plan       este · libro · todos
+renovar            este · libro · todos
+todo lo demás      este                  (pausar, dar de baja, el alta, el informe)
+```
+
+`ALCANCES_POR_ACCION` vive en el módulo que comparten el navegador y el
+servidor —igual que `CUPO_MAILS`—: el modal lo lee para ofrecer las
+opciones y `aplicar()` lo hace cumplir. **Las tres opciones van siempre a
+la vista**; las que no corresponden salen grises con el texto de
+`motivoSinAlcance`, porque una opción que desaparece obliga a adivinar.
+
+Reglas que hay que respetar al tocarlo:
+
+- **Quién comparte libro lo decide el sheetId, en el servidor.** El
+  navegador recibe solo una HUELLA (`libro`, FNV-1a de 8 hex, **solo el
+  admin**) que dice que dos categorías leen el mismo libro sin decir cuál.
+- **Todo o nada.** `aplicar()` recorre los clubes sobre el catálogo que va
+  quedando; si uno falla, no se escribe ninguno y el motivo nombra al club.
+- **A un club de UNA categoría se le escribe el bloque del club; a uno de
+  varias, el de ESA categoría** (`crearBloque`), para no darle a sus otros
+  torneos las zonas de este.
+- **Nunca viajan las claves del que publica**: `datosPara()` le saca el
+  `porCategoria` y la `claveVieja`, que son de SU club.
+- **La respuesta dice a quiénes llegó** (`aplicadoA`) y qué heredó el
+  nuevo (`herencia`), calculado por el servidor: la pantalla lo muestra
+  tal cual.
+
+### La clave de una categoría es su SLUG
+
+Las zonas propias (`porCategoria`) y los partidos se guardaban con el id
+de planilla del JSON (`naranja-u21-clausura-2026`), que el servidor no
+conoce: sin el slug (`reconquista-u21`) no podía nombrar la categoría de
+otro cliente. `SGADD_CONFIG.clavesDeCategoria()` busca por **las dos, el
+slug primero**, así lo guardado antes sigue valiendo; lo que se publica va
+por slug con la `claveVieja` para que el servidor la borre, y un club de
+una sola categoría se migra en el mismo gesto.
+
+**Al publicar un bloque de club, las claves de `porCategoria` pasan a
+slug** (`porCategoriaASlugs`) y si una figura con las dos gana la del id
+de planilla: es la que acaba de editar la pantalla.
+
+### Lo que el alta NO hereda, y por qué
+
+La **preconfiguración** (calendario, equipos esperados, sellos) vive solo
+en el JSON y en el navegador, no en el catálogo: un cliente sin JSON no la
+tiene. Es la misma deuda de la pestaña Torneo — no se publica.
 

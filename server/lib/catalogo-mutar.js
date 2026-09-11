@@ -19,6 +19,13 @@
    ===================================================================== */
 'use strict';
 
+/* La tabla de alcances vive en el módulo que comparten el navegador y el
+   servidor: el modal la lee y acá se hace cumplir (ver `aplicar`). */
+const AUTH = require('./compartido/sgadd-auth.js');
+
+/* El color de marca de un club: siempre #rrggbb. */
+const HEX = /^#[0-9a-f]{6}$/i;
+
 /** Un id de club o de categoría es una CLAVE: viaja en la URL y nombra el
  *  archivo de marca. Se valida con el mismo criterio que el formulario. */
 const ID = /^[a-z0-9][a-z0-9-]*$/;
@@ -93,6 +100,222 @@ function copiar(cat) { return JSON.parse(JSON.stringify(cat || {})); }
 
 function malo(motivo) { return { ok: false, motivo: motivo }; }
 
+/* =====================================================================
+   LOS CLIENTES DEL MISMO LIBRO · herencia y alcance
+
+   Dos clientes del mismo torneo leen el MISMO libro: Sud América, Hogar
+   Social y Universitario comparten el de DEPORTIVO. El formato de la
+   tabla y los partidos sin estadísticas son hechos del TORNEO, no del
+   club, y hasta acá vivían solo en el cliente que los había cargado: el
+   que se sumaba al torneo arrancaba sin zonas y con una tabla que no
+   cuadraba (medido en producción el 2026-09-11: Hogar Social sin zonas,
+   Universitario con otras, y ninguno de los dos con los 2 partidos que
+   DEPORTIVO ya tenía).
+
+   Que dos categorías son del mismo torneo lo dice su sheetId, que es el
+   único dato que lo dice con certeza y vive SOLO acá (punto 29).
+   ===================================================================== */
+
+/** Las categorías de OTROS clubes que leen el mismo libro. */
+function hermanasDeLibro(cat, club, sheetId) {
+  const out = [];
+  if (!sheetId) return out;
+  Object.keys(cat || {}).forEach((id) => {
+    if (id === club) return;
+    const cats = (cat[id] && cat[id].categorias) || {};
+    Object.keys(cats).forEach((s) => {
+      if (cats[s] && cats[s].sheetId === sheetId) out.push({ club: id, slug: s });
+    });
+  });
+  return out;
+}
+
+/* Un mismo partido, cargado por dos admins en dos clientes, tiene ids
+   distintos: se reconoce por la fecha y los dos equipos, con la misma
+   normalización que el resto del proyecto (sin el « - MM», sin comillas
+   ni puntos, sin acentos). */
+function claveManual(p) {
+  const n = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase().replace(/\s*-\s*(MM|MF|U\d{1,2}\s*[MF]?)\s*$/, '')
+    .replace(/[^A-Z0-9]+/g, ' ').trim();
+  return [String((p && p.fecha) || '').trim(), n(p && p.local), n(p && p.visitante)].join('|');
+}
+
+/**
+ * Junta mapas `{TORNEO|FASE: [partidos]}` sin contar dos veces el mismo
+ * partido: por id —una copia conserva el suyo— y por fecha + equipos.
+ * Un partido contado dos veces rompe PJ = PG + PP sin que nadie lo vea.
+ */
+function unirManuales(mapas) {
+  const out = {};
+  const vistos = {};
+  (mapas || []).forEach((m) => {
+    Object.keys(m || {}).forEach((tramo) => {
+      (Array.isArray(m[tramo]) ? m[tramo] : []).forEach((p) => {
+        const k = String(tramo).toUpperCase() + '#' + claveManual(p);
+        const kid = (p && p.id) ? 'id:' + p.id : null;
+        if (vistos[k] || (kid && vistos[kid])) return;
+        vistos[k] = true;
+        if (kid) vistos[kid] = true;
+        (out[tramo] = out[tramo] || []).push(copiar(p));
+      });
+    });
+  });
+  return out;
+}
+
+/* LA CLAVE DE UNA CATEGORÍA ES SU SLUG. Hasta el 2026-09-11 el panel
+   guardaba zonas y partidos con el id de planilla del JSON
+   (`deportivo-primera-2026`), que el servidor no conoce. Cuando el club
+   tiene UNA sola categoría, esa clave vieja no puede ser de otra: se
+   reconoce igual. */
+function manualesDe(club, slug) {
+  const m = club && club.partidosManuales;
+  if (!m || typeof m !== 'object') return null;
+  if (m[slug]) return copiar(m[slug]);
+  if (Object.keys(club.categorias || {}).length === 1) {
+    const ks = Object.keys(m);
+    if (ks.length) return unirManuales(ks.map(k => m[k]));
+  }
+  return null;
+}
+
+/** El bloque de zonas que rige para UNA categoría. Es el espejo de
+ *  `SGADD_CONFIG.bloqueDeCategoria` del panel: el suyo si lo tiene, si no
+ *  el del club. */
+function zonasDe(club, slug) {
+  const comp = club && club.competencia;
+  if (!comp || typeof comp !== 'object') return null;
+  const pc = (comp.porCategoria && typeof comp.porCategoria === 'object') ? comp.porCategoria : {};
+  if (pc[slug]) return copiar(pc[slug]);
+  if (Object.keys(club.categorias || {}).length === 1 && Object.keys(pc).length === 1) {
+    return copiar(pc[Object.keys(pc)[0]]);
+  }
+  const base = copiar(comp);
+  delete base.porCategoria;
+  return (base.formatos && Object.keys(base.formatos).length) ? base : null;
+}
+
+/**
+ * HERENCIA · un cliente que se suma a un torneo arranca con lo que el
+ * torneo ya tiene: el formato de la tabla y los partidos sin estadísticas
+ * que otro cliente del mismo libro ya cargó.
+ *
+ * NO PISA NADA: si la categoría ya tenía zonas o partidos propios, se
+ * quedan. Y las zonas salen primero del libro que el admin señaló con
+ * `libroDe`, que es el torneo que eligió; los partidos, de TODOS los
+ * clientes del libro, sin repetir.
+ */
+function heredarDelLibro(nuevo, club, slug, sheetId, preferido) {
+  const hermanas = hermanasDeLibro(nuevo, club, sheetId);
+  if (preferido) {
+    const es = (h) => (h.club + '/' + h.slug) === preferido ? 1 : 0;
+    hermanas.sort((a, b) => es(b) - es(a));
+  }
+  const r = { zonasDe: null, partidos: 0, de: hermanas.map(h => h.club) };
+  if (!hermanas.length) return r;
+  const c = nuevo[club];
+  const unica = Object.keys(c.categorias || {}).length === 1;
+
+  const pc = c.competencia && c.competencia.porCategoria;
+  const tienePropias = unica ? !!c.competencia : !!(pc && pc[slug]);
+  if (!tienePropias) {
+    for (let i = 0; i < hermanas.length; i++) {
+      const b = zonasDe(nuevo[hermanas[i].club], hermanas[i].slug);
+      if (!b) continue;
+      if (unica) {
+        c.competencia = b;
+      } else {
+        c.competencia = c.competencia || {};
+        c.competencia.porCategoria = Object.assign({}, c.competencia.porCategoria || {});
+        c.competencia.porCategoria[slug] = b;
+      }
+      r.zonasDe = hermanas[i].club;
+      break;
+    }
+  }
+
+  if (!(c.partidosManuales && c.partidosManuales[slug])) {
+    const union = unirManuales(hermanas.map(h => manualesDe(nuevo[h.club], h.slug)).filter(Boolean));
+    const n = Object.keys(union).reduce((a, k) => a + union[k].length, 0);
+    if (n) {
+      c.partidosManuales = Object.assign({}, c.partidosManuales || {});
+      c.partidosManuales[slug] = union;
+      r.partidos = n;
+    }
+  }
+  return r;
+}
+
+/* Las acciones que son del CLUB y no de una categoría: si no se dice de
+   qué categoría es el cambio, cuentan todos sus libros. */
+const ACCIONES_DE_CLUB = ['cambiar_plan', 'renovar'];
+
+/**
+ * A qué OTROS clubes (y categorías) llega un cambio, según su alcance.
+ * `libro` = los que leen el libro de la categoría del cambio; `todos` =
+ * el resto del catálogo.
+ */
+function objetivos(cat, d, accion, alcance) {
+  if (!cat[d.club]) return { error: 'Ese club no esta en el catalogo.' };
+  if (alcance === 'todos') {
+    return { lista: Object.keys(cat).filter(id => id !== d.club).map(id => ({ club: id, slug: null })) };
+  }
+  const deClub = ACCIONES_DE_CLUB.indexOf(accion) !== -1;
+  const cats = cat[d.club].categorias || {};
+  const slugs = Object.keys(cats);
+  const base = [d.libroDeCategoria, d.categoria].filter(s => s && cats[s])[0]
+    || (slugs.length === 1 ? slugs[0] : null);
+  let libros;
+  if (base) libros = [cats[base].sheetId];
+  else if (deClub) libros = slugs.map(s => cats[s].sheetId);
+  else return { error: 'Para aplicarlo a los clientes del mismo libro hace falta saber de qué categoría es el cambio.' };
+  libros = libros.filter(Boolean);
+  if (!libros.length) {
+    return { error: 'Esa categoría todavía no tiene libro: no hay otros clientes que lo compartan.' };
+  }
+  const vistos = {};
+  const lista = [];
+  libros.forEach(sh => hermanasDeLibro(cat, d.club, sh).forEach((h) => {
+    const k = deClub ? h.club : h.club + '/' + h.slug;
+    if (vistos[k]) return;
+    vistos[k] = true;
+    lista.push(deClub ? { club: h.club, slug: null } : h);
+  }));
+  return { lista: lista };
+}
+
+/**
+ * El pedido para OTRO club, derivado del original. Solo lleva lo que la
+ * acción necesita: nunca la `claveVieja` ni el `porCategoria` del que
+ * pidió, que son claves de SU club y en otro no significan nada.
+ */
+function datosPara(cat, d, accion, o) {
+  const base = { club: o.club, ahora: d.ahora };
+  const club = cat[o.club] || {};
+  const unica = Object.keys(club.categorias || {}).length <= 1;
+  if (accion === 'cambiar_plan') return Object.assign(base, { plan: d.plan });
+  if (accion === 'renovar') return Object.assign(base, { vence: d.vence });
+  if (accion === 'partidos_manuales') {
+    /* Si ese club guardó sus partidos con la clave vieja, se migra en el
+       mismo gesto: con una sola categoría, la vieja no puede ser de otra. */
+    const viejas = Object.keys(club.partidosManuales || {}).filter(k => k !== o.slug);
+    return Object.assign(base, { categoria: o.slug, tramo: d.tramo, partidos: d.partidos,
+      claveVieja: (unica && viejas.length === 1) ? viejas[0] : null });
+  }
+  if (accion === 'zonas') {
+    let bloque = d.competencia;
+    if (bloque && typeof bloque === 'object') { bloque = copiar(bloque); delete bloque.porCategoria; }
+    /* A un club de UNA categoría se le escribe el bloque del club; a uno
+       de varias, el de ESA categoría, para no darle a sus otros torneos
+       las zonas de este. */
+    const aCategoria = !!o.slug && !unica;
+    return Object.assign(base, { categoria: aCategoria ? o.slug : null, competencia: bloque,
+      crearBloque: aCategoria, limpiarCategorias: unica });
+  }
+  return base;
+}
+
 /**
  * Alta o edición de una categoría.
  *
@@ -121,6 +344,10 @@ function alta(cat, d) {
   const nuevo = copiar(cat);
   const existia = !!nuevo[v.club];
   const previa = (existia && nuevo[v.club].categorias && nuevo[v.club].categorias[v.categoria]) || null;
+
+  if (v.acento !== undefined && v.acento !== null && v.acento !== '' && !HEX.test(String(v.acento))) {
+    return malo('El color de marca va como #rrggbb, por ejemplo #0d5e27.');
+  }
 
   let sheetId = '';
   if (v.libroDe) {
@@ -169,7 +396,23 @@ function alta(cat, d) {
      decisión sobre el nivel. */
   nuevo[v.club].categorias[v.categoria] = Object.assign({}, previa || {},
     { label: label, sheetId: sheetId });
-  return { ok: true, catalogo: nuevo, creoClub: !existia };
+
+  /* EL COLOR DE MARCA viaja con el club y lo publica el catálogo. Un
+     cliente sin `clubes/<id>.json` quedaba con el naranja de Reconquista,
+     que es el tema por defecto del panel — medido en producción con
+     Universitario el 2026-09-11. Vacío lo borra: vuelve al del JSON. */
+  if (v.acento !== undefined) {
+    if (v.acento === '' || v.acento === null) delete nuevo[v.club].acento;
+    else nuevo[v.club].acento = String(v.acento).toLowerCase();
+  }
+
+  /* HERENCIA, solo cuando la categoría ESTRENA libro: corregir la
+     etiqueta de una que ya estaba no es sumarse a un torneo. */
+  const estrena = !previa || previa.sheetId !== sheetId;
+  const herencia = estrena
+    ? heredarDelLibro(nuevo, v.club, v.categoria, sheetId, v.libroDe ? String(v.libroDe) : null)
+    : null;
+  return { ok: true, catalogo: nuevo, creoClub: !existia, herencia: herencia };
 }
 
 /**
@@ -346,7 +589,7 @@ function zonas(cat, d) {
 
   const categoria = (typeof v.categoria === 'string' && v.categoria.trim())
     ? v.categoria.trim() : null;
-  const previo = (nuevo[v.club].competencia && typeof nuevo[v.club].competencia === 'object')
+  let previo = (nuevo[v.club].competencia && typeof nuevo[v.club].competencia === 'object')
     ? nuevo[v.club].competencia : null;
 
   const bloque = v.competencia;
@@ -356,11 +599,24 @@ function zonas(cat, d) {
     if (!previo) {
       /* Sin bloque del club no hay donde colgar la categoria. Crear uno
          vacio dejaria un `porCategoria` huerfano que ninguna pantalla
-         sabe leer. */
-      return malo('El club todavia no tiene bloque de competencia: publica primero el del club.');
+         sabe leer.
+
+         SALVO al PROPAGAR a un club de varias categorías (`crearBloque`):
+         ahí esa categoría es de otro torneo que el resto del club, y darle
+         al club entero las zonas de este torneo sería peor. `parsear` del
+         panel ya lee un bloque que solo trae `porCategoria`. */
+      if (!v.crearBloque) {
+        return malo('El club todavia no tiene bloque de competencia: publica primero el del club.');
+      }
+      previo = {};
     }
     const mapa = (previo.porCategoria && typeof previo.porCategoria === 'object')
       ? previo.porCategoria : {};
+    /* LA CLAVE VIEJA SE VA. Se guardaba con el id de planilla del JSON y
+       ahora con el slug del catálogo, que es la única clave que el
+       servidor conoce (sin ella no puede propagar a otros clientes).
+       Dejar las dos haría que la vieja quedara colgada. */
+    if (v.claveVieja && v.claveVieja !== categoria) delete mapa[v.claveVieja];
     if (vacio) {
       delete mapa[categoria];        // vaciarla la devuelve al bloque del club
     } else {
@@ -403,7 +659,10 @@ function zonas(cat, d) {
      otro. Si el bloque entrante YA trae `porCategoria`, ese manda —es
      una publicacion del bloque completo, no de un nivel suelto. */
   const compuesto = JSON.parse(JSON.stringify(bloque));
-  const hermanas = previo && previo.porCategoria;
+  /* `limpiarCategorias`: al propagar a un club de UNA sola categoría, un
+     `porCategoria` que ya tuviera solo puede ser de esa misma categoría
+     —con la clave vieja— y le ganaría al bloque nuevo sin que se note. */
+  const hermanas = !v.limpiarCategorias && previo && previo.porCategoria;
   if (!compuesto.porCategoria && hermanas && Object.keys(hermanas).length) {
     compuesto.porCategoria = hermanas;
   }
@@ -516,7 +775,14 @@ function partidosManuales(cat, d) {
 
   const mapa = (nuevo[v.club].partidosManuales && typeof nuevo[v.club].partidosManuales === 'object')
     ? nuevo[v.club].partidosManuales : {};
-  const deCat = (mapa[categoria] && typeof mapa[categoria] === 'object') ? mapa[categoria] : {};
+  /* LA CLAVE VIEJA (ver `zonas`): si la categoría todavía está guardada
+     con el id de planilla del JSON, se parte de ESA lista —trae los otros
+     tramos, que este pedido no manda— y la clave vieja se borra. */
+  const vieja = (v.claveVieja && v.claveVieja !== categoria && mapa[v.claveVieja]
+    && typeof mapa[v.claveVieja] === 'object') ? mapa[v.claveVieja] : null;
+  const deCat = (mapa[categoria] && typeof mapa[categoria] === 'object') ? mapa[categoria]
+    : (vieja ? copiar(vieja) : {});
+  if (vieja) delete mapa[v.claveVieja];
 
   if (!lista || !lista.length) {
     /* Vaciar el tramo es legitimo y explicito: es como se borra el ultimo
@@ -622,8 +888,34 @@ function aplicar(vigente, accion, datos, validar) {
   const fn = acciones[accion];
   if (!fn) return malo('Acción desconocida: ' + accion);
 
-  const r = fn(vigente, datos);
+  /* EL ALCANCE (ver `ALCANCES_POR_ACCION` en sgadd-auth.js). La tabla es
+     la misma que lee el modal y se hace cumplir ACÁ: aunque una pantalla
+     vieja o un pedido armado a mano pidiera propagar una baja, no pasa. */
+  const d = datos || {};
+  const alcance = d.alcance ? String(d.alcance) : 'club';
+  if (AUTH.ALCANCES.indexOf(alcance) === -1) return malo('Alcance desconocido: ' + alcance);
+  if (AUTH.alcancesDe(accion).indexOf(alcance) === -1) return malo(AUTH.motivoSinAlcance(accion, alcance));
+
+  let r = fn(vigente, d);
   if (!r.ok) return r;
+  const aplicadoA = [{ club: d.club, categoria: d.categoria || null }];
+
+  /* DE A UNO sobre el catálogo que va quedando, y TODO O NADA: si uno
+     falla no se escribe ninguno. Un cambio aplicado a la mitad de los
+     clientes de un torneo es peor que ninguno, porque no se ve. */
+  if (alcance !== 'club') {
+    const obj = objetivos(vigente, d, accion, alcance);
+    if (obj.error) return malo(obj.error);
+    for (let i = 0; i < obj.lista.length; i++) {
+      const o = obj.lista[i];
+      const r2 = fn(r.catalogo, datosPara(r.catalogo, d, accion, o));
+      if (!r2.ok) return malo(((vigente[o.club] || {}).nombre || o.club) + ': ' + r2.motivo);
+      r = Object.assign({}, r, { catalogo: r2.catalogo });
+      aplicadoA.push({ club: o.club, categoria: o.slug || null });
+    }
+  }
+  r.aplicadoA = aplicadoA;
+  r.alcance = alcance;
 
   /* EL CATÁLOGO NO PUEDE QUEDAR SIN CLUBES, y conviene decirlo con esas
      palabras. `validar()` ya lo rechaza —un catálogo vacío en KV haría que
@@ -653,5 +945,7 @@ function aplicar(vigente, accion, datos, validar) {
 
 module.exports = {
   zonas, partidosManuales, alta, baja, estado, plan, renovar, informe, ciclo, aplicar,
+  hermanasDeLibro, heredarDelLibro, unirManuales, claveManual, zonasDe, manualesDe,
+  objetivos, datosPara, HEX,
   librosPerdidos, ALIAS_PLAN, PARTIDOS_POR_CICLO,
   vencido, estadoEfectivo, ESTADOS, PLANES, ID, SHEET, FECHA };

@@ -197,36 +197,31 @@ const SGADD_CLIENTES = (function () {
    */
   function iniciar(opciones) {
     /* `forzar` para después de un login: al arrancar sin sesión esto salió
-       por el atajo de "no soy admin", y sin poder reintentar el selector no
-       aparecía nunca. */
+       por el atajo de "sin token", y sin poder reintentar el catálogo no
+       llegaba nunca. */
     const o = opciones || {};
     if (!o.forzar && (estado.pidiendo || estado.clubes)) return Promise.resolve(estado.clubes);
-    if (!auth || auth.rol() !== auth.ROLES.ADMIN) return Promise.resolve(null);
+    /* EL CATÁLOGO LO LEE TODA SESIÓN CON TOKEN, no solo el admin.
+
+       Estuvo detrás de `rol === ADMIN` porque nació para el selector, y
+       con eso lo que el admin PUBLICA —las zonas de la tabla, los
+       partidos sin estadísticas, el nivel, el color— no le llegaba a
+       ningún cliente: su panel caía al JSON del repo. Medido en
+       producción el 2026-09-11 con el link de un cliente real: la
+       tabla pintaba las 3 zonas del JSON contra las 4 publicadas, y 0
+       partidos manuales contra los 2 cargados. «Publicar» no servía.
+
+       Lo que sigue siendo solo del admin es el SELECTOR (`seMuestra`), y
+       lo comercial —plan, vencimiento— el servidor ya no se lo manda a
+       quien no es admin. */
     if (typeof SGADD_DATA === 'undefined' || !SGADD_DATA.apiConfigurada()) {
       return Promise.resolve(null);
     }
+    if (!auth || typeof auth.token !== 'function' || !auth.token()) return Promise.resolve(null);
     estado.pidiendo = true;
     return SGADD_DATA.catalogo({ forzar: !!o.forzar }).then((cat) => {
       estado.pidiendo = false;
-      estado.clubes = (cat && cat.clubes) ? cat.clubes : [];
-      estado.origen = (cat && cat.origen) || null;
-      estado.aviso = (cat && cat.aviso) || null;
-      pintar();
-      /* Y EL HUB, si está abierto. El catálogo llega DESPUÉS de que la
-         pestaña Clientes se pintó —es asíncrono— así que sin esto el admin
-         entraba al Panel Master, veía "el catálogo no lo tiene a mano" y
-         tenía que ir a otra pestaña y volver para que apareciera. */
-      try {
-        const n = (typeof document !== 'undefined') ? document.getElementById('hubClientes') : null;
-        /* El catálogo llega cuando llega: el admin puede estar escribiendo
-           en el alta, y sin conservar el foco la letra siguiente se pierde. */
-        const pintar = () => { n.innerHTML = SGADD_HUB.html(); };
-        if (n && typeof SGADD_HUB !== 'undefined') {
-          if (typeof SGADD_UI !== 'undefined' && SGADD_UI.conservarFoco) SGADD_UI.conservarFoco(pintar);
-          else pintar();
-        }
-      } catch (e) { /* el hub puede no estar en pantalla */ }
-      return estado.clubes;
+      return recibir(cat);
     }).catch(() => {
       estado.pidiendo = false;
       estado.error = 'No se pudo leer el catálogo';
@@ -234,11 +229,53 @@ const SGADD_CLIENTES = (function () {
     });
   }
 
+  /**
+   * Guarda el catálogo que llegó y repinta lo que depende de él.
+   *
+   * Lo usan `iniciar()` y el arranque (`reconciliarConCatalogo` en el
+   * index), que ya lo tiene en la mano: es la misma promesa cacheada, no
+   * una petición de más.
+   */
+  function recibir(cat) {
+    const primera = !estado.clubes;
+    estado.clubes = (cat && cat.clubes) ? cat.clubes : [];
+    estado.origen = (cat && cat.origen) || null;
+    estado.aviso = (cat && cat.aviso) || null;
+    pintar();
+    /* Y EL HUB, si está abierto. El catálogo llega DESPUÉS de que la
+       pestaña Clientes se pintó —es asíncrono— así que sin esto el admin
+       entraba al Panel Master, veía "el catálogo no lo tiene a mano" y
+       tenía que ir a otra pestaña y volver para que apareciera. */
+    try {
+      const n = (typeof document !== 'undefined') ? document.getElementById('hubClientes') : null;
+      /* El catálogo llega cuando llega: el admin puede estar escribiendo
+         en el alta, y sin conservar el foco la letra siguiente se pierde. */
+      const repintarHub = () => { n.innerHTML = SGADD_HUB.html(); };
+      if (n && typeof SGADD_HUB !== 'undefined') {
+        if (typeof SGADD_UI !== 'undefined' && SGADD_UI.conservarFoco) SGADD_UI.conservarFoco(repintarHub);
+        else repintarHub();
+      }
+    } catch (e) { /* el hub puede no estar en pantalla */ }
+    /* LO PUBLICADO PUEDE LLEGAR DESPUÉS DEL PRIMER PINTADO, si la red tardó
+       más que el techo del arranque: la tabla ya salió con el JSON. Se
+       repinta UNA vez la sección que lo muestra. */
+    if (primera && estado.clubes.length) {
+      try {
+        const sec = (typeof currentSection !== 'undefined') ? currentSection : null;
+        if ((sec === 'clasificacion' || sec === 'principal') && typeof renderSection === 'function'
+            && typeof SGADD_APP !== 'undefined' && SGADD_APP.estado && SGADD_APP.estado.idx) {
+          renderSection(sec);
+        }
+      } catch (e) { /* sin sección pintada no hay nada que repintar */ }
+    }
+    return estado.clubes;
+  }
+
   return {
     /* motor */
     seMuestra, opciones, urlDeClub,
     /* ui */
-    iniciar, pintar, elegir, html, clubActual,
+    iniciar, recibir, pintar, elegir, html, clubActual,
     estado,
   };
 })();
