@@ -100,18 +100,50 @@ function malo(motivo) { return { ok: false, motivo: motivo }; }
  * obligatorio — un club sin nombre no se puede mostrar en ningún selector.
  * Si ya existe, `nombre`/`liga`/`equipoPropio` son opcionales y solo pisan
  * lo que venga.
+ *
+ * EL LIBRO SALE DE TRES LUGARES, en este orden:
+ *
+ *   1. `libroDe: "<club>/<categoria>"` · el MISMO libro que ya usa otra
+ *      categoría. Es el caso de dos clientes del mismo torneo: Sud América
+ *      y DEPORTIVO leen el mismo libro. El id se copia ACÁ, en el
+ *      servidor, y nunca viaja al navegador (punto 29).
+ *   2. `sheetId` · un libro nuevo, pegado por el admin.
+ *   3. nada · la categoría YA EXISTE y se está editando otra cosa (la
+ *      etiqueta, el equipo). Se conserva su libro: pedir el id para
+ *      corregir una etiqueta obligaría al admin a ir a buscar un dato que
+ *      el navegador no tiene.
  */
 function alta(cat, d) {
   const v = d || {};
   if (!ID.test(String(v.club || ''))) return malo('El id del club va en minúsculas, sin espacios ni acentos.');
   if (!ID.test(String(v.categoria || ''))) return malo('El id de la categoría va en minúsculas, sin espacios ni acentos.');
-  if (!v.label) return malo('Falta la etiqueta de la categoría: es lo que dice el selector.');
-  if (!SHEET.test(String(v.sheetId || ''))) {
-    return malo('Ese sheetId no tiene forma de id de Google. Pegá el id, no la URL entera.');
-  }
 
   const nuevo = copiar(cat);
   const existia = !!nuevo[v.club];
+  const previa = (existia && nuevo[v.club].categorias && nuevo[v.club].categorias[v.categoria]) || null;
+
+  let sheetId = '';
+  if (v.libroDe) {
+    const partes = String(v.libroDe).split('/');
+    const origen = nuevo[partes[0]] && nuevo[partes[0]].categorias
+      && nuevo[partes[0]].categorias[partes[1]];
+    if (!origen || !origen.sheetId) {
+      return malo('La categoría «' + v.libroDe + '» no tiene un libro para reusar.');
+    }
+    sheetId = String(origen.sheetId);
+  } else if (v.sheetId) {
+    if (!SHEET.test(String(v.sheetId))) {
+      return malo('Ese sheetId no tiene forma de id de Google. Pegá el id, no la URL entera.');
+    }
+    sheetId = String(v.sheetId);
+  } else if (previa && previa.sheetId) {
+    sheetId = String(previa.sheetId);
+  } else {
+    return malo('Falta el libro: elegí uno ya cargado o pegá el id de uno nuevo.');
+  }
+
+  const label = v.label ? String(v.label) : ((previa && previa.label) || '');
+  if (!label) return malo('Falta la etiqueta de la categoría: es lo que dice el selector.');
 
   if (!existia) {
     if (!v.nombre) return malo('Un club nuevo necesita nombre: es lo que ve el cuerpo técnico.');
@@ -131,7 +163,12 @@ function alta(cat, d) {
     if (!nuevo[v.club].categorias) nuevo[v.club].categorias = {};
   }
 
-  nuevo[v.club].categorias[v.categoria] = { label: v.label, sheetId: String(v.sheetId) };
+  /* SE FUSIONA con lo que la categoría ya tenía. Reemplazarla por
+     `{label, sheetId}` borraba en silencio el `nivel` publicado (punto 45)
+     y cualquier campo que se sume mañana: editar la etiqueta no es una
+     decisión sobre el nivel. */
+  nuevo[v.club].categorias[v.categoria] = Object.assign({}, previa || {},
+    { label: label, sheetId: sheetId });
   return { ok: true, catalogo: nuevo, creoClub: !existia };
 }
 

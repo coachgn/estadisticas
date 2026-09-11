@@ -823,8 +823,14 @@ titulo('LA SESIÓN DESPUÉS DEL LOGIN · los tres síntomas eran uno solo');
   /* 3 · EL HUB SE REPINTA CUANDO LLEGA EL CATÁLOGO. Es asíncrono y la
      pestaña ya se pintó, así que sin esto había que ir a otra solapa y
      volver para verlo. */
+  /* SE RECORTA EL CUERPO DE `iniciar()` en vez de medir por distancia
+     en caracteres: una ventana fija se rompe con cualquier comentario
+     nuevo sin que la propiedad haya cambiado (punto 43). Ya pasó acá, al
+     envolver el repintado en `conservarFoco`. */
+  const cuerpoIniciar = cli.slice(cli.indexOf('function iniciar('), cli.indexOf('return {', cli.indexOf('function iniciar(')));
   check('al llegar el catálogo se repinta el hub si está abierto',
-    /getElementById\('hubClientes'\)[\s\S]{0,160}SGADD_HUB\.html\(\)/.test(cli));
+    /getElementById\('hubClientes'\)/.test(cuerpoIniciar) && /SGADD_HUB\.html\(\)/.test(cuerpoIniciar),
+    cuerpoIniciar.length + ' chars');
   check('y se puede volver a pedir tras un login', /forzar/.test(cli));
 
   /* 4 · CERRAR SESIÓN. Antes no había ninguno: la única forma de salir era

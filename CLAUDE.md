@@ -47,6 +47,8 @@ node test-responsive.js    # 136 tests · desborde, targets táctiles, modales, 
 node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
 node test-demo.js          # 130 tests · la demo publica: el snapshot anonimizado, el
                            #             contrato cols↔filas, las cards y el modal
+node test-alta.js          #  98 tests · el alta de clientes: reusar un libro, los equipos
+                           #             del libro, el catálogo manda y el tipeo del formulario
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
 
@@ -60,7 +62,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**4973 tests en total. Todos tienen que dar verde antes de commitear.**
+**5071 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -143,6 +145,8 @@ ESPECIFICACION_ADAPTADOR_GVIZ.md ← la Fase 1 documentada: parser, normalizacio
 AVISO_MOTORSTATS_2026-08-24.md ← lo que la web le reporta al motor: libros
                           desalineados, la U21 en 401 y dos correcciones a su prompt
 AUDITORIA_ETIQUETAS_JUGADORES.md ← glosario y auditoría de TODAS las etiquetas
+GUIA_ALTA_CLIENTES.md   ← el paso a paso, sin tecnicismos, para dar de alta o
+                          modificar un cliente desde el Panel Master (punto 53)
 PROPUESTA_ESTADOS_JUGADOR.md ← diseño original de estados (ya implementado, ver punto 13)
 tailwind.config.js      ← la config que vivía en el <head> cuando Tailwind
                           era CDN. sgadd.in.css es la entrada.
@@ -1083,6 +1087,11 @@ marca, color, liga, patrón de equipo propio, sufijos y planillas.
   abajo del mínimo WCAG de 4.5. Se mezcla con blanco hasta que pasa.
 
 Sumar un cliente = un JSON + su carpeta de escudos. Cero código.
+
+> **Desde 2026-09-11 el JSON ya no es obligatorio para las CATEGORÍAS**:
+> cuando el servidor tiene al club, salen de su catálogo y el JSON queda
+> para la marca. Un alta desde el Panel Master deja el panel andando sin
+> un commit. Ver el punto 53.
 
 **Verificado sumando DEPORTIVO el 2026-08-24**: alcanzó con
 `clubes/deportivo.json`. No hay lista de clubes en ninguna parte —
@@ -7755,3 +7764,150 @@ Y una tercera, la de siempre: **el gris de lo bloqueado arrancó en**
 `CLUB.contraste()` que usa el panel— o sea por debajo del 4,5 de AA. Lo
 que está un escalón más arriba tiene que poder LEERSE: es justamente lo
 que se le está ofreciendo al cliente.
+
+---
+
+## 53. EL ALTA DE CLIENTES DESDE EL PANEL MASTER
+
+La guía para quien opera está en
+[`GUIA_ALTA_CLIENTES.md`](GUIA_ALTA_CLIENTES.md). Acá va por qué es así.
+
+### El alta real de Sud América tenía CUATRO defectos, y ninguno se veía
+
+Medido el 2026-09-11, con el primer cliente que llegó por Instagram:
+
+| | Qué pasaba | Síntoma |
+|---|---|---|
+| 1 | el formulario perdía el foco en cada tecla | no se podía escribir |
+| 2 | el JSON pedía `sud-america-primera`, KV tenía `sudamerica-primera` | «No existe esa categoría» en cada hoja |
+| 3 | el equipo propio decía `SUDAMERICA` y el libro `SUD AMERICA LP - MM` | el cliente habría visto CERO equipos |
+| 4 | un alta hecha desde la pantalla no alcanzaba | sin JSON en el repo, el panel cargaba los valores de Reconquista |
+
+El 3 es el peor: no deja error en ningún lado. Es la trampa del punto 19
+(«la letra importa») con otro disfraz — acá lo que faltaba era un espacio
+y el `LP`.
+
+### 1 · El foco · un input de texto NO SE REPINTA NUNCA
+
+`campoAlta()` llamaba a `refrescarAlta()`, que reconstruía `#hubAlta`
+entero **con los inputs adentro**. El comentario de al lado decía
+«tipear NO repinta», y era cierto para la pestaña, no para el bloque.
+
+Ahora son tres zonas, cada una se repinta por su motivo:
+
+```
+#hubAlta         el formulario · solo desde un SELECT o un RADIO, y devuelve el foco
+#hubAltaEquipo   la lectura del libro y la elección del equipo
+#hubAltaEstado   qué falta, los avisos y el botón · en cada tecla
+```
+
+Lo que depende de lo tipeado —el id que se completa solo, el borde rojo—
+se escribe **sobre el nodo que ya está** (`ponerValor`, `marcar`).
+
+**El test lo EJERCE**, no lo lee: tipea un nombre de 20 letras sobre un
+DOM de mentira y cuenta las escrituras de `#hubAlta`. Verificado al
+revés: con el bug de vuelta, «20 repintados» y caen 6.
+
+### 2 · Las categorías salen del CATÁLOGO · el JSON pone la marca
+
+`CLUB.reconciliar()` cruza el JSON (puede no haber) con el club que
+publica `/api/v1/catalogo`. Lo llama `resolverClubYPlanilla()`, el único
+punto que resuelve el club (punto 2), antes de inicializar la categoría.
+
+- **La lista de categorías es del SERVIDOR**: es el que sabe qué libros
+  hay y el que las va a servir. Una categoría del JSON con un slug que el
+  servidor no tiene se descarta — era la que devolvía «No existe».
+- **Donde nombran la MISMA categoría (mismo `slug`), gana el JSON**: su
+  `id` es la clave de los estados y de los links ya compartidos (punto 6),
+  y su etiqueta y su nivel son lo que el club declaró.
+- **Sin JSON se arma la config desde el catálogo**: nombre, liga,
+  categorías y el patrón del equipo propio, **anclado sobre la clave
+  normalizada** — sin anclar, `DEPORTIVO LA PLATA` se llevaría a
+  `DEPORTIVO SAN VICENTE` (punto 6). El cartel rojo se retira.
+- **Con techo de 4 s** y sobre la misma promesa que ya pidió el selector
+  de cliente: no es una petición de más ni puede demorar el arranque.
+- **Degrada solo**: sin backend, sin token, en la landing o en la demo,
+  la config queda exactamente como la dejó el JSON.
+
+Lo que el JSON sigue aportando y la pantalla no puede: el escudo, los
+colores, las zonas y la preconfiguración. Sin él, el panel funciona con
+el acento por defecto y las iniciales del club.
+
+### 3 · Reusar un libro sin que su id viaje
+
+Dos clientes del mismo torneo leen el mismo libro. `alta` acepta
+`libroDe: "<club>/<categoria>"` y **el servidor copia el id**: nunca
+llega al navegador (punto 29). El libro sale, en orden, de `libroDe`, de
+un `sheetId` pegado, o —si la categoría ya existe— **se conserva**:
+exigir el id para corregir una etiqueta obligaría al admin a buscar un
+dato que el navegador no tiene.
+
+**La categoría se FUSIONA en vez de reemplazarse.** Reemplazarla por
+`{label, sheetId}` borraba en silencio el `nivel` publicado (punto 45),
+y la CLI tenía el mismo defecto: se corrigieron las dos.
+
+El servidor **sigue rechazando la URL entera** (hay un test que lo fija y
+el motivo es bueno); la que acepta el link pegado es la pantalla, que
+saca el id con `idDeLibro()`.
+
+### 4 · Los equipos del libro · lo que reemplaza a `probar-google.js`
+
+`POST /api/v1/catalogo/equipos` (solo ADMIN) lee el libro y devuelve sus
+equipos con la **clave** que usa el gate, así el equipo propio se ELIGE
+de una lista. El motor puro es `server/lib/catalogo-libro.js`.
+
+- **En su propio archivo** (`server/api/libro.js`) y no en
+  `handlers.js`: la ruta que solo lee no comparte archivo con la única
+  que escribe el catálogo.
+- **POST y no GET**: puede llevar el id de un libro nuevo, y un id en la
+  query termina en los logs de acceso.
+- **Los dos modos de fallar dicen su remedio** (punto 18 bis): no
+  compartido → con qué mail compartirlo; no existe → revisá el link.
+- **La fila TIPO no es un equipo**: ofrecerla dejaría al cliente sin
+  ninguna ficha.
+
+La pantalla **propone** el equipo por palabras en común con el nombre
+del club (Jaccard, sin las palabras que no distinguen: `club`, `la`,
+`plata`, `lp`…). Solo con un ganador claro: **con empate no propone**, y
+lo propuesto queda elegido en la lista y dicho en pantalla.
+
+### 5 · Nada se aplica en silencio
+
+Dar de alta y editar pasan por el modal de confirmación (punto 30), con
+el diff campo por campo. Sin cambios, el botón del modal se apaga. Al
+guardar, el formulario queda **editando** lo guardado: un segundo
+«Guardar» corrige esa categoría en vez de intentar crearla otra vez.
+
+### 6 · Un repintado AJENO no roba el foco · lo que solo vio Chrome
+
+Con el formulario ya arreglado, la prueba en Chrome real —tipeando tecla
+por tecla con `Input.insertText`— perdió el foco igual, en la 8.ª letra
+de «Sud América La Plata». No era el tipeo: era **`renderSection()`
+repintando la sección porque llegaron escudos nuevos** (punto 6), y el
+Panel Master es una sección más. Un admin que empieza a escribir apenas
+entra lo sufre una vez, y lo más probable es que eso fuera parte de lo
+que se vio en el reporte original.
+
+El test sobre un DOM de mentira no lo podía ver: ahí no llegan escudos.
+
+`SGADD_UI.conservarFoco(repintar)` reenfoca el nodo NUEVO con el mismo
+`id`, con el cursor donde estaba. Va en los cuatro repintados de vista
+entera: `renderSection()`, `configPintar()`, el catálogo que llega tarde
+(`sgadd-clientes.js`) y la lista del hub. Sirve para TODAS las secciones
+con campos, no solo el alta — y funciona porque ningún formulario del
+panel guarda su valor solo en el DOM (punto 17).
+
+Medido después, en Chrome, **forzando un repintado en la 5.ª letra**: 0
+letras perdidas sobre 20. Antes del arreglo se perdían 13.
+
+### Lo que hay que respetar al tocarlo
+
+- **Los ids no se editan.** El del club viaja en `?club=` y en los
+  tokens; el de la categoría es la clave de estados y links. La pantalla
+  los muestra en solo lectura al editar.
+- **El id de categoría se propone SIN el año** (`primera`, no
+  `primera-2026`): la categoría sobrevive a la temporada.
+- **La guía nombra botones, y un test verifica que existan** en la
+  pantalla. Una guía que manda a buscar un botón que no está es peor que
+  no tener guía.
+

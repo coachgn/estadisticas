@@ -316,19 +316,23 @@ const SGADD_DATA = (function () {
    * el error para poder mostrarlo tal cual: son mensajes escritos para que
    * el admin sepa qué corregir.
    */
-  async function guardarCatalogo(intencion, opciones) {
+  /* Un POST con el token de la sesión. LANZA con el motivo del servidor
+     tal cual: son mensajes escritos para que el admin sepa qué corregir.
+     Lo comparten el alta y la lectura de equipos, que es el mismo gesto
+     de la misma pantalla: dos copias terminan tratando distinto un 403. */
+  async function postConToken(ruta, cuerpoPedido, opciones) {
     const o = opciones || {};
     if (!baseApi) throw Object.assign(new Error('No hay backend configurado.'), { codigo: 'SIN_API' });
     if (!(auth && auth.token())) throw Object.assign(new Error('Falta el token.'), { codigo: 'SIN_TOKEN' });
 
     const traer = o.fetch || fetch;
-    const r = await traer(baseApi + '/api/v1/catalogo', {
+    const r = await traer(baseApi + ruta, {
       method: 'POST',
       headers: {
         'Authorization': 'Bearer ' + auth.token(),
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(intencion || {}),
+      body: JSON.stringify(cuerpoPedido || {}),
     });
     const cuerpo = await r.json().catch(() => null);
     if (!r.ok || !cuerpo || !cuerpo.ok) {
@@ -336,10 +340,25 @@ const SGADD_DATA = (function () {
       e.codigo = (cuerpo && cuerpo.codigo) || ('HTTP_' + r.status);
       throw e;
     }
+    return cuerpo;
+  }
+
+  async function guardarCatalogo(intencion, opciones) {
+    const cuerpo = await postConToken('/api/v1/catalogo', intencion, opciones);
     /* El catálogo cacheado quedó viejo: lo que vale es lo que devolvió el
        servidor, que ya pasó por los guards. */
     _catalogo = Promise.resolve(cuerpo);
     return cuerpo;
+  }
+
+  /**
+   * Qué equipos trae un libro · el paso del alta que antes pedía una
+   * terminal (`probar-google.js`). Manda `{libroDe}` —un libro que el
+   * catálogo ya tiene, sin que su id viaje— o `{sheetId}` de uno nuevo.
+   * Devuelve `{equipos: [{clave, nombre, filas}], cuentaServicio}`.
+   */
+  function equiposDelLibro(intencion, opciones) {
+    return postConToken('/api/v1/catalogo/equipos', intencion, opciones);
   }
 
   /* --------------------------------------------------------------------
@@ -429,7 +448,7 @@ const SGADD_DATA = (function () {
   return {
     configurar, apiConfigurada, origen, base: () => baseApi,
     matrizAFilas, matrizALegacy, tipoDeColumna,
-    cargarCategoria, cargarDelBackend, limpiarCache, catalogo, guardarCatalogo,
+    cargarCategoria, cargarDelBackend, limpiarCache, catalogo, guardarCatalogo, equiposDelLibro,
     login, fijarClave, clientes, guardarClientes,
   };
 })();

@@ -1117,8 +1117,47 @@ const SGADD_UI = (function () {
     });
   }
 
+  /**
+   * Corre un repintado CONSERVANDO EL FOCO Y EL CURSOR.
+   *
+   * Hay repintados que no dispara el usuario: los escudos que llegan tarde
+   * repintan la sección actual (punto 6) y el catálogo que llega después
+   * del primer pintado repinta el Panel Master. Los dos reconstruyen los
+   * inputs con `innerHTML`, así que el campo que se estaba escribiendo se
+   * destruye y la letra siguiente va al vacío — sin ningún error.
+   *
+   * Medido en Chrome real con el alta de clientes (2026-09-11): el foco se
+   * perdió en la 8.ª letra de un nombre, justo cuando entraron los
+   * escudos. El test sobre un DOM de mentira no lo podía ver: no hay
+   * escudos que lleguen tarde.
+   *
+   * Se reenfoca el nodo NUEVO que tenga el mismo `id`, con el cursor en la
+   * misma posición. Sirve para los campos que guardan su valor en el
+   * estado de un módulo (el nodo nuevo nace con ese valor), que es la
+   * regla de todos los formularios del panel: el valor nunca vive solo en
+   * el DOM (punto 17).
+   */
+  function conservarFoco(repintar) {
+    if (typeof document === 'undefined' || !document.activeElement) return repintar();
+    const a = document.activeElement;
+    const id = (a.id && /^(INPUT|TEXTAREA|SELECT)$/.test(String(a.tagName || ''))) ? a.id : null;
+    let ini = null, fin = null;
+    if (id) { try { ini = a.selectionStart; fin = a.selectionEnd; } catch (e) { /* un select no tiene cursor */ } }
+    const r = repintar();
+    if (id) {
+      const n = document.getElementById(id);
+      if (n && n !== a && document.activeElement !== n && typeof n.focus === 'function') {
+        n.focus();
+        try {
+          if (ini != null && typeof n.setSelectionRange === 'function') n.setSelectionRange(ini, fin);
+        } catch (e) { /* hay tipos de input sin selección */ }
+      }
+    }
+    return r;
+  }
+
   return { esc, escJs, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, signoDelta, colorDelta, claseMasMenos,
-    atributosFila, teclaActiva, teclaTabs, cargando,
+    atributosFila, teclaActiva, teclaTabs, cargando, conservarFoco,
     embeberImagenes, restaurarImagenes, pieInforme, pieWeb, MAIL, INSTAGRAM, ARROBA, LOGO, fechaHoy, MARCA,
     inyectarPieMotorStats, quitarPieMotorStats, pieVistaPrevia, ID_PIE,
     versionCargada, comprobarVersionPublicada, avisarVersion,

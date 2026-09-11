@@ -39,8 +39,25 @@ const SGADD_HUB = (function () {
      repinta —le sacaría el foco al input, la regla de siempre (punto 17)—
      así que el valor tiene que estar en algún lado cuando se arme el
      comando. */
-  const alta = { club: '', nombre: '', categoria: '', label: '', sheet: '',
-                 liga: '', equipoPropio: '' };
+  const alta = {
+    modo: 'nuevo',        // 'nuevo', o el id del club que se está editando
+    club: '', nombre: '', liga: '', equipoPropio: '',
+    categoria: '', label: '',
+    catElegida: '',       // editando: la categoría existente, o '' para una nueva
+    fuente: 'existente',  // 'mantener' | 'existente' | 'nuevo'
+    libroDe: '',          // '<club>/<categoria>' de un libro ya cargado
+    sheet: '',            // lo que se pegó: el link entero o el id de un libro nuevo
+    /* Un id que el admin escribió a mano deja de completarse solo: pisarle
+       lo que tipeó por seguir al nombre sería peor que no ayudarlo. */
+    tocado: { club: false, categoria: false },
+  };
+
+  /* La lectura de equipos del libro elegido. Se OLVIDA al cambiar de libro:
+     los equipos de otro libro no sirven para elegir el propio. `pedido` es
+     la ficha de la lectura en vuelo, para que una respuesta vieja no pise
+     a la del libro que el admin eligió después. */
+  const libro = { estado: null, equipos: null, mensaje: '', cuenta: null,
+                  pedido: null, propuesto: null };
 
   /* El resultado del último guardado. Se muestra en la pantalla y no en un
      `alert()`: el motivo de rechazo del servidor es un texto que dice qué
@@ -73,30 +90,46 @@ const SGADD_HUB = (function () {
    */
   function comandoAlta(d) {
     const v = d || {};
-    if (!v.club || !v.categoria || !v.sheet) return null;
+    const sheet = idDeLibro(v.sheet);
+    if (!v.club || !v.categoria || !sheet) return null;
     const q = (x) => '"' + String(x).replace(/"/g, '\\"') + '"';
     let c = 'node server/bin/catalogo.js alta'
       + ' --club ' + q(v.club)
       + ' --categoria ' + q(v.categoria)
-      + ' --sheet ' + q(v.sheet);
+      + ' --sheet ' + q(sheet);
     if (v.nombre) c += ' --nombre ' + q(v.nombre);
     if (v.label) c += ' --label ' + q(v.label);
+    if (v.liga) c += ' --liga ' + q(v.liga);
+    if (v.equipoPropio) c += ' --equipo ' + q(v.equipoPropio);
     return c;
   }
 
   /**
-   * Qué le falta al alta para poder ejecutarse.
+   * Qué le falta al alta para poder guardarse.
    *
    * Se dice ANTES de apretar y en castellano, no con un campo en rojo
    * después: el que da de alta un cliente lo hace una vez cada mucho y no
    * se acuerda de cuáles eran obligatorios.
+   *
+   * El equipo propio es obligatorio SOLO al crear: SIN ÉL EL CLIENTE NO VE
+   * NINGÚN EQUIPO, y el modo de fallar es el peor —la grilla sale vacía y
+   * parece que el panel está roto (punto 19)—.
    */
   function faltantesAlta(d) {
     const v = d || {};
     const f = [];
+    if (v.modo === 'nuevo' && !v.nombre) f.push('el nombre del club');
     if (!v.club) f.push('el id del club');
+    if (!v.label && !v.catElegida && v.modo) f.push('el nombre de la categoría');
     if (!v.categoria) f.push('el id de la categoría');
-    if (!v.sheet) f.push('el sheetId del libro');
+    if (v.fuente === 'mantener') {
+      if (!v.catElegida) f.push('el libro');
+    } else if (v.fuente === 'existente') {
+      if (!v.libroDe) f.push('el libro (elegí uno de la lista)');
+    } else if (!idDeLibro(v.sheet)) {
+      f.push('el libro (el link o el sheetId)');
+    }
+    if (v.modo === 'nuevo' && !v.equipoPropio) f.push('el equipo propio');
     return f;
   }
 
@@ -109,6 +142,89 @@ const SGADD_HUB = (function () {
    * que se valida al escribir en vez de descubrirlo al desplegar.
    */
   function idValido(v) { return /^[a-z0-9][a-z0-9-]*$/.test(String(v || '')); }
+
+  /** De un texto libre a un id: «Sud América La Plata» → «sud-america-la-plata». */
+  function slug(t) {
+    return String(t == null ? '' : t).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  }
+
+  /**
+   * El id de categoría que se propone: el del club + la etiqueta SIN EL
+   * AÑO. «Primera 2026» en `sud-america` da `sud-america-primera`, la
+   * misma convención de las que ya existen (`deportivo-primera`,
+   * `reconquista-u21`). El año se saca porque la categoría sobrevive a la
+   * temporada y su id no se puede cambiar: es la clave de los estados y
+   * de los links ya compartidos (punto 6).
+   */
+  function idCategoriaSugerido(club, label) {
+    const resto = slug(String(label || '').replace(/\b(19|20)\d{2}\b/g, ''));
+    return (club && resto) ? club + '-' + resto : '';
+  }
+
+  /**
+   * El id de un libro, venga como id o como LINK ENTERO.
+   *
+   * El servidor exige el id pelado y hace bien (hay un test que lo fija):
+   * así un pedido que no pasó por esta pantalla no puede colar cualquier
+   * texto. Pero pegar el link es el gesto natural, así que la pantalla lo
+   * acepta y saca el id ella misma.
+   */
+  function idDeLibro(t) {
+    const x = String(t == null ? '' : t).trim();
+    const m = x.match(/\/d\/([A-Za-z0-9_-]{20,})/);
+    return m ? m[1] : x;
+  }
+
+  /* Las palabras que no distinguen a un club de otro. «Plata» y «LP» son
+     la ciudad: en una liga de La Plata están en medio libro. */
+  const VACIAS = ['club', 'de', 'del', 'la', 'las', 'el', 'los', 'y',
+    'atletico', 'social', 'plata', 'lp'];
+  function palabras(t) {
+    return slug(t).split('-').filter(w => w.length > 1 && VACIAS.indexOf(w) === -1);
+  }
+
+  /**
+   * Qué equipo del libro es, probablemente, el del club.
+   *
+   * Por palabras en común, sobre la UNIÓN y no sobre el total del nombre
+   * (Jaccard): «Deportivo La Plata» comparte «deportivo» con DEPORTIVO LA
+   * PLATA y con DEPORTIVO SAN VICENTE, y lo que separa a los dos es que el
+   * segundo trae dos palabras que el club no tiene.
+   *
+   * SOLO PROPONE CON UN GANADOR CLARO. Con empate no propone: elegir por el
+   * admin entre dos candidatos parejos es exactamente el error silencioso
+   * que la lista viene a evitar. Y lo que propone queda a la vista,
+   * elegido en la lista, antes de guardar.
+   */
+  function sugerirEquipo(nombre, equipos) {
+    const a = palabras(nombre);
+    if (!a.length) return null;
+    let mejor = null, puntaje = 0, empate = false;
+    (equipos || []).forEach((e) => {
+      const b = palabras(e.clave);
+      const comunes = b.filter(w => a.indexOf(w) !== -1).length;
+      const union = new Set(a.concat(b)).size;
+      const j = union ? comunes / union : 0;
+      if (j > puntaje) { mejor = e; puntaje = j; empate = false; }
+      else if (j > 0 && j === puntaje) empate = true;
+    });
+    return (mejor && puntaje >= 0.5 && !empate) ? mejor : null;
+  }
+
+  /**
+   * Los libros que ya están cargados, para reusarlos. Uno por CATEGORÍA y
+   * no por libro: el navegador no ve los ids (punto 29), así que no puede
+   * saber que dos categorías comparten el mismo — y no hace falta, elegir
+   * cualquiera de las dos da el mismo libro.
+   */
+  function librosDisponibles(cs) {
+    const out = [];
+    (cs || []).forEach(c => (c.categorias || []).forEach((k) => {
+      if (k.activo) out.push({ valor: c.id + '/' + k.slug, texto: (c.nombre || c.id) + ' · ' + (k.label || k.slug) });
+    }));
+    return out.sort((x, y) => x.texto.localeCompare(y.texto, 'es'));
+  }
 
   const ESTADOS = ['activo', 'pausado', 'inactivo'];
   const PLANES = ['BRONCE', 'PLATA', 'ORO'];
@@ -620,76 +736,267 @@ const SGADD_HUB = (function () {
     </div>`;
   }
 
-  function campo(id, etiqueta, valor, ayuda, invalido) {
+  /* =====================================================================
+     EL FORMULARIO DE ALTA
+
+     EL BUG QUE TENÍA: cada tecla llamaba a `refrescarAlta()`, que
+     reconstruía `#hubAlta` ENTERO — y los inputs viven adentro. El input
+     en el que se estaba escribiendo se destruía y se creaba otro igual,
+     sin el foco: se tipeaba una letra y la siguiente iba al vacío. El
+     comentario de al lado decía «tipear NO repinta», y era cierto para la
+     pestaña, no para el bloque donde estaban los campos.
+
+     AHORA HAY TRES ZONAS y cada una se repinta por su motivo:
+
+       #hubAlta         el formulario entero · solo con un SELECT o un
+                        RADIO (cambiar de cliente, de categoría, de libro),
+                        que no se están tipeando — y se devuelve el foco
+       #hubAltaEquipo   la lectura del libro y la elección del equipo
+       #hubAltaEstado   qué falta, los avisos y el botón · en cada tecla
+
+     Un input de texto NO SE REPINTA NUNCA. Lo que depende de él —el id que
+     se completa solo, el borde rojo— se escribe sobre el nodo que ya está.
+     Es la regla de `scoutMeta()` y del buscador del buzón (punto 13).
+     ===================================================================== */
+  const CLASE_INPUT = 'w-full bg-surface2 border rounded-md px-2 py-1.5 text-xs text-ink';
+  const CLASE_SELECT = 'w-full bg-surface2 border border-hairline rounded-md px-2 py-1.5 text-xs text-ink';
+  const ROTULO = 'block text-[10px] uppercase tracking-wider text-muted font-display mb-1';
+
+  function clubesCatalogo() {
+    return (typeof SGADD_CLIENTES !== 'undefined' && SGADD_CLIENTES.estado.clubes) || [];
+  }
+
+  /* El equipo se compara con la MISMA normalización que el gate (punto 19):
+     `ATENAS 'B' - MM` y `ATENAS B` son el mismo equipo. */
+  function claveEq(x) {
+    const t = String(x == null ? '' : x);
+    return (typeof SGADD !== 'undefined' && SGADD.claveEquipo)
+      ? SGADD.claveEquipo(t) : t.trim().toUpperCase();
+  }
+
+  function campo(id, etiqueta, valor, ayuda, opciones) {
+    const o = opciones || {};
     return `<label class="block">
-      <span class="block text-[10px] uppercase tracking-wider text-muted font-display mb-1">${esc(etiqueta)}</span>
-      <input type="text" value="${esc(valor)}"
-        oninput="SGADD_HUB.campoAlta('${id}', this.value)"
-        class="w-full bg-surface2 border ${invalido ? 'border-red-500/70' : 'border-hairline'} rounded-md px-2 py-1.5 text-xs text-ink font-mono">
-      <span class="block text-[10px] text-muted mt-1">${ayuda}</span>
+      <span class="${ROTULO}">${esc(etiqueta)}</span>
+      <input type="text" id="alta-${id}" value="${esc(valor)}"
+        ${o.placeholder ? `placeholder="${esc(o.placeholder)}"` : ''}
+        ${o.lista ? `list="${o.lista}"` : ''}
+        ${o.soloLectura ? 'readonly aria-readonly="true"'
+          : `oninput="SGADD_HUB.campoAlta('${id}', this.value)"`}
+        autocomplete="off" spellcheck="false"
+        class="${CLASE_INPUT} ${o.invalido ? 'border-red-500/70' : 'border-hairline'}${o.mono ? ' font-mono' : ''}${o.soloLectura ? ' text-muted' : ''}">
+      ${ayuda ? `<span class="block text-[10px] text-muted mt-1">${ayuda}</span>` : ''}
     </label>`;
   }
 
+  function radio(valor, texto) {
+    return `<label class="flex items-start gap-2 text-xs text-ink">
+      <input type="radio" name="altaFuente" value="${valor}" class="mt-0.5"
+        ${alta.fuente === valor ? 'checked' : ''}
+        onchange="SGADD_HUB.elegirFuente('${valor}')">
+      <span>${texto}</span>
+    </label>`;
+  }
+
+  /** ¿Hay un libro elegido que se pueda leer? */
+  function fuenteLista() {
+    if (alta.fuente === 'mantener') return !!(alta.modo !== 'nuevo' && alta.catElegida);
+    if (alta.fuente === 'existente') return !!alta.libroDe;
+    return /^[A-Za-z0-9_-]{20,}$/.test(idDeLibro(alta.sheet));
+  }
+
+  /** Qué libro se manda: el id nunca sale del servidor salvo que sea uno nuevo. */
+  function intencionLibro() {
+    if (alta.fuente === 'mantener') return { libroDe: alta.modo + '/' + alta.catElegida };
+    if (alta.fuente === 'existente') return { libroDe: alta.libroDe };
+    return { sheetId: idDeLibro(alta.sheet) };
+  }
+
   function bloqueAlta() {
-    const cmd = comandoAlta(alta);
-    const faltan = faltantesAlta(alta);
-    const malClub = !!alta.club && !idValido(alta.club);
-    const malCat = !!alta.categoria && !idValido(alta.categoria);
-    const puede = cmd && !malClub && !malCat;
+    const cs = clubesCatalogo();
+    const editando = alta.modo !== 'nuevo';
+    const clubEd = editando ? cs.find(c => c.id === alta.modo) : null;
+    const libros = librosDisponibles(cs);
+    const ligas = Array.from(new Set(cs.map(c => c.liga).filter(Boolean)
+      .concat(['la-plata', 'liga-argentina']))).sort();
+    const catFija = editando && !!alta.catElegida;
 
     return `<div class="card rounded-xl p-4 sm:p-5 border border-hairline">
-      <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Alta de cliente o categoría</h3>
+      <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Alta o edición de un cliente</h3>
       <p class="text-xs text-muted mb-4">
-        Da de alta un cliente nuevo o agrega una categoría a uno que ya está. Guardar
-        <strong class="text-ink">publica para todos los usuarios de ese club</strong>.
-        Un <code>sheetId</code> que la cuenta de servicio no pueda leer da 502 al abrir
-        la categoría: probalo antes con <code>probar-google.js --sheets</code>.
+        Tres pasos: el club, la categoría y el libro de donde salen sus datos. Guardar
+        <strong class="text-ink">publica para todos los usuarios de ese club</strong>, y su panel
+        queda andando en la próxima carga — sin tocar el repositorio.
       </p>
-      <div class="grid sm:grid-cols-2 gap-3">
-        ${campo('club', 'id del club', alta.club,
-          'minúsculas y guiones. Es <code>?club=&lt;id&gt;</code> y <code>clubes/&lt;id&gt;.json</code>.', malClub)}
-        ${campo('nombre', 'nombre visible', alta.nombre,
-          'el que ve el cuerpo técnico. Opcional si el club ya existe.')}
-        ${campo('categoria', 'id de la categoría', alta.categoria,
-          'el slug del catálogo, ej. <code>reconquista-primera</code>.', malCat)}
-        ${campo('label', 'etiqueta de la categoría', alta.label,
-          'lo que dice el selector, ej. <code>Primera · Vuelta 2026</code>.')}
-      </div>
-      <div class="grid sm:grid-cols-2 gap-3 mt-3">
-        ${campo('liga', 'liga', alta.liga,
-          'la carpeta de escudos: <code>logos/&lt;liga&gt;/</code>. Solo para un club nuevo.')}
-        ${campo('equipoPropio', 'equipo propio', alta.equipoPropio,
-          'como lo escribe la planilla. <strong class="text-ink">La letra importa</strong>: ' +
-          '<code>RECONQUISTA</code> no reconoce a <code>RECONQUISTA A</code>.')}
-      </div>
-      <div class="mt-3">
-        ${campo('sheet', 'sheetId del libro', alta.sheet,
-          'el id de Google Sheets. <strong class="text-ink">Probalo antes</strong> con ' +
-          '<code>probar-google.js --sheets</code>: un libro no compartido da 502 en producción.')}
-      </div>
 
-      ${malClub || malCat ? `<p class="text-xs mt-3 zona-texto zona-peligro">
-        Un id es una CLAVE, no un título: va en minúsculas, sin espacios ni acentos.
-        Viaja en la URL y nombra el archivo de marca.</p>` : ''}
+      <label class="block mb-4">
+        <span class="${ROTULO}">¿Qué querés hacer?</span>
+        <select id="alta-modo" onchange="SGADD_HUB.elegirModo(this.value)" class="${CLASE_SELECT}">
+          <option value="nuevo"${editando ? '' : ' selected'}>Dar de alta un cliente nuevo</option>
+          ${cs.slice().sort((a, b) => String(a.nombre || a.id).localeCompare(String(b.nombre || b.id), 'es'))
+            .map(c => `<option value="${esc(c.id)}"${alta.modo === c.id ? ' selected' : ''}>Editar · ${esc(c.nombre || c.id)}</option>`).join('')}
+        </select>
+      </label>
 
-      ${puede ? `
-        <div class="mt-4 flex items-center gap-3 flex-wrap">
-          <button onclick="SGADD_HUB.guardar()"
-            ${guardado.estado === 'yendo' ? 'disabled' : ''}
-            class="px-3 py-1.5 rounded-md text-xs font-display uppercase tracking-wider
-                   bg-accent text-base hover:opacity-90 disabled:opacity-50">
-            ${guardado.estado === 'yendo' ? 'Guardando…' : 'Guardar en el catálogo'}</button>
-          <span class="text-[11px] text-muted">Se publica para todos los usuarios de ese club.</span>
+      <fieldset class="border-t border-hairline pt-3">
+        <legend class="font-display uppercase tracking-wide text-xs text-ink pr-2">1 · El club</legend>
+        <div class="grid sm:grid-cols-2 gap-3 mt-2">
+          ${campo('nombre', 'Nombre del club', alta.nombre,
+            'Como lo ve el cuerpo técnico en el encabezado del panel.',
+            { placeholder: 'Sud América La Plata' })}
+          ${campo('club', 'ID del club', alta.club,
+            editando ? 'No se cambia: lo usan los links y los accesos ya entregados.'
+              : 'Se completa solo a partir del nombre. Va en el link del cliente '
+                + '(<code>?club=…</code>) y después no se puede cambiar.',
+            { placeholder: 'sud-america', mono: true, soloLectura: editando,
+              invalido: !!alta.club && !idValido(alta.club) })}
+          ${campo('liga', 'Liga', alta.liga,
+            'La carpeta de escudos. Los clubes de La Plata van en <code>la-plata</code>.',
+            { placeholder: 'la-plata', lista: 'altaLigas', mono: true })}
         </div>
-        <details class="mt-3">
-          <summary class="text-[11px] text-muted cursor-pointer">o hacerlo por CLI</summary>
-          <pre class="bg-surface2 border border-hairline rounded-md p-3 text-[11px] text-ink overflow-x-auto mt-2"><code>${esc(cmd)}</code></pre>
-        </details>`
-        : `<p class="text-xs text-muted mt-4">Falta ${esc(faltan.join(', '))}.</p>`}
+        <datalist id="altaLigas">${ligas.map(l => `<option value="${esc(l)}"></option>`).join('')}</datalist>
+      </fieldset>
 
-      ${guardado.estado === 'ok' ? `<p class="text-xs mt-3 zona-texto zona-exito">${esc(guardado.mensaje)}</p>` : ''}
-      ${guardado.estado === 'error' ? `<p class="text-xs mt-3 zona-texto zona-peligro">${esc(guardado.mensaje)}</p>` : ''}
+      <fieldset class="border-t border-hairline pt-3 mt-4">
+        <legend class="font-display uppercase tracking-wide text-xs text-ink pr-2">2 · La categoría</legend>
+        ${editando ? `<label class="block mt-2">
+          <span class="${ROTULO}">Categoría a editar</span>
+          <select id="alta-cat" onchange="SGADD_HUB.elegirCategoria(this.value)" class="${CLASE_SELECT}">
+            ${((clubEd && clubEd.categorias) || []).map(k => `<option value="${esc(k.slug)}"${alta.catElegida === k.slug ? ' selected' : ''}>${esc(k.label || k.slug)}</option>`).join('')}
+            <option value=""${alta.catElegida ? '' : ' selected'}>＋ Agregar una categoría nueva</option>
+          </select>
+        </label>` : ''}
+        <div class="grid sm:grid-cols-2 gap-3 mt-2">
+          ${campo('label', 'Nombre de la categoría', alta.label,
+            'Lo que dice el selector de categoría del panel.',
+            { placeholder: 'Primera 2026' })}
+          ${campo('categoria', 'ID de la categoría', alta.categoria,
+            catFija ? 'No se cambia: es la clave de la categoría.'
+              : 'Se completa solo. Va sin el año: la categoría sigue la temporada que viene.',
+            { placeholder: 'sud-america-primera', mono: true, soloLectura: catFija,
+              invalido: !!alta.categoria && !idValido(alta.categoria) })}
+        </div>
+      </fieldset>
+
+      <fieldset class="border-t border-hairline pt-3 mt-4">
+        <legend class="font-display uppercase tracking-wide text-xs text-ink pr-2">3 · El libro y el equipo</legend>
+        <div class="grid gap-2 mt-2">
+          ${catFija ? radio('mantener', 'Mantener el libro que ya tiene') : ''}
+          ${radio('existente', 'Usar un libro ya cargado <span class="text-muted">· si juega en el mismo torneo que otro cliente</span>')}
+          ${alta.fuente === 'existente' ? `<select id="alta-libro" onchange="SGADD_HUB.elegirLibro(this.value)"
+              class="${CLASE_SELECT}" aria-label="Libro ya cargado">
+              <option value="">Elegí el torneo…</option>
+              ${libros.map(l => `<option value="${esc(l.valor)}"${alta.libroDe === l.valor ? ' selected' : ''}>${esc(l.texto)}</option>`).join('')}
+            </select>` : ''}
+          ${radio('nuevo', 'Pegar el link de un libro nuevo')}
+          ${alta.fuente === 'nuevo' ? campo('sheet', 'Link o id del libro', alta.sheet,
+            'Sirve el link entero de Google Sheets: el id se saca solo.',
+            { placeholder: 'https://docs.google.com/spreadsheets/d/…', mono: true }) : ''}
+        </div>
+        <div id="hubAltaEquipo" class="mt-3">${zonaEquipo()}</div>
+      </fieldset>
+
+      <div id="hubAltaEstado" class="mt-4">${estadoAlta()}</div>
     </div>`;
+  }
+
+  /** La lectura del libro y la elección del equipo propio. */
+  function zonaEquipo() {
+    const puede = fuenteLista();
+    const leyendo = libro.estado === 'leyendo';
+    const boton = `<button type="button" onclick="SGADD_HUB.leerEquipos()" ${!puede || leyendo ? 'disabled' : ''}
+        class="px-3 py-1.5 rounded-md text-xs font-display uppercase tracking-wider border border-hairline
+               text-ink hover:opacity-90 disabled:opacity-50">
+        ${leyendo ? 'Leyendo el libro…' : 'Leer los equipos del libro'}</button>`;
+    const pista = puede ? '' : '<span class="text-[10px] text-muted">Primero elegí o pegá el libro.</span>';
+
+    let aviso = '';
+    if (libro.estado === 'error') {
+      aviso = `<p class="text-[11px] mt-2 zona-texto zona-peligro" role="status">${esc(libro.mensaje)}</p>`;
+    } else if (libro.estado === 'ok') {
+      aviso = `<p class="text-[11px] mt-2 zona-texto zona-exito" role="status">✓ El libro se lee bien: ${libro.equipos.length} equipos.</p>`;
+    }
+    if (libro.propuesto) {
+      aviso += `<p class="text-[11px] mt-1 text-muted">Se propuso <strong class="text-ink">${esc(libro.propuesto.despues)}</strong>`
+        + (libro.propuesto.antes ? ` porque «${esc(libro.propuesto.antes)}» no figura en el libro` : ' por el nombre del club')
+        + '. Revisalo antes de guardar.</p>';
+    }
+
+    const actual = claveEq(alta.equipoPropio);
+    const eq = (libro.estado === 'ok' && libro.equipos)
+      ? `<label class="block mt-3">
+          <span class="${ROTULO}">Equipo propio</span>
+          <select id="alta-equipoPropio" onchange="SGADD_HUB.elegirEquipo(this.value)" class="${CLASE_SELECT} font-mono">
+            <option value="">Elegí cuál es el equipo del cliente…</option>
+            ${libro.equipos.map(e => `<option value="${esc(e.clave)}"${actual === e.clave ? ' selected' : ''}>${esc(e.clave)}</option>`).join('')}
+          </select>
+          <span class="block text-[10px] text-muted mt-1">Tal como lo escribe la planilla. Es el equipo que el cliente ve completo.</span>
+        </label>`
+      : `<div class="mt-3">${campo('equipoPropio', 'Equipo propio', alta.equipoPropio,
+          'Tal como lo escribe la planilla, sin el « - MM». <strong class="text-ink">Mejor elegilo con el botón</strong>: '
+          + 'si no coincide letra por letra, el cliente no ve ninguna ficha.',
+          { placeholder: 'SUD AMERICA LP', mono: true })}</div>`;
+
+    return `<div class="flex items-center gap-3 flex-wrap">${boton}${pista}</div>${aviso}${eq}`;
+  }
+
+  /** Qué falta, los avisos y el botón. Lo único que se repinta al tipear. */
+  function estadoAlta() {
+    const cs = clubesCatalogo();
+    const faltan = faltantesAlta(alta);
+    const avisos = [];
+    if (alta.club && !idValido(alta.club)) {
+      avisos.push(['peligro', 'El ID del club es una clave: minúsculas, sin espacios ni acentos. Viaja en el link del cliente.']);
+    }
+    if (alta.categoria && !idValido(alta.categoria)) {
+      avisos.push(['peligro', 'El ID de la categoría es una clave: minúsculas, sin espacios ni acentos.']);
+    }
+    const yaExiste = alta.modo === 'nuevo' && alta.club && cs.find(c => c.id === alta.club);
+    if (yaExiste) {
+      avisos.push(['aviso', 'Ese ID ya es de ' + (yaExiste.nombre || yaExiste.id) + ': guardar lo EDITA, no crea otro. '
+        + 'Si querés editarlo, elegilo arriba en «¿Qué querés hacer?».']);
+    }
+    if (libro.estado === 'ok' && alta.equipoPropio
+        && !libro.equipos.some(e => e.clave === claveEq(alta.equipoPropio))) {
+      avisos.push(['peligro', '«' + alta.equipoPropio + '» no figura en el libro: el cliente no vería ninguna ficha. Elegilo de la lista.']);
+    }
+    if (alta.modo === 'nuevo' && alta.equipoPropio && libro.estado !== 'ok') {
+      avisos.push(['aviso', 'El equipo no se comprobó contra el libro. Tocá «Leer los equipos del libro» para no errarle a una letra.']);
+    }
+    const bloquea = avisos.some(a => a[0] === 'peligro');
+    const puede = !faltan.length && !bloquea && guardado.estado !== 'yendo';
+    const cmd = alta.fuente === 'nuevo' ? comandoAlta(alta) : null;
+
+    let resultado = '';
+    if (guardado.estado === 'ok') {
+      const url = guardado.club ? urlCliente(guardado.club) : '';
+      resultado = `<p class="text-xs mt-3 zona-texto zona-exito" role="status">${esc(guardado.mensaje)}
+        ${url ? ` <a href="${esc(url)}" class="underline">Abrir su panel →</a>` : ''}</p>`;
+    } else if (guardado.estado === 'error') {
+      resultado = `<p class="text-xs mt-3 zona-texto zona-peligro" role="status">${esc(guardado.mensaje)}</p>`;
+    }
+
+    return `${avisos.map(a => `<p class="text-[11px] mb-2 zona-texto zona-${a[0]}">${esc(a[1])}</p>`).join('')}
+      <div class="flex items-center gap-3 flex-wrap">
+        <button type="button" onclick="SGADD_HUB.guardar()" ${puede ? '' : 'disabled'}
+          class="px-3 py-1.5 rounded-md text-xs font-display uppercase tracking-wider
+                 bg-accent text-base hover:opacity-90 disabled:opacity-50">
+          ${guardado.estado === 'yendo' ? 'Guardando…' : (alta.modo === 'nuevo' ? 'Dar de alta' : 'Guardar cambios')}</button>
+        <span class="text-[11px] text-muted">${faltan.length ? 'Falta ' + esc(faltan.join(', ')) + '.'
+          : 'Se publica para todos los usuarios de ese club.'}</span>
+      </div>
+      ${cmd ? `<details class="mt-3">
+        <summary class="text-[11px] text-muted cursor-pointer">o hacerlo por CLI</summary>
+        <pre class="bg-surface2 border border-hairline rounded-md p-3 text-[11px] text-ink overflow-x-auto mt-2"><code>${esc(cmd)}</code></pre>
+      </details>` : ''}
+      ${resultado}`;
+  }
+
+  function urlCliente(id) {
+    try {
+      if (typeof SGADD_CLIENTES !== 'undefined' && SGADD_CLIENTES.urlDeClub) return SGADD_CLIENTES.urlDeClub(id);
+    } catch (e) { /* cae al link simple */ }
+    return '?club=' + encodeURIComponent(id);
   }
 
   /** La pestaña entera. */
@@ -738,44 +1045,91 @@ const SGADD_HUB = (function () {
     `;
   }
 
-  /* Tipear NO repinta la pestaña: le sacaría el foco al input y haría
-     imposible escribir un sheetId de 44 caracteres. Se refresca SOLO el
-     bloque del alta, que es lo único que depende del valor. Misma regla que
-     `scoutMeta()` y el buscador del buzón. */
+  /** La intención que se manda. Nunca un catálogo (punto 30). */
+  function intencionAlta() {
+    return Object.assign({
+      accion: 'alta',
+      club: alta.club, nombre: alta.nombre, liga: alta.liga,
+      /* Se guarda la CLAVE, que es contra lo que compara el gate: un
+         «Sud America LP - MM» pegado a mano entra igual que elegido. */
+      equipoPropio: alta.equipoPropio ? claveEq(alta.equipoPropio) : '',
+      categoria: alta.categoria, label: alta.label,
+    }, alta.fuente === 'mantener' ? {} : intencionLibro());
+  }
+
+  /** Qué cambia, en castellano, para el modal de confirmación. */
+  function cambiosAlta(i) {
+    const c = clubesCatalogo().find(x => x.id === i.club) || {};
+    const k = (c.categorias || []).find(x => x.slug === i.categoria) || null;
+    const libroDe = i.libroDe && librosDisponibles(clubesCatalogo()).find(l => l.valor === i.libroDe);
+    const libroNuevo = i.libroDe ? 'el de ' + (libroDe ? libroDe.texto : i.libroDe)
+      : i.sheetId ? 'uno nuevo (' + i.sheetId.slice(0, 6) + '…)' : null;
+    const filas = [
+      ['Club', c.nombre, i.nombre],
+      ['Liga', c.liga, i.liga],
+      ['Equipo propio', c.equipoPropio, i.equipoPropio],
+      ['Categoría', k ? (k.label || k.slug) + ' (' + k.slug + ')' : '', i.label + ' (' + i.categoria + ')'],
+    ];
+    if (libroNuevo) filas.push(['Libro', k ? (k.activo ? 'el que tiene' : 'sin libro') : '', libroNuevo]);
+    return filas
+      .filter(f => f[2] && String(f[1] || '') !== String(f[2]))
+      .map(f => ({ campo: f[0], label: f[0], antes: f[1] || '—', despues: f[2] }));
+  }
+
   /**
-   * Guarda de verdad. Manda una INTENCIÓN, no un catálogo.
-   *
-   * El motivo de rechazo del servidor se muestra TAL CUAL: están escritos
-   * para que el admin sepa qué corregir («pegá el id, no la URL entera»),
-   * y traducirlos acá los degradaría a un «error al guardar» genérico.
+   * Guarda. NADA DEL PANEL MASTER SE APLICA EN SILENCIO (punto 30): el
+   * modal enumera lo que se crea o lo que cambia, y la petición sale
+   * recién al confirmar. Sin cambios, el botón del modal se apaga solo.
    */
   function guardar() {
-    if (guardado.estado === 'yendo') return;
-    guardado.estado = 'yendo'; guardado.mensaje = '';
-    refrescarAlta();
+    if (guardado.estado === 'yendo' || faltantesAlta(alta).length) return;
+    const intencion = intencionAlta();
+    const enviar = () => enviarAlta(intencion);
+    if (typeof SGADD_CONFIRMAR === 'undefined') return enviar();
+    const nuevo = alta.modo === 'nuevo';
+    SGADD_CONFIRMAR.abrir({
+      titulo: (nuevo ? 'Dar de alta · ' : 'Editar · ') + (alta.nombre || alta.club),
+      aviso: 'Se publica ya: el panel de ' + (alta.nombre || alta.club)
+        + ' toma estos datos en su próxima carga.',
+      confirmar: nuevo ? 'Dar de alta' : 'Guardar cambios',
+      cambios: cambiosAlta(intencion),
+      alConfirmar: enviar,
+    });
+  }
 
-    SGADD_DATA.guardarCatalogo({
-      accion: 'alta',
-      club: alta.club, nombre: alta.nombre,
-      categoria: alta.categoria, label: alta.label,
-      sheetId: alta.sheet,
-      liga: alta.liga, equipoPropio: alta.equipoPropio,
-    }).then((r) => {
+  /**
+   * La petición de verdad. El motivo de rechazo del servidor se muestra
+   * TAL CUAL: están escritos para que el admin sepa qué corregir («pegá el
+   * id, no la URL entera»), y traducirlos acá los degradaría a un «error
+   * al guardar» genérico.
+   */
+  function enviarAlta(intencion) {
+    guardado.estado = 'yendo'; guardado.mensaje = '';
+    refrescarEstado();
+
+    SGADD_DATA.guardarCatalogo(intencion).then((r) => {
       guardado.estado = 'ok';
-      guardado.mensaje = (r.creoClub ? 'Cliente creado. ' : 'Categoría guardada. ')
-        + (r.aviso || '');
+      guardado.club = intencion.club;
+      guardado.mensaje = (r.creoClub ? 'Cliente dado de alta. ' : 'Cambios guardados. ') + (r.aviso || '');
       /* La lista se repinta con lo que devolvió el SERVIDOR, no con lo que
          este formulario creyó mandar: si un guard recortó algo, se ve. */
       if (typeof SGADD_CLIENTES !== 'undefined' && r.clubes) {
         SGADD_CLIENTES.estado.clubes = r.clubes;
         SGADD_CLIENTES.pintar();
       }
+      /* Y EL FORMULARIO PASA A EDITAR lo que se acaba de guardar: un
+         segundo «Guardar» corrige esa categoría en vez de intentar crearla
+         otra vez. */
+      alta.modo = intencion.club;
+      alta.catElegida = intencion.categoria;
+      alta.tocado.club = true; alta.tocado.categoria = true;
+      alta.fuente = 'mantener';
       const n = document.getElementById('hubClientes');
-      if (n) n.innerHTML = html();
+      if (n) conFoco(() => { n.innerHTML = html(); });
     }).catch((e) => {
       guardado.estado = 'error';
       guardado.mensaje = e.message || 'No se pudo guardar.';
-      refrescarAlta();
+      refrescarEstado();
     });
   }
 
@@ -849,21 +1203,185 @@ const SGADD_HUB = (function () {
     });
   }
 
+  /* La lista se repinta cuando vuelve una acción de OTRA tarjeta: el admin
+     puede estar escribiendo en el alta mientras tanto. */
+  const conFoco = (fn) => (typeof SGADD_UI !== 'undefined' && SGADD_UI.conservarFoco)
+    ? SGADD_UI.conservarFoco(fn) : fn();
+
   function repintarLista() {
     const n = document.getElementById('hubClientes');
-    if (n) n.innerHTML = html();
+    if (n) conFoco(() => { n.innerHTML = html(); });
   }
 
-  function refrescarAlta() {
-    const n = document.getElementById('hubAlta');
-    if (n) n.innerHTML = bloqueAlta();
+  /** El formulario entero. Solo desde un select o un radio, y con el foco de vuelta. */
+  function refrescarAlta(focoId) {
+    const n = (typeof document !== 'undefined') && document.getElementById('hubAlta');
+    if (!n) return;
+    n.innerHTML = bloqueAlta();
+    if (focoId) {
+      const f = focoId === 'radio'
+        ? document.querySelector('input[name="altaFuente"]:checked')
+        : document.getElementById(focoId);
+      if (f && f.focus) f.focus();
+    }
   }
 
+  function refrescarEstado() {
+    const n = (typeof document !== 'undefined') && document.getElementById('hubAltaEstado');
+    if (n) n.innerHTML = estadoAlta();
+  }
+
+  function refrescarEquipo() {
+    const n = (typeof document !== 'undefined') && document.getElementById('hubAltaEquipo');
+    if (n) n.innerHTML = zonaEquipo();
+  }
+
+  /* Escribe sobre el nodo que YA ESTÁ, en vez de repintarlo. */
+  function ponerValor(id, v) {
+    const n = (typeof document !== 'undefined') && document.getElementById(id);
+    if (n && n.value !== v) n.value = v;
+  }
+
+  function marcar(id, invalido) {
+    const n = (typeof document !== 'undefined') && document.getElementById(id);
+    if (!n || !n.classList) return;
+    n.classList.toggle('border-red-500/70', !!invalido);
+    n.classList.toggle('border-hairline', !invalido);
+  }
+
+  /**
+   * Tipear en un campo de texto. NO REPINTA NINGÚN INPUT: actualiza el
+   * borrador, completa los ids derivados sobre los nodos que ya están y
+   * refresca solo la zona de estado. Ver el comentario de `bloqueAlta`.
+   */
   function campoAlta(id, valor) {
-    if (!(id in alta)) return;
+    if (!(id in alta) || id === 'tocado') return;
     alta[id] = String(valor == null ? '' : valor);
+    if (id === 'club') alta.tocado.club = true;
+    if (id === 'categoria') alta.tocado.categoria = true;
+
+    if (id === 'nombre' && alta.modo === 'nuevo' && !alta.tocado.club) {
+      alta.club = slug(alta.nombre);
+      ponerValor('alta-club', alta.club);
+    }
+    if ((id === 'label' || id === 'nombre' || id === 'club') && !alta.catElegida && !alta.tocado.categoria) {
+      alta.categoria = idCategoriaSugerido(alta.club, alta.label);
+      ponerValor('alta-categoria', alta.categoria);
+    }
+    /* Otro libro: la lectura anterior ya no vale, y el botón de leer se
+       habilita o no según lo pegado. La zona del equipo NO contiene al
+       input del libro, así que repintarla no le saca el foco. */
+    if (id === 'sheet') {
+      libro.estado = null; libro.equipos = null; libro.mensaje = ''; libro.propuesto = null;
+      refrescarEquipo();
+    }
+    marcar('alta-club', !!alta.club && !idValido(alta.club));
+    marcar('alta-categoria', !!alta.categoria && !idValido(alta.categoria));
     guardado.estado = null;   // tocar un campo borra el resultado anterior
-    refrescarAlta();
+    refrescarEstado();
+  }
+
+  function olvidarLibro() {
+    libro.estado = null; libro.equipos = null; libro.mensaje = '';
+    libro.pedido = null; libro.propuesto = null;
+  }
+
+  function reiniciarAlta() {
+    Object.assign(alta, { modo: 'nuevo', club: '', nombre: '', liga: '', equipoPropio: '',
+      categoria: '', label: '', catElegida: '', fuente: 'existente', libroDe: '', sheet: '' });
+    alta.tocado = { club: false, categoria: false };
+    olvidarLibro();
+    guardado.estado = null; guardado.mensaje = ''; guardado.club = null;
+  }
+
+  function ponerCategoria(k) {
+    alta.catElegida = k.slug; alta.categoria = k.slug; alta.label = k.label || '';
+    alta.tocado.categoria = true;
+    /* Con libro, lo natural al editar es conservarlo. Sin libro —la que
+       "viene en camino"— hay que elegirle uno. */
+    alta.fuente = k.activo ? 'mantener' : 'existente';
+    alta.libroDe = '';
+    olvidarLibro();
+  }
+
+  /** ¿Nuevo o editar a quién? Precarga lo que el catálogo ya sabe. */
+  function elegirModo(v) {
+    reiniciarAlta();
+    const c = (v && v !== 'nuevo') ? clubesCatalogo().find(x => x.id === v) : null;
+    if (c) {
+      alta.modo = c.id; alta.club = c.id; alta.nombre = c.nombre || '';
+      alta.liga = c.liga || ''; alta.equipoPropio = c.equipoPropio || '';
+      alta.tocado.club = true;
+      const k = (c.categorias || [])[0];
+      if (k) ponerCategoria(k);
+    }
+    refrescarAlta('alta-modo');
+  }
+
+  function elegirCategoria(slugCat) {
+    const c = clubesCatalogo().find(x => x.id === alta.modo);
+    const k = c && (c.categorias || []).find(x => x.slug === slugCat);
+    if (k) {
+      ponerCategoria(k);
+    } else {
+      alta.catElegida = ''; alta.categoria = ''; alta.label = '';
+      alta.tocado.categoria = false; alta.fuente = 'existente'; alta.libroDe = '';
+      olvidarLibro();
+    }
+    guardado.estado = null;
+    refrescarAlta('alta-cat');
+  }
+
+  function elegirFuente(f) {
+    alta.fuente = f; olvidarLibro(); guardado.estado = null;
+    refrescarAlta('radio');
+  }
+
+  function elegirLibro(v) {
+    alta.libroDe = v; olvidarLibro(); guardado.estado = null;
+    refrescarAlta('alta-libro');
+  }
+
+  function elegirEquipo(v) {
+    alta.equipoPropio = v; libro.propuesto = null; guardado.estado = null;
+    refrescarEstado();
+  }
+
+  /**
+   * Lee los equipos del libro elegido. Reemplaza a `probar-google.js`: si
+   * el libro no está compartido, el motivo sale acá, al dar de alta.
+   */
+  function leerEquipos() {
+    if (!fuenteLista() || libro.estado === 'leyendo') return;
+    if (typeof SGADD_DATA === 'undefined' || !SGADD_DATA.equiposDelLibro) return;
+    const pedido = intencionLibro();
+    const ficha = JSON.stringify(pedido);
+    libro.estado = 'leyendo'; libro.mensaje = ''; libro.pedido = ficha; libro.propuesto = null;
+    refrescarEquipo();
+
+    SGADD_DATA.equiposDelLibro(pedido).then((r) => {
+      if (libro.pedido !== ficha) return;   // eligieron otro libro mientras leía
+      libro.estado = 'ok';
+      libro.equipos = r.equipos || [];
+      libro.cuenta = r.cuentaServicio || null;
+      /* Si el equipo cargado no está en el libro —o no hay ninguno— se
+         PROPONE el que más se parece al nombre del club. Queda elegido en
+         la lista y dicho en pantalla: el admin lo ve antes de guardar. */
+      const actual = claveEq(alta.equipoPropio);
+      if (!actual || !libro.equipos.some(e => e.clave === actual)) {
+        const sug = sugerirEquipo(alta.nombre || alta.club, libro.equipos);
+        if (sug) {
+          libro.propuesto = { antes: alta.equipoPropio || '', despues: sug.clave };
+          alta.equipoPropio = sug.clave;
+        }
+      }
+      refrescarEquipo(); refrescarEstado();
+    }).catch((e) => {
+      if (libro.pedido !== ficha) return;
+      libro.estado = 'error';
+      libro.mensaje = e.message || 'No se pudo leer el libro.';
+      refrescarEquipo(); refrescarEstado();
+    });
   }
 
   return {
@@ -873,6 +1391,11 @@ const SGADD_HUB = (function () {
     estadoEfectivo, diasPara, planCanonico, ciclo, ESTADOS, PLANES,
     QUE_INCLUYE, PARTIDOS_POR_CICLO,
     html, bloqueAlta, campoAlta, guardar, accionClub, alta, guardado, pendiente,
+    /* el alta */
+    slug, idCategoriaSugerido, idDeLibro, sugerirEquipo, librosDisponibles,
+    intencionAlta, cambiosAlta, estadoAlta, zonaEquipo, libro,
+    elegirModo, elegirCategoria, elegirFuente, elegirLibro, elegirEquipo, leerEquipos,
+    reiniciarAlta,
     /* accesos */
     verAccesos, campoAcceso, accionAcceso, aplicarAcceso, aplicarClub,
     badgeServicio,

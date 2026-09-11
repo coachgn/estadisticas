@@ -1,5 +1,6 @@
 {
-  "id": "sud-america",
+  "id": "sudamerica",
+  "//id": "El MISMO id que el catalogo del servidor (KV) y que el nombre del archivo. Decia sud-america: el panel se abre con ?club=sudamerica y el servidor conoce al club como sudamerica.",
   "nombre": "Sud América La Plata",
   "nombreCorto": "SUD AMERICA",
   "bajada": "Básquet · Scouting",
@@ -9,8 +10,8 @@
   "acento": "#0d5e27",
   "acentoOscuro": "#083e1a",
   "liga": "la-plata",
-  "//patronEquipoPropio": "Matcheo limpio para 'SUD AMERICA' en planillas de la APB / Torneo Local.",
-  "patronEquipoPropio": "SUD AMERICA",
+  "//patronEquipoPropio": "El libro escribe SUD AMERICA LP - MM (medido en el libro del torneo, 2026-09-11). El patron corto SUD AMERICA matcheaba igual, pero el equipo propio del catalogo decia SUDAMERICA y con eso el cliente no veia ninguna ficha.",
+  "patronEquipoPropio": "SUD AMERICA LP",
   "//sufijosEquipo": "Misma convención que el resto de La Plata: el sufijo de categoría (- MM, - U21M) se descarta porque no distingue clubes.",
   "sufijosEquipo": [
     "\\s*-\\s*(MM|MF|U\\d{1,2}\\s*[MF]?)\\s*$"
@@ -28,7 +29,7 @@
     "categorias": {
       "primera-2026": {
         "label": "Primera 2026",
-        "planilla": "sud-america-primera-2026",
+        "planilla": "sudamerica-primera-2026",
         "tramos": [
           {
             "id": "ida",
@@ -95,12 +96,13 @@
       "*": "regular-12"
     }
   },
+  "//planillas": "El slug TIENE que ser el del catalogo del servidor (sudamerica-primera). Con sud-america-primera el servidor contestaba No existe esa categoria en cada hoja. Desde 2026-09-11 las categorias salen del catalogo cuando el servidor lo tiene, asi que un slug viejo ya no rompe la carga — pero tiene que coincidir para que valgan el label y el nivel de aca.",
   "planillas": [
     {
-      "id": "sud-america-primera-2026",
+      "id": "sudamerica-primera-2026",
       "label": "Primera 2026",
       "nivel": "LOCAL_MAYORES",
-      "slug": "sud-america-primera",
+      "slug": "sudamerica-primera",
       "categoria": "PRIMERA",
       "faseTorneo": null,
       "rama": "masculina",

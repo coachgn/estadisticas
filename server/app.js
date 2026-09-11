@@ -80,6 +80,11 @@ function crearApp(opciones) {
      dentro del mismo handler para que se vea de un vistazo cuál es la que
      puede romper a todos los clubes. */
   app.post('/api/v1/catalogo', responder(h.manejarCatalogoEscribir));
+  /* Lee un libro y devuelve sus equipos, para el alta. NO escribe nada:
+     va en su propio archivo justamente para que no se confunda con la de
+     arriba. POST porque puede llevar el id de un libro nuevo, y un id en
+     la query termina en los logs de acceso. */
+  app.post('/api/v1/catalogo/equipos', responder(require('./api/libro.js').manejarEquiposDelLibro));
 
   /* LAS DOS RUTAS SIN TOKEN. Son las únicas: todo lo demás exige uno.
      `login` lo emite y `clave` lo fija por primera vez, así que exigirlo

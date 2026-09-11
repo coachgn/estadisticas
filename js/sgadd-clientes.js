@@ -218,7 +218,13 @@ const SGADD_CLIENTES = (function () {
          tenía que ir a otra pestaña y volver para que apareciera. */
       try {
         const n = (typeof document !== 'undefined') ? document.getElementById('hubClientes') : null;
-        if (n && typeof SGADD_HUB !== 'undefined') n.innerHTML = SGADD_HUB.html();
+        /* El catálogo llega cuando llega: el admin puede estar escribiendo
+           en el alta, y sin conservar el foco la letra siguiente se pierde. */
+        const pintar = () => { n.innerHTML = SGADD_HUB.html(); };
+        if (n && typeof SGADD_HUB !== 'undefined') {
+          if (typeof SGADD_UI !== 'undefined' && SGADD_UI.conservarFoco) SGADD_UI.conservarFoco(pintar);
+          else pintar();
+        }
       } catch (e) { /* el hub puede no estar en pantalla */ }
       return estado.clubes;
     }).catch(() => {

@@ -966,7 +966,11 @@ function configAvisar(txt, ok) {
 function configPintar() {
   const root = document.getElementById('view-root');
   if (!root || typeof currentSection === 'undefined' || currentSection !== 'configuracion') return;
-  root.innerHTML = buildConfiguracion();
+  const pintar = () => { root.innerHTML = buildConfiguracion(); };
+  /* Conservando el foco: este repintado lo disparan también respuestas
+     que llegan mientras el admin escribe. */
+  if (typeof SGADD_UI !== 'undefined' && SGADD_UI.conservarFoco) SGADD_UI.conservarFoco(pintar);
+  else pintar();
 }
 
 /* La vista previa y los avisos son lo único que cambia al tipear, así

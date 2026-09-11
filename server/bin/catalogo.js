@@ -229,13 +229,15 @@ function exigirKV() {
     if (o.categoria) {
       const slug = String(o.categoria).trim().toLowerCase();
       const previa = cat[club].categorias[slug] || {};
-      cat[club].categorias[slug] = {
+      /* Se FUSIONA con lo que ya había: reemplazar la categoría entera
+         borraba el `nivel` publicado. Mismo arreglo que `catalogo-mutar`. */
+      cat[club].categorias[slug] = Object.assign({}, previa, {
         label: o.label ? String(o.label) : (previa.label || slug),
         /* Sin `--sheet` la categoría entra SIN libro, y eso es válido: es
            la que "viene en camino". Aparece en el selector deshabilitada
            en vez de dejar entrar a una sección vacía (punto 6). */
         sheetId: o.sheet ? String(o.sheet) : (previa.sheetId || ''),
-      };
+      });
     }
 
     if (!Object.keys(cat[club].categorias).length) {

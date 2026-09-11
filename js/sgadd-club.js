@@ -142,6 +142,9 @@ const CLUB = (function () {
   function cartelError() {
     if (!estado.error) return;
     const d = document.createElement('div');
+    /* Con id: si el catálogo del servidor trae al club (`reconciliar`),
+       el cartel se retira — la config SÍ existe, solo que no en el repo. */
+    d.id = 'clubCartelError';
     d.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:60;background:#7f1d1d;color:#fff;' +
       'font:12px/1.4 system-ui,sans-serif;padding:8px 14px;display:flex;gap:10px;align-items:center';
     d.innerHTML = '<b>Configuracion del club no encontrada</b>' +
@@ -486,7 +489,102 @@ const CLUB = (function () {
   /** El index avisa cuando ya pintó una vez, para saber si hay que repintar. */
   function marcarRender() { yaHuboRender = true; }
 
-  return { TEMA, estado, cargar, aplicar: aplicarSeguro, credito, idDesdeUrl, esLanding, enDemo, debug, marcarRender,
+  /* =====================================================================
+     LAS CATEGORÍAS SALEN DEL CATÁLOGO DEL SERVIDOR · el JSON pone la marca
+
+     Hasta acá el panel armaba las categorías de un club SOLO desde
+     `clubes/<id>.json`, y eso tenía dos modos de fallar, los dos medidos
+     con el alta real de Sud América (2026-09-11):
+
+     1 · UN ALTA DEL PANEL MASTER NO ALCANZABA. El alta escribe en KV;
+         sin un JSON commiteado el panel del cliente cargaba los valores
+         por defecto —los de Reconquista— con un cartel rojo. O sea que
+         dar de alta desde la pantalla terminaba siempre en un commit.
+     2 · UN JSON CON OTRO NOMBRE DE CATEGORÍA MATABA LA CARGA. El de Sud
+         América declaraba `sud-america-primera` y el catálogo la tenía
+         como `sudamerica-primera`: el servidor contestaba «No existe esa
+         categoría» en cada hoja, sin que nada señalara la diferencia.
+
+     La lista de categorías es del SERVIDOR —es el que sabe qué libros
+     hay y el que las va a servir— y el JSON queda para lo que es suyo:
+     el nombre, el escudo, los colores, las zonas. Donde los dos nombran
+     la MISMA categoría (mismo `slug`), gana lo del JSON: su `id` es la
+     clave de los estados y de los links ya compartidos (punto 6).
+
+     DEGRADA SOLO: sin backend, sin token o con un club que el servidor
+     no conoce, la config queda exactamente como la dejó el JSON.
+     ===================================================================== */
+  const escRegex = (t) => String(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  /**
+   * La config que resulta de cruzar el JSON (puede ser `null`) con el club
+   * del catálogo del servidor. PURA: no toca el DOM ni el estado.
+   *
+   * @param {Object|null} cfg el JSON del club, o null si no hay
+   * @param {Object} s el club tal como lo publica `/api/v1/catalogo`
+   * @param {{equipoPropio?: string}} [extra] el equipo, si se conoce
+   */
+  function reconciliarConfig(cfg, s, extra) {
+    if (!s || !Array.isArray(s.categorias) || !s.categorias.length) return cfg;
+    const base = cfg ? Object.assign({}, cfg) : {
+      id: s.id,
+      nombre: s.nombre || s.id,
+      nombreCorto: String(s.nombre || s.id).toUpperCase(),
+      liga: s.liga || '',
+      anio: new Date().getFullYear(),
+      torneo: '',
+      origen: 'catalogo',
+    };
+    /* EL PATRÓN DEL EQUIPO PROPIO, solo si el JSON no trae uno: el del
+       JSON está escrito a mano y discrimina adentro del libro (punto 6).
+       El derivado va ANCLADO y sobre la clave normalizada, que es contra
+       lo que se compara: sin anclar, DEPORTIVO LA PLATA se llevaría a
+       DEPORTIVO SAN VICENTE. */
+    const equipo = (extra && extra.equipoPropio) || s.equipoPropio;
+    if (!base.patronEquipoPropio && equipo) {
+      const clave = (typeof SGADD !== 'undefined' && SGADD.claveEquipo)
+        ? SGADD.claveEquipo(equipo) : String(equipo).trim().toUpperCase();
+      base.patronEquipoPropio = '^' + escRegex(clave) + '$';
+    }
+    const delJson = (cfg && Array.isArray(cfg.planillas)) ? cfg.planillas : [];
+    base.planillas = s.categorias.map((k) => {
+      const j = delJson.find(p => p && p.slug === k.slug) || null;
+      const p = Object.assign({ id: k.slug, label: k.label || k.slug }, j || {});
+      p.slug = k.slug;
+      if (!p.nivel && k.nivel) p.nivel = k.nivel;
+      /* `activo` lo dice el SERVIDOR: una categoría sin libro va al
+         selector deshabilitada en vez de dejar entrar a una vista vacía. */
+      p.activo = k.activo !== false;
+      return p;
+    });
+    return base;
+  }
+
+  /**
+   * Aplica el cruce sobre la config vigente. Devuelve si cambió algo.
+   * Lo llama `resolverClubYPlanilla()` del `index.html`, después de
+   * `cargar()` y ANTES de `SGADD_APP.inicializar()`.
+   */
+  function reconciliar(clubServidor, extra) {
+    const nuevo = reconciliarConfig(estado.cfg, clubServidor, extra);
+    if (!nuevo || nuevo === estado.cfg) return false;
+    const sinJson = !estado.cfg;
+    estado.cfg = nuevo;
+    estado.origenCategorias = 'catalogo';
+    aplicarDatos(nuevo);
+    if (sinJson) {
+      estado.error = null;
+      try {
+        const cartel = document.getElementById('clubCartelError');
+        if (cartel) cartel.remove();
+      } catch (e) { /* sin DOM, nada que sacar */ }
+      aplicarUI(nuevo);
+      aplicado = true;
+    }
+    return true;
+  }
+
+  return { TEMA, estado, cargar, aplicar: aplicarSeguro, reconciliar, reconciliarConfig, credito, idDesdeUrl, esLanding, enDemo, debug, marcarRender,
            reintentarEscudo, aclararHastaLegible, oscurecerHastaLegible, contraste,
            get cfg() { return estado.cfg; }, get aplicado() { return aplicado; } };
 })();
