@@ -197,6 +197,49 @@ const SGADD_LANDING = (function () {
         >= A.ORDEN_PLAN[A.normalizarPlan(regla.plan)];
   }
 
+  /* LOS BLOQUES DE UNA SECCION, con su copia.
+
+     La REGLA —que plan los incluye— vive en `SGADD_AUTH.BLOQUES`, igual
+     que la de las secciones vive en `MODULOS`. Aca solo se escribe COMO
+     se cuentan, que es exactamente el reparto que ya existe entre
+     `SECCIONES` y la matriz: la landing pone las palabras, el motor de
+     permisos pone el limite.
+
+     Un bloque declarado en el motor y sin copia aca NO se ofrece, y hay
+     un test que lo denuncia: un plan que concede algo que la card no
+     nombra es plata que el cliente paga sin saber que la tiene. */
+  const BLOQUES = {
+    'scouting.fichas': {
+      titulo: 'Ficha de análisis por jugador',
+      que: 'Rol funcional, fortalezas, puntos de fuga y la decision tactica de cada '
+        + 'rival uno por uno, con su defensor sugerido.',
+    },
+  };
+
+  /**
+   * ¿Un plan alcanza para este bloque? Mismo criterio que `alcanza`, con
+   * la otra mitad de la matriz — y con la herencia: un bloque no se
+   * promete si el plan no llega a la pantalla que lo contiene.
+   */
+  function alcanzaBloque(plan, id) {
+    if (!plan) return false;
+    const A = (typeof SGADD_AUTH !== 'undefined') ? SGADD_AUTH : null;
+    if (!A || !A.BLOQUES) return false;
+    const regla = Object.prototype.hasOwnProperty.call(A.BLOQUES, id) ? A.BLOQUES[id] : null;
+    if (!regla || regla.soloAdmin) return false;
+    if (regla.seccion && !alcanza(plan, regla.seccion)) return false;
+    if (!regla.plan) return true;
+    return A.ORDEN_PLAN[A.normalizarPlan(plan)]
+        >= A.ORDEN_PLAN[A.normalizarPlan(regla.plan)];
+  }
+
+  /** Los bloques que el motor declara Y la landing sabe contar. */
+  function idsDeBloques() {
+    const A = (typeof SGADD_AUTH !== 'undefined') ? SGADD_AUTH : null;
+    if (!A || !A.BLOQUES) return [];
+    return Object.keys(A.BLOQUES).filter(id => !!BLOQUES[id]);
+  }
+
   /** El ciclo de informes del plan Oro. Sale del hub, que es el que lo
    *  hace correr; el respaldo es para Node, donde ese modulo no esta. */
   function partidosPorCiclo() {
@@ -239,6 +282,17 @@ const SGADD_LANDING = (function () {
       bloqueadas.forEach(id => falta.push({
         titulo: SECCIONES[id].titulo, detalle: SECCIONES[id].que,
       }));
+      /* Los bloques van DESPUES de las secciones y ANTES del servicio:
+         es un pedazo de pantalla, no una pantalla entera ni trabajo
+         humano, y la card se lee de lo mas grande a lo mas chico. */
+      idsDeBloques().forEach((id) => {
+        const item = { titulo: BLOQUES[id].titulo, detalle: BLOQUES[id].que, bloque: true };
+        if (alcanzaBloque(clave, id)) {
+          if (!alcanzaBloque(previo, id)) suma.push(item);
+        } else {
+          falta.push(item);
+        }
+      });
       if (clave === 'ORO') suma.push(servicioOro());
       else falta.push(servicioOro());
       return {
@@ -511,8 +565,8 @@ const SGADD_LANDING = (function () {
 
   return {
     activa, vista, bienvenida, tarjetaSeccion, contacto, aplicarMarca,
-    planes, tarjetaPlan, seccionPlanes, consultar, alcanza, partidosPorCiclo,
-    RUTA_DEMO, ANTERIOR,
+    planes, tarjetaPlan, seccionPlanes, consultar, alcanza, alcanzaBloque, partidosPorCiclo,
+    RUTA_DEMO, ANTERIOR, BLOQUES, idsDeBloques,
     SECCIONES, ORDEN, PLANES_MAILS, MARCA, MAIL, INSTAGRAM, ARROBA, LOGO, LOGO_GRANDE,
   };
 })();

@@ -175,6 +175,39 @@ const SGADD_AUTH = (function () {
     diagnostico: { soloAdmin: true },
   };
 
+  /* =====================================================================
+     LOS BLOQUES DE UNA SECCIÓN · el segundo nivel de la matriz
+
+     `MODULOS` decide a qué PANTALLA se entra. Adentro de una pantalla
+     puede haber un bloque que valga por sí solo —la ficha de análisis por
+     jugador del informe pre-partido es el primero—, y ese bloque necesita
+     su propia regla declarada acá y no un `if` adentro del render: con la
+     regla escrita en la vista, la landing promete una cosa, el servidor
+     declara otra y nadie se entera hasta que un cliente lo reclame. Es el
+     mismo motivo por el que `MODULOS` no vive repartido por los módulos.
+
+     La clave es `<seccion>.<bloque>`, o sea el `data-bloque` del DOM con
+     su sección adelante: el gate, el modal de exportación y la
+     declaración del servidor nombran exactamente lo mismo.
+
+     NO se meten en `MODULOS`: esa matriz se compara contra
+     `SGADD.SECCIONES` en los dos sentidos, y un bloque ahí sería una
+     sección que el router no conoce.
+
+     OJO con el nombre: `reglas.BLOQUES` del servidor es OTRA cosa —los
+     bloques de DATOS que se piden por HTTP (`equipos`, `scouting`)—.
+     Estos son los bloques de PANTALLA de una sección.
+     ===================================================================== */
+  const BLOQUES = {
+    /* La ficha individual es el trabajo fino del informe: rol funcional,
+       fortalezas, fisuras y plan de acción POR JUGADOR. El resto del
+       scouting describe al equipo y al plan colectivo; esto decide qué se
+       hace con cada rival, uno por uno, y es lo que el club vende como
+       ORO. El informe sigue entero para Plata: lo que se acota es este
+       bloque, no la pantalla. */
+    'scouting.fichas': { seccion: 'scouting', plan: PLANES.ORO },
+  };
+
   /* El motivo por el que se deniega, para que la UI diga la verdad: un
      "no tenés permiso" cuando en realidad falta el plan manda al DT a
      pedirle acceso a alguien en vez de mejorar el plan. */
@@ -344,19 +377,77 @@ const SGADD_AUTH = (function () {
        mantiene funcionando a quien entra sin token. */
     if (regla.soloAdmin) return rol(s) === ROLES.ADMIN;
     if (sinRestricciones(s)) return true;
-    if (regla.plan) {
-      const ses = normalizarSes(s);
-      if (!ses) return false;
-      /* SE COMPARA POR ORDEN, NO POR IGUALDAD. Con `===`, MASTER se
-         quedaba sin Scouting —que pide PRO— porque no es literalmente
-         PRO: un plan superior perdiendo un modulo del inferior es la
-         clase de bug que nadie reporta porque parece un permiso mal
-         puesto. Un plan desconocido no tiene orden y no alcanza nada. */
-      const tengo = ORDEN_PLAN[normalizarPlan(ses.plan)];
-      const pide = ORDEN_PLAN[normalizarPlan(regla.plan)];
-      return tengo !== undefined && pide !== undefined && tengo >= pide;
-    }
+    if (regla.plan) return alcanzaPlan(regla.plan, s);
     return true;
+  }
+
+  /**
+   * ¿El plan de esta sesión llega al que pide una regla?
+   *
+   * SE COMPARA POR ORDEN, NO POR IGUALDAD. Con `===`, MASTER se quedaba
+   * sin Scouting —que pide PRO— porque no es literalmente PRO: un plan
+   * superior perdiendo un módulo del inferior es la clase de bug que
+   * nadie reporta porque parece un permiso mal puesto.
+   *
+   * Vive suelta porque la usan las DOS matrices —secciones y bloques— y
+   * dos copias de esta comparación terminan distintas (punto 8).
+   */
+  function alcanzaPlan(minimo, s) {
+    const ses = normalizarSes(s);
+    if (!ses) return false;
+    const tengo = ORDEN_PLAN[normalizarPlan(ses.plan)];
+    const pide = ORDEN_PLAN[normalizarPlan(minimo)];
+    return tengo !== undefined && pide !== undefined && tengo >= pide;
+  }
+
+  /**
+   * ¿Esta sesión ve este bloque de pantalla?
+   *
+   * Un bloque que nadie declaró se trata como ABIERTO, igual que una
+   * sección sin regla: acá el costo de un default permisivo es un bloque
+   * de más, y el del estricto sería dejar en blanco media pantalla apenas
+   * alguien agregue un `data-bloque`. Del lado del servidor la asimetría
+   * es la inversa y por el mismo criterio — allá lo que se pierde con un
+   * default permisivo son datos (`reglas.puedeBloque`).
+   *
+   * Y HEREDA LA REGLA DE SU SECCIÓN: para ver un bloque hay que poder
+   * entrar a la pantalla que lo contiene. Sin eso, el día que un plan
+   * tenga el bloque y no la sección vería un pedazo de un informe al que
+   * no entra.
+   */
+  function tieneBloque(id, s) {
+    const regla = Object.prototype.hasOwnProperty.call(BLOQUES, id) ? BLOQUES[id] : null;
+    if (!regla) return true;
+    if (regla.seccion && !tieneModulo(regla.seccion, s)) return false;
+    if (regla.soloAdmin) return rol(s) === ROLES.ADMIN;
+    if (sinRestricciones(s)) return true;
+    if (regla.plan) return alcanzaPlan(regla.plan, s);
+    return true;
+  }
+
+  /** El veredicto con su motivo, como `puedoAcceder` pero de un bloque:
+      la UI tiene que poder decir QUÉ plan lo incluye y no un genérico. */
+  function puedoVerBloque(id, s) {
+    const regla = Object.prototype.hasOwnProperty.call(BLOQUES, id) ? BLOQUES[id] : null;
+    if (!regla) return { ok: true, motivo: MOTIVOS.OK, plan: null };
+    if (tieneBloque(id, s)) return { ok: true, motivo: MOTIVOS.OK, plan: null };
+    if (regla.soloAdmin) return { ok: false, motivo: MOTIVOS.SOLO_ADMIN, plan: null };
+    return { ok: false, motivo: MOTIVOS.REQUIERE_PLAN, plan: regla.plan || null };
+  }
+
+  /**
+   * Los bloques declarados de una sección, ya resueltos para esta sesión:
+   * `{ fichas: false }`. Es lo que el servidor manda en `alcance.bloques`,
+   * y va derivado de la tabla y no escrito a mano para que declarar un
+   * bloque nuevo no obligue a tocar el handler.
+   */
+  function bloquesDe(seccion, s) {
+    const out = {};
+    Object.keys(BLOQUES).forEach((id) => {
+      if (BLOQUES[id].seccion !== seccion) return;
+      out[id.slice(String(seccion).length + 1)] = tieneBloque(id, s);
+    });
+    return out;
   }
 
   /**
@@ -773,6 +864,7 @@ const SGADD_AUTH = (function () {
     ALCANCES, ALCANCES_POR_ACCION, alcancesDe, motivoSinAlcance,
     normalizarEmail, parsearSesion, establecerSesion, limpiarSesion, sesion, fijarPlanEfectivo,
     esAdmin, rol, sinRestricciones,
+    BLOQUES, alcanzaPlan, tieneBloque, puedoVerBloque, bloquesDe,
     puedeVerEquipo, tieneModulo, puedoAcceder, puedeScoutearCruce,
     forzarCruce, equiposVisibles, equipoPropio,
     cargarSesion, descripcionSesion,

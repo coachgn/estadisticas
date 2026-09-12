@@ -133,7 +133,13 @@ titulo('2 · EL PLAN · el del catálogo, estricto, en el servidor y en el panel
   const src = fs.readFileSync('./server/api/handlers.js', 'utf8');
   check('los datos (equipos) y el scouting miden el plan con el origen del catálogo',
     (src.match(/planEfectivo\(cat\.suscripcion \|\| \{\}, ctx\.sesion, cascada\.origen\)/g) || []).length === 2);
-  check('y el scouting declara el EFECTIVO, no el del token', /alcance: \{ rol: ctx\.rol, plan: sesionEfectiva\.plan \}/.test(src));
+  /* SE RECORTA EL CUERPO DEL HANDLER y no una ventana de caracteres: el
+     `alcance` del scouting ganó los bloques del plan y el literal de una
+     línea dejó de existir sin que la propiedad cambiara (punto 43). */
+  const cuerpoScout = src.slice(src.indexOf('async function manejarScouting'),
+                                src.indexOf('function fallaDeDatos'));
+  check('y el scouting declara el EFECTIVO, no el del token',
+    /plan: sesionEfectiva\.plan/.test(cuerpoScout) && !/plan: ctx\.sesion\.plan/.test(cuerpoScout));
 
   /* LA SESIÓN DEL PANEL lo adopta. */
   const AUTH = require('./js/sgadd-auth.js');

@@ -1202,6 +1202,7 @@ const SGADD_SCOUT = (function () {
       return {
         adn: jugadoresADN, perfilBase: jugadoresPerfilBase,
         rolFuncional: jugadoresRolFuncional, badges: jugadoresBadges,
+        adnLiga: jugadoresAdnLiga, mediana: jugadoresMediana,
       };
     }
     try {
@@ -1209,6 +1210,7 @@ const SGADD_SCOUT = (function () {
       return {
         adn: m.jugadoresADN, perfilBase: m.jugadoresPerfilBase,
         rolFuncional: m.jugadoresRolFuncional, badges: m.jugadoresBadges,
+        adnLiga: m.jugadoresAdnLiga, mediana: m.jugadoresMediana,
       };
     } catch (e) { return null; }
   }
@@ -1794,28 +1796,42 @@ const SGADD_SCOUT = (function () {
    *
    * `opciones.claveNuestro` es el equipo que DEFIENDE (ver `plantelDefensor`).
    */
+  /**
+   * El plantel de un equipo, ordenado como lo lee el informe.
+   *
+   * Por minutos: el que más juega es el que más condiciona el plan,
+   * independientemente de cuánto anote.
+   *
+   * Los dados de BAJA salen: no van a estar en la cancha, así que
+   * asignarles una marca es gastar una decisión defensiva en alguien que
+   * no juega. Sus datos SÍ siguen contando en las medianas de la
+   * competencia (`enMedianas`), que es lo que decidió el club: los
+   * partidos que jugó, los jugó. Sin el módulo de estados cargado —Node, o
+   * antes de que el DT confirme nada— todos pasan.
+   *
+   * VIVE EN UNA SOLA FUNCIÓN porque `jugadoresClave` se queda con los
+   * primeros y `restoDelPlantel` con el resto: dos ordenamientos calcados
+   * terminan cortando en distinto lugar, y un jugador saldría en los dos
+   * bloques o en ninguno.
+   */
+  function plantelOrdenado(idx, clave) {
+    const e = idx.get(clave);
+    if (!e) return [];
+    const enPlan = (j) => (typeof SGADD_BUZON === 'undefined') ? true
+      : SGADD_BUZON.enPlan(j['NOMBRES'], j['EQUIPO']);
+    return (idx.liga.jugadoresPorEquipo.get(e.clave) || [])
+      .filter(enPlan)
+      .slice()
+      .sort((a, b) => (nn(b['MIN']) || 0) - (nn(a['MIN']) || 0));
+  }
+
   function jugadoresClave(idx, clave, limite, opciones) {
     const e = idx.get(clave);
     if (!e) return null;
     const n = limite || TOP_JUGADORES;
     const o = opciones || {};
 
-    /* Por minutos: el que más juega es el que más condiciona el plan,
-       independientemente de cuánto anote. */
-    /* Los dados de BAJA salen del plan: no van a estar en la cancha, así
-       que asignarles una marca es gastar una decisión defensiva en alguien
-       que no juega. Sus datos SÍ siguen contando en las medianas de la
-       competencia (`enMedianas`), que es lo que decidió el club: los
-       partidos que jugó, los jugó.
-
-       Sin el módulo de estados cargado —Node, o antes de que el DT
-       confirme nada— todos pasan y el informe sale igual que siempre. */
-    const enPlan = (j) => (typeof SGADD_BUZON === 'undefined') ? true
-      : SGADD_BUZON.enPlan(j['NOMBRES'], j['EQUIPO']);
-    const plantel = (idx.liga.jugadoresPorEquipo.get(e.clave) || [])
-      .filter(enPlan)
-      .slice()
-      .sort((a, b) => (nn(b['MIN']) || 0) - (nn(a['MIN']) || 0));
+    const plantel = plantelOrdenado(idx, e.clave);
     const elegidos = plantel.slice(0, n);
     if (!elegidos.length) return null;
 
@@ -1958,6 +1974,254 @@ const SGADD_SCOUT = (function () {
       promedioLiga: promLiga,
       totalPlays: totalPlays,
       totalTriples: totalTriples,
+    };
+  }
+
+  /* =====================================================================
+     6 bis. EL RESTO DEL PLANTEL · la radiografía 360° del banco
+
+     `jugadoresClave` se queda con los ocho que más juegan, que son los que
+     condicionan el plan. Los otros —cuatro, ocho, a veces doce— no
+     aparecían en ninguna parte del informe, y ahí es donde vive el factor
+     X del banco: el que entra diez minutos y produce al ritmo de la
+     rotación. El bloque los nombra con sus etiquetas y AVISA cuando uno
+     destaca, sin gastarle a cada uno una ficha táctica entera.
+
+     TRES DECISIONES QUE SOSTIENEN EL BLOQUE:
+
+     1. LAS MÉTRICAS SON TASAS, NUNCA CUENTAS POR PARTIDO. Comparar los
+        PTS por partido de un suplente de nueve minutos contra los de la
+        rotación no mide otra cosa que los minutos: la diferencia está
+        garantizada de antemano y la alerta no diría nada. Por minuto —o
+        en porcentaje— la comparación es justa, que es exactamente lo que
+        el club pidió leer: «eficiente en pocos minutos».
+
+        Y POR ESO `RO%`/`RD%` QUEDAN AFUERA aunque sean tasas: su
+        denominador es del EQUIPO y el motor NO las prorratea por minutos
+        (punto 24), así que un suplente las tiene bajas por no haber
+        estado en cancha y no por no rebotear. Los rebotes entran POR
+        MINUTO, que es la pregunta que se quería hacer.
+
+     2. LA REFERENCIA ES SU ROL FUNCIONAL, no su banda de minutos. La
+        pregunta del DT es «de los que hacen su trabajo en esta liga,
+        ¿cuánto produce éste?»; un grupo de pares por minutos lo
+        compararía contra otros suplentes, o sea que escondería
+        justamente al que hay que ver. El pool son los CALIFICADOS, que es
+        el universo con el que el proyecto ya arma percentiles y bandas
+        (punto 8): destacar contra los que sí juegan es lo que vuelve
+        accionable la alerta.
+
+     3. LA CASCADA ES LA DEL GRUPO DE PARES (punto 42): rol → liga, con
+        `MIN_PARES_ROL` de piso, y el nivel VIAJA en el resultado para que
+        la pantalla lo diga. Una referencia degradada en silencio es peor
+        que ninguna. Una mediana de CERO no sirve de denominador y degrada
+        igual: un «+∞%» no es una alerta, es una división.
+     ===================================================================== */
+
+  /* Mismo piso que el grupo de pares y que las referencias de rebote: una
+     «mediana» de dos jugadores no es una mediana. */
+  const MIN_PARES_ROL = 3;
+  /* Cuánto hay que superar a la mediana del rol para que valga avisar. El
+     club lo pidió con este número («+35%») y es el que separa al que
+     rinde parecido del que rinde distinto: con 15% la mitad del banco
+     dispara una alerta y el bloque vuelve a ser una lista que nadie lee. */
+  const DELTA_IMPACTO = 0.35;
+  /* Dos por jugador. El bloque existe para NO saturar: seis alertas en una
+     tarjeta son otra ficha táctica, y esa ya está más abajo. */
+  const MAX_ALERTAS_IMPACTO = 2;
+
+  /* Los dos pisos de muestra del punto 4, leídos de donde ya viven y no
+     copiados: 3 partidos para que un promedio signifique algo, 8 minutos
+     para que un porcentaje no sea ruido. Por debajo la alerta SE MUESTRA
+     IGUAL, marcada — se le saca autoridad, no el dato (punto 8). */
+  const MUESTRA = (function () {
+    if (typeof SGADD_PARTIDO !== 'undefined') return SGADD_PARTIDO;
+    try { return require('./sgadd-partido.js'); } catch (e) { return {}; }
+  })();
+  const MIN_PJ_IMPACTO = MUESTRA.MIN_PARTIDOS_JUGADOR || 3;
+  const MIN_MIN_IMPACTO = MUESTRA.MIN_MINUTOS || 8;
+
+  /** Rebote total del perfil. Los dos en blanco es «no hay dato», no cero:
+      un 0,00 por minuto se leería como un jugador que no rebotea. */
+  function reboteTotal(p) {
+    if (nn((p || {}).ro) === null && nn((p || {}).rd) === null) return null;
+    return (nn(p.ro) || 0) + (nn(p.rd) || 0);
+  }
+
+  const METRICAS_IMPACTO = [
+    { id: 'ptsMin', label: 'PTS/min', que: 'anota', formato: num2,
+      valor: (p) => div(nn(p.pts), nn(p.min)) },
+    /* Ya viene normalizada por minutos desde el motor (punto 24), así que
+       es la única métrica de USO que se puede comparar de frente. */
+    { id: 'usg', label: 'USG%', que: 'usa el ataque', formato: pct,
+      valor: (p) => nn(p.usg) },
+    { id: 'efg', label: 'eFG%', que: 'convierte', formato: pct,
+      valor: (p) => nn(p.efg) },
+    { id: 'rtMin', label: 'RT/min', que: 'rebotea', formato: num2,
+      valor: (p) => div(reboteTotal(p), nn(p.min)) },
+    { id: 'astMin', label: 'AST/min', que: 'asiste', formato: num2,
+      valor: (p) => div(nn(p.ast), nn(p.min)) },
+    { id: 'prMin', label: 'PR/min', que: 'recupera', formato: num2,
+      valor: (p) => div(nn(p.pr), nn(p.min)) },
+  ];
+
+  function valorImpacto(m, perfil) {
+    try { return m.valor(perfil || {}); } catch (e) { return null; }
+  }
+
+  /** El ADN de la liga entera, ya cacheado por índice del lado de
+      JUGADORES: llamarlo por jugador lo volvería cuadrático. */
+  function adnDeLaLiga(idx) {
+    const f = fichaJugadores();
+    if (!f || !f.adnLiga) return new Map();
+    try { return f.adnLiga(idx) || new Map(); } catch (e) { return new Map(); }
+  }
+
+  function medianaDe(valores) {
+    const f = fichaJugadores();
+    if (f && f.mediana) return f.mediana(valores);
+    const v = (valores || []).filter(x => typeof x === 'number' && isFinite(x)).sort((a, b) => a - b);
+    if (!v.length) return null;
+    const m = Math.floor(v.length / 2);
+    return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+  }
+
+  /* Una vuelta por la liga y no una por jugador: las medianas por rol son
+     las mismas para las doce filas del bloque. */
+  const REF_IMPACTO_CACHE = (typeof WeakMap !== 'undefined') ? new WeakMap() : null;
+
+  function referenciasDeImpacto(idx) {
+    if (REF_IMPACTO_CACHE && REF_IMPACTO_CACHE.has(idx)) return REF_IMPACTO_CACHE.get(idx);
+    const vacio = () => { const o = {}; METRICAS_IMPACTO.forEach(m => { o[m.id] = []; }); return o; };
+    const global = vacio();
+    const porRol = {};
+    adnDeLaLiga(idx).forEach((adn) => {
+      /* Solo los CALIFICADOS: es el universo con el que el proyecto arma
+         percentiles y bandas, y el que hace que «destacar» signifique
+         algo. Con la liga entera adentro, la mediana la hunden los que
+         casi no juegan y medio banco dispararía alerta. */
+      if (!adn || !adn.perfil || !adn.perfil.califica) return;
+      const rolId = adn.rolFuncional ? adn.rolFuncional.id : null;
+      if (rolId && !porRol[rolId]) porRol[rolId] = vacio();
+      METRICAS_IMPACTO.forEach((m) => {
+        const v = valorImpacto(m, adn.perfil);
+        if (v === null) return;
+        global[m.id].push(v);
+        if (rolId) porRol[rolId][m.id].push(v);
+      });
+    });
+    const cerrar = (acc) => {
+      const o = {};
+      METRICAS_IMPACTO.forEach(m => { o[m.id] = { mediana: medianaDe(acc[m.id]), n: acc[m.id].length }; });
+      return o;
+    };
+    const out = { global: cerrar(global), porRol: {} };
+    Object.keys(porRol).forEach(k => { out.porRol[k] = cerrar(porRol[k]); });
+    if (REF_IMPACTO_CACHE) REF_IMPACTO_CACHE.set(idx, out);
+    return out;
+  }
+
+  /** La referencia vigente para una métrica: su rol, y si no alcanza, la
+      liga. `null` cuando ninguna de las dos sirve de vara. */
+  function referenciaImpacto(refs, rolId, metricaId) {
+    const sirve = (r) => !!r && r.n >= MIN_PARES_ROL && r.mediana !== null && r.mediana > 0;
+    const delRol = (rolId && refs.porRol[rolId]) ? refs.porRol[rolId][metricaId] : null;
+    if (sirve(delRol)) return { valor: delRol.mediana, n: delRol.n, nivel: 'rol' };
+    const g = refs.global[metricaId];
+    if (sirve(g)) return { valor: g.mediana, n: g.n, nivel: 'liga' };
+    return null;
+  }
+
+  const NIVEL_REF = {
+    rol: { label: 'su rol', detalle: 'mediana de los que califican en su misma función' },
+    liga: { label: 'la liga', detalle: 'mediana de todos los que califican: su rol no llegó a '
+      + MIN_PARES_ROL + ' jugadores' },
+  };
+
+  /**
+   * Las métricas en las que este jugador destaca sobre su rol.
+   *
+   * Devuelve como mucho `MAX_ALERTAS_IMPACTO`, de mayor a menor
+   * diferencia: la primera es la que el DT tiene que leer.
+   */
+  function alertasDeImpacto(perfil, pj, refs, rolId) {
+    const min = nn((perfil || {}).min);
+    if (min === null || min <= 0) return [];   // sin minutos no hay tasa
+    /* La muestra corta NO borra la alerta, la MARCA: es la misma regla del
+       `~` del percentil (punto 8). Tres noches de diez minutos son poca
+       cosa, y son justo el caso que el DT quiere mirar. */
+    const corta = (pj !== null && pj < MIN_PJ_IMPACTO) || min < MIN_MIN_IMPACTO;
+    const out = [];
+    METRICAS_IMPACTO.forEach((m) => {
+      const v = valorImpacto(m, perfil);
+      if (v === null) return;
+      const ref = referenciaImpacto(refs, rolId, m.id);
+      if (!ref) return;
+      const delta = (v / ref.valor) - 1;
+      if (delta < DELTA_IMPACTO) return;
+      out.push({
+        id: m.id, label: m.label, que: m.que,
+        valor: v, formateado: m.formato(v),
+        referencia: ref.valor, referenciaFormateada: m.formato(ref.valor),
+        pares: ref.n, nivel: ref.nivel, nivelLabel: NIVEL_REF[ref.nivel].label,
+        nivelDetalle: NIVEL_REF[ref.nivel].detalle,
+        delta: delta, muestraCorta: corta,
+        texto: (corta ? '~ ' : '') + '+' + Math.round(delta * 100) + '% en ' + m.label
+          + ' sobre ' + NIVEL_REF[ref.nivel].label
+          + ' (' + m.formato(v) + ' contra ' + m.formato(ref.valor) + ')',
+      });
+    });
+    return out.sort((a, b) => b.delta - a.delta).slice(0, MAX_ALERTAS_IMPACTO);
+  }
+
+  /**
+   * El resto del plantel del rival: los que no entraron al análisis
+   * principal, con sus etiquetas y sus alertas de impacto.
+   *
+   * `null` si no sobra nadie — un bloque vacío diciendo «no hay resto» es
+   * ruido en un informe que ya tiene ocho secciones.
+   */
+  function restoDelPlantel(idx, clave, opciones) {
+    const e = idx.get(clave);
+    if (!e) return null;
+    const o = opciones || {};
+    const desde = o.desde || TOP_JUGADORES;
+    const plantel = plantelOrdenado(idx, e.clave);
+    const resto = plantel.slice(desde);
+    if (!resto.length) return null;
+
+    const ficha = fichaJugadores();
+    const refs = referenciasDeImpacto(idx);
+    const filas = resto.map((j) => {
+      const adn = (ficha && ficha.adn) ? ficha.adn(idx, j) : null;
+      const perfil = (adn && adn.perfil) ? adn.perfil
+        : ((ficha && ficha.perfilBase) ? ficha.perfilBase(idx, j) : {});
+      const rol = (adn && adn.rolFuncional) ? adn.rolFuncional : rolFuncional(perfil);
+      const pj = nn(j['PJ']);
+      const alertas = alertasDeImpacto(perfil, pj, refs, rol ? rol.id : null);
+      return {
+        clave: j.__clave, nombre: perfil.nombre || String(j['NOMBRES'] || '').trim(),
+        perfil: perfil, adn: adn, rol: rol,
+        /* Las MISMAS etiquetas que pintan la ficha del jugador y el
+           informe de arriba: se piden al motor compartido, no se rearman
+           acá (punto 8). */
+        etiquetas: (ficha && ficha.badges && adn) ? ficha.badges(adn) : [],
+        min: nn(perfil.min), pj: pj, alertas: alertas,
+        /* «Alto impacto en pocos minutos»: destaca EN ALGO y no llega a la
+           banda de los que juegan. Es el factor X que el club pidió
+           advertir; el que destaca con 25 minutos ya está en la tabla de
+           arriba. */
+        impactoCorto: alertas.length > 0 && nn(perfil.min) !== null
+          && nn(perfil.min) < U.minutosClave,
+      };
+    });
+
+    return {
+      equipo: e.nombre, clave: e.clave,
+      desde: desde, total: plantel.length,
+      metricas: METRICAS_IMPACTO,
+      filas: filas,
+      conAlerta: filas.filter(f => f.alertas.length > 0).length,
     };
   }
 
@@ -2309,6 +2573,9 @@ const SGADD_SCOUT = (function () {
          re-resolvía por `esEquipoPropio()` y con el rival elegido a mano
          sugería defensores del MISMO equipo que atacaba. */
       jugadoresRival: jugadoresClave(idx, claveRival, null, { claveNuestro: claveNuestro }),
+      /* Los que NO entraron a la tabla de arriba. Parte del mismo plantel
+         ordenado, así que el corte no se puede desalinear. */
+      restoRival: restoDelPlantel(idx, claveRival),
       claves: clavesEstrategicas(idx, claveRival, null, { claveNuestro: claveNuestro }),
       resumen: resumenEjecutivo(idx, claveNuestro, claveRival),
     };
@@ -2327,7 +2594,10 @@ const SGADD_SCOUT = (function () {
     celdaMatriz, referenciaLiga, filaMatriz, matrizComparativa, rankingsLiga,
     detallePartido, fichaEquipo, historialDirecto,
     analizarSubset, analisisCiclo,
-    perfilJugador, rolFuncional, marcaSugerida, jugadoresClave,
+    perfilJugador, rolFuncional, marcaSugerida, jugadoresClave, plantelOrdenado,
+    METRICAS_IMPACTO, MIN_PARES_ROL, DELTA_IMPACTO, MAX_ALERTAS_IMPACTO,
+    MIN_PJ_IMPACTO, MIN_MIN_IMPACTO,
+    referenciasDeImpacto, referenciaImpacto, alertasDeImpacto, restoDelPlantel,
     fortalezasJugador, fugasJugador, fichaRival,
     clavesEstrategicas, resumenEjecutivo, informePrePartido,
   };
@@ -2363,7 +2633,7 @@ const SCOUT_UI = {
      y claves, sin la matriz entera). */
   cards: {
     encabezado: true, matriz: true, ciclo: true, marcas: true,
-    resumen: true, jugadores: true, claves: true, fichas: true,
+    resumen: true, jugadores: true, resto: true, claves: true, fichas: true,
   },
 };
 
@@ -2374,9 +2644,41 @@ const SCOUT_CARDS = [
   { id: 'marcas', label: 'Plan individual · marcas' },
   { id: 'resumen', label: 'Resumen de criterio estratégico' },
   { id: 'jugadores', label: 'Tabla de jugadores clave' },
+  { id: 'resto', label: 'Resto del plantel' },
   { id: 'claves', label: 'Claves estratégicas' },
-  { id: 'fichas', label: 'Fichas individuales' },
+  /* `bloque` = la clave de la matriz de bloques (`SGADD_AUTH.BLOQUES`).
+     Una card que el plan no incluye NO se ofrece en el modal: tildarla
+     metería el cartel de upgrade adentro del PDF que el DT lleva a la
+     cancha. */
+  { id: 'fichas', label: 'Fichas individuales', bloque: 'scouting.fichas' },
 ];
+
+/* =====================================================================
+   EL GATE DE UN BLOQUE · quién decide, y en qué orden
+
+   MANDA EL SERVIDOR. La respuesta de `/api/v1/scouting` declara en
+   `alcance.bloques` lo que concede el plan EFECTIVO del catálogo, que
+   puede ser más estricto que el plan firmado en el link (punto 55): un
+   cliente bajado de Oro a Plata sigue teniendo un token que dice Oro.
+
+   Sin esa declaración —GViz directo, la demo, un libro abierto sin
+   token— decide el motor local con la sesión que haya. Y sin
+   `SGADD_AUTH` cargado se abre: es un gate de interfaz, no seguridad
+   (punto 19), y romper el informe porque falta un `<script>` sería
+   cambiar un problema comercial por uno de producto.
+   ===================================================================== */
+function scoutPuedeBloque(nombre, id) {
+  const st = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado) ? SGADD_APP.estado : null;
+  const dec = st && st.alcance && st.alcance.bloques;
+  if (dec && Object.prototype.hasOwnProperty.call(dec, nombre)) return !!dec[nombre];
+  if (typeof SGADD_AUTH === 'undefined' || !SGADD_AUTH.tieneBloque) return true;
+  return SGADD_AUTH.tieneBloque(id);
+}
+
+/** Las cards que ESTA sesión puede exportar. */
+function scoutCardsVisibles() {
+  return SCOUT_CARDS.filter(c => !c.bloque || scoutPuedeBloque(c.id, c.bloque));
+}
 
 /* ===================== ESTADO Y EVENTOS ===================== */
 
@@ -2462,7 +2764,7 @@ function scoutRestaurarEscudos() { SGADD_UI.restaurarImagenes('#scoutInforme'); 
 
 function scoutImprimir() {
   scoutCerrarExport();
-  SCOUT_CARDS.forEach(c => scoutCard(c.id, SCOUT_UI.cards[c.id]));
+  scoutCardsVisibles().forEach(c => scoutCard(c.id, SCOUT_UI.cards[c.id]));
   scoutActualizarCabeceraImpresa();
   scoutEmbeberEscudos();
   /* `Scouting vs <rival>`. El rival sale de `__claveRival`, que
@@ -2497,7 +2799,7 @@ function scoutImprimir() {
 }
 
 function scoutModalExport() {
-  const items = SCOUT_CARDS.map(c => `
+  const items = scoutCardsVisibles().map(c => `
     <label class="flex items-center gap-2 py-1 cursor-pointer">
       <input type="checkbox" ${SCOUT_UI.cards[c.id] ? 'checked' : ''}
         onchange="scoutCard('${c.id}', this.checked)"
@@ -2650,8 +2952,19 @@ function scoutEstadoJugador(perfil) {
 
 function scoutBadgesADN(perfil) {
   if (!perfil || !perfil.adn || typeof jugadoresBadges !== 'function') return '';
-  const badges = jugadoresBadges(perfil.adn);
-  if (!badges.length) return '';
+  return scoutChipsEtiquetas(jugadoresBadges(perfil.adn));
+}
+
+/**
+ * Los chips de una lista de etiquetas YA ARMADA por el motor compartido.
+ *
+ * Está partido de `scoutBadgesADN` porque el resto del plantel recibe la
+ * lista hecha (`f.etiquetas`) y no un perfil con su ADN colgado: con dos
+ * renderizadores, el mismo jugador saldría con chips de un color en la
+ * ficha y de otro tres centímetros más abajo.
+ */
+function scoutChipsEtiquetas(badges) {
+  if (!badges || !badges.length) return '';
   return `<div class="flex flex-wrap gap-1 mt-1">${badges.map(b => {
     /* El `~` y el gris avisan que esa etiqueta se apoya en una comparación
        contra la liga que este jugador, por minutos, no sostiene. */
@@ -3260,11 +3573,97 @@ function scoutBloqueClaves(inf) {
     </section>`;
 }
 
+/* ============ BLOQUE 6 bis · RESTO DEL PLANTEL ============ */
+
+/** Una alerta de impacto, como chip. Lleva el ⚡ además del color: ningún
+    estado se comunica solo con color (punto 14). El `title` dice contra
+    qué muestra se midió, que es lo que la vuelve auditable. */
+function scoutChipImpacto(a) {
+  const glosa = a.nivelDetalle + ' · ' + a.pares + ' jugadores'
+    + (a.muestraCorta ? ' · muestra corta: el ~ avisa que sale de pocos partidos o pocos minutos' : '');
+  return `<span class="badge-impacto" title="${escapeAttr(glosa)}" tabindex="0">⚡ ${escapeHtml(a.texto)}</span>`;
+}
+
+function scoutBloqueResto(inf) {
+  const t = inf.restoRival;
+  if (!t || !t.filas.length) return '';
+
+  const tarjetas = t.filas.map(f => {
+    const alertas = f.alertas.map(a => `<p class="mt-1">${scoutChipImpacto(a)}</p>`).join('');
+    const muestra = [
+      f.min !== null ? escapeHtml(SGADD.formatear('MIN', f.min)) + ' MIN' : null,
+      f.pj !== null ? f.pj + ' PJ' : null,
+    ].filter(Boolean).join(' · ');
+    /* La función en cancha va en su propia línea y SE SACA de los chips:
+       repetida en los dos lados ocupa el doble en una tarjeta que es
+       chica a propósito. El texto sale del badge y no de `rol.label`
+       porque el badge es el que trae el `~` de «esta etiqueta se apoya en
+       una muestra que el jugador no sostiene» (punto 8). */
+    const chipRol = f.etiquetas.filter(b => b.tipo === 'rol')[0];
+    const otros = f.etiquetas.filter(b => b.tipo !== 'rol');
+    return `
+      <article class="scout-resto bg-surface2/40 rounded-lg p-2.5">
+        <p class="text-xs text-white leading-tight">${escapeHtml(f.nombre)}</p>
+        <p class="text-[10px] uppercase tracking-wider text-accent font-display"
+          ${chipRol && chipRol.motivo ? `title="${escapeAttr(chipRol.motivo)}"` : ''}
+          >${escapeHtml(chipRol ? chipRol.texto : f.rol.label)}</p>
+        ${muestra ? `<p class="text-[10px] font-mono dato-sec">${muestra}</p>` : ''}
+        ${scoutChipsEtiquetas(otros)}
+        ${f.impactoCorto
+          ? `<p class="mt-1.5 text-[10px] text-white font-semibold">⚠️ Alto impacto en pocos minutos</p>` : ''}
+        ${alertas}
+      </article>`;
+  }).join('');
+
+  return `
+    <section class="scout-card scout-pagina card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="resto">
+      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">🧩 Resto del plantel · ${scoutNombreConLogo(t.equipo, 18)}</h4>
+      <p class="text-[11px] text-muted mb-3">
+        Los ${t.filas.length} que no entran al análisis de arriba, con sus etiquetas.
+        Las alertas comparan sus métricas <b class="text-ink">por minuto</b> —o en
+        porcentaje— contra la mediana de los que califican en su misma función:
+        así la diferencia de minutos no decide la comparación.
+        ${t.conAlerta
+          ? `<b class="text-ink">${t.conAlerta} con alerta de impacto.</b>`
+          : 'Ninguno destaca por encima de su rol: el banco no cambia el plan.'}
+      </p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">${tarjetas}</div>
+    </section>`;
+}
+
 /* ===================== BLOQUE 7 · FICHAS INDIVIDUALES ===================== */
+
+/**
+ * EL BLOQUE QUE SEPARA PLATA DE ORO.
+ *
+ * Va como card de venta y no como un hueco: el punto del gate es que el
+ * cliente SEPA que el módulo existe y cómo pedirlo (punto 19). Y lleva
+ * `.no-imprimir` porque no es contenido del informe — un PDF con el
+ * cartel de upgrade adentro no se le muestra a nadie.
+ */
+function scoutFichasBloqueadas() {
+  const v = (typeof SGADD_AUTH !== 'undefined' && SGADD_AUTH.puedoVerBloque)
+    ? SGADD_AUTH.puedoVerBloque('scouting.fichas') : null;
+  const plan = (v && v.plan && SGADD_AUTH.nombrePlan) ? SGADD_AUTH.nombrePlan(v.plan) : 'Oro';
+  return `
+    <section id="scoutFichasBloqueadas" class="card rounded-xl p-5 border border-hairline text-center no-imprimir">
+      <div class="text-2xl mb-1" aria-hidden="true">🔒</div>
+      <h4 class="font-display uppercase tracking-wide text-xs text-ink mb-2">
+        📋 Ficha de análisis por jugador · Plan ${escapeHtml(plan)}</h4>
+      <p class="text-[11px] text-muted max-w-lg mx-auto mb-4">
+        El informe que estás viendo prepara al EQUIPO. La ficha individual baja a cada rival:
+        rol funcional, fortalezas, puntos de fuga y la decisión táctica de uno por uno,
+        con su defensor sugerido. Tu plan actual no la incluye.
+      </p>
+      ${(typeof SGADD_UI !== 'undefined' && SGADD_UI.pedirPlan) ? SGADD_UI.pedirPlan(plan) : ''}
+    </section>`;
+}
 
 function scoutBloqueFichas(inf) {
   const t = inf.jugadoresRival;
   if (!t || !t.filas.length) return '';
+  /* El gate ANTES de armar nada: no se pinta media ficha y se tapa. */
+  if (!scoutPuedeBloque('fichas', 'scouting.fichas')) return scoutFichasBloqueadas();
 
   const lista = (items, color) => items.map(x =>
     `<li class="flex gap-1.5 items-start"><span class="shrink-0${scoutTono(color)}" style="color:${color}">•</span><span>${escapeHtml(x)}</span></li>`).join('');
@@ -3350,8 +3749,13 @@ function scoutInforme(idx) {
        3. Splits L/V y ciclo reciente
        4. Plan colectivo  +  Resumen de criterio estratégico   ← van juntos
        5. Tabla de marcas, APAISADA                            ← sola
-       6. Tabla de jugadores clave  +  Claves estratégicas     ← van juntos
-       7. Fichas individuales
+       6. Tabla de jugadores clave                             ← sola
+       7. Resto del plantel  +  Claves estratégicas            ← van juntos
+       8. Fichas individuales
+
+     El resto del plantel ABRE hoja: con doce tarjetas no entra debajo de
+     la tabla de jugadores, y partirlo al medio es lo que la regla
+     `page-break-inside: avoid` de `.scout-card` ya evita.
 
      El resumen sube ANTES de la tabla porque sintetiza el plan colectivo,
      que ahora tiene al lado; la tabla es el detalle operativo y se lee con
@@ -3366,6 +3770,7 @@ function scoutInforme(idx) {
       ${scoutBloqueResumen(inf)}
       ${scoutBloqueMarcasTabla(inf)}
       ${scoutBloqueJugadores(inf)}
+      ${scoutBloqueResto(inf)}
       ${scoutBloqueClaves(inf)}
       ${scoutBloqueFichas(inf)}
       <footer class="informe-pie solo-imprimir">${SGADD_UI.pieInforme()}</footer>

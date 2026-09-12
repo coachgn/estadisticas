@@ -56,6 +56,8 @@ node test-pj.js            #  34 tests · el PJ de la sección Equipos es el de 
                            #             de posiciones, con los partidos sin estadísticas
 node test-plan-racha.js    #  43 tests · la racha con partidos manuales, el plan
                            #             efectivo del catálogo y el arranque sin destello
+node test-resto.js         # 106 tests · el resto del plantel, las alertas de impacto
+                           #             contra el rol y la ficha por jugador del Plan Oro
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
 
@@ -69,7 +71,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5270 tests en total. Todos tienen que dar verde antes de commitear.**
+**5376 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -1466,8 +1468,9 @@ plan colectivo 464 + resumen 203 · tabla de marcas 879 · jugadores 575 + clave
 1 Encabezado · 2 Matriz · 3 Splits y ciclo
 4 Plan colectivo  +  Resumen de criterio estratégico
 5 Tabla de marcas · APAISADA
-6 Jugadores clave  +  Claves estratégicas
-7+ Fichas individuales
+6 Jugadores clave
+7 Resto del plantel  +  Claves estratégicas
+8+ Fichas individuales
 ```
 
 El **resumen sube antes de la tabla**: sintetiza el plan colectivo, que ahora
@@ -2530,7 +2533,7 @@ responde otra pregunta). El tab de equipos NO usa la capa de datos vieja
 label del simulador es **"Simulador"** a secas (el modelo se sigue llamando
 360° en la documentación y en la ficha, pero no en el menú).
 
-### Los ocho bloques, en orden
+### Los nueve bloques, en orden
 
 Cada uno es una `<section class="scout-card" data-bloque="...">`. El orden
 es rígido y va de lo colectivo a lo individual:
@@ -2551,9 +2554,13 @@ es rígido y va de lo colectivo a lo individual:
    tabla de marcas, porque sintetiza justamente esa composición de marcas.
 6. **Jugadores clave del rival** — tabla con mapa de calor del top 3 por
    métrica y filas de cierre (promedio del plantel y de la liga).
-7. **Claves estratégicas y anticipación** — las 8 reglas dinámicas.
-8. **Ficha de análisis por jugador** — rol funcional, fortalezas, puntos de
-   fuga y plan de acción, uno por rival.
+7. **Resto del plantel** — los que no entran a la tabla de arriba, con sus
+   etiquetas y una alerta cuando su producción POR MINUTO destaca sobre la
+   mediana de su rol. Punto 56.
+8. **Claves estratégicas y anticipación** — las 8 reglas dinámicas.
+9. **Ficha de análisis por jugador** — rol funcional, fortalezas, puntos de
+   fuga y plan de acción, uno por rival. **Es del Plan ORO** (punto 56): con
+   Plata, en su lugar va la card que explica qué incluye.
 
 Los escudos se pintan al lado de cada nombre de equipo (`scoutNombreConLogo`)
 en el encabezado, la matriz, los rankings, el ciclo y la tabla de jugadores.
@@ -8159,4 +8166,119 @@ y `CLUB.confirmarSinConfig()` lo muestra recién si ni el JSON ni el
 catálogo trajeron al club; lo llama `resolverClubYPlanilla()` después de
 `reconciliarConCatalogo()`. **Sin backend sale en el acto, como siempre**:
 ahí no hay nada más que esperar.
+
+---
+
+## 56. EL RESTO DEL PLANTEL Y LA FICHA DEL PLAN ORO
+
+Dos cambios del informe pre-partido que entraron juntos porque tocan el
+mismo tramo: lo que pasa DESPUÉS de la tabla de jugadores clave.
+
+### 1 · El bloque del banco · `SGADD_SCOUT.restoDelPlantel`
+
+`jugadoresClave` se queda con los ocho que más juegan. Los otros —cuatro,
+ocho, a veces doce— no aparecían en ninguna parte del informe, y ahí es
+donde vive el factor X del banco: el que entra diez minutos y produce al
+ritmo de la rotación. El bloque los nombra con sus etiquetas y AVISA
+cuando uno destaca, sin gastarle a cada uno una ficha táctica entera.
+
+**LAS MÉTRICAS SON TASAS, NUNCA CUENTAS POR PARTIDO.** Comparar los PTS
+por partido de un suplente de nueve minutos contra los de la rotación no
+mide otra cosa que los minutos: la diferencia está garantizada de antemano
+y la alerta no diría nada. Las seis son `PTS/min`, `USG%`, `eFG%`,
+`RT/min`, `AST/min` y `PR/min`.
+
+**Y por eso `RO%`/`RD%` quedan AFUERA aunque sean tasas**: su denominador
+es del EQUIPO y el motor NO las prorratea por minutos (punto 24), así que
+un suplente las tiene bajas por no haber estado en cancha y no por no
+rebotear. Los rebotes entran por minuto, que es la pregunta que se quería
+hacer. Hay un test con un suplente de `RO%` altísimo que no puede
+disparar nada.
+
+**La referencia es su ROL FUNCIONAL, no su banda de minutos.** La pregunta
+del DT es «de los que hacen su trabajo en esta liga, ¿cuánto produce
+éste?»; un grupo de pares por minutos lo compararía contra otros
+suplentes, o sea que escondería justamente al que hay que ver. El pool son
+los **calificados**, que es el universo con el que el proyecto ya arma
+percentiles y bandas (punto 8).
+
+La cascada es la del grupo de pares (punto 42): **rol → liga**, con el
+mismo piso de 3, y el nivel VIAJA en el resultado y se dice en el tooltip.
+Una referencia degradada en silencio es peor que ninguna. Una **mediana de
+CERO** no sirve de denominador y degrada igual: un «+∞%» no es una alerta,
+es una división.
+
+Lo demás que hay que respetar al tocarlo:
+
+- **El corte sale de UNA sola función** (`plantelOrdenado`). Dos
+  ordenamientos calcados terminan partiendo en distinto lugar y un jugador
+  saldría en los dos bloques o en ninguno. Los dados de BAJA salen de los
+  dos, igual que salían del plan.
+- **+35% es el umbral**, el que pidió el club. Con 15% la mitad del banco
+  dispara una alerta y el bloque vuelve a ser una lista que nadie lee.
+- **Dos alertas por jugador como mucho**: el bloque existe para NO
+  saturar, y seis alertas en una tarjeta son otra ficha táctica.
+- **La muestra corta se MARCA, no se borra** (punto 8): por debajo de 3
+  partidos o de 8 minutos —los dos pisos del punto 4, leídos de
+  `sgadd-partido.js` y no copiados— la alerta sale con el `~` de siempre.
+- **Las etiquetas se piden al motor compartido** (`jugadoresBadges`), no
+  se rearman: con dos renderizadores el mismo jugador saldría con chips de
+  un color en la ficha y de otro tres centímetros más abajo.
+- El chip `.badge-impacto` va **a mano en el `<style>`** con su regla de
+  `@media print`, como todo nodo inyectado (punto 12), y reusa la paleta
+  ya MEDIDA del badge de partidos manuales (punto 44).
+
+### 2 · LA FICHA POR JUGADOR ES DEL PLAN ORO · la matriz de BLOQUES
+
+`MODULOS` decide a qué PANTALLA se entra. La ficha individual es un bloque
+ADENTRO de una pantalla que el Plata sí abre, así que necesitaba un
+segundo nivel: `SGADD_AUTH.BLOQUES`, con clave `<seccion>.<bloque>` —el
+`data-bloque` del DOM con su sección adelante—, así el gate, el modal de
+exportación y la declaración del servidor nombran lo mismo.
+
+**No se mete en `MODULOS`**: esa matriz se compara contra `SGADD.SECCIONES`
+en los dos sentidos y un bloque ahí sería una sección que el router no
+conoce. **Y hereda la regla de su sección**: para ver un bloque hay que
+poder entrar a la pantalla que lo contiene.
+
+```
+scouting.fichas   →  Plan ORO
+```
+
+- **Un bloque sin declarar se trata como ABIERTO**, igual que una sección
+  sin regla. Del lado del servidor la asimetría es la inversa
+  (`reglas.puedeBloque` falla CERRADO) y por el mismo criterio: allá lo que
+  se pierde con un default permisivo son datos.
+- **La comparación por ORDEN vive en `alcanzaPlan`**, que usan las dos
+  matrices. Dos copias terminan distintas (punto 8), y ya pasó con MASTER
+  quedándose sin Scouting.
+- **El Plata NO pierde el informe**: lo que se acota es el bloque. En su
+  lugar va una card que dice qué incluye la ficha y cómo pedirla — el punto
+  del gate es que el cliente SEPA que existe (punto 19). Lleva
+  `.no-imprimir`: un PDF con el cartel de upgrade adentro no se le muestra
+  a nadie.
+- **El modal de exportación no ofrece lo que no se pinta**
+  (`scoutCardsVisibles`): tildarlo metería ese cartel en el PDF.
+- **La landing lo DERIVA**, igual que las secciones. La regla vive en
+  `BLOQUES` y la copia en `sgadd-landing.js`; un bloque declarado sin copia
+  no se ofrece y hay un test que lo denuncia. Hoy la card de Oro suma la
+  ficha además del servicio de scouters.
+
+### Quién decide, y por qué esto sigue siendo un gate de interfaz
+
+**Manda el servidor**: `/api/v1/scouting` declara en `alcance.bloques` lo
+que concede el plan EFECTIVO del catálogo, que puede ser más estricto que
+el plan firmado en el link (punto 55). Sin esa declaración —GViz directo,
+la demo, un libro abierto sin token— decide el motor local.
+
+Y hay que ser honesto sobre qué significa: **la ficha se calcula en el
+navegador desde las MISMAS filas** que alimentan la tabla de jugadores
+clave y el plan de marcas, que sí viajan. O sea que esto no es retener
+datos —no se puede, sin romper la parte que el plan sí incluye— sino que
+el servidor sea el que decide. Es exactamente lo que el punto 19 dice del
+resto del módulo, y vale por lo mismo.
+
+**La demo pública entra como PLATA** (punto 52), así que muestra la card
+de venta en vez de la ficha. Es deliberado: la demo vende Plata, y el
+escalón siguiente tiene que verse.
 

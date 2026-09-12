@@ -358,8 +358,24 @@ async function manejarScouting(peticion, deps) {
       categoria: cat.slug,
       cruce: { local: q.local || null, visitante: q.visitante || null },
       /* El EFECTIVO, igual que en equipos: con el del token el panel
-         mostraría un plan que el servidor no hace valer. */
-      alcance: { rol: ctx.rol, plan: sesionEfectiva.plan },
+         mostraría un plan que el servidor no hace valer.
+
+         `bloques` es el segundo nivel: qué partes de la pantalla concede
+         ese plan (`AUTH.BLOQUES`). Va DERIVADO de la tabla compartida,
+         así que declarar un bloque nuevo no obliga a tocar este handler.
+
+         Y ACÁ HAY QUE SER HONESTO sobre qué significa: la ficha por
+         jugador se calcula en el navegador desde las MISMAS filas que
+         alimentan la tabla de jugadores clave y el plan de marcas, que sí
+         viajan. O sea que esto no es retener datos —no se puede, sin
+         romper la parte que el plan sí incluye— sino que el servidor sea
+         el que DECIDE, con el plan del catálogo y no con el del link que
+         el cliente tenga guardado (punto 55). Es un gate de interfaz, y
+         el punto 19 explica por qué eso vale igual. */
+      alcance: {
+        rol: ctx.rol, plan: sesionEfectiva.plan,
+        bloques: AUTH.bloquesDe('scouting', sesionEfectiva),
+      },
       leidoEn: libro.leidoEn,
       /* El informe pre-partido necesita los datos del RIVAL —es su objeto—
          así que acá no se recortan FILAS. Las columnas ocultas sí: son

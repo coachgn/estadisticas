@@ -1078,6 +1078,23 @@ const SGADD_UI = (function () {
       + 'Escribile a motorstats.ar@gmail.com.', 'aviso');
   }
 
+  /**
+   * El botón que convierte un "no" en un pedido.
+   *
+   * El asunto va armado: un `mailto:` vacío deja al DT escribiendo el
+   * pedido desde cero y la mitad no lo manda. Y vive acá porque lo usan
+   * la pantalla entera (`sinAcceso`) y los bloques bloqueados adentro de
+   * una pantalla que sí se abre — con dos copias, el día que cambie el
+   * mail una se queda vieja y ese pedido no llega a ninguna parte.
+   */
+  function pedirPlan(plan, etiqueta) {
+    const nombre = esc(plan || 'Pro');
+    const asunto = encodeURIComponent('SGADD · Quiero el Plan ' + (plan || 'Pro'));
+    return `<a href="mailto:${SIN_ACCESO_MAIL}?subject=${asunto}"
+      class="inline-block text-xs font-semibold uppercase tracking-wider rounded px-4 py-2 bg-accent text-base hover:opacity-90">
+      ${etiqueta ? esc(etiqueta) : 'Pedir el Plan ' + nombre}</a>`;
+  }
+
   function sinAcceso(o) {
     const op = o || {};
     const seccion = op.seccion || 'esta sección';
@@ -1094,13 +1111,8 @@ const SGADD_UI = (function () {
       : 'Esta pantalla es de administración del sistema y no forma parte de los planes. '
         + 'Todo lo que necesitás para el análisis está en Principal, Clasificación, Equipos y Jugadores.';
 
-    /* El asunto y el cuerpo van armados: un `mailto:` vacío deja al DT
-       escribiendo el pedido desde cero y la mitad no lo manda. */
-    const asunto = encodeURIComponent('SGADD · Quiero el Plan ' + plan);
     const accion = esPlan
-      ? `<a href="mailto:${SIN_ACCESO_MAIL}?subject=${asunto}"
-           class="inline-block text-xs font-semibold uppercase tracking-wider rounded px-4 py-2 bg-accent text-base hover:opacity-90">
-           Pedir el Plan ${esc(plan)}</a>`
+      ? pedirPlan(plan)
       : `<button onclick="navigate('principal')"
            class="text-xs font-semibold uppercase tracking-wider rounded px-4 py-2 border border-hairline hover:bg-surface2 transition-colors">
            Volver a Principal</button>`;
@@ -1171,7 +1183,7 @@ const SGADD_UI = (function () {
     diagnosticarPie, reglaPieImpresion, excepcionesDelPie,
     ancestrosQueRompenElPie,
     sanearNombreArchivo, nombrePersona, nombrePdf, tituloPdf, tituloPdfActivo,
-    sinAcceso, avisoSinEquipo };
+    sinAcceso, pedirPlan, avisoSinEquipo };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_UI;
