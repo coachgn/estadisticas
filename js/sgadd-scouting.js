@@ -2667,17 +2667,17 @@ const SCOUT_CARDS = [
    (punto 19), y romper el informe porque falta un `<script>` sería
    cambiar un problema comercial por uno de producto.
    ===================================================================== */
-function scoutPuedeBloque(nombre, id) {
+function scoutPuedeBloque(id) {
   const st = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado) ? SGADD_APP.estado : null;
   const dec = st && st.alcance && st.alcance.bloques;
-  if (dec && Object.prototype.hasOwnProperty.call(dec, nombre)) return !!dec[nombre];
+  if (dec && Object.prototype.hasOwnProperty.call(dec, id)) return !!dec[id];
   if (typeof SGADD_AUTH === 'undefined' || !SGADD_AUTH.tieneBloque) return true;
   return SGADD_AUTH.tieneBloque(id);
 }
 
 /** Las cards que ESTA sesión puede exportar. */
 function scoutCardsVisibles() {
-  return SCOUT_CARDS.filter(c => !c.bloque || scoutPuedeBloque(c.id, c.bloque));
+  return SCOUT_CARDS.filter(c => !c.bloque || scoutPuedeBloque(c.bloque));
 }
 
 /* ===================== ESTADO Y EVENTOS ===================== */
@@ -3663,7 +3663,7 @@ function scoutBloqueFichas(inf) {
   const t = inf.jugadoresRival;
   if (!t || !t.filas.length) return '';
   /* El gate ANTES de armar nada: no se pinta media ficha y se tapa. */
-  if (!scoutPuedeBloque('fichas', 'scouting.fichas')) return scoutFichasBloqueadas();
+  if (!scoutPuedeBloque('scouting.fichas')) return scoutFichasBloqueadas();
 
   const lista = (items, color) => items.map(x =>
     `<li class="flex gap-1.5 items-start"><span class="shrink-0${scoutTono(color)}" style="color:${color}">•</span><span>${escapeHtml(x)}</span></li>`).join('');

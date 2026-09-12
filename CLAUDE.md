@@ -56,7 +56,7 @@ node test-pj.js            #  34 tests · el PJ de la sección Equipos es el de 
                            #             de posiciones, con los partidos sin estadísticas
 node test-plan-racha.js    #  43 tests · la racha con partidos manuales, el plan
                            #             efectivo del catálogo y el arranque sin destello
-node test-resto.js         # 106 tests · el resto del plantel, las alertas de impacto
+node test-resto.js         # 109 tests · el resto del plantel, las alertas de impacto
                            #             contra el rol y la ficha por jugador del Plan Oro
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
@@ -71,7 +71,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5376 tests en total. Todos tienen que dar verde antes de commitear.**
+**5379 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -8266,10 +8266,20 @@ scouting.fichas   →  Plan ORO
 
 ### Quién decide, y por qué esto sigue siendo un gate de interfaz
 
-**Manda el servidor**: `/api/v1/scouting` declara en `alcance.bloques` lo
-que concede el plan EFECTIVO del catálogo, que puede ser más estricto que
-el plan firmado en el link (punto 55). Sin esa declaración —GViz directo,
-la demo, un libro abierto sin token— decide el motor local.
+**Manda el servidor**: `alcance.bloques` declara, por id completo
+(`{'scouting.fichas': false}`), lo que concede el plan EFECTIVO del
+catálogo, que puede ser más estricto que el plan firmado en el link
+(punto 55) — medido en producción: un cliente con un link que dice ORO y
+PLATA en el catálogo recibe `false`. Sin esa declaración —GViz directo, la
+demo, un libro abierto sin token— decide el motor local.
+
+**Y viaja con los DATOS (`/api/v1/equipos`), no solo en `/scouting`.** Ese
+segundo endpoint existe pero el panel no lo llama: el libro entero le
+llega por `/equipos` y el informe se arma en el navegador. Declarado nada
+más allá, el mapa no tenía quién lo lea — la primera versión llegaba
+`null` a los cuatro clientes de producción. Por eso la clave es el id
+COMPLETO y no el nombre corto del bloque: el `alcance` de los datos no es
+de ninguna sección en particular.
 
 Y hay que ser honesto sobre qué significa: **la ficha se calcula en el
 navegador desde las MISMAS filas** que alimentan la tabla de jugadores

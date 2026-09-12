@@ -399,12 +399,15 @@ check('un bloque que nadie declaró se trata como abierto',
 check('y hereda la regla de su sección',
   !A.tieneBloque('scouting.fichas', ses('BRONCE')) && !A.tieneModulo('scouting', ses('BRONCE')));
 
-check('`bloquesDe` los resuelve para la respuesta del servidor',
-  JSON.stringify(A.bloquesDe('scouting', ses('PLATA'))) === '{"fichas":false}'
-  && JSON.stringify(A.bloquesDe('scouting', ses('ORO'))) === '{"fichas":true}',
-  JSON.stringify(A.bloquesDe('scouting', ses('PLATA'))));
-check('y una sección sin bloques devuelve un mapa vacío',
-  JSON.stringify(A.bloquesDe('equipos', ses('ORO'))) === '{}');
+/* EL MAPA VA POR ID COMPLETO: viaja en el `alcance` de los DATOS de una
+   categoría, que no son de ninguna sección, así que con claves cortas el
+   que lo lee tendría que saber de dónde vino. */
+check('`bloquesVigentes` los resuelve para la respuesta del servidor',
+  JSON.stringify(A.bloquesVigentes(ses('PLATA'))) === '{"scouting.fichas":false}'
+  && JSON.stringify(A.bloquesVigentes(ses('ORO'))) === '{"scouting.fichas":true}',
+  JSON.stringify(A.bloquesVigentes(ses('PLATA'))));
+check('y los nombra con la sección adelante, como el gate',
+  Object.keys(A.bloquesVigentes(ses('ORO'))).every(k => !!A.BLOQUES[k]));
 
 /* LA COMPARACIÓN POR ORDEN VIVE EN UNA SOLA FUNCIÓN: las dos matrices la
    usan y dos copias terminan distintas (punto 8). */
@@ -423,9 +426,18 @@ titulo('10. EL SERVIDOR DECLARA LO QUE CONCEDE EL PLAN EFECTIVO');
 const srv = fs.readFileSync('./server/api/handlers.js', 'utf8');
 const cuerpoScout = srv.slice(srv.indexOf('async function manejarScouting'),
                              srv.indexOf('function fallaDeDatos'));
-check('el scouting manda `alcance.bloques`', /bloques: AUTH\.bloquesDe\('scouting'/.test(cuerpoScout));
-check('y los mide con el plan EFECTIVO del catálogo, no con el del token',
-  /bloquesDe\('scouting', sesionEfectiva\)/.test(cuerpoScout));
+const cuerpoEquipos = srv.slice(srv.indexOf('async function manejarEquipos'),
+                                srv.indexOf('async function manejarScouting'));
+/* VA CON LOS DATOS, no solo en `/scouting`: el panel pide el libro por
+   `/equipos` y arma el informe en el navegador, así que declarado en el
+   otro endpoint el mapa no tenía quién lo lea — medido en producción,
+   llegaba `null`. */
+check('los datos declaran `alcance.bloques`',
+  /bloques: AUTH\.bloquesVigentes\(/.test(cuerpoEquipos));
+check('medidos con el plan EFECTIVO del catálogo, no con el del token',
+  /bloquesVigentes\(Object\.assign\(\{\}, ctx\.sesion, \{ plan: planVigente \}\)\)/.test(cuerpoEquipos));
+check('y el scouting declara el mismo mapa',
+  /bloques: AUTH\.bloquesVigentes\(sesionEfectiva\)/.test(cuerpoScout));
 check('la copia vendorizada del motor trae la matriz',
   /scouting\.fichas/.test(fs.readFileSync('./server/lib/compartido/sgadd-auth.js', 'utf8')));
 
@@ -455,7 +467,7 @@ function pantalla(alcance) {
   return ctx;
 }
 
-const P = pantalla({ plan: 'ORO', bloques: { fichas: true } });
+const P = pantalla({ plan: 'ORO', bloques: { 'scouting.fichas': true } });
 const html = vm.runInContext('scoutBloqueResto', P)({ restoRival: resto });
 
 check('el bloque se pinta con su `data-bloque`', /data-bloque="resto"/.test(html));
@@ -490,7 +502,7 @@ const conOro = vm.runInContext('scoutBloqueFichas', P)(infUI);
 check('con ORO, la ficha por jugador se pinta entera',
   /data-bloque="fichas"/.test(conOro) && /Ficha de análisis por jugador/.test(conOro));
 
-const Pp = pantalla({ plan: 'PLATA', bloques: { fichas: false } });
+const Pp = pantalla({ plan: 'PLATA', bloques: { 'scouting.fichas': false } });
 const conPlata = vm.runInContext('scoutBloqueFichas', Pp)(infUI);
 check('con PLATA sale la card de venta y NO la ficha',
   /scoutFichasBloqueadas/.test(conPlata) && !/data-bloque="fichas"/.test(conPlata));
@@ -515,12 +527,12 @@ check('y el orden del modal es el del informe',
 
 /* MANDA EL SERVIDOR: su declaración le gana al plan que tenga guardado
    el navegador, que puede ser el de un link viejo (punto 55). */
-const Pmix = pantalla({ plan: 'ORO', bloques: { fichas: false } });
+const Pmix = pantalla({ plan: 'ORO', bloques: { 'scouting.fichas': false } });
 check('la declaración del servidor le gana a la sesión local',
-  !vm.runInContext('scoutPuedeBloque', Pmix)('fichas', 'scouting.fichas'));
+  !vm.runInContext('scoutPuedeBloque', Pmix)('scouting.fichas'));
 const Psin = pantalla(null);
 check('sin backend decide el motor local con la sesión que haya',
-  vm.runInContext('scoutPuedeBloque', Psin)('fichas', 'scouting.fichas'));
+  vm.runInContext('scoutPuedeBloque', Psin)('scouting.fichas'));
 
 /* --- El CSS del chip va a mano: es un nodo inyectado (punto 12) --- */
 const idxHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');

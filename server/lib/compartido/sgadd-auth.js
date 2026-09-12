@@ -446,17 +446,18 @@ const SGADD_AUTH = (function () {
   }
 
   /**
-   * Los bloques declarados de una sección, ya resueltos para esta sesión:
-   * `{ fichas: false }`. Es lo que el servidor manda en `alcance.bloques`,
-   * y va derivado de la tabla y no escrito a mano para que declarar un
-   * bloque nuevo no obligue a tocar el handler.
+   * TODOS los bloques declarados, resueltos para esta sesión:
+   * `{ 'scouting.fichas': false }`. Es lo que el servidor manda en
+   * `alcance.bloques`, derivado de la tabla y no escrito a mano, así que
+   * declarar un bloque nuevo no obliga a tocar ningún handler.
+   *
+   * VA POR ID COMPLETO y no por sección: el `alcance` viaja con los
+   * DATOS de una categoría, que no son de ninguna sección en particular,
+   * y con claves cortas el que lo lee tendría que saber de dónde vino.
    */
-  function bloquesDe(seccion, s) {
+  function bloquesVigentes(s) {
     const out = {};
-    Object.keys(BLOQUES).forEach((id) => {
-      if (BLOQUES[id].seccion !== seccion) return;
-      out[id.slice(String(seccion).length + 1)] = tieneBloque(id, s);
-    });
+    Object.keys(BLOQUES).forEach((id) => { out[id] = tieneBloque(id, s); });
     return out;
   }
 
@@ -874,7 +875,7 @@ const SGADD_AUTH = (function () {
     ALCANCES, ALCANCES_POR_ACCION, alcancesDe, motivoSinAlcance,
     normalizarEmail, parsearSesion, establecerSesion, limpiarSesion, sesion, fijarPlanEfectivo,
     esAdmin, rol, sinRestricciones,
-    BLOQUES, alcanzaPlan, tieneBloque, puedoVerBloque, bloquesDe,
+    BLOQUES, alcanzaPlan, tieneBloque, puedoVerBloque, bloquesVigentes,
     puedeVerEquipo, tieneModulo, puedoAcceder, puedeScoutearCruce,
     forzarCruce, equiposVisibles, equipoPropio,
     cargarSesion, descripcionSesion,
