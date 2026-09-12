@@ -5,7 +5,7 @@
    juntas porque comparten el bloque 7:
 
      · el RESTO DEL PLANTEL — los que no entran al análisis principal,
-       con sus etiquetas y una alerta cuando destacan sobre su rol;
+       en una tabla con su muestra, su arma principal y sus etiquetas;
      · la FICHA POR JUGADOR, que pasó a ser del plan ORO.
 
    LA FIXTURE ESTÁ ARMADA PARA QUE LAS TASAS SE PUEDAN AFIRMAR A MANO.
@@ -231,102 +231,32 @@ check('el de cero minutos entra igual, con sus etiquetas',
   !!cero && cero.etiquetas.length > 0 && cero.min === 0);
 
 /* =====================================================================
-   3. LAS ALERTAS DE IMPACTO
+   3. SIN ALERTAS
    ===================================================================== */
-titulo('3. LAS ALERTAS · destacar sobre la mediana de su rol');
+titulo('3. EL RESTO NO LLEVA ALERTAS DE IMPACTO');
 
-check('el factor X dispara una alerta', factor.alertas.length === 1,
-  factor.alertas.map(a => a.texto).join(' · '));
-check('y es la de puntos por minuto', factor.alertas[0].id === 'ptsMin', factor.alertas[0].id);
-check('con el número que la justifica: 0,90 contra 0,50',
-  cerca(factor.alertas[0].valor, 0.9, 1e-9) && cerca(factor.alertas[0].referencia, 0.5, 1e-9),
-  factor.alertas[0].valor + ' / ' + factor.alertas[0].referencia);
-check('el texto trae el porcentaje, la métrica y los dos valores',
-  /\+80% en PTS\/min sobre su rol \(0,90 contra 0,50\)/.test(factor.alertas[0].texto),
-  factor.alertas[0].texto);
-check('el suplente de tasas normales NO dispara nada', gris.alertas.length === 0,
-  gris.alertas.map(a => a.texto).join(' · '));
-check('el de cero minutos tampoco: sin minutos no hay tasa', cero.alertas.length === 0);
-
-/* LA PRUEBA QUE SOSTIENE EL BLOQUE: los minutos NO deciden. Un suplente
-   con las mismas tasas que un titular tiene que dar exactamente lo
-   mismo, y por eso `GRIS` (12 min) no dispara: si la comparación fuera
-   por partido, dispararía al revés — todos los titulares contra él. */
-check('la comparación es por TASA y no por partido',
-  gris.alertas.length === 0 && cerca(gris.perfil.pts / gris.perfil.min, 0.5, 1e-9),
-  gris.perfil.pts + ' pts en ' + gris.perfil.min + ' min');
-
-check('`RO%`/`RD%` quedan afuera: su denominador es del equipo, no del jugador',
-  cristal.alertas.length === 0, cristal.alertas.map(a => a.texto).join(' · '));
-check('y ninguna métrica del bloque las lee',
-  S.METRICAS_IMPACTO.every(m => m.valor({ rebote: 9, reboteDef: 9, min: 10 }) === null
-    || m.id !== 'roPct'),
-  S.METRICAS_IMPACTO.map(m => m.id).join(','));
-check('los rebotes entran POR MINUTO, que es la pregunta que se quería hacer',
-  S.METRICAS_IMPACTO.some(m => m.id === 'rtMin'));
-
-/* La mediana de `PR` es 0 en toda la liga: no sirve de denominador y no
-   puede producir un "+∞%". */
-check('una mediana de CERO no dispara una alerta infinita',
-  factor.alertas.every(a => a.id !== 'prMin') && resto.filas.every(f => f.alertas.every(a => isFinite(a.delta))));
-
-const refs = S.referenciasDeImpacto(idx);
-check('la referencia de `PR/min` se descarta por valer cero',
-  S.referenciaImpacto(refs, 'slasher', 'prMin') === null);
-
-/* =====================================================================
-   4. LA CASCADA DE LA REFERENCIA
-   ===================================================================== */
-titulo('4. LA REFERENCIA · rol → liga, y se dice cuál se usó');
-
-check('el pool del rol son los CALIFICADOS de esa función',
-  refs.porRol.slasher && refs.porRol.slasher.ptsMin.n >= S.MIN_PARES_ROL,
-  refs.porRol.slasher && refs.porRol.slasher.ptsMin.n);
-check('la alerta del factor X salió de su rol', factor.alertas[0].nivel === 'rol');
-check('y lo dice con todas las letras', factor.alertas[0].nivelLabel === 'su rol'
-  && /mediana de los que califican/.test(factor.alertas[0].nivelDetalle));
-
-check('el interior sin pares en la liga degrada a la liga entera',
-  pivot.alertas.length > 0 && pivot.alertas[0].nivel === 'liga',
-  pivot.rol.id + ' · ' + pivot.alertas.map(a => a.nivel).join(','));
-check('y la degradación se declara, no se calla',
-  /su rol no llegó a 3 jugadores/.test(pivot.alertas[0].nivelDetalle),
-  pivot.alertas[0].nivelDetalle);
-check('el rol del solitario no tiene calificados',
-  !refs.porRol[pivot.rol.id] || refs.porRol[pivot.rol.id].ptsMin.n < S.MIN_PARES_ROL,
-  pivot.rol.id);
-
-/* =====================================================================
-   5. LA MUESTRA CORTA Y EL TOPE
-   ===================================================================== */
-titulo('5. LA MUESTRA SE MARCA, NO SE BORRA');
-
-check('una noche sola dispara igual', corto.alertas.length > 0);
-check('pero la alerta queda marcada', corto.alertas[0].muestraCorta === true);
-check('y el texto lo dice con el ~ de siempre', corto.alertas[0].texto.indexOf('~ ') === 0,
-  corto.alertas[0].texto);
-check('los pisos salen de donde ya viven (punto 4), no copiados',
-  S.MIN_PJ_IMPACTO === require('./js/sgadd-partido.js').MIN_PARTIDOS_JUGADOR
-  && S.MIN_MIN_IMPACTO === require('./js/sgadd-partido.js').MIN_MINUTOS);
-check('la del factor X no está marcada: 3 partidos y 10 minutos',
-  factor.alertas[0].muestraCorta === false);
-
-/* Tope de dos: el bloque existe para NO saturar. */
-const multi = S.alertasDeImpacto(
-  { min: 10, pts: 9, usg: 0.9, efg: 0.99, ro: 5, rd: 5, ast: 5, pr: 5 }, 3, refs, 'slasher');
-check('nunca más de dos alertas por jugador', multi.length === S.MAX_ALERTAS_IMPACTO, multi.length);
-check('y salen ordenadas de mayor a menor diferencia',
-  multi[0].delta >= multi[1].delta, multi.map(a => a.id + ' ' + a.delta.toFixed(2)).join(' · '));
-
-/* =====================================================================
-   6. EL FACTOR X
-   ===================================================================== */
-titulo('6. «ALTO IMPACTO EN POCOS MINUTOS»');
-
-check('el que destaca sin llegar a la banda de los que juegan queda marcado',
-  factor.impactoCorto === true);
-check('el que no destaca, no', gris.impactoCorto === false);
-check('el bloque cuenta cuántos traen alerta', resto.conAlerta === 3, resto.conAlerta);
+/* Se sacaron a pedido del club (2026-09-12): son jugadores de baja
+   rotación y la fila está para leer su arma principal de un vistazo. El
+   FACTOR, X de la fixture es justo el caso que antes disparaba —9 puntos
+   en 10 minutos, +80% sobre su rol—, así que si una alerta volviera a
+   colarse, aparecería acá. */
+check('ninguna fila trae alertas', resto.filas.every(f => !('alertas' in f)),
+  resto.filas.filter(f => 'alertas' in f).map(f => f.nombre).join(','));
+check('ni la marca de «alto impacto en pocos minutos»',
+  resto.filas.every(f => !('impactoCorto' in f)));
+check('y el bloque no cuenta alertas', !('conAlerta' in resto) && !('metricas' in resto));
+check('ni aunque el jugador produzca muy por encima de su rol',
+  !!factor && factor.perfil.pts / factor.perfil.min > 0.8 && !('alertas' in factor));
+check('el motor de alertas no queda como código muerto',
+  ['alertasDeImpacto', 'referenciasDeImpacto', 'referenciaImpacto', 'METRICAS_IMPACTO',
+   'DELTA_IMPACTO', 'MAX_ALERTAS_IMPACTO'].every(k => !(k in S)),
+  Object.keys(S).filter(k => /IMPACTO|Impacto/.test(k)).join(','));
+check('ni en el fuente',
+  !/function alertasDeImpacto|METRICAS_IMPACTO|referenciasDeImpacto/
+    .test(fs.readFileSync('./js/sgadd-scouting.js', 'utf8')));
+check('los pisos de muestra siguen saliendo de donde viven (punto 4), no copiados',
+  S.MIN_PJ_RESTO === require('./js/sgadd-partido.js').MIN_PARTIDOS_JUGADOR
+  && S.MIN_MIN_RESTO === require('./js/sgadd-partido.js').MIN_MINUTOS);
 
 /* =====================================================================
    6 bis. LA VÍA DE GOL LÍDER Y LA EFICIENCIA
@@ -362,16 +292,18 @@ check('una vía sin un solo intento no compite aunque tenga peso',
 check('sin ningún intento no hay vía que nombrar',
   S.viaDeGolLider(tiros({ T2I: 0, T3I: 0, T1I: 0 })) === null);
 
-/* LOS INTENTOS VAN TOTALES con el acumulado: es la muestra que se quería
-   mostrar. Y el % sale del MISMO par. */
-const vTotal = S.viaDeGolLider(tiros({ __acum: { T2C: 18, T2I: 35 } }));
-check('con acumulado, los intentos cargados son los TOTALES',
-  vTotal.total === true && vTotal.convertidos === 18 && vTotal.intentos === 35, JSON.stringify(vTotal));
-check('y el % sale del mismo par que se muestra', cerca(vTotal.pct, 18 / 35));
-check('sin acumulado van por partido, marcados como tales',
-  vDoble.total === false && vDoble.intentos === 6);
-check('un acumulado sin esa vía no inventa un total',
-  S.viaDeGolLider(tiros({ __acum: { T3C: 5, T3I: 9 } })).total === false);
+/* EL PAR VA POR PARTIDO, SIEMPRE: aunque el libro traiga el acumulado,
+   se muestra el promedio. Es lo que se compara de un suplente a otro. */
+const vConAcum = S.viaDeGolLider(tiros({ T2C: 1.2, T2I: 2.8, __acum: { T2C: 18, T2I: 35 } }));
+check('los intentos son el PROMEDIO POR PARTIDO de la fila de promedios',
+  cerca(vConAcum.convertidos, 1.2) && cerca(vConAcum.intentos, 2.8), JSON.stringify(vConAcum));
+check('y el acumulado se ignora aunque exista',
+  vConAcum.convertidos !== 18 && vConAcum.intentos !== 35 && !('total' in vConAcum));
+check('el % es la tasa de la hoja de promedios, no el cociente del par redondeado',
+  cerca(vConAcum.pct, 0.5) && !cerca(vConAcum.pct, 1.2 / 2.8));
+check('sin la tasa en la hoja, se cae al cociente del par',
+  cerca(S.viaDeGolLider(tiros({ 'T2%': '', T2C: 1.2, T2I: 2.8 })).pct, 1.2 / 2.8));
+check('y el PPT es el de esa vía', cerca(vConAcum.ppt, 1));
 
 check('las zonas salen de la MISMA tabla del tab Tiro',
   require('./js/sgadd-jugadores.js').ZONAS_TIRO.map(z => z.id).join(',') === 'T3,T2,T1'
@@ -396,9 +328,8 @@ check('por debajo de la liga cae en su banda baja',
 check('sin PPP no hay badge', S.eficienciaIndividual(idxEf, { min: 20 }, 5) === null);
 check('en la fixture la liga no tiene dispersión: banda nula, no inventada',
   factor.eficiencia && factor.eficiencia.banda === null);
-check('la muestra corta es UNA sola regla para alertas y eficiencia',
-  (fs.readFileSync('./js/sgadd-scouting.js', 'utf8').match(/MIN_MIN_IMPACTO;?\s*\n?/g) || []).length >= 1
-  && /const corta = muestraCorta\(min, pj\)/.test(fs.readFileSync('./js/sgadd-scouting.js', 'utf8')));
+check('la eficiencia marca la muestra corta con la regla compartida',
+  /muestraCorta: muestraCorta\(nn\(perfil\.min\), pj\)/.test(fs.readFileSync('./js/sgadd-scouting.js', 'utf8')));
 
 /* =====================================================================
    7. LOS DADOS DE BAJA
@@ -547,14 +478,16 @@ check('y abre hoja en el PDF, como las fichas', /scout-pagina/.test(html));
 check('nombra a los seis', resto.filas.every(f => html.indexOf(f.nombre) !== -1));
 check('con su función en cancha', html.indexOf(factor.rol.label) !== -1);
 check('y sus etiquetas del ADN', html.indexOf(factor.etiquetas[0].texto.replace('~ ', '')) !== -1);
-check('la alerta sale como chip, con su clase propia', /badge-impacto/.test(html));
-check('lleva el ⚡ además del color (punto 14)', /⚡/.test(html));
-check('se puede leer con el teclado, no solo con el mouse', /tabindex="0"/.test(html));
-check('y el tooltip dice contra qué muestra se midió',
-  /title="[^"]*mediana de los que califican[^"]*"/.test(html));
-check('el factor X sale marcado como alto impacto en pocos minutos',
-  /Alto impacto en pocos minutos/.test(html));
-check('el encabezado dice cuántos traen alerta', /3 con alerta de impacto/.test(html));
+/* SIN ALERTAS EN LA VISTA: ni chips, ni ⚡, ni tooltips de rol. */
+check('no se pinta ningún chip de alerta', !/badge-impacto/.test(html));
+check('ni el ⚡ ni la marca de alto impacto',
+  !/⚡/.test(html) && !/Alto impacto/.test(html));
+check('ni un tooltip que compare contra la mediana del rol',
+  !/mediana de los que califican/.test(html) && !/vs su rol/.test(html) && !/sobre su rol/.test(html));
+check('ni el conteo de alertas en el encabezado', !/alerta/i.test(html));
+check('el encabezado dice que la vía va en promedio por partido',
+  /promedio por\s+partido/.test(html));
+check('el badge de eficiencia se sigue leyendo con el teclado', /tabindex="0"/.test(html));
 
 /* --- LA TABLA COMPACTA · dos columnas, una fila por jugador --- */
 const trs = html.match(/<tr class="scout-resto[\s\S]*?<\/tr>/g) || [];
@@ -578,9 +511,8 @@ check('la vía de gol líder con su par por partido, su % y su PPT',
   && celdaJug.indexOf(F('T2%', 0.5)) !== -1 && celdaJug.indexOf(F('PPT2', 1) + ' PPT') !== -1,
   celdaJug.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '));
 check('el badge de eficiencia individual', celdaJug.indexOf('PPP ' + F('PPP', 1)) !== -1);
-check('la alerta en su texto CORTO en la fila', celdaJug.indexOf('+80% PTS/min vs su rol') !== -1);
-check('y el número que la justifica, en el title',
-  /title="[^"]*\(0,90 contra 0,50\)[^"]*"/.test(celdaJug));
+check('y en la celda del jugador no hay nada más que eso: sin alertas',
+  !/badge-impacto|⚡|vs su rol/.test(celdaJug));
 check('la columna del perfil lleva las etiquetas, la función en cancha incluida',
   celdaPerfil.indexOf(factor.rol.label) !== -1
   && factor.etiquetas.every(b => celdaPerfil.indexOf(b.texto.replace('~ ', '')) !== -1));
@@ -593,13 +525,15 @@ check('conserva el ~ del que no califica, que lo trae el badge',
 const sinTiros = vm.runInContext('scoutViaLider', P)(null);
 check('sin lanzamientos la fila lo dice, en vez de un «0/0»',
   /Sin lanzamientos registrados/.test(sinTiros) && !/0\/0/.test(sinTiros));
-/* Con acumulado el par es TOTAL y no lleva el «x PJ». */
-const viaTotal = vm.runInContext('scoutViaLider', P)(S.viaDeGolLider(Object.assign(
-  { __acum: { T2C: 18, T2I: 35 } }, { 'PT2%': 0.5, 'PT3%': 0.3, 'PT1%': 0.1, T2C: 1.5, T2I: 2.9, T3I: 1, T1I: 1, PPT2: 1.03 })));
-check('con acumulado el par es TOTAL y no lleva el «x PJ»',
-  viaTotal.indexOf('18/35') !== -1 && viaTotal.indexOf('x PJ') === -1, viaTotal.replace(/\s+/g, ' '));
-check('y explica que la comparación es por minuto',
-  /por minuto/.test(html) && /misma función/.test(html));
+/* Aunque el libro traiga el acumulado, la fila pinta el PROMEDIO. */
+const viaProm = vm.runInContext('scoutViaLider', P)(S.viaDeGolLider(Object.assign(
+  { __acum: { T2C: 18, T2I: 35 } },
+  { 'PT2%': 0.5, 'PT3%': 0.3, 'PT1%': 0.1, T2C: 1.2, T2I: 2.8, 'T2%': 0.43, T3I: 1, T1I: 1, PPT2: 0.86 })));
+check('con acumulado la fila pinta igual el promedio por partido, rotulado «x PJ»',
+  viaProm.indexOf(F('T2C', 1.2) + '/' + F('T2I', 2.8) + ' x PJ') !== -1 && viaProm.indexOf('18/35') === -1,
+  viaProm.replace(/\s+/g, ' '));
+check('con su % y su PPT',
+  viaProm.indexOf(F('T2%', 0.43)) !== -1 && viaProm.indexOf(F('PPT2', 0.86) + ' PPT') !== -1);
 check('sin resto no se pinta nada', vm.runInContext('scoutBloqueResto', P)({ restoRival: null }) === '');
 
 /* --- El gate de las fichas, ejercido en los dos sentidos --- */
@@ -642,9 +576,8 @@ check('sin backend decide el motor local con la sesión que haya',
 
 /* --- El CSS del chip va a mano: es un nodo inyectado (punto 12) --- */
 const idxHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-check('la clase del chip está en el <style>', /\.badge-impacto\s*\{/.test(idxHtml));
-check('con su regla de @media print: el aplanado se la comería',
-  /body \.badge-impacto/.test(idxHtml));
+check('el CSS del chip de alerta se fue con la vista',
+  !/badge-impacto/.test(idxHtml));
 check('y las filas del resto no se cortan al medio en el papel',
   /html\.modo-scout-print \.scout-resto/.test(idxHtml));
 check('la tabla va con layout fijo en el papel: los chips no estiran la columna del jugador',

@@ -1202,7 +1202,6 @@ const SGADD_SCOUT = (function () {
       return {
         adn: jugadoresADN, perfilBase: jugadoresPerfilBase,
         rolFuncional: jugadoresRolFuncional, badges: jugadoresBadges,
-        adnLiga: jugadoresAdnLiga, mediana: jugadoresMediana,
         zonasTiro: (typeof ZONAS_TIRO !== 'undefined') ? ZONAS_TIRO : null,
       };
     }
@@ -1211,7 +1210,6 @@ const SGADD_SCOUT = (function () {
       return {
         adn: m.jugadoresADN, perfilBase: m.jugadoresPerfilBase,
         rolFuncional: m.jugadoresRolFuncional, badges: m.jugadoresBadges,
-        adnLiga: m.jugadoresAdnLiga, mediana: m.jugadoresMediana,
         zonasTiro: m.ZONAS_TIRO || null,
       };
     } catch (e) { return null; }
@@ -1980,208 +1978,39 @@ const SGADD_SCOUT = (function () {
   }
 
   /* =====================================================================
-     6 bis. EL RESTO DEL PLANTEL · la radiografía 360° del banco
+     6 bis. EL RESTO DEL PLANTEL · el arma principal del banco, de un vistazo
 
      `jugadoresClave` se queda con los ocho que más juegan, que son los que
      condicionan el plan. Los otros —cuatro, ocho, a veces doce— no
-     aparecían en ninguna parte del informe, y ahí es donde vive el factor
-     X del banco: el que entra diez minutos y produce al ritmo de la
-     rotación. El bloque los nombra con sus etiquetas y AVISA cuando uno
-     destaca, sin gastarle a cada uno una ficha táctica entera.
+     aparecían en ninguna parte del informe. El bloque los nombra en una
+     fila cada uno: su muestra, su arma principal, su eficiencia y sus
+     etiquetas.
 
-     TRES DECISIONES QUE SOSTIENEN EL BLOQUE:
-
-     1. LAS MÉTRICAS SON TASAS, NUNCA CUENTAS POR PARTIDO. Comparar los
-        PTS por partido de un suplente de nueve minutos contra los de la
-        rotación no mide otra cosa que los minutos: la diferencia está
-        garantizada de antemano y la alerta no diría nada. Por minuto —o
-        en porcentaje— la comparación es justa, que es exactamente lo que
-        el club pidió leer: «eficiente en pocos minutos».
-
-        Y POR ESO `RO%`/`RD%` QUEDAN AFUERA aunque sean tasas: su
-        denominador es del EQUIPO y el motor NO las prorratea por minutos
-        (punto 24), así que un suplente las tiene bajas por no haber
-        estado en cancha y no por no rebotear. Los rebotes entran POR
-        MINUTO, que es la pregunta que se quería hacer.
-
-     2. LA REFERENCIA ES SU ROL FUNCIONAL, no su banda de minutos. La
-        pregunta del DT es «de los que hacen su trabajo en esta liga,
-        ¿cuánto produce éste?»; un grupo de pares por minutos lo
-        compararía contra otros suplentes, o sea que escondería
-        justamente al que hay que ver. El pool son los CALIFICADOS, que es
-        el universo con el que el proyecto ya arma percentiles y bandas
-        (punto 8): destacar contra los que sí juegan es lo que vuelve
-        accionable la alerta.
-
-     3. LA CASCADA ES LA DEL GRUPO DE PARES (punto 42): rol → liga, con
-        `MIN_PARES_ROL` de piso, y el nivel VIAJA en el resultado para que
-        la pantalla lo diga. Una referencia degradada en silencio es peor
-        que ninguna. Una mediana de CERO no sirve de denominador y degrada
-        igual: un «+∞%» no es una alerta, es una división.
+     SIN ALERTAS, Y A PROPÓSITO. Tuvo alertas de impacto —una tasa por
+     minuto 35% por encima de la mediana de su rol— y se sacaron a pedido
+     del club (2026-09-12): son jugadores de baja rotación y el bloque está
+     para leer su arma principal rápido, no para sumarle a la fila otra capa
+     de semáforo. El motor que las calculaba se fue con la vista: sin nadie
+     que las muestre era cálculo muerto corriendo en cada informe, con tests
+     que verificaban algo que el DT no ve. Está en el historial (fd6d842)
+     si alguna vez vuelve.
      ===================================================================== */
-
-  /* Mismo piso que el grupo de pares y que las referencias de rebote: una
-     «mediana» de dos jugadores no es una mediana. */
-  const MIN_PARES_ROL = 3;
-  /* Cuánto hay que superar a la mediana del rol para que valga avisar. El
-     club lo pidió con este número («+35%») y es el que separa al que
-     rinde parecido del que rinde distinto: con 15% la mitad del banco
-     dispara una alerta y el bloque vuelve a ser una lista que nadie lee. */
-  const DELTA_IMPACTO = 0.35;
-  /* Dos por jugador. El bloque existe para NO saturar: seis alertas en una
-     tarjeta son otra ficha táctica, y esa ya está más abajo. */
-  const MAX_ALERTAS_IMPACTO = 2;
 
   /* Los dos pisos de muestra del punto 4, leídos de donde ya viven y no
      copiados: 3 partidos para que un promedio signifique algo, 8 minutos
-     para que un porcentaje no sea ruido. Por debajo la alerta SE MUESTRA
-     IGUAL, marcada — se le saca autoridad, no el dato (punto 8). */
+     para que un porcentaje no sea ruido. Por debajo el dato SE MUESTRA
+     IGUAL, marcado — se le saca autoridad, no el dato (punto 8). */
   const MUESTRA = (function () {
     if (typeof SGADD_PARTIDO !== 'undefined') return SGADD_PARTIDO;
     try { return require('./sgadd-partido.js'); } catch (e) { return {}; }
   })();
-  const MIN_PJ_IMPACTO = MUESTRA.MIN_PARTIDOS_JUGADOR || 3;
-  const MIN_MIN_IMPACTO = MUESTRA.MIN_MINUTOS || 8;
+  const MIN_PJ_RESTO = MUESTRA.MIN_PARTIDOS_JUGADOR || 3;
+  const MIN_MIN_RESTO = MUESTRA.MIN_MINUTOS || 8;
 
-  /** Rebote total del perfil. Los dos en blanco es «no hay dato», no cero:
-      un 0,00 por minuto se leería como un jugador que no rebotea. */
-  function reboteTotal(p) {
-    if (nn((p || {}).ro) === null && nn((p || {}).rd) === null) return null;
-    return (nn(p.ro) || 0) + (nn(p.rd) || 0);
-  }
-
-  const METRICAS_IMPACTO = [
-    { id: 'ptsMin', label: 'PTS/min', que: 'anota', formato: num2,
-      valor: (p) => div(nn(p.pts), nn(p.min)) },
-    /* Ya viene normalizada por minutos desde el motor (punto 24), así que
-       es la única métrica de USO que se puede comparar de frente. */
-    { id: 'usg', label: 'USG%', que: 'usa el ataque', formato: pct,
-      valor: (p) => nn(p.usg) },
-    { id: 'efg', label: 'eFG%', que: 'convierte', formato: pct,
-      valor: (p) => nn(p.efg) },
-    { id: 'rtMin', label: 'RT/min', que: 'rebotea', formato: num2,
-      valor: (p) => div(reboteTotal(p), nn(p.min)) },
-    { id: 'astMin', label: 'AST/min', que: 'asiste', formato: num2,
-      valor: (p) => div(nn(p.ast), nn(p.min)) },
-    { id: 'prMin', label: 'PR/min', que: 'recupera', formato: num2,
-      valor: (p) => div(nn(p.pr), nn(p.min)) },
-  ];
-
-  function valorImpacto(m, perfil) {
-    try { return m.valor(perfil || {}); } catch (e) { return null; }
-  }
-
-  /** El ADN de la liga entera, ya cacheado por índice del lado de
-      JUGADORES: llamarlo por jugador lo volvería cuadrático. */
-  function adnDeLaLiga(idx) {
-    const f = fichaJugadores();
-    if (!f || !f.adnLiga) return new Map();
-    try { return f.adnLiga(idx) || new Map(); } catch (e) { return new Map(); }
-  }
-
-  function medianaDe(valores) {
-    const f = fichaJugadores();
-    if (f && f.mediana) return f.mediana(valores);
-    const v = (valores || []).filter(x => typeof x === 'number' && isFinite(x)).sort((a, b) => a - b);
-    if (!v.length) return null;
-    const m = Math.floor(v.length / 2);
-    return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
-  }
-
-  /* Una vuelta por la liga y no una por jugador: las medianas por rol son
-     las mismas para las doce filas del bloque. */
-  const REF_IMPACTO_CACHE = (typeof WeakMap !== 'undefined') ? new WeakMap() : null;
-
-  function referenciasDeImpacto(idx) {
-    if (REF_IMPACTO_CACHE && REF_IMPACTO_CACHE.has(idx)) return REF_IMPACTO_CACHE.get(idx);
-    const vacio = () => { const o = {}; METRICAS_IMPACTO.forEach(m => { o[m.id] = []; }); return o; };
-    const global = vacio();
-    const porRol = {};
-    adnDeLaLiga(idx).forEach((adn) => {
-      /* Solo los CALIFICADOS: es el universo con el que el proyecto arma
-         percentiles y bandas, y el que hace que «destacar» signifique
-         algo. Con la liga entera adentro, la mediana la hunden los que
-         casi no juegan y medio banco dispararía alerta. */
-      if (!adn || !adn.perfil || !adn.perfil.califica) return;
-      const rolId = adn.rolFuncional ? adn.rolFuncional.id : null;
-      if (rolId && !porRol[rolId]) porRol[rolId] = vacio();
-      METRICAS_IMPACTO.forEach((m) => {
-        const v = valorImpacto(m, adn.perfil);
-        if (v === null) return;
-        global[m.id].push(v);
-        if (rolId) porRol[rolId][m.id].push(v);
-      });
-    });
-    const cerrar = (acc) => {
-      const o = {};
-      METRICAS_IMPACTO.forEach(m => { o[m.id] = { mediana: medianaDe(acc[m.id]), n: acc[m.id].length }; });
-      return o;
-    };
-    const out = { global: cerrar(global), porRol: {} };
-    Object.keys(porRol).forEach(k => { out.porRol[k] = cerrar(porRol[k]); });
-    if (REF_IMPACTO_CACHE) REF_IMPACTO_CACHE.set(idx, out);
-    return out;
-  }
-
-  /** La referencia vigente para una métrica: su rol, y si no alcanza, la
-      liga. `null` cuando ninguna de las dos sirve de vara. */
-  function referenciaImpacto(refs, rolId, metricaId) {
-    const sirve = (r) => !!r && r.n >= MIN_PARES_ROL && r.mediana !== null && r.mediana > 0;
-    const delRol = (rolId && refs.porRol[rolId]) ? refs.porRol[rolId][metricaId] : null;
-    if (sirve(delRol)) return { valor: delRol.mediana, n: delRol.n, nivel: 'rol' };
-    const g = refs.global[metricaId];
-    if (sirve(g)) return { valor: g.mediana, n: g.n, nivel: 'liga' };
-    return null;
-  }
-
-  const NIVEL_REF = {
-    rol: { label: 'su rol', detalle: 'mediana de los que califican en su misma función' },
-    liga: { label: 'la liga', detalle: 'mediana de todos los que califican: su rol no llegó a '
-      + MIN_PARES_ROL + ' jugadores' },
-  };
-
-  /**
-   * Las métricas en las que este jugador destaca sobre su rol.
-   *
-   * Devuelve como mucho `MAX_ALERTAS_IMPACTO`, de mayor a menor
-   * diferencia: la primera es la que el DT tiene que leer.
-   */
   /** ¿La muestra de este jugador es corta? La MARCA, no la borra: es la
-      misma regla del `~` del percentil (punto 8). Tres noches de diez
-      minutos son poca cosa, y son justo el caso que el DT quiere mirar. */
+      misma regla del `~` del percentil (punto 8). */
   function muestraCorta(min, pj) {
-    return (nn(pj) !== null && pj < MIN_PJ_IMPACTO) || nn(min) === null || min < MIN_MIN_IMPACTO;
-  }
-
-  function alertasDeImpacto(perfil, pj, refs, rolId) {
-    const min = nn((perfil || {}).min);
-    if (min === null || min <= 0) return [];   // sin minutos no hay tasa
-    const corta = muestraCorta(min, pj);
-    const out = [];
-    METRICAS_IMPACTO.forEach((m) => {
-      const v = valorImpacto(m, perfil);
-      if (v === null) return;
-      const ref = referenciaImpacto(refs, rolId, m.id);
-      if (!ref) return;
-      const delta = (v / ref.valor) - 1;
-      if (delta < DELTA_IMPACTO) return;
-      out.push({
-        id: m.id, label: m.label, que: m.que,
-        valor: v, formateado: m.formato(v),
-        referencia: ref.valor, referenciaFormateada: m.formato(ref.valor),
-        pares: ref.n, nivel: ref.nivel, nivelLabel: NIVEL_REF[ref.nivel].label,
-        nivelDetalle: NIVEL_REF[ref.nivel].detalle,
-        delta: delta, muestraCorta: corta,
-        texto: (corta ? '~ ' : '') + '+' + Math.round(delta * 100) + '% en ' + m.label
-          + ' sobre ' + NIVEL_REF[ref.nivel].label
-          + ' (' + m.formato(v) + ' contra ' + m.formato(ref.valor) + ')',
-        /* El de la TABLA: una fila compacta no aguanta los dos valores, y
-           los dos valores van igual en el `title` del chip. */
-        textoCorto: (corta ? '~ ' : '') + '+' + Math.round(delta * 100) + '% ' + m.label
-          + ' vs ' + NIVEL_REF[ref.nivel].label,
-      });
-    });
-    return out.sort((a, b) => b.delta - a.delta).slice(0, MAX_ALERTAS_IMPACTO);
+    return (nn(pj) !== null && pj < MIN_PJ_RESTO) || nn(min) === null || min < MIN_MIN_RESTO;
   }
 
   /**
@@ -2196,12 +2025,13 @@ const SGADD_SCOUT = (function () {
    * decide por intentos, que es lo único que queda; con empate de peso,
    * desempatan los intentos.
    *
-   * LOS INTENTOS VAN TOTALES cuando el libro trae el acumulado (`__acum`):
-   * «18/35» dice la muestra, que es para lo que se muestran. Sin acumulado
-   * van POR PARTIDO y la pantalla lo rotula — inventar un total
-   * multiplicando un promedio redondeado a dos decimales por los PJ daría
-   * un número plausible y falso. El porcentaje sale del MISMO par que se
-   * muestra: «18/35 · 60%» no puede quedar escrito.
+   * EL PAR VA POR PARTIDO, SIEMPRE, aunque el libro traiga el acumulado
+   * (pedido del club, 2026-09-12). En una fila de banco se compara un
+   * jugador contra otro, y «1,2/2,8 x PJ» se compara sin pensar en cuántos
+   * partidos jugó cada uno; la muestra la dicen los PJ, que van en la misma
+   * fila. El % y el PPT son las columnas de la hoja de PROMEDIOS —tasas
+   * sobre los totales de la temporada—: el cociente del par, redondeado a
+   * un decimal, daría otro número para la misma pregunta.
    *
    * `null` si el jugador no registra un solo intento: no hay vía que
    * nombrar, y un «Doble 0/0» se lee como un fracaso.
@@ -2217,16 +2047,15 @@ const SGADD_SCOUT = (function () {
     const porPeso = cand.every(x => x.peso !== null);
     cand.sort((a, b) => (porPeso ? (b.peso - a.peso) : 0) || (b.i - a.i));
     const g = cand[0].z;
-    const ac = j.__acum || null;
-    const total = !!ac && nn(ac[g.c]) !== null && nn(ac[g.i]) !== null && ac[g.i] > 0;
-    const c = total ? ac[g.c] : nn(j[g.c]);
-    const i = total ? ac[g.i] : nn(j[g.i]);
+    const c = nn(j[g.c]);
+    const i = nn(j[g.i]);
     return {
       id: g.id, label: g.label, criterio: porPeso ? 'peso' : 'intentos',
-      peso: cand[0].peso, total: total,
+      peso: cand[0].peso,
+      /* Promedios por partido: los de la fila de PROMEDIOS J. */
       convertidos: c, intentos: i,
       claveConv: g.c, claveInt: g.i, clavePct: g.conv, clavePpt: g.ppp,
-      pct: (total && c !== null) ? c / i : (nn(j[g.conv]) !== null ? j[g.conv] : div(c, i)),
+      pct: nn(j[g.conv]) !== null ? j[g.conv] : div(c, i),
       ppt: nn(j[g.ppp]),
     };
   }
@@ -2250,7 +2079,7 @@ const SGADD_SCOUT = (function () {
 
   /**
    * El resto del plantel del rival: los que no entraron al análisis
-   * principal, con sus etiquetas y sus alertas de impacto.
+   * principal, con su muestra, su arma principal y sus etiquetas.
    *
    * `null` si no sobra nadie — un bloque vacío diciendo «no hay resto» es
    * ruido en un informe que ya tiene ocho secciones.
@@ -2265,14 +2094,12 @@ const SGADD_SCOUT = (function () {
     if (!resto.length) return null;
 
     const ficha = fichaJugadores();
-    const refs = referenciasDeImpacto(idx);
     const filas = resto.map((j) => {
       const adn = (ficha && ficha.adn) ? ficha.adn(idx, j) : null;
       const perfil = (adn && adn.perfil) ? adn.perfil
         : ((ficha && ficha.perfilBase) ? ficha.perfilBase(idx, j) : {});
       const rol = (adn && adn.rolFuncional) ? adn.rolFuncional : rolFuncional(perfil);
       const pj = nn(j['PJ']);
-      const alertas = alertasDeImpacto(perfil, pj, refs, rol ? rol.id : null);
       return {
         clave: j.__clave, nombre: perfil.nombre || String(j['NOMBRES'] || '').trim(),
         perfil: perfil, adn: adn, rol: rol,
@@ -2280,25 +2107,17 @@ const SGADD_SCOUT = (function () {
            informe de arriba: se piden al motor compartido, no se rearman
            acá (punto 8). */
         etiquetas: (ficha && ficha.badges && adn) ? ficha.badges(adn) : [],
-        min: nn(perfil.min), pj: pj, alertas: alertas,
+        min: nn(perfil.min), pj: pj,
         plays: nn(perfil.plays), pts: nn(perfil.pts), usg: nn(perfil.usg),
         via: viaDeGolLider(j),
         eficiencia: eficienciaIndividual(idx, perfil, pj),
-        /* «Alto impacto en pocos minutos»: destaca EN ALGO y no llega a la
-           banda de los que juegan. Es el factor X que el club pidió
-           advertir; el que destaca con 25 minutos ya está en la tabla de
-           arriba. */
-        impactoCorto: alertas.length > 0 && nn(perfil.min) !== null
-          && nn(perfil.min) < U.minutosClave,
       };
     });
 
     return {
       equipo: e.nombre, clave: e.clave,
       desde: desde, total: plantel.length,
-      metricas: METRICAS_IMPACTO,
       filas: filas,
-      conAlerta: filas.filter(f => f.alertas.length > 0).length,
     };
   }
 
@@ -2672,9 +2491,7 @@ const SGADD_SCOUT = (function () {
     detallePartido, fichaEquipo, historialDirecto,
     analizarSubset, analisisCiclo,
     perfilJugador, rolFuncional, marcaSugerida, jugadoresClave, plantelOrdenado,
-    METRICAS_IMPACTO, MIN_PARES_ROL, DELTA_IMPACTO, MAX_ALERTAS_IMPACTO,
-    MIN_PJ_IMPACTO, MIN_MIN_IMPACTO,
-    referenciasDeImpacto, referenciaImpacto, alertasDeImpacto, restoDelPlantel,
+    MIN_PJ_RESTO, MIN_MIN_RESTO, restoDelPlantel,
     muestraCorta, viaDeGolLider, eficienciaIndividual,
     fortalezasJugador, fugasJugador, fichaRival,
     clavesEstrategicas, resumenEjecutivo, informePrePartido,
@@ -3655,18 +3472,6 @@ function scoutBloqueClaves(inf) {
 
 /* ============ BLOQUE 6 bis · RESTO DEL PLANTEL ============ */
 
-/** Una alerta de impacto, como chip. Lleva el ⚡ además del color: ningún
-    estado se comunica solo con color (punto 14). El `title` dice contra
-    qué muestra se midió, que es lo que la vuelve auditable. */
-function scoutChipImpacto(a) {
-  /* El texto largo —con los dos valores— va en el `title`: la fila de la
-     tabla es compacta a propósito, y el número que justifica la alerta
-     tiene que seguir estando a un hover (o a un foco) de distancia. */
-  const glosa = a.texto.replace(/^~ /, '') + ' · ' + a.nivelDetalle + ' · ' + a.pares + ' jugadores'
-    + (a.muestraCorta ? ' · muestra corta: el ~ avisa que sale de pocos partidos o pocos minutos' : '');
-  return `<span class="badge-impacto" title="${escapeAttr(glosa)}" tabindex="0">⚡ ${escapeHtml(a.textoCorto || a.texto)}</span>`;
-}
-
 /* Bandas de eficiencia → semáforo del informe. Van por los colores de
    `SCOUT_TONOS` para que el papel los repinte (punto 7.6), y con flecha:
    ningún estado se comunica solo con color (punto 14). */
@@ -3691,15 +3496,14 @@ function scoutChipEficiencia(e) {
     style="color:${col};background:${col}1a" title="${escapeAttr(glosa)}" tabindex="0">${escapeHtml(texto)}</span>`;
 }
 
-/** La vía de gol líder en una línea: «Doble 9/18 · 50,0% · 1,00 PPT». */
+/** La vía de gol líder en una línea: «Doble 1,2/2,8 x PJ · 42,9% · 0,86 PPT».
+    El par es el PROMEDIO POR PARTIDO, con el formato de la columna, igual
+    que el tab Tiro. */
 function scoutViaLider(v) {
   if (!v) return '<span class="dato-sec">Sin lanzamientos registrados</span>';
-  /* Los TOTALES son cuentas enteras y van sin el «,0» de un promedio;
-     por partido van con el formato de la columna, igual que el tab Tiro. */
-  const fmt = (clave, x) => v.total ? SGADD.num(x) : SGADD.formatear(clave, x);
-  const par = fmt(v.claveConv, v.convertidos) + '/' + fmt(v.claveInt, v.intentos);
-  return `<span class="text-ink" title="Vía de gol de mayor volumen, por su peso en los plays del jugador${v.total ? '' : ' · intentos por partido'}">🎯 ${escapeHtml(v.label)}</span>
-    <span class="dato-sec">${escapeHtml(par)}${v.total ? '' : ' x PJ'} ·
+  const par = SGADD.formatear(v.claveConv, v.convertidos) + '/' + SGADD.formatear(v.claveInt, v.intentos);
+  return `<span class="text-ink" title="Vía de gol de mayor volumen, por su peso en los plays del jugador · convertidos/intentos por partido">🎯 ${escapeHtml(v.label)}</span>
+    <span class="dato-sec">${escapeHtml(par)} x PJ ·
     ${escapeHtml(SGADD.formatear(v.clavePct, v.pct))} · ${escapeHtml(SGADD.formatear(v.clavePpt, v.ppt))} PPT</span>`;
 }
 
@@ -3710,7 +3514,7 @@ function scoutBloqueResto(inf) {
   /* TABLA COMPACTA Y NO TARJETAS. Con doce suplentes, las tarjetas
      llenaban media hoja A3 para decir de cada uno lo mismo que entra en
      dos renglones. La columna del JUGADOR lleva lo que se lee (muestra,
-     vía de gol, eficiencia y alertas) y la del PERFIL las etiquetas del
+     vía de gol y eficiencia) y la del PERFIL las etiquetas del
      motor compartido, TODAS —la función en cancha incluida—: en tabla la
      etiqueta ya no se repite en otra línea. */
   const dato = (clave, v, sufijo) => v === null || v === undefined ? null
@@ -3721,16 +3525,14 @@ function scoutBloqueResto(inf) {
       dato('MIN', f.min, 'MIN'), dato('PLAYS', f.plays, 'PLAYS'),
       dato('PTS', f.pts, 'PTS'), dato('USG%', f.usg, 'USG'),
     ].filter(Boolean).join(' · ');
-    const chips = [
-      scoutChipEficiencia(f.eficiencia),
-      f.impactoCorto ? '<span class="badge-impacto">⚠️ Alto impacto en pocos minutos</span>' : '',
-    ].concat(f.alertas.map(scoutChipImpacto)).filter(Boolean).join(' ');
+    /* Sin alertas de impacto (ver `restoDelPlantel`): la fila está para
+       leer el arma principal de un vistazo. */
+    const chips = scoutChipEficiencia(f.eficiencia);
     /* UN SOLO FLUJO que envuelve solo cuando no entra. Medido en la A3
        apaisada: con nombre, muestra, vía y chips en renglones separados
        cada fila medía 65px y la tabla quedaba MÁS alta que las tarjetas
        (513px contra 407 para seis suplentes). La columna del jugador tiene
-       ~800px y todo eso ocupa ~700: en un renglón entra, y el que trae
-       alertas baja a un segundo, no a un cuarto. */
+       ~800px y todo eso ocupa ~700: en un renglón entra. */
     return `
       <tr class="scout-resto border-b border-hairline/40 last:border-0">
         <td class="px-2 py-1 align-top text-left">
@@ -3749,13 +3551,9 @@ function scoutBloqueResto(inf) {
     <section class="scout-card scout-pagina card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="resto">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">🧩 Resto del plantel · ${scoutNombreConLogo(t.equipo, 18)}</h4>
       <p class="text-[11px] text-muted mb-3">
-        Los ${t.filas.length} que no entran al análisis de arriba, con sus etiquetas.
-        Las alertas comparan sus métricas <b class="text-ink">por minuto</b> —o en
-        porcentaje— contra la mediana de los que califican en su misma función:
-        así la diferencia de minutos no decide la comparación.
-        ${t.conAlerta
-          ? `<b class="text-ink">${t.conAlerta} con alerta de impacto.</b>`
-          : 'Ninguno destaca por encima de su rol: el banco no cambia el plan.'}
+        Los ${t.filas.length} que no entran al análisis de arriba: su muestra, su arma
+        principal —la vía de gol de mayor volumen, en <b class="text-ink">promedio por
+        partido</b>— su eficiencia y sus etiquetas.
       </p>
       <div class="scrollbox"><table class="w-full text-left">
         <thead><tr class="text-[10px] uppercase tracking-wider text-muted">

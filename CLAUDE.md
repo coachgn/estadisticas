@@ -56,8 +56,8 @@ node test-pj.js            #  34 tests · el PJ de la sección Equipos es el de 
                            #             de posiciones, con los partidos sin estadísticas
 node test-plan-racha.js    #  43 tests · la racha con partidos manuales, el plan
                            #             efectivo del catálogo y el arranque sin destello
-node test-resto.js         # 147 tests · el resto del plantel en tabla, la vía de gol líder,
-                           #             las alertas contra el rol y la ficha del Plan Oro
+node test-resto.js         # 125 tests · el resto del plantel en tabla, sin alertas, la vía de
+                           #             gol líder por partido y la ficha del Plan Oro
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
 
@@ -71,7 +71,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5417 tests en total. Todos tienen que dar verde antes de commitear.**
+**5395 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -2555,8 +2555,8 @@ es rígido y va de lo colectivo a lo individual:
 6. **Jugadores clave del rival** — tabla con mapa de calor del top 3 por
    métrica y filas de cierre (promedio del plantel y de la liga).
 7. **Resto del plantel** — tabla compacta de los que no entran a la de
-   arriba: muestra, vía de gol líder, eficiencia, alertas cuando su
-   producción POR MINUTO destaca sobre su rol, y sus etiquetas. Punto 56.
+   arriba: muestra, vía de gol líder en promedio por partido, eficiencia y
+   etiquetas. **Sin alertas**, a propósito. Punto 56.
 8. **Claves estratégicas y anticipación** — las 8 reglas dinámicas.
 9. **Ficha de análisis por jugador** — rol funcional, fortalezas, puntos de
    fuga y plan de acción, uno por rival. **Es del Plan ORO** (punto 56): con
@@ -8177,75 +8177,56 @@ mismo tramo: lo que pasa DESPUÉS de la tabla de jugadores clave.
 ### 1 · El bloque del banco · `SGADD_SCOUT.restoDelPlantel`
 
 `jugadoresClave` se queda con los ocho que más juegan. Los otros —cuatro,
-ocho, a veces doce— no aparecían en ninguna parte del informe, y ahí es
-donde vive el factor X del banco: el que entra diez minutos y produce al
-ritmo de la rotación. El bloque los nombra con sus etiquetas y AVISA
-cuando uno destaca, sin gastarle a cada uno una ficha táctica entera.
+ocho, a veces doce— no aparecían en ninguna parte del informe. El bloque
+los nombra en **una fila cada uno**: su muestra, su arma principal, su
+eficiencia y sus etiquetas.
 
-**LAS MÉTRICAS SON TASAS, NUNCA CUENTAS POR PARTIDO.** Comparar los PTS
-por partido de un suplente de nueve minutos contra los de la rotación no
-mide otra cosa que los minutos: la diferencia está garantizada de antemano
-y la alerta no diría nada. Las seis son `PTS/min`, `USG%`, `eFG%`,
-`RT/min`, `AST/min` y `PR/min`.
+```
+JUGADOR · MUESTRA · VÍA DE GOL LÍDER                                            PERFIL
+NOMBRE  29 PJ · 16,5 MIN · 5,9 PLAYS · 5,0 PTS · 18,0% USG   🎯 Doble 1,4/2,6 x PJ · 54,1% · 1,08 PPT   ▼ PPP 0,85   [ADN] [perfiles] [función]
+```
 
-**Y por eso `RO%`/`RD%` quedan AFUERA aunque sean tasas**: su denominador
-es del EQUIPO y el motor NO las prorratea por minutos (punto 24), así que
-un suplente las tiene bajas por no haber estado en cancha y no por no
-rebotear. Los rebotes entran por minuto, que es la pregunta que se quería
-hacer. Hay un test con un suplente de `RO%` altísimo que no puede
-disparar nada.
+### SIN ALERTAS, y a propósito
 
-**La referencia es su ROL FUNCIONAL, no su banda de minutos.** La pregunta
-del DT es «de los que hacen su trabajo en esta liga, ¿cuánto produce
-éste?»; un grupo de pares por minutos lo compararía contra otros
-suplentes, o sea que escondería justamente al que hay que ver. El pool son
-los **calificados**, que es el universo con el que el proyecto ya arma
-percentiles y bandas (punto 8).
+Tuvo alertas de impacto —una tasa por minuto un 35% por encima de la
+mediana de su rol, con un «alto impacto en pocos minutos»— y **se sacaron
+a pedido del club (2026-09-12)**: son jugadores de baja rotación y el
+bloque está para leer su arma principal rápido, no para sumarle a la fila
+otra capa de semáforo.
 
-La cascada es la del grupo de pares (punto 42): **rol → liga**, con el
-mismo piso de 3, y el nivel VIAJA en el resultado y se dice en el tooltip.
-Una referencia degradada en silencio es peor que ninguna. Una **mediana de
-CERO** no sirve de denominador y degrada igual: un «+∞%» no es una alerta,
-es una división.
+**Se fue el motor, no solo la vista.** Sin nadie que las muestre eran
+cálculo muerto corriendo en cada informe —una vuelta por el ADN de la liga
+entera— con tests que verificaban algo que el DT no ve. Está en el
+historial (`fd6d842`) si alguna vez vuelve, y `test-resto.js` falla si
+reaparece un chip de alerta en el bloque o una función de alertas en el
+motor.
 
-Lo demás que hay que respetar al tocarlo:
+Lo que sí quedó de ese trabajo, y por qué:
 
 - **El corte sale de UNA sola función** (`plantelOrdenado`). Dos
   ordenamientos calcados terminan partiendo en distinto lugar y un jugador
   saldría en los dos bloques o en ninguno. Los dados de BAJA salen de los
   dos, igual que salían del plan.
-- **+35% es el umbral**, el que pidió el club. Con 15% la mitad del banco
-  dispara una alerta y el bloque vuelve a ser una lista que nadie lee.
-- **Dos alertas por jugador como mucho**: el bloque existe para NO
-  saturar, y seis alertas en una tarjeta son otra ficha táctica.
-- **La muestra corta se MARCA, no se borra** (punto 8): por debajo de 3
-  partidos o de 8 minutos —los dos pisos del punto 4, leídos de
-  `sgadd-partido.js` y no copiados— la alerta sale con el `~` de siempre.
-- **Las etiquetas se piden al motor compartido** (`jugadoresBadges`), no
-  se rearman: con dos renderizadores el mismo jugador saldría con chips de
-  un color en la ficha y de otro tres centímetros más abajo.
-- El chip `.badge-impacto` va **a mano en el `<style>`** con su regla de
-  `@media print`, como todo nodo inyectado (punto 12), y reusa la paleta
-  ya MEDIDA del badge de partidos manuales (punto 44).
+- **Las etiquetas se piden al motor compartido** (`jugadoresBadges`), no se
+  rearman: con dos renderizadores el mismo jugador saldría con chips de un
+  color en la ficha y de otro tres centímetros más abajo.
+- **Los pisos de muestra del punto 4** (3 partidos, 8 minutos) se leen de
+  `sgadd-partido.js` y deciden el `~` del badge de eficiencia
+  (`muestraCorta`).
 
 ### 1 bis · Es una TABLA de dos columnas, no tarjetas
-
-```
-JUGADOR · MUESTRA · VÍA DE GOL LÍDER                          PERFIL
-NOMBRE  PJ · MIN · PLAYS · PTS · USG   🎯 Doble 18/35 · 51,4% · 1,03 PPT   ▲ PPP 1,12   ⚡ +80% PTS/min vs su rol     [ADN] [perfiles] [función]
-```
 
 **La columna del jugador es UN SOLO FLUJO que envuelve solo cuando no
 entra**, y eso es lo que la hace compacta. La primera versión en tabla
 ponía nombre, vía y chips en renglones separados y quedó **más alta que
 las tarjetas**: 65px por fila, 513px contra 407 para seis suplentes. La
-columna tiene ~800px en la A3 y todo eso ocupa ~700, así que entra en un
-renglón y el que trae alertas baja a dos. Medido en modo papel, A3:
+columna tiene ~800px en la A3 y todo entra en un renglón. Medido en modo
+papel, A3:
 
 ```
-                 tarjetas   tabla
- 6 suplentes      407px     314px   −23%
-12 suplentes      655px     490px   −25%
+                 tarjetas   tabla con alertas   tabla sin alertas
+ 6 suplentes      407px          314px              275px   −32%
+12 suplentes      655px          490px              432px   −34%
 ```
 
 El PDF sigue en 9 hojas con ORO y 7 con PLATA: el bloque ya abría hoja.
@@ -8257,28 +8238,27 @@ va seguido a la línea saldría «tirador de libres» con la mayoría de sus
 ataques terminando en otro lado. Sin la columna de peso decide por
 intentos y lo declara (`criterio`); con empate desempatan los intentos.
 
-- **Los intentos van TOTALES con el acumulado** (`__acum`): «18/35» dice
-  la muestra, que es para lo que se muestran. Sin acumulado van **por
-  partido y rotulados `x PJ`** — multiplicar un promedio redondeado por
-  los PJ daría un total plausible y falso. El demo cae ahí: su libro no
-  trae un `ACUMULADO J` completo (punto 8).
-- **El % sale del MISMO par que se muestra.** «18/35 · 60%» no puede
-  quedar escrito.
+- **El par va POR PARTIDO, SIEMPRE** (`1,4/2,6 x PJ`), aunque el libro
+  traiga el acumulado — pedido del club (2026-09-12). En una fila de banco
+  se compara un suplente contra otro, y un promedio se compara sin pensar
+  en cuántos partidos jugó cada uno; la muestra la dicen los PJ, que van
+  en la misma fila. Estuvo un día en totales (`41/75`) y se volvió.
+- **El % y el PPT son las columnas de la hoja de PROMEDIOS** —tasas sobre
+  los totales de la temporada—, no el cociente del par: redondeado a un
+  decimal daría otro número para la misma pregunta. Sin la tasa en la
+  hoja, recién ahí se cae al cociente.
 - **Sin un solo intento dice «Sin lanzamientos registrados»**, no «0/0».
 
 **La EFICIENCIA INDIVIDUAL es el `PPP` en su banda contra la liga**
 (`eficienciaIndividual`, con la misma `bandaLiga` del informe): suma los
 libres y las pérdidas, o sea lo que un play del jugador le rinde al
-equipo. Va con flecha además del color y con el `~` de la muestra corta,
-que es **una sola función** (`muestraCorta`) para el badge y para las
-alertas. Sin dispersión en la liga la banda es `null`: no se inventa.
+equipo. Va con flecha además del color y con el `~` de la muestra corta.
+Sin dispersión en la liga la banda es `null`: no se inventa. No es una
+alerta: describe al jugador contra la liga, no lo señala contra su rol.
 
-**Las alertas llevan un texto CORTO en la fila** («+80% PTS/min vs su
-rol») y el largo, con los dos valores, en el `title`. **La columna del
-perfil lleva TODAS las etiquetas**, la función en cancha incluida: en la
-tabla ya no se repite en otra línea. En el papel la tabla va con
-`table-layout: fixed`, para que los chips no le roben ancho a la columna
-del jugador.
+**La columna del perfil lleva TODAS las etiquetas**, la función en cancha
+incluida. En el papel la tabla va con `table-layout: fixed`, para que los
+chips no le roben ancho a la columna del jugador.
 
 ### 2 · LA FICHA POR JUGADOR ES DEL PLAN ORO · la matriz de BLOQUES
 
