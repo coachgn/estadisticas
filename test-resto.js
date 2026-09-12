@@ -329,6 +329,78 @@ check('el que no destaca, no', gris.impactoCorto === false);
 check('el bloque cuenta cuántos traen alerta', resto.conAlerta === 3, resto.conAlerta);
 
 /* =====================================================================
+   6 bis. LA VÍA DE GOL LÍDER Y LA EFICIENCIA
+   ===================================================================== */
+titulo('6 bis. LA VÍA DE GOL DE MAYOR VOLUMEN Y LA EFICIENCIA INDIVIDUAL');
+
+const tiros = (o) => Object.assign({
+  'PT2%': 0.42, 'PT3%': 0.35, 'PT1%': 0.10,
+  T2C: 3, T2I: 6, T3C: 1, T3I: 3, T1C: 6, T1I: 8,
+  'T2%': 0.50, 'T3%': 0.33, 'T1%': 0.75, PPT2: 1.00, PPT3: 1.00, PPT1: 0.75,
+}, o || {});
+
+/* LA CLAVE: dos libres son UN play. Con 8 intentos de libre contra 6 de
+   doble, por intentos saldría «tirador de libres» un jugador que termina
+   el 42% de sus plays en doble y el 10% en la línea. */
+const vDoble = S.viaDeGolLider(tiros());
+check('se elige por el PESO en sus plays, no por los intentos crudos',
+  vDoble.id === 'T2' && vDoble.criterio === 'peso', JSON.stringify(vDoble));
+check('con el par, el % y el PPT de ESA vía',
+  vDoble.convertidos === 3 && vDoble.intentos === 6 && cerca(vDoble.pct, 0.5) && cerca(vDoble.ppt, 1));
+check('el que termina sus plays de afuera sale tirador de triple',
+  S.viaDeGolLider(tiros({ 'PT3%': 0.55, 'PT2%': 0.30 })).id === 'T3');
+check('el que va a la línea de verdad sale de libres',
+  S.viaDeGolLider(tiros({ 'PT1%': 0.50, 'PT2%': 0.30, 'PT3%': 0.20 })).id === 'T1');
+const sinPeso = tiros(); delete sinPeso['PT2%']; delete sinPeso['PT3%']; delete sinPeso['PT1%'];
+const vSinPeso = S.viaDeGolLider(sinPeso);
+check('sin la columna de peso decide por intentos, y lo declara',
+  vSinPeso.id === 'T1' && vSinPeso.criterio === 'intentos', JSON.stringify(vSinPeso));
+check('con empate de peso desempatan los intentos',
+  S.viaDeGolLider(tiros({ 'PT2%': 0.40, 'PT3%': 0.40, T2I: 6, T3I: 7 })).id === 'T3');
+check('una vía sin un solo intento no compite aunque tenga peso',
+  S.viaDeGolLider(tiros({ 'PT3%': 0.90, T3I: 0 })).id === 'T2');
+check('sin ningún intento no hay vía que nombrar',
+  S.viaDeGolLider(tiros({ T2I: 0, T3I: 0, T1I: 0 })) === null);
+
+/* LOS INTENTOS VAN TOTALES con el acumulado: es la muestra que se quería
+   mostrar. Y el % sale del MISMO par. */
+const vTotal = S.viaDeGolLider(tiros({ __acum: { T2C: 18, T2I: 35 } }));
+check('con acumulado, los intentos cargados son los TOTALES',
+  vTotal.total === true && vTotal.convertidos === 18 && vTotal.intentos === 35, JSON.stringify(vTotal));
+check('y el % sale del mismo par que se muestra', cerca(vTotal.pct, 18 / 35));
+check('sin acumulado van por partido, marcados como tales',
+  vDoble.total === false && vDoble.intentos === 6);
+check('un acumulado sin esa vía no inventa un total',
+  S.viaDeGolLider(tiros({ __acum: { T3C: 5, T3I: 9 } })).total === false);
+
+check('las zonas salen de la MISMA tabla del tab Tiro',
+  require('./js/sgadd-jugadores.js').ZONAS_TIRO.map(z => z.id).join(',') === 'T3,T2,T1'
+  && /zonasTiro: m\.ZONAS_TIRO/.test(fs.readFileSync('./js/sgadd-scouting.js', 'utf8')));
+
+check('cada fila del resto trae su vía líder',
+  resto.filas.filter(f => f.min > 0).every(f => f.via && f.via.id === 'T2'),
+  resto.filas.map(f => f.nombre + ':' + (f.via && f.via.id)).join(' '));
+check('y la muestra de la columna del jugador',
+  factor.plays !== null && factor.pts === 9 && cerca(factor.usg, 0.2));
+
+/* LA EFICIENCIA · PPP en su banda contra la liga, con el ~ de siempre. */
+const idxEf = { liga: { distribucionesJ: { PPP: [0.8, 0.9, 1.0, 1.1, 1.2] } } };
+const efAlta = S.eficienciaIndividual(idxEf, { ppp: 1.3, min: 20 }, 5);
+check('la eficiencia es el PPP ubicado en su banda contra la liga',
+  efAlta.metrica === 'PPP' && efAlta.banda && efAlta.banda.id === 'elite', JSON.stringify(efAlta));
+check('con muestra suficiente no lleva ~', efAlta.muestraCorta === false);
+check('con pocos minutos sí', S.eficienciaIndividual(idxEf, { ppp: 1.3, min: 5 }, 5).muestraCorta === true);
+check('y con pocos partidos también', S.eficienciaIndividual(idxEf, { ppp: 1.3, min: 20 }, 2).muestraCorta === true);
+check('por debajo de la liga cae en su banda baja',
+  S.eficienciaIndividual(idxEf, { ppp: 0.7, min: 20 }, 5).banda.id === 'fuga');
+check('sin PPP no hay badge', S.eficienciaIndividual(idxEf, { min: 20 }, 5) === null);
+check('en la fixture la liga no tiene dispersión: banda nula, no inventada',
+  factor.eficiencia && factor.eficiencia.banda === null);
+check('la muestra corta es UNA sola regla para alertas y eficiencia',
+  (fs.readFileSync('./js/sgadd-scouting.js', 'utf8').match(/MIN_MIN_IMPACTO;?\s*\n?/g) || []).length >= 1
+  && /const corta = muestraCorta\(min, pj\)/.test(fs.readFileSync('./js/sgadd-scouting.js', 'utf8')));
+
+/* =====================================================================
    7. LOS DADOS DE BAJA
    ===================================================================== */
 titulo('7. UN DADO DE BAJA NO ENTRA AL BLOQUE');
@@ -483,15 +555,49 @@ check('y el tooltip dice contra qué muestra se midió',
 check('el factor X sale marcado como alto impacto en pocos minutos',
   /Alto impacto en pocos minutos/.test(html));
 check('el encabezado dice cuántos traen alerta', /3 con alerta de impacto/.test(html));
-/* La función en cancha se nombra UNA vez: el chip del rol sale de los
-   badges porque ya está en la línea de arriba, y repetirlo ocupa el doble
-   en una tarjeta que es chica a propósito. */
-const tarjetaX = html.slice(html.indexOf('FACTOR, X')).split('</article>')[0];
-check('la función en cancha no se repite en los chips',
-  tarjetaX.split(factor.rol.label).length - 1 === 1,
-  tarjetaX.split(factor.rol.label).length - 1);
-check('pero conserva el ~ del que no califica, que lo trae el badge',
-  html.indexOf('~ ' + factor.rol.label) !== -1);
+
+/* --- LA TABLA COMPACTA · dos columnas, una fila por jugador --- */
+const trs = html.match(/<tr class="scout-resto[\s\S]*?<\/tr>/g) || [];
+check('es una TABLA y no tarjetas', /<table/.test(html) && !/<article/.test(html));
+check('dentro de un scrollbox, como toda tabla del panel', /class="scrollbox"><table/.test(html));
+check('con dos encabezados: jugador y perfil',
+  (html.match(/<th[\s>]/g) || []).length === 2
+  && /Jugador · muestra · vía de gol líder/.test(html) && /Perfil · ADN/.test(html));
+check('una fila por jugador del resto', trs.length === resto.filas.length, trs.length);
+check('y cada fila tiene exactamente dos celdas',
+  trs.every(tr => (tr.match(/<td[\s>]/g) || []).length === 2));
+
+const filaX = trs.filter(tr => tr.indexOf('FACTOR, X') !== -1)[0] || '';
+const [celdaJug, celdaPerfil] = filaX.split(/<\/td>/);
+check('la columna del jugador trae la muestra: PJ · MIN · PLAYS · PTS · USG',
+  /3 PJ/.test(celdaJug) && /MIN/.test(celdaJug) && /PLAYS/.test(celdaJug)
+  && /PTS/.test(celdaJug) && /USG/.test(celdaJug), celdaJug.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '));
+const F = global.SGADD.formatear;
+check('la vía de gol líder con su par por partido, su % y su PPT',
+  /🎯 Doble/.test(celdaJug) && celdaJug.indexOf(F('T2C', 3) + '/' + F('T2I', 6) + ' x PJ') !== -1
+  && celdaJug.indexOf(F('T2%', 0.5)) !== -1 && celdaJug.indexOf(F('PPT2', 1) + ' PPT') !== -1,
+  celdaJug.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '));
+check('el badge de eficiencia individual', celdaJug.indexOf('PPP ' + F('PPP', 1)) !== -1);
+check('la alerta en su texto CORTO en la fila', celdaJug.indexOf('+80% PTS/min vs su rol') !== -1);
+check('y el número que la justifica, en el title',
+  /title="[^"]*\(0,90 contra 0,50\)[^"]*"/.test(celdaJug));
+check('la columna del perfil lleva las etiquetas, la función en cancha incluida',
+  celdaPerfil.indexOf(factor.rol.label) !== -1
+  && factor.etiquetas.every(b => celdaPerfil.indexOf(b.texto.replace('~ ', '')) !== -1));
+check('y la función en cancha no se repite en la columna del jugador',
+  celdaJug.indexOf(factor.rol.label) === -1);
+check('conserva el ~ del que no califica, que lo trae el badge',
+  celdaPerfil.indexOf('~ ' + factor.rol.label) !== -1);
+
+/* Un jugador sin un solo lanzamiento no inventa una vía. */
+const sinTiros = vm.runInContext('scoutViaLider', P)(null);
+check('sin lanzamientos la fila lo dice, en vez de un «0/0»',
+  /Sin lanzamientos registrados/.test(sinTiros) && !/0\/0/.test(sinTiros));
+/* Con acumulado el par es TOTAL y no lleva el «x PJ». */
+const viaTotal = vm.runInContext('scoutViaLider', P)(S.viaDeGolLider(Object.assign(
+  { __acum: { T2C: 18, T2I: 35 } }, { 'PT2%': 0.5, 'PT3%': 0.3, 'PT1%': 0.1, T2C: 1.5, T2I: 2.9, T3I: 1, T1I: 1, PPT2: 1.03 })));
+check('con acumulado el par es TOTAL y no lleva el «x PJ»',
+  viaTotal.indexOf('18/35') !== -1 && viaTotal.indexOf('x PJ') === -1, viaTotal.replace(/\s+/g, ' '));
 check('y explica que la comparación es por minuto',
   /por minuto/.test(html) && /misma función/.test(html));
 check('sin resto no se pinta nada', vm.runInContext('scoutBloqueResto', P)({ restoRival: null }) === '');
@@ -539,8 +645,12 @@ const idxHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 check('la clase del chip está en el <style>', /\.badge-impacto\s*\{/.test(idxHtml));
 check('con su regla de @media print: el aplanado se la comería',
   /body \.badge-impacto/.test(idxHtml));
-check('y las tarjetas del resto no se cortan al medio en el papel',
+check('y las filas del resto no se cortan al medio en el papel',
   /html\.modo-scout-print \.scout-resto/.test(idxHtml));
+check('la tabla va con layout fijo en el papel: los chips no estiran la columna del jugador',
+  /html\.modo-scout-print \[data-bloque="resto"\] table \{[^}]*table-layout: fixed/.test(idxHtml));
+check('y no queda la regla de grilla de las tarjetas viejas',
+  !/\[data-bloque="resto"\] \.grid/.test(idxHtml));
 
 /* =====================================================================
    12. LA LANDING PROMETE LO QUE EL GATE CONCEDE

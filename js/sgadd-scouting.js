@@ -1203,6 +1203,7 @@ const SGADD_SCOUT = (function () {
         adn: jugadoresADN, perfilBase: jugadoresPerfilBase,
         rolFuncional: jugadoresRolFuncional, badges: jugadoresBadges,
         adnLiga: jugadoresAdnLiga, mediana: jugadoresMediana,
+        zonasTiro: (typeof ZONAS_TIRO !== 'undefined') ? ZONAS_TIRO : null,
       };
     }
     try {
@@ -1211,6 +1212,7 @@ const SGADD_SCOUT = (function () {
         adn: m.jugadoresADN, perfilBase: m.jugadoresPerfilBase,
         rolFuncional: m.jugadoresRolFuncional, badges: m.jugadoresBadges,
         adnLiga: m.jugadoresAdnLiga, mediana: m.jugadoresMediana,
+        zonasTiro: m.ZONAS_TIRO || null,
       };
     } catch (e) { return null; }
   }
@@ -2144,13 +2146,17 @@ const SGADD_SCOUT = (function () {
    * Devuelve como mucho `MAX_ALERTAS_IMPACTO`, de mayor a menor
    * diferencia: la primera es la que el DT tiene que leer.
    */
+  /** ¿La muestra de este jugador es corta? La MARCA, no la borra: es la
+      misma regla del `~` del percentil (punto 8). Tres noches de diez
+      minutos son poca cosa, y son justo el caso que el DT quiere mirar. */
+  function muestraCorta(min, pj) {
+    return (nn(pj) !== null && pj < MIN_PJ_IMPACTO) || nn(min) === null || min < MIN_MIN_IMPACTO;
+  }
+
   function alertasDeImpacto(perfil, pj, refs, rolId) {
     const min = nn((perfil || {}).min);
     if (min === null || min <= 0) return [];   // sin minutos no hay tasa
-    /* La muestra corta NO borra la alerta, la MARCA: es la misma regla del
-       `~` del percentil (punto 8). Tres noches de diez minutos son poca
-       cosa, y son justo el caso que el DT quiere mirar. */
-    const corta = (pj !== null && pj < MIN_PJ_IMPACTO) || min < MIN_MIN_IMPACTO;
+    const corta = muestraCorta(min, pj);
     const out = [];
     METRICAS_IMPACTO.forEach((m) => {
       const v = valorImpacto(m, perfil);
@@ -2169,9 +2175,77 @@ const SGADD_SCOUT = (function () {
         texto: (corta ? '~ ' : '') + '+' + Math.round(delta * 100) + '% en ' + m.label
           + ' sobre ' + NIVEL_REF[ref.nivel].label
           + ' (' + m.formato(v) + ' contra ' + m.formato(ref.valor) + ')',
+        /* El de la TABLA: una fila compacta no aguanta los dos valores, y
+           los dos valores van igual en el `title` del chip. */
+        textoCorto: (corta ? '~ ' : '') + '+' + Math.round(delta * 100) + '% ' + m.label
+          + ' vs ' + NIVEL_REF[ref.nivel].label,
       });
     });
     return out.sort((a, b) => b.delta - a.delta).slice(0, MAX_ALERTAS_IMPACTO);
+  }
+
+  /**
+   * LA VÍA DE GOL DE MAYOR VOLUMEN · doble, triple o libre.
+   *
+   * SE ELIGE POR EL PESO EN SUS PLAYS (`PT2%`/`PT3%`/`PT1%`), NO POR LOS
+   * INTENTOS CRUDOS. Es la misma «distribución por zona» del tab Tiro
+   * (`ZONAS_TIRO`), y la diferencia importa en una sola vía pero importa
+   * mucho: DOS libres son UN play, así que por intentos el que va seguido
+   * a la línea saldría «tirador de libres» con la mitad de sus ataques
+   * terminando en otro lado. Sin la columna de peso —un libro viejo— se
+   * decide por intentos, que es lo único que queda; con empate de peso,
+   * desempatan los intentos.
+   *
+   * LOS INTENTOS VAN TOTALES cuando el libro trae el acumulado (`__acum`):
+   * «18/35» dice la muestra, que es para lo que se muestran. Sin acumulado
+   * van POR PARTIDO y la pantalla lo rotula — inventar un total
+   * multiplicando un promedio redondeado a dos decimales por los PJ daría
+   * un número plausible y falso. El porcentaje sale del MISMO par que se
+   * muestra: «18/35 · 60%» no puede quedar escrito.
+   *
+   * `null` si el jugador no registra un solo intento: no hay vía que
+   * nombrar, y un «Doble 0/0» se lee como un fracaso.
+   */
+  function viaDeGolLider(j) {
+    const f = fichaJugadores();
+    const zonas = (f && f.zonasTiro) || null;
+    if (!zonas || !j) return null;
+    const cand = zonas
+      .map(z => ({ z: z, peso: nn(j[z.peso]), i: nn(j[z.i]) }))
+      .filter(x => x.i !== null && x.i > 0);
+    if (!cand.length) return null;
+    const porPeso = cand.every(x => x.peso !== null);
+    cand.sort((a, b) => (porPeso ? (b.peso - a.peso) : 0) || (b.i - a.i));
+    const g = cand[0].z;
+    const ac = j.__acum || null;
+    const total = !!ac && nn(ac[g.c]) !== null && nn(ac[g.i]) !== null && ac[g.i] > 0;
+    const c = total ? ac[g.c] : nn(j[g.c]);
+    const i = total ? ac[g.i] : nn(j[g.i]);
+    return {
+      id: g.id, label: g.label, criterio: porPeso ? 'peso' : 'intentos',
+      peso: cand[0].peso, total: total,
+      convertidos: c, intentos: i,
+      claveConv: g.c, claveInt: g.i, clavePct: g.conv, clavePpt: g.ppp,
+      pct: (total && c !== null) ? c / i : (nn(j[g.conv]) !== null ? j[g.conv] : div(c, i)),
+      ppt: nn(j[g.ppp]),
+    };
+  }
+
+  /**
+   * LA EFICIENCIA INDIVIDUAL · PPP en su banda contra la liga.
+   *
+   * `PPP` y no `eFG%`: suma los libres y las pérdidas, o sea lo que un
+   * play del jugador le rinde al equipo, que es la pregunta de una fila
+   * de banco. Se ubica con la MISMA banda z del resto del informe
+   * (`bandaLiga`, contra los calificados), y con muestra corta lleva el `~`.
+   */
+  function eficienciaIndividual(idx, perfil, pj) {
+    const v = nn((perfil || {}).ppp);
+    if (v === null) return null;
+    return {
+      metrica: 'PPP', valor: v, banda: bandaLiga(idx, 'PPP', v, false),
+      muestraCorta: muestraCorta(nn(perfil.min), pj),
+    };
   }
 
   /**
@@ -2207,6 +2281,9 @@ const SGADD_SCOUT = (function () {
            acá (punto 8). */
         etiquetas: (ficha && ficha.badges && adn) ? ficha.badges(adn) : [],
         min: nn(perfil.min), pj: pj, alertas: alertas,
+        plays: nn(perfil.plays), pts: nn(perfil.pts), usg: nn(perfil.usg),
+        via: viaDeGolLider(j),
+        eficiencia: eficienciaIndividual(idx, perfil, pj),
         /* «Alto impacto en pocos minutos»: destaca EN ALGO y no llega a la
            banda de los que juegan. Es el factor X que el club pidió
            advertir; el que destaca con 25 minutos ya está en la tabla de
@@ -2598,6 +2675,7 @@ const SGADD_SCOUT = (function () {
     METRICAS_IMPACTO, MIN_PARES_ROL, DELTA_IMPACTO, MAX_ALERTAS_IMPACTO,
     MIN_PJ_IMPACTO, MIN_MIN_IMPACTO,
     referenciasDeImpacto, referenciaImpacto, alertasDeImpacto, restoDelPlantel,
+    muestraCorta, viaDeGolLider, eficienciaIndividual,
     fortalezasJugador, fugasJugador, fichaRival,
     clavesEstrategicas, resumenEjecutivo, informePrePartido,
   };
@@ -2963,9 +3041,11 @@ function scoutBadgesADN(perfil) {
  * renderizadores, el mismo jugador saldría con chips de un color en la
  * ficha y de otro tres centímetros más abajo.
  */
-function scoutChipsEtiquetas(badges) {
+function scoutChipsEtiquetas(badges, enCelda) {
   if (!badges || !badges.length) return '';
-  return `<div class="flex flex-wrap gap-1 mt-1">${badges.map(b => {
+  /* En una celda de tabla el margen de arriba sobra: lo pone el padding de
+     la celda, y sumarlo alarga cada fila de la tabla del resto. */
+  return `<div class="flex flex-wrap gap-1${enCelda ? '' : ' mt-1'}">${badges.map(b => {
     /* El `~` y el gris avisan que esa etiqueta se apoya en una comparación
        contra la liga que este jugador, por minutos, no sostiene. */
     const color = b.sinRespaldo ? 'text-muted border-hairline'
@@ -3579,40 +3659,90 @@ function scoutBloqueClaves(inf) {
     estado se comunica solo con color (punto 14). El `title` dice contra
     qué muestra se midió, que es lo que la vuelve auditable. */
 function scoutChipImpacto(a) {
-  const glosa = a.nivelDetalle + ' · ' + a.pares + ' jugadores'
+  /* El texto largo —con los dos valores— va en el `title`: la fila de la
+     tabla es compacta a propósito, y el número que justifica la alerta
+     tiene que seguir estando a un hover (o a un foco) de distancia. */
+  const glosa = a.texto.replace(/^~ /, '') + ' · ' + a.nivelDetalle + ' · ' + a.pares + ' jugadores'
     + (a.muestraCorta ? ' · muestra corta: el ~ avisa que sale de pocos partidos o pocos minutos' : '');
-  return `<span class="badge-impacto" title="${escapeAttr(glosa)}" tabindex="0">⚡ ${escapeHtml(a.texto)}</span>`;
+  return `<span class="badge-impacto" title="${escapeAttr(glosa)}" tabindex="0">⚡ ${escapeHtml(a.textoCorto || a.texto)}</span>`;
+}
+
+/* Bandas de eficiencia → semáforo del informe. Van por los colores de
+   `SCOUT_TONOS` para que el papel los repinte (punto 7.6), y con flecha:
+   ningún estado se comunica solo con color (punto 14). */
+const SCOUT_BANDA_EFICIENCIA = {
+  elite: { color: '#22c55e', flecha: '▲' },
+  superior: { color: '#22c55e', flecha: '▲' },
+  estandar: { color: '#9CA3AF', flecha: '=' },
+  limitado: { color: '#ef4444', flecha: '▼' },
+  fuga: { color: '#ef4444', flecha: '▼' },
+};
+
+function scoutChipEficiencia(e) {
+  if (!e) return '';
+  const b = e.banda ? SCOUT_BANDA_EFICIENCIA[e.banda.id] : null;
+  const col = b ? b.color : '#9CA3AF';
+  const texto = (e.muestraCorta ? '~ ' : '') + (b ? b.flecha + ' ' : '') + 'PPP '
+    + SGADD.formatear('PPP', e.valor);
+  const glosa = 'Eficiencia individual · puntos por play'
+    + (e.banda ? ' · ' + e.banda.label.toLowerCase() : ' · la liga no tiene muestra para ubicarlo')
+    + (e.muestraCorta ? ' · muestra corta' : '');
+  return `<span class="text-[10px] font-mono font-semibold px-1.5 rounded whitespace-nowrap${scoutTono(col)}"
+    style="color:${col};background:${col}1a" title="${escapeAttr(glosa)}" tabindex="0">${escapeHtml(texto)}</span>`;
+}
+
+/** La vía de gol líder en una línea: «Doble 9/18 · 50,0% · 1,00 PPT». */
+function scoutViaLider(v) {
+  if (!v) return '<span class="dato-sec">Sin lanzamientos registrados</span>';
+  /* Los TOTALES son cuentas enteras y van sin el «,0» de un promedio;
+     por partido van con el formato de la columna, igual que el tab Tiro. */
+  const fmt = (clave, x) => v.total ? SGADD.num(x) : SGADD.formatear(clave, x);
+  const par = fmt(v.claveConv, v.convertidos) + '/' + fmt(v.claveInt, v.intentos);
+  return `<span class="text-ink" title="Vía de gol de mayor volumen, por su peso en los plays del jugador${v.total ? '' : ' · intentos por partido'}">🎯 ${escapeHtml(v.label)}</span>
+    <span class="dato-sec">${escapeHtml(par)}${v.total ? '' : ' x PJ'} ·
+    ${escapeHtml(SGADD.formatear(v.clavePct, v.pct))} · ${escapeHtml(SGADD.formatear(v.clavePpt, v.ppt))} PPT</span>`;
 }
 
 function scoutBloqueResto(inf) {
   const t = inf.restoRival;
   if (!t || !t.filas.length) return '';
 
-  const tarjetas = t.filas.map(f => {
-    const alertas = f.alertas.map(a => `<p class="mt-1">${scoutChipImpacto(a)}</p>`).join('');
+  /* TABLA COMPACTA Y NO TARJETAS. Con doce suplentes, las tarjetas
+     llenaban media hoja A3 para decir de cada uno lo mismo que entra en
+     dos renglones. La columna del JUGADOR lleva lo que se lee (muestra,
+     vía de gol, eficiencia y alertas) y la del PERFIL las etiquetas del
+     motor compartido, TODAS —la función en cancha incluida—: en tabla la
+     etiqueta ya no se repite en otra línea. */
+  const dato = (clave, v, sufijo) => v === null || v === undefined ? null
+    : escapeHtml(SGADD.formatear(clave, v)) + ' ' + sufijo;
+  const filas = t.filas.map(f => {
     const muestra = [
-      f.min !== null ? escapeHtml(SGADD.formatear('MIN', f.min)) + ' MIN' : null,
       f.pj !== null ? f.pj + ' PJ' : null,
+      dato('MIN', f.min, 'MIN'), dato('PLAYS', f.plays, 'PLAYS'),
+      dato('PTS', f.pts, 'PTS'), dato('USG%', f.usg, 'USG'),
     ].filter(Boolean).join(' · ');
-    /* La función en cancha va en su propia línea y SE SACA de los chips:
-       repetida en los dos lados ocupa el doble en una tarjeta que es
-       chica a propósito. El texto sale del badge y no de `rol.label`
-       porque el badge es el que trae el `~` de «esta etiqueta se apoya en
-       una muestra que el jugador no sostiene» (punto 8). */
-    const chipRol = f.etiquetas.filter(b => b.tipo === 'rol')[0];
-    const otros = f.etiquetas.filter(b => b.tipo !== 'rol');
+    const chips = [
+      scoutChipEficiencia(f.eficiencia),
+      f.impactoCorto ? '<span class="badge-impacto">⚠️ Alto impacto en pocos minutos</span>' : '',
+    ].concat(f.alertas.map(scoutChipImpacto)).filter(Boolean).join(' ');
+    /* UN SOLO FLUJO que envuelve solo cuando no entra. Medido en la A3
+       apaisada: con nombre, muestra, vía y chips en renglones separados
+       cada fila medía 65px y la tabla quedaba MÁS alta que las tarjetas
+       (513px contra 407 para seis suplentes). La columna del jugador tiene
+       ~800px y todo eso ocupa ~700: en un renglón entra, y el que trae
+       alertas baja a un segundo, no a un cuarto. */
     return `
-      <article class="scout-resto bg-surface2/40 rounded-lg p-2.5">
-        <p class="text-xs text-white leading-tight">${escapeHtml(f.nombre)}</p>
-        <p class="text-[10px] uppercase tracking-wider text-accent font-display"
-          ${chipRol && chipRol.motivo ? `title="${escapeAttr(chipRol.motivo)}"` : ''}
-          >${escapeHtml(chipRol ? chipRol.texto : f.rol.label)}</p>
-        ${muestra ? `<p class="text-[10px] font-mono dato-sec">${muestra}</p>` : ''}
-        ${scoutChipsEtiquetas(otros)}
-        ${f.impactoCorto
-          ? `<p class="mt-1.5 text-[10px] text-white font-semibold">⚠️ Alto impacto en pocos minutos</p>` : ''}
-        ${alertas}
-      </article>`;
+      <tr class="scout-resto border-b border-hairline/40 last:border-0">
+        <td class="px-2 py-1 align-top text-left">
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-0.5 leading-snug">
+            <span class="text-xs text-white font-semibold">${escapeHtml(f.nombre)}</span>
+            <span class="text-[10px] font-mono dato-sec">${muestra}</span>
+            <span class="text-[10px] font-mono">${scoutViaLider(f.via)}</span>
+            ${chips}
+          </div>
+        </td>
+        <td class="px-2 py-1 align-top text-left">${scoutChipsEtiquetas(f.etiquetas, true)}</td>
+      </tr>`;
   }).join('');
 
   return `
@@ -3627,7 +3757,13 @@ function scoutBloqueResto(inf) {
           ? `<b class="text-ink">${t.conAlerta} con alerta de impacto.</b>`
           : 'Ninguno destaca por encima de su rol: el banco no cambia el plan.'}
       </p>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">${tarjetas}</div>
+      <div class="scrollbox"><table class="w-full text-left">
+        <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+          <th class="px-2 pb-1 text-left" style="width:55%">Jugador · muestra · vía de gol líder</th>
+          <th class="px-2 pb-1 text-left">Perfil · ADN, perfiles técnicos y función en cancha</th>
+        </tr></thead>
+        <tbody>${filas}</tbody>
+      </table></div>
     </section>`;
 }
 

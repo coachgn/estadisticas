@@ -56,8 +56,8 @@ node test-pj.js            #  34 tests · el PJ de la sección Equipos es el de 
                            #             de posiciones, con los partidos sin estadísticas
 node test-plan-racha.js    #  43 tests · la racha con partidos manuales, el plan
                            #             efectivo del catálogo y el arranque sin destello
-node test-resto.js         # 109 tests · el resto del plantel, las alertas de impacto
-                           #             contra el rol y la ficha por jugador del Plan Oro
+node test-resto.js         # 147 tests · el resto del plantel en tabla, la vía de gol líder,
+                           #             las alertas contra el rol y la ficha del Plan Oro
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
 
@@ -71,7 +71,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5379 tests en total. Todos tienen que dar verde antes de commitear.**
+**5417 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -2554,9 +2554,9 @@ es rígido y va de lo colectivo a lo individual:
    tabla de marcas, porque sintetiza justamente esa composición de marcas.
 6. **Jugadores clave del rival** — tabla con mapa de calor del top 3 por
    métrica y filas de cierre (promedio del plantel y de la liga).
-7. **Resto del plantel** — los que no entran a la tabla de arriba, con sus
-   etiquetas y una alerta cuando su producción POR MINUTO destaca sobre la
-   mediana de su rol. Punto 56.
+7. **Resto del plantel** — tabla compacta de los que no entran a la de
+   arriba: muestra, vía de gol líder, eficiencia, alertas cuando su
+   producción POR MINUTO destaca sobre su rol, y sus etiquetas. Punto 56.
 8. **Claves estratégicas y anticipación** — las 8 reglas dinámicas.
 9. **Ficha de análisis por jugador** — rol funcional, fortalezas, puntos de
    fuga y plan de acción, uno por rival. **Es del Plan ORO** (punto 56): con
@@ -8227,6 +8227,58 @@ Lo demás que hay que respetar al tocarlo:
 - El chip `.badge-impacto` va **a mano en el `<style>`** con su regla de
   `@media print`, como todo nodo inyectado (punto 12), y reusa la paleta
   ya MEDIDA del badge de partidos manuales (punto 44).
+
+### 1 bis · Es una TABLA de dos columnas, no tarjetas
+
+```
+JUGADOR · MUESTRA · VÍA DE GOL LÍDER                          PERFIL
+NOMBRE  PJ · MIN · PLAYS · PTS · USG   🎯 Doble 18/35 · 51,4% · 1,03 PPT   ▲ PPP 1,12   ⚡ +80% PTS/min vs su rol     [ADN] [perfiles] [función]
+```
+
+**La columna del jugador es UN SOLO FLUJO que envuelve solo cuando no
+entra**, y eso es lo que la hace compacta. La primera versión en tabla
+ponía nombre, vía y chips en renglones separados y quedó **más alta que
+las tarjetas**: 65px por fila, 513px contra 407 para seis suplentes. La
+columna tiene ~800px en la A3 y todo eso ocupa ~700, así que entra en un
+renglón y el que trae alertas baja a dos. Medido en modo papel, A3:
+
+```
+                 tarjetas   tabla
+ 6 suplentes      407px     314px   −23%
+12 suplentes      655px     490px   −25%
+```
+
+El PDF sigue en 9 hojas con ORO y 7 con PLATA: el bloque ya abría hoja.
+
+**La VÍA DE GOL LÍDER se elige por el PESO en sus plays (`PT2%`/`PT3%`/
+`PT1%`), no por los intentos crudos** —`viaDeGolLider`, sobre la MISMA
+`ZONAS_TIRO` del tab Tiro—. Dos libres son UN play: por intentos, el que
+va seguido a la línea saldría «tirador de libres» con la mayoría de sus
+ataques terminando en otro lado. Sin la columna de peso decide por
+intentos y lo declara (`criterio`); con empate desempatan los intentos.
+
+- **Los intentos van TOTALES con el acumulado** (`__acum`): «18/35» dice
+  la muestra, que es para lo que se muestran. Sin acumulado van **por
+  partido y rotulados `x PJ`** — multiplicar un promedio redondeado por
+  los PJ daría un total plausible y falso. El demo cae ahí: su libro no
+  trae un `ACUMULADO J` completo (punto 8).
+- **El % sale del MISMO par que se muestra.** «18/35 · 60%» no puede
+  quedar escrito.
+- **Sin un solo intento dice «Sin lanzamientos registrados»**, no «0/0».
+
+**La EFICIENCIA INDIVIDUAL es el `PPP` en su banda contra la liga**
+(`eficienciaIndividual`, con la misma `bandaLiga` del informe): suma los
+libres y las pérdidas, o sea lo que un play del jugador le rinde al
+equipo. Va con flecha además del color y con el `~` de la muestra corta,
+que es **una sola función** (`muestraCorta`) para el badge y para las
+alertas. Sin dispersión en la liga la banda es `null`: no se inventa.
+
+**Las alertas llevan un texto CORTO en la fila** («+80% PTS/min vs su
+rol») y el largo, con los dos valores, en el `title`. **La columna del
+perfil lleva TODAS las etiquetas**, la función en cancha incluida: en la
+tabla ya no se repite en otra línea. En el papel la tabla va con
+`table-layout: fixed`, para que los chips no le roben ancho a la columna
+del jugador.
 
 ### 2 · LA FICHA POR JUGADOR ES DEL PLAN ORO · la matriz de BLOQUES
 
