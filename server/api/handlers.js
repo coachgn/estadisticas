@@ -441,10 +441,6 @@ async function manejarCatalogoEscribir(peticion, deps) {
   const cuerpo = (peticion && peticion.body) || {};
   const accion = String(cuerpo.accion || '');
 
-  const cascada = await catalogo.cargar(deps);
-  const r = mutar.aplicar(cascada.catalogo, accion, cuerpo, catalogo.validar);
-  if (!r.ok) return error(400, 'CATALOGO_INVALIDO', r.motivo);
-
   /* SI KV NO ESTÁ, NO SE FINGE QUE SE GUARDÓ. Sin credenciales la
      escritura es un no-op silencioso y el admin se iría convencido de que
      dio de alta un cliente — el mismo modo de fallar que el sembrado que
@@ -454,6 +450,20 @@ async function manejarCatalogoEscribir(peticion, deps) {
     return error(503, 'SIN_KV', 'El servidor no tiene Upstash configurado, '
       + 'así que no puede publicar el catálogo. Se puede dar de alta por CLI.');
   }
+
+  /* LA MUTACIÓN VA SOBRE EL CATÁLOGO DE KV RECIÉN LEÍDO, no sobre el de
+     `cargar()`: ése puede ser el respaldo (KV no contestó) o el caché de
+     cinco minutos de esta instancia, y escribirlo entero pisaba los
+     planes, las zonas y los partidos cargados a mano de todos los clubes.
+     Si KV no se puede leer, no se escribe. Ver `cargarParaEscribir`. */
+  let cascada;
+  try {
+    cascada = await catalogo.cargarParaEscribir(deps);
+  } catch (e) {
+    return error(503, e.codigo || 'KV_ILEGIBLE', e.message);
+  }
+  const r = mutar.aplicar(cascada.catalogo, accion, cuerpo, catalogo.validar);
+  if (!r.ok) return error(400, 'CATALOGO_INVALIDO', r.motivo);
 
   try {
     await kv.escribir(catalogo.CLAVE_KV, r.catalogo);

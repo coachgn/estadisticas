@@ -1233,10 +1233,25 @@ function jugadoresBadges(adn) {
 
    LA CASCADA, con su fallback:
 
-     exacto    misma banda de minutos Y misma jerarquía
-     primaria  solo la banda de minutos          (si el exacto < 3)
+     afines    volumen comparable Y ≥ 60 % de coincidencia de etiquetas
+     primaria  solo la banda de minutos          (si los afines < 3)
      global    mediana de los calificados        (si la primaria < 3)
      tipo      la fila JUGADOR TIPO              (si no hay calificados)
+
+   EL PRIMER ESCALÓN ERA `exacto` —misma banda de minutos y misma
+   jerarquía— y se reemplazó el 2026-09-12 a pedido del club, con un caso
+   de control medido en el libro U23 de Reconquista:
+
+     RAINERI, TADEO     Clave · ⭐ Franquicia · Generador + Especialista
+                        Defensivo + Buscador de Contacto · Generador
+                        Primario (+ Slasher)
+     BENAVIDEZ, JULIAN  Clave · ⭐ Franquicia · Generador + Amenaza
+                        Perimetral Real · Spacing / Tirador de Descarga
+
+   Con `exacto` los dos eran «pares»: comparten banda y jerarquía. Pero uno
+   penetra buscando contacto y el otro tira de descarga, y medir a uno
+   contra la mediana del otro no dice nada de ninguno. Ver
+   `jugadoresSimilitud`: les da 40 %.
 
    El mínimo es 3 y es el mismo `MIN_CALIFICADOS_REFERENCIA` que ya usa
    el rebote: una «mediana» de dos jugadores no es una mediana. Medido en
@@ -1249,7 +1264,7 @@ function jugadoresBadges(adn) {
 const PEER_MIN = MIN_CALIFICADOS_REFERENCIA;
 
 const PEER_MODOS = [
-  { id: 'pares', label: 'Mismo rol', titulo: 'Mediana de la liga · mismo rol y etiquetas' },
+  { id: 'pares', label: 'Mismo rol', titulo: 'Mediana de la liga · jugadores afines por rol y etiquetas' },
   { id: 'global', label: 'Liga completa', titulo: 'Mediana de la liga · todos los que califican' },
 ];
 
@@ -1277,6 +1292,129 @@ function jugadoresEtiquetasPeer(adn) {
   if (adn.rolMinutos) out.push(adn.rolMinutos.label);
   if (adn.jerarquia) out.push(adn.jerarquia.label);
   return out;
+}
+
+/* =====================================================================
+   SIMILITUD MULTI-ETIQUETA · qué tan afines son dos jugadores
+
+   La TAXONOMÍA es la de AUDITORIA_ETIQUETAS_JUGADORES.md, sección I, y NO
+   se copia: se lee de los mismos catálogos que etiquetan (I.2 `JERARQUIA`,
+   I.3 `PERFILES_TECNICOS`, I.4 `JUGADORES_ROLES_FUNCIONALES`). Hay un test
+   que parsea el documento y falla si alguna de las tres listas deja de
+   coincidir con él.
+
+   DOS PASOS, y el orden es la regla:
+
+   1 · VOLUMEN (filtro duro). Misma banda de minutos (I.1) o menos de 5
+       minutos de diferencia, Y menos de 6 puntos de USG%. Es la misma
+       lección del grupo de pares (punto 42): la distorsión grande es de
+       VOLUMEN, así que dos jugadores que juegan y usan la pelota muy
+       distinto no se comparan por mucho que se parezcan sus etiquetas.
+       El «o» de los minutos existe por el borde: 24,9 y 25,1 caen en
+       bandas distintas y juegan lo mismo. Sin USG% cargado no se filtra
+       por uso: un dato ausente no excluye a nadie.
+
+   2 · ETIQUETAS (puntaje ponderado, 0 a 1):
+
+       función en cancha   50 %   es lo que decide cómo se lo defiende
+       perfiles técnicos   30 %   la intersección de los arquetipos
+       ADN · jerarquía     20 %   cuánto pesa en su plantel
+
+   El piso es 60 %. Medido sobre los libros reales, se miden contra afines
+   el 92 % de los calificados de Reconquista Primera, el 91 % de la U23 y
+   el 94 % de DEPORTIVO; los demás caen al escalón siguiente y la pantalla
+   lo dice. La U21 (49 calificados) cae más seguido, 69 %: es la muestra.
+   ===================================================================== */
+
+const SIMILITUD = {
+  piso: 0.60,
+  pesos: { funcion: 0.50, perfiles: 0.30, adn: 0.20 },
+  tolMinutos: 5,
+  tolUsg: 0.06,
+};
+
+/**
+ * Función en cancha (I.4): 1 si es el mismo rol; 0,6 si el rol de uno es
+ * una faceta SECUNDARIA del otro (punto 46); 0,5 si comparten eje —el
+ * generador primario y el manejador secundario crean los dos—; 0,25 si
+ * solo comparten origen (los dos juegan adentro o los dos afuera).
+ */
+function jugadoresSimilitudFuncion(a, b) {
+  const A = a && a.rolFuncional, B = b && b.rolFuncional;
+  if (!A || !B) return 0;
+  if (A.id === B.id) return 1;
+  const secA = (A.secundarios || []).map(x => x.id);
+  const secB = (B.secundarios || []).map(x => x.id);
+  if (secA.indexOf(B.id) > -1 || secB.indexOf(A.id) > -1) return 0.6;
+  if (A.eje && A.eje === B.eje) return 0.5;
+  const pa = a.perfil || {}, pb = b.perfil || {};
+  if ((pa.esInterior && pb.esInterior) || (pa.esPerimetral && pb.esPerimetral)) return 0.25;
+  return 0;
+}
+
+/**
+ * Perfiles técnicos (I.3): intersección sobre unión de los arquetipos. Dos
+ * jugadores SIN ninguno coinciden en eso —ninguno destaca en un rasgo
+ * técnico— y dan 1: es la convención de Jaccard para dos conjuntos vacíos.
+ */
+function jugadoresSimilitudPerfiles(a, b) {
+  const A = new Set(((a && a.arquetipos) || []).map(x => x.id));
+  const B = new Set(((b && b.arquetipos) || []).map(x => x.id));
+  if (!A.size && !B.size) return 1;
+  let comunes = 0;
+  A.forEach(x => { if (B.has(x)) comunes++; });
+  return comunes / (A.size + B.size - comunes);
+}
+
+/**
+ * ADN · jerarquía en el plantel (I.2): 1 si es la misma, 0,5 si es la de al
+ * lado en la cascada, 0 si están a dos escalones o más. El orden sale de
+ * `JERARQUIA`, el mismo que etiqueta.
+ */
+function jugadoresSimilitudAdn(a, b) {
+  const orden = JERARQUIA.map(x => x.id);
+  const ia = orden.indexOf(a && a.jerarquia && a.jerarquia.id);
+  const ib = orden.indexOf(b && b.jerarquia && b.jerarquia.id);
+  if (ia < 0 || ib < 0) return 0;
+  const d = Math.abs(ia - ib);
+  return d === 0 ? 1 : d === 1 ? 0.5 : 0;
+}
+
+/** El filtro de volumen: minutos y uso comparables. */
+function jugadoresVolumenComparable(a, b) {
+  const pa = (a && a.perfil) || {}, pb = (b && b.perfil) || {};
+  const num = (v) => (typeof v === 'number' && isFinite(v)) ? v : null;
+  const ma = num(pa.min), mb = num(pb.min);
+  const ua = num(pa.usg), ub = num(pb.usg);
+  const dMin = (ma !== null && mb !== null) ? Math.abs(ma - mb) : null;
+  const dUsg = (ua !== null && ub !== null) ? Math.abs(ua - ub) : null;
+  const mismaBanda = !!(a && b && a.rolMinutos && b.rolMinutos && a.rolMinutos.id === b.rolMinutos.id);
+  const minutosOk = mismaBanda || (dMin !== null && dMin <= SIMILITUD.tolMinutos);
+  const usoOk = dUsg === null || dUsg <= SIMILITUD.tolUsg + 1e-9;
+  return { ok: minutosOk && usoOk, minutos: minutosOk, uso: usoOk, dMin: dMin, dUsg: dUsg };
+}
+
+/**
+ * QUÉ TAN AFINES SON DOS JUGADORES, a partir de sus ADN (`jugadoresADN`).
+ *
+ * Devuelve el puntaje y su desglose: un «62 %» sin decir de dónde sale no
+ * se puede auditar. `afin` exige las DOS cosas —volumen comparable y el
+ * piso— porque el puntaje de etiquetas solo no mira cuánto juega nadie.
+ */
+function jugadoresSimilitud(a, b) {
+  const P = SIMILITUD.pesos;
+  const funcion = jugadoresSimilitudFuncion(a, b);
+  const perfiles = jugadoresSimilitudPerfiles(a, b);
+  const adn = jugadoresSimilitudAdn(a, b);
+  const total = P.funcion * funcion + P.perfiles * perfiles + P.adn * adn;
+  const volumen = jugadoresVolumenComparable(a, b);
+  return {
+    total: total,
+    porcentaje: Math.round(total * 100),
+    funcion: funcion, perfiles: perfiles, adn: adn,
+    volumen: volumen,
+    afin: volumen.ok && total >= SIMILITUD.piso - 1e-9,
+  };
 }
 
 /**
@@ -1323,17 +1461,28 @@ function jugadoresPeerGroup(idx, j, modo) {
 
   const mismos = (fn) => todos.filter(x => { const a = adnMapa.get(x); return a && fn(a); });
 
-  /* 1 · coincidencia EXACTA de etiquetas */
-  if (mio.jerarquia) {
-    const g = mismos(a => a.rolMinutos && a.jerarquia
-      && a.rolMinutos.id === mio.rolMinutos.id && a.jerarquia.id === mio.jerarquia.id);
-    if (g.length >= PEER_MIN) {
-      const et = jugadoresEtiquetasPeer(mio);
-      return { jugadores: g, n: g.length, nivel: 'exacto', etiquetas: et,
-        label: 'Pares (' + g.length + ')',
-        motivo: 'Mediana calculada sobre ' + g.length + ' jugadores con etiqueta «'
-          + et.join(' / ') + '».' };
-    }
+  /* 1 · los AFINES: volumen comparable y 60 % de coincidencia de etiquetas.
+     Solo entre los CALIFICADOS: las etiquetas de un jugador que no llega
+     al umbral van con `~` (punto 8) y no pueden decidir contra quién se
+     mide otro. El propio jugador entra si califica, igual que en los
+     escalones de abajo. */
+  const afines = [];
+  cal.forEach(x => {
+    const a = adnMapa.get(x);
+    if (!a) return;
+    const sim = jugadoresSimilitud(mio, a);
+    if (sim.afin) afines.push({ jugador: x, similitud: sim });
+  });
+  if (afines.length >= PEER_MIN) {
+    const g = afines.map(x => x.jugador);
+    const et = [];
+    if (mio.rolFuncional) et.push(mio.rolFuncional.label);
+    if (mio.jerarquia) et.push(mio.jerarquia.label);
+    return { jugadores: g, n: g.length, nivel: 'afines', etiquetas: et,
+      similitudes: afines.map(x => ({ nombre: x.jugador['NOMBRES'], porcentaje: x.similitud.porcentaje })),
+      label: 'Afines (' + g.length + ')',
+      motivo: 'Mediana calculada sobre ' + g.length + ' jugadores afines: minutos y uso comparables y al menos '
+        + Math.round(SIMILITUD.piso * 100) + ' % de coincidencia en función en cancha, perfiles técnicos y jerarquía.' };
   }
 
   /* 2 · solo la etiqueta PRIMARIA, que es la banda de minutos */
@@ -1343,8 +1492,9 @@ function jugadoresPeerGroup(idx, j, modo) {
     return { jugadores: g2, n: g2.length, nivel: 'primaria', etiquetas: et,
       label: 'Pares (' + g2.length + ')',
       motivo: 'Mediana calculada sobre ' + g2.length + ' jugadores con etiqueta «'
-        + et.join(' / ') + '». No hubo ' + PEER_MIN + ' con la combinación completa «'
-        + jugadoresEtiquetasPeer(mio).join(' / ') + '», así que se agrupó por el rol principal.' };
+        + et.join(' / ') + '». No hubo ' + PEER_MIN + ' jugadores afines (al menos '
+        + Math.round(SIMILITUD.piso * 100) + ' % de coincidencia de etiquetas con volumen comparable), '
+        + 'así que se agrupó por el rol principal.' };
   }
 
   /* 3 · la liga entera, DICIÉNDOLO */
@@ -2820,7 +2970,7 @@ function jugadoresFilaRef(idx, j, clave, ref) {
 function jugadoresCardRef(idx, j, card) {
   const ref = jugadoresPeerReferencia(idx, j, card.claves, JUGADORES.refModo);
   const g = ref.grupo;
-  const degradado = JUGADORES.refModo === 'pares' && g.nivel !== 'exacto';
+  const degradado = JUGADORES.refModo === 'pares' && g.nivel !== 'afines';
   const filas = card.claves.map(k => jugadoresFilaRef(idx, j, k, ref)).join('');
 
   /* `+/-` va suelto y sin comparar: ver el comentario de
@@ -3070,6 +3220,8 @@ if (typeof module !== 'undefined' && module.exports) {
     jugadoresConvIntento,
     jugadoresReferenciasRebote, jugadoresMediana, MIN_CALIFICADOS_REFERENCIA,
     jugadoresPeerGroup, jugadoresPeerReferencia, jugadoresEtiquetasPeer, jugadoresAdnLiga,
+    SIMILITUD, jugadoresSimilitud, jugadoresSimilitudFuncion, jugadoresSimilitudPerfiles,
+    jugadoresSimilitudAdn, jugadoresVolumenComparable,
     JUGADORES_CARDS_REF, JUGADORES_REF_NEUTRAS,
     PEER_MIN, PEER_MODOS,
     jugadoresArquetipos, jugadoresJerarquia, jugadoresPuntoDeFuga, jugadoresSintesisPerfil,

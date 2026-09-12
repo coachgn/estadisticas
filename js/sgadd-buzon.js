@@ -67,6 +67,18 @@ const SGADD_BUZON = (function () {
     if (!st.idx) return;
     estado.planillaId = st.planillaId;
     estado.mapa = E.leerTodos(clubId(), st.planillaId);
+    recalcular();
+    /* Y después, sin esperar, lo que cargó el resto del cuerpo técnico. */
+    sincronizarRemoto();
+  }
+
+  /** Las alertas contra el mapa que YA está en memoria. Separada de
+      `sincronizar` para que la vuelta del servidor pueda recalcular sin
+      volver a disparar otra vuelta al servidor. */
+  function recalcular() {
+    if (!E || typeof SGADD_APP === 'undefined') return;
+    const st = SGADD_APP.estado;
+    if (!st.idx) return;
 
     /* DE DÓNDE SALEN LAS ALERTAS.
 
@@ -91,6 +103,148 @@ const SGADD_BUZON = (function () {
   function persistir() {
     if (!E) return;
     E.guardarTodos(clubId(), estado.planillaId, estado.mapa);
+  }
+
+  /* =====================================================================
+     COMPARTIDO CON EL CUERPO TÉCNICO · la vuelta al servidor
+
+     Con backend y sesión, los estados viven en el servidor y
+     `localStorage` queda como copia local: es lo que se pinta al instante
+     y lo que sobrevive a una caída de red. Sin backend (GViz, la demo, sin
+     sesión) no pasa nada de esto y el buzón es exactamente el de antes.
+
+     CUÁNDO SE BAJA: al cargar una categoría, cuando la pestaña vuelve a
+     estar a la vista y cada 30 segundos mientras lo está. No hay canal de
+     «push» en un servidor serverless, y 30 s es lo que tarda un DT en
+     avisar de palabra que marcó a alguien.
+
+     CUÁNDO SE SUBE: en el mismo gesto de marcar. Si falla, la decisión
+     queda en este navegador con su marca de tiempo y sube sola en la
+     próxima vuelta: `fusionarRemoto` la detecta como más nueva.
+     ===================================================================== */
+
+  const SONDEO_MS = 30000;
+  const REMOTO = {
+    enCurso: null, otraVuelta: false, ultimo: 0, sondeo: null,
+    apagado: false,      // el servidor dijo que no tiene dónde guardar
+    ultimoOk: null,      // hora de la última vuelta buena, para el pie del drawer
+    fallo: false,
+  };
+
+  /** Club y categoría del servidor, o null si no hay con quién compartir. */
+  function destinoRemoto() {
+    if (REMOTO.apagado || typeof SGADD_DATA === 'undefined' || !SGADD_DATA.estadosCompartibles
+        || !SGADD_DATA.estadosCompartibles()) return null;
+    if (typeof SGADD === 'undefined' || !SGADD.CATALOGO) return null;
+    /* LA CLAVE DEL SERVIDOR ES EL SLUG, no el id de la planilla: el id
+       sale del JSON del club y el servidor no lo conoce (punto 54). La
+       copia local sigue indexada por id, que es la clave que ya tenían
+       guardada los navegadores. */
+    const p = (SGADD.CATALOGO.planillas || []).filter(x => x.id === estado.planillaId)[0];
+    if (!p || !p.slug) return null;
+    const club = clubId();
+    if (!club || club === 'default') return null;
+    return { club: club, slug: p.slug, planillaId: estado.planillaId };
+  }
+
+  /**
+   * Una vuelta contra el servidor. `forzar` saltea el respiro de 5 s (lo
+   * usan marcar y volver a la pestaña); `explicito` avisa con un toast si
+   * falla, porque ahí el DT acaba de tocar un botón.
+   */
+  function sincronizarRemoto(forzar, explicito) {
+    const d = destinoRemoto();
+    if (!d || !E) return Promise.resolve(false);
+    iniciarSondeo();
+    if (REMOTO.enCurso) {
+      /* Una vuelta en vuelo puede haber leído ANTES del cambio que se
+         acaba de marcar: se encadena otra, en vez de perderlo. */
+      if (forzar) REMOTO.otraVuelta = true;
+      return REMOTO.enCurso;
+    }
+    if (!forzar && Date.now() - REMOTO.ultimo < 5000) return Promise.resolve(false);
+    REMOTO.ultimo = Date.now();
+
+    REMOTO.enCurso = E.sincronizarConServidor(estado.mapa, {
+      leer: () => SGADD_DATA.leerEstados(d.club, d.slug).then(c => c.estados || {}),
+      escribir: (cambios) => SGADD_DATA.guardarEstados(d.club, d.slug, cambios).then(c => c.estados || null),
+    }).then((r) => {
+      REMOTO.fallo = false;
+      REMOTO.ultimoOk = new Date();
+      /* Si el DT cambió de categoría mientras volvía, este mapa es de
+         otra: no se toca nada. */
+      if (estado.planillaId !== d.planillaId) return false;
+      /* SE FUSIONA CONTRA EL MAPA DE AHORA, no se reemplaza: si el DT marcó
+         a alguien mientras la vuelta estaba en el aire, ese cambio no está
+         en `r.mapa` y asignarlo directo lo borraba. Por marca de tiempo
+         gana el suyo, y la vuelta encadenada lo sube. */
+      const antes = firmaMapa(estado.mapa);
+      estado.mapa = E.fusionarRemoto(estado.mapa, r.mapa).mapa;
+      persistir();
+      if (firmaMapa(estado.mapa) !== antes) {
+        recalcular();
+        repintarSecciones();
+        if (estado.abierto) repintarPanel();
+      } else {
+        pintarPie();
+      }
+      return true;
+    }).catch((e) => {
+      REMOTO.fallo = true;
+      if (e && e.codigo === 'SIN_KV') { REMOTO.apagado = true; detenerSondeo(); }
+      if (explicito) {
+        toast('Guardado en este navegador. No se pudo compartir con el servidor: se reintenta solo.', 'aviso', 4200);
+      }
+      pintarPie();
+      return false;
+    }).then((v) => {
+      REMOTO.enCurso = null;
+      if (REMOTO.otraVuelta) { REMOTO.otraVuelta = false; return sincronizarRemoto(true, explicito); }
+      return v;
+    });
+    return REMOTO.enCurso;
+  }
+
+  function firmaMapa(m) {
+    return JSON.stringify(Object.keys(m || {}).sort().map(k => [k, m[k]]));
+  }
+
+  function iniciarSondeo() {
+    if (REMOTO.sondeo || typeof setInterval === 'undefined' || typeof document === 'undefined') return;
+    REMOTO.sondeo = setInterval(() => {
+      if (document.visibilityState === 'visible') sincronizarRemoto();
+    }, SONDEO_MS);
+    /* Volver a la pestaña es el momento en que más probable es que otro
+       haya marcado algo: se baja en el acto. */
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') sincronizarRemoto(true);
+    });
+  }
+
+  function detenerSondeo() {
+    if (REMOTO.sondeo) { clearInterval(REMOTO.sondeo); REMOTO.sondeo = null; }
+  }
+
+  /** El pie del drawer dice DÓNDE queda lo que se confirma. */
+  function textoPie() {
+    if (!destinoRemoto()) {
+      return 'Lo que confirmes queda guardado en este navegador y <b>no lo vuelve a pisar</b> ningún escaneo automático.';
+    }
+    const hora = REMOTO.ultimoOk
+      ? ' · sincronizado ' + String(REMOTO.ultimoOk.getHours()).padStart(2, '0') + ':'
+        + String(REMOTO.ultimoOk.getMinutes()).padStart(2, '0')
+      : '';
+    if (REMOTO.fallo) {
+      return 'Sin conexión con el servidor: lo que confirmes queda en este navegador y <b>se comparte solo</b> cuando vuelva.';
+    }
+    return 'Lo que confirmes se guarda en el servidor y <b>lo ve todo el cuerpo técnico</b> de tu club. '
+      + 'Ningún escaneo automático lo vuelve a pisar' + SGADD_UI.esc(hora) + '.';
+  }
+
+  function pintarPie() {
+    if (typeof document === 'undefined') return;
+    const el = document.getElementById('buzonPie');
+    if (el) el.innerHTML = textoPie();
   }
 
   /** Estado vigente de un jugador, para que lo consulten las secciones. */
@@ -399,6 +553,7 @@ const SGADD_BUZON = (function () {
     const nombre = String(clave).split('|')[0];
     estado.mapa = E.aplicar(estado.mapa, clave, 'ACTIVO', { origen: 'usuario' });
     persistir();
+    sincronizarRemoto(true, true);
     toast('🟢 ' + nombre + ' · vuelve a Activo', 'ok');
     sincronizar();
     /* Acá sí se repinta entero —reactivar puede hacer aparecer alertas y
@@ -705,10 +860,7 @@ const SGADD_BUZON = (function () {
           <div id="buzonScroll" class="flex-1 overflow-y-auto p-4">${lista}<div id="buzonConfirmados">${bloqueConfirmados()}</div></div>
 
           <footer class="p-3 border-t border-hairline shrink-0">
-            <p class="text-[10px] dato-sec leading-snug">
-              Lo que confirmes queda guardado en este navegador y
-              <b>no lo vuelve a pisar</b> ningún escaneo automático.
-            </p>
+            <p id="buzonPie" class="text-[10px] dato-sec leading-snug" aria-live="polite">${textoPie()}</p>
           </footer>
         </aside>
       </div>`;
@@ -932,6 +1084,9 @@ const SGADD_BUZON = (function () {
     const clave = E.claveJugador(nombre, equipo);
     estado.mapa = E.aplicar(estado.mapa, clave, idEstado, { origen: 'usuario' });
     persistir();
+    /* Se comparte en el mismo gesto: el resto del cuerpo técnico lo ve en
+       su próxima vuelta al servidor. */
+    sincronizarRemoto(true, true);
 
     const e = E.estado(idEstado);
     toast(e.emoji + ' ' + nombre + ' · ' + e.label, idEstado === 'BAJA' ? 'aviso' : 'ok');
@@ -949,6 +1104,7 @@ const SGADD_BUZON = (function () {
     if (!a || !E) return;
     estado.mapa = E.aplicar(estado.mapa, a.clave, idEstado, { origen: 'usuario' });
     persistir();
+    sincronizarRemoto(true, true);
 
     const e = E.estado(idEstado);
     toast(e.emoji + ' ' + a.nombre + ' · ' + e.label, idEstado === 'BAJA' ? 'aviso' : 'ok');
@@ -1024,5 +1180,6 @@ const SGADD_BUZON = (function () {
     pendienteDe, avisos, alertasQuePiden, marcar, irAFicha, recordarSeccion,
     buscar, elegirBuscado, limpiarBusqueda, marcarPorClave, buscarJugadores, abrirAviso,
     abrir, cerrar, resolver, revertir, listaConfirmados, toast,
+    sincronizarRemoto, destinoRemoto, recalcular, SONDEO_MS,
   };
 })();

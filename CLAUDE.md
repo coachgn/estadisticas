@@ -39,7 +39,7 @@ node test-confirmar.js     #  86 tests · el diff, publicar zonas, subclientes y
 node test-acumulacion.js   #  42 tests · la suma entre tramos · REGRESIÓN, no tocar
 node test-resiliencia.js   #  50 tests · rotación del token, KV caído, el tramo que se conserva
 node test-jsonclub.js      # 115 tests · los JSON de club, el validador, el aislamiento y publicar
-node test-pares.js         # 218 tests · el grupo de pares, la cascada y las 3 cards
+node test-pares.js         # 219 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 175 tests · partidos sin box score: suman a la tabla, no a las métricas
 node test-responsive.js    # 136 tests · desborde, targets táctiles, modales, el papel, el PIE
@@ -60,6 +60,10 @@ node test-resto.js         # 137 tests · el resto del plantel en tabla, el piso
                            #             de gol líder por partido y la ficha del Plan Oro
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
+node test-similitud-etiquetas.js #  45 tests · la similitud multi-etiqueta contra el documento
+                           #             de etiquetas, el caso Raineri/Benavidez y los afines
+node test-estados-sync.js  #  74 tests · los estados compartidos en el servidor, dos sesiones
+                           #             y que ninguna escritura del catálogo pise datos
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -71,7 +75,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5407 tests en total. Todos tienen que dar verde antes de commitear.**
+**5527 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -3771,6 +3775,11 @@ planilla**: MotorStats no escribe estado y pedirle una columna abre un ciclo
 de coordinación con el otro proyecto por algo que es una decisión del cuerpo
 técnico, no un dato del box score.
 
+> **Desde 2026-09-12, con backend y sesión, TAMBIÉN en el servidor** —un
+> hash de Upstash por club y categoría— y lo ve todo el cuerpo técnico del
+> club. `localStorage` queda como copia local y respaldo sin red. Ver el
+> punto 57.
+
 **OJO con el id del club: es `CLUB.estado.id`**, no `CLUB.ID` ni `CLUB.id`.
 Con la propiedad equivocada devolvía `undefined`, todos los clubes escribían
 en la misma clave y **Jujuy habría pisado los estados de Reconquista** — sin
@@ -5901,11 +5910,16 @@ lo que el club audita, así que no se descarta, se degrada a él.
 ### La cascada
 
 ```
-exacto    misma banda de minutos Y misma jerarquía
-primaria  solo la banda de minutos          (si el exacto < 3)
+afines    volumen comparable Y ≥ 60 % de coincidencia de etiquetas
+primaria  solo la banda de minutos          (si los afines < 3)
 global    mediana de los calificados        (si la primaria < 3)
 tipo      la fila JUGADOR TIPO              (si no hay calificados)
 ```
+
+> **El primer escalón era `exacto`** —misma banda de minutos y misma
+> jerarquía— **y se reemplazó el 2026-09-12** por el de afines, a pedido del
+> club: agrupaba a jugadores con la misma carga y funciones opuestas. Ver
+> el punto 58.
 
 El mínimo es 3 y es el mismo `MIN_CALIFICADOS_REFERENCIA` del rebote: una
 «mediana» de dos jugadores no es una mediana.
@@ -8346,3 +8360,183 @@ resto del módulo, y vale por lo mismo.
 de venta en vez de la ficha. Es deliberado: la demo vende Plata, y el
 escalón siguiente tiene que verse.
 
+---
+
+## 57. LOS ESTADOS COMPARTIDOS · y lo que ninguna rutina puede pisar
+
+Pedido del club (2026-09-12): lo que un DT marca en la campana —lesionado,
+suspendido, baja, alta, con su nota— lo tiene que ver el resto del cuerpo
+técnico. Hasta acá cada navegador tenía su propia verdad en `localStorage`
+(punto 13).
+
+### Dónde viven
+
+```
+GET  /api/v1/estados/:club/:categoria      el mapa de la categoría
+POST /api/v1/estados/:club/:categoria      { cambios: { "NOMBRE|EQUIPO": registro } }
+
+Upstash  sgadd:estados:<club>:<categoría>  un HASH · un campo por jugador
+```
+
+`server/api/estados.js`, **en su propio archivo** como `libro.js`, y en su
+**propia clave** de KV. La clave de la categoría es el **slug** (punto 54):
+el id de planilla del JSON el servidor no lo conoce. La copia local sigue
+indexada por id, que es la clave que ya tenían guardada los navegadores.
+
+- **Un cliente solo lee y escribe los de SU club**; el admin, los de
+  cualquiera. La categoría tiene que existir en el catálogo —sin eso un
+  token podría crear claves— y un club pausado o vencido no recibe el
+  servicio, con el mismo guard que los datos.
+- **Sin backend o sin sesión** (GViz, la demo) no pasa nada de esto y el
+  buzón es exactamente el de antes. Verificado en la demo.
+
+### Las tres reglas que protegen lo cargado
+
+1. **Se escribe UN JUGADOR, nunca el mapa.** `HSET` campo por campo
+   (`kv.escribirCampos`). No existe un camino que haga `SET`, `DEL` ni
+   `HDEL` sobre la clave: ninguna escritura —de este panel, de un deploy o
+   del Panel Master— puede dejar a otro en cero. Hay un test que lee el
+   fuente y falla si aparece.
+2. **Gana el cambio más nuevo, jugador por jugador.** `aplicar()` sella
+   `actualizado` en ms y `resolverEscritura()` solo escribe lo
+   estrictamente más nuevo: un navegador que vuelve de estar sin red con
+   una decisión de ayer no pisa la de hoy, y reenviar lo mismo no hace
+   nada. La marca se **topa en la hora del servidor**: un reloj adelantado
+   ganaría todas las carreras.
+3. **Nada se borra.** «Reactivar» escribe ACTIVO con `origen: usuario`,
+   que es además lo que hace que el buzón no vuelva a preguntar.
+
+Las funciones son **puras y viven en `sgadd-estados.js`**, que el servidor
+ya comparte (`server/lib/compartido/`): el servidor decide qué escribe con
+la misma regla con la que el navegador fusiona lo que baja.
+
+### La vuelta del navegador
+
+`sincronizarConServidor()` baja, fusiona (`fusionarRemoto`), sube lo que el
+servidor no tiene o tiene más viejo y se queda con el mapa que devuelve.
+
+- **Cuándo baja**: al cargar una categoría, al volver a la pestaña
+  (`visibilitychange`) y **cada 30 s** mientras está a la vista. No hay
+  canal de push en serverless, y 30 s es lo que tarda un DT en avisar de
+  palabra que marcó a alguien. **Medido con dos Chrome contra la API real
+  en local: el otro lo vio a los 26 s sin tocar nada.**
+- **Cuándo sube**: en el mismo gesto de marcar, resolver o reactivar. Si
+  falla, la decisión queda local con su marca y sube sola en la vuelta
+  siguiente; el toast lo dice.
+- **Un fallo de LECTURA contesta 503, no un mapa vacío**, y
+  `leerEstados` lanza. Si el navegador tomara el vacío como la verdad
+  borraría su copia local: es el bug del punto 23 con otro disfraz.
+- **La vuelta FUSIONA contra el mapa de ahora**, no lo reemplaza: si el DT
+  marcó a alguien mientras la vuelta estaba en el aire, asignar el mapa
+  que bajó lo borraba. La vuelta encadenada lo sube.
+- **Lo guardado antes de todo esto migra solo**: un registro local sin
+  marca de tiempo es el más viejo, se conserva y se sube la primera vez.
+
+El pie del drawer dice **dónde queda lo que se confirma**: en el servidor
+para todo el cuerpo técnico, solo en este navegador, o sin conexión y
+pendiente de compartir.
+
+### Y el CATÁLOGO se escribe sobre lo que hay · `cargarParaEscribir`
+
+Auditando esto apareció el agujero grande, y no era de los estados: **toda
+escritura del catálogo es read-modify-write del objeto ENTERO**, y leía
+con `cargar()`, que está hecha para SERVIR:
+
+- con Upstash sin contestar un instante, `cargar()` baja al respaldo en
+  silencio, y **ese literal del código se escribía encima de KV**: se
+  perdían los planes, las zonas publicadas y los partidos cargados a mano
+  de todos los clubes;
+- con el caché de cinco minutos de otra instancia, se escribía sobre una
+  foto vieja y **se deshacía lo que otro admin publicó en el medio**.
+
+`catalogo.cargarParaEscribir()` lee KV **sin caché** y **lanza** si no lo
+pudo leer o si trae algo inválido (`KV_ILEGIBLE`, `KV_INVALIDO`): mejor no
+guardar que pisar. La única vez que parte del respaldo es con la clave
+**ausente**, que es el catálogo antes de la primera alta. La usan el
+handler del Panel Master (503 con el motivo) y el CLI en `alta`, `baja` y
+`sembrar`. `listar` y `exportar` siguen con la cascada: muestran.
+
+Los estados, además, **no están adentro del catálogo**: ninguna de esas
+escrituras los puede alcanzar, y hay un test que lo verifica sobre los
+handlers de verdad.
+
+---
+
+## 58. SIMILITUD MULTI-ETIQUETA · contra quién es justo comparar
+
+El grupo de pares del punto 42 abría por `exacto`: misma banda de minutos y
+misma jerarquía. El club trajo el caso que lo rompe, y **se midió igual en
+el libro U23 real el mismo día**:
+
+```
+RAINERI, TADEO     Clave · ⭐ Franquicia · Generador + Especialista Defensivo
+                   + Buscador de Contacto · Generador Primario (+ Slasher)
+BENAVIDEZ, JULIAN  Clave · ⭐ Franquicia · Generador + Amenaza Perimetral
+                   Real · Spacing / Tirador de Descarga
+```
+
+Mismo ADN, funciones opuestas: uno penetra buscando contacto y el otro tira
+de descarga. Con `exacto` eran pares, y medir a uno contra la mediana del
+otro no dice nada de ninguno.
+
+### La taxonomía es la del DOCUMENTO
+
+`AUDITORIA_ETIQUETAS_JUGADORES.md`, sección I, y **no se copia**: el motor
+lee los mismos catálogos que etiquetan (I.2 `JERARQUIA`, I.3
+`PERFILES_TECNICOS`, I.4 `JUGADORES_ROLES_FUNCIONALES`).
+`test-similitud-etiquetas.js` **parsea el documento** —por columna, no por
+posición— y falla si alguna de las cuatro listas deja de coincidir, o si la
+jerarquía cambia de orden (la cercanía de dos escalones se mide por su
+posición).
+
+### El puntaje · `jugadoresSimilitud(adnA, adnB)`
+
+```
+1 · VOLUMEN (filtro duro)  misma banda de minutos o < 5 min de diferencia,
+                           Y < 6 puntos de USG%
+2 · ETIQUETAS              función en cancha 50 % · perfiles técnicos 30 %
+                           · ADN (jerarquía) 20 %          piso: 60 %
+```
+
+- **Función**: 1 mismo rol · 0,6 si el rol de uno es la faceta
+  SECUNDARIA del otro (punto 46) · 0,5 mismo eje · 0,25 mismo origen
+  (los dos adentro o los dos afuera) · 0.
+- **Perfiles**: intersección sobre unión de los arquetipos. Dos sin
+  ninguno dan 1: coinciden en no destacar en un rasgo técnico.
+- **ADN**: 1 la misma jerarquía · 0,5 la de al lado · 0.
+- **El «o» de los minutos es por el borde**: 24,9 y 25,1 caen en bandas
+  distintas y juegan lo mismo. **Sin USG% cargado no se filtra por uso**:
+  un dato ausente no excluye a nadie.
+- Devuelve el desglose, no solo el número: un «62 %» sin decir de dónde
+  sale no se puede auditar.
+
+**El caso de control da 40 %** (función 0,25 · perfiles 0,25 · ADN 1), con
+volumen comparable —0,5 min y 0,8 pp de uso—: la separación la hacen las
+etiquetas, no el filtro. Medido en el libro real: Raineri queda con 11
+afines y Benavidez con 10, y ninguno está en el grupo del otro.
+
+### El escalón `afines`
+
+Reemplaza a `exacto` como primero de la cascada: los calificados con
+volumen comparable y ≥ 60 %, con al menos 3. **Solo calificados**: las
+etiquetas de uno que no llega al umbral van con `~` (punto 8) y no pueden
+decidir contra quién se mide otro. El grupo trae el porcentaje de cada uno
+(`similitudes`) y el motivo dice el criterio con su piso; sin 3 afines cae a
+la banda de minutos y **lo dice**.
+
+Medido con el motor final sobre los libros reales (los calificados que se
+miden contra afines; el resto cae a la banda de minutos):
+
+```
+                     calificados   afines   primaria
+Reconquista Primera      112       103 (92 %)     9
+Reconquista U23          131       119 (91 %)    12
+DEPORTIVO                113       106 (94 %)     7
+Jujuy (la demo)          124       121 (98 %)     3
+Reconquista U21           49        34 (69 %)    15   ← la muestra
+```
+
+`test-pares.js` cambió UNA expectativa y a propósito: en su fixture,
+`CLAVE, TRES` tira 8 dobles y 1 triple —interior— entre tres perimetrales
+de su banda y jerarquía. Antes era par; ahora no, con 50 %. Es el caso de
+control en chico.

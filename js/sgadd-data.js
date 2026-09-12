@@ -442,6 +442,44 @@ const SGADD_DATA = (function () {
     return cuerpo;
   }
 
+  /* =====================================================================
+     LOS ESTADOS DE JUGADOR · compartidos con el cuerpo técnico
+
+     Un hash por club y categoría en el servidor (ver `server/api/estados.js`).
+     Las dos LANZAN, y el buzón lo necesita: un «no se pudo leer» NO puede
+     confundirse con «no hay nada guardado», o el navegador tomaría el vacío
+     como la verdad. Ante el error se queda con su copia local.
+     ===================================================================== */
+
+  /** ¿Hay dónde compartirlos? Backend configurado y sesión con token. */
+  function estadosCompartibles() { return !!(baseApi && auth && auth.token()); }
+
+  function rutaEstados(club, slug) {
+    return '/api/v1/estados/' + encodeURIComponent(club) + '/' + encodeURIComponent(slug);
+  }
+
+  async function leerEstados(club, slug, opciones) {
+    const o = opciones || {};
+    if (!estadosCompartibles()) throw Object.assign(new Error('Sin backend o sin sesión.'), { codigo: 'SIN_API' });
+    const traer = o.fetch || fetch;
+    const r = await traer(baseApi + rutaEstados(club, slug), {
+      headers: { Authorization: 'Bearer ' + auth.token() },
+    });
+    const cuerpo = await r.json().catch(() => null);
+    if (!r.ok || !cuerpo || !cuerpo.ok) {
+      const e = new Error((cuerpo && cuerpo.mensaje) || ('El servidor respondió ' + r.status));
+      e.codigo = (cuerpo && cuerpo.codigo) || ('HTTP_' + r.status);
+      throw e;
+    }
+    return cuerpo;
+  }
+
+  /** Manda `{clave: registro}`. El servidor escribe jugador por jugador y
+      solo lo más nuevo; devuelve el mapa entero ya fusionado. */
+  function guardarEstados(club, slug, cambios, opciones) {
+    return postConToken(rutaEstados(club, slug), { cambios: cambios || {} }, opciones);
+  }
+
   function login(datos, opciones) { return postSinToken('/api/v1/login', datos, opciones); }
   function fijarClave(datos, opciones) { return postSinToken('/api/v1/clave', datos, opciones); }
 
@@ -450,6 +488,7 @@ const SGADD_DATA = (function () {
     matrizAFilas, matrizALegacy, tipoDeColumna,
     cargarCategoria, cargarDelBackend, limpiarCache, catalogo, guardarCatalogo, equiposDelLibro,
     login, fijarClave, clientes, guardarClientes,
+    estadosCompartibles, leerEstados, guardarEstados,
   };
 })();
 

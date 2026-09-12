@@ -86,6 +86,13 @@ function crearApp(opciones) {
      la query termina en los logs de acceso. */
   app.post('/api/v1/catalogo/equipos', responder(require('./api/libro.js').manejarEquiposDelLibro));
 
+  /* Los estados de jugador del cuerpo técnico. En su propio archivo y en
+     su propia clave de KV: lo que carga un usuario no comparte camino con
+     el catálogo, así que ninguna escritura del catálogo lo puede pisar. */
+  const estados = require('./api/estados.js');
+  app.get('/api/v1/estados/:clubId/:categoria', responder(estados.manejarEstados));
+  app.post('/api/v1/estados/:clubId/:categoria', responder(estados.manejarEstadosEscribir));
+
   /* LAS DOS RUTAS SIN TOKEN. Son las únicas: todo lo demás exige uno.
      `login` lo emite y `clave` lo fija por primera vez, así que exigirlo
      sería pedir la llave para entrar a buscar la llave. Lo que las cuida

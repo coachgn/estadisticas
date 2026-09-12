@@ -440,8 +440,16 @@ check('el buzón expone marcar() para adelantarse a la alerta',
   /function marcar\(nombre, equipo, idEstado\)/.test(buzon));
 check('y lo guarda como decisión del usuario, que gana sobre el detector',
   /function marcar\([\s\S]{0,300}origen: 'usuario'/.test(buzon));
+/* Se recorta el CUERPO de la función y se busca ahí: una ventana fija de
+   caracteres se rompe con cualquier comentario que se sume adentro (punto
+   43), sin que la propiedad haya cambiado. */
+const cuerpoMarcar = (() => {
+  const i = buzon.indexOf('function marcar(nombre, equipo, idEstado)');
+  const j = buzon.slice(i + 10).search(/\n  function /);
+  return i < 0 ? '' : buzon.slice(i, j < 0 ? undefined : i + 10 + j);
+})();
 check('marcar a mano recalcula: puede tapar una alerta que estaba pendiente',
-  /function marcar\([\s\S]{0,600}sincronizar\(\)/.test(buzon));
+  /\bsincronizar\(\)/.test(cuerpoMarcar), cuerpoMarcar.length);
 
 const jug = fs.readFileSync('./js/sgadd-jugadores.js', 'utf8');
 check('la ficha del jugador ofrece los cuatro estados',

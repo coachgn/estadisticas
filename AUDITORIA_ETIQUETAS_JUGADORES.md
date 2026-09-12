@@ -1509,3 +1509,28 @@ Suite completa corrida después de aplicar la reconfiguración de la sección VI
 | `test-partido.js` | ✓ 22 |
 | `test-scouting.js` | ✓ 300 |
 | **Total** | **848 · 0 fallas** |
+
+---
+
+## IX. Similitud multi-etiqueta · el grupo de pares lee esta sección
+
+*Agregado 2026-09-12.* El grupo de pares de la ficha (punto 42 de
+`CLAUDE.md`) ya no agrupa por banda de minutos + jerarquía: compara con
+`jugadoresSimilitud()`, que se basa en las taxonomías de la sección I de este
+documento, en este mapeo:
+
+| Dimensión del puntaje | Sección | Catálogo | Peso |
+|---|---|---|---|
+| Filtro de volumen | I.1 · Banda de minutos (+ USG%) | `ROLES_MINUTOS` | filtro |
+| Función en cancha | I.4 · Rol funcional | `JUGADORES_ROLES_FUNCIONALES` | 50 % |
+| Perfiles técnicos | I.3 · Arquetipos técnicos | `PERFILES_TECNICOS` | 30 % |
+| ADN del jugador | I.2 · Jerarquía en el plantel | `JERARQUIA` | 20 % |
+
+Piso de afinidad: **60 %**. `test-similitud-etiquetas.js` parsea las tablas
+de I.1 a I.4 y falla si sus `id` dejan de coincidir con los catálogos, o si la
+jerarquía de I.2 cambia de orden: esa sección es parte del contrato.
+
+> Nota: la tabla de I.4 lista la cascada en el orden del relevamiento. Desde
+> el punto 46 de `CLAUDE.md`, `ancla-defensiva` va antes que
+> `finalizador-corto`. El conjunto de roles es el mismo; el test compara el
+> conjunto, no el orden.

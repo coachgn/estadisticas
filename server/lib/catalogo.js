@@ -128,6 +128,59 @@ function guardar(valor, origen, aviso, o) {
 
 function limpiarCache() { cache = { valor: null, venceEn: 0, origen: null, aviso: null }; }
 
+/**
+ * EL CATÁLOGO SOBRE EL QUE SE ESCRIBE · siempre el de KV, recién leído.
+ *
+ * `cargar()` está hecha para SERVIR: si Upstash no contesta baja al
+ * respaldo en silencio, y además cachea cinco minutos por instancia. Las
+ * dos cosas son correctas para mostrar y un desastre para escribir,
+ * porque toda escritura del catálogo es read-modify-write del objeto
+ * ENTERO:
+ *
+ *   · con KV caído un instante, el alta se aplicaba sobre el literal del
+ *     código y ese literal se escribía ENCIMA de KV: se perdían los planes,
+ *     las zonas publicadas y los partidos cargados a mano de todos los
+ *     clubes;
+ *   · con el caché de otra instancia, se escribía sobre una foto de hace
+ *     cinco minutos y se deshacía lo que otro admin publicó en el medio.
+ *
+ * Por eso esto NO usa el caché y NO baja al respaldo. Lanza si KV no se
+ * pudo leer o trae algo inválido —mejor no guardar que pisar—. La única
+ * vez que se parte del respaldo es con la clave AUSENTE: es el catálogo
+ * antes de la primera alta, y ahí no hay nada que perder.
+ *
+ * @returns {Promise<{catalogo, origen}>} una COPIA, que se puede mutar.
+ */
+async function cargarParaEscribir(opciones) {
+  const o = opciones || {};
+  if (!kv.configurado(o.env)) {
+    const e = new Error('Upstash no está configurado: no hay dónde escribir el catálogo.');
+    e.codigo = 'SIN_KV';
+    throw e;
+  }
+  const r = await kv.leer(CLAVE_KV, o);
+  if (r.error) {
+    const e = new Error('No se pudo leer el catálogo vigente (' + r.error + '). No se escribe nada: '
+      + 'escribir ahora pisaría lo publicado con el respaldo.');
+    e.codigo = 'KV_ILEGIBLE';
+    throw e;
+  }
+  if (r.valor) {
+    const mal = validar(r.valor);
+    if (mal) {
+      const e = new Error('El catálogo de KV es inválido (' + mal + '). No se escribe encima: '
+        + 'repararlo primero (server/bin/reparar-kv.js).');
+      e.codigo = 'KV_INVALIDO';
+      throw e;
+    }
+    return { catalogo: JSON.parse(JSON.stringify(r.valor)), origen: 'kv' };
+  }
+  /* La clave no existe todavía: se siembra desde el respaldo. */
+  const env = desdeEntorno();
+  const base = (env && !env.__error && !validar(env)) ? env : CATALOGO;
+  return { catalogo: JSON.parse(JSON.stringify(base)), origen: (base === CATALOGO) ? 'codigo' : 'env' };
+}
+
 /* --------------------------------------------------------------------
    RESOLUCIÓN · funciones PURAS sobre un catálogo ya cargado
 
@@ -256,5 +309,5 @@ function publico(cat, opciones) {
 }
 
 module.exports = {
-  CLAVE_KV, cargar, limpiarCache, validar, resolver, publico, desdeEntorno, huellaLibro,
+  CLAVE_KV, cargar, cargarParaEscribir, limpiarCache, validar, resolver, publico, desdeEntorno, huellaLibro,
 };

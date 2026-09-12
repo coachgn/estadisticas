@@ -161,7 +161,20 @@ function exigirKV() {
 
   if (!cmd || o.help || cmd === 'ayuda') { console.log(AYUDA); process.exit(cmd ? 0 : 1); }
 
-  const cascada = await catalogo.cargar({ forzar: true });
+  /* Leer y exportar muestran la cascada tal cual; ALTA, BAJA y SEMBRAR
+     escriben el catálogo ENTERO, así que parten del de KV recién leído y
+     no del respaldo: con Upstash sin contestar, `cargar()` devuelve el
+     literal del código y escribirlo encima borraba planes, zonas y
+     partidos manuales. `cargarParaEscribir` lanza antes de pisar nada. */
+  const escribe = ['sembrar', 'alta', 'baja'].indexOf(cmd) !== -1;
+  const cascada = escribe
+    ? await catalogo.cargarParaEscribir().catch(e => {
+      console.error('');
+      console.error('  NO se guardó nada: ' + e.message);
+      console.error('');
+      process.exit(1);
+    })
+    : await catalogo.cargar({ forzar: true });
   const cat = JSON.parse(JSON.stringify(cascada.catalogo));
 
   /* -------------------------------------------------- listar */

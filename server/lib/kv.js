@@ -227,5 +227,63 @@ async function borrar(clave, opciones) {
   return comando(['DEL', clave], opciones);
 }
 
+/* =====================================================================
+   HASHES · para lo que cargan los usuarios (los estados de jugador)
+
+   Un HASH y no una clave con un JSON adentro, y es la decisión que
+   protege los datos: con un JSON entero, guardar el estado de UN jugador
+   obliga a leer el mapa, modificarlo y volver a escribirlo todo — y dos
+   navegadores que lo hacen a la vez se pisan, o una lectura fallida deja
+   el mapa en cero. Con `HSET` se escribe un campo y nada más.
+
+   A diferencia de `leer()`, ESTAS LANZAN: quien las usa tiene que poder
+   distinguir «no hay nada guardado» de «Upstash no contestó», porque en
+   el segundo caso el navegador NO puede tomar el vacío como la verdad y
+   borrar su copia local.
+   ===================================================================== */
+
+function parsearCampo(crudo) {
+  if (crudo === null || crudo === undefined) return null;
+  try { return JSON.parse(crudo); } catch (e) { return null; }
+}
+
+/** El hash entero como objeto. Un campo con JSON roto se saltea. */
+async function leerHash(clave, opciones) {
+  const plano = await comando(['HGETALL', clave], Object.assign({ soloLectura: true }, opciones));
+  const out = {};
+  const lista = Array.isArray(plano) ? plano : [];
+  for (let i = 0; i + 1 < lista.length; i += 2) {
+    const v = parsearCampo(lista[i + 1]);
+    if (v !== null) out[lista[i]] = v;
+  }
+  return out;
+}
+
+/** Solo los campos pedidos: lo que el upsert necesita comparar. */
+async function leerCampos(clave, campos, opciones) {
+  const out = {};
+  if (!campos || !campos.length) return out;
+  const vals = await comando(['HMGET', clave].concat(campos), Object.assign({ soloLectura: true }, opciones));
+  (Array.isArray(vals) ? vals : []).forEach((crudo, i) => {
+    const v = parsearCampo(crudo);
+    if (v !== null) out[campos[i]] = v;
+  });
+  return out;
+}
+
+/** Escribe campos de un hash. NUNCA borra ni reemplaza los demás. */
+async function escribirCampos(clave, mapa, opciones) {
+  const partes = ['HSET', clave];
+  Object.keys(mapa || {}).forEach(k => { partes.push(k, JSON.stringify(mapa[k])); });
+  if (partes.length === 2) return 0;
+  return comando(partes, opciones);
+}
+
+async function tamanoHash(clave, opciones) {
+  const n = await comando(['HLEN', clave], Object.assign({ soloLectura: true }, opciones));
+  return Number(n) || 0;
+}
+
 module.exports = { credenciales, configurado, comando, leer, escribir, borrar,
+  leerHash, leerCampos, escribirCampos, tamanoHash,
   tokensPara, tokenEnUso };

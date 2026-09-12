@@ -136,10 +136,16 @@ igual(g2.jugadores.length, g.jugadores.length,
    ===================================================================== */
 bloque('2 · El cálculo de la mediana');
 
-/* Cuatro «Jugador Clave» con T2I 6, 7, 8, 5 → ordenados 5,6,7,8 →
-   mediana (6+7)/2 = 6,5. A ojo, y por eso los números son estos. */
+/* Cuatro «Jugador Clave» con T2I 6, 7, 8, 5 — pero NO son cuatro pares.
+   CLAVE, TRES tira 8 dobles y 1 triple: el motor lo lee INTERIOR (Poste
+   Bajo) mientras los otros tres son perimetrales. Con el escalón viejo
+   `exacto` —banda + jerarquía— entraba igual; con el de AFINES (2026-09-12)
+   su función en cancha no coincide y queda afuera con 50 %. Es el caso
+   Raineri/Benavidez en chico. Quedan 6, 7, 5 → ordenados 5,6,7 → 6. */
 const ref = J.jugadoresPeerReferencia(idx, titular, ['T2I'], 'pares');
-cerca(ref.valores['T2I'], 6.5, 'mediana de T2I sobre los cuatro pares');
+cerca(ref.valores['T2I'], 6, 'mediana de T2I sobre los tres pares AFINES');
+ok(ref.grupo.jugadores.every(x => x.NOMBRES !== 'CLAVE, TRES'),
+   'el de la misma banda y jerarquía pero otra función en cancha NO es par');
 
 /* Impar: los tres de rotación, T2I 2,1,3 → ordenados 1,2,3 → 2. */
 const refR = J.jugadoresPeerReferencia(idx, base[4], ['T2I'], 'pares');
@@ -229,7 +235,7 @@ const mixto = [
 ];
 const idxMix = indice(mixto);
 const gMix = J.jugadoresPeerGroup(idxMix, mixto[0], 'pares');
-ok(gMix.nivel === 'primaria' || gMix.nivel === 'exacto' || gMix.nivel === 'global',
+ok(gMix.nivel === 'primaria' || gMix.nivel === 'afines' || gMix.nivel === 'global',
    'el nivel es uno de los de la cascada', gMix.nivel);
 if (gMix.nivel === 'primaria') {
   ok(gMix.jugadores.every(x => x.MIN === CLAVE),
@@ -268,7 +274,7 @@ igual(gGlobalCorto.nivel, 'tipo', 'el modo global también cae al TIPO sin muest
    ===================================================================== */
 bloque('4 · La cascada va de lo específico a lo general');
 
-const NIVELES = ['exacto', 'primaria', 'global', 'tipo'];
+const NIVELES = ['afines', 'primaria', 'global', 'tipo'];
 [base, solo, mixto, flojos].forEach((pool, i) => {
   const ix = indice(pool);
   pool.forEach(x => {

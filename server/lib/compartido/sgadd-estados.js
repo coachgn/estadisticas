@@ -24,7 +24,10 @@
         que pasó, y un jugador que jugó seis fechas las jugó.
      3. `origen: "usuario"` gana SIEMPRE sobre el escaneo automático. El
         detector propone, el DT decide.
-     4. Los estados viven en `localStorage`, por club y por planilla.
+     4. Los estados viven en `localStorage`, por club y por planilla — y
+        desde 2026-09-12, con sesión y backend, TAMBIÉN en el servidor
+        (Upstash, un hash por club y categoría). Ver la sección 2 bis:
+        `localStorage` queda como copia local y respaldo sin red.
 
    POR QUÉ NO VA EN LA PLANILLA
    ----------------------------
@@ -146,6 +149,7 @@ const SGADD_ESTADOS = (function () {
       origen: r.origen === 'usuario' ? 'usuario' : 'automatico',
       desde: r.desde || null,
       nota: r.nota || null,
+      actualizado: marcaDeTiempo(r) || null,
     };
   }
 
@@ -163,6 +167,11 @@ const SGADD_ESTADOS = (function () {
       origen: o.origen === 'automatico' ? 'automatico' : 'usuario',
       desde: o.desde || new Date().toISOString().slice(0, 10),
       nota: o.nota || null,
+      /* CUÁNDO se decidió, en milisegundos. Es lo que ordena dos cambios
+         sobre el mismo jugador hechos en dos navegadores: sin esto no hay
+         forma de saber cuál es el último, y el que sincroniza después
+         pisaría al otro aunque su decisión fuera más vieja. */
+      actualizado: typeof o.actualizado === 'number' ? o.actualizado : Date.now(),
     };
     return out;
   }
@@ -190,6 +199,139 @@ const SGADD_ESTADOS = (function () {
   function enPlan(mapa, clave) { return estado(registroDe(mapa, clave).estado).enPlan; }
   /** ¿Suma a las medianas de la competencia? Hoy: todos. */
   function enMedianas(mapa, clave) { return estado(registroDe(mapa, clave).estado).enMedianas; }
+
+  /* =====================================================================
+     2 bis. EL SERVIDOR · upsert por jugador, nunca un reemplazo
+
+     Pedido del club (2026-09-12): lo que marca un DT tiene que verlo el
+     resto del cuerpo técnico. Con `localStorage` solo, cada navegador
+     tenía su propia verdad.
+
+     TRES REGLAS, y las tres protegen lo que ya cargó alguien:
+
+     1 · SE ESCRIBE UN JUGADOR, NUNCA EL MAPA. En Upstash es un HASH por
+         club y categoría y cada jugador es un campo: un `HSET` toca solo
+         el suyo. No existe una operación que reemplace o borre el mapa
+         entero, así que ninguna escritura —de este panel, de un deploy o
+         de una rutina del Panel Master— puede dejar a otro en cero.
+     2 · GANA EL CAMBIO MÁS NUEVO (`actualizado`), jugador por jugador. Un
+         navegador que estuvo sin red y vuelve con una decisión de ayer no
+         pisa la de hoy.
+     3 · NADA SE BORRA. «Reactivar» escribe ACTIVO con `origen: usuario`,
+         que además es lo que hace que el buzón no vuelva a preguntar.
+
+     Estas funciones son PURAS y las usan los dos lados: el servidor para
+     decidir qué escribe, el navegador para fusionar lo que baja.
+     ===================================================================== */
+
+  const CLAVE_JUGADOR_VALIDA = /^[^|]{1,120}\|[^|]{0,120}$/;
+  const MAX_NOTA = 280;
+
+  /** La marca de tiempo de un registro, en ms. 0 si no tiene: los que
+      se guardaron antes de que existiera la marca son los más viejos. */
+  function marcaDeTiempo(r) {
+    if (!r) return 0;
+    const t = typeof r.actualizado === 'number' ? r.actualizado : Date.parse(r.actualizado);
+    return (typeof t === 'number' && isFinite(t) && t > 0) ? t : 0;
+  }
+
+  /**
+   * Lo que ENTRA al servidor, validado. Devuelve `null` si no sirve.
+   *
+   * El origen se fuerza a `usuario`: por esta vía solo viajan decisiones
+   * del DT. Y la marca de tiempo se TOPA en la hora del servidor: un reloj
+   * adelantado ganaría todas las carreras para siempre.
+   */
+  function normalizarRegistro(clave, r, ahora) {
+    if (!CLAVE_JUGADOR_VALIDA.test(String(clave || ''))) return null;
+    if (!r || typeof r !== 'object' || !POR_ID[r.estado]) return null;
+    const tope = typeof ahora === 'number' ? ahora : Date.now();
+    const t = Math.min(marcaDeTiempo(r) || tope, tope);
+    const desde = /^\d{4}-\d{2}-\d{2}$/.test(String(r.desde || '')) ? String(r.desde) : null;
+    const nota = r.nota ? String(r.nota).slice(0, MAX_NOTA) : null;
+    return { estado: r.estado, origen: 'usuario', desde: desde, nota: nota, actualizado: t };
+  }
+
+  /**
+   * EL UPSERT del servidor: de lo que llega, qué se escribe.
+   *
+   * `actuales` es lo que ya hay guardado para ESAS claves (no el mapa
+   * entero). Se escribe solo lo que es estrictamente más nuevo: con la
+   * misma marca no se toca nada, así que reenviar lo mismo es inofensivo.
+   */
+  function resolverEscritura(actuales, entrantes, ahora) {
+    const escribir = {}, ignorados = [], invalidos = [];
+    Object.keys(entrantes || {}).forEach(clave => {
+      const nuevo = normalizarRegistro(clave, entrantes[clave], ahora);
+      if (!nuevo) { invalidos.push(clave); return; }
+      const viejo = actuales && actuales[clave];
+      if (viejo && marcaDeTiempo(viejo) >= nuevo.actualizado) { ignorados.push(clave); return; }
+      escribir[clave] = nuevo;
+    });
+    return { escribir: escribir, ignorados: ignorados, invalidos: invalidos };
+  }
+
+  /**
+   * Lo que BAJA del servidor, fusionado con la copia local.
+   *
+   * Devuelve el mapa resultante y las claves que el servidor todavía no
+   * tiene o tiene más viejas: esas se SUBEN. Nunca se descarta un registro
+   * local por no estar en el servidor — puede ser una decisión tomada sin
+   * red, o de antes de que existiera la sincronización, y borrarla sería
+   * justo lo que esto vino a evitar.
+   */
+  function fusionarRemoto(local, remoto) {
+    const mapa = {}, subir = [];
+    Object.keys(remoto || {}).forEach(k => {
+      if (remoto[k] && POR_ID[remoto[k].estado]) mapa[k] = remoto[k];
+    });
+    Object.keys(local || {}).forEach(k => {
+      const l = local[k];
+      if (!l || !POR_ID[l.estado]) return;
+      const r = mapa[k];
+      if (!r) {
+        mapa[k] = l;
+        if (l.origen === 'usuario') subir.push(k);
+      } else if (marcaDeTiempo(l) > marcaDeTiempo(r)) {
+        mapa[k] = l;
+        if (l.origen === 'usuario') subir.push(k);
+      }
+    });
+    return { mapa: mapa, subir: subir };
+  }
+
+  /**
+   * Una vuelta completa contra el servidor: bajar, fusionar, subir lo que
+   * falte y quedarse con lo que el servidor devuelve.
+   *
+   * `api.leer()` devuelve el mapa remoto; `api.escribir(cambios)` manda
+   * `{clave: registro}` y devuelve el mapa remoto después de escribir. Las
+   * dos pueden LANZAR: si la lectura falla, la copia local queda intacta
+   * (con red caída, el panel sigue siendo el de antes).
+   */
+  async function sincronizarConServidor(local, api) {
+    const remoto = await api.leer();
+    let r = fusionarRemoto(local, remoto || {});
+    let subidos = [];
+    if (r.subir.length) {
+      const cambios = {};
+      r.subir.forEach(k => { cambios[k] = r.mapa[k]; });
+      const despues = await api.escribir(cambios);
+      subidos = r.subir.slice();
+      if (despues) r = fusionarRemoto(r.mapa, despues);
+    }
+    return {
+      mapa: r.mapa,
+      subidos: subidos,
+      cambio: JSON.stringify(ordenado(local || {})) !== JSON.stringify(ordenado(r.mapa)),
+    };
+  }
+
+  function ordenado(m) {
+    const out = {};
+    Object.keys(m).sort().forEach(k => { out[k] = m[k]; });
+    return out;
+  }
 
   /* =====================================================================
      4. DETECCIÓN AUTOMÁTICA
@@ -483,6 +625,8 @@ const SGADD_ESTADOS = (function () {
     ESTADOS, POR_ID, DEFECTO, estado,
     RACHA_INACTIVIDAD, RACHA_AVISO, MIN_PJ_PREVIOS, MIN_MINUTOS_PREVIOS,
     claveJugador, claveAlmacen, leerTodos, guardarTodos,
+    marcaDeTiempo, normalizarRegistro, resolverEscritura, fusionarRemoto, sincronizarConServidor,
+    CLAVE_JUGADOR_VALIDA, MAX_NOTA,
     registroDe, aplicar, fusionarDeteccion, enPlan, enMedianas,
     detectarInactividad, detectarTraspasos, detectarReingresos, detectarAlertas, resumen,
     filtrarRespondidas, combinarAlertas,
