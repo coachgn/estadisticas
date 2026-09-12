@@ -1983,8 +1983,8 @@ const SGADD_SCOUT = (function () {
      `jugadoresClave` se queda con los ocho que más juegan, que son los que
      condicionan el plan. Los otros —cuatro, ocho, a veces doce— no
      aparecían en ninguna parte del informe. El bloque los nombra en una
-     fila cada uno: su muestra, su arma principal, su eficiencia y sus
-     etiquetas.
+     fila cada uno: su muestra, su arma principal y sus etiquetas; los de
+     menos de 5 minutos por partido, solo por su nombre al pie.
 
      SIN ALERTAS, Y A PROPÓSITO. Tuvo alertas de impacto —una tasa por
      minuto 35% por encima de la mediana de su rol— y se sacaron a pedido
@@ -1996,22 +1996,20 @@ const SGADD_SCOUT = (function () {
      si alguna vez vuelve.
      ===================================================================== */
 
-  /* Los dos pisos de muestra del punto 4, leídos de donde ya viven y no
-     copiados: 3 partidos para que un promedio signifique algo, 8 minutos
-     para que un porcentaje no sea ruido. Por debajo el dato SE MUESTRA
-     IGUAL, marcado — se le saca autoridad, no el dato (punto 8). */
-  const MUESTRA = (function () {
-    if (typeof SGADD_PARTIDO !== 'undefined') return SGADD_PARTIDO;
-    try { return require('./sgadd-partido.js'); } catch (e) { return {}; }
-  })();
-  const MIN_PJ_RESTO = MUESTRA.MIN_PARTIDOS_JUGADOR || 3;
-  const MIN_MIN_RESTO = MUESTRA.MIN_MINUTOS || 8;
+  /* EL PISO DE LA TABLA · 5 minutos por partido (pedido del club,
+     2026-09-12). Por debajo de eso la fila no tiene arma principal que
+     leer —un «0,0/0,1 x PJ» no describe a nadie— y la tabla se llenaba de
+     renglones que el DT salteaba. No se los esconde: van al pie del bloque
+     por su nombre, porque saber que ESTÁN en el plantel es información.
 
-  /** ¿La muestra de este jugador es corta? La MARCA, no la borra: es la
-      misma regla del `~` del percentil (punto 8). */
-  function muestraCorta(min, pj) {
-    return (nn(pj) !== null && pj < MIN_PJ_RESTO) || nn(min) === null || min < MIN_MIN_RESTO;
-  }
+     Es un número PROPIO y no el `MIN_MINUTOS` (8) del punto 4: aquél dice
+     cuándo un PORCENTAJE deja de ser ruido; éste, cuándo vale la pena
+     darle una fila a alguien. Con 8 se irían a la nota jugadores de
+     rotación corta que sí tienen un arma para leer.
+
+     El `MIN` de `PROMEDIOS J` ya es por partido. Sin minutos cargados
+     también va a la nota: no hay fila que armarle a un dato ausente. */
+  const MIN_MINUTOS_TABLA_RESTO = 5;
 
   /**
    * LA VÍA DE GOL DE MAYOR VOLUMEN · doble, triple o libre.
@@ -2061,25 +2059,13 @@ const SGADD_SCOUT = (function () {
   }
 
   /**
-   * LA EFICIENCIA INDIVIDUAL · PPP en su banda contra la liga.
-   *
-   * `PPP` y no `eFG%`: suma los libres y las pérdidas, o sea lo que un
-   * play del jugador le rinde al equipo, que es la pregunta de una fila
-   * de banco. Se ubica con la MISMA banda z del resto del informe
-   * (`bandaLiga`, contra los calificados), y con muestra corta lleva el `~`.
-   */
-  function eficienciaIndividual(idx, perfil, pj) {
-    const v = nn((perfil || {}).ppp);
-    if (v === null) return null;
-    return {
-      metrica: 'PPP', valor: v, banda: bandaLiga(idx, 'PPP', v, false),
-      muestraCorta: muestraCorta(nn(perfil.min), pj),
-    };
-  }
-
-  /**
    * El resto del plantel del rival: los que no entraron al análisis
    * principal, con su muestra, su arma principal y sus etiquetas.
+   *
+   * `filas` son los de 5 minutos o más por partido; `pocosMinutos`, los de
+   * menos, SOLO con su nombre —la nota del pie no lleva estadísticas ni
+   * etiquetas, y armárselas sería trabajo que nadie lee—. Los dos van en el
+   * orden del plantel, de más a menos minutos.
    *
    * `null` si no sobra nadie — un bloque vacío diciendo «no hay resto» es
    * ruido en un informe que ya tiene ocho secciones.
@@ -2094,7 +2080,11 @@ const SGADD_SCOUT = (function () {
     if (!resto.length) return null;
 
     const ficha = fichaJugadores();
-    const filas = resto.map((j) => {
+    const juega = (j) => nn(j['MIN']) !== null && j['MIN'] >= MIN_MINUTOS_TABLA_RESTO;
+    const pocosMinutos = resto.filter(j => !juega(j)).map(j => ({
+      clave: j.__clave, nombre: String(j['NOMBRES'] || '').trim(), min: nn(j['MIN']),
+    }));
+    const filas = resto.filter(juega).map((j) => {
       const adn = (ficha && ficha.adn) ? ficha.adn(idx, j) : null;
       const perfil = (adn && adn.perfil) ? adn.perfil
         : ((ficha && ficha.perfilBase) ? ficha.perfilBase(idx, j) : {});
@@ -2110,7 +2100,6 @@ const SGADD_SCOUT = (function () {
         min: nn(perfil.min), pj: pj,
         plays: nn(perfil.plays), pts: nn(perfil.pts), usg: nn(perfil.usg),
         via: viaDeGolLider(j),
-        eficiencia: eficienciaIndividual(idx, perfil, pj),
       };
     });
 
@@ -2118,6 +2107,7 @@ const SGADD_SCOUT = (function () {
       equipo: e.nombre, clave: e.clave,
       desde: desde, total: plantel.length,
       filas: filas,
+      pocosMinutos: pocosMinutos,
     };
   }
 
@@ -2491,8 +2481,7 @@ const SGADD_SCOUT = (function () {
     detallePartido, fichaEquipo, historialDirecto,
     analizarSubset, analisisCiclo,
     perfilJugador, rolFuncional, marcaSugerida, jugadoresClave, plantelOrdenado,
-    MIN_PJ_RESTO, MIN_MIN_RESTO, restoDelPlantel,
-    muestraCorta, viaDeGolLider, eficienciaIndividual,
+    MIN_MINUTOS_TABLA_RESTO, restoDelPlantel, viaDeGolLider, enumerar,
     fortalezasJugador, fugasJugador, fichaRival,
     clavesEstrategicas, resumenEjecutivo, informePrePartido,
   };
@@ -3472,30 +3461,6 @@ function scoutBloqueClaves(inf) {
 
 /* ============ BLOQUE 6 bis · RESTO DEL PLANTEL ============ */
 
-/* Bandas de eficiencia → semáforo del informe. Van por los colores de
-   `SCOUT_TONOS` para que el papel los repinte (punto 7.6), y con flecha:
-   ningún estado se comunica solo con color (punto 14). */
-const SCOUT_BANDA_EFICIENCIA = {
-  elite: { color: '#22c55e', flecha: '▲' },
-  superior: { color: '#22c55e', flecha: '▲' },
-  estandar: { color: '#9CA3AF', flecha: '=' },
-  limitado: { color: '#ef4444', flecha: '▼' },
-  fuga: { color: '#ef4444', flecha: '▼' },
-};
-
-function scoutChipEficiencia(e) {
-  if (!e) return '';
-  const b = e.banda ? SCOUT_BANDA_EFICIENCIA[e.banda.id] : null;
-  const col = b ? b.color : '#9CA3AF';
-  const texto = (e.muestraCorta ? '~ ' : '') + (b ? b.flecha + ' ' : '') + 'PPP '
-    + SGADD.formatear('PPP', e.valor);
-  const glosa = 'Eficiencia individual · puntos por play'
-    + (e.banda ? ' · ' + e.banda.label.toLowerCase() : ' · la liga no tiene muestra para ubicarlo')
-    + (e.muestraCorta ? ' · muestra corta' : '');
-  return `<span class="text-[10px] font-mono font-semibold px-1.5 rounded whitespace-nowrap${scoutTono(col)}"
-    style="color:${col};background:${col}1a" title="${escapeAttr(glosa)}" tabindex="0">${escapeHtml(texto)}</span>`;
-}
-
 /** La vía de gol líder en una línea: «Doble 1,2/2,8 x PJ · 42,9% · 0,86 PPT».
     El par es el PROMEDIO POR PARTIDO, con el formato de la columna, igual
     que el tab Tiro. */
@@ -3507,14 +3472,29 @@ function scoutViaLider(v) {
     ${escapeHtml(SGADD.formatear(v.clavePct, v.pct))} · ${escapeHtml(SGADD.formatear(v.clavePpt, v.ppt))} PPT</span>`;
 }
 
+/**
+ * La nota del pie: «3 jugadores promedian menos de 5 min: A, B y C.»
+ * SOLO NOMBRES, a pedido del club: sin estadísticas, etiquetas ni badges.
+ * La lista se arma con `enumerar` del motor, la misma que usa el resumen
+ * ejecutivo, para que «A, B y C» no salga «A y B y C».
+ */
+function scoutNotaPocosMinutos(lista) {
+  if (!lista || !lista.length) return '';
+  const n = lista.length;
+  const nombres = SGADD_SCOUT.enumerar(lista.map(x => escapeHtml(x.nombre)));
+  return `<p class="scout-resto-nota text-[11px] text-muted mt-2">
+    ${n} ${n === 1 ? 'jugador promedia' : 'jugadores promedian'} menos de
+    ${SGADD_SCOUT.MIN_MINUTOS_TABLA_RESTO} min: <span class="text-ink">${nombres}</span>.</p>`;
+}
+
 function scoutBloqueResto(inf) {
   const t = inf.restoRival;
-  if (!t || !t.filas.length) return '';
+  if (!t || (!t.filas.length && !(t.pocosMinutos || []).length)) return '';
 
   /* TABLA COMPACTA Y NO TARJETAS. Con doce suplentes, las tarjetas
      llenaban media hoja A3 para decir de cada uno lo mismo que entra en
-     dos renglones. La columna del JUGADOR lleva lo que se lee (muestra,
-     vía de gol y eficiencia) y la del PERFIL las etiquetas del
+     dos renglones. La columna del JUGADOR lleva exactamente nombre,
+     muestra y vía de gol líder, y la del PERFIL las etiquetas del
      motor compartido, TODAS —la función en cancha incluida—: en tabla la
      etiqueta ya no se repite en otra línea. */
   const dato = (clave, v, sufijo) => v === null || v === undefined ? null
@@ -3525,9 +3505,8 @@ function scoutBloqueResto(inf) {
       dato('MIN', f.min, 'MIN'), dato('PLAYS', f.plays, 'PLAYS'),
       dato('PTS', f.pts, 'PTS'), dato('USG%', f.usg, 'USG'),
     ].filter(Boolean).join(' · ');
-    /* Sin alertas de impacto (ver `restoDelPlantel`): la fila está para
-       leer el arma principal de un vistazo. */
-    const chips = scoutChipEficiencia(f.eficiencia);
+    /* NI ALERTAS NI BADGE DE EFICIENCIA (pedidos del club, 2026-09-12):
+       la fila está para leer el arma principal de un vistazo. */
     /* UN SOLO FLUJO que envuelve solo cuando no entra. Medido en la A3
        apaisada: con nombre, muestra, vía y chips en renglones separados
        cada fila medía 65px y la tabla quedaba MÁS alta que las tarjetas
@@ -3540,7 +3519,6 @@ function scoutBloqueResto(inf) {
             <span class="text-xs text-white font-semibold">${escapeHtml(f.nombre)}</span>
             <span class="text-[10px] font-mono dato-sec">${muestra}</span>
             <span class="text-[10px] font-mono">${scoutViaLider(f.via)}</span>
-            ${chips}
           </div>
         </td>
         <td class="px-2 py-1 align-top text-left">${scoutChipsEtiquetas(f.etiquetas, true)}</td>
@@ -3551,17 +3529,18 @@ function scoutBloqueResto(inf) {
     <section class="scout-card scout-pagina card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="resto">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">🧩 Resto del plantel · ${scoutNombreConLogo(t.equipo, 18)}</h4>
       <p class="text-[11px] text-muted mb-3">
-        Los ${t.filas.length} que no entran al análisis de arriba: su muestra, su arma
-        principal —la vía de gol de mayor volumen, en <b class="text-ink">promedio por
-        partido</b>— su eficiencia y sus etiquetas.
+        Los que no entran al análisis de arriba: su muestra, su arma principal
+        —la vía de gol de mayor volumen, en <b class="text-ink">promedio por
+        partido</b>— y sus etiquetas.
       </p>
-      <div class="scrollbox"><table class="w-full text-left">
+      ${t.filas.length ? `<div class="scrollbox"><table class="w-full text-left">
         <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
           <th class="px-2 pb-1 text-left" style="width:55%">Jugador · muestra · vía de gol líder</th>
           <th class="px-2 pb-1 text-left">Perfil · ADN, perfiles técnicos y función en cancha</th>
         </tr></thead>
         <tbody>${filas}</tbody>
-      </table></div>
+      </table></div>` : ''}
+      ${scoutNotaPocosMinutos(t.pocosMinutos)}
     </section>`;
 }
 

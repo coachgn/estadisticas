@@ -179,16 +179,17 @@ titulo('1. EL CORTE · la tabla de arriba y el resto parten la MISMA lista');
 const clave = S.jugadoresClave(idx, 'ATENAS A', null, { claveNuestro: 'PLATENSE A' });
 const resto = S.restoDelPlantel(idx, 'ATENAS A');
 
-check('el bloque existe y trae a los seis que no entraron',
-  !!resto && resto.filas.length === 6, resto && resto.filas.length);
+check('el bloque existe: cinco en la tabla y uno en la nota de pocos minutos',
+  !!resto && resto.filas.length === 5 && resto.pocosMinutos.length === 1,
+  resto && (resto.filas.length + '+' + resto.pocosMinutos.length));
 check('la tabla de arriba se queda con los ocho de siempre',
   clave.filas.length === S.TOP_JUGADORES, clave.filas.length);
 check('ninguno sale en los dos bloques',
   resto.filas.every(f => !clave.filas.some(c => c.clave === f.clave)));
-check('y entre los dos está el plantel entero',
-  clave.filas.length + resto.filas.length === 14);
+check('y entre la tabla de arriba, la del resto y la nota está el plantel entero',
+  clave.filas.length + resto.filas.length + resto.pocosMinutos.length === 14);
 check('el resto va ordenado por minutos, de mayor a menor',
-  resto.filas.map(f => f.min).join(',') === '12,10,10,10,6,0',
+  resto.filas.map(f => f.min).join(',') === '12,10,10,10,6',
   resto.filas.map(f => f.min).join(','));
 check('el bloque dice desde dónde cortó y cuántos son en total',
   resto.desde === S.TOP_JUGADORES && resto.total === 14, resto.desde + '/' + resto.total);
@@ -213,7 +214,7 @@ const factor = resto.filas.find(f => f.nombre === 'FACTOR, X');
 const gris = resto.filas.find(f => f.nombre === 'GRIS, SUPLENTE');
 const cristal = resto.filas.find(f => f.nombre === 'CRISTAL, ENGANOSO');
 const corto = resto.filas.find(f => f.nombre === 'CORTO, MUESTRA');
-const cero = resto.filas.find(f => f.nombre === 'CERO, MINUTOS');
+const cero = resto.pocosMinutos.find(f => f.nombre === 'CERO, MINUTOS');
 const pivot = resto.filas.find(f => f.nombre === 'PIVOT, SOLITARIO');
 
 check('cada fila trae su función en cancha', !!factor.rol && !!factor.rol.label, factor.rol && factor.rol.label);
@@ -227,8 +228,8 @@ check('no se rearman acá: son las de `jugadoresBadges`',
 check('un suplente que no califica lleva sus etiquetas marcadas con ~',
   factor.etiquetas.every(b => b.sinRespaldo && b.texto.indexOf('~') === 0),
   factor.etiquetas.map(b => b.texto).join(' · '));
-check('el de cero minutos entra igual, con sus etiquetas',
-  !!cero && cero.etiquetas.length > 0 && cero.min === 0);
+check('el de cero minutos no tiene fila: va a la nota',
+  !!cero && !resto.filas.some(f => f.nombre === 'CERO, MINUTOS'));
 
 /* =====================================================================
    3. SIN ALERTAS
@@ -254,9 +255,52 @@ check('el motor de alertas no queda como código muerto',
 check('ni en el fuente',
   !/function alertasDeImpacto|METRICAS_IMPACTO|referenciasDeImpacto/
     .test(fs.readFileSync('./js/sgadd-scouting.js', 'utf8')));
-check('los pisos de muestra siguen saliendo de donde viven (punto 4), no copiados',
-  S.MIN_PJ_RESTO === require('./js/sgadd-partido.js').MIN_PARTIDOS_JUGADOR
-  && S.MIN_MIN_RESTO === require('./js/sgadd-partido.js').MIN_MINUTOS);
+/* =====================================================================
+   3 bis. EL PISO DE LA TABLA · 5 minutos por partido
+   ===================================================================== */
+titulo('3 bis. MENOS DE 5 MIN/PJ · FUERA DE LA TABLA, SOLO SU NOMBRE AL PIE');
+
+check('el piso es 5 minutos por partido', S.MIN_MINUTOS_TABLA_RESTO === 5);
+check('es propio y NO el de los porcentajes del punto 4 (8 min)',
+  S.MIN_MINUTOS_TABLA_RESTO !== require('./js/sgadd-partido.js').MIN_MINUTOS);
+check('el de 0 minutos va a la nota', resto.pocosMinutos.map(x => x.nombre).join(',') === 'CERO, MINUTOS',
+  resto.pocosMinutos.map(x => x.nombre).join(','));
+check('la nota trae SOLO el nombre (y la clave): sin estadísticas ni etiquetas',
+  resto.pocosMinutos.every(x => !('etiquetas' in x) && !('via' in x) && !('pts' in x) && !('adn' in x)));
+check('el de 6 minutos sí tiene su fila', resto.filas.some(f => f.nombre === 'CORTO, MUESTRA'));
+check('ninguno de la tabla promedia menos de 5', resto.filas.every(f => f.min >= 5));
+
+/* El borde, justo: 5,0 queda en la tabla y 4,99 va a la nota. Se mueve el
+   MIN de una fila del índice y se restaura: el perfil se arma en cada
+   llamada, así que no hay caché que invalidar. */
+const jCorto = (idx.liga.jugadoresPorEquipo.get('ATENAS A') || []).find(j => j['NOMBRES'] === 'CORTO, MUESTRA');
+const minViejo = jCorto['MIN'];
+jCorto['MIN'] = 5;
+check('con 5,0 exactos se queda en la tabla',
+  S.restoDelPlantel(idx, 'ATENAS A').filas.some(f => f.nombre === 'CORTO, MUESTRA'));
+jCorto['MIN'] = 4.99;
+const r499 = S.restoDelPlantel(idx, 'ATENAS A');
+check('con 4,99 pasa a la nota',
+  !r499.filas.some(f => f.nombre === 'CORTO, MUESTRA') && r499.pocosMinutos.some(x => x.nombre === 'CORTO, MUESTRA'));
+check('y la nota respeta el orden del plantel, de más a menos minutos',
+  r499.pocosMinutos.map(x => x.nombre).join(',') === 'CORTO, MUESTRA,CERO, MINUTOS',
+  r499.pocosMinutos.map(x => x.nombre).join(','));
+jCorto['MIN'] = '';
+check('sin minutos cargados también va a la nota: no hay fila que armarle a un dato ausente',
+  S.restoDelPlantel(idx, 'ATENAS A').pocosMinutos.some(x => x.nombre === 'CORTO, MUESTRA'));
+jCorto['MIN'] = minViejo;
+check('y restaurado vuelve a su fila', S.restoDelPlantel(idx, 'ATENAS A').filas.some(f => f.nombre === 'CORTO, MUESTRA'));
+
+/* =====================================================================
+   3 ter. SIN BADGE DE EFICIENCIA
+   ===================================================================== */
+titulo('3 ter. LA FILA NO LLEVA EL BADGE DE EFICIENCIA (PPP)');
+
+check('ninguna fila trae eficiencia', resto.filas.every(f => !('eficiencia' in f)));
+check('el motor del badge no queda como código muerto',
+  !('eficienciaIndividual' in S) && !('muestraCorta' in S)
+  && !/function eficienciaIndividual|function scoutChipEficiencia|SCOUT_BANDA_EFICIENCIA/
+    .test(fs.readFileSync('./js/sgadd-scouting.js', 'utf8')));
 
 /* =====================================================================
    6 bis. LA VÍA DE GOL LÍDER Y LA EFICIENCIA
@@ -315,22 +359,6 @@ check('cada fila del resto trae su vía líder',
 check('y la muestra de la columna del jugador',
   factor.plays !== null && factor.pts === 9 && cerca(factor.usg, 0.2));
 
-/* LA EFICIENCIA · PPP en su banda contra la liga, con el ~ de siempre. */
-const idxEf = { liga: { distribucionesJ: { PPP: [0.8, 0.9, 1.0, 1.1, 1.2] } } };
-const efAlta = S.eficienciaIndividual(idxEf, { ppp: 1.3, min: 20 }, 5);
-check('la eficiencia es el PPP ubicado en su banda contra la liga',
-  efAlta.metrica === 'PPP' && efAlta.banda && efAlta.banda.id === 'elite', JSON.stringify(efAlta));
-check('con muestra suficiente no lleva ~', efAlta.muestraCorta === false);
-check('con pocos minutos sí', S.eficienciaIndividual(idxEf, { ppp: 1.3, min: 5 }, 5).muestraCorta === true);
-check('y con pocos partidos también', S.eficienciaIndividual(idxEf, { ppp: 1.3, min: 20 }, 2).muestraCorta === true);
-check('por debajo de la liga cae en su banda baja',
-  S.eficienciaIndividual(idxEf, { ppp: 0.7, min: 20 }, 5).banda.id === 'fuga');
-check('sin PPP no hay badge', S.eficienciaIndividual(idxEf, { min: 20 }, 5) === null);
-check('en la fixture la liga no tiene dispersión: banda nula, no inventada',
-  factor.eficiencia && factor.eficiencia.banda === null);
-check('la eficiencia marca la muestra corta con la regla compartida',
-  /muestraCorta: muestraCorta\(nn\(perfil\.min\), pj\)/.test(fs.readFileSync('./js/sgadd-scouting.js', 'utf8')));
-
 /* =====================================================================
    7. LOS DADOS DE BAJA
    ===================================================================== */
@@ -350,7 +378,7 @@ check('y el corte se corre: el noveno por minutos sube a la tabla de arriba',
   && !sinBaja.filas.some(f => f.nombre === 'GRIS, SUPLENTE'),
   sinBaja.filas.map(f => f.nombre).join(','));
 check('el plantel sigue repartido entero, sin duplicados',
-  claveSinBaja.filas.length + sinBaja.filas.length === 13);
+  claveSinBaja.filas.length + sinBaja.filas.length + sinBaja.pocosMinutos.length === 13);
 delete global.SGADD_BUZON;
 
 /* =====================================================================
@@ -361,7 +389,8 @@ titulo('8. EL INFORME PRE-PARTIDO LO TRAE ARMADO');
 const inf = S.informePrePartido(idx, 'ATENAS A', 'PLATENSE A', { claveRival: 'ATENAS A' });
 check('el informe sale', inf.ok === true, inf.motivo);
 check('y trae el resto del plantel del equipo scouteado',
-  !!inf.restoRival && inf.restoRival.clave === 'ATENAS A' && inf.restoRival.filas.length === 6,
+  !!inf.restoRival && inf.restoRival.clave === 'ATENAS A' && inf.restoRival.filas.length === 5
+  && inf.restoRival.pocosMinutos.length === 1,
   inf.restoRival && inf.restoRival.filas.length);
 check('con el mismo corte que su tabla de jugadores clave',
   inf.restoRival.filas.every(f => !inf.jugadoresRival.filas.some(c => c.clave === f.clave)));
@@ -475,7 +504,8 @@ const html = vm.runInContext('scoutBloqueResto', P)({ restoRival: resto });
 
 check('el bloque se pinta con su `data-bloque`', /data-bloque="resto"/.test(html));
 check('y abre hoja en el PDF, como las fichas', /scout-pagina/.test(html));
-check('nombra a los seis', resto.filas.every(f => html.indexOf(f.nombre) !== -1));
+check('nombra a los de la tabla y a los de la nota',
+  resto.filas.concat(resto.pocosMinutos).every(f => html.indexOf(f.nombre) !== -1));
 check('con su función en cancha', html.indexOf(factor.rol.label) !== -1);
 check('y sus etiquetas del ADN', html.indexOf(factor.etiquetas[0].texto.replace('~ ', '')) !== -1);
 /* SIN ALERTAS EN LA VISTA: ni chips, ni ⚡, ni tooltips de rol. */
@@ -487,7 +517,33 @@ check('ni un tooltip que compare contra la mediana del rol',
 check('ni el conteo de alertas en el encabezado', !/alerta/i.test(html));
 check('el encabezado dice que la vía va en promedio por partido',
   /promedio por\s+partido/.test(html));
-check('el badge de eficiencia se sigue leyendo con el teclado', /tabindex="0"/.test(html));
+check('ni el badge de eficiencia: ningún PPP en todo el bloque', !/PPP/.test(html));
+
+/* --- LA NOTA DE POCOS MINUTOS · solo nombres, al pie --- */
+const nota = (html.match(/<p class="scout-resto-nota[\s\S]*?<\/p>/) || [''])[0];
+const notaTexto = nota.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+check('la nota va al pie, después de la tabla',
+  !!nota && html.indexOf(nota) > html.lastIndexOf('</table>'));
+check('dice cuántos son y lista los nombres, en singular con uno',
+  notaTexto === '1 jugador promedia menos de 5 min: CERO, MINUTOS.', notaTexto);
+check('sin estadísticas, etiquetas ni badges',
+  !/PJ|PLAYS|PTS|USG|🎯|PPT|rounded-full|title=/.test(nota), nota);
+check('el de la nota no tiene fila en la tabla',
+  !(html.match(/<tr class="scout-resto[\s\S]*?<\/tr>/g) || []).some(tr => tr.indexOf('CERO, MINUTOS') !== -1));
+
+const notaVarios = vm.runInContext('scoutNotaPocosMinutos', P)(
+  [{ nombre: 'UNO, A' }, { nombre: 'DOS, B' }, { nombre: '<b>TRES</b>, C' }]);
+const notaVariosTexto = notaVarios.replace(/<span[^>]*>|<\/span>|<p[^>]*>|<\/p>/g, '').replace(/\s+/g, ' ').trim();
+check('en plural con varios, y la lista en castellano: «A, B y C»',
+  notaVariosTexto === '3 jugadores promedian menos de 5 min: UNO, A, DOS, B y &lt;b&gt;TRES&lt;/b&gt;, C.',
+  notaVariosTexto);
+check('los nombres se escapan: salen de una celda de la planilla', notaVarios.indexOf('<b>TRES') === -1);
+check('sin nadie por debajo de 5, no hay nota', vm.runInContext('scoutNotaPocosMinutos', P)([]) === '');
+
+const soloNota = vm.runInContext('scoutBloqueResto', P)(
+  { restoRival: { equipo: 'ATENAS A', clave: 'ATENAS A', filas: [], pocosMinutos: [{ nombre: 'UNO, A' }] } });
+check('si todos están por debajo de 5, sale la nota sin tabla vacía',
+  /scout-resto-nota/.test(soloNota) && !/<table/.test(soloNota));
 
 /* --- LA TABLA COMPACTA · dos columnas, una fila por jugador --- */
 const trs = html.match(/<tr class="scout-resto[\s\S]*?<\/tr>/g) || [];
@@ -510,9 +566,16 @@ check('la vía de gol líder con su par por partido, su % y su PPT',
   /🎯 Doble/.test(celdaJug) && celdaJug.indexOf(F('T2C', 3) + '/' + F('T2I', 6) + ' x PJ') !== -1
   && celdaJug.indexOf(F('T2%', 0.5)) !== -1 && celdaJug.indexOf(F('PPT2', 1) + ' PPT') !== -1,
   celdaJug.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '));
-check('el badge de eficiencia individual', celdaJug.indexOf('PPP ' + F('PPP', 1)) !== -1);
-check('y en la celda del jugador no hay nada más que eso: sin alertas',
-  !/badge-impacto|⚡|vs su rol/.test(celdaJug));
+check('y nada más: ni badge de eficiencia ni alertas',
+  !/PPP|badge-impacto|⚡|vs su rol/.test(celdaJug));
+/* La celda del jugador lleva exactamente nombre, muestra y vía: su texto
+   arranca en el nombre y TERMINA en el PPT de la vía. Se mide por el
+   contenido y no por la sangría del template, que es un ancla frágil
+   (punto 51). */
+const textoJug = celdaJug.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+check('la columna del jugador es nombre · muestra · vía, y termina ahí',
+  textoJug.indexOf('FACTOR, X') === 0 && textoJug.slice(-(F('PPT2', 1) + ' PPT').length) === F('PPT2', 1) + ' PPT',
+  textoJug);
 check('la columna del perfil lleva las etiquetas, la función en cancha incluida',
   celdaPerfil.indexOf(factor.rol.label) !== -1
   && factor.etiquetas.every(b => celdaPerfil.indexOf(b.texto.replace('~ ', '')) !== -1));

@@ -56,8 +56,8 @@ node test-pj.js            #  34 tests · el PJ de la sección Equipos es el de 
                            #             de posiciones, con los partidos sin estadísticas
 node test-plan-racha.js    #  43 tests · la racha con partidos manuales, el plan
                            #             efectivo del catálogo y el arranque sin destello
-node test-resto.js         # 125 tests · el resto del plantel en tabla, sin alertas, la vía de
-                           #             gol líder por partido y la ficha del Plan Oro
+node test-resto.js         # 137 tests · el resto del plantel en tabla, el piso de 5 min, la vía
+                           #             de gol líder por partido y la ficha del Plan Oro
 node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
 
@@ -71,7 +71,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5395 tests en total. Todos tienen que dar verde antes de commitear.**
+**5407 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -2555,8 +2555,9 @@ es rígido y va de lo colectivo a lo individual:
 6. **Jugadores clave del rival** — tabla con mapa de calor del top 3 por
    métrica y filas de cierre (promedio del plantel y de la liga).
 7. **Resto del plantel** — tabla compacta de los que no entran a la de
-   arriba: muestra, vía de gol líder en promedio por partido, eficiencia y
-   etiquetas. **Sin alertas**, a propósito. Punto 56.
+   arriba: muestra, vía de gol líder en promedio por partido y etiquetas;
+   los de menos de 5 min por partido, solo por su nombre al pie. **Sin
+   alertas ni badge de eficiencia**, a propósito. Punto 56.
 8. **Claves estratégicas y anticipación** — las 8 reglas dinámicas.
 9. **Ficha de análisis por jugador** — rol funcional, fortalezas, puntos de
    fuga y plan de acción, uno por rival. **Es del Plan ORO** (punto 56): con
@@ -8178,13 +8179,42 @@ mismo tramo: lo que pasa DESPUÉS de la tabla de jugadores clave.
 
 `jugadoresClave` se queda con los ocho que más juegan. Los otros —cuatro,
 ocho, a veces doce— no aparecían en ninguna parte del informe. El bloque
-los nombra en **una fila cada uno**: su muestra, su arma principal, su
-eficiencia y sus etiquetas.
+los nombra en **una fila cada uno**, con exactamente dos columnas:
 
 ```
 JUGADOR · MUESTRA · VÍA DE GOL LÍDER                                            PERFIL
-NOMBRE  29 PJ · 16,5 MIN · 5,9 PLAYS · 5,0 PTS · 18,0% USG   🎯 Doble 1,4/2,6 x PJ · 54,1% · 1,08 PPT   ▼ PPP 0,85   [ADN] [perfiles] [función]
+NOMBRE  29 PJ · 16,5 MIN · 5,9 PLAYS · 5,0 PTS · 18,0% USG   🎯 Doble 1,4/2,6 x PJ · 54,1% · 1,08 PPT   [ADN] [perfiles] [función]
+
+4 jugadores promedian menos de 5 min: JUGADOR 25, JUGADOR 24, JUGADOR 23 y JUGADOR 22.
 ```
+
+### El piso de la tabla · 5 minutos por partido
+
+**Los de menos de 5 `MIN` por partido no tienen fila** (pedido del club,
+2026-09-12): van al pie en una nota **solo con su nombre** —sin
+estadísticas, etiquetas ni badges—, en el orden del plantel y con
+`enumerar` («A, B y C»). Por debajo de eso la fila no tenía arma
+principal que leer: un «0,0/0,1 x PJ» no describe a nadie. No se los
+esconde porque saber que ESTÁN en el plantel es información.
+
+- **`MIN_MINUTOS_TABLA_RESTO = 5` es propio y NO el `MIN_MINUTOS` (8) del
+  punto 4**: aquél dice cuándo un porcentaje deja de ser ruido, éste
+  cuándo vale darle una fila a alguien. Con 8 se irían a la nota
+  jugadores de rotación corta que sí tienen un arma para leer.
+- **5,0 exactos se queda en la tabla**; 4,99 va a la nota. Hay un test
+  del borde.
+- **Sin minutos cargados también va a la nota**: no hay fila que armarle
+  a un dato ausente.
+- **Si todos quedan por debajo**, sale la nota sola, sin tabla vacía.
+- El `MIN` de `PROMEDIOS J` ya es por partido: no se divide por PJ.
+
+### Sin badge de eficiencia
+
+Tuvo un badge con el `PPP` ubicado en su banda contra la liga, y **se
+sacó a pedido del club (2026-09-12)**, junto con su motor
+(`eficienciaIndividual`, la `muestraCorta` que solo él usaba y los tonos
+del chip): sin vista era cálculo muerto. Hay un test que falla si vuelve
+un `PPP` al bloque.
 
 ### SIN ALERTAS, y a propósito
 
@@ -8210,9 +8240,6 @@ Lo que sí quedó de ese trabajo, y por qué:
 - **Las etiquetas se piden al motor compartido** (`jugadoresBadges`), no se
   rearman: con dos renderizadores el mismo jugador saldría con chips de un
   color en la ficha y de otro tres centímetros más abajo.
-- **Los pisos de muestra del punto 4** (3 partidos, 8 minutos) se leen de
-  `sgadd-partido.js` y deciden el `~` del badge de eficiencia
-  (`muestraCorta`).
 
 ### 1 bis · Es una TABLA de dos columnas, no tarjetas
 
@@ -8224,12 +8251,14 @@ columna tiene ~800px en la A3 y todo entra en un renglón. Medido en modo
 papel, A3:
 
 ```
-                 tarjetas   tabla con alertas   tabla sin alertas
- 6 suplentes      407px          314px              275px   −32%
-12 suplentes      655px          490px              432px   −34%
+                 tarjetas   con alertas   sin alertas   con piso de 5 min
+ 6 suplentes      407px        314px         275px        194px   −52%
+12 suplentes      655px        490px         432px        352px   −46%
 ```
 
-El PDF sigue en 9 hojas con ORO y 7 con PLATA: el bloque ya abría hoja.
+(El último tramo depende del plantel: en el demo, 4 de los 6 suplentes
+promedian menos de 5 minutos.) El PDF sigue en 9 hojas con ORO y 7 con
+PLATA: el bloque ya abría hoja.
 
 **La VÍA DE GOL LÍDER se elige por el PESO en sus plays (`PT2%`/`PT3%`/
 `PT1%`), no por los intentos crudos** —`viaDeGolLider`, sobre la MISMA
@@ -8248,13 +8277,6 @@ intentos y lo declara (`criterio`); con empate desempatan los intentos.
   decimal daría otro número para la misma pregunta. Sin la tasa en la
   hoja, recién ahí se cae al cociente.
 - **Sin un solo intento dice «Sin lanzamientos registrados»**, no «0/0».
-
-**La EFICIENCIA INDIVIDUAL es el `PPP` en su banda contra la liga**
-(`eficienciaIndividual`, con la misma `bandaLiga` del informe): suma los
-libres y las pérdidas, o sea lo que un play del jugador le rinde al
-equipo. Va con flecha además del color y con el `~` de la muestra corta.
-Sin dispersión en la liga la banda es `null`: no se inventa. No es una
-alerta: describe al jugador contra la liga, no lo señala contra su rol.
 
 **La columna del perfil lleva TODAS las etiquetas**, la función en cancha
 incluida. En el papel la tabla va con `table-layout: fixed`, para que los
