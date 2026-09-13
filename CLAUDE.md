@@ -52,7 +52,7 @@ node test-alta.js          #  98 tests · el alta de clientes: reusar un libro, 
 node test-alcance.js       # 122 tests · los clientes del mismo libro: el alcance de un
                            #             cambio, la herencia, el color y que el cliente
                            #             lea lo publicado
-node test-pj.js            #  34 tests · el PJ de la sección Equipos es el de la tabla
+node test-pj.js            #  41 tests · el PJ de la sección Equipos es el de la tabla
                            #             de posiciones, con los partidos sin estadísticas
 node test-plan-racha.js    #  43 tests · la racha con partidos manuales, el plan
                            #             efectivo del catálogo y el arranque sin destello
@@ -64,6 +64,10 @@ node test-similitud-etiquetas.js #  45 tests · la similitud multi-etiqueta cont
                            #             de etiquetas, el caso Raineri/Benavidez y los afines
 node test-estados-sync.js  #  74 tests · los estados compartidos en el servidor, dos sesiones
                            #             y que ninguna escritura del catálogo pise datos
+node test-pdf-layout.js    #  32 tests · claves arriba del resto, los cortes de página y
+                           #             que ningún :hover pinte la hoja impresa
+node test-router-jugadores.js # 12 tests · la pestaña Jugadores se pinta en el acto y
+                           #             suelta el equipo de otra categoría
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -75,7 +79,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5527 tests en total. Todos tienen que dar verde antes de commitear.**
+**5578 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -1472,8 +1476,8 @@ plan colectivo 464 + resumen 203 · tabla de marcas 879 · jugadores 575 + clave
 1 Encabezado · 2 Matriz · 3 Splits y ciclo
 4 Plan colectivo  +  Resumen de criterio estratégico
 5 Tabla de marcas · APAISADA
-6 Jugadores clave
-7 Resto del plantel  +  Claves estratégicas
+6 Jugadores clave  +  Claves estratégicas
+7 Resto del plantel
 8+ Fichas individuales
 ```
 
@@ -2558,11 +2562,12 @@ es rígido y va de lo colectivo a lo individual:
    tabla de marcas, porque sintetiza justamente esa composición de marcas.
 6. **Jugadores clave del rival** — tabla con mapa de calor del top 3 por
    métrica y filas de cierre (promedio del plantel y de la liga).
-7. **Resto del plantel** — tabla compacta de los que no entran a la de
+7. **Claves estratégicas y anticipación** — las 8 reglas dinámicas. Van
+   ARRIBA del resto desde el 2026-09-12, a pedido del club (punto 59).
+8. **Resto del plantel** — tabla compacta de los que no entran a la de
    arriba: muestra, vía de gol líder en promedio por partido y etiquetas;
    los de menos de 5 min por partido, solo por su nombre al pie. **Sin
    alertas ni badge de eficiencia**, a propósito. Punto 56.
-8. **Claves estratégicas y anticipación** — las 8 reglas dinámicas.
 9. **Ficha de análisis por jugador** — rol funcional, fortalezas, puntos de
    fuga y plan de acción, uno por rival. **Es del Plan ORO** (punto 56): con
    Plata, en su lugar va la card que explica qué incluye.
@@ -8540,3 +8545,104 @@ Reconquista U21           49        34 (69 %)    15   ← la muestra
 `CLAVE, TRES` tira 8 dobles y 1 triple —interior— entre tres perimetrales
 de su banda y jerarquía. Antes era par; ahora no, con 50 %. Es el caso de
 control en chico.
+
+---
+
+## 59. EL PAPEL Y LA PESTAÑA JUGADORES · cuatro pedidos del 2026-09-12
+
+Llegaron con cuatro PDF del club (Ficha, Ranking y Scouting de
+Reconquista, y la ficha de un jugador). `test-pdf-layout.js` y
+`test-router-jugadores.js` fijan todo lo de acá.
+
+### 1 · LA BARRA NARANJA DE LOS PDF · la capturaba `:hover`
+
+Una franja de 3 px del acento a lo alto de cada hoja, en unos PDF sí y en
+otros no. **No era un borde de `@page` ni de un contenedor**: se midió
+decodificando los streams del PDF (un relleno `-3 981 m -3 0 l …` dentro
+de una celda, en cada hoja) y después con el estilo computado bajo
+emulación de impresión con `:hover` forzado (`CSS.forcePseudoState`):
+
+```
+v212   td.hoja-cuerpo-celda  box-shadow: rgb(247,148,30) 3px 0 0 0 inset
+v213                         none
+```
+
+La regla era `tbody tr:hover td:first-child { box-shadow: inset 3px 0 0
+var(--acento) }`: **sin `@media screen` y con combinador descendiente**.
+Al imprimir con el mouse sobre la página Chrome captura `:hover`, y la
+fila de `table.hoja-firmada` (punto 51) envuelve el documento ENTERO: su
+celda —y la primera celda de cada tabla de adentro— pintaba la barra.
+Dependía de dónde había quedado el mouse, y por eso no se reproducía
+siempre.
+
+- **Todo estado de puntero o de foco que pinte una fila va en
+  `@media screen`**: el hover general, el del plantel y el
+  `:focus-visible` de las filas navegables. La fila DESTACADA del plantel
+  sigue en los dos medios: esa marca la puso el DT.
+- **La barra pinta la primera celda PROPIA (`>`)**, no las de las tablas
+  anidadas.
+- **La celda de la hoja firmada no dibuja nada** en papel: ni sombra, ni
+  borde, ni contorno, ni fondo, con `!important`.
+
+El test no busca un color: exige que ninguna regla de `:hover`/`:focus`
+que pinte una fila viva fuera de `@media screen`.
+
+### 2 · LOS CORTES · y la tabla que no puede evitarlos
+
+La regla general de impresión suma `.scout-card`, `.scout-ficha`,
+`.scrollbox`, `tbody tr`, `thead` y `figure` a lo que no se parte entre
+hojas. **Pero `table` estaba en esa lista, y `table.hoja-firmada` es una
+tabla**: pedirle `avoid` a la que envuelve un informe de nueve hojas es
+pedirle que entre en una. Se excluye explícito —la tabla, su fila y su
+celda de cuerpo van en `auto !important`—.
+
+Las excepciones medidas se mantienen: los bloques de la ficha del jugador
+y los `data-hoja` del informe de equipo se siguen pudiendo partir (7.6
+bis y ter). En los PDF del club no había una card cortada a la vista:
+esto es refuerzo preventivo, no la corrección de un corte medido.
+
+### 3 · CLAVES ARRIBA DEL RESTO
+
+«🎯 Claves estratégicas y anticipación» pasa inmediatamente arriba de
+«🧩 Resto del plantel», en `SCOUT_CARDS` (el modal), en el template (la
+pantalla) y por lo tanto en las hojas: el PDF imprime el DOM en su orden.
+
+**Las claves NO abren hoja y el resto sí**, que es como ya estaban las
+clases: las claves van con la tabla de jugadores que las dispara (pedido
+anterior del club, que un test fija). Hoja 6 = jugadores + claves (575 +
+352 px, entran), hoja 7 = el resto. Medido en el PDF A3: siguen siendo
+**9 hojas con ORO y 7 con PLATA**.
+
+### 4 · EL ⚠ DE LOS RANKINGS VA CON EL NOMBRE
+
+En «Rankings de la liga» (Equipos) el chip de partidos sin estadísticas
+(punto 44) iba adentro de la columna PJ, que es de números: la
+ensanchaba y rompía la lectura vertical. Ahora va al lado del nombre del
+equipo, con `shrink-0` para que el truncado no se lo coma, y con el
+desglose en el `title`. **La celda PJ muestra solo el número.**
+
+### 5 · LA PESTAÑA JUGADORES VACÍA HASTA EL F5
+
+Medido en producción con token de admin: al entrar a Jugadores, 0
+escudos y 0 cards hasta recargar. Dos causas:
+
+1. **El filtro de equipo sobrevivía al cambio de categoría.**
+   `JUGADORES.filtroEquipo` es estado de la sección: elegido «RECONQUISTA
+   A» en Primera y pasado a la U23 —donde se llama «RECONQUISTA»—, la
+   grilla escondía el selector y no había plantel que mostrar.
+   `jugadoresPintar` suelta ahora un filtro que no existe en el índice
+   abierto. **No adivina el equivalente**: la letra distingue equipos
+   (punto 19).
+2. **`buildJugadores` devolvía la barra sola** y la grilla llegaba cuando
+   `cargar()` corría en un `setTimeout`, aunque el índice ya estuviera en
+   memoria. Con índice, pinta en una **microtarea**: después de que
+   `renderSection` inserta el HTML —los gráficos necesitan su canvas en el
+   DOM— y antes de que el navegador pinte. Si en el medio se cambió de
+   sección, no pinta encima de otra.
+
+Los nombres que venían en el pedido (`cambiarSeccion('jugadores')`,
+`SGADD_CORE.jugadores`) no existen en el código: el router es
+`navigate()`/`renderSection()` y el estado global es `SGADD_APP.estado`.
+El test corre el `sgadd-jugadores.js` real en un `vm` con temporizadores
+que no avanzan solos: si la grilla está pintada antes de soltarlos, no
+depende de ellos.

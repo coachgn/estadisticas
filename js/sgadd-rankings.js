@@ -196,10 +196,17 @@ const SGADD_RANKINGS = (function () {
             <div class="flex items-center gap-2 min-w-0">
               ${logo ? `<img src="${SGADD_UI.esc(logo)}" alt="" class="w-5 h-5 object-contain shrink-0">` : ''}
               <span class="text-xs truncate ${propio ? 'text-accent font-semibold' : ''}">${SGADD_UI.esc(f.equipo.nombre)}</span>
+              ${/* EL AVISO VA CON EL NOMBRE, no en la columna PJ (pedido del
+                   club, 2026-09-12): la columna es de números y un chip
+                   adentro la ensanchaba y rompía la lectura vertical. El
+                   aviso habla del EQUIPO —tiene partidos sin estadísticas—,
+                   así que va donde se lo nombra. `shrink-0` para que el
+                   truncado del nombre no se lo coma. */
+                pjDe(f.equipo).manuales
+                ? `<span class="badge-manual shrink-0" title="${SGADD_UI.esc(pjDe(f.equipo).manuales + (pjDe(f.equipo).manuales === 1 ? ' partido' : ' partidos') + ' sin estadísticas: cuentan en la tabla y en el PJ, no en estos promedios')}">⚠ ${pjDe(f.equipo).manuales}</span>` : ''}
             </div>
           </td>
-          <td class="py-1.5 pr-3 font-mono text-xs text-muted">${pjDe(f.equipo).pj}${pjDe(f.equipo).manuales
-            ? ` <span class="badge-manual" title="Sin estadísticas: cuentan en la tabla, no en estos promedios">⚠ ${pjDe(f.equipo).manuales}</span>` : ''}</td>
+          <td class="py-1.5 pr-3 font-mono text-xs text-muted">${pjDe(f.equipo).pj}</td>
           ${celdas}
         </tr>`;
     }).join('');

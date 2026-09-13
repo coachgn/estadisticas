@@ -1836,6 +1836,17 @@ function buildJugadores() {
   if (r && r.planilla) SGADD_APP.estado.planillaId = r.planilla;
   if (r && r.fase) SGADD_APP.estado.fase = r.fase;
   setTimeout(() => SGADD_APP.cargar(), 0);
+  /* CON EL ÍNDICE YA EN MEMORIA SE PINTA EN EL ACTO, en una microtarea:
+     corre apenas `renderSection` inserta este HTML y ANTES de que el
+     navegador pinte. Esperar a `cargar()` en un `setTimeout` dejaba un
+     cuadro con la barra sola —la sección «vacía»— aunque no hubiera nada
+     que bajar. No se pinta acá adentro porque los gráficos necesitan su
+     canvas ya en el DOM. */
+  if (SGADD_APP.estado.idx && typeof Promise !== 'undefined') {
+    Promise.resolve().then(() => {
+      if (typeof currentSection === 'undefined' || currentSection === 'jugadores') jugadoresPintar();
+    });
+  }
   return `<section id="jugadoresRoot" class="space-y-5">${SGADD_APP.barra()}</section>`;
 }
 
@@ -1861,6 +1872,14 @@ function jugadoresPintar() {
   const idx = st.idx;
   JUGADORES.planillaId = st.planillaId;
   JUGADORES.fase = st.fase;
+  /* UN EQUIPO ELEGIDO QUE NO EXISTE EN ESTE LIBRO SE SUELTA. El filtro
+     vive en el estado de la sección y sobrevive al cambio de categoría:
+     elegido «RECONQUISTA A» en Primera y pasado a la U23 —donde el equipo
+     se llama «RECONQUISTA»—, la grilla escondía el selector y no había
+     plantel que mostrar. La sección quedaba vacía y solo un F5, que
+     reinicia el estado, la devolvía. Medido en producción el 2026-09-12.
+     No se adivina el equivalente: la letra distingue equipos (punto 19). */
+  if (JUGADORES.filtroEquipo && !idx.get(JUGADORES.filtroEquipo)) JUGADORES.filtroEquipo = null;
   const j = JUGADORES.jugador ? jugadoresBuscar(idx, JUGADORES.jugador) : null;
 
   /* Mismo guard que en Equipos y por el mismo motivo: a una ficha se

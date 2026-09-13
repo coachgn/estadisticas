@@ -2528,8 +2528,14 @@ const SCOUT_CARDS = [
   { id: 'marcas', label: 'Plan individual · marcas' },
   { id: 'resumen', label: 'Resumen de criterio estratégico' },
   { id: 'jugadores', label: 'Tabla de jugadores clave' },
-  { id: 'resto', label: 'Resto del plantel' },
+  /* CLAVES ARRIBA DEL RESTO (pedido del club, 2026-09-12): lo que se lee
+     antes del partido va antes que el banco. El orden de esta lista es el
+     del modal, el de la pantalla y el de las hojas del PDF.
+     Y el PAGINADO acompaña: las claves no abren hoja —van en la de la
+     tabla de jugadores que las dispara, que era el pedido original— y el
+     resto sí, así que la hoja 6 es jugadores + claves y la 7 el banco. */
   { id: 'claves', label: 'Claves estratégicas' },
+  { id: 'resto', label: 'Resto del plantel' },
   /* `bloque` = la clave de la matriz de bloques (`SGADD_AUTH.BLOQUES`).
      Una card que el plan no incluye NO se ofrece en el modal: tildarla
      metería el cartel de upgrade adentro del PDF que el DT lleva a la
@@ -3683,8 +3689,8 @@ function scoutInforme(idx) {
       ${scoutBloqueResumen(inf)}
       ${scoutBloqueMarcasTabla(inf)}
       ${scoutBloqueJugadores(inf)}
-      ${scoutBloqueResto(inf)}
       ${scoutBloqueClaves(inf)}
+      ${scoutBloqueResto(inf)}
       ${scoutBloqueFichas(inf)}
       <footer class="informe-pie solo-imprimir">${SGADD_UI.pieInforme()}</footer>
       ${scoutModalExport()}

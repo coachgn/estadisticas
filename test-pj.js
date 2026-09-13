@@ -167,6 +167,50 @@ titulo('5 · QUIÉN LO USA · la sección Equipos, Jugadores y los rankings');
   check('el núcleo no suma manuales al `pj` del índice', !/pjTabla|partidosManuales/.test(core));
 }
 
+titulo('6 · EL AVISO ⚠ DE LOS RANKINGS VA CON EL NOMBRE, NO EN LA COLUMNA PJ');
+{
+  /* Se RENDERIZA la tabla de verdad —el mismo `SGADD_RANKINGS.tabla` que
+     pinta la sección Equipos— con un índice que tiene un equipo con un
+     partido sin estadísticas. Pedido del club (2026-09-12): la columna PJ
+     es de números y el aviso habla del equipo. */
+  global.SGADD_UI = {
+    esc: (v) => String(v === null || v === undefined ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'),
+    escJs: (v) => String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'"),
+    atributosFila: () => '',
+  };
+  /* Un solo partido manual: UNIVERSITARIO y ATENAS B lo tienen, los otros
+     dos no — así se puede afirmar las dos mitades. */
+  const UNO = [MANUALES[0]];
+  global.clasifFilasVigentes = (ix) => CLASIF.filasPorEquipo(ix, UNO);
+  const RK = require('./js/sgadd-rankings.js');
+  const idxRk = {
+    lista: () => clonar(LISTA),
+    leer: (clave, k) => ({ valor: 0.5 }),
+    liga: { tipo: {}, pjMediano: 6 },
+  };
+  const grupo = RK.GRUPOS.find(g => g.id === 'of4f');
+  const html = RK.tabla(idxRk, grupo, {});
+  const filas = html.match(/<tr class="border-b[\s\S]*?<\/tr>/g) || [];
+  const filaDe = (nombre) => filas.find(tr => tr.indexOf('>' + nombre + '</span>') !== -1) || '';
+  const celdas = (tr) => tr.split(/<td/).slice(1).map(c => '<td' + c);
+
+  const uni = filaDe('UNIVERSITARIO');
+  const cu = celdas(uni);
+  check('la tabla se renderiza con una fila por equipo', filas.length === LISTA.length, filas.length);
+  check('la celda del NOMBRE lleva el aviso ⚠ con la cantidad', /badge-manual[^>]*>⚠ 1</.test(cu[1] || ''), cu[1]);
+  check('y dice qué significa, también sin mouse (title)', /title="1 partido sin estadísticas/.test(cu[1] || ''));
+  check('la columna PJ muestra SOLO el número, limpio',
+    /^<td class="[^"]*">7<\/td>\s*$/.test(cu[2] || ''), JSON.stringify(cu[2]));
+  check('ninguna celda PJ de la tabla lleva el chip',
+    filas.every(tr => !/badge-manual/.test(celdas(tr)[2] || '')));
+  const lista2 = CLASIF.filasPorEquipo(idxRk, UNO);
+  const sinAviso = LISTA.filter(e => !(lista2.get(e.clave) || {}).manuales).map(e => e.clave);
+  check('los que no tienen partidos sin estadísticas no llevan el chip',
+    sinAviso.length === 2 && sinAviso.every(k => filaDe(k) && !/badge-manual/.test(filaDe(k))), sinAviso.join(','));
+  check('el nombre sigue truncando sin comerse el aviso', /badge-manual shrink-0/.test(cu[1] || ''));
+}
+
 console.log(NL + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

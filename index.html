@@ -954,11 +954,20 @@
   #plantelTabla tr.fila-jug > td {
     transition: background-color .2s ease, padding-left .15s ease, box-shadow .2s ease;
   }
-  #plantelTabla tr.fila-jug:hover > td,
+  /* El HOVER va solo en pantalla: al imprimir, Chrome captura el estado
+     del mouse y la barra salía en el PDF. La fila destacada sí vale en los
+     dos: es una marca que el DT puso a propósito. */
+  @media screen {
+    #plantelTabla tr.fila-jug:hover > td {
+      background: color-mix(in srgb, var(--acento) 12%, #141414);
+    }
+    #plantelTabla tr.fila-jug:hover > td:first-child {
+      box-shadow: inset 3px 0 0 0 var(--acento);
+    }
+  }
   #plantelTabla tr.fila-destacada > td {
     background: color-mix(in srgb, var(--acento) 12%, #141414);
   }
-  #plantelTabla tr.fila-jug:hover > td:first-child,
   #plantelTabla tr.fila-destacada > td:first-child {
     box-shadow: inset 3px 0 0 0 var(--acento);
   }
@@ -988,9 +997,7 @@
 
   /* Respaldo para navegadores sin color-mix. */
   @supports not (background: color-mix(in srgb, red 10%, #000)) {
-    #plantelTabla tr.fila-jug:hover > td,
     #plantelTabla tr.fila-destacada > td { background: #2c2318; }
-    #plantelTabla tr.fila-jug:hover > td:first-child,
     #plantelTabla tr.fila-destacada > td:first-child { box-shadow: inset 3px 0 0 0 #f7941e; }
     #plantelTabla tr.fila-destacada .fila-inicial { background: rgba(247,148,30,.22); }
   }
@@ -1009,12 +1016,16 @@
      motivo por el que el fondo de una fila va en los `<td>` y no en el `<tr>`
      (punto 14). Se repite el tratamiento de la fila destacada, que ya está
      medido en contraste, y la barra lateral del acento marca dónde arranca. */
-  tbody tr[role="button"]:focus-visible { outline: none; }
-  tbody tr[role="button"]:focus-visible > td {
-    background: color-mix(in srgb, var(--acento) 14%, #141414);
-  }
-  tbody tr[role="button"]:focus-visible > td:first-child {
-    box-shadow: inset 3px 0 0 0 var(--acento);
+  /* Solo en pantalla, por lo mismo que el hover: el foco del teclado
+     también queda puesto al abrir el diálogo de impresión. */
+  @media screen {
+    tbody tr[role="button"]:focus-visible { outline: none; }
+    tbody tr[role="button"]:focus-visible > td {
+      background: color-mix(in srgb, var(--acento) 14%, #141414);
+    }
+    tbody tr[role="button"]:focus-visible > td:first-child {
+      box-shadow: inset 3px 0 0 0 var(--acento);
+    }
   }
 
   /* Saltar al contenido: con un menú lateral de seis secciones, sin esto el
@@ -1529,8 +1540,25 @@
     .no-imprimir,
     #modalInforme, [role="dialog"], .login-fondo, #logosFaltantesPanel, [data-no-print] { display: none !important; }
 
-    /* Cortes: una tarjeta o una tabla partida al medio arruina el informe. */
-    .informe-bloque, .card, table, tr, .chart-box { page-break-inside: avoid; break-inside: avoid; }
+    /* Cortes: una tarjeta o una tabla partida al medio arruina el informe.
+       Además de las tarjetas genéricas entran las del scouting, las cajas
+       de tabla y cada FILA de un cuerpo de tabla. Las excepciones medidas
+       siguen ganando por especificidad: los bloques de la ficha y los
+       `data-hoja` del informe se pueden partir (puntos 7.6 bis y 7.6 ter). */
+    .informe-bloque, .card, .scout-card, .scout-ficha, .scrollbox, table, tr, tbody tr, thead,
+    .chart-box, figure { page-break-inside: avoid; break-inside: avoid; }
+    /* LA TABLA QUE FIRMA CADA HOJA NO ENTRA en esa regla: envuelve el
+       documento ENTERO (punto 51), así que pedirle que no se parta es
+       pedirle a un informe de nueve hojas que entre en una. Se parte, y su
+       celda no dibuja nada: ni borde, ni sombra, ni fondo. */
+    table.hoja-firmada, table.hoja-firmada > tbody, table.hoja-firmada > tbody > tr,
+    table.hoja-firmada > tbody > tr > td.hoja-cuerpo-celda {
+      page-break-inside: auto !important; break-inside: auto !important;
+    }
+    table.hoja-firmada > tbody > tr > td.hoja-cuerpo-celda {
+      box-shadow: none !important; outline: 0 !important; border: 0 !important;
+      background: transparent !important;
+    }
     .informe-bloque { page-break-after: auto; margin-bottom: 10mm; }
     h1, h2, h3, h5 { page-break-after: avoid; break-after: avoid; }
     thead { display: table-header-group; }   /* repite encabezado por página */
@@ -2266,8 +2294,19 @@
      tapado el sintoma y de paso pisado a cualquier tabla que pida la
      izquierda a proposito. */
   tbody tr { transition: background-color .1s ease; }
-  tbody tr:hover { background: #1b1b1b; }
-  tbody tr:hover td:first-child { box-shadow: inset 3px 0 0 var(--acento); }
+  /* LA BARRA NARANJA DE LOS PDF (reportada el 2026-09-12, medida en los
+     PDF del club): esta regla no estaba acotada a pantalla y usaba el
+     combinador DESCENDIENTE. Al imprimir con el mouse sobre la hoja,
+     Chrome captura `:hover`; la fila de la tabla que firma cada hoja
+     (punto 51) envuelve el documento entero, así que su celda pintaba una
+     barra de 3 px del acento a todo lo alto de CADA hoja, y de paso la
+     primera celda de todas las tablas internas. Por eso aparecía en unos
+     PDF sí y en otros no: dependía de dónde quedó el mouse.
+     Ahora es solo de pantalla y pinta solo la primera celda PROPIA (`>`). */
+  @media screen {
+    tbody tr:hover { background: #1b1b1b; }
+    tbody tr:hover > td:first-child { box-shadow: inset 3px 0 0 var(--acento); }
+  }
 
   /* SELECCION DE TEXTO · el resalte tiene que dejar LEER lo seleccionado.
 
@@ -2593,7 +2632,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=212" />
+<link rel="stylesheet" href="sgadd.css?v=213" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2771,46 +2810,46 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=212"></script>
+<script src="js/sgadd-club.js?v=213"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=212"></script>
-<script src="js/sgadd-core.js?v=212"></script>
-<script src="js/sgadd-auth.js?v=212"></script>
+<script src="js/sgadd-config.js?v=213"></script>
+<script src="js/sgadd-core.js?v=213"></script>
+<script src="js/sgadd-auth.js?v=213"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=212"></script>
-<script src="js/sgadd-glosario.js?v=212"></script>
-<script src="js/sgadd-glosarioui.js?v=212"></script>
-<script src="js/sgadd-comparativa.js?v=212"></script>
-<script src="js/sgadd-comparativaui.js?v=212"></script>
-<script src="js/sgadd-confirmar.js?v=212"></script>
-<script src="js/sgadd-landing.js?v=212"></script>
-<script src="js/sgadd-login.js?v=212"></script>
-<script src="js/sgadd-data.js?v=212"></script>
-<script src="js/sgadd-clientes.js?v=212"></script>
-<script src="js/sgadd-ui.js?v=212"></script>
-<script src="js/sgadd-app.js?v=212"></script>
-<script src="js/sgadd-clasificacion.js?v=212"></script>
+<script src="js/sgadd-demo.js?v=213"></script>
+<script src="js/sgadd-glosario.js?v=213"></script>
+<script src="js/sgadd-glosarioui.js?v=213"></script>
+<script src="js/sgadd-comparativa.js?v=213"></script>
+<script src="js/sgadd-comparativaui.js?v=213"></script>
+<script src="js/sgadd-confirmar.js?v=213"></script>
+<script src="js/sgadd-landing.js?v=213"></script>
+<script src="js/sgadd-login.js?v=213"></script>
+<script src="js/sgadd-data.js?v=213"></script>
+<script src="js/sgadd-clientes.js?v=213"></script>
+<script src="js/sgadd-ui.js?v=213"></script>
+<script src="js/sgadd-app.js?v=213"></script>
+<script src="js/sgadd-clasificacion.js?v=213"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=212"></script>
-<script src="js/sgadd-configui.js?v=212"></script>
-<script src="js/sgadd-estados.js?v=212"></script>
-<script src="js/sgadd-buzon.js?v=212"></script>
-<script src="js/sgadd-charts.js?v=212"></script>
-<script src="js/sgadd-personalidad.js?v=212"></script>
-<script src="js/sgadd-rankings.js?v=212"></script>
-<script src="js/sgadd-partido.js?v=212"></script>
-<script src="js/sgadd-informe.js?v=212"></script>
-<script src="js/sgadd-ficha.js?v=212"></script>
-  <script src="js/sgadd-rankingpdf.js?v=212"></script>
-<script src="js/sgadd-equipos.js?v=212"></script>
+<script src="js/sgadd-hub.js?v=213"></script>
+<script src="js/sgadd-configui.js?v=213"></script>
+<script src="js/sgadd-estados.js?v=213"></script>
+<script src="js/sgadd-buzon.js?v=213"></script>
+<script src="js/sgadd-charts.js?v=213"></script>
+<script src="js/sgadd-personalidad.js?v=213"></script>
+<script src="js/sgadd-rankings.js?v=213"></script>
+<script src="js/sgadd-partido.js?v=213"></script>
+<script src="js/sgadd-informe.js?v=213"></script>
+<script src="js/sgadd-ficha.js?v=213"></script>
+  <script src="js/sgadd-rankingpdf.js?v=213"></script>
+<script src="js/sgadd-equipos.js?v=213"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=212"></script>
-<script src="js/sgadd-jugadores.js?v=212"></script>
-<script src="js/sgadd-4factores.js?v=212"></script>
-<script src="js/sgadd-scouting.js?v=212"></script>
-<script src="js/sgadd-diagnostico.js?v=212"></script>
+<script src="js/sgadd-niveles.js?v=213"></script>
+<script src="js/sgadd-jugadores.js?v=213"></script>
+<script src="js/sgadd-4factores.js?v=213"></script>
+<script src="js/sgadd-scouting.js?v=213"></script>
+<script src="js/sgadd-diagnostico.js?v=213"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

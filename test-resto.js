@@ -625,7 +625,7 @@ check('y no las ofrece con PLATA', !cardsPlata.some(c => c.id === 'fichas'),
 check('el resto del plantel sí se ofrece en los dos',
   cardsOro.some(c => c.id === 'resto') && cardsPlata.some(c => c.id === 'resto'));
 check('y el orden del modal es el del informe',
-  cardsOro.map(c => c.id).join(',') === 'encabezado,matriz,ciclo,marcas,resumen,jugadores,resto,claves,fichas',
+  cardsOro.map(c => c.id).join(',') === 'encabezado,matriz,ciclo,marcas,resumen,jugadores,claves,resto,fichas',
   cardsOro.map(c => c.id).join(','));
 
 /* MANDA EL SERVIDOR: su declaración le gana al plan que tenga guardado
