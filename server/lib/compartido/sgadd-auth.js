@@ -135,6 +135,9 @@ const SGADD_AUTH = (function () {
     reactivar: 'Devolver el acceso se hace de a un cliente, igual que cortarlo.',
     desactivar: 'Dar de baja se hace de a un cliente: de un click a varios es el gesto que se lamenta.',
     informe_entregado: 'El informe del plan ORO es un servicio de este cliente.',
+    cambiar_estado: 'El estado de una suscripción se cambia de a un cliente: cortar o abrir'
+      + ' el acceso a varios de un click es el gesto que se lamenta.',
+    probar: 'Una prueba se le da a un cliente, no a un torneo entero.',
     baja: 'Una baja se hace de a un cliente.',
   };
 
@@ -156,6 +159,130 @@ const SGADD_AUTH = (function () {
     const canonico = ALIAS_PLAN[v] || v;
     return ORDEN_PLAN[canonico] !== undefined ? canonico : PLANES.BRONCE;
   }
+
+  /* =====================================================================
+     LA SUSCRIPCIÓN ES DE LA CATEGORÍA · el club es el padre, la categoría
+     el hijo que se contrata
+
+     Un club es la IDENTIDAD del cliente: su nombre, su link, sus accesos.
+     Lo que se CONTRATA es una categoría —un torneo con su libro— y un
+     mismo club puede tener Primera en ORO, la U23 en PLATA y la U19 en
+     prueba. Hasta el 2026-09-13 el plan y el estado vivían solo en el
+     club, así que pausar la U19 cortaba también Primera, y un club con
+     dos categorías pagaba un solo plan para las dos.
+
+     LA CASCADA, y por qué es la que es:
+
+       PLAN    categoría  →  club  →  (nada: el servidor decide, ver
+                                        `planEfectivo`)
+       ESTADO  un club pausado, dado de baja o vencido CORTA TODO  →  si
+               el club tiene acceso, manda el estado de la categoría  →
+               si no declara, hereda el del club
+
+     El club corta todo porque es el titular de la cuenta: pausar al
+     cliente entero no puede dejarle abierta una categoría que tenía
+     `activo` escrito. Y la categoría HEREDA cuando no declara porque el
+     catálogo de hoy tiene todo en el club: sin herencia, cada cliente
+     existente perdería su plan al leerse con esta regla.
+
+     VIVE ACÁ, en el motor que comparten el navegador y el servidor
+     (`server/lib/compartido/`), por lo mismo que `CUPO_MAILS`: el servidor
+     la hace valer con un 403 y el Panel Master la pinta. Dos copias
+     terminan discrepando, y la pantalla mostraría «activo» sobre una
+     categoría a la que el backend ya le niega los datos.
+     ===================================================================== */
+
+  /* `prueba` es la demo o el período de prueba: DA ACCESO igual que
+     `activo`, pero dice otra cosa. El admin necesita saber a quién llamar
+     cuando termina, y un cliente en prueba no es uno que ya paga. */
+  const ESTADOS_SUSCRIPCION = ['activo', 'prueba', 'pausado', 'inactivo'];
+  const ESTADOS_CON_ACCESO = ['activo', 'prueba'];
+
+  /** ¿Este estado efectivo recibe el servicio? */
+  function tieneAcceso(estado) {
+    return ESTADOS_CON_ACCESO.indexOf(estado) !== -1;
+  }
+
+  /* SE COMPARA CONTRA EL FIN DEL DÍA: `Date.parse('2026-09-30')` es la
+     medianoche UTC, y a las nueve de la mañana del 30 el cliente figuraría
+     vencido un día antes de lo que dice su factura. */
+  function suscripcionVencida(vence, ahora) {
+    if (!vence || !/^\d{4}-\d{2}-\d{2}$/.test(String(vence))) return false;
+    const fin = Date.parse(vence + 'T23:59:59.999Z');
+    if (!isFinite(fin)) return false;
+    return (ahora === undefined ? Date.now() : ahora) > fin;
+  }
+
+  /**
+   * El estado EFECTIVO de un club (o de cualquier objeto con `estado` y
+   * `vence`). Un `activo` o una `prueba` con la fecha pasada están
+   * vencidos en los hechos: se DERIVA en vez de guardarse, para que no
+   * haga falta un proceso nocturno que, el día que no corra, deje el
+   * estado mintiendo.
+   */
+  function estadoSuscripcion(obj, ahora) {
+    const c = obj || {};
+    const e = ESTADOS_SUSCRIPCION.indexOf(c.estado) !== -1 ? c.estado : 'activo';
+    if (!tieneAcceso(e)) return e;
+    return suscripcionVencida(c.vence, ahora) ? 'vencido' : e;
+  }
+
+  /**
+   * Plan y estado de UNA categoría, resueltos con la cascada de arriba.
+   *
+   * Devuelve de dónde salió cada uno (`planDe`, `estadoDe`): un «ORO» que
+   * la categoría hereda del club y uno que tiene escrito se ven igual, y
+   * el Panel Master tiene que poder decir cuál es cuál antes de que el
+   * admin toque el del club creyendo que cambia solo una categoría.
+   *
+   * @returns {{estado, estadoDe, acceso, plan, planDe, vence}}
+   *   `plan` es null si ni la categoría ni el club declaran uno.
+   */
+  function suscripcionDeCategoria(club, slug, ahora) {
+    const c = club || {};
+    const k = (slug && c.categorias && c.categorias[slug]) || {};
+    const delClub = estadoSuscripcion(c, ahora);
+    const propio = ESTADOS_SUSCRIPCION.indexOf(k.estado) !== -1 ? k.estado : null;
+
+    let estado = delClub;
+    let estadoDe = 'club';
+    if (tieneAcceso(delClub) && propio) {
+      /* La categoría declara el suyo. El vencimiento sigue siendo del club
+         —es la fecha de la factura— así que una categoría `activo` de un
+         club vencido ya cayó en la rama de arriba. */
+      estado = propio;
+      estadoDe = 'categoria';
+    }
+
+    let plan = null;
+    let planDe = null;
+    if (k.plan) { plan = normalizarPlan(k.plan); planDe = 'categoria'; }
+    else if (c.plan) { plan = normalizarPlan(c.plan); planDe = 'club'; }
+
+    return { estado: estado, estadoDe: estadoDe, acceso: tieneAcceso(estado),
+      plan: plan, planDe: planDe, vence: c.vence || null };
+  }
+
+  /**
+   * EL PLAN DEL CLUB COMO TITULAR · el más alto de lo que tiene contratado.
+   *
+   * Lo que es del club y no de una categoría —cuántos mails puede dar de
+   * alta, el plan con el que se firma un link— se mide contra lo MEJOR que
+   * contrató y tiene activo: un club con Primera en ORO y la U23 en PLATA
+   * es un cliente ORO para sus accesos, que son los mismos para las dos.
+   * Una categoría pausada no suma: no se está pagando.
+   */
+  function planDelClub(club, ahora) {
+    const c = club || {};
+    let mejor = c.plan ? normalizarPlan(c.plan) : null;
+    Object.keys(c.categorias || {}).forEach((slug) => {
+      const s = suscripcionDeCategoria(c, slug, ahora);
+      if (!s.acceso || !s.plan) return;
+      if (mejor === null || ORDEN_PLAN[s.plan] > ORDEN_PLAN[mejor]) mejor = s.plan;
+    });
+    return mejor;
+  }
+
   const ROLES = { ADMIN: 'ADMIN', CLIENTE: 'CLIENTE', ABIERTO: 'ABIERTO' };
 
   /* Qué pide cada sección. `null` = no pide nada.
@@ -873,6 +1000,8 @@ const SGADD_AUTH = (function () {
     ADMINS, PLANES, ORDEN_PLAN, ALIAS_PLAN, normalizarPlan, nombrePlan, ROLES, MODULOS, MOTIVOS, CLAVE_SESION,
     CUPO_MAILS, cupoDeMails,
     ALCANCES, ALCANCES_POR_ACCION, alcancesDe, motivoSinAlcance,
+    ESTADOS_SUSCRIPCION, ESTADOS_CON_ACCESO, tieneAcceso, suscripcionVencida,
+    estadoSuscripcion, suscripcionDeCategoria, planDelClub,
     normalizarEmail, parsearSesion, establecerSesion, limpiarSesion, sesion, fijarPlanEfectivo,
     esAdmin, rol, sinRestricciones,
     BLOQUES, alcanzaPlan, tieneBloque, puedoVerBloque, bloquesVigentes,

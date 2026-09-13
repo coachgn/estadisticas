@@ -659,6 +659,14 @@ const CLUB = (function () {
       /* `activo` lo dice el SERVIDOR: una categoría sin libro va al
          selector deshabilitada en vez de dejar entrar a una vista vacía. */
       p.activo = k.activo !== false;
+      /* PLAN Y ESTADO DE LA CATEGORÍA (punto 60). Los manda el servidor
+         para las categorías del propio club (y para todas, al admin). Una
+         categoría BLOQUEADA —pausada, dada de baja o vencida— no se puede
+         abrir: el servidor contesta 403, así que el selector la muestra
+         deshabilitada con el motivo y el arranque no la elige. */
+      if (k.planEfectivo) p.plan = k.planEfectivo;
+      if (k.estadoEfectivo) p.estado = k.estadoEfectivo;
+      if (k.bloqueada) { p.bloqueada = true; p.activo = false; }
       return p;
     });
     return base;

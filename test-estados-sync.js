@@ -361,8 +361,13 @@ const HASH = EST.claveKV('deportivo', 'deportivo-primera');
   check('devuelve una copia: mutarla no cambia lo guardado', JSON.parse(store[catalogo.CLAVE_KV]).deportivo.plan === 'PLATA');
 
   const cli = fs.readFileSync('./server/bin/catalogo.js', 'utf8');
-  check('el CLI escribe sobre `cargarParaEscribir` en alta, baja y sembrar',
-    /cargarParaEscribir\(\)/.test(cli) && /\['sembrar', 'alta', 'baja'\]/.test(cli));
+  /* Se mide la PERTENENCIA a la lista y no su texto exacto: los comandos
+     `plan` y `estado` (punto 60) también escriben, y un regex sobre el
+     literal se ponía en rojo sin que la propiedad cambiara. */
+  const escriben = ((cli.match(/const escribe = \[([^\]]*)\]/) || [])[1] || '');
+  check('el CLI escribe sobre `cargarParaEscribir` en todo comando que escribe',
+    /cargarParaEscribir\(\)/.test(cli)
+    && ['sembrar', 'alta', 'baja', 'plan', 'estado'].every(c => escriben.indexOf("'" + c + "'") !== -1), escriben);
 
   /* =====================================================================
      7. UN DEPLOY O UNA REINDEXACIÓN NO RESETEAN LA COPIA LOCAL

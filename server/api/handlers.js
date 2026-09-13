@@ -69,15 +69,23 @@ function contexto(peticion) {
  */
 function guardSuscripcion(club, ctx) {
   const efectivo = mutar.estadoEfectivo(club);
-  if (efectivo === 'activo') return null;
+  /* `prueba` recibe el servicio igual que `activo` (punto 60). */
+  if (AUTH.tieneAcceso(efectivo)) return null;
   if (ctx.rol === AUTH.ROLES.ADMIN) return null;
 
   /* Tres mensajes distintos porque son tres situaciones distintas, y el
      que las recibe hace cosas distintas con cada una: renovar, llamar a
-     comercial, o nada. Un "acceso denegado" genérico obliga a preguntar. */
+     comercial, o nada. Un "acceso denegado" genérico obliga a preguntar.
+
+     Y SI LO QUE CORTA ES LA CATEGORÍA, SE DICE: el resto de sus categorías
+     sigue andando, y un «este club está pausado» lo mandaría a reclamar
+     por algo que no le pasa. */
+  const deCategoria = club && club.estadoDe === 'categoria';
   const textos = {
-    pausado: 'El acceso de este club está pausado. Hablá con el administrador para reactivarlo.',
-    inactivo: 'Este club no tiene el servicio activo.',
+    pausado: deCategoria
+      ? 'El acceso a esta categoría está pausado. Tus otras categorías siguen disponibles.'
+      : 'El acceso de este club está pausado. Hablá con el administrador para reactivarlo.',
+    inactivo: deCategoria ? 'Esta categoría no tiene el servicio activo.' : 'Este club no tiene el servicio activo.',
     vencido: 'La suscripción de este club venció el ' + (club.vence || '—')
       + '. Hablá con el administrador para renovarla.',
   };
@@ -153,7 +161,20 @@ async function manejarCatalogo(peticion, deps) {
      así que tiene que ser el mismo que el servidor hace cumplir. El admin
      no tiene club en el token y conserva el suyo. */
   const clubDelToken = ctx.tokenClub ? (cat.catalogo || {})[ctx.tokenClub] : null;
-  const planUsuario = clubDelToken ? planEfectivo(clubDelToken, ctx.sesion, cat.origen) : ctx.sesion.plan;
+  /* CON PLANES POR CATEGORÍA (punto 60) el plan del usuario es el de la
+     categoría que el panel va a abrir: la primera con libro y con acceso,
+     que es la misma que elige `SGADD_APP.inicializar`. Al cambiar de
+     categoría el panel adopta el de la nueva —viaja en `categorias` y en
+     `alcance.plan` de los datos—, así que esto solo fija el primer
+     pintado del menú. */
+  let planUsuario = ctx.sesion.plan;
+  if (clubDelToken) {
+    const slugs = Object.keys(clubDelToken.categorias || {});
+    const abre = slugs.filter(s => clubDelToken.categorias[s].sheetId
+      && AUTH.suscripcionDeCategoria(clubDelToken, s).acceso)[0] || slugs[0];
+    const r = abre ? catalogo.resolver(cat.catalogo, ctx.tokenClub, abre) : null;
+    planUsuario = planEfectivo(r ? r.suscripcion : clubDelToken, ctx.sesion, cat.origen);
+  }
   return {
     status: 200,
     body: {
@@ -164,7 +185,8 @@ async function manejarCatalogo(peticion, deps) {
          tiene gate de rol —cualquier usuario con token recibe la lista de
          clubes— así que mandarle plan y vencimiento a todos le contaría a
          cada cliente la situación de facturación de los demás. */
-      clubes: catalogo.publico(cat.catalogo, { admin: ctx.rol === AUTH.ROLES.ADMIN }),
+      clubes: catalogo.publico(cat.catalogo, { admin: ctx.rol === AUTH.ROLES.ADMIN,
+        club: ctx.tokenClub || null, origen: cat.origen }),
       /* DE DÓNDE SALE, para el hub. Sin esto no hay forma de saber desde
          afuera si el catálogo viene de KV o del código, y esa es
          justamente la pregunta al dar de alta un cliente: un alta que
@@ -687,8 +709,11 @@ async function manejarClientes(peticion, deps) {
     body: {
       ok: true,
       clubes: clubes.map(c => ({
-        id: c.id, nombre: c.nombre, plan: AUTH.normalizarPlan(c.plan),
-        cupo: clientes.cupo(padron, c.id, c.plan),
+        /* EL CUPO ES DEL CLUB y se mide contra lo mejor que tiene
+           contratado y activo (punto 60): los accesos son los mismos para
+           todas sus categorías. */
+        id: c.id, nombre: c.nombre, plan: AUTH.normalizarPlan(AUTH.planDelClub(cat.catalogo[c.id])),
+        cupo: clientes.cupo(padron, c.id, AUTH.planDelClub(cat.catalogo[c.id])),
         mails: clientes.delClub(padron, c.id),
       })),
     },
@@ -735,7 +760,7 @@ async function manejarClientesEscribir(peticion, deps) {
     const club = (cat.catalogo || {})[clubId];
     if (!club) return error(404, 'CLUB', 'Ese club no está en el catálogo.');
     r = clientes.alta(padron, email, clubId, {
-      plan: club.plan,
+      plan: AUTH.planDelClub(club),
       equipoAsignado: cuerpo.equipoAsignado ? String(cuerpo.equipoAsignado) : null,
       dias: cuerpo.dias,
     });
@@ -766,7 +791,7 @@ async function manejarClientesEscribir(peticion, deps) {
       ok: true,
       club: id2 || null,
       mails: club2 ? clientes.delClub(r.padron, id2) : [],
-      cupoActual: club2 ? clientes.cupo(r.padron, id2, club2.plan) : null,
+      cupoActual: club2 ? clientes.cupo(r.padron, id2, AUTH.planDelClub(club2)) : null,
     }, extra),
   };
 }
@@ -799,12 +824,23 @@ async function tokenDeCliente(c, deps) {
      decírselo en la puerta. */
   const veto = guardSuscripcion(club, { rol: AUTH.ROLES.CLIENTE });
   if (veto) return veto;
+  /* Y SI NINGUNA DE SUS CATEGORÍAS TIENE ACCESO, tampoco: el club puede
+     estar activo con todas sus categorías pausadas una por una, y entraría
+     a un panel en el que cada selector le dice que no. */
+  const slugs = Object.keys(club.categorias || {});
+  if (slugs.length && !slugs.some(s => AUTH.suscripcionDeCategoria(club, s).acceso)) {
+    return error(403, 'SUSCRIPCION_CATEGORIAS',
+      'Ninguna de las categorías de tu club tiene el servicio activo. Hablá con el administrador.');
+  }
 
   const token = AUTHS.firmarToken({
     email: c.email,
     club: c.club,
     equipoAsignado: c.equipoAsignado || club.equipoPropio || null,
-    plan: AUTH.normalizarPlan(club.plan),
+    /* El plan que se FIRMA es el del club como titular —el más alto que
+       tiene activo—. No decide nada por categoría: eso lo hace el catálogo
+       en cada pedido (`planEfectivo`). */
+    plan: AUTH.normalizarPlan(AUTH.planDelClub(club)),
   }, { expiraEn: SESION_CLIENTE });
   const datos = AUTHS.verificarToken(token);
 
@@ -818,7 +854,7 @@ async function tokenDeCliente(c, deps) {
       /* EL CLUB VIAJA EN LA RESPUESTA para que la pantalla sepa a dónde
          mandarlo sin tener que abrir el token. */
       club: c.club,
-      plan: AUTH.normalizarPlan(club.plan),
+      plan: AUTH.normalizarPlan(AUTH.planDelClub(club)),
       expiraEn: datos.expiraEn,
     },
   };

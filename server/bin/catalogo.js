@@ -8,6 +8,8 @@
      node server/bin/catalogo.js listar
      node server/bin/catalogo.js alta   --club X --categoria Y --sheet <id> …
      node server/bin/catalogo.js baja   --club X [--categoria Y]
+     node server/bin/catalogo.js plan   --club X [--categoria Y] --plan ORO
+     node server/bin/catalogo.js estado --club X [--categoria Y] --estado pausado
      node server/bin/catalogo.js exportar
      node server/bin/catalogo.js sembrar
 
@@ -27,6 +29,8 @@
 require('../lib/env.js').cargar();
 const kv = require('../lib/kv.js');
 const catalogo = require('../lib/catalogo.js');
+const mutar = require('../lib/catalogo-mutar.js');
+const AUTH = require('../lib/compartido/sgadd-auth.js');
 
 function args(argv) {
   const o = { _: [] };
@@ -62,6 +66,16 @@ CLI del catálogo · da de alta clubes sin redeplegar
     --categoria  <slug>       ej: reconquista-primera
     --label      <texto>      nombre visible de la categoría
     --sheet      <id>         el id del libro de Google
+    --plan       <PLAN>       BRONCE, PLATA u ORO · el de ESA categoría
+  plan                      cambia el plan de una categoría, o el del club
+    --club       <slug>       obligatorio
+    --categoria  <slug>       si se omite, cambia el del CLUB (lo heredan
+                              las categorías sin plan propio)
+    --plan       <PLAN>       BRONCE, PLATA, ORO · vacío ("") = que herede
+  estado                    pausa, reactiva o pone en prueba
+    --club       <slug>       obligatorio
+    --categoria  <slug>       si se omite, cambia el del CLUB (corta todas)
+    --estado     <ESTADO>     activo, prueba, pausado, inactivo
   baja                      saca una categoría, o el club entero
     --club       <slug>       obligatorio
     --categoria  <slug>       si se omite, se borra el CLUB completo
@@ -166,7 +180,7 @@ function exigirKV() {
      no del respaldo: con Upstash sin contestar, `cargar()` devuelve el
      literal del código y escribirlo encima borraba planes, zonas y
      partidos manuales. `cargarParaEscribir` lanza antes de pisar nada. */
-  const escribe = ['sembrar', 'alta', 'baja'].indexOf(cmd) !== -1;
+  const escribe = ['sembrar', 'alta', 'baja', 'plan', 'estado'].indexOf(cmd) !== -1;
   const cascada = escribe
     ? await catalogo.cargarParaEscribir().catch(e => {
       console.error('');
@@ -191,8 +205,13 @@ function exigirKV() {
       Object.keys(c.categorias || {}).forEach(s => {
         const k = c.categorias[s];
         const estado = k.sheetId ? 'CONECTADA' : 'SIN LIBRO ';
+        /* El plan y el estado QUE RIGEN, con de dónde salen (punto 60). */
+        const sus = AUTH.suscripcionDeCategoria(c, s);
         console.log('      ' + estado + '  ' + s.padEnd(24) + k.label +
-          '   ' + enmascarar(k.sheetId));
+          '   ' + enmascarar(k.sheetId) +
+          '   plan ' + (sus.plan || '—') + (sus.planDe === 'club' ? ' (club)' : '') +
+          ' · ' + AUTH.estadoSuscripcion({ estado: sus.estadoDe === 'categoria' ? sus.estado : c.estado, vence: c.vence }) +
+          (sus.estadoDe === 'club' ? ' (club)' : ''));
       });
       console.log('');
     });
@@ -219,11 +238,49 @@ function exigirKV() {
     return;
   }
 
+  /* -------------------------------------------------- plan · estado
+     Pasan por `mutar.aplicar`, el MISMO punto de entrada que el Panel
+     Master: sus guards (ninguna categoría pierde su libro, el validador
+     de la cascada) corren igual desde la terminal. */
+  if (cmd === 'plan' || cmd === 'estado') {
+    exigirKV();
+    const club = String(o.club || '').trim().toLowerCase();
+    if (!club || !cat[club]) { console.error('  Ese club no está: ' + (club || '(falta --club)')); process.exit(1); }
+    const datos = { club: club, categoria: o.categoria ? String(o.categoria).trim().toLowerCase() : undefined };
+    let accion;
+    if (cmd === 'plan') {
+      if (o.plan === undefined) { console.error('  Falta --plan'); process.exit(1); }
+      accion = 'cambiar_plan';
+      datos.plan = o.plan === true ? '' : String(o.plan);
+    } else {
+      if (!o.estado || o.estado === true) { console.error('  Falta --estado'); process.exit(1); }
+      accion = 'cambiar_estado';
+      datos.estado = String(o.estado).trim().toLowerCase();
+      if (datos.estado === 'activo') datos.heredar = !!datos.categoria && o.explicito === undefined;
+    }
+    const r = mutar.aplicar(cat, accion, datos, catalogo.validar);
+    if (!r.ok) { console.error('  No se guardó nada: ' + r.motivo); process.exit(1); }
+    await guardar(r.catalogo, { forzar: !!o['sin-libros'] });
+    const c2 = r.catalogo[club];
+    console.log('');
+    console.log('  ' + club + ' · ' + c2.nombre);
+    Object.keys(c2.categorias).forEach(s => {
+      const sus = AUTH.suscripcionDeCategoria(c2, s);
+      console.log('    ' + s.padEnd(24) + 'plan ' + (sus.plan || '—') + (sus.planDe === 'club' ? ' (club)' : '')
+        + ' · ' + sus.estado + (sus.estadoDe === 'club' ? ' (club)' : ''));
+    });
+    console.log('');
+    console.log('  Ya está vigente: el cliente lo ve en su próxima carga. Sus estados de jugador no se tocan.');
+    return;
+  }
+
   /* -------------------------------------------------- alta */
   if (cmd === 'alta') {
     exigirKV();
     const club = String(o.club || '').trim().toLowerCase();
     if (!club) { console.error('  Falta --club'); process.exit(1); }
+    const planAlta = mutar.planValido(o.plan === true ? '' : o.plan);
+    if (planAlta === false) { console.error('  Plan desconocido: ' + o.plan + '. Va BRONCE, PLATA u ORO.'); process.exit(1); }
 
     const existia = !!cat[club];
     if (!existia) {
@@ -251,6 +308,9 @@ function exigirKV() {
            en vez de dejar entrar a una sección vacía (punto 6). */
         sheetId: o.sheet ? String(o.sheet) : (previa.sheetId || ''),
       });
+      /* El plan de ESA categoría (punto 60). Sin --plan no se toca. */
+      if (planAlta) cat[club].categorias[slug].plan = planAlta;
+      else if (planAlta === '') delete cat[club].categorias[slug].plan;
     }
 
     if (!Object.keys(cat[club].categorias).length) {

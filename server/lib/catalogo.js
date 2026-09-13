@@ -32,6 +32,9 @@
 
 const kv = require('./kv.js');
 const { CATALOGO, entorno } = require('./config.js');
+/* La cascada de plan y estado por categoría vive en el motor compartido:
+   el Panel Master la pinta con la misma función (punto 60). */
+const AUTH = require('./compartido/sgadd-auth.js');
 
 const CLAVE_KV = 'sgadd:catalogo';
 
@@ -64,6 +67,11 @@ function validar(cat) {
       if (k.sheetId !== undefined && typeof k.sheetId !== 'string') {
         return id + '/' + slug + ': `sheetId` no es texto';
       }
+      /* Se valida la FORMA y no el valor: un estado que no se reconoce se
+         lee como «hereda» (`AUTH.suscripcionDeCategoria`), y rechazar el
+         catálogo entero por eso tiraría a todos los clubes al respaldo. */
+      if (k.plan !== undefined && typeof k.plan !== 'string') return id + '/' + slug + ': `plan` no es texto';
+      if (k.estado !== undefined && typeof k.estado !== 'string') return id + '/' + slug + ': `estado` no es texto';
     }
   }
   return null;
@@ -199,6 +207,12 @@ function resolver(cat, clubId, slugCategoria) {
   const catId = String(slugCategoria || ids[0] || '').trim().toLowerCase();
   const k = (club.categorias || {})[catId];
   if (!k) return null;
+  /* EL PLAN Y EL ESTADO SON DE LA CATEGORÍA (punto 60), con herencia del
+     club. Se resuelven ACÁ, que es el único punto por el que pasan los
+     datos, el scouting y los estados compartidos: así el guard y el plan
+     efectivo de los handlers no cambian una línea y ya miran la categoría
+     pedida. */
+  const sus = AUTH.suscripcionDeCategoria(club, catId);
   return {
     clubId: String(clubId).toLowerCase(),
     club: club.nombre,
@@ -212,8 +226,13 @@ function resolver(cat, clubId, slugCategoria) {
        el modo de fallar más caro que puede tener un guard —parece puesto
        y no está— así que los campos viajan en su propio objeto. */
     suscripcion: {
-      estado: club.estado || 'activo',
-      plan: club.plan || null,
+      /* El estado DECLARADO que rige —el del club si corta, si no el de la
+         categoría—, y no el efectivo: `vencido` se deriva de la fecha en
+         `estadoEfectivo`, y guardarlo derivado lo haría derivar dos veces. */
+      estado: sus.estadoDe === 'categoria' ? sus.estado : (club.estado || 'activo'),
+      estadoDe: sus.estadoDe,
+      plan: sus.plan,
+      planDe: sus.planDe,
       vence: club.vence || null,
       cicloDesde: club.cicloDesde || 0,
       informesEntregados: club.informesEntregados || 0,
@@ -253,8 +272,32 @@ function huellaLibro(sheetId) {
   return ('0000000' + h.toString(16)).slice(-8);
 }
 
+/**
+ * El plan y el estado de una categoría tal como se hacen valer.
+ *
+ * Sin plan en la categoría ni en el club, con el catálogo de KV es BRONCE:
+ * es lo que el Panel Master pinta y lo que `planEfectivo` impone. Con el
+ * respaldo queda `null` —ahí manda el del link—.
+ */
+function suscripcionPublica(club, slug, origen) {
+  const s = AUTH.suscripcionDeCategoria(club, slug);
+  return {
+    planEfectivo: s.plan || (origen === 'kv' ? 'BRONCE' : null),
+    planDe: s.planDe,
+    estadoEfectivo: AUTH.estadoSuscripcion({ estado: s.estadoDe === 'categoria' ? s.estado : club.estado,
+      vence: club.vence }),
+    estadoDe: s.estadoDe,
+  };
+}
+
 function publico(cat, opciones) {
   const admin = !!(opciones && opciones.admin);
+  /* EL CLUB DEL TOKEN recibe el plan y el estado de SUS categorías: el
+     selector se los muestra («Primera · ORO», «U19 — pausada») y el menú
+     tiene que ofrecer lo que la categoría abierta tiene contratado. Los de
+     los demás clubes no viajan: son su situación comercial. */
+  const propio = opciones && opciones.club ? String(opciones.club) : null;
+  const origen = opciones && opciones.origen;
   const c = cat || {};
   return Object.keys(c).map(id => Object.assign({
     id: id,
@@ -293,7 +336,19 @@ function publico(cat, opciones) {
       /* Solo para el admin: el modal de alcance la usa para saber qué
          clientes leen el mismo libro. Ver `huellaLibro`. */
       libro: huellaLibro(c[id].categorias[s].sheetId),
-    } : {})),
+    } : {}, admin ? Object.assign({
+      /* Lo DECLARADO en la categoría, para los desplegables del Panel
+         Master: `null` = hereda del club. */
+      plan: c[id].categorias[s].plan || null,
+      estado: c[id].categorias[s].estado || null,
+    }, suscripcionPublica(c[id], s, origen)) : {},
+    (!admin && propio === id) ? Object.assign(suscripcionPublica(c[id], s, origen), {
+      /* El cliente no puede abrir una categoría pausada: el servidor le
+         contesta 403. El selector la muestra deshabilitada y con el motivo,
+         en vez de dejarlo entrar a una vista vacía. El admin pasa igual
+         (`guardSuscripcion`), por eso a él no se le marca. */
+      bloqueada: !AUTH.tieneAcceso(suscripcionPublica(c[id], s, origen).estadoEfectivo),
+    }) : {})),
   }, admin ? {
     estado: c[id].estado || 'activo',
     plan: c[id].plan || null,

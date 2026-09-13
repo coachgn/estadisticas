@@ -68,6 +68,8 @@ node test-pdf-layout.js    #  32 tests · claves arriba del resto, los cortes de
                            #             que ningún :hover pinte la hoja impresa
 node test-router-jugadores.js # 12 tests · la pestaña Jugadores se pinta en el acto y
                            #             suelta el equipo de otra categoría
+node test-clientes-estructura.js # 93 tests · club padre y categorías hijas: plan y estado
+                           #             por categoría, expandir un club y la pausa selectiva
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -79,7 +81,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5578 tests en total. Todos tienen que dar verde antes de commitear.**
+**5671 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -8130,6 +8132,10 @@ Tres correcciones del 2026-09-11, las tres medidas en producción.
 
 ### 1 · El plan que se muestra y se hace valer es el del CATÁLOGO
 
+> **Desde 2026-09-13 el plan y el estado son de la CATEGORÍA**, con
+> herencia del club: el «plan del club» de acá es el que heredan las
+> categorías que no declaran uno. Ver el punto 60.
+
 Síntoma: un admin mirando Universitario —que el Panel Master pinta en
 **Bronce**— veía «◆ Plan ORO · Auditoria MotorStats activa». Dos causas:
 
@@ -8646,3 +8652,139 @@ Los nombres que venían en el pedido (`cambiarSeccion('jugadores')`,
 El test corre el `sgadd-jugadores.js` real en un `vm` con temporizadores
 que no avanzan solos: si la grilla está pintada antes de soltarlos, no
 depende de ellos.
+
+---
+
+## 60. EL CLUB ES EL PADRE, LA CATEGORÍA ES LO QUE SE CONTRATA
+
+Pedido del club (2026-09-13): un club con Primera en ORO, la U23 en PLATA
+y la U19 en prueba; pausar una sin congelar las otras; y que el panel haga
+valer el plan de la categoría ABIERTA, no uno del club entero.
+
+### Lo que la auditoría encontró
+
+**La jerarquía ya existía.** `catalogo[club].categorias[slug]` es un padre
+con N hijos, cada uno con su libro, y sumar una categoría a un club ya se
+podía («Editar · club → ＋ Agregar una categoría nueva»). Un cliente suelto
+ya era un club con una sola categoría.
+
+**Lo que no existía era lo granular.** `plan`, `estado` y `vence` vivían
+SOLO en el club, y todo lo que decide leía de ahí: el guard de suscripción,
+el plan efectivo, el cupo de mails, el token del login y el menú. Pausar la
+U19 cortaba Primera, y un club con dos categorías tenía un solo plan.
+
+### La cascada · vive en `sgadd-auth.js`
+
+```
+PLAN     categoría  →  club  →  (el servidor: BRONCE con KV, el del link con respaldo)
+ESTADO   club pausado / dado de baja / vencido  →  CORTA TODO
+         si el club tiene acceso                →  el de la categoría, si declara
+                                                →  si no, el del club
+```
+
+`AUTH.suscripcionDeCategoria(club, slug)` la resuelve y dice **de dónde**
+salió cada valor (`planDe`, `estadoDe`). Vive en el motor que comparten el
+navegador y el servidor (`server/lib/compartido/`), por lo mismo que
+`CUPO_MAILS`: el servidor la hace valer con un 403 y el Panel Master la
+pinta. `catalogo-mutar.estadoEfectivo` delega ahí.
+
+- **El club corta todo** porque es el titular: pausar al cliente entero no
+  puede dejarle abierta una categoría que tenía `activo` escrito.
+- **La categoría hereda cuando no declara**, y eso es la retrocompatibilidad:
+  el catálogo de hoy tiene todo en el club y se sigue leyendo igual. Hay un
+  test con un club en `PRO` que tiene que seguir dando PLATA.
+- **`prueba` es un estado nuevo que DA ACCESO** (`ESTADOS_CON_ACCESO`). No es
+  `activo` con otro nombre: es al que hay que llamar cuando termina. Un
+  `activo` o una `prueba` con la fecha pasada están vencidos.
+- **Un estado que no se reconoce se lee como «hereda».** `validar()` del
+  catálogo solo exige la FORMA (texto): rechazar el catálogo entero por un
+  valor raro tiraría a todos los clubes al respaldo.
+
+### Dónde se hace valer · el único punto es `catalogo.resolver()`
+
+`resolver()` arma `suscripcion` con la cascada, y por él pasan los datos, el
+scouting y los estados compartidos. Por eso `guardSuscripcion` y
+`planEfectivo` **no cambiaron su lógica**: ya miraban `cat.suscripcion`, que
+ahora es la de la categoría pedida. `alcance.plan` y `alcance.bloques` de
+`/equipos` salen por categoría: la ficha por jugador (ORO) se concede en la
+U23 y se niega en Primera **con el mismo token**.
+
+`suscripcion.estado` guarda el estado DECLARADO que rige y no el efectivo:
+`vencido` se deriva de la fecha en `estadoEfectivo`, y guardarlo derivado
+lo haría derivar dos veces.
+
+**Lo que es del club como TITULAR** se mide contra `AUTH.planDelClub`, el
+plan más alto que tiene ACTIVO: el cupo de mails (los accesos son los
+mismos para todas sus categorías) y el plan que se firma en el link. Una
+categoría pausada no suma. El login además rechaza a un club con todas sus
+categorías pausadas de a una (`SUSCRIPCION_CATEGORIAS`): entraría a un
+panel donde cada selector le dice que no.
+
+### Lo que viaja al navegador
+
+`catalogo.publico()` manda plan y estado **de las categorías del club del
+token** (`planEfectivo`, `estadoEfectivo`, `bloqueada`) y, al admin, además
+lo declarado (`plan`, `estado`: `null` = hereda). Los de los demás clubes no
+viajan: son su situación comercial, la misma regla del plan del club.
+
+### El panel adopta el plan de la categoría que abre
+
+- `CLUB.reconciliarConfig` copia plan y estado a la planilla; una
+  **bloqueada** queda `activo: false`, así que el arranque no la elige y un
+  link viejo a ella abre en otra que anda.
+- `SGADD_APP.cargar()` **adopta el plan de la planilla ANTES de pedir los
+  datos**: sin eso el menú ofrecía, durante la carga, lo que la categoría
+  nueva no tiene. `alcance.plan` de la respuesta lo confirma. Solo el
+  CLIENTE adopta (punto 55).
+- **El selector dice el plan de cada categoría** («Primera 2026 · ORO») y
+  por qué no se abre una bloqueada («U19 — pausada», que no es lo mismo que
+  «sin datos»). `SGADD_APP.sufijoCategoria` es puro y está testeado. Es la
+  «selección al ingresar» que pidió el club: Principal también pinta la
+  barra, así que el cliente la ve apenas entra; con una sola categoría entra
+  directo, como siempre.
+
+### Panel Master y CLI
+
+- **Cada categoría tiene su línea con plan y estado**, en una SEGUNDA fila y
+  no en dos columnas más: la tarjeta es angosta en la grilla del hub y con
+  cinco columnas la tabla scrolleaba, dejando el estado cortado. El «hereda
+  · PLATA» a la vista es lo que evita tocar el plan del club creyendo que se
+  cambia una categoría.
+- **Pasa por el modal de confirmación** (punto 30), que dice «Se aplica SOLO
+  a esta categoría». Cancelar devuelve el desplegable a lo que tenía:
+  `SGADD_CONFIRMAR.abrir` acepta ahora `alCancelar`.
+- **Reactivar una categoría BORRA su estado** en vez de escribir `activo`:
+  vuelve a heredar, y un club en prueba no queda con una categoría que diga
+  «activo» sin que nadie lo decidiera. Un `activo` elegido a mano sí se
+  guarda (`heredar: false`).
+- **El alta pide el plan** («Plan de la categoría») y deja arrancar en
+  prueba. Un plan desconocido se RECHAZA en vez de caer al más bajo: lo
+  escribió el admin y un typo le bajaría el plan a quien paga. Sin el campo
+  en el pedido no se toca: editar la etiqueta desde una pantalla vieja no
+  borra un plan.
+- **El cambio de plan de una categoría se propaga por categoría** con el
+  alcance «libro», no a los clubes enteros. Cambiar el estado de una
+  categoría es siempre de a un cliente.
+- **CLI:** `catalogo.js plan|estado --club X [--categoria Y]`, que pasan por
+  `mutar.aplicar` con todos sus guards; `alta --plan`; y `listar` muestra
+  plan y estado con su origen.
+
+### Lo que no se pisa
+
+Todo pasa por `cargarParaEscribir` + `mutar.aplicar` (punto 57), que es una
+mutación quirúrgica sobre el catálogo recién leído. Los accesos
+(`sgadd:clientes`) y los estados de jugador (`sgadd:estados:*`) viven en
+OTRAS claves: expandir un club, cambiar un plan o pausar una categoría
+escribe solo `sgadd:catalogo`. `test-clientes-estructura.js` lo verifica
+contando las operaciones sobre el KV de mentira.
+
+### Lo que queda abierto
+
+- **`equipoPropio` sigue siendo del club.** Reconquista se llama
+  `RECONQUISTA A` en Primera y `RECONQUISTA` en la U23: un club dado de alta
+  desde el Panel Master con categorías de nombres distintos necesita el
+  patrón del JSON (punto 6) o un equipo por categoría, que no se hizo.
+- **El vencimiento sigue siendo del club** (la fecha de la factura). Una
+  prueba con fecha propia por categoría no existe todavía.
+- **El ciclo de informes ORO** sigue siendo del club; la tarjeta lo muestra
+  si el club o alguna de sus categorías está en ORO.

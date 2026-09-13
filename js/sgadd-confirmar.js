@@ -213,6 +213,10 @@ const SGADD_CONFIRMAR = (function () {
     estado.cambios = o.cambios || [];
     estado.zonas = o.zonas || null;
     estado.alConfirmar = typeof o.alConfirmar === 'function' ? o.alConfirmar : null;
+    /* Al CANCELAR, si el llamador lo pide. Lo usa el desplegable de plan
+       de una categoría (punto 60): cancelar tiene que devolverlo a lo que
+       tenía, o la pantalla queda mostrando un plan que no se guardó. */
+    estado.alCancelar = typeof o.alCancelar === 'function' ? o.alCancelar : null;
     /* El alcance, si el llamador lo ofrece. Arranca en lo SUGERIDO solo si
        esa opción está habilitada; si no, en «solo este cliente», que es lo
        que hacía todo cambio antes de que existiera la pregunta. */
@@ -229,10 +233,13 @@ const SGADD_CONFIRMAR = (function () {
   }
 
   function cerrar() {
+    const cancelar = estado.alCancelar;
     estado.abierto = false;
     estado.alConfirmar = null;
+    estado.alCancelar = null;
     pintar();
     try { if (estado.disparador && estado.disparador.focus) estado.disparador.focus(); } catch (e) {}
+    if (cancelar) { try { cancelar(); } catch (e) { /* es una mejora */ } }
   }
 
   function confirmar() {
@@ -250,6 +257,7 @@ const SGADD_CONFIRMAR = (function () {
        está mirando. */
     estado.abierto = false;
     estado.alConfirmar = null;
+    estado.alCancelar = null;
     pintar();
     try { fn(elegido); } catch (e) { /* el llamador maneja su propio error */ }
   }

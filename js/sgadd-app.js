@@ -134,6 +134,13 @@ const SGADD_APP = (function () {
     /* La guarda del libro conectado no aplica a la demo: su planilla no
        resuelve contra ningun libro a proposito. */
     const demo = (typeof SGADD_DEMO !== 'undefined' && SGADD_DEMO.activo());
+    /* EL PLAN ES DE LA CATEGORÍA (punto 60): Primera en ORO y la U23 en
+       PLATA dentro del mismo club. Se adopta ANTES de pedir los datos,
+       para que el menú no ofrezca durante la carga lo que la categoría
+       nueva no tiene; `alcance.plan` de la respuesta lo confirma. */
+    if (!demo && p && p.plan && typeof adoptarPlanEfectivo === 'function') {
+      try { adoptarPlanEfectivo(p.plan); } catch (e) { /* es una mejora */ }
+    }
     if (!demo && (!p || !(p.slug || p.sheetId))) {
       estado.error = 'Esa categoría todavía no tiene libro conectado.';
       avisar(); return;
@@ -374,6 +381,26 @@ const SGADD_APP = (function () {
     return estado.hojas ? SGADD.fasesDisponibles(estado.hojas) : [SGADD.FASES.REGULAR];
   }
 
+  /**
+   * Lo que el selector dice al lado de cada categoría (punto 60).
+   *
+   * EL PLAN VA A LA VISTA: un club con Primera en ORO y la U23 en PLATA
+   * tiene que saber, antes de elegir, por qué la ficha por jugador aparece
+   * en una y no en la otra. Una categoría bloqueada dice POR QUÉ no se
+   * abre —pausada no es lo mismo que sin datos, y el DT llama a distinta
+   * gente por cada una—. PURA: se testea sin DOM.
+   */
+  const NOMBRE_BLOQUEO = { pausado: 'pausada', inactivo: 'sin servicio', vencido: 'vencida' };
+  function sufijoCategoria(x) {
+    if (!x) return '';
+    if (x.bloqueada) return ' — ' + (NOMBRE_BLOQUEO[x.estado] || 'sin acceso');
+    if (!x.activo) return ' — sin datos';
+    const partes = [];
+    if (x.plan) partes.push(String(x.plan).toUpperCase());
+    if (x.estado === 'prueba') partes.push('en prueba');
+    return partes.length ? ' · ' + partes.join(' · ') : '';
+  }
+
   /* ---------------------------------------------------------------------
      Barra de selección. La pintan todas las secciones SGADD.
      --------------------------------------------------------------------- */
@@ -390,7 +417,7 @@ const SGADD_APP = (function () {
         : ({ femenina: 'Femenina', negra: 'Masculina Negra', naranja: 'Masculina Naranja' })[tira] || tira;
       opts += `<optgroup label="${SGADD_UI.esc(etiqueta)}">` +
         lista.map(x => `<option value="${SGADD_UI.esc(x.id)}" ${x.id === estado.planillaId ? 'selected' : ''} ${x.activo ? '' : 'disabled'}>
-          ${SGADD_UI.esc(x.label)}${x.activo ? '' : ' — sin datos'}</option>`).join('') +
+          ${SGADD_UI.esc(x.label)}${sufijoCategoria(x)}</option>`).join('') +
         `</optgroup>`;
     });
 
@@ -535,7 +562,7 @@ const SGADD_APP = (function () {
     tramoPreferido, recordarTramo,
     estado, inicializar, cargar, reindexar, cambiarPlanilla, cambiarFase, cambiarTorneo, cambiarTramo,
     aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, onCambio,
-    recordarCategoria, categoriaRecordada,
+    recordarCategoria, categoriaRecordada, sufijoCategoria,
     get idx() { return estado.idx; },
   };
 })();

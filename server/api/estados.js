@@ -76,8 +76,10 @@ async function resolver(peticion, deps) {
   }
   /* El mismo guard de los datos: un club pausado o vencido no recibe
      servicio. El admin pasa, para poder revisar (ver `guardSuscripcion`). */
-  if (!esAdmin && mutar.estadoEfectivo(club) !== 'activo') {
-    return { error: error(403, 'SUSCRIPCION', 'El acceso de este club no está activo.') };
+  /* POR CATEGORÍA (punto 60): la U19 pausada no marca estados, Primera sí. */
+  const sus = catalogo.resolver(cascada.catalogo, clubId, slug).suscripcion;
+  if (!esAdmin && !AUTH.tieneAcceso(mutar.estadoEfectivo(sus))) {
+    return { error: error(403, 'SUSCRIPCION', 'El acceso a esta categoría no está activo.') };
   }
   return { clave: claveKV(clubId, slug), esAdmin: esAdmin };
 }

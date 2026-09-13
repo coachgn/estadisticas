@@ -44,6 +44,10 @@ const SGADD_HUB = (function () {
     club: '', nombre: '', liga: '', equipoPropio: '',
     acento: '',           // el color de marca, #rrggbb · vacío = el del JSON, si hay
     categoria: '', label: '',
+    /* EL PLAN Y EL ESTADO DE LA CATEGORÍA (punto 60). `plan` vacío = que
+       herede el del club; `estado` solo se manda al CREAR una categoría:
+       el de una que ya existe se cambia en su fila, con su confirmación. */
+    plan: 'BRONCE', estado: '',
     catElegida: '',       // editando: la categoría existente, o '' para una nueva
     fuente: 'existente',  // 'mantener' | 'existente' | 'nuevo'
     libroDe: '',          // '<club>/<categoria>' de un libro ya cargado
@@ -108,6 +112,7 @@ const SGADD_HUB = (function () {
     if (v.label) c += ' --label ' + q(v.label);
     if (v.liga) c += ' --liga ' + q(v.liga);
     if (v.equipoPropio) c += ' --equipo ' + q(v.equipoPropio);
+    if (v.plan) c += ' --plan ' + q(v.plan);
     return c;
   }
 
@@ -233,7 +238,9 @@ const SGADD_HUB = (function () {
     return out.sort((x, y) => x.texto.localeCompare(y.texto, 'es'));
   }
 
-  const ESTADOS = ['activo', 'pausado', 'inactivo'];
+  /* `prueba` da acceso igual que `activo` (punto 60). La lista es la del
+     motor compartido: hay un test que exige que coincidan. */
+  const ESTADOS = ['activo', 'prueba', 'pausado', 'inactivo'];
   const PLANES = ['BRONCE', 'PLATA', 'ORO'];
 
   /* Los nombres viejos siguen viniendo del catálogo —hay clubes guardados
@@ -272,12 +279,12 @@ const SGADD_HUB = (function () {
    */
   function estadoEfectivo(c, ahora) {
     const e = ESTADOS.indexOf(c && c.estado) !== -1 ? c.estado : 'activo';
-    if (e !== 'activo') return e;
-    if (!c || !c.vence || !/^\d{4}-\d{2}-\d{2}$/.test(c.vence)) return 'activo';
+    if (e !== 'activo' && e !== 'prueba') return e;
+    if (!c || !c.vence || !/^\d{4}-\d{2}-\d{2}$/.test(c.vence)) return e;
     /* Fin del día, no su comienzo: contra la medianoche, el cliente
        figuraría vencido el mismo día que dice su factura. */
     const fin = Date.parse(c.vence + 'T23:59:59.999Z');
-    return (ahora === undefined ? Date.now() : ahora) > fin ? 'vencido' : 'activo';
+    return (ahora === undefined ? Date.now() : ahora) > fin ? 'vencido' : e;
   }
 
   /** Cuántos días faltan. Negativo = ya pasó. `null` si no hay fecha. */
@@ -338,8 +345,15 @@ const SGADD_HUB = (function () {
   }
 
   const TONO_ESTADO = {
-    activo: 'zona-exito', pausado: 'zona-aviso',
+    activo: 'zona-exito', prueba: 'zona-positivo', pausado: 'zona-aviso',
     vencido: 'zona-peligro', inactivo: 'zona-neutro',
+  };
+
+  /* Cómo se dice cada estado en la pantalla. Ningún estado se comunica
+     solo con color (punto 14): el badge lleva la palabra. */
+  const NOMBRE_ESTADO = {
+    activo: 'activa', prueba: 'en prueba', pausado: 'pausada',
+    inactivo: 'dada de baja', vencido: 'vencida',
   };
 
   /* =====================================================================
@@ -363,16 +377,112 @@ const SGADD_HUB = (function () {
      Y `activo` alcanza para lo que el admin mira en esta pantalla: si la
      categoría tiene libro o no. Para saber CUÁL, está `catalogo.js
      listar`, que corre en su máquina y con sus credenciales. */
+  /* =====================================================================
+     PLAN Y ESTADO POR CATEGORÍA (punto 60)
+
+     Cada fila dice qué plan rige y de dónde sale —«ORO» escrito en la
+     categoría o «PLATA · del club»—, y deja cambiarlo ahí mismo. Un
+     «hereda» a la vista es lo que evita el error caro: tocar el plan del
+     club creyendo que se cambia una sola categoría.
+
+     Solo se pintan si el servidor mandó los campos, o sea si mira un admin.
+     ===================================================================== */
+  function tieneSuscripcionPorCategoria(k) {
+    return !!k && (k.planEfectivo !== undefined || k.estadoEfectivo !== undefined);
+  }
+
+  function celdaPlan(c, k) {
+    const yendo = pendiente.club === c.id;
+    const delClub = c.plan ? planCanonico(c.plan) : 'BRONCE';
+    const propio = k.plan ? planCanonico(k.plan) : '';
+    return `<select aria-label="Plan de ${esc(k.label || k.slug)}"
+        onchange="SGADD_HUB.accionCategoria('${esc(c.id)}','${esc(k.slug)}','cambiar_plan',this.value)"
+        ${yendo ? 'disabled' : ''} class="sel-cliente" style="max-width:9rem">
+        <option value=""${propio ? '' : ' selected'}>hereda · ${delClub}</option>
+        ${PLANES.map(p => `<option value="${p}"${propio === p ? ' selected' : ''}>${p}</option>`).join('')}
+      </select>`;
+  }
+
+  function celdaEstado(c, k) {
+    const yendo = pendiente.club === c.id;
+    const ef = k.estadoEfectivo || 'activo';
+    const propio = k.estado || '';
+    const corta = k.estadoDe === 'club' && ef !== 'activo' && ef !== 'prueba';
+    return `<span class="text-[11px] zona-texto ${TONO_ESTADO[ef] || 'zona-neutro'}">● ${esc(NOMBRE_ESTADO[ef] || ef)}</span>
+      ${corta ? '<span class="text-[10px] text-muted">· la corta el club</span>' : ''}
+      <select aria-label="Estado de ${esc(k.label || k.slug)}"
+        onchange="SGADD_HUB.accionCategoria('${esc(c.id)}','${esc(k.slug)}','cambiar_estado',this.value)"
+        ${yendo ? 'disabled' : ''} class="sel-cliente" style="max-width:9rem">
+        <option value=""${propio ? '' : ' selected'}>hereda del club</option>
+        ${ESTADOS.map(e => `<option value="${e}"${propio === e ? ' selected' : ''}>${esc(NOMBRE_ESTADO[e] || e)}</option>`).join('')}
+      </select>`;
+  }
+
+  /* PLAN Y ESTADO VAN EN UNA SEGUNDA LÍNEA de la misma categoría, y no en
+     dos columnas más: la tarjeta del club es angosta en la grilla del hub
+     y con cinco columnas la tabla scrolleaba a lo ancho, dejando el estado
+     —justo lo que hay que ver antes de tocar— cortado fuera de la vista.
+     La línea envuelve sola en cualquier ancho. */
   function filaCategoria(c, k) {
+    const sus = tieneSuscripcionPorCategoria(k);
     return `<tr class="border-t border-hairline/40">
-      <td class="py-1.5 pr-3 font-mono text-[11px] text-muted">${esc(k.slug)}</td>
-      <td class="py-1.5 pr-3 text-xs text-ink">${esc(k.label || '—')}</td>
-      <td class="py-1.5">
+      <td class="pt-1.5 ${sus ? '' : 'pb-1.5 '}pr-3 font-mono text-[11px] text-muted">${esc(k.slug)}</td>
+      <td class="pt-1.5 ${sus ? '' : 'pb-1.5 '}pr-3 text-xs text-ink">${esc(k.label || '—')}</td>
+      <td class="pt-1.5 ${sus ? '' : 'pb-1.5'}">
         ${k.activo
           ? '<span class="text-[11px] zona-texto zona-exito">conectada</span>'
           : '<span class="text-[11px] zona-texto zona-aviso">sin libro</span>'}
       </td>
-    </tr>`;
+    </tr>${sus ? `
+    <tr>
+      <td colspan="3" class="pb-2 pt-1">
+        <div class="flex items-center gap-2 flex-wrap text-[11px]">
+          <span class="text-muted">plan</span>${celdaPlan(c, k)}
+          <span class="text-muted">estado</span>${celdaEstado(c, k)}
+        </div>
+      </td>
+    </tr>` : ''}`;
+  }
+
+  /**
+   * Un cambio de plan o de estado de UNA categoría. Pasa por el mismo
+   * modal que el resto (punto 30) y dice con todas las letras que las
+   * otras categorías del club no se tocan.
+   */
+  function accionCategoria(club, slugCat, accion, valor) {
+    if (pendiente.club) return;
+    const c = (clubesCatalogo().find(x => x.id === club)) || {};
+    const k = (c.categorias || []).find(x => x.slug === slugCat) || {};
+    const nombreK = k.label || slugCat;
+    const cambios = [];
+    if (accion === 'cambiar_plan') {
+      cambios.push({ campo: 'plan', label: 'Plan · ' + nombreK,
+        antes: k.plan ? planCanonico(k.plan) : 'hereda del club (' + (c.plan ? planCanonico(c.plan) : 'BRONCE') + ')',
+        despues: valor ? planCanonico(valor) : 'hereda del club (' + (c.plan ? planCanonico(c.plan) : 'BRONCE') + ')' });
+    } else {
+      cambios.push({ campo: 'estado', label: 'Estado · ' + nombreK,
+        antes: k.estado ? (NOMBRE_ESTADO[k.estado] || k.estado) : 'hereda del club',
+        despues: valor ? (NOMBRE_ESTADO[valor] || valor) : 'hereda del club' });
+    }
+    if (cambios[0].antes === cambios[0].despues) { repintarLista(); return; }
+    if (typeof SGADD_CONFIRMAR === 'undefined') return aplicarClub(club, accion, valor, 'club', slugCat);
+
+    const cortar = accion === 'cambiar_estado' && (valor === 'pausado' || valor === 'inactivo');
+    SGADD_CONFIRMAR.abrir({
+      titulo: (c.nombre || club) + ' · ' + nombreK,
+      aviso: 'Se aplica SOLO a esta categoría: las demás de ' + (c.nombre || club)
+        + ' siguen como están, con los mismos accesos.'
+        + (cortar ? ' Sus usuarios dejan de ver esta categoría en su próxima carga.' : ''),
+      confirmar: 'Guardar cambios',
+      cambios: cambios,
+      alcance: SGADD_CONFIRMAR.opcionesAlcance ? {
+        opciones: SGADD_CONFIRMAR.opcionesAlcance({ clubes: clubesCatalogo(), club: club,
+          slug: slugCat, accion: accion }),
+        sugerido: 'club' } : null,
+      alConfirmar: (alcance) => aplicarClub(club, accion, valor, alcance, slugCat),
+      /* Cancelar deja el desplegable en lo que tenía: se repinta. */
+      alCancelar: repintarLista,
+    });
   }
 
 /* =====================================================================
@@ -661,7 +771,11 @@ const SGADD_HUB = (function () {
    * seguir y sería una fila muerta permanente en cada tarjeta.
    */
   function bloqueOro(c) {
-    if (planCanonico(c.plan) !== 'ORO') return '';
+    /* El servicio ORO se entrega si el club O ALGUNA de sus categorías lo
+       tiene (punto 60): el informe de scouters es del cliente. */
+    const hayOro = planCanonico(c.plan) === 'ORO'
+      || (c.categorias || []).some(k => k.planEfectivo && planCanonico(k.planEfectivo) === 'ORO');
+    if (!hayOro) return '';
     const pj = pjDelClub(c);
     const ci = ciclo(c, pj);
     const yendo = pendiente.club === c.id;
@@ -708,7 +822,7 @@ const SGADD_HUB = (function () {
       <div class="flex items-center gap-2 flex-wrap text-[11px]">
         <span class="zona-texto ${TONO_ESTADO[ef] || 'zona-neutro'}">● ${esc(ef)}</span>
         <span class="text-muted">·</span>
-        <span class="text-muted">plan</span>
+        <span class="text-muted" title="Lo heredan las categorías que no tienen un plan propio">plan del club</span>
         <select onchange="SGADD_HUB.accionClub('${esc(c.id)}','cambiar_plan',this.value)"
           ${yendo ? 'disabled' : ''} class="sel-cliente" style="max-width:8rem">
           ${PLANES.map(p => `<option value="${p}"${(planCanonico(c.plan) === p) ? ' selected' : ''}>${p}</option>`).join('')}
@@ -732,10 +846,11 @@ const SGADD_HUB = (function () {
 
       <div class="flex items-center gap-2 flex-wrap mt-2">
         ${(c.estado || 'activo') === 'activo' ? btn('pausar', 'Pausar') : btn('reactivar', 'Reactivar')}
+        ${(c.estado || 'activo') === 'activo' ? btn('probar', 'Pasar a prueba') : ''}
         ${(c.estado || 'activo') !== 'inactivo' ? btn('desactivar', 'Dar de baja') : ''}
         <span class="text-[10px] text-muted">
           ${(c.estado || 'activo') === 'activo'
-            ? 'Pausar conserva todo y solo corta el acceso.'
+            ? 'Pausar el CLUB corta todas sus categorías y conserva todo. Para una sola, usá su fila.'
             : 'La configuración está intacta: reactivar es un click.'}</span>
       </div>
       ${pendiente.clubError === c.id && pendiente.error
@@ -846,6 +961,50 @@ const SGADD_HUB = (function () {
     return { sheetId: idDeLibro(alta.sheet) };
   }
 
+  /* EL PLAN DE LA CATEGORÍA, en el mismo formulario del alta (punto 60):
+     dar de alta es «club + categoría + plan», y un plan que se asigna
+     después en otra tarjeta es el paso que se olvida. */
+  function selectPlanAlta(clubEd) {
+    const delClub = clubEd && clubEd.plan ? planCanonico(clubEd.plan) : 'BRONCE';
+    return `<label class="block">
+      <span class="${ROTULO}">Plan de la categoría</span>
+      <select id="alta-plan" onchange="SGADD_HUB.elegirPlanAlta(this.value)" class="${CLASE_SELECT}">
+        <option value=""${alta.plan ? '' : ' selected'}>Hereda el del club · ${delClub}</option>
+        ${PLANES.map(p => `<option value="${p}"${planCanonico(alta.plan) === p && alta.plan ? ' selected' : ''}>${p}</option>`).join('')}
+      </select>
+      <span id="alta-planAyuda" class="block text-[10px] text-muted mt-1">${esc(QUE_INCLUYE[alta.plan ? planCanonico(alta.plan) : delClub] || '')}</span>
+    </label>`;
+  }
+
+  /* Solo al CREAR una categoría: la de una que ya existe se cambia en su
+     fila, con su propia confirmación. */
+  function selectEstadoAlta() {
+    return `<label class="block">
+      <span class="${ROTULO}">Arranca</span>
+      <select id="alta-estado" onchange="SGADD_HUB.elegirEstadoAlta(this.value)" class="${CLASE_SELECT}">
+        <option value=""${alta.estado ? '' : ' selected'}>Activa</option>
+        <option value="prueba"${alta.estado === 'prueba' ? ' selected' : ''}>En prueba (demo)</option>
+      </select>
+      <span class="block text-[10px] text-muted mt-1">En prueba tiene el mismo acceso; queda marcada para saber a quién llamar cuando termine.</span>
+    </label>`;
+  }
+
+  function elegirPlanAlta(v) {
+    alta.plan = String(v || '');
+    guardado.estado = null;
+    const clubEd = alta.modo !== 'nuevo' ? clubesCatalogo().find(c => c.id === alta.modo) : null;
+    const delClub = clubEd && clubEd.plan ? planCanonico(clubEd.plan) : 'BRONCE';
+    const ayuda = (typeof document !== 'undefined') && document.getElementById('alta-planAyuda');
+    if (ayuda) ayuda.textContent = QUE_INCLUYE[alta.plan ? planCanonico(alta.plan) : delClub] || '';
+    refrescarEstado();
+  }
+
+  function elegirEstadoAlta(v) {
+    alta.estado = v === 'prueba' ? 'prueba' : '';
+    guardado.estado = null;
+    refrescarEstado();
+  }
+
   function bloqueAlta() {
     const cs = clubesCatalogo();
     const editando = alta.modo !== 'nuevo';
@@ -910,6 +1069,8 @@ const SGADD_HUB = (function () {
               : 'Se completa solo. Va sin el año: la categoría sigue la temporada que viene.',
             { placeholder: 'sud-america-primera', mono: true, soloLectura: catFija,
               invalido: !!alta.categoria && !idValido(alta.categoria) })}
+          ${selectPlanAlta(clubEd)}
+          ${catFija ? '' : selectEstadoAlta()}
         </div>
       </fieldset>
 
@@ -1097,7 +1258,12 @@ const SGADD_HUB = (function () {
          «Sud America LP - MM» pegado a mano entra igual que elegido. */
       equipoPropio: alta.equipoPropio ? claveEq(alta.equipoPropio) : '',
       categoria: alta.categoria, label: alta.label,
-    }, alta.fuente === 'mantener' ? {} : intencionLibro(), color);
+      /* Siempre viaja: vacío es «que herede», y el servidor lo distingue
+         de no haberlo mandado. */
+      plan: alta.plan || '',
+    }, alta.fuente === 'mantener' ? {} : intencionLibro(), color,
+    /* El estado inicial, solo para una categoría que se CREA. */
+    (!alta.catElegida && alta.estado) ? { estado: alta.estado } : {});
   }
 
   /** Qué cambia, en castellano, para el modal de confirmación. */
@@ -1114,6 +1280,11 @@ const SGADD_HUB = (function () {
       ['Categoría', k ? (k.label || k.slug) + ' (' + k.slug + ')' : '', i.label + ' (' + i.categoria + ')'],
     ];
     if (libroNuevo) filas.push(['Libro', k ? (k.activo ? 'el que tiene' : 'sin libro') : '', libroNuevo]);
+    const nomPlan = (p) => p ? planCanonico(p) : 'hereda del club';
+    if (i.plan !== undefined && (k ? nomPlan(k.plan) : '') !== nomPlan(i.plan)) {
+      filas.push(['Plan', k ? nomPlan(k.plan) : '', nomPlan(i.plan)]);
+    }
+    if (i.estado) filas.push(['Estado', '', NOMBRE_ESTADO[i.estado] || i.estado]);
     if (i.acento !== undefined && String(i.acento || '') !== String(c.acento || '')) {
       filas.push(['Color de marca', c.acento || '', i.acento || 'el de su JSON, o el del panel']);
     }
@@ -1214,6 +1385,7 @@ const SGADD_HUB = (function () {
     if (accion === 'cambiar_plan') despues.plan = valor;
     if (accion === 'renovar') despues.vence = valor || '';
     if (accion === 'pausar') despues.estado = 'pausado';
+    if (accion === 'probar') despues.estado = 'prueba';
     if (accion === 'reactivar') despues.estado = 'activo';
     if (accion === 'desactivar') despues.estado = 'inactivo';
 
@@ -1236,14 +1408,22 @@ const SGADD_HUB = (function () {
   }
 
   /** La petición de verdad. Solo la llama el modal, o el fallback sin él. */
-  function aplicarClub(club, accion, valor, alcance) {
+  function aplicarClub(club, accion, valor, alcance, categoria) {
     if (pendiente.club) return;
     pendiente.club = club; pendiente.error = ''; pendiente.clubError = null;
     repintarLista();
 
     const cuerpo = { accion: accion, club: club, alcance: alcance || 'club' };
+    if (categoria) cuerpo.categoria = categoria;
     if (accion === 'cambiar_plan') cuerpo.plan = valor;
     if (accion === 'renovar') cuerpo.vence = valor || '';
+    if (accion === 'cambiar_estado') {
+      /* «Hereda del club» no es un estado: es reactivar la categoría, que
+         le borra el suyo. Y un `activo` elegido a mano se guarda como tal:
+         así un club en prueba puede tener una categoría que ya paga. */
+      if (!valor) { cuerpo.accion = 'reactivar'; }
+      else { cuerpo.estado = valor; if (valor === 'activo') cuerpo.heredar = false; }
+    }
 
     SGADD_DATA.guardarCatalogo(cuerpo).then((r) => {
       pendiente.club = null;
@@ -1414,7 +1594,8 @@ const SGADD_HUB = (function () {
 
   function reiniciarAlta() {
     Object.assign(alta, { modo: 'nuevo', club: '', nombre: '', liga: '', equipoPropio: '',
-      acento: '', categoria: '', label: '', catElegida: '', fuente: 'existente', libroDe: '', sheet: '' });
+      acento: '', categoria: '', label: '', catElegida: '', fuente: 'existente', libroDe: '', sheet: '',
+      plan: 'BRONCE', estado: '' });
     colorAyuda.texto = '';
     alta.tocado = { club: false, categoria: false };
     olvidarLibro();
@@ -1423,6 +1604,7 @@ const SGADD_HUB = (function () {
 
   function ponerCategoria(k) {
     alta.catElegida = k.slug; alta.categoria = k.slug; alta.label = k.label || '';
+    alta.plan = k.plan ? planCanonico(k.plan) : ''; alta.estado = '';
     alta.tocado.categoria = true;
     /* Con libro, lo natural al editar es conservarlo. Sin libro —la que
        "viene en camino"— hay que elegirle uno. */
@@ -1453,6 +1635,9 @@ const SGADD_HUB = (function () {
       ponerCategoria(k);
     } else {
       alta.catElegida = ''; alta.categoria = ''; alta.label = '';
+      /* EXPANDIR EL CLUB: la categoría nueva arranca heredando el plan del
+         club, que es lo más probable; el admin la sube o la baja acá. */
+      alta.plan = ''; alta.estado = '';
       alta.tocado.categoria = false; alta.fuente = 'existente'; alta.libroDe = '';
       olvidarLibro();
     }
@@ -1522,6 +1707,9 @@ const SGADD_HUB = (function () {
     estadoEfectivo, diasPara, planCanonico, ciclo, ESTADOS, PLANES,
     QUE_INCLUYE, PARTIDOS_POR_CICLO,
     html, bloqueAlta, campoAlta, guardar, accionClub, alta, guardado, pendiente,
+    /* plan y estado por categoría (punto 60) */
+    accionCategoria, filaCategoria, celdaPlan, celdaEstado, NOMBRE_ESTADO, TONO_ESTADO,
+    selectPlanAlta, elegirPlanAlta, elegirEstadoAlta,
     /* el alta */
     slug, idCategoriaSugerido, idDeLibro, sugerirEquipo, librosDisponibles,
     intencionAlta, cambiosAlta, estadoAlta, zonaEquipo, libro,

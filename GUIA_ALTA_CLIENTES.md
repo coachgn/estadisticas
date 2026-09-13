@@ -37,6 +37,10 @@ próxima carga.
 3. **Paso 2 · La categoría**
    - Escribí cómo se llama la categoría (ej. *Primera 2026*). Su ID también se
      completa solo.
+   - En **«Plan de la categoría»** elegí Bronce, Plata u Oro. **El plan es de
+     la categoría, no del club:** si después le sumás la U23, puede tener otro.
+   - En **«Arranca»** dejá *Activa*, o elegí *En prueba (demo)* si todavía no
+     paga: tiene el mismo acceso y queda marcada para saber a quién llamar.
 
 4. **Paso 3 · El libro y el equipo**
    - Si juega en el mismo torneo que otro cliente: elegí **«Usar un libro ya cargado»**
@@ -55,8 +59,9 @@ próxima carga.
    **heredó** (ver abajo).
 
 7. **Falta darle acceso a las personas.** En la tarjeta del club, abrí
-   **«Quiénes pueden entrar»** y cargá sus mails. Ahí mismo se elige el plan
-   (Bronce, Plata u Oro): cada plan permite una cantidad de mails distinta.
+   **«Quiénes pueden entrar»** y cargá sus mails. Los mismos mails entran a
+   todas las categorías del club, y cuántos se pueden cargar lo decide el
+   plan **más alto** que el club tiene activo.
 
 ---
 
@@ -98,6 +103,39 @@ categoría): los usan los links y los accesos que el club ya tiene.
 Igual que modificar, pero en **«Categoría a editar»** elegí **«＋ Agregar una
 categoría nueva»**, y en el paso 3 elegí su libro (uno ya cargado o uno nuevo).
 
+- Elegí su **«Plan de la categoría»**. Si lo dejás en *Hereda el del club*,
+  toma el plan general del club.
+- **No se toca nada de lo que el club ya tiene:** sus mails y claves, las
+  categorías que ya tenía con sus planes, las zonas, y los estados de jugador
+  que marcó el cuerpo técnico. Entran con el mismo usuario y ven la categoría
+  nueva en el selector.
+
+---
+
+## Cambiar el plan o pausar UNA categoría
+
+En la tarjeta del club, cada categoría tiene su línea con dos desplegables:
+
+| Desplegable | Qué hace |
+|---|---|
+| **plan** | El plan de esa categoría. *hereda · PLATA* quiere decir que no tiene uno propio y usa el del club. |
+| **estado** | *activa*, *en prueba*, *pausada* o *dada de baja*. *hereda del club* la deja como esté el club. |
+
+Se confirma en el resumen, que dice **«Se aplica SOLO a esta categoría»**. Si
+cancelás, el desplegable vuelve a lo que tenía.
+
+- **Pausar una categoría** corta solo esa: el club sigue entrando a las otras,
+  y el selector del cliente la muestra como *pausada*.
+- **Pausar el club** (los botones de abajo de la tarjeta) corta **todas** sus
+  categorías. Lo mismo si vence.
+- **«Pasar a prueba»** pone al club entero en prueba: sigue teniendo acceso.
+- El **plan del club** es el que heredan las categorías que no tienen uno
+  propio. Cambiarlo no toca las que ya tienen el suyo.
+
+El cliente ve el cambio en su próxima carga: el selector de categoría dice el
+plan de cada una (ej. *Primera 2026 · ORO*) y el menú ofrece lo que tiene la
+categoría que está mirando.
+
 ---
 
 ## ¿En qué clientes se aplica un cambio?
@@ -112,7 +150,8 @@ querés aplicar este cambio?»**:
 | **Todos los clientes del sistema** | Lo aplica a todos los clientes. |
 
 Las opciones que no corresponden aparecen en gris con el motivo. Por
-ejemplo, **pausar** o **dar de baja** se hace siempre de a un cliente, y los
+ejemplo, **pausar**, **dar de baja** o cambiar el **estado** de una categoría
+se hace siempre de a un cliente, y los
 **partidos sin estadísticas** no se pueden llevar a todos (en otro torneo esos
 equipos no existen). El botón dice a cuántos clientes llega
 (ej. *Publicar · 4 clientes*).
@@ -156,4 +195,5 @@ técnico, que lo guarda en el repositorio. El cliente no lo necesita.
 - **El calendario del torneo** (pestaña Torneo): no se publica desde acá; se
   exporta y lo guarda el equipo técnico.
 - **Borrar un cliente.** Para cortarle el acceso se usa **Pausar** o **Dar de
-  baja** en su tarjeta: los dos conservan toda la configuración.
+  baja** en su tarjeta: los dos conservan toda la configuración. Para cortar
+  una sola categoría, usá su desplegable de **estado**.

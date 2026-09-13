@@ -46,11 +46,18 @@ const SHEET = /^[A-Za-z0-9_-]{20,}$/;
    `inactivo` · dado de baja. Igual de bloqueado, pero dice otra cosa: uno
      es temporal y el otro es el final de la relacion. Se separan porque el
      admin necesita saber a cual llamar para renovar.
+   `prueba` · la demo o el periodo de prueba. DA ACCESO igual que `activo`
+     pero no es un cliente que ya paga: es al que hay que llamar cuando
+     termina.
 
    NINGUNO BORRA DATOS. La baja destructiva sigue siendo `baja`, que saca
    la categoria del catalogo; esto solo cambia un campo.
+
+   Y DESDE EL 2026-09-13 SE DECLARAN TAMBIEN POR CATEGORIA (punto 60): la
+   lista y la cascada viven en `sgadd-auth.js`, que es lo que comparten el
+   Panel Master y este servidor.
    ===================================================================== */
-const ESTADOS = ['activo', 'pausado', 'inactivo'];
+const ESTADOS = AUTH.ESTADOS_SUSCRIPCION.slice();
 
 /* Los tres planes, en orden. ORO hereda todo PLATA e incluye ademas el
    analisis de scouters de MotorStats — que no es un modulo del panel sino
@@ -74,10 +81,7 @@ const FECHA = /^\d{4}-\d{2}-\d{2}$/;
  * de lo que dice su factura. Se le suma el dia entero.
  */
 function vencido(vence, ahora) {
-  if (!vence || !FECHA.test(String(vence))) return false;   // sin fecha no vence
-  const fin = Date.parse(vence + 'T23:59:59.999Z');
-  if (!isFinite(fin)) return false;
-  return (ahora === undefined ? Date.now() : ahora) > fin;
+  return AUTH.suscripcionVencida(vence, ahora);
 }
 
 /**
@@ -90,10 +94,9 @@ function vencido(vence, ahora) {
  * que no corrio deja el estado mintiendo.
  */
 function estadoEfectivo(club, ahora) {
-  const c = club || {};
-  const e = ESTADOS.indexOf(c.estado) !== -1 ? c.estado : 'activo';
-  if (e !== 'activo') return e;
-  return vencido(c.vence, ahora) ? 'vencido' : 'activo';
+  /* La regla vive en el motor compartido (`AUTH.estadoSuscripcion`): el
+     Panel Master la pinta con la misma función que acá se hace valer. */
+  return AUTH.estadoSuscripcion(club, ahora);
 }
 
 function copiar(cat) { return JSON.parse(JSON.stringify(cat || {})); }
@@ -261,7 +264,9 @@ function objetivos(cat, d, accion, alcance) {
   if (alcance === 'todos') {
     return { lista: Object.keys(cat).filter(id => id !== d.club).map(id => ({ club: id, slug: null })) };
   }
-  const deClub = ACCIONES_DE_CLUB.indexOf(accion) !== -1;
+  /* Un plan que se cambia en UNA categoría ya no es del club: se lleva a
+     las categorías que leen ese libro, no a los clubes enteros. */
+  const deClub = ACCIONES_DE_CLUB.indexOf(accion) !== -1 && !d.categoria;
   const cats = cat[d.club].categorias || {};
   const slugs = Object.keys(cats);
   const base = [d.libroDeCategoria, d.categoria].filter(s => s && cats[s])[0]
@@ -294,7 +299,7 @@ function datosPara(cat, d, accion, o) {
   const base = { club: o.club, ahora: d.ahora };
   const club = cat[o.club] || {};
   const unica = Object.keys(club.categorias || {}).length <= 1;
-  if (accion === 'cambiar_plan') return Object.assign(base, { plan: d.plan });
+  if (accion === 'cambiar_plan') return Object.assign(base, { plan: d.plan, categoria: o.slug || null });
   if (accion === 'renovar') return Object.assign(base, { vence: d.vence });
   if (accion === 'partidos_manuales') {
     /* Si ese club guardó sus partidos con la clave vieja, se migra en el
@@ -348,6 +353,15 @@ function alta(cat, d) {
   if (v.acento !== undefined && v.acento !== null && v.acento !== '' && !HEX.test(String(v.acento))) {
     return malo('El color de marca va como #rrggbb, por ejemplo #0d5e27.');
   }
+  /* El plan y el estado de la CATEGORÍA que se da de alta o se edita. Un
+     valor que no se reconoce se RECHAZA en vez de caer al más bajo: acá lo
+     escribe el admin, y un typo silencioso le bajaría el plan a un cliente
+     que paga. Vacío es explícito y significa «que herede del club». */
+  const planCat = planValido(v.plan);
+  if (planCat === false) return malo('Plan desconocido: ' + v.plan + '. Va ' + PLANES.join(', ') + '.');
+  if (v.estado !== undefined && v.estado !== null && v.estado !== '' && ESTADOS.indexOf(v.estado) === -1) {
+    return malo('Estado desconocido: ' + v.estado + '. Va ' + ESTADOS.join(', ') + '.');
+  }
 
   let sheetId = '';
   if (v.libroDe) {
@@ -396,6 +410,13 @@ function alta(cat, d) {
      decisión sobre el nivel. */
   nuevo[v.club].categorias[v.categoria] = Object.assign({}, previa || {},
     { label: label, sheetId: sheetId });
+  /* Sin el campo en el pedido NO se toca: editar la etiqueta desde una
+     pantalla vieja no puede borrarle el plan a la categoría. */
+  const kNueva = nuevo[v.club].categorias[v.categoria];
+  if (planCat === '') delete kNueva.plan;
+  else if (planCat) kNueva.plan = planCat;
+  if (v.estado === '' || v.estado === null) delete kNueva.estado;
+  else if (v.estado !== undefined) kNueva.estado = v.estado;
 
   /* EL COLOR DE MARCA viaja con el club y lo publica el catálogo. Un
      cliente sin `clubes/<id>.json` quedaba con el naranja de Reconquista,
@@ -509,13 +530,50 @@ function informe(cat, d) {
   return { ok: true, catalogo: nuevo };
 }
 
-/** Cambia el estado del club. `pausar` y `reactivar` son la misma cosa. */
+/**
+ * Un plan que escribió el admin: el canónico, '' para «que herede», `null`
+ * si no vino, y `false` si no se reconoce.
+ */
+function planValido(p) {
+  if (p === undefined || p === null) return null;
+  const crudo = String(p).trim().toUpperCase();
+  if (!crudo) return '';
+  const canon = ALIAS_PLAN[crudo] || crudo;
+  return PLANES.indexOf(canon) !== -1 ? canon : false;
+}
+
+/**
+ * La categoría de un pedido, si viene. `undefined` = el cambio es del club;
+ * `null` = pidió una categoría que ese club no tiene.
+ */
+function categoriaDe(club, v) {
+  if (!v.categoria) return undefined;
+  const k = club.categorias && club.categorias[String(v.categoria)];
+  return k || null;
+}
+
+/**
+ * Cambia el estado del club, o el de UNA categoría.
+ *
+ * CON `categoria` SE ESCRIBE UN SOLO SLOT (punto 60): pausar la U19 no
+ * toca Primera ni el estado del club. Reactivar una categoría BORRA su
+ * estado en vez de escribir `activo`: así vuelve a heredar el del club, y
+ * un club en prueba no queda con una categoría que diga «activo» sin que
+ * nadie lo haya decidido.
+ */
 function estado(cat, d) {
   const v = d || {};
   const nuevo = copiar(cat);
   if (!nuevo[v.club]) return malo('Ese club no esta en el catalogo.');
   if (ESTADOS.indexOf(v.estado) === -1) {
     return malo('Estado desconocido: ' + v.estado + '. Va ' + ESTADOS.join(', ') + '.');
+  }
+  const k = categoriaDe(nuevo[v.club], v);
+  if (k === null) return malo('Ese club no tiene la categoría «' + v.categoria + '».');
+  if (k) {
+    if (v.estado === 'activo' && v.heredar !== false) delete k.estado;
+    else k.estado = v.estado;
+    return { ok: true, catalogo: nuevo, categoria: v.categoria };
   }
   nuevo[v.club].estado = v.estado;
   return { ok: true, catalogo: nuevo };
@@ -533,13 +591,18 @@ function plan(cat, d) {
   const v = d || {};
   const nuevo = copiar(cat);
   if (!nuevo[v.club]) return malo('Ese club no esta en el catalogo.');
-  const crudo = String(v.plan || '').trim().toUpperCase();
-  const p = ALIAS_PLAN[crudo] || crudo;
-  if (PLANES.indexOf(p) === -1) {
+  const p = planValido(v.plan);
+  const k = categoriaDe(nuevo[v.club], v);
+  if (k === null) return malo('Ese club no tiene la categoría «' + v.categoria + '».');
+  /* EL PLAN DE UNA CATEGORÍA (punto 60). Vacío la devuelve a heredar el
+     del club: es la única forma de deshacer sin adivinar cuál tenía. */
+  if (k && p === '') { delete k.plan; return { ok: true, catalogo: nuevo, categoria: v.categoria }; }
+  if (!p) {
     /* Un plan que no se reconoce NO cae a PRO. Es la misma regla que el
        frontend: un typo no puede regalar el modulo que se cobra aparte. */
     return malo('Plan desconocido: ' + v.plan + '. Va ' + PLANES.join(', ') + '.');
   }
+  if (k) { k.plan = p; return { ok: true, catalogo: nuevo, categoria: v.categoria }; }
   nuevo[v.club].plan = p;
   return { ok: true, catalogo: nuevo };
 }
@@ -879,6 +942,10 @@ function aplicar(vigente, accion, datos, validar) {
     pausar: (c, d) => estado(c, Object.assign({}, d, { estado: 'pausado' })),
     reactivar: (c, d) => estado(c, Object.assign({}, d, { estado: 'activo' })),
     desactivar: (c, d) => estado(c, Object.assign({}, d, { estado: 'inactivo' })),
+    /* La prueba y el cambio genérico (el desplegable de estado de una
+       categoría en el Panel Master). */
+    probar: (c, d) => estado(c, Object.assign({}, d, { estado: 'prueba' })),
+    cambiar_estado: estado,
     cambiar_plan: plan,
     informe_entregado: informe,
     renovar: renovar,
@@ -945,7 +1012,7 @@ function aplicar(vigente, accion, datos, validar) {
 
 module.exports = {
   zonas, partidosManuales, alta, baja, estado, plan, renovar, informe, ciclo, aplicar,
-  hermanasDeLibro, heredarDelLibro, unirManuales, claveManual, zonasDe, manualesDe,
+  hermanasDeLibro, heredarDelLibro, unirManuales, claveManual, zonasDe, manualesDe, planValido,
   objetivos, datosPara, HEX,
   librosPerdidos, ALIAS_PLAN, PARTIDOS_POR_CICLO,
   vencido, estadoEfectivo, ESTADOS, PLANES, ID, SHEET, FECHA };
