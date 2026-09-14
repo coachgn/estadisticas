@@ -22,7 +22,7 @@ node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 318 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
-node test-boot.js          # 169 tests · arranque por club, sintaxis de los módulos, carteles de espera
+node test-boot.js          # 170 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 283 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
@@ -72,6 +72,8 @@ node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: 
                            #             equipo, vencimiento y ciclo ORO por categoría
 node test-glosario.js      #  26 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
+node test-pbp.js           #  58 tests · la capa de laboratorio de play-by-play: el catálogo,
+                           #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -83,7 +85,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5779 tests en total. Todos tienen que dar verde antes de commitear.**
+**5838 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -8893,3 +8895,85 @@ cliente a esas categorías sigue recortando con «RECONQUISTA A» hasta que se
 declare el suyo, desde el Panel Master o con:
 
     node server/bin/catalogo.js equipo --club reconquista --categoria reconquista-u23 --equipo RECONQUISTA
+
+---
+
+## 62. LA CAPA DE LABORATORIO · play-by-play de Jujuy (2026-09-14)
+
+Quintetos, dúos y tríos, quinteto inicial y de cierre, clutch y mapa de tiro
+calibrado, **de los 17 equipos de la Conferencia Norte 25/26**, para que Jujuy
+lo pruebe antes de que sea producto. `test-pbp.js` fija todo lo de acá.
+
+### Los datos NO salen del libro
+
+Los arma `motorstats-ingestion` (en `Documents`, fuera de los dos repos) desde
+el play-by-play oficial de Gesdeportiva, partido por partido, y **solo entra un
+partido que valida**:
+
+- cinco jugadores en cancha en todo momento;
+- minutos jugador = 5 × tiempo de juego;
+- marcador del PBP = marcador oficial.
+
+Fase regular: 266 de 272 partidos validan; Jujuy, 32 de 32. Los 6 excluidos
+(marcador oficial distinto, o un cambio mal cargado) viajan en el paquete con
+su motivo.
+
+```
+motorstats-ingestion/exportar-web.js       → web/<equipo>.json   (~23 KB c/u)
+server/bin/pbp.js subir [--confirmar]      → Upstash · sgadd:pbp:<club>:<categoría>
+GET /api/v1/pbp/:club/:categoria?equipo=   → js/sgadd-pbp.js
+```
+
+### Una CAPA, no un plan
+
+Se declara como `categorias[slug].laboratorio: ["pbp"]`, con el vocabulario
+cerrado de `SGADD_AUTH.CAPAS_LABORATORIO`:
+
+- **Por categoría y sin herencia del club**: una prueba se abre de a una.
+- **Una capa desconocida se rechaza** al escribirla —un typo dejaría la prueba
+  apagada sin que nadie lo note— y se ignora al leerla.
+- **Vacío borra el campo**: la categoría vuelve a ser exactamente la de antes.
+- `catalogo.js laboratorio --club --categoria --capas pbp` pasa por
+  `mutar.aplicar` (`cambiar_laboratorio`, con alcance solo `club`).
+- **Pasar a producto** es mover la regla de `laboratorio` a `plan`. No hay otro
+  lugar que tocar.
+
+### Dónde vive el guard
+
+En `server/api/pbp.js`, con archivo propio y hash propio: fuera del catálogo,
+como los estados del punto 57. **Solo lee**; escribir es tarea del CLI.
+
+- **Un cliente** lee solo categorías de SU club, activas y con la capa. Dentro
+  de esa categoría puede pedir **cualquier equipo**, porque el análisis de un
+  rival es justamente el scouting que la capa prueba.
+- **El admin pasa sin la capa**, para revisar los datos antes de habilitarla.
+- **Pide un solo campo** (`HMGET`). Con Upstash caído contesta 503, nunca «no
+  hay datos».
+
+`/equipos` declara `alcance.capas`, y el panel muestra dos cosas solo si la
+capa viene ahí:
+
+- la **pestaña Quintetos** en la ficha del equipo;
+- la **card del rival** en el informe de Scouting.
+
+**Sin la capa no aparecen, ni siquiera grises**: le dirían a cada club que le
+falta algo que no existe para él. La pestaña y la card pintan un lugar vacío, y
+`SGADD_PBP.montarPendientes` pide el paquete después de pintar la sección.
+
+### Lo que hay que respetar al tocarlo
+
+- **NET por posesión primero.** PLAYS no descuenta el rebote ofensivo, así que
+  castiga al quinteto que gana el cristal: el titular de Jujuy da +42 en cancha,
+  −1,4 por PLAYS y **+8,5 por posesión**. Se muestran las dos varas, rotuladas.
+- **La muestra corta se marca, no se borra** (punto 4): va con `~` y atenuada.
+  Es muestra corta un quinteto con menos de 15 minutos juntos, un trío con
+  menos de 40 y un dúo con menos de 60.
+- **Todo lo del paquete se escapa**: los nombres vienen de un sitio de
+  terceros.
+- **Clutch** son los últimos 5 minutos del 4.º cuarto o del suplementario, con
+  diferencia de 5 o menos medida **antes** de cada acción. Usos = PLAYS del
+  motor.
+- **Coordenadas de tiro:** son porcentajes de un SVG de 640 × 380 que la página
+  dibuja inline. La calibración toma el aro como origen y fija el arco en
+  6,75 m y la esquina en 6,60 m; con eso el 99,9 % de los triples queda detrás
+  de la línea FIBA.

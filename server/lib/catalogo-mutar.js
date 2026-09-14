@@ -607,6 +607,39 @@ function equipo(cat, d) {
 }
 
 /**
+ * LAS CAPAS DE LABORATORIO de una categoría (punto 62).
+ *
+ * Solo por categoría —una prueba se abre de a una— y con el vocabulario
+ * cerrado de `AUTH.CAPAS_LABORATORIO`: una capa desconocida se RECHAZA en
+ * vez de guardarse, porque la escribió el admin y un typo dejaría la
+ * prueba apagada sin que nadie lo note. Vacío borra el campo: la categoría
+ * vuelve a ser exactamente la de antes.
+ *
+ * `capas` acepta un array o un texto separado por comas.
+ */
+function laboratorio(cat, d) {
+  const v = d || {};
+  const nuevo = copiar(cat);
+  if (!nuevo[v.club]) return malo('Ese club no esta en el catalogo.');
+  if (!v.categoria) return malo('Las capas de laboratorio se habilitan por categoría: falta la categoría.');
+  const k = categoriaDe(nuevo[v.club], v);
+  if (!k) return malo('Ese club no tiene la categoría «' + v.categoria + '».');
+  const crudo = Array.isArray(v.capas) ? v.capas : String(v.capas == null ? '' : v.capas).split(',');
+  const capas = [];
+  for (let i = 0; i < crudo.length; i++) {
+    const id = String(crudo[i] || '').trim().toLowerCase();
+    if (!id) continue;
+    if (!AUTH.CAPAS_LABORATORIO[id]) {
+      return malo('Capa de laboratorio desconocida: «' + id + '». Van: ' + Object.keys(AUTH.CAPAS_LABORATORIO).join(', ') + '.');
+    }
+    if (capas.indexOf(id) === -1) capas.push(id);
+  }
+  if (capas.length) k.laboratorio = capas;
+  else delete k.laboratorio;
+  return { ok: true, catalogo: nuevo, categoria: v.categoria };
+}
+
+/**
  * Un plan que escribió el admin: el canónico, '' para «que herede», `null`
  * si no vino, y `false` si no se reconoce.
  */
@@ -1032,6 +1065,7 @@ function aplicar(vigente, accion, datos, validar) {
     cambiar_estado: estado,
     cambiar_plan: plan,
     cambiar_equipo: equipo,
+    cambiar_laboratorio: laboratorio,
     informe_entregado: informe,
     renovar: renovar,
     zonas: zonas,
@@ -1096,7 +1130,7 @@ function aplicar(vigente, accion, datos, validar) {
 }
 
 module.exports = {
-  zonas, partidosManuales, alta, baja, estado, plan, equipo, renovar, informe, ciclo, aplicar,
+  zonas, partidosManuales, alta, baja, estado, plan, equipo, laboratorio, renovar, informe, ciclo, aplicar,
   hermanasDeLibro, heredarDelLibro, unirManuales, claveManual, zonasDe, manualesDe, planValido,
   objetivos, datosPara, HEX,
   librosPerdidos, ALIAS_PLAN, PARTIDOS_POR_CICLO,

@@ -490,6 +490,30 @@ const SGADD_DATA = (function () {
     return postConToken(rutaEstados(club, slug), { cambios: cambios || {} }, opciones);
   }
 
+  /* =====================================================================
+     ANALÍTICA DE PLAY-BY-PLAY · capa de laboratorio (punto 62)
+
+     Solo lectura. LANZA con el motivo del servidor: «no está habilitado»,
+     «todavía no hay análisis» y «no se pudo leer» son tres cosas distintas
+     y la pantalla las dice tal cual.
+     ===================================================================== */
+  async function leerPbp(club, slug, equipo, opciones) {
+    const o = opciones || {};
+    if (!estadosCompartibles()) throw Object.assign(new Error('Sin backend o sin sesión.'), { codigo: 'SIN_API' });
+    const traer = o.fetch || fetch;
+    const r = await traer(baseApi + '/api/v1/pbp/' + encodeURIComponent(club) + '/' + encodeURIComponent(slug)
+      + (equipo ? '?equipo=' + encodeURIComponent(equipo) : ''), {
+      headers: { Authorization: 'Bearer ' + auth.token() },
+    });
+    const cuerpo = await r.json().catch(() => null);
+    if (!r.ok || !cuerpo || !cuerpo.ok) {
+      const e = new Error((cuerpo && cuerpo.mensaje) || ('El servidor respondió ' + r.status));
+      e.codigo = (cuerpo && cuerpo.codigo) || ('HTTP_' + r.status);
+      throw e;
+    }
+    return cuerpo;
+  }
+
   function login(datos, opciones) { return postSinToken('/api/v1/login', datos, opciones); }
   function fijarClave(datos, opciones) { return postSinToken('/api/v1/clave', datos, opciones); }
 
@@ -498,7 +522,7 @@ const SGADD_DATA = (function () {
     matrizAFilas, matrizALegacy, tipoDeColumna,
     cargarCategoria, cargarDelBackend, limpiarCache, catalogo, guardarCatalogo, equiposDelLibro,
     login, fijarClave, clientes, guardarClientes,
-    estadosCompartibles, leerEstados, guardarEstados,
+    estadosCompartibles, leerEstados, guardarEstados, leerPbp,
   };
 })();
 

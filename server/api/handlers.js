@@ -344,6 +344,10 @@ async function manejarEquipos(peticion, deps) {
            los partidos jugados, que los sabe el panel y no el catálogo. */
         cicloDesde: (cat.suscripcion || {}).cicloDesde || 0,
         informesEntregados: (cat.suscripcion || {}).informesEntregados || 0,
+        /* LAS CAPAS DE LABORATORIO de la categoría (punto 62). El panel las
+           mira para ofrecer los bloques de play-by-play, y `/api/v1/pbp`
+           las hace cumplir: la pestaña es la vidriera, no el guard. */
+        capas: cat.laboratorio || [],
         /* Se declara QUÉ se recortó. Un panel que recibe menos filas sin
            saberlo calcularía percentiles sobre una liga fantasma; y el DT
            tiene derecho a saber que está viendo un recorte. */

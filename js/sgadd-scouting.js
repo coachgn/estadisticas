@@ -2517,7 +2517,7 @@ const SCOUT_UI = {
      y claves, sin la matriz entera). */
   cards: {
     encabezado: true, matriz: true, ciclo: true, marcas: true,
-    resumen: true, jugadores: true, resto: true, claves: true, fichas: true,
+    resumen: true, jugadores: true, resto: true, claves: true, fichas: true, pbp: true,
   },
 };
 
@@ -2541,6 +2541,9 @@ const SCOUT_CARDS = [
      metería el cartel de upgrade adentro del PDF que el DT lleva a la
      cancha. */
   { id: 'fichas', label: 'Fichas individuales', bloque: 'scouting.fichas' },
+  /* LABORATORIO (punto 62): quintetos, cierre, clutch y mapa del rival,
+     desde el play-by-play. Solo con la capa `pbp` de la categoría. */
+  { id: 'pbp', label: 'Quintetos y clutch del rival · laboratorio', capa: 'pbp' },
 ];
 
 /* =====================================================================
@@ -2567,7 +2570,21 @@ function scoutPuedeBloque(id) {
 
 /** Las cards que ESTA sesión puede exportar. */
 function scoutCardsVisibles() {
-  return SCOUT_CARDS.filter(c => !c.bloque || scoutPuedeBloque(c.bloque));
+  return SCOUT_CARDS.filter(c => (!c.bloque || scoutPuedeBloque(c.bloque))
+    && (!c.capa || (typeof SGADD_PBP !== 'undefined' && SGADD_PBP.activa())));
+}
+
+/* La card de play-by-play del RIVAL. Pinta el lugar y sigue: el paquete lo
+   pide `SGADD_PBP.montarPendientes` después de pintar la sección. */
+function scoutBloquePbp(inf) {
+  if (typeof SGADD_PBP === 'undefined' || !SGADD_PBP.activa()) return '';
+  const rival = inf.local && inf.local.clave === inf.claveRival ? inf.local : inf.visitante;
+  if (!rival) return '';
+  return `
+    <section class="scout-card scout-pagina card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="pbp">
+      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">🔁 Quintetos, cierre y clutch · ${scoutNombreConLogo(rival.nombre, 18)}</h4>
+      ${SGADD_PBP.espacio(rival.nombre, 'scouting')}
+    </section>`;
 }
 
 /* ===================== ESTADO Y EVENTOS ===================== */
@@ -2725,6 +2742,7 @@ function scoutPintar() {
   if (st.error) { root.innerHTML = SGADD_UI.aviso('No se pudo cargar', st.error, 'error'); return; }
   if (!st.idx) { root.innerHTML = SGADD_UI.cargando('Cargando la categoría…', (SGADD_APP.planillaActual() || {}).label); return; }
   root.innerHTML = scoutSelectores(st.idx) + scoutInforme(st.idx);
+  if (typeof SGADD_PBP !== 'undefined') SGADD_PBP.montarPendientes(root);
 }
 
 function scoutSelectores(idx) {
@@ -3692,6 +3710,7 @@ function scoutInforme(idx) {
       ${scoutBloqueClaves(inf)}
       ${scoutBloqueResto(inf)}
       ${scoutBloqueFichas(inf)}
+      ${scoutBloquePbp(inf)}
       <footer class="informe-pie solo-imprimir">${SGADD_UI.pieInforme()}</footer>
       ${scoutModalExport()}
     </div>`;

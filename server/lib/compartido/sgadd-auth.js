@@ -140,6 +140,7 @@ const SGADD_AUTH = (function () {
     probar: 'Una prueba se le da a un cliente, no a un torneo entero.',
     cambiar_equipo: 'El equipo propio es la identidad de este cliente en ese libro: en otro club es otro equipo.',
     baja: 'Una baja se hace de a un cliente.',
+    cambiar_laboratorio: 'Una capa de laboratorio se prueba con UN cliente antes de ofrecerla.',
   };
 
   /** Los alcances que admite una acción. Una que no figura, solo `club`. */
@@ -427,6 +428,40 @@ const SGADD_AUTH = (function () {
        bloque, no la pantalla. */
     'scouting.fichas': { seccion: 'scouting', plan: PLANES.ORO },
   };
+
+  /* =====================================================================
+     CAPAS DE LABORATORIO · lo que se prueba con UN cliente antes de venderlo
+
+     Una capa es un conjunto de datos y bloques que todavía no es producto:
+     se habilita POR CATEGORÍA (`catalogo[club].categorias[slug].laboratorio`,
+     un array) y NO se hereda del club —una prueba se abre de a una
+     categoría, a propósito—. Sin el campo, la categoría se comporta
+     exactamente como antes.
+
+     El vocabulario es CERRADO: una capa que no está acá no existe, aunque
+     alguien la escriba en el catálogo. Así el día que la capa pasa a ser
+     producto se mueve su regla a `plan` y se borra de acá, sin buscarla
+     en otro lado.
+
+     `pbp` · quintetos, dúos y tríos, iniciales y cierre, clutch y mapa de
+             tiro calibrado, sacados del play-by-play oficial por
+             `motorstats-ingestion` (punto 62 de CLAUDE.md).
+     ===================================================================== */
+  const CAPAS_LABORATORIO = {
+    pbp: { id: 'pbp', label: 'Play-by-play · quintetos, clutch y mapa de tiro' },
+  };
+
+  /** Las capas de laboratorio habilitadas en una categoría, sin repetir. */
+  function capasDeCategoria(club, slug) {
+    const k = club && club.categorias && club.categorias[slug];
+    const crudo = k && Array.isArray(k.laboratorio) ? k.laboratorio : [];
+    const out = [];
+    crudo.forEach((c) => {
+      const id = String(c || '').trim().toLowerCase();
+      if (CAPAS_LABORATORIO[id] && out.indexOf(id) === -1) out.push(id);
+    });
+    return out;
+  }
 
   /* El motivo por el que se deniega, para que la UI diga la verdad: un
      "no tenés permiso" cuando en realidad falta el plan manda al DT a
@@ -1105,6 +1140,7 @@ const SGADD_AUTH = (function () {
     normalizarEmail, parsearSesion, establecerSesion, limpiarSesion, sesion, fijarPlanEfectivo,
     esAdmin, rol, sinRestricciones,
     BLOQUES, alcanzaPlan, tieneBloque, puedoVerBloque, bloquesVigentes,
+    CAPAS_LABORATORIO, capasDeCategoria,
     puedeVerEquipo, tieneModulo, puedoAcceder, puedeScoutearCruce,
     forzarCruce, equiposVisibles, equipoPropio, fijarEquipoEfectivo,
     cargarSesion, descripcionSesion,

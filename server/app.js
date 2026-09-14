@@ -93,6 +93,10 @@ function crearApp(opciones) {
   app.get('/api/v1/estados/:clubId/:categoria', responder(estados.manejarEstados));
   app.post('/api/v1/estados/:clubId/:categoria', responder(estados.manejarEstadosEscribir));
 
+  /* La analítica de play-by-play, capa de LABORATORIO (punto 62). Solo
+     lee: la carga es del CLI (`server/bin/pbp.js`). */
+  app.get('/api/v1/pbp/:clubId/:categoria', responder(require('./api/pbp.js').manejarPbp));
+
   /* LAS DOS RUTAS SIN TOKEN. Son las únicas: todo lo demás exige uno.
      `login` lo emite y `clave` lo fija por primera vez, así que exigirlo
      sería pedir la llave para entrar a buscar la llave. Lo que las cuida

@@ -12,6 +12,7 @@
      node server/bin/catalogo.js estado --club X [--categoria Y] --estado pausado
      node server/bin/catalogo.js vence  --club X [--categoria Y] --vence 2026-10-31
      node server/bin/catalogo.js equipo --club X [--categoria Y] --equipo "RECONQUISTA"
+     node server/bin/catalogo.js laboratorio --club X --categoria Y --capas pbp   (vacío: --capas "")
      node server/bin/catalogo.js exportar
      node server/bin/catalogo.js sembrar
 
@@ -74,6 +75,10 @@ CLI del catálogo · da de alta clubes sin redeplegar
     --categoria  <slug>       si se omite, cambia el del CLUB (lo heredan
                               las categorías sin plan propio)
     --plan       <PLAN>       BRONCE, PLATA, ORO · vacío ("") = que herede
+  laboratorio               habilita capas en prueba en UNA categoría (punto 62)
+    --club       <slug>       obligatorio
+    --categoria  <slug>       obligatorio: no se hereda del club
+    --capas      <lista>      pbp · vacío ("") = apaga todas
   estado                    pausa, reactiva o pone en prueba
     --club       <slug>       obligatorio
     --categoria  <slug>       si se omite, cambia el del CLUB (corta todas)
@@ -192,7 +197,7 @@ function exigirKV() {
      no del respaldo: con Upstash sin contestar, `cargar()` devuelve el
      literal del código y escribirlo encima borraba planes, zonas y
      partidos manuales. `cargarParaEscribir` lanza antes de pisar nada. */
-  const escribe = ['sembrar', 'alta', 'baja', 'plan', 'estado', 'vence', 'equipo'].indexOf(cmd) !== -1;
+  const escribe = ['sembrar', 'alta', 'baja', 'plan', 'estado', 'vence', 'equipo', 'laboratorio'].indexOf(cmd) !== -1;
   const cascada = escribe
     ? await catalogo.cargarParaEscribir().catch(e => {
       console.error('');
@@ -224,7 +229,8 @@ function exigirKV() {
           '   plan ' + (sus.plan || '—') + (sus.planDe === 'club' ? ' (club)' : '') +
           ' · ' + sus.estado + (sus.estadoDe === 'club' ? ' (club)' : '') +
           (sus.vence ? ' · vence ' + sus.vence + (sus.venceDe === 'club' ? ' (club)' : '') : '') +
-          (k.equipoPropio ? ' · equipo ' + k.equipoPropio : ''));
+          (k.equipoPropio ? ' · equipo ' + k.equipoPropio : '') +
+          (AUTH.capasDeCategoria(c, s).length ? ' · laboratorio ' + AUTH.capasDeCategoria(c, s).join(',') : ''));
       });
       console.log('');
     });
@@ -255,7 +261,7 @@ function exigirKV() {
      Pasan por `mutar.aplicar`, el MISMO punto de entrada que el Panel
      Master: sus guards (ninguna categoría pierde su libro, el validador
      de la cascada) corren igual desde la terminal. */
-  if (cmd === 'plan' || cmd === 'estado' || cmd === 'vence' || cmd === 'equipo') {
+  if (cmd === 'plan' || cmd === 'estado' || cmd === 'vence' || cmd === 'equipo' || cmd === 'laboratorio') {
     exigirKV();
     const club = String(o.club || '').trim().toLowerCase();
     if (!club || !cat[club]) { console.error('  Ese club no está: ' + (club || '(falta --club)')); process.exit(1); }
@@ -273,6 +279,10 @@ function exigirKV() {
       if (o.equipo === undefined) { console.error('  Falta --equipo'); process.exit(1); }
       accion = 'cambiar_equipo';
       datos.equipoPropio = o.equipo === true ? '' : String(o.equipo);
+    } else if (cmd === 'laboratorio') {
+      if (o.capas === undefined) { console.error('  Falta --capas (pbp, o "" para apagar)'); process.exit(1); }
+      accion = 'cambiar_laboratorio';
+      datos.capas = o.capas === true ? '' : String(o.capas);
     } else {
       if (!o.estado || o.estado === true) { console.error('  Falta --estado'); process.exit(1); }
       accion = 'cambiar_estado';
@@ -291,7 +301,8 @@ function exigirKV() {
       console.log('    ' + s.padEnd(24) + 'plan ' + (sus.plan || '—') + (sus.planDe === 'club' ? ' (club)' : '')
         + ' · ' + sus.estado + (sus.estadoDe === 'club' ? ' (club)' : '')
         + (sus.vence ? ' · vence ' + sus.vence + (sus.venceDe === 'club' ? ' (club)' : '') : '')
-        + ' · equipo ' + (eq.equipo || '—') + (eq.equipoDe === 'club' ? ' (club)' : ''));
+        + ' · equipo ' + (eq.equipo || '—') + (eq.equipoDe === 'club' ? ' (club)' : '')
+        + (AUTH.capasDeCategoria(c2, s).length ? ' · laboratorio ' + AUTH.capasDeCategoria(c2, s).join(',') : ''));
     });
     console.log('');
     console.log('  Ya está vigente: el cliente lo ve en su próxima carga. Sus estados de jugador no se tocan.');

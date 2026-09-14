@@ -79,6 +79,11 @@ function validar(cat) {
       if (k.vence !== undefined && typeof k.vence !== 'string') return id + '/' + slug + ': `vence` no es texto';
       if (k.informesEntregados !== undefined && typeof k.informesEntregados !== 'number') return id + '/' + slug + ': `informesEntregados` no es un número';
       if (k.cicloDesde !== undefined && typeof k.cicloDesde !== 'number') return id + '/' + slug + ': `cicloDesde` no es un número';
+      /* Las capas de laboratorio: forma (un array de textos), no valor. Una
+         capa que no existe se ignora al leer (`AUTH.capasDeCategoria`). */
+      if (k.laboratorio !== undefined && (!Array.isArray(k.laboratorio) || k.laboratorio.some(x => typeof x !== 'string'))) {
+        return id + '/' + slug + ': `laboratorio` no es una lista de textos';
+      }
     }
   }
   return null;
@@ -264,6 +269,9 @@ function resolver(cat, clubId, slugCategoria) {
     slug: catId,
     label: k.label,
     sheetId: k.sheetId || '',
+    /* Las capas de laboratorio de ESTA categoría (punto 62). No heredan del
+       club: una prueba se abre de a una categoría. */
+    laboratorio: AUTH.capasDeCategoria(club, catId),
   };
 }
 
@@ -321,6 +329,10 @@ function suscripcionPublica(club, slug, origen) {
        igual que el resto de este bloque. */
     equipoEfectivo: eq.equipo,
     equipoDe: eq.equipoDe,
+    /* LAS CAPAS DE LABORATORIO (punto 62): viajan con el resto de la
+       suscripción, o sea solo para el club del token y el admin. Qué se
+       prueba con qué cliente no es algo que tengan que ver los demás. */
+    laboratorio: AUTH.capasDeCategoria(club, slug),
   };
 }
 

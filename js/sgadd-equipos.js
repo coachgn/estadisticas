@@ -35,6 +35,9 @@ const EQUIPOS_TABS = [
   { id: 'personalidad', label: 'Personalidad', pregunta: '¿A qué juega?' },
   { id: 'plantel',      label: 'Plantel',      pregunta: '¿De quién depende?' },
   { id: 'partidos',     label: 'Partidos',     pregunta: '¿Qué pasó cada noche?' },
+  /* LABORATORIO (punto 62): solo se ofrece si el servidor declara la capa
+     `pbp` para la categoría abierta. Los datos no salen del libro. */
+  { id: 'pbp',          label: 'Quintetos',    pregunta: '¿Con quién rinde y quién decide al final? · laboratorio' },
 ];
 
 /* ===================== RUTEO ===================== */
@@ -162,6 +165,7 @@ function equiposPintar() {
     e ? equiposFicha(idx, e) : equiposGrilla(idx),
   ].filter(Boolean).join('');
   SGADD_CHARTS.dibujarPendientes();
+  if (typeof SGADD_PBP !== 'undefined') SGADD_PBP.montarPendientes(root);
 }
 
 /** Panel con título, gráfico y su lectura. */
@@ -200,9 +204,19 @@ function equiposGrilla(idx) {
 
 /* ---------- Ficha ---------- */
 
+/* Las pestañas que se OFRECEN. La de play-by-play es de laboratorio: sin la
+   capa no aparece —gris le diría a cada club que le falta algo que no
+   existe para él— y un link viejo a `pbp` cae a General. */
+function equiposTabsOfrecidas() {
+  const pbp = typeof SGADD_PBP !== 'undefined' && SGADD_PBP.activa();
+  return EQUIPOS_TABS.filter(t => t.id !== 'pbp' || pbp);
+}
+
 function equiposFicha(idx, e) {
-  const tabs = EQUIPOS_TABS.map(t => ({ id: t.id, label: t.label, disponible: equiposTabDisponible(idx, e, t.id) }));
-  const actual = EQUIPOS_TABS.find(t => t.id === EQUIPOS.tab) || EQUIPOS_TABS[0];
+  const ofrecidas = equiposTabsOfrecidas();
+  if (!ofrecidas.some(t => t.id === EQUIPOS.tab)) EQUIPOS.tab = 'general';
+  const tabs = ofrecidas.map(t => ({ id: t.id, label: t.label, disponible: equiposTabDisponible(idx, e, t.id) }));
+  const actual = ofrecidas.find(t => t.id === EQUIPOS.tab) || ofrecidas[0];
   return [
     equiposHeader(idx, e),
     `<div class="card rounded-xl p-4 sm:p-5 border border-hairline">
@@ -216,6 +230,7 @@ function equiposFicha(idx, e) {
 function equiposTabDisponible(idx, e, id) {
   if (id === 'plantel') return e.jugadores && e.jugadores.length > 0;
   if (id === 'partidos' || id === 'condicion') return e.partidos && e.partidos.length > 0;
+  if (id === 'pbp') return typeof SGADD_PBP !== 'undefined' && SGADD_PBP.activa();
   return true;
 }
 
@@ -385,6 +400,7 @@ function equiposTab(idx, e, id) {
     case 'condicion': return equiposTabCondicion(idx, e);
     case 'plantel':   return equiposTabPlantel(idx, e);
     case 'partidos':  return equiposTabPartidos(idx, e);
+    case 'pbp':       return (typeof SGADD_PBP !== 'undefined') ? SGADD_PBP.espacio(e.nombre, 'equipo') : '';
     default:          return '';
   }
 }
