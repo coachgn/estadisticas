@@ -120,6 +120,35 @@ const SGADD_APP = (function () {
     if (r.torneo) estado.torneo = r.torneo;
   }
 
+  /**
+   * EL EQUIPO PROPIO DE LA CATEGORÍA QUE SE ABRE (punto 61).
+   *
+   * Dos cosas, y hacen falta las dos:
+   *
+   *  · la SESIÓN del cliente pasa a filtrar con ese equipo
+   *    (`SGADD_AUTH.fijarEquipoEfectivo`): sin eso el picker de la U23
+   *    buscaba «RECONQUISTA A» en un libro que dice «RECONQUISTA» y
+   *    quedaba vacío;
+   *  · el PATRÓN de `esEquipoPropio()` —scouting, informes, el resaltado
+   *    del plantel— sale de `CLUB.patronDeCategoria`, que respeta el del
+   *    JSON cuando ya reconoce a ese equipo.
+   *
+   * Es una mejora y nunca tumba la carga.
+   */
+  function adoptarEquipoDeCategoria(p, equipo) {
+    try {
+      if (equipo && typeof SGADD_AUTH !== 'undefined' && SGADD_AUTH.fijarEquipoEfectivo) {
+        SGADD_AUTH.fijarEquipoEfectivo(equipo);
+      }
+      if (typeof CLUB !== 'undefined' && CLUB.patronDeCategoria && SGADD.CATALOGO) {
+        const pat = CLUB.patronDeCategoria(CLUB.cfg, Object.assign({}, p, equipo ? { equipoPropio: equipo } : {}));
+        if (pat && String(SGADD.CATALOGO.patronEquipoPropio) !== String(new RegExp(pat, 'i'))) {
+          SGADD.CATALOGO.patronEquipoPropio = new RegExp(pat, 'i');
+        }
+      }
+    } catch (e) { /* es una mejora */ }
+  }
+
   /** Carga la planilla activa. Idempotente: si ya está, resuelve al toque. */
   /** Ficha de la última carga pedida: ver el guard de carrera. */
   let _cargaId = 0;
@@ -141,6 +170,10 @@ const SGADD_APP = (function () {
     if (!demo && p && p.plan && typeof adoptarPlanEfectivo === 'function') {
       try { adoptarPlanEfectivo(p.plan); } catch (e) { /* es una mejora */ }
     }
+    /* Y EL EQUIPO PROPIO TAMBIÉN ES DE LA CATEGORÍA (punto 61): Reconquista
+       es «RECONQUISTA A» en Primera y «RECONQUISTA» en la U23. Se adopta
+       antes de pedir los datos por lo mismo que el plan. */
+    if (!demo && p) adoptarEquipoDeCategoria(p, p.equipoPropio);
     if (!demo && (!p || !(p.slug || p.sheetId))) {
       estado.error = 'Esa categoría todavía no tiene libro conectado.';
       avisar(); return;
@@ -182,6 +215,11 @@ const SGADD_APP = (function () {
          servidor hace cumplir (ver `adoptarPlanEfectivo` en el index). */
       if (estado.alcance && estado.alcance.plan && typeof adoptarPlanEfectivo === 'function') {
         try { adoptarPlanEfectivo(estado.alcance.plan); } catch (e) { /* es una mejora */ }
+      }
+      /* El equipo con el que el servidor recortó el libro: manda sobre el
+         que traía el catálogo. */
+      if (!demo && estado.alcance && estado.alcance.equipoAsignado) {
+        adoptarEquipoDeCategoria(p, estado.alcance.equipoAsignado);
       }
       /* Las matrices en TEXTO, para la capa vieja de Principal. */
       estado.textos = r.textos || null;
@@ -393,7 +431,9 @@ const SGADD_APP = (function () {
   const NOMBRE_BLOQUEO = { pausado: 'pausada', inactivo: 'sin servicio', vencido: 'vencida' };
   function sufijoCategoria(x) {
     if (!x) return '';
-    if (x.bloqueada) return ' — ' + (NOMBRE_BLOQUEO[x.estado] || 'sin acceso');
+    /* Una prueba que terminó sola por fecha está pausada, pero decir
+       «pausada» haría creer que alguien la pausó (punto 61). */
+    if (x.bloqueada) return ' — ' + (x.pruebaVencida ? 'prueba terminada' : (NOMBRE_BLOQUEO[x.estado] || 'sin acceso'));
     if (!x.activo) return ' — sin datos';
     const partes = [];
     if (x.plan) partes.push(String(x.plan).toUpperCase());
@@ -561,7 +601,7 @@ const SGADD_APP = (function () {
   return {
     tramoPreferido, recordarTramo,
     estado, inicializar, cargar, reindexar, cambiarPlanilla, cambiarFase, cambiarTorneo, cambiarTramo,
-    aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, onCambio,
+    aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, onCambio, adoptarEquipoDeCategoria,
     recordarCategoria, categoriaRecordada, sufijoCategoria,
     get idx() { return estado.idx; },
   };

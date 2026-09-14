@@ -68,8 +68,10 @@ node test-pdf-layout.js    #  32 tests · claves arriba del resto, los cortes de
                            #             que ningún :hover pinte la hoja impresa
 node test-router-jugadores.js # 12 tests · la pestaña Jugadores se pinta en el acto y
                            #             suelta el equipo de otra categoría
-node test-clientes-estructura.js # 93 tests · club padre y categorías hijas: plan y estado
-                           #             por categoría, expandir un club y la pausa selectiva
+node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: plan, estado,
+                           #             equipo, vencimiento y ciclo ORO por categoría
+node test-glosario.js      #  26 tests · el glosario sin la columna ni la card de hojas,
+                           #             y PPP por jugada, en el archivo y en el generador
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -81,7 +83,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5671 tests en total. Todos tienen que dar verde antes de commitear.**
+**5779 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -4988,8 +4990,13 @@ Sale de `MOTORSTATS_MANUAL_3_RECORRIDO_Y_GLOSARIO.html`, que vive en
 lee en vivo por dos motivos: el panel es estático y no tiene acceso al disco
 de nadie, y el manual cambia con el calendario del motor. Misma convención que
 `generar-css.js` y `generar-manual-etiquetas.js`: se corre a mano y el
-resultado se commitea. **77 entradas, cobertura 100% de las 59 `METRICAS`** del
+resultado se commitea. **73 entradas, cobertura 100% de las 59 `METRICAS`** del
 panel, y hay un test que falla si alguna queda sin definición.
+
+> **Desde 2026-09-13 el glosario NO trae hojas**: ni la columna «Hoja» ni la
+> card con las abreviaturas `4F`, `AC`, `BD`, `E / J`. Y `PPP OF`/`PPP DEF`
+> dicen «por jugada», corregido en el generador (`CORRECCIONES`) porque el
+> manual del motor dice «por posesión» y es de otro proyecto. Ver el punto 61.
 
 **Las columnas se mapean por NOMBRE de encabezado, no por posición.** Las
 tablas del manual no tienen todas la misma forma —unas traen *Fórmula*, otras
@@ -8778,13 +8785,111 @@ OTRAS claves: expandir un club, cambiar un plan o pausar una categoría
 escribe solo `sgadd:catalogo`. `test-clientes-estructura.js` lo verifica
 contando las operaciones sobre el KV de mentira.
 
-### Lo que queda abierto
+### Lo que quedó abierto acá · CERRADO en el punto 61
 
-- **`equipoPropio` sigue siendo del club.** Reconquista se llama
-  `RECONQUISTA A` en Primera y `RECONQUISTA` en la U23: un club dado de alta
-  desde el Panel Master con categorías de nombres distintos necesita el
-  patrón del JSON (punto 6) o un equipo por categoría, que no se hizo.
-- **El vencimiento sigue siendo del club** (la fecha de la factura). Una
-  prueba con fecha propia por categoría no existe todavía.
-- **El ciclo de informes ORO** sigue siendo del club; la tarjeta lo muestra
-  si el club o alguna de sus categorías está en ORO.
+El equipo propio, el vencimiento y el ciclo de informes ORO eran del club.
+Desde el 2026-09-13 son de la categoría, con la misma herencia.
+
+---
+
+## 61. EQUIPO, VENCIMIENTO Y CICLO ORO POR CATEGORÍA · y el glosario sin hojas
+
+Los tres pendientes del punto 60, pedidos por el club el 2026-09-13, con la
+misma regla: **la categoría declara, si no hereda del club**. Viven en el
+motor compartido (`sgadd-auth.js`), por lo mismo que la cascada del plan.
+`test-clientes-estructura.js` los ejerce sobre los handlers reales, y cada
+arreglo se verificó al revés (sacar el del equipo: 3 fallas; el del
+vencimiento: 11; el del ciclo: 3).
+
+### 1 · El equipo propio · `AUTH.equipoDeCategoria`
+
+La planilla nombra al mismo club distinto según la competencia: Reconquista
+es `RECONQUISTA A` en Primera y `RECONQUISTA` en la U23. Con un equipo por
+club, un cliente abría la U23 y el recorte del servidor le devolvía un libro
+**sin su propio equipo** — la grilla vacía del punto 19.
+
+- **El catálogo**: `categorias[slug].equipoPropio`, opcional. Se guarda la
+  CLAVE normalizada, y declarar el mismo que el club lo BORRA: guardado
+  repetido, un cambio del club no le llegaría a esa categoría.
+- **El servidor** (`sesionDeCategoria` en handlers): el recorte de
+  `Base Datos J`, el 403 por equipo ajeno, el cruce del scouting y
+  `usuario.equipoAsignado` usan el de la categoría pedida. **Solo reemplaza
+  el HEREDADO**: un mail dado de alta con su propio equipo conserva el suyo.
+  Y solo para el club del token. El plan y los bloques siguen midiéndose
+  con `ctx.sesion`: no dependen del equipo.
+- **El panel**: `SGADD_APP.cargar()` adopta el equipo ANTES de pedir datos
+  (`SGADD_AUTH.fijarEquipoEfectivo`, solo el cliente) y lo confirma con
+  `alcance.equipoAsignado`. El patrón de `esEquipoPropio()` sale de
+  `CLUB.patronDeCategoria`: respeta el del JSON si ya reconoce al equipo
+  (`/RECONQUISTA/` cubre a los dos) y si no, ancla el de la categoría.
+- **Panel Master**: con un club nuevo o de una sola categoría el campo
+  edita el equipo del CLUB; al sumar una categoría o al editar una de
+  varias dice **«Equipo propio en esta categoría»** y manda
+  `equipoPropioCategoria`. CLI: `catalogo.js equipo --club --categoria --equipo`.
+
+### 2 · El vencimiento y la prueba que termina sola
+
+`categorias[slug].vence` (AAAA-MM-DD). **Solo ACOTA**: la fecha del club
+sigue cortando todo, así que una categoría no se estira más allá de la
+factura.
+
+- **Una PRUEBA vencida pasa a PAUSADA** (`pruebaVencida: true`), no a
+  vencida: no hubo un período pago que vencer. Una categoría `activo` con
+  su fecha pasada sí queda `vencido`. Aplica sobre el estado que rige,
+  propio o heredado.
+- **Se DERIVA, no se guarda**, como el vencimiento del club: nadie escribe
+  nada el día después (el test lo verifica contando escrituras).
+- **`resolver` guarda lo declarado y la fecha que rige**, y `estadoEfectivo`
+  de esa suscripción da exactamente el estado de la cascada: hay un test
+  que recorre las **180 combinaciones** de estado y fecha de club y
+  categoría.
+- **Extender la fecha la reabre** sin reactivar a mano. Una fecha pasada se
+  rechaza (para cortar está Pausar) y vacía la borra.
+- El guard dice «La prueba de esta categoría terminó el …»; el selector,
+  «— prueba terminada»; el Panel Master, *prueba terminada* y un
+  `<input type="date">` por categoría. El alta deja arrancar en prueba con
+  **«Prueba hasta»**. CLI: `catalogo.js vence --club --categoria --vence`.
+
+### 3 · El ciclo ORO · `AUTH.cicloDeCategoria`
+
+Cada categoría en ORO lleva `cicloDesde` e `informesEntregados`: el informe
+se debe cada cuatro partidos DE SU EQUIPO, y un contador compartido le
+descontaba a la U23 el informe de Primera.
+
+- **Retrocompatible sin migrar**: un club de UNA categoría con los
+  contadores en el club los sigue viendo; al marcar el siguiente se MUDAN a
+  la categoría y los del club se borran. Con varias categorías el contador
+  viejo NO se reparte — sería inventar a cuál le tocaba. Medido en
+  producción antes de tocar nada: ningún club tenía contadores.
+- `informe_entregado` exige `categoria` si el club tiene varias.
+- El bloque **◆ Oro** del Panel Master tiene una línea por categoría en ORO
+  con acceso, cada una con su «Marcar entregado». El ciclo solo se muestra
+  con esa categoría abierta; sin partidos dice «abrí la categoría» — y se
+  cerró de paso un defecto viejo: `ciclo(c, null)` daba 0/4, porque
+  `Number(null)` es 0.
+
+### 4 · El glosario sin hojas y PPP por jugada
+
+- **Fuera la columna «Hoja» y la card «Hojas»** (`4F`, `AC`, `BD`, `E / J`):
+  en el panel el DT no abre la planilla. Se descartan en el GENERADOR, no
+  en la vista: el buscador las habría devuelto igual.
+- **`PPP OF` y `PPP DEF` son «Puntos por jugada ofensivos/defensivos»**,
+  con `PTS / PLAYS` y `PTS_opp / PLAYS_opp`. El manual del motor dice «por
+  posesión», y se corrige en `CORRECCIONES` de `generar-glosario.js`
+  porque el manual es de otro proyecto. Si la sigla desaparece del manual,
+  el generador lo avisa.
+- `test-glosario.js` regenera desde el manual —si está en la máquina— y
+  exige el MISMO archivo commiteado.
+- **Queda sin tocar, a propósito**: `NET PPP` dice «Diferencial por
+  posesión» y `RTNG OFF/DEF` «cada 100 posesiones», con el mismo defecto
+  (punto 3: los ratings son por 100 PLAYS). No se pidió; conviene
+  corregirlos en el mismo `CORRECCIONES`.
+
+### Lo que el catálogo de producción necesita, y no se escribió
+
+El catálogo de KV de Reconquista tiene `equipoPropio: RECONQUISTA A` en el
+club y ningún equipo en la U21 ni en la U23. Con esto andando, un acceso de
+cliente a esas categorías sigue recortando con «RECONQUISTA A» hasta que se
+declare el suyo, desde el Panel Master o con:
+
+    node server/bin/catalogo.js equipo --club reconquista --categoria reconquista-u23 --equipo RECONQUISTA

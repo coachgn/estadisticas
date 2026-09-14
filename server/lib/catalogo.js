@@ -72,6 +72,13 @@ function validar(cat) {
          catálogo entero por eso tiraría a todos los clubes al respaldo. */
       if (k.plan !== undefined && typeof k.plan !== 'string') return id + '/' + slug + ': `plan` no es texto';
       if (k.estado !== undefined && typeof k.estado !== 'string') return id + '/' + slug + ': `estado` no es texto';
+      /* Lo mismo con el equipo, el vencimiento y los contadores ORO de la
+         categoría: forma, no valor. Una fecha mal escrita no vence nunca
+         (`suscripcionVencida` la ignora), que es degradar y no romper. */
+      if (k.equipoPropio !== undefined && typeof k.equipoPropio !== 'string') return id + '/' + slug + ': `equipoPropio` no es texto';
+      if (k.vence !== undefined && typeof k.vence !== 'string') return id + '/' + slug + ': `vence` no es texto';
+      if (k.informesEntregados !== undefined && typeof k.informesEntregados !== 'number') return id + '/' + slug + ': `informesEntregados` no es un número';
+      if (k.cicloDesde !== undefined && typeof k.cicloDesde !== 'number') return id + '/' + slug + ': `cicloDesde` no es un número';
     }
   }
   return null;
@@ -213,11 +220,19 @@ function resolver(cat, clubId, slugCategoria) {
      efectivo de los handlers no cambian una línea y ya miran la categoría
      pedida. */
   const sus = AUTH.suscripcionDeCategoria(club, catId);
+  /* EL EQUIPO Y EL CICLO ORO TAMBIÉN SON DE LA CATEGORÍA (2026-09-13), con
+     la misma herencia: ver `AUTH.equipoDeCategoria` y `cicloDeCategoria`. */
+  const eq = AUTH.equipoDeCategoria(club, catId);
+  const ci = AUTH.cicloDeCategoria(club, catId);
   return {
     clubId: String(clubId).toLowerCase(),
     club: club.nombre,
     liga: club.liga || '',
-    equipoPropio: club.equipoPropio || null,
+    equipoPropio: eq.equipo,
+    equipoPropioDe: eq.equipoDe,
+    /* El del club, aparte: los handlers solo reemplazan el equipo del
+       token cuando es el HEREDADO del club (`sesionDeCategoria`). */
+    equipoPropioClub: club.equipoPropio || null,
     /* EL ESTADO COMERCIAL DEL CLUB, para el guard de suscripción.
 
        Va aparte y NO aplanado junto a `club` porque `club` es el NOMBRE,
@@ -229,13 +244,22 @@ function resolver(cat, clubId, slugCategoria) {
       /* El estado DECLARADO que rige —el del club si corta, si no el de la
          categoría—, y no el efectivo: `vencido` se deriva de la fecha en
          `estadoEfectivo`, y guardarlo derivado lo haría derivar dos veces. */
-      estado: sus.estadoDe === 'categoria' ? sus.estado : (club.estado || 'activo'),
+      /* Con el vencimiento de la categoría (2026-09-13): una prueba vencida
+         viaja ya como `pausado`, porque `estadoEfectivo` la derivaría a
+         `vencido` y no es lo que pasó. `vence` es la fecha que RIGE, la de
+         la categoría si la declara, y con eso `estadoEfectivo` de esta
+         suscripción da exactamente `sus.estado` —hay un test que lo
+         recorre en todas las combinaciones—. */
+      estado: sus.pruebaVencida ? 'pausado' : sus.estadoDeclarado,
       estadoDe: sus.estadoDe,
       plan: sus.plan,
       planDe: sus.planDe,
-      vence: club.vence || null,
-      cicloDesde: club.cicloDesde || 0,
-      informesEntregados: club.informesEntregados || 0,
+      vence: sus.vence,
+      venceDe: sus.venceDe,
+      pruebaVencida: sus.pruebaVencida,
+      cicloDesde: ci.cicloDesde,
+      informesEntregados: ci.informesEntregados,
+      cicloDe: ci.cicloDe,
     },
     slug: catId,
     label: k.label,
@@ -281,12 +305,22 @@ function huellaLibro(sheetId) {
  */
 function suscripcionPublica(club, slug, origen) {
   const s = AUTH.suscripcionDeCategoria(club, slug);
+  const eq = AUTH.equipoDeCategoria(club, slug);
   return {
     planEfectivo: s.plan || (origen === 'kv' ? 'BRONCE' : null),
     planDe: s.planDe,
-    estadoEfectivo: AUTH.estadoSuscripcion({ estado: s.estadoDe === 'categoria' ? s.estado : club.estado,
-      vence: club.vence }),
+    /* Ya derivado de las fechas: el del club y el de la categoría. */
+    estadoEfectivo: s.estado,
     estadoDe: s.estadoDe,
+    venceEfectivo: s.vence,
+    venceDe: s.venceDe,
+    pruebaVencida: s.pruebaVencida,
+    /* EL EQUIPO de la categoría: el panel lo adopta al abrirla. Los nombres
+       de equipo no son información comercial —están en la tabla de
+       posiciones—, pero viajan solo para el club del token y el admin,
+       igual que el resto de este bloque. */
+    equipoEfectivo: eq.equipo,
+    equipoDe: eq.equipoDe,
   };
 }
 
@@ -341,7 +375,14 @@ function publico(cat, opciones) {
          Master: `null` = hereda del club. */
       plan: c[id].categorias[s].plan || null,
       estado: c[id].categorias[s].estado || null,
-    }, suscripcionPublica(c[id], s, origen)) : {},
+      vence: c[id].categorias[s].vence || null,
+      equipoPropio: c[id].categorias[s].equipoPropio || null,
+    }, suscripcionPublica(c[id], s, origen), (() => {
+      /* El ciclo ORO de ESTA categoría, crudo: la posición depende de los
+         partidos jugados y la calcula quien tenga el índice delante. */
+      const ci = AUTH.cicloDeCategoria(c[id], s);
+      return { cicloDesde: ci.cicloDesde, informesEntregados: ci.informesEntregados, cicloDe: ci.cicloDe };
+    })()) : {},
     (!admin && propio === id) ? Object.assign(suscripcionPublica(c[id], s, origen), {
       /* El cliente no puede abrir una categoría pausada: el servidor le
          contesta 403. El selector la muestra deshabilitada y con el motivo,

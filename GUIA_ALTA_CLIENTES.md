@@ -41,6 +41,8 @@ próxima carga.
      la categoría, no del club:** si después le sumás la U23, puede tener otro.
    - En **«Arranca»** dejá *Activa*, o elegí *En prueba (demo)* si todavía no
      paga: tiene el mismo acceso y queda marcada para saber a quién llamar.
+   - Si la dejás en prueba, podés poner **«Prueba hasta»**: pasada esa fecha la
+     categoría queda pausada sola, sin tocar las demás del club. Es opcional.
 
 4. **Paso 3 · El libro y el equipo**
    - Si juega en el mismo torneo que otro cliente: elegí **«Usar un libro ya cargado»**
@@ -105,6 +107,12 @@ categoría nueva»**, y en el paso 3 elegí su libro (uno ya cargado o uno nuevo
 
 - Elegí su **«Plan de la categoría»**. Si lo dejás en *Hereda el del club*,
   toma el plan general del club.
+- **El equipo puede llamarse distinto en cada torneo.** Reconquista es
+  *RECONQUISTA A* en Primera y *RECONQUISTA* en la U23. Al sumar una categoría
+  (o al editar una de un club que tiene varias) el campo dice
+  **«Equipo propio en esta categoría»**: tocá «Leer los equipos del libro» y elegí cómo se llama
+  en ESE libro. Si se llama igual que el del club, queda heredándolo. No cambia
+  el equipo de las otras categorías.
 - **No se toca nada de lo que el club ya tiene:** sus mails y claves, las
   categorías que ya tenía con sus planes, las zonas, y los estados de jugador
   que marcó el cuerpo técnico. Entran con el mismo usuario y ven la categoría
@@ -120,6 +128,7 @@ En la tarjeta del club, cada categoría tiene su línea con dos desplegables:
 |---|---|
 | **plan** | El plan de esa categoría. *hereda · PLATA* quiere decir que no tiene uno propio y usa el del club. |
 | **estado** | *activa*, *en prueba*, *pausada* o *dada de baja*. *hereda del club* la deja como esté el club. |
+| **vence** | La fecha de esa categoría (típicamente, la de su prueba). Vacía = sin fecha propia. |
 
 Se confirma en el resumen, que dice **«Se aplica SOLO a esta categoría»**. Si
 cancelás, el desplegable vuelve a lo que tenía.
@@ -129,12 +138,26 @@ cancelás, el desplegable vuelve a lo que tenía.
 - **Pausar el club** (los botones de abajo de la tarjeta) corta **todas** sus
   categorías. Lo mismo si vence.
 - **«Pasar a prueba»** pone al club entero en prueba: sigue teniendo acceso.
+- **Una prueba con fecha termina sola.** Al día siguiente de su fecha la
+  categoría queda pausada y el estado dice *prueba terminada*; las demás siguen
+  andando. Para seguir, poné una fecha nueva en **vence** (se reabre sola) o
+  pasala a *activa*. Una categoría *activa* con su fecha pasada queda *vencida*.
+- **La fecha del club manda sobre todas:** si vence la del club, se cortan
+  todas las categorías aunque la suya sea más lejana.
 - El **plan del club** es el que heredan las categorías que no tienen uno
   propio. Cambiarlo no toca las que ya tienen el suyo.
 
 El cliente ve el cambio en su próxima carga: el selector de categoría dice el
 plan de cada una (ej. *Primera 2026 · ORO*) y el menú ofrece lo que tiene la
 categoría que está mirando.
+
+### El informe del plan Oro, por categoría
+
+Cada categoría en **Oro** lleva su propio ciclo de informes (cada 4 partidos
+de SU equipo). En el recuadro **◆ Oro** de la tarjeta hay una línea por
+categoría con **«Marcar entregado»**: marcar el de Primera no le descuenta el
+suyo a la U23. El ciclo (*2/4*, *toca informe*) se ve con esa categoría
+abierta en el panel.
 
 ---
 

@@ -401,9 +401,299 @@ const equipos = async (tok, club, cat) => { catalogo.limpiarCache(); return H.ma
      control que no existe es peor que no tener guía (punto 53). */
   const guia = fs.readFileSync('./GUIA_ALTA_CLIENTES.md', 'utf8');
   const fuenteHub = fs.readFileSync('./js/sgadd-hub.js', 'utf8');
-  ['Plan de la categoría', 'Pasar a prueba', 'Se aplica SOLO a esta categoría', 'hereda del club', 'En prueba (demo)']
+  ['Plan de la categoría', 'Pasar a prueba', 'Se aplica SOLO a esta categoría', 'hereda del club', 'En prueba (demo)',
+    'Prueba hasta', 'Equipo propio en esta categoría', 'Marcar entregado']
     .forEach(t => check('  la guía nombra «' + t + '» y el Panel Master lo tiene',
       guia.indexOf(t) !== -1 && fuenteHub.indexOf(t) !== -1));
+
+  /* Se devuelven las tres categorías a activas: las secciones que siguen
+     parten de un club andando. */
+  for (const k of ['sudamerica-primera', 'sudamerica-u23', 'sudamerica-u19']) {
+    await escribir({ accion: 'reactivar', club: 'sudamerica', categoria: k });
+  }
+
+  /* =====================================================================
+     7 · e) EL EQUIPO PROPIO ES DE LA CATEGORÍA (punto 61)
+     ===================================================================== */
+  titulo('7 · EQUIPO PROPIO · «RECONQUISTA A» en Primera, «RECONQUISTA» en la U23');
+
+  const cEq = { equipoPropio: 'RECONQUISTA A', categorias: { p: { label: 'P' }, u: { label: 'U', equipoPropio: 'RECONQUISTA' } } };
+  check('una categoría con equipo propio usa el suyo',
+    JSON.stringify(AUTH.equipoDeCategoria(cEq, 'u')) === JSON.stringify({ equipo: 'RECONQUISTA', equipoDe: 'categoria' }));
+  check('una sin equipo hereda el del club',
+    JSON.stringify(AUTH.equipoDeCategoria(cEq, 'p')) === JSON.stringify({ equipo: 'RECONQUISTA A', equipoDe: 'club' }));
+  check('sin equipo en ninguno de los dos, null', AUTH.equipoDeCategoria({ categorias: { x: {} } }, 'x').equipo === null);
+
+  const rq1 = await escribir({ accion: 'alta', club: 'reconquista', nombre: 'Club Reconquista', liga: 'la-plata',
+    equipoPropio: 'RECONQUISTA A', categoria: 'reconquista-primera', label: 'Primera',
+    sheetId: 'SHEETRQPRIMERA00000000000', plan: 'ORO' });
+  const rq2 = await escribir({ accion: 'alta', club: 'reconquista', categoria: 'reconquista-u23', label: 'U23',
+    sheetId: 'SHEETRQU23000000000000000', plan: 'ORO', equipoPropioCategoria: "RECONQUISTA - U23M" });
+  enKV = leerCat();
+  check('el alta y la expansión salen bien', rq1.status === 200 && rq2.status === 200, JSON.stringify(rq2.body).slice(0, 160));
+  check('la U23 guarda SU equipo, ya normalizado (sin « - U23M»)',
+    enKV.reconquista.categorias['reconquista-u23'].equipoPropio === 'RECONQUISTA', enKV.reconquista.categorias['reconquista-u23'].equipoPropio);
+  check('el del club sigue siendo «RECONQUISTA A»', enKV.reconquista.equipoPropio === 'RECONQUISTA A');
+  check('y Primera no escribe uno: hereda', enKV.reconquista.categorias['reconquista-primera'].equipoPropio === undefined);
+  const igual = await escribir({ accion: 'cambiar_equipo', club: 'reconquista', categoria: 'reconquista-primera', equipoPropio: "RECONQUISTA 'A' - MM" });
+  check('declarar en una categoría el MISMO del club no lo guarda repetido',
+    igual.status === 200 && leerCat().reconquista.categorias['reconquista-primera'].equipoPropio === undefined);
+  const vacioClub = await escribir({ accion: 'cambiar_equipo', club: 'reconquista', equipoPropio: '' });
+  check('el del club no se puede vaciar (el cliente no vería ningún equipo)', vacioClub.status === 400);
+
+  /* Un libro con los dos nombres, como el de verdad. `Base Datos J` es la
+     hoja que el servidor recorta al equipo propio. */
+  const libroOriginal = sheets.obtenerLibro;
+  sheets.obtenerLibro = async () => ({ hojas: {
+    'PROMEDIOS J': [['NOMBRES', 'EQUIPO', 'MIN'], ['A1', "RECONQUISTA 'A' - MM", 20], ['U1', 'RECONQUISTA - U23M', 18]],
+    'Base Datos J': [['PARTIDO', 'NOMBRES', 'EQUIPO', 'MIN'],
+      ['X vs Y', 'A1', "RECONQUISTA 'A' - MM", 20], ['X vs Y', 'U1', 'RECONQUISTA - U23M', 18], ['X vs Y', 'Z', 'ATENAS A', 20]],
+  }, hojasTexto: {}, faltantes: [], leidoEn: 1 });
+  const tokRq = auth.firmarToken({ email: 'dt@reconquista.com', club: 'reconquista', equipoAsignado: 'RECONQUISTA A', plan: 'ORO' }, { expiraEn: '1h' });
+  const dRqP = await equipos(tokRq, 'reconquista', 'reconquista-primera');
+  const dRqU = await equipos(tokRq, 'reconquista', 'reconquista-u23');
+  const equiposDe = (r) => (r.body.hojas['Base Datos J'] || []).slice(1).map(f => f[2]);
+  check('en Primera el servidor recorta con «RECONQUISTA A»',
+    dRqP.status === 200 && dRqP.body.alcance.equipoAsignado === 'RECONQUISTA A'
+    && JSON.stringify(equiposDe(dRqP)) === JSON.stringify(["RECONQUISTA 'A' - MM"]), JSON.stringify(equiposDe(dRqP)));
+  check('en la U23, con el MISMO token, recorta con «RECONQUISTA» y el cliente ve a su equipo',
+    dRqU.status === 200 && dRqU.body.alcance.equipoAsignado === 'RECONQUISTA'
+    && JSON.stringify(equiposDe(dRqU)) === JSON.stringify(['RECONQUISTA - U23M']), JSON.stringify(equiposDe(dRqU)));
+  const fichaU23 = await H.manejarEquipos(pedido(tokRq, { clubId: 'reconquista' }, {}, { categoria: 'reconquista-u23', equipo: 'RECONQUISTA' }));
+  check('y puede abrir la ficha de «RECONQUISTA» en la U23', fichaU23.status === 200, fichaU23.status);
+  const fichaAjena = await H.manejarEquipos(pedido(tokRq, { clubId: 'reconquista' }, {}, { categoria: 'reconquista-primera', equipo: 'RECONQUISTA' }));
+  check('pero no la del «RECONQUISTA» (sin letra) en Primera, que ahí es otro equipo', fichaAjena.status === 403, fichaAjena.status);
+  const scRq = await H.manejarScouting(pedido(tokRq, { clubId: 'reconquista' }, {},
+    { categoria: 'reconquista-u23', local: 'RECONQUISTA - U23M', visitante: 'ATENAS A' }));
+  check('el scouting de la U23 acepta el cruce con SU equipo', scRq.status === 200, scRq.status + ' ' + (scRq.body.mensaje || ''));
+  /* Un acceso dado de alta con un equipo PROPIO del mail (no el heredado
+     del club) es una decisión sobre ese mail y no se pisa. */
+  const tokOtroEq = auth.firmarToken({ email: 'b@reconquista.com', club: 'reconquista', equipoAsignado: 'RECONQUISTA B', plan: 'ORO' }, { expiraEn: '1h' });
+  check('un mail con equipo propio distinto del club conserva el suyo',
+    (await equipos(tokOtroEq, 'reconquista', 'reconquista-u23')).body.alcance.equipoAsignado === 'RECONQUISTA B');
+  const tokAjeno = auth.firmarToken({ email: 'x@sudamerica.com', club: 'sudamerica', equipoAsignado: 'SUD AMERICA LP', plan: 'ORO' }, { expiraEn: '1h' });
+  check('a otro club no se le presta el equipo: el guard OTRO_CLUB cierra antes',
+    (await equipos(tokAjeno, 'reconquista', 'reconquista-u23')).status === 403);
+  sheets.obtenerLibro = libroOriginal;
+
+  const pubRq = await catPublico(tokRq);
+  const catsRq = pubRq.body.clubes.find(c => c.id === 'reconquista').categorias;
+  check('el catálogo le dice al cliente el equipo de cada categoría',
+    catsRq.map(k => k.slug + ':' + k.equipoEfectivo).sort().join(',') === 'reconquista-primera:RECONQUISTA A,reconquista-u23:RECONQUISTA',
+    JSON.stringify(catsRq.map(k => [k.slug, k.equipoEfectivo])));
+  check('y abre con el de la primera categoría', pubRq.body.usuario.equipoAsignado === 'RECONQUISTA A');
+  check('a otro cliente no le llegan los equipos de Reconquista',
+    (await catPublico(tokSud)).body.clubes.find(c => c.id === 'reconquista').categorias.every(k => k.equipoEfectivo === undefined));
+
+  /* EL PANEL · la sesión y el patrón del equipo propio siguen a la categoría. */
+  const clubRq = crearClub();
+  /* El `extra` es el equipo del token, como lo pasa el arranque del index. */
+  const cfgRq = clubRq.reconciliarConfig(null, pubRq.body.clubes.find(c => c.id === 'reconquista'), { equipoPropio: 'RECONQUISTA A' });
+  const pRqU = cfgRq.planillas.find(p => p.slug === 'reconquista-u23');
+  const pRqP = cfgRq.planillas.find(p => p.slug === 'reconquista-primera');
+  check('cada planilla trae su equipo', pRqU.equipoPropio === 'RECONQUISTA' && pRqP.equipoPropio === 'RECONQUISTA A');
+  check('el patrón derivado del catálogo se marca como derivado', cfgRq.patronDerivado === true);
+  const patU = new RegExp(clubRq.patronDeCategoria(cfgRq, pRqU), 'i');
+  const patP = new RegExp(clubRq.patronDeCategoria(cfgRq, pRqP), 'i');
+  check('en la U23 el equipo propio es «RECONQUISTA» y no «RECONQUISTA A»', patU.test('RECONQUISTA') && !patU.test('RECONQUISTA A'));
+  check('en Primera, al revés', patP.test('RECONQUISTA A') && !patP.test('RECONQUISTA'));
+  const cfgJson = { patronEquipoPropio: 'RECONQUISTA' };
+  check('un patrón del JSON que ya reconoce al equipo de la categoría se respeta',
+    clubRq.patronDeCategoria(cfgJson, { equipoPropio: 'RECONQUISTA A' }) === 'RECONQUISTA');
+  check('uno del JSON que NO lo reconoce cede al de la categoría, anclado',
+    clubRq.patronDeCategoria({ patronEquipoPropio: '^DEPORTIVO LA PLATA$' }, { equipoPropio: 'DEPORTIVO' }) === '^DEPORTIVO$');
+
+  AUTH.establecerSesion({ email: 'dt@reconquista.com', plan: 'ORO', equipoAsignado: 'RECONQUISTA A' });
+  check('la sesión del cliente adopta el equipo de la categoría', AUTH.fijarEquipoEfectivo('RECONQUISTA') === true
+    && AUTH.equipoPropio() === 'RECONQUISTA');
+  check('y con eso ve a su equipo en el picker de la U23', AUTH.puedeVerEquipo('RECONQUISTA - U23M')
+    && !AUTH.puedeVerEquipo("RECONQUISTA 'A' - MM"));
+  AUTH.establecerSesion({ email: 'freytesgn@gmail.com' });
+  check('el admin no adopta equipo: no tiene restricciones', AUTH.fijarEquipoEfectivo('RECONQUISTA') === false);
+  AUTH.limpiarSesion();
+
+  const appRq = appCon(catsRq.map(planillaDe), { rol: 'CLIENTE', auth: true, club: clubRq, cfg: cfgRq });
+  appRq.SGADD_APP.inicializar();
+  appRq.SGADD_APP.estado.planillaId = 'reconquista-u23';
+  await appRq.SGADD_APP.cargar();
+  check('al abrir la U23 el panel adopta su equipo ANTES de pedir los datos',
+    appRq.log.join(',').indexOf('equipo:RECONQUISTA,') !== -1
+    && appRq.log.indexOf('equipo:RECONQUISTA') < appRq.log.indexOf('datos:reconquista-u23'), appRq.log.join(','));
+  check('y el patrón de esEquipoPropio pasa a ser el de la U23', appRq.patron() === '/^RECONQUISTA$/i', appRq.patron());
+
+  global.SGADD_CLIENTES = { estado: { clubes: (await catPublico(tokAdmin)).body.clubes } };
+  HUB.elegirModo('reconquista');
+  check('el Panel Master precarga el equipo de la categoría que se edita', HUB.alta.equipoPropio === 'RECONQUISTA A');
+  HUB.elegirCategoria('reconquista-u23');
+  check('y al pasar a la U23, el suyo', HUB.alta.equipoPropio === 'RECONQUISTA');
+  check('con varias categorías, el equipo que se edita es el de la CATEGORÍA', HUB.equipoEsDeCategoria() === true
+    && HUB.intencionAlta().equipoPropioCategoria === 'RECONQUISTA' && HUB.intencionAlta().equipoPropio === undefined);
+  check('y el modal lo dice por categoría', HUB.cambiosAlta(Object.assign(HUB.intencionAlta(), { equipoPropioCategoria: 'OTRO' }))
+    .some(f => /^Equipo propio · U23/.test(f.label)));
+  HUB.elegirModo('nuevo');
+  check('un club nuevo edita el equipo del CLUB', HUB.equipoEsDeCategoria() === false);
+  const filaRq = HUB.filaCategoria(cAdm, { slug: 'k', label: 'K', activo: true, planEfectivo: 'ORO', estadoEfectivo: 'activo', equipoPropio: 'RECONQUISTA' });
+  check('la fila del Panel Master muestra el equipo propio de la categoría', /RECONQUISTA/.test(filaRq));
+
+  /* =====================================================================
+     8 · f) VENCIMIENTO Y CADUCIDAD DE LA PRUEBA POR CATEGORÍA (punto 61)
+     ===================================================================== */
+  titulo('8 · VENCIMIENTO · la prueba de una categoría termina sola, las demás siguen');
+
+  const AYER = '2026-09-01', LEJOS = '2099-12-31';
+  const HOY = Date.parse('2026-09-13T12:00:00Z');
+  const cV = { plan: 'ORO', categorias: {
+    primera: { label: 'P' },
+    u19: { label: 'U19', estado: 'prueba', vence: AYER },
+    u17: { label: 'U17', estado: 'prueba', vence: LEJOS },
+    u21: { label: 'U21', vence: AYER },
+  } };
+  const sv = (k, c) => AUTH.suscripcionDeCategoria(c || cV, k, HOY);
+  check('una prueba con la fecha pasada queda PAUSADA, no vencida',
+    sv('u19').estado === 'pausado' && sv('u19').pruebaVencida === true && sv('u19').acceso === false);
+  check('y dice que el corte es de la categoría y por su fecha', sv('u19').estadoDe === 'categoria' && sv('u19').venceDe === 'categoria');
+  check('una prueba con la fecha por delante sigue con acceso', sv('u17').estado === 'prueba' && sv('u17').acceso);
+  check('una categoría activa con su fecha pasada queda vencida', sv('u21').estado === 'vencido' && !sv('u21').pruebaVencida);
+  check('la principal del mismo club sigue activa', sv('primera').acceso && sv('primera').estado === 'activo');
+  check('la fecha de la categoría no estira la del club: club vencido corta todo',
+    sv('u17', Object.assign({}, cV, { vence: AYER })).estado === 'vencido' && sv('u17', Object.assign({}, cV, { vence: AYER })).estadoDe === 'club');
+  check('una prueba vencida heredada del club también pasa a pausada',
+    AUTH.suscripcionDeCategoria({ estado: 'prueba', categorias: { a: { vence: AYER } } }, 'a', HOY).estado === 'pausado');
+  check('una categoría pausada a mano no cambia por la fecha', AUTH.suscripcionDeCategoria(
+    { categorias: { a: { estado: 'pausado', vence: AYER } } }, 'a', HOY).pruebaVencida === false);
+  check('el titular no suma una prueba terminada', AUTH.planDelClub(
+    { plan: 'BRONCE', categorias: { a: { plan: 'ORO', estado: 'prueba', vence: AYER }, b: {} } }, HOY) === 'BRONCE');
+
+  /* EL SERVIDOR DERIVA LO MISMO QUE EL MOTOR, en TODAS las combinaciones:
+     `resolver` guarda lo declarado y la fecha que rige, y
+     `estadoEfectivo` tiene que dar exactamente el estado de la cascada. */
+  const originalNow = Date.now;
+  Date.now = () => HOY;
+  let combinaciones = 0, distintas = [];
+  [undefined, 'activo', 'prueba', 'pausado', 'inactivo'].forEach(ce => [undefined, AYER, LEJOS].forEach(cv =>
+    [undefined, 'activo', 'prueba', 'pausado'].forEach(ke => [undefined, AYER, LEJOS].forEach(kvn => {
+      const clubX = { nombre: 'X', estado: ce, vence: cv, categorias: { k: { label: 'K', estado: ke, vence: kvn } } };
+      const motor = AUTH.suscripcionDeCategoria(clubX, 'k').estado;
+      const serv = mutar.estadoEfectivo(catalogo.resolver({ x: clubX }, 'x', 'k').suscripcion);
+      combinaciones++;
+      if (motor !== serv) distintas.push([ce, cv, ke, kvn, motor, serv].join('/'));
+    }))));
+  Date.now = originalNow;
+  check('el guard del servidor y la cascada coinciden en las ' + combinaciones + ' combinaciones',
+    distintas.length === 0, distintas.slice(0, 3).join(' | '));
+
+  /* Por la API: dar una prueba con fecha a la U19. */
+  const pr = await escribir({ accion: 'probar', club: 'sudamerica', categoria: 'sudamerica-u19' });
+  const venc = await escribir({ accion: 'renovar', club: 'sudamerica', categoria: 'sudamerica-u19', vence: LEJOS });
+  enKV = leerCat();
+  check('el Panel Master fija la fecha de UNA categoría',
+    pr.status === 200 && venc.status === 200 && enKV.sudamerica.categorias['sudamerica-u19'].vence === LEJOS, JSON.stringify(venc.body).slice(0, 120));
+  check('sin tocar la del club ni la de las otras categorías', enKV.sudamerica.vence === undefined
+    && enKV.sudamerica.categorias['sudamerica-primera'].vence === undefined);
+  const atras = await escribir({ accion: 'renovar', club: 'sudamerica', categoria: 'sudamerica-u19', vence: AYER });
+  check('una fecha pasada no se acepta (para cortar está Pausar)', atras.status === 400);
+  check('con la fecha por delante la prueba sirve datos', (await equipos(tokLogin, 'sudamerica', 'sudamerica-u19')).status === 200);
+
+  /* EL TIEMPO PASA: se simula escribiendo la fecha vencida directo en KV,
+     que es lo que ve el servidor el día después. */
+  enKV.sudamerica.categorias['sudamerica-u19'].vence = AYER;
+  store[catalogo.CLAVE_KV] = JSON.stringify(enKV);
+  ops.length = 0;
+  const d19v = await equipos(tokLogin, 'sudamerica', 'sudamerica-u19');
+  check('pasada la fecha la U19 se corta SOLA, sin que nadie escriba nada',
+    d19v.status === 403 && d19v.body.codigo === 'SUSCRIPCION_PAUSADO' && ops.filter(o => /^(SET|HSET|DEL)/.test(o)).length === 0, d19v.status);
+  check('y el mensaje dice que terminó la prueba de ESA categoría', /prueba de esta categoría terminó/.test(d19v.body.mensaje), d19v.body.mensaje);
+  check('Primera y la U23 siguen sirviendo datos', (await equipos(tokLogin, 'sudamerica', 'sudamerica-primera')).status === 200
+    && (await equipos(tokLogin, 'sudamerica', 'sudamerica-u23')).status === 200);
+  const estV = await EST.manejarEstados(pedido(tokLogin, { clubId: 'sudamerica', categoria: 'sudamerica-u19' }));
+  check('los estados compartidos de la U19 también se cortan', estV.status === 403);
+  catalogo.limpiarCache();
+  const loginV = await H.manejarLogin(pedido(null, {}, { email: 'dt@sudamerica.com', clave: 'una-clave-larga-123' }));
+  check('el cliente sigue entrando: tiene otras categorías andando', loginV.status === 200, loginV.status);
+  const pubV = await catPublico(tokLogin);
+  const u19v = pubV.body.clubes.find(c => c.id === 'sudamerica').categorias.find(k => k.slug === 'sudamerica-u19');
+  check('el catálogo la manda bloqueada, pausada y con la prueba terminada',
+    u19v.bloqueada === true && u19v.estadoEfectivo === 'pausado' && u19v.pruebaVencida === true && u19v.venceEfectivo === AYER, JSON.stringify(u19v));
+  const pU19v = crearClub().reconciliarConfig(null, pubV.body.clubes.find(c => c.id === 'sudamerica'), {})
+    .planillas.find(p => p.slug === 'sudamerica-u19');
+  check('el selector dice «prueba terminada», no «pausada»', app.SGADD_APP.sufijoCategoria(pU19v) === ' — prueba terminada', app.SGADD_APP.sufijoCategoria(pU19v));
+  const u19adm2 = (await catPublico(tokAdmin)).body.clubes.find(c => c.id === 'sudamerica').categorias.find(k => k.slug === 'sudamerica-u19');
+  check('el Panel Master la nombra «prueba terminada»', HUB.nombreEstadoCategoria(u19adm2) === 'prueba terminada');
+  const filaV = HUB.filaCategoria(cAdm, u19adm2);
+  check('y la fila trae la fecha para extenderla', /type="date"/.test(filaV) && /value="2026-09-01"/.test(filaV)
+    && /accionCategoria\('sudamerica','sudamerica-u19','renovar'/.test(filaV));
+  const extiende = await escribir({ accion: 'renovar', club: 'sudamerica', categoria: 'sudamerica-u19', vence: LEJOS });
+  check('extender la fecha la reabre, sin reactivar a mano', extiende.status === 200
+    && (await equipos(tokLogin, 'sudamerica', 'sudamerica-u19')).status === 200);
+  const sinFecha = await escribir({ accion: 'renovar', club: 'sudamerica', categoria: 'sudamerica-u19', vence: '' });
+  check('vaciar la fecha la borra de la categoría', sinFecha.status === 200 && leerCat().sudamerica.categorias['sudamerica-u19'].vence === undefined);
+  const propV = mutar.aplicar(leerCat(), 'renovar', { club: 'sudamerica', categoria: 'sudamerica-u19', vence: LEJOS, alcance: 'libro' }, catalogo.validar);
+  check('una fecha de categoría propagada va a CATEGORÍAS del mismo libro, no a clubes',
+    !propV.ok || Object.keys(propV.catalogo).every(id => propV.catalogo[id].vence === undefined), propV.motivo);
+
+  const nuevaPrueba = await escribir({ accion: 'alta', club: 'sudamerica', categoria: 'sudamerica-u15', label: 'U15',
+    sheetId: 'SHEETU15000000000000000000', estado: 'prueba', vence: LEJOS });
+  check('el alta de una categoría puede arrancar en prueba CON fecha',
+    nuevaPrueba.status === 200 && leerCat().sudamerica.categorias['sudamerica-u15'].estado === 'prueba'
+    && leerCat().sudamerica.categorias['sudamerica-u15'].vence === LEJOS, JSON.stringify(nuevaPrueba.body).slice(0, 120));
+  HUB.reiniciarAlta();
+  Object.assign(HUB.alta, { club: 'nuevo', nombre: 'Nuevo', equipoPropio: 'NUEVO', categoria: 'nuevo-primera',
+    label: 'Primera', fuente: 'existente', libroDe: 'deportivo/deportivo-primera' });
+  HUB.elegirEstadoAlta('prueba');
+  HUB.elegirVenceAlta('2099-01-31');
+  check('el formulario manda la fecha de la prueba', HUB.intencionAlta().vence === '2099-01-31');
+  check('y el modal la enumera', HUB.cambiosAlta(HUB.intencionAlta()).some(f => f.label === 'Prueba hasta' && f.despues === '2099-01-31'));
+  HUB.elegirEstadoAlta('');
+  check('volver a «Activa» se lleva la fecha', HUB.intencionAlta().vence === undefined);
+
+  /* =====================================================================
+     9 · g) EL CICLO ORO ES DE CADA CATEGORÍA (punto 61)
+     ===================================================================== */
+  titulo('9 · CICLO ORO · cada categoría en ORO lleva sus propios informes');
+
+  await escribir({ accion: 'cambiar_plan', club: 'sudamerica', categoria: 'sudamerica-primera', plan: 'ORO' });
+  const inf1 = await escribir({ accion: 'informe_entregado', club: 'sudamerica', categoria: 'sudamerica-primera' });
+  await escribir({ accion: 'informe_entregado', club: 'sudamerica', categoria: 'sudamerica-primera' });
+  const inf3 = await escribir({ accion: 'informe_entregado', club: 'sudamerica', categoria: 'sudamerica-u23' });
+  enKV = leerCat();
+  check('los informes se cuentan en cada categoría', inf1.status === 200 && inf3.status === 200
+    && enKV.sudamerica.categorias['sudamerica-primera'].informesEntregados === 2
+    && enKV.sudamerica.categorias['sudamerica-u23'].informesEntregados === 1, JSON.stringify(inf1.body).slice(0, 120));
+  check('el club no acumula un contador compartido', enKV.sudamerica.informesEntregados === undefined);
+  const infSin = await escribir({ accion: 'informe_entregado', club: 'sudamerica' });
+  check('con varias categorías hay que decir de cuál es el informe', infSin.status === 400 && /decí de cuál/.test(infSin.body.mensaje));
+
+  const cP = catalogo.resolver(enKV, 'sudamerica', 'sudamerica-primera').suscripcion;
+  const cU = catalogo.resolver(enKV, 'sudamerica', 'sudamerica-u23').suscripcion;
+  check('Primera con 8 partidos y 2 entregados: no toca informe', mutar.ciclo(cP, 8).toca === false);
+  check('la U23 con 8 partidos y 1 entregado: TOCA, sin que Primera le descuente', mutar.ciclo(cU, 8).toca === true);
+  const eOroP = await equipos(tokLogin, 'sudamerica', 'sudamerica-primera');
+  const eOroU = await equipos(tokLogin, 'sudamerica', 'sudamerica-u23');
+  check('los datos de cada categoría declaran SU ciclo',
+    eOroP.body.alcance.informesEntregados === 2 && eOroU.body.alcance.informesEntregados === 1);
+
+  const admOro = (await catPublico(tokAdmin)).body.clubes.find(c => c.id === 'sudamerica');
+  const oroCats = HUB.categoriasOro(admOro).map(k => k.slug).sort().join(',');
+  check('el Panel Master lista las categorías en ORO con acceso',
+    oroCats === 'sudamerica-primera,sudamerica-u23', oroCats);
+  const bloque = HUB.bloqueOro(admOro);
+  check('con un «Marcar entregado» por categoría',
+    /accionCategoria\('sudamerica','sudamerica-primera','informe_entregado'\)/.test(bloque)
+    && /accionCategoria\('sudamerica','sudamerica-u23','informe_entregado'\)/.test(bloque)
+    && !/accionClub\('sudamerica','informe_entregado'\)/.test(bloque));
+  check('y sin ciclo inventado para la que no está abierta', /abrí la categoría para ver el ciclo/.test(bloque));
+  check('una categoría BRONCE no aparece en el bloque ORO', !/sudamerica-u19','informe_entregado/.test(bloque));
+
+  /* RETROCOMPATIBLE: un club de UNA categoría con el contador en el club. */
+  const viejoOro = { plan: 'ORO', informesEntregados: 3, cicloDesde: 2, categorias: { unica: { label: 'P', sheetId: 'SHEETX0000000000000000000' } } };
+  const ciV = AUTH.cicloDeCategoria(viejoOro, 'unica');
+  check('un club de hoy con una sola categoría sigue viendo sus informes', ciV.informesEntregados === 3 && ciV.cicloDesde === 2 && ciV.cicloDe === 'club');
+  const mud = mutar.informe({ v: viejoOro }, { club: 'v' });
+  check('al marcar el siguiente, el contador se muda a la categoría y el del club se va',
+    mud.ok && mud.catalogo.v.categorias.unica.informesEntregados === 4 && mud.catalogo.v.categorias.unica.cicloDesde === 2
+    && mud.catalogo.v.informesEntregados === undefined && mud.catalogo.v.cicloDesde === undefined);
+  check('con varias categorías el contador viejo del club NO se reparte',
+    AUTH.cicloDeCategoria(Object.assign({}, viejoOro, { categorias: { a: {}, b: {} } }), 'a').informesEntregados === 0);
 
   console.log('\n' + '═'.repeat(70));
   if (fail === 0) console.log('✓ TODO OK   ' + ok + ' pasaron, 0 fallaron');
@@ -415,7 +705,7 @@ const equipos = async (tok, club, cat) => { catalogo.limpiarCache(); return H.ma
 /** La planilla del panel a partir de una categoría publicada. */
 function planillaDe(k) {
   return { id: k.slug, slug: k.slug, label: k.label, activo: k.activo !== false && !k.bloqueada,
-    plan: k.planEfectivo, estado: k.estadoEfectivo, bloqueada: !!k.bloqueada };
+    plan: k.planEfectivo, estado: k.estadoEfectivo, bloqueada: !!k.bloqueada, equipoPropio: k.equipoEfectivo };
 }
 
 /** `sgadd-app.js` en un vm, con un espía sobre la adopción y los datos. */
@@ -433,18 +723,21 @@ function appCon(planillas, o) {
       planillasVisibles: () => planillas.filter(p => p.activo),
     }),
     SGADD_UI: { esc: (x) => String(x) },
-    CLUB: { estado: { id: 'sudamerica' } },
+    CLUB: op.club ? { estado: { id: 'x' }, patronDeCategoria: op.club.patronDeCategoria, cfg: op.cfg }
+      : { estado: { id: 'sudamerica' } },
     location: { hash: op.hash || '' },
     adoptarPlanEfectivo: (p) => { log.push('adopta:' + p); return true; },
     SGADD_DATA: {
       cargarCategoria: async (p) => { log.push('datos:' + p.slug); throw new Error('sin red en el test'); },
     },
   };
+  if (op.auth) ctx.SGADD_AUTH = { fijarEquipoEfectivo: (e) => { log.push('equipo:' + e); return true; } };
+  ctx.SGADD.CATALOGO.patronEquipoPropio = /X/;
   ctx.window = ctx;
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync('./js/sgadd-app.js', 'utf8'), ctx);
   ctx.SGADD_APP = vm.runInContext('SGADD_APP', ctx);
-  return { SGADD_APP: ctx.SGADD_APP, log: log };
+  return { SGADD_APP: ctx.SGADD_APP, log: log, patron: () => String(ctx.SGADD.CATALOGO.patronEquipoPropio) };
 }
 
 /** `sgadd-club.js` en un vm, como lo cargan test-alcance y test-plan-racha. */

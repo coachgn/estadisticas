@@ -28,6 +28,7 @@ const reglas = require('../lib/reglas.js');
 const alertas = require('../lib/alertas.js');
 const sheets = require('../lib/google-sheets.js');
 const AUTH = require('../lib/compartido/sgadd-auth.js');
+const NUCLEO = require('../lib/compartido/sgadd-core.js');
 
 /* Los mensajes de error NO dicen de más. "La firma no valida" y "el token
    venció" son distintos para el usuario (uno pide un link nuevo, el otro
@@ -82,16 +83,48 @@ function guardSuscripcion(club, ctx) {
      por algo que no le pasa. */
   const deCategoria = club && club.estadoDe === 'categoria';
   const textos = {
-    pausado: deCategoria
-      ? 'El acceso a esta categoría está pausado. Tus otras categorías siguen disponibles.'
-      : 'El acceso de este club está pausado. Hablá con el administrador para reactivarlo.',
+    pausado: (deCategoria && club.pruebaVencida)
+      /* La prueba de UNA categoría terminó sola por fecha (2026-09-13): no
+         es un castigo ni una deuda, y decirlo así evita el reclamo. */
+      ? 'La prueba de esta categoría terminó el ' + (club.vence || '—')
+        + '. Tus otras categorías siguen disponibles. Hablá con el administrador para activarla.'
+      : deCategoria
+        ? 'El acceso a esta categoría está pausado. Tus otras categorías siguen disponibles.'
+        : 'El acceso de este club está pausado. Hablá con el administrador para reactivarlo.',
     inactivo: deCategoria ? 'Esta categoría no tiene el servicio activo.' : 'Este club no tiene el servicio activo.',
-    vencido: 'La suscripción de este club venció el ' + (club.vence || '—')
-      + '. Hablá con el administrador para renovarla.',
+    vencido: (deCategoria && club.venceDe === 'categoria')
+      ? 'La suscripción de esta categoría venció el ' + (club.vence || '—')
+        + '. Tus otras categorías siguen disponibles.'
+      : 'La suscripción de este club venció el ' + (club.vence || '—')
+        + '. Hablá con el administrador para renovarla.',
   };
   return error(403, 'SUSCRIPCION_' + efectivo.toUpperCase(),
     textos[efectivo] || 'Este club no tiene el servicio activo.',
     { estado: efectivo, vence: club.vence || null });
+}
+
+/**
+ * LA SESIÓN CON EL EQUIPO DE LA CATEGORÍA PEDIDA (2026-09-13).
+ *
+ * El token lleva el equipo del CLUB («RECONQUISTA A») y la planilla de la
+ * U23 lo escribe «RECONQUISTA»: recortar el libro con el del token le daba
+ * al cliente una cáscara sin su propio equipo. Si la categoría declara el
+ * suyo, rige ése.
+ *
+ * SOLO SE REEMPLAZA EL HEREDADO: si el acceso de ese mail se dio de alta
+ * con un equipo propio distinto del club, es una decisión sobre ESE mail
+ * y no se pisa. Y solo para el club del token: a otro club el guard
+ * `OTRO_CLUB` ya le cerró la puerta, y no se le presta un equipo ajeno.
+ */
+function sesionDeCategoria(ctx, cat) {
+  const s = ctx.sesion;
+  if (!s || AUTH.sinRestricciones(s) || !cat || cat.equipoPropioDe !== 'categoria') return s;
+  if (ctx.tokenClub && ctx.tokenClub !== cat.clubId) return s;
+  const actual = s.equipoAsignado;
+  const heredado = !actual || (!!cat.equipoPropioClub
+    && NUCLEO.claveEquipo(actual) === NUCLEO.claveEquipo(cat.equipoPropioClub));
+  if (!heredado) return s;
+  return Object.assign({}, s, { equipoAsignado: cat.equipoPropio });
 }
 
 /**
@@ -168,19 +201,22 @@ async function manejarCatalogo(peticion, deps) {
      `alcance.plan` de los datos—, así que esto solo fija el primer
      pintado del menú. */
   let planUsuario = ctx.sesion.plan;
+  let equipoUsuario = ctx.sesion.equipoAsignado;
   if (clubDelToken) {
     const slugs = Object.keys(clubDelToken.categorias || {});
     const abre = slugs.filter(s => clubDelToken.categorias[s].sheetId
       && AUTH.suscripcionDeCategoria(clubDelToken, s).acceso)[0] || slugs[0];
     const r = abre ? catalogo.resolver(cat.catalogo, ctx.tokenClub, abre) : null;
     planUsuario = planEfectivo(r ? r.suscripcion : clubDelToken, ctx.sesion, cat.origen);
+    /* Y el equipo de esa misma categoría, por lo mismo. */
+    if (r) equipoUsuario = sesionDeCategoria(ctx, r).equipoAsignado;
   }
   return {
     status: 200,
     body: {
       ok: true,
       usuario: { email: ctx.sesion.email, rol: ctx.rol, plan: planUsuario,
-        equipoAsignado: ctx.sesion.equipoAsignado, expiraEn: ctx.expiraEn },
+        equipoAsignado: equipoUsuario, expiraEn: ctx.expiraEn },
       /* EL ESTADO COMERCIAL VA SOLO PARA EL ADMIN. `manejarCatalogo` no
          tiene gate de rol —cualquier usuario con token recibe la lista de
          clubes— así que mandarle plan y vencimiento a todos le contaría a
@@ -227,15 +263,17 @@ async function manejarEquipos(peticion, deps) {
   if (!AUTH.sinRestricciones(ctx.sesion) && ctx.tokenClub && ctx.tokenClub !== cat.clubId) {
     return error(403, 'OTRO_CLUB', 'Tu acceso no incluye ese club.');
   }
+  /* El equipo de ESTA categoría, si declara uno (`sesionDeCategoria`). */
+  const sesion = sesionDeCategoria(ctx, cat);
 
   /* EL 403 POR EQUIPO AJENO, que es el caso que pidió el PoC.
 
      Se responde 403 y no 404: en una liga la lista de equipos es pública
      —está en la tabla de posiciones— así que negar su existencia no
      protege nada y confunde al que se equivocó de link. */
-  if (q.equipo && !reglas.puedeAnalizarEquipo(q.equipo, ctx.sesion)) {
+  if (q.equipo && !reglas.puedeAnalizarEquipo(q.equipo, sesion)) {
     return error(403, AUTH.MOTIVOS.OTRO_EQUIPO,
-      'Tu acceso cubre solo a ' + (ctx.sesion.equipoAsignado || 'tu equipo')
+      'Tu acceso cubre solo a ' + (sesion.equipoAsignado || 'tu equipo')
       + '. La tabla de posiciones y los rankings de liga sí están disponibles.',
       { disponible: ['clasificacion', 'rankings'] });
   }
@@ -264,7 +302,7 @@ async function manejarEquipos(peticion, deps) {
     console.error('[sgadd] alertas:', e && e.stack ? e.stack : e);
   }
 
-  const rec = reglas.recortarLibro(libro, ctx.sesion);
+  const rec = reglas.recortarLibro(libro, sesion);
   /* El plan que se hace valer, una sola vez: lo mira el panel para el
      distintivo y lo miden los bloques de abajo. */
   const planVigente = planEfectivo(cat.suscripcion || {}, ctx.sesion, cascada.origen);
@@ -298,7 +336,9 @@ async function manejarEquipos(peticion, deps) {
            el del link que el cliente tenga guardado (punto 55). Es un
            gate de interfaz, y el punto 19 explica por qué vale igual. */
         bloques: AUTH.bloquesVigentes(Object.assign({}, ctx.sesion, { plan: planVigente })),
-        equipoAsignado: ctx.sesion.equipoAsignado,
+        /* El de la CATEGORÍA: el panel lo adopta al abrirla, y es el mismo
+           con el que acá se recortó el libro. */
+        equipoAsignado: sesion.equipoAsignado,
         /* El ciclo de informes del plan ORO, para el distintivo del
            encabezado. Van los contadores crudos: la posición depende de
            los partidos jugados, que los sabe el panel y no el catálogo. */
@@ -373,7 +413,7 @@ async function manejarScouting(peticion, deps) {
      juega su equipo. El frontend ya fuerza el otro lado del selector
      (punto 19), pero eso es una comodidad de UI — acá es lo que decide si
      los datos salen. */
-  if (!AUTH.puedeScoutearCruce(q.local, q.visitante, ctx.sesion)) {
+  if (!AUTH.puedeScoutearCruce(q.local, q.visitante, sesionDeCategoria(ctx, cat))) {
     return error(403, 'CRUCE_AJENO',
       'El informe pre-partido prepara TUS cruces: uno de los dos equipos tiene que ser el tuyo.');
   }

@@ -10,6 +10,8 @@
      node server/bin/catalogo.js baja   --club X [--categoria Y]
      node server/bin/catalogo.js plan   --club X [--categoria Y] --plan ORO
      node server/bin/catalogo.js estado --club X [--categoria Y] --estado pausado
+     node server/bin/catalogo.js vence  --club X [--categoria Y] --vence 2026-10-31
+     node server/bin/catalogo.js equipo --club X [--categoria Y] --equipo "RECONQUISTA"
      node server/bin/catalogo.js exportar
      node server/bin/catalogo.js sembrar
 
@@ -76,6 +78,16 @@ CLI del catálogo · da de alta clubes sin redeplegar
     --club       <slug>       obligatorio
     --categoria  <slug>       si se omite, cambia el del CLUB (corta todas)
     --estado     <ESTADO>     activo, prueba, pausado, inactivo
+  vence                     la fecha de vencimiento del club o de UNA categoría
+    --club       <slug>       obligatorio
+    --categoria  <slug>       si se omite, la del CLUB (corta todas)
+    --vence      <AAAA-MM-DD> vacío ("") la borra. Una prueba vencida pasa
+                              sola a pausada, sin tocar las otras categorías
+  equipo                    el equipo propio del club o de UNA categoría
+    --club       <slug>       obligatorio
+    --categoria  <slug>       si se omite, el del CLUB (lo heredan las demás)
+    --equipo     <NOMBRE>     tal como lo escribe la planilla. Vacío ("") en
+                              una categoría la devuelve a heredar
   baja                      saca una categoría, o el club entero
     --club       <slug>       obligatorio
     --categoria  <slug>       si se omite, se borra el CLUB completo
@@ -180,7 +192,7 @@ function exigirKV() {
      no del respaldo: con Upstash sin contestar, `cargar()` devuelve el
      literal del código y escribirlo encima borraba planes, zonas y
      partidos manuales. `cargarParaEscribir` lanza antes de pisar nada. */
-  const escribe = ['sembrar', 'alta', 'baja', 'plan', 'estado'].indexOf(cmd) !== -1;
+  const escribe = ['sembrar', 'alta', 'baja', 'plan', 'estado', 'vence', 'equipo'].indexOf(cmd) !== -1;
   const cascada = escribe
     ? await catalogo.cargarParaEscribir().catch(e => {
       console.error('');
@@ -210,8 +222,9 @@ function exigirKV() {
         console.log('      ' + estado + '  ' + s.padEnd(24) + k.label +
           '   ' + enmascarar(k.sheetId) +
           '   plan ' + (sus.plan || '—') + (sus.planDe === 'club' ? ' (club)' : '') +
-          ' · ' + AUTH.estadoSuscripcion({ estado: sus.estadoDe === 'categoria' ? sus.estado : c.estado, vence: c.vence }) +
-          (sus.estadoDe === 'club' ? ' (club)' : ''));
+          ' · ' + sus.estado + (sus.estadoDe === 'club' ? ' (club)' : '') +
+          (sus.vence ? ' · vence ' + sus.vence + (sus.venceDe === 'club' ? ' (club)' : '') : '') +
+          (k.equipoPropio ? ' · equipo ' + k.equipoPropio : ''));
       });
       console.log('');
     });
@@ -242,7 +255,7 @@ function exigirKV() {
      Pasan por `mutar.aplicar`, el MISMO punto de entrada que el Panel
      Master: sus guards (ninguna categoría pierde su libro, el validador
      de la cascada) corren igual desde la terminal. */
-  if (cmd === 'plan' || cmd === 'estado') {
+  if (cmd === 'plan' || cmd === 'estado' || cmd === 'vence' || cmd === 'equipo') {
     exigirKV();
     const club = String(o.club || '').trim().toLowerCase();
     if (!club || !cat[club]) { console.error('  Ese club no está: ' + (club || '(falta --club)')); process.exit(1); }
@@ -252,6 +265,14 @@ function exigirKV() {
       if (o.plan === undefined) { console.error('  Falta --plan'); process.exit(1); }
       accion = 'cambiar_plan';
       datos.plan = o.plan === true ? '' : String(o.plan);
+    } else if (cmd === 'vence') {
+      if (o.vence === undefined) { console.error('  Falta --vence'); process.exit(1); }
+      accion = 'renovar';
+      datos.vence = o.vence === true ? '' : String(o.vence).trim();
+    } else if (cmd === 'equipo') {
+      if (o.equipo === undefined) { console.error('  Falta --equipo'); process.exit(1); }
+      accion = 'cambiar_equipo';
+      datos.equipoPropio = o.equipo === true ? '' : String(o.equipo);
     } else {
       if (!o.estado || o.estado === true) { console.error('  Falta --estado'); process.exit(1); }
       accion = 'cambiar_estado';
@@ -266,8 +287,11 @@ function exigirKV() {
     console.log('  ' + club + ' · ' + c2.nombre);
     Object.keys(c2.categorias).forEach(s => {
       const sus = AUTH.suscripcionDeCategoria(c2, s);
+      const eq = AUTH.equipoDeCategoria(c2, s);
       console.log('    ' + s.padEnd(24) + 'plan ' + (sus.plan || '—') + (sus.planDe === 'club' ? ' (club)' : '')
-        + ' · ' + sus.estado + (sus.estadoDe === 'club' ? ' (club)' : ''));
+        + ' · ' + sus.estado + (sus.estadoDe === 'club' ? ' (club)' : '')
+        + (sus.vence ? ' · vence ' + sus.vence + (sus.venceDe === 'club' ? ' (club)' : '') : '')
+        + ' · equipo ' + (eq.equipo || '—') + (eq.equipoDe === 'club' ? ' (club)' : ''));
     });
     console.log('');
     console.log('  Ya está vigente: el cliente lo ve en su próxima carga. Sus estados de jugador no se tocan.');

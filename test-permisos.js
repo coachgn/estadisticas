@@ -778,9 +778,13 @@ titulo('EL REBRANDING · los tokens ya emitidos NO se degradan');
   /* MARCAR UN INFORME NO MUEVE EL ARRANQUE DEL CICLO: si lo corriera, un
      informe entregado tarde desplazaría todos los siguientes y el cliente
      recibiría menos de los que pagó. */
-  const traz = MC2.informe({ x: { nombre: 'X', categorias: {} } }, { club: 'x' });
+  /* Desde el 2026-09-13 el informe es de UNA categoría (punto 61): un club
+     de una sola la tiene implícita. El detalle vive en
+     `test-clientes-estructura.js`. */
+  const traz = MC2.informe({ x: { nombre: 'X', categorias: { p: { label: 'P', sheetId: 's' } } } }, { club: 'x' });
   check('marcar entregado no toca cicloDesde',
-    traz.ok && traz.catalogo.x.cicloDesde === undefined && traz.catalogo.x.informesEntregados === 1);
+    traz.ok && traz.catalogo.x.categorias.p.cicloDesde === undefined
+    && traz.catalogo.x.categorias.p.informesEntregados === 1 && traz.catalogo.x.cicloDesde === undefined);
 }
 
 titulo('LA SESIÓN DESPUÉS DEL LOGIN · los tres síntomas eran uno solo');
@@ -1372,7 +1376,7 @@ titulo('EL GLOSARIO SE AGRUPA COMO EL MANUAL');
      `<th>` y no contra un número fijo: una columna nueva sin centrar
      tiene que romper esto. */
   const THS = (UI2.match(/<th class="[^"]*"/g) || []);
-  check('la tabla del glosario declara sus cinco encabezados', THS.length === 5, THS.length);
+  check('la tabla del glosario declara sus cuatro encabezados', THS.length === 4, THS.length);
   check('y van TODOS centrados',
     THS.length > 0 && THS.every(t => /text-center/.test(t)),
     THS.filter(t => !/text-center/.test(t)).join(' | '));
@@ -1396,11 +1400,12 @@ titulo('EL GLOSARIO SE AGRUPA COMO EL MANUAL');
     /cont\.innerHTML = cuerpo\(\);/.test(UI2)
     && !/html\(\)\.replace\(/.test(UI2));
 
-  /* Las cuatro abreviaturas de hoja y los seis ratings no traen columna
-     de familia en el manual: se completan desde el título de SU sección,
-     no se inventa un nombre nuevo. */
-  check('las siglas de hoja quedan en su propia familia',
-    ['4F', 'AC', 'BD'].every(k => GL2.buscar(k) && /Hojas/.test(GL2.buscar(k).familia)));
+  /* Los seis ratings no traen columna de familia en el manual: se
+     completan desde el título de SU sección, no se inventa un nombre
+     nuevo. Las cuatro abreviaturas de hoja ya no entran al glosario
+     (2026-09-13): el detalle lo fija `test-glosario.js`. */
+  check('las siglas de hoja ya no están en el glosario',
+    ['4F', 'AC', 'BD', 'E / J'].every(k => !GL2.buscar(k)));
   check('y los ratings en la suya',
     ['RTNG OFF', 'NET RTNG'].every(k => GL2.buscar(k) && /Ratings/.test(GL2.buscar(k).familia)));
   check('el generador lo completa, no la vista', /FAMILIA_POR_GRUPO/.test(gen2));

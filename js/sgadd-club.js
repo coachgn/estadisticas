@@ -604,6 +604,35 @@ const CLUB = (function () {
      no conoce, la config queda exactamente como la dejó el JSON.
      ===================================================================== */
   const escRegex = (t) => String(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const claveDe = (t) => (typeof SGADD !== 'undefined' && SGADD.claveEquipo)
+    ? SGADD.claveEquipo(t) : String(t).trim().toUpperCase();
+
+  /**
+   * EL PATRÓN DEL EQUIPO PROPIO PARA UNA CATEGORÍA (punto 61). PURA.
+   *
+   * Orden, del más específico al más general:
+   *
+   *   1. la planilla del JSON declara el suyo → ése (lo escribió alguien);
+   *   2. la categoría tiene equipo y el patrón del club YA lo reconoce y
+   *      fue escrito a mano → el del club: `/RECONQUISTA/` cubre a «A» y a
+   *      la U23, y reemplazarlo por uno anclado perdería esa decisión;
+   *   3. la categoría tiene equipo → anclado sobre SU clave;
+   *   4. si no, el del club, tal cual.
+   *
+   * Anclado siempre, por la trampa del punto 6: sin anclar, DEPORTIVO LA
+   * PLATA se llevaría a DEPORTIVO SAN VICENTE.
+   */
+  function patronDeCategoria(cfg, p) {
+    const base = cfg && cfg.patronEquipoPropio ? String(cfg.patronEquipoPropio) : null;
+    if (p && p.patronEquipoPropio) return String(p.patronEquipoPropio);
+    const eq = p && p.equipoPropio;
+    if (!eq) return base;
+    const clave = claveDe(eq);
+    if (base && !(cfg && cfg.patronDerivado)) {
+      try { if (new RegExp(base, 'i').test(clave)) return base; } catch (e) { /* patrón roto: se ancla */ }
+    }
+    return '^' + escRegex(clave) + '$';
+  }
 
   /**
    * La config que resulta de cruzar el JSON (puede ser `null`) con el club
@@ -631,9 +660,11 @@ const CLUB = (function () {
        DEPORTIVO SAN VICENTE. */
     const equipo = (extra && extra.equipoPropio) || s.equipoPropio;
     if (!base.patronEquipoPropio && equipo) {
-      const clave = (typeof SGADD !== 'undefined' && SGADD.claveEquipo)
-        ? SGADD.claveEquipo(equipo) : String(equipo).trim().toUpperCase();
-      base.patronEquipoPropio = '^' + escRegex(clave) + '$';
+      base.patronEquipoPropio = '^' + escRegex(claveDe(equipo)) + '$';
+      /* Se marca que es DERIVADO: al abrir una categoría con otro equipo,
+         `patronDeCategoria` lo reemplaza sin miedo a pisar uno escrito a
+         mano en el JSON. */
+      base.patronDerivado = true;
     }
     /* EL COLOR DE MARCA PUBLICADO GANA sobre el del JSON, por la misma
        cascada que las zonas (punto 31): publicado → archivo. Sin JSON y
@@ -667,6 +698,12 @@ const CLUB = (function () {
       if (k.planEfectivo) p.plan = k.planEfectivo;
       if (k.estadoEfectivo) p.estado = k.estadoEfectivo;
       if (k.bloqueada) { p.bloqueada = true; p.activo = false; }
+      /* EL EQUIPO Y EL VENCIMIENTO DE LA CATEGORÍA (punto 61). El equipo lo
+         adopta `SGADD_APP.cargar()` al abrirla; la prueba terminada la dice
+         el selector. */
+      if (k.equipoEfectivo) p.equipoPropio = k.equipoEfectivo;
+      if (k.venceEfectivo) p.vence = k.venceEfectivo;
+      if (k.pruebaVencida) p.pruebaVencida = true;
       return p;
     });
     return base;
@@ -701,7 +738,7 @@ const CLUB = (function () {
     return true;
   }
 
-  return { TEMA, estado, cargar, aplicar: aplicarSeguro, reconciliar, confirmarSinConfig, reconciliarConfig, credito, idDesdeUrl, esLanding, enDemo, debug, marcarRender,
+  return { TEMA, estado, cargar, aplicar: aplicarSeguro, reconciliar, confirmarSinConfig, reconciliarConfig, patronDeCategoria, credito, idDesdeUrl, esLanding, enDemo, debug, marcarRender,
            reintentarEscudo, aclararHastaLegible, oscurecerHastaLegible, contraste,
            mezclarHex, colorDeEscudo, colorDeImagen,
            get cfg() { return estado.cfg; }, get aplicado() { return aplicado; } };

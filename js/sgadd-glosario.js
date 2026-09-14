@@ -10,7 +10,7 @@
    definición está mal, se corrige en el manual del motor — que es la fuente
    que el club audita — y se vuelve a generar.
 
-   77 entradas.
+   73 entradas.
    ===================================================================== */
 
 const SGADD_GLOSARIO = (function () {
@@ -21,63 +21,54 @@ const SGADD_GLOSARIO = (function () {
     sigla: "CONDICION",
     nombre: "Condición",
     lectura: "Ver la advertencia debajo de esta tabla",
-    hoja: "BD · 4F",
     familia: "A · Identificación",
   },
   {
     sigla: "EQUIPO",
     nombre: "Equipo",
     lectura: "Es la clave que agrupa toda la temporada",
-    hoja: "todas",
     familia: "A · Identificación",
   },
   {
     sigla: "FASE",
     nombre: "Fase",
     lectura: "REGULAR, PLAYOFF, FINAL…",
-    hoja: "todas",
     familia: "A · Identificación",
   },
   {
     sigla: "FECHA",
     nombre: "Fecha",
     lectura: "El motor no la completa. Es para que la cargues vos si querés",
-    hoja: "BD · 4F",
     familia: "A · Identificación",
   },
   {
     sigla: "ID_ARCHIVO",
     nombre: "Identificador de Drive",
     lectura: "No lo borres. Es lo que impide los duplicados",
-    hoja: "BD · 4F",
     familia: "A · Identificación",
   },
   {
     sigla: "NOMBRES",
     nombre: "Jugador",
     lectura: "Agrupa por texto exacto: cuidado con los espacios",
-    hoja: "J",
     familia: "A · Identificación",
   },
   {
     sigla: "PARTIDO",
     nombre: "Partido",
     lectura: "AMANCAY vs VILLA SAN MARTIN",
-    hoja: "BD · 4F",
     familia: "A · Identificación",
   },
   {
     sigla: "RESULTADO",
     nombre: "Resultado",
     lectura: "Calculado comparando PTS contra PTSopp",
-    hoja: "BD · 4F",
     familia: "A · Identificación",
   },
   {
     sigla: "TORNEO",
     nombre: "Torneo",
     lectura: "APERTURA, CLAUSURA… o vacío si no usás el separador",
-    hoja: "todas",
     familia: "A · Identificación",
   },
   {
@@ -85,7 +76,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Minutos",
     formula: "suma · ÷ PJ",
     lectura: "Minutos en cancha. Un equipo suma 200 por partido (5 jugadores × 40′)",
-    hoja: "todas",
     familia: "B · Volumen",
   },
   {
@@ -93,7 +83,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Ritmo",
     formula: "(PLAYS − RO + PLAYSopp − ROopp) / 2 × 200 / MIN",
     lectura: "Posesiones por partido de 40′. Más alto = juego más rápido",
-    hoja: "E",
     familia: "B · Volumen",
   },
   {
@@ -101,7 +90,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Partidos Jugados",
     formula: "conteo de partidos",
     lectura: "Cuántos partidos entran en ese acumulado. El detector de duplicados",
-    hoja: "AC · PR",
     familia: "B · Volumen",
   },
   {
@@ -109,7 +97,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Jugadas finalizadas",
     formula: "TCI + 0.44·T1I + PP",
     lectura: "Cuántas veces terminaste una jugada. Sí cuenta cada segunda oportunidad",
-    hoja: "todas",
     familia: "B · Volumen",
   },
   {
@@ -117,7 +104,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Posesiones",
     formula: "TCI + 0.44·T1I + PP − RO",
     lectura: "Cuántas veces tuviste la pelota. El rebote ofensivo no genera posesión nueva",
-    hoja: "E",
     familia: "B · Volumen",
   },
   {
@@ -125,7 +111,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Diferencial",
     formula: "del acta",
     lectura: "Diferencia de puntos con el jugador en cancha",
-    hoja: "J",
     familia: "C · Anotación",
   },
   {
@@ -133,7 +118,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Efectividad de tiro ajustada",
     formula: "(TCC + 0.5·T3C) / TCI",
     lectura: "El TC% corregido: reconoce que un triple vale más. La métrica de tiro más útil",
-    hoja: "BD · PR · 4F",
     familia: "C · Anotación",
   },
   {
@@ -141,7 +125,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Puntos Por Play",
     formula: "PTS / PLAYS",
     lectura: "Cuánto rinde cada jugada. ~0.90 es la media formativa; por encima de 1.00 es muy bueno",
-    hoja: "BD · PR",
     familia: "C · Anotación",
   },
   {
@@ -149,7 +132,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Puntos",
     formula: "del acta",
     lectura: "Puntos anotados",
-    hoja: "todas",
     familia: "C · Anotación",
   },
   {
@@ -157,7 +139,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Eficiencia verdadera",
     formula: "PTS / (2·(TCI + 0.44·T1I))",
     lectura: "Como el eFG% pero además cuenta los libres. La foto más completa del tirador",
-    hoja: "BD · PR",
     familia: "C · Anotación",
   },
   {
@@ -165,7 +146,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Uso",
     formula: "(PLAYS × MINequipo/5) / (PLAYSequipo × MIN)",
     lectura: "Qué porcentaje de las jugadas del equipo termina este jugador mientras está en cancha",
-    hoja: "J",
     familia: "C · Anotación",
   },
   {
@@ -173,7 +153,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Valoración",
     formula: "del acta (fórmula FIBA)",
     lectura: "Índice global: suma lo bueno y resta lo malo. Útil de un vistazo, engañoso si se lee solo",
-    hoja: "todas",
     familia: "C · Anotación",
   },
   {
@@ -181,7 +160,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Puntos por libre intentado",
     formula: "T1C / T1I",
     lectura: "Coincide con T1% porque cada libre vale 1",
-    hoja: "BD · PR",
     familia: "D · Tiro",
   },
   {
@@ -189,7 +167,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Puntos por intento de 2",
     formula: "(T2C × 2) / T2I",
     lectura: "Cuánto rinde cada intento de dos",
-    hoja: "BD · PR",
     familia: "D · Tiro",
   },
   {
@@ -197,7 +174,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Puntos por intento de 3",
     formula: "(T3C × 3) / T3I",
     lectura: "Cuánto rinde cada intento de tres",
-    hoja: "BD · PR",
     familia: "D · Tiro",
   },
   {
@@ -205,7 +181,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Porcentaje de libres",
     formula: "T1C / T1I",
     lectura: "Efectividad desde la línea",
-    hoja: "BD · PR",
     familia: "D · Tiro",
   },
   {
@@ -213,7 +188,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Libres convertidos",
     formula: "del acta",
     lectura: "Volumen",
-    hoja: "todas",
     familia: "D · Tiro",
   },
   {
@@ -221,7 +195,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Libres intentados",
     formula: "del acta",
     lectura: "Volumen",
-    hoja: "todas",
     familia: "D · Tiro",
   },
   {
@@ -229,7 +202,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Porcentaje de dobles",
     formula: "T2C / T2I",
     lectura: "Efectividad en la zona y la media distancia",
-    hoja: "BD · PR",
     familia: "D · Tiro",
   },
   {
@@ -237,7 +209,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Dobles convertidos",
     formula: "del acta",
     lectura: "Volumen",
-    hoja: "todas",
     familia: "D · Tiro",
   },
   {
@@ -245,7 +216,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Dobles intentados",
     formula: "del acta",
     lectura: "Volumen",
-    hoja: "todas",
     familia: "D · Tiro",
   },
   {
@@ -253,7 +223,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Porcentaje de triples",
     formula: "T3C / T3I",
     lectura: "Efectividad desde el perímetro",
-    hoja: "BD · PR",
     familia: "D · Tiro",
   },
   {
@@ -261,7 +230,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Triples convertidos",
     formula: "del acta",
     lectura: "Volumen",
-    hoja: "todas",
     familia: "D · Tiro",
   },
   {
@@ -269,7 +237,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Triples intentados",
     formula: "del acta",
     lectura: "Volumen",
-    hoja: "todas",
     familia: "D · Tiro",
   },
   {
@@ -277,7 +244,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Porcentaje de campo",
     formula: "TCC / TCI",
     lectura: "El porcentaje clásico. Preferí el eFG%",
-    hoja: "BD · PR",
     familia: "D · Tiro",
   },
   {
@@ -285,7 +251,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Tiros de campo convertidos",
     formula: "T2C + T3C",
     lectura: "Volumen",
-    hoja: "todas",
     familia: "D · Tiro",
   },
   {
@@ -293,7 +258,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Tiros de campo intentados",
     formula: "T2I + T3I",
     lectura: "Volumen",
-    hoja: "todas",
     familia: "D · Tiro",
   },
   {
@@ -301,7 +265,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Ratio de tiros libres",
     formula: "T1C / TCI",
     lectura: "Cuántos puntos de libre sacás por cada tiro de campo",
-    hoja: "BD · PR · 4F",
     familia: "D · Tiro / 4F",
   },
   {
@@ -309,7 +272,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Jugadas que terminan en pérdida",
     formula: "PP / PLAYS",
     lectura: "Cuántas jugadas regalás",
-    hoja: "BD · PR",
     familia: "E · Distribución",
   },
   {
@@ -317,7 +279,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Jugadas que terminan en libres",
     formula: "(0.44 × T1I) / PLAYS",
     lectura: "Cuánto vivís de la línea",
-    hoja: "BD · PR",
     familia: "E · Distribución",
   },
   {
@@ -325,7 +286,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Jugadas que terminan en doble",
     formula: "T2I / PLAYS",
     lectura: "Peso del juego interior y de media distancia",
-    hoja: "BD · PR",
     familia: "E · Distribución",
   },
   {
@@ -333,7 +293,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Jugadas que terminan en triple",
     formula: "T3I / PLAYS",
     lectura: "Peso del juego exterior",
-    hoja: "BD · PR",
     familia: "E · Distribución",
   },
   {
@@ -341,7 +300,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Rebotes defensivos",
     formula: "del acta",
     lectura: "Volumen",
-    hoja: "todas",
     familia: "F · Rebotes",
   },
   {
@@ -349,7 +307,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "% de rebote defensivo",
     formula: "RD / (RD + ROopp)",
     lectura: "De los rebotes disponibles en tu tablero, cuántos tomaste. >75 % es sólido",
-    hoja: "BD · PR",
     familia: "F · Rebotes",
   },
   {
@@ -357,7 +314,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Rebotes ofensivos",
     formula: "del acta",
     lectura: "Volumen",
-    hoja: "todas",
     familia: "F · Rebotes",
   },
   {
@@ -365,7 +321,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "% de rebote ofensivo",
     formula: "RO / (RO + RDopp)",
     lectura: "De los disponibles en el tablero rival, cuántos tomaste. >30 % es agresivo",
-    hoja: "BD · PR",
     familia: "F · Rebotes",
   },
   {
@@ -373,7 +328,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Rebotes totales",
     formula: "RD + RO",
     lectura: "Volumen",
-    hoja: "todas",
     familia: "F · Rebotes",
   },
   {
@@ -381,7 +335,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "% de rebote total",
     formula: "RT / (RT + RDopp + ROopp)",
     lectura: "Tu dominio general del rebote",
-    hoja: "BD · PR",
     familia: "F · Rebotes",
   },
   {
@@ -389,7 +342,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Asistencias",
     formula: "del acta",
     lectura: "Volumen",
-    hoja: "todas",
     familia: "G · Creación",
   },
   {
@@ -397,7 +349,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Ratio asistencia / pérdida",
     formula: "AST / PP",
     lectura: ">1.5 es buen manejo. <1.0 es preocupante",
-    hoja: "todas",
     familia: "G · Creación",
   },
   {
@@ -405,7 +356,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "% de asistencias",
     formula: "AST / TCC",
     lectura: "Qué proporción de los tiros convertidos vino de asistencia. Mide juego colectivo",
-    hoja: "BD · PR",
     familia: "G · Creación",
   },
   {
@@ -413,7 +363,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Faltas cometidas",
     formula: "del acta",
     lectura: "Disciplina",
-    hoja: "todas",
     familia: "G · Creación",
   },
   {
@@ -421,7 +370,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Faltas recibidas",
     formula: "del acta",
     lectura: "Capacidad de generar contacto",
-    hoja: "todas",
     familia: "G · Creación",
   },
   {
@@ -429,7 +377,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Pelotas perdidas",
     formula: "del acta",
     lectura: "Volumen",
-    hoja: "todas",
     familia: "G · Creación",
   },
   {
@@ -437,7 +384,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Promedios E / J / 4F",
     formula: "del acta",
     lectura: "Robos",
-    hoja: "todas",
     familia: "G · Creación",
   },
   {
@@ -445,7 +391,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "% de recuperación",
     formula: "PR / PPopp",
     lectura: "De las pérdidas del rival, cuántas forzaste vos",
-    hoja: "BD · PR",
     familia: "G · Creación",
   },
   {
@@ -453,7 +398,6 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Tapones cometidos",
     formula: "del acta",
     lectura: "Tal como lo registra el acta de la CABB",
-    hoja: "todas",
     familia: "G · Creación",
   },
   {
@@ -461,42 +405,36 @@ const SGADD_GLOSARIO = (function () {
     nombre: "Tapones recibidos",
     formula: "del acta",
     lectura: "Tal como lo registra el acta de la CABB",
-    hoja: "todas",
     familia: "G · Creación",
   },
   {
     sigla: "PLAYSopp",
     lectura: "Jugadas del rival",
     uso: "PACE, PPP DEF",
-    hoja: "todas",
     familia: "H · Rival",
   },
   {
     sigla: "PPopp",
     lectura: "Pérdidas del rival",
     uso: "PR%, PP Opp%",
-    hoja: "todas",
     familia: "H · Rival",
   },
   {
     sigla: "PTSopp",
     lectura: "Puntos del rival",
     uso: "RESULTADO, PPP DEF, RTNG DEF",
-    hoja: "todas",
     familia: "H · Rival",
   },
   {
     sigla: "RDopp",
     lectura: "Rebotes defensivos del rival",
     uso: "RO%, RT%",
-    hoja: "todas",
     familia: "H · Rival",
   },
   {
     sigla: "ROopp",
     lectura: "Rebotes ofensivos del rival",
     uso: "RD%, RT%, PACE",
-    hoja: "todas",
     familia: "H · Rival",
   },
   {
@@ -545,14 +483,14 @@ const SGADD_GLOSARIO = (function () {
   },
   {
     sigla: "PPP DEF",
-    nombre: "Puntos por posesión defensivos",
-    formula: "PTSopp / PLAYSopp",
+    nombre: "Puntos por jugada defensivos",
+    formula: "PTS_opp / PLAYS_opp",
     lectura: "Cuánto te anotan por jugada",
     familia: "J · Ratings",
   },
   {
     sigla: "PPP OF",
-    nombre: "Puntos por posesión ofensivos",
+    nombre: "Puntos por jugada ofensivos",
     formula: "PTS / PLAYS",
     lectura: "Cuánto anotás por jugada",
     familia: "J · Ratings",
@@ -570,26 +508,6 @@ const SGADD_GLOSARIO = (function () {
     formula: "PPP OF × 100",
     lectura: "Puntos cada 100 posesiones",
     familia: "J · Ratings",
-  },
-  {
-    sigla: "4F",
-    nombre: "Las tres hojas de Cuatro Factores",
-    familia: "K · Hojas",
-  },
-  {
-    sigla: "AC",
-    nombre: "Acumulado E / J / 4F",
-    familia: "K · Hojas",
-  },
-  {
-    sigla: "BD",
-    nombre: "Base Datos E / Base Datos J",
-    familia: "K · Hojas",
-  },
-  {
-    sigla: "E / J",
-    nombre: "Sólo equipos / sólo jugadores",
-    familia: "K · Hojas",
   },
   ];
 

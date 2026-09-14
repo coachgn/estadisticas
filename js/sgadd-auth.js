@@ -128,6 +128,7 @@ const SGADD_AUTH = (function () {
     cambiar_estado: 'El estado de una suscripción se cambia de a un cliente: cortar o abrir'
       + ' el acceso a varios de un click es el gesto que se lamenta.',
     probar: 'Una prueba se le da a un cliente, no a un torneo entero.',
+    cambiar_equipo: 'El equipo propio es la identidad de este cliente en ese libro: en otro club es otro equipo.',
     baja: 'Una baja se hace de a un cliente.',
   };
 
@@ -225,8 +226,11 @@ const SGADD_AUTH = (function () {
    * el Panel Master tiene que poder decir cuál es cuál antes de que el
    * admin toque el del club creyendo que cambia solo una categoría.
    *
-   * @returns {{estado, estadoDe, acceso, plan, planDe, vence}}
+   * @returns {{estado, estadoDe, estadoDeclarado, acceso, plan, planDe,
+   *   vence, venceDe, pruebaVencida}}
    *   `plan` es null si ni la categoría ni el club declaran uno.
+   *   `estado` es el EFECTIVO, ya derivado de las fechas; `estadoDeclarado`
+   *   es el escrito que rige, que es con lo que se deriva.
    */
   function suscripcionDeCategoria(club, slug, ahora) {
     const c = club || {};
@@ -236,12 +240,36 @@ const SGADD_AUTH = (function () {
 
     let estado = delClub;
     let estadoDe = 'club';
-    if (tieneAcceso(delClub) && propio) {
-      /* La categoría declara el suyo. El vencimiento sigue siendo del club
-         —es la fecha de la factura— así que una categoría `activo` de un
-         club vencido ya cayó en la rama de arriba. */
-      estado = propio;
-      estadoDe = 'categoria';
+    let estadoDeclarado = ESTADOS_SUSCRIPCION.indexOf(c.estado) !== -1 ? c.estado : 'activo';
+    let vence = c.vence || null;
+    let venceDe = c.vence ? 'club' : null;
+    let pruebaVencida = false;
+
+    if (tieneAcceso(delClub)) {
+      /* La categoría declara el suyo. Un club pausado, dado de baja o
+         vencido ya cayó afuera de esta rama: es el titular y corta todo. */
+      if (propio) { estado = propio; estadoDe = 'categoria'; estadoDeclarado = propio; }
+
+      /* EL VENCIMIENTO DE LA CATEGORÍA (2026-09-13). Solo ACOTA: la fecha
+         del club sigue cortando todo, así que una categoría con una fecha
+         más lejana que la del club no se estira más allá de la factura.
+         Se aplica sobre el estado que rige, propio o heredado.
+
+         UNA PRUEBA VENCIDA PASA A PAUSADA, no a vencida: no hubo un período
+         pago que vencer, y lo que corresponde es que el admin decida si la
+         convierte en activa. Una categoría `activo` con su fecha pasada sí
+         queda vencida, igual que un club. Las dos cosas se DERIVAN de la
+         fecha y no se guardan: el día que un proceso nocturno no corriera,
+         el estado quedaría mintiendo. */
+      if (k.vence && /^\d{4}-\d{2}-\d{2}$/.test(String(k.vence))) {
+        vence = String(k.vence);
+        venceDe = 'categoria';
+        if (tieneAcceso(estado) && suscripcionVencida(k.vence, ahora)) {
+          pruebaVencida = estado === 'prueba';
+          estado = pruebaVencida ? 'pausado' : 'vencido';
+          estadoDe = 'categoria';
+        }
+      }
     }
 
     let plan = null;
@@ -249,8 +277,63 @@ const SGADD_AUTH = (function () {
     if (k.plan) { plan = normalizarPlan(k.plan); planDe = 'categoria'; }
     else if (c.plan) { plan = normalizarPlan(c.plan); planDe = 'club'; }
 
-    return { estado: estado, estadoDe: estadoDe, acceso: tieneAcceso(estado),
-      plan: plan, planDe: planDe, vence: c.vence || null };
+    return { estado: estado, estadoDe: estadoDe, estadoDeclarado: estadoDeclarado,
+      acceso: tieneAcceso(estado), plan: plan, planDe: planDe,
+      vence: vence, venceDe: venceDe, pruebaVencida: pruebaVencida };
+  }
+
+  /**
+   * EL EQUIPO PROPIO DE UNA CATEGORÍA · con herencia del club.
+   *
+   * La planilla nombra al mismo club distinto según la competencia:
+   * Reconquista es «RECONQUISTA A» en Primera y «RECONQUISTA» en la U23.
+   * Con un solo equipo por club, el cliente abría la U23 y el panel no
+   * encontraba a su equipo en ese libro — la grilla vacía que el punto 19
+   * describe como el peor modo de fallar. La categoría puede declarar el
+   * suyo; si no, hereda el del club, que es lo que tiene el catálogo de hoy.
+   *
+   * @returns {{equipo: string|null, equipoDe: 'categoria'|'club'|null}}
+   */
+  function equipoDeCategoria(club, slug) {
+    const c = club || {};
+    const k = (slug && c.categorias && c.categorias[slug]) || {};
+    if (k.equipoPropio && String(k.equipoPropio).trim()) {
+      return { equipo: String(k.equipoPropio).trim(), equipoDe: 'categoria' };
+    }
+    if (c.equipoPropio && String(c.equipoPropio).trim()) {
+      return { equipo: String(c.equipoPropio).trim(), equipoDe: 'club' };
+    }
+    return { equipo: null, equipoDe: null };
+  }
+
+  /**
+   * EL CICLO DE INFORMES ORO DE UNA CATEGORÍA · con sus propios contadores.
+   *
+   * El informe de scouters se entrega cada cuatro partidos DEL EQUIPO de esa
+   * categoría, y Primera y la U23 no juegan al mismo ritmo: con un solo
+   * contador por club, marcar entregado el informe de Primera le descontaba
+   * el que le tocaba a la U23. Cada categoría lleva el suyo.
+   *
+   * RETROCOMPATIBLE SIN MIGRAR: un club de UNA sola categoría que tenía los
+   * contadores en el club los sigue viendo en esa categoría —no pueden ser
+   * de otra—. Con varias no se reparte nada: repartir sería inventar a cuál
+   * le correspondía cada informe ya entregado.
+   *
+   * @returns {{cicloDesde: number, informesEntregados: number,
+   *   cicloDe: 'categoria'|'club'|null}}
+   */
+  function cicloDeCategoria(club, slug) {
+    const c = club || {};
+    const cats = c.categorias || {};
+    const k = (slug && cats[slug]) || {};
+    const num = (v) => { const n = Number(v); return (isFinite(n) && n >= 0) ? Math.floor(n) : 0; };
+    if (k.cicloDesde !== undefined || k.informesEntregados !== undefined) {
+      return { cicloDesde: num(k.cicloDesde), informesEntregados: num(k.informesEntregados), cicloDe: 'categoria' };
+    }
+    if (Object.keys(cats).length <= 1 && (c.cicloDesde !== undefined || c.informesEntregados !== undefined)) {
+      return { cicloDesde: num(c.cicloDesde), informesEntregados: num(c.informesEntregados), cicloDe: 'club' };
+    }
+    return { cicloDesde: 0, informesEntregados: 0, cicloDe: null };
   }
 
   /**
@@ -680,6 +763,23 @@ const SGADD_AUTH = (function () {
     return (ses && ses.equipoAsignado) || null;
   }
 
+  /**
+   * Adopta el equipo propio de la CATEGORÍA abierta en la sesión del
+   * CLIENTE. Mismo contrato que `fijarPlanEfectivo`: el token lleva el
+   * equipo del club, y el panel tiene que filtrar con el que declara el
+   * servidor para esa categoría —si no, la U23 de Reconquista mostraría la
+   * grilla vacía—. Quien decide es el servidor, que recorta con el mismo.
+   *
+   * Devuelve si cambió algo.
+   */
+  function fijarEquipoEfectivo(equipo) {
+    if (!sesionActual || !equipo || sinRestricciones(sesionActual)) return false;
+    const e = String(equipo).trim();
+    if (!e || sesionActual.equipoAsignado === e) return false;
+    sesionActual = Object.assign({}, sesionActual, { equipoAsignado: e });
+    return true;
+  }
+
   /* --------------------------------------------------------------------
      DE DÓNDE SALE LA SESIÓN
 
@@ -991,12 +1091,12 @@ const SGADD_AUTH = (function () {
     CUPO_MAILS, cupoDeMails,
     ALCANCES, ALCANCES_POR_ACCION, alcancesDe, motivoSinAlcance,
     ESTADOS_SUSCRIPCION, ESTADOS_CON_ACCESO, tieneAcceso, suscripcionVencida,
-    estadoSuscripcion, suscripcionDeCategoria, planDelClub,
+    estadoSuscripcion, suscripcionDeCategoria, planDelClub, equipoDeCategoria, cicloDeCategoria,
     normalizarEmail, parsearSesion, establecerSesion, limpiarSesion, sesion, fijarPlanEfectivo,
     esAdmin, rol, sinRestricciones,
     BLOQUES, alcanzaPlan, tieneBloque, puedoVerBloque, bloquesVigentes,
     puedeVerEquipo, tieneModulo, puedoAcceder, puedeScoutearCruce,
-    forzarCruce, equiposVisibles, equipoPropio,
+    forzarCruce, equiposVisibles, equipoPropio, fijarEquipoEfectivo,
     cargarSesion, descripcionSesion,
     token, establecerToken, limpiarToken, leerPayload, clubDelToken,
     sacarTokenDeLaUrl, CLAVE_TOKEN, esTokenDeAdmin, leerPayloadDe,

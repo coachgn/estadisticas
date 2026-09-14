@@ -22,6 +22,7 @@
 /* La tabla de alcances vive en el módulo que comparten el navegador y el
    servidor: el modal la lee y acá se hace cumplir (ver `aplicar`). */
 const AUTH = require('./compartido/sgadd-auth.js');
+const CORE = require('./compartido/sgadd-core.js');
 
 /* El color de marca de un club: siempre #rrggbb. */
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -300,7 +301,9 @@ function datosPara(cat, d, accion, o) {
   const club = cat[o.club] || {};
   const unica = Object.keys(club.categorias || {}).length <= 1;
   if (accion === 'cambiar_plan') return Object.assign(base, { plan: d.plan, categoria: o.slug || null });
-  if (accion === 'renovar') return Object.assign(base, { vence: d.vence });
+  /* La fecha de UNA categoría se lleva a las categorías del mismo libro,
+     no a los clubes enteros — igual que el plan. */
+  if (accion === 'renovar') return Object.assign(base, { vence: d.vence, categoria: o.slug || null });
   if (accion === 'partidos_manuales') {
     /* Si ese club guardó sus partidos con la clave vieja, se migra en el
        mismo gesto: con una sola categoría, la vieja no puede ser de otra. */
@@ -418,6 +421,23 @@ function alta(cat, d) {
   if (v.estado === '' || v.estado === null) delete kNueva.estado;
   else if (v.estado !== undefined) kNueva.estado = v.estado;
 
+  /* EL EQUIPO DE LA CATEGORÍA (2026-09-13), con la misma regla que el
+     plan: sin el campo no se toca, vacío o igual al del club vuelve a
+     heredar. Pasa por `equipo()` para que la normalización y la herencia
+     sean las mismas que desde la CLI. */
+  if (v.equipoPropioCategoria !== undefined) {
+    const re = equipo(nuevo, { club: v.club, categoria: v.categoria, equipoPropio: v.equipoPropioCategoria });
+    if (!re.ok) return re;
+    nuevo[v.club].categorias[v.categoria] = re.catalogo[v.club].categorias[v.categoria];
+  }
+  /* Y SU FECHA, típicamente la de una prueba: «Arranca en prueba hasta el
+     30». Pasa por `renovar()`, que rechaza una fecha ya pasada. */
+  if (v.vence !== undefined) {
+    const rv = renovar(nuevo, { club: v.club, categoria: v.categoria, vence: v.vence, ahora: v.ahora });
+    if (!rv.ok) return rv;
+    nuevo[v.club].categorias[v.categoria] = rv.catalogo[v.club].categorias[v.categoria];
+  }
+
   /* EL COLOR DE MARCA viaja con el club y lo publica el catálogo. Un
      cliente sin `clubes/<id>.json` quedaba con el naranja de Reconquista,
      que es el tema por defecto del panel — medido en producción con
@@ -525,8 +545,64 @@ function informe(cat, d) {
   const v = d || {};
   const nuevo = copiar(cat);
   if (!nuevo[v.club]) return malo('Ese club no esta en el catalogo.');
-  const hoy = Number(nuevo[v.club].informesEntregados) || 0;
-  nuevo[v.club].informesEntregados = Math.max(0, hoy + (v.deshacer ? -1 : 1));
+  /* EL INFORME ES DE UNA CATEGORÍA (2026-09-13): cada una lleva su ciclo,
+     porque cada equipo juega a su ritmo. Sin `categoria`, un club de UNA
+     sola la tiene implícita; con varias hay que decir cuál — adivinarlo le
+     descontaría el informe a la que no correspondía. */
+  const cats = nuevo[v.club].categorias || {};
+  const slugs = Object.keys(cats);
+  const slug = v.categoria ? String(v.categoria) : (slugs.length === 1 ? slugs[0] : null);
+  if (!slug) {
+    return malo('Ese club tiene ' + slugs.length + ' categorías: decí de cuál es el informe.');
+  }
+  const k = cats[slug];
+  if (!k) return malo('Ese club no tiene la categoría «' + slug + '».');
+  /* Se parte de lo que RIGE (`cicloDeCategoria`), que en un club de una
+     sola categoría puede venir todavía del club: se muda a la categoría
+     en este mismo gesto y el del club se borra, para que no queden dos
+     contadores del mismo ciclo. */
+  const ci = AUTH.cicloDeCategoria(nuevo[v.club], slug);
+  /* El arranque del ciclo NO se mueve (ver arriba): solo se muda desde el
+     club si allá estaba escrito. */
+  if (ci.cicloDe === 'club' && nuevo[v.club].cicloDesde !== undefined) k.cicloDesde = ci.cicloDesde;
+  k.informesEntregados = Math.max(0, ci.informesEntregados + (v.deshacer ? -1 : 1));
+  if (ci.cicloDe === 'club') {
+    delete nuevo[v.club].cicloDesde;
+    delete nuevo[v.club].informesEntregados;
+  }
+  return { ok: true, catalogo: nuevo, categoria: slug };
+}
+
+/**
+ * El equipo propio del club, o el de UNA categoría.
+ *
+ * Con `categoria` se escribe un solo slot, y vacío la devuelve a heredar
+ * el del club: Reconquista declara «RECONQUISTA» en la U23 sin tocar el
+ * «RECONQUISTA A» de Primera. Se guarda la CLAVE normalizada, que es
+ * contra lo que compara el gate: un «RECONQUISTA 'A' - MM» pegado entra
+ * igual que elegido de la lista.
+ */
+function equipo(cat, d) {
+  const v = d || {};
+  const nuevo = copiar(cat);
+  if (!nuevo[v.club]) return malo('Ese club no esta en el catalogo.');
+  const crudo = v.equipoPropio === undefined || v.equipoPropio === null ? '' : String(v.equipoPropio).trim();
+  const valor = crudo ? CORE.claveEquipo(crudo) : '';
+  const k = categoriaDe(nuevo[v.club], v);
+  if (k === null) return malo('Ese club no tiene la categoría «' + v.categoria + '».');
+  if (k) {
+    /* Igual al del club también es heredar: guardarlo repetido haría que
+       un cambio del club no le llegara a esta categoría sin que nadie lo
+       haya decidido. */
+    const delClub = nuevo[v.club].equipoPropio ? CORE.claveEquipo(nuevo[v.club].equipoPropio) : '';
+    if (!valor || valor === delClub) delete k.equipoPropio;
+    else k.equipoPropio = valor;
+    return { ok: true, catalogo: nuevo, categoria: v.categoria };
+  }
+  /* SIN EQUIPO EL CLIENTE NO VE NINGUNO (punto 19): el del club no se
+     vacía. */
+  if (!valor) return malo('El equipo propio del club no puede quedar vacío: el cliente no vería ningún equipo.');
+  nuevo[v.club].equipoPropio = valor;
   return { ok: true, catalogo: nuevo };
 }
 
@@ -877,12 +953,20 @@ function renovar(cat, d) {
   const nuevo = copiar(cat);
   if (!nuevo[v.club]) return malo('Ese club no esta en el catalogo.');
 
+  /* CON `categoria` SE ESCRIBE LA FECHA DE ESA CATEGORÍA (2026-09-13): la
+     de una prueba, o la de una categoría que se paga aparte. La del club
+     sigue cortando todo (`AUTH.suscripcionDeCategoria`). */
+  const k = categoriaDe(nuevo[v.club], v);
+  if (k === null) return malo('Ese club no tiene la categoría «' + v.categoria + '».');
+  const destino = k || nuevo[v.club];
+  const extra = k ? { categoria: v.categoria } : {};
+
   /* Vaciar la fecha es legitimo: un cliente sin vencimiento es uno que no
      lo tiene, no un error. Se pide explicito para que no pase por descuido
      de un campo en blanco. */
   if (v.vence === null || v.vence === '') {
-    delete nuevo[v.club].vence;
-    return { ok: true, catalogo: nuevo };
+    delete destino.vence;
+    return Object.assign({ ok: true, catalogo: nuevo }, extra);
   }
 
   if (!FECHA.test(String(v.vence || ''))) return malo('La fecha va como AAAA-MM-DD.');
@@ -896,8 +980,8 @@ function renovar(cat, d) {
     return malo('Esa fecha ya paso. Para cortar el acceso usa Pausar, que lo dice claro; '
       + 'renovar hacia atras deja al cliente cortado con una etiqueta que dice renovado.');
   }
-  nuevo[v.club].vence = String(v.vence);
-  return { ok: true, catalogo: nuevo };
+  destino.vence = String(v.vence);
+  return Object.assign({ ok: true, catalogo: nuevo }, extra);
 }
 
 /**
@@ -947,6 +1031,7 @@ function aplicar(vigente, accion, datos, validar) {
     probar: (c, d) => estado(c, Object.assign({}, d, { estado: 'prueba' })),
     cambiar_estado: estado,
     cambiar_plan: plan,
+    cambiar_equipo: equipo,
     informe_entregado: informe,
     renovar: renovar,
     zonas: zonas,
@@ -1011,7 +1096,7 @@ function aplicar(vigente, accion, datos, validar) {
 }
 
 module.exports = {
-  zonas, partidosManuales, alta, baja, estado, plan, renovar, informe, ciclo, aplicar,
+  zonas, partidosManuales, alta, baja, estado, plan, equipo, renovar, informe, ciclo, aplicar,
   hermanasDeLibro, heredarDelLibro, unirManuales, claveManual, zonasDe, manualesDe, planValido,
   objetivos, datosPara, HEX,
   librosPerdidos, ALIAS_PLAN, PARTIDOS_POR_CICLO,

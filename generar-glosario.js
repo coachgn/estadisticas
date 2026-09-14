@@ -188,11 +188,54 @@ utiles.forEach(e => entradas.push(e));
 const FAMILIA_POR_GRUPO = {
   'Ratings': 'J · Ratings',
 };
-const SIGLAS_DE_HOJA = ['4F', 'AC', 'BD', 'E / J'];
 entradas.forEach((e) => {
   if (e.familia) return;
-  if (SIGLAS_DE_HOJA.indexOf(e.sigla) !== -1) { e.familia = 'K · Hojas'; return; }
   if (FAMILIA_POR_GRUPO[e.grupo]) e.familia = FAMILIA_POR_GRUPO[e.grupo];
+});
+
+/* LAS ABREVIATURAS DE HOJA NO VAN AL GLOSARIO (pedido del club,
+   2026-09-13), y con ellas se fue la columna «Hoja».
+
+   `4F`, `AC`, `BD` y `E / J` no son métricas: son cómo el manual nombra
+   las planillas para decir dónde vive cada columna. En el panel el DT no
+   abre la planilla —la lee el panel por él— así que la card «Hojas» y la
+   columna que la referenciaba contestaban una pregunta que en esta
+   pantalla nadie se hace. Se descartan acá y no en la vista: el glosario
+   generado no puede traer lo que la pantalla no muestra, o el buscador
+   las devolvería igual. */
+const SIGLAS_DE_HOJA = ['4F', 'AC', 'BD', 'E / J'];
+for (let i = entradas.length - 1; i >= 0; i--) {
+  if (SIGLAS_DE_HOJA.indexOf(entradas[i].sigla) !== -1) entradas.splice(i, 1);
+}
+
+/* CORRECCIONES AL MANUAL · la unidad es la JUGADA, no la posesión.
+
+   `PPP OF` y `PPP DEF` se calculan sobre `PLAYS` —la fórmula del propio
+   manual lo dice— y el nombre decía «por posesión». No es un sinónimo en
+   este proyecto: una posesión con rebote ofensivo son DOS jugadas (punto
+   3), así que el nombre prometía otra métrica que la que se calcula.
+
+   Se corrige ACÁ porque el manual es de otro proyecto (MotorStats) y el
+   panel no puede esperar a su calendario. Cada corrección nombra la sigla
+   y los campos: si el manual la arregla, esto queda redundante y no pisa
+   nada distinto. Y si la sigla desaparece del manual, el generador lo
+   dice en vez de callarlo. */
+const CORRECCIONES = {
+  'PPP OF': {
+    nombre: 'Puntos por jugada ofensivos',
+    formula: 'PTS / PLAYS',
+    lectura: 'Cuánto anotás por jugada',
+  },
+  'PPP DEF': {
+    nombre: 'Puntos por jugada defensivos',
+    formula: 'PTS_opp / PLAYS_opp',
+    lectura: 'Cuánto te anotan por jugada',
+  },
+};
+Object.keys(CORRECCIONES).forEach((sigla) => {
+  const e = entradas.find(x => x.sigla === sigla);
+  if (!e) { console.warn('  AVISO: la corrección de «' + sigla + '» no encontró la sigla en el manual'); return; }
+  Object.assign(e, CORRECCIONES[sigla]);
 });
 
 /* Y el `grupo` se descarta: es el título del <h2> anterior a cada tabla,
@@ -217,7 +260,10 @@ entradas.sort((a, b) => {
 /* ------------------------------------------------------------- escribir */
 
 const cuerpo = entradas.map((e) => {
-  const campos = ['sigla', 'nombre', 'formula', 'lectura', 'uso', 'hoja', 'familia']
+  /* `hoja` se lee del manual pero NO se escribe: la columna se sacó del
+     glosario (ver arriba), y un campo que ninguna vista muestra es uno
+     que alguien vuelve a pintar creyendo que falta. */
+  const campos = ['sigla', 'nombre', 'formula', 'lectura', 'uso', 'familia']
     .filter(k => e[k])
     .map(k => '    ' + k + ': ' + JSON.stringify(e[k]) + ',')
     .join('\n');

@@ -37,13 +37,15 @@ const SGADD_GLOSARIOUI = (function () {
   const sinLetra = (f) => String(f || '').replace(/^[A-Z] · /, '');
   const idFamilia = (f) => 'glos_' + String(f || '').replace(/[^A-Za-z0-9]+/g, '_');
 
+  /* SIN COLUMNA «HOJA» (pedido del club, 2026-09-13): decía en qué
+     planilla vive cada columna, y en el panel el DT no abre la planilla.
+     El generador ya no escribe el campo; ver `generar-glosario.js`. */
   function fila(e) {
     return `<tr class="border-t border-hairline/40 align-top">
       <td class="py-2 px-3 font-mono text-xs text-accent whitespace-nowrap" data-metrica="${esc(e.sigla)}">${esc(e.sigla)}</td>
       <td class="py-2 px-3 text-xs text-ink">${esc(e.nombre || '—')}</td>
       <td class="py-2 px-3 text-xs text-muted">${esc(e.lectura || e.uso || '—')}</td>
       <td class="py-2 px-3 font-mono text-[11px] text-muted text-center">${esc(e.formula || '—')}</td>
-      <td class="py-2 px-3 font-mono text-[10px] text-muted/70 text-center whitespace-nowrap">${esc(e.hoja || '—')}</td>
     </tr>`;
   }
 
@@ -73,7 +75,6 @@ const SGADD_GLOSARIOUI = (function () {
             <th class="text-center p-3 font-display">Nombre completo</th>
             <th class="text-center p-3 font-display">Cómo se lee</th>
             <th class="text-center p-3 font-display">Fórmula</th>
-            <th class="text-center p-3 font-display">Hoja</th>
           </tr></thead>
           <tbody>${filas.map(fila).join('')}</tbody>
         </table>

@@ -48,6 +48,7 @@ const SGADD_HUB = (function () {
        herede el del club; `estado` solo se manda al CREAR una categoría:
        el de una que ya existe se cambia en su fila, con su confirmación. */
     plan: 'BRONCE', estado: '',
+    vence: '',            // la fecha de la prueba de una categoría que se crea (punto 61)
     catElegida: '',       // editando: la categoría existente, o '' para una nueva
     fuente: 'existente',  // 'mantener' | 'existente' | 'nuevo'
     libroDe: '',          // '<club>/<categoria>' de un libro ya cargado
@@ -334,12 +335,21 @@ const SGADD_HUB = (function () {
    * pantalla lo dice —"abrí el cliente para ver el ciclo"— en vez de
    * mostrar un 0/4 que se leería como "recién arranca".
    */
-  function pjDelClub(c) {
+  function pjDelClub(c, k) {
     if (typeof CLUB === 'undefined' || !CLUB.estado || CLUB.estado.id !== c.id) return null;
-    const idx = (typeof SGADD_APP !== 'undefined') ? SGADD_APP.estado.idx : null;
-    if (!idx || !c.equipoPropio) return null;
+    const app = (typeof SGADD_APP !== 'undefined') ? SGADD_APP.estado : null;
+    const idx = app ? app.idx : null;
+    /* EL CICLO ES DE UNA CATEGORÍA (2026-09-13): sus partidos solo se saben
+       si ESA es la categoría abierta, y se cuentan con SU equipo — el de la
+       U23 de Reconquista no se llama como el de Primera. */
+    if (k) {
+      const abierta = app && typeof SGADD_APP.planillaActual === 'function' ? SGADD_APP.planillaActual() : null;
+      if (!abierta || (abierta.slug || abierta.id) !== k.slug) return null;
+    }
+    const equipo = (k && k.equipoEfectivo) || c.equipoPropio;
+    if (!idx || !equipo) return null;
     try {
-      const e = idx.get(SGADD.claveEquipo(c.equipoPropio));
+      const e = idx.get(SGADD.claveEquipo(equipo));
       return e ? (e.record ? e.record.pj : null) : null;
     } catch (err) { return null; }
   }
@@ -355,6 +365,15 @@ const SGADD_HUB = (function () {
     activo: 'activa', prueba: 'en prueba', pausado: 'pausada',
     inactivo: 'dada de baja', vencido: 'vencida',
   };
+
+  /* Cómo se nombra el estado EFECTIVO de una categoría. Una prueba que
+     terminó sola por fecha está pausada, pero decir «pausada» a secas
+     haría creer que alguien la pausó. */
+  function nombreEstadoCategoria(k) {
+    const ef = (k && k.estadoEfectivo) || 'activo';
+    if (k && k.pruebaVencida) return 'prueba terminada';
+    return NOMBRE_ESTADO[ef] || ef;
+  }
 
   /* =====================================================================
      UI
@@ -408,7 +427,7 @@ const SGADD_HUB = (function () {
     const ef = k.estadoEfectivo || 'activo';
     const propio = k.estado || '';
     const corta = k.estadoDe === 'club' && ef !== 'activo' && ef !== 'prueba';
-    return `<span class="text-[11px] zona-texto ${TONO_ESTADO[ef] || 'zona-neutro'}">● ${esc(NOMBRE_ESTADO[ef] || ef)}</span>
+    return `<span class="text-[11px] zona-texto ${TONO_ESTADO[ef] || 'zona-neutro'}">● ${esc(nombreEstadoCategoria(k))}</span>
       ${corta ? '<span class="text-[10px] text-muted">· la corta el club</span>' : ''}
       <select aria-label="Estado de ${esc(k.label || k.slug)}"
         onchange="SGADD_HUB.accionCategoria('${esc(c.id)}','${esc(k.slug)}','cambiar_estado',this.value)"
@@ -416,6 +435,26 @@ const SGADD_HUB = (function () {
         <option value=""${propio ? '' : ' selected'}>hereda del club</option>
         ${ESTADOS.map(e => `<option value="${e}"${propio === e ? ' selected' : ''}>${esc(NOMBRE_ESTADO[e] || e)}</option>`).join('')}
       </select>`;
+  }
+
+  /* EL VENCIMIENTO DE UNA CATEGORÍA (2026-09-13): la fecha de su prueba o
+     de su período. Vacío = sin fecha propia (rige la del club, si tiene).
+     El cambio pasa por el modal como el resto. */
+  function celdaVence(c, k) {
+    const yendo = pendiente.club === c.id;
+    const heredada = k.venceDe === 'club' && k.venceEfectivo;
+    return `<input type="date" aria-label="Vencimiento de ${esc(k.label || k.slug)}"
+        value="${esc(k.vence || '')}"
+        onchange="SGADD_HUB.accionCategoria('${esc(c.id)}','${esc(k.slug)}','renovar',this.value)"
+        ${yendo ? 'disabled' : ''} class="sel-cliente font-mono" style="max-width:10rem">
+      ${heredada ? `<span class="text-[10px] text-muted">· rige la del club (${esc(k.venceEfectivo)})</span>` : ''}`;
+  }
+
+  /* El equipo de la categoría, solo si declara uno propio: el heredado es
+     el del club y ya está en el encabezado de la tarjeta. */
+  function celdaEquipo(k) {
+    if (!k.equipoPropio) return '';
+    return `<span class="text-muted">equipo</span><span class="font-mono text-ink">${esc(k.equipoPropio)}</span>`;
   }
 
   /* PLAN Y ESTADO VAN EN UNA SEGUNDA LÍNEA de la misma categoría, y no en
@@ -439,6 +478,8 @@ const SGADD_HUB = (function () {
         <div class="flex items-center gap-2 flex-wrap text-[11px]">
           <span class="text-muted">plan</span>${celdaPlan(c, k)}
           <span class="text-muted">estado</span>${celdaEstado(c, k)}
+          <span class="text-muted">vence</span>${celdaVence(c, k)}
+          ${celdaEquipo(k)}
         </div>
       </td>
     </tr>` : ''}`;
@@ -459,6 +500,12 @@ const SGADD_HUB = (function () {
       cambios.push({ campo: 'plan', label: 'Plan · ' + nombreK,
         antes: k.plan ? planCanonico(k.plan) : 'hereda del club (' + (c.plan ? planCanonico(c.plan) : 'BRONCE') + ')',
         despues: valor ? planCanonico(valor) : 'hereda del club (' + (c.plan ? planCanonico(c.plan) : 'BRONCE') + ')' });
+    } else if (accion === 'renovar') {
+      cambios.push({ campo: 'vence', label: 'Vencimiento · ' + nombreK,
+        antes: k.vence || 'sin fecha propia', despues: valor || 'sin fecha propia' });
+    } else if (accion === 'informe_entregado') {
+      cambios.push({ campo: 'informes', label: 'Informes ORO entregados · ' + nombreK,
+        antes: String(k.informesEntregados || 0), despues: String((k.informesEntregados || 0) + 1) });
     } else {
       cambios.push({ campo: 'estado', label: 'Estado · ' + nombreK,
         antes: k.estado ? (NOMBRE_ESTADO[k.estado] || k.estado) : 'hereda del club',
@@ -468,11 +515,17 @@ const SGADD_HUB = (function () {
     if (typeof SGADD_CONFIRMAR === 'undefined') return aplicarClub(club, accion, valor, 'club', slugCat);
 
     const cortar = accion === 'cambiar_estado' && (valor === 'pausado' || valor === 'inactivo');
+    /* Una fecha pasada no se acepta (el servidor lo rechaza con el motivo);
+       acá se avisa qué pasa cuando llegue la que se pone. */
+    const avisoFecha = (accion === 'renovar' && valor)
+      ? (k.estadoEfectivo === 'prueba' || k.pruebaVencida
+        ? ' Cuando pase esa fecha, la prueba termina sola y la categoría queda pausada.'
+        : ' Cuando pase esa fecha, la categoría queda vencida.') : '';
     SGADD_CONFIRMAR.abrir({
       titulo: (c.nombre || club) + ' · ' + nombreK,
       aviso: 'Se aplica SOLO a esta categoría: las demás de ' + (c.nombre || club)
         + ' siguen como están, con los mismos accesos.'
-        + (cortar ? ' Sus usuarios dejan de ver esta categoría en su próxima carga.' : ''),
+        + (cortar ? ' Sus usuarios dejan de ver esta categoría en su próxima carga.' : '') + avisoFecha,
       confirmar: 'Guardar cambios',
       cambios: cambios,
       alcance: SGADD_CONFIRMAR.opcionesAlcance ? {
@@ -770,34 +823,49 @@ const SGADD_HUB = (function () {
    * Solo se pinta para los clubes en ORO: para los demás no hay ciclo que
    * seguir y sería una fila muerta permanente en cada tarjeta.
    */
-  function bloqueOro(c) {
-    /* El servicio ORO se entrega si el club O ALGUNA de sus categorías lo
-       tiene (punto 60): el informe de scouters es del cliente. */
-    const hayOro = planCanonico(c.plan) === 'ORO'
-      || (c.categorias || []).some(k => k.planEfectivo && planCanonico(k.planEfectivo) === 'ORO');
-    if (!hayOro) return '';
-    const pj = pjDelClub(c);
-    const ci = ciclo(c, pj);
-    const yendo = pendiente.club === c.id;
+  /* LAS CATEGORÍAS QUE RECIBEN EL SERVICIO ORO: plan efectivo ORO y con
+     acceso. Una pausada no suma — no se está pagando —. */
+  function categoriasOro(c) {
+    return (c.categorias || []).filter(k => k.planEfectivo && planCanonico(k.planEfectivo) === 'ORO'
+      && ['activo', 'prueba'].indexOf(k.estadoEfectivo || 'activo') !== -1);
+  }
 
-    return `<div class="mt-2 rounded-md border border-hairline/60 p-2">
-      <div class="flex items-center gap-2 flex-wrap text-[11px]">
-        <span class="font-display uppercase tracking-wider zona-texto zona-aviso">◆ Oro</span>
+  /* El ciclo de UNA categoría, en una línea. */
+  function lineaOro(c, k) {
+    const pj = pjDelClub(c, k);
+    /* `ciclo(k, null)` daría 0/4 —`Number(null)` es 0—, y un 0/4 inventado
+       se lee como «recién arranca». Sin partidos, no hay ciclo que mostrar. */
+    const ci = pj === null ? null : ciclo(k, pj);
+    const n = Number(k.informesEntregados) || 0;
+    const yendo = pendiente.club === c.id;
+    return `<div class="flex items-center gap-2 flex-wrap text-[11px] mt-1">
+        <span class="text-ink">${esc(k.label || k.slug)}</span>
         ${ci
           ? `<span class="text-ink font-mono">ciclo ${ci.en}/${ci.de}</span>
              ${ci.toca
                ? '<span class="zona-texto zona-peligro">toca informe</span>'
                : `<span class="text-muted">faltan ${ci.faltan} partido${ci.faltan === 1 ? '' : 's'}</span>`}
              <span class="text-muted">· ${ci.entregados} entregado${ci.entregados === 1 ? '' : 's'}</span>`
-          /* Sin índice de ese club no se puede saber en qué partido va, y
+          /* Sin el índice de ESA categoría no se sabe en qué partido va, y
              un 0/4 inventado se leería como "recién arranca". */
-          : `<span class="text-muted">${c.informesEntregados || 0} informe${(c.informesEntregados || 0) === 1 ? '' : 's'} entregado${(c.informesEntregados || 0) === 1 ? '' : 's'} · abrí el cliente para ver el ciclo</span>`}
-        <button onclick="SGADD_HUB.accionClub('${esc(c.id)}','informe_entregado')"
+          : `<span class="text-muted">${n} informe${n === 1 ? '' : 's'} entregado${n === 1 ? '' : 's'} · abrí la categoría para ver el ciclo</span>`}
+        <button onclick="SGADD_HUB.accionCategoria('${esc(c.id)}','${esc(k.slug)}','informe_entregado')"
           ${yendo ? 'disabled' : ''}
           class="ml-auto text-[10px] font-display uppercase tracking-wider px-2 py-0.5 rounded
                  border border-hairline hover:border-accent hover:text-accent disabled:opacity-40">
           Marcar entregado</button>
-      </div>
+      </div>`;
+  }
+
+  function bloqueOro(c) {
+    /* EL CICLO ES POR CATEGORÍA (2026-09-13): cada categoría en ORO lleva
+       sus propios informes, porque cada equipo juega a su ritmo y un
+       contador compartido le descontaba a una el informe de la otra. */
+    const oro = categoriasOro(c);
+    if (!oro.length) return '';
+    return `<div class="mt-2 rounded-md border border-hairline/60 p-2">
+      <span class="font-display uppercase tracking-wider text-[11px] zona-texto zona-aviso">◆ Oro</span>
+      ${oro.map(k => lineaOro(c, k)).join('')}
       <p class="text-[10px] text-muted mt-1">${esc(QUE_INCLUYE.ORO)}</p>
     </div>`;
   }
@@ -986,7 +1054,32 @@ const SGADD_HUB = (function () {
         <option value="prueba"${alta.estado === 'prueba' ? ' selected' : ''}>En prueba (demo)</option>
       </select>
       <span class="block text-[10px] text-muted mt-1">En prueba tiene el mismo acceso; queda marcada para saber a quién llamar cuando termine.</span>
-    </label>`;
+    </label>
+    ${alta.estado === 'prueba' ? `<label class="block">
+      <span class="${ROTULO}">Prueba hasta</span>
+      <input type="date" id="alta-vence" value="${esc(alta.vence || '')}"
+        onchange="SGADD_HUB.elegirVenceAlta(this.value)" class="${CLASE_INPUT} border-hairline font-mono">
+      <span class="block text-[10px] text-muted mt-1">Opcional. Pasada esa fecha la categoría queda pausada sola; las demás del club no se tocan.</span>
+    </label>` : ''}`;
+  }
+
+  function elegirVenceAlta(v) {
+    alta.vence = String(v || '');
+    guardado.estado = null;
+    refrescarEstado();
+  }
+
+  /* ¿EL EQUIPO QUE SE EDITA ES DE LA CATEGORÍA O DEL CLUB? (2026-09-13)
+
+     Un club nuevo, o uno de UNA categoría editando esa misma, fija el del
+     club: es lo que heredan las que se sumen. Al sumar una categoría o al
+     editar una de varias, es el de ESA categoría — así «RECONQUISTA» en
+     la U23 no le cambia el «RECONQUISTA A» a Primera. */
+  function equipoEsDeCategoria() {
+    if (alta.modo === 'nuevo') return false;
+    const c = clubesCatalogo().find(x => x.id === alta.modo);
+    const n = ((c && c.categorias) || []).length;
+    return !alta.catElegida || n > 1;
   }
 
   function elegirPlanAlta(v) {
@@ -1001,8 +1094,10 @@ const SGADD_HUB = (function () {
 
   function elegirEstadoAlta(v) {
     alta.estado = v === 'prueba' ? 'prueba' : '';
+    if (!alta.estado) alta.vence = '';
     guardado.estado = null;
-    refrescarEstado();
+    /* Repinta el formulario: la fecha de la prueba aparece o se va. */
+    refrescarAlta('alta-estado');
   }
 
   function bloqueAlta() {
@@ -1119,18 +1214,23 @@ const SGADD_HUB = (function () {
     }
 
     const actual = claveEq(alta.equipoPropio);
+    const deCat = equipoEsDeCategoria();
+    const clubEq = deCat ? ((clubesCatalogo().find(x => x.id === alta.modo) || {}).equipoPropio || '') : '';
+    const rotuloEq = deCat ? 'Equipo propio en esta categoría' : 'Equipo propio';
+    const notaCat = deCat
+      ? ` Es el de ESTA categoría: si en este libro se llama igual que el del club (${esc(clubEq || '—')}), queda heredándolo.` : '';
     const eq = (libro.estado === 'ok' && libro.equipos)
       ? `<label class="block mt-3">
-          <span class="${ROTULO}">Equipo propio</span>
+          <span class="${ROTULO}">${rotuloEq}</span>
           <select id="alta-equipoPropio" onchange="SGADD_HUB.elegirEquipo(this.value)" class="${CLASE_SELECT} font-mono">
             <option value="">Elegí cuál es el equipo del cliente…</option>
             ${libro.equipos.map(e => `<option value="${esc(e.clave)}"${actual === e.clave ? ' selected' : ''}>${esc(e.clave)}</option>`).join('')}
           </select>
-          <span class="block text-[10px] text-muted mt-1">Tal como lo escribe la planilla. Es el equipo que el cliente ve completo.</span>
+          <span class="block text-[10px] text-muted mt-1">Tal como lo escribe la planilla. Es el equipo que el cliente ve completo.${notaCat}</span>
         </label>`
-      : `<div class="mt-3">${campo('equipoPropio', 'Equipo propio', alta.equipoPropio,
+      : `<div class="mt-3">${campo('equipoPropio', rotuloEq, alta.equipoPropio,
           'Tal como lo escribe la planilla, sin el « - MM». <strong class="text-ink">Mejor elegilo con el botón</strong>: '
-          + 'si no coincide letra por letra, el cliente no ve ninguna ficha.',
+          + 'si no coincide letra por letra, el cliente no ve ninguna ficha.' + notaCat,
           { placeholder: 'SUD AMERICA LP', mono: true })}</div>`;
 
     return `<div class="flex items-center gap-3 flex-wrap">${boton}${pista}</div>${aviso}${eq}`;
@@ -1254,16 +1354,22 @@ const SGADD_HUB = (function () {
     return Object.assign({
       accion: 'alta',
       club: alta.club, nombre: alta.nombre, liga: alta.liga,
-      /* Se guarda la CLAVE, que es contra lo que compara el gate: un
-         «Sud America LP - MM» pegado a mano entra igual que elegido. */
-      equipoPropio: alta.equipoPropio ? claveEq(alta.equipoPropio) : '',
       categoria: alta.categoria, label: alta.label,
       /* Siempre viaja: vacío es «que herede», y el servidor lo distingue
          de no haberlo mandado. */
       plan: alta.plan || '',
-    }, alta.fuente === 'mantener' ? {} : intencionLibro(), color,
+    },
+    /* Se guarda la CLAVE, que es contra lo que compara el gate: un
+       «Sud America LP - MM» pegado a mano entra igual que elegido. Y va al
+       club o a la categoría según `equipoEsDeCategoria`. */
+    equipoEsDeCategoria()
+      ? { equipoPropioCategoria: alta.equipoPropio ? claveEq(alta.equipoPropio) : '' }
+      : { equipoPropio: alta.equipoPropio ? claveEq(alta.equipoPropio) : '' },
+    alta.fuente === 'mantener' ? {} : intencionLibro(), color,
     /* El estado inicial, solo para una categoría que se CREA. */
-    (!alta.catElegida && alta.estado) ? { estado: alta.estado } : {});
+    (!alta.catElegida && alta.estado) ? { estado: alta.estado } : {},
+    /* Y la fecha de la prueba, si se puso una. */
+    (!alta.catElegida && alta.estado === 'prueba' && alta.vence) ? { vence: alta.vence } : {});
   }
 
   /** Qué cambia, en castellano, para el modal de confirmación. */
@@ -1276,7 +1382,11 @@ const SGADD_HUB = (function () {
     const filas = [
       ['Club', c.nombre, i.nombre],
       ['Liga', c.liga, i.liga],
-      ['Equipo propio', c.equipoPropio, i.equipoPropio],
+      i.equipoPropioCategoria !== undefined
+        ? ['Equipo propio · ' + (i.label || i.categoria),
+            k ? (k.equipoEfectivo || c.equipoPropio) : '',
+            i.equipoPropioCategoria || ('hereda del club (' + (c.equipoPropio || '—') + ')')]
+        : ['Equipo propio', c.equipoPropio, i.equipoPropio],
       ['Categoría', k ? (k.label || k.slug) + ' (' + k.slug + ')' : '', i.label + ' (' + i.categoria + ')'],
     ];
     if (libroNuevo) filas.push(['Libro', k ? (k.activo ? 'el que tiene' : 'sin libro') : '', libroNuevo]);
@@ -1285,6 +1395,7 @@ const SGADD_HUB = (function () {
       filas.push(['Plan', k ? nomPlan(k.plan) : '', nomPlan(i.plan)]);
     }
     if (i.estado) filas.push(['Estado', '', NOMBRE_ESTADO[i.estado] || i.estado]);
+    if (i.vence) filas.push(['Prueba hasta', '', i.vence]);
     if (i.acento !== undefined && String(i.acento || '') !== String(c.acento || '')) {
       filas.push(['Color de marca', c.acento || '', i.acento || 'el de su JSON, o el del panel']);
     }
@@ -1595,16 +1706,18 @@ const SGADD_HUB = (function () {
   function reiniciarAlta() {
     Object.assign(alta, { modo: 'nuevo', club: '', nombre: '', liga: '', equipoPropio: '',
       acento: '', categoria: '', label: '', catElegida: '', fuente: 'existente', libroDe: '', sheet: '',
-      plan: 'BRONCE', estado: '' });
+      plan: 'BRONCE', estado: '', vence: '' });
     colorAyuda.texto = '';
     alta.tocado = { club: false, categoria: false };
     olvidarLibro();
     guardado.estado = null; guardado.mensaje = ''; guardado.club = null;
   }
 
-  function ponerCategoria(k) {
+  function ponerCategoria(k, c) {
     alta.catElegida = k.slug; alta.categoria = k.slug; alta.label = k.label || '';
-    alta.plan = k.plan ? planCanonico(k.plan) : ''; alta.estado = '';
+    alta.plan = k.plan ? planCanonico(k.plan) : ''; alta.estado = ''; alta.vence = '';
+    /* El equipo que rige en ESA categoría: el suyo o el del club. */
+    alta.equipoPropio = k.equipoEfectivo || k.equipoPropio || (c && c.equipoPropio) || alta.equipoPropio;
     alta.tocado.categoria = true;
     /* Con libro, lo natural al editar es conservarlo. Sin libro —la que
        "viene en camino"— hay que elegirle uno. */
@@ -1623,7 +1736,7 @@ const SGADD_HUB = (function () {
       alta.acento = c.acento || '';
       alta.tocado.club = true;
       const k = (c.categorias || [])[0];
-      if (k) ponerCategoria(k);
+      if (k) ponerCategoria(k, c);
     }
     refrescarAlta('alta-modo');
   }
@@ -1632,9 +1745,12 @@ const SGADD_HUB = (function () {
     const c = clubesCatalogo().find(x => x.id === alta.modo);
     const k = c && (c.categorias || []).find(x => x.slug === slugCat);
     if (k) {
-      ponerCategoria(k);
+      ponerCategoria(k, c);
     } else {
       alta.catElegida = ''; alta.categoria = ''; alta.label = '';
+      /* La nueva arranca con el equipo del club: si en su libro se llama
+         distinto, se elige de la lista y queda como el de esa categoría. */
+      alta.equipoPropio = (c && c.equipoPropio) || '';
       /* EXPANDIR EL CLUB: la categoría nueva arranca heredando el plan del
          club, que es lo más probable; el admin la sube o la baja acá. */
       alta.plan = ''; alta.estado = '';
@@ -1710,6 +1826,9 @@ const SGADD_HUB = (function () {
     /* plan y estado por categoría (punto 60) */
     accionCategoria, filaCategoria, celdaPlan, celdaEstado, NOMBRE_ESTADO, TONO_ESTADO,
     selectPlanAlta, elegirPlanAlta, elegirEstadoAlta,
+    /* equipo, vencimiento y ciclo ORO por categoría (punto 61) */
+    celdaVence, celdaEquipo, nombreEstadoCategoria, categoriasOro, lineaOro, bloqueOro, pjDelClub,
+    elegirVenceAlta, equipoEsDeCategoria,
     /* el alta */
     slug, idCategoriaSugerido, idDeLibro, sugerirEquipo, librosDisponibles,
     intencionAlta, cambiosAlta, estadoAlta, zonaEquipo, libro,
