@@ -8963,8 +8963,10 @@ falta algo que no existe para él. La pestaña y la card pintan un lugar vacío,
 ### Lo que hay que respetar al tocarlo
 
 - **NET por posesión primero.** PLAYS no descuenta el rebote ofensivo, así que
-  castiga al quinteto que gana el cristal: el titular de Jujuy da +42 en cancha,
-  −1,4 por PLAYS y **+8,5 por posesión**. Se muestran las dos varas, rotuladas.
+  castiga al quinteto que gana el cristal. El titular de Jujuy, en la fase
+  regular (32 partidos, 80 rebotes ofensivos contra 36), da +36 en cancha,
+  −2,2 por PLAYS y **+7,6 por posesión**; con la postemporada (37 partidos),
+  +42, −1,4 y +8,5. Se muestran las dos varas, rotuladas.
 - **La muestra corta se marca, no se borra** (punto 4): va con `~` y atenuada.
   Es muestra corta un quinteto con menos de 15 minutos juntos, un trío con
   menos de 40 y un dúo con menos de 60.
