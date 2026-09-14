@@ -54,7 +54,7 @@ const SGADD_PBP = (function () {
 
   function celdaCombo(paq, ids) {
     const nombres = nombresDe(paq, ids);
-    return `<td class="px-2 py-1 text-left text-xs text-white" title="${esc(nombres.join(' · '))}">`
+    return `<td class="px-2 py-1 text-left text-xs text-white whitespace-nowrap" title="${esc(nombres.join(' · '))}">`
       + esc(nombres.map(apellido).join(' · ')) + '</td>';
   }
 
@@ -71,7 +71,7 @@ const SGADD_PBP = (function () {
   function tablaClave(paq, filas, vacio) {
     if (!filas || !filas.length) return `<p class="text-[11px] text-muted">${vacio}</p>`;
     return `<div class="scrollbox"><table class="w-full">
-      <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+      <thead><tr class="text-[10px] uppercase tracking-wider text-muted whitespace-nowrap">
         <th class="px-2 pb-1 text-left">Quinteto</th><th class="px-2 pb-1">Veces</th><th class="px-2 pb-1">G-P</th><th class="px-2 pb-1">MIN</th>
       </tr></thead><tbody>${filas.slice(0, 3).map(f => `<tr class="border-b border-hairline/40 last:border-0">
         ${celdaCombo(paq, f.ids)}
@@ -84,7 +84,7 @@ const SGADD_PBP = (function () {
   function tablaCombos(paq, filas, etiqueta) {
     if (!filas || !filas.length) return '<p class="text-[11px] text-muted">Sin datos.</p>';
     return `<div class="scrollbox"><table class="w-full">
-      <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+      <thead><tr class="text-[10px] uppercase tracking-wider text-muted whitespace-nowrap">
         <th class="px-2 pb-1 text-left">${etiqueta}</th>
         <th class="px-2 pb-1">MIN</th><th class="px-2 pb-1">PJ</th><th class="px-2 pb-1">+/-</th>
         <th class="px-2 pb-1" title="Puntos a favor menos en contra, cada 100 posesiones (POS = PLAYS − RO)">NET/pos</th>
@@ -113,7 +113,7 @@ const SGADD_PBP = (function () {
       const nombre = paq.jugadores && paq.jugadores[j.id] ? paq.jugadores[j.id].n : j.id;
       const d = j.def || {};
       return `<tr class="border-b border-hairline/40 last:border-0">
-        <td class="px-2 py-1 text-left text-xs text-white" title="${esc(nombre)}">${esc(apellido(nombre))}</td>
+        <td class="px-2 py-1 text-left text-xs text-white whitespace-nowrap" title="${esc(nombre)}">${esc(apellido(nombre))}</td>
         <td class="px-2 py-1 font-mono text-xs">${num(j.min)}</td>
         <td class="px-2 py-1 font-mono text-xs ${tonoMM(j.mm)}">${signo(j.mm)}</td>
         <td class="px-2 py-1 font-mono text-xs">${j.pts}</td>
@@ -121,7 +121,7 @@ const SGADD_PBP = (function () {
         <td class="px-2 py-1 font-mono text-xs dato-sec">${esc(j.t3)}</td>
         <td class="px-2 py-1 font-mono text-xs dato-sec">${esc(j.tl)}</td>
         <td class="px-2 py-1 font-mono text-xs">${num(j.efg)}</td>
-        <td class="px-2 py-1 font-mono text-xs font-semibold">${num(j.usos)} <span class="dato-sec">(${num(j.porc)} %)</span></td>
+        <td class="px-2 py-1 font-mono text-xs font-semibold whitespace-nowrap">${num(j.usos)} <span class="dato-sec">(${num(j.porc)} %)</span></td>
         <td class="px-2 py-1 font-mono text-xs">${j.pp}</td>
         <td class="px-2 py-1 font-mono text-xs" title="Tiros con 60 s o menos y el partido a 3 o menos">${d.tiros ? d.convertidos + '/' + d.tiros : '—'}</td>
       </tr>`;
@@ -131,7 +131,7 @@ const SGADD_PBP = (function () {
         ${num(e.minutos)} min · <span class="${tonoMM(e.masMenos)}">${signo(e.masMenos)}</span> ·
         eFG% ${num(e.efgPct)} · ${e.perdidas} pérdidas</p>
       <div class="scrollbox"><table class="w-full">
-      <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+      <thead><tr class="text-[10px] uppercase tracking-wider text-muted whitespace-nowrap">
         <th class="px-2 pb-1 text-left">Jugador</th><th class="px-2 pb-1">MIN</th><th class="px-2 pb-1">+/-</th>
         <th class="px-2 pb-1">PTS</th><th class="px-2 pb-1">TC</th><th class="px-2 pb-1">T3</th><th class="px-2 pb-1">TL</th>
         <th class="px-2 pb-1">eFG%</th><th class="px-2 pb-1" title="PLAYS del motor: T2I + T3I + 0,44·T1I + PP">Usos</th>
@@ -170,7 +170,7 @@ const SGADD_PBP = (function () {
         <title>${c.c}/${c.i} (${Math.round(100 * pct)} %) · ${c.x}-${c.x + 1} m del fondo</title></rect>`;
     }).join('');
     const zonas = (t.zonas || []).slice(0, 8).map(z => `<tr class="border-b border-hairline/40 last:border-0">
-      <td class="px-2 py-1 text-left text-xs">${esc(z.zona)} <span class="dato-sec">· ${z.v === 3 ? 'triple' : 'doble'}</span></td>
+      <td class="px-2 py-1 text-left text-xs whitespace-nowrap">${esc(z.zona)} <span class="dato-sec">· ${z.v === 3 ? 'triple' : 'doble'}</span></td>
       <td class="px-2 py-1 font-mono text-xs">${z.c}/${z.i}</td><td class="px-2 py-1 font-mono text-xs">${num(z.pct)}</td></tr>`).join('');
     const cal = t.calibracion || {};
     return `<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
@@ -180,7 +180,7 @@ const SGADD_PBP = (function () {
       </svg>
       <div>
         <div class="scrollbox"><table class="w-full">
-          <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+          <thead><tr class="text-[10px] uppercase tracking-wider text-muted whitespace-nowrap">
             <th class="px-2 pb-1 text-left">Zona</th><th class="px-2 pb-1">C/I</th><th class="px-2 pb-1">%</th></tr></thead>
           <tbody>${zonas}</tbody></table></div>
         <p class="text-[11px] text-muted mt-2">Color: verde 55 % o más, ámbar 40-55 %, rojo menos de 40 %.
@@ -211,7 +211,7 @@ const SGADD_PBP = (function () {
         <b class="text-ink">${p.validados}/${p.jugados}</b> partidos validados (cinco en cancha siempre y minutos
         contra el box score).${excl}
       </p>
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
         ${seccion('Quinteto inicial', tablaClave(paq, paq.iniciales, 'Sin datos.'))}
         ${seccion('Cierre · más minutos en los últimos 5\'', tablaClave(paq, paq.cierre && paq.cierre.ultimos5, 'Sin datos.'))}
         ${seccion('Cierre · en cancha al final', tablaClave(paq, paq.cierre && paq.cierre.alFinal, 'Sin datos.'))}
