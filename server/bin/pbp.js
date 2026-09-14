@@ -30,8 +30,13 @@ const kv = require('../lib/kv.js');
 const catalogo = require('../lib/catalogo.js');
 const { claveKV, campoDeEquipo, CAMPO_INDICE } = require('../api/pbp.js');
 
-const ESQUEMA = 'motorstats-ingestion/analitica-pbp-web@1';
-/* Un paquete de hoy pesa ~23 KB. Un techo holgado frena el error de subir
+/* @2 suma al @1 el tiro por hexágono y por jugador contra la liga, las
+   rotaciones, los cuartos, el momentum y las listas tácticas; lo de @1 no
+   cambia, así que el panel lee los dos. Lo que NO se acepta es mezclarlos:
+   los 17 paquetes llevan la misma vara de la liga y tienen que salir de la
+   misma exportación. */
+const ESQUEMAS = ['motorstats-ingestion/analitica-pbp-web@1', 'motorstats-ingestion/analitica-pbp-web@2'];
+/* Un paquete @1 pesa ~23 KB y uno @2 ~57 KB. Un techo holgado frena el error de subir
    el `analitica-pbp.json` completo, o partidos crudos, por equivocación. */
 const MAX_KB = 200;
 
@@ -74,7 +79,8 @@ async function main() {
   const dir = o.dir && o.dir !== true ? path.resolve(String(o.dir)) : null;
   if (!dir || !fs.existsSync(path.join(dir, 'indice.json'))) { console.error('  Falta --dir con un indice.json de exportar-web.js'); process.exit(1); }
   const indice = JSON.parse(fs.readFileSync(path.join(dir, 'indice.json'), 'utf8'));
-  if (indice.esquema !== ESQUEMA) { console.error('  El índice no es ' + ESQUEMA); process.exit(1); }
+  if (ESQUEMAS.indexOf(indice.esquema) === -1) { console.error('  El índice no es ' + ESQUEMAS.join(' ni ')); process.exit(1); }
+  const ESQUEMA = indice.esquema;
 
   /* Los equipos del LIBRO de la categoría, para no subir el análisis de
      un torneo equivocado a una categoría que no lo juega. */
@@ -98,7 +104,7 @@ async function main() {
     const txt = fs.readFileSync(path.join(dir, e.archivo), 'utf8');
     const kb = Buffer.byteLength(txt) / 1024;
     const p = JSON.parse(txt);
-    if (p.esquema !== ESQUEMA) { console.error('  ' + e.archivo + ': esquema distinto'); process.exit(1); }
+    if (p.esquema !== ESQUEMA) { console.error('  ' + e.archivo + ': esquema distinto del índice (' + p.esquema + ')'); process.exit(1); }
     if (kb > MAX_KB) { console.error('  ' + e.archivo + ': ' + kb.toFixed(0) + ' KB, más que el techo de ' + MAX_KB); process.exit(1); }
     const campo = campoDeEquipo(p.equipo);
     if (delLibro && !delLibro.has(campo)) { console.error('  ' + p.equipo + ' no juega en el libro de ' + club + '/' + slug + '.'); process.exit(1); }

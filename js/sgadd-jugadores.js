@@ -1896,6 +1896,7 @@ function jugadoresPintar() {
     j ? jugadoresFicha(idx, j) : jugadoresGrilla(idx),
   ].filter(Boolean).join('');
   SGADD_CHARTS.dibujarPendientes();
+  if (typeof SGADD_PBP !== 'undefined') SGADD_PBP.montarPendientes(root);
 }
 
 /* ---------- Grilla ---------- */
@@ -3087,6 +3088,19 @@ function jugadoresTabTiro(idx, j) {
         SGADD_CHARTS.barrasComparadas('chTiroConv', etiquetas, cvEq, cvLg,
           { nombreEquipo: j['NOMBRES'], formato: 'T2%', nombreLiga: refTiro.grupo.label,
             notaLiga: refTiro.grupo.motivo }))}
+    </div>${jugadoresBloqueMapaPbp(j)}`;
+}
+
+/* El mapa de tiro por zona y hexágono del play-by-play (punto 62). Solo con
+   la capa de laboratorio de la categoría; los datos llegan después del
+   pintado, por `SGADD_PBP.montarPendientes`. `.no-imprimir`: la ficha en PDF
+   reusa este tab y no espera a un pedido que puede no haber vuelto. */
+function jugadoresBloqueMapaPbp(j) {
+  if (typeof SGADD_PBP === 'undefined' || !SGADD_PBP.activa() || !j) return '';
+  return `
+    <div class="mt-6 no-imprimir">
+      <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Mapa de tiro · play-by-play</h5>
+      ${SGADD_PBP.espacioJugador(j['NOMBRES'], j['EQUIPO'])}
     </div>`;
 }
 

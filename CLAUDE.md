@@ -72,8 +72,9 @@ node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: 
                            #             equipo, vencimiento y ciclo ORO por categoría
 node test-glosario.js      #  26 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
-node test-pbp.js           #  58 tests · la capa de laboratorio de play-by-play: el catálogo,
-                           #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella
+node test-pbp.js           #  99 tests · la capa de laboratorio de play-by-play: el catálogo,
+                           #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
+                           #             el mapa contra la liga, el táctico y el cruce de scouting
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -85,7 +86,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5838 tests en total. Todos tienen que dar verde antes de commitear.**
+**5879 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -8919,7 +8920,7 @@ Fase regular: 266 de 272 partidos validan; Jujuy, 32 de 32. Los 6 excluidos
 su motivo.
 
 ```
-motorstats-ingestion/exportar-web.js       → web/<equipo>.json   (~23 KB c/u)
+motorstats-ingestion/exportar-web.js       → web/<equipo>.json   (~58 KB c/u, esquema @2)
 server/bin/pbp.js subir [--confirmar]      → Upstash · sgadd:pbp:<club>:<categoría>
 GET /api/v1/pbp/:club/:categoria?equipo=   → js/sgadd-pbp.js
 ```
@@ -8979,3 +8980,63 @@ falta algo que no existe para él. La pestaña y la card pintan un lugar vacío,
   dibuja inline. La calibración toma el aro como origen y fija el arco en
   6,75 m y la esquina en 6,60 m; con eso el 99,9 % de los triples queda detrás
   de la línea FIBA.
+
+### El paquete @2 · mapa contra la liga, táctico, rotaciones y momentum
+
+Pedido del 2026-09-14. `exportar-web.js` pasó a
+`analitica-pbp-web@2` (motor en `motorstats-ingestion/src/pbp/avanzado.js`,
+con sus invariantes en `test/test-jujuy-pbp.js` sección 9). Todo lo de @1
+sigue igual: `server/bin/pbp.js` acepta los dos y **no los mezcla** (los 17
+paquetes llevan la misma vara de la liga), y `SGADD_PBP.html` pinta un @1 sin
+las secciones que no tiene.
+
+**Las secciones son `<details>`**: abiertas de entrada Quinteto inicial y de
+cierre, Quintetos, Clutch y el Mapa; cerradas Táctico, Rotaciones, Cuartos y
+momentum, Lo que le tiran y el Diagnóstico (abierto en Scouting). Al imprimir
+se abren todas (`beforeprint`) y se devuelven como estaban. Toda celda
+numérica lleva `whitespace-nowrap`: el «8-/7» de la captura era un G-P
+partido en una columna angosta.
+
+**El mapa** (`SGADD_PBP.mapa`, puro) tiene dos vistas —hexágonos de 0,8 m y
+las 14 zonas de la plataforma, embebidas en metros— y dos métricas:
+
+- **Eficiencia**: color divergente por **puntos por tiro** contra la liga en
+  ese lugar (±0,3 satura). **No por %**: un hexágono al borde del arco mezcla
+  dobles y triples. La vara del hexágono es la liga ahí si tiró 15 o más; si
+  no, su familia de tiro dominante; y el tooltip dice cuál usó. El tamaño del
+  hexágono es el volumen.
+- **Frecuencia**: intensidad del acento del club por porción de los tiros.
+
+**La tabla de zonas y la cancha se enlazan en los dos sentidos** con
+`.pbp-activa`, por delegación en el bloque (`SGADD_PBP.activar`), así un
+cambio de vista reemplaza el mapa entero sin reenganchar nada. Hover o foco
+enciende; un toque **fija** hasta el siguiente. En la vista de hexágonos los
+polígonos de zona van arriba —son los que se enlazan— y el tooltip busca con
+`elementsFromPoint` el hexágono de abajo para decir los dos. La izquierda del
+atacante queda a la izquierda del dibujo, con el aro arriba (hay un test).
+
+**Jugadores → Tiro** suma el mapa del jugador (`espacioJugador`, se busca por
+nombre normalizado; con menos de 15 tiros de campo no se dibuja). Va con
+`.no-imprimir`: el PDF de la ficha reusa el tab y no espera un pedido.
+
+**Táctico**: quintetos que pierden por posesión, con **dónde** falla —ataque o
+defensa, contra el promedio de SUS quintetos con muestra ponderado por
+minutos—; los que más ganan; y dúos y tríos con diferencial positivo para dar
+más minutos juntos. Últimos 5 partidos: inicial contra cierre con su +/-.
+**Rotaciones**: % de partidos en cancha minuto a minuto (sin `<title>` por
+celda: 480 celdas pesaban más que el resto del bloque). **Cuartos**: puntos,
+diferencia, G-E-P y los últimos 5; **momentum**: corrida máxima, parciales de
+8+ y los mayores parciales con cuarto de inicio y de fin.
+
+**Diagnóstico**: radar de 7 familias de tiro, ataque y defensa sobre la liga,
+con «zonas a explotar» y «dónde le tiran con eficiencia» (exige 30 tiros, 3 %
+del volumen y 5 % sobre la liga). **En Scouting** la card pasa el otro lado del
+cruce (`data-pbp-propio`, la regla de oro del punto 9, nunca
+`esEquipoPropio()`) y suma **atacar ahí / cerrar ahí**: familias donde uno
+rinde por encima de la liga y el otro concede por encima de la liga.
+
+El CSS va a mano en el `<style>` (nodos inyectados) y el hover solo en
+`@media screen` (punto 59). Medido en una vista previa con los paquetes
+reales: a 1280 px el mapa mide 448 px con la tabla al lado y ninguna celda de
+G-P parte de línea; a 375 px no desborda nada fuera de los `.scrollbox` y los
+conmutadores miden 44 px.

@@ -279,6 +279,143 @@ function paquete(equipo) {
     /<script src="js\/sgadd-pbp\.js\?v=(\d+)"><\/script>/.test(fs.readFileSync('./index.html', 'utf8'))
     && fs.readFileSync('./index.html', 'utf8').match(/sgadd-pbp\.js\?v=(\d+)/)[1] === fs.readFileSync('./index.html', 'utf8').match(/sgadd-core\.js\?v=(\d+)/)[1]);
 
+  /* =================================================================== */
+  titulo('5 · EL PAQUETE @2 · secciones, mapa vs liga, táctico y cruce de scouting');
+  const zona = (z, i, c, ppt) => ({ zona: z, i, c, pct: Math.round(1000 * c / i) / 10, ppt });
+  const fam = (i, c, ppt) => ({ i, c, pct: Math.round(1000 * c / i) / 10, ppt });
+  function paquete2(equipo, tiro) {
+    const p = paquete(equipo);
+    p.esquema = 'motorstats-ingestion/analitica-pbp-web@2';
+    const q = (ids, netPos, ortg, drtg) => ({ ids, min: 30, pj: 6, mm: -10, netPos, ortg, drtg });
+    p.quintetos[0].ortg = 110; p.quintetos[0].drtg = 100;
+    p.tacticas = {
+      quintetosCriticos: [q(['1', '2', '3', '4', '6'], -20, 100, 120), q(['2', '3', '4', '5', '6'], -15, 80, 95)],
+      quintetosMejores: [q(['1', '2', '3', '4', '5'], 12, 112, 100)],
+      triosMejores: [q(['1', '2', '3'], 9, 110, 101)], duosMejores: [q(['1', '5'], 14, 115, 101), q(['2', '6'], -3, 99, 102)], triosCriticos: [],
+    };
+    p.rotaciones = { partidos: 31, jugadores: [{ id: '1', minutos: 30.4, minuto: new Array(40).fill(90) }, { id: '6', minutos: 1, minuto: new Array(40).fill(2) }] };
+    p.ultimos5 = [{ fecha: '2026-03-05', rival: 'SP. <i>SUARDI</i>', resultado: 'P', marcador: '84-87',
+      inicial: { ids: ['1', '2', '3', '4', '5'], mm: 9, min: 11.5 }, cierre: { ids: ['1', '2', '3', '4', '6'], mm: -7, min: 2.6 } }];
+    p.cuartos = [{ periodo: '1', partidos: 31, favor: 20.5, contra: 21.3, dif: -0.8, ganados: 11, perdidos: 19, empatados: 1, difUltimos5: 2.2 },
+      { periodo: 'OT', partidos: 3, favor: 8, contra: 6, dif: 2, ganados: 2, perdidos: 1, empatados: 0, difUltimos5: null }];
+    p.momentum = { partidos: 31, corridaMaxFavor: 10.1, corridaMaxContra: 10, corridas8Favor: 45, corridas8Contra: 38, ventana3Mejor: 10.3, ventana3Peor: -9.7,
+      topFavor: [{ pts: 18, fecha: '2026-01-18', rival: 'COMUNICACIONES', periodo: 3, periodoFin: 4, desde: '02:08', hasta: '05:39' }], topContra: [] };
+    const t = tiro || {};
+    p.tiros.detalle = {
+      favor: { zonas: [zona('Z1', 800, 459, 1.148), zona('Z12', 300, 110, 1.10)],
+        familias: { aro: fam(800, 459, t.favorAro || 1.148), tripleFrontal: fam(300, 110, t.favorTF || 1.10) },
+        hex: [[0, 1, 50, 30, 60], [1, 1, 10, 2, 4], [9, 9, 1, 0, 0]] },
+      contra: { zonas: [zona('Z1', 700, 400, 1.143)],
+        familias: { aro: fam(700, 400, t.contraAro || 1.143), tripleFrontal: fam(250, 80, t.contraTF || 0.96) },
+        hex: [[0, 1, 40, 20, 40]] },
+      jugadores: [{ id: '2', i: 120, c: 60, ppt: 1.1, dist: 4, zonas: [zona('Z1', 100, 55, 1.1)], familias: {}, hex: [[0, 1, 80, 44, 88]] }],
+    };
+    p.liga = { total: fam(30000, 13700, 1.05), zonas: [zona('Z1', 13000, 7900, 1.215), zona('Z12', 4000, 1300, 0.975)],
+      familias: { aro: fam(13000, 7900, 1.215), tripleFrontal: fam(4000, 1300, 1.0) },
+      hex: [[0, 1, 900, 540, 1.2, 'aro'], [1, 1, 12, 5, 0.8, 'tripleFrontal']] };
+    return p;
+  }
+  const p2 = paquete2('JUJUY BASQUET');
+  const h2 = P.html(p2);
+  check('las secciones son <details> colapsables, y Quintetos y Clutch están entre ellas',
+    /<details class="pbp-detalle mt-3" data-pbp-seccion="quintetos" open>/.test(h2) && /data-pbp-seccion="clutch" open/.test(h2) && /<summary class="pbp-resumen/.test(h2));
+  check('las secciones nuevas arrancan cerradas (táctico, rotaciones, cuartos): la card no se vuelve un scroll de 4 m',
+    /data-pbp-seccion="tactico">/.test(h2) && /data-pbp-seccion="rotaciones">/.test(h2) && /data-pbp-seccion="cuartos">/.test(h2));
+  check('G-P y MIN no se parten: toda celda numérica lleva whitespace-nowrap', /whitespace-nowrap">8-7</.test(h2) && !/<td class="px-2 py-1 font-mono text-xs">/.test(h2));
+  check('sin undefined ni NaN en el HTML', !/undefined|NaN/.test(h2));
+  check('escapa lo del paquete nuevo también (rival de los últimos 5)', !/<i>SUARDI/.test(h2) && /&lt;i&gt;SUARDI/.test(h2));
+
+  check('colorDelta: igual a la liga es gris, +0,3 verde pleno, −0,3 rojo pleno, sin dato gris',
+    P.colorDelta(0) === '#6b7280' && P.colorDelta(0.3) === '#16a34a' && P.colorDelta(-0.5) === '#dc2626' && P.colorDelta(null) === '#6b7280');
+  const vHex = P.varaHex(p2, 0, 1), vFam = P.varaHex(p2, 1, 1), vTot = P.varaHex(p2, 7, 7);
+  check('la vara del hexágono es la liga EN ESE LUGAR si tiró 15 o más', vHex.ppt === 1.2 && /900 tiros/.test(vHex.fuente));
+  check('con menos de 15, su familia de tiro dominante (y lo dice)', vFam.ppt === 1.0 && /triple frontal/.test(vFam.fuente));
+  check('y sin hexágono en la liga, la liga total', vTot.ppt === 1.05);
+  check('el color compara PUNTOS POR TIRO, no %: 60 pts en 50 tiros (1,20) contra 1,20 sale gris',
+    /class="pbp-hex"[^>]*style="fill:#6b7280"[^>]*data-pbp-tip="30\/50/.test(P.mapa(p2)));
+  check('un hexágono fuera de la media cancha no se dibuja', (P.mapa(p2).match(/class="pbp-hex"/g) || []).length === 2);
+
+  const mapa2 = P.mapa(p2);
+  const filasZona = (mapa2.match(/<tr class="pbp-fila-zona[^>]*data-pbp-zona="(Z\d+)"[^>]*tabindex="0"/g) || []).length;
+  check('cada fila de zona se puede enfocar y apunta a su polígono en la cancha',
+    filasZona === 2 && /<polygon class="pbp-zona"[^>]*data-pbp-zona="Z1"/.test(mapa2) && /<polygon class="pbp-zona"[^>]*data-pbp-zona="Z12"/.test(mapa2));
+  check('las 14 zonas de la plataforma están embebidas', Object.keys(P.ZONAS_GEO).length === 14);
+  const cx = (z) => P.ZONAS_GEO[z].reduce((a, pt) => a + (15 - pt[1]) * 10, 0) / P.ZONAS_GEO[z].length;
+  check('la izquierda del ATACANTE queda a la izquierda del dibujo (Z10 esquina izq. < 75 < Z14 esquina der.)', cx('Z10') < 40 && cx('Z14') > 110 && Math.abs(cx('Z1') - 75) < 5);
+  check('vs liga por zona: Z12 1,10 contra 0,975 → +0,13', /data-pbp-zona="Z12"[\s\S]*?\+0,13/.test(mapa2));
+  const mz = P.mapa(p2, { vista: 'zonas', metrica: 'frecuencia' });
+  check('vista zonas + frecuencia: sin hexágonos, zonas pintadas con el acento del club', !/pbp-hex/.test(mz) && /data-pbp-zona="Z1" style="fill:var\(--acento/.test(mz)
+    && /data-pbp-vista="zonas" data-pbp-metrica="frecuencia"/.test(mz) && /aria-pressed="true">Zonas/.test(mz));
+  check('lo que le tiran (contra) es otro mapa', /data-pbp-sujeto="contra"/.test(h2) && /data-pbp-seccion="mapa-contra"/.test(h2));
+
+  const lt = P.lecturaTactica(p2);
+  check('táctico: el problema se decide contra SUS quintetos (110 de ORTG, 100 de DRTG)',
+    lt.criticos[0].problema === 'defensa' && lt.criticos[1].problema === 'ataque');
+  check('y sugiere dúos y tríos solo con diferencial positivo, del mejor al peor',
+    JSON.stringify(lt.probar.map(x => x.ids.join(''))) === '["15","123"]');
+  const hRot = P.html(p2).match(/<svg class="pbp-rotaciones[\s\S]*?<\/svg>/)[0];
+  check('rotaciones: 40 minutos por jugador y afuera el que casi no juega', (hRot.match(/<rect /g) || []).length === 40 && /data-pbp-fila="Stehli"/.test(hRot));
+  check('cuartos: el suplementario se rotula y un dato ausente sale como raya', /Supl\./.test(h2) && /18-0/.test(h2) && /3\.º 02:08 → 4\.º 05:39/.test(h2));
+
+  const d2 = P.diagnostico(p2);
+  check('diagnóstico: ataque y defensa son puntos por tiro sobre la liga, por familia',
+    Math.abs(d2.ejes.find(e => e.id === 'tripleFrontal').ataque - 1.10) < 1e-9 && Math.abs(d2.ejes.find(e => e.id === 'aro').defensa - 1.143 / 1.215) < 1e-9);
+  check('zonas a explotar exigen volumen y 5 % sobre la liga', d2.explotar.map(e => e.id).join() === 'tripleFrontal' && d2.liberadas.length === 0);
+  const rival = paquete2('AMANCAY (LR)', { contraTF: 1.2, favorAro: 1.3 });
+  const cz = P.cruceZonas(rival, p2);
+  check('cruce: ATACAR donde lo nuestro rinde y el rival concede', cz.atacar.map(x => x.id).join() === 'tripleFrontal' && cz.atacar[0].propio === 1.1 && cz.atacar[0].rival === 1.2);
+  check('cruce: CERRAR donde el rival rinde y nosotros concedemos (y no donde no concedemos)', cz.cerrar.length === 0);
+  const rival2 = paquete2('AMANCAY (LR)', { favorAro: 1.3 });
+  const p2b = paquete2('JUJUY BASQUET', { contraAro: 1.25 });
+  check('…y sí cuando las dos cosas coinciden', P.cruceZonas(rival2, p2b).cerrar.map(x => x.id).join() === 'aro');
+  const hScout = P.html(rival, { contexto: 'scouting', propio: p2 });
+  check('en scouting el diagnóstico sale abierto y con el cruce nombrando a los dos equipos',
+    /data-pbp-seccion="diagnostico" open/.test(hScout) && /Atacar ahí · JUJUY BASQUET rinde y AMANCAY \(LR\) concede/.test(hScout));
+
+  const hj = P.jugador(p2, 'ibarra,  santiágo');
+  check('mapa del jugador: se encuentra por nombre normalizado y dibuja SUS tiros', /data-pbp-sujeto="2"/.test(hj) && /60\/120/.test(hj));
+  check('menos de 15 tiros no se dibuja y lo dice', /Menos de 15 tiros/.test(P.jugador(p2, 'CONTI, BRUNO')) && /todavía no está cargado/.test(P.jugador(paquete('X'), 'A')));
+  check('un paquete @1 sigue pintándose, sin las secciones que no tiene', !/data-pbp-seccion="tactico"/.test(h) && /data-pbp-seccion="clutch"/.test(h));
+
+  /* La interactividad, sobre un DOM mínimo: la fila y el polígono se
+     encienden juntos, y un toque fija el resaltado hasta el siguiente. */
+  const hand = {};
+  const clases = { Z1: new Set(), Z12: new Set() };
+  const el = (z) => ({ classList: { toggle: (c, on) => (on ? clases[z].add(c) : clases[z].delete(c)) } });
+  const caja = { attrs: {}, getAttribute(k) { return this.attrs[k] || null; }, setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; },
+    querySelectorAll: (sel) => { const z = sel.match(/"(Z\d+)"/)[1]; return [el(z), el(z)]; } };
+  const fila = (z) => ({ getAttribute: () => z, closest: (s) => (s === '.pbp-mapa-caja' ? caja : fila(z)) });
+  const nodo = { attrs: {}, getAttribute(k) { return this.attrs[k] || null; }, setAttribute(k, v) { this.attrs[k] = v; }, addEventListener: (t, f) => { hand[t] = f; } };
+  const ev = (z) => ({ target: { closest: (s) => (s === '[data-pbp-zona]' ? fila(z) : null) } });
+  P.activar(nodo);
+  hand.mouseover(ev('Z1'));
+  check('hover en una zona la enciende en la tabla Y en la cancha', clases.Z1.has('pbp-activa'));
+  hand.mouseout(ev('Z1'));
+  check('y al salir se apaga', !clases.Z1.has('pbp-activa'));
+  hand.click(ev('Z12'));
+  hand.mouseout(ev('Z12'));
+  check('un toque la FIJA: salir con el mouse no la apaga', clases.Z12.has('pbp-activa') && caja.attrs['data-pbp-fija'] === 'Z12');
+  hand.click(ev('Z1'));
+  check('tocar otra mueve el resaltado fijo', clases.Z1.has('pbp-activa') && !clases.Z12.has('pbp-activa'));
+  hand.click(ev('Z1'));
+  check('y tocar la misma lo suelta', !caja.attrs['data-pbp-fija']);
+  P.activar(nodo);
+  check('activar() engancha una sola vez por bloque', nodo.attrs['data-pbp-activo'] === '1');
+
+  const cardRival2 = vm.runInContext('scoutBloquePbp({ claveRival: "A", local: { clave: "A", nombre: "AMANCAY (LR)" }, visitante: { clave: "J", nombre: "JUJUY BASQUET" } })', conCapa);
+  check('la card de scouting pasa el OTRO lado del cruce para el diagnóstico', /data-pbp-propio="JUJUY BASQUET"/.test(cardRival2));
+  const srcJug = fs.readFileSync('./js/sgadd-jugadores.js', 'utf8');
+  check('Jugadores · Tiro: el mapa del jugador se pide con la capa y se monta después de pintar',
+    /function jugadoresTabTiro[\s\S]*?jugadoresBloqueMapaPbp\(j\)/.test(srcJug) && /SGADD_PBP\.activa\(\)[\s\S]{0,80}SGADD_PBP\.espacioJugador|espacioJugador\(j\['NOMBRES'\], j\['EQUIPO'\]\)/.test(srcJug)
+    && /function jugadoresPintar[\s\S]*?SGADD_PBP\.montarPendientes\(root\)/.test(srcJug));
+  const srcPbp = fs.readFileSync('./js/sgadd-pbp.js', 'utf8');
+  check('al imprimir se abren las secciones cerradas y después se devuelven', /beforeprint[\s\S]*details:not\(\[open\]\)/.test(srcPbp) && /afterprint/.test(srcPbp));
+  const css = fs.readFileSync('./index.html', 'utf8');
+  check('el resaltado vive en el <style> (nodos inyectados) y el hover solo en pantalla',
+    /\.pbp-zona\.pbp-activa\s*\{/.test(css) && /tr\.pbp-fila-zona\.pbp-activa > td\s*\{/.test(css) && /@media screen \{\s*\.pbp-toggle:hover/.test(css));
+  const cli = fs.readFileSync('./server/bin/pbp.js', 'utf8');
+  check('el CLI de subida acepta @1 y @2, y no los mezcla', /analitica-pbp-web@1', 'motorstats-ingestion\/analitica-pbp-web@2'/.test(cli) && /esquema distinto del índice/.test(cli));
+
   console.log('\n' + '═'.repeat(70) + '\n' + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -2543,7 +2543,7 @@ const SCOUT_CARDS = [
   { id: 'fichas', label: 'Fichas individuales', bloque: 'scouting.fichas' },
   /* LABORATORIO (punto 62): quintetos, cierre, clutch y mapa del rival,
      desde el play-by-play. Solo con la capa `pbp` de la categoría. */
-  { id: 'pbp', label: 'Quintetos y clutch del rival · laboratorio', capa: 'pbp' },
+  { id: 'pbp', label: 'Play-by-play del rival · laboratorio', capa: 'pbp' },
 ];
 
 /* =====================================================================
@@ -2578,12 +2578,16 @@ function scoutCardsVisibles() {
    pide `SGADD_PBP.montarPendientes` después de pintar la sección. */
 function scoutBloquePbp(inf) {
   if (typeof SGADD_PBP === 'undefined' || !SGADD_PBP.activa()) return '';
-  const rival = inf.local && inf.local.clave === inf.claveRival ? inf.local : inf.visitante;
+  const rivalEsLocal = !!(inf.local && inf.local.clave === inf.claveRival);
+  const rival = rivalEsLocal ? inf.local : inf.visitante;
   if (!rival) return '';
+  /* El otro lado del cruce, para el diagnóstico «atacar ahí / cerrar ahí»:
+     la misma regla de oro del plan de marcas, nunca `esEquipoPropio()`. */
+  const propio = rivalEsLocal ? inf.visitante : inf.local;
   return `
     <section class="scout-card scout-pagina card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="pbp">
-      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">🔁 Quintetos, cierre y clutch · ${scoutNombreConLogo(rival.nombre, 18)}</h4>
-      ${SGADD_PBP.espacio(rival.nombre, 'scouting')}
+      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">🔁 Play-by-play del rival · ${scoutNombreConLogo(rival.nombre, 18)}</h4>
+      ${SGADD_PBP.espacio(rival.nombre, 'scouting', propio && propio.clave !== rival.clave ? propio.nombre : null)}
     </section>`;
 }
 
