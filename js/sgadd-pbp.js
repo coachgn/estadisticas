@@ -1,6 +1,6 @@
 /* =====================================================================
-   SGADD · Play-by-play · quintetos, tiro, rotaciones, momentum y clutch
-   (LABORATORIO)
+   SGADD · Play-by-play · quintetos, mapa de tiro, rotaciones, momentum y
+   clutch (LABORATORIO)
 
    Punto 62 de CLAUDE.md. Los datos NO salen del libro: los arma
    `motorstats-ingestion` desde el play-by-play oficial de cada partido y
@@ -8,25 +8,30 @@
 
    Tres partes, como el resto del proyecto:
 
-     html · jugador · mapa · diagnostico · cruceZonas · lecturaTactica
+     html · mapaCard · jugador · mapa · diagnosticoZonas · diagnosticoJugador
+     · cruceZonas · lecturaTactica · capaTiros · geometriaZonas
                            PURAS: se testean en Node sin DOM.
      montarPendientes(raiz) busca los `.pbp-montaje` que dejó una sección,
                            pide el paquete y lo pinta.
-     activar(nodo)         la interactividad: fila de zona <-> polígono de la
-                           cancha, tooltip y conmutadores del mapa. Por
-                           delegación en el bloque, así sobrevive a repintar
-                           el mapa entero.
+     activar(nodo, paq)    la interactividad: fila de zona <-> polígono,
+                           tiros individuales de la zona, tooltip y
+                           conmutadores. Por delegación en el bloque, así
+                           sobrevive a repintar el mapa entero.
 
    LO QUE HAY QUE RESPETAR
-   · La capa es de LABORATORIO: pestaña, card y mapa del jugador se ofrecen
-     solo si el servidor declara `pbp` en `alcance.capas`.
+   · La capa es de LABORATORIO: pestañas, cards y mapa del jugador se
+     ofrecen solo si el servidor declara `pbp` en `alcance.capas`.
    · NET POR POSESIÓN PRIMERO en quintetos: PLAYS castiga al que gana el
-     rebote ofensivo (el titular de Jujuy da +7,6 por posesión y −2,2 por
-     PLAYS en fase regular).
-   · El «vs liga» del mapa es PUNTOS POR TIRO contra la liga EN ESE LUGAR,
-     no el %: un hexágono al borde del arco mezcla dobles y triples y el %
-     los compararía como si valieran igual. Si la liga tiró ahí menos de 15
-     veces, la vara es la familia de tiro dominante de ese hexágono.
+     rebote ofensivo.
+   · El «vs liga» es PUNTOS POR TIRO contra la liga EN ESE LUGAR, no el %:
+     un hexágono al borde del arco mezcla dobles y triples.
+   · LAS ZONAS SON GEOMETRÍA MEDIDA, no los polígonos de la plataforma:
+     círculos y rayos desde el aro que reproducen la etiqueta de la
+     plataforma en el 97,9 % de los tiros. Los parámetros viajan en el
+     paquete (`liga.geometria`) y acá solo hay el respaldo.
+   · Todo diagnóstico por zona se AJUSTA POR MUESTRA antes de comparar: la
+     zona se acerca a la liga en proporción a los pocos tiros que tiene, así
+     un 0/3 no pesa como un 1/8.
    · La muestra corta se MARCA (atenuado y ~), no se borra (punto 4).
    · Se escapa TODO lo que viene del paquete: son nombres de terceros.
    · La derecha del ATACANTE queda a la derecha del dibujo, con el aro
@@ -40,10 +45,14 @@ const SGADD_PBP = (function () {
   const MIN_LIGA_HEX = 15;
   const HEX_R = 0.8;
 
-  /* Las 14 zonas de la plataforma en metros de media cancha [fondo, lateral],
-     convertidas desde el SVG oficial de la página de partido con la
-     calibración de motorstats-ingestion/src/cancha.js (salida/zonas-metros.json). */
-  const ZONAS_GEO = {"Z1":[[0,9.2],[0.05,9.4],[0.2,9.5],[0.25,9.55],[0.45,9.65],[0.5,9.7],[0.65,9.75],[0.75,9.85],[1,9.9],[1.15,9.95],[1.3,9.95],[1.45,9.95],[1.7,9.95],[1.9,9.95],[2.05,9.9],[2.25,9.85],[2.4,9.8],[2.55,9.75],[2.6,9.7],[2.9,9.5],[3.25,9.25],[3.45,9.05],[3.6,8.8],[3.65,8.7],[3.75,8.45],[3.8,8.3],[3.9,8.1],[3.9,8],[3.95,7.7],[3.95,7.25],[3.9,7.15],[3.9,7.05],[3.85,6.85],[3.8,6.7],[3.7,6.45],[3.5,6.1],[3.4,5.95],[3.3,5.85],[3.25,5.8],[3.15,5.7],[3.05,5.6],[3,5.6],[2.95,5.55],[2.85,5.45],[2.7,5.4],[2.5,5.3],[2.4,5.25],[2.25,5.2],[2,5.1],[1.85,5.05],[1.7,5.05],[1.35,5.05],[1.25,5.05],[1,5.1],[0.7,5.25],[0.5,5.35],[0.2,5.5],[0,5.75],[0,9.2]],"Z2":[[5.75,9.95],[5.55,10.25],[5.3,10.6],[4.95,11],[4.5,11.4],[4,11.7],[3.55,11.95],[2.95,12.2],[2.5,12.3],[2.1,12.4],[1.7,12.4],[1,12.35],[0.6,12.25],[0.2,12.15],[0,12.05],[0,11.95],[0,11.1],[0,9.75],[0,9.2],[0.2,9.5],[0.4,9.65],[0.75,9.8],[1.1,9.95],[1.45,9.95],[1.9,9.95],[2.25,9.85],[2.55,9.75],[2.85,9.55],[3.2,9.25],[3.45,9.05],[3.6,8.8],[5.75,9.95]],"Z3":[[5.8,5.15],[5.9,5.35],[6,5.65],[6.05,5.85],[6.1,5.9],[6.1,5.95],[6.1,6],[6.15,6.1],[6.15,6.15],[6.15,6.2],[6.2,6.3],[6.2,6.4],[6.25,6.5],[6.3,7],[6.35,7.25],[6.35,7.7],[6.3,8.2],[6.25,8.4],[6.25,8.6],[6.1,8.95],[6.05,9.3],[5.9,9.65],[5.8,9.9],[5.75,9.95],[5.7,9.95],[3.6,8.8],[3.65,8.7],[3.8,8.45],[3.9,8.05],[3.95,7.65],[3.95,7.35],[3.9,7.05],[3.8,6.7],[3.7,6.45],[3.6,6.25],[3.7,6.2],[4,6.05],[5.25,5.35],[5.75,5.1],[5.8,5.15]],"Z4":[[0,5.75],[0.2,5.5],[0.6,5.3],[0.95,5.1],[1.3,5.05],[1.85,5.05],[2.15,5.15],[2.45,5.25],[2.8,5.45],[3.05,5.6],[3.25,5.8],[3.45,6],[3.6,6.25],[5.75,5.05],[5.7,5],[5.5,4.75],[5.25,4.45],[4.95,4.1],[4.75,3.85],[4.45,3.65],[4.3,3.55],[4.15,3.45],[3.7,3.2],[3.3,3],[2.8,2.8],[2.7,2.8],[2.35,2.7],[1.95,2.65],[1.5,2.65],[0.9,2.7],[0.4,2.85],[0,3.05],[0,5.75]],"Z5":[[4.25,11.55],[4.05,11.7],[4,11.7],[3.55,11.95],[2.9,12.2],[2.5,12.3],[2.1,12.4],[1.7,12.4],[1.6,12.35],[1,12.35],[0.55,12.25],[0.45,12.25],[0.2,12.15],[0,12.05],[0,11.95],[0,14.1],[0.85,14.1],[2.3,14.1],[2.85,14.1],[3.25,14.05],[3.45,14],[3.65,13.95],[3.9,13.85],[4.3,13.7],[4.55,13.6],[5.1,13.35],[5.3,13.2],[5.55,13.05],[4.45,11.4],[4.25,11.55]],"Z6":[[6.05,9.25],[6,9.3],[5.9,9.55],[5.8,9.85],[5.75,9.95],[5.75,10],[5.6,10.2],[5.35,10.5],[5.3,10.6],[5.25,10.65],[5.1,10.85],[4.95,11],[4.7,11.2],[4.45,11.4],[5.55,13.05],[5.7,12.95],[6,12.7],[6.4,12.35],[6.85,11.9],[7.25,11.35],[7.55,10.8],[7.8,10.3],[8.05,9.6],[6.1,9],[6.05,9.25]],"Z7":[[6.15,6.2],[6.25,6.5],[6.25,6.65],[6.3,7],[6.35,7.25],[6.35,7.55],[6.35,7.7],[6.3,8.05],[6.25,8.4],[6.25,8.6],[6.1,9],[8.05,9.6],[8.05,9.45],[8.15,9.15],[8.2,8.85],[8.25,8.65],[8.3,8.45],[8.3,8.3],[8.3,8.15],[8.3,7.9],[8.3,7.55],[8.3,7.1],[8.3,7],[8.3,6.95],[8.2,6.5],[8.15,6],[8,5.45],[6.1,6],[6.15,6.2]],"Z8":[[5.75,2.15],[6.05,2.45],[6.5,2.85],[6.9,3.25],[7.25,3.8],[7.55,4.3],[7.85,5],[8,5.45],[6.1,6],[6.05,5.8],[5.9,5.4],[5.9,5.35],[5.8,5.2],[5.75,5.05],[5.45,4.7],[5.25,4.45],[5.05,4.2],[4.95,4.1],[4.75,3.85],[4.45,3.65],[5.5,2],[5.75,2.15]],"Z9":[[0,0.9],[2.9,0.9],[3.2,0.95],[3.6,1.05],[3.85,1.15],[4.25,1.3],[4.7,1.5],[4.9,1.6],[4.95,1.65],[5.1,1.75],[5.5,2],[4.45,3.65],[4.3,3.55],[4,3.35],[3.65,3.15],[3.3,3],[2.8,2.8],[2.4,2.7],[1.95,2.7],[1.4,2.7],[0.9,2.7],[0.4,2.85],[0,3.05],[0,0.9]],"Z10":[[0,15],[4,15],[4,13.8],[3.7,13.95],[3.3,14.05],[2.85,14.1],[0,14.1],[0,15]],"Z11":[[13.9,3.65],[13.75,15],[4,15],[4,13.8],[4.3,13.7],[5.05,13.35],[5.65,13],[5.95,12.75],[6.4,12.4],[6.85,11.9],[7.25,11.4],[7.35,11.2],[7.5,10.9],[7.65,10.65],[7.8,10.35],[7.8,10.25],[7.9,10.05],[8,9.75],[8,9.7],[13.9,3.65]],"Z12":[[8.1,5.8],[8.15,6],[8.15,6.05],[8.2,6.5],[8.3,7],[8.3,7.65],[8.3,8.15],[8.25,8.65],[8.15,9.15],[8.05,9.45],[8.05,9.6],[8,9.7],[13.9,3.65],[13.9,11.2],[7.95,5.3],[8.1,5.8]],"Z13":[[13.9,15],[4,0],[4,1.2],[4.25,1.3],[4.8,1.55],[5.25,1.8],[5.75,2.15],[6.05,2.45],[6.45,2.8],[6.5,2.85],[6.65,3],[6.85,3.2],[6.9,3.25],[6.9,3.3],[7.1,3.6],[7.25,3.8],[7.35,3.95],[7.5,4.25],[7.55,4.35],[7.85,5],[7.95,5.3],[13.7,3.75],[13.9,15]],"Z14":[[0,0],[0,0.9],[2.85,0.9],[3.15,0.95],[3.6,1.05],[4,1.2],[4,0],[0,0]]};
+  /* Respaldo de la geometría medida en motorstats-ingestion/src/pbp/avanzado.js.
+     Manda la del paquete: son los MISMOS números, y si un día se recalibran
+     ahí, el dibujo acompaña sin tocar este archivo. */
+  const GEOMETRIA = {
+    aro: [1.575, 7.5], r1: 2.35, r2: 4.8, triple: 6.75, esquina: 6.6, finEsquina: 2.99,
+    anguloCorta: 31, anguloFrontal: 18, anguloFondo: 53, anguloEsquina: 71,
+  };
+  const ZONAS = ['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z6', 'Z7', 'Z8', 'Z9', 'Z10', 'Z11', 'Z12', 'Z13', 'Z14'];
 
   const NOMBRES_ZONA = {
     Z1: 'Bajo el aro', Z2: 'Corta izquierda', Z3: 'Corta frontal', Z4: 'Corta derecha',
@@ -53,12 +62,9 @@ const SGADD_PBP = (function () {
     'FRANJA-SUPERIOR': 'Fuera de las líneas', 'FRANJA-INFERIOR': 'Fuera de las líneas',
   };
   const FAMILIAS = [
-    { id: 'aro', label: 'Bajo el aro' },
-    { id: 'corta', label: 'Media corta' },
-    { id: 'mediaLateral', label: 'Media lateral' },
-    { id: 'mediaFrontal', label: 'Media frontal' },
-    { id: 'tripleEsquina', label: 'Triple esquina' },
-    { id: 'tripleLateral', label: 'Triple lateral' },
+    { id: 'aro', label: 'Bajo el aro' }, { id: 'corta', label: 'Media corta' },
+    { id: 'mediaLateral', label: 'Media lateral' }, { id: 'mediaFrontal', label: 'Media frontal' },
+    { id: 'tripleEsquina', label: 'Triple esquina' }, { id: 'tripleLateral', label: 'Triple lateral' },
     { id: 'tripleFrontal', label: 'Triple frontal' },
   ];
 
@@ -70,7 +76,7 @@ const SGADD_PBP = (function () {
   const num = (v, dec) => (v === null || v === undefined || !isFinite(v) ? '—'
     : Number(v).toFixed(dec === undefined ? 1 : dec).replace('.', ','));
   const signo = (v, dec) => (v === null || v === undefined || !isFinite(v) ? '—'
-    : (v > 0 ? '+' : '') + num(v, dec === undefined ? (Number.isInteger(v) ? 0 : 1) : dec));
+    : (v > 0 ? '+' : v < 0 ? '−' : '') + num(Math.abs(v), dec === undefined ? (Number.isInteger(v) ? 0 : 1) : dec));
   const tonoMM = (v) => (v > 0 ? 'mm-pos' : v < 0 ? 'mm-neg' : '');
   /* Toda celda numérica en una línea: con la tabla angosta, «8-7» partido
      en «8-/7» es exactamente la superposición que se reportó. */
@@ -106,6 +112,18 @@ const SGADD_PBP = (function () {
       ${cuerpo}
       </div>
     </details>`;
+  }
+
+  function notaLaboratorio(paq) {
+    const p = paq.partidos || {};
+    const excl = (p.excluidos || []).length
+      ? ' Quedaron afuera ' + p.excluidos.length + ': ' + p.excluidos.map(x => esc(x.fecha) + ' vs ' + esc(x.rival) + ' (' + esc(x.motivo) + ')').join('; ') + '.'
+      : '';
+    return `<p class="text-[11px] text-muted">
+        <b class="text-ink">Laboratorio</b> · ${esc(paq.competencia || '')} · play-by-play oficial,
+        <b class="text-ink">${p.validados}/${p.jugados}</b> partidos validados (cinco en cancha siempre y minutos
+        contra el box score).${excl}
+      </p>`;
   }
 
   /* --------------------------------------------------------- quintetos */
@@ -218,7 +236,7 @@ const SGADD_PBP = (function () {
     const jug = r.jugadores.filter(j => j.minutos >= 2).slice(0, 12);
     const W = 12, H = 16, X0 = 88, Y0 = 16;
     const ancho = X0 + 40 * W + 30;
-    /* 480 celdas: sin <title> y con el color en el grupo, o esto solo pesa
+    /* 480 celdas: sin <title> y con el color en el <svg>, o esto solo pesa
        más que el resto del bloque junto. El detalle lo da el tooltip. */
     const filas = jug.map((j, fi) => `<g data-pbp-fila="${esc(nombreCorto(paq, j.id))}">` + j.minuto.map((v, m) =>
       `<rect x="${X0 + m * W}" y="${Y0 + fi * H}" width="${W - 1}" height="${H - 2}" fill-opacity="${(0.06 + 0.94 * v / 100).toFixed(2)}" data-pbp-tip="min ${m + 1} · ${v} %"/>`).join('') + '</g>'
@@ -306,21 +324,128 @@ const SGADD_PBP = (function () {
       </tr></thead><tbody>${filas}</tbody></table></div>`;
   }
 
-  /* --------------------------------------------------------- mapa (PURO) */
+  /* ===================================================== GEOMETRÍA (PURO) */
+
+  const rad = (g) => g * Math.PI / 180;
+
+  function geometria(paq) {
+    return Object.assign({}, GEOMETRIA, (paq && paq.liga && paq.liga.geometria) || {});
+  }
+
+  /** ¿Triple por posición? Arco de 6,75 m y rectas de 6,60 m hasta 2,99 m del fondo. */
+  function esTriple(fondo, lateral, G) {
+    if (fondo < G.finEsquina) return Math.abs(lateral - G.aro[1]) > G.esquina;
+    return Math.hypot(fondo - G.aro[0], lateral - G.aro[1]) > G.triple;
+  }
+
+  /** La zona de una posición. «Izquierda» del atacante = lateral mayor que el aro. */
+  function zonaGeometrica(fondo, lateral, g) {
+    const G = g || GEOMETRIA;
+    const dx = fondo - G.aro[0], dy = lateral - G.aro[1];
+    const d = Math.hypot(dx, dy);
+    const a = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI);
+    const izq = dy > 0;
+    if (esTriple(fondo, lateral, G)) {
+      if (a >= G.anguloEsquina) return izq ? 'Z10' : 'Z14';
+      if (a < G.anguloFrontal) return 'Z12';
+      return izq ? 'Z11' : 'Z13';
+    }
+    if (d < G.r1) return 'Z1';
+    if (d < G.r2) return a < G.anguloCorta ? 'Z3' : (izq ? 'Z2' : 'Z4');
+    if (a < G.anguloFrontal) return 'Z7';
+    if (a < G.anguloFondo) return izq ? 'Z6' : 'Z8';
+    return izq ? 'Z5' : 'Z9';
+  }
+
+  /** Distancia del aro a la línea de triple sobre un rayo (grados; 0 = hacia el medio de la cancha). */
+  function lineaTriple(angulo, G) {
+    const a = Math.abs(angulo);
+    if (G.aro[0] + G.triple * Math.cos(rad(a)) >= G.finEsquina) return G.triple;
+    const s = Math.sin(rad(a));
+    return s > 0 ? Math.min(40, G.esquina / s) : 40;
+  }
+
+  const geoCache = new Map();
+  /**
+   * Los 14 polígonos en metros [fondo, lateral] y el punto donde va la
+   * etiqueta de cada zona. PURA y con caché por geometría.
+   * Cada zona es un sector entre dos rayos y dos radios; lo que se sale de
+   * la media cancha lo recorta el `clipPath` del dibujo, no el polígono.
+   */
+  function geometriaZonas(g) {
+    const G = Object.assign({}, GEOMETRIA, g || {});
+    const clave = JSON.stringify(G);
+    if (geoCache.has(clave)) return geoCache.get(clave);
+    const C = G.anguloCorta, F = G.anguloFrontal, B = G.anguloFondo, E = G.anguloEsquina;
+    const k = (v) => () => v;
+    const L = (a) => lineaTriple(a, G);
+    const def = {
+      Z1: [-180, 180, k(0), k(G.r1)],
+      Z2: [C, 180, k(G.r1), k(G.r2)], Z3: [-C, C, k(G.r1), k(G.r2)], Z4: [-180, -C, k(G.r1), k(G.r2)],
+      Z5: [B, 180, k(G.r2), L], Z6: [F, B, k(G.r2), L], Z7: [-F, F, k(G.r2), L], Z8: [-B, -F, k(G.r2), L], Z9: [-180, -B, k(G.r2), L],
+      Z10: [E, 180, L, k(40)], Z11: [F, E, L, k(40)], Z12: [-F, F, L, k(40)], Z13: [-E, -F, L, k(40)], Z14: [-180, -E, L, k(40)],
+    };
+    const punto = (a, t) => [G.aro[0] + t * Math.cos(rad(a)), G.aro[1] + t * Math.sin(rad(a))];
+    const out = {};
+    ZONAS.forEach((z) => {
+      const [a0, a1, rin, rout] = def[z];
+      const pasos = Math.max(2, Math.round(a1 - a0));
+      const adentro = [], afuera = [];
+      for (let i = 0; i <= pasos; i++) {
+        const a = a0 + (a1 - a0) * i / pasos;
+        adentro.push(punto(a, rin(a)));
+        afuera.push(punto(a, rout(a)));
+      }
+      out[z] = { poligono: z === 'Z1' ? afuera : adentro.concat(afuera.reverse()), etiqueta: null };
+    });
+    /* La etiqueta va en el punto de la zona más cercano a su centro de masa,
+       medido solo sobre la parte que se VE. Los triples, hasta 2,5 m detrás
+       de la línea: la cancha sigue hasta la mitad y su centro caería lejos
+       de donde se tira. */
+    const muestras = {};
+    ZONAS.forEach((z) => { muestras[z] = []; });
+    for (let f = 0.1; f < 14; f += 0.2) {
+      for (let l = 0.1; l < 15; l += 0.2) {
+        const z = zonaGeometrica(f, l, G);
+        const d = Math.hypot(f - G.aro[0], l - G.aro[1]);
+        if (/^Z1[0-4]$/.test(z) && d > G.triple + 2.5) continue;
+        muestras[z].push([f, l]);
+      }
+    }
+    /* Las esquinas: la media de fondo y la esquina de triple quedan pegadas
+       y sus C/I se pisan. Se separan a mano —la media contra el fondo, la
+       esquina abajo de la recta— y solo si el punto sigue en su zona. */
+    const aMano = {
+      Z1: [G.aro[0] + 1.25, G.aro[1]],
+      Z5: [1.5, G.aro[1] + 5.1], Z9: [1.5, G.aro[1] - 5.1],
+      Z10: [G.finEsquina + 0.7, G.aro[1] + 6.5], Z14: [G.finEsquina + 0.7, G.aro[1] - 6.5],
+    };
+    ZONAS.forEach((z) => {
+      const m = muestras[z];
+      if (!m.length) return;
+      if (aMano[z] && zonaGeometrica(aMano[z][0], aMano[z][1], G) === z) { out[z].etiqueta = aMano[z]; return; }
+      const mf = m.reduce((a, p) => a + p[0], 0) / m.length, ml = m.reduce((a, p) => a + p[1], 0) / m.length;
+      let mejor = m[0], dm = Infinity;
+      m.forEach((p) => { const d = (p[0] - mf) ** 2 + (p[1] - ml) ** 2; if (d < dm) { dm = d; mejor = p; } });
+      out[z].etiqueta = mejor;
+    });
+    geoCache.set(clave, out);
+    return out;
+  }
 
   /* 10 unidades = 1 m. X espejada: la derecha del atacante, a la derecha. */
   const X = (lateral) => ((15 - lateral) * 10).toFixed(1);
   const Y = (fondo) => (fondo * 10).toFixed(1);
 
-  function lineasCancha() {
-    const union = 1.575 + Math.sqrt(6.75 * 6.75 - 6.6 * 6.6);
+  function lineasCancha(G) {
+    const union = G.finEsquina;
     return `<g class="pbp-lineas" fill="none" stroke="#6b7280" stroke-width="0.8" pointer-events="none">
       <rect x="0" y="0" width="150" height="140"/>
       <rect x="${X(7.5 + 2.45)}" y="0" width="49" height="58"/>
-      <circle cx="75" cy="15.75" r="2.25"/>
-      <line x1="${X(0.9)}" y1="0" x2="${X(0.9)}" y2="${Y(union)}"/>
-      <line x1="${X(14.1)}" y1="0" x2="${X(14.1)}" y2="${Y(union)}"/>
-      <path d="M ${X(0.9)} ${Y(union)} A 67.5 67.5 0 0 1 ${X(14.1)} ${Y(union)}"/>
+      <circle cx="${X(G.aro[1])}" cy="${Y(G.aro[0])}" r="2.25"/>
+      <line x1="${X(G.aro[1] - G.esquina)}" y1="0" x2="${X(G.aro[1] - G.esquina)}" y2="${Y(union)}"/>
+      <line x1="${X(G.aro[1] + G.esquina)}" y1="0" x2="${X(G.aro[1] + G.esquina)}" y2="${Y(union)}"/>
+      <path d="M ${X(G.aro[1] - G.esquina)} ${Y(union)} A ${G.triple * 10} ${G.triple * 10} 0 0 1 ${X(G.aro[1] + G.esquina)} ${Y(union)}"/>
     </g>`;
   }
 
@@ -345,10 +470,10 @@ const SGADD_PBP = (function () {
   }
   function varaZona(paq, zona) {
     const z = ((paq.liga || {}).zonas || []).find(x => x.zona === zona);
-    return z ? z.ppt : null;
+    return z || null;
   }
 
-  /** Qué conjunto de tiros se dibuja: el equipo, lo que le tiran, o un jugador (por id). */
+  /** Qué conjunto de tiros: el equipo, lo que le tiran, o un jugador (por id). */
   function sujetoTiros(paq, sujeto) {
     const d = paq.tiros && paq.tiros.detalle;
     if (!d) return null;
@@ -357,38 +482,217 @@ const SGADD_PBP = (function () {
     return d.favor;
   }
 
+  /* ================================================== DIAGNÓSTICO (PURO) */
+
+  /* AJUSTE POR MUESTRA. Antes de comparar una zona contra la liga se la
+     acerca a la liga con K tiros «de liga»: (puntos + K·liga) / (tiros + K).
+     Un 0/3 queda cerca de la liga y un 1/8 bastante más abajo, que es lo que
+     dice la evidencia. K es la mitad de una zona con muestra razonable. */
+  const K_EQUIPO = 20, K_JUGADOR = 10;
+  const ajustar = (valor, n, vara, k) => (valor * n + k * vara) / (n + k);
+
+  /** Filas por zona de un sujeto, con su vara de liga y el ajuste por muestra. */
+  function filasZonas(paq, sujeto, k) {
+    const s = sujetoTiros(paq, sujeto);
+    if (!s) return null;
+    const zonas = (s.zonas || []).filter(z => ZONAS.indexOf(z.zona) !== -1 && z.i > 0);
+    const total = zonas.reduce((a, z) => a + z.i, 0);
+    if (!total) return null;
+    const ppt = zonas.reduce((a, z) => a + z.ppt * z.i, 0) / total;
+    const filas = zonas.map((z) => {
+      const liga = varaZona(paq, z.zona);
+      if (!liga || !isFinite(liga.ppt)) return null;
+      const post = ajustar(z.ppt, z.i, liga.ppt, k);
+      return Object.assign({}, z, {
+        nombre: NOMBRES_ZONA[z.zona], liga, share: z.i / total,
+        post, delta: post - liga.ppt,
+        perdidos: z.i * (liga.ppt - post),     // puntos por debajo de lo esperado
+        deMas: z.i * (post - liga.ppt),        // puntos por encima (lo que concede una defensa)
+        ganancia: post - ppt,                  // lo que suma redirigir un tiro ahí
+      });
+    }).filter(Boolean);
+    return { total, ppt, filas };
+  }
+
   /**
-   * El mapa de tiro. PURO: conmutadores, SVG y tabla de zonas enlazada.
-   * @param {{sujeto?: string, vista?: 'hex'|'zonas', metrica?: 'eficiencia'|'frecuencia'}} opciones
+   * El diagnóstico sobre la cancha. PURA.
+   *   equipo  → la zona a EXPLOTAR (mayor ventaja ajustada contra la liga),
+   *             2 zonas de MEJORA (las que más elevan la eficiencia del equipo
+   *             si se les da volumen) y hasta 3 zonas a EVITAR o CORREGIR
+   *             (las que más puntos cuestan contra lo esperado).
+   *   contra  → las 3 zonas CRÍTICAS que libera la defensa.
+   */
+  function diagnosticoZonas(paq, sujeto) {
+    const st = filasZonas(paq, sujeto || 'equipo', K_EQUIPO);
+    if (!st) return null;
+    if (sujeto === 'contra') {
+      return { tipo: 'contra', ppt: st.ppt, criticas: st.filas.filter(f => f.i >= 20 && f.delta >= 0.03).sort((a, b) => b.deMas - a.deMas).slice(0, 3) };
+    }
+    const explotar = st.filas.filter(f => f.i >= 20 && f.delta >= 0.02).sort((a, b) => b.delta - a.delta)[0] || null;
+    const mejora = st.filas.filter(f => f !== explotar && f.i >= 10 && f.ganancia >= 0.02).sort((a, b) => b.ganancia - a.ganancia).slice(0, 2);
+    const usadas = new Set([explotar].concat(mejora).filter(Boolean).map(f => f.zona));
+    const evitar = st.filas.filter(f => !usadas.has(f.zona) && f.i >= 5 && f.delta <= -0.05)
+      .sort((a, b) => b.perdidos - a.perdidos).slice(0, 3)
+      .map(f => Object.assign({}, f, { accion: f.share < 0.05 ? 'evitar' : 'corregir' }));
+    return { tipo: 'favor', ppt: st.ppt, total: st.total, explotar, mejora, evitar };
+  }
+
+  /**
+   * El diagnóstico de UN tirador sobre volumen por zona (intentos por PJ) y
+   * acierto por zona (CONV %) contra la liga en esa zona. PURA.
+   *   picos      acierto claramente por encima de la liga con muestra
+   *   explotar   rinde por encima de la liga con poco volumen: sumarle tiros
+   *   ajuste     mucho volumen con acierto de liga: seleccionar mejor
+   *   fuga       acierto claramente por debajo de la liga con muestra
+   */
+  function diagnosticoJugador(paq, id) {
+    const det = paq && paq.tiros && paq.tiros.detalle;
+    const j = det && (det.jugadores || []).find(x => String(x.id) === String(id));
+    if (!j) return null;
+    const pj = j.pj || null;
+    const filas = (j.zonas || []).filter(z => ZONAS.indexOf(z.zona) !== -1 && z.i > 0).map((z) => {
+      const liga = varaZona(paq, z.zona);
+      if (!liga || !isFinite(liga.pct)) return null;
+      const lc = liga.pct / 100;
+      const post = (z.c + K_JUGADOR * lc) / (z.i + K_JUGADOR);
+      return Object.assign({}, z, {
+        nombre: NOMBRES_ZONA[z.zona], liga, conv: z.c / z.i, ligaConv: lc,
+        dConv: post - lc, dCrudo: z.c / z.i - lc,
+        vol: pj ? z.i / pj : null, share: z.i / j.i,
+        perdidos: z.i * (liga.ppt - ajustar(z.ppt, z.i, liga.ppt, K_JUGADOR)),
+      });
+    }).filter(Boolean);
+    const volumenes = filas.map(f => f.i).sort((a, b) => a - b);
+    const mediana = volumenes.length ? volumenes[Math.floor(volumenes.length / 2)] : 0;
+    const picos = filas.filter(f => f.i >= 8 && f.dConv >= 0.05).sort((a, b) => b.dConv - a.dConv).slice(0, 2);
+    const usadas = new Set(picos.map(f => f.zona));
+    const explotar = filas.filter(f => !usadas.has(f.zona) && f.i >= 3 && f.i <= mediana && f.dConv >= 0.02)
+      .sort((a, b) => b.dConv - a.dConv).slice(0, 2);
+    explotar.forEach(f => usadas.add(f.zona));
+    const ajuste = filas.filter(f => !usadas.has(f.zona) && f.share >= 0.15 && f.dConv > -0.05 && f.dConv < 0.02)
+      .sort((a, b) => b.i - a.i).slice(0, 2);
+    ajuste.forEach(f => usadas.add(f.zona));
+    const fuga = filas.filter(f => !usadas.has(f.zona) && f.i >= 6 && f.dConv <= -0.05)
+      .sort((a, b) => b.perdidos - a.perdidos).slice(0, 2);
+    return { pj, i: j.i, c: j.c, picos, explotar, ajuste, fuga };
+  }
+
+  /**
+   * El cruce de scouting, por zona. PURA.
+   * atacar: zonas donde el equipo PROPIO rinde por encima de la liga y el
+   *         rival concede por encima de la liga (las dos cosas ajustadas).
+   * cerrar: zonas donde el RIVAL rinde por encima y el propio concede.
+   */
+  function cruceZonas(paqRival, paqPropio) {
+    const mapa = (paq, sujeto) => {
+      const st = filasZonas(paq, sujeto, K_EQUIPO);
+      const m = {};
+      if (st) st.filas.filter(f => f.i >= 20).forEach((f) => { m[f.zona] = f; });
+      return st ? m : null;
+    };
+    const rF = mapa(paqRival, 'equipo'), rC = mapa(paqRival, 'contra'), pF = mapa(paqPropio, 'equipo'), pC = mapa(paqPropio, 'contra');
+    if (!rF || !rC || !pF || !pC) return null;
+    const atacar = [], cerrar = [];
+    ZONAS.forEach((z) => {
+      if (pF[z] && rC[z] && pF[z].delta >= 0.02 && rC[z].delta >= 0.02) atacar.push({ zona: z, nombre: NOMBRES_ZONA[z], propio: pF[z].delta, rival: rC[z].delta, indice: pF[z].delta + rC[z].delta });
+      if (rF[z] && pC[z] && rF[z].delta >= 0.02 && pC[z].delta >= 0.02) cerrar.push({ zona: z, nombre: NOMBRES_ZONA[z], rival: rF[z].delta, propio: pC[z].delta, indice: rF[z].delta + pC[z].delta });
+    });
+    return { atacar: atacar.sort((a, b) => b.indice - a.indice), cerrar: cerrar.sort((a, b) => b.indice - a.indice) };
+  }
+
+  /** Las marcas del diagnóstico por zona, con la misma clase para el SVG, la tabla y la lista. */
+  function marcasDiagnostico(paq, sujeto) {
+    const m = {};
+    const poner = (f, clase, insignia, titulo) => { if (f && !m[f.zona]) m[f.zona] = { clase, insignia, titulo, fila: f }; };
+    if (sujeto && sujeto !== 'equipo' && sujeto !== 'contra') {
+      const d = diagnosticoJugador(paq, sujeto);
+      if (!d) return m;
+      d.picos.forEach(f => poner(f, 'explotar', '★', 'Pico de rendimiento'));
+      d.explotar.forEach(f => poner(f, 'mejora', '↑', 'Punto a explotar'));
+      d.ajuste.forEach(f => poner(f, 'ajuste', '≈', 'Criterio de ajuste'));
+      d.fuga.forEach(f => poner(f, 'evitar', '✕', 'Punto de fuga'));
+      return m;
+    }
+    const d = diagnosticoZonas(paq, sujeto);
+    if (!d) return m;
+    if (d.tipo === 'contra') {
+      d.criticas.forEach((f, i) => poner(f, 'critica', String(i + 1), 'Zona crítica que libera la defensa'));
+      return m;
+    }
+    poner(d.explotar, 'explotar', '★', 'Zona a explotar');
+    d.mejora.forEach(f => poner(f, 'mejora', '↑', 'Zona de mejora'));
+    d.evitar.forEach(f => poner(f, 'evitar', '✕', f.accion === 'evitar' ? 'Zona a evitar' : 'Zona a corregir'));
+    return m;
+  }
+
+  /* ===================================================== MAPA (PURO) */
+
+  let serial = 0;
+
+  /** Los tiros de UNA zona del sujeto, como círculos (convertidos) y cruces (errados). PURA. */
+  function capaTiros(paq, sujeto, zona) {
+    const pts = paq && paq.tiros && paq.tiros.detalle && paq.tiros.detalle.puntos;
+    const zi = pts ? (pts.zonas || ZONAS).indexOf(zona) : -1;
+    if (!pts || zi === -1) return { svg: '', convertidos: 0, errados: 0, disponible: false };
+    let lista;
+    if (sujeto === 'contra') lista = pts.contra || [];
+    else if (sujeto && sujeto !== 'equipo') {
+      const ji = (pts.ids || []).indexOf(String(sujeto));
+      lista = ji === -1 ? [] : (pts.favor || []).filter(p => p[4] === ji);
+    } else lista = pts.favor || [];
+    const deZona = lista.filter(p => p[3] === zi);
+    let convertidos = 0, errados = 0;
+    const svg = deZona.map((p) => {
+      const x = 150 - p[0], y = p[1];   // lateral×10 espejado; fondo×10
+      if (p[2]) { convertidos++; return `<circle class="pbp-tiro-c" cx="${x}" cy="${y}" r="1.35"/>`; }
+      errados++;
+      return `<path class="pbp-tiro-e" d="M${x - 1.1} ${y - 1.1}L${x + 1.1} ${y + 1.1}M${x + 1.1} ${y - 1.1}L${x - 1.1} ${y + 1.1}"/>`;
+    }).join('');
+    return { svg, convertidos, errados, disponible: true };
+  }
+
+  /**
+   * El mapa de tiro. PURO: conmutadores, SVG, tabla de zonas enlazada y el
+   * diagnóstico sobre la cancha.
+   * @param {{sujeto?: string, vista?: 'zonas'|'hex', metrica?: 'eficiencia'|'frecuencia', diag?: boolean, perspectiva?: boolean}} opciones
    */
   function mapa(paq, opciones) {
-    const o = Object.assign({ sujeto: 'equipo', vista: 'hex', metrica: 'eficiencia' }, opciones);
+    const o = Object.assign({ sujeto: 'equipo', vista: 'zonas', metrica: 'eficiencia', diag: true, perspectiva: false }, opciones);
     const s = sujetoTiros(paq, o.sujeto);
     if (!s) return vacio('Sin tiros suficientes para dibujar el mapa.');
+    const G = geometria(paq);
+    const geo = geometriaZonas(G);
     const hexes = s.hex || [];
-    const totalI = hexes.reduce((a, h) => a + h[2], 0) || 1;
     const zonas = (s.zonas || []).filter(z => z.i > 0);
+    const totalI = zonas.reduce((a, z) => a + z.i, 0) || 1;
     const zonaPorId = {};
     zonas.forEach((z) => { zonaPorId[z.zona] = z; });
     const indiceLiga = new Map(((paq.liga || {}).hex || []).map(h => [h[0] + ',' + h[1], h]));
     const frecuencia = o.metrica === 'frecuencia';
+    const marcas = o.diag ? marcasDiagnostico(paq, o.sujeto) : {};
+    const clip = 'pbp-cancha-' + (++serial);
+    const hayPuntos = !!(paq.tiros.detalle.puntos);
 
-    let capa = '';
+    let capaHex = '';
     if (o.vista === 'hex') {
       const maxI = Math.max.apply(null, hexes.map(h => h[2]).concat([1]));
-      capa = hexes.map(([q, r, i, c, p]) => {
+      capaHex = hexes.map(([q, r, i, c, p]) => {
         const lateral = HEX_R * Math.sqrt(3) * (q + r / 2);
         const fondo = HEX_R * 1.5 * r;
-        if (fondo < -0.4 || fondo > 14.2 || lateral < -0.4 || lateral > 15.4) return '';
+        /* Solo hexágonos con centro DENTRO de la media cancha; el borde lo
+           recorta el clipPath. */
+        if (fondo < 0 || fondo > 14 || lateral < 0 || lateral > 15) return '';
         const vara = varaHex(paq, q, r, indiceLiga);
         const ppt = i ? p / i : null;
         const delta = ppt !== null && vara.ppt !== null ? ppt - vara.ppt : null;
-        const escala = frecuencia ? 1 : (0.35 + 0.65 * Math.sqrt(i / maxI));
-        const rad = HEX_R * 10 * escala * 0.97;
+        /* Tamaño por volumen con piso de medio hexágono: más chico no se lee y
+           la grilla parece desfasada. Con 0,97 queda una junta fina. */
+        const escala = frecuencia ? 1 : (0.5 + 0.5 * Math.sqrt(i / maxI));
+        const radio = HEX_R * 10 * escala * 0.97;
         const cx = (15 - lateral) * 10, cy = fondo * 10;
         const pts = [0, 1, 2, 3, 4, 5].map((k) => {
           const a = Math.PI / 180 * (60 * k - 30);
-          return (cx + rad * Math.cos(a)).toFixed(1) + ',' + (cy + rad * Math.sin(a)).toFixed(1);
+          return (cx + radio * Math.cos(a)).toFixed(1) + ',' + (cy + radio * Math.sin(a)).toFixed(1);
         }).join(' ');
         const fill = frecuencia ? 'var(--acento, #f7941e)' : colorDelta(delta);
         const opac = frecuencia ? (0.12 + 0.88 * Math.sqrt(i / maxI)).toFixed(2) : (i >= 3 ? '0.92' : '0.45');
@@ -400,39 +704,63 @@ const SGADD_PBP = (function () {
     }
 
     const maxZona = Math.max.apply(null, zonas.map(x => x.i).concat([1]));
-    const poligonos = ZONAS_GEO ? Object.keys(ZONAS_GEO).map((zona) => {
+    const puntosSvg = (lista) => lista.map(([f, l]) => X(l) + ',' + Y(f)).join(' ');
+    const poligonos = ZONAS.map((zona) => {
       const z = zonaPorId[zona];
-      const pts = ZONAS_GEO[zona].map(([fondo, lateral]) => X(lateral) + ',' + Y(fondo)).join(' ');
+      const liga = varaZona(paq, zona);
       let fill = 'transparent', fop = '0';
       let tip = zona + ' · ' + NOMBRES_ZONA[zona] + ' · sin tiros';
       if (z) {
-        const vara = varaZona(paq, zona);
-        const delta = z.ppt !== null && vara !== null ? z.ppt - vara : null;
+        const delta = z.ppt !== null && liga ? z.ppt - liga.ppt : null;
         tip = zona + ' · ' + NOMBRES_ZONA[zona] + ' · ' + z.c + '/' + z.i + ' (' + num(z.pct) + ' %) · ' + num(z.ppt, 2)
-          + ' pts por tiro · liga ' + num(vara, 2) + ' · ' + num(100 * z.i / totalI) + ' % de los tiros';
+          + ' pts por tiro · liga ' + num(liga && liga.ppt, 2) + ' · ' + num(100 * z.i / totalI) + ' % de los tiros';
+        if (marcas[zona]) tip += ' · ' + marcas[zona].titulo;
         if (o.vista === 'zonas') {
           fill = frecuencia ? 'var(--acento, #f7941e)' : colorDelta(delta);
-          fop = frecuencia ? (0.1 + 0.9 * Math.sqrt(z.i / maxZona)).toFixed(2) : '0.85';
+          fop = frecuencia ? (0.1 + 0.9 * Math.sqrt(z.i / maxZona)).toFixed(2) : (z.i >= 5 ? '0.8' : '0.35');
         }
       }
-      return `<polygon class="pbp-zona" points="${pts}" data-pbp-zona="${zona}" style="fill:${fill};fill-opacity:${fop}" data-pbp-tip="${esc(tip)}"><title>${esc(tip)}</title></polygon>`;
-    }).join('') : '';
+      return `<polygon class="pbp-zona" points="${puntosSvg(geo[zona].poligono)}" data-pbp-zona="${zona}" style="fill:${fill};fill-opacity:${fop}" data-pbp-tip="${esc(tip)}"><title>${esc(tip)}</title></polygon>`;
+    }).join('');
 
-    const boton = (clave, valor, texto) => `<button type="button" class="pbp-toggle" data-pbp-accion="${clave}:${valor}" aria-pressed="${o[clave] === valor ? 'true' : 'false'}">${texto}</button>`;
+    /* C/I en cada zona. En hexágonos se ve solo la zona activa (CSS). */
+    const etiquetas = ZONAS.map((zona) => {
+      const z = zonaPorId[zona];
+      const e = geo[zona].etiqueta;
+      if (!z || !e) return '';
+      /* El texto se acota a la cancha: una esquina tiene su centro a medio
+         metro de la lateral y «24/68» se saldría del dibujo. La insignia va
+         ARRIBA del C/I y no al costado, que tapaba el primer dígito. */
+      const cx = Math.max(10, Math.min(140, (15 - e[1]) * 10));
+      const cy = Math.max(9, Math.min(134, e[0] * 10));
+      const m = marcas[zona];
+      return `<g class="pbp-etiqueta" data-pbp-zona="${zona}" pointer-events="none">
+        ${m ? `<circle class="pbp-insignia pbp-diag-${m.clase}" cx="${cx.toFixed(1)}" cy="${(cy - 6.6).toFixed(1)}" r="2.7"/><text class="pbp-insignia-txt" x="${cx.toFixed(1)}" y="${(cy - 5.3).toFixed(1)}" text-anchor="middle">${m.insignia}</text>` : ''}
+        <text x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" text-anchor="middle" class="pbp-etiqueta-ci">${z.c}/${z.i}</text>
+        <text x="${cx.toFixed(1)}" y="${(cy + 4.4).toFixed(1)}" text-anchor="middle" class="pbp-etiqueta-pct">${num(z.pct, 0)} %</text>
+      </g>`;
+    }).join('');
+
+    const contornos = Object.keys(marcas).map(zona => `<polygon class="pbp-contorno pbp-diag-${marcas[zona].clase}" points="${puntosSvg(geo[zona].poligono)}" pointer-events="none"/>`).join('');
+
+    const boton = (clave, valor, texto) => `<button type="button" class="pbp-toggle" data-pbp-accion="${clave}:${valor}" aria-pressed="${String(o[clave]) === String(valor) ? 'true' : 'false'}">${texto}</button>`;
+    const grupo = (rotulo, botones) => `<div class="pbp-grupo" role="group" aria-label="${rotulo}"><span class="pbp-grupo-rotulo">${rotulo}</span>${botones}</div>`;
     const muestra = (d) => `<span class="pbp-muestra" style="background:${colorDelta(d)}"></span>`;
-    const leyenda = frecuencia
+    const leyenda = (frecuencia
       ? '<span class="dato-sec">Intensidad = porción de los tiros que salen de ahí.</span>'
       : `<span class="whitespace-nowrap">${muestra(-0.3)} peor que la liga</span>
          <span class="whitespace-nowrap">${muestra(0)} igual</span>
          <span class="whitespace-nowrap">${muestra(0.3)} mejor</span>
-         <span class="dato-sec">${o.vista === 'hex' ? 'Tamaño = volumen. ' : ''}Color = puntos por tiro contra la liga en ese lugar.</span>`;
+         <span class="dato-sec">${o.vista === 'hex' ? 'Tamaño = volumen. ' : ''}Color = puntos por tiro contra la liga en ese lugar.</span>`)
+      + (hayPuntos ? '<span class="whitespace-nowrap"><span class="pbp-ley-c"></span> convertido · <span class="pbp-ley-e">✕</span> errado, al pasar o tocar una zona</span>' : '');
 
     const filas = zonas.slice().sort((a, b) => b.i - a.i).map((z) => {
-      const vara = varaZona(paq, z.zona);
-      const delta = z.ppt !== null && vara !== null ? Math.round((z.ppt - vara) * 100) / 100 : null;
+      const liga = varaZona(paq, z.zona);
+      const delta = z.ppt !== null && liga ? Math.round((z.ppt - liga.ppt) * 100) / 100 : null;
+      const m = marcas[z.zona];
       return `<tr class="pbp-fila-zona border-b border-hairline/40 last:border-0" data-pbp-zona="${esc(z.zona)}" tabindex="0"
-          aria-label="${esc(z.zona + ' ' + (NOMBRES_ZONA[z.zona] || ''))}: resaltar en la cancha">
-        <td class="px-2 py-1 text-left text-xs whitespace-nowrap">${esc(z.zona)} <span class="dato-sec">· ${esc(NOMBRES_ZONA[z.zona] || '')}</span></td>
+          aria-label="${esc(z.zona + ' ' + (NOMBRES_ZONA[z.zona] || ''))}: resaltar en la cancha y ver sus tiros">
+        <td class="px-2 py-1 text-left text-xs whitespace-nowrap">${m ? `<span class="pbp-chip pbp-diag-${m.clase}" title="${esc(m.titulo)}">${m.insignia}</span> ` : ''}${esc(z.zona)} <span class="dato-sec">· ${esc(NOMBRES_ZONA[z.zona] || '')}</span></td>
         <td class="${TD}">${z.c}/${z.i}</td>
         <td class="${TD}">${num(z.pct)}</td>
         <td class="${TD}">${num(z.ppt, 2)}</td>
@@ -441,18 +769,23 @@ const SGADD_PBP = (function () {
       </tr>`;
     }).join('');
 
-    return `<div class="pbp-mapa-caja" data-pbp-sujeto="${esc(o.sujeto)}" data-pbp-vista="${o.vista}" data-pbp-metrica="${o.metrica}">
-      <div class="flex flex-wrap items-center gap-2 mb-2">
-        ${boton('vista', 'hex', 'Hexágonos')}${boton('vista', 'zonas', 'Zonas')}
-        <span class="text-muted" aria-hidden="true">·</span>
-        ${boton('metrica', 'eficiencia', 'Eficiencia vs liga')}${boton('metrica', 'frecuencia', 'Frecuencia')}
+    const esJugador = o.sujeto !== 'equipo' && o.sujeto !== 'contra';
+    return `<div class="pbp-mapa-caja" data-pbp-sujeto="${esc(o.sujeto)}" data-pbp-vista="${o.vista}" data-pbp-metrica="${o.metrica}" data-pbp-diag="${o.diag ? '1' : '0'}" data-pbp-perspectiva="${o.perspectiva ? '1' : '0'}">
+      <div class="pbp-controles">
+        ${o.perspectiva && !esJugador ? grupo('Perspectiva', boton('sujeto', 'equipo', 'Lo que tira') + boton('sujeto', 'contra', 'Lo que le tiran')) : ''}
+        ${grupo('Vista', boton('vista', 'zonas', 'Zonas') + boton('vista', 'hex', 'Hexágonos'))}
+        ${grupo('Color', boton('metrica', 'eficiencia', 'Eficiencia vs liga') + boton('metrica', 'frecuencia', 'Frecuencia'))}
+        ${grupo('Diagnóstico', boton('diag', o.diag ? '0' : '1', o.diag ? 'Ocultar' : 'Mostrar'))}
       </div>
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         <div>
-          <svg class="pbp-mapa w-full max-w-md" viewBox="-4 -4 158 148" role="img" aria-label="Mapa de tiros de campo">
-            ${capa}${poligonos}${lineasCancha()}
+          <svg class="pbp-mapa w-full max-w-md" viewBox="-4 -4 158 148" role="img" aria-label="Mapa de tiros de campo por zona">
+            <defs><clipPath id="${clip}"><rect x="0" y="0" width="150" height="140"/></clipPath></defs>
+            <g clip-path="url(#${clip})">${capaHex}${poligonos}${contornos}<g class="pbp-capa-tiros" pointer-events="none"></g></g>
+            ${lineasCancha(G)}${etiquetas}
           </svg>
           <div class="pbp-leyenda text-[10px] mt-1">${leyenda}</div>
+          <p class="pbp-capa-leyenda text-[11px] text-ink mt-1" aria-live="polite"></p>
         </div>
         <div>
           <div class="scrollbox"><table class="w-full">
@@ -461,9 +794,52 @@ const SGADD_PBP = (function () {
               <th class="px-2 pb-1" title="Puntos por tiro de campo">PPT</th><th class="px-2 pb-1" title="PPT menos el de la liga en esa zona">vs liga</th>
               <th class="px-2 pb-1">% tiros</th></tr></thead>
             <tbody>${filas}</tbody></table></div>
-          <p class="text-[11px] text-muted mt-2 no-imprimir">Pasá el mouse o tocá una fila: la zona se ilumina en la cancha, y al revés. Tocar fija el resaltado.</p>
+          <p class="text-[11px] text-muted mt-2 no-imprimir">Pasá el mouse o tocá una fila o una zona: se ilumina en los dos lados${hayPuntos ? ' y aparecen sus tiros' : ''}. Tocar fija la zona.</p>
         </div>
       </div>
+      ${o.diag ? listaDiagnostico(paq, o.sujeto) : ''}
+    </div>`;
+  }
+
+  const insigniaHtml = (clase, texto) => `<span class="pbp-chip pbp-diag-${clase}">${texto}</span>`;
+  const ci = (f) => `${f.c}/${f.i} (${num(100 * f.c / f.i)} %)`;
+
+  /** La lectura escrita del diagnóstico que marca la cancha. PURA. */
+  function listaDiagnostico(paq, sujeto) {
+    const item = (clase, insignia, texto) => `<li class="text-xs text-ink leading-snug mb-1.5">${insigniaHtml(clase, insignia)} ${texto}</li>`;
+    const nota = '<p class="text-[11px] text-muted mt-1">Ajustado por muestra: antes de compararla con la liga, una zona con pocos tiros se acerca a la liga (un 0/3 pesa menos que un 1/8).</p>';
+    if (sujeto && sujeto !== 'equipo' && sujeto !== 'contra') {
+      const d = diagnosticoJugador(paq, sujeto);
+      if (!d) return '';
+      const pp = (v) => signo(Math.round(v * 100), 0) + ' pp';
+      const vol = (f) => (f.vol !== null ? num(f.vol, 1) + ' intentos x PJ' : f.i + ' intentos');
+      const bloque = (titulo, lista, fn, vacioTxt) => `<div>${subtitulo(titulo)}<ul>${lista.length ? lista.map(fn).join('') : `<li class="text-xs text-muted">${vacioTxt}</li>`}</ul></div>`;
+      return `<div class="pbp-diagnostico mt-3">
+        <p class="text-xs text-ink mb-2"><b>Diagnóstico táctico individual</b> · volumen por zona (intentos por partido${d.pj ? ', ' + d.pj + ' PJ con minutos' : ''}) y acierto por zona contra la liga en esa zona.</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          ${bloque('Picos de rendimiento', d.picos, f => item('explotar', '★', `<b class="text-white">${esc(f.zona)} · ${esc(f.nombre)}</b>: ${ci(f)}, ${vol(f)} · <span class="mm-pos">${pp(f.dCrudo)}</span> sobre la liga (${num(100 * f.ligaConv, 0)} %).`), 'Ninguna zona con muestra rinde claramente por encima de la liga.')}
+          ${bloque('Puntos a explotar', d.explotar, f => item('mejora', '↑', `<b class="text-white">${esc(f.zona)} · ${esc(f.nombre)}</b>: ${ci(f)} con solo ${vol(f)} · <span class="mm-pos">${pp(f.dCrudo)}</span> sobre la liga: sumarle volumen.`), 'Sin zonas eficientes y poco usadas.')}
+          ${bloque('Criterios de ajuste', d.ajuste, f => item('ajuste', '≈', `<b class="text-white">${esc(f.zona)} · ${esc(f.nombre)}</b>: ${num(100 * f.share, 0)} % de sus tiros (${vol(f)}) con acierto de liga, ${num(100 * f.conv, 0)} % contra ${num(100 * f.ligaConv, 0)} %: seleccionar mejor el tiro.`), 'Sin zonas de mucho volumen con acierto apenas de liga.')}
+          ${bloque('Puntos de fuga', d.fuga, f => item('evitar', '✕', `<b class="text-white">${esc(f.zona)} · ${esc(f.nombre)}</b>: ${ci(f)}, ${vol(f)} · <span class="mm-neg">${pp(f.dCrudo)}</span> bajo la liga: ≈ ${num(Math.max(0, f.perdidos), 0)} puntos por debajo de lo esperado.`), 'Ninguna zona con muestra cae claramente por debajo de la liga.')}
+        </div>${nota}
+      </div>`;
+    }
+    const d = diagnosticoZonas(paq, sujeto);
+    if (!d) return '';
+    if (d.tipo === 'contra') {
+      return `<div class="pbp-diagnostico mt-3">${subtitulo('Radar defensivo · las 3 zonas críticas que libera')}
+        <ul>${d.criticas.length ? d.criticas.map((f, i) => item('critica', String(i + 1), `<b class="text-white">${esc(f.zona)} · ${esc(f.nombre)}</b>: le convierten ${ci(f)}, ${num(f.ppt, 2)} pts por tiro contra ${num(f.liga.ppt, 2)} de la liga: ≈ ${num(f.deMas, 0)} puntos de más concedidos.`)).join('')
+          : '<li class="text-xs text-muted">Ninguna zona con muestra concede por encima de la liga.</li>'}</ul>${nota}</div>`;
+    }
+    const expl = d.explotar
+      ? item('explotar', '★', `<b class="text-white">Zona a explotar · ${esc(d.explotar.zona)} ${esc(d.explotar.nombre)}</b>: ${ci(d.explotar)}, ${num(d.explotar.ppt, 2)} pts por tiro contra ${num(d.explotar.liga.ppt, 2)} de la liga.`)
+      : '<li class="text-xs text-muted">Ninguna zona con muestra rinde por encima de la liga.</li>';
+    const mej = d.mejora.map(f => item('mejora', '↑', `<b class="text-white">Zona de mejora · ${esc(f.zona)} ${esc(f.nombre)}</b>: ${num(f.ppt, 2)} pts por tiro, ${signo(Math.round(f.ganancia * 100) / 100, 2)} sobre el promedio del equipo (${num(d.ppt, 2)}): cada tiro redirigido ahí suma.`)).join('');
+    const evi = d.evitar.map(f => item('evitar', '✕', `<b class="text-white">${f.accion === 'evitar' ? 'Evitar' : 'Corregir la selección'} · ${esc(f.zona)} ${esc(f.nombre)}</b>: ${ci(f)}, ${num(f.ppt, 2)} contra ${num(f.liga.ppt, 2)} de la liga: ≈ ${num(f.perdidos, 0)} puntos por debajo de lo esperado en la temporada.`)).join('');
+    return `<div class="pbp-diagnostico mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>${subtitulo('Zonas a explotar')}<ul>${expl}${mej}</ul></div>
+      <div>${subtitulo('Zonas ineficientes · evitar o corregir')}<ul>${evi || '<li class="text-xs text-muted">Ninguna zona con muestra cuesta puntos claros contra la liga.</li>'}</ul></div>
+      <div class="sm:col-span-2">${nota}</div>
     </div>`;
   }
 
@@ -476,137 +852,24 @@ const SGADD_PBP = (function () {
       const pct = c.i ? c.c / c.i : 0;
       const color = pct >= 0.55 ? '#16a34a' : pct >= 0.4 ? '#d97706' : '#dc2626';
       return `<rect x="${(14 - c.y) * 10}" y="${c.x * 10}" width="10" height="10" style="fill:${color}" fill-opacity="${(0.15 + 0.85 * Math.sqrt(c.i / max)).toFixed(2)}"><title>${c.c}/${c.i}</title></rect>`;
-    }).join('')}${lineasCancha()}</svg>`;
-  }
-
-  /* --------------------------------------------------- diagnóstico (PURO) */
-
-  const ratio = (a, b) => (a && b && isFinite(a.ppt) && b.ppt ? a.ppt / b.ppt : null);
-
-  /** Ataque y defensa por familia de tiro, contra la liga. PURA. */
-  function diagnostico(paq) {
-    const d = paq.tiros && paq.tiros.detalle;
-    const liga = paq.liga || {};
-    if (!d || !liga.familias) return null;
-    const total = (lado) => FAMILIAS.reduce((a, f) => a + ((d[lado].familias[f.id] || {}).i || 0), 0) || 1;
-    const totF = total('favor'), totC = total('contra');
-    const ejes = FAMILIAS.map((f) => {
-      const favor = d.favor.familias[f.id] || null, contra = d.contra.familias[f.id] || null, lg = liga.familias[f.id] || null;
-      return {
-        id: f.id, label: f.label, favor, contra, liga: lg,
-        ataque: ratio(favor, lg), defensa: ratio(contra, lg),
-        volAtaque: favor ? favor.i / totF : 0, volDefensa: contra ? contra.i / totC : 0,
-      };
-    });
-    /* Con volumen: 30 tiros y 3 % del total. Una familia con 12 tiros que
-       rinde 1,4 no es una zona a explotar, es una racha. */
-    const explotar = ejes.filter(e => e.ataque !== null && e.ataque >= 1.05 && e.volAtaque >= 0.03 && e.favor.i >= 30)
-      .sort((a, b) => b.ataque - a.ataque);
-    const liberadas = ejes.filter(e => e.defensa !== null && e.defensa >= 1.05 && e.volDefensa >= 0.03 && e.contra.i >= 30)
-      .sort((a, b) => b.defensa - a.defensa);
-    return { ejes, explotar, liberadas };
-  }
-
-  /**
-   * El cruce de scouting. PURA.
-   * atacar: familias donde el equipo PROPIO rinde por encima de la liga y el
-   *         rival concede por encima de la liga.
-   * cerrar: familias donde el RIVAL rinde por encima de la liga y el propio
-   *         concede por encima de la liga.
-   */
-  function cruceZonas(paqRival, paqPropio) {
-    const r = diagnostico(paqRival), p = diagnostico(paqPropio);
-    if (!r || !p) return null;
-    const atacar = [], cerrar = [];
-    FAMILIAS.forEach((f) => {
-      const er = r.ejes.find(e => e.id === f.id), ep = p.ejes.find(e => e.id === f.id);
-      if (ep.ataque >= 1 && er.defensa >= 1 && ep.favor && er.contra && ep.favor.i >= 30 && er.contra.i >= 30) {
-        atacar.push({ id: f.id, label: f.label, propio: ep.ataque, rival: er.defensa, indice: ep.ataque * er.defensa });
-      }
-      if (er.ataque >= 1 && ep.defensa >= 1 && er.favor && ep.contra && er.favor.i >= 30 && ep.contra.i >= 30) {
-        cerrar.push({ id: f.id, label: f.label, rival: er.ataque, propio: ep.defensa, indice: er.ataque * ep.defensa });
-      }
-    });
-    return { atacar: atacar.sort((a, b) => b.indice - a.indice), cerrar: cerrar.sort((a, b) => b.indice - a.indice) };
-  }
-
-  function radar(diag) {
-    const n = diag.ejes.length, R = 70, C = 95;
-    /* Escala 0,6 a 1,4 de la liga: afuera de eso no hay lectura distinta. */
-    const pos = (i, v) => {
-      const a = -Math.PI / 2 + 2 * Math.PI * i / n;
-      const k = Math.max(0, Math.min(1, ((v === null ? 1 : v) - 0.6) / 0.8));
-      return (C + R * k * Math.cos(a)).toFixed(1) + ',' + (C + R * k * Math.sin(a)).toFixed(1);
-    };
-    const anillo = (v, trazo) => `<polygon points="${diag.ejes.map((e, i) => pos(i, v)).join(' ')}" fill="none" stroke="${trazo}" stroke-width="${v === 1 ? 1.2 : 0.6}"${v === 1 ? '' : ' stroke-dasharray="2 2"'}/>`;
-    const serie = (clave, color) => `<polygon points="${diag.ejes.map((e, i) => pos(i, e[clave])).join(' ')}" fill="${color}" fill-opacity="0.18" stroke="${color}" stroke-width="1.5"/>`;
-    const etiquetas = diag.ejes.map((e, i) => {
-      const a = -Math.PI / 2 + 2 * Math.PI * i / n;
-      const x = C + (R + 12) * Math.cos(a), y = C + (R + 12) * Math.sin(a);
-      const ancla = Math.abs(Math.cos(a)) < 0.2 ? 'middle' : (Math.cos(a) > 0 ? 'start' : 'end');
-      return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="7.5" fill="#cbd5e1" text-anchor="${ancla}" dominant-baseline="middle">${esc(e.label)}</text>`;
-    }).join('');
-    return `<svg class="pbp-radar w-full max-w-xs" viewBox="-30 0 250 190" role="img" aria-label="Puntos por tiro por familia de tiro, contra la liga">
-      ${anillo(0.8, '#475569')}${anillo(1, '#94a3b8')}${anillo(1.2, '#475569')}
-      ${serie('ataque', '#16a34a')}${serie('defensa', '#dc2626')}${etiquetas}</svg>
-      <p class="text-[10px] mt-1"><span style="color:#16a34a">■</span> ataque: sus puntos por tiro / liga ·
-        <span style="color:#dc2626">■</span> defensa: lo que concede / liga · anillo gris = la liga</p>`;
-  }
-
-  function bloqueDiagnostico(paq, paqPropio) {
-    const diag = diagnostico(paq);
-    if (!diag) return vacio('Sin datos de tiro por zona.');
-    const item = (e, clave, lado) => `<li class="text-xs leading-snug mb-1"><b class="text-white">${esc(e.label)}</b>
-      <span class="font-mono whitespace-nowrap">${num(e[lado].ppt, 2)} pts por tiro</span>
-      <span class="dato-sec">(liga ${num(e.liga.ppt, 2)} · ×${num(e[clave], 2)} · ${num(100 * (clave === 'ataque' ? e.volAtaque : e.volDefensa))} % del volumen)</span></li>`;
-    let cruce = '';
-    const c = paqPropio && paqPropio !== paq ? cruceZonas(paq, paqPropio) : null;
-    if (c) {
-      const li = (x, ta, va, tb, vb) => `<li class="text-xs leading-snug mb-1"><b class="text-white">${esc(x.label)}</b>
-        <span class="dato-sec">· ${ta} ×${num(va, 2)} · ${tb} ×${num(vb, 2)} de la liga</span></li>`;
-      const nada = '<li class="text-xs text-muted">Ninguna familia donde coincidan las dos cosas.</li>';
-      cruce = `<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
-        <div>${subtitulo('Atacar ahí · ' + esc(paqPropio.equipo) + ' rinde y ' + esc(paq.equipo) + ' concede')}
-          <ul>${c.atacar.length ? c.atacar.map(x => li(x, 'nuestro ataque', x.propio, 'lo que concede', x.rival)).join('') : nada}</ul></div>
-        <div>${subtitulo('Cerrar ahí · ' + esc(paq.equipo) + ' rinde y ' + esc(paqPropio.equipo) + ' concede')}
-          <ul>${c.cerrar.length ? c.cerrar.map(x => li(x, 'su ataque', x.rival, 'lo que concedemos', x.propio)).join('') : nada}</ul></div>
-      </div>`;
-    }
-    return `<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-      <div>${radar(diag)}</div>
-      <div>
-        ${subtitulo('Zonas a explotar · su ataque rinde más que la liga')}
-        <ul>${diag.explotar.length ? diag.explotar.map(e => item(e, 'ataque', 'favor')).join('') : '<li class="text-xs text-muted">Ninguna familia con volumen rinde 5 % más que la liga.</li>'}</ul>
-        <div class="mt-2">${subtitulo('Radar defensivo · dónde le tiran con eficiencia')}
-        <ul>${diag.liberadas.length ? diag.liberadas.map(e => item(e, 'defensa', 'contra')).join('') : '<li class="text-xs text-muted">Ninguna familia con volumen concede 5 % más que la liga.</li>'}</ul></div>
-      </div>
-    </div>${cruce}`;
+    }).join('')}${lineasCancha(GEOMETRIA)}</svg>`;
   }
 
   /* ------------------------------------------------------------- todo */
 
   /**
-   * El bloque entero de un equipo. PURO.
-   * @param {object} paq  `motorstats-ingestion/analitica-pbp-web@1` o `@2`
-   * @param {{contexto?: 'equipo'|'scouting', propio?: object, sinMapa?: boolean}} opciones
+   * La card de QUINTETOS de un equipo. PURO. El mapa de tiro es otra card
+   * (`mapaCard`) y el motor táctico va al final, a pedido del club.
+   * @param {object} paq  `analitica-pbp-web@1`, `@2` o `@3`
    */
-  function html(paq, opciones) {
-    const o = opciones || {};
+  function html(paq) {
     if (!paq || !paq.esquema) return vacio('Sin análisis de play-by-play.');
-    const p = paq.partidos || {};
-    const excl = (p.excluidos || []).length
-      ? ' Quedaron afuera ' + p.excluidos.length + ': ' + p.excluidos.map(x => esc(x.fecha) + ' vs ' + esc(x.rival) + ' (' + esc(x.motivo) + ')').join('; ') + '.'
-      : '';
     const u = paq.umbrales || {};
     const v2 = !!(paq.tiros && paq.tiros.detalle);
     const trios = `<details class="pbp-detalle pbp-sub mt-3"><summary class="pbp-resumen text-[11px] uppercase tracking-wider text-muted cursor-pointer select-none">Tríos con más minutos</summary>${tablaCombos(paq, paq.trios, 'Trío')}</details>
       <details class="pbp-detalle pbp-sub mt-2"><summary class="pbp-resumen text-[11px] uppercase tracking-wider text-muted cursor-pointer select-none">Dúos con más minutos</summary>${tablaCombos(paq, paq.duos, 'Dúo')}</details>`;
     return `<div class="pbp-bloque" data-pbp-listo="1">
-      <p class="text-[11px] text-muted">
-        <b class="text-ink">Laboratorio</b> · ${esc(paq.competencia || '')} · play-by-play oficial,
-        <b class="text-ink">${p.validados}/${p.jugados}</b> partidos validados (cinco en cancha siempre y minutos
-        contra el box score).${excl}
-      </p>
+      ${notaLaboratorio(paq)}
       ${seccion('clave', 'Quinteto inicial y de cierre', `<div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <div>${subtitulo('Quinteto inicial')}${tablaClave(paq, paq.iniciales)}</div>
           <div>${subtitulo('Cierre · más minutos en los últimos 5\'')}${tablaClave(paq, paq.cierre && paq.cierre.ultimos5)}</div>
@@ -615,21 +878,48 @@ const SGADD_PBP = (function () {
       ${seccion('quintetos', 'Quintetos con más minutos', tablaCombos(paq, paq.quintetos, 'Quinteto') + trios,
         { abierta: true, nota: 'NET/pos: puntos a favor menos en contra cada 100 posesiones. Con ~ y atenuados, menos de '
           + (u[5] || 15) + ' minutos juntos: se muestran, pero todavía no dicen mucho.' })}
-      ${v2 ? seccion('tactico', 'Motor táctico · puntos de fuga y combinaciones', bloqueTactico(paq),
-        { nota: 'Solo combinaciones con muestra suficiente. Es una lectura de los números, no una orden: decide el cuerpo técnico.' }) : ''}
       ${v2 ? seccion('rotaciones', 'Rotaciones · minuto a minuto', heatmapRotaciones(paq)) : ''}
       ${v2 ? seccion('cuartos', 'Cuartos y momentum', bloqueCuartos(paq)) : ''}
       ${seccion('clutch', 'Clutch · quién decide los finales', bloqueClutch(paq),
         { abierta: true, nota: 'Últimos 5 minutos del 4.º cuarto o del suplementario con el partido a 5 o menos, medido antes de cada acción. Usos = PLAYS del motor.' })}
-      ${o.sinMapa ? '' : seccion('mapa', 'Mapa de tiro', v2 ? mapa(paq, { sujeto: 'equipo' }) : mapaViejo(paq), { abierta: true })}
-      ${v2 && !o.sinMapa ? seccion('mapa-contra', 'Mapa de tiro · lo que le tiran', mapa(paq, { sujeto: 'contra' })) : ''}
-      ${v2 ? seccion('diagnostico', 'Diagnóstico ofensivo y defensivo', bloqueDiagnostico(paq, o.propio), { abierta: o.contexto === 'scouting' }) : ''}
+      ${v2 ? seccion('tactico', 'Motor táctico · puntos de fuga y combinaciones', bloqueTactico(paq),
+        { nota: 'Solo combinaciones con muestra suficiente. Es una lectura de los números, no una orden: decide el cuerpo técnico.' }) : ''}
     </div>`;
   }
 
   /**
-   * El mapa de UN jugador, para la pestaña Tiro de su ficha. PURO.
-   * Se busca por nombre normalizado en el paquete de su equipo.
+   * La card MAPA DE TIRO de un equipo. PURO.
+   * @param {{propio?: object}} opciones  en Scouting, el paquete del otro lado del cruce
+   */
+  function mapaCard(paq, opciones) {
+    const o = opciones || {};
+    if (!paq || !paq.esquema) return vacio('Sin análisis de play-by-play.');
+    if (!(paq.tiros && paq.tiros.detalle)) {
+      return `<div class="pbp-bloque" data-pbp-listo="1">${notaLaboratorio(paq)}${mapaViejo(paq)}</div>`;
+    }
+    let cruce = '';
+    const c = o.propio && o.propio !== paq ? cruceZonas(paq, o.propio) : null;
+    if (c) {
+      const li = (x, ta, va, tb, vb) => `<li class="text-xs leading-snug mb-1"><b class="text-white">${esc(x.zona)} · ${esc(x.nombre)}</b>
+        <span class="dato-sec">· ${ta} ${signo(Math.round(va * 100) / 100, 2)} · ${tb} ${signo(Math.round(vb * 100) / 100, 2)} pts por tiro contra la liga</span></li>`;
+      const nada = '<li class="text-xs text-muted">Ninguna zona donde coincidan las dos cosas.</li>';
+      cruce = `<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+        <div>${subtitulo('Atacar ahí · ' + esc(o.propio.equipo) + ' rinde y ' + esc(paq.equipo) + ' concede')}
+          <ul>${c.atacar.length ? c.atacar.map(x => li(x, 'nuestro ataque', x.propio, 'lo que concede', x.rival)).join('') : nada}</ul></div>
+        <div>${subtitulo('Cerrar ahí · ' + esc(paq.equipo) + ' rinde y ' + esc(o.propio.equipo) + ' concede')}
+          <ul>${c.cerrar.length ? c.cerrar.map(x => li(x, 'su ataque', x.rival, 'lo que concedemos', x.propio)).join('') : nada}</ul></div>
+      </div>`;
+    }
+    return `<div class="pbp-bloque" data-pbp-listo="1">
+      ${notaLaboratorio(paq)}
+      ${mapa(paq, { sujeto: 'equipo', perspectiva: true })}
+      ${cruce}
+    </div>`;
+  }
+
+  /**
+   * El mapa y el diagnóstico de UN jugador, para la pestaña Tiro de su ficha. PURO.
+   * El jugador se busca por nombre normalizado en el paquete de su equipo.
    */
   function jugador(paq, nombre) {
     if (!paq || !paq.tiros || !paq.tiros.detalle) return vacio('El análisis de tiro por jugador todavía no está cargado para este equipo.');
@@ -639,7 +929,8 @@ const SGADD_PBP = (function () {
     const vara = paq.liga && paq.liga.total ? paq.liga.total.ppt : null;
     return `<div class="pbp-bloque" data-pbp-listo="1">
       <p class="text-xs text-ink mb-2"><b>Laboratorio</b> · ${det.c}/${det.i} tiros de campo (${num(100 * det.c / det.i)} %) ·
-        <b>${num(det.ppt, 2)}</b> puntos por tiro <span class="dato-sec">(liga ${num(vara, 2)})</span> · distancia mediana ${num(det.dist)} m ·
+        <b>${num(det.ppt, 2)}</b> puntos por tiro <span class="dato-sec">(liga ${num(vara, 2)})</span> · distancia mediana ${num(det.dist)} m
+        ${det.pj ? '· ' + det.pj + ' PJ con minutos' : ''} ·
         <span class="dato-sec">play-by-play oficial, ${paq.partidos ? paq.partidos.validados : '—'} partidos validados de ${esc(paq.equipo)}</span></p>
       ${mapa(paq, { sujeto: String(id) })}
     </div>`;
@@ -664,10 +955,15 @@ const SGADD_PBP = (function () {
 
   const cargando = (t) => (typeof SGADD_UI !== 'undefined' && SGADD_UI.cargando ? SGADD_UI.cargando(t) : 'Cargando…');
 
-  /** El lugar del bloque de un equipo. `propio` suma el cruce de scouting. */
-  function espacio(equipo, contexto, propio) {
-    return `<div class="pbp-montaje" data-pbp-equipo="${esc(equipo)}" data-pbp-contexto="${esc(contexto || 'equipo')}"${propio ? ` data-pbp-propio="${esc(propio)}"` : ''}>
-      ${cargando('Cargando el análisis de play-by-play…')}</div>`;
+  /**
+   * El lugar de una card de un equipo.
+   * @param {string} tipo  'quintetos' (por defecto) o 'mapa'
+   * @param {string} propio  en Scouting, el otro lado del cruce (para «atacar / cerrar ahí»)
+   */
+  function espacio(equipo, contexto, propio, tipo) {
+    const t = tipo === 'mapa' ? 'mapa' : 'quintetos';
+    return `<div class="pbp-montaje" data-pbp-equipo="${esc(equipo)}" data-pbp-contexto="${esc(contexto || 'equipo')}" data-pbp-tipo="${t}"${propio ? ` data-pbp-propio="${esc(propio)}"` : ''}>
+      ${cargando(t === 'mapa' ? 'Cargando el mapa de tiro…' : 'Cargando el análisis de play-by-play…')}</div>`;
   }
   /** El lugar del mapa de un jugador. */
   function espacioJugador(nombre, equipo) {
@@ -686,8 +982,8 @@ const SGADD_PBP = (function () {
     return cache.get(k);
   }
 
-  /* El paquete pintado de cada bloque: los conmutadores del mapa repintan
-     desde acá sin volver a pedir nada. */
+  /* El paquete pintado de cada bloque: los conmutadores del mapa y la capa
+     de tiros trabajan desde acá sin volver a pedir nada. */
   const paquetes = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
 
   function montarPendientes(raiz) {
@@ -697,12 +993,13 @@ const SGADD_PBP = (function () {
       nodo.setAttribute('data-pbp-montado', '1');
       const nombreJugador = nodo.getAttribute('data-pbp-jugador');
       const propio = nodo.getAttribute('data-pbp-propio');
-      /* El paquete propio es opcional: sin él, el bloque sale igual y sin cruce. */
+      const tipo = nodo.getAttribute('data-pbp-tipo');
+      /* El paquete propio es opcional: sin él, la card sale igual y sin cruce. */
       Promise.all([pedir(nodo.getAttribute('data-pbp-equipo')), propio ? pedir(propio).catch(() => null) : null])
         .then(([paq, paqPropio]) => {
           if (!nodo.isConnected) return;
           nodo.innerHTML = nombreJugador ? jugador(paq, nombreJugador)
-            : html(paq, { contexto: nodo.getAttribute('data-pbp-contexto'), propio: paqPropio });
+            : tipo === 'mapa' ? mapaCard(paq, { propio: paqPropio }) : html(paq);
           activar(nodo, paq);
         }).catch((e) => {
           if (!nodo.isConnected) return;
@@ -716,6 +1013,25 @@ const SGADD_PBP = (function () {
   function resaltarZona(caja, zona, encendido) {
     if (!caja || !zona) return;
     caja.querySelectorAll('[data-pbp-zona="' + zona + '"]').forEach(el => el.classList.toggle('pbp-activa', encendido));
+  }
+
+  /** Dibuja los tiros de una zona (o limpia la capa) y dice cuántos son. */
+  function pintarTiros(caja, paq, zona) {
+    if (!caja) return;
+    const g = caja.querySelector('.pbp-capa-tiros');
+    const ley = caja.querySelector('.pbp-capa-leyenda');
+    if (!zona || !paq) {
+      if (g) g.innerHTML = '';
+      if (ley) ley.textContent = '';
+      return;
+    }
+    const r = capaTiros(paq, caja.getAttribute('data-pbp-sujeto'), zona);
+    if (g) g.innerHTML = r.svg;
+    if (ley) {
+      ley.textContent = r.disponible
+        ? zona + ' · ' + (NOMBRES_ZONA[zona] || '') + ': ● ' + r.convertidos + ' convertidos · ✕ ' + r.errados + ' errados'
+        : '';
+    }
   }
 
   function tooltip(nodo) {
@@ -739,20 +1055,30 @@ const SGADD_PBP = (function () {
     if (!nodo || !nodo.addEventListener || nodo.getAttribute('data-pbp-activo')) return;
     nodo.setAttribute('data-pbp-activo', '1');
     const cerca = (ev, sel) => (ev.target && ev.target.closest ? ev.target.closest(sel) : null);
-    const cajaDe = (el) => el.closest('.pbp-mapa-caja');
+    const cajaDe = (el) => (el.closest ? el.closest('.pbp-mapa-caja') : null);
+    const paqueteDe = () => (paquetes ? paquetes.get(nodo) : null);
 
     const encender = (ev) => {
       const el = cerca(ev, '[data-pbp-zona]');
-      if (el) resaltarZona(cajaDe(el), el.getAttribute('data-pbp-zona'), true);
+      if (!el) return;
+      const caja = cajaDe(el);
+      const zona = el.getAttribute('data-pbp-zona');
+      const fija = caja && caja.getAttribute('data-pbp-fija');
+      if (fija && fija !== zona) resaltarZona(caja, fija, false);
+      resaltarZona(caja, zona, true);
+      pintarTiros(caja, paqueteDe(), zona);
     };
     const apagar = (ev) => {
       const el = cerca(ev, '[data-pbp-zona]');
       if (!el) return;
       const caja = cajaDe(el);
       const zona = el.getAttribute('data-pbp-zona');
-      /* Una zona FIJADA con un toque no se apaga al salir el mouse. */
-      if (caja && caja.getAttribute('data-pbp-fija') === zona) return;
+      const fija = caja && caja.getAttribute('data-pbp-fija');
+      /* Una zona FIJADA con un toque no se apaga al salir el mouse, y al
+         dejar otra zona la capa vuelve a la fijada. */
+      if (fija === zona) return;
       resaltarZona(caja, zona, false);
+      if (fija) { resaltarZona(caja, fija, true); pintarTiros(caja, paqueteDe(), fija); } else pintarTiros(caja, null, null);
     };
     nodo.addEventListener('mouseover', encender);
     nodo.addEventListener('mouseout', apagar);
@@ -763,12 +1089,16 @@ const SGADD_PBP = (function () {
       const acc = cerca(ev, '[data-pbp-accion]');
       if (acc) {
         const caja = cajaDe(acc);
-        const paq = paquetes && paquetes.get(nodo);
-        if (!caja || !paq) return;
+        const entrada = paqueteDe();
+        if (!caja || !entrada) return;
         const partes = acc.getAttribute('data-pbp-accion').split(':');
-        const op = { sujeto: caja.getAttribute('data-pbp-sujeto'), vista: caja.getAttribute('data-pbp-vista'), metrica: caja.getAttribute('data-pbp-metrica') };
-        op[partes[0]] = partes[1];
-        caja.outerHTML = mapa(paq, op);
+        const op = {
+          sujeto: caja.getAttribute('data-pbp-sujeto'), vista: caja.getAttribute('data-pbp-vista'),
+          metrica: caja.getAttribute('data-pbp-metrica'), diag: caja.getAttribute('data-pbp-diag') === '1',
+          perspectiva: caja.getAttribute('data-pbp-perspectiva') === '1',
+        };
+        op[partes[0]] = partes[0] === 'diag' ? partes[1] === '1' : partes[1];
+        caja.outerHTML = mapa(entrada, op);
         tooltip(nodo).hidden = true;
         return;
       }
@@ -779,8 +1109,14 @@ const SGADD_PBP = (function () {
       const zona = el.getAttribute('data-pbp-zona');
       const antes = caja.getAttribute('data-pbp-fija');
       if (antes) resaltarZona(caja, antes, false);
-      if (antes === zona) caja.removeAttribute('data-pbp-fija');
-      else { caja.setAttribute('data-pbp-fija', zona); resaltarZona(caja, zona, true); }
+      if (antes === zona) {
+        caja.removeAttribute('data-pbp-fija');
+        pintarTiros(caja, null, null);
+      } else {
+        caja.setAttribute('data-pbp-fija', zona);
+        resaltarZona(caja, zona, true);
+        pintarTiros(caja, paqueteDe(), zona);
+      }
     });
     nodo.addEventListener('keydown', (ev) => {
       if (ev.key !== 'Enter' && ev.key !== ' ') return;
@@ -826,8 +1162,9 @@ const SGADD_PBP = (function () {
   }
 
   return {
-    CAPA, NOMBRES_ZONA, FAMILIAS, ZONAS_GEO, MIN_LIGA_HEX,
-    html, jugador, mapa, diagnostico, cruceZonas, lecturaTactica, colorDelta, varaHex,
+    CAPA, NOMBRES_ZONA, FAMILIAS, ZONAS, GEOMETRIA, MIN_LIGA_HEX,
+    html, mapaCard, jugador, mapa, capaTiros, geometriaZonas, zonaGeometrica,
+    diagnosticoZonas, diagnosticoJugador, cruceZonas, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
     activa, espacio, espacioJugador, montarPendientes, activar, apellido, _cache: cache,
   };
 })();

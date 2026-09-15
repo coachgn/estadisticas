@@ -72,9 +72,9 @@ node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: 
                            #             equipo, vencimiento y ciclo ORO por categoría
 node test-glosario.js      #  26 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
-node test-pbp.js           #  99 tests · la capa de laboratorio de play-by-play: el catálogo,
+node test-pbp.js           # 110 tests · la capa de laboratorio de play-by-play: el catálogo,
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
-                           #             el mapa contra la liga, el táctico y el cruce de scouting
+                           #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -86,7 +86,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5879 tests en total. Todos tienen que dar verde antes de commitear.**
+**5890 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -8920,7 +8920,7 @@ Fase regular: 266 de 272 partidos validan; Jujuy, 32 de 32. Los 6 excluidos
 su motivo.
 
 ```
-motorstats-ingestion/exportar-web.js       → web/<equipo>.json   (~58 KB c/u, esquema @2)
+motorstats-ingestion/exportar-web.js       → web/<equipo>.json   (~105 KB c/u, esquema @3)
 server/bin/pbp.js subir [--confirmar]      → Upstash · sgadd:pbp:<club>:<categoría>
 GET /api/v1/pbp/:club/:categoria?equipo=   → js/sgadd-pbp.js
 ```
@@ -9040,3 +9040,77 @@ El CSS va a mano en el `<style>` (nodos inyectados) y el hover solo en
 reales: a 1280 px el mapa mide 448 px con la tabla al lado y ninguna celda de
 G-P parte de línea; a 375 px no desborda nada fuera de los `.scrollbox` y los
 conmutadores miden 44 px.
+
+### @3 · el mapa es su propia card, con geometría medida y diagnóstico sobre la cancha
+
+Pedido del 2026-09-15, con capturas del mapa @2: los polígonos de zona
+dibujaban triángulos que cruzaban la cancha y los hexágonos se salían del
+borde. Motor en `motorstats-ingestion/src/pbp/avanzado.js`
+(`zonaGeometrica`, `GEOMETRIA`) y sus invariantes en
+`test/test-jujuy-pbp.js` sección 9.
+
+**Las 14 zonas son GEOMETRÍA MEDIDA, no los polígonos de la plataforma.** Los
+del SVG de la página de partido vienen recortados a mano. Midiendo los 34.643
+tiros de campo de la conferencia, la plataforma zonifica con círculos y rayos
+desde el aro:
+
+```
+Z1 bajo el aro      < 2,35 m
+Z2-Z4 corta         2,35-4,8 m · frontal ±31°
+Z5-Z9 media         4,8 m hasta la línea · frontal ±18° · fondo desde 53°
+Z10-Z14 triple      detrás de la línea FIBA · frontal ±18° · esquina desde 71°
+```
+
+Con esos números, **el 97,9 % de los tiros cae en la misma zona que etiqueta
+la plataforma**; el resto son coordenadas cargadas en la mitad equivocada
+(un «bajo el aro» a 17 m). Los parámetros viajan en `liga.geometria` y la web
+dibuja con ellos: `GEOMETRIA` en `sgadd-pbp.js` es solo el respaldo. Cada
+zona es un sector entre dos rayos y dos radios, y lo que se sale de la media
+cancha lo recorta un `clipPath` —con id único por mapa— que también recorta
+los hexágonos (y se dibujan solo los de centro dentro de la cancha).
+
+**Card propia.** Equipos tiene la pestaña **Mapa de tiro** (`pbp-tiro`) y
+Scouting la card `pbp-tiro`, las dos con la misma capa. La card de Quintetos
+queda con clave, quintetos, rotaciones, cuartos, clutch y **el motor táctico al
+final**. `espacio(equipo, contexto, propio, tipo)` elige cuál monta.
+
+- **Perspectiva**: «Lo que tira» / «Lo que le tiran» en la misma card. Abre en
+  **zonas** (no hexágonos) con el diagnóstico visible.
+- **C/I impreso en cada zona**, con trazo oscuro detrás para leerse sobre
+  cualquier color; en hexágonos solo el de la zona activa. Las etiquetas de
+  las esquinas se ubican a mano —la media de fondo y la esquina de triple se
+  pisaban— y solo si el punto sigue dentro de su zona (hay test).
+- **Círculos y cruces**: al pasar o tocar una zona (fila o polígono) se dibujan
+  sus tiros, convertidos y errados (`capaTiros`, pura). Viajan en
+  `tiros.detalle.puntos` como `[lateral×10, fondo×10, convertido, zona,
+  tirador]`, y **solo los tiros cuya posición redondeada cae en la zona que
+  etiquetó la plataforma** (1 % queda afuera, contado en `sinUbicar`): un «bajo
+  el aro» a 17 m se cuenta en la tabla pero no se dibuja en mitad de cancha.
+
+**El diagnóstico va SOBRE la cancha** (contorno + insignia, el mismo color en
+la tabla y en la lista), y todo se **ajusta por muestra** antes de comparar:
+`(puntos + 20·liga) / (tiros + 20)` para el equipo, K = 10 para un jugador.
+Así un 0/3 queda cerca de la liga y un 1/8 bastante más abajo — el caso que
+pidió el club, con test.
+
+- **Lo que tira** (`diagnosticoZonas`): ★ la zona a EXPLOTAR (mayor ventaja
+  ajustada contra la liga, 20+ tiros); ↑ 2 zonas de MEJORA (las que más suben
+  el PPT del equipo si reciben tiros, 10+); ✕ hasta 3 zonas a EVITAR (menos del
+  5 % del volumen) o CORREGIR (con volumen), ordenadas por puntos perdidos
+  contra lo esperado.
+- **Lo que le tiran**: 1-2-3, las zonas CRÍTICAS que libera la defensa, por
+  puntos concedidos de más.
+- **Scouting**: el cruce «atacar ahí / cerrar ahí» pasó de familias a zonas.
+
+**Jugadores → Tiro** (`diagnosticoJugador`) suma debajo del mapa: **picos de
+rendimiento**, **puntos a explotar** (rinde sobre la liga con poco volumen),
+**criterios de ajuste** (mucho volumen con acierto apenas de liga) y **puntos
+de fuga**, sobre volumen por zona (intentos por PJ; el paquete trae los PJ con
+minutos de cada tirador) y acierto por zona contra la liga en esa zona.
+
+Medido en la vista previa con los paquetes reales: a 1280 px el mapa mide
+448 px; a 375 px no desborda nada, los conmutadores miden 44 px y el C/I se
+lee a 10 px.
+
+**Y en Personalidad el eje dice «Juego colectivo»**, no «juego coral». Hay un
+test que recorre `js/` y falla si la palabra vuelve.

@@ -3099,7 +3099,7 @@ function jugadoresBloqueMapaPbp(j) {
   if (typeof SGADD_PBP === 'undefined' || !SGADD_PBP.activa() || !j) return '';
   return `
     <div class="mt-6 no-imprimir">
-      <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Mapa de tiro · play-by-play</h5>
+      <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Mapa de tiro y diagnóstico individual · play-by-play</h5>
       ${SGADD_PBP.espacioJugador(j['NOMBRES'], j['EQUIPO'])}
     </div>`;
 }

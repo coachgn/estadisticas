@@ -38,6 +38,9 @@ const EQUIPOS_TABS = [
   /* LABORATORIO (punto 62): solo se ofrece si el servidor declara la capa
      `pbp` para la categoría abierta. Los datos no salen del libro. */
   { id: 'pbp',          label: 'Quintetos',    pregunta: '¿Con quién rinde y quién decide al final? · laboratorio' },
+  /* El mapa de tiro es su PROPIA card (pedido del club, 2026-09-15): con la
+     misma capa y el mismo paquete, pero otra pregunta. */
+  { id: 'pbp-tiro',     label: 'Mapa de tiro', pregunta: '¿Desde dónde tira, dónde le tiran y qué conviene? · laboratorio' },
 ];
 
 /* ===================== RUTEO ===================== */
@@ -209,7 +212,7 @@ function equiposGrilla(idx) {
    existe para él— y un link viejo a `pbp` cae a General. */
 function equiposTabsOfrecidas() {
   const pbp = typeof SGADD_PBP !== 'undefined' && SGADD_PBP.activa();
-  return EQUIPOS_TABS.filter(t => t.id !== 'pbp' || pbp);
+  return EQUIPOS_TABS.filter(t => (t.id !== 'pbp' && t.id !== 'pbp-tiro') || pbp);
 }
 
 function equiposFicha(idx, e) {
@@ -230,7 +233,7 @@ function equiposFicha(idx, e) {
 function equiposTabDisponible(idx, e, id) {
   if (id === 'plantel') return e.jugadores && e.jugadores.length > 0;
   if (id === 'partidos' || id === 'condicion') return e.partidos && e.partidos.length > 0;
-  if (id === 'pbp') return typeof SGADD_PBP !== 'undefined' && SGADD_PBP.activa();
+  if (id === 'pbp' || id === 'pbp-tiro') return typeof SGADD_PBP !== 'undefined' && SGADD_PBP.activa();
   return true;
 }
 
@@ -401,6 +404,7 @@ function equiposTab(idx, e, id) {
     case 'plantel':   return equiposTabPlantel(idx, e);
     case 'partidos':  return equiposTabPartidos(idx, e);
     case 'pbp':       return (typeof SGADD_PBP !== 'undefined') ? SGADD_PBP.espacio(e.nombre, 'equipo') : '';
+    case 'pbp-tiro':  return (typeof SGADD_PBP !== 'undefined') ? SGADD_PBP.espacio(e.nombre, 'equipo', null, 'mapa') : '';
     default:          return '';
   }
 }

@@ -65,8 +65,8 @@ const SGADD_PERSONALIDAD = (function () {
     {
       id: 'colectivo', metrica: 'AST%', familia: 'ataque',
       titulo: 'Generación',
-      izq: 'Resolución individual', der: 'Juego coral',
-      fIzq: 'de resolución individual', fDer: 'de juego coral',
+      izq: 'Resolución individual', der: 'Juego colectivo',
+      fIzq: 'de resolución individual', fDer: 'de juego colectivo',
       neutro: 'Mezcla ambas',
       descIzq: 'Pocas canastas asistidas: resuelve más por talento individual.',
       descDer: 'Alto porcentaje de canastas asistidas: la pelota circula.',

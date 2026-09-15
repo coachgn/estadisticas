@@ -2517,7 +2517,7 @@ const SCOUT_UI = {
      y claves, sin la matriz entera). */
   cards: {
     encabezado: true, matriz: true, ciclo: true, marcas: true,
-    resumen: true, jugadores: true, resto: true, claves: true, fichas: true, pbp: true,
+    resumen: true, jugadores: true, resto: true, claves: true, fichas: true, pbp: true, 'pbp-tiro': true,
   },
 };
 
@@ -2543,7 +2543,8 @@ const SCOUT_CARDS = [
   { id: 'fichas', label: 'Fichas individuales', bloque: 'scouting.fichas' },
   /* LABORATORIO (punto 62): quintetos, cierre, clutch y mapa del rival,
      desde el play-by-play. Solo con la capa `pbp` de la categoría. */
-  { id: 'pbp', label: 'Play-by-play del rival · laboratorio', capa: 'pbp' },
+  { id: 'pbp', label: 'Quintetos y clutch del rival · laboratorio', capa: 'pbp' },
+  { id: 'pbp-tiro', label: 'Mapa de tiro del rival · laboratorio', capa: 'pbp' },
 ];
 
 /* =====================================================================
@@ -2586,8 +2587,12 @@ function scoutBloquePbp(inf) {
   const propio = rivalEsLocal ? inf.visitante : inf.local;
   return `
     <section class="scout-card scout-pagina card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="pbp">
-      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">🔁 Play-by-play del rival · ${scoutNombreConLogo(rival.nombre, 18)}</h4>
-      ${SGADD_PBP.espacio(rival.nombre, 'scouting', propio && propio.clave !== rival.clave ? propio.nombre : null)}
+      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">🔁 Quintetos, cierre y clutch · ${scoutNombreConLogo(rival.nombre, 18)}</h4>
+      ${SGADD_PBP.espacio(rival.nombre, 'scouting')}
+    </section>
+    <section class="scout-card scout-pagina card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="pbp-tiro">
+      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">🎯 Mapa de tiro · ${scoutNombreConLogo(rival.nombre, 18)}</h4>
+      ${SGADD_PBP.espacio(rival.nombre, 'scouting', propio && propio.clave !== rival.clave ? propio.nombre : null, 'mapa')}
     </section>`;
 }
 

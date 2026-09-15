@@ -35,8 +35,9 @@ const { claveKV, campoDeEquipo, CAMPO_INDICE } = require('../api/pbp.js');
    cambia, así que el panel lee los dos. Lo que NO se acepta es mezclarlos:
    los 17 paquetes llevan la misma vara de la liga y tienen que salir de la
    misma exportación. */
-const ESQUEMAS = ['motorstats-ingestion/analitica-pbp-web@1', 'motorstats-ingestion/analitica-pbp-web@2'];
-/* Un paquete @1 pesa ~23 KB y uno @2 ~57 KB. Un techo holgado frena el error de subir
+const ESQUEMAS = ['motorstats-ingestion/analitica-pbp-web@1', 'motorstats-ingestion/analitica-pbp-web@2', 'motorstats-ingestion/analitica-pbp-web@3'];
+/* Un paquete @1 pesa ~23 KB, uno @2 ~57 KB y uno @3 —con los tiros
+   ubicados— ~105 KB. Un techo holgado frena el error de subir
    el `analitica-pbp.json` completo, o partidos crudos, por equivocación. */
 const MAX_KB = 200;
 
