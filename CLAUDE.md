@@ -28,7 +28,7 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  55 tests · detalle partido a partido, perfil de tiro y su PDF
-node test-scouting.js      # 448 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-scouting.js      # 432 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
 node test-permisos.js      # 401 tests · roles, planes, el gate, el selector, el hub, el ciclo,
@@ -86,7 +86,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5899 tests en total. Todos tienen que dar verde antes de commitear.**
+**5883 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -2921,109 +2921,47 @@ pelota y 🦅 ayudas desde el lado débil) y no se fusionaron: son tareas
 distintas y mezclarlas volvería a agrupar marcas que piden defensores
 diferentes.
 
-### A quién de los nuestros le toca
+### Perfil defensivo ideal y QUÉ BUSCAR · sin nombres propios (2026-09-18)
 
-La columna *Defensor nuestro* trae, debajo del perfil táctico, hasta **tres
-jugadores** para esa tarea: Rank 1 destacado y dos de recambio para cuando el
-primero carga faltas.
+La columna se llama **Perfil defensivo ideal**: trae el arquetipo que
+conviene contra ese rival, su familia, y debajo **«Qué buscar»** en el
+defensor para cumplir la tarea. **No propone jugadores propios.** Qué jugador
+del plantel reúne esos atributos lo decide el cuerpo técnico, y la nota de la
+tabla y el `data-glosa` de la columna lo dicen con esas palabras.
 
-#### REGLA DE ORO: el defensor sale SIEMPRE del otro equipo del cruce
+**Hasta el 2026-09-18 proponía nombres** («De los nuestros: …», tres por
+fila, con un filtro de biotipo y un ranking por tapas, recuperos, faltas,
+rebote y minutos). Se sacó a pedido del club después de medirlo sobre los 272
+cruces de la Conferencia Norte (la demo): **el 8,3 % de los primeros
+sugeridos tenía el tamaño opuesto al atacante** (rebote relativo como
+aproximación de tamaño), y el 7,4 % recibía una familia que contradecía al
+filtro. La causa no era de calibración: **la planilla no trae altura ni
+posición**, y el único rastro de biotipo es interior/perimetral, que sale de
+CÓMO TIRA — un 4 abierto y un base son los dos «perimetrales». Un nombre
+equivocado cuesta más que ninguno (la regla del dato inventado).
 
-`plantelDefensor(idx, claveAtacante, claveNuestro)` es el único lugar que
-resuelve de qué plantel salen los "nuestros", y la respuesta es **el otro lado
-del cruce**. Nunca el equipo que ataca. En Reconquista vs Atenas: para
-neutralizar a Reconquista los defensores son de Atenas, y al revés.
+**Si algún día vuelven los nombres**, el camino no es mejorar la
+aproximación sino tener el dato: que el club declare posición y talla de su
+plantel (en KV, como los estados del punto 57). Está en el historial
+(`candidatosPropios`, `señalesPlantel`, `compatiblePosicional`).
 
-**El bug que cierra.** Acá se resolvía con `SGADD.esEquipoPropio()`, o sea *"el
-equipo del club configurado en el JSON"*. Eso funciona mientras el equipo
-scouteado sea el ajeno, pero el informe deja **elegir el rival a mano**
-(`o.claveRival`) justamente para preparar un partido ajeno o para mirar el
-cruce desde el otro lado. Cuando el DT scouteaba a Reconquista, el rival era
-Reconquista **y el "plantel propio" también**: la tabla salía con MITIDIERI
-marcando a MITIDIERI, su propio compañero.
+Lo que hay que respetar al tocarlo:
 
-`informePrePartido()` ya calculaba bien `claveNuestro` — lo que faltaba era
-**pasárselo**. Ahora viaja explícito a `jugadoresClave()`, a
-`clavesEstrategicas()` y a `resumenEjecutivo()`, que si recalculara con otro
-plantel contradiría al cuadro que tiene al lado.
-
-Dos guardas más, porque el respaldo también podía fallar:
-
-- **El cruce degenerado no se sirve.** Con el mismo equipo de los dos lados,
-  `plantelDefensor` devuelve vacío. Antes que sugerir compañeros, nada.
-- **El respaldo por `esEquipoPropio()` excluye al equipo atacante**, así que ni
-  siquiera el fallback puede devolver a un compañero.
-
-Hay tests que corren el cruce en los dos sentidos y exigen que ningún candidato
-comparta equipo con el atacante.
-
-#### El algoritmo tiene DOS PASOS, y el orden es la regla
-
-```
-PASO 1 · match posicional  →  ¿PUEDE ir con él?   (filtro duro)
-PASO 2 · métricas defensivas →  ¿qué tan BIEN lo hace?  (ranking)
-```
-
-**Paso 1 · biotipo** (`compatiblePosicional`). Contra un atacante `esInterior`
-pasan interiores e híbridos; contra un `esPerimetral`, perimetrales e híbridos;
-sin origen resuelto en el atacante, no se filtra nada. El *híbrido* —el que no
-tiene ninguno de los dos flags— pasa **en los dos sentidos** a propósito: no
-tener origen resuelto es falta de dato, no un dato en contra.
-
-El motivo de que vaya primero es de cancha: por muchos recuperos que tenga, un
-perimetral no defiende de espaldas al poste bajo del rival. Hay un test que
-fabrica exactamente ese escenario —un ala con tapas y rebote enormes contra un
-interior flojo en todo— y verifica que **sin el paso 1 gana el ala y con el
-paso 1 gana el interior**. Sin ese test el orden se puede invertir sin que se
-note.
-
-**Paso 2 · ranking**, con los pesos que declara la familia en
-`CATALOGO_DEFENSOR.defiende`: **tapas (`TC`)**, recuperos (`PR`), faltas
-(`FC`), rebote defensivo y ofensivo relativos y minutos. Las métricas se
-normalizan **dentro del propio plantel**, no contra la liga: la pregunta es
-*"de los míos, ¿quién?"*, y esa respuesta no cambia porque la liga entera
-defienda mejor o peor.
-
-**Degradación.** Si el paso 1 deja la lista vacía —un plantel entero de
-perimetrales contra un poste rival es un escenario real en categorías chicas—
-se vuelve al plantel sin filtrar, se marca `compatible: false` y **la UI lo
-dice**: *"Sin nadie del biotipo… los nombres salen por métricas, con desventaja
-física"*. La propiedad que no se negocia es que la sugerencia nunca quede
-vacía: una celda en blanco no le dice al DT que el cruce es problemático, le
-dice que el panel se rompió.
-
-Medido con Reconquista vs Atenas real: **cero choques de biotipo** en las once
-filas. BORRAJO (interior) pasó a recibir solo a VELAZQUEZ —el único interior
-del plantel— donde antes se le proponían dos perimetrales detrás.
-
-**Ojo con el filtro y el peso**: son cosas distintas y por eso conviven. El
-filtro mira al **atacante** (¿puede ir con él?); el peso `interior`/`perimetral`
-de `defiende` mira la **tarea** (dentro de los compatibles, cuál calza mejor).
-
-**`TC` — Tapas cometidas — es la única métrica del box score que mide un acto
-defensivo directo**, y por eso pesa más que el rebote en los dos perfiles de
-protección de aro: en 🏰 Referente de Zona `tc` 1,5 contra `rd` 1,2, y en 🏢
-Especialista Interior `tc` 1,3 contra `rd` 0,9. El rebote defensivo es un
-proxy de tamaño; una tapa es la acción en sí. Las familias de contención
-perimetral **no llevan `tc`**: al que tiene que contener la penetración sin
-saltar, tapar no le suma — le puede restar.
-
-El resto de los pesos sigue la misma lógica de cancha: al ⚡ de Presión
-Inicial y al 🦅 de Ayudas se los busca por recuperos; al 💪 Perimetral Físico
-las faltas le **suman** (es contacto) y al 🏃 Perimetral Atlético le **restan**
-(tiene que contener sin fallar). Hay tests que fijan esas relaciones.
-
-**LA ADVERTENCIA QUE NO SE SACA: el box score no mide defensa completa.** Con
-`TC`, `PR`, `FC` y el rebote se cubre lo que deja rastro — tapar, robar,
-chocar, cerrar el cristal — pero **el trabajo sin pelota no aparece en ninguna
-columna**: cerrar líneas de pase, navegar bloqueos, rotar a tiempo, contener
-sin fallar. Un defensor que hace todo eso bien puede tener la planilla en
-blanco. Es una sugerencia por aproximación y la UI lo dice con todas las
-letras: el nombre final lo pone el cuerpo técnico.
-
-`cargaPropia` reparte igual que `elegirDefensorBalanceado`: cada marca ya
-asignada le resta 0,35 al puntaje. Sin eso el mismo defensor encabezaba las
-once filas y la sugerencia dejaba de decir nada.
+- **Los atributos salen de los MISMOS pesos `defiende` de cada familia**
+  (`atributosDefensor`): ordenados por el peso absoluto, con piso 0,4 y
+  hasta cuatro. Son la descripción de la tarea; un segundo vocabulario
+  terminaría diciendo otra cosa.
+- **El signo cambia la frase** (`ATRIBUTOS_SEÑAL`): las faltas con peso
+  positivo son «contacto físico legal», con peso negativo «bajo promedio de
+  faltas». Toda señal de los pesos tiene su frase; un test lo exige.
+- **Ninguna frase lleva coma ni «y» adentro**: se enumeran con
+  `enumerar()` y una coma interna parte la lista en dos. Hay test.
+- **`queBuscar(label)` devuelve `null` para un perfil fuera del
+  catálogo**: si el DT escribió otra cosa no se inventa una guía.
+- **`plantelDefensor` excluye a los dados de BAJA**, con la MISMA función
+  (`enPlan`) que `plantelOrdenado`. Con dos criterios, un jugador dado de
+  baja salía del plan del rival pero seguía contando como defensor
+  disponible (el plan colectivo dimensiona con ese plantel).
 
 ### El perfil se desempaqueta con métricas secundarias
 

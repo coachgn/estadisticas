@@ -392,167 +392,73 @@ const SGADD_SCOUT = (function () {
   }
 
   /* =====================================================================
-     A QUIÉN DE LOS NUESTROS LE TOCA
+     QUÉ BUSCAR EN EL DEFENSOR · el perfil, no el nombre (2026-09-18)
 
-     El perfil táctico dice QUÉ tarea hay que hacer; esto propone QUIÉN de
-     nuestro plantel está en mejores condiciones de hacerla.
+     Hasta acá esta sección proponía NOMBRES de nuestro plantel ("De los
+     nuestros: …"). Se sacó a pedido del club, después de medirlo: la
+     planilla no trae altura ni posición, y el único rastro de biotipo era
+     interior/perimetral, que sale de CÓMO TIRA. Un 4 abierto y un base son
+     los dos «perimetrales»: sobre los 272 cruces de la Conferencia Norte, el
+     8,3 % de los primeros sugeridos tenía el tamaño opuesto al atacante.
 
-     QUÉ MIDE Y QUÉ NO. El box score trae cuatro señales defensivas
-     reales: **tapas cometidas (`TC`)**, recuperos (`PR`), faltas (`FC`) y
-     rebote defensivo. Con eso alcanza para separar a un protector de aro
-     de un perseguidor de tiradores, que es la decisión que el bloque
-     necesita.
+     Un nombre equivocado cuesta más que ninguno. La celda dice ahora la
+     TAREA (el perfil) y QUÉ ATRIBUTOS buscar para cumplirla; el nombre lo
+     pone el cuerpo técnico, que conoce a su plantel mejor que la planilla.
 
-     Lo que NO trae es el trabajo sin pelota: desplazamiento lateral,
-     navegación de cortinas, puntos permitidos por marca. Por eso sigue
-     siendo una sugerencia y no un veredicto — pero se apoya en datos
-     defensivos de verdad, no solo en proxies de tamaño.
-
-     Se compara DENTRO de nuestro plantel y no contra la liga: la pregunta
-     es "de los míos, ¿quién?", y esa respuesta no cambia porque la liga
-     entera defienda mejor o peor.
+     Los atributos salen de los MISMOS pesos `defiende` de cada familia: son
+     la descripción de la tarea, así que no hay un segundo vocabulario que
+     pueda decir otra cosa.
      ===================================================================== */
 
-  /** Cuántos nombres se sugieren por marca. Más de tres deja de ser una
-      sugerencia y pasa a ser la lista del plantel. */
-  const MAX_CANDIDATOS_PROPIOS = 3;
-  /** Piso de minutos para proponer a alguien: no se le asigna la marca del
-      mejor anotador rival a uno que promedia cuatro minutos. */
-  const MIN_CANDIDATO_PROPIO = 10;
+  /** Cómo se dice en cancha cada señal de `defiende`, según el signo del
+      peso. Una señal sin frase para su signo no se lista. Sin comas ni «y» adentro:
+      las frases se enumeran, y una coma interna parte la lista en dos. */
+  const ATRIBUTOS_SEÑAL = {
+    perimetral: { mas: 'desplazamiento lateral lejos del aro' },
+    interior:   { mas: 'cuerpo para defender cerca del aro' },
+    pr:         { mas: 'manos activas (recuperos)' },
+    tc:         { mas: 'timing para tapar' },
+    rd:         { mas: 'cierre del rebote defensivo' },
+    ro:         { mas: 'presencia en el rebote ofensivo' },
+    fc:         { mas: 'contacto físico legal (acepta cargar faltas)', menos: 'bajo promedio de faltas' },
+    min:        { mas: 'resistencia para sostener muchos minutos' },
+  };
+  /** Un peso más chico que esto no describe la tarea: es un matiz. */
+  const PESO_MIN_ATRIBUTO = 0.4;
+  /** Más de cuatro deja de ser una guía rápida. */
+  const MAX_ATRIBUTOS = 4;
 
-  /** Señales defensivas de UN jugador propio, normalizadas 0-1 dentro del
-      plantel. `null` en una métrica pesa como el promedio, no como cero. */
-  function señalesPlantel(idx, plantel) {
-    const ficha = fichaJugadores();
-    const perfiles = plantel.map(j => {
-      const base = (ficha && ficha.perfilBase) ? ficha.perfilBase(idx, j) : {};
-      return {
-        nombre: String(j['NOMBRES'] || '').trim(),
-        clave: j.__clave || null,
-        /* El equipo viaja con la señal para poder auditar el cruce: un
-           defensor de la misma camiseta que el atacante es el bug que se
-           corrigió acá (ver `plantelDefensor`). */
-        equipo: String(j['EQUIPO'] || '').trim(),
-        min: nn(j['MIN']), pr: nn(j['PR']), fc: nn(j['FC']),
-        /* TC = tapas cometidas. Es LA métrica de protección de aro que
-           trae el box score, y la que más pesa para los perfiles
-           interiores: un Primary Rim Protector se busca por acá antes que
-           por rebote. */
-        tc: nn(j['TC']),
-        rd: base.reboteDefRel !== undefined ? base.reboteDefRel : nn(j['RD%']),
-        ro: base.reboteRel !== undefined ? base.reboteRel : nn(j['RO%']),
-        interior: base.esInterior ? 1 : 0,
-        perimetral: base.esPerimetral ? 1 : 0,
-      };
-    });
-    /* Normalización min-max sobre el propio plantel: convierte métricas de
-       escalas distintas (0,9 recuperos y 24 minutos) en algo sumable. */
-    const norm = (campo) => {
-      const vals = perfiles.map(p => p[campo]).filter(v => typeof v === 'number' && isFinite(v));
-      if (vals.length < 2) return () => 0.5;
-      const min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
-      if (max === min) return () => 0.5;
-      return (v) => (typeof v === 'number' && isFinite(v)) ? (v - min) / (max - min) : 0.5;
-    };
-    const escalas = { pr: norm('pr'), fc: norm('fc'), tc: norm('tc'), rd: norm('rd'), ro: norm('ro'), min: norm('min') };
-    perfiles.forEach(p => {
-      p.n = {
-        pr: escalas.pr(p.pr), fc: escalas.fc(p.fc), tc: escalas.tc(p.tc),
-        rd: escalas.rd(p.rd), ro: escalas.ro(p.ro), min: escalas.min(p.min),
-        interior: p.interior, perimetral: p.perimetral,
-      };
-    });
-    return perfiles;
-  }
-
-  /**
-   * PASO 1 del algoritmo · ¿este defensor puede ir físicamente con ese
-   * atacante?
-   *
-   * Es un FILTRO DURO y va ANTES de mirar una sola métrica defensiva. El
-   * motivo es de cancha: por muchos recuperos que tenga, un perimetral de
-   * 1,80 no defiende de espaldas al poste bajo del rival, y ordenar por
-   * `PR` sin filtrar antes lo ponía primero. La métrica contesta *"¿qué tan
-   * bien lo hace?"*; el biotipo contesta *"¿puede hacerlo?"*, y esa pregunta
-   * va primero.
-   *
-   * Los tres casos:
-   *   - atacante INTERIOR    → pasan interiores e híbridos
-   *   - atacante PERIMETRAL  → pasan perimetrales e híbridos
-   *   - atacante SIN ORIGEN  → pasan todos (no se infiere nada)
-   *
-   * "Híbrido" es el que no tiene ninguno de los dos flags — en la práctica,
-   * el que no registra tiros de campo suficientes para resolver su origen.
-   * Pasa en los dos sentidos a propósito: descartarlo sería tratar la falta
-   * de dato como si fuera un dato en contra.
-   */
-  function compatiblePosicional(atacante, p) {
-    if (!atacante) return true;
-    const esHibrido = !p.interior && !p.perimetral;
-    if (atacante.esInterior) return !!p.interior || esHibrido;
-    if (atacante.esPerimetral) return !!p.perimetral || esHibrido;
-    return true;
-  }
-
-  /**
-   * Los mejores candidatos de NUESTRO plantel para una familia defensiva,
-   * en DOS PASOS secuenciales.
-   *
-   *   PASO 1 · match posicional contra el atacante (`compatiblePosicional`).
-   *            Filtro duro: quién puede ir con él.
-   *   PASO 2 · ranking por métricas defensivas (`TC`, `PR`, `RD rel`, `RO
-   *            rel`, `FC`, minutos) con los pesos que declara la familia.
-   *            Dentro de los compatibles, quién lo hace mejor.
-   *
-   * Devuelve Rank 1 (defensor principal) + Rank 2 y 3 de recambio, que es
-   * lo que el DT necesita cuando el primero carga faltas.
-   *
-   * **Degradación**: si el paso 1 deja la lista vacía —un plantel entero de
-   * perimetrales contra un poste rival es un escenario real en categorías
-   * chicas— se vuelve al plantel sin filtrar y se marca `compatible: false`.
-   * La propiedad que no se negocia es que la sugerencia nunca quede vacía:
-   * una celda en blanco no le dice al DT que el cruce es problemático, le
-   * dice que el panel se rompió.
-   *
-   * `usados` reparte la carga igual que `elegirDefensorBalanceado`: si a un
-   * jugador ya se le asignaron dos marcas, baja en el orden. No se lo
-   * excluye —a veces es el único que puede— pero deja de aparecer primero
-   * en todas las filas, que era lo que volvía inútil la sugerencia.
-   */
-  function candidatosPropios(familiaId, perfiles, usados, opciones) {
+  /** Los atributos de una familia, del peso más fuerte al más débil. PURO. */
+  function atributosDefensor(familiaId) {
     const cat = CATALOGO_DEFENSOR.find(c => c.id === familiaId);
-    if (!cat || !cat.defiende || !perfiles || !perfiles.length) return [];
-    const pesos = cat.defiende;
-    const cuenta = usados || {};
-    const atacante = (opciones || {}).atacante || null;
+    if (!cat || !cat.defiende) return [];
+    return Object.keys(cat.defiende)
+      .map(k => ({ k: k, w: cat.defiende[k] }))
+      .filter(x => ATRIBUTOS_SEÑAL[x.k] && Math.abs(x.w) >= PESO_MIN_ATRIBUTO)
+      .sort((a, b) => Math.abs(b.w) - Math.abs(a.w))
+      .map(x => ATRIBUTOS_SEÑAL[x.k][x.w >= 0 ? 'mas' : 'menos'])
+      .filter(Boolean)
+      .slice(0, MAX_ATRIBUTOS);
+  }
 
-    /* El piso de minutos es previo a los dos pasos: no se le asigna la
-       marca del mejor anotador rival a uno que promedia cuatro minutos. */
-    const conMinutos = perfiles.filter(p => p.min === null || p.min >= MIN_CANDIDATO_PROPIO);
-
-    // PASO 1 · biotipo.
-    const compatibles = conMinutos.filter(p => compatiblePosicional(atacante, p));
-    const hayMatch = compatibles.length > 0;
-    const universo = hayMatch ? compatibles : conMinutos;
-
-    // PASO 2 · métricas defensivas.
-    return universo
-      .map(p => {
-        let score = 0;
-        Object.keys(pesos).forEach(k => {
-          const v = p.n[k];
-          if (typeof v === 'number') score += pesos[k] * v;
-        });
-        /* Penalidad por carga: cada marca ya asignada le resta. */
-        score -= 0.35 * (cuenta[p.nombre] || 0);
-        return {
-          nombre: p.nombre, clave: p.clave, equipo: p.equipo,
-          score: score, min: p.min, compatible: hayMatch,
-        };
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, MAX_CANDIDATOS_PROPIOS)
-      .map((c, i) => { c.rank = i + 1; return c; });
+  /**
+   * La guía de un perfil defensivo, por su etiqueta. PURO.
+   * `texto` es lo que imprime la celda: «Desplazamiento lateral…, manos
+   * activas… y disciplina…». `null` si la etiqueta no es del catálogo (el DT
+   * escribió otra cosa): no se inventa una guía para un perfil que no existe.
+   */
+  function queBuscar(label) {
+    const cat = CATALOGO_DEFENSOR.find(c => c.perfiles.some(p => p.label === label));
+    if (!cat) return null;
+    const perfil = cat.perfiles.find(p => p.label === label);
+    const atributos = atributosDefensor(cat.id);
+    const lista = enumerar(atributos);
+    return {
+      familia: cat.id,
+      tarea: perfil.detalle,
+      atributos: atributos,
+      texto: lista ? lista.charAt(0).toUpperCase() + lista.slice(1) : '',
+    };
   }
 
   /** Familia (con emoji) a la que pertenece un perfil, por su etiqueta. */
@@ -1771,6 +1677,19 @@ const SGADD_SCOUT = (function () {
    * un plantel rival no hay a quién sugerir, y una lista inventada sería
    * peor que ninguna.
    */
+  /**
+   * ¿Entra a un plan? Los dados de 🔴 BAJA no: no van a estar en la cancha.
+   * Lo usan los DOS planteles del informe —el rival (`plantelOrdenado`) y el
+   * que defiende (`plantelDefensor`)— y por eso es una sola función: con dos
+   * criterios, un jugador dado de baja salía del plan del rival pero seguía
+   * contando como defensor disponible. Sin el módulo de estados (Node, o
+   * antes de que el DT confirme nada) entran todos.
+   */
+  function enPlan(j) {
+    return (typeof SGADD_BUZON === 'undefined') ? true
+      : SGADD_BUZON.enPlan(j['NOMBRES'], j['EQUIPO']);
+  }
+
   function plantelDefensor(idx, claveAtacante, claveNuestro) {
     const porEquipo = idx.liga.jugadoresPorEquipo;
     if (!porEquipo) return [];
@@ -1781,12 +1700,13 @@ const SGADD_SCOUT = (function () {
       const e = idx.get(claveNuestro);
       const k = e ? e.clave : claveNuestro;
       if (k === claveAt) return [];   // el cruce degenerado nunca se sirve
-      return (porEquipo.get(k) || []).slice();
+      return (porEquipo.get(k) || []).filter(enPlan);
     }
 
     return Array.from(porEquipo.keys())
       .filter(k => k !== claveAt && SGADD.esEquipoPropio(k))
-      .reduce((acc, k) => acc.concat(porEquipo.get(k) || []), []);
+      .reduce((acc, k) => acc.concat(porEquipo.get(k) || []), [])
+      .filter(enPlan);
   }
 
   /**
@@ -1817,8 +1737,6 @@ const SGADD_SCOUT = (function () {
   function plantelOrdenado(idx, clave) {
     const e = idx.get(clave);
     if (!e) return [];
-    const enPlan = (j) => (typeof SGADD_BUZON === 'undefined') ? true
-      : SGADD_BUZON.enPlan(j['NOMBRES'], j['EQUIPO']);
     return (idx.liga.jugadoresPorEquipo.get(e.clave) || [])
       .filter(enPlan)
       .slice()
@@ -1890,15 +1808,10 @@ const SGADD_SCOUT = (function () {
        ------------------------------------------------------------------ */
     const nuestroPlantel = plantelDefensor(idx, e.clave, o.claveNuestro);
     const plan = generarPlanDefensivoColectivo(filas, nuestroPlantel);
-    /* Señales defensivas de los nuestros, calculadas UNA vez para las once
-       filas: normalizar el plantel por cada marca sería el mismo trabajo
-       repetido y daría exactamente lo mismo. */
-    const señalesPropias = señalesPlantel(idx, nuestroPlantel);
 
     /* La carga se reparte sobre las filas ordenadas por minutos, que ya es
        el orden de la tabla: el que más juega elige perfil primero. */
     const usados = {};
-    const cargaPropia = {};   // cuántas marcas lleva ya cada defensor nuestro
     filas.forEach(f => {
       const def = elegirDefensorBalanceado(
         PERFILES_MARCA.find(m => m.id === f.marca.id), f.perfil, usados);
@@ -1906,20 +1819,10 @@ const SGADD_SCOUT = (function () {
         usados[def] = (usados[def] || 0) + 1;
         f.marca.defensor = def;
         f.marca.familiaDefensor = familiaDefensor(def);
-        /* Quién de los nuestros puede hacer esa tarea, en dos pasos: primero
-           el match de biotipo contra ESTE atacante, después el ranking por
-           métricas defensivas. Se reparte la carga con `cargaPropia`: sin
-           eso, el mismo defensor encabezaba las once filas y la sugerencia
-           dejaba de decir nada. */
-        const cat = CATALOGO_DEFENSOR.find(c => c.perfiles.some(x => x.label === def));
-        f.marca.candidatos = cat
-          ? candidatosPropios(cat.id, señalesPropias, cargaPropia, { atacante: f.perfil })
-          : [];
-        f.marca.candidatos.forEach((c, i) => {
-          /* Solo el primero suma carga: es el que el DT va a leer como
-             sugerencia principal, los otros dos son alternativas. */
-          if (i === 0) cargaPropia[c.nombre] = (cargaPropia[c.nombre] || 0) + 1;
-        });
+        /* El PERFIL y qué buscar para cumplirlo. Ningún nombre propio: quién
+           de nuestro plantel lo hace lo decide el cuerpo técnico (ver
+           `queBuscar`). */
+        f.marca.queBuscar = queBuscar(def);
       }
       const cx = conexionColectiva(f, plan);
       f.plan = {
@@ -2472,8 +2375,7 @@ const SGADD_SCOUT = (function () {
     MATRIZ_POSESION, MATRIZ_TIRO, METRICAS_RANKING, COLS_JUGADOR,
     PERFILES_MARCA, PERFILES_DEFENSOR, CATALOGO_DEFENSOR, familiaDefensor, REGLAS_CLAVE,
     elegirDefensor, elegirDefensorBalanceado, defensoresAlcanzables,
-    candidatosPropios, compatiblePosicional, plantelDefensor,
-    señalesPlantel, MAX_CANDIDATOS_PROPIOS, MIN_CANDIDATO_PROPIO,
+    ATRIBUTOS_SEÑAL, atributosDefensor, queBuscar, plantelDefensor, enPlan,
     ESCENARIOS, clasificarEcosistema, generarPlanDefensivoColectivo, conexionColectiva,
     get ROLES_FUNCIONALES() { return rolesFuncionales(); },
     statLiga, bandaLiga, porEncima, porDebajo,
@@ -3290,21 +3192,16 @@ function scoutFilasMarcas(t) {
           <p class="text-[10px] dato-sec">${escapeHtml(SGADD.formatear('MIN', f.perfil.min))} min · ${escapeHtml(SGADD.formatear('PTS', f.perfil.pts))} pts · ${escapeHtml(SGADD.formatear('PPP', f.perfil.ppp))} PPP</p>
         </td>
         <td class="px-2 py-2 align-top text-left">
-          <input type="text" value="${escapeAttr(defensor)}" title="${escapeAttr(defensor)}" placeholder="Perfil o nombre"
+          <input type="text" value="${escapeAttr(defensor)}" title="${escapeAttr(defensor)}" placeholder="Perfil o nombre" aria-label="Perfil defensivo ideal: editable para escribir el nombre de tu defensor"
             oninput="scoutMarca('${SGADD_UI.escJs(f.clave)}', 'defensor', this.value)"
             class="w-full bg-surface2 border border-hairline rounded px-2 py-1 text-[11px] focus:border-accent outline-none">
           ${f.marca.familiaDefensor ? `<p class="text-[10px] text-muted mt-1 text-left">${escapeHtml(f.marca.familiaDefensor)}</p>` : ''}
-          ${(f.marca.candidatos && f.marca.candidatos.length) ? `
-            <p class="text-[10px] text-left mt-1 leading-snug">
-              <span class="dato-sec">De los nuestros:</span>
-              ${f.marca.candidatos.map((c, i) => `<span class="${i === 0 ? 'text-accent font-semibold' : 'text-ink'}"
-                >${escapeHtml(SGADD.clavePersona(c.nombre).split(',')[0])}</span>`).join('<span class="dato-sec"> · </span>')}
-            </p>
-            ${f.marca.candidatos[0].compatible === false ? `
-              <p class="text-[10px] text-left mt-1 leading-snug text-amber-400">
-                ⚠ Sin nadie del biotipo de ${escapeHtml(f.perfil.esInterior ? 'un interior' : 'un perimetral')}
-                en el plantel: los nombres salen por métricas, con desventaja física.
-              </p>` : ''}` : ''}
+          ${(f.marca.queBuscar && f.marca.queBuscar.texto) ? `
+            <p class="scout-que-buscar text-[10px] text-left mt-1 leading-snug"
+              title="${escapeAttr('Tarea: ' + f.marca.queBuscar.tarea + ' El nombre lo elige el cuerpo técnico: buscá en tu plantel quién cumple estos atributos.')}">
+              <span class="dato-sec">Qué buscar:</span>
+              <span class="text-ink">${escapeHtml(f.marca.queBuscar.texto)}.</span>
+            </p>` : ''}
         </td>
         ${celdaDirectiva(consigna, 'consigna', f.marca.consigna.detalle, 'text-accent')}
         ${celdaDirectiva(restriccion, 'restriccion', f.marca.restriccion.detalle, 'text-white')}
@@ -3326,14 +3223,12 @@ function scoutBloqueMarcas(inf) {
         pide una celda sale del jugador que otra celda designa como fuente.
       </p>
       <p class="text-[11px] text-muted mb-3 leading-snug">
-        <b>De los nuestros</b> propone hasta tres jugadores del plantel rival para cada tarea —el
-        principal con el color del club, los otros dos como recambio— en <b>dos pasos</b>: primero el
-        <b>match de biotipo</b> contra ese atacante (a un interior no se le manda un perimetral),
-        y recién después el <b>ranking por métricas defensivas</b>, que cruza <b>tapas, recuperos,
-        faltas, rebote y minutos</b> comparados dentro del propio plantel. Lo que el box score no
-        mide es el trabajo sin pelota —desplazamiento, navegación de cortinas, puntos permitidos
-        por marca—, así que es una sugerencia y no un veredicto: el nombre final lo pone el cuerpo
-        técnico.
+        La columna <b>Perfil defensivo ideal</b> recomienda el <b>arquetipo</b> que conviene para
+        cada rival —la tarea, no un nombre— y debajo <b>qué buscar</b> en el defensor para cumplirla.
+        <b>Qué jugador de tu plantel</b> reúne esos atributos lo decide el cuerpo técnico: la
+        planilla no trae altura ni posición, y el trabajo sin pelota —desplazamiento, navegación de
+        cortinas, puntos permitidos por marca— no aparece en ninguna columna. El campo es editable
+        para escribir el nombre al armar la rotación.
       </p>
       ${scoutPlanColectivo(t.plan)}
     </section>`;
@@ -3372,7 +3267,7 @@ function scoutBloqueMarcasTabla(inf) {
       <div class="scrollbox"><table class="tabla-marcas w-full text-left" style="min-width:62rem">
         <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
           <th class="px-2 pb-1" style="width:18%">Jugador rival</th>
-          <th class="px-2 pb-1" style="width:22%">Defensor nuestro</th>
+          <th class="px-2 pb-1" style="width:22%" data-glosa="El arquetipo defensivo que conviene contra este jugador y qué atributos buscar. Qué jugador de tu plantel lo cumple lo decide el cuerpo técnico.">Perfil defensivo ideal</th>
           <th class="px-2 pb-1" style="width:30%">Consigna técnica principal</th>
           <th class="px-2 pb-1" style="width:30%">Restricción / alerta</th>
         </tr></thead>

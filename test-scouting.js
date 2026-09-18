@@ -1524,67 +1524,52 @@ check('al Perimetral Físico, por faltas: es contacto, no un defecto',
 check('pero al Perimetral Atlético las faltas le RESTAN: tiene que contener sin fallar',
   fam('perimetralAtletico').fc < 0);
 
-/* OJO: acá decía 'HALCON', que no existe en la fixture, así que `señales`
-   era [] y los ocho checks de abajo pasaban sobre una lista vacía sin
-   verificar nada. ATENAS A es el plantel que sí tiene los 10 jugadores. */
-const señales = S.señalesPlantel(idx, idx.liga.jugadoresPorEquipo.get('ATENAS A') || []);
-check('la fixture de señales NO está vacía (si lo está, los checks de abajo mienten)',
-  señales.length === 10, señales.length);
-check('las señales del plantel se normalizan 0-1 para poder sumarlas',
-  señales.every(p => Object.keys(p.n).every(k => p.n[k] >= 0 && p.n[k] <= 1)),
-  JSON.stringify(señales[0] && señales[0].n));
-check('un jugador sin dato en una métrica pesa como el promedio, no como cero',
-  S.señalesPlantel(idx, [{ NOMBRES: 'X, Y', EQUIPO: 'HALCON' }])[0].n.pr === 0.5);
-
-const cand = S.candidatosPropios('especialistaInterior', señales, {});
-check('devuelve hasta 3 candidatos y nunca más',
-  cand.length <= S.MAX_CANDIDATOS_PROPIOS && cand.length <= señales.length, cand.length);
-check('cada candidato trae nombre y puntaje',
-  cand.every(c => !!c.nombre && typeof c.score === 'number'));
-check('vienen ordenados de mejor a peor',
-  cand.every((c, i, a) => i === 0 || a[i - 1].score >= c.score));
-/* No se le asigna la marca del mejor anotador rival a alguien que
-   promedia cuatro minutos. */
-check('no propone a nadie por debajo del piso de minutos',
-  cand.every(c => c.min === null || c.min >= S.MIN_CANDIDATO_PROPIO),
-  cand.map(c => c.nombre + ':' + c.min).join('|'));
-check('una familia inexistente devuelve lista vacía en vez de romper',
-  S.candidatosPropios('NO_EXISTE', señales, {}).length === 0);
-check('sin plantel tampoco rompe',
-  S.candidatosPropios('especialistaInterior', [], {}).length === 0 &&
-  S.candidatosPropios('especialistaInterior', null, {}).length === 0);
-
-/* El balanceo: sin él, el mismo defensor encabezaba las once filas y la
-   sugerencia dejaba de decir nada. */
-const primero = cand.length ? cand[0].nombre : null;
-if (primero) {
-  const conCarga = S.candidatosPropios('especialistaInterior', señales, { [primero]: 3 });
-  check('el que ya lleva varias marcas baja en el orden',
-    conCarga.length < 2 || conCarga[0].nombre !== primero,
-    primero + ' → ' + (conCarga[0] && conCarga[0].nombre));
-  check('pero no se lo excluye: a veces es el único que puede',
-    conCarga.some(c => c.nombre === primero) || señales.length < 4);
-}
-
-/* La UI tiene que decir que esto es una aproximación. La planilla no mide
-   defensa individual: solo trae recuperos, faltas y rebote. */
+/* ---------------------------------------------------------------------
+   QUÉ BUSCAR · el perfil ideal, sin nombres propios (2026-09-18)
+   --------------------------------------------------------------------- */
 const fuenteScout = require('fs').readFileSync('./js/sgadd-scouting.js', 'utf8');
-check('la tabla muestra los candidatos con el primero destacado',
-  /De los nuestros:/.test(fuenteScout) && /text-accent font-semibold/.test(fuenteScout));
-check('la nota nombra las señales reales que cruza, tapas incluidas',
-  /tapas, recuperos,\s*\n?\s*faltas, rebote y minutos/.test(fuenteScout));
-/* La nota tiene que explicar los DOS pasos: si solo hablara de métricas,
-   el DT no entendería por qué su mejor tapador no aparece contra un base. */
-check('y explica que el biotipo se filtra ANTES que las métricas',
-  /match de biotipo/.test(fuenteScout) && /dos pasos/.test(fuenteScout));
-check('la UI avisa cuando no hubo nadie del biotipo y tuvo que degradar',
-  /compatible === false/.test(fuenteScout) && /desventaja física/.test(fuenteScout));
-/* Lo que el box score NO trae es el trabajo sin pelota. Decirlo así es
-   preciso; decir "no mide defensa" era falso, porque TC existe. */
-check('y aclara qué es lo que el box score NO mide, sin exagerar',
-  /trabajo sin pelota/.test(fuenteScout) && /no un\s*\n?\s*veredicto|no un veredicto/.test(fuenteScout));
-check('las tapas entran a las señales normalizadas del plantel',
-  señales.every(p => typeof p.n.tc === 'number' && p.n.tc >= 0 && p.n.tc <= 1));
+check('cada familia del catálogo tiene al menos dos atributos que buscar',
+  S.CATALOGO_DEFENSOR.every(c => S.atributosDefensor(c.id).length >= 2),
+  S.CATALOGO_DEFENSOR.map(c => c.id + ':' + S.atributosDefensor(c.id).length).join('|'));
+check('y nunca más de cuatro: es una guía rápida',
+  S.CATALOGO_DEFENSOR.every(c => S.atributosDefensor(c.id).length <= 4));
+check('toda señal de los pesos tiene su frase de cancha (no queda un peso mudo)',
+  S.CATALOGO_DEFENSOR.every(c => Object.keys(c.defiende).every(k => !!S.ATRIBUTOS_SEÑAL[k])));
+check('ninguna frase lleva coma ni «y» adentro: se enumeran y la partirían',
+  Object.keys(S.ATRIBUTOS_SEÑAL).every(k => Object.values(S.ATRIBUTOS_SEÑAL[k]).every(t => !/,| y /.test(t))));
+const atlet = S.atributosDefensor('perimetralAtletico');
+check('los atributos van del peso más fuerte al más débil',
+  atlet[0] === S.ATRIBUTOS_SEÑAL.perimetral.mas && atlet[1] === S.ATRIBUTOS_SEÑAL.pr.mas, atlet.join(' | '));
+/* El signo del peso cambia la frase: al Perimetral Físico las faltas le
+   suman (es contacto), al Atlético le restan (tiene que contener sin fallar). */
+check('las faltas con peso negativo se piden como disciplina',
+  atlet.indexOf(S.ATRIBUTOS_SEÑAL.fc.menos) !== -1);
+check('y con peso positivo, como contacto físico',
+  S.atributosDefensor('perimetralFisico').indexOf(S.ATRIBUTOS_SEÑAL.fc.mas) !== -1);
+check('al Referente de Zona se le piden tapas antes que rebote, igual que en sus pesos',
+  S.atributosDefensor('referenteZona')[0] === S.ATRIBUTOS_SEÑAL.tc.mas);
+check('los perfiles de contención perimetral no piden tapar',
+  ['perimetralAtletico', 'especialistaPerimetral', 'contencionTactica']
+    .every(id => S.atributosDefensor(id).indexOf(S.ATRIBUTOS_SEÑAL.tc.mas) === -1));
+const guiaDrive = S.queBuscar('Contenedor de Penetraciones / Drive Containment');
+check('queBuscar arma el texto en castellano, con mayúscula y «y» al final',
+  !!guiaDrive && /^Desplazamiento lateral/.test(guiaDrive.texto) && / y [^,]+$/.test(guiaDrive.texto), guiaDrive && guiaDrive.texto);
+check('y trae la tarea del perfil para el tooltip',
+  !!guiaDrive && /primer paso/.test(guiaDrive.tarea));
+check('un perfil que no es del catálogo (el DT escribió otra cosa) no inventa guía',
+  S.queBuscar('MARINI') === null && S.queBuscar('') === null);
+check('el motor puro no expone el recomendador de nombres',
+  typeof S.candidatosPropios === 'undefined' && typeof S.señalesPlantel === 'undefined' && typeof S.compatiblePosicional === 'undefined');
+check('ni la UI: la celda ya no dice «De los nuestros» ni nombra jugadores propios',
+  !/De los nuestros/.test(fuenteScout) && !/marca\.candidatos/.test(fuenteScout));
+check('la celda muestra «Qué buscar» y la columna se llama Perfil defensivo ideal',
+  /Qué buscar:/.test(fuenteScout) && />Perfil defensivo ideal</.test(fuenteScout));
+check('la nota dice que el nombre lo elige el cuerpo técnico',
+  /Qué jugador de tu plantel<\/b> reúne esos atributos lo decide el cuerpo técnico/.test(fuenteScout));
+/* Lo que el box score NO trae es el trabajo sin pelota, y es parte de por
+   qué el nombre lo pone el cuerpo técnico. */
+check('y aclara qué es lo que el box score NO mide',
+  /trabajo sin pelota/.test(fuenteScout) && /no trae altura ni posición/.test(fuenteScout));
 
 /* =====================================================================
    REGLA DE ORO DEL CRUCE · el defensor sale SIEMPRE del otro equipo
@@ -1599,26 +1584,17 @@ console.log('\n23. CRUCE DE PLANTELES · el defensor nunca es un compañero');
 console.log('═'.repeat(70));
 
 const equipoDe = (nombre) => (filasPJ.find(f => f['NOMBRES'] === nombre) || {})['EQUIPO'];
-const candidatosDe = (inf) => inf.jugadoresRival.filas
-  .reduce((acc, f) => acc.concat(f.marca.candidatos || []), []);
 
 /* (a) del pedido: en un cruce, cada tabla propone defensores del OTRO. */
 const cruceA = S.informePrePartido(idx, 'ATENAS A', 'PLATENSE A', { claveRival: 'PLATENSE A' });
 const cruceB = S.informePrePartido(idx, 'ATENAS A', 'PLATENSE A', { claveRival: 'ATENAS A' });
 
-check('scouteando a PLATENSE A, los defensores son de ATENAS A',
-  candidatosDe(cruceA).length > 0 && candidatosDe(cruceA).every(c => c.equipo === 'ATENAS A'),
-  candidatosDe(cruceA).map(c => c.nombre + '/' + c.equipo).join('|'));
-check('scouteando a ATENAS A, los defensores son de PLATENSE A',
-  candidatosDe(cruceB).length > 0 && candidatosDe(cruceB).every(c => c.equipo === 'PLATENSE A'),
-  candidatosDe(cruceB).map(c => c.nombre + '/' + c.equipo).join('|'));
-/* El corazón del bug, dicho al revés: nadie puede defender a un compañero. */
-check('NINGÚN jugador aparece como defensor de su propio compañero de equipo',
-  candidatosDe(cruceA).every(c => c.equipo !== cruceA.claveRival) &&
-  candidatosDe(cruceB).every(c => c.equipo !== cruceB.claveRival));
-check('el defensor propuesto nunca es el atacante mismo',
-  cruceB.jugadoresRival.filas.every(f =>
-    (f.marca.candidatos || []).every(c => c.nombre !== f.nombre)));
+check('cada fila del informe trae el perfil ideal y su guía, sin candidatos',
+  cruceA.jugadoresRival.filas.length > 0 && cruceA.jugadoresRival.filas.every(f =>
+    !!f.marca.defensor && !!f.marca.queBuscar && f.marca.queBuscar.texto.length > 0 && f.marca.candidatos === undefined),
+  cruceA.jugadoresRival.filas.map(f => f.marca.defensor).join(' | '));
+check('la guía de cada fila es la de SU perfil, no una genérica',
+  cruceB.jugadoresRival.filas.every(f => f.marca.queBuscar.texto === S.queBuscar(f.marca.defensor).texto));
 
 /* `plantelDefensor` como unidad: los tres caminos. */
 check('plantelDefensor() con claveNuestro explícita devuelve ESE plantel',
@@ -1640,111 +1616,27 @@ check('y jugadoresClave ya no resuelve el plantel por su cuenta',
     fuenteCruce.slice(fuenteCruce.indexOf('function jugadoresClave'))));
 
 /* =====================================================================
-   ALGORITMO DE DOS PASOS · biotipo primero, métricas después
+   LOS DADOS DE BAJA NO DEFIENDEN · plantelDefensor como plantelOrdenado
    ===================================================================== */
-console.log('\n24. DEFENSORES EN DOS PASOS · match posicional y luego ranking');
+console.log('\n24. PLANTEL QUE DEFIENDE · sin los dados de BAJA');
 console.log('═'.repeat(70));
 
-check('un atacante interior admite interiores',
-  S.compatiblePosicional({ esInterior: true }, { interior: 1, perimetral: 0 }));
-check('y rechaza perimetrales puros',
-  !S.compatiblePosicional({ esInterior: true }, { interior: 0, perimetral: 1 }));
-check('un atacante perimetral admite perimetrales y rechaza interiores puros',
-  S.compatiblePosicional({ esPerimetral: true }, { interior: 0, perimetral: 1 }) &&
-  !S.compatiblePosicional({ esPerimetral: true }, { interior: 1, perimetral: 0 }));
-/* El híbrido pasa en los dos sentidos: no tener origen resuelto es falta de
-   dato, no un dato en contra. */
-check('el híbrido (sin origen resuelto) pasa contra los dos biotipos',
-  S.compatiblePosicional({ esInterior: true }, { interior: 0, perimetral: 0 }) &&
-  S.compatiblePosicional({ esPerimetral: true }, { interior: 0, perimetral: 0 }));
-check('sin perfil de atacante no se filtra nada',
-  S.compatiblePosicional(null, { interior: 0, perimetral: 1 }));
-
-/* EL TEST DECISIVO DEL ORDEN.
-
-   Se fabrican dos defensores donde el mejor por MÉTRICAS es del biotipo
-   equivocado: un ala con tapas y rebote enormes contra un interior flojo en
-   todo. Si el ranking corriera primero, el ala ganaría. Con el filtro
-   adelante, contra un atacante interior el ala ni compite. */
-/* Los perfiles leen con `nn()`, que solo acepta números YA parseados: las
-   filas del fixture las convierte `construirIndice`, y estas se arman a
-   mano, así que hay que convertirlas igual o todo sale null. */
-const aNumeros = (f) => {
-  const o = {};
-  Object.keys(f).forEach(k => {
-    const v = f[k];
-    if (k === 'NOMBRES' || k === 'EQUIPO' || k === 'FASE') { o[k] = v; return; }
-    const n = parseFloat(String(v).replace(',', '.'));
-    o[k] = isFinite(n) ? n : v;
-  });
-  return o;
-};
-const plantelMixto = [
-  aNumeros(jug('MURO, INTERIOR', 'ESPEJO', {
-    MIN: '25', T3I: '0', T2I: '8', TC: '0', PR: '0,2', RD: '2', 'RD%': '0,08', RO: '2', 'RO%': '0,09',
-    RT: '4', 'PT3%': '0,00', 'PT2%': '0,60', FC: '2',
-  })),
-  aNumeros(jug('ALA, TAPADORA', 'ESPEJO', {
-    MIN: '25', T3I: '6', T2I: '4', TC: '4', PR: '3', RD: '9', 'RD%': '0,30', RO: '5', 'RO%': '0,20',
-    RT: '14', 'PT3%': '0,55', 'PT2%': '0,30', FC: '2',
-  })),
-];
-const sMixto = S.señalesPlantel(idx, plantelMixto);
-const muro = sMixto.find(p => p.nombre === 'MURO, INTERIOR');
-const ala = sMixto.find(p => p.nombre === 'ALA, TAPADORA');
-check('la fixture mixta resuelve los dos biotipos como se pretende',
-  muro.interior === 1 && ala.perimetral === 1,
-  'muro int=' + muro.interior + ' ala per=' + ala.perimetral);
-check('y el perimetral es efectivamente el mejor por métricas defensivas',
-  ala.n.tc > muro.n.tc && ala.n.rd > muro.n.rd && ala.n.pr > muro.n.pr);
-
-const sinFiltro = S.candidatosPropios('especialistaInterior', sMixto, {});
-const conFiltro = S.candidatosPropios('especialistaInterior', sMixto, {},
-  { atacante: { esInterior: true } });
-check('sin el paso 1, el ranking por métricas pone primero al perimetral',
-  sinFiltro[0].nombre === 'ALA, TAPADORA', sinFiltro.map(c => c.nombre).join(' > '));
-check('CON el paso 1, contra un atacante interior gana el interior',
-  conFiltro[0].nombre === 'MURO, INTERIOR', conFiltro.map(c => c.nombre).join(' > '));
-check('el incompatible queda FUERA de la lista, no solo más abajo',
-  conFiltro.every(c => c.nombre !== 'ALA, TAPADORA'), conFiltro.length);
-/* Y al revés, para descartar que el filtro sea un sesgo fijo hacia adentro. */
-const contraPerimetral = S.candidatosPropios('especialistaPerimetral', sMixto, {},
-  { atacante: { esPerimetral: true } });
-check('contra un atacante perimetral gana el perimetral',
-  contraPerimetral[0].nombre === 'ALA, TAPADORA');
-
-/* Rank 1 / 2 / 3 para la rotación: el DT necesita el recambio cuando el
-   primero carga faltas. */
-const conRank = S.candidatosPropios('especialistaInterior', señales, {});
-check('cada candidato trae su rank, correlativo desde 1',
-  conRank.every((c, i) => c.rank === i + 1), conRank.map(c => c.rank).join(','));
-check('se devuelven hasta 3: principal más dos de recambio',
-  conRank.length === Math.min(3, señales.length));
-
-/* Degradación: sin nadie compatible se sirve el plantel entero marcado como
-   incompatible. Una celda vacía no le dice al DT que el cruce es
-   problemático, le dice que el panel se rompió. */
-const soloPerimetrales = sMixto.filter(p => p.perimetral);
-const degradado = S.candidatosPropios('especialistaInterior', soloPerimetrales, {},
-  { atacante: { esInterior: true } });
-check('sin ningún compatible NO devuelve vacío: degrada al plantel completo',
-  degradado.length > 0);
-check('y lo marca con compatible:false para que la UI lo pueda decir',
-  degradado.every(c => c.compatible === false));
-check('cuando sí hubo match, los candidatos van con compatible:true',
-  conFiltro.every(c => c.compatible === true));
-
-/* El piso de minutos es previo a los dos pasos. */
-const conSuplente = S.señalesPlantel(idx, plantelMixto.concat([
-  aNumeros(jug('NENE, MINUTOS', 'ESPEJO', { MIN: '4', T3I: '0', T2I: '8', 'PT3%': '0,00' })),
-]));
-check('el piso de minutos filtra antes que el biotipo',
-  S.candidatosPropios('especialistaInterior', conSuplente, {}, { atacante: { esInterior: true } })
-    .every(c => c.nombre !== 'NENE, MINUTOS'));
-
-check('el informe pasa el perfil del atacante al motor de candidatos',
-  /candidatosPropios\(cat\.id, señalesPropias, cargaPropia, \{ atacante: f\.perfil \}\)/
-    .test(fuenteCruce));
+const platense = S.plantelDefensor(idx, 'ATENAS A', 'PLATENSE A');
+const dadoDeBaja = platense.length ? platense[0]['NOMBRES'] : null;
+global.SGADD_BUZON = { enPlan: (n) => n !== dadoDeBaja };
+const sinBaja = S.plantelDefensor(idx, 'ATENAS A', 'PLATENSE A');
+const sinBajaRespaldo = S.plantelDefensor(idx, 'ATENAS A', null);
+delete global.SGADD_BUZON;
+check('plantelDefensor excluye al dado de BAJA en el cruce explícito',
+  !!dadoDeBaja && sinBaja.length === platense.length - 1 && sinBaja.every(j => j['NOMBRES'] !== dadoDeBaja),
+  platense.length + ' → ' + sinBaja.length);
+check('y también en el respaldo por esEquipoPropio',
+  sinBajaRespaldo.every(j => j['NOMBRES'] !== dadoDeBaja));
+check('sin el módulo de estados entran todos, como antes',
+  S.plantelDefensor(idx, 'ATENAS A', 'PLATENSE A').length === platense.length);
+check('plantelOrdenado y plantelDefensor usan el MISMO criterio (una sola función)',
+  /function plantelOrdenado[\s\S]{0,200}\.filter\(enPlan\)/.test(fuenteCruce)
+  && (fuenteCruce.match(/SGADD_BUZON\.enPlan\(/g) || []).length === 1);
 
 /* =====================================================================
    EXPORTACIÓN A PDF · paginado, colores y la columna que se perdía
