@@ -499,7 +499,51 @@ const SGADD_LANDING = (function () {
    * sección sola y grande. Así el menú se recorre y cada click contesta
    * "¿qué hay acá?" sin prometer datos que sin club no existen.
    */
+  /** «hogar-social» → «Hogar Social». Sin sesión no hay catálogo que
+      diga el nombre real, y el slug es lo que el cliente ve en el link. */
+  function nombreDeSlug(slug) {
+    return String(slug || '').split('-').filter(Boolean)
+      .map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+  }
+
+  function enPuerta() {
+    try { return typeof CLUB !== 'undefined' && !!CLUB.puertaDeIngreso && CLUB.puertaDeIngreso(); }
+    catch (e) { return false; }
+  }
+
+  /**
+   * LA PUERTA DE INGRESO: `?club=<id>` sin sesión (ver `sgadd-club.js`).
+   *
+   * Una sola tarjeta, la misma en todas las secciones: no hay datos que
+   * mostrar y la vista previa del producto sería ruido para alguien que ya
+   * es cliente y solo quiere entrar. El modal se abre solo al arrancar;
+   * estos botones son para volver a abrirlo si lo cerró.
+   */
+  function puerta(slug) {
+    const nombre = nombreDeSlug(slug);
+    return `<div class="card rounded-xl p-6 sm:p-8 border border-hairline text-center max-w-xl mx-auto">
+      <img src="${LOGO_GRANDE}" alt="" width="72" height="72" class="mx-auto mb-4 landing-logo">
+      <h2 class="font-display uppercase tracking-wide text-lg text-ink mb-2">Ingresá a tu panel</h2>
+      <p class="text-sm text-muted leading-relaxed">
+        ${nombre ? 'Este es el panel de <b class="text-ink">' + esc(nombre) + '</b>. ' : ''}Entrá con el mail
+        que dio de alta tu club y tu clave. Si es tu primer ingreso, usá el código de invitación que te
+        llegó en el mail de bienvenida.
+      </p>
+      <div class="landing-hero-acciones">
+        <button type="button" class="landing-hero-cta" onclick="SGADD_LOGIN.abrir('ingresar')">Ingresar</button>
+        <button type="button" class="landing-hero-sec" onclick="SGADD_LOGIN.abrir('fijar')">Tengo un código de invitación</button>
+      </div>
+      <p class="text-[11px] text-muted mt-4">¿No tenés acceso? Escribinos a
+        <a href="mailto:${MAIL}" class="text-accent hover:underline">${MAIL}</a>.</p>
+    </div>`;
+  }
+
   function vista(seccion) {
+    if (enPuerta() && seccion !== 'glosario') {
+      let slug = '';
+      try { slug = (typeof CLUB !== 'undefined' && CLUB.estado && CLUB.estado.id) || ''; } catch (e) {}
+      return puerta(slug);
+    }
     /* EL GLOSARIO SE MUESTRA ENTERO, no como vista previa: es la unica
        seccion que no depende de los datos de ningun club —son
        definiciones— asi que en la landing funciona igual de bien que
@@ -564,7 +608,7 @@ const SGADD_LANDING = (function () {
   }
 
   return {
-    activa, vista, bienvenida, tarjetaSeccion, contacto, aplicarMarca,
+    activa, vista, puerta, nombreDeSlug, bienvenida, tarjetaSeccion, contacto, aplicarMarca,
     planes, tarjetaPlan, seccionPlanes, consultar, alcanza, alcanzaBloque, partidosPorCiclo,
     RUTA_DEMO, ANTERIOR, BLOQUES, idsDeBloques,
     SECCIONES, ORDEN, PLANES_MAILS, MARCA, MAIL, INSTAGRAM, ARROBA, LOGO, LOGO_GRANDE,

@@ -76,8 +76,9 @@ node test-pbp.js           # 119 tests · la capa de laboratorio de play-by-play
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
 
-node test-mails.js         # 107 tests · los mails institucionales: plantillas sin huecos, el
-                           #             día de Argentina, la idempotencia del cron, la ficha y el SMTP
+node test-mails.js         # 148 tests · los mails institucionales: plantillas sin huecos, el
+                           #             día de Argentina, la idempotencia del cron, la ficha, el SMTP,
+                           #             el código adentro de la bienvenida y la puerta de ingreso
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -89,7 +90,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5991 tests en total. Todos tienen que dar verde antes de commitear.**
+**6032 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -9146,12 +9147,74 @@ también `MAIL_APP_PASSWORD` o `GMAIL_APP_PASSWORD`). **Sin ella no sale
 nada**: la ficha se guarda igual, la bienvenida responde `SIN_CREDENCIAL`,
 el cron no reclama ningún aviso y el Panel Master lo avisa en el bloque 4.
 
-### La bienvenida NO manda la clave ni el código de invitación
+### La bienvenida LLEVA el código de invitación (desde 2026-09-18)
 
-El código se muestra una sola vez y el servidor guarda su huella (punto
-29). El mail da el link al panel y dice que se entra con ese mismo mail; el
-código sigue viajando como hasta ahora. Tampoco manda un link firmado: esos
-no se pueden revocar.
+Estuvo al revés —el código se copiaba de la pantalla y se pasaba por otro
+canal— y se cambió a pedido del club: eran dos pasos que el admin cosía a
+mano. Ahora el alta y la bienvenida son un solo gesto.
+
+`server/lib/invitacion.js` → `asegurar(club, email)` decide sobre el padrón
+de hoy qué le toca a ese mail, y lo aplica con las MISMAS funciones de
+`clientes.js` (el cupo, un mail por club y el admin que no se da de alta
+no se repiten en otro lado):
+
+```
+no está            → ALTA con código (usa un cupo)
+invitado sin clave → código NUEVO: el viejo no se puede volver a leer
+ya tiene clave     → nada: el mail le recuerda con qué mail entra
+otro club / admin  → la bienvenida sale SIN código y la respuesta dice por qué
+```
+
+Lo llaman los dos caminos:
+
+- **La ficha** (`POST /api/v1/fichas` con `enviarBienvenida` o `reenviar`):
+  antes de mandar, asegura el acceso del mail institucional. Si el padrón
+  no se puede leer, **no sale el mail**: prometería un acceso que puede no
+  existir. La respuesta trae `acceso`.
+- **«Quiénes pueden entrar»** (`POST /api/v1/clientes`, alta o
+  reinvitación): `mails.manejarClientesConBienvenida` **envuelve** al
+  handler de accesos sin tocar `handlers.js` y, si generó un código, manda
+  la bienvenida a ESE mail —puede no ser el institucional— de la primera
+  categoría con acceso (`categoriaDeBienvenida`). `enviarMail: false` lo
+  apaga. Que el mail falle **no deshace el alta**.
+
+Lo que hay que respetar:
+
+- **El código va en el CUERPO, nunca en el link.** El botón lleva
+  `?club=<id>&ingreso=codigo` y nada más: una URL con un secreto queda en
+  el historial y en los registros de quien sirve la página. Hay test.
+- **La clave no viaja nunca**: el código solo abre la elección de clave,
+  una vez y con vencimiento.
+- **El código sigue viniendo en la respuesta**, para el «Copiar» de
+  respaldo. En la tarjeta queda plegado si el mail salió y a la vista si
+  no: es la única vez que se puede leer.
+- **Reinvitar invalida el código anterior**, y el modal lo dice.
+
+### La PUERTA DE INGRESO · `?club=<id>` sin sesión
+
+Es el link de la bienvenida y el de «Abrir su panel». Medido antes del
+arreglo con `?club=hogar-social`: `clubes/hogar-social.json` en 404, el
+cartel rojo, la marca y las categorías de Reconquista (los defaults), «1
+hoja con errores» y ningún login a la vista. Sin token el panel no puede
+bajar un dato, así que ese arranque no tenía nada que mostrar.
+
+`CLUB.puertaDeIngreso()` (en `sgadd-club.js`, que carga primero) es
+verdadero con `?club=`, backend configurado, sin `?token=` en la URL y sin
+un token VIGENTE en el storage (mira el `exp`, no la firma: decide qué
+pantalla mostrar, no quién es). Con la puerta:
+
+- `esLanding()` da verdadero: no se pide el JSON del club, ni el
+  catálogo, ni un libro, y la marca es la de MotorStats;
+- cada sección (menos el glosario) muestra `SGADD_LANDING.puerta()`: el
+  nombre sale del slug, con «Ingresar» y «Tengo un código de invitación»;
+- `init()` abre el login solo, en «Fijá tu clave» si viene
+  `?ingreso=codigo`;
+- después de entrar **se recarga siempre** (`CLUB.estado.puerta`), aunque
+  el club sea el mismo: el arranque fue el de la landing y repintar encima
+  dejaría la vista sin datos.
+
+El 404 de `club-ejemplo.json` que se vio el 2026-09-18 era el link del
+mail de PRUEBA (`probar-mails.js` usa un club ficticio), no del panel.
 
 ### El Panel Master · bloque «4 · Contacto y suscripción»
 

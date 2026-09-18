@@ -80,11 +80,71 @@ const CLUB = (function () {
    * `SGADD_LANDING.activa()` delega aca: una sola implementacion, sin
    * carrera de scripts y sin dos formas de contestar lo mismo.
    */
+  /* =====================================================================
+     LA PUERTA DE INGRESO · `?club=<id>` SIN SESIÓN
+
+     Es el link del mail de bienvenida y el de «Abrir su panel». Sin token
+     el panel no puede bajar un solo dato —los libros salen del backend y
+     el backend pide token— así que arrancar como si hubiera sesión solo
+     producía ruido, medido en el navegador con `?club=hogar-social`:
+
+       clubes/hogar-social.json → 404 en consola, y el cartel rojo de
+       «Configuración del club no encontrada»
+       la marca y las categorías de Reconquista (los valores por defecto)
+       «1 hoja con errores» en el header, y ninguna forma de entrar a la vista
+
+     Con la puerta, ese arranque se comporta como la LANDING —no pide el
+     JSON del club, ni el catálogo, ni un libro; la marca es la de
+     MotorStats— y en vez de la bienvenida del producto cada sección
+     muestra la tarjeta de ingreso, con el modal de login abierto.
+
+     Se decide ACÁ porque este módulo carga PRIMERO (la misma razón que
+     `esLanding`), y por eso mira el storage a mano: `SGADD_AUTH` todavía
+     no existe. Un link firmado (`?token=`) no es la puerta: trae la sesión
+     en la URL. Sin backend configurado tampoco: ahí no hay contra qué
+     autenticar y el panel lee como siempre.
+     ===================================================================== */
+  const CLAVE_TOKEN = 'sgadd.token';
+
+  /** ¿Hay un token guardado y todavía vigente? Mira el `exp` sin validar la
+      firma: esto decide qué pantalla mostrar, no quién es. La firma la
+      valida el servidor en cada pedido. */
+  function tokenGuardadoVigente() {
+    const almacenes = [];
+    try { if (typeof sessionStorage !== 'undefined') almacenes.push(sessionStorage); } catch (e) {}
+    try { if (typeof localStorage !== 'undefined') almacenes.push(localStorage); } catch (e) {}
+    for (const alm of almacenes) {
+      let t = null;
+      try { t = alm.getItem(CLAVE_TOKEN); } catch (e) { t = null; }
+      if (!t) continue;
+      try {
+        const cuerpo = String(t).split('.')[1];
+        const json = JSON.parse(atob(cuerpo.replace(/-/g, '+').replace(/_/g, '/')));
+        if (!json.exp || json.exp * 1000 > Date.now()) return true;
+      } catch (e) { return true; /* ilegible: que decida el servidor */ }
+    }
+    return false;
+  }
+
+  function puertaDeIngreso() {
+    if (enDemo()) return false;
+    let q;
+    try { q = new URLSearchParams(window.location.search); } catch (e) { return false; }
+    if (!q.get('club')) return false;
+    if (q.has('token') || q.has('access_token')) return false;
+    let api = '';
+    try { api = q.get('api') || (typeof window !== 'undefined' && window.SGADD_API) || ''; } catch (e) { api = ''; }
+    if (!api) return false;
+    return !tokenGuardadoVigente();
+  }
+
   function esLanding() {
     /* EN LA DEMO NO HAY LANDING: se entra a ver el panel, que es todo el
        punto. Sin esto el router devolveria la tarjeta explicativa en cada
        seccion —la demo no lleva `?club=`— y no se veria un solo dato. */
     if (enDemo()) return false;
+    /* La puerta de ingreso ES una landing: no hay datos que pedir. */
+    if (puertaDeIngreso()) return true;
     try {
       if (new URLSearchParams(window.location.search).get('club')) return false;
     } catch (e) { return false; }
@@ -121,6 +181,18 @@ const CLUB = (function () {
     const id = idDesdeUrl();
     estado.id = id;
     const url = BASE + 'clubes/' + encodeURIComponent(id) + '.json';
+    /* En la puerta de ingreso NO se pide el JSON: la pantalla es neutra
+       (marca de MotorStats) y un club dado de alta desde el Panel Master no
+       tiene archivo, así que el pedido era un 404 garantizado en consola.
+       Después del login la página se recarga con sesión y ahí sí. */
+    if (puertaDeIngreso()) {
+      estado.puerta = true;
+      estado.cfg = null;
+      estado.error = '';
+      aplicarSeguro();
+      estado.cargado = true;
+      return null;
+    }
     try {
       const r = await fetch(url, { cache: 'no-cache' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -199,6 +271,10 @@ const CLUB = (function () {
   function aplicar() {
     const c = estado.cfg;
     if (!c) {
+      /* En la puerta de ingreso no falta nada: no se pidió el JSON a
+         propósito. Va la marca de MotorStats, igual que en la landing, y
+         cuando el DOM ya existe (`SGADD_LANDING` carga después). */
+      if (estado.puerta) { marcaNeutra(); return; }
       if (esperaCatalogo()) { estado.cartelPendiente = true; return; }
       cartelError();
       return;
@@ -206,6 +282,15 @@ const CLUB = (function () {
     aplicarDatos(c);
     aplicarUI(c);
     aplicado = true;
+  }
+
+  function marcaNeutra() {
+    if (typeof document === 'undefined') return;
+    const poner = () => {
+      try { if (typeof SGADD_LANDING !== 'undefined') SGADD_LANDING.aplicarMarca(); } catch (e) {}
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', poner, { once: true });
+    else poner();
   }
 
   /** Catalogo, equipo propio, escudos. No toca el DOM. */
@@ -738,7 +823,7 @@ const CLUB = (function () {
     return true;
   }
 
-  return { TEMA, estado, cargar, aplicar: aplicarSeguro, reconciliar, confirmarSinConfig, reconciliarConfig, patronDeCategoria, credito, idDesdeUrl, esLanding, enDemo, debug, marcarRender,
+  return { TEMA, estado, cargar, aplicar: aplicarSeguro, reconciliar, confirmarSinConfig, reconciliarConfig, patronDeCategoria, credito, idDesdeUrl, esLanding, puertaDeIngreso, enDemo, debug, marcarRender,
            reintentarEscudo, aclararHastaLegible, oscurecerHastaLegible, contraste,
            mezclarHex, colorDeEscudo, colorDeImagen,
            get cfg() { return estado.cfg; }, get aplicado() { return aplicado; } };

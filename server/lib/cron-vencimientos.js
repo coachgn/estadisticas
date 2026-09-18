@@ -197,6 +197,13 @@ async function enviarBienvenida(clubId, slug, deps) {
   const catalogo = d.catalogo || (await require('./catalogo.js').cargarParaEscribir(d)).catalogo;
   const ficha = (await fichas.leer(clubId, slug, d)) || {};
   const datos = datosCliente(catalogo, clubId, slug, ficha, { ahora: d.ahora, panelUrl: d.panelUrl });
+  /* EL ACCESO VIAJA EN EL MAIL (`invitacion`): el alta o la reinvitación
+     acaban de generar el código y va adentro, con el link que abre el
+     panel directo en «Tengo un código». `para` pisa el mail de la ficha:
+     una invitación desde «Quiénes pueden entrar» va a ESE mail, que puede
+     no ser el institucional. */
+  if (d.para) datos.para = String(d.para).trim();
+  if (d.invitacion) datos.invitacion = d.invitacion;
   const base = { clubId: clubId, slug: slug, hito: 'bienvenida', para: datos.para };
   if (!datos.para) return Object.assign(base, { resultado: 'omitido', mensaje: 'La ficha no tiene mail institucional.' });
   if (!d.forzar && fichas.yaEnviado(ficha, 'bienvenida')) {

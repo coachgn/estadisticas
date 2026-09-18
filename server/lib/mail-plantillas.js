@@ -225,23 +225,98 @@ function resumenHtml(plan) {
 
 /* ------------------------------------------------------------- BIENVENIDA */
 
+/**
+ * EL ACCESO QUE VIAJA EN LA BIENVENIDA. Tres casos, y el mail dice el que es:
+ *
+ *   invitación   `{email, codigo, venceEn}` · el alta o la reinvitación
+ *                acaban de generar el código: va ADENTRO del mail, con el
+ *                link que abre el panel directo en «Tengo un código».
+ *   con clave    `{email, conClave: true}` · ya eligió su clave: se le dice
+ *                con qué mail entra y nada más. NO se le genera un código:
+ *                no le hace falta y reinvitarlo sin pedirlo es ruido.
+ *   sin datos    el texto genérico de siempre.
+ *
+ * EL CÓDIGO SOLO ABRE LA ELECCIÓN DE CLAVE, una vez y con vencimiento; la
+ * clave la elige el cliente y NUNCA viaja por mail. El código va en el
+ * CUERPO y no en el link: una URL con un secreto queda en el historial del
+ * navegador y en los registros de quien sirve la página.
+ */
+function datosAcceso(datos) {
+  const inv = (datos && datos.invitacion) || null;
+  if (inv && inv.codigo) {
+    const vence = inv.venceEn ? fechaLarga(new Date(inv.venceEn - 3 * 3600000).toISOString().slice(0, 10)) : '';
+    return { tipo: 'codigo', email: inv.email || datos.para || '', codigo: String(inv.codigo), vence: vence };
+  }
+  if (inv && inv.conClave) return { tipo: 'clave', email: inv.email || datos.para || '' };
+  return { tipo: 'generico' };
+}
+
+function urlIngreso(url, tipo) {
+  if (tipo !== 'codigo') return url;
+  return url + (url.indexOf('?') === -1 ? '?' : '&') + 'ingreso=codigo';
+}
+
+function accesoHtml(a) {
+  if (a.tipo === 'codigo') {
+    return `<p style="margin:0 0 8px;"><strong>Tu acceso.</strong> Ya estás dado de alta. Tocá el botón y elegí tu clave con este código:</p>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 10px;border:1px solid #f3d19c;border-radius:8px;background:#fff8ec;">
+  <tr><td style="padding:12px 14px;">
+    <p style="margin:0 0 4px;font-size:12px;color:#6b7280;">Mail de ingreso</p>
+    <p style="margin:0 0 10px;font-size:14px;font-weight:700;color:#111827;word-break:break-all;">{{ACCESO_EMAIL}}</p>
+    <p style="margin:0 0 4px;font-size:12px;color:#6b7280;">Código de invitación${a.vence ? ' · vence el {{ACCESO_VENCE}}' : ''}</p>
+    <p style="margin:0;font-family:Consolas,Menlo,monospace;font-size:14px;font-weight:700;color:#111827;word-break:break-all;">{{ACCESO_CODIGO}}</p>
+  </td></tr></table>
+<p style="margin:0 0 6px;font-size:13px;color:#374151;">En el panel: tu mail, el código y una clave nueva de al menos 12 caracteres que elegís vos.
+El código sirve <strong>una sola vez</strong>; después entrás con tu mail y tu clave.</p>`;
+  }
+  if (a.tipo === 'clave') {
+    return `<p style="margin:0 0 6px;"><strong>Tu acceso.</strong> Ingresá con <strong>{{ACCESO_EMAIL}}</strong> y la clave que ya elegiste.</p>`;
+  }
+  return `<p style="margin:0 0 6px;"><strong>Tu acceso.</strong> Ingresá con este mismo mail. Si todavía no elegiste tu clave,
+usá el código de invitación que te pasamos junto con el alta; la clave la elegís vos en el primer ingreso.</p>`;
+}
+
+function accesoTexto(a) {
+  if (a.tipo === 'codigo') {
+    return `TU ACCESO
+Ya estás dado de alta. Entrá en {{URL_INGRESO}} y elegí tu clave con este código.
+Mail de ingreso: {{ACCESO_EMAIL}}
+Código de invitación: {{ACCESO_CODIGO}}${a.vence ? '\nVence el {{ACCESO_VENCE}}.' : ''}
+En el panel: tu mail, el código y una clave nueva de al menos 12 caracteres que elegís vos. El código sirve una sola vez; después entrás con tu mail y tu clave.`;
+  }
+  if (a.tipo === 'clave') {
+    return `TU ACCESO
+Ingresá en {{URL_INGRESO}} con {{ACCESO_EMAIL}} y la clave que ya elegiste.`;
+  }
+  return `TU ACCESO
+Ingresá con este mismo mail en {{URL_INGRESO}}
+Si todavía no elegiste tu clave, usá el código de invitación que te pasamos junto con el alta.`;
+}
+
 function bienvenida(datos) {
   const v = variables(datos);
+  const a = datosAcceso(datos);
   const asunto = 'Bienvenidos a MotorStats · ' + v.CLUB + ' · ' + v.CATEGORIA;
   v.ASUNTO = asunto;
-  v.PREHEADER = 'Tu panel de ' + v.CATEGORIA + ' ya está activo. Acá tenés el acceso y el resumen de tu plan.';
+  v.PREHEADER = a.tipo === 'codigo'
+    ? 'Tu panel de ' + v.CATEGORIA + ' ya está activo. Adentro tenés tu código para elegir la clave.'
+    : 'Tu panel de ' + v.CATEGORIA + ' ya está activo. Acá tenés el acceso y el resumen de tu plan.';
+  v.URL_INGRESO = urlIngreso(v.URL_PANEL, a.tipo);
+  v.ACCESO_EMAIL = a.email || '';
+  v.ACCESO_CODIGO = a.codigo || '';
+  v.ACCESO_VENCE = a.vence || '';
   const cuerpo = `<p style="margin:0 0 12px;font-size:17px;font-weight:700;">{{SALUDO}}:</p>
 <p style="margin:0 0 12px;">Te damos la bienvenida a <strong>MotorStats</strong>. El panel de <strong>{{CLUB}} · {{CATEGORIA}}</strong>
 ya está activo: estadísticas avanzadas, perfiles de jugadores e informes con los datos de tu torneo, actualizados partido a partido.</p>
 {{RESUMEN}}
-<p style="margin:0 0 6px;"><strong>Tu acceso.</strong> Ingresá con este mismo mail. Si todavía no elegiste tu clave,
-usá el código de invitación que te pasamos junto con el alta; la clave la elegís vos en el primer ingreso.</p>
+{{ACCESO}}
 {{BOTON}}
-<p style="margin:6px 0 0;font-size:12px;color:#6b7280;">Si el botón no abre, copiá este link: <a href="{{URL_PANEL}}" style="color:#b45309;word-break:break-all;">{{URL_PANEL}}</a></p>
+<p style="margin:6px 0 0;font-size:12px;color:#6b7280;">Si el botón no abre, copiá este link: <a href="{{URL_INGRESO}}" style="color:#b45309;word-break:break-all;">{{URL_INGRESO}}</a></p>
 {{POLITICA}}`;
   const html = rellenar(marco({ rotulo: 'Bienvenida y configuración de tu cuenta', cuerpo: cuerpo }), v, {
     RESUMEN: rellenar(resumenHtml(v.PLAN), v),
-    BOTON: boton(v.URL_PANEL, 'Ingresar a mi Panel'),
+    ACCESO: rellenar(accesoHtml(a), v),
+    BOTON: boton(v.URL_INGRESO, a.tipo === 'codigo' ? 'Elegir mi clave e ingresar' : 'Ingresar a mi Panel'),
     POLITICA: rellenar(politicaHtml(), v),
   });
   const texto = rellenarTexto(`{{SALUDO}}:
@@ -254,9 +329,7 @@ Categoría: {{CATEGORIA}}
 Plan activo: {{PLAN_NOMBRE}}
 Vencimiento: {{VENCE}}
 
-TU ACCESO
-Ingresá con este mismo mail en {{URL_PANEL}}
-Si todavía no elegiste tu clave, usá el código de invitación que te pasamos junto con el alta.
+${accesoTexto(a)}
 
 ${politicaTexto()}
 ${pieTexto()}`, v);
@@ -366,5 +439,5 @@ ${pieTexto()}`, v);
 
 module.exports = {
   REMITENTE, NOMBRE_REMITENTE, WHATSAPP, INSTAGRAM, PANEL_URL, PLANES, RENOVACIONES, DIAS_AVISO,
-  bienvenida, recordatorio, rellenar, rellenarTexto, variables, fechaLarga, esc,
+  bienvenida, recordatorio, datosAcceso, urlIngreso, rellenar, rellenarTexto, variables, fechaLarga, esc,
 };

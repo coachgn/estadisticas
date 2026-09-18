@@ -10,6 +10,8 @@
      5. el SMTP contra un servidor de mentira
      6. las rutas: el secreto del cron, el gate de admin
      7. el Panel Master y el corte a las 23:59 de Argentina
+     8. el acceso ADENTRO de la bienvenida: el alta genera el código y el
+        mail lo lleva; y la puerta de ingreso de `?club=` sin sesión
 
    Nada de esto toca Upstash ni Gmail de verdad.
    ===================================================================== */
@@ -28,6 +30,16 @@ const cron = require('./server/lib/cron-vencimientos.js');
 const { kvMemoria } = require('./server/lib/kv-memoria.js');
 const mails = require('./server/api/mails.js');
 const auth = require('./server/lib/auth.js');
+const invitacion = require('./server/lib/invitacion.js');
+const clientes = require('./server/lib/clientes.js');
+
+/* El padrón de accesos vive en una clave simple de Upstash (`kv.leer` /
+   `kv.escribir`), no en un hash: se reemplazan esas dos, como hace
+   test-clientes.js. Nada sale a la red. */
+const kvReal = require('./server/lib/kv.js');
+const KV_SIMPLE = {};
+kvReal.leer = async (k) => ({ valor: KV_SIMPLE[k] !== undefined ? JSON.parse(KV_SIMPLE[k]) : null, error: null });
+kvReal.escribir = async (k, v) => { KV_SIMPLE[k] = JSON.stringify(v); };
 
 let ok = 0, fail = 0;
 function check(nombre, cond, detalle) {
@@ -79,7 +91,7 @@ const sumar = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86400000
       && /instagram\.com\/motorstats\.ar/.test(m.html)));
   const numeroDemo = (/WHATSAPP\s*=\s*'(\d+)'/.exec(fs.readFileSync('./js/sgadd-demo.js', 'utf8')) || [])[1];
   check('el WhatsApp es el MISMO número comercial de la demo y la landing', P.WHATSAPP === numeroDemo, P.WHATSAPP + ' / ' + numeroDemo);
-  check('la bienvenida NO manda la clave ni el código de invitación', !/c[oó]digo:\s*[A-Za-z0-9]{6,}/.test(bien.texto) && !/clave:\s*\S/.test(bien.texto));
+  check('sin invitación, la bienvenida NO trae ningún código (y nunca una clave)', !/c[oó]digo[^:\n]*:\s*[A-Za-z0-9_-]{6,}/.test(bien.texto) && !/clave:\s*\S/.test(bien.texto));
   check('5 días: aviso preventivo con el balance de uso',
     /vence en <strong>5 días<\/strong>/.test(todos[1].html) && /Tu balance de uso/.test(todos[1].html) && /128/.test(todos[1].html) && /2 de 4/.test(todos[1].html));
   check('el balance va SOLO en el de 5 días', !/balance de uso/i.test(todos[2].html) && !/balance de uso/i.test(todos[3].html));
@@ -362,6 +374,142 @@ const sumar = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86400000
   HUB.elegirBienvenida(false);
   check('destildar la bienvenida la saca del modal', !HUB.cambiosFicha().some(c => c.campo === 'bienvenida'));
   check('un mail inválido bloquea el guardado', (() => { HUB.alta.email = 'no-es-mail'; return /El mail institucional no es válido/.test(HUB.estadoAlta()); })());
+
+  /* ================================================================ 8 */
+  titulo('8 · EL ACCESO ADENTRO DE LA BIENVENIDA y la puerta de ingreso');
+  const COD = 'Xy7_abcDEF-0123456789ghijklmnopqrstuvwxyzAB';
+  const VENCE_INV = Date.parse('2026-09-25T12:00:00Z');
+  const conCod = P.bienvenida(Object.assign({}, datos, { para: 'dt@club.com',
+    invitacion: { email: 'dt@club.com', codigo: COD, venceEn: VENCE_INV } }));
+  check('con invitación, el código va en el HTML y en el texto', conCod.html.indexOf(COD) !== -1 && conCod.texto.indexOf(COD) !== -1);
+  check('y el mail de ingreso', /dt@club\.com/.test(conCod.html) && /Mail de ingreso: dt@club\.com/.test(conCod.texto));
+  check('con la fecha de vencimiento del código, en castellano', /vence el viernes 25 de septiembre de 2026/.test(conCod.html));
+  check('el botón abre el panel directo en «Tengo un código» (?ingreso=codigo)',
+    conCod.html.indexOf('href="https://coachgn.github.io/estadisticas/?club=ejemplo&amp;ingreso=codigo"') !== -1
+    && /Elegir mi clave e ingresar/.test(conCod.html));
+  check('EL CÓDIGO NO VA EN EL LINK: una URL con un secreto queda en historiales y registros',
+    !/href="[^"]*Xy7_abc/.test(conCod.html) && conCod.texto.split('\n').filter(l => /https?:\/\//.test(l)).every(l => l.indexOf(COD) === -1));
+  check('la clave NUNCA viaja: el mail dice que la elige el cliente', /elegís vos/.test(conCod.html) && !/clave:\s*\S/.test(conCod.texto));
+  check('ninguna llave suelta ni con invitación', !/\{\{/.test(conCod.html + conCod.texto));
+  const conClave = P.bienvenida(Object.assign({}, datos, { invitacion: { email: 'dt@club.com', conClave: true } }));
+  check('con clave ya elegida: le dice con qué mail entra y NO trae código',
+    /Ingresá con <strong>dt@club\.com<\/strong> y la clave que ya elegiste/.test(conClave.html) && !/Código de invitación/.test(conClave.html));
+  const escCod = P.bienvenida(Object.assign({}, datos, { invitacion: { email: '<x>@y.com', codigo: '<b>', venceEn: VENCE_INV } }));
+  check('el código y el mail se ESCAPAN en el HTML', escCod.html.indexOf('<b>') === -1 && escCod.html.indexOf('&lt;b&gt;') !== -1);
+
+  /* --- asegurar(): quién necesita código --- */
+  const CAT8 = {
+    cinco: { nombre: 'Club Cinco', estado: 'activo', categorias: { primera: { label: 'Primera', plan: 'PLATA', vence: sumar(HOY, 30) } } },
+    lleno: { nombre: 'Lleno', estado: 'activo', plan: 'BRONCE', categorias: { primera: { label: 'Primera' } } },
+    pausa: { nombre: 'Pausa', estado: 'activo', categorias: { a: { label: 'A', estado: 'pausado' }, b: { label: 'B' } } },
+  };
+  Object.keys(KV_SIMPLE).forEach(k => delete KV_SIMPLE[k]);
+  const a1 = await invitacion.asegurar('cinco', 'Nuevo@Club.com', CAT8, {});
+  check('un mail que no estaba: ALTA con código', a1.estado === 'alta' && typeof a1.codigo === 'string' && a1.codigo.length > 20 && a1.email === 'nuevo@club.com');
+  const pad1 = await clientes.cargar({});
+  check('y queda en el padrón, con la HUELLA del código y no el código', pad1['nuevo@club.com'] && pad1['nuevo@club.com'].club === 'cinco'
+    && JSON.stringify(pad1).indexOf(a1.codigo) === -1);
+  const a2 = await invitacion.asegurar('cinco', 'nuevo@club.com', CAT8, {});
+  check('invitado sin clave: código NUEVO (el viejo no se puede volver a leer)', a2.estado === 'reinvitado' && a2.codigo && a2.codigo !== a1.codigo);
+  const pad2 = await clientes.cargar({});
+  const fij = await clientes.fijarClave(pad2, 'nuevo@club.com', a2.codigo, 'una frase larga de prueba', Date.now());
+  check('el código del mail sirve para fijar la clave', fij.ok, fij.motivo);
+  await clientes.guardar(fij.padron, {});
+  const a3 = await invitacion.asegurar('cinco', 'nuevo@club.com', CAT8, {});
+  check('con clave: NO se genera código ni se toca su acceso', a3.estado === 'con-clave' && !a3.codigo
+    && !(await clientes.cargar({}))['nuevo@club.com'].invitacion);
+  const a4 = await invitacion.asegurar('lleno', 'nuevo@club.com', CAT8, {});
+  check('un mail de OTRO club: sin código y con el motivo', a4.estado === 'sin-acceso' && /un solo club/.test(a4.motivo));
+  const a5 = await invitacion.asegurar('cinco', 'freytesgn@gmail.com', CAT8, {});
+  check('un admin no se da de alta como cliente', a5.estado === 'sin-acceso' && /administrador/.test(a5.motivo));
+  await invitacion.asegurar('lleno', 'uno@lleno.com', CAT8, {});
+  await invitacion.asegurar('lleno', 'dos@lleno.com', CAT8, {});
+  const a6 = await invitacion.asegurar('lleno', 'tres@lleno.com', CAT8, {});
+  check('el CUPO lo decide el mismo camino que «Quiénes pueden entrar» (Bronce: 2)', a6.estado === 'sin-acceso' && /admite 2/.test(a6.motivo), a6.motivo);
+  check('paraElMail: código → invitación · con clave → conClave · sin acceso → nada',
+    invitacion.paraElMail(a2).codigo === a2.codigo && invitacion.paraElMail(a3).conClave === true && invitacion.paraElMail(a6) === null);
+  check('la categoría de la bienvenida: la pedida, si no la primera CON acceso',
+    invitacion.categoriaDeBienvenida(CAT8.pausa, 'a') === 'a' && invitacion.categoriaDeBienvenida(CAT8.pausa, '') === 'b'
+    && invitacion.categoriaDeBienvenida(CAT8.pausa, 'no-existe') === 'b');
+
+  /* --- la ruta de accesos manda la bienvenida con el código --- */
+  const d8 = { kv: kvMemoria(), transporte: envio.transporteMemoria(), catalogo: CAT8, ahora: AHORA };
+  const baseFalsa = async (p) => ({ status: 200, body: { ok: true, club: p.body.club, mails: [], codigo: 'COD-DE-PRUEBA-123456', venceEn: VENCE_INV } });
+  const rA = await mails.manejarClientesConBienvenida(pet(T_ADMIN, { body: { accion: 'alta', club: 'cinco', email: 'Otro@Club.com' } }), d8, baseFalsa);
+  const envA = d8.transporte.enviados.slice(-1)[0];
+  check('el alta desde «Quiénes pueden entrar» manda la bienvenida a ESE mail', rA.body.mail && rA.body.mail.resultado === 'enviado' && envA && envA.para === 'otro@club.com', JSON.stringify(rA.body.mail));
+  check('con el código que generó el alta adentro', !!envA && envA.texto.indexOf('COD-DE-PRUEBA-123456') !== -1);
+  check('y el código sigue en la respuesta, para el «Copiar» de respaldo', rA.body.codigo === 'COD-DE-PRUEBA-123456');
+  const antes8 = d8.transporte.enviados.length;
+  const rB = await mails.manejarClientesConBienvenida(pet(T_ADMIN, { body: { accion: 'alta', club: 'cinco', email: 'x@club.com', enviarMail: false } }), d8, baseFalsa);
+  check('enviarMail: false no manda nada', d8.transporte.enviados.length === antes8 && rB.body.mail === null);
+  await mails.manejarClientesConBienvenida(pet(T_ADMIN, { body: { accion: 'baja', club: 'cinco', email: 'x@club.com' } }), d8,
+    async () => ({ status: 200, body: { ok: true, club: 'cinco', mails: [] } }));
+  check('una BAJA no manda ningún mail', d8.transporte.enviados.length === antes8);
+  const rC = await mails.manejarClientesConBienvenida(pet(T_ADMIN, { body: { accion: 'reinvitar', club: 'cinco', email: 'y@club.com' } }),
+    Object.assign({}, d8, { transporte: roto }), baseFalsa);
+  check('si Gmail falla, el acceso queda y la respuesta dice por qué no llegó', rC.status === 200 && rC.body.codigo && rC.body.mail.resultado === 'error');
+  const rD = await mails.manejarClientesConBienvenida(pet(T_ADMIN, { body: { accion: 'alta', club: 'cinco', email: 'z@club.com' } }), d8,
+    async () => ({ status: 400, body: { ok: false, mensaje: 'cupo' } }));
+  check('si el alta falla (cupo, mail repetido), no sale ningún mail', rD.status === 400 && !rD.body.mail);
+  check('la ruta real envuelve al handler de accesos sin tocar handlers.js',
+    /manejarClientesConBienvenida\(p, d, h\.manejarClientesEscribir\)/.test(fs.readFileSync('./server/app.js', 'utf8')));
+
+  /* --- la ficha con bienvenida da el acceso --- */
+  Object.keys(KV_SIMPLE).forEach(k => delete KV_SIMPLE[k]);
+  const d9 = { kv: kvMemoria(), transporte: envio.transporteMemoria(), catalogo: CAT8, ahora: AHORA };
+  const rF = await mails.manejarFichasEscribir(pet(T_ADMIN, { body: { club: 'cinco', categoria: 'primera',
+    ficha: { contacto: 'Ana', email: 'ana@cinco.com' }, enviarBienvenida: true } }), d9);
+  const envF = d9.transporte.enviados.slice(-1)[0];
+  check('guardar la ficha con bienvenida da de ALTA al mail y el mail lleva el código',
+    rF.body.acceso && rF.body.acceso.estado === 'alta' && !!envF && envF.texto.indexOf(rF.body.acceso.codigo) !== -1, JSON.stringify(rF.body).slice(0, 200));
+  check('el padrón quedó con ese mail en el club', ((await clientes.cargar({}))['ana@cinco.com'] || {}).club === 'cinco');
+
+  /* --- la puerta de ingreso (`?club=` sin sesión) --- */
+  let pidioJson = false;
+  const puerta = (busqueda, storage, api) => {
+    const alm = (m) => ({ getItem: (k) => (m && m[k]) || null, setItem() {}, removeItem() {} });
+    const ctx = { console: { log() {}, error() {}, info() {}, warn() {} }, URLSearchParams: URLSearchParams,
+      atob: (b) => Buffer.from(b, 'base64').toString('binary'),
+      sessionStorage: alm(storage), localStorage: alm({}),
+      fetch: () => { pidioJson = true; return Promise.reject(new Error('no')); },
+      document: { readyState: 'complete', getElementById: () => null, documentElement: { style: { setProperty() {} } },
+        addEventListener() {}, querySelector: () => null, querySelectorAll: () => [], createElement: () => ({ style: {} }), body: { appendChild() {} } },
+      location: { search: busqueda, href: 'https://x/' + busqueda, pathname: '/' } };
+    ctx.window = ctx; ctx.SGADD_API = api === undefined ? 'https://api' : api;
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync('./js/sgadd-club.js', 'utf8') + '\nthis.CLUB = CLUB;', ctx);
+    return ctx.CLUB;
+  };
+  const jwt = (exp) => 'h.' + Buffer.from(JSON.stringify({ email: 'a@b.com', exp: exp })).toString('base64') + '.f';
+  check('?club= sin sesión es la PUERTA: se comporta como la landing',
+    puerta('?club=hogar-social').puertaDeIngreso() === true && puerta('?club=hogar-social').esLanding() === true);
+  check('con un token vigente guardado NO es la puerta',
+    puerta('?club=hogar-social', { 'sgadd.token': jwt(Math.floor(Date.now() / 1000) + 3600) }).puertaDeIngreso() === false);
+  check('con un token VENCIDO sí (hay que volver a entrar)',
+    puerta('?club=hogar-social', { 'sgadd.token': jwt(Math.floor(Date.now() / 1000) - 60) }).puertaDeIngreso() === true);
+  check('un link firmado (?token=) no es la puerta: trae la sesión', puerta('?club=hogar-social&token=abc').puertaDeIngreso() === false);
+  check('sin backend configurado tampoco (ahí no hay contra qué autenticar)', puerta('?club=hogar-social', null, '').puertaDeIngreso() === false);
+  check('sin ?club= es la landing de siempre, no la puerta', puerta('').puertaDeIngreso() === false && puerta('?demo=1&club=x').puertaDeIngreso() === false);
+  pidioJson = false;
+  const cPuerta = puerta('?club=hogar-social');
+  await new Promise(r => setTimeout(r, 20));
+  check('en la puerta NO se pide clubes/<id>.json (era un 404 en consola) ni sale el cartel rojo',
+    cPuerta.estado.puerta === true && !cPuerta.estado.error && !cPuerta.estado.cfg && !pidioJson);
+  const LAND = fs.readFileSync('./js/sgadd-landing.js', 'utf8');
+  check('cada sección muestra la tarjeta de ingreso, con «Ingresar» y «Tengo un código»',
+    /function puerta\(slug\)/.test(LAND) && /SGADD_LOGIN\.abrir\('ingresar'\)/.test(LAND) && /SGADD_LOGIN\.abrir\('fijar'\)/.test(LAND));
+  const LAND_M = require('./js/sgadd-landing.js');
+  check('el nombre sale del slug del link', LAND_M.nombreDeSlug('hogar-social') === 'Hogar Social');
+  const IDX = fs.readFileSync('./index.html', 'utf8');
+  check('el arranque abre el login solo, y en «elegí tu clave» con ?ingreso=codigo',
+    /CLUB\.puertaDeIngreso\(\)[\s\S]{0,300}SGADD_LOGIN\.abrir\(modo\)/.test(IDX) && /get\('ingreso'\) === 'codigo'/.test(IDX));
+  const LOGIN = fs.readFileSync('./js/sgadd-login.js', 'utf8');
+  check('después del login desde la puerta se RECARGA (el arranque fue el de la landing)',
+    /CLUB\.estado\.puerta/.test(LOGIN) && /\(club && club !== enUrl\) \|\| enPuerta/.test(LOGIN) && /searchParams\.delete\('ingreso'\)/.test(LOGIN));
+  const HUBSRC = fs.readFileSync('./js/sgadd-hub.js', 'utf8');
+  check('el código queda como alternativa: plegado si el mail salió, a la vista si no',
+    /verCodigo = !!\(r\.codigo && !\(r\.mail && r\.mail\.resultado === 'enviado'\)\)/.test(HUBSRC) && /Ver el código para pasarlo por otro canal \(opcional\)/.test(HUBSRC));
 
   console.log('\n' + '═'.repeat(70) + '\n' + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);

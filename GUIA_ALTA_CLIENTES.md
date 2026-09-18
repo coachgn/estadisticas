@@ -61,8 +61,11 @@ próxima carga.
      (mensual, trimestral, semestral o por temporada): los dicen los mails.
    - **«Fecha de vencimiento»**: si la renovación no está registrada, el acceso
      se suspende solo a las 23:59 hs (Argentina) de ese día. Vacía, rige la del club.
-   - **«Mandar el mail de bienvenida al guardar»** viene tildado. Si ya se mandó,
-     en su lugar dice cuándo y a quién, con **«Reenviar bienvenida»**.
+   - **«Mandar el mail de bienvenida al guardar»** viene tildado, y la bienvenida
+     **lleva el acceso**: si ese mail todavía no puede entrar, se le da de alta
+     (usa un lugar del plan) y el mail trae su código de invitación y el botón
+     para elegir la clave. No hace falta pasarle nada por WhatsApp. Si ya se
+     mandó, en su lugar dice cuándo y a quién, con **«Reenviar bienvenida»**.
    - Si la pantalla avisa que «los mails todavía no salen», la ficha se guarda
      igual: falta la contraseña de aplicación del servidor (la pone el admin técnico).
 
@@ -73,10 +76,17 @@ próxima carga.
    Si se sumó a un torneo que ya tenía otro cliente, el mensaje dice qué
    **heredó** (ver abajo).
 
-7. **Falta darle acceso a las personas.** En la tarjeta del club, abrí
-   **«Quiénes pueden entrar»** y cargá sus mails. Los mismos mails entran a
-   todas las categorías del club, y cuántos se pueden cargar lo decide el
-   plan **más alto** que el club tiene activo.
+7. **Sumá al resto del cuerpo técnico.** En la tarjeta del club, abrí
+   **«Quiénes pueden entrar»**, escribí el mail y tocá **«Invitar»**: a esa
+   persona le llega la bienvenida con su código y el link al panel. Los
+   mismos mails entran a todas las categorías del club, y cuántos se pueden
+   cargar lo decide el plan **más alto** que el club tiene activo.
+   - Si el mail no sale (por ejemplo, Gmail no contesta), la pantalla lo dice
+     y muestra el código para que se lo pases vos. Si salió, el código queda
+     guardado detrás de **«Ver el código para pasarlo por otro canal
+     (opcional)»**.
+   - **«Reinvitar»** manda un código nuevo por mail (el anterior deja de
+     servir). No le borra la clave a quien ya la tenía.
 
 ---
 

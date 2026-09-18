@@ -23,6 +23,7 @@ const catalogo = require('../lib/catalogo.js');
 const fichas = require('../lib/fichas.js');
 const cron = require('../lib/cron-vencimientos.js');
 const envio = require('../lib/mail-envio.js');
+const invitacion = require('../lib/invitacion.js');
 const { verificarToken, tokenDeLaPeticion } = require('../lib/auth.js');
 const AUTH = require('../lib/compartido/sgadd-auth.js');
 
@@ -86,17 +87,71 @@ async function manejarFichasEscribir(peticion, deps) {
   /* LA BIENVENIDA, si se pidió. Guardar la ficha no depende de que el mail
      salga: si Gmail no contesta o falta la credencial, la ficha queda y la
      respuesta dice por qué no salió. */
-  let bienvenida = null;
+  let bienvenida = null, acceso = null;
   if (b.enviarBienvenida || b.reenviar) {
+    /* EL ACCESO VA ADENTRO DE LA BIENVENIDA. Antes de mandarla, el mail de
+       la ficha queda habilitado para entrar: alta con código si no estaba,
+       código nuevo si estaba invitado sin clave, nada si ya tiene clave.
+       Si el padrón no se puede leer NO sale el mail: prometería un acceso
+       que puede no existir. */
+    try {
+      acceso = await invitacion.asegurar(club, ficha && ficha.email, cat, deps);
+    } catch (e) {
+      return { status: 200, body: { ok: true, ficha: ficha, bienvenida: {
+        resultado: 'error', codigo: e.codigo || 'KV',
+        mensaje: 'No se pudo leer el padrón de accesos: la bienvenida no salió.' } } };
+    }
     try {
       bienvenida = await cron.enviarBienvenida(club, categoria, Object.assign({}, deps,
-        { catalogo: cat, transporte: transporteDe(deps), forzar: !!b.reenviar }));
+        { catalogo: cat, transporte: transporteDe(deps), forzar: !!b.reenviar,
+          invitacion: invitacion.paraElMail(acceso) }));
       if (bienvenida.resultado === 'enviado') ficha = await fichas.leer(club, categoria, deps);
     } catch (e) {
       bienvenida = { resultado: 'error', codigo: e.codigo || 'ERROR', mensaje: e.message };
     }
   }
-  return { status: 200, body: { ok: true, ficha: ficha, bienvenida: bienvenida } };
+  return { status: 200, body: { ok: true, ficha: ficha, bienvenida: bienvenida, acceso: acceso } };
+}
+
+/**
+ * POST /api/v1/clientes, con la bienvenida adentro.
+ *
+ * Envuelve al handler de accesos SIN tocarlo: el alta, la baja, el cupo y
+ * la reinvitación los sigue decidiendo `manejarClientesEscribir`. Lo que se
+ * suma es lo de después: si el alta o la reinvitación generaron un código,
+ * sale la bienvenida a ESE mail con el código adentro. El código sigue
+ * viniendo en la respuesta, para el «Copiar» de respaldo.
+ *
+ * `enviarMail: false` en el pedido lo apaga (el admin que prefiere pasarlo
+ * él). Que el mail no salga NO deshace el alta: el acceso ya quedó y la
+ * respuesta dice por qué no llegó.
+ */
+async function manejarClientesConBienvenida(peticion, deps, base) {
+  const r = await base(peticion, deps);
+  const cuerpo = (peticion && peticion.body) || {};
+  const accion = String(cuerpo.accion || '').trim().toLowerCase();
+  if (!r || r.status !== 200 || !r.body || !r.body.codigo) return r;
+  if (accion !== 'alta' && accion !== 'reinvitar') return r;
+  if (cuerpo.enviarMail === false) return Object.assign({}, r, { body: Object.assign({}, r.body, { mail: null }) });
+
+  const clubId = String(r.body.club || cuerpo.club || '').toLowerCase();
+  const email = String(cuerpo.email || '').trim().toLowerCase();
+  let mail;
+  try {
+    const cat = (deps && deps.catalogo) || (await catalogo.cargar(deps)).catalogo;
+    const slug = invitacion.categoriaDeBienvenida((cat || {})[clubId], cuerpo.categoria);
+    if (!slug) {
+      mail = { resultado: 'omitido', para: email, mensaje: 'El club no tiene categorías: no hay de qué dar la bienvenida.' };
+    } else {
+      mail = await cron.enviarBienvenida(clubId, slug, Object.assign({}, deps, {
+        catalogo: cat, transporte: transporteDe(deps), forzar: true, para: email,
+        invitacion: { email: email, codigo: r.body.codigo, venceEn: r.body.venceEn },
+      }));
+    }
+  } catch (e) {
+    mail = { resultado: 'error', para: email, codigo: e.codigo || 'ERROR', mensaje: e.message };
+  }
+  return Object.assign({}, r, { body: Object.assign({}, r.body, { mail: mail }) });
 }
 
 /** Comparación en tiempo constante: el secreto no se adivina de a letras. */
@@ -135,4 +190,4 @@ async function manejarCronVencimientos(peticion, deps) {
   }
 }
 
-module.exports = { manejarFichas, manejarFichasEscribir, manejarCronVencimientos, mismoSecreto };
+module.exports = { manejarFichas, manejarFichasEscribir, manejarCronVencimientos, manejarClientesConBienvenida, mismoSecreto };

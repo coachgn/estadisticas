@@ -568,12 +568,13 @@ const SGADD_HUB = (function () {
   /* Qué club tiene la sección desplegada. UNO por vez: con tres abiertas
      la lista de clubes deja de ser una lista y hay que scrollear para
      comparar dos. */
-  const accesosAbierto = { club: null, nuevo: '', yendo: false, error: '', codigo: null };
+  const accesosAbierto = { club: null, nuevo: '', yendo: false, error: '', codigo: null, mail: null, verCodigo: false };
 
   function verAccesos(club) {
     if (accesosAbierto.club === club) { accesosAbierto.club = null; repintarLista(); return; }
     accesosAbierto.club = club;
     accesosAbierto.nuevo = ''; accesosAbierto.error = ''; accesosAbierto.codigo = null;
+    accesosAbierto.mail = null; accesosAbierto.verCodigo = false;
     if (!accesos[club]) cargarAccesos(club); else repintarLista();
   }
 
@@ -620,10 +621,11 @@ const SGADD_HUB = (function () {
       : (accion === 'alta' ? previos.concat([{ email: mail }]) : previos);
 
     const textos = {
-      alta: 'Le vas a dar acceso a esta persona. Va a recibir un código para elegir su clave.',
+      alta: 'Le vas a dar acceso a esta persona. Le llega un mail de bienvenida desde motorstats.ar@gmail.com'
+        + ' con su código de invitación y el link al panel: con eso elige su clave.',
       baja: 'Le corta el acceso YA y le borra la clave. Si vuelve, hay que invitarlo de nuevo.',
-      reinvitar: 'Genera un código nuevo. NO le borra la clave que ya tenga: la vieja sigue'
-        + ' sirviendo hasta que canjee el código.',
+      reinvitar: 'Genera un código nuevo y se lo manda por mail con el link al panel. NO le borra la'
+        + ' clave que ya tenga: la vieja sigue sirviendo hasta que canjee el código.',
     };
 
     SGADD_CONFIRMAR.abrir({
@@ -631,8 +633,10 @@ const SGADD_HUB = (function () {
       aviso: textos[accion] || '',
       confirmar: accion === 'baja' ? 'Sacar el acceso' : 'Guardar cambios',
       cambios: accion === 'reinvitar'
-        ? [{ label: 'Código nuevo para', antes: '—', despues: mail }]
-        : SGADD_CONFIRMAR.cambiosDeAccesos(previos, nuevos),
+        ? [{ label: 'Código nuevo para', antes: '—', despues: mail },
+           { label: 'Mail con el código', antes: '—', despues: 'se manda a ' + mail }]
+        : SGADD_CONFIRMAR.cambiosDeAccesos(previos, nuevos).concat(accion === 'alta'
+          ? [{ label: 'Mail de bienvenida con el código', antes: '—', despues: 'se manda a ' + mail }] : []),
       alConfirmar: () => aplicarAcceso(club, accion, mail),
     });
   }
@@ -640,6 +644,7 @@ const SGADD_HUB = (function () {
   function aplicarAcceso(club, accion, mail) {
     if (accesosAbierto.yendo) return;
     accesosAbierto.yendo = true; accesosAbierto.error = ''; accesosAbierto.codigo = null;
+    accesosAbierto.mail = null; accesosAbierto.verCodigo = false;
     repintarLista();
 
     SGADD_DATA.guardarClientes({ accion: accion, club: club, email: mail }).then((r) => {
@@ -647,12 +652,36 @@ const SGADD_HUB = (function () {
       accesos[club] = { plan: (accesos[club] || {}).plan, cupo: r.cupoActual, mails: r.mails || [] };
       if (accion === 'alta') accesosAbierto.nuevo = '';
       if (r.codigo) accesosAbierto.codigo = { email: mail, codigo: r.codigo, venceEn: r.venceEn };
+      accesosAbierto.mail = r.mail || null;
+      /* SI EL MAIL NO SALIÓ, el código se muestra de entrada: es la única
+         forma que queda de hacérselo llegar. Si salió, queda plegado como
+         alternativa. */
+      accesosAbierto.verCodigo = !!(r.codigo && !(r.mail && r.mail.resultado === 'enviado'));
       repintarLista();
     }).catch((e) => {
       accesosAbierto.yendo = false;
       accesosAbierto.error = e.message || 'No se pudo aplicar el cambio.';
       repintarLista();
     });
+  }
+
+  function mostrarCodigo() {
+    accesosAbierto.verCodigo = !accesosAbierto.verCodigo;
+    repintarLista();
+  }
+
+  /** Qué pasó con el mail de bienvenida del último alta o reinvitación. */
+  function avisoMailAcceso() {
+    const m = accesosAbierto.mail;
+    const c = accesosAbierto.codigo;
+    if (!c) return '';
+    if (m && m.resultado === 'enviado') {
+      return `<p class="text-[11px] zona-texto zona-exito" role="status">✓ Le mandamos a ${esc(c.email)} la bienvenida
+        con su código y el link al panel, desde motorstats.ar@gmail.com.</p>`;
+    }
+    const motivo = !m ? 'no se pidió el envío.' : (m.mensaje || 'error al enviar.');
+    return `<p class="text-[11px] zona-texto zona-aviso" role="status">✗ El mail no salió: ${esc(motivo)}
+      El acceso quedó dado de alta: pasale el código de abajo.</p>`;
   }
 
   function copiarCodigo(ev) {
@@ -732,13 +761,18 @@ const SGADD_HUB = (function () {
 
       ${accesosAbierto.error ? `<p class="text-[11px] zona-texto zona-peligro">${esc(accesosAbierto.error)}</p>` : ''}
 
-      ${accesosAbierto.codigo ? `<div class="rounded-md border border-accent/40 bg-accent/5 p-2">
+      ${avisoMailAcceso()}
+
+      ${accesosAbierto.codigo && !accesosAbierto.verCodigo ? `<button type="button" onclick="SGADD_HUB.mostrarCodigo()"
+        class="text-[11px] text-muted hover:text-ink underline">Ver el código para pasarlo por otro canal (opcional)</button>` : ''}
+
+      ${accesosAbierto.codigo && accesosAbierto.verCodigo ? `<div class="rounded-md border border-accent/40 bg-accent/5 p-2">
         <p class="text-[10px] uppercase tracking-wider text-accent font-display mb-1">
           Código para ${esc(accesosAbierto.codigo.email)}</p>
         <p class="font-mono text-[10px] text-ink break-all">${esc(accesosAbierto.codigo.codigo)}</p>
         <p class="text-[10px] text-muted mt-1">
           Se muestra UNA vez y no se puede volver a leer: el servidor guarda su huella, no el código.
-          Pasáselo por un canal privado. Vence el ${esc(String(accesosAbierto.codigo.venceEn || '').slice(0, 10))}.
+          Vence el ${esc(String(new Date(accesosAbierto.codigo.venceEn || 0).toISOString()).slice(0, 10))}.
           <button type="button" onclick="SGADD_HUB.copiarCodigo(event)"
             class="text-accent hover:underline ml-1">Copiar</button>
         </p>
@@ -1252,7 +1286,7 @@ const SGADD_HUB = (function () {
           : `<label class="flex items-start gap-2 text-xs text-ink">
               <input type="checkbox" id="alta-bienvenida" ${alta.bienvenida ? 'checked' : ''} class="mt-0.5"
                 onchange="SGADD_HUB.elegirBienvenida(this.checked)">
-              <span>Mandar el mail de bienvenida al guardar <span class="text-muted">· desde motorstats.ar@gmail.com, con el link al panel y la política de renovación</span></span>
+              <span>Mandar el mail de bienvenida al guardar <span class="text-muted">· desde motorstats.ar@gmail.com, con su acceso: si ese mail todavía no puede entrar, se le da de alta (usa un cupo del plan) y el mail lleva su código de invitación y el link al panel</span></span>
             </label>`}
       </div>
       ${log.length ? `<ul class="mt-2 text-[11px] text-muted space-y-0.5">${log.map(r =>
@@ -1283,6 +1317,8 @@ const SGADD_HUB = (function () {
     if (mandaBienvenida()) {
       filas.push({ campo: 'bienvenida', label: 'Mail de bienvenida', antes: '—',
         despues: 'se manda a ' + alta.email.trim().toLowerCase() + ' desde motorstats.ar@gmail.com' });
+      filas.push({ campo: 'acceso', label: 'Acceso al panel', antes: '—',
+        despues: 'si ese mail no tiene clave, se le genera el código de invitación y va adentro del mail' });
     }
     return filas;
   }
@@ -1292,14 +1328,28 @@ const SGADD_HUB = (function () {
   }
 
   function fichaHayQueGuardar() {
-    return cambiosFicha().some(c => c.campo !== 'bienvenida') || mandaBienvenida();
+    return cambiosFicha().some(c => c.campo !== 'bienvenida' && c.campo !== 'acceso') || mandaBienvenida();
   }
 
-  function textoBienvenida(b) {
+  /**
+   * Qué pasó con la bienvenida y con el acceso que viaja adentro.
+   *
+   * SI EL MAIL NO SALIÓ PERO EL CÓDIGO SE GENERÓ, el código va en el
+   * mensaje: es la única vez que se puede leer (el servidor guarda su
+   * huella) y sin él el admin tendría que reinvitar para conseguir otro.
+   */
+  function textoBienvenida(b, acceso) {
     if (!b) return '';
-    if (b.resultado === 'enviado') return ' Bienvenida enviada a ' + b.para + '.';
+    const a = acceso || null;
+    const deAcceso = !a ? ''
+      : a.estado === 'alta' ? ' Se le dio acceso a ' + a.email + ' y el mail lleva su código de invitación.'
+      : a.estado === 'reinvitado' ? ' Todavía no tenía clave: el mail lleva un código nuevo.'
+      : a.estado === 'con-clave' ? ' Ya tenía clave: el mail le recuerda con qué mail entra.'
+      : a.motivo ? ' Sin código de acceso: ' + a.motivo : '';
+    if (b.resultado === 'enviado') return ' Bienvenida enviada a ' + b.para + '.' + deAcceso;
     if (b.resultado === 'omitido') return ' ' + (b.mensaje || '');
-    return ' La bienvenida NO salió: ' + (b.mensaje || 'error') + ' La ficha quedó guardada.';
+    const codigo = a && a.codigo ? ' El acceso quedó dado de alta; pasale este código (se muestra una sola vez): ' + a.codigo + '.' : '';
+    return ' La bienvenida NO salió: ' + (b.mensaje || 'error') + ' La ficha quedó guardada.' + codigo;
   }
 
   /** Guarda la ficha después del alta y, si corresponde, manda la bienvenida. */
@@ -1312,7 +1362,7 @@ const SGADD_HUB = (function () {
     }).then((r) => {
       fichasHub.todas = fichasHub.todas || {};
       fichasHub.todas[intencion.club + '|' + intencion.categoria] = r.ficha;
-      guardado.mensaje += ' Ficha guardada.' + textoBienvenida(r.bienvenida);
+      guardado.mensaje += ' Ficha guardada.' + textoBienvenida(r.bienvenida, r.acceso);
       alta.bienvenida = !bienvenidaEnviada(r.ficha);
     }).catch((e) => {
       guardado.mensaje += ' La ficha NO se guardó: ' + (e.message || 'error') + '.';
@@ -1327,13 +1377,13 @@ const SGADD_HUB = (function () {
       .then((r) => {
         fichasHub.todas[alta.club + '|' + alta.categoria] = r.ficha;
         guardado.estado = 'ok'; guardado.club = alta.club;
-        guardado.mensaje = textoBienvenida(r.bienvenida).trim();
+        guardado.mensaje = textoBienvenida(r.bienvenida, r.acceso).trim();
       }).catch((e) => { guardado.estado = 'error'; guardado.mensaje = e.message || 'No se pudo reenviar.'; })
       .then(() => { refrescarFicha(); refrescarEstado(); });
     if (typeof SGADD_CONFIRMAR === 'undefined') return ir();
     SGADD_CONFIRMAR.abrir({
       titulo: 'Reenviar la bienvenida · ' + (alta.nombre || alta.club),
-      aviso: 'Sale un mail al cliente, desde motorstats.ar@gmail.com.',
+      aviso: 'Sale un mail al cliente, desde motorstats.ar@gmail.com. Si ese mail todavía no eligió su clave, lleva un código de invitación nuevo y el anterior deja de servir.',
       confirmar: 'Reenviar',
       cambios: [{ campo: 'bienvenida', label: 'Mail de bienvenida', antes: '—', despues: 'se reenvía a ' + f.email }],
       alConfirmar: ir,
@@ -2106,7 +2156,7 @@ const SGADD_HUB = (function () {
     /* accesos */
     verAccesos, campoAcceso, accionAcceso, aplicarAcceso, aplicarClub,
     badgeServicio,
-    copiarCodigo, estadoMail, bloqueAccesos,
+    copiarCodigo, mostrarCodigo, estadoMail, bloqueAccesos,
     accesos, accesosAbierto,
   };
 })();

@@ -146,13 +146,13 @@ const SGADD_LOGIN = (function () {
           ${estado.modo === 'fijar' ? 'Fijá tu clave' : 'Ingreso a plataforma MotorStats'}</h2>
         <p class="text-xs text-muted mb-4">
           ${estado.modo === 'fijar'
-            ? 'Con el código que te pasaron, elegí tu propia clave. El código sirve una sola vez.'
+            ? 'Con el código que te llegó en el mail de bienvenida, elegí tu propia clave. El código sirve una sola vez.'
             : 'Sitio web dedicado al análisis estadístico.'}
         </p>
 
         ${input('email', 'mail', 'email')}
         ${estado.modo === 'fijar'
-          ? input('codigo', 'código de invitación', 'text', 'Te lo pasaron por privado. Vence.')
+          ? input('codigo', 'código de invitación', 'text', 'Te llegó en el mail de bienvenida. Sirve una sola vez y vence.')
             + input('claveNueva', 'tu clave nueva', 'password',
                 'Mínimo ' + LARGO_MINIMO + ' caracteres. Una frase de tres o cuatro palabras '
                 + 'es más fácil de recordar y más difícil de romper que ocho caracteres raros.')
@@ -347,10 +347,17 @@ const SGADD_LOGIN = (function () {
     if (!club) { try { club = SGADD_AUTH.clubDelToken(); } catch (e) {} }
     let enUrl = null;
     try { enUrl = new URLSearchParams(window.location.search).get('club'); } catch (e) {}
-    if (club && club !== enUrl) {
+    /* DESDE LA PUERTA DE INGRESO SE RECARGA SIEMPRE, aunque el club sea el
+       mismo de la URL: ese arranque fue el de la landing (sin JSON, sin
+       catálogo, sin libro), y repintar encima dejaría la vista sin datos.
+       El admin, que no lleva club en el token, cae en el club del link. */
+    let enPuerta = false;
+    try { enPuerta = typeof CLUB !== 'undefined' && !!(CLUB.estado && CLUB.estado.puerta); } catch (e) {}
+    if ((club && club !== enUrl) || enPuerta) {
       const u = new URL(window.location.href);
-      u.searchParams.set('club', club);
+      if (club) u.searchParams.set('club', club);
       u.searchParams.delete('access_token');   // el token ya está guardado
+      u.searchParams.delete('ingreso');
       u.hash = '';
       window.location.href = u.toString();
       return;

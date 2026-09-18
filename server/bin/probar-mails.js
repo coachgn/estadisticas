@@ -18,7 +18,9 @@
      node server/bin/probar-mails.js --tipo cron --real
 
    Opciones: --salida <carpeta> (dónde escribir la vista previa),
-             --club / --categoria / --plan / --vence para la vista previa.
+             --club / --categoria / --plan / --vence para la vista previa,
+             --con-codigo: la bienvenida con el bloque de acceso y un código
+             de EJEMPLO (no sirve para entrar: no está en el padrón).
 
    LOS DATOS DE LA VISTA PREVIA SON FICTICIOS a propósito: una prueba no
    puede mandarle a una casilla de prueba el mail real de un cliente.
@@ -138,7 +140,14 @@ async function main() {
     return;
   }
   let mail;
-  if (tipo === 'bienvenida') mail = P.bienvenida(datosDePrueba(a));
+  if (tipo === 'bienvenida') {
+    const d = datosDePrueba(a);
+    if (a['con-codigo']) {
+      d.invitacion = { email: (a.email && a.email !== true) ? a.email : 'dt@club-ejemplo.com',
+        codigo: 'EJEMPLO-este-codigo-no-sirve-para-entrar', venceEn: Date.now() + 7 * 86400000 };
+    }
+    mail = P.bienvenida(d);
+  }
   else if (tipo === 'recordatorio') {
     const dias = Number(a.dias || 5);
     mail = P.recordatorio(datosDePrueba(a, dias), dias);

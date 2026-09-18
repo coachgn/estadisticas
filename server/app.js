@@ -115,7 +115,10 @@ function crearApp(opciones) {
   /* Los accesos de cada club. Las dos con gate de ADMIN adentro del
      handler, re-derivado contra la lista del servidor. */
   app.get('/api/v1/clientes', responder(h.manejarClientes));
-  app.post('/api/v1/clientes', responder(h.manejarClientesEscribir));
+  /* El alta y la reinvitación mandan la bienvenida con el código adentro
+     (`mails.js`), envolviendo al handler de accesos sin tocarlo. */
+  app.post('/api/v1/clientes', responder((p, d) =>
+    require('./api/mails.js').manejarClientesConBienvenida(p, d, h.manejarClientesEscribir)));
 
   app.use((req, res) => res.status(404).json({ ok: false, codigo: 'SIN_RUTA' }));
 
