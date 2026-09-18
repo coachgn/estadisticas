@@ -76,7 +76,7 @@ node test-pbp.js           # 119 tests · la capa de laboratorio de play-by-play
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
 
-node test-mails.js         # 176 tests · los mails institucionales: plantillas sin huecos, el
+node test-mails.js         # 177 tests · los mails institucionales: plantillas sin huecos, el
                            #             día de Argentina, la idempotencia del cron, la ficha, el SMTP,
                            #             el código adentro de la bienvenida, la puerta de ingreso,
                            #             el nombre del acceso y el link que llena el login
@@ -91,7 +91,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6060 tests en total. Todos tienen que dar verde antes de commitear.**
+**6061 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.

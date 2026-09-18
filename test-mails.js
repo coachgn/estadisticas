@@ -554,6 +554,19 @@ const sumar = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86400000
     async (p) => ({ status: 200, body: { ok: true, club: 'cinco', mails: [], codigo: 'COD-N-0000000', venceEn: VENCE_INV } }));
   check('sin nombre, un saludo neutro (no el contacto de la ficha, que es otra persona)', /^Hola:/m.test(d10.transporte.enviados.slice(-1)[0].texto));
 
+  /* Dos invitaciones al MISMO club en el MISMO milisegundo: el reclamo del
+     reenvío forzado llevaba solo la hora y la segunda no salía. */
+  const nowReal = Date.now;
+  Date.now = () => 1790000000000;
+  try {
+    const d11 = { kv: kvMemoria(), transporte: envio.transporteMemoria(), catalogo: CAT8, ahora: AHORA };
+    const base11 = async (p) => ({ status: 200, body: { ok: true, club: 'cinco', mails: [], codigo: 'COD-' + p.body.email.length + '-XXXXXXXX', venceEn: VENCE_INV } });
+    await mails.manejarClientesConBienvenida(pet(T_ADMIN, { body: { accion: 'alta', club: 'cinco', email: 'uno@club.com' } }), d11, base11);
+    await mails.manejarClientesConBienvenida(pet(T_ADMIN, { body: { accion: 'alta', club: 'cinco', email: 'dos@clubes.com' } }), d11, base11);
+    check('dos invitaciones en el mismo milisegundo salen las DOS', d11.transporte.enviados.length === 2
+      && d11.transporte.enviados.map(m => m.para).join(',') === 'uno@club.com,dos@clubes.com', d11.transporte.enviados.length);
+  } finally { Date.now = nowReal; }
+
   /* el link: el panel lo lee y lo saca de la barra */
   const conLink = (busqueda, hash) => {
     const hist = { llamadas: [] };

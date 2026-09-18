@@ -213,8 +213,12 @@ async function enviarBienvenida(clubId, slug, deps) {
   if (!d.forzar && fichas.yaEnviado(ficha, 'bienvenida')) {
     return Object.assign(base, { resultado: 'omitido', mensaje: 'La bienvenida ya se había mandado.' });
   }
-  /* Forzar un reenvío necesita un reclamo nuevo: el id lleva la hora. */
-  const idHito = fichas.idHito(clubId, slug, 'bienvenida') + (d.forzar ? '#' + Date.now() : '');
+  /* Forzar un reenvío necesita un reclamo nuevo: el id lleva la hora Y un
+     sufijo al azar. Con la hora sola, dos invitaciones al mismo club en el
+     mismo milisegundo compartían el reclamo y la segunda quedaba como «ya
+     reclamado» sin salir — lo cazó un test intermitente (1 de 6 corridas). */
+  const idHito = fichas.idHito(clubId, slug, 'bienvenida')
+    + (d.forzar ? '#' + Date.now() + '-' + require('crypto').randomBytes(4).toString('hex') : '');
   return despachar(Object.assign(base, { idHito: idHito }), () => P.bienvenida(datos), d);
 }
 
