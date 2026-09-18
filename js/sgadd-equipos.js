@@ -34,13 +34,14 @@ const EQUIPOS_TABS = [
   { id: 'condicion',    label: 'Local/Vis.',   pregunta: '¿Cambia de local?' },
   { id: 'personalidad', label: 'Personalidad', pregunta: '¿A qué juega?' },
   { id: 'plantel',      label: 'Plantel',      pregunta: '¿De quién depende?' },
-  { id: 'partidos',     label: 'Partidos',     pregunta: '¿Qué pasó cada noche?' },
   /* LABORATORIO (punto 62): solo se ofrece si el servidor declara la capa
      `pbp` para la categoría abierta. Los datos no salen del libro. */
   { id: 'pbp',          label: 'Quintetos',    pregunta: '¿Con quién rinde y quién decide al final? · laboratorio' },
   /* El mapa de tiro es su PROPIA card (pedido del club, 2026-09-15): con la
      misma capa y el mismo paquete, pero otra pregunta. */
   { id: 'pbp-tiro',     label: 'Mapa de tiro', pregunta: '¿Desde dónde tira, dónde le tiran y qué conviene? · laboratorio' },
+  /* Partidos va ÚLTIMA, después del mapa de tiro (pedido del club, 2026-09-18). */
+  { id: 'partidos',     label: 'Partidos',     pregunta: '¿Qué pasó cada noche?' },
 ];
 
 /* ===================== RUTEO ===================== */

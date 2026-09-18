@@ -72,7 +72,7 @@ node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: 
                            #             equipo, vencimiento y ciclo ORO por categoría
 node test-glosario.js      #  26 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
-node test-pbp.js           # 110 tests · la capa de laboratorio de play-by-play: el catálogo,
+node test-pbp.js           # 119 tests · la capa de laboratorio de play-by-play: el catálogo,
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
 
@@ -86,7 +86,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5890 tests en total. Todos tienen que dar verde antes de commitear.**
+**5899 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -9114,3 +9114,27 @@ lee a 10 px.
 
 **Y en Personalidad el eje dice «Juego colectivo»**, no «juego coral». Hay un
 test que recorre `js/` y falla si la palabra vuelve.
+
+### Sub-cards cerradas y la card de Scouting acotada (2026-09-18)
+
+- **Toda sección de la card de Quintetos arranca CERRADA** y se dibuja como
+  sub-card (`.pbp-detalle:not(.pbp-sub)`: borde, fondo tenue y encabezado de
+  44 px). El DT abre la que quiere; la página deja de ser eterna. Al
+  imprimir se siguen abriendo todas (`beforeprint`).
+- **En Scouting la card de Quintetos muestra solo tres sub-cards**:
+  «Últimos 5 partidos · inicial contra cierre», «Clutch» (el resumen del
+  equipo) y «Quién decide los finales» (la tabla de usos). Lo decide
+  `html(paq, { contexto: 'scouting' })`; el contexto viaja en
+  `data-pbp-contexto` y lo lee `montarPendientes`. En Equipos, el clutch
+  sigue en una sola sección.
+- **La columna `TC` de esa tabla lleva `data-glosa`** («Tiros de Campo
+  (Convertidos / Intentados)»), y `T3`/`TL` la suya: en el glosario del motor
+  `TC` es «Tapones cometidos» (misma trampa que `PP`, punto 33).
+- **En Scouting el mapa queda FIJO** en Lo que tira · Zonas · Eficiencia vs
+  liga, sin conmutadores (`mapa(paq, { fijo: true })`, que pisa cualquier
+  otra opción que mande un llamador). El diagnóstico va siempre, y cada
+  lista dice cómo la lee el DT contra el rival: las zonas a explotar son
+  las que nuestra defensa tiene que cerrar, y las ineficientes las que puede
+  flotar o liberar (`LECTURA_SCOUTING`, texto visible y en el `title`).
+- **En Equipos, Partidos pasó a ser la ÚLTIMA pestaña**, después de Mapa de
+  tiro.

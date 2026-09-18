@@ -288,7 +288,25 @@ const SGADD_PBP = (function () {
 
   /* --------------------------------------------------------------- clutch */
 
+  /* El clutch son dos preguntas: cómo le fue al EQUIPO en los finales
+     apretados (resumen) y quién toma las decisiones (tabla). En Scouting van
+     como dos sub-cards separadas; en Equipos, juntas. */
+  function resumenClutch(paq) {
+    const e = (paq.clutch || {}).equipo || {};
+    if (!e.partidos) return vacio('No jugó ningún final apretado en esta muestra.');
+    return `<p class="text-xs text-ink mb-2">
+        <b>${e.partidos}</b> partidos llegaron al final apretado (<b>${e.ganados}-${e.perdidos}</b>) ·
+        ${num(e.minutos)} min · <span class="${tonoMM(e.masMenos)}">${signo(e.masMenos)}</span> ·
+        eFG% ${num(e.efgPct)} · ${e.perdidas} pérdidas</p>`;
+  }
+
   function bloqueClutch(paq) {
+    const e = (paq.clutch || {}).equipo || {};
+    if (!e.partidos) return vacio('No jugó ningún final apretado en esta muestra.');
+    return resumenClutch(paq) + tablaClutch(paq);
+  }
+
+  function tablaClutch(paq) {
     const c = paq.clutch || {};
     const e = c.equipo || {};
     if (!e.partidos) return vacio('No jugó ningún final apretado en esta muestra.');
@@ -311,14 +329,10 @@ const SGADD_PBP = (function () {
         <td class="${TD}" title="Tiros con 60 s o menos y el partido a 3 o menos">${d.tiros ? d.convertidos + '/' + d.tiros : '—'}</td>
       </tr>`;
     }).join('');
-    return `<p class="text-xs text-ink mb-2">
-        <b>${e.partidos}</b> partidos llegaron al final apretado (<b>${e.ganados}-${e.perdidos}</b>) ·
-        ${num(e.minutos)} min · <span class="${tonoMM(e.masMenos)}">${signo(e.masMenos)}</span> ·
-        eFG% ${num(e.efgPct)} · ${e.perdidas} pérdidas</p>
-      <div class="scrollbox"><table class="w-full">
+    return `<div class="scrollbox"><table class="w-full">
       <thead><tr class="${TH}">
         <th class="px-2 pb-1 text-left">Jugador</th><th class="px-2 pb-1">MIN</th><th class="px-2 pb-1">+/-</th>
-        <th class="px-2 pb-1">PTS</th><th class="px-2 pb-1">TC</th><th class="px-2 pb-1">T3</th><th class="px-2 pb-1">TL</th>
+        <th class="px-2 pb-1">PTS</th><th class="px-2 pb-1" data-glosa="Tiros de Campo (Convertidos / Intentados)">TC</th><th class="px-2 pb-1" data-glosa="Triples (Convertidos / Intentados)">T3</th><th class="px-2 pb-1" data-glosa="Tiros libres (Convertidos / Intentados)">TL</th>
         <th class="px-2 pb-1">eFG%</th><th class="px-2 pb-1" title="PLAYS del motor: T2I + T3I + 0,44·T1I + PP">Usos · quién decide</th>
         <th class="px-2 pb-1">PP</th><th class="px-2 pb-1">Último min</th>
       </tr></thead><tbody>${filas}</tbody></table></div>`;
@@ -657,7 +671,10 @@ const SGADD_PBP = (function () {
    * @param {{sujeto?: string, vista?: 'zonas'|'hex', metrica?: 'eficiencia'|'frecuencia', diag?: boolean, perspectiva?: boolean}} opciones
    */
   function mapa(paq, opciones) {
-    const o = Object.assign({ sujeto: 'equipo', vista: 'zonas', metrica: 'eficiencia', diag: true, perspectiva: false }, opciones);
+    const o = Object.assign({ sujeto: 'equipo', vista: 'zonas', metrica: 'eficiencia', diag: true, perspectiva: false, fijo: false }, opciones);
+    /* Fijo (Scouting): una sola vista, la que se lee para preparar el
+       partido. Se fuerza acá para que ningún llamador la mezcle. */
+    if (o.fijo) Object.assign(o, { sujeto: 'equipo', vista: 'zonas', metrica: 'eficiencia', diag: true, perspectiva: false });
     const s = sujetoTiros(paq, o.sujeto);
     if (!s) return vacio('Sin tiros suficientes para dibujar el mapa.');
     const G = geometria(paq);
@@ -770,13 +787,13 @@ const SGADD_PBP = (function () {
     }).join('');
 
     const esJugador = o.sujeto !== 'equipo' && o.sujeto !== 'contra';
-    return `<div class="pbp-mapa-caja" data-pbp-sujeto="${esc(o.sujeto)}" data-pbp-vista="${o.vista}" data-pbp-metrica="${o.metrica}" data-pbp-diag="${o.diag ? '1' : '0'}" data-pbp-perspectiva="${o.perspectiva ? '1' : '0'}">
-      <div class="pbp-controles">
+    return `<div class="pbp-mapa-caja" data-pbp-sujeto="${esc(o.sujeto)}" data-pbp-vista="${o.vista}" data-pbp-metrica="${o.metrica}" data-pbp-diag="${o.diag ? '1' : '0'}" data-pbp-perspectiva="${o.perspectiva ? '1' : '0'}"${o.fijo ? ' data-pbp-fijo="1"' : ''}>
+      ${o.fijo ? '<p class="pbp-vista-fija text-[11px] text-muted mb-2">Lo que tira · Zonas · Color: eficiencia contra la liga</p>' : `<div class="pbp-controles">
         ${o.perspectiva && !esJugador ? grupo('Perspectiva', boton('sujeto', 'equipo', 'Lo que tira') + boton('sujeto', 'contra', 'Lo que le tiran')) : ''}
         ${grupo('Vista', boton('vista', 'zonas', 'Zonas') + boton('vista', 'hex', 'Hexágonos'))}
         ${grupo('Color', boton('metrica', 'eficiencia', 'Eficiencia vs liga') + boton('metrica', 'frecuencia', 'Frecuencia'))}
         ${grupo('Diagnóstico', boton('diag', o.diag ? '0' : '1', o.diag ? 'Ocultar' : 'Mostrar'))}
-      </div>
+      </div>`}
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         <div>
           <svg class="pbp-mapa w-full max-w-md" viewBox="-4 -4 158 148" role="img" aria-label="Mapa de tiros de campo por zona">
@@ -797,7 +814,7 @@ const SGADD_PBP = (function () {
           <p class="text-[11px] text-muted mt-2 no-imprimir">Pasá el mouse o tocá una fila o una zona: se ilumina en los dos lados${hayPuntos ? ' y aparecen sus tiros' : ''}. Tocar fija la zona.</p>
         </div>
       </div>
-      ${o.diag ? listaDiagnostico(paq, o.sujeto) : ''}
+      ${o.diag ? listaDiagnostico(paq, o.sujeto, o.fijo) : ''}
     </div>`;
   }
 
@@ -805,7 +822,14 @@ const SGADD_PBP = (function () {
   const ci = (f) => `${f.c}/${f.i} (${num(100 * f.c / f.i)} %)`;
 
   /** La lectura escrita del diagnóstico que marca la cancha. PURA. */
-  function listaDiagnostico(paq, sujeto) {
+  /* Cómo lee el DT cada lista cuando el mapa es del RIVAL (Scouting): lo que
+     el rival hace bien es lo que nuestra defensa tiene que cerrar. */
+  const LECTURA_SCOUTING = {
+    explotar: 'Áreas de máxima eficiencia ofensiva del rival. Lectura para el DT: zonas donde nuestra defensa debe priorizar ajustes, cerrar espacios y ajustar ayudas para negar el tiro.',
+    evitar: 'Áreas de bajo rendimiento del rival. Lectura para el DT: zonas que nuestra defensa puede flotar o liberar para incentivar que el rival tome tiros de baja efectividad.',
+  };
+
+  function listaDiagnostico(paq, sujeto, scouting) {
     const item = (clase, insignia, texto) => `<li class="text-xs text-ink leading-snug mb-1.5">${insigniaHtml(clase, insignia)} ${texto}</li>`;
     const nota = '<p class="text-[11px] text-muted mt-1">Ajustado por muestra: antes de compararla con la liga, una zona con pocos tiros se acerca a la liga (un 0/3 pesa menos que un 1/8).</p>';
     if (sujeto && sujeto !== 'equipo' && sujeto !== 'contra') {
@@ -836,9 +860,14 @@ const SGADD_PBP = (function () {
       : '<li class="text-xs text-muted">Ninguna zona con muestra rinde por encima de la liga.</li>';
     const mej = d.mejora.map(f => item('mejora', '↑', `<b class="text-white">Zona de mejora · ${esc(f.zona)} ${esc(f.nombre)}</b>: ${num(f.ppt, 2)} pts por tiro, ${signo(Math.round(f.ganancia * 100) / 100, 2)} sobre el promedio del equipo (${num(d.ppt, 2)}): cada tiro redirigido ahí suma.`)).join('');
     const evi = d.evitar.map(f => item('evitar', '✕', `<b class="text-white">${f.accion === 'evitar' ? 'Evitar' : 'Corregir la selección'} · ${esc(f.zona)} ${esc(f.nombre)}</b>: ${ci(f)}, ${num(f.ppt, 2)} contra ${num(f.liga.ppt, 2)} de la liga: ≈ ${num(f.perdidos, 0)} puntos por debajo de lo esperado en la temporada.`)).join('');
+    const lectura = (clave) => (scouting
+      ? `<p class="pbp-lectura text-[11px] text-ink mb-2" data-pbp-lectura="${clave}">${esc(LECTURA_SCOUTING[clave])}</p>` : '');
+    const titulo = (texto, clave) => (scouting
+      ? `<h5 class="text-[11px] uppercase tracking-wider text-muted mb-1" title="${esc(LECTURA_SCOUTING[clave])}">${texto} <span aria-hidden="true">ⓘ</span></h5>`
+      : subtitulo(texto));
     return `<div class="pbp-diagnostico mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div>${subtitulo('Zonas a explotar')}<ul>${expl}${mej}</ul></div>
-      <div>${subtitulo('Zonas ineficientes · evitar o corregir')}<ul>${evi || '<li class="text-xs text-muted">Ninguna zona con muestra cuesta puntos claros contra la liga.</li>'}</ul></div>
+      <div>${titulo('Zonas a explotar', 'explotar')}${lectura('explotar')}<ul>${expl}${mej}</ul></div>
+      <div>${titulo('Zonas ineficientes · evitar o corregir', 'evitar')}${lectura('evitar')}<ul>${evi || '<li class="text-xs text-muted">Ninguna zona con muestra cuesta puntos claros contra la liga.</li>'}</ul></div>
       <div class="sm:col-span-2">${nota}</div>
     </div>`;
   }
@@ -860,12 +889,26 @@ const SGADD_PBP = (function () {
   /**
    * La card de QUINTETOS de un equipo. PURO. El mapa de tiro es otra card
    * (`mapaCard`) y el motor táctico va al final, a pedido del club.
+   * Todas las sub-cards arrancan CERRADAS (pedido del club, 2026-09-18): el
+   * DT abre la que quiere analizar y la página no se hace eterna.
+   * En Scouting la card se acota a lo que sirve para preparar el partido:
+   * últimos 5 (inicial contra cierre), el clutch y quién decide los finales.
    * @param {object} paq  `analitica-pbp-web@1`, `@2` o `@3`
+   * @param {{contexto?: string}} opciones
    */
-  function html(paq) {
+  function html(paq, opciones) {
     if (!paq || !paq.esquema) return vacio('Sin análisis de play-by-play.');
     const u = paq.umbrales || {};
     const v2 = !!(paq.tiros && paq.tiros.detalle);
+    const notaClutch = 'Últimos 5 minutos del 4.º cuarto o del suplementario con el partido a 5 o menos, medido antes de cada acción.';
+    if ((opciones || {}).contexto === 'scouting') {
+      return `<div class="pbp-bloque" data-pbp-listo="1" data-pbp-contexto="scouting">
+        ${notaLaboratorio(paq)}
+        ${v2 ? seccion('ultimos5', 'Últimos 5 partidos · inicial contra cierre', tablaUltimos5(paq)) : ''}
+        ${seccion('clutch', 'Clutch', resumenClutch(paq), { nota: notaClutch })}
+        ${seccion('decide', 'Quién decide los finales', tablaClutch(paq), { nota: 'Usos = PLAYS del motor, en los finales apretados.' })}
+      </div>`;
+    }
     const trios = `<details class="pbp-detalle pbp-sub mt-3"><summary class="pbp-resumen text-[11px] uppercase tracking-wider text-muted cursor-pointer select-none">Tríos con más minutos</summary>${tablaCombos(paq, paq.trios, 'Trío')}</details>
       <details class="pbp-detalle pbp-sub mt-2"><summary class="pbp-resumen text-[11px] uppercase tracking-wider text-muted cursor-pointer select-none">Dúos con más minutos</summary>${tablaCombos(paq, paq.duos, 'Dúo')}</details>`;
     return `<div class="pbp-bloque" data-pbp-listo="1">
@@ -874,14 +917,14 @@ const SGADD_PBP = (function () {
           <div>${subtitulo('Quinteto inicial')}${tablaClave(paq, paq.iniciales)}</div>
           <div>${subtitulo('Cierre · más minutos en los últimos 5\'')}${tablaClave(paq, paq.cierre && paq.cierre.ultimos5)}</div>
           <div>${subtitulo('Cierre · en cancha al final')}${tablaClave(paq, paq.cierre && paq.cierre.alFinal)}</div>
-        </div>${v2 ? `<div class="mt-3">${subtitulo('Últimos 5 partidos · inicial contra cierre')}${tablaUltimos5(paq)}</div>` : ''}`, { abierta: true })}
+        </div>${v2 ? `<div class="mt-3">${subtitulo('Últimos 5 partidos · inicial contra cierre')}${tablaUltimos5(paq)}</div>` : ''}`)}
       ${seccion('quintetos', 'Quintetos con más minutos', tablaCombos(paq, paq.quintetos, 'Quinteto') + trios,
-        { abierta: true, nota: 'NET/pos: puntos a favor menos en contra cada 100 posesiones. Con ~ y atenuados, menos de '
+        { nota: 'NET/pos: puntos a favor menos en contra cada 100 posesiones. Con ~ y atenuados, menos de '
           + (u[5] || 15) + ' minutos juntos: se muestran, pero todavía no dicen mucho.' })}
       ${v2 ? seccion('rotaciones', 'Rotaciones · minuto a minuto', heatmapRotaciones(paq)) : ''}
       ${v2 ? seccion('cuartos', 'Cuartos y momentum', bloqueCuartos(paq)) : ''}
       ${seccion('clutch', 'Clutch · quién decide los finales', bloqueClutch(paq),
-        { abierta: true, nota: 'Últimos 5 minutos del 4.º cuarto o del suplementario con el partido a 5 o menos, medido antes de cada acción. Usos = PLAYS del motor.' })}
+        { nota: notaClutch + ' Usos = PLAYS del motor.' })}
       ${v2 ? seccion('tactico', 'Motor táctico · puntos de fuga y combinaciones', bloqueTactico(paq),
         { nota: 'Solo combinaciones con muestra suficiente. Es una lectura de los números, no una orden: decide el cuerpo técnico.' }) : ''}
     </div>`;
@@ -889,7 +932,8 @@ const SGADD_PBP = (function () {
 
   /**
    * La card MAPA DE TIRO de un equipo. PURO.
-   * @param {{propio?: object}} opciones  en Scouting, el paquete del otro lado del cruce
+   * @param {{propio?: object, fijo?: boolean}} opciones  en Scouting, el paquete del otro lado del
+   *   cruce, y `fijo`: la vista queda en «Lo que tira · Zonas · Eficiencia vs liga», sin conmutadores.
    */
   function mapaCard(paq, opciones) {
     const o = opciones || {};
@@ -912,7 +956,7 @@ const SGADD_PBP = (function () {
     }
     return `<div class="pbp-bloque" data-pbp-listo="1">
       ${notaLaboratorio(paq)}
-      ${mapa(paq, { sujeto: 'equipo', perspectiva: true })}
+      ${o.fijo ? mapa(paq, { fijo: true }) : mapa(paq, { sujeto: 'equipo', perspectiva: true })}
       ${cruce}
     </div>`;
   }
@@ -994,12 +1038,13 @@ const SGADD_PBP = (function () {
       const nombreJugador = nodo.getAttribute('data-pbp-jugador');
       const propio = nodo.getAttribute('data-pbp-propio');
       const tipo = nodo.getAttribute('data-pbp-tipo');
+      const contexto = nodo.getAttribute('data-pbp-contexto');
       /* El paquete propio es opcional: sin él, la card sale igual y sin cruce. */
       Promise.all([pedir(nodo.getAttribute('data-pbp-equipo')), propio ? pedir(propio).catch(() => null) : null])
         .then(([paq, paqPropio]) => {
           if (!nodo.isConnected) return;
           nodo.innerHTML = nombreJugador ? jugador(paq, nombreJugador)
-            : tipo === 'mapa' ? mapaCard(paq, { propio: paqPropio }) : html(paq);
+            : tipo === 'mapa' ? mapaCard(paq, { propio: paqPropio, fijo: contexto === 'scouting' }) : html(paq, { contexto: contexto });
           activar(nodo, paq);
         }).catch((e) => {
           if (!nodo.isConnected) return;

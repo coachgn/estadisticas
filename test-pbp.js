@@ -333,8 +333,17 @@ function paquete(equipo) {
   check('la card de quintetos: clave, quintetos, rotaciones, cuartos, clutch y el MOTOR TÁCTICO AL FINAL',
     JSON.stringify(secciones) === '["clave","quintetos","rotaciones","cuartos","clutch","tactico"]', secciones);
   check('el mapa de tiro YA NO está en la card de quintetos', !/pbp-mapa/.test(h3));
-  check('las secciones son <details> colapsables, y Quintetos y Clutch arrancan abiertas',
-    /<details class="pbp-detalle mt-3" data-pbp-seccion="quintetos" open>/.test(h3) && /data-pbp-seccion="clutch" open/.test(h3) && /<summary class="pbp-resumen/.test(h3));
+  check('las secciones son sub-cards <details> y TODAS arrancan cerradas (el DT abre la que quiere)',
+    (h3.match(/<details class="pbp-detalle mt-3"/g) || []).length === 6 && !/<details[^>]*\sopen[\s>]/.test(h3) && /<summary class="pbp-resumen/.test(h3));
+  check('la columna TC del clutch dice «Tiros de Campo», no «Tapones cometidos» del glosario',
+    /data-glosa="Tiros de Campo \(Convertidos \/ Intentados\)">TC</.test(h3));
+  const hScout = P.html(p3, { contexto: 'scouting' });
+  const secScout = (hScout.match(/data-pbp-seccion="([^"]+)"/g) || []).map(x => x.slice(18, -1));
+  check('en Scouting la card de quintetos muestra SOLO últimos 5, clutch y quién decide los finales',
+    JSON.stringify(secScout) === '["ultimos5","clutch","decide"]' && />Quién decide los finales</.test(hScout) && />Clutch</.test(hScout), secScout);
+  check('y también arrancan cerradas, con el resumen del clutch separado de la tabla',
+    !/<details[^>]*\sopen[\s>]/.test(hScout) && /data-pbp-seccion="clutch"[\s\S]*partidos llegaron al final apretado[\s\S]*data-pbp-seccion="decide"[\s\S]*Usos · quién decide/.test(hScout)
+    && !/data-pbp-seccion="clutch"[\s\S]*Usos · quién decide[\s\S]*data-pbp-seccion="decide"/.test(hScout));
   check('G-P y MIN no se parten: toda celda numérica lleva whitespace-nowrap', /whitespace-nowrap">8-7</.test(h3) && !/<td class="px-2 py-1 font-mono text-xs">/.test(h3));
   check('sin undefined ni NaN, y escapa lo del paquete nuevo', !/undefined|NaN/.test(h3) && !/<i>SUARDI/.test(h3) && /&lt;i&gt;SUARDI/.test(h3));
   const lt = P.lecturaTactica(p3);
@@ -421,6 +430,18 @@ function paquete(equipo) {
   check('cruce: CERRAR donde el rival rinde Y nosotros concedemos: Z14 sí, Z12 no (ahí no concedemos) y Z1 no (ahí rinden de liga)', cz.cerrar.map(x => x.zona).join() === 'Z14', cz.cerrar);
   const hs = P.mapaCard(rival, { propio: p3 });
   check('en scouting la card del mapa suma el cruce nombrando a los dos equipos', /Atacar ahí · JUJUY BASQUET rinde y AMANCAY \(LR\) concede/.test(hs));
+  const hsFijo = P.mapaCard(rival, { propio: p3, fijo: true });
+  check('en Scouting el mapa queda FIJO en Lo que tira · Zonas · Eficiencia vs liga, sin conmutadores',
+    /data-pbp-sujeto="equipo" data-pbp-vista="zonas" data-pbp-metrica="eficiencia" data-pbp-diag="1"/.test(hsFijo) && /data-pbp-fijo="1"/.test(hsFijo)
+    && !/data-pbp-accion=/.test(hsFijo) && !/class="pbp-hex"/.test(hsFijo) && /Atacar ahí/.test(hsFijo));
+  check('y aunque un llamador pida otra vista, fijo gana',
+    /data-pbp-sujeto="equipo" data-pbp-vista="zonas" data-pbp-metrica="eficiencia"/.test(P.mapa(rival, { fijo: true, vista: 'hex', metrica: 'frecuencia', sujeto: 'contra' })));
+  check('el diagnóstico del rival explica cómo lo lee el DT: explotar = cerrar, ineficientes = flotar',
+    /data-pbp-lectura="explotar">Áreas de máxima eficiencia ofensiva del rival\. Lectura para el DT: zonas donde nuestra defensa debe priorizar ajustes/.test(hsFijo)
+    && /data-pbp-lectura="evitar">Áreas de bajo rendimiento del rival\. Lectura para el DT: zonas que nuestra defensa puede flotar o liberar/.test(hsFijo)
+    && /title="Áreas de máxima eficiencia/.test(hsFijo));
+  check('en Equipos el mapa sigue con sus conmutadores y sin la lectura del rival',
+    /data-pbp-accion="sujeto:contra"/.test(mapa3) && !/data-pbp-lectura/.test(mapa3));
 
   /* La interactividad, sobre un DOM mínimo: la fila y el polígono se
      encienden juntos, un toque fija la zona y pinta sus tiros. */
@@ -463,10 +484,16 @@ function paquete(equipo) {
     /function jugadoresTabTiro[\s\S]*?jugadoresBloqueMapaPbp\(j\)/.test(srcJug) && /SGADD_PBP\.activa\(\)[\s\S]{0,80}SGADD_PBP\.espacioJugador|espacioJugador\(j\['NOMBRES'\], j\['EQUIPO'\]\)/.test(srcJug)
     && /function jugadoresPintar[\s\S]*?SGADD_PBP\.montarPendientes\(root\)/.test(srcJug));
   const srcPbp = fs.readFileSync('./js/sgadd-pbp.js', 'utf8');
+  check('el montaje pasa el contexto: Scouting pide la card acotada y el mapa fijo',
+    /mapaCard\(paq, \{ propio: paqPropio, fijo: contexto === 'scouting' \}\)/.test(srcPbp) && /html\(paq, \{ contexto: contexto \}\)/.test(srcPbp));
+  const ordenTabs = JSON.parse(vm.runInContext('JSON.stringify(equiposTabsOfrecidas().map(t => t.id))', conCapa));
+  check('Equipos: Partidos es la ÚLTIMA pestaña, después del Mapa de tiro',
+    ordenTabs[ordenTabs.length - 1] === 'partidos' && ordenTabs[ordenTabs.length - 2] === 'pbp-tiro', ordenTabs);
   check('al imprimir se abren las secciones cerradas y después se devuelven', /beforeprint[\s\S]*details:not\(\[open\]\)/.test(srcPbp) && /afterprint/.test(srcPbp));
   const css = fs.readFileSync('./index.html', 'utf8');
   check('el resaltado vive en el <style> (nodos inyectados) y el hover solo en pantalla',
-    /\.pbp-zona\.pbp-activa\s*\{/.test(css) && /\.pbp-etiqueta-ci\s*\{/.test(css) && /\.pbp-tiro-e\s*\{/.test(css) && /\.pbp-contorno\.pbp-diag-critica/.test(css) && /tr\.pbp-fila-zona\.pbp-activa > td\s*\{/.test(css) && /@media screen \{\s*\.pbp-toggle:hover/.test(css));
+    /\.pbp-zona\.pbp-activa\s*\{/.test(css) && /\.pbp-etiqueta-ci\s*\{/.test(css) && /\.pbp-tiro-e\s*\{/.test(css) && /\.pbp-contorno\.pbp-diag-critica/.test(css) && /tr\.pbp-fila-zona\.pbp-activa > td\s*\{/.test(css) && /@media screen \{\s*\.pbp-toggle:hover/.test(css)
+    && /\.pbp-detalle:not\(\.pbp-sub\) \{ border: 1px solid/.test(css));
   const cli = fs.readFileSync('./server/bin/pbp.js', 'utf8');
   check('el CLI de subida acepta @1, @2 y @3, y no los mezcla', /analitica-pbp-web@2', 'motorstats-ingestion\/analitica-pbp-web@3'/.test(cli) && /esquema distinto del índice/.test(cli));
 
