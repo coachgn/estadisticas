@@ -97,6 +97,14 @@ function crearApp(opciones) {
      lee: la carga es del CLI (`server/bin/pbp.js`). */
   app.get('/api/v1/pbp/:clubId/:categoria', responder(require('./api/pbp.js').manejarPbp));
 
+  /* Las fichas de los clientes y los mails institucionales (bienvenida y
+     recordatorios de vencimiento). Solo ADMIN, salvo el cron, que se
+     autentica con CRON_SECRET. En su propio archivo: no toca el catálogo. */
+  const mails = require('./api/mails.js');
+  app.get('/api/v1/fichas', responder(mails.manejarFichas));
+  app.post('/api/v1/fichas', responder(mails.manejarFichasEscribir));
+  app.get('/api/cron/recordatorios-vencimiento', responder(mails.manejarCronVencimientos));
+
   /* LAS DOS RUTAS SIN TOKEN. Son las únicas: todo lo demás exige uno.
      `login` lo emite y `clave` lo fija por primera vez, así que exigirlo
      sería pedir la llave para entrar a buscar la llave. Lo que las cuida

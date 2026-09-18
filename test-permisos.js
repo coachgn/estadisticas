@@ -639,7 +639,13 @@ titulo('EL CICLO DE VIDA EN LA UI · y que NO diverja del servidor');
   check('faltando 12 horas dice 1 día',
     HUB2.diasPara('2026-09-30', Date.parse('2026-09-30T12:00:00Z')) === 1);
   check('el día después dice -1 o menos',
-    HUB2.diasPara('2026-09-30', Date.parse('2026-10-02T00:00:00Z')) < 0);
+    HUB2.diasPara('2026-09-30', Date.parse('2026-10-02T00:00:00-03:00')) < 0);
+  /* El corte es a las 23:59 de ARGENTINA (2026-09-18): a las 21 hs del día
+     siguiente todavía no pasaron 24 horas del corte, y a las 02:00 UTC del
+     día del vencimiento el cliente todavía entra. */
+  check('el corte es a las 23:59 de Argentina, no de UTC',
+    HUB2.estadoEfectivo({ vence: '2026-09-30' }, Date.parse('2026-10-01T02:00:00Z')) !== 'vencido' &&
+    HUB2.estadoEfectivo({ vence: '2026-09-30' }, Date.parse('2026-10-01T03:00:00Z')) === 'vencido');
   check('sin fecha no hay cuenta', HUB2.diasPara(null) === null && HUB2.diasPara('') === null);
 
   /* LOS TRES ESTADOS Y LOS TRES PLANES son los mismos de los dos lados: si

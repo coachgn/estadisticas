@@ -31,7 +31,7 @@ node test-partido.js       #  55 tests · detalle partido a partido, perfil de t
 node test-scouting.js      # 432 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
-node test-permisos.js      # 401 tests · roles, planes, el gate, el selector, el hub, el ciclo,
+node test-permisos.js      # 402 tests · roles, planes, el gate, el selector, el hub, el ciclo,
                            #             la sesión, la landing y el glosario
 node test-comparativa.js   #  65 tests · ciclos, tendencia contra nivel, cara a cara
 node test-clientes.js      #  69 tests · el padrón de clientes, los cupos y el login
@@ -76,6 +76,9 @@ node test-pbp.js           # 119 tests · la capa de laboratorio de play-by-play
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
 
+node test-mails.js         # 107 tests · los mails institucionales: plantillas sin huecos, el
+                           #             día de Argentina, la idempotencia del cron, la ficha y el SMTP
+
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
 
@@ -86,7 +89,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**5883 tests en total. Todos tienen que dar verde antes de commitear.**
+**5991 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -9076,3 +9079,96 @@ test que recorre `js/` y falla si la palabra vuelve.
   flotar o liberar (`LECTURA_SCOUTING`, texto visible y en el `title`).
 - **En Equipos, Partidos pasó a ser la ÚLTIMA pestaña**, después de Mapa de
   tiro.
+
+---
+
+## 63. LOS MAILS INSTITUCIONALES · bienvenida y avisos de vencimiento (2026-09-18)
+
+Cuatro mails, todos desde **motorstats.ar@gmail.com** («MotorStats AR»):
+la **bienvenida** al dar de alta una categoría y los **recordatorios** 5, 3
+y 1 día antes del vencimiento. HTML de mail (tablas, estilos en línea, 600
+px, sin imágenes externas) más texto plano. `test-mails.js` fija todo.
+
+```
+server/lib/mail-plantillas.js    las plantillas · PURO
+server/lib/mail-envio.js         SMTP de Gmail sin dependencias (tls de Node)
+server/lib/fichas.js             la ficha del cliente y el log de avisos
+server/lib/cron-vencimientos.js  qué toca hoy (PURO) y la corrida
+server/api/mails.js              /api/v1/fichas · /api/cron/recordatorios-vencimiento
+server/bin/probar-mails.js       vista previa, simulación y envío de prueba
+```
+
+### La ficha guarda SOLO lo que el catálogo no tiene
+
+Contacto, mail institucional, fecha de alta, modalidad de renovación y el
+log `notificacionesEnviadas`. Vive en `sgadd:fichas` (un hash, un campo por
+`club|categoría`) y NO en el catálogo: el catálogo se sirve a los clientes
+—un mail adentro le contaría a cada club el de los demás, punto 29— y se
+escribe entero. **El plan, el vencimiento, el club y la categoría se leen
+del CATÁLOGO al mandar el mail**: copiarlos a la ficha sería una segunda
+fuente de verdad. Se guarda con `deepMerge`: lo que no viene no se borra.
+Solo sale por una ruta de ADMIN.
+
+### La idempotencia es ATÓMICA
+
+Cada aviso se reclama con **`HSETNX`** en `sgadd:notificaciones` antes de
+salir: dos corridas a la vez mandan uno solo. Si Gmail falla, el reclamo se
+libera y sale en la corrida siguiente. El id de un recordatorio lleva el
+**vencimiento** (`club|cat|recordatorio_3d@2026-10-01`): al renovar, los tres
+avisos del período nuevo se re-arman solos. El log de la ficha es lo que
+pinta el Panel Master; lo que decide es el reclamo.
+
+### Las reglas del cron
+
+- **Hoy es la fecha de ARGENTINA** (UTC−3 fijo), no la de Vercel.
+- **Solo 5, 3 y 1 día exactos.** Un día que el cron no corre no se recupera
+  con otro texto: «faltan 3 días» mandado cuando faltan 2 miente.
+- **Recibe** una categoría con acceso (activa o en prueba), con fecha de
+  vencimiento —la que RIGE, club o categoría— y con mail en su ficha. El
+  reporte lista a los omitidos con su motivo.
+- **`vercel.json`** lo dispara a las 12:00 UTC (09:00 de Argentina).
+  **Sin `CRON_SECRET` la ruta no corre** (503): una ruta que manda mails no
+  puede quedar abierta. El admin la puede disparar con su token.
+
+### EL CORTE PASÓ A LAS 23:59 DE ARGENTINA
+
+`suscripcionVencida` cortaba a las 23:59 **UTC**, o sea a las 20:59 de acá,
+y los mails le dicen al cliente «23:59 hs». Se cambió en `sgadd-auth.js`
+(y su copia) y en la réplica de `sgadd-hub.js`, que `test-permisos` compara:
+`T23:59:59.999-03:00`. El cliente gana tres horas de servicio el último día.
+
+### El remitente y la credencial
+
+**Remitente fijo.** `SMTP_USER`, si se pone, tiene que ser
+motorstats.ar@gmail.com: otra casilla se rechaza antes de conectar. La
+credencial es una **contraseña de aplicación** de esa cuenta (`SMTP_PASS`,
+también `MAIL_APP_PASSWORD` o `GMAIL_APP_PASSWORD`). **Sin ella no sale
+nada**: la ficha se guarda igual, la bienvenida responde `SIN_CREDENCIAL`,
+el cron no reclama ningún aviso y el Panel Master lo avisa en el bloque 4.
+
+### La bienvenida NO manda la clave ni el código de invitación
+
+El código se muestra una sola vez y el servidor guarda su huella (punto
+29). El mail da el link al panel y dice que se entra con ese mismo mail; el
+código sigue viajando como hasta ahora. Tampoco manda un link firmado: esos
+no se pueden revocar.
+
+### El Panel Master · bloque «4 · Contacto y suscripción»
+
+Contacto, email, fecha de alta (arranca en hoy), modalidad de renovación,
+**fecha de vencimiento de la categoría** —ahora editable también para una
+activa: viaja en la acción `alta`, que la pasa por `renovar()`— y el
+checkbox **«Mandar el mail de bienvenida al guardar»**. La ficha se guarda
+DESPUÉS del catálogo (la categoría tiene que existir) y el modal de
+confirmación enumera la ficha y el mail que va a salir: nada en silencio
+(punto 30). Si la bienvenida ya salió, dice cuándo y ofrece reenviarla,
+también con confirmación.
+
+### Probar sin esperar al cron
+
+    node server/bin/probar-mails.js --tipo bienvenida                         # vista previa
+    node server/bin/probar-mails.js --tipo recordatorio --dias 3              # vista previa
+    node server/bin/probar-mails.js --tipo cron                               # simulación con clientes ficticios
+    node server/bin/probar-mails.js --tipo cron --real                        # qué mandaría hoy (solo lee)
+    node server/bin/probar-mails.js --tipo bienvenida --email x@y.com --enviar
+

@@ -53,6 +53,19 @@ próxima carga.
      como los escribe la planilla, y la pantalla **propone** cuál es el del
      club. **Revisá que sea el correcto** antes de seguir.
 
+   **Paso 4 · Contacto y suscripción**
+   - **«Nombre de contacto»** y **«Email institucional»**: a ese mail le llegan
+     la bienvenida y los avisos de vencimiento (5, 3 y 1 día antes). Salen
+     siempre desde motorstats.ar@gmail.com.
+   - **«Fecha de alta / inicio»** (arranca en hoy) y **«Modalidad de renovación»**
+     (mensual, trimestral, semestral o por temporada): los dicen los mails.
+   - **«Fecha de vencimiento»**: si la renovación no está registrada, el acceso
+     se suspende solo a las 23:59 hs (Argentina) de ese día. Vacía, rige la del club.
+   - **«Mandar el mail de bienvenida al guardar»** viene tildado. Si ya se mandó,
+     en su lugar dice cuándo y a quién, con **«Reenviar bienvenida»**.
+   - Si la pantalla avisa que «los mails todavía no salen», la ficha se guarda
+     igual: falta la contraseña de aplicación del servidor (la pone el admin técnico).
+
 5. Tocá **«Dar de alta»**. Se abre un resumen con lo que se va a crear:
    leelo y confirmá.
 

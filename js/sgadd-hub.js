@@ -48,7 +48,12 @@ const SGADD_HUB = (function () {
        herede el del club; `estado` solo se manda al CREAR una categoría:
        el de una que ya existe se cambia en su fila, con su confirmación. */
     plan: 'BRONCE', estado: '',
-    vence: '',            // la fecha de la prueba de una categoría que se crea (punto 61)
+    vence: '',            // el vencimiento de la categoría: el de la prueba o el del plan (puntos 61 y 63)
+    /* LA FICHA DEL CLIENTE (punto 63): contacto, mail institucional, fecha
+       de alta y modalidad de renovación. NO va al catálogo: se guarda en
+       su propia clave, por `/api/v1/fichas`. `bienvenida` = mandar el
+       mail de bienvenida al guardar, si todavía no salió. */
+    contacto: '', email: '', fechaAlta: '', renovacion: 'mensual', bienvenida: true,
     catElegida: '',       // editando: la categoría existente, o '' para una nueva
     fuente: 'existente',  // 'mantener' | 'existente' | 'nuevo'
     libroDe: '',          // '<club>/<categoria>' de un libro ya cargado
@@ -64,6 +69,12 @@ const SGADD_HUB = (function () {
      a la del libro que el admin eligió después. */
   const libro = { estado: null, equipos: null, mensaje: '', cuenta: null,
                   pedido: null, propuesto: null };
+
+  /* Las fichas de todos los clientes, leídas UNA vez por sesión del hub.
+     `envio` dice si el servidor puede mandar mails (la credencial de
+     Gmail): sin ella, la pantalla lo avisa antes de que alguien espere una
+     bienvenida que no va a salir. */
+  const fichasHub = { todas: null, estado: null, envio: null, mensaje: '' };
 
   /* El resultado del último guardado. Se muestra en la pantalla y no en un
      `alert()`: el motivo de rechazo del servidor es un texto que dice qué
@@ -284,14 +295,14 @@ const SGADD_HUB = (function () {
     if (!c || !c.vence || !/^\d{4}-\d{2}-\d{2}$/.test(c.vence)) return e;
     /* Fin del día, no su comienzo: contra la medianoche, el cliente
        figuraría vencido el mismo día que dice su factura. */
-    const fin = Date.parse(c.vence + 'T23:59:59.999Z');
+    const fin = Date.parse(c.vence + 'T23:59:59.999-03:00');   // 23:59 de Argentina, como el servidor
     return (ahora === undefined ? Date.now() : ahora) > fin ? 'vencido' : e;
   }
 
   /** Cuántos días faltan. Negativo = ya pasó. `null` si no hay fecha. */
   function diasPara(vence, ahora) {
     if (!vence || !/^\d{4}-\d{2}-\d{2}$/.test(vence)) return null;
-    const fin = Date.parse(vence + 'T23:59:59.999Z');
+    const fin = Date.parse(vence + 'T23:59:59.999-03:00');
     if (!isFinite(fin)) return null;
     return Math.ceil((fin - (ahora === undefined ? Date.now() : ahora)) / 86400000);
   }
@@ -1100,6 +1111,235 @@ const SGADD_HUB = (function () {
     refrescarAlta('alta-estado');
   }
 
+  /* =====================================================================
+     LA FICHA DEL CLIENTE Y LOS MAILS INSTITUCIONALES (punto 63)
+
+     El bloque 4 del alta. Guarda lo que el catálogo NO tiene —contacto,
+     mail institucional, fecha de alta, modalidad de renovación— en la
+     ficha de la categoría (`/api/v1/fichas`), y dispara la bienvenida.
+     El plan y el vencimiento NO se copian a la ficha: los mails los leen
+     del catálogo en el momento de salir.
+
+     Los inputs de texto son de `campoAlta` y no repintan nada; el
+     checkbox y el select de renovación tampoco. Esta zona se repinta
+     entera solo cuando llegan las fichas del servidor.
+     ===================================================================== */
+  const EMAIL_FICHA = /^[^\s@<>,;"']+@[^\s@<>,;"']+\.[a-z]{2,}$/i;
+  const RENOVACIONES_FICHA = [['mensual', 'Mensual'], ['trimestral', 'Trimestral'],
+    ['semestral', 'Semestral'], ['temporada', 'Por temporada']];
+  const NOMBRE_HITO = { bienvenida: 'Bienvenida', recordatorio_5d: 'Aviso 5 días',
+    recordatorio_3d: 'Aviso 3 días', recordatorio_1d: 'Último aviso (1 día)' };
+
+  /** La fecha de hoy en Argentina: la ficha la propone como fecha de alta. */
+  function hoyAR(ahora) {
+    return new Date((ahora === undefined ? Date.now() : ahora) - 3 * 3600000).toISOString().slice(0, 10);
+  }
+
+  function limpiarFicha() {
+    Object.assign(alta, { contacto: '', email: '', fechaAlta: hoyAR(), renovacion: 'mensual', bienvenida: true });
+  }
+
+  /** La ficha guardada de lo que se está editando, o null. */
+  function fichaGuardada(club, slugCat) {
+    const t = fichasHub.todas;
+    const k = (club || alta.club) + '|' + (slugCat || alta.categoria);
+    return (t && t[k]) || null;
+  }
+
+  function bienvenidaEnviada(ficha) {
+    return ((ficha && ficha.notificacionesEnviadas) || []).filter(r => r && r.hito === 'bienvenida').pop() || null;
+  }
+
+  /** Precarga el bloque 4 con la ficha guardada de una categoría. */
+  function ponerFicha(club, slugCat) {
+    const f = fichaGuardada(club, slugCat);
+    if (!f) { limpiarFicha(); alta.fechaAlta = ''; return; }
+    alta.contacto = f.contacto || ''; alta.email = f.email || '';
+    alta.fechaAlta = f.fechaAlta || ''; alta.renovacion = f.renovacion || 'mensual';
+    alta.bienvenida = !bienvenidaEnviada(f);
+  }
+
+  /** Lee las fichas una vez. Si llegan con una categoría abierta, la precarga. */
+  function cargarFichas(forzar) {
+    if (typeof SGADD_DATA === 'undefined' || !SGADD_DATA.fichas) return;
+    if (!forzar && fichasHub.estado) return;
+    fichasHub.estado = 'leyendo';
+    SGADD_DATA.fichas().then((r) => {
+      fichasHub.todas = r.fichas || {}; fichasHub.envio = r.envio || null; fichasHub.estado = 'ok';
+      /* Solo si el admin todavía no tocó el bloque: pisarle lo que está
+         escribiendo con lo guardado sería peor que no precargar. */
+      if (alta.catElegida && !alta.contacto && !alta.email) ponerFicha(alta.club, alta.catElegida);
+      refrescarFicha();
+    }).catch((e) => {
+      fichasHub.estado = 'error'; fichasHub.mensaje = e.message || 'No se pudieron leer las fichas.';
+      refrescarFicha();
+    });
+  }
+
+  /** Repinta el bloque 4, salvo que el foco esté adentro (se está escribiendo). */
+  function refrescarFicha() {
+    const n = (typeof document !== 'undefined') && document.getElementById('hubAltaFicha');
+    if (!n) return;
+    const activo = document.activeElement;
+    if (activo && n.contains && n.contains(activo)) return;
+    n.innerHTML = zonaFicha();
+  }
+
+  function campoFecha(id, etiqueta, valor, ayuda) {
+    return `<label class="block">
+      <span class="${ROTULO}">${esc(etiqueta)}</span>
+      <input type="date" id="alta-${id}" value="${esc(valor || '')}"
+        onchange="SGADD_HUB.campoAlta('${id}', this.value)" class="${CLASE_INPUT} border-hairline font-mono">
+      ${ayuda ? `<span class="block text-[10px] text-muted mt-1">${ayuda}</span>` : ''}
+    </label>`;
+  }
+
+  function elegirRenovacion(v) {
+    alta.renovacion = String(v || 'mensual');
+    guardado.estado = null;
+    refrescarEstado();
+  }
+
+  function elegirBienvenida(v) {
+    alta.bienvenida = !!v;
+    guardado.estado = null;
+    refrescarEstado();
+  }
+
+  /** La URL directa del panel del cliente, absoluta: es la que va en el mail. */
+  function urlAbsoluta(club) {
+    const rel = urlCliente(club);
+    try { return location.origin + location.pathname + rel; } catch (e) { return rel; }
+  }
+
+  function zonaFicha() {
+    const f = fichaGuardada();
+    const enviada = bienvenidaEnviada(f);
+    const log = ((f && f.notificacionesEnviadas) || []).slice(-6).reverse();
+    const aviso = [];
+    if (fichasHub.estado === 'error') {
+      aviso.push(`<p class="text-[11px] zona-texto zona-peligro">No se pudieron leer las fichas guardadas: ${esc(fichasHub.mensaje)}</p>`);
+    }
+    if (fichasHub.envio && !fichasHub.envio.ok) {
+      aviso.push(`<p class="text-[11px] zona-texto zona-aviso">Los mails todavía no salen: ${esc(fichasHub.envio.mensaje)}
+        La ficha se guarda igual y la bienvenida sale cuando la credencial esté.</p>`);
+    }
+    const vencePrueba = alta.estado === 'prueba' && !alta.catElegida;
+    return `<div class="grid sm:grid-cols-2 gap-3 mt-2">
+        ${campo('contacto', 'Nombre de contacto', alta.contacto,
+          'A quién le escribimos. El mail lo saluda por su nombre.', { placeholder: 'Martina Pérez' })}
+        ${campo('email', 'Email institucional', alta.email,
+          'Recibe la bienvenida y los avisos de vencimiento (5, 3 y 1 día antes).',
+          { placeholder: 'prensa@club.com.ar', mono: true, invalido: !!alta.email && !EMAIL_FICHA.test(alta.email.trim()) })}
+        ${campoFecha('fechaAlta', 'Fecha de alta / inicio', alta.fechaAlta, 'Desde cuándo tiene el servicio.')}
+        <label class="block">
+          <span class="${ROTULO}">Modalidad de renovación</span>
+          <select id="alta-renovacion" onchange="SGADD_HUB.elegirRenovacion(this.value)" class="${CLASE_SELECT}">
+            ${RENOVACIONES_FICHA.map(r => `<option value="${r[0]}"${alta.renovacion === r[0] ? ' selected' : ''}>${r[1]}</option>`).join('')}
+          </select>
+          <span class="block text-[10px] text-muted mt-1">La dicen la bienvenida y los recordatorios.</span>
+        </label>
+        ${vencePrueba ? '' : campoFecha('vence', 'Fecha de vencimiento', alta.vence,
+          'Si la renovación no está registrada, el acceso se suspende solo a las 23:59 hs (Argentina) de ese día. '
+          + 'Vacía: rige la del club.')}
+      </div>
+      ${alta.club ? `<p class="text-[11px] text-muted mt-3">Acceso · URL directa del panel:
+        <code class="text-ink break-all">${esc(urlAbsoluta(alta.club))}</code> · entra con su mail y su clave.</p>` : ''}
+      <div class="mt-3">
+        ${enviada
+          ? `<p class="text-[11px] text-ink">✉ Bienvenida enviada el ${esc(String(enviada.enviado || '').slice(0, 10))} a ${esc(enviada.para || '')}.
+              <button type="button" onclick="SGADD_HUB.reenviarBienvenida()" class="underline text-muted hover:text-ink ml-1">Reenviar bienvenida</button></p>`
+          : `<label class="flex items-start gap-2 text-xs text-ink">
+              <input type="checkbox" id="alta-bienvenida" ${alta.bienvenida ? 'checked' : ''} class="mt-0.5"
+                onchange="SGADD_HUB.elegirBienvenida(this.checked)">
+              <span>Mandar el mail de bienvenida al guardar <span class="text-muted">· desde motorstats.ar@gmail.com, con el link al panel y la política de renovación</span></span>
+            </label>`}
+      </div>
+      ${log.length ? `<ul class="mt-2 text-[11px] text-muted space-y-0.5">${log.map(r =>
+        `<li>✉ ${esc(NOMBRE_HITO[r.hito] || r.hito)} · ${esc(String(r.enviado || '').slice(0, 10))}${r.vence ? ' · vencimiento ' + esc(r.vence) : ''} → ${esc(r.para || '')}</li>`).join('')}</ul>` : ''}
+      ${aviso.join('')}`;
+  }
+
+  /** El vencimiento que viaja en la intención: ver `intencionAlta`. */
+  function venceQueViaja() {
+    if (!alta.catElegida) return alta.vence ? { vence: alta.vence } : {};
+    const c = clubesCatalogo().find(x => x.id === alta.modo);
+    const k = c && (c.categorias || []).find(x => x.slug === alta.catElegida);
+    const antes = (k && k.vence) || '';
+    return String(alta.vence || '') !== String(antes) ? { vence: alta.vence || '' } : {};
+  }
+
+  /** Lo que cambia de la ficha, para el modal. Nada se aplica en silencio. */
+  function cambiosFicha() {
+    const f = fichaGuardada() || {};
+    const nomRen = (v) => ((RENOVACIONES_FICHA.find(r => r[0] === v) || [])[1] || '');
+    const filas = [
+      ['Contacto', f.contacto || '', alta.contacto.trim()],
+      ['Email institucional', f.email || '', alta.email.trim().toLowerCase()],
+      ['Fecha de alta', f.fechaAlta || '', alta.fechaAlta],
+      ['Renovación', nomRen(f.renovacion), nomRen(alta.renovacion)],
+    ].filter(x => String(x[1] || '') !== String(x[2] || '') && (x[1] || x[2]))
+      .map(x => ({ campo: x[0], label: x[0], antes: x[1] || '—', despues: x[2] || 'sin dato' }));
+    if (mandaBienvenida()) {
+      filas.push({ campo: 'bienvenida', label: 'Mail de bienvenida', antes: '—',
+        despues: 'se manda a ' + alta.email.trim().toLowerCase() + ' desde motorstats.ar@gmail.com' });
+    }
+    return filas;
+  }
+
+  function mandaBienvenida() {
+    return !!(alta.bienvenida && alta.email && EMAIL_FICHA.test(alta.email.trim()) && !bienvenidaEnviada(fichaGuardada()));
+  }
+
+  function fichaHayQueGuardar() {
+    return cambiosFicha().some(c => c.campo !== 'bienvenida') || mandaBienvenida();
+  }
+
+  function textoBienvenida(b) {
+    if (!b) return '';
+    if (b.resultado === 'enviado') return ' Bienvenida enviada a ' + b.para + '.';
+    if (b.resultado === 'omitido') return ' ' + (b.mensaje || '');
+    return ' La bienvenida NO salió: ' + (b.mensaje || 'error') + ' La ficha quedó guardada.';
+  }
+
+  /** Guarda la ficha después del alta y, si corresponde, manda la bienvenida. */
+  function guardarFichaTrasAlta(intencion) {
+    if (typeof SGADD_DATA === 'undefined' || !SGADD_DATA.guardarFicha || !fichaHayQueGuardar()) return null;
+    const manda = mandaBienvenida();
+    return SGADD_DATA.guardarFicha({
+      club: intencion.club, categoria: intencion.categoria, enviarBienvenida: manda,
+      ficha: { contacto: alta.contacto, email: alta.email, fechaAlta: alta.fechaAlta, renovacion: alta.renovacion },
+    }).then((r) => {
+      fichasHub.todas = fichasHub.todas || {};
+      fichasHub.todas[intencion.club + '|' + intencion.categoria] = r.ficha;
+      guardado.mensaje += ' Ficha guardada.' + textoBienvenida(r.bienvenida);
+      alta.bienvenida = !bienvenidaEnviada(r.ficha);
+    }).catch((e) => {
+      guardado.mensaje += ' La ficha NO se guardó: ' + (e.message || 'error') + '.';
+    }).then(() => { refrescarFicha(); refrescarEstado(); });
+  }
+
+  /** Reenvía la bienvenida, con confirmación: sale un mail a un cliente. */
+  function reenviarBienvenida() {
+    const f = fichaGuardada();
+    if (!f || !f.email) return;
+    const ir = () => SGADD_DATA.guardarFicha({ club: alta.club, categoria: alta.categoria, ficha: {}, reenviar: true })
+      .then((r) => {
+        fichasHub.todas[alta.club + '|' + alta.categoria] = r.ficha;
+        guardado.estado = 'ok'; guardado.club = alta.club;
+        guardado.mensaje = textoBienvenida(r.bienvenida).trim();
+      }).catch((e) => { guardado.estado = 'error'; guardado.mensaje = e.message || 'No se pudo reenviar.'; })
+      .then(() => { refrescarFicha(); refrescarEstado(); });
+    if (typeof SGADD_CONFIRMAR === 'undefined') return ir();
+    SGADD_CONFIRMAR.abrir({
+      titulo: 'Reenviar la bienvenida · ' + (alta.nombre || alta.club),
+      aviso: 'Sale un mail al cliente, desde motorstats.ar@gmail.com.',
+      confirmar: 'Reenviar',
+      cambios: [{ campo: 'bienvenida', label: 'Mail de bienvenida', antes: '—', despues: 'se reenvía a ' + f.email }],
+      alConfirmar: ir,
+    });
+  }
+
   function bloqueAlta() {
     const cs = clubesCatalogo();
     const editando = alta.modo !== 'nuevo';
@@ -1187,6 +1427,11 @@ const SGADD_HUB = (function () {
         <div id="hubAltaEquipo" class="mt-3">${zonaEquipo()}</div>
       </fieldset>
 
+      <fieldset class="border-t border-hairline pt-3 mt-4">
+        <legend class="font-display uppercase tracking-wide text-xs text-ink pr-2">4 · Contacto y suscripción</legend>
+        <div id="hubAltaFicha">${zonaFicha()}</div>
+      </fieldset>
+
       <div id="hubAltaEstado" class="mt-4">${estadoAlta()}</div>
     </div>`;
   }
@@ -1246,6 +1491,9 @@ const SGADD_HUB = (function () {
     }
     if (alta.categoria && !idValido(alta.categoria)) {
       avisos.push(['peligro', 'El ID de la categoría es una clave: minúsculas, sin espacios ni acentos.']);
+    }
+    if (alta.email && !EMAIL_FICHA.test(alta.email.trim())) {
+      avisos.push(['peligro', 'El mail institucional no es válido: la bienvenida y los recordatorios no llegarían.']);
     }
     if (alta.acento && !HEX_COLOR.test(alta.acento)) {
       avisos.push(['peligro', 'El color de marca va como #rrggbb, por ejemplo #0d5e27.']);
@@ -1317,6 +1565,7 @@ const SGADD_HUB = (function () {
       </div>`;
     }
 
+    cargarFichas();
     const totalCat = cs.reduce((a, c) => a + (c.categorias || []).length, 0);
     const conLibro = cs.reduce((a, c) => a + (c.categorias || []).filter(k => k.activo).length, 0);
 
@@ -1368,8 +1617,11 @@ const SGADD_HUB = (function () {
     alta.fuente === 'mantener' ? {} : intencionLibro(), color,
     /* El estado inicial, solo para una categoría que se CREA. */
     (!alta.catElegida && alta.estado) ? { estado: alta.estado } : {},
-    /* Y la fecha de la prueba, si se puso una. */
-    (!alta.catElegida && alta.estado === 'prueba' && alta.vence) ? { vence: alta.vence } : {});
+    /* EL VENCIMIENTO (punto 63): el de una prueba o el del plan. En una
+       categoría nueva viaja si se puso; en una que existe, solo si cambió
+       —vacío la deja heredando la del club—. Pasa por `renovar()` en el
+       servidor, que rechaza una fecha ya pasada. */
+    venceQueViaja());
   }
 
   /** Qué cambia, en castellano, para el modal de confirmación. */
@@ -1395,13 +1647,17 @@ const SGADD_HUB = (function () {
       filas.push(['Plan', k ? nomPlan(k.plan) : '', nomPlan(i.plan)]);
     }
     if (i.estado) filas.push(['Estado', '', NOMBRE_ESTADO[i.estado] || i.estado]);
-    if (i.vence) filas.push(['Prueba hasta', '', i.vence]);
+    if (i.vence !== undefined) {
+      filas.push([i.estado === 'prueba' ? 'Prueba hasta' : 'Vencimiento',
+        k ? (k.vence || 'sin fecha propia') : '', i.vence || 'sin fecha propia']);
+    }
     if (i.acento !== undefined && String(i.acento || '') !== String(c.acento || '')) {
       filas.push(['Color de marca', c.acento || '', i.acento || 'el de su JSON, o el del panel']);
     }
     return filas
       .filter(f => f[2] && String(f[1] || '') !== String(f[2]))
-      .map(f => ({ campo: f[0], label: f[0], antes: f[1] || '—', despues: f[2] }));
+      .map(f => ({ campo: f[0], label: f[0], antes: f[1] || '—', despues: f[2] }))
+      .concat(cambiosFicha());
   }
 
   /**
@@ -1461,6 +1717,10 @@ const SGADD_HUB = (function () {
       alta.fuente = 'mantener';
       const n = document.getElementById('hubClientes');
       if (n) conFoco(() => { n.innerHTML = html(); });
+      /* LA FICHA VA DESPUÉS DEL CATÁLOGO: la categoría tiene que existir
+         para que el servidor acepte su ficha y para que la bienvenida diga
+         el plan y el vencimiento que acaban de quedar. */
+      guardarFichaTrasAlta(intencion);
     }).catch((e) => {
       guardado.estado = 'error';
       guardado.mensaje = e.message || 'No se pudo guardar.';
@@ -1707,6 +1967,7 @@ const SGADD_HUB = (function () {
     Object.assign(alta, { modo: 'nuevo', club: '', nombre: '', liga: '', equipoPropio: '',
       acento: '', categoria: '', label: '', catElegida: '', fuente: 'existente', libroDe: '', sheet: '',
       plan: 'BRONCE', estado: '', vence: '' });
+    limpiarFicha();
     colorAyuda.texto = '';
     alta.tocado = { club: false, categoria: false };
     olvidarLibro();
@@ -1715,7 +1976,11 @@ const SGADD_HUB = (function () {
 
   function ponerCategoria(k, c) {
     alta.catElegida = k.slug; alta.categoria = k.slug; alta.label = k.label || '';
-    alta.plan = k.plan ? planCanonico(k.plan) : ''; alta.estado = ''; alta.vence = '';
+    alta.plan = k.plan ? planCanonico(k.plan) : ''; alta.estado = '';
+    /* El vencimiento PROPIO de la categoría: el que rige puede ser el del
+       club, y ese se edita en la tarjeta del club. */
+    alta.vence = k.vence || '';
+    ponerFicha(c ? c.id : alta.modo, k.slug);
     /* El equipo que rige en ESA categoría: el suyo o el del club. */
     alta.equipoPropio = k.equipoEfectivo || k.equipoPropio || (c && c.equipoPropio) || alta.equipoPropio;
     alta.tocado.categoria = true;
@@ -1753,7 +2018,8 @@ const SGADD_HUB = (function () {
       alta.equipoPropio = (c && c.equipoPropio) || '';
       /* EXPANDIR EL CLUB: la categoría nueva arranca heredando el plan del
          club, que es lo más probable; el admin la sube o la baja acá. */
-      alta.plan = ''; alta.estado = '';
+      alta.plan = ''; alta.estado = ''; alta.vence = '';
+      limpiarFicha();
       alta.tocado.categoria = false; alta.fuente = 'existente'; alta.libroDe = '';
       olvidarLibro();
     }
@@ -1834,6 +2100,9 @@ const SGADD_HUB = (function () {
     intencionAlta, cambiosAlta, estadoAlta, zonaEquipo, libro,
     elegirModo, elegirCategoria, elegirFuente, elegirLibro, elegirEquipo, leerEquipos,
     reiniciarAlta, campoColor, colorDelEscudo, textoHerencia, HEX_COLOR, colorAyuda,
+    /* la ficha y los mails (punto 63) */
+    zonaFicha, cambiosFicha, venceQueViaja, mandaBienvenida, guardarFichaTrasAlta, cargarFichas,
+    elegirRenovacion, elegirBienvenida, reenviarBienvenida, fichasHub, hoyAR, ponerFicha,
     /* accesos */
     verAccesos, campoAcceso, accionAcceso, aplicarAcceso, aplicarClub,
     badgeServicio,

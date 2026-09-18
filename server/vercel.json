@@ -11,5 +11,8 @@
         { "key": "Vary", "value": "Origin, Authorization" }
       ]
     }
+  ],
+  "crons": [
+    { "path": "/api/cron/recordatorios-vencimiento", "schedule": "0 12 * * *" }
   ]
 }

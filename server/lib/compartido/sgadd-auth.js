@@ -210,7 +210,11 @@ const SGADD_AUTH = (function () {
      vencido un día antes de lo que dice su factura. */
   function suscripcionVencida(vence, ahora) {
     if (!vence || !/^\d{4}-\d{2}-\d{2}$/.test(String(vence))) return false;
-    const fin = Date.parse(vence + 'T23:59:59.999Z');
+    /* EL CORTE ES A LAS 23:59 DE ARGENTINA (2026-09-18). Estaba en UTC, o
+       sea a las 20:59 de acá, y los mails de vencimiento le dicen al
+       cliente «23:59 hs»: el reloj del corte y el del aviso tienen que ser
+       el mismo. Argentina no tiene horario de verano: el -03:00 es fijo. */
+    const fin = Date.parse(vence + 'T23:59:59.999-03:00');
     if (!isFinite(fin)) return false;
     return (ahora === undefined ? Date.now() : ahora) > fin;
   }

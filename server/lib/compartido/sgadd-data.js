@@ -429,6 +429,28 @@ const SGADD_DATA = (function () {
     return cuerpo;
   }
 
+  /* LAS FICHAS DE LOS CLIENTES (contacto, mail institucional, alta,
+     renovación y el log de avisos). Solo ADMIN: el servidor lo exige. */
+  async function fichas(opciones) {
+    const o = opciones || {};
+    if (!baseApi) throw Object.assign(new Error('No hay backend configurado.'), { codigo: 'SIN_API' });
+    if (!(auth && auth.token())) throw Object.assign(new Error('Falta el token.'), { codigo: 'SIN_TOKEN' });
+    const traer = o.fetch || fetch;
+    const r = await traer(baseApi + '/api/v1/fichas', { headers: { Authorization: 'Bearer ' + auth.token() } });
+    const cuerpo = await r.json().catch(() => null);
+    if (!r.ok || !cuerpo || !cuerpo.ok) {
+      const e = new Error((cuerpo && cuerpo.mensaje) || ('El servidor respondió ' + r.status));
+      e.codigo = (cuerpo && cuerpo.codigo) || 'HTTP_' + r.status;
+      throw e;
+    }
+    return cuerpo;
+  }
+
+  /** Guarda una ficha y, si se pide, manda la bienvenida. Devuelve {ficha, bienvenida}. */
+  function guardarFicha(intencion, opciones) {
+    return postConToken('/api/v1/fichas', intencion, opciones);
+  }
+
   /** Alta, baja o reinvitacion de un mail. La mutacion es quirurgica. */
   async function guardarClientes(intencion, opciones) {
     const o = opciones || {};
@@ -521,7 +543,7 @@ const SGADD_DATA = (function () {
     configurar, apiConfigurada, origen, base: () => baseApi,
     matrizAFilas, matrizALegacy, tipoDeColumna,
     cargarCategoria, cargarDelBackend, limpiarCache, catalogo, guardarCatalogo, equiposDelLibro,
-    login, fijarClave, clientes, guardarClientes,
+    login, fijarClave, clientes, guardarClientes, fichas, guardarFicha,
     estadosCompartibles, leerEstados, guardarEstados, leerPbp,
   };
 })();
