@@ -41,7 +41,7 @@ function normalizar(email) {
  *   quién puede entrar, y mandar el mail igual sería prometer un acceso
  *   que puede no existir.
  */
-async function asegurar(clubId, email, catalogoObj, deps) {
+async function asegurar(clubId, email, catalogoObj, deps, nombre) {
   const e = normalizar(email);
   const club = String(clubId || '').trim().toLowerCase();
   if (!e) return { estado: 'sin-acceso', email: e, motivo: 'La ficha no tiene mail.' };
@@ -59,11 +59,11 @@ async function asegurar(clubId, email, catalogoObj, deps) {
 
   let r;
   if (reg) {
-    r = clientes.reinvitar(padron, e, deps && deps.dias);
+    r = clientes.reinvitar(padron, e, deps && deps.dias, nombre);
   } else {
     const c = (catalogoObj || {})[club];
     if (!c) return { estado: 'sin-acceso', email: e, motivo: 'Ese club no está en el catálogo.' };
-    r = clientes.alta(padron, e, club, { plan: AUTH.planDelClub(c), dias: deps && deps.dias });
+    r = clientes.alta(padron, e, club, { plan: AUTH.planDelClub(c), dias: deps && deps.dias, nombre: nombre });
   }
   if (!r.ok) return { estado: 'sin-acceso', email: e, motivo: r.motivo };
 

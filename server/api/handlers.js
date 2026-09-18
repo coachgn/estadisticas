@@ -807,12 +807,13 @@ async function manejarClientesEscribir(peticion, deps) {
       plan: AUTH.planDelClub(club),
       equipoAsignado: cuerpo.equipoAsignado ? String(cuerpo.equipoAsignado) : null,
       dias: cuerpo.dias,
+      nombre: cuerpo.nombre,
     });
     if (r.ok) extra = { codigo: r.codigo, venceEn: r.venceEn, cupo: r.cupo };
   } else if (accion === 'baja') {
     r = clientes.baja(padron, email);
   } else if (accion === 'reinvitar') {
-    r = clientes.reinvitar(padron, email, cuerpo.dias);
+    r = clientes.reinvitar(padron, email, cuerpo.dias, cuerpo.nombre);
     if (r.ok) extra = { codigo: r.codigo, venceEn: r.venceEn };
   } else {
     return error(400, 'ACCION', 'Acción desconocida: ' + (accion || '(vacía)') + '.');

@@ -95,7 +95,7 @@ async function manejarFichasEscribir(peticion, deps) {
        Si el padrón no se puede leer NO sale el mail: prometería un acceso
        que puede no existir. */
     try {
-      acceso = await invitacion.asegurar(club, ficha && ficha.email, cat, deps);
+      acceso = await invitacion.asegurar(club, ficha && ficha.email, cat, deps, ficha && ficha.contacto);
     } catch (e) {
       return { status: 200, body: { ok: true, ficha: ficha, bienvenida: {
         resultado: 'error', codigo: e.codigo || 'KV',
@@ -136,6 +136,10 @@ async function manejarClientesConBienvenida(peticion, deps, base) {
 
   const clubId = String(r.body.club || cuerpo.club || '').toLowerCase();
   const email = String(cuerpo.email || '').trim().toLowerCase();
+  /* El saludo: el nombre que vino con el alta, y si no vino (una
+     reinvitación) el que el padrón ya tenía para ese mail. */
+  const deLista = ((r.body.mails || []).find(m => m.email === email) || {}).nombre || '';
+  const nombre = String(cuerpo.nombre || '').trim() || deLista;
   let mail;
   try {
     const cat = (deps && deps.catalogo) || (await catalogo.cargar(deps)).catalogo;
@@ -145,6 +149,7 @@ async function manejarClientesConBienvenida(peticion, deps, base) {
     } else {
       mail = await cron.enviarBienvenida(clubId, slug, Object.assign({}, deps, {
         catalogo: cat, transporte: transporteDe(deps), forzar: true, para: email,
+        contacto: nombre,
         invitacion: { email: email, codigo: r.body.codigo, venceEn: r.body.venceEn },
       }));
     }

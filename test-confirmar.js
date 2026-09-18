@@ -113,8 +113,14 @@ check('el hub ya no usa el confirm() nativo para la baja',
   !/confirm\('Dar de baja/.test(hub) && !/confirm\('Sacar a/.test(hub));
 check('la acción de club pasa por el modal',
   /function accionClub[\s\S]{0,900}SGADD_CONFIRMAR\.abrir\(/.test(hub));
-check('y la de accesos también',
-  /function accionAcceso[\s\S]{0,1400}SGADD_CONFIRMAR\.abrir\(/.test(hub));
+/* Se mira el CUERPO de la función y no una ventana de caracteres: con
+   una ventana fija, un comentario de más la rompe sin que cambie nada
+   (la lección del punto 43). */
+check('y la de accesos también', (() => {
+  const i = hub.indexOf('function accionAcceso');
+  const fin = hub.indexOf('\n  function ', i + 10);
+  return i !== -1 && hub.slice(i, fin === -1 ? undefined : fin).indexOf('SGADD_CONFIRMAR.abrir(') !== -1;
+})());
 /* La petición quedó en una función aparte, que solo llama el modal. */
 check('la petición está separada del handler',
   /function aplicarClub\(/.test(hub) && /function aplicarAcceso\(/.test(hub));

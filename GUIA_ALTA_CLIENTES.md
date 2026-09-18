@@ -77,8 +77,10 @@ próxima carga.
    **heredó** (ver abajo).
 
 7. **Sumá al resto del cuerpo técnico.** En la tarjeta del club, abrí
-   **«Quiénes pueden entrar»**, escribí el mail y tocá **«Invitar»**: a esa
-   persona le llega la bienvenida con su código y el link al panel. Los
+   **«Quiénes pueden entrar»**, escribí su nombre (opcional: el mail la
+   saluda con él) y su mail, y tocá **«Invitar»**: a esa persona le llega la
+   bienvenida con un botón que abre el panel con su mail y su código ya
+   escritos. Solo tiene que elegir su clave. Los
    mismos mails entran a todas las categorías del club, y cuántos se pueden
    cargar lo decide el plan **más alto** que el club tiene activo.
    - Si el mail no sale (por ejemplo, Gmail no contesta), la pantalla lo dice

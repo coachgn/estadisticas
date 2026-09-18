@@ -44,6 +44,50 @@ const CLUB = (function () {
     return '';
   })();
 
+  /* =====================================================================
+     EL ACCESO QUE TRAE EL LINK DE LA BIENVENIDA · `&email=…&code=…`
+
+     El mail de bienvenida manda al panel con el mail y el código de
+     invitación en la URL (ver `urlIngreso` en server/lib/mail-plantillas.js),
+     así el cliente encuentra el formulario lleno y solo elige su clave.
+
+     SE LEEN Y SE SACAN DE LA BARRA ACÁ, EN EL PRIMER SCRIPT QUE CORRE, con
+     `history.replaceState`: el código no puede quedar en el historial ni en
+     la URL que alguien copia para compartir el panel. Se reemplaza la
+     entrada (no se agrega una nueva), así «Atrás» tampoco lo devuelve.
+     Todo lo demás del link (`?club=`, el hash) queda como estaba.
+
+     Se guardan en memoria y se entregan UNA vez (`accesoDeUrl()`): quien
+     los pide después ya no los encuentra. Un mail mal formado se descarta;
+     el código se acota a lo que genera el servidor (base64url).
+     ===================================================================== */
+  const accesoUrl = (function () {
+    const vacio = { email: '', codigo: '' };
+    let q;
+    try { q = new URLSearchParams(window.location.search); } catch (e) { return vacio; }
+    if (!q.has('email') && !q.has('code')) return vacio;
+    const email = String(q.get('email') || '').trim().toLowerCase();
+    const codigo = String(q.get('code') || '').trim();
+    q.delete('email');
+    q.delete('code');
+    try {
+      const resto = q.toString();
+      const limpia = window.location.pathname + (resto ? '?' + resto : '') + (window.location.hash || '');
+      window.history.replaceState(window.history.state, '', limpia);
+    } catch (e) { /* sin history (tests, file://): el dato igual se usa */ }
+    return {
+      email: /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email) ? email.slice(0, 254) : '',
+      codigo: /^[A-Za-z0-9_-]{1,128}$/.test(codigo) ? codigo : '',
+    };
+  })();
+
+  /** El mail y el código del link, UNA sola vez. */
+  function accesoDeUrl() {
+    const r = { email: accesoUrl.email, codigo: accesoUrl.codigo };
+    accesoUrl.email = ''; accesoUrl.codigo = '';
+    return r;
+  }
+
   /**
    * ¿Estamos en la DEMO publica?
    *
@@ -823,7 +867,7 @@ const CLUB = (function () {
     return true;
   }
 
-  return { TEMA, estado, cargar, aplicar: aplicarSeguro, reconciliar, confirmarSinConfig, reconciliarConfig, patronDeCategoria, credito, idDesdeUrl, esLanding, puertaDeIngreso, enDemo, debug, marcarRender,
+  return { TEMA, estado, cargar, aplicar: aplicarSeguro, reconciliar, confirmarSinConfig, reconciliarConfig, patronDeCategoria, credito, idDesdeUrl, esLanding, puertaDeIngreso, accesoDeUrl, enDemo, debug, marcarRender,
            reintentarEscudo, aclararHastaLegible, oscurecerHastaLegible, contraste,
            mezclarHex, colorDeEscudo, colorDeImagen,
            get cfg() { return estado.cfg; }, get aplicado() { return aplicado; } };

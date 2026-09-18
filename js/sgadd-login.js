@@ -184,7 +184,11 @@ const SGADD_LOGIN = (function () {
     if (!s) return;
     s.innerHTML = estado.abierto ? html() : '';
     if (estado.abierto) {
-      const foco = document.getElementById(campos.email ? 'login_' + (estado.modo === 'fijar' ? 'codigo' : 'clave') : 'login_email');
+      /* El foco va al PRIMER campo vacío: con el mail y el código que trajo
+         el link de la bienvenida, eso es directamente la clave nueva. */
+      const orden = estado.modo === 'fijar' ? ['email', 'codigo', 'claveNueva'] : ['email', 'clave'];
+      const primero = orden.find(k => !campos[k]) || orden[orden.length - 1];
+      const foco = document.getElementById('login_' + primero);
       if (foco) foco.focus();
     }
   }
@@ -233,6 +237,18 @@ const SGADD_LOGIN = (function () {
       el.focus();
       try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) {}
     }
+  }
+
+  /**
+   * Llena el mail y el código que trajo el link de la bienvenida
+   * (`CLUB.accesoDeUrl()`). Solo pisa lo que viene: un campo vacío del
+   * link no borra lo que el usuario ya haya escrito.
+   */
+  function prellenar(d) {
+    const v = d || {};
+    if (v.email) campos.email = String(v.email);
+    if (v.codigo) campos.codigo = String(v.codigo);
+    if (estado.abierto) pintar();
   }
 
   function abrir(modo) {
@@ -430,7 +446,7 @@ const SGADD_LOGIN = (function () {
   }
   return {
     destino, faltantes, claveCorta, LARGO_MINIMO,
-    abrir, cerrar, alternar, enviar, campo, verClave, pintar, salir, estado,
+    abrir, prellenar, cerrar, alternar, enviar, campo, verClave, pintar, salir, estado,
   };
 })();
 

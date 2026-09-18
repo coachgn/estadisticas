@@ -203,6 +203,10 @@ async function enviarBienvenida(clubId, slug, deps) {
      una invitación desde «Quiénes pueden entrar» va a ESE mail, que puede
      no ser el institucional. */
   if (d.para) datos.para = String(d.para).trim();
+  /* El nombre de ESA persona (el de «Quiénes pueden entrar»), para el
+     saludo: si la invitación va a otro mail, saludarla con el contacto
+     de la ficha le hablaría a otra persona. */
+  if (d.contacto) datos.contacto = String(d.contacto).trim();
   if (d.invitacion) datos.invitacion = d.invitacion;
   const base = { clubId: clubId, slug: slug, hito: 'bienvenida', para: datos.para };
   if (!datos.para) return Object.assign(base, { resultado: 'omitido', mensaje: 'La ficha no tiene mail institucional.' });

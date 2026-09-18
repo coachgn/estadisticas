@@ -76,9 +76,10 @@ node test-pbp.js           # 119 tests · la capa de laboratorio de play-by-play
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
 
-node test-mails.js         # 148 tests · los mails institucionales: plantillas sin huecos, el
+node test-mails.js         # 176 tests · los mails institucionales: plantillas sin huecos, el
                            #             día de Argentina, la idempotencia del cron, la ficha, el SMTP,
-                           #             el código adentro de la bienvenida y la puerta de ingreso
+                           #             el código adentro de la bienvenida, la puerta de ingreso,
+                           #             el nombre del acceso y el link que llena el login
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -90,7 +91,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6032 tests en total. Todos tienen que dar verde antes de commitear.**
+**6060 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -9180,9 +9181,15 @@ Lo llaman los dos caminos:
 
 Lo que hay que respetar:
 
-- **El código va en el CUERPO, nunca en el link.** El botón lleva
-  `?club=<id>&ingreso=codigo` y nada más: una URL con un secreto queda en
-  el historial y en los registros de quien sirve la página. Hay test.
+- **El código va en el cuerpo Y en el link** (`?club=<id>&email=…&code=…`,
+  con `encodeURIComponent`), a pedido del club el mismo 2026-09-18: el
+  panel abre con el mail y el código escritos y el cliente solo elige su
+  clave. Estuvo una vuelta solo en el cuerpo, y el costo de este cambio
+  queda anotado: una query string llega a los **registros de quien sirve
+  la página** (GitHub Pages) y a los **escáneres de links** de algunos
+  correos. Se aceptó porque el código es de un uso, vence a los 7 días, no
+  deja entrar (solo elegir clave) y ya viaja en el mismo mail. El historial
+  sí se cuida: ver abajo.
 - **La clave no viaja nunca**: el código solo abre la elección de clave,
   una vez y con vencimiento.
 - **El código sigue viniendo en la respuesta**, para el «Copiar» de
@@ -9207,11 +9214,33 @@ pantalla mostrar, no quién es). Con la puerta:
   catálogo, ni un libro, y la marca es la de MotorStats;
 - cada sección (menos el glosario) muestra `SGADD_LANDING.puerta()`: el
   nombre sale del slug, con «Ingresar» y «Tengo un código de invitación»;
-- `init()` abre el login solo, en «Fijá tu clave» si viene
-  `?ingreso=codigo`;
+- `init()` abre el login solo: con `code` en el link, en «Fijá tu clave» y
+  con el mail y el código ya escritos (`SGADD_LOGIN.prellenar`; el foco va
+  al primer campo vacío, o sea la clave nueva). Los links viejos con
+  `?ingreso=codigo` abren el mismo modo, vacío;
 - después de entrar **se recarga siempre** (`CLUB.estado.puerta`), aunque
   el club sea el mismo: el arranque fue el de la landing y repintar encima
   dejaría la vista sin datos.
+
+**El mail y el código se sacan de la barra en el PRIMER script que corre**
+(`accesoUrl` en `sgadd-club.js`), con `history.replaceState`: reemplaza la
+entrada —no agrega una—, así ni el historial ni «Atrás» los devuelven, y
+el link que alguien copie para compartir el panel ya no los lleva. `?club=`
+y el hash quedan. Se entregan una sola vez (`CLUB.accesoDeUrl()`), y un
+mail mal formado o un código fuera de base64url se descartan.
+
+### El NOMBRE en «Quiénes pueden entrar»
+
+Campo opcional al lado del mail. Se guarda en el padrón (`nombre` en el
+registro del mail, limpio con `clientes.normalizarNombre`: sin control ni
+`<>`, hasta 80) y vuelve en la lista del club, que lo muestra antes del
+mail. **No decide nada de acceso**: sirve para saludar.
+
+- La bienvenida de «Quiénes pueden entrar» saluda con ESE nombre; sin
+  nombre, «Hola» a secas — **no** el contacto de la ficha, que puede ser
+  otra persona. La de la ficha da de alta con el contacto como nombre.
+- Reinvitar con nombre lo corrige; sin nombre NO lo borra. La lista no
+  manda nombre al reinvitar.
 
 El 404 de `club-ejemplo.json` que se vio el 2026-09-18 era el link del
 mail de PRUEBA (`probar-mails.js` usa un club ficticio), no del panel.

@@ -12,6 +12,8 @@
      7. el Panel Master y el corte a las 23:59 de Argentina
      8. el acceso ADENTRO de la bienvenida: el alta genera el código y el
         mail lo lleva; y la puerta de ingreso de `?club=` sin sesión
+     9. el nombre en «Quiénes pueden entrar» y el link con `&email=…&code=…`
+        que llena el formulario y se borra de la barra
 
    Nada de esto toca Upstash ni Gmail de verdad.
    ===================================================================== */
@@ -378,17 +380,21 @@ const sumar = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86400000
   /* ================================================================ 8 */
   titulo('8 · EL ACCESO ADENTRO DE LA BIENVENIDA y la puerta de ingreso');
   const COD = 'Xy7_abcDEF-0123456789ghijklmnopqrstuvwxyzAB';
+  const conClave0 = () => P.bienvenida(Object.assign({}, datos, { invitacion: { email: 'dt@club.com', conClave: true } }));
   const VENCE_INV = Date.parse('2026-09-25T12:00:00Z');
   const conCod = P.bienvenida(Object.assign({}, datos, { para: 'dt@club.com',
     invitacion: { email: 'dt@club.com', codigo: COD, venceEn: VENCE_INV } }));
   check('con invitación, el código va en el HTML y en el texto', conCod.html.indexOf(COD) !== -1 && conCod.texto.indexOf(COD) !== -1);
   check('y el mail de ingreso', /dt@club\.com/.test(conCod.html) && /Mail de ingreso: dt@club\.com/.test(conCod.texto));
   check('con la fecha de vencimiento del código, en castellano', /vence el viernes 25 de septiembre de 2026/.test(conCod.html));
-  check('el botón abre el panel directo en «Tengo un código» (?ingreso=codigo)',
-    conCod.html.indexOf('href="https://coachgn.github.io/estadisticas/?club=ejemplo&amp;ingreso=codigo"') !== -1
-    && /Elegir mi clave e ingresar/.test(conCod.html));
-  check('EL CÓDIGO NO VA EN EL LINK: una URL con un secreto queda en historiales y registros',
-    !/href="[^"]*Xy7_abc/.test(conCod.html) && conCod.texto.split('\n').filter(l => /https?:\/\//.test(l)).every(l => l.indexOf(COD) === -1));
+  const LINK_COD = 'https://coachgn.github.io/estadisticas/?club=ejemplo&email=dt%40club.com&code=' + COD;
+  check('el botón lleva el mail y el código en el link (&email=…&code=…), codificados',
+    conCod.html.indexOf('href="' + LINK_COD.replace(/&/g, '&amp;') + '"') !== -1 && /Elegir mi clave e ingresar/.test(conCod.html));
+  check('y el texto plano el mismo link', conCod.texto.indexOf(LINK_COD) !== -1);
+  const raro = P.bienvenida(Object.assign({}, datos, { invitacion: { email: 'a+b@c.com', codigo: 'x&y=z', venceEn: VENCE_INV } }));
+  check('un mail con + o un código con & no rompen la query (encodeURIComponent)',
+    raro.texto.indexOf('email=a%2Bb%40c.com&code=x%26y%3Dz') !== -1);
+  check('sin invitación el link NO lleva mail ni código', !/[?&](email|code)=/.test(bien.html) && !/[?&](email|code)=/.test(conClave0().html));
   check('la clave NUNCA viaja: el mail dice que la elige el cliente', /elegís vos/.test(conCod.html) && !/clave:\s*\S/.test(conCod.texto));
   check('ninguna llave suelta ni con invitación', !/\{\{/.test(conCod.html + conCod.texto));
   const conClave = P.bienvenida(Object.assign({}, datos, { invitacion: { email: 'dt@club.com', conClave: true } }));
@@ -502,14 +508,136 @@ const sumar = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86400000
   const LAND_M = require('./js/sgadd-landing.js');
   check('el nombre sale del slug del link', LAND_M.nombreDeSlug('hogar-social') === 'Hogar Social');
   const IDX = fs.readFileSync('./index.html', 'utf8');
-  check('el arranque abre el login solo, y en «elegí tu clave» con ?ingreso=codigo',
-    /CLUB\.puertaDeIngreso\(\)[\s\S]{0,300}SGADD_LOGIN\.abrir\(modo\)/.test(IDX) && /get\('ingreso'\) === 'codigo'/.test(IDX));
+  const iPuerta = IDX.indexOf('CLUB.puertaDeIngreso && CLUB.puertaDeIngreso()');
+  check('el arranque abre el login solo: prellena lo del link y abre en «elegí tu clave» si trae código',
+    iPuerta !== -1 && IDX.indexOf('CLUB.accesoDeUrl()', iPuerta) > iPuerta
+    && IDX.indexOf('SGADD_LOGIN.prellenar(acceso)', iPuerta) > iPuerta
+    && IDX.indexOf('SGADD_LOGIN.abrir(modo)', iPuerta) > IDX.indexOf('SGADD_LOGIN.prellenar(acceso)', iPuerta)
+    && /let modo = acceso\.codigo \? 'fijar' : 'ingresar'/.test(IDX) && /get\('ingreso'\) === 'codigo'/.test(IDX));
   const LOGIN = fs.readFileSync('./js/sgadd-login.js', 'utf8');
   check('después del login desde la puerta se RECARGA (el arranque fue el de la landing)',
     /CLUB\.estado\.puerta/.test(LOGIN) && /\(club && club !== enUrl\) \|\| enPuerta/.test(LOGIN) && /searchParams\.delete\('ingreso'\)/.test(LOGIN));
   const HUBSRC = fs.readFileSync('./js/sgadd-hub.js', 'utf8');
   check('el código queda como alternativa: plegado si el mail salió, a la vista si no',
     /verCodigo = !!\(r\.codigo && !\(r\.mail && r\.mail\.resultado === 'enviado'\)\)/.test(HUBSRC) && /Ver el código para pasarlo por otro canal \(opcional\)/.test(HUBSRC));
+
+  /* ================================================================ 9 */
+  titulo('9 · EL NOMBRE en «Quiénes pueden entrar» y el link que llena el formulario');
+  check('el nombre se limpia: espacios, control y signos de etiqueta; se corta en 80',
+    clientes.normalizarNombre('  Ana   <b>Pérez</b> ') === 'Ana b Pérez /b' && clientes.normalizarNombre('x'.repeat(90)).length === 80
+    && clientes.normalizarNombre(null) === '');
+  const pn = clientes.alta({}, 'Ana@Club.com', 'cinco', { plan: 'PLATA', nombre: '  Ana Pérez ' });
+  check('el alta guarda Nombre + Email', pn.ok && pn.padron['ana@club.com'].nombre === 'Ana Pérez');
+  check('y la lista del club lo devuelve', clientes.delClub(pn.padron, 'cinco')[0].nombre === 'Ana Pérez');
+  const sinN = clientes.alta({}, 'b@club.com', 'cinco', { plan: 'PLATA' });
+  check('sin nombre no se guarda un campo vacío', sinN.ok && !('nombre' in sinN.padron['b@club.com'])
+    && clientes.delClub(sinN.padron, 'cinco')[0].nombre === '');
+  const ri = clientes.reinvitar(pn.padron, 'ana@club.com', 7, '');
+  check('reinvitar SIN nombre no borra el que tenía', ri.padron['ana@club.com'].nombre === 'Ana Pérez');
+  const ri2 = clientes.reinvitar(pn.padron, 'ana@club.com', 7, 'Ana María Pérez');
+  check('reinvitar CON nombre lo corrige', ri2.padron['ana@club.com'].nombre === 'Ana María Pérez');
+  const H_SRC = fs.readFileSync('./server/api/handlers.js', 'utf8');
+  check('la ruta de accesos pasa el nombre al alta y a la reinvitación',
+    /nombre: cuerpo\.nombre,/.test(H_SRC) && /clientes\.reinvitar\(padron, email, cuerpo\.dias, cuerpo\.nombre\)/.test(H_SRC));
+
+  /* el saludo del mail es el de ESA persona */
+  Object.keys(KV_SIMPLE).forEach(k => delete KV_SIMPLE[k]);
+  const d10 = { kv: kvMemoria(), transporte: envio.transporteMemoria(), catalogo: CAT8, ahora: AHORA };
+  await mails.manejarClientesConBienvenida(pet(T_ADMIN, { body: { accion: 'alta', club: 'cinco', email: 'martina@club.com', nombre: 'Martina Gómez' } }), d10,
+    async (p) => ({ status: 200, body: { ok: true, club: 'cinco', mails: [], codigo: 'COD-N-1234567', venceEn: VENCE_INV } }));
+  const envN = d10.transporte.enviados.slice(-1)[0];
+  check('la bienvenida de «Quiénes pueden entrar» saluda con el nombre cargado', !!envN && /Hola, Martina:/.test(envN.texto));
+  await mails.manejarClientesConBienvenida(pet(T_ADMIN, { body: { accion: 'reinvitar', club: 'cinco', email: 'martina@club.com' } }), d10,
+    async (p) => ({ status: 200, body: { ok: true, club: 'cinco', mails: [{ email: 'martina@club.com', nombre: 'Martina Gómez' }], codigo: 'COD-N-7654321', venceEn: VENCE_INV } }));
+  check('y la reinvitación usa el nombre que el padrón ya tenía', /Hola, Martina:/.test(d10.transporte.enviados.slice(-1)[0].texto));
+  await mails.manejarClientesConBienvenida(pet(T_ADMIN, { body: { accion: 'alta', club: 'cinco', email: 'sin@club.com' } }), d10,
+    async (p) => ({ status: 200, body: { ok: true, club: 'cinco', mails: [], codigo: 'COD-N-0000000', venceEn: VENCE_INV } }));
+  check('sin nombre, un saludo neutro (no el contacto de la ficha, que es otra persona)', /^Hola:/m.test(d10.transporte.enviados.slice(-1)[0].texto));
+
+  /* el link: el panel lo lee y lo saca de la barra */
+  const conLink = (busqueda, hash) => {
+    const hist = { llamadas: [] };
+    const ctx = { console: { log() {}, error() {}, info() {}, warn() {} }, URLSearchParams: URLSearchParams,
+      atob: (b) => Buffer.from(b, 'base64').toString('binary'),
+      sessionStorage: { getItem: () => null }, localStorage: { getItem: () => null },
+      fetch: () => Promise.reject(new Error('no')),
+      document: { readyState: 'complete', getElementById: () => null, documentElement: { style: { setProperty() {} } },
+        addEventListener() {}, querySelector: () => null, querySelectorAll: () => [], createElement: () => ({ style: {} }), body: { appendChild() {} } },
+      location: { search: busqueda, hash: hash || '', href: 'https://x/estadisticas/' + busqueda + (hash || ''), pathname: '/estadisticas/' },
+      history: { state: null, replaceState: (st, t, url) => { hist.llamadas.push(url); ctx.location.search = url.replace(/^[^?#]*/, '').replace(/#.*$/, ''); } } };
+    ctx.window = ctx; ctx.SGADD_API = 'https://api';
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync('./js/sgadd-club.js', 'utf8') + '\nthis.CLUB = CLUB;', ctx);
+    return { CLUB: ctx.CLUB, hist: hist };
+  };
+  const L1 = conLink('?club=hogar-social&email=dt%40club.com&code=' + COD, '#/primera/principal');
+  check('el panel saca email y code de la barra con replaceState, apenas arranca',
+    L1.hist.llamadas.length === 1 && L1.hist.llamadas[0] === '/estadisticas/?club=hogar-social#/primera/principal');
+  check('y conserva ?club= y el hash: sigue siendo la puerta de ingreso de ese club', L1.CLUB.puertaDeIngreso() === true && L1.CLUB.idDesdeUrl() === 'hogar-social');
+  const acc = L1.CLUB.accesoDeUrl();
+  check('los entrega a quien arma el login', acc.email === 'dt@club.com' && acc.codigo === COD);
+  check('UNA sola vez: el segundo pedido ya no los encuentra', L1.CLUB.accesoDeUrl().codigo === '');
+  const L2 = conLink('?club=x&email=no-es-mail&code=<script>');
+  const acc2 = L2.CLUB.accesoDeUrl();
+  check('un mail mal formado o un código con otros caracteres se descartan (y se limpian igual)',
+    acc2.email === '' && acc2.codigo === '' && L2.hist.llamadas.length === 1);
+  const L3 = conLink('?club=x');
+  check('sin email ni code no toca la barra', L3.hist.llamadas.length === 0 && L3.CLUB.accesoDeUrl().codigo === '');
+  check('sin history (file://, tests) no revienta', (() => {
+    const ctx = { console: { log() {}, error() {} }, URLSearchParams: URLSearchParams, location: { search: '?club=x&code=abc', pathname: '/' },
+      document: { readyState: 'complete', getElementById: () => null, documentElement: { style: { setProperty() {} } }, addEventListener() {}, querySelector: () => null, querySelectorAll: () => [], createElement: () => ({ style: {} }), body: { appendChild() {} } },
+      fetch: () => Promise.reject(new Error('no')) };
+    ctx.window = ctx; vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync('./js/sgadd-club.js', 'utf8') + '\nthis.CLUB = CLUB;', ctx);
+    return ctx.CLUB.accesoDeUrl().codigo === 'abc';
+  })());
+
+  /* el login: prellenado y foco */
+  const LOGIN_M = (() => {
+    const nodos = {};
+    const ctx = { console: console, document: { getElementById: (id) => nodos[id] || (id === 'loginSlot' ? (nodos[id] = { innerHTML: '' }) : null), activeElement: null } };
+    ctx.window = ctx; vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync('./js/sgadd-login.js', 'utf8') + '\nthis.L = SGADD_LOGIN;', ctx);
+    return { L: ctx.L, nodos: nodos };
+  })();
+  LOGIN_M.L.prellenar({ email: 'dt@club.com', codigo: COD });
+  LOGIN_M.L.abrir('fijar');
+  const htmlLogin = LOGIN_M.nodos.loginSlot.innerHTML;
+  check('el modal abre con el mail y el código ya escritos', htmlLogin.indexOf('value="dt@club.com"') !== -1 && htmlLogin.indexOf('value="' + COD + '"') !== -1);
+  check('y solo falta la clave nueva', /Falta la clave nueva\./.test(htmlLogin));
+  LOGIN_M.L.prellenar({ email: '', codigo: '' });
+  check('un campo vacío del link no borra lo que ya había', LOGIN_M.nodos.loginSlot.innerHTML.indexOf('value="dt@club.com"') !== -1);
+  check('el foco va al primer campo vacío (con el link: la clave nueva)',
+    /orden\.find\(k => !campos\[k\]\)/.test(fs.readFileSync('./js/sgadd-login.js', 'utf8')));
+
+  /* el Panel Master */
+  const HUB2 = (() => {
+    const ctx = { console: console, SGADD_UI: { conservarFoco: (fn) => fn() }, location: { origin: 'https://x', pathname: '/' }, document: { getElementById: () => null } };
+    ctx.window = ctx; vm.createContext(ctx);
+    let pedido = null;
+    ctx.SGADD_DATA = {
+      clientes: () => Promise.resolve({ clubes: [{ plan: 'PLATA', cupo: { plan: 'PLATA', tope: 3, usados: 0, libres: 3 }, mails: [] }] }),
+      guardarClientes: (x) => { pedido = x; return Promise.resolve({ cupoActual: { plan: 'PLATA', tope: 3, usados: 1, libres: 2 },
+        mails: [{ email: 'ana@club.com', nombre: 'Ana Pérez', invitacionPendiente: true }], codigo: 'C1234567', venceEn: VENCE_INV, mail: { resultado: 'enviado' } }); },
+    };
+    vm.runInContext(fs.readFileSync('./js/sgadd-hub.js', 'utf8') + '\nthis.H = SGADD_HUB;', ctx);
+    return { H: ctx.H, pedido: () => pedido };
+  })();
+  HUB2.H.verAccesos('cinco');
+  await new Promise(r => setTimeout(r, 10));
+  const tarjeta = HUB2.H.bloqueAccesos({ id: 'cinco' });
+  check('la tarjeta tiene el campo «Nombre» (opcional) junto al del mail',
+    /id="hubNombre_cinco"/.test(tarjeta) && /placeholder="nombre \(opcional\)"/.test(tarjeta) && /id="hubMail_cinco"/.test(tarjeta));
+  HUB2.H.campoAccesoNombre('Ana Pérez'); HUB2.H.campoAcceso('ana@club.com');
+  HUB2.H.accionAcceso('cinco', 'alta');
+  await new Promise(r => setTimeout(r, 10));
+  check('el alta manda Nombre + Email al servidor', HUB2.pedido() && HUB2.pedido().nombre === 'Ana Pérez' && HUB2.pedido().email === 'ana@club.com');
+  const tarjeta2 = HUB2.H.bloqueAccesos({ id: 'cinco' });
+  check('la lista muestra el nombre junto al mail', /Ana Pérez/.test(tarjeta2) && /ana@club\.com/.test(tarjeta2));
+  check('y el formulario queda limpio para el siguiente', /id="hubNombre_cinco"[^>]*/.test(tarjeta2) && !/value="Ana Pérez"/.test(tarjeta2));
+  HUB2.H.accionAcceso('cinco', 'reinvitar', 'ana@club.com');
+  await new Promise(r => setTimeout(r, 10));
+  check('reinvitar desde la lista NO manda nombre (el servidor conserva el que había)', !('nombre' in HUB2.pedido()));
 
   console.log('\n' + '═'.repeat(70) + '\n' + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);

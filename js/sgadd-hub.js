@@ -568,12 +568,12 @@ const SGADD_HUB = (function () {
   /* Qué club tiene la sección desplegada. UNO por vez: con tres abiertas
      la lista de clubes deja de ser una lista y hay que scrollear para
      comparar dos. */
-  const accesosAbierto = { club: null, nuevo: '', yendo: false, error: '', codigo: null, mail: null, verCodigo: false };
+  const accesosAbierto = { club: null, nuevo: '', nuevoNombre: '', yendo: false, error: '', codigo: null, mail: null, verCodigo: false };
 
   function verAccesos(club) {
     if (accesosAbierto.club === club) { accesosAbierto.club = null; repintarLista(); return; }
     accesosAbierto.club = club;
-    accesosAbierto.nuevo = ''; accesosAbierto.error = ''; accesosAbierto.codigo = null;
+    accesosAbierto.nuevo = ''; accesosAbierto.nuevoNombre = ''; accesosAbierto.error = ''; accesosAbierto.codigo = null;
     accesosAbierto.mail = null; accesosAbierto.verCodigo = false;
     if (!accesos[club]) cargarAccesos(club); else repintarLista();
   }
@@ -598,6 +598,11 @@ const SGADD_HUB = (function () {
     accesosAbierto.nuevo = String(v == null ? '' : v);
   }
 
+  /** El nombre de quien entra con ese mail. Opcional: saluda en los mails. */
+  function campoAccesoNombre(v) {
+    accesosAbierto.nuevoNombre = String(v == null ? '' : v);
+  }
+
   /**
    * Alta, baja o reinvitación de un mail.
    *
@@ -610,7 +615,10 @@ const SGADD_HUB = (function () {
     if (accesosAbierto.yendo) return;
     const mail = String(email !== undefined ? email : accesosAbierto.nuevo).trim();
     if (!mail) return;
-    if (typeof SGADD_CONFIRMAR === 'undefined') return aplicarAcceso(club, accion, mail);
+    /* El nombre solo viaja con el ALTA desde el formulario: reinvitar o
+       sacar desde la lista no lo toca (el servidor conserva el que había). */
+    const nombre = (accion === 'alta' && email === undefined) ? accesosAbierto.nuevoNombre.trim() : '';
+    if (typeof SGADD_CONFIRMAR === 'undefined') return aplicarAcceso(club, accion, mail, nombre);
 
     /* LA BAJA ES LA QUE HAY QUE MIRAR DOS VECES: le corta el acceso a una
        persona y borra su clave. El alta y la reinvitación se confirman
@@ -635,22 +643,26 @@ const SGADD_HUB = (function () {
       cambios: accion === 'reinvitar'
         ? [{ label: 'Código nuevo para', antes: '—', despues: mail },
            { label: 'Mail con el código', antes: '—', despues: 'se manda a ' + mail }]
-        : SGADD_CONFIRMAR.cambiosDeAccesos(previos, nuevos).concat(accion === 'alta'
-          ? [{ label: 'Mail de bienvenida con el código', antes: '—', despues: 'se manda a ' + mail }] : []),
-      alConfirmar: () => aplicarAcceso(club, accion, mail),
+        : SGADD_CONFIRMAR.cambiosDeAccesos(previos, nuevos)
+          .concat(accion === 'alta' && nombre ? [{ label: 'Nombre', antes: '—', despues: nombre }] : [])
+          .concat(accion === 'alta'
+            ? [{ label: 'Mail de bienvenida con el código', antes: '—',
+                despues: 'se manda a ' + mail + (nombre ? ', saludando a ' + nombre : '') }] : []),
+      alConfirmar: () => aplicarAcceso(club, accion, mail, nombre),
     });
   }
 
-  function aplicarAcceso(club, accion, mail) {
+  function aplicarAcceso(club, accion, mail, nombre) {
     if (accesosAbierto.yendo) return;
     accesosAbierto.yendo = true; accesosAbierto.error = ''; accesosAbierto.codigo = null;
     accesosAbierto.mail = null; accesosAbierto.verCodigo = false;
     repintarLista();
 
-    SGADD_DATA.guardarClientes({ accion: accion, club: club, email: mail }).then((r) => {
+    SGADD_DATA.guardarClientes(Object.assign({ accion: accion, club: club, email: mail },
+      nombre ? { nombre: nombre } : {})).then((r) => {
       accesosAbierto.yendo = false;
       accesos[club] = { plan: (accesos[club] || {}).plan, cupo: r.cupoActual, mails: r.mails || [] };
-      if (accion === 'alta') accesosAbierto.nuevo = '';
+      if (accion === 'alta') { accesosAbierto.nuevo = ''; accesosAbierto.nuevoNombre = ''; }
       if (r.codigo) accesosAbierto.codigo = { email: mail, codigo: r.codigo, venceEn: r.venceEn };
       accesosAbierto.mail = r.mail || null;
       /* SI EL MAIL NO SALIÓ, el código se muestra de entrada: es la única
@@ -733,7 +745,7 @@ const SGADD_HUB = (function () {
       ${d.mails.length ? `<ul class="space-y-1">${d.mails.map(m => {
         const e2 = estadoMail(m);
         return `<li class="flex items-center gap-2 text-[11px]">
-          <span class="font-mono text-ink truncate">${esc(m.email)}</span>
+          <span class="min-w-0 truncate">${m.nombre ? `<span class="text-ink">${esc(m.nombre)}</span> <span class="text-muted">·</span> ` : ''}<span class="font-mono ${m.nombre ? 'text-muted' : 'text-ink'}">${esc(m.email)}</span></span>
           <span class="zona-texto ${e2.tono} shrink-0">${e2.txt}</span>
           <span class="ml-auto flex items-center gap-2 shrink-0">
             <button type="button" onclick="SGADD_HUB.accionAcceso('${esc(c.id)}', 'reinvitar', '${escJs(m.email)}')"
@@ -746,12 +758,19 @@ const SGADD_HUB = (function () {
 
       ${lleno
         ? `<p class="text-[11px] zona-texto zona-aviso">El plan está lleno. Sacá un mail, o subile el plan al club.</p>`
-        : `<div class="flex items-center gap-2">
+        : `<div class="flex flex-wrap items-center gap-2">
+            <input type="text" value="${esc(accesosAbierto.nuevoNombre)}" id="hubNombre_${esc(c.id)}"
+              placeholder="nombre (opcional)" maxlength="80" autocomplete="off"
+              aria-label="Nombre de la persona (opcional)"
+              oninput="SGADD_HUB.campoAccesoNombre(this.value)"
+              onkeydown="if(event.key==='Enter')SGADD_HUB.accionAcceso('${escJs(c.id)}','alta')"
+              class="flex-1 min-w-[8rem] bg-surface2 border border-hairline rounded-md px-2 py-1.5 text-[11px] text-ink">
             <input type="email" value="${esc(accesosAbierto.nuevo)}" id="hubMail_${esc(c.id)}"
               placeholder="mail del cuerpo técnico"
               oninput="SGADD_HUB.campoAcceso(this.value)"
               onkeydown="if(event.key==='Enter')SGADD_HUB.accionAcceso('${escJs(c.id)}','alta')"
-              class="flex-1 min-w-0 bg-surface2 border border-hairline rounded-md px-2 py-1.5 text-[11px] text-ink">
+              aria-label="Mail de la persona"
+              class="flex-1 min-w-[10rem] bg-surface2 border border-hairline rounded-md px-2 py-1.5 text-[11px] text-ink">
             <button type="button" onclick="SGADD_HUB.accionAcceso('${escJs(c.id)}','alta')"
               ${accesosAbierto.yendo ? 'disabled' : ''}
               class="px-2.5 py-1.5 rounded-md text-[11px] font-display uppercase tracking-wider
@@ -2154,7 +2173,7 @@ const SGADD_HUB = (function () {
     zonaFicha, cambiosFicha, venceQueViaja, mandaBienvenida, guardarFichaTrasAlta, cargarFichas,
     elegirRenovacion, elegirBienvenida, reenviarBienvenida, fichasHub, hoyAR, ponerFicha,
     /* accesos */
-    verAccesos, campoAcceso, accionAcceso, aplicarAcceso, aplicarClub,
+    verAccesos, campoAcceso, campoAccesoNombre, accionAcceso, aplicarAcceso, aplicarClub,
     badgeServicio,
     copiarCodigo, mostrarCodigo, estadoMail, bloqueAccesos,
     accesos, accesosAbierto,

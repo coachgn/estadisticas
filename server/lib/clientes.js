@@ -40,6 +40,23 @@ const BLOQUEO_MS = 15 * 60 * 1000;
 function normalizar(email) { return AUTH.normalizarEmail(email); }
 
 /**
+ * El NOMBRE de quien entra con ese mail. Opcional: sirve para saludarlo
+ * en los mails («Hola, Martina») y para que el Panel Master no sea una
+ * lista de direcciones. NO es un dato de acceso: no decide nada.
+ *
+ * Se limpia al guardarlo —espacios de más, caracteres de control y los
+ * signos de una etiqueta HTML— y se corta en 80: lo escribe un admin y
+ * termina adentro de un mail y de la pantalla, que igual lo escapan.
+ */
+function normalizarNombre(v) {
+  return String(v == null ? '' : v)
+    .replace(/[\u0000-\u001f\u007f<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+}
+
+/**
  * Lee el padrón. LANZA si KV no se pudo leer.
  *
  * Igual que `admins.cargar()`, y por el mismo motivo: `kv.leer` se traga
@@ -76,6 +93,7 @@ function delClub(padron, clubId) {
     .filter(e => String((padron[e] || {}).club || '').toLowerCase() === c)
     .map(e => ({
       email: e,
+      nombre: padron[e].nombre || '',
       club: padron[e].club,
       tieneClave: !!padron[e].clave,
       invitacionPendiente: !!padron[e].invitacion,
@@ -220,8 +238,10 @@ function alta(padron, email, clubId, opciones) {
 
   const inv = claves.generarInvitacion(o.dias);
   const p = Object.assign({}, padron);
+  const nombre = normalizarNombre(o.nombre);
   p[e] = {
     club: club,
+    ...(nombre ? { nombre: nombre } : {}),
     equipoAsignado: o.equipoAsignado || null,
     altaEl: new Date(o.ahora === undefined ? Date.now() : o.ahora).toISOString(),
     invitacion: { hash: claves.hashearCodigo(inv.codigo), venceEn: inv.venceEn },
@@ -247,13 +267,16 @@ function baja(padron, email) {
  * sigue sirviendo. Invalidarla de entrada dejaría afuera a alguien que
  * está entrando bien, por un click de más del administrador.
  */
-function reinvitar(padron, email, dias) {
+function reinvitar(padron, email, dias, nombre) {
   const e = normalizar(email);
   const reg = (padron || {})[e];
   if (!reg) return { ok: false, motivo: 'Ese mail no está dado de alta.' };
   const inv = claves.generarInvitacion(dias);
   const p = Object.assign({}, padron);
-  p[e] = Object.assign({}, reg, {
+  /* Un nombre que viene con la reinvitación lo corrige; uno vacío NO
+     borra el que ya tenía: reinvitar no es una decisión sobre el nombre. */
+  const n = normalizarNombre(nombre);
+  p[e] = Object.assign({}, reg, n ? { nombre: n } : {}, {
     invitacion: { hash: claves.hashearCodigo(inv.codigo), venceEn: inv.venceEn },
   });
   return { ok: true, padron: p, codigo: inv.codigo, venceEn: inv.venceEn };
@@ -304,7 +327,7 @@ async function cambiarClave(padron, email, claveActual, claveNueva, ahora) {
 }
 
 module.exports = {
-  CLAVE_KV, cargar, guardar, registro, delClub, cupo, verificar,
+  CLAVE_KV, cargar, guardar, registro, delClub, cupo, verificar, normalizarNombre,
   alta, baja, reinvitar, fijarClave, cambiarClave,
   anotarFallo, anotarExito, bloqueado,
   INTENTOS_MAX, BLOQUEO_MS,

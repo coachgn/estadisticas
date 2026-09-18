@@ -237,9 +237,16 @@ function resumenHtml(plan) {
  *   sin datos    el texto genérico de siempre.
  *
  * EL CÓDIGO SOLO ABRE LA ELECCIÓN DE CLAVE, una vez y con vencimiento; la
- * clave la elige el cliente y NUNCA viaja por mail. El código va en el
- * CUERPO y no en el link: una URL con un secreto queda en el historial del
- * navegador y en los registros de quien sirve la página.
+ * clave la elige el cliente y NUNCA viaja por mail.
+ *
+ * EL CÓDIGO VA TAMBIÉN EN EL LINK (`&email=…&code=…`), a pedido del club
+ * (2026-09-18): el panel abre con los dos campos llenos y el cliente solo
+ * elige su clave. Estuvo al revés una vuelta, y el costo es este: una query
+ * string llega a los registros de quien sirve la página y a los escáneres de
+ * links de algunos correos. Se aceptó porque el código es de UN uso, vence,
+ * no deja entrar (solo elegir clave) y ya viaja en el cuerpo del mismo mail.
+ * El panel lo saca de la barra apenas arranca (`sgadd-club.js`, con
+ * `history.replaceState`), así que no queda en el historial.
  */
 function datosAcceso(datos) {
   const inv = (datos && datos.invitacion) || null;
@@ -251,14 +258,15 @@ function datosAcceso(datos) {
   return { tipo: 'generico' };
 }
 
-function urlIngreso(url, tipo) {
-  if (tipo !== 'codigo') return url;
-  return url + (url.indexOf('?') === -1 ? '?' : '&') + 'ingreso=codigo';
+function urlIngreso(url, a) {
+  if (!a || a.tipo !== 'codigo') return url;
+  return url + (url.indexOf('?') === -1 ? '?' : '&')
+    + 'email=' + encodeURIComponent(a.email || '') + '&code=' + encodeURIComponent(a.codigo || '');
 }
 
 function accesoHtml(a) {
   if (a.tipo === 'codigo') {
-    return `<p style="margin:0 0 8px;"><strong>Tu acceso.</strong> Ya estás dado de alta. Tocá el botón y elegí tu clave con este código:</p>
+    return `<p style="margin:0 0 8px;"><strong>Tu acceso.</strong> Ya estás dado de alta. Tocá el botón: el panel se abre con tu mail y este código ya cargados, y solo elegís tu clave.</p>
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 10px;border:1px solid #f3d19c;border-radius:8px;background:#fff8ec;">
   <tr><td style="padding:12px 14px;">
     <p style="margin:0 0 4px;font-size:12px;color:#6b7280;">Mail de ingreso</p>
@@ -279,7 +287,8 @@ usá el código de invitación que te pasamos junto con el alta; la clave la ele
 function accesoTexto(a) {
   if (a.tipo === 'codigo') {
     return `TU ACCESO
-Ya estás dado de alta. Entrá en {{URL_INGRESO}} y elegí tu clave con este código.
+Ya estás dado de alta. Entrá en {{URL_INGRESO}}
+El panel se abre con tu mail y este código ya cargados: solo elegís tu clave.
 Mail de ingreso: {{ACCESO_EMAIL}}
 Código de invitación: {{ACCESO_CODIGO}}${a.vence ? '\nVence el {{ACCESO_VENCE}}.' : ''}
 En el panel: tu mail, el código y una clave nueva de al menos 12 caracteres que elegís vos. El código sirve una sola vez; después entrás con tu mail y tu clave.`;
@@ -301,7 +310,7 @@ function bienvenida(datos) {
   v.PREHEADER = a.tipo === 'codigo'
     ? 'Tu panel de ' + v.CATEGORIA + ' ya está activo. Adentro tenés tu código para elegir la clave.'
     : 'Tu panel de ' + v.CATEGORIA + ' ya está activo. Acá tenés el acceso y el resumen de tu plan.';
-  v.URL_INGRESO = urlIngreso(v.URL_PANEL, a.tipo);
+  v.URL_INGRESO = urlIngreso(v.URL_PANEL, a);
   v.ACCESO_EMAIL = a.email || '';
   v.ACCESO_CODIGO = a.codigo || '';
   v.ACCESO_VENCE = a.vence || '';
