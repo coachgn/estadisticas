@@ -2188,6 +2188,17 @@ check('y cada tarea declarada existe en TAREAS_DEFENSIVAS',
     en('focos', 'GENERADOR, UNO') && en('focos', 'GENERADOR, DOS') && !en('fuentes', 'GENERADOR, UNO'));
   check('el tirador frío que no es foco ni generador SÍ es fuente de ayuda',
     en('fuentes', 'ALERO, FRIO'));
+
+  /* La JERARQUÍA también veta: un Jugador Franquicia que quedó fuera del
+     tope de focos no es el lado barato del rival. */
+  const conFranquicia = filas.concat([Object.assign(fila('ESTRELLA, FRIA', 'tirador-sistematico-frio', {}), {
+    perfil: Object.assign(fila('x', 'x', {}).perfil, { adn: { jerarquia: { id: 'franquicia' } } }) })]);
+  const eco2 = S.clasificarEcosistema(conFranquicia);
+  check('con el tope lleno, un Jugador Franquicia NO es fuente de ayuda',
+    !eco2.focos.some(x => x.nombre === 'ESTRELLA, FRIA') && !eco2.fuentes.some(x => x.nombre === 'ESTRELLA, FRIA'),
+    'fuentes: ' + eco2.fuentes.map(x => x.nombre).join(', '));
+  check('y un Segunda Espada o un Especialista frío que no es foco sigue pudiendo serlo',
+    eco2.fuentes.some(x => x.nombre === 'ALERO, FRIO'));
 })();
 
 /* El manual se genera desde el código: la cantidad de marcas y las tareas

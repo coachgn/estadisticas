@@ -28,7 +28,7 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  55 tests · detalle partido a partido, perfil de tiro y su PDF
-node test-scouting.js      # 480 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis, titularidad
+node test-scouting.js      # 482 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis, titularidad
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
 node test-permisos.js      # 402 tests · roles, planes, el gate, el selector, el hub, el ciclo,
@@ -91,7 +91,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6109 tests en total. Todos tienen que dar verde antes de commitear.**
+**6111 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -2768,7 +2768,7 @@ de dónde sale la ayuda para hacerlo**.
 |---|---|---|
 | 🎯 **Focos** | marca `tirador-elite`/`interior-dominante`/`slasher`, o concentración ≥ 0,15, o jerarquía franquicia | "la ayuda salta desde X" |
 | 🚫 **Intocables** | `tiroExternoRentable` | "su defensor no participa de las ayudas: se queda" |
-| ↩ **Fuentes** | `tiroExternoFrio` u `ocasionalFrio`, o marca `tirador-ineficiente`/`volumen-sin-eficiencia`, y **nunca** un `generador-sin-tiro` | "es el lado desde donde mandar la ayuda y doblar a Y" |
+| ↩ **Fuentes** | `tiroExternoFrio` u `ocasionalFrio`, o marca `tirador-ineficiente`/`volumen-sin-eficiencia`, y **nunca** un `generador-sin-tiro` ni un Jugador Franquicia | "es el lado desde donde mandar la ayuda y doblar a Y" |
 | 🏰 **Cristal** | `reboteRel ≥ 1,30` | "su defensor NO rota: lo bloquea" |
 
 **El orden de cálculo es la lógica del plan**, y los vetos van en este orden:
@@ -3043,6 +3043,17 @@ Lo que hay que respetar al tocarlo:
   en el libro de DEPORTIVO. Un tirador frío que no es foco, cristal ni
   intocable sí es fuente: 12 de los 19 `tirador-sistematico-frio` del
   mismo libro (los otros son foco por concentración o cristal por rebote).
+  **El Jugador Franquicia tiene el mismo veto**: la jerarquía lo hace
+  candidato a foco, y si el tope lo deja afuera no pasa a ser el lado
+  barato del rival (1 de 16 franquicias del libro caía ahí).
+- **Dónde entra la JERARQUÍA** (Franquicia · Segunda Espada · Pieza de
+  Rotación Alta · Especialista de Rol): define si alguien es generador
+  (`esGenerador`: rol Generador Primario, o arquetipo Generador siendo
+  Franquicia o Segunda Espada), el volumen de uso de la lectura, la rama
+  de `contencion`, el perfil del catálogo (Franquicia → On-Ball Stopper o
+  Lockdown) y los focos del plan (solo Franquicia). **No reordena la
+  cascada**: la marca sale de la amenaza más cara, y un Especialista con
+  PPT3 de élite se cierra igual que una estrella.
 - **Es una marca NUEVA, la duodécima**, no reemplaza a ninguna de las once
   originales. El manual de etiquetado se genera desde el código y ya dice
   «cascada de 12», con su corte y la tabla de las doce tareas.

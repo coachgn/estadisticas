@@ -317,7 +317,7 @@ function seccionPlan() {
   const grupos = [
     ['🎯 Focos · se dobla', 'marca de tirador de élite, referencia interna, slasher o generador sin tiro; o concentra ≥ ' + un('concentracionAlta') + ' de los plays; o es franquicia', 'su celda dice desde dónde sale la ayuda'],
     ['🚫 Intocables · no se sueltan', 'tiene tiro externo rentable', 'su defensor no participa de las ayudas'],
-    ['↩ Fuentes de ayuda', 'tiro frío o sin renta, sin ser foco, intocable, cristal ni generador sin tiro', 'es el lado desde donde se dobla'],
+    ['↩ Fuentes de ayuda', 'tiro frío o sin renta, sin ser foco, intocable, cristal, generador sin tiro ni Jugador Franquicia', 'es el lado desde donde se dobla'],
     ['🏰 Box-out asignado', 'RO rel ≥ ' + un('reboteOfensivoAlto'), 'su defensor no rota: bloquea'],
   ];
   const filasEsc = S.ESCENARIOS.map(e => [`<b>${esc(e.label)}</b>`, esc({
@@ -337,9 +337,9 @@ function seccionPlan() {
     nunca puede ser fuente de ayuda (soltarlo es el error más caro). Un foco tampoco
     (el que exige doblaje no puede ayudar en otro lado). Un reboteador tampoco: no se
     le puede pedir al mismo defensor que sea el primero en rotar y que no abandone el
-    box-out. Y un <b>generador sin tiro</b> tampoco, aunque haya quedado fuera del tope de
-    focos: su defensor está en la cobertura del pick &amp; roll y no puede ser el primero en
-    rotar.</p>
+    box-out. Y un <b>generador sin tiro</b> o un <b>Jugador Franquicia</b> tampoco, aunque haya quedado fuera del tope de
+    focos: el defensor del generador está en la cobertura del pick &amp; roll y no puede ser el
+    primero en rotar, y el eje del equipo no es el lado desde donde se suelta la marca.</p>
     <h4>Escenarios que reconoce</h4>
     ${tabla(['Escenario', 'Se activa cuando'], filasEsc)}
     <p class="aviso"><b>Regla de coherencia:</b> si hay un foco, tiene que haber una

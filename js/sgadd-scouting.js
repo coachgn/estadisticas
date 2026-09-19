@@ -1735,9 +1735,16 @@ const SGADD_SCOUT = (function () {
        Sin este veto, con MAX_FOCOS lleno, el que conduce caía acá por su
        tiro frío y la celda decía «desde acá sale la ayuda» al lado de una
        consigna que dice «doblar el pick & roll» — medido: 7 de 15 en el
-       libro de DEPORTIVO. */
+       libro de DEPORTIVO.
+
+       Lo mismo con un JUGADOR FRANQUICIA: la jerarquía lo hace candidato a
+       foco, y si queda fuera del tope no pasa a ser el lado barato del
+       rival — el eje de su equipo no es desde donde se suelta la marca.
+       Medido: 1 de 16 franquicias del mismo libro caía acá. */
+    const esFranquicia = (f) => !!(f.perfil.adn && f.perfil.adn.jerarquia &&
+      f.perfil.adn.jerarquia.id === 'franquicia');
     const fuentes = filas.filter(f => !esIntocable(f) && !esFoco(f) && !esCristal(f) &&
-        f.marca.id !== 'generador-sin-tiro' &&
+        f.marca.id !== 'generador-sin-tiro' && !esFranquicia(f) &&
         (f.perfil.tiroExternoFrio || f.perfil.tiroExternoOcasionalFrio ||
          ['tirador-ineficiente', 'volumen-sin-eficiencia'].indexOf(f.marca.id) !== -1))
       .sort((a, b) => (a.perfil.pptTriple || 0) - (b.perfil.pptTriple || 0))
