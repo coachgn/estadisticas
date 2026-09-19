@@ -1190,6 +1190,38 @@
   const div0 = (a, b) => (typeof a === 'number' && typeof b === 'number' && b > 0) ? a / b : null;
   const n0 = (v) => (typeof v === 'number' && isFinite(v)) ? v : 0;
 
+  /* AST-PP CON LA CONVENCIÓN DEL MOTOR (MotorStats v106 · fachada @95).
+
+       PP > 0              ->  AST / PP
+       PP = 0 y AST > 0    ->  AST / 1      (5 AST, 0 PP = 5,00)
+       PP = 0 y AST = 0    ->  0,00
+
+     Es la única tasa que NO usa `div0`. `div0` devuelve null con el
+     denominador en cero, y para AST-PP eso borraba del panel justo al mejor
+     caso posible: un base sin pérdidas quedaba sin número mientras la hoja
+     que el club audita le pone sus asistencias. CLAUDE.md ya lo exigía, en
+     "`Base Datos J` trae 0 donde va blanco": "el motor tiene su propia
+     convención para el caso sin pérdidas; pisarlo acá contradiría a la
+     hoja". El código no lo cumplía.
+
+     SE REDONDEA A DOS DECIMALES como el motor, que desde v106 guarda el
+     valor ya redondeado. Si no, un 1,395 se vería 1,40 en la hoja y acá
+     quedaría debajo del umbral de Generador (AST-PP > 1,40): la etiqueta
+     contradiría al número que se muestra.
+
+     ⚠️ LA REGLA "÷1" SÓLO VALE SOBRE TOTALES. Con PP > 0 da igual sobre
+        totales que sobre promedios (el PJ se cancela); con PP = 0 no: 10 AST
+        en 5 PJ da 10,00 sobre totales y 2,00 sobre el promedio. Los tres
+        llamadores de TASAS_EQUIPO le pasan totales —`yo`, `sum` y las filas
+        sumadas de ACUMULADO J—, que es lo que hace el motor. Si algún día se
+        la llama con promedios por partido, este número deja de coincidir
+        con la hoja. */
+  const astPp = (ast, pp) => {
+    const a = n0(ast), p = n0(pp);
+    const r = Math.round((a / (p > 0 ? p : 1) + Number.EPSILON) * 100) / 100;
+    return isFinite(r) ? r : 0;
+  };
+
   const TASAS_EQUIPO = {
     'eFG%':  (y) => div0(n0(y.TCC) + 0.5 * n0(y.T3C), y.TCI),
     'TS%':   (y) => div0(y.PTS, 2 * (n0(y.TCI) + 0.44 * n0(y.T1I))),
@@ -1208,7 +1240,7 @@
     'RTL%':  (y) => div0(y.T1C, y.TCI),
     'PePP%': (y) => div0(y.PP, y.PLAYS),
     'AST%':  (y) => div0(y.AST, y.TCC),
-    'AST-PP': (y) => div0(y.AST, y.PP),
+    'AST-PP': (y) => astPp(y.AST, y.PP),   // no div0: ver `astPp`
     'RO%':   (y, r) => div0(y.RO, n0(y.RO) + n0(r.RD)),
     'RD%':   (y, r) => div0(y.RD, n0(y.RD) + n0(r.RO)),
     'RT%':   (y, r) => div0(n0(y.RO) + n0(y.RD),
@@ -1985,8 +2017,10 @@
        ===================================================================== */
     /* Las tasas de `ACUMULADO J` que NO se pueden sumar. La hoja trae 32
        columnas y esta es la única: el resto son cuentas. Se recalcula con
-       la misma fórmula que el resto del proyecto (`div0`, que respeta la
-       convención del motor cuando el denominador es cero). */
+       la misma fórmula que TASAS_EQUIPO, que usa `astPp` y respeta la
+       convención del motor con cero pérdidas. (Decía `div0`, que devolvía
+       null en ese caso: el comentario prometía algo que el código no
+       hacía.) */
     const TASAS_ACUMULADO = {
       'AST-PP': (d) => TASAS_EQUIPO['AST-PP'](d, {}),
     };

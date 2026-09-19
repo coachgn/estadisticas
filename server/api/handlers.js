@@ -27,6 +27,7 @@ const { verificarToken, tokenDeLaPeticion } = require('../lib/auth.js');
 const reglas = require('../lib/reglas.js');
 const alertas = require('../lib/alertas.js');
 const sheets = require('../lib/google-sheets.js');
+const etiquetas = require('../lib/etiquetas.js');
 const AUTH = require('../lib/compartido/sgadd-auth.js');
 const NUCLEO = require('../lib/compartido/sgadd-core.js');
 
@@ -285,6 +286,11 @@ async function manejarEquipos(peticion, deps) {
     return fallaDeDatos(e);
   }
 
+  /* Traducción de TORNEO/FASE, si esta categoría tiene alguna declarada.
+     Va ACÁ, antes de las alertas y del recorte, para que todo lo de abajo
+     —alertas, índice, tramos— vea el mismo par. Ver `lib/etiquetas.js`. */
+  etiquetas.reetiquetar(libro, cat.slug);
+
   /* Se calculan sobre `libro` (completo) y NO sobre `rec` (recortado):
      el punto es justamente detectar a los jugadores que el recorte saca.
 
@@ -428,6 +434,10 @@ async function manejarScouting(peticion, deps) {
   } catch (e) {
     return fallaDeDatos(e);
   }
+
+  /* Misma traducción que en `manejarEquipos`: el scouting lee las mismas
+     matrices y tiene que ver el mismo tramo. Ver `lib/etiquetas.js`. */
+  etiquetas.reetiquetar(libro, cat.slug);
 
   /* Para armar un informe pre-partido hacen falta los datos del RIVAL: es
      el objeto del informe. Por eso acá el recorte por equipo no aplica —

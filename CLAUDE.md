@@ -37,6 +37,8 @@ node test-comparativa.js   #  65 tests · ciclos, tendencia contra nivel, cara a
 node test-clientes.js      #  69 tests · el padrón de clientes, los cupos y el login
 node test-confirmar.js     #  86 tests · el diff, publicar zonas, subclientes y tooltips
 node test-acumulacion.js   #  42 tests · la suma entre tramos · REGRESIÓN, no tocar
+node test-ast-pp.js        #  22 tests · AST-PP con cero pérdidas = AST, igual que el motor
+                           #             (v106) · por __acum, el TOTAL del jugador y el del equipo
 node test-resiliencia.js   #  50 tests · rotación del token, KV caído, el tramo que se conserva
 node test-jsonclub.js      # 115 tests · los JSON de club, el validador, el aislamiento y publicar
 node test-pares.js         # 219 tests · el grupo de pares, la cascada y las 3 cards
@@ -91,7 +93,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6119 tests en total. Todos tienen que dar verde antes de commitear.**
+**6141 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -420,6 +422,11 @@ Dos cosas que hay que respetar al tocarlo:
   el motor tiene su propia convención para el caso sin pérdidas (devuelve
   las asistencias, no una división por cero). Pisarlo acá contradiría a la
   hoja que el club audita.
+  *Hasta MotorStats v106 esto no era cierto de ningún lado: el motor
+  devolvía 0 y el panel, vía `div0`, null ("—"). Desde v106 los dos
+  devuelven las asistencias; en el panel lo hace `astPp` en
+  `sgadd-core.js`, la única tasa que no usa `div0`. Lo cubre
+  `test-ast-pp.js`.*
 
 La fila **no se descarta**, solo se le blanquean las tasas: el detector de
 inactividad del punto 13 se apoya justamente en esas filas de `MIN = 0`
