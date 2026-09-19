@@ -128,7 +128,7 @@ const CORTES_ROL = {
 
 const CORTES_MARCA = {
   'tirador-elite': 'PT3% ≥ ' + un('usoTripleAlto') + ' y PPT3 ≥ ' + un('pptTripleElite'),
-  'generador-sin-tiro': 'no interior · Generador Primario (o arquetipo Generador siendo Franquicia o Referente) · sin tiro rentable · tiro frío u ocasional frío, o no tira de afuera',
+  'generador-sin-tiro': 'no interior · Generador Primario (o arquetipo Generador siendo Franquicia o Referente) · sin tiro rentable',
   'volumen-sin-eficiencia': 'concentración ≥ ' + un('concentracionAlta') + ' · sin tiro rentable · eFG% por debajo de la liga',
   'tirador-eficiente-bajo-volumen': 'T3I ≥ 1,0 y tiro externo rentable',
   'interior-dominante': 'interior · PPT2 ≥ ' + un('pptDobleAlto'),

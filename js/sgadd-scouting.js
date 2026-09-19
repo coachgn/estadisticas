@@ -104,6 +104,31 @@ const SGADD_SCOUT = (function () {
     viaPrincipalTriple: 0.25,
   };
 
+  /* LOS UMBRALES QUE RIGEN PARA UN JUGADOR · unificados con el ADN
+     (2026-09-19). Hasta acá las reglas de marca leían este mapa `U` fijo,
+     calibrado contra Liga Argentina, mientras las etiquetas del mismo
+     jugador —rol funcional, arquetipos— ya se adaptaban al nivel de su
+     competencia: en una categoría Local Mayores el mismo informe decía
+     «Generador» con AST-PP ≥ 0,79 en la ficha y lo exigía ≥ 1,40 para la
+     marca. Dos varas para lo mismo.
+
+     Ahora manda el mapa que el motor de JUGADORES resolvió para ESTE
+     índice (`p.U`, ver `jugadoresUmbrales`): las 32 claves del registro de
+     niveles, incluidas las propias de scouting. `U` queda como RESPALDO:
+     para un perfil armado a mano, sin índice, o sin el registro cargado.
+     Se funde por encima de `U` y no lo reemplaza, así una clave que el
+     registro no declare nunca queda en `undefined` —una comparación
+     contra `undefined` es siempre falsa y apagaría la regla en silencio. */
+  const U_FUNDIDO = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+  function Up(p) {
+    const a = p && p.U;
+    if (!a || a === COMPARTIDOS) return U;
+    if (U_FUNDIDO && U_FUNDIDO.has(a)) return U_FUNDIDO.get(a);
+    const m = Object.assign({}, U, a);
+    if (U_FUNDIDO) U_FUNDIDO.set(a, m);
+    return m;
+  }
+
   /* =====================================================================
      BANDAS CONTEXTUALES CONTRA LA LIGA
 
@@ -563,13 +588,13 @@ const SGADD_SCOUT = (function () {
 
     const t3i = nn(q.t3i);
     const volTiro = t3i === null || t3i < 1.0 ? (t3i === null || t3i === 0 ? 'nulo' : 'bajo')
-      : (t3i >= U.volumenTripleSistematico ? 'alto' : 'medio');
+      : (t3i >= Up(q).volumenTripleSistematico ? 'alto' : 'medio');
     const efTiro = volTiro === 'nulo' ? null
       : (q.tiroExternoRentable ? 'alta' : ((q.tiroExternoFrio || q.tiroExternoOcasionalFrio) ? 'baja' : 'media'));
 
     const conc = nn(q.concentracion);
-    const volUso = (jer === 'franquicia' || jer === 'referente' || (conc !== null && conc >= U.concentracionAlta)) ? 'alto'
-      : ((jer === 'quinteto' || (q.min !== null && q.min !== undefined && q.min >= U.minutosClave)) ? 'medio' : 'bajo');
+    const volUso = (jer === 'franquicia' || jer === 'referente' || (conc !== null && conc >= Up(q).concentracionAlta)) ? 'alto'
+      : ((jer === 'quinteto' || (q.min !== null && q.min !== undefined && q.min >= Up(q).minutosClave)) ? 'medio' : 'bajo');
     const efUso = porEncima(q.bandaEfg) ? 'alta' : (porDebajo(q.bandaEfg) ? 'baja' : (q.bandaEfg ? 'media' : null));
 
     return {
@@ -634,7 +659,7 @@ const SGADD_SCOUT = (function () {
       id: 'contencionPenetracion', label: 'Contenedor de Penetración', agresivo: false,
       tarea: 'Cerrarle el primer paso hacia su mano dominante y obligarlo a la media distancia, sin saltar al amague.',
       buscar: ['desplazamiento lateral', 'defensa de pecho sin falta', 'disciplina para no saltar al amague', 'recuperación después del primer paso'],
-      perfiles: [{ id: 'poa', cuando: (p) => porEncima(p.bandaAstPP) && p.min >= U.minutosClave }, { id: 'transicion', cuando: (p) => porEncima(p.bandaPr) }, { id: 'driveContainment' }],
+      perfiles: [{ id: 'poa', cuando: (p) => porEncima(p.bandaAstPP) && p.min >= Up(p).minutosClave }, { id: 'transicion', cuando: (p) => porEncima(p.bandaPr) }, { id: 'driveContainment' }],
     },
     {
       id: 'unoContraUno', label: 'Defensor 1x1 / Anulador', agresivo: false,
@@ -652,7 +677,7 @@ const SGADD_SCOUT = (function () {
       id: 'fisicoRebotero', label: 'Defensor Físico / Rebotero', agresivo: false,
       tarea: 'Contacto antes de que salte y box-out en cada posesión: la segunda chance es su arma.',
       buscar: ['contacto físico legal', 'cierre del rebote defensivo', 'cuerpo para defender cerca del aro'],
-      perfiles: [{ id: 'rebotandoGuard', cuando: (p) => p.esPerimetral }, { id: 'paintDominator', cuando: (p) => porEncima(p.bandaRo) && p.reboteDefRel !== null && p.reboteDefRel >= U.reboteInterior }, { id: 'glassCleaner' }],
+      perfiles: [{ id: 'rebotandoGuard', cuando: (p) => p.esPerimetral }, { id: 'paintDominator', cuando: (p) => porEncima(p.bandaRo) && p.reboteDefRel !== null && p.reboteDefRel >= Up(p).reboteInterior }, { id: 'glassCleaner' }],
     },
     {
       id: 'protectorPintura', label: 'Protector de Pintura / Frente al Poste', agresivo: false,
@@ -670,7 +695,7 @@ const SGADD_SCOUT = (function () {
       id: 'lectorRotaciones', label: 'Defensor de Lectura / Rotaciones', agresivo: false,
       tarea: 'No regalarle nada fácil y rotar primero: es el lado desde donde sale la ayuda a los que condicionan el partido.',
       buscar: ['lectura de las ayudas', 'comunicación en las rotaciones', 'manos activas (recuperos)'],
-      perfiles: [{ id: 'interceptor', cuando: (p) => porEncima(p.bandaPr) }, { id: 'paceController', cuando: (p) => p.min !== null && p.min < U.minutosClave }, { id: 'freeSafety', cuando: (p) => porEncima(p.bandaRo) }, { id: 'switchable' }],
+      perfiles: [{ id: 'interceptor', cuando: (p) => porEncima(p.bandaPr) }, { id: 'paceController', cuando: (p) => p.min !== null && p.min < Up(p).minutosClave }, { id: 'freeSafety', cuando: (p) => porEncima(p.bandaRo) }, { id: 'switchable' }],
     },
   ];
 
@@ -686,7 +711,7 @@ const SGADD_SCOUT = (function () {
     'generador-sin-tiro': (L) => 'underPickRoll',
     'volumen-sin-eficiencia': (L) => ROLES_INTERIORES.indexOf(L.funcion) !== -1 ? 'protectorPintura' : 'flotadorAyudador',
     'tirador-eficiente-bajo-volumen': (L) => (L.funcion === 'spacing' && L.tiro.volumen === 'alto') ? 'perseguidorCortinas' : 'cierreNegacion',
-    'interior-dominante': (L, p) => (L.funcion === 'rim-runner' || (tiene(L, 'puntal') && p.reboteRel !== null && p.reboteRel >= U.reboteOfensivoAlto))
+    'interior-dominante': (L, p) => (L.funcion === 'rim-runner' || (tiene(L, 'puntal') && p.reboteRel !== null && p.reboteRel >= Up(p).reboteOfensivoAlto))
       ? 'fisicoRebotero' : 'protectorPintura',
     'slasher': (L) => (L.biotipo && L.biotipo.alto && esGenerador(L)) ? 'largoMolesto'
       : (L.tiro.efectividad === 'alta' ? 'unoContraUno' : 'contencionPenetracion'),
@@ -699,7 +724,7 @@ const SGADD_SCOUT = (function () {
       if ((L.adn === 'franquicia' || L.adn === 'referente') && L.uso.efectividad === 'alta') {
         return (L.biotipo && L.biotipo.alto && esGenerador(L)) ? 'largoMolesto' : 'unoContraUno';
       }
-      if (p.perdidasRel !== null && p.perdidasRel !== undefined && p.perdidasRel >= U.perdidasAltas && esGenerador(L)) return 'presionBola';
+      if (p.perdidasRel !== null && p.perdidasRel !== undefined && p.perdidasRel >= Up(p).perdidasAltas && esGenerador(L)) return 'presionBola';
       if (L.funcion === 'slasher') return 'contencionPenetracion';
       if (L.tiro.efectividad === 'baja') return 'flotadorAyudador';
       if (L.biotipo && L.biotipo.interior && (L.funcion === 'spacing' || L.funcion === 'perimetral-media')) return 'fisicoRebotero';
@@ -802,7 +827,7 @@ const SGADD_SCOUT = (function () {
     {
       id: 'tirador-elite',
       etiqueta: 'Amenaza perimetral de élite',
-      test: (p) => p.usoTriple >= U.usoTripleAlto && p.pptTriple >= U.pptTripleElite,
+      test: (p) => p.usoTriple >= Up(p).usoTripleAlto && p.pptTriple >= Up(p).pptTripleElite,
       consigna: (p) => ({
         titulo: 'TOP LOCK / OVER.',
         detalle: 'Tirador de élite (' + num2(p.pptTriple) + ' PPT3 sobre ' + pct(p.usoTriple) +
@@ -828,8 +853,13 @@ const SGADD_SCOUT = (function () {
          no puede ser el lado desde donde sale la ayuda. */
       id: 'generador-sin-tiro',
       etiqueta: 'Generador sin tiro exterior',
-      test: (p) => !p.esInterior && !p.tiroExternoRentable && esGenerador(lecturaMultivariable(p)) &&
-        (p.tiroExternoFrio || p.tiroExternoOcasionalFrio || !p.tiraDeAfuera),
+      /* «Sin tiro» = sin tiro RENTABLE, no «en la cola fría de la liga».
+         Pedía además frío: con los umbrales unificados el frío pasó a ser
+         relativo a la competencia, y RONDINONE (0,656 PPT3 contra un corte
+         de 0,652 en Local Mayores) quedaba afuera por cuatro milésimas y
+         caía en «Lector de rotaciones». Ir por debajo del bloqueo vale
+         contra cualquier tiro que no castiga. */
+      test: (p) => !p.esInterior && !p.tiroExternoRentable && esGenerador(lecturaMultivariable(p)),
       consigna: (p) => ({
         titulo: 'UNDER EN EL P&R / CONTENER LA PENETRACIÓN.',
         detalle: 'Genera el juego (' + num2(p.astPP) + ' AST-PP) pero su tiro exterior no castiga: ' +
@@ -861,7 +891,7 @@ const SGADD_SCOUT = (function () {
          corrigieron las dos cosas. */
       id: 'volumen-sin-eficiencia',
       etiqueta: 'Volumen alto, eficiencia baja',
-      test: (p) => p.concentracion !== null && p.concentracion >= U.concentracionAlta &&
+      test: (p) => p.concentracion !== null && p.concentracion >= Up(p).concentracionAlta &&
         !p.tiroExternoRentable && (porDebajo(p.bandaEfg) ||
           (p.efg !== null && p.bandaEfg !== null && p.bandaEfg.id === 'fuga')),
       consigna: (p) => ({
@@ -898,7 +928,7 @@ const SGADD_SCOUT = (function () {
       etiqueta: 'Referencia interna',
       /* `esInterior` es obligatorio: sin esa guarda, un slasher con buen
          PPT2 entraba acá y se le asignaba una marca de poste bajo. */
-      test: (p) => p.esInterior && p.pptDoble >= U.pptDobleAlto,
+      test: (p) => p.esInterior && p.pptDoble >= Up(p).pptDobleAlto,
       consigna: (p) => ({
         titulo: '3/4 POR DELANTE / FRONT.',
         detalle: 'Letal en la pintura (' + num2(p.pptDoble) + ' PPT2) y con peso en el cristal (' +
@@ -913,7 +943,7 @@ const SGADD_SCOUT = (function () {
     {
       id: 'slasher',
       etiqueta: 'Slasher / penetrador',
-      test: (p) => p.esPerimetral && p.pptDoble >= U.pptDobleAlto,
+      test: (p) => p.esPerimetral && p.pptDoble >= Up(p).pptDobleAlto,
       consigna: (p) => ({
         titulo: 'CONTENCIÓN DE MANO DOMINANTE.',
         detalle: 'Ataca el aro desde afuera con ' + num2(p.pptDoble) + ' PPT2 y ' +
@@ -928,7 +958,7 @@ const SGADD_SCOUT = (function () {
     {
       id: 'generador-riesgoso',
       etiqueta: 'Conductor con pérdidas altas',
-      test: (p) => p.perdidasRel >= U.perdidasAltas && p.min >= U.minutosClave,
+      test: (p) => p.perdidasRel >= Up(p).perdidasAltas && p.min >= Up(p).minutosClave,
       consigna: (p) => ({
         titulo: 'ACOSO AL DRIBLE / TRAP.',
         detalle: 'Es el eje pero con ' + pct(p.perdidas) + ' de pérdidas (' + num2(p.perdidasRel) +
@@ -961,7 +991,7 @@ const SGADD_SCOUT = (function () {
       id: 'castigable-en-la-linea',
       etiqueta: 'Vulnerable en la línea',
       /* Umbral duro a propósito: T1% < 40% Y volumen interno real. */
-      test: (p) => p.t1 !== null && p.t1 < U.t1Regalable && p.usoDoble >= U.usoDobleInterno,
+      test: (p) => p.t1 !== null && p.t1 < Up(p).t1Regalable && p.usoDoble >= Up(p).usoDobleInterno,
       consigna: (p) => ({
         titulo: 'VERTICALIDAD SIN CONTACTO.',
         detalle: 'Concentra ' + pct(p.usoDoble) + ' de sus plays adentro pero convierte ' + pct(p.t1) +
@@ -978,7 +1008,7 @@ const SGADD_SCOUT = (function () {
          tres condiciones acumuladas. */
       id: 'tirador-ineficiente',
       etiqueta: 'Tirador de volumen sin renta',
-      test: (p) => p.usoTriple >= U.usoTripleAlto && p.pptTriple <= U.pptTriplePobre &&
+      test: (p) => p.usoTriple >= Up(p).usoTripleAlto && p.pptTriple <= Up(p).pptTriplePobre &&
         !p.tiroExternoRentable && !p.viaPrincipalExterna,
       consigna: (p) => ({
         titulo: 'UNDER / FLOTACIÓN.',
@@ -993,7 +1023,7 @@ const SGADD_SCOUT = (function () {
     {
       id: 'rebotador',
       etiqueta: 'Rebotador de impacto',
-      test: (p) => p.reboteRel !== null && p.reboteRel >= U.reboteOfensivoAlto,
+      test: (p) => p.reboteRel !== null && p.reboteRel >= Up(p).reboteOfensivoAlto,
       consigna: (p) => ({
         titulo: 'BOX-OUT DE CHOQUE.',
         detalle: 'Captura ' + num2(p.reboteRel) + 'x la mediana de la liga en rebote ofensivo (' +
@@ -1458,12 +1488,12 @@ const SGADD_SCOUT = (function () {
     /* Tira de afuera de verdad: sin volumen mínimo no hay regla que valga,
        dos triples en todo el torneo no describen a nadie. */
     p.tiraDeAfuera = (p.t3i !== null && p.t3i >= 1.0);
-    p.tiradorSistematico = (p.t3i !== null && p.t3i >= U.volumenTripleSistematico);
+    p.tiradorSistematico = (p.t3i !== null && p.t3i >= Up(p).volumenTripleSistematico);
 
     /* Rentable = supera el piso duro O está por encima de su liga. */
     p.tiroExternoRentable = p.tiraDeAfuera && (
-      (p.pptTriple !== null && p.pptTriple >= U.pptTripleRentable) ||
-      (p.t3 !== null && p.t3 >= U.t3Rentable) ||
+      (p.pptTriple !== null && p.pptTriple >= Up(p).pptTripleRentable) ||
+      (p.t3 !== null && p.t3 >= Up(p).t3Rentable) ||
       porEncima(p.bandaPptTriple) || porEncima(p.bandaT3));
 
     /* Frío = por debajo del piso absoluto **Y** por debajo de su liga.
@@ -1479,8 +1509,8 @@ const SGADD_SCOUT = (function () {
 
        Sin bandas (liga sin muestra) manda el piso absoluto solo: es el
        único dato disponible y negarse a decidir sería peor. */
-    const pisoFrio = (p.pptTriple !== null && p.pptTriple < U.pptTripleFrio) ||
-      (p.t3 !== null && p.t3 < U.t3Frio);
+    const pisoFrio = (p.pptTriple !== null && p.pptTriple < Up(p).pptTripleFrio) ||
+      (p.t3 !== null && p.t3 < Up(p).t3Frio);
     /* El contexto es "NO destaca en su liga", no "está en el fondo de su
        liga". Con `porDebajo` estricto la regla se apagaba casi entera (2%
        de las fichas), que es el mismo defecto de P-3 dado vuelta: pedir
@@ -1506,7 +1536,7 @@ const SGADD_SCOUT = (function () {
        invitar al equipo entero a hacer lo que mejor sabe. */
     p.cuotaTriplesEquipo = div(p.t3i, totalTriplesEquipo);
     p.viaPrincipalExterna = p.cuotaTriplesEquipo !== null &&
-      p.cuotaTriplesEquipo >= U.viaPrincipalTriple;
+      p.cuotaTriplesEquipo >= Up(p).viaPrincipalTriple;
 
     return p;
   }
@@ -1696,7 +1726,7 @@ const SGADD_SCOUT = (function () {
        los plays" de alguien que entró por ser referencia interna hace
        parecer que 7,8% es mucho, y no lo es. */
     const motivoFoco = (f) => {
-      if (f.perfil.concentracion !== null && f.perfil.concentracion >= U.concentracionAlta) {
+      if (f.perfil.concentracion !== null && f.perfil.concentracion >= Up(f.perfil).concentracionAlta) {
         return pct(f.perfil.concentracion) + ' de los plays del equipo';
       }
       if (f.perfil.adn && f.perfil.adn.jerarquia && f.perfil.adn.jerarquia.id === 'franquicia') {
@@ -1706,7 +1736,7 @@ const SGADD_SCOUT = (function () {
     };
     const focos = filas.filter(f =>
       ['tirador-elite', 'interior-dominante', 'slasher', 'generador-sin-tiro'].indexOf(f.marca.id) !== -1 ||
-      (f.perfil.concentracion !== null && f.perfil.concentracion >= U.concentracionAlta) ||
+      (f.perfil.concentracion !== null && f.perfil.concentracion >= Up(f.perfil).concentracionAlta) ||
       (f.perfil.adn && f.perfil.adn.jerarquia && f.perfil.adn.jerarquia.id === 'franquicia'))
       .sort((a, b) => (b.perfil.concentracion || 0) - (a.perfil.concentracion || 0))
       .slice(0, MAX_FOCOS)
@@ -1719,7 +1749,7 @@ const SGADD_SCOUT = (function () {
        abandone el box-out. El rebote gana, porque la segunda chance anula
        todo el trabajo defensivo previo. */
     const cristal = filas.filter(f => f.perfil.reboteRel !== null &&
-        f.perfil.reboteRel >= U.reboteOfensivoAlto)
+        f.perfil.reboteRel >= Up(f.perfil).reboteOfensivoAlto)
       .sort((a, b) => b.perfil.reboteRel - a.perfil.reboteRel)
       .map(f => ref(f, num2(f.perfil.reboteRel) + 'x la mediana de la liga en RO%'));
     const esCristal = (f) => cristal.some(x => x.clave === f.clave);
@@ -1858,7 +1888,7 @@ const SGADD_SCOUT = (function () {
   function fortalezasJugador(p) {
     const out = [];
     if (p.pptTriple !== null && p.usoTriple !== null &&
-        p.pptTriple >= U.pptTripleElite && p.usoTriple >= 0.25) {
+        p.pptTriple >= Up(p).pptTripleElite && p.usoTriple >= 0.25) {
       out.push('PPT3 ' + num2(p.pptTriple) + ' sobre ' + pct(p.usoTriple) +
         ' de uso: castiga cualquier ayuda que lo deje solo en el perímetro.');
     } else if (p.tiroExternoRentable && p.tiraDeAfuera) {
@@ -1878,7 +1908,7 @@ const SGADD_SCOUT = (function () {
       out.push('AST-PP ' + num2(p.astPP) + ctx(p.bandaAstPP) +
         ': genera ventaja para terceros, no solo para él.');
     }
-    if (p.reboteRel !== null && p.reboteRel >= U.reboteOfensivoAlto) {
+    if (p.reboteRel !== null && p.reboteRel >= Up(p).reboteOfensivoAlto) {
       out.push('RO% ' + num2(p.reboteRel) + 'x la mediana de la liga: convierte tiros errados en segundas chances.');
     }
     /* PR no participaba de NINGUNA regla del informe pese a existir el
@@ -1888,7 +1918,7 @@ const SGADD_SCOUT = (function () {
       out.push('PR ' + num1(p.pr) + ' recuperos' + ctx(p.bandaPr) +
         ': lee las líneas de pase, ojo con los envíos cruzados y el pase de salida.');
     }
-    if (p.t1 !== null && p.t1 >= U.t1Confiable && p.usoLibre !== null && p.usoLibre >= U.usoLibreAlto) {
+    if (p.t1 !== null && p.t1 >= Up(p).t1Confiable && p.usoLibre !== null && p.usoLibre >= Up(p).usoLibreAlto) {
       out.push('T1% ' + pct(p.t1) + ' con ' + pct(p.usoLibre) + ' de sus plays en la línea: el contacto le rinde.');
     }
     /* RTL% y FR tampoco entraban al scouting. Un jugador que vive de la
@@ -1897,7 +1927,7 @@ const SGADD_SCOUT = (function () {
       out.push('Ataca el contacto: ' + pct(p.rtl) + ' de tasa de tiros libres y ' +
         num1(p.fr) + ' faltas recibidas' + ctx(p.bandaFr) + '. Defensa vertical o se instala en la línea.');
     }
-    if (p.usg !== null && p.concentracion !== null && p.concentracion >= U.concentracionAlta) {
+    if (p.usg !== null && p.concentracion !== null && p.concentracion >= Up(p).concentracionAlta) {
       out.push('Concentra ' + pct(p.concentracion) + ' de los plays del equipo: el ataque pasa por él.');
     }
     if (!out.length) out.push('Sin una fortaleza que se despegue del resto del plantel: no condiciona el plan.');
@@ -1907,7 +1937,7 @@ const SGADD_SCOUT = (function () {
   function fugasJugador(p) {
     const out = [];
     if (p.pptTriple !== null && p.usoTriple !== null &&
-        p.pptTriple <= U.pptTriplePobre && p.usoTriple >= 0.30) {
+        p.pptTriple <= Up(p).pptTriplePobre && p.usoTriple >= 0.30) {
       out.push('PPT3 ' + num2(p.pptTriple) + ' con ' + pct(p.usoTriple) +
         ' de uso externo' + ctx(p.bandaPptTriple) + ': su tiro preferido es el que menos le rinde.');
     } else if (p.tiroExternoOcasionalFrio) {
@@ -1919,7 +1949,7 @@ const SGADD_SCOUT = (function () {
         ' de renta' + ctx(p.bandaPptTriple) + ': poco volumen para perseguirlo, ' +
         'pero es el lanzamiento que le queremos dejar.');
     }
-    if (p.perdidasRel !== null && p.perdidasRel >= U.perdidasAltas) {
+    if (p.perdidasRel !== null && p.perdidasRel >= Up(p).perdidasAltas) {
       out.push('%TOV ' + pct(p.perdidas) + ' (' + num2(p.perdidasRel) +
         'x la liga)' + ctx(p.bandaTov) + ': pierde bajo presión sostenida al drible.');
     } else if (porDebajo(p.bandaTov)) {
@@ -1928,7 +1958,7 @@ const SGADD_SCOUT = (function () {
     }
     /* Absoluto a propósito: 40% en la línea es malo en cualquier categoría
        y habilita la falta táctica. La banda cubre el resto del rango. */
-    if (p.t1 !== null && p.t1 < U.t1Regalable) {
+    if (p.t1 !== null && p.t1 < Up(p).t1Regalable) {
       out.push('T1% ' + pct(p.t1) + ': la línea es su peor escenario de finalización.');
     } else if (porDebajo(p.bandaT1)) {
       out.push('T1% ' + pct(p.t1) + ctx(p.bandaT1) +
@@ -2339,7 +2369,7 @@ const SGADD_SCOUT = (function () {
   const REGLAS_CLAVE = [
     {
       id: 'ejes-eficiencia', icono: '📉', titulo: 'Ejes de eficiencia',
-      buscar: (ps) => ps.filter(p => p.concentracion !== null && p.concentracion >= U.concentracionAlta),
+      buscar: (ps) => ps.filter(p => p.concentracion !== null && p.concentracion >= Up(p).concentracionAlta),
       texto: (ms) => 'Neutralizar a ' + nombres(ms) + ': concentra' + (ms.length > 1 ? 'n' : '') + ' ' +
         ms.map(m => pct(m.concentracion)).join(' y ') + ' de los plays del equipo. ' +
         'Sacarlo' + (ms.length > 1 ? 's' : '') + ' del partido descompone la ofensiva entera.',
@@ -2347,7 +2377,7 @@ const SGADD_SCOUT = (function () {
     {
       id: 'clausura-tiradores', icono: '🏹', titulo: 'Clausura de tiradores',
       buscar: (ps) => ps.filter(p => p.usoTriple !== null && p.pptTriple !== null &&
-        p.usoTriple >= U.usoTripleAlto && p.pptTriple >= U.pptTripleElite),
+        p.usoTriple >= Up(p).usoTripleAlto && p.pptTriple >= Up(p).pptTripleElite),
       texto: (ms) => 'Deny y close-out largo sobre ' + nombres(ms) + ': ' +
         detallePorJugador(ms, m => 'saca ' + num2(m.pptTriple) + ' pts por triple intentado') +
         '. Es el tiro más caro que conceden.',
@@ -2355,7 +2385,7 @@ const SGADD_SCOUT = (function () {
     {
       id: 'invitacion-triple', icono: '🎁', titulo: 'Invitación selectiva al triple',
       buscar: (ps) => ps.filter(p => p.usoTriple !== null && p.pptTriple !== null &&
-        p.usoTriple >= U.usoTripleAlto && p.pptTriple <= U.pptTriplePobre && p.min >= U.minutosClave),
+        p.usoTriple >= Up(p).usoTripleAlto && p.pptTriple <= Up(p).pptTriplePobre && p.min >= Up(p).minutosClave),
       texto: (ms) => 'Regalarle el perímetro a ' + nombres(ms) + ': tira' + (ms.length > 1 ? 'n' : '') +
         ' mucho de afuera con ' + ms.map(m => num2(m.pptTriple)).join(' y ') + ' de renta por intento. ' +
         'Cerrar los caminos a la pintura y dejar que siga' + (ms.length > 1 ? 'n' : '') + ' lanzando.',
@@ -2363,7 +2393,7 @@ const SGADD_SCOUT = (function () {
     {
       id: 'disciplina-bonus', icono: '🚫', titulo: 'Disciplina de bonus / control de T1',
       buscar: (ps) => ps.filter(p => p.usoLibre !== null && p.t1 !== null &&
-        p.usoLibre >= U.usoLibreAlto && p.t1 >= U.t1Confiable),
+        p.usoLibre >= Up(p).usoLibreAlto && p.t1 >= Up(p).t1Confiable),
       texto: (ms) => 'Defensa vertical sin contacto sobre ' + nombres(ms) + ': ' +
         detallePorJugador(ms, m => 'convierte ' + pct(m.t1) + ' de libres con ' + pct(m.usoLibre) + ' de sus plays en la línea') +
         '. Mandarlo' + (ms.length > 1 ? 's' : '') + ' a la línea es regalarle puntos.',
@@ -2371,21 +2401,21 @@ const SGADD_SCOUT = (function () {
     {
       id: 'castigo-linea', icono: '🎯', titulo: 'Falta táctica rentable',
       buscar: (ps) => ps.filter(p => p.usoLibre !== null && p.t1 !== null &&
-        p.usoLibre >= U.usoLibreAlto && p.t1 <= U.t1Pobre),
+        p.usoLibre >= Up(p).usoLibreAlto && p.t1 <= Up(p).t1Pobre),
       texto: (ms) => 'Si hay que cortar una jugada, la falta va sobre ' + nombres(ms) + ' (' +
         ms.map(m => pct(m.t1)).join(' y ') + ' en libres). Cambiar una posesión por sus tiros libres ' +
         'baja el valor esperado de esa jugada.',
     },
     {
       id: 'presion-conduccion', icono: '🧤', titulo: 'Presión a la conducción',
-      buscar: (ps) => ps.filter(p => p.perdidasRel !== null && p.perdidasRel >= U.perdidasAltas && p.min >= U.minutosClave),
+      buscar: (ps) => ps.filter(p => p.perdidasRel !== null && p.perdidasRel >= Up(p).perdidasAltas && p.min >= Up(p).minutosClave),
       texto: (ms) => 'Trap y acoso al drible sobre ' + nombres(ms) + ': ' +
         detallePorJugador(ms, m => 'pierde ' + pct(m.perdidas) + ' de sus plays (' + num2(m.perdidasRel) + 'x la liga)') +
         '. El error propio es la forma más barata de defenderlos.',
     },
     {
       id: 'cristal', icono: '🏰', titulo: 'Control del cristal',
-      buscar: (ps) => ps.filter(p => p.reboteRel !== null && p.reboteRel >= U.reboteOfensivoAlto),
+      buscar: (ps) => ps.filter(p => p.reboteRel !== null && p.reboteRel >= Up(p).reboteOfensivoAlto),
       texto: (ms) => 'Box-out asignado sobre ' + nombres(ms) + ' (' +
         ms.map(m => num2(m.reboteRel) + 'x la liga en rebote ofensivo').join('; ') +
         '). Sin cargado físico nos generan segundas oportunidades toda la noche.',
@@ -2393,7 +2423,7 @@ const SGADD_SCOUT = (function () {
     {
       id: 'pintura', icono: '🛡', titulo: 'Colapso de la pintura',
       buscar: (ps) => ps.filter(p => p.pptDoble !== null && p.usoDoble !== null &&
-        p.pptDoble >= U.pptDobleAlto && p.usoDoble >= 0.40),
+        p.pptDoble >= Up(p).pptDobleAlto && p.usoDoble >= 0.40),
       texto: (ms) => 'Ayuda temprana sobre ' + nombres(ms) + ': ' +
         detallePorJugador(ms, m => 'rinde ' + num2(m.pptDoble) + ' por doble intentado') +
         '. Obligarlos a soltar la pelota antes de la posición de tiro.',
@@ -2404,7 +2434,7 @@ const SGADD_SCOUT = (function () {
          que roba por encima de su liga condiciona NUESTRO manejo, y eso se
          prepara antes del partido, no en el primer tiempo muerto. */
       id: 'lineas-de-pase', icono: '🧲', titulo: 'Líneas de pase del rival',
-      buscar: (ps) => ps.filter(p => porEncima(p.bandaPr) && p.min >= U.minutosClave),
+      buscar: (ps) => ps.filter(p => porEncima(p.bandaPr) && p.min >= Up(p).minutosClave),
       texto: (ms) => 'Manos activas en ' + nombres(ms) + ': ' +
         detallePorJugador(ms, m => 'recupera ' + num1(m.pr) + ' balones por partido') +
         '. Nada de pases cruzados ni de salida en bandeja: pivotear y pasar con el cuerpo entre medio.',
@@ -2415,7 +2445,7 @@ const SGADD_SCOUT = (function () {
          Sin esta clave, el DT no tenía dónde leer que ESE es el tiro que
          conviene conceder cuando hay que elegir. */
       id: 'concesion-perimetral', icono: '📐', titulo: 'Concesión perimetral selectiva',
-      buscar: (ps) => ps.filter(p => p.tiroExternoOcasionalFrio && p.min >= U.minutosClave),
+      buscar: (ps) => ps.filter(p => p.tiroExternoOcasionalFrio && p.min >= Up(p).minutosClave),
       texto: (ms) => 'Si hay que soltar a alguien, es ' + nombres(ms) + ': ' +
         detallePorJugador(ms, m => 'lanza ' + num1(m.t3i) + ' triples con ' + num2(m.pptTriple) + ' de renta') +
         '. Volumen bajo para perseguirlos, renta baja para preocuparse: cerrar el aro y aceptar ese tiro.',
@@ -2577,7 +2607,7 @@ const SGADD_SCOUT = (function () {
 
     /* ---- 5. Carga y control del cristal ---- */
     const cristal = priorizar(orden(f => f.perfil.reboteRel).filter(f =>
-      f.perfil.reboteRel !== null && f.perfil.reboteRel >= U.reboteOfensivoAlto)).slice(0, 2);
+      f.perfil.reboteRel !== null && f.perfil.reboteRel >= Up(f.perfil).reboteOfensivoAlto)).slice(0, 2);
     if (cristal.length) {
       /* El múltiplo va pegado a cada nombre: separarlos en dos listas
          obliga a contar posiciones para saber cuál es de quién. */
@@ -2590,8 +2620,8 @@ const SGADD_SCOUT = (function () {
        fijos, pero cuando hay un conductor que pierde mucho es la vía más
        barata de sacarlos de partido y sería una omisión callarla. */
     const presionables = priorizar(orden(f => f.perfil.perdidasRel).filter(f =>
-      f.perfil.perdidasRel !== null && f.perfil.perdidasRel >= U.perdidasAltas &&
-      f.perfil.min >= U.minutosClave)).slice(0, 2);
+      f.perfil.perdidasRel !== null && f.perfil.perdidasRel >= Up(f.perfil).perdidasAltas &&
+      f.perfil.min >= Up(f.perfil).minutosClave)).slice(0, 2);
     if (presionables.length) {
       partes.push('La vía para romperlos es la conducción: ' +
         enumerar(presionables.map(f => neg(f.nombre) + ' pierde ' + pct(f.perfil.perdidas) +
@@ -2689,7 +2719,7 @@ const SGADD_SCOUT = (function () {
     PERFILES_MARCA, PERFILES_DEFENSOR, CATALOGO_DEFENSOR, familiaDefensor, REGLAS_CLAVE,
     elegirDefensor, elegirDefensorBalanceado, defensoresAlcanzables,
     TAREAS_DEFENSIVAS, MATRIZ_TAREAS, TAREAS_POSIBLES, FAMILIAS_BIOTIPO, lecturaMultivariable, tareaDefensiva,
-    textoLectura, guiaDeTarea, perfilesDeTarea, biotipoExplicito,
+    textoLectura, guiaDeTarea, perfilesDeTarea, biotipoExplicito, umbralesDe: Up,
     ATRIBUTOS_SEÑAL, atributosDefensor, queBuscar, plantelDefensor, enPlan,
     ESCENARIOS, clasificarEcosistema, generarPlanDefensivoColectivo, conexionColectiva,
     get ROLES_FUNCIONALES() { return rolesFuncionales(); },

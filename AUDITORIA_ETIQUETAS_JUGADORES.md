@@ -1574,3 +1574,9 @@ Caso de control: RONDINONE, NICOLAS (Generador Primario, 3,76 T3I al 21,9 %)
 pasó de `tirador-sistematico-frio` + Closeout Specialist («llegada rápida»,
 «timing para tapar») a `generador-sin-tiro` + Contenedor del Pick & Roll.
 El detalle está en el punto 9 de `CLAUDE.md` («LA TAREA DEFENSIVA»).
+
+**Unificación de umbrales (2026-09-19).** Las reglas de marca de II.3 y las
+claves de II.6 leen ahora el mismo mapa por nivel que las etiquetas de la
+sección I (`SGADD_SCOUT.umbralesDe`), en vez de los literales de Liga
+Argentina. En Local Mayores eso mueve 27 de 96 marcas en el libro de
+DEPORTIVO; el detalle está en el punto 45 de `CLAUDE.md`.

@@ -220,12 +220,13 @@ const filasPJ = [
   jug('DOS, UNIVERSAL', 'UNIVERSAL', { MIN: '18', PLAYS: '8' }),
 ];
 
-const idx = SGADD.construirIndice({
+const HOJAS_FIXTURE = {
   'PROMEDIOS E': { cols: colsPE, filas: filasPE },
   'PROMEDIOS 4F': { cols: colsP4F, filas: filasP4F },
   'Base Datos E': { cols: colsBD, filas: filasBD },
   'PROMEDIOS J': { cols: colsPJ, filas: filasPJ },
-}, { fase: 'REGULAR' });
+};
+const idx = SGADD.construirIndice(HOJAS_FIXTURE, { fase: 'REGULAR' });
 
 /* LA FIXTURE ESTÁ CALIBRADA CONTRA LIGA ARGENTINA.
 
@@ -1161,13 +1162,14 @@ check('las fugas leen la banda de eFG% en vez de un 0,45 fijo', (() => {
   const cuerpo = src.slice(src.indexOf('function fugasJugador'), src.indexOf('/** Ficha completa de un jugador rival'));
   return /porDebajo\(p\.bandaEfg\)/.test(cuerpo) && !/p\.efg < 0\.45/.test(cuerpo);
 })());
-/* El umbral de 0,40 en la línea SÍ queda absoluto: describe economía del
-   básquet y se verificó que cae en el mismo percentil (±1) en las dos
-   ligas contrastadas. */
-check('pero el piso de la falta táctica sigue absoluto: es economía, no nivel de liga', (() => {
+/* El piso de la falta táctica NO es una banda z: es un corte de umbral
+   (`t1Regalable`). Desde la unificación (2026-09-19) sale del mapa del
+   nivel, como el resto —el registro lo declara percentil, medido de p3 a
+   p21 según la liga—; con Liga Argentina sigue valiendo 0,40. */
+check('el piso de la falta táctica es el umbral t1Regalable del mapa unificado, no una banda', (() => {
   const src = require('fs').readFileSync('./js/sgadd-scouting.js', 'utf8');
   const cuerpo = src.slice(src.indexOf('function fugasJugador'), src.indexOf('/** Ficha completa de un jugador rival'));
-  return /U\.t1Regalable/.test(cuerpo);
+  return /Up\(p\)\.t1Regalable/.test(cuerpo);
 })());
 check('ningún jugador se queda sin fortalezas ni sin fugas: siempre hay bullet',
   tabla.filas.every(f => f.fortalezas.length >= 1 && f.fugas.length >= 1));
@@ -2214,6 +2216,62 @@ check('y cada tarea declarada existe en TAREAS_DEFENSIVAS',
   check('el generador ya no lee la lista de defensores por marca (no existe más)',
     !/m\.defensores/.test(gen));
 })();
+
+/* ---------------------------------------------------------------------
+   23. UNA SOLA VARA · las reglas de marca leen los umbrales del nivel
+   --------------------------------------------------------------------- */
+console.log('\n23. UNA SOLA VARA · marcas y ADN con los mismos umbrales');
+console.log('═'.repeat(70));
+
+check('sin mapa en el perfil, las reglas caen al respaldo estático de scouting',
+  S.umbralesDe({}) === S.UMBRALES && S.umbralesDe(null) === S.UMBRALES);
+
+/* La MISMA fixture declarada en otro nivel: el ADN y las marcas tienen que
+   leer el mismo número para cada clave que los dos usan. Antes de la
+   unificación, en LOCAL_MAYORES la ficha exigía una vara y la marca otra. */
+(() => {
+  const idxL = SGADD.construirIndice(HOJAS_FIXTURE, { fase: 'REGULAR' });
+  idxL.liga.nivel = 'LOCAL_MAYORES';
+  const tabL = S.jugadoresClave(idxL, 'ATENAS A', 10);
+  const f0 = tabL.filas[0];
+  const mapaL = JUG.jugadoresUmbrales(idxL);
+  const mapaA = JUG.jugadoresUmbrales(idx);
+  check('la fixture en LOCAL_MAYORES trae el mapa de ese nivel en cada perfil',
+    tabL.filas.every(f => f.perfil.U === mapaL));
+  const vara = S.umbralesDe(f0.perfil);
+  const claves = Object.keys(S.UMBRALES).filter(k => typeof mapaL[k] === 'number');
+  check('cada umbral de scouting que declara el registro sale del mapa del nivel',
+    claves.length >= 20 && claves.every(k => vara[k] === mapaL[k]),
+    claves.filter(k => vara[k] !== mapaL[k]).join('|') + ' · ' + claves.length + ' claves');
+  check('y en LOCAL_MAYORES no es la vara de Liga Argentina (el caso que motivó la unificación)',
+    mapaL.astPPGenerador !== mapaA.astPPGenerador && vara.astPPGenerador === mapaL.astPPGenerador,
+    mapaL.astPPGenerador + ' vs ' + mapaA.astPPGenerador);
+  check('las claves que el registro no declara siguen en el respaldo, nunca en undefined',
+    Object.keys(S.UMBRALES).every(k => typeof vara[k] === 'number'));
+  check('la fixture declarada en LIGA_ARGENTINA sigue leyendo los valores de siempre',
+    ['astPPGenerador', 'minutosClave', 'pptTripleFrio', 'volumenTripleSistematico', 't1Regalable']
+      .every(k => S.umbralesDe(tabla.filas[0].perfil)[k] === S.UMBRALES[k]));
+  /* Y la decisión cambia de verdad: el mismo jugador sintético con AST-PP
+     1,10 no es generador contra Liga Argentina y sí contra Local Mayores
+     (la premisa de la sección 0). El rol del ADN y la lectura de la marca
+     tienen que coincidir en los dos niveles. */
+  const coincide = (tab) => tab.filas.every(f => {
+    const L = S.lecturaMultivariable(f.perfil);
+    return L.funcion === (f.perfil.adn && f.perfil.adn.rolFuncional ? f.perfil.adn.rolFuncional.id : L.funcion);
+  });
+  check('la función en cancha que lee la marca es la del ADN, en los dos niveles',
+    coincide(tabla) && coincide(tabL));
+})();
+
+/* El generador sin tiro exige SIN TIRO RENTABLE, no «frío»: con el frío
+   relativo a la liga, un generador apenas por encima del corte quedaba
+   afuera y caía en «Lector de rotaciones» (RONDINONE en Local Mayores). */
+check('generador-sin-tiro ya no exige tiro frío: basta con que no sea rentable', (() => {
+  const src = require('fs').readFileSync('./js/sgadd-scouting.js', 'utf8');
+  const i = src.indexOf("id: 'generador-sin-tiro'");
+  const tramo = src.slice(src.lastIndexOf('{', i), src.indexOf('consigna:', i));
+  return /!p\.tiroExternoRentable/.test(tramo) && !/tiroExternoFrio/.test(tramo.replace(/\/\*[\s\S]*?\*\//g, ''));
+})());
 
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');

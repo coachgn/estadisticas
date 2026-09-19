@@ -28,7 +28,7 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  55 tests · detalle partido a partido, perfil de tiro y su PDF
-node test-scouting.js      # 482 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis, titularidad
+node test-scouting.js      # 490 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis, titularidad
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
 node test-permisos.js      # 402 tests · roles, planes, el gate, el selector, el hub, el ciclo,
@@ -91,7 +91,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6111 tests en total. Todos tienen que dar verde antes de commitear.**
+**6119 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -1868,14 +1868,43 @@ achicó, porque las reglas de arriba ahora sí disparan.
   registro, así que la adaptación no los alcanza. El 1,40 de `generador`
   es además el MISMO número que `astPPGenerador` duplicado a mano.
 
-### El mapa estático NO se adapta, y es deliberado
+### Una sola vara: las marcas de scouting leen el mapa del nivel (2026-09-19)
 
-`JUGADORES_UMBRALES` sigue devolviendo los literales históricos (`baseDe`)
-y no la semilla del nivel por defecto. Es el respaldo sin contexto y
-**scouting lo lee por `COMPARTIDOS`**: resolverlo a un nivel cambiaría la
-vara de sus once reglas de marca en silencio. Lo comprobé al revés — con
-el mapa estático resuelto a `LOCAL_MAYORES`, `test-scouting.js` daba 12
-fallas porque sus fixtures están calibradas contra Liga Argentina.
+Hasta esta fecha las reglas de marca leían un mapa `U` FIJO, calibrado
+contra Liga Argentina, mientras las etiquetas del mismo jugador ya se
+adaptaban: en DEPORTIVO (Local Mayores) la ficha llamaba «Generador» a
+un AST-PP de 0,79 y la marca lo exigía de 1,40 — dos varas para lo mismo
+en el mismo informe. **Ahora las reglas leen `Up(p)`** (`SGADD_SCOUT.umbralesDe`):
+el mapa que `jugadoresUmbrales(idx)` resolvió para ese índice y que el
+perfil trae en `p.U`, fundido por encima del `U` de scouting. Las 32
+claves del registro —incluidas las propias de scouting: frío, rentable,
+volumen sistemático, falta táctica, concentración— siguen el nivel.
+
+- **`U` queda como RESPALDO**: perfil armado a mano, sin índice o sin el
+  registro. Se FUNDE y no se reemplaza, para que una clave que el registro
+  no declare nunca quede en `undefined`.
+- **`JUGADORES_UMBRALES` (el mapa estático) sigue devolviendo los
+  literales**: es el respaldo sin contexto. Lo que cambió es que scouting
+  ya no lo lee directo para decidir.
+- **Las fixtures no hubo que recalibrarlas**: `test-scouting.js` ya
+  declara `idx.liga.nivel = 'LIGA_ARGENTINA'` (punto 45), y con su muestra
+  chica rige la semilla de ese nivel, que es el literal. Las «12 fallas»
+  que se anotaban acá salían de forzar ESA fixture a Local Mayores. La
+  sección 23 del test arma la misma fixture en `LOCAL_MAYORES` y exige que
+  marca y ADN lean el mismo número; revirtiendo la unificación caen 2.
+- **`generador-sin-tiro` exige SIN TIRO RENTABLE, ya no «frío»**: con el
+  frío relativo, RONDINONE (0,656 PPT3 contra un corte de 0,652 en Local
+  Mayores) quedaba afuera por cuatro milésimas y caía en «Lector de
+  rotaciones».
+
+Medido en el libro de DEPORTIVO (96 fichas, Local Mayores, umbrales en
+`vivo`): **cambia la marca de 27**, la tarea de 20 y el grupo del plan
+de 12. `tirador-sistematico-frio` baja de 19 a 4 —era la marca
+sobrecargada que la auditoría ya denunciaba—; suben `interior-dominante`
+(5 → 11, PPT2 alto pasa de 1,10 a 1,00), `slasher` (6 → 10) y
+`generador-riesgoso` (8 → 11, minutos clave de 20 a 16). Las fuentes de
+ayuda bajan de 21 a 11: en una liga que tira mal, «frío» es la cola de
+ESA liga. Cero tareas agresivas contra tiradores sin renta.
 
 La adaptación vive en `jugadoresUmbrales(idx)`, que cuelga el mapa
 resuelto en `prom.U` y `p.U`. Las reglas lo leen por `jugadoresU(p)`, que
@@ -3019,7 +3048,8 @@ Lo que hay que respetar al tocarlo:
   aparecen contra un tirador sin renta.
 - **`generador-sin-tiro` es la marca nueva** (segunda de la cascada, ahora
   son doce): generador (rol generador-primario, o arquetipo generador con
-  jerarquía franquicia/referente) sin tiro externo rentable. **Es FOCO** del
+  jerarquía franquicia/referente) sin tiro externo rentable — desde la
+  unificación de umbrales, SIN exigir además que su tiro sea frío. **Es FOCO** del
   plan colectivo: tiene la pelota, no puede ser el lado desde donde sale la
   ayuda.
 - **`tirador-sistematico-frio` pasó a «PASO ATRÁS / CONTESTAR SIN SALTAR.»**
@@ -6381,9 +6411,9 @@ que uno medido.
 
 - **Los tres absolutos no llevan `semillas` por nivel.** Si las tuvieran,
   alguien las movería y dejarían de ser absolutos sin que se note.
-- **`JUGADORES_UMBRALES` es el CONTRATO con scouting.** Es lo que
-  `sgadd-scouting.js` lee por `COMPARTIDOS`, así que una clave que se
-  saca le apaga una regla en silencio. Pasó de catorce a diecisiete al
+- **`JUGADORES_UMBRALES` es el CONTRATO con scouting.** Es su respaldo
+  (`COMPARTIDOS`) cuando un perfil no trae mapa de nivel, así que una
+  clave que se saca le apaga una regla en silencio. Pasó de catorce a diecisiete al
   absorber los literales que vivían dentro de los arquetipos; **agregar
   se puede, sacar no**.
 - **Sin el registro se cae a los literales**, no a `undefined`: una
