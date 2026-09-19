@@ -523,11 +523,17 @@ check('las consignas son soluciones de campo del glosario moderno',
   tabla.filas.some(f => /DROP COVERAGE/.test(f.marca.consignaTexto)) &&
   tabla.filas.some(f => /FLOTACIÓN|UNDER/.test(f.marca.consignaTexto)));
 
-/* --- Defensor nuestro: perfil táctico, no un nombre propio --- */
+/* --- Defensor nuestro: una TAREA, no un nombre propio ---
+   Desde el 2026-09-18 la celda trae la TAREA («Defensor Flotador /
+   Ayudador») y debajo el perfil del catálogo que la representa. */
 const perfilesValidos = Object.keys(S.PERFILES_DEFENSOR).map(k => S.PERFILES_DEFENSOR[k]);
-check('cada marca sugiere un PERFIL defensivo de nuestro plantel, no un nombre',
-  tabla.filas.every(f => perfilesValidos.indexOf(f.marca.defensor) !== -1),
+const tareasValidas = S.TAREAS_DEFENSIVAS.map(t => t.label);
+check('cada marca sugiere una TAREA defensiva, no un nombre',
+  tabla.filas.every(f => tareasValidas.indexOf(f.marca.defensor) !== -1),
   tabla.filas.map(f => f.marca.defensor).join(' | '));
+check('y el perfil del catálogo que la representa es real',
+  tabla.filas.every(f => perfilesValidos.indexOf(f.marca.perfilCatalogo) !== -1),
+  tabla.filas.map(f => f.marca.perfilCatalogo).join(' | '));
 check('el catálogo tiene 11 familias de defensor', S.CATALOGO_DEFENSOR.length === 11, S.CATALOGO_DEFENSOR.length);
 /* El perfil concreto ya no es fijo por marca: se desempaqueta con métricas
    secundarias (ver `elegirDefensor`). Lo que NO puede cambiar es la FAMILIA
@@ -538,9 +544,10 @@ check('al tirador de élite le toca un especialista perimetral',
 check('al pivot interno le toca un defensor de la pintura',
   /Especialista Interior|Referente de Zona/.test(porNombre['PIVOT, INTERNO'].marca.familiaDefensor),
   porNombre['PIVOT, INTERNO'].marca.defensor + ' → ' + porNombre['PIVOT, INTERNO'].marca.familiaDefensor);
-check('al conductor con pérdidas le corresponde el hostigador',
-  porNombre['BASE, RIESGOSO'].marca.defensor === S.PERFILES_DEFENSOR.hostigador,
-  porNombre['BASE, RIESGOSO'].marca.defensor);
+check('al conductor con pérdidas le corresponde presión a la bola, con el hostigador del catálogo',
+  porNombre['BASE, RIESGOSO'].marca.tarea.id === 'presionBola'
+    && porNombre['BASE, RIESGOSO'].marca.perfilCatalogo === S.PERFILES_DEFENSOR.hostigador,
+  porNombre['BASE, RIESGOSO'].marca.defensor + ' · ' + porNombre['BASE, RIESGOSO'].marca.perfilCatalogo);
 
 check('cada marca explica POR QUÉ con el número que la disparó',
   tabla.filas.every(f => typeof f.marca.porque === 'string' && f.marca.porque.length > 10));
@@ -807,8 +814,9 @@ check('y sigue debajo de tirador-elite: la amenaza externa real manda',
   idsMarca.indexOf('tirador-elite') < idsMarca.indexOf('volumen-sin-eficiencia'));
 check('no aparece dos veces en la cascada después de moverla',
   idsMarca.filter(id => id === 'volumen-sin-eficiencia').length === 1);
-check('la cascada sigue teniendo 11 marcas',
-  S.PERFILES_MARCA.length === 11, S.PERFILES_MARCA.length);
+/* Eran 11: el 2026-09-18 entró `generador-sin-tiro` (ver la sección 21). */
+check('la cascada tiene 12 marcas',
+  S.PERFILES_MARCA.length === 12, S.PERFILES_MARCA.length);
 
 /* El bloqueo REAL no era el orden sino el umbral: la concentración es
    PLAYS del jugador sobre los PLAYS de TODO el plantel, y con planteles de
@@ -947,19 +955,19 @@ check('familiaDefensor() de una etiqueta desconocida da null', S.familiaDefensor
 /* Cada marca tiene que caer en un perfil REAL del catálogo. */
 const etiquetasCatalogo = [];
 S.CATALOGO_DEFENSOR.forEach(c => c.perfiles.forEach(p => etiquetasCatalogo.push(p.label)));
-check('todos los candidatos de todas las marcas existen en el catálogo',
-  S.PERFILES_MARCA.every(m => (m.defensores || []).every(c => !!S.PERFILES_DEFENSOR[c.id])),
-  S.PERFILES_MARCA.map(m => m.id + ':' + (m.defensores || []).filter(c => !S.PERFILES_DEFENSOR[c.id]).map(c => c.id).join(',')).join('|'));
-/* La propiedad que NO se puede perder al abrir el catálogo: la sugerencia
-   automática siempre tiene que resolver. Por eso el ÚLTIMO candidato de cada
-   marca no lleva condición: es el default. */
-check('cada marca declara al menos dos candidatos y un default sin condición',
-  S.PERFILES_MARCA.every(m => (m.defensores || []).length >= 2 &&
-    !m.defensores[m.defensores.length - 1].cuando),
-  S.PERFILES_MARCA.filter(m => (m.defensores || []).length < 2 ||
-    m.defensores[m.defensores.length - 1].cuando).map(m => m.id).join('|'));
-check('ninguna marca repite el mismo perfil dos veces entre sus candidatos',
-  S.PERFILES_MARCA.every(m => new Set(m.defensores.map(c => c.id)).size === m.defensores.length));
+/* Los candidatos del catálogo viven ahora en cada TAREA, no en la marca. */
+check('ninguna marca declara ya su propia lista de defensores',
+  S.PERFILES_MARCA.every(m => m.defensores === undefined));
+check('todos los candidatos de todas las tareas existen en el catálogo',
+  S.TAREAS_DEFENSIVAS.every(t => t.perfiles.every(c => !!S.PERFILES_DEFENSOR[c.id])),
+  S.TAREAS_DEFENSIVAS.map(t => t.id + ':' + t.perfiles.filter(c => !S.PERFILES_DEFENSOR[c.id]).map(c => c.id).join(',')).join('|'));
+/* La propiedad que NO se puede perder: la sugerencia automática siempre
+   resuelve. El ÚLTIMO candidato de cada tarea no lleva condición. */
+check('cada tarea termina en un candidato sin condición (el default)',
+  S.TAREAS_DEFENSIVAS.every(t => t.perfiles.length >= 1 && !t.perfiles[t.perfiles.length - 1].cuando),
+  S.TAREAS_DEFENSIVAS.filter(t => !t.perfiles.length || t.perfiles[t.perfiles.length - 1].cuando).map(t => t.id).join('|'));
+check('ninguna tarea repite el mismo perfil dos veces entre sus candidatos',
+  S.TAREAS_DEFENSIVAS.every(t => new Set(t.perfiles.map(c => c.id)).size === t.perfiles.length));
 /* P-2: el catálogo dejó de ser decorativo. Antes solo 11 de 33 perfiles eran
    alcanzables (uno fijo por marca) y la UI no lo comunicaba. */
 check('el desempaquetado abre buena parte del catálogo: 22 perfiles o más alcanzables',
@@ -975,11 +983,16 @@ check('cada fila del informe trae también la familia del defensor sugerido',
   tabla.filas.every(f => !!f.marca.familiaDefensor));
 
 /* Asignaciones concretas: el perfil tiene que describir la tarea real. */
-check('al tirador sistemático frío le toca un perfil de cierre o contención de volumen',
-  /Perimetral Largo|Especialista Perimetral/.test(porNombre['LADRILLO, PERIMETRAL'].marca.familiaDefensor),
-  porNombre['LADRILLO, PERIMETRAL'].marca.defensor);
-check('al tirador eficiente de bajo volumen le toca un perfil de negación o cierre',
-  /Especialista Perimetral|Perimetral Largo/.test(porNombre['ESPECIALISTA, CARO'].marca.familiaDefensor),
+/* Antes le tocaba 📏 Perimetral Largo («llegada rápida… alcance de
+   brazos»): un biotipo inferido del volumen de triples, y un cierre
+   agresivo contra un tiro que no castiga. Ahora flota y ayuda. */
+check('al tirador sistemático frío le toca FLOTAR y ayudar, no un perfil de biotipo',
+  porNombre['LADRILLO, PERIMETRAL'].marca.tarea.id === 'flotadorAyudador'
+    && /Contención Táctica/.test(porNombre['LADRILLO, PERIMETRAL'].marca.familiaDefensor),
+  porNombre['LADRILLO, PERIMETRAL'].marca.defensor + ' · ' + porNombre['LADRILLO, PERIMETRAL'].marca.familiaDefensor);
+check('al tirador eficiente de bajo volumen le toca negación y cierre',
+  /cierreNegacion|perseguidorCortinas/.test(porNombre['ESPECIALISTA, CARO'].marca.tarea.id)
+    && /Especialista Perimetral/.test(porNombre['ESPECIALISTA, CARO'].marca.familiaDefensor),
   porNombre['ESPECIALISTA, CARO'].marca.defensor);
 check('al slasher le toca un perfil de contención de penetración o presión inicial',
   /Perimetral Atlético|Presión Inicial/.test(porNombre['SLASHER, PENETRADOR'].marca.familiaDefensor),
@@ -990,8 +1003,9 @@ check('al que hay que flotarle le toca contención táctica',
 check('al vulnerable en la línea le toca un híbrido físico',
   /Híbrido Físico/.test(porNombre['MANOS, PIEDRA'].marca.familiaDefensor),
   porNombre['MANOS, PIEDRA'].marca.defensor);
-check('el fallback resuelve igual, con un perfil del catálogo',
-  etiquetasCatalogo.indexOf(porNombre['SUPLENTE, GRIS'].marca.defensor) !== -1,
+check('el fallback resuelve igual, con una tarea y un perfil del catálogo',
+  tareasValidas.indexOf(porNombre['SUPLENTE, GRIS'].marca.defensor) !== -1
+    && etiquetasCatalogo.indexOf(porNombre['SUPLENTE, GRIS'].marca.perfilCatalogo) !== -1,
   porNombre['SUPLENTE, GRIS'].marca.defensor);
 
 console.log('\n13. DIRECTIVA + JUSTIFICACIÓN NUMÉRICA EN CADA CELDA');
@@ -1287,17 +1301,20 @@ check('el texto plano se recalculó después de agregar la conexión',
   tabla.filas.every(f => f.marca.consignaTexto.indexOf(f.marca.consigna.detalle) !== -1));
 
 /* --- Balanceo de la carga defensiva sobre nuestro plantel --- */
+/* El reparto se hace sobre el PERFIL DEL CATÁLOGO: dos rivales pueden
+   pedir la misma TAREA (flotarle a dos tiradores fríos es lo correcto), pero
+   no conviene pedirle al DT cuatro defensores del mismo tipo. */
 const cuentaDef = {};
-tabla.filas.forEach(f => { cuentaDef[f.marca.defensor] = (cuentaDef[f.marca.defensor] || 0) + 1; });
-check('ningún perfil de defensor se repite más de 2 veces en la misma tabla',
+tabla.filas.forEach(f => { cuentaDef[f.marca.perfilCatalogo] = (cuentaDef[f.marca.perfilCatalogo] || 0) + 1; });
+check('ningún perfil del catálogo se repite más de 2 veces en la misma tabla',
   Object.keys(cuentaDef).every(k => cuentaDef[k] <= 2),
   Object.keys(cuentaDef).map(k => k + ':' + cuentaDef[k]).join(' | '));
 check('todas las filas siguen teniendo un defensor asignado',
-  tabla.filas.every(f => !!f.marca.defensor && !!f.marca.familiaDefensor));
+  tabla.filas.every(f => !!f.marca.defensor && !!f.marca.perfilCatalogo && !!f.marca.familiaDefensor));
 check('elegirDefensorBalanceado respeta el tope pero nunca deja la celda vacía', (() => {
   const m = S.PERFILES_MARCA[0];
   const saturado = {};
-  m.defensores.forEach(c => { saturado[S.PERFILES_DEFENSOR[c.id]] = 99; });
+  S.perfilesDeTarea(S.tareaDefensiva({}, m.id).id).forEach(c => { saturado[S.PERFILES_DEFENSOR[c.id]] = 99; });
   return !!S.elegirDefensorBalanceado(m, {}, saturado);
 })());
 
@@ -1952,6 +1969,161 @@ check('el formulario del cruce tampoco',
    apaisada útil, así que en ESTE cruce no llegan a convivir. */
 check('la matriz ya no fuerza hoja nueva: convive con el encabezado si entra',
   !/<section class="scout-card scout-pagina[^"]*" data-bloque="matriz">/.test(scoutJs));
+
+/* =====================================================================
+   21. LA TAREA DEFENSIVA · matriz multivariable (2026-09-18)
+
+   La marca de la cascada (la amenaza más cara) cruzada con las CUATRO
+   dimensiones de la taxonomía: ADN (jerarquía), perfil técnico
+   (arquetipos), función en cancha (rol funcional) y eficiencia contra
+   volumen. El caso que la motivó es real: RONDINONE, NICOLAS (Hogar
+   Social, Primera de La Plata), con sus números del libro del 2026-09-18.
+   ===================================================================== */
+console.log('\n21. LA TAREA DEFENSIVA · matriz multivariable');
+console.log('═'.repeat(70));
+
+const AGRESIVO = /llegada r[aá]pida|salto a tapar|timing para tapar|cierre agresivo/i;
+const adnDe = (jer, arq, rol) => ({
+  jerarquia: jer ? { id: jer, label: jer } : null,
+  arquetipos: (arq || []).map(id => ({ id: id })),
+  rolFuncional: rol ? { id: rol, label: rol } : null,
+});
+const textoMarca = (m) => [m.consigna.titulo, m.consigna.detalle, m.restriccion.titulo, m.restriccion.detalle,
+  m.tarea.tarea, m.queBuscar.texto].join(' ');
+
+/* RONDINONE, NICOLAS · los números reales (TOTAL · REGULAR). */
+const RONDINONE = {
+  nombre: 'RONDINONE, NICOLAS', min: 24.08, plays: 13.36, pts: 10.41, ppp: 0.78,
+  t3i: 3.76, t3: 0.219, pptTriple: 0.656, usoTriple: 0.282, usoDoble: 0.45, pptDoble: 0.95,
+  astPP: 1.244, t1: 0.671, efg: 0.407, perdidas: 0.14, perdidasRel: 1.04, concentracion: 0.115,
+  esPerimetral: true, esInterior: false, tiraDeAfuera: true, tiradorSistematico: true,
+  tiroExternoRentable: false, tiroExternoFrio: true, tiroExternoOcasionalFrio: false, viaPrincipalExterna: false,
+  reboteRel: 0.8, bandaEfg: null, bandaAstPP: null, bandaPr: null, bandaRo: null, bandaPptDoble: null,
+  adn: adnDe('referente', ['generador', 'buscadorContacto'], 'generador-primario'),
+};
+const mR = S.marcaSugerida(RONDINONE);
+check('RONDINONE (generador, 3,8 triples al 21,9 %) cae en «generador sin tiro exterior»', mR.id === 'generador-sin-tiro', mR.id);
+check('la consigna es contener la penetración con UNDER en el pick & roll',
+  /UNDER/.test(mR.consigna.titulo) && /CONTENER LA PENETRACIÓN/.test(mR.consigna.titulo) && /por detrás/.test(mR.consigna.detalle),
+  mR.consigna.titulo);
+check('la restricción manda la ayuda al pick & roll y NO al tiro', /DOBLAR EL PICK & ROLL, NO EL TIRO/.test(mR.restriccion.titulo));
+check('su tiro se contesta con la mano arriba sin saltar (y sin falta: es buscador de contacto)',
+  /mano arriba, sin saltar/.test(mR.restriccion.detalle) && /sin falta/.test(mR.restriccion.detalle), mR.restriccion.detalle);
+check('la tarea es contener el pick & roll, y el perfil NO es de biotipo',
+  mR.tarea.id === 'underPickRoll' && S.FAMILIAS_BIOTIPO.every(id => !S.CATALOGO_DEFENSOR.find(c => c.id === id).perfiles.some(pp => pp.label === mR.perfilCatalogo)),
+  mR.tarea.id + ' · ' + mR.perfilCatalogo);
+check('NINGUNA parte de su fila pide llegada rápida, salto a tapar ni cierre agresivo',
+  !AGRESIVO.test(textoMarca(mR)), textoMarca(mR).match(AGRESIVO));
+check('el «qué buscar» sale de la tarea: contener el primer paso y el doble',
+  /contener el primer paso/.test(mR.queBuscar.texto) && /doble en el pick & roll/.test(mR.queBuscar.texto), mR.queBuscar.texto);
+check('y el por qué cita las cuatro dimensiones, con el 21,9 %',
+  /ADN: /.test(mR.tarea.porque) && /técnico: generador, buscadorContacto/.test(mR.tarea.porque)
+    && /función: generador-primario/.test(mR.tarea.porque) && /volumen alto · efectividad baja \(21,9%\)/.test(mR.tarea.porque),
+  mR.tarea.porque);
+
+/* El mismo tiro, sin ser generador: tirador sistemático frío → paso atrás. */
+const FRIO = Object.assign({}, RONDINONE, { nombre: 'TIRADOR, FRIO', astPP: 0.7, adn: adnDe('especialista', [], 'spacing') });
+const mF = S.marcaSugerida(FRIO);
+check('el mismo tiro frío SIN generar: «paso atrás / contestar sin saltar»',
+  mF.id === 'tirador-sistematico-frio' && /PASO ATRÁS/.test(mF.consigna.titulo) && /CONTESTAR SIN SALTAR/.test(mF.consigna.titulo), mF.id + ' · ' + mF.consigna.titulo);
+check('«puntear por volumen, no por peligro» va con una tarea de FLOTAR, nunca con timing para tapar',
+  /por volumen, no por peligro/.test(mF.consigna.detalle) && mF.tarea.id === 'flotadorAyudador' && !AGRESIVO.test(textoMarca(mF)),
+  mF.tarea.id + ' · ' + mF.queBuscar.texto);
+check('su restricción ya no es «no correr el cierre» sino «no volar al cierre», y prioriza la ayuda',
+  /NO VOLAR AL CIERRE/.test(mF.restriccion.titulo) && /ayuda/.test(mF.restriccion.detalle));
+
+/* El mismo volumen CON renta: ahí sí el cierre agresivo. */
+const CARO = Object.assign({}, FRIO, { nombre: 'TIRADOR, CARO', t3: 0.41, pptTriple: 1.23, usoTriple: 0.30,
+  tiroExternoRentable: true, tiroExternoFrio: false });
+const mC = S.marcaSugerida(CARO);
+check('el mismo volumen con 41 % SÍ recibe negación y cierre agresivo', mC.tarea.agresivo === true && AGRESIVO.test(textoMarca(mC)),
+  mC.id + ' · ' + mC.tarea.id);
+
+/* La reserva de la agresividad, sobre la tabla entera y sobre un barrido. */
+check('en la tabla del informe, ninguna fila SIN tiro rentable pide cierre agresivo',
+  tabla.filas.every(f => f.perfil.tiroExternoRentable || f.marca.id === 'tirador-elite' || f.marca.id === 'interior-dominante'
+    || !AGRESIVO.test(textoMarca(f.marca))),
+  tabla.filas.filter(f => !f.perfil.tiroExternoRentable && AGRESIVO.test(textoMarca(f.marca))).map(f => f.nombre + ':' + f.marca.tarea.id).join('|'));
+check('las tareas agresivas son SOLO las de cierre sobre tiro rentable',
+  S.TAREAS_DEFENSIVAS.filter(t => t.agresivo).map(t => t.id).sort().join(',') === 'cierreNegacion,perseguidorCortinas');
+check('ninguna tarea NO agresiva pide llegada rápida ni cierre agresivo en su texto o su guía',
+  S.TAREAS_DEFENSIVAS.filter(t => !t.agresivo && t.id !== 'protectorPintura')
+    .every(t => !AGRESIVO.test(t.tarea + ' ' + t.buscar.join(' '))));
+check('aunque una rama pida una tarea agresiva, sin tiro rentable la guarda la baja a flotar', (() => {
+  const td = S.tareaDefensiva(Object.assign({}, FRIO), 'tirador-eficiente-bajo-volumen');
+  return td.id === 'flotadorAyudador' && td.agresivo === false;
+})());
+
+/* ≥ 8 variantes, con su guía propia. */
+check('hay al menos 8 tareas distintas, cada una con su tarea y su «qué buscar»',
+  S.TAREAS_DEFENSIVAS.length >= 8 && S.TAREAS_DEFENSIVAS.every(t => t.tarea.length > 20 && t.buscar.length >= 3),
+  S.TAREAS_DEFENSIVAS.length);
+check('incluye las cuatro que pidió el club: físico/rebotero, presión a la bola, largo/molesto y flotador/ayudador',
+  ['fisicoRebotero', 'presionBola', 'largoMolesto', 'flotadorAyudador'].every(id => S.TAREAS_DEFENSIVAS.some(t => t.id === id)));
+check('ninguna frase de «qué buscar» lleva coma ni « y » adentro (se enumeran)',
+  S.TAREAS_DEFENSIVAS.every(t => t.buscar.every(b => b.indexOf(',') === -1 && !/ y /.test(b))));
+check('toda marca de la cascada tiene su fila en la matriz', S.PERFILES_MARCA.every(m => typeof S.MATRIZ_TAREAS[m.id] === 'function'),
+  S.PERFILES_MARCA.filter(m => !S.MATRIZ_TAREAS[m.id]).map(m => m.id).join('|'));
+check('en el informe de la fixture salen al menos 5 tareas distintas',
+  new Set(tabla.filas.map(f => f.marca.tarea.id)).size >= 5, Array.from(new Set(tabla.filas.map(f => f.marca.tarea.id))).join(','));
+
+/* Las cuatro dimensiones deciden: cambiar UNA sola cambia la tarea. */
+const base = Object.assign({}, RONDINONE, { tiroExternoFrio: false, tiroExternoOcasionalFrio: false, t3: 0.33, pptTriple: 1.0,
+  bandaEfg: { id: 'superior' }, adn: adnDe('franquicia', [], 'perimetral-media') });
+const conOtra = (cambio) => S.tareaDefensiva(Object.assign({}, base, cambio), 'contencion').id;
+const tBase = conOtra({});
+check('ADN: el mismo jugador de franquicia a especialista cambia de tarea',
+  tBase === 'unoContraUno' && conOtra({ adn: adnDe('especialista', [], 'perimetral-media') }) !== tBase,
+  tBase + ' → ' + conOtra({ adn: adnDe('especialista', [], 'perimetral-media') }));
+check('FUNCIÓN: con la misma lectura, un slasher pide contener la penetración',
+  conOtra({ adn: adnDe('especialista', [], 'slasher') }) === 'contencionPenetracion');
+check('TÉCNICO: el arquetipo de generador convierte a un referente con pérdidas en presión a la bola',
+  S.tareaDefensiva(Object.assign({}, base, { perdidasRel: 1.4, bandaEfg: null, adn: adnDe('referente', ['generador'], 'perimetral-media') }), 'contencion').id === 'presionBola'
+    && S.tareaDefensiva(Object.assign({}, base, { perdidasRel: 1.4, bandaEfg: null, adn: adnDe('referente', [], 'perimetral-media') }), 'contencion').id !== 'presionBola');
+check('EFICIENCIA: el mismo volumen de triple con efectividad baja pasa a flotar',
+  conOtra({ adn: adnDe('especialista', [], 'perimetral-media'), tiroExternoFrio: true, t3: 0.22 }) === 'flotadorAyudador');
+check('la lectura trae SIEMPRE las cuatro dimensiones', (() => {
+  const L = S.lecturaMultivariable(RONDINONE);
+  return L.adn === 'referente' && L.tecnicos.join(',') === 'generador,buscadorContacto' && L.funcion === 'generador-primario'
+    && L.tiro.volumen === 'alto' && L.tiro.efectividad === 'baja' && L.uso.volumen === 'alto';
+})());
+check('la lectura no revienta con un perfil vacío', (() => { const L = S.lecturaMultivariable({}); return L.tiro.volumen === 'nulo' && L.tecnicos.length === 0; })());
+
+/* El biotipo: SOLO explícito. */
+check('sin talla ni puesto en la fila, no hay biotipo', S.biotipoExplicito({ NOMBRES: 'X', 'T3I': '8' }) === null);
+check('con TALLA se lee (en metros o centímetros)',
+  S.biotipoExplicito({ TALLA: '1,98' }).alto === true && S.biotipoExplicito({ TALLA: '185' }).alto === false
+    && S.biotipoExplicito({ ALTURA: '2.03' }).talla === 2.03);
+check('una talla absurda se descarta', S.biotipoExplicito({ TALLA: '9' }) === null);
+check('con PUESTO se lee si es interior', S.biotipoExplicito({ PUESTO: 'Ala pivot' }).interior === true && S.biotipoExplicito({ PUESTO: 'Base' }).interior === false);
+const GEN_ALTO = Object.assign({}, base, { adn: adnDe('franquicia', ['generador'], 'generador-primario'), bandaEfg: { id: 'superior' } });
+check('Defensor Largo / Molesto SOLO con talla explícita: sin ella, el generador eficiente va 1x1',
+  S.tareaDefensiva(GEN_ALTO, 'contencion').id === 'unoContraUno'
+    && S.tareaDefensiva(Object.assign({}, GEN_ALTO, { biotipo: { alto: true, talla: 2.0 } }), 'contencion').id === 'largoMolesto');
+check('el volumen de triples NUNCA elige una familia de biotipo: 1 o 10 triples dan la misma familia', (() => {
+  const fams = [1.2, 3, 6, 10].map(t3i => {
+    const p = Object.assign({}, FRIO, { t3i: t3i, tiradorSistematico: t3i >= 2.5, adn: adnDe('especialista', [], 'spacing') });
+    const m = S.marcaSugerida(p);
+    return S.familiaDefensor(m.perfilCatalogo);
+  });
+  return fams.every(f => !/Perimetral Largo|Perimetral Físico|Perimetral Atlético|Híbrido Físico/.test(f));
+})());
+check('ninguna marca de TIRO elige una familia de biotipo, en la tabla del informe',
+  tabla.filas.filter(f => /tirador|volumen-sin|generador-sin/.test(f.marca.id))
+    .every(f => !/Perimetral Largo|Perimetral Físico|Perimetral Atlético|Híbrido Físico/.test(f.marca.familiaDefensor)),
+  tabla.filas.filter(f => /tirador|volumen-sin|generador-sin/.test(f.marca.id)).map(f => f.nombre + ':' + f.marca.familiaDefensor).join('|'));
+check('las tareas de biotipo están marcadas y la guarda las baja sin talla explícita',
+  S.TAREAS_DEFENSIVAS.filter(t => t.biotipo).map(t => t.id).join(',') === 'largoMolesto'
+    && S.tareaDefensiva(Object.assign({}, GEN_ALTO, { biotipo: null }), 'generador-riesgoso').id === 'presionBola');
+
+/* El plan colectivo: el generador sin tiro tiene la pelota → es FOCO. */
+check('el generador sin tiro es FOCO del plan colectivo (se lo dobla), no la fuente de la ayuda',
+  /'generador-sin-tiro'\].indexOf\(f\.marca\.id\)/.test(require('fs').readFileSync('./js/sgadd-scouting.js', 'utf8')));
+
+/* La UI muestra la tarea, el perfil del catálogo, la tarea y la guía. */
+const SRC = require('fs').readFileSync('./js/sgadd-scouting.js', 'utf8');
+check('la celda muestra el perfil del catálogo y la TAREA debajo de la tarea elegida',
+  /f\.marca\.perfilCatalogo/.test(SRC) && /scout-tarea/.test(SRC) && /f\.marca\.queBuscar\.texto/.test(SRC));
 
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');

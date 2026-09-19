@@ -1534,3 +1534,33 @@ jerarquía de I.2 cambia de orden: esa sección es parte del contrato.
 > el punto 46 de `CLAUDE.md`, `ancla-defensiva` va antes que
 > `finalizador-corto`. El conjunto de roles es el mismo; el test compara el
 > conjunto, no el orden.
+
+## X. La tarea defensiva cruza las cuatro dimensiones · esta sección la alimenta
+
+*Agregado 2026-09-18.* La celda «Perfil defensivo ideal» de la tabla de
+marcas (II.3) ya no sale de una lista de defensores por marca ni de los pesos
+`defiende` de una familia (II.4): sale de una **tarea** (`TAREAS_DEFENSIVAS`,
+doce) que `tareaDefensiva()` elige con la marca como fila y estas columnas:
+
+| Dimensión | Sección | Catálogo | Qué decide |
+|---|---|---|---|
+| ADN | I.2 · Jerarquía en el plantel | `JERARQUIA` | si un generador es el eje (franquicia/referente) |
+| Perfil técnico | I.3 · Arquetipos técnicos | `PERFILES_TECNICOS` | generador, buscador de contacto, puntal… |
+| Función en cancha | I.4 · Rol funcional | `JUGADORES_ROLES_FUNCIONALES` | generador-primario, spacing, slasher, interiores |
+| Eficiencia vs volumen | II.2 · Flags de tiro externo | `tiroExternoRentable` y compañía | si el tiro castiga o se concede |
+
+Tres reglas nuevas, con test:
+
+1. **El biotipo NO se infiere del volumen de triples.** Solo de `TALLA`/
+   `ALTURA`/`PUESTO` escritos en la fila (`biotipoExplicito`). Hoy la
+   planilla no los trae, así que ninguna tarea de biotipo se asigna.
+2. **El cierre agresivo es solo para el tiro que castiga.** Sin
+   `tiroExternoRentable`, una tarea agresiva cae a Flotador / Ayudador.
+3. **Marca nueva `generador-sin-tiro`** (segunda de la cascada, que pasa a
+   doce): Under en el P&R y doblar la penetración, no el tiro. Es foco del
+   plan colectivo (VIII).
+
+Caso de control: RONDINONE, NICOLAS (Generador Primario, 3,76 T3I al 21,9 %)
+pasó de `tirador-sistematico-frio` + Closeout Specialist («llegada rápida»,
+«timing para tapar») a `generador-sin-tiro` + Contenedor del Pick & Roll.
+El detalle está en el punto 9 de `CLAUDE.md` («LA TAREA DEFENSIVA»).

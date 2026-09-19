@@ -295,7 +295,7 @@ const SGADD_SCOUT = (function () {
     {
       id: 'contencionTactica', emoji: '📐', familia: 'Contención Táctica',
       perfiles: [
-        { id: 'targetDefender', label: 'Defensor Flotante / Target Defender', detalle: 'Entra en rotación para flotar (sag-off) ante rivales sin tiro exterior.' },
+        { id: 'targetDefender', label: 'Defensor Flotante / Target Defender', detalle: 'Flota (sag-off) ante rivales sin tiro exterior o con tiro de bajo porcentaje para cargar las ayudas.' },
         { id: 'readSpecialist', label: 'Especialista de Lectura / Read Specialist', detalle: 'Compensa falta de tiro o físico anticipando los esquemas tácticos rivales.' },
         { id: 'paceController', label: 'Freno de Ritmo / Pace Controller', detalle: 'Jugador de refresco que ralentiza el partido o ejecuta faltas tácticas de gestión.' },
       ],
@@ -345,7 +345,7 @@ const SGADD_SCOUT = (function () {
    * último de la lista (el que no tiene `cuando`) es el default.
    */
   function elegirDefensor(marca, perfil) {
-    const lista = (marca && marca.defensores) || [];
+    const lista = perfilesDeTarea(tareaDefensiva(perfil || {}, marca && marca.id).id);
     for (let i = 0; i < lista.length; i++) {
       const c = lista[i];
       if (!c.cuando) return PERFILES_DEFENSOR[c.id] || null;
@@ -367,7 +367,7 @@ const SGADD_SCOUT = (function () {
   const MAX_REPETICIONES_DEFENSOR = 2;
 
   function elegirDefensorBalanceado(marca, perfil, usados) {
-    const lista = (marca && marca.defensores) || [];
+    const lista = perfilesDeTarea(tareaDefensiva(perfil || {}, marca && marca.id).id);
     const cuenta = usados || {};
     const califican = lista.filter(c => {
       if (!c.cuando) return true;
@@ -385,7 +385,7 @@ const SGADD_SCOUT = (function () {
       tests y sirve para auditar cuánto del catálogo está vivo. */
   function defensoresAlcanzables() {
     const out = new Set();
-    PERFILES_MARCA.forEach(m => (m.defensores || []).forEach(c => {
+    TAREAS_DEFENSIVAS.forEach(t => (t.perfiles || []).forEach(c => {
       if (PERFILES_DEFENSOR[c.id]) out.add(PERFILES_DEFENSOR[c.id]);
     }));
     return Array.from(out);
@@ -448,6 +448,13 @@ const SGADD_SCOUT = (function () {
    * escribió otra cosa): no se inventa una guía para un perfil que no existe.
    */
   function queBuscar(label) {
+    /* Una TAREA (lo que la celda trae desde el 2026-09-18) tiene su propia
+       guía, escrita para esa tarea: se devuelve esa. */
+    const t = TAREAS_DEFENSIVAS.find(x => x.label === label);
+    if (t) {
+      const l = enumerar(t.buscar);
+      return { familia: t.id, tarea: t.tarea, atributos: t.buscar.slice(), texto: l ? l.charAt(0).toUpperCase() + l.slice(1) : '' };
+    }
     const cat = CATALOGO_DEFENSOR.find(c => c.perfiles.some(p => p.label === label));
     if (!cat) return null;
     const perfil = cat.perfiles.find(p => p.label === label);
@@ -468,6 +475,288 @@ const SGADD_SCOUT = (function () {
       cat.perfiles.forEach(p => { if (p.label === label) fam = cat.emoji + ' ' + cat.familia; });
     });
     return fam;
+  }
+
+  /* =====================================================================
+     LA TAREA DEFENSIVA · matriz multivariable (2026-09-18)
+
+     EL PROBLEMA QUE CIERRA. El perfil de defensor salía de una lista de
+     candidatos POR MARCA, y las tres marcas de tiro externo elegían con el
+     volumen de triples solo: el que tiraba mucho recibía una familia de
+     BIOTIPO (📏 Perimetral Largo, «usa su alcance de brazos») y el «qué
+     buscar» salía de los pesos de esa familia («timing para tapar»). Medido
+     con RONDINONE, NICOLAS (Hogar Social · 3,8 triples por partido al
+     21,9 %, Generador Primario): la consigna decía «contestar sin saltar,
+     puntear por volumen, no por peligro» y en la misma fila el perfil
+     pedía «llegada rápida» y «timing para tapar». Dos órdenes opuestas.
+
+     AHORA LA TAREA SE DECIDE EN DOS EJES:
+
+       FILA     la MARCA de la cascada (`PERFILES_MARCA`): cuál es la amenaza
+                más cara. Es la que escribe consigna y restricción, así que la
+                tarea no puede contradecirla.
+       COLUMNA  la LECTURA del jugador, siempre con las cuatro dimensiones
+                de la taxonomía (AUDITORIA_ETIQUETAS_JUGADORES.md, sección I):
+                  ADN          jerarquía en el plantel      (I.2)
+                  técnico      arquetipos                   (I.3)
+                  función      rol funcional en cancha      (I.4)
+                  eficiencia   volumen × efectividad, del tiro de 3 y del uso
+
+     Cada tarea trae su propio «qué buscar», escrito para ESA tarea: ya no
+     sale de los pesos de una familia, que describían a un defensor genérico
+     y no a lo que hay que hacerle a este rival.
+
+     EL BIOTIPO NO SE INFIERE. La planilla no trae talla ni puesto, y el
+     único rastro —interior/perimetral— sale de CÓMO TIRA. Las familias de
+     biotipo (Largo, Físico, Atlético, Híbrido Físico) no se eligen desde el
+     tiro de 3: la de envergadura solo con talla EXPLÍCITA (`biotipoExplicito`),
+     y las otras desde el rebote o la penetración, que describen el juego y
+     no el cuerpo. Hay tests que lo fijan.
+
+     LA AGRESIVIDAD DEL CIERRE SE RESERVA. «Llegada rápida», «salto a tapar»
+     y «cierre agresivo» solo aparecen en tareas `agresivo: true`, y esas
+     solo se asignan a tiradores RENTABLES. Al que tira mucho y mal se le
+     pide paso atrás y mano arriba sin saltar, para que su defensor sea el
+     primero en la ayuda.
+     ===================================================================== */
+
+  /**
+   * El biotipo, SOLO si la fila lo trae escrito. PURO.
+   *
+   * Hoy ninguna planilla trae estas columnas: el día que MotorStats o el club
+   * sumen `TALLA`/`ALTURA` o `PUESTO`, esto se enciende solo. Mientras tanto
+   * devuelve `null` y ninguna regla que dependa del cuerpo se dispara.
+   * @returns {{talla: number|null, puesto: string|null, alto: boolean|null, interior: boolean|null}|null}
+   */
+  const TALLA_ALTA = 1.95;
+  function biotipoExplicito(j) {
+    if (!j) return null;
+    const bruto = j['TALLA'] !== undefined ? j['TALLA'] : j['ALTURA'];
+    let talla = null;
+    if (bruto !== undefined && bruto !== null && bruto !== '') {
+      const n = parseFloat(String(bruto).replace(',', '.'));
+      if (isFinite(n) && n > 0) talla = n > 3 ? n / 100 : n;   // 198 → 1,98
+      if (talla !== null && (talla < 1.4 || talla > 2.4)) talla = null;
+    }
+    const pu = j['PUESTO'] ? String(j['PUESTO']).trim().toLowerCase() : '';
+    const puesto = pu || null;
+    const interior = puesto ? /pivot|pívot|ala.?pivot|ala.?pívot|centro|^4$|^5$|interno/.test(puesto) : null;
+    if (talla === null && puesto === null) return null;
+    return { talla: talla, puesto: puesto, alto: talla !== null ? talla >= TALLA_ALTA : null, interior: interior };
+  }
+
+  /** Las familias del catálogo que describen un CUERPO. No salen del tiro de 3. */
+  const FAMILIAS_BIOTIPO = ['perimetralLargo', 'perimetralFisico', 'perimetralAtletico', 'hibridoFisico'];
+
+  /**
+   * La lectura del jugador en las cuatro dimensiones. PURO.
+   * Siempre las cuatro: la tarea se decide con la combinación, y el texto
+   * `porque` las cita a todas para que el DT pueda auditar la decisión.
+   */
+  function lecturaMultivariable(p) {
+    const q = p || {};
+    const adn = q.adn || {};
+    const jer = adn.jerarquia ? adn.jerarquia.id : null;
+    const tecnicos = (adn.arquetipos || q.arquetipos || []).map(a => (a && a.id) || a).filter(Boolean);
+    let funcion = adn.rolFuncional ? adn.rolFuncional.id : null;
+    if (!funcion) { try { funcion = rolFuncional(q).id; } catch (e) { funcion = null; } }
+
+    const t3i = nn(q.t3i);
+    const volTiro = t3i === null || t3i < 1.0 ? (t3i === null || t3i === 0 ? 'nulo' : 'bajo')
+      : (t3i >= U.volumenTripleSistematico ? 'alto' : 'medio');
+    const efTiro = volTiro === 'nulo' ? null
+      : (q.tiroExternoRentable ? 'alta' : ((q.tiroExternoFrio || q.tiroExternoOcasionalFrio) ? 'baja' : 'media'));
+
+    const conc = nn(q.concentracion);
+    const volUso = (jer === 'franquicia' || jer === 'referente' || (conc !== null && conc >= U.concentracionAlta)) ? 'alto'
+      : ((jer === 'quinteto' || (q.min !== null && q.min !== undefined && q.min >= U.minutosClave)) ? 'medio' : 'bajo');
+    const efUso = porEncima(q.bandaEfg) ? 'alta' : (porDebajo(q.bandaEfg) ? 'baja' : (q.bandaEfg ? 'media' : null));
+
+    return {
+      adn: jer, adnLabel: adn.jerarquia ? adn.jerarquia.label : null,
+      tecnicos: tecnicos,
+      funcion: funcion, funcionLabel: adn.rolFuncional ? adn.rolFuncional.label : null,
+      tiro: { volumen: volTiro, efectividad: efTiro, t3i: t3i, t3: nn(q.t3), ppt3: nn(q.pptTriple) },
+      uso: { volumen: volUso, efectividad: efUso },
+      biotipo: q.biotipo || null,
+    };
+  }
+
+  const tiene = (L, id) => L.tecnicos.indexOf(id) !== -1;
+  const ROLES_INTERIORES = ['finalizador-corto', 'ancla-defensiva', 'rim-runner', 'poste-bajo'];
+  const esGenerador = (L) => L.funcion === 'generador-primario' ||
+    (tiene(L, 'generador') && (L.adn === 'franquicia' || L.adn === 'referente'));
+
+  /**
+   * LAS TAREAS · el «perfil de marca recomendado». Cada una:
+   *   label      lo que va en la celda (editable: el DT pone el nombre)
+   *   tarea      qué hacer, en una frase
+   *   buscar     qué atributos buscar en NUESTRO defensor, para ESTA tarea
+   *   agresivo   ¿autoriza el cierre agresivo? Solo contra tiro rentable
+   *   perfiles   el perfil del catálogo que la representa, con candidatos
+   *              (el último sin `cuando` es el default: nunca queda vacío)
+   *   biotipo    true = solo con talla/puesto explícitos
+   *
+   * Las frases de `buscar` no llevan coma ni «y» adentro: se enumeran.
+   */
+  const TAREAS_DEFENSIVAS = [
+    {
+      id: 'cierreNegacion', label: 'Defensor de Negación / Cierre Agresivo', agresivo: true,
+      tarea: 'Negarle la recepción y llegar rápido al cierre: su tiro es el que no se concede.',
+      buscar: ['piernas para negar la recepción', 'llegada rápida al cierre', 'timing para tapar sin cometer falta', 'disciplina para no ayudar desde él'],
+      perfiles: [{ id: 'denier', cuando: (p) => p.viaPrincipalExterna }, { id: 'sniperStopper' }],
+    },
+    {
+      id: 'perseguidorCortinas', label: 'Perseguidor de Cortinas / Off-Screen', agresivo: true,
+      tarea: 'Pasar las cortinas por arriba y seguirlo sin perder contacto: su tiro sale de la descarga.',
+      buscar: ['navegar cortinas por arriba', 'resistencia para perseguir toda la posesión', 'llegada rápida al cierre', 'comunicación en los cambios'],
+      perfiles: [{ id: 'screenNavigator', cuando: (p) => p.tiradorSistematico }, { id: 'sniperStopper' }],
+    },
+    {
+      id: 'flotadorAyudador', label: 'Defensor Flotador / Ayudador', agresivo: false,
+      tarea: 'Paso atrás: flotar, contestar con la mano arriba sin saltar y ser el primero en la ayuda.',
+      buscar: ['lectura de las ayudas', 'paciencia para flotar sin perder la línea de pase', 'mano arriba sin saltar', 'cierre del rebote defensivo'],
+      perfiles: [{ id: 'readSpecialist', cuando: (p) => porEncima(p.bandaAstPP) }, { id: 'targetDefender' }],
+    },
+    {
+      id: 'underPickRoll', label: 'Contenedor del Pick & Roll / Under', agresivo: false,
+      tarea: 'Pasar las cortinas por detrás, contener la penetración y doblar en el pick & roll: su tiro exterior no es el daño.',
+      buscar: ['desplazamiento lateral para contener el primer paso', 'pasar cortinas por detrás sin perder la línea', 'disciplina para no saltar al amague', 'comunicación para el doble en el pick & roll'],
+      perfiles: [{ id: 'onBall', cuando: (p) => lecturaMultivariable(p).adn === 'franquicia' }, { id: 'disruptor' }],
+    },
+    {
+      id: 'presionBola', label: 'Defensor Rápido / Presión a la Bola', agresivo: false,
+      tarea: 'Presión sobre el manejo desde mitad de cancha: sacarle ritmo y buscar la pérdida sin falta.',
+      buscar: ['pies rápidos', 'manos activas (recuperos)', 'resistencia para presionar toda la cancha', 'bajo promedio de faltas'],
+      perfiles: [{ id: 'disruptor', cuando: (p) => porEncima(p.bandaAstPP) }, { id: 'poa', cuando: (p) => p.min !== null && p.min >= 28 }, { id: 'hostigador' }],
+    },
+    {
+      id: 'contencionPenetracion', label: 'Contenedor de Penetración', agresivo: false,
+      tarea: 'Cerrarle el primer paso hacia su mano dominante y obligarlo a la media distancia, sin saltar al amague.',
+      buscar: ['desplazamiento lateral', 'defensa de pecho sin falta', 'disciplina para no saltar al amague', 'recuperación después del primer paso'],
+      perfiles: [{ id: 'poa', cuando: (p) => porEncima(p.bandaAstPP) && p.min >= U.minutosClave }, { id: 'transicion', cuando: (p) => porEncima(p.bandaPr) }, { id: 'driveContainment' }],
+    },
+    {
+      id: 'unoContraUno', label: 'Defensor 1x1 / Anulador', agresivo: false,
+      tarea: 'Marca personal toda la posesión: negarle el balón y que termine incómodo, sin darle ventajas para ayudar a otro.',
+      buscar: ['disciplina táctica', 'desplazamiento lateral', 'resistencia para sostener muchos minutos', 'bajo promedio de faltas'],
+      perfiles: [{ id: 'lockdown', cuando: (p) => lecturaMultivariable(p).adn === 'franquicia' }, { id: 'sombra', cuando: (p) => p.tiraDeAfuera }, { id: 'onBall' }],
+    },
+    {
+      id: 'largoMolesto', label: 'Defensor Largo / Molesto', agresivo: false, biotipo: true,
+      tarea: 'Tapar la visión del generador alto en el aislamiento: contestar cada tiro con envergadura, sin saltar tarde.',
+      buscar: ['envergadura para contestar sin saltar', 'desplazamiento lateral', 'paciencia en el uno contra uno'],
+      perfiles: [{ id: 'envergadura' }],
+    },
+    {
+      id: 'fisicoRebotero', label: 'Defensor Físico / Rebotero', agresivo: false,
+      tarea: 'Contacto antes de que salte y box-out en cada posesión: la segunda chance es su arma.',
+      buscar: ['contacto físico legal', 'cierre del rebote defensivo', 'cuerpo para defender cerca del aro'],
+      perfiles: [{ id: 'rebotandoGuard', cuando: (p) => p.esPerimetral }, { id: 'paintDominator', cuando: (p) => porEncima(p.bandaRo) && p.reboteDefRel !== null && p.reboteDefRel >= U.reboteInterior }, { id: 'glassCleaner' }],
+    },
+    {
+      id: 'protectorPintura', label: 'Protector de Pintura / Frente al Poste', agresivo: false,
+      tarea: 'Tres cuartos por delante en el poste y cuerpo antes de la recepción: la ayuda llega desde el lado débil.',
+      buscar: ['cuerpo para defender cerca del aro', 'timing para tapar sin cometer falta', 'cierre del rebote defensivo'],
+      perfiles: [{ id: 'rimProtectorPrimario', cuando: (p) => p.pptDoble !== null && p.pptDoble >= 1.30 }, { id: 'drop', cuando: (p) => porEncima(p.bandaRo) && porEncima(p.bandaPptDoble) }, { id: 'paintPillar' }],
+    },
+    {
+      id: 'contactoLinea', label: 'Defensor de Impacto / Falta Dura', agresivo: false,
+      tarea: 'Si finaliza cerca del aro la falta dura es negocio: mandarlo a la línea antes que dejarlo terminar.',
+      buscar: ['contacto físico legal', 'cuerpo para defender cerca del aro', 'margen de faltas para gastar'],
+      perfiles: [{ id: 'lowPostWall', cuando: (p) => p.esInterior }, { id: 'interiorImpact' }],
+    },
+    {
+      id: 'lectorRotaciones', label: 'Defensor de Lectura / Rotaciones', agresivo: false,
+      tarea: 'No regalarle nada fácil y rotar primero: es el lado desde donde sale la ayuda a los que condicionan el partido.',
+      buscar: ['lectura de las ayudas', 'comunicación en las rotaciones', 'manos activas (recuperos)'],
+      perfiles: [{ id: 'interceptor', cuando: (p) => porEncima(p.bandaPr) }, { id: 'paceController', cuando: (p) => p.min !== null && p.min < U.minutosClave }, { id: 'freeSafety', cuando: (p) => porEncima(p.bandaRo) }, { id: 'switchable' }],
+    },
+  ];
+
+  const TAREA = (id) => TAREAS_DEFENSIVAS.find(t => t.id === id);
+
+  /**
+   * LA MATRIZ: fila = marca, columnas = la lectura. Cada entrada devuelve el
+   * id de la tarea. El default de cada fila es la tarea que no contradice su
+   * consigna; las ramas la afinan con las otras dimensiones.
+   */
+  const MATRIZ_TAREAS = {
+    'tirador-elite': (L) => (L.funcion === 'spacing' && L.tiro.volumen === 'alto') ? 'perseguidorCortinas' : 'cierreNegacion',
+    'generador-sin-tiro': (L) => 'underPickRoll',
+    'volumen-sin-eficiencia': (L) => ROLES_INTERIORES.indexOf(L.funcion) !== -1 ? 'protectorPintura' : 'flotadorAyudador',
+    'tirador-eficiente-bajo-volumen': (L) => (L.funcion === 'spacing' && L.tiro.volumen === 'alto') ? 'perseguidorCortinas' : 'cierreNegacion',
+    'interior-dominante': (L, p) => (L.funcion === 'rim-runner' || (tiene(L, 'puntal') && p.reboteRel !== null && p.reboteRel >= U.reboteOfensivoAlto))
+      ? 'fisicoRebotero' : 'protectorPintura',
+    'slasher': (L) => (L.biotipo && L.biotipo.alto && esGenerador(L)) ? 'largoMolesto'
+      : (L.tiro.efectividad === 'alta' ? 'unoContraUno' : 'contencionPenetracion'),
+    'generador-riesgoso': (L) => (L.biotipo && L.biotipo.alto) ? 'largoMolesto' : 'presionBola',
+    'tirador-sistematico-frio': (L) => L.funcion === 'slasher' ? 'contencionPenetracion' : 'flotadorAyudador',
+    'castigable-en-la-linea': () => 'contactoLinea',
+    'tirador-ineficiente': () => 'flotadorAyudador',
+    'rebotador': () => 'fisicoRebotero',
+    'contencion': (L, p) => {
+      if ((L.adn === 'franquicia' || L.adn === 'referente') && L.uso.efectividad === 'alta') {
+        return (L.biotipo && L.biotipo.alto && esGenerador(L)) ? 'largoMolesto' : 'unoContraUno';
+      }
+      if (p.perdidasRel !== null && p.perdidasRel !== undefined && p.perdidasRel >= U.perdidasAltas && esGenerador(L)) return 'presionBola';
+      if (L.funcion === 'slasher') return 'contencionPenetracion';
+      if (L.tiro.efectividad === 'baja') return 'flotadorAyudador';
+      if (L.biotipo && L.biotipo.interior && (L.funcion === 'spacing' || L.funcion === 'perimetral-media')) return 'fisicoRebotero';
+      return 'lectorRotaciones';
+    },
+  };
+
+  /** Las cuatro dimensiones en una frase, para el `title` y el PDF. */
+  function textoLectura(L) {
+    const ef = { alta: 'efectividad alta', media: 'efectividad media', baja: 'efectividad baja' };
+    const vol = { alto: 'volumen alto', medio: 'volumen medio', bajo: 'volumen bajo', nulo: 'sin tiro de 3' };
+    const tiro = L.tiro.volumen === 'nulo' ? 'sin tiro de 3'
+      : 'triple: ' + vol[L.tiro.volumen] + (L.tiro.efectividad ? ' · ' + ef[L.tiro.efectividad] : '')
+        + (L.tiro.t3 !== null ? ' (' + pct(L.tiro.t3) + ')' : '');
+    return [
+      'ADN: ' + (L.adnLabel || 'sin jerarquía'),
+      'técnico: ' + (L.tecnicos.length ? L.tecnicos.join(', ') : 'sin arquetipo'),
+      'función: ' + (L.funcionLabel || L.funcion || 'sin rol'),
+      tiro + ' · uso: ' + vol[L.uso.volumen] + (L.uso.efectividad ? ' · ' + ef[L.uso.efectividad] : ''),
+    ].join(' | ') + (L.biotipo ? ' | biotipo declarado' : '');
+  }
+
+  /**
+   * La tarea defensiva de un jugador frente a una marca. PURO.
+   * Nunca devuelve una tarea de biotipo sin biotipo explícito, ni una tarea
+   * agresiva contra un tiro que no es rentable.
+   */
+  function tareaDefensiva(p, marcaId) {
+    const perfil = p || {};
+    const L = lecturaMultivariable(perfil);
+    const elegir = MATRIZ_TAREAS[marcaId] || MATRIZ_TAREAS.contencion;
+    let id;
+    try { id = elegir(L, perfil); } catch (e) { id = 'lectorRotaciones'; }
+    let t = TAREA(id) || TAREA('lectorRotaciones');
+    /* Las dos guardas duras, por si una rama futura se olvida de ellas. */
+    if (t.biotipo && !(L.biotipo && (L.biotipo.alto || L.biotipo.interior))) t = TAREA('unoContraUno');
+    if (t.agresivo && !perfil.tiroExternoRentable) t = TAREA('flotadorAyudador');
+    return {
+      id: t.id, label: t.label, tarea: t.tarea, buscar: t.buscar.slice(), agresivo: !!t.agresivo,
+      lectura: L, porque: textoLectura(L),
+    };
+  }
+
+  /** El perfil del catálogo que representa una tarea, con candidatos. */
+  function perfilesDeTarea(tareaId) {
+    const t = TAREA(tareaId);
+    return t ? t.perfiles : [];
+  }
+
+  /** La guía de la celda, para una tarea ya resuelta. */
+  function guiaDeTarea(td) {
+    if (!td) return null;
+    const lista = enumerar(td.buscar);
+    return {
+      familia: td.id, tarea: td.tarea, atributos: td.buscar.slice(), porque: td.porque,
+      texto: lista ? lista.charAt(0).toUpperCase() + lista.slice(1) : '',
+    };
   }
 
   /* =====================================================================
@@ -492,11 +781,6 @@ const SGADD_SCOUT = (function () {
     {
       id: 'tirador-elite',
       etiqueta: 'Amenaza perimetral de élite',
-      defensores: [
-        { id: 'denier', cuando: (p) => p.viaPrincipalExterna },
-        { id: 'screenNavigator', cuando: (p) => p.tiradorSistematico },
-        { id: 'sniperStopper' },
-      ],
       test: (p) => p.usoTriple >= U.usoTripleAlto && p.pptTriple >= U.pptTripleElite,
       consigna: (p) => ({
         titulo: 'TOP LOCK / OVER.',
@@ -507,6 +791,38 @@ const SGADD_SCOUT = (function () {
         titulo: 'NO AYUDAR DESDE ÉL.',
         detalle: 'Cada rotación que lo deja solo vale ' + num2(p.pptTriple) +
           ' puntos por intento. Antes de doblar a otro, chequear dónde está él.',
+      }),
+    },
+    {
+      /* EL GENERADOR SIN TIRO EXTERIOR (2026-09-18). Genera el juego pero su
+         triple no castiga: el daño está en la penetración que sale del
+         pick & roll, no en el tiro. Va ARRIBA de las tres reglas de tiro
+         externo y de `volumen-sin-eficiencia`: sin ella, RONDINONE, NICOLAS
+         (Generador Primario, 3,8 triples al 21,9 %) caía en
+         `tirador-sistematico-frio` y el informe le pedía a su defensor
+         cerrarle el tiro en vez de contenerle la penetración.
+
+         Es la ÚNICA marca que dobla a un jugador de tiro frío, y por eso es
+         FOCO del plan colectivo (`clasificarEcosistema`): tiene la pelota,
+         no puede ser el lado desde donde sale la ayuda. */
+      id: 'generador-sin-tiro',
+      etiqueta: 'Generador sin tiro exterior',
+      test: (p) => !p.esInterior && !p.tiroExternoRentable && esGenerador(lecturaMultivariable(p)) &&
+        (p.tiroExternoFrio || p.tiroExternoOcasionalFrio || !p.tiraDeAfuera),
+      consigna: (p) => ({
+        titulo: 'UNDER EN EL P&R / CONTENER LA PENETRACIÓN.',
+        detalle: 'Genera el juego (' + num2(p.astPP) + ' AST-PP) pero su tiro exterior no castiga: ' +
+          (p.tiraDeAfuera
+            ? num1(p.t3i) + ' triples por partido con ' + pct(p.t3) + ' (' + num2(p.pptTriple) + ' PPT3)'
+            : pct(p.usoTriple) + ' de sus plays terminan en triple') +
+          '. Pasar las cortinas por detrás y cerrarle el camino al aro.',
+      }),
+      restriccion: (p) => ({
+        titulo: 'DOBLAR EL PICK & ROLL, NO EL TIRO.',
+        detalle: 'La segunda ayuda va a la penetración que sale del bloqueo: su tiro se contesta con la mano arriba, sin saltar' +
+          (lecturaMultivariable(p).tecnicos.indexOf('buscadorContacto') !== -1
+            ? ' y sin falta: busca el contacto y convierte ' + pct(p.t1) + ' de libres (T1%).'
+            : ' (' + num2(p.astPP) + ' AST-PP: el pase que sale del doble es el riesgo que se acepta).'),
       }),
     },
     {
@@ -524,10 +840,6 @@ const SGADD_SCOUT = (function () {
          corrigieron las dos cosas. */
       id: 'volumen-sin-eficiencia',
       etiqueta: 'Volumen alto, eficiencia baja',
-      defensores: [
-        { id: 'envergadura', cuando: (p) => p.usoTriple !== null && p.usoTriple >= U.usoTripleAlto },
-        { id: 'volumeContainment' },
-      ],
       test: (p) => p.concentracion !== null && p.concentracion >= U.concentracionAlta &&
         !p.tiroExternoRentable && (porDebajo(p.bandaEfg) ||
           (p.efg !== null && p.bandaEfg !== null && p.bandaEfg.id === 'fuga')),
@@ -548,11 +860,6 @@ const SGADD_SCOUT = (function () {
          corrige es tratar "pocos puntos" como "no es amenaza". */
       id: 'tirador-eficiente-bajo-volumen',
       etiqueta: 'Tirador eficiente (poco volumen, alta renta)',
-      defensores: [
-        { id: 'closeout', cuando: (p) => p.t3i !== null && p.t3i < 2.0 },
-        { id: 'sniperStopper', cuando: (p) => porEncima(p.bandaPptTriple) },
-        { id: 'denier' },
-      ],
       test: (p) => p.tiraDeAfuera && p.tiroExternoRentable,
       consigna: (p) => ({
         titulo: 'STAY HOME / NEGACIÓN DE RECEPCIÓN.',
@@ -568,11 +875,6 @@ const SGADD_SCOUT = (function () {
     {
       id: 'interior-dominante',
       etiqueta: 'Referencia interna',
-      defensores: [
-        { id: 'rimProtectorPrimario', cuando: (p) => p.pptDoble !== null && p.pptDoble >= 1.30 },
-        { id: 'drop', cuando: (p) => porEncima(p.bandaRo) && porEncima(p.bandaPptDoble) },
-        { id: 'paintPillar' },
-      ],
       /* `esInterior` es obligatorio: sin esa guarda, un slasher con buen
          PPT2 entraba acá y se le asignaba una marca de poste bajo. */
       test: (p) => p.esInterior && p.pptDoble >= U.pptDobleAlto,
@@ -590,11 +892,6 @@ const SGADD_SCOUT = (function () {
     {
       id: 'slasher',
       etiqueta: 'Slasher / penetrador',
-      defensores: [
-        { id: 'poa', cuando: (p) => porEncima(p.bandaAstPP) && p.min >= U.minutosClave },
-        { id: 'transicion', cuando: (p) => porEncima(p.bandaPr) },
-        { id: 'driveContainment' },
-      ],
       test: (p) => p.esPerimetral && p.pptDoble >= U.pptDobleAlto,
       consigna: (p) => ({
         titulo: 'CONTENCIÓN DE MANO DOMINANTE.',
@@ -610,11 +907,6 @@ const SGADD_SCOUT = (function () {
     {
       id: 'generador-riesgoso',
       etiqueta: 'Conductor con pérdidas altas',
-      defensores: [
-        { id: 'disruptor', cuando: (p) => porEncima(p.bandaAstPP) },
-        { id: 'poa', cuando: (p) => p.min >= 28 },
-        { id: 'hostigador' },
-      ],
       test: (p) => p.perdidasRel >= U.perdidasAltas && p.min >= U.minutosClave,
       consigna: (p) => ({
         titulo: 'ACOSO AL DRIBLE / TRAP.',
@@ -632,30 +924,21 @@ const SGADD_SCOUT = (function () {
          pero sin desarmar la estructura defensiva por él. */
       id: 'tirador-sistematico-frio',
       etiqueta: 'Tirador sistemático de bajo porcentaje',
-      defensores: [
-        { id: 'volumeContainment', cuando: (p) => p.t3i !== null && p.t3i >= 5.0 },
-        { id: 'screenNavigator', cuando: (p) => p.usoTriple !== null && p.usoTriple >= U.usoTripleAlto },
-        { id: 'closeout' },
-      ],
       test: (p) => p.tiradorSistematico && p.tiroExternoFrio,
       consigna: (p) => ({
-        titulo: 'CLOSE-OUT CORTO / CONTESTAR SIN SALTAR.',
+        titulo: 'PASO ATRÁS / CONTESTAR SIN SALTAR.',
         detalle: 'Lanza ' + num1(p.t3i) + ' triples por partido con ' + pct(p.t3) + ' de acierto (' +
-          num2(p.pptTriple) + ' PPT3). Hay que puntearle la mano por volumen, no por peligro.',
+          num2(p.pptTriple) + ' PPT3). Mano arriba por volumen, no por peligro: su defensor prioriza las ayudas.',
       }),
       restriccion: (p) => ({
-        titulo: 'NO CORRER EL CIERRE.',
+        titulo: 'NO VOLAR AL CIERRE.',
         detalle: 'Con ' + num2(p.pptTriple) + ' por intento no justifica romper la estructura: ' +
-          'si nos pasa de cara, el daño es mayor que el tiro que evitamos.',
+          'un cierre largo lo deja pasar de cara y saca a su defensor de la ayuda.',
       }),
     },
     {
       id: 'castigable-en-la-linea',
       etiqueta: 'Vulnerable en la línea',
-      defensores: [
-        { id: 'lowPostWall', cuando: (p) => p.esInterior },
-        { id: 'interiorImpact' },
-      ],
       /* Umbral duro a propósito: T1% < 40% Y volumen interno real. */
       test: (p) => p.t1 !== null && p.t1 < U.t1Regalable && p.usoDoble >= U.usoDobleInterno,
       consigna: (p) => ({
@@ -674,10 +957,6 @@ const SGADD_SCOUT = (function () {
          tres condiciones acumuladas. */
       id: 'tirador-ineficiente',
       etiqueta: 'Tirador de volumen sin renta',
-      defensores: [
-        { id: 'readSpecialist', cuando: (p) => porEncima(p.bandaAstPP) },
-        { id: 'targetDefender' },
-      ],
       test: (p) => p.usoTriple >= U.usoTripleAlto && p.pptTriple <= U.pptTriplePobre &&
         !p.tiroExternoRentable && !p.viaPrincipalExterna,
       consigna: (p) => ({
@@ -693,11 +972,6 @@ const SGADD_SCOUT = (function () {
     {
       id: 'rebotador',
       etiqueta: 'Rebotador de impacto',
-      defensores: [
-        { id: 'rebotandoGuard', cuando: (p) => p.esPerimetral },
-        { id: 'paintDominator', cuando: (p) => porEncima(p.bandaRo) && p.reboteDefRel !== null && p.reboteDefRel >= U.reboteInterior },
-        { id: 'glassCleaner' },
-      ],
       test: (p) => p.reboteRel !== null && p.reboteRel >= U.reboteOfensivoAlto,
       consigna: (p) => ({
         titulo: 'BOX-OUT DE CHOQUE.',
@@ -713,12 +987,6 @@ const SGADD_SCOUT = (function () {
     {
       id: 'contencion',
       etiqueta: 'Rol complementario',
-      defensores: [
-        { id: 'interceptor', cuando: (p) => porEncima(p.bandaPr) },
-        { id: 'paceController', cuando: (p) => p.min !== null && p.min < U.minutosClave },
-        { id: 'freeSafety', cuando: (p) => porEncima(p.bandaRo) },
-        { id: 'switchable' },
-      ],
       test: () => true,   // fallback: siempre calza
       consigna: (p) => ({
         titulo: 'DROP COVERAGE / CLOSE-OUT CORTO.',
@@ -1135,6 +1403,8 @@ const SGADD_SCOUT = (function () {
        puede saber (cuánto del equipo pasa por él). */
     const p = (ficha && ficha.perfilBase) ? ficha.perfilBase(idx, j) : {};
     p.concentracion = div(nn(j['PLAYS']), totalPlaysEquipo);
+    /* Talla y puesto SOLO si la fila los trae escritos (ver `biotipoExplicito`). */
+    p.biotipo = biotipoExplicito(j);
 
     /* Etiquetas del ADN compartido, para que el informe muestre las mismas
        que la ficha del jugador. */
@@ -1251,15 +1521,20 @@ const SGADD_SCOUT = (function () {
     const consigna = armar(p.consigna);
     const restriccion = armar(p.restriccion);
 
-    /* El perfil de defensor se elige AHORA, con el jugador delante: la
-       misma marca puede pedir un Denier o un Sniper Stopper según a quién
-       haya que cubrir. Ver `elegirDefensor()`. */
-    const defensor = elegirDefensor(p, perfil);
+    /* LA TAREA se decide AHORA, con el jugador delante: fila = esta marca,
+       columnas = sus cuatro dimensiones (ver `tareaDefensiva`). La celda
+       muestra la tarea («Defensor Flotador / Ayudador»); el perfil del
+       catálogo que la representa va debajo, con su familia. */
+    const tarea = tareaDefensiva(perfil, p.id);
+    const perfilCatalogo = elegirDefensor(p, perfil);
 
     return {
       id: p.id, etiqueta: p.etiqueta,
-      defensor: defensor,
-      familiaDefensor: familiaDefensor(defensor),
+      defensor: tarea.label,
+      tarea: tarea,
+      perfilCatalogo: perfilCatalogo,
+      familiaDefensor: familiaDefensor(perfilCatalogo),
+      queBuscar: guiaDeTarea(tarea),
       consigna: consigna, restriccion: restriccion,
       consignaTexto: (consigna.titulo + ' ' + consigna.detalle).trim(),
       restriccionTexto: (restriccion.titulo + ' ' + restriccion.detalle).trim(),
@@ -1409,7 +1684,7 @@ const SGADD_SCOUT = (function () {
       return f.marca.etiqueta.toLowerCase();
     };
     const focos = filas.filter(f =>
-      ['tirador-elite', 'interior-dominante', 'slasher'].indexOf(f.marca.id) !== -1 ||
+      ['tirador-elite', 'interior-dominante', 'slasher', 'generador-sin-tiro'].indexOf(f.marca.id) !== -1 ||
       (f.perfil.concentracion !== null && f.perfil.concentracion >= U.concentracionAlta) ||
       (f.perfil.adn && f.perfil.adn.jerarquia && f.perfil.adn.jerarquia.id === 'franquicia'))
       .sort((a, b) => (b.perfil.concentracion || 0) - (a.perfil.concentracion || 0))
@@ -1817,13 +2092,14 @@ const SGADD_SCOUT = (function () {
         PERFILES_MARCA.find(m => m.id === f.marca.id), f.perfil, usados);
       if (def) {
         usados[def] = (usados[def] || 0) + 1;
-        f.marca.defensor = def;
+        f.marca.perfilCatalogo = def;
         f.marca.familiaDefensor = familiaDefensor(def);
-        /* El PERFIL y qué buscar para cumplirlo. Ningún nombre propio: quién
-           de nuestro plantel lo hace lo decide el cuerpo técnico (ver
-           `queBuscar`). */
-        f.marca.queBuscar = queBuscar(def);
       }
+      /* La TAREA y qué buscar para cumplirla. Ningún nombre propio: quién
+         de nuestro plantel lo hace lo decide el cuerpo técnico. La guía sale
+         de la tarea y no de la familia del catálogo: la familia describe un
+         defensor genérico, la tarea lo que hay que hacerle a ESTE rival. */
+      f.marca.queBuscar = guiaDeTarea(f.marca.tarea);
       const cx = conexionColectiva(f, plan);
       f.plan = {
         foco: plan.focos.some(x => x.clave === f.clave),
@@ -2375,6 +2651,8 @@ const SGADD_SCOUT = (function () {
     MATRIZ_POSESION, MATRIZ_TIRO, METRICAS_RANKING, COLS_JUGADOR,
     PERFILES_MARCA, PERFILES_DEFENSOR, CATALOGO_DEFENSOR, familiaDefensor, REGLAS_CLAVE,
     elegirDefensor, elegirDefensorBalanceado, defensoresAlcanzables,
+    TAREAS_DEFENSIVAS, MATRIZ_TAREAS, FAMILIAS_BIOTIPO, lecturaMultivariable, tareaDefensiva,
+    textoLectura, guiaDeTarea, perfilesDeTarea, biotipoExplicito,
     ATRIBUTOS_SEÑAL, atributosDefensor, queBuscar, plantelDefensor, enPlan,
     ESCENARIOS, clasificarEcosistema, generarPlanDefensivoColectivo, conexionColectiva,
     get ROLES_FUNCIONALES() { return rolesFuncionales(); },
@@ -3195,10 +3473,16 @@ function scoutFilasMarcas(t) {
           <input type="text" value="${escapeAttr(defensor)}" title="${escapeAttr(defensor)}" placeholder="Perfil o nombre" aria-label="Perfil defensivo ideal: editable para escribir el nombre de tu defensor"
             oninput="scoutMarca('${SGADD_UI.escJs(f.clave)}', 'defensor', this.value)"
             class="w-full bg-surface2 border border-hairline rounded px-2 py-1 text-[11px] focus:border-accent outline-none">
-          ${f.marca.familiaDefensor ? `<p class="text-[10px] text-muted mt-1 text-left">${escapeHtml(f.marca.familiaDefensor)}</p>` : ''}
+          ${f.marca.perfilCatalogo ? `<p class="text-[10px] text-muted mt-1 text-left">${escapeHtml(f.marca.perfilCatalogo)}${f.marca.familiaDefensor ? ' · ' + escapeHtml(f.marca.familiaDefensor) : ''}</p>` : ''}
+          ${(f.marca.queBuscar && f.marca.queBuscar.tarea) ? `
+            <p class="scout-tarea text-[10px] text-left mt-1 leading-snug"
+              title="${escapeAttr('Por qué esta tarea · ' + (f.marca.queBuscar.porque || ''))}">
+              <span class="dato-sec">Tarea:</span>
+              <span class="text-ink">${escapeHtml(f.marca.queBuscar.tarea)}</span>
+            </p>` : ''}
           ${(f.marca.queBuscar && f.marca.queBuscar.texto) ? `
             <p class="scout-que-buscar text-[10px] text-left mt-1 leading-snug"
-              title="${escapeAttr('Tarea: ' + f.marca.queBuscar.tarea + ' El nombre lo elige el cuerpo técnico: buscá en tu plantel quién cumple estos atributos.')}">
+              title="${escapeAttr('El nombre lo elige el cuerpo técnico: buscá en tu plantel quién cumple estos atributos.')}">
               <span class="dato-sec">Qué buscar:</span>
               <span class="text-ink">${escapeHtml(f.marca.queBuscar.texto)}.</span>
             </p>` : ''}
@@ -3538,7 +3822,8 @@ function scoutBloqueFichas(inf) {
           </div>
           <p class="text-[10px]"><span class="dato-sec">Defensor sugerido:</span>
             <span class="text-ink">${escapeHtml(f.marca.defensor)}</span>
-            ${f.marca.familiaDefensor ? `<span class="dato-sec"> · ${escapeHtml(f.marca.familiaDefensor)}</span>` : ''}</p>
+            ${f.marca.perfilCatalogo ? `<span class="dato-sec"> · ${escapeHtml(f.marca.perfilCatalogo)}${f.marca.familiaDefensor ? ' · ' + escapeHtml(f.marca.familiaDefensor) : ''}</span>` : ''}</p>
+          ${f.marca.tarea ? `<p class="text-[10px] text-muted leading-snug">${escapeHtml(f.marca.tarea.tarea)}</p>` : ''}
         </div>
       </article>`;
   }).join('');

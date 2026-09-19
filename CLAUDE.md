@@ -28,7 +28,7 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  55 tests · detalle partido a partido, perfil de tiro y su PDF
-node test-scouting.js      # 432 tests · informe pre-partido, bandas, marcas, sintesis, titularidad
+node test-scouting.js      # 471 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis, titularidad
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
 node test-permisos.js      # 402 tests · roles, planes, el gate, el selector, el hub, el ciclo,
@@ -91,7 +91,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6061 tests en total. Todos tienen que dar verde antes de commitear.**
+**6100 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -2952,10 +2952,12 @@ plantel (en KV, como los estados del punto 57). Está en el historial
 
 Lo que hay que respetar al tocarlo:
 
-- **Los atributos salen de los MISMOS pesos `defiende` de cada familia**
-  (`atributosDefensor`): ordenados por el peso absoluto, con piso 0,4 y
-  hasta cuatro. Son la descripción de la tarea; un segundo vocabulario
-  terminaría diciendo otra cosa.
+- **En la tabla de marcas, «Qué buscar» sale de la TAREA** (`guiaDeTarea`,
+  ver la sección que sigue), no de la familia del catálogo: la familia
+  describe un defensor genérico y la tarea lo que hay que hacerle a ESTE
+  rival. `queBuscar(label)` sigue aceptando un perfil del catálogo —y ahí
+  los atributos salen de sus pesos `defiende` (`atributosDefensor`, piso
+  0,4, hasta cuatro)— y además una etiqueta de tarea, que devuelve su guía.
 - **El signo cambia la frase** (`ATRIBUTOS_SEÑAL`): las faltas con peso
   positivo son «contacto físico legal», con peso negativo «bajo promedio de
   faltas». Toda señal de los pesos tiene su frase; un test lo exige.
@@ -2968,37 +2970,73 @@ Lo que hay que respetar al tocarlo:
   baja salía del plan del rival pero seguía contando como defensor
   disponible (el plan colectivo dimensiona con ese plantel).
 
-### El perfil se desempaqueta con métricas secundarias
+### LA TAREA DEFENSIVA · una matriz, no una lista por marca (2026-09-18)
 
-Cada marca declara una **lista ordenada de candidatos** (`defensores`), no un
-perfil fijo. Gana el primero cuyo `cuando(perfil)` da verdadero y el último
-no lleva condición: es el default, así que **la sugerencia automática nunca
-puede quedar vacía** — esa es la propiedad que había que conservar al abrir
-el catálogo.
+Hasta acá cada marca declaraba su lista de `defensores` y el primero cuyo
+`cuando(perfil)` calzaba ganaba. El caso que lo rompió es real:
+**RONDINONE, NICOLAS** (HOGAR SOCIAL · DEPORTIVO Primera · TOTAL): Referente
+Ofensivo, Generador + Buscador de Contacto, rol Generador Primario, 3,76
+triples por partido al **21,9 %** (0,66 PPT3) y 1,24 AST-PP.
 
-Antes cada marca tenía un perfil fijo, así que solo **11 de 33** eran
-alcanzables y los otros 22 quedaban de adorno sin que la UI lo dijera. Los
-discriminantes son métricas que ya estaban calculadas y que ninguna regla
-usaba: `PR` (elegir entre `Denier` e `Interceptor` es una pregunta sobre
-manos activas), `RO%` y `PPT2` (entre `Paint Pillar` y `Drop Protector`, una
-sobre dónde defiende el aro) y `AST-PP`.
+```
+antes   tirador-sistematico-frio · 📏 Closeout Specialist (Perimetral Largo)
+        «Llegada rápida al tirador…» + «Timing para tapar»
+ahora   generador-sin-tiro · «UNDER EN EL P&R / CONTENER LA PENETRACIÓN.»
+        · «DOBLAR EL PICK & ROLL, NO EL TIRO.» (mano arriba, sin saltar)
+        tarea Contenedor del Pick & Roll / Under · ⚡ Presión Inicial
+```
 
-Con datos reales se asignaron **19 perfiles distintos en La Plata** y **22 en
-Liga Argentina**, sobre 9 y 10 familias.
+Dos defectos a la vez: **un biotipo inferido del volumen de triples** (la
+planilla no trae talla: «Perimetral Largo» salía de CÓMO TIRA) y **un cierre
+agresivo contra un tiro que no castiga**, que era justo lo que su propia
+consigna («puntear por volumen, no por peligro») decía no hacer.
 
-| Marca | Defensor asignado |
-|---|---|
-| `tirador-elite` | 🎯 Sniper Stopper |
-| `tirador-eficiente-bajo-volumen` | 🎯 Denier |
-| `tirador-sistematico-frio` | 📏 Closeout Specialist |
-| `interior-dominante` | 🏢 Paint Pillar |
-| `slasher` | 🏃 Drive Containment |
-| `generador-riesgoso` | ⚡ Ball-Screen Pest |
-| `castigable-en-la-linea` | 🧱 Interior Impact Defender |
-| `tirador-ineficiente` | 📐 Target Defender |
-| `volumen-sin-eficiencia` | 📏 Volume Containment |
-| `rebotador` | 🏰 Glass Cleaner |
-| `contencion` (fallback) | 🧱 Switchable Forward |
+**La celda es ahora una TAREA** (`TAREAS_DEFENSIVAS`, doce), y se decide con
+`tareaDefensiva(perfil, marcaId)`: fila = la marca (`MATRIZ_TAREAS`), columnas
+= las cuatro dimensiones de `lecturaMultivariable(p)` — ADN (jerarquía),
+perfil técnico (arquetipos), función en cancha (rol funcional) y **eficiencia
+contra volumen** del tiro y del uso. El `title` de la celda trae ese «por
+qué» (`textoLectura`). Debajo va el perfil del catálogo que la representa
+(`perfilCatalogo`, elegido entre los candidatos de la TAREA) con su familia,
+y «Qué buscar» sale de la tarea (`guiaDeTarea`).
+
+Las doce tareas: cierre/negación, perseguidor de cortinas, flotador/ayudador,
+contenedor del P&R (under), presión a la bola, contención de penetración,
+1x1 anulador, largo/molesto, físico/rebotero, protector de pintura, impacto
+en la línea y lector de rotaciones.
+
+Lo que hay que respetar al tocarlo:
+
+- **El biotipo SOLO sale de un dato escrito** (`biotipoExplicito`: `TALLA`/
+  `ALTURA` en m o cm, `PUESTO`). La única tarea de biotipo
+  (`largoMolesto`) sin ese dato cae a `unoContraUno`, y ninguna tarea elige
+  de `FAMILIAS_BIOTIPO` por el volumen de triples. Hoy la planilla no trae
+  talla, así que en producción no se asigna ninguna de biotipo — a propósito.
+- **Lo agresivo se reserva para el tiro que CASTIGA.** Las tareas marcadas
+  `agresivo` (cierre/negación, perseguidor) sin `tiroExternoRentable` caen a
+  `flotadorAyudador`. Hay un test que recorre las fichas y falla si «llegada
+  rápida», «salto a tapar», «timing para tapar» o «cierre agresivo»
+  aparecen contra un tirador sin renta.
+- **`generador-sin-tiro` es la marca nueva** (segunda de la cascada, ahora
+  son doce): generador (rol generador-primario, o arquetipo generador con
+  jerarquía franquicia/referente) sin tiro externo rentable. **Es FOCO** del
+  plan colectivo: tiene la pelota, no puede ser el lado desde donde sale la
+  ayuda.
+- **`tirador-sistematico-frio` pasó a «PASO ATRÁS / CONTESTAR SIN SALTAR.»**
+  con «NO VOLAR AL CIERRE.»: mano arriba por volumen, y su defensor
+  prioriza las ayudas.
+- **El reparto de carga** (tope 2 por tabla) se hace sobre el
+  `perfilCatalogo`, no sobre la tarea: dos rivales pueden pedir la misma
+  tarea —flotarle a dos tiradores fríos es lo correcto— pero no cuatro
+  defensores del mismo tipo.
+- **Cada tarea termina en un candidato sin condición**: la sugerencia nunca
+  queda vacía. Son 25 perfiles alcanzables de 33.
+
+Medido sobre las 96 fichas de DEPORTIVO Primera · TOTAL: flotador/ayudador
+20, físico/rebotero 19, cierre/negación 17, under en el P&R 15, presión a la
+bola 8, perseguidor de cortinas 7, contención de penetración 7, protector de
+pintura 2, 1x1 1. **Cero** tareas agresivas contra tiradores sin renta y
+**cero** perfiles de 📏 Perimetral Largo.
 
 ### Cada celda: directiva + justificación numérica
 
