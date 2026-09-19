@@ -1560,6 +1560,16 @@ Tres reglas nuevas, con test:
    doce): Under en el P&R y doblar la penetración, no el tiro. Es foco del
    plan colectivo (VIII).
 
+4. **Un generador sin tiro nunca es fuente de ayuda** en el plan colectivo
+   (VIII), aunque quede fuera del tope de dos focos: su defensor está en la
+   cobertura del pick & roll. Los tiradores fríos que no son foco, cristal ni
+   intocables siguen siendo las fuentes.
+
+`generador-sin-tiro` es una marca **nueva** (la duodécima): las once de
+II.3 siguen iguales y en el mismo orden relativo. `TAREAS_POSIBLES` declara
+qué tarea puede dar cada marca, y el manual de etiquetado (sección 2.2) la
+imprime desde ahí.
+
 Caso de control: RONDINONE, NICOLAS (Generador Primario, 3,76 T3I al 21,9 %)
 pasó de `tirador-sistematico-frio` + Closeout Specialist («llegada rápida»,
 «timing para tapar») a `generador-sin-tiro` + Contenedor del Pick & Roll.

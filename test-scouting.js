@@ -2125,6 +2125,85 @@ const SRC = require('fs').readFileSync('./js/sgadd-scouting.js', 'utf8');
 check('la celda muestra el perfil del catálogo y la TAREA debajo de la tarea elegida',
   /f\.marca\.perfilCatalogo/.test(SRC) && /scout-tarea/.test(SRC) && /f\.marca\.queBuscar\.texto/.test(SRC));
 
+/* ---------------------------------------------------------------------
+   22. LA MATRIZ DECLARADA, LAS FUENTES DE AYUDA Y EL MANUAL
+   --------------------------------------------------------------------- */
+console.log('\n22. MATRIZ DECLARADA · FUENTES DE AYUDA · MANUAL');
+console.log('═'.repeat(70));
+
+check('cada marca de la cascada declara sus tareas posibles',
+  S.PERFILES_MARCA.every(m => Array.isArray(S.TAREAS_POSIBLES[m.id]) && S.TAREAS_POSIBLES[m.id].length > 0),
+  S.PERFILES_MARCA.filter(m => !S.TAREAS_POSIBLES[m.id]).map(m => m.id).join('|'));
+check('y cada tarea declarada existe en TAREAS_DEFENSIVAS',
+  Object.keys(S.TAREAS_POSIBLES).every(k => S.TAREAS_POSIBLES[k].every(id => S.TAREAS_DEFENSIVAS.some(t => t.id === id))));
+
+/* Barrido: todas las combinaciones de las cuatro lecturas contra cada fila
+   de la matriz. Si una fila devuelve una tarea que no declaró, el manual
+   estaría documentando otra cosa que la que corre. */
+(() => {
+  const funciones = [null, 'generador-primario', 'finalizador-corto', 'ancla-defensiva', 'rim-runner', 'poste-bajo',
+    'spacing', 'slasher', 'manejador-secundario', 'perimetral-media', 'complementario'];
+  const adns = [null, 'franquicia', 'referente', 'quinteto', 'especialista'];
+  const tecnicos = [[], ['generador'], ['puntal'], ['amenaza'], ['generador', 'buscadorContacto']];
+  const vols = ['nulo', 'bajo', 'medio', 'alto'];
+  const efs = [null, 'alta', 'media', 'baja'];
+  const biotipos = [null, { alto: true, interior: false }, { alto: true, interior: true }, { alto: false, interior: true }];
+  const perfiles = [{ reboteRel: null, perdidasRel: null }, { reboteRel: 2, perdidasRel: 2 }];
+  const fuera = [];
+  Object.keys(S.MATRIZ_TAREAS).forEach(marca => {
+    funciones.forEach(funcion => adns.forEach(adn => tecnicos.forEach(tec => vols.forEach(vol =>
+      efs.forEach(ef => efs.forEach(efUso => biotipos.forEach(bio => perfiles.forEach(p => {
+        const L = { adn: adn, tecnicos: tec, funcion: funcion, biotipo: bio,
+          tiro: { volumen: vol, efectividad: ef }, uso: { volumen: 'medio', efectividad: efUso } };
+        const id = S.MATRIZ_TAREAS[marca](L, p);
+        if ((S.TAREAS_POSIBLES[marca] || []).indexOf(id) === -1) fuera.push(marca + '→' + id);
+      }))))))));
+  });
+  check('ninguna fila de la matriz devuelve una tarea que no declaró',
+    fuera.length === 0, Array.from(new Set(fuera)).join(' | '));
+})();
+
+/* Las fuentes de ayuda. Un generador sin tiro que quedó fuera del tope de
+   focos NO puede ser el lado desde donde sale la ayuda: su defensor está en
+   la cobertura del pick & roll. Un tirador frío que no es foco, sí. */
+(() => {
+  const fila = (nombre, marcaId, perfil) => ({
+    clave: nombre, nombre: nombre,
+    marca: { id: marcaId, etiqueta: marcaId },
+    perfil: Object.assign({ tiroExternoRentable: false, tiroExternoFrio: true, tiroExternoOcasionalFrio: false,
+      concentracion: 0.05, reboteRel: 0.8, pptTriple: 0.7, adn: null }, perfil),
+  });
+  const filas = [
+    fila('GENERADOR, UNO', 'generador-sin-tiro', { concentracion: 0.30 }),
+    fila('GENERADOR, DOS', 'generador-sin-tiro', { concentracion: 0.25 }),
+    fila('GENERADOR, TRES', 'generador-sin-tiro', { concentracion: 0.20 }),
+    fila('ALERO, FRIO', 'tirador-sistematico-frio', {}),
+  ];
+  const eco = S.clasificarEcosistema(filas);
+  const en = (g, n) => eco[g].some(x => x.nombre === n);
+  check('con el tope de focos lleno, el generador sin tiro que sobra NO es fuente de ayuda',
+    !en('focos', 'GENERADOR, TRES') && !en('fuentes', 'GENERADOR, TRES'),
+    'focos: ' + eco.focos.map(x => x.nombre).join(', ') + ' · fuentes: ' + eco.fuentes.map(x => x.nombre).join(', '));
+  check('los generadores dentro del tope son focos, no fuentes',
+    en('focos', 'GENERADOR, UNO') && en('focos', 'GENERADOR, DOS') && !en('fuentes', 'GENERADOR, UNO'));
+  check('el tirador frío que no es foco ni generador SÍ es fuente de ayuda',
+    en('fuentes', 'ALERO, FRIO'));
+})();
+
+/* El manual se genera desde el código: la cantidad de marcas y las tareas
+   tienen que salir de ahí, no de un texto que se quedó en 11. */
+(() => {
+  const html = require('fs').readFileSync('./MANUAL_ETIQUETADO_SGADD.html', 'utf8');
+  check('el manual declara la cascada con la cantidad real de marcas',
+    html.indexOf('cascada de ' + S.PERFILES_MARCA.length) !== -1);
+  check('el manual documenta las doce tareas defensivas',
+    S.TAREAS_DEFENSIVAS.every(t => html.indexOf(t.label.replace(/&/g, '&amp;')) !== -1),
+    S.TAREAS_DEFENSIVAS.filter(t => html.indexOf(t.label.replace(/&/g, '&amp;')) === -1).map(t => t.id).join('|'));
+  const gen = require('fs').readFileSync('./generar-manual-etiquetas.js', 'utf8');
+  check('el generador ya no lee la lista de defensores por marca (no existe más)',
+    !/m\.defensores/.test(gen));
+})();
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

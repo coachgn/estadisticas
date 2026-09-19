@@ -128,6 +128,7 @@ const CORTES_ROL = {
 
 const CORTES_MARCA = {
   'tirador-elite': 'PT3% ≥ ' + un('usoTripleAlto') + ' y PPT3 ≥ ' + un('pptTripleElite'),
+  'generador-sin-tiro': 'no interior · Generador Primario (o arquetipo Generador siendo Franquicia o Referente) · sin tiro rentable · tiro frío u ocasional frío, o no tira de afuera',
   'volumen-sin-eficiencia': 'concentración ≥ ' + un('concentracionAlta') + ' · sin tiro rentable · eFG% por debajo de la liga',
   'tirador-eficiente-bajo-volumen': 'T3I ≥ 1,0 y tiro externo rentable',
   'interior-dominante': 'interior · PPT2 ≥ ' + un('pptDobleAlto'),
@@ -247,13 +248,35 @@ function seccionMarcas() {
   const filas = S.PERFILES_MARCA.map((m, i) => [
     `<b>${i + 1}. ${esc(m.etiqueta)}</b>`,
     `<span class="corte">${(CORTES_MARCA[m.id] || '')}</span>`,
-    (m.defensores || []).map(c => esc(S.PERFILES_DEFENSOR[c.id])).join('<br>'),
+    (S.TAREAS_POSIBLES[m.id] || []).map(id => {
+      const t = S.TAREAS_DEFENSIVAS.find(x => x.id === id);
+      return t ? esc(t.label) + (t.agresivo ? ' <span class="sub">· solo con tiro rentable</span>' : '')
+        + (t.biotipo ? ' <span class="sub">· solo con talla declarada</span>' : '') : '';
+    }).join('<br>'),
+  ]);
+  const filasTareas = S.TAREAS_DEFENSIVAS.map(t => [
+    `<b>${esc(t.label)}</b>`,
+    esc(t.tarea),
+    esc(t.buscar.join(' · ')),
+    t.perfiles.map(c => esc(S.PERFILES_DEFENSOR[c.id])).join('<br>'),
   ]);
   return `
-    <h3>2.2 · Marca asignada <span class="sub">cascada de 11, de la amenaza más cara a la más barata</span></h3>
+    <h3>2.2 · Marca asignada <span class="sub">cascada de ${S.PERFILES_MARCA.length}, de la amenaza más cara a la más barata</span></h3>
     <p>Un jugador puede disparar varias reglas de análisis, pero <b>recibe una sola
     marca</b>: la de la amenaza que más caro sale conceder. El orden ES la regla.</p>
-    ${tabla(['Marca (en orden)', 'Corte', 'Perfiles de defensor candidatos'], filas, 'ancha')}
+    ${tabla(['Marca (en orden)', 'Corte', 'Tarea defensiva posible'], filas, 'ancha')}
+    <p class="nota"><b>Generador sin tiro exterior</b> es la marca que se sumó el 2026-09-18 a las
+    once originales: no reemplaza a ninguna. Va segunda porque su daño es la penetración que
+    sale del pick &amp; roll, y sin ella un generador que tira mucho y mal caía en
+    <i>Tirador sistemático frío</i> y el informe pedía cerrarle el tiro en vez de contenerle
+    la penetración.</p>
+    <h4>La tarea sale de cruzar la marca con cuatro lecturas del jugador</h4>
+    <p>Jerarquía en el plantel, perfiles técnicos, función en cancha y eficiencia contra
+    volumen (del triple y del uso). Dos reglas que no se negocian: <b>el biotipo solo sale de
+    una talla o un puesto escritos en la planilla</b>, nunca de cuántos triples tira; y
+    <b>el cierre agresivo es solo para el tiro que castiga</b> — sin renta, la tarea pasa a
+    flotar y ayudar.</p>
+    ${tabla(['Tarea', 'Qué hay que hacerle', 'Qué buscar en el defensor', 'Perfiles del catálogo'], filasTareas, 'ancha')}
     <div class="caja">
       <b>Las tres reglas de tiro externo, y por qué están en ese orden.</b>
       <ol>
@@ -284,7 +307,7 @@ function seccionDefensores() {
     propio</b>: quién lo cubre depende de quién esté en cancha y de las faltas de cada
     uno. El campo es editable para poner el nombre al armar la rotación.</p>
     <p class="nota">El motor puede sugerir <b>${S.defensoresAlcanzables().length} de los ${S.CATALOGO_DEFENSOR.reduce((a, c) => a + c.perfiles.length, 0)}</b>:
-    cada marca declara varios candidatos y desempata con métricas secundarias
+    cada tarea declara varios candidatos y desempata con métricas secundarias
     (recuperos, rebote ofensivo, asistencias). El resto está para que el cuerpo técnico
     lo elija a mano.</p>
     ${tabla(['Familia', 'Perfiles'], filas, 'ancha')}`;
@@ -292,9 +315,9 @@ function seccionDefensores() {
 
 function seccionPlan() {
   const grupos = [
-    ['🎯 Focos · se dobla', 'marca de tirador de élite, referencia interna o slasher; o concentra ≥ ' + un('concentracionAlta') + ' de los plays; o es franquicia', 'su celda dice desde dónde sale la ayuda'],
+    ['🎯 Focos · se dobla', 'marca de tirador de élite, referencia interna, slasher o generador sin tiro; o concentra ≥ ' + un('concentracionAlta') + ' de los plays; o es franquicia', 'su celda dice desde dónde sale la ayuda'],
     ['🚫 Intocables · no se sueltan', 'tiene tiro externo rentable', 'su defensor no participa de las ayudas'],
-    ['↩ Fuentes de ayuda', 'tiro frío o sin renta', 'es el lado desde donde se dobla'],
+    ['↩ Fuentes de ayuda', 'tiro frío o sin renta, sin ser foco, intocable, cristal ni generador sin tiro', 'es el lado desde donde se dobla'],
     ['🏰 Box-out asignado', 'RO rel ≥ ' + un('reboteOfensivoAlto'), 'su defensor no rota: bloquea'],
   ];
   const filasEsc = S.ESCENARIOS.map(e => [`<b>${esc(e.label)}</b>`, esc({
@@ -306,15 +329,17 @@ function seccionPlan() {
   }[e.id] || '')]);
   return `
     <h3>2.4 · Plan defensivo colectivo <span class="sub">las marcas se conectan entre sí</span></h3>
-    <p>Una defensa no es la suma de once marcas individuales: si a cuatro rivales les
+    <p>Una defensa no es la suma de marcas individuales: si a cuatro rivales les
     ponés <i>"doblar"</i>, te quedaste sin nadie para doblar. El plan clasifica al
-    plantel rival y después cada celda se escribe <b>sabiendo qué hacen las otras diez</b>.</p>
+    plantel rival y después cada celda se escribe <b>sabiendo qué hacen las demás</b>.</p>
     ${tabla(['Grupo', 'Quién entra', 'Qué dice su celda'], grupos.map(g => [`<b>${esc(g[0])}</b>`, `<span class="corte">${g[1]}</span>`, esc(g[2])]), 'ancha')}
     <p class="nota"><b>El orden de los vetos es la lógica del plan.</b> Un intocable
     nunca puede ser fuente de ayuda (soltarlo es el error más caro). Un foco tampoco
     (el que exige doblaje no puede ayudar en otro lado). Un reboteador tampoco: no se
     le puede pedir al mismo defensor que sea el primero en rotar y que no abandone el
-    box-out.</p>
+    box-out. Y un <b>generador sin tiro</b> tampoco, aunque haya quedado fuera del tope de
+    focos: su defensor está en la cobertura del pick &amp; roll y no puede ser el primero en
+    rotar.</p>
     <h4>Escenarios que reconoce</h4>
     ${tabla(['Escenario', 'Se activa cuando'], filasEsc)}
     <p class="aviso"><b>Regla de coherencia:</b> si hay un foco, tiene que haber una

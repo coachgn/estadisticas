@@ -707,6 +707,27 @@ const SGADD_SCOUT = (function () {
     },
   };
 
+  /* Las tareas que CADA FILA de la matriz puede devolver. Lo lee el manual
+     de etiquetado (las filas son funciones y no se pueden listar), y un test
+     barre la matriz con todas las lecturas posibles y falla si una fila
+     devuelve algo que no está declarado acá: una copia que no se puede
+     desincronizar en silencio. */
+  const TAREAS_POSIBLES = {
+    'tirador-elite': ['cierreNegacion', 'perseguidorCortinas'],
+    'generador-sin-tiro': ['underPickRoll'],
+    'volumen-sin-eficiencia': ['flotadorAyudador', 'protectorPintura'],
+    'tirador-eficiente-bajo-volumen': ['cierreNegacion', 'perseguidorCortinas'],
+    'interior-dominante': ['protectorPintura', 'fisicoRebotero'],
+    'slasher': ['contencionPenetracion', 'unoContraUno', 'largoMolesto'],
+    'generador-riesgoso': ['presionBola', 'largoMolesto'],
+    'tirador-sistematico-frio': ['flotadorAyudador', 'contencionPenetracion'],
+    'castigable-en-la-linea': ['contactoLinea'],
+    'tirador-ineficiente': ['flotadorAyudador'],
+    'rebotador': ['fisicoRebotero'],
+    'contencion': ['lectorRotaciones', 'unoContraUno', 'presionBola', 'contencionPenetracion',
+      'flotadorAyudador', 'fisicoRebotero', 'largoMolesto'],
+  };
+
   /** Las cuatro dimensiones en una frase, para el `title` y el PDF. */
   function textoLectura(L) {
     const ef = { alta: 'efectividad alta', media: 'efectividad media', baja: 'efectividad baja' };
@@ -1706,8 +1727,17 @@ const SGADD_SCOUT = (function () {
     /* FUENTES: desde acá sale la ayuda. Tres vetos, en este orden de
        importancia: un intocable NUNCA (soltar un tiro rentable es el error
        más caro), un foco tampoco (el que exige doblaje no puede estar
-       ayudando en otro lado) y un reboteador tampoco (ver arriba). */
+       ayudando en otro lado) y un reboteador tampoco (ver arriba).
+
+       Y un GENERADOR SIN TIRO tampoco, aunque haya quedado fuera del tope
+       de focos: su defensor está en la cobertura del pick & roll (under,
+       contener la penetración), y ése no puede ser el primero en rotar.
+       Sin este veto, con MAX_FOCOS lleno, el que conduce caía acá por su
+       tiro frío y la celda decía «desde acá sale la ayuda» al lado de una
+       consigna que dice «doblar el pick & roll» — medido: 7 de 15 en el
+       libro de DEPORTIVO. */
     const fuentes = filas.filter(f => !esIntocable(f) && !esFoco(f) && !esCristal(f) &&
+        f.marca.id !== 'generador-sin-tiro' &&
         (f.perfil.tiroExternoFrio || f.perfil.tiroExternoOcasionalFrio ||
          ['tirador-ineficiente', 'volumen-sin-eficiencia'].indexOf(f.marca.id) !== -1))
       .sort((a, b) => (a.perfil.pptTriple || 0) - (b.perfil.pptTriple || 0))
@@ -2651,7 +2681,7 @@ const SGADD_SCOUT = (function () {
     MATRIZ_POSESION, MATRIZ_TIRO, METRICAS_RANKING, COLS_JUGADOR,
     PERFILES_MARCA, PERFILES_DEFENSOR, CATALOGO_DEFENSOR, familiaDefensor, REGLAS_CLAVE,
     elegirDefensor, elegirDefensorBalanceado, defensoresAlcanzables,
-    TAREAS_DEFENSIVAS, MATRIZ_TAREAS, FAMILIAS_BIOTIPO, lecturaMultivariable, tareaDefensiva,
+    TAREAS_DEFENSIVAS, MATRIZ_TAREAS, TAREAS_POSIBLES, FAMILIAS_BIOTIPO, lecturaMultivariable, tareaDefensiva,
     textoLectura, guiaDeTarea, perfilesDeTarea, biotipoExplicito,
     ATRIBUTOS_SEÑAL, atributosDefensor, queBuscar, plantelDefensor, enPlan,
     ESCENARIOS, clasificarEcosistema, generarPlanDefensivoColectivo, conexionColectiva,

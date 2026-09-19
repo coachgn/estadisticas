@@ -28,7 +28,7 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  55 tests · detalle partido a partido, perfil de tiro y su PDF
-node test-scouting.js      # 471 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis, titularidad
+node test-scouting.js      # 480 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis, titularidad
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
 node test-permisos.js      # 402 tests · roles, planes, el gate, el selector, el hub, el ciclo,
@@ -91,7 +91,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6100 tests en total. Todos tienen que dar verde antes de commitear.**
+**6109 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -2768,7 +2768,7 @@ de dónde sale la ayuda para hacerlo**.
 |---|---|---|
 | 🎯 **Focos** | marca `tirador-elite`/`interior-dominante`/`slasher`, o concentración ≥ 0,15, o jerarquía franquicia | "la ayuda salta desde X" |
 | 🚫 **Intocables** | `tiroExternoRentable` | "su defensor no participa de las ayudas: se queda" |
-| ↩ **Fuentes** | `tiroExternoFrio` u `ocasionalFrio`, o marca `tirador-ineficiente`/`volumen-sin-eficiencia` | "es el lado desde donde mandar la ayuda y doblar a Y" |
+| ↩ **Fuentes** | `tiroExternoFrio` u `ocasionalFrio`, o marca `tirador-ineficiente`/`volumen-sin-eficiencia`, y **nunca** un `generador-sin-tiro` | "es el lado desde donde mandar la ayuda y doblar a Y" |
 | 🏰 **Cristal** | `reboteRel ≥ 1,30` | "su defensor NO rota: lo bloquea" |
 
 **El orden de cálculo es la lógica del plan**, y los vetos van en este orden:
@@ -3030,7 +3030,22 @@ Lo que hay que respetar al tocarlo:
   tarea —flotarle a dos tiradores fríos es lo correcto— pero no cuatro
   defensores del mismo tipo.
 - **Cada tarea termina en un candidato sin condición**: la sugerencia nunca
-  queda vacía. Son 25 perfiles alcanzables de 33.
+  queda vacía. Las tareas declaran 26 perfiles de los 33; sin talla
+  declarada se alcanzan 25 (el de `largoMolesto` necesita el dato).
+- **`TAREAS_POSIBLES` declara qué tareas puede dar cada marca** — las filas
+  de `MATRIZ_TAREAS` son funciones y el manual no las puede listar. Un test
+  barre la matriz con todas las combinaciones de las cuatro lecturas y falla
+  si una fila devuelve una tarea que no declaró.
+- **Un `generador-sin-tiro` NUNCA es fuente de ayuda**, aunque quede fuera
+  del tope de focos (`MAX_FOCOS` = 2): su defensor está en la cobertura del
+  pick & roll y no puede ser el primero en rotar. Sin el veto, con el tope
+  lleno, el que conduce caía en fuentes por su tiro frío — medido: 7 de 15
+  en el libro de DEPORTIVO. Un tirador frío que no es foco, cristal ni
+  intocable sí es fuente: 12 de los 19 `tirador-sistematico-frio` del
+  mismo libro (los otros son foco por concentración o cristal por rebote).
+- **Es una marca NUEVA, la duodécima**, no reemplaza a ninguna de las once
+  originales. El manual de etiquetado se genera desde el código y ya dice
+  «cascada de 12», con su corte y la tabla de las doce tareas.
 
 Medido sobre las 96 fichas de DEPORTIVO Primera · TOTAL: flotador/ayudador
 20, físico/rebotero 19, cierre/negación 17, under en el P&R 15, presión a la
