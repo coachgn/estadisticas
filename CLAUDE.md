@@ -28,7 +28,8 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  55 tests · detalle partido a partido, perfil de tiro y su PDF
-node test-scouting.js      # 490 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis, titularidad
+node test-scouting.js      # 513 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis,
+                           #             titularidad, las SEÑALES compartidas y el menor de los males
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
 node test-permisos.js      # 402 tests · roles, planes, el gate, el selector, el hub, el ciclo,
@@ -60,7 +61,7 @@ node test-plan-racha.js    #  43 tests · la racha con partidos manuales, el pla
                            #             efectivo del catálogo y el arranque sin destello
 node test-resto.js         # 137 tests · el resto del plantel en tabla, el piso de 5 min, la vía
                            #             de gol líder por partido y la ficha del Plan Oro
-node test-niveles.js       # 657 tests · registro de umbrales, los 6 niveles, la resolución
+node test-niveles.js       # 665 tests · registro de umbrales, los 6 niveles, la resolución
                            #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
 node test-similitud-etiquetas.js #  45 tests · la similitud multi-etiqueta contra el documento
                            #             de etiquetas, el caso Raineri/Benavidez y los afines
@@ -93,7 +94,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6141 tests en total. Todos tienen que dar verde antes de commitear.**
+**6172 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -3048,9 +3049,10 @@ Lo que hay que respetar al tocarlo:
   (`largoMolesto`) sin ese dato cae a `unoContraUno`, y ninguna tarea elige
   de `FAMILIAS_BIOTIPO` por el volumen de triples. Hoy la planilla no trae
   talla, así que en producción no se asigna ninguna de biotipo — a propósito.
-- **Lo agresivo se reserva para el tiro que CASTIGA.** Las tareas marcadas
-  `agresivo` (cierre/negación, perseguidor) sin `tiroExternoRentable` caen a
-  `flotadorAyudador`. Hay un test que recorre las fichas y falla si «llegada
+- **Lo agresivo se reserva para el tiro que CASTIGA _y es su vía más
+  cara_.** Las tareas marcadas `agresivo` (cierre/negación, perseguidor)
+  sin `tiroExternoRentable` caen a `flotadorAyudador`, y si el tiro paga
+  pero su penetración paga MÁS caen a `contencionPenetracion` (punto 64). Hay un test que recorre las fichas y falla si «llegada
   rápida», «salto a tapar», «timing para tapar» o «cierre agresivo»
   aparecen contra un tirador sin renta.
 - **`generador-sin-tiro` es la marca nueva** (segunda de la cascada, ahora
@@ -6416,8 +6418,10 @@ que uno medido.
 
 ### Lo que hay que respetar al tocarlo
 
-- **Los tres absolutos no llevan `semillas` por nivel.** Si las tuvieran,
-  alguien las movería y dejarían de ser absolutos sin que se note.
+- **Los CINCO absolutos no llevan `semillas` por nivel.** Si las tuvieran,
+  alguien las movería y dejarían de ser absolutos sin que se note. Tres lo
+  son porque su brecha medida es chica; `pptTripleRentable` y `t3Rentable`
+  lo son por ECONOMÍA pese a su brecha de 19pp — ver el punto 64.
 - **`JUGADORES_UMBRALES` es el CONTRATO con scouting.** Es su respaldo
   (`COMPARTIDOS`) cuando un perfil no trae mapa de nivel, así que una
   clave que se saca le apaga una regla en silencio. Pasó de catorce a diecisiete al
@@ -9365,3 +9369,185 @@ también con confirmación.
     node server/bin/probar-mails.js --tipo cron --real                        # qué mandaría hoy (solo lee)
     node server/bin/probar-mails.js --tipo bienvenida --email x@y.com --enviar
 
+---
+
+## 64. LAS MARCAS Y LAS CLAVES DEJAN DE CONTRADECIRSE (2026-09-20)
+
+Reportado por el club con un caso concreto: **SCHROEDER, ANDRES** (ATENAS
+'A') —Generador Primario, 25,7 min, PPT2 1,09, PPT3 0,94 al 31,3 %, 22,3 %
+de pérdidas, 1,61x la liga en RO%— recibía en 🛡 **Marcas** «Anulador de
+Tiradores / Sniper Stopper · STAY HOME / PROHIBIDO FLOTAR» mientras las
+🎯 **Claves** pedían trap, box-out y colapso de pintura sobre él. El mismo
+informe, la misma hoja, dos planes opuestos.
+
+### El diagnóstico: DOS defectos encadenados
+
+**1 · El piso económico del tiro rentable se había vuelto relativo.** La
+unificación de la v228 pasó `pptTripleRentable` y `t3Rentable` a percentil
+p68. Medido en el libro real de DEPORTIVO (Local Mayores) resolvían a
+**0,937 PPT3 y 31,3 % de T3%**: Schroeder pasaba el corte por **tres
+milésimas de punto por intento**, quedaba «tirador rentable», su defensor
+recibía stay home y el plan lo marcaba INTOCABLE.
+
+Es el mismo modo de fallar del caso RONDINONE por el lado del «frío»
+(cuatro milésimas, corregido el 2026-09-19): nadie vio que el espejo
+estaba abierto. Y el comentario del propio código lo venía declarando
+desde siempre — *«1,05 puntos por triple intentado supera el valor de una
+posesión promedio en cualquier categoría»*— mientras el registro hacía lo
+contrario.
+
+**2 · La marca es SINGLE-LABEL y las claves son MULTI-LABEL.**
+`REGLAS_CLAVE` devuelve todas las reglas que el jugador activa;
+`PERFILES_MARCA` es una cascada excluyente que se queda con la primera y
+**descarta el resto en silencio**. Peor: los predicados estaban escritos
+DOS VECES —`generador-riesgoso` y la clave `presion-conduccion` evaluaban
+literalmente lo mismo— así que la clave seguía gritando una señal que la
+cascada ya había tirado. Es la familia de bug del rol funcional duplicado
+(punto 8), con el informe contradiciéndose a sí mismo como síntoma.
+
+### Lo que se midió, antes y después (libro real de DEPORTIVO, 206 fichas)
+
+```
+                                                  antes   después
+tareas agresivas (cierre / persecución)              31        20
+  · con PPT2 > PPT3 → se cierra la vía BARATA         9         0
+  · contradichas por una clave sobre el mismo         14         7
+INTOCABLES del plan con PPT3 < 1,00                   6         2
+```
+
+Los 7 que quedan **no son contradicciones**: son tiradores reales (1,50 ·
+1,80 PPT3) que además pierden pelotas o van al cristal. Esa información
+ahora viaja dentro de la marca como MODIFICADOR, así que las dos secciones
+dicen lo mismo.
+
+### Las seis piezas
+
+**1 · El piso vuelve a ser ABSOLUTO.** `pptTripleRentable` 1,05 y
+`t3Rentable` 0,35 pasan a `TIPOS.ABSOLUTO` en `sgadd-niveles.js`. Son
+**cinco** absolutos ahora, por dos motivos distintos: los tres viejos
+porque su brecha medida entre ligas es chica, y estos dos **por economía
+pese a su brecha de 19pp** — no clasifican una población, son el PISO de
+una disyunción (*«paga en absoluto O está por encima de su liga»*) cuya
+otra mitad ya es relativa. Si el piso también se mueve, la regla se queda
+sin ancla. Hay tests que exigen que lo declaren por escrito, porque el día
+que alguien los mire solo por el número los va a «corregir» otra vez.
+
+**2 · El desempate por VALOR ESPERADO.** `senales(p).tripleEsLaViaCara`
+compara los puntos por intento de cada vía (triple, doble, línea) con
+volumen mínimo, y **ninguna marca puede ordenar cerrar una vía que no es
+la más cara**. Vive en dos lugares a propósito: en el test de las marcas
+de tiro y como guarda en `tareaDefensiva`, al lado de la que ya existía.
+Los dos destinos son distintos: si el tiro **no paga**, se flota; si paga
+pero su penetración paga **más**, no se flota —seguiría siendo un tiro
+rentable— sino que se le cierra el primer paso (`contencionPenetracion`).
+
+**3 · `senales(p)` · UN SOLO PREDICADO.** Función pura que contesta las
+catorce lecturas que la marca y las claves comparten (`ejeDelAtaque`,
+`pierdeMucho`, `cristalOfensivo`, `faltaRentable`, `robaBalones`…). Las
+diez claves delegan ahí y **ninguna vuelve a leer `Up(p)` a mano**; hay un
+test de fuente que falla si aparece una que lo haga.
+
+Ojo con una distinción deliberada: **`cristalOfensivo` (solo RO%) decide
+la marca `rebotador` y el grupo del plan** —son las segundas chances que
+cuestan puntos— y **`dominaElCristal` (RO% o RD%) dispara el modificador
+de box-out**, porque el defensor que no puede rotar es el de cualquiera
+que domine el vidrio. No son la misma pregunta.
+
+**4 · Los MODIFICADORES · lo que la cascada descarta no se pierde.** La
+marca sigue siendo una sola —el plan asigna un defensor por rival, no
+cuatro etiquetas— pero arrastra lo que las otras señales activaron:
+
+| modificador | cuándo | eje |
+|---|---|---|
+| 🏰 box-out asignado obligatorio | `RO% rel ≥ 1,30` **o** `RD% rel ≥ 1,30` | sin pelota |
+| 🧤 acoso al drible | `%TOV ≥ 20 %` **o** `perdidasRel ≥ 1,25` | con pelota |
+| 🎯 / ⚖ nota de falta | ver la pieza 6 | con pelota |
+
+**Un modificador que repite lo que la marca ya dice en su título NO se
+emite** (`MARCA_YA_LO_DICE`): «BOX-OUT DE CHOQUE» con «BOX-OUT ASIGNADO
+OBLIGATORIO» al lado es la marca discutiendo consigo misma, y en una celda
+angosta el ruido tapa lo que sí es nuevo. Lo cazó mirar la pantalla, no
+los tests.
+
+**5 · ON-BALL / OFF-BALL explícito.** Las columnas pasan a **«Con pelota ·
+cobertura»** (Under/Drop/Over/Trap, mano hábil, distancia de contención) y
+**«Sin pelota · ayudas y cristal»** (Stay Home / Help & Recover / Sink &
+Fill + responsabilidad en el rebote). Las doce parejas se reescribieron
+para que cada una sea realmente eso.
+
+`marca.conPelota` y `marca.sinPelota` son **el mismo objeto** que
+`consigna` y `restriccion`, no una copia: dos copias se desincronizan en
+cuanto alguien edite una. Los nombres viejos se quedan porque son el
+contrato que leen el input editable, el PDF y los tests, y el contrato de
+editabilidad no se toca — título en mayúsculas ≤ 45 caracteres y editable,
+detalle con el número y solo lectura.
+
+**6 · La falta táctica con valor esperado y margen.** `t1Regalable` se
+había relativizado a p3 y en el libro real resolvía a **0,20**: la marca
+`castigable-en-la-linea` estaba prácticamente muerta. El corte ahora es
+económico y por jugador:
+
+```
+la falta es negocio  ⟺  2 × T1% + 0,15  ≤  PPT2     y  T1% < 58 %
+```
+
+**El margen de 0,15 es la mitad de la regla**: sin él la decisión se da
+vuelta por ruido —medido en el caso Schroeder, 1,07 contra 1,09, dos
+centésimas—. Y hace falta **volumen de línea** (`T1I ≥ 1,5`), o un jugador
+que casi no va a la línea sale con «T1% 0,0 % → la falta es negocio»: el
+cero no dice que falle los libres, dice que no los tiró. Es la distinción
+del punto 3, tercera vez que aparece en el proyecto (la cazó GARCIA,
+MATÍAS en el libro real).
+
+**El panel NO conoce el bonus ni las faltas personales**: la planilla no
+trae estado de partido. Eso se emite como condición que verifica el DT
+—*«solo fuera del bonus y con margen de faltas del defensor»*— nunca como
+cálculo. Hay un test que lo exige por escrito.
+
+### Lo que esto le cambió a las secciones «protegidas», y por qué
+
+El club pidió tocar solo 🛡 Marcas, y hubo que avisarle de algo que la
+auditoría encontró: **el 🧠 Resumen leía el MISMO flag**, así que no
+estaba contradiciendo a las Marcas — estaba del mismo lado del error. Su
+tramo de stay home decía *«prohibido soltar a MARCATILI (1,00 PPT3)»* de
+alguien que rinde **1,17 adentro**. Con la opción B autorizada, ese tramo
+y los bullets de la 📋 Ficha se corrigen solos: **su lógica no se tocó**,
+solo el dato que leen. Verificado en la demo: el Resumen ahora lista
+únicamente tiradores de 1,36 · 1,22 · 1,13 PPT3, que son exactamente los
+que la tabla de marcas manda no soltar.
+
+### Los tres casos de aceptación, medidos sobre el libro real
+
+```
+SCHROEDER (sintético, sus números)  → generador-sin-tiro
+    CON PELOTA  UNDER EN EL P&R / CONTENER LA PENETRACIÓN.
+    SIN PELOTA  DOBLAR EL PICK & ROLL, NO EL TIRO.
+    MOD         acoso al drible · no cortar con falta · box-out asignado
+    plan        focos + cristal   (ya no INTOCABLE)
+
+RIVELLI (sniper real, 1,30 PPT3)    → tirador-elite            SIN CAMBIOS
+    CON PELOTA  TOP LOCK / OVER.        SIN PELOTA  STAY HOME.
+
+CABALLERO (pívot real, T1% 24,0 %)  → interior-dominante
+    MOD         falta rentable (0,48 esperados contra 1,05) · box-out
+```
+
+### Lo que hay que respetar al tocarlo
+
+- **Toda regla que ORDENE perseguir el tiro usa
+  `amenazaExteriorPrimaria`, no `tiroExternoRentable` a secas.** Son los
+  INTOCABLES del plan, el tramo de stay home del Resumen, las dos marcas
+  de tiro y la lectura `efectividad: 'alta'` de `lecturaMultivariable`.
+  `tiroExternoRentable` sigue existiendo y describe el tiro; lo que
+  decide el PLAN es si además es su vía más cara.
+- **Una clave nueva se escribe en `senales`, no en su `buscar`.** Hay un
+  test de fuente que lo fija, y es lo único que impide que la tabla de
+  marcas y las claves vuelvan a divergir.
+- **Un modificador nuevo declara su EJE** (`conPelota` / `sinPelota`) y
+  entra a `MARCA_YA_LO_DICE` si alguna marca ya lo dice en su título.
+- **Los cortes del manual salen del generador**, que ya los imprime por
+  nivel: `node generar-manual-etiquetas.js` después de cambiar una regla.
+- **Cada arreglo se verificó AL REVÉS**: revirtiendo el piso absoluto caen
+  4 tests, la guarda del valor esperado 1, el gate de la marca 1, la
+  delegación de las claves 1, el modificador de box-out 2, los dos ejes 1
+  y la guarda de volumen de línea 1.

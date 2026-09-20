@@ -20,7 +20,11 @@
        astPPGenerador           1,40    p59–p93   34pp
 
    Los tres primeros describen economía del básquet y se quedan absolutos
-   para siempre. Hay tests acá que fallan si alguien los mueve.
+   para siempre. Desde el 2026-09-20 son CINCO: `pptTripleRentable` (1,05)
+   y `t3Rentable` (0,35) volvieron a absolutos aunque su brecha sea de
+   19pp, porque no clasifican una población sino que son el PISO de una
+   disyunción —«paga en absoluto O está por encima de su liga»— cuya otra
+   mitad ya es relativa. Hay tests acá que fallan si alguien los mueve.
    ===================================================================== */
 
 const fs = require('fs');
@@ -83,11 +87,21 @@ N.CALIBRADOS.forEach(id => ok(N.esNivel(id), 'y ' + id + ' es un nivel real'));
    ===================================================================== */
 bloque('2 · Los absolutos legítimos');
 
-const ABSOLUTOS = {
+/* CINCO absolutos, por dos motivos distintos (ver el registro).
+   Los tres primeros lo son porque la medición los respalda: su brecha
+   entre ligas es chica. Los dos últimos lo son por ECONOMÍA — son el
+   piso de una disyunción cuya otra mitad ya es relativa— y por eso se
+   listan aparte: su brecha es grande y eso no los invalida. */
+const ABSOLUTOS_POR_BRECHA = {
   pptTripleElite: 1.20,
   mezclaTripleInterior: 0.12,
   mezclaTripleaPerimetral: 0.30,
 };
+const ABSOLUTOS_POR_ECONOMIA = {
+  pptTripleRentable: 1.05,
+  t3Rentable: 0.35,
+};
+const ABSOLUTOS = Object.assign({}, ABSOLUTOS_POR_BRECHA, ABSOLUTOS_POR_ECONOMIA);
 Object.entries(ABSOLUTOS).forEach(([k, v]) => {
   const d = N.definicion(k);
   ok(!!d, k + ' está en el registro');
@@ -105,12 +119,25 @@ Object.entries(ABSOLUTOS).forEach(([k, v]) => {
     '  ' + k + ' vale igual en ' + id));
 });
 
-/* La brecha de los tres es menor a la de cualquier relativo: es
+/* La brecha de los tres MEDIDOS es menor a la de cualquier relativo: es
    exactamente el criterio que los separa. */
 const brecha = (d) => { const m = /brecha (\d+)pp/.exec(d.medido || ''); return m ? +m[1] : null; };
-Object.keys(ABSOLUTOS).forEach(k => {
+Object.keys(ABSOLUTOS_POR_BRECHA).forEach(k => {
   const b = brecha(N.definicion(k));
   ok(b !== null && b <= 12, k + ' tiene brecha ≤ 12pp (' + b + ')');
+});
+
+/* Los DOS económicos declaran por escrito que su brecha es grande y que
+   igual son absolutos. Sin esa declaración, el día que alguien los mire
+   solo por el número va a "corregirlos" a percentil otra vez — que es
+   exactamente lo que pasó en la v228 y le costó al informe de scouting
+   mandar «stay home» sobre jugadores que rinden más adentro. */
+Object.keys(ABSOLUTOS_POR_ECONOMIA).forEach(k => {
+  const d = N.definicion(k);
+  ok(/absoluto por ECONOMÍA/.test(d.medido || ''),
+     k + ' declara que es absoluto por economía y no por brecha', d.medido);
+  ok(/posesión|puntos por intento|piso/i.test(d.porque || ''),
+     k + ' explica el argumento económico', d.porque);
 });
 
 /* =====================================================================
@@ -438,8 +465,8 @@ VARA.umbrales.forEach(u => {
   ok(!!u.origen, u.clave + ' declara su procedencia');
   ok(u.valor !== null && u.valor !== undefined, u.clave + ' tiene valor');
 });
-igual(VARA.umbrales.filter(u => u.origen === 'absoluto').length, 3,
-      'y los tres absolutos salen marcados como fijos');
+igual(VARA.umbrales.filter(u => u.origen === 'absoluto').length, Object.keys(ABSOLUTOS).length,
+      'y los absolutos salen marcados como fijos');
 
 /* Sin nivel declarado la vara igual se arma: lo que cambia es que dice
    que nadie lo declaro, que es exactamente lo que hay que poder ver. */

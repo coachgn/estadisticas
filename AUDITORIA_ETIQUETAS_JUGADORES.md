@@ -1580,3 +1580,25 @@ claves de II.6 leen ahora el mismo mapa por nivel que las etiquetas de la
 sección I (`SGADD_SCOUT.umbralesDe`), en vez de los literales de Liga
 Argentina. En Local Mayores eso mueve 27 de 96 marcas en el libro de
 DEPORTIVO; el detalle está en el punto 45 de `CLAUDE.md`.
+
+**Un solo predicado para las marcas y las claves (2026-09-20).** Las
+reglas de II.3 y las de II.6 dejaron de escribir sus umbrales a mano: las
+dos leen `SGADD_SCOUT.senales(p)`. Estaban duplicadas —`generador-riesgoso`
+y la clave de presión a la conducción evaluaban literalmente lo mismo— y
+como la marca es una CASCADA EXCLUYENTE y las claves son MULTI-ETIQUETA, el
+informe podía pedir «stay home» en la tabla y «trap» en las claves sobre el
+mismo jugador. Lo que la cascada descarta vuelve ahora como MODIFICADOR de
+la marca (box-out, acoso al drible, nota de falta), así que ninguna señal
+se pierde por haber elegido una sola etiqueta.
+
+Dos reglas de esta vuelta que cambian cómo se lee una etiqueta de II.3:
+
+- **`amenazaExteriorPrimaria`** reemplaza a `tiroExternoRentable` en todo
+  lo que ORDENA perseguir el tiro: hace falta que el tiro pague **y** que
+  sea su vía más cara en puntos por intento. Cerrarle el triple de 0,94 a
+  quien rinde 1,09 adentro es regalarle la vía buena.
+- **El piso de `tiroExternoRentable` volvió a ser ABSOLUTO** (1,05 PPT3 /
+  35 % de T3%). Como percentil p68 resolvía a 0,937 en Local Mayores y un
+  tirador de 31,3 % entraba como «rentable».
+
+Detalle completo en el punto 64 de `CLAUDE.md`.

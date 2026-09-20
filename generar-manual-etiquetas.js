@@ -127,16 +127,16 @@ const CORTES_ROL = {
 };
 
 const CORTES_MARCA = {
-  'tirador-elite': 'PT3% ≥ ' + un('usoTripleAlto') + ' y PPT3 ≥ ' + un('pptTripleElite'),
-  'generador-sin-tiro': 'no interior · Generador Primario (o arquetipo Generador siendo Franquicia o Referente) · sin tiro rentable',
-  'volumen-sin-eficiencia': 'concentración ≥ ' + un('concentracionAlta') + ' · sin tiro rentable · eFG% por debajo de la liga',
-  'tirador-eficiente-bajo-volumen': 'T3I ≥ 1,0 y tiro externo rentable',
+  'tirador-elite': 'PT3% ≥ ' + un('usoTripleAlto') + ' · PPT3 ≥ ' + un('pptTripleElite') + ' · y el triple es su vía más cara',
+  'generador-sin-tiro': 'no interior · Generador Primario (o arquetipo Generador siendo Franquicia o Referente) · su tiro no es la amenaza primaria',
+  'volumen-sin-eficiencia': 'concentración ≥ ' + un('concentracionAlta') + ' · su tiro no es la amenaza primaria · eFG% por debajo de la liga',
+  'tirador-eficiente-bajo-volumen': 'T3I ≥ 1,0 · tiro externo rentable · y el triple es su vía más cara (PPT3 ≥ PPT2)',
   'interior-dominante': 'interior · PPT2 ≥ ' + un('pptDobleAlto'),
   slasher: 'perimetral · PPT2 ≥ ' + un('pptDobleAlto'),
   'generador-riesgoso': 'pérdidas ≥ ' + un('perdidasAltas') + '× la liga · MIN ≥ ' + un('minutosClave'),
   'tirador-sistematico-frio': 'T3I ≥ ' + un('volumenTripleSistematico') + ' y tiro externo frío',
-  'castigable-en-la-linea': 'T1% &lt; ' + un('t1Regalable') + ' y PT2% ≥ ' + un('usoDobleInterno'),
-  'tirador-ineficiente': 'PT3% ≥ ' + un('usoTripleAlto') + ' · PPT3 ≤ ' + un('pptTriplePobre') + ' · no rentable · no es la vía principal',
+  'castigable-en-la-linea': 'T1I ≥ 1,5 · T1% &lt; 58% · 2×T1% + 0,15 ≤ PPT2 · PT2% ≥ ' + un('usoDobleInterno'),
+  'tirador-ineficiente': 'PT3% ≥ ' + un('usoTripleAlto') + ' · PPT3 ≤ ' + un('pptTriplePobre') + ' · su tiro no es la amenaza primaria · no es la vía principal',
   rebotador: 'RO rel ≥ ' + un('reboteOfensivoAlto'),
   contencion: 'fallback: ninguna amenaza domina',
 };
@@ -250,7 +250,7 @@ function seccionMarcas() {
     `<span class="corte">${(CORTES_MARCA[m.id] || '')}</span>`,
     (S.TAREAS_POSIBLES[m.id] || []).map(id => {
       const t = S.TAREAS_DEFENSIVAS.find(x => x.id === id);
-      return t ? esc(t.label) + (t.agresivo ? ' <span class="sub">· solo con tiro rentable</span>' : '')
+      return t ? esc(t.label) + (t.agresivo ? ' <span class="sub">· solo si el tiro rinde Y es su vía más cara</span>' : '')
         + (t.biotipo ? ' <span class="sub">· solo con talla declarada</span>' : '') : '';
     }).join('<br>'),
   ]);

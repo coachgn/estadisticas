@@ -180,6 +180,152 @@ const SGADD_SCOUT = (function () {
   function porDebajo(b) { return !!b && (b.id === 'limitado' || b.id === 'fuga'); }
 
   /* =====================================================================
+     SEÑALES · UN SOLO PREDICADO PARA LA MARCA Y PARA LAS CLAVES
+
+     El defecto que esto cierra (auditoría del 2026-09-20, caso SCHROEDER ·
+     ATENAS 'A'): `REGLAS_CLAVE` es MULTI-etiqueta —devuelve todas las
+     reglas que el jugador activa— y `PERFILES_MARCA` es una CASCADA
+     EXCLUYENTE que se queda con la primera y descarta el resto en
+     silencio. Los predicados estaban escritos DOS VECES, uno en cada
+     sección, así que el informe podía decir «stay home, prohibido flotar»
+     en la tabla de marcas y «trap y acoso al drible» en las claves sobre
+     el mismo jugador, en la misma hoja. Medido sobre el libro real de
+     DEPORTIVO: 14 de 206 fichas contradichas.
+
+     Ahora las dos secciones leen de acá. Un mismo hecho produce una misma
+     instrucción, y lo que la cascada descarta no se pierde: vuelve como
+     MODIFICADOR de la marca (ver `modificadoresDe`).
+
+     Es la misma lección del rol funcional duplicado (punto 8 del
+     CLAUDE.md): un número escrito dos veces termina distinto.
+     ===================================================================== */
+
+  /* Volumen mínimo para que una vía de ataque entre a la comparación de
+     valor esperado. Sin piso, un jugador con un triple en todo el torneo
+     tendría «la vía más cara» en el triple. */
+  const VOL_MIN_TRIPLE = 1.0;   // triples por partido
+  const VOL_MIN_DOBLE = 2.0;    // dobles por partido
+  const VOL_MIN_LIBRE = 1.5;    // libres por partido
+
+  /* %TOV absoluto que dispara el acoso al drible, ADEMÁS del relativo a la
+     liga que ya existía. Pedido del club (2026-09-20): perder una de cada
+     cinco posesiones es presionable en cualquier categoría, aunque la liga
+     entera pierda mucho y el relativo no lo marque. */
+  const TOV_ACOSO = 0.20;
+
+  /* FALTA TÁCTICA · el techo de la banda condicional y el margen.
+     `2 × T1%` son los puntos esperados de mandarlo a la línea; si eso es
+     menor que lo que rinde terminando la jugada (PPT2), la falta es
+     negocio. El MARGEN existe porque sin él la decisión se da vuelta por
+     ruido: medido en el caso Schroeder, 1,07 contra 1,09 — dos centésimas
+     no son una diferencia táctica. */
+  const T1_CONDICIONAL = 0.58;
+  const MARGEN_FALTA = 0.15;
+
+  /**
+   * Las lecturas que la marca y las claves comparten. Función PURA: recibe
+   * el perfil ya calculado y no toca el índice.
+   *
+   * Cada campo contesta UNA pregunta de cancha, no una métrica suelta.
+   */
+  function senales(p) {
+    const q = p || {};
+    const U_ = Up(q);
+    const vias = [];
+    if (nn(q.t3i) !== null && q.t3i >= VOL_MIN_TRIPLE && nn(q.pptTriple) !== null) {
+      vias.push({ id: 'triple', valor: q.pptTriple, label: 'el triple' });
+    }
+    if (nn(q.t2i) !== null && q.t2i >= VOL_MIN_DOBLE && nn(q.pptDoble) !== null) {
+      vias.push({ id: 'doble', valor: q.pptDoble, label: 'la penetración o el poste' });
+    }
+    if (nn(q.t1i) !== null && q.t1i >= VOL_MIN_LIBRE && nn(q.t1) !== null) {
+      vias.push({ id: 'linea', valor: 2 * q.t1, label: 'la línea' });
+    }
+    vias.sort((a, b) => b.valor - a.valor);
+
+    /* EL DESEMPATE POR VALOR ESPERADO. Con `>=` el empate se resuelve a
+       favor del triple: cerrar el perímetro es la decisión conservadora y
+       es lo que el informe venía haciendo, así que un empate exacto no
+       cambia de comportamiento. */
+    const tripleEsLaViaCara = nn(q.pptTriple) !== null && nn(q.pptDoble) !== null
+      ? q.pptTriple >= q.pptDoble
+      : true;
+
+    /* LA AMENAZA EXTERIOR PRIMARIA · el gate que reemplaza a
+       `tiroExternoRentable` a secas en todo lo que ORDENA perseguir el
+       tiro. Dos condiciones: que el tiro pague (economía o banda de liga)
+       y que sea SU vía más cara. Cerrarle el triple de 0,94 a alguien que
+       rinde 1,09 adentro es regalarle la vía buena — medido: 9 de 31
+       asignaciones agresivas del libro real estaban invertidas. */
+    const amenazaExteriorPrimaria = !!q.tiroExternoRentable && tripleEsLaViaCara;
+
+    const min = nn(q.min);
+    const minClave = min !== null && min >= U_.minutosClave;
+
+    return {
+      vias: vias,
+      viaCara: vias.length ? vias[0] : null,
+      tripleEsLaViaCara: tripleEsLaViaCara,
+      amenazaExteriorPrimaria: amenazaExteriorPrimaria,
+
+      /* Eje del ataque: concentra los plays del equipo. */
+      ejeDelAtaque: nn(q.concentracion) !== null && q.concentracion >= U_.concentracionAlta,
+
+      /* Su triple es caro de verdad y lo tira seguido. */
+      castigaDeTresCaro: nn(q.usoTriple) !== null && nn(q.pptTriple) !== null &&
+        q.usoTriple >= U_.usoTripleAlto && q.pptTriple >= U_.pptTripleElite,
+
+      /* Tira mucho de afuera y no rinde: es el tiro que conviene conceder. */
+      invitableAlTriple: nn(q.usoTriple) !== null && nn(q.pptTriple) !== null &&
+        q.usoTriple >= U_.usoTripleAlto && q.pptTriple <= U_.pptTriplePobre && minClave,
+
+      /* Castiga adentro y termina ahí la mayoría de sus ataques. */
+      colapsaLaPintura: nn(q.pptDoble) !== null && nn(q.usoDoble) !== null &&
+        q.pptDoble >= U_.pptDobleAlto && q.usoDoble >= 0.40,
+
+      /* Pérdidas: el absoluto del club O el relativo a la liga. */
+      pierdeMucho: (nn(q.perdidas) !== null && q.perdidas >= TOV_ACOSO) ||
+        (nn(q.perdidasRel) !== null && q.perdidasRel >= U_.perdidasAltas),
+      presionable: ((nn(q.perdidas) !== null && q.perdidas >= TOV_ACOSO) ||
+        (nn(q.perdidasRel) !== null && q.perdidasRel >= U_.perdidasAltas)) && minClave,
+
+      /* CRISTAL · dos lecturas, a propósito distintas. La OFENSIVA es la
+         que decide la marca `rebotador` y el grupo del plan: son las
+         segundas chances que nos cuestan puntos. La TOTAL (ofensivo o
+         defensivo) dispara el modificador de box-out, porque el defensor
+         que no puede rotar es el de cualquiera que domine el vidrio. */
+      cristalOfensivo: nn(q.reboteRel) !== null && q.reboteRel >= U_.reboteOfensivoAlto,
+      dominaElCristal: (nn(q.reboteRel) !== null && q.reboteRel >= U_.reboteOfensivoAlto) ||
+        (nn(q.reboteDefRel) !== null && q.reboteDefRel >= U_.reboteOfensivoAlto),
+
+      /* Manos: condiciona NUESTRO manejo. */
+      robaBalones: porEncima(q.bandaPr) && minClave,
+
+      /* LÍNEA DE LIBRES · las dos caras, que nunca pueden apuntar al mismo.
+         `faltaRentable` es económica y por jugador: los puntos esperados de
+         mandarlo a la línea contra lo que rinde si termina la jugada. */
+      protegeLaLinea: nn(q.usoLibre) !== null && nn(q.t1) !== null &&
+        q.usoLibre >= U_.usoLibreAlto && q.t1 >= U_.t1Confiable,
+      regalableEnLaLinea: nn(q.usoLibre) !== null && nn(q.t1) !== null &&
+        q.usoLibre >= U_.usoLibreAlto && q.t1 <= U_.t1Pobre,
+      /* CON VOLUMEN DE LÍNEA, o el T1% no es un dato. Sin la guarda, un
+         jugador que casi no va a la línea sale con «T1% 0,0% → la falta es
+         negocio»: el cero no dice que falle los libres, dice que no los
+         tiró (la distinción del punto 3 del CLAUDE.md, tercera vez que
+         aparece en el proyecto). Medido: GARCIA, MATÍAS en el libro real. */
+      faltaRentable: nn(q.t1) !== null && nn(q.pptDoble) !== null &&
+        nn(q.t1i) !== null && q.t1i >= VOL_MIN_LIBRE &&
+        q.t1 < T1_CONDICIONAL && (2 * q.t1 + MARGEN_FALTA) <= q.pptDoble,
+      faltaEvaluable: nn(q.t1) !== null && nn(q.t1i) !== null &&
+        q.t1i >= VOL_MIN_LIBRE && q.t1 < T1_CONDICIONAL,
+
+      /* El que lanza lo justo para que importe y no lo justo para perseguirlo. */
+      concesionPerimetral: !!q.tiroExternoOcasionalFrio && minClave,
+      minutosClave: minClave,
+    };
+  }
+
+  /* =====================================================================
      ROLES FUNCIONALES — sin posiciones tradicionales
 
      Cascada excluyente, del rol que más condiciona el plan al que menos.
@@ -589,8 +735,13 @@ const SGADD_SCOUT = (function () {
     const t3i = nn(q.t3i);
     const volTiro = t3i === null || t3i < 1.0 ? (t3i === null || t3i === 0 ? 'nulo' : 'bajo')
       : (t3i >= Up(q).volumenTripleSistematico ? 'alto' : 'medio');
+    /* «Efectividad alta» significa que su tiro ES la amenaza, no solo que
+       el porcentaje alcanza: un jugador que rinde más adentro no puede
+       leerse como amenaza exterior alta o la matriz le asigna una tarea de
+       perímetro (2026-09-20). */
     const efTiro = volTiro === 'nulo' ? null
-      : (q.tiroExternoRentable ? 'alta' : ((q.tiroExternoFrio || q.tiroExternoOcasionalFrio) ? 'baja' : 'media'));
+      : (senales(q).amenazaExteriorPrimaria ? 'alta'
+        : ((q.tiroExternoFrio || q.tiroExternoOcasionalFrio) ? 'baja' : 'media'));
 
     const conc = nn(q.concentracion);
     const volUso = (jer === 'franquicia' || jer === 'referente' || (conc !== null && conc >= Up(q).concentracionAlta)) ? 'alto'
@@ -738,10 +889,13 @@ const SGADD_SCOUT = (function () {
      devuelve algo que no está declarado acá: una copia que no se puede
      desincronizar en silencio. */
   const TAREAS_POSIBLES = {
-    'tirador-elite': ['cierreNegacion', 'perseguidorCortinas'],
+    /* Las dos filas de tiro declaran además `contencionPenetracion` y
+       `flotadorAyudador`: son los destinos de las guardas de
+       `tareaDefensiva` cuando el tiro no paga o no es su vía más cara. */
+    'tirador-elite': ['cierreNegacion', 'perseguidorCortinas', 'contencionPenetracion', 'flotadorAyudador'],
     'generador-sin-tiro': ['underPickRoll'],
     'volumen-sin-eficiencia': ['flotadorAyudador', 'protectorPintura'],
-    'tirador-eficiente-bajo-volumen': ['cierreNegacion', 'perseguidorCortinas'],
+    'tirador-eficiente-bajo-volumen': ['cierreNegacion', 'perseguidorCortinas', 'contencionPenetracion', 'flotadorAyudador'],
     'interior-dominante': ['protectorPintura', 'fisicoRebotero'],
     'slasher': ['contencionPenetracion', 'unoContraUno', 'largoMolesto'],
     'generador-riesgoso': ['presionBola', 'largoMolesto'],
@@ -780,9 +934,21 @@ const SGADD_SCOUT = (function () {
     let id;
     try { id = elegir(L, perfil); } catch (e) { id = 'lectorRotaciones'; }
     let t = TAREA(id) || TAREA('lectorRotaciones');
-    /* Las dos guardas duras, por si una rama futura se olvida de ellas. */
+    /* Las tres guardas duras, por si una rama futura se olvida de ellas.
+
+       LO AGRESIVO SE RESERVA PARA EL TIRO QUE CASTIGA **Y ES SU VÍA MÁS
+       CARA** (2026-09-20). La primera mitad ya estaba; la segunda es el
+       desempate por valor esperado. Sin ella, el informe le cerraba el
+       triple de 0,94 a un jugador que rinde 1,09 adentro —o sea le
+       cerraba la vía barata y le abría la cara— en 9 de las 31
+       asignaciones agresivas del libro real.
+
+       Los dos destinos son distintos a propósito: si el tiro NO paga, se
+       flota; si paga pero su penetración paga MÁS, no se flota —seguiría
+       siendo un tiro rentable— sino que se le cierra el primer paso. */
     if (t.biotipo && !(L.biotipo && (L.biotipo.alto || L.biotipo.interior))) t = TAREA('unoContraUno');
     if (t.agresivo && !perfil.tiroExternoRentable) t = TAREA('flotadorAyudador');
+    if (t.agresivo && !senales(perfil).tripleEsLaViaCara) t = TAREA('contencionPenetracion');
     return {
       id: t.id, label: t.label, tarea: t.tarea, buscar: t.buscar.slice(), agresivo: !!t.agresivo,
       lectura: L, porque: textoLectura(L),
@@ -827,16 +993,18 @@ const SGADD_SCOUT = (function () {
     {
       id: 'tirador-elite',
       etiqueta: 'Amenaza perimetral de élite',
-      test: (p) => p.usoTriple >= Up(p).usoTripleAlto && p.pptTriple >= Up(p).pptTripleElite,
+      test: (p) => p.usoTriple >= Up(p).usoTripleAlto && p.pptTriple >= Up(p).pptTripleElite &&
+        senales(p).tripleEsLaViaCara,
       consigna: (p) => ({
         titulo: 'TOP LOCK / OVER.',
-        detalle: 'Tirador de élite (' + num2(p.pptTriple) + ' PPT3 sobre ' + pct(p.usoTriple) +
-          ' de uso). Pasar siempre por arriba de la cortina para negarle el catch & shoot.',
+        detalle: 'Pasar siempre por arriba de la cortina para negarle el catch & shoot: tirador de élite (' +
+          num2(p.pptTriple) + ' PPT3 sobre ' + pct(p.usoTriple) +
+          ' de uso). La contención es a cuerpo, nunca un paso atrás.',
       }),
       restriccion: (p) => ({
-        titulo: 'NO AYUDAR DESDE ÉL.',
-        detalle: 'Cada rotación que lo deja solo vale ' + num2(p.pptTriple) +
-          ' puntos por intento. Antes de doblar a otro, chequear dónde está él.',
+        titulo: 'STAY HOME · NO AYUDAR DESDE ÉL.',
+        detalle: 'Su defensor no entra a ninguna rotación. Cada ayuda que lo deja solo vale ' +
+          num2(p.pptTriple) + ' puntos por intento: antes de doblar a otro, chequear dónde está él.',
       }),
     },
     {
@@ -859,14 +1027,15 @@ const SGADD_SCOUT = (function () {
          de 0,652 en Local Mayores) quedaba afuera por cuatro milésimas y
          caía en «Lector de rotaciones». Ir por debajo del bloqueo vale
          contra cualquier tiro que no castiga. */
-      test: (p) => !p.esInterior && !p.tiroExternoRentable && esGenerador(lecturaMultivariable(p)),
+      test: (p) => !p.esInterior && !senales(p).amenazaExteriorPrimaria &&
+        esGenerador(lecturaMultivariable(p)),
       consigna: (p) => ({
         titulo: 'UNDER EN EL P&R / CONTENER LA PENETRACIÓN.',
         detalle: 'Genera el juego (' + num2(p.astPP) + ' AST-PP) pero su tiro exterior no castiga: ' +
           (p.tiraDeAfuera
             ? num1(p.t3i) + ' triples por partido con ' + pct(p.t3) + ' (' + num2(p.pptTriple) + ' PPT3)'
             : pct(p.usoTriple) + ' de sus plays terminan en triple') +
-          '. Pasar las cortinas por detrás y cerrarle el camino al aro.',
+          '. Pasar las cortinas por detrás, cerrarle el camino al aro y sacarlo de su mano hábil.',
       }),
       restriccion: (p) => ({
         titulo: 'DOBLAR EL PICK & ROLL, NO EL TIRO.',
@@ -891,19 +1060,21 @@ const SGADD_SCOUT = (function () {
          corrigieron las dos cosas. */
       id: 'volumen-sin-eficiencia',
       etiqueta: 'Volumen alto, eficiencia baja',
-      test: (p) => p.concentracion !== null && p.concentracion >= Up(p).concentracionAlta &&
-        !p.tiroExternoRentable && (porDebajo(p.bandaEfg) ||
+      test: (p) => senales(p).ejeDelAtaque &&
+        !senales(p).amenazaExteriorPrimaria && (porDebajo(p.bandaEfg) ||
           (p.efg !== null && p.bandaEfg !== null && p.bandaEfg.id === 'fuga')),
       consigna: (p) => ({
         titulo: 'PERMITIR EL TIRO EXTERNO.',
-        detalle: 'Concentra ' + pct(p.concentracion) + ' de los plays del equipo con un eFG% de ' +
-          pct(p.efg) + ' (' + (p.bandaEfg ? p.bandaEfg.label.toLowerCase() : 'sin referencia de liga') +
+        detalle: 'Defensa de pecho a un paso, sin presión al manejo: concentra ' + pct(p.concentracion) +
+          ' de los plays del equipo con un eFG% de ' + pct(p.efg) + ' (' +
+          (p.bandaEfg ? p.bandaEfg.label.toLowerCase() : 'sin referencia de liga') +
           '). Cuanto más resuelva él, mejor para nosotros.',
       }),
       restriccion: (p) => ({
-        titulo: 'NO DOBLAR.',
-        detalle: 'Doblarlo le baja el volumen y le sube la eficiencia al resto: ' +
-          'que termine él la posesión es el mejor escenario.',
+        titulo: 'NO DOBLAR · SINK & FILL.',
+        detalle: 'Su defensor se hunde a tapar el pase interior en vez de salir a doblarlo: ' +
+          'doblarlo le baja el volumen y le sube la eficiencia al resto, y con ' + pct(p.efg) +
+          ' de eFG% que termine él la posesión es el mejor escenario.',
       }),
     },
     {
@@ -911,15 +1082,16 @@ const SGADD_SCOUT = (function () {
          corrige es tratar "pocos puntos" como "no es amenaza". */
       id: 'tirador-eficiente-bajo-volumen',
       etiqueta: 'Tirador eficiente (poco volumen, alta renta)',
-      test: (p) => p.tiraDeAfuera && p.tiroExternoRentable,
+      test: (p) => p.tiraDeAfuera && senales(p).amenazaExteriorPrimaria,
       consigna: (p) => ({
-        titulo: 'STAY HOME / NEGACIÓN DE RECEPCIÓN.',
-        detalle: 'Convierte ' + pct(p.t3) + ' de triple con ' + num2(p.pptTriple) +
-          ' por intento aunque promedie ' + num1(p.pts) + ' PTS. Anota poco por volumen, no por eficiencia.',
+        titulo: 'OVER / STAY HOME EN LA RECEPCIÓN.',
+        detalle: 'Pasar por arriba de toda cortina y negarle el balón: convierte ' + pct(p.t3) +
+          ' de triple con ' + num2(p.pptTriple) + ' por intento aunque promedie ' + num1(p.pts) +
+          ' PTS. Anota poco por volumen, no por eficiencia.',
       }),
       restriccion: (p) => ({
         titulo: 'PROHIBIDO FLOTAR.',
-        detalle: 'Su bajo promedio de puntos engaña: si lo soltamos, ese tiro es el más caro que conceden (' +
+        detalle: 'Su defensor no ayuda ni se hunde: su bajo promedio de puntos engaña, y si lo soltamos ese tiro es el más caro que conceden (' +
           num2(p.pptTriple) + ' PPT3).',
       }),
     },
@@ -936,8 +1108,8 @@ const SGADD_SCOUT = (function () {
       }),
       restriccion: (p) => ({
         titulo: 'AYUDA DE LADO DÉBIL AL PASE INTERIOR.',
-        detalle: 'Si le ganan la posición, la ayuda llega desde el lado débil. El box-out es de choque: ' +
-          'con ' + num2(p.reboteRel) + 'x la liga en RO%, sus segundas chances valen tanto como su primer tiro.',
+        detalle: 'Si le ganan la posición, la ayuda llega desde el lado débil y nunca desde un tirador rentable. ' +
+          'El box-out es de choque: con ' + num2(p.reboteRel) + 'x la liga en RO%, sus segundas chances valen tanto como su primer tiro.',
       }),
     },
     {
@@ -945,29 +1117,30 @@ const SGADD_SCOUT = (function () {
       etiqueta: 'Slasher / penetrador',
       test: (p) => p.esPerimetral && p.pptDoble >= Up(p).pptDobleAlto,
       consigna: (p) => ({
-        titulo: 'CONTENCIÓN DE MANO DOMINANTE.',
-        detalle: 'Ataca el aro desde afuera con ' + num2(p.pptDoble) + ' PPT2 y ' +
-          pct(p.mezclaTriple) + ' de sus tiros de campo desde la línea de 3. El daño es en el primer paso.',
+        titulo: 'UNDER / CONTENCIÓN DE MANO DOMINANTE.',
+        detalle: 'Pasar las cortinas por detrás y cerrarle el primer paso hacia su mano hábil: ataca el aro con ' +
+          num2(p.pptDoble) + ' PPT2 y ' + pct(p.mezclaTriple) +
+          ' de sus tiros de campo desde la línea de 3. El daño es en el primer paso.',
       }),
       restriccion: (p) => ({
-        titulo: 'SIN SALTAR AL AMAGUE.',
-        detalle: 'Defensa de pecho y recupero: obligarlo a la media distancia, ' +
+        titulo: 'SIN SALTAR AL AMAGUE · AYUDA AL DRIVE.',
+        detalle: 'Defensa de pecho y recupero, y la ayuda temprana entra al drive: obligarlo a la media distancia, ' +
           'que es donde su renta cae por debajo de ' + num2(p.pptDoble) + '.',
       }),
     },
     {
       id: 'generador-riesgoso',
       etiqueta: 'Conductor con pérdidas altas',
-      test: (p) => p.perdidasRel >= Up(p).perdidasAltas && p.min >= Up(p).minutosClave,
+      test: (p) => senales(p).presionable,
       consigna: (p) => ({
         titulo: 'ACOSO AL DRIBLE / TRAP.',
         detalle: 'Es el eje pero con ' + pct(p.perdidas) + ' de pérdidas (' + num2(p.perdidasRel) +
           'x la liga). Saltarle al atrape en mitad de cancha e ir al ice en cada P&R.',
       }),
       restriccion: (p) => ({
-        titulo: 'FORZAR EL ERROR SIN FALTA.',
-        detalle: 'Sus ' + pct(p.perdidas) + ' de pérdidas son más baratas que defenderle la jugada, pero ' +
-          'una falta en el atrape le devuelve la posesión y nos carga el bonus.',
+        titulo: 'CERRAR LA SALIDA · SIN FALTA.',
+        detalle: 'El trap solo paga si la línea de pase de la salida está cubierta: sus ' + pct(p.perdidas) +
+          ' de pérdidas son más baratas que defenderle la jugada, pero una falta en el atrape le devuelve la posesión y nos carga el bonus.',
       }),
     },
     {
@@ -978,29 +1151,39 @@ const SGADD_SCOUT = (function () {
       test: (p) => p.tiradorSistematico && p.tiroExternoFrio,
       consigna: (p) => ({
         titulo: 'PASO ATRÁS / CONTESTAR SIN SALTAR.',
-        detalle: 'Lanza ' + num1(p.t3i) + ' triples por partido con ' + pct(p.t3) + ' de acierto (' +
-          num2(p.pptTriple) + ' PPT3). Mano arriba por volumen, no por peligro: su defensor prioriza las ayudas.',
+        detalle: 'Under en toda cortina y mano arriba sin saltar, por volumen, no por peligro: lanza ' +
+          num1(p.t3i) + ' triples por partido con ' + pct(p.t3) + ' de acierto (' +
+          num2(p.pptTriple) + ' PPT3).',
       }),
       restriccion: (p) => ({
-        titulo: 'NO VOLAR AL CIERRE.',
-        detalle: 'Con ' + num2(p.pptTriple) + ' por intento no justifica romper la estructura: ' +
-          'un cierre largo lo deja pasar de cara y saca a su defensor de la ayuda.',
+        titulo: 'HELP & RECOVER · NO VOLAR AL CIERRE.',
+        detalle: 'Su defensor es de los primeros en la ayuda y vuelve: con ' + num2(p.pptTriple) +
+          ' por intento no justifica romper la estructura, y un cierre largo lo deja pasar de cara.',
       }),
     },
     {
       id: 'castigable-en-la-linea',
       etiqueta: 'Vulnerable en la línea',
-      /* Umbral duro a propósito: T1% < 40% Y volumen interno real. */
-      test: (p) => p.t1 !== null && p.t1 < Up(p).t1Regalable && p.usoDoble >= Up(p).usoDobleInterno,
+      /* EL CORTE ES ECONÓMICO Y POR JUGADOR (2026-09-20), no un percentil.
+         `t1Regalable` se había relativizado a p3 y en el libro real
+         resolvía a 0,20: la marca quedaba prácticamente muerta. Ahora
+         `faltaRentable` compara los puntos esperados de mandarlo a la
+         línea (2 × T1%) contra lo que rinde si termina la jugada (PPT2),
+         con un margen para que la decisión no se dé vuelta por ruido.
+         Se conserva la exigencia de volumen interno: la falta se comete
+         cuando va a finalizar cerca del aro, no en cualquier posesión. */
+      test: (p) => senales(p).faltaRentable && p.usoDoble >= Up(p).usoDobleInterno,
       consigna: (p) => ({
         titulo: 'VERTICALIDAD SIN CONTACTO.',
-        detalle: 'Concentra ' + pct(p.usoDoble) + ' de sus plays adentro pero convierte ' + pct(p.t1) +
+        detalle: 'Cuerpo antes de la recepción y brazos arriba: concentra ' + pct(p.usoDoble) +
+          ' de sus plays adentro pero convierte ' + pct(p.t1) +
           ' de libres. Si finaliza cerca del aro, la falta dura es negocio.',
       }),
       restriccion: (p) => ({
         titulo: 'ÚNICO PERFIL DONDE LA FALTA ES NEGOCIO.',
-        detalle: 'Con ' + pct(p.t1) + ' en la línea le estamos cambiando una finalización por ' +
-          num2((p.t1 || 0) * 2) + ' puntos esperados. Con cualquier otro rival, no.',
+        detalle: 'Con ' + pct(p.t1) + ' en la línea le estamos cambiando una finalización de ' +
+          num2(p.pptDoble) + ' por ' + num2((p.t1 || 0) * 2) +
+          ' puntos esperados. Fuera del bonus y con margen de faltas del defensor; con cualquier otro rival, no.',
       }),
     },
     {
@@ -1009,30 +1192,33 @@ const SGADD_SCOUT = (function () {
       id: 'tirador-ineficiente',
       etiqueta: 'Tirador de volumen sin renta',
       test: (p) => p.usoTriple >= Up(p).usoTripleAlto && p.pptTriple <= Up(p).pptTriplePobre &&
-        !p.tiroExternoRentable && !p.viaPrincipalExterna,
+        !senales(p).amenazaExteriorPrimaria && !p.viaPrincipalExterna,
       consigna: (p) => ({
         titulo: 'UNDER / FLOTACIÓN.',
-        detalle: 'Tira ' + pct(p.usoTriple) + ' de sus plays de afuera y saca ' + num2(p.pptTriple) +
-          ' por intento sin ser la vía principal del ataque. Cerrar la penetración y dejarlo lanzar.',
+        detalle: 'Bajo toda cortina, un paso atrás y a cerrar la penetración: tira ' + pct(p.usoTriple) +
+          ' de sus plays de afuera y saca ' + num2(p.pptTriple) +
+          ' por intento sin ser la vía principal del ataque. Dejarlo lanzar.',
       }),
       restriccion: (p) => ({
-        titulo: 'INVITACIÓN AL TIRO.',
-        detalle: 'Su PPT2 es de ' + num2(p.pptDoble) + ': es preferible que flote a que entre al aro.',
+        titulo: 'INVITACIÓN AL TIRO · ES FUENTE DE AYUDA.',
+        detalle: 'Su defensor es de los primeros en rotar y su PPT2 es de ' + num2(p.pptDoble) +
+          ': es preferible que flote a que entre al aro.',
       }),
     },
     {
       id: 'rebotador',
       etiqueta: 'Rebotador de impacto',
-      test: (p) => p.reboteRel !== null && p.reboteRel >= Up(p).reboteOfensivoAlto,
+      test: (p) => senales(p).cristalOfensivo,
       consigna: (p) => ({
         titulo: 'BOX-OUT DE CHOQUE.',
-        detalle: 'Captura ' + num2(p.reboteRel) + 'x la mediana de la liga en rebote ofensivo (' +
-          num1(p.ro) + ' RO). Hay que sacarlo del semicírculo antes de que salte.',
+        detalle: 'Contacto antes de que salte: captura ' + num2(p.reboteRel) +
+          'x la mediana de la liga en rebote ofensivo (' + num1(p.ro) +
+          ' RO). Hay que sacarlo del semicírculo, no mirar el tiro.',
       }),
       restriccion: (p) => ({
-        titulo: 'NO DEJARLO ENTRAR EN CARRERA.',
-        detalle: 'Las segundas chances son su vía de anotación: si llega lanzado al rebote, ' +
-          'la posesión defensiva no termina.',
+        titulo: 'NO ROTAR DESDE ÉL.',
+        detalle: 'Su defensor no participa de las ayudas: lo bloquea. Las segundas chances son su vía de anotación (' +
+          num2(p.reboteRel) + 'x la liga en RO%) y si llega lanzado al rebote la posesión defensiva no termina.',
       }),
     },
     {
@@ -1041,11 +1227,12 @@ const SGADD_SCOUT = (function () {
       test: () => true,   // fallback: siempre calza
       consigna: (p) => ({
         titulo: 'DROP COVERAGE / CLOSE-OUT CORTO.',
-        detalle: 'Con ' + num1(p.min) + ' minutos y ' + num2(p.ppp) + ' PPP no concentra volumen ' +
-          'ni tiene una amenaza dominante: alcanza con no regalarle nada fácil.',
+        detalle: 'Drop en el P&R y cierre corto, sin perseguirlo: con ' + num1(p.min) + ' minutos y ' +
+          num2(p.ppp) + ' PPP no concentra volumen ni tiene una amenaza dominante. ' +
+          'Alcanza con no regalarle nada fácil.',
       }),
       restriccion: (p) => ({
-        titulo: 'AYUDAR DESDE ÉL.',
+        titulo: 'HELP & RECOVER · AYUDAR DESDE ÉL.',
         detalle: 'Con ' + pct(p.usoTriple) + ' de uso externo y ' + num2(p.pptTriple) + ' PPT3 no castiga ' +
           'la rotación: es el lado por donde mandar la ayuda y desde donde doblar a los que sí condicionan el partido.',
       }),
@@ -1550,6 +1737,71 @@ const SGADD_SCOUT = (function () {
     return { id: 'complementario', label: 'Rol Complementario', detalle: '' };
   }
 
+  /* =====================================================================
+     LOS MODIFICADORES · lo que la cascada descarta no se pierde
+
+     La marca sigue siendo UNA sola —el plan defensivo asigna un defensor
+     por rival, no cuatro etiquetas—, pero las señales que la cascada dejó
+     atrás vuelven acá como instrucción. Es la otra mitad del arreglo del
+     2026-09-20: antes esas señales solo sobrevivían en las 🎯 Claves, y
+     por eso la tabla de marcas y las claves podían pedir cosas opuestas
+     sobre el mismo jugador.
+
+     Cada modificador declara su EJE, así cae en la celda que corresponde:
+     el acoso al drible y la falta son decisiones CON pelota, el box-out
+     es responsabilidad SIN pelota.
+     ===================================================================== */
+  /* Lo que cada marca YA DICE en su propio título: repetirlo como
+     modificador es ruido, y en una celda angosta el ruido tapa lo que sí
+     es nuevo. «BOX-OUT DE CHOQUE» + «BOX-OUT ASIGNADO OBLIGATORIO» en la
+     misma fila es la marca discutiendo consigo misma. */
+  const MARCA_YA_LO_DICE = {
+    'rebotador': ['boxOut'],
+    'generador-riesgoso': ['acosoDrible'],
+    'castigable-en-la-linea': ['faltaRentable', 'faltaCara'],
+  };
+
+  function modificadoresDe(perfil, marcaId) {
+    const p = perfil || {};
+    const s = senales(p);
+    const dichos = MARCA_YA_LO_DICE[marcaId] || [];
+    const m = [];
+
+    if (s.pierdeMucho) {
+      m.push({
+        id: 'acosoDrible', eje: 'conPelota', icono: '🧤',
+        titulo: 'ACOSO AL DRIBLE.',
+        detalle: 'Pierde ' + pct(p.perdidas) + ' de sus plays (' + num2(p.perdidasRel) +
+          'x la liga): presión sobre el manejo y forzarle el pase bajo presión, sin falta.',
+      });
+    }
+    if (s.faltaEvaluable) {
+      m.push(s.faltaRentable ? {
+        id: 'faltaRentable', eje: 'conPelota', icono: '🎯',
+        titulo: 'FALTA RENTABLE, CON CONDICIONES.',
+        detalle: 'Convierte ' + pct(p.t1) + ' de libres: mandarlo a la línea son ' +
+          num2((p.t1 || 0) * 2) + ' puntos esperados contra ' + num2(p.pptDoble) +
+          ' si termina la jugada. Solo fuera del bonus y con margen de faltas del defensor.',
+      } : {
+        id: 'faltaCara', eje: 'conPelota', icono: '⚖',
+        titulo: 'NO CORTAR CON FALTA.',
+        detalle: 'Convierte ' + pct(p.t1) + ' de libres: la línea le vale ' +
+          num2((p.t1 || 0) * 2) + ' puntos esperados y la jugada ' + num2(p.pptDoble) +
+          '. Cortarla con falta le sube el valor de la posesión.',
+      });
+    }
+    if (s.dominaElCristal) {
+      m.push({
+        id: 'boxOut', eje: 'sinPelota', icono: '🏰',
+        titulo: 'BOX-OUT ASIGNADO OBLIGATORIO.',
+        detalle: 'Domina el cristal (' + num2(p.reboteRel) + 'x la liga en RO% · ' +
+          num2(p.reboteDefRel) + 'x en RD%): su defensor busca el contacto antes de mirar el tiro ' +
+          'y no abandona el rebote para rotar.',
+      });
+    }
+    return m.filter(x => dichos.indexOf(x.id) === -1);
+  }
+
   /**
    * Marca asignada sugerida: primera de la cascada que calza.
    *
@@ -1557,6 +1809,11 @@ const SGADD_SCOUT = (function () {
    * además `consignaTexto`/`restriccionTexto` planos, porque el input
    * editable de la tabla y el export a PDF necesitan un string y no un
    * objeto — pero el que manda es el objeto.
+   *
+   * DESDE 2026-09-20 el par tiene nombre de EJE: `conPelota` y `sinPelota`
+   * son el MISMO objeto que `consigna` y `restriccion` (no una copia: dos
+   * copias se desincronizan en cuanto alguien edite una). Lo viejo queda
+   * porque es el contrato que leen el input editable, el PDF y los tests.
    */
   function marcaSugerida(perfil) {
     const p = PERFILES_MARCA.find(d => {
@@ -1587,6 +1844,10 @@ const SGADD_SCOUT = (function () {
       familiaDefensor: familiaDefensor(perfilCatalogo),
       queBuscar: guiaDeTarea(tarea),
       consigna: consigna, restriccion: restriccion,
+      /* Los dos ejes, apuntando a los MISMOS objetos. */
+      conPelota: consigna, sinPelota: restriccion,
+      modificadores: modificadoresDe(perfil, p.id),
+      senales: senales(perfil),
       consignaTexto: (consigna.titulo + ' ' + consigna.detalle).trim(),
       restriccionTexto: (restriccion.titulo + ' ' + restriccion.detalle).trim(),
       /* `porque` se mantiene por compatibilidad con el resto del módulo:
@@ -1716,8 +1977,13 @@ const SGADD_SCOUT = (function () {
     }, extra || {});
 
     /* INTOCABLES primero: la pertenencia a este grupo veta la de FUENTES.
-       Es la regla más cara del informe — soltar a un tirador rentable. */
-    const intocables = filas.filter(f => f.perfil.tiroExternoRentable)
+       Es la regla más cara del informe — soltar a un tirador rentable.
+
+       Desde el 2026-09-20 el gate es `amenazaExteriorPrimaria` y no
+       `tiroExternoRentable` a secas: a alguien que rinde MÁS adentro no se
+       le puede pedir al defensor que no se hunda nunca. Medido en el libro
+       real antes del cambio: 6 intocables con PPT3 por debajo de 1,00. */
+    const intocables = filas.filter(f => senales(f.perfil).amenazaExteriorPrimaria)
       .map(f => ref(f, 'T3% ' + pct(f.perfil.t3) + ' con ' + num2(f.perfil.pptTriple) + ' por intento'));
     const esIntocable = (f) => intocables.some(x => x.clave === f.clave);
 
@@ -1726,7 +1992,7 @@ const SGADD_SCOUT = (function () {
        los plays" de alguien que entró por ser referencia interna hace
        parecer que 7,8% es mucho, y no lo es. */
     const motivoFoco = (f) => {
-      if (f.perfil.concentracion !== null && f.perfil.concentracion >= Up(f.perfil).concentracionAlta) {
+      if (senales(f.perfil).ejeDelAtaque) {
         return pct(f.perfil.concentracion) + ' de los plays del equipo';
       }
       if (f.perfil.adn && f.perfil.adn.jerarquia && f.perfil.adn.jerarquia.id === 'franquicia') {
@@ -1736,7 +2002,7 @@ const SGADD_SCOUT = (function () {
     };
     const focos = filas.filter(f =>
       ['tirador-elite', 'interior-dominante', 'slasher', 'generador-sin-tiro'].indexOf(f.marca.id) !== -1 ||
-      (f.perfil.concentracion !== null && f.perfil.concentracion >= Up(f.perfil).concentracionAlta) ||
+      senales(f.perfil).ejeDelAtaque ||
       (f.perfil.adn && f.perfil.adn.jerarquia && f.perfil.adn.jerarquia.id === 'franquicia'))
       .sort((a, b) => (b.perfil.concentracion || 0) - (a.perfil.concentracion || 0))
       .slice(0, MAX_FOCOS)
@@ -1748,8 +2014,7 @@ const SGADD_SCOUT = (function () {
        pedirle al mismo defensor que sea el primero en rotar y que no
        abandone el box-out. El rebote gana, porque la segunda chance anula
        todo el trabajo defensivo previo. */
-    const cristal = filas.filter(f => f.perfil.reboteRel !== null &&
-        f.perfil.reboteRel >= Up(f.perfil).reboteOfensivoAlto)
+    const cristal = filas.filter(f => senales(f.perfil).cristalOfensivo)
       .sort((a, b) => b.perfil.reboteRel - a.perfil.reboteRel)
       .map(f => ref(f, num2(f.perfil.reboteRel) + 'x la mediana de la liga en RO%'));
     const esCristal = (f) => cristal.some(x => x.clave === f.clave);
@@ -2369,61 +2634,56 @@ const SGADD_SCOUT = (function () {
   const REGLAS_CLAVE = [
     {
       id: 'ejes-eficiencia', icono: '📉', titulo: 'Ejes de eficiencia',
-      buscar: (ps) => ps.filter(p => p.concentracion !== null && p.concentracion >= Up(p).concentracionAlta),
+      buscar: (ps) => ps.filter(p => senales(p).ejeDelAtaque),
       texto: (ms) => 'Neutralizar a ' + nombres(ms) + ': concentra' + (ms.length > 1 ? 'n' : '') + ' ' +
         ms.map(m => pct(m.concentracion)).join(' y ') + ' de los plays del equipo. ' +
         'Sacarlo' + (ms.length > 1 ? 's' : '') + ' del partido descompone la ofensiva entera.',
     },
     {
       id: 'clausura-tiradores', icono: '🏹', titulo: 'Clausura de tiradores',
-      buscar: (ps) => ps.filter(p => p.usoTriple !== null && p.pptTriple !== null &&
-        p.usoTriple >= Up(p).usoTripleAlto && p.pptTriple >= Up(p).pptTripleElite),
+      buscar: (ps) => ps.filter(p => senales(p).castigaDeTresCaro),
       texto: (ms) => 'Deny y close-out largo sobre ' + nombres(ms) + ': ' +
         detallePorJugador(ms, m => 'saca ' + num2(m.pptTriple) + ' pts por triple intentado') +
         '. Es el tiro más caro que conceden.',
     },
     {
       id: 'invitacion-triple', icono: '🎁', titulo: 'Invitación selectiva al triple',
-      buscar: (ps) => ps.filter(p => p.usoTriple !== null && p.pptTriple !== null &&
-        p.usoTriple >= Up(p).usoTripleAlto && p.pptTriple <= Up(p).pptTriplePobre && p.min >= Up(p).minutosClave),
+      buscar: (ps) => ps.filter(p => senales(p).invitableAlTriple),
       texto: (ms) => 'Regalarle el perímetro a ' + nombres(ms) + ': tira' + (ms.length > 1 ? 'n' : '') +
         ' mucho de afuera con ' + ms.map(m => num2(m.pptTriple)).join(' y ') + ' de renta por intento. ' +
         'Cerrar los caminos a la pintura y dejar que siga' + (ms.length > 1 ? 'n' : '') + ' lanzando.',
     },
     {
       id: 'disciplina-bonus', icono: '🚫', titulo: 'Disciplina de bonus / control de T1',
-      buscar: (ps) => ps.filter(p => p.usoLibre !== null && p.t1 !== null &&
-        p.usoLibre >= Up(p).usoLibreAlto && p.t1 >= Up(p).t1Confiable),
+      buscar: (ps) => ps.filter(p => senales(p).protegeLaLinea),
       texto: (ms) => 'Defensa vertical sin contacto sobre ' + nombres(ms) + ': ' +
         detallePorJugador(ms, m => 'convierte ' + pct(m.t1) + ' de libres con ' + pct(m.usoLibre) + ' de sus plays en la línea') +
         '. Mandarlo' + (ms.length > 1 ? 's' : '') + ' a la línea es regalarle puntos.',
     },
     {
       id: 'castigo-linea', icono: '🎯', titulo: 'Falta táctica rentable',
-      buscar: (ps) => ps.filter(p => p.usoLibre !== null && p.t1 !== null &&
-        p.usoLibre >= Up(p).usoLibreAlto && p.t1 <= Up(p).t1Pobre),
+      buscar: (ps) => ps.filter(p => senales(p).regalableEnLaLinea),
       texto: (ms) => 'Si hay que cortar una jugada, la falta va sobre ' + nombres(ms) + ' (' +
         ms.map(m => pct(m.t1)).join(' y ') + ' en libres). Cambiar una posesión por sus tiros libres ' +
         'baja el valor esperado de esa jugada.',
     },
     {
       id: 'presion-conduccion', icono: '🧤', titulo: 'Presión a la conducción',
-      buscar: (ps) => ps.filter(p => p.perdidasRel !== null && p.perdidasRel >= Up(p).perdidasAltas && p.min >= Up(p).minutosClave),
+      buscar: (ps) => ps.filter(p => senales(p).presionable),
       texto: (ms) => 'Trap y acoso al drible sobre ' + nombres(ms) + ': ' +
         detallePorJugador(ms, m => 'pierde ' + pct(m.perdidas) + ' de sus plays (' + num2(m.perdidasRel) + 'x la liga)') +
         '. El error propio es la forma más barata de defenderlos.',
     },
     {
       id: 'cristal', icono: '🏰', titulo: 'Control del cristal',
-      buscar: (ps) => ps.filter(p => p.reboteRel !== null && p.reboteRel >= Up(p).reboteOfensivoAlto),
+      buscar: (ps) => ps.filter(p => senales(p).cristalOfensivo),
       texto: (ms) => 'Box-out asignado sobre ' + nombres(ms) + ' (' +
         ms.map(m => num2(m.reboteRel) + 'x la liga en rebote ofensivo').join('; ') +
         '). Sin cargado físico nos generan segundas oportunidades toda la noche.',
     },
     {
       id: 'pintura', icono: '🛡', titulo: 'Colapso de la pintura',
-      buscar: (ps) => ps.filter(p => p.pptDoble !== null && p.usoDoble !== null &&
-        p.pptDoble >= Up(p).pptDobleAlto && p.usoDoble >= 0.40),
+      buscar: (ps) => ps.filter(p => senales(p).colapsaLaPintura),
       texto: (ms) => 'Ayuda temprana sobre ' + nombres(ms) + ': ' +
         detallePorJugador(ms, m => 'rinde ' + num2(m.pptDoble) + ' por doble intentado') +
         '. Obligarlos a soltar la pelota antes de la posición de tiro.',
@@ -2434,7 +2694,7 @@ const SGADD_SCOUT = (function () {
          que roba por encima de su liga condiciona NUESTRO manejo, y eso se
          prepara antes del partido, no en el primer tiempo muerto. */
       id: 'lineas-de-pase', icono: '🧲', titulo: 'Líneas de pase del rival',
-      buscar: (ps) => ps.filter(p => porEncima(p.bandaPr) && p.min >= Up(p).minutosClave),
+      buscar: (ps) => ps.filter(p => senales(p).robaBalones),
       texto: (ms) => 'Manos activas en ' + nombres(ms) + ': ' +
         detallePorJugador(ms, m => 'recupera ' + num1(m.pr) + ' balones por partido') +
         '. Nada de pases cruzados ni de salida en bandeja: pivotear y pasar con el cuerpo entre medio.',
@@ -2445,7 +2705,7 @@ const SGADD_SCOUT = (function () {
          Sin esta clave, el DT no tenía dónde leer que ESE es el tiro que
          conviene conceder cuando hay que elegir. */
       id: 'concesion-perimetral', icono: '📐', titulo: 'Concesión perimetral selectiva',
-      buscar: (ps) => ps.filter(p => p.tiroExternoOcasionalFrio && p.min >= Up(p).minutosClave),
+      buscar: (ps) => ps.filter(p => senales(p).concesionPerimetral),
       texto: (ms) => 'Si hay que soltar a alguien, es ' + nombres(ms) + ': ' +
         detallePorJugador(ms, m => 'lanza ' + num1(m.t3i) + ' triples con ' + num2(m.pptTriple) + ' de renta') +
         '. Volumen bajo para perseguirlos, renta baja para preocuparse: cerrar el aro y aceptar ese tiro.',
@@ -2584,8 +2844,12 @@ const SGADD_SCOUT = (function () {
         ' Su marca es la decisión más cara de la noche: ' + eje.marca.consigna.titulo.toLowerCase().replace(/.$/, '') + '.');
     }
 
-    /* ---- 3. Stay home: los que no se sueltan ---- */
-    const cerrar = priorizar(filas.filter(f => f.perfil.tiroExternoRentable)).slice(0, 3);
+    /* ---- 3. Stay home: los que no se sueltan ----
+       El mismo gate que los INTOCABLES del plan y que la tabla de marcas
+       (2026-09-20). Con `tiroExternoRentable` a secas este tramo mandaba
+       stay home sobre jugadores que rinden más adentro y contradecía a la
+       celda de su propia marca, en la misma hoja. */
+    const cerrar = priorizar(filas.filter(f => senales(f.perfil).amenazaExteriorPrimaria)).slice(0, 3);
     if (cerrar.length) {
       partes.push('Prohibido soltar a ' +
         enumerar(cerrar.map(f => neg(f.nombre) + ' (' + pct(f.perfil.t3) + ' de 3, ' + num2(f.perfil.pptTriple) + ' PPT3)')) +
@@ -2724,6 +2988,10 @@ const SGADD_SCOUT = (function () {
     ESCENARIOS, clasificarEcosistema, generarPlanDefensivoColectivo, conexionColectiva,
     get ROLES_FUNCIONALES() { return rolesFuncionales(); },
     statLiga, bandaLiga, porEncima, porDebajo,
+    /* EL predicado compartido por la cascada de marcas y las claves. */
+    senales, modificadoresDe,
+    TOV_ACOSO, T1_CONDICIONAL, MARGEN_FALTA,
+    VOL_MIN_TRIPLE, VOL_MIN_DOBLE, VOL_MIN_LIBRE,
     celdaMatriz, referenciaLiga, filaMatriz, matrizComparativa, rankingsLiga,
     detallePartido, fichaEquipo, historialDirecto,
     analizarSubset, analisisCiclo,
@@ -3521,12 +3789,24 @@ function scoutFilasMarcas(t) {
        un nombre: quién lo cubre depende de quién esté en cancha y de las
        faltas de cada uno. El DT lo reemplaza al armar la rotación. */
     const defensor = g.defensor !== undefined ? g.defensor : f.marca.defensor;
-    const celdaDirectiva = (valor, campo, detalle, color) => `
+    /* LOS MODIFICADORES caen en la celda de SU eje (con o sin pelota): son
+       las señales que la cascada descartó al elegir una sola marca y que
+       antes solo sobrevivían en las claves estratégicas. Van FUERA del
+       input: el título editable sigue siendo uno solo por celda. */
+    const modsDe = (eje) => (f.marca.modificadores || [])
+      .filter(m => m.eje === eje)
+      .map(m => `
+          <p class="scout-modificador text-[10px] leading-snug mt-1 text-left">
+            <span class="text-accent font-semibold">${escapeHtml(m.icono + ' ' + m.titulo)}</span>
+            <span class="text-muted">${escapeHtml(m.detalle)}</span>
+          </p>`).join('');
+    const celdaDirectiva = (valor, campo, detalle, color, eje) => `
         <td class="px-2 py-2 align-top text-left">
           <input type="text" value="${escapeAttr(valor)}"
             oninput="scoutMarca('${SGADD_UI.escJs(f.clave)}', '${campo}', this.value)"
             class="w-full bg-surface2 border border-hairline rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ${color} focus:border-accent outline-none">
           <p class="text-[10px] text-muted leading-snug mt-1 text-left">${escapeHtml(detalle)}</p>
+          ${modsDe(eje)}
         </td>`;
     return `
       <tr class="border-b border-hairline/40 last:border-0 align-top">
@@ -3554,8 +3834,8 @@ function scoutFilasMarcas(t) {
               <span class="text-ink">${escapeHtml(f.marca.queBuscar.texto)}.</span>
             </p>` : ''}
         </td>
-        ${celdaDirectiva(consigna, 'consigna', f.marca.consigna.detalle, 'text-accent')}
-        ${celdaDirectiva(restriccion, 'restriccion', f.marca.restriccion.detalle, 'text-white')}
+        ${celdaDirectiva(consigna, 'consigna', f.marca.consigna.detalle, 'text-accent', 'conPelota')}
+        ${celdaDirectiva(restriccion, 'restriccion', f.marca.restriccion.detalle, 'text-white', 'sinPelota')}
       </tr>`;
   }).join('');
 }
@@ -3619,8 +3899,8 @@ function scoutBloqueMarcasTabla(inf) {
         <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
           <th class="px-2 pb-1" style="width:18%">Jugador rival</th>
           <th class="px-2 pb-1" style="width:22%" data-glosa="El arquetipo defensivo que conviene contra este jugador y qué atributos buscar. Qué jugador de tu plantel lo cumple lo decide el cuerpo técnico.">Perfil defensivo ideal</th>
-          <th class="px-2 pb-1" style="width:30%">Consigna técnica principal</th>
-          <th class="px-2 pb-1" style="width:30%">Restricción / alerta</th>
+          <th class="px-2 pb-1" style="width:30%" data-glosa="Qué hacer cuando ESTE jugador tiene la pelota: cobertura del bloqueo directo (under, drop, over, trap), mano hábil y distancia de contención.">Con pelota · cobertura</th>
+          <th class="px-2 pb-1" style="width:30%" data-glosa="Qué hace su defensor cuando la pelota NO está en sus manos: posición de ayuda (stay home, help &amp; recover, sink &amp; fill) y responsabilidad en el cristal.">Sin pelota · ayudas y cristal</th>
         </tr></thead>
         <tbody>${filas}</tbody>
       </table></div>
@@ -3860,6 +4140,15 @@ function scoutBloqueFichas(inf) {
   const lista = (items, color) => items.map(x =>
     `<li class="flex gap-1.5 items-start"><span class="shrink-0${scoutTono(color)}" style="color:${color}">•</span><span>${escapeHtml(x)}</span></li>`).join('');
 
+  /* Los mismos modificadores de la tabla de marcas, en el eje que les
+     toca. Se leen del motor, no se rearman: dos renderizadores que
+     escriban el mismo texto terminan diciendo cosas distintas. */
+  const modsFicha = (f, eje) => (f.marca.modificadores || [])
+    .filter(m => m.eje === eje)
+    .map(m => `<p class="scout-modificador text-[10px] leading-snug mt-0.5">
+        <span class="text-accent font-semibold">${escapeHtml(m.icono + ' ' + m.titulo)}</span>
+        <span class="text-muted">${escapeHtml(m.detalle)}</span></p>`).join('');
+
   const fichas = t.filas.map(f => {
     const p = f.perfil;
     return `
@@ -3880,12 +4169,16 @@ function scoutBloqueFichas(inf) {
         <ul class="text-[11px] text-ink leading-snug space-y-0.5 mt-0.5 mb-2">${lista(f.fugas, '#ef4444')}</ul>
         <div class="border-t border-hairline/50 pt-2 space-y-1.5">
           <div>
+            <p class="text-[10px] uppercase tracking-wider dato-sec font-display">Con pelota</p>
             <p class="text-[11px] text-accent font-semibold uppercase tracking-wide">${escapeHtml(f.marca.consigna.titulo)}</p>
             <p class="text-[10px] text-muted leading-snug">${escapeHtml(f.marca.consigna.detalle)}</p>
+            ${modsFicha(f, 'conPelota')}
           </div>
           <div>
+            <p class="text-[10px] uppercase tracking-wider dato-sec font-display">Sin pelota</p>
             <p class="text-[11px] text-white font-semibold uppercase tracking-wide">${escapeHtml(f.marca.restriccion.titulo)}</p>
             <p class="text-[10px] text-muted leading-snug">${escapeHtml(f.marca.restriccion.detalle)}</p>
+            ${modsFicha(f, 'sinPelota')}
           </div>
           <p class="text-[10px]"><span class="dato-sec">Defensor sugerido:</span>
             <span class="text-ink">${escapeHtml(f.marca.defensor)}</span>

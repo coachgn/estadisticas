@@ -29,6 +29,9 @@
    ===================================================================== */
 global.SGADD = require('./js/sgadd-core.js');
 const S = require('./js/sgadd-scouting.js');
+/* El registro de niveles, para verificar que el piso económico del tiro
+   rentable sigue siendo absoluto (sección 24). */
+const NIV = require('./js/sgadd-niveles.js');
 let ok = 0, fail = 0;
 const check = (n, c, d) => { if (c) { ok++; console.log('  ✓ ' + n); } else { fail++; console.log('  ✗ ' + n + (d !== undefined ? '  → ' + d : '')); } };
 const cerca = (a, b, tol) => typeof a === 'number' && typeof b === 'number' && Math.abs(a - b) < (tol || 1e-6);
@@ -2266,12 +2269,167 @@ check('sin mapa en el perfil, las reglas caen al respaldo estático de scouting'
 /* El generador sin tiro exige SIN TIRO RENTABLE, no «frío»: con el frío
    relativo a la liga, un generador apenas por encima del corte quedaba
    afuera y caía en «Lector de rotaciones» (RONDINONE en Local Mayores). */
-check('generador-sin-tiro ya no exige tiro frío: basta con que no sea rentable', (() => {
+check('generador-sin-tiro ya no exige tiro frío: basta con que su tiro no sea la amenaza', (() => {
   const src = require('fs').readFileSync('./js/sgadd-scouting.js', 'utf8');
   const i = src.indexOf("id: 'generador-sin-tiro'");
   const tramo = src.slice(src.lastIndexOf('{', i), src.indexOf('consigna:', i));
-  return /!p\.tiroExternoRentable/.test(tramo) && !/tiroExternoFrio/.test(tramo.replace(/\/\*[\s\S]*?\*\//g, ''));
+  return /!senales\(p\)\.amenazaExteriorPrimaria/.test(tramo) &&
+    !/tiroExternoFrio/.test(tramo.replace(/\/\*[\s\S]*?\*\//g, ''));
 })());
+
+/* ---------------------------------------------------------------------
+   24. UN SOLO PREDICADO · la marca no puede contradecir a las claves
+   --------------------------------------------------------------------- */
+console.log('\n24. SEÑALES COMPARTIDAS · MENOR DE LOS MALES · MODIFICADORES');
+console.log('═'.repeat(70));
+
+const FUENTE_SCOUT = require('fs').readFileSync('./js/sgadd-scouting.js', 'utf8');
+
+/* --- El piso económico volvió a ser absoluto (P1) --- */
+check('el piso de tiro rentable es ABSOLUTO: no se mueve con el nivel de la liga',
+  NIV.definicion('pptTripleRentable').tipo === NIV.TIPOS.ABSOLUTO &&
+  NIV.definicion('t3Rentable').tipo === NIV.TIPOS.ABSOLUTO &&
+  NIV.IDS.every(n => NIV.valorDe('pptTripleRentable', n) === 1.05 && NIV.valorDe('t3Rentable', n) === 0.35),
+  NIV.IDS.map(n => n + '=' + NIV.valorDe('pptTripleRentable', n)).join(' '));
+
+/* --- Las claves NO tienen predicados propios (P3) ---
+   El defecto original: `generador-riesgoso` y la clave `presion-conduccion`
+   evaluaban el MISMO predicado escrito dos veces. La cascada se quedaba con
+   una señal y descartaba el resto; las claves las seguían gritando todas. */
+check('cada regla de clave delega en SEÑALES y no repite el umbral a mano', (() => {
+  const i = FUENTE_SCOUT.indexOf('const REGLAS_CLAVE');
+  const bloque = FUENTE_SCOUT.slice(i, FUENTE_SCOUT.indexOf('function enumerar', i));
+  const buscares = bloque.match(/buscar: \(ps\) =>[^\n]*/g) || [];
+  return buscares.length >= 10 && buscares.every(b => /senales\(p\)\./.test(b)) &&
+    !/buscar: \(ps\) =>[^\n]*Up\(p\)/.test(bloque);
+})(), 'alguna clave sigue leyendo Up(p) directo');
+
+/* --- EL MENOR DE LOS MALES (P2) ---
+   Ninguna tarea agresiva contra alguien que rinde MÁS adentro: cerrarle el
+   triple de 0,94 a quien hace 1,09 en la pintura es regalarle la vía cara.
+   Medido en el libro real de DEPORTIVO antes del arreglo: 9 de 31. */
+const NIEGAN_EL_TIRO = ['cierreNegacion', 'perseguidorCortinas'];
+check('ninguna tarea agresiva cae sobre alguien cuya penetración rinde más que su triple',
+  tabla.filas.every(f => NIEGAN_EL_TIRO.indexOf(f.marca.tarea.id) === -1 ||
+    f.perfil.pptTriple === null || f.perfil.pptDoble === null ||
+    f.perfil.pptTriple >= f.perfil.pptDoble),
+  tabla.filas.filter(f => NIEGAN_EL_TIRO.indexOf(f.marca.tarea.id) !== -1)
+    .map(f => f.nombre + ' PPT3 ' + f.perfil.pptTriple + ' PPT2 ' + f.perfil.pptDoble).join(' | '));
+/* LA GUARDA de `tareaDefensiva`, ejercida directamente: es la red por si
+   una rama futura de la matriz pide una tarea agresiva igual. Se le pide a
+   mano la fila de `tirador-elite` sobre un perfil que rinde más adentro. */
+check('la guarda baja la tarea agresiva a contención cuando el triple no es la vía cara', (() => {
+  const p = Object.assign({}, porNombre['TIRADOR, ELITE'].perfil, {
+    pptTriple: 1.25, pptDoble: 1.60, t3i: 4, t2i: 6, tiroExternoRentable: true,
+  });
+  const t = S.tareaDefensiva(p, 'tirador-elite');
+  return t.id === 'contencionPenetracion' && !t.agresivo;
+})(), 'y el destino NO es flotar: su tiro sigue siendo rentable');
+check('y esa tarea está declarada en TAREAS_POSIBLES de las dos filas de tiro',
+  ['tirador-elite', 'tirador-eficiente-bajo-volumen'].every(m =>
+    S.TAREAS_POSIBLES[m].indexOf('contencionPenetracion') !== -1));
+
+check('y ningún INTOCABLE del plan es alguien que rinde más adentro que de afuera',
+  tabla.plan.intocables.every(x => {
+    const f = tabla.filas.find(y => y.clave === x.clave);
+    return S.senales(f.perfil).tripleEsLaViaCara;
+  }), tabla.plan.intocables.map(x => x.nombre).join('|'));
+
+/* EL CASO SCHROEDER, en chico: rentable por la banda de su liga pero con
+   la penetración más cara. Antes recibía «stay home / cierre agresivo /
+   Sniper Stopper» y quedaba INTOCABLE mientras las claves pedían trap. */
+const SCHROEDER = (() => {
+  const base = porNombre['ESPECIALISTA, CARO'].perfil;
+  const p = Object.assign({}, base, {
+    nombre: 'GENERADOR, SINTIRO', pptTriple: 0.94, t3: 0.313, t3i: 2.7, t2i: 7.2,
+    pptDoble: 1.09, usoDoble: 0.56, t1: 0.537, t1i: 4.1, perdidas: 0.254, perdidasRel: 1.42,
+    reboteRel: 1.60, reboteDefRel: 1.05, min: 25.7, tiroExternoRentable: true,
+  });
+  return { perfil: p, marca: S.marcaSugerida(p) };
+})();
+check('el rentable-por-banda cuyo drive paga más NO recibe una tarea agresiva',
+  NIEGAN_EL_TIRO.indexOf(SCHROEDER.marca.tarea.id) === -1,
+  SCHROEDER.marca.id + ' · ' + SCHROEDER.marca.tarea.id);
+check('  y su marca no le pide a su defensor quedarse pegado al tiro',
+  !/STAY HOME|PROHIBIDO FLOTAR/.test(SCHROEDER.marca.consignaTexto + ' ' + SCHROEDER.marca.restriccionTexto),
+  SCHROEDER.marca.consigna.titulo + ' | ' + SCHROEDER.marca.restriccion.titulo);
+check('  tampoco entra a INTOCABLES: su defensor puede hundirse',
+  !S.clasificarEcosistema([{ clave: 'x', nombre: SCHROEDER.perfil.nombre, perfil: SCHROEDER.perfil, marca: SCHROEDER.marca }])
+    .intocables.length);
+
+/* --- LOS MODIFICADORES (P4) · lo que la cascada descarta no se pierde --- */
+check('un jugador que domina el cristal arrastra el box-out aunque su marca sea otra',
+  SCHROEDER.marca.modificadores.some(m => m.id === 'boxOut' && m.eje === 'sinPelota'),
+  JSON.stringify(SCHROEDER.marca.modificadores.map(m => m.id)));
+/* El acoso al drible tiene que estar en la ficha SÍ o SÍ. Puede venir del
+   modificador o del propio título cuando la marca ya es ésa: lo que no
+   puede es perderse, que era el defecto original — la cascada se quedaba
+   con una señal y las claves seguían pidiendo el trap por su cuenta. */
+check('y el que pierde una de cada cinco posesiones se lleva el acoso al drible igual',
+  SCHROEDER.marca.modificadores.some(m => m.id === 'acosoDrible' && m.eje === 'conPelota') ||
+  /ACOSO AL DRIBLE/.test(SCHROEDER.marca.consigna.titulo),
+  SCHROEDER.marca.id + ' · ' + SCHROEDER.marca.consigna.titulo);
+check('el box-out lo dispara el rebote OFENSIVO o el DEFENSIVO',
+  S.senales({ reboteRel: 0.5, reboteDefRel: 1.4 }).dominaElCristal &&
+  S.senales({ reboteRel: 1.4, reboteDefRel: 0.5 }).dominaElCristal &&
+  !S.senales({ reboteRel: 0.5, reboteDefRel: 0.5 }).dominaElCristal);
+check('el acoso al drible tiene corte ABSOLUTO además del relativo a la liga',
+  S.TOV_ACOSO === 0.20 &&
+  S.senales({ perdidas: 0.21, perdidasRel: 1.0 }).pierdeMucho &&
+  !S.senales({ perdidas: 0.10, perdidasRel: 1.0 }).pierdeMucho);
+
+/* --- LA FALTA TÁCTICA CON VALOR ESPERADO Y MARGEN (P6) --- */
+check('la falta es negocio solo si 2×T1% + margen queda por debajo de su PPT2',
+  S.MARGEN_FALTA === 0.15 && S.T1_CONDICIONAL === 0.58 &&
+  S.senales({ t1: 0.24, t1i: 3, pptDoble: 1.05 }).faltaRentable);
+/* EL MARGEN es la mitad de la regla: sin él la decisión se da vuelta por
+   ruido. 48% de libres son 0,96 puntos esperados contra 1,09 de su PPT2 —
+   trece centésimas— y eso no alcanza para cambiar un plan defensivo. */
+check('  y el margen de 0,15 evita que dos centésimas den vuelta la decisión',
+  !S.senales({ t1: 0.48, t1i: 3, pptDoble: 1.09 }).faltaRentable &&
+  (2 * 0.48) <= 1.09,
+  'sin margen, 0,96 contra 1,09 habría salido como falta rentable');
+check('un T1% sin volumen de línea NO es un dato: no dispara la falta',
+  !S.senales({ t1: 0.0, t1i: 0.3, pptDoble: 0.67 }).faltaRentable &&
+  !S.senales({ t1: 0.0, t1i: 0.3, pptDoble: 0.67 }).faltaEvaluable,
+  'GARCIA, MATÍAS en el libro real: 0,0% de libres sobre 0,3 intentos');
+check('la nota de falta declara su condición situacional, que el panel no puede calcular',
+  /bonus/i.test(S.modificadoresDe({ t1: 0.24, t1i: 3, pptDoble: 1.05 })
+    .filter(m => m.id === 'faltaRentable').map(m => m.detalle).join('')));
+/* Un modificador que repite lo que la marca ya dice en su título es ruido,
+   y en una celda angosta el ruido tapa lo que sí es nuevo. */
+check('la marca no repite como modificador lo que ya dice su propio título',
+  !S.modificadoresDe({ reboteRel: 2.0, reboteDefRel: 1.0 }, 'rebotador').some(m => m.id === 'boxOut') &&
+  S.modificadoresDe({ reboteRel: 2.0, reboteDefRel: 1.0 }, 'slasher').some(m => m.id === 'boxOut') &&
+  !S.modificadoresDe({ perdidas: 0.25, perdidasRel: 1.4 }, 'generador-riesgoso').some(m => m.id === 'acosoDrible'),
+  'rebotador ya dice BOX-OUT DE CHOQUE y generador-riesgoso ya dice ACOSO AL DRIBLE');
+check('y en la tabla del informe ninguna fila repite su título como modificador',
+  tabla.filas.every(f => (f.marca.modificadores || []).every(m =>
+    m.titulo.replace(/[.·]/g, '').trim() !== f.marca.consigna.titulo.replace(/[.·]/g, '').trim())));
+
+/* --- LOS DOS EJES (P5) --- */
+check('cada marca declara sus dos ejes y son EL MISMO objeto que consigna/restricción',
+  tabla.filas.every(f => f.marca.conPelota === f.marca.consigna &&
+    f.marca.sinPelota === f.marca.restriccion));
+check('la tabla rotula las columnas por eje, no por «consigna» y «restricción»',
+  /Con pelota · cobertura/.test(FUENTE_SCOUT) && /Sin pelota · ayudas y cristal/.test(FUENTE_SCOUT));
+check('cada modificador declara en qué eje va, y los dos ejes están cubiertos',
+  tabla.filas.every(f => (f.marca.modificadores || []).every(m =>
+    m.eje === 'conPelota' || m.eje === 'sinPelota')) &&
+  ['conPelota', 'sinPelota'].every(e => tabla.filas.some(f =>
+    (f.marca.modificadores || []).some(m => m.eje === e))),
+  tabla.filas.map(f => f.nombre + ':' + (f.marca.modificadores || []).map(m => m.eje).join(',')).join(' | '));
+
+/* --- LA NO CONTRADICCIÓN, medida sobre el plantel entero --- */
+check('nadie recibe «no se ayuda desde él» mientras una clave pide colapsar sobre él',
+  (() => {
+    const cl = S.clavesEstrategicas(idx, 'ATENAS A', 10);
+    const pideAyuda = (n) => cl.some(c => ['pintura', 'presion-conduccion'].indexOf(c.id) !== -1 &&
+      c.texto.indexOf(n) !== -1);
+    return tabla.filas.every(f => !pideAyuda(f.nombre) ||
+      !/NO AYUDAR DESDE ÉL|PROHIBIDO FLOTAR/.test(f.marca.restriccion.titulo) ||
+      S.senales(f.perfil).amenazaExteriorPrimaria);
+  })());
 
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');

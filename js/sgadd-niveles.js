@@ -150,7 +150,20 @@ const SGADD_NIVELES = (function () {
 
   const REGISTRO = {
     /* ---------------------------------------------------------------
-       ABSOLUTOS · los tres que la medición respalda.
+       ABSOLUTOS · CINCO, por DOS motivos distintos.
+
+       Los tres primeros son absolutos porque la medición los respalda:
+       caen en el mismo percentil (±12pp) en las cinco ligas cargadas, o
+       sea que describen economía del juego y no el promedio de nadie.
+
+       Los dos últimos son absolutos aunque su brecha sea grande, y el
+       criterio es OTRO: no clasifican una población, son el PISO de una
+       disyunción. `tiroExternoRentable` es «supera el piso económico O
+       está por encima de SU liga»; la segunda mitad ya es relativa y se
+       mueve sola con la banda z. Si el piso también se mueve, la regla
+       se queda sin ancla y pasa a decir «de los mejores de esta liga»
+       en vez de «este tiro paga más que una posesión».
+
        NO SE TOCAN. Hay un test que falla si cambian de tipo o de valor.
        --------------------------------------------------------------- */
     pptTripleElite: {
@@ -167,6 +180,30 @@ const SGADD_NIVELES = (function () {
       tipo: TIPOS.ABSOLUTO, valor: 0.30, metrica: 'T3I/(T3I+T2I)', dir: 'mayor',
       medido: 'p26–p37 en cinco libros · brecha 11pp',
       porque: 'Ídem: es selección de tiro, no rendimiento.',
+    },
+
+    /* EL PISO ECONÓMICO DEL TIRO RENTABLE · volvió a ABSOLUTO el
+       2026-09-20. La unificación de la v228 lo pasó a percentil p68 y el
+       corte quedó atado a lo que tira la liga: medido en el libro de
+       DEPORTIVO (Local Mayores) resolvía a 0,937 PPT3 y 31,3% de T3%, así
+       que un jugador de 0,94 PPT3 al 31,3% —un tiro que NO paga una
+       posesión media— entraba como «tirador rentable», su defensor
+       recibía «stay home, prohibido flotar» y el plan lo marcaba
+       INTOCABLE. Pasaba el corte por tres milésimas de punto por intento.
+
+       Es el mismo modo de fallar del caso RONDINONE por el lado del
+       «frío» (cuatro milésimas), que se corrigió el 2026-09-19 sin ver
+       que el espejo estaba abierto. */
+    pptTripleRentable: {
+      tipo: TIPOS.ABSOLUTO, valor: 1.05, metrica: 'PPT3', dir: 'mayor',
+      medido: 'p68–p87 en cinco libros · brecha 19pp · absoluto por ECONOMÍA, no por brecha',
+      porque: '1,05 puntos por triple intentado supera el valor de una posesión promedio ' +
+        'en cualquier categoría: a ese tirador no se le flota ni aunque sea el peor de su liga.',
+    },
+    t3Rentable: {
+      tipo: TIPOS.ABSOLUTO, valor: 0.35, metrica: 'T3%', dir: 'mayor',
+      medido: 'p68–p87 en cinco libros · brecha 19pp · absoluto por ECONOMÍA, no por brecha',
+      porque: '35% de triple son 1,05 puntos por intento: el mismo piso, escrito en la otra unidad.',
     },
 
     /* ---------------------------------------------------------------
@@ -263,20 +300,9 @@ const SGADD_NIVELES = (function () {
       clamp: [0.28, 0.34],
       medido: 'p63 … p82 · brecha 19pp',
     },
-    pptTripleRentable: {
-      tipo: TIPOS.PERCENTIL, p: 68, metrica: 'PPT3', dir: 'mayor',
-      base: 1.05,
-      calibrado: { LIGA_ARGENTINA: 1.05, LOCAL_MAYORES: 0.92, LOCAL_MENORES: 0.90 },
-      clamp: [0.90, 1.05],
-      medido: 'p68 … p87 · brecha 19pp',
-    },
-    t3Rentable: {
-      tipo: TIPOS.PERCENTIL, p: 68, metrica: 'T3%', dir: 'mayor',
-      base: 0.35,
-      calibrado: { LIGA_ARGENTINA: 0.35, LOCAL_MAYORES: 0.31, LOCAL_MENORES: 0.30 },
-      clamp: [0.30, 0.35],
-      medido: 'p68 … p87 · brecha 19pp',
-    },
+    /* `pptTripleRentable` y `t3Rentable` vivían acá y pasaron al bloque de
+       ABSOLUTOS el 2026-09-20: son el piso de una disyunción, no la
+       descripción de una población. Ver el comentario de allá arriba. */
     t1Regalable: {
       tipo: TIPOS.PERCENTIL, p: 3, metrica: 'T1%', dir: 'menor',
       base: 0.40,
