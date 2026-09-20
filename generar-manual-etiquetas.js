@@ -135,7 +135,9 @@ const CORTES_MARCA = {
   slasher: 'perimetral · PPT2 ≥ ' + un('pptDobleAlto'),
   'generador-riesgoso': 'pérdidas ≥ ' + un('perdidasAltas') + '× la liga · MIN ≥ ' + un('minutosClave'),
   'tirador-sistematico-frio': 'T3I ≥ ' + un('volumenTripleSistematico') + ' y tiro externo frío',
-  'castigable-en-la-linea': 'T1I ≥ 1,5 · T1% &lt; 58% · 2×T1% + 0,15 ≤ PPT2 · PT2% ≥ ' + un('usoDobleInterno'),
+  'castigable-en-la-linea': 'T1I ≥ ' + num(S.VOL_MIN_LIBRE) + ' · T1% &lt; '
+    + num(Math.round(S.T1_CONDICIONAL * 100)) + '% · 2×T1% + ' + num(S.MARGEN_FALTA)
+    + ' ≤ PPT2 · PT2% ≥ ' + un('usoDobleInterno'),
   'tirador-ineficiente': 'PT3% ≥ ' + un('usoTripleAlto') + ' · PPT3 ≤ ' + un('pptTriplePobre') + ' · su tiro no es la amenaza primaria · no es la vía principal',
   rebotador: 'RO rel ≥ ' + un('reboteOfensivoAlto'),
   contencion: 'fallback: ninguna amenaza domina',

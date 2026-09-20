@@ -2380,15 +2380,23 @@ check('el acoso al drible tiene corte ABSOLUTO además del relativo a la liga',
 
 /* --- LA FALTA TÁCTICA CON VALOR ESPERADO Y MARGEN (P6) --- */
 check('la falta es negocio solo si 2×T1% + margen queda por debajo de su PPT2',
-  S.MARGEN_FALTA === 0.15 && S.T1_CONDICIONAL === 0.58 &&
+  S.MARGEN_FALTA === 0.10 && S.T1_CONDICIONAL === 0.58 &&
   S.senales({ t1: 0.24, t1i: 3, pptDoble: 1.05 }).faltaRentable);
 /* EL MARGEN es la mitad de la regla: sin él la decisión se da vuelta por
-   ruido. 48% de libres son 0,96 puntos esperados contra 1,09 de su PPT2 —
-   trece centésimas— y eso no alcanza para cambiar un plan defensivo. */
-check('  y el margen de 0,15 evita que dos centésimas den vuelta la decisión',
-  !S.senales({ t1: 0.48, t1i: 3, pptDoble: 1.09 }).faltaRentable &&
-  (2 * 0.48) <= 1.09,
-  'sin margen, 0,96 contra 1,09 habría salido como falta rentable');
+   ruido. Los números son los de SCHROEDER en el libro real: 53,7% de
+   libres son 1,074 puntos esperados contra 1,09 de su PPT2 — menos de dos
+   centésimas— y eso no alcanza para cambiar un plan defensivo. */
+check('  y el margen evita que dos centésimas den vuelta la decisión',
+  !S.senales({ t1: 0.537, t1i: 3, pptDoble: 1.09 }).faltaRentable &&
+  (2 * 0.537) <= 1.09,
+  'sin margen, 1,074 contra 1,09 habría salido como falta rentable');
+/* Y EL CASO INTERMEDIO que el club pidió recuperar al bajar el margen de
+   0,15 a 0,10 (2026-09-20): trece centésimas de brecha sí son una
+   diferencia táctica, y con el margen viejo este jugador quedaba afuera. */
+check('  con 0,10 vuelven los intermedios: 0,96 esperados contra 1,09 es negocio',
+  S.senales({ t1: 0.48, t1i: 3, pptDoble: 1.09 }).faltaRentable &&
+  (2 * 0.48 + 0.15) > 1.09,
+  'con el margen viejo de 0,15 este caso no disparaba');
 check('un T1% sin volumen de línea NO es un dato: no dispara la falta',
   !S.senales({ t1: 0.0, t1i: 0.3, pptDoble: 0.67 }).faltaRentable &&
   !S.senales({ t1: 0.0, t1i: 0.3, pptDoble: 0.67 }).faltaEvaluable,

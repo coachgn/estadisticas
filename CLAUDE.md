@@ -28,7 +28,7 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  55 tests · detalle partido a partido, perfil de tiro y su PDF
-node test-scouting.js      # 513 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis,
+node test-scouting.js      # 514 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis,
                            #             titularidad, las SEÑALES compartidas y el menor de los males
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
@@ -94,7 +94,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6172 tests en total. Todos tienen que dar verde antes de commitear.**
+**6173 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -9488,12 +9488,31 @@ había relativizado a p3 y en el libro real resolvía a **0,20**: la marca
 económico y por jugador:
 
 ```
-la falta es negocio  ⟺  2 × T1% + 0,15  ≤  PPT2     y  T1% < 58 %
+la falta es negocio  ⟺  2 × T1% + 0,10  ≤  PPT2     y  T1% < 58 %
 ```
 
-**El margen de 0,15 es la mitad de la regla**: sin él la decisión se da
-vuelta por ruido —medido en el caso Schroeder, 1,07 contra 1,09, dos
-centésimas—. Y hace falta **volumen de línea** (`T1I ≥ 1,5`), o un jugador
+**EL MARGEN es la mitad de la regla**: sin él la decisión se da vuelta por
+ruido —medido en el caso Schroeder, 1,07 contra 1,09, dos centésimas—.
+**Arrancó en 0,15 y bajó a 0,10 el mismo 2026-09-20**, a pedido del club,
+para recuperar los casos intermedios sin perder la protección. Medido
+sobre el libro de DEPORTIVO (425 fichas, IDA + TOTAL), lo que se movió
+**no fue la marca sino la NOTA**:
+
+```
+                                 0,15   0,10
+marca castigable-en-la-linea        2      2
+modificador FALTA RENTABLE         13     19
+modificador NO CORTAR CON FALTA    55     49
+```
+
+Y eso deja a la vista dónde está el cuello de esa marca, que no es el
+margen: de las **21** fichas con la falta rentable, 14 llegan al volumen
+interno que la marca exige y **12 se las lleva una marca anterior de la
+cascada** (7 `interior-dominante`, 3 `slasher`). Es el orden por costo de
+la amenaza haciendo su trabajo —a un dominador de pintura se lo marca por
+eso, no por sus libres— y la información no se pierde: viaja como
+modificador. Bajar más el margen no cambiaría eso; lo que lo cambiaría es
+tocar la cascada, que es una decisión de básquet aparte. Y hace falta **volumen de línea** (`T1I ≥ 1,5`), o un jugador
 que casi no va a la línea sale con «T1% 0,0 % → la falta es negocio»: el
 cero no dice que falle los libres, dice que no los tiró. Es la distinción
 del punto 3, tercera vez que aparece en el proyecto (la cazó GARCIA,

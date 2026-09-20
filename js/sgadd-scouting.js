@@ -218,9 +218,18 @@ const SGADD_SCOUT = (function () {
      menor que lo que rinde terminando la jugada (PPT2), la falta es
      negocio. El MARGEN existe porque sin él la decisión se da vuelta por
      ruido: medido en el caso Schroeder, 1,07 contra 1,09 — dos centésimas
-     no son una diferencia táctica. */
+     no son una diferencia táctica.
+
+     BAJÓ DE 0,15 A 0,10 a pedido del club (2026-09-20). Con 0,15 la marca
+     `castigable-en-la-linea` quedaba en 1 de 206 fichas del libro real:
+     protegía del automatismo pero se comía también los casos intermedios,
+     que son justamente los que el DT quiere ver. Con 0,10 sigue haciendo
+     falta una brecha REAL —el caso Schroeder, 1,07 contra 1,09, sigue sin
+     disparar— y vuelven los que rinden claramente más adentro de lo que
+     rinden en la línea. El margen no puede bajar a cero: ahí la decisión
+     la toma el redondeo. */
   const T1_CONDICIONAL = 0.58;
-  const MARGEN_FALTA = 0.15;
+  const MARGEN_FALTA = 0.10;
 
   /**
    * Las lecturas que la marca y las claves comparten. Función PURA: recibe
