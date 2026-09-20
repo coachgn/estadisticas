@@ -28,7 +28,7 @@ node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  55 tests · detalle partido a partido, perfil de tiro y su PDF
-node test-scouting.js      # 514 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis,
+node test-scouting.js      # 519 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis,
                            #             titularidad, las SEÑALES compartidas y el menor de los males
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
@@ -45,7 +45,7 @@ node test-jsonclub.js      # 115 tests · los JSON de club, el validador, el ais
 node test-pares.js         # 219 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 175 tests · partidos sin box score: suman a la tabla, no a las métricas
-node test-responsive.js    # 136 tests · desborde, targets táctiles, modales, el papel, el PIE
+node test-responsive.js    # 137 tests · desborde, targets táctiles, modales, el papel, el PIE
                            #             el aviso de version y el diagnostico del pie
 node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
 node test-demo.js          # 130 tests · la demo publica: el snapshot anonimizado, el
@@ -94,7 +94,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6173 tests en total. Todos tienen que dar verde antes de commitear.**
+**6179 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -2607,6 +2607,14 @@ es rígido y va de lo colectivo a lo individual:
 4. **Plan defensivo · marca asignada** — panel del plan COLECTIVO más la
    tabla de marcas conectadas entre sí (ver punto 9 ter). Perfil defensor,
    consigna y restricción sugeridas, **editables**: el plan lo firma el DT.
+   Debajo del subtítulo va la **leyenda del criterio** (2026-09-20): explica
+   en tres frases que la marca sale de cruzar por dónde ataca más el rival
+   con por dónde hace más daño —volumen y eficiencia, dichas **sin nombrar
+   una sola métrica** a pedido del club— y cierra diciendo que el dato
+   sugiere y **el cuerpo técnico decide**. Va DENTRO de la card, así viaja
+   al PDF: el informe se comparte, y quien lo abre sin haber estado en la
+   charla tiene que poder entender de dónde sale cada marca. Hay tests que
+   fijan las tres cosas, la última incluida.
 5. **Resumen de criterio estratégico** — va inmediatamente debajo de la
    tabla de marcas, porque sintetiza justamente esa composición de marcas.
 6. **Jugadores clave del rival** — tabla con mapa de calor del top 3 por
@@ -7495,14 +7503,44 @@ se había descartado el mecanismo entero. Estaba mal descartado.
 
 `inyectarPieDeHoja(contenedorId)` envuelve el contenido del contenedor en
 una `<table class="hoja-firmada">` de una sola celda, con un `<tfoot>` que
-lleva la firma. Lo usan las **tres** exportaciones que tienen contenedor
-propio: ranking, ficha e informe.
+lleva la firma. Lo usan las **cuatro** exportaciones que tienen contenedor
+propio: ranking, ficha, informe y —desde el 2026-09-20— **scouting**.
 
-**Scouting y post-partido siguen con el fijo**: imprimen la sección viva, sin
-contenedor, y envolver eso en una tabla movería un maquetado A3 que está
-medido y presupuestado (puntos 7.2 y 7.6). Conviven dos mecanismos a
-propósito, y hay tests que fijan cuál usa cada una — **una exportación no
-puede tener los dos**, o firmaría dos veces la misma hoja.
+**Solo el post-partido sigue con el fijo**: imprime la sección viva, sin
+contenedor propio. Conviven dos mecanismos a propósito, y hay tests que
+fijan cuál usa cada una — **una exportación no puede tener los dos**, o
+firmaría dos veces la misma hoja.
+
+#### LA OCTAVA VUELTA · scouting era el que faltaba
+
+El club volvió a reportar el PDF sin firma, esta vez sobre el informe
+pre-partido. Era el ÚNICO de los cuatro con contenedor que seguía con
+`position: fixed`, o sea exactamente el mecanismo que su Chrome no pinta
+—de todo el pie le salía únicamente el `<sup>`— y que siete vueltas de CSS
+no lograron arreglar.
+
+**El argumento que lo dejaba afuera era falso.** Acá decía que scouting
+«imprime la sección viva, sin contenedor»: tiene uno, `#scoutInforme`, que
+envuelve las once cards. Lo único que había que medir era si el A3
+apaisado se movía al envolverlo en una tabla, y **no se mueve**. Medido
+generando el PDF real con Chrome por CDP y decodificando el ToUnicode de
+cada hoja —contar imágenes es contar una proxy, que es la lección de este
+mismo punto—:
+
+```
+                     hojas   tamaño        firma LEGIBLE   imagenes por hoja
+con el fijo (antes)    8     A3 apaisada        8/8         3,5,3,1,1,1,2,2
+con el <tfoot>         8     A3 apaisada        8/8         3,5,3,1,1,1,2,2
+```
+
+O sea: los `break-before: page` de las cards y la `@page apaisada` del
+punto 7.2 **sobreviven adentro de la celda de la tabla**, y el reparto del
+contenido es idéntico hoja por hoja. En el Chrome de acá el fijo también
+salía en las ocho —el defecto sigue sin reproducirse de este lado, igual
+que en las vueltas 5 y 6— así que lo que prueba esta medición no es que el
+bug se arregló sino que **la migración no mueve nada**, y el mecanismo al
+que se migra es el que el PDF del club ya demostró que su navegador
+respeta.
 
 Cuatro cosas que hay que respetar al tocarlo:
 

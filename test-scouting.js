@@ -1739,6 +1739,29 @@ check('un texto largo parte de línea en vez de ensanchar la columna',
 check('la tabla lleva la clase que la CSS engancha',
   /class="tabla-marcas w-full text-left"/.test(scoutJs));
 
+/* --- LA LEYENDA DEL CRITERIO -----------------------------------------
+
+   El informe se comparte, y quien lo abre sin haber estado en la charla
+   tiene que poder entender de dónde sale cada marca. La leyenda contesta
+   eso en tres frases y cierra diciendo QUIÉN decide, que es lo que separa
+   una sugerencia de una orden. */
+const BLOQUE_MARCAS = scoutJs.slice(
+  scoutJs.indexOf('function scoutBloqueMarcasTabla'),
+  scoutJs.indexOf('function', scoutJs.indexOf('function scoutBloqueMarcasTabla') + 40));
+check('la sección de marcas explica el criterio debajo de su subtítulo',
+  /Cada marca sale de cruzar dos cosas/.test(BLOQUE_MARCAS));
+check('  y nombra las DOS dimensiones que el motor cruza de verdad',
+  /por dónde ataca más/.test(BLOQUE_MARCAS) && /hace más daño/.test(BLOQUE_MARCAS),
+  'volumen y eficiencia, dichas sin nombrar una sola métrica');
+check('  y deja la decisión final en el cuerpo técnico, no en el dato',
+  /sugerencia/.test(BLOQUE_MARCAS) && /la decide el cuerpo técnico/.test(BLOQUE_MARCAS));
+check('  va DENTRO de la card exportable, así viaja al PDF',
+  BLOQUE_MARCAS.indexOf('data-bloque="marcas"') <
+    BLOQUE_MARCAS.indexOf('Cada marca sale de cruzar dos cosas'));
+/* La regla de siempre: la planilla no trae el quinteto inicial. */
+check('  y no habla de titularidad',
+  !/titular|suplente|quinteto inicial/i.test(BLOQUE_MARCAS));
+
 /* --- UN SOLO CRITERIO DE PAPEL PARA LAS TRES EXPORTACIONES ----------
 
    Scouting estuvo un tiempo con la paleta oscura de la app. Se revirtió a

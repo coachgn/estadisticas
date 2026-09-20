@@ -321,7 +321,8 @@ igual(sinReserva, [],
    le salia unicamente el <sup>. */
 [['sgadd-ficha.js', 'la ficha del jugador', 'fichaSalida'],
  ['sgadd-informe.js', 'el informe de equipo', 'informeSalida'],
- ['sgadd-rankingpdf.js', 'el ranking del plantel', 'rankingSalida']].forEach(
+ ['sgadd-rankingpdf.js', 'el ranking del plantel', 'rankingSalida'],
+ ['sgadd-scouting.js', 'el informe pre-partido', 'scoutInforme']].forEach(
   ([f, eti, cid]) => {
     const src = fs.readFileSync(path.join(__dirname, 'js', f), 'utf8');
     ok(src.indexOf("inyectarPieDeHoja('" + cid + "')") > -1,
@@ -333,10 +334,11 @@ igual(sinReserva, [],
        '  y no inyecta ademas el fijo');
   });
 
-/* Scouting y post-partido imprimen la seccion viva, sin contenedor propio,
-   asi que siguen con el fijo. */
-[['sgadd-scouting.js', 'el informe pre-partido'],
- ['sgadd-equipos.js', 'el post-partido']].forEach(([f, eti]) => {
+/* El post-partido imprime la seccion viva, sin contenedor propio, asi
+   que es el unico que sigue con el fijo. Scouting se paso al <tfoot> el
+   2026-09-20: tenia contenedor (#scoutInforme) y el club reportaba el
+   mismo PDF sin firma que ya habia reportado para los otros tres. */
+[['sgadd-equipos.js', 'el post-partido']].forEach(([f, eti]) => {
   const src = fs.readFileSync(path.join(__dirname, 'js', f), 'utf8');
   ok(/inyectarPieMotorStats\(\)/.test(src), eti + ' inyecta el pie fijo');
   ok(/quitarPieMotorStats\(\)/.test(src), '  y lo saca al terminar');

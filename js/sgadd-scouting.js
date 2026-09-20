@@ -3219,18 +3219,29 @@ function scoutImprimir() {
      La del body se conserva porque hay reglas viejas que la usan. */
   document.documentElement.classList.add('modo-scout-print');
   document.body.classList.add('modo-scout-print');
-  /* EL PIE INSTITUCIONAL, EN TODAS LAS HOJAS. Va colgado del body y no
-  adentro del contenedor: `position: fixed` se ancla al primer ancestro
-  con `transform` o `filter`, y ahi dejaria de repetirse sin ningun
-  sintoma. La fecha se calcula ACA, al imprimir. */
-  SGADD_UI.inyectarPieMotorStats();
+  /* EL PIE INSTITUCIONAL, EN TODAS LAS HOJAS · con el <tfoot>.
+
+     Esta exportacion era la ULTIMA que seguia con `position: fixed`, y
+     el club volvio a reportar que su PDF sale sin firma. Es exactamente
+     el defecto del punto 51: su Chrome no pinta el elemento fijo en cada
+     hoja —de todo el pie le salia unicamente el `<sup>`— mientras el de
+     aca si. Siete vueltas de CSS no lo movieron; lo que si esta probado
+     en SU navegador es el `<tfoot>`, que es la misma maquinaria que le
+     repite los `<thead>` de las tablas.
+
+     Se quedaba afuera porque "imprime la seccion viva, sin contenedor",
+     y eso resulto ser falso: `#scoutInforme` envuelve las once cards.
+     Lo unico que habia que medir era si el A3 apaisado se movia al
+     envolverlo en una tabla, y no se mueve: 8 hojas A3 apaisada antes y
+     despues, con la firma legible en las 8. La fecha se calcula ACA. */
+  SGADD_UI.inyectarPieDeHoja('scoutInforme');
   /* Por si alguna vista de scouting suma un gráfico: los ya dibujados
      tienen la paleta de pantalla congelada en sus opciones. */
   if (typeof SGADD_CHARTS !== 'undefined') SGADD_CHARTS.repintarParaPapel();
   const limpiar = () => {
     document.documentElement.classList.remove('modo-scout-print');
     document.body.classList.remove('modo-scout-print');
-    SGADD_UI.quitarPieMotorStats();
+    SGADD_UI.quitarPieDeHoja('scoutInforme');
     scoutRestaurarEscudos();
     window.removeEventListener('afterprint', limpiar);
   };
@@ -3900,9 +3911,15 @@ function scoutBloqueMarcasTabla(inf) {
     <section class="scout-card scout-pagina scout-pagina-ancha card rounded-xl p-4 sm:p-5 border border-hairline"
       data-bloque="marcas">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">🛡 Marcas · jugador por jugador</h4>
-      <p class="text-[11px] text-muted mb-3">
+      <p class="text-[11px] text-muted mb-2">
         ${escapeHtml(inf.claveRival || '')} · la directiva en mayúsculas la firma el cuerpo técnico;
         el detalle con el número sale de la planilla y no se toca a mano.
+      </p>
+      <p class="text-[10px] text-muted leading-snug mb-3">
+        Cada marca sale de cruzar dos cosas: por dónde ataca más ese jugador y por dónde
+        hace más daño. Tirar mucho no es lo mismo que lastimar, así que se le cierra la vía
+        que le rinde y se le concede la que no. Es una sugerencia calculada sobre la planilla:
+        la marca que se juega la decide el cuerpo técnico.
       </p>
       <div class="scrollbox"><table class="tabla-marcas w-full text-left" style="min-width:62rem">
         <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
