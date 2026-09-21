@@ -125,6 +125,50 @@ check('los bloques de la ficha del jugador se siguen pudiendo partir',
 check('y los `data-hoja` del informe de equipo', R.some(r => enPrint(r) && /\[data-hoja\]/.test(r.sel) && /break-inside:\s*auto/.test(r.dec)));
 
 /* =====================================================================
+   2 bis · LA TABLA QUE NO ENTRA SE PARTE, LA FILA NO
+
+   Reportado por el club (2026-09-21): la hoja de marcas salía con el
+   título, el subtítulo y la leyenda y NADA MÁS, y los ocho jugadores
+   empezaban en la siguiente. Medido en modo papel: la card mide 1054px
+   contra 1028 de alto útil de una A3 apaisada —se pasa por VEINTISÉIS—
+   así que no entra en ninguna hoja y hay que partirla; pero `.scrollbox`
+   y `table` tenían `avoid` y la tabla saltaba ENTERA.
+
+   La distinción que arregla eso sin mover nada más es ABRIR HOJA: una
+   card que ya arranca arriba de todo no puede moverse a ningún lado
+   mejor, y una que sigue a otra sí. Probado primero sobre TODA tabla: la
+   matriz se partió y su título quedó en la hoja del encabezado.
+   ===================================================================== */
+titulo('2 bis · CORTES · la tabla se parte por FILAS, no salta entera');
+
+const parte = R.filter(r => enPrint(r) && /\.scout-card\.scout-pagina/.test(r.sel));
+check('la card que ABRE hoja y tiene tabla se puede partir',
+  parte.some(r => /:has\(table\)/.test(r.sel)
+    && /(^|;)\s*break-inside:\s*auto/.test(r.dec) && /page-break-inside:\s*auto/.test(r.dec)));
+check('  y su scrollbox y su tabla también',
+  parte.some(r => /\.scrollbox/.test(r.sel) && /break-inside:\s*auto\s*!important/.test(r.dec))
+  && parte.some(r => /> table|stable/.test(r.sel) && /break-inside:\s*auto\s*!important/.test(r.dec)));
+check('  pero la FILA no: el corte cae entre dos jugadores',
+  parte.some(r => /table > tbody > tr/.test(r.sel)
+    && /break-inside:\s*avoid\s*!important/.test(r.dec)
+    && /page-break-inside:\s*avoid\s*!important/.test(r.dec)));
+check('  y el cabezal no se despega de su tabla',
+  parte.some(r => /> h4/.test(r.sel) && /break-after:\s*avoid/.test(r.dec) && /page-break-after:\s*avoid/.test(r.dec)));
+
+/* LA MITAD QUE PROTEGE EL MAQUETADO MEDIDO. Una card que no abre hoja
+   —la matriz, el resumen, las claves— se sigue bajando ENTERA: con
+   `auto` la matriz se partía y dejaba su título en la hoja anterior. */
+const sueltas = R.filter(r => enPrint(r) && /\.scout-card/.test(r.sel) && !/\.scout-pagina/.test(r.sel)
+  && /break-inside:\s*auto/.test(r.dec));
+check('la card que NO abre hoja conserva el avoid: se baja entera',
+  sueltas.length === 0, sueltas.map(r => r.sel).join(' | '));
+
+/* Con la tabla partida, la segunda hoja no puede quedar sin encabezados. */
+check('el <thead> se repite arriba de cada hoja',
+  R.some(r => enPrint(r) && selectores(r).indexOf('thead') > -1
+    && /display:\s*table-header-group/.test(r.dec)));
+
+/* =====================================================================
    3 · SIN BARRA NARANJA
    ===================================================================== */
 titulo('3 · SIN BORDES DEL ACENTO EN LOS MÁRGENES DEL PDF');

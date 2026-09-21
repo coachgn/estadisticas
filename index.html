@@ -2009,6 +2009,72 @@
     }
 
     /* -----------------------------------------------------------------
+       UNA TABLA QUE NO ENTRA SE PARTE · NO SALTA ENTERA
+
+       Reportado por el club (2026-09-21) sobre la card de marcas: la hoja
+       salía con el título, el subtítulo y la leyenda, y NADA MÁS; los ocho
+       jugadores empezaban recién en la siguiente. Medido en modo papel con
+       la media de impresión emulada, y el mecanismo son VEINTISÉIS PÍXELES:
+
+         alto útil de una A3 apaisada      1028px
+         la card de marcas                 1054px   ← se pasa por 26
+            cabezal (título + leyenda)        70px
+            la tabla                         942px
+         la fila más alta (un jugador)      123px   ← entra en cualquier hoja
+
+       La card no entra en NINGUNA hoja, así que Chromium tiene que
+       partirla. Pero `.scrollbox` y `table` estaban en la lista general de
+       `break-inside: avoid`, así que la tabla no se podía partir y saltaba
+       ENTERA a la hoja siguiente, dejando el cabezal solo. Un desborde de
+       26px se comía media hoja.
+
+       La regla correcta es la que ya usa la quinta exportación (punto 50):
+       la tabla se parte, la FILA no. Cada fila es un jugador, así que el
+       corte siempre cae entre dos nombres y nunca a mitad de una marca —
+       que es exactamente lo que pidió el club. El `<thead>` se repite
+       arriba de cada hoja (`table-header-group`, ya en la regla general),
+       así que la tabla de la segunda hoja no queda sin encabezados.
+
+       SOLO PARA LAS CARDS QUE ABREN HOJA (`.scout-pagina`), y la
+       distinción es la que explica el defecto entero:
+
+         · una card que ABRE hoja ya arranca arriba de todo, así que
+           `avoid` no la puede mover a ningún lado mejor. Lo único que
+           consigue es que la tabla salte entera y deje la hoja a medias;
+         · una que SIGUE a otra —la matriz, el resumen, las claves— sí se
+           beneficia: `avoid` la baja completa a la hoja siguiente en vez
+           de partirla, que es el maquetado medido del punto 7.2 bis.
+
+       Se probó primero con TODA tabla y la matriz se partió: su título
+       quedó en la hoja del encabezado y la tabla siguió en la otra sin
+       encabezados. Medido, hoja 1 pasó de 479 a 1132 glifos y hoja 2 de
+       1366 a 740. Por eso la regla lleva `.scout-pagina`.
+
+       Alcanza a marcas, jugadores clave, resto, fichas y quintetos, que
+       son las cinco que crecen con el plantel. La medición de antes y
+       después está en el punto 65 del CLAUDE.md.
+       ----------------------------------------------------------------- */
+    html.modo-scout-print .scout-card.scout-pagina:has(table) {
+      page-break-inside: auto; break-inside: auto;
+    }
+    html.modo-scout-print .scout-card.scout-pagina .scrollbox,
+    html.modo-scout-print .scout-card.scout-pagina > .scrollbox > table {
+      page-break-inside: auto !important; break-inside: auto !important;
+    }
+    /* LA FILA ES EL JUGADOR: es lo único que no se puede cortar. */
+    html.modo-scout-print .scout-card.scout-pagina table > tbody > tr {
+      page-break-inside: avoid !important; break-inside: avoid !important;
+    }
+    /* Y el cabezal no se despega de su tabla: un título solo al pie de una
+       hoja es el mismo defecto con otra cara. `h4` no está en la regla
+       general de `page-break-after` —que enumera h1, h2, h3 y h5— y los
+       títulos de las cards de scouting son justamente h4. */
+    html.modo-scout-print .scout-card.scout-pagina > h4,
+    html.modo-scout-print .scout-card.scout-pagina > p {
+      page-break-after: avoid; break-after: avoid;
+    }
+
+    /* -----------------------------------------------------------------
        LA HOJA APAISADA · el fix de "Restricción / alerta"
 
        La tabla de marcas mide `min-width: 62rem` (≈992px) y el área útil
@@ -2731,7 +2797,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=231" />
+<link rel="stylesheet" href="sgadd.css?v=232" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2909,47 +2975,47 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=231"></script>
+<script src="js/sgadd-club.js?v=232"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=231"></script>
-<script src="js/sgadd-core.js?v=231"></script>
-<script src="js/sgadd-auth.js?v=231"></script>
+<script src="js/sgadd-config.js?v=232"></script>
+<script src="js/sgadd-core.js?v=232"></script>
+<script src="js/sgadd-auth.js?v=232"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=231"></script>
-<script src="js/sgadd-glosario.js?v=231"></script>
-<script src="js/sgadd-glosarioui.js?v=231"></script>
-<script src="js/sgadd-comparativa.js?v=231"></script>
-<script src="js/sgadd-comparativaui.js?v=231"></script>
-<script src="js/sgadd-confirmar.js?v=231"></script>
-<script src="js/sgadd-landing.js?v=231"></script>
-<script src="js/sgadd-login.js?v=231"></script>
-<script src="js/sgadd-data.js?v=231"></script>
-<script src="js/sgadd-clientes.js?v=231"></script>
-<script src="js/sgadd-ui.js?v=231"></script>
-<script src="js/sgadd-app.js?v=231"></script>
-<script src="js/sgadd-clasificacion.js?v=231"></script>
+<script src="js/sgadd-demo.js?v=232"></script>
+<script src="js/sgadd-glosario.js?v=232"></script>
+<script src="js/sgadd-glosarioui.js?v=232"></script>
+<script src="js/sgadd-comparativa.js?v=232"></script>
+<script src="js/sgadd-comparativaui.js?v=232"></script>
+<script src="js/sgadd-confirmar.js?v=232"></script>
+<script src="js/sgadd-landing.js?v=232"></script>
+<script src="js/sgadd-login.js?v=232"></script>
+<script src="js/sgadd-data.js?v=232"></script>
+<script src="js/sgadd-clientes.js?v=232"></script>
+<script src="js/sgadd-ui.js?v=232"></script>
+<script src="js/sgadd-app.js?v=232"></script>
+<script src="js/sgadd-clasificacion.js?v=232"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=231"></script>
-<script src="js/sgadd-configui.js?v=231"></script>
-<script src="js/sgadd-estados.js?v=231"></script>
-<script src="js/sgadd-buzon.js?v=231"></script>
-<script src="js/sgadd-charts.js?v=231"></script>
-<script src="js/sgadd-personalidad.js?v=231"></script>
-<script src="js/sgadd-rankings.js?v=231"></script>
-<script src="js/sgadd-partido.js?v=231"></script>
-<script src="js/sgadd-informe.js?v=231"></script>
-<script src="js/sgadd-ficha.js?v=231"></script>
-  <script src="js/sgadd-rankingpdf.js?v=231"></script>
-<script src="js/sgadd-equipos.js?v=231"></script>
+<script src="js/sgadd-hub.js?v=232"></script>
+<script src="js/sgadd-configui.js?v=232"></script>
+<script src="js/sgadd-estados.js?v=232"></script>
+<script src="js/sgadd-buzon.js?v=232"></script>
+<script src="js/sgadd-charts.js?v=232"></script>
+<script src="js/sgadd-personalidad.js?v=232"></script>
+<script src="js/sgadd-rankings.js?v=232"></script>
+<script src="js/sgadd-partido.js?v=232"></script>
+<script src="js/sgadd-informe.js?v=232"></script>
+<script src="js/sgadd-ficha.js?v=232"></script>
+  <script src="js/sgadd-rankingpdf.js?v=232"></script>
+<script src="js/sgadd-equipos.js?v=232"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=231"></script>
-<script src="js/sgadd-jugadores.js?v=231"></script>
-<script src="js/sgadd-4factores.js?v=231"></script>
-<script src="js/sgadd-scouting.js?v=231"></script>
-<script src="js/sgadd-pbp.js?v=231"></script>
-<script src="js/sgadd-diagnostico.js?v=231"></script>
+<script src="js/sgadd-niveles.js?v=232"></script>
+<script src="js/sgadd-jugadores.js?v=232"></script>
+<script src="js/sgadd-4factores.js?v=232"></script>
+<script src="js/sgadd-scouting.js?v=232"></script>
+<script src="js/sgadd-pbp.js?v=232"></script>
+<script src="js/sgadd-diagnostico.js?v=232"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

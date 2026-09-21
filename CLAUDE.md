@@ -67,8 +67,9 @@ node test-similitud-etiquetas.js #  45 tests · la similitud multi-etiqueta cont
                            #             de etiquetas, el caso Raineri/Benavidez y los afines
 node test-estados-sync.js  #  74 tests · los estados compartidos en el servidor, dos sesiones
                            #             y que ninguna escritura del catálogo pise datos
-node test-pdf-layout.js    #  32 tests · claves arriba del resto, los cortes de página y
-                           #             que ningún :hover pinte la hoja impresa
+node test-pdf-layout.js    #  38 tests · claves arriba del resto, los cortes de página, la
+                           #             tabla que se parte por filas y que ningún :hover
+                           #             pinte la hoja impresa
 node test-router-jugadores.js # 12 tests · la pestaña Jugadores se pinta en el acto y
                            #             suelta el equipo de otra categoría
 node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: plan, estado,
@@ -94,7 +95,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6179 tests en total. Todos tienen que dar verde antes de commitear.**
+**6185 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -9608,3 +9609,109 @@ CABALLERO (pívot real, T1% 24,0 %)  → interior-dominante
   4 tests, la guarda del valor esperado 1, el gate de la marca 1, la
   delegación de las claves 1, el modificador de box-out 2, los dos ejes 1
   y la guarda de volumen de línea 1.
+
+---
+
+## 65. LA TABLA QUE NO ENTRA SE PARTE · NO SALTA ENTERA (2026-09-21)
+
+Reportado por el club con el PDF en la mano: en 🛡 Marcas · jugador por
+jugador **la primera hoja salía con el título, el subtítulo y la leyenda y
+nada más**, y los ocho jugadores empezaban recién en la siguiente. El pedido
+fue explícito: *«la hoja se debe empezar a llenar y, al llegar al final, si
+hay información que queda afuera, ahí recién se inicia una hoja nueva. Lo que
+no puede pasar es que quede info de jugadores por la mitad: el salto de
+página lo tiene que iniciar el nombre del jugador».*
+
+### El mecanismo son VEINTISÉIS PÍXELES
+
+Medido en modo papel con la media de impresión emulada (`Emulation.
+setEmulatedMedia`), que es la única forma de leer los altos que decide
+Chromium al paginar:
+
+```
+alto útil de una A3 apaisada      1028px   (297mm − 10 de margen − 15 del pie)
+la card de marcas                 1054px   ← se pasa por 26
+   cabezal (título + leyenda)        70px
+   la tabla                         942px
+la fila más alta (un jugador)      123px   ← entra en cualquier hoja
+```
+
+La card **no entra en ninguna hoja**, así que Chromium tiene que partirla. Y
+ahí está el defecto: `.scrollbox` y `table` estaban en la lista general de
+`break-inside: avoid` (punto 59.2), así que la tabla no se podía partir y
+saltaba **entera** a la hoja siguiente, dejando el cabezal solo. Un desborde
+de 26 píxeles se comía media hoja.
+
+El PDF del club, decodificando el ToUnicode hoja por hoja:
+
+```
+hoja 5    542 glifos   ← solo el cabezal. El resto, en blanco
+hoja 6   8750 glifos   ← la tabla entera de los ocho jugadores
+```
+
+### LA DISTINCIÓN ES SI LA CARD ABRE HOJA
+
+El primer intento fue aplicarlo a TODA tabla de una card, y **rompió la
+matriz**: su título quedó en la hoja del encabezado y la tabla siguió en la
+otra sin encabezados. Medido, la hoja 1 pasó de 479 a 1132 glifos y la 2 de
+1366 a 740.
+
+La regla correcta sale de esa medición:
+
+- una card que **ABRE hoja** (`.scout-pagina`) ya arranca arriba de todo, así
+  que `avoid` no la puede mover a ningún lado mejor. Lo único que consigue es
+  que la tabla salte entera y deje la hoja a medias → **`auto`**;
+- una que **SIGUE a otra** —la matriz, el resumen, las claves— sí se
+  beneficia: `avoid` la baja completa a la hoja siguiente en vez de partirla,
+  que es el maquetado medido del punto 7.2 bis → **se queda como está**.
+
+Alcanza a las cinco que crecen con el plantel: marcas, jugadores clave,
+resto, fichas y quintetos.
+
+### La fila es el jugador, y es lo único que no se corta
+
+```css
+html.modo-scout-print .scout-card.scout-pagina:has(table)      → break-inside: auto
+html.modo-scout-print .scout-card.scout-pagina .scrollbox      → auto !important
+html.modo-scout-print .scout-card.scout-pagina > .scrollbox > table → auto !important
+html.modo-scout-print .scout-card.scout-pagina table > tbody > tr   → avoid !important
+html.modo-scout-print .scout-card.scout-pagina > h4, > p       → break-after: avoid
+```
+
+Con la fila atómica el corte cae **siempre entre dos nombres**, que es lo que
+pidió el club. El `<thead>` se repite arriba de cada hoja por la regla
+general (`display: table-header-group`), así que la tabla de la segunda hoja
+no queda sin encabezados — es la misma maquinaria del `<tfoot>` del punto 51.
+
+**El `h4` no estaba en la regla general de `page-break-after`** —que enumera
+h1, h2, h3 y h5— y los títulos de las cards de scouting son justamente h4.
+Con la card partible, sin eso un título podía quedar solo al pie de una hoja:
+el mismo defecto con otra cara.
+
+### Medido, antes y después (mismo cruce, misma versión del resto)
+
+```
+hoja      1      2      3      4        5        6      7      8
+antes    479   1366   1850   2885     540 ←   8525   2766    726
+después  479   1366   1850   2885    7761     1390   2766    726
+```
+
+Seis hojas **idénticas** y las dos de marcas dadas vuelta: la que estaba
+vacía ahora se llena y la otra se queda con lo que no entró. Ocho hojas antes
+y ocho después.
+
+Y leído, que es lo que importa: la hoja 5 trae **siete jugadores completos**,
+la 6 arranca con el encabezado repetido y el octavo entero, y **ningún**
+**jugador aparece en las dos** — o sea que no quedó una fila partida.
+
+### Lo que hay que respetar al tocarlo
+
+- **La medición se hace con `Emulation.setEmulatedMedia: print`.** Sin eso se
+  miden los altos de PANTALLA y la card de marcas parece entrar.
+- **`avoid` en una card que abre hoja no protege nada**: si se lo vuelve a
+  poner, vuelve la hoja en blanco.
+- **Una fila más alta que la hoja se parte igual**, y ahí no hay CSS que
+  valga. Hoy la más alta mide 123px contra 1028 de hoja.
+- **El heredoc de este entorno se come las barras invertidas**: los scripts
+  con expresiones regulares se escriben con la herramienta de archivo, no
+  con `<<EOF` (el CLAUDE.md ya lo decía por el carácter «═»).
