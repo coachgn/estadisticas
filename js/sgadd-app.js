@@ -434,7 +434,12 @@ const SGADD_APP = (function () {
     /* Una prueba que terminó sola por fecha está pausada, pero decir
        «pausada» haría creer que alguien la pausó (punto 61). */
     if (x.bloqueada) return ' — ' + (x.pruebaVencida ? 'prueba terminada' : (NOMBRE_BLOQUEO[x.estado] || 'sin acceso'));
-    if (!x.activo) return ' — sin datos';
+    /* SIN LIBRO PERO CON TORNEO se puede entrar igual, a ver el FIXTURE
+       (punto 68): antes del primer partido es lo unico que hay para
+       mirar, y dejar la categoria deshabilitada hasta que MotorStats
+       escriba el libro dejaba al club sin ver su propio calendario. Se
+       dice que es solo el fixture para que nadie espere numeros. */
+    if (!x.activo) return x.torneoId ? ' — solo fixture' : ' — sin datos';
     const partes = [];
     if (x.plan) partes.push(String(x.plan).toUpperCase());
     if (x.estado === 'prueba') partes.push('en prueba');
@@ -456,7 +461,7 @@ const SGADD_APP = (function () {
         ? 'Otras'
         : ({ femenina: 'Femenina', negra: 'Masculina Negra', naranja: 'Masculina Naranja' })[tira] || tira;
       opts += `<optgroup label="${SGADD_UI.esc(etiqueta)}">` +
-        lista.map(x => `<option value="${SGADD_UI.esc(x.id)}" ${x.id === estado.planillaId ? 'selected' : ''} ${x.activo ? '' : 'disabled'}>
+        lista.map(x => `<option value="${SGADD_UI.esc(x.id)}" ${x.id === estado.planillaId ? 'selected' : ''} ${(x.activo || (x.torneoId && !x.bloqueada)) ? '' : 'disabled'}>
           ${SGADD_UI.esc(x.label)}${sufijoCategoria(x)}</option>`).join('') +
         `</optgroup>`;
     });
@@ -556,7 +561,7 @@ const SGADD_APP = (function () {
   function tieneFixture() {
     try {
       const p = planillaActual();
-      return !!(p && p.torneo);
+      return !!(p && p.torneoId);
     } catch (e) { return false; }
   }
 

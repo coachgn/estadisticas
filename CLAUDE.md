@@ -85,7 +85,7 @@ node test-mails.js         # 177 tests · los mails institucionales: plantillas 
                            #             el código adentro de la bienvenida, la puerta de ingreso,
                            #             el nombre del acceso y el link que llena el login
 
-node test-fixture.js       # 105 tests · la seccion Fixture, los empty states de pretemporada,
+node test-fixture.js       # 112 tests · la seccion Fixture, los empty states de pretemporada,
                            #             las iniciales con parentesis y la grilla compacta del hub
 
 node test-torneos.js       #  95 tests · los torneos sin cliente y la estructura multizona: la Liga
@@ -101,7 +101,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6446 tests en total. Todos tienen que dar verde antes de commitear.**
+**6455 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -210,7 +210,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=237`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=238`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -10083,6 +10083,31 @@ está enganchada» sería mandar al DT a otro vacío.
 **El Diagnóstico sigue marcando `error · La hoja no tiene filas de datos`**, y
 se deja: ese error caza el libro que DEBERÍA tener datos y no los tiene (el
 recálculo a medias de la U21, punto 3 ter). Es una pantalla de admin.
+
+### EL CAMPO SE LLAMA `torneoId`, Y NO ES UN CAPRICHO
+
+El JSON del club **ya usa `torneo`** para el NOMBRE del torneo
+(`"CONFERENCIA NORTE"`, `"TORNEO LOCAL"`), y ese campo baja a cada planilla
+del catálogo. Con el mismo nombre, el fixture pedía
+`torneos/CONFERENCIA NORTE.json` —404— y el selector ofrecía «solo fixture»
+en cualquier categoría sin libro de un club que declarara torneo.
+
+Es **la colisión del punto 18**, la misma que costó una pantalla cuando el
+bloque de preconfiguración se bautizó `torneo`. La planilla usa `torneoId` y
+`zonaId`; el catálogo del servidor los manda como `torneo`/`zona` dentro de
+`categorias[slug]`, donde no colisionan con nada. Hay un test que lo fija
+leyendo el `clubes/jujuy.json` real.
+
+### La categoría SIN LIBRO se puede abrir, a ver el fixture
+
+Una categoría sin `sheetId` va `disabled` en el selector, que es lo correcto
+—no hay datos— pero antes del primer partido **eso dejaba al club sin ver su
+propio calendario**: la zona de LAB no tiene libro hasta que MotorStats lo
+escriba. Con `torneoId` declarado se puede elegir y dice **«— solo fixture»**,
+para que nadie espere números.
+
+**El bloqueo comercial gana igual**: una categoría pausada, vencida o dada de
+baja no se abre ni para el fixture.
 
 ### De dónde sabe el panel a qué torneo pertenece
 

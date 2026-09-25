@@ -613,7 +613,7 @@ function clasifTablaHTML(idx, opciones) {
         detalle: 'La tabla de posiciones se arma con los partidos jugados, y en este tramo todavía '
           + 'no hay ninguno. Aparece sola con el primer resultado.',
         fixture: !!(typeof SGADD_APP !== 'undefined' && SGADD_APP.planillaActual()
-          && SGADD_APP.planillaActual().torneo),
+          && SGADD_APP.planillaActual().torneoId),
       })
       : clasifCartel('Sin partidos cargados en este tramo.');
   }

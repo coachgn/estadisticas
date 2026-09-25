@@ -840,12 +840,12 @@ const CLUB = (function () {
       /* EL TORNEO Y LA ZONA (punto 68): con esto la seccion Fixture sabe
          que `torneos/<id>.json` leer. Sin enganche no hay fixture, y la
          seccion lo dice en vez de quedar vacia. */
-      if (k.torneo) p.torneo = k.torneo;
-      if (k.zona) p.zona = k.zona;
+      if (k.torneo) p.torneoId = k.torneo;
+      if (k.zona) p.zonaId = k.zona;
       /* SI EL CLUB ES UN TORNEO, la categoría ES una de sus zonas: su
          fixture es el del propio torneo. Sin esto, abrir la Zona C decía
          «esta categoría no está enganchada a un torneo» — y es el torneo. */
-      if (s.tipo === 'torneo' && !p.torneo) p.torneo = s.id;
+      if (s.tipo === 'torneo' && !p.torneoId) p.torneoId = s.id;
       if (k.pruebaVencida) p.pruebaVencida = true;
       return p;
     });

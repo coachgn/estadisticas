@@ -427,8 +427,39 @@ seccion('13 · torneo y zona en el catálogo');
      decía «esta categoría no está enganchada a un torneo» — y es el torneo. */
   const club = fs.readFileSync('js/sgadd-club.js', 'utf8');
   check('un torneo usa su propio id como torneo de la categoría',
-    /s\.tipo === 'torneo' && !p\.torneo\) p\.torneo = s\.id/.test(club));
-  check('y la planilla recibe torneo y zona', /if \(k\.torneo\) p\.torneo = k\.torneo/.test(club));
+    /s\.tipo === 'torneo' && !p\.torneoId\) p\.torneoId = s\.id/.test(club));
+  check('y la planilla recibe torneo y zona', /if \(k\.torneo\) p\.torneoId = k\.torneo/.test(club));
+  /* EL CAMPO SE LLAMA `torneoId` Y NO `torneo`: el JSON del club YA usa
+     `torneo` para el NOMBRE del torneo («CONFERENCIA NORTE»), que baja a
+     cada planilla. Con el mismo nombre, el fixture buscaba
+     `torneos/CONFERENCIA NORTE.json` y el selector ofrecia «solo fixture»
+     en cualquier categoria sin libro. Es la colision del punto 18, otra vez. */
+  check('y NO se llama `torneo`, que en el JSON del club es el NOMBRE',
+    JSON.parse(fs.readFileSync('clubes/jujuy.json', 'utf8')).torneo === 'CONFERENCIA NORTE'
+    && !/p\.torneo =/.test(club), 'el JSON del club ya ocupa esa clave');
+}
+
+/* =====================================================================
+   14 · La categoría SIN LIBRO pero con torneo se puede abrir
+   ===================================================================== */
+seccion('14 · entrar al fixture antes de que exista el libro');
+{
+  const APP = require('./js/sgadd-app.js');
+  /* Antes del primer partido la zona no tiene libro, y con la categoría
+     deshabilitada el club no podía ver ni su propio calendario. */
+  check('sin libro y sin torneo sigue diciendo «sin datos»',
+    APP.sufijoCategoria({ activo: false }) === ' — sin datos');
+  check('sin libro pero con torneo dice que es solo el fixture',
+    APP.sufijoCategoria({ activo: false, torneoId: 'liga-argentina-2026-27' }) === ' — solo fixture');
+  check('con libro no cambia', APP.sufijoCategoria({ activo: true, plan: 'ORO' }) === ' · ORO');
+  /* EL BLOQUEO COMERCIAL GANA: una pausada no se abre ni para el fixture. */
+  check('una categoría pausada sigue diciendo pausada, aunque tenga torneo',
+    APP.sufijoCategoria({ activo: false, torneoId: 'x', bloqueada: true, estado: 'pausado' }) === ' — pausada');
+
+  const app = fs.readFileSync('js/sgadd-app.js', 'utf8');
+  const opt = app.slice(app.indexOf('<option value='), app.indexOf('<option value=') + 300);
+  check('el selector la habilita', opt.indexOf('x.activo || (x.torneoId') !== -1, opt.slice(0, 140));
+  check('pero NO si está bloqueada', opt.indexOf('!x.bloqueada') !== -1);
 }
 
 console.log('\n' + (mal ? '✗ HAY FALLAS · ' : '✓ TODO OK · ') + ok + ' pasaron, ' + mal + ' fallaron');

@@ -618,7 +618,7 @@ const SGADD_FIXTURE = (function () {
   /** La sección entera. */
   function html() {
     const planilla = planillaActual();
-    const torneoId = planilla && planilla.torneo;
+    const torneoId = planilla && planilla.torneoId;
     const idx = (typeof SGADD_APP !== 'undefined') ? SGADD_APP.estado.idx : null;
 
     if (!torneoId) {
@@ -645,7 +645,7 @@ const SGADD_FIXTURE = (function () {
     }
 
     const a = agenda({
-      torneo: estado.doc, zona: planilla.zona, idx: idx,
+      torneo: estado.doc, zona: planilla.zonaId, idx: idx,
       equipo: equipoPropio(), mes: estado.mes || null,
     });
 
@@ -692,7 +692,7 @@ const SGADD_FIXTURE = (function () {
   function montar() {
     estado.mes = '';
     const planilla = planillaActual();
-    const id = planilla && planilla.torneo;
+    const id = planilla && planilla.torneoId;
     estado.zonaLabel = (planilla && planilla.label) || '';
     pintar();
     if (id) cargarTorneo(id).then(() => { if (vigente()) pintar(); });
