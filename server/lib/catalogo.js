@@ -35,6 +35,7 @@ const { CATALOGO, entorno } = require('./config.js');
 /* La cascada de plan y estado por categoría vive en el motor compartido:
    el Panel Master la pinta con la misma función (punto 60). */
 const AUTH = require('./compartido/sgadd-auth.js');
+const TORNEOS = require('./torneos.js');
 
 const CLAVE_KV = 'sgadd:catalogo';
 
@@ -60,6 +61,12 @@ function validar(cat) {
     if (!c || typeof c !== 'object') return id + ': no es un objeto';
     if (!c.nombre) return id + ': falta `nombre`';
     if (!c.categorias || typeof c.categorias !== 'object') return id + ': falta `categorias`';
+    /* Un TORNEO (punto 67): forma y nada más. Un tipo que no se reconoce
+       se lee como cliente, que es lo que era todo antes de que existiera. */
+    if (c.tipo !== undefined && typeof c.tipo !== 'string') return id + ': `tipo` no es texto';
+    const noObjeto = ['formato', 'marca', 'fuente'].find(f => c[f] !== undefined
+      && (c[f] === null || typeof c[f] !== 'object' || Array.isArray(c[f])));
+    if (noObjeto) return id + ': `' + noObjeto + '` no es un objeto';
     for (const slug of Object.keys(c.categorias)) {
       const k = c.categorias[slug];
       if (!k || typeof k !== 'object') return id + '/' + slug + ': no es un objeto';
@@ -83,6 +90,12 @@ function validar(cat) {
          capa que no existe se ignora al leer (`AUTH.capasDeCategoria`). */
       if (k.laboratorio !== undefined && (!Array.isArray(k.laboratorio) || k.laboratorio.some(x => typeof x !== 'string'))) {
         return id + '/' + slug + ': `laboratorio` no es una lista de textos';
+      }
+      /* La zona de un torneo y el enganche de un cliente a ella. */
+      if (k.zona !== undefined && typeof k.zona !== 'string') return id + '/' + slug + ': `zona` no es texto';
+      if (k.torneo !== undefined && typeof k.torneo !== 'string') return id + '/' + slug + ': `torneo` no es texto';
+      if (k.equipos !== undefined && (!Array.isArray(k.equipos) || k.equipos.some(e => !e || typeof e.nombre !== 'string'))) {
+        return id + '/' + slug + ': `equipos` no es una lista de equipos con nombre';
       }
     }
   }
@@ -315,7 +328,9 @@ function suscripcionPublica(club, slug, origen) {
   const s = AUTH.suscripcionDeCategoria(club, slug);
   const eq = AUTH.equipoDeCategoria(club, slug);
   return {
-    planEfectivo: s.plan || (origen === 'kv' ? 'BRONCE' : null),
+    /* Un TORNEO no tiene plan (punto 67): «BRONCE» en su selector se leería
+       como un cliente que paga el plan más bajo. */
+    planEfectivo: club.tipo === 'torneo' ? null : (s.plan || (origen === 'kv' ? 'BRONCE' : null)),
     planDe: s.planDe,
     /* Ya derivado de las fechas: el del club y el de la categoría. */
     estadoEfectivo: s.estado,
@@ -345,10 +360,14 @@ function publico(cat, opciones) {
   const propio = opciones && opciones.club ? String(opciones.club) : null;
   const origen = opciones && opciones.origen;
   const c = cat || {};
-  return Object.keys(c).map(id => Object.assign({
+  /* LOS TORNEOS SIN CLIENTE SOLO LOS VE EL ADMIN (punto 67): son trabajo
+     interno —la Zona C se ingesta antes de que nadie la contrate— y al
+     cliente no le suman nada a su pantalla. */
+  return Object.keys(c).filter(id => admin || c[id].tipo !== 'torneo').map(id => Object.assign({
     id: id,
     nombre: c[id].nombre,
     liga: c[id].liga || '',
+    tipo: c[id].tipo === 'torneo' ? 'torneo' : 'cliente',
     /* EL COLOR DE MARCA va para todos: es cómo se ve el panel del propio
        cliente, y sin él un club sin `clubes/<id>.json` se pintaba con el
        naranja de Reconquista. No revela nada: el del JSON ya es público. */
@@ -389,7 +408,12 @@ function publico(cat, opciones) {
       estado: c[id].categorias[s].estado || null,
       vence: c[id].categorias[s].vence || null,
       equipoPropio: c[id].categorias[s].equipoPropio || null,
-    }, suscripcionPublica(c[id], s, origen), (() => {
+      /* El enganche a la zona de un torneo, y la zona con sus equipos si
+         la categoría ES una zona (punto 67). */
+      torneo: c[id].categorias[s].torneo || null,
+    }, c[id].tipo === 'torneo' ? TORNEOS.publicoDeZona(c[id].categorias[s])
+       : { zona: c[id].categorias[s].zona || null },
+    suscripcionPublica(c[id], s, origen), (() => {
       /* El ciclo ORO de ESTA categoría, crudo: la posición depende de los
          partidos jugados y la calcula quien tenga el índice delante. */
       const ci = AUTH.cicloDeCategoria(c[id], s);
@@ -402,7 +426,11 @@ function publico(cat, opciones) {
          (`guardSuscripcion`), por eso a él no se le marca. */
       bloqueada: !AUTH.tieneAcceso(suscripcionPublica(c[id], s, origen).estadoEfectivo),
     }) : {})),
-  }, admin ? {
+  }, (admin && c[id].tipo === 'torneo') ? {
+    temporada: c[id].temporada || null,
+    formato: c[id].formato || null,
+    marca: c[id].marca || null,
+  } : {}, admin ? {
     estado: c[id].estado || 'activo',
     plan: c[id].plan || null,
     vence: c[id].vence || null,

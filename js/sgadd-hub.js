@@ -1617,7 +1617,7 @@ const SGADD_HUB = (function () {
 
   /** La pestaña entera. */
   function html() {
-    const cs = clubes();
+    let cs = clubes();
 
     if (!cs) {
       /* Sin backend no hay catálogo, y ahí el hub no puede decir nada
@@ -1635,6 +1635,10 @@ const SGADD_HUB = (function () {
     }
 
     cargarFichas();
+    /* LOS TORNEOS VAN EN SU PROPIO BLOQUE (punto 67): no tienen plan ni
+       accesos, y pintarlos como una tarjeta de cliente ofrecería pausarlos. */
+    const torneos = cs.filter(c => c.tipo === 'torneo');
+    cs = cs.filter(c => c.tipo !== 'torneo');
     const totalCat = cs.reduce((a, c) => a + (c.categorias || []).length, 0);
     const conLibro = cs.reduce((a, c) => a + (c.categorias || []).filter(k => k.activo).length, 0);
 
@@ -1659,6 +1663,9 @@ const SGADD_HUB = (function () {
       </div>
 
       <div id="hubAlta">${bloqueAlta()}</div>
+
+      ${typeof SGADD_TORNEOS !== 'undefined'
+        ? `<div id="hubTorneos" class="space-y-4">${SGADD_TORNEOS.html(cs.concat(torneos))}</div>` : ''}
     `;
   }
 
@@ -2176,7 +2183,7 @@ const SGADD_HUB = (function () {
     verAccesos, campoAcceso, campoAccesoNombre, accionAcceso, aplicarAcceso, aplicarClub,
     badgeServicio,
     copiarCodigo, mostrarCodigo, estadoMail, bloqueAccesos,
-    accesos, accesosAbierto,
+    accesos, accesosAbierto, repintarLista,
   };
 })();
 

@@ -788,6 +788,11 @@ const CLUB = (function () {
        lo que se compara: sin anclar, DEPORTIVO LA PLATA se llevaría a
        DEPORTIVO SAN VICENTE. */
     const equipo = (extra && extra.equipoPropio) || s.equipoPropio;
+    /* UN TORNEO NO TIENE EQUIPO PROPIO (punto 67). Sin esto hereda el
+       patrón por defecto, /RECONQUISTA/, y en la Zona C trataría a
+       RECONQUISTA 'B' como propio: scouting, informes y la fila resaltada
+       de la tabla. `(?!)` no calza con nada. */
+    if (!base.patronEquipoPropio && s.tipo === 'torneo') base.patronEquipoPropio = '(?!)';
     if (!base.patronEquipoPropio && equipo) {
       base.patronEquipoPropio = '^' + escRegex(claveDe(equipo)) + '$';
       /* Se marca que es DERIVADO: al abrir una categoría con otro equipo,

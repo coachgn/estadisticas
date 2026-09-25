@@ -13,6 +13,8 @@
      node server/bin/catalogo.js vence  --club X [--categoria Y] --vence 2026-10-31
      node server/bin/catalogo.js equipo --club X [--categoria Y] --equipo "RECONQUISTA"
      node server/bin/catalogo.js laboratorio --club X --categoria Y --capas pbp   (vacío: --capas "")
+     node server/bin/catalogo.js torneo   --archivo torneos/<id>.json [--libro zona=<id>] [--probar]
+     node server/bin/catalogo.js vincular --club X --categoria Y --torneo T --zona Z [--equipo E] [--probar]
      node server/bin/catalogo.js exportar
      node server/bin/catalogo.js sembrar
 
@@ -96,6 +98,17 @@ CLI del catálogo · da de alta clubes sin redeplegar
   baja                      saca una categoría, o el club entero
     --club       <slug>       obligatorio
     --categoria  <slug>       si se omite, se borra el CLUB completo
+  torneo                    da de alta o actualiza un TORNEO sin cliente (punto 67)
+    --archivo    <ruta>       torneos/<id>.json · equipos, zonas, formato, marca
+    --libro      <zona=id,…>  el libro de cada zona. NO va en el archivo: el
+                              repo es público y el sheetId no
+    --probar                  muestra el resultado sin escribir en KV
+  vincular                  engancha la categoría de un cliente a una zona
+    --club       <slug>       el CLIENTE
+    --categoria  <slug>       su categoría (se crea si no existe)
+    --torneo     <slug>       el torneo · --zona <slug> la zona
+    --equipo     <NOMBRE|id>  su equipo en esa zona (por defecto, el del club)
+    --label      <texto>      lo que dice el selector
   exportar                  el catálogo en JSON, para SGADD_CATALOGO
   sembrar                   copia el catálogo vigente a KV, sin cambios
 
@@ -197,7 +210,7 @@ function exigirKV() {
      no del respaldo: con Upstash sin contestar, `cargar()` devuelve el
      literal del código y escribirlo encima borraba planes, zonas y
      partidos manuales. `cargarParaEscribir` lanza antes de pisar nada. */
-  const escribe = ['sembrar', 'alta', 'baja', 'plan', 'estado', 'vence', 'equipo', 'laboratorio'].indexOf(cmd) !== -1;
+  const escribe = ['sembrar', 'alta', 'baja', 'plan', 'estado', 'vence', 'equipo', 'laboratorio', 'torneo', 'vincular'].indexOf(cmd) !== -1;
   const cascada = escribe
     ? await catalogo.cargarParaEscribir().catch(e => {
       console.error('');
@@ -306,6 +319,49 @@ function exigirKV() {
     });
     console.log('');
     console.log('  Ya está vigente: el cliente lo ve en su próxima carga. Sus estados de jugador no se tocan.');
+    return;
+  }
+
+  /* -------------------------------------------------- torneo · vincular
+     Por `mutar.aplicar`, como el Panel Master: los mismos guards. */
+  if (cmd === 'torneo' || cmd === 'vincular') {
+    exigirKV();
+    const TORNEOS = require('../lib/torneos.js');
+    let accion, datos;
+    if (cmd === 'torneo') {
+      if (!o.archivo || o.archivo === true) { console.error('  Falta --archivo torneos/<id>.json'); process.exit(1); }
+      const doc = JSON.parse(require('fs').readFileSync(String(o.archivo), 'utf8'));
+      const libros = {};
+      String(o.libro && o.libro !== true ? o.libro : '').split(',').filter(Boolean).forEach((par) => {
+        const i = par.indexOf('=');
+        if (i > 0) libros[par.slice(0, i).trim()] = par.slice(i + 1).trim();
+      });
+      datos = TORNEOS.intencionDesdeArchivo(doc, libros);
+      accion = 'torneo';
+    } else {
+      datos = { club: o.club, categoria: o.categoria, torneo: o.torneo, zona: o.zona,
+        equipo: o.equipo === true ? '' : o.equipo, label: o.label === true ? '' : o.label };
+      accion = 'vincular_torneo';
+    }
+    const r = mutar.aplicar(cat, accion, datos, catalogo.validar);
+    if (!r.ok) { console.error('  No se guardó nada: ' + r.motivo); process.exit(1); }
+    const id = String(cmd === 'torneo' ? datos.club : datos.torneo).toLowerCase();
+    const t = r.catalogo[id];
+    console.log('');
+    console.log('  ' + id + ' · ' + t.nombre + (r.creoClub ? '   (NUEVO)' : ''));
+    Object.keys(t.categorias).forEach(s => {
+      const k = t.categorias[s];
+      console.log('    zona ' + String(k.zona).padEnd(7) + s.padEnd(22) + (k.sheetId ? 'CONECTADA ' : 'SIN LIBRO ')
+        + enmascarar(k.sheetId) + '   ' + (k.equipos || []).length + ' equipos');
+    });
+    const eng = TORNEOS.vinculadas(r.catalogo, id);
+    console.log('    clientes enganchados: ' + (eng.length ? eng.map(x => x.club + '/' + x.slug + ' (' + r.catalogo[x.club].categorias[x.slug].zona + ')').join(', ') : 'ninguno'));
+    if (r.equipo) console.log('    equipo en la zona: ' + r.equipo.nombre + (r.equipo.id ? ' · id ' + r.equipo.id : ''));
+    if (r.propagado && r.propagado.length) console.log('    libro propagado a: ' + r.propagado.map(x => x.club + '/' + x.categoria).join(', '));
+    console.log('');
+    if (o.probar) { console.log('  --probar: NO se escribió nada.'); return; }
+    await guardar(r.catalogo, { forzar: !!o['sin-libros'] });
+    console.log('  Guardado en KV.');
     return;
   }
 

@@ -1,0 +1,665 @@
+{
+ "//": "Liga Argentina 2026-27. Zonas: nota oficial 52708 (02/09/2026). Formato y calendario: nota 52871 (21/09/2026). Ids: los de Gesdeportiva (/equipo/<idClub>/<id>/). Se regenera con el scraper de motorstats-ingestion cuando el sitio publique el fixture completo.",
+ "id": "liga-argentina-2026-27",
+ "nombre": "Liga Argentina 2026-27",
+ "nombreCorto": "LAB 2026-27",
+ "liga": "liga-argentina",
+ "temporada": "2026-27",
+ "nivel": "LIGA_ARGENTINA",
+ "fuente": {
+  "sitio": "liga",
+  "delegacion": "laligaargentina",
+  "base": "https://www.laliganacional.com.ar",
+  "notas": [
+   "https://www.laliganacional.com.ar/laligaargentina/noticia/52708/confirmados-los-equipos-para-la-liga-argentina-2026-27",
+   "https://www.laliganacional.com.ar/laligaargentina/noticia/52871/fixture-confirmado-para-la-liga-argentina-2026-27"
+  ]
+ },
+ "marca": {
+  "acento": "#094aa8",
+  "secundario": "#39bad8",
+  "pelota": "#ec6628",
+  "hueso": "#f0ede8",
+  "sombra": "#061b38",
+  "tipografia": "Audiowide",
+  "logo": "Se pide en SVG/AI a Marketing de ADC: no está en la carpeta de marca."
+ },
+ "formato": {
+  "equiposPorZona": 17,
+  "partidosPorEquipo": 32,
+  "modalidad": "Todos contra todos, ida y vuelta, dentro de cada conferencia",
+  "inicio": "2026-10-15",
+  "finRegular": "2027-04-20",
+  "receso": {
+   "desde": "2026-12-22",
+   "hasta": "2027-01-08"
+  },
+  "fases": [
+   {
+    "id": "regular",
+    "label": "Fase regular",
+    "cruce": "zona"
+   },
+   {
+    "id": "reclasificacion",
+    "label": "Reclasificación",
+    "cruce": "zona",
+    "puestos": [
+     5,
+     12
+    ]
+   },
+   {
+    "id": "octavos",
+    "label": "Octavos de final",
+    "cruce": "zona",
+    "directos": [
+     1,
+     4
+    ]
+   },
+   {
+    "id": "cuartos",
+    "label": "Cuartos de final",
+    "cruce": "interzonal"
+   },
+   {
+    "id": "semifinal",
+    "label": "Semifinales",
+    "cruce": "interzonal"
+   },
+   {
+    "id": "final",
+    "label": "Final por el ascenso a la Liga Nacional",
+    "cruce": "interzonal"
+   }
+  ]
+ },
+ "zonas": {
+  "norte": {
+   "slug": "lab-2026-27-norte",
+   "label": "LAB 2026-27 · Conferencia Norte",
+   "equipos": [
+    {
+     "id": 112811,
+     "idClub": 2168,
+     "nombre": "AMANCAY (LR)",
+     "ciudad": "La Rioja",
+     "alias": [
+      "Amancay Club",
+      "Amancay de La Rioja"
+     ]
+    },
+    {
+     "id": 114142,
+     "idClub": 2501,
+     "nombre": "BARRIO JARDIN (T)",
+     "ciudad": "San Miguel de Tucumán",
+     "alias": [
+      "Barrio Jardín de Tucumán"
+     ]
+    },
+    {
+     "id": 113655,
+     "idClub": 1670,
+     "nombre": "BARRIO PARQUE",
+     "ciudad": "Córdoba",
+     "alias": [
+      "Barrio Parque"
+     ]
+    },
+    {
+     "id": 115054,
+     "idClub": 1725,
+     "nombre": "MITRE (POSADAS)",
+     "ciudad": "Posadas",
+     "alias": [
+      "Mitre de Posadas",
+      "Bartolomé Mitre de Posadas"
+     ]
+    },
+    {
+     "id": 113545,
+     "idClub": 1672,
+     "nombre": "BOCHAS (CC)",
+     "ciudad": "Colonia Caroya",
+     "alias": [
+      "Bochas Sport de Colonia Caroya"
+     ]
+    },
+    {
+     "id": 112548,
+     "idClub": 1435,
+     "nombre": "COMUNICACIONES",
+     "ciudad": "Mercedes",
+     "alias": [
+      "Comunicaciones de Mercedes"
+     ]
+    },
+    {
+     "id": 114853,
+     "idClub": 2039,
+     "nombre": "EL CEIBO (SF)",
+     "ciudad": "San Francisco",
+     "alias": [
+      "El Ceibo de San Francisco",
+      "El Ceibo"
+     ]
+    },
+    {
+     "id": 114045,
+     "idClub": 1789,
+     "nombre": "HINDU (C)",
+     "ciudad": "Córdoba",
+     "alias": [
+      "Hindú Club",
+      "Hindú Club de Córdoba"
+     ]
+    },
+    {
+     "id": 114369,
+     "idClub": 1883,
+     "nombre": "INDEPENDIENTE (SDE)",
+     "ciudad": "Santiago del Estero",
+     "alias": [
+      "Independiente BBC",
+      "Independiente BBC de Santiago del Estero"
+     ]
+    },
+    {
+     "id": 112674,
+     "idClub": 2729,
+     "nombre": "JUJUY BASQUET",
+     "ciudad": "San Salvador de Jujuy",
+     "alias": [
+      "Jujuy Básquet"
+     ]
+    },
+    {
+     "id": 115104,
+     "idClub": 1903,
+     "nombre": "RIACHUELO (LR)",
+     "ciudad": "La Rioja",
+     "alias": [
+      "Riachuelo",
+      "Riachuelo de La Rioja"
+     ]
+    },
+    {
+     "id": 112545,
+     "idClub": 2641,
+     "nombre": "SALTA BASKET",
+     "ciudad": "Salta",
+     "alias": [
+      "Salta Basket"
+     ]
+    },
+    {
+     "id": 114446,
+     "idClub": 2043,
+     "nombre": "SAN ISIDRO",
+     "ciudad": "San Francisco",
+     "alias": [
+      "San Isidro",
+      "San Isidro de San Francisco"
+     ]
+    },
+    {
+     "id": 114985,
+     "idClub": 1691,
+     "nombre": "SANTA PAULA (G)",
+     "ciudad": "Gálvez",
+     "alias": [
+      "Santa Paula de Gálvez"
+     ]
+    },
+    {
+     "id": 112679,
+     "idClub": 1654,
+     "nombre": "SP. SUARDI",
+     "ciudad": "Suardi",
+     "alias": [
+      "Sportivo Suardi"
+     ]
+    },
+    {
+     "id": null,
+     "idClub": null,
+     "nombre": "UNION (SF)",
+     "ciudad": "Santa Fe",
+     "provisorio": "El sitio todavía no lo lista: nombre e id se confirman con el primer box score.",
+     "alias": [
+      "Unión de Santa Fe"
+     ]
+    },
+    {
+     "id": 112840,
+     "idClub": 1836,
+     "nombre": "VILLA SAN MARTIN",
+     "ciudad": "Resistencia",
+     "alias": [
+      "Villa San Martín",
+      "Villa San Martín de Resistencia"
+     ]
+    }
+   ]
+  },
+  "sur": {
+   "slug": "lab-2026-27-sur",
+   "label": "LAB 2026-27 · Conferencia Sur",
+   "equipos": [
+    {
+     "id": 112888,
+     "idClub": 1926,
+     "nombre": "CENTENARIO (VT)",
+     "ciudad": "Venado Tuerto",
+     "alias": [
+      "Centenario de Venado Tuerto"
+     ]
+    },
+    {
+     "id": 113317,
+     "idClub": 1458,
+     "nombre": "CENTRAL ENTRERRIANO",
+     "ciudad": "Gualeguaychú",
+     "alias": [
+      "Central Entrerriano",
+      "Central Entrerriano de Gualeguaychú"
+     ]
+    },
+    {
+     "id": 115445,
+     "idClub": 1937,
+     "nombre": "CICLISTA (J)",
+     "ciudad": "Junín",
+     "alias": [
+      "Ciclista Juninense"
+     ]
+    },
+    {
+     "id": 114179,
+     "idClub": 1640,
+     "nombre": "DEP. NORTE",
+     "ciudad": "Armstrong",
+     "alias": [
+      "Deportivo Norte",
+      "Deportivo Norte de Armstrong"
+     ]
+    },
+    {
+     "id": 114689,
+     "idClub": 2173,
+     "nombre": "DEP. VIEDMA",
+     "ciudad": "Viedma",
+     "alias": [
+      "Deportivo Viedma"
+     ]
+    },
+    {
+     "id": 113230,
+     "idClub": 2420,
+     "nombre": "GIMNASIA (LP)",
+     "ciudad": "La Plata",
+     "alias": [
+      "Gimnasia La Plata",
+      "Gimnasia y Esgrima La Plata"
+     ]
+    },
+    {
+     "id": 113925,
+     "idClub": 1420,
+     "nombre": "LA UNION (C)",
+     "ciudad": "Colón",
+     "alias": [
+      "La Unión de Colón"
+     ]
+    },
+    {
+     "id": 114918,
+     "idClub": 2254,
+     "nombre": "PERGAMINO BASQUET",
+     "ciudad": "Pergamino",
+     "alias": [
+      "Pergamino Básquet"
+     ]
+    },
+    {
+     "id": 114919,
+     "idClub": 1503,
+     "nombre": "PICO FC",
+     "ciudad": "General Pico",
+     "alias": [
+      "Pico FC",
+      "Pico Football Club"
+     ]
+    },
+    {
+     "id": 114897,
+     "idClub": 1761,
+     "nombre": "PROVINCIAL (R)",
+     "ciudad": "Rosario",
+     "alias": [
+      "Provincial de Rosario"
+     ]
+    },
+    {
+     "id": 112559,
+     "idClub": 2377,
+     "nombre": "QUILMES (MDP)",
+     "ciudad": "Mar del Plata",
+     "alias": [
+      "Quilmes de Mar del Plata"
+     ]
+    },
+    {
+     "id": null,
+     "idClub": null,
+     "nombre": "RACING (A)",
+     "ciudad": "Avellaneda",
+     "provisorio": "El sitio todavía no lo lista: nombre e id se confirman con el primer box score.",
+     "alias": [
+      "Racing Club de Avellaneda"
+     ]
+    },
+    {
+     "id": 114733,
+     "idClub": 2149,
+     "nombre": "REGATAS (SN)",
+     "ciudad": "San Nicolás",
+     "alias": [
+      "Regatas de San Nicolás"
+     ]
+    },
+    {
+     "id": 114766,
+     "idClub": 85,
+     "nombre": "RIVER",
+     "ciudad": "C.A.B.A.",
+     "alias": [
+      "River Plate"
+     ]
+    },
+    {
+     "id": 112972,
+     "idClub": 1385,
+     "nombre": "ROCAMORA",
+     "ciudad": "Concepción del Uruguay",
+     "alias": [
+      "Tomás de Rocamora"
+     ]
+    },
+    {
+     "id": 115029,
+     "idClub": 2378,
+     "nombre": "UNION (MDP)",
+     "ciudad": "Mar del Plata",
+     "alias": [
+      "Unión de Mar del Plata"
+     ]
+    },
+    {
+     "id": 112530,
+     "idClub": 2371,
+     "nombre": "VILLA MITRE (BB)",
+     "ciudad": "Bahía Blanca",
+     "alias": [
+      "Villa Mitre",
+      "Villa Mitre de Bahía Blanca"
+     ]
+    }
+   ]
+  }
+ },
+ "calendario": {
+  "parcial": true,
+  "fuente": "nota 52871 · primeras dos semanas",
+  "partidos": [
+   {
+    "fecha": "2026-10-15",
+    "local": "UNION (SF)",
+    "visitante": "BOCHAS (CC)",
+    "zona": "norte"
+   },
+   {
+    "fecha": "2026-10-15",
+    "local": "QUILMES (MDP)",
+    "visitante": "RIVER",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-16",
+    "local": "CENTENARIO (VT)",
+    "visitante": "ROCAMORA",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-16",
+    "local": "GIMNASIA (LP)",
+    "visitante": "CENTRAL ENTRERRIANO",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-17",
+    "local": "COMUNICACIONES",
+    "visitante": "EL CEIBO (SF)",
+    "zona": "norte"
+   },
+   {
+    "fecha": "2026-10-17",
+    "local": "SANTA PAULA (G)",
+    "visitante": "BOCHAS (CC)",
+    "zona": "norte"
+   },
+   {
+    "fecha": "2026-10-17",
+    "local": "PROVINCIAL (R)",
+    "visitante": "LA UNION (C)",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-17",
+    "local": "UNION (MDP)",
+    "visitante": "RIVER",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-18",
+    "local": "JUJUY BASQUET",
+    "visitante": "HINDU (C)",
+    "zona": "norte"
+   },
+   {
+    "fecha": "2026-10-18",
+    "local": "DEP. VIEDMA",
+    "visitante": "PICO FC",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-18",
+    "local": "GIMNASIA (LP)",
+    "visitante": "CICLISTA (J)",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-18",
+    "local": "DEP. NORTE",
+    "visitante": "ROCAMORA",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-18",
+    "local": "QUILMES (MDP)",
+    "visitante": "CENTRAL ENTRERRIANO",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-19",
+    "local": "MITRE (POSADAS)",
+    "visitante": "EL CEIBO (SF)",
+    "zona": "norte"
+   },
+   {
+    "fecha": "2026-10-19",
+    "local": "REGATAS (SN)",
+    "visitante": "CENTENARIO (VT)",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-20",
+    "local": "SALTA BASKET",
+    "visitante": "HINDU (C)",
+    "zona": "norte"
+   },
+   {
+    "fecha": "2026-10-20",
+    "local": "SANTA PAULA (G)",
+    "visitante": "BARRIO PARQUE",
+    "zona": "norte"
+   },
+   {
+    "fecha": "2026-10-20",
+    "local": "LA UNION (C)",
+    "visitante": "PERGAMINO BASQUET",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-20",
+    "local": "UNION (MDP)",
+    "visitante": "CENTRAL ENTRERRIANO",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-20",
+    "local": "VILLA MITRE (BB)",
+    "visitante": "PICO FC",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-21",
+    "local": "UNION (SF)",
+    "visitante": "BARRIO PARQUE",
+    "zona": "norte"
+   },
+   {
+    "fecha": "2026-10-21",
+    "local": "VILLA SAN MARTIN",
+    "visitante": "EL CEIBO (SF)",
+    "zona": "norte"
+   },
+   {
+    "fecha": "2026-10-22",
+    "local": "BOCHAS (CC)",
+    "visitante": "SP. SUARDI",
+    "zona": "norte"
+   },
+   {
+    "fecha": "2026-10-22",
+    "local": "ROCAMORA",
+    "visitante": "PERGAMINO BASQUET",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-23",
+    "local": "RIACHUELO (LR)",
+    "visitante": "SANTA PAULA (G)",
+    "zona": "norte"
+   },
+   {
+    "fecha": "2026-10-24",
+    "local": "CENTRAL ENTRERRIANO",
+    "visitante": "PERGAMINO BASQUET",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-24",
+    "local": "LA UNION (C)",
+    "visitante": "RIVER",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-24",
+    "local": "REGATAS (SN)",
+    "visitante": "DEP. NORTE",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-25",
+    "local": "AMANCAY (LR)",
+    "visitante": "SANTA PAULA (G)",
+    "zona": "norte"
+   },
+   {
+    "fecha": "2026-10-25",
+    "local": "CENTENARIO (VT)",
+    "visitante": "GIMNASIA (LP)",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-25",
+    "local": "CICLISTA (J)",
+    "visitante": "QUILMES (MDP)",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-26",
+    "local": "VILLA SAN MARTIN",
+    "visitante": "MITRE (POSADAS)",
+    "zona": "norte"
+   },
+   {
+    "fecha": "2026-10-26",
+    "local": "ROCAMORA",
+    "visitante": "RIVER",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-26",
+    "local": "REGATAS (SN)",
+    "visitante": "RACING (A)",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-27",
+    "local": "HINDU (C)",
+    "visitante": "BOCHAS (CC)",
+    "zona": "norte"
+   },
+   {
+    "fecha": "2026-10-27",
+    "local": "INDEPENDIENTE (SDE)",
+    "visitante": "SANTA PAULA (G)",
+    "zona": "norte"
+   },
+   {
+    "fecha": "2026-10-27",
+    "local": "SAN ISIDRO",
+    "visitante": "RIACHUELO (LR)",
+    "zona": "norte"
+   },
+   {
+    "fecha": "2026-10-27",
+    "local": "CENTENARIO (VT)",
+    "visitante": "UNION (MDP)",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-27",
+    "local": "DEP. NORTE",
+    "visitante": "GIMNASIA (LP)",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-27",
+    "local": "PICO FC",
+    "visitante": "QUILMES (MDP)",
+    "zona": "sur"
+   },
+   {
+    "fecha": "2026-10-28",
+    "local": "EL CEIBO (SF)",
+    "visitante": "RIACHUELO (LR)",
+    "zona": "norte"
+   }
+  ]
+ }
+}

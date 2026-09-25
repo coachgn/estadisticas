@@ -85,6 +85,9 @@ node test-mails.js         # 177 tests · los mails institucionales: plantillas 
                            #             el código adentro de la bienvenida, la puerta de ingreso,
                            #             el nombre del acceso y el link que llena el login
 
+node test-torneos.js       #  95 tests · los torneos sin cliente y la estructura multizona: la Liga
+                           #             Argentina 2026-27, la Zona C, el enganche a una zona y la propagación
+
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
 
@@ -95,7 +98,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6241 tests en total. Todos tienen que dar verde antes de commitear.**
+**6337 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -170,6 +173,10 @@ js/
   sgadd-auth.js         ← roles, planes y permisos. Motor PURO. Punto 19.
                           NO es seguridad: leer el punto 19 antes de tocarlo.
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app
+  sgadd-torneos.js      ← el bloque de TORNEOS del Panel Master (punto 67)
+torneos/<id>.json       ← la estructura de un torneo: zonas, equipos con su id de
+                          Gesdeportiva, formato y marca. SIN sheetId: el repo es público
+server/lib/torneos.js   ← motor PURO de torneos: alta multizona, enganche, propagación
 HOJA_DE_RUTA.md         ← qué está hecho, qué falta y por qué ese orden.
                           La vista de PRODUCTO; el detalle técnico vive acá.
 INTEGRACION_MOTORSTATS.md ← auditoría del motor que escribe las planillas
@@ -199,7 +206,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=158`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=234`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -9872,3 +9879,108 @@ la columna NET/plays de quintetos          1
   Y sacar `detectarBoxTruncado` del objeto exportado **no hace caer tests: hace
   que `test-core.js` no arranque**, que es lo que corresponde cuando lo que
   falta es la función y no su resultado.
+
+---
+
+## 67. TORNEOS SIN CLIENTE Y ESTRUCTURA MULTIZONA (2026-09-25)
+
+Pedido: dar de alta torneos completos en el Panel Master independientes de
+los clientes —la **Zona C de La Plata** entera, para tener las métricas de
+todos sus equipos antes de los cruces interzonales— y la **Liga Argentina
+2026-27** con sus dos conferencias, con Jujuy mapeado a la suya sin que el
+motor quede restringido a su equipo. `test-torneos.js` fija todo lo de acá.
+
+### Las decisiones (consultadas antes de escribir)
+
+- **Un torneo es una entrada del catálogo `tipo: 'torneo'`**, no una clave
+  aparte: reusa `resolver`, el guard de datos, el índice, el selector del
+  admin, `libroDe` y el alcance «libro». Sin plan, sin accesos, sin ficha.
+- **Cada ZONA es una categoría con su propio libro.** Es lo que hace
+  multizona al panel sin tocar el núcleo: el índice se arma sobre el libro
+  de UNA conferencia con TODOS sus equipos, así que la tabla y los
+  percentiles son los de la conferencia y no los del cliente. El cruce entre
+  zonas (cuartos en adelante) llega cuando exista ese libro.
+- **El id de un equipo es el `idEquipo` de Gesdeportiva**
+  (`/equipo/<idClub>/<idEquipo>/`); la lectura del libro sigue por
+  `claveEquipo()`. Donde no hay id (dos equipos que el sitio todavía no
+  lista, y la Zona C, que no sale de Gesdeportiva) manda la clave.
+
+### Las conferencias NO se tomaron del resumen de la página
+
+La nota del fixture (52871) no dice qué equipo va en qué conferencia, y el
+resumen automático de la página **inventó una asignación**. Se infirió del
+propio calendario —todo partido es intra-conferencia, así que el grafo de
+cruces se parte solo en dos— y se confirmó al 100 % contra la nota de
+equipos (52708). Barrio Jardín, que no juega las dos primeras semanas, iba a
+la Norte por descarte y la nota lo confirma. Unión de Santa Fe y Racing
+juegan y el sitio todavía no los lista: van sin id y marcados `provisorio`.
+
+**El fixture completo no está publicado**: el endpoint que usa el scraper de
+`motorstats-ingestion` devuelve «No se encontraron partidos» para cualquier
+rango. El archivo trae los 41 partidos anunciados, con `parcial: true`, y se
+regenera con el scraper cuando el sitio los cargue. Hay un test que exige
+que cada partido anunciado sea de dos equipos de la misma zona.
+
+### Cómo se escribe · y el sheetId NUNCA va al repo
+
+```
+node server/bin/catalogo.js torneo   --archivo torneos/<id>.json --libro "<zona>=<sheetId>" [--probar]
+node server/bin/catalogo.js vincular --club jujuy --categoria jujuy-lab-2026-27 \
+                                     --torneo liga-argentina-2026-27 --zona norte
+```
+
+`torneos/<id>.json` es público (equipos, zonas, formato, marca); el libro de
+cada zona entra por `--libro` o por el Panel Master. Hay un test que falla si
+un archivo de torneo trae algo con forma de sheetId.
+
+### Las reglas del motor (`server/lib/torneos.js`)
+
+- **Un equipo está en UNA zona**: una clave o un id repetidos entre zonas se
+  rechazan, en vez de quedarse con el primero.
+- **La zona sin libro es válida**: la Liga Argentina se declaró antes de que
+  MotorStats escriba nada. Va al selector como «sin datos».
+- **Editar sin mandar libro NO desconecta la zona.**
+- **La PROPAGACIÓN**: cuando una zona estrena libro, se lo copia a los
+  clientes enganchados (`torneo` + `zona`) con la herencia de zonas y
+  partidos manuales de `heredarDelLibro`. Se copia al ESCRIBIR, como
+  `libroDe`, así ninguna lectura del servidor tuvo que cambiar.
+- **Enganchar exige que el equipo sea de ESA zona**: engancharlo a la otra
+  se rechaza diciendo en cuál juega. Se elige por id, clave o alias.
+- **Un alta por `libroDe` de una zona deja el enganche declarado**, así que
+  también recibe la propagación.
+- **Las zonas de tabla salen del formato** (1-4 directos a octavos, 5-12
+  reclasificación) solo si el torneo no tiene unas publicadas. **Sin
+  descenso**: el reglamento 2026-27 no lo publicó y no se inventa. La Zona C
+  no declara puestos, así que sale sin colores.
+- **Un torneo rechaza las acciones de cliente** (pausar, plan, equipo,
+  vencimiento, informes ORO, laboratorio, `alta`) y **el padrón no le da
+  accesos**. Una zona con clientes enganchados no se da de baja.
+- **El cliente no recibe los torneos** en `/api/v1/catalogo`; el admin sí,
+  con zonas, equipos y formato, y sin un sheetId. Una zona no declara plan.
+- **Sin equipo propio el patrón es `(?!)`** (`reconciliarConfig`): con el
+  patrón por defecto, `/RECONQUISTA/`, la Zona C trataba a RECONQUISTA 'B'
+  como propio.
+
+Cada guard se verificó AL REVÉS, revirtiéndolo y contando lo que cae: acciones
+de cliente 7, zonas de tabla del formato 4, propagación 3, duplicados 2, y 1
+cada uno el equipo de la zona, la baja con enganchados, ocultar al cliente, el
+patrón `(?!)`, el enganche por `libroDe` y el guard del padrón.
+
+### Lo que quedó en KV el 2026-09-25
+
+```
+zona-c-la-plata-2026     zona-c-primera      CONECTADA · 11 equipos · 20 partidos
+liga-argentina-2026-27   lab-2026-27-norte   SIN LIBRO · 17 equipos
+                         lab-2026-27-sur     SIN LIBRO · 17 equipos
+jujuy                    jujuy-lab-2026-27   SIN LIBRO · enganchada a la Norte · JUJUY BASQUET #112674
+```
+
+### Pendiente
+
+- **MotorStats tiene que escribir un libro por conferencia** para 2026-27, y
+  se conecta con `catalogo.js torneo … --libro "norte=<id>,sur=<id>"`.
+- **Escudos**: faltan 22 de 34 de la Liga Argentina y 6 de 11 de la Zona C
+  en `logos/`. El logo vectorial de LAB se pide a ADC (no está en el Drive
+  de marca); la paleta ya está en el archivo (`marca`).
+- **El reglamento de la Zona C** (clasificación, reclasificación con
+  categorías superiores) no está declarado: sin él no hay zonas de tabla.

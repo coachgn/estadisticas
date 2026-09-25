@@ -813,6 +813,11 @@ async function manejarClientesEscribir(peticion, deps) {
     const cat = await catalogo.cargar(deps);
     const club = (cat.catalogo || {})[clubId];
     if (!club) return error(404, 'CLUB', 'Ese club no está en el catálogo.');
+    /* Un TORNEO no tiene accesos (punto 67): el que quiera verlo entra por
+       el club que se enganchó a una de sus zonas. */
+    if (club.tipo === 'torneo') {
+      return error(400, 'TORNEO', 'Es un torneo, no un cliente: los accesos se dan en el club enganchado a una zona.');
+    }
     r = clientes.alta(padron, email, clubId, {
       plan: AUTH.planDelClub(club),
       equipoAsignado: cuerpo.equipoAsignado ? String(cuerpo.equipoAsignado) : null,

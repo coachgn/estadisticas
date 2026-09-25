@@ -1,0 +1,36 @@
+{
+ "//": "Primera de La Plata · Zona C 2026. Sale del libro «ZONA C» que escribe MotorStats (Drive: LA PLATA/PRIMERA/ZONA C). El sheetId NO va acá —este repo es público—: lo pone la CLI en KV. Los equipos son los que trae el libro, escritos como los escribe el motor.",
+ "id": "zona-c-la-plata-2026",
+ "nombre": "Primera La Plata · Zona C 2026",
+ "nombreCorto": "Zona C 2026",
+ "liga": "la-plata",
+ "temporada": "2026",
+ "nivel": "LOCAL_MAYORES",
+ "fuente": { "motorstats": "LA PLATA/PRIMERA/ZONA C" },
+ "formato": {
+  "modalidad": "Todos contra todos · IDA - REGULAR",
+  "fases": [
+   { "id": "regular", "label": "Fase regular", "cruce": "zona" }
+  ],
+  "nota": "El reglamento de la zona (clasificación, reclasificación con categorías superiores, cruces interzonales) todavía no está declarado: no se inventan zonas de tabla."
+ },
+ "zonas": {
+  "c": {
+   "slug": "zona-c-primera",
+   "label": "Primera 2026 · Zona C",
+   "equipos": [
+    { "id": null, "nombre": "A. CHASCOMUS - MM" },
+    { "id": null, "nombre": "BANCO PROVINCIA 'B' - MM" },
+    { "id": null, "nombre": "C. MARCHIGIANO - MM" },
+    { "id": null, "nombre": "CAPITAL CHICA - MM" },
+    { "id": null, "nombre": "DEP. VILLA ELISA - MM" },
+    { "id": null, "nombre": "EL PATO - MM" },
+    { "id": null, "nombre": "ESTRELLA - MM" },
+    { "id": null, "nombre": "LOS HORNOS - MM" },
+    { "id": null, "nombre": "RECONQUISTA 'B'- MM" },
+    { "id": null, "nombre": "UNION VECINAL 'B' - MM" },
+    { "id": null, "nombre": "VILLA SAN CARLOS 'B' - MM" }
+   ]
+  }
+ }
+}

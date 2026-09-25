@@ -85,11 +85,14 @@ const SGADD_CLIENTES = (function () {
         conDatos: conDatos,
         activo: conDatos > 0,
         actual: c.id === clubActual,
-        etiqueta: (c.nombre || c.id)
+        /* Un TORNEO sin cliente (punto 67) se abre igual —es como el admin
+           mira las métricas de una zona entera— pero se nombra como tal. */
+        torneo: c.tipo === 'torneo',
+        etiqueta: (c.tipo === 'torneo' ? '🏆 ' : '') + (c.nombre || c.id)
           + (conDatos > 0 ? '  ·  ' + conDatos + (conDatos === 1 ? ' categoría' : ' categorías')
                           : '  ·  sin datos'),
       };
-    }).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    }).sort((a, b) => (a.torneo - b.torneo) || a.nombre.localeCompare(b.nombre, 'es'));
   }
 
   /**

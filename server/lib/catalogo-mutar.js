@@ -23,6 +23,7 @@
    servidor: el modal la lee y acá se hace cumplir (ver `aplicar`). */
 const AUTH = require('./compartido/sgadd-auth.js');
 const CORE = require('./compartido/sgadd-core.js');
+const TORNEOS = require('./torneos.js');
 
 /* El color de marca de un club: siempre #rrggbb. */
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -413,6 +414,17 @@ function alta(cat, d) {
      decisión sobre el nivel. */
   nuevo[v.club].categorias[v.categoria] = Object.assign({}, previa || {},
     { label: label, sheetId: sheetId });
+  /* UN LIBRO QUE ES LA ZONA DE UN TORNEO deja el enganche declarado: así
+     el libro se le propaga cuando la zona lo cambie (punto 67), igual que
+     a una categoría enganchada con `vincular_torneo`. */
+  if (v.libroDe) {
+    const pz = String(v.libroDe).split('/');
+    const oz = nuevo[pz[0]];
+    if (TORNEOS.esTorneo(oz) && oz.categorias[pz[1]] && oz.categorias[pz[1]].zona) {
+      nuevo[v.club].categorias[v.categoria].torneo = pz[0];
+      nuevo[v.club].categorias[v.categoria].zona = oz.categorias[pz[1]].zona;
+    }
+  }
   /* Sin el campo en el pedido NO se toca: editar la etiqueta desde una
      pantalla vieja no puede borrarle el plan a la categoría. */
   const kNueva = nuevo[v.club].categorias[v.categoria];
@@ -1070,9 +1082,35 @@ function aplicar(vigente, accion, datos, validar) {
     renovar: renovar,
     zonas: zonas,
     partidos_manuales: partidosManuales,
+    /* LOS TORNEOS (punto 67): una entrada sin cliente, con una categoría
+       por zona. La herencia y el equipo pasan por las MISMAS funciones que
+       el alta, inyectadas: `torneos.js` no puede requerir este archivo sin
+       armar un ciclo. */
+    torneo: (c, d) => TORNEOS.torneo(c, d, { heredar: heredarDelLibro }),
+    vincular_torneo: (c, d) => TORNEOS.vincular(c, d, { heredar: heredarDelLibro, equipo: equipo }),
   };
   const fn = acciones[accion];
   if (!fn) return malo('Acción desconocida: ' + accion);
+
+  /* UN TORNEO NO ES UN CLIENTE: no se pausa, no tiene plan, ni accesos, ni
+     informes ORO. Aceptarlo dejaría campos comerciales en una entrada que
+     no factura, y el Panel Master los pintaría como si alguien pagara. */
+  const objetivo = (vigente || {})[String((datos || {}).club || '').trim().toLowerCase()];
+  if (TORNEOS.esTorneo(objetivo) && TORNEOS.ACCIONES_DE_TORNEO.indexOf(accion) === -1) {
+    return malo('«' + objetivo.nombre + '» es un torneo, no un cliente: esa acción es de clientes. '
+      + 'Para que un club lo vea, enganchá una categoría suya a una zona.');
+  }
+  /* Y UNA ZONA CON CLIENTES ENGANCHADOS NO SE DA DE BAJA: se quedarían con
+     un torneo que ya no existe y su libro dejaría de propagarse. */
+  if (accion === 'baja' && TORNEOS.esTorneo(objetivo)) {
+    const d0 = datos || {};
+    const k0 = d0.categoria ? (objetivo.categorias || {})[d0.categoria] : null;
+    const enganchadas = TORNEOS.vinculadas(vigente, String(d0.club).toLowerCase(), k0 ? k0.zona : null);
+    if (enganchadas.length) {
+      return malo('Hay clientes enganchados: ' + enganchadas.map(o => o.club + '/' + o.slug).join(', ')
+        + '. Desengancharlos primero.');
+    }
+  }
 
   /* EL ALCANCE (ver `ALCANCES_POR_ACCION` en sgadd-auth.js). La tabla es
      la misma que lee el modal y se hace cumplir ACÁ: aunque una pantalla
@@ -1100,7 +1138,7 @@ function aplicar(vigente, accion, datos, validar) {
       aplicadoA.push({ club: o.club, categoria: o.slug || null });
     }
   }
-  r.aplicadoA = aplicadoA;
+  r.aplicadoA = aplicadoA.concat((r.propagado || []).map(o => ({ club: o.club, categoria: o.categoria })));
   r.alcance = alcance;
 
   /* EL CATÁLOGO NO PUEDE QUEDAR SIN CLUBES, y conviene decirlo con esas
