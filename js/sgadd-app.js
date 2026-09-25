@@ -537,8 +537,27 @@ const SGADD_APP = (function () {
 
   function avisoMuestra() {
     if (!estado.idx || estado.idx.liga.muestraSuficiente) return '';
+    /* CERO PARTIDOS NO ES UNA MUESTRA CHICA: es un torneo que no empezó, y
+       el texto de muestra insuficiente —«los percentiles no distinguen una
+       debilidad estructural de un mal día»— describe otra cosa. Se separan
+       los dos vacíos (punto 68). */
+    if (!estado.idx.lista().length) {
+      return SGADD_UI.sinDatosTodavia
+        ? SGADD_UI.sinDatosTodavia({ fixture: tieneFixture() })
+        : SGADD_UI.aviso('Sin partidos', 'La categoría todavía no tiene partidos cargados.');
+    }
     return SGADD_UI.aviso('Muestra insuficiente',
       'PJ mediano ' + estado.idx.liga.pjMediano + '. Con tan pocos partidos los percentiles no distinguen una debilidad estructural de un mal día.');
+  }
+
+  /* ¿Hay un fixture al que mandar? Solo si la categoría declara torneo:
+     ofrecer un botón que lleva a «esta categoría no está enganchada» sería
+     mandar al DT a otro vacío. */
+  function tieneFixture() {
+    try {
+      const p = planillaActual();
+      return !!(p && p.torneo);
+    } catch (e) { return false; }
   }
 
   /* Cada sección se repinta sola cuando cambia la categoría o la fase. */

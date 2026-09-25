@@ -372,6 +372,10 @@ const SGADD_AUTH = (function () {
   const MODULOS = {
     principal: null,
     clasificacion: null,
+    /* EL FIXTURE es abierto, como la tabla de posiciones: es el calendario
+       publicado de la liga, no un analisis. Y es lo UNICO que se puede
+       mirar antes de que el torneo empiece (punto 68). */
+    fixture: null,
     equipos: null,          // completa, pero el picker se filtra
     jugadores: null,        // ídem
     scouting: { plan: PLANES.PLATA },

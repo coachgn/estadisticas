@@ -318,7 +318,16 @@ const comoAdmin = (body, query) => ({ body: body || {}, query: query || {},
 
   const hub = fs.readFileSync('./js/sgadd-hub.js', 'utf8');
   check('el Panel Master tiene el bloque de accesos', /function bloqueAccesos/.test(hub));
-  check('y se cuelga de la tarjeta de cada club', /\$\{bloqueAccesos\(c\)\}/.test(hub));
+  /* SE CUELGA DEL DETALLE DE CADA CLUB. Desde el punto 69 el detalle vive
+     en el modal y no en la tarjeta —la grilla quedó compacta— así que lo
+     que se verifica es que `detalleClub` lo pinte, y no la sintaxis con la
+     que se interpola: el test viejo exigía `${bloqueAccesos(c)}` y se puso
+     en rojo por pasar de template literal a concatenación, sin que la
+     propiedad hubiera cambiado. */
+  const detalle = hub.slice(hub.indexOf('function detalleClub'), hub.indexOf('function modalDetalle'));
+  check('y se cuelga del detalle de cada club', /bloqueAccesos\(c\)/.test(detalle));
+  check('que es lo que abre la tarjeta compacta', /SGADD_HUB\.verDetalle/.test(hub)
+    && /function detalleClub/.test(hub));
   /* Tipear NO repinta: le sacaría el foco al input. Misma regla que el
      buscador del buzón y los campos de scouting. */
   check('tipear el mail no repinta la lista',

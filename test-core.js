@@ -517,7 +517,7 @@ check('un hash corto viejo (#/planilla/fase/seccion) se sigue entendiendo',
    Es seguro mientras ninguna FASE se llame igual que una sección — si
    alguna vez existiera una fase 'CLASIFICACION', `#/p/CLASIFICACION/equipos`
    se leería como formato nuevo y la ruta saldría mal. */
-const SECCIONES_NAV = ['principal', 'clasificacion', 'equipos', 'jugadores',
+const SECCIONES_NAV = ['principal', 'clasificacion', 'fixture', 'equipos', 'jugadores',
   'scouting', 'glosario', 'simulador', 'comparativa', 'configuracion', 'diagnostico'];
 check('SECCIONES trae las secciones del nav',
   SECCIONES_NAV.every(s => SGADD.SECCIONES.indexOf(s) !== -1),

@@ -88,6 +88,10 @@ const SGADD_HUB = (function () {
 
   const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
+  /* El club cuyo detalle esta abierto en el modal (punto 69). Vive en el
+     modulo y no en el DOM: un repintado de la lista lo volveria a cerrar. */
+  const detalle = { club: null, disparador: null };
+
   /* Qué club tiene una acción en vuelo, y su error si falló. Se guarda el
      ID y no un booleano para poder deshabilitar SOLO los controles de esa
      tarjeta: con un flag global, tocar el plan de un cliente congelaría
@@ -837,40 +841,179 @@ const SGADD_HUB = (function () {
     </div>`;
   }
 
-  function tarjetaClub(c) {
+  /* =====================================================================
+     LA GRILLA COMPACTA Y EL MODAL DE DETALLE (punto 69)
+
+     Con seis clientes la tarjeta completa entraba; con veinte, el Panel
+     Master era una columna de varios metros y encontrar a uno exigia
+     scrollear el resto. La tarjeta compacta muestra LO QUE SIRVE PARA
+     ELEGIR —nombre, plan, estado y cuantas categorias tienen libro— y el
+     detalle, que es donde se TOCA algo, vive en el modal: asi ningun
+     control de suscripcion queda a un clic de distancia por accidente
+     mientras se busca a otro cliente.
+
+     EL DETALLE NO SE REESCRIBE: el modal pinta exactamente los mismos
+     bloques que antes iban en la tarjeta (`filaCategoria`,
+     `bloqueSuscripcion`, `bloqueAccesos`). Dos copias del mismo panel
+     terminan divergiendo —es el bug del rol funcional (punto 8)— y aca
+     ademas una de las dos tendria los botones que cortan un acceso.
+     ===================================================================== */
+
+  /** El plan y el estado que RIGEN en el club, para los chips de la tarjeta. */
+  function resumenClub(c) {
     const cats = c.categorias || [];
-    const conDatos = cats.filter(k => k.activo).length;
+    const uno = (xs) => {
+      const v = xs.filter(Boolean).filter((x, i, a) => a.indexOf(x) === i);
+      /* Con valores distintos por categoria se dice «mixto» en vez de uno:
+         mostrar el primero seria decir que el club entero es BRONCE cuando
+         su Primera es ORO (punto 60). */
+      return v.length === 1 ? v[0] : (v.length ? 'mixto' : null);
+    };
+    return {
+      conDatos: cats.filter(k => k.activo).length,
+      total: cats.length,
+      plan: uno(cats.map(k => k.planEfectivo).filter(Boolean).map(planCanonico)),
+      estado: uno(cats.map(k => k.estadoEfectivo).filter(Boolean)) || estadoEfectivo(c),
+    };
+  }
+
+  function chip(txt, clase) {
+    return '<span class="px-1.5 py-0.5 rounded text-[10px] font-display uppercase tracking-wider '
+      + clase + '">' + esc(txt) + '</span>';
+  }
+
+  /* El distintivo que permite reconocer al club de un vistazo en una grilla
+     de cuatro columnas, donde el nombre va chico. Sin escudo van las
+     INICIALES y no un hueco, con la misma insignia que el resto del panel
+     (`LOGOS.iniciales`): dos implementaciones dan dos insignias distintas
+     para el mismo club. */
+  function escudoClub(c) {
+    const nombre = c.equipoPropio || c.nombre || c.id;
+    try {
+      const url = LOGOS.getUrl(nombre);
+      if (url) return '<img src="' + esc(url) + '" alt="" loading="lazy"'
+        + ' class="w-7 h-7 rounded-full object-cover shrink-0">';
+      return '<span class="fila-inicial shrink-0" style="width:28px;height:28px">'
+        + esc(LOGOS.iniciales(nombre)) + '</span>';
+    } catch (e) { return '<span class="fila-inicial shrink-0" style="width:28px;height:28px"></span>'; }
+  }
+
+  /** La tarjeta COMPACTA. Es un <button>: se abre con Enter y con el mouse. */
+  function tarjetaClub(c) {
+    const r = resumenClub(c);
     const actual = (typeof CLUB !== 'undefined' && CLUB.estado && CLUB.estado.id === c.id);
+    const tono = TONO_ESTADO[r.estado] || 'text-muted';
+    return '<button type="button" onclick="SGADD_HUB.verDetalle(\'' + escJs(c.id) + '\')"'
+      + ' data-club-card="' + esc(c.id) + '"'
+      + ' aria-label="Ver el detalle de ' + esc(c.nombre || c.id) + '"'
+      + ' class="card rounded-xl p-3 border text-left w-full h-full flex flex-col gap-2 transition '
+      + (actual ? 'border-accent' : 'border-hairline') + ' hover:border-accent">'
+      + '<span class="flex items-start gap-2 min-w-0">' + escudoClub(c)
+      + '<span class="min-w-0 flex-1">'
+      + '<span class="block font-display uppercase tracking-wide text-xs text-ink leading-tight break-words">'
+      + esc(c.nombre || c.id) + '</span>'
+      + '<span class="block font-mono text-[10px] text-muted truncate">' + esc(c.id) + '</span>'
+      + '</span></span>'
+      + '<span class="flex items-center gap-1 flex-wrap mt-auto">'
+      + (r.plan ? chip(r.plan, 'border border-hairline text-ink') : '')
+      + chip(r.estado, tono)
+      + (actual ? chip('abierto', 'text-accent') : '')
+      + '</span>'
+      + '<span class="text-[10px] text-muted">' + r.conDatos + '/' + r.total + ' con libro</span>'
+      + '</button>';
+  }
 
-    return `<div class="card rounded-xl p-4 border ${actual ? 'border-accent' : 'border-hairline'}">
-      <div class="flex items-baseline justify-between gap-3 flex-wrap mb-2">
-        <h3 class="font-display uppercase tracking-wide text-sm text-ink">
-          ${esc(c.nombre || c.id)}
-          ${actual ? '<span class="text-[10px] text-accent ml-2">· abierto</span>' : ''}
-        </h3>
-        <span class="font-mono text-[11px] text-muted">${esc(c.id)} · ${esc(c.liga || 'sin liga')}</span>
-      </div>
-      <table class="w-full">
-        <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
-          <th class="text-left pb-1 pr-3 font-display">Slug</th>
-          <th class="text-left pb-1 pr-3 font-display">Categoría</th>
-          <th class="text-left pb-1 font-display">Libro</th>
-        </tr></thead>
-        <tbody>${cats.map(k => filaCategoria(c, k)).join('')
-          || '<tr><td colspan="3" class="py-2 text-xs text-muted">Sin categorías declaradas.</td></tr>'}</tbody>
-      </table>
-      ${bloqueSuscripcion(c)}
-      ${bloqueAccesos(c)}
+  /** EL DETALLE · los MISMOS bloques que antes iban en la tarjeta. */
+  function detalleClub(c) {
+    const cats = c.categorias || [];
+    const r = resumenClub(c);
+    const actual = (typeof CLUB !== 'undefined' && CLUB.estado && CLUB.estado.id === c.id);
+    return '<div class="scrollbox"><table class="w-full">'
+      + '<thead><tr class="text-[10px] uppercase tracking-wider text-muted">'
+      + '<th class="text-left pb-1 pr-3 font-display">Slug</th>'
+      + '<th class="text-left pb-1 pr-3 font-display">Categor\u00eda</th>'
+      + '<th class="text-left pb-1 font-display">Libro</th>'
+      + '</tr></thead><tbody>'
+      + (cats.map(k => filaCategoria(c, k)).join('')
+        || '<tr><td colspan="3" class="py-2 text-xs text-muted">Sin categor\u00edas declaradas.</td></tr>')
+      + '</tbody></table></div>'
+      + bloqueSuscripcion(c)
+      + bloqueAccesos(c)
+      + '<div class="mt-3 flex items-center gap-3 flex-wrap">'
+      + (actual
+        ? '<span class="text-[11px] text-muted">Sus zonas y su torneo se editan en las otras dos pesta\u00f1as.</span>'
+        : '<button onclick="SGADD_CLIENTES.elegir(\'' + escJs(c.id) + '\')"'
+          + ' class="text-[11px] font-display uppercase tracking-wider text-accent hover:underline">'
+          + 'Abrir este cliente \u2192</button>')
+      + '<span class="text-[11px] text-muted ml-auto">' + r.conDatos + '/' + r.total + ' con libro</span>'
+      + '</div>';
+  }
 
-      <div class="mt-3 flex items-center gap-3 flex-wrap">
-        ${actual
-          ? '<span class="text-[11px] text-muted">Sus zonas y su torneo se editan en las otras dos pestañas.</span>'
-          : `<button onclick="SGADD_CLIENTES.elegir('${esc(c.id)}')"
-               class="text-[11px] font-display uppercase tracking-wider text-accent hover:underline">
-               Abrir este cliente →</button>`}
-        <span class="text-[11px] text-muted ml-auto">${conDatos}/${cats.length} con libro</span>
-      </div>
-    </div>`;
+  /**
+   * El modal de detalle.
+   *
+   * Cierra con el boton y con un clic afuera, y devuelve el foco a la
+   * tarjeta que lo abrio (punto 14). Se repinta con la lista: una accion
+   * que cambia el plan tiene que verse aca adentro, que es donde se toco.
+   */
+  function modalDetalle() {
+    if (!detalle.club) return '';
+    const c = (clubes() || []).filter(x => x.id === detalle.club)[0];
+    /* El club puede haber desaparecido del catalogo mientras el modal
+       estaba abierto (una baja): se cierra en vez de quedar en blanco. */
+    if (!c) return '';
+    return '<div class="login-fondo" onclick="if(event.target===this)SGADD_HUB.cerrarDetalle()">'
+      + '<div class="login-caja card rounded-xl p-5 border border-hairline" role="dialog" aria-modal="true"'
+      + ' aria-label="Detalle de ' + esc(c.nombre || c.id) + '">'
+      + '<div class="flex items-start justify-between gap-3 mb-3">'
+      + '<span class="flex items-center gap-2 min-w-0">' + escudoClub(c)
+      + '<span class="min-w-0"><h3 class="font-display uppercase tracking-wide text-sm text-ink break-words">'
+      + esc(c.nombre || c.id) + '</h3>'
+      + '<p class="font-mono text-[11px] text-muted">' + esc(c.id) + ' \u00b7 ' + esc(c.liga || 'sin liga') + '</p>'
+      + '</span></span>'
+      + '<button type="button" id="hubDetalleCerrar" onclick="SGADD_HUB.cerrarDetalle()" aria-label="Cerrar"'
+      + ' class="shrink-0 px-2 py-1 rounded-md border border-hairline text-xs text-ink">\u2715</button>'
+      + '</div>' + detalleClub(c) + '</div></div>';
+  }
+
+  function verDetalle(id) {
+    engancharEsc();
+    detalle.club = id;
+    try { detalle.disparador = document.activeElement; } catch (e) { detalle.disparador = null; }
+    repintarDetalle();
+    try { document.getElementById('hubDetalleCerrar').focus(); } catch (e) { /* el foco es una mejora */ }
+  }
+
+  function cerrarDetalle() {
+    const id = detalle.club;
+    detalle.club = null;
+    repintarDetalle();
+    /* EL FOCO VUELVE A LA TARJETA, y se la busca por su id ANTES de mirar
+       el disparador: el modal se puede haber abierto sin foco previo —un
+       clic del mouse no enfoca al <button> en todos los navegadores— y ahí
+       el disparador es el <body>, que sigue en el DOM y se llevaba el
+       foco. Sin esto el tabulador arranca de cero después de cerrar. */
+    try {
+      const v = document.querySelector('[data-club-card="' + (id || '') + '"]')
+        || ((detalle.disparador && document.body.contains(detalle.disparador)) ? detalle.disparador : null);
+      if (v && v.focus) v.focus();
+    } catch (e) { /* el foco es una mejora */ }
+  }
+
+  /* ESC cierra el modal, por delegacion y una sola vez: con un listener
+     por apertura quedarian colgados en cada repintado (punto 13). */
+  let escEnganchado = false;
+  function engancharEsc() {
+    if (escEnganchado || typeof document === 'undefined') return;
+    escEnganchado = true;
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape' && detalle.club) cerrarDetalle();
+    });
+  }
+
+  function repintarDetalle() {
+    const n = (typeof document !== 'undefined') ? document.getElementById('hubDetalle') : null;
+    if (n) n.innerHTML = modalDetalle();
   }
 
   /**
@@ -1657,10 +1800,17 @@ const SGADD_HUB = (function () {
         </p>
       </div>
 
-      <div class="grid lg:grid-cols-2 gap-4">
+      <!-- CUATRO POR FILA en escritorio (punto 69). Los pasos intermedios
+           no son decorativos: con una sola columna hasta el breakpoint lg
+           las tarjetas quedan de ancho completo en tablet, y con cuatro ya
+           desde md el nombre de un club largo se parte en cinco renglones.
+           (Sin comillas invertidas: adentro de un template literal cierran
+           el string y tiran abajo el modulo entero — punto 7.6.) -->
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
         ${cs.slice().sort((a, b) => String(a.nombre || a.id).localeCompare(String(b.nombre || b.id), 'es'))
             .map(tarjetaClub).join('')}
       </div>
+      <div id="hubDetalle">${modalDetalle()}</div>
 
       <div id="hubAlta">${bloqueAlta()}</div>
 
@@ -2184,6 +2334,8 @@ const SGADD_HUB = (function () {
     badgeServicio,
     copiarCodigo, mostrarCodigo, estadoMail, bloqueAccesos,
     accesos, accesosAbierto, repintarLista,
+    /* la grilla compacta y el modal de detalle (punto 69) */
+    resumenClub, tarjetaClub, detalleClub, modalDetalle, verDetalle, cerrarDetalle, escudoClub, detalle,
   };
 })();
 

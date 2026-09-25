@@ -255,6 +255,39 @@ const SGADD_UI = (function () {
       </div>`;
   }
 
+  /**
+   * EMPTY STATE DE PRE-TEMPORADA · el libro existe y todavía no tiene nada.
+   *
+   * Es un vacío DISTINTO de «muestra insuficiente» y hay que decirlo con
+   * otras palabras. Medido el 2026-09-25 con un libro de 9 hojas y cero
+   * filas: ninguna sección explotaba ni quedaba en blanco —eso ya estaba
+   * bien— pero Equipos y Jugadores saludaban con «PJ mediano 0. Con tan
+   * pocos partidos los percentiles no distinguen una debilidad estructural
+   * de un mal día», que describe una muestra chica y no un torneo que no
+   * empezó. El DT que entra en pretemporada concluye que el panel falla.
+   *
+   * Manda al FIXTURE, que es lo único que sí tiene algo que mostrar antes
+   * del primer partido (punto 68).
+   */
+  function sinDatosTodavia(opciones) {
+    const o = opciones || {};
+    const hayFixture = o.fixture !== false;
+    return `
+      <div class="rounded-lg border border-dashed border-hairline p-5 text-center">
+        <p class="font-display uppercase tracking-wide text-xs text-ink">Todavía no hay partidos jugados</p>
+        <p class="text-[11px] text-muted leading-snug mt-1.5 max-w-lg mx-auto">
+          ${esc(o.detalle || 'La categoría está conectada pero su libro no tiene ningún partido cargado: '
+            + 'la competencia no empezó, o todavía no se publicó el primer box score.')}
+          ${hayFixture ? ' El calendario sí se puede mirar desde ahora.' : ''}
+        </p>
+        ${hayFixture ? `<div class="mt-3">
+          <button type="button" onclick="navigate('fixture')"
+            class="px-3 py-1.5 rounded-md text-[11px] font-display uppercase tracking-wider
+                   border border-hairline text-ink hover:opacity-90">Ver el fixture →</button>
+        </div>` : ''}
+      </div>`;
+  }
+
   /* Color del +/-. Deliberadamente TENUE, y con clases propias definidas a
      mano en el <style> del index.html en vez de utilidades de Tailwind: son
      nodos inyectados dinámicamente y el JIT del CDN no las genera (misma
@@ -1174,7 +1207,7 @@ const SGADD_UI = (function () {
     return r;
   }
 
-  return { esc, escJs, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, signoDelta, colorDelta, claseMasMenos,
+  return { esc, escJs, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, sinDatosTodavia, signoDelta, colorDelta, claseMasMenos,
     atributosFila, teclaActiva, teclaTabs, cargando, conservarFoco,
     embeberImagenes, restaurarImagenes, pieInforme, pieWeb, MAIL, INSTAGRAM, ARROBA, LOGO, fechaHoy, MARCA,
     inyectarPieMotorStats, quitarPieMotorStats, pieVistaPrevia, ID_PIE,

@@ -348,6 +348,13 @@ function suscripcionPublica(club, slug, origen) {
        suscripción, o sea solo para el club del token y el admin. Qué se
        prueba con qué cliente no es algo que tengan que ver los demás. */
     laboratorio: AUTH.capasDeCategoria(club, slug),
+    /* EL TORNEO Y LA ZONA a los que está enganchada la categoría (punto
+       68). Viajan al cliente porque son lo que le permite leer el FIXTURE
+       de su competencia: `torneos/<id>.json`, un archivo público del repo.
+       No es información comercial —es a qué torneo juega su equipo— y no
+       revela nada que la tabla de posiciones no muestre ya. */
+    torneo: ((club.categorias || {})[slug] || {}).torneo || null,
+    zona: ((club.categorias || {})[slug] || {}).zona || null,
   };
 }
 

@@ -85,6 +85,9 @@ node test-mails.js         # 177 tests · los mails institucionales: plantillas 
                            #             el código adentro de la bienvenida, la puerta de ingreso,
                            #             el nombre del acceso y el link que llena el login
 
+node test-fixture.js       # 105 tests · la seccion Fixture, los empty states de pretemporada,
+                           #             las iniciales con parentesis y la grilla compacta del hub
+
 node test-torneos.js       #  95 tests · los torneos sin cliente y la estructura multizona: la Liga
                            #             Argentina 2026-27, la Zona C, el enganche a una zona y la propagación
 
@@ -98,7 +101,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6337 tests en total. Todos tienen que dar verde antes de commitear.**
+**6446 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -173,6 +176,7 @@ js/
   sgadd-auth.js         ← roles, planes y permisos. Motor PURO. Punto 19.
                           NO es seguridad: leer el punto 19 antes de tocarlo.
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app
+  sgadd-fixture.js      ← la seccion FIXTURE: calendario del torneo + lo jugado (punto 68)
   sgadd-torneos.js      ← el bloque de TORNEOS del Panel Master (punto 67)
 torneos/<id>.json       ← la estructura de un torneo: zonas, equipos con su id de
                           Gesdeportiva, formato y marca. SIN sheetId: el repo es público
@@ -206,7 +210,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=234`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=237`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -7155,7 +7159,8 @@ salen en cada commit— así que un `git pull --rebase` dejó el bloque sin
 extraer y **45 verificaciones de CSS fallaron de golpe sin que hubiera
 cambiado una sola regla**.
 
-Van con `?
+Van con `
+?
 `. Es la misma familia que medir por distancia en
 caracteres: un ancla frágil que se rompe por algo que no tiene nada que
 ver con la propiedad que defiende.
@@ -9984,3 +9989,184 @@ jujuy                    jujuy-lab-2026-27   SIN LIBRO · enganchada a la Norte 
   de marca); la paleta ya está en el archivo (`marca`).
 - **El reglamento de la Zona C** (clasificación, reclasificación con
   categorías superiores) no está declarado: sin él no hay zonas de tabla.
+
+---
+
+## 68. LA SECCIÓN FIXTURE · lo único que se puede mirar antes del torneo (2026-09-25)
+
+Pedido del club: los partidos del equipo propio del mes en curso, y los del
+próximo rival —cómo le fue en el anterior y qué tiene después—. Y que el
+panel se pueda navegar entero ANTES de que la competencia empiece, sin
+pantallas en blanco ni errores. `test-fixture.js` fija todo lo de acá.
+
+### DOS FUENTES QUE NO SE PISAN
+
+```
+CALENDARIO   torneos/<id>.json   lo que se VA a jugar
+ÍNDICE       el libro de MotorStats   lo que se JUGÓ
+```
+
+Se cruzan por **fecha + los dos equipos** —la misma clave que `idPartido`
+(punto 3 quater) pero sin el texto `PARTIDO`, que el calendario no tiene—.
+
+- **EL MARCADOR SALE SIEMPRE DEL ÍNDICE.** El calendario es una declaración
+  publicada semanas antes: si un partido se reprograma o se define por
+  secretaría, vale lo que MotorStats escribió. Un resultado del calendario
+  contradiciendo a la tabla de posiciones es el bug que este proyecto no
+  comete.
+- **Y AL REVÉS: lo jugado que el calendario no declara se muestra igual.** El
+  de LAB es parcial —la liga publicó dos semanas— así que descartarlo dejaría
+  la sección mintiendo apenas empiece el torneo.
+- **El declarado conserva la hora y la zona**, que el índice no tiene.
+
+### El bug que solo vio el test
+
+`unir()` guardaba la fila del calendario en el mapa y la buscaba con
+`indexOf` sobre la lista de COPIAS: siempre daba `-1`, así que el marcador se
+escribía en `out[-1]` —o sea en ninguna parte— y un partido jugado seguía
+saliendo como «a jugarse». **No se podía ver en pantalla**: hoy ningún torneo
+con calendario declarado tiene partidos jugados. El mapa guarda la POSICIÓN.
+
+### Lo que hay que respetar al tocarlo
+
+- **El normalizador es el del NÚCLEO, también desde Node.** Con un respaldo
+  propio (`trim().toUpperCase()`), `"C. MARCHIGIANO - MM"` —el nombre del
+  libro— y `"C MARCHIGIANO"` —la clave del índice— dejaban de cruzar y la
+  sección salía vacía sin que ningún test lo viera. Pasó en la primera
+  versión.
+- **Las fechas se trabajan como TEXTO.** `new Date('2026-10-15')` es
+  medianoche UTC, o sea el 14 a las 21 en Argentina: el partido aparecería un
+  día antes en la agenda del DT.
+- **Abre en el mes en curso; si está vacío, en el primero que viene.** Antes
+  del torneo, septiembre no tiene nada y lo útil es octubre. Se DICE en
+  pantalla: un mes que no es el actual sin explicación se lee como que la
+  sección se equivocó.
+- **Un cruce jugado no se duplica**, y el rival que se anticipa nunca es uno
+  mismo (`p.rivalClave !== propio`).
+- **Sin equipo propio la sección sirve igual**: muestra el calendario de la
+  zona. Es como el admin mira un torneo entero.
+- **`fixture` es abierta** (`MODULOS.fixture: null`), como la tabla de
+  posiciones: es el calendario publicado de la liga, no un análisis. Sumarla
+  a `SECCIONES` toca la lectura de los links viejos (punto 16), y hay un test
+  que verifica que ninguna FASE se llame igual.
+
+### LAS FECHAS CON EL AÑO EQUIVOCADO · se denuncian, no se tocan
+
+Medido en el libro de la **Zona C**: dos fechas vienen cargadas como
+`27/05/2029` y `29/05/2029` sobre una temporada 2026, y arrastran 5 partidos.
+
+Una temporada abarca a lo sumo dos años seguidos (octubre a abril), así que
+se toma el año **más frecuente** y se marca lo que esté a más de uno de
+distancia. **No se corrige ni se descarta**: no se puede saber si el año
+bueno es el del resto o si ese partido es de otra cosa. Se muestra donde el
+libro lo pone, con el aviso arriba, y la corrección va en la planilla.
+
+**Pero los atípicos NO deciden por dónde abre la sección.** Con las dos
+fechas en 2029, «el primer mes con actividad después de hoy» era mayo de 2029
+y la sección abría justo en lo que está mal cargado.
+
+### EMPTY STATES DE PRETEMPORADA
+
+Medido con un libro de 9 hojas y cero filas: **ninguna sección explotaba ni
+quedaba en blanco** —cero errores de JavaScript, verificado con un espía
+sobre `window.onerror`—. Lo que estaba mal era el TEXTO: Equipos y Jugadores
+saludaban con «PJ mediano 0. Con tan pocos partidos los percentiles no
+distinguen una debilidad estructural de un mal día», que describe una muestra
+chica y no un torneo que no empezó.
+
+`SGADD_UI.sinDatosTodavia()` es **uno solo** y lo usan los tres:
+`avisoMuestra()` de `sgadd-app.js` —que ya compartían Equipos, Jugadores y
+Simulador— y la tabla de posiciones. Manda al Fixture, y **solo si la
+categoría declara torneo**: ofrecer un botón que lleva a «esta categoría no
+está enganchada» sería mandar al DT a otro vacío.
+
+**El Diagnóstico sigue marcando `error · La hoja no tiene filas de datos`**, y
+se deja: ese error caza el libro que DEBERÍA tener datos y no los tiene (el
+recálculo a medias de la U21, punto 3 ter). Es una pantalla de admin.
+
+### De dónde sabe el panel a qué torneo pertenece
+
+`catalogo.publico()` manda `torneo` y `zona` al club del token: no es
+información comercial —es a qué torneo juega su equipo— y es lo que permite
+leer `torneos/<id>.json`, que es un archivo público del repo. **Si el club ES
+un torneo, su categoría es una zona y su fixture es el propio**: sin eso,
+abrir la Zona C decía «esta categoría no está enganchada a un torneo», y es
+el torneo.
+
+### `LOGOS.iniciales` contaba los paréntesis como palabra
+
+`HINDU (C)` daba **`H(`**. Los nombres de Liga Argentina llevan la provincia
+entre paréntesis, así que afectaba al scatter de Principal, a la tabla de
+posiciones, al scouting y a los cinco PDF — o sea al cliente real que tiene
+esos nombres. Solo se veía con UNA palabra antes del paréntesis (`SALTA
+BASKET` daba bien), y por eso sobrevivió tanto.
+
+Ahora se parte por espacios, puntos, paréntesis, comillas y guiones, y se
+toman solo las palabras que **empiezan con letra o dígito**. `RECONQUISTA
+'B'- MM` pasó de `R'` a `RB`. Los paréntesis NO se sacan del NOMBRE
+—distinguen equipos, punto 3— solo de la inicial.
+
+---
+
+## 69. EL CATÁLOGO DE CLIENTES, COMPACTO (2026-09-25)
+
+Con seis clientes la tarjeta completa entraba; con veinte, el Panel Master
+era una columna de varios metros. Medido con los clubes de producción a
+1430px: la grilla de tarjetas completas mide **1551px** de alto y la compacta
+**228px**.
+
+**La tarjeta muestra lo que sirve para ELEGIR** —nombre, escudo, plan, estado
+y cuántas categorías tienen libro—. El detalle, que es donde se TOCA algo,
+vive en un modal: así ningún control de suscripción queda a un clic de
+distancia por accidente mientras se busca a otro cliente.
+
+- **El detalle NO se reescribe**: el modal pinta los MISMOS bloques que antes
+  iban en la tarjeta (`filaCategoria`, `bloqueSuscripcion`, `bloqueAccesos`).
+  Dos copias del mismo panel terminan divergiendo —punto 8— y acá una de las
+  dos tendría los botones que cortan un acceso.
+- **Cuatro por fila en escritorio** (`lg:grid-cols-4`), con pasos
+  intermedios: con una sola columna hasta `lg` quedan de ancho completo en
+  tablet, y con cuatro desde `md` un nombre largo se parte en cinco
+  renglones. A 375px van de a dos, sin scroll horizontal.
+- **Con planes distintos por categoría dice «mixto»**, no el primero: decir
+  BRONCE de un club cuya Primera es ORO es mentir (punto 60).
+- **La tarjeta es un `<button>`**: se abre con Enter. El modal cierra con
+  ESC, con el botón y con un clic afuera, y **el foco vuelve a la tarjeta
+  buscándola por su id** — un clic del mouse no siempre enfoca al botón, y
+  ahí el disparador es el `<body>`, que sigue en el DOM y se llevaba el foco.
+
+### Los dos tests que no probaban nada
+
+Los dos leían el FUENTE y quedaban en verde al revertir el arreglo:
+
+- el de la tabla de posiciones buscaba `/sinDatosTodavia/` en el archivo, y
+  desactivar la rama con `false &&` dejaba la cadena ahí;
+- el de la tarjeta compacta buscaba `accionClub|cambiar_plan|Pausar` en el
+  cuerpo de la función, y volver a meterle un `bloqueSuscripcion(c)` no
+  contiene ninguna de esas cadenas.
+
+Los dos EJERCEN el módulo en un `vm` y miran el HTML que sale. Con eso, la
+reversión cae 2 y 2. Es la lección del punto 51: *que el elemento esté no es
+que se vea*, y su versión para tests — un test que no falla sin el arreglo no
+está probando nada.
+
+### El deploy del backend NO sale con `git push`
+
+`estadisticas-backend` es **otro proyecto de Vercel** y no se despliega con
+el push a `main`: el 2026-09-25 su último deploy era del 18/09, así que los
+guards del punto 67 estaban en el repo y **no en producción** —un cliente
+veía los dos torneos en su catálogo—. Se despliega a mano:
+
+```bash
+cd server && npx vercel --prod
+```
+
+Verificado después del deploy, contra producción y con tokens reales:
+
+```
+cliente   6 clubes, todos tipo «cliente» · ningún torneo · ningún sheetId
+admin     los 2 torneos con sus zonas y equipos
+padrón    alta de acceso sobre un torneo → 400 TORNEO
+catálogo  pausar un torneo → 400 «es un torneo, no un cliente»
+datos     cliente pidiendo el libro de un torneo → 403 OTRO_CLUB
+```

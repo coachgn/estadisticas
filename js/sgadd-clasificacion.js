@@ -603,7 +603,20 @@ function clasifTablaHTML(idx, opciones) {
      Principal y la sección muestran lo mismo sin que cada uno se acuerde. */
   const manuales = o.manuales !== undefined ? o.manuales : clasifManualesVigentes();
   const filas = SGADD_CLASIF.tabla(idx, { formato: formato, orden: orden, manuales: manuales });
-  if (!filas.length) return clasifCartel('Sin partidos cargados en este tramo.');
+  /* SIN FILAS, el empty state DESCRIBE por qué (punto 68): antes de que el
+     torneo empiece la tabla está vacía a propósito, y «sin partidos
+     cargados» se lee como que algo falló al cargar. El de pretemporada
+     manda al fixture, que sí tiene algo que mostrar. */
+  if (!filas.length) {
+    return (typeof SGADD_UI !== 'undefined' && SGADD_UI.sinDatosTodavia)
+      ? SGADD_UI.sinDatosTodavia({
+        detalle: 'La tabla de posiciones se arma con los partidos jugados, y en este tramo todavía '
+          + 'no hay ninguno. Aparece sola con el primer resultado.',
+        fixture: !!(typeof SGADD_APP !== 'undefined' && SGADD_APP.planillaActual()
+          && SGADD_APP.planillaActual().torneo),
+      })
+      : clasifCartel('Sin partidos cargados en este tramo.');
+  }
 
   const completa = o.columnas === 'completa';
   const recorte = o.limite ? filas.slice(0, o.limite) : filas;
