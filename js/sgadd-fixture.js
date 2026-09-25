@@ -189,8 +189,15 @@ const SGADD_FIXTURE = (function () {
     }).filter(p => p.fecha).sort(ordenar);
   }
 
+  /* CRONOLÓGICO DE VERDAD: fecha, HORA y después el nombre para desempatar.
+     Sin la hora, dos partidos del mismo día quedaban en orden alfabético, y
+     el bloque del mes —que se apila al revés (punto 71)— mostraba primero
+     el de las 19 y después el de las 21:30. El nombre queda como último
+     criterio porque es estable: sin él, dos partidos con la misma fecha y
+     hora podrían intercambiarse entre repintados. */
   function ordenar(a, b) {
     return String(a.fecha).localeCompare(String(b.fecha))
+      || String(a.hora || '').localeCompare(String(b.hora || ''))
       || String(a.localClave).localeCompare(String(b.localClave));
   }
 
@@ -256,11 +263,66 @@ const SGADD_FIXTURE = (function () {
       posicion[claveCruce(p.fecha, p.localClave, p.visitanteClave)] = i;
       return Object.assign({}, p);
     });
+    /* EL MISMO CRUCE CON LA FECHA CORRIDA · la segunda pasada.
+
+       Medido en la U23 de Reconquista el 2026-09-25: apdeb declara
+       ESTRELLA vs RECONQUISTA el domingo 6 y el libro lo tiene el sábado 5,
+       con el mismo 45-80. Son el MISMO partido —se reprogramó, o uno de los
+       dos cargó mal el día— y el cruce por fecha exacta lo mostraba DOS
+       VECES, con el marcador repetido.
+
+       Se busca el cruce declarado de los mismos dos equipos dentro de unos
+       días. La ventana es CHICA a propósito: en una liga de ida y vuelta los
+       dos cruces del mismo par están a semanas, así que no hay con qué
+       confundirse; con una ventana grande se fusionarían la ida y la vuelta,
+       que es exactamente el error que no se puede cometer. */
+    const VENTANA_DIAS = 3;
+    const porPar = {};
+    out.forEach((p, i) => {
+      const par = [p.localClave, p.visitanteClave].sort().join('|');
+      (porPar[par] = porPar[par] || []).push(i);
+    });
+    /* ¿Los dos traen el mismo resultado? Se compara respetando de qué lado
+       jugó cada uno: una fuente puede escribir el cruce al revés. */
+    const mismoMarcador = (a2, b2) => {
+      if (a2.ptsLocal == null || b2.ptsLocal == null) return false;
+      if (a2.localClave === b2.localClave) {
+        return a2.ptsLocal === b2.ptsLocal && a2.ptsVisitante === b2.ptsVisitante;
+      }
+      return a2.ptsLocal === b2.ptsVisitante && a2.ptsVisitante === b2.ptsLocal;
+    };
+    const cerca = (a2, b2) => {
+      const d = Math.abs(Date.parse(a2 + 'T00:00:00Z') - Date.parse(b2 + 'T00:00:00Z'));
+      return isFinite(d) && d <= VENTANA_DIAS * 86400000;
+    };
+
     (jugados || []).forEach((j) => {
       const k = claveCruce(j.fecha, j.localClave, j.visitanteClave);
-      const i = posicion[k];
+      let i = posicion[k];
+      if (i === undefined) {
+        /* Sin match exacto, el mismo par de equipos a pocos días y TODAVÍA
+           SIN JUGAR: es el partido declarado que ya se disputó. */
+        const par = [j.localClave, j.visitanteClave].sort().join('|');
+        /* EL CANDIDATO PUEDE VENIR YA JUGADO DESDE LA FUENTE. apdeb publica
+           sus propios resultados, así que el mismo partido llega con
+           marcador por los dos lados y con un día de diferencia. Se fusiona
+           solo si el marcador COINCIDE: si difiere, son dos partidos
+           distintos —o hay una discrepancia entre la web y la planilla— y
+           en ninguno de los dos casos corresponde taparla. */
+        const candidatos = (porPar[par] || []).filter((x) => {
+          const c2 = out[x];
+          if (!c2 || !c2.fecha || !cerca(c2.fecha, j.fecha)) return false;
+          if (!c2.jugado) return true;
+          return mismoMarcador(c2, j);
+        });
+        /* CON DOS CANDIDATOS NO SE ELIGE: fusionar el equivocado movería un
+           partido de fecha y dejaría al otro sin resultado. */
+        if (candidatos.length === 1) i = candidatos[0];
+      }
       if (i === undefined) {
         posicion[k] = out.length;
+        const par = [j.localClave, j.visitanteClave].sort().join('|');
+        (porPar[par] = porPar[par] || []).push(out.length);
         out.push(Object.assign({}, j));
         return;
       }
@@ -270,6 +332,11 @@ const SGADD_FIXTURE = (function () {
         jugado: true, ptsLocal: j.ptsLocal, ptsVisitante: j.ptsVisitante,
         local: j.local, visitante: j.visitante,
         localClave: j.localClave, visitanteClave: j.visitanteClave,
+        /* LA FECHA DEL LIBRO MANDA cuando difieren: es la del partido que se
+           jugó de verdad, y es la que el club audita en su planilla. Se
+           anota la declarada para poder decir que se movió. */
+        fecha: j.fecha,
+        fechaDeclarada: (out[i].fecha && out[i].fecha !== j.fecha) ? out[i].fecha : null,
       });
     });
     return out.sort(ordenar);
@@ -326,8 +393,21 @@ const SGADD_FIXTURE = (function () {
     return { mes: ms[ms.length - 1], motivo: 'terminado' };
   }
 
+  /**
+   * Los partidos de un mes, del MÁS RECIENTE al más antiguo (punto 71).
+   *
+   * A pedido del club: dentro del mes la lista se apila al revés. El DT
+   * entra a ver qué pasó anoche y qué viene, no a repasar la primera fecha,
+   * así que lo último queda arriba y no al final de una lista de veinte.
+   *
+   * SOLO SE INVIERTE LO QUE SE MUESTRA. El resto del motor sigue en orden
+   * cronológico ascendente porque de eso dependen `proximo()` —que busca el
+   * primero que viene— y `anterior()`, que toma el último de los previos:
+   * invertir la lista de base los daría vuelta a los dos y el «próximo
+   * rival» pasaría a ser el de la primera fecha del torneo.
+   */
   function deMes(partidos, mes) {
-    return (partidos || []).filter(p => mesDe(p.fecha) === mes);
+    return (partidos || []).filter(p => mesDe(p.fecha) === mes).sort((a, b) => -ordenar(a, b));
   }
 
   /**

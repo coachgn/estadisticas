@@ -85,6 +85,9 @@ node test-mails.js         # 177 tests · los mails institucionales: plantillas 
                            #             el código adentro de la bienvenida, la puerta de ingreso,
                            #             el nombre del acceso y el link que llena el login
 
+node test-fixture-apdeb.js #  82 tests · el conector de apdeb: tablas sin clases, estados propios,
+                           #             el filtro por categoria, el piso de temporada y el orden del mes
+
 node test-fixture-apb.js  #  93 tests · el conector de basket-club: el parser contra markup REAL,
                            #             los estados, el cruce con el libro y el respaldo ante una caida
 
@@ -104,7 +107,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6548 tests en total. Todos tienen que dar verde antes de commitear.**
+**6630 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -217,7 +220,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=241`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=242`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -10338,3 +10341,159 @@ Un item de grid tiene `min-width: auto`, así que se ensancha con su
 contenido y el `.scrollbox` de adentro nunca llega a scrollear. Medido a
 375px con la columna de TV nueva: la tabla del rival empujaba la página a
 **799px** de ancho.
+
+---
+
+## 71. EL ORDEN DEL MES, LOS LIBROS DE LAB Y EL CONECTOR DE APDEB (2026-09-25)
+
+### 1 · El mes se apila del más reciente al más antiguo
+
+A pedido del club. El DT entra a ver qué pasó anoche y qué viene, no a
+repasar la primera fecha, así que lo último queda arriba.
+
+**SOLO SE INVIERTE LO QUE SE MUESTRA** (`deMes`). El resto del motor sigue
+ascendente porque de eso dependen `proximo()` —que busca el primero que
+viene— y `anterior()`, que toma el último de los previos: invertir la lista
+de base los daría vuelta a los dos y el «próximo rival» pasaría a ser el de
+la primera fecha del torneo.
+
+Y **`ordenar()` pasó a comparar la HORA**. Sin eso, dos partidos del mismo
+día quedaban en orden alfabético y el bloque del mes mostraba primero el de
+las 19 y después el de las 21:30 — el pedido dice «de mayor fecha/hora a
+menor». El nombre queda como último criterio porque es estable.
+
+### 2 · Los libros de LAB
+
+Norte y Sur quedaron conectados y **el libro se propagó solo a Jujuy**, que
+estaba enganchado a la Norte desde el punto 67. Los dos están **vacíos**
+—pretemporada— y el índice se arma sin errores: 0 equipos, 0 jugadores, y los
+empty states del punto 68 hacen su trabajo.
+
+Los **Script ID** de Apps Script que el club pasó van anotados en
+`fuente.motorstats` del archivo del torneo, **como referencia de quién
+produce el dato**: el panel no los usa, lee el Sheet por API.
+
+### 3 · El conector de apdeb · tablas sin clases
+
+apdeb es un sitio de tablas HTML de los de antes: una `<tr>` por partido, sin
+una clase que identifique nada. Así que el parser **NO cuenta columnas**
+—eso se rompe con la primera que agreguen— sino que busca la celda que dice
+`vs` y lee alrededor:
+
+```
+…  [pts local]  LOCAL  vs  VISITANTE  [pts visitante]  [categorías]
+^
+la fecha, o el estado cuando no hay fecha («A Reprogramar»)
+```
+
+Con eso la misma función lee las tres formas que publican: programación
+(5 celdas), resultados (6, con el marcador a los costados) y la de menores
+(una más, con las categorías).
+
+**Y tiene estados que basket-club no tenía**: «A Reprogramar» y
+«SUSPENDIDO». Justifican el diseño del punto 70 — lo que no se reconoce cae
+en `OTRO` con su texto crudo— y llegan **sin fecha**, porque no la tienen. El
+partido entra igual: que un cruce esté pendiente es información, y
+descartarlo dejaría el fixture incompleto. Van al final de la lista.
+
+### UNA FILA PUEDE SER DE VARIAS CATEGORÍAS
+
+En menores el mismo cruce de clubes juega U15, U17 y U21 el mismo día: la
+celda dice `U15 - U17 - U21`. Con `categoria` en la config se toman solo las
+filas que la mencionan, y el partido se emite **una vez**.
+
+**Una fila que NO declara categoría se descarta al filtrar**: en una página
+multi-categoría no se puede atribuir, y meterla en U21 sería inventar. Sin
+`categoria` pedida entran todas, que es lo que corresponde para Sub-23.
+
+### EL PISO DE TEMPORADA se declara, no se adivina
+
+La página de resultados de Sub-23 trae **2025 y 2026 en el mismo archivo**
+(medido: 6 partidos de 2025). Sin el corte, el fixture muestra meses de hace
+un año como si fueran del torneo en curso. `fixture.desde` lo acota, y el
+aviso **distingue los dos casos**: «6 partidos de temporadas anteriores
+quedaron afuera» no es lo mismo que «cambió la estructura» — uno se arregla
+con el `desde` y el otro con el parser.
+
+### EL MAPEO se verificó con datos, no se supuso
+
+```
+apdeb Sub-23                    ←→  reconquista-u23   12/12 equipos
+apdeb Menores, categoría U21    ←→  reconquista-u21    6/6
+```
+
+**U21 no está en Sub-23**: está en Menores, y el libro de esa categoría tiene
+seis equipos, que son exactamente los de una tira. apdeb publica la U21
+completa (todas las tiras), así que hay partidos que no cruzan con el libro:
+**no se esconden** —son partidos reales del torneo— y quedan marcados con
+`sinCruce`. La vista filtra por el equipo propio, así que el DT no los ve.
+
+### EL MISMO CRUCE CON LA FECHA CORRIDA
+
+El bug que apareció en pantalla y que ningún test había previsto. Medido en la
+U23: **apdeb declara ESTRELLA vs RECONQUISTA el sábado 5 y el libro lo tiene
+el domingo 6**, con el mismo 45-80. El cruce por fecha exacta lo mostraba
+**dos veces**, con el marcador repetido. Y no era uno: **siete partidos de
+una jornada entera** venían corridos un día.
+
+`unir()` busca ahora el mismo par de equipos dentro de una ventana de **3
+días**:
+
+- **La ventana es CHICA a propósito.** En una liga de ida y vuelta los dos
+  cruces del mismo par están a semanas, así que no hay con qué confundirse;
+  con una ventana grande se fusionarían la ida y la vuelta, que es
+  exactamente el error que no se puede cometer. Hay un test que lo fija.
+- **Con dos candidatos cerca no se elige**: fusionar el equivocado movería un
+  partido de fecha y dejaría al otro sin resultado.
+- **El candidato puede venir YA JUGADO desde la fuente**, porque apdeb
+  publica sus propios resultados. Ahí se fusiona **solo si el marcador
+  coincide** —respetando de qué lado jugó cada uno, que una fuente puede
+  escribir el cruce al revés—. Si difiere, **no se fusionan**: o son dos
+  partidos distintos, o hay una discrepancia entre la web y la planilla, y en
+  ninguno de los dos casos corresponde taparla.
+  *La primera versión del arreglo solo miraba los candidatos SIN jugar, así
+  que no cazaba el caso real que se veía en pantalla.*
+- **La fecha del libro manda** cuando difieren: es la del partido que se jugó
+  de verdad y la que el club audita. La declarada queda en `fechaDeclarada`
+  para poder decir que se movió.
+
+### Lo que hay que respetar al tocarlo
+
+- **Las fixtures son markup REAL** recortado de las páginas, conservado byte
+  a byte, con las filas que cubren cada caso. Un HTML inventado probaría el
+  parser contra lo que uno cree que publica el sitio.
+- **`refrescar` tolera la forma corta** —una zona declarada como string—
+  aunque `configDe` ya la normalice: es la que hace el trabajo y no puede
+  depender de que el llamador haya pasado por el validador. Lo destapó un
+  test que la armaba a mano.
+- **Una página caída no tumba la zona**: apdeb publica programación y
+  resultados aparte, y si una falla se sigue con la otra. Es la misma regla
+  que entre zonas, un nivel más abajo.
+- **Cuatro tests no probaban nada** y se reescribieron: contaban un `every`
+  sobre una lista filtrada —relajar la regla sacaba el caso del filtro y el
+  test pasaba igual— o miraban una propiedad que en la fixture no tenía
+  contraejemplo. Es la lección del punto 69, otra vez.
+- **El guard que manda los sin fecha al final es explícito y HOY es
+  redundante**: con `fecha: null`, `String(null)` da «null» y por alfabeto ya
+  cae después de cualquier «2026-…». Se deja porque la propiedad no debería
+  depender de que la letra «n» sea mayor que un dígito, y el test lo dice en
+  vez de fingir que lo caza.
+
+### Lo que quedó en KV el 2026-09-25
+
+```
+liga-argentina-2026-27   norte y sur CONECTADOS (vacios, pretemporada)
+apb-2026-formativas      apb-2026-u23 / -u21, sobre los libros de Reconquista
+reconquista/reconquista-u23 → zona u23 · RECONQUISTA - U23
+reconquista/reconquista-u21 → zona u21 · RECONQUISTA 'A' - U21M
+```
+
+**El equipo de la U23 hubo que pasarlo explícito**: el del club es
+`RECONQUISTA A` y en ese libro es `RECONQUISTA`, sin la letra, así que el
+guard del punto 67 rechazó el enganche —«ese equipo juega en la zona u21»— y
+tenía razón. Es el punto 61 en acción.
+
+### Lo que apdeb NO publica
+
+**Transmisión.** El campo va vacío, no inventado. Y la sede tampoco, igual
+que basket-club.

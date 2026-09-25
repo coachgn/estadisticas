@@ -115,15 +115,47 @@ async function refrescar(config, deps, hoy) {
   const fallaron = [];
   const ids = Object.keys(config.zonas);
   const resultados = await Promise.all(ids.map(async (z) => {
+    /* SE TOLERA LA FORMA CORTA —una zona declarada como un string— aunque
+       `configDe` ya la normalice: `refrescar` es la que hace el trabajo y
+       no puede depender de que el llamador haya pasado por el validador.
+       Lo destapó un test que la armaba a mano y rompía con «cannot read
+       properties of undefined». */
+    const bruto = config.zonas[z];
+    const cfgZona = (typeof bruto === 'string') ? { urls: [bruto], categoria: null } : (bruto || { urls: [] });
     try {
-      const html = await bajar(config.zonas[z], deps);
-      const r = ad.parsear(html, { zona: z, hoy: hoy });
+      /* VARIAS PÁGINAS POR ZONA: apdeb publica la programación y los
+         resultados en archivos distintos, y las dos alimentan la misma
+         lista. Si UNA de las dos falla, se sigue con la que respondió: es
+         la misma regla que entre zonas, un nivel más abajo. */
+      const lecturas = await Promise.all(cfgZona.urls.map(async (u) => {
+        try {
+          const html = await bajar(u, deps);
+          return { r: ad.parsear(html, { zona: z, hoy: hoy, categoria: cfgZona.categoria,
+            desde: cfgZona.desde || config.desde }) };
+        } catch (e) { return { error: e.message || 'No se pudo leer ' + u }; }
+      }));
+      const partidos = [];
+      const avisos = [];
+      const errores = [];
+      const vistos = {};
+      lecturas.forEach((l) => {
+        if (l.error) { errores.push(l.error); return; }
+        l.r.avisos.forEach(x => avisos.push(x));
+        l.r.partidos.forEach((p) => {
+          /* UN PARTIDO PUEDE ESTAR EN LAS DOS PÁGINAS —programado y ya
+             jugado— y ahí gana el que TIENE MARCADOR: es el más nuevo. */
+          const k = (p.fecha || 'sin-fecha') + '|' + [p.local, p.visitante].join('|');
+          const previo = vistos[k];
+          if (previo === undefined) { vistos[k] = partidos.length; partidos.push(p); return; }
+          if (p.ptsLocal != null && partidos[previo].ptsLocal == null) partidos[previo] = p;
+        });
+      });
       /* CERO PARTIDOS CON HTTP 200 es «cambió la estructura», no «no hay
          torneo»: se trata como falla para conservar lo guardado. */
-      if (!r.partidos.length) {
-        return { z: z, error: r.avisos[0] || 'No se reconoció ningún partido.' };
+      if (!partidos.length) {
+        return { z: z, error: errores.concat(avisos)[0] || 'No se reconoció ningún partido.' };
       }
-      return { z: z, datos: { partidos: r.partidos, avisos: r.avisos } };
+      return { z: z, datos: { partidos: partidos, avisos: avisos.concat(errores) } };
     } catch (e) {
       return { z: z, error: e.message || 'No se pudo leer la fuente.' };
     }

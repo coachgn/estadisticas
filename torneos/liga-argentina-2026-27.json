@@ -13,7 +13,16 @@
   "notas": [
    "https://www.laliganacional.com.ar/laligaargentina/noticia/52708/confirmados-los-equipos-para-la-liga-argentina-2026-27",
    "https://www.laliganacional.com.ar/laligaargentina/noticia/52871/fixture-confirmado-para-la-liga-argentina-2026-27"
-  ]
+  ],
+  "motorstats": {
+   "norte": {
+    "scriptId": "1SwIwcjWAn3av6vSMiSjFY2BH9SDRu2PvmK5h6uiK8mrc0gwHCmMNUGue"
+   },
+   "sur": {
+    "scriptId": "1gKTrjMBHmaPU2OI8WIAYNOmGYB1KpASBYjB2iHZ0a7OZQMop3Y72VMJs"
+   },
+   "//": "El script de Apps Script que escribe cada libro. El panel NO lo usa: lee el Sheet por API. Va como referencia de quien produce el dato."
+  }
  },
  "marca": {
   "acento": "#094aa8",

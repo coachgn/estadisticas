@@ -1,0 +1,191 @@
+{
+ "//": "Formativas de la APdeB 2026: Sub-23 y U21. Los equipos salen del libro de cada categoria; los alias, de apdeb.com.ar, que es la fuente del fixture. La U21 sale de la pagina de MENORES, donde una fila cubre varias categorias y se filtra por la columna CATEGORIAS. SIN sheetId.",
+ "id": "apb-2026-formativas",
+ "nombre": "APdeB · Formativas 2026",
+ "nombreCorto": "APdeB Formativas",
+ "liga": "la-plata",
+ "temporada": "2026",
+ "nivel": "LOCAL_MENORES",
+ "fuente": {
+  "sitio": "apdeb",
+  "base": "https://www.apdeb.com.ar/",
+  "asociacion": "APdeB · Asociación Platense de Básquetbol"
+ },
+ "fixture": {
+  "adaptador": "apdeb",
+  "desde": "2026-01-01",
+  "ttlMs": 900000,
+  "zonas": {
+   "u23": {
+    "programacion": "https://www.apdeb.com.ar/SUB23_PROGRAMACION.html",
+    "resultados": "https://www.apdeb.com.ar/SUB23_RESULTADOS.html"
+   },
+   "u21": {
+    "programacion": "https://www.apdeb.com.ar/MENORES_2026_PROGRAMACION.html",
+    "categoria": "U21"
+   }
+  }
+ },
+ "formato": {
+  "modalidad": "Todos contra todos con revanchas",
+  "fases": [
+   {
+    "id": "regular",
+    "label": "Fase regular",
+    "cruce": "zona"
+   }
+  ],
+  "nota": "apdeb no publica el reglamento de clasificacion en la pagina de fixture: no se declaran zonas de tabla para no inventarlas."
+ },
+ "zonas": {
+  "u23": {
+   "slug": "apb-2026-u23",
+   "label": "APdeB 2026 · Sub-23",
+   "equipos": [
+    {
+     "id": null,
+     "nombre": "ASTILLERO - U23",
+     "alias": [
+      "ASTILLERO",
+      "Astillero"
+     ]
+    },
+    {
+     "id": null,
+     "nombre": "ATENAS - U23",
+     "alias": [
+      "ATENAS",
+      "Atenas"
+     ]
+    },
+    {
+     "id": null,
+     "nombre": "BANCO PROVINCIA - U23",
+     "alias": [
+      "BANCO PROVINCIA",
+      "Bco Provincia"
+     ]
+    },
+    {
+     "id": null,
+     "nombre": "C F GONNET - U23",
+     "alias": [
+      "GONNET",
+      "Gonnet"
+     ]
+    },
+    {
+     "id": null,
+     "nombre": "C.C TOLOSANO - U23M",
+     "alias": [
+      "TOLOSANO",
+      "Tolosano"
+     ]
+    },
+    {
+     "id": null,
+     "nombre": "DEPORTIVO LA PLATA - U23",
+     "alias": [
+      "DEPORTIVO",
+      "Deportivo LP"
+     ]
+    },
+    {
+     "id": null,
+     "nombre": "ESTRELLA - U23M",
+     "alias": [
+      "ESTRELLA"
+     ]
+    },
+    {
+     "id": null,
+     "nombre": "HOGAR SOCIAL - U23",
+     "alias": [
+      "HOGAR SOCIAL",
+      "Hogar Social"
+     ]
+    },
+    {
+     "id": null,
+     "nombre": "MERIDIANO V - U23",
+     "alias": [
+      "MERIDIANO V",
+      "Meridiano V"
+     ]
+    },
+    {
+     "id": null,
+     "nombre": "RECONQUISTA - U23",
+     "alias": [
+      "RECONQUISTA",
+      "Reconquista"
+     ]
+    },
+    {
+     "id": null,
+     "nombre": "U.N.L.P - U23M",
+     "alias": [
+      "U.N.L.P."
+     ]
+    },
+    {
+     "id": null,
+     "nombre": "UNIVERSITARIO - U23",
+     "alias": [
+      "UNIVERSITARIO",
+      "Universitario"
+     ]
+    }
+   ]
+  },
+  "u21": {
+   "slug": "apb-2026-u21",
+   "label": "APdeB 2026 · U21",
+   "equipos": [
+    {
+     "id": null,
+     "nombre": "ATENAS 'A' - U21M",
+     "alias": [
+      "ATENAS \"A\""
+     ]
+    },
+    {
+     "id": null,
+     "nombre": "BANCO PROVINCIA 'A' - U21M",
+     "alias": [
+      "BANCO PROVINCIA \"A\""
+     ]
+    },
+    {
+     "id": null,
+     "nombre": "PLATENSE 'A' - U21M",
+     "alias": [
+      "PLATENSE \"A\""
+     ]
+    },
+    {
+     "id": null,
+     "nombre": "RECONQUISTA 'A' - U21M",
+     "alias": [
+      "RECONQUISTA \"A\""
+     ]
+    },
+    {
+     "id": null,
+     "nombre": "UNION VECINAL 'A' - U21M",
+     "alias": [
+      "UNION VECINAL \"A\""
+     ]
+    },
+    {
+     "id": null,
+     "nombre": "UNIVERSAL 'A' - U21M",
+     "alias": [
+      "UNIVERSAL \"A\"",
+      "UNIVERSITARIO \"A\""
+     ]
+    }
+   ]
+  }
+ }
+}

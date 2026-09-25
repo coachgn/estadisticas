@@ -190,8 +190,11 @@ seccion('4 · fuentes declaradas');
   check('APB declara su fuente', !!c && c.adaptador === 'basket-club');
   check('con una URL por zona', c && Object.keys(c.zonas).sort().join(',') === 'a,b,c');
   check('y su TTL', c && c.ttlMs === 10 * 60 * 1000);
+  /* Desde el punto 71 una zona se normaliza a `{urls, categoria}`: la forma
+     corta del archivo —un string— sigue valiendo y se expande acá. */
   check('las tres URLs son de basket-club',
-    c && Object.keys(c.zonas).every(z => /^https:\/\/basket-club\.com\//.test(c.zonas[z])));
+    c && Object.keys(c.zonas).every(z => c.zonas[z].urls.length === 1
+      && /^https:\/\/basket-club\.com\//.test(c.zonas[z].urls[0])), c && c.zonas.a);
 
   /* UN TORNEO SIN FUENTE SIGUE ANDANDO con su calendario declarado: es LAB
      hoy, y es lo que hace que esto sea aditivo. */
