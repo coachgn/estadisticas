@@ -208,7 +208,7 @@ for (let i = entradas.length - 1; i >= 0; i--) {
   if (SIGLAS_DE_HOJA.indexOf(entradas[i].sigla) !== -1) entradas.splice(i, 1);
 }
 
-/* CORRECCIONES AL MANUAL · la unidad es la JUGADA, no la posesión.
+/* CORRECCIONES AL MANUAL · cada métrica con SU unidad.
 
    `PPP OF` y `PPP DEF` se calculan sobre `PLAYS` —la fórmula del propio
    manual lo dice— y el nombre decía «por posesión». No es un sinónimo en
@@ -220,16 +220,41 @@ for (let i = entradas.length - 1; i >= 0; i--) {
    y los campos: si el manual la arregla, esto queda redundante y no pisa
    nada distinto. Y si la sigla desaparece del manual, el generador lo
    dice en vez de callarlo. */
+/* Y los RATINGS son el caso inverso: el manual los nombra bien —«cada 100
+   posesiones»— pero su fórmula dice `PPP OF × 100`, que es por PLAY. Desde
+   el punto 66 el panel los calcula sobre POSESIONES bajo norma CAB/FIBA,
+   así que lo que hay que corregir es la FÓRMULA, no el nombre: una entrada
+   que se contradice a sí misma es peor que ninguna. */
 const CORRECCIONES = {
   'PPP OF': {
     nombre: 'Puntos por jugada ofensivos',
     formula: 'PTS / PLAYS',
-    lectura: 'Cuánto anotás por jugada',
+    lectura: 'Cuánto anotás por jugada (el intento, no la tenencia)',
   },
   'PPP DEF': {
     nombre: 'Puntos por jugada defensivos',
     formula: 'PTS_opp / PLAYS_opp',
     lectura: 'Cuánto te anotan por jugada',
+  },
+  'NET PPP': {
+    nombre: 'Diferencial por jugada',
+    formula: 'PPP OF − PPP DEF',
+    lectura: 'Tu ventaja neta por jugada',
+  },
+  'RTNG OFF': {
+    nombre: 'Rating ofensivo (ORTG)',
+    formula: '(PTS / POS) × 100 · POS = PLAYS − RO',
+    lectura: 'Puntos cada 100 posesiones (POS = PLAYS − RO)',
+  },
+  'RTNG DEF': {
+    nombre: 'Rating defensivo (DRTG)',
+    formula: '(PTS_opp / POS_opp) × 100 · POS = PLAYS − RO',
+    lectura: 'Puntos recibidos cada 100 posesiones (POS = PLAYS − RO). Menos es mejor',
+  },
+  'NET RTNG': {
+    nombre: 'Rating neto (NET)',
+    formula: 'ORTG − DRTG, los dos por 100 posesiones',
+    lectura: 'Cuántos puntos por 100 posesiones le sacás al rival',
   },
 };
 Object.keys(CORRECCIONES).forEach((sigla) => {

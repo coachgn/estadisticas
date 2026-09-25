@@ -1220,9 +1220,8 @@ function equiposDetallePartido(idx, e, id) {
           ${tarjeta('PLAYS', av.plays, av.plays, ar ? ar.plays : null, n0, true)}
         </div>
         <p class="text-[11px] dato-sec mt-2 leading-snug">
-          ORTG y DRTG están calculados por 100 <b>PLAYS</b>, no por 100 posesiones:
-          no son comparables con el ORTG de la NBA. PACE son las posesiones proyectadas
-          a 200 minutos de equipo.
+          ORTG, DRTG y PACE calculados sobre <b>POSESIONES</b> (POS = PLAYS − RO)
+          bajo norma CAB/FIBA. PPP es la única métrica por PLAY.
         </p>
       </div>`;
   })() : '';

@@ -368,6 +368,17 @@ check('la tendencia lleva flecha además de color',
 /* Cada sigla se marca para el tooltip del glosario. */
 check('las métricas se marcan con data-metrica', /data-metrica="\$\{esc\(f\.k\)\}"/.test(ui));
 
+/* ── Los ratings del ciclo, también por 100 POSESIONES (punto 66) ──
+   El ciclo se compara contra la temporada de los rivales: si una punta
+   midiera por play y la otra por posesión, la columna de NIVEL diría
+   cualquier cosa. */
+const fuenteComp = require('fs').readFileSync('./js/sgadd-comparativa.js', 'utf8');
+check('el ciclo divide por POSESIONES y no por PLAYS',
+  /const off = div\(yo\['PTS'\], posDe\(yo\)\)/.test(fuenteComp) &&
+  !/const off = div\(yo\['PTS'\], yo\['PLAYS'\]\)/.test(fuenteComp));
+check('y POS se define como PLAYS menos el rebote ofensivo',
+  /x\['PLAYS'\] - \(\(typeof x\['RO'\]/.test(fuenteComp));
+
 console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +
   '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

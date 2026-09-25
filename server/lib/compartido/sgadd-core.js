@@ -718,17 +718,25 @@
     .concat(ESQUEMA['PROMEDIOS E'].opt || [])
     .filter(c => /opp$/i.test(c));
 
+  /* LA SIGLA QUE SE MUESTRA. Las claves del registro siguen siendo las de
+     la planilla —las usan el índice, el glosario, los tooltips y el
+     servidor— pero al cuerpo técnico se le habla en la nomenclatura de la
+     casa: ORTG, DRTG y NET (punto 66). Una sola tabla, porque con dos la
+     pantalla y el papel terminan diciendo cosas distintas. */
+  const SIGLA_VISIBLE = { 'RTNG OFF': 'ORTG', 'RTNG DEF': 'DRTG', 'NET RTNG': 'NET' };
+  function siglaVisible(clave) { return SIGLA_VISIBLE[clave] || clave; }
+
   const METRICAS_LISTA = [
     /* --- Índices de eficiencia (solo viven en 4F) --- */
-    M('RTNG OFF', 'Rating ofensivo', P4F, 'num1', false, 'eficiencia',
-      'Puntos cada 100 PLAYS. OJO: es por PLAYS, no por posesiones — no es comparable con el ORTG de la NBA.'),
-    M('RTNG DEF', 'Rating defensivo', P4F, 'num1', true, 'eficiencia',
-      'Puntos recibidos cada 100 PLAYS del rival. Menos es mejor.'),
-    M('NET RTNG', 'Rating neto', P4F, 'num1', false, 'eficiencia',
-      'RTNG OFF menos RTNG DEF. En la fila EQUIPO TIPO se lee de su propia celda: es la mediana de los netos, no la resta de las medianas.'),
-    M('PPP OF', 'Puntos por play', P4F, 'num2', false, 'eficiencia', 'PTS / PLAYS.'),
-    M('PPP DEF', 'Puntos por play rival', P4F, 'num2', true, 'eficiencia', 'PTS rival / PLAYS rival.'),
-    M('NET PPP', 'PPP neto', P4F, 'num2', false, 'eficiencia', 'PPP OF menos PPP DEF.'),
+    M('RTNG OFF', 'ORTG · Rating ofensivo', P4F, 'num1', false, 'eficiencia',
+      'Puntos cada 100 POSESIONES (POS = PLAYS − RO), norma CAB/FIBA. El panel lo DERIVA de PROMEDIOS E: la columna de PROMEDIOS 4F viene por 100 PLAYS y no se muestra.'),
+    M('RTNG DEF', 'DRTG · Rating defensivo', P4F, 'num1', true, 'eficiencia',
+      'Puntos recibidos cada 100 POSESIONES del rival. Menos es mejor. Derivado, igual que el ofensivo.'),
+    M('NET RTNG', 'NET · Rating neto', P4F, 'num1', false, 'eficiencia',
+      'ORTG menos DRTG, los dos por 100 posesiones. La mediana de la liga se recalcula sobre los netos de cada equipo, nunca restando las medianas.'),
+    M('PPP OF', 'Puntos por play', P4F, 'num2', false, 'eficiencia', 'PTS / PLAYS. Va por PLAY (el intento), no por posesión: es la única métrica de la casa que mide así.'),
+    M('PPP DEF', 'Puntos por play rival', P4F, 'num2', true, 'eficiencia', 'PTS rival / PLAYS rival. Por PLAY, igual que el ofensivo.'),
+    M('NET PPP', 'PPP neto', P4F, 'num2', false, 'eficiencia', 'PPP OF menos PPP DEF, los dos por PLAY.'),
 
     /* --- 4 factores ofensivos ---
        eFG%, RTL% y RO% se leen de PROMEDIOS E: ahí el ratio se calcula sobre
@@ -757,10 +765,10 @@
 
     /* --- Ritmo. Dispersión bajísima en esta liga (CV 2-3%): sirve como
            contexto, NO como KPI destacado. --- */
-    M('POS', 'Posesiones', PE, 'num1', false, 'ritmo', 'TCI + PP + 0,44 × T1I − RO.'),
+    M('POS', 'Posesiones', PE, 'num1', false, 'ritmo', 'TCI + PP + 0,44 × T1I − RO, o sea PLAYS − RO. Es el denominador de ORTG y DRTG.'),
     M('PACE', 'Ritmo', PE, 'num1', false, 'ritmo', 'Posesiones proyectadas a 200 minutos de equipo.'),
     M('PLAYS', 'Plays', PE, 'num1', false, 'ritmo', 'TCI + 0,44 × T1I + PP.'),
-    M('PPP', 'Puntos por play', PE, 'num2', false, 'ritmo', 'PTS / PLAYS.'),
+    M('PPP', 'Puntos por play', PE, 'num2', false, 'ritmo', 'PTS / PLAYS. Por PLAY (el intento), no por posesión.'),
 
     /* --- Distribución de plays. DESCRIPTIVA: los cuatro suman 100%.
            No lleva coloreo de mejor/peor salvo PePP%. --- */
@@ -1262,10 +1270,26 @@
     'PACE':  (y, r) => div0(((n0(y.PLAYS) - n0(y.RO)) + (n0(r.PLAYS) - n0(r.RO))) * 200, 2 * n0(y.MIN)),
   };
 
-  /* Los seis de PROMEDIOS 4F, por 100 plays. */
+  /* POSESIONES de un lado. La planilla trae la columna `POS` y es la que
+     manda; si falta, `POS = PLAYS - RO`, que es su propia definición: el
+     rebote ofensivo cierra un PLAY y NO la posesión. Medido en el libro de
+     DEPORTIVO, las dos vías coinciden en las 210 filas. */
+  function posesiones(x) {
+    if (!x) return null;
+    const pos = num(x.POS);
+    if (pos !== null && pos > 0) return pos;
+    const plays = num(x.PLAYS);
+    if (plays === null) return null;
+    const p = plays - n0(x.RO);
+    return p > 0 ? p : null;
+  }
+
+  /* Los cuatro de PROMEDIOS 4F. Los RATINGS van por 100 POSESIONES (norma
+     CAB/FIBA, punto 66) y el PPP se queda por PLAY: es la única métrica de
+     la casa que mide el intento y no la tenencia. */
   const TASAS_4F = {
-    'RTNG OFF': (y, r) => div0(100 * n0(y.PTS), y.PLAYS),
-    'RTNG DEF': (y, r) => div0(100 * n0(r.PTS), r.PLAYS),
+    'RTNG OFF': (y, r) => div0(100 * n0(y.PTS), posesiones(y)),
+    'RTNG DEF': (y, r) => div0(100 * n0(r.PTS), posesiones(r)),
     'PPP OF':   (y) => div0(y.PTS, y.PLAYS),
     'PPP DEF':  (y, r) => div0(r.PTS, r.PLAYS),
   };
@@ -1279,6 +1303,81 @@
       ? d['PPP OF'] - d['PPP DEF'] : null,
   };
 
+
+  /* --- 6 · BOX SCORE TRUNCADO · el marcador entero y las acciones a medias
+
+     La firma del defecto: el partido sale LENTO y a la vez EFICIENTÍSIMO.
+     Si el planillero carga los puntos y se le pierden tiros, pérdidas o
+     rebotes, el denominador se achica y el mismo marcador se reparte
+     entre menos jugadas: el PACE se hunde y el PPP se dispara.
+
+     LAS DOS CONDICIONES VAN JUNTAS, y ese es el punto. Un partido rápido
+     y goleador supera el corte de PPP sin tener nada roto —medido en el
+     libro de DEPORTIVO: el 14/09 da 0,923 de PPP con 87,5 de PACE— así
+     que con un «o» saldría denunciado un partido sano.
+
+     Medido sobre las 210 filas de ese libro: marca 15 filas de 8 partidos,
+     que son la fecha entera del 9/07 más los cuatro de ATENAS 'B', y no
+     deja afuera ninguna fila con PP ≤ 3.
+
+     EL PANEL NO EXCLUYE ESOS PARTIDOS: los DENUNCIA. Sacarlos sería
+     reescribir el torneo, y la corrección va en MotorStats. Es la regla
+     de siempre: un dato inventado es peor que uno ausente. */
+  const TRUNCADO_PACE = 0.80;   // menos del 80 % de la mediana de la liga
+  const TRUNCADO_PPP = 1.20;    // más del 120 %
+
+  function detectarBoxTruncado(idx, opciones) {
+    const o = opciones || {};
+    const cortePace = typeof o.pace === 'number' ? o.pace : TRUNCADO_PACE;
+    const cortePpp = typeof o.ppp === 'number' ? o.ppp : TRUNCADO_PPP;
+    const vacio = { filas: [], partidos: [], medianas: { pace: null, ppp: null },
+      cortes: { pace: null, ppp: null }, n: 0, cortePace, cortePpp };
+    if (!idx || typeof idx.lista !== 'function') return vacio;
+
+    /* Una fila por EQUIPO y partido, que es el grano en el que el defecto
+       se ve: un cruce puede tener un lado sano y el otro truncado. */
+    const filas = [];
+    idx.lista().forEach(e => {
+      (e.partidos || []).forEach(f => {
+        const plays = num(f.PLAYS);
+        const pts = num(f.PTS);
+        const ppp = (num(f.PPP) !== null) ? num(f.PPP)
+          : ((pts !== null && plays) ? pts / plays : null);
+        const pace = (num(f.PACE) !== null) ? num(f.PACE)
+          : div0(((n0(plays) - n0(f.RO)) + (n0(f.PLAYSopp) - n0(f.ROopp))) * 200, 2 * n0(f.MIN));
+        if (pace === null || ppp === null) return;
+        filas.push({
+          equipo: e.clave, nombre: e.nombre,
+          fecha: f.__fecha || fecha(f.FECHA), fechaTexto: texto(f.FECHA),
+          partido: texto(f.PARTIDO), id: f.__id || null,
+          pace, ppp, plays, pts, tci: num(f.TCI), pp: num(f.PP), min: num(f.MIN),
+        });
+      });
+    });
+    if (filas.length < 3) return Object.assign({}, vacio, { n: filas.length });
+
+    const medPace = mediana(filas.map(f => f.pace));
+    const medPpp = mediana(filas.map(f => f.ppp));
+    if (medPace === null || medPpp === null) return Object.assign({}, vacio, { n: filas.length });
+    const limPace = medPace * cortePace, limPpp = medPpp * cortePpp;
+
+    const marcadas = filas.filter(f => f.pace < limPace && f.ppp > limPpp)
+      .sort((a, b) => (a.fechaTexto || '').localeCompare(b.fechaTexto || '') || a.nombre.localeCompare(b.nombre));
+    /* Y el cruce entero, porque el DT audita partidos y no filas. */
+    const porPartido = new Map();
+    marcadas.forEach(f => {
+      const k = (f.fechaTexto || '') + '|' + f.partido;
+      if (!porPartido.has(k)) porPartido.set(k, { fecha: f.fechaTexto, partido: f.partido, lados: [] });
+      porPartido.get(k).lados.push(f);
+    });
+
+    return {
+      filas: marcadas, partidos: Array.from(porPartido.values()),
+      medianas: { pace: medPace, ppp: medPpp },
+      cortes: { pace: limPace, ppp: limPpp },
+      n: filas.length, cortePace, cortePpp,
+    };
+  }
   function construirIndice(hojas, opciones) {
     const opt = opciones || {};
     const fase = opt.fase || 'REGULAR';
@@ -2155,6 +2254,70 @@
       e.factoresPartido.forEach(f => { if (f.__id) e.factoresPorId.set(f.__id, f); });
     });
 
+    /* --- LOS RATINGS VAN POR 100 POSESIONES · UN SOLO LUGAR (punto 66) ---
+       `PROMEDIOS 4F` y `4 FACTORES` traen RTNG OFF/DEF por 100 PLAYS, que
+       es lo que escribe MotorStats y lo que el club audita en la hoja. El
+       panel los DERIVA de `PROMEDIOS E` / `Base Datos E` y pisa esos
+       valores acá, que es el único punto por el que pasan todas las vistas.
+
+       Por qué acá y no en los tres lugares que los recalculan: la card del
+       partido, la comparativa y el TOTAL eran los únicos que computaban:
+       TODO el resto —Equipos, rankings, Scouting, Personalidad, el scatter
+       de Principal, el Simulador— los LEE de la hoja. Tocando solo los tres,
+       el mismo equipo mostraría posesiones en el TOTAL y plays en la IDA. */
+    /* EL RIVAL SALE DE LA MAESTRA, no de las columnas `*opp`. `PTSopp`,
+       `PLAYSopp` y `ROopp` son OPCIONALES en el contrato, así que un libro
+       que no las traiga se quedaría sin DRTG — y hoy lo tiene. La fila del
+       otro lado del cruce está siempre en `Base Datos E`, que es la hoja
+       que manda; las `*opp` quedan de respaldo para el equipo sin partidos
+       cargados. */
+    function ratingsDe(yo, riv) {
+      const of = div0(100 * n0(yo && yo.PTS), posesiones(yo));
+      const def = div0(100 * n0(riv && riv.PTS), posesiones(riv));
+      return {
+        'RTNG OFF': of,
+        'RTNG DEF': def,
+        'NET RTNG': (of !== null && def !== null) ? of - def : null,
+      };
+    }
+    function ratingsDeFila(fila) {
+      if (!fila) return null;
+      return ratingsDe(fila, { PTS: fila.PTSopp, POS: fila.POSopp,
+        PLAYS: fila.PLAYSopp, RO: fila.ROopp });
+    }
+    /* Sin con qué calcularlo se BORRA. Dejar el valor por play debajo de un
+       rótulo que dice «posesiones» es un dato inventado, y este proyecto
+       muestra ausente lo que está ausente. */
+    function aplicarRatings(destino, r) {
+      if (!destino) return;
+      ['RTNG OFF', 'RTNG DEF', 'NET RTNG'].forEach(k => {
+        if (r && typeof r[k] === 'number' && isFinite(r[k])) destino[k] = r[k];
+        else delete destino[k];
+      });
+    }
+    /* La fila del OTRO equipo en el mismo partido. */
+    function filaDelRival(claveEq, fila) {
+      const pareja = filasPorPartido.get(fila && fila.__partido) || [];
+      const otro = pareja.find(x => x.equipo !== claveEq);
+      return otro ? otro.fila : null;
+    }
+    equipos.forEach(e => {
+      /* TEMPORADA: los totales de `Base Datos E` —propios y del rival— que
+         el índice ya sumó; sin partidos cargados, la fila de promedios. */
+      const t = e.totales;
+      const porTotales = (t && t.partidosConRival > 0) ? ratingsDe(t.propio, t.rival) : null;
+      const season = porTotales || (e.promedios ? ratingsDeFila(e.promedios) : null);
+      if (season) { if (!e.factores) e.factores = {}; aplicarRatings(e.factores, season); }
+
+      /* PARTIDO A PARTIDO: la fila del otro lado, y si no está, las `*opp`. */
+      (e.factoresPartido || []).forEach(f => {
+        const p = f.__id ? e.partidosPorId.get(f.__id) : null;
+        if (!p) return;
+        const riv = filaDelRival(e.clave, p);
+        aplicarRatings(f, riv ? ratingsDe(p, riv) : ratingsDeFila(p));
+      });
+    });
+
     /* --- Distribuciones para percentiles --- */
     const listaEquipos = Array.from(equipos.values());
     liga.n = listaEquipos.length;
@@ -2169,6 +2332,16 @@
         .map(e => e[campo] ? e[campo][clave] : null)
         .filter(v => typeof v === 'number' && isFinite(v));
       if (vals.length) liga.distribuciones[clave] = vals;
+    });
+
+    /* La fila EQUIPO TIPO de la planilla trae los ratings POR PLAY, así que
+       su mediana no describe la vara nueva. Se recalcula sobre los valores
+       ya derivados, COLUMNA POR COLUMNA: el NET sale de la mediana de los
+       netos y nunca de restar las otras dos medianas (punto 3). */
+    ['RTNG OFF', 'RTNG DEF', 'NET RTNG'].forEach(clave => {
+      const m = mediana(liga.distribuciones[clave] || []);
+      if (m !== null && m !== undefined) liga.tipo[clave] = m;
+      else delete liga.tipo[clave];
     });
 
     // Distribuciones de jugador: SOLO sobre los que superan el umbral.
@@ -3040,6 +3213,7 @@
     ESQUEMA, HOJAS_EXCLUIDAS,
     // 2
     METRICAS, METRICAS_LISTA, VISTAS, GRUPOS_DESCRIPTIVOS, metrica, vista, formatear, masMenosEquipo,
+    SIGLA_VISIBLE, siglaVisible, posesiones,
     // 3
     CATALOGO, FASES, SECCIONES, TORNEO_GENERAL, planilla, planillasVisibles, esEquipoPropio, agrupar,
     fasesDisponibles, torneosDisponibles, torneoPorDefecto, torneoDeFila, Ruta,
@@ -3051,6 +3225,7 @@
     normalizarHoja, construirIndice, esFilaTipo, tipoDeLiga, cargarCategoria, limpiarCache, TIMEOUT_HOJA, parsearGviz, urlGviz,
     // 5
     validarEsquema, validarTorneo, validarCoherencia, testSimetria, testTotales, testCrucePartidos,
+    detectarBoxTruncado, TRUNCADO_PACE, TRUNCADO_PPP,
     PARES_SIMETRIA, PARES_HOJAS, INVARIANTES_TOTALES, CRUCES_PARTIDO,
   };
 

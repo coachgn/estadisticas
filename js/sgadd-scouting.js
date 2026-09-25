@@ -1267,7 +1267,7 @@ const SGADD_SCOUT = (function () {
 
      El orden y el agrupado replican el panel del informe impreso: primero
      posesión/eficiencia, después selección de tiro y pérdidas. `sub` es la
-     métrica que en el papel va debajo en la misma celda (EFF OF trae su
+     métrica que en el papel va debajo en la misma celda (ORTG trae su
      PPP OF; %USO 3PTS trae su PPT3): son la misma pregunta desde dos
      ángulos — cuánto lo usa y cuánto le rinde — y separarlas en dos filas
      rompe la lectura.
@@ -1277,8 +1277,8 @@ const SGADD_SCOUT = (function () {
     { id: 'POS', label: 'POS' },
     { id: 'PACE', label: 'PACE' },
     { id: 'eFG%', label: 'eFG%' },
-    { id: 'RTNG OFF', label: 'EFF OF', sub: 'PPP OF' },
-    { id: 'RTNG DEF', label: 'EFF DEF', sub: 'PPP DEF' },
+    { id: 'RTNG OFF', label: 'ORTG', sub: 'PPP OF' },
+    { id: 'RTNG DEF', label: 'DRTG', sub: 'PPP DEF' },
     { id: 'RO%', label: '%REB OF' },
     { id: 'RD%', label: '%REB DEF' },
     { id: 'AST%', label: '%AST' },
@@ -1362,8 +1362,8 @@ const SGADD_SCOUT = (function () {
     { id: 'PPP', label: 'PTS/PLAY' },
     { id: 'eFG%', label: 'eFG%' },
     { id: 'RTL%', label: 'RTL%' },
-    { id: 'RTNG OFF', label: 'EFF OF' },
-    { id: 'RTNG DEF', label: 'EFF DEF' },
+    { id: 'RTNG OFF', label: 'ORTG' },
+    { id: 'RTNG DEF', label: 'DRTG' },
     { id: 'PT3%', label: 'USO 3PTS' },
     { id: 'T3%', label: 'EFECTIVIDAD 3PTS' },
     { id: 'RO', label: 'REB OF' },

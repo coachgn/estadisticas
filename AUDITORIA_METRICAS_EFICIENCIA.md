@@ -13,6 +13,32 @@
 
 ---
 
+> ## LO QUE SE HIZO DESPUÉS · 2026-09-25
+>
+> El club autorizó estandarizar, y **este informe describe el estado ANTERIOR**.
+> Lo que cambió en la Web App (punto 66 del `CLAUDE.md`):
+>
+> - **ORTG, DRTG y NET pasaron a 100 POSESIONES** (`POS = PLAYS − RO`), norma
+>   CAB/FIBA. La derivación vive en UN punto del índice, así que alcanza a
+>   todas las vistas y no solo a las tres que recalculaban. **El PPP se queda
+>   por PLAY.** Medido: 9 de 12 equipos cambian de puesto en ORTG y 6 en NET.
+> - **La fila EQUIPO TIPO se recalcula** sobre los valores derivados, columna
+>   por columna.
+> - **El glosario dejó de contradecirse**: la fórmula de los ratings pasó a
+>   `(PTS / POS) × 100` y `NET PPP` a «Diferencial por jugada».
+> - **Entró el validador de box scores truncados** (bloque 6 del Diagnóstico)
+>   con el criterio combinado de la recomendación 3, que sobre este libro marca
+>   las mismas 15 filas de 8 partidos.
+> - **La nomenclatura visible** pasó a ORTG · DRTG · NET.
+>
+> **Lo que NO se tocó y sigue abierto:** el error del Simulador (`PACE × PPP`,
+> 11,4 % corto) —el pedido lo excluía explícitamente— y la planilla, que sigue
+> escribiendo `RTNG OFF/DEF` por 100 plays. O sea que **la hoja y el panel
+> muestran números distintos para la misma sigla**, y eso hay que decírselo al
+> club y a MotorStats.
+
+---
+
 ## Resumen ejecutivo
 
 1. **Las fórmulas del motor y de la web son la misma matemática.** Recalculadas sobre las 210 filas, coinciden a **10⁻¹⁴** (error de punto flotante). No hay una sola divergencia de cálculo entre los dos repositorios para las cinco métricas.

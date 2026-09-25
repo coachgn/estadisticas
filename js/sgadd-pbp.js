@@ -147,9 +147,8 @@ const SGADD_PBP = (function () {
       <thead><tr class="${TH}">
         <th class="px-2 pb-1 text-left">${etiqueta}</th>
         <th class="px-2 pb-1">MIN</th><th class="px-2 pb-1">PJ</th><th class="px-2 pb-1">+/-</th>
-        <th class="px-2 pb-1" title="Puntos a favor menos en contra, cada 100 posesiones (POS = PLAYS − RO)">NET/pos</th>
+        <th class="px-2 pb-1" title="Puntos a favor menos en contra, cada 100 posesiones (POS = PLAYS − RO): la misma vara que el resto del panel">NET</th>
         <th class="px-2 pb-1">ORTG</th><th class="px-2 pb-1">DRTG</th>
-        <th class="px-2 pb-1" title="Rating neto por 100 PLAYS, la vara del resto del panel">NET/plays</th>
         <th class="px-2 pb-1">eFG%</th><th class="px-2 pb-1">eFG% rival</th>
       </tr></thead><tbody>${filas.map(f => `<tr class="border-b border-hairline/40 last:border-0${f.ok ? '' : ' opacity-50 fila-tenue'}">
         ${celdaCombo(paq, f.ids)}
@@ -159,7 +158,6 @@ const SGADD_PBP = (function () {
         <td class="${TD} font-semibold ${tonoMM(f.netPos)}">${signo(f.netPos)}</td>
         <td class="${TD}">${num(f.ortg)}</td>
         <td class="${TD}">${num(f.drtg)}</td>
-        <td class="${TD} dato-sec">${signo(f.net)}</td>
         <td class="${TD}">${num(f.efg)}</td>
         <td class="${TD} dato-sec">${num(f.efgC)}</td>
       </tr>`).join('')}</tbody></table></div>`;

@@ -155,10 +155,10 @@ const SGADD_RANKINGS = (function () {
           return `<th data-metrica="${SGADD_UI.esc(k)}"
             class="pb-2 pr-1 whitespace-nowrap cursor-pointer select-none hover:text-accent transition-colors ${activa ? 'text-accent' : ''}"
             onclick="SGADD_RANKINGS.ordenarPor('${SGADD_UI.escJs(k)}')"
-            title="Ordenar por ${SGADD_UI.esc(k)} · ${SGADD_UI.esc(m ? m.glosario || m.label : k)}"
+            title="Ordenar por ${SGADD_UI.esc(SGADD.siglaVisible(k))} · ${SGADD_UI.esc(m ? m.glosario || m.label : k)}"
             aria-sort="${activa ? (r.dir === 'asc' ? 'ascending' : 'descending') : 'none'}"
             ${SGADD_UI.atributosFila('Ordenar por ' + k)}>
-            ${SGADD_UI.esc(k)}${inv ? ' <span class="dato-sec">↓</span>' : ''}
+            ${SGADD_UI.esc(SGADD.siglaVisible(k))}${inv ? ' <span class="dato-sec">↓</span>' : ''}
             <span class="${activa ? 'text-accent' : 'opacity-40'}">${flecha}</span></th>
             <th class="pb-2 pr-3 dato-sec">#</th>`;
         }).join('')}

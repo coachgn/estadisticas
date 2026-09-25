@@ -207,7 +207,11 @@ function paquete(equipo) {
   check('escapa lo que viene de afuera: ningún <script> ni <b> del paquete llega crudo', !/<script>X/.test(h) && !/<b>\(SF\)/.test(h) && /&lt;b&gt;/.test(h));
   check('los quintetos van por apellido, con el nombre completo en el title', /Stehli · Ibarra/.test(h) && /title="STEHLI, RAMIRO/.test(h));
   const iNetPos = h.indexOf('NET/pos'); const iNetPlays = h.indexOf('NET/plays');
-  check('NET por posesión se muestra ANTES que NET por PLAYS', iNetPos > 0 && iNetPlays > iNetPos);
+  /* La columna por PLAYS se FUE (punto 66): ninguna vista del panel muestra
+     un rating por play, y el NET por posesión de al lado es el mismo dato
+     en la unidad de la casa. */
+  check('el NET de los quintetos va por POSESIÓN', iNetPos > 0);
+  check('y la columna por PLAYS ya no existe', iNetPlays === -1);
   check('la muestra corta se marca con ~ y atenuada, no se borra', /~7,2/.test(h) && /opacity-50 fila-tenue/.test(h));
   check('+8,5 por posesión en verde de +/-', /mm-pos">\+8,5/.test(h));
   check('clutch: partidos, récord y la línea del jugador con sus usos', /29<\/b> partidos/.test(h) && /15-14/.test(h) && /65,4/.test(h) && /27,6 %/.test(h));

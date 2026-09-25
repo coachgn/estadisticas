@@ -183,6 +183,7 @@ function diagPintar() {
     diagBloqueCoherencia(d.datos.coherencia),
     diagBloqueTotales(d.datos.totales, d.datos.cruces),
     diagBloqueSimetria(d.datos.simetria),
+    diagBloqueTruncado(idx),
     diagBloqueIndice(idx),
     diagBloqueFicha(idx),
     diagBloqueEquipos(idx),
@@ -613,6 +614,53 @@ function diagBloqueSimetria(res) {
     <p class="text-[11px] text-muted mt-3">En una liga cerrada, lo que un equipo hace es lo que otro sufre. Si un par no cierra, hay partidos mal cargados.</p>`);
 }
 
+
+/* --- 6. Box scores truncados · el dato de origen, no una fórmula ---
+
+   Ningún invariante del bloque 3 lo puede ver: `Σ PTS = Σ PTSopp` cierra
+   igual, porque lo que falta no es el marcador sino las acciones. */
+function diagBloqueTruncado(idx) {
+  const r = SGADD.detectarBoxTruncado(idx);
+  if (!r || !r.n) return '';
+  const n1 = (v) => (typeof v === 'number' && isFinite(v)) ? v.toFixed(1).replace('.', ',') : '—';
+  const n2 = (v) => (typeof v === 'number' && isFinite(v)) ? v.toFixed(2).replace('.', ',') : '—';
+  const filas = r.filas.map(f => `<tr class="border-b border-hairline/40">
+      <td class="py-1.5 pr-3 font-mono text-xs">${escapeHtml(f.fechaTexto || '')}</td>
+      <td class="py-1.5 pr-3 text-xs">${escapeHtml(f.nombre)}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs text-red-400">${n1(f.pace)}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs text-red-400">${n2(f.ppp)}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs">${f.tci === null ? '—' : f.tci}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs">${f.pp === null ? '—' : f.pp}</td>
+      <td class="py-1.5 text-xs text-muted">${escapeHtml(f.partido)}</td>
+    </tr>`).join('');
+
+  const vara = `<p class="text-[11px] text-muted mt-3 leading-snug">
+      Marca la fila que sale <b>lenta y eficientísima a la vez</b>: PACE por debajo del
+      ${Math.round(r.cortePace * 100)} % de la mediana de la liga (${n1(r.medianas.pace)} →
+      corte ${n1(r.cortes.pace)}) <b>y</b> PPP por encima del ${Math.round(r.cortePpp * 100)} %
+      (${n2(r.medianas.ppp)} → corte ${n2(r.cortes.ppp)}). Las dos juntas: un partido rápido y
+      goleador cruza una sola y no tiene nada roto.
+      Sobre ${r.n} filas equipo-partido de este tramo.</p>
+    <p class="text-[11px] text-muted mt-2 leading-snug">El panel <b>no excluye</b> esos partidos:
+      sacarlos sería reescribir el torneo. La corrección va en el box score de origen o en MotorStats.</p>`;
+
+  if (!r.filas.length) {
+    return diagCard('6 · Box scores truncados', 'Sin registro parcial',
+      `<p class="text-xs text-green-400">Ninguna fila sale lenta y eficientísima a la vez: el registro de acciones acompaña al marcador.</p>` + vara);
+  }
+  return diagCard('6 · Box scores truncados',
+    r.filas.length + ' fila(s) · ' + r.partidos.length + ' partido(s)',
+    `<p class="text-xs text-red-400 mb-2">Estos partidos presentan <b>registro parcial de acciones</b>:
+      el marcador está cargado y los tiros, las pérdidas o los rebotes no. Sus ORTG, DRTG y PACE
+      —y los promedios de temporada de esos equipos— salen distorsionados.</p>
+    <div class="scrollbox"><table class="w-full text-left">
+      <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+        <th class="pb-2 pr-3">Fecha</th><th class="pb-2 pr-3">Equipo</th>
+        <th class="pb-2 pr-3">PACE</th><th class="pb-2 pr-3">PPP</th>
+        <th class="pb-2 pr-3">TCI</th><th class="pb-2 pr-3">PP</th>
+        <th class="pb-2">Partido</th>
+      </tr></thead><tbody>${filas}</tbody></table></div>` + vara);
+}
 /* --- 4. Índice --- */
 function diagBloqueIndice(idx) {
   const equipos = idx.lista();

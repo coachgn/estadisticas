@@ -663,8 +663,14 @@ check('un hash raro cae a principal sin tirar',
    ===================================================================== */
 check('el scatter arma su dataset desde el índice',
   /function drawOrtgDrtgChart[\s\S]{0,1800}idxG\.lista\(\)\.map/.test(html));
+/* El respaldo del arranque lee PROMEDIOS E y NO PROMEDIOS 4F: los ratings
+   del panel van por 100 POSESIONES (punto 66) y la columna RTNG de 4F
+   viene por 100 PLAYS. Con esa, el mapa mostraría una unidad en el primer
+   pintado y otra en cuanto entra el índice. */
 check('y deja la hoja SOLO como respaldo del arranque',
-  /function drawOrtgDrtgChart[\s\S]{0,2600}\} else \{[\s\S]{0,200}sheet\('promedios4f'\)/.test(html));
+  /function drawOrtgDrtgChart[\s\S]{0,3400}\} else \{[\s\S]{0,900}sheet\('promediosE'\)/.test(html));
+check('el respaldo NO lee los ratings por play de PROMEDIOS 4F',
+  !/function drawOrtgDrtgChart[\s\S]{0,3400}sheet\('promedios4f'\)/.test(html));
 check('Mejor Ataque sale del índice',
   /if \(idxLiga\) \{[\s\S]{0,500}renderModernCard\('Mejor Ataque'/.test(html));
 check('y los líderes también',
@@ -699,6 +705,63 @@ check('el plantel se muestra siempre: es lo que decide la vista',
 check('queda un camino de vuelta, y dice a dónde lleva',
   /Elegir otro equipo/.test(jugSrcV) &&
   /jugadoresElegirEquipo\(/.test(jugSrcV));
+
+
+/* =====================================================================
+   LA CARD 6 DEL DIAGNÓSTICO SE EJERCE, NO SE LEE (punto 66)
+
+   Un grep sobre el fuente no ve un TypeError, y esta card es de las que
+   se pintan solo cuando hay algo que denunciar: el día que se rompa, se
+   rompe justo cuando hace falta. Se corre en un vm con el DOM mínimo,
+   igual que la pestaña de Torneo del punto 18.
+   ===================================================================== */
+(() => {
+  const vm = require("vm");
+  const SG = require("./js/sgadd-core.js");
+  const ctx = {
+    SGADD: SG, console: { log: () => {} },
+    document: { getElementById: () => null },
+    escapeHtml: (v) => String(v === undefined || v === null ? "" : v),
+    SGADD_UI: { esc: (v) => String(v) }, SGADD_APP: { estado: {} }, CLUB: { estado: {} },
+  };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(require("fs").readFileSync("./js/sgadd-diagnostico.js", "utf8"), ctx,
+    { filename: "sgadd-diagnostico.js" });
+
+  const cols = ["FECHA", "PARTIDO", "EQUIPO", "FASE", "CONDICION", "RESULTADO",
+    "PTS", "PLAYS", "RO", "PPP", "PACE", "MIN", "TCI", "PP", "PTSopp", "PLAYSopp", "ROopp"];
+  const fila = (fecha, partido, eq, cond, pts, plays, ro, pace, tci, pp, ptsO, playsO, roO) => ({
+    FECHA: fecha, PARTIDO: partido, EQUIPO: eq, FASE: "REGULAR", CONDICION: cond,
+    RESULTADO: pts > ptsO ? "GANADO" : "PERDIDO", PTS: String(pts), PLAYS: String(plays),
+    RO: String(ro), PPP: String(pts / plays), PACE: String(pace), MIN: "200",
+    TCI: String(tci), PP: String(pp), PTSopp: String(ptsO), PLAYSopp: String(playsO), ROopp: String(roO),
+  });
+  /* Dos partidos sanos y uno truncado: mismo marcador, la mitad de las jugadas. */
+  const filas = [
+    fila("1/05/2026", "A vs B", "A", "LOCAL", 80, 100, 10, 80, 60, 14, 75, 100, 10),
+    fila("1/05/2026", "A vs B", "B", "VISITANTE", 75, 100, 10, 80, 58, 15, 80, 100, 10),
+    fila("8/05/2026", "B vs C", "B", "LOCAL", 82, 100, 10, 80, 61, 13, 79, 100, 10),
+    fila("8/05/2026", "B vs C", "C", "VISITANTE", 79, 100, 10, 80, 59, 16, 82, 100, 10),
+    fila("15/05/2026", "A vs C", "A", "LOCAL", 80, 40, 0, 40, 28, 0, 76, 40, 0),
+    fila("15/05/2026", "A vs C", "C", "VISITANTE", 76, 40, 0, 40, 26, 0, 80, 40, 0),
+  ];
+  const idxT = SG.construirIndice({ "Base Datos E": { cols, filas } }, { fase: "REGULAR" });
+  const html = ctx.diagBloqueTruncado(idxT);
+
+  check("la card 6 del Diagnóstico se pinta de verdad", typeof html === "string" && html.length > 200,
+    typeof html === "string" ? html.length : typeof html);
+  check("denuncia el partido truncado con su fecha", /15\/05\/2026/.test(html));
+  check("y no nombra a los partidos sanos", !/8\/05\/2026/.test(html));
+  check("dice que el registro de acciones es PARCIAL", /registro parcial de acciones/i.test(html));
+  check("declara la vara con la que decidió", /80 %/.test(html) && /120 %/.test(html));
+  check("y aclara que el panel NO excluye esos partidos", /no.{0,3}<\/b> excluye|no excluye/i.test(html));
+
+  /* Con un libro sano la card sale en verde y no denuncia a nadie. */
+  const sano = SG.construirIndice({ "Base Datos E": { cols, filas: filas.slice(0, 4) } }, { fase: "REGULAR" });
+  const htmlSano = ctx.diagBloqueTruncado(sano);
+  check("con un libro sano no denuncia ninguna fila", !/15\/05\/2026/.test(htmlSano) && /text-green-400/.test(htmlSano));
+})();
 
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);

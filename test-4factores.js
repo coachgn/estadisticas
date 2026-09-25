@@ -95,7 +95,11 @@ console.log('═'.repeat(70));
 /* Fixture A: 35 partidos con margen = 10·netEFG - 5·netPP + 3·netRO + 2·netRTL,
    SIN ruido. Si pesosPorFactor() recupera esos 4 coeficientes, la regresión
    múltiple está bien conectada de punta a punta (idx -> dataset -> OLS). */
-const colsBD = ['FECHA', 'PARTIDO', 'EQUIPO', 'FASE', 'CONDICION', 'RESULTADO', 'PTS', 'PTSopp'];
+const colsBD = ['FECHA', 'PARTIDO', 'EQUIPO', 'FASE', 'CONDICION', 'RESULTADO', 'PTS', 'PTSopp',
+  /* PLAYS y RO entran para que el índice pueda derivar los ratings por 100
+     POSESIONES (punto 66): sin denominador no hay rating, y se muestra
+     ausente en vez de caer al número por play. */
+  'PLAYS', 'RO', 'PLAYSopp', 'ROopp'];
 const cols4F = ['FECHA', 'PARTIDO', 'EQUIPO', 'FASE', 'CONDICION', 'RESULTADO',
   'eFG%', 'PP%', 'RO%', 'RTL%', 'eFG Opp%', 'PP Opp%', 'RO Opp%', 'RTL Opp%'];
 
@@ -171,11 +175,18 @@ check('los factores sin variación dan 0, no ruido ni NaN',
 console.log('\n7. PERFIL DE EQUIPO PARA SIMULAR: fallback de muestra chica y recencia');
 console.log('═'.repeat(70));
 
-const colsPE = ['EQUIPO', 'FASE', 'PJ', 'PLAYS', 'PACE', 'PPP', 'eFG%'];
+/* PTS, RO y las del rival entran para poder DERIVAR los ratings por 100
+   posesiones: X 80/(95−15)=100,0 contra 77/(90−20)=110,0 → NET −10,0 ·
+   Y 66/(65−5)=110,0 contra 63/(70−0)=90,0 → NET +20,0. */
+const colsPE = ['EQUIPO', 'FASE', 'PJ', 'PLAYS', 'PACE', 'PPP', 'eFG%',
+  'PTS', 'RO', 'PTSopp', 'PLAYSopp', 'ROopp'];
 const filasPE = [
-  { EQUIPO: 'X', FASE: 'REGULAR', PJ: '5', PLAYS: '95', PACE: '92', PPP: '0,85', 'eFG%': '0,40' },
-  { EQUIPO: 'Y', FASE: 'REGULAR', PJ: '6', PLAYS: '65', PACE: '78', PPP: '0,90', 'eFG%': '0,55' },
-  { EQUIPO: 'Z', FASE: 'REGULAR', PJ: '5', PLAYS: '80', PACE: '85', PPP: '0,88', 'eFG%': '0,45' },
+  { EQUIPO: 'X', FASE: 'REGULAR', PJ: '5', PLAYS: '95', PACE: '92', PPP: '0,85', 'eFG%': '0,40',
+    PTS: '80', RO: '15', PTSopp: '77', PLAYSopp: '90', ROopp: '20' },
+  { EQUIPO: 'Y', FASE: 'REGULAR', PJ: '6', PLAYS: '65', PACE: '78', PPP: '0,90', 'eFG%': '0,55',
+    PTS: '66', RO: '5', PTSopp: '63', PLAYSopp: '70', ROopp: '0' },
+  { EQUIPO: 'Z', FASE: 'REGULAR', PJ: '5', PLAYS: '80', PACE: '85', PPP: '0,88', 'eFG%': '0,45',
+    PTS: '70', RO: '10', PTSopp: '70', PLAYSopp: '80', ROopp: '10' },
 ];
 const colsP4F = ['EQUIPO', 'FASE', 'PJ', 'NET RTNG'];
 const filasP4F = [
@@ -194,7 +205,15 @@ function filaSim(equipo, cond, fecha, partido, efg, resultado) {
   const rtngOf = equipo === 'X' ? 90 : 95;
   const rtngDef = equipo === 'X' ? 80 : 75;
   return {
-    bd: { FECHA: fecha, PARTIDO: partido, EQUIPO: equipo, FASE: 'REGULAR', CONDICION: cond, RESULTADO: resultado, PTS: '70', PTSopp: '65' },
+    /* POS = PLAYS − RO. De LOCAL rebotean (RO 10) y de visitante no, así
+       que el rating queda distinto por condición y el test lo puede ver:
+       X local 70 posesiones → 100,0 · Y local 65 → 107,7 · Y visitante 75 → 93,3. */
+    bd: {
+      FECHA: fecha, PARTIDO: partido, EQUIPO: equipo, FASE: 'REGULAR',
+      CONDICION: cond, RESULTADO: resultado, PTS: '70', PTSopp: '65',
+      PLAYS: equipo === 'X' ? '80' : '75', RO: cond === 'LOCAL' ? '10' : '0',
+      PLAYSopp: '75', ROopp: equipo === 'X' ? '10' : '5',
+    },
     f4: {
       FECHA: fecha, PARTIDO: partido, EQUIPO: equipo, FASE: 'REGULAR', CONDICION: cond, RESULTADO: resultado,
       'eFG%': String(efg), 'eFG Opp%': '0,45', 'PP%': '0,15', 'PP Opp%': '0,15',
@@ -243,12 +262,21 @@ check('Y tiene 3 partidos de cada lado: ninguno de los dos necesita el respaldo'
 check('perfilEquipoSimulacion() de un equipo inexistente da null', F.perfilEquipoSimulacion(idxSim, 'NO_EXISTE', 'LOCAL') === null);
 check('perfilEquipoSimulacion() trae PLAYS y PACE de la temporada (PROMEDIOS E)',
   cerca(perfilXLocal.plays, 95) && cerca(perfilXLocal.pace, 92), JSON.stringify({ plays: perfilXLocal.plays, pace: perfilXLocal.pace }));
-check('perfilEquipoSimulacion() trae PPP OF/DEF y RTNG OF/DEF condición-específicos (no de temporada)',
-  cerca(perfilXLocal.pppOf, 0.90) && cerca(perfilXLocal.pppDef, 0.80) &&
-  cerca(perfilXLocal['RTNG OFF'], 90.0) && cerca(perfilXLocal['RTNG DEF'], 80.0),
+check('perfilEquipoSimulacion() trae PPP OF/DEF condición-específicos (no de temporada)',
+  cerca(perfilXLocal.pppOf, 0.90) && cerca(perfilXLocal.pppDef, 0.80),
   JSON.stringify({ pppOf: perfilXLocal.pppOf, pppDef: perfilXLocal.pppDef }));
-check('perfilEquipoSimulacion() trae el Net Rating de temporada (PROMEDIOS 4F)',
-  cerca(perfilXLocal.netRating, -3.0) && cerca(perfilYLocal.netRating, 8.0),
+/* LOS RATINGS YA NO SALEN DE LA HOJA. `4 FACTORES` declara 90,0 y 80,0
+   —por 100 PLAYS— y el índice los deriva por 100 POSESIONES desde la
+   maestra (punto 66): lo que el Simulador consume es lo derivado, así que
+   el panel y su proyección no pueden hablar dos unidades distintas. */
+check('los RATINGS del perfil van por 100 POSESIONES, no por los 90/80 que declara la hoja',
+  cerca(perfilXLocal['RTNG OFF'], 100.0) && cerca(perfilXLocal['RTNG DEF'], 100.0),
+  JSON.stringify({ of: perfilXLocal['RTNG OFF'], def: perfilXLocal['RTNG DEF'] }));
+check('y siguen siendo condición-específicos: Y de local y de visitante no dan lo mismo',
+  cerca(perfilYLocal['RTNG OFF'], 700 / 6.5, 0.01) && cerca(perfilYVisitante['RTNG OFF'], 700 / 7.5, 0.01),
+  JSON.stringify({ local: perfilYLocal['RTNG OFF'], visitante: perfilYVisitante['RTNG OFF'] }));
+check('perfilEquipoSimulacion() trae el Net Rating de temporada, derivado por 100 posesiones',
+  cerca(perfilXLocal.netRating, -10.0, 0.01) && cerca(perfilYLocal.netRating, 20.0, 0.01),
   JSON.stringify({ X: perfilXLocal.netRating, Y: perfilYLocal.netRating }));
 
 console.log('\n8. VENTAJA DE LOCALÍA DE LIGA');

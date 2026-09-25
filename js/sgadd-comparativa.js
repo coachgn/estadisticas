@@ -119,11 +119,15 @@ const SGADD_COMP = (function () {
     if (!pj) return null;
 
     const yo = a.propio || {}, riv = a.rival || {};
-    /* Por 100 PLAYS y no por 100 posesiones: es la convención del motor y
-       de todo el panel (CLAUDE.md, punto 3). Etiquetarlo de otra forma
-       haría incomparable el número con el resto de la app. */
-    const off = div(yo['PTS'], yo['PLAYS']);
-    const def = div(riv['PTS'], riv['PLAYS']);
+    /* Por 100 POSESIONES (POS = PLAYS − RO), la vara de todo el panel desde
+       el punto 66. El NIVEL de este bloque se mide contra la temporada de
+       los rivales, así que las dos puntas tienen que hablar la misma unidad
+       o la columna de la derecha diría otra cosa que la de la izquierda. */
+    const posDe = (x) => (typeof x['PLAYS'] === 'number' && isFinite(x['PLAYS']))
+      ? x['PLAYS'] - ((typeof x['RO'] === 'number' && isFinite(x['RO'])) ? x['RO'] : 0)
+      : null;
+    const off = div(yo['PTS'], posDe(yo));
+    const def = div(riv['PTS'], posDe(riv));
     const ritmo = {
       PLAYS: div(yo['PLAYS'], pj),
       POS: div(yo['POS'], pj),

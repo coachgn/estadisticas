@@ -1205,9 +1205,18 @@ check('el centinela no colisiona con un torneo real',
   check('PACE reproduce la fórmula del motor',
     Math.abs(eT.promedios['PACE'] - paceReal) < 1e-9,
     eT.promedios['PACE'] + ' vs ' + paceReal);
-  /* Y los 4F por 100 plays. */
-  check('RTNG OFF es por 100 PLAYS',
-    Math.abs(eT.factores['RTNG OFF'] - 100 * sA.PTS / sA.PLAYS) < 1e-9);
+  /* Y LOS RATINGS POR 100 POSESIONES (punto 66). El denominador es
+     POS = PLAYS − RO: el rebote ofensivo abre otro PLAY y no otra
+     posesión, así que las dos varas NO son la misma. */
+  check('RTNG OFF es por 100 POSESIONES, no por 100 PLAYS',
+    Math.abs(eT.factores['RTNG OFF'] - 100 * sA.PTS / (sA.PLAYS - sA.RO)) < 1e-9,
+    eT.factores['RTNG OFF'] + ' vs ' + (100 * sA.PTS / (sA.PLAYS - sA.RO)));
+  check('y con rebote ofensivo las dos varas se separan de verdad',
+    sA.RO > 0 && Math.abs(eT.factores['RTNG OFF'] - 100 * sA.PTS / sA.PLAYS) > 1,
+    'RO ' + sA.RO + ' · por play daria ' + (100 * sA.PTS / sA.PLAYS));
+  check('el PPP se queda por PLAY: es la unica que mide el intento',
+    Math.abs(eT.factores['PPP OF'] - sA.PTS / sA.PLAYS) < 1e-9,
+    eT.factores['PPP OF'] + ' vs ' + (sA.PTS / sA.PLAYS));
   check('NET RTNG es la resta, sobre los totales de ESE equipo',
     Math.abs(eT.factores['NET RTNG'] -
       (eT.factores['RTNG OFF'] - eT.factores['RTNG DEF'])) < 1e-9);
@@ -1585,6 +1594,151 @@ check('usa sessionStorage, no localStorage',
   check('sin MIN ni PLAYS del equipo, USG% se omite en vez de mentir',
     !jSin || jSin['USG%'] === undefined, jSin && jSin['USG%']);
 })();
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LOS RATINGS POR 100 POSESIONES Y EL VALIDADOR DE BOX TRUNCADO
+   (punto 66). El libro de abajo es mínimo y explícito: dos equipos, dos
+   partidos, con el rebote ofensivo asimétrico para que las dos varas
+   —por play y por posesión— NO puedan dar lo mismo.
+   ═══════════════════════════════════════════════════════════════════════ */
+console.log('');
+console.log('21. LOS RATINGS VAN POR 100 POSESIONES');
+console.log('═'.repeat(70));
+
+const colsPos = ['FECHA', 'PARTIDO', 'EQUIPO', 'FASE', 'CONDICION', 'RESULTADO',
+  'PTS', 'PLAYS', 'RO', 'PPP', 'PACE', 'MIN', 'TCI', 'PP',
+  'PTSopp', 'PLAYSopp', 'ROopp'];
+function filaPos(o) {
+  return {
+    FECHA: o.fecha, PARTIDO: o.partido, EQUIPO: o.equipo, FASE: 'REGULAR',
+    CONDICION: o.cond || 'LOCAL', RESULTADO: o.res || 'GANADO',
+    PTS: String(o.pts), PLAYS: String(o.plays), RO: String(o.ro),
+    PPP: String(o.pts / o.plays), PACE: String(o.pace), MIN: '200',
+    TCI: String(o.tci !== undefined ? o.tci : 60), PP: String(o.pp !== undefined ? o.pp : 14),
+    PTSopp: String(o.ptsOpp), PLAYSopp: String(o.playsOpp), ROopp: String(o.roOpp),
+  };
+}
+/* AA hace 80 puntos en 100 plays con 20 rebotes ofensivos: 80 posesiones.
+   Por play daría 80,0 y por posesión 100,0 — doce puntos de diferencia. */
+const librePos = {
+  'Base Datos E': { cols: colsPos, filas: [
+    filaPos({ fecha: '01/05/2026', partido: 'AA vs BB', equipo: 'AA', pts: 80, plays: 100, ro: 20, pace: 80, ptsOpp: 70, playsOpp: 100, roOpp: 0 }),
+    filaPos({ fecha: '01/05/2026', partido: 'AA vs BB', equipo: 'BB', cond: 'VISITANTE', res: 'PERDIDO', pts: 70, plays: 100, ro: 0, pace: 80, ptsOpp: 80, playsOpp: 100, roOpp: 20 }),
+    filaPos({ fecha: '08/05/2026', partido: 'BB vs AA', equipo: 'BB', pts: 90, plays: 100, ro: 0, pace: 80, ptsOpp: 80, playsOpp: 100, roOpp: 20 }),
+    filaPos({ fecha: '08/05/2026', partido: 'BB vs AA', equipo: 'AA', cond: 'VISITANTE', res: 'PERDIDO', pts: 80, plays: 100, ro: 20, pace: 80, ptsOpp: 90, playsOpp: 100, roOpp: 0 }),
+  ] },
+};
+const idxPos = SGADD.construirIndice(librePos, { fase: 'REGULAR' });
+const eAA = idxPos.get('AA'), eBB = idxPos.get('BB');
+
+check('ORTG = 100 x PTS / POS, con POS = PLAYS - RO',
+  Math.abs(eAA.factores['RTNG OFF'] - 100) < 1e-9, eAA.factores['RTNG OFF']);
+check('y NO es el valor por play, que en este libro da 80',
+  Math.abs(eAA.factores['RTNG OFF'] - 80) > 19);
+check('DRTG sale de las posesiones del RIVAL, no de las propias',
+  Math.abs(eBB.factores['RTNG DEF'] - 100) < 1e-9, eBB.factores['RTNG DEF']);
+check('NET es la resta de los dos, ya en posesiones',
+  Math.abs(eAA.factores['NET RTNG'] - (eAA.factores['RTNG OFF'] - eAA.factores['RTNG DEF'])) < 1e-9);
+/* El PPP de este libro no sale de PROMEDIOS E —no hay hoja— sino de los
+   totales de los partidos, y ahi tambien se queda por PLAY. */
+check('el PPP del mismo equipo sigue por PLAY',
+  Math.abs(eAA.split.LOCAL.tiro['PPP'] - 0.80) < 1e-9, eAA.split.LOCAL.tiro['PPP']);
+check('la mediana de la liga se recalcula sobre los valores derivados',
+  Math.abs(idxPos.leer('AA', 'RTNG OFF').tipo - SGADD.mediana([eAA.factores['RTNG OFF'], eBB.factores['RTNG OFF']])) < 1e-9,
+  idxPos.leer('AA', 'RTNG OFF').tipo);
+
+/* Y el rating PARTIDO A PARTIDO, que es lo que consume el Simulador. */
+const f4Pos = idxPos.get('AA').factoresPartido || [];
+check('sin hoja de 4 FACTORES no hay filas por partido que pisar', f4Pos.length === 0);
+
+/* LA MAESTRA MANDA: sin columnas del rival, el DRTG sale igual, porque la
+   fila del otro lado del cruce está siempre en la maestra. */
+const sinOpp = { 'Base Datos E': { cols: colsPos.filter(c => !/opp$/.test(c)),
+  filas: librePos['Base Datos E'].filas.map(f => {
+    const g = Object.assign({}, f); delete g.PTSopp; delete g.PLAYSopp; delete g.ROopp; return g;
+  }) } };
+const idxSinOpp = SGADD.construirIndice(sinOpp, { fase: 'REGULAR' });
+/* BB anota 70 + 90 en 200 posesiones: 80,0 de DRTG para AA, exactamente
+   el mismo numero que con las columnas *opp puestas. */
+check('sin columnas *opp el DRTG se deriva igual, desde la fila del rival',
+  Math.abs(idxSinOpp.get('AA').factores['RTNG DEF'] - 80) < 1e-9,
+  idxSinOpp.get('AA').factores['RTNG DEF']);
+check('y da lo mismo que con las columnas del rival presentes',
+  Math.abs(idxSinOpp.get('AA').factores['RTNG DEF'] - eAA.factores['RTNG DEF']) < 1e-9);
+
+/* Y SIN PLAYS NO HAY RATING: se muestra ausente, nunca el número por play. */
+const sinPlays = { 'Base Datos E': { cols: ['FECHA', 'PARTIDO', 'EQUIPO', 'FASE', 'CONDICION', 'RESULTADO', 'PTS', 'PTSopp'],
+  filas: librePos['Base Datos E'].filas.map(f => ({ FECHA: f.FECHA, PARTIDO: f.PARTIDO, EQUIPO: f.EQUIPO,
+    FASE: f.FASE, CONDICION: f.CONDICION, RESULTADO: f.RESULTADO, PTS: f.PTS, PTSopp: f.PTSopp })) } };
+const idxSinPlays = SGADD.construirIndice(sinPlays, { fase: 'REGULAR' });
+const fAA = idxSinPlays.get('AA').factores || {};
+check('sin PLAYS el rating no existe en vez de salir por play',
+  fAA['RTNG OFF'] === undefined && fAA['NET RTNG'] === undefined,
+  JSON.stringify(fAA));
+
+/* La nomenclatura visible: las CLAVES no se tocan, la sigla sí. */
+check('siglaVisible traduce RTNG OFF a ORTG', SGADD.siglaVisible('RTNG OFF') === 'ORTG');
+check('RTNG DEF a DRTG y NET RTNG a NET',
+  SGADD.siglaVisible('RTNG DEF') === 'DRTG' && SGADD.siglaVisible('NET RTNG') === 'NET');
+check('y lo que no está en la tabla vuelve igual', SGADD.siglaVisible('eFG%') === 'eFG%');
+check('las CLAVES del registro siguen siendo las de la planilla',
+  !!SGADD.METRICAS['RTNG OFF'] && !SGADD.METRICAS['ORTG']);
+
+console.log('');
+console.log('22. VALIDADOR · BOX SCORE TRUNCADO');
+console.log('═'.repeat(70));
+
+/* Un libro sano: el validador no puede denunciar nada. */
+const sano = SGADD.detectarBoxTruncado(idxPos);
+check('un libro sano no marca ninguna fila', sano.filas.length === 0, JSON.stringify(sano.filas.length));
+check('pero dice sobre cuántas filas miró', sano.n === 4);
+
+/* Y uno con un partido truncado: mismo marcador, la mitad de las acciones. */
+const truncado = {
+  'Base Datos E': { cols: colsPos, filas: librePos['Base Datos E'].filas.concat([
+    filaPos({ fecha: '15/05/2026', partido: 'AA vs CC', equipo: 'AA', pts: 80, plays: 40, ro: 0, pace: 40, tci: 28, pp: 0, ptsOpp: 75, playsOpp: 40, roOpp: 0 }),
+    filaPos({ fecha: '15/05/2026', partido: 'AA vs CC', equipo: 'CC', cond: 'VISITANTE', res: 'PERDIDO', pts: 75, plays: 40, ro: 0, pace: 40, tci: 26, pp: 0, ptsOpp: 80, playsOpp: 40, roOpp: 0 }),
+    filaPos({ fecha: '22/05/2026', partido: 'CC vs BB', equipo: 'CC', pts: 82, plays: 102, ro: 2, pace: 82, ptsOpp: 80, playsOpp: 100, roOpp: 0 }),
+    filaPos({ fecha: '22/05/2026', partido: 'CC vs BB', equipo: 'BB', cond: 'VISITANTE', res: 'PERDIDO', pts: 80, plays: 100, ro: 0, pace: 82, ptsOpp: 82, playsOpp: 102, roOpp: 2 }),
+  ]) },
+};
+const idxTrunc = SGADD.construirIndice(truncado, { fase: 'REGULAR' });
+const rTrunc = SGADD.detectarBoxTruncado(idxTrunc);
+check('marca el partido lento Y eficientísimo a la vez', rTrunc.filas.length === 2, JSON.stringify(rTrunc.filas.map(f => f.nombre + ' ' + f.fechaTexto)));
+check('y lo agrupa por cruce, que es lo que el DT audita', rTrunc.partidos.length === 1 && rTrunc.partidos[0].lados.length === 2);
+check('los dos lados marcados son los del 15/05', rTrunc.filas.every(f => f.fechaTexto === '15/05/2026'));
+check('declara la vara con la que decidió', rTrunc.cortes.pace > 0 && rTrunc.cortes.ppp > 0
+  && Math.abs(rTrunc.cortes.pace - rTrunc.medianas.pace * 0.8) < 1e-9);
+
+/* LAS DOS CONDICIONES VAN JUNTAS: un partido rápido y goleador cruza el
+   corte de PPP y no tiene nada roto. Con «o» saldría denunciado. */
+const rapido = {
+  'Base Datos E': { cols: colsPos, filas: librePos['Base Datos E'].filas.concat([
+    filaPos({ fecha: '29/05/2026', partido: 'AA vs DD', equipo: 'AA', pts: 130, plays: 110, ro: 10, pace: 100, ptsOpp: 120, playsOpp: 110, roOpp: 10 }),
+    filaPos({ fecha: '29/05/2026', partido: 'AA vs DD', equipo: 'DD', cond: 'VISITANTE', res: 'PERDIDO', pts: 120, plays: 110, ro: 10, pace: 100, ptsOpp: 130, playsOpp: 110, roOpp: 10 }),
+  ]) },
+};
+const rRapido = SGADD.detectarBoxTruncado(SGADD.construirIndice(rapido, { fase: 'REGULAR' }));
+check('un partido rápido y goleador NO se denuncia: el PACE no acompaña',
+  rRapido.filas.length === 0, JSON.stringify(rRapido.filas.map(f => f.nombre)));
+
+/* El corte es un PARÁMETRO, para poder auditar la sensibilidad. */
+check('los cortes se pueden mover desde afuera',
+  SGADD.detectarBoxTruncado(idxTrunc, { pace: 0 }).filas.length === 0);
+check('y los valores por defecto están declarados',
+  SGADD.TRUNCADO_PACE === 0.80 && SGADD.TRUNCADO_PPP === 1.20);
+
+/* --- NINGÚN RATING SE DIVIDE POR PLAYS · lectura del fuente ---
+   Es la regla que el club pidió por escrito, y la única forma de que no
+   vuelva a entrar por una vista nueva. */
+const fuenteCore = require('fs').readFileSync('./js/sgadd-core.js', 'utf8');
+check('en el núcleo, RTNG OFF no se calcula sobre PLAYS',
+  !/'RTNG OFF':[^\n]*n0\(y\.PTS\), *y\.PLAYS/.test(fuenteCore) &&
+  /'RTNG OFF':[^\n]*posesiones\(y\)/.test(fuenteCore));
+const fuentePart = require('fs').readFileSync('./js/sgadd-partido.js', 'utf8');
+check('en la card del partido tampoco',
+  /ortg: div\(pts, pos\)/.test(fuentePart) && !/ortg: div\(pts, plays\)/.test(fuentePart));
 
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);

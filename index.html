@@ -2797,7 +2797,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=232" />
+<link rel="stylesheet" href="sgadd.css?v=233" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2975,47 +2975,47 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=232"></script>
+<script src="js/sgadd-club.js?v=233"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=232"></script>
-<script src="js/sgadd-core.js?v=232"></script>
-<script src="js/sgadd-auth.js?v=232"></script>
+<script src="js/sgadd-config.js?v=233"></script>
+<script src="js/sgadd-core.js?v=233"></script>
+<script src="js/sgadd-auth.js?v=233"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=232"></script>
-<script src="js/sgadd-glosario.js?v=232"></script>
-<script src="js/sgadd-glosarioui.js?v=232"></script>
-<script src="js/sgadd-comparativa.js?v=232"></script>
-<script src="js/sgadd-comparativaui.js?v=232"></script>
-<script src="js/sgadd-confirmar.js?v=232"></script>
-<script src="js/sgadd-landing.js?v=232"></script>
-<script src="js/sgadd-login.js?v=232"></script>
-<script src="js/sgadd-data.js?v=232"></script>
-<script src="js/sgadd-clientes.js?v=232"></script>
-<script src="js/sgadd-ui.js?v=232"></script>
-<script src="js/sgadd-app.js?v=232"></script>
-<script src="js/sgadd-clasificacion.js?v=232"></script>
+<script src="js/sgadd-demo.js?v=233"></script>
+<script src="js/sgadd-glosario.js?v=233"></script>
+<script src="js/sgadd-glosarioui.js?v=233"></script>
+<script src="js/sgadd-comparativa.js?v=233"></script>
+<script src="js/sgadd-comparativaui.js?v=233"></script>
+<script src="js/sgadd-confirmar.js?v=233"></script>
+<script src="js/sgadd-landing.js?v=233"></script>
+<script src="js/sgadd-login.js?v=233"></script>
+<script src="js/sgadd-data.js?v=233"></script>
+<script src="js/sgadd-clientes.js?v=233"></script>
+<script src="js/sgadd-ui.js?v=233"></script>
+<script src="js/sgadd-app.js?v=233"></script>
+<script src="js/sgadd-clasificacion.js?v=233"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-hub.js?v=232"></script>
-<script src="js/sgadd-configui.js?v=232"></script>
-<script src="js/sgadd-estados.js?v=232"></script>
-<script src="js/sgadd-buzon.js?v=232"></script>
-<script src="js/sgadd-charts.js?v=232"></script>
-<script src="js/sgadd-personalidad.js?v=232"></script>
-<script src="js/sgadd-rankings.js?v=232"></script>
-<script src="js/sgadd-partido.js?v=232"></script>
-<script src="js/sgadd-informe.js?v=232"></script>
-<script src="js/sgadd-ficha.js?v=232"></script>
-  <script src="js/sgadd-rankingpdf.js?v=232"></script>
-<script src="js/sgadd-equipos.js?v=232"></script>
+<script src="js/sgadd-hub.js?v=233"></script>
+<script src="js/sgadd-configui.js?v=233"></script>
+<script src="js/sgadd-estados.js?v=233"></script>
+<script src="js/sgadd-buzon.js?v=233"></script>
+<script src="js/sgadd-charts.js?v=233"></script>
+<script src="js/sgadd-personalidad.js?v=233"></script>
+<script src="js/sgadd-rankings.js?v=233"></script>
+<script src="js/sgadd-partido.js?v=233"></script>
+<script src="js/sgadd-informe.js?v=233"></script>
+<script src="js/sgadd-ficha.js?v=233"></script>
+  <script src="js/sgadd-rankingpdf.js?v=233"></script>
+<script src="js/sgadd-equipos.js?v=233"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=232"></script>
-<script src="js/sgadd-jugadores.js?v=232"></script>
-<script src="js/sgadd-4factores.js?v=232"></script>
-<script src="js/sgadd-scouting.js?v=232"></script>
-<script src="js/sgadd-pbp.js?v=232"></script>
-<script src="js/sgadd-diagnostico.js?v=232"></script>
+<script src="js/sgadd-niveles.js?v=233"></script>
+<script src="js/sgadd-jugadores.js?v=233"></script>
+<script src="js/sgadd-4factores.js?v=233"></script>
+<script src="js/sgadd-scouting.js?v=233"></script>
+<script src="js/sgadd-pbp.js?v=233"></script>
+<script src="js/sgadd-diagnostico.js?v=233"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -4272,18 +4272,37 @@ function drawOrtgDrtgChart() {
       y: (e.factores && typeof e.factores['RTNG DEF'] === 'number') ? e.factores['RTNG DEF'] : null,
     })).filter(d => d.x !== null && d.y !== null);
   } else {
-    const data = sheet('promedios4f');
+    /* El respaldo SALE DE `PROMEDIOS E`, no de `PROMEDIOS 4F`: los ratings
+       del panel van por 100 POSESIONES (punto 66) y la columna RTNG de 4F
+       viene por 100 PLAYS. Leyéndola, el mapa mostraría una unidad durante
+       el primer pintado y otra en cuanto entra el índice — el mismo equipo
+       saltando diez puntos sin que nadie lo toque. */
+    const data = sheet('promediosE');
     if (data.error || !data.rows.length) return;
     const colEquipo = findColumnLabel(data.cols, ['EQUIPO', 'NOMBRE']);
-    const colOff = findColumnLabel(data.cols, ['RTNG OFF', 'ORTG']);
-    const colDef = findColumnLabel(data.cols, ['RTNG DEF', 'DRTG']);
+    const col = (c) => findColumnLabel(data.cols, [c]);
+    const cPts = col('PTS'), cPos = col('POS'), cPlays = col('PLAYS'), cRo = col('RO');
+    const cPtsO = col('PTSopp'), cPlaysO = col('PLAYSopp'), cRoO = col('ROopp');
+    const posDe = (r, cp, cpl, cro) => {
+      const p = toNumber(r.values[cp]);
+      if (p !== null && p > 0) return p;
+      const pl = toNumber(r.values[cpl]);
+      if (pl === null) return null;
+      const v = pl - (toNumber(r.values[cro]) || 0);
+      return v > 0 ? v : null;
+    };
     chartData = data.rows
       .filter(r => !isEquipoTipo(r))
-      .map((r) => ({
-        name: cleanName(r.formatted[colEquipo] || 'Desconocido'),
-        x: toNumber(r.values[colOff]),
-        y: toNumber(r.values[colDef])
-      }))
+      .map((r) => {
+        const pos = posDe(r, cPos, cPlays, cRo);
+        const posO = posDe(r, null, cPlaysO, cRoO);
+        const pts = toNumber(r.values[cPts]), ptsO = toNumber(r.values[cPtsO]);
+        return {
+          name: cleanName(r.formatted[colEquipo] || 'Desconocido'),
+          x: (pts !== null && pos) ? 100 * pts / pos : null,
+          y: (ptsO !== null && posO) ? 100 * ptsO / posO : null,
+        };
+      })
       .filter(d => d.x !== null && d.y !== null);
   }
 

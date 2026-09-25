@@ -16,25 +16,25 @@ aplicadas en el punto 14.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 297 tests · núcleo, índice, validador
+node test-core.js          # 324 tests · núcleo, índice, validador
 node test-logos.js         #  37 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 318 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
-node test-boot.js          # 170 tests · arranque por club, sintaxis de los módulos, carteles de espera
+node test-boot.js          # 178 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 283 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
-node test-4factores.js     #  94 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
+node test-4factores.js     #  96 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
-node test-partido.js       #  55 tests · detalle partido a partido, perfil de tiro y su PDF
+node test-partido.js       #  63 tests · detalle partido a partido, perfil de tiro y su PDF
 node test-scouting.js      # 519 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis,
                            #             titularidad, las SEÑALES compartidas y el menor de los males
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
 node test-permisos.js      # 402 tests · roles, planes, el gate, el selector, el hub, el ciclo,
                            #             la sesión, la landing y el glosario
-node test-comparativa.js   #  65 tests · ciclos, tendencia contra nivel, cara a cara
+node test-comparativa.js   #  67 tests · ciclos, tendencia contra nivel, cara a cara
 node test-clientes.js      #  69 tests · el padrón de clientes, los cupos y el login
 node test-confirmar.js     #  86 tests · el diff, publicar zonas, subclientes y tooltips
 node test-acumulacion.js   #  42 tests · la suma entre tramos · REGRESIÓN, no tocar
@@ -74,9 +74,9 @@ node test-router-jugadores.js # 12 tests · la pestaña Jugadores se pinta en el
                            #             suelta el equipo de otra categoría
 node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: plan, estado,
                            #             equipo, vencimiento y ciclo ORO por categoría
-node test-glosario.js      #  26 tests · el glosario sin la columna ni la card de hojas,
+node test-glosario.js      #  34 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
-node test-pbp.js           # 119 tests · la capa de laboratorio de play-by-play: el catálogo,
+node test-pbp.js           # 120 tests · la capa de laboratorio de play-by-play: el catálogo,
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
 
@@ -95,7 +95,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6185 tests en total. Todos tienen que dar verde antes de commitear.**
+**6241 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -240,7 +240,7 @@ CABB (box score) → MotorStats (Apps Script) → Google Sheets → SGADD (este 
 
 El `ESQUEMA` de acá y los `ENCABEZADOS_FINALES_*` del motor son **la misma
 especificación**. Auditado en 2026-08-10: ninguna fórmula de SGADD contradice al
-motor (PLAY vs POS, PPP por play, RTNG por 100 plays, EQUIPO TIPO = mediana en
+motor (PLAY vs POS, PPP por play, EQUIPO TIPO = mediana en
 escala por partido, tasas que se recalculan en vez de promediarse). Ver
 [`INTEGRACION_MOTORSTATS.md`](INTEGRACION_MOTORSTATS.md) para el detalle.
 
@@ -870,8 +870,10 @@ devuelve basura. Los rankings se derivan en el cliente.
 - **Hay dos tipos de fila TIPO**: la de liga (columna EQUIPO vacía) y una por
   equipo. Tomar la primera que aparece devuelve la del primer equipo del
   abecedario y el umbral de minutos sale mal.
-- **`RTNG OFF/DEF` está por 100 PLAYS, no por 100 posesiones.** No comparable con
-  el ORTG de la NBA. Etiquetarlo siempre.
+- **`RTNG OFF/DEF` de la PLANILLA está por 100 PLAYS. El panel NO los muestra
+  así**: desde el 2026-09-25 los deriva por 100 POSESIONES (punto 66). La columna
+  de la hoja queda como el dato que el club audita en su planilla, y el panel
+  habla la norma CAB/FIBA.
 - **Cada métrica tiene UNA hoja dueña** (registro `METRICAS`). `eFG%`, `RTL%` y
   `RO%` se leen de `PROMEDIOS E` (ratio sobre totales de temporada, ponderado).
   `PROMEDIOS 4F` promedia ratios por partido y da distinto.
@@ -2600,7 +2602,7 @@ es rígido y va de lo colectivo a lo individual:
    partido con rival y marcador, e historial directo.
 2. **Matriz de métricas avanzadas** — A vs B vs mediana de liga, con el
    puesto en la liga por métrica. Dos bloques: posesión/eficiencia
-   (POS, PACE, eFG%, EFF OF/DEF con su PPP, %REB OF/DEF, %AST) y selección
+   (POS, PACE, eFG%, ORTG/DRTG con su PPP, %REB OF/DEF, %AST) y selección
    de tiro/pérdidas (%USO 3PTS/2PTS/TL con su PPT, %TOV con su PP).
 3. **Splits L/V y ciclo reciente** — últimos 4 partidos separados en
    ganados y perdidos, con puntos de fuga, valores de identidad y línea de
@@ -8970,7 +8972,7 @@ descontaba a la U23 el informe de Primera.
   el generador lo avisa.
 - `test-glosario.js` regenera desde el manual —si está en la máquina— y
   exige el MISMO archivo commiteado.
-- **Queda sin tocar, a propósito**: `NET PPP` dice «Diferencial por
+- **CERRADO el 2026-09-25 (punto 66)**, y quedaba así: `NET PPP` decía «Diferencial por
   posesión» y `RTNG OFF/DEF` «cada 100 posesiones», con el mismo defecto
   (punto 3: los ratings son por 100 PLAYS). No se pidió; conviene
   corregirlos en el mismo `CORRECCIONES`.
@@ -9054,7 +9056,9 @@ falta algo que no existe para él. La pestaña y la card pintan un lugar vacío,
   castiga al quinteto que gana el cristal. El titular de Jujuy, en la fase
   regular (32 partidos, 80 rebotes ofensivos contra 36), da +36 en cancha,
   −2,2 por PLAYS y **+7,6 por posesión**; con la postemporada (37 partidos),
-  +42, −1,4 y +8,5. Se muestran las dos varas, rotuladas.
+  +42, −1,4 y +8,5. **Desde el punto 66 se muestra UNA sola**: la columna
+  NET/plays se fue de la tabla de quintetos, porque ninguna vista del panel
+  muestra ya un rating por play. El `netRtng` sigue viajando en el paquete.
 - **La muestra corta se marca, no se borra** (punto 4): va con `~` y atenuada.
   Es muestra corta un quinteto con menos de 15 minutos juntos, un trío con
   menos de 40 y un dúo con menos de 60.
@@ -9715,3 +9719,156 @@ la 6 arranca con el encabezado repetido y el octavo entero, y **ningún**
 - **El heredoc de este entorno se come las barras invertidas**: los scripts
   con expresiones regulares se escriben con la herramienta de archivo, no
   con `<<EOF` (el CLAUDE.md ya lo decía por el carácter «═»).
+
+---
+
+## 66. ORTG, DRTG Y NET VAN POR 100 POSESIONES · norma CAB/FIBA (2026-09-25)
+
+Pedido del club después de la auditoría de [`AUDITORIA_METRICAS_EFICIENCIA.md`](AUDITORIA_METRICAS_EFICIENCIA.md):
+alinear el panel con la definición del Instituto CAB/FIBA. **Los ratings se
+calculan sobre POSESIONES (`POS = PLAYS − RO`); el PPP se queda por PLAY.**
+
+### La decisión que no estaba en el pedido, y por qué
+
+El pedido nombraba los tres lugares que RECALCULAN —la card del partido, la
+comparativa y el TOTAL del núcleo—. Auditando apareció que **el resto de la
+app no calcula: LEE** `RTNG OFF/DEF` de `PROMEDIOS 4F`, que MotorStats escribe
+por 100 PLAYS. Equipos, los rankings, Scouting, Personalidad, el scatter de
+Principal y el Simulador salen de ahí.
+
+Tocando solo los tres, **el mismo equipo mostraría posesiones en el TOTAL y
+plays en la IDA**: dos unidades según el selector, que es lo contrario de
+alinear. Por eso la derivación va en UN punto del índice —después de armar
+`partidosPorId`, antes de las distribuciones— y pisa lo que trae la hoja.
+
+```
+temporada   los totales de Base Datos E que el índice ya suma (propio y rival)
+            → sin partidos cargados, la fila de PROMEDIOS E con sus *opp
+por partido la fila del OTRO LADO del cruce → si no está, las columnas *opp
+```
+
+**El rival sale de la MAESTRA y no de las columnas `*opp`**, que son `opt` en
+el contrato: un libro que no las traiga se quedaría sin DRTG, y hoy lo tiene.
+La fila del otro lado siempre está en `Base Datos E`, que es la hoja que manda.
+
+**Sin PLAYS no hay rating**: se borra la clave en vez de dejar el número por
+play debajo de un rótulo que dice «posesiones». Un dato inventado es peor que
+uno ausente, y acá el modo de fallar sería invisible.
+
+### Lo medido sobre el libro real de DEPORTIVO (IDA · REGULAR)
+
+```
+identidad contra 100 x PTS / POS        exacta (0 de error) sobre los 12 equipos
+contra la vara vieja                    hasta 11,4 puntos de diferencia
+cambian de puesto en ORTG                9 de 12 equipos
+cambian de puesto en NET                 6 de 12
+```
+
+Ese reordenamiento es el punto entero del cambio: **por play, el equipo que
+gana el cristal ofensivo sale peor**, porque cada rebote le suma un play al
+denominador. DEPORTIVO LA PLATA pasa de #2 a #1 en ataque.
+
+### La fila EQUIPO TIPO se recalcula
+
+La de la planilla trae la mediana de los ratings POR PLAY, así que no describe
+la vara nueva. Se recalcula sobre los valores ya derivados, **columna por
+columna**: el NET sale de la mediana de los netos y nunca de restar las otras
+dos medianas (punto 3). Medido: −5,23 contra 0,64 que daría la resta.
+
+### Lo que NO cambió, y es deliberado
+
+- **El PPP sigue por PLAY** —`PPP`, `PPP OF`, `PPP DEF`, `NET PPP`— y la card
+  lo dice. Es la única métrica de la casa que mide el intento y no la tenencia.
+- **El PACE ya iba por posesiones** desde siempre (`_tasaPace_` del motor resta
+  el rebote ofensivo). No se tocó una línea: lo que cambió es que ahora el
+  rating que tiene al lado habla su misma unidad.
+- **Los 4 Factores, el eFG%, el %TOV y el rebote** no se tocan.
+- **La planilla no se toca.** MotorStats sigue escribiendo `RTNG OFF/DEF` por
+  100 plays y el club lo sigue auditando ahí. **Consecuencia a decirle al club:
+  la hoja y el panel muestran números distintos para la misma sigla.**
+
+### La nomenclatura visible · ORTG · DRTG · NET
+
+`SGADD.siglaVisible(clave)` traduce solo para MOSTRAR. **Las claves no se
+tocan**: las usan el índice, el glosario, los tooltips, el servidor y los links
+ya compartidos. Una sola tabla (`SIGLA_VISIBLE`), porque con dos la pantalla y
+el papel terminan diciendo cosas distintas.
+
+Alcanza a las cabeceras de los rankings, a los labels del registro (`ORTG ·
+Rating ofensivo`) y a la matriz de Scouting, que decía `EFF OF` / `EFF DEF`.
+
+### El validador de BOX SCORE TRUNCADO · bloque 6 del Diagnóstico
+
+`SGADD.detectarBoxTruncado(idx)`, motor puro. La firma del defecto es que el
+partido sale **lento y a la vez eficientísimo**: el marcador está cargado y las
+acciones no, así que el denominador se achica.
+
+```
+PACE < 80 % de la mediana de la liga   Y   PPP > 120 % de la mediana
+```
+
+**LAS DOS CONDICIONES VAN JUNTAS.** Con un «o» se denuncia un partido rápido y
+goleador que no tiene nada roto: medido en el libro, el 14/09 cruza el corte de
+PPP por una milésima con 87,5 de PACE. Sobre las 210 filas del TOTAL marca **15
+filas de 8 partidos** —la fecha entera del 9/07 más los cuatro de ATENAS 'B'—
+y no deja afuera ninguna fila con `PP ≤ 3`. En la IDA sola son 14 de 7: el 13/08
+es de la Vuelta.
+
+**El panel NO excluye esos partidos: los DENUNCIA.** Sacarlos sería reescribir
+el torneo. La corrección va en el box score de origen o en MotorStats.
+
+El grano es la fila EQUIPO-partido y no el cruce, porque **un partido puede
+tener un lado sano y el otro truncado**: el 13/08 marca solo a ATENAS 'B'
+(TCI 39, PP 4) y deja a Villa San Carlos afuera (TCI 47, PP 14), que es
+exactamente lo que el dato dice.
+
+### El efecto colateral que hay que anotar · el SIMULADOR
+
+El pedido excluía `sgadd-4factores.js` y **no se tocó una línea**. Pero el
+Simulador LEE `NET RTNG` del índice como prior de fortaleza, así que ese prior
+pasó a estar en posesiones. Medido sobre los 132 cruces del libro:
+
+```
+cambio medio del margen proyectado   0,41 puntos
+cambio máximo                        1,28 puntos (ATENAS B vs DEPORTIVO LA PLATA)
+cruces en los que cambia el ganador  1 de 132
+```
+
+Es chico porque la escala del prior es 0,15, pero **no es cero y no se podía
+evitar sin dejar al Simulador leyendo una unidad distinta de la que muestra el
+panel**. Su defecto propio —proyectar con `PACE × PPP`, o sea posesiones por
+puntos por play, 11,4 % corto— **sigue abierto**: está en la auditoría y no
+entró en esta entrega.
+
+### Lo que hay que respetar al tocarlo
+
+- **Ninguna vista divide puntos por PLAYS para un rating.** Hay dos tests que
+  leen el fuente del núcleo y de la card y fallan si vuelve.
+- **La derivación vive en UN lugar.** Si mañana una vista nueva necesita el
+  rating, lo lee del índice; recalcularlo al lado es volver a partir la unidad
+  en dos (el bug del rol funcional, punto 8).
+- **El respaldo del scatter de Principal lee `PROMEDIOS E`**, no `PROMEDIOS 4F`:
+  con la de 4F el mapa mostraría una unidad en el primer pintado y otra en
+  cuanto entra el índice.
+- **`factoresTotal` (`ACUMULADO 4F`) NO se deriva**: hoy no lo lee nadie y su
+  hoja no trae las columnas del rival. Si algún día se muestra, hay que
+  derivarlo acá también.
+- **Cada arreglo se verificó AL REVÉS**, revirtiendo una pieza por vez y
+  contando lo que cae:
+
+```
+la derivación por posesiones (núcleo)      9 tests
+las correcciones del glosario              4
+la card del partido                        4
+el validador, devolviendo vacío            4
+la nota al pie de Eficiencia               2
+el respaldo del scatter de Principal       2
+las dos condiciones juntas del validador   2
+la tabla de siglas visibles                2
+los ratings del ciclo de la comparativa    1
+la columna NET/plays de quintetos          1
+```
+
+  Y sacar `detectarBoxTruncado` del objeto exportado **no hace caer tests: hace
+  que `test-core.js` no arranque**, que es lo que corresponde cuando lo que
+  falta es la función y no su resultado.

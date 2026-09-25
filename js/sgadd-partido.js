@@ -58,9 +58,10 @@ const SGADD_PARTIDO = (function () {
      recalculan si faltan. Verificado contra un partido real: la fórmula
      POS = TCI + PP + 0,44 × T1I − RO reproduce la columna al centésimo.
 
-     OJO con RTNG: en estas planillas está por 100 PLAYS, no por 100
-     posesiones. Se etiqueta así para que nadie lo compare con el ORTG
-     de la NBA y saque conclusiones equivocadas.
+     ORTG y DRTG van por 100 POSESIONES (POS = PLAYS − RO), norma CAB/FIBA
+     y punto 66: la misma vara que el resto del panel. La planilla los trae
+     por 100 PLAYS en su columna RTNG, y esa columna ya no se muestra. El
+     PPP sigue por PLAY, que es lo único que se mide así.
      --------------------------------------------------------------------- */
   function avanzadas(lado, rival) {
     if (!lado) return null;
@@ -74,6 +75,11 @@ const SGADD_PARTIDO = (function () {
     const pts = n('PTS');
     const ptsOpp = n('PTSopp') !== null ? n('PTSopp') : nr('PTS');
     const playsOpp = n('PLAYSopp') !== null ? n('PLAYSopp') : nr('PLAYS');
+    /* Las posesiones del rival: su propia columna si la fila del otro lado
+       del cruce la trae, y si no PLAYSopp − ROopp, que es su definición. */
+    const roOpp = n('ROopp') !== null ? n('ROopp') : nr('RO');
+    const posOpp = (nr('POS') !== null && nr('POS') > 0) ? nr('POS')
+      : ((playsOpp !== null && roOpp !== null) ? playsOpp - roOpp : null);
 
     const div = (a, b) => (typeof a === 'number' && typeof b === 'number' && b > 0) ? a / b : null;
 
@@ -81,8 +87,9 @@ const SGADD_PARTIDO = (function () {
       pace: n('PACE'),
       pos: pos,
       plays: plays,
-      ortg: div(pts, plays) !== null ? div(pts, plays) * 100 : null,
-      drtg: div(ptsOpp, playsOpp) !== null ? div(ptsOpp, playsOpp) * 100 : null,
+      /* Por 100 POSESIONES; el PPP que va debajo sigue por PLAY. */
+      ortg: div(pts, pos) !== null ? div(pts, pos) * 100 : null,
+      drtg: div(ptsOpp, posOpp) !== null ? div(ptsOpp, posOpp) * 100 : null,
       ppp: div(pts, plays),
     };
   }

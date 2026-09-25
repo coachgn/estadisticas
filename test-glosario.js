@@ -66,13 +66,35 @@ const of = G.buscar('PPP OF');
 const def = G.buscar('PPP DEF');
 check('PPP OF se llama «Puntos por jugada ofensivos»', of && of.nombre === 'Puntos por jugada ofensivos', of && of.nombre);
 check('con su fórmula sobre PLAYS', of && of.formula === 'PTS / PLAYS', of && of.formula);
-check('y dice cuánto anotás por jugada', of && of.lectura === 'Cuánto anotás por jugada');
+check('y dice cuánto anotás por jugada', of && /^Cuánto anotás por jugada/.test(of.lectura), of && of.lectura);
 check('PPP DEF se llama «Puntos por jugada defensivos»', def && def.nombre === 'Puntos por jugada defensivos', def && def.nombre);
 check('con su fórmula sobre las PLAYS del rival', def && def.formula === 'PTS_opp / PLAYS_opp', def && def.formula);
 check('y dice cuánto te anotan por jugada', def && def.lectura === 'Cuánto te anotan por jugada');
 check('ninguna de las dos dice «posesión»',
   [of, def].every(e => e && !/posesi[oó]n/i.test([e.nombre, e.formula, e.lectura].join(' '))));
-check('el tooltip de PPP OF dice lo mismo', G.corta('PPP OF') === 'Cuánto anotás por jugada');
+check('el tooltip de PPP OF dice lo mismo', G.corta('PPP OF') === of.lectura, G.corta('PPP OF'));
+
+/* --- LOS RATINGS, AL REVÉS: el manual los NOMBRA bien y su FÓRMULA está
+   por play (`PPP OF × 100`). Desde el punto 66 el panel los calcula sobre
+   posesiones, así que lo que se corrige es la fórmula. Una entrada que se
+   contradice a sí misma es peor que ninguna. --- */
+const rof = G.buscar('RTNG OFF'), rdef = G.buscar('RTNG DEF'), rnet = G.buscar('NET RTNG');
+check('RTNG OFF trae la sigla ORTG en el nombre', rof && /ORTG/.test(rof.nombre), rof && rof.nombre);
+check('y su fórmula dice POS, no PPP × 100', rof && /POS/.test(rof.formula) && !/PPP OF × 100/.test(rof.formula), rof && rof.formula);
+check('RTNG DEF trae DRTG y también va por posesiones', rdef && /DRTG/.test(rdef.nombre) && /POS/.test(rdef.formula), rdef && rdef.formula);
+check('NET RTNG trae NET y dice que las dos puntas van por 100 posesiones',
+  rnet && /NET/.test(rnet.nombre) && /100 posesiones/.test(rnet.formula), rnet && rnet.formula);
+check('los tres dicen «cada 100 posesiones» en su lectura',
+  [rof, rdef].every(e => e && /100 posesiones/.test(e.lectura)));
+check('y ninguno dice PLAYS en la fórmula del rating',
+  [rof, rdef].every(e => e && !/PLAYS(?!\s*−)/.test(e.formula.replace('PLAYS − RO', 'POS'))), rof && rof.formula);
+
+/* NET PPP era el simétrico: «Diferencial por posesión» sobre una fórmula
+   por jugada. Se corrige el nombre, no la fórmula. */
+const npp = G.buscar('NET PPP');
+check('NET PPP se llama «Diferencial por jugada»', npp && npp.nombre === 'Diferencial por jugada', npp && npp.nombre);
+check('y no dice «posesión» en ninguna parte',
+  npp && !/posesi[oó]n/i.test([npp.nombre, npp.formula, npp.lectura].join(' ')));
 
 titulo('3 · EL GENERADOR · lo va a volver a producir así');
 

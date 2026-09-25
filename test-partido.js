@@ -308,6 +308,37 @@ check('y el post-partido inyecta el pie institucional',
 check('el modo del post-partido está en la lista de modos de papel de charts',
   /MODOS_PAPEL *= *\[[^\]]*'modo-partido-print'/.test(require('fs').readFileSync('./js/sgadd-charts.js', 'utf8')));
 
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LA CARD DE EFICIENCIA VA POR POSESIONES (punto 66)
+   ═══════════════════════════════════════════════════════════════════════ */
+const avPos = P.avanzadas({ fila: {
+  PTS: 80, PLAYS: 100, RO: 20, POS: 80, PACE: 80,
+  PTSopp: 70, PLAYSopp: 100, ROopp: 0,
+} }, null);
+check('ORTG de la card = 100 x PTS / POS', Math.abs(avPos.ortg - 100) < 1e-9, avPos.ortg);
+check('y no el 80,0 que daría por play', Math.abs(avPos.ortg - 80) > 19);
+check('DRTG sale de las posesiones del rival (100 - 0)', Math.abs(avPos.drtg - 70) < 1e-9, avPos.drtg);
+check('el PPP de la misma card sigue por PLAY', Math.abs(avPos.ppp - 0.80) < 1e-9, avPos.ppp);
+
+/* Sin la columna POS se usa PLAYS - RO, que es su definición. */
+const avSinPos = P.avanzadas({ fila: {
+  /* TCI + PP + 0,44 x T1I = 100 PLAYS, para que el respaldo de POS
+     reproduzca los mismos 80 que declara la columna. */
+  PTS: 80, PLAYS: 100, RO: 20, PACE: 80, TCI: 86, PP: 14, T1I: 0,
+  PTSopp: 70, PLAYSopp: 100, ROopp: 0,
+} }, null);
+check('sin columna POS, el ORTG se calcula igual', Math.abs(avSinPos.ortg - 100) < 1e-9, avSinPos.ortg);
+
+/* Y LA NOTA AL PIE dice la unidad, que es lo que el club pidió. */
+const eqJs = require('fs').readFileSync('./js/sgadd-equipos.js', 'utf8');
+check('la nota al pie declara POSESIONES y la norma CAB/FIBA',
+  /ORTG, DRTG y PACE calculados sobre <b>POSESIONES<\/b>[\s\S]{0,120}CAB\/FIBA/.test(eqJs));
+check('y aclara que PPP es la única por PLAY',
+  /PPP es la única métrica por PLAY/.test(eqJs));
+check('ya no dice que los ratings van por 100 PLAYS',
+  !/ORTG y DRTG están calculados por 100/.test(eqJs));
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);
