@@ -102,6 +102,8 @@ CLI del catálogo · da de alta clubes sin redeplegar
     --archivo    <ruta>       torneos/<id>.json · equipos, zonas, formato, marca
     --libro      <zona=id,…>  el libro de cada zona. NO va en el archivo: el
                               repo es público y el sheetId no
+    --libro-de   <zona=club/categoria,…>  reusa el libro de una categoría que
+                              ya existe, sin manejar el sheetId a mano
     --probar                  muestra el resultado sin escribir en KV
   vincular                  engancha la categoría de un cliente a una zona
     --club       <slug>       el CLIENTE
@@ -336,7 +338,12 @@ function exigirKV() {
         const i = par.indexOf('=');
         if (i > 0) libros[par.slice(0, i).trim()] = par.slice(i + 1).trim();
       });
-      datos = TORNEOS.intencionDesdeArchivo(doc, libros);
+      const librosDe = {};
+      String(o['libro-de'] && o['libro-de'] !== true ? o['libro-de'] : '').split(',').filter(Boolean).forEach((par) => {
+        const i = par.indexOf('=');
+        if (i > 0) librosDe[par.slice(0, i).trim()] = par.slice(i + 1).trim();
+      });
+      datos = TORNEOS.intencionDesdeArchivo(doc, libros, librosDe);
       accion = 'torneo';
     } else {
       datos = { club: o.club, categoria: o.categoria, torneo: o.torneo, zona: o.zona,

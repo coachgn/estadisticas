@@ -1,0 +1,334 @@
+{
+ "//": "Torneo 2026 masculino de la APB (Asociacion Platense de Basquetbol), tres zonas. Los equipos salen del libro de cada zona; los alias, de basket-club.com, que es la fuente del fixture en vivo. SIN sheetId: el repo es publico.",
+ "id": "apb-2026-masculino",
+ "nombre": "APB · Torneo 2026 Masculino",
+ "nombreCorto": "APB 2026",
+ "liga": "la-plata",
+ "temporada": "2026",
+ "nivel": "LOCAL_MAYORES",
+ "fuente": {
+  "sitio": "basket-club",
+  "base": "https://basket-club.com",
+  "asociacion": "APB · Asociación Platense de Básquetbol"
+ },
+ "fixture": {
+  "adaptador": "basket-club",
+  "zonas": {
+   "a": "https://basket-club.com/torneos/torneo-2026-masculino-zona-a",
+   "b": "https://basket-club.com/torneos/torneo-2026-masculino-zona-b",
+   "c": "https://basket-club.com/torneos/torneo-2026-masculino-zona-c"
+  },
+  "ttlMs": 600000
+ },
+ "formato": {
+  "modalidad": "Todos contra todos, ida y vuelta, dentro de cada zona",
+  "fases": [
+   {
+    "id": "regular",
+    "label": "Fase regular",
+    "cruce": "zona"
+   }
+  ],
+  "nota": "El reglamento de clasificacion y los cruces entre zonas no estan publicados: no se declaran zonas de tabla para no inventarlas."
+ },
+ "zonas": {
+  "a": {
+   "slug": "apb-2026-a",
+   "label": "APB 2026 · Zona A",
+   "equipos": [
+    {
+     "id": null,
+     "nombre": "ASTILLERO - MM",
+     "alias": [
+      "ASTILLERO"
+     ],
+     "abreviatura": "ARS"
+    },
+    {
+     "id": null,
+     "nombre": "ATENAS 'A' - MM",
+     "alias": [
+      "ATENAS"
+     ],
+     "abreviatura": "ATE"
+    },
+    {
+     "id": null,
+     "nombre": "BANCO PROVINCIA 'A' - MM",
+     "alias": [
+      "BANCO PROVINCIA DE LA PLATA"
+     ],
+     "abreviatura": "BCO"
+    },
+    {
+     "id": null,
+     "nombre": "C F GONNET - MM",
+     "alias": [
+      "GONNET"
+     ],
+     "abreviatura": "GON"
+    },
+    {
+     "id": null,
+     "nombre": "ESTUDIANTES DE LA PLATA - MM",
+     "alias": [
+      "ESTUDIANTES DE LA PLATA"
+     ],
+     "abreviatura": "ELP"
+    },
+    {
+     "id": null,
+     "nombre": "JUVENTUD - MM",
+     "alias": [
+      "JUVENTUD"
+     ],
+     "abreviatura": "JUV"
+    },
+    {
+     "id": null,
+     "nombre": "MERIDIANO V - MM",
+     "alias": [
+      "MERIDIANO V"
+     ],
+     "abreviatura": "MER"
+    },
+    {
+     "id": null,
+     "nombre": "NAUTICO ENSENADA - MM",
+     "alias": [
+      "NÁUTICO"
+     ],
+     "abreviatura": "CNE"
+    },
+    {
+     "id": null,
+     "nombre": "PLATENSE 'A' - MM",
+     "alias": [
+      "PLATENSE"
+     ],
+     "abreviatura": "PLA"
+    },
+    {
+     "id": null,
+     "nombre": "RECONQUISTA 'A' - MM",
+     "alias": [
+      "RECONQUISTA"
+     ],
+     "abreviatura": "REC"
+    },
+    {
+     "id": null,
+     "nombre": "UNION VECINAL 'A' - MM",
+     "alias": [
+      "UNIÓN VECINAL"
+     ],
+     "abreviatura": "UNI"
+    },
+    {
+     "id": null,
+     "nombre": "UNIVERSAL - MM",
+     "alias": [
+      "UNIVERSAL"
+     ],
+     "abreviatura": "UNI"
+    }
+   ]
+  },
+  "b": {
+   "slug": "apb-2026-b",
+   "label": "APB 2026 · Zona B",
+   "equipos": [
+    {
+     "id": null,
+     "nombre": "A. MAYO - MM",
+     "alias": [
+      "ASOCIACIÓN MAYO"
+     ],
+     "abreviatura": "MAY"
+    },
+    {
+     "id": null,
+     "nombre": "ATENAS 'B' - MM",
+     "alias": [
+      "ATENAS \"B\""
+     ],
+     "abreviatura": "ATE"
+    },
+    {
+     "id": null,
+     "nombre": "C.C TOLOSANO - MM",
+     "alias": [
+      "TOLOSANO"
+     ],
+     "abreviatura": "TOL"
+    },
+    {
+     "id": null,
+     "nombre": "C.E.Y E. - MM",
+     "alias": [
+      "C.E.Y.E."
+     ],
+     "abreviatura": "CEY"
+    },
+    {
+     "id": null,
+     "nombre": "DEPORTIVO LA PLATA - MM",
+     "alias": [
+      "DEPORTIVO LA PLATA"
+     ],
+     "abreviatura": "DLP"
+    },
+    {
+     "id": null,
+     "nombre": "DEPORTIVO SAN VICENTE - MM",
+     "alias": [
+      "DEPORTIVO SAN VICENTE"
+     ],
+     "abreviatura": "DSV"
+    },
+    {
+     "id": null,
+     "nombre": "HOGAR SOCIAL - MM",
+     "alias": [
+      "HOGAR SOCIAL"
+     ],
+     "abreviatura": "HSB"
+    },
+    {
+     "id": null,
+     "nombre": "PLATENSE 'B' - MM",
+     "alias": [
+      "PLATENSE \"B\""
+     ],
+     "abreviatura": "PLA"
+    },
+    {
+     "id": null,
+     "nombre": "SUD AMERICA LP - MM",
+     "alias": [
+      "SUD AMÉRICA"
+     ],
+     "abreviatura": "SUD"
+    },
+    {
+     "id": null,
+     "nombre": "U.N.L.P - MM",
+     "alias": [
+      "U.N.L.P."
+     ],
+     "abreviatura": "ULP"
+    },
+    {
+     "id": null,
+     "nombre": "UNIVERSITARIO - MM",
+     "alias": [
+      "UNIVERSITARIO"
+     ],
+     "abreviatura": "UNI"
+    },
+    {
+     "id": null,
+     "nombre": "VILLA SAN CARLOS 'A' - MM",
+     "alias": [
+      "VILLA SAN CARLOS"
+     ],
+     "abreviatura": "VSC"
+    }
+   ]
+  },
+  "c": {
+   "slug": "apb-2026-c",
+   "label": "APB 2026 · Zona C",
+   "equipos": [
+    {
+     "id": null,
+     "nombre": "A. CHASCOMUS - MM",
+     "alias": [
+      "ATLÉTICO CHASCOMÚS"
+     ],
+     "abreviatura": "CHA"
+    },
+    {
+     "id": null,
+     "nombre": "BANCO PROVINCIA 'B' - MM",
+     "alias": [
+      "BANCO PROVINCIA DE LA PLATA \"B\""
+     ],
+     "abreviatura": "BCO"
+    },
+    {
+     "id": null,
+     "nombre": "C. MARCHIGIANO - MM",
+     "alias": [
+      "CÍRCULO MARCHIGIANO"
+     ],
+     "abreviatura": "MAR"
+    },
+    {
+     "id": null,
+     "nombre": "CAPITAL CHICA - MM",
+     "alias": [
+      "CAPITAL CHICA"
+     ],
+     "abreviatura": "CAP"
+    },
+    {
+     "id": null,
+     "nombre": "DEP. VILLA ELISA - MM",
+     "alias": [
+      "VILLA ELISA"
+     ],
+     "abreviatura": "VEL"
+    },
+    {
+     "id": null,
+     "nombre": "EL PATO - MM",
+     "alias": [
+      "EL PATO"
+     ],
+     "abreviatura": "PAT"
+    },
+    {
+     "id": null,
+     "nombre": "ESTRELLA - MM",
+     "alias": [
+      "ESTRELLA DE BERISSO"
+     ],
+     "abreviatura": "EDB"
+    },
+    {
+     "id": null,
+     "nombre": "LOS HORNOS - MM",
+     "alias": [
+      "LOS HORNOS"
+     ],
+     "abreviatura": "CFL"
+    },
+    {
+     "id": null,
+     "nombre": "RECONQUISTA 'B'- MM",
+     "alias": [
+      "RECONQUISTA \"B\""
+     ],
+     "abreviatura": "REC"
+    },
+    {
+     "id": null,
+     "nombre": "UNION VECINAL 'B' - MM",
+     "alias": [
+      "UNIÓN VECINAL \"B\""
+     ],
+     "abreviatura": "UNI"
+    },
+    {
+     "id": null,
+     "nombre": "VILLA SAN CARLOS 'B' - MM",
+     "alias": [
+      "VILLA SAN CARLOS \"B\""
+     ],
+     "abreviatura": "VSC"
+    }
+   ]
+  }
+ }
+}

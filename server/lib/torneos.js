@@ -193,7 +193,10 @@ function torneo(cat, d, deps) {
   if (v.acento !== undefined) {
     if (v.acento) t.acento = String(v.acento).toLowerCase(); else delete t.acento;
   }
-  ['marca', 'fuente', 'formato'].forEach((c) => {
+  /* `fixture` es la FUENTE EXTERNA del calendario (punto 70): viaja al
+     catalogo para que el servidor sepa que bajar sin tener una copia del
+     archivo del torneo, que vive en el repo del panel. */
+  ['marca', 'fuente', 'formato', 'fixture'].forEach((c) => {
     if (v[c] === undefined) return;
     if (v[c] === null) { delete t[c]; return; }
     if (typeof v[c] !== 'object' || Array.isArray(v[c])) return;
@@ -381,18 +384,23 @@ function publicoDeZona(k) {
  * Lo usan la CLI y los tests; los libros van aparte (`libros`) porque el
  * archivo es público y el sheetId no.
  */
-function intencionDesdeArchivo(doc, libros) {
+function intencionDesdeArchivo(doc, libros, librosDe) {
   const d = doc || {};
   const zonas = {};
   Object.keys(d.zonas || {}).forEach((z) => {
     const zin = d.zonas[z];
     zonas[z] = { slug: zin.slug, label: zin.label, equipos: zin.equipos, nivel: zin.nivel || d.nivel || null };
     if (libros && libros[z]) zonas[z].sheetId = libros[z];
+    /* `libroDe` REUSA el libro de una categoria que ya existe, sin que su
+       sheetId salga del servidor (punto 67). Es lo que permite que una
+       zona tome el libro que el cliente de ese torneo ya tenia. */
+    if (librosDe && librosDe[z]) zonas[z].libroDe = librosDe[z];
   });
   const acento = d.acento || (d.marca && d.marca.acento) || undefined;
   return {
     accion: 'torneo', club: d.id, nombre: d.nombre, liga: d.liga, temporada: d.temporada, nivel: d.nivel,
     acento: acento, marca: d.marca || undefined, fuente: d.fuente || undefined,
+    fixture: d.fixture || undefined,
     formato: d.formato ? Object.assign({}, d.formato, { equiposPorZona: d.formato.equiposPorZona || null }) : undefined,
     zonas: zonas,
   };

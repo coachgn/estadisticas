@@ -343,6 +343,35 @@ const SGADD_DATA = (function () {
     return cuerpo;
   }
 
+  /**
+   * El FIXTURE EN VIVO de un torneo con fuente externa (punto 70).
+   *
+   * Devuelve `{zonas, actualizado, stale, aviso}`. Sin backend o sin
+   * sesion devuelve `null` en vez de lanzar: quien llama cae al
+   * calendario declarado del archivo del torneo, que es lo que hace que
+   * la seccion funcione igual en la demo y en GitHub Pages sin API.
+   */
+  async function fixtureDeTorneo(torneo, zona, opciones) {
+    if (!baseApi || !auth || !auth.token()) return null;
+    const o = opciones || {};
+    /* El mismo patrón que el resto de los GET del módulo: `fetch` se toma
+       de las opciones para poder testearlo, y nunca de una variable de
+       arriba —`traer` es local a cada función y usarla acá daba
+       «traer is not defined» en el navegador, con el panel cayendo al
+       calendario declarado como si la fuente se hubiera caído. */
+    const traerlo = o.fetch || fetch;
+    const url = baseApi + '/api/v1/fixture/' + encodeURIComponent(torneo)
+      + (zona ? '?zona=' + encodeURIComponent(zona) : '');
+    const r = await traerlo(url, { headers: { Authorization: 'Bearer ' + auth.token() } });
+    const cuerpo = await r.json().catch(() => null);
+    if (!r.ok || !cuerpo || !cuerpo.ok) {
+      const e = new Error((cuerpo && cuerpo.mensaje) || ('El servidor respondió ' + r.status));
+      e.codigo = (cuerpo && cuerpo.codigo) || ('HTTP_' + r.status);
+      throw e;
+    }
+    return cuerpo;
+  }
+
   async function guardarCatalogo(intencion, opciones) {
     const cuerpo = await postConToken('/api/v1/catalogo', intencion, opciones);
     /* El catálogo cacheado quedó viejo: lo que vale es lo que devolvió el
@@ -533,6 +562,7 @@ const SGADD_DATA = (function () {
     configurar, apiConfigurada, origen, base: () => baseApi,
     matrizAFilas, matrizALegacy, tipoDeColumna,
     cargarCategoria, cargarDelBackend, limpiarCache, catalogo, guardarCatalogo, equiposDelLibro,
+    fixtureDeTorneo,
     login, fijarClave, clientes, guardarClientes, fichas, guardarFicha,
     estadosCompartibles, leerEstados, guardarEstados, leerPbp,
   };

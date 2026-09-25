@@ -64,7 +64,7 @@ function validar(cat) {
     /* Un TORNEO (punto 67): forma y nada más. Un tipo que no se reconoce
        se lee como cliente, que es lo que era todo antes de que existiera. */
     if (c.tipo !== undefined && typeof c.tipo !== 'string') return id + ': `tipo` no es texto';
-    const noObjeto = ['formato', 'marca', 'fuente'].find(f => c[f] !== undefined
+    const noObjeto = ['formato', 'marca', 'fuente', 'fixture'].find(f => c[f] !== undefined
       && (c[f] === null || typeof c[f] !== 'object' || Array.isArray(c[f])));
     if (noObjeto) return id + ': `' + noObjeto + '` no es un objeto';
     for (const slug of Object.keys(c.categorias)) {

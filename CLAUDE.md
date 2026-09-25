@@ -85,6 +85,9 @@ node test-mails.js         # 177 tests · los mails institucionales: plantillas 
                            #             el código adentro de la bienvenida, la puerta de ingreso,
                            #             el nombre del acceso y el link que llena el login
 
+node test-fixture-apb.js  #  93 tests · el conector de basket-club: el parser contra markup REAL,
+                           #             los estados, el cruce con el libro y el respaldo ante una caida
+
 node test-fixture.js       # 112 tests · la seccion Fixture, los empty states de pretemporada,
                            #             las iniciales con parentesis y la grilla compacta del hub
 
@@ -101,7 +104,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6455 tests en total. Todos tienen que dar verde antes de commitear.**
+**6548 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -177,6 +180,10 @@ js/
                           NO es seguridad: leer el punto 19 antes de tocarlo.
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app
   sgadd-fixture.js      ← la seccion FIXTURE: calendario del torneo + lo jugado (punto 68)
+server/lib/fixture-fuentes.js ← los ADAPTADORES de fixture externo. PURO: entra
+                          HTML, salen partidos. Punto 70
+server/api/fixture.js   ← baja la fuente, la cachea en KV y sirve la ultima
+                          lectura buena cuando la fuente se cae
   sgadd-torneos.js      ← el bloque de TORNEOS del Panel Master (punto 67)
 torneos/<id>.json       ← la estructura de un torneo: zonas, equipos con su id de
                           Gesdeportiva, formato y marca. SIN sheetId: el repo es público
@@ -210,7 +217,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=238`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=241`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -10195,3 +10202,139 @@ padrón    alta de acceso sobre un torneo → 400 TORNEO
 catálogo  pausar un torneo → 400 «es un torneo, no un cliente»
 datos     cliente pidiendo el libro de un torneo → 403 OTRO_CLUB
 ```
+
+---
+
+## 70. FUENTES EXTERNAS DE FIXTURE · el conector de basket-club (2026-09-25)
+
+El fixture del punto 68 salía de `torneos/<id>.json`, un archivo que alguien
+escribe a mano. Para la APB eso no alcanza: los horarios cambian durante la
+semana, hay reprogramaciones, y el DT quiere saber **por dónde se transmite**
+el partido del rival. Un torneo declara ahora de dónde sale su calendario:
+
+```json
+"fixture": {
+  "adaptador": "basket-club",
+  "zonas": { "a": "https://basket-club.com/torneos/torneo-2026-masculino-zona-a", … },
+  "ttlMs": 600000
+}
+```
+
+### La arquitectura · un REGISTRO, no un parser suelto
+
+`server/lib/fixture-fuentes.js` es **puro**: entra HTML, salen partidos. No
+hay red, ni KV, ni `document`. Eso es lo que permite probar el parser contra
+HTML guardado, que es la única forma de tener un test que no dependa de que
+el sitio esté arriba ni de que no haya cambiado.
+
+Cada federación publica distinto —Gesdeportiva sirve fragmentos por rango de
+fechas, basket-club sirve la página entera— pero **la forma de la salida no
+cambia**. `ADAPTADORES` fija ese contrato, así que sumar una federación es
+sumar una entrada y no tocar ni el endpoint ni el panel.
+
+### Lo que la fuente NO publica, no se inventa
+
+**basket-club no publica la sede ni la cancha.** Verificado en las tres
+zonas: cero menciones de sede, cancha, estadio, gimnasio o dirección. El
+campo no se emite —una columna vacía permanente es ruido— y rellenarla con
+el nombre del local sería un dato inventado.
+
+Los **estados** se clasifican por palabra clave y lo que no se reconoce cae
+en `OTRO` **con su texto crudo**, que la pantalla muestra tal cual. Hoy el
+sitio solo escribe la hora y «Final»; el día que escriba «Suspendido» no hay
+que tocar nada. Y **un partido con marcador está jugado**, diga lo que diga
+la etiqueta: el marcador es el hecho y la etiqueta es cómo lo rotula el
+sitio.
+
+### EL RESPALDO ES EL PUNTO ENTERO
+
+```
+1. KV fresco           se sirve y no se toca la red
+2. KV vencido          se intenta refrescar
+3. el refresco FALLA   se sirve lo guardado, con `stale: true` y el motivo
+4. no hay nada         → 502, y el panel cae al calendario del archivo
+```
+
+El paso 3 incluye el caso traicionero: **la página responde 200 y ya no se
+reconoce ni un partido**. Eso NO es «el torneo no tiene partidos» —el
+adaptador lo distingue y avisa— y servir cero borraría el calendario de la
+pantalla sin que nadie se entere.
+
+**Una zona que falla no tumba a las otras**: con tres zonas, perder las tres
+por una sería convertir un problema chico en uno grande. Y se FUSIONA con lo
+guardado, así que la zona que hoy falló conserva su última lectura buena.
+
+### Por qué en el backend y no en el navegador
+
+basket-club manda `Access-Control-Allow-Origin: *`, así que el panel PODRÍA
+pedirle directo. No se hace por tres motivos medidos: son **~400 KB de HTML
+por zona y por carga** (`Cache-Control: no-store`, o sea que el navegador no
+lo guarda), el respaldo ante una caída viviría en cada navegador por
+separado, y el día que la fuente cierre el CORS el panel se queda sin
+fixture. Acá se baja una vez cada diez minutos para todos. Medido: las tres
+zonas tardan **1,1 s** y dan 374 partidos.
+
+### EL CRUCE CON EL LIBRO · lo que no cruza se reporta
+
+La fuente escribe `ATENAS` y el libro `ATENAS 'A' - MM`; la fuente `C.E.Y.E.`
+y el libro `C E Y E`. Sin resolverlo, el partido en vivo y el jugado no
+cruzan y la sección muestra el mismo cruce dos veces.
+
+`equipoDelLibro` resuelve en cascada: alias declarado → igual → el libro
+agrega la letra → el libro separa las siglas → el libro abrevia la primera
+palabra → el libro agrega una palabra. **Con dos candidatos no elige**:
+atribuir un partido al equipo equivocado contamina el calendario de dos
+clubes. Lo que no cruza **igual viaja**, marcado con `sinCruce`.
+
+Medido contra los tres libros reales: **zona B cruza entera y sus 93
+marcadores coinciden**; en A y C quedó un solo caso cada una —el mismo club—
+que se declara por alias en el archivo del torneo.
+
+### Las tres zonas de APB SON los libros que ya existían
+
+Se verificó antes de modelar nada, y por eso el torneo no trajo libros
+nuevos:
+
+```
+basket-club Zona A  ←→  reconquista/reconquista-primera     12/12 equipos
+basket-club Zona B  ←→  deportivo/deportivo-primera         12/12
+basket-club Zona C  ←→  zona-c-la-plata-2026/zona-c-primera 11/11
+```
+
+`catalogo.js torneo --libro-de "a=club/categoria,…"` reusa el libro de una
+categoría que ya existe **sin manejar el sheetId a mano**, que es la misma
+garantía del punto 67: el id no sale del servidor.
+
+### Lo que quedó en KV el 2026-09-25
+
+```
+apb-2026-masculino   apb-2026-a / -b / -c   los tres libros que ya existian
+reconquista/reconquista-primera     → zona a · RECONQUISTA 'A' - MM
+deportivo/deportivo-primera         → zona b · DEPORTIVO LA PLATA - MM
+sudamerica/sudamerica-primera       → zona b · SUD AMERICA LP - MM
+hogar-social/hogar-social-primera   → zona b · HOGAR SOCIAL - MM
+universitario/universitario-primera → zona b · UNIVERSITARIO - MM
+```
+
+**LAB queda en standby**, a pedido del club: su torneo sigue con el
+calendario declarado de su archivo y sin fuente externa, hasta que estén
+sus libros.
+
+### El bug que ningún test vio, y por qué
+
+`SGADD_DATA.fixtureDeTorneo` usaba un helper `traer` que es **local a cada
+función** del módulo: en el navegador tiraba `traer is not defined` y el
+panel caía al calendario declarado **como si la fuente se hubiera caído**,
+con su cartel de «no contestó» y todo. El modo de fallar era perfecto —la
+degradación funcionaba tan bien que tapaba el error— y ningún test lo vio
+porque **ninguno ejercía esa función**: sin backend devuelve `null` y todos
+pasaban por esa rama. Ahora se ejerce con un `fetch` inyectado.
+
+Es la lección del punto 51 otra vez: *que degrade bien no es que funcione*.
+
+### Y el `min-w-0` de las tablas del rival
+
+Un item de grid tiene `min-width: auto`, así que se ensancha con su
+contenido y el `.scrollbox` de adentro nunca llega a scrollear. Medido a
+375px con la columna de TV nueva: la tabla del rival empujaba la página a
+**799px** de ancho.

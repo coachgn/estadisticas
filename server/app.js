@@ -97,6 +97,10 @@ function crearApp(opciones) {
      lee: la carga es del CLI (`server/bin/pbp.js`). */
   app.get('/api/v1/pbp/:clubId/:categoria', responder(require('./api/pbp.js').manejarPbp));
 
+  /* El fixture en vivo de una fuente externa (punto 70). Solo LEE de la
+     fuente y cachea en KV: no toca el catalogo ni ninguna otra clave. */
+  app.get('/api/v1/fixture/:torneo', responder(require('./api/fixture.js').manejarFixture));
+
   /* Las fichas de los clientes y los mails institucionales (bienvenida y
      recordatorios de vencimiento). Solo ADMIN, salvo el cron, que se
      autentica con CRON_SECRET. En su propio archivo: no toca el catálogo. */

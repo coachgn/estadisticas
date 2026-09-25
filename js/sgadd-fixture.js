@@ -135,6 +135,60 @@ const SGADD_FIXTURE = (function () {
     return out.sort(ordenar);
   }
 
+  /**
+   * El mapa `nombre de la fuente` -> `nombre del libro`, desde el archivo
+   * del torneo.
+   *
+   * La fuente escribe `ATENAS` y el libro `ATENAS 'B' - MM`; la fuente
+   * `CEYE` y el libro `C E Y E`. Sin esto el partido en vivo y el jugado
+   * NO cruzan y la seccion muestra el mismo cruce dos veces.
+   *
+   * Los alias se declaran en `torneos/<id>.json` (los resuelve el conector
+   * del servidor al dar de alta el torneo) y NO se adivinan aca: un equipo
+   * atribuido al que no es contamina el calendario de dos clubes.
+   */
+  function mapaAlias(doc, zona) {
+    const out = {};
+    const zs = (doc && doc.zonas) || {};
+    Object.keys(zs).forEach((z) => {
+      if (zona && z !== zona) return;
+      (zs[z].equipos || []).forEach((e) => {
+        if (!e || !e.nombre) return;
+        out[clave(e.nombre)] = e.nombre;
+        (e.alias || []).forEach((al) => { out[clave(al)] = e.nombre; });
+      });
+    });
+    return out;
+  }
+
+  /**
+   * Los partidos que devuelve la fuente EN VIVO, a la forma de la seccion.
+   *
+   * Trae lo que el calendario declarado no tiene: el ESTADO del partido,
+   * la hora actualizada y por donde se TRANSMITE. El marcador tambien
+   * viene, pero se usa solo como respaldo: manda el libro (ver `unir`).
+   */
+  function normalizarFuente(partidos, alias, zona) {
+    const mapa = alias || {};
+    const nombre = (n) => mapa[clave(n)] || n;
+    return (partidos || []).map((p) => {
+      const l = nombre(p.local), v = nombre(p.visitante);
+      return {
+        fecha: fechaISO(p.fecha), hora: p.hora || null, zona: p.zona || zona || null,
+        local: l, visitante: v,
+        localClave: clave(l), visitanteClave: clave(v),
+        declarado: true, envivo: true,
+        estado: p.estado || null, estadoTexto: p.estadoTexto || '',
+        transmision: Array.isArray(p.transmision) ? p.transmision : [],
+        /* El marcador de la fuente viaja aparte: `unir` deja que el libro
+           lo pise, y si el libro no tiene el partido se usa este. */
+        jugado: p.ptsLocal != null && p.ptsVisitante != null,
+        ptsLocal: p.ptsLocal == null ? null : p.ptsLocal,
+        ptsVisitante: p.ptsVisitante == null ? null : p.ptsVisitante,
+      };
+    }).filter(p => p.fecha).sort(ordenar);
+  }
+
   function ordenar(a, b) {
     return String(a.fecha).localeCompare(String(b.fecha))
       || String(a.localClave).localeCompare(String(b.localClave));
@@ -331,7 +385,14 @@ const SGADD_FIXTURE = (function () {
   function agenda(opciones) {
     const o = opciones || {};
     const hoy = fechaISO(o.hoy) || fechaISO(new Date().toISOString().slice(0, 10));
-    const cal = normalizarCalendario(o.torneo, o.zona);
+    /* LA FUENTE EN VIVO MANDA SOBRE EL CALENDARIO DECLARADO: trae los
+       horarios de hoy, las reprogramaciones y la transmision. El declarado
+       del archivo queda de respaldo para cuando no hay fuente (LAB) o
+       cuando el backend no contesta. */
+    const alias = mapaAlias(o.torneo, o.zona);
+    const cal = (o.fuente && o.fuente.length)
+      ? normalizarFuente(o.fuente, alias, o.zona)
+      : normalizarCalendario(o.torneo, o.zona);
     const jug = jugadosDelIndice(o.idx);
     const todos = unir(cal, jug);
     const propio = o.equipo ? clave(o.equipo) : '';
@@ -368,7 +429,10 @@ const SGADD_FIXTURE = (function () {
       /* `declarados` distingue «el torneo no empezó» de «no hay fixture
          publicado»: son dos vacíos distintos y piden textos distintos. */
       declarados: cal.length, jugados: jug.length, total: todos.length,
-      calendarioParcial: !!(o.torneo && o.torneo.calendario && o.torneo.calendario.parcial),
+      calendarioParcial: !(o.fuente && o.fuente.length)
+        && !!(o.torneo && o.torneo.calendario && o.torneo.calendario.parcial),
+      /* De donde salio el calendario: cambia lo que la pantalla promete. */
+      envivo: !!(o.fuente && o.fuente.length),
       equipo: propio || null,
       partidos: todos, mios: mios,
       meses: ms, mes: mes, mesMotivo: o.mes ? 'elegido' : porDefecto.motivo,
@@ -386,7 +450,10 @@ const SGADD_FIXTURE = (function () {
      UI
      ===================================================================== */
 
-  const estado = { torneo: null, doc: null, pidiendo: null, error: '', mes: '' };
+  const estado = { torneo: null, doc: null, pidiendo: null, error: '', mes: '',
+    /* La lectura de la FUENTE EN VIVO (punto 70): los partidos de la zona,
+       cuándo se leyeron y si lo que se sirve es la última copia buena. */
+    vivo: null, vivoEstado: null, vivoPidiendo: null };
 
   /* La base del sitio, deducida del propio <script>: con una URL sin barra
      final, un fetch relativo se resuelve contra la raíz del dominio y da
@@ -435,6 +502,35 @@ const SGADD_FIXTURE = (function () {
     return promesa;
   }
 
+  /**
+   * Pide el fixture EN VIVO al backend.
+   *
+   * NUNCA lanza: un fallo deja `vivo` en null y la sección sigue con el
+   * calendario declarado del archivo. Es lo que hace que la pantalla no
+   * dependa de que una web de terceros esté arriba.
+   */
+  function cargarVivo(torneoId, zona) {
+    if (typeof SGADD_DATA === 'undefined' || !SGADD_DATA.fixtureDeTorneo) return Promise.resolve(null);
+    const ficha = torneoId + '|' + (zona || '');
+    if (estado.vivoPidiendo === ficha) return Promise.resolve(estado.vivo);
+    estado.vivoPidiendo = ficha;
+    return SGADD_DATA.fixtureDeTorneo(torneoId, zona).then((r) => {
+      if (!r || !r.zonas) { estado.vivoEstado = null; return null; }
+      const z = zona ? (r.zonas[zona] || null) : null;
+      const partidos = z ? z.partidos
+        : Object.keys(r.zonas).reduce((a2, k) => a2.concat(r.zonas[k].partidos || []), []);
+      estado.vivo = (partidos && partidos.length) ? partidos : null;
+      estado.vivoEstado = { actualizado: r.actualizado || null, stale: !!r.stale,
+        aviso: r.aviso || null, fuente: r.fuente || null, fallaron: r.fallaron || [] };
+      return estado.vivo;
+    }).catch(() => {
+      /* Se ANOTA que falló, para poder decirlo, y se sigue. */
+      estado.vivoEstado = { actualizado: null, stale: true, fuente: null, fallaron: [],
+        aviso: 'No se pudo consultar la fuente en vivo.' };
+      return null;
+    });
+  }
+
   function escudo(nombre, px) {
     const t = px || 22;
     try {
@@ -470,8 +566,35 @@ const SGADD_FIXTURE = (function () {
       + '<td class="py-2 px-2 text-center whitespace-nowrap">' + marcador + '</td>'
       + '<td class="py-2 pr-3">' + lado(p.visitante, p.visitanteClave, yoVisita) + '</td>'
       + '<td class="py-2 text-[11px] text-muted whitespace-nowrap">'
-      + (c ? (yoLocal ? 'Local' : 'Visitante') : (p.zona ? esc(p.zona) : '')) + '</td>'
+      + (c ? (yoLocal ? 'Local' : 'Visitante') : (p.zona ? esc(p.zona) : ''))
+      + chipEstado(p) + '</td>'
+      + '<td class="py-2 text-[11px]">' + transmisiones(p) + '</td>'
       + '</tr>';
+  }
+
+  /* EL ESTADO SOLO SE MUESTRA CUANDO DICE ALGO QUE LA FILA NO DICE YA.
+     «Programado» al lado de una hora, o «Finalizado» al lado de un
+     marcador, es repetir con otras palabras. Lo que importa es lo
+     excepcional: suspendido, reprogramado, en juego. */
+  const ESTADO_TONO = { EN_JUEGO: 'zona-exito', SUSPENDIDO: 'zona-peligro', OTRO: 'zona-aviso' };
+  function chipEstado(p) {
+    const e = p && p.estado;
+    if (!e || e === 'PROGRAMADO' || e === 'FINALIZADO') return '';
+    const txt = e === 'EN_JUEGO' ? 'En juego' : (p.estadoTexto || e.toLowerCase().replace(/_/g, ' '));
+    return ' <span class="' + (ESTADO_TONO[e] || 'zona-aviso') + ' zona-texto font-display uppercase'
+      + ' tracking-wider">' + esc(txt) + '</span>';
+  }
+
+  /* LA TRANSMISIÓN es el dato por el que el DT mira esta pantalla un
+     viernes: por dónde ve al rival sin ir a la cancha. Va como link cuando
+     la fuente lo trae, y como texto cuando no. */
+  function transmisiones(p) {
+    const ts = (p && p.transmision) || [];
+    if (!ts.length) return '<span class="text-muted">—</span>';
+    return ts.map(t => (t.url
+      ? '<a href="' + esc(t.url) + '" target="_blank" rel="noopener noreferrer"'
+        + ' class="text-accent hover:underline whitespace-nowrap">▶ ' + esc(t.nombre) + '</a>'
+      : '<span class="text-muted whitespace-nowrap">' + esc(t.nombre) + '</span>')).join(' · ');
   }
 
   function tabla(partidos, propio) {
@@ -481,7 +604,8 @@ const SGADD_FIXTURE = (function () {
       + '<th class="text-left pb-1 pr-3 font-display">Local</th>'
       + '<th class="pb-1 px-2 font-display">Marcador</th>'
       + '<th class="text-left pb-1 pr-3 font-display">Visitante</th>'
-      + '<th class="text-left pb-1 font-display">' + (propio ? 'Condición' : 'Zona') + '</th>'
+      + '<th class="text-left pb-1 pr-3 font-display">' + (propio ? 'Condición' : 'Zona') + '</th>'
+      + '<th class="text-left pb-1 font-display">TV</th>'
       + '</tr></thead><tbody>'
       + partidos.map(p => filaPartido(p, propio)).join('')
       + '</tbody></table></div>';
@@ -554,7 +678,12 @@ const SGADD_FIXTURE = (function () {
     const cuerpo = p
       ? '<div class="mt-2">' + tabla([p], propio) + '</div>'
       : '<p class="text-xs text-muted mt-2">' + esc(vacioTxt) + '</p>';
-    return '<div class="rounded-lg border border-hairline p-3">'
+    /* `min-w-0` NO ES DECORATIVO: un item de grid tiene `min-width: auto`,
+       así que se ensancha con su contenido y el `.scrollbox` de adentro
+       nunca llega a scrollear — medido a 375px, la tabla del rival empujaba
+       la página a 799px de ancho. Es el mismo motivo por el que las celdas
+       de nombre llevan `min-w-0` en el resto del panel. */
+    return '<div class="rounded-lg border border-hairline p-3 min-w-0">'
       + '<p class="text-[10px] uppercase tracking-wider text-muted font-display">' + esc(rotulo) + '</p>'
       + cuerpo + '</div>';
   }
@@ -590,6 +719,32 @@ const SGADD_FIXTURE = (function () {
       + '</div>';
   }
 
+  /**
+   * De dónde salió el calendario y cuándo se leyó.
+   *
+   * CON DATOS VIEJOS SE DICE, y se dice CUÁNDO se leyeron: un horario de
+   * anteayer presentado como el de hoy es peor que no tener horario. Es la
+   * regla de siempre —un dato dudoso se muestra con su duda— aplicada a
+   * una fuente que no controlamos.
+   */
+  function avisoFuente(a) {
+    const v = estado.vivoEstado;
+    if (!v) return '';
+    if (v.stale) {
+      return '<p class="text-xs mt-2 zona-aviso zona-texto">⚠ La fuente no contestó recién: '
+        + 'se muestra la última lectura'
+        + (v.actualizado ? ' del ' + esc(fechaLarga(String(v.actualizado).slice(0, 10))) : ' guardada')
+        + '. Los horarios pueden haber cambiado.'
+        + (v.aviso ? ' <span class="text-muted">(' + esc(v.aviso) + ')</span>' : '') + '</p>';
+    }
+    if (!a.envivo) return '';
+    const cuando = v.actualizado ? new Date(v.actualizado) : null;
+    const hh = cuando ? ('0' + cuando.getHours()).slice(-2) + ':' + ('0' + cuando.getMinutes()).slice(-2) : '';
+    return '<p class="text-[11px] text-muted mt-2">Horarios y transmisiones en vivo desde '
+      + esc(v.fuente || 'la fuente oficial') + (hh ? ', leídos a las ' + esc(hh) : '') + '.'
+      + (v.fallaron && v.fallaron.length ? ' Alguna zona no se pudo refrescar.' : '') + '</p>';
+  }
+
   function encabezado(a, doc, planilla) {
     const nombre = (doc && doc.nombre) || (planilla && planilla.label) || 'Fixture';
     const zona = estado.zonaLabel ? ' · ' + estado.zonaLabel : '';
@@ -600,6 +755,7 @@ const SGADD_FIXTURE = (function () {
       + '<div class="flex items-baseline justify-between gap-3 flex-wrap">'
       + '<h3 class="font-display uppercase tracking-wide text-sm text-ink">' + esc(nombre + zona) + '</h3>'
       + '<span class="font-mono text-[11px] text-muted">' + esc(partes.join(' · ') || 'sin partidos') + '</span></div>'
+      + avisoFuente(a)
       + (a.atipicos.length
         ? '<p class="text-xs mt-2 zona-aviso zona-texto">⚠ ' + a.atipicos.length
           + (a.atipicos.length === 1 ? ' partido viene' : ' partidos vienen')
@@ -647,6 +803,7 @@ const SGADD_FIXTURE = (function () {
     const a = agenda({
       torneo: estado.doc, zona: planilla.zonaId, idx: idx,
       equipo: equipoPropio(), mes: estado.mes || null,
+      fuente: estado.vivo,
     });
 
     if (!a.total) {
@@ -694,8 +851,16 @@ const SGADD_FIXTURE = (function () {
     const planilla = planillaActual();
     const id = planilla && planilla.torneoId;
     estado.zonaLabel = (planilla && planilla.label) || '';
+    estado.vivo = null; estado.vivoEstado = null; estado.vivoPidiendo = null;
     pintar();
-    if (id) cargarTorneo(id).then(() => { if (vigente()) pintar(); });
+    if (id) {
+      cargarTorneo(id).then(() => { if (vigente()) pintar(); });
+      /* LA FUENTE EN VIVO VA APARTE Y NO BLOQUEA: el calendario declarado
+         se pinta apenas baja el archivo, y los horarios de hoy entran
+         cuando llegan. Al revés, una fuente lenta dejaría la pantalla en
+         blanco por algo que es una mejora. */
+      cargarVivo(id, (planilla && planilla.zonaId) || '').then(() => { if (vigente()) pintar(); });
+    }
     if (typeof SGADD_APP !== 'undefined') {
       SGADD_APP.cargar().then(() => { if (vigente()) pintar(); });
     }
@@ -713,8 +878,10 @@ const SGADD_FIXTURE = (function () {
     fechaISO, fechaLarga, mesLargo, mesDe, mesMas, claveCruce,
     normalizarCalendario, jugadosDelIndice, rivalDelTexto, unir, delEquipo, resultado,
     meses, mesPorDefecto, deMes, proximo, anterior, agenda, aniosAtipicos,
+    mapaAlias, normalizarFuente,
     /* ui */
-    html, pintar, montar, irAMes, cargarTorneo, estado, vacio,
+    html, pintar, montar, irAMes, cargarTorneo, cargarVivo, estado, vacio,
+    chipEstado, transmisiones, avisoFuente,
   };
 })();
 
