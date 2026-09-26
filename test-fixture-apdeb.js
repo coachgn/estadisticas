@@ -28,7 +28,7 @@ function check(n, cond, det) {
 function seccion(t) { console.log('\n' + t); }
 
 const H = {};
-['sub23-programacion', 'sub23-resultados', 'menores-programacion'].forEach((f) => {
+['sub23-programacion', 'sub23-resultados', 'sub23-fixtures', 'menores-programacion'].forEach((f) => {
   H[f] = fs.readFileSync('test-fixtures/apdeb/' + f + '.html', 'utf8');
 });
 const DOC = JSON.parse(fs.readFileSync('torneos/apb-2026-formativas.json', 'utf8'));
@@ -185,7 +185,10 @@ seccion('4 · la config del torneo');
   const c = F.configDe(DOC);
   check('el torneo declara el adaptador de apdeb', !!c && c.adaptador === 'apdeb');
   check('y su piso de temporada', c.desde === '2026-01-01');
-  check('u23 trae DOS páginas: programación y resultados', c.zonas.u23.urls.length === 2, c.zonas.u23.urls);
+  /* TRES páginas desde el punto 72: la de fixture trae el cruce que la
+     programación todavía no publica (ver la sección 9). */
+  check('u23 trae TRES páginas: programación, resultados y fixture',
+    c.zonas.u23.urls.length === 3, c.zonas.u23.urls);
   check('u21 trae una, y su categoría', c.zonas.u21.urls.length === 1 && c.zonas.u21.categoria === 'U21');
   check('las urls son de apdeb', Object.keys(c.zonas).every(z =>
     c.zonas[z].urls.every(u => /^https:\/\/www\.apdeb\.com\.ar\//.test(u))));
@@ -427,11 +430,284 @@ function fechaCorrida() {
   check('y no se le inventa una fecha declarada', !ex.find(p => p.jugado).fechaDeclarada);
 }
 
+
+/* =====================================================================
+   9 · LA PÁGINA «FIXTURE» · el cruce que la programación no publica
+   ===================================================================== */
+async function fixtureEstructural() {
+  seccion('9 · la tercera página: el fixture estructural');
+  const PANEL = require('./js/sgadd-fixture.js');
+
+  /* LA PÁGINA «FIXTURE» ES EL FIXTURE ESTRUCTURAL: dice qué cruce va en
+     cada jornada y NADA más. Sus filas traen solo LOCAL · vs · VISITANTE,
+     sin celda de fecha: la fecha la pone el encabezado que las precede
+     (`1º Fecha - 21/3/2026`). */
+  const r = F.parsearApdeb(H['sub23-fixtures'], { hoy: HOY, zona: 'u23' });
+  check('la página de fixture se parsea', r.partidos.length >= 12, r.partidos.length);
+  check('y sus filas heredan la fecha del encabezado de jornada',
+    r.partidos.every(p => p.fecha), r.partidos.filter(p => !p.fecha).length);
+  const j1 = r.partidos.filter(p => p.fecha === '2026-03-21');
+  const j2 = r.partidos.filter(p => p.fecha === '2026-03-28');
+  check('la 1ª fecha se lleva sus seis cruces', j1.length === 6, j1.length);
+  check('y la 2ª los suyos, con SU fecha y no la anterior', j2.length === 6, j2.length);
+  check('el primer cruce de la 1ª fecha es el que publica el sitio',
+    j1.some(p => /RECONQUISTA/.test(p.local) && /ATENAS/.test(p.visitante)),
+    j1.map(p => p.local + ' vs ' + p.visitante));
+  /* NO TIENE HORA NI MARCADOR, y no se los inventa. */
+  check('no trae hora', r.partidos.every(p => !p.hora));
+  check('ni marcador', r.partidos.every(p => p.ptsLocal === null && p.ptsVisitante === null));
+  check('y queda como PROGRAMADO, no como un estado raro',
+    r.partidos.every(p => p.estado === 'PROGRAMADO'), [...new Set(r.partidos.map(p => p.estado))]);
+  /* SE MARCA DE QUÉ PÁGINA SALIÓ: es lo que la deja perder contra la
+     programación del mismo cruce. */
+  check('todas se marcan como estructurales', r.partidos.every(p => p.estructural === true));
+  /* LA FILA «Fecha Libre» no es un partido: no tiene celda `vs`. */
+  check('la jornada libre no entra como partido',
+    !r.partidos.some(p => /libre/i.test(p.local + ' ' + p.visitante)),
+    r.partidos.filter(p => /libre/i.test(p.local + ' ' + p.visitante)));
+
+  /* LA FORMA DE LA FILA es lo que separa las dos páginas, no una
+     adivinanza. En la PROGRAMACIÓN una fila sin fecha dice «A Reprogramar»,
+     y heredar la de una jornada le inventaría un día que el sitio
+     justamente no publicó. */
+  const prog = F.parsearApdeb(H['sub23-programacion'], { hoy: HOY, zona: 'u23' });
+  check('la programación NO se marca como estructural',
+    prog.partidos.every(p => !p.estructural));
+  const reprog = prog.partidos.filter(p => !p.fecha);
+  check('y su fila «a reprogramar» sigue sin fecha', reprog.length >= 1, reprog.length);
+  /* EL CASO QUE LO EJERCE: la misma fila «a reprogramar» PEGADA DEBAJO de un
+     encabezado de jornada. Si la herencia mirara solo «no tiene fecha», se
+     comería el «A Reprogramar» y lo fecharía el 21/3. */
+  const filaRep = H['sub23-programacion'].match(/<tr[^>]*>[\s\S]*?<\/tr>/g)
+    .filter(f => /Reprogramar/i.test(f))[0];
+  const cabecera = H['sub23-fixtures'].match(/<tr[^>]*>[\s\S]*?<\/tr>/g)
+    .filter(f => /1&ordm; Fecha/.test(f))[0];
+  check('la fixture tiene las dos piezas del caso', !!filaRep && !!cabecera);
+  const mezcla = F.parsearApdeb('<table>' + cabecera + filaRep + '</table>', { hoy: HOY });
+  check('una fila «a reprogramar» debajo de una jornada NO hereda su fecha',
+    mezcla.partidos.length === 1 && !mezcla.partidos[0].fecha,
+    mezcla.partidos.map(p => p.fecha + ' ' + p.local + ' vs ' + p.visitante));
+  check('y sigue diciendo que está a reprogramar',
+    !!mezcla.partidos[0] && /reprogramar/i.test(mezcla.partidos[0].estadoTexto || ''),
+    mezcla.partidos.map(p => p.estado + ' / ' + p.estadoTexto));
+
+  /* LA CONFIG: u23 declara TRES páginas. */
+  const cfg = F.configDe(DOC);
+  check('u23 declara las tres páginas', cfg.zonas.u23.urls.length === 3, cfg.zonas.u23.urls);
+  check('y una de ellas es la de fixture',
+    cfg.zonas.u23.urls.some(u => /FIXTURES/.test(u)), cfg.zonas.u23.urls);
+
+  /* =====================================================================
+     EL CRUCE QUE LA PROGRAMACIÓN NO PUBLICA
+     ===================================================================== */
+  /* apdeb publica en «programación» solo la fecha próxima. El partido que
+     viene DESPUÉS del nuestro —el del rival, que es el que la card «Próximo
+     Rival» necesita— no está ahí: está en el fixture estructural. Sin esa
+     página, «SU PARTIDO SIGUIENTE» salía vacío. */
+  const soloProg = '<table>'
+    + '<tr><td><div>SABADO 26/09/2026</div></td><td><div>21:30</div></td>'
+    + '<td><div>RECONQUISTA</div></td><td><div>vs</div></td><td><div>GONNET</div></td></tr>'
+    + '</table>';
+  const soloFix = '<table>'
+    + '<tr><td colspan="3"><div>26&ordm; Fecha - 3/10/2026</div></td></tr>'
+    + '<tr><td><div>GONNET</div></td><td><div>vs</div></td><td><div>ATENAS</div></td></tr>'
+    + '</table>';
+  const zona = { urls: ['https://www.apdeb.com.ar/SUB23_PROGRAMACION.html',
+    'https://www.apdeb.com.ar/SUB23_FIXTURES.html'], categoria: null };
+  const dosPaginas = async (url) => ({ ok: true, status: 200,
+    text: async () => (/FIXTURES/.test(url) ? soloFix : soloProg) });
+
+  const sinFix = await API.refrescar({ adaptador: 'apdeb', zonas: { u23: { urls: [zona.urls[0]] } } },
+    { fetch: dosPaginas }, HOY);
+  const conFix = await API.refrescar({ adaptador: 'apdeb', zonas: { u23: zona } },
+    { fetch: dosPaginas }, HOY);
+
+  const agendaDe = (fuente) => PANEL.agenda({
+    torneo: { fixture: { adaptador: 'apdeb' } }, zona: 'u23', idx: null,
+    equipo: 'RECONQUISTA', fuente: fuente, hoy: HOY,
+  });
+  const sin = agendaDe(sinFix.zonas.u23.partidos);
+  const con = agendaDe(conFix.zonas.u23.partidos);
+
+  check('sin la página de fixture, el rival no tiene partido siguiente',
+    !!sin.rival && sin.rival.siguiente === null,
+    sin.rival && sin.rival.siguiente);
+  check('con la página de fixture, SÍ lo tiene',
+    !!con.rival && !!con.rival.siguiente, con.rival && con.rival.siguiente);
+  check('y es el que publica el fixture, no el nuestro',
+    con.rival.siguiente.fecha === '2026-10-03'
+      && CORE.claveEquipo(con.rival.siguiente.rival) === 'ATENAS',
+    con.rival.siguiente && (con.rival.siguiente.fecha + ' ' + con.rival.siguiente.rival));
+  check('el próximo partido propio no cambia por sumar la página',
+    sin.proximo && con.proximo && sin.proximo.fecha === con.proximo.fecha
+      && con.proximo.fecha === '2026-09-26',
+    [sin.proximo && sin.proximo.fecha, con.proximo && con.proximo.fecha]);
+  /* Y NO SE MUESTRA COMO JUGADO: el fixture no trae marcador. */
+  check('el partido siguiente del rival sale a jugarse',
+    con.rival.siguiente.jugado !== true && con.rival.siguiente.ptsPropios == null);
+
+  /* =====================================================================
+     EL MISMO CRUCE ESCRITO DISTINTO POR DOS PÁGINAS
+     ===================================================================== */
+  /* Medido al sumar la tercera página: 32 cruces duplicados en la U23, 4
+     del equipo propio. Las páginas abrevian cada club a su manera —
+     «Bco Provincia» en resultados y «BANCO PROVINCIA» en el fixture— y
+     `claveEquipo` normaliza mayúsculas, no abreviaturas. Lo que los
+     homogeniza es el mapeo al nombre del libro, así que la deduplicación
+     tiene que ir DESPUÉS del mapeo. */
+  const alias = { 'BCO PROVINCIA': 'BANCO PROVINCIA - U23', 'BANCO PROVINCIA': 'BANCO PROVINCIA - U23',
+    'HOGAR SOCIAL': 'HOGAR SOCIAL - U23' };
+  const dosFormas = [
+    { fecha: '2026-03-21', local: 'Bco Provincia', visitante: 'Hogar Social',
+      ptsLocal: 71, ptsVisitante: 77, estructural: false },
+    { fecha: '2026-03-21', local: 'BANCO PROVINCIA', visitante: 'HOGAR SOCIAL',
+      ptsLocal: null, ptsVisitante: null, estructural: true },
+  ];
+  const unidas = PANEL.normalizarFuente(dosFormas, alias, 'u23');
+  check('el mismo cruce escrito de dos formas entra UNA vez', unidas.length === 1,
+    unidas.map(p => p.local + ' vs ' + p.visitante));
+  check('y gana la versión con marcador, no la estructural',
+    unidas.length === 1 && unidas[0].ptsLocal === 71 && unidas[0].jugado === true,
+    unidas.map(p => p.ptsLocal + ' jugado=' + p.jugado));
+  /* CON LA ESTRUCTURAL PRIMERO gana igual la que trae marcador: si la
+     preferencia no estuviera, el orden decidiría y el partido ya jugado
+     saldría «a jugarse». */
+  const alRevés = PANEL.normalizarFuente([dosFormas[1], dosFormas[0]], alias, 'u23');
+  check('aunque la estructural llegue primero, gana la que trae marcador',
+    alRevés.length === 1 && alRevés[0].ptsLocal === 71 && alRevés[0].jugado === true,
+    alRevés.map(p => p.ptsLocal + ' jugado=' + p.jugado));
+  /* LAS DOS REGLAS SE PRUEBAN POR SEPARADO, o una tapa a la otra: en el
+     caso de arriba la fila con marcador es además la no estructural, así
+     que cualquiera de las dos alcanzaría y revertir una no se notaría. */
+  /* Solo cambia el MARCADOR: programación y resultados, ninguna estructural.
+     LAS DOS LLEVAN LA MISMA HORA a propósito: con horas distintas el orden
+     previo pone primera a una de ellas y gana por posición, así que el test
+     no probaría la preferencia sino el `sort`. */
+  const soloMarcador = PANEL.normalizarFuente([
+    { fecha: '2026-03-21', local: 'BANCO PROVINCIA', visitante: 'HOGAR SOCIAL',
+      hora: '21:00', ptsLocal: null, ptsVisitante: null, estructural: false },
+    { fecha: '2026-03-21', local: 'Bco Provincia', visitante: 'Hogar Social',
+      hora: '21:00', ptsLocal: 71, ptsVisitante: 77, estructural: false },
+  ], alias, 'u23');
+  check('entre dos de la misma página, gana la que trae marcador',
+    soloMarcador.length === 1 && soloMarcador[0].ptsLocal === 71,
+    soloMarcador.map(p => p.ptsLocal));
+  /* Solo cambia la PÁGINA: ninguna trae marcador, y la estructural pierde
+     porque no publica hora ni estado. */
+  const soloPagina = PANEL.normalizarFuente([
+    { fecha: '2026-03-21', local: 'BANCO PROVINCIA', visitante: 'HOGAR SOCIAL',
+      hora: null, estado: 'PROGRAMADO', ptsLocal: null, ptsVisitante: null, estructural: true },
+    { fecha: '2026-03-21', local: 'Bco Provincia', visitante: 'Hogar Social',
+      hora: '21:00', estado: 'PROGRAMADO', ptsLocal: null, ptsVisitante: null, estructural: false },
+  ], alias, 'u23');
+  check('y entre dos sin marcador, la estructural pierde: no tiene hora',
+    soloPagina.length === 1 && soloPagina[0].hora === '21:00',
+    soloPagina.map(p => p.hora + ' estr=' + p.estructural));
+  /* EL GUARD SIMÉTRICO —que el sin marcador no pise al jugado— HOY ES
+     REDUNDANTE: para llegar ahí haría falta una fila estructural CON
+     marcador, y la página de fixture no publica resultados. Se deja porque
+     la propiedad no debería depender de eso, y el test lo dice en vez de
+     fingir que lo caza (la misma decisión que el orden de los sin fecha). */
+  const alRevésDeNuevo = PANEL.normalizarFuente([soloMarcador[0],
+    { fecha: '2026-03-21', local: 'BANCO PROVINCIA', visitante: 'HOGAR SOCIAL',
+      hora: '21:00', ptsLocal: null, ptsVisitante: null, estructural: false }], alias, 'u23');
+  check('el marcador tampoco se pierde si la fila vacía llega después',
+    alRevésDeNuevo.length === 1 && alRevésDeNuevo[0].ptsLocal === 71,
+    alRevésDeNuevo.map(p => p.ptsLocal));
+
+  /* SIN EL ALIAS no se puede saber que son el mismo club, y entonces NO se
+     fusionan: inventar la equivalencia sería peor que mostrar dos filas. */
+  check('sin alias que los una, quedan los dos',
+    PANEL.normalizarFuente(dosFormas, {}, 'u23').length === 2);
+  /* ENTRE DOS ESTRUCTURALES O DOS CON MARCADOR gana la primera: hay que
+     quedarse con una, y la que llegó antes es la del orden del sitio. */
+  check('dos veces la misma fila estructural también colapsan',
+    PANEL.dedupFuente(PANEL.normalizarFuente([dosFormas[1], dosFormas[1]], alias, 'u23')).length === 1);
+  /* Y DOS CRUCES DISTINTOS DEL MISMO DÍA no se tocan. */
+  const distintos = PANEL.normalizarFuente([
+    { fecha: '2026-03-21', local: 'Bco Provincia', visitante: 'Hogar Social', estructural: false },
+    { fecha: '2026-03-21', local: 'RECONQUISTA', visitante: 'ATENAS', estructural: true },
+  ], alias, 'u23');
+  check('dos cruces distintos del mismo día siguen siendo dos', distintos.length === 2);
+  /* LA IDA Y LA VUELTA NO SE FUSIONAN: misma pareja, otra fecha. */
+  const idaVuelta = PANEL.normalizarFuente([
+    { fecha: '2026-03-21', local: 'Bco Provincia', visitante: 'Hogar Social', estructural: false },
+    { fecha: '2026-06-27', local: 'HOGAR SOCIAL', visitante: 'BANCO PROVINCIA', estructural: true },
+  ], alias, 'u23');
+  check('la ida y la vuelta del mismo par no se fusionan', idaVuelta.length === 2,
+    idaVuelta.map(p => p.fecha));
+}
+
+/* =====================================================================
+   10 · LA LEYENDA NO NOMBRA AL PROVEEDOR
+   ===================================================================== */
+function leyenda() {
+  seccion('10 · la leyenda dice CUÁNDO, no de dónde');
+  const PANEL = require('./js/sgadd-fixture.js');
+  /* De qué sitio salió el horario es un detalle de implementación: al DT no
+     le dice nada. Lo que necesita saber es cuándo se leyó. El nombre sigue
+     viajando en `vivoEstado.fuente`, para el diagnóstico. */
+  const PROVEEDORES = /apdeb|basket-?club|gesdeportiva/i;
+
+  const vivo = PANEL.avisoFuente({ envivo: true },
+    { fuente: 'apdeb', actualizado: '2026-09-25T21:27:00-03:00', stale: false });
+  check('en vivo, la leyenda dice a qué hora se leyó', /le[íi]dos a las 21:27/.test(vivo), vivo);
+  check('y NO nombra al proveedor', !PROVEEDORES.test(vivo), vivo);
+
+  const stale = PANEL.avisoFuente({ envivo: true },
+    { fuente: 'basket-club', actualizado: '2026-09-25T19:50:00-03:00', stale: true, aviso: 'timeout' });
+  check('con la copia vieja, dice la última actualización',
+    /última actualización/.test(stale) && /19:50/.test(stale), stale);
+  check('y avisa que los horarios pueden haber cambiado',
+    /pueden haber cambiado/.test(stale), stale);
+  check('tampoco nombra al proveedor', !PROVEEDORES.test(stale), stale);
+
+  /* SIN FUENTE EN VIVO no se promete nada. */
+  check('sin fuente en vivo, no hay leyenda', PANEL.avisoFuente({ envivo: false }, null) === '');
+  /* SIN HORA no se inventa una. */
+  const sinHora = PANEL.avisoFuente({ envivo: true }, { fuente: 'apdeb', actualizado: null, stale: false });
+  check('sin hora de lectura, la leyenda no la inventa',
+    !/le[íi]dos a las/.test(sinHora) && !PROVEEDORES.test(sinHora), sinHora);
+  check('y una fecha ilegible tampoco produce una hora',
+    PANEL.horaDe('no es una fecha') === '' && PANEL.horaDe(null) === '');
+
+  /* EN NINGUNA PARTE DE LA SECCIÓN: ni en la leyenda ni en el chip ni en el
+     resto del módulo se le muestra al DT el nombre del sitio. */
+  const fuente = fs.readFileSync('js/sgadd-fixture.js', 'utf8');
+  const textos = fuente.match(/'[^'\n]*(apdeb|basket-club)[^'\n]*'/gi) || [];
+  const visibles = textos.filter(t => !/https?:|adaptador|ADAPTADORES/.test(t));
+  check('el módulo no trae un literal visible con el nombre del sitio',
+    visibles.length === 0, visibles);
+}
+
+/* =====================================================================
+   11 · `?refrescar=1` es de ADMIN
+   ===================================================================== */
+async function forzar() {
+  seccion('11 · forzar el refresco es de admin');
+  /* `verificarToken` devuelve `{ok, sesion, rol}`. La primera versión leía
+     `v.payload.email`, que no existe: `esAdmin` daba SIEMPRE false, así que
+     `?refrescar=1` no forzaba nada y el endpoint contestaba 200 con el
+     caché viejo — bien, pero viejo, y sin ningún síntoma. */
+  const fuente = fs.readFileSync('server/api/fixture.js', 'utf8');
+  check('el rol sale del resultado de verificarToken',
+    /esAdmin\s*=\s*v\.rol\s*===\s*AUTH\.ROLES\.ADMIN/.test(fuente),
+    (fuente.match(/const esAdmin[^;]*/) || [])[0]);
+  /* SE MIRA EL CÓDIGO, NO LOS COMENTARIOS: el de acá al lado nombra a
+     `v.payload.email` justamente para explicar el bug. */
+  const sinComentarios = fuente.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
+  check('y no de un payload que no existe', !/payload/.test(sinComentarios),
+    (sinComentarios.match(/.{0,40}payload.{0,40}/) || [])[0]);
+}
+
 (async () => {
   await union();
   fechaCorrida();
   cruce();
   orden();
+  await fixtureEstructural();
+  leyenda();
+  await forzar();
   console.log('\n' + (mal ? '✗ HAY FALLAS · ' : '✓ TODO OK · ') + ok + ' pasaron, ' + mal + ' fallaron');
   process.exit(mal ? 1 : 0);
 })().catch((e) => { console.error(e.stack); process.exit(1); });

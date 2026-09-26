@@ -85,7 +85,7 @@ node test-mails.js         # 177 tests · los mails institucionales: plantillas 
                            #             el código adentro de la bienvenida, la puerta de ingreso,
                            #             el nombre del acceso y el link que llena el login
 
-node test-fixture-apdeb.js #  82 tests · el conector de apdeb: tablas sin clases, estados propios,
+node test-fixture-apdeb.js # 125 tests · el conector de apdeb: tablas sin clases, estados propios,
                            #             el filtro por categoria, el piso de temporada y el orden del mes
 
 node test-fixture-apb.js  #  93 tests · el conector de basket-club: el parser contra markup REAL,
@@ -107,7 +107,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6630 tests en total. Todos tienen que dar verde antes de commitear.**
+**6673 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -220,7 +220,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=242`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=244`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -10497,3 +10497,124 @@ tenía razón. Es el punto 61 en acción.
 
 **Transmisión.** El campo va vacío, no inventado. Y la sede tampoco, igual
 que basket-club.
+
+---
+
+## 72. LA LEYENDA SIN EL PROVEEDOR, Y EL CRUCE QUE LA PROGRAMACIÓN NO PUBLICA (2026-09-25)
+
+### 1 · La leyenda dice CUÁNDO, no de dónde
+
+A pedido del club. Decía «en vivo desde apdeb» o «desde basket-club», y de
+qué sitio salió el horario es un detalle de implementación: al DT no le dice
+nada. Lo que necesita para saber si puede confiar en el horario que está
+mirando es **cuándo se leyó**.
+
+```
+al día      Horarios y transmisiones en vivo, leídos a las 21:27.
+copia vieja ⚠ Horarios y transmisiones en vivo (última actualización: 25 de
+              septiembre a las 19:50). La fuente no contestó recién, así que
+              los horarios pueden haber cambiado.
+```
+
+- **El nombre sigue viajando en `vivoEstado.fuente`**, que es lo que sirve
+  para el diagnóstico. Lo que se saca es la VISTA, no el dato.
+- **Sin hora de lectura no se inventa una**: la leyenda queda sin la coletilla
+  en vez de mostrar una hora resuelta de la nada.
+- **`horaDe()` usa `Date` y eso acá está bien**: se muestra la hora de LECTURA,
+  que es un instante, y no se la compara contra la fecha de un partido — que
+  es donde la zona horaria muerde y por lo que existe `fechaLarga`.
+- **`avisoFuente(a, vivoEstado)` toma el estado como argumento opcional**,
+  cayendo al del módulo. Así la función es pura y el test la ejerce sin tocar
+  el estado global desde afuera.
+
+Hay un test que barre el módulo y falla si vuelve a aparecer un literal
+visible con el nombre de un proveedor (los que quedan son URLs y el nombre
+del adaptador, que no se muestran).
+
+### 2 · La tercera página de apdeb · el fixture ESTRUCTURAL
+
+apdeb publica en «programación» **solo la fecha próxima**. O sea que el
+partido que viene DESPUÉS del nuestro —el del rival, que es justo el que la
+card «Próximo Rival» necesita— no está ahí, y «SU PARTIDO SIGUIENTE» salía
+vacío. Está en `SUB23_FIXTURES.html`, que es el fixture estructural: qué
+cruce va en cada jornada, y nada más.
+
+Esa página no tiene celda de fecha. La fecha la pone el **encabezado de
+jornada** que precede a las filas (`1º Fecha - 21/3/2026`), y se hereda igual
+que el «Hoy» de basket-club.
+
+**LA FORMA DE LA FILA ES LO QUE SEPARA LAS DOS PÁGINAS, no una adivinanza.**
+En el fixture el local es la PRIMERA celda (`iVs === 1`); en la programación
+adelante van la fecha y la hora. Eso importa porque en la programación una
+fila sin fecha dice **«A Reprogramar»**, y heredar la de la jornada le
+inventaría un día que el sitio justamente no publicó. Hay un test que pega
+esa fila real debajo de un encabezado real y exige que NO herede nada.
+
+- **La fila «Fecha Libre» no entra**: no tiene celda `vs`.
+- **No trae hora ni marcador**, y no se los inventa: queda `PROGRAMADO`.
+- **Se marca con `estructural: true`**, que es lo que la deja perder contra la
+  programación del mismo cruce.
+
+### 3 · EL MISMO CRUCE ESCRITO DISTINTO POR DOS PÁGINAS DEL MISMO SITIO
+
+El defecto que introdujo la tercera página, y que solo se vio midiendo la
+agenda: **32 cruces duplicados en la U23, 4 de ellos del equipo propio**. El
+modo de fallar era el peor de todos —el mismo partido dos veces en el mes,
+una con resultado y otra «a jugarse»— sin ningún síntoma de que fueran el
+mismo.
+
+```
+resultados   «Bco Provincia»    «Deportivo LP»    «Hogar Social»
+fixture      «BANCO PROVINCIA»  «DEPORTIVO»       «HOGAR SOCIAL»
+```
+
+El servidor ya deduplica lo que lee, pero lo hace con el **texto crudo**, y
+`claveEquipo` normaliza mayúsculas y espacios, **no abreviaturas**. Lo que
+homogeniza esos nombres es el mapeo al nombre del libro (`mapaAlias`), y eso
+recién ocurre en el cliente: **así que la deduplicación tiene que ir DESPUÉS
+del mapeo**, no antes. Va en `dedupFuente`, al final de `normalizarFuente`.
+
+Medido después: **139 partidos contra 173, 0 duplicados** y `mios` de 26 a 22
+—los 4 que sobraban—.
+
+Quién gana, de más informativo a menos, el mismo criterio que aplica el
+servidor un nivel más abajo:
+
+1. el que trae **MARCADOR**;
+2. entre los que no, el que **NO es estructural** (esa página no publica hora
+   ni estado).
+
+Reglas que hay que respetar al tocarlo:
+
+- **SIN ALIAS QUE LOS UNA, NO SE FUSIONAN.** Inventar la equivalencia entre
+  dos abreviaturas sería peor que mostrar dos filas: un cruce fusionado por
+  parecido puede ser otro partido.
+- **La ida y la vuelta no se tocan**: la clave lleva la fecha.
+- **Las dos reglas se prueban POR SEPARADO**, o una tapa a la otra — en el
+  caso real la fila con marcador es además la no estructural, así que
+  cualquiera de las dos alcanzaría y revertir una no se notaría.
+- **En el test las dos filas del caso llevan la MISMA HORA.** Con horas
+  distintas el `sort` previo pone primera a una de ellas y gana por posición,
+  así que el test no probaría la preferencia sino el orden. Costó una vuelta.
+- **El guard simétrico —que el sin marcador no pise al jugado— HOY ES
+  REDUNDANTE**: para llegar ahí haría falta una fila estructural con
+  marcador, y el fixture no publica resultados. Se deja porque la propiedad
+  no debería depender de eso, y el test lo dice en vez de fingir que lo caza
+  (la misma decisión que el orden de los sin fecha, punto 71).
+
+### 4 · `?refrescar=1` NUNCA FORZÓ NADA
+
+`verificarToken` devuelve `{ok, sesion, rol}`. El endpoint leía
+`v.payload.email`, que **no existe**: `esAdmin` daba siempre `false`, así que
+el parámetro no forzaba el refresco y se servía el caché viejo — contestando
+**200 con datos buenos pero viejos**, o sea sin ningún síntoma. Ahora lee
+`v.rol === AUTH.ROLES.ADMIN`, y hay un test que mira el CÓDIGO sin los
+comentarios (el de al lado nombra al `payload` justamente para explicar esto).
+
+### 5 · Lo que quedó ABIERTO · dos fechas del libro con el año 2025
+
+Auditando esto apareció que la página de fixture de Sub-23 declara una
+jornada como **16/5/2025**. No se toca: es un dato del sitio, y el panel ya
+tiene el mecanismo para eso —`aniosAtipicos` los muestra con el aviso al
+lado y no los deja decidir por dónde abre la sección (punto 68)—. Se le
+reporta al club, no se corrige acá.

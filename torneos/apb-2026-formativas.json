@@ -18,7 +18,8 @@
   "zonas": {
    "u23": {
     "programacion": "https://www.apdeb.com.ar/SUB23_PROGRAMACION.html",
-    "resultados": "https://www.apdeb.com.ar/SUB23_RESULTADOS.html"
+    "resultados": "https://www.apdeb.com.ar/SUB23_RESULTADOS.html",
+    "fixture": "https://www.apdeb.com.ar/SUB23_FIXTURES.html"
    },
    "u21": {
     "programacion": "https://www.apdeb.com.ar/MENORES_2026_PROGRAMACION.html",

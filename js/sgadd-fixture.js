@@ -171,7 +171,7 @@ const SGADD_FIXTURE = (function () {
   function normalizarFuente(partidos, alias, zona) {
     const mapa = alias || {};
     const nombre = (n) => mapa[clave(n)] || n;
-    return (partidos || []).map((p) => {
+    const filas = (partidos || []).map((p) => {
       const l = nombre(p.local), v = nombre(p.visitante);
       return {
         fecha: fechaISO(p.fecha), hora: p.hora || null, zona: p.zona || zona || null,
@@ -185,8 +185,49 @@ const SGADD_FIXTURE = (function () {
         jugado: p.ptsLocal != null && p.ptsVisitante != null,
         ptsLocal: p.ptsLocal == null ? null : p.ptsLocal,
         ptsVisitante: p.ptsVisitante == null ? null : p.ptsVisitante,
+        /* De qué página del sitio salió: la de fixture no trae hora ni
+           estado, así que pierde contra la programación del mismo cruce. */
+        estructural: !!p.estructural,
       };
     }).filter(p => p.fecha).sort(ordenar);
+    return dedupFuente(filas);
+  }
+
+  /**
+   * EL MISMO CRUCE ESCRITO DISTINTO POR DOS PÁGINAS DEL MISMO SITIO.
+   *
+   * El servidor ya deduplica lo que lee, pero lo hace con el texto CRUDO, y
+   * las páginas de apdeb abrevian cada club a su manera:
+   *
+   *     resultados   «Bco Provincia»    «Deportivo LP»
+   *     fixture      «BANCO PROVINCIA»  «DEPORTIVO»
+   *
+   * `claveEquipo` normaliza mayúsculas y espacios, no abreviaturas, así que
+   * allá pasan como dos cruces distintos. Lo que los homogeniza es el mapeo
+   * al nombre del libro (`mapaAlias`), y eso recién ocurre acá — así que la
+   * deduplicación tiene que ir DESPUÉS del mapeo, no antes.
+   *
+   * Medido en la U23 el 2026-09-25, al sumar la tercera página: 32 cruces
+   * duplicados, 4 de ellos del equipo propio. Y el modo de fallar era el
+   * peor: el mismo partido dos veces en el mes, una con resultado y otra
+   * «a jugarse», sin ningún síntoma de que fuera el mismo.
+   */
+  function dedupFuente(filas) {
+    const pos = {};
+    const out = [];
+    (filas || []).forEach((p) => {
+      const k = claveCruce(p.fecha, p.localClave, p.visitanteClave);
+      if (pos[k] === undefined) { pos[k] = out.length; out.push(p); return; }
+      /* GANA LA VERSIÓN MÁS INFORMATIVA, en este orden: la que trae
+         MARCADOR, y entre las que no, la que NO es del fixture estructural
+         —esa página no publica hora ni estado—. Es el mismo criterio que
+         aplica el servidor entre páginas, un nivel más abajo. */
+      const antes = out[pos[k]];
+      if (p.jugado && !antes.jugado) out[pos[k]] = p;
+      else if (!p.jugado && antes.jugado) return;
+      else if (antes.estructural && !p.estructural) out[pos[k]] = p;
+    });
+    return out;
   }
 
   /* CRONOLÓGICO DE VERDAD: fecha, HORA y después el nombre para desempatar.
@@ -807,21 +848,41 @@ const SGADD_FIXTURE = (function () {
    * regla de siempre —un dato dudoso se muestra con su duda— aplicada a
    * una fuente que no controlamos.
    */
-  function avisoFuente(a) {
-    const v = estado.vivoEstado;
+  /* La hora local de un instante ISO, `HH:mm`. Con `Date` está bien acá: se
+     muestra la hora de LECTURA, no se la compara con una fecha de partido
+     (que es donde la zona horaria muerde — ver `fechaLarga`). */
+  function horaDe(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
+
+  /* El estado de la lectura entra como ARGUMENTO opcional, cayendo al del
+     modulo: asi la funcion es pura y el test la puede ejercer sin tocar el
+     estado global desde afuera. */
+  function avisoFuente(a, vivoEstado) {
+    const v = vivoEstado === undefined ? estado.vivoEstado : vivoEstado;
     if (!v) return '';
+    /* EL NOMBRE DEL PROVEEDOR NO SE MUESTRA (punto 72, a pedido del club).
+       Decía «en vivo desde apdeb» o «desde basket-club», y al DT eso no le
+       dice nada: de qué sitio salió el horario es un detalle de
+       implementación. Lo que sí necesita es CUÁNDO se leyó, para saber si
+       puede confiar en el horario que está mirando. El nombre sigue
+       viajando en `vivoEstado.fuente` para el diagnóstico. */
     if (v.stale) {
-      return '<p class="text-xs mt-2 zona-aviso zona-texto">⚠ La fuente no contestó recién: '
-        + 'se muestra la última lectura'
-        + (v.actualizado ? ' del ' + esc(fechaLarga(String(v.actualizado).slice(0, 10))) : ' guardada')
-        + '. Los horarios pueden haber cambiado.'
+      return '<p class="text-xs mt-2 zona-aviso zona-texto">⚠ Horarios y transmisiones en vivo'
+        + (v.actualizado
+          ? ' (última actualización: ' + esc(fechaLarga(String(v.actualizado).slice(0, 10)))
+            + (horaDe(v.actualizado) ? ' a las ' + esc(horaDe(v.actualizado)) : '') + ').'
+          : ' (sin poder actualizar).')
+        + ' La fuente no contestó recién, así que los horarios pueden haber cambiado.'
         + (v.aviso ? ' <span class="text-muted">(' + esc(v.aviso) + ')</span>' : '') + '</p>';
     }
     if (!a.envivo) return '';
-    const cuando = v.actualizado ? new Date(v.actualizado) : null;
-    const hh = cuando ? ('0' + cuando.getHours()).slice(-2) + ':' + ('0' + cuando.getMinutes()).slice(-2) : '';
-    return '<p class="text-[11px] text-muted mt-2">Horarios y transmisiones en vivo desde '
-      + esc(v.fuente || 'la fuente oficial') + (hh ? ', leídos a las ' + esc(hh) : '') + '.'
+    const hh = horaDe(v.actualizado);
+    return '<p class="text-[11px] text-muted mt-2">Horarios y transmisiones en vivo'
+      + (hh ? ', leídos a las ' + esc(hh) : '') + '.'
       + (v.fallaron && v.fallaron.length ? ' Alguna zona no se pudo refrescar.' : '') + '</p>';
   }
 
@@ -958,10 +1019,10 @@ const SGADD_FIXTURE = (function () {
     fechaISO, fechaLarga, mesLargo, mesDe, mesMas, claveCruce,
     normalizarCalendario, jugadosDelIndice, rivalDelTexto, unir, delEquipo, resultado,
     meses, mesPorDefecto, deMes, proximo, anterior, agenda, aniosAtipicos,
-    mapaAlias, normalizarFuente,
+    mapaAlias, normalizarFuente, dedupFuente,
     /* ui */
     html, pintar, montar, irAMes, cargarTorneo, cargarVivo, estado, vacio,
-    chipEstado, transmisiones, avisoFuente,
+    chipEstado, transmisiones, avisoFuente, horaDe,
   };
 })();
 

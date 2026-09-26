@@ -46,6 +46,7 @@ const catalogo = require('../lib/catalogo.js');
 const fuentes = require('../lib/fixture-fuentes.js');
 const { verificarToken, tokenDeLaPeticion } = require('../lib/auth.js');
 const AUTH = require('../lib/compartido/sgadd-auth.js');
+const CORE = require('../lib/compartido/sgadd-core.js');
 
 const PREFIJO = 'sgadd:fixture:';
 const SLUG = /^[a-z0-9][a-z0-9-]{0,79}$/;
@@ -142,12 +143,24 @@ async function refrescar(config, deps, hoy) {
         if (l.error) { errores.push(l.error); return; }
         l.r.avisos.forEach(x => avisos.push(x));
         l.r.partidos.forEach((p) => {
-          /* UN PARTIDO PUEDE ESTAR EN LAS DOS PÁGINAS —programado y ya
-             jugado— y ahí gana el que TIENE MARCADOR: es el más nuevo. */
-          const k = (p.fecha || 'sin-fecha') + '|' + [p.local, p.visitante].join('|');
+          /* LA CLAVE VA NORMALIZADA con `claveEquipo`, el normalizador de
+             todo el proyecto: las páginas del mismo sitio escriben el mismo
+             club distinto —«RECONQUISTA» en el fixture y «Reconquista» en los
+             resultados— y con el texto crudo el mismo cruce entraba dos
+             veces. */
+          const k = (p.fecha || 'sin-fecha') + '|'
+            + [CORE.claveEquipo(p.local), CORE.claveEquipo(p.visitante)].sort().join('|');
           const previo = vistos[k];
           if (previo === undefined) { vistos[k] = partidos.length; partidos.push(p); return; }
-          if (p.ptsLocal != null && partidos[previo].ptsLocal == null) partidos[previo] = p;
+          /* QUÉ VERSIÓN DEL MISMO CRUCE GANA, de más informativa a menos:
+             el que trae MARCADOR (ya se jugó), y entre los que no, el que NO
+             es del fixture estructural —esa página no tiene hora ni estado—.
+             Sin esta segunda regla, el cruce del fixture podía tapar la fila
+             de la programación y el DT perdía el horario. */
+          const antes = partidos[previo];
+          if (p.ptsLocal != null && antes.ptsLocal == null) { partidos[previo] = p; return; }
+          if (p.ptsLocal == null && antes.ptsLocal != null) return;
+          if (antes.estructural && !p.estructural) partidos[previo] = p;
         });
       });
       /* CERO PARTIDOS CON HTTP 200 es «cambió la estructura», no «no hay
@@ -196,7 +209,13 @@ async function manejarFixture(peticion, deps) {
       mensaje: 'Este torneo no declara una fuente externa de fixture.' } };
   }
 
-  const esAdmin = AUTH.esAdmin ? AUTH.esAdmin(v.payload && v.payload.email) : false;
+  /* EL ROL VIENE EN EL RESULTADO DE `verificarToken` (`{ok, sesion, rol}`) y
+     es lo que usan los otros handlers. La primera versión leía
+     `v.payload.email`, que NO existe: `esAdmin` daba siempre false, así que
+     `?refrescar=1` no forzaba nada y el endpoint servía el caché viejo. El
+     modo de fallar era invisible —contestaba 200 con datos buenos, solo
+     viejos— y se encontró al pedir un refresco que no ocurría. */
+  const esAdmin = v.rol === AUTH.ROLES.ADMIN;
   const hoy = new Date().toISOString().slice(0, 10);
   const ttl = config.ttlMs || TTL_POR_DEFECTO;
 

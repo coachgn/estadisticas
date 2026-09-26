@@ -277,6 +277,12 @@ const FILA = /<tr[^>]*>([\s\S]*?)<\/tr>/g;
 const ES_VS = /^vs\.?$/i;
 const CATEGORIA = /U\s?-?(\d{2})/gi;
 
+/* EL ENCABEZADO DE JORNADA DE LA PÁGINA «FIXTURE»: `1ª Fecha - 21/3/2026`.
+   Esa página es el fixture ESTRUCTURAL —qué cruce va en cada fecha— y sus
+   filas traen solo LOCAL · vs · VISITANTE, sin fecha propia: la fecha la
+   pone el encabezado que las precede. */
+const JORNADA_APDEB = /(\d{1,2}\s*[\u00ba\u00b0]?\s*)?fecha[^<]{0,20}?(\d{1,2}\/\d{1,2}\/\d{4})/i;
+
 /** Las categorías que menciona una celda: `U15 - U17 - U21` → [15,17,21]. */
 function categoriasDe(celda) {
   const out = [];
@@ -305,6 +311,16 @@ function parsearApdeb(html, opciones) {
   /* El piso de temporada, si el torneo lo declara (ver `configDe`). */
   const desde = FECHA_ISO.test(String(o.desde || '')) ? String(o.desde) : null;
   let fueraDeTemporada = 0;
+
+  /* LAS JORNADAS, en orden de aparición: una fila sin celda de fecha toma la
+     del último encabezado que vino antes. Es el mismo mecanismo que el «Hoy»
+     de basket-club, y hace falta para la página FIXTURE, donde NINGUNA fila
+     trae fecha. */
+  const jornadas = [];
+  todas(FILA, doc).forEach((f) => {
+    const m = JORNADA_APDEB.exec(texto(f[1]));
+    if (m) jornadas.push({ i: f.index, fecha: fechaDesdeDDMM(m[2]) });
+  });
 
   todas(FILA, doc).forEach((f) => {
     const celdas = todas(CELDA, f[1]).map(c => texto(c[1]));
@@ -340,7 +356,19 @@ function parsearApdeb(html, opciones) {
     const cabecera = celdas.slice(0, Math.max(0, iVs - (jugado ? 2 : 1))).concat(
       jugado ? [] : []).filter(Boolean);
     const primera = cabecera.length ? cabecera[0] : '';
-    const fecha = fechaDesdeDDMM(primera);
+    let fecha = fechaDesdeDDMM(primera);
+
+    /* LA FILA DE LA PÁGINA «FIXTURE» no tiene celda de fecha: el local es la
+       PRIMERA celda (`iVs === 1`). Ahí la fecha la pone el encabezado de
+       jornada, y solo ahí: en la programación una fila sin fecha dice «A
+       Reprogramar» y heredar la de la jornada le inventaría un día que el
+       sitio justamente no publicó. La forma de la fila es lo que las separa,
+       no una adivinanza. */
+    const esFixtureEstructural = (iVs === 1 && !jugado);
+    if (!fecha && esFixtureEstructural) {
+      const previa = jornadas.filter(j => j.i < f.index && j.fecha).pop();
+      if (previa) fecha = previa.fecha;
+    }
     /* La hora es cualquier celda de la cabecera con hh:mm, y nunca la
        primera cuando esa ya trae la fecha. */
     const hh = cabecera.map(c => hora(c)).filter(Boolean)[0] || null;
@@ -348,6 +376,10 @@ function parsearApdeb(html, opciones) {
     let est;
     if (fecha) {
       est = hh ? { estado: 'PROGRAMADO', estadoTexto: hh } : { estado: 'PROGRAMADO', estadoTexto: '' };
+    } else if (esFixtureEstructural) {
+      /* Sin fecha de jornada tampoco: el cruce está declarado en el fixture
+         y no tiene día asignado todavía. No es un estado raro. */
+      est = { estado: 'PROGRAMADO', estadoTexto: '' };
     } else {
       /* SIN FECHA, la celda dice POR QUÉ: «A Reprogramar», «SUSPENDIDO».
          Se conserva el texto tal cual y se clasifica por palabra clave. */
@@ -356,7 +388,9 @@ function parsearApdeb(html, opciones) {
     }
     const estado = jugado ? 'FINALIZADO' : est.estado;
 
-    if (!fecha && !jugado && est.estado === 'PROGRAMADO' && !primera) return;   // fila vacía
+    if (!fecha && !jugado && est.estado === 'PROGRAMADO' && !primera && !esFixtureEstructural) {
+      return;   // fila vacía
+    }
     /* FUERA DE LA TEMPORADA DECLARADA no entra, y se cuenta para poder
        decirlo: son partidos reales de otro año, no un error del sitio. Los
        que no tienen fecha pasan igual —«a reprogramar» es de ahora—. */
@@ -380,6 +414,10 @@ function parsearApdeb(html, opciones) {
       transmision: [],
       zona: o.zona || null,
       categorias: cats.length ? cats : null,
+      /* DE QUÉ PÁGINA SALIÓ. El fixture estructural es el de MENOS detalle
+         —no trae hora ni estado— así que la unión lo deja perder contra la
+         programación del mismo cruce (ver `refrescar`). */
+      estructural: esFixtureEstructural,
     });
   });
 
@@ -466,7 +504,12 @@ function configDe(doc) {
       return;
     }
     if (!v || typeof v !== 'object' || Array.isArray(v)) return;
-    const urls = (Array.isArray(v.urls) ? v.urls : [v.programacion, v.resultados, v.url])
+    /* EL ORDEN IMPORTA POCO —la unión decide por informatividad, no por
+       posición— pero se declara de más a menos detallada igual, para que
+       leer la config diga cuál es la principal. `fixture` es la página
+       ESTRUCTURAL de apdeb: el respaldo para el cruce que la programación
+       todavía no publicó (punto 72). */
+    const urls = (Array.isArray(v.urls) ? v.urls : [v.programacion, v.resultados, v.fixture, v.url])
       .filter(u => typeof u === 'string' && /^https?:\/\//i.test(u));
     if (!urls.length) return;
     zonas[z] = { urls: urls, categoria: v.categoria ? String(v.categoria) : null,
