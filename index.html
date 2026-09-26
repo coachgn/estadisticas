@@ -242,6 +242,24 @@
     overflow-y: auto;
     overscroll-behavior: contain;
   }
+  /* EL MODAL ANCHO · un MODIFICADOR, no un cambio de `.login-caja`.
+
+     Las 24rem de arriba son las del LOGIN, que son dos campos y un boton:
+     ensancharla ahi le cambiaria el ancho a los tres modales, y un login
+     de 700px de ancho se lee peor, no mejor.
+
+     El detalle de un club es otra cosa: una tabla de categorias con slug,
+     nombre y libro, mas los controles de cada una. Medido en el modal real
+     de Reconquista (3 categorias) a 24rem: la caja daba 384px y las NUEVE
+     celdas de esa tabla rompian en dos renglones — «Masculina Naranja ·
+     U23» en 142px de columna. El ancho que la tabla necesita para entrar
+     en una linea es 393px + el padding de la caja = 433px, asi que 44rem
+     entra holgado y deja lugar para que plan, estado y vencimiento vayan
+     en una fila en vez de apilados.
+
+     El `width: 100%` de `.login-caja` sigue mandando por debajo de eso, asi
+     que en un telefono no cambia nada. */
+  .login-caja.modal-ancho { max-width: 44rem; }
   /* LA FILA DE ACCIONES DE UN MODAL NO SE VA CON EL SCROLL.
 
      Con la caja acotada (arriba) los botones ya se ALCANZAN, pero en un
@@ -2797,7 +2815,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=244" />
+<link rel="stylesheet" href="sgadd.css?v=247" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2979,49 +2997,49 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=244"></script>
+<script src="js/sgadd-club.js?v=247"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=244"></script>
-<script src="js/sgadd-core.js?v=244"></script>
-<script src="js/sgadd-auth.js?v=244"></script>
+<script src="js/sgadd-config.js?v=247"></script>
+<script src="js/sgadd-core.js?v=247"></script>
+<script src="js/sgadd-auth.js?v=247"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=244"></script>
-<script src="js/sgadd-glosario.js?v=244"></script>
-<script src="js/sgadd-glosarioui.js?v=244"></script>
-<script src="js/sgadd-comparativa.js?v=244"></script>
-<script src="js/sgadd-comparativaui.js?v=244"></script>
-<script src="js/sgadd-confirmar.js?v=244"></script>
-<script src="js/sgadd-landing.js?v=244"></script>
-<script src="js/sgadd-login.js?v=244"></script>
-<script src="js/sgadd-data.js?v=244"></script>
-<script src="js/sgadd-clientes.js?v=244"></script>
-<script src="js/sgadd-ui.js?v=244"></script>
-<script src="js/sgadd-app.js?v=244"></script>
-<script src="js/sgadd-clasificacion.js?v=244"></script>
+<script src="js/sgadd-demo.js?v=247"></script>
+<script src="js/sgadd-glosario.js?v=247"></script>
+<script src="js/sgadd-glosarioui.js?v=247"></script>
+<script src="js/sgadd-comparativa.js?v=247"></script>
+<script src="js/sgadd-comparativaui.js?v=247"></script>
+<script src="js/sgadd-confirmar.js?v=247"></script>
+<script src="js/sgadd-landing.js?v=247"></script>
+<script src="js/sgadd-login.js?v=247"></script>
+<script src="js/sgadd-data.js?v=247"></script>
+<script src="js/sgadd-clientes.js?v=247"></script>
+<script src="js/sgadd-ui.js?v=247"></script>
+<script src="js/sgadd-app.js?v=247"></script>
+<script src="js/sgadd-clasificacion.js?v=247"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-fixture.js?v=244"></script>
-<script src="js/sgadd-torneos.js?v=244"></script>
-<script src="js/sgadd-hub.js?v=244"></script>
-<script src="js/sgadd-configui.js?v=244"></script>
-<script src="js/sgadd-estados.js?v=244"></script>
-<script src="js/sgadd-buzon.js?v=244"></script>
-<script src="js/sgadd-charts.js?v=244"></script>
-<script src="js/sgadd-personalidad.js?v=244"></script>
-<script src="js/sgadd-rankings.js?v=244"></script>
-<script src="js/sgadd-partido.js?v=244"></script>
-<script src="js/sgadd-informe.js?v=244"></script>
-<script src="js/sgadd-ficha.js?v=244"></script>
-  <script src="js/sgadd-rankingpdf.js?v=244"></script>
-<script src="js/sgadd-equipos.js?v=244"></script>
+<script src="js/sgadd-fixture.js?v=247"></script>
+<script src="js/sgadd-torneos.js?v=247"></script>
+<script src="js/sgadd-hub.js?v=247"></script>
+<script src="js/sgadd-configui.js?v=247"></script>
+<script src="js/sgadd-estados.js?v=247"></script>
+<script src="js/sgadd-buzon.js?v=247"></script>
+<script src="js/sgadd-charts.js?v=247"></script>
+<script src="js/sgadd-personalidad.js?v=247"></script>
+<script src="js/sgadd-rankings.js?v=247"></script>
+<script src="js/sgadd-partido.js?v=247"></script>
+<script src="js/sgadd-informe.js?v=247"></script>
+<script src="js/sgadd-ficha.js?v=247"></script>
+  <script src="js/sgadd-rankingpdf.js?v=247"></script>
+<script src="js/sgadd-equipos.js?v=247"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=244"></script>
-<script src="js/sgadd-jugadores.js?v=244"></script>
-<script src="js/sgadd-4factores.js?v=244"></script>
-<script src="js/sgadd-scouting.js?v=244"></script>
-<script src="js/sgadd-pbp.js?v=244"></script>
-<script src="js/sgadd-diagnostico.js?v=244"></script>
+<script src="js/sgadd-niveles.js?v=247"></script>
+<script src="js/sgadd-jugadores.js?v=247"></script>
+<script src="js/sgadd-4factores.js?v=247"></script>
+<script src="js/sgadd-scouting.js?v=247"></script>
+<script src="js/sgadd-pbp.js?v=247"></script>
+<script src="js/sgadd-diagnostico.js?v=247"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

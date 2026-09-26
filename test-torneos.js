@@ -326,5 +326,173 @@ seccion('6 ter · el selector y el equipo propio del torneo');
   check('un cliente sigue derivando su patrón anclado', cfgCli.patronEquipoPropio === '^JUJUY BASQUET$');
 }
 
+/* =====================================================================
+   10 · LA JERARQUÍA DEL PANEL · Torneo → Zona → Cliente (punto 73)
+   ===================================================================== */
+seccion('10 · el árbol Torneo → Zona → Cliente');
+{
+  /* El catálogo de prueba tiene la forma del real: un torneo con una zona
+     con libro y otra sin, dos clientes enganchados y uno suelto. */
+  const cat = [
+    { id: 'rq', nombre: 'Reconquista', categorias: [
+      { slug: 'rq-primera', label: 'Primera', activo: true, torneo: 'apb', zona: 'a' },
+      { slug: 'rq-u23', label: 'U23', activo: true, torneo: 'form', zona: 'u23' }] },
+    { id: 'dep', nombre: 'Deportivo', equipoPropio: 'DEPORTIVO', categorias: [
+      { slug: 'dep-primera', label: 'Primera', activo: true, torneo: 'apb', zona: 'b' }] },
+    { id: 'jujuy', nombre: 'Jujuy', categorias: [
+      { slug: 'jujuy-primera', label: 'Conferencia Norte', activo: true }] },
+    { id: 'apb', nombre: 'APB 2026', tipo: 'torneo', liga: 'la-plata', categorias: [
+      { slug: 'apb-a', label: 'Zona A', activo: true, zona: 'a', equipos: [{ nombre: 'RECONQUISTA A' }] },
+      { slug: 'apb-b', label: 'Zona B', activo: true, zona: 'b', equipos: [] },
+      { slug: 'apb-c', label: 'Zona C', activo: false, zona: 'c', equipos: [] }] },
+    { id: 'form', nombre: 'Formativas', tipo: 'torneo', categorias: [
+      { slug: 'form-u23', label: 'Sub-23', activo: true, zona: 'u23', equipos: [] }] },
+  ];
+  const a = UI.arbol(cat);
+
+  check('lista los torneos, no los clientes', a.torneos.length === 2, a.torneos.map(t => t.id));
+  check('y en orden alfabético', a.torneos[0].id === 'apb' && a.torneos[1].id === 'form');
+  const apb = a.torneos[0];
+  check('cada torneo trae TODAS sus zonas', apb.zonas.length === 3, apb.zonas.map(z => z.slug));
+  /* UNA ZONA SIN CLIENTES NO SE ESCONDE: es justo donde hay que poder dar
+     de alta el primero, así que tiene que estar en la lista. */
+  const zc = apb.zonas.find(z => z.slug === 'apb-c');
+  check('una zona sin clientes ni libro sigue en la lista', !!zc && zc.clientes.length === 0 && !zc.activo);
+  check('los clientes cuelgan de SU zona',
+    apb.zonas.find(z => z.zona === 'a').clientes.map(c => c.club).join() === 'rq'
+      && apb.zonas.find(z => z.zona === 'b').clientes.map(c => c.club).join() === 'dep',
+    apb.zonas.map(z => z.zona + ':' + z.clientes.map(c => c.club).join('+')));
+  check('y el cliente trae el equipo que el DT ve',
+    apb.zonas.find(z => z.zona === 'b').clientes[0].equipo === 'DEPORTIVO');
+  check('el torneo cuenta sus clientes y sus zonas sin libro',
+    apb.clientes === 2 && apb.zonasSinLibro === 1, [apb.clientes, apb.zonasSinLibro]);
+  check('un cliente NO puede contarse en dos zonas del mismo torneo',
+    apb.zonas.reduce((n, z) => n + z.clientes.length, 0) === apb.clientes);
+
+  /* LOS HUÉRFANOS · el axioma se hace cumplir hacia adelante, pero lo que
+     ya existe no se rompe: se lista para poder resolverlo. */
+  check('la categoría sin torneo queda como huérfana', a.huerfanos.length === 1
+    && a.huerfanos[0].club === 'jujuy' && a.huerfanos[0].slug === 'jujuy-primera', a.huerfanos);
+  check('y no se la inventa un torneo', !a.huerfanos[0].torneoFantasma);
+  /* Un torneo que YA NO ESTÁ en el catálogo no cuenta como enganche: se
+     vería enganchada y no llevaría a ninguna parte. */
+  const conFantasma = UI.arbol(cat.concat([{ id: 'x', nombre: 'X', categorias:
+    [{ slug: 'x-p', label: 'P', activo: true, torneo: 'torneo-borrado', zona: 'z' }] }]));
+  check('una categoría que apunta a un torneo que no existe es huérfana',
+    conFantasma.huerfanos.length === 2, conFantasma.huerfanos.map(h => h.slug));
+  check('y se dice a cuál apuntaba, que es otro problema',
+    (conFantasma.huerfanos.find(h => h.club === 'x') || {}).torneoFantasma === 'torneo-borrado',
+    conFantasma.huerfanos);
+  /* Un torneo NO es un huérfano: no es un cliente. */
+  check('un torneo sin clientes no aparece como huérfano',
+    !a.huerfanos.some(h => h.club === 'apb' || h.club === 'form'));
+
+  /* Sin nada, no revienta y no inventa. */
+  const vacio = UI.arbol([]);
+  check('sin catálogo devuelve las dos listas vacías',
+    vacio.torneos.length === 0 && vacio.huerfanos.length === 0);
+}
+
+/* =====================================================================
+   11 · LA PANTALLA · una sola hoja de ruta
+   ===================================================================== */
+seccion('11 · la pantalla no deja dudar qué formulario usar');
+{
+  const cat = [
+    { id: 'rq', nombre: 'Reconquista', categorias: [
+      { slug: 'rq-primera', label: 'Primera', activo: true, torneo: 'apb', zona: 'a' }] },
+    { id: 'jujuy', nombre: 'Jujuy', categorias: [{ slug: 'jujuy-primera', label: 'Norte', activo: true }] },
+    { id: 'apb', nombre: 'APB 2026', tipo: 'torneo', categorias: [
+      { slug: 'apb-a', label: 'Zona A', activo: true, zona: 'a', equipos: [] },
+      { slug: 'apb-c', label: 'Zona C', activo: false, zona: 'c', equipos: [] }] },
+  ];
+  const h = UI.html(cat);
+
+  /* CADA ZONA TIENE SU «+ cliente», y ese botón lleva el torneo y la zona:
+     es lo que hace que el Caso 3 —sumar un cliente a un torneo que ya
+     existe— no pase por elegir un libro en una lista. */
+  const botones = (h.match(/altaEnZona\('([^']+)','([^']+)'\)/g) || []);
+  check('hay un «+ cliente» por zona', botones.length === 2, botones);
+  check('y cada uno lleva SU torneo y SU zona',
+    /altaEnZona\('apb','apb-a'\)/.test(h) && /altaEnZona\('apb','apb-c'\)/.test(h));
+  check('la zona sin clientes lo dice, en vez de salir vacía', /sin clientes/.test(h));
+  check('el encabezado declara la regla de negocio',
+    /Un cliente siempre pertenece a un torneo/.test(h));
+
+  /* LOS HUÉRFANOS SE VEN, y su botón preselecciona la categoría: hacerla
+     buscar de nuevo en un desplegable es pedir dos veces el mismo dato. */
+  check('los huérfanos tienen su bloque', /data-huerfanos="1"/.test(h));
+  check('y su botón ya trae el cliente elegido',
+    /empezarVinculo\('', 'jujuy', 'jujuy-primera'\)/.test(h), (h.match(/empezarVinculo\([^)]*\)/g) || []));
+  check('el bloque dice que NO los corta', /Se sirven igual que siempre/.test(h));
+  /* Sin huérfanos NO se pinta: una card diciendo «no hay» es ruido. */
+  const sinH = UI.html(cat.filter(c => c.id !== 'jujuy'));
+  check('sin huérfanos, el bloque no existe', !/data-huerfanos/.test(sinH));
+
+  /* LOS FORMULARIOS NO INVADEN LA PANTALLA: van plegados. */
+  const abiertos = (h.match(/<details[^>]*\sopen/g) || []).length;
+  check('los formularios arrancan plegados', abiertos === 0, abiertos);
+  check('y son <details>, no cards siempre abiertas',
+    (h.match(/<details/g) || []).length >= 2);
+
+  /* Sin ningún torneo la pantalla no queda muda: dice por dónde empezar. */
+  const sinT = UI.html([{ id: 'rq', nombre: 'Reconquista', categorias: [] }]);
+  check('sin torneos dice por dónde se empieza', /Empezá por/.test(sinT) && /Nuevo torneo/.test(sinT));
+}
+
+/* =====================================================================
+   12 · EL ENGANCHE EXPLÍCITO · la zona que todavía no tiene libro
+   ===================================================================== */
+seccion('12 · el primer cliente de una zona sin libro');
+{
+  const base = {
+    apb: { nombre: 'APB', tipo: 'torneo', categorias: {
+      'apb-a': { label: 'Zona A', sheetId: LIBRO_A, zona: 'a' },
+      'apb-c': { label: 'Zona C', zona: 'c' } } },
+  };
+  /* Con libro en la zona, el enganche lo deduce el servidor del `libroDe`
+     (punto 67) y no hace falta mandarlo: es el camino normal. */
+  const r1 = ap(base, 'alta', { club: 'nuevo1', nombre: 'Nuevo 1',
+    categoria: 'n1-primera', label: 'Primera', libroDe: 'apb/apb-a', equipoPropio: 'NUEVO 1' });
+  check('el alta por el libro de una zona engancha sola', r1.ok
+    && r1.catalogo.nuevo1.categorias['n1-primera'].torneo === 'apb'
+    && r1.catalogo.nuevo1.categorias['n1-primera'].zona === 'a',
+    r1.ok ? r1.catalogo.nuevo1.categorias['n1-primera'] : r1);
+
+  /* SIN libro no hay `libroDe` del que deducirlo, y ahí el enganche viaja
+     explícito: sin esto el primer cliente de una zona nueva quedaba
+     huérfano justo cuando el admin acababa de decir a qué zona va. */
+  const r2 = ap(base, 'alta', { club: 'nuevo2', nombre: 'Nuevo 2',
+    categoria: 'n2-primera', label: 'Primera', sheetId: 'Z'.repeat(30) + 'libroPropio',
+    equipoPropio: 'NUEVO 2', torneo: 'apb', zona: 'c' });
+  check('una zona sin libro igual deja el cliente enganchado', r2.ok
+    && r2.catalogo.nuevo2.categorias['n2-primera'].torneo === 'apb'
+    && r2.catalogo.nuevo2.categorias['n2-primera'].zona === 'c',
+    r2.ok ? r2.catalogo.nuevo2.categorias['n2-primera'] : r2);
+  check('y conserva SU libro, no el de la zona',
+    r2.ok && r2.catalogo.nuevo2.categorias['n2-primera'].sheetId !== LIBRO_A);
+
+  /* UNA ZONA QUE NO EXISTE SE RECHAZA: un enganche a la nada se ve igual
+     de enganchado que uno bueno, y es peor que no tener ninguno. */
+  const r3 = ap(base, 'alta', { club: 'nuevo3', nombre: 'Nuevo 3',
+    categoria: 'n3-primera', label: 'Primera', sheetId: 'Y'.repeat(30) + 'libroPropio',
+    equipoPropio: 'NUEVO 3', torneo: 'apb', zona: 'zona-que-no-existe' });
+  check('una zona que no existe se rechaza', !r3.ok && r3.codigo === 'ZONA', r3);
+  const r4 = ap(base, 'alta', { club: 'nuevo4', nombre: 'Nuevo 4',
+    categoria: 'n4-primera', label: 'Primera', sheetId: 'X'.repeat(30) + 'libroPropio',
+    equipoPropio: 'NUEVO 4', torneo: 'no-soy-un-torneo', zona: 'a' });
+  check('y un torneo que no existe, también', !r4.ok && r4.codigo === 'ZONA', r4);
+
+  /* NO SE TOCA lo que no se manda: editar la etiqueta de una categoría
+     desde una pantalla vieja no puede borrarle el enganche. */
+  const conEnganche = JSON.parse(JSON.stringify(base));
+  conEnganche.cli = { nombre: 'Cli', categorias: { 'cli-p': { label: 'P', sheetId: LIBRO_A, torneo: 'apb', zona: 'a' } } };
+  const r5 = ap(conEnganche, 'alta', { club: 'cli', categoria: 'cli-p', label: 'Primera 2027' });
+  check('editar sin mandar torneo NO borra el enganche', r5.ok
+    && r5.catalogo.cli.categorias['cli-p'].torneo === 'apb'
+    && r5.catalogo.cli.categorias['cli-p'].label === 'Primera 2027',
+    r5.ok ? r5.catalogo.cli.categorias['cli-p'] : r5);
+}
+
 console.log('\n' + (mal ? '✗ HAY FALLAS · ' : '✓ TODO OK · ') + ok + ' pasaron, ' + mal + ' fallaron');
 process.exit(mal ? 1 : 0);

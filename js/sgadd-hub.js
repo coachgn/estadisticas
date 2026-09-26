@@ -61,6 +61,17 @@ const SGADD_HUB = (function () {
     /* Un id que el admin escribió a mano deja de completarse solo: pisarle
        lo que tipeó por seguir al nombre sería peor que no ayudarlo. */
     tocado: { club: false, categoria: false },
+    /* EL FORMULARIO ARRANCA PLEGADO (punto 73) y el estado vive acá y no
+       en el DOM: el alta se repinta en cada tecla, así que un `open` en el
+       nodo se cerraría solo mientras el admin escribe (punto 13). */
+    abierto: false,
+    /* A que torneo y zona pertenece, como '<torneo>/<slugZona>'. Es lo que
+       hace cumplir el axioma: un cliente siempre pertenece a un torneo. */
+    torneoZona: '',
+    /* De qué zona se abrió, para poder decirlo en el encabezado: el alta
+       que nace de una zona ya trae el torneo resuelto y el admin tiene que
+       ver CUÁL, o no sabe a qué lo está enganchando. */
+    desdeZona: null,
   };
 
   /* La lectura de equipos del libro elegido. Se OLVIDA al cambiar de libro:
@@ -158,6 +169,14 @@ const SGADD_HUB = (function () {
       f.push('el libro (el link o el sheetId)');
     }
     if (v.modo === 'nuevo' && !v.equipoPropio) f.push('el equipo propio');
+    /* EL TORNEO ES OBLIGATORIO AL CREAR (punto 73): un cliente siempre
+       pertenece a uno, y sin él la categoría queda sin fixture ni cruces.
+       Se pide SOLO al crear: editar la etiqueta de una categoría que ya
+       existe no puede exigir resolver un enganche viejo —así es como las
+       8 categorías ya enganchadas y la huérfana siguen editándose igual—.
+       Lo cumple el `libroDe` de una zona, que es el camino normal; el que
+       pega un libro suelto declara la zona en el desplegable de al lado. */
+    if (v.modo === 'nuevo' && !v.torneoZona) f.push('el torneo y la zona');
     return f;
   }
 
@@ -963,7 +982,11 @@ const SGADD_HUB = (function () {
        estaba abierto (una baja): se cierra en vez de quedar en blanco. */
     if (!c) return '';
     return '<div class="login-fondo" onclick="if(event.target===this)SGADD_HUB.cerrarDetalle()">'
-      + '<div class="login-caja card rounded-xl p-5 border border-hairline" role="dialog" aria-modal="true"'
+      /* `modal-ancho` y no un ancho propio: el modificador vive junto a
+         `.login-caja` en el <style>, que es donde ya estan las otras
+         reglas de modal (punto 49). Sin el, la tabla de categorias rompe
+         cada celda en dos renglones — medido. */
+      + '<div class="login-caja modal-ancho card rounded-xl p-5 border border-hairline" role="dialog" aria-modal="true"'
       + ' aria-label="Detalle de ' + esc(c.nombre || c.id) + '">'
       + '<div class="flex items-start justify-between gap-3 mb-3">'
       + '<span class="flex items-center gap-2 min-w-0">' + escudoClub(c)
@@ -1234,6 +1257,69 @@ const SGADD_HUB = (function () {
     if (alta.fuente === 'mantener') return { libroDe: alta.modo + '/' + alta.catElegida };
     if (alta.fuente === 'existente') return { libroDe: alta.libroDe };
     return { sheetId: idDeLibro(alta.sheet) };
+  }
+
+  /**
+   * A QUÉ TORNEO Y ZONA PERTENECE · el campo que cierra la jerarquía.
+   *
+   * Es un solo desplegable con los pares «torneo · zona» que existen, y no
+   * dos encadenados: con dos, elegir el torneo repinta y hay que volver a
+   * bajar a la zona, y además se puede quedar a mitad de camino —torneo sí,
+   * zona no— que es exactamente el estado que deja huérfano a un cliente.
+   *
+   * Una zona SIN LIBRO se ofrece igual y se marca: es el caso del primer
+   * cliente de una zona recién declarada, y ahí el enganche viaja explícito
+   * (el servidor no tiene un `libroDe` del que deducirlo).
+   */
+  function selectTorneoZona() {
+    const ts = (clubesCatalogo() || []).filter(c => c.tipo === 'torneo');
+    const pares = [];
+    ts.forEach(t => (t.categorias || []).forEach((k) => {
+      if (k.zona) pares.push({ valor: t.id + '/' + k.slug, torneo: t.nombre || t.id,
+        zona: k.label || k.slug, activo: !!k.activo });
+    }));
+    pares.sort((a, b) => (a.torneo + a.zona).localeCompare(b.torneo + b.zona, 'es'));
+    if (!pares.length) {
+      return `<p class="text-xs zona-aviso zona-texto mt-3">No hay ningún torneo declarado todavía, y un cliente
+        siempre pertenece a uno. Creá el torneo primero, con <b>＋ Nuevo torneo</b>.</p>`;
+    }
+    const editando = alta.modo !== 'nuevo';
+    return `<label class="block mt-3">
+      <span class="${ROTULO}">Torneo y zona${editando ? '' : ' · obligatorio'}</span>
+      <select id="alta-torneozona" onchange="SGADD_HUB.elegirTorneoZona(this.value)" class="${CLASE_SELECT}">
+        <option value=""${alta.torneoZona ? '' : ' selected'}>${editando ? 'Sin cambios' : 'Elegí a qué zona pertenece'}</option>
+        ${pares.map(p => `<option value="${esc(p.valor)}"${alta.torneoZona === p.valor ? ' selected' : ''}>${esc(p.torneo)} · ${esc(p.zona)}${p.activo ? '' : ' (sin libro)'}</option>`).join('')}
+      </select>
+      <span class="block text-[11px] text-muted mt-1">De acá salen su fixture y sus cruces. Si la zona ya tiene
+        libro, se usa ese y no hace falta pegar ninguno.</span>
+    </label>`;
+  }
+
+  /**
+   * Elegir la zona ELIGE TAMBIÉN EL LIBRO, cuando la zona tiene uno.
+   *
+   * Son la misma decisión dicha una vez: el cliente de una zona lee el
+   * libro de esa zona (es lo que hace que Sud América y Hogar Social
+   * compartan el de la Zona B). Dejarlos separados obligaba a acertar dos
+   * veces lo mismo, y a la segunda es donde se elegía el libro de otro.
+   */
+  /** De «torneo/slugDeZona» a la `zona` que guarda el catálogo (la letra). */
+  function zonaDeSlug(par) {
+    const p = String(par || '').split('/');
+    const t = (clubesCatalogo() || []).find(c => c.id === p[0]);
+    const k = t ? (t.categorias || []).find(x => x.slug === p[1]) : null;
+    return (k && k.zona) || '';
+  }
+
+  function elegirTorneoZona(v) {
+    alta.torneoZona = v || '';
+    const p = String(v || '').split('/');
+    const t = (clubesCatalogo() || []).find(c => c.id === p[0]);
+    const k = t ? (t.categorias || []).find(x => x.slug === p[1]) : null;
+    if (k && k.activo) { alta.fuente = 'existente'; alta.libroDe = v; }
+    else if (k) { alta.fuente = 'nuevo'; alta.libroDe = ''; }
+    if (t && t.liga && !alta.liga) alta.liga = t.liga;
+    refrescarAlta('alta-torneozona');
   }
 
   /* EL PLAN DE LA CATEGORÍA, en el mismo formulario del alta (punto 60):
@@ -1561,13 +1647,29 @@ const SGADD_HUB = (function () {
       .concat(['la-plata', 'liga-argentina']))).sort();
     const catFija = editando && !!alta.catElegida;
 
-    return `<div class="card rounded-xl p-4 sm:p-5 border border-hairline">
-      <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Alta o edición de un cliente</h3>
+    const z = alta.desdeZona;
+    return `<details class="card rounded-xl border border-hairline" ${alta.abierto ? 'open' : ''}
+      ontoggle="SGADD_HUB.abrirAlta(this.open)">
+      <summary class="cursor-pointer p-4 sm:p-5 flex items-baseline justify-between gap-3 flex-wrap">
+        <span class="font-display uppercase tracking-wide text-sm text-ink">
+          ${editando ? 'Editar · ' + esc(clubEd ? (clubEd.nombre || clubEd.id) : alta.modo)
+            : (z ? '＋ Cliente nuevo en ' + esc(z.nombreTorneo) + ' · ' + esc(z.label) : '＋ Cliente nuevo')}</span>
+        <span class="text-[11px] text-muted">${alta.abierto ? 'ocultar' : 'abrir'}</span>
+      </summary>
+      <div class="px-4 sm:px-5 pb-4 sm:pb-5">
       <p class="text-xs text-muted mb-4">
         Tres pasos: el club, la categoría y el libro de donde salen sus datos. Guardar
         <strong class="text-ink">publica para todos los usuarios de ese club</strong>, y su panel
         queda andando en la próxima carga — sin tocar el repositorio.
       </p>
+      ${z ? `<p class="text-xs mb-4 p-2 rounded-md border border-hairline ${z.conLibro ? 'text-muted' : 'zona-aviso zona-texto'}">
+        ${z.conLibro
+          ? 'Se engancha a <b class="text-ink">' + esc(z.nombreTorneo) + ' · ' + esc(z.label)
+            + '</b>: el libro de esa zona ya viene elegido abajo, y el torneo queda declarado solo.'
+          : '<b>' + esc(z.nombreTorneo) + ' · ' + esc(z.label) + '</b> todavía no tiene libro, así que'
+            + ' no hay ninguno para prestarle: pegá el del cliente abajo. El enganche al torneo se'
+            + ' declara después, con «Enganchar un cliente que ya existe».'}
+      </p>` : ''}
 
       <label class="block mb-4">
         <span class="${ROTULO}">¿Qué querés hacer?</span>
@@ -1619,6 +1721,7 @@ const SGADD_HUB = (function () {
           ${selectPlanAlta(clubEd)}
           ${catFija ? '' : selectEstadoAlta()}
         </div>
+        ${selectTorneoZona()}
       </fieldset>
 
       <fieldset class="border-t border-hairline pt-3 mt-4">
@@ -1645,7 +1748,8 @@ const SGADD_HUB = (function () {
       </fieldset>
 
       <div id="hubAltaEstado" class="mt-4">${estadoAlta()}</div>
-    </div>`;
+      </div>
+    </details>`;
   }
 
   /** La lectura del libro y la elección del equipo propio. */
@@ -1813,10 +1917,24 @@ const SGADD_HUB = (function () {
       <div id="hubDetalle">${modalDetalle()}</div>
 
       <div id="hubAlta">${bloqueAlta()}</div>
-
-      ${typeof SGADD_TORNEOS !== 'undefined'
-        ? `<div id="hubTorneos" class="space-y-4">${SGADD_TORNEOS.html(cs.concat(torneos))}</div>` : ''}
     `;
+  }
+
+  /**
+   * LA PESTAÑA ENTERA, con la jerarquía arriba (punto 73).
+   *
+   * El orden no es cosmético: lo primero que se ve es el árbol de torneos
+   * con sus clientes adentro, que es el mapa de qué hay; la grilla de
+   * clientes y el alta quedan abajo y plegadas. Antes estaba al revés —el
+   * alta de cliente en el medio de la pantalla y los torneos al final— y
+   * de ahí salía la duda de qué formulario usar.
+   */
+  function pantalla() {
+    const cs = clubes();
+    if (!cs) return html();
+    return (typeof SGADD_TORNEOS !== 'undefined'
+      ? '<div id="hubTorneos" class="space-y-4">' + SGADD_TORNEOS.html(cs) + '</div>' : '')
+      + '<div class="space-y-4">' + html() + '</div>';
   }
 
   /** La intención que se manda. Nunca un catálogo (punto 30). */
@@ -1841,6 +1959,12 @@ const SGADD_HUB = (function () {
       ? { equipoPropioCategoria: alta.equipoPropio ? claveEq(alta.equipoPropio) : '' }
       : { equipoPropio: alta.equipoPropio ? claveEq(alta.equipoPropio) : '' },
     alta.fuente === 'mantener' ? {} : intencionLibro(), color,
+    /* EL ENGANCHE AL TORNEO viaja EXPLÍCITO solo cuando el libro no lo
+       declara: si el libro es el de la zona (`libroDe`), el servidor ya lo
+       deduce de ahí desde el punto 67 y mandarlo dos veces sería un
+       segundo lugar por donde el mismo hecho puede divergir. */
+    (alta.torneoZona && intencionLibro().libroDe !== alta.torneoZona)
+      ? { torneo: alta.torneoZona.split('/')[0], zona: zonaDeSlug(alta.torneoZona) } : {},
     /* El estado inicial, solo para una categoría que se CREA. */
     (!alta.catElegida && alta.estado) ? { estado: alta.estado } : {},
     /* EL VENCIMIENTO (punto 63): el de una prueba o el del plan. En una
@@ -2045,10 +2169,48 @@ const SGADD_HUB = (function () {
   const conFoco = (fn) => (typeof SGADD_UI !== 'undefined' && SGADD_UI.conservarFoco)
     ? SGADD_UI.conservarFoco(fn) : fn();
 
+  /* Repinta la pestaña ENTERA —el árbol de torneos incluido— porque un
+     cambio de cliente lo mueve: pausar una categoría o darla de baja
+     cambia lo que muestra la zona de su torneo. Con solo la grilla, el
+     árbol quedaba con el estado anterior hasta el F5 siguiente. */
   function repintarLista() {
     const n = document.getElementById('hubClientes');
-    if (n) conFoco(() => { n.innerHTML = html(); });
+    if (n) conFoco(() => { n.innerHTML = pantalla(); });
   }
+
+  /**
+   * DAR DE ALTA UN CLIENTE EN UNA ZONA · el punto de entrada del rediseño.
+   *
+   * Es el botón «+ cliente» de la fila de una zona, y lo que resuelve es
+   * el Caso 3 del pedido —sumar un cliente a un torneo que ya existe— sin
+   * que el admin tenga que saber nada: el formulario se abre con el libro
+   * de esa zona ya elegido, y el servidor engancha solo el torneo y la
+   * zona a partir de ese `libroDe` (lo hace desde el punto 67, esto no
+   * cambia el servidor).
+   *
+   * UNA ZONA SIN LIBRO no puede prestarlo, así que ahí el alta se abre
+   * pidiendo el libro nuevo en vez de dejar elegida una fuente vacía —y
+   * lo dice—. Es la degradación honesta: el alta sigue siendo posible.
+   */
+  function altaEnZona(torneoId, slugZona) {
+    const t = (clubesCatalogo() || []).find(c => c.id === torneoId);
+    const z = t ? (t.categorias || []).find(k => k.slug === slugZona) : null;
+    reiniciarAlta();
+    alta.abierto = true;
+    alta.desdeZona = { torneo: torneoId, nombreTorneo: (t && t.nombre) || torneoId,
+      slug: slugZona, zona: (z && z.zona) || '', label: (z && z.label) || slugZona,
+      conLibro: !!(z && z.activo) };
+    alta.torneoZona = torneoId + '/' + slugZona;
+    if (z && z.activo) { alta.fuente = 'existente'; alta.libroDe = torneoId + '/' + slugZona; }
+    else alta.fuente = 'nuevo';
+    if (t && t.liga) alta.liga = t.liga;
+    refrescarAlta('alta-nombre');
+    const n = (typeof document !== 'undefined') ? document.getElementById('hubAlta') : null;
+    if (n && n.scrollIntoView) n.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  /** Abre o cierra el formulario de alta. El estado vive en `alta`, no en el DOM. */
+  function abrirAlta(v) { alta.abierto = !!v; }
 
   /** El formulario entero. Solo desde un select o un radio, y con el foco de vuelta. */
   function refrescarAlta(focoId) {
@@ -2258,8 +2420,33 @@ const SGADD_HUB = (function () {
     refrescarAlta('radio');
   }
 
+  /**
+   * Elegir el libro de OTRO CLIENTE propone su mismo torneo y zona.
+   *
+   * Es el caso real de Sud América y Hogar Social, que leen el libro de la
+   * Zona B igual que DEPORTIVO: si comparten el libro es porque juegan el
+   * mismo torneo en la misma zona, así que hacérselo elegir de nuevo es
+   * pedir dos veces un dato que ya se dio — y a la segunda es donde se
+   * elige la zona equivocada.
+   *
+   * SE PROPONE, NO SE IMPONE: solo si todavía no hay una zona elegida, y
+   * el desplegable queda para cambiarla. Un cliente puede leer el libro de
+   * una zona y competir en otra (un refuerzo, una reubicación), y eso lo
+   * sabe el admin, no el panel.
+   */
   function elegirLibro(v) {
     alta.libroDe = v; olvidarLibro(); guardado.estado = null;
+    if (!alta.torneoZona) {
+      const p = String(v || '').split('/');
+      const duenio = (clubesCatalogo() || []).find(c => c.id === p[0]);
+      const k = duenio ? (duenio.categorias || []).find(x => x.slug === p[1]) : null;
+      if (duenio && duenio.tipo === 'torneo' && k && k.zona) alta.torneoZona = v;
+      else if (k && k.torneo && k.zona) {
+        const t = (clubesCatalogo() || []).find(c => c.id === k.torneo);
+        const zt = t ? (t.categorias || []).find(x => x.zona === k.zona) : null;
+        if (zt) alta.torneoZona = k.torneo + '/' + zt.slug;
+      }
+    }
     refrescarAlta('alta-libro');
   }
 
@@ -2314,7 +2501,9 @@ const SGADD_HUB = (function () {
     /* ui */
     estadoEfectivo, diasPara, planCanonico, ciclo, ESTADOS, PLANES,
     QUE_INCLUYE, PARTIDOS_POR_CICLO,
-    html, bloqueAlta, campoAlta, guardar, accionClub, alta, guardado, pendiente,
+    html, pantalla, bloqueAlta, campoAlta, guardar, accionClub, alta, guardado, pendiente,
+    /* el alta que nace de una zona, y el plegado (punto 73) */
+    altaEnZona, abrirAlta, selectTorneoZona, elegirTorneoZona,
     /* plan y estado por categoría (punto 60) */
     accionCategoria, filaCategoria, celdaPlan, celdaEstado, NOMBRE_ESTADO, TONO_ESTADO,
     selectPlanAlta, elegirPlanAlta, elegirEstadoAlta,

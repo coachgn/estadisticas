@@ -425,6 +425,20 @@ function alta(cat, d) {
       nuevo[v.club].categorias[v.categoria].zona = oz.categorias[pz[1]].zona;
     }
   }
+  /* EL ENGANCHE EXPLÍCITO · para la zona que TODAVÍA NO TIENE LIBRO.
+     Ahí no hay `libroDe` que lo declare —no hay libro que prestar— y sin
+     esto el primer cliente de una zona nueva quedaba huérfano justo
+     cuando el admin acababa de decir a qué zona pertenece.
+     Se verifica que el torneo y la zona EXISTAN: un enganche a algo que
+     no está es peor que ninguno, porque se ve igual de enganchado. */
+  if (v.torneo && v.zona) {
+    const ot = nuevo[v.torneo];
+    const hay = TORNEOS.esTorneo(ot)
+      && Object.keys(ot.categorias || {}).some(s => ot.categorias[s] && ot.categorias[s].zona === v.zona);
+    if (!hay) return { ok: false, codigo: 'ZONA', mensaje: 'Esa zona no existe en ese torneo.' };
+    nuevo[v.club].categorias[v.categoria].torneo = v.torneo;
+    nuevo[v.club].categorias[v.categoria].zona = v.zona;
+  }
   /* Sin el campo en el pedido NO se toca: editar la etiqueta desde una
      pantalla vieja no puede borrarle el plan a la categoría. */
   const kNueva = nuevo[v.club].categorias[v.categoria];

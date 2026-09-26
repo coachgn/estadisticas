@@ -839,7 +839,12 @@ titulo('LA SESIÓN DESPUÉS DEL LOGIN · los tres síntomas eran uno solo');
      envolver el repintado en `conservarFoco`. */
   const cuerpoIniciar = cli.slice(cli.indexOf('function iniciar('), cli.indexOf('return {', cli.indexOf('function iniciar(')));
   check('al llegar el catálogo se repinta el hub si está abierto',
-    /getElementById\('hubClientes'\)/.test(cuerpoIniciar) && /SGADD_HUB\.html\(\)/.test(cuerpoIniciar),
+    /* `pantalla()` y no `html()` desde el punto 73: el hub pinta ahora el
+       árbol de torneos ARRIBA de la grilla de clientes, y repintar solo la
+       grilla dejaba el árbol con el estado anterior. Lo que la propiedad
+       defiende es lo mismo: que el catálogo que llega tarde repinte el hub
+       si está abierto. */
+    /getElementById\('hubClientes'\)/.test(cuerpoIniciar) && /SGADD_HUB\.pantalla\(\)/.test(cuerpoIniciar),
     cuerpoIniciar.length + ' chars');
   check('y se puede volver a pedir tras un login', /forzar/.test(cli));
 

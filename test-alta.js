@@ -472,6 +472,15 @@ Object.assign(HUB.alta, { nombre: 'Villa San Carlos', club: 'villa-san-carlos', 
   label: 'Primera 2026', categoria: 'villa-san-carlos-primera', fuente: 'existente',
   libroDe: 'deportivo/deportivo-primera', equipoPropio: 'VILLA SAN CARLOS A' });
 HUB.alta.tocado = { club: true, categoria: true };
+
+/* EL TORNEO ES OBLIGATORIO AL CREAR (punto 73): un cliente siempre
+   pertenece a uno. Sin él, guardar NO abre la confirmación —el alta se
+   frena antes— y eso es lo que impide que nazca un huérfano nuevo. */
+HUB.guardar();
+check('sin torneo, el alta de un cliente nuevo no se puede guardar',
+  !abierto && enviados.length === 0 && HUB.faltantesAlta(HUB.alta).indexOf('el torneo y la zona') !== -1,
+  HUB.faltantesAlta(HUB.alta));
+HUB.alta.torneoZona = 'apb-2026-masculino/apb-2026-b';
 HUB.guardar();
 check('guardar ABRE la confirmación y no manda nada todavía', !!abierto && enviados.length === 0);
 check('la confirmación enumera lo que se crea',

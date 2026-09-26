@@ -253,7 +253,7 @@ const SGADD_CLIENTES = (function () {
       const n = (typeof document !== 'undefined') ? document.getElementById('hubClientes') : null;
       /* El catálogo llega cuando llega: el admin puede estar escribiendo
          en el alta, y sin conservar el foco la letra siguiente se pierde. */
-      const repintarHub = () => { n.innerHTML = SGADD_HUB.html(); };
+      const repintarHub = () => { n.innerHTML = SGADD_HUB.pantalla(); };
       if (n && typeof SGADD_HUB !== 'undefined') {
         if (typeof SGADD_UI !== 'undefined' && SGADD_UI.conservarFoco) SGADD_UI.conservarFoco(repintarHub);
         else repintarHub();

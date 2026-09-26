@@ -94,7 +94,7 @@ node test-fixture-apb.js  #  93 tests · el conector de basket-club: el parser c
 node test-fixture.js       # 112 tests · la seccion Fixture, los empty states de pretemporada,
                            #             las iniciales con parentesis y la grilla compacta del hub
 
-node test-torneos.js       #  95 tests · los torneos sin cliente y la estructura multizona: la Liga
+node test-torneos.js       # 126 tests · los torneos sin cliente y la estructura multizona: la Liga
                            #             Argentina 2026-27, la Zona C, el enganche a una zona y la propagación
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
@@ -107,7 +107,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6673 tests en total. Todos tienen que dar verde antes de commitear.**
+**6705 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -220,7 +220,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=244`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=247`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -10618,3 +10618,146 @@ jornada como **16/5/2025**. No se toca: es un dato del sitio, y el panel ya
 tiene el mecanismo para eso —`aniosAtipicos` los muestra con el aviso al
 lado y no los deja decidir por dónde abre la sección (punto 68)—. Se le
 reporta al club, no se corrige acá.
+
+---
+
+## 73. EL PANEL MASTER SE ORDENA POR TORNEO (2026-09-26)
+
+Pedido del club: que no haya que dudar entre «Nuevo torneo» y «Alta de
+cliente», que la pantalla no crezca sin control al sumar ligas, y que el
+modal de un cliente deje de amontonar los nombres en dos renglones. Con
+un axioma que hasta acá no estaba escrito:
+
+> **Un cliente SIEMPRE pertenece a un torneo. Un torneo PUEDE existir sin
+> clientes** —es como se carga una liga entera para tener sus cruces antes
+> de que un club contrate—.
+
+### LO QUE SE MIDIÓ ANTES DE TOCAR NADA
+
+```
+catalogo real (KV, 2026-09-26)   6 clientes · 4 torneos
+categorias de cliente            9
+  enganchadas a un torneo        8
+  huerfanas                      1   jujuy/jujuy-primera (temporada anterior)
+la pestaña, con 3 clientes       2893px de alto, con los dos formularios abiertos
+el modal de un cliente            384px (`.login-caja`), 3 textos en dos renglones
+```
+
+O sea que **el axioma ya era casi cierto**: hacerlo obligatorio no rompe
+nada de lo que hay. La única huérfana es de una temporada pasada y el club
+decidió **marcarla, no tocarla** — se sigue sirviendo igual.
+
+### 1 · La jerarquía es la hoja de ruta · `SGADD_TORNEOS.arbol()`
+
+Motor puro que devuelve `torneos` (cada uno con sus zonas, y cada zona con
+sus clientes) y `huerfanos`. La pantalla se ordena por ahí, y de eso sale
+que no haya dos formularios compitiendo: **el alta de un cliente nace del
+botón «+ cliente» de una zona**, así que el torneo ya viene elegido.
+
+- **Una zona sin clientes NO se esconde**: es justo donde hay que poder dar
+  de alta el primero. Lo mismo la que no tiene libro.
+- **Una categoría que apunta a un torneo que YA NO ESTÁ en el catálogo
+  cuenta como huérfana**, con el id que decía (`torneoFantasma`): darlo por
+  bueno mostraría un enganche que no lleva a ninguna parte.
+- **Los huérfanos van al final y a la vista**, con el botón que abre el
+  enganche **con la categoría ya elegida**. Un huérfano invisible es un
+  cliente que nadie va a enganchar nunca.
+
+### 2 · Los tres casos del pedido, resueltos sin elegir formulario
+
+| | Cómo se hace ahora |
+|---|---|
+| **Torneo solo** | ＋ Nuevo torneo. Es el único alta suelta |
+| **Torneo + su primer cliente** | se crea el torneo y su zona queda con «+ cliente» |
+| **Cliente en un torneo que existe** | «+ cliente» en la fila de su zona |
+
+**El servidor NO cambió para el caso normal.** Desde el punto 67 el alta
+engancha sola cuando el libro viene de la zona de un torneo (`libroDe`), y
+eso es lo que hace el botón: abre el alta con esa zona y su libro ya
+elegidos. Lo que faltaba era que la pantalla lo hiciera obvio — antes las
+zonas de torneo estaban mezcladas con las categorías de otros clientes en
+un desplegable de libros ordenado alfabéticamente.
+
+### 3 · El enganche EXPLÍCITO · la zona que todavía no tiene libro
+
+Ahí no hay `libroDe` del que deducir el torneo, y sin esto **el primer
+cliente de una zona nueva quedaba huérfano justo cuando el admin acababa
+de decir a qué zona pertenece**. La acción `alta` acepta ahora `torneo` y
+`zona` explícitos.
+
+- **Se verifica que existan** (`codigo: 'ZONA'`): un enganche a algo que no
+  está se ve igual de enganchado que uno bueno, y es peor que ninguno.
+- **Viaja SOLO cuando el libro no lo declara.** Si el libro es el de la
+  zona, mandarlo además sería un segundo lugar por donde el mismo hecho
+  puede divergir (punto 8).
+- **Lo que no se manda no se toca**: editar la etiqueta de una categoría
+  desde una pantalla vieja no le borra el enganche.
+
+### 4 · Elegir el libro de OTRO CLIENTE propone su torneo
+
+Es el caso real de Sud América y Hogar Social, que leen el libro de la
+Zona B igual que DEPORTIVO: si comparten libro es porque juegan el mismo
+torneo en la misma zona. **Se propone, no se impone** —solo si todavía no
+hay zona elegida— porque un cliente puede leer el libro de una zona y
+competir en otra, y eso lo sabe el admin, no el panel.
+
+### 5 · Los formularios no invaden la pantalla
+
+Los tres —nuevo torneo, enganche y alta de cliente— son `<details>` que
+**arrancan plegados** y se abren con un gesto. Medido: la pestaña pasó de
+**2893px a 1332px** de alto (con un cliente MÁS que en la medición vieja).
+
+**El plegado vive en el estado del módulo, no en el DOM**: los formularios
+se repintan en cada tecla, así que un `open` en el nodo se cerraría solo
+mientras el admin escribe. Es la trampa del punto 13, tercera vez.
+
+### 6 · El modal ancho es un MODIFICADOR, no un `.login-caja` más grande
+
+`.login-caja` la comparten el login, el modal de confirmación y el detalle
+de un cliente. Las 24rem son las del LOGIN —dos campos y un botón— y
+ensancharla ahí le cambia el ancho a los tres: un login de 700px se lee
+peor, no mejor. Entra `.modal-ancho` (44rem) y lo pide solo el detalle.
+
+Medido con el club de la captura (3 categorías, con los controles de plan,
+estado y vencimiento que agrega el servidor):
+
+```
+antes  24rem · 384px · alto 736px · «Masculina Naranja · U21» y «· U23» en DOS renglones
+ahora  44rem · 704px · alto 516px · CERO textos partidos
+```
+
+**El detector importa**: el primero medía `alto de celda / interlínea` y
+daba nueve falsos positivos —el padding vertical infla la celda sin que el
+texto rompa—. El bueno cuenta los rectángulos del NODO DE TEXTO: uno solo
+significa que entra en una línea. Es la lección del punto 51 otra vez —
+contar la cosa, no una proxy— y por eso el «antes» de arriba recién se
+reprodujo cuando el fixture trajo los campos que manda el servidor.
+
+`width: 100%` sigue mandando por debajo de 704px, así que en un teléfono
+no cambia nada: medido a 477px, cero desbordes y el modal entra entero.
+**A 375px exactos no se pudo medir** —la emulación no baja del ancho del
+panel— igual que el límite que ya anota el punto 49.
+
+### Lo que hay que respetar al tocarlo
+
+- **La pantalla NO vuelve a cruzar clientes contra zonas por su cuenta**:
+  ese cruce es de `arbol()` y tiene test. Dos lugares que lo hagan terminan
+  mostrando cosas distintas.
+- **`pantalla()` y no `html()`**: `html()` es la grilla de clientes y el
+  alta; `pantalla()` le pone el árbol arriba. Un repintado de la grilla
+  sola dejaba el árbol con el estado anterior —pausar una categoría cambia
+  lo que muestra la zona de su torneo—.
+- **El torneo se exige SOLO AL CREAR.** Editar una categoría que ya existe
+  no puede exigir resolver un enganche viejo: es lo que deja seguir
+  editando la huérfana y las ocho enganchadas sin tocar nada.
+- **Cada guarda se verificó AL REVÉS**, revirtiéndola y contando lo que
+  cae: el torneo fantasma 2, esconder la zona sin libro 7, la validación de
+  la zona 2 y el enganche explícito 3.
+
+### Lo que quedó ABIERTO
+
+- **`jujuy/jujuy-primera` sigue sin torneo**, por decisión del club. Aparece
+  en «⚠ Sin torneo» con su botón; engancharla es un gesto del Panel Master.
+- **El alta no crea el torneo si no existe**: si no hay ninguno declarado,
+  el formulario lo dice y manda a crearlo primero. Un alta que cree las dos
+  cosas a la vez mezclaría dos decisiones en un solo botón.

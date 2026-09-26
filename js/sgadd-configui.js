@@ -1239,7 +1239,7 @@ function buildConfiguracion() {
            cada fila de zona tiene nombre, dos rangos, un tono, el rango resuelto y
            tres botones, y apretada en media pantalla se parte en dos lineas. -->
       ${CONFIGUI.pestana === 'clientes'
-        ? '<div id="hubClientes" class="space-y-5">' + SGADD_HUB.html() + '</div>'
+        ? '<div id="hubClientes" class="space-y-5">' + SGADD_HUB.pantalla() + '</div>'
         : CONFIGUI.pestana === 'torneo' ? configPestanaTorneo() : `
       <div class="grid lg:grid-cols-2 gap-5">
 
