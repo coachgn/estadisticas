@@ -638,6 +638,61 @@ ok(!/tr\[role="button"\] > td \{ padding-top: \.75rem/.test(FUERA),
 ok(/@media screen and \(max-width: 767px\)[\s\S]{0,400}position: sticky; left: 0/.test(ESTILO),
    'la columna fija de celular sigue en `screen`');
 
+/* =====================================================================
+   EL CSS COMPILADO TIENE QUE CUBRIR LO QUE EL FUENTE USA (punto 74)
+
+   El scan de Tailwind es ESTÁTICO y el CSS se genera A MANO
+   (`node generar-css.js`), así que una clase nueva que nadie regeneró no
+   existe: la utilidad simplemente no se aplica y no hay ningún síntoma.
+   Pasó con el punto 73, que se commiteó y se publicó con `sm:px-5` y
+   `sm:pb-5` sin compilar — medido en el navegador, los cuerpos de los tres
+   formularios del Panel Master quedaban en 16px donde el markup pedía 20.
+
+   Se verifican SOLO las clases con VARIANTE (`sm:`, `hover:`, …), y no
+   todas: los dos puntos son sintaxis exclusiva de Tailwind — una clase
+   propia no los puede llevar sin escaparlos — así que ahí no hay falso
+   positivo posible. Una utilidad base nueva no la caza esto; la caza
+   regenerar, que necesita red y por eso no vive en la suite.
+   ===================================================================== */
+bloque('CSS compilado · las variantes que el fuente usa');
+{
+  const VARIANTES = ['sm', 'md', 'lg', 'xl', '2xl', 'hover', 'focus', 'focus-visible',
+    'active', 'disabled', 'last', 'first', 'placeholder', 'group-hover', 'print'];
+  const fuentes = [HTML].concat(fs.readdirSync(path.join(RAIZ, 'js'))
+    .filter(f => /\.js$/.test(f))
+    .map(f => fs.readFileSync(path.join(RAIZ, 'js', f), 'utf8')));
+
+  /* De cada `class="..."` del fuente, las clases con variante. El markup se
+     arma con template literals, así que se acepta la interpolación adentro
+     del atributo y se descarta cualquier token que la contenga: una clase
+     compuesta en runtime el scan tampoco la ve (punto 5 bis). */
+  const pedidas = new Set();
+  fuentes.forEach((src) => {
+    const attrs = src.match(/class="[^"]*"/g) || [];
+    attrs.forEach((a) => {
+      a.slice(7, -1).split(/\s+/).forEach((tok) => {
+        /* El markup sale de template literals: un ternario deja la comilla
+           del literal pegada al token (`'hover:bg-surface2'`). Se recorta
+           en vez de descartar el token, para seguir verificandolo. */
+        const c = tok.replace(/^['"]+|['"]+$/g, '');
+        if (!c || /[${}`]/.test(c)) return;
+        const v = c.split(':');
+        if (v.length < 2) return;
+        if (!VARIANTES.includes(v[0])) return;
+        pedidas.add(c);
+      });
+    });
+  });
+
+  /* El selector compilado escapa los dos puntos y los corchetes. */
+  const enElCss = (c) => CSS.indexOf('.' + c.replace(/[:\[\]\/.]/g, m => '\\' + m)) >= 0;
+  const faltan = Array.from(pedidas).filter(c => !enElCss(c)).sort();
+
+  ok(pedidas.size > 40, 'el fuente usa variantes de Tailwind', 'encontré ' + pedidas.size);
+  ok(faltan.length === 0, 'y sgadd.css las tiene TODAS compiladas',
+    faltan.length ? faltan.join(' ') + '  →  corré `node generar-css.js`' : '');
+}
+
 console.log('\n' + '─'.repeat(60));
 if (fallados === 0) console.log('✓ TODO OK · ' + pasados + ' tests');
 else { console.log('✗ ' + fallados + ' FALLARON de ' + (pasados + fallados)); process.exitCode = 1; }

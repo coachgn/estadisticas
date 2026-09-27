@@ -223,6 +223,9 @@ const SGADD_TORNEOS = (function () {
      lo mismo que el del alta: el formulario se repinta al elegir un torneo
      o una zona, y un `open` en el nodo se perderia en ese repintado. */
   const vinculo = { torneo: '', zona: '', club: '', categoria: '', label: '', equipo: '', abierto: false };
+  /* Que tarjeta de torneo esta desplegada. Del modulo y no del DOM: la
+     pestaña se repinta entera al tocar cualquier cosa. */
+  const abiertos = {};
   const resultado = { estado: null, mensaje: '' };
 
   function clubes() {
@@ -248,15 +251,30 @@ const SGADD_TORNEOS = (function () {
     const zs = n.zonas;
     const fases = (n.formato && n.formato.fases) || [];
     const chip = (txt, clase) => `<span class="font-mono text-[10px] px-1.5 py-0.5 rounded ${clase}">${esc(txt)}</span>`;
-    return `<div class="card rounded-xl p-4 border border-hairline" data-torneo="${esc(n.id)}">
-      <div class="flex items-baseline justify-between gap-3 flex-wrap mb-1">
-        <h3 class="font-display uppercase tracking-wide text-sm text-ink">🏆 ${esc(n.nombre)}</h3>
-        <span class="flex items-center gap-1.5 flex-wrap">
-          ${chip(n.clientes + (n.clientes === 1 ? ' cliente' : ' clientes'), n.clientes ? 'bg-surface2 text-ink' : 'bg-surface2 text-muted')}
-          ${n.zonasSinLibro ? chip(n.zonasSinLibro + ' sin libro', 'zona-aviso zona-texto') : ''}
+    /* LA TARJETA ARRANCA MINIMIZADA y se abre con un clic. Con cuatro
+       torneos y sus zonas desplegadas la pestaña era una columna de varios
+       metros; lo que se necesita de un vistazo es CUÁLES hay y si les
+       falta algo, y eso entra en el resumen: nombre, cuántos clientes y
+       cuántas zonas sin libro.
+
+       El plegado vive en `abiertos`, del módulo, y no en el DOM: la
+       pestaña se repinta entera al tocar cualquier cosa —el alta, un
+       plan— y un `open` en el nodo se perdería en cada repintado. */
+    return `<details class="card hub-plegable rounded-xl border border-hairline" data-torneo="${esc(n.id)}"
+      ${abiertos[n.id] ? 'open' : ''} ontoggle="SGADD_TORNEOS.abrirTarjeta('${escJs(n.id)}', this.open)">
+      <summary class="cursor-pointer p-4">
+        <span class="flex items-baseline justify-between gap-3 flex-wrap">
+          <span class="font-display uppercase tracking-wide text-sm text-ink">🏆 ${esc(n.nombre)}</span>
+          <span class="flex items-center gap-1.5 flex-wrap">
+            ${chip(n.clientes + (n.clientes === 1 ? ' cliente' : ' clientes'), n.clientes ? 'bg-surface2 text-ink' : 'bg-surface2 text-muted')}
+            ${n.zonasSinLibro ? chip(n.zonasSinLibro + ' sin libro', 'zona-aviso zona-texto') : ''}
+          </span>
         </span>
-      </div>
-      <p class="font-mono text-[11px] text-muted mb-2">${esc(n.id)} · ${esc(n.liga || 'sin liga')}${n.temporada ? ' · ' + esc(n.temporada) : ''}</p>
+        <span class="block font-mono text-[11px] text-muted mt-1">${esc(n.id)} · ${esc(n.liga || 'sin liga')}${n.temporada ? ' · ' + esc(n.temporada) : ''}</span>
+        <span class="block text-[11px] text-muted mt-1">${zs.length} ${zs.length === 1 ? 'zona' : 'zonas'}${
+          zs.length ? ' · ' + zs.map(z => esc(z.label)).join(' · ') : ''}</span>
+      </summary>
+      <div class="px-4 pb-4">
       ${fases.length ? `<p class="text-[11px] text-muted mb-2">${fases.map(f => esc(f.label) + (f.cruce === 'interzonal' ? ' (interzonal)' : '')).join(' → ')}</p>` : ''}
       <div class="scrollbox"><table class="w-full">
         <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
@@ -291,7 +309,8 @@ const SGADD_TORNEOS = (function () {
         ${zs.some(z => z.activo) ? `<button type="button" onclick="SGADD_CLIENTES.elegir('${escJs(n.id)}')"
           class="text-[11px] font-display uppercase tracking-wider text-accent hover:underline ml-auto">Abrir el torneo →</button>` : ''}
       </div>
-    </div>`;
+      </div>
+    </details>`;
   }
 
   function campo(id, etiqueta, valor, extra) {
@@ -348,7 +367,7 @@ const SGADD_TORNEOS = (function () {
    */
   function formTorneo() {
     const editando = borrador.modo !== 'nuevo';
-    return `<details class="card rounded-xl border border-hairline" ${borrador.abierto ? 'open' : ''}
+    return `<details class="card hub-plegable rounded-xl border border-hairline" ${borrador.abierto ? 'open' : ''}
       ontoggle="SGADD_TORNEOS.abrirForm(this.open)">
       <summary class="cursor-pointer p-4 sm:p-5 flex items-baseline justify-between gap-3 flex-wrap">
         <span class="font-display uppercase tracking-wide text-sm text-ink">
@@ -390,7 +409,7 @@ const SGADD_TORNEOS = (function () {
        alta de uno nuevo nace del «+ cliente» de la zona, así que tener los
        dos desplegados a la vez era justamente la duda de «cuál uso».
        Aparece cuando se lo pide (`empezarVinculo`) y no antes. */
-    return `<details class="card rounded-xl border border-hairline" id="torneoVinculo" ${vinculo.abierto ? 'open' : ''}
+    return `<details class="card hub-plegable rounded-xl border border-hairline" id="torneoVinculo" ${vinculo.abierto ? 'open' : ''}
       ontoggle="SGADD_TORNEOS.abrirVinculo(this.open)">
       <summary class="cursor-pointer p-4 sm:p-5 flex items-baseline justify-between gap-3 flex-wrap">
         <span class="font-display uppercase tracking-wide text-sm text-ink">Enganchar un cliente que ya existe</span>
@@ -436,6 +455,11 @@ const SGADD_TORNEOS = (function () {
   /** El plegado del enganche. Igual que el del alta: vive en el estado. */
   function abrirVinculo(v) { vinculo.abierto = !!v; }
 
+  /* Despliega o repliega la tarjeta de UN torneo. Varias pueden estar
+     abiertas a la vez: son independientes y la grilla se reacomoda sola
+     (`items-start`, o una card corta se estiraria al alto de la mas larga). */
+  function abrirTarjeta(id, v) { if (v) abiertos[id] = true; else delete abiertos[id]; }
+
   /** El bloque entero del Panel Master. */
   /**
    * LA PANTALLA, ordenada por la jerarquía: Torneo → Zona → Cliente.
@@ -466,7 +490,7 @@ const SGADD_TORNEOS = (function () {
           de la zona abre el formulario con el torneo y el libro ya elegidos.</p>
       </div>
       ${a.torneos.length
-        ? `<div class="grid xl:grid-cols-2 gap-4">${a.torneos.map(tarjeta).join('')}</div>`
+        ? `<div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 items-start">${a.torneos.map(tarjeta).join('')}</div>`
         : `<div class="card rounded-xl p-4 border border-hairline">
              <p class="text-xs text-muted">Todavía no hay ningún torneo. Empezá por
              <b class="text-ink">Nuevo torneo</b>, acá abajo: un cliente se cuelga de una de sus zonas.</p>
@@ -548,7 +572,7 @@ const SGADD_TORNEOS = (function () {
       acento: t.acento || '',
       zonas: zonasDe(t).map(z => ({ zona: z.zona, slug: z.slug, label: z.label, libro: '', equiposTexto: textoEquipos(z.equipos) })),
       abierto: true });
-    resultado.estado = null; refrescarForm();
+    abiertos[id] = true; resultado.estado = null; refrescarForm();
     irAlForm();
   }
 
@@ -663,7 +687,7 @@ const SGADD_TORNEOS = (function () {
     faltantesTorneo, intencionTorneo, cambiosTorneo, idVinculoSugerido, idDeLibro,
     /* ui */
     html, borrador, vinculo, resultado, campo: campo_, campoZona, agregarZona, quitarZona, nuevo, editar,
-    guardar, empezarVinculo, elegirVinculo, campoVinculo, vincular, abrirForm, abrirVinculo, bloqueHuerfanos,
+    guardar, empezarVinculo, elegirVinculo, campoVinculo, vincular, abrirForm, abrirVinculo, abrirTarjeta, bloqueHuerfanos,
   };
 })();
 

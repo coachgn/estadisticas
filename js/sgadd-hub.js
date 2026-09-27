@@ -906,15 +906,87 @@ const SGADD_HUB = (function () {
      INICIALES y no un hueco, con la misma insignia que el resto del panel
      (`LOGOS.iniciales`): dos implementaciones dan dos insignias distintas
      para el mismo club. */
+  /* =====================================================================
+     LOS ESCUDOS DEL PANEL MASTER
+
+     `LOGOS.getUrl()` SOLO LEE DEL CACHÉ, y quien lo puebla es
+     `LOGOS.resolver()`, que corre con los equipos de la categoría abierta.
+     El hub nunca pedía los suyos, así que `getUrl` devolvía `null` para
+     todos y las tarjetas salían SIEMPRE con las iniciales. Medido con el
+     catálogo real: 0 escudos y 5 iniciales, con los seis archivos
+     existiendo en su manifiesto.
+
+     Y no alcanzaba con llamar a `resolver()`: `CFG.basePaths` lo fija el
+     CLUB ACTIVO (`sgadd-club.js`), o sea UNA liga, y el Panel Master lista
+     clubes de varias — Jujuy es de `liga-argentina` y no podría resolver
+     nunca desde un panel abierto en La Plata. Tocar ese global para
+     ampliarlo sería peor: el resolutor prueba RECORTES del nombre, así que
+     mezclar carpetas puede darle a un club el escudo de otro (el bug de
+     `deportivo.png` del punto 6).
+
+     Por eso el hub lee el manifiesto de CADA liga por su cuenta y resuelve
+     por clave exacta. Es independiente del estado global de LOGOS, así que
+     no puede contaminar lo que ve el resto de la app.
+     ===================================================================== */
+  const escudos = { manifiesto: {}, pidiendo: {} };
+
+  /** La clave del manifiesto: `logos/<liga>/index.json` indexa en minúsculas. */
+  function claveEscudo(nombre) {
+    try { return String(LOGOS.normalizar(nombre) || '').toLowerCase(); }
+    catch (e) { return String(nombre || '').toLowerCase(); }
+  }
+
+  /**
+   * Baja el manifiesto de cada liga presente, UNA vez por liga.
+   *
+   * Al llegar repinta, porque los escudos llegan después del primer
+   * pintado. No puede entrar en el ciclo del punto 6 —repintar, pedir,
+   * repintar— porque la liga queda marcada antes de salir a la red y no
+   * se vuelve a pedir ni cuando falla.
+   */
+  function pedirEscudos(cs) {
+    if (typeof fetch !== 'function') return;
+    Array.from(new Set((cs || []).map(c => c.liga).filter(Boolean))).forEach((liga) => {
+      if (escudos.manifiesto[liga] || escudos.pidiendo[liga]) return;
+      escudos.pidiendo[liga] = true;
+      fetch('logos/' + encodeURIComponent(liga) + '/index.json')
+        .then(r => (r.ok ? r.json() : {}))
+        .then((m) => {
+          escudos.manifiesto[liga] = (m && typeof m === 'object') ? m : {};
+          repintarLista();
+        })
+        /* Una liga sin manifiesto no es un error: quedan las iniciales,
+           que es lo que ya hacía. Se marca para no volver a pedirla. */
+        .catch(() => { escudos.manifiesto[liga] = {}; });
+    });
+  }
+
+  /** La URL del escudo de un club, o `null` si su liga no lo tiene. */
+  function urlEscudo(c) {
+    const m = escudos.manifiesto[c && c.liga];
+    if (!m) return null;
+    const archivo = m[claveEscudo(c.equipoPropio || c.nombre || c.id)];
+    return archivo ? 'logos/' + c.liga + '/' + archivo : null;
+  }
+
+  /**
+   * El escudo de una tarjeta.
+   *
+   * `object-contain` y NO `cover`: `cover` RECORTA para llenar el círculo,
+   * y a un escudo le come las puntas — es la regla del punto 25, que ya
+   * estaba escrita para el aro del logo y acá se había hecho al revés.
+   * Con `contain` el escudo entra entero, y por eso necesita un FONDO
+   * claro: muchos son de trazo oscuro con transparencia y sobre la card
+   * negra se perdían.
+   */
   function escudoClub(c) {
-    const nombre = c.equipoPropio || c.nombre || c.id;
+    const nombre = (c && (c.equipoPropio || c.nombre || c.id)) || '';
     try {
-      const url = LOGOS.getUrl(nombre);
-      if (url) return '<img src="' + esc(url) + '" alt="" loading="lazy"'
-        + ' class="w-7 h-7 rounded-full object-cover shrink-0">';
-      return '<span class="fila-inicial shrink-0" style="width:28px;height:28px">'
+      const url = urlEscudo(c) || LOGOS.getUrl(nombre);
+      if (url) return '<img src="' + esc(url) + '" alt="" loading="lazy" class="escudo-hub shrink-0">';
+      return '<span class="fila-inicial shrink-0" style="width:32px;height:32px">'
         + esc(LOGOS.iniciales(nombre)) + '</span>';
-    } catch (e) { return '<span class="fila-inicial shrink-0" style="width:28px;height:28px"></span>'; }
+    } catch (e) { return '<span class="fila-inicial shrink-0" style="width:32px;height:32px"></span>'; }
   }
 
   /** La tarjeta COMPACTA. Es un <button>: se abre con Enter y con el mouse. */
@@ -1648,7 +1720,7 @@ const SGADD_HUB = (function () {
     const catFija = editando && !!alta.catElegida;
 
     const z = alta.desdeZona;
-    return `<details class="card rounded-xl border border-hairline" ${alta.abierto ? 'open' : ''}
+    return `<details class="card hub-plegable rounded-xl border border-hairline" ${alta.abierto ? 'open' : ''}
       ontoggle="SGADD_HUB.abrirAlta(this.open)">
       <summary class="cursor-pointer p-4 sm:p-5 flex items-baseline justify-between gap-3 flex-wrap">
         <span class="font-display uppercase tracking-wide text-sm text-ink">
@@ -1932,6 +2004,9 @@ const SGADD_HUB = (function () {
   function pantalla() {
     const cs = clubes();
     if (!cs) return html();
+    /* Los escudos se piden acá, que es el único punto por el que pasan
+       todos los pintados de la pestaña. */
+    pedirEscudos(cs);
     return (typeof SGADD_TORNEOS !== 'undefined'
       ? '<div id="hubTorneos" class="space-y-4">' + SGADD_TORNEOS.html(cs) + '</div>' : '')
       + '<div class="space-y-4">' + html() + '</div>';

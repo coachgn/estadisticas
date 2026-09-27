@@ -260,6 +260,43 @@
      El `width: 100%` de `.login-caja` sigue mandando por debajo de eso, asi
      que en un telefono no cambia nada. */
   .login-caja.modal-ancho { max-width: 44rem; }
+
+  /* EL ESCUDO DE UNA TARJETA DEL PANEL MASTER.
+
+     Va a mano por lo de siempre: lo inyecta un nodo dinamico y el scan de
+     Tailwind es ESTATICO (punto 12).
+
+     `contain` y NO `cover`: `cover` recorta para llenar el circulo y a un
+     escudo le come las puntas — la regla del punto 25. Con `contain` entra
+     entero, y por eso hace falta el FONDO CLARO: muchos escudos son de
+     trazo oscuro sobre transparente y sobre la card negra desaparecian.
+     El mismo blanco que el disco de base de los puntos del scatter, y por
+     el mismo motivo. */
+  .escudo-hub {
+    width: 32px; height: 32px; border-radius: 9999px;
+    object-fit: contain; background: #fff; padding: 2px;
+    border: 1px solid var(--hairline, #282828);
+    box-sizing: border-box;
+  }
+
+  /* LAS TARJETAS Y FORMULARIOS PLEGABLES DEL PANEL MASTER.
+
+     Mismo tratamiento que `.pbp-detalle` (punto 62) y por el mismo motivo:
+     el marcador nativo de <summary> se dibuja como un item de lista, asi
+     que con un summary de varias lineas queda un triangulo suelto ARRIBA
+     del contenido en vez de al lado del titulo. Se apaga y se pone uno
+     propio, alineado con la primera linea.
+
+     `list-style: none` y `::-webkit-details-marker` hacen falta LOS DOS:
+     el segundo es el unico que lo apaga en Safari. */
+  .hub-plegable > summary { list-style: none; position: relative; padding-left: 1.4rem; }
+  .hub-plegable > summary::-webkit-details-marker { display: none; }
+  .hub-plegable > summary::before {
+    content: '▸'; position: absolute; left: .55rem; top: 1rem;
+    color: var(--muted, #8a8a8a); transition: transform .15s;
+  }
+  .hub-plegable[open] > summary::before { transform: rotate(90deg); }
+  @media (prefers-reduced-motion: reduce) { .hub-plegable > summary::before { transition: none; } }
   /* LA FILA DE ACCIONES DE UN MODAL NO SE VA CON EL SCROLL.
 
      Con la caja acotada (arriba) los botones ya se ALCANZAN, pero en un
@@ -2815,7 +2852,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=247" />
+<link rel="stylesheet" href="sgadd.css?v=248" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2997,49 +3034,49 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=247"></script>
+<script src="js/sgadd-club.js?v=248"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=247"></script>
-<script src="js/sgadd-core.js?v=247"></script>
-<script src="js/sgadd-auth.js?v=247"></script>
+<script src="js/sgadd-config.js?v=248"></script>
+<script src="js/sgadd-core.js?v=248"></script>
+<script src="js/sgadd-auth.js?v=248"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=247"></script>
-<script src="js/sgadd-glosario.js?v=247"></script>
-<script src="js/sgadd-glosarioui.js?v=247"></script>
-<script src="js/sgadd-comparativa.js?v=247"></script>
-<script src="js/sgadd-comparativaui.js?v=247"></script>
-<script src="js/sgadd-confirmar.js?v=247"></script>
-<script src="js/sgadd-landing.js?v=247"></script>
-<script src="js/sgadd-login.js?v=247"></script>
-<script src="js/sgadd-data.js?v=247"></script>
-<script src="js/sgadd-clientes.js?v=247"></script>
-<script src="js/sgadd-ui.js?v=247"></script>
-<script src="js/sgadd-app.js?v=247"></script>
-<script src="js/sgadd-clasificacion.js?v=247"></script>
+<script src="js/sgadd-demo.js?v=248"></script>
+<script src="js/sgadd-glosario.js?v=248"></script>
+<script src="js/sgadd-glosarioui.js?v=248"></script>
+<script src="js/sgadd-comparativa.js?v=248"></script>
+<script src="js/sgadd-comparativaui.js?v=248"></script>
+<script src="js/sgadd-confirmar.js?v=248"></script>
+<script src="js/sgadd-landing.js?v=248"></script>
+<script src="js/sgadd-login.js?v=248"></script>
+<script src="js/sgadd-data.js?v=248"></script>
+<script src="js/sgadd-clientes.js?v=248"></script>
+<script src="js/sgadd-ui.js?v=248"></script>
+<script src="js/sgadd-app.js?v=248"></script>
+<script src="js/sgadd-clasificacion.js?v=248"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-fixture.js?v=247"></script>
-<script src="js/sgadd-torneos.js?v=247"></script>
-<script src="js/sgadd-hub.js?v=247"></script>
-<script src="js/sgadd-configui.js?v=247"></script>
-<script src="js/sgadd-estados.js?v=247"></script>
-<script src="js/sgadd-buzon.js?v=247"></script>
-<script src="js/sgadd-charts.js?v=247"></script>
-<script src="js/sgadd-personalidad.js?v=247"></script>
-<script src="js/sgadd-rankings.js?v=247"></script>
-<script src="js/sgadd-partido.js?v=247"></script>
-<script src="js/sgadd-informe.js?v=247"></script>
-<script src="js/sgadd-ficha.js?v=247"></script>
-  <script src="js/sgadd-rankingpdf.js?v=247"></script>
-<script src="js/sgadd-equipos.js?v=247"></script>
+<script src="js/sgadd-fixture.js?v=248"></script>
+<script src="js/sgadd-torneos.js?v=248"></script>
+<script src="js/sgadd-hub.js?v=248"></script>
+<script src="js/sgadd-configui.js?v=248"></script>
+<script src="js/sgadd-estados.js?v=248"></script>
+<script src="js/sgadd-buzon.js?v=248"></script>
+<script src="js/sgadd-charts.js?v=248"></script>
+<script src="js/sgadd-personalidad.js?v=248"></script>
+<script src="js/sgadd-rankings.js?v=248"></script>
+<script src="js/sgadd-partido.js?v=248"></script>
+<script src="js/sgadd-informe.js?v=248"></script>
+<script src="js/sgadd-ficha.js?v=248"></script>
+  <script src="js/sgadd-rankingpdf.js?v=248"></script>
+<script src="js/sgadd-equipos.js?v=248"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=247"></script>
-<script src="js/sgadd-jugadores.js?v=247"></script>
-<script src="js/sgadd-4factores.js?v=247"></script>
-<script src="js/sgadd-scouting.js?v=247"></script>
-<script src="js/sgadd-pbp.js?v=247"></script>
-<script src="js/sgadd-diagnostico.js?v=247"></script>
+<script src="js/sgadd-niveles.js?v=248"></script>
+<script src="js/sgadd-jugadores.js?v=248"></script>
+<script src="js/sgadd-4factores.js?v=248"></script>
+<script src="js/sgadd-scouting.js?v=248"></script>
+<script src="js/sgadd-pbp.js?v=248"></script>
+<script src="js/sgadd-diagnostico.js?v=248"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

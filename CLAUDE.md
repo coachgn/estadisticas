@@ -45,7 +45,7 @@ node test-jsonclub.js      # 115 tests · los JSON de club, el validador, el ais
 node test-pares.js         # 219 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 175 tests · partidos sin box score: suman a la tabla, no a las métricas
-node test-responsive.js    # 137 tests · desborde, targets táctiles, modales, el papel, el PIE
+node test-responsive.js    # 139 tests · desborde, targets táctiles, modales, el papel, el PIE
                            #             el aviso de version y el diagnostico del pie
 node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
 node test-demo.js          # 130 tests · la demo publica: el snapshot anonimizado, el
@@ -94,8 +94,9 @@ node test-fixture-apb.js  #  93 tests · el conector de basket-club: el parser c
 node test-fixture.js       # 112 tests · la seccion Fixture, los empty states de pretemporada,
                            #             las iniciales con parentesis y la grilla compacta del hub
 
-node test-torneos.js       # 126 tests · los torneos sin cliente y la estructura multizona: la Liga
-                           #             Argentina 2026-27, la Zona C, el enganche a una zona y la propagación
+node test-torneos.js       # 132 tests · los torneos sin cliente y la estructura multizona: la Liga
+                           #             Argentina 2026-27, la Zona C, el enganche a una zona, la propagación
+                           #             y el marcador de las cards plegables del Panel Master
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -107,7 +108,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6705 tests en total. Todos tienen que dar verde antes de commitear.**
+**6713 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -204,7 +205,7 @@ GUIA_ALTA_CLIENTES.md   ← el paso a paso, sin tecnicismos, para dar de alta o
 PROPUESTA_ESTADOS_JUGADOR.md ← diseño original de estados (ya implementado, ver punto 13)
 tailwind.config.js      ← la config que vivía en el <head> cuando Tailwind
                           era CDN. sgadd.in.css es la entrada.
-sgadd.css               ← el CSS COMPILADO (27 KB). Se commitea: es lo que
+sgadd.css               ← el CSS COMPILADO (30 KB). Se commitea: es lo que
                           sirve Pages. Se regenera con `node generar-css.js`
 generar-css.js          ← el generador. Fija la version de Tailwind a mano
                           para que dos personas no generen CSS distinto.
@@ -220,7 +221,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=247`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=248`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -10761,3 +10762,159 @@ panel— igual que el límite que ya anota el punto 49.
 - **El alta no crea el torneo si no existe**: si no hay ninguno declarado,
   el formulario lo dice y manda a crearlo primero. Un alta que cree las dos
   cosas a la vez mezclaría dos decisiones en un solo botón.
+
+---
+
+## 74. EL PANEL MASTER, ORDENADO POR TORNEO · TRES AJUSTES DE UI (2026-09-27)
+
+Tres pedidos del club sobre la pestaña que dejó el punto 73: el torneo que
+aparecía dos veces, las cards sin escudo, y la pantalla que seguía siendo
+larga con las cards desplegadas.
+
+### 1 · EL TORNEO DUPLICADO SE AUDITÓ ANTES DE BORRARLO
+
+`zona-c-la-plata-2026` y la zona `apb-2026-c` no eran dos torneos parecidos:
+eran el MISMO, listado dos veces.
+
+```
+mismo libro (1whrMK…q_F0)   ·   los mismos 11 equipos   ·   cero clientes enganchados
+y `torneos/apb-2026-masculino.json` ya declaraba esa zona
+```
+
+Se dio de baja la entrada de KV
+(`catalogo.js baja --club zona-c-la-plata-2026`); quedan 3 torneos y
+`apb-2026-c` intacta con su libro.
+
+**El archivo `torneos/zona-c-la-plata-2026.json` NO se borró**, y no es un
+descuido: es fixture de `test-torneos.js` (lo lee al arrancar, y lo usan seis
+verificaciones). Un torneo dado de baja en KV y su archivo en el repo son dos
+cosas distintas — el archivo es la declaración pública y no tiene sheetId
+(punto 67), así que dejarlo no expone nada ni lo resucita.
+
+### 2 · LOS ESCUDOS · la causa no era visual: el hub nunca los pedía
+
+Medido antes de tocar nada: **0 escudos y 0 iniciales** en las tarjetas.
+
+`LOGOS.getUrl()` SOLO LEE DEL CACHÉ, y quién lo puebla es `resolver()`, que
+corre con una categoría abierta. El Panel Master no abre ninguna. Y encima
+`CFG.basePaths` es del club ACTIVO, o sea de una sola liga: desde un panel de
+La Plata, el escudo de Jujuy no se podía resolver ni pidiéndolo.
+
+El hub lee ahora el manifiesto de **cada liga** por su cuenta (`pedirEscudos`
+/ `urlEscudo` / `escudoClub`), sin tocar el resolutor global. **Se mantiene
+separado a propósito**: el resolutor prueba PREFIJOS del nombre, que es el
+bug `deportivo.png` del punto 6 — con `deportivo`, `DEPORTIVO LA PLATA` y
+`DEPORTIVO SAN VICENTE` se llevaban el mismo archivo. Acá la clave es el id
+del club, que es exacto.
+
+**`.escudo-hub` va con `object-fit: contain` y fondo blanco, NUNCA `cover`.**
+Dos escudos no son cuadrados (`hogar.webp` 256×113,
+`sud-america-lp.webp` 191×256) y `cover` les recortaba las puntas, que es
+justo lo que el punto 25 prohíbe.
+
+Medido después: **6 escudos, 0 iniciales**.
+
+> Se sirve por HTTP (`.claude/launch.json`) y no por `file://`: ahí el CORS
+> bloquea el manifiesto y no hay un solo escudo (punto 7).
+
+### 3 · LAS CARDS DE TORNEO ARRANCAN PLEGADAS, 3 POR FILA
+
+Son `<details>`, y **el plegado vive en el módulo** (`abiertos` +
+`abrirTarjeta`), nunca en el DOM: la pestaña se repinta entera al tocar
+cualquier cosa — el alta, un plan — y un `open` en el nodo se perdería en
+cada repintado. Es la trampa del punto 13, cuarta vez.
+
+Medido con tres torneos: `porFila` **1 / 2 / 3** a 375, 768 y ≥1024 px, sin
+desborde horizontal, y la pestaña en **1146 px** de alto (2893 antes del
+punto 73, 1332 después).
+
+### 4 · EL MARCADOR · LA CLASE TENÍA QUE ESTAR EN LOS DOS LADOS
+
+El CSS de `.hub-plegable` estaba escrito en `index.html` — cinco ocurrencias
+— y **ningún `.js` la usaba**: cero en `sgadd-hub.js` y cero en
+`sgadd-torneos.js`. O sea CSS inerte, y el síntoma en pantalla era el
+triángulo nativo del `<details>` suelto ARRIBA del título en vez de al lado.
+
+El motivo es de layout y no de estilo: **el marcador nativo se dibuja en su
+propia línea cuando el primer hijo del `<summary>` es un bloque**, que es el
+caso de la tarjeta de torneo — su título va en un `<span class="flex">`.
+
+La clase va en los **cuatro** plegables: `tarjeta()` en `sgadd-torneos.js`,
+más `formTorneo`, `formVinculo` y `bloqueAlta`.
+
+**El marcador es un `::before` ABSOLUTO y no un inline.** Con inline sería
+más simple, pero en los tres `<summary>` que son `display: flex` quedaría
+como flex item — correcto — y en la tarjeta de torneo, cuyo summary NO es
+flex, generaría un renglón propio arriba: exactamente el defecto que se está
+corrigiendo. Absoluto cubre los dos casos con una sola regla.
+
+Medido en el navegador sobre el markup real de los dos módulos:
+
+```
+padding-left del summary    22,4px   (1.4rem: le gana a `.p-4`)
+el glifo arranca en          8,8px   → no se tocan
+tarjeta de torneo            pseudoTop == textoTop, exacto, a 420 y a 1200
+los tres formularios         −1,7px de desfase de centro, en los dos anchos
+```
+
+Dos cosas que hay que respetar al tocarlo:
+
+- **El `padding-left` de la regla le gana a `.p-4` / `.sm:p-5` por
+  ESPECIFICIDAD** (0,2,1 contra 0,1,0), no por orden — el `<link>` del CSS
+  compilado va DESPUÉS de nuestro `<style>` (punto 5 bis) y las utilidades
+  ya no llevan `!important` desde que Tailwind se compila. Medido: cero
+  `!important` en `sgadd.css`. Si alguna vez una utilidad volviera a
+  llevarlo, el hueco desaparece y el `▸` se monta sobre el título.
+- **`list-style: none` y `::-webkit-details-marker` hacen falta LOS DOS**:
+  el segundo es el único que apaga el marcador en Safari.
+
+El test **EJERCE el markup** de `UI.html()` y `HUB.bloqueAlta()` y exige que
+TODA card plegable lleve la clase — no un número fijo, así que una quinta
+que se agregue mañana sin ella cae sola — y por el otro lado que el CSS la
+defina, porque una clase sin CSS es tan inerte como un CSS sin clase. Es la
+lección del punto 69: un grep sobre el fuente quedaría verde con la clase
+escrita en un comentario.
+
+Verificado AL REVÉS, revirtiendo una pieza por vez: quitar la clase de una
+card **1**, de las cuatro **1**, borrar el bloque CSS **4**, quitar solo el
+`padding-left` **1** y quitar el `prefers-reduced-motion` **1**.
+
+### 5 · Y EL PUNTO 73 SE HABÍA PUBLICADO CON DOS CLASES SIN COMPILAR
+
+Apareció al regenerar el CSS antes de commitear, que es parte del flujo del
+punto 11 y no un extra: `sgadd.css` cambiaba, con **cero selectores nuevos y
+cero perdidos** salvo dos.
+
+```
++.sm\:px-5{padding-left:1.25rem;padding-right:1.25rem}
++.sm\:pb-5{padding-bottom:1.25rem}
+```
+
+Las usan los cuerpos de los tres formularios del Panel Master
+(`px-4 sm:px-5 pb-4 sm:pb-5`), que el punto 73 introdujo **sin correr
+`node generar-css.js`**. Medido en el navegador contra el CSS de producción:
+a ≥640px daban **16px donde el markup pide 20**. No rompía nada y no dejaba
+ningún rastro — el modo de fallar de siempre del scan estático (punto 5 bis).
+
+**Y el test que faltaba.** Ninguna verificación cubría que el CSS compilado
+estuviera al día, que es justamente por lo que esto llegó a producción.
+`test-responsive.js` recorre ahora el fuente y exige que **toda clase con
+VARIANTE** (`sm:`, `hover:`, …) exista en `sgadd.css`.
+
+- **Solo las que llevan variante, y no todas las clases.** Los dos puntos son
+  sintaxis exclusiva de Tailwind — una clase propia no los puede llevar sin
+  escaparlos — así que ahí no hay falso positivo posible. Con las utilidades
+  base sí lo habría: `.zona-aviso` y `.hub-plegable` viven en el `<style>`
+  del `index.html` y no tienen por qué estar en el compilado.
+- **Una utilidad base nueva NO la caza esto.** La caza regenerar, y eso
+  necesita red (`npx`), así que no puede vivir en la suite. Queda como el
+  paso a mano del punto 11.
+- **Se recorta la comilla pegada al token.** El markup sale de template
+  literals y un ternario deja `'hover:bg-surface2'` con la comilla adentro
+  del atributo; se recorta en vez de descartar el token, para seguir
+  verificándolo. Un token con `${}` sí se descarta: una clase compuesta en
+  runtime el scan tampoco la ve.
+
+Verificado al revés con el `sgadd.css` de HEAD — el que estaba publicado —:
+denuncia exactamente `sm:pb-5 sm:px-5`. Y agregando una variante nueva al
+fuente sin regenerar, la nombra.

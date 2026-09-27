@@ -494,5 +494,57 @@ seccion('12 · el primer cliente de una zona sin libro');
     r5.ok ? r5.catalogo.cli.categorias['cli-p'] : r5);
 }
 
+/* =====================================================================
+   9 · EL MARCADOR DE LOS PLEGABLES · la clase tiene que estar EN LOS DOS
+   LADOS (punto 74)
+
+   Las cuatro cards del Panel Master que se pliegan son `<details>`, y el
+   marcador nativo se dibuja en su propia línea cuando el primer hijo del
+   `<summary>` es un bloque — que es el caso de la tarjeta de torneo, cuyo
+   título va en un `<span class="flex">`. Por eso el CSS apaga el nativo y
+   dibuja el suyo, y por eso la clase tiene que viajar en el markup.
+
+   Se EJERCE el markup real de los dos módulos, no se lee el fuente: un grep
+   sobre el archivo queda verde si alguien deja la clase escrita en un
+   comentario o en una rama muerta (la lección del punto 69).
+   ===================================================================== */
+seccion('9 · el marcador de los plegables (punto 74)');
+{
+  const HUB = require('./js/sgadd-hub.js');
+  const fxT = [
+    { id: 'apb', tipo: 'torneo', nombre: 'APB', liga: 'la-plata', temporada: '2026',
+      categorias: [{ slug: 'apb-a', label: 'Zona A', zona: 'a', activo: true, equipos: ['ATENAS'] }] },
+    { id: 'cli', tipo: 'cliente', nombre: 'Cli', liga: 'la-plata',
+      categorias: [{ slug: 'cli-p', label: 'Primera', activo: true, torneo: 'apb', zona: 'a' }] },
+  ];
+  const markup = UI.html(fxT) + HUB.bloqueAlta(fxT);
+
+  /* Toda card plegable y no un número fijo: una quinta que se agregue
+     mañana sin la clase cae acá sola. */
+  const cards = (markup.match(/<details[^>]*>/g) || [])
+    .map(t => (t.match(/class="([^"]*)"/) || [])[1] || '')
+    .filter(c => /\bcard\b/.test(c));
+  check('las cards plegables del Panel Master existen en el markup', cards.length >= 4, cards.length);
+  check('y TODAS llevan hub-plegable', cards.every(c => /\bhub-plegable\b/.test(c)),
+    cards.filter(c => !/\bhub-plegable\b/.test(c)));
+
+  /* El otro lado: sin el CSS la clase es inerte, que fue justamente el
+     estado del que salió este punto — cinco ocurrencias en el `<style>` y
+     cero en los `.js`. */
+  const idx = fs.readFileSync('index.html', 'utf8');
+  check('el CSS define .hub-plegable > summary',
+    /\.hub-plegable\s*>\s*summary\s*\{/.test(idx));
+  check('apaga el marcador nativo en los DOS motores',
+    /\.hub-plegable\s*>\s*summary\s*\{[^}]*list-style:\s*none/.test(idx)
+    && /\.hub-plegable\s*>\s*summary::-webkit-details-marker\s*\{[^}]*display:\s*none/.test(idx));
+  /* El `::before` va absoluto, así que sin el hueco se monta sobre el
+     título. Medido con el markup real en el navegador: padding-left 22,4px
+     contra un glifo que arranca en 8,8px, o sea que no se tocan. */
+  check('y reserva el hueco con padding-left',
+    /\.hub-plegable\s*>\s*summary\s*\{[^}]*padding-left:/.test(idx));
+  check('el giro respeta prefers-reduced-motion',
+    /prefers-reduced-motion[\s\S]{0,200}?\.hub-plegable\s*>\s*summary::before\s*\{[^}]*transition:\s*none/.test(idx));
+}
+
 console.log('\n' + (mal ? '✗ HAY FALLAS · ' : '✓ TODO OK · ') + ok + ' pasaron, ' + mal + ' fallaron');
 process.exit(mal ? 1 : 0);
