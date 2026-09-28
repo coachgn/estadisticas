@@ -141,6 +141,9 @@ const tokAjeno = auth.firmarToken({ email: 'dt@dep.com', club: 'ajeno', equipoAs
 const pedido = (tok, params, query) => ({ headers: tok ? { authorization: 'Bearer ' + tok } : {},
   params: params || {}, body: {}, query: query || {} });
 const pedirLlave = async (tok, torneo) => { catalogo.limpiarCache(); return LLAVE.manejarLlave(pedido(tok, { torneo: torneo || 'liga-x' })); };
+const DATOS_M = require('./js/sgadd-data.js');
+const DATOS_F = (m) => DATOS_M.matrizAFilas(m).filas;
+const DATOS_F2 = (m) => DATOS_M.matrizAFilas(m);
 const pedirLibro = async (tok, club, cat) => { catalogo.limpiarCache(); return H.manejarEquipos(pedido(tok, { clubId: club }, { categoria: cat })); };
 
 (async () => {
@@ -302,8 +305,15 @@ const pedirLibro = async (tok, club, cat) => { catalogo.limpiarCache(); return H
     /* Si el libro PROPIO ya tiene la fase, su marcador manda y no se suma
        dos veces el mismo partido. */
     const hojasConCuartos = hojasDe(NORTE.concat(POST));
-    const ctx3 = F.mezclarLlave({ tablas: {}, partidosPorFase: { cuartos: [] }, nombresZona: {} }, fases, llaveServidor, 'norte', hojasConCuartos);
-    check('una fase que el libro propio ya tiene no se duplica', ctx3.partidosPorFase.cuartos.length === 0);
+    /* CON LIBROS VINCULADOS (punto 77) el libro propio trae SUS partidos de
+       la fase y la llave suma los de las OTRAS series, sin repetir: el
+       mismo partido escrito del otro lado es el mismo partido. */
+    const propios = [{ fecha: '2026-04-10', localClave: SGADD.claveEquipo(OB), visitanteClave: SGADD.claveEquipo(RI), deLibro: true },
+      { fecha: '2026-04-12', localClave: SGADD.claveEquipo(OB), visitanteClave: SGADD.claveEquipo(RI), deLibro: true }];
+    const ctx3 = F.mezclarLlave({ tablas: {}, partidosPorFase: { cuartos: propios.slice() }, nombresZona: {} }, fases, llaveServidor, 'norte', hojasConCuartos);
+    check('la fase que el libro propio ya tiene suma solo las otras series', ctx3.partidosPorFase.cuartos.length === 3,
+      ctx3.partidosPorFase.cuartos.length);
+    check('y lo del libro gana (trae el box score detrás)', ctx3.partidosPorFase.cuartos.filter(x => x.deLibro).length === 2);
     check('sin llave del servidor el contexto no cambia',
       F.mezclarLlave({ tablas: {}, partidosPorFase: {} }, fases, null, 'norte', null).partidosPorFase.cuartos === undefined);
   }
@@ -402,6 +412,243 @@ const pedirLibro = async (tok, club, cat) => { catalogo.limpiarCache(); return H
     const pub = catalogo.publico(r.catalogo, { admin: true, origen: 'kv' });
     const zp = pub.find(c => c.id === 'liga-y').categorias.find(c => c.zona === 'post');
     check('el admin ve la zona marcada como postemporada', zp && zp.interzonal === true);
+  }
+
+  /* =====================================================================
+     5 · MULTILIBRO · los libros vinculados y el acceso por partido (punto 77)
+     ===================================================================== */
+  seccion('5 · un torneo con dos libros: el cliente lee SUS partidos del segundo');
+  {
+    const MULTI = require('./server/lib/multilibro.js');
+    /* Libros con jugadores, para ver que el filtro alcanza a las tres
+       maestras y a las derivadas. Un jugador por equipo y por partido. */
+    const libroCompleto = (filasBD) => {
+      const l = libroApi(filasBD);
+      const cabJ = ['FECHA', 'PARTIDO', 'EQUIPO', 'FASE', 'NOMBRES', 'PTS'];
+      l.hojas['Base Datos J'] = [cabJ].concat(filasBD.map(f => [f.FECHA, f.PARTIDO, f.EQUIPO, f.FASE, 'CAPITAN, ' + f.EQUIPO, f.PTS]));
+      const vistos = {};
+      filasBD.forEach((f) => { vistos[f.EQUIPO + '|' + f.FASE] = f; });
+      const cabPJ = ['NOMBRES', 'EQUIPO', 'FASE', 'PJ', 'PTS'];
+      l.hojas['PROMEDIOS J'] = [cabPJ].concat(Object.keys(vistos).map(k => ['CAPITAN, ' + vistos[k].EQUIPO, vistos[k].EQUIPO, vistos[k].FASE, 1, 999]))
+        .concat([['JUGADOR TIPO', '', filasBD[0].FASE, 1, 50]]);
+      /* PTS 999 en las derivadas: si un promedio «sucio» se cuela, se ve. */
+      l.hojas['PROMEDIOS E'] = [l.hojas['PROMEDIOS E'][0]].concat(l.hojas['PROMEDIOS E'].slice(1).map(r => [r[0], r[1], r[2], 999]));
+      return l;
+    };
+    /* PLAYOFFS A: Obras-River (2) y Gimnasia-Jujuy (1). PERMANENCIA todos
+       contra todos: Salta, Barrio Jardín y Estudiantes. */
+    const PERM = [].concat(partido('20/04/2026', 'PERMANENCIA', SA, BJ, 70, 60),
+      partido('22/04/2026', 'PERMANENCIA', BJ, ES, 81, 80), partido('24/04/2026', 'PERMANENCIA', ES, SA, 66, 64));
+    const IDM = { poa: 'A'.repeat(30) + 'libroPlayA1', perm: 'M'.repeat(30) + 'libroPerm22', saltaZ: 'Z'.repeat(30) + 'libroSalta3' };
+    const previo = sheets.obtenerLibro;
+    sheets.obtenerLibro = async (id) => {
+      if (id === IDM.poa) return libroCompleto(POST);
+      if (id === IDM.perm) return libroCompleto(PERM);
+      if (id === IDM.saltaZ) return libroCompleto(NORTE);
+      return previo(id);
+    };
+    const CATM = JSON.parse(JSON.stringify(CAT));
+    CATM['liga-m'] = { tipo: 'torneo', nombre: 'Liga M', liga: 'liga-argentina', formato: FORMATO, categorias: {
+      'lm-norte': { label: 'Norte', sheetId: ID.norte, zona: 'norte', equipos: [OB, JU, SA, BJ].map(eq) },
+      'lm-sur': { label: 'Sur', sheetId: ID.sur, zona: 'sur', equipos: [GI, RI, VM, ES].map(eq) },
+      'lm-po-a': { label: 'Playoff A', sheetId: IDM.poa, zona: 'po-a', interzonal: true, rol: 'playoffs', equipos: [] },
+      'lm-perm': { label: 'Permanencia', sheetId: IDM.perm, zona: 'perm', interzonal: true, rol: 'permanencia',
+        participan: ['norte', 'sur'], equipos: [] },
+      'lm-rep': { label: 'Repechaje Sur', sheetId: 'R'.repeat(40), zona: 'rep', interzonal: true, rol: 'repechaje',
+        participan: ['sur'], equipos: [] },
+    } };
+    CATM.obras.categorias['obras-lm'] = { label: 'Liga M', sheetId: ID.obras, torneo: 'liga-m', zona: 'norte' };
+    CATM.salta2 = { nombre: 'Salta', liga: 'liga-argentina', equipoPropio: SA, plan: 'PLATA',
+      categorias: { 'salta-lm': { label: 'Liga M', sheetId: IDM.saltaZ, torneo: 'liga-m', zona: 'norte' } } };
+    store[catalogo.CLAVE_KV] = JSON.stringify(CATM);
+    const tokSalta2 = auth.firmarToken({ email: 'dt@salta2.com', club: 'salta2', equipoAsignado: SA, plan: 'PLATA' }, { expiraEn: '1h' });
+
+    const vs = MULTI.vinculadosDe(CATM, 'obras', 'obras-lm').map(v => v.slug);
+    check('la categoría de Norte ve los libros vinculados que la incluyen', vs.join(',') === 'lm-perm,lm-po-a', vs);
+    check('y NO el repechaje de la Sur (`participan` la deja afuera)', vs.indexOf('lm-rep') === -1);
+    check('las zonas regulares no son libros vinculados', vs.indexOf('lm-sur') === -1 && vs.indexOf('lm-norte') === -1);
+
+    const r = await pedirLibro(tokObras, 'obras', 'obras-lm');
+    check('el cliente de Obras pide SU libro: 200', r.status === 200, r.body && r.body.codigo);
+    const h = r.body.hojas || {};
+    const filas = (n) => DATOS_F(h[n]);
+    const bdE = filas('Base Datos E');
+    const cuartos = bdE.filter(f => f.FASE === 'CUARTOS');
+    check('entran los partidos de SU equipo en el Libro 2: Obras-River, los dos, de los dos lados',
+      cuartos.length === 4 && cuartos.every(f => /OBRAS/.test(f.PARTIDO)), cuartos.map(f => f.PARTIDO));
+    check('NO entra Gimnasia-Jujuy: su equipo no jugó ese partido',
+      !bdE.some(f => /GIMNASIA/.test(f.PARTIDO) && /JUJUY/.test(f.PARTIDO)));
+    check('la fase regular de su zona sigue entera', bdE.filter(f => f.FASE === 'REGULAR').length === 12);
+    const pe = filas('PROMEDIOS E').filter(f => f.FASE === 'CUARTOS').map(f => f.EQUIPO).sort();
+    check('promedios de la fase: el suyo y el del rival de la serie, que no jugó contra nadie más',
+      pe.join(',') === [OB, RI].sort().join(','), pe);
+    const bdJ = filas('Base Datos J').filter(f => f.FASE === 'CUARTOS');
+    check('Base Datos J: solo los partidos donde jugó (y el recorte del plan sigue después)',
+      bdJ.length > 0 && bdJ.every(f => /OBRAS/.test(f.PARTIDO)), bdJ.map(f => f.PARTIDO));
+    check('la mediana de la fase (fila TIPO) viaja: es agregada, como la tabla',
+      filas('PROMEDIOS J').some(f => f.NOMBRES === 'JUGADOR TIPO' && f.FASE === 'CUARTOS'));
+    check('la respuesta dice qué libros entraron, con etiqueta y rol',
+      (r.body.vinculados || []).some(v => v.label === 'Playoff A' && v.rol === 'playoffs' && v.partidos === 2), r.body.vinculados);
+    check('ningún sheetId de los libros vinculados viaja', !/A{25}|M{25}|R{25}/.test(JSON.stringify(r.body)));
+
+    /* El índice del navegador: la fase aparece como una más, sin modo llave. */
+    const hojasIdx = {};
+    Object.keys(h).forEach((n) => { hojasIdx[n] = DATOS_F2(h[n]); });
+    const tramos = SGADD.combinacionesTorneoFase(hojasIdx);
+    check('los cuartos son un tramo del libro del cliente', tramos.some(t => t.fase === 'CUARTOS'), tramos.map(t => t.id));
+    const lista = F.enriquecerTramos(tramos, fases);
+    check('y el selector ya NO los ofrece en modo llave: hay estadísticas',
+      !lista.some(t => t.llave && t.declarada === 'cuartos'), lista.map(t => t.id));
+    const idxC = SGADD.construirIndice(hojasIdx, { fase: 'CUARTOS' });
+    check('el índice de los cuartos tiene a Obras y a River', idxC.lista().length === 2 && !!idxC.get(OB) && !!idxC.get(RI),
+      idxC.lista().map(e => e.nombre));
+
+    seccion('5 bis · lo que el cliente NO puede leer del Libro 2');
+    const directo = await pedirLibro(tokObras, 'liga-m', 'lm-po-a');
+    check('el Libro 2 entero, pedido directo: 403', directo.status === 403, directo.body);
+    const rs = await pedirLibro(tokSalta2, 'salta2', 'salta-lm');
+    check('un cliente cuyo equipo no jugó los playoffs: 200 con su zona', rs.status === 200, rs.body && rs.body.codigo);
+    const bdS = DATOS_F(rs.body.hojas['Base Datos E']);
+    check('…y del Libro 2 no recibe NI UNA fila', !bdS.some(f => f.FASE === 'CUARTOS'));
+    check('…con los playoffs informados en cero partidos',
+      (rs.body.vinculados || []).some(v => v.label === 'Playoff A' && v.partidos === 0), rs.body.vinculados);
+
+    seccion('5 ter · todos contra todos: el rival que jugó con otros se re-deriva');
+    const perm = bdS.filter(f => f.FASE === 'PERMANENCIA');
+    check('de la permanencia entran sus dos partidos, no Barrio Jardín-Estudiantes',
+      perm.length === 4 && !perm.some(f => /BARRIO/.test(f.PARTIDO) && /ESTUDIANTES/.test(f.PARTIDO)), perm.map(f => f.PARTIDO));
+    const peS = DATOS_F(rs.body.hojas['PROMEDIOS E']).filter(f => f.FASE === 'PERMANENCIA');
+    const bj = peS.find(f => f.EQUIPO === BJ);
+    check('el promedio de Barrio Jardín NO es el del libro (999): mezcla un partido ajeno', bj && Number(bj.PTS) !== 999, bj);
+    check('se re-derivó de su partido contra Salta: 60 puntos', bj && Number(bj.PTS) === 60, bj);
+    check('Salta conserva el suyo (el del libro)', peS.some(f => f.EQUIPO === SA && Number(f.PTS) === 999), peS);
+    check('los jugadores del rival con partidos ajenos NO viajan en PROMEDIOS J',
+      !DATOS_F(rs.body.hojas['PROMEDIOS J']).some(f => f.FASE === 'PERMANENCIA' && f.EQUIPO === BJ));
+
+    seccion('5 quater · sin duplicar y sin tumbar la zona');
+    const conCopia = libroApi(NORTE.concat(partido('10/04/2026', 'CUARTOS', OB, RI, 88, 70)));
+    const fus = MULTI.fusionar(conCopia, [{ slug: 'x', label: 'X', rol: 'playoffs', libro: libroCompleto(POST) }], SGADD.claveEquipo(OB));
+    const f10 = fus.hojas['Base Datos E'].slice(1).filter(x => x[0] === '10/04/2026');
+    check('un partido escrito en los dos libros entra UNA vez (gana el de la zona)', f10.length === 2, f10.length);
+    check('fusionar no toca el libro de entrada (viene del caché de Google)', conCopia.hojas['Base Datos E'].length === 15);
+    const caido = await MULTI.leerVinculados(libroApi(NORTE), [{ slug: 'y', label: 'Caído', sheetId: 'x' }],
+      SGADD.claveEquipo(OB), async () => { throw new Error('Google no contestó'); });
+    check('un libro vinculado ilegible no tumba el de la zona', caido.hojas['Base Datos E'].length === 13
+      && caido.vinculadosCaidos && caido.vinculadosCaidos[0].label === 'Caído');
+
+    LLAVE.limpiarCache();
+    const lm = await pedirLlave(tokAdmin, 'liga-m');
+    const pm = (lm.body.postemporada || {}).partidos || [];
+    check('la llave junta los resultados de TODOS los libros vinculados (playoffs y permanencia)',
+      lm.status === 200 && pm.filter(p => p.fase === 'CUARTOS').length === 3 && pm.filter(p => p.fase === 'PERMANENCIA').length === 3, pm.length);
+    check('y los libros vinculados no se listan como zonas', Object.keys(lm.body.zonas || {}).sort().join() === 'norte,sur',
+      Object.keys(lm.body.zonas || {}));
+    LLAVE.limpiarCache();
+
+    seccion('5 quinquies · el Panel Master: vincular libros y declarar la llave');
+    const base = JSON.parse(JSON.stringify(CATM));
+    const vinc = mutar.aplicar(base, 'torneo', { club: 'liga-m', nombre: 'Liga M', zonas: {
+      'po-b': { label: 'Playoff B', rol: 'playoffs', participan: ['norte'], sheetId: 'B'.repeat(40) } } }, catalogo.validar);
+    check('se vincula un libro nuevo con rol y zonas', vinc.ok, vinc.motivo);
+    const kb = vinc.ok && vinc.catalogo['liga-m'].categorias['liga-m-po-b'];
+    check('queda como libro vinculado, con su rol y sus zonas', kb && kb.interzonal && kb.rol === 'playoffs'
+      && kb.participan.join() === 'norte', kb);
+    check('sin equipos propios y sin propagarse a nadie', kb && kb.equipos.length === 0 && !(vinc.propagado || []).length);
+    const malRol = mutar.aplicar(base, 'torneo', { club: 'liga-m', nombre: 'Liga M', zonas: {
+      'x1': { label: 'X', rol: 'octogonal', sheetId: 'B'.repeat(40) } } }, catalogo.validar);
+    check('un rol que no existe se rechaza', !malRol.ok && /rol/.test(malRol.motivo), malRol.motivo);
+    const malZona = mutar.aplicar(base, 'torneo', { club: 'liga-m', nombre: 'Liga M', zonas: {
+      'x2': { label: 'X', rol: 'repechaje', participan: ['oeste'], sheetId: 'B'.repeat(40) } } }, catalogo.validar);
+    check('participar con una zona que no existe se rechaza', !malZona.ok && /oeste/.test(malZona.motivo), malZona.motivo);
+    const aPost = mutar.aplicar(base, 'torneo', { club: 'liga-m', nombre: 'Liga M', zonas: {
+      'x3': { label: 'X', rol: 'repechaje', participan: ['po-a'], sheetId: 'B'.repeat(40) } } }, catalogo.validar);
+    check('ni con otro libro vinculado: participan zonas REGULARES', !aPost.ok, aPost.motivo);
+    const baja = mutar.aplicar(base, 'torneo', { club: 'liga-m', nombre: 'Liga M', zonas: { rep: null } }, catalogo.validar);
+    check('un libro vinculado se desvincula', baja.ok && !baja.catalogo['liga-m'].categorias['lm-rep'], baja.motivo);
+    const bajaReg = mutar.aplicar(base, 'torneo', { club: 'liga-m', nombre: 'Liga M', zonas: { norte: null } }, catalogo.validar);
+    check('una zona regular NO se desvincula por acá', !bajaReg.ok && /regular/.test(bajaReg.motivo), bajaReg.motivo);
+
+    const llaveMal = mutar.aplicar(base, 'torneo', { club: 'liga-m', nombre: 'Liga M', formato: { fases: [
+      { id: 'cuartos', cruces: [{ id: 'C1', a: { zona: 'norte', puesto: 1 }, b: { ganador: 'C9' } }] }] } }, catalogo.validar);
+    check('una llave con un cruce que apunta a la nada NO se guarda', !llaveMal.ok && /llave/.test(llaveMal.motivo), llaveMal.motivo);
+    const NUEVAS = [{ id: 'regular', label: 'Regular', cruce: 'zona' },
+      { id: 'cuartos', label: 'Cuartos', cruce: 'interzonal', zonaLibro: 'po-a', libro: ['CUARTOS'], serie: { mejorDe: 3 },
+        cruces: [{ id: 'C1', a: { zona: 'norte', puesto: 1 }, b: { zona: 'norte', puesto: 8 } },
+                 { id: 'C2', a: { zona: 'norte', puesto: 8 }, b: { zona: 'sur', puesto: 4 } }] }];
+    const llaveOk = mutar.aplicar(base, 'torneo', { club: 'liga-m', nombre: 'Liga M',
+      formato: Object.assign({}, FORMATO, { fases: NUEVAS }) }, catalogo.validar);
+    check('una llave válida («1° Zona A vs 8° Zona A», «8° Zona A vs 4° Zona B») se guarda en KV', llaveOk.ok, llaveOk.motivo);
+    const pubC = catalogo.publico(llaveOk.catalogo, { club: 'obras', origen: 'kv' });
+    const kC = pubC.find(c => c.id === 'obras').categorias.find(c => c.slug === 'obras-lm');
+    check('la categoría del cliente recibe la llave guardada en KV', kC && kC.torneoDecl && kC.torneoDecl.origen === 'kv'
+      && kC.torneoDecl.formato.fases.length === 2, kC && kC.torneoDecl);
+    check('sin un solo sheetId', !/A{25}|M{25}|R{25}|N{25}|S{25}/.test(JSON.stringify(kC.torneoDecl)));
+    const kX = pubC.find(c => c.id === 'obras').categorias.find(c => c.slug === 'obras-lx');
+    check('la categoría de OTRO torneo recibe la de su torneo, no esta', kX.torneoDecl && kX.torneoDecl.id === 'liga-x', kX.torneoDecl);
+
+    /* EL PANEL LA PREFIERE AL ARCHIVO DEL REPO. */
+    global.SGADD_APP = { estado: { planillaId: 'obras-lm-p' } };
+    /* El catálogo que lee el parser es el del núcleo que ve SU módulo: con
+       los módulos del servidor cargados, es el global. */
+    const CORE_F = (typeof global.SGADD !== 'undefined') ? global.SGADD : SGADD;
+    CORE_F.CATALOGO.planillas.push({ id: 'obras-lm-p', torneoId: 'liga-m', zonaId: 'norte', torneoDecl: kC.torneoDecl });
+    const decl = F.declaradas();
+    check('declaradas() lee la llave de KV sin el archivo del torneo',
+      decl.length === 2 && decl[1].cruces[1].a.puesto === 8 && decl[1].cruces[1].b.zona === 'sur', decl.map(d => d.id));
+    CORE_F.CATALOGO.planillas.pop();
+    delete global.SGADD_APP;
+    sheets.obtenerLibro = previo;
+    store[catalogo.CLAVE_KV] = JSON.stringify(CAT);
+  }
+
+  seccion('6 · el Panel Master: libros vinculados y editor de cruces');
+  {
+    global.SGADD_FASES = F;
+    const TU = require('./js/sgadd-torneos.js');
+    const CATU = JSON.parse(JSON.stringify(CAT));
+    CATU['liga-x'].categorias['lx-perm'] = { label: 'Permanencia', sheetId: 'M'.repeat(40), zona: 'perm',
+      interzonal: true, rol: 'permanencia', participan: ['norte'], equipos: [] };
+    const lista = catalogo.publico(CATU, { admin: true, origen: 'kv' });
+    const t = lista.find(c => c.id === 'liga-x');
+    check('las zonas regulares no incluyen los libros vinculados', TU.zonasDe(t).map(z => z.zona).sort().join() === 'norte,sur');
+    const ls = TU.librosDe(t);
+    check('los libros vinculados, con rol y zonas', ls.length === 2 && ls.some(l => l.zona === 'perm' && l.rol === 'permanencia'
+      && l.participan.join() === 'norte') && ls.some(l => l.zona === 'post' && l.rol === 'playoffs'), ls);
+    const a = TU.arbol(lista).torneos.find(x => x.id === 'liga-x');
+    check('la zona de la postemporada no pide «+ cliente»: no es una zona donde se juega la regular',
+      a.zonas.every(z => z.zona !== 'post' && z.zona !== 'perm'));
+    const h = TU.html(lista);
+    check('la tarjeta del torneo muestra el bloque de libros vinculados', /Libros vinculados/.test(h) && /Permanencia/.test(h));
+    check('y el de cruces, con los slots en castellano', /la llave/.test(h) && /1° Conferencia Norte vs 2° Conferencia Sur/.test(h));
+    check('ningún sheetId en la pantalla', !/M{25}|P{25}|N{25}/.test(h));
+
+    /* El editor: ida y vuelta sin perder lo que no edita. */
+    const fOrig = Object.assign({}, FORMATO.fases[1], { desde: '2026-04-01', hasta: '2026-04-30' });
+    const ida = TU.editorAFase(TU.faseAEditor(fOrig));
+    check('una fase pasa por el editor y vuelve igual', JSON.stringify(ida.cruces) === JSON.stringify(fOrig.cruces)
+      && ida.zonaLibro === 'post' && ida.serie.mejorDe === 3 && ida.cruce === 'interzonal', ida);
+    check('lo que el editor no conoce (la ventana) no se pierde', ida.desde === '2026-04-01' && ida.hasta === '2026-04-30');
+    check('«1° Zona A» se lee así', TU.ladoTexto({ zona: 'norte', puesto: 1 }, { norte: 'Zona A' }) === '1° Zona A'
+      && TU.ladoTexto({ ganador: 'C1' }) === 'Ganador C1');
+    const conError = TU.editorAFase(Object.assign(TU.faseAEditor({ id: 'semis' }), { cruces: [
+      { id: 'S1', a: { tipo: 'ganador', ref: 'C9', zona: '', puesto: '' }, b: { tipo: 'puesto', ref: '', zona: 'norte', puesto: '1' } }] }));
+    check('el editor denuncia un cruce que apunta a la nada con el parser del panel',
+      TU.erroresLlave([conError]).length > 0, TU.erroresLlave([conError]));
+    const il = TU.intencionLlave(t, [ida]);
+    check('guardar la llave conserva el resto del formato', il.accion === 'torneo' && il.formato.partidosPorEquipo === 3
+      && il.formato.fases.length === 1);
+
+    const b = { label: 'Playoff B', rol: 'playoffs', participan: { norte: true, sur: false }, libro: 'https://docs.google.com/spreadsheets/d/' + 'B'.repeat(40) + '/edit' };
+    check('al vínculo nuevo no le falta nada', TU.faltantesLibro(b, t).length === 0, TU.faltantesLibro(b, t));
+    const ib = TU.intencionLibro(t, b);
+    check('la intención saca el id del link, el slug de la etiqueta y solo las zonas tildadas',
+      ib.zonas['playoff-b'] && ib.zonas['playoff-b'].sheetId === 'B'.repeat(40) && ib.zonas['playoff-b'].participan.join() === 'norte'
+      && ib.zonas['playoff-b'].rol === 'playoffs', ib);
+    check('un id que ya existe se pide cambiar', TU.faltantesLibro({ label: 'Post', rol: 'playoffs', participan: {}, libro: 'B'.repeat(40) }, t)
+      .some(x => /ya existe/.test(x)));
+    const r = mutar.aplicar(JSON.parse(JSON.stringify(CATU)), 'torneo', ib, catalogo.validar);
+    check('y el servidor la acepta tal cual', r.ok, r.motivo);
+    delete global.SGADD_FASES;
   }
 
   console.log('\n' + '═'.repeat(70));

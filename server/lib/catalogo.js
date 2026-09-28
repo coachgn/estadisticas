@@ -358,6 +358,33 @@ function suscripcionPublica(club, slug, origen) {
   };
 }
 
+/**
+ * LA DECLARACIÓN DEL TORNEO GUARDADA EN KV (punto 77): las fases y los
+ * cruces que el admin armó en el Panel Master, con las zonas y sus
+ * equipos. Viaja a la categoría enganchada para que la llave se resuelva
+ * sin un deploy. Solo si el torneo declara fases en KV: si no, el panel
+ * sigue con `torneos/<id>.json`, que es lo que hacía.
+ *
+ * No lleva un solo sheetId ni nada comercial: son los cruces del
+ * reglamento y los nombres de los equipos, que ya están en la tabla.
+ */
+function declaracionDeTorneo(c, torneoId) {
+  const t = torneoId && c[torneoId];
+  if (!t || t.tipo !== 'torneo' || !t.formato || !Array.isArray(t.formato.fases) || !t.formato.fases.length) return null;
+  const f = t.formato;
+  const zonas = {};
+  Object.keys(t.categorias || {}).forEach((s) => {
+    const k = t.categorias[s];
+    if (!k || !k.zona) return;
+    zonas[k.zona] = { label: k.label || k.zona, rol: k.interzonal ? (k.rol || 'playoffs') : 'regular',
+      equipos: (k.equipos || []).map(e => ({ nombre: e.nombre, alias: e.alias || undefined })) };
+  });
+  return { id: torneoId, nombre: t.nombre || torneoId, origen: 'kv',
+    formato: { fases: f.fases, partidosPorEquipo: f.partidosPorEquipo || null,
+      inicio: f.inicio || null, finRegular: f.finRegular || null },
+    zonas: zonas };
+}
+
 function publico(cat, opciones) {
   const admin = !!(opciones && opciones.admin);
   /* EL CLUB DEL TOKEN recibe el plan y el estado de SUS categorías: el
@@ -426,6 +453,9 @@ function publico(cat, opciones) {
       const ci = AUTH.cicloDeCategoria(c[id], s);
       return { cicloDesde: ci.cicloDesde, informesEntregados: ci.informesEntregados, cicloDe: ci.cicloDe };
     })()) : {},
+    ((admin || propio === id) && (c[id].categorias[s].torneo || c[id].tipo === 'torneo')) ? {
+      torneoDecl: declaracionDeTorneo(c, c[id].categorias[s].torneo || id),
+    } : {},
     (!admin && propio === id) ? Object.assign(suscripcionPublica(c[id], s, origen), {
       /* El cliente no puede abrir una categoría pausada: el servidor le
          contesta 403. El selector la muestra deshabilitada y con el motivo,

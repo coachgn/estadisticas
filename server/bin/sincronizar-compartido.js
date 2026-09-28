@@ -63,7 +63,10 @@ const path = require('path');
 const MODULOS = ['sgadd-core.js', 'sgadd-auth.js', 'sgadd-estados.js', 'sgadd-data.js',
   /* La tabla de posiciones: el servidor arma con ella la de la OTRA zona
      para la llave (punto 76), con el mismo motor que Clasificación. */
-  'sgadd-clasificacion.js'];
+  'sgadd-clasificacion.js',
+  /* El parser de la declaración de fases: el servidor valida con él lo que
+     escribe el editor de cruces del Panel Master (punto 77). */
+  'sgadd-fases.js'];
 
 const ORIGEN = path.join(__dirname, '..', '..', 'js');
 const DESTINO = path.join(__dirname, '..', 'lib', 'compartido');

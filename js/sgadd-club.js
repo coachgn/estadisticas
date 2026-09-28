@@ -846,6 +846,10 @@ const CLUB = (function () {
          fixture es el del propio torneo. Sin esto, abrir la Zona C decía
          «esta categoría no está enganchada a un torneo» — y es el torneo. */
       if (s.tipo === 'torneo' && !p.torneoId) p.torneoId = s.id;
+      /* LA DECLARACIÓN DEL TORNEO GUARDADA EN KV (punto 77): las fases y
+         los cruces que el admin armó en el Panel Master. Gana sobre el
+         archivo del repo, así un cambio de llave no necesita un deploy. */
+      if (k.torneoDecl) p.torneoDecl = k.torneoDecl;
       if (k.pruebaVencida) p.pruebaVencida = true;
       return p;
     });

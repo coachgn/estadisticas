@@ -102,11 +102,12 @@ node test-fases.js         #  91 tests · fases, cruces y series: el parser de l
                            #             intrazonal e interzonal, la fase por ventana, las métricas que no
                            #             mezclan fases y la barra que repinta Clasificación y Fixture
 
-node test-interzonal.js    #  70 tests · la llave entre zonas: un cliente de una zona recibe quién
+node test-interzonal.js    # 129 tests · la llave entre zonas: un cliente de una zona recibe quién
                            #             contra quién y un 403 por el libro de la otra, los slots
-                           #             «1° Norte vs 2° Sur», el modo llave y la fase activa
+                           #             «1° Norte vs 2° Sur», el modo llave y la fase activa; los
+                           #             libros vinculados, el acceso por partido y el editor de cruces
 
-node test-backend.js       # 459 tests · el proxy, el benchmark, las alertas, el catálogo en KV
+node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
 
 # OJO: `test-backend.js` ESTÁ EN MAIN desde que se integró el backend.
@@ -116,7 +117,7 @@ node test-backend.js       # 459 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6881 tests en total. Todos tienen que dar verde antes de commitear.**
+**6942 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -231,7 +232,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=250`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=251`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -11235,4 +11236,128 @@ tramo (punto 3 ter). **No mira ventanas ni declaración**: lo dice el dato.
   la zona de postemporada con su libro cuando MotorStats lo escriba.
 - **La llave no se cachea en el navegador** más allá de la sesión de la
   página: un F5 la vuelve a pedir (el servidor la tiene en caché 5 min).
+
+> **Desde el punto 77** los partidos de un equipo en un libro vinculado le
+> llegan por su propio libro, con estadísticas: el modo llave queda para las
+> fases donde no jugó.
+
+---
+
+## 77. MULTILIBRO · los libros vinculados y el acceso por PARTIDO (2026-09-28)
+
+Pedido: un torneo con N libros —fase regular de cada zona, Playoff A/B,
+Permanencia, Repechaje— sin duplicar nada a mano, con el acceso de un cliente
+decidido por **participación** y no por libro, y la llave declarada desde el
+Panel Master sin un deploy. `test-interzonal.js` (secciones 5 y 6) fija todo
+lo de acá.
+
+### El modelo · un libro vinculado es una ZONA con `rol`
+
+No se inventó una estructura nueva: la zona `interzonal` del punto 76 ya era
+«un libro del torneo sin equipos, sin enganche y sin propagación». Se
+generalizó con dos campos en `server/lib/torneos.js`:
+
+```
+rol          regular | playoffs | permanencia | repechaje   (interzonal ⇔ rol ≠ regular)
+participan   [zonas regulares]   vacío = todas
+```
+
+- **Una zona vieja con `interzonal: true` y sin rol se lee `playoffs`**: el
+  catálogo de hoy no se migra.
+- **`participan` solo acepta zonas REGULARES del torneo**: un vínculo a una
+  zona que no existe —o a otro libro vinculado— se ve igual de vinculado que
+  uno bueno y no le llega a nadie.
+- **`zonas: { <id>: null }` desvincula**, y solo un libro vinculado: una zona
+  regular tiene clientes y se da de baja por otro camino. El guard de libros
+  perdidos (`librosPerdidos`) no cuenta como pérdida lo que se desvinculó a
+  propósito (`desvinculadas`).
+
+### El acceso es por partido · `server/lib/multilibro.js`
+
+`manejarEquipos` lee el libro de la categoría y, si su torneo tiene libros
+vinculados que incluyen a su zona, **fusiona en él lo que de cada uno le toca
+al equipo de la categoría**, ANTES de las alertas y del recorte por plan:
+
+| Hoja | Qué entra |
+|---|---|
+| maestras (`Base Datos E`, `4 FACTORES`, `Base Datos J`) | solo las filas de los partidos donde jugó su equipo, de local o de visitante |
+| derivadas de un equipo LIMPIO | enteras: el propio, y el rival cuyos partidos de esa fase fueron TODOS contra el suyo (en una serie, siempre) |
+| derivadas de un equipo SUCIO | afuera; su `PROMEDIOS E` / `4F` se **re-deriva** de los partidos visibles con el motor del TOTAL (punto 3 ter). Sus jugadores no viajan |
+| filas TIPO de la liga | viajan, solo de las fases donde jugó: son una mediana, la misma clase de dato que la tabla |
+
+- **El libro vinculado entero sigue en 403** (`OTRO_CLUB`, sin tocar): lo que
+  cambió es que sus partidos contra el equipo del cliente llegan por su propio
+  libro.
+- **Sin duplicar**: un partido que MotorStats escribió en los dos libros entra
+  una vez, y gana el de la zona. La clave es la del índice.
+- **Un vinculado ilegible no tumba la zona**: se informa en
+  `vinculadosCaidos` y el resto sirve.
+- **La respuesta dice qué entró** (`vinculados`: etiqueta, rol, partidos,
+  fases), nunca el sheetId.
+- **La fase entra como una más**: el selector la ofrece normal, con
+  estadísticas, y el MODO LLAVE del punto 76 queda solo para una fase donde
+  el equipo no jugó ningún partido.
+
+**Consecuencia a tener presente:** en una fase todos contra todos
+(permanencia) el rival que también jugó con otros se ve con su promedio
+**contra nosotros**, no el de la fase entera, y sin jugadores. Es lo que dice
+la regla; mostrar su promedio real sería mostrar partidos ajenos.
+
+### La llave suma las otras series sin repetir
+
+`mezclarLlave` ya no descarta una fase que está en el libro propio: el libro
+trae los partidos de SU equipo y la llave del servidor los de todos, así que
+suma lo que falta con la clave fecha + los dos equipos (del lado que sea). Lo
+del libro gana, porque trae el box score detrás. `llave.js` junta los
+resultados de **todos** los libros vinculados.
+
+### La llave se declara en el Panel Master, y vive en KV
+
+La tarjeta de cada torneo suma dos bloques:
+
+- **📚 Libros vinculados**: nombre del tramo, rol, zonas que participan
+  (casillas; ninguna = todas) y el link del libro. Editar, vincular y
+  desvincular pasan por el modal de confirmación (punto 30).
+- **🔀 Cruces · la llave**: fases con su FASE en el libro, si cruza entre
+  zonas, en qué libro se juega y a cuántos partidos es la serie; y los cruces,
+  cada lado como `puesto + zona`, `Ganador de` o `Perdedor de` un cruce
+  anterior. Se lee «1° Zona A vs 8° Zona A».
+
+Reglas:
+
+- **Se valida con el MISMO parser que usa el panel al leer**
+  (`SGADD_FASES.parsear`, ahora vendorizado en `server/lib/compartido/`):
+  la pantalla deshabilita guardar y el servidor rechaza una llave con errores.
+  Una llave a medio declarar se ve igual que una buena hasta el día de los
+  playoffs.
+- **El editor no pierde lo que no conoce**: ventanas, `desde`, `hasta` y
+  cualquier campo futuro viajan intactos (`_resto`).
+- **La declaración viaja a la categoría enganchada** (`torneoDecl`, desde
+  `catalogo.publico`), sin sheetId, y **gana sobre `torneos/<id>.json`**: el
+  panel la funde con el archivo (del que conserva calendario y alias) en
+  `docActual()`. Sin fases en KV, el panel sigue exactamente como antes.
+- **Con un editor abierto la tarjeta ocupa la fila entera** (inline, no
+  clase): en la grilla de tres columnas mide ~220 px.
+
+### Verificado
+
+- **Al revés, 17 mutaciones** y caen todas: maestras sin filtro (5),
+  derivadas de sucios (5), sin re-derivar (2), ignorar `participan` (2), sin
+  dedupe (1), TIPO de fases ajenas (1), sin la fusión en el handler (13),
+  `participan` sin validar (2), la llave sin validar (1), el rol sin validar
+  (1), desvincular una regular (1), mezclar sin dedupe (1), ignorar la llave
+  de KV (1), el catálogo sin mandarla (3), las zonas con los libros adentro
+  (2), el editor perdiendo la ventana (1) y la llave pisando en vez de juntar
+  (5).
+- **En el navegador**, con un torneo de dos zonas y dos libros vinculados
+  inyectado: la tarjeta muestra los dos bloques, tipear no roba el foco, un
+  lado «Ganador de» sin cruce deshabilita guardar con el mensaje del parser,
+  y a 375 px no desborda nada.
+
+### Pendiente
+
+- **Cargar los libros reales** de playoffs/permanencia de APB y LAB cuando
+  MotorStats los escriba, desde el Panel Master.
+- **El selector de fase no dice de qué libro sale cada una**: el
+  dato viaja (`vinculados`), falta mostrarlo si el club lo pide.
 

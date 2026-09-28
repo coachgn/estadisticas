@@ -1172,7 +1172,7 @@ function aplicar(vigente, accion, datos, validar) {
   if (mal) return malo('El catálogo quedaría inválido: ' + mal);
 
   const perdidas = librosPerdidos(vigente, r.catalogo,
-    accion === 'baja' ? datos : null);
+    accion === 'baja' ? datos : null).filter(p => (r.desvinculadas || []).indexOf(p) === -1);
   if (perdidas.length) {
     return malo('Esto dejaría sin libro a: ' + perdidas.join(', ')
       + '. Esas categorías pasarían a 502 sin que nadie tocara su planilla.');

@@ -28,6 +28,7 @@ const reglas = require('../lib/reglas.js');
 const alertas = require('../lib/alertas.js');
 const sheets = require('../lib/google-sheets.js');
 const etiquetas = require('../lib/etiquetas.js');
+const MULTI = require('../lib/multilibro.js');
 const AUTH = require('../lib/compartido/sgadd-auth.js');
 const NUCLEO = require('../lib/compartido/sgadd-core.js');
 
@@ -282,6 +283,15 @@ async function manejarEquipos(peticion, deps) {
   let libro;
   try {
     libro = await sheets.obtenerLibro(cat.sheetId, deps);
+    /* LOS LIBROS VINCULADOS DEL TORNEO (punto 77): de cada uno entran SOLO
+       los partidos donde jugó el equipo de esta categoría, y se fusionan
+       acá, antes de las alertas y del recorte por plan. */
+    const vinc = MULTI.vinculadosDe(cascada.catalogo, cat.clubId, cat.slug);
+    if (vinc.length) {
+      const eq = AUTH.equipoDeCategoria((cascada.catalogo || {})[cat.clubId] || {}, cat.slug).equipo;
+      libro = await MULTI.leerVinculados(libro, vinc, eq ? NUCLEO.claveEquipo(eq) : null,
+        (id) => sheets.obtenerLibro(id, deps));
+    }
   } catch (e) {
     return fallaDeDatos(e);
   }
@@ -373,6 +383,10 @@ async function manejarEquipos(peticion, deps) {
       tramoAlertas: { fase: alertasDelTramo.fase, torneo: alertasDelTramo.torneo },
       faltantes: libro.faltantes,
       leidoEn: libro.leidoEn,
+      /* Qué libros vinculados entraron y con cuántos partidos del equipo:
+         etiqueta y rol, nunca el sheetId (punto 77). */
+      vinculados: libro.vinculados || [],
+      vinculadosCaidos: libro.vinculadosCaidos || [],
       hojas: rec.hojas,
       /* La segunda vista, en TEXTO, para la capa vieja de Principal. Va
        * recortada con los MISMOS índices que `hojas` — ver `reglas.js`. */

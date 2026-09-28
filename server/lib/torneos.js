@@ -31,6 +31,15 @@
 'use strict';
 
 const CORE = require('./compartido/sgadd-core.js');
+/* El parser de la declaración de fases: el MISMO que usa el panel, así el
+   editor de cruces del Panel Master no puede guardar algo que el panel
+   después no entienda (punto 77). */
+const FASES = require('./compartido/sgadd-fases.js');
+
+/* Los roles de un LIBRO VINCULADO (punto 77). `regular` es el de cada
+   zona; los demás son los tramos siguientes del torneo, cada uno en su
+   propio libro de MotorStats. */
+const ROLES_LIBRO = ['regular', 'playoffs', 'permanencia', 'repechaje'];
 
 const TIPO = 'torneo';
 const ID = /^[a-z0-9][a-z0-9-]*$/;
@@ -196,6 +205,13 @@ function torneo(cat, d, deps) {
   /* `fixture` es la FUENTE EXTERNA del calendario (punto 70): viaja al
      catalogo para que el servidor sepa que bajar sin tener una copia del
      archivo del torneo, que vive en el repo del panel. */
+  /* EL EDITOR DE CRUCES escribe `formato.fases`: se valida con el parser
+     del panel y un error NO se guarda. Una llave a medio declarar se ve
+     igual que una buena hasta el día de los playoffs. */
+  if (v.formato && typeof v.formato === 'object' && Array.isArray(v.formato.fases)) {
+    const p = FASES.parsear(v.formato);
+    if (p.errores && p.errores.length) return malo('La llave tiene errores: ' + p.errores.join(' · ') + '.');
+  }
   ['marca', 'fuente', 'formato', 'fixture'].forEach((c) => {
     if (v[c] === undefined) return;
     if (v[c] === null) { delete t[c]; return; }
@@ -208,9 +224,19 @@ function torneo(cat, d, deps) {
      mitad de las zonas cargadas no se ve como un error, se ve como un
      torneo más chico. */
   const normal = {};
+  const quitar = [];
   for (let i = 0; i < ids.length; i++) {
     const z = ids[i];
     if (!ID.test(z)) return malo('La zona «' + z + '» va en minúsculas, sin espacios ni acentos.');
+    /* `null` DESVINCULA un libro vinculado. Solo esos: una zona regular
+       tiene clientes enganchados y se da de baja por otro camino. */
+    if (zonasIn[z] === null) {
+      const act = categoriaDeZona(t, z);
+      if (!act) return malo('La zona «' + z + '» no existe.');
+      if (!act.k.interzonal) return malo('La zona «' + z + '» es regular: solo se desvincula un libro de playoffs, permanencia o repechaje.');
+      quitar.push(act.slug);
+      continue;
+    }
     const zin = zonasIn[z] || {};
     const actual = categoriaDeZona(t, z);
     const slug = String(zin.slug || (actual && actual.slug) || (id + '-' + z)).toLowerCase();
@@ -222,7 +248,22 @@ function torneo(cat, d, deps) {
        juegan equipos de las OTRAS zonas, así que no declara equipos
        propios. Si los declarara, el control de duplicados la rechazaría
        —y con razón: un equipo está en UNA zona—. */
-    const interzonal = zin.interzonal === true || (zin.interzonal === undefined && !!(actual && actual.k.interzonal));
+    /* EL ROL (punto 77) generaliza a `interzonal`: todo libro que no es el
+       de una zona regular es un libro VINCULADO —playoffs, permanencia,
+       repechaje— y se comporta como la postemporada del punto 76. */
+    const rolIn = zin.rol !== undefined ? String(zin.rol || '').toLowerCase() : null;
+    if (rolIn && ROLES_LIBRO.indexOf(rolIn) === -1) {
+      return malo('Zona ' + z + ': el rol «' + zin.rol + '» no existe (' + ROLES_LIBRO.join(', ') + ').');
+    }
+    const interzonal = rolIn ? rolIn !== 'regular'
+      : (zin.interzonal === true || (zin.interzonal === undefined && !!(actual && actual.k.interzonal)));
+    const rol = interzonal ? (rolIn && rolIn !== 'regular' ? rolIn : ((actual && actual.k.rol) || 'playoffs')) : null;
+    let participan = null;
+    if (interzonal) {
+      const pin = zin.participan !== undefined ? zin.participan : (actual ? actual.k.participan : undefined);
+      if (pin !== undefined && pin !== null && !Array.isArray(pin)) return malo('Zona ' + z + ': `participan` es una lista de zonas.');
+      participan = (pin || []).map(x => String(x || '').trim().toLowerCase()).filter(Boolean);
+    }
     const eq = interzonal ? { equipos: [] }
       : (zin.equipos !== undefined ? normalizarEquipos(zin.equipos) : { equipos: actual ? (actual.k.equipos || []) : [] });
     if (eq.error) return malo('Zona ' + z + ': ' + eq.error);
@@ -240,8 +281,23 @@ function torneo(cat, d, deps) {
     const label = String(zin.label || (actual && actual.k.label) || '').trim();
     if (!label) return malo('Zona ' + z + ': falta la etiqueta, que es lo que dice el selector.');
     normal[z] = { slug: slug, anterior: actual ? actual.slug : null, label: label, sheetId: sheetId,
-      equipos: eq.equipos, nivel: zin.nivel || v.nivel || null, interzonal: interzonal };
+      equipos: eq.equipos, nivel: zin.nivel || v.nivel || null, interzonal: interzonal,
+      rol: rol, participan: participan };
   }
+  /* Las zonas que participan de un libro vinculado tienen que ser zonas
+     REGULARES del torneo: un vínculo a una zona que no existe se ve igual
+     de vinculado que uno bueno y no le llega a nadie. */
+  const regulares = {};
+  Object.keys(zonasDelTorneo(t)).forEach((z) => {
+    const c = categoriaDeZona(t, z);
+    if (c && !c.k.interzonal && quitar.indexOf(c.slug) === -1) regulares[z] = true;
+  });
+  Object.keys(normal).forEach((z) => { if (!normal[z].interzonal) regulares[z] = true; else delete regulares[z]; });
+  for (const z of Object.keys(normal)) {
+    const malas = (normal[z].participan || []).filter(p => !regulares[p]);
+    if (malas.length) return malo('Zona ' + z + ': «' + malas.join('», «') + '» no es una zona regular del torneo.');
+  }
+  quitar.forEach((s) => { delete t.categorias[s]; });
   const dup = duplicados(Object.assign({}, zonasDelTorneo(t), normal));
   if (dup.length) return malo('Equipos repetidos entre zonas: ' + dup.join(', ') + '.');
 
@@ -253,6 +309,8 @@ function torneo(cat, d, deps) {
     const k = Object.assign({}, previa, { label: n.label, sheetId: n.sheetId, zona: z, equipos: n.equipos });
     if (n.nivel) k.nivel = String(n.nivel);
     if (n.interzonal) k.interzonal = true; else delete k.interzonal;
+    if (n.rol) k.rol = n.rol; else delete k.rol;
+    if (n.participan && n.participan.length) k.participan = n.participan; else delete k.participan;
     /* El libro de la postemporada NO se propaga: nadie está enganchado a
        esa zona, y un cliente solo recibe el libro de SU zona. */
     if (n.sheetId && n.sheetId !== (previa.sheetId || '') && !n.interzonal) estrenan.push(z);
@@ -284,7 +342,10 @@ function torneo(cat, d, deps) {
     });
   });
 
-  return { ok: true, catalogo: nuevo, creoClub: !previo, propagado: propagado };
+  /* Los libros vinculados que se desvincularon A PROPÓSITO: el guard de
+     libros perdidos de `aplicar` no los cuenta como una pérdida. */
+  return { ok: true, catalogo: nuevo, creoClub: !previo, propagado: propagado,
+    desvinculadas: quitar.map(s => id + '/' + s) };
 }
 
 /** zona → {equipos} de un torneo ya guardado, para el control de duplicados. */
@@ -383,6 +444,8 @@ function publicoDeZona(k) {
   return {
     zona: k.zona || null,
     interzonal: !!k.interzonal,
+    rol: k.interzonal ? (k.rol || 'playoffs') : 'regular',
+    participan: Array.isArray(k.participan) ? k.participan.slice() : [],
     equipos: (k.equipos || []).map(e => {
       const o = { id: e.id, nombre: e.nombre, clave: e.clave };
       if (e.ciudad) o.ciudad = e.ciudad;
@@ -404,6 +467,8 @@ function intencionDesdeArchivo(doc, libros, librosDe) {
     const zin = d.zonas[z];
     zonas[z] = { slug: zin.slug, label: zin.label, equipos: zin.equipos, nivel: zin.nivel || d.nivel || null };
     if (zin.interzonal === true) zonas[z].interzonal = true;
+    if (zin.rol) zonas[z].rol = zin.rol;
+    if (Array.isArray(zin.participan)) zonas[z].participan = zin.participan;
     if (libros && libros[z]) zonas[z].sheetId = libros[z];
     /* `libroDe` REUSA el libro de una categoria que ya existe, sin que su
        sheetId salga del servidor (punto 67). Es lo que permite que una
@@ -421,7 +486,7 @@ function intencionDesdeArchivo(doc, libros, librosDe) {
 }
 
 module.exports = {
-  TIPO, ACCIONES_DE_TORNEO, esTorneo, normalizarEquipos, duplicados, competenciaDesdeFormato,
+  TIPO, ACCIONES_DE_TORNEO, ROLES_LIBRO, esTorneo, normalizarEquipos, duplicados, competenciaDesdeFormato,
   vinculadas, categoriaDeZona, torneo, vincular, buscarEquipo, publicoDeZona, zonasDelTorneo,
   intencionDesdeArchivo,
 };

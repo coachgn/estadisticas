@@ -173,8 +173,15 @@ async function armar(torneoId, t, deps) {
       continue;
     }
     if (k.interzonal) {
+      /* TODOS LOS LIBROS VINCULADOS (punto 77): playoffs A y B, la
+         permanencia, un repechaje. Sin repetir un partido que MotorStats
+         haya escrito en dos. */
       postemporada.conLibro = true;
-      postemporada.partidos = partidosDePostemporada(hojas);
+      const vistos = new Set(postemporada.partidos.map(p => p.fase + '|' + p.fecha + '|' + p.local + '|' + p.visitante));
+      partidosDePostemporada(hojas).forEach((p) => {
+        const kk = p.fase + '|' + p.fecha + '|' + p.local + '|' + p.visitante;
+        if (!vistos.has(kk)) { vistos.add(kk); postemporada.partidos.push(p); }
+      });
     } else {
       zonas[k.zona] = Object.assign({ label: k.label || k.zona }, tablaDeZona(t, slug, hojas));
     }
