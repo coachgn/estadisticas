@@ -40,6 +40,11 @@ const SGADD_APP = (function () {
 
   function planillaActual() { return SGADD.planilla(estado.planillaId); }
 
+  /** ¿La barra está en una fase entre zonas (punto 76)? */
+  function enLlave() {
+    return typeof SGADD_FASES !== 'undefined' && SGADD_FASES.esLlave(estado.torneo);
+  }
+
 /* =====================================================================
    LA CATEGORÍA SOBREVIVE AL F5
 
@@ -257,7 +262,9 @@ const SGADD_APP = (function () {
 
       estado.hojas = hojas;
       const fases = SGADD.fasesDisponibles(hojas);
-      if (fases.length && !fases.some(f => f.id === estado.fase)) estado.fase = fases[0].id;
+      /* En modo llave la fase NO está en este libro, y es a propósito: se
+         juega en el de la postemporada (punto 76). */
+      if (fases.length && !fases.some(f => f.id === estado.fase) && !enLlave()) estado.fase = fases[0].id;
 
       /* EL TRAMO SE ELIGE EN UN SOLO LUGAR, y esto estuvo partido en dos.
 
@@ -282,7 +289,19 @@ const SGADD_APP = (function () {
          un link viejo, por un cambio de categoría, o porque la fase
          heredada del libro anterior no está en este torneo. */
       const par = estado.torneo + '|' + estado.fase;
-      const delHash = !!estado.torneo && tramos.some(t => t.id === par);
+      let delHash = !!estado.torneo && tramos.some(t => t.id === par);
+
+      /* UN LINK A LA LLAVE (punto 76) no está entre los tramos del libro:
+         la fase entre zonas sale de la DECLARACIÓN del torneo, así que hay
+         que esperarla antes de decidir. Con techo, como abajo. */
+      if (!delHash && enLlave() && docTorneo) {
+        let techo = null;
+        await Promise.race([docTorneo, new Promise(r => { techo = setTimeout(r, 1500); })]);
+        clearTimeout(techo);
+        if (!vigente()) return;
+        delHash = SGADD_FASES.enriquecerTramos(tramos, SGADD_FASES.declaradas())
+          .some(t => t.llave && t.id === par);
+      }
 
       if (!delHash) {
         /* El orden es: el hash, después lo que el DT venía mirando, y
@@ -323,6 +342,22 @@ const SGADD_APP = (function () {
 
   function reindexar() {
     if (!estado.hojas) return;
+    estado.tramoIndice = null;
+    if (enLlave()) {
+      /* EN MODO LLAVE EL ÍNDICE ES EL DE LA FASE REGULAR DE LA ZONA (punto
+         76). La fase elegida no está en este libro, y un índice vacío
+         dejaría al buzón y a la tabla plegada de Clasificación sin nada.
+         Las secciones que dependen del tramo no lo muestran: el router las
+         reemplaza por el aviso del modo llave. */
+      const reg = (SGADD_FASES.declaradas() || []).find(f => f.tipo === 'liga');
+      const t = (reg && SGADD_FASES.tramoDeFase(estado.hojas, reg.libro[0]))
+        || SGADD.tramoPorDefecto(SGADD.combinacionesTorneoFase(estado.hojas));
+      if (t) {
+        estado.tramoIndice = { torneo: t.torneo, fase: t.fase };
+        estado.idx = SGADD.construirIndice(estado.hojas, { fase: t.fase, torneo: t.torneo });
+        return;
+      }
+    }
     estado.idx = SGADD.construirIndice(estado.hojas, { fase: estado.fase, torneo: estado.torneo });
   }
 
@@ -492,7 +527,9 @@ const SGADD_APP = (function () {
         `</optgroup>`;
     });
 
-    const info = estado.idx
+    const info = enLlave()
+      ? 'Llave entre zonas · posiciones y resultados, sin estadísticas'
+      : estado.idx
       ? `${estado.idx.liga.n} equipos · ${estado.idx.liga.partidos} partidos · PJ mediano ${estado.idx.liga.pjMediano}`
       : (estado.cargando ? 'Cargando…' : '');
 
@@ -517,7 +554,7 @@ const SGADD_APP = (function () {
        Va acá y no solo en Diagnóstico: el DT lee la barra, no entra a
        Diagnóstico salvo que algo lo mande. Se arregla en el motor; el
        panel solamente deja de callarlo. */
-    const l = estado.idx ? estado.idx.liga : null;
+    const l = (estado.idx && !enLlave()) ? estado.idx.liga : null;
     const faltante = !l ? null
       : (!l.partidos && l.jugadores && l.jugadores.length ? 'partidos'
       : (l.partidos && (!l.jugadores || !l.jugadores.length) ? 'jugadores' : null));
@@ -609,6 +646,13 @@ const SGADD_APP = (function () {
       try { pintarDistintivoPlan(); } catch (e) {}
     }
     if (typeof currentSection === 'undefined') return;
+    /* EN MODO LLAVE las secciones que dependen del tramo no se repintan
+       con sus propias funciones —pintarían el índice de la fase regular
+       como si fuera la elegida—: pasan por el router, que pone el aviso. */
+    if (enLlave() && SGADD_FASES.bloqueaEnLlave(currentSection, estado.torneo)) {
+      if (typeof renderSection === 'function') { try { renderSection(currentSection); } catch (e) { console.warn('[app]', e); } }
+      return;
+    }
     /* La pantalla de Configuración muestra la cantidad de equipos y la
        vista previa del tramo abierto: si no se repinta, queda mostrando
        la validación de otro recorte y contradice a Clasificación. */
@@ -658,7 +702,7 @@ const SGADD_APP = (function () {
   });
 
   return {
-    tramoPreferido, recordarTramo,
+    tramoPreferido, recordarTramo, enLlave,
     estado, inicializar, cargar, reindexar, cambiarPlanilla, cambiarFase, cambiarTorneo, cambiarTramo,
     aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, onCambio, adoptarEquipoDeCategoria,
     recordarCategoria, categoriaRecordada, sufijoCategoria,

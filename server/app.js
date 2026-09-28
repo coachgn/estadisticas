@@ -101,6 +101,11 @@ function crearApp(opciones) {
      fuente y cachea en KV: no toca el catalogo ni ninguna otra clave. */
   app.get('/api/v1/fixture/:torneo', responder(require('./api/fixture.js').manejarFixture));
 
+  /* La LLAVE de un torneo (punto 76): posiciones de cada zona y resultados
+     de la postemporada, sin estadísticas. Es lo que resuelve un cruce
+     interzonal sin entregarle a un cliente el libro de otra zona. */
+  app.get('/api/v1/torneos/:torneo/llave', responder(require('./api/llave.js').manejarLlave));
+
   /* Las fichas de los clientes y los mails institucionales (bienvenida y
      recordatorios de vencimiento). Solo ADMIN, salvo el cron, que se
      autentica con CRON_SECRET. En su propio archivo: no toca el catálogo. */

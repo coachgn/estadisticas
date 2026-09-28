@@ -1036,7 +1036,12 @@ const SGADD_FIXTURE = (function () {
 
   /** La sección entera. */
   function html() {
-    return barraApp() + '<div class="mt-5">' + cuerpo() + '</div>';
+    /* En modo llave (punto 76) va primero la llave de ESA fase: es lo que
+       el DT vino a ver. El calendario de su zona sigue debajo. */
+    const F = FASES();
+    const enLlave = !!(F && typeof SGADD_APP !== 'undefined' && F.esLlave(SGADD_APP.estado.torneo));
+    const llave = enLlave ? '<div class="mt-5">' + F.fixtureDeLlave() + '</div>' : '';
+    return barraApp() + llave + '<div class="mt-5">' + cuerpo() + '</div>';
   }
 
   function cuerpo() {
@@ -1047,7 +1052,12 @@ const SGADD_FIXTURE = (function () {
        Ida y Vuelta en la misma fase, mirar la Ida hacía que los partidos de
        la Vuelta aparecieran como «a jugarse». El Fixture se parte por
        instancia, no por torneo. */
-    const idx = st ? ((FASES() && st.hojas && FASES().indicePara(st.hojas, st.fase)) || st.idx) : null;
+    /* En modo llave (punto 76) la fase elegida no está en este libro: el
+       calendario de abajo es el de la fase regular de la zona, y lo dice
+       como tal. Sin esto mezclaba lo jugado de la regular con el rótulo
+       de la fase entre zonas. */
+    const fase = st ? ((st.tramoIndice && st.tramoIndice.fase) || st.fase) : null;
+    const idx = st ? ((FASES() && st.hojas && FASES().indicePara(st.hojas, fase)) || st.idx) : null;
 
     if (!torneoId) {
       return '<div class="space-y-5">'
@@ -1076,10 +1086,10 @@ const SGADD_FIXTURE = (function () {
       torneo: estado.doc, zona: planilla.zonaId, idx: idx,
       equipo: equipoPropio(), mes: estado.mes || null,
       fuente: estado.vivo,
-      fase: st ? st.fase : null,
+      fase: fase,
       fases: FASES() ? FASES().declaradas() : [],
       zonaDeEquipo: FASES() ? FASES().zonasDeEquipos(estado.doc) : {},
-      otrasFases: st ? otrasFasesConPartidos(st.hojas, st.fase) : [],
+      otrasFases: st ? otrasFasesConPartidos(st.hojas, fase) : [],
     });
 
     if (!a.total) {

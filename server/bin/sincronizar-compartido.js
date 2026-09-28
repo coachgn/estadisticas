@@ -60,7 +60,10 @@ const path = require('path');
    Reescribir cualquiera de las dos cosas del lado del servidor era
    garantizar que las alertas del navegador y las del servidor
    divergieran. Acá corre EL MISMO código. */
-const MODULOS = ['sgadd-core.js', 'sgadd-auth.js', 'sgadd-estados.js', 'sgadd-data.js'];
+const MODULOS = ['sgadd-core.js', 'sgadd-auth.js', 'sgadd-estados.js', 'sgadd-data.js',
+  /* La tabla de posiciones: el servidor arma con ella la de la OTRA zona
+     para la llave (punto 76), con el mismo motor que Clasificación. */
+  'sgadd-clasificacion.js'];
 
 const ORIGEN = path.join(__dirname, '..', '..', 'js');
 const DESTINO = path.join(__dirname, '..', 'lib', 'compartido');

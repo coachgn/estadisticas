@@ -102,7 +102,11 @@ node test-fases.js         #  91 tests · fases, cruces y series: el parser de l
                            #             intrazonal e interzonal, la fase por ventana, las métricas que no
                            #             mezclan fases y la barra que repinta Clasificación y Fixture
 
-node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
+node test-interzonal.js    #  70 tests · la llave entre zonas: un cliente de una zona recibe quién
+                           #             contra quién y un 403 por el libro de la otra, los slots
+                           #             «1° Norte vs 2° Sur», el modo llave y la fase activa
+
+node test-backend.js       # 459 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
 
 # OJO: `test-backend.js` ESTÁ EN MAIN desde que se integró el backend.
@@ -112,7 +116,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6809 tests en total. Todos tienen que dar verde antes de commitear.**
+**6881 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -227,7 +231,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=249`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=250`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -11096,3 +11100,139 @@ se descartaba sin aviso. Se lee sobre el TEXTO (mes + 1), sin pasar por
   curso. Con playoffs en juego, «la foto de hoy» (punto 3 ter) son los
   playoffs; es una decisión de producto aparte, que conviene tomar antes de la
   primera postemporada.
+
+> **Los cuatro, cerrados o encaminados en el punto 76** (2026-09-28): la
+> zona de la postemporada, la llave de las otras zonas por su propia ruta y
+> la fase activa que abre el libro. Los cruces reales siguen sin declararse.
+
+---
+
+## 76. LA LLAVE ENTRE ZONAS Y LA FASE QUE ABRE EL LIBRO (2026-09-28)
+
+La entrega 2 del punto 75. `test-interzonal.js` fija todo lo de acá, con los
+handlers reales y un Upstash de mentira.
+
+### LA REGLA DE ACCESO, decidida con el club
+
+```
+LIBRO COMPLETO   solo el de SU zona, por su categoría  → /api/v1/equipos (sin cambios)
+LA LLAVE         puestos, récord y resultados de series → /api/v1/torneos/:torneo/llave
+```
+
+**El 403 ya existía y no se tocó**: el libro de una zona de torneo es del
+TORNEO (`tipo: 'torneo'`), no del cliente, así que `manejarEquipos` le
+contesta `OTRO_CLUB` a cualquier cliente que lo pida —la otra zona, la
+postemporada, y también su propia zona pedida por el torneo—. Su libro es el
+de su categoría, que ya lleva el `sheetId` de la zona (punto 67). Fijado con
+tests.
+
+**La ruta nueva** (`server/api/llave.js`) la pide el admin, o un cliente con
+una categoría ENGANCHADA a ese torneo y con acceso: un club pausado recibe
+403 igual que uno ajeno (`OTRO_TORNEO`). Devuelve de cada zona `puesto,
+clave, nombre, pj, pg, pp` y si la tabla cerró; de la postemporada, `fase,
+fecha, local, visitante, ptsLocal, ptsVisitante`. **Nada más**: el test
+recorre la respuesta contra una lista CERRADA de claves y falla si aparece
+una columna de estadísticas, y verifica que ningún `sheetId` viaje.
+
+- **La tabla es la de Clasificación**: el mismo motor
+  (`sgadd-clasificacion.js`, ahora vendorizado en `server/lib/compartido/`
+  por `sincronizar-compartido.js`), con los partidos manuales del torneo y su
+  `ordenTabla`. Con otra fórmula, el «2° Sur» de la llave podía no ser el 2°
+  que ve el cliente de esa zona. `claveDe` cae a `require('./sgadd-core.js')`
+  en Node, que es donde el global del navegador no existe.
+- **Cerrada** solo por `formato.partidosPorEquipo` alcanzado o por una fase
+  posterior jugada en ese libro. Nunca por intuición.
+- **Una zona ilegible no tumba la llave**: queda `ilegible` y sin filas, así
+  que sus lados salen «a definir», que es lo honesto.
+- **Caché de 5 minutos por torneo**: la llave la piden todos los clientes
+  del torneo y cada zona es un libro de Google.
+
+### LA ZONA DE LA POSTEMPORADA · `interzonal: true`
+
+Es una zona más del torneo (la decisión del punto 75), con tres diferencias
+en `server/lib/torneos.js`:
+
+- **No declara equipos**: ahí juegan los de las otras zonas, y si los
+  declarara el control de duplicados la rechazaría —con razón: un equipo
+  está en UNA zona—.
+- **No se engancha nadie**: `vincular` la rechaza diciendo que el cliente
+  pertenece a la zona donde juega su equipo.
+- **Su libro NO se propaga**: nadie está enganchado a ella, y un cliente
+  solo recibe el libro de su zona. Hay un test que escribe el enganche a
+  mano y verifica que igual no le llega.
+
+Del lado de la declaración, la fase entre zonas dice dónde se juega con
+`zonaLibro` (y/o `cruce: 'interzonal'`); `SGADD_FASES.esEntreZonas()` la
+reconoce.
+
+### EL MODO LLAVE · la fase entre zonas SE ELIGE
+
+Una fase entre zonas que el libro de la zona no trae aparece en el selector
+**habilitada**, como `«Cuartos de final · llave»`, con el id
+`*LLAVE*|CUARTOS` (asteriscos como `*TOTAL*`: ninguna celda los produce, y
+un link compartido lo abre igual). Una fase declarada que se juega en el
+libro de cada zona y no tiene datos sigue deshabilitada, como en el punto 75.
+
+- **El índice en modo llave es el de la fase REGULAR de la zona**
+  (`estado.tramoIndice`): la fase elegida no está en este libro, y un índice
+  vacío dejaría al buzón y a la tabla plegada sin nada.
+- **Solo Clasificación y Fixture la muestran**, más las que no dependen del
+  tramo (Glosario, Panel Master, Diagnóstico) —`SECCIONES_EN_LLAVE`, UNA
+  lista que leen el router y el repintado de `onCambio`—. **Principal,
+  Equipos, Jugadores, Scouting, Simulador y Comparativa DICEN que es solo la
+  llave**, con la barra arriba para volver: no se esconden ni pintan el
+  índice de otra fase como si fuera el elegido.
+- **`onCambio` también pasa por el guard**: si no, `equiposPintar()` y
+  compañía repintaban su contenido encima del aviso al cambiar de fase.
+- **Un link a la llave espera la declaración** en `cargar()` (con el techo
+  de 1,5 s) antes de decidir el tramo: la llave no sale del libro sino del
+  archivo del torneo, y sin esperarlo el hash se descartaba por inexistente.
+- **La llave del servidor se pide UNA vez por torneo** y, al llegar, repinta
+  Clasificación o Fixture. La tabla de la zona PROPIA se queda con la local
+  (lleva los manuales del club); las otras zonas y los partidos de las fases
+  que el libro propio no tiene llegan del servidor, **sin duplicar** una fase
+  que el libro ya trae.
+- **El Fixture en modo llave** pinta primero los cruces de esa fase y debajo
+  el calendario de la zona **rotulado como la regular**: sin eso mezclaba lo
+  jugado de la regular bajo el nombre de los cuartos.
+- **Una final con los DOS lados a definir no se rotula «Intrazonal»**: el
+  chip sale solo si se sabe (o si la fase se declaró entre zonas).
+
+**Consecuencia que el club tiene que saber:** en modo llave el cliente NO
+ve estadísticas de su propio equipo en esa fase —están en el libro de la
+postemporada—. Si las quiere, MotorStats tiene que escribir esos partidos
+TAMBIÉN en el libro de cada zona; ahí la fase aparece como una más y el
+panel la muestra entera, sin modo llave.
+
+### LA FASE QUE SE ESTÁ JUGANDO ABRE EL LIBRO
+
+`tramoPorDefecto()` mira el **último partido jugado** del libro (cada tramo
+trae `ultima`, de `Base Datos E`): si es de una fase posterior a la regular,
+abre en esa fase —en su TOTAL si tiene Ida y Vuelta—. Sin postemporada, o
+con la regular como lo último jugado, abre exactamente como antes. Va en el
+núcleo, así barra, Diagnóstico y Configuración siguen abriendo por el mismo
+tramo (punto 3 ter). **No mira ventanas ni declaración**: lo dice el dato.
+
+### Verificado
+
+- **Al revés, 11 mutaciones**: el guard de enganche (caen 2), el pausado
+  (1), mezclar las otras zonas, pisar la propia, duplicar la fase, la
+  opción de llave (2), la fase activa, su TOTAL, el enganche y la
+  propagación de la postemporada y los manuales de la tabla (1 cada una).
+  **Una sobrevivió al principio**: sin las tablas de la otra zona, el cruce
+  igual se completaba «por lo jugado» porque la serie ya había empezado. Se
+  agregó el caso que importa —saber el rival ANTES del primer partido— y
+  ahora cae.
+- **En el navegador**, sobre la demo con un torneo de dos conferencias
+  inyectado: el selector ofrece la llave, Clasificación y Fixture muestran
+  «1° Conferencia Norte vs 2° Conferencia Sur» con el rival de la otra zona
+  resuelto, Equipos y Scouting muestran el aviso, y volver a la regular
+  restaura todo.
+
+### Pendiente
+
+- **Declarar los cruces reales** cuando APB y LAB publiquen su reglamento, y
+  la zona de postemporada con su libro cuando MotorStats lo escriba.
+- **La llave no se cachea en el navegador** más allá de la sesión de la
+  página: un F5 la vuelve a pedir (el servidor la tiene en caché 5 min).
+

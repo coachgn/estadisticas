@@ -168,6 +168,10 @@ const SGADD_FASES = (function () {
         cruce: f.cruce === 'interzonal' ? 'interzonal' : 'zona',
         libro: libro, mejorDe: mejorDe, desde: desde, hasta: hasta,
         cruces: cruces, orden: i,
+        /* En qué zona del torneo se juega (punto 76): la de la
+           postemporada, para una fase entre zonas. Sin declarar, la fase
+           se juega en el libro de cada zona. */
+        zonaLibro: texto(f.zonaLibro) || null,
       });
     });
     return { fases: fases, errores: errores };
@@ -200,6 +204,26 @@ const SGADD_FASES = (function () {
       que `*TOTAL*` (punto 3 ter). */
   const SIN_DATOS = '*SIN-DATOS*';
 
+  /* EL MODO LLAVE (punto 76). Una fase entre zonas se juega en el libro de
+     la postemporada, que un cliente NO recibe: solo le llega la llave
+     (posiciones y resultados, sin estadísticas). Elegirla en la barra abre
+     ese modo: Clasificación y Fixture muestran la llave y el resto de las
+     secciones lo dicen en vez de pintar un índice vacío. El id lleva
+     asteriscos como `*TOTAL*`, así un link compartido lo abre igual. */
+  const LLAVE = '*LLAVE*';
+  function esLlave(torneo) { return texto(torneo) === LLAVE; }
+  /** ¿La fase se juega fuera del libro de la zona? */
+  function esEntreZonas(f) { return !!f && (f.cruce === 'interzonal' || !!f.zonaLibro); }
+
+  /* Las secciones que en modo llave se pintan igual: las dos que muestran
+     la llave y las que no dependen del tramo. El resto dice por qué no hay
+     nada en vez de pintar el índice de otra fase. UNA lista, la leen el
+     router y el repintado de `onCambio`. */
+  const SECCIONES_EN_LLAVE = ['clasificacion', 'fixture', 'glosario', 'configuracion', 'diagnostico'];
+  function bloqueaEnLlave(seccion, torneo) {
+    return esLlave(torneo) && SECCIONES_EN_LLAVE.indexOf(seccion) === -1;
+  }
+
   function enriquecerTramos(tramos, fases) {
     const lista = (tramos || []).map((t) => {
       const d = t.agregado ? null : declaradaDe(fases, t.fase);
@@ -215,6 +239,14 @@ const SGADD_FASES = (function () {
     (fases || []).forEach((f) => {
       const tiene = lista.some(t => f.libro.indexOf(mayus(t.fase)) !== -1);
       if (tiene) return;
+      /* UNA FASE ENTRE ZONAS SÍ SE ELIGE aunque el libro de la zona no la
+         tenga: su llave se arma con las posiciones de cada zona y los
+         resultados de la postemporada, que llegan por otra ruta. */
+      if (esEntreZonas(f)) {
+        lista.push({ id: LLAVE + '|' + f.libro[0], torneo: LLAVE, fase: f.libro[0],
+          label: f.label + ' · llave', llave: true, declarada: f.id });
+        return;
+      }
       lista.push({ id: SIN_DATOS + '|' + f.libro[0], torneo: SIN_DATOS, fase: f.libro[0],
         label: f.label + ' — sin datos', sinDatos: true, declarada: f.id });
     });
@@ -359,7 +391,11 @@ const SGADD_FASES = (function () {
     const zona = (x) => x.zona || (x.clave && ctx.zonaDeEquipo ? ctx.zonaDeEquipo[x.clave] : null) || null;
     const za = zona(a), zb = zona(b);
     if (za && zb) return za === zb ? 'intrazonal' : 'interzonal';
-    return fase.cruce === 'interzonal' ? 'interzonal' : 'intrazonal';
+    if (fase.cruce === 'interzonal') return 'interzonal';
+    /* Con los DOS lados sin definir no se sabe: una final entre ganadores
+       de cruces interzonales puede terminar siendo de dos zonas, y el chip
+       «Intrazonal» afirmaría algo que el dato todavía no dice (punto 76). */
+    return (za || zb) ? 'intrazonal' : null;
   }
 
   /** Lo mismo para un partido suelto, con el mapa equipo → zona del torneo. */
@@ -632,6 +668,86 @@ const SGADD_FASES = (function () {
     return manualesCrudos(hojas, faseLibro).map(manualComoPartido);
   }
 
+  /* LA LLAVE DEL SERVIDOR, una vez por torneo y por carga de página. Llega
+     tarde (es una petición aparte) y cuando llega repinta la sección que
+     la muestra: la llave se ve primero con lo que el libro propio sabe y
+     después se completa con las otras zonas. */
+  const _llave = { torneo: null, datos: null, pidiendo: null, error: null };
+  function repintarLaQueLaMuestra() {
+    if (typeof currentSection === 'undefined' || typeof renderSection !== 'function') return;
+    if (currentSection === 'clasificacion' || currentSection === 'fixture') renderSection(currentSection);
+  }
+  let _alLlegar = repintarLaQueLaMuestra;
+  function alLlegarLaLlave(fn) { _alLlegar = fn; }
+  function llaveDelServidor() {
+    const doc = docActual();
+    const id = doc && doc.id;
+    if (!id) return null;
+    if (_llave.torneo === id && (_llave.datos || _llave.error || _llave.pidiendo)) return _llave.datos;
+    if (typeof SGADD_DATA === 'undefined' || !SGADD_DATA.llaveDeTorneo) return null;
+    _llave.torneo = id; _llave.datos = null; _llave.error = null;
+    let p;
+    try { p = SGADD_DATA.llaveDeTorneo(id); } catch (e) { p = Promise.reject(e); }
+    _llave.pidiendo = Promise.resolve(p).then((d) => {
+      if (_llave.torneo !== id) return;
+      _llave.datos = d || null; _llave.pidiendo = null;
+      if (d && _alLlegar) { try { _alLlegar(); } catch (e) { /* es una mejora */ } }
+    }).catch((e) => {
+      if (_llave.torneo !== id) return;
+      _llave.error = e; _llave.pidiendo = null;
+    });
+    return null;
+  }
+  /** Para los tests: cargar una llave sin red. */
+  function fijarLlave(torneo, datos) { _llave.torneo = torneo; _llave.datos = datos; _llave.pidiendo = null; _llave.error = null; }
+
+  /** Un partido de la postemporada (sin estadísticas) con la forma del fixture. */
+  function partidoDeLlave(x) {
+    return { fecha: x.fecha || null, hora: null, local: x.local, visitante: x.visitante,
+      localClave: clave(x.local), visitanteClave: clave(x.visitante),
+      jugado: x.ptsLocal != null && x.ptsVisitante != null,
+      ptsLocal: x.ptsLocal, ptsVisitante: x.ptsVisitante, postemporada: true };
+  }
+
+  /**
+   * Lo que la llave del servidor aporta al contexto: las tablas de las
+   * OTRAS zonas y los partidos de las fases que no están en el libro
+   * propio. La zona propia se queda con su tabla local, que es la que el
+   * DT ve en Clasificación (con los manuales de SU club).
+   */
+  function mezclarLlave(ctx, fases, llave, zonaPropia, hojas) {
+    if (!llave) return ctx;
+    Object.keys(llave.zonas || {}).forEach((z) => {
+      if (z === zonaPropia && ctx.tablas[z]) return;
+      const t = llave.zonas[z];
+      ctx.tablas[z] = { filas: (t.filas || []).map(f => ({ clave: f.clave || clave(f.nombre), nombre: f.nombre,
+        puesto: f.puesto, pj: f.pj })), cerrada: !!t.cerrada };
+      if (t.label) ctx.nombresZona[z] = ctx.nombresZona[z] || t.label;
+    });
+    const post = (llave.postemporada && llave.postemporada.partidos) || [];
+    fases.forEach((f) => {
+      /* Solo las fases que el libro propio NO tiene: lo que sí tiene trae
+         su marcador de ahí, y sumar los dos lo contaría dos veces. */
+      const enLibro = hojas && f.libro.some(v => indicePara(hojas, v));
+      if (enLibro) return;
+      const deFase = post.filter(x => f.libro.indexOf(mayus(x.fase)) !== -1).map(partidoDeLlave);
+      if (deFase.length) ctx.partidosPorFase[f.id] = (ctx.partidosPorFase[f.id] || []).concat(deFase);
+    });
+    return ctx;
+  }
+
+  /* LO QUE NO SE PUEDE MOSTRAR EN MODO LLAVE, dicho y no escondido: el
+     libro de la postemporada no se le entrega a un cliente, así que no hay
+     desglose de equipos ni scouting de esa fase. */
+  function avisoModoLlave() {
+    return '<div class="card rounded-xl p-4 sm:p-5 border border-hairline mt-5">'
+      + '<h3 class="font-display uppercase tracking-wide text-sm text-ink mb-2">Fase entre zonas · solo la llave</h3>'
+      + '<p class="text-xs text-muted">Esta fase se juega en el libro de la postemporada, que tu acceso no incluye: '
+      + 'los datos completos llegan solo de tu zona. Acá ves <b class="text-ink">contra quién se juega y cómo van las series</b> '
+      + '—en <b class="text-ink">Clasificación</b> y <b class="text-ink">Fixture</b>—, sin el desglose de los equipos ni el scouting '
+      + 'de los rivales de otra zona. Para el resto del panel, elegí una fase de tu zona en el selector.</p></div>';
+  }
+
   function jugados(idx) {
     return (idx && typeof SGADD_FIXTURE !== 'undefined') ? SGADD_FIXTURE.jugadosDelIndice(idx) : [];
   }
@@ -696,8 +812,11 @@ const SGADD_FASES = (function () {
       tablas[p.zonaId] = { filas: filas,
         cerrada: tablaCerrada(filas, doc && doc.formato && doc.formato.partidosPorEquipo, hayElimJugada) };
     }
-    return { tablas: tablas, partidosPorFase: partidosPorFase,
+    const ctx = { tablas: tablas, partidosPorFase: partidosPorFase,
       zonaDeEquipo: zonasDeEquipos(doc), nombresZona: nombresDeZonas(doc) };
+    /* Las OTRAS zonas y la postemporada llegan del servidor, solo si hay
+       alguna fase entre zonas: un torneo de zona única no la necesita. */
+    return fases.some(esEntreZonas) ? mezclarLlave(ctx, fases, llaveDelServidor(), p.zonaId, hojas) : ctx;
   }
 
   /**
@@ -707,7 +826,8 @@ const SGADD_FASES = (function () {
   function seccionLlave() {
     try {
       const st = SGADD_APP.estado;
-      if (!st.hojas || tipoDe(st.fase, declaradas()) !== 'eliminacion') return '';
+      if (tipoDe(st.fase, declaradas()) !== 'eliminacion') return '';
+      if (!st.hojas && !esLlave(st.torneo)) return '';
       const fases = declaradas();
       const escudo = (typeof clasifEscudo === 'function') ? clasifEscudo : null;
       const propio = (typeof CORE.esEquipoPropio === 'function') ? CORE.esEquipoPropio : null;
@@ -730,7 +850,9 @@ const SGADD_FASES = (function () {
       return '<div class="card rounded-xl p-4 sm:p-5 border border-hairline">'
         + '<div class="flex items-baseline justify-between gap-3 flex-wrap mb-3">'
         + '<h2 class="font-display uppercase tracking-wide text-sm text-ink">Llave y series</h2>'
-        + '<span class="text-[11px] text-muted">Lo jugado sale del libro · lo proyectado, de la tabla de hoy</span></div>'
+        + '<span class="text-[11px] text-muted">' + (esLlave(st.torneo)
+          ? 'Lo jugado sale de la postemporada · las otras zonas, de su tabla de hoy'
+          : 'Lo jugado sale del libro · lo proyectado, de la tabla de hoy') + '</span></div>'
         + (cuerpo || '<p class="text-xs text-muted">Todavía no se jugó ningún partido de esta fase.</p>')
         + '</div>';
     } catch (e) {
@@ -740,16 +862,42 @@ const SGADD_FASES = (function () {
     }
   }
 
+  /**
+   * El Fixture en modo llave: los cruces de ESA fase con sus partidos y el
+   * resultado de cada serie. Es lo mismo que la columna de la llave en
+   * Clasificación, sin las otras fases.
+   */
+  function fixtureDeLlave() {
+    const st = SGADD_APP.estado;
+    const fases = declaradas();
+    const d = declaradaDe(fases, st.fase);
+    if (!d) return '';
+    const porFase = llave(fases, contexto());
+    const x = porFase[d.id];
+    const escudo = (typeof clasifEscudo === 'function') ? clasifEscudo : null;
+    const o = { escudo: escudo };
+    const cuerpo = x ? x.cruces.map(cr => cruceHTML(cr, o)).join('')
+      + x.sueltas.map(s => serieSueltaHTML(s, o)).join('') : '';
+    const pendiente = !_llave.datos && _llave.pidiendo ? '<p class="text-[11px] text-muted mb-2">Trayendo las posiciones de las otras zonas…</p>' : '';
+    return '<div class="card rounded-xl p-4 sm:p-5 border border-hairline">'
+      + '<h3 class="font-display uppercase tracking-wide text-sm text-ink mb-3">' + esc(d.label) + ' · cruces y series</h3>'
+      + pendiente
+      + (cuerpo ? '<div class="grid sm:grid-cols-2 gap-2">' + cuerpo + '</div>'
+        : '<p class="text-xs text-muted">Todavía no hay cruces definidos para esta fase.</p>')
+      + '</div>';
+  }
+
   return {
     /* motor */
-    parsear, declaradaDe, tipoDe, enriquecerTramos, SIN_DATOS,
+    parsear, declaradaDe, tipoDe, enriquecerTramos, SIN_DATOS, LLAVE, esLlave, esEntreZonas,
+    mezclarLlave, partidoDeLlave, SECCIONES_EN_LLAVE, bloqueaEnLlave,
     series, resumen, resolverSlot, llave, naturalezaCruce, naturalezaPartido,
     faseDeFecha, tieneVentanas, tablaCerrada,
     /* html */
     llaveHTML, cruceHTML, chipNaturaleza,
     /* app */
     declaradas, docActual, indicePara, tramoDeFase, contexto, seccionLlave, zonasDeEquipos,
-    manualComoPartido,
+    manualComoPartido, avisoModoLlave, fixtureDeLlave, llaveDelServidor, fijarLlave, alLlegarLaLlave,
   };
 })();
 

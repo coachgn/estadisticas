@@ -569,9 +569,16 @@
         const torneo = torneoDeFila(f);
         const id = torneo + '|' + fase;
         if (!vistas.has(id)) {
-          vistas.set(id, { id: id, torneo: torneo, fase: fase, hojas: new Set() });
+          vistas.set(id, { id: id, torneo: torneo, fase: fase, hojas: new Set(), ultima: 0 });
         }
-        vistas.get(id).hojas.add(n);
+        const v = vistas.get(id);
+        v.hojas.add(n);
+        /* La fecha del ÚLTIMO PARTIDO del tramo, de la maestra: es lo que
+           dice qué fase se está jugando HOY (ver `tramoPorDefecto`). */
+        if (n === 'Base Datos E') {
+          const d = fecha(f['FECHA']);
+          if (d && d.getTime() > v.ultima) v.ultima = d.getTime();
+        }
       });
     });
     if (!vistas.size) {
@@ -597,6 +604,7 @@
         cobertura: c.hojas.size,
         conPartidos: c.hojas.has('Base Datos E'),
         conPromedios: c.hojas.has('PROMEDIOS E'),
+        ultima: c.ultima || 0,
         _orden: orden(c.fase),
       };
     }).sort((a, b) => (a._orden - b._orden) || a.torneo.localeCompare(b.torneo));
@@ -630,6 +638,7 @@
         cobertura: Math.max.apply(null, hermanos.map(h => h.cobertura)),
         conPartidos: hermanos.some(h => h.conPartidos),
         conPromedios: hermanos.some(h => h.conPromedios),
+        ultima: Math.max.apply(null, hermanos.map(h => h.ultima || 0)),
         _orden: c._orden,
       });
     });
@@ -670,6 +679,31 @@
        daría cero equipos. */
     const vivos = (lista || []).filter(c => !c.agregado);
     if (!vivos.length) return (lista && lista[0]) || null;
+
+    /* LA FASE QUE SE ESTÁ JUGANDO ABRE EL LIBRO (punto 76).
+
+       Es el mismo argumento del TOTAL, un paso más allá: con la regular
+       terminada y los playoffs en juego, abrir en la regular muestra una
+       tabla que ya no describe el torneo. El DT entra en plena
+       postemporada y lo primero que quiere ver son los cruces.
+
+       El criterio es el ÚLTIMO PARTIDO JUGADO del libro: si es de una fase
+       posterior a la regular, se abre en esa fase. No hace falta ninguna
+       declaración ni ninguna ventana —lo dice el dato— y degrada solo: un
+       libro con una sola fase, o con la regular como fase más reciente,
+       abre exactamente como antes. Con la temporada terminada abre en la
+       última fase jugada (la final): es la foto de hoy.
+
+       Dentro de esa fase manda la misma regla de abajo: el TOTAL si tiene
+       partidos, y si no el torneo de esa fase con el partido más reciente. */
+    const conFecha = vivos.filter(c => c.conPartidos && c.ultima);
+    if (conFecha.length) {
+      const reciente = conFecha.reduce((a, b) => (b.ultima > a.ultima ? b : a));
+      if (reciente.fase !== 'REGULAR') {
+        const misma = conFecha.filter(c => c.fase === reciente.fase);
+        return misma.find(c => c.sintetico) || reciente;
+      }
+    }
 
     /* El sintético ya cubre lo que cubren sus partes juntas, así que no
        hace falta compararlo por cobertura: si existe, gana.

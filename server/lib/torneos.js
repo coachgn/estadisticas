@@ -218,7 +218,13 @@ function torneo(cat, d, deps) {
     if (t.categorias[slug] && t.categorias[slug].zona && t.categorias[slug].zona !== z) {
       return malo('El id «' + slug + '» ya es de la zona ' + t.categorias[slug].zona + '.');
     }
-    const eq = zin.equipos !== undefined ? normalizarEquipos(zin.equipos) : { equipos: actual ? (actual.k.equipos || []) : [] };
+    /* LA ZONA INTERZONAL (punto 76) es el libro de la postemporada: ahí
+       juegan equipos de las OTRAS zonas, así que no declara equipos
+       propios. Si los declarara, el control de duplicados la rechazaría
+       —y con razón: un equipo está en UNA zona—. */
+    const interzonal = zin.interzonal === true || (zin.interzonal === undefined && !!(actual && actual.k.interzonal));
+    const eq = interzonal ? { equipos: [] }
+      : (zin.equipos !== undefined ? normalizarEquipos(zin.equipos) : { equipos: actual ? (actual.k.equipos || []) : [] });
     if (eq.error) return malo('Zona ' + z + ': ' + eq.error);
 
     let sheetId = actual && actual.k.sheetId ? String(actual.k.sheetId) : '';
@@ -234,7 +240,7 @@ function torneo(cat, d, deps) {
     const label = String(zin.label || (actual && actual.k.label) || '').trim();
     if (!label) return malo('Zona ' + z + ': falta la etiqueta, que es lo que dice el selector.');
     normal[z] = { slug: slug, anterior: actual ? actual.slug : null, label: label, sheetId: sheetId,
-      equipos: eq.equipos, nivel: zin.nivel || v.nivel || null };
+      equipos: eq.equipos, nivel: zin.nivel || v.nivel || null, interzonal: interzonal };
   }
   const dup = duplicados(Object.assign({}, zonasDelTorneo(t), normal));
   if (dup.length) return malo('Equipos repetidos entre zonas: ' + dup.join(', ') + '.');
@@ -246,7 +252,10 @@ function torneo(cat, d, deps) {
     if (n.anterior && n.anterior !== n.slug) delete t.categorias[n.anterior];
     const k = Object.assign({}, previa, { label: n.label, sheetId: n.sheetId, zona: z, equipos: n.equipos });
     if (n.nivel) k.nivel = String(n.nivel);
-    if (n.sheetId && n.sheetId !== (previa.sheetId || '')) estrenan.push(z);
+    if (n.interzonal) k.interzonal = true; else delete k.interzonal;
+    /* El libro de la postemporada NO se propaga: nadie está enganchado a
+       esa zona, y un cliente solo recibe el libro de SU zona. */
+    if (n.sheetId && n.sheetId !== (previa.sheetId || '') && !n.interzonal) estrenan.push(z);
     t.categorias[n.slug] = k;
   });
 
@@ -329,6 +338,9 @@ function vincular(cat, d, deps) {
   if (!esTorneo(t)) return malo('«' + tId + '» no es un torneo del catálogo.');
   const zc = categoriaDeZona(t, z);
   if (!zc) return malo('El torneo no tiene la zona «' + z + '».');
+  /* A la postemporada no se engancha nadie: un cliente pertenece a la zona
+     donde juega su equipo, y de la postemporada recibe solo la llave. */
+  if (zc.k.interzonal) return malo('La zona «' + z + '» es la postemporada del torneo: un cliente se engancha a la zona donde juega su equipo.');
 
   const e = buscarEquipo(zc.k.equipos, v.equipo || c.equipoPropio);
   if (!e) {
@@ -370,6 +382,7 @@ function vincular(cat, d, deps) {
 function publicoDeZona(k) {
   return {
     zona: k.zona || null,
+    interzonal: !!k.interzonal,
     equipos: (k.equipos || []).map(e => {
       const o = { id: e.id, nombre: e.nombre, clave: e.clave };
       if (e.ciudad) o.ciudad = e.ciudad;
@@ -390,6 +403,7 @@ function intencionDesdeArchivo(doc, libros, librosDe) {
   Object.keys(d.zonas || {}).forEach((z) => {
     const zin = d.zonas[z];
     zonas[z] = { slug: zin.slug, label: zin.label, equipos: zin.equipos, nivel: zin.nivel || d.nivel || null };
+    if (zin.interzonal === true) zonas[z].interzonal = true;
     if (libros && libros[z]) zonas[z].sheetId = libros[z];
     /* `libroDe` REUSA el libro de una categoria que ya existe, sin que su
        sheetId salga del servidor (punto 67). Es lo que permite que una
