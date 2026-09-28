@@ -302,12 +302,31 @@
                 2026 / TORNEO LOCAL / PRIMERA / CLAUSURA / REGULAR
 
      TOTAL es un agregado, no una fase real: nunca se mezcla con las otras.
+
+     LAS RONDAS DE ELIMINACIÓN VAN ACÁ Y NO EN CADA TORNEO. El valor sale
+     del nombre de una carpeta de Drive, así que es texto libre; sin un
+     orden declarado, `CUARTOS`, `FINAL`, `OCTAVOS` y `SEMIFINAL` quedaban
+     empatados en el 5 y el selector los listaba por alfabeto —la final
+     antes que los octavos—. Declararlas acá ordena bien a CUALQUIER
+     cliente, aunque su torneo no declare nada. Un valor que no esté en la
+     lista sigue cayendo al 5, igual que antes.
+
+     `eliminacion` dice si la fase se juega por series (una llave) o todos
+     contra todos (una tabla). La declaración del torneo puede pisarlo
+     (`sgadd-fases.js`); esto es el respaldo sin declaración.
      --------------------------------------------------------------------- */
   const FASES = {
-    REGULAR:   { id: 'REGULAR',   label: 'Fase regular', agregado: false, orden: 1 },
-    REPECHAJE: { id: 'REPECHAJE', label: 'Repechaje',    agregado: false, orden: 2 },
-    PLAYOFF:   { id: 'PLAYOFF',   label: 'Playoffs',     agregado: false, orden: 3 },
-    TOTAL:     { id: 'TOTAL',     label: 'Total',        agregado: true,  orden: 9 },
+    REGULAR:         { id: 'REGULAR',         label: 'Fase regular',    agregado: false, orden: 1 },
+    RECLASIFICACION: { id: 'RECLASIFICACION', label: 'Reclasificación', agregado: false, orden: 2, eliminacion: true },
+    REPECHAJE:       { id: 'REPECHAJE',       label: 'Repechaje',       agregado: false, orden: 2, eliminacion: true },
+    PLAYOFF:         { id: 'PLAYOFF',         label: 'Playoffs',        agregado: false, orden: 3, eliminacion: true },
+    OCTAVOS:         { id: 'OCTAVOS',         label: 'Octavos de final', agregado: false, orden: 4, eliminacion: true },
+    CUARTOS:         { id: 'CUARTOS',         label: 'Cuartos de final', agregado: false, orden: 5, eliminacion: true },
+    SEMIFINAL:       { id: 'SEMIFINAL',       label: 'Semifinales',     agregado: false, orden: 6, eliminacion: true },
+    SEMIFINALES:     { id: 'SEMIFINALES',     label: 'Semifinales',     agregado: false, orden: 6, eliminacion: true },
+    FINAL:           { id: 'FINAL',           label: 'Final',           agregado: false, orden: 7, eliminacion: true },
+    PERMANENCIA:     { id: 'PERMANENCIA',     label: 'Permanencia',     agregado: false, orden: 8 },
+    TOTAL:           { id: 'TOTAL',           label: 'Total',           agregado: true,  orden: 9 },
   };
 
   /** Qué fases traen datos de verdad en una planilla concreta. */

@@ -183,6 +183,18 @@ const SGADD_APP = (function () {
     estado.cargando = true; estado.error = null;
     avisar();
 
+    /* LA DECLARACIÓN DEL TORNEO BAJA EN PARALELO CON EL LIBRO (punto 75).
+       Es un archivo de pocos KB contra un libro de segundos, así que no
+       suma espera; y llegando ANTES del primer pintado, la barra ya sale
+       con los nombres del reglamento en vez de cambiar de golpe después.
+       Nunca lanza: sin archivo, la barra queda como siempre. */
+    let docTorneo = null;
+    try {
+      if (!demo && p && p.torneoId && typeof SGADD_FIXTURE !== 'undefined' && typeof fetch === 'function') {
+        docTorneo = SGADD_FIXTURE.cargarTorneo(p.torneoId).catch(() => null);
+      }
+    } catch (e) { docTorneo = null; }
+
     /* GUARD DE CARRERA. Cambiar de categoría dos veces seguidas dispara dos
        cargas, y la primera puede volver DESPUÉS de la segunda: ahí deja en
        pantalla los datos de la planilla que el DT ya abandonó, o —peor—
@@ -291,6 +303,15 @@ const SGADD_APP = (function () {
         }
       }
       reindexar();
+      /* Se espera la declaración con techo: si el archivo tarda más que el
+         libro, la barra sale sin los nombres del reglamento y los toma en
+         el próximo repintado. Nunca se demora el panel por una mejora. */
+      if (docTorneo) {
+        let techo = null;
+        await Promise.race([docTorneo, new Promise(r => { techo = setTimeout(r, 1500); })]);
+        clearTimeout(techo);
+        if (!vigente()) return;
+      }
     } catch (e) {
       if (vigente()) estado.error = e.message || String(e);
     } finally {
@@ -318,6 +339,11 @@ const SGADD_APP = (function () {
    * armaría un índice sobre un par que puede no existir en el libro.
    */
   function cambiarTramo(id) {
+    /* Una fase DECLARADA sin datos se ve en el selector pero no se elige
+       (sgadd-fases.js): el `disabled` del <option> ya lo impide, y esto es
+       por si llega igual —un link armado a mano, un navegador viejo—.
+       Abrirla daría un índice vacío sin explicación. */
+    if (typeof SGADD_FASES !== 'undefined' && String(id || '').indexOf(SGADD_FASES.SIN_DATOS) === 0) return;
     const partes = String(id || '').split('|');
     const torneo = partes[0] || SGADD.TORNEO_GENERAL;
     const fase = partes[1] || 'REGULAR';
@@ -470,7 +496,13 @@ const SGADD_APP = (function () {
       ? `${estado.idx.liga.n} equipos · ${estado.idx.liga.partidos} partidos · PJ mediano ${estado.idx.liga.pjMediano}`
       : (estado.cargando ? 'Cargando…' : '');
 
-    const tramos = SGADD.combinacionesTorneoFase(estado.hojas || {});
+    /* Las opciones SIGUEN saliendo del libro. La declaración del torneo
+       solo pone el nombre del reglamento («Octavos de final» donde el libro
+       dice PLAYOFF) y suma, deshabilitadas, las fases que todavía no se
+       jugaron (punto 75). Sin declaración queda exactamente como antes. */
+    const crudos = SGADD.combinacionesTorneoFase(estado.hojas || {});
+    const tramos = (typeof SGADD_FASES !== 'undefined' && estado.hojas)
+      ? SGADD_FASES.enriquecerTramos(crudos, SGADD_FASES.declaradas()) : crudos;
     const tramoActual = (estado.torneo || SGADD.TORNEO_GENERAL) + '|' + estado.fase;
 
     /* El recorte MUDO tiene que decir por qué está mudo.
@@ -513,7 +545,7 @@ const SGADD_APP = (function () {
             <label for="selTramo" class="block text-[11px] uppercase tracking-wider text-muted font-display mb-1">Fase</label>
             <select id="selTramo" onchange="SGADD_APP.cambiarTramo(this.value)"
               class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm focus:border-accent outline-none">
-              ${tramos.map(t => `<option value="${SGADD_UI.esc(t.id)}" ${t.id === tramoActual ? 'selected' : ''}>${SGADD_UI.esc(t.label)}</option>`).join('')}
+              ${tramos.map(t => `<option value="${SGADD_UI.esc(t.id)}" ${t.id === tramoActual ? 'selected' : ''} ${t.sinDatos ? 'disabled' : ''}>${SGADD_UI.esc(t.label)}</option>`).join('')}
             </select>
           </div>`;
 
@@ -587,6 +619,9 @@ const SGADD_APP = (function () {
        sale de caché si ya los tiene, así que repetirlo no cuesta. */
     if (typeof precargarLogos === 'function') { try { precargarLogos(); } catch (e) {} }
     if (currentSection === 'configuracion' && typeof configPintar === 'function') configPintar();
+    /* El Fixture filtra por la fase de la barra (punto 75): sin repintarse
+       seguía mostrando la instancia anterior con el selector ya cambiado. */
+    if (currentSection === 'fixture' && typeof SGADD_FIXTURE !== 'undefined') SGADD_FIXTURE.pintar();
     if (currentSection === 'clasificacion' && typeof buildClasificacion === 'function') {
       const r = document.getElementById('view-root');
       if (r) r.innerHTML = buildClasificacion();

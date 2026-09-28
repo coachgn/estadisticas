@@ -69,6 +69,13 @@ seccion('1 · fechas');
   check('dd/mm/aaaa también', F.fechaISO('15/05/2026') === '2026-05-15');
   check('lo que no se entiende es null, no una fecha inventada',
     F.fechaISO('') === null && F.fechaISO('ayer') === null && F.fechaISO(null) === null);
+  /* EL FORMATO DE GViz (punto 3): el mes viene 0-indexado. Sin esto, con
+     GViz de respaldo y en la demo el Fixture perdía todo lo jugado. */
+  check('«Date(2025,10,5)» de GViz es el 5 de NOVIEMBRE', F.fechaISO('Date(2025,10,5)') === '2025-11-05', F.fechaISO('Date(2025,10,5)'));
+  check('y enero es el mes 0', F.fechaISO('Date(2026,0,31)') === '2026-01-31');
+  check('un Date ya armado se lee en hora local, sin correrse a UTC',
+    F.fechaISO(new Date(2026, 9, 15, 23, 30)) === '2026-10-15');
+  check('un Date inválido es null', F.fechaISO(new Date('no')) === null);
   /* LA TRAMPA DE LA ZONA HORARIA: `new Date('2026-10-15')` es medianoche
      UTC, o sea el 14 a las 21 en Argentina. El partido saldría un día
      antes en la agenda del DT. */

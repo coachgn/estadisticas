@@ -207,13 +207,28 @@ check('y sin ningún token, no',
   check('y sin preferencia tampoco', APP.tramoPreferido(tramos) === null);
   check('ni con una lista vacía', APP.tramoPreferido([]) === null);
 
+  /* El CUERPO de una función, cortado por llaves balanceadas. Una ventana
+     fija de caracteres (`[\s\S]{0,600}`) se rompe sola en cuanto alguien
+     suma un comentario adentro, sin que la propiedad haya cambiado (punto
+     43, y otra vez en el 75). */
+  function cuerpoDe(src, nombre) {
+    const i = src.indexOf('function ' + nombre + '(');
+    if (i < 0) return '';
+    const a = src.indexOf('{', i);
+    let prof = 0;
+    for (let j = a; j < src.length; j++) {
+      if (src[j] === '{') prof++;
+      else if (src[j] === '}' && --prof === 0) return src.slice(a, j + 1);
+    }
+    return '';
+  }
   const app = fs.readFileSync('./js/sgadd-app.js', 'utf8');
   /* SE GUARDA SOLO LO ELEGIDO A MANO. Si se guardara el default, la
      preferencia sería siempre la del primer libro que se abrió y el
      criterio de `tramoPorDefecto` —que elige por cobertura y cambia de
      libro en libro— dejaría de correr. */
   check('la preferencia se graba en cambiarTramo, que es la elección del DT',
-    /function cambiarTramo[\s\S]{0,900}recordarTramo\(\)/.test(app));
+    /recordarTramo\(\)/.test(cuerpoDe(app, 'cambiarTramo')));
   check('y NO en el ruteo, que es navegación y no decisión',
     !/function cambiarFase[\s\S]{0,200}recordarTramo\(\)/.test(app)
     && !/function cambiarTorneo[\s\S]{0,200}recordarTramo\(\)/.test(app));

@@ -453,7 +453,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_CLAS
    lo consumen dos tablas —la sección y el resumen de Principal— y dos
    resolvedores darían dos totales para el mismo equipo.
    ===================================================================== */
-function clasifManualesVigentes() {
+/* `torneo` y `fase` son OPCIONALES y por defecto el tramo abierto: la
+   llave de playoffs (sgadd-fases.js) necesita la tabla de la fase REGULAR
+   con sus manuales mientras el DT mira los octavos. */
+function clasifManualesVigentes(torneo, fase) {
   try {
     if (typeof SGADD_CLIENTES === 'undefined' || !SGADD_CLIENTES.estado) return [];
     const clubId = SGADD_CONFIG.clubActivo();
@@ -466,7 +469,7 @@ function clasifManualesVigentes() {
       : club.partidosManuales[SGADD_CONFIG.categoriaActiva()];
     if (!mapa) return [];
     const st = SGADD_APP.estado;
-    return SGADD_CLASIF.manualesDelTramo(mapa, st.torneo, st.fase);
+    return SGADD_CLASIF.manualesDelTramo(mapa, torneo || st.torneo, fase || st.fase);
   } catch (e) { return []; }   // es una mejora, no una dependencia dura
 }
 
@@ -534,10 +537,11 @@ function clasifBannerManual(fila) {
   </details>`;
 }
 
-function clasifFormatoVigente() {
+function clasifFormatoVigente(torneo, fase) {
   if (typeof SGADD_CONFIG === 'undefined') return { config: null, formato: null, origen: 'ninguno' };
   const cfgClub = (typeof CLUB !== 'undefined' && CLUB.cfg) ? CLUB.cfg : null;
-  const st = SGADD_APP.estado;
+  const st = torneo || fase ? { torneo: torneo || SGADD_APP.estado.torneo, fase: fase || SGADD_APP.estado.fase }
+    : SGADD_APP.estado;
   /* `resolver()` y NO `parsear()`: el segundo se come el override local
      y la tabla seguiría pintando el corte viejo después de que el DT lo
      cambió desde Configuración, sin ningún síntoma. */
@@ -736,22 +740,49 @@ function buildClasificacion() {
   const orden = (config && config.ordenTabla) || SGADD_CLASIF.ORDEN_POR_DEFECTO;
   const total = st.idx.lista().length;
 
-  const sinFormato = formato ? '' : SGADD_UI.aviso('Sin formato de competencia',
+  /* UNA FASE DE ELIMINACIÓN SE LEE EN UNA LLAVE, NO EN UNA TABLA (punto
+     75). Una tabla de todos contra todos sobre unos octavos ordena por
+     porcentaje a equipos que jugaron dos partidos cada uno contra rivales
+     distintos: no significa nada. La tabla NO se saca —es un dato del
+     libro y hay quien la mira—, pero va plegada debajo de la llave. */
+  const llave = (typeof SGADD_FASES !== 'undefined') ? SGADD_FASES.seccionLlave() : '';
+
+  const sinFormato = (formato || llave) ? '' : SGADD_UI.aviso('Sin formato de competencia',
     'Este club no declara zonas para el tramo abierto, así que la tabla sale sin ' +
     'colores de clasificación ni descenso. Se configura en el JSON del club (bloque ' +
     '"competencia") y el Diagnóstico lo audita.');
 
-  return SGADD_APP.barra() + `
-    <section class="space-y-5 mt-5">
-      ${sinFormato}
-      <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
+  const cuerpoTabla = `
+        ${clasifLeyendaHTML(formato, total)}
+        <div class="mt-4">${clasifTablaHTML(st.idx, { columnas: 'completa', formato: formato, orden: orden })}</div>`;
+
+  const tabla = llave
+    ? `<details class="card hub-plegable rounded-xl border border-hairline" ${CLASIF_TABLA_ABIERTA ? 'open' : ''}
+         ontoggle="CLASIF_TABLA_ABIERTA = this.open">
+        <summary class="cursor-pointer p-4 sm:p-5 flex items-baseline justify-between gap-3 flex-wrap">
+          <span class="font-display uppercase tracking-wide text-sm text-ink">Tabla de la fase · todos los partidos</span>
+          <span class="text-[11px] text-muted font-mono">${total} equipos</span>
+        </summary>
+        <div class="px-4 sm:px-5 pb-4 sm:pb-5">${cuerpoTabla}</div>
+      </details>`
+    : `<div class="card rounded-xl p-4 sm:p-5 border border-hairline">
         <div class="flex items-baseline justify-between gap-3 flex-wrap">
           <h2 class="font-display uppercase tracking-wide text-sm text-ink">Tabla de posiciones</h2>
           <span class="text-[11px] text-muted font-mono">${total} equipos · orden ${
             SGADD_UI.esc(orden.join(' › '))}</span>
         </div>
-        ${clasifLeyendaHTML(formato, total)}
-        <div class="mt-4">${clasifTablaHTML(st.idx, { columnas: 'completa', formato: formato, orden: orden })}</div>
-      </div>
+        ${cuerpoTabla}
+      </div>`;
+
+  return SGADD_APP.barra() + `
+    <section class="space-y-5 mt-5">
+      ${sinFormato}
+      ${llave}
+      ${tabla}
     </section>`;
 }
+
+/* El plegado de la tabla debajo de la llave vive ACÁ y no en el DOM: la
+   sección se repinta sola cuando llegan escudos, y un `open` en el nodo
+   se perdería en cada repintado (la trampa del punto 13). */
+var CLASIF_TABLA_ABIERTA = false;

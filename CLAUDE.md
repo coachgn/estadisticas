@@ -22,7 +22,7 @@ node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 318 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
-node test-boot.js          # 178 tests · arranque por club, sintaxis de los módulos, carteles de espera
+node test-boot.js          # 181 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 283 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  96 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
@@ -32,10 +32,10 @@ node test-scouting.js      # 519 tests · informe pre-partido, bandas, marcas, t
                            #             titularidad, las SEÑALES compartidas y el menor de los males
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
-node test-permisos.js      # 402 tests · roles, planes, el gate, el selector, el hub, el ciclo,
+node test-permisos.js      # 406 tests · roles, planes, el gate, el selector, el hub, el ciclo,
                            #             la sesión, la landing y el glosario
 node test-comparativa.js   #  67 tests · ciclos, tendencia contra nivel, cara a cara
-node test-clientes.js      #  69 tests · el padrón de clientes, los cupos y el login
+node test-clientes.js      #  70 tests · el padrón de clientes, los cupos y el login
 node test-confirmar.js     #  86 tests · el diff, publicar zonas, subclientes y tooltips
 node test-acumulacion.js   #  42 tests · la suma entre tramos · REGRESIÓN, no tocar
 node test-ast-pp.js        #  22 tests · AST-PP con cero pérdidas = AST, igual que el motor
@@ -50,7 +50,7 @@ node test-responsive.js    # 139 tests · desborde, targets táctiles, modales, 
 node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
 node test-demo.js          # 130 tests · la demo publica: el snapshot anonimizado, el
                            #             contrato cols↔filas, las cards y el modal
-node test-alta.js          #  98 tests · el alta de clientes: reusar un libro, los equipos
+node test-alta.js          #  99 tests · el alta de clientes: reusar un libro, los equipos
                            #             del libro, el catálogo manda y el tipeo del formulario
 node test-alcance.js       # 122 tests · los clientes del mismo libro: el alcance de un
                            #             cambio, la herencia, el color y que el cliente
@@ -91,12 +91,16 @@ node test-fixture-apdeb.js # 125 tests · el conector de apdeb: tablas sin clase
 node test-fixture-apb.js  #  93 tests · el conector de basket-club: el parser contra markup REAL,
                            #             los estados, el cruce con el libro y el respaldo ante una caida
 
-node test-fixture.js       # 112 tests · la seccion Fixture, los empty states de pretemporada,
+node test-fixture.js       # 116 tests · la seccion Fixture, los empty states de pretemporada,
                            #             las iniciales con parentesis y la grilla compacta del hub
 
 node test-torneos.js       # 132 tests · los torneos sin cliente y la estructura multizona: la Liga
                            #             Argentina 2026-27, la Zona C, el enganche a una zona, la propagación
                            #             y el marcador de las cards plegables del Panel Master
+
+node test-fases.js         #  91 tests · fases, cruces y series: el parser de la declaración, la llave
+                           #             intrazonal e interzonal, la fase por ventana, las métricas que no
+                           #             mezclan fases y la barra que repinta Clasificación y Fixture
 
 node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -108,7 +112,7 @@ node test-backend.js       # 457 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6713 tests en total. Todos tienen que dar verde antes de commitear.**
+**6809 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -184,6 +188,8 @@ js/
                           NO es seguridad: leer el punto 19 antes de tocarlo.
   sgadd-diagnostico.js  ← auditoría de datos, visible en la app
   sgadd-fixture.js      ← la seccion FIXTURE: calendario del torneo + lo jugado (punto 68)
+  sgadd-fases.js        ← fases, cruces y series: la llave de playoffs (punto 75). Motor PURO
+                          arriba, pegamento con la app abajo
 server/lib/fixture-fuentes.js ← los ADAPTADORES de fixture externo. PURO: entra
                           HTML, salen partidos. Punto 70
 server/api/fixture.js   ← baja la fuente, la cachea en KV y sirve la ultima
@@ -221,7 +227,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=248`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=249`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -10918,3 +10924,175 @@ VARIANTE** (`sm:`, `hover:`, …) exista en `sgadd.css`.
 Verificado al revés con el `sgadd.css` de HEAD — el que estaba publicado —:
 denuncia exactamente `sm:pb-5 sm:px-5`. Y agregando una variante nueva al
 fuente sin regenerar, la nombra.
+
+---
+
+## 75. FASES, CRUCES Y SERIES · la llave de playoffs (2026-09-28)
+
+Pedido: un modelo genérico de cruces intrazonales (playoffs de una zona) e
+interzonales (cruces entre zonas) para cualquier torneo, conectado al
+selector de fase que ya existía en la barra. Se acordó entregarlo en DOS
+partes, y esta es la **1 · intrazonal**. `test-fases.js` fija todo lo de acá.
+
+### LO QUE YA EXISTÍA, Y POR ESO NO SE CONSTRUYÓ
+
+**Las métricas aisladas por fase ya estaban garantizadas.** El índice se arma
+scopeado a `TORNEO|FASE` (punto 3 ter) y el TOTAL nunca junta fases. Un libro
+que trae filas con `FASE = PLAYOFF` hace que el selector ofrezca «Playoffs»
+solo, y Principal, Equipos, Jugadores y Scouting ya filtran. No se tocó una
+línea de eso: se fijó con tests (la regular no suma los playoffs, los
+playoffs no suman la regular, el TOTAL de la regular no mete la playoff).
+
+**La `FASE` la pone MotorStats a partir del nombre de la carpeta de Drive**
+(`"CLAUSURA - PLAYOFF"` → `PLAYOFF`), libro por libro. Es texto libre.
+
+### LAS TRES DECISIONES, tomadas con el club antes de escribir
+
+| | Decisión |
+|---|---|
+| **Dónde vive un partido interzonal** | En un **libro propio** de la fase, registrado como una zona más del torneo. Es la entrega 2 |
+| **Qué ve un cliente de la otra zona** | **Solo su llave**: las posiciones que definen sus cruces, no las métricas ni los planteles |
+| **A qué fase va un partido programado** | Por **ventanas de fechas declaradas**, con las reglas del punto 18 |
+
+### EL MODELO · `formato.fases` enriquecido, en el JSON del torneo
+
+```json
+{ "id": "octavos", "label": "Octavos", "libro": ["PLAYOFF"], "serie": { "mejorDe": 3 },
+  "desde": "2027-04-24", "hasta": "2027-05-10", "cruce": "zona",
+  "cruces": [ { "id": "O1", "a": { "zona": "norte", "puesto": 1 }, "b": { "ganador": "R4" } } ] }
+```
+
+Un lado de un cruce es `{zona, puesto}`, `{equipo}`, `{ganador: cruce}` o
+`{perdedor: cruce}`. Lo lee `SGADD_FASES.parsear()` con el fallback seguro
+de siempre: lo que no se entiende se descarta con su motivo y lo demás sirve.
+
+- **`libro` es el VÍNCULO con la columna FASE**, y se declara: la fase
+  «octavos» del reglamento puede estar escrita «PLAYOFF» en el libro. Sin
+  declararlo se asume el id en mayúsculas (`regular` → `REGULAR`).
+- **Una serie par se rechaza**: a un número par de partidos puede quedar
+  empatada, y en básquet no hay empates.
+- **Una referencia tiene que apuntar a un cruce declarado ANTES**, y uno que
+  se refiere a sí mismo queda inválido: si no, la llave puede quedar circular.
+- **La regular toma su ventana de `formato.inicio` y `formato.finRegular`**
+  cuando no declara una propia. La Liga Argentina ya los escribe; sin eso, un
+  partido de la regular quedaba «sin fase» y se colaba en los playoffs.
+- **Lo que ya estaba escrito se sigue leyendo**: LAB declara `puestos`,
+  `directos` y `cruce` sin `tipo` ni `cruces`, y se lee sin un solo error.
+
+### LAS REGLAS QUE NO SE NEGOCIAN
+
+- **EL DATO MANDA.** Una serie que se jugó entre dos equipos que la
+  declaración no ponía cara a cara se muestra igual, como serie suelta.
+- **Proyectado no es resuelto.** Con la fase regular abierta, «1° de la zona»
+  sale rotulado *proyectado*; lo confirma el partido jugado o el cierre de la
+  tabla (`partidosPorEquipo` alcanzado, o una fase posterior ya en juego).
+- **Sin saber a cuántos era la serie, no se declara un ganador.** Un libro
+  con `PLAYOFF` y sin declaración muestra el marcador de cada serie y nada
+  más.
+- **Con dos series candidatas, no se elige.** Si un lado está pendiente, se
+  acepta la ÚNICA serie de la fase en la que juega el otro; con dos, las dos
+  quedan sueltas. Atribuir la equivocada mueve a un equipo de llave.
+- **Un empate no suma a nadie**: es un dato mal cargado.
+- **Un puesto de OTRA zona queda pendiente** y no se adivina. Si el libro
+  trae el partido, lo jugado completa ese lado (`porLoJugado`).
+- **La tabla que resuelve los puestos es la MISMA de Clasificación**, con los
+  partidos manuales (punto 44) y el orden de desempate del club. Por eso
+  `clasifManualesVigentes` y `clasifFormatoVigente` aceptan ahora un tramo
+  opcional; sin él siguen leyendo el abierto, así que ningún llamador cambió.
+
+### EL NÚCLEO CONOCE LAS RONDAS
+
+`FASES` suma `RECLASIFICACION`, `OCTAVOS`, `CUARTOS`, `SEMIFINAL(ES)`, `FINAL`
+y `PERMANENCIA`, con su orden y un flag `eliminacion`. Sin eso, `CUARTOS`,
+`FINAL`, `OCTAVOS` y `SEMIFINAL` empataban en el orden 5 y el selector los
+listaba por alfabeto: la final antes que los octavos. Va en el núcleo y no en
+cada torneo para ordenar bien a CUALQUIER cliente, aunque no declare nada.
+
+El núcleo cambió, así que **la copia de `server/lib/compartido/` se regenera
+con `node server/bin/sincronizar-compartido.js` y no con `cp`**: la copia
+lleva una cabecera, y un `cp` la pisa y deja los finales de línea mezclados.
+Pasó en esta entrega; el script, que normaliza al comparar, la dio por buena y
+`test-backend.js` la cazó.
+
+### LA BARRA · las opciones SIGUEN saliendo del libro
+
+- **El estado, la ruta y los links compartidos no cambian.** La declaración
+  solo pone el nombre del reglamento («Semifinales» donde el libro dice
+  `PLAYOFF`) y suma las fases que todavía no se jugaron.
+- **Una fase declarada sin datos se ve y no se elige**: `disabled`, con
+  «— sin datos», y un id con asteriscos (`*SIN-DATOS*|FINAL`) que ninguna
+  celda puede producir. `cambiarTramo` además la ignora.
+- **La declaración baja EN PARALELO con el libro**, en `cargar()`, con techo
+  de 1,5 s y el temporizador limpio al terminar (sin eso retiene el proceso
+  de los tests). Un archivo de pocos KB contra un libro de segundos: no suma
+  espera, y la barra sale con los nombres del reglamento desde el primer
+  pintado.
+
+### CLASIFICACIÓN Y FIXTURE
+
+**Clasificación**, en una fase eliminatoria, muestra la llave: una columna
+por fase, con la activa marcada, cada cruce con su puesto de origen, la serie
+y sus partidos. **La tabla no se saca** —es un dato del libro—, va plegada
+debajo, y su plegado vive en una variable del módulo por la trampa del punto
+13.
+
+**Fixture** ahora tiene la barra y se repinta al cambiar de fase: antes no
+tenía selector y se quedaba en la instancia anterior. Tres cosas:
+
+- **Lo jugado es de TODA la fase**, no del torneo suelto: con Ida y Vuelta en
+  la misma fase, mirar la Ida hacía que los partidos de la Vuelta aparecieran
+  como «a jugarse». El Fixture se parte por instancia.
+- **Lo programado se parte por ventana.** Sin ventanas declaradas, una fase
+  de eliminación muestra solo lo que su libro dice que se jugó, y lo dice;
+  mostrar ahí el calendario entero hacía pasar por «a jugarse» partidos de la
+  regular. Lo que no se puede asignar se MUESTRA, marcado «sin fase».
+- **Lo que la fase deja afuera se dice**: «También hay partidos jugados de
+  Semifinales: elegila en el selector Fase». Un filtro callado se lee como
+  «no hay partidos».
+
+«Intrazonal» se marca solo en las eliminatorias o cuando es la excepción: en
+la fase regular todos lo son y sería ruido.
+
+### Y UN BUG VIEJO · el Fixture no leía las fechas de GViz
+
+`fechaISO` no entendía `Date(2025,10,5)`, que es como GViz entrega una fecha
+—con el mes 0-indexado, punto 3—. En producción no se notaba porque el
+backend entrega `dd/mm/aaaa`, pero **con GViz de respaldo y en la demo el
+Fixture perdía TODOS los partidos jugados**: la fecha no se leía y el partido
+se descartaba sin aviso. Se lee sobre el TEXTO (mes + 1), sin pasar por
+`Date`, por la trampa de zona horaria que la función ya documentaba.
+
+### Verificado
+
+- **Al revés**, 14 mutaciones del motor, la barra, Clasificación y Fixture:
+  las 14 cayeron. Una cayó al principio por otro test y no por el suyo —el
+  libro de prueba insertaba octavos antes que cuartos y el `sort` es estable,
+  así que el orden salía bien por suerte—; la fixture ahora los trae
+  desordenados a propósito. `fechaISO`: sin el arreglo caen 3.
+- **La reactividad se EJERCE**: `sgadd-app.js`, `sgadd-clasificacion.js`,
+  `sgadd-fixture.js` y `sgadd-fases.js` reales en un `vm`, llamando a
+  `cambiarTramo` y leyendo lo que quedó en `#view-root`.
+- **En el navegador**, sobre la demo con semifinales inyectadas en memoria,
+  cambiando la fase desde el selector real: Clasificación y Fixture se
+  repintan solos. A 1280 px las columnas entran; a 375 la llave (492 px)
+  scrollea dentro de su caja de 310 sin desbordar la página.
+- **Dos tests medían por distancia en caracteres** (`test-core.js` y
+  `test-resiliencia.js`, sobre `cambiarTramo`) y se pusieron en rojo por un
+  comentario, sin que la propiedad cambiara. Se reescribieron para recortar
+  el CUERPO de la función por llaves balanceadas, y siguen cazando la
+  reversión.
+
+### Lo que queda para la entrega 2 · interzonal
+
+- **El libro de la fase interzonal** se registra como una zona más del torneo,
+  y al elegir esa fase en la barra el panel lee ese libro.
+- **La tabla de la OTRA zona para resolver sus puestos**: hoy esos lados
+  quedan pendientes. El cliente ve solo su llave (la decisión de arriba), así
+  que el servidor tiene que dejar leer las POSICIONES de la otra zona sin
+  abrirle su libro.
+- **Ningún torneo real declara cruces todavía**: APB no publicó su reglamento
+  y LAB solo lista sus fases. Se declaran cuando se publiquen; no se inventan.
+- **`tramoPorDefecto` sigue abriendo por la regular** aunque haya playoffs en
+  curso. Con playoffs en juego, «la foto de hoy» (punto 3 ter) son los
+  playoffs; es una decisión de producto aparte, que conviene tomar antes de la
+  primera postemporada.

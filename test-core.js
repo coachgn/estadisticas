@@ -1394,12 +1394,28 @@ check('cada tramo declara si tiene partidos y promedios',
 
 /* La barra: un solo selector, y el estado sigue partido en dos para que
    la RUTA no cambie y los links compartidos sigan andando. */
+/* El CUERPO de una función, cortado por llaves balanceadas. Una ventana
+   fija de caracteres (`[\s\S]{0,600}`) se rompe sola en cuanto alguien
+   suma un comentario adentro, sin que la propiedad haya cambiado (punto
+   43, y otra vez en el 75). */
+function cuerpoDe(src, nombre) {
+  const i = src.indexOf('function ' + nombre + '(');
+  if (i < 0) return '';
+  const a = src.indexOf('{', i);
+  let prof = 0;
+  for (let j = a; j < src.length; j++) {
+    if (src[j] === '{') prof++;
+    else if (src[j] === '}' && --prof === 0) return src.slice(a, j + 1);
+  }
+  return '';
+}
 const appJs2 = require('fs').readFileSync('./js/sgadd-app.js', 'utf8');
 check('la barra tiene UN selector de tramo, no dos',
   /const selectorTramo =/.test(appJs2) && !/const selectorTorneo =/.test(appJs2));
+const cuerpoTramo = cuerpoDe(appJs2, 'cambiarTramo');
 check('y cambiarTramo escribe los dos y reindexa UNA sola vez',
-  /function cambiarTramo\(id\)[\s\S]{0,600}estado\.torneo = torneo;[\s\S]{0,120}estado\.fase = fase;/.test(appJs2) &&
-  (appJs2.match(/function cambiarTramo\(id\)[\s\S]{0,700}?reindexar\(\)/g) || []).length === 1);
+  /estado\.torneo = torneo;[\s\S]{0,120}estado\.fase = fase;/.test(cuerpoTramo) &&
+  (cuerpoTramo.match(/reindexar\(\)/g) || []).length === 1);
 /* `cambiarFase` y `cambiarTorneo` siguen exportados: los usa la RUTA. */
 check('los dos setters viejos siguen existiendo para la ruta',
   /function cambiarFase\(/.test(appJs2) && /function cambiarTorneo\(/.test(appJs2));

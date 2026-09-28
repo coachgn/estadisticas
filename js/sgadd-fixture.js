@@ -66,9 +66,22 @@ const SGADD_FIXTURE = (function () {
    * aparecería un día antes en la agenda del DT.
    */
   function fechaISO(v) {
+    /* Un `Date` ya armado se lee en hora LOCAL: sus campos son los del día
+       que se cargó, y pasarlo por `toISOString` lo correría a UTC. */
+    if (v instanceof Date) {
+      if (isNaN(v.getTime())) return null;
+      return v.getFullYear() + '-' + ('0' + (v.getMonth() + 1)).slice(-2) + '-' + ('0' + v.getDate()).slice(-2);
+    }
     const t = String(v == null ? '' : v).trim();
     if (!t) return null;
-    let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    /* EL FORMATO DE GViz, que el punto 3 ya lista y acá faltaba:
+       «Date(2025,10,5)» es el 5 de NOVIEMBRE —el mes viene 0-indexado—.
+       Sin esta rama, con GViz de respaldo (y en la demo, que sale de un
+       snapshot de GViz) el Fixture perdía TODOS los partidos jugados: la
+       fecha no se leía y el partido se descartaba sin aviso. */
+    let m = t.match(/^Date\((\d{4}),\s*(\d{1,2}),\s*(\d{1,2})/);
+    if (m) return m[1] + '-' + ('0' + (+m[2] + 1)).slice(-2) + '-' + ('0' + m[3]).slice(-2);
+    m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
     if (m) return m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2);
     m = t.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
     if (m) return m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
@@ -511,11 +524,12 @@ const SGADD_FIXTURE = (function () {
        del archivo queda de respaldo para cuando no hay fuente (LAB) o
        cuando el backend no contesta. */
     const alias = mapaAlias(o.torneo, o.zona);
-    const cal = (o.fuente && o.fuente.length)
+    const calCompleto = (o.fuente && o.fuente.length)
       ? normalizarFuente(o.fuente, alias, o.zona)
       : normalizarCalendario(o.torneo, o.zona);
+    const cal = calendarioDeFase(calCompleto, o.fase, o.fases);
     const jug = jugadosDelIndice(o.idx);
-    const todos = unir(cal, jug);
+    const todos = anotarFase(unir(cal, jug), o);
     const propio = o.equipo ? clave(o.equipo) : '';
     const mios = propio ? delEquipo(todos, propio) : [];
 
@@ -564,7 +578,68 @@ const SGADD_FIXTURE = (function () {
       atipicos: atipicos,
       /* Para el empty state: el torneo declara cuándo arranca. */
       inicio: (o.torneo && o.torneo.formato && o.torneo.formato.inicio) || (ms.length ? null : null),
+      /* La fase (punto 75): qué se está mostrando, qué quedó afuera por
+         pertenecer a otra, y si lo programado se pudo separar o no. */
+      fase: o.fase || null,
+      faseSinVentanas: !!(o.fase && FASES() && FASES().tipoDe(o.fase, o.fases) === 'eliminacion'
+        && !FASES().tieneVentanas(o.fases)),
+      deOtrasFases: calCompleto.length - cal.length,
+      otrasFases: o.otrasFases || [],
     };
+  }
+
+  /* =====================================================================
+     LA FASE DEL FIXTURE (punto 75)
+
+     Lo JUGADO ya viene de la fase: el índice que se pasa es el de la fase
+     entera. Lo que hay que partir es lo PROGRAMADO, que las fuentes
+     publican sin instancia. Con las reglas del punto 18: la fecha asigna
+     solo si cae en UNA ventana declarada, y lo que no se puede asignar se
+     MUESTRA —marcado— en vez de esconderse.
+     ===================================================================== */
+  function FASES() { return (typeof SGADD_FASES !== 'undefined') ? SGADD_FASES : null; }
+
+  function calendarioDeFase(cal, fase, fases) {
+    const F = FASES();
+    if (!fase || !F) return cal;
+    /* SIN VENTANAS NO SE PUEDE PARTIR LO PROGRAMADO. Se queda donde
+       estuvo siempre —la fase de liga— y una fase de eliminación muestra
+       solo lo que su libro dice que se jugó. Mostrar ahí el calendario
+       entero haría pasar por «a jugarse» partidos de la fase regular que
+       ya se jugaron. */
+    if (!F.tieneVentanas(fases)) return F.tipoDe(fase, fases) === 'eliminacion' ? [] : cal;
+    const v = String(fase).toUpperCase();
+    return cal.filter((p) => {
+      const r = F.faseDeFecha(p.fecha, fases);
+      if (!r.fase) { p.sinFase = true; return true; }
+      return r.fase.libro.indexOf(v) !== -1;
+    });
+  }
+
+  /** El estado de la serie y si el cruce es interzonal, en cada partido. */
+  function anotarFase(partidos, o) {
+    const F = FASES();
+    if (!F || !o.fase) return partidos;
+    const eliminacion = F.tipoDe(o.fase, o.fases) === 'eliminacion';
+    const zonas = o.zonaDeEquipo || {};
+    let porPar = null;
+    if (eliminacion) {
+      const d = F.declaradaDe(o.fases, o.fase);
+      porPar = {};
+      F.series(partidos, d ? d.mejorDe : null).forEach((s) => { porPar[s.clave] = s; });
+    }
+    partidos.forEach((p) => {
+      const n = F.naturalezaPartido(p, zonas);
+      /* «Intrazonal» en cada partido de una fase regular es ruido: ahí
+         todos lo son. Se marca en las eliminatorias, o cuando es la
+         excepción. */
+      if (n && (eliminacion || n === 'interzonal')) p.naturaleza = n;
+      if (porPar) {
+        const s = porPar[[p.localClave, p.visitanteClave].sort().join('|')];
+        if (s) p.serieTexto = F.resumen(s, p.localClave);
+      }
+    });
+    return partidos;
   }
 
   /* =====================================================================
@@ -688,9 +763,18 @@ const SGADD_FIXTURE = (function () {
       + '<td class="py-2 pr-3">' + lado(p.visitante, p.visitanteClave, yoVisita) + '</td>'
       + '<td class="py-2 text-[11px] text-muted whitespace-nowrap">'
       + (c ? (yoLocal ? 'Local' : 'Visitante') : (p.zona ? esc(p.zona) : ''))
-      + chipEstado(p) + '</td>'
+      + chipEstado(p) + chipsFase(p) + '</td>'
       + '<td class="py-2 text-[11px]">' + transmisiones(p) + '</td>'
       + '</tr>';
+  }
+
+  /* La serie, si el cruce es interzonal y si la fecha no se pudo asignar a
+     ninguna fase. Cada uno con TEXTO: ningún estado solo con color. */
+  function chipsFase(p) {
+    const F = FASES();
+    return (p.serieTexto ? ' <span class="fase-chip zona-neutro zona-texto">' + esc(p.serieTexto) + '</span>' : '')
+      + (p.naturaleza && F ? ' ' + F.chipNaturaleza(p.naturaleza) : '')
+      + (p.sinFase ? ' <span class="fase-chip zona-aviso zona-texto" title="La fecha no cae en una sola ventana de fase declarada">sin fase</span>' : '');
   }
 
   /* EL ESTADO SOLO SE MUESTRA CUANDO DICE ALGO QUE LA FILA NO DICE YA.
@@ -897,6 +981,7 @@ const SGADD_FIXTURE = (function () {
       + '<h3 class="font-display uppercase tracking-wide text-sm text-ink">' + esc(nombre + zona) + '</h3>'
       + '<span class="font-mono text-[11px] text-muted">' + esc(partes.join(' · ') || 'sin partidos') + '</span></div>'
       + avisoFuente(a)
+      + avisoFases(a)
       + (a.atipicos.length
         ? '<p class="text-xs mt-2 zona-aviso zona-texto">⚠ ' + a.atipicos.length
           + (a.atipicos.length === 1 ? ' partido viene' : ' partidos vienen')
@@ -912,11 +997,57 @@ const SGADD_FIXTURE = (function () {
       + '</div>';
   }
 
+  /* LO QUE LA FASE ELEGIDA DEJA AFUERA SE DICE. Una agenda filtrada en
+     silencio se lee como «no hay partidos», y el DT que abre el Fixture
+     con la barra en la fase regular no vería los playoffs que se están
+     jugando. */
+  function avisoFases(a) {
+    const partes = [];
+    if (a.otrasFases && a.otrasFases.length) {
+      partes.push('Esta vista muestra una sola fase. También hay partidos jugados de <b>'
+        + a.otrasFases.map(esc).join('</b>, <b>') + '</b>: elegila en el selector Fase.');
+    }
+    if (a.faseSinVentanas) {
+      partes.push('El torneo no declara las fechas de esta fase, así que acá va solo lo que '
+        + 'ya se jugó; lo programado queda en la fase regular.');
+    }
+    return partes.length ? '<p class="text-xs text-muted mt-2">' + partes.join(' ') + '</p>' : '';
+  }
+
+  /* Las fases del libro que tienen partidos y no son la que se mira. */
+  function otrasFasesConPartidos(hojas, fase) {
+    try {
+      if (!hojas || typeof SGADD === 'undefined') return [];
+      const vistas = {};
+      SGADD.combinacionesTorneoFase(hojas).forEach((t) => {
+        if (!t.conPartidos || t.agregado || t.fase === fase) return;
+        const d = FASES() ? FASES().declaradaDe(FASES().declaradas(), t.fase) : null;
+        vistas[t.fase] = d ? d.label : ((SGADD.FASES[t.fase] || {}).label || t.fase);
+      });
+      return Object.keys(vistas).map(k => vistas[k]);
+    } catch (e) { return []; }
+  }
+
+  /** La barra de categoría y fase: el Fixture se lee por instancia. */
+  function barraApp() {
+    try { return (typeof SGADD_APP !== 'undefined' && SGADD_APP.barra) ? SGADD_APP.barra() : ''; }
+    catch (e) { return ''; }
+  }
+
   /** La sección entera. */
   function html() {
+    return barraApp() + '<div class="mt-5">' + cuerpo() + '</div>';
+  }
+
+  function cuerpo() {
     const planilla = planillaActual();
     const torneoId = planilla && planilla.torneoId;
-    const idx = (typeof SGADD_APP !== 'undefined') ? SGADD_APP.estado.idx : null;
+    const st = (typeof SGADD_APP !== 'undefined') ? SGADD_APP.estado : null;
+    /* LO JUGADO ES DE TODA LA FASE, no del torneo suelto de la barra: con
+       Ida y Vuelta en la misma fase, mirar la Ida hacía que los partidos de
+       la Vuelta aparecieran como «a jugarse». El Fixture se parte por
+       instancia, no por torneo. */
+    const idx = st ? ((FASES() && st.hojas && FASES().indicePara(st.hojas, st.fase)) || st.idx) : null;
 
     if (!torneoId) {
       return '<div class="space-y-5">'
@@ -945,6 +1076,10 @@ const SGADD_FIXTURE = (function () {
       torneo: estado.doc, zona: planilla.zonaId, idx: idx,
       equipo: equipoPropio(), mes: estado.mes || null,
       fuente: estado.vivo,
+      fase: st ? st.fase : null,
+      fases: FASES() ? FASES().declaradas() : [],
+      zonaDeEquipo: FASES() ? FASES().zonasDeEquipos(estado.doc) : {},
+      otrasFases: st ? otrasFasesConPartidos(st.hojas, st.fase) : [],
     });
 
     if (!a.total) {
@@ -1023,6 +1158,7 @@ const SGADD_FIXTURE = (function () {
     /* ui */
     html, pintar, montar, irAMes, cargarTorneo, cargarVivo, estado, vacio,
     chipEstado, transmisiones, avisoFuente, horaDe,
+    calendarioDeFase, anotarFase, avisoFases, chipsFase,
   };
 })();
 
