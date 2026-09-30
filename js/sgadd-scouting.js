@@ -1824,13 +1824,21 @@ const SGADD_SCOUT = (function () {
       });
     }
     if (s.faltaEvaluable) {
-      const esperado = (p.t1 || 0) * 2;
+      /* LA CUENTA A LA VISTA (punto 81). Una falta son DOS libres: 2 × PPT1
+         es lo que vale la posesión cortada, y es lo que se compara contra una
+         jugada que termina. No es una duplicación — sin el ×2 se compararía
+         UN libre contra una posesión entera y toda falta saldría rentable.
+         El PPT1 que se cita es el de la tabla del jugador; sin esa columna,
+         el T1%, que es el mismo número (un punto por libre convertido). */
+      const ppt1 = nn(p.pptLibre) !== null ? p.pptLibre : (p.t1 || 0);
+      const esperado = ppt1 * 2;
+      const cuenta = 'PPT1 ' + num2(ppt1) + ' × 2 libres = ' + num2(esperado) + ' puntos esperados por posesión';
       const porEconomia = nn(p.pptDoble) !== null && (esperado + MARGEN_FALTA) <= p.pptDoble;
       m.push(s.faltaRentable ? {
         id: 'faltaRentable', eje: 'conPelota', icono: '🎯',
         titulo: 'FALTA TÁCTICA RENTABLE.',
         detalle: 'Convierte ' + pct(p.t1) + ' de libres' + (porEconomia ? '' : ', por debajo de su liga') +
-          ': mandarlo a la línea son ' + num2(esperado) + ' puntos esperados' +
+          ': ' + cuenta +
           (porEconomia ? ' contra ' + num2(p.pptDoble) + ' si termina la jugada'
             : (nn(p.pppLiga) !== null && esperado <= p.pppLiga
               ? ', no más que una jugada promedio de su liga (' + num2(p.pppLiga) + ')'
@@ -1839,8 +1847,7 @@ const SGADD_SCOUT = (function () {
       } : {
         id: 'faltaCara', eje: 'conPelota', icono: '⚖',
         titulo: 'NO CORTAR CON FALTA.',
-        detalle: 'Convierte ' + pct(p.t1) + ' de libres: la línea le vale ' +
-          num2((p.t1 || 0) * 2) + ' puntos esperados y la jugada ' + num2(p.pptDoble) +
+        detalle: 'Convierte ' + pct(p.t1) + ' de libres: ' + cuenta + ', y la jugada le rinde ' + num2(p.pptDoble) +
           '. Cortarla con falta le sube el valor de la posesión.',
       });
     }

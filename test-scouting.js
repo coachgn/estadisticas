@@ -2435,6 +2435,20 @@ check('  y la marca lo dice con esas palabras, nunca «no cortar con falta»',
 check('  la comparación con la jugada promedio de su liga va solo si es cierta',
   /jugada promedio de su liga \(0,95\)/.test(S.modificadoresDe(Object.assign({ pppLiga: 0.95 }, BARUCCO)).map(m => m.detalle).join(''))
   && !/jugada promedio/.test(S.modificadoresDe(Object.assign({ pppLiga: 0.83 }, BARUCCO)).map(m => m.detalle).join('')));
+/* LA CIFRA ES LA DE LA TABLA (punto 81): PPT1 0,44 de la tabla del
+   jugador, y la cuenta de los dos libres a la vista. El ×2 NO es una
+   duplicación: la falta cuesta una posesión y se paga con dos libres. */
+{
+  const conTabla = Object.assign({ pptLibre: 0.4417 }, BARUCCO);
+  const det = S.modificadoresDe(conTabla).find(m => m.id === 'faltaRentable').detalle;
+  check('el texto de la falta cita el PPT1 EXACTO de la tabla y la cuenta: 0,44 × 2 libres = 0,88',
+    /PPT1 0,44 × 2 libres = 0,88 puntos esperados por posesión/.test(det), det);
+  const distinto = S.modificadoresDe(Object.assign({}, conTabla, { pptLibre: 0.46 })).find(m => m.id === 'faltaRentable').detalle;
+  check('  si la columna PPT1 dice otra cosa, manda la columna', /PPT1 0,46 × 2 libres = 0,92/.test(distinto), distinto);
+  const cara = S.modificadoresDe({ t1: 0.537, t1i: 3, pptDoble: 1.09, pptLibre: 0.537, bandaT1: { id: 'estandar', label: 'estandar' } })
+    .find(m => m.id === 'faltaCara');
+  check('  y «no cortar con falta» muestra la misma cuenta', cara && /PPT1 0,54 × 2 libres = 1,07/.test(cara.detalle), cara && cara.detalle);
+}
 check('  el piso absoluto también: menos de 40% en la línea es falta rentable',
   S.senales({ t1: 0.38, t1i: 3, pptDoble: 0.70 }).faltaRentable);
 check('  SCHROEDER sigue igual: 53,7% sin estar bajo su liga no es negocio',

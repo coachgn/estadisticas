@@ -2606,7 +2606,16 @@
       Object.keys(METRICAS).forEach((c) => {
         const r = leer(e.clave, c);
         if (!r) return;
+        /* EL MISMO RESPALDO QUE `referenciaLiga` (punto 81): sin fila TIPO
+           —el TOTAL no la lee— la mediana sale de la distribución. Sin esto
+           PPP OF y PPP DEF, que no son calculadas, viajaban vacías y la
+           columna de su liga quedaba en «—». */
         if (typeof r.tipo === 'number') medianas[c] = r.tipo;
+        else {
+          const dist = liga.distribuciones[c];
+          const md = (dist && dist.length) ? mediana(dist) : null;
+          if (typeof md === 'number' && isFinite(md)) medianas[c] = md;
+        }
         if (typeof r.percentil === 'number') percentiles[c] = r.percentil;
         const rk = ranking(e.clave, c);
         if (rk) rankings[c] = rk;

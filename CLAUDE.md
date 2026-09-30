@@ -28,7 +28,7 @@ node test-4factores.js     #  96 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  63 tests · detalle partido a partido, perfil de tiro y su PDF
-node test-scouting.js      # 526 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis,
+node test-scouting.js      # 529 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis,
                            #             titularidad, las SEÑALES compartidas y el menor de los males
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
@@ -102,7 +102,7 @@ node test-fases.js         #  91 tests · fases, cruces y series: el parser de l
                            #             intrazonal e interzonal, la fase por ventana, las métricas que no
                            #             mezclan fases y la barra que repinta Clasificación y Fixture
 
-node test-interzonal.js    # 217 tests · la llave entre zonas: un cliente de una zona recibe quién
+node test-interzonal.js    # 220 tests · la llave entre zonas: un cliente de una zona recibe quién
                            #             contra quién y un 403 por el libro de la otra, los slots
                            #             «1° Norte vs 2° Sur», el modo llave y la fase activa; los
                            #             libros vinculados, el acceso por partido y el editor de cruces
@@ -119,7 +119,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7037 tests en total. Todos tienen que dar verde antes de commitear.**
+**7043 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -234,7 +234,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=254`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=255`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -11662,3 +11662,44 @@ PPT2, que no es negocio) salía rentable. Hay test.
   22/09», la matriz con la mediana de la Zona B y de la Zona A, y GARCIA
   BARUCCO con «FALTA TÁCTICA RENTABLE» y en la clave; ningún «NO CORTAR».
 - **Al revés, 14 mutaciones**, todas caen.
+
+---
+
+## 81. PPP OF/DEF DE LA OTRA LIGA Y LA CUENTA DE LA FALTA A LA VISTA (2026-09-30)
+
+### PPP OF y PPP DEF viajaban vacías
+
+Medido en producción: la mediana de la Zona A llegaba para PPP, eFG%,
+PACE, ORTG, DRTG… y **no** para `PPP OF` ni `PPP DEF`. El índice del rival
+es el TOTAL, que no lee la fila TIPO, y esas dos no son «calculadas»: la
+liga del cliente cae a la mediana de la distribución (`referenciaLiga`) y
+`exportarEquipo` no tenía ese respaldo. Ahora lo tiene, con la misma regla:
+el TIPO si existe, si no la mediana de la distribución. Viaja el número, no
+la distribución.
+
+### El «0,88» de la falta NO es una duplicación
+
+PPT1 (0,44) es lo que vale UN libre. Una falta corta una posesión y se paga
+con DOS libres: 2 × 0,44 = 0,88 es lo que vale esa posesión, y eso es lo
+que se compara contra una jugada que termina (PPT2 o la jugada promedio de
+su liga). Sin el ×2 se compararía un libre contra una posesión entera y
+**toda** falta saldría rentable.
+
+Lo que se corrigió es el TEXTO, que no mostraba de dónde salía el número:
+
+```
+FALTA TÁCTICA RENTABLE. Convierte 44,2% de libres, por debajo de su liga:
+PPT1 0,44 × 2 libres = 0,88 puntos esperados por posesión, y le baja…
+```
+
+El PPT1 que se cita es la columna de la tabla del jugador (`pptLibre`); sin
+ella, el T1%, que es el mismo número. «NO CORTAR CON FALTA» muestra la
+misma cuenta.
+
+### El «°» de la matriz
+
+Es el chip del puesto en la liga (`4°`): va pegado al valor y en una celda
+angosta puede quedar en la línea de abajo. No es un artefacto del dato.
+
+Tests: `test-interzonal.js` 8i (3) y `test-scouting.js` (3). Al revés, las
+tres reversiones caen.

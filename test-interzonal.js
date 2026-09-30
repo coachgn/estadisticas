@@ -1030,6 +1030,32 @@ const pedirLibro = async (tok, club, cat) => { catalogo.limpiarCache(); return H
         f0 && f0.__fecha.getDate() === 2 && f0.__fecha.getMonth() === 4, f0 && String(f0.__fecha));
     }
 
+    /* --- 8i · PPP OF y PPP DEF sin fila TIPO (punto 81): el TOTAL no la
+       lee, y esas dos no son calculadas. Viajaban vacías y la columna de su
+       liga quedaba en «—». */
+    {
+      const h4 = hojasDe(ZA);
+      h4['PROMEDIOS 4F'] = { cols: ['EQUIPO', 'FASE', 'PPP OF', 'PPP DEF'], filas: [AT, PL, RE, GO].map((n, i) =>
+        ({ EQUIPO: n, FASE: 'REGULAR', 'PPP OF': 0.80 + i * 0.04, 'PPP DEF': 0.95 - i * 0.03 })) };
+      const idx4 = SGADD.construirIndice(h4, { fase: 'REGULAR' });
+      const ex4 = idx4.exportarEquipo(RE);
+      const med = (vs) => { const o = vs.slice().sort((x, y) => x - y); return (o[1] + o[2]) / 2; };
+      check('la mediana de PPP OF y PPP DEF de su liga VIAJA aunque no haya fila TIPO',
+        Math.abs(ex4.equipo.__ligaOrigen.medianas['PPP OF'] - med([0.80, 0.84, 0.88, 0.92])) < 1e-9
+        && Math.abs(ex4.equipo.__ligaOrigen.medianas['PPP DEF'] - med([0.95, 0.92, 0.89, 0.86])) < 1e-9,
+        [ex4.equipo.__ligaOrigen.medianas['PPP OF'], ex4.equipo.__ligaOrigen.medianas['PPP DEF']]);
+      ex4.equipo.__ligaOrigen.label = 'Zona A';
+      const idx4c = SGADD.construirIndice(hojasDe(ZB), { fase: 'REGULAR' });
+      idx4c.injertarEquipo(ex4);
+      const m4 = SC.matrizComparativa(idx4c, HO, RE);
+      const ortg = m4.posesion.find(f => f.id === 'RTNG OFF'), drtg = m4.posesion.find(f => f.id === 'RTNG DEF');
+      check('y en la matriz cruzada, la fila de ORTG muestra el PPP OF de su liga, no «—»',
+        ortg && ortg.ligaVisitante.sub && ortg.ligaVisitante.sub.clave === 'PPP OF'
+        && ortg.ligaVisitante.sub.formateado === '0,86', ortg && ortg.ligaVisitante.sub);
+      check('  y la de DRTG, su PPP DEF', drtg && drtg.ligaVisitante.sub && drtg.ligaVisitante.sub.formateado === '0,90'
+        && drtg.visitante && drtg.visitante.sub && drtg.visitante.sub.clave === 'PPP DEF', drtg && drtg.ligaVisitante.sub);
+    }
+
     /* --- 8f · el escudo del rival en el Scouting */
     const fuenteSc = require('fs').readFileSync('./js/sgadd-scouting.js', 'utf8');
     const cuerpoPintar = fuenteSc.slice(fuenteSc.indexOf('function scoutPintar()'), fuenteSc.indexOf('function scoutSelectores('));
