@@ -209,7 +209,19 @@ function torneo(cat, d, deps) {
      del panel y un error NO se guarda. Una llave a medio declarar se ve
      igual que una buena hasta el día de los playoffs. */
   if (v.formato && typeof v.formato === 'object' && Array.isArray(v.formato.fases)) {
-    const p = FASES.parsear(v.formato);
+    /* Las zonas que una fase declara tienen que ser zonas REGULARES del
+       torneo (punto 78): las que ya tiene y las que llegan en este mismo
+       pedido. */
+    const validas = new Set(zonasRegulares(previo));
+    Object.keys(v.zonas || {}).forEach((z) => {
+      const zin = v.zonas[z];
+      if (zin === null) { validas.delete(z); return; }
+      const rolIn = zin && zin.rol !== undefined ? String(zin.rol || '').toLowerCase() : null;
+      const act = categoriaDeZona(previo, z);
+      const inter = rolIn ? rolIn !== 'regular' : (zin && zin.interzonal === true) || !!(act && act.k.interzonal);
+      if (!inter) validas.add(z);
+    });
+    const p = FASES.parsear(v.formato, { zonasValidas: Array.from(validas) });
     if (p.errores && p.errores.length) return malo('La llave tiene errores: ' + p.errores.join(' · ') + '.');
   }
   ['marca', 'fuente', 'formato', 'fixture'].forEach((c) => {
@@ -349,6 +361,23 @@ function torneo(cat, d, deps) {
 }
 
 /** zona → {equipos} de un torneo ya guardado, para el control de duplicados. */
+/** Las zonas regulares de un torneo: las que tienen equipos y clientes. */
+function zonasRegulares(t) {
+  const cats = (t && t.categorias) || {};
+  return Object.keys(cats).filter(s => cats[s] && cats[s].zona && !cats[s].interzonal).map(s => cats[s].zona);
+}
+
+/** Libro vinculado → las zonas que participan (punto 77). Sin declarar, []. */
+function participanDeTorneo(t) {
+  const out = {};
+  const cats = (t && t.categorias) || {};
+  Object.keys(cats).forEach((s) => {
+    const k = cats[s];
+    if (k && k.zona && k.interzonal) out[k.zona] = Array.isArray(k.participan) ? k.participan.slice() : [];
+  });
+  return out;
+}
+
 function zonasDelTorneo(t) {
   const out = {};
   const cats = (t && t.categorias) || {};
@@ -488,5 +517,5 @@ function intencionDesdeArchivo(doc, libros, librosDe) {
 module.exports = {
   TIPO, ACCIONES_DE_TORNEO, ROLES_LIBRO, esTorneo, normalizarEquipos, duplicados, competenciaDesdeFormato,
   vinculadas, categoriaDeZona, torneo, vincular, buscarEquipo, publicoDeZona, zonasDelTorneo,
-  intencionDesdeArchivo,
+  intencionDesdeArchivo, zonasRegulares, participanDeTorneo,
 };

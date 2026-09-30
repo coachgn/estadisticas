@@ -36,6 +36,7 @@ const { CATALOGO, entorno } = require('./config.js');
    el Panel Master la pinta con la misma función (punto 60). */
 const AUTH = require('./compartido/sgadd-auth.js');
 const TORNEOS = require('./torneos.js');
+const FASES = require('./compartido/sgadd-fases.js');
 
 const CLAVE_KV = 'sgadd:catalogo';
 
@@ -368,7 +369,19 @@ function suscripcionPublica(club, slug, origen) {
  * No lleva un solo sheetId ni nada comercial: son los cruces del
  * reglamento y los nombres de los equipos, que ya están en la tabla.
  */
-function declaracionDeTorneo(c, torneoId) {
+/**
+ * Las fases CRUDAS que le corresponden a una zona (punto 78): las suyas y
+ * las que esas necesitan para resolverse. Sin zona, todas.
+ */
+function fasesParaZona(t, zona) {
+  const crudas = (t.formato && t.formato.fases) || [];
+  if (!zona) return crudas;
+  const p = FASES.parsear(t.formato, { participan: TORNEOS.participanDeTorneo(t) });
+  const ids = new Set(FASES.dependenciasDe(p.fases, FASES.filtrarPorZona(p.fases, zona)).map(f => f.id));
+  return crudas.filter(f => f && ids.has(String(f.id || '').trim()));
+}
+
+function declaracionDeTorneo(c, torneoId, zona) {
   const t = torneoId && c[torneoId];
   if (!t || t.tipo !== 'torneo' || !t.formato || !Array.isArray(t.formato.fases) || !t.formato.fases.length) return null;
   const f = t.formato;
@@ -376,11 +389,12 @@ function declaracionDeTorneo(c, torneoId) {
   Object.keys(t.categorias || {}).forEach((s) => {
     const k = t.categorias[s];
     if (!k || !k.zona) return;
-    zonas[k.zona] = { label: k.label || k.zona, rol: k.interzonal ? (k.rol || 'playoffs') : 'regular',
-      equipos: (k.equipos || []).map(e => ({ nombre: e.nombre, alias: e.alias || undefined })) };
+    zonas[k.zona] = Object.assign({ label: k.label || k.zona, rol: k.interzonal ? (k.rol || 'playoffs') : 'regular',
+      equipos: (k.equipos || []).map(e => ({ nombre: e.nombre, alias: e.alias || undefined })) },
+      k.interzonal ? { participan: Array.isArray(k.participan) ? k.participan.slice() : [] } : {});
   });
   return { id: torneoId, nombre: t.nombre || torneoId, origen: 'kv',
-    formato: { fases: f.fases, partidosPorEquipo: f.partidosPorEquipo || null,
+    formato: { fases: fasesParaZona(t, zona), partidosPorEquipo: f.partidosPorEquipo || null,
       inicio: f.inicio || null, finRegular: f.finRegular || null },
     zonas: zonas };
 }
@@ -454,7 +468,10 @@ function publico(cat, opciones) {
       return { cicloDesde: ci.cicloDesde, informesEntregados: ci.informesEntregados, cicloDe: ci.cicloDe };
     })()) : {},
     ((admin || propio === id) && (c[id].categorias[s].torneo || c[id].tipo === 'torneo')) ? {
-      torneoDecl: declaracionDeTorneo(c, c[id].categorias[s].torneo || id),
+      /* EL CLIENTE recibe solo las fases de SU zona (punto 78). El admin,
+         todas: su Panel Master las edita. */
+      torneoDecl: declaracionDeTorneo(c, c[id].categorias[s].torneo || id,
+        admin ? null : (c[id].categorias[s].zona || null)),
     } : {},
     (!admin && propio === id) ? Object.assign(suscripcionPublica(c[id], s, origen), {
       /* El cliente no puede abrir una categoría pausada: el servidor le
@@ -483,4 +500,5 @@ function publico(cat, opciones) {
 
 module.exports = {
   CLAVE_KV, cargar, cargarParaEscribir, limpiarCache, validar, resolver, publico, desdeEntorno, huellaLibro,
+  declaracionDeTorneo, fasesParaZona,
 };

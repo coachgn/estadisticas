@@ -1021,7 +1021,7 @@ const SGADD_FIXTURE = (function () {
       const vistas = {};
       SGADD.combinacionesTorneoFase(hojas).forEach((t) => {
         if (!t.conPartidos || t.agregado || t.fase === fase) return;
-        const d = FASES() ? FASES().declaradaDe(FASES().declaradas(), t.fase) : null;
+        const d = FASES() ? FASES().declaradaDe(FASES().visibles(), t.fase) : null;
         vistas[t.fase] = d ? d.label : ((SGADD.FASES[t.fase] || {}).label || t.fase);
       });
       return Object.keys(vistas).map(k => vistas[k]);
@@ -1087,7 +1087,7 @@ const SGADD_FIXTURE = (function () {
       equipo: equipoPropio(), mes: estado.mes || null,
       fuente: estado.vivo,
       fase: fase,
-      fases: FASES() ? FASES().declaradas() : [],
+      fases: FASES() ? FASES().visibles() : [],
       zonaDeEquipo: FASES() ? FASES().zonasDeEquipos(estado.doc) : {},
       otrasFases: st ? otrasFasesConPartidos(st.hojas, fase) : [],
     });

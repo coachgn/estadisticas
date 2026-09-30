@@ -174,7 +174,7 @@ const pedirLibro = async (tok, club, cat) => { catalogo.limpiarCache(); return H
        rompe acá. */
     const PERMITIDAS = new Set(['ok', 'torneo', 'nombre', 'zonas', 'postemporada', 'leidoEn', 'label', 'filas',
       'cerrada', 'puesto', 'clave', 'pj', 'pg', 'pp', 'conLibro', 'partidos', 'fase', 'fecha', 'local',
-      'visitante', 'ptsLocal', 'ptsVisitante', 'sinLibro', 'ilegible', 'norte', 'sur']);
+      'visitante', 'ptsLocal', 'ptsVisitante', 'zonaLibro', 'sinLibro', 'ilegible', 'norte', 'sur']);
     const extras = [];
     (function recorrer(v) {
       if (Array.isArray(v)) return v.forEach(recorrer);
@@ -649,6 +649,186 @@ const pedirLibro = async (tok, club, cat) => { catalogo.limpiarCache(); return H
     const r = mutar.aplicar(JSON.parse(JSON.stringify(CATU)), 'torneo', ib, catalogo.validar);
     check('y el servidor la acepta tal cual', r.ok, r.motivo);
     delete global.SGADD_FASES;
+  }
+
+  /* =====================================================================
+     7 · AISLAMIENTO POR ZONA Y LOS NOMBRES DE OTRAS ZONAS (punto 78)
+
+     Calcado del catálogo REAL de la APB del 2026-09-30: la declaración de
+     KV NO trae fase regular (el editor guardó solo las de eliminación),
+     los repechajes cruzan B-C y A-B, y dos fases se llaman igual,
+     «Playoffs - Zona A». Con eso un cliente de la Zona B veía los
+     playoffs de la A y todos los puestos de otra zona salían «a definir».
+     ===================================================================== */
+  seccion('7 · cada zona ve SUS fases, y el «2° Zona C» tiene nombre');
+  {
+    const AT = 'ATENAS A', PL = 'PLATENSE A', RE = "RECONQUISTA 'A' - MM", GO = 'GONNET';
+    const DE = 'DEPORTIVO LA PLATA', HO = 'HOGAR SOCIAL', UN = 'UNIVERSITARIO', SU = 'SUD AMERICA LP';
+    const UV = 'UNIVERSAL', NA = 'NAUTICO ENSENADA', TO = 'C.C. TOLOSANO', JV = 'JUVENTUD';
+    const ZA = zona4(AT, PL, RE, GO, '05'), ZB = zona4(DE, HO, UN, SU, '05'), ZC = zona4(UV, NA, TO, JV, '05');
+    const REP = partido('01/07/2026', 'REPECHAJE B-C', UN, NA, 70, 65);
+    const REPAB = partido('02/07/2026', 'REPECHAJE A-B', RE, HO, 60, 64);
+    const POA = partido('03/07/2026', 'CUARTOS', AT, GO, 90, 60);
+    const IDS = { a: 'A'.repeat(30) + 'apbZonaA001', b: 'B'.repeat(30) + 'apbZonaB002', c: 'C'.repeat(30) + 'apbZonaC003',
+      rep: 'R'.repeat(30) + 'apbRepBC004', repab: 'Q'.repeat(30) + 'apbRepAB005', poa: 'Y'.repeat(30) + 'apbPlayA006' };
+    const LIBROS = {}; LIBROS[IDS.a] = ZA; LIBROS[IDS.b] = ZB; LIBROS[IDS.c] = ZC;
+    LIBROS[IDS.rep] = REP; LIBROS[IDS.repab] = REPAB; LIBROS[IDS.poa] = POA;
+    const previo = sheets.obtenerLibro;
+    sheets.obtenerLibro = async (id) => (LIBROS[id] ? libroApi(LIBROS[id]) : previo(id));
+
+    const FASES_APB = [
+      { id: 'Repechaje_zona_b_c', label: 'Repechaje - Zona B/C', libro: ['REPECHAJE B-C'], cruce: 'interzonal',
+        zonaLibro: 'repechaje', serie: { mejorDe: 3 }, cruces: [
+          { id: 'R8', a: { zona: 'b', puesto: 3 }, b: { zona: 'c', puesto: 2 } },
+          { id: 'R9', a: { zona: 'b', puesto: 4 }, b: { zona: 'c', puesto: 1 } }] },
+      { id: 'Repechaje_zona_a_b', label: 'Repechaje - Zona A/B', libro: ['REPECHAJE A-B'], cruce: 'interzonal',
+        zonaLibro: 'repechaje-a-b', serie: { mejorDe: 3 }, cruces: [
+          { id: 'R3', a: { zona: 'a', puesto: 3 }, b: { zona: 'b', puesto: 2 } }] },
+      { id: 'cuartos_zona_a', label: 'Playoffs - Zona A', libro: ['CUARTOS'], cruce: 'zona', zonaLibro: 'playoffs-zona-a',
+        serie: { mejorDe: 3 }, cruces: [
+          { id: 'P5', a: { zona: 'a', puesto: 1 }, b: { zona: 'a', puesto: 4 } },
+          { id: 'P6', a: { zona: 'a', puesto: 2 }, b: { zona: 'a', puesto: 3 } }] },
+      { id: 'semifinal_zona_a', label: 'Playoffs - Zona A', libro: ['SEMIFINAL'], cruce: 'zona', zonaLibro: 'playoffs-zona-a',
+        serie: { mejorDe: 3 }, cruces: [{ id: 'P9', a: { ganador: 'P5' }, b: { ganador: 'P6' } }] },
+    ];
+    const CAT7 = {
+      apb: { tipo: 'torneo', nombre: 'APB', liga: 'la-plata', formato: { fases: FASES_APB }, categorias: {
+        'apb-a': { label: 'Zona A', sheetId: IDS.a, zona: 'a', equipos: [AT, PL, RE, GO].map(eq) },
+        'apb-b': { label: 'Zona B', sheetId: IDS.b, zona: 'b', equipos: [DE, HO, UN, SU].map(eq) },
+        'apb-c': { label: 'Zona C', sheetId: IDS.c, zona: 'c', equipos: [UV, NA, TO, JV].map(eq) },
+        'apb-rep': { label: 'Repechaje B/C', sheetId: IDS.rep, zona: 'repechaje', interzonal: true, rol: 'repechaje', participan: ['b', 'c'], equipos: [] },
+        'apb-rep-ab': { label: 'Repechaje A/B', sheetId: IDS.repab, zona: 'repechaje-a-b', interzonal: true, rol: 'repechaje', participan: ['a', 'b'], equipos: [] },
+        'apb-po-a': { label: 'Playoffs Zona A', sheetId: IDS.poa, zona: 'playoffs-zona-a', interzonal: true, rol: 'playoffs', participan: ['a'], equipos: [] },
+      } },
+      depo: { nombre: 'Deportivo', liga: 'la-plata', equipoPropio: DE, plan: 'PLATA',
+        categorias: { 'depo-pri': { label: 'Primera', sheetId: IDS.b, torneo: 'apb', zona: 'b' } } },
+      reco: { nombre: 'Reconquista', liga: 'la-plata', equipoPropio: RE, plan: 'PLATA',
+        categorias: { 'reco-pri': { label: 'Primera', sheetId: IDS.a, torneo: 'apb', zona: 'a' } } },
+    };
+    store[catalogo.CLAVE_KV] = JSON.stringify(CAT7);
+    const tokDepo = auth.firmarToken({ email: 'dt@depo.com', club: 'depo', equipoAsignado: DE, plan: 'PLATA' }, { expiraEn: '1h' });
+    const tokReco = auth.firmarToken({ email: 'dt@reco.com', club: 'reco', equipoAsignado: RE, plan: 'PLATA' }, { expiraEn: '1h' });
+    const PART = TORNEOS.participanDeTorneo(CAT7.apb);
+
+    /* --- el motor */
+    const p = F.parsear({ fases: FASES_APB }, { participan: PART });
+    const z = (id) => (p.fases.find(f => f.id === id).zonas || []).join();
+    check('las zonas de cada fase salen de sus cruces', z('Repechaje_zona_b_c') === 'b,c' && z('Repechaje_zona_a_b') === 'a,b'
+      && z('cuartos_zona_a') === 'a', p.fases.map(f => f.id + ':' + f.zonas));
+    check('«Ganador P5» hereda la zona de P5: la semifinal es de la A', z('semifinal_zona_a') === 'a');
+    check('la Zona B recibe SOLO los dos repechajes', F.filtrarPorZona(p.fases, 'b').map(f => f.id).join() === 'Repechaje_zona_b_c,Repechaje_zona_a_b');
+    check('la Zona C, solo el suyo', F.filtrarPorZona(p.fases, 'c').map(f => f.id).join() === 'Repechaje_zona_b_c');
+    check('sin zona (un club sin torneo) se ven todas', F.filtrarPorZona(p.fases, null).length === 4);
+    check('dos fases con el mismo nombre se distinguen por su instancia',
+      new Set(p.fases.map(f => f.label)).size === 4 && p.fases.some(f => f.label === 'Playoffs - Zona A · Cuartos de final'),
+      p.fases.map(f => f.label));
+    const sinCruces = F.parsear({ fases: [{ id: 'perm', label: 'Permanencia', libro: ['PERMANENCIA'], zonaLibro: 'repechaje' }] }, { participan: PART }).fases[0];
+    check('una fase sin cruces toma las zonas del libro donde se juega', (sinCruces.zonas || []).join() === 'b,c' && sinCruces.zonasOrigen === 'libro', sinCruces.zonas);
+    const decl = F.parsear({ fases: [Object.assign({}, FASES_APB[0], { zonas: ['C'] })] }).fases[0];
+    check('las zonas DECLARADAS ganan sobre las deducidas', (decl.zonas || []).join() === 'c' && decl.zonasOrigen === 'declarada');
+    const mala = F.parsear({ fases: [Object.assign({}, FASES_APB[0], { zonas: ['z'] })] }, { zonasValidas: ['a', 'b', 'c'] });
+    check('una zona que el torneo no tiene es un error', mala.errores.some(e => /«z» no es una zona/.test(e)), mala.errores);
+    const finalAB = F.parsear({ fases: FASES_APB.concat([{ id: 'final', label: 'Final', cruces: [
+      { id: 'F1', a: { ganador: 'P9' }, b: { ganador: 'R8' } }] }]) }).fases;
+    const depsB = F.dependenciasDe(finalAB, F.filtrarPorZona(finalAB, 'b')).map(f => f.id);
+    check('una final A-B la ve la Zona B, y se carga la semifinal A que la resuelve (sin mostrarla)',
+      depsB.indexOf('final') !== -1 && depsB.indexOf('semifinal_zona_a') !== -1 && depsB.indexOf('cuartos_zona_a') !== -1
+      && F.filtrarPorZona(finalAB, 'b').every(f => f.id !== 'semifinal_zona_a'), depsB);
+    const tramosB = F.enriquecerTramos([{ id: 'GENERAL|REGULAR', torneo: SGADD.TORNEO_GENERAL, fase: 'REGULAR', label: 'Regular' }],
+      F.filtrarPorZona(p.fases, 'b'));
+    check('el selector de la Zona B no ofrece «Playoffs - Zona A»', tramosB.every(t => !/Playoffs/.test(t.label))
+      && tramosB.filter(t => t.llave).length === 2, tramosB.map(t => t.label));
+
+    /* --- el catálogo: lo que viaja en torneoDecl */
+    const faseIds = (lista, club) => (((lista.find(c => c.id === club) || {}).categorias || [])[0] || {}).torneoDecl.formato.fases.map(f => f.id).join();
+    check('el cliente de la Zona B recibe un array de fases SIN las de la Zona A',
+      faseIds(catalogo.publico(CAT7, { club: 'depo', origen: 'kv' }), 'depo') === 'Repechaje_zona_b_c,Repechaje_zona_a_b',
+      faseIds(catalogo.publico(CAT7, { club: 'depo', origen: 'kv' }), 'depo'));
+    check('el de la Zona A, las suyas y el repechaje que comparte con la B',
+      faseIds(catalogo.publico(CAT7, { club: 'reco', origen: 'kv' }), 'reco') === 'Repechaje_zona_a_b,cuartos_zona_a,semifinal_zona_a');
+    check('el admin, todas: su Panel Master las edita', faseIds(catalogo.publico(CAT7, { admin: true, origen: 'kv' }), 'depo').split(',').length === 4);
+    const zdecl = catalogo.publico(CAT7, { club: 'depo', origen: 'kv' }).find(c => c.id === 'depo').categorias[0].torneoDecl.zonas;
+    check('y los libros vinculados viajan con sus zonas que participan, sin el sheetId',
+      zdecl.repechaje.participan.join() === 'b,c' && !/apbRep|R{25}/.test(JSON.stringify(zdecl)));
+
+    /* --- la llave del servidor */
+    LLAVE.limpiarCache();
+    check('la fase regular NO es la primera declarada: sin una de liga, es REGULAR',
+      LLAVE.faseRegular({ fases: FASES_APB }) === 'REGULAR', LLAVE.faseRegular({ fases: FASES_APB }));
+    const rB = await pedirLlave(tokDepo, 'apb');
+    check('la Zona B recibe la llave (200)', rB.status === 200, rB.body);
+    const zb = rB.body.zonas || {};
+    check('con las tablas de las TRES zonas que sus repechajes cruzan, y llenas',
+      ['a', 'b', 'c'].every(k => zb[k] && zb[k].filas.length === 4), Object.keys(zb).map(k => k + ':' + (zb[k].filas || []).length));
+    const pB = rB.body.postemporada.partidos;
+    check('sus repechajes sí', pB.some(x => x.fase === 'REPECHAJE B-C') && pB.some(x => x.fase === 'REPECHAJE A-B'), pB);
+    check('los playoffs de la Zona A NO', pB.every(x => x.fase !== 'CUARTOS'), pB);
+    const rA = await pedirLlave(tokReco, 'apb');
+    const za = rA.body.zonas || {};
+    check('la Zona A recibe sus playoffs y el repechaje A/B, y no el B/C',
+      rA.body.postemporada.partidos.some(x => x.fase === 'CUARTOS')
+      && rA.body.postemporada.partidos.every(x => x.fase !== 'REPECHAJE B-C'), rA.body.postemporada.partidos);
+    check('y no la tabla de la Zona C, que ninguna de sus fases cruza', !!za.a && !!za.b && !za.c, Object.keys(za));
+    const rAd = await pedirLlave(tokAdmin, 'apb');
+    check('el admin recibe todo', Object.keys(rAd.body.zonas).length === 3 && rAd.body.postemporada.partidos.length === 3);
+    check('ningún sheetId viaja', !/apbZona|apbRep|apbPlay/.test(JSON.stringify([rB.body, rA.body, rAd.body])));
+
+    /* --- el cliente de la Zona B traduce los puestos de otra zona */
+    const fasesB = F.filtrarPorZona(F.parsear({ fases: FASES_APB }, { participan: PART }).fases, 'b');
+    const ctx = F.mezclarLlave({ tablas: {}, partidosPorFase: {}, zonaDeEquipo: {}, nombresZona: {} }, fasesB, rB.body, 'b');
+    const ll = F.llave(fasesB, ctx);
+    const R8 = ll.Repechaje_zona_b_c.cruces.find(c => c.id === 'R8');
+    const R3 = ll.Repechaje_zona_a_b.cruces.find(c => c.id === 'R3');
+    check('«2° Zona C» es NAUTICO ENSENADA, no «a definir»', R8.b.nombre === SGADD.limpiarNombre(NA) && R8.b.estado !== 'pendiente', R8.b);
+    check('«3° Zona A» es RECONQUISTA A', R3.a.clave === SGADD.claveEquipo(RE) && R3.a.estado !== 'pendiente', R3.a);
+    check('y la serie jugada queda con sus dos equipos', !!(R8.serie && R8.serie.a && R8.serie.b), R8.serie);
+
+    /* --- el mismo valor de FASE en dos libros no se cruza */
+    const dos = { zonas: {}, postemporada: { partidos: [
+      { fase: 'CUARTOS', fecha: '2026-07-03', local: AT, visitante: GO, ptsLocal: 90, ptsVisitante: 60, zonaLibro: 'playoffs-zona-a' },
+      { fase: 'CUARTOS', fecha: '2026-07-03', local: DE, visitante: SU, ptsLocal: 80, ptsVisitante: 70, zonaLibro: 'playoffs-zona-b' }] } };
+    const fA = F.parsear({ fases: [FASES_APB[2]] }).fases;
+    const c2 = F.mezclarLlave({ tablas: {}, partidosPorFase: {}, zonaDeEquipo: {}, nombresZona: {} }, fA, dos, 'a');
+    check('«CUARTOS» del libro de la Zona B no entra a los playoffs de la A', c2.partidosPorFase.cuartos_zona_a.length === 1
+      && c2.partidosPorFase.cuartos_zona_a[0].local === AT, c2.partidosPorFase);
+
+    /* --- el pegamento del navegador: la categoría abierta decide qué se ve */
+    const declAdmin = catalogo.publico(CAT7, { admin: true, origen: 'kv' }).find(c => c.id === 'depo').categorias[0].torneoDecl;
+    const CORE7 = (typeof global.SGADD !== 'undefined') ? global.SGADD : SGADD;
+    const planillasPrevias = CORE7.CATALOGO.planillas;
+    CORE7.CATALOGO.planillas = [{ id: 'depo-pri', torneoId: 'apb', zonaId: 'b', torneoDecl: declAdmin }];
+    global.SGADD_APP = { estado: { planillaId: 'depo-pri' } };
+    check('con la categoría de la Zona B abierta, se muestran solo sus fases',
+      F.visibles().map(f => f.id).join() === 'Repechaje_zona_b_c,Repechaje_zona_a_b', F.visibles().map(f => f.id));
+    check('pero la llave se resuelve con todas las que llegaron', F.declaradas().length === 4);
+    CORE7.CATALOGO.planillas = [{ id: 'depo-pri', torneoId: 'apb', zonaId: 'a', torneoDecl: declAdmin }];
+    check('y al abrir una de la Zona A, las de la A', F.visibles().map(f => f.id).join() === 'Repechaje_zona_a_b,cuartos_zona_a,semifinal_zona_a',
+      F.visibles().map(f => f.id));
+    CORE7.CATALOGO.planillas = planillasPrevias;
+    delete global.SGADD_APP;
+
+    /* --- el Panel Master: la pertenencia por zona se edita y se valida */
+    global.SGADD_FASES = F;
+    const TU = require('./js/sgadd-torneos.js');
+    const ed = TU.faseAEditor(Object.assign({}, FASES_APB[0], { zonas: ['b'] }));
+    check('el editor lee las zonas declaradas', ed.zonas.b === true && !ed.zonas.c);
+    const vuelta = TU.editorAFase(ed);
+    check('y las devuelve', JSON.stringify(vuelta.zonas) === '["b"]' && vuelta.cruces.length === 2);
+    check('ninguna tildada: la fase no declara zonas (se deducen)', TU.editorAFase(TU.faseAEditor(FASES_APB[0])).zonas === undefined);
+    const tAdm = catalogo.publico(CAT7, { admin: true, origen: 'kv' }).find(c => c.id === 'apb');
+    check('el editor rechaza una zona que el torneo no tiene', TU.erroresLlave([Object.assign({}, FASES_APB[0], { zonas: ['repechaje'] })], tAdm).length === 1);
+    check('la tarjeta del torneo sigue armándose', /Repechaje - Zona B\/C/.test(TU.html(catalogo.publico(CAT7, { admin: true, origen: 'kv' }))));
+    const okZ = mutar.aplicar(JSON.parse(JSON.stringify(CAT7)), 'torneo', { accion: 'torneo', club: 'apb', nombre: 'APB',
+      formato: { fases: [Object.assign({}, FASES_APB[0], { zonas: ['b', 'c'] })] } }, catalogo.validar);
+    check('el servidor acepta zonas del torneo', okZ.ok, okZ.motivo);
+    const maloZ = mutar.aplicar(JSON.parse(JSON.stringify(CAT7)), 'torneo', { accion: 'torneo', club: 'apb', nombre: 'APB',
+      formato: { fases: [Object.assign({}, FASES_APB[0], { zonas: ['playoffs-zona-a'] })] } }, catalogo.validar);
+    check('y rechaza un libro vinculado como zona de una fase', !maloZ.ok && /no es una zona/.test(maloZ.motivo || ''), maloZ.motivo);
+    delete global.SGADD_FASES;
+
+    sheets.obtenerLibro = previo;
+    store[catalogo.CLAVE_KV] = JSON.stringify(CAT);
+    LLAVE.limpiarCache();
   }
 
   console.log('\n' + '═'.repeat(70));

@@ -299,7 +299,7 @@ const SGADD_APP = (function () {
         await Promise.race([docTorneo, new Promise(r => { techo = setTimeout(r, 1500); })]);
         clearTimeout(techo);
         if (!vigente()) return;
-        delHash = SGADD_FASES.enriquecerTramos(tramos, SGADD_FASES.declaradas())
+        delHash = SGADD_FASES.enriquecerTramos(tramos, SGADD_FASES.visibles())
           .some(t => t.llave && t.id === par);
       }
 
@@ -539,7 +539,7 @@ const SGADD_APP = (function () {
        jugaron (punto 75). Sin declaración queda exactamente como antes. */
     const crudos = SGADD.combinacionesTorneoFase(estado.hojas || {});
     const tramos = (typeof SGADD_FASES !== 'undefined' && estado.hojas)
-      ? SGADD_FASES.enriquecerTramos(crudos, SGADD_FASES.declaradas()) : crudos;
+      ? SGADD_FASES.enriquecerTramos(crudos, SGADD_FASES.visibles()) : crudos;
     const tramoActual = (estado.torneo || SGADD.TORNEO_GENERAL) + '|' + estado.fase;
 
     /* El recorte MUDO tiene que decir por qué está mudo.

@@ -101,7 +101,9 @@ const SGADD_FASES = (function () {
    * declara `puestos`, `directos` y `cruce` sin `tipo` ni `cruces`, y eso
    * sigue leyéndose igual (el tipo sale del núcleo).
    */
-  function parsear(formato) {
+  function parsear(formato, opciones) {
+    const o = opciones || {};
+    const validas = Array.isArray(o.zonasValidas) ? o.zonasValidas.map(z => texto(z).toLowerCase()) : null;
     const errores = [];
     const crudo = (formato && Array.isArray(formato.fases)) ? formato.fases : [];
     const fases = [];
@@ -163,6 +165,17 @@ const SGADD_FASES = (function () {
       const tipo = (f.tipo === 'eliminacion' || f.tipo === 'liga') ? f.tipo
         : (cruces.length || libro.some(esEliminacionDelNucleo) ? 'eliminacion' : 'liga');
 
+      /* LA PERTENENCIA POR ZONA, declarada (punto 78). Una zona que el
+         torneo no tiene se rechaza: una fase atada a una zona inexistente
+         no se le muestra a nadie y se ve igual de declarada que una buena. */
+      let zonasDeclaradas = null;
+      if (f.zonas != null) {
+        const lista = (Array.isArray(f.zonas) ? f.zonas : [f.zonas]).map(z => texto(z).toLowerCase()).filter(Boolean);
+        const malas = validas ? lista.filter(z => validas.indexOf(z) === -1) : [];
+        if (malas.length) errores.push(id + ': la zona «' + malas.join('», «') + '» no es una zona del torneo');
+        else if (lista.length) zonasDeclaradas = Array.from(new Set(lista)).sort();
+      }
+
       fases.push({
         id: id, label: texto(f.label) || id, tipo: tipo,
         cruce: f.cruce === 'interzonal' ? 'interzonal' : 'zona',
@@ -172,9 +185,93 @@ const SGADD_FASES = (function () {
            postemporada, para una fase entre zonas. Sin declarar, la fase
            se juega en el libro de cada zona. */
         zonaLibro: texto(f.zonaLibro) || null,
+        zonasDeclaradas: zonasDeclaradas,
       });
     });
+    asignarZonas(fases, o.participan);
+    desambiguarEtiquetas(fases);
     return { fases: fases, errores: errores };
+  }
+
+  /* =====================================================================
+     1 bis · A QUÉ ZONAS PERTENECE CADA FASE (punto 78)
+
+     Sin esto, «Playoffs - Zona A» le aparecía a un cliente de la Zona B:
+     la declaración es del TORNEO entero y el selector ofrecía todo. En
+     cascada, de lo explícito a lo deducido:
+       1. `zonas` declaradas en la fase;
+       2. las zonas de sus CRUCES: los puestos, y las de los cruces a los
+          que se refiere («Ganador P5» hereda las zonas de P5);
+       3. las zonas que `participan` del libro donde se juega;
+       4. ninguna → la fase es de TODAS (la regular, una fase sin cruces).
+     ===================================================================== */
+  function asignarZonas(fases, participan) {
+    const deCruce = {};
+    (fases || []).forEach((f) => {
+      const deducidas = new Set();
+      f.cruces.forEach((cr) => {
+        const s = new Set();
+        [cr.a, cr.b].forEach((x) => {
+          if (!x) return;
+          if (x.tipo === 'puesto') s.add(texto(x.zona).toLowerCase());
+          else if ((x.tipo === 'ganador' || x.tipo === 'perdedor') && deCruce[x.cruce]) deCruce[x.cruce].forEach(z => s.add(z));
+        });
+        deCruce[cr.id] = s;
+        s.forEach(z => deducidas.add(z));
+      });
+      const part = f.zonaLibro && participan ? participan[f.zonaLibro] : null;
+      if (f.zonasDeclaradas) { f.zonas = f.zonasDeclaradas.slice(); f.zonasOrigen = 'declarada'; }
+      else if (deducidas.size) { f.zonas = Array.from(deducidas).sort(); f.zonasOrigen = 'cruces'; }
+      else if (Array.isArray(part) && part.length) {
+        f.zonas = part.map(z => texto(z).toLowerCase()).filter(Boolean).sort(); f.zonasOrigen = 'libro';
+      } else { f.zonas = null; f.zonasOrigen = null; }
+    });
+    return fases;
+  }
+
+  /** ¿La fase se le muestra a la zona? Sin zona, o fase de todas: sí. */
+  function visibleEnZona(f, zona) {
+    const z = texto(zona).toLowerCase();
+    return !z || !f || !f.zonas || f.zonas.indexOf(z) !== -1;
+  }
+  function filtrarPorZona(fases, zona) { return (fases || []).filter(f => visibleEnZona(f, zona)); }
+
+  /**
+   * Las fases que la zona necesita para RESOLVER su llave: las suyas más
+   * aquellas de las que dependen («Ganador P9» de una final A-B necesita la
+   * semifinal A). Esas se cargan pero no se muestran.
+   */
+  function dependenciasDe(fases, visibles) {
+    const idsVis = new Set((visibles || []).map(f => f.id));
+    const faseDeCruce = {};
+    (fases || []).forEach(f => f.cruces.forEach((cr) => { faseDeCruce[cr.id] = f; }));
+    const out = new Set(idsVis);
+    const pila = (visibles || []).slice();
+    while (pila.length) {
+      const f = pila.pop();
+      f.cruces.forEach(cr => [cr.a, cr.b].forEach((x) => {
+        if (!x || (x.tipo !== 'ganador' && x.tipo !== 'perdedor')) return;
+        const g = faseDeCruce[x.cruce];
+        if (g && !out.has(g.id)) { out.add(g.id); pila.push(g); }
+      }));
+    }
+    return (fases || []).filter(f => out.has(f.id));
+  }
+
+  /* DOS FASES CON EL MISMO NOMBRE se distinguen por su instancia: el Panel
+     Master aceptaba tres «Playoffs - Zona A» (cuartos, semis y final) y el
+     selector los listaba iguales. */
+  function desambiguarEtiquetas(fases) {
+    const cuenta = {};
+    (fases || []).forEach((f) => { cuenta[f.label] = (cuenta[f.label] || 0) + 1; });
+    (fases || []).forEach((f) => {
+      f.labelDeclarado = f.label;
+      if (cuenta[f.label] < 2) return;
+      const v = f.libro[0];
+      const nucleo = CORE && CORE.FASES && CORE.FASES[v] ? CORE.FASES[v].label : null;
+      f.label = f.label + ' · ' + (nucleo || v || f.id);
+    });
+    return fases;
   }
 
   /** La fase declarada que corresponde a un valor de la columna FASE. */
@@ -645,11 +742,38 @@ const SGADD_FASES = (function () {
       return fundir(kv, doc);
     } catch (e) { return null; }
   }
-  /** Las fases declaradas del torneo de la categoría abierta, o []. */
+  /** Libro vinculado → las zonas que participan (punto 77). */
+  function participanDe(doc) {
+    const out = {};
+    const zonas = (doc && doc.zonas) || {};
+    Object.keys(zonas).forEach((z) => { if (Array.isArray(zonas[z].participan)) out[z] = zonas[z].participan; });
+    return out;
+  }
+  /** Las fases declaradas del torneo de la categoría abierta, o []. TODAS:
+      son las que resuelven la llave. Para mostrar, `visibles()`. */
   function declaradas() {
     const doc = docActual();
-    if (doc !== _parseo.doc) _parseo = { doc: doc, res: parsear(doc && doc.formato) };
+    if (doc !== _parseo.doc) _parseo = { doc: doc, res: parsear(doc && doc.formato, { participan: participanDe(doc) }) };
     return _parseo.res.fases;
+  }
+  /** La zona de la categoría abierta, o null (un club sin torneo). */
+  function zonaAbierta() {
+    try {
+      const p = CORE.CATALOGO.planillas.find(x => x.id === SGADD_APP.estado.planillaId);
+      return (p && p.zonaId) || null;
+    } catch (e) { return null; }
+  }
+  /* LAS FASES QUE SE MUESTRAN (punto 78): las de la zona de la categoría
+     abierta. Un cliente de la Zona B no ve «Playoffs - Zona A» ni en el
+     selector, ni en la llave, ni en el Fixture. Se filtra por la ZONA del
+     libro abierto y no por el rol: el admin que mira la Zona B ve lo mismo
+     que su cliente. */
+  let _vis = { base: null, zona: null, res: [] };
+  function visibles() {
+    const base = declaradas();
+    const zona = zonaAbierta();
+    if (_vis.base !== base || _vis.zona !== zona) _vis = { base: base, zona: zona, res: filtrarPorZona(base, zona) };
+    return _vis.res;
   }
 
   /* UN ÍNDICE POR FASE, cacheado por libro. El índice de la app está
@@ -767,7 +891,11 @@ const SGADD_FASES = (function () {
          fecha con los mismos dos equipos, del lado que sea. Lo del libro
          gana, porque trae el box score detrás. */
       const ya = new Set((ctx.partidosPorFase[f.id] || []).map(clavePartido));
-      const deFase = post.filter(x => f.libro.indexOf(mayus(x.fase)) !== -1).map(partidoDeLlave)
+      /* EL MISMO VALOR DE FASE EN DOS LIBROS («SEMIFINAL» de los playoffs
+         A y de los B) no se mezcla: si la fase dice en qué libro se juega,
+         solo entran los partidos de ESE libro (punto 78). */
+      const deFase = post.filter(x => f.libro.indexOf(mayus(x.fase)) !== -1
+        && (!f.zonaLibro || !x.zonaLibro || x.zonaLibro === f.zonaLibro)).map(partidoDeLlave)
         .filter((x) => { const k = clavePartido(x); if (ya.has(k)) return false; ya.add(k); return true; });
       if (deFase.length) ctx.partidosPorFase[f.id] = (ctx.partidosPorFase[f.id] || []).concat(deFase);
     });
@@ -825,6 +953,9 @@ const SGADD_FASES = (function () {
     let hayElimJugada = false;
     fases.forEach((f) => {
       const lista = [];
+      /* El libro propio alimenta solo las fases de SU zona: con el mismo
+         valor de FASE, sus partidos caerían en la fase de otra (punto 78). */
+      if (p.zonaId && !visibleEnZona(f, p.zonaId)) { partidosPorFase[f.id] = lista; return; }
       f.libro.forEach((v) => {
         jugados(indicePara(hojas, v)).forEach(x => lista.push(x));
         manualesDeFase(hojas, v).forEach(x => lista.push(x));
@@ -864,7 +995,8 @@ const SGADD_FASES = (function () {
   function seccionLlave() {
     try {
       const st = SGADD_APP.estado;
-      if (tipoDe(st.fase, declaradas()) !== 'eliminacion') return '';
+      const vis = visibles();
+      if (tipoDe(st.fase, vis) !== 'eliminacion') return '';
       if (!st.hojas && !esLlave(st.torneo)) return '';
       const fases = declaradas();
       const escudo = (typeof clasifEscudo === 'function') ? clasifEscudo : null;
@@ -872,9 +1004,14 @@ const SGADD_FASES = (function () {
       const opciones = { escudo: escudo,
         destacar: (cr) => !!(propio && ((cr.a.nombre && propio(cr.a.nombre)) || (cr.b.nombre && propio(cr.b.nombre)))) };
       let cuerpo;
-      if (declaradaDe(fases, st.fase)) {
-        const d = declaradaDe(fases, st.fase);
-        cuerpo = llaveHTML(llave(fases, contexto()), d.id, opciones);
+      if (declaradaDe(vis, st.fase)) {
+        const d = declaradaDe(vis, st.fase);
+        /* Se resuelve con TODAS (una final A-B necesita la semifinal A) y
+           se muestran solo las de la zona. */
+        const todo = llave(fases, contexto());
+        const soloVis = {};
+        vis.forEach((f) => { if (todo[f.id]) soloVis[f.id] = todo[f.id]; });
+        cuerpo = llaveHTML(soloVis, d.id, opciones);
       } else {
         /* SIN DECLARACIÓN: las series que se jugaron, y nada más. No se
            sabe a cuántos partidos era la serie, así que no se declara un
@@ -908,7 +1045,7 @@ const SGADD_FASES = (function () {
   function fixtureDeLlave() {
     const st = SGADD_APP.estado;
     const fases = declaradas();
-    const d = declaradaDe(fases, st.fase);
+    const d = declaradaDe(visibles(), st.fase);
     if (!d) return '';
     const porFase = llave(fases, contexto());
     const x = porFase[d.id];
@@ -927,14 +1064,15 @@ const SGADD_FASES = (function () {
 
   return {
     /* motor */
-    parsear, declaradaDe, tipoDe, enriquecerTramos, SIN_DATOS, LLAVE, esLlave, esEntreZonas,
+    parsear, asignarZonas, visibleEnZona, filtrarPorZona, dependenciasDe, desambiguarEtiquetas,
+    declaradaDe, tipoDe, enriquecerTramos, SIN_DATOS, LLAVE, esLlave, esEntreZonas,
     mezclarLlave, partidoDeLlave, SECCIONES_EN_LLAVE, bloqueaEnLlave,
     series, resumen, resolverSlot, llave, naturalezaCruce, naturalezaPartido,
     faseDeFecha, tieneVentanas, tablaCerrada,
     /* html */
     llaveHTML, cruceHTML, chipNaturaleza,
     /* app */
-    declaradas, docActual, indicePara, tramoDeFase, contexto, seccionLlave, zonasDeEquipos,
+    declaradas, visibles, zonaAbierta, participanDe, docActual, indicePara, tramoDeFase, contexto, seccionLlave, zonasDeEquipos,
     manualComoPartido, avisoModoLlave, fixtureDeLlave, llaveDelServidor, fijarLlave, alLlegarLaLlave,
   };
 })();

@@ -289,12 +289,14 @@ const SGADD_TORNEOS = (function () {
   }
   function faseAEditor(f) {
     const resto = Object.assign({}, f);
-    ['id', 'label', 'libro', 'cruce', 'zonaLibro', 'serie', 'cruces'].forEach(k => delete resto[k]);
+    ['id', 'label', 'libro', 'cruce', 'zonaLibro', 'serie', 'cruces', 'zonas'].forEach(k => delete resto[k]);
+    const zonas = {};
+    (Array.isArray(f.zonas) ? f.zonas : (f.zonas ? [f.zonas] : [])).forEach((z) => { zonas[String(z).toLowerCase()] = true; });
     return { id: f.id || '', label: f.label || '', libro: Array.isArray(f.libro) ? f.libro.join(', ') : (f.libro || ''),
       cruce: f.cruce === 'interzonal' ? 'interzonal' : 'zona', zonaLibro: f.zonaLibro || '',
       mejorDe: f.serie && f.serie.mejorDe ? String(f.serie.mejorDe) : '',
       cruces: (f.cruces || []).map(c => ({ id: c.id || '', a: ladoAEditor(c.a), b: ladoAEditor(c.b) })),
-      _resto: resto };
+      zonas: zonas, _resto: resto };
   }
   function editorAFase(e) {
     const f = Object.assign({}, e._resto || {}, { id: String(e.id || '').trim() });
@@ -305,12 +307,18 @@ const SGADD_TORNEOS = (function () {
     if (e.zonaLibro) f.zonaLibro = e.zonaLibro;
     if (e.mejorDe) f.serie = { mejorDe: Number(e.mejorDe) };
     if (e.cruces.length) f.cruces = e.cruces.map(c => ({ id: String(c.id || '').trim(), a: editorALado(c.a), b: editorALado(c.b) }));
+    /* LA PERTENENCIA POR ZONA (punto 78). Ninguna tildada = se deduce de
+       los cruces; así una llave vieja no cambia de visibilidad sola. */
+    const zonas = Object.keys(e.zonas || {}).filter(z => e.zonas[z]).sort();
+    if (zonas.length) f.zonas = zonas;
     return f;
   }
-  /** Los errores del editor, con el MISMO parser que usa el panel al leer. */
-  function erroresLlave(fases) {
+  /** Los errores del editor, con el MISMO parser que usa el panel al leer.
+      Con el torneo, además valida que las zonas declaradas existan. */
+  function erroresLlave(fases, t) {
     if (typeof SGADD_FASES === 'undefined') return [];
-    return SGADD_FASES.parsear({ fases: fases }).errores || [];
+    const o = t ? { zonasValidas: zonasDe(t).map(z => z.zona) } : {};
+    return SGADD_FASES.parsear({ fases: fases }, o).errores || [];
   }
   function intencionLlave(t, fases) {
     return { accion: 'torneo', club: t.id, nombre: t.nombre,
@@ -958,6 +966,10 @@ const SGADD_TORNEOS = (function () {
           <label class="block"><span class="${ROTULO}">Serie</span><select onchange="${pre}'mejorDe',this.value)" class="${CLASE_INPUT}">
             <option value="">todos contra todos</option>${[1, 3, 5, 7].map(m => `<option value="${m}" ${f.mejorDe === String(m) ? 'selected' : ''}>${m === 1 ? 'a un partido' : 'al mejor de ' + m}</option>`).join('')}</select></label>
         </div>
+        <fieldset><legend class="${ROTULO}">Zonas que la ven · ninguna tildada = las de sus cruces</legend>
+          <div class="flex flex-wrap gap-x-4 gap-y-1">${zonas.map(z => `<label class="inline-flex items-center gap-1.5 text-xs text-ink">
+            <input type="checkbox" ${f.zonas && f.zonas[z.zona] ? 'checked' : ''}
+              onchange="SGADD_TORNEOS.zonaFase(${fi}, '${escJs(z.zona)}', this.checked)"> ${esc(z.label)}</label>`).join('')}</div></fieldset>
         <div>${cr}</div>
         <div class="flex gap-4">
           <button type="button" onclick="SGADD_TORNEOS.agregarCruce(${fi})" class="text-[11px] font-display uppercase tracking-wider text-ink hover:underline">＋ Cruce</button>
@@ -971,7 +983,7 @@ const SGADD_TORNEOS = (function () {
 
   function estadoLlave() {
     const fases = llaveEd.fases.map(editorAFase);
-    const err = erroresLlave(fases);
+    const err = erroresLlave(fases, torneoPorId(llaveEd.torneo));
     const msg = llaveEd.mensaje ? `<p class="text-xs ${llaveEd.error ? 'text-red-400' : 'text-emerald-400'}" role="${llaveEd.error ? 'alert' : 'status'}">${esc(llaveEd.mensaje)}</p>` : '';
     return `${err.length ? `<p class="text-[11px] zona-peligro zona-texto" role="alert">${esc(err.join(' · '))}</p>` : ''}${msg}
       <div class="flex gap-3 mt-1">
@@ -1059,6 +1071,12 @@ const SGADD_TORNEOS = (function () {
     f[c] = v;
     if (tipeo) refrescarLlaveEstado(); else repintarLlave();
   }
+  function zonaFase(fi, zona, marcado) {
+    const f = llaveEd.fases[fi]; if (!f) return;
+    f.zonas = f.zonas || {};
+    f.zonas[zona] = !!marcado;
+    refrescarLlaveEstado();
+  }
   function campoCruce(fi, ci, v) {
     const c = llaveEd.fases[fi] && llaveEd.fases[fi].cruces[ci]; if (!c) return;
     c.id = v; refrescarLlaveEstado();
@@ -1080,7 +1098,7 @@ const SGADD_TORNEOS = (function () {
   function guardarLlave() {
     const t = torneoPorId(llaveEd.torneo); if (!t) return;
     const fases = llaveEd.fases.map(editorAFase);
-    if (erroresLlave(fases).length) return;
+    if (erroresLlave(fases, t).length) return;
     const nom = nombresDeZonas(t);
     const intencion = intencionLlave(t, fases);
     const ir = () => SGADD_DATA.guardarCatalogo(intencion).then((r) => {
@@ -1095,7 +1113,7 @@ const SGADD_TORNEOS = (function () {
       confirmar: 'Guardar la llave',
       cambios: fases.map((f) => {
         const a = antes.find(x => x.id === f.id);
-        const txt = (x) => (x.label || x.id) + ((x.cruces || []).length ? ' · ' + x.cruces.map(c => c.id + ': ' + ladoTexto(c.a, nom) + ' vs ' + ladoTexto(c.b, nom)).join(' · ') : '');
+        const txt = (x) => (x.label || x.id) + (Array.isArray(x.zonas) && x.zonas.length ? ' · zonas ' + x.zonas.map(z => nom[z] || z).join(', ') : '') + ((x.cruces || []).length ? ' · ' + x.cruces.map(c => c.id + ': ' + ladoTexto(c.a, nom) + ' vs ' + ladoTexto(c.b, nom)).join(' · ') : '');
         return { label: 'Fase ' + f.id, antes: a ? txt(a) : '—', despues: txt(f) };
       }).filter(c => c.antes !== c.despues).concat(antes.filter(a => !fases.some(f => f.id === a.id))
         .map(a => ({ label: 'Fase ' + a.id, antes: a.label || a.id, despues: '— se quita' }))),
@@ -1114,7 +1132,7 @@ const SGADD_TORNEOS = (function () {
     html, borrador, vinculo, resultado, campo: campo_, campoZona, agregarZona, quitarZona, nuevo, editar,
     guardar, empezarVinculo, elegirVinculo, campoVinculo, vincular, abrirForm, abrirVinculo, abrirTarjeta, bloqueHuerfanos,
     nuevoLibro, editarLibro, cancelarLibro, campoLibro, elegirLibro, guardarLibro, desvincularLibro,
-    editarLlave, cancelarLlave, campoFase, campoCruce, campoLado, agregarFase, quitarFase, agregarCruce, quitarCruce, guardarLlave,
+    editarLlave, cancelarLlave, campoFase, zonaFase, campoCruce, campoLado, agregarFase, quitarFase, agregarCruce, quitarCruce, guardarLlave,
   };
 })();
 

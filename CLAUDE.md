@@ -102,10 +102,11 @@ node test-fases.js         #  91 tests · fases, cruces y series: el parser de l
                            #             intrazonal e interzonal, la fase por ventana, las métricas que no
                            #             mezclan fases y la barra que repinta Clasificación y Fixture
 
-node test-interzonal.js    # 129 tests · la llave entre zonas: un cliente de una zona recibe quién
+node test-interzonal.js    # 167 tests · la llave entre zonas: un cliente de una zona recibe quién
                            #             contra quién y un 403 por el libro de la otra, los slots
                            #             «1° Norte vs 2° Sur», el modo llave y la fase activa; los
                            #             libros vinculados, el acceso por partido y el editor de cruces
+                           #             · y el aislamiento por zona: cada zona ve SUS fases (punto 78)
 
 node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -117,7 +118,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6942 tests en total. Todos tienen que dar verde antes de commitear.**
+**6980 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -232,7 +233,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=251`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=252`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -11361,3 +11362,115 @@ Reglas:
 - **El selector de fase no dice de qué libro sale cada una**: el
   dato viaja (`vinculados`), falta mostrarlo si el club lo pide.
 
+
+---
+
+## 78. CADA ZONA VE SUS FASES, Y EL PUESTO DE OTRA ZONA TIENE NOMBRE (2026-09-30)
+
+Reportado con capturas de un cliente de la Zona B de APB: el selector le
+ofrecía «Playoffs - Zona A» (tres veces, con el mismo nombre) y los cruces
+interzonales salían «a definir». `test-interzonal.js` (sección 7) fija todo
+lo de acá, con un torneo calcado del catálogo real.
+
+### Lo que se midió en KV antes de tocar nada
+
+```
+apb-2026-masculino · formato.fases (5, TODAS de eliminación, NINGUNA regular)
+  Repechaje - Zona B/C   REPECHAJE B-C   en «repechaje»        participan b,c
+  Repechaje - Zona A/B   REPECHAJE A-B   en «repechaje-a-b»    participan a,b
+  Playoffs - Zona A ×3   CUARTOS · SEMIFINAL · FINAL  en «playoffs-zona-a»  participan a
+```
+
+**Dos defectos, independientes:**
+
+1. **La declaración es del TORNEO entero y nadie la recortaba por zona.**
+   `enriquecerTramos` sumaba una opción «· llave» por cada fase entre zonas,
+   sin mirar a quién le toca.
+2. **«A definir» era un defecto del SERVIDOR, no de privacidad.**
+   `faseRegular()` de `llave.js` tomaba la PRIMERA fase declarada como la
+   regular. El editor de cruces guarda solo las de eliminación, así que la
+   primera era «REPECHAJE B-C»: cada zona se armaba con esa fase, que su
+   libro no tiene, y salía con **0 filas**. Medido: Zona B 0 filas con esa
+   fase, 12 con REGULAR. Todos los puestos de otra zona quedaban pendientes.
+
+### La pertenencia por zona · `SGADD_FASES.asignarZonas`
+
+Cada fase lleva `zonas` (y `zonasOrigen`), en cascada:
+
+```
+1. declaradas     formato.fases[i].zonas, editable en el Panel Master
+2. de sus cruces  los puestos, y las de los cruces referidos («Ganador P5» hereda P5)
+3. del libro      los `participan` del libro donde se juega (zonaLibro)
+4. ninguna        la fase es de TODAS (la regular, una fase sin cruces)
+```
+
+- **La deducción cubre lo que ya está en KV sin migrar nada**: los tres
+  playoffs dan `a`, los repechajes `b,c` y `a,b`.
+- **Una zona declarada que el torneo no tiene es error**, en el editor y en
+  el servidor (`parsear(formato, { zonasValidas })`, el mismo parser). Un
+  libro vinculado no es una zona de fase.
+- **Ninguna tildada = se deduce**: una llave vieja no cambia de visibilidad
+  por pasar por el editor.
+
+### Mostrar no es resolver
+
+Una final A-B la ve la Zona B, y su «Ganador P9» necesita la semifinal A.
+Por eso hay dos listas:
+
+| | qué es | quién la usa |
+|---|---|---|
+| `declaradas()` | todas las que llegaron | `llave()`, para resolver |
+| `visibles()` | las de la zona de la categoría ABIERTA | selector, columnas de la llave, Fixture |
+
+`dependenciasDe(fases, visibles)` arma lo que hace falta cargar. **Se filtra
+por la zona del libro abierto y no por el rol**: el admin que mira la Zona B
+ve lo mismo que su cliente.
+
+### El servidor recorta en los dos lados
+
+- **`catalogo.publico` → `torneoDecl`**: el cliente recibe las fases de su
+  zona más sus dependencias; el admin, todas. Los libros vinculados viajan
+  con sus `participan` (solo ids de zona).
+- **`/api/v1/torneos/:torneo/llave` → `paraZonas()`**: tablas de las zonas
+  que cruzan sus fases (la Zona A no recibe la tabla de la C) y partidos de
+  esas fases. El caché sigue siendo uno por torneo; el recorte es por pedido.
+
+### El mismo valor de FASE en dos libros no se cruza
+
+«SEMIFINAL» de los playoffs A y de los B es la misma celda en dos libros.
+Cada partido de la postemporada viaja con `zonaLibro` (el id de la zona
+vinculada, **nunca el sheetId**) y `mezclarLlave` solo le da a una fase los
+de SU libro. En el navegador, el libro propio alimenta solo las fases de su
+zona.
+
+### `faseRegular()` es la de LIGA
+
+La fase de liga declarada; sin ninguna, `REGULAR`. Y si el libro no trae la
+declarada, `tablaDeZona` cae a `REGULAR` antes que dejar la zona vacía.
+
+### Nombres repetidos
+
+`desambiguarEtiquetas()`: dos fases con el mismo nombre suman su instancia
+del núcleo — «Playoffs - Zona A · Cuartos de final». El nombre declarado
+queda en `labelDeclarado`.
+
+### Verificado
+
+- **Con los datos reales** de KV y Google, llamando al handler local con
+  tokens de Deportivo (Zona B) y Reconquista (Zona A): la B recibe sus dos
+  repechajes y las tablas A 12 · B 12 · C 11; «4° Zona C» es CAPITAL CHICA.
+  La A recibe sus playoffs y las tablas A y B, sin la C.
+- **En el navegador** (v252), la barra real con la declaración real
+  inyectada: Zona B ofrece solo los dos repechajes; Zona A, sus playoffs
+  con nombres distintos.
+- **Al revés, 12 mutaciones**, todas caen: sin `asignarZonas` 15,
+  `paraZonas` identidad 3, zona inexistente aceptada 3, `visibles` =
+  `declaradas` 2, `torneoDecl` sin zona 2, y 1 cada una sin dependencias,
+  sin desambiguar, `mezclarLlave` sin `zonaLibro`, zonas declaradas
+  ignoradas, `faseRegular` = primera, servidor sin `zonasValidas` y editor
+  sin zonas.
+
+### Pendiente
+
+- **El backend hay que desplegarlo** (`cd server && npx vercel --prod`):
+  sin eso producción sigue con las tablas vacías.

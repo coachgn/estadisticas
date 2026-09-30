@@ -45,6 +45,8 @@ const AUTH = require('../lib/compartido/sgadd-auth.js');
 const CORE = require('../lib/compartido/sgadd-core.js');
 const DATOS = require('../lib/compartido/sgadd-data.js');
 const CLASIF = require('../lib/compartido/sgadd-clasificacion.js');
+const FASES = require('../lib/compartido/sgadd-fases.js');
+const TORNEOS = require('../lib/torneos.js');
 
 const SLUG = /^[a-z0-9][a-z0-9-]{0,79}$/;
 const TTL_MS = 5 * 60 * 1000;
@@ -55,16 +57,20 @@ function error(status, codigo, mensaje) {
 }
 function limpiarCache() { cache.clear(); }
 
-/** ¿El cliente tiene una categoría enganchada a ese torneo, con acceso? */
-function enganchadoConAcceso(cat, clubId, torneoId) {
+/** Las zonas del torneo en las que el cliente tiene una categoría
+    enganchada y con acceso. Vacío = no tiene nada que ver con el torneo. */
+function zonasDelCliente(cat, clubId, torneoId) {
   const club = cat && cat[clubId];
   const cats = (club && club.categorias) || {};
-  return Object.keys(cats).some((slug) => {
-    if (!cats[slug] || cats[slug].torneo !== torneoId) return false;
+  const out = new Set();
+  Object.keys(cats).forEach((slug) => {
+    if (!cats[slug] || cats[slug].torneo !== torneoId) return;
     const r = catalogo.resolver(cat, clubId, slug);
-    return !!(r && AUTH.tieneAcceso(mutar.estadoEfectivo(r.suscripcion)));
+    if (r && AUTH.tieneAcceso(mutar.estadoEfectivo(r.suscripcion))) out.add(String(cats[slug].zona || '').toLowerCase());
   });
+  return out;
 }
+function enganchadoConAcceso(cat, clubId, torneoId) { return zonasDelCliente(cat, clubId, torneoId).size > 0; }
 
 async function resolver(peticion, deps) {
   const v = verificarToken(tokenDeLaPeticion(peticion));
@@ -78,10 +84,11 @@ async function resolver(peticion, deps) {
   if (!t || t.tipo !== 'torneo') return { error: error(404, 'SIN_TORNEO', 'Ese torneo no existe.') };
 
   const esAdmin = v.rol === AUTH.ROLES.ADMIN;
-  if (!esAdmin && !enganchadoConAcceso(cat, v.club, torneoId)) {
+  const zonas = esAdmin ? null : zonasDelCliente(cat, v.club, torneoId);
+  if (!esAdmin && !zonas.size) {
     return { error: error(403, 'OTRO_TORNEO', 'Tu acceso no incluye ese torneo.') };
   }
-  return { torneoId: torneoId, t: t };
+  return { torneoId: torneoId, t: t, zonas: zonas };
 }
 
 /** La matriz cruda de Google → {cols, filas}, que es lo que come el índice. */
@@ -91,12 +98,17 @@ function aFilas(hojas) {
   return out;
 }
 
-/** El valor de la columna FASE de la fase regular declarada. */
+/**
+ * El valor de la columna FASE de la fase regular declarada.
+ *
+ * LA PRIMERA FASE NO ES LA REGULAR (punto 78). El editor de cruces guarda
+ * solo las fases de eliminación, y con la primera declarada —«REPECHAJE
+ * B-C»— cada zona salía con la tabla vacía: todos los puestos «a definir».
+ * Es la fase de LIGA la que da las posiciones; sin ninguna, `REGULAR`.
+ */
 function faseRegular(formato) {
-  const f = formato && Array.isArray(formato.fases) ? formato.fases[0] : null;
-  if (!f) return 'REGULAR';
-  const libro = Array.isArray(f.libro) ? f.libro[0] : f.libro;
-  return String(libro || f.id || 'REGULAR').toUpperCase();
+  const liga = FASES.parsear(formato || {}).fases.find(f => f.tipo === 'liga');
+  return liga ? liga.libro[0] : 'REGULAR';
 }
 
 function iso(v) {
@@ -108,9 +120,12 @@ function iso(v) {
 /** La tabla de una zona: puesto, equipo, PJ, PG, PP. Nada más. */
 function tablaDeZona(t, slug, hojas) {
   const formato = t.formato || {};
-  const fr = faseRegular(formato);
+  let fr = faseRegular(formato);
   const tramos = CORE.combinacionesTorneoFase(hojas);
-  const deFase = tramos.filter(x => x.fase === fr);
+  let deFase = tramos.filter(x => x.fase === fr);
+  /* Una fase de liga declarada con otro nombre que el libro no trae cae a
+     REGULAR antes que dejar la zona sin tabla. */
+  if (!deFase.length && fr !== 'REGULAR') { fr = 'REGULAR'; deFase = tramos.filter(x => x.fase === fr); }
   const tramo = deFase.find(x => x.sintetico) || deFase[0] || null;
   if (!tramo) return { filas: [], cerrada: false };
   const idx = CORE.construirIndice(hojas, { fase: fr, torneo: tramo.torneo });
@@ -180,7 +195,9 @@ async function armar(torneoId, t, deps) {
       const vistos = new Set(postemporada.partidos.map(p => p.fase + '|' + p.fecha + '|' + p.local + '|' + p.visitante));
       partidosDePostemporada(hojas).forEach((p) => {
         const kk = p.fase + '|' + p.fecha + '|' + p.local + '|' + p.visitante;
-        if (!vistos.has(kk)) { vistos.add(kk); postemporada.partidos.push(p); }
+        /* EL LIBRO de donde sale (la zona vinculada, nunca su sheetId): el
+           mismo valor de FASE puede estar en dos libros (punto 78). */
+        if (!vistos.has(kk)) { vistos.add(kk); postemporada.partidos.push(Object.assign(p, { zonaLibro: k.zona })); }
       });
     } else {
       zonas[k.zona] = Object.assign({ label: k.label || k.zona }, tablaDeZona(t, slug, hojas));
@@ -192,15 +209,55 @@ async function armar(torneoId, t, deps) {
   return datos;
 }
 
+/**
+ * LO QUE LE LLEGA A UN CLIENTE (punto 78): la llave de SU zona.
+ *
+ *   fases       las de sus zonas y las que esas necesitan para resolverse
+ *               (una final A-B necesita la semifinal A);
+ *   tablas      las de las zonas que esas fases cruzan: para traducir
+ *               «4° Zona C» al nombre del club hace falta la tabla de la C;
+ *   partidos    los de esas fases, cada uno de SU libro. Un partido de una
+ *               fase no declarada entra si el libro incluye a su zona.
+ *
+ * Los libros siguen sin viajar: esto recorta una respuesta que ya era de
+ * posiciones y resultados. El admin recibe todo.
+ */
+function paraZonas(datos, t, zonas) {
+  if (!zonas) return datos;
+  const participan = TORNEOS.participanDeTorneo(t);
+  const fases = FASES.parsear(t.formato || {}, { participan: participan }).fases;
+  let visibles = [];
+  zonas.forEach((z) => { visibles = visibles.concat(FASES.filtrarPorZona(fases, z)); });
+  const necesarias = FASES.dependenciasDe(fases, visibles);
+  const idsNec = new Set(necesarias.map(f => f.id));
+
+  let todas = false;
+  const zonasTabla = new Set(zonas);
+  necesarias.forEach((f) => { if (!f.zonas) todas = true; else f.zonas.forEach(z => zonasTabla.add(z)); });
+
+  const zonasOut = {};
+  Object.keys(datos.zonas || {}).forEach((z) => { if (todas || zonasTabla.has(String(z).toLowerCase())) zonasOut[z] = datos.zonas[z]; });
+
+  const incluye = (lista) => !lista || !lista.length || lista.some(z => zonas.has(String(z).toLowerCase()));
+  const partidos = ((datos.postemporada && datos.postemporada.partidos) || []).filter((p) => {
+    const f = fases.find(x => x.libro.indexOf(String(p.fase || '').toUpperCase()) !== -1
+      && (!x.zonaLibro || !p.zonaLibro || x.zonaLibro === p.zonaLibro));
+    if (f) return idsNec.has(f.id);
+    return incluye(participan[p.zonaLibro]);
+  });
+  return Object.assign({}, datos, { zonas: zonasOut,
+    postemporada: Object.assign({}, datos.postemporada, { partidos: partidos }) });
+}
+
 async function manejarLlave(peticion, deps) {
   const ctx = await resolver(peticion, deps);
   if (ctx.error) return ctx.error;
   try {
-    return { status: 200, body: await armar(ctx.torneoId, ctx.t, deps) };
+    return { status: 200, body: paraZonas(await armar(ctx.torneoId, ctx.t, deps), ctx.t, ctx.zonas) };
   } catch (e) {
     console.error('[sgadd] llave:', e && e.stack ? e.stack : e);
     return error(503, 'LLAVE_ILEGIBLE', 'No se pudo armar la llave del torneo.');
   }
 }
 
-module.exports = { manejarLlave, limpiarCache, tablaDeZona, partidosDePostemporada, faseRegular };
+module.exports = { manejarLlave, limpiarCache, tablaDeZona, partidosDePostemporada, faseRegular, paraZonas };
