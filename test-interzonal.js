@@ -969,6 +969,73 @@ const pedirLibro = async (tok, club, cat) => { catalogo.limpiarCache(); return H
     check('y el historial por jugador, igual', expA.jugadorPartidos.every(([, filas]) => filas.every(f => f.EQUIPO === RE)));
     const inf = SC.informePrePartido(idxCopia, HO, RE);
     check('el informe pre-partido Hogar Social vs Reconquista se arma', inf.ok, inf.motivo);
+    /* --- 8e · la mediana de SU liga (punto 80) */
+    const lo = rR.body.equipo.equipo.__ligaOrigen;
+    check('el rival viaja con el contexto de su liga YA calculado: medianas, puestos y percentiles',
+      lo && lo.medianas && lo.rankings && lo.percentiles && lo.label === 'Zona A', lo && Object.keys(lo));
+    check('y SIN las distribuciones de los otros equipos de su zona', !('distribuciones' in lo) && !/distribuciones/.test(JSON.stringify(rR.body)));
+    /* Con fila TIPO y puntos distintos: la Zona A anota más que la B. */
+    const conTipo = (h, base, tipo) => { h['PROMEDIOS E'].cols.push('PACE');
+      h['PROMEDIOS E'].filas.forEach((f, i) => { f.PTS = base + i * 4; f.PACE = base + i; });
+      h['PROMEDIOS E'].filas.push({ EQUIPO: 'EQUIPO TIPO', FASE: 'REGULAR', PJ: 3, PTS: tipo, PACE: tipo }); return h; };
+    const idxZA = SGADD.construirIndice(conTipo(hojasDe(ZA), 80, 86), { fase: 'REGULAR' });
+    const idxB2 = SGADD.construirIndice(conTipo(hojasDe(ZB), 60, 66), { fase: 'REGULAR' });
+    const idxCopia2 = SGADD.construirIndice(conTipo(hojasDe(ZB), 60, 66), { fase: 'REGULAR' });
+    const expZA = idxZA.exportarEquipo(RE);
+    expZA.equipo.__ligaOrigen.label = 'Zona A';   // lo pone el servidor
+    idxCopia2.injertarEquipo(expZA);
+    const mZA = idxZA.leer(RE, 'PTS'), mB = idxB2.leer(HO, 'PTS');
+    check('en la copia, el rival se lee contra la mediana de la ZONA A, no de la B',
+      idxCopia2.leer(RE, 'PTS').tipo === mZA.tipo && mZA.tipo === 86 && mB.tipo === 66, [idxCopia2.leer(RE, 'PTS').tipo, mZA.tipo, mB.tipo]);
+    check('  con su puesto dentro de su zona', JSON.stringify(idxCopia2.ranking(RE, 'PTS')) === JSON.stringify(idxZA.ranking(RE, 'PTS'))
+      && idxZA.ranking(RE, 'PTS').de === 4, idxCopia2.ranking(RE, 'PTS'));
+    check('  y los equipos de la B, contra la B', idxCopia2.leer(HO, 'PTS').tipo === 66);
+    check('  y la liga de la B no se movió con el injerto', JSON.stringify(idxCopia2.liga.distribuciones) === JSON.stringify(idxB2.liga.distribuciones));
+    const mz = SC.matrizComparativa(idxCopia2, HO, RE);
+    const fPts = mz.posesion.concat(mz.tiro).find(f => f.ligaLocal.valor !== null && f.ligaVisitante.valor !== null
+      && f.ligaLocal.valor !== f.ligaVisitante.valor) || null;
+    check('la matriz es CRUZADA y rotula la liga de cada uno', mz.cruzada && mz.ligaVisitante === 'Zona A' && mz.ligaLocal === null);
+    check('  [A] [mediana A] | [B] [mediana B]: cada columna de liga es la de su equipo', !!fPts
+      && fPts.ligaLocal.valor === idxB2.leer(HO, fPts.id).tipo && fPts.ligaVisitante.valor === idxZA.leer(RE, fPts.id).tipo,
+      fPts && [fPts.id, fPts.ligaLocal.valor, fPts.ligaVisitante.valor]);
+    check('entre dos equipos de la MISMA zona no hay columnas cruzadas', SC.matrizComparativa(idxCopia, HO, DE).cruzada === false);
+    const infZ = SC.informePrePartido(idxCopia, HO, RE);
+    check('el último partido del rival nombra a su rival de zona, no «—»',
+      infZ.visitante.ultimoPartido && infZ.visitante.ultimoPartido.rival !== '—'
+      && /ATENAS|PLATENSE|GONNET/.test(infZ.visitante.ultimoPartido.rival), infZ.visitante.ultimoPartido);
+
+    /* --- 8g · la llave llega tarde: Scouting se repinta al recibirla */
+    {
+      const pintadas = [];
+      global.currentSection = 'scouting'; global.renderSection = (x) => pintadas.push(x);
+      F.repintarLaQueLaMuestra();
+      global.currentSection = 'equipos'; F.repintarLaQueLaMuestra();
+      delete global.currentSection; delete global.renderSection;
+      check('cuando llega la llave del servidor, Scouting se repinta (su rival de otra zona sale de ahí)',
+        pintadas.join() === 'scouting', pintadas);
+    }
+
+    /* --- 8h · la fecha es el DÍA del partido, en cualquier zona horaria */
+    {
+      const { execFileSync } = require('child_process');
+      const hjF = JSON.stringify(hojasDe(ZA));
+      const js = "const S=require('./js/sgadd-core.js');const h=JSON.parse(process.argv[1]);"
+        + "process.stdout.write(JSON.stringify(S.construirIndice(h,{fase:'REGULAR'}).exportarEquipo(process.argv[2])))";
+      const exp = JSON.parse(execFileSync(process.execPath, ['-e', js, hjF, RE],
+        { env: Object.assign({}, process.env, { TZ: 'Pacific/Kiritimati' }), encoding: 'utf8' }));
+      const idxT = SGADD.construirIndice(hojasDe(ZB), { fase: 'REGULAR' });
+      idxT.injertarEquipo(exp);
+      const f0 = idxT.get(RE).partidos.find(p => /ATENAS/.test(p.__partido));
+      check('un servidor en OTRA zona horaria no corre el partido un día: el 02/05 llega como el 02/05',
+        f0 && f0.__fecha.getDate() === 2 && f0.__fecha.getMonth() === 4, f0 && String(f0.__fecha));
+    }
+
+    /* --- 8f · el escudo del rival en el Scouting */
+    const fuenteSc = require('fs').readFileSync('./js/sgadd-scouting.js', 'utf8');
+    const cuerpoPintar = fuenteSc.slice(fuenteSc.indexOf('function scoutPintar()'), fuenteSc.indexOf('function scoutSelectores('));
+    check('el Scouting pide el escudo de los equipos de otra zona (el caché de LOGOS no los tiene)',
+      /SGADD_FASES\.pedirEscudos\(/.test(cuerpoPintar) && /__externo/.test(cuerpoPintar));
+
     check('con el récord del rival de su fase regular (1-2)', inf.ok && inf.visitante && inf.visitante.pj === 3
       && inf.visitante.ganados === 1 && inf.visitante.perdidos === 2, inf.ok && inf.visitante);
 

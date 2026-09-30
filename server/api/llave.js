@@ -360,6 +360,9 @@ async function manejarRival(peticion, deps) {
     const ir = indiceRegular(t.formato || {}, aFilas(libro.hojas));
     const equipo = ir && ir.idx.exportarEquipo(rival);
     if (!equipo) return error(404, 'SIN_RIVAL', 'Ese equipo no tiene datos de fase regular.');
+    /* El nombre de su liga, para rotular su mediana en el informe (punto 80). */
+    equipo.equipo.__ligaOrigen.label = (datos.zonas[zonaRival] || {}).label || zonaRival;
+    equipo.equipo.__ligaOrigen.zona = zonaRival;
     const c0 = cruces[0];
     return { status: 200, body: { ok: true, torneo: ctx.torneoId, zona: zonaRival,
       zonaLabel: (datos.zonas[zonaRival] || {}).label || zonaRival,

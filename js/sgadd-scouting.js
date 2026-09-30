@@ -322,9 +322,17 @@ const SGADD_SCOUT = (function () {
          negocio»: el cero no dice que falle los libres, dice que no los
          tiró (la distinción del punto 3 del CLAUDE.md, tercera vez que
          aparece en el proyecto). Medido: GARCIA, MATÍAS en el libro real. */
-      faltaRentable: nn(q.t1) !== null && nn(q.pptDoble) !== null &&
-        nn(q.t1i) !== null && q.t1i >= VOL_MIN_LIBRE &&
-        q.t1 < T1_CONDICIONAL && (2 * q.t1 + MARGEN_FALTA) <= q.pptDoble,
+      /* LA FALTA ES NEGOCIO POR DOS VÍAS (punto 80). La económica de
+         siempre —la línea vale menos que lo que rinde si termina la
+         jugada— y la de LIGA: un T1% bajo su umbral de liga es la falta
+         táctica rentable, sin excepción. Antes solo corría la primera y un
+         44 % en libres con un PPT2 flojo salía «NO CORTAR CON FALTA»
+         mientras su ficha decía que la línea es su peor escenario. */
+      t1BajoLiga: nn(q.t1) !== null && (q.t1 < U_.t1Regalable || porDebajo(q.bandaT1)),
+      faltaRentable: nn(q.t1) !== null && nn(q.t1i) !== null && q.t1i >= VOL_MIN_LIBRE &&
+        q.t1 < T1_CONDICIONAL && (
+          (nn(q.pptDoble) !== null && (2 * q.t1 + MARGEN_FALTA) <= q.pptDoble)
+          || q.t1 < U_.t1Regalable || porDebajo(q.bandaT1)),
       faltaEvaluable: nn(q.t1) !== null && nn(q.t1i) !== null &&
         q.t1i >= VOL_MIN_LIBRE && q.t1 < T1_CONDICIONAL,
 
@@ -1318,8 +1326,11 @@ const SGADD_SCOUT = (function () {
     const r = idx.leer(clave, metrica);
     if (!r) return { valor: null, formateado: '—', calculada: false };
     if (r.tipo !== null && r.tipo !== undefined) {
-      return { valor: r.tipo, formateado: r.tipoFormateado, calculada: false };
+      return { valor: r.tipo, formateado: r.tipoFormateado, calculada: false, origen: r.ligaOrigen || null };
     }
+    /* Un equipo de OTRA zona sin mediana declarada no cae a la de esta: sería
+       medirlo con la vara de una liga que no es la suya (punto 80). */
+    if (r.ligaOrigen) return { valor: null, formateado: '—', calculada: false, origen: r.ligaOrigen };
     const dist = idx.liga.distribuciones ? idx.liga.distribuciones[metrica] : null;
     const med = (dist && dist.length) ? SGADD.mediana(dist) : null;
     return { valor: med, formateado: SGADD.formatear(metrica, med), calculada: med !== null };
@@ -1329,7 +1340,14 @@ const SGADD_SCOUT = (function () {
     const met = SGADD.metrica(def.id);
     const liga = referenciaLiga(idx, claveL, def.id);
     if (def.sub) liga.sub = Object.assign({ clave: def.sub }, referenciaLiga(idx, claveL, def.sub));
+    /* LA MEDIANA DE CADA UNO (punto 80): con un rival de otra zona, cada
+       equipo va al lado de la mediana de SU liga. Sin rival de otra zona
+       las dos son la misma y la pantalla muestra una sola columna. */
+    const ligaV = referenciaLiga(idx, claveV, def.id);
+    if (def.sub) ligaV.sub = Object.assign({ clave: def.sub }, referenciaLiga(idx, claveV, def.sub));
     return {
+      ligaLocal: liga,
+      ligaVisitante: ligaV,
       id: def.id,
       label: def.label,
       subClave: def.sub || null,
@@ -1342,8 +1360,14 @@ const SGADD_SCOUT = (function () {
 
   /** Matriz completa A vs B vs mediana de liga, en los dos bloques. */
   function matrizComparativa(idx, claveL, claveV) {
-    if (!idx.get(claveL) || !idx.get(claveV)) return null;
+    const eL = idx.get(claveL), eV = idx.get(claveV);
+    if (!eL || !eV) return null;
+    const oL = eL.__ligaOrigen || null, oV = eV.__ligaOrigen || null;
     return {
+      /* Cruzada = los dos equipos NO se miden contra la misma liga. */
+      cruzada: !!(oL || oV) && (!oL || !oV || oL.zona !== oV.zona),
+      ligaLocal: oL ? (oL.label || 'su liga') : null,
+      ligaVisitante: oV ? (oV.label || 'su liga') : null,
       posesion: MATRIZ_POSESION.map(d => filaMatriz(idx, claveL, claveV, d)),
       tiro: MATRIZ_TIRO.map(d => filaMatriz(idx, claveL, claveV, d)),
     };
@@ -1373,6 +1397,7 @@ const SGADD_SCOUT = (function () {
 
   function rankingsLiga(idx, clave) {
     if (!idx.get(clave)) return [];
+    /* Un equipo de otra zona trae sus puestos calculados en SU zona. */
     return METRICAS_RANKING.map(d => {
       const r = idx.leer(clave, d.id);
       const rk = idx.ranking(clave, d.id);
@@ -1392,6 +1417,16 @@ const SGADD_SCOUT = (function () {
      4. METADATA DEL PARTIDO: récord, splits y último partido
      ===================================================================== */
 
+  /* El rival de un partido cuyo otro lado NO está en el índice: un equipo
+     injertado de otra zona juega contra equipos de SU zona (punto 80). El
+     texto «A vs B» lo dice; con el nombre limpio del núcleo. */
+  function rivalDelTexto(partido, claveEq) {
+    const lados = String(partido || '').split(/\s+vs\.?\s+/i);
+    if (lados.length !== 2) return '—';
+    const otro = SGADD.claveEquipo(lados[0]) === claveEq ? lados[1] : lados[0];
+    return SGADD.limpiarNombre ? SGADD.limpiarNombre(otro) : otro;
+  }
+
   /** Rival y marcador de una fila de partido, resuelto contra el otro lado. */
   function detallePartido(idx, e, fila) {
     const p = fila.__id ? idx.partido(fila.__id) : null;
@@ -1400,7 +1435,7 @@ const SGADD_SCOUT = (function () {
       id: fila.__id || null,
       fecha: fila.__fecha || null,
       partido: fila.__partido || '',
-      rival: otro ? otro.equipo.nombre : '—',
+      rival: otro ? otro.equipo.nombre : rivalDelTexto(fila.__partido, e.clave),
       claveRival: otro ? otro.equipo.clave : null,
       condicion: String(fila['CONDICION'] || '').toUpperCase(),
       resultado: String(fila['RESULTADO'] || '').toUpperCase(),
@@ -1671,6 +1706,10 @@ const SGADD_SCOUT = (function () {
     p.bandaEfg = bandaLiga(idx, 'eFG%', p.efg, false);
     p.bandaTov = bandaLiga(idx, 'PePP%', p.perdidas, true);
     p.bandaT1 = bandaLiga(idx, 'T1%', p.t1, false);
+    /* Lo que vale una jugada promedio en SU liga (la mediana de PPP de los
+       equipos): la vara con la que se decide si la falta es negocio. */
+    const rPpp = idx.leer ? idx.leer(j['EQUIPO'], 'PPP') : null;
+    p.pppLiga = rPpp && typeof rPpp.tipo === 'number' ? rPpp.tipo : null;
     /* Bandas nuevas: las fortalezas y las fugas se leen contra la liga y no
        contra umbrales fijos. Un eFG% de 0,45 es flojo en La Plata y muy malo
        en Liga Argentina — medido: la mediana pasa de 0,469 a 0,530. */
@@ -1785,12 +1824,18 @@ const SGADD_SCOUT = (function () {
       });
     }
     if (s.faltaEvaluable) {
+      const esperado = (p.t1 || 0) * 2;
+      const porEconomia = nn(p.pptDoble) !== null && (esperado + MARGEN_FALTA) <= p.pptDoble;
       m.push(s.faltaRentable ? {
         id: 'faltaRentable', eje: 'conPelota', icono: '🎯',
-        titulo: 'FALTA RENTABLE, CON CONDICIONES.',
-        detalle: 'Convierte ' + pct(p.t1) + ' de libres: mandarlo a la línea son ' +
-          num2((p.t1 || 0) * 2) + ' puntos esperados contra ' + num2(p.pptDoble) +
-          ' si termina la jugada. Solo fuera del bonus y con margen de faltas del defensor.',
+        titulo: 'FALTA TÁCTICA RENTABLE.',
+        detalle: 'Convierte ' + pct(p.t1) + ' de libres' + (porEconomia ? '' : ', por debajo de su liga') +
+          ': mandarlo a la línea son ' + num2(esperado) + ' puntos esperados' +
+          (porEconomia ? ' contra ' + num2(p.pptDoble) + ' si termina la jugada'
+            : (nn(p.pppLiga) !== null && esperado <= p.pppLiga
+              ? ', no más que una jugada promedio de su liga (' + num2(p.pppLiga) + ')'
+              : '') + ', y le baja la eficiencia a la posesión') +
+          '. Solo fuera del bonus y con margen de faltas del defensor.',
       } : {
         id: 'faltaCara', eje: 'conPelota', icono: '⚖',
         titulo: 'NO CORTAR CON FALTA.',
@@ -2671,7 +2716,9 @@ const SGADD_SCOUT = (function () {
     },
     {
       id: 'castigo-linea', icono: '🎯', titulo: 'Falta táctica rentable',
-      buscar: (ps) => ps.filter(p => senales(p).regalableEnLaLinea),
+      /* La misma decisión que el modificador de la marca: el que tiene la
+         falta rentable está acá, o las claves y la tabla se contradicen. */
+      buscar: (ps) => ps.filter(p => senales(p).faltaRentable),
       texto: (ms) => 'Si hay que cortar una jugada, la falta va sobre ' + nombres(ms) + ' (' +
         ms.map(m => pct(m.t1)).join(' y ') + ' en libres). Cambiar una posesión por sus tiros libres ' +
         'baja el valor esperado de esa jugada.',
@@ -3358,6 +3405,13 @@ function scoutPintar() {
   const cargando = pendiente.find(k => SCOUT_EXT.datos[k] && SCOUT_EXT.datos[k].estado === 'cargando');
   const fallo = pendiente.map(k => SCOUT_EXT.datos[k]).find(d => d && d.estado === 'error');
   const idx = scoutIdx();
+  /* EL ESCUDO DEL RIVAL DE OTRA ZONA (punto 80): el caché de LOGOS solo
+     tiene los equipos del libro propio, así que se pide acá —igual que la
+     llave— y el hook de LOGOS repinta cuando llega. */
+  if (typeof SGADD_FASES !== 'undefined' && SGADD_FASES.pedirEscudos) {
+    SGADD_FASES.pedirEscudos(rivales.map(r => r.nombre)
+      .concat(idx.lista().filter(e => e.__externo).map(e => e.nombre)));
+  }
   let cuerpo;
   if (cargando) cuerpo = '<div class="mt-4">' + SGADD_UI.cargando('Trayendo al rival de la otra zona…', 'Su fase regular, sin abrir el libro de su zona') + '</div>';
   else if (fallo) cuerpo = '<div class="mt-4">' + SGADD_UI.aviso('No se pudo traer al rival', fallo.mensaje, 'error') + '</div>';
@@ -3716,30 +3770,47 @@ function scoutCeldaMatriz(c) {
     </td>`;
 }
 
-function scoutFilasMatriz(filas) {
+function scoutCeldaLiga(l) {
+  return `
+      <td class="px-2 py-1.5 text-center">
+        <span class="font-mono text-sm dato-sec">${escapeHtml(l.formateado)}</span>
+        ${l.sub ? `<span class="block text-[10px] font-mono dato-sec">${escapeHtml(l.sub.clave)}: ${escapeHtml(l.sub.formateado)}</span>` : ''}
+      </td>`;
+}
+
+/* CON UN RIVAL DE OTRA ZONA cada equipo va al lado de la mediana de SU
+   liga (punto 80): [A] [mediana liga A] | [B] [mediana liga B]. */
+function scoutFilasMatriz(filas, cruzada) {
   return filas.map(f => `
     <tr class="border-b border-hairline/40 last:border-0">
       <td class="px-2 py-1.5 text-[11px] uppercase tracking-wide text-muted font-display whitespace-nowrap">${escapeHtml(f.label)}</td>
       ${scoutCeldaMatriz(f.local)}
+      ${cruzada ? scoutCeldaLiga(f.ligaLocal || f.liga) + '<td class="w-px p-0 border-l border-hairline" aria-hidden="true"></td>' : ''}
       ${scoutCeldaMatriz(f.visitante)}
-      <td class="px-2 py-1.5 text-center">
-        <span class="font-mono text-sm dato-sec">${escapeHtml(f.liga.formateado)}</span>
-        ${f.liga.sub ? `<span class="block text-[10px] font-mono dato-sec">${escapeHtml(f.liga.sub.clave)}: ${escapeHtml(f.liga.sub.formateado)}</span>` : ''}
-      </td>
+      ${scoutCeldaLiga(cruzada ? (f.ligaVisitante || f.liga) : f.liga)}
     </tr>`).join('');
 }
 
-function scoutSubtituloMatriz(texto) {
-  return `<tr><td colspan="4" class="px-2 pt-3 pb-1 text-[10px] uppercase tracking-wider text-muted font-display">${escapeHtml(texto)}</td></tr>`;
+function scoutSubtituloMatriz(texto, cruzada) {
+  return `<tr><td colspan="${cruzada ? 6 : 4}" class="px-2 pt-3 pb-1 text-[10px] uppercase tracking-wider text-muted font-display">${escapeHtml(texto)}</td></tr>`;
+}
+
+/** El nombre de la liga de la categoría abierta, para rotular su mediana. */
+function scoutLigaPropia() {
+  try {
+    const doc = SGADD_FASES.docActual();
+    const z = SGADD_FASES.zonaAbierta();
+    return (doc && z && doc.zonas && doc.zonas[z] && doc.zonas[z].label) || 'tu liga';
+  } catch (e) { return 'tu liga'; }
 }
 
 function scoutBloqueMatriz(inf) {
   const m = inf.matriz;
   if (!m) return '';
 
-  const listaRk = (rks, nombre) => `
+  const listaRk = (rks, nombre, liga) => `
     <div class="bg-surface2/50 rounded-lg p-3">
-      <p class="text-[10px] uppercase tracking-wider text-muted font-display mb-1.5">${scoutNombreConLogo(nombre, 14)}</p>
+      <p class="text-[10px] uppercase tracking-wider text-muted font-display mb-1.5">${scoutNombreConLogo(nombre, 14)}${liga ? `<span class="normal-case tracking-normal"> · en ${escapeHtml(liga)}</span>` : ''}</p>
       <div class="space-y-0.5">
         ${rks.map(r => {
           const col = r.tono === 'fuerte' ? '#22c55e' : r.tono === 'debil' ? '#ef4444' : '#9CA3AF';
@@ -3756,24 +3827,26 @@ function scoutBloqueMatriz(inf) {
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">📊 Métricas avanzadas y ranking en la liga</h4>
       <p class="text-[11px] text-muted mb-2">
         Verde = tercio alto de la liga, rojo = tercio bajo. El chip es el puesto en la liga de esa métrica.
+        ${m.cruzada ? 'Los dos equipos juegan en <b class="text-ink">zonas distintas</b>: cada uno se colorea, se rankea y va al lado de la mediana de <b class="text-ink">su propia liga</b>. Lo que es lento o bajo en una puede ser el promedio en la otra.' : ''}
       </p>
       <div class="scrollbox"><table class="w-full text-left">
         <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
           <th class="px-2 pb-1 text-left">Métrica</th>
           <th class="px-2 pb-1 text-center">${scoutNombreConLogo(inf.local.nombre, 16)}</th>
+          ${m.cruzada ? `<th class="px-2 pb-1 text-center">Mediana<span class="block normal-case tracking-normal">${escapeHtml(m.ligaLocal || scoutLigaPropia())}</span></th><th class="w-px p-0" aria-hidden="true"></th>` : ''}
           <th class="px-2 pb-1 text-center">${scoutNombreConLogo(inf.visitante.nombre, 16)}</th>
-          <th class="px-2 pb-1 text-center">Liga</th>
+          <th class="px-2 pb-1 text-center">${m.cruzada ? `Mediana<span class="block normal-case tracking-normal">${escapeHtml(m.ligaVisitante || scoutLigaPropia())}</span>` : 'Liga'}</th>
         </tr></thead>
         <tbody>
-          ${scoutSubtituloMatriz('Posesión y eficiencia')}
-          ${scoutFilasMatriz(m.posesion)}
-          ${scoutSubtituloMatriz('Selección de tiro y pérdidas')}
-          ${scoutFilasMatriz(m.tiro)}
+          ${scoutSubtituloMatriz('Posesión y eficiencia', m.cruzada)}
+          ${scoutFilasMatriz(m.posesion, m.cruzada)}
+          ${scoutSubtituloMatriz('Selección de tiro y pérdidas', m.cruzada)}
+          ${scoutFilasMatriz(m.tiro, m.cruzada)}
         </tbody>
       </table></div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
-        ${listaRk(inf.rankingsLocal, inf.local.nombre)}
-        ${listaRk(inf.rankingsVisitante, inf.visitante.nombre)}
+        ${listaRk(inf.rankingsLocal, inf.local.nombre, m.cruzada ? (m.ligaLocal || scoutLigaPropia()) : null)}
+        ${listaRk(inf.rankingsVisitante, inf.visitante.nombre, m.cruzada ? (m.ligaVisitante || scoutLigaPropia()) : null)}
       </div>
     </section>`;
 }

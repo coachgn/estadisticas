@@ -2420,6 +2420,42 @@ check('  con 0,10 vuelven los intermedios: 0,96 esperados contra 1,09 es negocio
   S.senales({ t1: 0.48, t1i: 3, pptDoble: 1.09 }).faltaRentable &&
   (2 * 0.48 + 0.15) > 1.09,
   'con el margen viejo de 0,15 este caso no disparaba');
+/* EL UMBRAL DE LIGA (punto 80). El caso real: GARCIA BARUCCO, MATEO
+   (UNIVERSAL) · 44,2% en libres sobre 7,1 intentos, PPT2 0,914, banda
+   `limitado`. Por la vía económica 0,88 + 0,10 = 0,98 > 0,914 y salía «NO
+   CORTAR CON FALTA» mientras su ficha decía que la falta sobre él cuesta
+   menos que sobre cualquier otro. */
+const BARUCCO = { t1: 0.4417, t1i: 7.06, pptDoble: 0.914, bandaT1: { id: 'limitado' } };
+check('un T1% por debajo de su liga es falta táctica rentable, sin excepción',
+  S.senales(BARUCCO).faltaRentable && S.senales(BARUCCO).t1BajoLiga);
+check('  y la marca lo dice con esas palabras, nunca «no cortar con falta»',
+  S.modificadoresDe(BARUCCO).some(m => m.id === 'faltaRentable' && /FALTA TÁCTICA RENTABLE/.test(m.titulo)
+    && /por debajo de su liga/.test(m.detalle) && /0,88/.test(m.detalle))
+  && !S.modificadoresDe(BARUCCO).some(m => m.id === 'faltaCara'));
+check('  la comparación con la jugada promedio de su liga va solo si es cierta',
+  /jugada promedio de su liga \(0,95\)/.test(S.modificadoresDe(Object.assign({ pppLiga: 0.95 }, BARUCCO)).map(m => m.detalle).join(''))
+  && !/jugada promedio/.test(S.modificadoresDe(Object.assign({ pppLiga: 0.83 }, BARUCCO)).map(m => m.detalle).join('')));
+check('  el piso absoluto también: menos de 40% en la línea es falta rentable',
+  S.senales({ t1: 0.38, t1i: 3, pptDoble: 0.70 }).faltaRentable);
+check('  SCHROEDER sigue igual: 53,7% sin estar bajo su liga no es negocio',
+  !S.senales({ t1: 0.537, t1i: 3, pptDoble: 1.09, bandaT1: { id: 'estandar' } }).faltaRentable);
+/* UNA SOLA DECISIÓN en las tres superficies: la clave «Falta táctica
+   rentable», el modificador de la marca y la ficha. */
+{
+  const clave = S.REGLAS_CLAVE.find(r => r.id === 'castigo-linea');
+  const grilla = [];
+  [0.30, 0.44, 0.52, 0.57, 0.62].forEach(t1 => [0.7, 0.9, 1.1].forEach(ppt => [null, 'limitado', 'estandar'].forEach(b =>
+    [1.0, 4.0].forEach(t1i => [0.10, 0.30].forEach(uso => grilla.push({ t1: t1, t1i: t1i, pptDoble: ppt, usoLibre: uso,
+      bandaT1: b ? { id: b, label: b } : null, nombre: 'X' }))))));
+  const clavesMal = grilla.filter(p => (clave.buscar([p]).length > 0) !== S.senales(p).faltaRentable);
+  check('la clave de la falta y la señal de la marca eligen a los MISMOS jugadores', clavesMal.length === 0,
+    clavesMal.length + ' de ' + grilla.length);
+  const contradicen = grilla.filter(p => S.senales(p).faltaEvaluable
+    && S.fugasJugador(p).some(f => /cortar una jugada con falta|peor escenario/.test(f))
+    && S.modificadoresDe(p).some(m => m.id === 'faltaCara'));
+  check('ninguna ficha dice que la falta es barata y a la vez «no cortar con falta»', contradicen.length === 0,
+    contradicen.length + ' de ' + grilla.length);
+}
 check('un T1% sin volumen de línea NO es un dato: no dispara la falta',
   !S.senales({ t1: 0.0, t1i: 0.3, pptDoble: 0.67 }).faltaRentable &&
   !S.senales({ t1: 0.0, t1i: 0.3, pptDoble: 0.67 }).faltaEvaluable,

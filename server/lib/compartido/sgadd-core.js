@@ -2433,6 +2433,24 @@
       const val = (typeof valor === 'number' && isFinite(valor)) ? valor : null;
       // Las métricas calculadas no tienen fila EQUIPO TIPO en la planilla:
       // la mediana la calculamos sobre la distribución de los N equipos.
+      /* UN EQUIPO INJERTADO DE OTRA ZONA se lee contra SU liga (punto 80):
+         la mediana, el percentil y el puesto vienen calculados en su zona.
+         Lo que es bajo en una liga puede ser el promedio en la otra. */
+      const lo = e.__ligaOrigen || null;
+      if (lo) {
+        const tipoO = lo.medianas && typeof lo.medianas[claveMet] === 'number' ? lo.medianas[claveMet] : null;
+        const pO = lo.percentiles && typeof lo.percentiles[claveMet] === 'number' ? lo.percentiles[claveMet] : null;
+        return {
+          clave: claveMet, label: m.label, valor: val, formateado: formatear(claveMet, val),
+          tipo: tipoO, tipoFormateado: formatear(claveMet, tipoO),
+          delta: (val !== null && tipoO !== null) ? val - tipoO : null,
+          percentil: pO, invertida: m.invertida,
+          descriptiva: v ? !!v.descriptiva : (GRUPOS_DESCRIPTIVOS.indexOf(m.grupo) !== -1),
+          vista: idVista || null, pj: e.pj || 0, muestraSuficiente: !!lo.muestraSuficiente,
+          n: (lo.rankings && lo.rankings[claveMet]) ? lo.rankings[claveMet].de : 0,
+          ligaOrigen: lo.label || null,
+        };
+      }
       const tipo = (liga.tipo[claveMet] !== undefined) ? liga.tipo[claveMet]
                  : (liga.medianasCalculadas[claveMet] !== undefined) ? liga.medianasCalculadas[claveMet]
                  : null;
@@ -2461,6 +2479,11 @@
     function ranking(claveEq, claveMet) {
       const r = leer(claveEq, claveMet);
       if (!r || r.valor === null) return null;
+      const eO = equipos.get(claveEquipo(claveEq));
+      if (eO && eO.__ligaOrigen) {
+        const rk = eO.__ligaOrigen.rankings && eO.__ligaOrigen.rankings[claveMet];
+        return rk ? { puesto: rk.puesto, de: rk.de } : null;
+      }
       const m = METRICAS[claveMet];
       const dist = liga.distribuciones[claveMet] || [];
       const mejores = dist.filter(v => m.invertida ? v < r.valor : v > r.valor).length;
@@ -2585,14 +2608,44 @@
         const ps = (liga.jugadorPartidos.get(c) || []).filter(r => r.__equipo === e.clave);
         if (ps.length) jp.push([c, ps]);
       });
-      return JSON.parse(JSON.stringify({ v: 1, fase: fase, equipo: copia, pares: pares, box: box, jugadorPartidos: jp }));
+      /* EL CONTEXTO DE SU LIGA, ya calculado (punto 80): mediana, puesto y
+         percentil de ESTE equipo en cada métrica, contra su zona. Viajan
+         los resultados y no las distribuciones: los valores de los otros
+         equipos de su zona no le llegan al cliente. */
+      const medianas = {}, percentiles = {}, rankings = {};
+      Object.keys(METRICAS).forEach((c) => {
+        const r = leer(e.clave, c);
+        if (!r) return;
+        if (typeof r.tipo === 'number') medianas[c] = r.tipo;
+        if (typeof r.percentil === 'number') percentiles[c] = r.percentil;
+        const rk = ranking(e.clave, c);
+        if (rk) rankings[c] = rk;
+      });
+      copia.__ligaOrigen = { medianas: medianas, percentiles: percentiles, rankings: rankings,
+        muestraSuficiente: !!liga.muestraSuficiente, equipos: equipos.size };
+      /* LAS FECHAS VIAJAN COMO DÍA, no como instante (punto 80). El índice
+         las arma a la medianoche LOCAL de quien lo construye: en Vercel eso
+         es UTC, y serializado como instante el partido del 22/09 llegaba al
+         navegador argentino como el 21 a las 21 h. */
+      const dia = function (k, v) {
+        const o = this[k];
+        if (k === '__fecha' && o instanceof Date && !isNaN(o.getTime())) {
+          return o.getFullYear() + '-' + ('0' + (o.getMonth() + 1)).slice(-2) + '-' + ('0' + o.getDate()).slice(-2);
+        }
+        return v;
+      };
+      return JSON.parse(JSON.stringify({ v: 1, fase: fase, equipo: copia, pares: pares, box: box, jugadorPartidos: jp }, dia));
     }
 
     function injertarEquipo(s) {
       if (!s || !s.equipo || !s.equipo.clave) return false;
       /* JSON convierte las fechas en texto: vuelven a ser Date, que es lo
          que ordena y compara el resto del índice. */
-      const r = JSON.parse(JSON.stringify(s), (k, v) => (k === '__fecha' && typeof v === 'string') ? new Date(v) : v);
+      const r = JSON.parse(JSON.stringify(s), (k, v) => {
+        if (k !== '__fecha' || typeof v !== 'string') return v;
+        const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+        return d ? new Date(Number(d[1]), Number(d[2]) - 1, Number(d[3])) : new Date(v);
+      });
       const e = r.equipo;
       if (equipos.has(e.clave)) return false;   // ya es de esta liga: no se pisa
       e.__externo = true;

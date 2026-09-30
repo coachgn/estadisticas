@@ -329,6 +329,8 @@ const SGADD_FASES = (function () {
   /* SCOUTING ENTRA (punto 79): en modo llave prepara el cruce de la fase,
      contra un rival de la propia zona o —pidiéndolo al servidor— de otra. */
   const SECCIONES_EN_LLAVE = ['clasificacion', 'fixture', 'scouting', 'glosario', 'configuracion', 'diagnostico'];
+  /** Las que se repintan cuando llega la llave del servidor. */
+  const SECCIONES_QUE_USAN_LLAVE = ['clasificacion', 'fixture', 'scouting'];
   function bloqueaEnLlave(seccion, torneo) {
     return esLlave(torneo) && SECCIONES_EN_LLAVE.indexOf(seccion) === -1;
   }
@@ -841,7 +843,10 @@ const SGADD_FASES = (function () {
   const _llave = { torneo: null, datos: null, pidiendo: null, error: null };
   function repintarLaQueLaMuestra() {
     if (typeof currentSection === 'undefined' || typeof renderSection !== 'function') return;
-    if (currentSection === 'clasificacion' || currentSection === 'fixture') renderSection(currentSection);
+    /* SCOUTING TAMBIÉN (punto 80): su lista de rivales de otra zona sale de
+       esta llave, y entrando directo a Scouting el informe se pintaba antes
+       de que llegara —sin el rival y sin el cruce preseleccionado—. */
+    if (SECCIONES_QUE_USAN_LLAVE.indexOf(currentSection) !== -1) renderSection(currentSection);
   }
   let _alLlegar = repintarLaQueLaMuestra;
   function alLlegarLaLlave(fn) { _alLlegar = fn; }
@@ -1143,7 +1148,7 @@ const SGADD_FASES = (function () {
     /* motor */
     parsear, asignarZonas, visibleEnZona, filtrarPorZona, dependenciasDe, desambiguarEtiquetas,
     declaradaDe, tipoDe, enriquecerTramos, SIN_DATOS, LLAVE, esLlave, esEntreZonas,
-    mezclarLlave, partidoDeLlave, SECCIONES_EN_LLAVE, bloqueaEnLlave,
+    mezclarLlave, partidoDeLlave, SECCIONES_EN_LLAVE, SECCIONES_QUE_USAN_LLAVE, repintarLaQueLaMuestra, bloqueaEnLlave,
     series, resumen, resolverSlot, llave, naturalezaCruce, naturalezaPartido,
     faseDeFecha, tieneVentanas, tablaCerrada,
     /* html */

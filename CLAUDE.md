@@ -28,7 +28,7 @@ node test-4factores.js     #  96 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  63 tests · detalle partido a partido, perfil de tiro y su PDF
-node test-scouting.js      # 519 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis,
+node test-scouting.js      # 526 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis,
                            #             titularidad, las SEÑALES compartidas y el menor de los males
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
@@ -102,7 +102,7 @@ node test-fases.js         #  91 tests · fases, cruces y series: el parser de l
                            #             intrazonal e interzonal, la fase por ventana, las métricas que no
                            #             mezclan fases y la barra que repinta Clasificación y Fixture
 
-node test-interzonal.js    # 204 tests · la llave entre zonas: un cliente de una zona recibe quién
+node test-interzonal.js    # 217 tests · la llave entre zonas: un cliente de una zona recibe quién
                            #             contra quién y un 403 por el libro de la otra, los slots
                            #             «1° Norte vs 2° Sur», el modo llave y la fase activa; los
                            #             libros vinculados, el acceso por partido y el editor de cruces
@@ -119,7 +119,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7017 tests en total. Todos tienen que dar verde antes de commitear.**
+**7037 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -234,7 +234,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=253`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=254`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -11580,3 +11580,85 @@ tocan las estructuras internas del índice (`filasPorPartido`,
 - **Panel Master**, sesión de admin: «Editar» en «Playoffs - Zona A»
   muestra `…tVEq5M` y el botón de guardar habilitado.
 - **Al revés, 15 mutaciones**, todas caen.
+
+---
+
+## 80. EL RIVAL DE OTRA ZONA CONTRA SU PROPIA LIGA, Y LA FALTA TÁCTICA (2026-09-30)
+
+Reporte con captura del informe Universal vs Hogar Social.
+`test-interzonal.js` (sección 8e-8h) y `test-scouting.js` lo fijan.
+
+### 1 · El escudo del rival · y tres defectos más que salieron al medirlo
+
+- **Scouting pide los escudos de otra zona** (`SGADD_FASES.pedirEscudos`),
+  igual que la llave: el caché de LOGOS solo tiene los del libro propio.
+- **Scouting se repinta cuando llega la llave del servidor**
+  (`SECCIONES_QUE_USAN_LLAVE`). Entrando directo a Scouting, el informe se
+  pintaba antes de la llave: sin el rival de otra zona en el selector y sin
+  el cruce preseleccionado.
+- **«Último: 60 vs 69 —»**: el rival del último partido de un injertado es
+  de SU zona y no está en el índice. `rivalDelTexto()` lo saca del «A vs B».
+- **La fecha llegaba un día antes.** El índice arma la fecha a la
+  medianoche local de quien lo construye; en Vercel es UTC, y serializada
+  como instante el partido del 22/09 llegaba al navegador como el 21 a las
+  21 h. Ahora `__fecha` viaja como día (`AAAA-MM-DD`) y se revive local. El
+  test exporta en un proceso con `TZ=Pacific/Kiritimati` e injerta acá.
+
+### 2 · Cada equipo contra la mediana de SU liga
+
+El servidor exporta al rival con **`__ligaOrigen`**: mediana, percentil y
+puesto de ESE equipo en cada métrica, calculados contra su zona, más la
+etiqueta de la zona. **Viajan los resultados, no las distribuciones**: los
+valores de los otros equipos de su zona no le llegan al cliente.
+
+`leer()` y `ranking()` del núcleo usan ese contexto para un injertado, así
+que **todo el informe** lo mide contra su liga: el color de la matriz, el
+chip de puesto, los rankings y la referencia. La matriz, cuando los dos
+equipos juegan en zonas distintas (`cruzada`), va:
+
+```
+Métrica | HOGAR SOCIAL | Mediana Zona B || UNIVERSAL | Mediana Zona A
+```
+
+y los rankings dicen «· en APB 2026 · Zona A». Entre dos equipos de la
+misma zona, una sola columna «Liga», como siempre. Un injertado sin mediana
+declarada **no cae** a la de la otra liga: muestra «—».
+
+**Lo que NO cambió:** las bandas de sus JUGADORES (fortalezas, fugas,
+marcas) se siguen midiendo contra los calificados de la liga del cliente —
+eso necesitaría exportar las distribuciones de jugadores de su zona.
+
+### 3 · La falta táctica: una sola decisión
+
+`faltaRentable` corría solo por la vía económica (2 × T1% + 0,10 ≤ PPT2).
+El caso real, **GARCIA BARUCCO (UNIVERSAL)**: 44,2 % en libres, 7,1
+intentos, PPT2 0,914 → 0,98 > 0,914 → «NO CORTAR CON FALTA», mientras su
+ficha decía que la falta sobre él cuesta menos que sobre cualquier otro y
+la clave lo omitía.
+
+Ahora hay dos vías, y cualquiera alcanza (con volumen de línea y < 58 %):
+
+1. la económica, igual que antes;
+2. **la de LIGA**: T1% bajo su liga (`porDebajo(bandaT1)`) o bajo el piso
+   absoluto `t1Regalable` (40 %).
+
+**No se usa `t1Pobre`** (0,60): su propio comentario dice «castigable, pero
+NO con falta sistemática», y con él el caso SCHROEDER (53,7 % contra 1,09 de
+PPT2, que no es negocio) salía rentable. Hay test.
+
+- El modificador se llama **«FALTA TÁCTICA RENTABLE.»** y compara contra la
+  jugada promedio de su liga (`pppLiga`, la mediana de PPP de los equipos)
+  **solo si es cierto**: en la Zona A es 0,83 < 0,88 y no se dice.
+- **La clave «Falta táctica rentable» usa la MISMA señal** que la marca.
+  Antes elegía por `regalableEnLaLinea` (uso de línea alto y T1% ≤ t1Pobre)
+  y podía nombrar a alguien cuya marca decía «NO CORTAR CON FALTA». Hay un
+  test de grilla que exige que clave y marca coincidan y que ninguna ficha
+  diga a la vez «la falta es barata» y «no cortar con falta».
+
+### Verificado
+
+- **Con KV y Google reales** (backend local, token de Hogar Social): la
+  cabecera con los escudos de los dos, «Último: 60 vs 69 PLATENSE 'A' ·
+  22/09», la matriz con la mediana de la Zona B y de la Zona A, y GARCIA
+  BARUCCO con «FALTA TÁCTICA RENTABLE» y en la clave; ningún «NO CORTAR».
+- **Al revés, 14 mutaciones**, todas caen.
