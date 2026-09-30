@@ -28,6 +28,7 @@
    y además quedaría mintiendo apenas ese jugador cambie de rendimiento.
    ===================================================================== */
 global.SGADD = require('./js/sgadd-core.js');
+const fs = require('fs');
 const S = require('./js/sgadd-scouting.js');
 /* El registro de niveles, para verificar que el piso económico del tiro
    rentable sigue siendo absoluto (sección 24). */
@@ -697,6 +698,42 @@ check('el resumen cierra con el estado del ciclo reciente', /últimos \d+ partid
 check('resumenEjecutivo() de un equipo inexistente da string vacío', S.resumenEjecutivo(idx, 'UNIVERSAL', 'NO_EXISTE') === '');
 
 const informe = S.informePrePartido(idx, 'ATENAS A', 'UNIVERSAL');
+/* =====================================================================
+   LOS PJ DE LA TABLA EN LA CABECERA (punto 82). Un partido cargado sin
+   estadísticas suma en Clasificación —con el ⚠ amarillo— y el scouting lo
+   ignoraba. Los partidos manuales, con la forma que guarda el catálogo.
+   ===================================================================== */
+{
+  const CL = require('./js/sgadd-clasificacion.js');
+  const MAN = [
+    { id: 'm1', fecha: '2099-01-10', local: 'ATENAS A', visitante: 'PLATENSE A', puntosLocal: 70, puntosVisitante: 64 },
+    { id: 'm2', fecha: '2099-01-17', local: 'NAUTICO ENSENADA', visitante: 'ATENAS A', puntosLocal: 80, puntosVisitante: 61 },
+  ];
+  const filas = CL.filasPorEquipo(idx, MAN);
+  const fA = filas.get('ATENAS A');
+  const inf = S.informePrePartido(idx, 'ATENAS A', 'UNIVERSAL', { filas: filas });
+  const base = S.informePrePartido(idx, 'ATENAS A', 'UNIVERSAL');
+  check('la cabecera del scouting muestra el MISMO PJ que la tabla de posiciones',
+    inf.local.pj === fA.pj && inf.local.pj === base.local.pj + 2, [inf.local.pj, fA.pj, base.local.pj]);
+  check('  y el mismo récord', inf.local.ganados === fA.pg && inf.local.perdidos === fA.pp);
+  check('  el split suma cada partido de su lado: uno de local, uno de visitante',
+    inf.local.local.pj === base.local.local.pj + 1 && inf.local.visitante.pj === base.local.visitante.pj + 1
+    && inf.local.local.ganados === base.local.local.ganados + 1 && inf.local.visitante.perdidos === base.local.visitante.perdidos + 1);
+  check('  dice cuántos no tienen estadísticas y sobre cuántos van los promedios',
+    inf.local.manuales === 2 && inf.local.pjConEstadisticas === base.local.pj);
+  check('  el último partido es el sin estadísticas más reciente, marcado',
+    inf.local.ultimoPartido.sinEstadisticas && inf.local.ultimoPartido.pts === 61 && inf.local.ultimoPartido.ptsRival === 80
+    && inf.local.ultimoPartido.rival === 'NAUTICO ENSENADA', inf.local.ultimoPartido);
+  check('  y la racha los cuenta: cierra con una derrota', inf.local.racha && inf.local.racha.tipo === 'PERDIDO');
+  check('LOS PROMEDIOS NO CAMBIAN: siguen sobre los partidos con box score',
+    JSON.stringify(inf.matriz) === JSON.stringify(base.matriz) && idx.get('ATENAS A').pj === base.local.pj);
+  check('el equipo sin partidos manuales queda igual', JSON.stringify(inf.visitante) === JSON.stringify(base.visitante));
+  const fuente = fs.readFileSync('./js/sgadd-scouting.js', 'utf8');
+  const cuerpoInf = fuente.slice(fuente.indexOf('function scoutInforme('), fuente.indexOf('function scoutInforme(') + 1500);
+  check('la pantalla le pasa al motor la tabla con los partidos sin estadísticas del tramo',
+    cuerpoInf.includes('opcInf.filas = clasifFilasVigentes(idx)') && cuerpoInf.includes('informePrePartido(idx, SCOUT_UI.local, SCOUT_UI.visitante, opcInf)'));
+}
+
 check('el informe completo se resuelve', informe.ok === true, informe.motivo);
 check('trae los 6 bloques del pedido',
   !!informe.local && !!informe.matriz && !!informe.cicloLocal && !!informe.jugadoresRival &&
@@ -2433,7 +2470,7 @@ check('  y la marca lo dice con esas palabras, nunca «no cortar con falta»',
     && /por debajo de su liga/.test(m.detalle) && /0,88/.test(m.detalle))
   && !S.modificadoresDe(BARUCCO).some(m => m.id === 'faltaCara'));
 check('  la comparación con la jugada promedio de su liga va solo si es cierta',
-  /jugada promedio de su liga \(0,95\)/.test(S.modificadoresDe(Object.assign({ pppLiga: 0.95 }, BARUCCO)).map(m => m.detalle).join(''))
+  /jugada promedio de su liga \(PPP 0,95\)/.test(S.modificadoresDe(Object.assign({ pppLiga: 0.95 }, BARUCCO)).map(m => m.detalle).join(''))
   && !/jugada promedio/.test(S.modificadoresDe(Object.assign({ pppLiga: 0.83 }, BARUCCO)).map(m => m.detalle).join('')));
 /* LA CIFRA ES LA DE LA TABLA (punto 81): PPT1 0,44 de la tabla del
    jugador, y la cuenta de los dos libres a la vista. El ×2 NO es una
@@ -2442,12 +2479,19 @@ check('  la comparación con la jugada promedio de su liga va solo si es cierta'
   const conTabla = Object.assign({ pptLibre: 0.4417 }, BARUCCO);
   const det = S.modificadoresDe(conTabla).find(m => m.id === 'faltaRentable').detalle;
   check('el texto de la falta cita el PPT1 EXACTO de la tabla y la cuenta: 0,44 × 2 libres = 0,88',
-    /PPT1 0,44 × 2 libres = 0,88 puntos esperados por posesión/.test(det), det);
+    /PPT1 0,44 × 2 libres = 0,88 puntos por la acción cortada con falta/.test(det), det);
+  /* LA UNIDAD (punto 82): la acción cortada, no «la posesión» del equipo. */
+  check('  la unidad es la ACCIÓN CORTADA, nunca «por posesión»', !/por posesión/.test(det) && !/posesión/.test(det.split('.')[0]), det);
+  const eco = S.modificadoresDe({ t1: 0.52, t1i: 3, pptDoble: 1.17, pptLibre: 0.52 }).find(m => m.id === 'faltaRentable');
+  check('  y contra la misma jugada si termina: «1,04 … contra 1,17 por doble intentado (PPT2)»',
+    eco && /PPT1 0,52 × 2 libres = 1,04 puntos por la acción cortada con falta, contra 1,17 por doble intentado \(PPT2\) si termina la jugada/.test(eco.detalle), eco && eco.detalle);
+  check('  la vía de liga nombra la PPP de su liga', /jugada promedio de su liga \(PPP 0,95\)/.test(S.modificadoresDe(Object.assign({ pppLiga: 0.95 }, conTabla)).map(m => m.detalle).join('')));
   const distinto = S.modificadoresDe(Object.assign({}, conTabla, { pptLibre: 0.46 })).find(m => m.id === 'faltaRentable').detalle;
   check('  si la columna PPT1 dice otra cosa, manda la columna', /PPT1 0,46 × 2 libres = 0,92/.test(distinto), distinto);
   const cara = S.modificadoresDe({ t1: 0.537, t1i: 3, pptDoble: 1.09, pptLibre: 0.537, bandaT1: { id: 'estandar', label: 'estandar' } })
     .find(m => m.id === 'faltaCara');
-  check('  y «no cortar con falta» muestra la misma cuenta', cara && /PPT1 0,54 × 2 libres = 1,07/.test(cara.detalle), cara && cara.detalle);
+  check('  y «no cortar con falta» muestra la misma cuenta', cara && /PPT1 0,54 × 2 libres = 1,07 puntos por la acción cortada con falta, contra 1,09 por doble intentado \(PPT2\)/.test(cara.detalle)
+    && !/posesión/.test(cara.detalle), cara && cara.detalle);
 }
 check('  el piso absoluto también: menos de 40% en la línea es falta rentable',
   S.senales({ t1: 0.38, t1i: 3, pptDoble: 0.70 }).faltaRentable);

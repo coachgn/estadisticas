@@ -1444,18 +1444,66 @@ const SGADD_SCOUT = (function () {
     };
   }
 
-  function fichaEquipo(idx, clave) {
+  /* LA TABLA DE POSICIONES, para los partidos sin estadísticas (punto 82).
+     Se lee perezosa: en el navegador es el global, en Node el módulo. */
+  function clasif() {
+    if (typeof SGADD_CLASIF !== 'undefined') return SGADD_CLASIF;
+    try { return require('./sgadd-clasificacion.js'); } catch (e) { return null; }
+  }
+
+  /**
+   * La ficha del equipo en la cabecera del informe.
+   *
+   * PJ, RÉCORD, LOCAL/VISITANTE, RACHA Y ÚLTIMO PARTIDO son los de la TABLA
+   * DE POSICIONES (punto 82): con `fila` —la del equipo en Clasificación—
+   * suman los partidos cargados sin estadísticas, igual que la tabla y que
+   * la ficha de Equipos (punto 44). Sin `fila`, los del índice.
+   *
+   * LOS PROMEDIOS NO: siguen saliendo de los partidos con box score. Un
+   * partido del que solo se sabe el marcador no tiene tiros, rebotes ni
+   * minutos; dividir los totales por él daría promedios plausibles y
+   * falsos. Por eso la ficha trae `pjConEstadisticas` al lado.
+   */
+  function fichaEquipo(idx, clave, fila) {
     const e = idx.get(clave);
     if (!e) return null;
     const ultima = e.partidos.length ? e.partidos[e.partidos.length - 1] : null;
-    return {
+    const base = {
       clave: e.clave, nombre: e.nombre,
       pj: e.record.pj, ganados: e.record.ganados, perdidos: e.record.perdidos,
       racha: e.racha,
       local: { pj: e.split.LOCAL.pj, ganados: e.split.LOCAL.ganados, perdidos: e.split.LOCAL.perdidos },
       visitante: { pj: e.split.VISITANTE.pj, ganados: e.split.VISITANTE.ganados, perdidos: e.split.VISITANTE.perdidos },
       ultimoPartido: ultima ? detallePartido(idx, e, ultima) : null,
+      pjConEstadisticas: e.record.pj, manuales: 0, detalleManual: [],
     };
+    if (!fila || !fila.manuales) return base;
+    const C = clasif();
+    const cond = C ? C.condicionConManuales(e.split, fila) : null;
+    const dm = fila.detalleManual || [];
+    const out = Object.assign(base, {
+      pj: fila.pj, ganados: fila.pg, perdidos: fila.pp,
+      manuales: fila.manuales, detalleManual: dm,
+      racha: C ? C.rachaConManuales(e.partidos, dm) : e.racha,
+    });
+    if (cond) {
+      out.local = { pj: cond.LOCAL.pj, ganados: cond.LOCAL.ganados, perdidos: cond.LOCAL.perdidos, manuales: cond.LOCAL.manuales };
+      out.visitante = { pj: cond.VISITANTE.pj, ganados: cond.VISITANTE.ganados, perdidos: cond.VISITANTE.perdidos, manuales: cond.VISITANTE.manuales };
+    }
+    /* El ÚLTIMO partido puede ser uno sin estadísticas: se muestra con su
+       marcador y marcado, en vez de un partido anterior. */
+    const tUlt = ultima && ultima.__fecha instanceof Date ? ultima.__fecha.getTime() : null;
+    const ultM = dm.filter(d => d && d.fecha).sort((a, b) => String(a.fecha).localeCompare(String(b.fecha))).pop();
+    if (ultM) {
+      const f = String(ultM.fecha).slice(0, 10).split('-');
+      const tM = f.length === 3 ? new Date(Number(f[0]), Number(f[1]) - 1, Number(f[2])).getTime() : null;
+      if (tM !== null && (tUlt === null || tM > tUlt)) {
+        out.ultimoPartido = { id: null, fecha: new Date(tM), partido: '', rival: ultM.rival ? (SGADD.limpiarNombre ? SGADD.limpiarNombre(ultM.rival) : ultM.rival) : '—', claveRival: null,
+          condicion: ultM.rol === 'Local' ? 'LOCAL' : 'VISITANTE', resultado: ultM.gano ? 'GANADO' : 'PERDIDO',
+          pts: nn(Number(ultM.puntosPropios)), ptsRival: nn(Number(ultM.puntosRival)), sinEstadisticas: true };
+      }
+    }
+    return out;
   }
 
   /**
@@ -1832,23 +1880,27 @@ const SGADD_SCOUT = (function () {
          el T1%, que es el mismo número (un punto por libre convertido). */
       const ppt1 = nn(p.pptLibre) !== null ? p.pptLibre : (p.t1 || 0);
       const esperado = ppt1 * 2;
-      const cuenta = 'PPT1 ' + num2(ppt1) + ' × 2 libres = ' + num2(esperado) + ' puntos esperados por posesión';
+      /* LA UNIDAD ES LA ACCIÓN CORTADA (punto 82), no «la posesión» del
+         equipo: 2 × PPT1 es lo que vale ESA jugada si se la corta con falta,
+         y se compara contra lo que vale la misma jugada si termina —su PPT2,
+         por doble intentado— o contra la jugada promedio de su liga (PPP). */
+      const cuenta = 'PPT1 ' + num2(ppt1) + ' × 2 libres = ' + num2(esperado) + ' puntos por la acción cortada con falta';
       const porEconomia = nn(p.pptDoble) !== null && (esperado + MARGEN_FALTA) <= p.pptDoble;
       m.push(s.faltaRentable ? {
         id: 'faltaRentable', eje: 'conPelota', icono: '🎯',
         titulo: 'FALTA TÁCTICA RENTABLE.',
         detalle: 'Convierte ' + pct(p.t1) + ' de libres' + (porEconomia ? '' : ', por debajo de su liga') +
           ': ' + cuenta +
-          (porEconomia ? ' contra ' + num2(p.pptDoble) + ' si termina la jugada'
+          (porEconomia ? ', contra ' + num2(p.pptDoble) + ' por doble intentado (PPT2) si termina la jugada'
             : (nn(p.pppLiga) !== null && esperado <= p.pppLiga
-              ? ', no más que una jugada promedio de su liga (' + num2(p.pppLiga) + ')'
-              : '') + ', y le baja la eficiencia a la posesión') +
+              ? ', no más que una jugada promedio de su liga (PPP ' + num2(p.pppLiga) + ')'
+              : '') + ', y le baja la eficiencia a la jugada') +
           '. Solo fuera del bonus y con margen de faltas del defensor.',
       } : {
         id: 'faltaCara', eje: 'conPelota', icono: '⚖',
         titulo: 'NO CORTAR CON FALTA.',
-        detalle: 'Convierte ' + pct(p.t1) + ' de libres: ' + cuenta + ', y la jugada le rinde ' + num2(p.pptDoble) +
-          '. Cortarla con falta le sube el valor de la posesión.',
+        detalle: 'Convierte ' + pct(p.t1) + ' de libres: ' + cuenta + ', contra ' + num2(p.pptDoble) +
+          ' por doble intentado (PPT2) si termina la jugada. Cortarla con falta le sube el valor.',
       });
     }
     if (s.dominaElCristal) {
@@ -3016,10 +3068,12 @@ const SGADD_SCOUT = (function () {
           : eV.clave);
     const claveNuestro = claveRival === eL.clave ? eV.clave : eL.clave;
 
+    /* `filas` = las de la tabla de posiciones, por clave (punto 82). */
+    const filaDe = (k) => (o.filas && typeof o.filas.get === 'function') ? (o.filas.get(k) || null) : null;
     return {
       ok: true,
-      local: fichaEquipo(idx, eL.clave),
-      visitante: fichaEquipo(idx, eV.clave),
+      local: fichaEquipo(idx, eL.clave, filaDe(eL.clave)),
+      visitante: fichaEquipo(idx, eV.clave, filaDe(eV.clave)),
       claveRival: claveRival,
       claveNuestro: claveNuestro,
       historial: historialDirecto(idx, eL.clave, eV.clave),
@@ -3723,13 +3777,14 @@ function scoutBloqueEncabezado(inf) {
           ${logo ? `<img src="${escapeAttr(logo)}" alt="" class="w-10 h-10 object-contain shrink-0">` : ''}
           <div class="min-w-0">
             <p class="font-display text-base text-white truncate">${escapeHtml(f.nombre)}</p>
-            <p class="text-[11px] font-mono text-ink">${f.pj} PJ · récord ${scoutRecord(f)}</p>
+            <p class="text-[11px] font-mono text-ink">${f.pj} PJ · récord ${scoutRecord(f)}${f.manuales && typeof clasifBadgeManual === 'function' ? ' ' + clasifBadgeManual({ manuales: f.manuales, detalleManual: f.detalleManual }) : ''}</p>
+            ${f.manuales ? `<p class="text-[10px] dato-sec">Promedios sobre los ${f.pjConEstadisticas} partidos con estadísticas.</p>` : ''}
           </div>
         </div>
         <div class="mt-2 space-y-0.5 text-[11px] font-mono dato-sec">
           <p>De local: ${f.local.pj} PJ · ${scoutRecord(f.local)}</p>
           <p>De visitante: ${f.visitante.pj} PJ · ${scoutRecord(f.visitante)}</p>
-          ${u ? `<p class="text-ink">Último: ${escapeHtml(String(u.pts))} vs ${escapeHtml(String(u.ptsRival))} ${escapeHtml(u.rival)} · ${scoutFecha(u.fecha)}</p>` : ''}
+          ${u ? `<p class="text-ink">Último: ${escapeHtml(String(u.pts))} vs ${escapeHtml(String(u.ptsRival))} ${escapeHtml(u.rival)} · ${scoutFecha(u.fecha)}${u.sinEstadisticas ? ' · sin estadísticas' : ''}</p>` : ''}
         </div>
       </div>`;
   };
@@ -4399,8 +4454,11 @@ function scoutInforme(idx) {
     return `<div class="card rounded-xl p-8 border border-hairline text-center text-muted text-sm mt-4">
       Elegí los dos equipos del cruce para generar el informe.</div>`;
   }
-  const inf = SGADD_SCOUT.informePrePartido(idx, SCOUT_UI.local, SCOUT_UI.visitante,
-    SCOUT_UI.claveRival ? { claveRival: SCOUT_UI.claveRival } : {});
+  /* LA TABLA DE POSICIONES, con los partidos sin estadísticas del tramo:
+     la cabecera muestra el mismo PJ que Clasificación (punto 82). */
+  const opcInf = SCOUT_UI.claveRival ? { claveRival: SCOUT_UI.claveRival } : {};
+  if (typeof clasifFilasVigentes === 'function') opcInf.filas = clasifFilasVigentes(idx);
+  const inf = SGADD_SCOUT.informePrePartido(idx, SCOUT_UI.local, SCOUT_UI.visitante, opcInf);
   if (!inf.ok) return '<div class="mt-4">' + SGADD_UI.aviso('No se pudo armar el informe', inf.motivo, 'error') + '</div>';
 
   /* Selector del equipo scouteado: por defecto el motor elige el rival (el

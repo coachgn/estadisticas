@@ -28,7 +28,7 @@ node test-4factores.js     #  96 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  63 tests · detalle partido a partido, perfil de tiro y su PDF
-node test-scouting.js      # 529 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis,
+node test-scouting.js      # 541 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis,
                            #             titularidad, las SEÑALES compartidas y el menor de los males
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
@@ -119,7 +119,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7043 tests en total. Todos tienen que dar verde antes de commitear.**
+**7055 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -234,7 +234,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=255`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=256`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -11703,3 +11703,39 @@ angosta puede quedar en la línea de abajo. No es un artefacto del dato.
 
 Tests: `test-interzonal.js` 8i (3) y `test-scouting.js` (3). Al revés, las
 tres reversiones caen.
+
+---
+
+## 82. LA FALTA EN SU UNIDAD Y LOS PJ DE LA TABLA EN EL SCOUTING (2026-09-30)
+
+### La unidad de la falta es la ACCIÓN CORTADA
+
+«Puntos esperados por posesión» se leía como la posesión del equipo. Lo
+que se compara es la MISMA jugada con dos finales: cortada con falta (dos
+libres) o terminada (su tiro de dos). Ahora:
+
+```
+PPT1 0,52 × 2 libres = 1,04 puntos por la acción cortada con falta,
+contra 1,17 por doble intentado (PPT2) si termina la jugada.
+```
+
+La vía de liga nombra la unidad: «una jugada promedio de su liga (PPP
+0,95)». Ninguna de las dos notas dice ya «posesión».
+
+### Los PJ de la cabecera son los de la tabla
+
+`fichaEquipo(idx, clave, fila)` recibe la fila de Clasificación
+(`clasifFilasVigentes`, la misma de Equipos, punto 44) y suma los partidos
+sin estadísticas en **PJ, récord, local/visitante, racha y último partido**.
+La cabecera lleva el ⚠ amarillo y «Promedios sobre los N partidos con
+estadísticas». Medido en el libro de DEPORTIVO (Ida): ATENAS B, C.C.
+TOLOSANO, SUD AMÉRICA y UNIVERSITARIO pasan de 10 PJ a 11, como la tabla.
+
+**LOS PROMEDIOS NO SE DIVIDEN POR ESE PJ, y es a propósito** (punto 44): un
+partido del que solo se sabe el marcador no tiene tiros, rebotes ni
+minutos; dividir los totales por él da promedios plausibles y falsos (con
+un partido manual de cada once, todo baja un 9 %). Hay un test que exige
+que la matriz no cambie al sumar los manuales.
+
+**El rival de otra zona** no los recibe: sus partidos manuales viven en el
+catálogo de SU zona y no viajan con `/rival`.
