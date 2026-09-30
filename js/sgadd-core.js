@@ -2540,7 +2540,73 @@
       return { media: m, desvio: Math.sqrt(varianza), n: vals.length };
     }
 
+    /* =================================================================
+       UN EQUIPO DE OTRA ZONA · exportar e injertar (punto 79)
+
+       El scouting de un rival de la llave que juega en OTRA zona: su libro
+       no le llega al cliente (el 403 de `/equipos` sigue), así que el
+       servidor arma el índice de ESA zona y exporta SOLO a ese equipo —su
+       fila de temporada, sus partidos con el otro lado de cada uno, sus
+       jugadores y el box de SUS jugadores—. El panel lo injerta en una
+       COPIA del índice propio que usa solo Scouting.
+
+       Se injerta, NO se fusiona el libro: una fusión crearía como equipos
+       a los rivales del rival (media liga ajena en la tabla) y movería las
+       distribuciones de la zona propia. Injertado, el rival se mide contra
+       la liga del cliente y nada de la zona propia cambia.
+       ================================================================= */
+    function exportarEquipo(k) {
+      const e = equipos.get(claveEquipo(k));
+      if (!e) return null;
+      const copia = Object.assign({}, e);
+      delete copia.partidosPorId; delete copia.factoresPorId;
+      const pares = [];
+      e.partidos.forEach((p) => {
+        const par = (filasPorPartido.get(p.__partido) || []).filter(x => x.equipo !== e.clave);
+        if (par.length) pares.push([p.__partido, par]);
+      });
+      const box = [];
+      new Set(e.partidos.map(p => p.__id).filter(Boolean)).forEach((id) => {
+        const b = (liga.boxPorPartido.get(id) || []).filter(r => r.__equipo === e.clave);
+        if (b.length) box.push([id, b]);
+      });
+      const jp = [];
+      new Set((e.jugadores || []).map(j => j.__clave).filter(Boolean)).forEach((c) => {
+        const ps = (liga.jugadorPartidos.get(c) || []).filter(r => r.__equipo === e.clave);
+        if (ps.length) jp.push([c, ps]);
+      });
+      return JSON.parse(JSON.stringify({ v: 1, fase: fase, equipo: copia, pares: pares, box: box, jugadorPartidos: jp }));
+    }
+
+    function injertarEquipo(s) {
+      if (!s || !s.equipo || !s.equipo.clave) return false;
+      /* JSON convierte las fechas en texto: vuelven a ser Date, que es lo
+         que ordena y compara el resto del índice. */
+      const r = JSON.parse(JSON.stringify(s), (k, v) => (k === '__fecha' && typeof v === 'string') ? new Date(v) : v);
+      const e = r.equipo;
+      if (equipos.has(e.clave)) return false;   // ya es de esta liga: no se pisa
+      e.__externo = true;
+      e.partidos = e.partidos || []; e.factoresPartido = e.factoresPartido || []; e.jugadores = e.jugadores || [];
+      e.partidosPorId = new Map(); e.partidos.forEach((p) => { if (p.__id) e.partidosPorId.set(p.__id, p); });
+      e.factoresPorId = new Map(); e.factoresPartido.forEach((f) => { if (f.__id) e.factoresPorId.set(f.__id, f); });
+      equipos.set(e.clave, e);
+      const par = (k) => { if (!filasPorPartido.has(k)) filasPorPartido.set(k, []); return filasPorPartido.get(k); };
+      e.partidos.forEach((p) => { if (p.__partido) par(p.__partido).push({ equipo: e.clave, fila: p }); });
+      (r.pares || []).forEach(([k, lista]) => { lista.forEach(x => par(k).push(x)); });
+      (r.box || []).forEach(([id, filas]) => {
+        if (!liga.boxPorPartido.has(id)) liga.boxPorPartido.set(id, []);
+        filas.forEach(f => liga.boxPorPartido.get(id).push(f));
+      });
+      (r.jugadorPartidos || []).forEach(([c, filas]) => {
+        if (!liga.jugadorPartidos.has(c)) liga.jugadorPartidos.set(c, []);
+        filas.forEach(f => liga.jugadorPartidos.get(c).push(f));
+      });
+      liga.jugadoresPorEquipo.set(e.clave, e.jugadores);
+      return true;
+    }
+
     return {
+      exportarEquipo, injertarEquipo,
       fase, equipos, liga, avisos, agregarPartidos, partido, statJugador,
       lista: () => Array.from(equipos.values()),
       get: (k) => equipos.get(claveEquipo(k)) || null,

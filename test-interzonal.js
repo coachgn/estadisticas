@@ -174,7 +174,7 @@ const pedirLibro = async (tok, club, cat) => { catalogo.limpiarCache(); return H
        rompe acá. */
     const PERMITIDAS = new Set(['ok', 'torneo', 'nombre', 'zonas', 'postemporada', 'leidoEn', 'label', 'filas',
       'cerrada', 'puesto', 'clave', 'pj', 'pg', 'pp', 'conLibro', 'partidos', 'fase', 'fecha', 'local',
-      'visitante', 'ptsLocal', 'ptsVisitante', 'zonaLibro', 'sinLibro', 'ilegible', 'norte', 'sur']);
+      'visitante', 'ptsLocal', 'ptsVisitante', 'zonaLibro', 'zona', 'id', 'sinLibro', 'ilegible', 'norte', 'sur']);
     const extras = [];
     (function recorrer(v) {
       if (Array.isArray(v)) return v.forEach(recorrer);
@@ -328,13 +328,13 @@ const pedirLibro = async (tok, club, cat) => { catalogo.limpiarCache(); return H
     const fin = lista.find(t => t.declarada === 'final');
     check('la final (del libro de cada zona, sin datos todavía) sigue deshabilitada', fin && fin.sinDatos);
     check('esLlave reconoce el centinela', F.esLlave('*LLAVE*') && !F.esLlave('*TOTAL*') && !F.esLlave('IDA'));
-    ['clasificacion', 'fixture', 'glosario', 'configuracion', 'diagnostico'].forEach((s) => {
+    ['clasificacion', 'fixture', 'scouting', 'glosario', 'configuracion', 'diagnostico'].forEach((s) => {
       check('en modo llave «' + s + '» se pinta', !F.bloqueaEnLlave(s, '*LLAVE*'));
     });
-    ['principal', 'equipos', 'jugadores', 'scouting', 'simulador', 'comparativa'].forEach((s) => {
+    ['principal', 'equipos', 'jugadores', 'simulador', 'comparativa'].forEach((s) => {
       check('en modo llave «' + s + '» se BLOQUEA con aviso', F.bloqueaEnLlave(s, '*LLAVE*'));
     });
-    check('fuera del modo llave no se bloquea nada', !F.bloqueaEnLlave('scouting', 'IDA') && !F.bloqueaEnLlave('equipos', '*TOTAL*'));
+    check('fuera del modo llave no se bloquea nada', !F.bloqueaEnLlave('equipos', 'IDA') && !F.bloqueaEnLlave('equipos', '*TOTAL*'));
     check('el aviso dice que es solo la llave y por qué', /solo la llave/.test(F.avisoModoLlave()) && /postemporada/.test(F.avisoModoLlave()));
   }
 
@@ -825,6 +825,152 @@ const pedirLibro = async (tok, club, cat) => { catalogo.limpiarCache(); return H
       formato: { fases: [Object.assign({}, FASES_APB[0], { zonas: ['playoffs-zona-a'] })] } }, catalogo.validar);
     check('y rechaza un libro vinculado como zona de una fase', !maloZ.ok && /no es una zona/.test(maloZ.motivo || ''), maloZ.motivo);
     delete global.SGADD_FASES;
+
+    /* =================================================================
+       8 · ESCUDOS DE OTRA ZONA, EL LIBRO QUE SE VE, EL CAMBIO DE FASE Y EL
+       SCOUTING DEL RIVAL DE OTRA ZONA (punto 79)
+       ================================================================= */
+    seccion('8 · el rival de otra zona: escudo, scouting y el cambio de fase');
+
+    /* --- 8a · los escudos */
+    const CAT8 = JSON.parse(JSON.stringify(CAT7));
+    CAT8.apb.categorias['apb-c'].equipos[1].id = 4321;   // NAUTICO ENSENADA, con su id de Gesdeportiva
+    CAT8.hogar = { nombre: 'Hogar Social', liga: 'la-plata', equipoPropio: HO, plan: 'PLATA',
+      categorias: { 'hogar-pri': { label: 'Primera', sheetId: IDS.b, torneo: 'apb', zona: 'b' } } };
+    CAT8.bronce = { nombre: 'Sud America', liga: 'la-plata', equipoPropio: HO, plan: 'BRONCE',
+      categorias: { 'sud-pri': { label: 'Primera', sheetId: IDS.b, torneo: 'apb', zona: 'b' } } };
+    store[catalogo.CLAVE_KV] = JSON.stringify(CAT8);
+    LLAVE.limpiarCache();
+    const tokHogar = auth.firmarToken({ email: 'dt@hogar.com', club: 'hogar', equipoAsignado: HO, plan: 'PLATA' }, { expiraEn: '1h' });
+    const tokBronce = auth.firmarToken({ email: 'dt@sud.com', club: 'bronce', equipoAsignado: HO, plan: 'PLATA' }, { expiraEn: '1h' });
+    const rH = await pedirLlave(tokHogar, 'apb');
+    const filaNA = ((rH.body.zonas || {}).c || { filas: [] }).filas.find(f => f.clave === SGADD.claveEquipo(NA));
+    check('cada equipo de la llave viaja con su zona y su id: NAUTICO es de la C, #4321',
+      filaNA && filaNA.zona === 'c' && filaNA.id === 4321, filaNA);
+
+    const pedidos = [];
+    global.LOGOS = { getUrl: () => null, resolver: (ns) => { pedidos.push(ns.slice()); return Promise.resolve(); } };
+    const fasesH = F.filtrarPorZona(F.parsear({ fases: FASES_APB }, { participan: PART }).fases, 'b');
+    const llH = F.llave(fasesH, F.mezclarLlave({ tablas: {}, partidosPorFase: {}, zonaDeEquipo: {}, nombresZona: {} }, fasesH, rH.body, 'b'));
+    const nombres = F.nombresDeLlave(llH);
+    F.pedirEscudos(nombres);
+    check('la llave PIDE el escudo de los equipos de otra zona (su libro no los resuelve)',
+      pedidos.length === 1 && pedidos[0].indexOf(SGADD.limpiarNombre(NA)) !== -1
+      && pedidos[0].some(n => SGADD.claveEquipo(n) === SGADD.claveEquipo(RE)), pedidos);
+    F.pedirEscudos(nombres);
+    check('y una sola vez: repintar no vuelve a pedirlos (sin ciclo con el hook de LOGOS)', pedidos.length === 1);
+    delete global.LOGOS;
+
+    /* --- 8b · el libro vinculado se ve al editarlo */
+    const lista8 = catalogo.publico(CAT8, { admin: true, origen: 'kv' });
+    const t8 = lista8.find(c => c.id === 'apb');
+    const kRep = t8.categorias.find(k => k.zona === 'repechaje');
+    check('el admin recibe el FINAL del libro vinculado, no el id', kRep.libroFin === IDS.rep.slice(-6)
+      && !JSON.stringify(lista8).includes(IDS.rep), kRep.libroFin);
+    global.SGADD_FASES = F;
+    const TU8 = require('./js/sgadd-torneos.js');
+    const libro8 = TU8.librosDe(t8).find(l => l.zona === 'repechaje');
+    check('los libros vinculados del editor lo traen', libro8.fin === IDS.rep.slice(-6));
+    try { TU8.editarLibro('apb', 'repechaje'); } catch (e) { /* repinta el DOM: acá no hay */ }
+    check('al tocar «Editar», el campo del libro muestra el conectado («…' + IDS.rep.slice(-6) + '»), no vacío',
+      TU8.libroEd.libro === '…' + IDS.rep.slice(-6) && TU8.libroEd.editando, TU8.libroEd.libro);
+    check('así no le falta nada para guardar', TU8.faltantesLibro(TU8.libroEd, t8).length === 0, TU8.faltantesLibro(TU8.libroEd, t8));
+    const i8 = TU8.intencionLibro(t8, TU8.libroEd);
+    check('y guardar sin tocarlo no manda otro libro', i8.zonas.repechaje && i8.zonas.repechaje.sheetId === undefined, i8.zonas.repechaje);
+    const g8 = mutar.aplicar(JSON.parse(JSON.stringify(CAT8)), 'torneo', i8, catalogo.validar);
+    check('el libro sigue conectado después de guardar', g8.ok && g8.catalogo.apb.categorias['apb-rep'].sheetId === IDS.rep, g8.motivo);
+    const otro = 'Z'.repeat(40) + 'nuevo1';
+    const i8b = TU8.intencionLibro(t8, Object.assign({}, TU8.libroEd, { libro: 'https://docs.google.com/spreadsheets/d/' + otro + '/edit' }));
+    check('pegar otro link sí lo cambia', i8b.zonas.repechaje.sheetId === otro);
+    check('un link roto se denuncia igual', TU8.faltantesLibro(Object.assign({}, TU8.libroEd, { libro: 'no-es-un-libro' }), t8)
+      .some(x => /forma de id/.test(x)));
+    delete global.SGADD_FASES;
+
+    /* --- 8c · el cambio de fase no deja la pantalla congelada */
+    {
+      const vm = require('vm'); const fs = require('fs');
+      const root = { innerHTML: '' };
+      const llamadas = [];
+      const ctxv = {
+        console, Promise, JSON, Math, Date, Map, Set, WeakMap, Array, Object, String, Number, RegExp, Error,
+        SGADD: SGADD, SGADD_UI: require('./js/sgadd-ui.js'),
+        window: { location: { hash: '' } }, location: { hash: '' }, history: { pushState() {}, replaceState() {} },
+        setTimeout: () => 0, clearTimeout() {},
+        localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+        document: { getElementById: (id) => (id === 'view-root' ? root : null),
+          querySelector: (q) => (q === '#view-root [data-modo-llave]' && /data-modo-llave/.test(root.innerHTML)) ? {} : null,
+          querySelectorAll: () => [], getElementsByTagName: () => [] },
+        currentSection: 'equipos',
+        renderSection: (s) => { llamadas.push('router:' + s); root.innerHTML = 'SECCION ' + s; },
+        equiposPintar: () => { llamadas.push('equiposPintar'); },
+      };
+      ctxv.globalThis = ctxv;
+      vm.createContext(ctxv);
+      ['sgadd-app.js', 'sgadd-fases.js'].forEach(f => vm.runInContext(fs.readFileSync('./js/' + f, 'utf8'), ctxv, { filename: f }));
+      const APP = vm.runInContext('SGADD_APP', ctxv);
+      const FV = vm.runInContext('SGADD_FASES', ctxv);
+      APP.estado.hojas = hojasDe(ZB);
+      APP.estado.torneo = FV.LLAVE; APP.estado.fase = 'REPECHAJE A-B';
+      root.innerHTML = APP.barra() + FV.avisoModoLlave();
+      check('el aviso del modo llave lleva su marca', /data-modo-llave/.test(root.innerHTML));
+      APP.cambiarTramo('GENERAL|REGULAR');
+      check('volver a la fase de la zona pasa por el ROUTER: la sección se vuelve a armar',
+        llamadas.indexOf('router:equipos') !== -1 && /SECCION equipos/.test(root.innerHTML), llamadas);
+      check('y no por el repintado de la sección, que no tenía dónde pintarse', llamadas.indexOf('equiposPintar') === -1, llamadas);
+      llamadas.length = 0;
+      APP.cambiarTramo('*TOTAL*|REGULAR');
+      check('entre dos fases de la zona, el repintado de siempre', llamadas.join() === 'equiposPintar', llamadas);
+      APP.cambiarTramo(FV.LLAVE + '|REPECHAJE A-B');
+      check('y al ir a la llave, el router otra vez', llamadas.indexOf('router:equipos') !== -1, llamadas);
+      check('scouting ya no se bloquea en modo llave: prepara ese cruce', !FV.bloqueaEnLlave('scouting', FV.LLAVE));
+    }
+
+    /* --- 8d · el scouting del rival de otra zona */
+    const pedirRival = async (tok, equipo) => { catalogo.limpiarCache(); LLAVE.limpiarCache();
+      return LLAVE.manejarRival(pedido(tok, { torneo: 'apb' }, { equipo: equipo })); };
+    const rR = await pedirRival(tokHogar, RE);
+    check('Hogar Social (2° B) pide a su rival del repechaje A/B, RECONQUISTA (3° A): 200', rR.status === 200, rR.body);
+    check('con el cruce que lo habilita', rR.body.cruce && rR.body.cruce.id === 'R3' && rR.body.zona === 'a', rR.body.cruce);
+    const eqR = rR.body.equipo && rR.body.equipo.equipo;
+    check('trae su fase regular: 3 partidos', eqR && eqR.clave === SGADD.claveEquipo(RE) && eqR.partidos.length === 3, eqR && eqR.partidos.length);
+    const cuerpo = JSON.stringify(rR.body);
+    check('y NADA del resto de su zona: ni una fila de temporada de otro equipo',
+      !/"EQUIPO":"ATENAS A"[^}]*"PJ"/.test(JSON.stringify(eqR.promedios || {})) && eqR.promedios && eqR.promedios.EQUIPO === RE,
+      eqR && eqR.promedios && eqR.promedios.EQUIPO);
+    check('ningún sheetId viaja', !/apbZona|apbRep|apbPlay/.test(cuerpo));
+    check('un equipo que NO es su rival en la llave: 403', (await pedirRival(tokHogar, NA)).status === 403);
+    check('Deportivo (1° B) no tiene cruce con Reconquista: 403 SIN_CRUCE', (await pedirRival(tokDepo, RE)).body.codigo === 'SIN_CRUCE');
+    check('sin el scouting en el plan: 403', (await pedirRival(tokBronce, RE)).status === 403);
+    check('sin token: 401', (await LLAVE.manejarRival(pedido(null, { torneo: 'apb' }, { equipo: RE }))).status === 401);
+    const rAd8 = await pedirRival(tokAdmin, RE);
+    check('el admin pasa sin cruce', rAd8.status === 200);
+
+    /* El panel lo injerta en una COPIA del índice de su zona. */
+    global.SGADD = global.SGADD || SGADD;
+    const SC = require('./js/sgadd-scouting.js');
+    const idxB = SGADD.construirIndice(hojasDe(ZB), { fase: 'REGULAR' });
+    const idxCopia = SGADD.construirIndice(hojasDe(ZB), { fase: 'REGULAR' });
+    const dist = JSON.stringify(idxCopia.liga.distribuciones);
+    check('el rival se injerta', idxCopia.injertarEquipo(rR.body.equipo) === true && !!idxCopia.get(RE));
+    check('con sus fechas como fechas', idxCopia.get(RE).partidos.every(p => p.__fecha instanceof Date));
+    check('y con el otro lado de cada partido (para el ciclo y la defensa)',
+      idxCopia.agregarPartidos(SGADD.claveEquipo(RE), idxCopia.get(RE).partidos).partidosConRival === 3);
+    check('la liga de la zona NO cambia: mismas distribuciones', JSON.stringify(idxCopia.liga.distribuciones) === dist);
+    check('y el índice de la app queda intacto', !idxB.get(RE) && idxB.lista().length === 4);
+    check('injertar dos veces no duplica', idxCopia.injertarEquipo(rR.body.equipo) === false);
+    const hjA = hojasDe(ZA);
+    hjA['Base Datos J'] = { cols: ['FECHA', 'PARTIDO', 'FASE', 'EQUIPO', 'NOMBRES', 'MIN', 'PTS'], filas: [
+      { FECHA: '02/05/2026', PARTIDO: AT + ' vs ' + RE, FASE: 'REGULAR', EQUIPO: AT, NOMBRES: 'ESCOLTA, ATENAS', MIN: 30, PTS: 20 },
+      { FECHA: '02/05/2026', PARTIDO: AT + ' vs ' + RE, FASE: 'REGULAR', EQUIPO: RE, NOMBRES: 'BASE, RECONQUISTA', MIN: 28, PTS: 12 }] };
+    const expA = SGADD.construirIndice(hjA, { fase: 'REGULAR' }).exportarEquipo(RE);
+    const boxA = [].concat(...expA.box.map(b => b[1]));
+    check('del box del partido viajan SOLO sus jugadores, no los del rival de su zona',
+      boxA.length === 1 && boxA[0].NOMBRES === 'BASE, RECONQUISTA', boxA.map(b => b.NOMBRES));
+    check('y el historial por jugador, igual', expA.jugadorPartidos.every(([, filas]) => filas.every(f => f.EQUIPO === RE)));
+    const inf = SC.informePrePartido(idxCopia, HO, RE);
+    check('el informe pre-partido Hogar Social vs Reconquista se arma', inf.ok, inf.motivo);
+    check('con el récord del rival de su fase regular (1-2)', inf.ok && inf.visitante && inf.visitante.pj === 3
+      && inf.visitante.ganados === 1 && inf.visitante.perdidos === 2, inf.ok && inf.visitante);
 
     sheets.obtenerLibro = previo;
     store[catalogo.CLAVE_KV] = JSON.stringify(CAT);

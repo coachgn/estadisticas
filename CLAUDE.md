@@ -102,11 +102,12 @@ node test-fases.js         #  91 tests · fases, cruces y series: el parser de l
                            #             intrazonal e interzonal, la fase por ventana, las métricas que no
                            #             mezclan fases y la barra que repinta Clasificación y Fixture
 
-node test-interzonal.js    # 167 tests · la llave entre zonas: un cliente de una zona recibe quién
+node test-interzonal.js    # 204 tests · la llave entre zonas: un cliente de una zona recibe quién
                            #             contra quién y un 403 por el libro de la otra, los slots
                            #             «1° Norte vs 2° Sur», el modo llave y la fase activa; los
                            #             libros vinculados, el acceso por partido y el editor de cruces
                            #             · y el aislamiento por zona: cada zona ve SUS fases (punto 78)
+                           #             · y el rival de otra zona: escudo, scouting y la vuelta de la llave (79)
 
 node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -118,7 +119,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**6980 tests en total. Todos tienen que dar verde antes de commitear.**
+**7017 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -233,7 +234,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=252`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=253`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -11474,3 +11475,108 @@ queda en `labelDeclarado`.
 
 - **El backend hay que desplegarlo** (`cd server && npx vercel --prod`):
   sin eso producción sigue con las tablas vacías.
+
+---
+
+## 79. EL RIVAL DE OTRA ZONA: ESCUDO, SCOUTING PRE-PARTIDO Y EL CAMBIO DE FASE (2026-09-30)
+
+Cuatro reportes con capturas de un cliente de la Zona B de APB (Hogar
+Social). `test-interzonal.js` (sección 8) fija todo lo de acá.
+
+### 1 · Escudos de otra zona · el panel nunca los PEDÍA
+
+Los archivos estaban en el manifiesto (`universal.avif`,
+`capital-chica.webp`, `a-chascomus-a.webp`, `juventud.webp`). `LOGOS.getUrl`
+solo lee el caché, y el caché lo llena `resolver()` con los equipos del
+libro PROPIO: los de otra zona salían siempre con iniciales.
+
+- `SGADD_FASES.pedirEscudos(nombresDeLlave(...))` los pide desde la llave
+  de Clasificación y del Fixture. **Una vez por nombre**: el hook de LOGOS
+  repinta si entra alguno nuevo y un nombre sin archivo queda en caché, así
+  que no hay ciclo (punto 6).
+- **El servidor manda `zona` e `id` (Gesdeportiva) en cada fila de la
+  llave**. La URL del escudo NO: el manifiesto vive en el repo del panel,
+  no en el backend, y resolverlo allá sería una segunda fuente.
+
+### 2 · El libro vinculado «se vaciaba» al editarlo · era el diseño
+
+El `sheetId` no llega al navegador, tampoco al del admin (punto 53). El
+campo arrancaba vacío con el rótulo «vacío = conserva el que tiene» y se
+leía como un libro perdido. Ahora el admin recibe **`libroFin`** (los
+últimos 6 caracteres) y el campo muestra **`…tVEq5M`** con el rótulo
+«conectado · pegá otro link para cambiarlo»:
+
+- mientras el campo diga la máscara, guardar **no manda libro** y el
+  servidor conserva el que tiene;
+- pegar otro link lo reemplaza; un link roto se sigue denunciando.
+
+El id completo sigue sin viajar. Si el club lo quiere ver entero, es un
+cambio de regla, no un arreglo.
+
+### 3 · La pantalla congelada al volver de una fase «· llave»
+
+Medido: con Equipos abierta en modo llave, la pantalla es el aviso del
+router. Al volver a una fase de la zona, `onCambio` llamaba a
+`equiposPintar()`, que busca `#equiposRoot` —no existe con el aviso en
+pantalla— y salía sin pintar: **la barra en la fase de la zona y el aviso
+viejo abajo**. Lo mismo Jugadores, Simulador y Scouting.
+
+El aviso lleva ahora **`data-modo-llave`** y, si está en pantalla,
+`onCambio` pasa por el ROUTER (`renderSection`), que arma la sección
+entera. Entre dos fases de la zona sigue el repintado de siempre.
+
+### 4 · El scouting pre-partido del rival de otra zona
+
+**Scouting entra en modo llave** (`SECCIONES_EN_LLAVE`): abre directo en
+el cruce —equipo propio contra su rival de esa fase— y el selector ofrece
+un grupo «Rival de la llave · otra zona».
+
+```
+GET /api/v1/torneos/:torneo/rival?equipo=<clave>
+```
+
+Entrega **UN equipo** de la otra zona —su fase regular, sus partidos con el
+otro lado de cada uno, sus jugadores y el box de SUS jugadores— y solo si:
+
+1. el cliente tiene una categoría del torneo con acceso y con el informe
+   pre-partido en su plan EFECTIVO (el `puedeBloque` de `/scouting`);
+2. la llave de SU zona tiene un cruce de SU equipo contra ese rival,
+   **resuelto o proyectado** con la tabla de hoy: el DT se prepara antes de
+   que se juegue el partido;
+3. el rival es de OTRA zona (`MISMA_ZONA`: el de la suya ya está en su libro).
+
+El admin pasa sin (1) ni (2). **El libro de la otra zona sigue en 403.**
+
+#### Se INJERTA, no se fusiona el libro
+
+`idx.exportarEquipo(clave)` (servidor, sobre el índice de la zona del
+rival) e `idx.injertarEquipo(serial)` (panel) viven en el núcleo, porque
+tocan las estructuras internas del índice (`filasPorPartido`,
+`boxPorPartido`, `jugadorPartidos`).
+
+- **Una fusión de libros** crearía como equipos a los rivales del rival
+  —media liga ajena en la tabla— y movería las distribuciones de la zona.
+  Injertado, el rival se mide **contra la liga del cliente** y nada de la
+  zona propia cambia (hay test: mismas distribuciones).
+- **Se injerta en una COPIA** del índice que usa solo Scouting
+  (`scoutIdx()`); la de la app no se toca. Cambiar de fase o de categoría
+  trae otro índice y la copia se descarta con sus rivales.
+- **El box viaja filtrado a SUS jugadores**: el partido a partido de los
+  demás equipos de su zona es lo que el plan protege.
+- Las fechas vuelven a ser `Date` al injertar (JSON las pasa a texto).
+- Injertar un equipo que ya es de la liga no pisa nada.
+
+### Verificado
+
+- **Con KV y Google reales**, backend local y un token de cliente de Hogar
+  Social: la llave detecta a UNIVERSAL (9° Zona A, R3) como su rival; en
+  modo llave el Scouting abre Hogar Social vs Universal con su fase regular
+  real (19 PJ, 8-11), la matriz, las marcas, sus jugadores y las claves.
+  El índice de la app sigue con 12 equipos. CAPITAL CHICA, 403 `SIN_CRUCE`.
+- **En la llave de Clasificación**, los 8 escudos de los dos repechajes,
+  cero iniciales.
+- **Equipos** en modo llave → «Total - Regular» desde el selector real: el
+  aviso se va y la sección se arma con sus escudos.
+- **Panel Master**, sesión de admin: «Editar» en «Playoffs - Zona A»
+  muestra `…tVEq5M` y el botón de guardar habilitado.
+- **Al revés, 15 mutaciones**, todas caen.

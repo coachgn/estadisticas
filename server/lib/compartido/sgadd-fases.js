@@ -326,7 +326,9 @@ const SGADD_FASES = (function () {
      la llave y las que no dependen del tramo. El resto dice por qué no hay
      nada en vez de pintar el índice de otra fase. UNA lista, la leen el
      router y el repintado de `onCambio`. */
-  const SECCIONES_EN_LLAVE = ['clasificacion', 'fixture', 'glosario', 'configuracion', 'diagnostico'];
+  /* SCOUTING ENTRA (punto 79): en modo llave prepara el cruce de la fase,
+     contra un rival de la propia zona o —pidiéndolo al servidor— de otra. */
+  const SECCIONES_EN_LLAVE = ['clasificacion', 'fixture', 'scouting', 'glosario', 'configuracion', 'diagnostico'];
   function bloqueaEnLlave(seccion, torneo) {
     return esLlave(torneo) && SECCIONES_EN_LLAVE.indexOf(seccion) === -1;
   }
@@ -916,7 +918,11 @@ const SGADD_FASES = (function () {
      libro de la postemporada no se le entrega a un cliente, así que no hay
      desglose de equipos ni scouting de esa fase. */
   function avisoModoLlave() {
-    return '<div class="card rounded-xl p-4 sm:p-5 border border-hairline mt-5">'
+    /* `data-modo-llave` es la marca que busca `onCambio` para saber que la
+       pantalla es este aviso y no la sección: al volver a una fase de la
+       zona hay que pasar por el router, porque la sección no tiene dónde
+       pintarse (punto 79). */
+    return '<div data-modo-llave class="card rounded-xl p-4 sm:p-5 border border-hairline mt-5">'
       + '<h3 class="font-display uppercase tracking-wide text-sm text-ink mb-2">Fase entre zonas · solo la llave</h3>'
       + '<p class="text-xs text-muted">Esta fase se juega en el libro de la postemporada, que tu acceso no incluye: '
       + 'los datos completos llegan solo de tu zona. Acá ves <b class="text-ink">contra quién se juega y cómo van las series</b> '
@@ -998,6 +1004,65 @@ const SGADD_FASES = (function () {
     return fases.some(esEntreZonas) ? mezclarLlave(ctx, fases, llaveDelServidor(), p.zonaId, hojas) : ctx;
   }
 
+  /* LOS ESCUDOS DE OTRA ZONA (punto 79). `LOGOS.getUrl` solo lee el caché,
+     y el caché lo llena `resolver()` con los equipos del libro PROPIO: los
+     de otra zona salían siempre con iniciales aunque su archivo estuviera
+     en el manifiesto. Se piden una vez por nombre; el hook de LOGOS
+     repinta cuando entra alguno nuevo, y como un nombre sin archivo queda
+     en caché, no hay ciclo. */
+  const _escudosPedidos = new Set();
+  function nombresDeLlave(porFase) {
+    const out = [];
+    Object.keys(porFase || {}).forEach((id) => {
+      const x = porFase[id];
+      (x.cruces || []).forEach((cr) => { [cr.a, cr.b].forEach((l) => { if (l && l.nombre) out.push(l.nombre); }); });
+      (x.sueltas || []).forEach((s) => { Object.keys(s.nombres || {}).forEach(k => out.push(s.nombres[k])); });
+    });
+    return out;
+  }
+  function pedirEscudos(nombres) {
+    if (typeof LOGOS === 'undefined' || !LOGOS.resolver) return [];
+    const faltan = Array.from(new Set(nombres || [])).filter(n => n && !_escudosPedidos.has(n) && !LOGOS.getUrl(n));
+    if (!faltan.length) return [];
+    faltan.forEach(n => _escudosPedidos.add(n));
+    try { LOGOS.resolver(faltan); } catch (e) { /* los escudos son una mejora */ }
+    return faltan;
+  }
+
+  /**
+   * LOS RIVALES DE LA LLAVE QUE JUEGAN EN OTRA ZONA (punto 79): los cruces
+   * de las fases de la zona abierta donde un lado es el equipo propio y el
+   * otro ya tiene nombre —resuelto o proyectado— y es de otra zona. Es la
+   * lista que Scouting ofrece además de los equipos del libro.
+   */
+  function rivalesDeOtraZona(esPropio) {
+    try {
+      const vis = visibles();
+      if (!vis.length) return [];
+      const zona = zonaAbierta();
+      const ctx = contexto();
+      const ll = llave(declaradas(), ctx);
+      const propio = esPropio || ((n) => !!(CORE && CORE.esEquipoPropio && CORE.esEquipoPropio(n)));
+      const zonaDe = (l) => l.zona || (ctx.zonaDeEquipo && ctx.zonaDeEquipo[l.clave]) || null;
+      const out = [];
+      const vistos = new Set();
+      vis.forEach((f) => {
+        ((ll[f.id] || {}).cruces || []).forEach((cr) => {
+          [[cr.a, cr.b], [cr.b, cr.a]].forEach(([yo, otro]) => {
+            if (!yo.clave || !otro.clave || !propio(yo.nombre || yo.clave)) return;
+            const z = zonaDe(otro);
+            if (!z || (zona && z === zona) || vistos.has(otro.clave)) return;
+            vistos.add(otro.clave);
+            out.push({ clave: otro.clave, nombre: otro.nombre || otro.clave, zona: z,
+              zonaLabel: (ctx.nombresZona && ctx.nombresZona[z]) || z, estado: otro.estado,
+              cruce: cr.id, fase: f.id, faseLabel: f.label });
+          });
+        });
+      });
+      return out;
+    } catch (e) { return []; }
+  }
+
   /**
    * La sección de la llave para Clasificación, o '' si la fase abierta
    * se juega todos contra todos.
@@ -1021,6 +1086,7 @@ const SGADD_FASES = (function () {
         const todo = llave(fases, contexto());
         const soloVis = {};
         vis.forEach((f) => { if (todo[f.id]) soloVis[f.id] = todo[f.id]; });
+        pedirEscudos(nombresDeLlave(soloVis));
         cuerpo = llaveHTML(soloVis, d.id, opciones);
       } else {
         /* SIN DECLARACIÓN: las series que se jugaron, y nada más. No se
@@ -1059,6 +1125,7 @@ const SGADD_FASES = (function () {
     if (!d) return '';
     const porFase = llave(fases, contexto());
     const x = porFase[d.id];
+    if (x) { const u = {}; u[d.id] = x; pedirEscudos(nombresDeLlave(u)); }
     const escudo = (typeof clasifEscudo === 'function') ? clasifEscudo : null;
     const o = { escudo: escudo };
     const cuerpo = x ? x.cruces.map(cr => cruceHTML(cr, o)).join('')
@@ -1082,6 +1149,7 @@ const SGADD_FASES = (function () {
     /* html */
     llaveHTML, cruceHTML, chipNaturaleza,
     /* app */
+    rivalesDeOtraZona, pedirEscudos, nombresDeLlave,
     declaradas, visibles, zonaAbierta, participanDe, docActual, indicePara, tramoDeFase, contexto, seccionLlave, zonasDeEquipos,
     manualComoPartido, avisoModoLlave, fixtureDeLlave, llaveDelServidor, fijarLlave, alLlegarLaLlave,
   };

@@ -88,7 +88,7 @@ async function resolver(peticion, deps) {
   if (!esAdmin && !zonas.size) {
     return { error: error(403, 'OTRO_TORNEO', 'Tu acceso no incluye ese torneo.') };
   }
-  return { torneoId: torneoId, t: t, zonas: zonas };
+  return { torneoId: torneoId, t: t, zonas: zonas, v: v, cat: cat, origen: cascada.origen };
 }
 
 /** La matriz cruda de Google → {cols, filas}, que es lo que come el índice. */
@@ -118,8 +118,8 @@ function iso(v) {
 }
 
 /** La tabla de una zona: puesto, equipo, PJ, PG, PP. Nada más. */
-function tablaDeZona(t, slug, hojas) {
-  const formato = t.formato || {};
+/** El índice de la fase REGULAR de una zona: el TOTAL si tiene varios torneos. */
+function indiceRegular(formato, hojas) {
   let fr = faseRegular(formato);
   const tramos = CORE.combinacionesTorneoFase(hojas);
   let deFase = tramos.filter(x => x.fase === fr);
@@ -127,12 +127,26 @@ function tablaDeZona(t, slug, hojas) {
      REGULAR antes que dejar la zona sin tabla. */
   if (!deFase.length && fr !== 'REGULAR') { fr = 'REGULAR'; deFase = tramos.filter(x => x.fase === fr); }
   const tramo = deFase.find(x => x.sintetico) || deFase[0] || null;
-  if (!tramo) return { filas: [], cerrada: false };
-  const idx = CORE.construirIndice(hojas, { fase: fr, torneo: tramo.torneo });
+  if (!tramo) return null;
+  return { fr: fr, tramo: tramo, tramos: tramos, idx: CORE.construirIndice(hojas, { fase: fr, torneo: tramo.torneo }) };
+}
+
+function tablaDeZona(t, slug, hojas) {
+  const formato = t.formato || {};
+  const ir = indiceRegular(formato, hojas);
+  if (!ir) return { filas: [], cerrada: false };
+  const { fr, tramo, tramos, idx } = ir;
+  /* LOS DATOS DEL EQUIPO, no solo su puesto (punto 79): la zona y el id
+     de Gesdeportiva viajan para que el panel resuelva el escudo de un
+     equipo que no está en su libro. */
+  const k = ((t.categorias || {})[slug]) || {};
+  const ids = {};
+  (k.equipos || []).forEach((e) => { if (e && e.id != null) ids[e.clave || CORE.claveEquipo(e.nombre)] = e.id; });
   const manuales = CLASIF.manualesDelTramo(((t.partidosManuales || {})[slug]) || {}, tramo.torneo, fr);
   const orden = (t.competencia && t.competencia.ordenTabla) || CLASIF.ORDEN_POR_DEFECTO;
   const filas = CLASIF.tabla(idx, { orden: orden, manuales: manuales }).map(r => ({
     puesto: r.puesto, clave: r.clave, nombre: r.nombre, pj: r.pj, pg: r.pg, pp: r.pp,
+    zona: k.zona || null, id: ids[r.clave] != null ? ids[r.clave] : null,
   }));
   /* Cerrada: el reglamento declara cuántos partidos juega cada uno y todos
      los alcanzaron, o ya se jugó una fase posterior EN ESE libro. Nunca
@@ -260,4 +274,102 @@ async function manejarLlave(peticion, deps) {
   }
 }
 
-module.exports = { manejarLlave, limpiarCache, tablaDeZona, partidosDePostemporada, faseRegular, paraZonas };
+/* =====================================================================
+   GET /api/v1/torneos/:torneo/rival?equipo=<clave> · EL RIVAL DE LA LLAVE
+   QUE JUEGA EN OTRA ZONA (punto 79)
+
+   El libro de otra zona sigue sin entregarse. Lo que se entrega es UN
+   equipo de esa zona —su temporada regular, sus partidos, sus jugadores y
+   el box de SUS jugadores— y solo si:
+     1. el cliente tiene una categoría del torneo con acceso y con el
+        informe pre-partido en su plan (el mismo `puedeBloque` de /scouting);
+     2. la llave de SU zona tiene un cruce de SU equipo contra ese rival,
+        resuelto o proyectado con la tabla de hoy: el DT se prepara antes
+        de que se juegue;
+     3. el rival es de OTRA zona: el de la propia ya está en su libro.
+   El admin pasa sin (1) ni (2).
+   ===================================================================== */
+function crucesDe(ll, fases, zonas) {
+  const out = [];
+  fases.forEach((f) => {
+    if (zonas && !Array.from(zonas).some(z => FASES.visibleEnZona(f, z))) return;
+    ((ll[f.id] || {}).cruces || []).forEach((cr) => { out.push({ fase: f, cr: cr }); });
+  });
+  return out;
+}
+
+async function manejarRival(peticion, deps) {
+  const ctx = await resolver(peticion, deps);
+  if (ctx.error) return ctx.error;
+  const q = (peticion && peticion.query) || {};
+  const rival = CORE.claveEquipo(String(q.equipo || ''));
+  if (!rival) return error(400, 'SIN_EQUIPO', 'Falta el equipo rival.');
+  const { t, cat, v, zonas } = ctx;
+
+  /* 1 · el plan, por categoría y con el plan EFECTIVO del catálogo */
+  let propios = null;
+  if (zonas) {
+    const H = require('./handlers.js');
+    const reglas = require('../lib/reglas.js');
+    const club = cat[v.club] || {};
+    propios = new Set();
+    let conPlan = false;
+    Object.keys(club.categorias || {}).forEach((slug) => {
+      const k = club.categorias[slug];
+      if (!k || k.torneo !== ctx.torneoId) return;
+      const r = catalogo.resolver(cat, v.club, slug);
+      if (!r || !AUTH.tieneAcceso(mutar.estadoEfectivo(r.suscripcion))) return;
+      const plan = H.planEfectivo(r.suscripcion || {}, v.sesion, ctx.origen);
+      if (!reglas.puedeBloque('scouting', Object.assign({}, v.sesion, { plan: plan })).ok) return;
+      conPlan = true;
+      const eq = AUTH.equipoDeCategoria(club, slug).equipo;
+      if (eq) propios.add(CORE.claveEquipo(eq));
+      if (v.sesion && v.sesion.equipoAsignado) propios.add(CORE.claveEquipo(v.sesion.equipoAsignado));
+    });
+    if (!conPlan) return error(403, AUTH.MOTIVOS.REQUIERE_PLAN, 'El informe pre-partido no está en tu plan.');
+  }
+
+  let datos;
+  try { datos = paraZonas(await armar(ctx.torneoId, t, deps), t, zonas); }
+  catch (e) { return error(503, 'LLAVE_ILEGIBLE', 'No se pudo armar la llave del torneo.'); }
+
+  /* 2 · el cruce, con la llave que el cliente ve */
+  const fases = FASES.parsear(t.formato || {}, { participan: TORNEOS.participanDeTorneo(t) }).fases;
+  const lc = FASES.mezclarLlave({ tablas: {}, partidosPorFase: {}, zonaDeEquipo: {}, nombresZona: {} }, fases, datos, null);
+  const cruces = crucesDe(FASES.llave(fases, lc), fases, zonas).filter(({ cr }) => {
+    const ks = [cr.a.clave, cr.b.clave];
+    if (ks.indexOf(rival) === -1) return false;
+    return !propios || ks.some(k => k && k !== rival && propios.has(k));
+  });
+  if (propios && !cruces.length) {
+    return error(403, 'SIN_CRUCE', 'Ese equipo no es tu rival en la llave: el scouting de otra zona se abre para el cruce definido.');
+  }
+
+  /* 3 · el rival es de otra zona */
+  const zonaRival = Object.keys(datos.zonas || {}).find(z => (datos.zonas[z].filas || []).some(f => f.clave === rival)) || null;
+  if (!zonaRival) return error(404, 'SIN_RIVAL', 'Ese equipo no está en ninguna tabla del torneo.');
+  if (zonas && zonas.has(zonaRival)) {
+    return error(400, 'MISMA_ZONA', 'Ese rival juega en tu zona: sus datos ya están en tu libro.');
+  }
+  const slug = Object.keys(t.categorias || {}).find(s => t.categorias[s] && t.categorias[s].zona === zonaRival && !t.categorias[s].interzonal);
+  const k = slug && t.categorias[slug];
+  if (!k || !k.sheetId) return error(404, 'SIN_LIBRO', 'La zona de ese equipo no tiene libro.');
+  try {
+    const libro = await sheets.obtenerLibro(k.sheetId, deps);
+    etiquetas.reetiquetar(libro, slug);
+    const ir = indiceRegular(t.formato || {}, aFilas(libro.hojas));
+    const equipo = ir && ir.idx.exportarEquipo(rival);
+    if (!equipo) return error(404, 'SIN_RIVAL', 'Ese equipo no tiene datos de fase regular.');
+    const c0 = cruces[0];
+    return { status: 200, body: { ok: true, torneo: ctx.torneoId, zona: zonaRival,
+      zonaLabel: (datos.zonas[zonaRival] || {}).label || zonaRival,
+      tramo: { torneo: ir.tramo.torneo, fase: ir.fr },
+      cruce: c0 ? { id: c0.cr.id, fase: c0.fase.id, label: c0.fase.label } : null,
+      equipo: equipo } };
+  } catch (e) {
+    console.error('[sgadd] rival:', e && e.stack ? e.stack : e);
+    return error(503, 'LIBRO_ILEGIBLE', 'No se pudo leer la zona del rival.');
+  }
+}
+
+module.exports = { manejarLlave, manejarRival, crucesDe, limpiarCache, tablaDeZona, partidosDePostemporada, faseRegular, paraZonas };

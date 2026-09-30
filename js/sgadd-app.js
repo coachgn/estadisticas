@@ -653,6 +653,14 @@ const SGADD_APP = (function () {
       if (typeof renderSection === 'function') { try { renderSection(currentSection); } catch (e) { console.warn('[app]', e); } }
       return;
     }
+    /* Y AL VOLVER, TAMBIÉN (punto 79). Con el aviso del modo llave en
+       pantalla, la sección no tiene su contenedor (`#equiposRoot`,
+       `#scoutRoot`…) y su función de repintado salía sin hacer nada: la
+       barra quedaba en la fase de la zona con el aviso viejo abajo. */
+    if (typeof document !== 'undefined' && document.querySelector && document.querySelector('#view-root [data-modo-llave]')) {
+      if (typeof renderSection === 'function') { try { renderSection(currentSection); } catch (e) { console.warn('[app]', e); } }
+      return;
+    }
     /* La pantalla de Configuración muestra la cantidad de equipos y la
        vista previa del tramo abierto: si no se repinta, queda mostrando
        la validación de otro recorte y contradice a Clasificación. */

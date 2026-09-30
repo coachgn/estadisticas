@@ -475,6 +475,11 @@ function publicoDeZona(k) {
     interzonal: !!k.interzonal,
     rol: k.interzonal ? (k.rol || 'playoffs') : 'regular',
     participan: Array.isArray(k.participan) ? k.participan.slice() : [],
+    /* EL FINAL DEL LIBRO, no el libro (punto 79). El sheetId no llega al
+       navegador (punto 53), ni al del admin: el editor de un libro
+       vinculado muestra «…últimos 6» para que se vea QUÉ libro está
+       conectado sin que el id completo viaje. */
+    libroFin: k.sheetId ? String(k.sheetId).slice(-6) : null,
     equipos: (k.equipos || []).map(e => {
       const o = { id: e.id, nombre: e.nombre, clave: e.clave };
       if (e.ciudad) o.ciudad = e.ciudad;

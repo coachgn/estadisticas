@@ -3279,20 +3279,102 @@ function scoutModalExport() {
 
 /* ===================== RENDER ===================== */
 
+/* =====================================================================
+   EL RIVAL DE LA LLAVE QUE JUEGA EN OTRA ZONA (punto 79)
+
+   Su libro no le llega al cliente; el servidor entrega SOLO a ese equipo
+   (`/api/v1/torneos/:torneo/rival`) si la llave lo pone contra el propio.
+   Se injerta en una COPIA del índice de la zona —la de la app no se toca:
+   la tabla, los rankings y el buzón siguen siendo los de la zona— y esa
+   copia es la que usa el informe.
+
+   El estado es por índice: cambiar de fase o de categoría trae otro índice
+   y la copia se descarta sola, con los rivales que tuviera.
+   ===================================================================== */
+const SCOUT_EXT = { base: null, datos: {}, idx: null, claves: '' };
+
+function scoutRivalesLlave() {
+  return (typeof SGADD_FASES !== 'undefined' && SGADD_FASES.rivalesDeOtraZona)
+    ? SGADD_FASES.rivalesDeOtraZona() : [];
+}
+
+function scoutTorneoAbierto() {
+  const p = SGADD_APP.planillaActual() || {};
+  return p.torneoId || null;
+}
+
+/** Pide un rival de otra zona. Repinta al llegar, si sigue siendo el mismo índice. */
+function scoutPedirRival(clave) {
+  const base = SGADD_APP.estado.idx;
+  if (SCOUT_EXT.datos[clave]) return;
+  SCOUT_EXT.datos[clave] = { estado: 'cargando' };
+  const torneo = scoutTorneoAbierto();
+  const p = (torneo && typeof SGADD_DATA !== 'undefined' && SGADD_DATA.rivalDeTorneo)
+    ? SGADD_DATA.rivalDeTorneo(torneo, clave) : Promise.resolve(null);
+  Promise.resolve(p).then((r) => {
+    if (SCOUT_EXT.base !== base) return;
+    SCOUT_EXT.datos[clave] = r && r.equipo ? { estado: 'ok', r: r }
+      : { estado: 'error', mensaje: 'Sin conexión con el servidor: el rival de otra zona se pide con tu sesión.' };
+    SCOUT_EXT.idx = null;
+    scoutPintar();
+  }).catch((e) => {
+    if (SCOUT_EXT.base !== base) return;
+    SCOUT_EXT.datos[clave] = { estado: 'error', mensaje: (e && e.message) || 'No se pudo traer al rival.' };
+    scoutPintar();
+  });
+}
+
+/** El índice del informe: el de la app, o una copia con los rivales de otra zona injertados. */
+function scoutIdx() {
+  const st = SGADD_APP.estado;
+  if (SCOUT_EXT.base !== st.idx) { SCOUT_EXT.base = st.idx; SCOUT_EXT.datos = {}; SCOUT_EXT.idx = null; SCOUT_EXT.claves = ''; }
+  const listos = Object.keys(SCOUT_EXT.datos).filter(k => SCOUT_EXT.datos[k].estado === 'ok').sort();
+  if (!listos.length || !st.hojas) return st.idx;
+  const firma = listos.join('|');
+  if (SCOUT_EXT.idx && SCOUT_EXT.claves === firma) return SCOUT_EXT.idx;
+  const scope = st.tramoIndice || { fase: st.fase, torneo: st.torneo };
+  const idx = SGADD.construirIndice(st.hojas, { fase: scope.fase, torneo: scope.torneo });
+  listos.forEach(k => idx.injertarEquipo(SCOUT_EXT.datos[k].r.equipo));
+  SCOUT_EXT.idx = idx; SCOUT_EXT.claves = firma;
+  return idx;
+}
+
 function scoutPintar() {
   const root = document.getElementById('scoutRoot');
   if (!root) return;
   const st = SGADD_APP.estado;
   if (st.error) { root.innerHTML = SGADD_UI.aviso('No se pudo cargar', st.error, 'error'); return; }
   if (!st.idx) { root.innerHTML = SGADD_UI.cargando('Cargando la categoría…', (SGADD_APP.planillaActual() || {}).label); return; }
-  root.innerHTML = scoutSelectores(st.idx) + scoutInforme(st.idx);
+  scoutIdx();   // descarta la copia si cambió el índice
+  const rivales = scoutRivalesLlave();
+  /* EN MODO LLAVE se abre directo en el cruce: el equipo propio contra su
+     rival de esa fase. Es lo que el DT viene a preparar. */
+  if (SGADD_APP.enLlave && SGADD_APP.enLlave() && !SCOUT_UI.local && !SCOUT_UI.visitante && rivales.length) {
+    const propio = st.idx.lista().find(e => SGADD.esEquipoPropio(e.clave));
+    if (propio) { SCOUT_UI.local = propio.clave; SCOUT_UI.visitante = rivales[0].clave; }
+  }
+  const pendiente = [SCOUT_UI.local, SCOUT_UI.visitante].filter(k => k && !st.idx.get(k) && rivales.some(r => r.clave === k));
+  pendiente.forEach(scoutPedirRival);
+  const cargando = pendiente.find(k => SCOUT_EXT.datos[k] && SCOUT_EXT.datos[k].estado === 'cargando');
+  const fallo = pendiente.map(k => SCOUT_EXT.datos[k]).find(d => d && d.estado === 'error');
+  const idx = scoutIdx();
+  let cuerpo;
+  if (cargando) cuerpo = '<div class="mt-4">' + SGADD_UI.cargando('Trayendo al rival de la otra zona…', 'Su fase regular, sin abrir el libro de su zona') + '</div>';
+  else if (fallo) cuerpo = '<div class="mt-4">' + SGADD_UI.aviso('No se pudo traer al rival', fallo.mensaje, 'error') + '</div>';
+  else cuerpo = scoutInforme(idx);
+  root.innerHTML = scoutSelectores(idx, rivales) + cuerpo;
   if (typeof SGADD_PBP !== 'undefined') SGADD_PBP.montarPendientes(root);
 }
 
-function scoutSelectores(idx) {
-  const equipos = idx.lista().slice().sort((a, b) => a.nombre.localeCompare(b.nombre));
+function scoutSelectores(idx, rivales) {
+  const equipos = idx.lista().filter(e => !e.__externo).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  /* Los rivales de la llave que juegan en OTRA zona van aparte: se piden
+     al servidor al elegirlos (punto 79). */
+  const ext = (rivales || []).filter(r => !equipos.some(e => e.clave === r.clave));
   const opts = (sel) => equipos.map(e =>
-    `<option value="${escapeAttr(e.clave)}" ${sel === e.clave ? 'selected' : ''}>${escapeHtml(e.nombre)}</option>`).join('');
+    `<option value="${escapeAttr(e.clave)}" ${sel === e.clave ? 'selected' : ''}>${escapeHtml(e.nombre)}</option>`).join('')
+    + (ext.length ? `<optgroup label="Rival de la llave · otra zona">${ext.map(r =>
+      `<option value="${escapeAttr(r.clave)}" ${sel === r.clave ? 'selected' : ''}>${escapeHtml(r.nombre)} · ${escapeHtml(r.zonaLabel)} · ${escapeHtml(r.cruce)}${r.estado === 'proyectado' ? ' (proyectado)' : ''}</option>`).join('')}</optgroup>` : '');
 
   /* Fecha, torneo y próximo rival son los únicos datos del informe que la
      planilla NO tiene (no hay hoja de fixture). Van como campo manual: un
@@ -3329,6 +3411,11 @@ function scoutSelectores(idx) {
           </select>
         </div>
       </div>
+      ${(rivales || []).length ? `
+        <p class="text-[11px] text-muted border-l-2 border-accent pl-2">
+          Tu rival en la llave juega en otra zona: sus datos son los de <strong class="text-ink">su fase regular</strong>,
+          medidos contra la liga de tu zona. El servidor los entrega solo para ese cruce.
+        </p>` : ''}
       ${SCOUT_UI.forzado ? `
         <p class="text-[11px] text-muted border-l-2 border-accent pl-2">
           Se fijó <strong class="text-ink">${escapeHtml(SGADD_AUTH.equipoPropio() || '')}</strong>

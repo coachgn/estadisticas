@@ -227,7 +227,7 @@ const SGADD_TORNEOS = (function () {
   function librosDe(t) {
     return ((t && t.categorias) || []).filter(k => k.zona && k.interzonal)
       .map(k => ({ zona: k.zona, slug: k.slug, label: k.label, activo: !!k.activo,
-        rol: k.rol || 'playoffs', participan: Array.isArray(k.participan) ? k.participan : [] }));
+        rol: k.rol || 'playoffs', participan: Array.isArray(k.participan) ? k.participan : [], fin: k.libroFin || null }));
   }
 
   /** Un slug a partir de una etiqueta: «Playoff A» → «playoff-a». */
@@ -237,6 +237,10 @@ const SGADD_TORNEOS = (function () {
   }
 
   /** Qué le falta al vínculo de un libro para poder mandarlo. */
+  /* EL LIBRO CONECTADO SE VE EN EL CAMPO, enmascarado (punto 79): «…a1b2c3».
+     Mientras el campo diga eso, el libro no cambia. */
+  const MASCARA = '…';
+  function esMascara(v) { return String(v || '').indexOf(MASCARA) === 0; }
   function faltantesLibro(b, t) {
     const f = [];
     if (!String(b.label || '').trim()) f.push('la etiqueta');
@@ -245,7 +249,7 @@ const SGADD_TORNEOS = (function () {
     else if (!b.editando && t && ((t.categorias || []).some(k => k.zona === id))) f.push('otro id: «' + id + '» ya existe');
     if (!ROLES_LIBRO.some(r => r.id === b.rol)) f.push('el rol');
     if (!b.editando && !String(b.libro || '').trim()) f.push('el link del libro');
-    if (b.libro && !SHEET.test(idDeLibro(b.libro))) f.push('un link de libro con forma de id de Google');
+    if (b.libro && !esMascara(b.libro) && !SHEET.test(idDeLibro(b.libro))) f.push('un link de libro con forma de id de Google');
     return f;
   }
 
@@ -254,7 +258,7 @@ const SGADD_TORNEOS = (function () {
     const id = b.zona || slugDe(b.label);
     const z = { label: String(b.label).trim(), rol: b.rol,
       participan: Object.keys(b.participan || {}).filter(k => b.participan[k]) };
-    if (b.libro) z.sheetId = idDeLibro(b.libro);
+    if (b.libro && !esMascara(b.libro)) z.sheetId = idDeLibro(b.libro);
     const zonas = {}; zonas[id] = z;
     return { accion: 'torneo', club: t.id, nombre: t.nombre, zonas: zonas };
   }
@@ -874,8 +878,10 @@ const SGADD_TORNEOS = (function () {
           <input type="checkbox" ${b.participan[z.zona] ? 'checked' : ''}
             onchange="SGADD_TORNEOS.elegirLibro('participan', '${escJs(z.zona)}', this.checked)"> ${esc(z.label)}</label>`).join('')}</div>
       </fieldset>
-      <label class="block"><span class="${ROTULO}">Libro (link o id)${b.editando ? ' · vacío = conserva el que tiene' : ''}</span>
+      <label class="block"><span class="${ROTULO}">Libro (link o id)${b.editando ? (esMascara(b.libro)
+          ? ' · conectado · pegá otro link para cambiarlo' : ' · vacío = conserva el que tiene') : ''}</span>
         <input type="text" id="libroEd-libro" value="${esc(b.libro)}" autocomplete="off" spellcheck="false"
+          onfocus="if (this.value.indexOf('${MASCARA}') === 0) this.select()"
           oninput="SGADD_TORNEOS.campoLibro('libro', this.value)" class="${CLASE_INPUT} font-mono"></label>
       <div id="libroEdEstado">${estadoLibro(f)}</div>
     </div>`;
@@ -1008,7 +1014,8 @@ const SGADD_TORNEOS = (function () {
     const t = torneoPorId(tid); const l = t && librosDe(t).find(x => x.zona === zona);
     if (!l) return;
     const part = {}; l.participan.forEach((z) => { part[z] = true; });
-    Object.assign(libroEd, { torneo: tid, zona: zona, editando: true, label: l.label, rol: l.rol, participan: part, libro: '', mensaje: '', error: false });
+    Object.assign(libroEd, { torneo: tid, zona: zona, editando: true, label: l.label, rol: l.rol, participan: part,
+      libro: l.fin ? MASCARA + l.fin : '', mensaje: '', error: false });
     abiertos[tid] = true; repintarTodo();
   }
   function cancelarLibro() { libroEd.torneo = ''; repintarTodo(); }
@@ -1127,7 +1134,7 @@ const SGADD_TORNEOS = (function () {
     esTorneo, torneosDe, clientesDe, zonasDe, enganchados, arbol, parsearEquipos, textoEquipos,
     faltantesTorneo, intencionTorneo, cambiosTorneo, idVinculoSugerido, idDeLibro,
     ROLES_LIBRO, librosDe, slugDe, faltantesLibro, intencionLibro, ladoTexto, faseAEditor, editorAFase,
-    erroresLlave, intencionLlave, libroEd, llaveEd,
+    erroresLlave, intencionLlave, libroEd, llaveEd, esMascara,
     /* ui */
     html, borrador, vinculo, resultado, campo: campo_, campoZona, agregarZona, quitarZona, nuevo, editar,
     guardar, empezarVinculo, elegirVinculo, campoVinculo, vincular, abrirForm, abrirVinculo, abrirTarjeta, bloqueHuerfanos,

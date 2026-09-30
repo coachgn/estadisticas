@@ -403,6 +403,26 @@ const SGADD_DATA = (function () {
     return cuerpo;
   }
 
+  /**
+   * EL RIVAL DE LA LLAVE QUE JUEGA EN OTRA ZONA (punto 79): un solo equipo
+   * de esa zona, serializado para `idx.injertarEquipo`. El servidor decide
+   * si el cruce existe; acá solo se pide.
+   */
+  async function rivalDeTorneo(torneo, equipo, opciones) {
+    if (!baseApi || !auth || !auth.token()) return null;
+    const o = opciones || {};
+    const traerlo = o.fetch || fetch;
+    const url = baseApi + '/api/v1/torneos/' + encodeURIComponent(torneo) + '/rival?equipo=' + encodeURIComponent(equipo);
+    const r = await traerlo(url, { headers: { Authorization: 'Bearer ' + auth.token() } });
+    const cuerpo = await r.json().catch(() => null);
+    if (!r.ok || !cuerpo || !cuerpo.ok) {
+      const e = new Error((cuerpo && cuerpo.mensaje) || ('El servidor respondió ' + r.status));
+      e.codigo = (cuerpo && cuerpo.codigo) || ('HTTP_' + r.status);
+      throw e;
+    }
+    return cuerpo;
+  }
+
   async function guardarCatalogo(intencion, opciones) {
     const cuerpo = await postConToken('/api/v1/catalogo', intencion, opciones);
     /* El catálogo cacheado quedó viejo: lo que vale es lo que devolvió el
@@ -593,7 +613,7 @@ const SGADD_DATA = (function () {
     configurar, apiConfigurada, origen, base: () => baseApi,
     matrizAFilas, matrizALegacy, tipoDeColumna,
     cargarCategoria, cargarDelBackend, limpiarCache, catalogo, guardarCatalogo, equiposDelLibro,
-    fixtureDeTorneo, llaveDeTorneo,
+    fixtureDeTorneo, llaveDeTorneo, rivalDeTorneo,
     login, fijarClave, clientes, guardarClientes, fichas, guardarFicha,
     estadosCompartibles, leerEstados, guardarEstados, leerPbp,
   };

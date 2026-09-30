@@ -105,6 +105,7 @@ function crearApp(opciones) {
      de la postemporada, sin estadísticas. Es lo que resuelve un cruce
      interzonal sin entregarle a un cliente el libro de otra zona. */
   app.get('/api/v1/torneos/:torneo/llave', responder(require('./api/llave.js').manejarLlave));
+  app.get('/api/v1/torneos/:torneo/rival', responder(require('./api/llave.js').manejarRival));
 
   /* Las fichas de los clientes y los mails institucionales (bienvenida y
      recordatorios de vencimiento). Solo ADMIN, salvo el cron, que se
