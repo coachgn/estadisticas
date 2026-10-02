@@ -91,16 +91,18 @@ check('la pantalla pinta jugadores → resto → claves → marcas tabla → fic
   [pos('Jugadores'), pos('Resto'), pos('Claves'), pos('MarcasTabla'), pos('Fichas')].join(' < '));
 
 /* El PDF imprime el DOM en su orden (las cards destildadas se esconden, no
-   se mueven), así que el orden de la pantalla ES el de las hojas. Lo que se
-   fija además es DÓNDE se corta: */
-const clase = (bloque) => ((SCOUT.match(new RegExp('<section class="([^"]*)"\\s*data-bloque="' + bloque + '">')) || [])[1] || '');
-check('las claves NO abren hoja: fluyen después del banco',
-  /\bscout-card\b/.test(clase('claves')) && !/\bscout-pagina\b/.test(clase('claves')), clase('claves'));
-check('el resto SÍ abre hoja', /\bscout-pagina\b/.test(clase('resto')), clase('resto'));
-check('jugadores y fichas siguen abriendo la suya',
-  /\bscout-pagina\b/.test(clase('jugadores')) && /\bscout-pagina\b/.test(clase('fichas')));
-const salto = R.find(r => enPrint(r) && /\.scout-pagina/.test(r.sel) && /page-break-before:\s*always|break-before:\s*page/.test(r.dec));
-check('y `scout-pagina` es la que corta la hoja al imprimir', !!salto);
+   se mueven), así que el orden de la pantalla ES el de las hojas.
+
+   FLUJO CONTINUO (pedido del club, 2026-10-02): ninguna card abre hoja por
+   clase. Van una debajo de la otra y una card pasa a la hoja siguiente solo
+   si no entra entera en lo que queda. */
+const secciones = SCOUT.match(/<section class="[^"]*scout-card[^"]*"/g) || [];
+check('ninguna card abre hoja por clase (`scout-pagina` se fue del marcado)',
+  secciones.length >= 10 && !secciones.some(x => /\bscout-pagina\b/.test(x)), secciones.length);
+const salto = R.filter(r => enPrint(r) && /scout-card|scout-pagina/.test(r.sel)
+  && /break-before:\s*(page|always)|page-break-before:\s*always/.test(r.dec));
+check('y ninguna regla de papel fuerza hoja nueva antes de una card',
+  salto.length === 0, salto.map(r => r.sel).join(' | '));
 
 /* =====================================================================
    2 · LOS CORTES
@@ -142,27 +144,36 @@ check('y los `data-hoja` del informe de equipo', R.some(r => enPrint(r) && /\[da
    ===================================================================== */
 titulo('2 bis · CORTES · la tabla se parte por FILAS, no salta entera');
 
-const parte = R.filter(r => enPrint(r) && /\.scout-card\.scout-pagina/.test(r.sel));
-check('la card que ABRE hoja y tiene tabla se puede partir',
-  parte.some(r => /:has\(table\)/.test(r.sel)
-    && /(^|;)\s*break-inside:\s*auto/.test(r.dec) && /page-break-inside:\s*auto/.test(r.dec)));
-check('  y su scrollbox y su tabla también',
-  parte.some(r => /\.scrollbox/.test(r.sel) && /break-inside:\s*auto\s*!important/.test(r.dec))
-  && parte.some(r => /> table|stable/.test(r.sel) && /break-inside:\s*auto\s*!important/.test(r.dec)));
-check('  pero la FILA no: el corte cae entre dos jugadores',
-  parte.some(r => /table > tbody > tr/.test(r.sel)
+const scout = R.filter(r => enPrint(r) && /modo-scout-print \.scout-card/.test(r.sel));
+check('la card se baja ENTERA si no entra en lo que queda de la hoja',
+  scout.some(r => /\.scout-card\s*$/.test(r.sel.split(',')[0].trim())
+    && /(^|;)\s*break-inside:\s*avoid/.test(r.dec) && /page-break-inside:\s*avoid/.test(r.dec)));
+check('  pero su scrollbox y su tabla se pueden partir (la que no entra en NINGUNA hoja)',
+  scout.some(r => /\.scrollbox(?!\s*>)/.test(r.sel) && /break-inside:\s*auto\s*!important/.test(r.dec))
+  && scout.some(r => /\.scrollbox > table/.test(r.sel) && /break-inside:\s*auto\s*!important/.test(r.dec)));
+check('  y la FILA no: el corte cae entre dos jugadores',
+  scout.some(r => /table > tbody > tr/.test(r.sel)
     && /break-inside:\s*avoid\s*!important/.test(r.dec)
     && /page-break-inside:\s*avoid\s*!important/.test(r.dec)));
-check('  y el cabezal no se despega de su tabla',
-  parte.some(r => /> h4/.test(r.sel) && /break-after:\s*avoid/.test(r.dec) && /page-break-after:\s*avoid/.test(r.dec)));
+check('  y el cabezal no se despega de su contenido',
+  scout.some(r => /> h4/.test(r.sel) && /break-after:\s*avoid/.test(r.dec) && /page-break-after:\s*avoid/.test(r.dec)));
 
-/* LA MITAD QUE PROTEGE EL MAQUETADO MEDIDO. Una card que no abre hoja
-   —la matriz, el resumen, las claves— se sigue bajando ENTERA: con
-   `auto` la matriz se partía y dejaba su título en la hoja anterior. */
-const sueltas = R.filter(r => enPrint(r) && /\.scout-card/.test(r.sel) && !/\.scout-pagina/.test(r.sel)
+/* EL BUG QUE DESTAPÓ EL PDF REAL. `break-after: avoid` en el ÚLTIMO hijo de
+   la card se propaga al final de la card y la PEGA a la siguiente: el
+   resumen (que termina en un <p>) quedaba atado al plan defensivo y los dos
+   saltaban de hoja aunque el resumen solo entraba debajo de los splits. */
+const pegan = scout.filter(r => /break-after:\s*avoid/.test(r.dec)
+  && selectores(r).some(x => /\.scout-card > (h4|p)/.test(x)));
+check('el break-after del cabezal NO alcanza al último hijo (no pega una card con otra)',
+  pegan.length > 0 && pegan.every(r => selectores(r).every(x => /:not\(:last-child\)/.test(x))),
+  pegan.map(r => r.sel).join(' | '));
+
+/* La card en sí NUNCA lleva `auto`: eso la partiría aunque entrara entera
+   en la hoja siguiente, que es justo lo que el pedido prohíbe. */
+const cardAuto = scout.filter(r => selectores(r).some(x => /\.scout-card\s*$/.test(x))
   && /break-inside:\s*auto/.test(r.dec));
-check('la card que NO abre hoja conserva el avoid: se baja entera',
-  sueltas.length === 0, sueltas.map(r => r.sel).join(' | '));
+check('ninguna regla le pone break-inside: auto a la card misma',
+  cardAuto.length === 0, cardAuto.map(r => r.sel).join(' | '));
 
 /* Con la tabla partida, la segunda hoja no puede quedar sin encabezados. */
 check('el <thead> se repite arriba de cada hoja',

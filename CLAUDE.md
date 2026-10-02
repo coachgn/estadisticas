@@ -16,7 +16,7 @@ aplicadas en el punto 14.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 324 tests · núcleo, índice, validador
+node test-core.js          # 328 tests · núcleo, índice, validador
 node test-logos.js         #  37 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
@@ -28,7 +28,7 @@ node test-4factores.js     #  96 tests · regresión, pesos de liga, perfil de e
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
 node test-partido.js       #  63 tests · detalle partido a partido, perfil de tiro y su PDF
-node test-scouting.js      # 541 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis,
+node test-scouting.js      # 544 tests · informe pre-partido, bandas, marcas, tareas defensivas, sintesis,
                            #             titularidad, las SEÑALES compartidas y el menor de los males
 node test-estados.js       # 182 tests · estados de jugador, alertas, buzon, sync grafico-tabla
 node test-pdf.js           #  92 tests · nombre del archivo en las exportaciones
@@ -67,7 +67,7 @@ node test-similitud-etiquetas.js #  45 tests · la similitud multi-etiqueta cont
                            #             de etiquetas, el caso Raineri/Benavidez y los afines
 node test-estados-sync.js  #  74 tests · los estados compartidos en el servidor, dos sesiones
                            #             y que ninguna escritura del catálogo pise datos
-node test-pdf-layout.js    #  38 tests · claves arriba del resto, los cortes de página, la
+node test-pdf-layout.js    #  37 tests · claves arriba del resto, el flujo continuo, la
                            #             tabla que se parte por filas y que ningún :hover
                            #             pinte la hoja impresa
 node test-router-jugadores.js # 12 tests · la pestaña Jugadores se pinta en el acto y
@@ -120,7 +120,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7077 tests en total. Todos tienen que dar verde antes de commitear.**
+**7083 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -235,7 +235,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=259`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=260`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -1505,6 +1505,10 @@ También hay que soltar el `max-width` de la app (`1600px`) o el contenido se
 imprime angosto en el medio de una hoja de 400mm.
 
 ### 7.2 bis · Las hojas del informe
+
+> **Desde el 2026-10-02 no hay hojas fijas**: las cards fluyen una debajo de
+> la otra y cada una se elige por separado. Lo de abajo es la historia; el
+> modelo vigente está en el punto 85.
 
 `.scout-pagina` marca las cards que **abren** hoja; las que no la llevan quedan
 pegadas a la anterior. Se pagina con **`page-break-before` y no `after`**: si el
@@ -11836,3 +11840,53 @@ Medido: solo cambia la Zona C, y solo en sus dos equipos (RECONQUISTA 'B':
 PACE, RO%, RD%, eFG Opp%, DRTG, NET y PR%). Los otros cinco libros, idénticos
 — ahí ningún local repite el texto. Lo fija `test-core.js` («el rival de una
 noche es la fila de ESA noche»); sin el arreglo caen 4.
+
+---
+
+## 85. SCOUTING · LAS DIEZ CARDS DE A UNA Y EL FLUJO CONTINUO (2026-10-02)
+
+Pedido del club: elegir cada card por separado y que el PDF no deje medias
+hojas en blanco. **La hoja sigue siendo A3 apaisada** (se le preguntó al
+club: el pedido decía A4 vertical, y en A4 la tabla de marcas no entra).
+
+### Las diez opciones
+
+`SCOUT_CARDS` ofrece las diez en el orden del informe, cada una con el
+TÍTULO de su card: Reporte de scouting · Métricas avanzadas · Splits ·
+Resumen · Plan defensivo · Jugadores clave · Resto · Claves · Marcas
+jugador por jugador · Ficha de análisis (más las dos del laboratorio, con la
+capa `pbp`). **El plan defensivo y la tabla de marcas dejaron de compartir
+`data-bloque`**: la tabla es `marcas-tabla`. Las fichas siguen ofreciéndose
+solo con el bloque `scouting.fichas` (Plan ORO, punto 56).
+
+### El flujo
+
+`scout-pagina` se fue del marcado y del CSS: **ninguna card abre hoja por
+clase**. Bloque «FLUJO CONTINUO» del `index.html`:
+
+- la card lleva `break-inside: avoid`: si no entra ENTERA en lo que queda de
+  la hoja, Chromium la baja completa a la siguiente;
+- la card más alta que una hoja (la tabla de marcas, las fichas) no entra en
+  ninguna: arranca en hoja nueva y se parte **entre filas o entre fichas**,
+  con el `<thead>` repetido (punto 65);
+- el título no se despega de su contenido.
+
+**EL BUG QUE SOLO MOSTRÓ EL PDF REAL.** El `break-after: avoid` del cabezal
+estaba sobre `.scout-card > p`, y el resumen termina en un `<p>`: un
+`break-after: avoid` en el ÚLTIMO hijo se propaga al final de la card y la
+pega a la SIGUIENTE. El resumen quedaba atado al plan defensivo y los dos
+saltaban de hoja, con media hoja libre debajo de los splits. Va con
+`:not(:last-child)`.
+
+### Medido sobre el PDF real (demo, plan ORO, Chrome por CDP)
+
+```
+todas tildadas    10 hojas A3 · 1 encabezado · 2 matriz · 3 splits + resumen · 4 plan
+                  5 jugadores + resto · 6 claves · 7-8 marcas · 9-10 fichas
+sin matriz/ciclo   8 hojas  · 1 encabezado + resumen · 2 plan · …  (sin hojas en blanco)
+```
+
+Las alturas medidas en pantalla **subestiman** las del papel: para saber si
+una card entraba hubo que mirar la hoja renderizada (PyMuPDF). El pie
+institucional sale en todas las hojas.
+

@@ -2028,105 +2028,54 @@
     }
 
     /* -----------------------------------------------------------------
-       PAGINADO POR GRUPOS
+       FLUJO CONTINUO (pedido del club, 2026-10-02)
 
-       Antes CADA card rompía página (`page-break-after: always`), así que
-       el informe salía a una card por hoja sin poder juntar las que se
-       leen de a pares. Ahora rompe solo la que ABRE hoja (`.scout-pagina`)
-       y las que no la llevan quedan pegadas a la anterior:
+       Las cards van UNA DEBAJO DE LA OTRA. Ninguna abre hoja por clase:
+       la que no entra ENTERA en lo que queda de la hoja pasa a la
+       siguiente, y nada más. Antes había hojas fijas (`.scout-pagina`) y
+       con una card destildada quedaban medias hojas en blanco.
 
-         1 Encabezado · 2 Matriz · 3 Ciclo
-         4 Plan colectivo + Resumen de criterio
-         5 Tabla de marcas (APAISADA)
-         6 Jugadores clave + Claves estratégicas
-         7+ Fichas individuales
+         · `break-inside: avoid` en la card: si no entra en el espacio que
+           queda, Chromium la baja completa a la hoja siguiente.
+         · Una card MÁS ALTA QUE UNA HOJA (la tabla de marcas con planteles
+           largos, las fichas, el resto) no entra en ninguna: ahí `avoid`
+           se ignora y la card se parte. Para que se parta BIEN, su tabla
+           tiene que poder partirse (`auto`) y la FILA no: el corte cae
+           entre dos jugadores, nunca a mitad de una marca (punto 65). El
+           `<thead>` se repite en cada hoja por la regla general.
+         · El título y la bajada no se despegan del contenido: un `h4`
+           solo al pie de una hoja es el mismo defecto con otra cara.
 
-       `page-break-before` y no `after`: si el DT destilda una card del
-       medio, el corte lo sigue poniendo la card que sí se imprime. Con
-       `after` quedaba una hoja en blanco donde estaba la oculta.
+       `page-break-*` además de `break-*`: hay motores que solo leen el
+       viejo. Medido sobre el PDF real; ver el punto 85 del CLAUDE.md.
        ----------------------------------------------------------------- */
     html.modo-scout-print .scout-card {
       page-break-inside: avoid; break-inside: avoid;
+      page-break-before: auto; break-before: auto;
       page-break-after: auto; break-after: auto;
       margin-bottom: 4mm;
     }
-    html.modo-scout-print .scout-card.scout-pagina {
-      page-break-before: always; break-before: page;
+    html.modo-scout-print .scout-card .scrollbox,
+    html.modo-scout-print .scout-card .scrollbox > table {
+      page-break-inside: auto !important; break-inside: auto !important;
     }
-    /* La primera no arrastra una hoja en blanco adelante. */
-    html.modo-scout-print .scout-card.scout-pagina:first-of-type {
-      page-break-before: auto; break-before: auto;
+    /* LA FILA ES EL JUGADOR: es lo único de una tabla que no se corta. */
+    html.modo-scout-print .scout-card table > tbody > tr {
+      page-break-inside: avoid !important; break-inside: avoid !important;
     }
-    /* Las fichas individuales tampoco se cortan al medio. */
+    /* `:not(:last-child)` NO es cosmético: un `break-after: avoid` en el
+       ÚLTIMO hijo se propaga al final de la card y la pega a la SIGUIENTE.
+       Medido: el resumen termina en un `<p>`, quedaba atado al plan
+       defensivo y los dos saltaban de hoja aunque el resumen solo entraba
+       de sobra debajo de los splits. */
+    html.modo-scout-print .scout-card > h4:not(:last-child),
+    html.modo-scout-print .scout-card > p:not(:last-child) {
+      page-break-after: avoid; break-after: avoid;
+    }
+    /* Las fichas individuales y las filas del resto tampoco se cortan. */
     html.modo-scout-print .scout-ficha,
     html.modo-scout-print .scout-resto {
       page-break-inside: avoid; break-inside: avoid;
-    }
-
-    /* -----------------------------------------------------------------
-       UNA TABLA QUE NO ENTRA SE PARTE · NO SALTA ENTERA
-
-       Reportado por el club (2026-09-21) sobre la card de marcas: la hoja
-       salía con el título, el subtítulo y la leyenda, y NADA MÁS; los ocho
-       jugadores empezaban recién en la siguiente. Medido en modo papel con
-       la media de impresión emulada, y el mecanismo son VEINTISÉIS PÍXELES:
-
-         alto útil de una A3 apaisada      1028px
-         la card de marcas                 1054px   ← se pasa por 26
-            cabezal (título + leyenda)        70px
-            la tabla                         942px
-         la fila más alta (un jugador)      123px   ← entra en cualquier hoja
-
-       La card no entra en NINGUNA hoja, así que Chromium tiene que
-       partirla. Pero `.scrollbox` y `table` estaban en la lista general de
-       `break-inside: avoid`, así que la tabla no se podía partir y saltaba
-       ENTERA a la hoja siguiente, dejando el cabezal solo. Un desborde de
-       26px se comía media hoja.
-
-       La regla correcta es la que ya usa la quinta exportación (punto 50):
-       la tabla se parte, la FILA no. Cada fila es un jugador, así que el
-       corte siempre cae entre dos nombres y nunca a mitad de una marca —
-       que es exactamente lo que pidió el club. El `<thead>` se repite
-       arriba de cada hoja (`table-header-group`, ya en la regla general),
-       así que la tabla de la segunda hoja no queda sin encabezados.
-
-       SOLO PARA LAS CARDS QUE ABREN HOJA (`.scout-pagina`), y la
-       distinción es la que explica el defecto entero:
-
-         · una card que ABRE hoja ya arranca arriba de todo, así que
-           `avoid` no la puede mover a ningún lado mejor. Lo único que
-           consigue es que la tabla salte entera y deje la hoja a medias;
-         · una que SIGUE a otra —la matriz, el resumen, las claves— sí se
-           beneficia: `avoid` la baja completa a la hoja siguiente en vez
-           de partirla, que es el maquetado medido del punto 7.2 bis.
-
-       Se probó primero con TODA tabla y la matriz se partió: su título
-       quedó en la hoja del encabezado y la tabla siguió en la otra sin
-       encabezados. Medido, hoja 1 pasó de 479 a 1132 glifos y hoja 2 de
-       1366 a 740. Por eso la regla lleva `.scout-pagina`.
-
-       Alcanza a marcas, jugadores clave, resto, fichas y quintetos, que
-       son las cinco que crecen con el plantel. La medición de antes y
-       después está en el punto 65 del CLAUDE.md.
-       ----------------------------------------------------------------- */
-    html.modo-scout-print .scout-card.scout-pagina:has(table) {
-      page-break-inside: auto; break-inside: auto;
-    }
-    html.modo-scout-print .scout-card.scout-pagina .scrollbox,
-    html.modo-scout-print .scout-card.scout-pagina > .scrollbox > table {
-      page-break-inside: auto !important; break-inside: auto !important;
-    }
-    /* LA FILA ES EL JUGADOR: es lo único que no se puede cortar. */
-    html.modo-scout-print .scout-card.scout-pagina table > tbody > tr {
-      page-break-inside: avoid !important; break-inside: avoid !important;
-    }
-    /* Y el cabezal no se despega de su tabla: un título solo al pie de una
-       hoja es el mismo defecto con otra cara. `h4` no está en la regla
-       general de `page-break-after` —que enumera h1, h2, h3 y h5— y los
-       títulos de las cards de scouting son justamente h4. */
-    html.modo-scout-print .scout-card.scout-pagina > h4,
-    html.modo-scout-print .scout-card.scout-pagina > p {
-      page-break-after: avoid; break-after: avoid;
     }
 
     /* -----------------------------------------------------------------
@@ -2910,7 +2859,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=259" />
+<link rel="stylesheet" href="sgadd.css?v=260" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -3092,50 +3041,50 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=259"></script>
+<script src="js/sgadd-club.js?v=260"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=259"></script>
-<script src="js/sgadd-core.js?v=259"></script>
-<script src="js/sgadd-auth.js?v=259"></script>
+<script src="js/sgadd-config.js?v=260"></script>
+<script src="js/sgadd-core.js?v=260"></script>
+<script src="js/sgadd-auth.js?v=260"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=259"></script>
-<script src="js/sgadd-glosario.js?v=259"></script>
-<script src="js/sgadd-glosarioui.js?v=259"></script>
-<script src="js/sgadd-comparativa.js?v=259"></script>
-<script src="js/sgadd-comparativaui.js?v=259"></script>
-<script src="js/sgadd-confirmar.js?v=259"></script>
-<script src="js/sgadd-landing.js?v=259"></script>
-<script src="js/sgadd-login.js?v=259"></script>
-<script src="js/sgadd-data.js?v=259"></script>
-<script src="js/sgadd-clientes.js?v=259"></script>
-<script src="js/sgadd-ui.js?v=259"></script>
-<script src="js/sgadd-app.js?v=259"></script>
-<script src="js/sgadd-clasificacion.js?v=259"></script>
+<script src="js/sgadd-demo.js?v=260"></script>
+<script src="js/sgadd-glosario.js?v=260"></script>
+<script src="js/sgadd-glosarioui.js?v=260"></script>
+<script src="js/sgadd-comparativa.js?v=260"></script>
+<script src="js/sgadd-comparativaui.js?v=260"></script>
+<script src="js/sgadd-confirmar.js?v=260"></script>
+<script src="js/sgadd-landing.js?v=260"></script>
+<script src="js/sgadd-login.js?v=260"></script>
+<script src="js/sgadd-data.js?v=260"></script>
+<script src="js/sgadd-clientes.js?v=260"></script>
+<script src="js/sgadd-ui.js?v=260"></script>
+<script src="js/sgadd-app.js?v=260"></script>
+<script src="js/sgadd-clasificacion.js?v=260"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-fixture.js?v=259"></script>
-<script src="js/sgadd-fases.js?v=259"></script>
-<script src="js/sgadd-torneos.js?v=259"></script>
-<script src="js/sgadd-hub.js?v=259"></script>
-<script src="js/sgadd-configui.js?v=259"></script>
-<script src="js/sgadd-estados.js?v=259"></script>
-<script src="js/sgadd-buzon.js?v=259"></script>
-<script src="js/sgadd-charts.js?v=259"></script>
-<script src="js/sgadd-personalidad.js?v=259"></script>
-<script src="js/sgadd-rankings.js?v=259"></script>
-<script src="js/sgadd-partido.js?v=259"></script>
-<script src="js/sgadd-informe.js?v=259"></script>
-<script src="js/sgadd-ficha.js?v=259"></script>
-  <script src="js/sgadd-rankingpdf.js?v=259"></script>
-<script src="js/sgadd-equipos.js?v=259"></script>
+<script src="js/sgadd-fixture.js?v=260"></script>
+<script src="js/sgadd-fases.js?v=260"></script>
+<script src="js/sgadd-torneos.js?v=260"></script>
+<script src="js/sgadd-hub.js?v=260"></script>
+<script src="js/sgadd-configui.js?v=260"></script>
+<script src="js/sgadd-estados.js?v=260"></script>
+<script src="js/sgadd-buzon.js?v=260"></script>
+<script src="js/sgadd-charts.js?v=260"></script>
+<script src="js/sgadd-personalidad.js?v=260"></script>
+<script src="js/sgadd-rankings.js?v=260"></script>
+<script src="js/sgadd-partido.js?v=260"></script>
+<script src="js/sgadd-informe.js?v=260"></script>
+<script src="js/sgadd-ficha.js?v=260"></script>
+  <script src="js/sgadd-rankingpdf.js?v=260"></script>
+<script src="js/sgadd-equipos.js?v=260"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=259"></script>
-<script src="js/sgadd-jugadores.js?v=259"></script>
-<script src="js/sgadd-4factores.js?v=259"></script>
-<script src="js/sgadd-scouting.js?v=259"></script>
-<script src="js/sgadd-pbp.js?v=259"></script>
-<script src="js/sgadd-diagnostico.js?v=259"></script>
+<script src="js/sgadd-niveles.js?v=260"></script>
+<script src="js/sgadd-jugadores.js?v=260"></script>
+<script src="js/sgadd-4factores.js?v=260"></script>
+<script src="js/sgadd-scouting.js?v=260"></script>
+<script src="js/sgadd-pbp.js?v=260"></script>
+<script src="js/sgadd-diagnostico.js?v=260"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

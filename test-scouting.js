@@ -1706,42 +1706,47 @@ console.log('═'.repeat(70));
 const idxHtml = require('fs').readFileSync('./index.html', 'utf8');
 const scoutJs = require('fs').readFileSync('./js/sgadd-scouting.js', 'utf8');
 
-/* --- Agrupación de cards por hoja --------------------------------- */
-/* Las que ABREN hoja llevan `scout-pagina`; las que no, quedan pegadas a
-   la anterior. Así se arman los pares que el cuerpo técnico lee juntos. */
+/* --- FLUJO CONTINUO (pedido del club, 2026-10-02) ------------------ */
+/* Ninguna card abre hoja por clase: van una debajo de la otra y una card
+   pasa a la siguiente hoja solo si no entra ENTERA en lo que queda. */
 const seccionDe = (bloque, i) => {
-  const re = new RegExp('<section class="([^"]*)"[\\s\\n]*data-bloque="' + bloque + '">', 'g');
+  const re = new RegExp('<section class="([^"]*)"\\s*data-bloque="' + bloque + '">', 'g');
   const todas = []; let m;
   while ((m = re.exec(scoutJs))) todas.push(m[1]);
   return todas[i || 0] || '';
 };
-const abreHoja = (b, i) => /\bscout-pagina\b/.test(seccionDe(b, i));
+['encabezado', 'matriz', 'ciclo', 'resumen', 'marcas', 'jugadores', 'resto', 'claves', 'marcas-tabla', 'fichas']
+  .forEach(b => check('la card "' + b + '" existe y NO fuerza hoja nueva',
+    /\bscout-card\b/.test(seccionDe(b)) && !/\bscout-pagina\b/.test(seccionDe(b)), seccionDe(b)));
 
-/* `matriz` salió de esta lista a propósito: ya no fuerza hoja nueva, para
-   poder convivir con el encabezado cuando el espacio alcanza. */
-['encabezado', 'ciclo', 'jugadores', 'fichas'].forEach(b =>
-  check('la card "' + b + '" abre hoja nueva', abreHoja(b)));
-/* Estos dos NO abren hoja: van con la card de arriba. Es el pedido
-   explícito del club — el resumen se lee junto al plan que sintetiza, y
-   las claves junto a la tabla de jugadores que las dispara. */
-check('"resumen" NO abre hoja: va junto al plan colectivo',
-  !abreHoja('resumen'), seccionDe('resumen'));
-check('"claves" NO abre hoja: va junto a la tabla de jugadores',
-  !abreHoja('claves'), seccionDe('claves'));
-
-/* El bloque de marcas son DOS sections con el mismo data-bloque. */
-check('el plan de marcas se parte en dos sections',
-  (scoutJs.match(/<section class="[^"]*"[\s\n]*data-bloque="marcas">/g) || []).length === 2,
-  (scoutJs.match(/<section class="[^"]*"[\s\n]*data-bloque="marcas">/g) || []).length);
-check('la segunda es la TABLA, y va apaisada',
-  /\bscout-pagina\b/.test(seccionDe('marcas', 1)) &&
-  /\bscout-pagina-ancha\b/.test(seccionDe('marcas', 1)));
-check('el panel colectivo abre hoja pero NO es el apaisado',
-  abreHoja('marcas', 0) && !/scout-pagina-ancha/.test(seccionDe('marcas', 0)));
-/* Un solo checkbox controla las dos: con `querySelector` en singular,
-   destildar "Plan individual" dejaba la tabla en el PDF igual. */
-check('scoutCard() alcanza a las DOS sections del bloque',
-  /querySelectorAll\('\.scout-card\[data-bloque="' \+ id \+ '"\]'\)/.test(scoutJs) ||
+/* LAS DIEZ OPCIONES, DE A UNA. El plan defensivo y la tabla de marcas eran
+   un solo checkbox (`data-bloque="marcas"` en las dos sections): ahora cada
+   una tiene el suyo. */
+check('el plan defensivo y la tabla de marcas son bloques distintos',
+  (scoutJs.match(/<section class="[^"]*"\s*data-bloque="marcas">/g) || []).length === 1
+  && (scoutJs.match(/<section class="[^"]*"\s*data-bloque="marcas-tabla">/g) || []).length === 1);
+const SCOUT_CARDS_V = (function () {
+  const ini = scoutJs.indexOf('const SCOUT_CARDS = [');
+  const lit = scoutJs.slice(scoutJs.indexOf('[', ini), scoutJs.indexOf('];', ini) + 1);
+  return require('vm').runInNewContext('(' + lit + ')');
+})();
+const tildadas = (function () {
+  const ini = scoutJs.indexOf('  cards: {');
+  return require('vm').runInNewContext('(' + scoutJs.slice(scoutJs.indexOf('{', ini), scoutJs.indexOf('},', ini) + 1) + ')');
+})();
+const diez = SCOUT_CARDS_V.filter(c => !c.capa);
+check('el modal ofrece las 10 cards, cada una por separado y en el orden del informe',
+  diez.map(c => c.id).join(',') === 'encabezado,matriz,ciclo,resumen,marcas,jugadores,resto,claves,marcas-tabla,fichas',
+  diez.map(c => c.id).join(','));
+check('y cada opción lleva el título de su card',
+  diez.map(c => c.label).join(' | ') === ['Reporte de scouting', '📊 Métricas avanzadas y ranking en la liga',
+    '🔀 Splits local/visitante y tendencia reciente', '🧠 Resumen de criterio estratégico',
+    '🛡 Plan defensivo · marca asignada', '👥 Jugadores clave', '🧩 Resto del plantel',
+    '🎯 Claves estratégicas y anticipación', '🛡 Marcas · jugador por jugador',
+    '📋 Ficha de análisis por jugador'].join(' | '), diez.map(c => c.label).join(' | '));
+check('todas arrancan tildadas',
+  diez.every(c => tildadas[c.id] === true));
+check('scoutCard() alcanza a todo nodo del bloque (querySelectorAll)',
   /querySelectorAll\('\.scout-card\[data-bloque="' \+ id/.test(scoutJs));
 
 /* El orden de render define el orden de las hojas. */
@@ -1763,8 +1768,6 @@ check('y el orden de las hojas es el pedido, sin saltos',
    las dos correcciones, y la segunda sola ya alcanza para que entre. */
 /* La hoja pasó de A4 apaisada a A3 apaisada: ver la sección 26. Acá solo
    se verifica que la tabla siga marcada como la que necesita el ancho. */
-check('la tabla de marcas sigue marcada como hoja ancha',
-  /scout-pagina scout-pagina-ancha/.test(scoutJs));
 /* El min-width es un estilo INLINE: sin !important no se le puede ganar. */
 check('el min-width de 62rem se anula con !important (es inline)',
   /\.tabla-marcas \{[\s\S]{0,120}min-width: 0 !important/.test(idxHtml));
@@ -1934,10 +1937,9 @@ check('la columna fija tampoco pinta oscuro en el papel',
    destilda una del medio, con `after` quedaba una hoja en blanco. */
 check('ninguna card se parte al medio entre dos hojas',
   /html\.modo-scout-print \.scout-card \{[\s\S]{0,120}page-break-inside: avoid/.test(idxHtml));
-check('el corte va con page-break-BEFORE, no after',
-  /\.scout-card\.scout-pagina \{[\s\S]{0,80}page-break-before: always/.test(idxHtml));
-check('la primera no arrastra una hoja en blanco adelante',
-  /scout-pagina:first-of-type \{[\s\S]{0,80}page-break-before: auto/.test(idxHtml));
+check('y ninguna se fuerza a hoja nueva: con una destildada no quedan medias hojas en blanco',
+  !/scout-pagina\s*\{[\s\S]{0,80}page-break-before: always/.test(idxHtml)
+  && /html\.modo-scout-print \.scout-card \{[\s\S]{0,160}page-break-before: auto/.test(idxHtml));
 /* El valor que el DT cargó a mano ES el contenido del informe. */
 check('los inputs editables de marcas SÍ se imprimen',
   /html\.modo-scout-print \.scout-card input\[type="text"\] \{[\s\S]{0,120}display: block !important/.test(idxHtml));

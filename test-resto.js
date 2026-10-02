@@ -503,7 +503,8 @@ const P = pantalla({ plan: 'ORO', bloques: { 'scouting.fichas': true } });
 const html = vm.runInContext('scoutBloqueResto', P)({ restoRival: resto });
 
 check('el bloque se pinta con su `data-bloque`', /data-bloque="resto"/.test(html));
-check('y abre hoja en el PDF, como las fichas', /scout-pagina/.test(html));
+/* Flujo continuo (2026-10-02): ninguna card abre hoja por clase. */
+check('y NO fuerza hoja nueva en el PDF: fluye después de la card anterior', !/scout-pagina/.test(html));
 check('nombra a los de la tabla y a los de la nota',
   resto.filas.concat(resto.pocosMinutos).every(f => html.indexOf(f.nombre) !== -1));
 check('con su función en cancha', html.indexOf(factor.rol.label) !== -1);
@@ -625,7 +626,7 @@ check('y no las ofrece con PLATA', !cardsPlata.some(c => c.id === 'fichas'),
 check('el resto del plantel sí se ofrece en los dos',
   cardsOro.some(c => c.id === 'resto') && cardsPlata.some(c => c.id === 'resto'));
 check('y el orden del modal es el del informe (resto arriba de claves, 2026-10-02)',
-  cardsOro.map(c => c.id).join(',') === 'encabezado,matriz,ciclo,resumen,marcas,jugadores,resto,claves,fichas',
+  cardsOro.map(c => c.id).join(',') === 'encabezado,matriz,ciclo,resumen,marcas,jugadores,resto,claves,marcas-tabla,fichas',
   cardsOro.map(c => c.id).join(','));
 
 /* MANDA EL SERVIDOR: su declaración le gana al plan que tenga guardado
