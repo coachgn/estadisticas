@@ -882,6 +882,179 @@ const SGADD_PBP = (function () {
     }).join('')}${lineasCancha(GEOMETRIA)}</svg>`;
   }
 
+  /* --------------------------------------------- secciones (opcional) */
+
+  /* El bloque `secciones` (motorstats-ingestion, `secciones-web@1`) es un
+     campo OPCIONAL del paquete @3: lo suma la ingesta cuando bajó la ficha
+     del equipo en el sitio de la competencia (estadísticas del equipo, de
+     cada jugador, líderes y tabla), más el último partido del play-by-play
+     validado.
+
+     LA REGLA ES LA RETROCOMPATIBILIDAD: un paquete sin el bloque —todos los
+     publicados antes del 2026-10-02— se pinta exactamente igual que antes,
+     y uno con el bloque roto o a medias tampoco se cae. Cada pieza se pinta
+     solo si su dato tiene la forma esperada, y el bloque entero va adentro
+     de un try: un error acá NO puede tumbar los quintetos. */
+
+  const esObjeto = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
+  const lista = (x) => (Array.isArray(x) ? x : []);
+  const esNum = (x) => typeof x === 'number' && isFinite(x);
+
+  const ETIQUETA_SEC = {
+    pts: 'Puntos', rt: 'Rebotes', ro: 'Rebotes ofensivos', rd: 'Rebotes defensivos', ast: 'Asistencias',
+    pr: 'Recuperaciones', tc: 'Tapones', pp: 'Pérdidas', fc: 'Faltas cometidas', val: 'Valoración',
+    t1: 'Tiros libres', t2: 'Dobles', t3: 'Triples',
+  };
+
+  /** ¿El paquete trae el bloque? Sin él, ninguna card de secciones se dibuja. */
+  const tieneSecciones = (paq) => !!(paq && esObjeto(paq.secciones));
+
+  /**
+   * Tablero del equipo contra la competencia: valor, mediana y puesto. El
+   * puesto se DICE («3.º de 17»): el tinte acompaña, no informa solo
+   * (punto 14). Pérdidas y faltas van al revés: el 1.º es el que menos tiene.
+   */
+  function tableroEquipo(sec) {
+    const l = esObjeto(sec.liga) ? sec.liga : null;
+    const filas = l ? lista(l.metricas).filter(m => esObjeto(m) && esNum(m.v) && esNum(m.puesto) && esNum(m.de) && ETIQUETA_SEC[m.k]) : [];
+    if (filas.length) {
+      const tercio = (m) => (m.puesto <= Math.ceil(m.de / 3) ? 'mm-pos' : m.puesto > m.de - Math.ceil(m.de / 3) ? 'mm-neg' : '');
+      return `<p class="text-[11px] text-muted mb-2">Contra los ${esc(l.equipos)} equipos de la competencia. Por partido, salvo los porcentajes.</p>
+        <div class="scrollbox"><table class="w-full pbp-sec-equipo">
+        <thead><tr><th class="${TH} text-left">Métrica</th><th class="${TH}">Equipo</th><th class="${TH}">Mediana</th><th class="${TH}">Puesto</th></tr></thead>
+        <tbody>${filas.map(m => `<tr>
+          <td class="px-2 py-1 text-left text-xs text-white whitespace-nowrap">${esc(ETIQUETA_SEC[m.k])}${m.b === 'pct' ? ' %' : ''}</td>
+          <td class="${TD}">${num(m.v, m.b === 'pct' ? 0 : 1)}</td>
+          <td class="${TD} dato-sec">${num(m.med, m.b === 'pct' ? 0 : 1)}</td>
+          <td class="${TD} ${tercio(m)}" title="${m.mejor === 'menos' ? 'El 1.º es el que menos tiene' : 'El 1.º es el que más tiene'}">${esc(m.puesto)}.º de ${esc(m.de)}</td>
+        </tr>`).join('')}</tbody></table></div>`;
+    }
+    /* Sin la vara de la competencia, el equipo solo. */
+    const e = esObjeto(sec.equipo) ? sec.equipo : null;
+    const pp = e && esObjeto(e.porPartido) ? e.porPartido : {};
+    const pct = e && esObjeto(e.pct) ? e.pct : {};
+    const claves = Object.keys(ETIQUETA_SEC).filter(k => esNum(pp[k]));
+    const pcts = ['t1', 't2', 't3'].filter(k => esNum(pct[k]));
+    if (!claves.length && !pcts.length) return '';
+    return `<div class="scrollbox"><table class="w-full pbp-sec-equipo">
+      <thead><tr><th class="${TH} text-left">Métrica</th><th class="${TH}">Por partido</th></tr></thead>
+      <tbody>${claves.map(k => `<tr><td class="px-2 py-1 text-left text-xs text-white">${esc(ETIQUETA_SEC[k])}</td><td class="${TD}">${num(pp[k])}</td></tr>`).join('')}
+      ${pcts.map(k => `<tr><td class="px-2 py-1 text-left text-xs text-white">${esc(ETIQUETA_SEC[k])} %</td><td class="${TD}">${num(pct[k], 0)}</td></tr>`).join('')}</tbody>
+    </table></div>`;
+  }
+
+  /* Columnas de la tabla de jugadores. Las de tiro muestran el par en
+     totales y el porcentaje por partido, y se ordenan por porcentaje. */
+  const COLS_JUG = [
+    { k: 'pj', t: 'PJ' }, { k: 'min', t: 'MIN' }, { k: 'pts', t: 'PTS' }, { k: 'rt', t: 'RT' },
+    { k: 'ast', t: 'AST' }, { k: 'pr', t: 'REC' }, { k: 'tc', t: 'TAP' }, { k: 'pp', t: 'PÉR' },
+    { k: 'val', t: 'VAL' }, { k: 't2', t: 'T2', tiro: true }, { k: 't3', t: 'T3', tiro: true }, { k: 't1', t: 'TL', tiro: true },
+  ];
+  function valorJug(j, k, escala) {
+    if (k === 'pj') return esNum(j.pj) ? j.pj : null;
+    const col = COLS_JUG.find(c => c.k === k);
+    if (col && col.tiro) return esObjeto(j.pct) && esNum(j.pct[k]) ? j.pct[k] : null;
+    const b = escala === 'total' ? j.t : j.p;
+    return esObjeto(b) && esNum(b[k]) ? b[k] : null;
+  }
+
+  /**
+   * La tabla de jugadores, ordenable por columna y en dos escalas (por
+   * partido o totales). PURO: el clic la vuelve a pedir con otro orden
+   * (`activar`), así que lo que se ve es siempre esta función. Los nulos
+   * van al fondo ordene como ordene (punto 8).
+   */
+  function tablaJugadoresSec(sec, orden, escala) {
+    const esc2 = escala === 'total' ? 'total' : 'pp';
+    const ord = COLS_JUG.some(c => c.k === orden) ? orden : 'pts';
+    const filas = lista(sec && sec.jugadores).filter(j => esObjeto(j) && j.n)
+      .map(j => ({ j: j, v: valorJug(j, ord, esc2) }))
+      .sort((a, b) => ((a.v === null) - (b.v === null)) || (a.v === null ? 0 : b.v - a.v) || String(a.j.n).localeCompare(String(b.j.n)))
+      .map(x => x.j);
+    if (!filas.length) return '';
+    const celda = (j, c) => {
+      if (c.tiro && esc2 === 'total' && esObjeto(j.t) && esNum(j.t[c.k + 'i'])) return esc(j.t[c.k + 'c']) + '/' + esc(j.t[c.k + 'i']);
+      const v = valorJug(j, c.k, esc2);
+      if (v === null) return '—';
+      if (c.tiro) return num(v, 0) + ' %';
+      return c.k === 'pj' ? esc(v) : num(v, esc2 === 'total' ? 0 : 1);
+    };
+    const boton = (valor, texto) => `<button type="button" class="pbp-toggle" data-sec-escala="${valor}" aria-pressed="${esc2 === valor}">${texto}</button>`;
+    return `<div class="pbp-sec-jug" data-orden="${esc(ord)}" data-escala="${esc2}">
+      <div class="flex flex-wrap gap-2 mb-2">${boton('pp', 'Por partido')}${boton('total', 'Totales')}</div>
+      <div class="scrollbox"><table class="w-full">
+      <thead><tr><th class="${TH} text-left">Jugador</th>${COLS_JUG.map(c => `<th class="${TH}" aria-sort="${c.k === ord ? 'descending' : 'none'}"><button type="button" class="pbp-orden" data-sec-orden="${c.k}">${c.t}${c.k === ord ? ' ▼' : ''}</button></th>`).join('')}</tr></thead>
+      <tbody>${filas.map(j => `<tr><td class="px-2 py-1 text-left text-xs text-white whitespace-nowrap" title="${esc(j.n)}">${esc(apellido(j.n))}</td>${COLS_JUG.map(c => `<td class="${TD}${c.k === ord ? ' text-accent' : ''}">${celda(j, c)}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table></div></div>`;
+  }
+
+  /** Líderes del plantel (top 3 por estadística) y destacados del último partido. */
+  function bloqueLideres(sec) {
+    const lid = lista(sec.lideres).filter(L => esObjeto(L) && lista(L.top).filter(esObjeto).length);
+    const u = esObjeto(sec.ultimo) ? sec.ultimo : null;
+    const dest = u ? lista(u.destacados).filter(d => esObjeto(d) && esNum(d.v)) : [];
+    if (!lid.length && !dest.length) return '';
+    const tarjetas = lid.map(L => `<div class="pbp-sec-lider">${subtitulo(esc(L.t || L.tipo))}
+        <ol class="text-xs">${lista(L.top).filter(esObjeto).map((x, i) => `<li class="flex justify-between gap-2 ${i === 0 ? 'text-white font-bold' : 'text-ink'}">
+          <span title="${esc(x.n)}">${i + 1}. ${esc(apellido(x.n))}</span><span class="font-mono">${num(x.v)}</span></li>`).join('')}</ol>
+      </div>`).join('');
+    const titUltimo = 'Último partido · ' + esc(u && u.fecha ? u.fecha : '') + ' · ' + (u && u.condicion === 'V' ? 'en ' : 'vs ') + esc(u && u.rival ? u.rival : '')
+      + (u && esNum(u.propios) && esNum(u.rivales) ? ' · ' + esc(u.propios) + '-' + esc(u.rivales) : '');
+    const ultimo = dest.length ? `<div class="pbp-sec-ultimo mt-3">${subtitulo(titUltimo)}
+        <ul class="flex flex-wrap gap-2">${dest.map(d => `<li class="pbp-chip text-xs"><span class="dato-sec">${esc(d.t)}</span>
+          <b class="text-white">${esc(apellido(d.n))}</b> <span class="font-mono">${esc(d.v)}</span></li>`).join('')}</ul>
+      </div>` : '';
+    return (lid.length ? `<div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">${tarjetas}</div>` : '') + ultimo;
+  }
+
+  /** La tabla de posiciones del grupo, con el equipo marcado con texto (◀), no solo color. */
+  function tablaPosicionesSec(sec, idEquipo) {
+    const c = esObjeto(sec.clasificacion) ? sec.clasificacion : null;
+    const filas = c ? lista(c.filas).filter(f => esObjeto(f) && f.n) : [];
+    if (!filas.length) return '';
+    return `<p class="text-[11px] text-muted mb-2">${esc([c.fase, c.zona].filter(Boolean).join(' · '))}</p>
+      <div class="scrollbox"><table class="w-full">
+      <thead><tr><th class="${TH}">#</th><th class="${TH} text-left">Equipo</th><th class="${TH}">PJ</th><th class="${TH}">G</th>
+        <th class="${TH}">P</th><th class="${TH}">PF</th><th class="${TH}">PC</th><th class="${TH}">PTS</th></tr></thead>
+      <tbody>${filas.map((f) => {
+        const propio = idEquipo != null && String(f.id) === String(idEquipo);
+        return `<tr class="${propio ? 'fila-destacada' : ''}"><td class="${TD}">${esc(f.pos)}</td>
+          <td class="px-2 py-1 text-left text-xs ${propio ? 'text-white font-bold' : 'text-ink'} whitespace-nowrap">${esc(f.n)}${propio ? ' ◀' : ''}</td>
+          <td class="${TD}">${esc(f.pj)}</td><td class="${TD}">${esc(f.g)}</td><td class="${TD}">${esc(f.p)}</td>
+          <td class="${TD}">${esc(f.pf)}</td><td class="${TD}">${esc(f.pc)}</td><td class="${TD}">${esc(f.pts)}</td></tr>`;
+      }).join('')}</tbody></table></div>`;
+  }
+
+  /**
+   * Las cards de `secciones`. PURO. '' si el paquete no trae el bloque, y ''
+   * —no una excepción— si lo trae roto.
+   * @param {string} contexto 'scouting': tablero, líderes y jugadores; la
+   *   ficha del equipo suma la tabla de posiciones.
+   */
+  function bloqueSecciones(paq, contexto) {
+    if (!tieneSecciones(paq)) return '';
+    try {
+      const sec = paq.secciones;
+      const nota = esc(sec.fuente || 'ficha del equipo en el sitio de la competencia')
+        + '. Puede cubrir más partidos que los validados del play-by-play (por ejemplo, los playoffs).';
+      const avisos = lista(sec.avisos).filter(esObjeto);
+      const piezas = [
+        ['sec-equipo', 'Estadísticas del equipo · contra la competencia', tableroEquipo(sec)],
+        ['sec-lideres', 'Líderes y destacados del último partido', bloqueLideres(sec)],
+        ['sec-jugadores', 'Estadísticas de jugadores', tablaJugadoresSec(sec, 'pts', 'pp')],
+      ];
+      if (contexto !== 'scouting') piezas.push(['sec-tabla', 'Tabla de posiciones', tablaPosicionesSec(sec, paq.idEquipo)]);
+      const cuerpo = piezas.filter(p => p[2]).map(p => seccion(p[0], p[1], p[2], { nota: p[0] === 'sec-equipo' ? nota : '' })).join('');
+      if (!cuerpo) return '';
+      return `<div class="pbp-secciones" data-pbp-secciones="1">${cuerpo}${avisos.length ? `
+        <p class="text-[11px] text-muted mt-2" title="${esc(avisos.map(a => a.d).join(' · '))}">${avisos.length} control${avisos.length === 1 ? '' : 'es'} de la ficha no cerraron contra el sitio: el dato del sitio es así (pasá el mouse para verlos).</p>` : ''}
+      </div>`;
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.warn) console.warn('[pbp] el bloque secciones no se pudo pintar:', e && e.message);
+      return '';
+    }
+  }
+
   /* ------------------------------------------------------------- todo */
 
   /**
@@ -905,6 +1078,7 @@ const SGADD_PBP = (function () {
         ${v2 ? seccion('ultimos5', 'Últimos 5 partidos · inicial contra cierre', tablaUltimos5(paq)) : ''}
         ${seccion('clutch', 'Clutch', resumenClutch(paq), { nota: notaClutch })}
         ${seccion('decide', 'Quién decide los finales', tablaClutch(paq), { nota: 'Usos = PLAYS del motor, en los finales apretados.' })}
+        ${bloqueSecciones(paq, 'scouting')}
       </div>`;
     }
     const trios = `<details class="pbp-detalle pbp-sub mt-3"><summary class="pbp-resumen text-[11px] uppercase tracking-wider text-muted cursor-pointer select-none">Tríos con más minutos</summary>${tablaCombos(paq, paq.trios, 'Trío')}</details>
@@ -925,6 +1099,7 @@ const SGADD_PBP = (function () {
         { nota: notaClutch + ' Usos = PLAYS del motor.' })}
       ${v2 ? seccion('tactico', 'Motor táctico · puntos de fuga y combinaciones', bloqueTactico(paq),
         { nota: 'Solo combinaciones con muestra suficiente. Es una lectura de los números, no una orden: decide el cuerpo técnico.' }) : ''}
+      ${bloqueSecciones(paq, 'equipo')}
     </div>`;
   }
 
@@ -1129,6 +1304,20 @@ const SGADD_PBP = (function () {
     nodo.addEventListener('focusout', apagar);
 
     nodo.addEventListener('click', (ev) => {
+      /* La tabla de jugadores de `secciones`: orden y escala se vuelven a
+         pintar desde el paquete, sin pedir nada. */
+      const sOrden = cerca(ev, '[data-sec-orden]');
+      const sEscala = cerca(ev, '[data-sec-escala]');
+      if (sOrden || sEscala) {
+        const caja = (sOrden || sEscala).closest ? (sOrden || sEscala).closest('.pbp-sec-jug') : null;
+        const entrada = paqueteDe();
+        if (!caja || !tieneSecciones(entrada)) return;
+        const orden = sOrden ? sOrden.getAttribute('data-sec-orden') : caja.getAttribute('data-orden');
+        const escala = sEscala ? sEscala.getAttribute('data-sec-escala') : caja.getAttribute('data-escala');
+        const nuevo = tablaJugadoresSec(entrada.secciones, orden, escala);
+        if (nuevo) caja.outerHTML = nuevo;
+        return;
+      }
       const acc = cerca(ev, '[data-pbp-accion]');
       if (acc) {
         const caja = cajaDe(acc);
@@ -1206,7 +1395,7 @@ const SGADD_PBP = (function () {
 
   return {
     CAPA, NOMBRES_ZONA, FAMILIAS, ZONAS, GEOMETRIA, MIN_LIGA_HEX,
-    html, mapaCard, jugador, mapa, capaTiros, geometriaZonas, zonaGeometrica,
+    html, mapaCard, jugador, mapa, capaTiros, bloqueSecciones, tablaJugadoresSec, tieneSecciones, geometriaZonas, zonaGeometrica,
     diagnosticoZonas, diagnosticoJugador, cruceZonas, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
     activa, espacio, espacioJugador, montarPendientes, activar, apellido, _cache: cache,
   };

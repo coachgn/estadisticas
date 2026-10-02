@@ -76,9 +76,10 @@ node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: 
                            #             equipo, vencimiento y ciclo ORO por categoría
 node test-glosario.js      #  34 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
-node test-pbp.js           # 120 tests · la capa de laboratorio de play-by-play: el catálogo,
+node test-pbp.js           # 142 tests · la capa de laboratorio de play-by-play: el catálogo,
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
+                           #             · y el bloque opcional de secciones del paquete (punto 83)
 
 node test-mails.js         # 177 tests · los mails institucionales: plantillas sin huecos, el
                            #             día de Argentina, la idempotencia del cron, la ficha, el SMTP,
@@ -119,7 +120,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7055 tests en total. Todos tienen que dar verde antes de commitear.**
+**7077 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -234,7 +235,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=256`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=257`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -11739,3 +11740,74 @@ que la matriz no cambie al sumar los manuales.
 
 **El rival de otra zona** no los recibe: sus partidos manuales viven en el
 catálogo de SU zona y no viajan con `/rival`.
+
+---
+
+## 83. EL BLOQUE `secciones` DEL PAQUETE DE LABORATORIO (2026-10-02)
+
+`motorstats-ingestion` suma al paquete `@3` un campo OPCIONAL `secciones`
+(`secciones-web@1`, ~8 KB). Sale de la ficha del equipo en el sitio de la
+competencia y del último partido del play-by-play validado:
+
+- estadísticas del equipo;
+- mediana y puesto en 13 métricas contra los equipos bajados;
+- tabla de jugadores;
+- top 3 de líderes;
+- tabla del grupo;
+- avisos.
+
+**Sigue siendo `@3`, no un `@4`**: `server/bin/pbp.js` acepta de `@1` a
+`@3`, y un campo de más lo ignora cualquier versión vieja del panel.
+Medido sobre los 17 paquetes de la Conferencia Norte: sin el bloque, son
+idénticos a los publicados antes, y pasan el validador en modo de prueba.
+
+`js/sgadd-pbp.js` lo pinta con `bloqueSecciones(paq, contexto)`, al final
+de la card de Quintetos:
+
+```
+Equipos    tablero contra la competencia · líderes y último partido · jugadores · tabla
+Scouting   las tres primeras, sin la tabla
+```
+
+### La regla es la retrocompatibilidad
+
+- **Sin el bloque, la card es BYTE A BYTE la de antes.** El test saca el
+  bloque del HTML y exige que quede igual a la card sin `secciones`, en
+  los dos contextos.
+- **Un bloque roto no se cae ni pinta cards vacías**: cada pieza se dibuja
+  solo si su dato tiene la forma esperada (`esObjeto`, `lista`, `esNum`).
+  Todo va adentro de un `try`: una excepción (hay un test con un getter
+  que tira) devuelve `''` y los quintetos salen igual.
+
+### Lo que hay que respetar al tocarlo
+
+- **El puesto se DICE** («2.º de 17»): el tinte por tercio (`mm-pos` /
+  `mm-neg`) acompaña, no informa solo (punto 14). En pérdidas y faltas el
+  1.º es el que MENOS tiene, y el `title` lo aclara.
+- **La tabla de jugadores es PURA** (`tablaJugadoresSec`): el clic en una
+  cabecera o en «Por partido / Totales» la vuelve a pedir desde el paquete
+  guardado en `activar` (`data-sec-orden`, `data-sec-escala`). Los nulos
+  van al fondo, ordene como ordene.
+- **Las cabeceras son `<button>`** (teclado y lector de pantalla) y la
+  regla de papel esconde todo botón, así que van con
+  `.pbp-sec-jug th .pbp-orden { display: inline !important }` en
+  `@media print`, o el PDF sale sin títulos de columna.
+- **La ficha del sitio puede cubrir más partidos que el paquete** (por
+  ejemplo, playoffs): la nota del tablero lo dice con el PJ de su propia
+  fuente, y no se mezcla con los partidos validados.
+- **El equipo propio en la tabla de posiciones va con `◀`**, no solo con
+  color.
+
+### Dónde no hay datos todavía, y por qué
+
+- **Jujuy 2026-27**: la Liga Argentina no arrancó. La ficha del equipo
+  trae los 32 partidos sin fecha ni resultado, y la tabla contesta
+  «Clasificación no encontrada». Sin partidos validados no hay paquete;
+  el bloque se va a llenar solo cuando haya datos.
+- **Regatas Uruguay (FBER, Liga Provincial de Clubes 2026)**: no hay fuente
+  pública. La federación no publica estadísticas en ninguna página de la
+  plataforma, y la app de la CABB lee un backend al que no se entra sin
+  autorización (`cabb.gesdeportiva.es` contesta 403).
+- **Conferencia Norte 25/26** (lo publicado hoy): trae todo salvo la tabla.
+  La Liga solo sirve las fases de la temporada en curso, así que la tabla
+  de 25/26 ya no se puede pedir.

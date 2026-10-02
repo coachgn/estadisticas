@@ -501,6 +501,115 @@ function paquete(equipo) {
   const cli = fs.readFileSync('./server/bin/pbp.js', 'utf8');
   check('el CLI de subida acepta @1, @2 y @3, y no los mezcla', /analitica-pbp-web@2', 'motorstats-ingestion\/analitica-pbp-web@3'/.test(cli) && /esquema distinto del índice/.test(cli));
 
+  {
+  titulo('6 · SECCIONES · el bloque opcional del paquete @3 (2026-10-02)');
+  /* La forma que arma motorstats-ingestion (`secciones-web@1`), paqCon los
+     números de Jujuy 25/26 y nombres que hay que escapar. */
+  function conSecciones(equipo) {
+    const p = paquete3(equipo);
+    p.idEquipo = '89190';
+    p.secciones = {
+      esquema: 'motorstats-ingestion/secciones-web@1', fuente: 'ficha del equipo en el sitio de la competencia · 37 PJ', zonas: [],
+      equipo: { pj: 37, total: { pts: 2962 }, porPartido: { pts: 80, rt: 38.3, pp: 11.5 }, pct: { t1: 63, t2: 49, t3: 31 } },
+      liga: { equipos: 17, metricas: [
+        { b: 'pp', k: 'pts', v: 80, med: 80.2, puesto: 10, de: 17, mejor: 'mas' },
+        { b: 'pp', k: 'rt', v: 38.3, med: 34.8, puesto: 2, de: 17, mejor: 'mas' },
+        { b: 'pp', k: 'pp', v: 11.5, med: 12.4, puesto: 4, de: 17, mejor: 'menos' },
+        { b: 'pct', k: 't3', v: 31, med: 32, puesto: 15, de: 17, mejor: 'mas' }] },
+      jugadores: [
+        { id: '379619', n: 'STEHLI, RAMIRO', pj: 37, t: { pts: 522, ast: 40, t3c: 30, t3i: 90 }, p: { pts: 14.1, ast: 1.1 }, pct: { t3: 33 } },
+        { id: '379620', n: 'IBARRA, <b>S</b>', pj: 37, t: { pts: 481, ast: 120 }, p: { pts: 13, ast: 3.2 }, pct: {} },
+        { id: '1', n: 'SIN DATOS, X', pj: 2, t: {}, p: {}, pct: {} }],
+      lideres: [{ tipo: 'puntos_media', t: 'Puntos por partido', top: [{ id: '379619', n: 'STEHLI, RAMIRO', v: 14.1 }, { id: '379620', n: 'IBARRA, S', v: 13 }] }],
+      clasificacion: { fase: 'SERIE REGULAR', zona: 'CONFERENCIA NORTE', filas: [
+        { pos: 1, id: '11', n: 'SALTA BASKET', pj: 32, g: 24, p: 8, pf: 2600, pc: 2400, pts: 56 },
+        { pos: 5, id: '89190', n: 'JUJUY BASQUET', pj: 32, g: 18, p: 14, pf: 2560, pc: 2500, pts: 50 }] },
+      ultimo: { fecha: '2026-03-27', rival: 'COMUNICACIONES', condicion: 'V', propios: 68, rivales: 84,
+        destacados: [{ k: 'pts', t: 'Puntos', id: '379626', n: 'ROCA, T.', v: 13 }] },
+      avisos: [{ id: 'secciones.jugadores-vs-equipo', d: 'suma de jugadores / equipo: pts 2964/2962' }],
+    };
+    return p;
+  }
+  const paqSin = paquete3('JUJUY BASQUET');
+  const paqCon = conSecciones('JUJUY BASQUET');
+  const hSin = P.html(paqSin);
+  const hCon = P.html(paqCon);
+  check('SIN el bloque, la card es idéntica a la de antes: nada de secciones en el HTML',
+    !/data-pbp-secciones|data-pbp-seccion="sec-/.test(hSin) && P.bloqueSecciones(paqSin, 'equipo') === '' && !P.tieneSecciones(paqSin));
+  check('CON el bloque, lo único que cambia es el bloque: sacándolo queda la card de siempre',
+    hCon.replace(P.bloqueSecciones(paqCon, 'equipo'), '') === hSin);
+  const idsSec = (h) => (h.match(/data-pbp-seccion="(sec-[a-z]+)"/g) || []).map(x => x.slice(18, -1)).join();
+  check('Equipos: tablero, líderes, jugadores y tabla', idsSec(hCon) === 'sec-equipo,sec-lideres,sec-jugadores,sec-tabla', idsSec(hCon));
+  const hScout = P.html(paqCon, { contexto: 'scouting' });
+  check('Scouting: tablero, líderes y jugadores, paqSin la tabla', idsSec(hScout) === 'sec-equipo,sec-lideres,sec-jugadores', idsSec(hScout));
+  check('y Scouting paqSin el bloque no cambia', P.html(paqSin, { contexto: 'scouting' }) === hScout.replace(P.bloqueSecciones(paqCon, 'scouting'), ''));
+  check('las secciones arrancan CERRADAS, como el resto de la card', !/data-pbp-seccion="sec-[a-z]+" open/.test(hCon));
+  check('el puesto se DICE, no solo se pinta («2.º de 17»), y pérdidas aclaran que el 1.º es el que menos tiene',
+    /2\.º de 17/.test(hCon) && /mm-pos[^>]*>2\.º de 17|title="El 1\.º es el que más tiene">2\.º de 17/.test(hCon) && /El 1\.º es el que menos tiene/.test(hCon));
+  check('el tercio de abajo va en rojo y el del medio paqSin tinte', /mm-neg[^"]*" title="[^"]*">15\.º de 17/.test(hCon) && /" title="[^"]*">10\.º de 17/.test(hCon) && !/mm-(pos|neg)[^"]*" title="[^"]*">10\.º/.test(hCon));
+  check('lo que viene de afuera se escapa', !/<b>S<\/b>/.test(hCon) && /&lt;b&gt;S&lt;\/b&gt;/.test(hCon));
+  check('el equipo propio en la tabla va marcado paqCon texto, no solo color', /fila-destacada[\s\S]{0,200}JUJUY BASQUET ◀/.test(hCon));
+  check('el último partido: fecha, «en» de visitante y el marcador', /Último partido · 2026-03-27 · en COMUNICACIONES · 68-84/.test(hCon));
+  check('los avisos de la ficha se dicen, paqCon el detalle al pasar el mouse', /1 control de la ficha no cerraron|1 control de la ficha/.test(hCon) && /pts 2964\/2962/.test(hCon));
+
+  /* La tabla de jugadores · orden y escala. */
+  const filasSec = (h) => (h.match(/<tr><td[^>]*title="([^"]*)"/g) || []).map(x => x.replace(/.*title="/, '').replace(/"$/, ''));
+  const tPts = P.tablaJugadoresSec(paqCon.secciones);
+  check('por defecto, por puntos por partido; un jugador paqSin dato va al fondo', filasSec(tPts).join('|') === 'STEHLI, RAMIRO|IBARRA, &lt;b&gt;S&lt;/b&gt;|SIN DATOS, X', filasSec(tPts));
+  const tAst = P.tablaJugadoresSec(paqCon.secciones, 'ast', 'pp');
+  check('ordenar por asistencias cambia el orden y marca la columna', filasSec(tAst)[0] === 'IBARRA, &lt;b&gt;S&lt;/b&gt;' && /aria-sort="descending"><button[^>]*data-sec-orden="ast">AST ▼/.test(tAst));
+  check('en totales, los tiros van como convertidos/intentados', /30\/90/.test(P.tablaJugadoresSec(paqCon.secciones, 'pts', 'total')) && /33 %/.test(tPts));
+  check('un orden que no existe cae a puntos (no rompe)', /data-orden="pts"/.test(P.tablaJugadoresSec(paqCon.secciones, 'nada')));
+
+  /* El clic de verdad, sobre `activar`. */
+  let handlerClick = null;
+  const nodoSec = { getAttribute: () => null, setAttribute() {}, addEventListener: (t, f) => { if (t === 'click') handlerClick = f; } };
+  const cajaSec = { attrs: { 'data-orden': 'pts', 'data-escala': 'pp' }, getAttribute(k) { return this.attrs[k]; }, outerHTML: '' };
+  const botonSec = (attr, valor) => ({ getAttribute: k => (k === attr ? valor : null), closest: sel => (sel === '.pbp-sec-jug' ? cajaSec : null) });
+  P.activar(nodoSec, paqCon);
+  const clic = (b) => handlerClick({ target: { closest: sel => (sel === '[data-sec-orden]' && b.getAttribute('data-sec-orden')) || (sel === '[data-sec-escala]' && b.getAttribute('data-sec-escala')) ? b : null } });
+  clic(botonSec('data-sec-orden', 'ast'));
+  check('clic en una cabecera: la tabla se vuelve a pintar ordenada por esa columna', /data-orden="ast" data-escala="pp"/.test(cajaSec.outerHTML));
+  clic(botonSec('data-sec-escala', 'total'));
+  check('clic en «Totales»: misma columna, otra escala', /data-orden="pts" data-escala="total"/.test(cajaSec.outerHTML));
+  let quieto = true;
+  const otroNodo = { getAttribute: () => null, setAttribute() {}, addEventListener: (t, f) => { if (t === 'click') handlerClick = f; } };
+  const cajaSin = { getAttribute: () => 'pts', set outerHTML(v) { quieto = false; } };
+  P.activar(otroNodo, paqSin);
+  handlerClick({ target: { closest: sel => (sel === '[data-sec-orden]' ? { getAttribute: () => 'ast', closest: () => cajaSin } : null) } });
+  check('paqCon un paquete SIN el bloque el clic no hace nada (ni rompe)', quieto);
+
+  /* Resiliencia: el bloque roto o a medias. */
+  const rotosSec = [
+    { liga: 'x', jugadores: 'y', lideres: [null, { top: 'z' }], clasificacion: [], ultimo: 5, avisos: {} },
+    { liga: { metricas: [{ k: 'pts' }] }, equipo: { porPartido: null } },
+    [], 'texto', 42,
+  ];
+  let ningunoTira = true;
+  let siguenLosQuintetos = true;
+  rotosSec.forEach((r) => {
+    const p = paquete3('JUJUY BASQUET');
+    p.secciones = r;
+    try {
+      const h = P.html(p);
+      if (!/data-pbp-seccion="quintetos"/.test(h)) siguenLosQuintetos = false;
+      if (/data-pbp-secciones/.test(h)) ningunoTira = false;
+    } catch (e) { ningunoTira = false; }
+  });
+  check('un bloque roto (tipos equivocados, vacío, un array, un texto) no tira ni pinta cards vacías', ningunoTira);
+  check('y los quintetos siguen saliendo', siguenLosQuintetos);
+  const trampaSec = paquete3('JUJUY BASQUET');
+  trampaSec.secciones = { get liga() { throw new Error('boom'); } };
+  let tiroSec = null;
+  const avisoViejo = console.warn;
+  console.warn = () => {};
+  try { P.html(trampaSec); } catch (e) { tiroSec = e; }
+  const vacioTrampa = P.bloqueSecciones(trampaSec, 'equipo');
+  console.warn = avisoViejo;
+  check('una excepción adentro del bloque se contiene: la card sale igual', tiroSec === null && vacioTrampa === '');
+
+  }
+
   console.log('\n' + '═'.repeat(70) + '\n' + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });
