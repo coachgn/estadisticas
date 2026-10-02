@@ -71,31 +71,32 @@ check('el parser encontró las reglas del <style>', R.length > 500, R.length);
 check('y los bloques @media print', R.filter(enPrint).length > 100, R.filter(enPrint).length);
 
 /* =====================================================================
-   1 · CLAVES ARRIBA DEL RESTO
+   1 · RESTO ARRIBA DE LAS CLAVES (pedido del club, 2026-10-02)
+   Revierte el orden del 2026-09-12: ahora el banco va antes que las claves.
    ===================================================================== */
-titulo('1 · SCOUTING · «Claves estratégicas» arriba de «Resto del plantel»');
+titulo('1 · SCOUTING · «Resto del plantel» arriba de «Claves estratégicas»');
 
 const ids = (SCOUT.slice(SCOUT.indexOf('const SCOUT_CARDS'), SCOUT.indexOf('];', SCOUT.indexOf('const SCOUT_CARDS')))
-  .match(/id: '([a-z]+)'/g) || []).map(x => x.slice(5, -1));
-check('el modal lista claves antes que resto',
-  ids.indexOf('claves') > -1 && ids.indexOf('claves') < ids.indexOf('resto'), ids.join(','));
-check('y resto antes que las fichas', ids.indexOf('resto') < ids.indexOf('fichas'));
-check('claves va inmediatamente arriba de resto', ids.indexOf('resto') === ids.indexOf('claves') + 1);
+  .match(/id: '([a-z-]+)'/g) || []).map(x => x.slice(5, -1));
+check('el modal lista resto antes que claves',
+  ids.indexOf('resto') > -1 && ids.indexOf('resto') < ids.indexOf('claves'), ids.join(','));
+check('y claves antes que las fichas', ids.indexOf('claves') < ids.indexOf('fichas'));
+check('resto va inmediatamente arriba de claves', ids.indexOf('claves') === ids.indexOf('resto') + 1);
 
 const informe = SCOUT.slice(SCOUT.indexOf('${scoutBloqueJugadores(inf)}'));
 const pos = (b) => informe.indexOf('${scoutBloque' + b + '(inf)}');
-check('la pantalla pinta jugadores → claves → resto → fichas',
-  pos('Jugadores') === 0 && pos('Jugadores') < pos('Claves') && pos('Claves') < pos('Resto') && pos('Resto') < pos('Fichas'),
-  [pos('Jugadores'), pos('Claves'), pos('Resto'), pos('Fichas')].join(' < '));
+check('la pantalla pinta jugadores → resto → claves → marcas tabla → fichas',
+  pos('Jugadores') === 0 && pos('Jugadores') < pos('Resto') && pos('Resto') < pos('Claves')
+  && pos('Claves') < pos('MarcasTabla') && pos('MarcasTabla') < pos('Fichas'),
+  [pos('Jugadores'), pos('Resto'), pos('Claves'), pos('MarcasTabla'), pos('Fichas')].join(' < '));
 
 /* El PDF imprime el DOM en su orden (las cards destildadas se esconden, no
    se mueven), así que el orden de la pantalla ES el de las hojas. Lo que se
    fija además es DÓNDE se corta: */
 const clase = (bloque) => ((SCOUT.match(new RegExp('<section class="([^"]*)"\\s*data-bloque="' + bloque + '">')) || [])[1] || '');
-check('las claves NO abren hoja: van en la de la tabla de jugadores que las dispara',
+check('las claves NO abren hoja: fluyen después del banco',
   /\bscout-card\b/.test(clase('claves')) && !/\bscout-pagina\b/.test(clase('claves')), clase('claves'));
-check('el resto SÍ abre hoja: la hoja 6 es jugadores + claves y la 7 el banco',
-  /\bscout-pagina\b/.test(clase('resto')), clase('resto'));
+check('el resto SÍ abre hoja', /\bscout-pagina\b/.test(clase('resto')), clase('resto'));
 check('jugadores y fichas siguen abriendo la suya',
   /\bscout-pagina\b/.test(clase('jugadores')) && /\bscout-pagina\b/.test(clase('fichas')));
 const salto = R.find(r => enPrint(r) && /\.scout-pagina/.test(r.sel) && /page-break-before:\s*always|break-before:\s*page/.test(r.dec));

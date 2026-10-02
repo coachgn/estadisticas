@@ -3157,17 +3157,17 @@ const SCOUT_CARDS = [
   { id: 'encabezado', label: 'Encabezado y récord' },
   { id: 'matriz', label: 'Matriz de métricas y rankings' },
   { id: 'ciclo', label: 'Splits L/V y ciclo reciente' },
-  { id: 'marcas', label: 'Plan individual · marcas' },
   { id: 'resumen', label: 'Resumen de criterio estratégico' },
+  /* Un solo checkbox para las DOS cards de marcas (el plan defensivo y la
+     tabla jugador por jugador): comparten `data-bloque="marcas"`, aunque en
+     la pantalla queden separadas por el resto del tramo táctico. */
+  { id: 'marcas', label: 'Plan defensivo y tabla de marcas' },
   { id: 'jugadores', label: 'Tabla de jugadores clave' },
-  /* CLAVES ARRIBA DEL RESTO (pedido del club, 2026-09-12): lo que se lee
-     antes del partido va antes que el banco. El orden de esta lista es el
-     del modal, el de la pantalla y el de las hojas del PDF.
-     Y el PAGINADO acompaña: las claves no abren hoja —van en la de la
-     tabla de jugadores que las dispara, que era el pedido original— y el
-     resto sí, así que la hoja 6 es jugadores + claves y la 7 el banco. */
-  { id: 'claves', label: 'Claves estratégicas' },
+  /* RESTO ARRIBA DE LAS CLAVES (pedido del club, 2026-10-02): revierte el
+     orden del 2026-09-12. El orden de esta lista es el del modal, el de la
+     pantalla y el de las hojas del PDF. */
   { id: 'resto', label: 'Resto del plantel' },
+  { id: 'claves', label: 'Claves estratégicas' },
   /* `bloque` = la clave de la matriz de bloques (`SGADD_AUTH.BLOQUES`).
      Una card que el plan no incluye NO se ofrece en el modal: tildarla
      metería el cartel de upgrade adentro del PDF que el DT lleva a la
@@ -4137,12 +4137,15 @@ function scoutBloqueMarcasTabla(inf) {
         ${escapeHtml(inf.claveRival || '')} · la directiva en mayúsculas la firma el cuerpo técnico;
         el detalle con el número sale de la planilla y no se toca a mano.
       </p>
-      <p class="text-[10px] text-muted leading-snug mb-3">
-        Cada marca sale de cruzar dos cosas: por dónde ataca más ese jugador y por dónde
-        hace más daño. Tirar mucho no es lo mismo que lastimar, así que se le cierra la vía
-        que le rinde y se le concede la que no. Es una sugerencia calculada sobre la planilla:
-        la marca que se juega la decide el cuerpo técnico.
-      </p>
+      <div class="scout-nota-sugerencia rounded-lg p-3 mb-3">
+        <p class="text-[11px] leading-snug">
+          Cada marca sale de cruzar dos cosas: por dónde ataca más ese jugador y por dónde
+          hace más daño. Tirar mucho no es lo mismo que lastimar, así que se le cierra la vía
+          que le rinde y se le concede la que no. Es una <strong class="scout-sugerencia">SUGERENCIA</strong>
+          calculada sobre la planilla: la marca que se juega la decide el
+          <strong class="scout-cuerpo-tecnico">CUERPO TÉCNICO</strong>.
+        </p>
+      </div>
       <div class="scrollbox"><table class="tabla-marcas w-full text-left" style="min-width:62rem">
         <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
           <th class="px-2 pb-1" style="width:18%">Jugador rival</th>
@@ -4477,38 +4480,40 @@ function scoutInforme(idx) {
       </button>
     </div>`;
 
-  /* ORDEN · el mismo en pantalla y en el papel.
+  /* ORDEN · el mismo en pantalla y en el papel (pedido del club, 2026-10-02).
      Las hojas del PDF salen de este orden más la clase `scout-pagina`, que
      marca cuáles ABREN hoja nueva:
 
-       1. Encabezado y récord
-       2. Matriz de métricas y rankings
-       3. Splits L/V y ciclo reciente
-       4. Plan colectivo  +  Resumen de criterio estratégico   ← van juntos
-       5. Tabla de marcas, APAISADA                            ← sola
-       6. Tabla de jugadores clave                             ← sola
-       7. Resto del plantel  +  Claves estratégicas            ← van juntos
-       8. Fichas individuales
+        1. Reporte de scouting (encabezado y récord)
+        2. Métricas avanzadas y ranking en la liga
+        3. Splits local/visitante y tendencia reciente
+        4. Resumen de criterio estratégico
+        5. Plan defensivo · marca asignada (plan colectivo)
+        6. Jugadores clave
+        7. Resto del plantel
+        8. Claves estratégicas y anticipación
+        9. Marcas · jugador por jugador (tabla APAISADA)
+       10. Ficha de análisis por jugador
+       11. Quintetos, cierre y clutch del rival (laboratorio)
+       12. Mapa de tiro del rival (laboratorio)
 
-     El resto del plantel ABRE hoja: con doce tarjetas no entra debajo de
-     la tabla de jugadores, y partirlo al medio es lo que la regla
-     `page-break-inside: avoid` de `.scout-card` ya evita.
-
-     El resumen sube ANTES de la tabla porque sintetiza el plan colectivo,
-     que ahora tiene al lado; la tabla es el detalle operativo y se lee con
-     el informe abierto sobre la mesa. */
+     Este orden REVIERTE el del 2026-09-12 (resto vuelve a ir ARRIBA de las
+     claves) y separa la tabla de marcas del plan colectivo, a pedido del
+     club. El resumen sube antes del plan defensivo porque es la lectura de
+     entrada; la tabla de marcas, apaisada, queda al final del tramo táctico.
+     Como el orden cambió, el PDF conviene re-verificarlo generándolo. */
   return `
     <div id="scoutInforme" class="space-y-4 mt-4">
       ${toggle}
       ${scoutBloqueEncabezado(inf)}
       ${scoutBloqueMatriz(inf)}
       ${scoutBloqueCiclo(inf)}
-      ${scoutBloqueMarcas(inf)}
       ${scoutBloqueResumen(inf)}
-      ${scoutBloqueMarcasTabla(inf)}
+      ${scoutBloqueMarcas(inf)}
       ${scoutBloqueJugadores(inf)}
-      ${scoutBloqueClaves(inf)}
       ${scoutBloqueResto(inf)}
+      ${scoutBloqueClaves(inf)}
+      ${scoutBloqueMarcasTabla(inf)}
       ${scoutBloqueFichas(inf)}
       ${scoutBloquePbp(inf)}
       <footer class="informe-pie solo-imprimir">${SGADD_UI.pieInforme()}</footer>

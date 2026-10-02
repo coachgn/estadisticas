@@ -1745,12 +1745,13 @@ check('scoutCard() alcanza a las DOS sections del bloque',
   /querySelectorAll\('\.scout-card\[data-bloque="' \+ id/.test(scoutJs));
 
 /* El orden de render define el orden de las hojas. */
-const orden = ['Encabezado', 'Matriz', 'Ciclo', 'Marcas(inf)', 'Resumen', 'MarcasTabla', 'Jugadores', 'Claves', 'Fichas']
-  .map(x => 'scoutBloque' + x.replace('(inf)', ''));
+const orden = ['Encabezado', 'Matriz', 'Ciclo', 'Resumen', 'Marcas', 'Jugadores', 'Resto', 'Claves', 'MarcasTabla', 'Fichas']
+  .map(x => 'scoutBloque' + x);
 const cuerpoInforme = scoutJs.slice(scoutJs.indexOf('<div id="scoutInforme"'));
 const posiciones = orden.map(f => cuerpoInforme.indexOf(f + '(inf)'));
-check('el resumen va ANTES de la tabla de marcas, no después',
-  posiciones[4] > 0 && posiciones[5] > 0 && posiciones[4] < posiciones[5],
+const posDe = (n) => posiciones[orden.indexOf('scoutBloque' + n)];
+check('el resumen va ANTES del plan de marcas y de la tabla de marcas',
+  posDe('Resumen') > 0 && posDe('Resumen') < posDe('Marcas') && posDe('Marcas') < posDe('MarcasTabla'),
   posiciones.join(','));
 check('y el orden de las hojas es el pedido, sin saltos',
   posiciones.every((p, i) => p > 0 && (i === 0 || p > posiciones[i - 1])),
@@ -1790,8 +1791,9 @@ check('la sección de marcas explica el criterio debajo de su subtítulo',
 check('  y nombra las DOS dimensiones que el motor cruza de verdad',
   /por dónde ataca más/.test(BLOQUE_MARCAS) && /hace más daño/.test(BLOQUE_MARCAS),
   'volumen y eficiencia, dichas sin nombrar una sola métrica');
-check('  y deja la decisión final en el cuerpo técnico, no en el dato',
-  /sugerencia/.test(BLOQUE_MARCAS) && /la decide el cuerpo técnico/.test(BLOQUE_MARCAS));
+check('  y deja la decisión final en el CUERPO TÉCNICO, resaltado en dorado, no en el dato',
+  /class="scout-sugerencia">SUGERENCIA/.test(BLOQUE_MARCAS)
+  && /la decide el[\s\S]{0,80}scout-cuerpo-tecnico">CUERPO TÉCNICO/.test(BLOQUE_MARCAS));
 check('  va DENTRO de la card exportable, así viaja al PDF',
   BLOQUE_MARCAS.indexOf('data-bloque="marcas"') <
     BLOQUE_MARCAS.indexOf('Cada marca sale de cruzar dos cosas'));
