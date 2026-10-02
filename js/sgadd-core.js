@@ -1677,13 +1677,35 @@
        simple de PROMEDIOS 4F: comparar "mi eFG%" contra "el eFG% que permito"
        era comparar dos cosas distintas.
        --------------------------------------------------------------------- */
+    /* EL RIVAL SE EMPAREJA POR EL ID DEL PARTIDO (FECHA + PARTIDO), NO POR
+       EL TEXTO. En una liga de ida y vuelta el mismo club puede ser local en
+       los dos cruces, y "A vs B" se escribe igual las dos noches (punto 3
+       ter): por texto, la vuelta tomaba como rival la fila de la IDA. Medido
+       en la Zona C de APB: RECONQUISTA 'B' vs VILLA SAN CARLOS 'B' sumaba al
+       rival 9 plays y 3 rebotes ofensivos de otra noche, y su PACE del TOTAL
+       daba 80,43 contra 80,21 de la planilla.
+
+       El texto queda de RESPALDO solo si no hay ambigüedad: un partido sin
+       pareja por id (fecha cargada en un solo lado) toma la del texto
+       únicamente si ese texto tiene un solo rival posible. */
+    const filasPorId = new Map();
     const filasPorPartido = new Map();
-    equipos.forEach(e => e.partidos.forEach(p => {
-      const k = p.__partido;
+    const indexar = (mapa, k, item) => {
       if (!k) return;
-      if (!filasPorPartido.has(k)) filasPorPartido.set(k, []);
-      filasPorPartido.get(k).push({ equipo: e.clave, fila: p });
+      if (!mapa.has(k)) mapa.set(k, []);
+      mapa.get(k).push(item);
+    };
+    equipos.forEach(e => e.partidos.forEach(p => {
+      const item = { equipo: e.clave, fila: p };
+      indexar(filasPorId, p.__id, item);
+      indexar(filasPorPartido, p.__partido, item);
     }));
+    function rivalDe(p, claveEq) {
+      const porId = (filasPorId.get(p.__id) || []).filter(x => x.equipo !== claveEq);
+      if (porId.length) return porId[0];
+      const porTexto = (filasPorPartido.get(p.__partido) || []).filter(x => x.equipo !== claveEq);
+      return porTexto.length === 1 ? porTexto[0] : null;
+    }
 
     function sumar(acum, fila, cols) {
       cols.forEach(c => {
@@ -1718,8 +1740,7 @@
         sumar(yo, p, COLS_SUMA);
         const res = texto(p['RESULTADO']).toUpperCase();
         if (res === 'GANADO') g++; else if (res === 'PERDIDO') pd++;
-        const pareja = filasPorPartido.get(p.__partido) || [];
-        const otro = pareja.find(x => x.equipo !== claveEq);
+        const otro = rivalDe(p, claveEq);
         if (otro) { sumar(riv, otro.fila, COLS_SUMA); conRival++; }
       });
 
@@ -1763,8 +1784,7 @@
 
       e.partidos.forEach(p => {
         sumar(yo, p, COLS_SUMA);
-        const pareja = filasPorPartido.get(p.__partido) || [];
-        const otro = pareja.find(x => x.equipo !== e.clave);
+        const otro = rivalDe(p, e.clave);
         if (otro) { sumar(riv, otro.fila, COLS_SUMA); conRival++; }
       });
 
@@ -2340,8 +2360,7 @@
     }
     /* La fila del OTRO equipo en el mismo partido. */
     function filaDelRival(claveEq, fila) {
-      const pareja = filasPorPartido.get(fila && fila.__partido) || [];
-      const otro = pareja.find(x => x.equipo !== claveEq);
+      const otro = fila ? rivalDe(fila, claveEq) : null;   // por id, no por texto
       return otro ? otro.fila : null;
     }
     equipos.forEach(e => {
@@ -2653,8 +2672,14 @@
       e.factoresPorId = new Map(); e.factoresPartido.forEach((f) => { if (f.__id) e.factoresPorId.set(f.__id, f); });
       equipos.set(e.clave, e);
       const par = (k) => { if (!filasPorPartido.has(k)) filasPorPartido.set(k, []); return filasPorPartido.get(k); };
-      e.partidos.forEach((p) => { if (p.__partido) par(p.__partido).push({ equipo: e.clave, fila: p }); });
-      (r.pares || []).forEach(([k, lista]) => { lista.forEach(x => par(k).push(x)); });
+      /* También por id: `rivalDe` empareja primero por FECHA + PARTIDO. */
+      const porId = (x) => { const id = x.fila && x.fila.__id; if (id) indexar(filasPorId, id, x); };
+      e.partidos.forEach((p) => {
+        const x = { equipo: e.clave, fila: p };
+        if (p.__partido) par(p.__partido).push(x);
+        porId(x);
+      });
+      (r.pares || []).forEach(([k, lista]) => { lista.forEach(x => { par(k).push(x); porId(x); }); });
       (r.box || []).forEach(([id, filas]) => {
         if (!liga.boxPorPartido.has(id)) liga.boxPorPartido.set(id, []);
         filas.forEach(f => liga.boxPorPartido.get(id).push(f));

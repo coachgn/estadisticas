@@ -235,7 +235,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=257`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=259`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -11811,3 +11811,28 @@ Scouting   las tres primeras, sin la tabla
 - **Conferencia Norte 25/26** (lo publicado hoy): trae todo salvo la tabla.
   La Liga solo sirve las fases de la temporada en curso, así que la tabla
   de 25/26 ya no se puede pedir.
+
+---
+
+## 84. EL RIVAL DE UNA NOCHE SE EMPAREJA POR FECHA + PARTIDO (2026-10-02)
+
+Salió al validar la v111 del motor (PACE y AST-PP de la temporada en
+RANKINGS E) contra la web en la **Zona C de APB**: la planilla daba 80,21 de
+PACE para RECONQUISTA 'B' y el TOTAL de la web 80,43.
+
+**La planilla tenía razón.** El índice armaba el lado rival de cada partido
+(`e.totales.rival`, `agregarPartidos`, `filaDelRival`) buscando la otra fila
+con el mismo **texto** de `PARTIDO`. Con el mismo local en la ida y en la
+vuelta, «RECONQUISTA 'B'- MM vs VILLA SAN CARLOS 'B' - MM» se escribe igual
+las dos noches, y la vuelta tomaba como rival la fila de la IDA: +9 plays y
++3 rebotes ofensivos de otra noche. Es la trampa del punto 3 ter, ahora del
+lado del rival.
+
+`rivalDe(p, clave)` empareja por **`__id` (FECHA + PARTIDO)**. El texto
+queda de respaldo solo si tiene **un único** rival posible. El injerto del
+rival de otra zona (punto 79) también indexa por id.
+
+Medido: solo cambia la Zona C, y solo en sus dos equipos (RECONQUISTA 'B':
+PACE, RO%, RD%, eFG Opp%, DRTG, NET y PR%). Los otros cinco libros, idénticos
+— ahí ningún local repite el texto. Lo fija `test-core.js` («el rival de una
+noche es la fila de ESA noche»); sin el arreglo caen 4.

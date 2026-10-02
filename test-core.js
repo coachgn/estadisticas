@@ -1745,6 +1745,38 @@ check('los cortes se pueden mover desde afuera',
 check('y los valores por defecto están declarados',
   SGADD.TRUNCADO_PACE === 0.80 && SGADD.TRUNCADO_PPP === 1.20);
 
+/* --- EL RIVAL SE EMPAREJA POR FECHA + PARTIDO, NO POR EL TEXTO ---
+   Ida y vuelta con el MISMO local: "CC vs DD" se escribe igual las dos
+   noches. Por texto, la vuelta tomaba como rival la fila de la ida (Zona C
+   de APB: RECONQUISTA 'B' vs VILLA SAN CARLOS 'B', PACE 80,43 contra 80,21
+   de la planilla). Los números de DD son distintos en cada noche a
+   propósito: si se cruzan, los totales del rival no cierran. */
+console.log('\n· el rival de una noche es la fila de ESA noche');
+const libroRev = {
+  'Base Datos E': { cols: colsPos, filas: [
+    filaPos({ fecha: '22/05/2026', partido: 'CC vs DD', equipo: 'CC', pts: 80, plays: 96, ro: 18, pace: 80, ptsOpp: 70, playsOpp: 89, roOpp: 5 }),
+    filaPos({ fecha: '22/05/2026', partido: 'CC vs DD', equipo: 'DD', cond: 'VISITANTE', res: 'PERDIDO', pts: 70, plays: 89, ro: 5, pace: 80, ptsOpp: 80, playsOpp: 96, roOpp: 18 }),
+    filaPos({ fecha: '21/08/2026', partido: 'CC vs DD', equipo: 'CC', pts: 75, plays: 83, ro: 5, pace: 76, ptsOpp: 60, playsOpp: 80, roOpp: 2 }),
+    filaPos({ fecha: '21/08/2026', partido: 'CC vs DD', equipo: 'DD', cond: 'VISITANTE', res: 'PERDIDO', pts: 60, plays: 80, ro: 2, pace: 76, ptsOpp: 75, playsOpp: 83, roOpp: 5 }),
+  ] },
+  /* Los ratings por partido viven en 4 FACTORES: el valor de la hoja se pisa. */
+  '4 FACTORES': { cols: ['FECHA', 'PARTIDO', 'EQUIPO', 'FASE', 'RTNG OFF', 'RTNG DEF', 'NET RTNG'], filas: [
+    { FECHA: '22/05/2026', PARTIDO: 'CC vs DD', EQUIPO: 'CC', FASE: 'REGULAR', 'RTNG OFF': '0', 'RTNG DEF': '0', 'NET RTNG': '0' },
+    { FECHA: '21/08/2026', PARTIDO: 'CC vs DD', EQUIPO: 'CC', FASE: 'REGULAR', 'RTNG OFF': '0', 'RTNG DEF': '0', 'NET RTNG': '0' },
+  ] },
+};
+const idxRev = SGADD.construirIndice(libroRev, { fase: 'REGULAR' });
+const rivCC = idxRev.get('CC').totales.rival;
+check('los PLAYS del rival suman las dos noches de DD (89 + 80), no la ida dos veces',
+  rivCC.PLAYS === 169, rivCC.PLAYS);
+check('los RO del rival también (5 + 2)', rivCC.RO === 7, rivCC.RO);
+check('y del otro lado igual: el rival de DD son las dos noches de CC (96 + 83)',
+  idxRev.get('DD').totales.rival.PLAYS === 179, idxRev.get('DD').totales.rival.PLAYS);
+/* DRTG de la vuelta: 100 x 60 / (80 - 2) — con la fila de la ida daría 100 x 70 / 84. */
+const vueltaCC = (idxRev.get('CC').factoresPartido || []).find(f => /2026-08-21/.test(f.__id));
+check('el DRTG de la vuelta usa la fila del rival de esa noche',
+  vueltaCC && Math.abs(vueltaCC['RTNG DEF'] - 100 * 60 / 78) < 1e-9, vueltaCC && vueltaCC['RTNG DEF']);
+
 /* --- NINGÚN RATING SE DIVIDE POR PLAYS · lectura del fuente ---
    Es la regla que el club pidió por escrito, y la única forma de que no
    vuelva a entrar por una vista nueva. */
