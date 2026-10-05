@@ -1452,6 +1452,72 @@
   body.modo-ficha-print #fichaSalida { display: block; }
   body.modo-ficha-print > *:not(#fichaSalida):not(.pie-motorstats) { display: none !important; }
 
+  /* =================================================================
+     FICHAJES (punto 87) · pantalla y papel
+
+     CSS a mano y no Tailwind para lo que dibuja el radar, las barras de
+     percentil y la hoja: son reglas que tienen que valer IGUAL en la
+     pantalla oscura y en el papel, y con utilidades habría que duplicar
+     cada color en el bloque de impresión.
+
+     LA FICHA DE FICHAJE es A4 VERTICAL, la `@page` por defecto: una hoja
+     que se manda a un dirigente o a un representante y se imprime en
+     cualquier impresora de oficina.
+     ================================================================= */
+  .fx-radar { width: 100%; height: auto; overflow: visible; }
+  .fx-radar-anillo { fill: none; stroke: rgba(156,163,175,.28); stroke-width: 1; }
+  .fx-radar-rayo { stroke: rgba(156,163,175,.22); stroke-width: 1; }
+  .fx-radar-txt { fill: #9CA3AF; font: 600 10px "Barlow Condensed", sans-serif; letter-spacing: .02em; text-transform: uppercase; }
+  .fx-spark { width: 100%; height: 44px; display: block; }
+  .fx-bar { display: block; height: 6px; border-radius: 3px; background: rgba(156,163,175,.18); overflow: hidden; }
+  .fx-bar-fill { display: block; height: 100%; border-radius: 3px; background: #6B7280; }
+  .fx-bar-alta { background: #4ADE80; } .fx-bar-media { background: #FBBF24; } .fx-bar-baja { background: #F87171; }
+  .fx-tiro-barra { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: rgba(156,163,175,.18); }
+  .fx-tiro { display: block; height: 100%; }
+  .fx-tiro-0 { background: #60A5FA; } .fx-tiro-1 { background: #FBBF24; } .fx-tiro-2 { background: #A78BFA; } .fx-tiro-3 { background: #F87171; }
+  .fx-punto { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; }
+  .fx-lectura { border-left: 2px solid rgba(251,191,36,.45); padding-left: 10px; }
+  @media (prefers-reduced-motion: reduce) { .fx-bar-fill { transition: none !important; } }
+
+  #fichajeSalida { display: none; }
+  body.modo-fichaje-print #fichajeSalida { display: block; }
+  body.modo-fichaje-print > *:not(#fichajeSalida):not(.pie-motorstats) { display: none !important; }
+  @media print {
+    body.modo-fichaje-print #fichajeSalida { font-size: 9.5pt; }
+    body.modo-fichaje-print .fx-pdf-fila { display: flex; gap: 5mm; align-items: center; }
+    body.modo-fichaje-print .fx-pdf-escudo { width: 18mm; height: 18mm; object-fit: contain; }
+    body.modo-fichaje-print .fx-pdf-sobre { font-size: 8pt; text-transform: uppercase; letter-spacing: .12em; color: #B45309 !important; }
+    body.modo-fichaje-print .fx-pdf-perfil { display: grid; grid-template-columns: 1fr 62mm; gap: 5mm; align-items: start; }
+    body.modo-fichaje-print .fx-pdf-radar { width: 62mm; }
+    body.modo-fichaje-print .fx-radar-txt { fill: #374151 !important; font-size: 9px; }
+    body.modo-fichaje-print .fx-radar-anillo { stroke: #D1D5DB; }
+    body.modo-fichaje-print .fx-radar-rayo { stroke: #E5E7EB; }
+    body.modo-fichaje-print .fx-pdf-chips { display: flex; flex-wrap: wrap; gap: 1.5mm; margin: 2mm 0; }
+    body.modo-fichaje-print .fx-pdf-chip { border: 1px solid #D1D5DB; border-radius: 1.5mm; padding: .4mm 1.6mm; font-size: 8pt; }
+    body.modo-fichaje-print .fx-pdf-kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 2mm; margin-top: 2mm; }
+    body.modo-fichaje-print .fx-pdf-kpi { background: #F3F4F6; border-radius: 1.5mm; padding: 1.5mm; display: flex; flex-direction: column; }
+    body.modo-fichaje-print .fx-pdf-kpi span { font-size: 7pt; text-transform: uppercase; color: #6B7280 !important; }
+    body.modo-fichaje-print .fx-pdf-kpi b { font-size: 12pt; }
+    body.modo-fichaje-print .fx-pdf-kpi i { font-style: normal; font-size: 7.5pt; color: #6B7280 !important; }
+    body.modo-fichaje-print .fx-pdf-lectura { columns: 2; column-gap: 6mm; padding: 0; list-style: none; }
+    body.modo-fichaje-print .fx-pdf-lectura li { break-inside: avoid; margin-bottom: 2mm; line-height: 1.3; }
+    body.modo-fichaje-print .fx-pdf-lectura b { display: block; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .08em; color: #B45309 !important; }
+    body.modo-fichaje-print .fx-pdf-grupos { display: grid; grid-template-columns: 1fr 1fr; gap: 2mm 6mm; }
+    body.modo-fichaje-print .fx-grupo, body.modo-fichaje-print table { break-inside: avoid; page-break-inside: avoid; }
+    body.modo-fichaje-print .fx-tabla td { padding-top: .5mm; padding-bottom: .5mm; }
+    body.modo-fichaje-print .fx-pdf-dos { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
+    body.modo-fichaje-print .fx-pdf-sim { padding-left: 4mm; font-size: 8.5pt; }
+    body.modo-fichaje-print .fx-bar { background: #E5E7EB; }
+    body.modo-fichaje-print .fx-bar, body.modo-fichaje-print .fx-tiro, body.modo-fichaje-print .fx-bar-fill,
+    body.modo-fichaje-print .fx-punto, body.modo-fichaje-print .fx-pdf-kpi {
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    body.modo-fichaje-print .fx-spark-box { color: #B45309 !important; }
+    body.modo-fichaje-print .fx-spark polyline { stroke: #B45309; }
+    body.modo-fichaje-print .fx-spark circle { fill: #B45309; }
+    body.modo-fichaje-print #fichajeSalida .informe-bloque { page-break-inside: auto; break-inside: auto; margin-bottom: 4mm; }
+  }
+
   @media print {
     /* `@page` no se puede condicionar por clase del body, así que es
        compartida por las dos exportaciones (informe de equipo y scouting).
@@ -2853,13 +2919,36 @@
     #sidebar.open { transform: translateX(0); }
   }
 
+  /* EL MENÚ MINIMIZADO HACIA LA IZQUIERDA (punto 88) · solo escritorio.
+
+     Pasa de 256 a 72 px y queda un RIEL de íconos, no se esconde entero:
+     la navegación sigue a un clic y el nombre de cada sección viaja en el
+     `title` y el `aria-label`. Libera ~184 px para la tabla de marcas, el
+     radar y el comparador. En celular no aplica: ahí el menú ya es un
+     cajón que se abre encima.
+
+     El texto de cada item se apaga con `font-size: 0` y no con `display`:
+     es un nodo de texto suelto al lado del ícono, no un elemento. */
+  #botonMenu { display: none; }
+  @media screen and (min-width: 768px) {
+    #botonMenu { display: inline-grid; }
+    #sidebar { transition: width .2s ease; }
+    body.menu-colapsado #sidebar { width: 4.5rem; }
+    body.menu-colapsado #sidebar .nav-item { font-size: 0; gap: 0; justify-content: center; padding-left: 0; padding-right: 0; }
+    body.menu-colapsado #sidebar #clubEscudoAro + div,
+    body.menu-colapsado #sidebar .menu-pie { display: none; }
+    body.menu-colapsado #sidebar > div:first-child { padding-left: .75rem; padding-right: .75rem; }
+    body.menu-colapsado #sidebar > div:first-child > div { justify-content: center; }
+    body.menu-colapsado #botonMenu svg { transform: scaleX(-1); }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
   }
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=261" />
+<link rel="stylesheet" href="sgadd.css?v=263" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -2932,6 +3021,13 @@
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path stroke-linecap="round" d="m20 20-4.3-4.3"/></svg>
           Scouting
         </button>
+        <!-- FICHAJES (punto 87): nace OCULTO. Lo muestra `aplicarPermisosNav()`
+             solo cuando el servidor confirmó el servicio para este mail, así
+             que nunca parpadea en el menú de un club que no lo tiene. -->
+        <button onclick="navigate('fichajes')" data-nav="fichajes" class="hidden nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.5"/><path stroke-linecap="round" d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path stroke-linecap="round" stroke-linejoin="round" d="M17 8h5m-2.5-2.5L22 8l-2.5 2.5"/></svg>
+          Fichajes
+        </button>
         <button onclick="navigate('glosario')" data-nav="glosario" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 5.5A1.5 1.5 0 0 1 5.5 4H19v16H5.5A1.5 1.5 0 0 1 4 18.5v-13Z"/><path stroke-linecap="round" d="M8 8h7M8 12h7"/></svg>
           Glosario
@@ -2958,7 +3054,7 @@
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path stroke-linecap="round" d="m20 20-4.3-4.3"/></svg>Diagnóstico</button>
       </nav>
 
-      <div class="px-4 py-4 border-t border-hairline">
+      <div class="menu-pie px-4 py-4 border-t border-hairline">
         <button onclick="refreshData()" class="w-full flex items-center justify-center gap-2 text-xs font-body text-muted hover:text-accent border border-hairline hover:border-accent rounded-md py-2 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M4.5 9a8 8 0 0 1 14-3.5M19.5 15a8 8 0 0 1-14 3.5"/></svg>
           <span id="refresh-label">Actualizar datos</span>
@@ -2995,6 +3091,14 @@
           <div class="flex items-center gap-3 min-w-0">
             <button onclick="toggleSidebar()" class="md:hidden p-2 -ml-2 text-ink shrink-0" aria-label="Abrir menú">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
+            <!-- Minimizar el menú hacia la izquierda (punto 88). Solo escritorio:
+                 el CSS lo muestra desde 768px. -->
+            <button id="botonMenu" type="button" onclick="alternarMenuColapsado()"
+              aria-controls="sidebar" aria-expanded="true" aria-label="Minimizar el menú" title="Minimizar el menú"
+              class="place-items-center w-9 h-9 -ml-2 rounded-lg border border-hairline text-muted hover:text-ink hover:bg-surface2 shrink-0
+                     focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path stroke-linecap="round" d="M9 4.5v15"/><path stroke-linecap="round" stroke-linejoin="round" d="m15.5 10-2 2 2 2"/></svg>
             </button>
             <h1 id="page-title" class="font-display text-2xl md:text-3xl uppercase tracking-wide truncate">Principal</h1>
           </div>
@@ -3041,50 +3145,52 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=261"></script>
+<script src="js/sgadd-club.js?v=263"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=261"></script>
-<script src="js/sgadd-core.js?v=261"></script>
-<script src="js/sgadd-auth.js?v=261"></script>
+<script src="js/sgadd-config.js?v=263"></script>
+<script src="js/sgadd-core.js?v=263"></script>
+<script src="js/sgadd-auth.js?v=263"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=261"></script>
-<script src="js/sgadd-glosario.js?v=261"></script>
-<script src="js/sgadd-glosarioui.js?v=261"></script>
-<script src="js/sgadd-comparativa.js?v=261"></script>
-<script src="js/sgadd-comparativaui.js?v=261"></script>
-<script src="js/sgadd-confirmar.js?v=261"></script>
-<script src="js/sgadd-landing.js?v=261"></script>
-<script src="js/sgadd-login.js?v=261"></script>
-<script src="js/sgadd-data.js?v=261"></script>
-<script src="js/sgadd-clientes.js?v=261"></script>
-<script src="js/sgadd-ui.js?v=261"></script>
-<script src="js/sgadd-app.js?v=261"></script>
-<script src="js/sgadd-clasificacion.js?v=261"></script>
+<script src="js/sgadd-demo.js?v=263"></script>
+<script src="js/sgadd-glosario.js?v=263"></script>
+<script src="js/sgadd-glosarioui.js?v=263"></script>
+<script src="js/sgadd-comparativa.js?v=263"></script>
+<script src="js/sgadd-comparativaui.js?v=263"></script>
+<script src="js/sgadd-confirmar.js?v=263"></script>
+<script src="js/sgadd-landing.js?v=263"></script>
+<script src="js/sgadd-login.js?v=263"></script>
+<script src="js/sgadd-data.js?v=263"></script>
+<script src="js/sgadd-clientes.js?v=263"></script>
+<script src="js/sgadd-ui.js?v=263"></script>
+<script src="js/sgadd-app.js?v=263"></script>
+<script src="js/sgadd-clasificacion.js?v=263"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-fixture.js?v=261"></script>
-<script src="js/sgadd-fases.js?v=261"></script>
-<script src="js/sgadd-torneos.js?v=261"></script>
-<script src="js/sgadd-hub.js?v=261"></script>
-<script src="js/sgadd-configui.js?v=261"></script>
-<script src="js/sgadd-estados.js?v=261"></script>
-<script src="js/sgadd-buzon.js?v=261"></script>
-<script src="js/sgadd-charts.js?v=261"></script>
-<script src="js/sgadd-personalidad.js?v=261"></script>
-<script src="js/sgadd-rankings.js?v=261"></script>
-<script src="js/sgadd-partido.js?v=261"></script>
-<script src="js/sgadd-informe.js?v=261"></script>
-<script src="js/sgadd-ficha.js?v=261"></script>
-  <script src="js/sgadd-rankingpdf.js?v=261"></script>
-<script src="js/sgadd-equipos.js?v=261"></script>
+<script src="js/sgadd-fixture.js?v=263"></script>
+<script src="js/sgadd-fases.js?v=263"></script>
+<script src="js/sgadd-torneos.js?v=263"></script>
+<script src="js/sgadd-hub.js?v=263"></script>
+<script src="js/sgadd-configui.js?v=263"></script>
+<script src="js/sgadd-estados.js?v=263"></script>
+<script src="js/sgadd-buzon.js?v=263"></script>
+<script src="js/sgadd-charts.js?v=263"></script>
+<script src="js/sgadd-personalidad.js?v=263"></script>
+<script src="js/sgadd-rankings.js?v=263"></script>
+<script src="js/sgadd-partido.js?v=263"></script>
+<script src="js/sgadd-informe.js?v=263"></script>
+<script src="js/sgadd-ficha.js?v=263"></script>
+<script src="js/sgadd-mercado.js?v=263"></script>
+<script src="js/sgadd-fichajes.js?v=263"></script>
+  <script src="js/sgadd-rankingpdf.js?v=263"></script>
+<script src="js/sgadd-equipos.js?v=263"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=261"></script>
-<script src="js/sgadd-jugadores.js?v=261"></script>
-<script src="js/sgadd-4factores.js?v=261"></script>
-<script src="js/sgadd-scouting.js?v=261"></script>
-<script src="js/sgadd-pbp.js?v=261"></script>
-<script src="js/sgadd-diagnostico.js?v=261"></script>
+<script src="js/sgadd-niveles.js?v=263"></script>
+<script src="js/sgadd-jugadores.js?v=263"></script>
+<script src="js/sgadd-4factores.js?v=263"></script>
+<script src="js/sgadd-scouting.js?v=263"></script>
+<script src="js/sgadd-pbp.js?v=263"></script>
+<script src="js/sgadd-diagnostico.js?v=263"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -3140,7 +3246,7 @@ const SHEETS_CONFIG = [
    quedo en una sola y el item del menu no navegaba a ningun lado: el
    `navigate()` lo mandaba de vuelta a Principal sin decir nada. Hay un
    test que compara las dos. */
-const VALID_SECTIONS = ['principal', 'clasificacion', 'fixture', 'equipos', 'jugadores', 'scouting', 'glosario', 'simulador', 'configuracion', 'diagnostico', 'comparativa'];
+const VALID_SECTIONS = ['principal', 'clasificacion', 'fixture', 'equipos', 'jugadores', 'scouting', 'glosario', 'simulador', 'configuracion', 'diagnostico', 'comparativa', 'fichajes'];
 
 /* ============ ESTADO GLOBAL ============ */
 let DATA = {};
@@ -4956,7 +5062,7 @@ function renderSeccionCruda(section) {
   const titles = { principal: 'Principal', clasificacion: 'Clasificación', fixture: 'Fixture', equipos: 'Equipos',
     jugadores: 'Jugadores', scouting: 'Scouting', simulador: 'Simulador',
     configuracion: 'Panel Master', diagnostico: 'Diagnóstico',
-    glosario: 'Glosario', comparativa: 'Comparativa' };
+    glosario: 'Glosario', comparativa: 'Comparativa', fichajes: 'Fichajes' };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = titles[section] || '';
 
@@ -4975,6 +5081,11 @@ function renderSeccionCruda(section) {
     });
     return;
   }
+
+  /* FICHAJES no depende del club abierto: busca en los torneos de SU
+     padrón, con sus propios libros (punto 87). Por eso va ANTES del modo
+     landing y del modo llave, que hablan de la categoría del club. */
+  if (section === 'fichajes') { SGADD_FICHAJES.montar(); return; }
 
   /* MODO LANDING. Sin `?club=` no hay planilla que mostrar, así que cada
      sección explica qué se ve ahí en vez de intentar pintar datos que no
@@ -5147,6 +5258,50 @@ function closeSidebar() {
   sidebarOpen = false;
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('overlay').classList.add('hidden');
+}
+
+/* ============ MENÚ MINIMIZADO (escritorio, punto 88) ============
+   Es una comodidad de ESTE navegador: va en `localStorage`, envuelto en
+   try/catch (modo privado tira al leer) y sin él el menú arranca abierto,
+   que es como fue siempre. */
+const CLAVE_MENU = 'sgadd.menuColapsado';
+
+function aplicarMenuColapsado(on) {
+  document.body.classList.toggle('menu-colapsado', !!on);
+  const b = document.getElementById('botonMenu');
+  if (b) {
+    const t = on ? 'Expandir el menú' : 'Minimizar el menú';
+    b.setAttribute('aria-expanded', on ? 'false' : 'true');
+    b.setAttribute('aria-label', t);
+    b.title = t;
+  }
+  /* Con el texto apagado, el nombre de la sección viaja en el tooltip.
+     Se toma del propio botón para no repetir los nombres acá. */
+  document.querySelectorAll('#sidebar .nav-item').forEach((btn) => {
+    if (on) {
+      const nombre = btn.textContent.replace(/\s+/g, ' ').trim();
+      btn.title = nombre;
+      btn.setAttribute('aria-label', nombre);
+    } else {
+      btn.removeAttribute('title');
+      btn.removeAttribute('aria-label');
+    }
+  });
+}
+
+function alternarMenuColapsado() {
+  const on = !document.body.classList.contains('menu-colapsado');
+  aplicarMenuColapsado(on);
+  try { localStorage.setItem(CLAVE_MENU, on ? '1' : '0'); } catch (e) { /* sin almacenamiento: dura la visita */ }
+  /* Los gráficos de Chart.js se acomodan al ancho nuevo cuando termina la
+     transición; sin esto un gráfico quedaba con el ancho viejo. */
+  setTimeout(() => window.dispatchEvent(new Event('resize')), 230);
+}
+
+function restaurarMenuColapsado() {
+  let on = false;
+  try { on = localStorage.getItem(CLAVE_MENU) === '1'; } catch (e) { on = false; }
+  aplicarMenuColapsado(on);
 }
 
 /* ============ ESTADO DE CARGA / ERRORES ============ */
@@ -5458,6 +5613,9 @@ async function init() {
   })();
 
   SGADD_AUTH.cargarSesion();
+  /* El menú minimizado se restaura ANTES de mostrar la app: sin esto, quien
+     lo dejó cerrado lo veía abrirse y cerrarse en cada carga (punto 88). */
+  restaurarMenuColapsado();
   aplicarPermisosNav();
 
   /* El selector de cliente se pide SIN await: es una comodidad de
@@ -5469,6 +5627,10 @@ async function init() {
   if (typeof SGADD_GLOSARIOUI !== 'undefined') SGADD_GLOSARIOUI.iniciar();
   if (typeof SGADD_CONFIRMAR !== 'undefined') SGADD_CONFIRMAR.iniciar();
   if (typeof SGADD_CLIENTES !== 'undefined') SGADD_CLIENTES.iniciar();
+  /* FICHAJES pregunta al servidor si ESTE mail tiene el servicio (punto 87).
+     Sin await: el item del menú aparece un instante después, como el
+     buzón, y no demora el primer pintado. */
+  if (typeof SGADD_FICHAJES !== 'undefined') SGADD_FICHAJES.iniciar();
   /* El selector de cliente SÍ se pide en la landing: un admin que entra a
      la URL limpia tiene que poder elegir a quién mirar desde ahí. */
 

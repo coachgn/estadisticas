@@ -98,10 +98,41 @@ check('sin sesión el rol es ABIERTO, no ADMIN', A.rol(null) === A.ROLES.ABIERTO
    sin sesión y las cinco secciones públicas siguen andando igual, así que
    los clubes que entran sin token no pierden nada. */
 SGADD.SECCIONES.forEach(sec => {
-  const interna = !!(A.MODULOS[sec] && A.MODULOS[sec].soloAdmin);
+  /* Las internas y los SERVICIOS por invitación (Fichajes, punto 87)
+     fallan cerrado para ABIERTO; el resto, como siempre. */
+  const regla = A.MODULOS[sec] || {};
+  const interna = !!(regla.soloAdmin || regla.servicio);
   check('sin sesión ' + (interna ? 'NO entra a ' : 'entra a ') + sec,
     A.puedoAcceder(sec, null).ok === !interna);
 });
+
+titulo('FICHAJES · un servicio por invitación (punto 87)');
+
+/* El servicio NO viene en el token ni en la URL: lo fija el panel con lo
+   que contesta el servidor. Sin esa respuesta, ni el admin del panel de un
+   cliente ni el visitante lo ven en el menú — y el que se lo ponga a mano
+   desde la consola ve el menú y nada más: el libro lo decide el padrón. */
+check('el admin entra a Fichajes sin pasar por el padrón', A.puedoAcceder('fichajes', ADMIN).ok === true);
+check('sin sesión NO entra, aunque el resto del panel esté abierto',
+  A.puedoAcceder('fichajes', null).ok === false);
+check('un cliente Oro sin el servicio NO entra: no lo trae ningún plan',
+  A.puedoAcceder('fichajes', { email: 'dt@oro.com', equipoAsignado: 'X', plan: 'ORO' }).ok === false);
+check('y el motivo es REQUIERE_SERVICIO, ni plan ni interna',
+  A.puedoAcceder('fichajes', PRO).motivo === A.MOTIVOS.REQUIERE_SERVICIO);
+check('con el servicio declarado, el cliente entra',
+  A.puedoAcceder('fichajes', Object.assign({ servicios: ['fichajes'] }, PRO)).ok === true);
+check('un servicio no le sirve a quien no tiene sesión',
+  A.tieneServicio('fichajes', { servicios: ['fichajes'] }) === false);
+A.establecerSesion(PRO);
+A.fijarServicios(['fichajes']);
+check('fijado por el servidor, la sesión del módulo lo tiene', A.puedoAcceder('fichajes').ok === true);
+A.establecerSesion(BRONCE);
+check('y CAMBIAR de sesión lo vacía: no se hereda de la anterior', A.puedoAcceder('fichajes').ok === false);
+A.limpiarSesion();
+check('el menú no lo ofrece a quien no lo tiene (no es REQUIERE_PLAN)',
+  /mostrar = p\.ok \|\| p\.motivo === SGADD_AUTH\.MOTIVOS\.REQUIERE_PLAN/.test(fs.readFileSync('./index.html', 'utf8')));
+check('el item del menú nace oculto, para que no parpadee',
+  /<button onclick="navigate\('fichajes'\)" data-nav="fichajes" class="hidden /.test(fs.readFileSync('./index.html', 'utf8')));
 check('sin sesión ve todos los equipos', A.puedeVerEquipo('ATENAS A', null) === true);
 check('y la lista no se filtra', A.equiposVisibles(listaAdmin, null).length === 2);
 

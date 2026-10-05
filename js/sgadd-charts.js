@@ -27,7 +27,7 @@ const SGADD_CHARTS = (function () {
      estaba en esta lista. Un modo nuevo que imprima en claro se agrega acá
      o sus gráficos salen ilegibles sin que nadie lo note. */
   const MODOS_PAPEL = ['modo-impresion', 'modo-partido-print', 'modo-scout-print',
-    'modo-ficha-print', 'modo-ranking-print'];
+    'modo-ficha-print', 'modo-ranking-print', 'modo-fichaje-print'];
 
   function enPapelClaro() {
     if (typeof document === 'undefined' || !document.body) return false;

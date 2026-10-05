@@ -66,7 +66,11 @@ const MODULOS = ['sgadd-core.js', 'sgadd-auth.js', 'sgadd-estados.js', 'sgadd-da
   'sgadd-clasificacion.js',
   /* El parser de la declaración de fases: el servidor valida con él lo que
      escribe el editor de cruces del Panel Master (punto 77). */
-  'sgadd-fases.js'];
+  'sgadd-fases.js',
+  /* El motor del mercado de fichajes: el servidor valida la ficha manual
+     y resuelve el padrón con las mismas funciones que filtra el panel
+     (punto 87). */
+  'sgadd-mercado.js'];
 
 const ORIGEN = path.join(__dirname, '..', '..', 'js');
 const DESTINO = path.join(__dirname, '..', 'lib', 'compartido');

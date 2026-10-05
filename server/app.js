@@ -107,6 +107,18 @@ function crearApp(opciones) {
   app.get('/api/v1/torneos/:torneo/llave', responder(require('./api/llave.js').manejarLlave));
   app.get('/api/v1/torneos/:torneo/rival', responder(require('./api/llave.js').manejarRival));
 
+  /* EL MERCADO DE FICHAJES (punto 87): el libro SIN recorte de un torneo,
+     solo para el admin y los mails del padrón de fichajes. En su propio
+     archivo y con su propia clave de KV: no toca el catálogo ni el padrón
+     de clientes. `padron` tiene un segmento y `:torneo/:zona` dos, así
+     que no colisionan. */
+  const fichajes = require('./api/fichajes.js');
+  app.get('/api/v1/fichajes', responder(fichajes.manejarFichajes));
+  app.get('/api/v1/fichajes/padron', responder(fichajes.manejarPadron));
+  app.post('/api/v1/fichajes/padron', responder(fichajes.manejarPadronEscribir));
+  app.get('/api/v1/fichajes/:torneo/:zona', responder(fichajes.manejarZona));
+  app.post('/api/v1/fichajes/:torneo/fichas', responder(fichajes.manejarFichasEscribir));
+
   /* Las fichas de los clientes y los mails institucionales (bienvenida y
      recordatorios de vencimiento). Solo ADMIN, salvo el cron, que se
      autentica con CRON_SECRET. En su propio archivo: no toca el catálogo. */

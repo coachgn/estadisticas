@@ -596,6 +596,39 @@ const SGADD_DATA = (function () {
     return cuerpo;
   }
 
+  /* =====================================================================
+     EL MERCADO DE FICHAJES (punto 87)
+
+     Todas LANZAN con el código del servidor: «no habilitado» (403
+     NO_HABILITADO), «ese torneo no» (OTRO_TORNEO) y «no se pudo leer»
+     (503) son tres cosas distintas y la pantalla las dice tal cual.
+     ===================================================================== */
+  async function getConToken(ruta, opciones) {
+    const o = opciones || {};
+    if (!baseApi) throw Object.assign(new Error('No hay backend configurado.'), { codigo: 'SIN_API' });
+    if (!(auth && auth.token())) throw Object.assign(new Error('Falta el token.'), { codigo: 'SIN_TOKEN' });
+    const traer = o.fetch || fetch;
+    const r = await traer(baseApi + ruta, { headers: { Authorization: 'Bearer ' + auth.token() } });
+    const cuerpo = await r.json().catch(() => null);
+    if (!r.ok || !cuerpo || !cuerpo.ok) {
+      const e = new Error((cuerpo && cuerpo.mensaje) || ('El servidor respondió ' + r.status));
+      e.codigo = (cuerpo && cuerpo.codigo) || ('HTTP_' + r.status);
+      e.status = r.status;
+      throw e;
+    }
+    return cuerpo;
+  }
+
+  function fichajesTorneos(opciones) { return getConToken('/api/v1/fichajes', opciones); }
+  function fichajesZona(torneo, zona, opciones) {
+    return getConToken('/api/v1/fichajes/' + encodeURIComponent(torneo) + '/' + encodeURIComponent(zona), opciones);
+  }
+  function fichajesGuardarFichas(torneo, cambios, opciones) {
+    return postConToken('/api/v1/fichajes/' + encodeURIComponent(torneo) + '/fichas', { cambios: cambios || {} }, opciones);
+  }
+  function fichajesPadron(opciones) { return getConToken('/api/v1/fichajes/padron', opciones); }
+  function fichajesGuardarPadron(datos, opciones) { return postConToken('/api/v1/fichajes/padron', datos || {}, opciones); }
+
   function login(datos, opciones) { return postSinToken('/api/v1/login', datos, opciones); }
   function fijarClave(datos, opciones) { return postSinToken('/api/v1/clave', datos, opciones); }
 
@@ -606,6 +639,7 @@ const SGADD_DATA = (function () {
     fixtureDeTorneo, llaveDeTorneo, rivalDeTorneo,
     login, fijarClave, clientes, guardarClientes, fichas, guardarFicha,
     estadosCompartibles, leerEstados, guardarEstados, leerPbp,
+    fichajesTorneos, fichajesZona, fichajesGuardarFichas, fichajesPadron, fichajesGuardarPadron,
   };
 })();
 

@@ -977,6 +977,13 @@ const SGADD_UI = (function () {
     /* Ficha de jugador → "Juan Pérez" */
     jugador: (d) => sanearNombreArchivo(nombrePersona(d && d.jugador), 'Ficha_Jugador'),
 
+    /* Ficha de fichaje (punto 87) → "Fichaje Juan Pérez". Distinta de la
+       ficha del jugador: se manda afuera del club y el nombre lo dice. */
+    fichaje: (d) => {
+      const n = nombrePersona(d && d.jugador);
+      return sanearNombreArchivo(n ? 'Fichaje ' + n : '', 'Ficha_Fichaje');
+    },
+
     /* Informe pre-partido → "Scouting vs Atenas" */
     scouting: (d) => {
       const r = d && d.rival ? nombreEquipoPdf(d.rival) : '';
@@ -1132,12 +1139,20 @@ const SGADD_UI = (function () {
     const op = o || {};
     const seccion = op.seccion || 'esta sección';
     const esPlan = op.motivo === 'REQUIERE_PLAN';
+    /* Un SERVICIO por invitación (Fichajes, punto 87): no es interno ni se
+       compra subiendo de plan. Decir cualquiera de las dos cosas mandaría
+       al usuario a pedir lo que no corresponde. */
+    const esServicio = op.motivo === 'REQUIERE_SERVICIO';
     const plan = op.plan === 'PRO' ? 'Pro' : op.plan || 'Pro';
 
     const titulo = esPlan
       ? seccion + ' está en el Plan ' + plan
+      : esServicio ? seccion + ' es un servicio por invitación'
       : seccion + ' es de uso interno';
-    const cuerpo = esPlan
+    const cuerpo = esServicio
+      ? 'Se habilita por mail, torneo por torneo, desde la administración de MotorStats. '
+        + 'Si lo contrataste y no lo ves, escribí a motorstats.ar@gmail.com con el mail con el que entrás.'
+      : esPlan
       ? 'El informe pre-partido arma el plan defensivo del cruce: marcas por jugador, '
         + 'perfil de defensor sugerido, claves estratégicas y el PDF listo para la charla. '
         + 'Tu plan actual no lo incluye.'

@@ -389,6 +389,13 @@ const SGADD_AUTH = (function () {
        botón gris que no hace nada invita a clickearlo y no explica por
        qué (punto 19). */
     comparativa: { soloAdmin: true },
+    /* FICHAJES es un SERVICIO, no un plan (punto 87): se habilita por MAIL
+       en su propio padrón y no lo trae ningún plan. Falla CERRADO para
+       todos —también para ABIERTO, el visitante sin sesión, que ve el
+       resto del panel—: sin servidor que diga «este mail está», no se
+       muestra. Y no se le ofrece a quien no lo tiene, igual que las
+       internas: no hay card de venta para un servicio por invitación. */
+    fichajes: { servicio: 'fichajes' },
     simulador: { soloAdmin: true },
     configuracion: { soloAdmin: true },
     diagnostico: { soloAdmin: true },
@@ -468,6 +475,9 @@ const SGADD_AUTH = (function () {
     OK: 'OK',
     SOLO_ADMIN: 'SOLO_ADMIN',
     REQUIERE_PLAN: 'REQUIERE_PLAN',
+    /* Un servicio por invitación (Fichajes): ni es interno ni se compra
+       con un plan, y la pantalla tiene que decir eso y no otra cosa. */
+    REQUIERE_SERVICIO: 'REQUIERE_SERVICIO',
     OTRO_EQUIPO: 'OTRO_EQUIPO',
   };
 
@@ -532,10 +542,38 @@ const SGADD_AUTH = (function () {
 
   function establecerSesion(crudo) {
     sesionActual = parsearSesion(crudo);
+    serviciosActuales = [];
     return sesionActual;
   }
 
-  function limpiarSesion() { sesionActual = null; }
+  function limpiarSesion() { sesionActual = null; serviciosActuales = []; }
+
+  /* LOS SERVICIOS que el SERVIDOR confirmó para esta sesión (Fichajes).
+     No vienen en el token ni en la URL: los fija el panel con lo que
+     contesta `/api/v1/fichajes`, y cambiar de sesión los vacía. Ponérselos
+     a mano desde la consola muestra el menú y nada más — los datos los
+     decide el servidor contra su padrón (punto 87). */
+  let serviciosActuales = [];
+
+  function fijarServicios(lista) {
+    const antes = serviciosActuales.join(',');
+    serviciosActuales = (Array.isArray(lista) ? lista : [])
+      .map(x => String(x || '').trim().toLowerCase()).filter(Boolean).sort();
+    return antes !== serviciosActuales.join(',');
+  }
+
+  function serviciosDe(s) {
+    if (s !== undefined && s && Array.isArray(s.servicios)) return s.servicios;
+    return serviciosActuales;
+  }
+
+  /** ¿Esta sesión tiene el servicio? El admin, siempre; sin sesión, nunca. */
+  function tieneServicio(id, s) {
+    const r = rol(s);
+    if (r === ROLES.ADMIN) return true;
+    if (r !== ROLES.CLIENTE) return false;
+    return serviciosDe(s).indexOf(String(id || '').toLowerCase()) !== -1;
+  }
 
   function sesion() { return sesionActual; }
 
@@ -629,6 +667,8 @@ const SGADD_AUTH = (function () {
        ABIERTO sigue viendo todo lo demás: esa parte no cambia y es lo que
        mantiene funcionando a quien entra sin token. */
     if (regla.soloAdmin) return rol(s) === ROLES.ADMIN;
+    /* `servicio` también ANTES que `sinRestricciones`, por lo mismo. */
+    if (regla.servicio) return tieneServicio(regla.servicio, s);
     if (sinRestricciones(s)) return true;
     if (regla.plan) return alcanzaPlan(regla.plan, s);
     return true;
@@ -721,6 +761,11 @@ const SGADD_AUTH = (function () {
       return (rol(s) === ROLES.ADMIN)
         ? { ok: true, motivo: MOTIVOS.OK, plan: null }
         : { ok: false, motivo: MOTIVOS.SOLO_ADMIN, plan: null };
+    }
+    if (regla.servicio) {
+      return tieneServicio(regla.servicio, s)
+        ? { ok: true, motivo: MOTIVOS.OK, plan: null }
+        : { ok: false, motivo: MOTIVOS.REQUIERE_SERVICIO, plan: null };
     }
     if (sinRestricciones(s)) return { ok: true, motivo: MOTIVOS.OK, plan: null };
     if (regla.plan && !tieneModulo(seccion, s)) {
@@ -1136,7 +1181,7 @@ const SGADD_AUTH = (function () {
     ESTADOS_SUSCRIPCION, ESTADOS_CON_ACCESO, tieneAcceso, suscripcionVencida,
     estadoSuscripcion, suscripcionDeCategoria, planDelClub, equipoDeCategoria, cicloDeCategoria,
     normalizarEmail, parsearSesion, establecerSesion, limpiarSesion, sesion, fijarPlanEfectivo,
-    esAdmin, rol, sinRestricciones,
+    esAdmin, rol, sinRestricciones, fijarServicios, tieneServicio,
     BLOQUES, alcanzaPlan, tieneBloque, puedoVerBloque, bloquesVigentes,
     CAPAS_LABORATORIO, capasDeCategoria,
     puedeVerEquipo, tieneModulo, puedoAcceder, puedeScoutearCruce,

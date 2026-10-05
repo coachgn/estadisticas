@@ -693,6 +693,28 @@ bloque('CSS compilado · las variantes que el fuente usa');
     faltan.length ? faltan.join(' ') + '  →  corré `node generar-css.js`' : '');
 }
 
+/* EL MENÚ MINIMIZADO HACIA LA IZQUIERDA (punto 88). Solo escritorio: en
+   celular el menú ya es un cajón, y apagarle el texto ahí lo dejaría
+   ilegible. */
+bloque('El menú minimizado hacia la izquierda');
+{
+  /* Cierre tolerante a CRLF, por lo mismo que el bloque tactil. */
+  const bloqueCss = ESTILO.slice(ESTILO.indexOf('#botonMenu { display: none; }'));
+  const finMedia = /\r?\n  \}\r?\n/.exec(bloqueCss);
+  const media = bloqueCss.slice(0, finMedia ? finMedia.index + finMedia[0].length : 0);
+  ok(/@media screen and \(min-width: 768px\)/.test(media) && /body\.menu-colapsado #sidebar \{ width: 4\.5rem; \}/.test(media),
+    'el menú minimizado es un riel de 72px, y SOLO desde 768px');
+  ok(/#botonMenu \{ display: none; \}/.test(HTML), 'el botón no existe en celular');
+  ok(/id="botonMenu"[^>]*aria-controls="sidebar"[^>]*aria-expanded="true"[^>]*aria-label=/.test(HTML),
+    'el botón dice qué controla y en qué estado está');
+  ok(/function aplicarMenuColapsado[\s\S]{0,900}btn\.title = nombre[\s\S]{0,80}setAttribute\('aria-label', nombre\)/.test(HTML),
+    'minimizado, cada sección conserva su nombre en el tooltip y para el lector');
+  ok(/try \{ localStorage\.setItem\(CLAVE_MENU/.test(HTML) && /try \{ on = localStorage\.getItem\(CLAVE_MENU\)/.test(HTML),
+    'la preferencia va en localStorage y no rompe sin él');
+  ok(/SGADD_AUTH\.cargarSesion\(\);[\s\S]{0,300}restaurarMenuColapsado\(\);\r?\n  aplicarPermisosNav\(\);/.test(HTML),
+    'se restaura al arrancar, justo antes de pintar el menú');
+}
+
 console.log('\n' + '─'.repeat(60));
 if (fallados === 0) console.log('✓ TODO OK · ' + pasados + ' tests');
 else { console.log('✗ ' + fallados + ' FALLARON de ' + (pasados + fallados)); process.exitCode = 1; }

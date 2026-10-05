@@ -67,6 +67,7 @@ node test-similitud-etiquetas.js #  45 tests · la similitud multi-etiqueta cont
                            #             de etiquetas, el caso Raineri/Benavidez y los afines
 node test-estados-sync.js  #  74 tests · los estados compartidos en el servidor, dos sesiones
                            #             y que ninguna escritura del catálogo pise datos
+node test-fichajes.js      #  81 tests · Fichajes: ficha manual, padrón, filtros y el servidor (punto 87)
 node test-pdf-layout.js    #  37 tests · claves arriba del resto, el flujo continuo, la
                            #             tabla que se parte por filas y que ningún :hover
                            #             pinte la hoja impresa
@@ -185,6 +186,9 @@ js/
   sgadd-ficha.js        ← modal + PDF de la ficha individual del jugador
   sgadd-estados.js      ← motor puro de estados de jugador y detección de alertas
   sgadd-buzon.js        ← UI del buzón: drawer, toast, badge (usa `document`)
+  sgadd-mercado.js      ← motor PURO de Fichajes: ficha manual, padrón, filtros, radar.
+                          Lo copia el servidor (punto 87)
+  sgadd-fichajes.js     ← sección FICHAJES: búsqueda, Radiografía ADN, comparar, PDF (punto 87)
   sgadd-clasificacion.js ← tabla de posiciones: motor + sección. Punto 16.
   sgadd-configui.js     ← pantalla de Configuración: edita las reglas del
                           punto 15 y las exporta. Punto 17.
@@ -235,7 +239,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=261`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=263`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -11967,3 +11971,161 @@ en 600 deja **el mismo overlay, el mismo aside, el mismo `#buzonScroll` y
 scroll 600**; la de abajo sube y el contador baja a 29. Marcar desde una
 card de observación y reactivar desde confirmados: la card pasa por
 `buzon-tarjeta-saliendo` y el overlay no se recrea.
+
+---
+
+## 87. FICHAJES · EL MERCADO DE JUGADORES DE UN TORNEO (2026-10-05)
+
+Pedido: una sección para buscar jugadores en TODO un torneo y devolver su
+«Radiografía ADN» —lo que se va a encontrar en cancha—, con comparación y
+PDF para dirigentes, entrenadores y representantes. Visible solo para el
+admin y para mails habilitados. `test-fichajes.js` fija todo lo de acá.
+
+### Las dos decisiones (consultadas antes de escribir)
+
+1. **Padrón propio en KV**, mail → torneos, editable solo por el admin. El
+   mail tiene que poder entrar al panel (cliente de algún club); no hay
+   login nuevo. Se descartó «servicio por club» porque el pedido era por
+   mail, y «cuenta sin club» porque suma un flujo de alta y clave entero.
+2. **Edad, posición y talla son una FICHA MANUAL** en KV, por torneo, que
+   carga el admin. La planilla no las trae (punto 9) y no se estiman —es
+   la regla del dato inventado que sacó los nombres del scouting—. Scrapear
+   la página del jugador de Gesdeportiva quedó afuera por el
+   `INFORME_PERMISOS_CAB.md` de `motorstats-ingestion`.
+
+### Lo que SÍ es seguridad: el servidor
+
+`server/api/fichajes.js`. El libro SIN recorte de un torneo solo sale de
+ahí, y solo para el admin (`ADMINS`, en el código) o un mail del padrón,
+y solo de los torneos de su registro.
+
+```
+GET  /api/v1/fichajes                  los torneos que ve la sesión (403 NO_HABILITADO)
+GET  /api/v1/fichajes/:torneo/:zona    libro completo de la zona + fichas manuales
+POST /api/v1/fichajes/:torneo/fichas   ADMIN · { cambios: { "NOMBRE|EQUIPO": ficha } }
+GET  /api/v1/fichajes/padron           ADMIN
+POST /api/v1/fichajes/padron           ADMIN · { email, torneos: [...], nota }
+
+Upstash  sgadd:fichajes:padron              HASH · un campo por mail
+         sgadd:fichajes:fichas:<torneo>     HASH · un campo por jugador
+```
+
+- **El padrón se lee en CADA pedido, sin caché**: sacar a alguien corta el
+  acceso en el próximo clic.
+- **KV caído con un no-admin: 503**, nunca «habilitado por las dudas».
+- **Campo por campo (HSET), nada se borra**: `torneos: []` deshabilita y
+  deja el registro; una ficha vacía queda `{}`. Igual que los estados del
+  punto 57.
+- Solo `tipo: 'torneo'`: un club no se habilita como si fuera un torneo.
+- Ningún sheetId en las respuestas; `ID_ARCHIVO` sale con
+  `sinColumnasOcultas`.
+- **Verificado al revés**: abrir `torneosHabilitados` a todos tira 7 tests;
+  sacar el guard de `OTRO_TORNEO`, 2.
+
+### El gate del panel · una regla nueva, `servicio`
+
+`MODULOS.fichajes = { servicio: 'fichajes' }`. Se mira ANTES que
+`sinRestricciones`, igual que `soloAdmin`, porque falla CERRADO también
+para ABIERTO (el visitante sin sesión que ve el resto del panel). El
+servicio NO viene en el token ni en la URL: lo fija
+`SGADD_FICHAJES.iniciar()` con lo que contesta `/api/v1/fichajes`, y
+cambiar de sesión lo vacía. El motivo nuevo `REQUIERE_SERVICIO` tiene su
+texto en `sinAcceso()` («servicio por invitación»: ni interno ni de plan),
+y el menú no lo ofrece a quien no lo tiene. El item nace `hidden` para no
+parpadear.
+
+**La sección va ANTES del modo landing y del modo llave** en
+`renderSeccionCruda`: no depende del club abierto. Entrando directo por
+`#fichajes`, el guard corre antes de que el servidor conteste; al llegar la
+respuesta se vuelve a pasar por `renderSection`.
+
+### El motor · `sgadd-mercado.js`, puro y compartido
+
+Ficha manual (`normalizarFicha`, `edad` —con el año solo, aproximada—),
+padrón (`torneosHabilitados`, `normalizarHabilitacion`: mail normalizado
+como los admins, sin tocar los puntos de Gmail), `filtrar`, `ordenar`,
+`ejesRadar` y `mejorPorMetrica`. El servidor lo copia
+(`sincronizar-compartido.js`) y valida con las mismas funciones.
+
+- **Un filtro de ficha o de métrica deja AFUERA a quien no tiene el dato, y
+  lo CUENTA** (`sinDato`): la pantalla dice «N quedaron afuera por no tener
+  el dato pedido». Un jugador sin ficha no es uno que no cumple.
+- Los rangos van por VALOR («TS% ≥ 55», como lo escribe un entrenador) o
+  por PERCENTIL contra su zona.
+- Los perfiles técnicos pedidos se exigen TODOS; la función puede contar
+  la faceta secundaria.
+- Los vacíos van al final del orden en las dos direcciones.
+
+### La UI · `sgadd-fichajes.js`
+
+- **Cada zona es su propio índice**: los percentiles se miden contra su
+  zona, y la comparación entre jugadores de zonas distintas va por
+  percentil. El índice declara el nivel de la zona (`idx.liga.nivel`), así
+  que la vara es la del torneo y no la del club abierto.
+- **El ADN sale de `jugadoresAdnLiga()`**, el motor de la ficha. La
+  postemporada interzonal no entra a la búsqueda.
+- **Radiografía ADN**: identidad y ficha manual, función, ADN, KPIs, radar
+  de ocho ejes (percentil promedio; un eje sin dato es un HUECO, no un
+  cero), «Lo que vas a ver en cancha», percentiles contra la zona,
+  tendencia (últimos 5 contra el tramo, local/visitante), cómo terminan
+  sus jugadas y perfiles parecidos (similitud del punto 58).
+- **Comparar** hasta cuatro, con radar superpuesto y el mejor de cada fila.
+- **Accesos a Fichajes** (solo admin) adentro de la sección: alta, edición
+  y deshabilitar. No en el Panel Master, para no tocar ese módulo.
+- **El radar y las líneas son SVG**, no Chart.js: salen iguales en papel.
+- La tendencia filtra los partidos por EQUIPO (el homónimo del punto 86).
+- Tipear en el buscador repinta solo los resultados (punto 13).
+
+**`PT2%` NO es la parte de sus puntos.** Es `T2I / PLAYS`: la parte de sus
+JUGADAS que termina en doble; el resto termina en pérdida. La primera
+versión decía «el 53 % de sus puntos llega de doble» y la suma daba 91 %.
+Se lee «de cada 100 jugadas, 53 terminan en doble… 10 en pérdida», y la
+barra suma la pérdida para cerrar en 100.
+
+### El PDF · la ficha de fichaje
+
+`modo-fichaje-print` + `#fichajeSalida`, el mismo mecanismo que la ficha
+individual (punto 7.6 ter), **A4 vertical**, con su propio guard, el pie
+institucional y nombre «Fichaje <Jugador>». **Medido generando el PDF real**
+(Chrome headless por CDP sobre la demo): 2 hojas; la 1 con cabecera,
+perfil y radar, lectura en dos columnas y los cuatro grupos de
+percentiles; la 2 con tendencia, jugadas y parecidos. Lo que costó: la
+etiqueta «Tiro exterior» del radar se cortaba en la hoja (margen 62) y la
+tabla de jugadas se partía en renglones (encabezado propio).
+
+### Pendiente
+
+- **Desplegar el backend** (`cd server && npx vercel --prod`): sin eso
+  `/api/v1/fichajes` no existe y nadie ve la sección.
+- **Cargar el padrón** desde «Accesos a Fichajes» y las primeras fichas
+  manuales: hoy no hay ninguna.
+- La Liga Argentina 2026-27 no tiene libro todavía (punto 67): hasta que
+  MotorStats lo escriba, el torneo aparece con sus zonas «sin libro».
+
+---
+
+## 88. EL MENÚ SE MINIMIZA HACIA LA IZQUIERDA (2026-10-05)
+
+Pedido: liberar pantalla para la tabla de marcas, los radares y el
+comparador. El botón va en el header, al lado del título (`#botonMenu`,
+solo desde 768px), y el menú pasa de 256 a **72px**: un RIEL de íconos,
+no un menú escondido. La navegación sigue a un clic y se ganan ~184px
+(medido en la demo a 1280: el contenido pasa de 1014 a 1198px).
+
+- **Minimizado, cada sección conserva su nombre** en el `title` y el
+  `aria-label`, tomado del propio botón para no repetir los nombres. El
+  texto se apaga con `font-size: 0` porque es un nodo de texto suelto al
+  lado del ícono, no un elemento.
+- **En celular no aplica**: ahí el menú ya es un cajón que se abre
+  encima, y apagarle el texto lo dejaría ilegible. Con la preferencia en
+  «minimizado», a 375px el cajón sigue de 256px y con el texto a 14px.
+- **La preferencia es de ESE navegador** (`sgadd.menuColapsado` en
+  `localStorage`, con try/catch) y se restaura en `init()` ANTES de pintar
+  el menú, para que no se abra y se cierre en cada carga.
+- Al terminar la transición se dispara un `resize`, para que Chart.js
+  tome el ancho nuevo.
+
+Ojo al verificarlo: con la pestaña oculta el navegador no avanza las
+transiciones y el ancho queda congelado en 256px. No es un bug, es la
+pestaña; `getAnimations().forEach(a => a.finish())` lo destraba.
+`test-responsive.js` fija las seis reglas.
