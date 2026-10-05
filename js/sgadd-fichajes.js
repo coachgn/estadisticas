@@ -41,6 +41,10 @@ const SGADD_FICHAJES = (function () {
     torneo: null,
     zonas: {},            // slug -> { estado, label, nivel, idx, filas, fichas, fichasLeidas, tramo, error }
     crit: criteriosVacios(),
+    /* El período (punto 90): un tramo del libro y/o un rango de días. Es
+       de TODO el torneo, no de una zona: una búsqueda compara jugadores en
+       el mismo período. Literal y no `PERIODO_VACIO`, que se declara abajo. */
+    periodo: { tramo: null, desde: '', hasta: '' },
     orden: 'PTS', dir: 'desc',
     pagina: 1,
     vista: 'buscar',      // 'buscar' | 'radiografia' | 'comparar' | 'padron'
@@ -134,22 +138,191 @@ const SGADD_FICHAJES = (function () {
     return SGADD_DATA.fichajesZona(t.id, z.slug).then(r => {
       const hojas = {};
       Object.keys(r.hojas || {}).forEach(h => { hojas[h] = SGADD_DATA.matrizAFilas(r.hojas[h]); });
-      const tramo = SGADD.tramoPorDefecto(SGADD.combinacionesTorneoFase(hojas)) || {};
-      const idx = SGADD.construirIndice(hojas, { fase: tramo.fase, torneo: tramo.torneo });
-      /* LA VARA DE LA ZONA, no la del club que está abierto: el índice
-         declara su nivel y `jugadoresUmbrales` lo toma antes que el estado
-         de la app (punto 41). */
-      if (idx && idx.liga && (r.nivel || z.nivel)) idx.liga.nivel = r.nivel || z.nivel;
+      const tramos = SGADD.combinacionesTorneoFase(hojas) || [];
       const zona = {
         estado: 'ok', slug: z.slug, label: r.label || z.label, nivel: r.nivel || z.nivel,
-        idx: idx, tramo: tramo, fichas: r.fichas || {}, fichasLeidas: !!r.fichasLeidas,
-        leidoEn: r.leidoEn || null,
+        hojas: hojas, tramos: tramos, tramoDefecto: SGADD.tramoPorDefecto(tramos) || {},
+        fichas: r.fichas || {}, fichasLeidas: !!r.fichasLeidas,
+        leidoEn: r.leidoEn || null, torneo: t.id,
+        vistas: new Map(),   // firma del período -> vista ya calculada
       };
-      zona.filas = armarFilas(zona, t);
+      /* El rango de días que trae la zona, para acotar el calendario. */
+      const r0 = M.recortarHojas(hojas, { fase: zona.tramoDefecto.fase }, { fecha: SGADD.fecha, texto: SGADD.texto });
+      zona.rangoDias = r0.rango;
+      zona.base = vistaDe(zona, PERIODO_VACIO);
       ST.zonas[id] = zona;
     }).catch(e => {
       ST.zonas[id] = { estado: 'error', slug: z.slug, label: z.label, error: e };
     });
+  }
+
+  /* =====================================================================
+     EL PERÍODO · fase y fechas (punto 90)
+
+     Una VISTA es el índice de la zona para un período, con sus filas ya
+     etiquetadas. Se calcula una vez por período y queda en caché: cambiar
+     de fecha y volver no rehace nada.
+
+       sin fechas   el tramo elegido (o el por defecto) con su índice de
+                    siempre: lo que declara la planilla.
+       con fechas   `recortarHojas` deja solo esos partidos y el índice se
+                    RECONSTRUYE con el motor del TOTAL (punto 3 ter): todo
+                    —promedios, tasas, percentiles contra la zona en ese
+                    período, volumen, radar, tendencia— sale de la muestra
+                    recortada.
+
+     LO QUE EL MODO RECONSTRUIDO NO MUESTRA: `AST%`. El núcleo le aplica al
+     jugador la fórmula del equipo (asistencias / SUS canastas) y da otra
+     cosa que la planilla —medido en la demo: 0,891 contra 0,098—. Se deja
+     en blanco antes que mostrar un número que no es el de la planilla.
+     ===================================================================== */
+  const PERIODO_VACIO = { tramo: null, desde: '', hasta: '' };
+
+  function firmaPeriodo(p) { return (p.tramo || '') + '|' + (p.desde || '') + '|' + (p.hasta || ''); }
+  function periodoActivo(p) { return !!(p && (p.tramo || p.desde || p.hasta)); }
+
+  function vistaDe(zona, p) {
+    const firma = firmaPeriodo(p);
+    if (zona.vistas.has(firma)) return zona.vistas.get(firma);
+    const t = (ST.torneos || []).filter(x => x.id === zona.torneo)[0] || { id: zona.torneo };
+    let tramo = zona.tramoDefecto;
+    if (p.tramo) {
+      tramo = zona.tramos.filter(x => x.id === p.tramo)[0] || null;
+      /* La zona no jugó ese tramo: queda AFUERA, y se dice. */
+      if (!tramo) {
+        const v = { filas: [], idx: null, tramo: null, fueraDeTramo: true, partidos: 0, derivado: false };
+        zona.vistas.set(firma, v);
+        return v;
+      }
+    }
+    let idx, partidos = null, sinFecha = 0, derivado = false;
+    if (M.hayFechas(p)) {
+      const rec = M.recortarHojas(zona.hojas, { fase: tramo.fase, torneo: tramo.torneo, desde: p.desde, hasta: p.hasta },
+        { fecha: SGADD.fecha, texto: SGADD.texto });
+      idx = SGADD.construirIndice(rec.hojas, { fase: tramo.fase, torneo: SGADD.TORNEO_TOTAL });
+      partidos = rec.partidos; sinFecha = rec.sinFecha; derivado = true;
+    } else {
+      idx = SGADD.construirIndice(zona.hojas, { fase: tramo.fase, torneo: tramo.torneo });
+      /* Los partidos se cuentan igual en los dos modos: partidos DISTINTOS
+         de `Base Datos E` en el tramo. */
+      partidos = M.recortarHojas(zona.hojas, { fase: tramo.fase, torneo: tramo.torneo },
+        { fecha: SGADD.fecha, texto: SGADD.texto }).partidos;
+    }
+    /* LA VARA DE LA ZONA, no la del club que está abierto: el índice
+       declara su nivel y `jugadoresUmbrales` lo toma antes que el estado
+       de la app (punto 41). */
+    if (idx && idx.liga && zona.nivel) idx.liga.nivel = zona.nivel;
+    const v = { idx: idx, tramo: tramo, partidos: partidos, sinFecha: sinFecha, derivado: derivado, fueraDeTramo: false };
+    v.filas = armarFilas(zona, t, v);
+    zona.vistas.set(firma, v);
+    return v;
+  }
+
+  /** La vista vigente de una zona, con el período que eligió el usuario. */
+  function vistaActual(zona) { return vistaDe(zona, ST.periodo); }
+
+  function zonasCargadas() {
+    const t = torneoActual();
+    if (!t) return [];
+    return zonasBuscables(t).map(z => ST.zonas[t.id + '/' + z.slug]).filter(z => z && z.estado === 'ok');
+  }
+
+  /** Los tramos de TODO el torneo (la unión de sus zonas), sin repetir. */
+  function tramosDelTorneo() {
+    const vistos = new Map();
+    zonasCargadas().forEach(z => z.tramos.forEach(t => { if (!vistos.has(t.id)) vistos.set(t.id, t); }));
+    return Array.from(vistos.values());
+  }
+
+  /** El primer y el último día con partidos en el torneo, para el calendario. */
+  function rangoDelTorneo() {
+    let a = null, b = null;
+    zonasCargadas().forEach(z => {
+      const r = z.rangoDias || [];
+      if (r[0] && (!a || r[0] < a)) a = r[0];
+      if (r[1] && (!b || r[1] > b)) b = r[1];
+    });
+    return [a, b];
+  }
+
+  /** `2026-05-08` → `08/05/2026`. */
+  function diaLegible(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+    return m ? m[3] + '/' + m[2] + '/' + m[1] : '';
+  }
+
+  /**
+   * Qué muestra está mirando la búsqueda: el período, cuántos partidos
+   * entraron y cuántos jugadores quedaron afuera por no haber jugado en
+   * él. Es lo que dice el badge: un percentil sobre doce partidos no se
+   * lee igual que uno sobre la temporada.
+   */
+  function resumenPeriodo() {
+    const p = ST.periodo;
+    const zonas = zonasCargadas();
+    let partidos = 0, sinPartidos = 0, sinFecha = 0;
+    const fuera = [];
+    zonas.forEach(z => {
+      const v = vistaActual(z);
+      if (v.fueraDeTramo) { fuera.push(z.label); return; }
+      partidos += v.partidos || 0;
+      sinFecha += v.sinFecha || 0;
+      sinPartidos += Math.max(0, z.base.filas.length - v.filas.length);
+    });
+    const tramo = p.tramo ? tramosDelTorneo().filter(t => t.id === p.tramo)[0]
+      : (zonas[0] ? zonas[0].tramoDefecto : null);
+    const partes = [];
+    partes.push(tramo && tramo.fase ? M.etiquetaTramo(tramo) : 'Tramo por defecto');
+    if (p.desde && p.hasta) partes.push('del ' + diaLegible(p.desde) + ' al ' + diaLegible(p.hasta));
+    else if (p.desde) partes.push('desde el ' + diaLegible(p.desde));
+    else if (p.hasta) partes.push('hasta el ' + diaLegible(p.hasta));
+    return { activo: periodoActivo(p), etiqueta: partes.join(' · '), partidos: partidos,
+      sinPartidos: sinPartidos, sinFecha: sinFecha, zonasFuera: fuera, conFechas: M.hayFechas(p) };
+  }
+
+  /** El aviso de muestra parcial. Sale en la búsqueda, la Radiografía y el PDF. */
+  function badgePeriodo(compacto) {
+    const r = resumenPeriodo();
+    if (!r.activo) return '';
+    const extra = [];
+    if (r.sinPartidos) extra.push(r.sinPartidos + ' jugador' + (r.sinPartidos === 1 ? '' : 'es') + ' sin partidos en el período quedaron afuera');
+    if (r.zonasFuera.length) extra.push(r.zonasFuera.join(', ') + ' no jugó ese tramo');
+    if (r.sinFecha) extra.push(r.sinFecha + ' planillas sin fecha que no se pudieron ubicar');
+    if (r.conFechas) extra.push('AST% no se calcula en un período');
+    return `<div class="fx-periodo rounded-lg border border-accent/50 bg-accent/10 px-3 py-2 ${compacto ? '' : 'mb-3'}" role="status">
+      <p class="text-[11px] text-ink"><span class="font-display uppercase tracking-wider text-accent">Período activo</span>
+        · ${esc(r.etiqueta)} · <b>${r.partidos} partido${r.partidos === 1 ? '' : 's'} analizado${r.partidos === 1 ? '' : 's'}</b></p>
+      <p class="text-[10px] dato-sec">Promedios, percentiles, volumen, radar y tendencia salen SOLO de esta muestra${extra.length ? ' · ' + esc(extra.join(' · ')) : ''}.</p>
+    </div>`;
+  }
+
+  /** Los controles: fase/tramo y el calendario Desde–Hasta. */
+  function bloquePeriodo() {
+    const p = ST.periodo;
+    const tramos = tramosDelTorneo();
+    const rango = rangoDelTorneo();
+    const def = zonasCargadas()[0] ? zonasCargadas()[0].tramoDefecto : null;
+    const clase = 'rounded border border-hairline bg-surface2/40 px-2 py-1.5 text-xs text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent';
+    return `
+      <div class="mb-4 pb-3 border-b border-hairline/60">
+        <p class="text-[10px] uppercase tracking-widest font-display text-muted mb-1.5">Período</p>
+        <div class="flex flex-wrap items-end gap-3">
+          <label class="text-[11px] text-muted flex flex-col gap-1">Fase
+            <select onchange="SGADD_FICHAJES.fijarPeriodo('tramo', this.value)" class="${clase}">
+              <option value="">Por defecto${def && def.id ? ' (' + esc(M.etiquetaTramo(def)) + ')' : ''}</option>
+              ${tramos.map(t => `<option value="${esc(t.id)}" ${p.tramo === t.id ? 'selected' : ''}>${esc(M.etiquetaTramo(t))}</option>`).join('')}
+            </select></label>
+          <label class="text-[11px] text-muted flex flex-col gap-1">Desde
+            <input type="date" value="${esc(p.desde)}" ${rango[0] ? 'min="' + rango[0] + '"' : ''} ${rango[1] ? 'max="' + rango[1] + '"' : ''}
+              onchange="SGADD_FICHAJES.fijarPeriodo('desde', this.value)" class="${clase}"></label>
+          <label class="text-[11px] text-muted flex flex-col gap-1">Hasta
+            <input type="date" value="${esc(p.hasta)}" ${rango[0] ? 'min="' + rango[0] + '"' : ''} ${rango[1] ? 'max="' + rango[1] + '"' : ''}
+              onchange="SGADD_FICHAJES.fijarPeriodo('hasta', this.value)" class="${clase}"></label>
+          ${periodoActivo(p) ? `<button type="button" onclick="SGADD_FICHAJES.quitarPeriodo()"
+            class="text-[11px] text-muted hover:text-ink underline underline-offset-2 pb-1.5">Toda la temporada</button>` : ''}
+        </div>
+        <p class="text-[10px] dato-sec mt-1">${rango[0] ? 'Hay partidos del ' + esc(diaLegible(rango[0])) + ' al ' + esc(diaLegible(rango[1])) + '. ' : ''}Las fechas acotan DENTRO de la fase: una regular y unos playoffs no se mezclan.</p>
+      </div>`;
   }
 
   function claveDe(nombre, equipo) {
@@ -169,9 +342,10 @@ const SGADD_FICHAJES = (function () {
   }
 
   /** Una fila del mercado por jugador. El ADN sale del motor de la ficha. */
-  function armarFilas(zona, t) {
-    const idx = zona.idx;
+  function armarFilas(zona, t, vista) {
+    const idx = vista && vista.idx;
     if (!idx || !idx.liga) return [];
+    const derivado = !!(vista && vista.derivado);
     const adnMapa = jugadoresAdnLiga(idx);
     const out = [];
     (idx.liga.jugadores || []).forEach(j => {
@@ -203,6 +377,9 @@ const SGADD_FICHAJES = (function () {
         m[k] = (v === null && k === 'RT') ? jugadoresNN(jugadoresRT(j)) : v;
         pc[k] = r ? r.percentil : null;
       });
+      /* Reconstruido desde el log, `AST%` no es el de la planilla (ver el
+         bloque del PERÍODO): en blanco antes que un número equivocado. */
+      if (derivado) { m['AST%'] = null; pc['AST%'] = null; }
       /* El volumen bruto, por partido y en el total del tramo. */
       const vol = {}, volTot = {};
       M.COLUMNAS_VOLUMEN.forEach(k => {
@@ -223,7 +400,7 @@ const SGADD_FICHAJES = (function () {
         arquetipos: (adn.arquetipos || []).map(a => a.id),
         origen: perfil.esInterior ? 'interior' : perfil.esPerimetral ? 'perimetral' : null,
         m: m, pc: pc, vol: vol, volTot: volTot, ficha: fichaDe(zona, clave),
-        _j: j, _idx: idx, _adn: adn,
+        _j: j, _idx: idx, _adn: adn, _derivado: derivado,
       });
     });
     return out;
@@ -236,7 +413,7 @@ const SGADD_FICHAJES = (function () {
     const out = [];
     zonasBuscables(t).forEach(z => {
       const zona = ST.zonas[t.id + '/' + z.slug];
-      if (zona && zona.estado === 'ok') out.push.apply(out, zona.filas);
+      if (zona && zona.estado === 'ok') out.push.apply(out, vistaActual(zona).filas);
     });
     return out;
   }
@@ -523,7 +700,7 @@ const SGADD_FICHAJES = (function () {
     const zonas = t ? zonasBuscables(t).map(z => {
       const zz = ST.zonas[t.id + '/' + z.slug];
       const est = !zz ? '' : zz.estado === 'cargando' ? ' · cargando…' : zz.estado === 'error' ? ' · no se pudo leer'
-        : ' · ' + zz.filas.length + ' jugadores';
+        : ' · ' + zz.base.filas.length + ' jugadores';
       return `<span class="text-[11px] ${zz && zz.estado === 'error' ? 'text-red-400' : 'text-muted'}">${esc(z.label)}${esc(est)}</span>`;
     }).join('<span class="text-muted/50" aria-hidden="true">·</span>') : '';
     const sinLibro = t ? (t.zonas || []).filter(z => !z.conLibro && !z.interzonal).map(z => z.label) : [];
@@ -614,6 +791,7 @@ const SGADD_FICHAJES = (function () {
                         focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-xl">
           Búsqueda avanzada</summary>
         <div class="px-4 pb-4 grid gap-x-6 lg:grid-cols-2">
+          <div class="lg:col-span-2">${bloquePeriodo()}</div>
           <div>
             ${zonasOk.length > 1 ? grupoFiltro('Zona', opcionesChips('zonas', zonasOk, c.zonas)) : ''}
             ${grupoFiltro('Función en cancha', opcionesChips('roles', roles, c.roles),
@@ -727,7 +905,10 @@ const SGADD_FICHAJES = (function () {
           class="text-xs px-4 py-2 rounded border border-hairline text-muted hover:text-ink hover:bg-surface2">
           Ver ${Math.min(POR_PAGINA, ordenadas.length - visibles.length)} más (${ordenadas.length - visibles.length} restantes)</button></div>` : '';
 
-    return panelFiltros(todas) + buscador + resumen + `<div id="fxResultados">${grilla}${mas}</div>`;
+    /* El badge va FUERA del panel plegable: con los filtros cerrados, el
+       que mira los resultados igual tiene que saber que es una muestra
+       parcial. */
+    return panelFiltros(todas) + badgePeriodo() + buscador + resumen + `<div id="fxResultados">${grilla}${mas}</div>`;
   }
 
   function tarjeta(f) {
@@ -823,7 +1004,7 @@ const SGADD_FICHAJES = (function () {
               <td class="py-1 pr-2">${esc(metrica(k).label)}${metrica(k).invertida ? ' <span class="text-muted" title="menos es mejor">↓</span>' : ''}</td>
               <td class="py-1 pr-2 font-mono text-ink text-right">${esc(fmt(k, f.m[k]))}${VOL_DE[k] && volumen(f, VOL_DE[k], false)
                 ? `<span class="block text-[10px] text-muted" title="Convertidos/intentados por partido">${esc(volumen(f, VOL_DE[k], false))}</span>` : ''}</td>
-              <td class="py-1 pr-2 font-mono text-muted text-right" title="Fila JUGADOR TIPO de su zona">${esc(r ? r.tipoFormateado : '—')}</td>
+              <td class="py-1 pr-2 font-mono text-muted text-right" title="Fila JUGADOR TIPO de su zona">${esc(r && !(f._derivado && k === 'AST%') ? r.tipoFormateado : '—')}</td>
               <td class="py-1 w-24">${barraPc(f.pc[k])}</td>
               <td class="py-1 pl-1 font-mono text-right ${tonoPc(f.pc[k])}">${pcTexto(f.pc[k])}</td>
             </tr>`;
@@ -847,7 +1028,7 @@ const SGADD_FICHAJES = (function () {
     return `
       <table class="w-full text-xs fx-tabla mb-3">
         <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
-          <th class="text-left font-display pb-1">Métrica</th><th class="text-right font-display pb-1">Tramo</th>
+          <th class="text-left font-display pb-1">Métrica</th><th class="text-right font-display pb-1">${periodoActivo(ST.periodo) ? 'Período' : 'Tramo'}</th>
           <th class="text-right font-display pb-1">Últimos 5</th><th class="text-right font-display pb-1">Lectura</th></tr></thead>
         <tbody>${filas}</tbody></table>
       <div class="grid grid-cols-2 gap-3">
@@ -907,7 +1088,7 @@ const SGADD_FICHAJES = (function () {
     return `<table class="w-full text-xs fx-tabla">
         <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
           <th class="text-left font-display pb-1">Tiro</th><th class="text-right font-display pb-1">Conv./Int. por partido</th>
-          <th class="text-right font-display pb-1">Acierto</th><th class="text-right font-display pb-1">Total del tramo</th></tr></thead>
+          <th class="text-right font-display pb-1">Acierto</th><th class="text-right font-display pb-1">${periodoActivo(ST.periodo) ? 'Total del período' : 'Total del tramo'}</th></tr></thead>
         <tbody>${filas}</tbody></table>
       ${sinTotal ? '<p class="text-[10px] dato-sec mt-1">La planilla de esta zona no trae los totales acumulados (ACUMULADO J).</p>' : ''}`;
   }
@@ -979,6 +1160,7 @@ const SGADD_FICHAJES = (function () {
           class="ml-auto text-[11px] font-semibold px-3 py-1.5 rounded-md border border-accent text-accent hover:bg-accent/10
                  focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">⬇ Descargar ficha de fichaje (PDF)</button>
       </div>
+      ${badgePeriodo()}
 
       <section class="card rounded-xl border border-hairline p-4 sm:p-5 mb-4">
         <div class="grid gap-5 lg:grid-cols-[1fr_auto] items-start">
@@ -1008,7 +1190,8 @@ const SGADD_FICHAJES = (function () {
 
       <section class="card rounded-xl border border-hairline p-4 sm:p-5 mb-4">
         <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Lo que vas a ver en cancha</h3>
-        <p class="text-[11px] dato-sec mb-3">Cada línea sale de sus números de ${esc(f.zonaLabel)} (${esc(zona && zona.tramo && zona.tramo.torneo ? zona.tramo.torneo : 'tramo por defecto')}).</p>
+        <p class="text-[11px] dato-sec mb-3">Cada línea sale de sus números de ${esc(f.zonaLabel)}
+          (${esc(resumenPeriodo().activo ? resumenPeriodo().etiqueta : 'tramo por defecto')} · ${esc(String(f._j['PJ'] || 0))} PJ).</p>
         <ul class="grid gap-3 sm:grid-cols-2">${items}</ul>
       </section>
 
@@ -1158,6 +1341,9 @@ const SGADD_FICHAJES = (function () {
   function elegirTorneo(id) {
     if (id === ST.torneo) return;
     ST.torneo = id; ST.crit = criteriosVacios(); ST.pagina = 1; ST.vista = 'buscar';
+    /* Los tramos y los días son de cada libro: el período no viaja de un
+       torneo a otro. */
+    ST.periodo = Object.assign({}, PERIODO_VACIO);
     ST.abierto = null; ST.comparar = [];
     pintar();
     cargarTorneo();
@@ -1238,6 +1424,39 @@ const SGADD_FICHAJES = (function () {
   }
 
   function limpiarRangos() { ST.crit.rangos = {}; pintar(); }
+
+  /* EL PERÍODO. Cada cambio arma (o toma del caché) la vista de cada zona
+     y repinta: la búsqueda, el radar y la tendencia salen de esa muestra. */
+  function fijarPeriodo(campo, valor) {
+    if (['tramo', 'desde', 'hasta'].indexOf(campo) === -1) return;
+    const nuevo = Object.assign({}, ST.periodo, { [campo]: campo === 'tramo' ? (valor || null) : (valor || '') });
+    if (nuevo.desde && nuevo.hasta && nuevo.desde > nuevo.hasta) {
+      SGADD_BUZON.toast('«Desde» no puede ser posterior a «Hasta».', 'aviso');
+      pintar();
+      return;
+    }
+    ST.periodo = nuevo;
+    ST.pagina = 1;
+    aplicarPeriodo();
+  }
+
+  /* Un período NUEVO cuesta ~1 s con 260 jugadores (rehace el índice y
+     reetiqueta el ADN de todos; medido en la demo) y uno ya visto, 80 ms
+     del caché. Un segundo congelado sin aviso se lee como un cuelgue: se
+     avisa primero y se calcula en el cuadro siguiente. */
+  function aplicarPeriodo() {
+    const pendiente = zonasCargadas().some(z => !z.vistas.has(firmaPeriodo(ST.periodo)));
+    const cont = document.getElementById('fxResultados') || document.getElementById('view-root');
+    if (pendiente && cont) {
+      cont.innerHTML = `<div class="card rounded-xl p-6 border border-hairline text-center text-sm text-muted" role="status">
+        Recalculando la muestra del período…</div>`;
+      setTimeout(pintar, 30);
+      return;
+    }
+    pintar();
+  }
+
+  function quitarPeriodo() { ST.periodo = Object.assign({}, PERIODO_VACIO); ST.pagina = 1; aplicarPeriodo(); }
   function limpiarTodo() { ST.crit = criteriosVacios(); ST.pagina = 1; pintar(); }
   function ordenarPor(k) { ST.orden = k; ST.dir = (k === 'nombre' || k === 'edad') ? 'asc' : 'desc'; pintar(); }
   function invertirOrden() { ST.dir = ST.dir === 'desc' ? 'asc' : 'desc'; pintar(); }
@@ -1274,7 +1493,9 @@ const SGADD_FICHAJES = (function () {
         if (k.indexOf(f.torneo + '/') !== 0 || z.estado !== 'ok') return;
         z.fichas = r.fichas || {};
         z.fichasLeidas = true;
-        z.filas.forEach(x => { x.ficha = fichaDe(z, x.clave); });
+        /* En TODAS las vistas ya calculadas (cada período es una), sin
+           rehacer los índices: la ficha no cambia ningún número. */
+        z.vistas.forEach(v => (v.filas || []).forEach(x => { x.ficha = fichaDe(z, x.clave); }));
       });
       ST.editandoFicha = false;
       SGADD_BUZON.toast('Ficha guardada · ' + f.nombre, 'ok');
@@ -1386,6 +1607,7 @@ const SGADD_FICHAJES = (function () {
         <div class="fx-pdf-radar">${radarSvg([{ ejes: M.ejesRadar(f.pc), color: '#B45309' }], { tam: 260, margen: 62 })}</div>
       </section>
       <section class="informe-bloque">
+        ${badgePeriodo(true)}
         <h2>Lo que vas a ver en cancha</h2>
         <ul class="fx-pdf-lectura">${items}</ul>
       </section>
@@ -1405,6 +1627,7 @@ const SGADD_FICHAJES = (function () {
   return {
     iniciar, montar, pintar, elegirTorneo, irA, abrir, buscarTexto, alternar, fijar, fijarEquipo,
     recordarFiltros, fijarRango, agregarRango, limpiarRangos, limpiarTodo, ordenarPor, invertirOrden,
+    fijarPeriodo, quitarPeriodo,
     verMas, alternarComparar, vaciarComparar, editarFicha, guardarFicha, enviarAcceso, editarAcceso,
     guardarAcceso, exportar, radarSvg, sparkSvg, estado: ST,
   };

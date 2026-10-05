@@ -162,6 +162,87 @@ check('comparando, gana el mejor percentil', mejor.PTS.indice === 1 && mejor['TS
 const mejorV = M.mejorPorMetrica([FILAS[0], FILAS[3]], ['TS%'], {});
 check('sin percentil en alguno, se compara por valor y lo dice', mejorV['TS%'].indice === 1 && mejorV['TS%'].porPercentil === false);
 
+titulo('1 quater. EL PERÍODO · fases y fechas (punto 90)');
+
+global.SGADD = global.SGADD || require('./js/sgadd-core.js');
+const CORE = global.SGADD;
+{
+  /* Un libro chico con DOS torneos en la misma fase (IDA y VUELTA), una
+     fecha por jornada, y un jugador cuyos puntos SUBEN con la fecha: así
+     cualquier recorte da un promedio distinto y se puede verificar a mano. */
+  const dia = (i) => (i < 10 ? '0' + i : i) + '/0' + (i <= 6 ? 3 : 4) + '/2026';   // jornadas 1-6 en marzo, 7-12 en abril
+  const torneoDe = (i) => i <= 6 ? 'IDA' : 'VUELTA';
+  const colsE = ['FECHA', 'PARTIDO', 'EQUIPO', 'FASE', 'TORNEO', 'CONDICION', 'RESULTADO', 'PTS', 'PTSopp', 'T3C', 'T3I'];
+  const colsJ = ['FECHA', 'PARTIDO', 'NOMBRES', 'EQUIPO', 'FASE', 'TORNEO', 'CONDICION', 'RESULTADO', 'MIN', 'PTS', 'T3C', 'T3I'];
+  const filasE = [], filasJ = [];
+  for (let i = 1; i <= 12; i++) {
+    const partido = 'A vs B ' + i;
+    filasE.push({ FECHA: dia(i), PARTIDO: partido, EQUIPO: 'A', FASE: 'REGULAR', TORNEO: torneoDe(i), CONDICION: 'LOCAL', RESULTADO: 'GANADO', PTS: 80, PTSopp: 70, T3C: 8, T3I: 24 });
+    filasE.push({ FECHA: dia(i), PARTIDO: partido, EQUIPO: 'B', FASE: 'REGULAR', TORNEO: torneoDe(i), CONDICION: 'VISITANTE', RESULTADO: 'PERDIDO', PTS: 70, PTSopp: 80, T3C: 6, T3I: 22 });
+    /* CRECIENTE recibe i puntos en la jornada i, y tira i triples. */
+    filasJ.push({ FECHA: dia(i), PARTIDO: partido, NOMBRES: 'CRECIENTE, JUAN', EQUIPO: 'A', FASE: 'REGULAR', TORNEO: torneoDe(i), CONDICION: 'LOCAL', RESULTADO: 'GANADO', MIN: 30, PTS: i, T3C: 1, T3I: i });
+    filasJ.push({ FECHA: dia(i), PARTIDO: partido, NOMBRES: 'FIJO, LUIS', EQUIPO: 'B', FASE: 'REGULAR', TORNEO: torneoDe(i), CONDICION: 'VISITANTE', RESULTADO: 'PERDIDO', MIN: 25, PTS: 10, T3C: 2, T3I: 5 });
+  }
+  /* Solo jugó la VUELTA. */
+  for (let i = 7; i <= 12; i++) {
+    filasJ.push({ FECHA: dia(i), PARTIDO: 'A vs B ' + i, NOMBRES: 'TARDIO, PEPE', EQUIPO: 'A', FASE: 'REGULAR', TORNEO: 'VUELTA', CONDICION: 'LOCAL', RESULTADO: 'GANADO', MIN: 20, PTS: 6, T3C: 0, T3I: 1 });
+  }
+  /* Una planilla de jugador SIN fecha, de un partido con UNA sola fecha: se ubica. */
+  filasJ.push({ FECHA: '', PARTIDO: 'A vs B 3', NOMBRES: 'SIN FECHA, ANA', EQUIPO: 'B', FASE: 'REGULAR', TORNEO: 'IDA', CONDICION: 'VISITANTE', RESULTADO: 'PERDIDO', MIN: 10, PTS: 4, T3C: 0, T3I: 0 });
+  const HOJAS = { 'Base Datos E': { cols: colsE, filas: filasE }, 'Base Datos J': { cols: colsJ, filas: filasJ } };
+  const DEP = { fecha: CORE.fecha, texto: CORE.texto };
+
+  check('diaIso da el día LOCAL en ISO', M.diaIso(new Date(2026, 2, 5)) === '2026-03-05' && M.diaIso(null) === null);
+  check('hayFechas solo con días válidos', M.hayFechas({ desde: '2026-03-01' }) && !M.hayFechas({ desde: '1/3/2026' }) && !M.hayFechas({}));
+  check('el rótulo de los tramos', M.etiquetaTramo({ torneo: 'IDA', fase: 'REGULAR' }) === 'IDA · REGULAR'
+    && M.etiquetaTramo({ torneo: '*TOTAL*', fase: 'REGULAR' }) === 'Total · REGULAR'
+    && M.etiquetaTramo({ torneo: 'GENERAL', fase: 'REGULAR' }) === 'REGULAR');
+
+  let rec = M.recortarHojas(HOJAS, { fase: 'REGULAR' }, DEP);
+  check('sin fechas no se recorta nada: los 12 partidos y el rango del libro',
+    rec.partidos === 12 && rec.rango[0] === '2026-03-01' && rec.rango[1] === '2026-04-12', JSON.stringify(rec.rango));
+  rec = M.recortarHojas(HOJAS, { fase: 'REGULAR', desde: '2026-04-01', hasta: '2026-04-30' }, DEP);
+  check('un rango de fechas deja SOLO esos partidos (abril = jornadas 7 a 12)', rec.partidos === 6
+    && rec.hojas['Base Datos E'].filas.length === 12);
+  check('los dos extremos son inclusivos', M.recortarHojas(HOJAS, { fase: 'REGULAR', desde: '2026-03-03', hasta: '2026-03-03' }, DEP).partidos === 1);
+  rec = M.recortarHojas(HOJAS, { fase: 'REGULAR', desde: '2026-03-01', hasta: '2026-03-06' }, DEP);
+  check('la planilla SIN fecha se ubica por su partido, si tiene una sola fecha',
+    rec.hojas['Base Datos J'].filas.some(f => f.NOMBRES === 'SIN FECHA, ANA') && rec.sinFecha === 0);
+  rec = M.recortarHojas(HOJAS, { fase: 'REGULAR', torneo: 'VUELTA' }, DEP);
+  check('el tramo filtra por torneo', rec.partidos === 6 && rec.hojas['Base Datos J'].filas.every(f => f.TORNEO === 'VUELTA'));
+  check('*TOTAL* y GENERAL no filtran por torneo', M.recortarHojas(HOJAS, { fase: 'REGULAR', torneo: '*TOTAL*' }, DEP).partidos === 12);
+  check('una fase que no existe deja todo vacío', M.recortarHojas(HOJAS, { fase: 'PLAYOFFS', desde: '2026-03-01' }, DEP).partidos === 0);
+  /* AMBIGUA: dos fechas para el mismo texto de PARTIDO (ida y vuelta con el mismo local). */
+  const amb = { 'Base Datos E': { cols: colsE, filas: [
+    { FECHA: '01/03/2026', PARTIDO: 'A vs B', EQUIPO: 'A', FASE: 'REGULAR', PTS: 80, PTSopp: 70 },
+    { FECHA: '01/04/2026', PARTIDO: 'A vs B', EQUIPO: 'A', FASE: 'REGULAR', PTS: 80, PTSopp: 70 }] },
+    'Base Datos J': { cols: colsJ, filas: [{ FECHA: '', PARTIDO: 'A vs B', NOMBRES: 'X', EQUIPO: 'A', FASE: 'REGULAR', MIN: 10, PTS: 2 }] } };
+  rec = M.recortarHojas(amb, { fase: 'REGULAR', desde: '2026-03-01' }, DEP);
+  check('una planilla sin fecha de un partido con DOS fechas queda afuera y se CUENTA (no se inventa la noche)',
+    rec.hojas['Base Datos J'].filas.length === 0 && rec.sinFecha === 1);
+
+  /* Y EL ÍNDICE RECONSTRUIDO: lo que de verdad ve la búsqueda. */
+  const indice = (p) => {
+    const r = M.recortarHojas(HOJAS, Object.assign({ fase: 'REGULAR' }, p), DEP);
+    return CORE.construirIndice(r.hojas, { fase: 'REGULAR', torneo: CORE.TORNEO_TOTAL });
+  };
+  const jug = (idx, n) => idx.liga.jugadores.find(j => j.NOMBRES === n);
+  const todo = jug(indice({}), 'CRECIENTE, JUAN');
+  check('temporada completa: 12 PJ y 6,5 PTS (1 a 12 promediado)', todo.PJ === 12 && Math.abs(todo.PTS - 6.5) < 1e-9, todo.PJ + ' / ' + todo.PTS);
+  const abril = jug(indice({ desde: '2026-04-01', hasta: '2026-04-30' }), 'CRECIENTE, JUAN');
+  check('solo abril: 6 PJ y 9,5 PTS (7 a 12) — el promedio CAMBIA con el período',
+    abril.PJ === 6 && Math.abs(abril.PTS - 9.5) < 1e-9, abril.PJ + ' / ' + abril.PTS);
+  check('y el VOLUMEN también: 9,5 triples intentados por partido en abril contra 6,5 en la temporada',
+    Math.abs(abril.T3I - 9.5) < 1e-9 && Math.abs(todo.T3I - 6.5) < 1e-9);
+  check('las tasas se rehacen sobre los totales del período (T3% = 6/57), no se promedian',
+    Math.abs(abril['T3%'] - 6 / 57) < 1e-9, abril['T3%']);
+  const marzo = indice({ desde: '2026-03-01', hasta: '2026-03-31' });
+  check('el que no jugó en el período NO aparece (la UI lo cuenta como excluido)',
+    !jug(marzo, 'TARDIO, PEPE') && !!jug(indice({ desde: '2026-04-01' }), 'TARDIO, PEPE'));
+  check('fase + fechas se combinan: VUELTA hasta el 9/4 son 3 partidos',
+    jug(indice({ torneo: 'VUELTA', hasta: '2026-04-09' }), 'CRECIENTE, JUAN').PJ === 3);
+}
+
 /* =====================================================================
    2. EL SERVIDOR
    ===================================================================== */
@@ -371,6 +452,25 @@ const sinSheetId = (body) => !/SHEET_[A-Z]+_\d+/.test(JSON.stringify(body));
     /name="posicion"/.test(ui) && !/name="secundaria"/.test(ui));
   check('el filtro de puesto respeta la faceta secundaria, como la función',
     /fijar\('puestosSecundarios', this\.checked\)/.test(ui));
+
+  titulo('4 ter. EL PERÍODO EN LA PANTALLA (punto 90)');
+
+  check('con fechas, el índice se RECONSTRUYE con el motor del TOTAL (no un cálculo propio)',
+    /M\.hayFechas\(p\)[\s\S]{0,300}construirIndice\(rec\.hojas, \{ fase: tramo\.fase, torneo: SGADD\.TORNEO_TOTAL \}\)/.test(ui));
+  check('cada período se calcula UNA vez por zona y queda en caché', /zona\.vistas\.has\(firma\)/.test(ui) && /zona\.vistas\.set\(firma, v\)/.test(ui));
+  check('reconstruido, AST% queda en blanco: el núcleo no da el de la planilla',
+    /if \(derivado\) \{ m\['AST%'\] = null; pc\['AST%'\] = null; \}/.test(ui));
+  check('una zona que no jugó el tramo queda afuera y se dice', /fueraDeTramo: true/.test(ui) && /no jugó ese tramo/.test(ui));
+  check('el badge de muestra parcial sale en la búsqueda, la Radiografía y el PDF',
+    (ui.match(/\$\{badgePeriodo\(\)\}/g) || []).length === 1 && /badgePeriodo\(\) \+ buscador/.test(ui) && /\$\{badgePeriodo\(true\)\}/.test(ui));
+  check('el badge dice cuántos partidos se analizaron y cuántos jugadores quedaron afuera',
+    /partido\$\{r\.partidos === 1 \? '' : 's'\} analizado/.test(ui) && /sin partidos en el período quedaron afuera/.test(ui));
+  check('los controles: fase y calendario Desde/Hasta acotado a los días del libro',
+    /fijarPeriodo\('tramo', this\.value\)/.test(ui) && /type="date"[\s\S]{0,200}fijarPeriodo\('desde'/.test(ui)
+    && /fijarPeriodo\('hasta', this\.value\)/.test(ui) && /min="' \+ rango\[0\]/.test(ui));
+  check('«Desde» posterior a «Hasta» se rechaza', /nuevo\.desde && nuevo\.hasta && nuevo\.desde > nuevo\.hasta/.test(ui));
+  check('un período nuevo avisa que recalcula antes de congelar la pantalla', /Recalculando la muestra del período/.test(ui));
+  check('el período no viaja de un torneo a otro', /ST\.periodo = Object\.assign\(\{\}, PERIODO_VACIO\);/.test(ui));
 
   titulo('5. LOS ESCUDOS SE LEEN · el fondo sale de su propio dibujo (punto 89)');
 

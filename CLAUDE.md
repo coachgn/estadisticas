@@ -239,7 +239,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=264`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=265`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -12210,3 +12210,65 @@ Elisa) — esos cinco pasan a disco claro y se leen.
 por software y reduce la imagen de otra forma: Villa Elisa (53 % oscuro, el
 caso límite) daba «medio» y seguía ilegible. Se mide sin ella, con
 suavizado de alta calidad, y el umbral bajó a 45 %.
+
+---
+
+## 90. FICHAJES · EL PERÍODO: FASES Y CALENDARIO DESDE–HASTA (2026-10-05)
+
+Pedido: acotar la búsqueda de Fichajes —y todo lo que muestra— a una fase o
+a un rango de días. `test-fichajes.js` fija todo lo de acá (151 tests).
+
+### Las dos modalidades, y por qué no se mezclan fases
+
+- **Fase**: un selector con los TRAMOS que trae el libro
+  (`combinacionesTorneoFase`: «IDA · REGULAR», «Total · REGULAR»…). Sin
+  fechas, la vista es el índice de ese tramo, o sea lo que declara la
+  planilla.
+- **Calendario Desde–Hasta** (`<input type="date">` acotado al primer y
+  último día con partidos): acota DENTRO de la fase. Una regular y unos
+  playoffs no se combinan nunca (punto 3 ter): juntarlos no significa nada.
+
+### Con fechas, el índice se RECONSTRUYE con el motor del TOTAL
+
+`SGADD_MERCADO.recortarHojas` (PURA, compartida) deja en `Base Datos E` y
+`Base Datos J` solo los partidos del período, y `construirIndice(...,
+{ torneo: '*TOTAL*' })` rehace todo con el mismo motor que el TOTAL de una
+fase: volumen sumado y dividido por PJ, tasas sobre los totales (USG%, RO% y
+RD% con el denominador del equipo). No hay un segundo cálculo de tasas.
+
+**Medido antes de escribirlo**: reconstruido desde el log SIN recortar, los
+124 calificados de la demo coinciden con `PROMEDIOS J` (<1 %) en PJ, MIN, PTS,
+PLAYS, TS%, eFG%, USG%, T3I, PPP, RTL%, PR y PePP%. **Verificado con un
+recorte**: JUGADOR 67 del 1/1 al 28/2 da 12 PJ y 21,92 PTS, lo mismo que
+sumar su log a mano. Rompiendo el filtro de fechas caen 8 tests.
+
+- **Recorte a recorte cambia todo**: promedios, percentiles (contra la zona
+  EN ese período), volumen por partido y total, radar, la tendencia de los
+  últimos 5 y local/visitante.
+- **El que no jugó en el período queda afuera y se cuenta**: «N jugadores sin
+  partidos en el período quedaron afuera».
+- **Una planilla de jugador sin fecha** se ubica por su PARTIDO si ese texto
+  tiene UNA sola fecha; con dos (ida y vuelta con el mismo local) no se
+  puede saber la noche: queda afuera y se cuenta (`sinFecha`).
+- **Una zona que no jugó el tramo elegido** queda afuera, y se dice.
+
+### Lo que el modo reconstruido NO muestra: AST%
+
+El núcleo le aplica al JUGADOR la fórmula de equipo (asistencias / SUS
+canastas) en el TOTAL: medido en la demo, 0,891 contra 0,098 de la planilla.
+Con un período, AST% (valor, percentil y referencia) queda en blanco y el
+badge lo dice. **Es un defecto del núcleo que también afecta la vista TOTAL
+de Jugadores**; se dejó registrado aparte para corregirlo ahí.
+
+### La pantalla
+
+- **El badge «Período activo»** —tramo, días, partidos analizados, excluidos—
+  va FUERA del panel plegable de filtros, en la Radiografía y en el PDF: un
+  percentil sobre doce partidos no se lee igual que uno sobre la temporada.
+- **Cada período se calcula UNA vez por zona y queda en caché**
+  (`zona.vistas`). Medido en la demo con 260 jugadores: ~1 s uno nuevo
+  (rehace el índice y reetiqueta el ADN de todos), 80 ms uno ya visto. El
+  nuevo avisa «Recalculando la muestra del período…» antes de congelar.
+- «Desde» posterior a «Hasta» se rechaza; el período no viaja de un torneo a
+  otro; guardar una ficha la refresca en todas las vistas sin rehacer
+  índices.

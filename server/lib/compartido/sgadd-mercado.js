@@ -446,7 +446,127 @@ const SGADD_MERCADO = (function () {
     return out;
   }
 
+  /* ------------------------------------------------------------------
+     EL PERÍODO · fases y fechas (punto 90)
+
+     El recorte temporal NO recalcula nada acá: deja solo los partidos del
+     período en `Base Datos E` y `Base Datos J`, y el índice los
+     reconstruye con el MISMO motor del TOTAL (punto 3 ter) —volumen
+     sumado y dividido por PJ, tasas sobre los totales—. Un segundo cálculo
+     de tasas terminaría distinto del de la ficha (punto 8).
+
+     Medido contra la demo antes de escribirlo: reconstruido desde el log
+     sin recortar, los 124 calificados coinciden con `PROMEDIOS J` (<1 %)
+     en PJ, MIN, PTS, PLAYS, TS%, eFG%, USG%, T3I, PPP, RTL%, PR y PePP%.
+     ------------------------------------------------------------------ */
+
+  /** `YYYY-MM-DD` local de una fecha, o null. */
+  function diaIso(d) {
+    if (!(d instanceof Date) || isNaN(d.getTime())) return null;
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  const DIA_VALIDO = /^\d{4}-\d{2}-\d{2}$/;
+
+  /** ¿El período pide algo además del tramo? */
+  function hayFechas(p) {
+    return !!(p && ((p.desde && DIA_VALIDO.test(p.desde)) || (p.hasta && DIA_VALIDO.test(p.hasta))));
+  }
+
+  /**
+   * Deja en `Base Datos E` y `Base Datos J` solo los partidos del período.
+   *
+   * `periodo` = { fase, torneo, desde, hasta } (días `YYYY-MM-DD`, ambos
+   * inclusive; `torneo` null, GENERAL o `*TOTAL*` = toda la fase).
+   * `dep` = { fecha: v → Date|null, texto: v → string }, las del núcleo: este
+   * archivo no lo requiere para seguir siendo puro.
+   *
+   * UNA FILA DE JUGADOR SIN FECHA se ubica por su PARTIDO, si ese texto
+   * tiene UNA sola fecha en `Base Datos E`. Si tiene dos (ida y vuelta con
+   * el mismo local) no se puede saber de qué noche es y QUEDA AFUERA: es la
+   * regla del dato inventado, y se cuenta en `sinFecha`.
+   *
+   * Devuelve { hojas, partidos, sinFecha, rango: [primerDía, últimoDía] }.
+   */
+  function recortarHojas(hojas, periodo, dep) {
+    const p = periodo || {};
+    const fecha = dep && dep.fecha, texto = (dep && dep.texto) || (v => String(v === undefined || v === null ? '' : v).trim());
+    const fase = p.fase ? String(p.fase).toUpperCase() : null;
+    const tor = p.torneo ? String(p.torneo).toUpperCase() : null;
+    const filtraTorneo = !!(tor && tor !== 'GENERAL' && tor !== '*TOTAL*');
+    const desde = (p.desde && DIA_VALIDO.test(p.desde)) ? p.desde : null;
+    const hasta = (p.hasta && DIA_VALIDO.test(p.hasta)) ? p.hasta : null;
+
+    const dia = (v) => { const d = fecha ? fecha(v) : null; return diaIso(d); };
+    const enFaseYTorneo = (f) => {
+      const ff = texto(f['FASE']).toUpperCase();
+      if (fase && ff && ff !== fase) return false;
+      if (filtraTorneo) {
+        const tt = texto(f['TORNEO']).toUpperCase();
+        if (tt && tt !== tor) return false;
+      }
+      return true;
+    };
+    const enRango = (d) => !!d && (!desde || d >= desde) && (!hasta || d <= hasta);
+
+    const E = hojas && hojas['Base Datos E'];
+    const J = hojas && hojas['Base Datos J'];
+    const fechasDePartido = new Map();   // texto del PARTIDO -> Set de días
+    const filasE = [];
+    const partidos = new Set();
+    let primero = null, ultimo = null;
+    ((E && E.filas) || []).forEach(f => {
+      if (!enFaseYTorneo(f)) return;
+      const d = dia(f['FECHA']);
+      const k = texto(f['PARTIDO']).toUpperCase();
+      if (k && d) {
+        if (!fechasDePartido.has(k)) fechasDePartido.set(k, new Set());
+        fechasDePartido.get(k).add(d);
+      }
+      if (!enRango(d) && (desde || hasta)) return;
+      if (!d && (desde || hasta)) return;
+      filasE.push(f);
+      partidos.add((d || '') + '|' + k);
+      if (d && (!primero || d < primero)) primero = d;
+      if (d && (!ultimo || d > ultimo)) ultimo = d;
+    });
+
+    let sinFecha = 0;
+    const filasJ = [];
+    ((J && J.filas) || []).forEach(f => {
+      if (!enFaseYTorneo(f)) return;
+      let d = dia(f['FECHA']);
+      if (!d) {
+        const set = fechasDePartido.get(texto(f['PARTIDO']).toUpperCase());
+        if (set && set.size === 1) d = Array.from(set)[0];
+      }
+      if (desde || hasta) {
+        if (!d) { sinFecha++; return; }
+        if (!enRango(d)) return;
+      }
+      filasJ.push(f);
+    });
+
+    return {
+      hojas: {
+        'Base Datos E': { cols: (E && E.cols) || [], filas: filasE },
+        'Base Datos J': { cols: (J && J.cols) || [], filas: filasJ },
+      },
+      partidos: partidos.size, sinFecha: sinFecha, rango: [primero, ultimo],
+    };
+  }
+
+  /** El rótulo de un tramo del núcleo: «IDA · REGULAR», «Total · REGULAR», «REGULAR». */
+  function etiquetaTramo(t) {
+    if (!t) return '';
+    const tor = String(t.torneo || '').toUpperCase();
+    if (!tor || tor === 'GENERAL') return String(t.fase || '');
+    if (tor === '*TOTAL*') return 'Total · ' + t.fase;
+    return t.torneo + ' · ' + t.fase;
+  }
+
   return {
+    diaIso, hayFechas, recortarHojas, etiquetaTramo,
     SERVICIO, PUESTOS, POSICIONES, POR_POSICION, TALLA_MIN, TALLA_MAX, CLAVE_VALIDA,
     idPosicion, cubre, normalizarFicha, edad,
     VOLUMEN_TIRO, COLUMNAS_VOLUMEN, textoVolumen,
