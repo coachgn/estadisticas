@@ -250,6 +250,37 @@ check('el acumulado se SUMA y no se pisa',
 check('y las tasas se recalculan aparte',
   /TASAS_ACUMULADO/.test(src));
 
+/* =====================================================================
+   LAS TASAS CON DENOMINADOR DE EQUIPO · contra la PLANILLA REAL
+   ===================================================================== */
+titulo('El TOTAL reproduce AST%, RO%, RD% y USG% de PROMEDIOS J (la demo)');
+
+/* MotorStats divide el PROMEDIO del jugador por el PROMEDIO del equipo.
+   Se mide sobre el snapshot de la demo —un libro real, anonimizado— y no
+   sobre una fixture: el defecto viejo solo aparece con jugadores que se
+   perdieron partidos, y ahí la demo tiene decenas. Hasta el 2026-10-05,
+   AST% salía con la fórmula del EQUIPO (0,891 contra 0,098) y RO%/RD%
+   total sobre total (79 y 108 jugadores fuera). */
+{
+  const DEMO = require('./js/sgadd-demo.js');
+  const hojasD = DEMO.rehidratar(require('./demo/datos-demo.json'));
+  const idxD = SGADD.construirIndice(hojasD, { fase: 'REGULAR', torneo: SGADD.TORNEO_TOTAL });
+  const pj = hojasD['PROMEDIOS J'].filas;
+  ['AST%', 'RO%', 'RD%', 'USG%'].forEach(mk => {
+    let n = 0, mal = 0, peor = 0, conMenosPj = 0;
+    idxD.equipos.forEach(e => (e.jugadores || []).forEach(j => {
+      const f = pj.find(x => x.NOMBRES === j.NOMBRES && SGADD.claveEquipo(x.EQUIPO) === e.clave);
+      if (!f || typeof f[mk] !== 'number' || typeof j[mk] !== 'number') return;
+      n++;
+      if (j.PJ < e.promedios.PJ) conMenosPj++;
+      const d = Math.abs(j[mk] - f[mk]);
+      if (d > 1e-6) { mal++; peor = Math.max(peor, d); }
+    }));
+    check(mk + ' coincide con la planilla en los ' + n + ' jugadores (' + conMenosPj + ' jugaron menos que su equipo)',
+      n > 100 && conMenosPj > 10 && mal === 0, mal + ' fuera, peor ' + peor);
+  });
+}
+
 console.log(NL + (fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') +
   '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

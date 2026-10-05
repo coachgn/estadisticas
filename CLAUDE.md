@@ -37,7 +37,8 @@ node test-permisos.js      # 406 tests · roles, planes, el gate, el selector, e
 node test-comparativa.js   #  67 tests · ciclos, tendencia contra nivel, cara a cara
 node test-clientes.js      #  70 tests · el padrón de clientes, los cupos y el login
 node test-confirmar.js     #  86 tests · el diff, publicar zonas, subclientes y tooltips
-node test-acumulacion.js   #  42 tests · la suma entre tramos · REGRESIÓN, no tocar
+node test-acumulacion.js   #  46 tests · la suma entre tramos · REGRESIÓN, no tocar
+                           #             y AST%, RO%, RD% y USG% del TOTAL contra la planilla (punto 24)
 node test-ast-pp.js        #  22 tests · AST-PP con cero pérdidas = AST, igual que el motor
                            #             (v106) · por __acum, el TOTAL del jugador y el del equipo
 node test-resiliencia.js   #  50 tests · rotación del token, KV caído, el tramo que se conserva
@@ -67,7 +68,7 @@ node test-similitud-etiquetas.js #  45 tests · la similitud multi-etiqueta cont
                            #             de etiquetas, el caso Raineri/Benavidez y los afines
 node test-estados-sync.js  #  74 tests · los estados compartidos en el servidor, dos sesiones
                            #             y que ninguna escritura del catálogo pise datos
-node test-fichajes.js      #  81 tests · Fichajes: ficha manual, padrón, filtros y el servidor (punto 87)
+node test-fichajes.js      # 154 tests · Fichajes: ficha manual, padrón, filtros y el servidor (punto 87)
 node test-pdf-layout.js    #  37 tests · claves arriba del resto, el flujo continuo, la
                            #             tabla que se parte por filas y que ningún :hover
                            #             pinte la hoja impresa
@@ -239,7 +240,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=265`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=266`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -5260,30 +5261,48 @@ después tocar el ojo— y no con el clic suelto, que funcionaba.
 
 ---
 
-## 24. LAS TRES TASAS DEL JUGADOR CON DENOMINADOR DE EQUIPO
+## 24. LAS CUATRO TASAS DEL JUGADOR CON DENOMINADOR DE EQUIPO
 
 `ACUMULADO J` trae 32 columnas contra las 53 de `PROMEDIOS J`. El TOTAL
 repone casi todas recalculando sobre los totales del propio jugador, **salvo
-tres**: `USG%`, `RO%` y `RD%`, cuyo denominador es del equipo. Sin ellas el
-TOTAL las dejaba en blanco para todos — y como el TOTAL abre el libro (punto
-3 ter), la tarjeta **USO** de la ficha salía vacía de entrada.
+cuatro**: `AST%`, `USG%`, `RO%` y `RD%`, cuyo denominador es del equipo. Sin
+ellas el TOTAL las dejaba en blanco —y como el TOTAL abre el libro (punto 3
+ter), la tarjeta **USO** de la ficha salía vacía de entrada—.
+
+**MotorStats divide el PROMEDIO del jugador por el PROMEDIO del equipo**
+(`_logicaPromediosJugadores_`, `tccEquipoPromedio`, `rdEquipoPromedio`…):
 
 ```
-RO%  = RO_jug   / (RO_equipo + RD_rival)
-RD%  = RD_jug   / (RD_equipo + RO_rival)
+AST% = (AST_jug / PJ_jug) / (TCC_equipo / PJ_equipo)
+RO%  = (RO_jug  / PJ_jug) / ((RO_equipo + RD_rival) / PJ_equipo)
+RD%  = (RD_jug  / PJ_jug) / ((RD_equipo + RO_rival) / PJ_equipo)
 USG% = (PLAYS_jug × MIN_equipo/5) / (PLAYS_equipo × MIN_jug)
 ```
 
-**LAS TRES SE VERIFICARON CONTRA LA PLANILLA REAL** (DEPORTIVO · IDA), no se
-dedujeron. Y la de rebote **no es la tasa on-court que uno esperaría**: el
-motor mide la porción que el jugador se lleva de TODO lo que el equipo tuvo
-disponible en la fase, sin prorratear por minutos. Reproducir al motor manda
-sobre mejorarlo — la hoja es lo que el club audita. Hay un test que exige que
-el número NO coincida con la versión prorrateada, que es el error que uno
-comete si deduce la fórmula en vez de medirla.
+**Medido contra `PROMEDIOS J` de la demo el 2026-10-05: error 0 en los 260
+jugadores**, 157 de los cuales jugaron menos partidos que su equipo.
+`test-acumulacion.js` lo fija sobre el snapshot real; sin el arreglo caen 3.
 
-Se trabaja con **totales de los dos lados**: mezclar un total con un promedio
-da un número plausible y equivocado por un factor PJ.
+**Hasta esa fecha estaba mal de dos formas**, y por eso no alcanza con
+«verificar contra un libro»:
+
+- **`AST%` salía con la fórmula del EQUIPO** (asistencias sobre SUS propias
+  canastas): 0,891 contra 0,098 de la planilla. En la vista TOTAL de
+  Jugadores y en Fichajes con período, que por eso la blanqueaba.
+- **`RO%` y `RD%` iban total sobre total.** Eso solo coincide con la
+  planilla cuando el jugador jugó TODOS los partidos del equipo, y se había
+  verificado contra DEPORTIVO · IDA, donde casi todos lo hacían. En la demo
+  daba mal para 109 y 120 jugadores. En `USG%` el PJ se cancela, así que la
+  de totales ya era exacta.
+
+La de rebote sigue **sin prorratear por minutos**: el motor mide la porción
+de lo que el equipo tuvo disponible POR NOCHE. Reproducir al motor manda
+sobre mejorarlo — la hoja es lo que el club audita. Hay un test que exige que
+el número NO coincida con la versión prorrateada.
+
+**Una fixture con un jugador de más PJ que su equipo no describe un libro
+real**: la de `test-core.js` tenía 22 contra 2 y pasaba solo porque la
+fórmula vieja no miraba el PJ. Se corrigió a 1 por torneo.
 
 ---
 
@@ -12252,13 +12271,20 @@ sumar su log a mano. Rompiendo el filtro de fechas caen 8 tests.
   puede saber la noche: queda afuera y se cuenta (`sinFecha`).
 - **Una zona que no jugó el tramo elegido** queda afuera, y se dice.
 
-### Lo que el modo reconstruido NO muestra: AST%
+### AST% también en el modo reconstruido (desde v266)
 
-El núcleo le aplica al JUGADOR la fórmula de equipo (asistencias / SUS
-canastas) en el TOTAL: medido en la demo, 0,891 contra 0,098 de la planilla.
-Con un período, AST% (valor, percentil y referencia) queda en blanco y el
-badge lo dice. **Es un defecto del núcleo que también afecta la vista TOTAL
-de Jugadores**; se dejó registrado aparte para corregirlo ahí.
+Hasta la v265 AST% se dejaba en blanco en un período, porque el núcleo le
+aplicaba al jugador la fórmula del equipo. Corregido en el núcleo (punto 24):
+el período ahora lo muestra con valor, percentil y referencia, y el badge ya
+no avisa su ausencia.
+
+### La card dice de dónde tira: «TC - T2» / «TC - T3»
+
+La línea de volumen de la card del buscador rotula el tiro de campo con su
+familia de MÁS intentos (`SGADD_MERCADO.tiroPredominante`, PURA: sin libres;
+empate → doble; sin tiros de campo → nada), con su volumen y su acierto;
+después va la otra familia de campo y los libres. «TC» a secas mezclaba
+dobles y triples.
 
 ### La pantalla
 

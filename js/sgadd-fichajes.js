@@ -171,10 +171,10 @@ const SGADD_FICHAJES = (function () {
                     período, volumen, radar, tendencia— sale de la muestra
                     recortada.
 
-     LO QUE EL MODO RECONSTRUIDO NO MUESTRA: `AST%`. El núcleo le aplica al
-     jugador la fórmula del equipo (asistencias / SUS canastas) y da otra
-     cosa que la planilla —medido en la demo: 0,891 contra 0,098—. Se deja
-     en blanco antes que mostrar un número que no es el de la planilla.
+     `AST%` (y `RO%`/`RD%`) del modo reconstruido salen con la fórmula de
+     MotorStats desde el 2026-10-05: promedio del jugador sobre promedio
+     del equipo (punto 24 del CLAUDE.md). Hasta ahí `AST%` se dejaba en
+     blanco porque el núcleo le aplicaba la fórmula del equipo.
      ===================================================================== */
   const PERIODO_VACIO = { tramo: null, desde: '', hasta: '' };
 
@@ -288,7 +288,6 @@ const SGADD_FICHAJES = (function () {
     if (r.sinPartidos) extra.push(r.sinPartidos + ' jugador' + (r.sinPartidos === 1 ? '' : 'es') + ' sin partidos en el período quedaron afuera');
     if (r.zonasFuera.length) extra.push(r.zonasFuera.join(', ') + ' no jugó ese tramo');
     if (r.sinFecha) extra.push(r.sinFecha + ' planillas sin fecha que no se pudieron ubicar');
-    if (r.conFechas) extra.push('AST% no se calcula en un período');
     return `<div class="fx-periodo rounded-lg border border-accent/50 bg-accent/10 px-3 py-2 ${compacto ? '' : 'mb-3'}" role="status">
       <p class="text-[11px] text-ink"><span class="font-display uppercase tracking-wider text-accent">Período activo</span>
         · ${esc(r.etiqueta)} · <b>${r.partidos} partido${r.partidos === 1 ? '' : 's'} analizado${r.partidos === 1 ? '' : 's'}</b></p>
@@ -377,9 +376,6 @@ const SGADD_FICHAJES = (function () {
         m[k] = (v === null && k === 'RT') ? jugadoresNN(jugadoresRT(j)) : v;
         pc[k] = r ? r.percentil : null;
       });
-      /* Reconstruido desde el log, `AST%` no es el de la planilla (ver el
-         bloque del PERÍODO): en blanco antes que un número equivocado. */
-      if (derivado) { m['AST%'] = null; pc['AST%'] = null; }
       /* El volumen bruto, por partido y en el total del tramo. */
       const vol = {}, volTot = {};
       M.COLUMNAS_VOLUMEN.forEach(k => {
@@ -952,13 +948,21 @@ const SGADD_FICHAJES = (function () {
       </li>`;
   }
 
-  /* EL VOLUMEN AL LADO DEL ACIERTO, en la card: «T3 1,8/5,0 · 36%». Un
-     porcentaje sin su volumen promete lo que la muestra no sostiene. */
+  /* EL VOLUMEN AL LADO DEL ACIERTO, en la card: «TC - T2 4,1/8,0 · 51%».
+     El tiro de campo se rotula con su familia de MÁS intentos
+     (`tiroPredominante`, sin los libres): «TC» a secas mezclaba dobles y
+     triples y no decía de dónde tira. Después va la otra familia de campo
+     y los libres. Un porcentaje sin su volumen promete lo que la muestra
+     no sostiene. */
   function lineaVolumen(f) {
-    const partes = M.VOLUMEN_TIRO.filter(v => v.id !== 'T2').map(v => {
-      const t = volumen(f, v.id, false);
+    const pred = M.tiroPredominante(f.vol);
+    const orden = pred ? [pred, pred === 'T2' ? 'T3' : 'T2', 'T1'] : ['T3', 'T1'];
+    const partes = orden.map(id => {
+      const v = M.VOLUMEN_TIRO.filter(x => x.id === id)[0];
+      const t = v && volumen(f, v.id, false);
       if (!t) return '';
-      return `<span class="whitespace-nowrap"><span class="text-muted">${esc(v.id === 'TC' ? 'TC' : v.id === 'T3' ? 'T3' : 'TL')}</span>
+      const rotulo = id === pred ? 'TC - ' + id : (id === 'T1' ? 'TL' : id);
+      return `<span class="whitespace-nowrap"><span class="${id === pred ? 'text-accent' : 'text-muted'}"${id === pred ? ' title="Su tiro de campo con más intentos"' : ''}>${esc(rotulo)}</span>
         <span class="font-mono text-ink">${esc(t)}</span>
         <span class="font-mono ${tonoPc(f.pc[v.pct])}">${esc(fmt(v.pct, f._j[v.pct]))}</span></span>`;
     }).filter(Boolean);
@@ -1004,7 +1008,7 @@ const SGADD_FICHAJES = (function () {
               <td class="py-1 pr-2">${esc(metrica(k).label)}${metrica(k).invertida ? ' <span class="text-muted" title="menos es mejor">↓</span>' : ''}</td>
               <td class="py-1 pr-2 font-mono text-ink text-right">${esc(fmt(k, f.m[k]))}${VOL_DE[k] && volumen(f, VOL_DE[k], false)
                 ? `<span class="block text-[10px] text-muted" title="Convertidos/intentados por partido">${esc(volumen(f, VOL_DE[k], false))}</span>` : ''}</td>
-              <td class="py-1 pr-2 font-mono text-muted text-right" title="Fila JUGADOR TIPO de su zona">${esc(r && !(f._derivado && k === 'AST%') ? r.tipoFormateado : '—')}</td>
+              <td class="py-1 pr-2 font-mono text-muted text-right" title="Fila JUGADOR TIPO de su zona">${esc(r ? r.tipoFormateado : '—')}</td>
               <td class="py-1 w-24">${barraPc(f.pc[k])}</td>
               <td class="py-1 pl-1 font-mono text-right ${tonoPc(f.pc[k])}">${pcTexto(f.pc[k])}</td>
             </tr>`;

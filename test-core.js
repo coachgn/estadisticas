@@ -1569,9 +1569,14 @@ check('usa sessionStorage, no localStorage',
       RESULTADO: 'PERDIDO', CONDICION: 'VISITANTE' }));
   });
 
-  /* Un jugador real de ese libro: RO 16 · RD 29 · MIN 257,09 · PLAYS 106,24 */
+  /* Un jugador real de ese libro: RO 16 · RD 29 · MIN 257,09 · PLAYS 106,24.
+     PJ 1 por torneo, el MISMO que su equipo en esta fixture (una fila de
+     `Base Datos E` por torneo): desde el 2026-10-05 la tasa es promedio
+     sobre promedio (punto 24) y un jugador con más PJ que su equipo no
+     existe. El caso del que jugó MENOS lo mide test-acumulacion.js contra
+     la planilla real de la demo. */
   const acj = ['IDA', 'VUELTA'].map(t => ({
-    NOMBRES: 'BOTTE, IGNACIO', EQUIPO: 'A', FASE: 'REGULAR', TORNEO: t, PJ: 11,
+    NOMBRES: 'BOTTE, IGNACIO', EQUIPO: 'A', FASE: 'REGULAR', TORNEO: t, PJ: 1,
     RO: 8, RD: 14.5, MIN: 128.545, PLAYS: 53.12, PTS: 80, TCC: 30, TCI: 70,
     T3C: 8, T3I: 24, T2C: 22, T2I: 46, T1C: 12, T1I: 16, AST: 15, PP: 10 }));
 

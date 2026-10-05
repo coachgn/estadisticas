@@ -2015,41 +2015,49 @@
              denominador es suyo. Las que dependen del rival NO: un
              jugador no tiene rival propio. */
           ['eFG%', 'TS%', 'TC%', 'T2%', 'T3%', 'T1%', 'PPT2', 'PPT3', 'PPT1',
-           'PPP', 'PT2%', 'PT3%', 'PT1%', 'RTL%', 'PePP%', 'AST%', 'AST-PP']
+           'PPP', 'PT2%', 'PT3%', 'PT1%', 'RTL%', 'PePP%', 'AST-PP']
             .forEach(mk => {
               const val = TASAS_EQUIPO[mk](sum, {});
               if (val !== null) d[mk] = val; else delete d[mk];
             });
 
-          /* LAS TRES QUE TIENEN DENOMINADOR DE EQUIPO.
+          /* LAS CUATRO QUE TIENEN DENOMINADOR DE EQUIPO.
 
              `ACUMULADO J` trae 32 columnas contra las 53 de `PROMEDIOS J`,
-             y de las 21 que faltan estas tres son las ÚNICAS que el bucle
-             de arriba no puede reponer: su denominador no es del jugador
-             sino de su equipo. Sin esto, el TOTAL dejaba `USG%`, `RO%` y
-             `RD%` en blanco para todos — y como el TOTAL abre el libro,
-             la tarjeta USO de la ficha salía vacía de entrada.
+             y estas cuatro son las que el bucle de arriba no puede reponer:
+             su denominador no es del jugador sino de su equipo. Sin esto el
+             TOTAL las dejaba en blanco —o peor, `AST%` salía con la fórmula
+             del EQUIPO (asistencias sobre SUS canastas: 0,891 contra 0,098
+             de la planilla, medido en la demo)—.
 
-             LAS TRES FÓRMULAS SE VERIFICARON CONTRA LA PLANILLA REAL
-             (DEPORTIVO, IDA), no se dedujeron. Y la de rebote NO es la
-             tasa on-court que uno esperaría: MotorStats mide la porción
-             que el jugador se lleva de TODO lo que el equipo tuvo
-             disponible en la fase, sin prorratear por minutos. Reproducir
-             al motor manda sobre mejorarlo: la hoja es lo que el club
-             audita.
+             SE DEDUJERON DEL CÓDIGO DEL MOTOR Y SE MIDIERON CONTRA
+             `PROMEDIOS J` (la demo, 2026-10-05, error 0 en 165-260
+             jugadores). MotorStats divide el PROMEDIO del jugador por el
+             PROMEDIO del equipo (`_logicaPromediosJugadores_`):
 
-                 RO% = RO_jug / (RO_equipo + RD_rival)
-                 RD% = RD_jug / (RD_equipo + RO_rival)
+                 AST% = (AST_jug / PJ_jug) / (TCC_equipo / PJ_equipo)
+                 RO%  = (RO_jug / PJ_jug)  / ((RO_equipo + RD_rival) / PJ_equipo)
+                 RD%  = (RD_jug / PJ_jug)  / ((RD_equipo + RO_rival) / PJ_equipo)
                  USG% = (PLAYS_jug × MIN_equipo/5) / (PLAYS_equipo × MIN_jug)
 
-             Se trabaja con TOTALES de los dos lados —`sum` es del jugador,
-             `yo` y `riv` del equipo—: mezclar un total con un promedio da
-             un número que parece razonable y está mal por un factor PJ. */
+             O sea que NO es «total sobre total»: con un jugador que se
+             perdió partidos, la porción se mide contra lo que el equipo
+             tuvo disponible POR NOCHE. Hasta el 2026-10-05 RO% y RD% iban
+             total sobre total y eso solo coincide cuando el jugador jugó
+             todos los partidos del equipo — se había verificado contra un
+             libro donde casi todos lo hacían (DEPORTIVO, IDA); en la demo
+             daba mal para 79 y 108 jugadores. En USG% el PJ se cancela y
+             la de totales ya era exacta. La de rebote sigue sin prorratear
+             por minutos: reproducir al motor manda sobre mejorarlo. */
           const cociente = (a, b) => (typeof a === 'number' && typeof b === 'number'
             && isFinite(a) && isFinite(b) && b > 0) ? a / b : null;
+          const porNoche = (x) => (typeof x === 'number' && isFinite(x)) ? x / pjJ : null;
+          const delEquipo = (x) => x / pj;
           const tasasDeEquipo = {
-            'RO%': cociente(sum['RO'], (yo['RO'] || 0) + (riv['RD'] || 0)),
-            'RD%': cociente(sum['RD'], (yo['RD'] || 0) + (riv['RO'] || 0)),
+            'AST%': typeof yo['TCC'] === 'number'
+              ? cociente(porNoche(sum['AST']), delEquipo(yo['TCC'])) : null,
+            'RO%': cociente(porNoche(sum['RO']), delEquipo((yo['RO'] || 0) + (riv['RD'] || 0))),
+            'RD%': cociente(porNoche(sum['RD']), delEquipo((yo['RD'] || 0) + (riv['RO'] || 0))),
             'USG%': (typeof yo['MIN'] === 'number' && typeof yo['PLAYS'] === 'number')
               ? cociente(sum['PLAYS'] * yo['MIN'] / 5, yo['PLAYS'] * sum['MIN'])
               : null,

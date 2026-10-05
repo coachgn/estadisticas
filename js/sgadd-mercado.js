@@ -260,6 +260,20 @@ const SGADD_MERCADO = (function () {
   const COLUMNAS_VOLUMEN = [];
   VOLUMEN_TIRO.forEach(v => { COLUMNAS_VOLUMEN.push(v.conv, v.int); });
 
+  /**
+   * La familia de tiro de CAMPO con más intentos: 'T2' o 'T3'. Los libres
+   * no cuentan (no son tiro de campo). Con empate gana el doble —es el
+   * tiro que define el perfil de uno que no se decide por el triple— y
+   * sin intentos de campo, `null`: no hay perfil de tiro que decir.
+   */
+  function tiroPredominante(fila) {
+    if (!fila) return null;
+    const n = (k) => (typeof fila[k] === 'number' && isFinite(fila[k])) ? fila[k] : 0;
+    const t2 = n('T2I'), t3 = n('T3I');
+    if (t2 <= 0 && t3 <= 0) return null;
+    return t3 > t2 ? 'T3' : 'T2';
+  }
+
   /** Un número con coma decimal, como el resto del panel. */
   function decimal(v, dec) {
     return (Math.round(v * Math.pow(10, dec)) / Math.pow(10, dec)).toFixed(dec).replace('.', ',');
@@ -559,7 +573,7 @@ const SGADD_MERCADO = (function () {
     diaIso, hayFechas, recortarHojas, etiquetaTramo,
     SERVICIO, PUESTOS, POSICIONES, POR_POSICION, TALLA_MIN, TALLA_MAX, CLAVE_VALIDA,
     idPosicion, cubre, normalizarFicha, edad,
-    VOLUMEN_TIRO, COLUMNAS_VOLUMEN, textoVolumen,
+    VOLUMEN_TIRO, COLUMNAS_VOLUMEN, textoVolumen, tiroPredominante,
     torneosDelCatalogo, torneosHabilitados, normalizarEmail, normalizarHabilitacion,
     METRICAS_FILTRO, IDS_FILTRO, EJES_RADAR, ejesRadar,
     filtrar, ordenar, mejorPorMetrica,

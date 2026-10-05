@@ -65,6 +65,11 @@ titulo('1 · EL VOLUMEN DE TIRO · convertidos/intentados');
 
 check('por partido, con un decimal y coma', M.textoVolumen(5.23, 11.41) === '5,2/11,4');
 check('en el total, enteros', M.textoVolumen(166, 365, 0) === '166/365');
+check('el tiro de campo predominante es el de más intentos, sin contar los libres',
+  M.tiroPredominante({ T2I: 3, T3I: 6.2, T1I: 9 }) === 'T3' && M.tiroPredominante({ T2I: 7, T3I: 2 }) === 'T2');
+check('con empate gana el doble, y sin tiros de campo no hay perfil',
+  M.tiroPredominante({ T2I: 4, T3I: 4 }) === 'T2' && M.tiroPredominante({ T2I: 0, T3I: 0, T1I: 5 }) === null
+  && M.tiroPredominante(null) === null);
 check('sin intentos es 0/0: no tiró, y eso es un dato', M.textoVolumen(0, 0) === '0,0/0,0');
 check('si falta uno de los dos, null: «—/11,4» se leería como cero convertidos',
   M.textoVolumen(null, 11.4) === null && M.textoVolumen(3, undefined) === null);
@@ -439,6 +444,8 @@ const sinSheetId = (body) => !/SHEET_[A-Z]+_\d+/.test(JSON.stringify(body));
   titulo('4 bis. VOLUMEN Y PUESTOS EN LA PANTALLA');
 
   check('la card muestra el volumen al lado del acierto', /function lineaVolumen/.test(ui) && /\$\{lineaVolumen\(f\)\}/.test(ui));
+  check('la card rotula el tiro de campo con su familia de más intentos: «TC - T2» / «TC - T3»',
+    /M\.tiroPredominante\(f\.vol\)/.test(ui) && /'TC - ' \+ id/.test(ui));
   check('la Radiografía y el PDF traen el bloque de volumen (por partido y total)',
     (ui.match(/\$\{bloqueVolumen\(f\)\}/g) || []).length === 2);
   check('los totales salen de ACUMULADO J y, si falta, de SUMAR su log con su equipo (no de multiplicar promedios)',
@@ -458,8 +465,8 @@ const sinSheetId = (body) => !/SHEET_[A-Z]+_\d+/.test(JSON.stringify(body));
   check('con fechas, el índice se RECONSTRUYE con el motor del TOTAL (no un cálculo propio)',
     /M\.hayFechas\(p\)[\s\S]{0,300}construirIndice\(rec\.hojas, \{ fase: tramo\.fase, torneo: SGADD\.TORNEO_TOTAL \}\)/.test(ui));
   check('cada período se calcula UNA vez por zona y queda en caché', /zona\.vistas\.has\(firma\)/.test(ui) && /zona\.vistas\.set\(firma, v\)/.test(ui));
-  check('reconstruido, AST% queda en blanco: el núcleo no da el de la planilla',
-    /if \(derivado\) \{ m\['AST%'\] = null; pc\['AST%'\] = null; \}/.test(ui));
+  check('reconstruido, AST% YA NO se blanquea: el núcleo da el de la planilla (punto 24)',
+    !/m\['AST%'\] = null/.test(ui) && !/AST% no se calcula/.test(ui) && !/k === 'AST%'/.test(ui));
   check('una zona que no jugó el tramo queda afuera y se dice', /fueraDeTramo: true/.test(ui) && /no jugó ese tramo/.test(ui));
   check('el badge de muestra parcial sale en la búsqueda, la Radiografía y el PDF',
     (ui.match(/\$\{badgePeriodo\(\)\}/g) || []).length === 1 && /badgePeriodo\(\) \+ buscador/.test(ui) && /\$\{badgePeriodo\(true\)\}/.test(ui));
