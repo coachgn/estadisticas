@@ -228,10 +228,17 @@ check('no alerta por jugadores que están en un solo equipo',
 console.log('\n5 bis. ALERTA DE REINGRESO');
 console.log('═'.repeat(70));
 
-/* TITULAR juega las 12 fechas. Si alguien lo marcó como lesionado, el
-   sistema tiene que avisar que está jugando igual. */
+/* TITULAR juega las 12 fechas (del 01/05 al 12/05). Si alguien lo marcó
+   como lesionado el 08/05, el sistema tiene que avisar que jugó igual
+   del 09 al 12.
+
+   LA MARCA LLEVA FECHA, y a propósito: «volvió» quiere decir DESPUÉS de
+   la decisión. Antes este test marcaba con la hora de hoy y esperaba la
+   alerta por partidos de mayo — o sea, fijaba el falso positivo. */
 const claveTitular = E.claveJugador('TITULAR, FIJO', 'A');
-const marcadoMal = E.aplicar({}, claveTitular, 'SUSPENSO', { origen: 'usuario' });
+const EL_8_DE_MAYO = { origen: 'usuario', actualizado: new Date(2026, 4, 8, 21, 0).getTime() };
+const marcar8 = (mapa, clave, id) => E.aplicar(mapa, clave, id, EL_8_DE_MAYO);
+const marcadoMal = marcar8({}, claveTitular, 'SUSPENSO');
 const reing = E.detectarReingresos(idx, marcadoMal);
 check('avisa cuando un marcado como SUSPENSO volvió a jugar',
   reing.length === 1 && reing[0].nombre === 'TITULAR, FIJO',
@@ -241,7 +248,7 @@ check('la alerta dice en qué estado está y cuántos partidos jugó',
   reing[0].detalle);
 check('sugiere volver a ACTIVO', reing[0].sugerencias.indexOf('ACTIVO') !== -1);
 check('también avisa si estaba dado de BAJA y volvió a jugar',
-  E.detectarReingresos(idx, E.aplicar({}, claveTitular, 'BAJA', { origen: 'usuario' })).length === 1);
+  E.detectarReingresos(idx, marcar8({}, claveTitular, 'BAJA')).length === 1);
 
 /* ES LA ÚNICA alerta que se dispara sobre un registro marcado por el
    usuario, y no contradice la precedencia: no cambia nada, avisa de un
@@ -254,7 +261,39 @@ check('no avisa por un jugador ACTIVO que juega: eso no es noticia',
    no tiene que generar un reingreso. */
 const claveLesionado = E.claveJugador('LESIONADO, LARGO', 'A');
 check('no avisa por el que sigue sin jugar después de marcarlo',
-  E.detectarReingresos(idx, E.aplicar({}, claveLesionado, 'SUSPENSO', { origen: 'usuario' })).length === 0);
+  E.detectarReingresos(idx, marcar8({}, claveLesionado, 'SUSPENSO')).length === 0);
+
+/* --- LOS FALSOS POSITIVOS QUE LA PLANILLA DESMENTÍA --- */
+
+/* 1 · Marcarlo HOY por partidos que jugó ANTES de la decisión. Es el
+   caso más común: se lesionó en el último partido y el DT lo anota. */
+check('marcarlo hoy NO dispara «volvió a jugar» por los partidos de antes',
+  E.detectarReingresos(idx, E.aplicar({}, claveTitular, 'SUSPENSO', { origen: 'usuario' })).length === 0);
+check('el partido del MISMO día de la decisión no cuenta (la planilla no trae hora)',
+  E.detectarReingresos(idx, E.aplicar({}, claveTitular, 'SUSPENSO',
+    { origen: 'usuario', actualizado: new Date(2026, 4, 12, 23, 30).getTime() })).length === 0);
+check('el día de la decisión es el LOCAL: una marca de las 22 h no pasa al día siguiente',
+  (E.detectarReingresos(idx, E.aplicar({}, claveTitular, 'SUSPENSO',
+    { origen: 'usuario', actualizado: new Date(2026, 4, 11, 22, 0).getTime() }))[0] || {}).partidosJugados === 1);
+const reing8 = E.detectarReingresos(idx, marcadoMal)[0] || {};
+check('cuenta solo los partidos POSTERIORES a la decisión',
+  reing8.partidosJugados === 4 && /después de marcarlo/.test(reing8.detalle), reing8.detalle);
+
+/* 2 · «Dejarlo como está» re-confirma el estado con una marca nueva: la
+   alerta se tiene que callar hasta que vuelva a jugar DESPUÉS de eso.
+   Antes reaparecía en el acto con los mismos partidos viejos. */
+const reconfirmado = E.aplicar(marcadoMal, claveTitular, 'SUSPENSO',
+  { origen: 'usuario', actualizado: new Date(2026, 4, 12, 23, 0).getTime() });
+check('«Dejarlo como está» calla la alerta de reingreso',
+  E.detectarReingresos(idx, reconfirmado).length === 0);
+
+/* 3 · El TRASPASO: VIAJERO jugó en A (1-6) y pasó a B (7-12). El DT hace
+   lo que sugiere la alerta —BAJA en A— y sus partidos con B, que tienen
+   el MISMO id porque son A vs B, le encendían «volvió a jugar» en A. */
+const claveViajeroA = E.claveJugador('VIAJERO, PEDRO', 'A');
+check('el que pasó a otro equipo NO «vuelve» al anterior por jugar contra él',
+  E.detectarReingresos(idx, E.aplicar({}, claveViajeroA, 'BAJA',
+    { origen: 'usuario', actualizado: new Date(2026, 4, 6, 23, 0).getTime() })).length === 0);
 check('sin índice devuelve lista vacía en vez de romper',
   E.detectarReingresos(null, marcadoMal).length === 0 && E.detectarReingresos(idx, null).length === 0);
 
@@ -269,7 +308,37 @@ check('vuelve a entrar a los planes defensivos',
   E.enPlan(reactivado, claveTitular) === true);
 /* Y el ciclo se puede repetir: se lesiona de nuevo, vuelve de nuevo. */
 check('el ciclo se puede repetir sin límite',
-  E.detectarReingresos(idx, E.aplicar(reactivado, claveTitular, 'SUSPENSO', { origen: 'usuario' })).length === 1);
+  E.detectarReingresos(idx, marcar8(reactivado, claveTitular, 'SUSPENSO')).length === 1);
+
+/* 4 · HOMÓNIMOS en equipos rivales. `jugadorPartidos` se indexa por el
+   nombre solo, y el id del partido es el mismo para los dos equipos: el
+   homónimo del rival que jugó ese partido contaba como si fuera él. */
+{
+  const bj = [];
+  const fila = (n, eq, i, min) => bj.push({ FECHA: fecha(i), PARTIDO: 'A vs B ' + i, NOMBRES: n,
+    EQUIPO: eq, FASE: 'REGULAR', CONDICION: 'LOCAL', RESULTADO: 'GANADO', MIN: String(min), PTS: '8' });
+  for (let i = 1; i <= 12; i++) fila('ANCLA, A', 'A', i, 30);
+  for (let i = 1; i <= 12; i++) fila('ANCLA, B', 'B', i, 30);
+  for (let i = 1; i <= 6; i++) fila('GOMEZ, JUAN', 'A', i, 25);    // el de A deja de jugar en la 6
+  for (let i = 1; i <= 12; i++) fila('GOMEZ, JUAN', 'B', i, 25);   // el homónimo de B juega todas
+  const idxH = SGADD.construirIndice({
+    'PROMEDIOS E': { cols: colsE, filas: filasE },
+    'PROMEDIOS J': { cols: colsJ, filas: [
+      { NOMBRES: 'ANCLA, A', EQUIPO: 'A', FASE: 'REGULAR', PJ: '12', MIN: '30', PTS: '1' },
+      { NOMBRES: 'ANCLA, B', EQUIPO: 'B', FASE: 'REGULAR', PJ: '12', MIN: '30', PTS: '1' },
+      { NOMBRES: 'GOMEZ, JUAN', EQUIPO: 'A', FASE: 'REGULAR', PJ: '6', MIN: '25', PTS: '1' },
+      { NOMBRES: 'GOMEZ, JUAN', EQUIPO: 'B', FASE: 'REGULAR', PJ: '12', MIN: '25', PTS: '1' }] },
+    'Base Datos E': { cols: colsBD, filas: filasBD },
+    'Base Datos J': { cols: colsBJ, filas: bj },
+  }, { fase: 'REGULAR' });
+  const gomezA = E.claveJugador('GOMEZ, JUAN', 'A');
+  check('el homónimo del RIVAL que juega no le enciende «volvió a jugar» al marcado',
+    E.detectarReingresos(idxH, E.aplicar({}, gomezA, 'SUSPENSO',
+      { origen: 'usuario', actualizado: new Date(2026, 4, 7, 12, 0).getTime() })).length === 0);
+  const inact = E.detectarInactividad(idxH, {}).filter(a => a.clave === gomezA)[0];
+  check('y tampoco le TAPA la inactividad: el de A lleva 6 fechas sin entrar',
+    !!inact && inact.racha === 6 && inact.pjPrevios === 6, inact ? inact.detalle : 'sin alerta');
+}
 
 /* =====================================================================
    6. AGREGADO Y RESUMEN
@@ -701,6 +770,43 @@ check('la posición de lectura se restaura acotada al alto nuevo',
   /scrollTop = Math\.min\([\s\S]{0,80}scrollHeight - [\s\S]{0,30}clientHeight/.test(buzon));
 check('el repintado completo, cuando hace falta, también conserva el scroll',
   /function repintarPanel[\s\S]{0,1600}scrollTop = Math\.min/.test(buzon));
+
+/* EL PARPADEO GENERAL. El overlay y el aside llevan animaciones de
+   ENTRADA: recrearlos en cada gesto hacía que el drawer entero se fuera y
+   volviera. Ningún camino puede volver a escribir `panel()` fuera de
+   `abrir()`. */
+const cuerpoDe = (nombre) => {
+  const i = buzon.indexOf('function ' + nombre + '(');
+  const j = buzon.indexOf('\n  }\n', i);
+  return i < 0 ? '' : buzon.slice(i, j);
+};
+check('repintarPanel() reemplaza SOLO el contenido, no el overlay ni el aside',
+  /prev\.innerHTML = contenido\(\)/.test(cuerpoDe('repintarPanel')) &&
+  !/panel\(\)/.test(cuerpoDe('repintarPanel')));
+check('panel() se escribe en un único lugar: al abrir',
+  (buzon.match(/innerHTML = panel\(\);/g) || []).length === 1 &&
+  /cont\.innerHTML = panel\(\)/.test(cuerpoDe('abrir')));
+/* `#buzonLista` pinta solo las que piden decisión. Comparar contra
+   `estado.alertas` —que trae los avisos— no coincidía nunca con un aviso
+   en la lista, y toda resolución caía al repintado completo. */
+check('resolver() compara la lista pintada contra las que PIDEN decisión, no contra los avisos',
+  /const real = alertasQuePiden\(\)/.test(cuerpoDe('resolver')));
+check('marcar desde una card de observación la colapsa sola antes de repintar',
+  /salirYRepintar\('data-aviso', clave\)/.test(cuerpoDe('marcar')) &&
+  /data-aviso="\$\{SGADD_UI\.esc\(a\.clave\)\}"/.test(buzon));
+check('reactivar desde confirmados colapsa esa fila sola antes de repintar',
+  /salirYRepintar\('data-confirmado', clave\)/.test(cuerpoDe('revertir')) &&
+  /data-confirmado="\$\{SGADD_UI\.esc\(x\.clave\)\}"/.test(buzon));
+check('salirYRepintar usa la misma salida animada que resolver',
+  /quitarTarjeta\(li, repintarPanel\)/.test(cuerpoDe('salirYRepintar')));
+
+/* AISLAMIENTO ENTRE CLUBES en el navegador. */
+check('la vuelta del servidor se descarta si cambió el CLUB, no solo la categoría',
+  /estado\.planillaId !== d\.planillaId \|\| clubId\(\) !== d\.club/.test(buzon));
+check('el mapa se guarda bajo el club DUEÑO del mapa, no el de ahora',
+  /guardarTodos\(estado\.clubId \|\| clubId\(\)/.test(buzon));
+check('cambiar de club o de categoría limpia la búsqueda y la card abierta',
+  /estado\.clubId !== club \|\| estado\.planillaId !== st\.planillaId/.test(cuerpoDe('sincronizar')));
 /* Preservar el scroll SIN preservar los desplegables no alcanza: si el
    plegado viviera en el DOM, al repintar volverían cerrados, el contenido
    se acortaría y el scrollTop guardado quedaría por encima del máximo
@@ -737,8 +843,9 @@ check('el id del club sale de CLUB.estado.id, no de una propiedad inexistente',
 check('y tiene respaldos encadenados antes de caer al default',
   /CLUB\.cfg && CLUB\.cfg\.id/.test(buzon) && /idDesdeUrl/.test(buzon));
 check('los estados se leen y se guardan separados por club Y por planilla',
-  /leerTodos\(clubId\(\), st\.planillaId\)/.test(buzon) &&
-  /guardarTodos\(clubId\(\), estado\.planillaId/.test(buzon));
+  /const club = clubId\(\);/.test(buzon) &&
+  /leerTodos\(club, st\.planillaId\)/.test(buzon) &&
+  /guardarTodos\(estado\.clubId \|\| clubId\(\), estado\.planillaId/.test(buzon));
 
 /* =====================================================================
    8. SINCRONIZACIÓN BIDIRECCIONAL GRÁFICO ↔ TABLA

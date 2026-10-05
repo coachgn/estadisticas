@@ -235,7 +235,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=260`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=261`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -3903,7 +3903,8 @@ el panel se comporta exactamente como antes.
 Dos caminos, porque un estado sin forma de deshacerse es una trampa:
 
 1. **Alerta de reingreso** (`detectarReingresos`). Si alguien marcado 🟡 o 🔴
-   volvió a jugar en alguno de los últimos 4 partidos de su equipo, el buzón
+   volvió a jugar en alguno de los últimos 4 partidos de su equipo —**con
+   ese equipo y en un día posterior a la decisión**, punto 86—, el buzón
    avisa y ofrece reactivarlo. **Es la única alerta que se dispara sobre un
    registro con `origen: "usuario"`**, y no contradice la precedencia: no
    cambia nada, avisa de un hecho nuevo —jugó— que el DT no tenía cuando
@@ -11890,3 +11891,79 @@ Las alturas medidas en pantalla **subestiman** las del papel: para saber si
 una card entraba hubo que mirar la hoja renderizada (PyMuPDF). El pie
 institucional sale en todas las hojas.
 
+
+---
+
+## 86. LA CAMPANA · AISLAMIENTO, «VOLVIÓ A JUGAR» Y EL PARPADEO (2026-10-05)
+
+Auditoría del buzón (punto 13) por tres quejas: estados que se cruzaban
+entre usuarios, «Volvió a jugar» que la planilla desmentía y el drawer
+entero desapareciendo un instante con cada clic.
+
+### 1 · Aislamiento: POR CLUB, no por usuario
+
+El cuerpo técnico de un club **comparte** estados a propósito (punto 57);
+lo que no puede pasar es que se crucen dos CLUBES, aunque jueguen la misma
+zona. El endpoint de estados ya estaba bien (`sgadd:estados:<club>:<cat>`,
+403 `OTRO_CLUB`). Los agujeros eran otros:
+
+- **El caché de alertas del servidor iba por SLUG** (`claveCache: cat.slug`
+  en `handlers.js`). Dos clubes con una «primera» compartían entrada: el
+  segundo en cargar recibía durante el TTL las alertas —nombres y equipos—
+  de la liga del primero. Ahora `clubId:slug`; hay test.
+- **La vuelta del servidor solo miraba la categoría.** Si el admin cambiaba
+  de cliente con una vuelta en el aire, el mapa del club A se fusionaba con
+  el del B, se guardaba en su `localStorage` y la vuelta siguiente lo subía
+  al servidor del B. Ahora se descarta si cambió el club, y `persistir()`
+  escribe con el club DUEÑO del mapa (`estado.clubId`).
+- Cambiar de club o de categoría limpia la búsqueda, el jugador elegido y
+  la card abierta del drawer.
+
+### 2 · «Volvió a jugar»: dos falsos positivos
+
+1. **Partidos del RIVAL.** `jugadorPartidos` se indexa por el nombre solo y
+   el `__id` de un partido es el mismo para los dos equipos. Sin filtrar por
+   `__equipo`, el homónimo del rival que jugaba ese partido contaba como si
+   fuera él — y el caso común: al que pasó de A a B, marcado BAJA en A como
+   sugiere la alerta de traspaso, sus partidos con B **contra A** le
+   encendían el reingreso en A. `jugadosConElEquipo()` filtra por equipo y
+   lo usan reingreso **e inactividad** (que con un homónimo rival quedaba
+   tapada).
+2. **Partidos de ANTES de la decisión.** Miraba los últimos 4 del equipo
+   sin importar cuándo se lo marcó: anotar SUSPENSO al que se lesionó ayer
+   encendía «volvió» por las fechas previas. Y «Dejarlo como está» no callaba
+   nunca la alerta, porque re-confirmar no cambiaba los partidos que miraba.
+   Ahora cuentan solo los partidos de un **día posterior** al de la decisión
+   (`diaDeLaDecision`: el día LOCAL de `actualizado`, no `desde`, que es UTC
+   y a las 22 h ya es mañana). El mismo día no cuenta —la planilla no trae
+   hora y lo normal es marcar después del partido—; un partido sin fecha
+   tampoco. Registro sin ninguna fecha: el criterio de antes.
+
+`test-estados.js` cambió expectativas **a propósito**: el bloque 5 bis
+marcaba con la hora de hoy y esperaba la alerta por partidos de mayo, o sea
+fijaba el falso positivo. Ahora marca el 08/05.
+
+### 3 · El parpadeo: `panel()` se escribe UNA vez
+
+El overlay y el aside llevan `buzon-fade` / `buzon-slide`, animaciones de
+ENTRADA. `repintarPanel()` hacía `root.innerHTML = panel()` y cada gesto
+—marcar desde una card, reactivar, la vuelta del servidor cada 30 s— las
+volvía a correr: el drawer se iba y volvía. Ahora `panel()` es el cascarón
+que arma `abrir()` y `repintarPanel()` reemplaza solo `contenido()` dentro
+de `#buzonScroll` (más subtítulo y pie).
+
+Y `resolver()` caía SIEMPRE al repintado: comparaba la lista pintada
+(`#buzonLista`, solo las que piden decisión) contra `estado.alertas`, que
+trae también los avisos — con un solo aviso en *En observación* nunca
+coincidían. Compara contra `alertasQuePiden()`.
+
+Las cards de *En observación* (`data-aviso`) y las filas de *Estados
+confirmados* (`data-confirmado`) salen con el mismo colapso que las
+alertas: `salirYRepintar()` → `quitarTarjeta()` y recién después el
+repintado del contenido.
+
+Medido en la demo (30 alertas + 3 avisos): resolver la cuarta con el scroll
+en 600 deja **el mismo overlay, el mismo aside, el mismo `#buzonScroll` y
+scroll 600**; la de abajo sube y el contador baja a 29. Marcar desde una
+card de observación y reactivar desde confirmados: la card pasa por
+`buzon-tarjeta-saliendo` y el overlay no se recrea.

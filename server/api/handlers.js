@@ -309,8 +309,13 @@ async function manejarEquipos(peticion, deps) {
      distintos y mezclarlos daría rachas inventadas (punto 3 ter). */
   let alertasDelTramo = { alertas: [], fase: null, torneo: null };
   try {
+    /* LA CLAVE DEL CACHÉ LLEVA EL CLUB. Con el slug solo, dos clubes con
+       una «primera» compartían entrada: el segundo en cargar recibía
+       durante el TTL las alertas —nombres y equipos— de la liga del
+       primero. Y los libros vinculados (punto 77) son por club, así que
+       ni dos clubes de la misma liga arman el mismo libro. */
     alertasDelTramo = alertas.alertasDeLaLiga(libro,
-      { fase: q.fase, torneo: q.torneo }, { claveCache: cat.slug });
+      { fase: q.fase, torneo: q.torneo }, { claveCache: cat.clubId + ':' + cat.slug });
   } catch (e) {
     /* Un fallo del detector NO puede tumbar la carga de la categoría: el
        panel sin alertas sirve, el panel sin datos no. Se loguea y se

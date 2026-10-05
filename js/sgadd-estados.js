@@ -351,6 +351,46 @@ const SGADD_ESTADOS = (function () {
   const MIN_MINUTOS_PREVIOS = 8.0;
 
   /**
+   * Las filas de partido en que el jugador ENTRÓ (MIN > 0) con ESTE equipo.
+   *
+   * `liga.jugadorPartidos` está indexado por la clave de PERSONA —el
+   * nombre solo—, y el id de un partido es el mismo para los dos equipos
+   * que lo jugaron. Sin filtrar por `__equipo`:
+   *
+   *   · un homónimo del RIVAL que jugó ese partido contaba como si lo
+   *     hubiera jugado él;
+   *   · al que pasó de A a B, marcado BAJA en A como sugiere la alerta de
+   *     traspaso, sus partidos con B contra A le encendían «Volvió a
+   *     jugar» en A.
+   *
+   * Los dos son falsos positivos que la planilla del partido desmiente.
+   */
+  function jugadosConElEquipo(idx, j, eqClave) {
+    return (idx.liga.jugadorPartidos.get(j.__clave) || [])
+      .filter(p => p.__equipo === eqClave && (p['MIN'] || 0) > 0);
+  }
+
+  /** `YYYY-MM-DD` en la hora LOCAL, que es la de las fechas de la planilla. */
+  function diaLocal(d) {
+    if (!(d instanceof Date) || isNaN(d.getTime())) return null;
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  /**
+   * El día en que el DT tomó la decisión vigente sobre el jugador.
+   *
+   * Sale de `actualizado` (ms, el instante real) y no de `desde`: `desde`
+   * se escribe con `toISOString()`, que es UTC, y en Argentina una marca
+   * de las 22 h queda con el día siguiente. Sin marca de tiempo —registros
+   * de antes del punto 57— se usa `desde`. Sin ninguna, `null`.
+   */
+  function diaDeLaDecision(r) {
+    if (r && r.actualizado) return diaLocal(new Date(r.actualizado));
+    if (r && /^\d{4}-\d{2}-\d{2}$/.test(String(r.desde || ''))) return String(r.desde);
+    return null;
+  }
+
+  /**
    * Alertas de inactividad: jugadores que ERAN rotación y dejaron de serlo.
    *
    * La racha se cuenta sobre los partidos DEL EQUIPO, no sobre los del
@@ -372,8 +412,7 @@ const SGADD_ESTADOS = (function () {
       const ids = partidosPorEquipo.get(eqClave) || [];
       if (ids.length < RACHA_AVISO + 1) return;
 
-      const suyos = (idx.liga.jugadorPartidos.get(j.__clave) || [])
-        .filter(p => (p['MIN'] || 0) > 0);
+      const suyos = jugadosConElEquipo(idx, j, eqClave);
       const jugados = new Set(suyos.map(p => p.__id));
 
       let racha = 0;
@@ -470,6 +509,18 @@ const SGADD_ESTADOS = (function () {
    * el usuario**, y no contradice la regla de precedencia: no cambia nada
    * por su cuenta, avisa de un hecho nuevo —jugó— que el DT no tenía
    * cuando decidió. La decisión sigue siendo suya.
+   *
+   * «VOLVIÓ» QUIERE DECIR DESPUÉS DE LA DECISIÓN. Antes miraba los últimos
+   * cuatro partidos del equipo sin importar cuándo se lo había marcado, así
+   * que marcar SUSPENSO a alguien que se lesionó ayer —y que había jugado
+   * las tres fechas anteriores— encendía en el acto «volvió a jugar», y la
+   * planilla lo desmentía. Por la misma razón «Dejarlo como está» no
+   * callaba nunca la alerta: re-confirmaba el estado y el detector volvía a
+   * encontrar los mismos partidos viejos. Ahora cuenta solo los partidos
+   * de un DÍA POSTERIOR al de la decisión (`diaDeLaDecision`); el mismo
+   * día no cuenta, porque la planilla no trae la hora y lo normal es
+   * marcar después del partido en que se lesionó. Un partido sin fecha
+   * tampoco: no se puede afirmar que fue después.
    */
   function detectarReingresos(idx, mapa) {
     if (!idx || !idx.liga || !mapa) return [];
@@ -477,8 +528,7 @@ const SGADD_ESTADOS = (function () {
     const partidosPorEquipo = new Map();
     idx.lista().forEach(e => {
       partidosPorEquipo.set(e.clave, e.partidos.slice()
-        .sort((a, b) => (a.__fecha || 0) - (b.__fecha || 0))
-        .map(p => p.__id));
+        .sort((a, b) => (a.__fecha || 0) - (b.__fecha || 0)));
     });
 
     (idx.liga.jugadores || []).forEach(j => {
@@ -488,12 +538,17 @@ const SGADD_ESTADOS = (function () {
       if (r.estado !== 'SUSPENSO' && r.estado !== 'BAJA') return;
 
       const eqClave = SGADD.claveEquipo(j['EQUIPO']);
-      const ids = partidosPorEquipo.get(eqClave) || [];
-      if (!ids.length) return;
-      const ultimos = ids.slice(-RACHA_INACTIVIDAD);
-      const jugados = new Set((idx.liga.jugadorPartidos.get(j.__clave) || [])
-        .filter(p => (p['MIN'] || 0) > 0).map(p => p.__id));
-      const reingresos = ultimos.filter(id => jugados.has(id));
+      const partidos = partidosPorEquipo.get(eqClave) || [];
+      if (!partidos.length) return;
+      const ultimos = partidos.slice(-RACHA_INACTIVIDAD);
+      const jugados = new Set(jugadosConElEquipo(idx, j, eqClave).map(p => p.__id));
+      const decision = diaDeLaDecision(r);
+      const reingresos = ultimos.filter(p => {
+        if (!jugados.has(p.__id)) return false;
+        if (!decision) return true;   // registro sin fecha: el criterio de antes
+        const dia = diaLocal(p.__fecha);
+        return !!dia && dia > decision;
+      });
       if (!reingresos.length) return;
 
       const est = estado(r.estado);
@@ -502,8 +557,8 @@ const SGADD_ESTADOS = (function () {
         nombre: j['NOMBRES'], equipo: SGADD.limpiarNombre(j['EQUIPO']),
         estadoActual: r.estado, partidosJugados: reingresos.length,
         detalle: 'Está marcado como ' + est.emoji + ' ' + est.label.toLowerCase() +
-          ' y volvió a jugar: ' + reingresos.length + ' de los últimos ' + ultimos.length +
-          ' partidos del equipo.',
+          ' y volvió a jugar después de marcarlo: ' + reingresos.length +
+          ' de los últimos ' + ultimos.length + ' partidos del equipo.',
         sugerencias: ['ACTIVO'],
       });
     });

@@ -1257,6 +1257,12 @@ titulo('ALERTAS EN EL SERVIDOR · se detecta al rival sin mandar su log');
     (r.alertas.find(a => a.nombre === 'RIVAL, PARADO') || {}).detalle);
   check('y el que juega todas no genera ninguna', nombres.indexOf('BOTTE, IGNACIO') === -1);
 
+  /* EL CACHÉ ES POR CLUB. Con el slug solo, dos clubes con una «primera»
+     compartían entrada y el segundo recibía las alertas de la liga del
+     primero durante el TTL. */
+  check('la clave del caché de alertas lleva el club, no solo el slug',
+    /claveCache: cat\.clubId \+ ':' \+ cat\.slug/.test(fs.readFileSync('./server/api/handlers.js', 'utf8')));
+
   /* LISTA BLANCA de campos: con una lista negra, el campo que el detector
      agregue mañana viaja solo. */
   const campos = new Set();

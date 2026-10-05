@@ -29,6 +29,7 @@ const SGADD_BUZON = (function () {
     mapa: {},          // clave -> registro de estado
     alertas: [],
     planillaId: null,
+    clubId: null,      // el club al que pertenece `mapa`
     disparador: null,  // a quién devolverle el foco al cerrar
     /* El drawer se abre como un ÍNDICE: las tres listas plegadas, con su
        número en el encabezado. Lo que el DT abra queda abierto mientras
@@ -65,8 +66,16 @@ const SGADD_BUZON = (function () {
     if (!E || typeof SGADD_APP === 'undefined') return;
     const st = SGADD_APP.estado;
     if (!st.idx) return;
+    /* Otro club u otra categoría: lo que el DT tenía a medio hacer en el
+       drawer —la búsqueda, el jugador elegido, la card abierta— era de
+       aquel plantel y no puede quedar apuntando a éste. */
+    const club = clubId();
+    if (estado.clubId !== club || estado.planillaId !== st.planillaId) {
+      estado.busqueda = ''; estado.buscado = null; estado.avisoAbierto = null;
+    }
+    estado.clubId = club;
     estado.planillaId = st.planillaId;
-    estado.mapa = E.leerTodos(clubId(), st.planillaId);
+    estado.mapa = E.leerTodos(club, st.planillaId);
     recalcular();
     /* Y después, sin esperar, lo que cargó el resto del cuerpo técnico. */
     sincronizarRemoto();
@@ -102,7 +111,10 @@ const SGADD_BUZON = (function () {
 
   function persistir() {
     if (!E) return;
-    E.guardarTodos(clubId(), estado.planillaId, estado.mapa);
+    /* Con el club DUEÑO del mapa, no con el de ahora: si el admin cambió
+       de cliente entre la lectura y esta escritura, el mapa del anterior
+       terminaba guardado bajo la clave del nuevo. */
+    E.guardarTodos(estado.clubId || clubId(), estado.planillaId, estado.mapa);
   }
 
   /* =====================================================================
@@ -171,9 +183,12 @@ const SGADD_BUZON = (function () {
     }).then((r) => {
       REMOTO.fallo = false;
       REMOTO.ultimoOk = new Date();
-      /* Si el DT cambió de categoría mientras volvía, este mapa es de
-         otra: no se toca nada. */
-      if (estado.planillaId !== d.planillaId) return false;
+      /* Si el DT cambió de categoría —o el admin de CLUB— mientras
+         volvía, este mapa es de otro: no se toca nada. Sin mirar el club,
+         la respuesta del club A se fusionaba con el mapa del B y se
+         guardaba en su `localStorage`, desde donde la vuelta siguiente la
+         subía al servidor del B. */
+      if (estado.planillaId !== d.planillaId || clubId() !== d.club) return false;
       /* SE FUSIONA CONTRA EL MAPA DE AHORA, no se reemplaza: si el DT marcó
          a alguien mientras la vuelta estaba en el aire, ese cambio no está
          en `r.mapa` y asignarlo directo lo borraba. Por marca de tiempo
@@ -527,7 +542,7 @@ const SGADD_BUZON = (function () {
       const e = E.estado(x.reg.estado);
       const nombre = x.clave.split('|')[0];
       const equipo = x.clave.split('|')[1] || '';
-      return `<li class="flex items-center justify-between gap-2 py-1 border-b border-hairline/40 last:border-0">
+      return `<li data-confirmado="${SGADD_UI.esc(x.clave)}" class="flex items-center justify-between gap-2 py-1 border-b border-hairline/40 last:border-0">
         <div class="min-w-0">
           <p class="text-[11px] text-white truncate">${SGADD_UI.esc(nombre)}</p>
           <p class="text-[10px] ${e.color}">${e.emoji} ${SGADD_UI.esc(e.label)}
@@ -556,11 +571,12 @@ const SGADD_BUZON = (function () {
     sincronizarRemoto(true, true);
     toast('🟢 ' + nombre + ' · vuelve a Activo', 'ok');
     sincronizar();
-    /* Acá sí se repinta entero —reactivar puede hacer aparecer alertas y
-       cambia la lista de confirmados a la vez— pero conservando el scroll:
-       la lista de confirmados vive al PIE del drawer, así que un salto al
-       tope dejaba al DT lejos del botón que acababa de tocar. */
-    if (estado.abierto) repintarPanel();
+    /* Reactivar puede hacer aparecer alertas y cambia la lista de
+       confirmados a la vez, así que el contenido se repinta —conservando
+       el scroll: la lista vive al PIE del drawer—, pero DESPUÉS de que la
+       fila tocada se colapse sola: se ve qué se fue y las de abajo suben,
+       en vez de un salto. */
+    salirYRepintar('data-confirmado', clave);
     repintarSecciones();
   }
 
@@ -606,7 +622,7 @@ const SGADD_BUZON = (function () {
       const abierto = estado.avisoAbierto === a.clave;
       const est = E.estado(E.registroDe(estado.mapa, a.clave).estado);
       return `
-      <li class="rounded-lg border ${abierto ? 'border-accent/40' : 'border-hairline'} bg-surface2/30 px-3 py-2">
+      <li data-aviso="${SGADD_UI.esc(a.clave)}" class="rounded-lg border ${abierto ? 'border-accent/40' : 'border-hairline'} bg-surface2/30 px-3 py-2">
         <div class="flex items-center justify-between gap-2">
           <button type="button" onclick="SGADD_BUZON.abrirAviso('${SGADD_UI.escJs(a.clave)}')"
             aria-expanded="${abierto}"
@@ -820,7 +836,14 @@ const SGADD_BUZON = (function () {
       </div>`;
   }
 
-  function panel() {
+  /** El subtítulo del drawer: la categoría abierta. */
+  function subtitulo() {
+    return SGADD_UI.esc((typeof SGADD_APP !== 'undefined' && SGADD_APP.planillaActual())
+      ? SGADD_APP.planillaActual().label : '');
+  }
+
+  /** Lo que va ADENTRO de `#buzonScroll`: es lo único que se repinta. */
+  function contenido() {
     const pendientes = alertasQuePiden();
     const n = pendientes.length;
     /* El cierre positivo ("Plantel al día") solo si NO hay nada, ni
@@ -836,7 +859,20 @@ const SGADD_BUZON = (function () {
        estados confirmados que revisar. */
     const nada = !n && !hayAvisos && !listaConfirmados().length;
     const lista = bloqueBuscador() + (nada ? vacio() : '') + bloqueAlertas + bloqueAvisos();
+    return `${lista}<div id="buzonConfirmados">${bloqueConfirmados()}</div>`;
+  }
 
+  /**
+   * El drawer entero. SE ARMA UNA SOLA VEZ, al abrir.
+   *
+   * El overlay y el aside llevan `buzon-fade` / `buzon-slide`, que son
+   * animaciones de ENTRADA: cada vez que se los recrea vuelven a correr.
+   * Cuando `repintarPanel()` hacía `root.innerHTML = panel()`, cualquier
+   * gesto —marcar desde una card, reactivar, la vuelta del servidor cada
+   * 30 s— hacía desaparecer el drawer y volver a entrar: el parpadeo
+   * general. Ahora los repintados reemplazan solo `contenido()`.
+   */
+  function panel() {
     return `
       <div id="buzonOverlay" onclick="if(event.target===this)SGADD_BUZON.cerrar()"
         class="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm buzon-fade">
@@ -846,8 +882,7 @@ const SGADD_BUZON = (function () {
           <header class="flex items-center justify-between gap-3 p-4 border-b border-hairline shrink-0">
             <div class="min-w-0">
               <h2 id="buzonTitulo" class="font-display uppercase tracking-wide text-sm text-ink">Alertas de plantel</h2>
-              <p class="text-[11px] text-muted truncate">${SGADD_UI.esc(
-                (typeof SGADD_APP !== 'undefined' && SGADD_APP.planillaActual()) ? SGADD_APP.planillaActual().label : '')}</p>
+              <p id="buzonSubtitulo" class="text-[11px] text-muted truncate">${subtitulo()}</p>
             </div>
             <button type="button" onclick="SGADD_BUZON.cerrar()" aria-label="Cerrar alertas"
               class="shrink-0 w-9 h-9 grid place-items-center rounded-lg border border-hairline
@@ -857,7 +892,7 @@ const SGADD_BUZON = (function () {
             </button>
           </header>
 
-          <div id="buzonScroll" class="flex-1 overflow-y-auto p-4">${lista}<div id="buzonConfirmados">${bloqueConfirmados()}</div></div>
+          <div id="buzonScroll" class="flex-1 overflow-y-auto p-4">${contenido()}</div>
 
           <footer class="p-3 border-t border-hairline shrink-0">
             <p id="buzonPie" class="text-[10px] dato-sec leading-snug" aria-live="polite">${textoPie()}</p>
@@ -1007,13 +1042,20 @@ const SGADD_BUZON = (function () {
     const root = document.getElementById('buzonRoot');
     if (!root) return;
     const prev = document.getElementById('buzonScroll');
-    const y = prev ? prev.scrollTop : 0;
+    if (!prev) return;
+    const y = prev.scrollTop;
     /* Qué secciones estaban abiertas ya lo sabe `estado.secciones`, así
        que el repintado las devuelve como estaban sin leer el DOM. */
     const inp = document.getElementById('buzonBuscar');
     const teniaFoco = !!(inp && document.activeElement === inp);
     const cursor = teniaFoco ? inp.selectionStart : null;
-    root.innerHTML = panel();
+    /* SOLO EL CONTENIDO: el overlay y el aside se quedan (ver `panel`).
+       Recrearlos re-disparaba su animación de entrada y el drawer entero
+       parpadeaba con cada gesto. */
+    prev.innerHTML = contenido();
+    const sub = document.getElementById('buzonSubtitulo');
+    if (sub) sub.innerHTML = subtitulo();
+    pintarPie();
     /* El buscador se repinta con su texto (vive en `estado.busqueda`),
        pero el foco y el cursor no viajan solos: sin esto, marcar un
        estado desde los resultados dejaba al DT tipeando en el vacío. */
@@ -1026,6 +1068,20 @@ const SGADD_BUZON = (function () {
     if (nuevo) nuevo.scrollTop = Math.min(y, Math.max(0, nuevo.scrollHeight - nuevo.clientHeight));
   }
 
+
+  /**
+   * La card de ESA clave sale sola (colapso animado, las de abajo suben)
+   * y después se repinta el contenido del drawer, nunca el drawer entero.
+   * Sin card a la vista —marcado desde el buscador, o la sección
+   * plegada— se repinta directo.
+   */
+  function salirYRepintar(atributo, clave) {
+    if (!estado.abierto || typeof document === 'undefined') return;
+    const valor = (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(clave) : clave;
+    const li = document.querySelector('#buzonScroll [' + atributo + '="' + valor + '"]');
+    if (li && li.offsetParent !== null) quitarTarjeta(li, repintarPanel);
+    else repintarPanel();
+  }
 
   /**
    * Cierra el drawer y abre la ficha del jugador de esa alerta.
@@ -1095,7 +1151,10 @@ const SGADD_BUZON = (function () {
        pendiente sobre él, y el badge tiene que reflejarlo. */
     sincronizar();
     repintarSecciones();
-    if (estado.abierto) repintarPanel();
+    /* Si se marcó desde una card de *En observación*, esa card se va: se
+       la colapsa sola y recién después se repinta el contenido. Desde el
+       buscador no hay card que se vaya y el repintado es directo. */
+    salirYRepintar('data-aviso', clave);
   }
 
   function resolver(clave, idEstado) {
@@ -1121,7 +1180,11 @@ const SGADD_BUZON = (function () {
        —una alerta nueva, otra que dejó de aplicar— se repinta completo, que
        igual conserva la posición. */
     const esperado = antes.filter(k => k !== clave).sort().join('');
-    const real = estado.alertas.map(x => x.clave).sort().join('');
+    /* Se compara contra las que PIDEN decisión, que son las únicas que
+       `#buzonLista` pinta. Contra `estado.alertas` —que trae también los
+       avisos de *En observación*— no coincidía nunca habiendo un solo
+       aviso, y cada resolución caía al repintado completo. */
+    const real = alertasQuePiden().map(x => x.clave).sort().join('');
     if (esperado !== real) { repintarPanel(); return; }
 
     const cont = document.getElementById('buzonScroll');
