@@ -65,6 +65,13 @@ titulo('1 · EL VOLUMEN DE TIRO · convertidos/intentados');
 
 check('por partido, con un decimal y coma', M.textoVolumen(5.23, 11.41) === '5,2/11,4');
 check('en el total, enteros', M.textoVolumen(166, 365, 0) === '166/365');
+check('la lista «Contra su zona» va de lo general a lo particular: Volumen · Eficiencia · Volumen de tiro · Creación · Rebote y defensa',
+  M.metricasPorGrupo(false).map(g => g.grupo).join('|') === 'Volumen|Eficiencia|Volumen de tiro|Creación|Rebote y defensa');
+check('sin totales, ningún total del tramo; con totales, en Volumen de tiro',
+  M.metricasPorGrupo(false).every(g => g.ids.every(k => k.indexOf('tot:') !== 0))
+  && M.metricasPorGrupo(true).filter(g => g.grupo === 'Volumen de tiro')[0].ids.indexOf('tot:T3I') !== -1);
+check('ninguna métrica del filtro se pierde al agrupar',
+  [].concat.apply([], M.metricasPorGrupo(true).map(g => g.ids)).length === M.IDS_FILTRO.length);
 check('el tiro de campo predominante es el de más intentos, sin contar los libres',
   M.tiroPredominante({ T2I: 3, T3I: 6.2, T1I: 9 }) === 'T3' && M.tiroPredominante({ T2I: 7, T3I: 2 }) === 'T2');
 check('con empate gana el doble, y sin tiros de campo no hay perfil',
@@ -443,6 +450,10 @@ const sinSheetId = (body) => !/SHEET_[A-Z]+_\d+/.test(JSON.stringify(body));
 
   titulo('4 bis. VOLUMEN Y PUESTOS EN LA PANTALLA');
 
+  check('la Radiografía y Comparar arman «Contra su zona» con el MISMO agrupado del motor',
+    (ui.match(/M\.metricasPorGrupo\(/g) || []).length === 2 && /Contra su zona<\/th>/.test(ui));
+  check('en Comparar cada celda trae volumen del acierto, barra y percentil, como la Radiografía',
+    /function vistaComparar[\s\S]{0,4000}volumenDeAcierto\(f, k\)[\s\S]{0,400}barraPc\(f\.pc\[k\]\)/.test(ui));
   check('la card muestra el volumen al lado del acierto', /function lineaVolumen/.test(ui) && /\$\{lineaVolumen\(f\)\}/.test(ui));
   check('la card rotula el tiro de campo con su familia de más intentos: «TC - T2» / «TC - T3»',
     /M\.tiroPredominante\(f\.vol\)/.test(ui) && /'TC - ' \+ id/.test(ui));

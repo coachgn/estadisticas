@@ -990,24 +990,28 @@ const SGADD_FICHAJES = (function () {
      LA RADIOGRAFÍA ADN
      --------------------------------------------------------------------- */
 
+  /* El acierto lleva su volumen al lado: «36,0% · 1,8/5,0». Lo usan la
+     Radiografía y Comparar. */
+  const VOL_DE = { 'T3%': 'T3', 'T1%': 'T1', 'TC%': 'TC' };
+  function volumenDeAcierto(f, k) {
+    const t = VOL_DE[k] && volumen(f, VOL_DE[k], false);
+    return t ? `<span class="block text-[10px] text-muted" title="Convertidos/intentados por partido">${esc(t)}</span>` : '';
+  }
+
   /** Las métricas de la tabla de percentiles, agrupadas como el filtro. */
   function tablaPercentiles(f) {
-    const grupos = {};
     /* Los TOTALES no van: no tienen percentil y ya están, con sus
-       convertidos, en el bloque de volumen. */
-    M.METRICAS_FILTRO.filter(x => !x.total).forEach(x => { (grupos[x.grupo] = grupos[x.grupo] || []).push(x.id); });
-    /* El acierto lleva su volumen al lado: «36,0% · 1,8/5,0». */
-    const VOL_DE = { 'T3%': 'T3', 'T1%': 'T1', 'TC%': 'TC' };
-    return Object.keys(grupos).map(g => `
+       convertidos, en el bloque de volumen. El orden de los grupos es el
+       del motor (`GRUPOS_METRICAS`), el mismo que usa Comparar. */
+    return M.metricasPorGrupo(false).map(({ grupo: g, ids }) => `
       <div class="fx-grupo">
         <p class="text-[10px] uppercase tracking-widest font-display text-muted mb-1">${esc(g)}</p>
         <table class="w-full text-xs fx-tabla">
-          <tbody>${grupos[g].map(k => {
+          <tbody>${ids.map(k => {
             const r = f._idx.leerJugador(f._j, k);
             return `<tr class="border-b border-hairline/40 last:border-0">
               <td class="py-1 pr-2">${esc(metrica(k).label)}${metrica(k).invertida ? ' <span class="text-muted" title="menos es mejor">↓</span>' : ''}</td>
-              <td class="py-1 pr-2 font-mono text-ink text-right">${esc(fmt(k, f.m[k]))}${VOL_DE[k] && volumen(f, VOL_DE[k], false)
-                ? `<span class="block text-[10px] text-muted" title="Convertidos/intentados por partido">${esc(volumen(f, VOL_DE[k], false))}</span>` : ''}</td>
+              <td class="py-1 pr-2 font-mono text-ink text-right">${esc(fmt(k, f.m[k]))}${volumenDeAcierto(f, k)}</td>
               <td class="py-1 pr-2 font-mono text-muted text-right" title="Fila JUGADOR TIPO de su zona">${esc(r ? r.tipoFormateado : '—')}</td>
               <td class="py-1 w-24">${barraPc(f.pc[k])}</td>
               <td class="py-1 pl-1 font-mono text-right ${tonoPc(f.pc[k])}">${pcTexto(f.pc[k])}</td>
@@ -1248,13 +1252,27 @@ const SGADD_FICHAJES = (function () {
     const filaAdn = (titulo, fn) => `<tr class="border-b border-hairline/40">
       <td class="py-1.5 pr-2 text-[11px] text-muted">${esc(titulo)}</td>
       ${filas.map(f => `<td class="py-1.5 px-2 text-[11px] text-ink">${esc(fn(f) || '—')}</td>`).join('')}</tr>`;
-    const cuerpo = ids.map(k => `<tr class="border-b border-hairline/40 last:border-0">
-      <td class="py-1 pr-2 text-xs">${esc(metrica(k).label)}${invertidas[k] ? ' ↓' : ''}</td>
+    /* «CONTRA SU ZONA», la MISMA lista de la Radiografía y en el mismo
+       orden (`metricasPorGrupo`): Volumen · Eficiencia · Volumen de tiro ·
+       Creación · Rebote y defensa. Cada celda trae lo que trae la fila de
+       la Radiografía —valor, convertidos/intentados del acierto, barra y
+       percentil— y la mediana de SU zona en el `title`: dos jugadores de
+       zonas distintas se comparan por percentil. Acá SÍ van los totales
+       del tramo, dentro de Volumen de tiro: Comparar no tiene otro bloque
+       de volumen, y el tamaño de la muestra es lo primero que se pregunta. */
+    const nCol = filas.length + 1;
+    const cuerpo = M.metricasPorGrupo(true).map(({ grupo, ids: gIds }) => `
+      <tr><th colspan="${nCol}" scope="colgroup" class="text-left pt-3 pb-1 text-[10px] uppercase tracking-widest font-display text-muted">${esc(grupo)}</th></tr>
+      ${gIds.map(k => `<tr class="border-b border-hairline/40 last:border-0">
+      <td class="py-1 pr-2 text-xs">${esc(metrica(k).label)}${invertidas[k] ? ' <span class="text-muted" title="menos es mejor">↓</span>' : ''}</td>
       ${filas.map((f, i) => {
-        const gana = mejor[k].indice === i;
-        return `<td class="py-1 px-2 text-xs font-mono ${gana ? 'text-ink font-semibold' : 'text-muted'}">
-          ${gana ? '● ' : ''}${esc(fmt(k, f.m[k]))} <span class="${tonoPc(f.pc[k])}">${pcTexto(f.pc[k])}</span></td>`;
-      }).join('')}</tr>`).join('');
+        const gana = mejor[k] && mejor[k].indice === i;
+        const r = esTotal(k) ? null : f._idx.leerJugador(f._j, k);
+        return `<td class="py-1 px-2 align-top"${r && r.tipoFormateado ? ` title="Mediana de ${esc(f.zonaLabel)}: ${esc(r.tipoFormateado)}"` : ''}>
+          <span class="text-xs font-mono ${gana ? 'text-ink font-semibold' : 'text-muted'}">${gana ? '● ' : ''}${esc(fmt(k, f.m[k]))}</span>${volumenDeAcierto(f, k)}
+          ${esTotal(k) ? '' : `<span class="flex items-center gap-1 mt-0.5"><span class="flex-1 min-w-[3rem]">${barraPc(f.pc[k])}</span>
+            <span class="text-[10px] font-mono ${tonoPc(f.pc[k])}">${pcTexto(f.pc[k])}</span></span>`}</td>`;
+      }).join('')}</tr>`).join('')}`).join('');
     return `
       <div class="flex items-center gap-2 mb-3">
         <button type="button" onclick="SGADD_FICHAJES.irA('buscar')"
@@ -1273,10 +1291,12 @@ const SGADD_FICHAJES = (function () {
               ${filaAdn('Función', f => f._adn.rolFuncional && f._adn.rolFuncional.label)}
               ${filaAdn('Jerarquía', f => f._adn.jerarquia && f._adn.jerarquia.label)}
               ${filaAdn('Minutos', f => f._adn.rolMinutos && f._adn.rolMinutos.label)}
+              <tr><th colspan="${nCol}" scope="colgroup" class="text-left pt-4 pb-0.5 font-display uppercase tracking-wide text-sm text-ink">Contra su zona</th></tr>
               ${cuerpo}
             </tbody>
           </table>
-          <p class="text-[10px] dato-sec mt-2">● el mejor de la fila: por percentil cuando todos lo tienen, si no por valor.</p>
+          <p class="text-[10px] dato-sec mt-2">● el mejor de la fila: por percentil cuando todos lo tienen, si no por valor.
+            El percentil es contra la zona de cada uno; su mediana, al pasar sobre la celda.</p>
         </section>
       </div>`;
   }

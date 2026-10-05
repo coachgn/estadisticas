@@ -68,7 +68,7 @@ node test-similitud-etiquetas.js #  45 tests · la similitud multi-etiqueta cont
                            #             de etiquetas, el caso Raineri/Benavidez y los afines
 node test-estados-sync.js  #  74 tests · los estados compartidos en el servidor, dos sesiones
                            #             y que ninguna escritura del catálogo pise datos
-node test-fichajes.js      # 154 tests · Fichajes: ficha manual, padrón, filtros y el servidor (punto 87)
+node test-fichajes.js      # 159 tests · Fichajes: ficha manual, padrón, filtros y el servidor (punto 87)
 node test-pdf-layout.js    #  37 tests · claves arriba del resto, el flujo continuo, la
                            #             tabla que se parte por filas y que ningún :hover
                            #             pinte la hoja impresa
@@ -240,7 +240,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=266`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=267`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -12298,3 +12298,14 @@ dobles y triples.
 - «Desde» posterior a «Hasta» se rechaza; el período no viaja de un torneo a
   otro; guardar una ficha la refresca en todas las vistas sin rehacer
   índices.
+
+### Comparar trae «Contra su zona», en el mismo orden que la Radiografía (v267)
+
+`SGADD_MERCADO.GRUPOS_METRICAS` fija el orden de la lista —Volumen ·
+Eficiencia · Volumen de tiro · Creación · Rebote y defensa— y
+`metricasPorGrupo(conTotales)` la arma. La usan la Radiografía, su PDF y
+Comparar: con un orden por pantalla, el mismo jugador se leería distinto.
+En Comparar cada celda trae lo que la fila de la Radiografía (valor,
+convertidos/intentados del acierto, barra y percentil contra SU zona, con la
+mediana de su zona en el `title`); los totales del tramo van dentro de
+Volumen de tiro, sin percentil.

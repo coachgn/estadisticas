@@ -247,6 +247,28 @@ const SGADD_MERCADO = (function () {
   ];
   const IDS_FILTRO = METRICAS_FILTRO.map(m => m.id);
 
+  /* EL ORDEN DE LA LISTA «CONTRA SU ZONA», de lo general a lo particular:
+     cuánto juega, qué tan bien convierte, cuánto tira, cuánto crea y
+     cuánto pelea. Lo leen la Radiografía, su PDF y Comparar: con un orden
+     por pantalla, el mismo jugador se leería distinto en cada una. */
+  const GRUPOS_METRICAS = ['Volumen', 'Eficiencia', 'Volumen de tiro', 'Creación', 'Rebote y defensa'];
+
+  /**
+   * Las métricas del filtro agrupadas en ese orden: `[{grupo, ids}]`.
+   * Sin `conTotales`, los totales del tramo no van (no tienen percentil).
+   * Un grupo que no esté en la lista va al final, no se pierde.
+   */
+  function metricasPorGrupo(conTotales) {
+    const por = {};
+    METRICAS_FILTRO.forEach(m => {
+      if (m.total && !conTotales) return;
+      (por[m.grupo] = por[m.grupo] || []).push(m.id);
+    });
+    const orden = GRUPOS_METRICAS.filter(g => por[g])
+      .concat(Object.keys(por).filter(g => GRUPOS_METRICAS.indexOf(g) === -1));
+    return orden.map(g => ({ grupo: g, ids: por[g] }));
+  }
+
   /* Las cuatro familias de tiro, con sus columnas: convertidos, intentados
      y el acierto. Es lo que pinta «5,2/11,4» al lado de cada porcentaje. */
   const VOLUMEN_TIRO = [
@@ -573,7 +595,7 @@ const SGADD_MERCADO = (function () {
     diaIso, hayFechas, recortarHojas, etiquetaTramo,
     SERVICIO, PUESTOS, POSICIONES, POR_POSICION, TALLA_MIN, TALLA_MAX, CLAVE_VALIDA,
     idPosicion, cubre, normalizarFicha, edad,
-    VOLUMEN_TIRO, COLUMNAS_VOLUMEN, textoVolumen, tiroPredominante,
+    VOLUMEN_TIRO, COLUMNAS_VOLUMEN, textoVolumen, tiroPredominante, GRUPOS_METRICAS, metricasPorGrupo,
     torneosDelCatalogo, torneosHabilitados, normalizarEmail, normalizarHabilitacion,
     METRICAS_FILTRO, IDS_FILTRO, EJES_RADAR, ejesRadar,
     filtrar, ordenar, mejorPorMetrica,
