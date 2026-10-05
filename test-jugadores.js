@@ -240,6 +240,27 @@ check('el filtro de efectividad de Liga Argentina sigue en 0,72',
 check('y en formativas locales baja, porque allá 0,72 es el p88',
   J.JUGADORES_NIVELES.valorDe('t1Contacto', 'LOCAL_MENORES') < 0.72,
   J.JUGADORES_NIVELES.valorDe('t1Contacto', 'LOCAL_MENORES'));
+/* LA CERCANÍA A UN PERFIL (punto 91) sale de las MISMAS condiciones que
+   deciden si calza: con dos fuentes, la búsqueda y la etiqueta divergen. */
+{
+  const gen = J.PERFILES_TECNICOS.find(p => p.id === 'generador');
+  const prom = { U: J.JUGADORES_UMBRALES };
+  check('cada perfil técnico declara sus condiciones y `calza` sale de ellas',
+    J.PERFILES_TECNICOS.every(p => typeof p.condiciones === 'function' && typeof p.calza === 'function'));
+  check('cercanía 1 si calza', J.jugadoresCercaniaPerfil(gen, { 'AST-PP': 1.6 }, prom) === 1);
+  check('si no calza, valor/umbral: AST-PP 1,25 contra 1,40 da 0,89',
+    Math.abs(J.jugadoresCercaniaPerfil(gen, { 'AST-PP': 1.25 }, prom) - 1.25 / 1.40) < 1e-9);
+  check('con tope 0,9: casi no es lo mismo que calzar', J.jugadoresCercaniaPerfil(gen, { 'AST-PP': 1.399 }, prom) === 0.9);
+  check('sin el dato, 0', J.jugadoresCercaniaPerfil(gen, {}, prom) === 0);
+  const ame = J.PERFILES_TECNICOS.find(p => p.id === 'amenaza');
+  check('varias condiciones: se multiplica solo lo que no cumple',
+    Math.abs(J.jugadoresCercaniaPerfil(ame, { T3I: 1.5, 'T3%': 0.40 }, prom) - 1.5 / J.JUGADORES_UMBRALES.amenazaVolumenT3) < 1e-9);
+  check('el umbral exacto con `>=` calza (buscador de contacto), con `>` no (generador)',
+    J.PERFILES_TECNICOS.find(p => p.id === 'buscadorContacto').calza({ 'RTL%': J.JUGADORES_UMBRALES.rtlContacto,
+      FR: J.JUGADORES_UMBRALES.frContacto, 'PT1%': J.JUGADORES_UMBRALES.usoLibreContacto, 'T1%': J.JUGADORES_UMBRALES.t1Contacto }, prom)
+    && !gen.calza({ 'AST-PP': J.JUGADORES_UMBRALES.astPPGenerador }, prom));
+}
+
 check('un jugador "promedio" no calza en NINGÚN perfil (el motor discrimina, no siempre da positivo)',
   J.jugadoresArquetipos(idxArq, jugArq('BASE 1')).length === 0,
   J.jugadoresArquetipos(idxArq, jugArq('BASE 1')));

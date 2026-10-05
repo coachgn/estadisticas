@@ -647,31 +647,31 @@ function jugadoresReferenciasRebote(idx) {
 const PERFILES_TECNICOS = [
   {
     id: 'terminador', emoji: '🎯', label: 'Terminador de Élite', relativa: true,
-    calza: (j, prom) => prom.PLAYS !== null && prom['eFG%'] !== null &&
-      j['PLAYS'] > prom.PLAYS && j['eFG%'] > 1.15 * prom['eFG%'] && j['PPP'] > 1.05,
+    condiciones: (j, prom) => (prom.PLAYS === null || prom['eFG%'] === null) ? null : [
+      { v: j['PLAYS'], u: prom.PLAYS }, { v: j['eFG%'], u: 1.15 * prom['eFG%'] }, { v: j['PPP'], u: 1.05 }],
     detalle: 'Alto volumen de plays con una eficiencia muy por encima de la liga: no solo participa, resuelve.',
   },
   {
     id: 'generador', emoji: '🧠', label: 'Generador',
     /* El 1,40 estaba duplicado a mano acá y en `astPPGenerador`. Se lee
        de una sola fuente para que no puedan quedar distintos. */
-    calza: (j, prom) => j['AST-PP'] > ((prom && prom.U) || JUGADORES_UMBRALES).astPPGenerador,
+    condiciones: (j, prom) => [{ v: j['AST-PP'], u: ((prom && prom.U) || JUGADORES_UMBRALES).astPPGenerador }],
     detalle: 'Reparte muchas más asistencias de las que pierde la pelota: hace mejor a los demás.',
   },
   {
     id: 'puntal', emoji: '🏰', label: 'Puntal en la Pintura', relativa: true,
-    calza: (j, prom) => prom.RT !== null && jugadoresRT(j) > 1.20 * prom.RT,
+    condiciones: (j, prom) => prom.RT === null ? null : [{ v: jugadoresRT(j), u: 1.20 * prom.RT }],
     detalle: 'Domina el vidrio muy por encima del promedio de la liga, en ataque y en defensa.',
   },
   {
     id: 'amenaza', emoji: '🎯', label: 'Amenaza Perimetral Real',
-    calza: (j, prom) => { const U = (prom && prom.U) || JUGADORES_UMBRALES;
-      return j['T3I'] > U.amenazaVolumenT3 && j['T3%'] > U.amenazaT3; },
+    condiciones: (j, prom) => { const U = (prom && prom.U) || JUGADORES_UMBRALES;
+      return [{ v: j['T3I'], u: U.amenazaVolumenT3 }, { v: j['T3%'], u: U.amenazaT3 }]; },
     detalle: 'Volumen y acierto de triple genuinos: hay que salir a buscarlo afuera.',
   },
   {
     id: 'especialistaDef', emoji: '🧤', label: 'Especialista Defensivo', relativa: true,
-    calza: (j, prom) => prom.PR !== null && j['PR'] > 1.30 * prom.PR,
+    condiciones: (j, prom) => prom.PR === null ? null : [{ v: j['PR'], u: 1.30 * prom.PR }],
     detalle: 'Roba muchas más pelotas que el resto de la liga: genera posesiones extra.',
   },
   {
@@ -691,12 +691,53 @@ const PERFILES_TECNICOS = [
        real; el T1% es el único absoluto, porque convertir 72% de libres es
        bueno en cualquier categoría. */
     id: 'buscadorContacto', emoji: '📏', label: 'Buscador de Contacto',
-    calza: (j, prom) => { const U = (prom && prom.U) || JUGADORES_UMBRALES;
-      return j['RTL%'] >= U.rtlContacto && j['FR'] >= U.frContacto &&
-        j['PT1%'] >= U.usoLibreContacto && j['T1%'] >= U.t1Contacto; },
+    condiciones: (j, prom) => { const U = (prom && prom.U) || JUGADORES_UMBRALES;
+      return [{ v: j['RTL%'], u: U.rtlContacto, op: '>=' }, { v: j['FR'], u: U.frContacto, op: '>=' },
+        { v: j['PT1%'], u: U.usoLibreContacto, op: '>=' }, { v: j['T1%'], u: U.t1Contacto, op: '>=' }]; },
     detalle: 'Ataca el contacto con volumen real (tasa de libres y faltas recibidas por encima de la liga) y además convierte.',
   },
 ];
+
+/* CADA PERFIL DECLARA SUS CONDICIONES, y de esa MISMA lista salen dos
+   cosas: si calza (todas se cumplen, con su operador) y qué tan cerca
+   queda el que no calza (`jugadoresCercaniaPerfil`, el crédito parcial
+   de la búsqueda de Fichajes). Con `calza` escrito aparte, el umbral de
+   la búsqueda y el de la etiqueta terminarían distintos — el bug del rol
+   funcional duplicado (punto 8). Un `null` de condiciones es «falta el
+   contexto de liga»: no calza, y la cercanía es 0. */
+function jugadoresCumpleCondicion(c) {
+  if (!c || typeof c.v !== 'number' || !isFinite(c.v)) return false;
+  return c.op === '>=' ? c.v >= c.u : c.v > c.u;
+}
+PERFILES_TECNICOS.forEach(p => {
+  p.calza = (j, prom) => {
+    const cs = p.condiciones(j, prom);
+    return !!cs && cs.every(jugadoresCumpleCondicion);
+  };
+});
+
+/* Tope del crédito parcial: el que no calza nunca empata con el que sí. */
+const CERCANIA_PERFIL_TOPE = 0.9;
+
+/**
+ * Qué tan cerca queda un jugador de un perfil técnico, de 0 a 1. Calza → 1.
+ * Si no, el PRODUCTO de `valor / umbral` de las condiciones que no cumple
+ * (las que cumple valen 1), con tope en 0,9: un AST-PP de 1,25 contra el
+ * 1,40 de Generador da 0,89. Un dato ausente vale 0.
+ */
+function jugadoresCercaniaPerfil(p, j, prom) {
+  let cs = null;
+  try { cs = p.condiciones(j, prom); } catch (e) { cs = null; }
+  if (!cs || !cs.length) return 0;
+  if (cs.every(jugadoresCumpleCondicion)) return 1;
+  let r = 1;
+  cs.forEach(c => {
+    if (jugadoresCumpleCondicion(c)) return;
+    if (typeof c.v !== 'number' || !isFinite(c.v) || !(c.u > 0)) { r = 0; return; }
+    r *= Math.max(0, Math.min(1, c.v / c.u));
+  });
+  return Math.min(CERCANIA_PERFIL_TOPE, r);
+}
 
 /** Perfiles técnicos que calza un jugador. Puede devolver varios o ninguno. */
 function jugadoresArquetipos(idx, j) {
@@ -3257,7 +3298,7 @@ if (typeof module !== 'undefined' && module.exports) {
     jugadoresSimilitudAdn, jugadoresVolumenComparable,
     JUGADORES_CARDS_REF, JUGADORES_REF_NEUTRAS,
     PEER_MIN, PEER_MODOS,
-    jugadoresArquetipos, jugadoresJerarquia, jugadoresPuntoDeFuga, jugadoresSintesisPerfil,
+    jugadoresArquetipos, jugadoresCercaniaPerfil, jugadoresJerarquia, jugadoresPuntoDeFuga, jugadoresSintesisPerfil,
     jugadoresCondicionCorta, jugadoresEtiquetaEvolucion, jugadoresSplitCondicion, jugadoresSensibilidadCondicion,
   };
 }

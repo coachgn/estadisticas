@@ -23,7 +23,7 @@ node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 318 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
 node test-boot.js          # 181 tests · arranque por club, sintaxis de los módulos, carteles de espera
-node test-jugadores.js     # 283 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
+node test-jugadores.js     # 290 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  96 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
@@ -68,7 +68,7 @@ node test-similitud-etiquetas.js #  45 tests · la similitud multi-etiqueta cont
                            #             de etiquetas, el caso Raineri/Benavidez y los afines
 node test-estados-sync.js  #  74 tests · los estados compartidos en el servidor, dos sesiones
                            #             y que ninguna escritura del catálogo pise datos
-node test-fichajes.js      # 159 tests · Fichajes: ficha manual, padrón, filtros y el servidor (punto 87)
+node test-fichajes.js      # 202 tests · Fichajes: ficha manual, padrón, filtros y el servidor (punto 87)
 node test-pdf-layout.js    #  37 tests · claves arriba del resto, el flujo continuo, la
                            #             tabla que se parte por filas y que ningún :hover
                            #             pinte la hoja impresa
@@ -240,7 +240,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=267`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=268`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -12309,3 +12309,76 @@ En Comparar cada celda trae lo que la fila de la Radiografía (valor,
 convertidos/intentados del acierto, barra y percentil contra SU zona, con la
 mediana de su zona en el `title`); los totales del tramo van dentro de
 Volumen de tiro, sin percentil.
+
+---
+
+## 91. FICHAJES · PUERTAS DURAS Y % DE COINCIDENCIA (2026-10-05)
+
+Auditado y aprobado por el club antes de escribir código. Medido en la demo
+(260 jugadores) antes de decidir:
+
+- **El orden de los filtros no cambiaba nada**: `filtrar()` es una
+  intersección y da lo mismo en cualquier orden. Lo que importa es qué
+  descarta y qué suma.
+- **Minutos y jerarquía están ANIDADOS**: todo Franquicia es Clave (19/19) y
+  todo Pocos Minutos es Especialista (116/116). Combinaciones como
+  Franquicia + Rotación daban cero sin decir por qué.
+- **Los perfiles técnicos son escasos**: el 50 % no tiene ninguno; pedirlos
+  «todos» como filtro duro vaciaba la búsqueda.
+
+### El modelo · `SGADD_MERCADO.evaluar(filas, crit, ctx)`
+
+**Puertas duras** (`filtrar(…, { soloPuertas: true })`): zona y período (la
+vista), muestra mínima, texto, equipo, «juega», la ficha manual y los rangos
+marcados **obligatorios**. **Todo lo demás suma**:
+
+```
+coincidencia = Σ peso·puntaje / Σ peso      — solo sobre lo que se pidió
+función 35 · perfiles 25 · rangos 15 · minutos 15 · jerarquía 10   · piso 60 %
+```
+
+| Nivel | Puntaje |
+|---|---|
+| Función | 1 mismo rol · 0,6 faceta secundaria · 0,5 mismo eje · 0,25 mismo lado (`ORIGEN_ROL`) · 0 |
+| Perfiles | la parte de los pedidos que tiene; el que falta, por su cercanía al corte (tope 0,9) |
+| Rangos | 1 adentro; afuera `1 − Δpercentil/25` (en el percentil de SU zona); un total sin distribución, por distancia relativa |
+| Minutos | 1 misma banda · 0,75 a menos de 2 min del borde · 0,5 la de al lado · 0 |
+| Jerarquía | 1 la misma · 0,5 la de al lado · 0 |
+
+- **Minutos y jerarquía pesan lo mínimo a propósito**: dependen de su
+  plantel y de su DT. Como filtro duro escondían al Especialista de élite de
+  un plantel profundo, que es el fichaje subvaluado.
+- **La confianza va APARTE** (`confianza(f)`, punto 4): Alta 10+ PJ, 15+ min y
+  60+ tiros de campo en el tramo; Media 5+ PJ y 8+ min; Baja el resto. Ordena
+  solo al empate.
+- **`filtrar()` sin opciones sigue siendo todo duro**: lo usan otros
+  llamadores y tests.
+
+### La cercanía de un perfil sale del MISMO lugar que la etiqueta
+
+Cada `PERFILES_TECNICOS[i]` declara `condiciones(j, prom)` y de esa lista se
+derivan `calza` (todas, con su operador) y `jugadoresCercaniaPerfil`
+(producto de `valor/umbral` de las que no cumple, tope 0,9). Con `calza`
+escrito aparte, el umbral de la búsqueda y el de la etiqueta divergen (el
+bug del rol funcional, punto 8). Verificado en la demo: los conteos de los
+seis perfiles quedaron idénticos (75/42/28/33/12/4) y cercanía 1 ⇔ calza en
+los 260.
+
+### El panel, de lo general a lo particular
+
+1 Zona y período · 2 Muestra mínima · 3 Rol por minutos · 4 Jerarquía ·
+5 Función · 6 Perfiles · 7 Rangos (y la ficha manual, plegada, como filtro
+duro). Cada nivel dice si es filtro duro o cuánto suma. Cada opción lleva
+cuántos jugadores la tienen (`conteosFacetas`, minutos × jerarquía
+CRUZADOS) y la que da 0 se deshabilita; si lo elegido no se cruza en nadie,
+se avisa.
+
+La card muestra el % (con el desglose en el `title`), la confianza y lo que
+no cumple. «% de coincidencia» es el orden por defecto; sin criterios
+puntuables cae a Puntos.
+
+### «Buscar parecidos en todo el torneo» (Radiografía)
+
+La similitud del punto 58 (función 50 · perfiles 30 · jerarquía 20, con
+volumen comparable) contra TODAS las zonas, con el mismo piso del 60 %.
+Vista `parecidos`, con las mismas cards y la confianza.

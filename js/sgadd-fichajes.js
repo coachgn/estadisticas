@@ -45,7 +45,7 @@ const SGADD_FICHAJES = (function () {
        de TODO el torneo, no de una zona: una búsqueda compara jugadores en
        el mismo período. Literal y no `PERIODO_VACIO`, que se declara abajo. */
     periodo: { tramo: null, desde: '', hasta: '' },
-    orden: 'PTS', dir: 'desc',
+    orden: 'coincidencia', dir: 'desc',
     pagina: 1,
     vista: 'buscar',      // 'buscar' | 'radiografia' | 'comparar' | 'padron'
     abierto: null,        // id de la fila en la radiografía
@@ -340,12 +340,45 @@ const SGADD_FICHAJES = (function () {
       talla: typeof f.talla === 'number' ? f.talla : null };
   }
 
+  /** Qué tan cerca queda de cada perfil técnico (crédito parcial, punto 91). */
+  function cercaniaPerfiles(j, prom) {
+    const o = {};
+    PERFILES_TECNICOS.forEach(p => { o[p.id] = jugadoresCercaniaPerfil(p, j, prom); });
+    return o;
+  }
+
+  /**
+   * El contexto que el motor del % de coincidencia no puede conocer: los
+   * ejes de cada rol, las bandas de minutos, el orden de la jerarquía, las
+   * etiquetas y cómo ubicar un valor en el percentil de SU zona.
+   */
+  function ctxCoincidencia() {
+    const etiquetas = {}, ejes = {};
+    JUGADORES_ROLES_FUNCIONALES.forEach(r => { etiquetas[r.id] = r.label; if (r.eje) ejes[r.id] = r.eje; });
+    PERFILES_TECNICOS.forEach(p => { etiquetas[p.id] = p.label; });
+    JERARQUIA.forEach(r => { etiquetas[r.id] = r.label; });
+    ROLES_MINUTOS.forEach(r => { etiquetas[r.id] = r.label; });
+    M.METRICAS_FILTRO.forEach(x => { etiquetas[x.id] = metrica(x.id).label; });
+    return {
+      etiquetas: etiquetas, ejes: ejes,
+      bandasMinutos: ROLES_MINUTOS.map((r, i) => ({ id: r.id, min: r.min, max: i ? ROLES_MINUTOS[i - 1].min : Infinity })),
+      ordenJerarquia: JERARQUIA.map(r => r.id),
+      percentilDe: (f, k, v) => {
+        const d = f._idx && f._idx.liga && f._idx.liga.distribucionesJ && f._idx.liga.distribucionesJ[k];
+        return d ? SGADD.percentil(d, v, !!metrica(k).invertida) : null;
+      },
+    };
+  }
+
   /** Una fila del mercado por jugador. El ADN sale del motor de la ficha. */
   function armarFilas(zona, t, vista) {
     const idx = vista && vista.idx;
     if (!idx || !idx.liga) return [];
     const derivado = !!(vista && vista.derivado);
     const adnMapa = jugadoresAdnLiga(idx);
+    /* La vara de los perfiles técnicos de ESTA vista: la misma con la que
+       el ADN los etiquetó, así que «calza» y cercanía 1 son lo mismo. */
+    const promLiga = jugadoresPromediosLiga(idx);
     const out = [];
     (idx.liga.jugadores || []).forEach(j => {
       const adn = adnMapa.get(j);
@@ -394,6 +427,7 @@ const SGADD_FICHAJES = (function () {
         jerarquia: adn.jerarquia ? adn.jerarquia.id : null,
         rolMinutos: adn.rolMinutos ? adn.rolMinutos.id : null,
         arquetipos: (adn.arquetipos || []).map(a => a.id),
+        cercania: cercaniaPerfiles(j, promLiga),
         origen: perfil.esInterior ? 'interior' : perfil.esPerimetral ? 'perimetral' : null,
         m: m, pc: pc, vol: vol, volTot: volTot, ficha: fichaDe(zona, clave),
         _j: j, _idx: idx, _adn: adn, _derivado: derivado,
@@ -678,6 +712,7 @@ const SGADD_FICHAJES = (function () {
       return `<div class="card rounded-xl p-6 border border-hairline text-center text-sm text-muted">No hay torneos dados de alta.</div>`;
     }
     const vista = ST.vista === 'radiografia' ? vistaRadiografia()
+      : ST.vista === 'parecidos' ? vistaParecidos()
       : ST.vista === 'comparar' ? vistaComparar()
       : ST.vista === 'padron' ? vistaPadron()
       : vistaBuscar();
@@ -722,16 +757,37 @@ const SGADD_FICHAJES = (function () {
      BUSCAR
      --------------------------------------------------------------------- */
 
-  function opcionesChips(campo, opciones, elegidos) {
+  /* Con `conteos`, cada chip dice cuántos del universo (ya pasado por las
+     puertas) la tienen, y la que da 0 se deshabilita: es una combinación
+     que no existe (Franquicia + Rotación). La elegida sigue habilitada,
+     para poder sacarla. */
+  function opcionesChips(campo, opciones, elegidos, conteos) {
     return opciones.map(o => {
       const on = elegidos.indexOf(o.id) !== -1;
+      const n = conteos ? (conteos[o.id] || 0) : null;
+      const vacia = n === 0 && !on;
       return `<button type="button" onclick="SGADD_FICHAJES.alternar('${escJs(campo)}', '${escJs(o.id)}')"
-        aria-pressed="${on}" title="${esc(o.titulo || o.label)}"
-        class="text-[11px] px-2 py-1 rounded border transition-colors
+        aria-pressed="${on}" ${vacia ? 'disabled aria-disabled="true"' : ''}
+        title="${esc(vacia ? 'Ningún jugador del torneo combina esto con lo ya elegido' : (o.titulo || o.label))}"
+        class="text-[11px] px-2 py-1 rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed
                focus:outline-none focus-visible:ring-2 focus-visible:ring-accent
                ${on ? 'border-accent text-ink bg-surface2' : 'border-hairline text-muted hover:text-ink hover:bg-surface2'}">
-        ${esc(o.label)}</button>`;
+        ${esc(o.label)}${n !== null ? ` <span class="font-mono text-[10px] text-muted">${n}</span>` : ''}</button>`;
     }).join('');
+  }
+
+  /** El encabezado de cada nivel: su número, si es puerta o cuánto suma. */
+  function encabezadoNivel(n, titulo, peso) {
+    return `<p class="text-[10px] uppercase tracking-widest font-display text-ink mb-1.5 flex flex-wrap items-baseline gap-x-2">
+      <span class="text-accent">${esc(n)}</span><span>${esc(titulo)}</span>
+      <span class="normal-case tracking-normal font-sans text-[10px] ${peso ? 'text-accent' : 'text-muted'}">${peso
+        ? 'suma ' + Math.round(peso * 100) + ' %' : 'filtro duro'}</span></p>`;
+  }
+
+  function nivelFiltro(n, titulo, peso, contenido, nota) {
+    return `<div class="mb-3">${encabezadoNivel(n, titulo, peso)}
+      <div class="flex flex-wrap gap-1.5">${contenido}</div>
+      ${nota ? `<p class="text-[10px] dato-sec mt-1">${esc(nota)}</p>` : ''}</div>`;
   }
 
   function grupoFiltro(titulo, contenido, nota) {
@@ -770,15 +826,26 @@ const SGADD_FICHAJES = (function () {
     const arq = PERFILES_TECNICOS.map(p => ({ id: p.id, label: p.emoji + ' ' + p.label }));
     const conFicha = todas.filter(f => f.ficha).length;
 
+    const P = M.PESOS_COINCIDENCIA;
+    const pool = M.filtrar(todas, c, { soloPuertas: true }).filas;
+    const cuenta = M.conteosFacetas(pool, c);
+
     const rangoMetrica = (k) => {
       const r = c.rangos[k] || {};
       const pct = esPorcentaje(k);
       const aVista = (v) => typeof v !== 'number' ? undefined : pct && !r.pc ? Math.round(v * 1000) / 10 : v;
-      return campoRango('m:' + k, metrica(k).label + (metrica(k).invertida ? ' ↓' : ''),
-        { min: aVista(r.min), max: aVista(r.max) }, pct ? 0.5 : 0.1, r.pc ? 'pctl' : pct ? '%' : '');
+      return `<div class="flex flex-wrap items-center gap-2">${campoRango('m:' + k, metrica(k).label + (metrica(k).invertida ? ' ↓' : ''),
+        { min: aVista(r.min), max: aVista(r.max) }, pct ? 0.5 : 0.1, r.pc ? 'pctl' : pct ? '%' : '')}
+        <label class="flex items-center gap-1 text-[10px] text-muted" title="Obligatorio: el que no lo cumple queda afuera en vez de restar puntos">
+          <input type="checkbox" ${r.duro ? 'checked' : ''} onchange="SGADD_FICHAJES.fijarRangoDuro('${escJs(k)}', this.checked)"> obligatorio</label></div>`;
     };
     const activas = Object.keys(c.rangos);
     const disponibles = M.METRICAS_FILTRO.filter(x => activas.indexOf(x.id) === -1);
+
+    /* Minutos y jerarquía están ANIDADOS: si lo elegido en los dos no se
+       cruza en ningún jugador, se dice — no es un error del filtro. */
+    const sinCruce = c.rolesMinutos.length && c.jerarquias.length
+      && !pool.some(f => c.rolesMinutos.indexOf(f.rolMinutos) !== -1 && c.jerarquias.indexOf(f.jerarquia) !== -1);
 
     return `
       <details ${ST.filtrosAbiertos ? 'open' : ''} ontoggle="SGADD_FICHAJES.recordarFiltros(this.open)"
@@ -787,34 +854,50 @@ const SGADD_FICHAJES = (function () {
                         focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-xl">
           Búsqueda avanzada</summary>
         <div class="px-4 pb-4 grid gap-x-6 lg:grid-cols-2">
-          <div class="lg:col-span-2">${bloquePeriodo()}</div>
+          <p class="lg:col-span-2 text-[11px] dato-sec mb-3">De lo general a lo particular. Los <b>filtros duros</b> descartan;
+            los demás <b>suman</b> al % de coincidencia, y se muestran los que llegan al ${Math.round(M.PISO_COINCIDENCIA * 100)} %:
+            un jugador que cumple casi todo no se pierde por un detalle. El número de cada opción es cuántos jugadores la tienen.</p>
+          <div class="lg:col-span-2 mb-1">
+            ${encabezadoNivel('1', 'Zona y período', null)}
+            ${bloquePeriodo()}
+            <div class="flex flex-wrap items-center gap-3 mb-3">
+              ${zonasOk.length > 1 ? `<div class="flex flex-wrap gap-1.5" role="group" aria-label="Zona">${opcionesChips('zonas', zonasOk, c.zonas)}</div>` : ''}
+              ${equipos.length ? `<label class="flex items-center gap-2 text-[11px] text-muted">
+                <span>Equipo</span>
+                <select onchange="SGADD_FICHAJES.fijarEquipo(this.value)"
+                  class="rounded border border-hairline bg-surface2/40 px-2 py-1 text-xs text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+                  <option value="">Todos</option>
+                  ${equipos.map(e => `<option value="${esc(e.id)}" ${c.equipos[0] === e.id ? 'selected' : ''}>${esc(e.label)}</option>`).join('')}
+                </select></label>` : ''}
+            </div>
+          </div>
+          <div class="lg:col-span-2 mb-3">
+            ${encabezadoNivel('2', 'Muestra mínima', null)}
+            <label class="flex items-center gap-2 text-[11px] text-muted">
+              <input type="checkbox" ${c.soloCalificados ? 'checked' : ''} onchange="SGADD_FICHAJES.fijar('soloCalificados', this.checked)">
+              Solo los que llegan al umbral de minutos de su zona (sin eso el percentil no se calcula)</label>
+          </div>
           <div>
-            ${zonasOk.length > 1 ? grupoFiltro('Zona', opcionesChips('zonas', zonasOk, c.zonas)) : ''}
-            ${grupoFiltro('Función en cancha', opcionesChips('roles', roles, c.roles),
-              c.incluirSecundarios ? 'Incluye a quien la tiene como faceta secundaria.' : 'Solo la función principal.')}
+            ${nivelFiltro('3', 'Rol por minutos', P.minutos, opcionesChips('rolesMinutos', minutos, c.rolesMinutos, cuenta.rolesMinutos),
+              'La banda de al lado suma la mitad; a menos de 2 minutos del borde, tres cuartos.')}
+            ${nivelFiltro('4', 'Jerarquía en su plantel', P.jerarquia, opcionesChips('jerarquias', jer, c.jerarquias, cuenta.jerarquias),
+              'Depende de su plantel, no de él: por eso pesa poco.')}
+            ${sinCruce ? `<p class="text-[11px] text-accent -mt-2 mb-3" role="status">Esa combinación de minutos y jerarquía no existe en el torneo
+              (todo Franquicia es Clave; todo Pocos Minutos es Especialista). Cada uno suma por su lado.</p>` : ''}
+            ${nivelFiltro('5', 'Función en cancha', P.funcion, opcionesChips('roles', roles, c.roles, cuenta.roles),
+              'Suma entero el mismo rol; ' + (c.incluirSecundarios ? '60 % si es su faceta secundaria; ' : '') + '50 % el mismo eje; 25 % el mismo lado.')}
             <label class="flex items-center gap-2 text-[11px] text-muted -mt-2 mb-3">
               <input type="checkbox" ${c.incluirSecundarios ? 'checked' : ''} onchange="SGADD_FICHAJES.fijar('incluirSecundarios', this.checked)">
               Contar también las facetas secundarias</label>
-            ${grupoFiltro('Jerarquía en su plantel', opcionesChips('jerarquias', jer, c.jerarquias))}
-            ${grupoFiltro('Rol por minutos', opcionesChips('rolesMinutos', minutos, c.rolesMinutos))}
-            ${grupoFiltro('Perfiles técnicos (todos los elegidos)', opcionesChips('arquetipos', arq, c.arquetipos))}
-            ${grupoFiltro('Juega', opcionesChips('origen', [{ id: 'interior', label: 'Adentro' }, { id: 'perimetral', label: 'Afuera' }],
+            ${grupoFiltro('Juega · filtro duro', opcionesChips('origen', [{ id: 'interior', label: 'Adentro' }, { id: 'perimetral', label: 'Afuera' }],
               c.origen ? [c.origen] : []), 'Sale de cómo tira y cuánto rebotea, no de una posición declarada.')}
           </div>
           <div>
-            ${grupoFiltro('Puesto (ficha manual)',
-              opcionesChips('posiciones', M.PUESTOS.map(p => ({ id: String(p.n), label: p.n + ' · ' + p.label })), c.posiciones),
-              conFicha + ' de ' + todas.length + ' jugadores tienen ficha cargada. Un filtro de ficha deja afuera a los que no la tienen.')}
-            <label class="flex items-center gap-2 text-[11px] text-muted -mt-2 mb-3">
-              <input type="checkbox" ${c.puestosSecundarios ? 'checked' : ''} onchange="SGADD_FICHAJES.fijar('puestosSecundarios', this.checked)">
-              Contar los puestos híbridos por su faceta secundaria (un 2-3 entra como 2 y como 3)</label>
-            <div class="grid gap-1.5 mb-3">
-              ${campoRango('edad', 'Edad', c.edad, 1, 'años')}
-              ${campoRango('talla', 'Talla', c.talla, 1, 'cm')}
-            </div>
-            <p class="text-[10px] uppercase tracking-widest font-display text-muted mb-1.5">Rendimiento</p>
+            ${nivelFiltro('6', 'Perfiles técnicos', P.perfiles, opcionesChips('arquetipos', arq, c.arquetipos, cuenta.arquetipos),
+              'Cuenta la parte de los pedidos que tiene. Al que le falta uno se le reconoce qué tan cerca quedó del corte (hasta 90 %).')}
+            ${encabezadoNivel('7', 'Rangos de métricas', P.rangos)}
             <div class="grid gap-1.5 mb-2">${activas.map(rangoMetrica).join('')}</div>
-            <div class="flex flex-wrap items-center gap-2 mb-3">
+            <div class="flex flex-wrap items-center gap-2 mb-1">
               <select id="fxNuevaMetrica" aria-label="Métrica para filtrar"
                 class="rounded border border-hairline bg-surface2/40 px-2 py-1 text-xs text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
                 ${disponibles.map(x => `<option value="${esc(x.id)}">${esc(x.grupo + ' · ' + metrica(x.id).label)}</option>`).join('')}
@@ -826,16 +909,21 @@ const SGADD_FICHAJES = (function () {
               ${activas.length ? `<button type="button" onclick="SGADD_FICHAJES.limpiarRangos()"
                 class="text-[11px] text-muted hover:text-ink underline underline-offset-2">quitar todos</button>` : ''}
             </div>
-            <label class="flex items-center gap-2 text-[11px] text-muted mb-1">
-              <input type="checkbox" ${c.soloCalificados ? 'checked' : ''} onchange="SGADD_FICHAJES.fijar('soloCalificados', this.checked)">
-              Solo los que llegan al umbral de minutos de su zona</label>
-            ${equipos.length ? `<label class="flex items-center gap-2 text-[11px] text-muted">
-              <span>Equipo</span>
-              <select onchange="SGADD_FICHAJES.fijarEquipo(this.value)"
-                class="rounded border border-hairline bg-surface2/40 px-2 py-1 text-xs text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
-                <option value="">Todos</option>
-                ${equipos.map(e => `<option value="${esc(e.id)}" ${c.equipos[0] === e.id ? 'selected' : ''}>${esc(e.label)}</option>`).join('')}
-              </select></label>` : ''}
+            <p class="text-[10px] dato-sec mb-3">Fuera del rango resta según la distancia en percentiles (a 25 puntos ya no suma). Marcalo obligatorio para que descarte.</p>
+            <details class="mb-3">
+              <summary class="cursor-pointer text-[10px] uppercase tracking-widest font-display text-muted">Ficha manual · filtro duro</summary>
+              <div class="mt-2">
+              ${grupoFiltro('Puesto',
+                opcionesChips('posiciones', M.PUESTOS.map(p => ({ id: String(p.n), label: p.n + ' · ' + p.label })), c.posiciones),
+                conFicha + ' de ' + todas.length + ' jugadores tienen ficha cargada. Un filtro de ficha deja afuera a los que no la tienen.')}
+              <label class="flex items-center gap-2 text-[11px] text-muted -mt-2 mb-3">
+                <input type="checkbox" ${c.puestosSecundarios ? 'checked' : ''} onchange="SGADD_FICHAJES.fijar('puestosSecundarios', this.checked)">
+                Contar los puestos híbridos por su faceta secundaria (un 2-3 entra como 2 y como 3)</label>
+              <div class="grid gap-1.5">
+                ${campoRango('edad', 'Edad', c.edad, 1, 'años')}
+                ${campoRango('talla', 'Talla', c.talla, 1, 'cm')}
+              </div></div>
+            </details>
           </div>
           <div class="lg:col-span-2 flex justify-end">
             <button type="button" onclick="SGADD_FICHAJES.limpiarTodo()"
@@ -846,6 +934,7 @@ const SGADD_FICHAJES = (function () {
   }
 
   const ORDENES = [
+    { id: 'coincidencia', label: '% de coincidencia' },
     { id: 'PTS', label: 'Puntos' }, { id: 'MIN', label: 'Minutos' }, { id: 'TS%', label: 'TS%' },
     { id: 'USG%', label: 'Uso' }, { id: 'AST-PP', label: 'AST-PP' }, { id: 'PPP', label: 'PPP' },
     { id: 'RO%', label: 'Rebote of.' }, { id: 'PR', label: 'Recuperos' },
@@ -861,13 +950,23 @@ const SGADD_FICHAJES = (function () {
       const zz = ST.zonas[t.id + '/' + z.slug];
       return !zz || zz.estado === 'cargando';
     });
-    const res = M.filtrar(todas, ST.crit);
-    /* En una MÉTRICA el orden por defecto es «mejor primero», y en una
-       invertida (pérdidas) lo mejor es lo más bajo. Nombre, edad y talla
-       no son mejores ni peores: van en el sentido que se pidió. */
-    const esMetrica = ['nombre', 'edad', 'talla'].indexOf(ST.orden) === -1;
-    const inv = esMetrica && metrica(ST.orden).invertida;
-    const ordenadas = M.ordenar(res.filas, ST.orden, inv ? (ST.dir === 'desc' ? 'asc' : 'desc') : ST.dir);
+    /* PUERTAS + % DE COINCIDENCIA (punto 91): el motor descarta solo con
+       los filtros duros y puntúa el resto; quedan los que llegan al piso. */
+    const res = M.evaluar(todas, ST.crit, ctxCoincidencia());
+    /* «% de coincidencia» ordena por puntaje y, al empate, por confianza.
+       Sin nada puntuable cae a Puntos. En una MÉTRICA el orden por defecto
+       es «mejor primero», y en una invertida (pérdidas) lo mejor es lo más
+       bajo. Nombre, edad y talla no son mejores ni peores. */
+    const porCoinc = ST.orden === 'coincidencia';
+    const por = porCoinc && !res.puntua ? 'PTS' : ST.orden;
+    const esMetrica = ['nombre', 'edad', 'talla', 'coincidencia'].indexOf(por) === -1;
+    const inv = esMetrica && metrica(por).invertida;
+    let ordenadas;
+    if (porCoinc && res.puntua) ordenadas = ST.dir === 'asc' ? res.items.slice().reverse() : res.items;
+    else {
+      const mapa = new Map(res.items.map(x => [x.fila, x]));
+      ordenadas = M.ordenar(res.items.map(x => x.fila), por, inv ? (ST.dir === 'desc' ? 'asc' : 'desc') : ST.dir).map(f => mapa.get(f));
+    }
     const visibles = ordenadas.slice(0, ST.pagina * POR_PAGINA);
 
     const buscador = `
@@ -884,18 +983,23 @@ const SGADD_FICHAJES = (function () {
           </select></label>
         <button type="button" onclick="SGADD_FICHAJES.invertirOrden()" aria-label="Invertir el orden"
           class="text-xs px-2 py-1.5 rounded border border-hairline text-muted hover:text-ink hover:bg-surface2">
-          ${esMetrica ? (ST.dir === 'desc' ? '▼ mejor primero' : '▲ peor primero')
+          ${porCoinc && res.puntua ? (ST.dir === 'desc' ? '▼ más coincidencia primero' : '▲ menos coincidencia primero')
+            : esMetrica ? (ST.dir === 'desc' ? '▼ mejor primero' : '▲ peor primero')
             : (ST.dir === 'asc' ? '▲ ascendente' : '▼ descendente')}</button>
       </div>`;
 
     const resumen = `<p id="fxResumen" class="text-[11px] text-muted mb-3" aria-live="polite">
-      ${cargando ? 'Bajando los libros del torneo… ' : ''}${res.filas.length} de ${todas.length} jugadores
-      ${res.sinDato ? ` · <span class="text-accent">${res.sinDato} quedaron afuera por no tener el dato pedido</span>` : ''}</p>`;
+      ${cargando ? 'Bajando los libros del torneo… ' : ''}${res.items.length} de ${todas.length} jugadores
+      ${res.puntua ? ` · ${res.bajoPiso} por debajo del ${Math.round(M.PISO_COINCIDENCIA * 100)} % de coincidencia` : ''}
+      ${res.sinDato ? ` · <span class="text-accent">${res.sinDato} quedaron afuera por no tener el dato pedido</span>` : ''}
+      ${res.puntua && porCoinc ? ' · por % de coincidencia y, al empate, por confianza' : ''}</p>`;
 
     const grilla = visibles.length
-      ? `<ul class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">${visibles.map(tarjeta).join('')}</ul>`
+      ? `<ul class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">${visibles.map(x => tarjeta(x.fila, x)).join('')}</ul>`
       : `<div class="card rounded-xl p-6 border border-hairline text-center text-sm text-muted">
-          ${cargando ? 'Cargando…' : 'Nadie cumple todos los filtros. Probá aflojar uno.'}</div>`;
+          ${cargando ? 'Cargando…' : res.puntua
+            ? 'Nadie llega al ' + Math.round(M.PISO_COINCIDENCIA * 100) + ' % de coincidencia. Probá aflojar un criterio.'
+            : 'Nadie pasa los filtros duros. Probá aflojar uno.'}</div>`;
     const mas = ordenadas.length > visibles.length
       ? `<div class="text-center mt-4"><button type="button" onclick="SGADD_FICHAJES.verMas()"
           class="text-xs px-4 py-2 rounded border border-hairline text-muted hover:text-ink hover:bg-surface2">
@@ -907,7 +1011,24 @@ const SGADD_FICHAJES = (function () {
     return panelFiltros(todas) + badgePeriodo() + buscador + resumen + `<div id="fxResultados">${grilla}${mas}</div>`;
   }
 
-  function tarjeta(f) {
+  /* El % y la confianza, arriba de la card. El % lleva su desglose en el
+     `title`, y lo que no cumple va escrito: el número solo no se audita. */
+  function lineaCoincidencia(item, f) {
+    const conf = (item && item.conf) || M.confianza(f);
+    const c = item && item.coinc;
+    const tonoConf = conf.id === 'alta' ? 'border-green-500/50 text-green-400' : conf.id === 'media' ? 'border-hairline text-ink' : 'border-hairline text-muted';
+    const chipConf = `<span class="text-[10px] px-1.5 py-0.5 rounded border ${tonoConf}" title="${esc('Confianza en la muestra: ' + conf.motivo)}">Confianza ${esc(conf.label.toLowerCase())}</span>`;
+    if (!c || typeof c.pct !== 'number') return `<div class="flex items-center justify-end">${chipConf}</div>`;
+    const pct = Math.round(c.pct * 100);
+    const desglose = c.partes.map(x => x.label + ' ' + Math.round(x.puntaje * 100) + ' % (pesa ' + Math.round(x.peso * 100) + ')').join(' · ');
+    return `<div class="flex items-center gap-2">
+        <span class="font-display text-lg leading-none ${pct >= 85 ? 'text-green-400' : 'text-accent'}" title="${esc(desglose)}">${pct} %</span>
+        <span class="text-[10px] text-muted">${esc((item && item.rotulo) || 'de coincidencia')}</span>
+        <span class="ml-auto">${chipConf}</span></div>
+      ${c.faltan.length ? `<p class="text-[10px] text-muted leading-snug" title="${esc(c.faltan.join(' · '))}">No cumple · ${esc(c.faltan.slice(0, 2).join(' · '))}${c.faltan.length > 2 ? ' …' : ''}</p>` : ''}`;
+  }
+
+  function tarjeta(f, item) {
     const adn = f._adn;
     const enComp = ST.comparar.indexOf(f.id) !== -1;
     const kpis = ['PTS', 'MIN', 'TS%', 'USG%'].map(k => `
@@ -932,6 +1053,7 @@ const SGADD_FICHAJES = (function () {
           </div>
           <div class="w-16 h-16 shrink-0 -mt-1">${radarSvg([{ ejes: M.ejesRadar(f.pc), color: COLORES[0] }], { tam: 120, margen: 8, relleno: 0.3, titulo: 'Radar de ' + f.nombre }).replace(/<text[\s\S]*?<\/text>/g, '')}</div>
         </div>
+        ${lineaCoincidencia(item, f)}
         <p class="text-[11px] text-accent leading-snug">${esc(adn.rolFuncional ? adn.rolFuncional.label : '—')}</p>
         <div class="flex flex-wrap gap-1">${badges}</div>
         <div class="grid grid-cols-4 gap-2">${kpis}</div>
@@ -1164,6 +1286,9 @@ const SGADD_FICHAJES = (function () {
         <button type="button" onclick="SGADD_FICHAJES.alternarComparar('${escJs(f.id)}')" aria-pressed="${enComp}"
           class="text-[11px] px-3 py-1.5 rounded border ${enComp ? 'border-accent text-ink bg-surface2' : 'border-hairline text-muted hover:text-ink hover:bg-surface2'}">
           ${enComp ? '✓ En la comparación' : '+ Comparar'}</button>
+        <button type="button" onclick="SGADD_FICHAJES.buscarParecidos('${escJs(f.id)}')"
+          class="text-[11px] px-3 py-1.5 rounded border border-accent/50 text-accent hover:bg-accent/10
+                 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">🔎 Buscar parecidos en todo el torneo</button>
         <button type="button" onclick="SGADD_FICHAJES.exportar('${escJs(f.id)}')"
           class="ml-auto text-[11px] font-semibold px-3 py-1.5 rounded-md border border-accent text-accent hover:bg-accent/10
                  focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">⬇ Descargar ficha de fichaje (PDF)</button>
@@ -1227,6 +1352,66 @@ const SGADD_FICHAJES = (function () {
           </section>
         </div>
       </div>`;
+  }
+
+  /* ---------------------------------------------------------------------
+     PARECIDOS EN TODO EL TORNEO (punto 91, alternativa D)
+
+     La similitud del punto 58 —función 50 %, perfiles 30 %, jerarquía 20 %,
+     con volumen comparable de minutos y uso— contra TODAS las zonas, con el
+     mismo piso del 60 %. Es la búsqueda «necesito otro como el que se me
+     va»: el % sale de las etiquetas, y cada uno se etiquetó contra su zona.
+     --------------------------------------------------------------------- */
+  function parecidos(f) {
+    return filasDelTorneo()
+      .filter(x => x.id !== f.id && x.califica)
+      .map(x => ({ fila: x, sim: jugadoresSimilitud(f._adn, x._adn) }))
+      .filter(x => x.sim.volumen && x.sim.volumen.ok && x.sim.total >= M.PISO_COINCIDENCIA - 1e-9)
+      .sort((a, b) => (b.sim.total - a.sim.total) || (M.confianza(b.fila).rango - M.confianza(a.fila).rango));
+  }
+
+  function itemDeSimilitud(x) {
+    const partes = [
+      { label: 'Función en cancha', peso: 0.5, puntaje: x.sim.funcion },
+      { label: 'Perfiles técnicos', peso: 0.3, puntaje: x.sim.perfiles },
+      { label: 'Jerarquía', peso: 0.2, puntaje: x.sim.adn },
+    ];
+    return { fila: x.fila, conf: M.confianza(x.fila), rotulo: 'de similitud',
+      coinc: { pct: x.sim.total, partes: partes,
+        faltan: partes.filter(p => p.puntaje < 1).map(p => p.label + ' ' + Math.round(p.puntaje * 100) + ' %') } };
+  }
+
+  function vistaParecidos() {
+    const f = filaPorId(ST.abierto);
+    if (!f) {
+      return `<div class="card rounded-xl p-6 border border-hairline text-center text-sm text-muted">
+        Ese jugador ya no está en la búsqueda. <button type="button" onclick="SGADD_FICHAJES.irA('buscar')" class="underline">Volver</button></div>`;
+    }
+    const lista = parecidos(f).map(itemDeSimilitud);
+    const visibles = lista.slice(0, ST.pagina * POR_PAGINA);
+    const zonas = Array.from(new Set(lista.map(x => x.fila.zonaLabel)));
+    return `
+      <div class="flex flex-wrap items-center gap-2 mb-3">
+        <button type="button" onclick="SGADD_FICHAJES.irA('radiografia')"
+          class="text-[11px] px-3 py-1.5 rounded border border-hairline text-muted hover:text-ink hover:bg-surface2">← Radiografía</button>
+        <button type="button" onclick="SGADD_FICHAJES.irA('buscar')"
+          class="text-[11px] px-3 py-1.5 rounded border border-hairline text-muted hover:text-ink hover:bg-surface2">Resultados</button>
+      </div>
+      ${badgePeriodo()}
+      <section class="card rounded-xl border border-hairline p-4 sm:p-5 mb-4">
+        <p class="text-[10px] uppercase tracking-widest font-display text-accent">Parecidos en todo el torneo</p>
+        <h3 class="font-display uppercase tracking-wide text-lg text-ink">${esc(f.nombre)}</h3>
+        <p class="text-[11px] text-muted">${esc(f.equipo)} · ${esc(f.zonaLabel)} · ${esc(f._adn.rolFuncional ? f._adn.rolFuncional.label : '—')}</p>
+        <p class="text-[11px] dato-sec mt-2">Similitud por etiquetas: función en cancha 50 %, perfiles técnicos 30 %, jerarquía 20 %,
+          entre jugadores con minutos y uso comparables. Se muestran los que llegan al ${Math.round(M.PISO_COINCIDENCIA * 100)} %,
+          de todas las zonas (cada uno etiquetado contra la suya). ${lista.length} jugador${lista.length === 1 ? '' : 'es'}${zonas.length ? ' · ' + esc(zonas.join(', ')) : ''}.</p>
+      </section>
+      ${visibles.length
+        ? `<ul class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">${visibles.map(x => tarjeta(x.fila, x)).join('')}</ul>`
+        : `<div class="card rounded-xl p-6 border border-hairline text-center text-sm text-muted">Nadie del torneo llega al ${Math.round(M.PISO_COINCIDENCIA * 100)} % de similitud con volumen comparable.</div>`}
+      ${lista.length > visibles.length ? `<div class="text-center mt-4"><button type="button" onclick="SGADD_FICHAJES.verMas()"
+          class="text-xs px-4 py-2 rounded border border-hairline text-muted hover:text-ink hover:bg-surface2">
+          Ver ${Math.min(POR_PAGINA, lista.length - visibles.length)} más (${lista.length - visibles.length} restantes)</button></div>` : ''}`;
   }
 
   /* ---------------------------------------------------------------------
@@ -1449,6 +1634,16 @@ const SGADD_FICHAJES = (function () {
 
   function limpiarRangos() { ST.crit.rangos = {}; pintar(); }
 
+  /** Un rango OBLIGATORIO descarta; uno común resta puntos (punto 91). */
+  function fijarRangoDuro(k, duro) {
+    if (!ST.crit.rangos[k]) return;
+    ST.crit.rangos[k] = Object.assign({}, ST.crit.rangos[k], { duro: !!duro });
+    ST.pagina = 1;
+    pintar();
+  }
+
+  function buscarParecidos(id) { ST.abierto = id; ST.pagina = 1; irA('parecidos'); }
+
   /* EL PERÍODO. Cada cambio arma (o toma del caché) la vista de cada zona
      y repinta: la búsqueda, el radar y la tendencia salen de esa muestra. */
   function fijarPeriodo(campo, valor) {
@@ -1651,7 +1846,7 @@ const SGADD_FICHAJES = (function () {
   return {
     iniciar, montar, pintar, elegirTorneo, irA, abrir, buscarTexto, alternar, fijar, fijarEquipo,
     recordarFiltros, fijarRango, agregarRango, limpiarRangos, limpiarTodo, ordenarPor, invertirOrden,
-    fijarPeriodo, quitarPeriodo,
+    fijarPeriodo, quitarPeriodo, fijarRangoDuro, buscarParecidos,
     verMas, alternarComparar, vaciarComparar, editarFicha, guardarFicha, enviarAcceso, editarAcceso,
     guardarAcceso, exportar, radarSvg, sparkSvg, estado: ST,
   };

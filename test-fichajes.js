@@ -300,6 +300,111 @@ sheets.obtenerLibro = async (id) => {
   };
 };
 
+
+titulo('1 quater. EL % DE COINCIDENCIA (punto 91) · puertas duras y puntaje');
+
+{
+  const CTX = {
+    ejes: { 'generador-primario': 'creacion', 'manejador-secundario': 'creacion', 'slasher': 'penetracion', 'spacing': 'tiro' },
+    bandasMinutos: [{ id: 'clave', min: 25, max: Infinity }, { id: 'importante', min: 20, max: 25 },
+      { id: 'rotacion', min: 15, max: 20 }, { id: 'pocos', min: -Infinity, max: 15 }],
+    ordenJerarquia: ['franquicia', 'referente', 'quinteto', 'especialista'],
+    percentilDe: (f, k, v) => k.indexOf('tot:') === 0 ? null : v * 100,   // lineal; los totales sin distribución
+  };
+  const fila = (o) => Object.assign({ califica: true, zona: 'a', equipo: 'X', nombre: 'N', rol: 'slasher', secundarios: [],
+    origen: 'perimetral', arquetipos: [], cercania: {}, jerarquia: 'especialista', rolMinutos: 'rotacion',
+    m: { MIN: 18, PJ: 12, 'tot:TCI': 90 }, pc: {} }, o);
+
+  const P = M.PESOS_COINCIDENCIA;
+  check('los pesos aprobados: función 35 · perfiles 25 · rangos 15 · minutos 15 · jerarquía 10, y suman 100',
+    P.funcion === 0.35 && P.perfiles === 0.25 && P.rangos === 0.15 && P.minutos === 0.15 && P.jerarquia === 0.10
+    && Math.abs(P.funcion + P.perfiles + P.rangos + P.minutos + P.jerarquia - 1) < 1e-9);
+  check('el piso es 60 %', M.PISO_COINCIDENCIA === 0.6);
+
+  const fn = (f, roles, sec) => M.coincidencia(f, { roles: roles, incluirSecundarios: sec !== false }, CTX).pct;
+  check('función: el mismo rol suma entero', fn(fila({}), ['slasher']) === 1);
+  check('función: la faceta secundaria 60 %', fn(fila({ rol: 'spacing', secundarios: ['slasher'] }), ['slasher']) === 0.6);
+  check('función: sin contar secundarias, la secundaria no da el 60 %',
+    fn(fila({ rol: 'spacing', secundarios: ['slasher'] }), ['slasher'], false) === 0.25);
+  check('función: el mismo eje 50 %', fn(fila({ rol: 'manejador-secundario' }), ['generador-primario']) === 0.5);
+  check('función: el mismo lado 25 % (único rastro de biotipo sin puesto ni talla)',
+    fn(fila({ rol: 'spacing', origen: 'perimetral' }), ['slasher']) === 0.25);
+  check('función: un interior contra un rol perimetral no suma',
+    fn(fila({ rol: 'poste-bajo', origen: 'interior' }), ['slasher']) === 0);
+  check('función: con varios roles pedidos vale el mejor', fn(fila({}), ['spacing', 'slasher']) === 1);
+
+  const pf = (f, a) => M.coincidencia(f, { arquetipos: a }, CTX).pct;
+  check('perfiles: los tiene todos → 100 %', pf(fila({ arquetipos: ['generador', 'amenaza'] }), ['generador', 'amenaza']) === 1);
+  check('perfiles: uno de más no resta', pf(fila({ arquetipos: ['generador', 'puntal'] }), ['generador']) === 1);
+  check('perfiles: al que le falta uno se le reconoce su cercanía al corte',
+    Math.abs(pf(fila({ arquetipos: ['generador'], cercania: { amenaza: 0.86 } }), ['generador', 'amenaza']) - 0.93) < 1e-9);
+  check('perfiles: la cercanía tiene tope 90 % aunque el dato diga más',
+    pf(fila({ cercania: { amenaza: 1 } }), ['amenaza']) === 0.9);
+  check('y el detalle dice qué le falta y a qué distancia',
+    /le falta amenaza \(86 % del corte\)/.test(M.coincidencia(fila({ cercania: { amenaza: 0.86 } }), { arquetipos: ['amenaza'] }, CTX).faltan[0]));
+
+  const mn = (f, b) => M.coincidencia(f, { rolesMinutos: b }, CTX).pct;
+  check('minutos: la misma banda 100 %', mn(fila({}), ['rotacion']) === 1);
+  check('minutos: la banda de al lado 50 %', mn(fila({ rolMinutos: 'importante', m: { MIN: 23 } }), ['rotacion']) === 0.5);
+  check('minutos: a menos de 2 minutos del borde 75 %', mn(fila({ rolMinutos: 'importante', m: { MIN: 20.9 } }), ['rotacion']) === 0.75);
+  check('minutos: dos bandas de distancia no suma', mn(fila({ rolMinutos: 'clave', m: { MIN: 30 } }), ['rotacion']) === 0);
+
+  const jr = (f, j) => M.coincidencia(f, { jerarquias: j }, CTX).pct;
+  check('jerarquía: la misma 100 %, la de al lado 50 %, más lejos 0',
+    jr(fila({}), ['especialista']) === 1 && jr(fila({ jerarquia: 'quinteto' }), ['especialista']) === 0.5
+    && jr(fila({ jerarquia: 'franquicia' }), ['especialista']) === 0);
+
+  const rg = (f, r) => M.coincidencia(f, { rangos: r }, CTX).pct;
+  check('rangos: adentro suma entero', rg(fila({ pc: { 'TS%': 80 } }), { 'TS%': { pc: true, min: 75 } }) === 1);
+  check('rangos: afuera resta por la distancia en percentiles (10 puntos → 60 %)',
+    Math.abs(rg(fila({ pc: { 'TS%': 65 } }), { 'TS%': { pc: true, min: 75 } }) - 0.6) < 1e-9);
+  check('rangos por valor: la distancia se mide en el percentil de SU zona',
+    Math.abs(rg(fila({ m: { MIN: 18, 'TS%': 0.50 } }), { 'TS%': { min: 0.55 } }) - 0.8) < 1e-9);
+  check('rangos: sin el dato no suma', rg(fila({}), { 'TS%': { pc: true, min: 75 } }) === 0);
+  check('rangos: un total (sin percentil) usa la distancia relativa',
+    Math.abs(rg(fila({ m: { MIN: 18, 'tot:T3I': 90 } }), { 'tot:T3I': { min: 100 } }) - 0.6) < 1e-9);
+
+  const todo = M.coincidencia(fila({}), { roles: ['slasher'], jerarquias: ['franquicia'] }, CTX);
+  check('se normaliza sobre lo que se PIDIÓ: función 35 + jerarquía 10',
+    Math.abs(todo.pct - 0.35 / 0.45) < 1e-9 && todo.partes.length === 2);
+  check('sin nada puntuable, no hay %', M.coincidencia(fila({}), {}, CTX).pct === null);
+
+  const pool = [
+    fila({ nombre: 'A', rol: 'slasher', m: { MIN: 18, PJ: 4, 'tot:TCI': 20 } }),
+    fila({ nombre: 'B', rol: 'slasher', m: { MIN: 18, PJ: 14, 'tot:TCI': 120 } }),
+    fila({ nombre: 'C', rol: 'poste-bajo', origen: 'interior' }),
+    fila({ nombre: 'D', rol: 'slasher', califica: false }),
+  ];
+  const ev = M.evaluar(pool, { roles: ['slasher'], soloCalificados: true }, CTX);
+  check('evaluar: el que no llega al piso queda afuera y se cuenta', ev.items.length === 2 && ev.bajoPiso === 1);
+  check('evaluar: la muestra mínima es PUERTA (no suma, descarta)', !ev.items.some(x => x.fila.nombre === 'D'));
+  check('evaluar: con el mismo %, primero el de más confianza', ev.items[0].fila.nombre === 'B' && ev.items[1].fila.nombre === 'A');
+  check('evaluar: un rango COMÚN no descarta: resta, y a 10 percentiles queda en el piso (60 %)',
+    M.evaluar([fila({ pc: { 'TS%': 65 } })], { rangos: { 'TS%': { pc: true, min: 75 } } }, CTX).items.length === 1);
+  check('evaluar: un rango OBLIGATORIO descarta en vez de restar',
+    M.evaluar([fila({ pc: { 'TS%': 65 } })], { rangos: { 'TS%': { pc: true, min: 75, duro: true } } }, CTX).items.length === 0);
+  const sinP = M.evaluar(pool, { soloCalificados: true }, CTX);
+  check('evaluar: sin criterios puntuables pasan todos los de las puertas, sin %',
+    sinP.items.length === 3 && !sinP.puntua && sinP.items.every(x => x.coinc.pct === null));
+  check('filtrar sin opciones sigue siendo todo filtro duro (compatibilidad)',
+    M.filtrar(pool, { roles: ['slasher'] }).filas.length === 3
+    && M.filtrar(pool, { roles: ['slasher'] }, { soloPuertas: true }).filas.length === 4);
+
+  check('confianza: alta (10+ PJ, 15+ min, 60+ tiros), media (5+ PJ, 8+ min), baja',
+    M.confianza(fila({ m: { PJ: 12, MIN: 18, 'tot:TCI': 90 } })).id === 'alta'
+    && M.confianza(fila({ m: { PJ: 6, MIN: 9, 'tot:TCI': 20 } })).id === 'media'
+    && M.confianza(fila({ m: { PJ: 3, MIN: 20, 'tot:TCI': 30 } })).id === 'baja');
+  check('y dice de dónde sale', /12 PJ · 18,0 min · 90 tiros de campo/.test(M.confianza(fila({ m: { PJ: 12, MIN: 18, 'tot:TCI': 90 } })).motivo));
+
+  const anid = [fila({ jerarquia: 'franquicia', rolMinutos: 'clave' }), fila({ jerarquia: 'especialista', rolMinutos: 'pocos' }),
+    fila({ jerarquia: 'especialista', rolMinutos: 'rotacion' })];
+  const cf = M.conteosFacetas(anid, { rolesMinutos: ['rotacion'] });
+  check('facetas: minutos y jerarquía se cuentan CRUZADOS (Franquicia + Rotación = 0)',
+    !cf.jerarquias.franquicia && cf.jerarquias.especialista === 1);
+  const cf2 = M.conteosFacetas(anid, { jerarquias: ['franquicia'] });
+  check('y al revés: con Franquicia elegida, Pocos Minutos queda en 0', !cf2.rolesMinutos.pocos && cf2.rolesMinutos.clave === 1);
+}
+
 const auth = require('./server/lib/auth.js');
 const catalogo = require('./server/lib/catalogo.js');
 const F = require('./server/api/fichajes.js');
@@ -454,6 +559,19 @@ const sinSheetId = (body) => !/SHEET_[A-Z]+_\d+/.test(JSON.stringify(body));
     (ui.match(/M\.metricasPorGrupo\(/g) || []).length === 2 && /Contra su zona<\/th>/.test(ui));
   check('en Comparar cada celda trae volumen del acierto, barra y percentil, como la Radiografía',
     /function vistaComparar[\s\S]{0,4000}volumenDeAcierto\(f, k\)[\s\S]{0,400}barraPc\(f\.pc\[k\]\)/.test(ui));
+  check('el panel va de lo general a lo particular: 1 Zona y período → 2 Muestra → 3 Minutos → 4 Jerarquía → 5 Función → 6 Perfiles → 7 Rangos',
+    [/encabezadoNivel\('1', 'Zona y período'/, /encabezadoNivel\('2', 'Muestra mínima'/, /nivelFiltro\('3', 'Rol por minutos'/,
+      /nivelFiltro\('4', 'Jerarquía en su plantel'/, /nivelFiltro\('5', 'Función en cancha'/, /nivelFiltro\('6', 'Perfiles técnicos'/,
+      /encabezadoNivel\('7', 'Rangos de métricas'/].map(re => ui.search(re)).every((i, n, l) => i > 0 && (n === 0 || i > l[n - 1])));
+  check('la búsqueda usa puertas + % de coincidencia, y la card lo muestra con la confianza aparte',
+    /M\.evaluar\(todas, ST\.crit, ctxCoincidencia\(\)\)/.test(ui) && /\$\{lineaCoincidencia\(item, f\)\}/.test(ui) && /Confianza \$\{/.test(ui));
+  check('las opciones llevan su conteo y la combinación imposible se deshabilita',
+    /M\.conteosFacetas\(pool, c\)/.test(ui) && /vacia \? 'disabled aria-disabled="true"'/.test(ui));
+  check('un rango se puede marcar obligatorio', /fijarRangoDuro\(/.test(ui) && /> obligatorio<\/label>/.test(ui));
+  check('la cercanía de los perfiles sale del MISMO motor que los etiqueta', /jugadoresCercaniaPerfil\(p, j, prom\)/.test(ui));
+  check('la Radiografía tiene «Buscar parecidos en todo el torneo», con la similitud del punto 58 y el mismo piso',
+    /SGADD_FICHAJES\.buscarParecidos\(/.test(ui) && /Buscar parecidos en todo el torneo/.test(ui)
+    && /function parecidos[\s\S]{0,400}jugadoresSimilitud\(f\._adn, x\._adn\)[\s\S]{0,200}M\.PISO_COINCIDENCIA/.test(ui));
   check('la card muestra el volumen al lado del acierto', /function lineaVolumen/.test(ui) && /\$\{lineaVolumen\(f\)\}/.test(ui));
   check('la card rotula el tiro de campo con su familia de más intentos: «TC - T2» / «TC - T3»',
     /M\.tiroPredominante\(f\.vol\)/.test(ui) && /'TC - ' \+ id/.test(ui));
@@ -479,8 +597,8 @@ const sinSheetId = (body) => !/SHEET_[A-Z]+_\d+/.test(JSON.stringify(body));
   check('reconstruido, AST% YA NO se blanquea: el núcleo da el de la planilla (punto 24)',
     !/m\['AST%'\] = null/.test(ui) && !/AST% no se calcula/.test(ui) && !/k === 'AST%'/.test(ui));
   check('una zona que no jugó el tramo queda afuera y se dice', /fueraDeTramo: true/.test(ui) && /no jugó ese tramo/.test(ui));
-  check('el badge de muestra parcial sale en la búsqueda, la Radiografía y el PDF',
-    (ui.match(/\$\{badgePeriodo\(\)\}/g) || []).length === 1 && /badgePeriodo\(\) \+ buscador/.test(ui) && /\$\{badgePeriodo\(true\)\}/.test(ui));
+  check('el badge de muestra parcial sale en la búsqueda, la Radiografía, los parecidos y el PDF',
+    (ui.match(/\$\{badgePeriodo\(\)\}/g) || []).length === 2 && /badgePeriodo\(\) \+ buscador/.test(ui) && /\$\{badgePeriodo\(true\)\}/.test(ui));
   check('el badge dice cuántos partidos se analizaron y cuántos jugadores quedaron afuera',
     /partido\$\{r\.partidos === 1 \? '' : 's'\} analizado/.test(ui) && /sin partidos en el período quedaron afuera/.test(ui));
   check('los controles: fase y calendario Desde/Hasta acotado a los días del libro',

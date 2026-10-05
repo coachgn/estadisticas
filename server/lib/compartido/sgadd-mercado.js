@@ -374,8 +374,13 @@ const SGADD_MERCADO = (function () {
    * pida `{ pc: true }`: «TS% ≥ 55» es lo que escribe un entrenador, y
    * «en el 20 % de arriba de su zona» es la otra pregunta, igual de útil.
    */
-  function filtrar(filas, criterios) {
+  function filtrar(filas, criterios, opciones) {
     const c = criterios || {};
+    /* `soloPuertas`: solo los FILTROS DUROS (punto 91). Función, jerarquía,
+       minutos, perfiles y los rangos que no se marcaron obligatorios no
+       descartan: suman al % de coincidencia (`evaluar`). Sin la opción,
+       todo sigue siendo filtro duro, como antes. */
+    const puertas = !!(opciones && opciones.soloPuertas);
     const q = sinAcentos(c.texto).trim();
     const out = [];
     let sinDato = 0;
@@ -384,13 +389,13 @@ const SGADD_MERCADO = (function () {
       if (c.soloCalificados && !f.califica) return;
       if (!enLista(c.zonas, f.zona)) return;
       if (!enLista(c.equipos, f.equipo)) return;
-      if (c.roles && c.roles.length && c.roles.indexOf(f.rol) === -1
+      if (!puertas && c.roles && c.roles.length && c.roles.indexOf(f.rol) === -1
           && !(c.incluirSecundarios && (f.secundarios || []).some(s => c.roles.indexOf(s) !== -1))) return;
-      if (!enLista(c.jerarquias, f.jerarquia)) return;
-      if (!enLista(c.rolesMinutos, f.rolMinutos)) return;
+      if (!puertas && !enLista(c.jerarquias, f.jerarquia)) return;
+      if (!puertas && !enLista(c.rolesMinutos, f.rolMinutos)) return;
       if (c.origen && f.origen !== c.origen) return;
       /* Arquetipos: los pedidos TODOS (es un perfil, no un menú). */
-      if (c.arquetipos && c.arquetipos.length
+      if (!puertas && c.arquetipos && c.arquetipos.length
           && !c.arquetipos.every(a => (f.arquetipos || []).indexOf(a) !== -1)) return;
 
       let falta = false;
@@ -420,6 +425,7 @@ const SGADD_MERCADO = (function () {
       const rangos = c.rangos || {};
       for (const k of Object.keys(rangos)) {
         const r = rangos[k];
+        if (puertas && !(r && r.duro)) continue;
         const v = r && r.pc ? num((f.pc || {})[k]) : num((f.m || {})[k]);
         if (!rango(v, r)) return;
       }
@@ -427,6 +433,245 @@ const SGADD_MERCADO = (function () {
       out.push(f);
     });
     return { filas: out, sinDato: sinDato };
+  }
+
+  /* =====================================================================
+     EL % DE COINCIDENCIA (punto 91)
+
+     PUERTAS DURAS: zona, período (la vista), muestra mínima, el texto, el
+     equipo, «juega», la ficha manual y los rangos marcados OBLIGATORIOS.
+     Todo lo demás SUMA:
+
+        coincidencia = Σ peso·puntaje / Σ peso      — solo lo que se pidió
+
+     Por qué estos pesos: la FUNCIÓN dice qué va a hacer en tu sistema y es
+     lo único que viaja de un equipo a otro; los PERFILES son rasgos de
+     calidad y la mitad del torneo no tiene ninguno; MINUTOS y JERARQUÍA
+     dependen de su plantel y de su DT, no de él — como filtro duro
+     esconden al Especialista de élite de un plantel profundo, que es el
+     fichaje subvaluado que se sale a buscar.
+     ===================================================================== */
+  const PESOS_COINCIDENCIA = { funcion: 0.35, perfiles: 0.25, rangos: 0.15, minutos: 0.15, jerarquia: 0.10 };
+  const PISO_COINCIDENCIA = 0.60;
+  const NIVELES_COINCIDENCIA = [
+    { id: 'funcion', label: 'Función en cancha' }, { id: 'perfiles', label: 'Perfiles técnicos' },
+    { id: 'rangos', label: 'Rangos de métricas' }, { id: 'minutos', label: 'Rol por minutos' },
+    { id: 'jerarquia', label: 'Jerarquía' },
+  ];
+  /* De qué lado juega cada rol: es el único rastro de biotipo sin puesto
+     ni talla, y por eso pesa poco (0,25) adentro de la función. Los tres
+     sin lado (generador, manejador, complementario) no aportan ese 0,25. */
+  const ORIGEN_ROL = {
+    'finalizador-corto': 'interior', 'ancla-defensiva': 'interior', 'rim-runner': 'interior', 'poste-bajo': 'interior',
+    'spacing': 'perimetral', 'slasher': 'perimetral', 'perimetral-media': 'perimetral',
+  };
+  /* El borde de una banda de minutos: el que promedia 24 está a uno de
+     «Clave»; a menos de 2 minutos de una banda pedida vale 0,75 y no el
+     0,5 de la banda de al lado. */
+  const BORDE_MINUTOS = 2;
+  /* Fuera de un rango, el puntaje cae 0,04 por punto de percentil: a 25
+     puntos de distancia ya es cero. */
+  const ESCALA_PC_RANGO = 25;
+
+  function rangoActivo(r) {
+    return !!r && (typeof r.min === 'number' || typeof r.max === 'number');
+  }
+  function rangosPuntuables(c) {
+    return Object.keys((c && c.rangos) || {}).filter(k => rangoActivo(c.rangos[k]) && !c.rangos[k].duro);
+  }
+
+  function hayCriteriosPuntuables(c) {
+    c = c || {};
+    return !!((c.roles && c.roles.length) || (c.arquetipos && c.arquetipos.length)
+      || (c.rolesMinutos && c.rolesMinutos.length) || (c.jerarquias && c.jerarquias.length)
+      || rangosPuntuables(c).length);
+  }
+
+  /** Función: 1 mismo rol · 0,6 su faceta secundaria · 0,5 mismo eje · 0,25 mismo lado · 0. */
+  function puntajeFuncion(f, pedidos, ctx, conSecundarios) {
+    const ejes = (ctx && ctx.ejes) || {};
+    let mejor = 0;
+    pedidos.forEach(r => {
+      let p = 0;
+      if (f.rol === r) p = 1;
+      else if (conSecundarios !== false && (f.secundarios || []).indexOf(r) !== -1) p = 0.6;
+      else if (ejes[r] && ejes[r] === ejes[f.rol]) p = 0.5;
+      else if (ORIGEN_ROL[r] && f.origen && ORIGEN_ROL[r] === f.origen) p = 0.25;
+      if (p > mejor) mejor = p;
+    });
+    return mejor;
+  }
+
+  /** Perfiles: la parte de los pedidos que tiene (uno de más no resta); el que le falta, por su cercanía (tope 0,9). */
+  function puntajePerfiles(f, pedidos) {
+    const tiene = f.arquetipos || [], cerca = f.cercania || {};
+    let suma = 0;
+    pedidos.forEach(a => { suma += tiene.indexOf(a) !== -1 ? 1 : Math.max(0, Math.min(0.9, num(cerca[a]) || 0)); });
+    return pedidos.length ? suma / pedidos.length : 0;
+  }
+
+  /** Ordinal: 1 el mismo · 0,5 el de al lado · 0. Contra el más cercano de los pedidos. */
+  function puntajeOrdinal(orden, valor, pedidos) {
+    const i = orden.indexOf(valor);
+    if (i < 0) return 0;
+    let mejor = 0;
+    pedidos.forEach(p => {
+      const j = orden.indexOf(p);
+      if (j < 0) return;
+      const d = Math.abs(j - i);
+      const v = d === 0 ? 1 : d === 1 ? 0.5 : 0;
+      if (v > mejor) mejor = v;
+    });
+    return mejor;
+  }
+
+  /** Minutos: como el ordinal, y a menos de BORDE_MINUTOS de una banda pedida vale 0,75. */
+  function puntajeMinutos(f, pedidos, ctx) {
+    const bandas = (ctx && ctx.bandasMinutos) || [];
+    let p = puntajeOrdinal(bandas.map(b => b.id), f.rolMinutos, pedidos);
+    const min = num((f.m || {}).MIN);
+    if (p < 0.75 && min !== null) {
+      pedidos.forEach(id => {
+        const b = bandas.filter(x => x.id === id)[0];
+        if (!b) return;
+        const desde = typeof b.min === 'number' && isFinite(b.min) ? b.min : -Infinity;
+        const hasta = typeof b.max === 'number' && isFinite(b.max) ? b.max : Infinity;
+        const dist = min < desde ? desde - min : min >= hasta ? min - hasta : 0;
+        if (dist <= BORDE_MINUTOS) p = 0.75;
+      });
+    }
+    return p;
+  }
+
+  /** Un rango: 1 adentro; afuera, cae con la distancia en percentiles al borde. */
+  function puntajeRango(f, k, r, ctx) {
+    const v = r.pc ? num((f.pc || {})[k]) : num((f.m || {})[k]);
+    if (v === null) return { p: 0, sinDato: true };
+    const lo = typeof r.min === 'number' ? r.min : null, hi = typeof r.max === 'number' ? r.max : null;
+    if ((lo === null || v >= lo) && (hi === null || v <= hi)) return { p: 1 };
+    const borde = lo !== null && v < lo ? lo : hi;
+    let dpc = null;
+    if (r.pc) dpc = Math.abs(v - borde);
+    else if (ctx && ctx.percentilDe) {
+      const a = ctx.percentilDe(f, k, v), b = ctx.percentilDe(f, k, borde);
+      if (typeof a === 'number' && typeof b === 'number') dpc = Math.abs(a - b);
+    }
+    /* Sin distribución (los totales del tramo, que no tienen percentil):
+       la distancia RELATIVA; a 25 % del borde ya es cero. */
+    if (dpc === null) {
+      const rel = Math.abs(v - borde) / Math.max(Math.abs(borde), 1e-9);
+      return { p: Math.max(0, 1 - rel / 0.25) };
+    }
+    return { p: Math.max(0, 1 - dpc / ESCALA_PC_RANGO) };
+  }
+
+  /**
+   * El % de coincidencia de UNA fila contra lo pedido:
+   * `{ pct, partes: [{id, label, peso, puntaje, detalle}], faltan: [textos] }`.
+   * `pct` es null si no se pidió nada puntuable. `ctx` es
+   * `{ ejes, bandasMinutos, ordenJerarquia, percentilDe, etiquetas }`, y lo
+   * arma la UI: el motor no conoce los catálogos de etiquetas.
+   */
+  function coincidencia(f, crit, ctx) {
+    const c = crit || {}, P = PESOS_COINCIDENCIA, E = (ctx && ctx.etiquetas) || {};
+    const nom = (id) => E[id] || id || '—';
+    const partes = [];
+    if (c.roles && c.roles.length) {
+      const p = puntajeFuncion(f, c.roles, ctx, c.incluirSecundarios);
+      partes.push({ id: 'funcion', peso: P.funcion, puntaje: p,
+        detalle: p === 1 ? nom(f.rol) : p === 0.6 ? 'la tiene como faceta secundaria'
+          : p === 0.5 ? 'mismo eje de juego (' + nom(f.rol) + ')'
+          : p === 0.25 ? 'juega del mismo lado (' + nom(f.rol) + ')' : 'es ' + nom(f.rol) });
+    }
+    if (c.arquetipos && c.arquetipos.length) {
+      const p = puntajePerfiles(f, c.arquetipos);
+      const faltan = c.arquetipos.filter(a => (f.arquetipos || []).indexOf(a) === -1);
+      partes.push({ id: 'perfiles', peso: P.perfiles, puntaje: p,
+        detalle: faltan.length
+          ? 'le falta ' + faltan.map(a => nom(a) + ' (' + Math.round((num((f.cercania || {})[a]) || 0) * 100) + ' % del corte)').join(', ')
+          : 'tiene todos' });
+    }
+    const rangos = rangosPuntuables(c);
+    if (rangos.length) {
+      let suma = 0; const fuera = [];
+      rangos.forEach(k => {
+        const r = puntajeRango(f, k, c.rangos[k], ctx);
+        suma += r.p;
+        if (r.p < 1) fuera.push(nom(k) + (r.sinDato ? ' (sin dato)' : ''));
+      });
+      partes.push({ id: 'rangos', peso: P.rangos, puntaje: suma / rangos.length,
+        detalle: fuera.length ? 'fuera de rango: ' + fuera.join(', ') : 'todos en rango' });
+    }
+    if (c.rolesMinutos && c.rolesMinutos.length) {
+      partes.push({ id: 'minutos', peso: P.minutos, puntaje: puntajeMinutos(f, c.rolesMinutos, ctx), detalle: nom(f.rolMinutos) });
+    }
+    if (c.jerarquias && c.jerarquias.length) {
+      partes.push({ id: 'jerarquia', peso: P.jerarquia,
+        puntaje: puntajeOrdinal((ctx && ctx.ordenJerarquia) || [], f.jerarquia, c.jerarquias), detalle: nom(f.jerarquia) });
+    }
+    if (!partes.length) return { pct: null, partes: [], faltan: [] };
+    let suma = 0, den = 0;
+    partes.forEach(x => {
+      x.label = (NIVELES_COINCIDENCIA.filter(n => n.id === x.id)[0] || {}).label || x.id;
+      suma += x.peso * x.puntaje; den += x.peso;
+    });
+    return { pct: suma / den, partes: partes,
+      faltan: partes.filter(x => x.puntaje < 1).map(x => x.label + ': ' + x.detalle) };
+  }
+
+  /**
+   * LA CONFIANZA va APARTE del puntaje (punto 4: el dato se muestra, con
+   * menos autoridad visual). Alta: 10+ PJ, 15+ min y 60+ tiros de campo
+   * en el tramo. Media: 5+ PJ y 8+ min. Baja: el resto.
+   */
+  const CONFIANZA = { alta: { pj: 10, min: 15, tci: 60 }, media: { pj: 5, min: 8 } };
+  function confianza(f) {
+    const m = f.m || {};
+    const pj = num(m.PJ) || 0, min = num(m.MIN) || 0;
+    const tci = num(m['tot:TCI']) !== null ? m['tot:TCI'] : (num((f.volTot || {}).TCI) || 0);
+    const motivo = pj + ' PJ · ' + decimal(min, 1) + ' min · ' + Math.round(tci) + ' tiros de campo en el tramo';
+    if (pj >= CONFIANZA.alta.pj && min >= CONFIANZA.alta.min && tci >= CONFIANZA.alta.tci) return { id: 'alta', rango: 3, label: 'Alta', motivo: motivo };
+    if (pj >= CONFIANZA.media.pj && min >= CONFIANZA.media.min) return { id: 'media', rango: 2, label: 'Media', motivo: motivo };
+    return { id: 'baja', rango: 1, label: 'Baja', motivo: motivo };
+  }
+
+  /**
+   * Puertas + puntaje: `{ items: [{fila, coinc, conf}], bajoPiso, sinDato,
+   * puntua }`. Con criterios puntuables quedan los de pct ≥ piso, por
+   * coincidencia y, al empate, por confianza. Sin ellos, todos los que
+   * pasan las puertas y en el orden en que llegaron.
+   */
+  function evaluar(filas, crit, ctx, piso) {
+    const r = filtrar(filas, crit, { soloPuertas: true });
+    const puntua = hayCriteriosPuntuables(crit);
+    const corte = typeof piso === 'number' ? piso : PISO_COINCIDENCIA;
+    let bajoPiso = 0;
+    const items = [];
+    r.filas.forEach(f => {
+      const coinc = coincidencia(f, crit, ctx);
+      if (puntua && coinc.pct < corte - 1e-9) { bajoPiso++; return; }
+      items.push({ fila: f, coinc: coinc, conf: confianza(f) });
+    });
+    if (puntua) items.sort((a, b) => (b.coinc.pct - a.coinc.pct) || (b.conf.rango - a.conf.rango));
+    return { items: items, bajoPiso: bajoPiso, sinDato: r.sinDato, puntua: puntua };
+  }
+
+  /**
+   * Cuántos del universo (ya pasado por las puertas) tienen cada opción.
+   * Minutos y jerarquía se cuentan CRUZADOS con lo elegido en el otro:
+   * están anidados (todo Franquicia es Clave; todo Pocos es Especialista),
+   * así que una opción en 0 es una combinación que no existe.
+   */
+  function conteosFacetas(pool, crit) {
+    const c = crit || {};
+    const out = { rolesMinutos: {}, jerarquias: {}, roles: {}, arquetipos: {} };
+    (pool || []).forEach(f => {
+      if (enLista(c.jerarquias, f.jerarquia) && f.rolMinutos) out.rolesMinutos[f.rolMinutos] = (out.rolesMinutos[f.rolMinutos] || 0) + 1;
+      if (enLista(c.rolesMinutos, f.rolMinutos) && f.jerarquia) out.jerarquias[f.jerarquia] = (out.jerarquias[f.jerarquia] || 0) + 1;
+      if (f.rol) out.roles[f.rol] = (out.roles[f.rol] || 0) + 1;
+      (f.arquetipos || []).forEach(a => { out.arquetipos[a] = (out.arquetipos[a] || 0) + 1; });
+    });
+    return out;
   }
 
   /**
@@ -606,6 +851,8 @@ const SGADD_MERCADO = (function () {
     SERVICIO, PUESTOS, POSICIONES, POR_POSICION, TALLA_MIN, TALLA_MAX, CLAVE_VALIDA,
     idPosicion, cubre, normalizarFicha, edad,
     VOLUMEN_TIRO, COLUMNAS_VOLUMEN, textoVolumen, tiroPredominante, GRUPOS_METRICAS, metricasPorGrupo,
+    PESOS_COINCIDENCIA, PISO_COINCIDENCIA, NIVELES_COINCIDENCIA, ORIGEN_ROL, CONFIANZA,
+    coincidencia, confianza, evaluar, conteosFacetas, hayCriteriosPuntuables,
     torneosDelCatalogo, torneosHabilitados, normalizarEmail, normalizarHabilitacion,
     METRICAS_FILTRO, IDS_FILTRO, EJES_RADAR, ejesRadar,
     filtrar, ordenar, mejorPorMetrica,
