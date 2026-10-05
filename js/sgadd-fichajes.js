@@ -54,7 +54,7 @@ const SGADD_FICHAJES = (function () {
   function criteriosVacios() {
     return { texto: '', zonas: [], equipos: [], roles: [], incluirSecundarios: true,
       jerarquias: [], rolesMinutos: [], arquetipos: [], origen: null,
-      soloCalificados: true, rangos: {}, edad: {}, talla: {}, posiciones: [] };
+      soloCalificados: true, rangos: {}, edad: {}, talla: {}, posiciones: [], puestosSecundarios: true };
   }
 
   const esc = (v) => SGADD_UI.esc(v);
@@ -160,8 +160,11 @@ const SGADD_FICHAJES = (function () {
     const f = zona.fichas && zona.fichas[clave];
     if (!f || !Object.keys(f).some(k => k === 'nacimiento' || k === 'posicion' || k === 'talla')) return null;
     const e = f.nacimiento ? M.edad(f.nacimiento) : null;
+    /* La escala de nueve; una ficha de la escala vieja (nombre + secundaria)
+       se lee plegada al híbrido, sin reescribirla en KV. */
+    const pos = M.idPosicion(f.posicion, f.secundaria);
     return { nacimiento: f.nacimiento || null, edad: e ? e.anios : null, edadAprox: !!(e && e.aproximada),
-      posicion: f.posicion || null, secundaria: f.secundaria || null,
+      posicion: pos || null,
       talla: typeof f.talla === 'number' ? f.talla : null };
   }
 
@@ -175,12 +178,36 @@ const SGADD_FICHAJES = (function () {
       const adn = adnMapa.get(j);
       if (!adn) return;
       const clave = claveDe(j['NOMBRES'], j['EQUIPO']);
+      /* LOS TOTALES DEL TRAMO. De `ACUMULADO J` (`__acum`) si está, y si no,
+         la SUMA de su log partido a partido con SU equipo. La demo trae
+         `ACUMULADO J` para 16 de 260 jugadores; el log está para todos y
+         cierra exacto (medido: 555 tiros de campo = 17,34 × 32 PJ). Con el
+         equipo filtrado, por el homónimo del punto 86. No tienen
+         percentil: son el tamaño de la muestra, no un rendimiento. */
+      const eqClave = SGADD.claveEquipo(j['EQUIPO']);
+      const log = (idx.liga.jugadorPartidos.get(j.__clave) || []).filter(p => p.__equipo === eqClave);
+      const total = (col) => {
+        if (j.__acum && typeof j.__acum[col] === 'number') return j.__acum[col];
+        const vals = log.map(p => p[col]).filter(v => typeof v === 'number' && isFinite(v));
+        return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+      };
       const m = {}, pc = {};
       M.IDS_FILTRO.forEach(k => {
+        if (k.indexOf('tot:') === 0) {
+          m[k] = total(k.slice(4));
+          pc[k] = null;
+          return;
+        }
         const r = idx.leerJugador(j, k);
         const v = r ? r.valor : null;
         m[k] = (v === null && k === 'RT') ? jugadoresNN(jugadoresRT(j)) : v;
         pc[k] = r ? r.percentil : null;
+      });
+      /* El volumen bruto, por partido y en el total del tramo. */
+      const vol = {}, volTot = {};
+      M.COLUMNAS_VOLUMEN.forEach(k => {
+        vol[k] = jugadoresNN(j[k]);
+        volTot[k] = total(k);
       });
       const perfil = adn.perfil || {};
       out.push({
@@ -195,7 +222,7 @@ const SGADD_FICHAJES = (function () {
         rolMinutos: adn.rolMinutos ? adn.rolMinutos.id : null,
         arquetipos: (adn.arquetipos || []).map(a => a.id),
         origen: perfil.esInterior ? 'interior' : perfil.esPerimetral ? 'perimetral' : null,
-        m: m, pc: pc, ficha: fichaDe(zona, clave),
+        m: m, pc: pc, vol: vol, volTot: volTot, ficha: fichaDe(zona, clave),
         _j: j, _idx: idx, _adn: adn,
       });
     });
@@ -222,8 +249,24 @@ const SGADD_FICHAJES = (function () {
      FORMATO
      ===================================================================== */
 
-  function metrica(k) { return (SGADD.METRICAS && SGADD.METRICAS[k]) || { label: k }; }
-  function fmt(k, v) { return (v === null || v === undefined) ? '—' : SGADD.formatear(k, v); }
+  function metrica(k) {
+    if (SGADD.METRICAS && SGADD.METRICAS[k]) return SGADD.METRICAS[k];
+    const def = M.METRICAS_FILTRO.filter(x => x.id === k)[0];
+    return { label: (def && def.label) || k, total: !!(def && def.total) };
+  }
+  function esTotal(k) { return String(k).indexOf('tot:') === 0; }
+  function fmt(k, v) {
+    if (v === null || v === undefined) return '—';
+    return esTotal(k) ? String(Math.round(v)) : SGADD.formatear(k, v);
+  }
+
+  /** «5,2/11,4» por partido y «166/365» en el total, de una familia de tiro. */
+  function volumen(f, fam, total) {
+    const v = M.VOLUMEN_TIRO.filter(x => x.id === fam)[0];
+    if (!v) return null;
+    const src = total ? f.volTot : f.vol;
+    return src ? M.textoVolumen(src[v.conv], src[v.int], total ? 0 : 1) : null;
+  }
   function pcTexto(v) { return (typeof v === 'number') ? 'p' + Math.round(v) : '—'; }
   function tonoPc(v) {
     if (typeof v !== 'number') return 'text-muted';
@@ -235,11 +278,12 @@ const SGADD_FICHAJES = (function () {
     return `<span class="fx-bar" aria-hidden="true"><span class="fx-bar-fill ${color}" style="width:${ancho}%"></span></span>`;
   }
 
+  /** «Puesto 2-3 · Escolta / Alero»: el número primero, que es como se
+      habla en el banco, y el nombre para el que lee la ficha afuera. */
   function posicionTexto(fi) {
     if (!fi || !fi.posicion) return null;
     const p = M.POR_POSICION[fi.posicion];
-    const s = fi.secundaria && M.POR_POSICION[fi.secundaria];
-    return p.label + (s ? ' / ' + s.label : '');
+    return p ? 'Puesto ' + p.id + ' · ' + p.label : null;
   }
 
   function fichaTexto(fi) {
@@ -252,11 +296,17 @@ const SGADD_FICHAJES = (function () {
     return partes.length ? partes.join(' · ') : 'Sin ficha';
   }
 
+  /* EL ESCUDO VA EN SU DISCO (`.escudo-aro`), no suelto sobre la card.
+     Suelto, uno de trazo oscuro sobre transparente desaparecía contra el
+     fondo negro. En el disco recibe el fondo que le corresponde según su
+     propio dibujo (`SGADD_UI.tonoEscudo`, punto 89), igual que en el resto
+     del panel. */
   function escudo(equipoCrudo, clase) {
+    const tam = clase || 'w-8 h-8';
     const logo = (typeof LOGOS !== 'undefined') ? LOGOS.getUrl(equipoCrudo) : null;
-    if (logo) return `<img src="${esc(logo)}" alt="" class="${clase || 'w-8 h-8'} object-contain shrink-0">`;
+    if (logo) return `<span class="escudo-aro ${tam} shrink-0"><img src="${esc(logo)}" alt=""></span>`;
     const ini = (typeof LOGOS !== 'undefined') ? LOGOS.iniciales(equipoCrudo) : String(equipoCrudo || '').slice(0, 2);
-    return `<span class="${clase || 'w-8 h-8'} shrink-0 rounded-full bg-surface2 grid place-items-center text-[10px] font-display text-muted">${esc(ini)}</span>`;
+    return `<span class="${tam} shrink-0 rounded-full bg-surface2 grid place-items-center text-[10px] font-display text-muted">${esc(ini)}</span>`;
   }
 
   /* =====================================================================
@@ -388,12 +438,18 @@ const SGADD_FICHAJES = (function () {
       out.push({ t: 'Impacto · ' + sint.impacto.nivel, x: sint.impacto.texto });
       out.push({ t: 'Eficiencia · ' + sint.eficiencia.nivel, x: sint.eficiencia.texto });
     }
-    const fuertes = M.IDS_FILTRO.filter(k => typeof f.pc[k] === 'number' && f.pc[k] >= 80 && k !== 'PJ' && k !== 'MIN')
+    /* Fortalezas y fisuras salen de RENDIMIENTO. El volumen —minutos,
+       partidos, intentos de tiro— no es una virtud ni un defecto: un
+       «Tiros de campo int., p100» como lo que lo distingue confundía
+       tirar mucho con tirar bien. */
+    const rendimiento = M.METRICAS_FILTRO
+      .filter(x => x.grupo !== 'Volumen de tiro' && x.id !== 'PJ' && x.id !== 'MIN').map(x => x.id);
+    const fuertes = rendimiento.filter(k => typeof f.pc[k] === 'number' && f.pc[k] >= 80)
       .sort((a, b) => f.pc[b] - f.pc[a]).slice(0, 3);
     if (fuertes.length) {
       out.push({ t: 'Lo que lo distingue', x: fuertes.map(k => metrica(k).label + ' (' + fmt(k, f.m[k]) + ', ' + pcTexto(f.pc[k]) + ')').join(' · ') + '.' });
     }
-    const flojas = M.IDS_FILTRO.filter(k => typeof f.pc[k] === 'number' && f.pc[k] <= 20 && k !== 'PJ' && k !== 'MIN')
+    const flojas = rendimiento.filter(k => typeof f.pc[k] === 'number' && f.pc[k] <= 20)
       .sort((a, b) => f.pc[a] - f.pc[b]).slice(0, 2);
     if (flojas.length) {
       out.push({ t: 'Por dónde se lo expone', x: flojas.map(k => metrica(k).label + ' (' + fmt(k, f.m[k]) + ', ' + pcTexto(f.pc[k]) + ')').join(' · ') + '.' });
@@ -572,8 +628,12 @@ const SGADD_FICHAJES = (function () {
               c.origen ? [c.origen] : []), 'Sale de cómo tira y cuánto rebotea, no de una posición declarada.')}
           </div>
           <div>
-            ${grupoFiltro('Ficha manual', opcionesChips('posiciones', M.POSICIONES, c.posiciones),
+            ${grupoFiltro('Puesto (ficha manual)',
+              opcionesChips('posiciones', M.PUESTOS.map(p => ({ id: String(p.n), label: p.n + ' · ' + p.label })), c.posiciones),
               conFicha + ' de ' + todas.length + ' jugadores tienen ficha cargada. Un filtro de ficha deja afuera a los que no la tienen.')}
+            <label class="flex items-center gap-2 text-[11px] text-muted -mt-2 mb-3">
+              <input type="checkbox" ${c.puestosSecundarios ? 'checked' : ''} onchange="SGADD_FICHAJES.fijar('puestosSecundarios', this.checked)">
+              Contar los puestos híbridos por su faceta secundaria (un 2-3 entra como 2 y como 3)</label>
             <div class="grid gap-1.5 mb-3">
               ${campoRango('edad', 'Edad', c.edad, 1, 'años')}
               ${campoRango('talla', 'Talla', c.talla, 1, 'cm')}
@@ -614,8 +674,10 @@ const SGADD_FICHAJES = (function () {
   const ORDENES = [
     { id: 'PTS', label: 'Puntos' }, { id: 'MIN', label: 'Minutos' }, { id: 'TS%', label: 'TS%' },
     { id: 'USG%', label: 'Uso' }, { id: 'AST-PP', label: 'AST-PP' }, { id: 'PPP', label: 'PPP' },
-    { id: 'RO%', label: 'Rebote of.' }, { id: 'PR', label: 'Recuperos' }, { id: 'edad', label: 'Edad' },
-    { id: 'talla', label: 'Talla' }, { id: 'nombre', label: 'Nombre' },
+    { id: 'RO%', label: 'Rebote of.' }, { id: 'PR', label: 'Recuperos' },
+    { id: 'TCI', label: 'Tiros de campo int.' }, { id: 'T3I', label: 'Triples int.' },
+    { id: 'tot:T3I', label: 'Triples int. (total)' }, { id: 'T1I', label: 'Libres int.' },
+    { id: 'edad', label: 'Edad' }, { id: 'talla', label: 'Talla' }, { id: 'nombre', label: 'Nombre' },
   ];
 
   function vistaBuscar() {
@@ -696,6 +758,7 @@ const SGADD_FICHAJES = (function () {
         <p class="text-[11px] text-accent leading-snug">${esc(adn.rolFuncional ? adn.rolFuncional.label : '—')}</p>
         <div class="flex flex-wrap gap-1">${badges}</div>
         <div class="grid grid-cols-4 gap-2">${kpis}</div>
+        ${lineaVolumen(f)}
         <div class="flex items-center gap-2 mt-auto pt-1">
           <button type="button" onclick="SGADD_FICHAJES.abrir('${escJs(f.id)}')"
             class="flex-1 text-[11px] font-semibold px-2.5 py-2 rounded-md border border-accent/50 text-accent hover:bg-accent/10
@@ -706,6 +769,21 @@ const SGADD_FICHAJES = (function () {
             ${enComp ? '✓ Comparando' : '+ Comparar'}</button>
         </div>
       </li>`;
+  }
+
+  /* EL VOLUMEN AL LADO DEL ACIERTO, en la card: «T3 1,8/5,0 · 36%». Un
+     porcentaje sin su volumen promete lo que la muestra no sostiene. */
+  function lineaVolumen(f) {
+    const partes = M.VOLUMEN_TIRO.filter(v => v.id !== 'T2').map(v => {
+      const t = volumen(f, v.id, false);
+      if (!t) return '';
+      return `<span class="whitespace-nowrap"><span class="text-muted">${esc(v.id === 'TC' ? 'TC' : v.id === 'T3' ? 'T3' : 'TL')}</span>
+        <span class="font-mono text-ink">${esc(t)}</span>
+        <span class="font-mono ${tonoPc(f.pc[v.pct])}">${esc(fmt(v.pct, f._j[v.pct]))}</span></span>`;
+    }).filter(Boolean);
+    if (!partes.length) return '';
+    return `<p class="text-[10px] leading-snug flex flex-wrap gap-x-3 gap-y-0.5" title="Convertidos/intentados por partido y acierto">
+      ${partes.join('')}</p>`;
   }
 
   function barraComparar() {
@@ -730,7 +808,11 @@ const SGADD_FICHAJES = (function () {
   /** Las métricas de la tabla de percentiles, agrupadas como el filtro. */
   function tablaPercentiles(f) {
     const grupos = {};
-    M.METRICAS_FILTRO.forEach(x => { (grupos[x.grupo] = grupos[x.grupo] || []).push(x.id); });
+    /* Los TOTALES no van: no tienen percentil y ya están, con sus
+       convertidos, en el bloque de volumen. */
+    M.METRICAS_FILTRO.filter(x => !x.total).forEach(x => { (grupos[x.grupo] = grupos[x.grupo] || []).push(x.id); });
+    /* El acierto lleva su volumen al lado: «36,0% · 1,8/5,0». */
+    const VOL_DE = { 'T3%': 'T3', 'T1%': 'T1', 'TC%': 'TC' };
     return Object.keys(grupos).map(g => `
       <div class="fx-grupo">
         <p class="text-[10px] uppercase tracking-widest font-display text-muted mb-1">${esc(g)}</p>
@@ -739,7 +821,8 @@ const SGADD_FICHAJES = (function () {
             const r = f._idx.leerJugador(f._j, k);
             return `<tr class="border-b border-hairline/40 last:border-0">
               <td class="py-1 pr-2">${esc(metrica(k).label)}${metrica(k).invertida ? ' <span class="text-muted" title="menos es mejor">↓</span>' : ''}</td>
-              <td class="py-1 pr-2 font-mono text-ink text-right">${esc(fmt(k, f.m[k]))}</td>
+              <td class="py-1 pr-2 font-mono text-ink text-right">${esc(fmt(k, f.m[k]))}${VOL_DE[k] && volumen(f, VOL_DE[k], false)
+                ? `<span class="block text-[10px] text-muted" title="Convertidos/intentados por partido">${esc(volumen(f, VOL_DE[k], false))}</span>` : ''}</td>
               <td class="py-1 pr-2 font-mono text-muted text-right" title="Fila JUGADOR TIPO de su zona">${esc(r ? r.tipoFormateado : '—')}</td>
               <td class="py-1 w-24">${barraPc(f.pc[k])}</td>
               <td class="py-1 pl-1 font-mono text-right ${tonoPc(f.pc[k])}">${pcTexto(f.pc[k])}</td>
@@ -805,6 +888,30 @@ const SGADD_FICHAJES = (function () {
         <tbody>${filas}</tbody></table>`;
   }
 
+  /* EL VOLUMEN DE TIRO · convertidos/intentados al lado del acierto, por
+     partido y en el total del tramo. El total es el tamaño de la muestra:
+     «12/30» y «120/300» dan el mismo 40 % y no dicen lo mismo. */
+  function bloqueVolumen(f) {
+    const filas = M.VOLUMEN_TIRO.map(v => {
+      const pp = volumen(f, v.id, false), tot = volumen(f, v.id, true);
+      if (!pp && !tot) return '';
+      return `<tr class="border-b border-hairline/40 last:border-0">
+        <td class="py-1 pr-2">${esc(v.label)}</td>
+        <td class="py-1 pr-2 font-mono text-right text-ink">${esc(pp || '—')}</td>
+        <td class="py-1 pr-2 font-mono text-right">${esc(fmt(v.pct, f._j[v.pct]))}</td>
+        <td class="py-1 font-mono text-right text-muted">${esc(tot || '—')}</td>
+      </tr>`;
+    }).join('');
+    if (!filas) return `<p class="text-[11px] text-muted">Sin tiros registrados.</p>`;
+    const sinTotal = !f.volTot || M.COLUMNAS_VOLUMEN.every(k => f.volTot[k] === null);
+    return `<table class="w-full text-xs fx-tabla">
+        <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+          <th class="text-left font-display pb-1">Tiro</th><th class="text-right font-display pb-1">Conv./Int. por partido</th>
+          <th class="text-right font-display pb-1">Acierto</th><th class="text-right font-display pb-1">Total del tramo</th></tr></thead>
+        <tbody>${filas}</tbody></table>
+      ${sinTotal ? '<p class="text-[10px] dato-sec mt-1">La planilla de esta zona no trae los totales acumulados (ACUMULADO J).</p>' : ''}`;
+  }
+
   function bloqueSimilares(f) {
     const lista = similares(f, 5);
     if (!lista.length) return `<p class="text-[11px] text-muted">Nadie del torneo con volumen comparable y etiquetas parecidas.</p>`;
@@ -822,22 +929,22 @@ const SGADD_FICHAJES = (function () {
 
   function formFicha(f) {
     const fi = f.ficha || {};
+    /* La escala de nueve en un solo selector: el híbrido ya trae su faceta
+       secundaria, así que el segundo selector de antes sobra. */
     const opts = (sel) => `<option value="">—</option>` + M.POSICIONES.map(p =>
-      `<option value="${esc(p.id)}" ${sel === p.id ? 'selected' : ''}>${esc(p.label)}</option>`).join('');
+      `<option value="${esc(p.id)}" ${sel === p.id ? 'selected' : ''}>${esc(p.id + ' · ' + p.label)}</option>`).join('');
     const clase = 'rounded border border-hairline bg-surface2/40 px-2 py-1 text-xs text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent';
     return `
       <form onsubmit="event.preventDefault(); SGADD_FICHAJES.guardarFicha('${escJs(f.id)}', this)"
         class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 p-3 rounded-lg border border-accent/40 bg-surface2/30">
         <label class="text-[10px] uppercase tracking-wider text-muted font-display flex flex-col gap-1">Nacimiento
           <input name="nacimiento" value="${esc(fi.nacimiento || '')}" placeholder="AAAA o AAAA-MM-DD" class="${clase}"></label>
-        <label class="text-[10px] uppercase tracking-wider text-muted font-display flex flex-col gap-1">Posición
+        <label class="col-span-2 sm:col-span-2 text-[10px] uppercase tracking-wider text-muted font-display flex flex-col gap-1">Puesto
           <select name="posicion" class="${clase}">${opts(fi.posicion)}</select></label>
-        <label class="text-[10px] uppercase tracking-wider text-muted font-display flex flex-col gap-1">Secundaria
-          <select name="secundaria" class="${clase}">${opts(fi.secundaria)}</select></label>
         <label class="text-[10px] uppercase tracking-wider text-muted font-display flex flex-col gap-1">Talla (cm)
           <input name="talla" type="number" min="${M.TALLA_MIN}" max="${M.TALLA_MAX}" value="${fi.talla || ''}" class="${clase}"></label>
-        <div class="col-span-2 sm:col-span-4 flex items-center gap-2">
-          <button type="submit" class="text-[11px] font-semibold px-3 py-1.5 rounded-md border border-accent text-accent hover:bg-accent/10">Guardar ficha</button>
+        <div class="col-span-2 sm:col-span-4 flex flex-wrap items-center gap-2">
+          <button type="submit" class="whitespace-nowrap text-[11px] font-semibold px-3 py-1.5 rounded-md border border-accent text-accent hover:bg-accent/10">Guardar ficha</button>
           <button type="button" onclick="SGADD_FICHAJES.editarFicha(false)" class="text-[11px] text-muted hover:text-ink">Cancelar</button>
           <span class="text-[10px] dato-sec">Dato declarado a mano: se muestra tal cual y nunca se estima.</span>
         </div>
@@ -914,6 +1021,10 @@ const SGADD_FICHAJES = (function () {
           <section class="card rounded-xl border border-hairline p-4">
             <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-2">Tendencia</h3>
             ${bloqueTendencia(f)}
+          </section>
+          <section class="card rounded-xl border border-hairline p-4">
+            <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-2">Volumen de tiro</h3>
+            ${bloqueVolumen(f)}
           </section>
           <section class="card rounded-xl border border-hairline p-4">
             <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-2">Cómo terminan sus jugadas</h3>
@@ -1116,6 +1227,12 @@ const SGADD_FICHAJES = (function () {
   function agregarRango(porPercentil) {
     const sel = document.getElementById('fxNuevaMetrica');
     if (!sel || !sel.value) return;
+    /* Un TOTAL no tiene percentil (es el tamaño de la muestra): se filtra
+       por valor aunque se haya pedido por percentil, y se avisa. */
+    if (porPercentil && esTotal(sel.value)) {
+      SGADD_BUZON.toast('Los totales se filtran por valor: no tienen percentil.', 'aviso');
+      porPercentil = false;
+    }
     ST.crit.rangos[sel.value] = porPercentil ? { pc: true, min: 75 } : {};
     pintar();
   }
@@ -1146,8 +1263,7 @@ const SGADD_FICHAJES = (function () {
     const f = filaPorId(id);
     if (!f) return;
     const datos = {
-      nacimiento: form.nacimiento.value, posicion: form.posicion.value,
-      secundaria: form.secundaria.value, talla: form.talla.value,
+      nacimiento: form.nacimiento.value, posicion: form.posicion.value, talla: form.talla.value,
     };
     const n = M.normalizarFicha(datos);
     if (n && n.error) { SGADD_BUZON.toast(n.mensaje, 'aviso', 3600); return; }
@@ -1279,7 +1395,8 @@ const SGADD_FICHAJES = (function () {
       </section>
       <section class="informe-bloque fx-pdf-dos">
         <div><h2>Tendencia</h2>${bloqueTendencia(f)}</div>
-        <div><h2>Cómo terminan sus jugadas</h2>${bloqueTiro(f)}
+        <div><h2>Volumen de tiro</h2>${bloqueVolumen(f)}
+          <h2 style="margin-top:4mm">Cómo terminan sus jugadas</h2>${bloqueTiro(f)}
           ${sim ? `<h2 style="margin-top:4mm">Perfiles parecidos</h2><ul class="fx-pdf-sim">${sim}</ul>` : ''}</div>
       </section>
       <footer class="informe-pie">${SGADD_UI.pieInforme(fecha)}</footer>`;

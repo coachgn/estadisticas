@@ -31,8 +31,8 @@ titulo('1. LA FICHA MANUAL · no se estima nada');
 
 const HOY = new Date(2026, 9, 5);
 check('una ficha completa se normaliza',
-  JSON.stringify(M.normalizarFicha({ nacimiento: '1999-03-12', posicion: 'base', talla: '183' }, HOY))
-  === JSON.stringify({ nacimiento: '1999-03-12', posicion: 'BASE', talla: 183 }));
+  JSON.stringify(M.normalizarFicha({ nacimiento: '1999-03-12', posicion: '1-2', talla: '183' }, HOY))
+  === JSON.stringify({ nacimiento: '1999-03-12', posicion: '1-2', talla: 183 }));
 check('el año solo alcanza: es lo que suele saber un entrenador',
   M.normalizarFicha({ nacimiento: '2001' }, HOY).nacimiento === '2001');
 check('una ficha vacía es null: no se guarda nada',
@@ -41,8 +41,39 @@ check('una fecha que no existe se rechaza', M.normalizarFicha({ nacimiento: '200
 check('un año implausible se rechaza', M.normalizarFicha({ nacimiento: '2024' }, HOY).error === 'NACIMIENTO');
 check('una posición inventada se rechaza', M.normalizarFicha({ posicion: 'LIBERO' }, HOY).error === 'POSICION');
 check('una talla fuera de rango se rechaza (va en cm)', M.normalizarFicha({ talla: '1.92' }, HOY).error === 'TALLA');
-check('la secundaria igual a la principal no se repite',
-  M.normalizarFicha({ posicion: 'ALERO', secundaria: 'alero' }, HOY).secundaria === undefined);
+titulo('1 · LA ESCALA DE PUESTOS · 1 | 1-2 | 2 | 2-3 | 3 | 3-4 | 4 | 4-5 | 5');
+
+check('la escala tiene los nueve puestos, en orden',
+  M.POSICIONES.map(p => p.id).join(' | ') === '1 | 1-2 | 2 | 2-3 | 3 | 3-4 | 4 | 4-5 | 5');
+check('un híbrido CUBRE sus dos puestos, y el primero es el principal',
+  JSON.stringify(M.cubre('2-3')) === '[2,3]' && M.POR_POSICION['2-3'].principal === 2 && M.POR_POSICION['2-3'].hibrido);
+check('se aceptan las formas en que se escribe: 2/3, 3-2, guion largo',
+  M.idPosicion('2/3') === '2-3' && M.idPosicion('3-2') === '2-3' && M.idPosicion('4–5') === '4-5');
+check('solo se combinan puestos VECINOS: un 1-3 no es de la escala', M.idPosicion('1-3') === false
+  && M.normalizarFicha({ posicion: '1-3' }, HOY).error === 'POSICION');
+check('fuera de 1 a 5 no es un puesto', M.idPosicion('6') === false && M.idPosicion('0-1') === false);
+check('LEGADO: las fichas con nombre se leen en la escala', M.idPosicion('ALERO') === '3' && M.idPosicion('PIVOTE') === '5');
+check('LEGADO: un nombre + secundaria VECINA se pliega al híbrido',
+  M.normalizarFicha({ posicion: 'ESCOLTA', secundaria: 'ALERO' }, HOY).posicion === '2-3'
+  && M.normalizarFicha({ posicion: 'PIVOTE', secundaria: 'ALA-PIVOTE' }, HOY).posicion === '4-5');
+check('LEGADO: una secundaria que no es vecina se descarta, sin inventar un híbrido',
+  M.normalizarFicha({ posicion: 'BASE', secundaria: 'ALERO' }, HOY).posicion === '1');
+check('la ficha ya no guarda un campo «secundaria»: lo dice el híbrido',
+  M.normalizarFicha({ posicion: 'ESCOLTA', secundaria: 'ALERO' }, HOY).secundaria === undefined);
+
+titulo('1 · EL VOLUMEN DE TIRO · convertidos/intentados');
+
+check('por partido, con un decimal y coma', M.textoVolumen(5.23, 11.41) === '5,2/11,4');
+check('en el total, enteros', M.textoVolumen(166, 365, 0) === '166/365');
+check('sin intentos es 0/0: no tiró, y eso es un dato', M.textoVolumen(0, 0) === '0,0/0,0');
+check('si falta uno de los dos, null: «—/11,4» se leería como cero convertidos',
+  M.textoVolumen(null, 11.4) === null && M.textoVolumen(3, undefined) === null);
+check('las cuatro familias de tiro, con su acierto',
+  M.VOLUMEN_TIRO.map(v => v.conv + '/' + v.int + '·' + v.pct).join(' ') === 'TCC/TCI·TC% T2C/T2I·T2% T3C/T3I·T3% T1C/T1I·T1%');
+check('el buscador filtra por intentos, por partido y en el total',
+  ['TCI', 'T2I', 'T3I', 'T1I', 'tot:TCI', 'tot:T3I', 'tot:T1I'].every(k => M.IDS_FILTRO.indexOf(k) !== -1));
+check('los totales están marcados: no tienen percentil',
+  M.METRICAS_FILTRO.filter(x => /^tot:/.test(x.id)).every(x => x.total === true && !!x.label));
 check('la edad cuenta el cumpleaños',
   M.edad('1999-10-06', HOY).anios === 26 && M.edad('1999-10-05', HOY).anios === 27);
 check('con el año solo, la edad sale marcada como aproximada',
@@ -84,8 +115,8 @@ titulo('1 ter. LA BÚSQUEDA');
 const fila = (o) => Object.assign({ nombre: 'X', equipo: 'E', zona: 'norte', califica: true, rol: 'spacing',
   secundarios: [], jerarquia: 'quinteto', rolMinutos: 'r', arquetipos: [], origen: 'perimetral', m: {}, pc: {}, ficha: null }, o);
 const FILAS = [
-  fila({ nombre: 'ALTO, TIRADOR', m: { 'TS%': 0.62, PTS: 15 }, pc: { 'TS%': 90, PTS: 80 }, ficha: { edad: 24, posicion: 'ESCOLTA', talla: 192 } }),
-  fila({ nombre: 'BAJO, GENERADOR', rol: 'generador-primario', secundarios: ['slasher'], m: { 'TS%': 0.51, PTS: 18 }, pc: { 'TS%': 40, PTS: 92 }, ficha: { edad: 31, posicion: 'BASE', talla: 180 } }),
+  fila({ nombre: 'ALTO, TIRADOR', m: { 'TS%': 0.62, PTS: 15, 'tot:T3I': 180 }, pc: { 'TS%': 90, PTS: 80 }, ficha: { edad: 24, posicion: '2-3', talla: 192 } }),
+  fila({ nombre: 'BAJO, GENERADOR', rol: 'generador-primario', secundarios: ['slasher'], m: { 'TS%': 0.51, PTS: 18, 'tot:T3I': 40 }, pc: { 'TS%': 40, PTS: 92 }, ficha: { edad: 31, posicion: '1', talla: 180 } }),
   fila({ nombre: 'SIN FICHA, PIVOT', rol: 'poste-bajo', origen: 'interior', arquetipos: ['reboteador', 'protector'], m: { 'TS%': 0.58, PTS: 9 }, pc: { 'TS%': 70, PTS: 45 } }),
   fila({ nombre: 'NOVATO, CHICO', califica: false, m: { 'TS%': 0.7, PTS: 2 }, pc: { 'TS%': null, PTS: null } }),
 ];
@@ -98,8 +129,17 @@ check('un rango por PERCENTIL filtra contra su zona', r.filas.length === 2);
 check('y el que no tiene percentil queda afuera CONTADO, no escondido', r.sinDato === 1);
 r = M.filtrar(FILAS, { edad: { max: 28 } });
 check('un filtro de edad deja afuera a los que no tienen ficha', r.filas.length === 1 && r.sinDato === 2);
-r = M.filtrar(FILAS, { posiciones: ['BASE'] });
-check('la posición se filtra por la ficha', r.filas.length === 1 && r.filas[0].nombre === 'BAJO, GENERADOR' && r.sinDato === 2);
+r = M.filtrar(FILAS, { posiciones: ['1'] });
+check('el puesto se filtra por la ficha', r.filas.length === 1 && r.filas[0].nombre === 'BAJO, GENERADOR' && r.sinDato === 2);
+r = M.filtrar(FILAS, { posiciones: ['3'] });
+check('un 2-3 aparece pidiendo ALEROS: su faceta secundaria cuenta', r.filas.length === 1 && r.filas[0].nombre === 'ALTO, TIRADOR');
+r = M.filtrar(FILAS, { posiciones: ['3'], puestosSecundarios: false });
+check('y NO aparece si se piden solo los puestos principales', r.filas.length === 0);
+r = M.filtrar(FILAS, { posiciones: ['2'], puestosSecundarios: false });
+check('por su principal aparece igual', r.filas.length === 1 && r.filas[0].nombre === 'ALTO, TIRADOR');
+r = M.filtrar(FILAS, { rangos: { 'tot:T3I': { min: 100 } } });
+check('el volumen TOTAL de intentos filtra la muestra', r.filas.length === 1 && r.filas[0].nombre === 'ALTO, TIRADOR' && r.sinDato === 2);
+check('y se puede ordenar por él', M.ordenar(FILAS, 'tot:T3I', 'desc')[0].nombre === 'ALTO, TIRADOR');
 r = M.filtrar(FILAS, { roles: ['slasher'], incluirSecundarios: true });
 check('la función incluye la faceta secundaria si se pide', r.filas.length === 1);
 r = M.filtrar(FILAS, { roles: ['slasher'], incluirSecundarios: false });
@@ -269,8 +309,16 @@ const sinSheetId = (body) => !/SHEET_[A-Z]+_\d+/.test(JSON.stringify(body));
   check('las fichas son de un TORNEO, no de un club', res.status === 404);
   ops.length = 0;
   res = await F.manejarFichasEscribir(pedido(tokAdmin, { torneo: 'liga-argentina-2026-27' },
-    { cambios: { [CLAVE]: { nacimiento: '1998', posicion: 'ALERO', talla: '195' } } }));
-  check('el admin guarda una ficha', res.status === 200 && res.body.fichas[CLAVE].talla === 195 && res.body.fichas[CLAVE].posicion === 'ALERO');
+    { cambios: { [CLAVE]: { nacimiento: '1998', posicion: '3/4', talla: '195' } } }));
+  check('el admin guarda una ficha, con el puesto llevado a la escala', res.status === 200
+    && res.body.fichas[CLAVE].talla === 195 && res.body.fichas[CLAVE].posicion === '3-4');
+  res = await F.manejarFichasEscribir(pedido(tokAdmin, { torneo: 'liga-argentina-2026-27' }, { cambios: { [CLAVE]: { posicion: '1-3' } } }));
+  check('el SERVIDOR rechaza un puesto fuera de la escala, con el mismo motor', res.status === 400 && res.body.codigo === 'POSICION');
+  /* Una ficha guardada con la escala VIEJA se sigue sirviendo, plegada. */
+  hashes[F.claveFichas('liga-argentina-2026-27')]['GOMEZ, LUIS|B'] = JSON.stringify({ posicion: 'ESCOLTA', secundaria: 'ALERO' });
+  res = await F.manejarZona(pedido(tokAdmin, { torneo: 'liga-argentina-2026-27', zona: 'lab-2026-27-norte' }));
+  check('una ficha de la escala vieja sale plegada al híbrido', res.body.fichas['GOMEZ, LUIS|B'].posicion === '2-3');
+  delete hashes[F.claveFichas('liga-argentina-2026-27')]['GOMEZ, LUIS|B'];
   check('campo por campo: HSET y nunca SET/DEL', ops.indexOf('HSET ' + F.claveFichas('liga-argentina-2026-27')) !== -1
     && !ops.some(o => /^(SET|DEL) /.test(o)), ops.join(' | '));
   await F.manejarPadronEscribir(pedido(tokAdmin, {}, { email: 'scout@club.com', torneos: ['liga-argentina-2026-27'] }));
@@ -306,6 +354,56 @@ const sinSheetId = (body) => !/SHEET_[A-Z]+_\d+/.test(JSON.stringify(body));
   check('la sección se monta ANTES del modo landing: no depende del club abierto',
     idx.indexOf("if (section === 'fichajes')") !== -1
     && idx.indexOf("if (section === 'fichajes')") < idx.indexOf('SGADD_LANDING.activa()) {\n    root.innerHTML = SGADD_LANDING.vista'));
+
+  titulo('4 bis. VOLUMEN Y PUESTOS EN LA PANTALLA');
+
+  check('la card muestra el volumen al lado del acierto', /function lineaVolumen/.test(ui) && /\$\{lineaVolumen\(f\)\}/.test(ui));
+  check('la Radiografía y el PDF traen el bloque de volumen (por partido y total)',
+    (ui.match(/\$\{bloqueVolumen\(f\)\}/g) || []).length === 2);
+  check('los totales salen de ACUMULADO J y, si falta, de SUMAR su log con su equipo (no de multiplicar promedios)',
+    /j\.__acum && typeof j\.__acum\[col\] === 'number'/.test(ui)
+    && /filter\(p => p\.__equipo === eqClave\)/.test(ui) && /m\[k\] = total\(k\.slice\(4\)\)/.test(ui));
+  check('los totales no se piden por percentil', /porPercentil && esTotal\(sel\.value\)/.test(ui));
+  check('tirar MUCHO no es una fortaleza: el volumen no entra en «lo que lo distingue»',
+    /\.filter\(x => x\.grupo !== 'Volumen de tiro' && x\.id !== 'PJ' && x\.id !== 'MIN'\)/.test(ui)
+    && /const fuertes = rendimiento\.filter/.test(ui) && /const flojas = rendimiento\.filter/.test(ui));
+  check('el formulario tiene UN selector de puesto, con la escala de nueve',
+    /name="posicion"/.test(ui) && !/name="secundaria"/.test(ui));
+  check('el filtro de puesto respeta la faceta secundaria, como la función',
+    /fijar\('puestosSecundarios', this\.checked\)/.test(ui));
+
+  titulo('5. LOS ESCUDOS SE LEEN · el fondo sale de su propio dibujo (punto 89)');
+
+  const UIJS = require('./js/sgadd-ui.js');
+  /* Píxeles armados a mano: 24x24 = 576. */
+  const lienzo = (n, rgba, transparentes) => {
+    const a = [];
+    for (let i = 0; i < n; i++) a.push.apply(a, i < transparentes ? [0, 0, 0, 0] : rgba);
+    return a;
+  };
+  check('trazo NEGRO sobre transparente → oscuro', UIJS.tonoDePixeles(lienzo(576, [10, 10, 10, 255], 300)) === 'oscuro');
+  check('trazo BLANCO sobre transparente → claro', UIJS.tonoDePixeles(lienzo(576, [250, 250, 250, 255], 300)) === 'claro');
+  check('un escudo con fondo propio → opaco: no se toca', UIJS.tonoDePixeles(lienzo(576, [10, 10, 10, 255], 5)) === 'opaco');
+  check('colores de luminancia media → medio: se lee sobre los dos fondos',
+    UIJS.tonoDePixeles(lienzo(576, [60, 140, 220, 255], 300)) === 'medio');
+  /* Un rojo oscuro (luminancia 0,14) da 3,2:1 contra la card: va al disco
+     claro, donde se lee mejor. */
+  check('un rojo oscuro cuenta como oscuro', UIJS.tonoDePixeles(lienzo(576, [200, 40, 40, 255], 300)) === 'oscuro');
+  check('el gris de Villa Elisa —53 % oscuro, el caso límite medido— cae del lado oscuro',
+    UIJS.tonoDePixeles(lienzo(272, [20, 20, 20, 255], 0).concat(lienzo(304, [90, 90, 90, 255], 0)).concat(lienzo(300, [0, 0, 0, 0], 300))) === 'oscuro');
+  check('nada visible que medir → null', UIJS.tonoDePixeles(lienzo(576, [0, 0, 0, 0], 576)) === null);
+  check('la luminancia es la de WCAG', Math.abs(UIJS.luminancia(255, 255, 255) - 1) < 1e-9 && UIJS.luminancia(0, 0, 0) === 0);
+  const uiSrc = fs.readFileSync('./js/sgadd-ui.js', 'utf8');
+  check('se engancha UNA vez, en captura, para todo el documento: alcanza a los 15 lugares que pintan escudos',
+    /document\.addEventListener\('load', \(ev\) => \{[\s\S]{0,120}tonoEscudo\(t\)/.test(uiSrc) && /\}, true\);/.test(uiSrc));
+  check('un escudo de otro origen no rompe: se queda como estaba', /catch \(e\) \{ tono = null; \}/.test(uiSrc));
+  check('el logo de MotorStats del pie no se toca', /motorlogo/.test(uiSrc));
+  check('en PANTALLA el escudo oscuro va sobre un disco claro',
+    /@media screen \{\s*\.escudo-aro:has\(> img\[data-tono="oscuro"\]\) \{ background: #E5E7EB/.test(idx));
+  check('en el PAPEL el escudo claro va sobre un disco oscuro, y se imprime el fondo',
+    /\.escudo-aro:has\(> img\[data-tono="claro"\]\)[\s\S]{0,160}background: #374151 !important[\s\S]{0,120}print-color-adjust: exact/.test(idx));
+  check('en Fichajes el escudo va en su disco, no suelto sobre la card',
+    /<span class="escudo-aro \$\{tam\} shrink-0"><img src=/.test(ui));
 
   console.log('\n' + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);

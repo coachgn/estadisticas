@@ -239,7 +239,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=263`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=264`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -12129,3 +12129,84 @@ Ojo al verificarlo: con la pestaña oculta el navegador no avanza las
 transiciones y el ancho queda congelado en 256px. No es un bug, es la
 pestaña; `getAnimations().forEach(a => a.finish())` lo destraba.
 `test-responsive.js` fija las seis reglas.
+
+---
+
+## 89. FICHAJES · VOLUMEN DE TIRO, ESCALA DE PUESTOS Y ESCUDOS QUE SE LEEN (2026-10-05)
+
+`test-fichajes.js` fija todo lo de acá (124 tests).
+
+### 1 · El volumen al lado del acierto
+
+Un 45 % de triple sobre 0,8 intentos y sobre 7 no es el mismo tirador. Junto
+a cada acierto va «convertidos/intentados» (`SGADD_MERCADO.textoVolumen`:
+`5,2/11,4` por partido, `166/365` en el total; `null` si falta uno de los dos,
+porque «—/11,4» se leería como cero convertidos):
+
+- en la **card**: `TC · T3 · TL` con su acierto;
+- en la **Radiografía** y el **PDF**: el bloque «Volumen de tiro» (por
+  partido, acierto y total del tramo) y la fila de T3%/T1% con su volumen;
+- en el **buscador**: intentos por partido (`TCI`, `T2I`, `T3I`, `T1I`, con
+  percentil) y en el total (`tot:TCI`, `tot:T3I`, `tot:T1I`, SIN percentil:
+  son el tamaño de la muestra). Pedir un total «por percentil» filtra por
+  valor y lo avisa.
+
+**El total sale de `ACUMULADO J` y, si falta, de SUMAR su log partido a
+partido con SU equipo.** La demo trae `ACUMULADO J` para 16 de 260
+jugadores; el log está para todos y cierra exacto (medido: 555 tiros = 17,34
+× 32 PJ). Nunca de multiplicar el promedio.
+
+**El volumen no es una virtud.** La primera Radiografía puso «Tiros de campo
+int. (17,3, p100)» como lo que lo distingue: tirar mucho no es tirar bien.
+Fortalezas y fisuras salen solo de las métricas de RENDIMIENTO.
+
+### 2 · La escala de puestos · 1 | 1-2 | 2 | 2-3 | 3 | 3-4 | 4 | 4-5 | 5
+
+Un selector, nueve puestos. El híbrido CUBRE sus dos puestos: el primer
+número es el principal y el segundo su **faceta secundaria**, la misma idea
+que los secundarios del rol funcional (punto 46). En el buscador se pide en
+la escala simple (1 a 5) con «Contar los puestos híbridos por su faceta
+secundaria», como la función en cancha: un 2-3 aparece pidiendo escoltas y,
+con la casilla, también aleros.
+
+- Solo se combinan puestos VECINOS: un «1-3» se rechaza, en el panel y en
+  el servidor (mismo motor, `idPosicion`). Se acepta «2/3», «3-2», guion
+  largo.
+- **Las fichas de la escala vieja se leen sin migrar**: el nombre es su
+  número y nombre + secundaria VECINA se pliega al híbrido (Escolta + Alero
+  → 2-3). Una secundaria no vecina se descarta, sin inventar un híbrido.
+  La ficha ya no guarda `secundaria`.
+
+### 3 · Los escudos se leen · el fondo sale de su propio dibujo
+
+**Auditoría.** `.escudo-hub` (Panel Master) ya tenía fondo blanco por este
+motivo, pero `.escudo-aro` —grillas de equipos, menú— seguía con
+`rgba(255,255,255,.04)`, y Fichajes ponía la imagen suelta. Un fondo único no
+sirve: el blanco que salva al trazo oscuro borra al blanco, y al revés en el
+papel.
+
+**`SGADD_UI.tonoEscudo` MIDE cada escudo al cargar**: lo dibuja en un canvas
+de 48 px y lee la luminancia (WCAG) de sus píxeles visibles (`tonoDePixeles`,
+PURA). Lo marca con `data-tono` y el CSS hace el resto:
+
+```
+opaco   < 4 % transparente: trae su fondo, no se toca
+oscuro  > 45 % de píxeles oscuros o media < 0,15 → disco #E5E7EB en PANTALLA
+claro   > 60 % claros o media > 0,6           → disco #374151 en el PAPEL
+medio   se lee sobre los dos
+```
+
+Un listener de `load` en CAPTURA para todo el documento alcanza a los quince
+lugares que pintan escudos sin tocar ninguno. Un escudo de otro origen
+ensucia el canvas: queda sin marca, como antes. El logo de MotorStats no se
+toca.
+
+**Medido con los 36 escudos del repo**: 11 opacos (los JPEG de Liga
+Argentina, Estrella, Náutico), 17 medios, 3 claros (Juventud, Los Hornos,
+Mayo) y 5 oscuros (CEYE, Deportivo La Plata, Meridiano, Unión Vecinal, Villa
+Elisa) — esos cinco pasan a disco claro y se leen.
+
+**Lo que costó: `willReadFrequently`.** Con esa opción Chrome dibuja el canvas
+por software y reduce la imagen de otra forma: Villa Elisa (53 % oscuro, el
+caso límite) daba «medio» y seguía ilegible. Se mide sin ella, con
+suavizado de alta calidad, y el umbral bajó a 45 %.

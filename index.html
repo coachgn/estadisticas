@@ -2606,6 +2606,32 @@
     object-fit: contain;
   }
 
+  /* EL FONDO SEGÚN EL DIBUJO DEL ESCUDO (punto 89). `data-tono` lo pone
+     `SGADD_UI.tonoEscudo()` midiendo los píxeles al cargar.
+
+     EN PANTALLA (fondo oscuro) el problema es el trazo OSCURO: va sobre un
+     disco gris muy claro. No blanco puro, que al lado del navy se ve como
+     un agujero: #E5E7EB le da al trazo negro 15:1 y no encandila.
+     Un escudo suelto (tablas, scatter, encabezados) recibe lo mismo con
+     esquinas redondeadas, porque no hay disco que pintar. */
+  @media screen {
+    .escudo-aro:has(> img[data-tono="oscuro"]) { background: #E5E7EB; border-color: #9CA3AF; }
+    img[data-tono="oscuro"]:not(.escudo-aro > img) { background: #E5E7EB; border-radius: 6px; padding: 1px; }
+    /* El del Panel Master ya es blanco: ahí el que se pierde es el CLARO. */
+    .escudo-hub[data-tono="claro"] { background: #1F2937; }
+  }
+  /* EN EL PAPEL (fondo blanco) el que se pierde es el trazo CLARO: va sobre
+     un disco gris oscuro. Con `print-color-adjust`, o Chrome no imprime el
+     fondo y el escudo vuelve a desaparecer. */
+  @media print {
+    .escudo-aro:has(> img[data-tono="claro"]),
+    img[data-tono="claro"]:not(.escudo-aro > img) {
+      background: #374151 !important; border-radius: 9999px;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    img[data-tono="claro"]:not(.escudo-aro > img) { border-radius: 2mm; }
+  }
+
   /* HOVER de las cards de equipo. `box-shadow` y no `filter: brightness`:
      el filtro afecta al texto de adentro y con los tonos de zona eso
      rompe el contraste que el punto 15 deja medido. El resplandor usa el
@@ -2948,7 +2974,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=263" />
+<link rel="stylesheet" href="sgadd.css?v=264" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -3145,52 +3171,52 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=263"></script>
+<script src="js/sgadd-club.js?v=264"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=263"></script>
-<script src="js/sgadd-core.js?v=263"></script>
-<script src="js/sgadd-auth.js?v=263"></script>
+<script src="js/sgadd-config.js?v=264"></script>
+<script src="js/sgadd-core.js?v=264"></script>
+<script src="js/sgadd-auth.js?v=264"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=263"></script>
-<script src="js/sgadd-glosario.js?v=263"></script>
-<script src="js/sgadd-glosarioui.js?v=263"></script>
-<script src="js/sgadd-comparativa.js?v=263"></script>
-<script src="js/sgadd-comparativaui.js?v=263"></script>
-<script src="js/sgadd-confirmar.js?v=263"></script>
-<script src="js/sgadd-landing.js?v=263"></script>
-<script src="js/sgadd-login.js?v=263"></script>
-<script src="js/sgadd-data.js?v=263"></script>
-<script src="js/sgadd-clientes.js?v=263"></script>
-<script src="js/sgadd-ui.js?v=263"></script>
-<script src="js/sgadd-app.js?v=263"></script>
-<script src="js/sgadd-clasificacion.js?v=263"></script>
+<script src="js/sgadd-demo.js?v=264"></script>
+<script src="js/sgadd-glosario.js?v=264"></script>
+<script src="js/sgadd-glosarioui.js?v=264"></script>
+<script src="js/sgadd-comparativa.js?v=264"></script>
+<script src="js/sgadd-comparativaui.js?v=264"></script>
+<script src="js/sgadd-confirmar.js?v=264"></script>
+<script src="js/sgadd-landing.js?v=264"></script>
+<script src="js/sgadd-login.js?v=264"></script>
+<script src="js/sgadd-data.js?v=264"></script>
+<script src="js/sgadd-clientes.js?v=264"></script>
+<script src="js/sgadd-ui.js?v=264"></script>
+<script src="js/sgadd-app.js?v=264"></script>
+<script src="js/sgadd-clasificacion.js?v=264"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-fixture.js?v=263"></script>
-<script src="js/sgadd-fases.js?v=263"></script>
-<script src="js/sgadd-torneos.js?v=263"></script>
-<script src="js/sgadd-hub.js?v=263"></script>
-<script src="js/sgadd-configui.js?v=263"></script>
-<script src="js/sgadd-estados.js?v=263"></script>
-<script src="js/sgadd-buzon.js?v=263"></script>
-<script src="js/sgadd-charts.js?v=263"></script>
-<script src="js/sgadd-personalidad.js?v=263"></script>
-<script src="js/sgadd-rankings.js?v=263"></script>
-<script src="js/sgadd-partido.js?v=263"></script>
-<script src="js/sgadd-informe.js?v=263"></script>
-<script src="js/sgadd-ficha.js?v=263"></script>
-<script src="js/sgadd-mercado.js?v=263"></script>
-<script src="js/sgadd-fichajes.js?v=263"></script>
-  <script src="js/sgadd-rankingpdf.js?v=263"></script>
-<script src="js/sgadd-equipos.js?v=263"></script>
+<script src="js/sgadd-fixture.js?v=264"></script>
+<script src="js/sgadd-fases.js?v=264"></script>
+<script src="js/sgadd-torneos.js?v=264"></script>
+<script src="js/sgadd-hub.js?v=264"></script>
+<script src="js/sgadd-configui.js?v=264"></script>
+<script src="js/sgadd-estados.js?v=264"></script>
+<script src="js/sgadd-buzon.js?v=264"></script>
+<script src="js/sgadd-charts.js?v=264"></script>
+<script src="js/sgadd-personalidad.js?v=264"></script>
+<script src="js/sgadd-rankings.js?v=264"></script>
+<script src="js/sgadd-partido.js?v=264"></script>
+<script src="js/sgadd-informe.js?v=264"></script>
+<script src="js/sgadd-ficha.js?v=264"></script>
+<script src="js/sgadd-mercado.js?v=264"></script>
+<script src="js/sgadd-fichajes.js?v=264"></script>
+  <script src="js/sgadd-rankingpdf.js?v=264"></script>
+<script src="js/sgadd-equipos.js?v=264"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=263"></script>
-<script src="js/sgadd-jugadores.js?v=263"></script>
-<script src="js/sgadd-4factores.js?v=263"></script>
-<script src="js/sgadd-scouting.js?v=263"></script>
-<script src="js/sgadd-pbp.js?v=263"></script>
-<script src="js/sgadd-diagnostico.js?v=263"></script>
+<script src="js/sgadd-niveles.js?v=264"></script>
+<script src="js/sgadd-jugadores.js?v=264"></script>
+<script src="js/sgadd-4factores.js?v=264"></script>
+<script src="js/sgadd-scouting.js?v=264"></script>
+<script src="js/sgadd-pbp.js?v=264"></script>
+<script src="js/sgadd-diagnostico.js?v=264"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

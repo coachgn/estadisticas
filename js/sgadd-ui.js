@@ -1222,7 +1222,124 @@ const SGADD_UI = (function () {
     return r;
   }
 
+  /* =====================================================================
+     EL FONDO DE CADA ESCUDO SALE DE SU PROPIO DIBUJO (punto 89)
+
+     Los escudos llegan de fuentes distintas: unos traen fondo propio, otros
+     son un trazo OSCURO sobre transparente —sobre la card negra
+     desaparecían— y otros un trazo BLANCO sobre transparente, que en el
+     papel blanco del PDF desaparecen igual. Un fondo único no sirve: el
+     blanco que salva al oscuro borra al blanco, y al revés.
+
+     Así que se MIDE: al cargar, el escudo se dibuja en un canvas de 48 px
+     y se lee la luminancia de sus píxeles visibles. Queda marcado en
+     `data-tono` y el CSS hace el resto, en TODAS las vistas —grillas,
+     tablas, Fichajes, scouting, los PDF— sin que cada módulo tenga que
+     acordarse (son quince lugares que pintan escudos).
+
+       opaco   casi sin transparencia: el escudo trae su fondo, no se toca
+       oscuro  trazo oscuro sobre transparente → disco claro en pantalla
+       claro   trazo claro sobre transparente  → disco oscuro en el papel
+       medio   colores de luminancia media: se leen sobre los dos fondos
+
+     Un escudo de OTRO origen ensucia el canvas y `getImageData` lanza: se
+     queda sin marca y se ve como hasta ahora. Nunca rompe la carga.
+     ===================================================================== */
+
+  /** Luminancia relativa (WCAG) de un color sRGB 0-255. */
+  function luminancia(r, g, b) {
+    const c = [r, g, b].map(v => {
+      const s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  }
+
+  /**
+   * El tono de un escudo a partir de sus píxeles RGBA. PURA: la usa el
+   * navegador con un canvas y el test con un arreglo armado a mano.
+   * Devuelve 'opaco' | 'oscuro' | 'claro' | 'medio', o null si no hay nada
+   * visible que medir.
+   */
+  function tonoDePixeles(data) {
+    if (!data || !data.length) return null;
+    let total = 0, transparentes = 0, visibles = 0, sumaLum = 0, oscuros = 0, claros = 0;
+    for (let i = 0; i + 3 < data.length; i += 4) {
+      total++;
+      const a = data[i + 3];
+      if (a < 32) { transparentes++; continue; }
+      if (a < 128) continue;
+      visibles++;
+      const l = luminancia(data[i], data[i + 1], data[i + 2]);
+      sumaLum += l;
+      if (l < 0.12) oscuros++;
+      else if (l > 0.6) claros++;
+    }
+    if (!visibles) return null;
+    /* Menos del 4 % transparente: el escudo trae su propio fondo, y ese
+       fondo ya le da el contraste. */
+    if (transparentes / total < 0.04) return 'opaco';
+    const media = sumaLum / visibles;
+    /* 45 % y no 50 %: medido con los 36 escudos del repo, Villa Elisa
+       (gris oscuro sobre transparente, ilegible en la card) da 53 % y
+       quedaba del lado equivocado según cómo se muestreara la imagen. */
+    if (oscuros / visibles > 0.45 || media < 0.15) return 'oscuro';
+    if (claros / visibles > 0.6 || media > 0.6) return 'claro';
+    return 'medio';
+  }
+
+  const TONOS = new Map();   // src -> tono, para no medir dos veces el mismo archivo
+
+  /** ¿Esta imagen es un escudo? Los del pozo `logos/` y los que viven en
+      un contenedor de escudo. El logo de MotorStats del pie, no. */
+  function esEscudo(img) {
+    if (!img || img.tagName !== 'IMG') return false;
+    const src = img.currentSrc || img.src || '';
+    if (/motorlogo/i.test(src)) return false;
+    if (/\/logos\//.test(src)) return true;
+    const p = img.parentElement;
+    return !!(img.classList.contains('escudo-hub') || img.classList.contains('ficha-escudo')
+      || (p && p.classList && p.classList.contains('escudo-aro')));
+  }
+
+  /** Mide un escudo ya cargado y lo marca con `data-tono`. */
+  function tonoEscudo(img) {
+    if (!esEscudo(img) || !img.naturalWidth) return null;
+    const src = img.currentSrc || img.src;
+    if (TONOS.has(src)) { const t = TONOS.get(src); if (t) img.dataset.tono = t; return t; }
+    let tono = null;
+    /* 48 px CON SUAVIZADO y SIN `willReadFrequently`. Con esa opción
+       Chrome dibuja por software y reduce la imagen de otra forma: medido,
+       el mismo escudo daba «medio» con ella y «oscuro» sin ella. La
+       reducción suavizada promedia el dibujo en vez de quedarse con
+       píxeles sueltos. */
+    try {
+      const L = 48;
+      const c = document.createElement('canvas');
+      c.width = L; c.height = L;
+      const ctx = c.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, L, L);
+      tono = tonoDePixeles(ctx.getImageData(0, 0, L, L).data);
+    } catch (e) { tono = null; }   // otro origen: canvas sucio, se queda como estaba
+    TONOS.set(src, tono);
+    if (tono) img.dataset.tono = tono;
+    return tono;
+  }
+
+  /* UN listener en CAPTURA para todo el documento: `load` no burbujea, pero
+     se puede capturar. Así alcanza a los escudos que cualquier módulo pinte
+     después, sin engancharse a cada render (punto 20, la misma idea). */
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('load', (ev) => {
+      const t = ev.target;
+      if (t && t.tagName === 'IMG') tonoEscudo(t);
+    }, true);
+  }
+
   return { esc, escJs, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, sinDatosTodavia, signoDelta, colorDelta, claseMasMenos,
+    tonoDePixeles, tonoEscudo, esEscudo, luminancia,
     atributosFila, teclaActiva, teclaTabs, cargando, conservarFoco,
     embeberImagenes, restaurarImagenes, pieInforme, pieWeb, MAIL, INSTAGRAM, ARROBA, LOGO, fechaHoy, MARCA,
     inyectarPieMotorStats, quitarPieMotorStats, pieVistaPrevia, ID_PIE,
