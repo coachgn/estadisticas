@@ -526,6 +526,37 @@ const sinSheetId = (body) => !/SHEET_[A-Z]+_\d+/.test(JSON.stringify(body));
   check('vaciar una ficha la deja «sin ficha» sin borrar el campo', res.status === 200 && res.body.fichas[CLAVE] === undefined
     && hashes[F.claveFichas('liga-argentina-2026-27')][CLAVE] !== undefined);
 
+  titulo('3 bis. EL PADRÓN DEL LIBRO (PADRON J) · completa las fichas sin pisarlas');
+  {
+    const original = sheets.obtenerDatosPlanilla;
+    const rangos = [];
+    sheets.obtenerDatosPlanilla = async (id, rango) => {
+      rangos.push(rango);
+      return { rango: rango, valores: [
+        ['ID_JUGADOR', 'NOMBRES', 'EQUIPO', 'TORNEO', 'ID_EQUIPO_FUENTE', 'DORSAL', 'NACIMIENTO', 'EDAD TEMPORADA', 'PUESTO', 'TALLA'],
+        [1, 'PEREZ, JUAN', 'A', 'IDA', 10, 5, '14/3/1991', 35, '', ''],
+        [2, 'GOMEZ,  LUIS', 'B', 'IDA', 20, 7, '2001-07-02', 25, '2-3', 198],
+      ] };
+    };
+    await F.manejarFichasEscribir(pedido(tokAdmin, { torneo: 'liga-argentina-2026-27' }, { cambios: { 'PEREZ, JUAN|A': { nacimiento: '1990', talla: 201 } } }));
+    res = await F.manejarZona(pedido(tokAdmin, { torneo: 'liga-argentina-2026-27', zona: 'lab-2026-27-norte' }));
+    check('pide la pestaña PADRON J del libro de la zona', rangos[0] === "'PADRON J'");
+    check('la ficha MANUAL gana campo por campo: su nacimiento y su talla quedan',
+      res.body.fichas['PEREZ, JUAN|A'].nacimiento === '1990' && res.body.fichas['PEREZ, JUAN|A'].talla === 201);
+    check('un jugador sin ficha manual recibe la del padrón: nacimiento, puesto y talla',
+      res.body.fichas['GOMEZ, LUIS|B'] && res.body.fichas['GOMEZ, LUIS|B'].nacimiento === '2001-07-02'
+      && res.body.fichas['GOMEZ, LUIS|B'].posicion === '2-3' && res.body.fichas['GOMEZ, LUIS|B'].talla === 198,
+      JSON.stringify(res.body.fichas['GOMEZ, LUIS|B']));
+    check('la respuesta dice qué leyó del padrón', res.body.padron.leido === true && res.body.padron.filas === 2 && res.body.padron.completadas === 1);
+    check('y sigue sin sheetId', sinSheetId(res.body));
+    sheets.obtenerDatosPlanilla = async () => { throw new Error('Unable to parse range: PADRON J'); };
+    res = await F.manejarZona(pedido(tokAdmin, { torneo: 'liga-argentina-2026-27', zona: 'lab-2026-27-norte' }));
+    check('un libro SIN PADRON J: 200 y las fichas manuales de siempre', res.status === 200 && res.body.padron.leido === false
+      && res.body.fichas['PEREZ, JUAN|A'].talla === 201 && !res.body.fichas['GOMEZ, LUIS|B']);
+    sheets.obtenerDatosPlanilla = original;
+    await F.manejarFichasEscribir(pedido(tokAdmin, { torneo: 'liga-argentina-2026-27' }, { cambios: { 'PEREZ, JUAN|A': {} } }));
+  }
+
   titulo('4. EL PANEL · el gate y el cableado');
 
   const src = fs.readFileSync('./server/api/fichajes.js', 'utf8');

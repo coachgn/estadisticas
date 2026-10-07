@@ -41,6 +41,7 @@ const reglas = require('../lib/reglas.js');
 const { verificarToken, tokenDeLaPeticion } = require('../lib/auth.js');
 const AUTH = require('../lib/compartido/sgadd-auth.js');
 const MERCADO = require('../lib/compartido/sgadd-mercado.js');
+const PADRON_J = require('../lib/padron-j.js');
 
 const PADRON = 'sgadd:fichajes:padron';
 const SLUG = /^[a-z0-9][a-z0-9-]{0,79}$/;
@@ -149,6 +150,20 @@ async function manejarZona(peticion, deps) {
     catch (e) { fichas = {}; }
   }
 
+  /* EL PADRÓN DEL LIBRO (`PADRON J`, lib/padron-j.js): nacimiento, y puesto
+     y talla si alguien los cargó, para los libros que llegan por la ingesta
+     automática. Completa las fichas manuales SIN pisarlas. Un libro sin esa
+     pestaña —todos salvo la LNB— o una lectura que falla dejan las fichas
+     como estaban: el padrón es un extra, nunca un motivo para un 503. */
+  let padron = { leido: false, filas: 0, conDatos: 0, completadas: 0 };
+  try {
+    const r = await sheets.obtenerDatosPlanilla(k.sheetId, "'" + PADRON_J.HOJA + "'", deps);
+    const del = PADRON_J.fichasDelPadron(r && r.valores);
+    const f = PADRON_J.fusionar(fichas, del.fichas);
+    fichas = f.fichas;
+    padron = { leido: true, filas: del.filas, conDatos: del.conDatos, completadas: f.completadas };
+  } catch (e) { /* sin PADRON J: nada que completar */ }
+
   const hojas = {};
   Object.keys(libro.hojas || {}).forEach(h => { hojas[h] = reglas.sinColumnasOcultas(libro.hojas[h]); });
   return {
@@ -157,7 +172,9 @@ async function manejarZona(peticion, deps) {
       ok: true, torneo: torneoId, zona: slug, label: k.label || slug,
       nivel: k.nivel || t.nivel || null, nombreTorneo: t.nombre || torneoId,
       hojas: hojas, faltantes: libro.faltantes || [], leidoEn: libro.leidoEn || null,
-      fichas: fichas, fichasLeidas: fichasLeidas,
+      /* Con el padrón leído las fichas SON un dato aunque KV no haya
+         respondido: la pantalla puede decir «sin ficha» con fundamento. */
+      fichas: fichas, fichasLeidas: fichasLeidas || padron.leido, padron: padron,
     },
   };
 }

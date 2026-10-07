@@ -1,0 +1,980 @@
+{
+ "//": "Liga Nacional de Básquet 2026-27. Equipos e ids: menú «Equipos» de laliganacional.com.ar/laliga (los de Gesdeportiva, /equipo/<idClub>/<id>/). Calendario: el fixture del sitio, publicado hasta 2027-01-31. Formato: sección FORMATO del sitio, cuyo texto es el de la 25/26 (19 equipos, 36 partidos); los números de esta temporada salen del menú y del fixture. Zona única: la LNB no tiene conferencias. Generado por motorstats-ingestion/herramientas/torneo-lnb.js el 2026-10-07.",
+ "id": "liga-nacional-2026-27",
+ "nombre": "Liga Nacional 2026-27",
+ "nombreCorto": "LNB 2026-27",
+ "liga": "liga-nacional",
+ "temporada": "2026-27",
+ "nivel": "LIGA_NACIONAL",
+ "fuente": {
+  "sitio": "liga",
+  "delegacion": "laliga",
+  "base": "https://www.laliganacional.com.ar",
+  "notas": [
+   "https://www.laliganacional.com.ar/laliga/formato",
+   "https://www.laliganacional.com.ar/laliga/fixture"
+  ],
+  "motorstats": {
+   "unica": {
+    "scriptId": "1FPyIki7Fw1VNxQT0Q2mAUsiPOhS1lWLPgaskSjOlPO_1uCIzJTq6Z9tv"
+   },
+   "//": "El script de Apps Script que escribe el libro (el piloto de ingesta). El panel NO lo usa: lee el Sheet por API. Va como referencia de quien produce el dato."
+  }
+ },
+ "formato": {
+  "equiposPorZona": 18,
+  "partidosPorEquipo": 34,
+  "modalidad": "Todos contra todos, ida y vuelta, en una zona única",
+  "inicio": "2026-09-28",
+  "fases": [
+   {
+    "id": "regular",
+    "label": "Fase regular",
+    "cruce": "zona"
+   },
+   {
+    "id": "reclasificacion",
+    "label": "Reclasificación",
+    "cruce": "zona",
+    "puestos": [
+     5,
+     12
+    ]
+   },
+   {
+    "id": "cuartos",
+    "label": "Cuartos de final",
+    "cruce": "zona",
+    "directos": [
+     1,
+     4
+    ]
+   },
+   {
+    "id": "semifinal",
+    "label": "Semifinales",
+    "cruce": "zona"
+   },
+   {
+    "id": "final",
+    "label": "Final",
+    "cruce": "zona"
+   }
+  ],
+  "//": "Playoffs al mejor de 5; la final, al mejor de 7. Copa Islas Malvinas: los 4 mejores al cerrar la primera rueda. Play Out entre los dos últimos (al mejor de 5): el perdedor desciende a la Liga Argentina. Sin fechas de postemporada publicadas."
+ },
+ "zonas": {
+  "unica": {
+   "slug": "lnb-2026-27",
+   "label": "LNB 2026-27",
+   "equipos": [
+    {
+     "id": 115240,
+     "idClub": 1932,
+     "nombre": "ARGENTINO (J)",
+     "ciudad": "Junin",
+     "alias": [
+      "ARGENTINO (J) JUNIN"
+     ]
+    },
+    {
+     "id": 112793,
+     "idClub": 1498,
+     "nombre": "ATENAS (C)",
+     "ciudad": "Cordoba",
+     "alias": [
+      "ATENAS (C) CORDOBA"
+     ]
+    },
+    {
+     "id": 114735,
+     "idClub": 19,
+     "nombre": "BOCA",
+     "ciudad": "C.A.B.A.",
+     "alias": [
+      "BOCA C.A.B.A."
+     ]
+    },
+    {
+     "id": 112566,
+     "idClub": 46,
+     "nombre": "FERRO",
+     "ciudad": "C.A.B.A.",
+     "alias": [
+      "FERRO C.A.B.A."
+     ]
+    },
+    {
+     "id": 112553,
+     "idClub": 1474,
+     "nombre": "GIMNASIA (CR)",
+     "ciudad": "Comodoro Rivadavia",
+     "alias": [
+      "GIMNASIA (CR) COMODORO RIVADAVIA"
+     ]
+    },
+    {
+     "id": 114628,
+     "idClub": 2025,
+     "nombre": "INDEPENDIENTE (O)",
+     "ciudad": "Oliva",
+     "alias": [
+      "INDEPENDIENTE (O) OLIVA"
+     ]
+    },
+    {
+     "id": 112809,
+     "idClub": 1790,
+     "nombre": "INSTITUTO",
+     "ciudad": "Cordoba",
+     "alias": [
+      "INSTITUTO CORDOBA"
+     ]
+    },
+    {
+     "id": 114763,
+     "idClub": 1541,
+     "nombre": "LA UNION FSA",
+     "ciudad": "Formosa",
+     "alias": [
+      "LA UNION FSA FORMOSA"
+     ]
+    },
+    {
+     "id": 112600,
+     "idClub": 63,
+     "nombre": "LANÚS",
+     "ciudad": "Lanus",
+     "alias": [
+      "LANÚS LANUS"
+     ]
+    },
+    {
+     "id": 113652,
+     "idClub": 2305,
+     "nombre": "OBERÁ",
+     "ciudad": "Obera",
+     "alias": [
+      "OBERÁ OBERA"
+     ]
+    },
+    {
+     "id": 113870,
+     "idClub": 1882,
+     "nombre": "OLIMPICO (LB)",
+     "ciudad": "La Banda",
+     "alias": [
+      "OLIMPICO (LB) LA BANDA"
+     ]
+    },
+    {
+     "id": 114902,
+     "idClub": 2376,
+     "nombre": "PEÑAROL (MDP)",
+     "ciudad": "Mar Del Plata",
+     "alias": [
+      "PEÑAROL (MDP) MAR DEL PLATA"
+     ]
+    },
+    {
+     "id": 112549,
+     "idClub": 80,
+     "nombre": "PLATENSE",
+     "ciudad": "Vicente Lopez",
+     "alias": [
+      "PLATENSE VICENTE LOPEZ"
+     ]
+    },
+    {
+     "id": 112657,
+     "idClub": 1869,
+     "nombre": "QUIMSA",
+     "ciudad": "Santiago Del Estero",
+     "alias": [
+      "QUIMSA SANTIAGO DEL ESTERO"
+     ]
+    },
+    {
+     "id": 114607,
+     "idClub": 1992,
+     "nombre": "RACING (CH)",
+     "ciudad": "Chivilcoy",
+     "alias": [
+      "RACING (CH) CHIVILCOY"
+     ]
+    },
+    {
+     "id": 114561,
+     "idClub": 1424,
+     "nombre": "REGATAS (C)",
+     "ciudad": "Corrientes",
+     "alias": [
+      "REGATAS (C) CORRIENTES"
+     ]
+    },
+    {
+     "id": 113373,
+     "idClub": 88,
+     "nombre": "SAN LORENZO",
+     "ciudad": "C.A.B.A.",
+     "alias": [
+      "SAN LORENZO C.A.B.A."
+     ]
+    },
+    {
+     "id": 113546,
+     "idClub": 1426,
+     "nombre": "SAN MARTÍN (C)",
+     "ciudad": "Corrientes",
+     "alias": [
+      "SAN MARTÍN (C) CORRIENTES"
+     ]
+    }
+   ]
+  }
+ },
+ "calendario": {
+  "parcial": true,
+  "fuente": "fixture de laliganacional.com.ar/laliga · publicado hasta 2027-01-31",
+  "partidos": [
+   {
+    "fecha": "2026-09-28",
+    "local": "LANÚS",
+    "visitante": "GIMNASIA (CR)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-09-30",
+    "local": "PEÑAROL (MDP)",
+    "visitante": "GIMNASIA (CR)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-09-30",
+    "local": "ARGENTINO (J)",
+    "visitante": "FERRO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-09-30",
+    "local": "SAN MARTÍN (C)",
+    "visitante": "INSTITUTO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-01",
+    "local": "OLIMPICO (LB)",
+    "visitante": "PLATENSE",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-02",
+    "local": "REGATAS (C)",
+    "visitante": "INSTITUTO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-03",
+    "local": "QUIMSA",
+    "visitante": "PLATENSE",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-04",
+    "local": "GIMNASIA (CR)",
+    "visitante": "LA UNION FSA",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-05",
+    "local": "QUIMSA",
+    "visitante": "ATENAS (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-06",
+    "local": "PLATENSE",
+    "visitante": "LA UNION FSA",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-07",
+    "local": "BOCA",
+    "visitante": "OBERÁ",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-07",
+    "local": "OLIMPICO (LB)",
+    "visitante": "ATENAS (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-08",
+    "local": "RACING (CH)",
+    "visitante": "SAN MARTÍN (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-08",
+    "local": "INDEPENDIENTE (O)",
+    "visitante": "FERRO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-08",
+    "local": "SAN LORENZO",
+    "visitante": "GIMNASIA (CR)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-09",
+    "local": "LANÚS",
+    "visitante": "OBERÁ",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-10",
+    "local": "INSTITUTO",
+    "visitante": "FERRO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-10",
+    "local": "ARGENTINO (J)",
+    "visitante": "SAN MARTÍN (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-10",
+    "local": "QUIMSA",
+    "visitante": "BOCA",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-10",
+    "local": "RACING (CH)",
+    "visitante": "GIMNASIA (CR)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-12",
+    "local": "ATENAS (C)",
+    "visitante": "FERRO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-12",
+    "local": "OLIMPICO (LB)",
+    "visitante": "BOCA",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-12",
+    "local": "ARGENTINO (J)",
+    "visitante": "GIMNASIA (CR)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-13",
+    "local": "OBERÁ",
+    "visitante": "RACING (CH)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-14",
+    "local": "LANÚS",
+    "visitante": "PEÑAROL (MDP)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-15",
+    "local": "LA UNION FSA",
+    "visitante": "RACING (CH)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-16",
+    "local": "PLATENSE",
+    "visitante": "OBERÁ",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-16",
+    "local": "SAN LORENZO",
+    "visitante": "PEÑAROL (MDP)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-18",
+    "local": "SAN LORENZO",
+    "visitante": "OBERÁ",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-18",
+    "local": "REGATAS (C)",
+    "visitante": "OLIMPICO (LB)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-19",
+    "local": "INDEPENDIENTE (O)",
+    "visitante": "LANÚS",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-20",
+    "local": "FERRO",
+    "visitante": "PLATENSE",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-20",
+    "local": "SAN MARTÍN (C)",
+    "visitante": "OLIMPICO (LB)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-21",
+    "local": "INSTITUTO",
+    "visitante": "LANÚS",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-21",
+    "local": "ARGENTINO (J)",
+    "visitante": "BOCA",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-23",
+    "local": "ATENAS (C)",
+    "visitante": "LANÚS",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-23",
+    "local": "RACING (CH)",
+    "visitante": "BOCA",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-23",
+    "local": "ARGENTINO (J)",
+    "visitante": "QUIMSA",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-25",
+    "local": "RACING (CH)",
+    "visitante": "QUIMSA",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-26",
+    "local": "LANÚS",
+    "visitante": "REGATAS (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-27",
+    "local": "LA UNION FSA",
+    "visitante": "INDEPENDIENTE (O)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-27",
+    "local": "PEÑAROL (MDP)",
+    "visitante": "SAN MARTÍN (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-28",
+    "local": "GIMNASIA (CR)",
+    "visitante": "FERRO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-28",
+    "local": "SAN LORENZO",
+    "visitante": "PLATENSE",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-28",
+    "local": "BOCA",
+    "visitante": "REGATAS (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-29",
+    "local": "LANÚS",
+    "visitante": "SAN MARTÍN (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-29",
+    "local": "OBERÁ",
+    "visitante": "INDEPENDIENTE (O)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-10-31",
+    "local": "OLIMPICO (LB)",
+    "visitante": "PEÑAROL (MDP)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-01",
+    "local": "ATENAS (C)",
+    "visitante": "RACING (CH)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-01",
+    "local": "INSTITUTO",
+    "visitante": "GIMNASIA (CR)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-02",
+    "local": "QUIMSA",
+    "visitante": "PEÑAROL (MDP)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-03",
+    "local": "ATENAS (C)",
+    "visitante": "GIMNASIA (CR)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-03",
+    "local": "INDEPENDIENTE (O)",
+    "visitante": "RACING (CH)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-03",
+    "local": "LA UNION FSA",
+    "visitante": "ARGENTINO (J)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-04",
+    "local": "OLIMPICO (LB)",
+    "visitante": "LANÚS",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-05",
+    "local": "INSTITUTO",
+    "visitante": "RACING (CH)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-05",
+    "local": "OBERÁ",
+    "visitante": "ARGENTINO (J)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-05",
+    "local": "INDEPENDIENTE (O)",
+    "visitante": "GIMNASIA (CR)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-06",
+    "local": "FERRO",
+    "visitante": "SAN MARTÍN (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-06",
+    "local": "QUIMSA",
+    "visitante": "LANÚS",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-06",
+    "local": "SAN LORENZO",
+    "visitante": "REGATAS (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-07",
+    "local": "BOCA",
+    "visitante": "LA UNION FSA",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-08",
+    "local": "QUIMSA",
+    "visitante": "INSTITUTO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-08",
+    "local": "SAN LORENZO",
+    "visitante": "SAN MARTÍN (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-08",
+    "local": "RACING (CH)",
+    "visitante": "REGATAS (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-09",
+    "local": "LANÚS",
+    "visitante": "LA UNION FSA",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-10",
+    "local": "OLIMPICO (LB)",
+    "visitante": "INSTITUTO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-10",
+    "local": "BOCA",
+    "visitante": "SAN MARTÍN (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-10",
+    "local": "ARGENTINO (J)",
+    "visitante": "REGATAS (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-11",
+    "local": "PLATENSE",
+    "visitante": "PEÑAROL (MDP)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-12",
+    "local": "ATENAS (C)",
+    "visitante": "SAN LORENZO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-13",
+    "local": "FERRO",
+    "visitante": "PEÑAROL (MDP)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-14",
+    "local": "GIMNASIA (CR)",
+    "visitante": "PLATENSE",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-14",
+    "local": "INDEPENDIENTE (O)",
+    "visitante": "SAN LORENZO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-15",
+    "local": "SAN MARTÍN (C)",
+    "visitante": "QUIMSA",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-15",
+    "local": "LA UNION FSA",
+    "visitante": "ATENAS (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-15",
+    "local": "ARGENTINO (J)",
+    "visitante": "LANÚS",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-16",
+    "local": "INSTITUTO",
+    "visitante": "SAN LORENZO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-17",
+    "local": "OBERÁ",
+    "visitante": "ATENAS (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-17",
+    "local": "REGATAS (C)",
+    "visitante": "QUIMSA",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-17",
+    "local": "RACING (CH)",
+    "visitante": "LANÚS",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-19",
+    "local": "OLIMPICO (LB)",
+    "visitante": "FERRO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-20",
+    "local": "ATENAS (C)",
+    "visitante": "INSTITUTO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2026-11-21",
+    "local": "QUIMSA",
+    "visitante": "FERRO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-10",
+    "local": "PLATENSE",
+    "visitante": "SAN MARTÍN (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-10",
+    "local": "LANÚS",
+    "visitante": "FERRO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-10",
+    "local": "INSTITUTO",
+    "visitante": "BOCA",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-10",
+    "local": "PEÑAROL (MDP)",
+    "visitante": "FERRO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-12",
+    "local": "GIMNASIA (CR)",
+    "visitante": "SAN MARTÍN (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-12",
+    "local": "FERRO",
+    "visitante": "REGATAS (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-12",
+    "local": "INDEPENDIENTE (O)",
+    "visitante": "BOCA",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-13",
+    "local": "LA UNION FSA",
+    "visitante": "INSTITUTO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-14",
+    "local": "ATENAS (C)",
+    "visitante": "BOCA",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-14",
+    "local": "INDEPENDIENTE (O)",
+    "visitante": "PEÑAROL (MDP)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-15",
+    "local": "OBERÁ",
+    "visitante": "INSTITUTO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-15",
+    "local": "RACING (CH)",
+    "visitante": "OLIMPICO (LB)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-16",
+    "local": "ATENAS (C)",
+    "visitante": "PEÑAROL (MDP)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-17",
+    "local": "ARGENTINO (J)",
+    "visitante": "OLIMPICO (LB)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-18",
+    "local": "PLATENSE",
+    "visitante": "REGATAS (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-18",
+    "local": "INSTITUTO",
+    "visitante": "PEÑAROL (MDP)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-19",
+    "local": "SAN LORENZO",
+    "visitante": "LA UNION FSA",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-19",
+    "local": "BOCA",
+    "visitante": "LANÚS",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-20",
+    "local": "GIMNASIA (CR)",
+    "visitante": "REGATAS (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-20",
+    "local": "QUIMSA",
+    "visitante": "INDEPENDIENTE (O)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-21",
+    "local": "FERRO",
+    "visitante": "LA UNION FSA",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-22",
+    "local": "OLIMPICO (LB)",
+    "visitante": "INDEPENDIENTE (O)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-23",
+    "local": "PLATENSE",
+    "visitante": "ARGENTINO (J)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-23",
+    "local": "OBERÁ",
+    "visitante": "SAN MARTÍN (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-23",
+    "local": "PEÑAROL (MDP)",
+    "visitante": "ARGENTINO (J)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-25",
+    "local": "FERRO",
+    "visitante": "ARGENTINO (J)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-25",
+    "local": "BOCA",
+    "visitante": "RACING (CH)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-26",
+    "local": "INSTITUTO",
+    "visitante": "ATENAS (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-26",
+    "local": "OBERÁ",
+    "visitante": "PLATENSE",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-26",
+    "local": "LA UNION FSA",
+    "visitante": "SAN MARTÍN (C)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-27",
+    "local": "LANÚS",
+    "visitante": "RACING (CH)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-28",
+    "local": "REGATAS (C)",
+    "visitante": "FERRO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-28",
+    "local": "LA UNION FSA",
+    "visitante": "PLATENSE",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-29",
+    "local": "QUIMSA",
+    "visitante": "OBERÁ",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-29",
+    "local": "BOCA",
+    "visitante": "SAN LORENZO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-29",
+    "local": "PEÑAROL (MDP)",
+    "visitante": "RACING (CH)",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-30",
+    "local": "SAN MARTÍN (C)",
+    "visitante": "FERRO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-31",
+    "local": "PLATENSE",
+    "visitante": "FERRO",
+    "zona": "unica"
+   },
+   {
+    "fecha": "2027-01-31",
+    "local": "OLIMPICO (LB)",
+    "visitante": "OBERÁ",
+    "zona": "unica"
+   }
+  ]
+ }
+}

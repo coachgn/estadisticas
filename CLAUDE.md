@@ -68,7 +68,9 @@ node test-similitud-etiquetas.js #  45 tests · la similitud multi-etiqueta cont
                            #             de etiquetas, el caso Raineri/Benavidez y los afines
 node test-estados-sync.js  #  74 tests · los estados compartidos en el servidor, dos sesiones
                            #             y que ninguna escritura del catálogo pise datos
-node test-fichajes.js      # 202 tests · Fichajes: ficha manual, padrón, filtros y el servidor (punto 87)
+node test-fichajes.js      # 208 tests · Fichajes: ficha manual, padrón, filtros y el servidor (punto 87)
+                           #             · y PADRON J del libro, que completa las fichas sin pisarlas
+node test-padron-j.js      #  19 tests · la pestaña PADRON J → fichas: fechas, claves, campos inválidos, fusión
 node test-pdf-layout.js    #  37 tests · claves arriba del resto, el flujo continuo, la
                            #             tabla que se parte por filas y que ningún :hover
                            #             pinte la hoja impresa
@@ -12382,3 +12384,34 @@ puntuables cae a Puntos.
 La similitud del punto 58 (función 50 · perfiles 30 · jerarquía 20, con
 volumen comparable) contra TODAS las zonas, con el mismo piso del 60 %.
 Vista `parecidos`, con las mismas cards y la confianza.
+
+
+---
+
+## 92. LA LNB 2026-27 · TORNEO, ESCUDOS Y PADRON J EN FICHAJES (2026-10-07)
+
+Pedido: integrar la Liga Nacional que carga el piloto de ingesta
+(`motorstats-ingestion`, `INFORME_INGESTA_LNB.md`).
+
+- **Torneo**: `torneos/liga-nacional-2026-27.json`, ZONA ÚNICA (`unica`,
+  slug `lnb-2026-27`), 18 equipos con su id de Gesdeportiva, nivel
+  `LIGA_NACIONAL`, calendario del fixture (parcial, hasta 31/01/2027). Lo
+  genera `motorstats-ingestion/herramientas/torneo-lnb.js`. Alta en KV con
+  `catalogo.js torneo --libro "unica=<id>"` el 2026-10-07: sin clientes
+  enganchados.
+- **Escudos**: `logos/liga-nacional/`, 18 `.jpg` con slug del club y su
+  `index.json` (`motorstats-ingestion/herramientas/escudos-lnb.js`).
+- **Fichajes lee `PADRON J`** (`server/lib/padron-j.js`): el libro de la zona
+  trae el nacimiento de cada jugador (y puesto y talla si alguien los cargó).
+  `manejarZona` lo lee aparte de las 9 hojas y COMPLETA las fichas: la ficha
+  manual del admin gana campo por campo. Un libro sin la pestaña —todos salvo
+  la LNB— responde igual que antes. La respuesta suma `padron: {leido, filas,
+  conDatos, completadas}`, y `fichasLeidas` es verdadero si se leyó KV o el
+  padrón.
+- **Lo que el panel todavía no dibuja**: el motor v114 ya escribe en las hojas
+  madre ENTRENADOR, ESTADIO, HORA, parciales e ids (`Base Datos E`) y
+  TITULAR, DORSAL e ID_JUGADOR (`Base Datos J`), y `PADRON J` trae la FOTO.
+  El validador ignora esas columnas (no son ni `req` ni `opt`), así que no
+  hacen ruido en los libros que las reciben vacías. Mostrarlas es trabajo de
+  vista pendiente, y choca con la regla de no hablar de titularidad (punto 8):
+  ahora el dato existe, pero solo en los libros de la ingesta automática.
