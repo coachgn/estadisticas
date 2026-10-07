@@ -242,7 +242,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=268`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=269`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -12415,3 +12415,33 @@ Pedido: integrar la Liga Nacional que carga el piloto de ingesta
   hacen ruido en los libros que las reciben vacías. Mostrarlas es trabajo de
   vista pendiente, y choca con la regla de no hablar de titularidad (punto 8):
   ahora el dato existe, pero solo en los libros de la ingesta automática.
+
+## 93. LOS INSCRIPTOS DEL TORNEO · LOS 18 DE LA LNB A LA VISTA (2026-10-07)
+
+Pedido del club: la plataforma mostraba 11 de los 18 equipos de la LNB porque
+el libro solo trae a los que ya jugaron. Regla: lo que el libro no tiene se
+completa con lo que publicó la liga (`torneos/<id>.json`), y recién si
+tampoco está ahí no existe.
+
+- **`js/sgadd-inscriptos.js`** (motor puro + UI, `test-inscriptos.js`): saca
+  los equipos de `zonas.<zona>.equipos` y los cruza contra el libro por
+  `claveEquipo` (nombre y alias). Los que no cruzan son los «faltantes».
+  Comparte el documento con el Fixture (`SGADD_FIXTURE.cargarTorneo`) y
+  repinta la sección abierta una sola vez cuando llega.
+- **NO TOCA EL ÍNDICE.** Un equipo sin partidos en `construirIndice()`
+  movería medianas, percentiles y el grupo de pares (la razón del punto 44).
+  Las vistas reciben una lista aparte.
+- **Guarda de alias**: si el libro tiene un equipo que el torneo no reconoce,
+  no se completa NADA y se avisa por consola: con alias incompletos un
+  faltante puede ser ese mismo equipo escrito distinto.
+- **Clasificación**: `SGADD_CLASIF.tabla(idx, {inscriptos})` los agrega AL
+  PIE, alfabéticos, con PJ/PG/PP en 0, los cocientes en «—», sin puesto
+  visible y SIN ZONA. Zonas y leyenda siguen sobre los que jugaron. El
+  rótulo dice «18 equipos · 7 sin partidos». En pretemporada la sección
+  muestra la tabla en 0; el resumen recortado de Principal, el cartel.
+- **Equipos**: el picker los suma con «Sin partidos»; su ruta abre la
+  ficha mínima (`inscriptosFichaMinima`): escudo, nombre, ciudad, el aviso
+  «Sin datos estadísticos registrados aún (Temporada …)» y los próximos 5
+  partidos del calendario. Pasa por `puedeVerEquipo` como cualquier ficha.
+- **Scouting**: el selector los ofrece en el grupo «Sin partidos todavía»;
+  elegir uno muestra el aviso y su ficha mínima en vez del informe.

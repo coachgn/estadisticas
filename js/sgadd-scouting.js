@@ -3480,9 +3480,32 @@ function scoutPintar() {
   let cuerpo;
   if (cargando) cuerpo = '<div class="mt-4">' + SGADD_UI.cargando('Trayendo al rival de la otra zona…', 'Su fase regular, sin abrir el libro de su zona') + '</div>';
   else if (fallo) cuerpo = '<div class="mt-4">' + SGADD_UI.aviso('No se pudo traer al rival', fallo.mensaje, 'error') + '</div>';
+  else if (scoutSinDatos(idx).length) cuerpo = scoutCruceSinDatos(scoutSinDatos(idx));
   else cuerpo = scoutInforme(idx);
   root.innerHTML = scoutSelectores(idx, rivales) + cuerpo;
   if (typeof SGADD_PBP !== 'undefined') SGADD_PBP.montarPendientes(root);
+}
+
+/* LOS EQUIPOS DEL CRUCE QUE TODAVÍA NO JUGARON (punto 93). Están en el
+   selector porque el DT prepara el partido igual, pero no hay informe que
+   armar: sin box score cualquier número sería inventado. Se muestra su
+   ficha mínima, con los próximos partidos del calendario. */
+function scoutSinDatos(idx) {
+  if (typeof inscriptoDe !== 'function') return [];
+  return [SCOUT_UI.local, SCOUT_UI.visitante]
+    .filter(k => k && !idx.get(k))
+    .map(k => inscriptoDe(idx, k))
+    .filter(Boolean);
+}
+
+function scoutCruceSinDatos(lista) {
+  const nombres = lista.map(f => f.nombre).join(' y ');
+  return '<div class="mt-4 space-y-4">'
+    + SGADD_UI.aviso('Sin datos para el informe',
+      nombres + (lista.length > 1 ? ' todavía no tienen' : ' todavía no tiene')
+      + ' partidos cargados en esta temporada. El informe pre-partido se arma con su primer partido.')
+    + lista.map(inscriptosFichaMinima).join('')
+    + '</div>';
 }
 
 function scoutSelectores(idx, rivales) {
@@ -3490,8 +3513,14 @@ function scoutSelectores(idx, rivales) {
   /* Los rivales de la llave que juegan en OTRA zona van aparte: se piden
      al servidor al elegirlos (punto 79). */
   const ext = (rivales || []).filter(r => !equipos.some(e => e.clave === r.clave));
+  /* Los inscriptos sin partidos también van aparte (punto 93). Sin filtro
+     de equipo, igual que los demás rivales: `forzarCruce` ya fija el
+     propio de un lado. */
+  const sin = typeof inscriptosFaltantes === 'function' ? inscriptosFaltantes(idx) : [];
   const opts = (sel) => equipos.map(e =>
     `<option value="${escapeAttr(e.clave)}" ${sel === e.clave ? 'selected' : ''}>${escapeHtml(e.nombre)}</option>`).join('')
+    + (sin.length ? `<optgroup label="Sin partidos todavía">${sin.map(f =>
+      `<option value="${escapeAttr(f.clave)}" ${sel === f.clave ? 'selected' : ''}>${escapeHtml(f.nombre)}</option>`).join('')}</optgroup>` : '')
     + (ext.length ? `<optgroup label="Rival de la llave · otra zona">${ext.map(r =>
       `<option value="${escapeAttr(r.clave)}" ${sel === r.clave ? 'selected' : ''}>${escapeHtml(r.nombre)} · ${escapeHtml(r.zonaLabel)} · ${escapeHtml(r.cruce)}${r.estado === 'proyectado' ? ' (proyectado)' : ''}</option>`).join('')}</optgroup>` : '');
 

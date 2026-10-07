@@ -163,6 +163,8 @@ const SGADD_UI = (function () {
           ${pj ? `<span class="text-[10px] text-muted font-mono">PJ ${pj}${nMan
             ? ` <span class="badge-manual" title="${esc(nMan + (nMan === 1 ? ' partido' : ' partidos')
               + ' sin estadísticas: cuentan para la tabla, no para las métricas')}">⚠ ${nMan}</span>` : ''}</span>` : ''}
+          ${e.sinDatos ? `<span class="text-[10px] text-muted uppercase tracking-wider"
+            title="Inscripto en el torneo, todavía sin partidos cargados">Sin partidos</span>` : ''}
         </button>`;
     }).join('');
 

@@ -333,11 +333,34 @@ const SGADD_CLASIF = (function () {
     const zonaDe = (typeof SGADD_CONFIG !== 'undefined' && o.formato)
       ? (p) => SGADD_CONFIG.zonaDePuesto(o.formato, p, total)
       : () => null;
-    return filasOrdenadas.map((r, i) => {
+    const conPuesto = filasOrdenadas.map((r, i) => {
       r.puesto = i + 1;
       r.zona = zonaDe(r.puesto);
       return r;
     });
+    return conPuesto.concat(sinPartidos(conPuesto, o.inscriptos, total));
+  }
+
+  /* LOS INSCRIPTOS QUE NO DEBUTARON VAN AL PIE (punto 93).
+
+     Con 0 PJ y en orden alfabético, DESPUÉS de los que jugaron: ordenados
+     con los demás, un 0-0 con diferencia 0 quedaría arriba de un 0-3 y la
+     tabla diría algo que no pasó. Las zonas y la leyenda se calculan
+     sobre los que jugaron —igual que antes de este punto— y estas filas
+     no llevan zona: pintar de «descenso» a un equipo que no jugó sería
+     inventar un resultado. */
+  function sinPartidos(conPuesto, inscriptos, total) {
+    if (!Array.isArray(inscriptos) || !inscriptos.length) return [];
+    const hay = new Set(conPuesto.map(f => claveDe(f.clave)));
+    return inscriptos
+      /* Un equipo que solo tiene partidos manuales ya está en la tabla, y
+         puede estar con un alias: se mira contra todas sus claves. */
+      .filter(i => i && i.nombre && ![i.clave || i.nombre].concat(i.claves || [])
+        .some(k => hay.has(claveDe(k))))
+      .map(i => Object.assign(filaVacia(claveDe(i.clave || i.nombre), i.nombre), { sinPartidos: true }))
+      .map(f => { recalcular(f); return f; })
+      .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)))
+      .map((f, j) => { f.puesto = total + j + 1; f.zona = null; return f; });
   }
 
   /* =====================================================================
@@ -625,12 +648,21 @@ function clasifTablaHTML(idx, opciones) {
   /* Si el que llama no los pasa, se resuelven acá: así el resumen de
      Principal y la sección muestran lo mismo sin que cada uno se acuerde. */
   const manuales = o.manuales !== undefined ? o.manuales : clasifManualesVigentes();
-  const filas = SGADD_CLASIF.tabla(idx, { formato: formato, orden: orden, manuales: manuales });
+  /* Los inscriptos que no debutaron (punto 93), con el mismo criterio: si
+     el que llama no los pasa, se resuelven acá. */
+  const inscriptos = o.inscriptos !== undefined ? o.inscriptos
+    : (typeof inscriptosFaltantes === 'function' ? inscriptosFaltantes(idx) : []);
+  const filas = SGADD_CLASIF.tabla(idx, { formato: formato, orden: orden, manuales: manuales,
+    inscriptos: inscriptos });
   /* SIN FILAS, el empty state DESCRIBE por qué (punto 68): antes de que el
      torneo empiece la tabla está vacía a propósito, y «sin partidos
      cargados» se lee como que algo falló al cargar. El de pretemporada
      manda al fixture, que sí tiene algo que mostrar. */
-  if (!filas.length) {
+  /* Con solo inscriptos sin partidos, la sección muestra la tabla en 0
+     (los 18 desde el día uno) y el resumen recortado de Principal sigue
+     con el cartel: cinco filas en 0 ahí no dicen nada. */
+  const jugaron = filas.some(f => !f.sinPartidos);
+  if (!jugaron && (!filas.length || o.limite)) {
     return (typeof SGADD_UI !== 'undefined' && SGADD_UI.sinDatosTodavia)
       ? SGADD_UI.sinDatosTodavia({
         detalle: 'La tabla de posiciones se arma con los partidos jugados, y en este tramo todavía '
@@ -697,6 +729,22 @@ function clasifTablaHTML(idx, opciones) {
        tabla el fondo de la celda tapa el de la fila (punto 14). */
     const zc = r.zona ? ' zona-' + SGADD_UI.esc(r.zona.tono) : '';
     const titulo = r.zona ? ` title="${SGADD_UI.esc(r.zona.label)}"` : '';
+    /* SIN PARTIDOS: los conteos en 0 y los cocientes en raya. Un 0.0% o
+       un PF/P 0.0 se leerían como un resultado, y no hubo partido. */
+    if (r.sinPartidos) {
+      const raya = '—';
+      const vals = completa
+        ? [0, 0, 0, 0, 0, 0, 0, 0, 0, raya, raya, raya, raya]
+        : [0, 0, 0, raya, raya, raya, raya];
+      return `<tr class="fila-sin-partidos opacity-70" title="Sin partidos jugados">
+      <td class="${td} font-bold text-muted">—</td>
+      <td class="${td.replace('font-mono tabular-nums', 'font-body font-medium')} text-ink">
+        <span class="inline-flex items-center gap-2">${clasifEscudo(r.nombre)}${SGADD_UI.esc(r.nombre)}
+          <span class="text-[10px] uppercase tracking-wider text-muted border border-hairline rounded px-1.5 py-0.5">Sin partidos jugados</span></span>
+      </td>
+      ${vals.map(v => `<td class="${td}">${SGADD_UI.esc(String(v))}</td>`).join('')}
+    </tr>`;
+    }
     const cols = completa
       ? [r.pj, r.pg, r.pp, r.local.pg, r.local.pp, r.visitante.pg, r.visitante.pp,
          r.pf, r.pc, (r.dif > 0 ? '+' : '') + r.dif,
@@ -761,6 +809,10 @@ function buildClasificacion() {
   const { config, formato } = ti ? clasifFormatoVigente(ti.torneo, ti.fase) : clasifFormatoVigente();
   const orden = (config && config.ordenTabla) || SGADD_CLASIF.ORDEN_POR_DEFECTO;
   const total = st.idx.lista().length;
+  /* La leyenda de zonas sigue sobre los que jugaron (`total`); el rótulo
+     cuenta también a los inscriptos sin partidos (punto 93). */
+  const nSin = (typeof inscriptosFaltantes === 'function') ? inscriptosFaltantes(st.idx).length : 0;
+  const rotuloEquipos = nSin ? (total + nSin) + ' equipos · ' + nSin + ' sin partidos' : total + ' equipos';
 
   /* UNA FASE DE ELIMINACIÓN SE LEE EN UNA LLAVE, NO EN UNA TABLA (punto
      75). Una tabla de todos contra todos sobre unos octavos ordena por
@@ -784,14 +836,14 @@ function buildClasificacion() {
          ontoggle="CLASIF_TABLA_ABIERTA = this.open">
         <summary class="cursor-pointer p-4 sm:p-5 flex items-baseline justify-between gap-3 flex-wrap">
           <span class="font-display uppercase tracking-wide text-sm text-ink">${ti ? 'Tabla de la fase regular de tu zona' : 'Tabla de la fase · todos los partidos'}</span>
-          <span class="text-[11px] text-muted font-mono">${total} equipos</span>
+          <span class="text-[11px] text-muted font-mono">${rotuloEquipos}</span>
         </summary>
         <div class="px-4 sm:px-5 pb-4 sm:pb-5">${cuerpoTabla}</div>
       </details>`
     : `<div class="card rounded-xl p-4 sm:p-5 border border-hairline">
         <div class="flex items-baseline justify-between gap-3 flex-wrap">
           <h2 class="font-display uppercase tracking-wide text-sm text-ink">Tabla de posiciones</h2>
-          <span class="text-[11px] text-muted font-mono">${total} equipos · orden ${
+          <span class="text-[11px] text-muted font-mono">${rotuloEquipos} · orden ${
             SGADD_UI.esc(orden.join(' › '))}</span>
         </div>
         ${cuerpoTabla}

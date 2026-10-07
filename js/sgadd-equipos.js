@@ -161,12 +161,17 @@ function equiposPintar() {
      siguen a un `fetch` de distancia para cualquiera. Ver la cabecera de
      `sgadd-auth.js`. */
   if (e && !SGADD_AUTH.puedeVerEquipo(e.clave)) { equiposIrA(null); return; }
+  /* Un inscripto del torneo que todavía no jugó (punto 93): no está en el
+     índice, así que abre su ficha mínima. Pasa por la misma guarda. */
+  const sinDatos = (!e && EQUIPOS.equipo && typeof inscriptoDe === 'function')
+    ? inscriptoDe(idx, EQUIPOS.equipo) : null;
+  if (sinDatos && !SGADD_AUTH.puedeVerEquipo(sinDatos.clave)) { equiposIrA(null); return; }
 
   SGADD_CHARTS.limpiar();
   root.innerHTML = [
     SGADD_APP.barra({ extra: volver }),
     SGADD_APP.avisoMuestra(),
-    e ? equiposFicha(idx, e) : equiposGrilla(idx),
+    e ? equiposFicha(idx, e) : sinDatos ? inscriptosFichaMinima(sinDatos) : equiposGrilla(idx),
   ].filter(Boolean).join('');
   SGADD_CHARTS.dibujarPendientes();
   if (typeof SGADD_PBP !== 'undefined') SGADD_PBP.montarPendientes(root);
@@ -196,12 +201,18 @@ function equiposGrilla(idx) {
      no un ranking. Para saber quién anda mejor está la tabla de rankings
      que va justo abajo, con el rating neto y el puesto de cada uno. */
   const lista = idx.lista().slice().sort((a, b) => a.nombre.localeCompare(b.nombre));
+  /* Los inscriptos sin partidos (punto 93) entran al picker en su lugar
+     alfabético, marcados. El aviso de «sin equipo» y los rankings siguen
+     mirando solo al índice: ahí no tienen nada que aportar. */
+  const conPj = typeof clasifConPjDeTabla === 'function' ? clasifConPjDeTabla(idx, lista) : lista;
+  const todos = conPj.concat(typeof inscriptosFaltantes === 'function' ? inscriptosFaltantes(idx) : [])
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
   return `
     <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
       <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Elegí un equipo</h3>
       <p class="text-[11px] text-muted mb-4">Por orden alfabético. El tuyo va destacado con el color del club.</p>
       ${SGADD_UI.avisoSinEquipo(lista) /* equiposAvisoSinEquipo */}
-      ${SGADD_UI.teamPicker(SGADD_AUTH.equiposVisibles(typeof clasifConPjDeTabla === 'function' ? clasifConPjDeTabla(idx, lista) : lista), { onClick: 'equiposIrA', seleccionado: EQUIPOS.equipo })}
+      ${SGADD_UI.teamPicker(SGADD_AUTH.equiposVisibles(todos), { onClick: 'equiposIrA', seleccionado: EQUIPOS.equipo })}
     </div>
     ${SGADD_RANKINGS.render(idx)}`;
 }
