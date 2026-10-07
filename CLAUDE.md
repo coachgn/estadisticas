@@ -12445,3 +12445,24 @@ tampoco está ahí no existe.
   partidos del calendario. Pasa por `puedeVerEquipo` como cualquier ficha.
 - **Scouting**: el selector los ofrece en el grupo «Sin partidos todavía»;
   elegir uno muestra el aviso y su ficha mínima en vez del informe.
+
+## 94. LA CAPA DE LABORATORIO TAMBIÉN VA SOBRE UN TORNEO (2026-10-07)
+
+`catalogo.js laboratorio` sobre la zona de la LNB respondía «es un torneo, no
+un cliente»: `cambiar_laboratorio` no estaba en `ACCIONES_DE_TORNEO`. Regla
+del club: MotorStats tiene torneos SIN clientes (la LNB entra por la
+ingesta), y sus datos tienen que poder verse igual.
+
+- **Por qué no alcanzaba con subir los tiros**: `/api/v1/pbp` deja pasar al
+  admin sin la capa, pero el PANEL no le ofrece la pestaña a nadie si
+  `alcance.capas` no trae `pbp` (`SGADD_PBP.activa()`). Datos en KV y pestaña
+  invisible.
+- **El cambio**: `cambiar_laboratorio` entra a `ACCIONES_DE_TORNEO`. No es un
+  campo comercial —es un dato habilitado— y `laboratorio()` ya era genérico:
+  habilita SOLO la zona pedida. Pausar, plan, equipo, vencimiento y los
+  informes ORO siguen rechazándose (`test-torneos.js`).
+- **Ojo con los clientes que se enganchen después**: el panel pide los tiros
+  a `sgadd:pbp:<club del cliente>:<su categoría>` (`destino()`), no a la clave
+  del torneo. Un club enganchado a la LNB necesita su propia subida con
+  `pbp.js subir --club <club>` y su propia capa, hasta que la lectura herede
+  del torneo.

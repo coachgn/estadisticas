@@ -48,8 +48,14 @@ const HEX = /^#[0-9a-f]{6}$/i;
 
 /* Lo único de un cliente que un torneo puede recibir. Pausar, cambiar el
    plan, dar accesos o marcar informes ORO no significan nada sin cliente, y
-   aceptarlos dejaría campos comerciales en una entrada que no factura. */
-const ACCIONES_DE_TORNEO = ['torneo', 'zonas', 'partidos_manuales', 'baja'];
+   aceptarlos dejaría campos comerciales en una entrada que no factura.
+
+   LAS CAPAS DE LABORATORIO SÍ (punto 94): no son comerciales, son un dato
+   habilitado. Un torneo sin clientes (la LNB 2026-27) carga sus tiros por
+   la ingesta igual que cualquiera, y sin la capa en su zona el panel ni
+   siquiera le muestra la pestaña al admin (`SGADD_PBP.activa()` mira
+   `alcance.capas`). */
+const ACCIONES_DE_TORNEO = ['torneo', 'zonas', 'partidos_manuales', 'baja', 'cambiar_laboratorio'];
 
 function esTorneo(club) { return !!club && club.tipo === TIPO; }
 

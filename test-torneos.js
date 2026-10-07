@@ -141,11 +141,26 @@ seccion('2 bis · guards del alta');
   const sinZonas = ap(base(), 'torneo', { club: 'vacio', nombre: 'Vacío' });
   check('un torneo nuevo sin zonas no se da de alta', !sinZonas.ok);
 
-  ['pausar', 'cambiar_plan', 'cambiar_equipo', 'renovar', 'alta', 'informe_entregado', 'cambiar_laboratorio'].forEach((a) => {
+  ['pausar', 'cambiar_plan', 'cambiar_equipo', 'renovar', 'alta', 'informe_entregado'].forEach((a) => {
     const r = ap(cat, a, { club: 'liga-argentina-2026-27', categoria: 'lab-2026-27-norte', plan: 'ORO',
       equipoPropio: 'X', vence: '2099-01-01', label: 'x', sheetId: LIBRO_A, capas: 'pbp' });
     check('«' + a + '» sobre un torneo se rechaza: es una acción de clientes', !r.ok && /es un torneo/.test(r.motivo), r.motivo);
   });
+
+  /* LA CAPA DE LABORATORIO SÍ va sobre un torneo (punto 94): es un dato
+     habilitado, no un campo comercial, y un torneo sin clientes la necesita
+     para que el panel muestre sus tiros. Solo toca SU zona. */
+  const lab = ap(cat, 'cambiar_laboratorio', { club: 'liga-argentina-2026-27', categoria: 'lab-2026-27-norte', capas: 'pbp' });
+  const zl = lab.ok ? lab.catalogo['liga-argentina-2026-27'].categorias : {};
+  check('«cambiar_laboratorio» sobre un torneo se acepta', lab.ok, lab.motivo);
+  check('y habilita la capa solo en esa zona', lab.ok && JSON.stringify(zl['lab-2026-27-norte'].laboratorio) === '["pbp"]'
+    && Object.keys(zl).filter(s => s !== 'lab-2026-27-norte').every(s => !zl[s].laboratorio));
+  check('sin dejar campos comerciales en el torneo', lab.ok
+    && ['plan', 'estado', 'vence', 'equipoPropio'].every(c => zl['lab-2026-27-norte'][c] === undefined));
+  const apagar = lab.ok ? ap(lab.catalogo, 'cambiar_laboratorio', { club: 'liga-argentina-2026-27', categoria: 'lab-2026-27-norte', capas: '' }) : { ok: false };
+  check('vacío la apaga y la zona vuelve a ser la de antes', apagar.ok
+    && JSON.stringify(apagar.catalogo['liga-argentina-2026-27'].categorias['lab-2026-27-norte'])
+      === JSON.stringify(cat['liga-argentina-2026-27'].categorias['lab-2026-27-norte']));
 }
 
 /* =====================================================================
