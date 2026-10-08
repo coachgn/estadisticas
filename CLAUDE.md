@@ -242,7 +242,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=269`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=270`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -12466,3 +12466,26 @@ ingesta), y sus datos tienen que poder verse igual.
   del torneo. Un club enganchado a la LNB necesita su propia subida con
   `pbp.js subir --club <club>` y su propia capa, hasta que la lectura herede
   del torneo.
+
+## 95. ESCUDOS DE LOS INSCRIPTOS Y FOTOS DE LOS JUGADORES (2026-10-07)
+
+- **Escudos de los 7 sin partidos**: salían con iniciales aunque el `.jpg`
+  estaba en `logos/liga-nacional/`. `precargarLogos()` resuelve solo los
+  nombres del ÍNDICE y `LOGOS.getUrl` lee un caché que nadie les llenaba.
+  `inscriptosFaltantes` ahora los pide (`inscriptosPedirEscudos`, una vez
+  por nombre) y el hook de LOGOS repinta al llegar.
+- **Fotos de los jugadores**: `PADRON J` trae FOTO = `/fotos/<idJugador>`,
+  relativa al sitio de la liga. El handler de datos lee la pestaña SOLO en
+  categorías de un torneo (en paralelo con el libro, un fallo da `{}`) y
+  manda `fotos` (clave `clavePersona(NOMBRES)|claveEquipo(EQUIPO)` → ruta)
+  solo de los jugadores que viajan en `PROMEDIOS J` del libro RECORTADO
+  (`padron-j.js`: `fotosDelPadron`, `fotosDelLibro`). Pasa solo
+  `/fotos/<n>` o una URL https: termina en un `<img>`.
+- **El panel arma la URL** con `fuente.base` del archivo del torneo (el
+  servidor no lee fuera de `server/`): `torneoFotoJugador`,
+  `torneoImagenJugador` en `sgadd-inscriptos.js`. La foto va en el
+  encabezado de la ficha del jugador y en las cards del plantel, en
+  círculo; si no carga, cae al escudo. El PDF sigue con el escudo: una
+  imagen de otro dominio puede no estar cargada al imprimir.
+- La foto se sirve desde el sitio de la LNB (hotlink, `no-referrer`): si la
+  liga la cambia o la saca, se ve el escudo.

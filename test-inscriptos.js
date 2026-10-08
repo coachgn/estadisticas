@@ -121,6 +121,43 @@ check('Scouting ofrece los inscriptos y muestra su ficha', /Sin partidos todaví
 const ins_src = fs.readFileSync('./js/sgadd-inscriptos.js', 'utf8');
 check('el módulo no toca el índice', !/construirIndice|reindexar/.test(ins_src.replace(/\/\*[\s\S]*?\*\//g, '')));
 
+titulo('La UI en un contexto de navegador (escudos y fotos, puntos 93 y 95)');
+{
+  const vm = require('vm');
+  const pedidosLogos = [];
+  const ctx = {
+    console: { warn() {}, log() {} },
+    SGADD: require('./js/sgadd-core.js'),
+    SGADD_UI: { esc: (v) => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'),
+      escJs: (v) => String(v).replace(/'/g, "\\'") },
+    SGADD_APP: { estado: { fotos: { [require('./js/sgadd-core.js').clavePersona('BRUSSINO, JUAN IGNACIO') + '|LANUS']: '/fotos/428243',
+      [require('./js/sgadd-core.js').clavePersona('MALO, X') + '|LANUS']: '/otra/cosa' } },
+      planillaActual: () => ({ torneoId: 'liga-nacional-2026-27', zonaId: 'unica' }) },
+    SGADD_FIXTURE: { estado: { torneo: 'liga-nacional-2026-27', doc: LNB }, cargarTorneo: () => Promise.resolve(LNB) },
+    LOGOS: { resolver: (n) => { pedidosLogos.push(n); return Promise.resolve(); },
+      getUrl: (n) => (n === 'LANUS' ? 'logos/liga-nacional/lanus.jpg' : null), iniciales: (n) => n.slice(0, 2) },
+  };
+  vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync('./js/sgadd-inscriptos.js', 'utf8') + ';this.F=inscriptosFaltantes;this.foto=torneoFotoJugador;this.img=torneoImagenJugador;', ctx);
+  const idxUI = { lista: () => DEL_LIBRO.map(n => ({ nombre: n })) };
+  const f1 = ctx.F(idxUI);
+  check('los 7 faltantes salen en la UI', f1.length === 7, f1.length);
+  check('y se piden sus escudos (precargarLogos solo pide los del índice)',
+    pedidosLogos.length === 1 && pedidosLogos[0].length === 7, JSON.stringify(pedidosLogos));
+  ctx.F(idxUI);
+  check('una sola vez: repintar no vuelve a pedirlos', pedidosLogos.length === 1);
+  check('la foto se arma con la base https del torneo',
+    ctx.foto('BRUSSINO, JUAN IGNACIO', 'LANÚS') === 'https://www.laliganacional.com.ar/fotos/428243',
+    ctx.foto('BRUSSINO, JUAN IGNACIO', 'LANÚS'));
+  check('una ruta que no es /fotos/<id> no se arma', ctx.foto('MALO, X', 'LANUS') === null);
+  check('un jugador sin foto no tiene', ctx.foto('NADIE', 'LANUS') === null);
+  const conFoto = ctx.img('BRUSSINO, JUAN IGNACIO', 'LANUS', 'w-14 h-14');
+  check('la ficha usa la foto, recortada en círculo', /src="https:\/\/www\.laliganacional\.com\.ar\/fotos\/428243"/.test(conFoto) && /rounded-full/.test(conFoto));
+  check('y si no carga cae al escudo', /onerror="[^"]*lanus\.jpg/.test(conFoto));
+  check('sin foto, el escudo como antes', /src="logos\/liga-nacional\/lanus\.jpg"/.test(ctx.img('NADIE', 'LANUS', 'w-14 h-14')));
+  check('sin foto ni escudo, nada', ctx.img('NADIE', 'OTRO', 'w-14 h-14') === '');
+}
+
 console.log('\n' + '═'.repeat(68));
 console.log(fail ? `✗ FALLARON ${fail}   (${ok} pasaron)` : `✓ TODO OK   ${ok} pasaron, 0 fallaron`);
 process.exit(fail ? 1 : 0);

@@ -221,6 +221,9 @@ const SGADD_DATA = (function () {
            estadística. Lo consume el buzón para que el buscador global
            funcione aunque las filas de los rivales estén recortadas. */
         padron: (cuerpo && cuerpo.padron) || [],
+        /* Las fotos de los jugadores del libro de un torneo (punto 95):
+           clave `NOMBRES|EQUIPO` → ruta de la fuente. */
+        fotos: (cuerpo && cuerpo.fotos) || {},
         /* La lista de alertas ya procesada. Texto y unos pocos números:
            ninguna fila del log de un rival viaja acá. */
         alertas: (cuerpo && cuerpo.alertas) || [],

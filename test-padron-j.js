@@ -56,6 +56,33 @@ check('un jugador solo en las manuales queda igual', JSON.stringify(f.fichas['C|
 check('cuenta las fichas que ganaron algún campo', f.completadas === 2);
 check('sin padrón, las manuales intactas', JSON.stringify(P.fusionar({ 'A|X': { talla: 1 } }, {}).fichas) === JSON.stringify({ 'A|X': { talla: 1 } }));
 
+/* LAS FOTOS (punto 95): pasa solo lo que tiene forma de foto, y solo de
+   los jugadores que viajan en el libro recortado. */
+const PAD = [['NOMBRES', 'EQUIPO', 'FOTO'],
+  ['BRUSSINO, JUAN IGNACIO', 'LANÚS', '/fotos/428243'],
+  ['OTRO, JUGADOR', 'LANUS', 'https://cdn.ejemplo.com/f/1.jpg'],
+  ['MALO, UNO', 'LANÚS', 'javascript:alert(1)'],
+  ['MALO, DOS', 'LANÚS', '/fotos/abc'],
+  ['RIVAL, TRES', 'BOCA', '/fotos/999'],
+  ['', 'LANÚS', '/fotos/1']];
+const fotos = P.fotosDelPadron(PAD);
+const kb = P.claveFoto('BRUSSINO, JUAN IGNACIO', 'LANUS');
+check('la ruta /fotos/<id> de la liga pasa tal cual', fotos[kb] === '/fotos/428243', JSON.stringify(fotos));
+check('una URL https también', fotos[P.claveFoto('OTRO, JUGADOR', 'LANÚS')] === 'https://cdn.ejemplo.com/f/1.jpg');
+check('lo que no tiene forma de foto se descarta (va a un <img>)',
+  !fotos[P.claveFoto('MALO, UNO', 'LANÚS')] && !fotos[P.claveFoto('MALO, DOS', 'LANÚS')]);
+check('una fila sin nombre no da foto', Object.keys(fotos).length === 3, Object.keys(fotos).length);
+check('una pestaña sin FOTO no da nada', Object.keys(P.fotosDelPadron([['NOMBRES', 'EQUIPO'], ['A', 'B']])).length === 0);
+const libroRec = { 'PROMEDIOS J': [['NOMBRES', 'EQUIPO'], ['BRUSSINO, JUAN IGNACIO', 'LANUS']] };
+const viajan = P.fotosDelLibro(fotos, libroRec);
+check('del libro recortado viaja solo la foto de quien está en PROMEDIOS J',
+  Object.keys(viajan).length === 1 && viajan[kb] === '/fotos/428243', JSON.stringify(viajan));
+check('el rival recortado no manda su foto', !viajan[P.claveFoto('RIVAL, TRES', 'BOCA')]);
+check('sin libro no viaja ninguna', Object.keys(P.fotosDelLibro(fotos, {})).length === 0);
+const handlers = require('fs').readFileSync('./server/api/handlers.js', 'utf8');
+check('el handler pide PADRON J solo en categorías de un torneo',
+  /deTorneo && cat\.sheetId/.test(handlers) && /fotosDelLibro\(await pFotos, rec\.hojas\)/.test(handlers));
+
 console.log('\n' + '═'.repeat(68));
 console.log((fail ? '✗ FALLARON ' + fail : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

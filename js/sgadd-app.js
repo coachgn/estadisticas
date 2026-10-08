@@ -20,6 +20,7 @@ const SGADD_APP = (function () {
     alcance: null,
     textos: null,
     padron: [],
+    fotos: {},           // punto 95: clave de jugador → ruta de su foto
     alertas: [],
     crudas: null,
     torneo: null,        // null = todavía no se resolvió contra el libro
@@ -243,6 +244,7 @@ const SGADD_APP = (function () {
       /* El padrón de la liga, para el buzón. Vacío en modo GViz: ahí el
          índice ya tiene a todos. */
       estado.padron = r.padron || [];
+      estado.fotos = r.fotos || {};
       estado.alertas = r.alertas || [];
       estado.crudas = r.crudas || null;
 

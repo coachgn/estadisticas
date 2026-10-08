@@ -29,6 +29,7 @@ const alertas = require('../lib/alertas.js');
 const sheets = require('../lib/google-sheets.js');
 const etiquetas = require('../lib/etiquetas.js');
 const MULTI = require('../lib/multilibro.js');
+const PADRON_J = require('../lib/padron-j.js');
 const AUTH = require('../lib/compartido/sgadd-auth.js');
 const NUCLEO = require('../lib/compartido/sgadd-core.js');
 
@@ -280,6 +281,18 @@ async function manejarEquipos(peticion, deps) {
       { disponible: ['clasificacion', 'rankings'] });
   }
 
+  /* LAS FOTOS DE LOS JUGADORES (punto 95), del `PADRON J` del libro. Solo
+     en las categorías de un TORNEO —su libro lo escribe la ingesta, la
+     única que carga la pestaña—: pedirla en todos los libros sería una
+     lectura fallida más por carga para cada club. Va en paralelo con el
+     libro y un fallo deja `fotos` vacío: es una mejora, no un dato. */
+  const clubCat = (cascada.catalogo || {})[cat.clubId] || {};
+  const deTorneo = clubCat.tipo === 'torneo' || !!(((clubCat.categorias || {})[cat.slug] || {}).torneo);
+  const pFotos = (deTorneo && cat.sheetId)
+    ? sheets.obtenerDatosPlanilla(cat.sheetId, "'" + PADRON_J.HOJA + "'", deps)
+      .then(r => PADRON_J.fotosDelPadron(r && r.valores)).catch(() => ({}))
+    : Promise.resolve({});
+
   let libro;
   try {
     libro = await sheets.obtenerLibro(cat.sheetId, deps);
@@ -380,6 +393,9 @@ async function manejarEquipos(peticion, deps) {
          es justamente que traiga a los jugadores que el recorte sacó.
          Son dos columnas y ningún número — ver `reglas.js`. */
       padron: reglas.padronLiga(libro.hojas),
+      /* Las fotos (punto 95): solo de los jugadores que viajan en el libro
+         RECORTADO, con la ruta de la fuente tal cual. */
+      fotos: PADRON_J.fotosDelLibro(await pFotos, rec.hojas),
       /* LAS ALERTAS, YA CALCULADAS. El detector necesita el log partido a
          partido de cada jugador, que es justo lo que el recorte no manda:
          se corre acá, sobre el libro COMPLETO, y viaja solo el resultado.

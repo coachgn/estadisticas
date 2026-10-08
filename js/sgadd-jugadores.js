@@ -2451,7 +2451,8 @@ function jugadoresPlantelEquipo(idx) {
       <button type="button" onclick="jugadoresIrA('${SGADD_UI.escJs(slug)}')"
         class="flex flex-col gap-2 p-3 rounded-lg border border-hairline hover:border-accent hover:bg-surface2 transition-all duration-200 text-left min-w-0">
         <div class="flex items-center gap-2 min-w-0">
-          ${logo ? `<img src="${escapeAttr(logo)}" alt="" class="w-8 h-8 object-contain shrink-0">` : ''}
+          ${typeof torneoImagenJugador === 'function' ? torneoImagenJugador(j['NOMBRES'], j['EQUIPO'], 'w-8 h-8')
+            : logo ? `<img src="${escapeAttr(logo)}" alt="" class="w-8 h-8 object-contain shrink-0">` : ''}
           <div class="min-w-0 flex-1">
             <p class="text-xs text-white font-medium truncate">${escapeHtml(j['NOMBRES'])}</p>
             ${rolMin ? `<p class="text-[10px] ${rolMin.color} truncate" title="${escapeAttr(rolMin.rol)}">${escapeHtml(rolMin.label)}</p>` : ''}
@@ -2554,7 +2555,9 @@ function jugadoresHeader(idx, j) {
   return `
     <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
       <div class="flex items-center gap-4 mb-3">
-        ${logo ? `<img src="${escapeAttr(logo)}" alt="" class="w-14 h-14 object-contain shrink-0">` : ''}
+        ${/* LA FOTO DEL JUGADOR si la liga la publicó (punto 95); si no, el escudo. */
+          typeof torneoImagenJugador === 'function' ? torneoImagenJugador(j['NOMBRES'], j['EQUIPO'], 'w-14 h-14')
+            : logo ? `<img src="${escapeAttr(logo)}" alt="" class="w-14 h-14 object-contain shrink-0">` : ''}
         <div class="min-w-0 flex-1">
           <h2 class="font-display text-xl sm:text-2xl uppercase tracking-wide text-white truncate">${escapeHtml(j['NOMBRES'])}</h2>
           <p class="text-xs text-muted font-mono">

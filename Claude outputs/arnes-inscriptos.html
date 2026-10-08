@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arnés inscriptos LNB</title>
+<link rel="stylesheet" href="../sgadd.css?v=269">
+<style>
+  body { background:#0b0d10; color:#e8e8e8; padding:16px; font-family:system-ui,sans-serif; }
+  .card { background:#14171c; }
+  .escudo-aro { display:inline-flex; align-items:center; justify-content:center; border-radius:9999px; background:#1d2128; overflow:hidden; }
+  h1 { font-size:14px; text-transform:uppercase; letter-spacing:.08em; margin:24px 0 8px; color:#f5a524; }
+</style>
+</head>
+<body class="bg-base text-ink font-body antialiased">
+<h1>Clasificación (completa)</h1><div id="tabla"></div>
+<h1>Equipos · selector</h1><div id="picker"></div>
+<h1>Equipos · ficha mínima de BOCA</h1><div id="ficha"></div>
+<h1>Scouting · cruce con un equipo sin datos</h1><div id="scout"></div>
+
+<script>
+  /* Lo mínimo que las vistas esperan del resto del panel. */
+  var SGADD_APP = { estado: {}, planillaActual: function () { return { torneoId: 'liga-nacional-2026-27', zonaId: 'unica' }; } };
+  var LOGOS_MAPA = {};
+  var LOGOS = {
+    norm: function (n) { return String(n || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); },
+    getUrl: function (n) { var f = LOGOS_MAPA[LOGOS.norm(n)]; return f ? '../logos/liga-nacional/' + f : null; },
+    iniciales: function (n) { return String(n || '?').slice(0, 2).toUpperCase(); },
+  };
+</script>
+<script src="../js/sgadd-config.js?v=269"></script>
+<script src="../js/sgadd-core.js?v=269"></script>
+<script src="../js/sgadd-ui.js?v=269"></script>
+<script src="../js/sgadd-clasificacion.js?v=269"></script>
+<script src="../js/sgadd-fixture.js?v=269"></script>
+<script src="../js/sgadd-inscriptos.js?v=269"></script>
+<script>
+  if (!SGADD.esEquipoPropio) SGADD.esEquipoPropio = function () { return false; };
+  try { SGADD.esEquipoPropio('X'); } catch (e) { SGADD.esEquipoPropio = function () { return false; }; }
+  var LIBRO = [
+    ['QUIMSA', 2, 0, 170, 150], ['PLATENSE', 2, 0, 165, 150], ['LA UNION FSA', 1, 1, 160, 158],
+    ['GIMNASIA CR', 1, 2, 230, 240], ['ARGENTINO J', 1, 0, 85, 80], ['FERRO', 0, 1, 80, 85],
+    ['INSTITUTO', 0, 1, 75, 82], ['PENAROL MDP', 1, 0, 90, 84], ['LANUS', 1, 0, 88, 80],
+    ['ATENAS C', 0, 1, 70, 78], ['REGATAS C', 0, 2, 150, 170],
+  ];
+  var lista = LIBRO.map(function (r) {
+    return { clave: SGADD.claveEquipo(r[0]), nombre: r[0], pj: r[1] + r[2],
+      record: { ganados: r[1], perdidos: r[2], pj: r[1] + r[2] },
+      totales: { propio: { PTS: r[3] }, rival: { PTS: r[4] } }, split: {} };
+  });
+  var idx = { lista: function () { return lista; }, get: function (k) {
+    var c = SGADD.claveEquipo(k); return lista.filter(function (e) { return e.clave === c; })[0] || null; } };
+
+  function pintar() {
+    document.getElementById('tabla').innerHTML = clasifTablaHTML(idx, { columnas: 'completa', formato: null, orden: null, manuales: [] });
+    var todos = lista.concat(inscriptosFaltantes(idx)).sort(function (a, b) { return a.nombre.localeCompare(b.nombre); });
+    document.getElementById('picker').innerHTML = SGADD_UI.teamPicker(todos, { onClick: 'void' });
+    var boca = inscriptoDe(idx, 'boca');
+    document.getElementById('ficha').innerHTML = boca ? inscriptosFichaMinima(boca) : '<p>no resolvió BOCA</p>';
+    var obera = inscriptoDe(idx, 'OBERÁ');
+    document.getElementById('scout').innerHTML = obera ? SGADD_UI.aviso('Sin datos para el informe',
+      'OBERÁ todavía no tiene partidos cargados en esta temporada. El informe pre-partido se arma con su primer partido.')
+      + inscriptosFichaMinima(obera) : '<p>no resolvió OBERÁ</p>';
+  }
+  fetch('../logos/liga-nacional/index.json').then(function (r) { return r.json(); }).then(function (m) { LOGOS_MAPA = m; })
+    .catch(function () {}).then(function () {
+      pintar();   /* primero sin torneo: la tabla de siempre */
+      SGADD_FIXTURE.cargarTorneo('liga-nacional-2026-27').then(pintar);
+    });
+</script>
+</body>
+</html>

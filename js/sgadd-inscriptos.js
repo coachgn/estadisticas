@@ -138,7 +138,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_INSC
    (`SGADD_FIXTURE.cargarTorneo` lo cachea): las dos secciones leen el
    mismo documento. Mientras no llegó la lista sale vacía y la sección se
    pinta como antes; cuando llega, se repinta una sola vez. */
-const INSCRIPTOS_UI = { pedidos: {}, avisados: {} };
+const INSCRIPTOS_UI = { pedidos: {}, avisados: {}, escudos: {} };
 
 function inscriptosDoc() {
   try {
@@ -169,7 +169,22 @@ function inscriptosFaltantes(idx) {
         + ': faltan alias en torneos/<id>.json, así que no se completan equipos.');
     }
   }
+  inscriptosPedirEscudos(r.lista);
   return r.lista;
+}
+
+/* LOS ESCUDOS DE LOS QUE NO JUGARON. `precargarLogos()` resuelve solo los
+   nombres del ÍNDICE, así que los inscriptos sin partidos salían con
+   iniciales aunque su `.jpg` esté en `logos/liga-nacional/`: `getUrl` lee
+   un caché que nadie les había llenado. Se piden una vez por nombre; el
+   hook de LOGOS repinta la sección cuando llega uno nuevo (y no repinta si
+   no llegó nada, que es lo que corta el ciclo — ver `LOGOS.resolver`). */
+function inscriptosPedirEscudos(lista) {
+  if (typeof LOGOS === 'undefined' || !LOGOS.resolver || !lista.length) return;
+  const nuevos = lista.map(f => f.nombre).filter(n => !INSCRIPTOS_UI.escudos[n]);
+  if (!nuevos.length) return;
+  nuevos.forEach(n => { INSCRIPTOS_UI.escudos[n] = true; });
+  try { LOGOS.resolver(nuevos).catch(() => {}); } catch (e) { /* sin escudos: iniciales */ }
 }
 
 /** El faltante de una clave (la de la ruta o la del selector), o null. */
@@ -189,6 +204,9 @@ function inscriptosRepintar() {
       if (r) r.innerHTML = buildClasificacion();
     }
     if (currentSection === 'equipos' && typeof equiposPintar === 'function') equiposPintar();
+    /* Jugadores, por las fotos (punto 95): su base sale del mismo archivo. */
+    if (currentSection === 'jugadores' && typeof jugadoresPintar === 'function'
+        && SGADD_APP.estado && Object.keys(SGADD_APP.estado.fotos || {}).length) jugadoresPintar();
     if (currentSection === 'scouting' && typeof scoutPintar === 'function'
         && typeof tabState !== 'undefined' && tabState.scouting === 'equipos') scoutPintar();
   } catch (e) { console.warn('[inscriptos]', e); }
@@ -239,4 +257,49 @@ function inscriptosFichaMinima(f) {
       <h3 class="font-display uppercase tracking-wide text-xs text-accent mb-1">Próximos partidos</h3>
       ${filas}
     </div>`;
+}
+
+
+/* =====================================================================
+   LAS FOTOS DE LOS JUGADORES (punto 95)
+
+   El servidor manda `fotos` (clave `NOMBRES|EQUIPO` → ruta) solo en los
+   libros de un torneo, con la ruta TAL COMO LA PUBLICA LA LIGA:
+   `/fotos/<id>`. La base es `fuente.base` del archivo del torneo, el mismo
+   documento de arriba. Solo se acepta una base https: termina en un <img>.
+
+   Va acá y no en Jugadores porque es lo mismo que los inscriptos: un dato
+   que el libro no tiene y que se completa con lo que publicó la liga.
+   ===================================================================== */
+function torneoFotoJugador(nombre, equipo) {
+  try {
+    const fotos = (SGADD_APP.estado && SGADD_APP.estado.fotos) || {};
+    const ruta = fotos[SGADD.clavePersona(nombre) + '|' + SGADD.claveEquipo(equipo)];
+    if (!ruta) return null;
+    if (/^https:\/\//.test(ruta)) return ruta;
+    const t = inscriptosDoc();
+    const base = t && t.doc && t.doc.fuente && t.doc.fuente.base;
+    if (!base || !/^https:\/\/[^/\s]+$/.test(base) || !/^\/fotos\/\d+$/.test(ruta)) return null;
+    return base + ruta;
+  } catch (e) { return null; }
+}
+
+/**
+ * La imagen de la ficha de un jugador: su FOTO si la liga la publicó, y si
+ * no —o si no carga— el escudo de su equipo, como antes. `clases` es el
+ * tamaño; la foto va recortada en círculo y el escudo entero.
+ */
+function torneoImagenJugador(nombre, equipo, clases) {
+  const esc = SGADD_UI.esc;
+  const logo = (typeof LOGOS !== 'undefined') ? LOGOS.getUrl(equipo) : null;
+  const foto = torneoFotoJugador(nombre, equipo);
+  if (foto) {
+    /* Si la foto no carga, cae al escudo y no a una imagen rota. */
+    const respaldo = logo
+      ? `this.onerror=null;this.src='${SGADD_UI.escJs(logo)}';this.classList.remove('rounded-full','object-cover');this.classList.add('object-contain')`
+      : `this.remove()`;
+    return `<img src="${esc(foto)}" alt="${esc(nombre)}" loading="lazy" referrerpolicy="no-referrer"
+      class="${esc(clases)} rounded-full object-cover shrink-0 bg-surface2" onerror="${esc(respaldo)}">`;
+  }
+  return logo ? `<img src="${esc(logo)}" alt="" class="${esc(clases)} object-contain shrink-0">` : '';
 }
