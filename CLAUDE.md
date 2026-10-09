@@ -70,7 +70,8 @@ node test-estados-sync.js  #  74 tests · los estados compartidos en el servidor
                            #             y que ninguna escritura del catálogo pise datos
 node test-fichajes.js      # 208 tests · Fichajes: ficha manual, padrón, filtros y el servidor (punto 87)
                            #             · y PADRON J del libro, que completa las fichas sin pisarlas
-node test-padron-j.js      #  19 tests · la pestaña PADRON J → fichas: fechas, claves, campos inválidos, fusión
+node test-padron-j.js      #  32 tests · la pestaña PADRON J → fichas: fechas, claves, campos inválidos, fusión,
+                           #             fotos y dorsales (punto 96)
 node test-pdf-layout.js    #  37 tests · claves arriba del resto, el flujo continuo, la
                            #             tabla que se parte por filas y que ningún :hover
                            #             pinte la hoja impresa
@@ -12489,3 +12490,91 @@ ingesta), y sus datos tienen que poder verse igual.
   imagen de otro dominio puede no estar cargada al imprimir.
 - La foto se sirve desde el sitio de la LNB (hotlink, `no-referrer`): si la
   liga la cambia o la saca, se ve el escudo.
+
+---
+
+## 96. FOTOS ENCUADRADAS, DORSALES, MAPA SIN PISO Y POST-PARTIDO AMPLIADO (2026-10-08)
+
+Pedido del club después de ver la LNB en vivo. Cinco cosas, tres capas
+(ingesta, servidor y panel). Assets en `?v=271`.
+
+### 1 · La foto se ancla arriba
+La LNB publica fotos de medio cuerpo o cuerpo entero: con `object-cover`
+centrado el círculo mostraba el pecho y cortaba la cara. `.foto-jugador`
+(index.html) = `object-fit: cover; object-position: 50% 0`. La pone
+`torneoImagenJugador` y se la saca en el `onerror` cuando cae al escudo.
+
+### 2 · La miniatura en Rankings y Scouting
+- **Rankings de jugadores** (`jugadoresTablaRanking`, liga y plantel): la
+  foto `w-6 h-6` en lugar del escudo; sin foto, el escudo como antes. La
+  fila guarda `equipoCrudo` porque la clave de la foto es la del libro.
+- **Scouting**: `scoutNombreJugador(f, equipo, tam)` en la tabla de marcas,
+  la tabla de jugadores, el resto del plantel y las fichas. Una sola
+  función: el mismo jugador no puede llamarse distinto en cada bloque.
+
+### 3 · «#32 NOMBRE»
+- **Servidor**: `PADRON_J.dorsalesDelPadron` (misma lectura y misma clave
+  que las fotos; solo pasa `^\d{1,3}$`) y el handler manda `dorsales`
+  filtrado con `fotosDelLibro`: un rival recortado no manda ni su dorsal.
+- **Panel**: `torneoDorsal(nombre, equipo)` en sgadd-inscriptos.js. Orden:
+  `estado.dorsales` del servidor → la columna DORSAL del ÚLTIMO partido de
+  ese jugador CON ESE EQUIPO en `Base Datos J` → nada. Nunca se inventa un
+  número; el 0 vale. `torneoPrefijoDorsal` devuelve «#N » o ''.
+- Va en: ficha del jugador (y su PDF), cards del plantel, rankings,
+  Scouting y los box scores del post-partido. El box score usa el DORSAL
+  de la fila de ESA noche y, si no lo trae, el del padrón.
+- La ingesta escribía `j.dorsal || ''` en PADRON J y perdía el 0: corregido.
+
+### 4 · El mapa del jugador se dibuja siempre
+Antes, con menos de 15 tiros, la pestaña Tiro decía «el mapa todavía no
+dice nada». Ahora:
+- La ingesta exporta a TODOS los tiradores (`detalleTiros(…, { minTirosJugador: 1 })`
+  en exportar-web.js; el default de 15 sigue para quien no lo pida).
+- `SGADD_PBP.MIN_TIROS_DIAGNOSTICO = 15`: debajo, `jugador()` dibuja el
+  mapa con `diag: false`, avisa «muestra chica» y `diagnosticoJugador`
+  devuelve null (el botón Diagnóstico no muestra nada inventado).
+- Un paquete viejo (sin el jugador en el detalle) dibuja igual sus tiros
+  sueltos desde `detalle.puntos` (`canchaConTiros`).
+
+### 5 · El informe post-partido
+Orden nuevo: cabecera → insight → 4 factores → **Eficiencia** →
+**Cuarto a cuarto** → **Momentum** → **Perfil de tiro** → **Mapa de tiro
+del partido** → box scores → próximo cruce.
+- **Cabecera**: fecha · hora · estadio (de la fila LOCAL) y «DT …» debajo
+  de cada equipo. Son las columnas HORA / ESTADIO / ENTRENADOR que la
+  ingesta agrega al final de `Base Datos E`; un libro manual no las trae y
+  la línea queda como antes.
+- **Cuarto a cuarto**: PTS Q1..Q4 y PTS OT (solo si hubo suplementario) de
+  las dos filas de `Base Datos E`, cada parcial coloreado por quién lo
+  ganó y una fila con la diferencia. Sin los cuatro parciales, no va.
+- **Momentum y mapa del partido**: salen de `partidosPbp`, un campo
+  OPCIONAL nuevo del paquete @3 (como `secciones`: pbp.js lo sube sin
+  cambios). Por partido validado: `id` (= ID_PARTIDO_FUENTE), `linea`
+  [t, propio, rival] en cada gol, `periodos` y `tiros.favor/contra`
+  ([lateral×10, fondo×10, convertido, zona], la misma validación que la
+  capa de círculos: `AV.puntoDe`). Los últimos 12 partidos (~3 KB cada
+  uno; el techo de pbp.js es 200 KB por paquete).
+  · `SGADD_PBP.espacioPartido(equipo, {id, fecha, rival}, tipo)` deja el
+    lugar; `montarPendientes` lo llena con `momentumPartido` o
+    `mapaPartido`. `partidoDe` busca por id y, si no, por fecha + rival.
+  · El momentum es SVG puro (sale igual en el PDF): diferencia en
+    escalones, verde arriba / rojo abajo, cortes de cuarto FIBA (10' y
+    suplementarios de 5'), minutos arriba de cada uno, máxima ventaja y
+    desventaja, cambios de líder y empates.
+  · La línea nunca retrocede en el tiempo: el PBP a veces trae un reloj
+    unos segundos atrás y manda el orden (segmentar.js, 1).
+  · Sin la capa de laboratorio, o con un partido que no validó, cada
+    bloque lo dice en una línea y el informe sigue.
+
+### Para que llegue a producción
+1. **Backend** (los `dorsales`): `cd server && npx vercel --prod`.
+2. **Front**: push a main (`?v=271`, `sgadd.css` regenerado).
+3. **Paquetes**: la próxima corrida de la tarea (exportar-web + pbp subir)
+   los sube con `partidosPbp` y todos los tiradores. Hasta entonces el
+   post-partido dice que no hay play-by-play del partido.
+
+Tests: `test-pbp.js` (mapa con muestra chica, paquete viejo, momentum,
+mapa del partido, `partidoDe`), `test-inscriptos.js` (encuadre y dorsal),
+`test-padron-j.js` (dorsales). En la ingesta, `test/test-jujuy-pbp.js`
+(todos los tiradores, `porPartido`: uno por partido, la línea termina en
+el resultado y nunca baja, y los tiros suman lo mismo que el detalle).

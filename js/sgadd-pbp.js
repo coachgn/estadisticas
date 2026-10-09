@@ -501,6 +501,9 @@ const SGADD_PBP = (function () {
      Un 0/3 queda cerca de la liga y un 1/8 bastante más abajo, que es lo que
      dice la evidencia. K es la mitad de una zona con muestra razonable. */
   const K_EQUIPO = 20, K_JUGADOR = 10;
+  /* Desde cuántos tiros de campo un jugador tiene diagnóstico. Debajo, el
+     mapa se dibuja igual (2026-10-08) y el diagnóstico se calla. */
+  const MIN_TIROS_DIAGNOSTICO = 15;
   const ajustar = (valor, n, vara, k) => (valor * n + k * vara) / (n + k);
 
   /** Filas por zona de un sujeto, con su vara de liga y el ajuste por muestra. */
@@ -561,6 +564,7 @@ const SGADD_PBP = (function () {
     const det = paq && paq.tiros && paq.tiros.detalle;
     const j = det && (det.jugadores || []).find(x => String(x.id) === String(id));
     if (!j) return null;
+    if (j.i < MIN_TIROS_DIAGNOSTICO) return null;   // muestra chica: mapa sí, diagnóstico no
     const pj = j.pj || null;
     const filas = (j.zonas || []).filter(z => ZONAS.indexOf(z.zona) !== -1 && z.i > 0).map((z) => {
       const liga = varaZona(paq, z.zona);
@@ -1056,15 +1060,153 @@ const SGADD_PBP = (function () {
     if (!paq || !paq.tiros || !paq.tiros.detalle) return vacio('El análisis de tiro por jugador todavía no está cargado para este equipo.');
     const id = Object.keys(paq.jugadores || {}).find(k => norm(paq.jugadores[k].n) === norm(nombre));
     const det = id ? (paq.tiros.detalle.jugadores || []).find(j => String(j.id) === String(id)) : null;
-    if (!det) return vacio('Menos de 15 tiros de campo en los partidos validados: el mapa todavía no dice nada.');
+    /* EL MAPA SE DIBUJA SIEMPRE (2026-10-08): con 3, 7 o 12 tiros se ve
+       dónde tiró. Lo que se calla con poca muestra es el diagnóstico.
+       Un paquete anterior al cambio no trae al jugador en el detalle (solo
+       viajaban los de 15 tiros o más): se dibujan sus tiros sueltos. */
+    if (!det) {
+      const pts = paq.tiros.detalle.puntos;
+      const ji = pts && id ? (pts.ids || []).indexOf(String(id)) : -1;
+      const suyos = ji === -1 ? [] : (pts.favor || []).filter(p => p[4] === ji);
+      if (!suyos.length) return vacio('Sin tiros de campo ubicados en los partidos validados de ' + esc(paq.equipo) + '.');
+      return `<div class="pbp-bloque" data-pbp-listo="1">
+        <p class="text-xs text-ink mb-2"><b>Laboratorio</b> · muestra chica: sin diagnóstico. <span class="dato-sec">Play-by-play oficial, ${paq.partidos ? paq.partidos.validados : '—'} partidos validados de ${esc(paq.equipo)}.</span></p>
+        ${canchaConTiros(suyos, 'Tiros de ' + nombre)}</div>`;
+    }
+    const chica = det.i < MIN_TIROS_DIAGNOSTICO;
     const vara = paq.liga && paq.liga.total ? paq.liga.total.ppt : null;
     return `<div class="pbp-bloque" data-pbp-listo="1">
       <p class="text-xs text-ink mb-2"><b>Laboratorio</b> · ${det.c}/${det.i} tiros de campo (${num(100 * det.c / det.i)} %) ·
         <b>${num(det.ppt, 2)}</b> puntos por tiro <span class="dato-sec">(liga ${num(vara, 2)})</span> · distancia mediana ${num(det.dist)} m
         ${det.pj ? '· ' + det.pj + ' PJ con minutos' : ''} ·
         <span class="dato-sec">play-by-play oficial, ${paq.partidos ? paq.partidos.validados : '—'} partidos validados de ${esc(paq.equipo)}</span></p>
-      ${mapa(paq, { sujeto: String(id) })}
+      ${chica ? `<p class="text-[11px] text-yellow-400 mb-2">Muestra chica (menos de ${MIN_TIROS_DIAGNOSTICO} tiros de campo): el mapa muestra dónde tiró, sin diagnóstico. Leelo como un registro, no como una tendencia.</p>` : ''}
+      ${mapa(paq, { sujeto: String(id), diag: !chica })}
     </div>`;
+  }
+
+  /* ========================================= PARTIDO A PARTIDO (PURO)
+
+     El informe post-partido (2026-10-08). La ingesta manda `partidosPbp`:
+     por partido validado, la línea del marcador [t, propio, rival] y los
+     tiros ubicados de cada lado [lateral×10, fondo×10, convertido, zona].
+     Un paquete viejo no lo trae y un partido que no validó tampoco: el
+     informe lo dice en una línea y sigue. */
+
+  /** El partido del paquete: por el id de la fuente y, si no, por fecha + rival. */
+  function partidoDe(paq, id, fecha, rival) {
+    const lista = (paq && paq.partidosPbp) || [];
+    if (id) {
+      const p = lista.find(x => String(x.id) === String(id));
+      if (p) return p;
+    }
+    if (!fecha) return null;
+    const r = norm(rival || '');
+    return lista.find(x => x.fecha === fecha && (!r || norm(x.rival) === r)) || null;
+  }
+
+  /** Una media cancha con los tiros como círculos (convertidos) y cruces (errados). */
+  function canchaConTiros(lista, rotulo) {
+    let c = 0;
+    const marcas = (lista || []).map((p) => {
+      const x = 150 - p[0], y = p[1];
+      if (p[2]) { c++; return `<circle class="pbp-tiro-c" cx="${x}" cy="${y}" r="1.6"/>`; }
+      return `<path class="pbp-tiro-e" d="M${x - 1.3} ${y - 1.3}L${x + 1.3} ${y + 1.3}M${x + 1.3} ${y - 1.3}L${x - 1.3} ${y + 1.3}"/>`;
+    }).join('');
+    const n = (lista || []).length;
+    return `<svg class="pbp-mapa w-full max-w-md" viewBox="-4 -4 158 148" role="img" aria-label="${esc(rotulo)}: ${c} de ${n} tiros de campo convertidos">
+      <g pointer-events="none">${marcas}</g>${lineasCancha(GEOMETRIA)}</svg>
+      <p class="text-[11px] font-mono text-ink mt-1">${c}/${n} tiros de campo ubicados${n ? ' · ' + num(100 * c / n) + ' %' : ''}</p>`;
+  }
+
+  /** El mapa de tiro de UN partido, los dos equipos lado a lado. */
+  function mapaPartido(paq, pp) {
+    if (!pp) return vacio('Sin play-by-play validado de este partido: no hay mapa de tiro.');
+    const t = pp.tiros || {};
+    return `<div class="pbp-bloque" data-pbp-listo="1">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>${subtitulo(esc(paq.equipo))}${canchaConTiros(t.favor, 'Tiros de ' + paq.equipo)}</div>
+        <div>${subtitulo(esc(pp.rival))}${canchaConTiros(t.contra, 'Tiros de ' + pp.rival)}</div>
+      </div>
+      <p class="pbp-leyenda text-[10px] mt-1"><span class="whitespace-nowrap"><span class="pbp-ley-c"></span> convertido</span>
+        <span class="whitespace-nowrap"><span class="pbp-ley-e">✕</span> errado</span>
+        <span class="dato-sec">Play-by-play oficial. Se dibujan los tiros cuya ubicación coincide con la zona que cargó la planilla.</span></p>
+    </div>`;
+  }
+
+  /**
+   * La evolución del marcador: diferencia (propio − rival) en cada gol,
+   * verde arriba de cero (ganaba el propio) y rojo abajo. SVG puro: sale
+   * igual en pantalla y en el PDF, sin esperar a Chart.js.
+   */
+  function momentumPartido(paq, pp) {
+    if (!pp || !pp.linea || pp.linea.length < 2) return vacio('Sin play-by-play validado de este partido: no hay evolución del marcador.');
+    const linea = pp.linea;
+    const fin = Math.max(2400, linea[linea.length - 1][0]);
+    const W = 300, H = 120, M = 16, base = (H - 12) / 2;
+    const difs = linea.map(p => p[1] - p[2]);
+    const tope = Math.max(5, Math.ceil(Math.max.apply(null, difs.map(Math.abs)) / 5) * 5);
+    const x = (t) => (M + (W - M - 2) * t / fin).toFixed(1);
+    const y = (d) => (base - (base - 6) * d / tope).toFixed(1);
+    /* Escalones: el marcador no cambia entre gol y gol. */
+    let tramo = `M${x(0)} ${y(0)}`;
+    for (let i = 1; i < linea.length; i++) tramo += ` H${x(linea[i][0])} V${y(difs[i])}`;
+    tramo += ` H${x(fin)}`;
+    const area = `${tramo} V${y(0)} H${x(0)} Z`;
+    const id = 'mo-' + (++serial);
+    /* Cuartos de 10 minutos y suplementarios de 5 (FIBA). */
+    const cortes = [];
+    for (let t = 600; t < fin; t += t < 2400 ? 600 : 300) cortes.push(t);
+    const etiquetas = [0].concat(cortes).map((t, i) => {
+      const r = i < 4 ? (i + 1) + '.º' : 'S' + (i - 3);
+      const hasta = cortes[i] || fin;
+      return `<text x="${x((t + hasta) / 2)}" y="${H - 2}" text-anchor="middle">${r}</text>`;
+    }).join('');
+    /* Quién lideró y cuánto: segundos arriba y abajo, cambios de líder y empates. */
+    let arriba = 0, abajo = 0, cambios = 0, empates = 0, maxF = 0, maxC = 0, signoAnt = 0;
+    for (let i = 0; i < linea.length; i++) {
+      const d = difs[i];
+      const dur = (linea[i + 1] ? linea[i + 1][0] : fin) - linea[i][0];
+      if (d > 0) arriba += dur; else if (d < 0) abajo += dur;
+      const s = Math.sign(d);
+      if (i && s === 0 && difs[i - 1] !== 0) empates++;
+      if (s && signoAnt && s !== signoAnt) cambios++;
+      if (s) signoAnt = s;
+      maxF = Math.max(maxF, d); maxC = Math.min(maxC, d);
+    }
+    const min = (sg) => Math.round(sg / 60);
+    return `<div class="pbp-bloque" data-pbp-listo="1">
+      <svg class="momentum-svg" viewBox="0 0 ${W} ${H}" role="img"
+        aria-label="Diferencia de puntos de ${esc(paq.equipo)} contra ${esc(pp.rival)} a lo largo del partido">
+        <defs>
+          <clipPath id="${id}-a"><rect x="0" y="0" width="${W}" height="${y(0)}"/></clipPath>
+          <clipPath id="${id}-b"><rect x="0" y="${y(0)}" width="${W}" height="${H}"/></clipPath>
+        </defs>
+        ${cortes.map(t => `<line class="mo-cuarto" x1="${x(t)}" y1="2" x2="${x(t)}" y2="${H - 11}"/>`).join('')}
+        <path class="mo-favor" d="${area}" clip-path="url(#${id}-a)"/>
+        <path class="mo-contra" d="${area}" clip-path="url(#${id}-b)"/>
+        <line class="mo-eje" x1="${M}" y1="${y(0)}" x2="${W - 2}" y2="${y(0)}"/>
+        <path class="mo-linea" d="${tramo}"/>
+        <text x="1" y="${(+y(tope) + 3).toFixed(1)}">+${tope}</text>
+        <text x="1" y="${(+y(0) + 2.5).toFixed(1)}">0</text>
+        <text x="1" y="${(+y(-tope) + 3).toFixed(1)}">−${tope}</text>
+        ${etiquetas}
+      </svg>
+      <p class="text-[11px] text-ink mt-1 leading-snug">
+        <span class="mm-pos">▲ ${esc(paq.equipo)} arriba</span> ${min(arriba)}' ·
+        <span class="mm-neg">▼ ${esc(pp.rival)} arriba</span> ${min(abajo)}' ·
+        máxima ventaja <b class="font-mono mm-pos">${signo(maxF, 0)}</b> · máxima desventaja <b class="font-mono mm-neg">${signo(maxC, 0)}</b> ·
+        cambios de líder <b class="font-mono">${cambios}</b> · empates <b class="font-mono">${empates}</b></p>
+    </div>`;
+  }
+
+  /** El lugar de una card de partido en el post-partido: 'partido-mapa' o 'partido-momentum'. */
+  function espacioPartido(equipo, partido, tipo) {
+    const p = partido || {};
+    const t = tipo === 'partido-mapa' ? 'partido-mapa' : 'partido-momentum';
+    return `<div class="pbp-montaje" data-pbp-equipo="${esc(equipo)}" data-pbp-tipo="${t}"
+      data-pbp-partido="${esc(p.id || '')}" data-pbp-fecha="${esc(p.fecha || '')}" data-pbp-rival="${esc(p.rival || '')}">
+      ${cargando(t === 'partido-mapa' ? 'Cargando el mapa de tiro del partido…' : 'Cargando la evolución del marcador…')}</div>`;
   }
 
   /* ------------------------------------------------------------------ vivo */
@@ -1130,7 +1272,12 @@ const SGADD_PBP = (function () {
       Promise.all([pedir(nodo.getAttribute('data-pbp-equipo')), propio ? pedir(propio).catch(() => null) : null])
         .then(([paq, paqPropio]) => {
           if (!nodo.isConnected) return;
+          const pp = (tipo === 'partido-mapa' || tipo === 'partido-momentum')
+            ? partidoDe(paq, nodo.getAttribute('data-pbp-partido'), nodo.getAttribute('data-pbp-fecha'), nodo.getAttribute('data-pbp-rival'))
+            : null;
           nodo.innerHTML = nombreJugador ? jugador(paq, nombreJugador)
+            : tipo === 'partido-mapa' ? mapaPartido(paq, pp)
+            : tipo === 'partido-momentum' ? momentumPartido(paq, pp)
             : tipo === 'mapa' ? mapaCard(paq, { propio: paqPropio, fijo: contexto === 'scouting' }) : html(paq, { contexto: contexto });
           activar(nodo, paq);
         }).catch((e) => {
@@ -1298,6 +1445,7 @@ const SGADD_PBP = (function () {
     html, mapaCard, jugador, mapa, capaTiros, bloqueSecciones, tieneSecciones, geometriaZonas, zonaGeometrica,
     diagnosticoZonas, diagnosticoJugador, cruceZonas, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
     activa, espacio, espacioJugador, montarPendientes, activar, apellido, _cache: cache,
+    partidoDe, mapaPartido, momentumPartido, espacioPartido, MIN_TIROS_DIAGNOSTICO,
   };
 })();
 

@@ -413,7 +413,45 @@ function paquete(equipo) {
   const hj = P.jugador(p3, 'ibarra,  santiágo');
   check('ficha: se encuentra por nombre normalizado, dibuja SUS tiros sin perspectiva y trae el diagnóstico',
     /data-pbp-sujeto="2"/.test(hj) && !/Lo que le tiran/.test(hj) && /Picos de rendimiento/.test(hj) && /Puntos de fuga/.test(hj) && /intentos x PJ/.test(hj) && /20 PJ con minutos/.test(hj));
-  check('menos de 15 tiros no se dibuja y lo dice', /Menos de 15 tiros/.test(P.jugador(p3, 'CONTI, BRUNO')) && /todavía no está cargado/.test(P.jugador(paquete('X'), 'A')));
+  /* MENOS DE 15 TIROS (2026-10-08): el mapa se dibuja SIEMPRE; lo que se
+     calla es el diagnóstico. */
+  check('sin tiros ubicados lo dice, y un paquete sin detalle también',
+    /Sin tiros de campo ubicados/.test(P.jugador(p3, 'CONTI, BRUNO')) && /todavía no está cargado/.test(P.jugador(paquete('X'), 'A')));
+  const p3chico = paquete3('JUJUY BASQUET');
+  p3chico.tiros.detalle.jugadores.push({ id: '6', pj: 3, i: 7, c: 3, ppt: 0.9, dist: 5, familias: {}, hex: [[0, 1, 7, 3, 6]],
+    zonas: [zona('Z1', 4, 2, 1.0), zona('Z11', 3, 1, 1.0)] });
+  const hChico = P.jugador(p3chico, 'CONTI, BRUNO');
+  check('con 7 tiros: dibuja el mapa, avisa la muestra chica y no diagnostica',
+    /class="pbp-mapa/.test(hChico) && /Muestra chica/.test(hChico) && !/pbp-diagnostico/.test(hChico) && !/pbp-contorno/.test(hChico)
+      && P.diagnosticoJugador(p3chico, '6') === null);
+  const p3viejo = paquete3('JUJUY BASQUET');
+  p3viejo.tiros.detalle.puntos.ids.push('6');
+  p3viejo.tiros.detalle.puntos.favor.push([60, 50, 1, 6, 1], [65, 40, 0, 6, 1]);
+  const hViejo = P.jugador(p3viejo, 'CONTI, BRUNO');
+  check('un paquete viejo (sin el jugador en el detalle) dibuja igual sus tiros sueltos',
+    /pbp-mapa/.test(hViejo) && (hViejo.match(/pbp-tiro-c/g) || []).length === 1 && (hViejo.match(/pbp-tiro-e/g) || []).length === 1 && /1\/2 tiros/.test(hViejo));
+
+  /* ---- partido a partido: momentum y mapa del post-partido (2026-10-08) */
+  const pPart = paquete3('BOCA');
+  pPart.partidosPbp = [{ id: '2026-10-07T2105_114735-113652', fecha: '2026-10-07', rival: 'OBERÁ', condicion: 'LOCAL', final: [10, 8],
+    linea: [[0, 0, 0], [60, 2, 0], [700, 2, 3], [1300, 5, 3], [1900, 5, 5], [2300, 10, 5], [2390, 10, 8]], periodos: [[1, 0], [2, 600]],
+    tiros: { favor: [[75, 95, 1, 11], [70, 20, 0, 0]], contra: [[75, 30, 1, 0]] } }];
+  check('partidoDe: por id de la fuente y, si no, por fecha + rival sin acentos',
+    P.partidoDe(pPart, '2026-10-07T2105_114735-113652') === pPart.partidosPbp[0]
+      && P.partidoDe(pPart, '', '2026-10-07', 'Obera') === pPart.partidosPbp[0] && P.partidoDe(pPart, 'x', '2026-10-08', 'OBERA') === null);
+  const mo = P.momentumPartido(pPart, pPart.partidosPbp[0]);
+  check('momentum: SVG con los cuatro cuartos, cambios de líder, empates y máximas',
+    /momentum-svg/.test(mo) && (mo.match(/class="mo-cuarto"/g) || []).length === 3 && /4\.º/.test(mo)
+      && /cambios de líder <b class="font-mono">2<\/b>/.test(mo) && /empates <b class="font-mono">1<\/b>/.test(mo)
+      && /máxima ventaja <b class="font-mono mm-pos">\+5<\/b>/.test(mo) && /máxima desventaja <b class="font-mono mm-neg">−1<\/b>/.test(mo), mo.slice(-400));
+  check('momentum y mapa sin el partido lo dicen en una línea',
+    /no hay evolución del marcador/.test(P.momentumPartido(pPart, null)) && /no hay mapa de tiro/.test(P.mapaPartido(pPart, null)));
+  const mp = P.mapaPartido(pPart, pPart.partidosPbp[0]);
+  check('mapa del partido: las dos canchas, cada una con sus tiros',
+    (mp.match(/<svg class="pbp-mapa/g) || []).length === 2 && (mp.match(/pbp-tiro-c/g) || []).length === 2
+      && (mp.match(/pbp-tiro-e/g) || []).length === 1 && /OBERÁ/.test(mp) && /1\/2 tiros/.test(mp));
+  const esp = P.espacioPartido('BOCA', { id: 'ID"X', fecha: '2026-10-07', rival: 'OBERÁ' }, 'partido-mapa');
+  check('el lugar del partido lleva id, fecha y rival escapados', /data-pbp-tipo="partido-mapa"/.test(esp) && /data-pbp-partido="ID&quot;X"/.test(esp));
 
   /* ---- tiros individuales */
   const t12 = P.capaTiros(p3, 'equipo', 'Z12');

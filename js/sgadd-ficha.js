@@ -256,7 +256,7 @@ const SGADD_FICHA = (function () {
         <div class="ficha-cabecera-fila">
           ${escudo}
           <div>
-            <h1>${SGADD_UI.esc(j['NOMBRES'])}</h1>
+            <h1>${SGADD_UI.esc((typeof torneoPrefijoDorsal === 'function' ? torneoPrefijoDorsal(j['NOMBRES'], j['EQUIPO']) : '') + j['NOMBRES'])}</h1>
             <p>${SGADD_UI.esc(SGADD.limpiarNombre(j['EQUIPO']))} ·
                ${SGADD_UI.esc(rolMin ? rolMin.label + ' · ' + rolMin.rol : '')}</p>
             <p>Fecha de emisión: ${SGADD_UI.esc(fecha)} · Competición: ${SGADD_UI.esc(pl ? pl.label : '—')}

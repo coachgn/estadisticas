@@ -79,7 +79,15 @@ check('del libro recortado viaja solo la foto de quien está en PROMEDIOS J',
   Object.keys(viajan).length === 1 && viajan[kb] === '/fotos/428243', JSON.stringify(viajan));
 check('el rival recortado no manda su foto', !viajan[P.claveFoto('RIVAL, TRES', 'BOCA')]);
 check('sin libro no viaja ninguna', Object.keys(P.fotosDelLibro(fotos, {})).length === 0);
+/* LOS DORSALES (2026-10-08): misma clave y mismo filtro que las fotos. */
+const dors = P.dorsalesDelPadron([['NOMBRES', 'EQUIPO', 'DORSAL'],
+  ['BRUSSINO, JUAN IGNACIO', 'LANUS', 32], ['CERO, UNO', 'BOCA', '0'], ['RARO, DOS', 'BOCA', '<b>'], ['SIN, NUM', 'BOCA', '']]);
+check('dorsales: pasan los números, el 0 incluido', dors[kb] === '32' && dors[P.claveFoto('CERO, UNO', 'BOCA')] === '0', JSON.stringify(dors));
+check('dorsales: lo que no es un número no viaja', Object.keys(dors).length === 2);
+check('dorsales: del libro recortado, solo quien está en PROMEDIOS J',
+  JSON.stringify(P.fotosDelLibro(dors, libroRec)) === JSON.stringify({ [kb]: '32' }));
 const handlers = require('fs').readFileSync('./server/api/handlers.js', 'utf8');
+check('el handler manda los dorsales con el filtro de las fotos', /dorsales: PADRON_J\.fotosDelLibro\(await pDorsales, rec\.hojas\)/.test(handlers));
 check('el handler pide PADRON J solo en categorías de un torneo',
   /deTorneo && cat\.sheetId/.test(handlers) && /fotosDelLibro\(await pFotos, rec\.hojas\)/.test(handlers));
 

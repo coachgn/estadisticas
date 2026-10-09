@@ -288,6 +288,12 @@ function torneoFotoJugador(nombre, equipo) {
  * La imagen de la ficha de un jugador: su FOTO si la liga la publicó, y si
  * no —o si no carga— el escudo de su equipo, como antes. `clases` es el
  * tamaño; la foto va recortada en círculo y el escudo entero.
+ *
+ * EL ENCUADRE (2026-10-08): la LNB publica fotos de medio cuerpo o cuerpo
+ * entero, y `object-cover` centrado dejaba el pecho en el círculo y la cara
+ * afuera. `.foto-jugador` (index.html) ancla la imagen al BORDE SUPERIOR:
+ * con una foto de rostro no cambia nada y con una de cuerpo entero la cara
+ * queda adentro, como en la web de la liga.
  */
 function torneoImagenJugador(nombre, equipo, clases) {
   const esc = SGADD_UI.esc;
@@ -296,10 +302,49 @@ function torneoImagenJugador(nombre, equipo, clases) {
   if (foto) {
     /* Si la foto no carga, cae al escudo y no a una imagen rota. */
     const respaldo = logo
-      ? `this.onerror=null;this.src='${SGADD_UI.escJs(logo)}';this.classList.remove('rounded-full','object-cover');this.classList.add('object-contain')`
+      ? `this.onerror=null;this.src='${SGADD_UI.escJs(logo)}';this.classList.remove('rounded-full','object-cover','foto-jugador');this.classList.add('object-contain')`
       : `this.remove()`;
     return `<img src="${esc(foto)}" alt="${esc(nombre)}" loading="lazy" referrerpolicy="no-referrer"
-      class="${esc(clases)} rounded-full object-cover shrink-0 bg-surface2" onerror="${esc(respaldo)}">`;
+      class="${esc(clases)} rounded-full object-cover foto-jugador shrink-0 bg-surface2" onerror="${esc(respaldo)}">`;
   }
   return logo ? `<img src="${esc(logo)}" alt="" class="${esc(clases)} object-contain shrink-0">` : '';
+}
+
+/* =====================================================================
+   EL DORSAL (2026-10-08) · «#32 Juan Pérez» en fichas, rankings,
+   planteles, scouting y el post-partido.
+
+   De dónde sale, en orden:
+     1. `dorsales` del servidor: `PADRON J` del libro de un torneo, con la
+        clave de las fotos (`server/lib/padron-j.js`).
+     2. `Base Datos J`: la columna DORSAL de su último partido, que la
+        ingesta escribe en los libros que carga ella. Un libro con Excel
+        manual no la trae y el nombre queda como estaba.
+   Un jugador sin dorsal conocido no lleva «#»: nunca un número inventado.
+   ===================================================================== */
+const DORSAL_VALIDO = /^\d{1,3}$/;
+
+function torneoDorsal(nombre, equipo) {
+  try {
+    if (typeof SGADD === 'undefined' || typeof SGADD_APP === 'undefined' || !SGADD_APP.estado) return null;
+    const kp = SGADD.clavePersona(nombre), ke = SGADD.claveEquipo(equipo);
+    const d = (SGADD_APP.estado.dorsales || {})[kp + '|' + ke];
+    if (d != null && DORSAL_VALIDO.test(String(d))) return String(Number(d));
+    const idx = SGADD_APP.estado.idx;
+    const filas = (idx && idx.liga && idx.liga.jugadorPartidos && idx.liga.jugadorPartidos.get(kp)) || [];
+    let ultimo = null;
+    filas.forEach((f) => {
+      if (f.__equipo !== ke) return;
+      const v = f['DORSAL'];
+      if (v === '' || v == null || !DORSAL_VALIDO.test(String(v))) return;
+      if (!ultimo || (f.__fecha && ultimo.__fecha && f.__fecha > ultimo.__fecha)) ultimo = f;
+    });
+    return ultimo ? String(Number(ultimo['DORSAL'])) : null;
+  } catch (e) { return null; }
+}
+
+/** «#32 » para anteponer al nombre ya formateado, o '' si no se conoce. */
+function torneoPrefijoDorsal(nombre, equipo) {
+  const d = torneoDorsal(nombre, equipo);
+  return d === null ? '' : '#' + d + ' ';
 }

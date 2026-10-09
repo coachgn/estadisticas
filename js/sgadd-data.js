@@ -214,6 +214,8 @@ const SGADD_DATA = (function () {
         /* Las fotos de los jugadores del libro de un torneo (punto 95):
            clave `NOMBRES|EQUIPO` → ruta de la fuente. */
         fotos: (cuerpo && cuerpo.fotos) || {},
+        /* Y sus dorsales (2026-10-08), con la misma clave. */
+        dorsales: (cuerpo && cuerpo.dorsales) || {},
         /* La lista de alertas ya procesada. Texto y unos pocos números:
            ninguna fila del log de un rival viaja acá. */
         alertas: (cuerpo && cuerpo.alertas) || [],

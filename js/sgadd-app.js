@@ -21,6 +21,7 @@ const SGADD_APP = (function () {
     textos: null,
     padron: [],
     fotos: {},           // punto 95: clave de jugador → ruta de su foto
+    dorsales: {},        // 2026-10-08: clave de jugador → dorsal (PADRON J)
     alertas: [],
     crudas: null,
     torneo: null,        // null = todavía no se resolvió contra el libro
@@ -245,6 +246,7 @@ const SGADD_APP = (function () {
          índice ya tiene a todos. */
       estado.padron = r.padron || [];
       estado.fotos = r.fotos || {};
+      estado.dorsales = r.dorsales || {};
       estado.alertas = r.alertas || [];
       estado.crudas = r.crudas || null;
 

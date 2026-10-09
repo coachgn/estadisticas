@@ -3592,6 +3592,19 @@ function scoutInput(campo, label, ph) {
 
 function scoutFecha(d) { return d ? SGADD.formatearFecha(d) : '—'; }
 function scoutLogo(nombre) { return (typeof LOGOS !== 'undefined') ? LOGOS.getUrl(nombre) : null; }
+
+/**
+ * El jugador del rival como lo nombra el informe (2026-10-08): su foto
+ * redonda (o el escudo, si la liga no la publicó) y «#32 NOMBRE». Los dos
+ * salen de sgadd-inscriptos.js, los mismos que usan Jugadores y Rankings.
+ * `tam` son las clases de tamaño de la imagen; sin `tam`, solo el texto.
+ */
+function scoutNombreJugador(f, equipo, tam) {
+  const nombre = String((f && f.nombre) || '');
+  const texto = escapeHtml((typeof torneoPrefijoDorsal === 'function' ? torneoPrefijoDorsal(nombre, equipo) : '') + nombre);
+  if (!tam || typeof torneoImagenJugador !== 'function') return texto;
+  return `<span class="inline-flex items-center gap-1.5 min-w-0 align-middle">${torneoImagenJugador(nombre, equipo, tam)}<span class="truncate">${texto}</span></span>`;
+}
 function scoutRecord(r) { return r.ganados + ' - ' + r.perdidos; }
 
 /** Chip de ranking, coloreado por tercio de la liga. */
@@ -4086,7 +4099,7 @@ function scoutFilasMarcas(t) {
     return `
       <tr class="border-b border-hairline/40 last:border-0 align-top">
         <td class="px-2 py-2 text-left">
-          <p class="text-xs text-white">${escapeHtml(f.nombre)}</p>
+          <p class="text-xs text-white">${scoutNombreJugador(f, t.equipo, 'w-6 h-6')}</p>
           <p class="text-[10px] text-accent">${escapeHtml(f.rol.label)}</p>
           ${f.perfil.jerarquia ? `<p class="text-[10px] text-blue-400">${escapeHtml(f.perfil.jerarquia)}</p>` : ''}
           <p class="text-[10px] dato-sec">${escapeHtml(SGADD.formatear('MIN', f.perfil.min))} min · ${escapeHtml(SGADD.formatear('PTS', f.perfil.pts))} pts · ${escapeHtml(SGADD.formatear('PPP', f.perfil.ppp))} PPP</p>
@@ -4201,7 +4214,7 @@ function scoutBloqueJugadores(inf) {
   const filas = t.filas.map(f => `
     <tr class="border-b border-hairline/40 last:border-0">
       <td class="px-2 py-1.5 whitespace-nowrap">
-        <span class="text-xs text-white">${escapeHtml(f.nombre)}</span>
+        <span class="text-xs text-white">${scoutNombreJugador(f, t.equipo, 'w-6 h-6')}</span>
         <span class="block text-[9px] dato-sec">${escapeHtml(f.rol.label)}</span>
       </td>
       ${t.columnas.map(c => {
@@ -4359,7 +4372,7 @@ function scoutBloqueResto(inf) {
       <tr class="scout-resto border-b border-hairline/40 last:border-0">
         <td class="px-2 py-1 align-top text-left">
           <div class="flex flex-wrap items-center gap-x-4 gap-y-0.5 leading-snug">
-            <span class="text-xs text-white font-semibold">${escapeHtml(f.nombre)}</span>
+            <span class="text-xs text-white font-semibold">${scoutNombreJugador(f, t.equipo, 'w-5 h-5')}</span>
             <span class="text-[10px] font-mono dato-sec">${muestra}</span>
             <span class="text-[10px] font-mono">${scoutViaLider(f.via)}</span>
           </div>
@@ -4437,7 +4450,7 @@ function scoutBloqueFichas(inf) {
     const p = f.perfil;
     return `
       <article class="scout-ficha bg-surface2/40 rounded-lg p-3">
-        <p class="font-display text-sm text-white leading-tight">${escapeHtml(f.nombre)}</p>
+        <p class="font-display text-sm text-white leading-tight">${scoutNombreJugador(f, t.equipo, 'w-9 h-9')}</p>
         <p class="text-[10px] uppercase tracking-wider text-accent font-display">${escapeHtml(f.rol.label)}</p>
         ${scoutEstadoJugador(p)}
         ${scoutBadgesADN(p)}

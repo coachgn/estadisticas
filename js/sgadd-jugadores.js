@@ -220,6 +220,7 @@ function jugadoresRanking(idx, id, opciones) {
       puesto: i + 1,
       jugador: String(j['NOMBRES'] || '').trim(),
       equipo: SGADD.limpiarNombre(j['EQUIPO'] || ''),
+      equipoCrudo: String(j['EQUIPO'] || ''),
       claveEquipo: SGADD.claveEquipo(j['EQUIPO'] || ''),
       slug: jugadoresSlug(j),
       celdas: celdas,
@@ -296,6 +297,16 @@ function jugadoresConvIntento(metricaId, p) {
    ===================================================================== */
 
 /** Clave estable para navegar a un jugador puntual: nombre + equipo. */
+/**
+ * «#32 NOMBRE» (2026-10-08): el dorsal delante del nombre como lo muestra
+ * cada vista (`visible`; por defecto el nombre tal cual). Sin dorsal
+ * conocido, el nombre solo. Ver `torneoDorsal` en sgadd-inscriptos.js.
+ */
+function jugadoresConDorsal(nombre, equipo, visible) {
+  const v = visible == null ? String(nombre || '') : String(visible);
+  return typeof torneoPrefijoDorsal === 'function' ? torneoPrefijoDorsal(nombre, equipo) + v : v;
+}
+
 function jugadoresSlug(j) {
   const nombre = SGADD.clavePersona(j['NOMBRES']).toLowerCase().replace(/,\s*/g, '-').replace(/\s+/g, '-');
   const equipo = SGADD.claveEquipo(j['EQUIPO']).toLowerCase().replace(/\s+/g, '-');
@@ -2031,7 +2042,14 @@ function jugadoresTablaRanking(idx, r) {
   }).join('');
 
   const filas = r.filas.map(f => {
+    /* La miniatura (2026-10-08): la foto del jugador si la liga la publicó,
+       y si no el escudo, como antes. */
+    const equipoFila = f.equipoCrudo || f.equipo;
     const logo = (typeof LOGOS !== 'undefined') ? LOGOS.getUrl(f.equipo) : null;
+    const imagen = typeof torneoImagenJugador === 'function'
+      ? torneoImagenJugador(f.jugador, equipoFila, 'w-6 h-6')
+      : (logo ? `<img src="${SGADD_UI.esc(logo)}" alt="" class="w-5 h-5 object-contain shrink-0">` : '');
+    const visible = jugadoresConDorsal(f.jugador, equipoFila);
     /* EL RESALTE DEL EQUIPO PROPIO NO VA EN EL RANKING DEL PLANTEL.
 
        Sirve para encontrar a los tuyos entre doce equipos rivales, que es
@@ -2068,8 +2086,8 @@ function jugadoresTablaRanking(idx, r) {
         <td class="py-1.5 pr-2 text-left align-middle font-mono text-xs ${colorPuesto}">${f.puesto}</td>
         <td class="py-1.5 pr-3 text-left align-middle">
           <div class="flex items-center gap-2 min-w-0">
-            ${logo ? `<img src="${SGADD_UI.esc(logo)}" alt="" class="w-5 h-5 object-contain shrink-0">` : ''}
-            <span class="text-xs truncate ${propio ? 'text-accent font-semibold' : 'text-white'}">${SGADD_UI.esc(f.jugador)}</span>
+            ${imagen}
+            <span class="text-xs truncate ${propio ? 'text-accent font-semibold' : 'text-white'}">${SGADD_UI.esc(visible)}</span>
           </div>
         </td>
         ${dePlantel ? '' : `<td class="py-1.5 px-2 text-center align-middle text-[11px] text-muted truncate max-w-[9rem]">${SGADD_UI.esc(f.equipo)}</td>`}
@@ -2454,7 +2472,7 @@ function jugadoresPlantelEquipo(idx) {
           ${typeof torneoImagenJugador === 'function' ? torneoImagenJugador(j['NOMBRES'], j['EQUIPO'], 'w-8 h-8')
             : logo ? `<img src="${escapeAttr(logo)}" alt="" class="w-8 h-8 object-contain shrink-0">` : ''}
           <div class="min-w-0 flex-1">
-            <p class="text-xs text-white font-medium truncate">${escapeHtml(j['NOMBRES'])}</p>
+            <p class="text-xs text-white font-medium truncate">${escapeHtml(jugadoresConDorsal(j['NOMBRES'], j['EQUIPO']))}</p>
             ${rolMin ? `<p class="text-[10px] ${rolMin.color} truncate" title="${escapeAttr(rolMin.rol)}">${escapeHtml(rolMin.label)}</p>` : ''}
             ${jugadoresBadgeEstado(j)}
             ${jugadoresLineaPendiente(j)}
@@ -2559,7 +2577,7 @@ function jugadoresHeader(idx, j) {
           typeof torneoImagenJugador === 'function' ? torneoImagenJugador(j['NOMBRES'], j['EQUIPO'], 'w-14 h-14')
             : logo ? `<img src="${escapeAttr(logo)}" alt="" class="w-14 h-14 object-contain shrink-0">` : ''}
         <div class="min-w-0 flex-1">
-          <h2 class="font-display text-xl sm:text-2xl uppercase tracking-wide text-white truncate">${escapeHtml(j['NOMBRES'])}</h2>
+          <h2 class="font-display text-xl sm:text-2xl uppercase tracking-wide text-white truncate">${escapeHtml(jugadoresConDorsal(j['NOMBRES'], j['EQUIPO']))}</h2>
           <p class="text-xs text-muted font-mono">
             ${escapeHtml(SGADD.limpiarNombre(j['EQUIPO']))} · ${jerarquia.emoji} ${escapeHtml(jerarquia.label)}
             ${stat ? ' · consistencia en PTS: ' + stat.media.toFixed(1) + ' ± ' + stat.desvio.toFixed(1) + ' (' + stat.n + ' PJ)' : ''}

@@ -138,7 +138,7 @@ titulo('La UI en un contexto de navegador (escudos y fotos, puntos 93 y 95)');
       getUrl: (n) => (n === 'LANUS' ? 'logos/liga-nacional/lanus.jpg' : null), iniciales: (n) => n.slice(0, 2) },
   };
   vm.createContext(ctx);
-  vm.runInContext(fs.readFileSync('./js/sgadd-inscriptos.js', 'utf8') + ';this.F=inscriptosFaltantes;this.foto=torneoFotoJugador;this.img=torneoImagenJugador;', ctx);
+  vm.runInContext(fs.readFileSync('./js/sgadd-inscriptos.js', 'utf8') + ';this.F=inscriptosFaltantes;this.foto=torneoFotoJugador;this.img=torneoImagenJugador;this.dorsal=torneoDorsal;this.prefijo=torneoPrefijoDorsal;', ctx);
   const idxUI = { lista: () => DEL_LIBRO.map(n => ({ nombre: n })) };
   const f1 = ctx.F(idxUI);
   check('los 7 faltantes salen en la UI', f1.length === 7, f1.length);
@@ -156,6 +156,21 @@ titulo('La UI en un contexto de navegador (escudos y fotos, puntos 93 y 95)');
   check('y si no carga cae al escudo', /onerror="[^"]*lanus\.jpg/.test(conFoto));
   check('sin foto, el escudo como antes', /src="logos\/liga-nacional\/lanus\.jpg"/.test(ctx.img('NADIE', 'LANUS', 'w-14 h-14')));
   check('sin foto ni escudo, nada', ctx.img('NADIE', 'OTRO', 'w-14 h-14') === '');
+  check('la foto se ancla arriba (.foto-jugador) y la clase se saca si cae al escudo',
+    /foto-jugador/.test(conFoto) && /classList\.remove\([^)]*foto-jugador/.test(conFoto));
+
+  /* EL DORSAL (2026-10-08): primero el padrón del servidor, después la
+     columna DORSAL del último partido de Base Datos J; nunca inventado. */
+  const C = ctx.SGADD;
+  ctx.SGADD_APP.estado.dorsales = { [C.clavePersona('BRUSSINO, JUAN IGNACIO') + '|LANUS']: '32' };
+  ctx.SGADD_APP.estado.idx = { liga: { jugadorPartidos: new Map([[C.clavePersona('CERO, UNO'), [
+    { __equipo: C.claveEquipo('BOCA'), __fecha: new Date(2026, 9, 1), DORSAL: 7 },
+    { __equipo: C.claveEquipo('BOCA'), __fecha: new Date(2026, 9, 7), DORSAL: 0 },
+    { __equipo: C.claveEquipo('OTRO'), __fecha: new Date(2026, 9, 9), DORSAL: 44 }]]]) } };
+  check('dorsal del padrón: «#32 »', ctx.prefijo('BRUSSINO, JUAN IGNACIO', 'LANÚS') === '#32 ', ctx.prefijo('BRUSSINO, JUAN IGNACIO', 'LANÚS'));
+  check('dorsal de Base Datos J: el del último partido con ESE equipo, y el 0 vale',
+    ctx.dorsal('CERO, UNO', 'BOCA') === '0', ctx.dorsal('CERO, UNO', 'BOCA'));
+  check('sin dorsal conocido, sin «#»', ctx.prefijo('NADIE', 'LANUS') === '');
 }
 
 console.log('\n' + '═'.repeat(68));

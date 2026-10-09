@@ -288,10 +288,13 @@ async function manejarEquipos(peticion, deps) {
      libro y un fallo deja `fotos` vacío: es una mejora, no un dato. */
   const clubCat = (cascada.catalogo || {})[cat.clubId] || {};
   const deTorneo = clubCat.tipo === 'torneo' || !!(((clubCat.categorias || {})[cat.slug] || {}).torneo);
-  const pFotos = (deTorneo && cat.sheetId)
+  const pPadronJ = (deTorneo && cat.sheetId)
     ? sheets.obtenerDatosPlanilla(cat.sheetId, "'" + PADRON_J.HOJA + "'", deps)
-      .then(r => PADRON_J.fotosDelPadron(r && r.valores)).catch(() => ({}))
-    : Promise.resolve({});
+      .then(r => (r && r.valores) || null).catch(() => null)
+    : Promise.resolve(null);
+  const pFotos = pPadronJ.then(v => PADRON_J.fotosDelPadron(v));
+  /* Los dorsales (2026-10-08): la misma lectura, la misma clave. */
+  const pDorsales = pPadronJ.then(v => PADRON_J.dorsalesDelPadron(v));
 
   let libro;
   try {
@@ -396,6 +399,8 @@ async function manejarEquipos(peticion, deps) {
       /* Las fotos (punto 95): solo de los jugadores que viajan en el libro
          RECORTADO, con la ruta de la fuente tal cual. */
       fotos: PADRON_J.fotosDelLibro(await pFotos, rec.hojas),
+      /* Los dorsales, con el mismo filtro: solo de quien viaja en el libro. */
+      dorsales: PADRON_J.fotosDelLibro(await pDorsales, rec.hojas),
       /* LAS ALERTAS, YA CALCULADAS. El detector necesita el log partido a
          partido de cada jugador, que es justo lo que el recorte no manda:
          se corre acá, sobre el libro COMPLETO, y viaja solo el resultado.

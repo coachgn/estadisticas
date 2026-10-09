@@ -141,6 +141,30 @@ function fotosDelPadron(valores) {
 }
 
 /**
+ * Los dorsales del padrón, por la misma clave que las fotos (2026-10-08):
+ * el panel antepone «#N» al nombre en fichas, rankings, planteles y
+ * scouting. PROMEDIOS J no trae el número y `Base Datos J` de un rival
+ * llega recortada. Solo pasa un número de 0 a 999: va a un texto, pero
+ * nada que no sea un dorsal tiene por qué viajar.
+ */
+const DORSAL_VALIDO = /^\d{1,3}$/;
+
+function dorsalesDelPadron(valores) {
+  const out = {};
+  if (!Array.isArray(valores) || valores.length < 2) return out;
+  const enc = valores[0].map(c => String(c || '').trim().toUpperCase());
+  const iN = enc.indexOf('NOMBRES'), iE = enc.indexOf('EQUIPO'), iD = enc.indexOf('DORSAL');
+  if (iN === -1 || iE === -1 || iD === -1) return out;
+  valores.slice(1).forEach((f) => {
+    const nombre = String(f[iN] || '').trim(), equipo = String(f[iE] || '').trim();
+    const d = f[iD] == null ? '' : String(f[iD]).trim();
+    if (!nombre || !equipo || !DORSAL_VALIDO.test(d)) return;
+    out[claveFoto(nombre, equipo)] = String(Number(d));
+  });
+  return out;
+}
+
+/**
  * Las fotos de los jugadores que VIAJAN en el libro recortado: un rival
  * que el plan saca no manda ni su foto. Se cruza con `PROMEDIOS J`, la
  * misma hoja del padrón de la liga (`reglas.padronLiga`).
@@ -159,4 +183,4 @@ function fotosDelLibro(fotos, hojas) {
   return out;
 }
 
-module.exports = { HOJA, fechaIso, fichasDelPadron, fusionar, fotosDelPadron, fotosDelLibro, claveFoto };
+module.exports = { HOJA, fechaIso, fichasDelPadron, fusionar, fotosDelPadron, dorsalesDelPadron, fotosDelLibro, claveFoto };

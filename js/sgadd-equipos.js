@@ -1078,8 +1078,20 @@ function equiposDetallePartido(idx, e, id) {
           ${escapeHtml(lado.equipo.nombre)}
         </p>
         <p class="font-display text-3xl sm:text-4xl leading-none mt-1" style="color:#fff">${lado.fila['PTS'] || 0}</p>
+        ${dato(lado.fila, 'ENTRENADOR') ? `<p class="text-[10px] dato-sec mt-1 truncate" title="Entrenador">DT ${escapeHtml(dato(lado.fila, 'ENTRENADOR'))}</p>` : ''}
       </div>`;
   };
+
+  /* LOS DATOS DEL ENCUENTRO (2026-10-08): hora, estadio y entrenadores.
+     Son columnas que la ingesta agrega al final de `Base Datos E`; un libro
+     con Excel manual no las trae y la línea queda como estaba. */
+  function dato(fila, col) {
+    const v = fila ? fila[col] : null;
+    return (v === null || v === undefined) ? '' : SGADD.texto(v).trim();
+  }
+  const local = part.lados.find(l => SGADD.texto(l.fila && l.fila['CONDICION']).toUpperCase() === 'LOCAL') || propio;
+  const hora = dato(local.fila, 'HORA') || dato(propio.fila, 'HORA');
+  const estadio = dato(local.fila, 'ESTADIO') || dato(propio.fila, 'ESTADIO');
 
   const cabecera = `
     <div class="mb-5">
@@ -1097,6 +1109,7 @@ function equiposDetallePartido(idx, e, id) {
       <div class="rounded-lg border ${gano ? 'border-green-400/40' : 'border-red-400/40'} bg-surface2/30 p-4">
         <p class="text-[10px] uppercase tracking-widest dato-sec text-center mb-3">
           ${escapeHtml(SGADD.formatearFecha(part.fecha))} ·
+          ${hora ? escapeHtml(hora) + ' h · ' : ''}${estadio ? escapeHtml(estadio) + ' · ' : ''}
           ${escapeHtml(SGADD.texto(propio.fila['CONDICION']))} ·
           <span class="${gano ? 'text-green-400' : 'text-red-400'}">${gano ? 'Ganado' : 'Perdido'}</span>
         </p>
@@ -1106,8 +1119,6 @@ function equiposDetallePartido(idx, e, id) {
           ${riv ? marcador(part.lados[1], part.lados[1] === propio) : ''}
         </div>
       </div>
-      <!-- Hook de parciales por cuarto: se activa cuando existan las
-           columnas PTS_Q1..PTS_Q4 en Base Datos E. -->
     </div>`;
 
   /* --- Insight del partido --- */
@@ -1287,7 +1298,81 @@ function equiposDetallePartido(idx, e, id) {
       </div>`;
   })();
 
+  /* --- Cuarto a cuarto (2026-10-08) ---
+     Los parciales de `Base Datos E` (PTS Q1..Q4 y PTS OT, la suma de los
+     suplementarios). Sin esas columnas —libro con Excel manual— no va. */
+  const cuartos = (() => {
+    const lados = [propio, riv].filter(Boolean);
+    const COLS = [['PTS Q1', '1.º'], ['PTS Q2', '2.º'], ['PTS Q3', '3.º'], ['PTS Q4', '4.º'], ['PTS OT', 'Supl.']];
+    const n = (fila, c) => { const v = fila ? SGADD.num(fila[c]) : null; return (typeof v === 'number' && isFinite(v)) ? v : null; };
+    const usadas = COLS.filter(([c]) => lados.some(l => n(l.fila, c) !== null)
+      && (c !== 'PTS OT' || lados.some(l => n(l.fila, c) > 0)));
+    if (lados.length < 2 || usadas.filter(([c]) => c !== 'PTS OT').length < 4) return '';
+    const fila = (l, otro, esPropio) => `
+      <tr class="border-b border-hairline/40 last:border-0">
+        <td class="text-xs whitespace-nowrap ${esPropio ? 'text-accent font-semibold' : 'text-white'}">${escapeHtml(l.equipo.nombre)}</td>
+        ${usadas.map(([c]) => {
+          const a = n(l.fila, c), b = n(otro.fila, c);
+          const tono = a === null || b === null || a === b ? 'text-white' : a > b ? 'text-green-400 font-medium' : 'text-red-400';
+          return `<td class="font-mono text-xs ${tono}">${a === null ? '—' : a}</td>`;
+        }).join('')}
+        <td class="font-mono text-xs text-white font-semibold">${escapeHtml(String(l.fila['PTS'] || 0))}</td>
+      </tr>`;
+    const dif = usadas.map(([c]) => {
+      const a = n(propio.fila, c), b = n(riv.fila, c);
+      const d = a === null || b === null ? null : a - b;
+      return `<td class="font-mono text-[11px] ${d > 0 ? 'text-green-400' : d < 0 ? 'text-red-400' : 'dato-sec'}">${d === null ? '' : (d > 0 ? '+' : d < 0 ? '−' : '') + Math.abs(d)}</td>`;
+    }).join('');
+    return `
+      <div class="mb-6" id="cuartosPartido">
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Cuarto a cuarto</h5>
+        <div class="scrollbox"><table class="w-full tabla-cuartos">
+          <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+            <th>Equipo</th>${usadas.map(([, r]) => `<th>${r}</th>`).join('')}<th>Final</th></tr></thead>
+          <tbody>
+            ${fila(propio, riv, true)}
+            ${fila(riv, propio, false)}
+            <tr><td class="text-[10px] dato-sec">Parcial ${escapeHtml(propio.equipo.nombre)}</td>${dif}<td></td></tr>
+          </tbody>
+        </table></div>
+      </div>`;
+  })();
+
+  /* --- Momentum y mapa del partido (2026-10-08) ---
+     Salen del paquete de play-by-play del equipo (capa de laboratorio):
+     se montan después de pintar, como las otras cards de pbp. Sin la
+     capa, no van. */
+  const conPbp = typeof SGADD_PBP !== 'undefined' && SGADD_PBP.activa && SGADD_PBP.activa();
+  const fechaIso = (f) => {
+    const d = f instanceof Date ? f : (f ? new Date(f) : null);
+    if (!d || isNaN(d)) return '';
+    const p = (x) => String(x).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  };
+  const refPbp = {
+    id: dato(propio.fila, 'ID_PARTIDO_FUENTE'),
+    fecha: fechaIso(part.fecha),
+    rival: riv ? riv.equipo.nombre : '',
+  };
+  const momentum = conPbp ? `
+      <div class="mb-6" id="momentumPartido">
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Momentum · evolución del marcador</h5>
+        ${SGADD_PBP.espacioPartido(propio.equipo.nombre, refPbp, 'partido-momentum')}
+      </div>` : '';
+  const mapaPartido = conPbp ? `
+      <div class="mb-6" id="mapaTiroPartido">
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Mapa de tiro del partido</h5>
+        ${SGADD_PBP.espacioPartido(propio.equipo.nombre, refPbp, 'partido-mapa')}
+      </div>` : '';
+
   /* --- Box scores --- */
+  /* El dorsal de ESA noche, de la fila del partido; si la fila no lo trae,
+     el del padrón (`torneoDorsal`). */
+  const dorsalBox = (j) => {
+    const d = SGADD.texto(j['DORSAL']).trim();
+    if (/^\d{1,3}$/.test(d)) return '#' + Number(d) + ' ';
+    return typeof torneoPrefijoDorsal === 'function' ? torneoPrefijoDorsal(j['NOMBRES'], j['EQUIPO']) : '';
+  };
   const boxScore = (lado, desvios, titulo) => {
     if (!lado || !lado.box.length) {
       return `<div><h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">${escapeHtml(titulo)}</h5>
@@ -1312,7 +1397,7 @@ function equiposDetallePartido(idx, e, id) {
         <tr class="border-b border-hairline/40 last:border-0 ${flojo ? 'opacity-50 fila-tenue' : ''}
                    ${dest ? (dest.z > 0 ? 'bg-green-400/5' : 'bg-red-400/5') : ''}">
           <td class="py-1.5 pr-3 text-xs whitespace-nowrap ${dest ? 'text-white font-medium' : 'text-white'}">
-            ${escapeHtml(SGADD_PARTIDO.nombreCorto(j))}
+            ${escapeHtml(dorsalBox(j) + SGADD_PARTIDO.nombreCorto(j))}
             ${dest ? `<span class="ml-1 text-[10px] font-mono ${dest.z > 0 ? 'text-green-400' : 'text-red-400'}"
               title="${escapeAttr(dest.clave + ' ' + SGADD.formatear(dest.clave, dest.valor) + ' vs ' + SGADD.formatear(dest.clave, dest.media) + ' de promedio')}">
               ${dest.z > 0 ? '▲' : '▼'}${escapeHtml(dest.clave)}</span>` : ''}
@@ -1363,7 +1448,10 @@ function equiposDetallePartido(idx, e, id) {
       ${insight}
       ${factores}
       ${avanzadas}
+      ${cuartos}
+      ${momentum}
       ${perfilesTiro}
+      ${mapaPartido}
       <div class="grid grid-cols-1 xl:grid-cols-2 gap-6" id="boxScores">
         ${boxScore(propio, a.propios, 'Box score · ' + propio.equipo.nombre)}
         ${riv ? boxScore(riv, a.rivales, 'Box score · ' + riv.equipo.nombre) : ''}
