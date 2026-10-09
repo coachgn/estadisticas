@@ -411,6 +411,10 @@ const SGADD_MERCADO = (function () {
         return true;
       };
       if (!rango(fi.edad !== undefined ? num(fi.edad) : null, c.edad)) return;
+      /* El AÑO de nacimiento (punto 97): es lo que pide un club con cupo de
+         juveniles («nacidos de 2004 en adelante»), y no cambia con la fecha
+         del día como la edad. */
+      if (!rango(anioNacimiento(fi.nacimiento), c.nacimiento)) return;
       if (!rango(fi.talla !== undefined ? num(fi.talla) : null, c.talla)) return;
       const rangos = c.rangos || {};
       for (const k of Object.keys(rangos)) {
@@ -836,8 +840,86 @@ const SGADD_MERCADO = (function () {
     return t.torneo + ' · ' + t.fase;
   }
 
+  /** El año de una ficha («1998» o «1998-04-12»), o null. */
+  function anioNacimiento(nac) {
+    const m = /^(\d{4})/.exec(String(nac || '').trim());
+    return m ? Number(m[1]) : null;
+  }
+
+  /* =====================================================================
+     EL JUGADOR MODELO (punto 97)
+
+     «Buscame uno como este.» Sobre los que pasan las puertas duras, cada
+     candidato se mide contra el modelo con la MISMA similitud del punto 58
+     (función 50 %, perfiles 30 %, jerarquía 20 %, con minutos y uso
+     comparables: `jugadoresSimilitud`, que se inyecta porque vive en
+     Jugadores) y, si los dos tienen ficha, con su perfil físico:
+
+        modelo = 0,85 · similitud + 0,15 · físico      (sin ficha: similitud)
+
+     Si además se pidieron criterios que suman, el % final es el promedio
+     del % de coincidencia y el del modelo: los dos preguntan cosas
+     distintas y ninguno pisa al otro. Quedan los que llegan al piso.
+     ===================================================================== */
+  const PESO_FISICO_MODELO = 0.15;
+
+  /**
+   * Cercanía física entre dos fichas, 0..1, o null si no hay con qué.
+   * Talla: 1 hasta 3 cm de diferencia, 0 desde 15. Puesto: el mismo
+   * principal 1, uno al lado 0,5, más lejos 0. Promedio de lo que haya.
+   */
+  function cercaniaFisica(a, b) {
+    const x = a || {}, y = b || {};
+    const partes = [];
+    const ta = num(x.talla), tb = num(y.talla);
+    if (ta !== null && tb !== null) partes.push(Math.max(0, Math.min(1, (15 - Math.abs(ta - tb)) / 12)));
+    const pa = POR_POSICION[x.posicion], pb = POR_POSICION[y.posicion];
+    if (pa && pb) {
+      const d = Math.abs(pa.principal - pb.principal);
+      partes.push(d === 0 ? 1 : d === 1 ? 0.5 : 0);
+    }
+    return partes.length ? partes.reduce((s, v) => s + v, 0) / partes.length : null;
+  }
+
+  /**
+   * Re-puntúa los ítems de `evaluar` contra un jugador modelo. PURA.
+   * @param {{items, puntua}} res   la salida de `evaluar`
+   * @param {object} modelo          la fila del modelo (con `_adn` y `ficha`)
+   * @param {function} similitud     (adnA, adnB) => {total, funcion, perfiles, adn, volumen:{ok}}
+   * @returns {{items, bajoPiso, sinVolumen}}  ordenados por el % nuevo
+   */
+  function conModelo(res, modelo, similitud) {
+    const out = [];
+    let bajoPiso = 0, sinVolumen = 0;
+    ((res && res.items) || []).forEach((it) => {
+      const f = it.fila;
+      if (!modelo || f === modelo || f.id === modelo.id) return;
+      const sim = similitud(modelo._adn, f._adn);
+      if (!sim || !(sim.volumen && sim.volumen.ok)) { sinVolumen++; return; }
+      const fis = cercaniaFisica(modelo.ficha, f.ficha);
+      const parecido = fis === null ? sim.total : (1 - PESO_FISICO_MODELO) * sim.total + PESO_FISICO_MODELO * fis;
+      const base = res.puntua && it.coinc && typeof it.coinc.pct === 'number' ? it.coinc.pct : null;
+      const pct = base === null ? parecido : (base + parecido) / 2;
+      if (pct < PISO_COINCIDENCIA - 1e-9) { bajoPiso++; return; }
+      const partes = [
+        { label: 'Función en cancha', peso: 0.5, puntaje: sim.funcion },
+        { label: 'Perfiles técnicos', peso: 0.3, puntaje: sim.perfiles },
+        { label: 'Jerarquía', peso: 0.2, puntaje: sim.adn },
+      ].concat(fis === null ? [] : [{ label: 'Físico (talla y puesto)', peso: PESO_FISICO_MODELO, puntaje: fis }])
+        .concat(base === null ? [] : [{ label: 'Tus criterios', peso: 0.5, puntaje: base }]);
+      out.push(Object.assign({}, it, {
+        rotulo: base === null ? 'parecido al modelo' : 'modelo + criterios',
+        coinc: { pct: pct, parecido: parecido, partes: partes,
+          faltan: partes.filter(p => p.puntaje < 1 && p.label !== 'Tus criterios').map(p => p.label + ' ' + Math.round(p.puntaje * 100) + ' %')
+            .concat(base !== null && it.coinc.faltan ? it.coinc.faltan : []) },
+      }));
+    });
+    out.sort((a, b) => (b.coinc.pct - a.coinc.pct) || (b.conf.rango - a.conf.rango));
+    return { items: out, bajoPiso: bajoPiso, sinVolumen: sinVolumen };
+  }
+
   return {
-    diaIso, hayFechas, recortarHojas, etiquetaTramo,
+    diaIso, hayFechas, recortarHojas, etiquetaTramo, anioNacimiento, cercaniaFisica, conModelo, PESO_FISICO_MODELO,
     SERVICIO, PUESTOS, POSICIONES, POR_POSICION, TALLA_MIN, TALLA_MAX, CLAVE_VALIDA,
     idPosicion, cubre, normalizarFicha, edad,
     VOLUMEN_TIRO, COLUMNAS_VOLUMEN, textoVolumen, tiroPredominante, GRUPOS_METRICAS, metricasPorGrupo,

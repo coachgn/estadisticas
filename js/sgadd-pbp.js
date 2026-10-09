@@ -1200,13 +1200,70 @@ const SGADD_PBP = (function () {
     </div>`;
   }
 
-  /** El lugar de una card de partido en el post-partido: 'partido-mapa' o 'partido-momentum'. */
+  /**
+   * Los quintetos del partido (punto 97): inicial, de cierre y clutch, de
+   * los dos equipos. Salen del PBP (`partidosPbp[].quintetos`): el inicial
+   * es el que arrancó, el de cierre el que estaba en cancha al final, y el
+   * clutch —últimos 5' del 4.º o de un suplementario con diferencia ≤ 5—
+   * solo existe si el partido llegó a ese tramo. Cada quinteto con su +/-
+   * y sus minutos juntos en el partido. PURA.
+   */
+  function quintetosPartido(paq, pp) {
+    if (!pp || !pp.quintetos) return vacio('Sin play-by-play validado de este partido (o paquete anterior al punto 97): no hay quintetos.');
+    const nombres = pp.nombres || {};
+    const jug = (id) => {
+      const n = nombres[id];
+      const nombre = n ? n[0] : (paq.jugadores && paq.jugadores[id] ? paq.jugadores[id].n : id);
+      const d = n && n[1] !== '' && n[1] != null ? '#' + n[1] + ' ' : '';
+      return `<li class="text-xs text-white leading-snug whitespace-nowrap" title="${esc(nombre)}">${esc(d + apellido(nombre))}</li>`;
+    };
+    const cinco = (titulo, q, nota) => `<div>
+        ${subtitulo(titulo)}
+        ${q ? `<ul class="mb-1">${q.ids.map(jug).join('')}</ul>
+          <p class="text-[10px] font-mono dato-sec">+/- <span class="${tonoMM(q.mm)}">${signo(q.mm, 0)}</span> · ${num(q.min)}' juntos${nota ? ' · ' + nota : ''}</p>`
+          : '<p class="text-[11px] text-muted">Sin dato.</p>'}
+      </div>`;
+    const lado = (rotulo, q) => {
+      const mismo = q.inicial && q.cierre && q.inicial.ids.slice().sort().join() === q.cierre.ids.slice().sort().join();
+      const c = q.clutch;
+      const clutch = c ? `<div>
+          ${subtitulo('Clutch · ' + num(c.min) + "'")}
+          <p class="text-xs text-ink mb-1">Parcial <b class="font-mono ${tonoMM(c.favor - c.contra)}">${c.favor}-${c.contra}</b></p>
+          ${c.quinteto ? `<p class="text-[10px] uppercase tracking-wider text-muted mt-1">Quinteto con más minutos</p>
+            <ul class="mb-1">${c.quinteto.ids.map(jug).join('')}</ul>
+            <p class="text-[10px] font-mono dato-sec">+/- <span class="${tonoMM(c.quinteto.mm)}">${signo(c.quinteto.mm, 0)}</span> · ${num(c.quinteto.min)}'</p>` : ''}
+          ${(c.jugadores || []).length ? `<p class="text-[10px] uppercase tracking-wider text-muted mt-2">Quién decidió</p>
+            <ul>${c.jugadores.map(x => `<li class="text-[11px] text-ink leading-snug">${esc(apellido((nombres[x.id] || [x.id])[0]))}
+              <span class="font-mono dato-sec">${x.pts} pts · TC ${esc(x.tc)} · TL ${esc(x.tl)}${x.pp ? ' · ' + x.pp + ' PP' : ''}</span></li>`).join('')}</ul>` : ''}
+        </div>`
+        : `<div>${subtitulo('Clutch')}<p class="text-[11px] text-muted">No hubo: el partido no llegó a los últimos 5' con 5 puntos o menos.</p></div>`;
+      return `<div class="pbp-quintetos-lado">
+        <p class="text-[11px] uppercase tracking-wider font-display text-accent mb-2">${esc(rotulo)}</p>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          ${cinco('Quinteto inicial', q.inicial)}
+          ${cinco('Quinteto de cierre', q.cierre, mismo ? 'el mismo que arrancó' : '')}
+          ${clutch}
+        </div>
+      </div>`;
+    };
+    return `<div class="pbp-bloque grid grid-cols-1 xl:grid-cols-2 gap-5" data-pbp-listo="1">
+      ${lado(paq.equipo, pp.quintetos.favor)}
+      ${lado(pp.rival, pp.quintetos.contra)}
+    </div>
+    <p class="text-[11px] dato-sec mt-2 leading-snug">Del play-by-play oficial. <b>+/-</b>: diferencia de puntos con esos cinco juntos en
+      cancha en todo el partido. Cierre: los cinco en cancha al final. Clutch: últimos 5 minutos del 4.º cuarto o de un suplementario con
+      diferencia de 5 o menos (antes de cada acción).</p>`;
+  }
+
+  /** El lugar de una card de partido en el post-partido: 'partido-mapa', 'partido-momentum' o 'partido-quintetos'. */
   function espacioPartido(equipo, partido, tipo) {
     const p = partido || {};
-    const t = tipo === 'partido-mapa' ? 'partido-mapa' : 'partido-momentum';
+    const t = tipo === 'partido-mapa' || tipo === 'partido-quintetos' ? tipo : 'partido-momentum';
+    const texto = { 'partido-mapa': 'Cargando el mapa de tiro del partido…', 'partido-momentum': 'Cargando la evolución del marcador…',
+      'partido-quintetos': 'Cargando los quintetos del partido…' }[t];
     return `<div class="pbp-montaje" data-pbp-equipo="${esc(equipo)}" data-pbp-tipo="${t}"
       data-pbp-partido="${esc(p.id || '')}" data-pbp-fecha="${esc(p.fecha || '')}" data-pbp-rival="${esc(p.rival || '')}">
-      ${cargando(t === 'partido-mapa' ? 'Cargando el mapa de tiro del partido…' : 'Cargando la evolución del marcador…')}</div>`;
+      ${cargando(texto)}</div>`;
   }
 
   /* ------------------------------------------------------------------ vivo */
@@ -1272,12 +1329,13 @@ const SGADD_PBP = (function () {
       Promise.all([pedir(nodo.getAttribute('data-pbp-equipo')), propio ? pedir(propio).catch(() => null) : null])
         .then(([paq, paqPropio]) => {
           if (!nodo.isConnected) return;
-          const pp = (tipo === 'partido-mapa' || tipo === 'partido-momentum')
+          const pp = (tipo === 'partido-mapa' || tipo === 'partido-momentum' || tipo === 'partido-quintetos')
             ? partidoDe(paq, nodo.getAttribute('data-pbp-partido'), nodo.getAttribute('data-pbp-fecha'), nodo.getAttribute('data-pbp-rival'))
             : null;
           nodo.innerHTML = nombreJugador ? jugador(paq, nombreJugador)
             : tipo === 'partido-mapa' ? mapaPartido(paq, pp)
             : tipo === 'partido-momentum' ? momentumPartido(paq, pp)
+            : tipo === 'partido-quintetos' ? quintetosPartido(paq, pp)
             : tipo === 'mapa' ? mapaCard(paq, { propio: paqPropio, fijo: contexto === 'scouting' }) : html(paq, { contexto: contexto });
           activar(nodo, paq);
         }).catch((e) => {
@@ -1445,7 +1503,7 @@ const SGADD_PBP = (function () {
     html, mapaCard, jugador, mapa, capaTiros, bloqueSecciones, tieneSecciones, geometriaZonas, zonaGeometrica,
     diagnosticoZonas, diagnosticoJugador, cruceZonas, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
     activa, espacio, espacioJugador, montarPendientes, activar, apellido, _cache: cache,
-    partidoDe, mapaPartido, momentumPartido, espacioPartido, MIN_TIROS_DIAGNOSTICO,
+    partidoDe, mapaPartido, momentumPartido, quintetosPartido, espacioPartido, MIN_TIROS_DIAGNOSTICO,
   };
 })();
 

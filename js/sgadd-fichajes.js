@@ -58,7 +58,8 @@ const SGADD_FICHAJES = (function () {
   function criteriosVacios() {
     return { texto: '', zonas: [], equipos: [], roles: [], incluirSecundarios: true,
       jerarquias: [], rolesMinutos: [], arquetipos: [], origen: null,
-      soloCalificados: true, rangos: {}, edad: {}, talla: {}, posiciones: [], puestosSecundarios: true };
+      soloCalificados: true, rangos: {}, edad: {}, nacimiento: {}, talla: {}, posiciones: [], puestosSecundarios: true,
+      modelo: null };
   }
 
   const esc = (v) => SGADD_UI.esc(v);
@@ -696,6 +697,7 @@ const SGADD_FICHAJES = (function () {
     if (!root || !enSeccion()) return;
     const y = window.scrollY;
     root.innerHTML = cuerpo();
+    montarMapas(root);
     if (ST.vista !== 'buscar') return;
     window.scrollTo(0, y);
   }
@@ -798,6 +800,39 @@ const SGADD_FICHAJES = (function () {
     </div>`;
   }
 
+  /* EL JUGADOR MODELO (punto 97): uno de cualquier zona del torneo. Si su
+     zona dejó de estar cargada o el período lo sacó, el filtro se apaga y
+     la pantalla lo dice. */
+  function modeloActual() { return ST.crit.modelo ? filaPorId(ST.crit.modelo) : null; }
+
+  function selectorModelo(todas) {
+    const m = modeloActual();
+    const porEquipo = {};
+    todas.forEach(f => { (porEquipo[f.equipo] = porEquipo[f.equipo] || []).push(f); });
+    const grupos = Object.keys(porEquipo).sort().map(e => `<optgroup label="${esc(e)}">${porEquipo[e]
+      .slice().sort((a, b) => a.nombre.localeCompare(b.nombre))
+      .map(f => `<option value="${esc(f.id)}" ${m && m.id === f.id ? 'selected' : ''}>${esc(f.nombre)}</option>`).join('')}</optgroup>`).join('');
+    return `<div class="flex flex-wrap items-center gap-2">
+        <select onchange="SGADD_FICHAJES.usarModelo(this.value)" aria-label="Jugador modelo"
+          class="min-w-[16rem] rounded border border-hairline bg-surface2/40 px-2 py-1 text-xs text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+          <option value="">Ninguno · buscar solo por criterios</option>${grupos}</select>
+        ${m ? `<button type="button" onclick="SGADD_FICHAJES.usarModelo('')"
+          class="text-[11px] text-muted hover:text-ink underline underline-offset-2">quitar el modelo</button>` : ''}
+      </div>
+      <p class="text-[10px] dato-sec mt-1 mb-1">${m
+        ? `Buscando parecidos a <b class="text-ink">${esc(m.nombre)}</b> (${esc(m.equipo)}): función en cancha, perfiles técnicos y jerarquía,
+           con minutos y uso comparables, más talla y puesto si los dos tienen ficha (15 %). Con otros criterios, el % es el promedio de los dos.`
+        : (ST.crit.modelo ? '<span class="text-accent">El modelo elegido no está en las zonas o el período cargados: el filtro no se aplica.</span>'
+          : 'Elegí un jugador y la búsqueda trae a los que más se le parecen. Los filtros duros siguen mandando.')}</p>`;
+  }
+
+  function usarModelo(id) {
+    ST.crit.modelo = id || null;
+    if (id) { ST.orden = 'coincidencia'; ST.dir = 'desc'; }
+    ST.pagina = 1;
+    if (ST.vista !== 'buscar') irA('buscar'); else pintar();
+  }
+
   function campoRango(id, etiqueta, r, paso, unidad) {
     const v = r || {};
     return `<label class="flex items-center gap-1.5 text-[11px] text-muted">
@@ -825,6 +860,7 @@ const SGADD_FICHAJES = (function () {
     const minutos = ROLES_MINUTOS.map(r => ({ id: r.id, label: r.label }));
     const arq = PERFILES_TECNICOS.map(p => ({ id: p.id, label: p.emoji + ' ' + p.label }));
     const conFicha = todas.filter(f => f.ficha).length;
+    const conEdad = todas.filter(f => f.ficha && f.ficha.nacimiento).length;
 
     const P = M.PESOS_COINCIDENCIA;
     const pool = M.filtrar(todas, c, { soloPuertas: true }).filas;
@@ -857,6 +893,10 @@ const SGADD_FICHAJES = (function () {
           <p class="lg:col-span-2 text-[11px] dato-sec mb-3">De lo general a lo particular. Los <b>filtros duros</b> descartan;
             los demás <b>suman</b> al % de coincidencia, y se muestran los que llegan al ${Math.round(M.PISO_COINCIDENCIA * 100)} %:
             un jugador que cumple casi todo no se pierde por un detalle. El número de cada opción es cuántos jugadores la tienen.</p>
+          <div class="lg:col-span-2 mb-3">
+            ${encabezadoNivel('0', 'Jugador modelo', null)}
+            ${selectorModelo(todas)}
+          </div>
           <div class="lg:col-span-2 mb-1">
             ${encabezadoNivel('1', 'Zona y período', null)}
             ${bloquePeriodo()}
@@ -876,6 +916,14 @@ const SGADD_FICHAJES = (function () {
             <label class="flex items-center gap-2 text-[11px] text-muted">
               <input type="checkbox" ${c.soloCalificados ? 'checked' : ''} onchange="SGADD_FICHAJES.fijar('soloCalificados', this.checked)">
               Solo los que llegan al umbral de minutos de su zona (sin eso el percentil no se calcula)</label>
+          </div>
+          <div class="lg:col-span-2 mb-3">
+            ${grupoFiltro('Edad y nacimiento · filtro duro', `<div class="flex flex-wrap gap-x-6 gap-y-1.5">
+                ${campoRango('edad', 'Edad', c.edad, 1, 'años')}
+                ${campoRango('nacimiento', 'Año de nacimiento', c.nacimiento, 1, '')}
+              </div>`,
+              conEdad + ' de ' + todas.length + ' jugadores tienen el nacimiento cargado (padrón de la liga o ficha manual). '
+              + 'El que no lo tiene queda afuera si se pide.')}
           </div>
           <div>
             ${nivelFiltro('3', 'Rol por minutos', P.minutos, opcionesChips('rolesMinutos', minutos, c.rolesMinutos, cuenta.rolesMinutos),
@@ -920,7 +968,6 @@ const SGADD_FICHAJES = (function () {
                 <input type="checkbox" ${c.puestosSecundarios ? 'checked' : ''} onchange="SGADD_FICHAJES.fijar('puestosSecundarios', this.checked)">
                 Contar los puestos híbridos por su faceta secundaria (un 2-3 entra como 2 y como 3)</label>
               <div class="grid gap-1.5">
-                ${campoRango('edad', 'Edad', c.edad, 1, 'años')}
                 ${campoRango('talla', 'Talla', c.talla, 1, 'cm')}
               </div></div>
             </details>
@@ -952,7 +999,14 @@ const SGADD_FICHAJES = (function () {
     });
     /* PUERTAS + % DE COINCIDENCIA (punto 91): el motor descarta solo con
        los filtros duros y puntúa el resto; quedan los que llegan al piso. */
-    const res = M.evaluar(todas, ST.crit, ctxCoincidencia());
+    const base = M.evaluar(todas, ST.crit, ctxCoincidencia());
+    /* EL JUGADOR MODELO (punto 97) re-puntúa sobre las mismas puertas: el %
+       pasa a ser el parecido al modelo (promediado con el de los criterios,
+       si los hay). Ver `SGADD_MERCADO.conModelo`. */
+    const modelo = modeloActual();
+    const res = modelo && typeof jugadoresSimilitud === 'function'
+      ? Object.assign({}, base, M.conModelo(base, modelo, jugadoresSimilitud), { puntua: true })
+      : base;
     /* «% de coincidencia» ordena por puntaje y, al empate, por confianza.
        Sin nada puntuable cae a Puntos. En una MÉTRICA el orden por defecto
        es «mejor primero», y en una invertida (pérdidas) lo mejor es lo más
@@ -992,6 +1046,7 @@ const SGADD_FICHAJES = (function () {
       ${cargando ? 'Bajando los libros del torneo… ' : ''}${res.items.length} de ${todas.length} jugadores
       ${res.puntua ? ` · ${res.bajoPiso} por debajo del ${Math.round(M.PISO_COINCIDENCIA * 100)} % de coincidencia` : ''}
       ${res.sinDato ? ` · <span class="text-accent">${res.sinDato} quedaron afuera por no tener el dato pedido</span>` : ''}
+      ${modelo && res.sinVolumen ? ` · ${res.sinVolumen} sin minutos ni uso comparables con el modelo` : ''}
       ${res.puntua && porCoinc ? ' · por % de coincidencia y, al empate, por confianza' : ''}</p>`;
 
     const grilla = visibles.length
@@ -1289,6 +1344,10 @@ const SGADD_FICHAJES = (function () {
         <button type="button" onclick="SGADD_FICHAJES.buscarParecidos('${escJs(f.id)}')"
           class="text-[11px] px-3 py-1.5 rounded border border-accent/50 text-accent hover:bg-accent/10
                  focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">🔎 Buscar parecidos en todo el torneo</button>
+        <button type="button" onclick="SGADD_FICHAJES.usarModelo('${escJs(f.id)}')"
+          title="Lo fija como jugador modelo de la búsqueda: se suma a tus filtros"
+          class="text-[11px] px-3 py-1.5 rounded border border-hairline text-muted hover:text-ink hover:bg-surface2
+                 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">🎯 Usar como modelo</button>
         <button type="button" onclick="SGADD_FICHAJES.exportar('${escJs(f.id)}')"
           class="ml-auto text-[11px] font-semibold px-3 py-1.5 rounded-md border border-accent text-accent hover:bg-accent/10
                  focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">⬇ Descargar ficha de fichaje (PDF)</button>
@@ -1351,7 +1410,63 @@ const SGADD_FICHAJES = (function () {
             ${bloqueSimilares(f)}
           </section>
         </div>
-      </div>`;
+      </div>
+      ${bloqueMapa(f)}`;
+  }
+
+  /* =====================================================================
+     EL MAPA DE TIRO EN LA RADIOGRAFÍA (punto 97)
+
+     El mismo mapa y el mismo diagnóstico que la pestaña Tiro de la ficha
+     (`SGADD_PBP.jugador`), con el paquete de play-by-play del equipo de la
+     zona. Lo trae `/api/v1/fichajes/:torneo/:zona/tiros`, que autoriza el
+     padrón de fichajes y no el club: el que busca jugadores casi nunca es
+     del club de la zona. Sin play-by-play para esa zona (los libros con
+     Excel manual) la card lo dice y sigue.
+
+     El paquete se pide una vez por equipo y queda en caché: la Radiografía
+     de otro jugador del mismo equipo no vuelve a pedir nada.
+     ===================================================================== */
+  const MAPAS = new Map();   // 'torneo/zona/EQUIPO' -> Promise<paquete>
+
+  function bloqueMapa(f) {
+    if (typeof SGADD_PBP === 'undefined') return '';
+    return `<section class="card rounded-xl border border-hairline p-4 sm:p-5 mb-4">
+      <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Mapa de tiro · diagnóstico</h3>
+      <p class="text-[11px] dato-sec mb-3">Play-by-play oficial de los partidos validados de ${esc(f.equipo)}. No sigue el
+        período elegido arriba: es la temporada que cargó la ingesta.</p>
+      <div class="fx-mapa" data-fx-torneo="${esc(f.torneo)}" data-fx-zona="${esc(f.zona)}"
+        data-fx-equipo="${esc(f.equipoCrudo)}" data-fx-jugador="${esc(f.nombre)}">
+        <p class="text-[11px] text-muted">Cargando el mapa de tiro…</p></div>
+    </section>`;
+  }
+
+  function paqueteTiros(torneo, zona, equipo) {
+    const k = torneo + '/' + zona + '/' + SGADD.claveEquipo(equipo);
+    if (!MAPAS.has(k)) {
+      MAPAS.set(k, SGADD_DATA.fichajesTiros(torneo, zona, equipo).then(r => r.paquete)
+        .catch((e) => { MAPAS.delete(k); throw e; }));
+    }
+    return MAPAS.get(k);
+  }
+
+  function montarMapas(root) {
+    if (!root || !root.querySelectorAll || typeof SGADD_PBP === 'undefined') return;
+    root.querySelectorAll('.fx-mapa:not([data-fx-montado])').forEach((nodo) => {
+      nodo.setAttribute('data-fx-montado', '1');
+      const g = (a) => nodo.getAttribute('data-fx-' + a);
+      paqueteTiros(g('torneo'), g('zona'), g('equipo')).then((paq) => {
+        if (!nodo.isConnected) return;
+        nodo.innerHTML = SGADD_PBP.jugador(paq, g('jugador'));
+        SGADD_PBP.activar(nodo, paq);
+      }).catch((e) => {
+        if (!nodo.isConnected) return;
+        const txt = e && e.codigo === 'SIN_DATOS'
+          ? 'Esta zona todavía no tiene análisis de play-by-play: el mapa sale con la ingesta automática.'
+          : (e && e.message) || 'No se pudo cargar el mapa de tiro.';
+        nodo.innerHTML = `<p class="text-[11px] text-muted">${esc(txt)}</p>`;
+      });
+    });
   }
 
   /* ---------------------------------------------------------------------
@@ -1607,7 +1722,7 @@ const SGADD_FICHAJES = (function () {
   function fijarRango(id, lado, valor) {
     const n = (valor === '' || valor === null) ? undefined : Number(String(valor).replace(',', '.'));
     const v = (typeof n === 'number' && isFinite(n)) ? n : undefined;
-    if (id === 'edad' || id === 'talla') {
+    if (id === 'edad' || id === 'talla' || id === 'nacimiento') {
       ST.crit[id] = Object.assign({}, ST.crit[id], { [lado]: v });
     } else if (id.indexOf('m:') === 0) {
       const k = id.slice(2);
@@ -1846,7 +1961,7 @@ const SGADD_FICHAJES = (function () {
   return {
     iniciar, montar, pintar, elegirTorneo, irA, abrir, buscarTexto, alternar, fijar, fijarEquipo,
     recordarFiltros, fijarRango, agregarRango, limpiarRangos, limpiarTodo, ordenarPor, invertirOrden,
-    fijarPeriodo, quitarPeriodo, fijarRangoDuro, buscarParecidos,
+    fijarPeriodo, quitarPeriodo, fijarRangoDuro, buscarParecidos, usarModelo,
     verMas, alternarComparar, vaciarComparar, editarFicha, guardarFicha, enviarAcceso, editarAcceso,
     guardarAcceso, exportar, radarSvg, sparkSvg, estado: ST,
   };

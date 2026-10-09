@@ -401,6 +401,11 @@ async function manejarEquipos(peticion, deps) {
       fotos: PADRON_J.fotosDelLibro(await pFotos, rec.hojas),
       /* Los dorsales, con el mismo filtro: solo de quien viaja en el libro. */
       dorsales: PADRON_J.fotosDelLibro(await pDorsales, rec.hojas),
+      /* Las titularidades (punto 97): [titular, partidos] del tramo de las
+         alertas, contadas sobre el libro COMPLETO; viaja solo el conteo y
+         solo de quien viaja en el libro recortado. */
+      titulares: PADRON_J.fotosDelLibro(PADRON_J.titularesDelLibro(libro.hojas,
+        { fase: alertasDelTramo.fase || q.fase, torneo: alertasDelTramo.torneo || q.torneo }), rec.hojas),
       /* LAS ALERTAS, YA CALCULADAS. El detector necesita el log partido a
          partido de cada jugador, que es justo lo que el recorte no manda:
          se corre acá, sobre el libro COMPLETO, y viaja solo el resultado.

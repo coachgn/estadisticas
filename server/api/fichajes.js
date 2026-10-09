@@ -42,6 +42,7 @@ const { verificarToken, tokenDeLaPeticion } = require('../lib/auth.js');
 const AUTH = require('../lib/compartido/sgadd-auth.js');
 const MERCADO = require('../lib/compartido/sgadd-mercado.js');
 const PADRON_J = require('../lib/padron-j.js');
+const PBP = require('./pbp.js');
 
 const PADRON = 'sgadd:fichajes:padron';
 const SLUG = /^[a-z0-9][a-z0-9-]{0,79}$/;
@@ -179,6 +180,44 @@ async function manejarZona(peticion, deps) {
   };
 }
 
+/* GET /api/v1/fichajes/:torneo/:zona/tiros?equipo=X  (punto 97)
+
+   El paquete de play-by-play de UN equipo de la zona, para el mapa de tiro
+   de la Radiografía. Vive en `sgadd:pbp:<torneo>:<zona>`: es la capa de
+   laboratorio de la categoría del torneo (punto 94), la misma que lee
+   `/api/v1/pbp`. Por qué una ruta aparte: `/api/v1/pbp` autoriza por CLUB
+   (un cliente solo ve su categoría) y el que busca fichajes es, casi
+   siempre, de OTRO club. Acá manda el padrón de fichajes, igual que el
+   libro completo de la zona: el que puede ver el libro sin recorte puede
+   ver dónde tira cada jugador. Solo lee, y de un equipo por pedido. */
+async function manejarTirosZona(peticion, deps) {
+  const ctx = await sesionDeFichajes(peticion, deps);
+  if (ctx.error) return ctx.error;
+  const params = (peticion && peticion.params) || {};
+  const torneoId = String(params.torneo || '').toLowerCase();
+  const slug = String(params.zona || '').toLowerCase();
+  if (!SLUG.test(torneoId) || !SLUG.test(slug)) return error(400, 'RUTA_INVALIDA', 'Falta el torneo o la zona.');
+  if (ctx.habilitados.indexOf(torneoId) === -1) {
+    return error(403, 'OTRO_TORNEO', 'Tu acceso a Fichajes no incluye ese torneo.');
+  }
+  const t = ctx.cat[torneoId];
+  if (!(t && t.categorias && t.categorias[slug])) return error(404, 'SIN_ZONA', 'Esa zona no existe en el torneo.');
+  const q = (peticion && peticion.query) || {};
+  const campo = PBP.campoDeEquipo(q.equipo);
+  if (!campo) return error(400, 'EQUIPO_INVALIDO', 'Falta el nombre del equipo.');
+  const almacen = almacenDe(deps);
+  if (!almacen.configurado()) return error(503, 'SIN_KV', 'El servidor no tiene dónde leer el análisis.');
+  let leido;
+  try {
+    leido = await almacen.leerCampos(PBP.claveKV(torneoId, slug), [campo]);
+  } catch (e) {
+    return error(503, 'KV_ILEGIBLE', 'No se pudo leer el análisis de play-by-play.');
+  }
+  const valor = leido && leido[campo];
+  if (!valor) return error(404, 'SIN_DATOS', 'Todavía no hay análisis de play-by-play para ' + String(q.equipo) + '.');
+  return { status: 200, body: { ok: true, paquete: valor } };
+}
+
 function limpiarFichas(mapa) {
   const out = {};
   Object.keys(mapa || {}).forEach(clave => {
@@ -284,6 +323,6 @@ async function manejarPadronEscribir(peticion, deps) {
 }
 
 module.exports = {
-  manejarFichajes, manejarZona, manejarFichasEscribir, manejarPadron, manejarPadronEscribir,
+  manejarFichajes, manejarZona, manejarTirosZona, manejarFichasEscribir, manejarPadron, manejarPadronEscribir,
   PADRON, claveFichas,
 };

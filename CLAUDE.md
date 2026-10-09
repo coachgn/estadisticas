@@ -46,7 +46,7 @@ node test-jsonclub.js      # 115 tests · los JSON de club, el validador, el ais
 node test-pares.js         # 219 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 175 tests · partidos sin box score: suman a la tabla, no a las métricas
-node test-responsive.js    # 139 tests · desborde, targets táctiles, modales, el papel, el PIE
+node test-responsive.js    # 150 tests · desborde, targets táctiles, modales, el papel, el PIE
                            #             el aviso de version y el diagnostico del pie
 node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
 node test-demo.js          # 130 tests · la demo publica: el snapshot anonimizado, el
@@ -68,9 +68,9 @@ node test-similitud-etiquetas.js #  45 tests · la similitud multi-etiqueta cont
                            #             de etiquetas, el caso Raineri/Benavidez y los afines
 node test-estados-sync.js  #  74 tests · los estados compartidos en el servidor, dos sesiones
                            #             y que ninguna escritura del catálogo pise datos
-node test-fichajes.js      # 208 tests · Fichajes: ficha manual, padrón, filtros y el servidor (punto 87)
+node test-fichajes.js      # 221 tests · Fichajes: ficha manual, padrón, filtros, el servidor (punto 87), modelo y tiros (97)
                            #             · y PADRON J del libro, que completa las fichas sin pisarlas
-node test-padron-j.js      #  32 tests · la pestaña PADRON J → fichas: fechas, claves, campos inválidos, fusión,
+node test-padron-j.js      #  35 tests · la pestaña PADRON J → fichas: fechas, claves, campos inválidos, fusión,
                            #             fotos y dorsales (punto 96)
 node test-pdf-layout.js    #  37 tests · claves arriba del resto, el flujo continuo, la
                            #             tabla que se parte por filas y que ningún :hover
@@ -81,7 +81,7 @@ node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: 
                            #             equipo, vencimiento y ciclo ORO por categoría
 node test-glosario.js      #  34 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
-node test-pbp.js           # 142 tests · la capa de laboratorio de play-by-play: el catálogo,
+node test-pbp.js           # 146 tests · la capa de laboratorio de play-by-play: el catálogo,
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
                            #             · y el bloque opcional de secciones del paquete (punto 83)
@@ -2807,6 +2807,16 @@ código.
 La jerarquización sale **solo** de las etiquetas del motor centralizado
 (Jugador Clave / Importante / de Rotación / Pocos Minutos, y la jerarquía
 del ADN) y de MIN y PLAYS.
+
+**Excepción con el dato (punto 97, 2026-10-09).** Los libros que carga la
+ingesta automática (hoy la LNB) traen la columna TITULAR de `Base Datos J`
+—del box score oficial— y el play-by-play trae el quinteto que arrancó.
+Con ESE dato, y solo con él, el panel muestra «Titular X/Y» (`torneoBadgeTitular`)
+y los quintetos inicial / de cierre / clutch del post-partido. Todo lo que
+el motor INFIERE (etiquetas, consignas, jerarquías, bandas de minutos,
+roles, el manual) sigue sin poder decir «titular», y los tests que lo
+recorren siguen igual. Un libro con Excel manual no tiene el dato y no
+muestra nada.
 
 Por esto la jerarquía `🧱 Pieza de Quinteto Titular` pasó a llamarse
 **`🧱 Pieza de Rotación Alta`**: el umbral (MIN ≥ 23) mide carga de
@@ -12578,3 +12588,74 @@ mapa del partido, `partidoDe`), `test-inscriptos.js` (encuadre y dorsal),
 `test-padron-j.js` (dorsales). En la ingesta, `test/test-jujuy-pbp.js`
 (todos los tiradores, `porPartido`: uno por partido, la línea termina en
 el resultado y nunca baja, y los tiros suman lo mismo que el detalle).
+
+---
+
+## 97. TITULARIDAD, QUINTETOS DEL PARTIDO, MARCA EN LOS PDF Y FICHAJES (2026-10-09)
+
+Assets en `?v=272`. Toca ingesta, servidor y panel.
+
+### 1 · «Titular X/Y» (solo con el dato · ver la excepción del punto 8)
+- **Servidor**: `PADRON_J.titularesDelLibro(hojas, {fase, torneo})` cuenta
+  `[titular, partidos]` por jugador sobre `Base Datos J` COMPLETA, solo las
+  filas con TITULAR = SI/NO, en el tramo de las alertas. Viaja como
+  `titulares`, filtrado con `fotosDelLibro`: solo el conteo, solo de quien
+  viaja en el libro recortado (igual que las alertas).
+- **Panel**: `torneoTitularidad` / `torneoBadgeTitular` (sgadd-inscriptos.js).
+  Primero las filas del índice (el tramo que se mira); si no las hay —un
+  rival recortado— el conteo del servidor. Badge: «Titular 5/5» (resaltada
+  desde el 80 %), «Desde el banco · 0/4» si nunca arrancó, nada sin dato.
+- Va en la ficha del jugador (fila de badges), las cards del plantel y la
+  tabla del plantel de Equipos (que además suma el dorsal).
+
+### 2 · Quintetos inicial, de cierre y clutch en el post-partido
+- **Ingesta** (`AV.porPartido` → `quintetosDe`): por lado, `inicial`
+  (`seg.iniciales`), `cierre` (el último tramo con cinco) y `clutch` (null
+  si no hubo; si no: minutos, parcial, el quinteto con más minutos en ese
+  tramo y los que más usos tomaron, con `clutch.js` corrido sobre ESE
+  partido). Cada quinteto con `mm` y `min` juntos en el partido. Más
+  `nombres` [nombre, dorsal] de los dos lados.
+- `TOPE_PARTIDOS` bajó de 12 a 10: con los quintetos cada partido pesa
+  ~4,4 KB y el techo de pbp.js es 200 KB. **Un partido más viejo que los
+  últimos 10 del equipo pierde momentum, mapa y quintetos en su
+  post-partido** (lo dice en una línea). Si se quiere toda la temporada,
+  hay que subir `MAX_KB` en `server/bin/pbp.js`.
+- **Panel**: `SGADD_PBP.quintetosPartido`, montado con
+  `espacioPartido(…, 'partido-quintetos')` justo arriba de los box scores.
+
+### 3 · Encabezado y marca de agua en los PDF
+- Las cinco exportaciones envueltas por `inyectarPieDeHoja` (informe de
+  equipo, ficha del jugador, ranking, scouting, ficha de fichaje) suman un
+  `<thead>` con `encabezadoInforme()` —logo + MotorStats, a la derecha— que
+  se repite en cada hoja (la misma maquinaria del `<tfoot>`, NO un
+  `position: fixed`, que falló en el Chrome del club). La celda del cuerpo
+  lleva `.marca-agua`: «MotorStats» en diagonal al 4,5 % como FONDO, cada
+  240 mm, con `print-color-adjust: exact`. Nunca tapa contenido.
+- El **post-partido** NO se envuelve: su CSS de papel parte las hojas a
+  mano (`break-inside: avoid` sobre toda tabla) y anula los fondos. Lleva
+  `.encabezado-marca` en el flujo (primera hoja) y su pie fijo de siempre.
+- Sin verificar en un PDF real del club: hay que generar uno de cada y
+  mirar que el encabezado no pise el primer título.
+
+### 4 · Fichajes
+- **Jugador modelo** (nivel 0 del panel de filtros, y «🎯 Usar como
+  modelo» en la Radiografía): `SGADD_MERCADO.conModelo(res, modelo,
+  jugadoresSimilitud)` re-puntúa sobre las mismas puertas duras con la
+  similitud del punto 58 (función 50 / perfiles 30 / jerarquía 20, volumen
+  comparable) y, si los dos tienen ficha, 15 % de `cercaniaFisica` (talla:
+  1 hasta 3 cm, 0 desde 15; puesto: mismo 1, vecino 0,5). Con criterios
+  que suman, el % es el promedio de los dos. Mismo piso del 60 %.
+- **Edad y año de nacimiento**: salieron del desplegable «Ficha manual» a
+  un grupo visible, filtro duro. `crit.nacimiento {min, max}` filtra por el
+  AÑO (`anioNacimiento`), que no cambia con la fecha del día.
+- **Mapa de tiro en la Radiografía**: `bloqueMapa` + `montarMapas` con
+  `SGADD_PBP.jugador` (mapa + diagnóstico, y el aviso de muestra chica del
+  punto 96). El paquete lo trae una ruta NUEVA,
+  `GET /api/v1/fichajes/:torneo/:zona/tiros?equipo=X`
+  (`manejarTirosZona`), que autoriza el PADRÓN DE FICHAJES y no el club:
+  `/api/v1/pbp` le daría OTRO_CLUB a quien busca jugadores de otro club.
+  Lee `sgadd:pbp:<torneo>:<zona>`. Una zona sin paquete lo dice.
+
+### Para producción
+Backend (`titulares` y la ruta de tiros), push del front, y la próxima
+corrida de la tarea sube los paquetes con quintetos.

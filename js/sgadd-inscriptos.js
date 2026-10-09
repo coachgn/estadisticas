@@ -348,3 +348,54 @@ function torneoPrefijoDorsal(nombre, equipo) {
   const d = torneoDorsal(nombre, equipo);
   return d === null ? '' : '#' + d + ' ';
 }
+
+/* =====================================================================
+   LA TITULARIDAD (punto 97) · «Titular 5/5»
+
+   SOLO CON EL DATO. La regla del punto 8 sigue en pie para todo lo que
+   el motor INFIERE (etiquetas, consignas, jerarquías: nada de eso dice
+   «titular»). Esto no se infiere: es la columna TITULAR de `Base Datos J`,
+   que la ingesta escribe desde el box score oficial. Un libro con Excel
+   manual no la trae y acá no aparece nada.
+
+   De dónde sale, en orden:
+     1. las filas del jugador en `Base Datos J` del índice (el tramo que
+        se está mirando), si alguna trae el dato;
+     2. `titulares` del servidor: el mismo conteo hecho sobre el libro
+        completo, para los rivales que el plan recorta.
+   ===================================================================== */
+function torneoTitularidad(nombre, equipo) {
+  try {
+    if (typeof SGADD === 'undefined' || typeof SGADD_APP === 'undefined' || !SGADD_APP.estado) return null;
+    const kp = SGADD.clavePersona(nombre), ke = SGADD.claveEquipo(equipo);
+    const idx = SGADD_APP.estado.idx;
+    const filas = (idx && idx.liga && idx.liga.jugadorPartidos && idx.liga.jugadorPartidos.get(kp)) || [];
+    let t = 0, n = 0;
+    filas.forEach((f) => {
+      if (f.__equipo !== ke) return;
+      const v = String(f['TITULAR'] == null ? '' : f['TITULAR']).trim().toUpperCase();
+      if (v !== 'SI' && v !== 'SÍ' && v !== 'NO') return;
+      n++;
+      if (v !== 'NO') t++;
+    });
+    if (n) return { titular: t, partidos: n };
+    const s = (SGADD_APP.estado.titulares || {})[kp + '|' + ke];
+    if (Array.isArray(s) && s.length === 2 && s[1] > 0 && s[0] >= 0 && s[0] <= s[1]) return { titular: s[0], partidos: s[1] };
+    return null;
+  } catch (e) { return null; }
+}
+
+/**
+ * La badge «Titular X/Y», o '' sin el dato. Se resalta si arrancó en todos
+ * o casi todos (≥ 80 %); si no arrancó nunca, dice «Desde el banco».
+ */
+function torneoBadgeTitular(nombre, equipo) {
+  const r = torneoTitularidad(nombre, equipo);
+  if (!r) return '';
+  const esc = SGADD_UI.esc;
+  const frac = r.titular / r.partidos;
+  const texto = r.titular === 0 ? 'Desde el banco · 0/' + r.partidos : 'Titular ' + r.titular + '/' + r.partidos;
+  const clase = frac >= 0.8 ? 'border-accent/60 text-accent' : r.titular === 0 ? 'border-hairline text-muted' : 'border-hairline text-ink';
+  return `<span class="badge-titular text-[10px] px-1.5 py-0.5 rounded-full border ${clase} whitespace-nowrap"
+    title="${esc('Arrancó ' + r.titular + ' de los ' + r.partidos + ' partidos que jugó (box score oficial)')}">${esc(texto)}</span>`;
+}

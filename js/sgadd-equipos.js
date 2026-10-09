@@ -815,7 +815,9 @@ function equiposTabPlantel(idx, e) {
       <td class="py-1.5 pr-3 text-xs whitespace-nowrap">
         <span class="fila-inicial" aria-hidden="true">${escapeHtml(
           (typeof SGADD_CHARTS !== 'undefined' ? SGADD_CHARTS.inicialesJugador(j['NOMBRES']) : ''))}</span>
-        ${escapeHtml(j['NOMBRES'])}${badgeEstado}</td>
+        ${escapeHtml((typeof torneoPrefijoDorsal === 'function' ? torneoPrefijoDorsal(j['NOMBRES'], j['EQUIPO']) : '') + j['NOMBRES'])}${badgeEstado}
+        ${typeof torneoBadgeTitular === 'function' && torneoBadgeTitular(j['NOMBRES'], j['EQUIPO'])
+          ? '<span class="ml-1">' + torneoBadgeTitular(j['NOMBRES'], j['EQUIPO']) + '</span>' : ''}</td>
       ${cols.map(c => `<td class="py-1.5 pr-3 font-mono text-xs ${
         c === '+/-' ? SGADD_UI.claseMasMenos(plantelValor(j, c, modo)) : ''}">${
         escapeHtml(plantelTexto(j, c, modo))}</td>`).join('')}
@@ -1095,6 +1097,7 @@ function equiposDetallePartido(idx, e, id) {
 
   const cabecera = `
     <div class="mb-5">
+      <div class="encabezado-marca" aria-hidden="true">${SGADD_UI.encabezadoInforme()}</div>
       <div class="flex items-center justify-between gap-3 mb-3" data-no-print>
         <button onclick="equiposCerrarPartido()"
           class="text-xs uppercase tracking-wider dato-sec hover:text-white transition-all duration-200">
@@ -1359,6 +1362,13 @@ function equiposDetallePartido(idx, e, id) {
         <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Momentum · evolución del marcador</h5>
         ${SGADD_PBP.espacioPartido(propio.equipo.nombre, refPbp, 'partido-momentum')}
       </div>` : '';
+  /* Los quintetos (punto 97): inicial, de cierre y clutch, justo arriba
+     de los box scores. */
+  const quintetos = conPbp ? `
+      <div class="mb-6" id="quintetosPartido">
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Quintetos · inicial, de cierre y clutch</h5>
+        ${SGADD_PBP.espacioPartido(propio.equipo.nombre, refPbp, 'partido-quintetos')}
+      </div>` : '';
   const mapaPartido = conPbp ? `
       <div class="mb-6" id="mapaTiroPartido">
         <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Mapa de tiro del partido</h5>
@@ -1452,6 +1462,7 @@ function equiposDetallePartido(idx, e, id) {
       ${momentum}
       ${perfilesTiro}
       ${mapaPartido}
+      ${quintetos}
       <div class="grid grid-cols-1 xl:grid-cols-2 gap-6" id="boxScores">
         ${boxScore(propio, a.propios, 'Box score · ' + propio.equipo.nombre)}
         ${riv ? boxScore(riv, a.rivales, 'Box score · ' + riv.equipo.nombre) : ''}

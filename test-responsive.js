@@ -359,6 +359,18 @@ ok(/pieInforme\(fecha\)/.test(CUERPO_HOJA),
 ok(/hijoPorClase\(c, CLASE_TABLA\)/.test(CUERPO_HOJA),
    'es idempotente: no envuelve dos veces');
 
+/* PUNTO 97 · EL ENCABEZADO Y LA MARCA DE AGUA, con la misma maquinaria. */
+ok(CUERPO_HOJA.indexOf("createElement('thead')") !== -1,
+   'el encabezado de cada hoja es un <thead> de verdad (lo que el ranking ya repite)');
+ok(CUERPO_HOJA.indexOf('encabezadoInforme()') !== -1 && /marca-agua/.test(CUERPO_HOJA),
+   '  con la marca, y la celda del cuerpo lleva la marca de agua');
+ok(ESTILO.indexOf('.hoja-firmada > thead { display: table-header-group') !== -1,
+   'el thead se repite arriba de cada hoja');
+ok(/td[.]hoja-cuerpo-celda[.]marca-agua \{[\s\S]{0,700}fill-opacity='0[.]0\d+'[\s\S]{0,400}print-color-adjust: exact/.test(ESTILO),
+   'la marca de agua es un FONDO tenue (no tapa contenido) y sale sin «Gráficos de fondo»');
+ok(fs.readFileSync('./js/sgadd-equipos.js', 'utf8').indexOf('<div class="encabezado-marca" aria-hidden="true">${SGADD_UI.encabezadoInforme()}</div>') !== -1,
+   'el post-partido lleva el encabezado en el flujo');
+
 /* La celda del cuerpo va SIN padding: el maquetado de las tres
    exportaciones esta medido y presupuestado (puntos 7.6 y 50). */
 ok(/[.]hoja-firmada > tbody > tr > td[.]hoja-cuerpo-celda \{[^}]*padding: 0/.test(ESTILO),

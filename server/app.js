@@ -117,6 +117,7 @@ function crearApp(opciones) {
   app.get('/api/v1/fichajes/padron', responder(fichajes.manejarPadron));
   app.post('/api/v1/fichajes/padron', responder(fichajes.manejarPadronEscribir));
   app.get('/api/v1/fichajes/:torneo/:zona', responder(fichajes.manejarZona));
+  app.get('/api/v1/fichajes/:torneo/:zona/tiros', responder(fichajes.manejarTirosZona));
   app.post('/api/v1/fichajes/:torneo/fichas', responder(fichajes.manejarFichasEscribir));
 
   /* Las fichas de los clientes y los mails institucionales (bienvenida y

@@ -183,4 +183,41 @@ function fotosDelLibro(fotos, hojas) {
   return out;
 }
 
-module.exports = { HOJA, fechaIso, fichasDelPadron, fusionar, fotosDelPadron, dorsalesDelPadron, fotosDelLibro, claveFoto };
+/**
+ * LAS TITULARIDADES (punto 97): `[titular, partidos]` por jugador, de la
+ * columna TITULAR de `Base Datos J` (la escribe la ingesta desde el box
+ * score oficial: «SI» / «NO»). Solo cuentan las filas que TRAEN el dato:
+ * un libro con Excel manual deja la columna vacía y no da nada — el panel
+ * no habla de titularidad sin el dato (punto 8).
+ *
+ * Se arma sobre el libro COMPLETO y viaja solo el conteo, igual que las
+ * alertas: ninguna fila de un rival recortado cruza al navegador. El
+ * tramo (`fase`, `torneo`) es el que pidió el panel; sin tramo, todo.
+ */
+function titularesDelLibro(hojas, tramo) {
+  const filas = (hojas && hojas['Base Datos J']) || [];
+  const out = {};
+  if (filas.length < 2) return out;
+  const cab = (filas[0] || []).map(c => String(c || '').trim().toUpperCase());
+  const iN = cab.indexOf('NOMBRES'), iE = cab.indexOf('EQUIPO'), iT = cab.indexOf('TITULAR');
+  const iF = cab.indexOf('FASE'), iTo = cab.indexOf('TORNEO');
+  if (iN === -1 || iE === -1 || iT === -1) return out;
+  const t = tramo || {};
+  const igual = (a, b) => String(a || '').trim().toUpperCase() === String(b || '').trim().toUpperCase();
+  for (let i = 1; i < filas.length; i++) {
+    const f = filas[i] || [];
+    const v = String(f[iT] == null ? '' : f[iT]).trim().toUpperCase();
+    if (v !== 'SI' && v !== 'SÍ' && v !== 'NO') continue;
+    if (t.fase && iF !== -1 && !igual(f[iF], t.fase)) continue;
+    if (t.torneo && iTo !== -1 && !igual(f[iTo], t.torneo)) continue;
+    if (!String(f[iN] || '').trim() || !String(f[iE] || '').trim()) continue;
+    const k = claveFoto(f[iN], f[iE]);
+    const a = out[k] || (out[k] = [0, 0]);
+    a[1]++;
+    if (v !== 'NO') a[0]++;
+  }
+  return out;
+}
+
+module.exports = { HOJA, fechaIso, fichasDelPadron, fusionar, fotosDelPadron, dorsalesDelPadron, fotosDelLibro, claveFoto,
+  titularesDelLibro };

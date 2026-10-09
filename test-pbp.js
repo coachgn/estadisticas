@@ -452,6 +452,25 @@ function paquete(equipo) {
       && (mp.match(/pbp-tiro-e/g) || []).length === 1 && /OBERÁ/.test(mp) && /1\/2 tiros/.test(mp));
   const esp = P.espacioPartido('BOCA', { id: 'ID"X', fecha: '2026-10-07', rival: 'OBERÁ' }, 'partido-mapa');
   check('el lugar del partido lleva id, fecha y rival escapados', /data-pbp-tipo="partido-mapa"/.test(esp) && /data-pbp-partido="ID&quot;X"/.test(esp));
+  /* ---- quintetos del post-partido (punto 97) */
+  pPart.partidosPbp[0].nombres = { 1: ['PEREZ, JUAN', '7'], 2: ['GOMEZ, LUIS', '10'], 3: ['A, B', '4'], 4: ['C, D', '5'], 5: ['E, F', '6'],
+    6: ['G, H', '8'], 11: ['RIVAL, UNO', '0'], 12: ['R, 2', '1'], 13: ['R, 3', '2'], 14: ['R, 4', '3'], 15: ['R, 5', '9'] };
+  const q5 = (ids, mm, min) => ({ ids: ids.map(String), mm: mm, min: min });
+  pPart.partidosPbp[0].quintetos = {
+    favor: { inicial: q5([1, 2, 3, 4, 5], 4, 12.5), cierre: q5([1, 2, 3, 4, 6], -2, 3.1),
+      clutch: { min: 4.2, favor: 9, contra: 7, quinteto: q5([1, 2, 3, 4, 6], 2, 3.1), jugadores: [{ id: '1', pts: 5, tc: '2/3', tl: '1/2', pp: 1, usos: 4.9 }] } },
+    contra: { inicial: q5([11, 12, 13, 14, 15], -4, 12.5), cierre: q5([15, 14, 13, 12, 11], -4, 12.5), clutch: null } };
+  const qp = P.quintetosPartido(pPart, pPart.partidosPbp[0]);
+  check('quintetos: los dos equipos, cada uno con inicial, cierre y clutch, nombres con dorsal',
+    (qp.match(/Quinteto inicial/g) || []).length === 2 && (qp.match(/Quinteto de cierre/g) || []).length === 2
+      && /#7 Perez/.test(qp) && /#0 Rival/.test(qp), qp.slice(0, 300));
+  check('quintetos: +/- y minutos juntos; si el cierre es el mismo que arrancó, lo dice',
+    qp.indexOf("+4</span> · 12,5' juntos") !== -1 && /el mismo que arrancó/.test(qp));
+  check('quintetos: el clutch con su parcial y quién decidió; sin clutch, lo dice',
+    qp.indexOf('Parcial <b class="font-mono mm-pos">9-7</b>') !== -1 && qp.indexOf('5 pts · TC 2/3 · TL 1/2 · 1 PP') !== -1
+      && /No hubo: el partido no llegó/.test(qp));
+  check('quintetos: un paquete sin quintetos lo dice en una línea',
+    /no hay quintetos/.test(P.quintetosPartido(pPart, { id: 'x' })) && /partido-quintetos/.test(P.espacioPartido('BOCA', {}, 'partido-quintetos')));
 
   /* ---- tiros individuales */
   const t12 = P.capaTiros(p3, 'equipo', 'Z12');

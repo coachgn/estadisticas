@@ -216,6 +216,8 @@ const SGADD_DATA = (function () {
         fotos: (cuerpo && cuerpo.fotos) || {},
         /* Y sus dorsales (2026-10-08), con la misma clave. */
         dorsales: (cuerpo && cuerpo.dorsales) || {},
+        /* Y sus titularidades (punto 97): [titular, partidos] del tramo. */
+        titulares: (cuerpo && cuerpo.titulares) || {},
         /* La lista de alertas ya procesada. Texto y unos pocos números:
            ninguna fila del log de un rival viaja acá. */
         alertas: (cuerpo && cuerpo.alertas) || [],
@@ -628,6 +630,12 @@ const SGADD_DATA = (function () {
   function fichajesZona(torneo, zona, opciones) {
     return getConToken('/api/v1/fichajes/' + encodeURIComponent(torneo) + '/' + encodeURIComponent(zona), opciones);
   }
+  /* El paquete de play-by-play de un equipo de la zona, para el mapa de
+     tiro de la Radiografía (punto 97). Autoriza el padrón de fichajes. */
+  function fichajesTiros(torneo, zona, equipo, opciones) {
+    return getConToken('/api/v1/fichajes/' + encodeURIComponent(torneo) + '/' + encodeURIComponent(zona)
+      + '/tiros?equipo=' + encodeURIComponent(equipo), opciones);
+  }
   function fichajesGuardarFichas(torneo, cambios, opciones) {
     return postConToken('/api/v1/fichajes/' + encodeURIComponent(torneo) + '/fichas', { cambios: cambios || {} }, opciones);
   }
@@ -644,7 +652,7 @@ const SGADD_DATA = (function () {
     fixtureDeTorneo, llaveDeTorneo, rivalDeTorneo,
     login, fijarClave, clientes, guardarClientes, fichas, guardarFicha,
     estadosCompartibles, leerEstados, guardarEstados, leerPbp,
-    fichajesTorneos, fichajesZona, fichajesGuardarFichas, fichajesPadron, fichajesGuardarPadron,
+    fichajesTorneos, fichajesZona, fichajesTiros, fichajesGuardarFichas, fichajesPadron, fichajesGuardarPadron,
   };
 })();
 

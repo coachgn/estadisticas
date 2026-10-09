@@ -88,6 +88,15 @@ check('dorsales: del libro recortado, solo quien está en PROMEDIOS J',
   JSON.stringify(P.fotosDelLibro(dors, libroRec)) === JSON.stringify({ [kb]: '32' }));
 const handlers = require('fs').readFileSync('./server/api/handlers.js', 'utf8');
 check('el handler manda los dorsales con el filtro de las fotos', /dorsales: PADRON_J\.fotosDelLibro\(await pDorsales, rec\.hojas\)/.test(handlers));
+/* LAS TITULARIDADES (punto 97) */
+const BDJ = { 'Base Datos J': [['NOMBRES', 'EQUIPO', 'FASE', 'TORNEO', 'TITULAR'],
+  ['BRUSSINO, JUAN IGNACIO', 'LANUS', 'REGULAR', 'IDA', 'SI'], ['BRUSSINO, JUAN IGNACIO', 'LANUS', 'REGULAR', 'IDA', 'NO'],
+  ['BRUSSINO, JUAN IGNACIO', 'LANUS', 'PLAYOFF', 'IDA', 'SI'], ['MANUAL, SIN', 'LANUS', 'REGULAR', 'IDA', '']] };
+const tit = P.titularesDelLibro(BDJ, { fase: 'REGULAR' });
+check('titulares: [titular, partidos] del tramo pedido', JSON.stringify(tit[kb]) === '[1,2]', JSON.stringify(tit));
+check('titulares: sin tramo cuenta todo, y una fila sin el dato no cuenta', JSON.stringify(P.titularesDelLibro(BDJ)[kb]) === '[2,3]'
+  && !P.titularesDelLibro(BDJ)[P.claveFoto('MANUAL, SIN', 'LANUS')]);
+check('titulares: un libro sin la columna no da nada', Object.keys(P.titularesDelLibro({ 'Base Datos J': [['NOMBRES', 'EQUIPO'], ['A', 'B']] })).length === 0);
 check('el handler pide PADRON J solo en categorías de un torneo',
   /deTorneo && cat\.sheetId/.test(handlers) && /fotosDelLibro\(await pFotos, rec\.hojas\)/.test(handlers));
 

@@ -672,6 +672,59 @@ const sinSheetId = (body) => !/SHEET_[A-Z]+_\d+/.test(JSON.stringify(body));
   check('en Fichajes el escudo va en su disco, no suelto sobre la card',
     /<span class="escudo-aro \$\{tam\} shrink-0"><img src=/.test(ui));
 
+  titulo('PUNTO 97 · modelo, nacimiento y el mapa de la Radiografía');
+  /* El año de nacimiento: filtro duro, y el que no lo tiene queda afuera. */
+  check('anioNacimiento lee el año suelto y la fecha completa', M.anioNacimiento('1998') === 1998
+    && M.anioNacimiento('2004-03-02') === 2004 && M.anioNacimiento('') === null);
+  const conNac = [{ id: 'a', nombre: 'A', equipo: 'X', califica: true, ficha: { nacimiento: '2003-05-01' } },
+    { id: 'b', nombre: 'B', equipo: 'X', califica: true, ficha: { nacimiento: '1995' } },
+    { id: 'c', nombre: 'C', equipo: 'X', califica: true, ficha: null }];
+  const rN = M.filtrar(conNac, { nacimiento: { min: 2000 } });
+  check('nacidos de 2000 en adelante: entra el de 2003, no el de 1995, y el sin dato cuenta como sinDato',
+    rN.filas.map(f => f.id).join() === 'a' && rN.sinDato === 1, JSON.stringify(rN));
+  /* Cercanía física */
+  check('físico: misma talla y puesto = 1; 15 cm y dos puestos = 0; sin datos = null',
+    M.cercaniaFisica({ talla: 200, posicion: '4' }, { talla: 202, posicion: '4' }) === 1
+      && M.cercaniaFisica({ talla: 185, posicion: '1' }, { talla: 200, posicion: '3' }) === 0
+      && M.cercaniaFisica({}, { talla: 190 }) === null);
+  check('físico: un puesto al lado vale la mitad', M.cercaniaFisica({ posicion: '2' }, { posicion: '3' }) === 0.5);
+  /* El modelo re-puntúa con la similitud inyectada. */
+  const mod = { id: 'm', _adn: 'M', ficha: { talla: 200, posicion: '4' } };
+  const candidatos = [
+    { fila: { id: 'p', _adn: 'P', ficha: { talla: 201, posicion: '4' } }, conf: { rango: 2 } },
+    { fila: { id: 'q', _adn: 'Q', ficha: null }, conf: { rango: 3 } },
+    { fila: { id: 'r', _adn: 'R', ficha: null }, conf: { rango: 3 } },
+    { fila: { id: 's', _adn: 'S', ficha: null }, conf: { rango: 3 } },
+    { fila: mod, conf: { rango: 3 } }];
+  const simFalsa = (a, b) => ({ P: { total: 0.8, funcion: 1, perfiles: 0.5, adn: 0.75, volumen: { ok: true } },
+    Q: { total: 0.9, funcion: 1, perfiles: 1, adn: 0.5, volumen: { ok: true } },
+    R: { total: 0.4, funcion: 0, perfiles: 1, adn: 0.5, volumen: { ok: true } },
+    S: { total: 1, funcion: 1, perfiles: 1, adn: 1, volumen: { ok: false } } })[b];
+  const cm = M.conModelo({ items: candidatos, puntua: false }, mod, simFalsa);
+  check('modelo: el modelo no se propone a sí mismo, sin volumen comparable no entra y bajo el piso tampoco',
+    cm.items.map(x => x.fila.id).join() === 'q,p' && cm.sinVolumen === 1 && cm.bajoPiso === 1, JSON.stringify(cm.items.map(x => [x.fila.id, x.coinc.pct])));
+  check('modelo: con ficha de los dos, 85 % similitud + 15 % físico', Math.abs(cm.items[1].coinc.pct - (0.85 * 0.8 + 0.15 * 1)) < 1e-9
+    && cm.items[1].coinc.partes.some(p => /Físico/.test(p.label)));
+  const conCrit = M.conModelo({ items: [{ fila: candidatos[1].fila, conf: { rango: 1 }, coinc: { pct: 0.7, partes: [], faltan: ['Rol 0 %'] } }], puntua: true }, mod, simFalsa);
+  check('modelo + criterios: el % es el promedio de los dos y conserva lo que no cumple',
+    Math.abs(conCrit.items[0].coinc.pct - 0.8) < 1e-9 && conCrit.items[0].coinc.faltan.indexOf('Rol 0 %') !== -1 && conCrit.items[0].rotulo === 'modelo + criterios');
+
+  /* El mapa de la Radiografía: su ruta la autoriza el padrón, no el club. */
+  hashes['sgadd:pbp:liga-argentina-2026-27:lab-2026-27-norte'] = { [require('./js/sgadd-core.js').claveEquipo('ESTUDIANTES (C)')]: JSON.stringify({ esquema: 'x@3', equipo: 'ESTUDIANTES (C)' }) };
+  const pedidoTiros = (tok, params, equipo) => Object.assign(pedido(tok, params), { query: { equipo: equipo } });
+  res = await F.manejarTirosZona(pedidoTiros(tokOtro, { torneo: 'liga-argentina-2026-27', zona: 'lab-2026-27-norte' }, 'ESTUDIANTES (C)'));
+  check('tiros: el que no está en el padrón de fichajes no los ve (403)', res.status === 403);
+  res = await F.manejarTirosZona(pedidoTiros(tokScout, { torneo: 'zona-c-la-plata-2026', zona: 'zona-c-primera' }, 'ESTUDIANTES (C)'));
+  check('tiros: de otro torneo, 403 OTRO_TORNEO', res.status === 403 && res.body.codigo === 'OTRO_TORNEO');
+  res = await F.manejarTirosZona(pedidoTiros(tokScout, { torneo: 'liga-argentina-2026-27', zona: 'lab-2026-27-norte' }, 'Estudiantes (C)'));
+  check('tiros: el habilitado lee el paquete del equipo, de cualquier club', res.status === 200 && res.body.paquete.equipo === 'ESTUDIANTES (C)');
+  res = await F.manejarTirosZona(pedidoTiros(tokScout, { torneo: 'liga-argentina-2026-27', zona: 'lab-2026-27-norte' }, 'OTRO'));
+  check('tiros: un equipo sin paquete, 404 SIN_DATOS', res.status === 404 && res.body.codigo === 'SIN_DATOS');
+  res = await F.manejarTirosZona(pedidoTiros(tokScout, { torneo: 'liga-argentina-2026-27', zona: 'lab-2026-27-norte' }, ''));
+  check('tiros: sin equipo, 400', res.status === 400);
+  const appSrc = fs.readFileSync('./server/app.js', 'utf8');
+  check('la ruta está montada', /fichajes\/:torneo\/:zona\/tiros', responder\(fichajes\.manejarTirosZona\)/.test(appSrc));
+
   console.log('\n' + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -375,21 +375,45 @@ const SGADD_UI = (function () {
     if (!tabla) {
       tabla = document.createElement('table');
       tabla.className = CLASE_TABLA;
+      /* EL ENCABEZADO DE CADA HOJA (punto 97): un `<thead>`, la misma
+         maquinaria que el pie y que los encabezados de tabla del ranking,
+         que en el PDF del club SÍ se repiten. No un `position: fixed`:
+         ese falló en su Chrome (ver el CSS de `.pie-motorstats`). */
+      const th = document.createElement('thead');
+      th.innerHTML = '<tr><td class="cabecera-hoja-celda"></td></tr>';
       /* El `<tfoot>` va ANTES del `<tbody>`: es la forma clásica y la que
          se midió. Chromium lo dibuja abajo igual, y repetido. */
       const tf = document.createElement('tfoot');
       tf.innerHTML = '<tr><td class="pie-hoja-celda"></td></tr>';
       const tb = document.createElement('tbody');
-      tb.innerHTML = '<tr><td class="hoja-cuerpo-celda"></td></tr>';
+      /* La celda del cuerpo lleva la MARCA DE AGUA como fondo (index.html,
+         `.hoja-cuerpo-celda`): queda debajo del contenido, nunca encima. */
+      tb.innerHTML = '<tr><td class="hoja-cuerpo-celda marca-agua"></td></tr>';
+      tabla.appendChild(th);
       tabla.appendChild(tf);
       tabla.appendChild(tb);
       const celda = tb.querySelector('.hoja-cuerpo-celda');
       while (c.firstChild) celda.appendChild(c.firstChild);
       c.appendChild(tabla);
     }
+    const celdaCab = tabla.querySelector('.cabecera-hoja-celda');
+    if (celdaCab) celdaCab.innerHTML = encabezadoInforme();
     const celdaPie = tabla.querySelector('.pie-hoja-celda');
     if (celdaPie) celdaPie.innerHTML = pieInforme(fecha);
     return tabla;
+  }
+
+  /**
+   * El encabezado institucional de cada hoja de un PDF (punto 97): el logo
+   * y la marca, chicos y a la derecha, con un filete abajo. La firma
+   * completa —mail, Instagram, fecha— sigue en el pie: arriba solo se dice
+   * de dónde sale el informe.
+   */
+  function encabezadoInforme() {
+    return '<span class="cabecera-bloque">' +
+      '<img src="' + LOGO + '" alt="" width="14" height="14" class="pie-logo">' +
+      '<span class="pie-marca">' + esc(MARCA) + '<sup class="pie-marca-sup">AR</sup></span>' +
+      '<span class="cabecera-lema">· Análisis de datos deportivos</span></span>';
   }
 
   /** Deshace el envoltorio. El contenedor suele recrearse entero, pero las
@@ -1343,7 +1367,7 @@ const SGADD_UI = (function () {
   return { esc, escJs, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, sinDatosTodavia, signoDelta, colorDelta, claseMasMenos,
     tonoDePixeles, tonoEscudo, esEscudo, luminancia,
     atributosFila, teclaActiva, teclaTabs, cargando, conservarFoco,
-    embeberImagenes, restaurarImagenes, pieInforme, pieWeb, MAIL, INSTAGRAM, ARROBA, LOGO, fechaHoy, MARCA,
+    embeberImagenes, restaurarImagenes, pieInforme, encabezadoInforme, pieWeb, MAIL, INSTAGRAM, ARROBA, LOGO, fechaHoy, MARCA,
     inyectarPieMotorStats, quitarPieMotorStats, pieVistaPrevia, ID_PIE,
     versionCargada, comprobarVersionPublicada, avisarVersion,
     inyectarPieDeHoja, quitarPieDeHoja, CLASE_TABLA,

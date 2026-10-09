@@ -307,6 +307,11 @@ function jugadoresConDorsal(nombre, equipo, visible) {
   return typeof torneoPrefijoDorsal === 'function' ? torneoPrefijoDorsal(nombre, equipo) + v : v;
 }
 
+/** «Titular X/Y» (punto 97): solo con la columna TITULAR del libro. */
+function jugadoresBadgeTitular(j) {
+  return typeof torneoBadgeTitular === 'function' ? torneoBadgeTitular(j['NOMBRES'], j['EQUIPO']) : '';
+}
+
 function jugadoresSlug(j) {
   const nombre = SGADD.clavePersona(j['NOMBRES']).toLowerCase().replace(/,\s*/g, '-').replace(/\s+/g, '-');
   const equipo = SGADD.claveEquipo(j['EQUIPO']).toLowerCase().replace(/\s+/g, '-');
@@ -2474,6 +2479,7 @@ function jugadoresPlantelEquipo(idx) {
           <div class="min-w-0 flex-1">
             <p class="text-xs text-white font-medium truncate">${escapeHtml(jugadoresConDorsal(j['NOMBRES'], j['EQUIPO']))}</p>
             ${rolMin ? `<p class="text-[10px] ${rolMin.color} truncate" title="${escapeAttr(rolMin.rol)}">${escapeHtml(rolMin.label)}</p>` : ''}
+            ${jugadoresBadgeTitular(j) ? `<p class="mt-0.5">${jugadoresBadgeTitular(j)}</p>` : ''}
             ${jugadoresBadgeEstado(j)}
             ${jugadoresLineaPendiente(j)}
           </div>
@@ -2591,6 +2597,7 @@ function jugadoresHeader(idx, j) {
       </div>
       <div class="mb-4 flex items-center gap-2 flex-wrap">
         ${badgeRol}
+        ${jugadoresBadgeTitular(j)}
         ${(() => {
           /* En la FICHA el estado sí se muestra completo, con la fecha de
              corte: acá hay lugar y es el dato que explica por qué sus
