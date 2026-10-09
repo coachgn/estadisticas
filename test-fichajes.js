@@ -629,7 +629,7 @@ const sinSheetId = (body) => !/SHEET_[A-Z]+_\d+/.test(JSON.stringify(body));
     !/m\['AST%'\] = null/.test(ui) && !/AST% no se calcula/.test(ui) && !/k === 'AST%'/.test(ui));
   check('una zona que no jugó el tramo queda afuera y se dice', /fueraDeTramo: true/.test(ui) && /no jugó ese tramo/.test(ui));
   check('el badge de muestra parcial sale en la búsqueda, la Radiografía, los parecidos y el PDF',
-    (ui.match(/\$\{badgePeriodo\(\)\}/g) || []).length === 2 && /badgePeriodo\(\) \+ buscador/.test(ui) && /\$\{badgePeriodo\(true\)\}/.test(ui));
+    (ui.match(/\$\{badgePeriodo\(\)\}/g) || []).length === 2 && /badgePeriodo\(\) \+ (bloqueLideres\(todas\) \+ )?buscador/.test(ui) && /\$\{badgePeriodo\(true\)\}/.test(ui));
   check('el badge dice cuántos partidos se analizaron y cuántos jugadores quedaron afuera',
     /partido\$\{r\.partidos === 1 \? '' : 's'\} analizado/.test(ui) && /sin partidos en el período quedaron afuera/.test(ui));
   check('los controles: fase y calendario Desde/Hasta acotado a los días del libro',
@@ -724,6 +724,14 @@ const sinSheetId = (body) => !/SHEET_[A-Z]+_\d+/.test(JSON.stringify(body));
   check('tiros: sin equipo, 400', res.status === 400);
   const appSrc = fs.readFileSync('./server/app.js', 'utf8');
   check('la ruta está montada', /fichajes\/:torneo\/:zona\/tiros', responder\(fichajes\.manejarTirosZona\)/.test(appSrc));
+
+  /* LÍDERES DEL TORNEO (2026-10-09): la vista consolidada de la LAB. */
+  const fxSrc = fs.readFileSync('./js/sgadd-fichajes.js', 'utf8');
+  check('el buscador muestra los líderes de TODAS las zonas, solo con dos o más cargadas',
+    /badgePeriodo\(\) \+ bloqueLideres\(todas\) \+ buscador/.test(fxSrc) && /if \(zonas\.length < 2\) return '';/.test(fxSrc));
+  check('líderes de jugadores: solo los que califican, de las mismas filas del buscador; el PACE es de equipo',
+    /todas\.filter\(f => f\.califica && typeof \(f\.m \|\| \{\}\)\[k\] === 'number'\)/.test(fxSrc) && /v\.idx\.leer\(e\.clave, 'PACE'\)/.test(fxSrc)
+      && ['PPP', 'TS%', 'PTS'].every(k => fxSrc.indexOf("{ k: '" + k + "'") !== -1));
 
   console.log('\n' + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);

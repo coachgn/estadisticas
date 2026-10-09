@@ -51,10 +51,13 @@ seccion('1 · Liga Argentina 2026-27 · el archivo');
   check('Jujuy en la Norte', n.some(e => e.nombre === 'JUJUY BASQUET'));
   check('Barrio Jardín en la Norte (nota 52708)', n.some(e => e.nombre === 'BARRIO JARDIN (T)'));
   check('Gimnasia LP y River en la Sur', ['GIMNASIA (LP)', 'RIVER'].every(x => s.some(e => e.nombre === x)));
-  check('32 equipos con id de Gesdeportiva', n.concat(s).filter(e => Number.isInteger(e.id)).length === 32);
-  check('los dos sin id son los que el sitio todavía no lista, y lo dicen',
-    n.concat(s).filter(e => !e.id).every(e => e.provisorio) && n.concat(s).filter(e => !e.id).length === 2);
-  check('ningún id repetido', new Set(n.concat(s).filter(e => e.id).map(e => e.id)).size === 32);
+  /* Los 34 con id desde el 2026-10-09: UNION (SF) y RACING (A) eran
+     provisorios hasta que el fixture los listó. La ingesta filtra la
+     conferencia por estos ids (motorstats-ingestion/src/conferencia.js):
+     uno sin id deja sus partidos afuera. */
+  check('los 34 equipos con id de Gesdeportiva', n.concat(s).filter(e => Number.isInteger(e.id)).length === 34);
+  check('ninguno queda provisorio', n.concat(s).every(e => e.id && !e.provisorio));
+  check('ningún id repetido', new Set(n.concat(s).filter(e => e.id).map(e => e.id)).size === 34);
   const claves = n.concat(s).map(e => CORE.claveEquipo(e.nombre));
   check('ninguna clave repetida entre zonas', new Set(claves).size === 34);
   check('EL SHEETID NO VA EN EL ARCHIVO: el repo es público',

@@ -12708,3 +12708,61 @@ suelta debajo.
   MI_CONFIG `2026 / LAB / CONFERENCIA NORTE|SUR / IDA - REGULAR`. Para la
   ingesta automática les falta el PUENTE (lo que `puente-lnb.js` le hizo al
   script de la LNB) y declarar las competencias en `src/sitios.js`.
+
+---
+
+## 99. LA LIGA ARGENTINA 2026-27 · INGESTA AUTOMÁTICA DE LAS DOS CONFERENCIAS (2026-10-09)
+
+Decisiones del club (2026-10-09): los libros Norte y Sur del catálogo son
+EXCLUSIVOS de la ingesta (nadie sube Excel a mano), sus scripts se
+convierten en puente, van las dos conferencias completas y Jujuy conserva
+además su libro de cliente. Formato oficial: dos conferencias de 17, todos
+contra todos ida y vuelta dentro de cada una (32 partidos), playoffs desde
+abril; los cruces entre conferencias recién desde cuartos. Arranca el
+2026-10-15. Assets en `?v=274`.
+
+### En la ingesta (motorstats-ingestion, sin git)
+- `src/sitios.js`: `lab-2026-27-norte` y `lab-2026-27-sur`
+  (`competenciaLab`): fase 21986, grupos 41441 / 41442, sus libros y
+  scripts, `destino.puente` propio, MI_CONFIG
+  `2026 / LAB / CONFERENCIA NORTE|SUR / IDA - REGULAR, VUELTA - REGULAR`,
+  10 partidos por corrida.
+- `src/conferencia.js`: el fixture de la delegación trae las dos
+  conferencias juntas y SIN grupo; se filtra por los ids de equipo de
+  `torneos/liga-argentina-2026-27.json` (este repo). Un partido con un
+  equipo sin zona no se adivina: queda afuera y el log lo dice. Por eso
+  ese archivo tiene que tener los 34 ids: UNION (SF) 115314 y RACING (A)
+  113741 se completaron ese día (eran provisorios).
+- `src/destino/puente.js` y `fachada.js`: `usar(comp)` apunta al puente y
+  al Cliente_Script de la competencia; sin `usar`, la LNB (nada de lo que
+  ya andaba cambió).
+- `herramientas/puente.js --competencia <id> --clonar|--preparar|--publicar|--ping`:
+  clona el script del libro, le instala el `Puente_Ingesta.js` de la LNB
+  (la fuente de verdad) con SU libro y la carpeta resuelta POR NOMBRE
+  —igual que `_resolverCarpetaMadre_` del motor; dos carpetas con la misma
+  ruta es un error, no se adivina—, su secreto, su MI_CONFIG, el MS_TOKEN
+  de su planilla (HMAC del sheetId: el que tenían era de otra) y la app web.
+  Los clones quedan en `puente-lab-2026-27-norte/` y `…-sur/`.
+- `herramientas/correr-lnb.js`: LNB → LAB Norte → LAB Sur en cada pasada
+  (la tarea registrada no cambia). Cada una con su log en
+  `salida/<id>/logs/`; una que falla no frena a las otras; una sin puente
+  publicado se SALTEA y lo dice. Los tiros van a
+  `sgadd:pbp:liga-argentina-2026-27:lab-2026-27-norte|sur`.
+- `test/test-lab.js` (en `npm test`).
+
+### En el panel
+- Las dos zonas ya son categorías de un torneo: fotos, dorsales,
+  titularidad, quintetos y mapas funcionan solos cuando llegan los datos.
+  Falta habilitar la capa `pbp` en las dos (comando de catálogo, abajo).
+- **Líderes del torneo** en Fichajes (`bloqueLideres`): con dos zonas o
+  más cargadas, PPP, TS% y PTS de jugadores (los que califican, cada uno
+  contra su zona) y PACE de equipos, todas las zonas juntas, arriba del
+  buscador. El buscador, el modelo y la Radiografía ya cruzaban las zonas.
+
+### Para dejarlo andando (los corre el prestador)
+1. Publicar cada puente y autorizar su script una vez desde el editor;
+   después `--ping` (tiene que mostrar la carpeta resuelta y la licencia).
+2. `node server/bin/catalogo.js laboratorio --club liga-argentina-2026-27 --categoria lab-2026-27-norte --capas pbp`
+   (y la Sur).
+3. Con los primeros partidos (2026-10-15), una corrida en seco por
+   conferencia antes de la primera entrega.

@@ -232,11 +232,10 @@
      ]
     },
     {
-     "id": null,
-     "idClub": null,
+     "id": 115314,
+     "idClub": 1913,
      "nombre": "UNION (SF)",
      "ciudad": "Santa Fe",
-     "provisorio": "El sitio todavía no lo lista: nombre e id se confirman con el primer box score.",
      "alias": [
       "Unión de Santa Fe"
      ]
@@ -361,11 +360,10 @@
      ]
     },
     {
-     "id": null,
-     "idClub": null,
+     "id": 113741,
+     "idClub": 83,
      "nombre": "RACING (A)",
      "ciudad": "Avellaneda",
-     "provisorio": "El sitio todavía no lo lista: nombre e id se confirman con el primer box score.",
      "alias": [
       "Racing Club de Avellaneda"
      ]

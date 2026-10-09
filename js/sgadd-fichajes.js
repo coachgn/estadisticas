@@ -1063,7 +1063,74 @@ const SGADD_FICHAJES = (function () {
     /* El badge va FUERA del panel plegable: con los filtros cerrados, el
        que mira los resultados igual tiene que saber que es una muestra
        parcial. */
-    return panelFiltros(todas) + badgePeriodo() + buscador + resumen + `<div id="fxResultados">${grilla}${mas}</div>`;
+    return panelFiltros(todas) + badgePeriodo() + bloqueLideres(todas) + buscador + resumen + `<div id="fxResultados">${grilla}${mas}</div>`;
+  }
+
+  /* =====================================================================
+     LÍDERES DEL TORNEO · TODAS LAS ZONAS (2026-10-09)
+
+     La vista consolidada que pidió el club para la Liga Argentina: las dos
+     conferencias de punta a punta. Los jugadores salen de las MISMAS filas
+     del buscador (cada uno medido contra su zona, en el período elegido) y
+     solo los que califican por minutos; el ritmo es de equipo y sale del
+     índice de cada zona. Solo con dos zonas o más cargadas: en un torneo de
+     zona única ya es lo que muestra Rankings.
+     ===================================================================== */
+  const LIDERES_JUGADOR = [
+    { k: 'PPP', label: 'Puntos por play' },
+    { k: 'TS%', label: 'True shooting' },
+    { k: 'PTS', label: 'Puntos por partido' },
+  ];
+
+  function lideresJugador(todas, k, n) {
+    return todas.filter(f => f.califica && typeof (f.m || {})[k] === 'number')
+      .sort((a, b) => b.m[k] - a.m[k]).slice(0, n || 5);
+  }
+
+  function lideresRitmo(zonas, n) {
+    const out = [];
+    zonas.forEach((z) => {
+      const v = vistaActual(z);
+      if (!v || !v.idx || !v.idx.lista) return;
+      v.idx.lista().forEach((e) => {
+        const r = v.idx.leer(e.clave, 'PACE');
+        if (r && typeof r.valor === 'number') out.push({ nombre: e.nombre, zona: z.label, valor: r.valor });
+      });
+    });
+    return out.sort((a, b) => b.valor - a.valor).slice(0, n || 5);
+  }
+
+  function bloqueLideres(todas) {
+    const zonas = zonasCargadas();
+    if (zonas.length < 2) return '';
+    const lista = (titulo, items, fila) => `<div class="min-w-0">
+        <p class="text-[10px] uppercase tracking-widest font-display text-accent mb-1">${esc(titulo)}</p>
+        ${items.length ? `<ol class="grid gap-0.5">${items.map(fila).join('')}</ol>` : '<p class="text-[11px] text-muted">Sin datos todavía.</p>'}
+      </div>`;
+    const filaJug = (k) => (f, i) => `<li class="text-[11px] leading-snug flex items-baseline gap-1.5 min-w-0">
+        <span class="font-mono text-muted w-3 shrink-0">${i + 1}</span>
+        <button type="button" onclick="SGADD_FICHAJES.abrir('${escJs(f.id)}')" class="truncate text-left text-ink hover:text-accent hover:underline"
+          title="${esc(f.nombre + ' · ' + f.equipo + ' · ' + f.zonaLabel)}">${esc(f.nombre)}</button>
+        <span class="text-muted truncate">${esc(f.equipo)}</span>
+        <span class="ml-auto font-mono text-ink shrink-0">${esc(fmt(k, f.m[k]))}</span></li>`;
+    const filaEq = (e, i) => `<li class="text-[11px] leading-snug flex items-baseline gap-1.5 min-w-0">
+        <span class="font-mono text-muted w-3 shrink-0">${i + 1}</span>
+        <span class="truncate text-ink" title="${esc(e.zona)}">${esc(e.nombre)}</span>
+        <span class="text-muted truncate">${esc(e.zona)}</span>
+        <span class="ml-auto font-mono text-ink shrink-0">${esc(SGADD.formatear('PACE', e.valor))}</span></li>`;
+    return `<details open class="card rounded-xl border border-hairline mb-4">
+      <summary class="cursor-pointer select-none px-4 py-3 font-display uppercase tracking-wide text-sm text-ink
+                      focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-xl">
+        Líderes del torneo · ${esc(zonas.map(z => z.label).join(' + '))}</summary>
+      <div class="px-4 pb-4">
+        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          ${LIDERES_JUGADOR.map(x => lista(x.label + ' · ' + x.k, lideresJugador(todas, x.k), filaJug(x.k))).join('')}
+          ${lista('Ritmo · PACE (equipos)', lideresRitmo(zonas), filaEq)}
+        </div>
+        <p class="text-[10px] dato-sec mt-2">Todas las zonas juntas, en el período elegido. Jugadores: solo los que llegan al umbral de minutos de su zona,
+          cada uno medido contra la suya. Clic en un nombre para abrir su radiografía.</p>
+      </div>
+    </details>`;
   }
 
   /* El % y la confianza, arriba de la card. El % lleva su desglose en el
