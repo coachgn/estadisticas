@@ -303,8 +303,8 @@ const iRepinta = equiposJs.indexOf('SGADD_CHARTS.repintarParaPapel()');
 check('los gráficos se repintan con la paleta del papel antes de imprimir',
   iClasePart > -1 && iRepinta > iClasePart,
   'clase en ' + iClasePart + ', repintar en ' + iRepinta);
-check('y el post-partido inyecta el pie institucional',
-  /inyectarPieMotorStats\(\)/.test(equiposJs) && /quitarPieMotorStats\(\)/.test(equiposJs));
+check('y el post-partido firma cada hoja con la tabla (encabezado, pie y marca de agua)',
+  /inyectarPieDeHoja\('detallePartido'\)/.test(equiposJs) && /quitarPieDeHoja\('detallePartido'\)/.test(equiposJs));
 check('el modo del post-partido está en la lista de modos de papel de charts',
   /MODOS_PAPEL *= *\[[^\]]*'modo-partido-print'/.test(require('fs').readFileSync('./js/sgadd-charts.js', 'utf8')));
 

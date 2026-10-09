@@ -308,8 +308,8 @@ function jugadoresConDorsal(nombre, equipo, visible) {
 }
 
 /** «Titular X/Y» (punto 97): solo con la columna TITULAR del libro. */
-function jugadoresBadgeTitular(j) {
-  return typeof torneoBadgeTitular === 'function' ? torneoBadgeTitular(j['NOMBRES'], j['EQUIPO']) : '';
+function jugadoresBadgeTitular(j, compacta) {
+  return typeof torneoBadgeTitular === 'function' ? torneoBadgeTitular(j['NOMBRES'], j['EQUIPO'], compacta) : '';
 }
 
 function jugadoresSlug(j) {
@@ -2478,8 +2478,9 @@ function jugadoresPlantelEquipo(idx) {
             : logo ? `<img src="${escapeAttr(logo)}" alt="" class="w-8 h-8 object-contain shrink-0">` : ''}
           <div class="min-w-0 flex-1">
             <p class="text-xs text-white font-medium truncate">${escapeHtml(jugadoresConDorsal(j['NOMBRES'], j['EQUIPO']))}</p>
-            ${rolMin ? `<p class="text-[10px] ${rolMin.color} truncate" title="${escapeAttr(rolMin.rol)}">${escapeHtml(rolMin.label)}</p>` : ''}
-            ${jugadoresBadgeTitular(j) ? `<p class="mt-0.5">${jugadoresBadgeTitular(j)}</p>` : ''}
+            ${rolMin || jugadoresBadgeTitular(j, true) ? `<div class="flex items-center gap-1.5 min-w-0">
+              ${rolMin ? `<p class="text-[10px] ${rolMin.color} truncate" title="${escapeAttr(rolMin.rol)}">${escapeHtml(rolMin.label)}</p>` : ''}
+              ${jugadoresBadgeTitular(j, true)}</div>` : ''}
             ${jugadoresBadgeEstado(j)}
             ${jugadoresLineaPendiente(j)}
           </div>
@@ -3167,7 +3168,7 @@ function jugadoresTabTiro(idx, j) {
 function jugadoresBloqueMapaPbp(j) {
   if (typeof SGADD_PBP === 'undefined' || !SGADD_PBP.activa() || !j) return '';
   return `
-    <div class="mt-6 no-imprimir">
+    <div class="mt-6 no-imprimir mapa-pbp-jugador">
       <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Mapa de tiro y diagnóstico individual · play-by-play</h5>
       ${SGADD_PBP.espacioJugador(j['NOMBRES'], j['EQUIPO'])}
     </div>`;

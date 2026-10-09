@@ -46,7 +46,7 @@ node test-jsonclub.js      # 115 tests · los JSON de club, el validador, el ais
 node test-pares.js         # 219 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 175 tests · partidos sin box score: suman a la tabla, no a las métricas
-node test-responsive.js    # 150 tests · desborde, targets táctiles, modales, el papel, el PIE
+node test-responsive.js    # 156 tests · desborde, targets táctiles, modales, el papel, el PIE
                            #             el aviso de version y el diagnostico del pie
 node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
 node test-demo.js          # 130 tests · la demo publica: el snapshot anonimizado, el
@@ -12659,3 +12659,52 @@ Assets en `?v=272`. Toca ingesta, servidor y panel.
 ### Para producción
 Backend (`titulares` y la ruta de tiros), push del front, y la próxima
 corrida de la tarea sube los paquetes con quintetos.
+
+---
+
+## 98. LA BADGE DE TITULARIDAD UNIFORME, LA FICHA FIEL Y EL POST-PARTIDO FIRMADO (2026-10-09)
+
+Pedido del club después de verlo en vivo. Assets en `?v=273`.
+
+### 1 · Una sola badge de titularidad
+`torneoBadgeTitular(nombre, equipo, compacta)`: «TITULAR (4/4)» /
+«DESDE EL BANCO (0/4)», con el MISMO estilo que la etiqueta principal de la
+ficha (display, mayúsculas, borde del color del texto, `border-current/40`).
+`compacta` solo achica el tamaño (cards del plantel, tabla de Equipos). En
+las cards va en la MISMA línea que el rol por minutos, no en una línea
+suelta debajo.
+
+### 2 · La ficha en PDF es la de la pantalla
+- La identidad es `jugadoresHeader()` —la tarjeta de la ficha: foto,
+  «#dorsal NOMBRE», equipo · jerarquía · consistencia, badges de rol y de
+  titularidad, las cuatro tarjetas— y no una portada propia (que tenía
+  escudo en vez de foto y otra línea de jerarquía). Arriba, chica, la línea
+  de emisión (fecha, competición, club). El botón y los controles de estado
+  llevan `data-no-print`.
+- El mapa del play-by-play de la pestaña Tiro SALE: `.mapa-pbp-jugador`
+  le gana al `.no-imprimir` solo en `#fichaSalida`, y la exportación espera
+  `SGADD_PBP.montarPendientes(salida)` (que ahora devuelve una promesa, con
+  un tope de 5 s) antes de embeber las imágenes e imprimir.
+
+### 3 · El post-partido, firmado en cada hoja
+- Ya no usa el pie fijo (`inyectarPieMotorStats`): va a la tabla firmada
+  como las otras cinco (`inyectarPieDeHoja('detallePartido')`), con el
+  encabezado, el pie y la marca de agua en cada hoja. Ninguna exportación
+  usa ya el `position: fixed` (test-responsive lo recorre).
+- Su CSS de papel trataba a TODA tabla como una del informe (6 pt,
+  `table-layout: fixed`, primera celda al 20 %, `break-inside: avoid`):
+  reglas con más especificidad devuelven la tabla firmada a lo suyo, el
+  «no partir» pasa a los hijos de la celda (`.hoja-cuerpo-celda > *`), y la
+  marca de agua se recupera contra el `background-image: none` general.
+- Sin verificar en un PDF real: generar uno y mirar que el encabezado y el
+  pie salgan en las dos hojas y que ningún bloque se parta.
+
+### 4 · LAB · relevado, no habilitado (ver la respuesta del 2026-10-09)
+- La temporada no arrancó (tabla vacía; primer partido el 2026-10-15).
+- Fase 21986, grupos 41441 (Norte) y 41442 (Sur). Libros en el catálogo:
+  Norte `1kCBNlwp…`, Sur `1Fu9E7dU…`, vacíos, con los encabezados de antes
+  de la v114 (los completa el motor en la primera corrida con metadatos).
+- Sus scripts son clientes de la fachada (motor v114 compartido), con
+  MI_CONFIG `2026 / LAB / CONFERENCIA NORTE|SUR / IDA - REGULAR`. Para la
+  ingesta automática les falta el PUENTE (lo que `puente-lnb.js` le hizo al
+  script de la LNB) y declarar las competencias en `src/sitios.js`.

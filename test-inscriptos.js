@@ -181,8 +181,8 @@ titulo('La UI en un contexto de navegador (escudos y fotos, puntos 93 y 95)');
   ctx.SGADD_APP.estado.titulares = { [C.clavePersona('RIVAL, X') + '|' + C.claveEquipo('OTRO')]: [0, 4] };
   const t1 = ctx.tit('TITU, LAR', 'BOCA');
   check('titularidad: cuenta solo las filas con el dato (2 de 3, la vacía no cuenta)', t1 && t1.titular === 2 && t1.partidos === 3, JSON.stringify(t1));
-  check('titularidad: la badge dice «Titular 2/3»', ctx.badgeTit('TITU, LAR', 'BOCA').indexOf('Titular 2/3') !== -1);
-  check('titularidad: un rival recortado sale del conteo del servidor', ctx.badgeTit('RIVAL, X', 'OTRO').indexOf('Desde el banco · 0/4') !== -1);
+  check('titularidad: la badge dice «Titular 2/3»', ctx.badgeTit('TITU, LAR', 'BOCA').indexOf('Titular (2/3)') !== -1);
+  check('titularidad: un rival recortado sale del conteo del servidor', ctx.badgeTit('RIVAL, X', 'OTRO').indexOf('Desde el banco (0/4)') !== -1);
   check('titularidad: sin el dato, nada (punto 8)', ctx.badgeTit('CERO, UNO', 'BOCA') === '' && ctx.tit('NADIE', 'X') === null);
 }
 

@@ -195,9 +195,13 @@ const SGADD_FICHA = (function () {
     SGADD_UI.inyectarPieDeHoja('fichaSalida');
     if (typeof SGADD_CHARTS !== 'undefined') SGADD_CHARTS.dibujarPendientes();
 
-    /* Al imprimir, el navegador vuelve a resolver el `src` de cada <img> y
-       cualquier fallo ahí deja el escudo afuera del PDF sin avisar. */
-    SGADD_UI.embeberImagenes('#fichaSalida');
+    /* EL MAPA DE TIRO DEL PLAY-BY-PLAY, COMO EN PANTALLA (2026-10-09). Se
+       monta igual que en la ficha y se ESPERA antes de imprimir —con un
+       tope de 5 s—: antes la hoja salía sin el mapa. Sin la capa no hay
+       lugar que montar y la promesa se cumple en el acto. */
+    const mapa = (typeof SGADD_PBP !== 'undefined')
+      ? SGADD_PBP.montarPendientes(salida) : Promise.resolve();
+    const tope = new Promise(r => setTimeout(r, 5000));
 
     /* El nombre del archivo: sin esto Chrome propone el título de la app
        y el DT termina con diez PDF homónimos. Se restaura solo en
@@ -208,7 +212,11 @@ const SGADD_FICHA = (function () {
        diálogo tarda en abrir, la hoja se borraba a sí misma antes de
        imprimirse. El timeout queda de respaldo por si `afterprint` no llega
        (pasa al cancelar en algunos navegadores). */
-    setTimeout(() => {
+    Promise.race([Promise.resolve(mapa).catch(() => null), tope]).then(() => new Promise(r => setTimeout(r, 700))).then(() => {
+      /* Al imprimir, el navegador vuelve a resolver el `src` de cada <img> y
+         cualquier fallo ahí deja la foto o el escudo afuera del PDF sin
+         avisar. Va DESPUÉS de montar el mapa: así la foto ya cargó. */
+      SGADD_UI.embeberImagenes('#fichaSalida');
       const alTerminar = () => {
         window.removeEventListener('afterprint', alTerminar);
         clearTimeout(respaldo);
@@ -217,7 +225,7 @@ const SGADD_FICHA = (function () {
       window.addEventListener('afterprint', alTerminar);
       const respaldo = setTimeout(alTerminar, 60000);
       window.print();
-    }, 700);
+    });
   }
 
   function limpiar() {
@@ -237,44 +245,28 @@ const SGADD_FICHA = (function () {
     const pl = SGADD_APP.planillaActual();
     const club = (typeof CLUB !== 'undefined' && CLUB.cfg) ? CLUB.cfg : {};
     const fecha = SGADD_UI.fechaHoy();
-    const adn = jugadoresADN(idx, j);
-    const rolMin = adn.rolMinutos;
-    const stat = idx.statJugador(j.__clave, 'PTS');
-    const logo = (typeof LOGOS !== 'undefined') ? LOGOS.getUrl(j['EQUIPO']) : null;
 
     const bloques = [];
 
-    /* --- Portada. El escudo con respaldo de iniciales: sin él, un club sin
-       manifiesto de logos imprime la ficha sin ninguna marca de equipo. --- */
-    const escudo = logo
-      ? `<img src="${SGADD_UI.esc(logo)}" alt="" class="ficha-escudo">`
-      : `<span class="escudo-iniciales">${SGADD_UI.esc(
-          (typeof LOGOS !== 'undefined') ? LOGOS.iniciales(j['EQUIPO']) : String(j['EQUIPO'] || '').slice(0, 2))}</span>`;
-
+    /* --- La línea de emisión: lo único que la pantalla no tiene y el papel
+       sí necesita (cuándo, de qué competición, para qué club). --- */
     bloques.push(`
-      <header class="informe-cabecera ficha-cabecera">
-        <div class="ficha-cabecera-fila">
-          ${escudo}
-          <div>
-            <h1>${SGADD_UI.esc((typeof torneoPrefijoDorsal === 'function' ? torneoPrefijoDorsal(j['NOMBRES'], j['EQUIPO']) : '') + j['NOMBRES'])}</h1>
-            <p>${SGADD_UI.esc(SGADD.limpiarNombre(j['EQUIPO']))} ·
-               ${SGADD_UI.esc(rolMin ? rolMin.label + ' · ' + rolMin.rol : '')}</p>
-            <p>Fecha de emisión: ${SGADD_UI.esc(fecha)} · Competición: ${SGADD_UI.esc(pl ? pl.label : '—')}
-               · ${SGADD_UI.esc(club.nombre || '')}</p>
-          </div>
-        </div>
+      <header class="informe-cabecera ficha-cabecera ficha-emision">
+        <p>Ficha del jugador · Fecha de emisión: ${SGADD_UI.esc(fecha)} · Competición: ${SGADD_UI.esc(pl ? pl.label : '—')}
+           ${club.nombre ? '· ' + SGADD_UI.esc(club.nombre) : ''}</p>
       </header>`);
 
-    /* --- Identidad: los cuatro KPIs y la consistencia. Va SIEMPRE: es lo
-       que define de quién es la hoja. --- */
-    const kpis = ['PTS', 'MIN', 'eFG%', 'USG%']
-      .map(k => SGADD_UI.statCard(jugadoresLeer(idx, j, k))).join('');
+    /* --- LA IDENTIDAD ES LA MISMA TARJETA DE LA PANTALLA (2026-10-09).
+       Antes el PDF armaba su propia portada —escudo en vez de foto, sin las
+       badges de rol ni de titularidad, la jerarquía en otra línea— y el
+       club pidió que la hoja sea una réplica de lo que ve. Ahora es
+       `jugadoresHeader()`, la misma función que pinta la ficha: foto,
+       «#dorsal NOMBRE», equipo · jerarquía · consistencia, las badges y las
+       cuatro tarjetas. El botón «Ficha en PDF» y los controles de estado
+       llevan `data-no-print` y no salen. --- */
     bloques.push(`
-      <section class="informe-bloque">
-        <h2>Identidad</h2>
-        <p class="informe-pregunta">${SGADD_UI.esc(adn.jerarquia.emoji + ' ' + adn.jerarquia.label +
-          (stat ? ' · consistencia en PTS: ' + stat.media.toFixed(1) + ' ± ' + stat.desvio.toFixed(1) + ' en ' + stat.n + ' PJ' : ''))}</p>
-        <div class="grid grid-cols-4 gap-3">${kpis}</div>
+      <section class="informe-bloque ficha-identidad">
+        ${jugadoresHeader(idx, j)}
         ${j.__califica ? '' : `<p class="ficha-aviso">~ ${SGADD_UI.esc(JUGADORES_MOTIVO_SIN_RESPALDO)}</p>`}
       </section>`);
 

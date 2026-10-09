@@ -1316,9 +1316,13 @@ const SGADD_PBP = (function () {
      de tiros trabajan desde acá sin volver a pedir nada. */
   const paquetes = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
 
+  /* Devuelve una promesa que se cumple cuando TODOS los lugares montados
+     terminaron (bien o mal): la ficha en PDF la espera antes de imprimir
+     para que el mapa salga dibujado y no el cartel de «Cargando…». */
   function montarPendientes(raiz) {
     const r = raiz || (typeof document !== 'undefined' ? document : null);
-    if (!r || !r.querySelectorAll) return;
+    if (!r || !r.querySelectorAll) return Promise.resolve();
+    const tareas = [];
     r.querySelectorAll('.pbp-montaje:not([data-pbp-montado])').forEach((nodo) => {
       nodo.setAttribute('data-pbp-montado', '1');
       const nombreJugador = nodo.getAttribute('data-pbp-jugador');
@@ -1326,7 +1330,7 @@ const SGADD_PBP = (function () {
       const tipo = nodo.getAttribute('data-pbp-tipo');
       const contexto = nodo.getAttribute('data-pbp-contexto');
       /* El paquete propio es opcional: sin él, la card sale igual y sin cruce. */
-      Promise.all([pedir(nodo.getAttribute('data-pbp-equipo')), propio ? pedir(propio).catch(() => null) : null])
+      tareas.push(Promise.all([pedir(nodo.getAttribute('data-pbp-equipo')), propio ? pedir(propio).catch(() => null) : null])
         .then(([paq, paqPropio]) => {
           if (!nodo.isConnected) return;
           const pp = (tipo === 'partido-mapa' || tipo === 'partido-momentum' || tipo === 'partido-quintetos')
@@ -1341,8 +1345,9 @@ const SGADD_PBP = (function () {
         }).catch((e) => {
           if (!nodo.isConnected) return;
           nodo.innerHTML = vacio(esc(e && e.message ? e.message : 'No se pudo cargar el análisis.'));
-        });
+        }));
     });
+    return Promise.all(tareas);
   }
 
   /* -------------------------------------------------------- interacción */

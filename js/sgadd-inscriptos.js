@@ -386,16 +386,22 @@ function torneoTitularidad(nombre, equipo) {
 }
 
 /**
- * La badge «Titular X/Y», o '' sin el dato. Se resalta si arrancó en todos
- * o casi todos (≥ 80 %); si no arrancó nunca, dice «Desde el banco».
+ * La badge «TITULAR (X/Y)» o «DESDE EL BANCO (0/Y)», o '' sin el dato.
+ *
+ * UN SOLO FORMATO EN TODAS LAS VISTAS (2026-10-09, pedido del club): el
+ * mismo de la etiqueta principal de la ficha —display, mayúsculas, borde
+ * del color del texto—. `compacta` achica el tamaño para las cards y las
+ * tablas, sin cambiar ni el texto ni el estilo. Se resalta si arrancó en
+ * todos o casi todos (≥ 80 %).
  */
-function torneoBadgeTitular(nombre, equipo) {
+function torneoBadgeTitular(nombre, equipo, compacta) {
   const r = torneoTitularidad(nombre, equipo);
   if (!r) return '';
   const esc = SGADD_UI.esc;
   const frac = r.titular / r.partidos;
-  const texto = r.titular === 0 ? 'Desde el banco · 0/' + r.partidos : 'Titular ' + r.titular + '/' + r.partidos;
-  const clase = frac >= 0.8 ? 'border-accent/60 text-accent' : r.titular === 0 ? 'border-hairline text-muted' : 'border-hairline text-ink';
-  return `<span class="badge-titular text-[10px] px-1.5 py-0.5 rounded-full border ${clase} whitespace-nowrap"
+  const texto = (r.titular === 0 ? 'Desde el banco' : 'Titular') + ' (' + r.titular + '/' + r.partidos + ')';
+  const color = frac >= 0.8 ? 'text-accent' : r.titular === 0 ? 'text-muted' : 'text-ink';
+  const tam = compacta ? 'text-[9px] px-1.5 py-px' : 'text-[10px] px-2.5 py-1';
+  return `<span class="badge-titular ${tam} font-display uppercase tracking-wider rounded border border-current/40 ${color} whitespace-nowrap shrink-0"
     title="${esc('Arrancó ' + r.titular + ' de los ' + r.partidos + ' partidos que jugó (box score oficial)')}">${esc(texto)}</span>`;
 }

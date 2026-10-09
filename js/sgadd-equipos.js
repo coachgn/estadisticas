@@ -816,8 +816,8 @@ function equiposTabPlantel(idx, e) {
         <span class="fila-inicial" aria-hidden="true">${escapeHtml(
           (typeof SGADD_CHARTS !== 'undefined' ? SGADD_CHARTS.inicialesJugador(j['NOMBRES']) : ''))}</span>
         ${escapeHtml((typeof torneoPrefijoDorsal === 'function' ? torneoPrefijoDorsal(j['NOMBRES'], j['EQUIPO']) : '') + j['NOMBRES'])}${badgeEstado}
-        ${typeof torneoBadgeTitular === 'function' && torneoBadgeTitular(j['NOMBRES'], j['EQUIPO'])
-          ? '<span class="ml-1">' + torneoBadgeTitular(j['NOMBRES'], j['EQUIPO']) + '</span>' : ''}</td>
+        ${typeof torneoBadgeTitular === 'function' && torneoBadgeTitular(j['NOMBRES'], j['EQUIPO'], true)
+          ? '<span class="ml-1">' + torneoBadgeTitular(j['NOMBRES'], j['EQUIPO'], true) + '</span>' : ''}</td>
       ${cols.map(c => `<td class="py-1.5 pr-3 font-mono text-xs ${
         c === '+/-' ? SGADD_UI.claseMasMenos(plantelValor(j, c, modo)) : ''}">${
         escapeHtml(plantelTexto(j, c, modo))}</td>`).join('')}
@@ -1097,7 +1097,6 @@ function equiposDetallePartido(idx, e, id) {
 
   const cabecera = `
     <div class="mb-5">
-      <div class="encabezado-marca" aria-hidden="true">${SGADD_UI.encabezadoInforme()}</div>
       <div class="flex items-center justify-between gap-3 mb-3" data-no-print>
         <button onclick="equiposCerrarPartido()"
           class="text-xs uppercase tracking-wider dato-sec hover:text-white transition-all duration-200">
@@ -1513,14 +1512,17 @@ function equiposImprimirPartido() {
      vuelve a resolver el `src` de cada <img> y cualquier fallo ahí los deja
      afuera del PDF sin avisar. Misma utilidad que usan las otras dos
      exportaciones. */
+  /* ENCABEZADO, PIE INSTITUCIONAL Y MARCA DE AGUA EN TODAS LAS HOJAS
+     (2026-10-09): la misma tabla firmada de las otras cinco exportaciones
+     (`<thead>`/`<tfoot>` que Chromium repite). El pie fijo de antes —un
+     `position: fixed` colgado del body— en el Chrome del club solo dibujaba
+     el «AR». Las reglas de papel del post-partido se ajustaron para no
+     tratar a esa tabla como una del informe (index.html). Va ANTES de
+     embeber: así el logo del encabezado y del pie también se serializa. */
+  SGADD_UI.inyectarPieDeHoja('detallePartido');
   SGADD_UI.embeberImagenes('#detallePartido');
   SGADD_UI.tituloPdf(equiposNombrePdfPartido());
   document.body.classList.add('modo-partido-print');
-  /* EL PIE INSTITUCIONAL, EN TODAS LAS HOJAS. Va colgado del body y no
-  adentro del contenedor: `position: fixed` se ancla al primer ancestro
-  con `transform` o `filter`, y ahi dejaria de repetirse sin ningun
-  sintoma. La fecha se calcula ACA, al imprimir. */
-  SGADD_UI.inyectarPieMotorStats();
   /* Los gráficos ya están dibujados con la paleta de PANTALLA: hay que
      reaplicarles la del papel o su leyenda y sus ejes salen en gris
      clarísimo sobre blanco. */
@@ -1529,8 +1531,8 @@ function equiposImprimirPartido() {
     window.print();
     setTimeout(() => {
       document.body.classList.remove('modo-partido-print');
-      SGADD_UI.quitarPieMotorStats();
       SGADD_UI.restaurarImagenes('#detallePartido');
+      SGADD_UI.quitarPieDeHoja('detallePartido');
     }, 400);
   }, 250);
 }

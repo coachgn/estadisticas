@@ -334,14 +334,12 @@ igual(sinReserva, [],
        '  y no inyecta ademas el fijo');
   });
 
-/* El post-partido imprime la seccion viva, sin contenedor propio, asi
-   que es el unico que sigue con el fijo. Scouting se paso al <tfoot> el
-   2026-09-20: tenia contenedor (#scoutInforme) y el club reportaba el
-   mismo PDF sin firma que ya habia reportado para los otros tres. */
-[['sgadd-equipos.js', 'el post-partido']].forEach(([f, eti]) => {
+/* El post-partido era el ÚLTIMO con el pie fijo. Desde el 2026-10-09 va
+   también a la tabla firmada (#detallePartido): ninguna exportación usa
+   ya el `position: fixed` que en el Chrome del club solo dibujaba «AR». */
+['sgadd-equipos.js', 'sgadd-ficha.js', 'sgadd-informe.js', 'sgadd-rankingpdf.js', 'sgadd-scouting.js', 'sgadd-fichajes.js'].forEach((f) => {
   const src = fs.readFileSync(path.join(__dirname, 'js', f), 'utf8');
-  ok(/inyectarPieMotorStats\(\)/.test(src), eti + ' inyecta el pie fijo');
-  ok(/quitarPieMotorStats\(\)/.test(src), '  y lo saca al terminar');
+  ok(!/inyectarPieMotorStats\(\)/.test(src), f + ' no usa el pie fijo');
 });
 
 /* EL ELEMENTO IMPORTA, NO LA PROPIEDAD. `display: table-footer-group`
@@ -368,8 +366,17 @@ ok(ESTILO.indexOf('.hoja-firmada > thead { display: table-header-group') !== -1,
    'el thead se repite arriba de cada hoja');
 ok(/td[.]hoja-cuerpo-celda[.]marca-agua \{[\s\S]{0,700}fill-opacity='0[.]0\d+'[\s\S]{0,400}print-color-adjust: exact/.test(ESTILO),
    'la marca de agua es un FONDO tenue (no tapa contenido) y sale sin «Gráficos de fondo»');
-ok(fs.readFileSync('./js/sgadd-equipos.js', 'utf8').indexOf('<div class="encabezado-marca" aria-hidden="true">${SGADD_UI.encabezadoInforme()}</div>') !== -1,
-   'el post-partido lleva el encabezado en el flujo');
+/* El post-partido también va en la hoja firmada (2026-10-09), y su papel
+   no trata a esa tabla como una del informe. */
+const EQ_SRC = fs.readFileSync('./js/sgadd-equipos.js', 'utf8');
+ok(EQ_SRC.indexOf("inyectarPieDeHoja('detallePartido')") !== -1 && EQ_SRC.indexOf("quitarPieDeHoja('detallePartido')") !== -1
+   && EQ_SRC.indexOf('inyectarPieMotorStats()') === -1,
+   'el post-partido firma cada hoja con la tabla (encabezado, pie y marca de agua), no con el pie fijo');
+ok(/#detallePartido table[.]hoja-firmada \{[^}]*table-layout: auto !important[^}]*break-inside: auto !important/.test(ESTILO)
+   && /#detallePartido [.]hoja-cuerpo-celda > \* \{[^}]*break-inside: avoid/.test(ESTILO),
+   '  y la tabla firmada se puede partir; cada bloque del informe, no');
+ok(/#detallePartido td[.]hoja-cuerpo-celda[.]marca-agua \{[^}]*background-image: url/.test(ESTILO),
+   '  y recupera la marca de agua que el papel del post-partido le sacaba a todo');
 
 /* La celda del cuerpo va SIN padding: el maquetado de las tres
    exportaciones esta medido y presupuestado (puntos 7.6 y 50). */
