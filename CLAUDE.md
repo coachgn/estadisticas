@@ -12835,3 +12835,48 @@ front y `?v=` no cambian.
   desde el punto 100 (`claveDeDatos`).
 - Tests: `test-pbp.js` (alta de un cliente nuevo de punta a punta contra el
   handler) y `test-torneos.js` (LAB Norte/Sur, antes y después del enganche).
+
+## 102. EL TORNEO CUENTA LOS MISMOS PARTIDOS QUE EL CLUB (2026-10-10)
+
+Reportado en APB: la tabla de la zona vista desde el torneo mostraba menos
+partidos que la del club. Regla del club: **el dato bueno es el del cliente**.
+
+### Lo medido en KV antes de tocar nada
+Los partidos sin estadísticas (punto 44) se cargan en el CLIENTE, y la
+entrada del torneo no tenía ninguno:
+
+```
+deportivo · sudamerica · hogar-social · universitario   IDA|REGULAR · 2 partidos (09/07)
+apb-2026-masculino / apb-2026-b                         0
+```
+
+Los clientes existían antes que el torneo: la zona tomó su libro por
+`--libro-de` y `vincular` no hereda cuando el cliente ya leía ese libro. No
+era solo la pantalla del admin: `llave.js` armaba con esa tabla los PUESTOS
+de la Zona B que reciben las otras zonas.
+
+### El arreglo · solo servidor (sin `?v=`)
+- **`mutar.manualesDeZona(cat, torneo, slug)`**: los de la zona son la UNIÓN
+  de lo propio del torneo con lo de los clientes ENGANCHADOS a esa zona y de
+  los que leen su MISMO LIBRO, haya o no enganche declarado. Sin repetir
+  (`unirManuales`: por id y por fecha + equipos). Se deriva al leer, como las
+  capas del punto 101: el catálogo no se escribe.
+- Lo usan `catalogo.publico` (un torneo publica `manualesDeTorneo`, así el
+  panel pinta la tabla, las tarjetas y la ficha con el mismo PJ) y
+  `llave.tablaDeZona` (recibe el catálogo).
+- **El cliente sigue recibiendo lo que ÉL cargó**: la unión es del torneo.
+- **`vincular` hereda también sin estrenar libro** (`heredarDelLibro`, que no
+  pisa): el cliente previo que no tenía zonas ni partidos los recibe.
+- La llave se cachea 5 minutos por torneo: un partido recién cargado puede
+  tardar eso en moverle el puesto a la otra zona.
+
+### Lo que NO quedó resuelto · una clave vieja en Reconquista
+`reconquista.partidosManuales` tiene 2 partidos (09/07, IDA|REGULAR) bajo
+`naranja-u21-clausura-2026`, el id de planilla del JSON (punto 54). El
+servidor no conoce esa clave, así que no llegan a ninguna zona. Y no se
+atribuyen por los equipos: «RECONQUISTA 'A' vs UNION VECINAL 'A'» existe en
+la Zona A de Primera y en la U21 — con dos candidatos no se elige. Hay que
+decidir a qué categoría pertenecen y volver a publicarlos ahí.
+
+Tests: `test-interzonal.js`, sección «1 ter bis». Al revés: sin la unión
+caen 5, sin el respaldo por mismo libro 3, sin la herencia al enganchar 1.

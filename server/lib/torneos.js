@@ -501,7 +501,11 @@ function vincular(cat, d, deps) {
     nuevo[club] = re.catalogo[club];
   }
   let herencia = null;
-  if (estrena && deps && deps.heredar) herencia = deps.heredar(nuevo, club, slug, zc.k.sheetId, tId + '/' + zc.slug);
+  /* TAMBIÉN el cliente que YA leía ese libro antes de engancharse (punto
+     102): no estrena nada, pero puede no tener las zonas ni los partidos
+     sin estadísticas que el torneo y sus otros clientes ya tienen.
+     `heredar` no pisa: si la categoría tiene los suyos, se quedan. */
+  if (zc.k.sheetId && deps && deps.heredar) herencia = deps.heredar(nuevo, club, slug, zc.k.sheetId, tId + '/' + zc.slug);
   return { ok: true, catalogo: nuevo, equipo: e, herencia: herencia, sinLibro: !sheetId };
 }
 

@@ -230,6 +230,93 @@ const pedirLibro = async (tok, club, cat) => { catalogo.limpiarCache(); return H
     store[catalogo.CLAVE_KV] = JSON.stringify(CAT);
   }
 
+  seccion('1 ter bis · el torneo cuenta los mismos partidos que el club (punto 102)');
+  {
+    /* EL CASO DE APB: el cliente existía ANTES del torneo, lee el libro de
+       la zona y es quien cargó los partidos sin estadísticas. La entrada
+       del torneo no tiene ninguno. Las dos vistas tienen que dar el mismo
+       PJ, antes y después de declarar el enganche. */
+    const CLASIF = require('./server/lib/compartido/sgadd-clasificacion.js');
+    const MANUALES = { 'GENERAL|REGULAR': [
+      { id: 'm1', fecha: '2026-03-20', local: RI, puntosLocal: 90, visitante: GI, puntosVisitante: 50 },
+      { id: 'm2', fecha: '2026-03-21', local: VM, puntosLocal: 70, visitante: ES, puntosVisitante: 60 }] };
+    const previo = JSON.parse(JSON.stringify(CAT));
+    previo.river = { nombre: 'River', liga: 'liga-argentina', equipoPropio: RI, plan: 'PLATA',
+      categorias: { 'river-primera': { label: 'Primera', sheetId: ID.sur } },
+      partidosManuales: { 'river-primera': MANUALES } };
+    const idxSur = SGADD.construirIndice(hojasDe(SUR), { fase: 'REGULAR' });
+    /* La ficha del club: su tabla, con SUS partidos manuales. */
+    const pjClub = (c) => {
+      const mapa = (c.river.partidosManuales || {})['river-primera'] || {};
+      const o = {};
+      CLASIF.tabla(idxSur, { manuales: CLASIF.manualesDelTramo(mapa, 'GENERAL', 'REGULAR') }).forEach((f) => { o[f.clave] = f.pj; });
+      return o;
+    };
+    /* La del torneo, por sus dos caminos: la llave del servidor y el
+       catálogo que recibe el panel del admin. */
+    const pjLlave = async (c) => {
+      store[catalogo.CLAVE_KV] = JSON.stringify(c);
+      LLAVE.limpiarCache();
+      const r = await pedirLlave(tokAdmin);
+      const o = {};
+      r.body.zonas.sur.filas.forEach((f) => { o[f.clave] = f.pj; });
+      return o;
+    };
+    const pjPanel = (c) => {
+      const t = catalogo.publico(c, { admin: true, origen: 'kv' }).find(x => x.id === 'liga-x');
+      const mapa = (t.partidosManuales || {})['lx-sur'] || {};
+      const o = {};
+      CLASIF.tabla(idxSur, { manuales: CLASIF.manualesDelTramo(mapa, 'GENERAL', 'REGULAR') }).forEach((f) => { o[f.clave] = f.pj; });
+      return o;
+    };
+    const igual = (a, b) => JSON.stringify(Object.keys(a).sort().map(k => k + ':' + a[k])) === JSON.stringify(Object.keys(b).sort().map(k => k + ':' + b[k]));
+    const total = (o) => Object.keys(o).reduce((n, k) => n + o[k], 0);
+
+    const club0 = pjClub(previo);
+    check('la ficha del club cuenta sus 2 partidos manuales (6 del libro + 2 → 16 PJ sumados)', total(club0) === 16, club0);
+    check('el torneo NO tiene partidos manuales propios', !previo['liga-x'].partidosManuales);
+    check('SIN enganche declarado, la llave del torneo da el mismo PJ que el club: comparten libro', igual(await pjLlave(previo), club0), await pjLlave(previo));
+    check('  y el catálogo que pinta el panel del torneo, también', igual(pjPanel(previo), club0), pjPanel(previo));
+    check('  la fuente se nombra', JSON.stringify(mutar.manualesDeZona(previo, 'liga-x', 'lx-sur').de) === '[{"club":"river","slug":"river-primera"}]');
+
+    const eng = mutar.aplicar(previo, 'vincular_torneo', { club: 'river', categoria: 'river-primera', torneo: 'liga-x', zona: 'sur' }, catalogo.validar);
+    check('el cliente previo se engancha a su zona', eng.ok, eng.motivo);
+    check('DESPUÉS de enganchar, el conteo coincide exactamente en las tres vistas',
+      eng.ok && igual(await pjLlave(eng.catalogo), pjClub(eng.catalogo)) && igual(pjPanel(eng.catalogo), pjClub(eng.catalogo))
+      && total(pjClub(eng.catalogo)) === 16);
+    check('  sin escribirle nada al torneo', eng.ok && !eng.catalogo['liga-x'].partidosManuales);
+    check('  y el cliente conserva los suyos', eng.ok && JSON.stringify(eng.catalogo.river.partidosManuales) === JSON.stringify(previo.river.partidosManuales));
+
+    /* Dos clientes de la zona con el MISMO partido —uno con otro id, cargado
+       por otro admin— y el torneo con uno propio repetido: no se duplica. */
+    const dos = JSON.parse(JSON.stringify(eng.catalogo));
+    dos.gimnasia = { nombre: 'Gimnasia', liga: 'liga-argentina', equipoPropio: GI, plan: 'PLATA',
+      categorias: { 'gimnasia-primera': { label: 'Primera', sheetId: ID.sur, torneo: 'liga-x', zona: 'sur' } },
+      partidosManuales: { 'gimnasia-primera': { 'GENERAL|REGULAR': [Object.assign({}, MANUALES['GENERAL|REGULAR'][0], { id: 'otro-id' })] } } };
+    dos['liga-x'].partidosManuales = { 'lx-sur': { 'GENERAL|REGULAR': [MANUALES['GENERAL|REGULAR'][1]] } };
+    const union = mutar.manualesDeZona(dos, 'liga-x', 'lx-sur').mapa['GENERAL|REGULAR'];
+    check('el mismo partido en dos clientes y en el torneo se cuenta UNA vez', union.length === 2 && igual(await pjLlave(dos), club0), union.map(p => p.id));
+
+    /* El cliente que se engancha y todavía NO tiene los partidos que otro
+       de su zona ya cargó, los recibe al enganchar. */
+    const tarde = JSON.parse(JSON.stringify(eng.catalogo));
+    tarde.gimnasia = { nombre: 'Gimnasia', liga: 'liga-argentina', equipoPropio: GI, plan: 'PLATA',
+      categorias: { 'gimnasia-primera': { label: 'Primera', sheetId: ID.sur } } };
+    const eng2 = mutar.aplicar(tarde, 'vincular_torneo', { club: 'gimnasia', categoria: 'gimnasia-primera', torneo: 'liga-x', zona: 'sur' }, catalogo.validar);
+    check('un cliente previo SIN partidos hereda los de su zona al engancharse', eng2.ok
+      && ((((eng2.catalogo.gimnasia.partidosManuales || {})['gimnasia-primera'] || {})['GENERAL|REGULAR']) || []).length === 2, eng2.motivo);
+
+    /* La otra zona no recibe nada, y un cliente de OTRO libro sin enganche tampoco suma. */
+    check('la otra zona no suma los partidos de esta', Object.keys(mutar.manualesDeZona(eng.catalogo, 'liga-x', 'lx-norte').mapa).length === 0);
+    const ajeno = JSON.parse(JSON.stringify(previo));
+    ajeno.river.categorias['river-primera'].sheetId = 'Z'.repeat(40);
+    check('un cliente de otro libro y sin enganche no entra a la zona', Object.keys(mutar.manualesDeZona(ajeno, 'liga-x', 'lx-sur').mapa).length === 0);
+    check('un cliente NO recibe la unión: su catálogo trae lo que él cargó',
+      JSON.stringify(catalogo.publico(dos, { club: 'river', origen: 'kv' }).find(x => x.id === 'river').partidosManuales) === JSON.stringify(dos.river.partidosManuales));
+    store[catalogo.CLAVE_KV] = JSON.stringify(CAT);
+    LLAVE.limpiarCache();
+  }
+
   seccion('1 quater · caché y una zona caída');
   {
     LLAVE.limpiarCache();

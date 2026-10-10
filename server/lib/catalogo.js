@@ -36,6 +36,9 @@ const { CATALOGO, entorno } = require('./config.js');
    el Panel Master la pinta con la misma función (punto 60). */
 const AUTH = require('./compartido/sgadd-auth.js');
 const TORNEOS = require('./torneos.js');
+/* Motor puro, sin KV: de acá salen los partidos manuales que rigen en la
+   zona de un torneo (punto 102). No requiere este archivo: no hay ciclo. */
+const MUTAR = require('./catalogo-mutar.js');
 const FASES = require('./compartido/sgadd-fases.js');
 
 const CLAVE_KV = 'sgadd:catalogo';
@@ -439,7 +442,10 @@ function publico(cat, opciones) {
        son informacion comercial sino resultados que ya se jugaron, y
        sin ellos la tabla del cliente no cuadra. Lo que sigue siendo
        solo del admin es el plan y el vencimiento. */
-    partidosManuales: c[id].partidosManuales || null,
+    /* UN TORNEO muestra los de sus clientes (punto 102): los carga el
+       club, y sin ellos la tabla de la zona tiene un partido menos que la
+       del club que la mira al lado. */
+    partidosManuales: c[id].tipo === 'torneo' ? MUTAR.manualesDeTorneo(c, id) : (c[id].partidosManuales || null),
     categorias: Object.keys(c[id].categorias || {}).map(s => Object.assign({
       slug: s,
       label: c[id].categorias[s].label,

@@ -202,6 +202,58 @@ function zonasDe(club, slug) {
 }
 
 /**
+ * LOS PARTIDOS SIN ESTADÍSTICAS QUE RIGEN EN LA ZONA DE UN TORNEO (punto 102).
+ *
+ * Se cargan en el CLIENTE —es quien sabe que GES no publicó el box score—
+ * y la entrada del torneo no los tenía: la tabla de la zona mostraba un
+ * partido menos que la del club, y con ella los puestos de la llave que
+ * reciben las otras zonas. Medido en producción el 2026-10-10: los cuatro
+ * clientes de la Zona B de APB con 2 partidos, la zona con 0.
+ *
+ * La vista del torneo es la UNIÓN de lo suyo con lo de los clientes de esa
+ * zona: los ENGANCHADOS a ella y los que leen su mismo libro —que dos
+ * categorías son del mismo torneo lo dice su sheetId, haya o no enganche
+ * declarado—. Sin repetir (`unirManuales`: por id y por fecha + equipos).
+ *
+ * Se DERIVA al leer, como las capas del punto 101: vale para el cliente
+ * que existía antes de enganchar, y lo que un club cargue mañana le llega
+ * al torneo sin copiar nada. El catálogo no se escribe.
+ *
+ * Devuelve `{ mapa: {TORNEO|FASE: [...]}, de: [{club, slug}] }`.
+ */
+function manualesDeZona(cat, torneoId, slug) {
+  const t = (cat || {})[torneoId];
+  const k = t && t.categorias && t.categorias[slug];
+  if (!k) return { mapa: {}, de: [] };
+  const fuentes = [];
+  const vistos = {};
+  const sumar = (club, s) => {
+    if (vistos[club + '/' + s]) return;
+    vistos[club + '/' + s] = true;
+    const m = manualesDe(cat[club], s);
+    if (m && Object.keys(m).length) fuentes.push({ club: club, slug: s, mapa: m });
+  };
+  /* Lo propio primero: en un partido repetido se conserva el del torneo. */
+  sumar(torneoId, slug);
+  if (TORNEOS.esTorneo(t)) {
+    if (k.zona && !k.interzonal) TORNEOS.vinculadas(cat, torneoId, k.zona).forEach(o => sumar(o.club, o.slug));
+    hermanasDeLibro(cat, torneoId, k.sheetId).forEach((o) => { if (!TORNEOS.esTorneo(cat[o.club])) sumar(o.club, o.slug); });
+  }
+  return { mapa: unirManuales(fuentes.map(f => f.mapa)), de: fuentes.map(f => ({ club: f.club, slug: f.slug })) };
+}
+
+/** Los de todas las zonas de un torneo, con la forma de `partidosManuales`. */
+function manualesDeTorneo(cat, torneoId) {
+  const t = (cat || {})[torneoId];
+  const out = {};
+  Object.keys((t && t.categorias) || {}).forEach((s) => {
+    const m = manualesDeZona(cat, torneoId, s).mapa;
+    if (Object.keys(m).length) out[s] = m;
+  });
+  return Object.keys(out).length ? out : null;
+}
+
+/**
  * HERENCIA · un cliente que se suma a un torneo arranca con lo que el
  * torneo ya tiene: el formato de la tabla y los partidos sin estadísticas
  * que otro cliente del mismo libro ya cargó.
@@ -1194,7 +1246,7 @@ function aplicar(vigente, accion, datos, validar) {
 
 module.exports = {
   zonas, partidosManuales, alta, baja, estado, plan, equipo, laboratorio, renovar, informe, ciclo, aplicar,
-  hermanasDeLibro, heredarDelLibro, unirManuales, claveManual, zonasDe, manualesDe, planValido,
+  hermanasDeLibro, heredarDelLibro, unirManuales, claveManual, zonasDe, manualesDe, manualesDeZona, manualesDeTorneo, planValido,
   objetivos, datosPara, HEX,
   librosPerdidos, ALIAS_PLAN, PARTIDOS_POR_CICLO,
   vencido, estadoEfectivo, ESTADOS, PLANES, ID, SHEET, FECHA };

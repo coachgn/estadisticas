@@ -131,7 +131,7 @@ function indiceRegular(formato, hojas) {
   return { fr: fr, tramo: tramo, tramos: tramos, idx: CORE.construirIndice(hojas, { fase: fr, torneo: tramo.torneo }) };
 }
 
-function tablaDeZona(t, slug, hojas) {
+function tablaDeZona(t, slug, hojas, cat, torneoId) {
   const formato = t.formato || {};
   const ir = indiceRegular(formato, hojas);
   if (!ir) return { filas: [], cerrada: false };
@@ -142,7 +142,11 @@ function tablaDeZona(t, slug, hojas) {
   const k = ((t.categorias || {})[slug]) || {};
   const ids = {};
   (k.equipos || []).forEach((e) => { if (e && e.id != null) ids[e.clave || CORE.claveEquipo(e.nombre)] = e.id; });
-  const manuales = CLASIF.manualesDelTramo(((t.partidosManuales || {})[slug]) || {}, tramo.torneo, fr);
+  /* Con el catálogo, los partidos manuales son los de la zona MÁS los de
+     sus clientes (punto 102): el «2° Zona B» que recibe otra zona tiene que
+     ser el 2° que ve el club de la B. Sin catálogo, los del torneo. */
+  const mapaManual = cat ? mutar.manualesDeZona(cat, torneoId, slug).mapa : (((t.partidosManuales || {})[slug]) || {});
+  const manuales = CLASIF.manualesDelTramo(mapaManual, tramo.torneo, fr);
   const orden = (t.competencia && t.competencia.ordenTabla) || CLASIF.ORDEN_POR_DEFECTO;
   const filas = CLASIF.tabla(idx, { orden: orden, manuales: manuales }).map(r => ({
     puesto: r.puesto, clave: r.clave, nombre: r.nombre, pj: r.pj, pg: r.pg, pp: r.pp,
@@ -176,7 +180,7 @@ function partidosDePostemporada(hojas) {
   return out;
 }
 
-async function armar(torneoId, t, deps) {
+async function armar(torneoId, t, deps, cat) {
   const guardado = cache.get(torneoId);
   if (guardado && guardado.venceEn > Date.now()) return guardado.datos;
 
@@ -214,7 +218,7 @@ async function armar(torneoId, t, deps) {
         if (!vistos.has(kk)) { vistos.add(kk); postemporada.partidos.push(Object.assign(p, { zonaLibro: k.zona })); }
       });
     } else {
-      zonas[k.zona] = Object.assign({ label: k.label || k.zona }, tablaDeZona(t, slug, hojas));
+      zonas[k.zona] = Object.assign({ label: k.label || k.zona }, tablaDeZona(t, slug, hojas, cat, torneoId));
     }
   }
   const datos = { ok: true, torneo: torneoId, nombre: t.nombre || torneoId, zonas: zonas,
@@ -267,7 +271,7 @@ async function manejarLlave(peticion, deps) {
   const ctx = await resolver(peticion, deps);
   if (ctx.error) return ctx.error;
   try {
-    return { status: 200, body: paraZonas(await armar(ctx.torneoId, ctx.t, deps), ctx.t, ctx.zonas) };
+    return { status: 200, body: paraZonas(await armar(ctx.torneoId, ctx.t, deps, ctx.cat), ctx.t, ctx.zonas) };
   } catch (e) {
     console.error('[sgadd] llave:', e && e.stack ? e.stack : e);
     return error(503, 'LLAVE_ILEGIBLE', 'No se pudo armar la llave del torneo.');
@@ -330,7 +334,7 @@ async function manejarRival(peticion, deps) {
   }
 
   let datos;
-  try { datos = paraZonas(await armar(ctx.torneoId, t, deps), t, zonas); }
+  try { datos = paraZonas(await armar(ctx.torneoId, t, deps, ctx.cat), t, zonas); }
   catch (e) { return error(503, 'LLAVE_ILEGIBLE', 'No se pudo armar la llave del torneo.'); }
 
   /* 2 · el cruce, con la llave que el cliente ve */
