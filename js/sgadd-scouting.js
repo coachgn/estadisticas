@@ -3603,7 +3603,11 @@ function scoutNombreJugador(f, equipo, tam) {
   const nombre = String((f && f.nombre) || '');
   const texto = escapeHtml((typeof torneoPrefijoDorsal === 'function' ? torneoPrefijoDorsal(nombre, equipo) : '') + nombre);
   if (!tam || typeof torneoImagenJugador !== 'function') return texto;
-  return `<span class="inline-flex items-center gap-1.5 min-w-0 align-middle">${torneoImagenJugador(nombre, equipo, tam)}<span class="truncate">${texto}</span></span>`;
+  /* «TITULAR (X/Y)» (2026-10-09), la misma badge compacta de Jugadores y
+     Equipos: solo con la columna TITULAR del libro (punto 8). De un rival
+     recortado sale del conteo que manda el servidor. */
+  const tit = typeof torneoBadgeTitular === 'function' ? torneoBadgeTitular(nombre, equipo, true) : '';
+  return `<span class="inline-flex flex-wrap items-center gap-1.5 min-w-0 align-middle">${torneoImagenJugador(nombre, equipo, tam)}<span class="truncate">${texto}</span>${tit}</span>`;
 }
 function scoutRecord(r) { return r.ganados + ' - ' + r.perdidos; }
 

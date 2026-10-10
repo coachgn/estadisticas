@@ -12766,3 +12766,44 @@ abril; los cruces entre conferencias recién desde cuartos. Arranca el
    (y la Sur).
 3. Con los primeros partidos (2026-10-15), una corrida en seco por
    conferencia antes de la primera entrega.
+
+---
+
+## 100. LA VISTA DEL CLIENTE ENGANCHADO A UN TORNEO Y FICHAJES DE ADMINISTRACIÓN (2026-10-09)
+
+Revisado desde el panel de Boca (cliente PLATA, categoría `boca-lnb-27`
+enganchada a `liga-nacional-2026-27 / unica`, MISMO libro que el torneo).
+Assets en `?v=275`.
+
+### Por qué Boca no veía Quintetos, Mapa de tiro ni lo nuevo del post-partido
+Todo eso es la capa de laboratorio `pbp`, y fallaba por dos lados:
+1. **La capa no estaba habilitada en SU categoría** (`laboratorio: []`). La
+   regla no cambia: un cliente la ve solo si su categoría la tiene. Se
+   habilita con `catalogo.js laboratorio --club boca --categoria boca-lnb-27 --capas pbp`.
+2. **Los datos estaban en otra clave.** La ingesta sube una vez por zona de
+   torneo (`sgadd:pbp:liga-nacional-2026-27:lnb-2026-27`) y el panel de Boca
+   pedía `sgadd:pbp:boca:boca-lnb-27`, vacía. Ahora `/api/v1/pbp` resuelve
+   con `claveDeDatos`: una categoría con `torneo` + `zona` lee SU hash si
+   tiene el campo y, si no, el de la zona del torneo
+   (`TORNEOS.categoriaDeZona`). El permiso se decide igual que antes, con la
+   categoría del cliente. Jujuy, que sube su análisis aparte, sigue leyendo
+   el suyo. El front no cambió: pide con su club y su categoría.
+
+### Scouting
+Fotos, dorsales y mapa ya salían para el rival (las fotos y dorsales se
+filtran contra `PROMEDIOS J`, que no se recorta). Se sumó la badge
+«TITULAR (X/Y)» compacta en `scoutNombreJugador` (tablas, marcas, resto y
+fichas). Lo único que PLATA no ve es el bloque `scouting.fichas` (ORO): es
+regla comercial y no se tocó.
+
+### Fichajes, de administración
+- `MODULOS.fichajes = { soloAdmin: true, soloLiga: true }`: ningún cliente
+  la ve (con o sin padrón) y el admin tampoco cuando está parado en un club
+  cliente. `SGADD_AUTH.fijarContextoClub('club'|'torneo'|null)` lo fija
+  `index.html` al resolver el club del catálogo (`s.tipo`), antes del
+  primer pintado del menú. Las reglas con `soloLiga` se miran antes que
+  `soloAdmin` en `tieneModulo` y `puedoAcceder`.
+- `SGADD_FICHAJES.iniciar()` ya no le pregunta al servidor si la sesión no
+  es de admin.
+- El padrón y la API del punto 87 quedan como estaban (el servidor sigue
+  aceptando a un mail del padrón): esto es el gate del panel.

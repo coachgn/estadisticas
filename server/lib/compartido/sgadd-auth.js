@@ -405,7 +405,13 @@ const SGADD_AUTH = (function () {
        resto del panel—: sin servidor que diga «este mail está», no se
        muestra. Y no se le ofrece a quien no lo tiene, igual que las
        internas: no hay card de venta para un servicio por invitación. */
-    fichajes: { servicio: 'fichajes' },
+    /* DESDE EL 2026-10-09 ES DE ADMINISTRACIÓN (pedido del club): ningún
+       cliente la ve, esté o no en el padrón, y tampoco el admin cuando está
+       parado en el contexto de un club cliente (`soloLiga`: el admin que
+       mira el panel de Boca ve lo que ve Boca). Queda para la vista de
+       administración y las de liga/torneo. El padrón y la API del punto 87
+       siguen como estaban: esto es el gate del panel. */
+    fichajes: { soloAdmin: true, soloLiga: true },
     simulador: { soloAdmin: true },
     configuracion: { soloAdmin: true },
     diagnostico: { soloAdmin: true },
@@ -587,6 +593,17 @@ const SGADD_AUTH = (function () {
 
   function sesion() { return sesionActual; }
 
+  /* EL CONTEXTO DEL PANEL (2026-10-09): 'club' si la categoría abierta es
+     de un club cliente, 'torneo' si es una zona de un torneo, null sin
+     club (el hub). Lo fija sgadd-club.js al activar un club; el servidor no
+     lo usa. Solo lo miran las reglas con `soloLiga`. */
+  let contextoClub = null;
+  function fijarContextoClub(tipo) {
+    contextoClub = tipo === 'club' || tipo === 'torneo' ? tipo : null;
+    return contextoClub;
+  }
+  function contexto() { return contextoClub; }
+
   /**
    * EL PLAN QUE MANDA ES EL DEL CATÁLOGO, no el que quedó firmado en el link.
    *
@@ -676,6 +693,7 @@ const SGADD_AUTH = (function () {
 
        ABIERTO sigue viendo todo lo demás: esa parte no cambia y es lo que
        mantiene funcionando a quien entra sin token. */
+    if (regla.soloLiga && contextoClub === 'club') return false;
     if (regla.soloAdmin) return rol(s) === ROLES.ADMIN;
     /* `servicio` también ANTES que `sinRestricciones`, por lo mismo. */
     if (regla.servicio) return tieneServicio(regla.servicio, s);
@@ -767,6 +785,7 @@ const SGADD_AUTH = (function () {
     /* `soloAdmin` PRIMERO, igual que en `tieneModulo` y por lo mismo:
        `sinRestricciones` es `rol !== CLIENTE`, así que un visitante sin
        sesión pasaba por ahí y entraba a las tres internas. */
+    if (regla.soloLiga && contextoClub === 'club') return { ok: false, motivo: MOTIVOS.SOLO_ADMIN, plan: null };
     if (regla.soloAdmin) {
       return (rol(s) === ROLES.ADMIN)
         ? { ok: true, motivo: MOTIVOS.OK, plan: null }
@@ -1191,7 +1210,7 @@ const SGADD_AUTH = (function () {
     ESTADOS_SUSCRIPCION, ESTADOS_CON_ACCESO, tieneAcceso, suscripcionVencida,
     estadoSuscripcion, suscripcionDeCategoria, planDelClub, equipoDeCategoria, cicloDeCategoria,
     normalizarEmail, parsearSesion, establecerSesion, limpiarSesion, sesion, fijarPlanEfectivo,
-    esAdmin, rol, sinRestricciones, fijarServicios, tieneServicio,
+    esAdmin, rol, sinRestricciones, fijarServicios, tieneServicio, fijarContextoClub, contexto,
     BLOQUES, alcanzaPlan, tieneBloque, puedoVerBloque, bloquesVigentes,
     CAPAS_LABORATORIO, capasDeCategoria,
     puedeVerEquipo, tieneModulo, puedoAcceder, puedeScoutearCruce,

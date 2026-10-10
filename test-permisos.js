@@ -117,18 +117,26 @@ check('sin sesión NO entra, aunque el resto del panel esté abierto',
   A.puedoAcceder('fichajes', null).ok === false);
 check('un cliente Oro sin el servicio NO entra: no lo trae ningún plan',
   A.puedoAcceder('fichajes', { email: 'dt@oro.com', equipoAsignado: 'X', plan: 'ORO' }).ok === false);
-check('y el motivo es REQUIERE_SERVICIO, ni plan ni interna',
-  A.puedoAcceder('fichajes', PRO).motivo === A.MOTIVOS.REQUIERE_SERVICIO);
-check('con el servicio declarado, el cliente entra',
-  A.puedoAcceder('fichajes', Object.assign({ servicios: ['fichajes'] }, PRO)).ok === true);
+/* DESDE EL 2026-10-09 FICHAJES ES DE ADMINISTRACIÓN (pedido del club):
+   ningún cliente la ve, ni con el servicio del padrón. */
+check('y el motivo es SOLO_ADMIN: es una sección interna',
+  A.puedoAcceder('fichajes', PRO).motivo === A.MOTIVOS.SOLO_ADMIN);
+check('con el servicio declarado, el cliente TAMPOCO entra',
+  A.puedoAcceder('fichajes', Object.assign({ servicios: ['fichajes'] }, PRO)).ok === false);
 check('un servicio no le sirve a quien no tiene sesión',
   A.tieneServicio('fichajes', { servicios: ['fichajes'] }) === false);
 A.establecerSesion(PRO);
 A.fijarServicios(['fichajes']);
-check('fijado por el servidor, la sesión del módulo lo tiene', A.puedoAcceder('fichajes').ok === true);
-A.establecerSesion(BRONCE);
-check('y CAMBIAR de sesión lo vacía: no se hereda de la anterior', A.puedoAcceder('fichajes').ok === false);
+check('ni fijado por el servidor: el cliente no la ve', A.puedoAcceder('fichajes').ok === false);
 A.limpiarSesion();
+const ADM = { email: 'freytesgn@gmail.com' };
+check('el admin la ve en la vista de administración (sin club) y en un torneo',
+  (A.fijarContextoClub(null), A.puedoAcceder('fichajes', ADM).ok) && (A.fijarContextoClub('torneo'), A.puedoAcceder('fichajes', ADM).ok));
+check('parado en un club cliente, ni el admin la ve (ve lo que ve el club)',
+  (A.fijarContextoClub('club'), A.puedoAcceder('fichajes', ADM).ok === false && A.tieneModulo('fichajes', ADM) === false));
+check('el contexto de club no toca a las otras secciones del admin',
+  A.puedoAcceder('configuracion', ADM).ok === true && A.puedoAcceder('equipos', ADM).ok === true);
+A.fijarContextoClub(null);
 check('el menú no lo ofrece a quien no lo tiene (no es REQUIERE_PLAN)',
   /mostrar = p\.ok \|\| p\.motivo === SGADD_AUTH\.MOTIVOS\.REQUIERE_PLAN/.test(fs.readFileSync('./index.html', 'utf8')));
 check('el item del menú nace oculto, para que no parpadee',

@@ -569,7 +569,10 @@ const sinSheetId = (body) => !/SHEET_[A-Z]+_\d+/.test(JSON.stringify(body));
   check('el motor del mercado viaja al servidor (sincronizar-compartido)',
     /'sgadd-mercado\.js'/.test(fs.readFileSync('./server/bin/sincronizar-compartido.js', 'utf8'))
     && fs.existsSync('./server/lib/compartido/sgadd-mercado.js'));
-  check('la regla del panel es un SERVICIO, no un plan', AUTH.MODULOS.fichajes && AUTH.MODULOS.fichajes.servicio === 'fichajes');
+  check('la regla del panel es de administración y de liga (2026-10-09), no un plan',
+    AUTH.MODULOS.fichajes && AUTH.MODULOS.fichajes.soloAdmin === true && AUTH.MODULOS.fichajes.soloLiga === true && !AUTH.MODULOS.fichajes.plan);
+  check('un cliente no le pregunta al servidor de Fichajes',
+    /if \(SGADD_AUTH\.rol\(\) !== SGADD_AUTH\.ROLES\.ADMIN\) \{ SGADD_AUTH\.fijarServicios\(\[\]\); return Promise\.resolve\(false\); \}/.test(fs.readFileSync('./js/sgadd-fichajes.js', 'utf8')));
   const ui = fs.readFileSync('./js/sgadd-fichajes.js', 'utf8');
   check('el servicio lo fija la respuesta del servidor, no el token',
     /fichajesTorneos\(\)\.then[\s\S]{0,300}fijarServicios\(\[M\.SERVICIO\]\)/.test(ui)

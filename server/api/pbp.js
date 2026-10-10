@@ -38,6 +38,7 @@ const mutar = require('../lib/catalogo-mutar.js');
 const { verificarToken, tokenDeLaPeticion } = require('../lib/auth.js');
 const AUTH = require('../lib/compartido/sgadd-auth.js');
 const CORE = require('../lib/compartido/sgadd-core.js');
+const TORNEOS = require('../lib/torneos.js');
 
 const PREFIJO = 'sgadd:pbp:';
 const CAMPO_INDICE = '__indice';
@@ -81,7 +82,30 @@ async function resolver(peticion, deps) {
   if (!esAdmin && (cat.laboratorio || []).indexOf(CAPA) === -1) {
     return { error: error(403, 'SIN_CAPA', 'El análisis de play-by-play no está habilitado para esta categoría.') };
   }
-  return { clave: claveKV(clubId, slug), esAdmin: esAdmin, habilitada: (cat.laboratorio || []).indexOf(CAPA) !== -1 };
+  return { clave: claveDeDatos(cascada.catalogo, clubId, slug), esAdmin: esAdmin, habilitada: (cat.laboratorio || []).indexOf(CAPA) !== -1 };
+}
+
+/**
+ * DÓNDE ESTÁN LOS TIROS DE UNA CATEGORÍA (2026-10-09).
+ *
+ * La ingesta automática sube los paquetes UNA vez por zona de torneo
+ * (`sgadd:pbp:liga-nacional-2026-27:lnb-2026-27`). Un cliente enganchado a
+ * esa zona —Boca en la LNB: su categoría declara `torneo` y `zona`— lee
+ * ESOS datos: es el mismo libro y los mismos partidos, y subirlos otra vez
+ * por cliente sería duplicar el KV y que una copia quede vieja. Una
+ * categoría con su propio hash (Jujuy, que sube su análisis aparte) sigue
+ * leyendo el suyo: el del torneo es el respaldo, no lo pisa.
+ *
+ * El permiso NO cambia: se decide arriba con la categoría DEL CLIENTE
+ * (suscripción y capa habilitada en SU categoría). Esto solo dice de qué
+ * clave se lee.
+ */
+function claveDeDatos(cat, clubId, slug) {
+  const propia = claveKV(clubId, slug);
+  const k = cat && cat[clubId] && cat[clubId].categorias && cat[clubId].categorias[slug];
+  if (!k || !k.torneo || !k.zona || k.torneo === clubId) return propia;
+  const zona = TORNEOS.categoriaDeZona(cat[k.torneo], k.zona);
+  return zona ? { propia: propia, torneo: claveKV(k.torneo, zona.slug) } : propia;
 }
 
 async function manejarPbp(peticion, deps) {
@@ -95,13 +119,19 @@ async function manejarPbp(peticion, deps) {
   const campo = equipo ? campoDeEquipo(equipo) : CAMPO_INDICE;
   if (equipo && !campo) return error(400, 'EQUIPO_INVALIDO', 'Falta el nombre del equipo.');
 
-  let leido;
+  /* La clave propia primero; si no tiene el campo y la categoría está
+     enganchada a una zona de torneo, la del torneo (`claveDeDatos`). */
+  const claves = typeof ctx.clave === 'string' ? [ctx.clave] : [ctx.clave.propia, ctx.clave.torneo];
+  let valor = null;
   try {
-    leido = await almacen.leerCampos(ctx.clave, [campo]);
+    for (const clave of claves) {
+      const leido = await almacen.leerCampos(clave, [campo]);
+      valor = leido && leido[campo];
+      if (valor) break;
+    }
   } catch (e) {
     return error(503, 'KV_ILEGIBLE', 'No se pudo leer el análisis de play-by-play.');
   }
-  const valor = leido && leido[campo];
   if (!valor) {
     return error(404, 'SIN_DATOS', equipo
       ? 'Todavía no hay análisis de play-by-play para ' + equipo + '.'
@@ -115,4 +145,4 @@ async function manejarPbp(peticion, deps) {
   };
 }
 
-module.exports = { manejarPbp, claveKV, campoDeEquipo, CAMPO_INDICE, PREFIJO, CAPA };
+module.exports = { manejarPbp, claveKV, claveDeDatos, campoDeEquipo, CAMPO_INDICE, PREFIJO, CAPA };

@@ -63,6 +63,19 @@ const CAT = {
     nombre: 'Deportivo La Plata', liga: 'la-plata', equipoPropio: 'DEPORTIVO LA PLATA', plan: 'ORO',
     categorias: { 'deportivo-primera': { label: 'Primera 2026', sheetId: 'SHEETDEPORTIVO0000000000' } },
   },
+  /* Un TORNEO con su zona y un CLIENTE enganchado a esa zona (Boca en la
+     LNB, 2026-10-09): el cliente lee los tiros que la ingesta sube al torneo. */
+  'liga-x': {
+    nombre: 'Liga X', tipo: 'torneo', liga: 'liga-x',
+    categorias: { 'liga-x-unica': { label: 'Única', sheetId: 'SHEETLIGAX00000000000000', zona: 'unica', laboratorio: ['pbp'] } },
+  },
+  boca: {
+    nombre: 'Boca', liga: 'liga-x', equipoPropio: 'BOCA', plan: 'PLATA',
+    categorias: {
+      'boca-lnb': { label: 'LNB', sheetId: 'SHEETLIGAX00000000000000', torneo: 'liga-x', zona: 'unica', laboratorio: ['pbp'] },
+      'boca-sin': { label: 'LNB sin capa', sheetId: 'SHEETLIGAX00000000000000', torneo: 'liga-x', zona: 'unica' },
+    },
+  },
   pausado: {
     nombre: 'Pausado', liga: 'liga-argentina', equipoPropio: 'PAUSADO', plan: 'ORO', estado: 'pausado',
     categorias: { 'pausado-primera': { label: 'Primera', sheetId: 'SHEETPAUSADO000000000000', laboratorio: ['pbp'] } },
@@ -189,6 +202,26 @@ function paquete(equipo) {
   check('Upstash que no contesta: 503, nunca un «no hay datos»', x.status === 503 && x.body.codigo === 'KV_ILEGIBLE');
   check('el endpoint pide UN campo (HMGET) y no escribe nunca', ops.every(o => !/^(SET|DEL|HSET)/.test(o)) && ops.some(o => o.startsWith('HMGET ')));
   check('está ruteado en la app', /app\.get\('\/api\/v1\/pbp\/:clubId\/:categoria'/.test(fs.readFileSync('./server/app.js', 'utf8')));
+
+  /* EL CLIENTE ENGANCHADO A UNA ZONA DE TORNEO lee los tiros del torneo (2026-10-09). */
+  const tokBoca = auth.firmarToken({ email: 'dt@boca.com', club: 'boca', equipoAsignado: 'BOCA', plan: 'PLATA' }, { expiraEn: '1h' });
+  hashes[PBP.claveKV('liga-x', 'liga-x-unica')] = { [PBP.campoDeEquipo('BOCA')]: JSON.stringify(paquete('BOCA')),
+    [PBP.CAMPO_INDICE]: JSON.stringify({ competencia: 'Liga X', equipos: [{ equipo: 'BOCA' }] }) };
+  x = await get(tokBoca, 'boca', 'boca-lnb', { equipo: 'BOCA' });
+  check('cliente enganchado a una zona: lee el paquete que la ingesta subió AL TORNEO', x.status === 200 && x.body.paquete.equipo === 'BOCA', x.body);
+  x = await get(tokBoca, 'boca', 'boca-lnb');
+  check('  y el índice', x.status === 200 && x.body.indice.competencia === 'Liga X');
+  hashes[PBP.claveKV('boca', 'boca-lnb')] = { [PBP.campoDeEquipo('BOCA')]: JSON.stringify(Object.assign(paquete('BOCA'), { propio: true })) };
+  x = await get(tokBoca, 'boca', 'boca-lnb', { equipo: 'BOCA' });
+  check('si la categoría tiene SU hash, manda el suyo: el del torneo es el respaldo', x.status === 200 && x.body.paquete.propio === true);
+  delete hashes[PBP.claveKV('boca', 'boca-lnb')];
+  x = await get(tokBoca, 'boca', 'boca-sin', { equipo: 'BOCA' });
+  check('el permiso no cambia: sin la capa en SU categoría, 403 SIN_CAPA', x.status === 403 && x.body.codigo === 'SIN_CAPA');
+  catalogo.limpiarCache();
+  const cascadaX = await catalogo.cargar();
+  check('claveDeDatos: una categoría sin enganche lee la suya; una enganchada, la suya y la del torneo',
+    PBP.claveDeDatos(cascadaX.catalogo, 'jujuy', 'jujuy-primera') === PBP.claveKV('jujuy', 'jujuy-primera')
+      && JSON.stringify(PBP.claveDeDatos(cascadaX.catalogo, 'boca', 'boca-lnb')) === JSON.stringify({ propia: PBP.claveKV('boca', 'boca-lnb'), torneo: PBP.claveKV('liga-x', 'liga-x-unica') }));
 
   catalogo.limpiarCache();
   const eqJ = await H.manejarEquipos(pedido(tokJujuy, { clubId: 'jujuy' }, { categoria: 'jujuy-primera' }));

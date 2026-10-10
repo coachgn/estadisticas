@@ -80,6 +80,10 @@ const SGADD_FICHAJES = (function () {
   function iniciar() {
     if (ST.iniciado) return Promise.resolve(false);
     ST.iniciado = true;
+    /* Desde el 2026-10-09 Fichajes es de administración: un cliente no
+       pregunta al servidor (sería un 403 por sesión, y un menú que no se
+       le va a mostrar). */
+    if (SGADD_AUTH.rol() !== SGADD_AUTH.ROLES.ADMIN) { SGADD_AUTH.fijarServicios([]); return Promise.resolve(false); }
     return cargarTorneos().then(() => {
       try { if (typeof aplicarPermisosNav === 'function') aplicarPermisosNav(); } catch (e) { /* sin menú todavía */ }
       /* Entrando DIRECTO por `#fichajes`, el guard del router corrió antes
