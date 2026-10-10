@@ -642,6 +642,13 @@ function equipo(cat, d) {
  * vuelve a ser exactamente la de antes.
  *
  * `capas` acepta un array o un texto separado por comas.
+ *
+ * LA CATEGORÍA ENGANCHADA A UNA ZONA DE TORNEO (punto 101) hereda las capas
+ * de la zona mientras no declare las suyas (`TORNEOS.capasEfectivas`). Ahí
+ * borrar el campo no apaga nada —vuelve a heredar—, así que vacío se guarda
+ * como LISTA VACÍA: «apagada a propósito para este cliente». Para devolverla
+ * a heredar va `heredar`, que en una categoría sin enganche es lo mismo que
+ * vacío.
  */
 function laboratorio(cat, d) {
   const v = d || {};
@@ -650,6 +657,10 @@ function laboratorio(cat, d) {
   if (!v.categoria) return malo('Las capas de laboratorio se habilitan por categoría: falta la categoría.');
   const k = categoriaDe(nuevo[v.club], v);
   if (!k) return malo('Ese club no tiene la categoría «' + v.categoria + '».');
+  if (!Array.isArray(v.capas) && String(v.capas == null ? '' : v.capas).trim().toLowerCase() === 'heredar') {
+    delete k.laboratorio;
+    return { ok: true, catalogo: nuevo, categoria: v.categoria };
+  }
   const crudo = Array.isArray(v.capas) ? v.capas : String(v.capas == null ? '' : v.capas).split(',');
   const capas = [];
   for (let i = 0; i < crudo.length; i++) {
@@ -660,7 +671,7 @@ function laboratorio(cat, d) {
     }
     if (capas.indexOf(id) === -1) capas.push(id);
   }
-  if (capas.length) k.laboratorio = capas;
+  if (capas.length || TORNEOS.enganchada(nuevo[v.club], k)) k.laboratorio = capas;
   else delete k.laboratorio;
   return { ok: true, catalogo: nuevo, categoria: v.categoria };
 }

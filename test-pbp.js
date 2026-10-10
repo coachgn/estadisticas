@@ -73,7 +73,10 @@ const CAT = {
     nombre: 'Boca', liga: 'liga-x', equipoPropio: 'BOCA', plan: 'PLATA',
     categorias: {
       'boca-lnb': { label: 'LNB', sheetId: 'SHEETLIGAX00000000000000', torneo: 'liga-x', zona: 'unica', laboratorio: ['pbp'] },
-      'boca-sin': { label: 'LNB sin capa', sheetId: 'SHEETLIGAX00000000000000', torneo: 'liga-x', zona: 'unica' },
+      /* Sin el campo: HEREDA la capa de la zona (punto 101). */
+      'boca-sin': { label: 'LNB sin capa propia', sheetId: 'SHEETLIGAX00000000000000', torneo: 'liga-x', zona: 'unica' },
+      /* Lista vacía: apagada a propósito para este cliente. */
+      'boca-off': { label: 'LNB apagada', sheetId: 'SHEETLIGAX00000000000000', torneo: 'liga-x', zona: 'unica', laboratorio: [] },
     },
   },
   pausado: {
@@ -215,8 +218,59 @@ function paquete(equipo) {
   x = await get(tokBoca, 'boca', 'boca-lnb', { equipo: 'BOCA' });
   check('si la categoría tiene SU hash, manda el suyo: el del torneo es el respaldo', x.status === 200 && x.body.paquete.propio === true);
   delete hashes[PBP.claveKV('boca', 'boca-lnb')];
+  /* LA HERENCIA (punto 101): la categoría enganchada que no declara capas
+     recibe las de su zona, sin `catalogo.js laboratorio`. */
   x = await get(tokBoca, 'boca', 'boca-sin', { equipo: 'BOCA' });
-  check('el permiso no cambia: sin la capa en SU categoría, 403 SIN_CAPA', x.status === 403 && x.body.codigo === 'SIN_CAPA');
+  check('enganchada y sin capas propias: HEREDA la de la zona y lee el paquete', x.status === 200 && x.body.paquete.equipo === 'BOCA' && x.body.capaHabilitada === true, x.body);
+  x = await get(tokBoca, 'boca', 'boca-off', { equipo: 'BOCA' });
+  check('con la lista vacía está apagada a propósito: 403 SIN_CAPA aunque la zona la tenga', x.status === 403 && x.body.codigo === 'SIN_CAPA');
+  check('resolver dice las que rigen: heredada, apagada y propia',
+    JSON.stringify(catalogo.resolver(CAT, 'boca', 'boca-sin').laboratorio) === '["pbp"]'
+    && JSON.stringify(catalogo.resolver(CAT, 'boca', 'boca-off').laboratorio) === '[]'
+    && JSON.stringify(catalogo.resolver(CAT, 'boca', 'boca-lnb').laboratorio) === '["pbp"]');
+  const pubBoca = catalogo.publico(CAT, { club: 'boca', origen: 'kv' }).find(c => c.id === 'boca').categorias;
+  const deBoca = (slug) => pubBoca.find(k => k.slug === slug);
+  check('publico: el cliente recibe la capa heredada y de dónde sale',
+    JSON.stringify(deBoca('boca-sin').laboratorio) === '["pbp"]' && deBoca('boca-sin').laboratorioDe === 'torneo'
+    && deBoca('boca-lnb').laboratorioDe === 'categoria' && JSON.stringify(deBoca('boca-off').laboratorio) === '[]', pubBoca);
+
+  /* EL ALTA DE UN CLIENTE NUEVO, de punta a punta: se da de alta con el
+     libro de la zona y lee los tiros sin un solo comando más. */
+  const altaRiver = mutar.aplicar(CAT, 'alta', { club: 'river', nombre: 'River', liga: 'liga-x', equipoPropio: 'RIVER',
+    categoria: 'river-lnb', label: 'LNB', libroDe: 'liga-x/liga-x-unica', plan: 'PLATA' }, catalogo.validar);
+  const kRiver = altaRiver.ok ? altaRiver.catalogo.river.categorias['river-lnb'] : {};
+  check('alta con el libro de una zona: queda enganchada y NO se le copia la capa', altaRiver.ok
+    && kRiver.torneo === 'liga-x' && kRiver.zona === 'unica' && !('laboratorio' in kRiver), altaRiver.motivo || kRiver);
+  const tokRiver = auth.firmarToken({ email: 'dt@river.com', club: 'river', equipoAsignado: 'RIVER', plan: 'PLATA' }, { expiraEn: '1h' });
+  const conCatalogo = (c) => { store[catalogo.CLAVE_KV] = JSON.stringify(c); catalogo.limpiarCache(); };
+  conCatalogo(altaRiver.catalogo);
+  x = await PBP.manejarPbp(pedido(tokRiver, { clubId: 'river', categoria: 'river-lnb' }, { equipo: 'BOCA' }));
+  check('  y el cliente recién dado de alta ya lee los tiros de su zona', x.status === 200 && x.body.paquete.equipo === 'BOCA' && x.body.capaHabilitada === true, x.body);
+  catalogo.limpiarCache();
+  const eqR = await H.manejarEquipos(pedido(tokRiver, { clubId: 'river' }, { categoria: 'river-lnb' }));
+  check('  y /equipos le declara la capa en `alcance.capas`: el panel le ofrece las pestañas',
+    eqR.status === 200 && JSON.stringify(eqR.body.alcance.capas) === '["pbp"]', eqR.body.alcance || eqR.body);
+
+  /* La zona manda: apagarla ahí les llega a todos los que heredan, y no a
+     quien declaró la suya. */
+  const zonaOff = mutar.aplicar(altaRiver.catalogo, 'cambiar_laboratorio', { club: 'liga-x', categoria: 'liga-x-unica', capas: '' }, catalogo.validar);
+  conCatalogo(zonaOff.catalogo);
+  x = await PBP.manejarPbp(pedido(tokRiver, { clubId: 'river', categoria: 'river-lnb' }, { equipo: 'BOCA' }));
+  check('apagar la capa en la ZONA se la saca a los que heredan', zonaOff.ok && x.status === 403 && x.body.codigo === 'SIN_CAPA');
+  catalogo.limpiarCache();
+  x = await PBP.manejarPbp(pedido(tokBoca, { clubId: 'boca', categoria: 'boca-lnb' }, { equipo: 'BOCA' }));
+  check('  y no a la categoría que declaró la suya', x.status === 200);
+
+  /* Apagarla para UN cliente enganchado, y devolverlo a heredar. */
+  const riverOff = mutar.aplicar(altaRiver.catalogo, 'cambiar_laboratorio', { club: 'river', categoria: 'river-lnb', capas: '' }, catalogo.validar);
+  check('vacío en una enganchada guarda la lista vacía: borrar el campo la haría heredar de nuevo',
+    riverOff.ok && JSON.stringify(riverOff.catalogo.river.categorias['river-lnb'].laboratorio) === '[]'
+    && catalogo.resolver(riverOff.catalogo, 'river', 'river-lnb').laboratorio.length === 0);
+  const riverVuelve = mutar.aplicar(riverOff.catalogo, 'cambiar_laboratorio', { club: 'river', categoria: 'river-lnb', capas: 'heredar' }, catalogo.validar);
+  check('`heredar` borra el campo y vuelve a regir la zona',
+    riverVuelve.ok && !('laboratorio' in riverVuelve.catalogo.river.categorias['river-lnb'])
+    && JSON.stringify(catalogo.resolver(riverVuelve.catalogo, 'river', 'river-lnb').laboratorio) === '["pbp"]');
+  sembrar();
   catalogo.limpiarCache();
   const cascadaX = await catalogo.cargar();
   check('claveDeDatos: una categoría sin enganche lee la suya; una enganchada, la suya y la del torneo',

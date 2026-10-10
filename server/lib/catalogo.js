@@ -283,9 +283,11 @@ function resolver(cat, clubId, slugCategoria) {
     slug: catId,
     label: k.label,
     sheetId: k.sheetId || '',
-    /* Las capas de laboratorio de ESTA categoría (punto 62). No heredan del
-       club: una prueba se abre de a una categoría. */
-    laboratorio: AUTH.capasDeCategoria(club, catId),
+    /* Las capas de laboratorio que RIGEN en esta categoría (punto 62). No
+       heredan del club —una prueba se abre de a una categoría—, pero una
+       categoría enganchada a una zona de torneo hereda las de la zona
+       (punto 101). Es lo que miran `/api/v1/pbp` y `alcance.capas`. */
+    laboratorio: TORNEOS.capasEfectivas(cat, club, catId).capas,
   };
 }
 
@@ -325,7 +327,7 @@ function huellaLibro(sheetId) {
  * es lo que el Panel Master pinta y lo que `planEfectivo` impone. Con el
  * respaldo queda `null` —ahí manda el del link—.
  */
-function suscripcionPublica(club, slug, origen) {
+function suscripcionPublica(club, slug, origen, cat) {
   const s = AUTH.suscripcionDeCategoria(club, slug);
   const eq = AUTH.equipoDeCategoria(club, slug);
   return {
@@ -348,7 +350,11 @@ function suscripcionPublica(club, slug, origen) {
     /* LAS CAPAS DE LABORATORIO (punto 62): viajan con el resto de la
        suscripción, o sea solo para el club del token y el admin. Qué se
        prueba con qué cliente no es algo que tengan que ver los demás. */
-    laboratorio: AUTH.capasDeCategoria(club, slug),
+    /* Las que RIGEN: las de la zona si la categoría está enganchada a un
+       torneo y no declara las suyas (punto 101). `laboratorioDe` le dice
+       al Panel Master de dónde salen. */
+    laboratorio: TORNEOS.capasEfectivas(cat, club, slug).capas,
+    laboratorioDe: TORNEOS.capasEfectivas(cat, club, slug).de,
     /* EL TORNEO Y LA ZONA a los que está enganchada la categoría (punto
        68). Viajan al cliente porque son lo que le permite leer el FIXTURE
        de su competencia: `torneos/<id>.json`, un archivo público del repo.
@@ -461,7 +467,7 @@ function publico(cat, opciones) {
       torneo: c[id].categorias[s].torneo || null,
     }, c[id].tipo === 'torneo' ? TORNEOS.publicoDeZona(c[id].categorias[s])
        : { zona: c[id].categorias[s].zona || null },
-    suscripcionPublica(c[id], s, origen), (() => {
+    suscripcionPublica(c[id], s, origen, c), (() => {
       /* El ciclo ORO de ESTA categoría, crudo: la posición depende de los
          partidos jugados y la calcula quien tenga el índice delante. */
       const ci = AUTH.cicloDeCategoria(c[id], s);
@@ -473,12 +479,12 @@ function publico(cat, opciones) {
       torneoDecl: declaracionDeTorneo(c, c[id].categorias[s].torneo || id,
         admin ? null : (c[id].categorias[s].zona || null)),
     } : {},
-    (!admin && propio === id) ? Object.assign(suscripcionPublica(c[id], s, origen), {
+    (!admin && propio === id) ? Object.assign(suscripcionPublica(c[id], s, origen, c), {
       /* El cliente no puede abrir una categoría pausada: el servidor le
          contesta 403. El selector la muestra deshabilitada y con el motivo,
          en vez de dejarlo entrar a una vista vacía. El admin pasa igual
          (`guardSuscripcion`), por eso a él no se le marca. */
-      bloqueada: !AUTH.tieneAcceso(suscripcionPublica(c[id], s, origen).estadoEfectivo),
+      bloqueada: !AUTH.tieneAcceso(suscripcionPublica(c[id], s, origen, c).estadoEfectivo),
     }) : {})),
   }, (admin && c[id].tipo === 'torneo') ? {
     temporada: c[id].temporada || null,

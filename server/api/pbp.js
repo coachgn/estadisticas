@@ -13,7 +13,10 @@
    ES UNA CAPA DE LABORATORIO, Y EL GUARD VIVE ACÁ
 
    Un cliente la ve solo si su categoría la tiene habilitada
-   (`categorias[slug].laboratorio`, ver `AUTH.CAPAS_LABORATORIO`). La
+   (`categorias[slug].laboratorio`, ver `AUTH.CAPAS_LABORATORIO`), o si
+   está enganchada a una zona de torneo que la tiene y no la apagó en la
+   suya (`TORNEOS.capasEfectivas`, punto 101 — ya viene resuelto en
+   `catalogo.resolver`). La
    pestaña del panel es la vidriera: quien decide es este archivo. El
    ADMIN pasa aunque la capa no esté habilitada, para poder revisar los
    datos ANTES de mostrárselos a nadie.
@@ -96,9 +99,9 @@ async function resolver(peticion, deps) {
  * categoría con su propio hash (Jujuy, que sube su análisis aparte) sigue
  * leyendo el suyo: el del torneo es el respaldo, no lo pisa.
  *
- * El permiso NO cambia: se decide arriba con la categoría DEL CLIENTE
- * (suscripción y capa habilitada en SU categoría). Esto solo dice de qué
- * clave se lee.
+ * El permiso se decide arriba con la categoría DEL CLIENTE: su suscripción
+ * y las capas que rigen en ella, que desde el punto 101 son las de la zona
+ * si no declara las suyas. Esto solo dice de qué clave se lee.
  */
 function claveDeDatos(cat, clubId, slug) {
   const propia = claveKV(clubId, slug);

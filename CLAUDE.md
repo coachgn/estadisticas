@@ -12807,3 +12807,31 @@ regla comercial y no se tocó.
   es de admin.
 - El padrón y la API del punto 87 quedan como estaban (el servidor sigue
   aceptando a un mail del padrón): esto es el gate del panel.
+
+## 101. LA CAPA DE LABORATORIO SE HEREDA DE LA ZONA DEL TORNEO (2026-10-10)
+
+Cada cliente enganchado a un torneo pedía un `catalogo.js laboratorio … --capas pbp`
+a mano (Boca, punto 100). Regla nueva: **una categoría enganchada a una zona
+de torneo hereda las capas de laboratorio de esa zona**. Solo servidor: el
+front y `?v=` no cambian.
+
+- **Se deriva al leer, no se copia al enganchar** (`TORNEOS.capasEfectivas`,
+  `server/lib/torneos.js`). Lo usan `catalogo.resolver` —de ahí salen el guard
+  de `/api/v1/pbp` y `alcance.capas`— y `catalogo.publico`, que suma
+  `laboratorioDe: 'torneo' | 'categoria'`. Vale para los que ya estaban
+  enganchados, para `vincular`, para el alta con `libroDe` de una zona o con
+  `torneo` + `zona`, y habilitar o apagar la capa en la zona les llega a todos.
+- **Lo propio manda.** Si la categoría declara `laboratorio`, rige eso. La
+  LISTA VACÍA es «apagada a propósito para este cliente»: en una enganchada,
+  `--capas ""` guarda `[]` (borrar el campo la haría heredar de nuevo) y
+  `--capas heredar` borra el campo. En una categoría sin enganche y en la zona
+  misma, vacío sigue borrando el campo, como antes.
+- **No se hereda del club** (punto 62, sin cambios) ni entre zonas: la Norte
+  no le da nada a un cliente de la Sur.
+- **La suscripción sigue cortando**: pausada o vencida da 403 antes de mirar
+  la capa. El plan no interviene: es una capa de laboratorio, no un módulo.
+- La nota del punto 94 («un club enganchado necesita su propia capa») y el
+  comando del punto 100 quedan superados. Los datos ya se leían de la zona
+  desde el punto 100 (`claveDeDatos`).
+- Tests: `test-pbp.js` (alta de un cliente nuevo de punta a punta contra el
+  handler) y `test-torneos.js` (LAB Norte/Sur, antes y después del enganche).

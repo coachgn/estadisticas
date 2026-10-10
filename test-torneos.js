@@ -193,6 +193,29 @@ seccion('3 · vincular');
   const aTorneo = ap(cat, 'vincular_torneo', Object.assign({}, v, { club: 'zona-c-la-plata-2026' }));
   check('un torneo no se engancha a otro torneo', !aTorneo.ok);
 
+  /* LAS CAPAS DE LABORATORIO SE HEREDAN DE LA ZONA (punto 101): enganchar
+     alcanza, en la LNB y en cada conferencia de la LAB, sin correr
+     `catalogo.js laboratorio` por cada cliente. Vale igual si la capa se
+     habilita en la zona ANTES o DESPUÉS del enganche. */
+  const rige = (c, club, slug) => JSON.stringify(catalogo.resolver(c, club, slug).laboratorio);
+  check('sin capa en la zona, el enganchado no hereda nada', rige(r.catalogo, 'jujuy', 'jujuy-lab-2026-27') === '[]');
+  const norteLab = ap(r.catalogo, 'cambiar_laboratorio', { club: 'liga-argentina-2026-27', categoria: 'lab-2026-27-norte', capas: 'pbp' });
+  check('la capa se habilita en la Norte y el cliente YA enganchado la recibe',
+    norteLab.ok && rige(norteLab.catalogo, 'jujuy', 'jujuy-lab-2026-27') === '["pbp"]', norteLab.motivo);
+  check('sin escribirle nada a su categoría', norteLab.ok
+    && JSON.stringify(norteLab.catalogo.jujuy) === JSON.stringify(r.catalogo.jujuy));
+  check('la otra categoría de Jujuy, sin enganche, no hereda', norteLab.ok && rige(norteLab.catalogo, 'jujuy', 'jujuy-primera') === '[]');
+  const conSur = ap(norteLab.catalogo, 'alta', { club: 'river', nombre: 'River', liga: 'liga-argentina', equipoPropio: 'RIVER',
+    categoria: 'river-lab', label: 'Conferencia Sur', sheetId: LIBRO_B, torneo: 'liga-argentina-2026-27', zona: 'sur' });
+  check('un cliente nuevo de la Sur no hereda la capa de la Norte', conSur.ok && rige(conSur.catalogo, 'river', 'river-lab') === '[]', conSur.motivo);
+  const nuevoNorte = ap(norteLab.catalogo, 'vincular_torneo', { club: 'deportivo', categoria: 'deportivo-lab', torneo: 'liga-argentina-2026-27', zona: 'norte', equipo: 'AMANCAY (LR)' });
+  check('un cliente que se engancha DESPUÉS a la Norte nace con la capa', nuevoNorte.ok
+    && rige(nuevoNorte.catalogo, 'deportivo', 'deportivo-lab') === '["pbp"]'
+    && !('laboratorio' in nuevoNorte.catalogo.deportivo.categorias['deportivo-lab']), nuevoNorte.motivo);
+  check('capasEfectivas dice de dónde salen', nuevoNorte.ok
+    && TORNEOS.capasEfectivas(nuevoNorte.catalogo, nuevoNorte.catalogo.deportivo, 'deportivo-lab').de === 'torneo'
+    && TORNEOS.capasEfectivas(nuevoNorte.catalogo, nuevoNorte.catalogo['liga-argentina-2026-27'], 'lab-2026-27-norte').de === 'categoria');
+
   cat = r.catalogo;
 }
 

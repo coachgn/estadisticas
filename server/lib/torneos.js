@@ -31,6 +31,7 @@
 'use strict';
 
 const CORE = require('./compartido/sgadd-core.js');
+const AUTH = require('./compartido/sgadd-auth.js');
 /* El parser de la declaración de fases: el MISMO que usa el panel, así el
    editor de cruces del Panel Master no puede guardar algo que el panel
    después no entienda (punto 77). */
@@ -165,6 +166,39 @@ function categoriaDeZona(torneo, zonaId) {
   const cats = (torneo && torneo.categorias) || {};
   const s = Object.keys(cats).find(x => cats[x] && cats[x].zona === zonaId);
   return s ? { slug: s, k: cats[s] } : null;
+}
+
+/** ¿Es la categoría de un CLIENTE enganchada a la zona de un torneo? */
+function enganchada(club, k) {
+  return !!k && !!k.torneo && !!k.zona && !esTorneo(club);
+}
+
+/**
+ * LAS CAPAS DE LABORATORIO QUE RIGEN en una categoría (punto 101).
+ *
+ * Una categoría enganchada a una zona HEREDA las capas de esa zona: los
+ * tiros de la LNB los sube la ingesta una vez, al torneo, y un cliente que
+ * se suma tiene que verlos sin que nadie corra `catalogo.js laboratorio`
+ * por él. Se DERIVA al leer en vez de copiarse al enganchar —igual que el
+ * estado efectivo de una suscripción—: así vale para los que ya estaban
+ * enganchados, y habilitar o apagar la capa en la zona les llega a todos
+ * sin una copia que quede vieja.
+ *
+ * LO PROPIO MANDA: si la categoría declara `laboratorio` —aunque sea la
+ * lista vacía, que es «apagada a propósito»— rige eso y no se mira la
+ * zona. Sin el campo, hereda. Una categoría sin enganche, o la zona misma,
+ * se lee como siempre.
+ *
+ * `club` es la entrada del catálogo, no su id. Devuelve también de dónde
+ * salen, para que la CLI y el Panel Master lo digan.
+ */
+function capasEfectivas(cat, club, slug) {
+  const k = club && club.categorias && club.categorias[slug];
+  const propias = { capas: AUTH.capasDeCategoria(club, slug), de: 'categoria' };
+  if (!enganchada(club, k) || Array.isArray(k.laboratorio)) return propias;
+  const t = (cat || {})[k.torneo];
+  const zc = esTorneo(t) ? categoriaDeZona(t, k.zona) : null;
+  return zc ? { capas: AUTH.capasDeCategoria(t, zc.slug), de: 'torneo' } : propias;
 }
 
 /**
@@ -527,6 +561,6 @@ function intencionDesdeArchivo(doc, libros, librosDe) {
 
 module.exports = {
   TIPO, ACCIONES_DE_TORNEO, ROLES_LIBRO, esTorneo, normalizarEquipos, duplicados, competenciaDesdeFormato,
-  vinculadas, categoriaDeZona, torneo, vincular, buscarEquipo, publicoDeZona, zonasDelTorneo,
+  vinculadas, categoriaDeZona, enganchada, capasEfectivas, torneo, vincular, buscarEquipo, publicoDeZona, zonasDelTorneo,
   intencionDesdeArchivo, zonasRegulares, participanDeTorneo,
 };

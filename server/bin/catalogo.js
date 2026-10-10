@@ -12,7 +12,7 @@
      node server/bin/catalogo.js estado --club X [--categoria Y] --estado pausado
      node server/bin/catalogo.js vence  --club X [--categoria Y] --vence 2026-10-31
      node server/bin/catalogo.js equipo --club X [--categoria Y] --equipo "RECONQUISTA"
-     node server/bin/catalogo.js laboratorio --club X --categoria Y --capas pbp   (vacío: --capas "")
+     node server/bin/catalogo.js laboratorio --club X --categoria Y --capas pbp   (vacío: --capas "" · --capas heredar)
      node server/bin/catalogo.js torneo   --archivo torneos/<id>.json [--libro zona=<id>] [--probar]
      node server/bin/catalogo.js vincular --club X --categoria Y --torneo T --zona Z [--equipo E] [--probar]
      node server/bin/catalogo.js exportar
@@ -36,6 +36,14 @@ const kv = require('../lib/kv.js');
 const catalogo = require('../lib/catalogo.js');
 const mutar = require('../lib/catalogo-mutar.js');
 const AUTH = require('../lib/compartido/sgadd-auth.js');
+const TORNEOS = require('../lib/torneos.js');
+
+/* Las capas de laboratorio que RIGEN en una categoría, con de dónde salen:
+   una enganchada a una zona de torneo hereda las de la zona (punto 101). */
+function textoCapas(cat, club, slug) {
+  const e = TORNEOS.capasEfectivas(cat, club, slug);
+  return e.capas.length ? ' · laboratorio ' + e.capas.join(',') + (e.de === 'torneo' ? ' (torneo)' : '') : '';
+}
 
 function args(argv) {
   const o = { _: [] };
@@ -81,6 +89,10 @@ CLI del catálogo · da de alta clubes sin redeplegar
     --club       <slug>       obligatorio
     --categoria  <slug>       obligatorio: no se hereda del club
     --capas      <lista>      pbp · vacío ("") = apaga todas
+                              Una categoría enganchada a una zona de torneo
+                              HEREDA las de la zona sin correr esto: acá solo
+                              se la apaga ("") o se la devuelve a heredar
+                              (--capas heredar)
   estado                    pausa, reactiva o pone en prueba
     --club       <slug>       obligatorio
     --categoria  <slug>       si se omite, cambia el del CLUB (corta todas)
@@ -245,7 +257,7 @@ function exigirKV() {
           ' · ' + sus.estado + (sus.estadoDe === 'club' ? ' (club)' : '') +
           (sus.vence ? ' · vence ' + sus.vence + (sus.venceDe === 'club' ? ' (club)' : '') : '') +
           (k.equipoPropio ? ' · equipo ' + k.equipoPropio : '') +
-          (AUTH.capasDeCategoria(c, s).length ? ' · laboratorio ' + AUTH.capasDeCategoria(c, s).join(',') : ''));
+          textoCapas(cat, c, s));
       });
       console.log('');
     });
@@ -317,7 +329,7 @@ function exigirKV() {
         + ' · ' + sus.estado + (sus.estadoDe === 'club' ? ' (club)' : '')
         + (sus.vence ? ' · vence ' + sus.vence + (sus.venceDe === 'club' ? ' (club)' : '') : '')
         + ' · equipo ' + (eq.equipo || '—') + (eq.equipoDe === 'club' ? ' (club)' : '')
-        + (AUTH.capasDeCategoria(c2, s).length ? ' · laboratorio ' + AUTH.capasDeCategoria(c2, s).join(',') : ''));
+        + textoCapas(r.catalogo, c2, s));
     });
     console.log('');
     console.log('  Ya está vigente: el cliente lo ve en su próxima carga. Sus estados de jugador no se tocan.');
@@ -328,7 +340,6 @@ function exigirKV() {
      Por `mutar.aplicar`, como el Panel Master: los mismos guards. */
   if (cmd === 'torneo' || cmd === 'vincular') {
     exigirKV();
-    const TORNEOS = require('../lib/torneos.js');
     let accion, datos;
     if (cmd === 'torneo') {
       if (!o.archivo || o.archivo === true) { console.error('  Falta --archivo torneos/<id>.json'); process.exit(1); }
@@ -364,6 +375,10 @@ function exigirKV() {
     const eng = TORNEOS.vinculadas(r.catalogo, id);
     console.log('    clientes enganchados: ' + (eng.length ? eng.map(x => x.club + '/' + x.slug + ' (' + r.catalogo[x.club].categorias[x.slug].zona + ')').join(', ') : 'ninguno'));
     if (r.equipo) console.log('    equipo en la zona: ' + r.equipo.nombre + (r.equipo.id ? ' · id ' + r.equipo.id : ''));
+    if (cmd === 'vincular') {
+      const cv = String(datos.club || '').trim().toLowerCase(), sv = String(datos.categoria || '').trim().toLowerCase();
+      console.log('    capas de laboratorio de ' + cv + '/' + sv + ':' + (textoCapas(r.catalogo, r.catalogo[cv], sv) || ' ninguna').replace(' · laboratorio', ''));
+    }
     if (r.propagado && r.propagado.length) console.log('    libro propagado a: ' + r.propagado.map(x => x.club + '/' + x.categoria).join(', '));
     console.log('');
     if (o.probar) { console.log('  --probar: NO se escribió nada.'); return; }
