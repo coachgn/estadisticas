@@ -510,6 +510,9 @@ const MIN_EQUIPOS = 6;
 const MIN_QUINTETO = 15;          // minutos juntos, el corte del panel (punto 62)
 const MIN_CLUTCH = 5;             // partidos con cierre ajustado
 const CICLO = 4;
+/* Un caso que se le muestra a un entrenador tiene que ser un tirador de rol
+   activo: con 1 triple por partido, 1,80 por intento es una noche. */
+const PISO_TRIPLES_CASO = 3.0;
 const pct = (n, d) => (d ? Math.round(100 * n / d) : null);
 const sin = (id, motivo) => ({ id, ok: false, avisos: [motivo] });
 
@@ -581,8 +584,8 @@ function cr01(idx) {
 /* ---------- CR-02 · el tirador rentable de bajo volumen --------------- */
 function cr02(idx) {
   const { SCOUT } = motores();
-  const ps = perfilesDeLiga(idx).filter((x) => esNum(x.p.t3i) && x.p.t3i >= SCOUT.VOL_MIN_TRIPLE && esNum(x.p.pptTriple));
-  if (ps.length < 10) return sin('CR-02', 'Menos de 10 calificados con volumen de triple.');
+  const ps = perfilesDeLiga(idx).filter((x) => esNum(x.p.t3i) && x.p.t3i >= Math.max(PISO_TRIPLES_CASO, SCOUT.VOL_MIN_TRIPLE) && esNum(x.p.pptTriple));
+  if (ps.length < 10) return sin('CR-02', 'Menos de 10 calificados con ' + PISO_TRIPLES_CASO + '+ triples intentados por partido.');
   const medPpt = NUCLEO.mediana(ps.map((x) => x.p.pptTriple));
   const medPts = NUCLEO.mediana(perfilesDeLiga(idx).map((x) => x.p.pts).filter(esNum));
   const rentables = ps.filter((x) => x.s.amenazaExteriorPrimaria);
@@ -595,7 +598,7 @@ function cr02(idx) {
     id: 'CR-02', ok: true, formato: 'Carrusel 3:4', titulo: 'Anota poco y te cuesta caro',
     dato: escondidos.length + ' de los ' + rentables.length + ' tiradores rentables de la liga anotan menos que la mediana (' +
       redondear(medPts, 1) + ' puntos): el scouting por puntos no los ve.',
-    muestra: { conVolumenDeTriple: ps.length },
+    muestra: { conVolumenDeTriple: ps.length, pisoDeTriplesIntentados: PISO_TRIPLES_CASO },
     datos: { medianaPuntosPorTriple: redondear(medPpt, 2), medianaPuntos: redondear(medPts, 1), rentables: rentables.length,
       bajoLaMedianaDePuntos: escondidos.length, casos: casos.map(fila) },
     guion: ['Portada: «Mete ' + redondear(casos[0].p.pts, 0) + ' puntos y te cuesta ' + redondear(casos[0].p.pptTriple, 2) + ' por tiro»',
@@ -738,7 +741,10 @@ function rl01(paqs) {
   const signo = qs.filter((q) => (q.netPorJugada <= 0) !== (q.netPorPosesion <= 0));
   const contradice = qs.filter((q) => q.enCancha > 0 && q.netPorJugada < 0);
   if (!contradice.length && !signo.length) return sin('RL-01', 'Ningún quinteto cambia de lectura entre jugada y posesión: esta quincena la pieza no tiene caso.');
-  const caso = (contradice.length ? contradice : signo).slice().sort((a, b) => (b.netPorPosesion - b.netPorJugada) - (a.netPorPosesion - a.netPorJugada))[0];
+  /* Entre los que contradicen, el de MÁS MINUTOS: un quinteto de 20 minutos
+     da un salto más grande y una historia más débil. */
+  const caso = (contradice.length ? contradice : signo).slice().sort((a, b) => (b.minutos - a.minutos) ||
+    ((b.netPorPosesion - b.netPorJugada) - (a.netPorPosesion - a.netPorJugada)))[0];
   return {
     id: 'RL-01', ok: true, formato: 'Reel 9:16', titulo: 'Gana en cancha y «rinde negativo» en la planilla',
     dato: contradice.length
@@ -810,6 +816,7 @@ function rl03(paqs) {
 /* ---------- RL-04 · el pulso del partido -------------------------------- */
 function rl04(paqs) {
   const eq = [];
+  const maximas = [];
   let mayor = null;
   (paqs || []).forEach((p) => {
     const cs = (p.cuartos || []).filter((c) => /^[1-4]$/.test(String(c.periodo)) && esNum(c.dif));
@@ -818,23 +825,38 @@ function rl04(paqs) {
     const m = p.momentum || {};
     eq.push({ peorCuarto: Number(peor.periodo), dif: peor.dif, corridas8EnContra: m.corridas8Contra, partidos: m.partidos });
     const top = (m.topContra || [])[0];
-    if (top && esNum(top.pts) && (!mayor || top.pts > mayor.puntos)) mayor = { puntos: top.pts, cuartoDeInicio: top.periodo, cuartoDeFin: top.periodoFin };
+    if (top && esNum(top.pts) && (!mayor || top.pts > mayor.puntos)) {
+      mayor = { puntos: top.pts, cuartoDeInicio: top.periodo, cuartoDeFin: top.periodoFin, relojDesde: top.desde || null, relojHasta: top.hasta || null };
+    }
+    if (esNum(m.corridaMaxContra)) maximas.push(m.corridaMaxContra);
   });
   if (eq.length < MIN_EQUIPOS) return sin('RL-04', 'Menos de ' + MIN_EQUIPOS + ' equipos con sus cuatro cuartos.');
   const porCuarto = [1, 2, 3, 4].map((c) => ({ cuarto: c, equipos: eq.filter((x) => x.peorCuarto === c).length }));
   const mas = porCuarto.slice().sort((a, b) => b.equipos - a.equipos)[0];
   const corridas = eq.filter((x) => esNum(x.corridas8EnContra) && x.partidos);
   const porPartido = corridas.length ? corridas.reduce((s, x) => s + x.corridas8EnContra / x.partidos, 0) / corridas.length : null;
+  const corridaMedia = maximas.length ? maximas.reduce((a, b) => a + b, 0) / maximas.length : null;
   return {
-    id: 'RL-04', ok: true, formato: 'Reel 9:16', titulo: 'Tu partido tiene pulso',
-    dato: mas.equipos + ' de ' + eq.length + ' equipos (' + pct(mas.equipos, eq.length) + '%) tienen su peor parcial promedio en el ' + mas.cuarto + '.º cuarto.' +
-      (porPartido !== null ? ' Un equipo sufre en promedio ' + redondear(porPartido, 1) + ' parciales de 8 o más en contra por partido.' : ''),
+    id: 'RL-04', ok: true, formato: 'Reel 9:16',
+    titulo: 'El electrocardiograma del partido' + (mayor ? ': un parcial de ' + mayor.puntos + '-0' : ''),
+    /* Una corrida es SIN RESPUESTA (así la arma la ingesta): por eso «N-0». */
+    dato: (mayor ? 'El mayor parcial sin respuesta de la liga fue de ' + mayor.puntos + '-0' +
+        (mayor.cuartoDeInicio === mayor.cuartoDeFin ? ', todo dentro del ' + mayor.cuartoDeInicio + '.º cuarto.' : ', entre el ' + mayor.cuartoDeInicio + '.º y el ' + mayor.cuartoDeFin + '.º cuarto.') : '') +
+      (corridaMedia !== null ? ' En un partido promedio, un equipo recibe una corrida de ' + redondear(corridaMedia, 1) + '-0.' : '') +
+      (porPartido !== null ? ' Y sufre ' + redondear(porPartido, 1) + ' parciales de 8 o más en contra por partido.' : ''),
     muestra: { equipos: eq.length },
-    datos: { peorCuartoPorEquipo: porCuarto, parcialesDe8EnContraPorPartido: redondear(porPartido, 1), mayorParcialEnContra: mayor },
-    guion: ['0-3 s: línea plana, «Tu partido tiene pulso»', '3-20 s: se dibuja la diferencia; se marca el parcial y el cuarto',
-      '20-30 s: ¿en qué cuarto se te van los partidos, y es físico o es rotación?'],
+    datos: { mayorParcialEnContra: mayor, corridaMaximaEnContraPorPartido: redondear(corridaMedia, 1),
+      parcialesDe8EnContraPorPartido: redondear(porPartido, 1), peorCuartoPorEquipo: porCuarto, cuartoMasFrecuente: mas },
+    guion: ['0-3 s: línea plana que se desploma, «' + (mayor ? mayor.puntos + '-0' : 'Un parcial') + '. Sin respuesta»',
+      '3-20 s: se dibuja la diferencia del partido como un electrocardiograma; se marca el parcial y cuánto duró',
+      '20-30 s: la corrida promedio que recibe un equipo por partido. ¿Tenés un plan para cortarla?'],
   };
 }
+
+/* Cuando la liga no tiene play-by-play (APdeB) o todavía no lo cargó, los
+   reels se nutren de estos paquetes, en este orden. Se DECLARA en la
+   salida: el dato es de esa competencia, no de la liga que se pidió. */
+const PBP_DE_RESPALDO = ['conferencia-norte', 'lnb-2026-27'];
 
 const RECETAS = {
   'CR-01': { fuente: 'libro', f: cr01 }, 'CR-02': { fuente: 'libro', f: cr02 }, 'CR-03': { fuente: 'libro', f: cr03 },
@@ -855,17 +877,25 @@ function nivel2(idx, paqs, opciones) {
     if (!r) return sin(String(id), 'No existe esa pieza. Las que hay: ' + Object.keys(RECETAS).join(', '));
     if (r.fuente === 'libro' && !idx) return sin(id, 'Hace falta el libro de la liga.');
     if (r.fuente === 'pbp' && !(paqs && paqs.length)) return sin(id, 'Esta liga no tiene paquetes de play-by-play: probá con --pbp <carpeta>.');
-    try { return r.fuente === 'libro' ? r.f(idx, o) : r.f(paqs, o); }
+    try {
+      if (r.fuente === 'libro') return r.f(idx, o);
+      const p = r.f(paqs, o);
+      if (p.ok) {
+        p.muestra = Object.assign({}, p.muestra, { competencia: paqs[0].competencia || null });
+        if (o.pbp && o.pbp.prestado) p.avisos = ['El play-by-play es de ' + (paqs[0].competencia || o.pbp.origen) + ': esta liga no tiene.'];
+      }
+      return p;
+    }
     catch (e) { return sin(id, 'La receta falló: ' + e.message); }
   });
-  return { meta: { torneo: o.torneo || '', zona: o.zona || '', tramo: idx ? idx.liga.torneo + '|' + idx.fase : null, paquetesPbp: (paqs || []).length }, piezas };
+  return { meta: { torneo: o.torneo || '', zona: o.zona || '', tramo: idx ? idx.liga.torneo + '|' + idx.fase : null, paquetesPbp: (paqs || []).length, pbp: o.pbp || null }, piezas };
 }
 
 function resumenNivel2(n2) {
   const L = ['# Nivel 2 · ' + n2.meta.torneo + (n2.meta.zona ? ' · ' + n2.meta.zona : '') + (n2.anonimo ? ' · ANÓNIMO' : ''), ''];
   n2.piezas.forEach((p) => {
     if (!p.ok) { L.push('## ' + p.id + ' · sin datos', '', '- ' + p.avisos.join(' '), ''); return; }
-    L.push('## ' + p.id + ' · ' + p.titulo, '', '_' + p.formato + '_', '', '**Dato:** ' + p.dato, '');
+    L.push('## ' + p.id + ' · ' + p.titulo, '', '_' + p.formato + (p.muestra && p.muestra.competencia ? ' · ' + p.muestra.competencia : '') + '_', '', '**Dato:** ' + p.dato, '');
     p.guion.forEach((g, i) => L.push((i + 1) + '. ' + g));
     L.push('');
   });
@@ -950,11 +980,23 @@ function carpetaPbp(args, zona) {
   return path.join(base, 'salida', zona.pbp, 'web');
 }
 
+/** Los paquetes de la liga y, si no tiene, los de respaldo. */
+function paquetesPara(args, zona) {
+  const propia = carpetaPbp(args, zona);
+  const propios = propia ? leerPaquetes(propia) : [];
+  if (propios.length || args.pbp) return { paqs: propios, origen: propia ? path.basename(path.dirname(propia)) : null, prestado: false };
+  for (let i = 0; i < PBP_DE_RESPALDO.length; i++) {
+    const paqs = leerPaquetes(carpetaPbp({}, { pbp: PBP_DE_RESPALDO[i] }));
+    if (paqs.length) return { paqs, origen: PBP_DE_RESPALDO[i], prestado: true };
+  }
+  return { paqs: [], origen: null, prestado: false };
+}
+
 function escribirNivel2(args, p, idx) {
-  const carpeta = carpetaPbp(args, p.zona);
-  const paqs = carpeta ? leerPaquetes(carpeta) : [];
+  const pbp = paquetesPara(args, p.zona);
+  const paqs = pbp.paqs;
   let n2 = nivel2(idx, paqs, {
-    torneo: p.liga.torneo, zona: p.zona.label, nivel: p.liga.nivel,
+    torneo: p.liga.torneo, zona: p.zona.label, nivel: p.liga.nivel, pbp: { origen: pbp.origen, prestado: pbp.prestado },
     piezas: args.piezas ? String(args.piezas).split(',').map((x) => x.trim()).filter(Boolean) : null,
   });
   /* Anónimo SIEMPRE, salvo que APdeB lo pida con nombres a propósito. */
@@ -982,5 +1024,5 @@ module.exports = {
   LIGAS, CATEGORIAS, PISO_MINUTOS, HUECO_JORNADA, LARGO_MAXIMO,
   jornadas, ventana, top3, paquete, anonimizar, verificarAnonimo, nombresDelLibro,
   resolverPedido, argumentos, resumen, mostrar, contextoDeCategoria,
-  RECETAS, nivel2, resumenNivel2, leerPaquetes, nombresDePaquetes, carpetaPbp,
+  RECETAS, nivel2, resumenNivel2, leerPaquetes, nombresDePaquetes, carpetaPbp, paquetesPara, PBP_DE_RESPALDO, PISO_TRIPLES_CASO,
 };

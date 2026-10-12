@@ -198,6 +198,8 @@ const pieza = (id, de) => (de || n2).piezas.find((p) => p.id === id);
   check('CR-02 sale', c2.ok, (c2.avisos || []).join());
   check('CR-02 · los casos tienen el triple como vía más cara',
     c2.datos.casos.length > 0 && c2.datos.casos.every((x) => x.puntosPorTriple >= (x.puntosPorDoble || 0)));
+  check('CR-02 · ningún caso tira menos de 3 triples por partido', GC.PISO_TRIPLES_CASO === 3 && c2.datos.casos.every((x) => x.triplesIntentados >= 3),
+    c2.datos.casos.map((x) => x.triplesIntentados).join());
   check('CR-02 · y van de mayor a menor renta', c2.datos.casos.every((x, i, a) => !i || a[i - 1].puntosPorTriple >= x.puntosPorTriple));
   check('CR-02 · los escondidos no superan a los rentables', c2.datos.bajoLaMedianaDePuntos <= c2.datos.rentables);
 
@@ -283,8 +285,30 @@ const r2 = GC.nivel2(null, paqs, { piezas: ['RL-01', 'RL-02', 'RL-03', 'RL-04'] 
   check('RL-04 · reparte el peor cuarto de cada equipo',
     m.datos.peorCuartoPorEquipo.map((x) => x.equipos).join() === '0,4,0,4');
   check('RL-04 · el mayor parcial en contra es el más grande de la liga', m.datos.mayorParcialEnContra.puntos === 22);
+  check('RL-04 · el titular es el parcial extremo', /22-0/.test(m.titulo) && /22-0/.test(m.dato), m.titulo);
+  check('RL-04 · dice entre qué cuartos fue', m.datos.mayorParcialEnContra.cuartoDeInicio === 2 && m.datos.mayorParcialEnContra.cuartoDeFin === 3 && /entre el 2/.test(m.dato));
   check('RL-04 · y no arrastra el rival ni la fecha', !('rival' in m.datos.mayorParcialEnContra) && !('fecha' in m.datos.mayorParcialEnContra));
 
+  check('las piezas de play-by-play dicen de qué competencia son', r2.piezas.every((p) => !p.ok || 'competencia' in p.muestra));
+  const prestado = GC.nivel2(null, paqs.map((p) => Object.assign({ competencia: 'Liga de Prueba' }, p)), { piezas: ['RL-03'], pbp: { origen: 'otra-liga', prestado: true } });
+  check('con play-by-play prestado, la pieza lo avisa con el nombre de la competencia',
+    prestado.piezas[0].ok && /Liga de Prueba/.test(prestado.piezas[0].avisos[0]) && prestado.meta.pbp.prestado === true);
+  check('con el propio, no avisa nada', !pieza('RL-03', r2).avisos);
+  const os = require('os'), pth = require('path');
+  const base = fs.mkdtempSync(pth.join(os.tmpdir(), 'gc-'));
+  const previo = process.env.MOTORSTATS_INGESTION;
+  process.env.MOTORSTATS_INGESTION = base;
+  fs.mkdirSync(pth.join(base, 'salida', GC.PBP_DE_RESPALDO[1], 'web'), { recursive: true });
+  fs.writeFileSync(pth.join(base, 'salida', GC.PBP_DE_RESPALDO[1], 'web', 'uno.json'), JSON.stringify(paqs[0]));
+  const sinPropio = GC.paquetesPara({}, { pbp: null });
+  check('una liga sin play-by-play toma el de respaldo que exista', sinPropio.prestado === true && sinPropio.origen === GC.PBP_DE_RESPALDO[1] && sinPropio.paqs.length === 1);
+  fs.mkdirSync(pth.join(base, 'salida', 'propia', 'web'), { recursive: true });
+  fs.writeFileSync(pth.join(base, 'salida', 'propia', 'web', 'dos.json'), JSON.stringify(paqs[1]));
+  const conPropio = GC.paquetesPara({}, { pbp: 'propia' });
+  check('una liga con el suyo usa el suyo', conPropio.prestado === false && conPropio.origen === 'propia' && conPropio.paqs[0].equipo === paqs[1].equipo);
+  check('`--pbp` explícito no cae al respaldo', GC.paquetesPara({ pbp: pth.join(base, 'no-hay') }, { pbp: null }).paqs.length === 0);
+  if (previo === undefined) delete process.env.MOTORSTATS_INGESTION; else process.env.MOTORSTATS_INGESTION = previo;
+  fs.rmSync(base, { recursive: true, force: true });
   check('lee paquetes de una carpeta que no existe sin romper', GC.leerPaquetes('./no-existe-esta-carpeta').length === 0);
 }
 

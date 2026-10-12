@@ -115,7 +115,7 @@ node test-interzonal.js    # 220 tests · la llave entre zonas: un cliente de un
                            #             · y el aislamiento por zona: cada zona ve SUS fases (punto 78)
                            #             · y el rival de otra zona: escudo, scouting y la vuelta de la llave (79)
 
-node test-contenido.js     # 127 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
+node test-contenido.js     # 136 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
                            #             derivado, las diez recetas de Nivel 2 y que los nombres solo salgan en APdeB (103, 104)
 
 node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, el catálogo en KV
@@ -128,7 +128,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7210 tests en total. Todos tienen que dar verde antes de commitear.**
+**7219 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -12942,8 +12942,20 @@ datos, guion, muestra }`, o `ok: false` con su motivo.
 | RL-04 | `cuartos` y `momentum` | peor cuarto de cada equipo y parciales de 8+ en contra |
 
 - **Las RL leen los paquetes de `motorstats-ingestion/salida/<liga>/web`**
-  (`LIGAS[].zonas[].pbp`, o `--pbp`). APdeB no tiene play-by-play: ahí
-  salen `ok: false`. `MOTORSTATS_INGESTION` cambia la carpeta base.
+  (`LIGAS[].zonas[].pbp`, o `--pbp`). `MOTORSTATS_INGESTION` cambia la
+  carpeta base.
+- **Una liga sin play-by-play lo toma PRESTADO** (decisión del club,
+  2026-10-12): `PBP_DE_RESPALDO`, primero la Conferencia Norte 25/26 y
+  después la LNB. Se DECLARA: `meta.pbp.prestado`, la competencia en la
+  `muestra` de cada pieza y un aviso. El dato es de esa competencia, no de
+  la liga pedida. Un `--pbp` explícito no cae al respaldo.
+- **CR-02 exige 3 triples intentados por partido** (`PISO_TRIPLES_CASO`):
+  con 1 por partido, 1,80 por intento es una noche.
+- **El caso de RL-01 es el quinteto de MÁS MINUTOS** entre los que ganan en
+  cancha y dan negativo por jugada, no el de mayor salto.
+- **RL-04 abre con el mayor parcial SIN RESPUESTA** («29-0»: la ingesta
+  arma las corridas así) y la corrida promedio que recibe un equipo por
+  partido. El reparto por cuartos queda como dato secundario.
 - **SALEN ANÓNIMAS SIEMPRE, también en APdeB**, salvo `--con-nombres` (que
   solo APdeB acepta). La guarda suma los nombres de los paquetes a los del
   libro. Las recetas ponen a toda persona bajo `jugador` y a todo club bajo
