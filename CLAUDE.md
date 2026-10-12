@@ -115,6 +115,9 @@ node test-interzonal.js    # 220 tests · la llave entre zonas: un cliente de un
                            #             · y el aislamiento por zona: cada zona ve SUS fases (punto 78)
                            #             · y el rival de otra zona: escudo, scouting y la vuelta de la llave (79)
 
+node test-contenido.js     #  60 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
+                           #             derivado y que los nombres solo salgan en APdeB (punto 103)
+
 node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
 
@@ -125,7 +128,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7083 tests en total. Todos tienen que dar verde antes de commitear.**
+**7143 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -12880,3 +12883,37 @@ decidir a qué categoría pertenecen y volver a publicarlos ahí.
 
 Tests: `test-interzonal.js`, sección «1 ter bis». Al revés: sin la unión
 caen 5, sin el respaldo por mismo libro 3, sin la herencia al enganchar 1.
+
+## 103. `generar-contenido.js` · LOS NÚMEROS DEL CONTENIDO DE REDES (2026-10-12)
+
+Se corre a mano, como `generar-demo.js`. Lee un libro con la credencial
+local (catálogo de KV + Service Account), arma el índice con el núcleo y
+escribe `stories.json`, `feed.json` y `resumen.md` en
+`contenido/<liga>-<zona>/<día>/` (en `.gitignore`: el repo es público).
+
+    node generar-contenido.js --liga apb --zona a|b|c [--desde --hasta] [--fecha-n N] [--feed ro] [--anonimo]
+    node generar-contenido.js --liga lnb
+    node generar-contenido.js --liga lab --zona norte|sur
+
+- **STORIES**: el «Top 3 de la fecha» de la plantilla de la cuenta (portada,
+  cinco rankings, cierre con el quinteto ideal). Cada categoría ordena por
+  VOLUMEN de la noche y después por EFICIENCIA (`CATEGORIAS[].orden`), con
+  piso de 10 minutos. Contrastado con las placas publicadas de la fecha 20
+  de la Zona A: los mismos puestos en las cuatro categorías que se vieron.
+- **FEED**: por categoría, los tres de la noche contra su temporada y los 10
+  de más volumen contra la mediana de eficiencia de los calificados. Propone
+  la de mayor contraste; `--feed` la pisa. El fondo de eficiencia sale SIN
+  nombre («Caso 1») también en APdeB.
+- **LOS NOMBRES SOLO SALEN EN APdeB** (decisión del club, 2026-10-12;
+  `LIGAS[].nombres`). LNB y LAB se anonimizan y `verificarAnonimo` lanza si
+  queda un nombre del libro en la salida. `--con-nombres` fuera de APdeB se
+  rechaza. No hay formativas en `LIGAS`.
+- **La fecha se INFIERE** de los días con partidos (hueco de hasta 3 días =
+  misma fecha) y se avisa: una reprogramación la corre, así que `--fecha-n`
+  y `--desde/--hasta` mandan. Con calendario continuo (LNB) toma la última
+  semana.
+- Un partido con el box truncado (punto 66) queda afuera, con aviso. Con
+  menos de tres candidatos sale el aviso, no un ranking a medias.
+- La foto del jugador no sale del libro: se pone a mano en la plantilla.
+- `test-contenido.js` corre sobre el snapshot de la demo, renombrado para
+  que una fuga de nombres se pueda ver. No se verificó al revés.
