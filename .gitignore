@@ -14,3 +14,6 @@ server/node_modules/
 COMPARATIVAS EJEMPLOS/
 
 .vercel
+
+# Salida de generar-contenido.js: numeros y nombres para redes. No se publica.
+contenido/
