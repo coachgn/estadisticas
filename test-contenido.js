@@ -165,6 +165,159 @@ titulo('Los nombres solo salen en APdeB');
 }
 
 /* -------------------------------------------------------------------- */
+titulo('Nivel 2 · las seis recetas de libro');
+const n2 = GC.nivel2(idx, [], { torneo: 'TORNEO DE PRUEBA', nivel: 'LIGA_ARGENTINA' });
+const pieza = (id, de) => (de || n2).piezas.find((p) => p.id === id);
+{
+  check('están las diez piezas de la matriz',
+    Object.keys(GC.RECETAS).join() === 'CR-01,CR-02,CR-03,CR-04,CR-05,CR-06,RL-01,RL-02,RL-03,RL-04');
+  check('sin pedir ninguna salen las diez', n2.piezas.length === 10);
+  check('cada pieza sale con su dato o con su motivo',
+    n2.piezas.every((p) => (p.ok === true && typeof p.dato === 'string' && p.guion.length >= 3) || (p.ok === false && p.avisos.length === 1)));
+  check('las de play-by-play sin paquetes lo dicen', ['RL-01', 'RL-02', 'RL-03', 'RL-04'].every((id) => pieza(id).ok === false && /play-by-play/.test(pieza(id).avisos[0])));
+  check('una pieza que no existe se avisa y no rompe', GC.nivel2(idx, [], { piezas: ['CR-99'] }).piezas[0].ok === false);
+  check('`piezas` acota', GC.nivel2(idx, [], { piezas: ['CR-01', 'CR-04'] }).piezas.map((p) => p.id).join() === 'CR-01,CR-04');
+  check('sin libro las de libro lo dicen', GC.nivel2(null, [], { piezas: ['CR-01'] }).piezas[0].ok === false);
+
+  const c1 = pieza('CR-01');
+  check('CR-01 sale', c1.ok, (c1.avisos || []).join());
+  const eqs = idx.lista().length;
+  check('CR-01 · cuenta todos los equipos', c1.datos.equipos === eqs);
+  check('CR-01 · top 3 y bottom 3', c1.datos.top3.length === 3 && c1.datos.bottom3.length === 3);
+  check('CR-01 · el top va 1, 2, 3 por posesión', c1.datos.top3.map((x) => x.puestoPorPosesion).join() === '1,2,3');
+  check('CR-01 · por posesión el rating es mayor que por jugada (hay rebotes ofensivos)',
+    c1.datos.top3.concat(c1.datos.bottom3).every((x) => x.ortgPorPosesion > x.ortgPorJugada));
+  /* El número se recalcula acá, sin la receta: si alguien cambia la
+     fórmula, esto lo canta. */
+  const propio = idx.lista().map((e) => ({ j: e.totales.propio.PTS / e.totales.propio.PLAYS, p: e.factores['RTNG OFF'] }));
+  const rk = (k) => propio.slice().sort((a, b) => b[k] - a[k]);
+  const cambian = propio.filter((x) => rk('j').indexOf(x) !== rk('p').indexOf(x)).length;
+  check('CR-01 · los que cambian de puesto coinciden con la cuenta a mano', c1.datos.cambian === cambian, c1.datos.cambian + ' vs ' + cambian);
+
+  const c2 = pieza('CR-02');
+  check('CR-02 sale', c2.ok, (c2.avisos || []).join());
+  check('CR-02 · los casos tienen el triple como vía más cara',
+    c2.datos.casos.length > 0 && c2.datos.casos.every((x) => x.puntosPorTriple >= (x.puntosPorDoble || 0)));
+  check('CR-02 · y van de mayor a menor renta', c2.datos.casos.every((x, i, a) => !i || a[i - 1].puntosPorTriple >= x.puntosPorTriple));
+  check('CR-02 · los escondidos no superan a los rentables', c2.datos.bajoLaMedianaDePuntos <= c2.datos.rentables);
+
+  const c3 = pieza('CR-03');
+  check('CR-03 sale', c3.ok, (c3.avisos || []).join());
+  check('CR-03 · el universo es más grande que los rentables', c3.datos.evaluados > c3.datos.rentables);
+  check('CR-03 · el caso rentable tira menos de 58 % de libres', !c3.datos.casoRentable || c3.datos.casoRentable.libres < 58);
+  check('CR-03 · la cuenta es dos libres', !c3.datos.casoRentable ||
+    Math.abs(c3.datos.casoRentable.puntosPorAccionCortada - 2 * c3.datos.casoRentable.libres / 100) < 0.011);
+
+  const c4 = pieza('CR-04');
+  check('CR-04 sale', c4.ok, (c4.avisos || []).join());
+  check('CR-04 · tres varas con su percentil', c4.datos.varas.length === 3 && c4.datos.varas.every((v) => v.percentilEnEstaLiga >= 0 && v.percentilEnEstaLiga <= 100));
+  check('CR-04 · trae el equivalente por nivel del registro', c4.datos.varas.every((v) => v.equivalentePorNivel && typeof v.equivalentePorNivel.LIGA_ARGENTINA === 'number'));
+  check('CR-04 · declara el nivel', c4.datos.nivel === 'LIGA_ARGENTINA');
+
+  const c5 = pieza('CR-05');
+  check('CR-05 · sale con caso o dice que no lo hay', c5.ok ? /^\d-\d$/.test(c5.datos.caso.record) : /ciclo|caso/.test(c5.avisos[0]));
+  if (c5.ok) {
+    check('CR-05 · el caso viene ganando', Number(c5.datos.caso.record[0]) >= 3);
+    check('CR-05 · y su eFG% bajó', c5.datos.caso.efgActual < c5.datos.caso.efgAnterior);
+    check('CR-05 · con su puesto en la liga', c5.datos.caso.puestoNet >= 1 && c5.datos.caso.puestoNet <= c5.datos.caso.de);
+  }
+
+  const c6 = pieza('CR-06');
+  check('CR-06 · sale con candidatos o dice que no los hay', c6.ok ? c6.datos.candidatos.length === 3 : /afines|calificados/.test(c6.avisos[0]));
+  if (c6.ok) {
+    check('CR-06 · los candidatos pasan el piso de afinidad', c6.datos.candidatos.every((x) => x.coincidencia >= 60));
+    check('CR-06 · ninguno es del equipo del modelo', c6.datos.candidatos.every((x) => x.equipo !== c6.datos.modelo.equipo));
+    check('CR-06 · van de mayor a menor coincidencia', c6.datos.candidatos.every((x, i, a) => !i || a[i - 1].coincidencia >= x.coincidencia));
+  }
+}
+
+/* -------------------------------------------------------------------- */
+titulo('Nivel 2 · las cuatro recetas de play-by-play');
+/* Paquetes de mentira, con la forma de `analitica-pbp-web@3`. */
+const paq = (n) => ({
+  esquema: 'motorstats-ingestion/analitica-pbp-web@3', equipo: 'ATLETICO ' + n,
+  jugadores: { ['1' + n]: { n: 'GOMEZ' + n + ', LUIS', d: '4' }, ['2' + n]: { n: 'RUIZ' + n + ', ANA', d: '5' } },
+  quintetos: [
+    { ids: [], min: 40, pj: 9, mm: 12 + n, net: -1.5, netPos: 4 + n, ok: true },
+    { ids: [], min: 30, pj: 8, mm: -6, net: -3, netPos: -2, ok: true },
+    { ids: [], min: 5, pj: 2, mm: 30, net: -9, netPos: 9, ok: true },
+  ],
+  clutch: { equipo: { partidos: 6, ganados: 4, perdidos: 2 },
+    jugadores: [{ id: n % 2 ? '1' + n : '2' + n, usos: 20, porc: 30 + n, efg: 50 }, { id: n % 2 ? '2' + n : '1' + n, usos: 9, porc: 12, efg: 40 }] },
+  tiros: { detalle: { jugadores: [{ id: '1' + n, i: 300 }, { id: '2' + n, i: 120 }] } },
+  cuartos: [{ periodo: '1', dif: 1 }, { periodo: '2', dif: n < 5 ? -3 : 2 }, { periodo: '3', dif: 0.5 }, { periodo: '4', dif: n < 5 ? 1 : -4 }, { periodo: 'OT', dif: -9 }],
+  momentum: { partidos: 10, corridas8Contra: 12 + n, topContra: [{ pts: 14 + n, periodo: 2, periodoFin: 3, rival: 'RIVAL SECRETO', fecha: '2026-01-01' }] },
+  liga: { total: { i: 5000, c: 2300, pct: 46, ppt: 1.05 },
+    familias: { aro: { i: 1500, pct: 60, ppt: 1.2 }, corta: { i: 600, pct: 40, ppt: 0.8 }, mediaFrontal: { i: 300, pct: 38, ppt: 0.76 },
+      mediaLateral: { i: 50, pct: 30, ppt: 0.6 }, tripleFrontal: { i: 900, pct: 33, ppt: 0.99 }, tripleLateral: { i: 1100, pct: 35, ppt: 1.05 }, tripleEsquina: { i: 550, pct: 40, ppt: 1.2 } },
+    zonas: [{ zona: 'Z1', i: 1500, pct: 60, ppt: 1.2 }, { zona: 'Z7', i: 300, pct: 38, ppt: 0.76 }, { zona: 'FRANJA-INFERIOR', i: 400, pct: 50, ppt: 2 }] },
+});
+const paqs = [1, 2, 3, 4, 5, 6, 7, 8].map(paq);
+const r2 = GC.nivel2(null, paqs, { piezas: ['RL-01', 'RL-02', 'RL-03', 'RL-04'] });
+{
+  const r1 = pieza('RL-01', r2);
+  check('RL-01 sale', r1.ok, (r1.avisos || []).join());
+  check('RL-01 · el quinteto de 5 minutos no cuenta', r1.datos.quintetos === 16);
+  check('RL-01 · cuenta los que ganan y dan negativo por jugada', r1.datos.ganaYDaNegativo === 8);
+  check('RL-01 · el caso es el de mayor salto entre jugada y posesión', r1.datos.caso.netPorPosesion === 12 && r1.datos.caso.enCancha === 20);
+  const sinCaso = GC.nivel2(null, paqs.map((p) => Object.assign({}, p, { quintetos: p.quintetos.map((q) => Object.assign({}, q, { net: 5, netPos: 6 })) })), { piezas: ['RL-01'] }).piezas[0];
+  check('RL-01 · sin ningún quinteto que cambie de lectura, no inventa un caso', sinCaso.ok === false);
+
+  const c = pieza('RL-02', r2);
+  check('RL-02 sale', c.ok, (c.avisos || []).join());
+  check('RL-02 · cuenta los equipos donde cambia el jugador', c.datos.equipos === 8 && c.datos.cambiaElJugador === 4);
+  check('RL-02 · el caso es de un equipo donde cambia', c.datos.caso.mismoJugador === false);
+  check('RL-02 · con pocos cierres ajustados no opina',
+    GC.nivel2(null, paqs.map((p) => Object.assign({}, p, { clutch: Object.assign({}, p.clutch, { equipo: { partidos: 2, ganados: 1, perdidos: 1 } }) })), { piezas: ['RL-02'] }).piezas[0].ok === false);
+
+  const z = pieza('RL-03', r2);
+  check('RL-03 sale', z.ok, (z.avisos || []).join());
+  check('RL-03 · la familia con menos de 100 tiros no entra', z.datos.familias.length === 6 && !z.datos.familias.some((f) => f.zona === 'Media lateral'));
+  check('RL-03 · van de la más cara a la más barata', z.datos.familias.every((f, i, a) => !i || a[i - 1].puntosPorTiro >= f.puntosPorTiro));
+  check('RL-03 · las franjas fuera de las 14 zonas no entran', z.datos.zonas.length === 2);
+  check('RL-03 · el dato cita la muestra', /5000 tiros/.test(z.dato));
+
+  const m = pieza('RL-04', r2);
+  check('RL-04 sale', m.ok, (m.avisos || []).join());
+  check('RL-04 · el suplementario no es un cuarto', m.datos.peorCuartoPorEquipo.length === 4);
+  check('RL-04 · reparte el peor cuarto de cada equipo',
+    m.datos.peorCuartoPorEquipo.map((x) => x.equipos).join() === '0,4,0,4');
+  check('RL-04 · el mayor parcial en contra es el más grande de la liga', m.datos.mayorParcialEnContra.puntos === 22);
+  check('RL-04 · y no arrastra el rival ni la fecha', !('rival' in m.datos.mayorParcialEnContra) && !('fecha' in m.datos.mayorParcialEnContra));
+
+  check('lee paquetes de una carpeta que no existe sin romper', GC.leerPaquetes('./no-existe-esta-carpeta').length === 0);
+}
+
+/* -------------------------------------------------------------------- */
+titulo('Nivel 2 · sale anónimo');
+{
+  const libro = GC.nombresDelLibro(idx), pbp = GC.nombresDePaquetes(paqs);
+  const todos = { jugadores: libro.jugadores.concat(pbp.jugadores), equipos: libro.equipos.concat(pbp.equipos) };
+  check('los paquetes aportan sus nombres a la guarda', pbp.equipos.length === 8 && pbp.jugadores.length === 16);
+
+  check('las piezas de libro, tal como salen, nombran a alguien', /todavía nombra/.test(lanza(() => GC.verificarAnonimo(n2, todos)) || ''));
+  const a1 = GC.anonimizar(n2);
+  check('anonimizadas, no', lanza(() => GC.verificarAnonimo(a1, todos)) === null, lanza(() => GC.verificarAnonimo(a1, todos)));
+  check('las de play-by-play, tal como salen, nombran al equipo', /todavía nombra/.test(lanza(() => GC.verificarAnonimo(r2, todos)) || ''));
+  const a2 = GC.anonimizar(r2);
+  check('anonimizadas, no', lanza(() => GC.verificarAnonimo(a2, todos)) === null, lanza(() => GC.verificarAnonimo(a2, todos)));
+  check('quedan marcadas', a1.anonimo === true && a2.anonimo === true);
+  check('los números no se tocan', JSON.stringify(pieza('CR-01', a1).datos.top3.map((x) => x.ortgPorPosesion)) === JSON.stringify(pieza('CR-01').datos.top3.map((x) => x.ortgPorPosesion)));
+  check('ningún `dato` lleva un nombre',
+    n2.piezas.concat(r2.piezas).filter((p) => p.ok).every((p) => lanza(() => GC.verificarAnonimo({ dato: p.dato }, todos)) === null));
+  check('un valor nulo no se convierte en un rótulo', GC.anonimizar({ equipo: null, jugador: null }).equipo === null);
+  check('el resumen se arma', /## CR-01/.test(GC.resumenNivel2(a1)) && /sin datos/.test(GC.resumenNivel2(a1)));
+
+  const src = fs.readFileSync('generar-contenido.js', 'utf8');
+  const cuerpo = src.slice(src.indexOf('function escribirNivel2'), src.indexOf('if (require.main === module)'));
+  check('el Nivel 2 solo sale con nombres si la liga los permite Y se pidió', /p\.liga\.nombres && !!args\['con-nombres'\]/.test(cuerpo));
+  check('y si no, se anonimiza', cuerpo.replace(/\s+/g, ' ').indexOf('if (!conNombres) { n2 = anonimizar(n2);') !== -1);
+  check('y si no, pasa por la verificación antes de escribir', cuerpo.indexOf('verificarAnonimo(') !== -1 && cuerpo.indexOf('verificarAnonimo(') < cuerpo.indexOf('writeFileSync'));
+  check('la carpeta de paquetes sale de la zona o de `--pbp`', GC.carpetaPbp({}, { pbp: null }) === null &&
+    /lnb-2026-27/.test(GC.carpetaPbp({}, GC.LIGAS.lnb.zonas.unica)) && /mi-carpeta/.test(GC.carpetaPbp({ pbp: 'mi-carpeta' }, {})));
+}
+
+/* -------------------------------------------------------------------- */
 titulo('El repo');
 {
   const gi = fs.readFileSync('.gitignore', 'utf8');

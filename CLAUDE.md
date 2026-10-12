@@ -115,8 +115,8 @@ node test-interzonal.js    # 220 tests · la llave entre zonas: un cliente de un
                            #             · y el aislamiento por zona: cada zona ve SUS fases (punto 78)
                            #             · y el rival de otra zona: escudo, scouting y la vuelta de la llave (79)
 
-node test-contenido.js     #  60 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
-                           #             derivado y que los nombres solo salgan en APdeB (punto 103)
+node test-contenido.js     # 127 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
+                           #             derivado, las diez recetas de Nivel 2 y que los nombres solo salgan en APdeB (103, 104)
 
 node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -128,7 +128,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7143 tests en total. Todos tienen que dar verde antes de commitear.**
+**7210 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -12916,4 +12916,47 @@ escribe `stories.json`, `feed.json` y `resumen.md` en
   menos de tres candidatos sale el aviso, no un ranking a medias.
 - La foto del jugador no sale del libro: se pone a mano en la plantilla.
 - `test-contenido.js` corre sobre el snapshot de la demo, renombrado para
-  que una fuga de nombres se pueda ver. No se verificó al revés.
+  que una fuga de nombres se pueda ver.
+
+## 104. EL NIVEL 2 DEL CONTENIDO · LAS DIEZ RECETAS (2026-10-12)
+
+    node generar-contenido.js --liga apb --zona b --nivel2
+    node generar-contenido.js --liga lnb --piezas CR-01,RL-03
+    node generar-contenido.js --liga lab --zona norte --piezas RL-01 --pbp <carpeta de paquetes>
+
+Con `--nivel2` o `--piezas` el script escribe `nivel2.json` y `nivel2.md`
+en vez de las Stories. Cada receta es pura y devuelve `{ id, ok, dato,
+datos, guion, muestra }`, o `ok: false` con su motivo.
+
+| Pieza | Sale de | Qué cuenta |
+|---|---|---|
+| CR-01 | `e.totales` y `RTNG OFF` del núcleo | equipos que cambian de puesto entre ORTG por jugada y por posesión |
+| CR-02 | `SGADD_SCOUT.senales().amenazaExteriorPrimaria` | tiradores rentables que anotan menos que la mediana |
+| CR-03 | `senales().faltaRentable` | con cuántos de los que van a la línea la falta es negocio |
+| CR-04 | `percentil` del núcleo + `SGADD_NIVELES.definicion` | en qué percentil cae una vara fija en ESTA liga |
+| CR-05 | `SGADD_COMP.ciclos` y `comparar` | ciclo ganador con el eFG% en baja, y su puesto en NET |
+| CR-06 | `jugadoresAdnLiga` y `jugadoresSimilitud` | el de más uso contra sus tres perfiles afines de otros equipos |
+| RL-01 | `quintetos` del paquete | quintetos que ganan en cancha y dan negativo por jugada |
+| RL-02 | `clutch` y `tiros.detalle` | equipos donde el de más usos en el cierre no es el que más tira |
+| RL-03 | `liga.familias` y `liga.zonas` | puntos por tiro por zona, de toda la liga |
+| RL-04 | `cuartos` y `momentum` | peor cuarto de cada equipo y parciales de 8+ en contra |
+
+- **Las RL leen los paquetes de `motorstats-ingestion/salida/<liga>/web`**
+  (`LIGAS[].zonas[].pbp`, o `--pbp`). APdeB no tiene play-by-play: ahí
+  salen `ok: false`. `MOTORSTATS_INGESTION` cambia la carpeta base.
+- **SALEN ANÓNIMAS SIEMPRE, también en APdeB**, salvo `--con-nombres` (que
+  solo APdeB acepta). La guarda suma los nombres de los paquetes a los del
+  libro. Las recetas ponen a toda persona bajo `jugador` y a todo club bajo
+  `equipo`; ningún `dato` lleva un nombre, y el `guion` (plantilla fija) no
+  se revisa.
+- **CR-03 mide sobre TODOS los que van seguido a la línea**:
+  `faltaEvaluable` ya viene recortado a los de menos de 58 % y daba 100 %.
+- **RL-02 compara contra el que más TIRA en la temporada**, no contra el de
+  más usos: el paquete no trae los usos de temporada.
+- **Una receta sin caso lo dice** (CR-05 sin ciclo ganador en baja, CR-06
+  sin tres afines, RL-01 sin quintetos que cambien de lectura).
+- El índice declara el nivel de la liga (`LIGAS[].nivel`) antes de armar
+  los perfiles, así las señales usan la vara de esa competencia.
+- Verificado al revés: sin el piso de quinteto caen 4 tests, CR-01 sin
+  posesiones 2, el equipo sin rotular 5, sin el piso de minutos 4 y CR-03
+  con el universo recortado 2.
