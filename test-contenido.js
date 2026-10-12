@@ -174,7 +174,7 @@ const pieza = (id, de) => (de || n2).piezas.find((p) => p.id === id);
   check('sin pedir ninguna salen las diez', n2.piezas.length === 10);
   check('cada pieza sale con su dato o con su motivo',
     n2.piezas.every((p) => (p.ok === true && typeof p.dato === 'string' && p.guion.length >= 3) || (p.ok === false && p.avisos.length === 1)));
-  check('las de play-by-play sin paquetes lo dicen', ['RL-01', 'RL-02', 'RL-03', 'RL-04'].every((id) => pieza(id).ok === false && /play-by-play/.test(pieza(id).avisos[0])));
+  check('las de play-by-play sin paquetes lo dicen', ['RL-01', 'RL-02', 'RL-03', 'RL-04'].every((id) => pieza(id).ok === false && pieza(id).avisos[0] === GC.SIN_PBP));
   check('una pieza que no existe se avisa y no rompe', GC.nivel2(idx, [], { piezas: ['CR-99'] }).piezas[0].ok === false);
   check('`piezas` acota', GC.nivel2(idx, [], { piezas: ['CR-01', 'CR-04'] }).piezas.map((p) => p.id).join() === 'CR-01,CR-04');
   check('sin libro las de libro lo dicen', GC.nivel2(null, [], { piezas: ['CR-01'] }).piezas[0].ok === false);
@@ -290,25 +290,32 @@ const r2 = GC.nivel2(null, paqs, { piezas: ['RL-01', 'RL-02', 'RL-03', 'RL-04'] 
   check('RL-04 · y no arrastra el rival ni la fecha', !('rival' in m.datos.mayorParcialEnContra) && !('fecha' in m.datos.mayorParcialEnContra));
 
   check('las piezas de play-by-play dicen de qué competencia son', r2.piezas.every((p) => !p.ok || 'competencia' in p.muestra));
-  const prestado = GC.nivel2(null, paqs.map((p) => Object.assign({ competencia: 'Liga de Prueba' }, p)), { piezas: ['RL-03'], pbp: { origen: 'otra-liga', prestado: true } });
-  check('con play-by-play prestado, la pieza lo avisa con el nombre de la competencia',
-    prestado.piezas[0].ok && /Liga de Prueba/.test(prestado.piezas[0].avisos[0]) && prestado.meta.pbp.prestado === true);
-  check('con el propio, no avisa nada', !pieza('RL-03', r2).avisos);
+  /* EL PLAY-BY-PLAY NO SE PRESTA: una liga sin el suyo no arma reels. */
+  const sinPbp = GC.nivel2(idx, [], { piezas: ['CR-01', 'RL-01', 'RL-02', 'RL-03', 'RL-04'] });
+  check('sin play-by-play propio, los cuatro reels salen sin datos', sinPbp.piezas.slice(1).every((p) => p.ok === false));
+  check('y con el motivo literal', sinPbp.piezas.slice(1).every((p) => p.avisos[0] === 'Sin datos de PBP para esta liga.') && GC.SIN_PBP === 'Sin datos de PBP para esta liga.');
+  check('las piezas de libro salen igual', sinPbp.piezas[0].ok === true);
+  check('ninguna pieza avisa de un play-by-play prestado', r2.piezas.every((p) => !p.ok || !p.avisos) && !('prestado' in (r2.meta.pbp || {})));
   const os = require('os'), pth = require('path');
   const base = fs.mkdtempSync(pth.join(os.tmpdir(), 'gc-'));
   const previo = process.env.MOTORSTATS_INGESTION;
   process.env.MOTORSTATS_INGESTION = base;
-  fs.mkdirSync(pth.join(base, 'salida', GC.PBP_DE_RESPALDO[1], 'web'), { recursive: true });
-  fs.writeFileSync(pth.join(base, 'salida', GC.PBP_DE_RESPALDO[1], 'web', 'uno.json'), JSON.stringify(paqs[0]));
+  ['conferencia-norte', 'lnb-2026-27', 'propia'].forEach((c, i) => {
+    fs.mkdirSync(pth.join(base, 'salida', c, 'web'), { recursive: true });
+    fs.writeFileSync(pth.join(base, 'salida', c, 'web', 'uno.json'), JSON.stringify(paqs[i]));
+  });
   const sinPropio = GC.paquetesPara({}, { pbp: null });
-  check('una liga sin play-by-play toma el de respaldo que exista', sinPropio.prestado === true && sinPropio.origen === GC.PBP_DE_RESPALDO[1] && sinPropio.paqs.length === 1);
-  fs.mkdirSync(pth.join(base, 'salida', 'propia', 'web'), { recursive: true });
-  fs.writeFileSync(pth.join(base, 'salida', 'propia', 'web', 'dos.json'), JSON.stringify(paqs[1]));
+  check('una liga sin play-by-play NO toma el de otra, aunque exista en disco', sinPropio.paqs.length === 0 && sinPropio.origen === null);
+  check('APdeB no declara play-by-play en ninguna zona', Object.keys(GC.LIGAS.apb.zonas).every((z) => !GC.LIGAS.apb.zonas[z].pbp && GC.paquetesPara({}, GC.LIGAS.apb.zonas[z]).paqs.length === 0));
   const conPropio = GC.paquetesPara({}, { pbp: 'propia' });
-  check('una liga con el suyo usa el suyo', conPropio.prestado === false && conPropio.origen === 'propia' && conPropio.paqs[0].equipo === paqs[1].equipo);
-  check('`--pbp` explícito no cae al respaldo', GC.paquetesPara({ pbp: pth.join(base, 'no-hay') }, { pbp: null }).paqs.length === 0);
+  check('una liga con el suyo usa el suyo', conPropio.origen === 'propia' && conPropio.paqs.length === 1 && conPropio.paqs[0].equipo === paqs[2].equipo);
+  check('`--pbp` no le da play-by-play a una liga que no declara uno', GC.paquetesPara({ pbp: pth.join(base, 'salida', 'propia', 'web') }, { pbp: null }).paqs.length === 0);
+  check('`--pbp` sí cambia la carpeta de una que lo declara', GC.paquetesPara({ pbp: pth.join(base, 'salida', 'propia', 'web') }, { pbp: 'lnb-2026-27' }).paqs[0].equipo === paqs[2].equipo);
+  check('cada liga con play-by-play apunta a SU carpeta', GC.LIGAS.lab25.zonas.norte.pbp === 'conferencia-norte' && GC.LIGAS.lnb.zonas.unica.pbp === 'lnb-2026-27' && GC.LIGAS.lab.zonas.norte.pbp === 'lab-2026-27-norte');
   if (previo === undefined) delete process.env.MOTORSTATS_INGESTION; else process.env.MOTORSTATS_INGESTION = previo;
   fs.rmSync(base, { recursive: true, force: true });
+  const fuente = fs.readFileSync('generar-contenido.js', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  check('el script no tiene una lista de respaldo ni la palabra «prestado»', !/RESPALDO|prestado/.test(fuente));
   check('lee paquetes de una carpeta que no existe sin romper', GC.leerPaquetes('./no-existe-esta-carpeta').length === 0);
 }
 
@@ -333,12 +340,13 @@ titulo('Nivel 2 · sale anónimo');
   check('el resumen se arma', /## CR-01/.test(GC.resumenNivel2(a1)) && /sin datos/.test(GC.resumenNivel2(a1)));
 
   const src = fs.readFileSync('generar-contenido.js', 'utf8');
-  const cuerpo = src.slice(src.indexOf('function escribirNivel2'), src.indexOf('if (require.main === module)'));
+  const cuerpo = src.slice(src.indexOf('function armarNivel2'), src.indexOf('if (require.main === module)'));
   check('el Nivel 2 solo sale con nombres si la liga los permite Y se pidió', /p\.liga\.nombres && !!args\['con-nombres'\]/.test(cuerpo));
   check('y si no, se anonimiza', cuerpo.replace(/\s+/g, ' ').indexOf('if (!conNombres) { n2 = anonimizar(n2);') !== -1);
   check('y si no, pasa por la verificación antes de escribir', cuerpo.indexOf('verificarAnonimo(') !== -1 && cuerpo.indexOf('verificarAnonimo(') < cuerpo.indexOf('writeFileSync'));
   check('la carpeta de paquetes sale de la zona o de `--pbp`', GC.carpetaPbp({}, { pbp: null }) === null &&
-    /lnb-2026-27/.test(GC.carpetaPbp({}, GC.LIGAS.lnb.zonas.unica)) && /mi-carpeta/.test(GC.carpetaPbp({ pbp: 'mi-carpeta' }, {})));
+    /lnb-2026-27/.test(GC.carpetaPbp({}, GC.LIGAS.lnb.zonas.unica)) && /mi-carpeta/.test(GC.carpetaPbp({ pbp: 'mi-carpeta' }, { pbp: 'x' })) &&
+    GC.carpetaPbp({ pbp: 'mi-carpeta' }, {}) === null);
 }
 
 /* -------------------------------------------------------------------- */

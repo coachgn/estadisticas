@@ -115,8 +115,11 @@ node test-interzonal.js    # 220 tests · la llave entre zonas: un cliente de un
                            #             · y el aislamiento por zona: cada zona ve SUS fases (punto 78)
                            #             · y el rival de otra zona: escudo, scouting y la vuelta de la llave (79)
 
-node test-contenido.js     # 136 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
+node test-contenido.js     # 142 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
                            #             derivado, las diez recetas de Nivel 2 y que los nombres solo salgan en APdeB (103, 104)
+
+node test-centro-mando.js  #  63 tests · el Centro de Mando Editorial local: propuestas, ganchos sin números propios,
+                           #             el play-by-play que no se presta, el aprendizaje y el servidor en 127.0.0.1 (105)
 
 node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -128,7 +131,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7219 tests en total. Todos tienen que dar verde antes de commitear.**
+**7288 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -12944,11 +12947,13 @@ datos, guion, muestra }`, o `ok: false` con su motivo.
 - **Las RL leen los paquetes de `motorstats-ingestion/salida/<liga>/web`**
   (`LIGAS[].zonas[].pbp`, o `--pbp`). `MOTORSTATS_INGESTION` cambia la
   carpeta base.
-- **Una liga sin play-by-play lo toma PRESTADO** (decisión del club,
-  2026-10-12): `PBP_DE_RESPALDO`, primero la Conferencia Norte 25/26 y
-  después la LNB. Se DECLARA: `meta.pbp.prestado`, la competencia en la
-  `muestra` de cada pieza y un aviso. El dato es de esa competencia, no de
-  la liga pedida. Un `--pbp` explícito no cae al respaldo.
+- **EL PLAY-BY-PLAY NO SE PRESTA NI SE CRUZA ENTRE LIGAS** (decisión del
+  club, 2026-10-12, que revierte la de ese mismo día). Una liga sin
+  paquetes propios deja a sus RL en `ok: false` con «Sin datos de PBP para
+  esta liga.» (`SIN_PBP`). `--pbp` cambia la CARPETA de una liga que
+  declara el suyo; a una que no declara no le da uno. Para los reels se
+  elige la liga que sí lo tiene: `--liga lab25` (Conferencia Norte 25/26,
+  libro `jujuy/jujuy-primera` + paquetes `conferencia-norte`) o `--liga lnb`.
 - **CR-02 exige 3 triples intentados por partido** (`PISO_TRIPLES_CASO`):
   con 1 por partido, 1,80 por intento es una noche.
 - **El caso de RL-01 es el quinteto de MÁS MINUTOS** entre los que ganan en
@@ -12972,3 +12977,49 @@ datos, guion, muestra }`, o `ok: false` con su motivo.
 - Verificado al revés: sin el piso de quinteto caen 4 tests, CR-01 sin
   posesiones 2, el equipo sin rotular 5, sin el piso de minutos 4 y CR-03
   con el universo recortado 2.
+
+## 105. EL CENTRO DE MANDO EDITORIAL · LOCAL (2026-10-12)
+
+    node centro-mando/servidor.js        →  http://127.0.0.1:8770
+
+Pantalla para elegir liga, zona, formato y eje táctico y recibir las
+propuestas sin pasar por la terminal. `test-centro-mando.js` fija todo.
+
+```
+centro-mando/motor.js      PURO: propuestas, ganchos, aprendizaje, placas HTML
+centro-mando/servidor.js   Express (el de server/node_modules), solo 127.0.0.1
+centro-mando/index.html    la página, sin dependencias
+```
+
+- **Es LOCAL a propósito** (decisión del club): lee los libros con
+  `server/.env`, como `generar-contenido.js`. No hay endpoint en Vercel ni
+  sección en el panel. La página queda publicada en Pages porque el repo es
+  público, pero sin el servidor local no hace nada (y lleva `noindex`).
+- **No calcula.** Pide los números a `GC.armarNivel1` / `GC.armarNivel2`,
+  que son el MISMO camino de la línea de comandos: anonimizan y verifican
+  antes de devolver. El servidor no llama a `nivel2()` ni a `paquete()`
+  directo; hay test.
+- **Sin LLM ni búsqueda web.** Los tres ganchos por pieza (dato, titular,
+  pregunta) se arman con frases de la propia receta: ningún gancho trae un
+  número que no esté en ella (test). La pregunta sale del guion; si no hay,
+  ese estilo no se inventa. El «contexto de tendencia» es un campo que
+  escribe quien opera y viaja a la exportación rotulado como manual.
+- **Formatos**: Stories (solo APdeB: van con nombre), feed, carrusel y
+  reel. Un reel de una zona sin play-by-play sale deshabilitado en el
+  selector y el servidor lo rechaza igual (punto 104).
+- **Nombres**: Nivel 1 de APdeB con nombres por defecto, Nivel 2 anónimo;
+  fuera de APdeB la casilla está deshabilitada y `resolverPedido` lo rechaza.
+- **Aprendizaje** (`contenido/aprendizaje.json`, en .gitignore: NO tiene
+  respaldo en git): se carga A MANO lo que muestra Instagram. Puntaje =
+  (compartidos×4 + guardados×3 + comentarios×2 + me gusta) cada 100 de
+  alcance. El peso de un formato, una pieza o un estilo de gancho es su
+  puntaje sobre la media, acotado a [0,5 ; 2], y **con menos de 3
+  publicaciones medidas vale 1**. Reordena, no filtra.
+- **Exportar** escribe en `contenido/centro-mando/` el JSON, el guion en
+  Markdown y un HTML de placas GENÉRICO (portada con el gancho + una placa
+  por línea del guion, `data-document-role="page"`, logo por URL pública).
+  Las placas diseñadas de `contenido/placas/` siguen siendo a mano, y la
+  importación a Canva se hace desde una sesión de Claude: la página no
+  tiene conector.
+- El libro se guarda 10 minutos por zona en la memoria del proceso;
+  «Volver a leer el libro» lo fuerza.

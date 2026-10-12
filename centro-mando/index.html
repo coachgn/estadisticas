@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Centro de Mando Editorial · MotorStats AR</title>
+<style>
+  :root { --fondo: #0a1930; --card: #10233f; --borde: #24406a; --tinta: #e6ecf5; --tenue: #a9b8cf; --cel: #74acdf; --nar: #f5a623; --ver: #4ade80; --roj: #f87171; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fondo); color: var(--tinta); font: 15px/1.45 system-ui, 'Segoe UI', sans-serif; }
+  header { padding: 18px 24px; border-bottom: 1px solid var(--borde); display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 20px; letter-spacing: .5px; }
+  header small { color: var(--tenue); }
+  main { max-width: 1180px; margin: 0 auto; padding: 20px 24px 60px; display: grid; gap: 18px; }
+  .card { background: var(--card); border: 1px solid var(--borde); border-radius: 10px; padding: 16px 18px; }
+  h2 { margin: 0 0 12px; font-size: 14px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--cel); }
+  .grilla { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  label { display: grid; gap: 4px; font-size: 12px; letter-spacing: .5px; text-transform: uppercase; color: var(--tenue); }
+  label.fila { display: flex; align-items: center; gap: 8px; text-transform: none; font-size: 14px; color: var(--tinta); }
+  select, input, textarea, button { font: inherit; color: var(--tinta); background: #0b1c35; border: 1px solid var(--borde); border-radius: 6px; padding: 9px 10px; min-height: 40px; }
+  input[type=checkbox], input[type=radio] { min-height: 0; width: 18px; height: 18px; padding: 0; accent-color: var(--cel); }
+  textarea { min-height: 64px; resize: vertical; text-transform: none; }
+  button { cursor: pointer; font-weight: 600; }
+  button.pri { background: var(--cel); color: #08162b; border-color: var(--cel); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  :focus-visible { outline: 2px solid var(--nar); outline-offset: 2px; }
+  .acciones { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+  .aviso { border-left: 3px solid var(--nar); padding: 8px 12px; background: rgba(245,166,35,.08); border-radius: 0 6px 6px 0; margin: 6px 0; }
+  .error { border-left-color: var(--roj); background: rgba(248,113,113,.08); }
+  .ok { border-left-color: var(--ver); background: rgba(74,222,128,.08); }
+  .prop h3 { margin: 0 0 4px; font-size: 18px; }
+  .chip { display: inline-block; border: 1px solid var(--borde); border-radius: 20px; padding: 2px 10px; font-size: 12px; color: var(--tenue); margin-right: 6px; }
+  .chip.id { color: var(--nar); border-color: var(--nar); font-weight: 700; }
+  .dato { font-size: 16px; margin: 10px 0; }
+  .gancho { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--borde); border-radius: 8px; margin: 6px 0; text-transform: none; font-size: 15px; color: var(--tinta); letter-spacing: 0; }
+  .gancho small { color: var(--tenue); display: block; }
+  ol { margin: 8px 0; padding-left: 22px; color: var(--tinta); }
+  details summary { cursor: pointer; color: var(--cel); padding: 6px 0; }
+  pre { background: #08162b; padding: 10px; border-radius: 6px; overflow: auto; max-height: 320px; font-size: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--borde); }
+  th { color: var(--tenue); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+  .scroll { overflow-x: auto; }
+  .tenue { color: var(--tenue); }
+  @media (prefers-reduced-motion: no-preference) { .girando::after { content: ' …'; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Centro de Mando Editorial</h1>
+  <small>MotorStats AR · local · los números salen del libro, sin tipear nada</small>
+</header>
+<main>
+  <section class="card" aria-labelledby="t-pedido">
+    <h2 id="t-pedido">1 · Qué generamos</h2>
+    <div class="grilla">
+      <label>Liga / torneo <select id="liga"></select></label>
+      <label>Zona <select id="zona"></select></label>
+      <label>Formato <select id="formato"></select></label>
+      <label>Eje táctico <select id="eje"></select></label>
+    </div>
+    <div class="grilla" id="ventana" style="margin-top:12px">
+      <label>Desde (opcional) <input type="date" id="desde"></label>
+      <label>Hasta (opcional) <input type="date" id="hasta"></label>
+      <label>N.º de fecha (opcional) <input type="number" id="fechaN" min="1" max="60"></label>
+    </div>
+    <div class="acciones">
+      <label class="fila"><input type="checkbox" id="conNombres"> Con nombres reales</label>
+      <label class="fila"><input type="checkbox" id="refrescar"> Volver a leer el libro</label>
+    </div>
+    <label style="margin-top:12px">Contexto de tendencia (opcional · lo escribís vos, viaja a la exportación)
+      <textarea id="contexto" maxlength="600" placeholder="Ej.: esta semana se habló de la defensa del pick &amp; roll en la final de…"></textarea>
+    </label>
+    <div class="acciones">
+      <button class="pri" id="generar">Generar propuestas</button>
+      <span id="estado" role="status" aria-live="polite" class="tenue"></span>
+    </div>
+    <div id="nota"></div>
+  </section>
+
+  <section aria-labelledby="t-prop">
+    <h2 id="t-prop" style="margin-left:4px">2 · Propuestas</h2>
+    <div id="propuestas"><div class="card tenue">Elegí liga, formato y eje, y tocá «Generar propuestas».</div></div>
+  </section>
+
+  <section class="card" aria-labelledby="t-apr">
+    <h2 id="t-apr">3 · Aprendizaje</h2>
+    <p class="tenue" style="margin-top:0">Cargá a mano lo que muestra Instagram de cada publicación. Con tres o más publicaciones medidas de un formato, una pieza o un estilo de gancho, las propuestas se reordenan solas. Se guarda en <code>contenido/aprendizaje.json</code>, en esta máquina.</p>
+    <form id="formApr" class="grilla">
+      <label>Pieza <input id="a-pieza" required placeholder="CR-01"></label>
+      <label>Formato <select id="a-formato"></select></label>
+      <label>Estilo de gancho <select id="a-estilo"></select></label>
+      <label>Alcance <input type="number" id="a-alcance" min="1" required></label>
+      <label>Guardados <input type="number" id="a-guardados" min="0" value="0"></label>
+      <label>Compartidos <input type="number" id="a-compartidos" min="0" value="0"></label>
+      <label>Comentarios <input type="number" id="a-comentarios" min="0" value="0"></label>
+      <label>Me gusta <input type="number" id="a-likes" min="0" value="0"></label>
+      <label>Fecha <input type="date" id="a-fecha"></label>
+      <label style="grid-column:1/-1">Gancho publicado <input id="a-gancho" maxlength="300"></label>
+      <div class="acciones" style="grid-column:1/-1;margin-top:0"><button class="pri">Guardar rendimiento</button><span id="a-estado" role="status" aria-live="polite" class="tenue"></span></div>
+    </form>
+    <div id="pesos" class="scroll" style="margin-top:14px"></div>
+  </section>
+</main>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const num = (v, d) => Number(v).toFixed(d == null ? 2 : d).replace('.', ',');
+let OPC = null, ULTIMO = null;
+
+async function api(ruta, cuerpo) {
+  const r = await fetch(ruta, cuerpo ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) } : undefined);
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'El servidor contestó ' + r.status);
+  return j;
+}
+const opciones = (lista, valor) => lista.map((o) => '<option value="' + esc(o.id) + '"' + (o.id === valor ? ' selected' : '') + (o.no ? ' disabled' : '') + '>' + esc(o.label) + '</option>').join('');
+const ligaSel = () => OPC.ligas.find((l) => l.id === $('liga').value);
+const zonaSel = () => ligaSel().zonas.find((z) => z.id === $('zona').value);
+const formatoSel = () => OPC.formatos.find((f) => f.id === $('formato').value);
+
+function pintarZonas() {
+  $('zona').innerHTML = opciones(ligaSel().zonas.map((z) => ({ id: z.id, label: z.label + (z.pbp ? ' · con play-by-play' : '') })), $('zona').value);
+  pintarFormatos();
+}
+function pintarFormatos() {
+  const l = ligaSel(), z = zonaSel(), previo = $('formato').value;
+  const lista = OPC.formatos.map((f) => {
+    const no = (f.soloConNombres && !l.nombres) ? ' — solo APdeB' : (f.pidePbp && !z.pbp) ? ' — sin datos de PBP para esta liga' : '';
+    return { id: f.id, label: f.label + no, no: !!no };
+  });
+  const valido = lista.find((f) => f.id === previo && !f.no) || lista.find((f) => !f.no);
+  $('formato').innerHTML = opciones(lista, valido.id);
+  pintarEjes();
+}
+function pintarEjes() {
+  const f = formatoSel(), l = ligaSel();
+  let ejes = [];
+  if (f.nivel === 2) ejes = OPC.piezas.filter((p) => p.formato === f.id).map((p) => ({ id: p.eje, label: OPC.ejes[p.eje] + ' · ' + p.id }));
+  else if (f.id === 'feed') ejes = ['generacion', 'tiro', 'falta', 'rebote'].map((e) => ({ id: e, label: OPC.ejes[e] }));
+  $('eje').innerHTML = opciones([{ id: '', label: f.id === 'stories' ? 'Las cinco categorías' : 'Todos' }].concat(ejes), '');
+  $('eje').disabled = f.id === 'stories';
+  $('ventana').hidden = f.nivel !== 1;
+  /* Los nombres: solo APdeB. Nivel 1 arranca con nombres, Nivel 2 anónimo. */
+  $('conNombres').disabled = !l.nombres;
+  $('conNombres').checked = l.nombres && f.nivel === 1;
+  $('nota').innerHTML = l.nombres ? '' : '<div class="aviso">' + esc(l.torneo) + ' sale siempre anónima: «Jugador 1», «Equipo A».</div>';
+}
+
+function tarjeta(p, i) {
+  if (!p.ok) {
+    return '<article class="card prop"><span class="chip id">' + esc(p.id) + '</span><span class="chip">sin datos</span><h3>' + esc(p.titulo) + '</h3>' +
+      p.avisos.map((a) => '<div class="aviso">' + esc(a) + '</div>').join('') + '</article>';
+  }
+  const ganchos = p.ganchos.map((g, j) => '<label class="gancho"><input type="radio" name="g' + i + '" value="' + j + '"' + (j ? '' : ' checked') + '><span>' + esc(g.texto) +
+    '<small>' + esc(OPC.estilos[g.estilo] || g.estilo) + (g.peso && g.peso !== 1 ? ' · peso ' + num(g.peso) : '') + '</small></span></label>').join('');
+  return '<article class="card prop" data-i="' + i + '"><span class="chip id">' + esc(p.id) + '</span><span class="chip">' + esc(p.formatoLabel || p.formato) + '</span>' +
+    (p.eje ? '<span class="chip">' + esc(OPC.ejes[p.eje]) + '</span>' : '') + (p.peso && p.peso !== 1 ? '<span class="chip">peso ' + num(p.peso) + '</span>' : '') +
+    '<h3>' + esc(p.titulo) + '</h3><p class="dato">' + esc(p.dato) + '</p>' +
+    (p.muestra ? '<p class="tenue">Muestra: ' + esc(Object.keys(p.muestra).filter((k) => p.muestra[k] != null).map((k) => k + ' ' + p.muestra[k]).join(' · ')) + '</p>' : '') +
+    p.avisos.map((a) => '<div class="aviso">' + esc(a) + '</div>').join('') +
+    '<fieldset style="border:0;padding:0;margin:10px 0"><legend class="tenue" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px">Gancho</legend>' + ganchos + '</fieldset>' +
+    '<details><summary>Guion (' + p.guion.length + ')</summary><ol>' + p.guion.map((g) => '<li>' + esc(g) + '</li>').join('') + '</ol></details>' +
+    '<details><summary>Los números, tal como salen del generador</summary><pre>' + esc(JSON.stringify(p.datos, null, 2)) + '</pre></details>' +
+    '<div class="acciones"><button data-exportar="' + i + '">Exportar JSON · guion · placas HTML</button><button data-medir="' + i + '">Cargar su rendimiento</button><span class="tenue" role="status" aria-live="polite" id="e' + i + '"></span></div></article>';
+}
+
+async function generar() {
+  const b = $('generar');
+  b.disabled = true; $('estado').textContent = 'Leyendo el libro y armando las piezas…';
+  try {
+    const r = await api('/api/generar', {
+      liga: $('liga').value, zona: $('zona').value, formato: $('formato').value, eje: $('eje').value || null,
+      desde: $('desde').value, hasta: $('hasta').value, fechaN: $('fechaN').value, conNombres: $('conNombres').checked, refrescar: $('refrescar').checked,
+    });
+    ULTIMO = r;
+    const cab = '<div class="card tenue">' + esc(r.meta.torneo) + (r.meta.zona ? ' · ' + esc(r.meta.zona) : '') + (r.meta.tramo ? ' · tramo ' + esc(r.meta.tramo) : '') +
+      (r.meta.leido ? ' · libro leído ' + new Date(r.meta.leido).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '') +
+      (r.meta.anonimo === true ? ' · <strong>anónimo</strong>' : r.meta.anonimo === false ? ' · <strong>con nombres</strong>' : '') +
+      (r.avisos || []).map((a) => '<div class="aviso">' + esc(a) + '</div>').join('') + '</div>';
+    $('propuestas').innerHTML = cab + (r.propuestas.length ? r.propuestas.map(tarjeta).join('') : '');
+    $('estado').textContent = r.propuestas.filter((p) => p.ok).length + ' propuesta(s) con datos.';
+  } catch (e) {
+    $('propuestas').innerHTML = '<div class="card"><div class="aviso error">' + esc(e.message) + '</div></div>';
+    $('estado').textContent = '';
+  }
+  b.disabled = false;
+}
+
+const ganchoElegido = (i) => { const r = document.querySelector('input[name="g' + i + '"]:checked'); return ULTIMO.propuestas[i].ganchos[r ? Number(r.value) : 0]; };
+
+document.addEventListener('click', async (ev) => {
+  const t = ev.target;
+  if (t.dataset.exportar != null) {
+    const i = Number(t.dataset.exportar), p = ULTIMO.propuestas[i], g = ganchoElegido(i);
+    try {
+      const r = await api('/api/exportar', { propuesta: p, gancho: g && g.texto, contexto: $('contexto').value, liga: ULTIMO.meta.liga + '-' + ULTIMO.meta.zonaId, meta: ULTIMO.meta });
+      $('e' + i).textContent = 'Escrito: ' + r.archivos.join(' · ');
+    } catch (e) { $('e' + i).textContent = 'No se pudo exportar: ' + e.message; }
+  }
+  if (t.dataset.medir != null) {
+    const i = Number(t.dataset.medir), p = ULTIMO.propuestas[i], g = ganchoElegido(i);
+    $('a-pieza').value = p.id; $('a-formato').value = p.formato; $('a-estilo').value = g ? g.estilo : ''; $('a-gancho').value = g ? g.texto : '';
+    $('a-alcance').focus();
+  }
+});
+
+function pintarAprendizaje(a) {
+  const w = a.ponderaciones;
+  if (!w.publicaciones) { $('pesos').innerHTML = '<p class="tenue">Todavía no hay publicaciones medidas: las propuestas salen en el orden del generador.</p>'; return; }
+  const filas = (titulo, g, nombre) => Object.keys(g).map((k) => '<tr><td>' + titulo + '</td><td>' + esc(nombre ? nombre(k) : k) + '</td><td>' + g[k].n + '</td><td>' + num(g[k].puntaje) +
+    '</td><td>' + (g[k].confiable ? num(g[k].peso) : '1,00 <span class="tenue">· faltan publicaciones</span>') + '</td></tr>').join('');
+  $('pesos').innerHTML = '<p class="tenue">' + w.publicaciones + ' publicaciones medidas · media ' + num(w.media) + ' interacciones ponderadas cada 100 cuentas alcanzadas (compartido ×4, guardado ×3, comentario ×2, me gusta ×1).</p>' +
+    '<table><thead><tr><th>Grupo</th><th>Valor</th><th>Publicaciones</th><th>Puntaje</th><th>Peso</th></tr></thead><tbody>' +
+    filas('Formato', w.formato, (k) => (OPC.formatos.find((f) => f.id === k) || {}).label || k) + filas('Pieza', w.pieza) + filas('Gancho', w.estilo, (k) => OPC.estilos[k] || k) + '</tbody></table>';
+}
+
+$('formApr').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const v = (k) => $('a-' + k).value;
+  try {
+    const a = await api('/api/aprendizaje', { pieza: v('pieza'), formato: v('formato'), estilo: v('estilo'), gancho: v('gancho'), alcance: v('alcance'), guardados: v('guardados'),
+      compartidos: v('compartidos'), comentarios: v('comentarios'), likes: v('likes'), fecha: v('fecha'), liga: $('liga').value + '-' + $('zona').value });
+    pintarAprendizaje(a); $('a-estado').textContent = 'Guardado.';
+    ['alcance', 'gancho'].forEach((k) => { $('a-' + k).value = ''; }); ['guardados', 'compartidos', 'comentarios', 'likes'].forEach((k) => { $('a-' + k).value = 0; });
+  } catch (e) { $('a-estado').textContent = e.message; }
+});
+
+(async function iniciar() {
+  try {
+    OPC = await api('/api/opciones');
+  } catch (e) {
+    $('propuestas').innerHTML = '<div class="card"><div class="aviso error">El servidor local no contesta. Levantalo con <code>node centro-mando/servidor.js</code> y abrí <code>http://127.0.0.1:8770</code>.</div></div>';
+    $('generar').disabled = true; return;
+  }
+  $('liga').innerHTML = opciones(OPC.ligas.map((l) => ({ id: l.id, label: l.torneo })), 'apb');
+  $('a-formato').innerHTML = opciones(OPC.formatos);
+  $('a-estilo').innerHTML = opciones([{ id: '', label: 'Sin clasificar' }].concat(Object.keys(OPC.estilos).map((k) => ({ id: k, label: OPC.estilos[k] }))));
+  pintarZonas();
+  $('liga').addEventListener('change', pintarZonas);
+  $('zona').addEventListener('change', pintarFormatos);
+  $('formato').addEventListener('change', pintarEjes);
+  $('generar').addEventListener('click', generar);
+  pintarAprendizaje(await api('/api/aprendizaje'));
+})();
+</script>
+</body>
+</html>

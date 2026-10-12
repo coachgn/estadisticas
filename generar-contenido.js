@@ -54,6 +54,14 @@ const LIGAS = {
     torneo: 'LIGA NACIONAL 2026-27', nombres: false, logos: 'liga-nacional', nivel: 'LIGA_NACIONAL',
     zonas: { unica: { club: 'liga-nacional-2026-27', categoria: 'lnb-2026-27', label: '', pbp: 'lnb-2026-27' } },
   },
+  /* La temporada cerrada de la Conferencia Norte: es la que tiene el
+     play-by-play completo (266 partidos validados), así que es la fuente
+     de los reels mientras la 2026-27 junta muestra. Libro y paquetes son
+     de la MISMA competencia. */
+  lab25: {
+    torneo: 'LIGA ARGENTINA 2025-26', nombres: false, logos: 'liga-argentina', nivel: 'LIGA_ARGENTINA',
+    zonas: { norte: { club: 'jujuy', categoria: 'jujuy-primera', label: 'CONFERENCIA NORTE', pbp: 'conferencia-norte' } },
+  },
   lab: {
     torneo: 'LIGA ARGENTINA 2026-27', nombres: false, logos: 'liga-argentina', nivel: 'LIGA_ARGENTINA',
     zonas: {
@@ -853,10 +861,12 @@ function rl04(paqs) {
   };
 }
 
-/* Cuando la liga no tiene play-by-play (APdeB) o todavía no lo cargó, los
-   reels se nutren de estos paquetes, en este orden. Se DECLARA en la
-   salida: el dato es de esa competencia, no de la liga que se pidió. */
-const PBP_DE_RESPALDO = ['conferencia-norte', 'lnb-2026-27'];
+/* EL PLAY-BY-PLAY NO SE PRESTA NI SE CRUZA ENTRE LIGAS (decisión del club,
+   2026-10-12). Es de cada partido: un reel armado con el libro de una liga
+   y los paquetes de otra describe una competencia que no existe. Una liga
+   sin paquetes propios deja a sus RL en `ok: false` con este motivo; para
+   generarlos se elige la liga que SÍ los tiene (lab25, lnb). */
+const SIN_PBP = 'Sin datos de PBP para esta liga.';
 
 const RECETAS = {
   'CR-01': { fuente: 'libro', f: cr01 }, 'CR-02': { fuente: 'libro', f: cr02 }, 'CR-03': { fuente: 'libro', f: cr03 },
@@ -876,13 +886,12 @@ function nivel2(idx, paqs, opciones) {
     const r = RECETAS[String(id).toUpperCase()];
     if (!r) return sin(String(id), 'No existe esa pieza. Las que hay: ' + Object.keys(RECETAS).join(', '));
     if (r.fuente === 'libro' && !idx) return sin(id, 'Hace falta el libro de la liga.');
-    if (r.fuente === 'pbp' && !(paqs && paqs.length)) return sin(id, 'Esta liga no tiene paquetes de play-by-play: probá con --pbp <carpeta>.');
+    if (r.fuente === 'pbp' && !(paqs && paqs.length)) return sin(id, SIN_PBP);
     try {
       if (r.fuente === 'libro') return r.f(idx, o);
       const p = r.f(paqs, o);
       if (p.ok) {
         p.muestra = Object.assign({}, p.muestra, { competencia: paqs[0].competencia || null });
-        if (o.pbp && o.pbp.prestado) p.avisos = ['El play-by-play es de ' + (paqs[0].competencia || o.pbp.origen) + ': esta liga no tiene.'];
       }
       return p;
     }
@@ -948,19 +957,27 @@ async function leerIndice(zona) {
   return NUCLEO.construirIndice(hojas, { fase: tramo.fase, torneo: tramo.torneo });
 }
 
+/** El Nivel 1 (Stories + feed) EN MEMORIA, ya con escudos o ya anónimo y
+    verificado. Lo usan la línea de comandos y el Centro de Mando: con dos
+    caminos, uno termina salteándose la verificación. */
+function armarNivel1(args, p, idx) {
+  let pq = paquete(idx, {
+    torneo: p.liga.torneo, zona: p.zona.label, desde: args.desde, hasta: args.hasta,
+    fechaN: args['fecha-n'] ? Number(args['fecha-n']) : null, feed: args.feed,
+  });
+  if (!pq.ok) return pq;
+  if (p.conNombres) pq = conEscudos(pq, p.liga.logos);
+  else { pq = anonimizar(pq); verificarAnonimo(pq, nombresDelLibro(idx)); }
+  return pq;
+}
+
 async function principal(argv) {
   const args = argumentos(argv);
   const p = resolverPedido(args);
   const idx = await leerIndice(p.zona);
   if (args.nivel2 || args.piezas) return escribirNivel2(args, p, idx);
-  let pq = paquete(idx, {
-    torneo: p.liga.torneo, zona: p.zona.label, desde: args.desde, hasta: args.hasta,
-    fechaN: args['fecha-n'] ? Number(args['fecha-n']) : null, feed: args.feed,
-  });
+  const pq = armarNivel1(args, p, idx);
   if (!pq.ok) { console.error('Sin contenido: ' + pq.avisos.join(' ')); process.exitCode = 1; return; }
-
-  if (p.conNombres) pq = conEscudos(pq, p.liga.logos);
-  else { pq = anonimizar(pq); verificarAnonimo(pq, nombresDelLibro(idx)); }
 
   const dir = path.join(args.salida || path.join(__dirname, 'contenido'), p.ligaId + '-' + p.zonaId, pq.ventana.hasta);
   fs.mkdirSync(dir, { recursive: true });
@@ -972,31 +989,30 @@ async function principal(argv) {
   console.log('\nEscrito en ' + path.relative(__dirname, dir));
 }
 
-/** Dónde deja motorstats-ingestion los paquetes de play-by-play. */
+/** Dónde deja motorstats-ingestion los paquetes de play-by-play.
+    `--pbp` cambia la CARPETA de una liga que tiene el suyo; a una que no
+    declara play-by-play no le da uno: sería prestarle el de otra. */
 function carpetaPbp(args, zona) {
-  if (args.pbp) return path.resolve(args.pbp);
   if (!zona.pbp) return null;
+  if (args.pbp) return path.resolve(args.pbp);
   const base = process.env.MOTORSTATS_INGESTION || path.join(__dirname, '..', 'motorstats-ingestion');
   return path.join(base, 'salida', zona.pbp, 'web');
 }
 
-/** Los paquetes de la liga y, si no tiene, los de respaldo. */
+/** Los paquetes de ESTA liga, o ninguno. Nunca los de otra. */
 function paquetesPara(args, zona) {
   const propia = carpetaPbp(args, zona);
-  const propios = propia ? leerPaquetes(propia) : [];
-  if (propios.length || args.pbp) return { paqs: propios, origen: propia ? path.basename(path.dirname(propia)) : null, prestado: false };
-  for (let i = 0; i < PBP_DE_RESPALDO.length; i++) {
-    const paqs = leerPaquetes(carpetaPbp({}, { pbp: PBP_DE_RESPALDO[i] }));
-    if (paqs.length) return { paqs, origen: PBP_DE_RESPALDO[i], prestado: true };
-  }
-  return { paqs: [], origen: null, prestado: false };
+  const paqs = propia ? leerPaquetes(propia) : [];
+  return { paqs, origen: paqs.length ? zona.pbp : null };
 }
 
-function escribirNivel2(args, p, idx) {
+/** El Nivel 2 EN MEMORIA, ya anónimo y verificado (salvo APdeB con
+    `--con-nombres`). Mismo motivo que `armarNivel1`. */
+function armarNivel2(args, p, idx) {
   const pbp = paquetesPara(args, p.zona);
   const paqs = pbp.paqs;
   let n2 = nivel2(idx, paqs, {
-    torneo: p.liga.torneo, zona: p.zona.label, nivel: p.liga.nivel, pbp: { origen: pbp.origen, prestado: pbp.prestado },
+    torneo: p.liga.torneo, zona: p.zona.label, nivel: p.liga.nivel, pbp: { origen: pbp.origen },
     piezas: args.piezas ? String(args.piezas).split(',').map((x) => x.trim()).filter(Boolean) : null,
   });
   /* Anónimo SIEMPRE, salvo que APdeB lo pida con nombres a propósito. */
@@ -1006,6 +1022,11 @@ function escribirNivel2(args, p, idx) {
     const a = nombresDelLibro(idx), b = nombresDePaquetes(paqs);
     verificarAnonimo(n2, { jugadores: a.jugadores.concat(b.jugadores), equipos: a.equipos.concat(b.equipos) });
   }
+  return n2;
+}
+
+function escribirNivel2(args, p, idx) {
+  const n2 = armarNivel2(args, p, idx);
   const dias = jornadas(idx);
   const dia0 = dias.length ? dias[dias.length - 1].hasta : 'sin-fecha';
   const dir = path.join(args.salida || path.join(__dirname, 'contenido'), p.ligaId + '-' + p.zonaId, dia0);
@@ -1024,5 +1045,6 @@ module.exports = {
   LIGAS, CATEGORIAS, PISO_MINUTOS, HUECO_JORNADA, LARGO_MAXIMO,
   jornadas, ventana, top3, paquete, anonimizar, verificarAnonimo, nombresDelLibro,
   resolverPedido, argumentos, resumen, mostrar, contextoDeCategoria,
-  RECETAS, nivel2, resumenNivel2, leerPaquetes, nombresDePaquetes, carpetaPbp, paquetesPara, PBP_DE_RESPALDO, PISO_TRIPLES_CASO,
+  RECETAS, nivel2, resumenNivel2, leerPaquetes, nombresDePaquetes, carpetaPbp, paquetesPara, SIN_PBP, PISO_TRIPLES_CASO,
+  leerIndice, armarNivel1, armarNivel2, escribirNivel2, principal,
 };
