@@ -1,0 +1,17 @@
+{
+  "name": "sgadd-centro-mando",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Centro de Mando Editorial local de MotorStats AR. No se despliega.",
+  "main": "servidor.js",
+  "scripts": {
+    "start": "node servidor.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
+    "zod": "^4.6.7"
+  }
+}

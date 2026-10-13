@@ -24,15 +24,23 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('../server/node_modules/express');
+/* La clave de Claude vive en centro-mando/.env; se carga ANTES de pedir el
+   módulo de agentes, que lee el entorno. No pisa lo que ya esté definido. */
+require('../server/lib/env.js').cargar(path.join(__dirname, '.env'));
+require('../server/lib/env.js').cargar();
 const GC = require('../generar-contenido.js');
 const M = require('./motor.js');
 const E = require('./explorador.js');
+const LLM = require('./llm.js');
 
 const RAIZ = path.join(__dirname, '..');
-const SALIDA = path.join(RAIZ, 'contenido', 'centro-mando');
-const COLA = path.join(RAIZ, 'contenido', 'centro-mando', 'cola-canva.json');
-const BANDEJA = path.join(RAIZ, 'contenido', 'centro-mando', 'bandeja.json');
-const APRENDIZAJE = path.join(RAIZ, 'contenido', 'aprendizaje.json');
+/* Dónde se escribe. La variable existe para los tests, que no pueden
+   tocar la bandeja ni el historial de verdad. */
+const DATOS = process.env.CENTRO_MANDO_DATOS || path.join(RAIZ, 'contenido');
+const SALIDA = path.join(DATOS, 'centro-mando');
+const COLA = path.join(SALIDA, 'cola-canva.json');
+const BANDEJA = path.join(SALIDA, 'bandeja.json');
+const APRENDIZAJE = path.join(DATOS, 'aprendizaje.json');
 const QUINCENA_MS = 14 * 24 * 60 * 60 * 1000;
 const PUERTO = Number(process.env.CENTRO_MANDO_PUERTO) || Number(process.env.PORT) || 8770;
 const TTL_INDICE = 10 * 60 * 1000;
@@ -164,6 +172,31 @@ async function anomalias(b) {
   return r;
 }
 
+/**
+ * La PREGUNTA TÁCTICA. Claude la traduce a un pedido del Explorador y el
+ * Explorador local lo corre: el modelo no ve el libro ni devuelve datos.
+ * Una condición que el modelo pidió y el catálogo no reconoce NO se
+ * descarta en silencio —cambiaría la pregunta—: se rechaza la traducción.
+ */
+async function preguntar(b, deps) {
+  const x = b || {};
+  if (!(deps && deps.cliente) && !LLM.disponible()) throw new Error('La IA está apagada. ' + LLM.motivoApagada());
+  const p = GC.resolverPedido({ liga: x.liga, zona: x.zona });
+  const r = await LLM.interpretar(x.pregunta, E.opciones(), deps);
+  const c = r.consulta;
+  if (!c.sePuede) return { sePuede: false, motivo: c.motivo || 'La pregunta pide algo que no está en los libros.', lectura: c.lectura, modelo: r.modelo };
+  const crudo = { nivel: c.nivel, metricas: c.metricas, orden: c.orden, sentido: c.sentido === 'mejor' ? undefined : c.sentido, top: c.top, soloCalificados: c.soloCalificados,
+    condiciones: c.nivel === 'zonas' ? [] : c.condiciones };
+  const validado = E.pedido(c.nivel, crudo);
+  const perdidas = crudo.condiciones.length - validado.condiciones.length;
+  if (perdidas || validado.orden !== c.orden) {
+    throw new Error('No pude traducir la pregunta con las métricas del libro (' + (perdidas ? perdidas + ' condición(es) usan una métrica que no existe en ese nivel' : 'la métrica de orden «' + c.orden + '» no existe en ese nivel') + '). Armala con los controles de abajo.');
+  }
+  if (c.nivel === 'zonas' && Object.keys(p.liga.zonas).length < 2) throw new Error('La pregunta compara zonas y ' + p.liga.torneo + ' tiene una sola.');
+  const consulta = Object.assign({}, crudo, { metricas: validado.columnas, orden: validado.orden, liga: x.liga, zona: x.zona });
+  return { sePuede: true, lectura: c.lectura, consulta, resultado: await explorar(consulta), modelo: r.modelo, uso: r.uso };
+}
+
 /* --------------------------------------------------------------------
    LA BANDEJA
    Una por liga y zona, en disco: lo que se propuso esta quincena y qué
@@ -214,6 +247,33 @@ async function accionDeBandeja(b) {
     actual = M.marcar(actual, x.uid, 'aprobada');
   } else throw new Error('Esa acción no existe.');
   return Object.assign({ bandeja: guardarBandeja(clave, actual) }, extra);
+}
+
+/**
+ * La IA REDACTA un ítem en su tono vigente. La guarda numérica ya corrió
+ * adentro de `LLM.redactar`; acá se suma la del anonimato: si la pieza era
+ * anónima, la redacción tiene que seguir siéndolo o se tira ENTERA.
+ * La bandeja se relee DESPUÉS de esperar al modelo: varias redacciones
+ * corren a la vez y cada una escribiría sobre una foto vieja.
+ */
+async function redactarItem(b, deps) {
+  const x = b || {};
+  if (!(deps && deps.cliente) && !LLM.disponible()) throw new Error('La IA está apagada. ' + LLM.motivoApagada());
+  const p = GC.resolverPedido({ liga: x.liga, zona: x.zona });
+  const clave = claveBandeja(p);
+  const antes = (leerBandejas()[clave] || { items: [] }).items.find((i) => i.uid === x.uid);
+  if (!antes) throw new Error('Esa propuesta ya no está en la bandeja.');
+  const base = antes.base || antes.propuesta, tono = antes.propuesta.tono;
+  if ((antes.redacciones || {})[tono] && !x.rehacer) return { bandeja: leerBandejas()[clave], item: antes };
+  const red = await LLM.redactar(base, tono, deps);
+  const nombres = GC.nombresDelLibro((await indiceDe(p, false)).idx);
+  const nombra = (v) => { try { GC.verificarAnonimo(v, nombres); return false; } catch (e) { return true; } };
+  if (!nombra({ t: base.titulo, d: base.dato, g: base.guion, x: base.datos }) && nombra({ t: red.titulo, g: red.ganchos, l: red.guion })) {
+    throw new Error('La redacción nombró a alguien del libro en una pieza anónima: se descartó entera.');
+  }
+  const actual = leerBandejas()[clave];
+  const nueva = guardarBandeja(clave, M.guardarRedaccion(actual, x.uid, tono, { titulo: red.titulo, ganchos: red.ganchos, guion: red.guion, descartado: red.descartado, modelo: red.modelo }));
+  return { bandeja: nueva, item: nueva.items.find((i) => i.uid === x.uid), descartado: red.descartado, uso: red.uso };
 }
 
 /** Un hallazgo del Explorador → propuesta ANÓNIMA y verificada → bandeja. */
@@ -294,7 +354,9 @@ function app() {
     catch (e) { res.status(400).json({ error: e.message }); }
   };
   a.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
-  a.get('/api/opciones', ruta(() => Object.assign(M.opciones(GC.LIGAS), { explorador: E.opciones() })));
+  a.get('/api/opciones', ruta(() => Object.assign(M.opciones(GC.LIGAS), { explorador: E.opciones(), ia: { activa: LLM.disponible(), modelo: LLM.MODELO, motivo: LLM.motivoApagada() } })));
+  a.post('/api/preguntar', ruta((req) => preguntar(req.body)));
+  a.post('/api/bandeja/redactar', ruta((req) => redactarItem(req.body)));
   a.post('/api/explorar', ruta((req) => explorar(req.body)));
   a.post('/api/anomalias', ruta((req) => anomalias(req.body)));
   a.post('/api/bandeja', ruta((req) => bandeja(req.body)));
@@ -313,4 +375,4 @@ if (require.main === module) {
   app().listen(PUERTO, '127.0.0.1', () => console.log('Centro de Mando Editorial · http://127.0.0.1:' + PUERTO));
 }
 
-module.exports = { app, generar, placas, aprobar, registrar, explorar, anomalias, bandeja, accionDeBandeja, delLaboratorio, PUERTO };
+module.exports = { app, generar, placas, aprobar, registrar, explorar, anomalias, bandeja, accionDeBandeja, delLaboratorio, preguntar, redactarItem, indices, PUERTO };

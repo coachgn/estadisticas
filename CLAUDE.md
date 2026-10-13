@@ -118,7 +118,8 @@ node test-interzonal.js    # 220 tests · la llave entre zonas: un cliente de un
 node test-contenido.js     # 142 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
                            #             derivado, las diez recetas de Nivel 2 y que los nombres solo salgan en APdeB (103, 104)
 
-node test-centro-mando.js  # 153 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
+node test-centro-mando.js  # 206 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
+                           #             (pide «npm install» en centro-mando/ una vez: los agentes usan el SDK de Claude, punto 107)
                            #             el play-by-play que no se presta, el aprendizaje y el servidor en 127.0.0.1 (105)
 
 node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, el catálogo en KV
@@ -131,7 +132,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7378 tests en total. Todos tienen que dar verde antes de commitear.**
+**7431 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -13124,3 +13125,85 @@ pendientes, 3 en reserva), cambio de tono y de enfoque, anomalías, el
 filtro «T3% con menos de 15 minutos y al menos 1 triple intentado» (30 de
 235), la comparativa de las tres zonas y un hallazgo mandado a la bandeja
 y aprobado, con su tabla anónima en la placa. Sin captura de pantalla.
+
+## 107. LOS AGENTES CON CLAUDE EN EL CENTRO DE MANDO (2026-10-12)
+
+Decisión del club: sumar la API de Claude al servidor LOCAL para dos
+trabajos —interpretar la pregunta táctica y redactar— con una condición:
+**la extracción de datos sigue 100 % en las funciones locales**.
+`centro-mando/llm.js`; lo fija `test-centro-mando.js` con un cliente
+simulado.
+
+### Configurar la clave
+
+    cd centro-mando && npm install        # una vez: @anthropic-ai/sdk y zod
+    copiar .env.ejemplo como .env y pegar ANTHROPIC_API_KEY
+    node centro-mando/servidor.js
+
+`centro-mando/.env` y `centro-mando/node_modules/` están en .gitignore.
+El modelo es `claude-opus-5-5`; `CENTRO_MANDO_MODELO` lo cambia. **Sin
+clave el Centro de Mando funciona igual** (plantillas y filtros a mano) y
+el encabezado dice «IA apagada». Las dependencias viven en
+`centro-mando/package.json`, no en `server/`: el backend de Vercel no
+las necesita.
+
+### Qué hace el modelo, y qué no
+
+| | Entra al modelo | Sale del modelo | Quién pone los números |
+|---|---|---|---|
+| **Pregunta táctica** (`interpretar`) | la pregunta y el CATÁLOGO de métricas; ni una fila del libro | un PEDIDO del Explorador (nivel, métricas, orden, condiciones) | `E.explorar`, local |
+| **Redacción** (`redactar`) | UNA pieza ya calculada y el tono | título, tres ganchos y el guion | la receta; el modelo solo los repite |
+
+### Las guardas, todas DESPUÉS de la respuesta
+
+No se confía en el prompt: cada una se verifica en código.
+
+- **Numérica** (`numerosAjenos`, pura): todo número del texto tiene que
+  estar, tal cual, en la pieza (coma o punto dan igual; 58 no vale por
+  58,3 ni «casi 60»). El gancho que trae uno ajeno se descarta; el título
+  vuelve al del generador; UNA línea del guion con un número ajeno tira el
+  guion entero. La tarjeta dice cuántos textos descartó.
+- **El DATO no se reescribe nunca** (`aplicarRedaccion` no lo toca), ni
+  `datos` ni `muestra`.
+- **Anonimato**: una pieza anónima se manda ANÓNIMA, así que el modelo no
+  recibe un nombre que filtrar; igual, si la redacción de una pieza
+  anónima nombra a alguien del libro, se descarta ENTERA
+  (`redactarItem` + `GC.verificarAnonimo`). Las Stories y el feed de
+  APdeB van con nombres, como siempre.
+- **La traducción de la pregunta no se degrada en silencio**: si el modelo
+  pide una métrica de orden o una condición que el catálogo de ese nivel
+  no tiene, `E.pedido` la descartaría y la tabla contestaría OTRA
+  pregunta; `preguntar` lo detecta y rechaza. Lo que no está en ningún
+  libro vuelve como `sePuede: false` con el motivo.
+- **Lo que entendió queda a la vista**: la consulta se vuelca en los
+  controles del laboratorio («Entendí: …») y se puede corregir a mano.
+
+### La bandeja
+
+- Al pintarse, cada pieza pendiente sin redacción de su tono se le pide a
+  Claude (de a tres a la vez) y su tarjeta se cambia sola. **Una vez por
+  pieza y tono**: se guarda en `bandeja.json` (`item.redacciones[tono]`,
+  con `item.base` = la pieza del generador) y no se vuelve a pagar.
+- **🌶️ Ajustar tono** ahora reescribe: parte SIEMPRE de `base`, no de la
+  redacción anterior. Volver a un tono ya redactado lo repone sin pedirlo.
+- Los ganchos de la IA van primero; los del generador quedan detrás,
+  elegibles. Si la IA falla, queda la plantilla y la tarjeta lo dice.
+- `redactarItem` relee la bandeja DESPUÉS de esperar al modelo: varias
+  redacciones corren a la vez y cada una pisaría una foto vieja.
+- El historial anota `redaccion: 'ia' | 'plantilla'`.
+
+### Lo que hay que respetar al tocarlo
+
+- **SDK oficial** (`client.beta.messages.parse` + `betaZodOutputFormat`),
+  con `fallbacks: 'default'` (beta `server-side-fallback-2026-07-01`).
+  En Opus 5.5 el razonamiento está siempre activo: NO mandar `thinking`,
+  `temperature` ni `tool_choice` forzado (dan 400); se regula con
+  `output_config.effort` (`low` para interpretar, `medium` para redactar).
+- **Los tests no llaman a la API**: `deps.cliente` inyecta uno simulado, y
+  `CENTRO_MANDO_DATOS` manda la bandeja y el historial a una carpeta
+  temporal. Ningún test toca `contenido/`.
+- **NO VERIFICADO CONTRA LA API REAL**: el 2026-10-12 no había clave en la
+  máquina. Verificado: la forma del pedido contra los tipos del SDK
+  0.133, las guardas, y la pantalla con la IA apagada.
+- Sigue sin haber búsqueda web ni «agente de tendencias»: el contexto de
+  tendencia lo escribe quien opera.

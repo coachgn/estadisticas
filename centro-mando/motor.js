@@ -187,6 +187,7 @@ function registroDeAprobacion(p, gancho, liga, ahora) {
     pieza: String(p.id).toUpperCase(), formato: p.formato, estilo: (gancho && gancho.estilo) || null,
     gancho: String((gancho && gancho.texto) || p.titulo || '').slice(0, 300), liga: String(liga || '').slice(0, 40), titulo: String(p.titulo || '').slice(0, 200),
     enfoque: ENFOQUES[p.enfoque] ? p.enfoque : null, tono: TONOS[p.tono] ? p.tono : null,
+    redaccion: p.redaccion === 'ia' ? 'ia' : 'plantilla',
   };
 }
 
@@ -321,6 +322,21 @@ function armarBandeja(propuestas, sello) {
   return { items, reserva, sinDatos };
 }
 
+/**
+ * Pone la redacción de la IA sobre una propuesta. Los ganchos de la IA van
+ * primero (el del estilo del tono, adelante) y los del generador quedan
+ * detrás, elegibles. Lo que la guarda descartó no llega acá: el título o
+ * el guion que falten son los del generador. El DATO no se toca.
+ */
+function aplicarRedaccion(p, red) {
+  if (!red || !p.ok) return p;
+  const estilo = TONOS[p.tono] ? TONOS[p.tono].estilo : null;
+  const ia = (red.ganchos || []).slice().sort((a, b) => (b.estilo === estilo) - (a.estilo === estilo));
+  const resto = (p.ganchos || []).filter((g) => !ia.some((x) => x.texto === g.texto));
+  return Object.assign({}, p, { titulo: red.titulo || p.titulo, guion: red.guion || p.guion, ganchos: ia.concat(resto), redaccion: 'ia',
+    redaccionDescartada: (red.descartado || []).length });
+}
+
 const itemDe = (b, uid) => { const i = (b.items || []).findIndex((x) => x.uid === uid); if (i === -1) throw new Error('Esa propuesta ya no está en la bandeja.'); return i; };
 
 /** Cambia la pieza de un ítem por la primera de la reserva del enfoque que sigue. */
@@ -335,17 +351,38 @@ function cambiarEnfoque(b, uid) {
     const reserva = b.reserva.slice(), items = b.items.slice();
     const nueva = reserva.splice(j, 1)[0];
     reserva.push(Object.assign({}, actual));
-    items[i] = Object.assign({}, items[i], { propuesta: conTono(nueva, actual.tono) });
+    /* Es OTRA pieza: la base y las redacciones de la anterior no le sirven. */
+    items[i] = { uid: items[i].uid, estado: items[i].estado, propuesta: conTono(nueva, actual.tono) };
+    reserva[reserva.length - 1] = items0(b, i);
     return Object.assign({}, b, { items, reserva });
   }
   throw new Error('No queda otra pieza con datos en la reserva para cambiar el enfoque.');
 }
 
-/** Pasa al tono que sigue. */
+/* La pieza tal como salió del generador, sin redacción encima. */
+const items0 = (b, i) => { const it = b.items[i]; return Object.assign({}, it.base || it.propuesta, { tono: undefined }); };
+
+/**
+ * Pasa al tono que sigue. Parte SIEMPRE de la pieza del generador
+ * (`base`), no de la redacción anterior; si ese tono ya se redactó, la
+ * repone sin volver a pedirla.
+ */
 function cambiarTono(b, uid) {
-  const i = itemDe(b, uid), p = b.items[i].propuesta, ts = Object.keys(TONOS);
+  const i = itemDe(b, uid), it = b.items[i], ts = Object.keys(TONOS);
+  const tono = ts[(ts.indexOf(it.propuesta.tono) + 1) % ts.length];
+  const base = it.base || it.propuesta;
   const items = b.items.slice();
-  items[i] = Object.assign({}, items[i], { propuesta: conTono(p, ts[(ts.indexOf(p.tono) + 1) % ts.length]) });
+  items[i] = Object.assign({}, it, { propuesta: aplicarRedaccion(conTono(base, tono), (it.redacciones || {})[tono]) });
+  return Object.assign({}, b, { items });
+}
+
+/** Guarda la redacción de la IA de un ítem en un tono y la aplica si es el tono vigente. */
+function guardarRedaccion(b, uid, tono, red) {
+  const i = itemDe(b, uid), it = b.items[i];
+  const base = it.base || it.propuesta;
+  const redacciones = Object.assign({}, it.redacciones, { [tono]: red });
+  const items = b.items.slice();
+  items[i] = Object.assign({}, it, { base, redacciones, propuesta: it.propuesta.tono === tono ? aplicarRedaccion(conTono(base, tono), red) : it.propuesta });
   return Object.assign({}, b, { items });
 }
 
@@ -417,7 +454,7 @@ function resumenMd(p, gancho, contexto) {
 
 module.exports = {
   PIEZAS, EJES, FORMATOS, AUTO, ESTILOS, ENFOQUES, ENFOQUE_DE, TONOS, MAX_BANDEJA,
-  conTono, armarBandeja, cambiarEnfoque, cambiarTono, marcar, sumarABandeja, registroDeAprobacion, medir, diaLocal, PESOS_INTERACCION, MIN_MUESTRA, PISO, TECHO,
+  conTono, aplicarRedaccion, guardarRedaccion, armarBandeja, cambiarEnfoque, cambiarTono, marcar, sumarABandeja, registroDeAprobacion, medir, diaLocal, PESOS_INTERACCION, MIN_MUESTRA, PISO, TECHO,
   opciones, piezasPara, motivoSinFormato, ganchos, deReceta, deFeed, deStories,
   normalizarRegistro, puntaje, ponderaciones, ordenar, propuestas, placasHtml, resumenMd,
 };

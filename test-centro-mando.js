@@ -23,6 +23,11 @@ const titulo = (t) => console.log(NL + t + NL + '─'.repeat(70));
 const SGADD = require('./js/sgadd-core.js');
 const DEMO = require('./js/sgadd-demo.js');
 const GC = require('./generar-contenido.js');
+/* El servidor escribe la bandeja, la cola y el historial: en los tests van
+   a una carpeta temporal, nunca a contenido/. Y sin clave: la IA se ejerce
+   con un cliente simulado. */
+const DATOS_TMP = fs.mkdtempSync(require('path').join(require('os').tmpdir(), 'cm-'));
+process.env.CENTRO_MANDO_DATOS = DATOS_TMP;
 const M = require('./centro-mando/motor.js');
 
 const hojas = DEMO.rehidratar(require('./demo/datos-demo.json'));
@@ -173,7 +178,7 @@ titulo('El servidor local y el generador');
     !/GC\.nivel2\(|GC\.paquete\(/.test(codigo));
   check('no calcula: no lee el núcleo ni los motores', !/sgadd-core|sgadd-scouting|sgadd-jugadores/.test(codigo));
   check('todo lo que escribe va a contenido/', (codigo.match(/path\.join\(RAIZ, '([^']+)'/g) || []).every((m) => /'contenido'/.test(m)));
-  check('no llama a ningún servicio externo', !/fetch\(|https?:\/\/(?!127\.0\.0\.1)/.test(codigo));
+  check('el servidor no llama a nadie por su cuenta: la única salida es el módulo de agentes', !/fetch\(|https?:\/\/(?!127\.0\.0\.1)/.test(codigo) && /require\('\.\/llm\.js'\)/.test(codigo));
 
   const gc = fs.readFileSync('generar-contenido.js', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   const cuerpo = (n) => { const a = gc.indexOf('function ' + n + '('); return gc.slice(a, gc.indexOf('\nfunction ', a + 10)); };
@@ -367,8 +372,134 @@ titulo('La bandeja · enfoque, tono y aprobación');
   check('la bandeja se rearma sola a los 14 días, no antes', /QUINCENA_MS = 14 \* 24 \* 60 \* 60 \* 1000/.test(srv) && /if \(previa && !x\.rearmar && !vencida\) return previa;/.test(srv));
   const html = fs.readFileSync('centro-mando/index.html', 'utf8');
   check('la página tiene los tres botones de la bandeja', ['data-accion="enfoque"', 'data-accion="tono"', 'data-accion="aprobar"'].every((x) => html.indexOf(x) !== -1));
-  check('y dice lo que el tono y el ángulo NO hacen', /No reescribe el texto/.test(html) && /no se interpreta/.test(html) && /no hay un proceso corriendo de fondo/.test(html));
+  check('y dice lo que el tono y el ángulo NO hacen', /los números son siempre los del libro/.test(html) && /los números los lee el Explorador del libro, no el modelo/.test(html) && /no hay un proceso corriendo de fondo/.test(html));
 }
 
-console.log(NL + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
-process.exit(fail ? 1 : 0);
+/* -------------------------------------------------------------------- */
+titulo('Los agentes con Claude · la guarda numérica');
+(async () => {
+  const L = require('./centro-mando/llm.js');
+  const S = require('./centro-mando/servidor.js');
+  const E = require('./centro-mando/explorador.js');
+  const lanza = (f) => { try { f(); return null; } catch (e) { return e.message; } };
+  const lanzaA = async (f) => { try { await f(); return null; } catch (e) { return e.message; } };
+
+  check('un número que está en la fuente pasa, con coma o con punto', L.numerosAjenos('7 de 12 equipos (58%) rinden 7,20', '7 de 12 (58%) 7.2').length === 0);
+  check('uno que no está se detecta', L.numerosAjenos('6 de cada 10 equipos', '7 de 12 (58%)').join() === '6,10');
+  check('redondear es inventar: 58,3 no es 58', L.numerosAjenos('58%', 'el 58,3%').join() === '58' && L.numerosAjenos('casi 60', '58').join() === '60');
+  check('lee los números de un objeto, no solo de un texto', L.numerosAjenos('102,4 y 88', { a: 102.4, b: [{ c: 88 }] }).length === 0);
+  check('un texto sin números siempre pasa', L.numerosAjenos('La tabla está mal ordenada', '').length === 0);
+
+  const pieza = { id: 'CR-01', titulo: 'La tabla de ataque está mal ordenada', dato: '7 de 12 equipos (58%) cambian de puesto.', guion: ['Portada: el dato', 'Jugada no es posesión', '¿Con qué vara medís? + demo'], numeros: { cambian: 7, equipos: 12 } };
+  const buena = { titulo: 'Tu tabla de ataque miente', ganchos: [{ estilo: 'dato', texto: '7 de 12 equipos cambian de puesto' }, { estilo: 'titular', texto: 'El ranking que mirás está mal' }, { estilo: 'pregunta', texto: '¿Con qué vara medís tu ataque?' }],
+    guion: ['Portada: 7 de 12', 'Una jugada no es una posesión', '¿Cómo lo medís vos? Probá la demo'] };
+  const f1 = L.filtrar(buena, pieza);
+  check('una redacción fiel pasa entera', f1.titulo === buena.titulo && f1.ganchos.length === 3 && f1.guion.length === 3 && f1.descartado.length === 0);
+  check('los ganchos quedan marcados como de la IA', f1.ganchos.every((g) => g.ia === true));
+  const mala = { titulo: 'El 60% de la liga mide mal', ganchos: [{ estilo: 'dato', texto: '6 de cada 10 equipos cambian' }, { estilo: 'titular', texto: 'El ranking que mirás está mal' }, { estilo: 'titular', texto: 'Otro titular' }, { estilo: 'grito', texto: 'x' }],
+    guion: ['Portada', 'En 2019 pasaba igual', 'Cierre'] };
+  const f2 = L.filtrar(mala, pieza);
+  check('el título con un número ajeno se descarta', f2.titulo === null);
+  check('el gancho con un número ajeno se descarta, y los demás quedan', f2.ganchos.map((g) => g.estilo).join() === 'titular');
+  check('un estilo repetido o inventado no entra', f2.ganchos.length === 1);
+  check('UNA línea del guion con un número ajeno tira el guion entero', f2.guion === null);
+  check('y dice qué descartó y por qué', f2.descartado.some((d) => d.campo === 'título' && /60/.test(d.motivo)) && f2.descartado.some((d) => /línea 2/.test(d.campo) && /2019/.test(d.motivo)));
+  check('un guion con otra cantidad de líneas se descarta', L.filtrar(Object.assign({}, buena, { guion: ['una sola'] }), pieza).guion === null);
+
+  /* El cliente simulado: devuelve lo que se le diga y guarda lo que recibió. */
+  const fake = (salida, extra) => { const c = { pedidos: [], beta: { messages: { parse: async (params) => { c.pedidos.push(params); return Object.assign({ parsed_output: salida, stop_reason: 'end_turn', model: 'simulado', usage: { input_tokens: 1, output_tokens: 1 } }, extra); } } } }; return c; };
+
+  titulo('Los agentes con Claude · redactar');
+  const p = M.conTono(M.deReceta(Object.assign({ ok: true, formato: 'Carrusel 3:4', datos: pieza.numeros }, pieza)), 'polemico');
+  const c1 = fake(buena);
+  const r1 = await L.redactar(p, 'polemico', { cliente: c1 });
+  const ped = c1.pedidos[0];
+  check('pide con el modelo por defecto y salida estructurada', ped.model === 'claude-opus-5-5' && ped.output_config.format.type === 'json_schema' && ped.output_config.effort === 'medium');
+  check('con el respaldo ante una declinación', ped.fallbacks === 'default' && ped.betas.indexOf('server-side-fallback-2026-07-01') !== -1);
+  check('no manda parámetros que este modelo rechaza', !('temperature' in ped) && !('thinking' in ped) && !('tool_choice' in ped));
+  check('el sistema lleva la regla de los números', /no sos la fuente de ningún número/.test(ped.system));
+  check('el tono va en el mensaje', /POLÉMICO/.test(ped.messages[0].content) && ped.messages[0].role === 'user');
+  check('devuelve la redacción ya filtrada', r1.ganchos.length === 3 && r1.tono === 'polemico' && r1.descartado.length === 0);
+  const r2 = await L.redactar(p, 'tactico', { cliente: fake(mala) });
+  check('lo que inventa el modelo NO llega: la guarda corre después de la respuesta', r2.titulo === null && r2.guion === null && r2.ganchos.length === 1);
+  check('un tono inventado se rechaza sin llamar', /tono/.test(await lanzaA(() => L.redactar(p, 'gritado', { cliente: fake(buena) }))));
+  check('una pieza sin datos no se redacta', /sin|No hay/.test(await lanzaA(() => L.redactar({ ok: false }, 'tactico', { cliente: fake(buena) }))));
+  check('una declinación del modelo se dice', /declinó/.test(await lanzaA(() => L.redactar(p, 'tactico', { cliente: fake(null, { stop_reason: 'refusal', stop_details: { explanation: 'x' } }) }))));
+  check('una respuesta sin la forma pedida se dice', /forma pedida/.test(await lanzaA(() => L.redactar(p, 'tactico', { cliente: fake(null) }))));
+
+  const ap = M.aplicarRedaccion(p, r1);
+  check('aplicada: título y guion de la IA, el DATO intacto', ap.titulo === buena.titulo && ap.guion[1] === buena.guion[1] && ap.dato === p.dato && ap.redaccion === 'ia');
+  check('el gancho del estilo del tono va primero', ap.ganchos[0].estilo === M.TONOS.polemico.estilo && ap.ganchos[0].ia === true);
+  check('los ganchos del generador quedan detrás, elegibles', ap.ganchos.length > 3 && ap.ganchos.slice(3).every((g) => !g.ia));
+  const ap2 = M.aplicarRedaccion(p, r2);
+  check('lo que la guarda descartó vuelve a ser lo del generador', ap2.titulo === p.titulo && ap2.guion === p.guion && ap2.redaccionDescartada === r2.descartado.length);
+  check('los datos de la pieza no los toca nadie', JSON.stringify(ap.datos) === JSON.stringify(p.datos) && JSON.stringify(ap.muestra) === JSON.stringify(p.muestra));
+  check('el historial anota si fue IA o plantilla', M.registroDeAprobacion(ap, ap.ganchos[0], 'x').redaccion === 'ia' && M.registroDeAprobacion(p, p.ganchos[0], 'x').redaccion === 'plantilla');
+
+  let b = M.armarBandeja([p, Object.assign({}, p, { id: 'CR-02', enfoque: 'defensa' })], 'q');
+  const uid = b.items[0].uid;
+  b = M.guardarRedaccion(b, uid, 'tactico', r1);
+  check('guardar una redacción conserva la pieza del generador como base', b.items[0].base.titulo === p.titulo && b.items[0].propuesta.redaccion === 'ia');
+  const pol = M.cambiarTono(b, uid).items[0];
+  check('cambiar a un tono sin redactar vuelve a la plantilla, no arrastra la anterior', pol.propuesta.tono === 'polemico' && pol.propuesta.redaccion !== 'ia' && pol.propuesta.titulo === p.titulo);
+  const vuelta = M.cambiarTono(M.cambiarTono(M.cambiarTono(b, uid), uid), uid).items[0];
+  check('y volver a un tono ya redactado lo repone sin pedirlo de nuevo', vuelta.propuesta.tono === 'tactico' && vuelta.propuesta.redaccion === 'ia' && vuelta.propuesta.titulo === buena.titulo);
+  check('una redacción de otro tono no pisa la pieza vigente', M.guardarRedaccion(b, uid, 'educativo', r1).items[0].propuesta.tono === 'tactico');
+
+  titulo('Los agentes con Claude · la pregunta táctica');
+  S.indices.set('lnb/unica', { idx, t: Date.now() });
+  const consulta = { sePuede: true, motivo: '', nivel: 'jugadores', metricas: ['T3%', 'MIN'], orden: 'T3%', sentido: 'mejor', top: 5, soloCalificados: false,
+    condiciones: [{ metrica: 'MIN', op: '<', valor: 15 }, { metrica: 'T3I', op: '>=', valor: 1 }], lectura: 'Los mejores de tres con menos de 15 minutos.' };
+  const cq = fake(consulta);
+  const rp = await S.preguntar({ liga: 'lnb', zona: 'unica', pregunta: '¿Quiénes tiran mejor de tres con menos de 15 minutos?' }, { cliente: cq });
+  const directo = E.explorar(idx, 'jugadores', { metricas: ['T3%', 'MIN'], orden: 'T3%', top: 5, condiciones: consulta.condiciones });
+  check('la respuesta es la del Explorador local, fila por fila', rp.sePuede && JSON.stringify(rp.resultado.filas) === JSON.stringify(directo.filas) && rp.resultado.cumplen === directo.cumplen);
+  check('devuelve la consulta para volcarla en los controles', rp.consulta.nivel === 'jugadores' && rp.consulta.orden === 'T3%' && rp.consulta.condiciones.length === 2 && !!rp.lectura);
+  check('al modelo NO le viaja un solo dato del libro', (() => { const t = JSON.stringify(cq.pedidos[0]); return GC.nombresDelLibro(idx).jugadores.slice(0, 40).every((n) => t.indexOf(n) === -1) && !/PEREZ\d+|CLUB\d+/.test(t); })());
+  check('le viaja el catálogo de métricas y lo que NO existe', /T3% = /.test(cq.pedidos[0].system) && /tras pérdida/.test(cq.pedidos[0].system) && cq.pedidos[0].output_config.effort === 'low');
+  const noSe = await S.preguntar({ liga: 'lnb', zona: 'unica', pregunta: '¿Quién anota más tras pérdida del rival?' }, { cliente: fake(Object.assign({}, consulta, { sePuede: false, motivo: 'No hay puntos tras pérdida.' })) });
+  check('lo que no está en los libros se dice, sin tabla', noSe.sePuede === false && /tras pérdida/.test(noSe.motivo) && !noSe.resultado);
+  const malaCond = Object.assign({}, consulta, { condiciones: [{ metrica: 'ALTURA', op: '>', valor: 190 }] });
+  check('una condición con una métrica inventada NO se descarta en silencio: se rechaza la traducción',
+    /No pude traducir/.test(await lanzaA(() => S.preguntar({ liga: 'lnb', zona: 'unica', pregunta: 'los más altos que tiran bien' }, { cliente: fake(malaCond) }))));
+  check('una métrica de orden inventada también', /No pude traducir/.test(await lanzaA(() => S.preguntar({ liga: 'lnb', zona: 'unica', pregunta: 'los de mejor PER de la liga' }, { cliente: fake(Object.assign({}, consulta, { orden: 'PER' })) }))));
+  check('comparar zonas en una liga de una sola se rechaza', /una sola/.test(await lanzaA(() => S.preguntar({ liga: 'lnb', zona: 'unica', pregunta: 'compará el ritmo de las zonas' }, { cliente: fake(Object.assign({}, consulta, { nivel: 'zonas', metricas: ['PACE'], orden: 'PACE', condiciones: [] })) }))));
+  check('una pregunta de dos letras no se manda', /completa/.test(await lanzaA(() => L.interpretar('t3', E.opciones(), { cliente: fake(consulta) }))));
+  check('sin clave y sin cliente, la IA se declara apagada', L.disponible() === false && /apagada/.test(await lanzaA(() => S.preguntar({ liga: 'lnb', zona: 'unica', pregunta: 'una pregunta cualquiera' }))));
+
+  titulo('Los agentes con Claude · redactar un ítem de la bandeja');
+  const fsx = require('fs'), pth = require('path');
+  const anon = GC.anonimizar(GC.nivel2(idx, [], { nivel: 'LIGA_NACIONAL', piezas: ['CR-01'] })).piezas.map(M.deReceta);
+  const arm = Object.assign(M.armarBandeja(anon, 't'), { clave: 'lnb-unica', generada: new Date().toISOString(), meta: {} });
+  fsx.mkdirSync(pth.join(DATOS_TMP, 'centro-mando'), { recursive: true });
+  const escribir = (x) => fsx.writeFileSync(pth.join(DATOS_TMP, 'centro-mando', 'bandeja.json'), JSON.stringify({ bandejas: { 'lnb-unica': x } }));
+  escribir(arm);
+  const u = arm.items[0].uid, base = arm.items[0].propuesta;
+  const fiel = { titulo: 'La tabla miente', ganchos: [{ estilo: 'titular', texto: 'Tu ranking de ataque está mal' }], guion: base.guion.map((g) => 'Reescrita: ' + g.replace(/\d/g, '')) };
+  const ri = await S.redactarItem({ liga: 'lnb', zona: 'unica', uid: u }, { cliente: fake(fiel) });
+  check('redacta el ítem y lo guarda en la bandeja', ri.item.propuesta.redaccion === 'ia' && ri.item.propuesta.titulo === 'La tabla miente' && JSON.parse(fsx.readFileSync(pth.join(DATOS_TMP, 'centro-mando', 'bandeja.json'), 'utf8')).bandejas['lnb-unica'].items[0].redacciones.tactico.titulo === 'La tabla miente');
+  const otra = fake(fiel);
+  await S.redactarItem({ liga: 'lnb', zona: 'unica', uid: u }, { cliente: otra });
+  check('un tono ya redactado NO se vuelve a pedir (no se paga dos veces)', otra.pedidos.length === 0);
+  escribir(arm);
+  /* Un club cuyo número YA está en la pieza: si no, lo frena antes la
+     guarda numérica y este test no probaría la del anonimato. */
+  const enPieza = L.numerosDe({ t: base.titulo, d: base.dato, g: base.guion, x: base.datos, m: base.muestra, id: base.id });
+  const nombre = GC.nombresDelLibro(idx).equipos.find((n) => enPieza.has((n.match(/\d+/) || [''])[0]));
+  check('la fixture tiene un club con el que probar la fuga', !!nombre, [...enPieza].join());
+  const fuga = Object.assign({}, fiel, { titulo: 'Lo que hace ' + nombre });
+  check('si la IA nombra a un club del libro en una pieza anónima, se descarta entera',
+    /nombró a alguien/.test(await lanzaA(() => S.redactarItem({ liga: 'lnb', zona: 'unica', uid: u }, { cliente: fake(fuga) }))) &&
+    !JSON.parse(fsx.readFileSync(pth.join(DATOS_TMP, 'centro-mando', 'bandeja.json'), 'utf8')).bandejas['lnb-unica'].items[0].redacciones);
+  check('nada de esto tocó contenido/', !fsx.existsSync(pth.join(DATOS_TMP, '..', 'no')) && fsx.existsSync(pth.join(DATOS_TMP, 'centro-mando', 'bandeja.json')));
+
+  const src = fs.readFileSync('centro-mando/llm.js', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  check('usa el SDK oficial, no HTTP a mano', /require\('@anthropic-ai\/sdk'\)/.test(src) && !/fetch\(|api\.anthropic\.com/.test(src));
+  check('la clave sale del entorno: no hay ninguna escrita', !/sk-ant-/.test(src) && !/apiKey:/.test(src));
+  check('la clave y las dependencias no van al repo', /^centro-mando\/\.env\s*$/m.test(fs.readFileSync('.gitignore', 'utf8')) && /^centro-mando\/node_modules\/\s*$/m.test(fs.readFileSync('.gitignore', 'utf8')));
+  check('el ejemplo de .env no trae una clave', /^ANTHROPIC_API_KEY=\s*$/m.test(fs.readFileSync('centro-mando/.env.ejemplo', 'utf8')));
+
+  fsx.rmSync(DATOS_TMP, { recursive: true, force: true });
+  console.log(NL + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
+  process.exit(fail ? 1 : 0);
+})().catch((e) => { console.error(e); process.exit(1); });

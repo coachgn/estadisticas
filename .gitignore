@@ -9,6 +9,10 @@
 server/.env
 server/node_modules/
 
+# Centro de Mando local: la clave de la API de Claude y sus dependencias.
+centro-mando/.env
+centro-mando/node_modules/
+
 # Los informes de referencia del plan ORO: material de trabajo, no codigo.
 # Son 7 MB de PDF y no los necesita el sitio.
 COMPARATIVAS EJEMPLOS/

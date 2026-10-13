@@ -64,6 +64,7 @@
 <body>
 <header>
   <h1>Centro de Mando Editorial<small>MotorStats AR · local · todo número sale del libro</small></h1>
+  <span id="ia" class="chip" style="align-self:center" role="status"></span>
   <label>Liga / torneo <select id="liga"></select></label>
   <label>Zona <select id="zona"></select></label>
   <button id="releer" class="chico" title="Vuelve a bajar el libro de Google en vez de usar la copia de los últimos 10 minutos">Volver a leer el libro</button>
@@ -97,7 +98,15 @@
       <div id="anomalias" class="tres"><p class="tenue">Leyendo el libro…</p></div>
     </div>
     <div class="card">
-      <h2>Laboratorio</h2>
+      <h2>Pregunta táctica</h2>
+      <label>Escribila como la dirías. Claude la traduce a un filtro; los números los lee el Explorador del libro, no el modelo.
+        <textarea id="x-pregunta" maxlength="400" placeholder="Ej.: ¿Quiénes son los jugadores más eficientes tirando de tres con menos de 15 minutos en cancha?"></textarea>
+      </label>
+      <div class="acciones" style="margin-top:8px"><button class="pri" id="x-preguntar">🤖 Interpretar y explorar</button><span id="x-pregunta-estado" role="status" aria-live="polite" class="tenue"></span></div>
+      <div id="x-lectura"></div>
+    </div>
+    <div class="card">
+      <h2>Laboratorio · el filtro, a la vista y editable</h2>
       <fieldset style="border:0;padding:0;margin:0 0 12px"><legend class="tenue" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Nivel de análisis</legend><div id="x-niveles" class="metricas"></div></fieldset>
       <h4>Métricas a cruzar</h4>
       <div id="x-metricas" class="metricas"></div>
@@ -110,7 +119,7 @@
       </div>
       <h4 style="margin-top:14px">Condiciones <span style="text-transform:none;letter-spacing:0">· los porcentajes se escriben como 35, no 0,35</span></h4>
       <div id="x-conds"></div>
-      <label style="margin-top:10px">Ángulo táctico · es el TÍTULO de la propuesta; no se interpreta: lo que filtra son las condiciones de arriba
+      <label style="margin-top:10px">Ángulo táctico · es el TÍTULO de la propuesta. Lo que filtra son las condiciones de arriba (la pregunta táctica las completa por vos)
         <textarea id="x-angulo" maxlength="140" placeholder="Ej.: ¿Quiénes tiran mejor de tres con menos de 15 minutos en cancha?"></textarea>
       </label>
       <div class="acciones"><button id="x-correr">Explorar</button><button class="pri" id="x-mandar">Mandar a la bandeja</button><span id="x-estado" role="status" aria-live="polite" class="tenue"></span></div>
@@ -207,21 +216,24 @@ const ganchoElegido = (uid) => { const p = PROPS.get(uid).p, r = document.queryS
 
 function tarjeta(uid, p, modo, estado) {
   PROPS.set(uid, { p, modo });
-  if (!p.ok) return '<article class="card"><span class="chip id">' + esc(p.id) + '</span><span class="chip">sin datos</span><h3>' + esc(p.titulo) + '</h3>' + avisos(p.avisos) + '</article>';
+  if (!p.ok) return '<article class="card" id="a-' + uid + '"><span class="chip id">' + esc(p.id) + '</span><span class="chip">sin datos</span><h3>' + esc(p.titulo) + '</h3>' + avisos(p.avisos) + '</article>';
   const chips = '<span class="chip id">' + esc(p.id) + '</span><span class="chip">' + esc(p.formatoLabel || p.formato) + '</span>' +
     (p.enfoque ? '<span class="chip">' + esc(OPC.enfoques[p.enfoque]) + '</span>' : '') + (p.tono ? '<span class="chip">Tono ' + esc(OPC.tonos[p.tono]) + '</span>' : '') +
-    (p.peso && p.peso !== 1 ? '<span class="chip">peso ' + num(p.peso) + '</span>' : '');
+    (p.peso && p.peso !== 1 ? '<span class="chip">peso ' + num(p.peso) + '</span>' : '') +
+    (p.redaccion === 'ia' ? '<span class="chip ok" title="Título, ganchos y guion redactados por Claude. El dato y los números son los del libro.">✍️ redactada por IA</span>' : '') +
+    (REDACTANDO.has(uid) ? '<span class="chip">✍️ redactando…</span>' : '');
   if (estado && estado !== 'pendiente') {
-    return '<article class="card" style="padding:10px 18px">' + chips + '<span class="chip ' + (estado === 'aprobada' ? 'ok' : '') + '">' + (estado === 'aprobada' ? '✅ aprobada · en la cola de Canva' : 'descartada') + '</span> ' + esc(p.titulo) + '</article>';
+    return '<article class="card" id="a-' + uid + '" style="padding:10px 18px">' + chips + '<span class="chip ' + (estado === 'aprobada' ? 'ok' : '') + '">' + (estado === 'aprobada' ? '✅ aprobada · en la cola de Canva' : 'descartada') + '</span> ' + esc(p.titulo) + '</article>';
   }
   const ganchos = (p.ganchos || []).map((g, j) => '<label class="gancho"><input type="radio" name="g-' + uid + '" value="' + j + '"' + (j ? '' : ' checked') + '><span>' + esc(g.texto) +
-    '<small>' + esc(OPC.estilos[g.estilo] || g.estilo) + (g.peso && g.peso !== 1 ? ' · peso ' + num(g.peso) : '') + '</small></span></label>').join('');
+    '<small>' + esc(OPC.estilos[g.estilo] || g.estilo) + (g.ia ? ' · IA' : p.redaccion === 'ia' ? ' · del generador' : '') + (g.peso && g.peso !== 1 ? ' · peso ' + num(g.peso) : '') + '</small></span></label>').join('');
   const botones = modo === 'bandeja'
     ? (p.enfoque ? '<button data-accion="enfoque" data-uid="' + uid + '" title="Cambia esta pieza por otra de la reserva, del enfoque que sigue">🔄 Cambiar enfoque · ' + esc(OPC.enfoques[p.enfoque]) + '</button>' : '') +
-      '<button data-accion="tono" data-uid="' + uid + '" title="Elige qué gancho va primero y la píldora de la portada. No reescribe el texto.">🌶️ Ajustar tono · ' + esc(OPC.tonos[p.tono] || '') + '</button>' +
+      '<button data-accion="tono" data-uid="' + uid + '" title="Con la IA activa, Claude reescribe título, ganchos y guion en ese tono; los números son siempre los del libro. Sin IA, solo cambia qué gancho va primero.">🌶️ Ajustar tono · ' + esc(OPC.tonos[p.tono] || '') + '</button>' +
       '<button class="pri" data-accion="aprobar" data-uid="' + uid + '">✅ Aprobar y enviar a la cola de Canva</button><button class="chico" data-accion="descartar" data-uid="' + uid + '">Descartar</button>'
     : '<button class="pri" data-aprobar="' + uid + '">✅ Aprobar y enviar a la cola de Canva</button>';
-  return '<article class="card">' + chips + '<h3>' + esc(p.titulo) + '</h3><p class="dato">' + esc(p.dato) + '</p>' +
+  return '<article class="card" id="a-' + uid + '">' + chips + '<h3>' + esc(p.titulo) + '</h3><p class="dato">' + esc(p.dato) + '</p>' +
+    (p.redaccionDescartada ? '<div class="aviso">La guarda numérica descartó ' + p.redaccionDescartada + ' texto(s) de la IA que traían un número que no está en la pieza: ahí quedó el del generador.</div>' : '') +
     (p.muestra ? '<p class="tenue">Muestra: ' + esc(Object.keys(p.muestra).filter((k) => p.muestra[k] != null).map((k) => k + ' ' + p.muestra[k]).join(' · ')) + '</p>' : '') + avisos(p.avisos) +
     '<fieldset style="border:0;padding:0;margin:10px 0"><legend class="tenue" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px">Gancho</legend>' + ganchos + '</fieldset>' +
     '<div class="visor" id="v-' + uid + '"><iframe title="Placas de ' + esc(p.id) + '" sandbox></iframe><p>Cargando las placas…</p></div>' +
@@ -252,6 +264,34 @@ const pintarVisores = (raiz) => raiz.querySelectorAll('.visor').forEach((v) => p
 
 /* ------------------------------ bandeja ------------------------------- */
 let turnoB = 0;
+/* LA REDACCIÓN CON IA · cada pieza pendiente que todavía no tiene la de su
+   tono se le pide a Claude, de a tres, y su tarjeta se cambia sola al
+   llegar. Se intenta UNA vez por pieza y tono: si falla, queda la plantilla. */
+const REDACTANDO = new Set(), INTENTADO = new Set();
+async function redactarPendientes(b) {
+  if (!OPC.ia.activa) return;
+  const zona = $('liga').value + '|' + $('zona').value;
+  const cola = b.items.filter((i) => i.estado === 'pendiente' && i.propuesta.ok && i.propuesta.redaccion !== 'ia' && !INTENTADO.has(i.uid + '|' + i.propuesta.tono));
+  cola.forEach((i) => { INTENTADO.add(i.uid + '|' + i.propuesta.tono); REDACTANDO.add(i.uid); });
+  const repintar = (uid, item, nota) => {
+    REDACTANDO.delete(uid);
+    const el = $('a-' + uid);
+    if (!el || zona !== $('liga').value + '|' + $('zona').value) return;
+    const actual = item || { propuesta: PROPS.get(uid).p, estado: 'pendiente' };
+    if (item && item.propuesta.tono !== PROPS.get(uid).p.tono) return;
+    el.outerHTML = tarjeta(uid, actual.propuesta, 'bandeja', actual.estado);
+    if (nota && $('e-' + uid)) $('e-' + uid).textContent = nota;
+    pintarVisor(uid);
+  };
+  cola.forEach((i) => { const el = $('a-' + i.uid); if (el) { el.outerHTML = tarjeta(i.uid, i.propuesta, 'bandeja', i.estado); pintarVisor(i.uid); } });
+  const uno = async () => {
+    for (let i = cola.shift(); i; i = cola.shift()) {
+      try { const r = await api('/api/bandeja/redactar', Object.assign({ uid: i.uid }, donde())); repintar(i.uid, r.item); }
+      catch (e) { repintar(i.uid, null, 'La IA no pudo redactarla (' + e.message + '): queda la plantilla.'); }
+    }
+  };
+  await Promise.all([uno(), uno(), uno()]);
+}
 function pintarBandeja(b) {
   const pend = b.items.filter((i) => i.estado === 'pendiente'), hechas = b.items.filter((i) => i.estado !== 'pendiente');
   const m = b.meta || {};
@@ -262,6 +302,7 @@ function pintarBandeja(b) {
     pend.map((i) => tarjeta(i.uid, i.propuesta, 'bandeja', i.estado)).join('') + hechas.map((i) => tarjeta(i.uid, i.propuesta, 'bandeja', i.estado)).join('') +
     ((b.sinDatos || []).length ? '<details class="card"><summary>' + b.sinDatos.length + ' pieza(s) sin datos en esta zona</summary><ul>' + b.sinDatos.map((s) => '<li><strong>' + esc(s.id) + '</strong> · ' + esc((s.avisos || []).join(' ')) + '</li>').join('') + '</ul></details>' : '');
   pintarVisores($('bandeja'));
+  redactarPendientes(b);
 }
 async function cargarBandeja(rearmar) {
   const yo = ++turnoB;
@@ -327,6 +368,35 @@ async function correrExplorador() {
   } catch (e) { if (yo !== turnoX) return; ULTIMO_X = null; $('x-resultado').innerHTML = avisos([e.message], 'error'); $('x-estado').textContent = ''; }
 }
 const programarX = () => { clearTimeout(relojX); relojX = setTimeout(correrExplorador, 400); };
+
+/* LA PREGUNTA TÁCTICA · Claude devuelve el FILTRO; se vuelca en los
+   controles para que se vea —y se pueda corregir— qué entendió. */
+function volcarConsulta(c) {
+  NIVEL = c.nivel; pintarExplorador();
+  document.querySelectorAll('#x-metricas input').forEach((i) => { i.checked = c.metricas.indexOf(i.value) !== -1; });
+  pintarOrden(); $('x-orden').value = c.orden; $('x-sentido').value = c.sentido || ''; $('x-top').value = c.top || 10; $('x-calif').checked = !!c.soloCalificados;
+  document.querySelectorAll('#x-conds .cond').forEach((caja, i) => {
+    const k = (c.condiciones || [])[i];
+    caja.querySelector('.c-met').value = k ? k.metrica : ''; caja.querySelector('.c-val').value = k ? k.valor : ''; if (k) caja.querySelector('.c-op').value = k.op;
+  });
+}
+async function preguntar() {
+  const q = $('x-pregunta').value.trim(), yo = ++turnoX; clearTimeout(relojX);
+  $('x-preguntar').disabled = true; $('x-pregunta-estado').textContent = 'Claude está leyendo la pregunta…'; $('x-lectura').innerHTML = '';
+  try {
+    const r = await api('/api/preguntar', Object.assign({ pregunta: q }, donde()));
+    if (!r.sePuede) $('x-lectura').innerHTML = avisos(['No se puede contestar con los libros: ' + r.motivo]);
+    else {
+      volcarConsulta(r.consulta);
+      const extra = (r.consulta.condiciones || []).length > 3 ? ' Ojo: usa más de tres condiciones y los controles muestran solo tres.' : '';
+      $('x-lectura').innerHTML = '<div class="aviso"><strong>Entendí:</strong> ' + esc(r.lectura) + ' <span class="tenue">Es el filtro de abajo: si no es lo que preguntaste, corregilo ahí.' + esc(extra) + '</span></div>';
+      if (yo === turnoX) { ULTIMO_X = r.resultado; $('x-resultado').innerHTML = tablaX(r.resultado); }
+      if (!$('x-angulo').value.trim()) $('x-angulo').value = q.slice(0, 140);
+    }
+    $('x-pregunta-estado').textContent = '';
+  } catch (e) { $('x-pregunta-estado').textContent = ''; $('x-lectura').innerHTML = avisos([e.message], 'error'); }
+  $('x-preguntar').disabled = !OPC.ia.activa;
+}
 
 async function cargarAnomalias() {
   $('anomalias').innerHTML = '<p class="tenue">Leyendo el libro…</p>';
@@ -447,12 +517,13 @@ document.addEventListener('change', (ev) => {
   if (t.type === 'radio' && n.slice(0, 2) === 'g-') return pintarVisor(n.slice(2));
   if (n === 'x-nivel') { NIVEL = t.value; pintarExplorador(); return correrExplorador(); }
   if (t.closest && t.closest('#x-metricas')) { pintarOrden(); return programarX(); }
-  if (t.closest && t.closest('#tab-explorador') && t.id !== 'x-angulo') programarX();
+  if (t.closest && t.closest('#tab-explorador') && t.id !== 'x-angulo' && t.id !== 'x-pregunta') programarX();
 });
 $('x-conds').addEventListener('input', (ev) => { if (ev.target.classList.contains('c-val')) programarX(); });
 let relojCtx = null;
 $('contexto').addEventListener('input', () => { clearTimeout(relojCtx); relojCtx = setTimeout(() => document.querySelectorAll('[role=tabpanel]:not([hidden]) .visor').forEach((v) => pintarVisor(v.id.slice(2))), 500); });
 $('x-correr').addEventListener('click', correrExplorador);
+$('x-preguntar').addEventListener('click', preguntar);
 $('x-mandar').addEventListener('click', async () => {
   /* En su propio lugar: el estado del explorador se limpia en cada búsqueda. */
   $('x-enviado').innerHTML = '<p class="tenue">Armando la propuesta…</p>';
@@ -488,6 +559,10 @@ function cambioDeZona() {
     $('bandeja').innerHTML = '<div class="card">' + avisos(['El servidor local no contesta. Levantalo con «node centro-mando/servidor.js» y abrí http://127.0.0.1:8770.'], 'error') + '</div>';
     return;
   }
+  $('ia').textContent = OPC.ia.activa ? '🤖 IA activa · ' + OPC.ia.modelo : '🤖 IA apagada';
+  $('ia').className = 'chip' + (OPC.ia.activa ? ' ok' : '');
+  $('ia').title = OPC.ia.activa ? 'Claude interpreta la pregunta táctica y redacta ganchos, títulos y guiones. Los números salen siempre del libro.' : (OPC.ia.motivo || '') + ' Todo funciona igual, con las plantillas.';
+  if (!OPC.ia.activa) { $('x-preguntar').disabled = true; $('x-pregunta-estado').textContent = 'La IA está apagada. ' + (OPC.ia.motivo || '') + ' Después reiniciá el servidor. Mientras, armá el filtro con los controles.'; }
   $('liga').innerHTML = opciones(OPC.ligas.map((l) => ({ id: l.id, label: l.torneo })), 'apb');
   const zonas = () => { $('zona').innerHTML = opciones(ligaSel().zonas.map((z) => ({ id: z.id, label: z.label + (z.pbp ? ' · con play-by-play' : '') })), $('zona').value); };
   zonas();
