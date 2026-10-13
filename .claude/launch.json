@@ -28,6 +28,15 @@
       ],
       "port": 8770,
       "autoPort": true
+    },
+    {
+      "name": "centro-mando-prueba",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "-e",
+        "process.env.CENTRO_MANDO_PUERTO='8771';process.env.CENTRO_MANDO_DATOS=require('path').join(require('os').tmpdir(),'centro-mando-prueba');require('./centro-mando/servidor.js').app().listen(8771,'127.0.0.1')"
+      ],
+      "port": 8771
     }
   ]
 }

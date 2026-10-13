@@ -14,9 +14,19 @@
        respuesta dice cuántos quedaron así (la regla de Fichajes).
      · EL PORCENTAJE NO VIAJA SOLO. Pedir T3% suma T3I a la tabla: un 60 %
        sobre cinco tiros y sobre ochenta no son el mismo dato.
-     · LA PREGUNTA SE ARMA, NO SE INTERPRETA. No hay lenguaje natural: el
-       ángulo que escribe quien opera es el TÍTULO de la propuesta. Lo que
-       decide qué sale son las métricas, el orden y las condiciones.
+     · EN EL LABORATORIO LA PREGUNTA SE ARMA: el ángulo que escribe quien
+       opera es el TÍTULO de la propuesta, y lo que decide qué sale son
+       las métricas, el orden y las condiciones.
+     · EN «A MEDIDA» EL TEXTO LIBRE LO LEE UN INTÉRPRETE LOCAL
+       («interpretarLibre»), determinista y sin modelo: busca en el texto
+       siglas y conceptos de cancha, los lleva a la métrica del libro más
+       cercana y DICE qué entendió, qué aproximó y qué no existe. Nunca
+       aproxima en silencio.
+     · EL CATÁLOGO ES EL DEL LIBRO, no una lista corta: toda métrica del
+       registro del núcleo que el libro traiga en ese nivel se puede pedir.
+     · EL CRUCE de dos métricas (mediana contra mediana y correlación) es
+       lo único que este módulo calcula, sobre valores leídos del libro,
+       y siempre con su n a la vista.
      · LO QUE SALE HACIA UNA PROPUESTA no lleva nombres en su texto: las
        personas van bajo `jugador` y los clubes bajo `equipo`, que es lo
        que el generador sabe anonimizar y verificar.
@@ -38,7 +48,7 @@ METRICAS.zonas = METRICAS.equipos;
 const NO_DISPONIBLES = ['Puntos tras pérdida', 'Puntos de segunda oportunidad', 'Eficiencia por zona de tiro (solo con play-by-play, en los reels RL-03)'];
 
 /* El volumen que acompaña a cada tasa. */
-const VOLUMEN = { 'T3%': 'T3I', 'PPT3': 'T3I', 'T2%': 'T2I', 'PPT2': 'T2I', 'T1%': 'T1I', 'PPT1': 'T1I' };
+const VOLUMEN = { 'T3%': 'T3I', 'PPT3': 'T3I', 'T2%': 'T2I', 'PPT2': 'T2I', 'T1%': 'T1I', 'PPT1': 'T1I', 'TC%': 'TCI' };
 const DEFENSA = ['RTNG DEF', 'RD%', 'RD', 'PR', 'PTSopp'];
 const FALTAS = ['T1%', 'T1I', 'PPT1', 'RTL%', 'FC', 'FR'];
 const OPERADORES = { '<': 'menos de', '<=': 'hasta', '>': 'más de', '>=': 'desde' };
@@ -62,6 +72,35 @@ function enfoqueDe(metrica) {
   return 'ataque';
 }
 
+/* --------------------------------------------------------------------
+   EL CATÁLOGO COMPLETO · lo que el libro trae de verdad en cada nivel
+   La lista de arriba es la CORTA, la que la pantalla ofrece en casillas.
+   Por texto libre se puede pedir cualquier métrica del registro del
+   núcleo que tenga al menos un valor en ese nivel.
+   VAL y +/- quedan afuera a propósito: el panel no ordena por ninguna de
+   las dos (puntos 3 bis y 4 del CLAUDE.md).
+   -------------------------------------------------------------------- */
+const FUERA_DEL_CATALOGO = { jugadores: ['VAL', '+/-', 'PTSopp'], equipos: ['VAL', '+/-', 'MIN'], partidos: ['VAL', '+/-', 'MIN'] };
+const _catalogos = new WeakMap();
+function catalogo(idx) {
+  if (_catalogos.has(idx)) return _catalogos.get(idx);
+  const ids = S.METRICAS_LISTA.map((m) => m.clave);
+  const hay = {
+    jugadores: (k) => idx.liga.jugadores.some((j) => numero(j[k]) != null),
+    equipos: (k) => idx.lista().some((e) => { const r = idx.leer(e.clave, k); return !!r && numero(r.valor) != null; }),
+    partidos: (k) => idx.lista().some((e) => e.partidos.some((p) => numero(p[k]) != null)),
+  };
+  const out = {};
+  Object.keys(hay).forEach((n) => {
+    const todas = ids.filter((k) => FUERA_DEL_CATALOGO[n].indexOf(k) === -1 && hay[n](k));
+    /* Las de la lista corta primero, en su orden: son las que abren la tabla. */
+    out[n] = METRICAS[n].filter((k) => todas.indexOf(k) !== -1).concat(todas.filter((k) => METRICAS[n].indexOf(k) === -1));
+  });
+  out.zonas = out.equipos;
+  _catalogos.set(idx, out);
+  return out;
+}
+
 /* Las filas crudas de cada nivel: quién es y de dónde se lee cada métrica. */
 function filasDe(idx, nivel) {
   if (nivel === 'equipos') {
@@ -82,13 +121,18 @@ function filasDe(idx, nivel) {
 }
 
 /** Normaliza el pedido: descarta lo que no es de ese nivel y completa el volumen. */
-function pedido(nivel, o) {
+function pedido(nivel, o, catalogoDelLibro) {
   const x = o || {};
-  const validas = METRICAS[nivel];
-  if (!validas) throw new Error('Ese nivel de análisis no existe.');
+  if (!METRICAS[nivel]) throw new Error('Ese nivel de análisis no existe.');
+  /* Sin libro a la vista, la lista corta; con libro, todo lo que trae. */
+  const validas = catalogoDelLibro || METRICAS[nivel];
   let metricas = (x.metricas || []).filter((k, i, a) => validas.indexOf(k) !== -1 && a.indexOf(k) === i);
+  /* EL CRUCE: dos métricas distintas de ese nivel. Las zonas no cruzan:
+     comparan medianas, y con tres o cuatro filas no hay nada que correlacionar. */
+  const cruce = nivel !== 'zonas' && Array.isArray(x.cruce) && x.cruce.length === 2 && x.cruce[0] !== x.cruce[1] && x.cruce.every((k) => validas.indexOf(k) !== -1) ? x.cruce.slice() : null;
+  if (cruce) metricas = cruce.concat(metricas.filter((k) => cruce.indexOf(k) === -1));
   if (!metricas.length) metricas = validas.slice(0, 4);
-  const orden = metricas.indexOf(x.orden) !== -1 ? x.orden : metricas[0];
+  const orden = cruce ? cruce[0] : (metricas.indexOf(x.orden) !== -1 ? x.orden : metricas[0]);
   const condiciones = (x.condiciones || []).filter((c) => c && validas.indexOf(c.metrica) !== -1 && OPERADORES[c.op] && numero(Number(c.valor)) != null && String(c.valor).trim() !== '')
     .map((c) => ({ metrica: c.metrica, op: c.op, valor: Number(c.valor) }));
   /* El porcentaje no viaja solo: su volumen se suma a las columnas. */
@@ -101,7 +145,46 @@ function pedido(nivel, o) {
   const invertida = !!def(orden).invertida;
   const sentido = x.sentido === 'asc' || x.sentido === 'desc' ? x.sentido : (invertida ? 'asc' : 'desc');
   const top = Math.min(50, Math.max(1, Number(x.top) || 10));
-  return { nivel, columnas, orden, sentido, condiciones, top, soloCalificados: !!x.soloCalificados };
+  const grupo = GRUPOS_CRUCE[x.grupo] ? x.grupo : 'altoBajo';
+  return { nivel, columnas, orden, sentido, condiciones, top, soloCalificados: !!x.soloCalificados, cruce, grupo };
+}
+
+/* --------------------------------------------------------------------
+   EL CRUCE DE DOS MÉTRICAS
+   Parte a los que cumplen por la MEDIANA de cada una y cuenta los cuatro
+   grupos; con muestra, mide además cuánto se mueven juntas (Pearson).
+   Es lo único que este módulo calcula, y lo hace sobre valores del libro.
+   «Alto» y «bajo» son contra la mediana de ESE grupo, no un juicio: en
+   una métrica donde menos es mejor, «alto» sigue siendo el valor grande.
+   -------------------------------------------------------------------- */
+const GRUPOS_CRUCE = { altoBajo: ['altos', 'bajos'], altoAlto: ['altos', 'altos'], bajoAlto: ['bajos', 'altos'], bajoBajo: ['bajos', 'bajos'] };
+const MIN_CRUCE = 8;   // con menos casos no se informa la correlación
+const coma = (n, d) => Number(n).toFixed(d).replace('.', ',');
+function fuerzaDe(r) {
+  const a = Math.abs(r);
+  return a < 0.2 ? 'prácticamente nula' : a < 0.4 ? 'débil' : a < 0.7 ? 'moderada' : 'fuerte';
+}
+function cruzar(pasan, a, b, grupo) {
+  const va = pasan.map((f) => f.leer(a).v), vb = pasan.map((f) => f.leer(b).v), n = pasan.length;
+  if (!n) return null;
+  const ma = S.mediana(va), mb = S.mediana(vb);
+  const de = (i) => (va[i] >= ma ? 'alto' : 'bajo') + (vb[i] >= mb ? 'Alto' : 'Bajo');
+  const cuadrantes = { altoAlto: 0, altoBajo: 0, bajoAlto: 0, bajoBajo: 0 };
+  pasan.forEach((f, i) => { cuadrantes[de(i)]++; });
+  let r = null;
+  if (n >= MIN_CRUCE) {
+    const pa = va.reduce((t, v) => t + v, 0) / n, pb = vb.reduce((t, v) => t + v, 0) / n;
+    let sab = 0, saa = 0, sbb = 0;
+    for (let i = 0; i < n; i++) { sab += (va[i] - pa) * (vb[i] - pb); saa += (va[i] - pa) * (va[i] - pa); sbb += (vb[i] - pb) * (vb[i] - pb); }
+    if (saa > 0 && sbb > 0) r = Math.round(sab / Math.sqrt(saa * sbb) * 100) / 100;
+  }
+  const g = GRUPOS_CRUCE[grupo];
+  return {
+    a, b, labelA: rotulo(a), labelB: rotulo(b), nombreA: def(a).label, nombreB: def(b).label, n,
+    medianaA: mostrar(a, ma), medianaB: mostrar(b, mb), cuadrantes, grupo, grupoTexto: g[0] + ' en ' + rotulo(a) + ' y ' + g[1] + ' en ' + rotulo(b), enGrupo: cuadrantes[grupo],
+    r, rTexto: r == null ? null : coma(r, 2), fuerza: r == null ? null : fuerzaDe(r), sentido: r == null ? null : (r >= 0 ? 'directa' : 'inversa'),
+    del: (f) => de(pasan.indexOf(f)),
+  };
 }
 
 const cumple = (c, v) => {
@@ -117,21 +200,26 @@ const textoCondicion = (c) => rotulo(c.metrica) + ' ' + OPERADORES[c.op] + ' ' +
  * afuera por no tener el dato.
  */
 function explorar(idx, nivel, o) {
-  const q = pedido(nivel, o);
+  const q = pedido(nivel, o, catalogo(idx)[nivel]);
   let filas = filasDe(idx, nivel);
   const universo = filas.length;
   if (q.soloCalificados && nivel === 'jugadores') filas = filas.filter((f) => f.califica);
   let sinDato = 0;
   const pasan = [];
   filas.forEach((f) => {
-    const usadas = [q.orden].concat(q.condiciones.map((c) => c.metrica));
+    const usadas = [q.orden].concat(q.condiciones.map((c) => c.metrica), q.cruce || []);
     if (usadas.some((k) => f.leer(k).v == null)) { sinDato++; return; }
     if (!q.condiciones.every((c) => cumple(c, f.leer(c.metrica).v))) return;
     pasan.push(f);
   });
   const dir = q.sentido === 'asc' ? 1 : -1;
   pasan.sort((a, b) => (dir * (a.leer(q.orden).v - b.leer(q.orden).v)) || ((b.orden || 0) - (a.orden || 0)) || String(a.jugador || a.equipo).localeCompare(String(b.jugador || b.equipo)));
-  const salida = pasan.slice(0, q.top).map((f, i) => {
+  /* Con cruce, la tabla es el GRUPO pedido (los altos en una y bajos en la
+     otra, por defecto), ordenado por la primera métrica. */
+  const cr = q.cruce ? cruzar(pasan, q.cruce[0], q.cruce[1], q.grupo) : null;
+  const visibles = cr ? pasan.filter((f) => cr.del(f) === q.grupo) : pasan;
+  if (cr) delete cr.del;
+  const salida = visibles.slice(0, q.top).map((f, i) => {
     const valores = {}, texto = {}, percentil = {};
     q.columnas.forEach((k) => { const r = f.leer(k); valores[k] = r.v; texto[k] = mostrar(k, r.v); if (r.p != null) percentil[k] = Math.round(r.p); });
     const fila = { puesto: i + 1, valores, texto };
@@ -145,7 +233,7 @@ function explorar(idx, nivel, o) {
   return {
     nivel, columnas: q.columnas.map((k) => ({ id: k, label: rotulo(k), nombre: def(k).label })), orden: q.orden, sentido: q.sentido,
     condiciones: q.condiciones, condicionesTexto: q.condiciones.map(textoCondicion), filas: salida, cumplen: pasan.length, universo, sinDato,
-    tramo: idx.liga.torneo + '|' + idx.fase,
+    tramo: idx.liga.torneo + '|' + idx.fase, cruce: cr,
   };
 }
 
@@ -157,7 +245,7 @@ const desvio = (vs) => { if (vs.length < 2) return 0; const m = vs.reduce((a, v)
  * juntos: medio punto de PACE no es una diferencia entre zonas.
  */
 function zonas(lista, o) {
-  const q = pedido('zonas', o);
+  const q = pedido('zonas', o, lista.length ? catalogo(lista[0].idx).zonas : null);
   const porZona = lista.map((z) => ({ zona: z.label, id: z.id, equipos: z.idx.lista().length, tramo: z.idx.liga.torneo + '|' + z.idx.fase,
     de: (k) => z.idx.lista().map((e) => { const r = z.idx.leer(e.clave, k); return r ? numero(r.valor) : null; }).filter((v) => v != null) }));
   const diferencias = q.columnas.map((k) => {
@@ -240,14 +328,20 @@ function diferenciasEntreZonas(lista) {
    -------------------------------------------------------------------- */
 const SUJETO = { jugadores: 'jugadores', equipos: 'equipos', partidos: 'actuaciones de equipo en un partido', zonas: 'zonas' };
 
+const rotuloCruce = (c) => c.labelA + ' contra ' + c.labelB + ': quiénes quedan ' + c.grupoTexto;
+
 function aPropuesta(res, angulo, sello) {
   if (!res || !res.filas || !res.filas.length) return { id: 'LAB', ok: false, formato: 'carrusel', titulo: 'Laboratorio', avisos: ['Ese filtro no deja a nadie: no hay nada que contar.'] };
   const k = res.orden, lab = (res.columnas.find((c) => c.id === k) || {}).label || k;
   const primero = res.filas[0], ultimo = res.filas[res.filas.length - 1];
   const filtro = res.condicionesTexto.length ? ' con ' + res.condicionesTexto.join(' y ') : '';
-  const titulo = String(angulo || '').trim().slice(0, 140) || ((res.nivel === 'zonas' ? 'Las zonas, comparadas por ' : 'Top ' + res.filas.length + ' por ') + lab + filtro);
+  const titulo = String(angulo || '').trim().slice(0, 140) || (res.cruce ? rotuloCruce(res.cruce) : null) || ((res.nivel === 'zonas' ? 'Las zonas, comparadas por ' : 'Top ' + res.filas.length + ' por ') + lab + filtro);
   let dato;
-  if (res.nivel === 'zonas') {
+  const c = res.cruce;
+  if (c) {
+    dato = 'De ' + c.n + ' ' + SUJETO[res.nivel] + filtro + ', ' + c.enGrupo + ' quedan ' + c.grupoTexto + ' (medianas: ' + c.medianaA + ' y ' + c.medianaB + '). ' +
+      (c.r == null ? 'Con ' + c.n + ' casos no alcanza para medir cuánto se mueven juntas.' : 'Entre las dos, la relación es ' + c.fuerza + (c.fuerza === 'prácticamente nula' ? '' : (c.sentido === 'inversa' ? ' e ' : ' y ') + c.sentido) + ' (r = ' + c.rTexto + ' sobre ' + c.n + ' casos).');
+  } else if (res.nivel === 'zonas') {
     const d = (res.diferencias || []).find((x) => x.metrica === k);
     dato = d && d.brechaTexto ? 'En ' + lab + ', la mediana de los equipos va de ' + d.brechaTexto + ' según la zona.' : 'Comparativa de ' + res.filas.length + ' zonas por ' + lab + '.';
   } else {
@@ -268,11 +362,14 @@ function aPropuesta(res, angulo, sello) {
   return {
     id: 'LAB-' + String(sello || Date.now().toString(36)).toUpperCase(), ok: true, formato: 'carrusel', formatoLabel: 'Carrusel 3:4 · Laboratorio', eje: null, enfoque: enfoqueDe(k),
     titulo, dato,
-    guion: ['Portada: el ángulo', 'El filtro: ' + (res.condicionesTexto.join(' y ') || 'sin condiciones') + ', ordenado por ' + lab,
+    guion: c ? ['Portada: el ángulo', 'Las dos métricas que se cruzan: ' + c.nombreA + ' y ' + c.nombreB,
+      'Los cuatro grupos, partidos por la mediana: cuántos caen en cada uno', 'El grupo que cuenta la historia: ' + c.grupoTexto + ', sin nombres',
+      'Qué dice del juego y qué no: que dos números se muevan juntos no dice cuál causa al otro', '¿En qué grupo cae tu equipo? + demo']
+    : ['Portada: el ángulo', 'El filtro: ' + (res.condicionesTexto.join(' y ') || 'sin condiciones') + ', ordenado por ' + lab,
       'La tabla, sin nombres', vol ? 'El volumen detrás del porcentaje: cuántos intentos sostienen cada número' : 'Qué dice del juego y qué no',
       '¿Cómo sale esta cuenta en tu equipo? + demo'],
     muestra: { nivel: res.nivel, cumplen: res.cumplen, universo: res.universo, sinDato: res.sinDato, tramo: res.tramo || null },
-    datos: { orden: k, sentido: res.sentido, condiciones: res.condiciones, columnas: res.columnas, filas },
+    datos: Object.assign({ orden: k, sentido: res.sentido, condiciones: res.condiciones, columnas: res.columnas, filas }, c ? { cruce: c } : {}),
     avisos: res.sinDato ? [res.sinDato + ' quedaron afuera por no tener el dato pedido.'] : [],
   };
 }
@@ -280,4 +377,5 @@ function aPropuesta(res, angulo, sello) {
 module.exports = {
   NIVELES, METRICAS, NO_DISPONIBLES, PISO_NOCHE, VOLUMEN, OPERADORES, Z_ATIPICO, MIN_NOCHE, FUGA_PERCENTIL, BRECHA_ZONAS, METRICAS_FUGA,
   opciones, pedido, explorar, zonas, anomalias, diferenciasEntreZonas, aPropuesta, enfoqueDe,
+  catalogo, cruzar, GRUPOS_CRUCE, MIN_CRUCE, FUERA_DEL_CATALOGO,
 };

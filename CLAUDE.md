@@ -118,7 +118,8 @@ node test-interzonal.js    # 220 tests · la llave entre zonas: un cliente de un
 node test-contenido.js     # 142 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
                            #             derivado, las diez recetas de Nivel 2 y que los nombres solo salgan en APdeB (103, 104)
 
-node test-centro-mando.js  # 264 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
+node test-centro-mando.js  # 327 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
+                           #             el texto libre de «A medida», el cruce de dos métricas y la voz de entrenador-analista (110)
                            #             (pide «npm install» en centro-mando/ una vez: los agentes usan el SDK de Claude, punto 107)
                            #             el play-by-play que no se presta, el aprendizaje y el servidor en 127.0.0.1 (105)
 
@@ -132,7 +133,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7489 tests en total. Todos tienen que dar verde antes de commitear.**
+**7552 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -13353,6 +13354,7 @@ pruebas reales dio 7 y 8 para CR-01.
   de no inventar números escrita adentro. Está siempre, con o sin IA.
 - Los dos salen en la tarjeta con su botón de copiar (`POST /api/copy`), y
   al aprobar van al `.md` y al `.json` de la pieza.
+- Desde el punto 110 los hashtags del copy los pone el código, no el modelo.
 - El llamado a la acción es fijo: «Comentá «CONTEXTO»…» (`CTA_COMENTARIO`),
   el mismo del carrusel de referencia. Lo pone el diseño en la placa de
   cierre; al modelo se le dice que no lo escriba ahí.
@@ -13375,3 +13377,140 @@ la guarda no descartó nada, pero el modelo volvió a llamar «puestos» a
 una diferencia de rating: la clave de CR-01 pasó a llamarse
 `diferenciaMaximaDeOrtgEntreLasDosVaras` para que diga qué mide. **Un
 nombre de dato ambiguo en una receta es una invitación a ese error.**
+
+## 110. «A MEDIDA» CON TEXTO LIBRE Y LA VOZ DE ENTRENADOR-ANALISTA (2026-10-13)
+
+Dos pedidos del club: que «A medida» deje de estar atada a una lista de
+métricas precargadas, y que la redacción deje de describir el número y
+pase a interpretarlo. `test-centro-mando.js` fija todo lo de acá.
+
+```
+centro-mando/libre.js        PURO: el intérprete LOCAL del texto libre
+centro-mando/explorador.js   suma el catálogo completo del libro y el cruce de dos métricas
+centro-mando/servidor.js     POST /api/libre
+centro-mando/motor.js        VOZ, CAPAS y ESTILO: una sola voz para el redactor y el prompt alternativo
+```
+
+### 1 · La idea libre · sin modelo
+
+En «A medida» se escribe una métrica, dos para cruzar o una hipótesis
+entera, y `LIBRE.interpretarLibre(texto, E.catalogo(idx))` la lleva a un
+pedido del Explorador. **Es local y determinista: no llama a Claude**, así
+que es instantáneo y no gasta del plan. La pregunta táctica con IA sigue
+en el Explorador (punto 107).
+
+- **EL CATÁLOGO ES EL DEL LIBRO** (`E.catalogo(idx)`): toda métrica del
+  registro del núcleo con al menos un valor en ese nivel. Medido en la
+  demo: 44 por jugador, 55 por equipo y 44 por partido, contra las 26, 18
+  y 17 de la lista corta (`E.METRICAS`, que sigue siendo la de las
+  casillas del laboratorio). `E.explorar` valida contra el catálogo
+  completo; `E.pedido` sin libro, contra la lista corta. `VAL` y `+/-`
+  quedan afuera (puntos 3 bis y 4).
+- **Cómo lee**: siglas de la planilla tal cual («USG%», «drtg», «efg opp»);
+  conceptos de cancha (`CONCEPTOS`: «ritmo», «corren», «pérdidas», «van a
+  la línea»…) con candidatas EN ORDEN —«eficiencia» es ORTG en un equipo y
+  PPP en un jugador—; y por parecido de raíz («reboteadores» → rebote),
+  salvo las raíces de `RAIZ_AMBIGUA` («contra» abre «contrario», «genera»
+  abre «general»).
+- **NUNCA APROXIMA EN SILENCIO.** Cada cosa entendida viaja con la frase
+  que la disparó y cómo se resolvió (sigla, concepto, parecido o
+  APROXIMACIÓN). «Puntos de segunda oportunidad» usa el rebote ofensivo y
+  lo dice; «suplentes» usa los minutos y dice que el libro no sabe quién
+  arranca (la regla de titularidad del punto 9).
+- **Lo que no existe se dice y no se inventa** (`NO_EXISTE`): altura,
+  edad, posición, cuartos, clutch, quintetos, zona de tiro. Sin ninguna
+  métrica reconocida, `ok: false` con cómo escribirlo.
+- **Las condiciones** («menos de 15 minutos», «al menos 3,5 libres
+  intentados») van con la métrica que tienen pegada después, o antes. Una
+  sin métrica cerca NO se aplica y se avisa. El número es el que escribió
+  quien opera: el intérprete no decide ninguno.
+- **Un porcentaje sin piso de intentos se AVISA**, no se le inventa la
+  condición: el aviso dice cómo pedirla.
+- **El nivel**: el que se fuerza en el selector, el que nombra el texto, o
+  jugadores si se habla de personas («tiradores», «suplentes»); si no,
+  equipos. La lectura lo dice siempre.
+
+### 2 · El cruce de dos métricas · lo único que el Explorador calcula
+
+Con dos métricas, `E.explorar(..., { cruce: [a, b], grupo })` parte a los
+que cumplen por la MEDIANA de cada una, cuenta los cuatro grupos y, con 8
+casos o más (`MIN_CRUCE`), informa Pearson a dos decimales con su fuerza
+(nula < 0,2 · débil < 0,4 · moderada < 0,7 · fuerte).
+
+- La tabla es SOLO el grupo pedido (por defecto, altos en la primera y
+  bajos en la segunda). El grupo lo lee el intérprete de la palabra
+  pegada a cada métrica: «más»/«menos» van por el valor; «mejor»/«peor»
+  se dan vuelta en una métrica invertida (peor defensa = DRTG alto). El
+  selector de la pantalla le gana al texto.
+- «Alto» y «bajo» son contra la mediana de ese grupo, no un juicio.
+- Entre zonas no se cruza.
+- La propuesta (`E.aPropuesta`) cuenta el grupo, las medianas, el n y la
+  relación, y su guion trae la línea «que dos números se muevan juntos no
+  dice cuál causa al otro».
+
+### 3 · `POST /api/libre`
+
+Devuelve `{ ok, lectura, consulta, resultado, propuesta, avisos }`. La
+tabla va con nombres (es local, como la del Explorador); la propuesta sale
+por `propuestaAnonima`, el mismo camino del laboratorio: anónima SIEMPRE y
+verificada. Si el texto nombra a un club o a un jugador, la propuesta sale
+con el título del generador y se avisa. Con `aBandeja: true` queda arriba
+de la bandeja, que es donde se redacta con IA.
+
+### 4 · La voz · interpretar, no describir
+
+`M.VOZ`, `M.CAPAS` y `M.ESTILO` son UNA sola voz: las usa
+`LLM.SISTEMA_REDACCION` y `M.promptDeCopy` (hay test que exige las mismas
+líneas en los dos). Las capas que tiene que tener una pieza:
+
+| Capa | Qué es |
+|---|---|
+| EL POR QUÉ | el mecanismo de juego detrás del número, como lectura general |
+| EL DOLOR | qué decide a ciegas el cuerpo técnico que no lo mira |
+| EL BENEFICIO | qué decide distinto el que lo domina |
+| LA OTRA MIRADA | el ángulo que discute el sentido común de la categoría |
+| PREGUNTAS DISPARADORAS | de auditoría, contestables mirando al propio equipo |
+
+Los cuatro roles de placa NO cambiaron (`estructuraDePlacas`): el por qué
+va en una placa de evidencia propia; dolor, beneficio y otra mirada, en
+las de propuesta; las preguntas, en el campo `destacado` y en el cierre.
+El copy va más hondo que las placas, hasta 2.100 caracteres.
+
+**Las guardas no se aflojaron**: «la profundidad se gana con lectura, no
+con números nuevos», y el por qué y el dolor son lecturas GENERALES del
+juego, nunca un hecho sobre alguien.
+
+### 5 · Tres correcciones que salieron de leer la redacción real
+
+Medido el 2026-10-13 con `claude -p` sobre APdeB Zona B: CR-01 en 29 s
+(10 placas) y un cruce libre uso × pérdidas en 30 s (8 placas), nada
+descartado por la guarda. Los dos arreglos que estaban sin probar
+funcionan: el copy sale sin asteriscos y la diferencia de rating ya no se
+llama «puestos».
+
+- **LOS HASHTAGS LOS PONE EL CÓDIGO** (`filtrar`: saca los del modelo y
+  agrega `M.HASHTAGS`). El modelo escribió `#basquetfemenino` en una liga
+  masculina: un hashtag es una afirmación sobre el torneo que ninguna
+  guarda puede revisar.
+- **Los decimales se piden con coma**: salían «86.2» porque así figuran en
+  el JSON de la pieza. La guarda ya los toma como el mismo número.
+- **Una pregunta de gancho sin cerrar se cierra**, no se tira.
+- La regla «las capas no se anuncian como rótulos» («El dolor de no
+  verlo:») se sumó DESPUÉS de la última redacción real y no se volvió a
+  probar contra el modelo.
+
+### Lo que sigue igual
+
+- La revisión humana no es opcional: la guarda comprueba que el número
+  exista, no que esté bien usado; el por qué y la propuesta son opinión.
+- El intérprete libre es un vocabulario escrito a mano: un concepto que no
+  esté en `CONCEPTOS` no se reconoce. Se agrega ahí (un test exige que
+  toda candidata sea una métrica del registro del núcleo).
+- Verificado al revés, once mutaciones, todas caen: aproximar en silencio
+  2, callar lo que no existe 3, la tabla del cruce sin filtrar 2, sin
+  verificar el anonimato 2, el redactor sin las capas 2, y 1 cada una el
+  aviso del piso, «peores» sin dirección, la correlación con muestra
+  chica, explorar con la lista corta, el reintento sin anonimizar y el
+  prompt alternativo sin las capas.
+- `.claude/launch.json` suma `centro-mando-prueba` (puerto 8771, datos en
+  una carpeta temporal) para probar sin tocar la bandeja de verdad.

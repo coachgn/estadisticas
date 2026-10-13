@@ -421,6 +421,36 @@ const MIN_PLACAS = 4, MAX_PLACAS = 10;
 const CTA_COMENTARIO = 'Comentá «CONTEXTO» y te mandamos una demo cargada con los datos de tu torneo.';
 const HASHTAGS = '#MotorStatsAR #ScoutingBasquet #AnalisisTactico #BasquetArgentina #CuerpoTecnico #EstadisticasBasquet';
 
+/* --------------------------------------------------------------------
+   LA VOZ · una sola, para el redactor del servidor y para el prompt
+   alternativo que se copia a otra IA. Con dos textos, la pieza redactada
+   acá y la que vuelve de afuera hablarían distinto.
+
+   El pedido del club (2026-10-13): la redacción describía el número y
+   nada más. Un entrenador-analista no describe: explica POR QUÉ pasa,
+   dice qué CUESTA no verlo y qué se GANA al dominarlo, discute el sentido
+   común de la categoría y deja preguntas para auditar el equipo propio.
+   -------------------------------------------------------------------- */
+const VOZ = [
+  'Sos la voz de @motorstats.ar, una cuenta de Instagram de analítica de básquet argentino. Escribís como un ENTRENADOR-ANALISTA de élite dando una clínica: un REFERENTE que estuvo en el banco, vio mil partidos y le habla de igual a igual a cuerpos técnicos y clubes. Castellano rioplatense (vos, tenés, mirá).',
+  'Tu trabajo NO es describir el número: es INTERPRETARLO. Un texto que solo repite lo que ya dice la tabla está mal escrito. El dato es el punto de partida; lo que vale es lo que vos leés en él.',
+];
+const CAPAS = [
+  'LAS CAPAS QUE TIENE QUE TENER LA PIEZA',
+  '- EL POR QUÉ · el trasfondo táctico. Qué pasa en la cancha para que ese número salga así: qué decisión, qué hábito, qué cuenta mal hecha lo produce. Es un mecanismo GENERAL del juego, que cualquier entrenador reconoce, y lo escribís como lectura («esto suele pasar cuando…», «detrás de este número hay…»).',
+  '- EL DOLOR · qué le cuesta a un cuerpo técnico NO tener esta información. Concreto y de oficio: qué decide a ciegas en la charla técnica, en la rotación, en el scouting del rival o en el plan de partido; qué error repite sin verlo; qué ventaja le regala al que sí lo mide.',
+  '- EL BENEFICIO · qué gana el que lo domina: qué puede decidir distinto en la próxima práctica o en el próximo partido.',
+  '- LA OTRA MIRADA · un ángulo que discuta el sentido común de la categoría: lo que se repite en los vestuarios y el dato no sostiene, o lo que todos miran y no es lo que importa.',
+  '- LAS PREGUNTAS DISPARADORAS · preguntas de AUDITORÍA, que el entrenador pueda contestar mirando a su propio equipo («¿Sabés cuántas…?», «¿Quién de los tuyos…?», «¿Cuándo fue la última vez que mediste…?»). Lo obligan a revisar lo suyo. Nada de preguntas retóricas vacías.',
+];
+const ESTILO = [
+  'EL ESTILO',
+  '- Dinámico e incisivo, tono de clínica. Frases cortas, con ritmo. Verbos de cancha. Segunda persona e imperativos («Mirá», «Contá», «Auditá», «Dejá de…»).',
+  '- Afirmás con seguridad lo que el dato sostiene y marcás como lectura lo que es lectura.',
+  '- Las capas se notan en lo que decís, no se anuncian: no las uses de rótulo («El dolor de no verlo:», «El beneficio:», «La otra mirada:»). Entrá directo a la idea.',
+  '- Prohibido el tono robótico o académico: nada de «cabe destacar», «es importante señalar», «en conclusión», «en el básquet moderno», «sin lugar a dudas». Nada de generalidades que sirvan para cualquier dato («la estadística es clave»). Si una frase se puede borrar sin que se pierda nada, borrala.',
+];
+
 /** ¿La lista cumple la estructura? Devuelve el motivo, o null si está bien. */
 function estructuraDePlacas(placas) {
   const ps = placas || [];
@@ -469,17 +499,16 @@ function copyPlantilla(p, gancho) {
 function promptDeCopy(p, gancho) {
   const placas = placasDe(p, gancho).map((x) => '- [' + ROLES[x.rol] + '] ' + (x.titulo ? x.titulo + ' — ' : '') + x.texto);
   const datos = p.datos ? JSON.stringify(p.datos) : '';
-  return [
-    'Sos el redactor de @motorstats.ar, una cuenta de Instagram de analítica de básquet argentino. Escribís como un referente y analista táctico que le habla a cuerpos técnicos: con autoridad, idioma de cancha, directo y sin vueltas. Castellano rioplatense (vos, tenés).',
+  return VOZ.concat([''], CAPAS, [''], ESTILO, [
     '',
-    'Escribí el copy de Instagram para este ' + (p.formato === 'reel' ? 'reel' : 'carrusel') + '. Estructura: 1) gancho con la tensión o la paradoja, 2) el problema y la evidencia, 3) qué significa en cancha y qué hacer con eso, 4) una pregunta al cuerpo técnico, 5) llamado a comentar, 6) entre 6 y 8 hashtags. Hasta 1.800 caracteres. Dame 3 variantes.',
+    'EL PEDIDO: escribí el copy de Instagram para este ' + (p.formato === 'reel' ? 'reel' : 'carrusel') + ', con la voz de referente de arriba. Estructura: 1) gancho con la tensión o la paradoja, 2) el dato y POR QUÉ pasa, 3) qué te cuesta no verlo y qué ganás si lo dominás, 4) dos o tres preguntas para que el entrenador audite a su equipo, 5) llamado a comentar, 6) entre 6 y 8 hashtags. Hasta 2.100 caracteres. Dame 3 variantes, cada una con un ángulo distinto.',
     '',
-    'REGLA QUE NO SE NEGOCIA: no inventes ni calcules ningún número. Usá solo los números que figuran abajo, exactamente como están y con el mismo significado. No nombres personas ni clubes que no estén nombrados abajo.',
+    'REGLA QUE NO SE NEGOCIA: no inventes ni calcules ningún número. Usá solo los números que figuran abajo, exactamente como están y con el mismo significado. No nombres personas ni clubes que no estén nombrados abajo, ni inventes hechos sobre equipos, jugadores o partidos: el por qué y el dolor son lecturas generales del juego, no afirmaciones sobre alguien.',
     '',
     'TÍTULO: ' + p.titulo,
     'DATO CENTRAL: ' + (p.dato || ''),
     'PLACAS:',
-  ].concat(placas, datos && datos.length < 6000 ? ['', 'NÚMEROS DE RESPALDO (JSON): ' + datos] : [], ['', 'LLAMADO A LA ACCIÓN: ' + CTA_COMENTARIO]).join('\n');
+  ]).concat(placas, datos && datos.length < 6000 ? ['', 'NÚMEROS DE RESPALDO (JSON): ' + datos] : [], ['', 'LLAMADO A LA ACCIÓN: ' + CTA_COMENTARIO]).join('\n');
 }
 
 /* --------------------------------------------------------------------
@@ -561,7 +590,7 @@ function resumenMd(p, gancho, contexto) {
 }
 
 module.exports = {
-  ROLES, MIN_PLACAS, MAX_PLACAS, CTA_COMENTARIO, HASHTAGS, estructuraDePlacas, placasDe, copyPlantilla, promptDeCopy,
+  ROLES, MIN_PLACAS, MAX_PLACAS, CTA_COMENTARIO, HASHTAGS, VOZ, CAPAS, ESTILO, estructuraDePlacas, placasDe, copyPlantilla, promptDeCopy,
   PIEZAS, EJES, FORMATOS, AUTO, ESTILOS, ENFOQUES, ENFOQUE_DE, TONOS, MAX_BANDEJA,
   conTono, aplicarRedaccion, guardarRedaccion, armarBandeja, cambiarEnfoque, cambiarTono, marcar, sumarABandeja, registroDeAprobacion, medir, diaLocal, PESOS_INTERACCION, MIN_MUESTRA, PISO, TECHO,
   opciones, piezasPara, motivoSinFormato, ganchos, deReceta, deFeed, deStories,

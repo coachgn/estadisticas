@@ -31,6 +31,7 @@ require('../server/lib/env.js').cargar();
 const GC = require('../generar-contenido.js');
 const M = require('./motor.js');
 const E = require('./explorador.js');
+const LIBRE = require('./libre.js');
 const LLM = require('./llm.js');
 
 const RAIZ = path.join(__dirname, '..');
@@ -284,25 +285,79 @@ async function redactarItem(b, deps) {
   return { bandeja: nueva, item: nueva.items.find((i) => i.uid === x.uid), descartado: red.descartado, uso: red.uso };
 }
 
+/**
+ * Una tabla del Explorador → propuesta ANÓNIMA y verificada. El mismo
+ * camino que el Nivel 2: anónima SIEMPRE, y verificada contra los nombres
+ * de todos los libros que se leyeron. Lanza si el ángulo nombra a alguien.
+ */
+async function propuestaAnonima(p, nivel, res, angulo, sello) {
+  const cruda = E.aPropuesta(res, angulo, sello);
+  if (!cruda.ok) throw new Error(cruda.avisos[0]);
+  const anon = GC.anonimizar(cruda);
+  const nombres = { jugadores: [], equipos: [] };
+  const zs = nivel === 'zonas' ? (await zonasDe(p, false)).filter((z) => z.idx) : [{ idx: (await indiceDe(p, false)).idx }];
+  zs.forEach((z) => { const n = GC.nombresDelLibro(z.idx); nombres.jugadores = nombres.jugadores.concat(n.jugadores); nombres.equipos = nombres.equipos.concat(n.equipos); });
+  GC.verificarAnonimo(anon, nombres);
+  delete anon.anonimo;
+  anon.ganchos = M.ganchos(anon.titulo, anon.dato, anon.guion);
+  return anon;
+}
+function aLaBandeja(p, anon, sello) {
+  const clave = claveBandeja(p);
+  return guardarBandeja(clave, Object.assign({ clave, generada: new Date().toISOString(), meta: { torneo: p.liga.torneo, zona: p.zona.label, liga: p.ligaId, zonaId: p.zonaId } }, M.sumarABandeja(leerBandejas()[clave], anon, sello)));
+}
+
 /** Un hallazgo del Explorador → propuesta ANÓNIMA y verificada → bandeja. */
 async function delLaboratorio(b) {
   const x = b || {};
   const p = GC.resolverPedido({ liga: x.liga, zona: x.zona });
   const res = await explorar(x);
   const sello = Date.now().toString(36);
-  const cruda = E.aPropuesta(res, x.angulo, sello);
-  if (!cruda.ok) throw new Error(cruda.avisos[0]);
-  /* El mismo camino que el Nivel 2: anónimo SIEMPRE, y verificado contra
-     los nombres de todos los libros que se leyeron. */
-  const anon = GC.anonimizar(cruda);
-  const nombres = { jugadores: [], equipos: [] };
-  const zs = x.nivel === 'zonas' ? (await zonasDe(p, false)).filter((z) => z.idx) : [{ idx: (await indiceDe(p, false)).idx }];
-  zs.forEach((z) => { const n = GC.nombresDelLibro(z.idx); nombres.jugadores = nombres.jugadores.concat(n.jugadores); nombres.equipos = nombres.equipos.concat(n.equipos); });
-  GC.verificarAnonimo(anon, nombres);
-  delete anon.anonimo;
-  anon.ganchos = M.ganchos(anon.titulo, anon.dato, anon.guion);
-  const clave = claveBandeja(p);
-  return { bandeja: guardarBandeja(clave, Object.assign({ clave, generada: new Date().toISOString(), meta: { torneo: p.liga.torneo, zona: p.zona.label, liga: p.ligaId, zonaId: p.zonaId } }, M.sumarABandeja(leerBandejas()[clave], anon, sello))), id: anon.id };
+  const anon = await propuestaAnonima(p, x.nivel, res, x.angulo, sello);
+  return { bandeja: aLaBandeja(p, anon, sello), id: anon.id };
+}
+
+/**
+ * «A MEDIDA», TEXTO LIBRE. El intérprete LOCAL lee lo que se escribió
+ * contra el catálogo del libro de esa zona —sin modelo—, el Explorador
+ * corre el pedido y sale una propuesta anónima. La respuesta trae qué se
+ * entendió, qué se aproximó y qué no existe: nada se aproxima en silencio.
+ * Con `aBandeja`, la propuesta queda arriba de la bandeja (que es donde
+ * se redacta con IA).
+ */
+async function libre(b) {
+  const x = b || {};
+  const p = GC.resolverPedido({ liga: x.liga, zona: x.zona });
+  const { idx } = await indiceDe(p, !!x.refrescar);
+  const multi = Object.keys(p.liga.zonas).length > 1;
+  const lec = LIBRE.interpretarLibre(x.texto, E.catalogo(idx), { nivel: E.NIVELES[x.nivel] ? x.nivel : null, zonas: multi });
+  if (!lec.ok) return { ok: false, lectura: lec };
+  const consulta = Object.assign({}, lec.consulta, { liga: x.liga, zona: x.zona });
+  /* El grupo del cruce: el que se elige a mano le gana al que leyó el texto. */
+  if (E.GRUPOS_CRUCE[x.grupo]) consulta.grupo = x.grupo;
+  if (Number(x.top) > 0) consulta.top = Number(x.top);
+  const resultado = await explorar(consulta);
+  const sello = Date.now().toString(36);
+  const titulo = String(x.angulo || x.texto || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+  let propuesta = null;
+  const avisos = [];
+  try { propuesta = await propuestaAnonima(p, consulta.nivel, resultado, titulo, sello); }
+  catch (e) {
+    /* El texto nombró a alguien del libro: la propuesta sale igual, con el
+       título que arma el generador, y se dice por qué. */
+    if (!/todavía nombra a/.test(e.message)) avisos.push(e.message);
+    else {
+      try { propuesta = await propuestaAnonima(p, consulta.nivel, resultado, '', sello); avisos.push('El texto nombra a alguien del libro y las propuestas del laboratorio salen anónimas: el título se armó sin él.'); }
+      catch (e2) { avisos.push(e2.message); }
+    }
+  }
+  const out = { ok: true, lectura: lec, consulta, resultado, propuesta, avisos };
+  if (x.aBandeja) {
+    if (!propuesta) throw new Error(avisos[0] || 'No hay una propuesta que mandar.');
+    aLaBandeja(p, propuesta, sello);
+    out.enBandeja = propuesta.id;
+  }
+  return out;
 }
 
 /**
@@ -372,6 +427,7 @@ function app() {
   a.post('/api/bandeja', ruta((req) => bandeja(req.body)));
   a.post('/api/bandeja/accion', ruta((req) => accionDeBandeja(req.body)));
   a.post('/api/laboratorio', ruta((req) => delLaboratorio(req.body)));
+  a.post('/api/libre', ruta((req) => libre(req.body)));
   a.post('/api/generar', ruta((req) => generar(req.body)));
   a.post('/api/placas', ruta((req) => placas(req.body.propuesta, req.body.gancho, req.body.contexto)));
   /* El copy y el prompt alternativo de una propuesta, con el gancho elegido. Sin modelo: los arma el motor. */
@@ -387,4 +443,4 @@ if (require.main === module) {
   app().listen(PUERTO, '127.0.0.1', () => console.log('Centro de Mando Editorial · http://127.0.0.1:' + PUERTO));
 }
 
-module.exports = { app, generar, placas, aprobar, registrar, explorar, anomalias, bandeja, accionDeBandeja, delLaboratorio, preguntar, redactarItem, indices, PUERTO };
+module.exports = { app, generar, placas, aprobar, registrar, explorar, anomalias, bandeja, accionDeBandeja, delLaboratorio, libre, preguntar, redactarItem, indices, PUERTO };

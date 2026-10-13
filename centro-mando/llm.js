@@ -48,9 +48,9 @@ const MODELO = process.env.CENTRO_MANDO_MODELO || 'claude-opus-5-5';
 const ESTILOS = ['dato', 'titular', 'pregunta'];
 
 const TONOS = {
-  tactico: 'TÁCTICO: le hablás a un cuerpo técnico. Preciso, sobrio, vocabulario de cancha. El número adelante y la consecuencia para el plan de partido.',
-  polemico: 'POLÉMICO: discutís una creencia instalada del ambiente. Frontal y contraintuitivo, pero sostenido por el dato; nunca contra una persona ni un club.',
-  educativo: 'EDUCATIVO: le explicás el concepto a alguien que recién empieza a mirar estadística. Claro, paso a paso, sin jerga sin explicar.',
+  tactico: 'TÁCTICO: le hablás a un cuerpo técnico en una reunión de staff. Preciso y de oficio. Lo que más pesa es el POR QUÉ y la decisión que cambia: qué se hace distinto en la práctica y en el plan de partido.',
+  polemico: 'POLÉMICO: discutís una creencia instalada del ambiente. Frontal y contraintuitivo. Lo que más pesa es LA OTRA MIRADA y EL DOLOR de seguir decidiendo con la creencia vieja. Sostenido por el dato; nunca contra una persona ni un club.',
+  educativo: 'EDUCATIVO: sos el entrenador que le enseña a su asistente a leer la planilla. Claro y paso a paso, sin jerga sin explicar, pero sin bajar la vara. Lo que más pesa es el POR QUÉ y las PREGUNTAS para que lo pruebe con su equipo.',
 };
 
 /* --------------------------------------------------------------------
@@ -60,6 +60,8 @@ const { spawn, spawnSync } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
+
+const M = require('./motor.js');
 
 const BINARIO = process.env.CENTRO_MANDO_CLAUDE || 'claude';
 const ESPERA_CLI_MS = 120000;
@@ -313,44 +315,51 @@ const EsquemaRedaccion = z && z.object({
   placas: z.array(z.object({
     rol: z.enum(['gancho', 'evidencia', 'propuesta', 'cierre']),
     titulo: z.string().describe('el encabezado de la placa, hasta 60 caracteres; puede ir vacío'),
-    texto: z.string().describe('el cuerpo de la placa, hasta 320 caracteres'),
-    destacado: z.string().describe('una frase para la tarjeta resaltada, hasta 140 caracteres; vacío si no hace falta'),
+    texto: z.string().describe('el cuerpo de la placa, hasta 380 caracteres'),
+    destacado: z.string().describe('la frase de impacto o la pregunta disparadora de esa placa, para la tarjeta resaltada; hasta 150 caracteres; vacío si no hace falta'),
   })).describe('carrusel: entre 4 y 10 placas. Reel o Stories: lista vacía'),
   guion: z.array(z.string()).describe('reel: la misma cantidad de líneas que el guion recibido, cada una con su marca de tiempo. Carrusel: lista vacía'),
-  copy: z.string().describe('el copy de Instagram listo para publicar, hasta 1800 caracteres'),
+  copy: z.string().describe('el copy de Instagram listo para publicar, hasta 2100 caracteres'),
 });
 
-const SISTEMA_REDACCION = [
-  'Sos el redactor de @motorstats.ar, una cuenta de Instagram de analítica de básquet argentino. Escribís como un REFERENTE y analista táctico de autoridad: alguien que estuvo en el banco y le habla de igual a igual a cuerpos técnicos y clubes. Idioma de cancha, directo, coloquial y sin vueltas. Castellano rioplatense (vos, tenés). Afirmás con seguridad lo que el dato sostiene y marcás como lectura lo que es lectura.',
+const SISTEMA_REDACCION = M.VOZ.concat([
   '',
   'Recibís una PIEZA ya calculada (título, dato, guion y sus números) y un TONO. Devolvés: un título, tres ganchos de portada (uno que abre con el dato, uno que es un titular y uno que es una pregunta), las placas, y el copy de Instagram.',
   '',
-  'LA NARRATIVA · cuatro momentos, en este orden. La cantidad de placas NO es fija: usá las que el tema pida, entre 4 y 10. Un dato simple se cuenta en 4 o 5; una pieza con varios casos o una tabla puede pedir más.',
-  '1. GANCHO (una placa, rol «gancho»): la tensión táctica, la paradoja o el punto de quiebre. El título es la frase de portada; el texto, una bajada que promete lo que viene.',
-  '2. EVIDENCIA (una o más, rol «evidencia»): el problema explicado y los números de la pieza desglosados. Un concepto por placa. Si hay que explicar una métrica para que se entienda, va acá.',
-  '3. PROPUESTA (una o más, rol «propuesta»): qué significa esto en cancha. La lectura de juego, la decisión táctica o qué mirar en el próximo rival. Es tu criterio de analista: escribilo como lectura («esto te pide…», «la tendencia marca…»), no como un hecho medido.',
-  '4. CIERRE (una placa, rol «cierre»): una conclusión contundente y una pregunta al cuerpo técnico que invite a comentar. El llamado a la acción («Comentá CONTEXTO…») lo agrega el diseño: no lo escribas.',
-  'SOLO en el título de una placa podés marcar *así* la palabra o el número que va resaltado; en ningún otro campo uses asteriscos. El campo «destacado» es para la frase que merece una tarjeta aparte; dejalo vacío si no hay ninguna.',
+], M.CAPAS, [
+  '',
+  'LA NARRATIVA · cuatro momentos, en este orden. La cantidad de placas NO es fija: usá las que el tema pida, entre 4 y 10. Una pieza con profundidad —dato, por qué, dolor, beneficio y otra mirada— suele pedir entre 6 y 9; no la estires con relleno ni la apures dejando capas afuera.',
+  '1. GANCHO (una placa, rol «gancho»): la tensión táctica, la paradoja o el punto de quiebre. El título es la frase de portada; el texto, una bajada que le promete al entrenador algo que le sirve.',
+  '2. EVIDENCIA (dos o más, rol «evidencia»): primero el número, desglosado y con su unidad; después EL POR QUÉ, en su propia placa. Un concepto por placa. Si hay que explicar una métrica para que se entienda, va acá.',
+  '3. PROPUESTA (dos o más, rol «propuesta»): EL DOLOR de no verlo, EL BENEFICIO de dominarlo y LA OTRA MIRADA. Es tu criterio de analista: escribilo como lectura («esto te pide…», «la tendencia marca…», «el que no lo mide suele…»), no como un hecho medido.',
+  '4. CIERRE (una placa, rol «cierre»): una sentencia contundente y UNA pregunta disparadora de auditoría al cuerpo técnico, que invite a comentar. El llamado a la acción («Comentá CONTEXTO…») lo agrega el diseño: no lo escribas.',
+  'El campo «destacado» de una placa es para su frase de impacto o su PREGUNTA DISPARADORA: va en una tarjeta aparte. Usalo en las placas de propuesta para las preguntas de auditoría; dejalo vacío donde no haga falta.',
+  'SOLO en el título de una placa podés marcar *así* la palabra o el número que va resaltado; en ningún otro campo uses asteriscos.',
   'Cuidá el sentido de cada movimiento: pasar del puesto 11 al 10 es SUBIR. Si no estás seguro de la dirección, decí «pasa del … al …» y nada más.',
+  '',
+], M.ESTILO, [
   '',
   'SEGÚN EL FORMATO',
   '- Carrusel: devolvé «placas» y dejá «guion» vacío.',
-  '- Reel: devolvé «guion» con la misma cantidad de líneas que el recibido, en el mismo orden, cada una con su marca de tiempo del principio tal cual, y dejá «placas» vacío.',
+  '- Reel: devolvé «guion» con la misma cantidad de líneas que el recibido, en el mismo orden, cada una con su marca de tiempo del principio tal cual, y dejá «placas» vacío. Las capas van adentro de esas líneas: el por qué y el dolor, dichos para ser escuchados.',
   '- Stories: dejá «placas» y «guion» vacíos; las placas ya están diseñadas con los rankings.',
   '',
-  'EL COPY DE INSTAGRAM: listo para publicar, con la misma voz. Abre con el gancho, plantea el problema, da la evidencia, cierra con la lectura táctica y una pregunta, e invita a comentar «CONTEXTO» para recibir una demo o a escribir por mensaje directo. Párrafos cortos, algún emoji como viñeta (no más de seis en total) y entre 6 y 8 hashtags al final, sin números adentro.',
+  'EL COPY DE INSTAGRAM: listo para publicar, con la misma voz, y más profundo que las placas, no un resumen de ellas. Abre con el gancho; cuenta el dato y POR QUÉ pasa; dice qué te cuesta no verlo y qué ganás si lo dominás; deja dos o tres preguntas para que el entrenador audite a su equipo; e invita a comentar «CONTEXTO» para recibir una demo o a escribir por mensaje directo. Párrafos cortos y algún emoji como viñeta (no más de seis en total). NO escribas hashtags: los agrega el sistema.',
   '',
   'LA REGLA QUE NO SE NEGOCIA: no sos la fuente de ningún número.',
   '- Todo número que escribas —en un título, una placa, un gancho o el copy— tiene que estar en la pieza, EXACTAMENTE como figura ahí (58 es 58, no «casi 60» ni «6 de cada 10»).',
-  '- No calcules, no redondees, no conviertas, no sumes ni restes, no escribas un número en letras.',
-  '- Cada número conserva su unidad y aquello a lo que se refiere en la pieza: un rating no es una cantidad de puestos, un porcentaje de un jugador no es el de la liga. Si no estás seguro de qué mide un número, no lo uses.',
-  '- La autoridad viene de leer bien el dato, no de agregarle datos: no inventes hechos sobre equipos, jugadores, planteles, canchas ni partidos que la pieza no trae. La lectura táctica es general (qué pide esto en cancha), nunca un hecho sobre alguien en particular.',
+  '- No calcules, no redondees, no conviertas, no sumes ni restes, no escribas un número en letras. La profundidad se gana con lectura, no con números nuevos: si para explicar el por qué te haría falta un número que no tenés, explicalo sin número.',
+  '- Los decimales van con COMA, como se escriben acá (86,2), aunque en la pieza figuren con punto (86.2). Es el mismo número: eso no es cambiarlo.',
+  '- Cada número conserva su unidad y aquello a lo que se refiere en la pieza: un rating no es una cantidad de puestos, un porcentaje de un jugador no es el de la liga, una correlación no es una causa. Si no estás seguro de qué mide un número, no lo uses.',
+  '- La autoridad viene de leer bien el dato, no de agregarle datos: no inventes hechos sobre equipos, jugadores, planteles, canchas ni partidos que la pieza no trae. El por qué, el dolor y el beneficio son lecturas GENERALES del juego (qué suele haber detrás, qué pide esto en cancha), nunca un hecho sobre alguien en particular.',
   '- Un sistema automático revisa cada número después de vos y descarta el texto que traiga uno que no esté en la pieza.',
   '',
   'OTRAS REGLAS',
   '- No nombres personas ni clubes que la pieza no nombre. Si la pieza dice «Jugador 1» o «Equipo A», se queda así o se generaliza («un escolta», «un equipo de la zona»).',
+  '- No afirmes nada del torneo que la pieza no diga: ni la categoría, ni la rama, ni si es profesional o amateur.',
+  '- Toda pregunta abre con ¿ y cierra con ?.',
   '- Sin signos de exclamación en cadena. En las placas, a lo sumo un emoji como viñeta por placa.',
-].join('\n');
+]).join('\n');
 
 /**
  * Redacta `propuesta` en `tono`. Devuelve los textos YA FILTRADOS por la
@@ -373,12 +382,13 @@ function piezaDe(p) {
 
 /** La guarda aplicada a una redacción. PURA: es lo que se testea. */
 function filtrar(salida, pieza) {
-  const M = require('./motor.js');
   const permitidos = numerosDe(pieza);
   const descartado = [];
   /* El resaltado *así* vale SOLO en el título de una placa. En cualquier
      otro campo los asteriscos saldrían literales en la placa o en el copy. */
   const sinMarcas = (t) => String(t || '').replace(/\*([^*\n]+)\*/g, '$1');
+  /* Una pregunta que abre y no cierra: se le pone el signo, no se tira. */
+  const cerrar = (t) => (t && (t.match(/¿/g) || []).length === (t.match(/\?/g) || []).length + 1 && /[^?.!…]$/.test(t) ? t + '?' : t);
   const fiel = (campo, texto, opcional, conMarcas) => {
     const t = (conMarcas ? String(texto || '') : sinMarcas(texto)).trim();
     if (!t) { if (!opcional) descartado.push({ campo, motivo: 'vacío' }); return opcional ? '' : null; }
@@ -392,7 +402,7 @@ function filtrar(salida, pieza) {
     const t = fiel('gancho · ' + g.estilo, g.texto);
     if (!t) return null;
     vistos.add(g.estilo);
-    return { estilo: g.estilo, texto: t.slice(0, 200), ia: true };
+    return { estilo: g.estilo, texto: cerrar(t.slice(0, 200)), ia: true };
   }).filter(Boolean);
   const titulo = fiel('título', salida.titulo);
 
@@ -423,8 +433,13 @@ function filtrar(salida, pieza) {
     if (motivo) descartado.push({ campo: 'placas', motivo: 'se descartaron todas: ' + motivo });
     else placas = limpias;
   }
-  const copy = salida.copy ? fiel('copy', salida.copy) : null;
-  return { titulo, ganchos, guion, placas, copy: copy ? copy.slice(0, 2200) : null, descartado };
+  /* LOS HASHTAGS LOS PONE EL CÓDIGO. Un hashtag es una afirmación sobre el
+     torneo que ninguna guarda puede revisar: en la primera prueba real el
+     modelo escribió #basquetfemenino en una liga masculina. Los que mande
+     se sacan y van los de la cuenta. */
+  const sinHashtags = (t) => String(t || '').replace(/(^|\s)#[\p{L}\d_]+/gu, '$1').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  const copy = salida.copy ? fiel('copy', sinHashtags(salida.copy)) : null;
+  return { titulo, ganchos, guion, placas, copy: copy ? copy.slice(0, 2100) + '\n\n' + M.HASHTAGS : null, descartado };
 }
 
 module.exports = { MODELO, TONOS, ESTILOS, ESQUEMAS_JSON, motor, cliDisponible, piezaDe, pedirPorCli, disponible, motivoApagada, interpretar, redactar, filtrar, numerosDe, numerosAjenos, explicar, EsquemaConsulta, EsquemaRedaccion, sistemaConsulta, SISTEMA_REDACCION };

@@ -137,7 +137,21 @@
   <!-- ============================ A MEDIDA =========================== -->
   <section id="tab-medida" role="tabpanel" hidden>
     <div class="card">
-      <h2>Una pieza puntual</h2>
+      <h2>Idea libre · escribí lo que quieras mirar</h2>
+      <label>Una métrica, dos para cruzar o una hipótesis entera, con tus palabras o con las siglas de la planilla. Lo lee un intérprete local (sin IA, al instante) que busca en el libro lo más cercano y te dice qué entendió, qué aproximó y qué no existe.
+        <textarea id="l-texto" maxlength="400" placeholder="Ej.: ¿Los equipos que más tiran de tres son los que peor defienden?  ·  USG% contra TS% con al menos 20 minutos  ·  puntos de segunda oportunidad contra eficiencia  ·  los 5 peores equipos en pérdidas"></textarea>
+      </label>
+      <div class="grilla" style="margin-top:10px">
+        <label>Nivel <select id="l-nivel"><option value="">Que lo decida el texto</option><option value="jugadores">Jugadores</option><option value="equipos">Equipos</option><option value="partidos">Partidos</option><option value="zonas">Entre zonas</option></select></label>
+        <label>Si cruza dos métricas, mostrar <select id="l-grupo"><option value="">El que pida el texto</option><option value="altoBajo">Altos en la 1.ª y bajos en la 2.ª</option><option value="altoAlto">Altos en las dos</option><option value="bajoAlto">Bajos en la 1.ª y altos en la 2.ª</option><option value="bajoBajo">Bajos en las dos</option></select></label>
+        <label>Cuántos <input type="number" id="l-top" min="1" max="50" placeholder="10"></label>
+      </div>
+      <div class="acciones"><button class="pri" id="l-buscar">Buscar en el libro</button><button id="l-mandar" disabled title="La deja arriba de la bandeja, anónima. Ahí se redacta con IA, se le ajusta el tono y se aprueba.">Mandar a la bandeja para redactarla</button><span id="l-estado" role="status" aria-live="polite" class="tenue"></span></div>
+      <div id="l-lectura" role="status" aria-live="polite"></div>
+    </div>
+    <div id="l-resultado"></div>
+    <div class="card">
+      <h2>Una pieza del catálogo</h2>
       <div class="grilla">
         <label>Formato <select id="formato"></select></label>
         <label>Eje táctico <select id="eje"></select></label>
@@ -375,10 +389,15 @@ function tablaX(r) {
     : '<td>' + esc(f.equipo) + '</td><td></td>';
   const cab = '<p class="tenue">' + (r.nivel === 'zonas' ? 'Mediana de los equipos de cada zona.' : r.cumplen + ' de ' + r.universo + ' cumplen' + (r.condicionesTexto.length ? ' (' + esc(r.condicionesTexto.join(' y ')) + ')' : '') +
     '. ' + (r.sinDato ? r.sinDato + ' quedaron afuera por no tener el dato pedido. ' : '')) + (r.tramo ? 'Tramo ' + esc(r.tramo) + '.' : '') + '</p>' + avisos(r.avisos);
-  if (!r.filas.length) return cab + '<div class="aviso">Ese filtro no deja a nadie.</div>';
+  const k = r.cruce, q = k && k.cuadrantes;
+  const cruce = !k ? '' : '<div class="aviso"><strong>Cruce · ' + esc(k.nombreA) + ' × ' + esc(k.nombreB) + '</strong> sobre ' + k.n + ' casos, partidos por la mediana (' + esc(k.medianaA) + ' y ' + esc(k.medianaB) + '): ' +
+    q.altoAlto + ' altos en las dos · ' + q.altoBajo + ' altos en ' + esc(k.labelA) + ' y bajos en ' + esc(k.labelB) + ' · ' + q.bajoAlto + ' bajos en ' + esc(k.labelA) + ' y altos en ' + esc(k.labelB) + ' · ' + q.bajoBajo + ' bajos en las dos. ' +
+    (k.r == null ? 'Con tan pocos casos no se mide la relación.' : 'Relación ' + esc(k.fuerza) + (k.fuerza === 'prácticamente nula' ? '' : (k.sentido === 'inversa' ? ' e ' : ' y ') + esc(k.sentido)) + ' (r = ' + esc(k.rTexto) + ').') +
+    ' <span class="tenue">La tabla muestra a los ' + esc(k.grupoTexto) + '. «Alto» y «bajo» son contra la mediana, no un juicio.</span></div>';
+  if (!r.filas.length) return cab + cruce + '<div class="aviso">' + (k ? 'Nadie cae en ese grupo: probá con otro de los cuatro.' : 'Ese filtro no deja a nadie.') + '</div>';
   const dif = r.diferencias ? '<h4 style="margin-top:14px">Qué separa a las zonas</h4><ul class="lista">' + r.diferencias.filter((d) => d.brecha != null).map((d) => '<li><span><strong>' + esc(d.label) + '</strong> · ' + esc(d.brechaTexto) +
     ' <span class="tenue">(' + esc(d.mayor) + ' arriba, ' + esc(d.menor) + ' abajo)</span></span><span class="chip">' + (d.relativa == null ? '—' : num(d.relativa, 1) + ' desvíos') + '</span></li>').join('') + '</ul>' : '';
-  return cab + '<table><thead><tr><th>' + (r.nivel === 'zonas' ? 'Zona' : r.nivel === 'jugadores' ? 'Jugador' : 'Equipo') + '</th><th></th>' +
+  return cab + cruce + '<table><thead><tr><th>' + (r.nivel === 'zonas' ? 'Zona' : r.nivel === 'jugadores' ? 'Jugador' : 'Equipo') + '</th><th></th>' +
     r.columnas.map((c) => '<th class="' + (c.id === r.orden ? 'orden' : '') + '" title="' + esc(c.nombre) + '">' + esc(c.label) + '</th>').join('') + '</tr></thead><tbody>' +
     r.filas.map((f) => '<tr>' + quien(f) + r.columnas.map((c) => '<td>' + esc(f.texto[c.id]) + (f.percentil && f.percentil[c.id] != null ? ' <span class="tenue">p' + f.percentil[c.id] + '</span>' : '') + '</td>').join('') + '</tr>').join('') + '</tbody></table>' + dif;
 }
@@ -465,6 +484,40 @@ function pintarEjes() {
   $('conNombres').checked = l.nombres && f.nivel === 1;
   $('nota').innerHTML = l.nombres ? '' : '<div class="aviso">' + esc(l.torneo) + ' sale siempre anónima: «Jugador 1», «Equipo A».</div>';
 }
+/* LA IDEA LIBRE · el texto lo lee el intérprete local del servidor; acá se
+   muestra QUÉ ENTENDIÓ antes que la tabla, para que una lectura torcida
+   se vea y se corrija reescribiendo. */
+let turnoL = 0, META_L = null, HAY_L = false;
+const pedidoL = (extra) => Object.assign({ texto: $('l-texto').value, nivel: $('l-nivel').value || undefined, grupo: $('l-grupo').value || undefined, top: $('l-top').value || undefined }, extra || {}, donde());
+function lecturaL(lec) {
+  if (!lec.ok) return avisos([lec.motivo], 'error') + avisos(lec.avisos);
+  const chips = lec.entendido.map((e) => '<span class="chip" title="' + esc(e.nombre) + '">«' + esc(e.frase) + '» → <strong>' + esc(e.label) + '</strong> · por ' + esc(e.como) + '</span>').join('');
+  return '<div class="aviso"><strong>Entendí:</strong> ' + esc(lec.lectura) + ' <span class="tenue">Si no es lo que querías, reescribilo: nombrá el nivel («equipos», «jugadores») o usá la sigla de la planilla.</span></div>' +
+    '<p style="margin:8px 0 2px">' + chips + '</p>' +
+    avisos(lec.aproximaciones.map((a) => 'Aproximación · ' + a)) + avisos(lec.noExiste.map((a) => 'No está · ' + a)) + avisos(lec.fuera) + avisos(lec.avisos);
+}
+async function buscarLibre(aBandeja) {
+  const yo = ++turnoL;
+  $('l-buscar').disabled = true; $('l-estado').textContent = aBandeja ? 'Mandando a la bandeja…' : 'Leyendo el libro…';
+  try {
+    const r = await api('/api/libre', pedidoL(aBandeja ? { aBandeja: true } : null));
+    if (yo !== turnoL) return;
+    $('l-lectura').innerHTML = lecturaL(r.lectura) + avisos(r.avisos);
+    HAY_L = !!(r.ok && r.propuesta);
+    if (!r.ok) { $('l-resultado').innerHTML = ''; $('l-estado').textContent = ''; }
+    else {
+      const l = ligaSel(), z = zonaSel();
+      META_L = { torneo: l.torneo, zona: z.label, liga: l.id, zonaId: z.id, anonimo: true };
+      $('l-resultado').innerHTML = '<div class="card"><h2>Lo que dice el libro</h2><p class="tenue" style="margin-top:0;font-size:13px">Esta tabla es para vos y va con nombres; la propuesta de abajo sale anónima y verificada.</p><div class="scroll">' + tablaX(r.resultado) + '</div></div>' +
+        (r.propuesta ? tarjeta('l' + yo, r.propuesta, 'medida') : '');
+      pintarVisores($('l-resultado'));
+      $('l-estado').textContent = r.enBandeja ? r.enBandeja + ' quedó arriba de la bandeja, anónima: redactala desde ahí.' : '';
+      if (r.enBandeja) cargado.bandeja = null;
+    }
+  } catch (e) { if (yo !== turnoL) return; $('l-lectura').innerHTML = avisos([e.message], 'error'); $('l-estado').textContent = ''; }
+  if (yo === turnoL) { $('l-buscar').disabled = false; $('l-mandar').disabled = !HAY_L; }
+}
+
 let turnoM = 0, META_M = null;
 async function generar() {
   const b = $('generar'), yo = ++turnoM;
@@ -523,7 +576,7 @@ document.addEventListener('click', async (ev) => {
     const uid = t.dataset.aprobar;
     t.disabled = true;
     try {
-      const r = await api('/api/aprobar', { propuesta: PROPS.get(uid).p, gancho: ganchoElegido(uid), contexto: $('contexto').value, liga: $('liga').value + '-' + $('zona').value, meta: META_M });
+      const r = await api('/api/aprobar', { propuesta: PROPS.get(uid).p, gancho: ganchoElegido(uid), contexto: $('contexto').value, liga: $('liga').value + '-' + $('zona').value, meta: uid.charAt(0) === 'l' ? META_L : META_M });
       $('e-' + uid).textContent = 'Aprobada: archivos en contenido/centro-mando/, anotada en el historial y ' + r.enCola + ' en la cola de Canva.';
     } catch (e) { $('e-' + uid).textContent = 'No se pudo aprobar: ' + e.message; }
     t.disabled = false;
@@ -562,6 +615,10 @@ $('x-mandar').addEventListener('click', async () => {
 });
 $('rearmar').addEventListener('click', () => cargarBandeja(true));
 $('generar').addEventListener('click', generar);
+$('l-buscar').addEventListener('click', () => buscarLibre(false));
+$('l-mandar').addEventListener('click', () => buscarLibre(true));
+$('l-texto').addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) buscarLibre(false); });
+['l-nivel', 'l-grupo', 'l-top'].forEach((id) => $(id).addEventListener('change', () => { if (HAY_L) buscarLibre(false); }));
 $('formato').addEventListener('change', pintarEjes);
 $('releer').addEventListener('click', async () => {
   $('releer').disabled = true;
@@ -581,6 +638,8 @@ $('formApr').addEventListener('submit', async (ev) => {
 
 function cambioDeZona() {
   if (NIVEL === 'zonas' && ligaSel().zonas.length < 2) NIVEL = 'jugadores';
+  /* La idea libre de la zona anterior se va: su propuesta es de otro libro. */
+  turnoL++; HAY_L = false; $('l-resultado').innerHTML = ''; $('l-lectura').innerHTML = ''; $('l-mandar').disabled = true;
   pintarExplorador(); Object.keys(cargado).forEach((k) => { cargado[k] = null; }); cargarTab(true);
 }
 (async function iniciar() {
