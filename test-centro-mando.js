@@ -734,7 +734,44 @@ titulo('Los agentes con Claude · la guarda numérica');
   check('el nivel forzado manda sobre el texto', (await S.libre({ liga: 'lnb', zona: 'unica', texto: 'ritmo y pérdidas', nivel: 'partidos' })).resultado.nivel === 'partidos');
   check('la página tiene la idea libre y dice qué entendió antes que la tabla', /id="l-texto"/.test(fs.readFileSync('centro-mando/index.html', 'utf8')) && /api\('\/api\/libre'/.test(fs.readFileSync('centro-mando/index.html', 'utf8')) && /Aproximación · /.test(fs.readFileSync('centro-mando/index.html', 'utf8')));
 
+  titulo('El % de victorias es el de la tabla de posiciones');
+  {
+    const idx2 = SGADD.construirIndice(JSON.parse(JSON.stringify(hojas)), { fase: 'REGULAR', torneo: SGADD.TORNEO_TOTAL });
+    const A = idx2.lista()[0], B = idx2.lista()[1];
+    const win = (i) => { const r = E.explorar(i, 'equipos', { metricas: ['WIN%'], top: 50 }); const m = {}; r.filas.forEach((x) => { m[x.equipo] = x.valores['WIN%']; }); m.__v = r.victorias; return m; };
+    const libro = win(idx2);
+    check('sin la tabla, sale del libro y lo dice', libro.__v.fuente === 'box' && libro[A.nombre] === A.record.ganados / A.record.pj);
+    E.conRecordDeTabla(idx2, {});
+    const sinM = win(idx2);
+    check('con la tabla y sin partidos cargados a mano, da lo mismo que el libro', sinM.__v.fuente === 'tabla' && sinM.__v.manuales === 0 && idx2.lista().every((e) => sinM[e.nombre] === libro[e.nombre]));
+    E.conRecordDeTabla(idx2, { ['IDA|' + idx2.fase]: [{ id: 'm1', fecha: '2026-01-01', local: A.nombre, visitante: B.nombre, puntosLocal: 80, puntosVisitante: 70 }], 'IDA|PLAYOFF': [{ id: 'm2', fecha: '2026-05-01', local: B.nombre, visitante: A.nombre, puntosLocal: 90, puntosVisitante: 60 }] });
+    const conM = win(idx2);
+    check('un partido sin estadísticas suma al récord: el que ganó y el que perdió', conM[A.nombre] === (A.record.ganados + 1) / (A.record.pj + 1) && conM[B.nombre] === B.record.ganados / (B.record.pj + 1) && conM.__v.manuales === 1, conM[A.nombre] + ' / ' + conM[B.nombre]);
+    check('el de otra fase no entra', conM.__v.manuales === 1);
+    check('los promedios y el récord del índice no se tocan', idx2.leer(A.clave, 'RTNG OFF').valor === idx.leer(idx.lista()[0].clave, 'RTNG OFF').valor && A.record.pj === idx.lista()[0].record.pj && A.pj === idx.lista()[0].pj);
+    check('el cruce usa ese mismo récord', E.explorar(idx2, 'equipos', { cruce: ['RO%', 'WIN%'], grupo: 'todos', top: 50 }).filas.find((x) => x.equipo === A.nombre).valores['WIN%'] === conM[A.nombre]);
+    const srv2 = fs.readFileSync('centro-mando/servidor.js', 'utf8');
+    const ci = srv2.indexOf('async function indiceDe('), cuerpoI = srv2.slice(ci, srv2.indexOf('\n}', ci));
+    check('el servidor lo cuelga de cada índice que lee, con los manuales de la zona', cuerpoI.indexOf('GC.leerIndice(') !== -1 && cuerpoI.indexOf('recordDeTabla(') > cuerpoI.indexOf('GC.leerIndice(') && /MUT\.manualesDeZona\(/.test(srv2));
+  }
+
+  titulo('La guarda de números en letras');
+  check('orden y prioridad', ['prioridad número uno', 'el primero de la tabla', 'en segundo lugar', 'Top tres del torneo', 'quedó en primer puesto'].every((t) => L.numerosEnLetras(t).length === 1));
+  check('cantidades de la liga y fracciones', ['seis equipos ganan', 'tres de cada cinco', 'doce puntos de diferencia', 'la mitad de la liga', 'un tercio de sus jugadas'].every((t) => L.numerosEnLetras(t).length === 1));
+  check('el léxico del juego no se toca', ['segunda oportunidad y tiro de tres', 'uno contra uno', 'el segundo tiro', 'la primera línea de pase', 'vale dos puntos'].every((t) => L.numerosEnLetras(t).length === 0));
+  check('ni los giros que no cuentan nada', ['las dos métricas, dos decisiones', 'los cuatro grupos', 'primero mirá el número', 'los de la mitad de arriba en RO%', 'pagás dos veces', 'cada uno de tus jugadores', 'un equipo y una posesión'].every((t) => L.numerosEnLetras(t).length === 0));
+  check('con o sin acentos y mayúsculas', L.numerosEnLetras('PRIORIDAD NUMERO UNO').length === 1 && L.numerosEnLetras('El Séptimo de la tabla').length === 1);
+  check('un texto con un número en letras se descarta, como uno con una cifra ajena', (() => {
+    const base = { id: 'X', titulo: 't', dato: '7 de 12 equipos', guion: [], numeros: {} };
+    const pl3 = (rol, texto) => ({ rol, titulo: '', texto, destacado: '' });
+    const r3 = L.filtrar({ titulo: 't', ganchos: [{ estilo: 'dato', texto: 'Seis equipos lo hacen mal' }, { estilo: 'titular', texto: 'Tu prioridad está mal puesta' }], guion: [], copy: 'La mitad de la liga se equivoca.',
+      placas: [pl3('gancho', 'g'), pl3('evidencia', '7 de 12'), pl3('evidencia', 'Lo ponés como prioridad número uno'), pl3('propuesta', 'Pagás dos veces la misma jugada'), pl3('cierre', 'c')] }, base);
+    return r3.ganchos.length === 1 && r3.ganchos[0].estilo === 'titular' && r3.copy === null && r3.placas.length === 4 && r3.placas.some((x) => /dos veces/.test(x.texto)) && r3.descartado.filter((d) => /números en letras/.test(d.motivo)).length === 3;
+  })());
+
   titulo('La voz de entrenador-analista');
+  check('términos exactos de cancha, no metáforas', /TÉRMINOS EXACTOS, no metáforas/.test(L.SISTEMA_REDACCION) && ['contraataque rival', 'balance defensivo', 'puntos de transición'].every((w) => L.SISTEMA_REDACCION.indexOf(w) !== -1) && /nunca una zona de la cancha/.test(L.SISTEMA_REDACCION) && /TÉRMINOS EXACTOS/.test(pr));
+  check('ningún número en letras, y dice qué sí va en letras', /NINGÚN NÚMERO EN LETRAS/.test(L.SISTEMA_REDACCION) && /prioridad número uno/.test(L.SISTEMA_REDACCION) && /Lo único que se escribe en letras es el léxico del juego/.test(L.SISTEMA_REDACCION));
   const SR = L.SISTEMA_REDACCION;
   check('pide interpretar el número, no describirlo', /ENTRENADOR-ANALISTA/.test(SR) && /NO es describir el número: es INTERPRETARLO/.test(SR) && /no leés tablas: leés DINÁMICAS DE JUEGO/.test(SR));
   check('la tesis de vestuario va en la placa 1, y dice qué NO es una tesis', /LA TESIS DE VESTUARIO/.test(SR) && /La placa 1 no presenta el tema/.test(SR) && /NO es una tesis/.test(SR));

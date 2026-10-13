@@ -448,6 +448,7 @@ const ESTILO = [
   'EL ESTILO',
   '- Punch. Títulos CORTOS, de hasta ocho palabras, que se lean de un golpe en una placa. Frases directas, con ritmo; una idea por frase. Segunda persona e imperativos («Mirá», «Contá», «Auditá», «Dejá de…»).',
   '- Léxico de cancha rioplatense, usado con naturalidad: cancha, cristal, pintura, balance defensivo, segunda oportunidad, rotación, cierre, la bola, el banco, la charla técnica. Nada de anglicismos que acá no se dicen.',
+  '- TÉRMINOS EXACTOS, no metáforas. Cada cosa por su nombre de cancha: «contraataque rival», «balance defensivo», «puntos de transición», «retroceso», «cierre del rebote», «rotación defensiva», «ayuda y recupero». Quienes corren, atacan o defienden son los JUGADORES y los EQUIPOS, nunca una zona de la cancha ni un número: «el rival sale de contraataque» está bien; «la pintura que corre» no existe. Si una imagen no la diría un entrenador en la charla técnica, sacala.',
   '- Afirmás con seguridad lo que el dato sostiene y marcás como lectura lo que es lectura. Si el dato es flojo —una relación débil, una muestra chica—, la postura es ESA y se dice con la misma contundencia: no lo infles.',
   '- Las capas se notan en lo que decís, no se anuncian: no las uses de rótulo («El dolor de no verlo:», «El beneficio:», «La otra mirada:»). Entrá directo a la idea.',
   '- Castellano bien escrito: concordancia de número («1 equipo queda», «4 equipos quedan»), preguntas que abren y cierran, ninguna frase a medias.',

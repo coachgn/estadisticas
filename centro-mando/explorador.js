@@ -34,6 +34,7 @@
 'use strict';
 
 const S = require('../js/sgadd-core.js');
+const CLASIF = require('../js/sgadd-clasificacion.js');
 
 const NIVELES = { jugadores: 'Jugadores', equipos: 'Equipos', zonas: 'Comparativa entre zonas', partidos: 'Partidos' };
 
@@ -61,20 +62,46 @@ const numero = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
    servidor lo copia byte a byte, punto 1 del CLAUDE.md). Salen del RÉCORD
    que el índice ya arma con los partidos del libro: es un dato leído, no
    una estadística nueva. El rating neto sí está en el registro (NET RTNG).
-   Cuenta solo los partidos CON box score: un partido cargado a mano en la
-   tabla de posiciones (punto 44) no está en el índice.
+   EL RÉCORD ES EL DE LA TABLA DE POSICIONES cuando se conoce
+   (`conRecordDeTabla`): con los partidos sin estadísticas que el club
+   cargó a mano (punto 44), sumados por la MISMA fusión que usa la sección
+   Clasificación. Sin eso, el del índice, que cuenta solo los partidos con
+   box score; el resultado dice cuál de los dos se usó.
    -------------------------------------------------------------------- */
 const EXTRAS = {
   'WIN%': { clave: 'WIN%', label: '% de victorias', sigla: '% Victorias', formato: 'pct', invertida: false,
-    equipo: (e) => (e.record && e.record.pj > 0 ? e.record.ganados / e.record.pj : null) },
+    equipo: (e, idx) => {
+      const o = idx && idx.recordOficial && idx.recordOficial.porClave.get(e.clave);
+      if (o) return o.pj > 0 ? o.pg / o.pj : null;
+      return e.record && e.record.pj > 0 ? e.record.ganados / e.record.pj : null;
+    } },
 };
+
+/**
+ * Le cuelga al índice el récord OFICIAL: el de la tabla de posiciones del
+ * tramo que el índice tiene abierto. `mapa` son los partidos sin
+ * estadísticas de esa categoría, con la forma del catálogo
+ * ({ 'TORNEO|FASE': [...] }). No toca nada más del índice: los promedios
+ * siguen saliendo solo de los partidos con box score.
+ */
+function conRecordDeTabla(idx, mapa) {
+  const manuales = CLASIF.manualesDelTramo(mapa || {}, idx.liga.torneo, idx.fase);
+  const porClave = new Map();
+  CLASIF.filasPorEquipo(idx, manuales).forEach((f, clave) => porClave.set(clave, { pg: f.pg, pj: f.pj }));
+  idx.recordOficial = { porClave, manuales: manuales.length };
+  _catalogos.delete(idx);
+  return idx;
+}
+/* De dónde salió el % de victorias de una tabla, para decirlo. */
+const victoriasDe = (idx, columnas) => (columnas.indexOf('WIN%') === -1 ? null
+  : idx.recordOficial ? { fuente: 'tabla', manuales: idx.recordOficial.manuales } : { fuente: 'box' });
 const def = (k) => EXTRAS[k] || S.metrica(k) || { clave: k, label: k, formato: 'num', invertida: false };
 const rotulo = (k) => (EXTRAS[k] ? EXTRAS[k].sigla : (S.siglaVisible ? S.siglaVisible(k) : k)) || k;
 const esPct = (k) => def(k).formato === 'pct';
 const mostrar = (k, v) => (numero(v) == null ? '—' : EXTRAS[k] ? (v * 100).toFixed(1).replace('.', ',') + '%' : S.formatear(k, v));
 /* El valor de un equipo en una métrica, venga del registro o del récord. */
 const leerEquipo = (idx, e, k) => {
-  if (EXTRAS[k]) return { v: numero(EXTRAS[k].equipo(e)), p: null };
+  if (EXTRAS[k]) return { v: numero(EXTRAS[k].equipo(e, idx)), p: null };
   const r = idx.leer(e.clave, k);
   return r ? { v: numero(r.valor), p: numero(r.percentil) } : { v: null, p: null };
 };
@@ -110,8 +137,8 @@ function enfoqueDe(metrica) {
    VAL y +/- quedan afuera a propósito: el panel no ordena por ninguna de
    las dos (puntos 3 bis y 4 del CLAUDE.md).
    -------------------------------------------------------------------- */
-const FUERA_DEL_CATALOGO = { jugadores: ['VAL', '+/-', 'PTSopp'], equipos: ['VAL', '+/-', 'MIN'], partidos: ['VAL', '+/-', 'MIN'] };
 const _catalogos = new WeakMap();
+const FUERA_DEL_CATALOGO = { jugadores: ['VAL', '+/-', 'PTSopp'], equipos: ['VAL', '+/-', 'MIN'], partidos: ['VAL', '+/-', 'MIN'] };
 function catalogo(idx) {
   if (_catalogos.has(idx)) return _catalogos.get(idx);
   const ids = S.METRICAS_LISTA.map((m) => m.clave).concat(Object.keys(EXTRAS));
@@ -278,7 +305,7 @@ function explorar(idx, nivel, o) {
   return {
     nivel, columnas: q.columnas.map((k) => ({ id: k, label: rotulo(k), nombre: def(k).label })), orden: q.orden, sentido: q.sentido,
     condiciones: q.condiciones, condicionesTexto: q.condiciones.map(textoCondicion), filas: salida, cumplen: pasan.length, universo, sinDato,
-    tramo: idx.liga.torneo + '|' + idx.fase, cruce: cr,
+    tramo: idx.liga.torneo + '|' + idx.fase, cruce: cr, victorias: victoriasDe(idx, q.columnas),
   };
 }
 
@@ -435,5 +462,5 @@ function aPropuesta(res, angulo, sello) {
 module.exports = {
   NIVELES, METRICAS, NO_DISPONIBLES, PISO_NOCHE, VOLUMEN, OPERADORES, Z_ATIPICO, MIN_NOCHE, FUGA_PERCENTIL, BRECHA_ZONAS, METRICAS_FUGA,
   opciones, pedido, explorar, zonas, anomalias, diferenciasEntreZonas, aPropuesta, enfoqueDe,
-  catalogo, cruzar, GRUPOS_CRUCE, MIN_CRUCE, FUERA_DEL_CATALOGO, EXTRAS, definicion: def, rotulo, tituloDe, datoDeCruce,
+  conRecordDeTabla, catalogo, cruzar, GRUPOS_CRUCE, MIN_CRUCE, FUERA_DEL_CATALOGO, EXTRAS, definicion: def, rotulo, tituloDe, datoDeCruce,
 };

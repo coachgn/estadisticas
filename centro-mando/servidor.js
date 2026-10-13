@@ -53,9 +53,27 @@ async function indiceDe(p, refrescar) {
   const c = indices.get(k);
   if (c && !refrescar && Date.now() - c.t < TTL_INDICE) return c;
   const idx = await GC.leerIndice(p.zona);
+  await recordDeTabla(p, idx);
   const nuevo = { idx, t: Date.now() };
   indices.set(k, nuevo);
   return nuevo;
+}
+
+/**
+ * EL RÉCORD OFICIAL · el % de victorias sale de la tabla de posiciones:
+ * a los partidos del libro se les suman los que el club cargó a mano sin
+ * estadísticas (punto 44), que viven en el catálogo. En la zona de un
+ * torneo son la unión de lo que cargaron sus clientes (punto 102). Si el
+ * catálogo no se puede leer, queda el récord del libro: es una mejora, no
+ * una dependencia.
+ */
+async function recordDeTabla(p, idx) {
+  try {
+    const CAT = require('../server/lib/catalogo.js'), MUT = require('../server/lib/catalogo-mutar.js');
+    const c = await CAT.cargar();
+    E.conRecordDeTabla(idx, MUT.manualesDeZona(c.catalogo, p.zona.club, p.zona.categoria).mapa);
+  } catch (e) { /* sin catálogo: el récord del libro */ }
+  return idx;
 }
 
 function leerLista(archivo, clave) {

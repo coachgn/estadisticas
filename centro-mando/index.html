@@ -388,7 +388,8 @@ function tablaX(r) {
     : r.nivel === 'partidos' ? '<td>' + esc(f.equipo) + '</td><td class="tenue">' + esc(f.fecha || 's/f') + ' · ' + esc((f.condicion || '').slice(0, 1)) + ' · ' + esc((f.resultado || '').slice(0, 1)) + '</td>'
     : '<td>' + esc(f.equipo) + '</td><td></td>';
   const cab = '<p class="tenue">' + (r.nivel === 'zonas' ? 'Mediana de los equipos de cada zona.' : r.cumplen + ' de ' + r.universo + ' cumplen' + (r.condicionesTexto.length ? ' (' + esc(r.condicionesTexto.join(' y ')) + ')' : '') +
-    '. ' + (r.sinDato ? r.sinDato + ' quedaron afuera por no tener el dato pedido. ' : '')) + (r.tramo ? 'Tramo ' + esc(r.tramo) + '.' : '') + '</p>' + avisos(r.avisos);
+    '. ' + (r.sinDato ? r.sinDato + ' quedaron afuera por no tener el dato pedido. ' : '')) + (r.tramo ? 'Tramo ' + esc(r.tramo) + '.' : '') +
+    (r.victorias ? ' % Victorias: ' + (r.victorias.fuente === 'tabla' ? 'el récord de la tabla de posiciones' + (r.victorias.manuales ? ', con ' + r.victorias.manuales + ' partido(s) sin estadísticas cargados a mano' : '') : 'solo los partidos con estadísticas del libro') + '.' : '') + '</p>' + avisos(r.avisos);
   const k = r.cruce, q = k && k.cuadrantes;
   const cruce = !k ? '' : '<div class="aviso"><strong>Cruce · ' + esc(k.nombreA) + ' × ' + esc(k.nombreB) + '</strong> sobre ' + k.n + ' casos, partidos por la mediana (' + esc(k.medianaA) + ' y ' + esc(k.medianaB) + '): ' +
     q.altoAlto + ' altos en las dos · ' + q.altoBajo + ' altos en ' + esc(k.labelA) + ' y bajos en ' + esc(k.labelB) + ' · ' + q.bajoAlto + ' bajos en ' + esc(k.labelA) + ' y altos en ' + esc(k.labelB) + ' · ' + q.bajoBajo + ' bajos en las dos. ' +

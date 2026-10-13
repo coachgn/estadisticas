@@ -118,7 +118,7 @@ node test-interzonal.js    # 220 tests · la llave entre zonas: un cliente de un
 node test-contenido.js     # 142 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
                            #             derivado, las diez recetas de Nivel 2 y que los nombres solo salgan en APdeB (103, 104)
 
-node test-centro-mando.js  # 353 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
+node test-centro-mando.js  # 368 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
                            #             el texto libre de «A medida», el cruce de dos métricas y la voz de entrenador-analista (110),
                            #             el % de victorias, los textos sin cortar y la tesis de vestuario (111)
                            #             (pide «npm install» en centro-mando/ una vez: los agentes usan el SDK de Claude, punto 107)
@@ -134,7 +134,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7578 tests en total. Todos tienen que dar verde antes de commitear.**
+**7593 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -13531,9 +13531,8 @@ la tabla. `test-centro-mando.js` fija todo lo de acá.
 `rotulo`, `mostrar` y `leerEquipo` la resuelven. Existe para equipos y
 zonas; a nivel jugadores o partidos el intérprete dice que no hay dato.
 
-- **Cuenta solo los partidos con box score.** Un partido cargado a mano en
-  la tabla de posiciones (punto 44) no está en el índice, así que el % puede
-  diferir del de Clasificación.
+- **Desde el punto 112 el récord es el de la tabla de posiciones**, con los
+  partidos sin estadísticas cargados a mano.
 - El rating neto ya estaba (`NET RTNG`); se sumaron las formas de
   escribirlo («netrtg»), «TOV%» → `PePP%`, «victorias», «ganan», «win%»,
   «%V» → `WIN%`, y «dominan el cristal» → `RO%`.
@@ -13586,3 +13585,61 @@ Leída contra el dato: los números están bien usados; escribió «prioridad
 número uno» (un número en letras, que el prompt prohíbe y la guarda no ve)
 y un par de frases de lectura flojas. **La revisión humana sigue siendo
 obligatoria.**
+
+## 112. TRES AJUSTES DE CIERRE DEL CENTRO DE MANDO (2026-10-13)
+
+El club aprobó la voz del punto 111 y pidió tres ajustes.
+
+### 1 · El % de victorias es el de la tabla de posiciones
+
+El libro no trae una hoja de posiciones: la tabla del panel es el récord
+del índice MÁS los partidos sin estadísticas que el club cargó a mano
+(punto 44), que viven en el catálogo. `E.conRecordDeTabla(idx, mapa)` le
+cuelga al índice ese récord (`idx.recordOficial`), armado con la MISMA
+fusión de Clasificación (`SGADD_CLASIF.filasPorEquipo` +
+`manualesDelTramo`), y `WIN%` lo usa.
+
+- El servidor lo hace en `indiceDe`, con `MUT.manualesDeZona`: en la
+  zona de un torneo son la unión de lo que cargaron sus clientes (punto 102).
+- **Los promedios no se tocan**: `e.record`, `e.pj` y toda métrica siguen
+  saliendo solo de los partidos con box score.
+- Si el catálogo no se puede leer, queda el récord del libro. La tabla dice
+  cuál se usó (`resultado.victorias: { fuente: 'tabla' | 'box', manuales }`).
+- Medido en APdeB Zona B: 2 partidos manuales; el % de tres equipos cambió
+  (35,0 → 33,3 · 40,0 → 42,9 · 20,0 → 19,0) y el r del cruce con RO% pasó de
+  0,23 a 0,21.
+
+### 2 · La guarda de números en letras · `LLM.numerosEnLetras`
+
+La guarda numérica solo ve cifras: «prioridad número uno» la esquivaba.
+`filtrar` descarta ahora también el texto que escribe un número en
+letras, en TRES familias y solo tres:
+
+| Familia | Ejemplos |
+|---|---|
+| orden y prioridad | «número uno», «el primero», «en segundo lugar», «top tres» |
+| cantidades de la liga | «seis equipos», «tres de cada cinco», «doce puntos» |
+| fracciones | «la mitad de la liga», «más de la mitad», «un tercio» |
+
+**Un cardinal suelto NO se marca**, y se midió por qué: con «dos», «cuatro»
+a secas, una redacción real perdía cuatro textos válidos («dos métricas,
+dos decisiones», «los cuatro grupos») y con el cierre caían todas las
+placas. Tampoco el léxico del juego (`LEXICO_CON_NUMERO`: «segunda
+oportunidad», «tiro de tres», «uno contra uno») ni «la mitad de arriba».
+
+### 3 · Términos exactos de cancha
+
+`M.ESTILO` suma «TÉRMINOS EXACTOS, no metáforas»: contraataque rival,
+balance defensivo, puntos de transición, retroceso; y que quienes corren o
+defienden son jugadores y equipos, nunca una zona de la cancha (el modelo
+había escrito «la pintura rival que corre»).
+
+### Medido
+
+Redacción real de control (44 s): «el rival sale de contraataque», «el
+balance defensivo de transición»; la guarda de letras descartó una placa
+del medio por «la mitad», y las otras siete quedaron en pie.
+
+Verificado al revés, cuatro mutaciones, cae una cada una: el % ignorando la
+tabla, sin la guarda de letras, la guarda sin respetar el léxico y el
+servidor sin colgar el récord.

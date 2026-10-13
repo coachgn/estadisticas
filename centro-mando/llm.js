@@ -252,6 +252,40 @@ function numerosAjenos(texto, permitidos) {
 }
 
 /* --------------------------------------------------------------------
+   LA GUARDA DE NÚMEROS EN LETRAS · pura
+   La guarda numérica solo ve cifras: «prioridad número uno» o «la mitad
+   de los equipos» la esquivan escribiendo el número con letras. Acá se
+   detectan las cantidades y los órdenes escritos así, para descartar el
+   texto igual que si trajera una cifra ajena.
+   Lo que NO se toca es el léxico del juego («segunda oportunidad», «tiro
+   de tres», «uno contra uno») ni los giros que no cuentan nada («las dos
+   métricas», «defender dos veces», «primero mirá el número»).
+   -------------------------------------------------------------------- */
+const sinAcentos = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const LEXICO_CON_NUMERO = /\b(segund[ao]s? (oportunidad(es)?|tiros?|accion(es)?|esfuerzos?|ayudas?|unidad)|(tiros?|tirar|tira|tiran|puntos?|canastas?|lanzamientos?|aciertos?) de (dos|tres)|de (dos|tres) puntos|(dos|tres) puntos|(uno|dos|tres) contra (uno|dos|tres)|(uno|dos) por (uno|dos)|(las|los|esas|esos|estas|estos|ambas) dos|dos veces|una y otra vez|primer(o|a)? (paso|pase|tiempo|ayuda|linea|opcion|mira|conta|audita|medi|el dato|el numero)|de primera|uno mismo|cada uno|uno a uno|ni uno|uno de (ellos|los tuyos|tus)|alguno|ninguno)\b/g;
+/* Tres familias, y solo tres. Un cardinal suelto NO se marca: «dos
+   métricas, dos decisiones» o «los cuatro grupos» son giros, no datos, y
+   marcarlos tiraba placas enteras (medido sobre tres redacciones reales).
+     1. ORDEN Y PRIORIDAD: «número uno», «el primero», «en segundo lugar».
+     2. CANTIDADES DE LA LIGA: un cardinal pegado a lo que se cuenta
+        («seis equipos», «tres de cada cinco», «doce puntos»).
+     3. FRACCIONES, que son una cuenta hecha: «la mitad», «un tercio». */
+const CARDINAL = '(?:dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|dieciseis|diecisiete|dieciocho|veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|mil)';
+const NUMERO_EN_LETRAS = new RegExp('\\b(' + [
+  'numero (?:uno|' + CARDINAL + ')', 'prioridad (?:uno|' + CARDINAL + ')', 'top ' + CARDINAL,
+  '(?:el|la|los|las|al|del) (?:primer[oa]?s?|segund[oa]s?|tercer[oa]?s?|quint[oa]s?|sext[oa]s?|septim[oa]s?|octav[oa]s?|noven[oa]s?|decim[oa]s?)',
+  '(?:primer|segundo|tercer) (?:puesto|lugar)', 'en (?:primer|segundo|tercer) (?:lugar|termino|puesto)',
+  CARDINAL + ' (?:de cada|de (?:los|las) ' + CARDINAL + '|equipos?|jugador(?:es)?|partidos?|casos?|puestos?|posesiones|victorias|derrotas|triunfos|rebotes|perdidas|triples|dobles|libres|minutos|intentos|por ciento)',
+  '(?:cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|veinte|treinta|cuarenta|cincuenta) puntos',
+  'la mitad de (?!arriba|abajo)', '(?:mas|menos) de la mitad', 'un tercio', 'un cuarto de', 'dos tercios', 'tres cuartos', 'el doble de',
+].join('|') + ')\\b', 'g');
+/** Los números escritos en letras de `texto`. Vacío = no hay ninguno. */
+function numerosEnLetras(texto) {
+  const limpio = sinAcentos(texto).replace(LEXICO_CON_NUMERO, ' ');
+  return (limpio.match(NUMERO_EN_LETRAS) || []).filter((x, i, a) => a.indexOf(x) === i);
+}
+
+/* --------------------------------------------------------------------
    1 · INTERPRETAR LA PREGUNTA
    -------------------------------------------------------------------- */
 const EsquemaConsulta = z && z.object({
@@ -348,7 +382,8 @@ const SISTEMA_REDACCION = M.VOZ.concat([
   '',
   'LA REGLA QUE NO SE NEGOCIA: no sos la fuente de ningún número.',
   '- Todo número que escribas —en un título, una placa, un gancho o el copy— tiene que estar en la pieza, EXACTAMENTE como figura ahí (58 es 58, no «casi 60» ni «6 de cada 10»).',
-  '- No calcules, no redondees, no conviertas, no sumes ni restes, no escribas un número en letras. La profundidad se gana con lectura, no con números nuevos: si para explicar el por qué te haría falta un número que no tenés, explicalo sin número.',
+  '- NINGÚN NÚMERO EN LETRAS. Ni cantidades («dos equipos», «la mitad», «un tercio») ni orden o prioridad («el primero», «prioridad número uno», «en segundo lugar»). Si es un dato de la pieza, va en cifras tal como figura; si no lo es, no va: decí «la prioridad», «el foco», «lo que va adelante». Un sistema lo revisa y descarta el texto. Lo único que se escribe en letras es el léxico del juego: «segunda oportunidad», «tiro de dos», «tiro de tres», «uno contra uno».',
+  '- No calcules, no redondees, no conviertas, no sumes ni restes. La profundidad se gana con lectura, no con números nuevos: si para explicar el por qué te haría falta un número que no tenés, explicalo sin número.',
   '- Los decimales van con COMA, como se escriben acá (86,2), aunque en la pieza figuren con punto (86.2). Es el mismo número: eso no es cambiarlo.',
   '- Cada número conserva su unidad y aquello a lo que se refiere en la pieza: un rating no es una cantidad de puestos, un porcentaje de un jugador no es el de la liga, una correlación no es una causa. Si no estás seguro de qué mide un número, no lo uses.',
   '- La autoridad viene de leer bien el dato, no de agregarle datos: no inventes hechos sobre equipos, jugadores, planteles, canchas ni partidos que la pieza no trae. El por qué, el dolor y el beneficio son lecturas GENERALES del juego (qué suele haber detrás, qué pide esto en cancha), nunca un hecho sobre alguien en particular.',
@@ -394,6 +429,8 @@ function filtrar(salida, pieza) {
     if (!t) { if (!opcional) descartado.push({ campo, motivo: 'vacío' }); return opcional ? '' : null; }
     const aj = numerosAjenos(t, permitidos);
     if (aj.length) { descartado.push({ campo, texto: t, motivo: 'trae números que no están en la pieza: ' + aj.join(', ') }); return null; }
+    const le = numerosEnLetras(t);
+    if (le.length) { descartado.push({ campo, texto: t, motivo: 'escribe números en letras: ' + le.join(', ') }); return null; }
     return t;
   };
   const vistos = new Set();
@@ -442,4 +479,4 @@ function filtrar(salida, pieza) {
   return { titulo, ganchos, guion, placas, copy: copy ? M.recortar(copy, 2100) + '\n\n' + M.HASHTAGS : null, descartado };
 }
 
-module.exports = { MODELO, TONOS, ESTILOS, ESQUEMAS_JSON, motor, cliDisponible, piezaDe, pedirPorCli, disponible, motivoApagada, interpretar, redactar, filtrar, numerosDe, numerosAjenos, explicar, EsquemaConsulta, EsquemaRedaccion, sistemaConsulta, SISTEMA_REDACCION };
+module.exports = { MODELO, TONOS, ESTILOS, ESQUEMAS_JSON, motor, cliDisponible, piezaDe, pedirPorCli, disponible, motivoApagada, interpretar, redactar, filtrar, numerosDe, numerosAjenos, numerosEnLetras, explicar, EsquemaConsulta, EsquemaRedaccion, sistemaConsulta, SISTEMA_REDACCION };
