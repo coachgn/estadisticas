@@ -36,9 +36,14 @@ Ligas: `apb` (zonas `a`, `b`, `c`), `lnb` (`unica`), `lab25` (`norte`), `lab` (`
 
 1. `POST /api/bandeja` con `{"liga","zona"}` (agregá `"rearmar": true` solo si el usuario lo pide). Mostrá las pendientes: id, enfoque, tono, título y dato.
 2. Preguntá cuáles redactar y en qué tono (táctico, polémico, educativo). El tono se cambia con `POST /api/bandeja/accion` `{"liga","zona","uid","accion":"tono"}` (avanza de a uno).
-3. Para cada pieza elegida, escribí vos la redacción a partir de su `base` (o `propuesta` si no tiene base): un `titulo` (hasta 70 caracteres), tres `ganchos` (`estilo`: `dato`, `titular`, `pregunta`; hasta 140 caracteres) y un `guion` con **la misma cantidad de líneas**, en el mismo orden y con la misma función, cada una de hasta 220 caracteres. Castellano rioplatense, sin emojis ni hashtags.
-4. Mandala con `POST /api/bandeja/redactar` `{"liga","zona","uid","tono","redaccion":{"titulo","ganchos","guion"}}`. La respuesta trae `descartado`: mostrá qué te rechazó la guarda y por qué. Si rechazó algo, corregilo UNA vez y reenviá con `"rehacer": true`; si vuelve a fallar, dejá la plantilla en ese campo.
-5. Mostrá el resultado de cada pieza (título, gancho principal, guion) y **preguntá cuáles aprobar**.
+3. Para cada pieza elegida, escribí vos la redacción a partir de su `base` (o `propuesta` si no tiene base), con voz de **referente y analista táctico** que le habla de igual a igual a un cuerpo técnico (idioma de cancha, directo, castellano rioplatense):
+   - `titulo` (hasta 70 caracteres) y tres `ganchos` (`estilo`: `dato`, `titular`, `pregunta`; hasta 140 caracteres).
+   - **Carrusel** → `placas`: entre 4 y 10, las que el tema pida, cada una `{"rol","titulo","texto","destacado"}` y en este orden: una `gancho` (la tensión o la paradoja), una o más `evidencia` (el problema y los números de la pieza), una o más `propuesta` (qué significa en cancha: es tu lectura, escribila como lectura y no como un hecho medido) y una `cierre` (conclusión y pregunta que invite a comentar). `texto` hasta 320 caracteres; `titulo` y `destacado` pueden ir vacíos. `guion`: `[]`.
+   - **Reel** → `guion` con la misma cantidad de líneas, en el mismo orden y con su marca de tiempo. `placas`: `[]`.
+   - `copy`: el copy de Instagram listo para publicar (hasta 1.800 caracteres), con la misma voz, que cierre invitando a comentar «CONTEXTO», y de 6 a 8 hashtags sin números.
+   - No inventes hechos sobre equipos, jugadores, planteles ni canchas que la pieza no trae.
+4. Mandala con `POST /api/bandeja/redactar` `{"liga","zona","uid","tono","redaccion":{"titulo","ganchos","placas","guion","copy"}}`. La respuesta trae `descartado`: mostrá qué te rechazó la guarda y por qué. Si rechazó algo, corregilo UNA vez y reenviá con `"rehacer": true`; si vuelve a fallar, dejá la plantilla en ese campo.
+5. Mostrá el resultado de cada pieza (título, gancho principal, placas con su rol y el copy) y **preguntá cuáles aprobar**.
 6. Aprobá las elegidas con `POST /api/bandeja/accion` `{"liga","zona","uid","accion":"aprobar","gancho":{"estilo","texto"},"contexto":""}`. Eso escribe los archivos, las encola para Canva y las anota en el historial.
 7. Ofrecé seguir con `/agencia canva`.
 

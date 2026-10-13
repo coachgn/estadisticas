@@ -333,8 +333,13 @@ function aplicarRedaccion(p, red) {
   const estilo = TONOS[p.tono] ? TONOS[p.tono].estilo : null;
   const ia = (red.ganchos || []).slice().sort((a, b) => (b.estilo === estilo) - (a.estilo === estilo));
   const resto = (p.ganchos || []).filter((g) => !ia.some((x) => x.texto === g.texto));
-  return Object.assign({}, p, { titulo: red.titulo || p.titulo, guion: red.guion || p.guion, ganchos: ia.concat(resto), redaccion: 'ia',
+  const out = Object.assign({}, p, { titulo: red.titulo || p.titulo, guion: red.guion || p.guion, ganchos: ia.concat(resto), redaccion: 'ia',
     redaccionDescartada: (red.descartado || []).length });
+  /* Las placas de la IA reemplazan al guion como estructura de la pieza;
+     el copy, al de plantilla. Lo que la guarda tiró no llega acá. */
+  if (red.placas && red.placas.length) { out.placas = red.placas; out.guion = red.placas.map((x) => ROLES[x.rol] + ': ' + (x.titulo ? x.titulo + ' · ' : '') + x.texto); }
+  if (red.copy) out.copy = red.copy;
+  return out;
 }
 
 const itemDe = (b, uid) => { const i = (b.items || []).findIndex((x) => x.uid === uid); if (i === -1) throw new Error('Esa propuesta ya no está en la bandeja.'); return i; };
@@ -406,36 +411,136 @@ function sumarABandeja(b, p, sello) {
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const LOGO = 'https://coachgn.github.io/estadisticas/logos/motorlogo.PNG';
 
+/* --------------------------------------------------------------------
+   LA NARRATIVA DE REFERENTE · cuatro momentos, cantidad de placas libre
+   Sale del carrusel «PROBLEMA REAL» de la cuenta (¿A qué velocidad se
+   juega en La Plata?): planteo, evidencia, lectura y cierre.
+   -------------------------------------------------------------------- */
+const ROLES = { gancho: 'Gancho', evidencia: 'Evidencia', propuesta: 'Propuesta', cierre: 'Cierre' };
+const MIN_PLACAS = 4, MAX_PLACAS = 10;
+const CTA_COMENTARIO = 'Comentá «CONTEXTO» y te mandamos una demo cargada con los datos de tu torneo.';
+const HASHTAGS = '#MotorStatsAR #ScoutingBasquet #AnalisisTactico #BasquetArgentina #CuerpoTecnico #EstadisticasBasquet';
+
+/** ¿La lista cumple la estructura? Devuelve el motivo, o null si está bien. */
+function estructuraDePlacas(placas) {
+  const ps = placas || [];
+  if (ps.length < MIN_PLACAS || ps.length > MAX_PLACAS) return 'tienen que ser entre ' + MIN_PLACAS + ' y ' + MAX_PLACAS + ' placas';
+  if (ps.some((x) => !ROLES[x.rol])) return 'hay una placa con un rol que no existe';
+  if (ps[0].rol !== 'gancho') return 'la primera placa tiene que ser el gancho';
+  if (ps[ps.length - 1].rol !== 'cierre') return 'la última placa tiene que ser el cierre';
+  if (!ps.some((x) => x.rol === 'evidencia')) return 'falta al menos una placa de evidencia';
+  if (!ps.some((x) => x.rol === 'propuesta')) return 'falta al menos una placa de propuesta';
+  const orden = ps.map((x) => Object.keys(ROLES).indexOf(x.rol));
+  if (orden.some((n, i) => i && n < orden[i - 1])) return 'el orden es gancho, evidencia, propuesta y cierre';
+  return null;
+}
+
+/**
+ * Las placas de una pieza. Las de la IA si las tiene; si no, el guion del
+ * generador repartido en los cuatro momentos, sin agregar una palabra.
+ */
+function placasDe(p, gancho) {
+  if (p.placas && p.placas.length) {
+    return p.placas.map((x, i) => (i === 0 && gancho ? Object.assign({}, x, { titulo: gancho }) : x));
+  }
+  const g = p.guion || [];
+  const medio = g.slice(1, Math.max(1, g.length - 1));
+  const corte = Math.ceil(medio.length / 2);
+  const out = [{ rol: 'gancho', titulo: gancho || p.titulo, texto: p.dato || '' }];
+  medio.forEach((t, i) => out.push({ rol: i < corte ? 'evidencia' : 'propuesta', titulo: '', texto: t }));
+  out.push({ rol: 'cierre', titulo: '', texto: g.length > 1 ? g[g.length - 1] : (p.titulo || '') });
+  return out;
+}
+
+/** El copy de Instagram sin IA: frases de la propia pieza, en el orden de la narrativa. */
+function copyPlantilla(p, gancho) {
+  const pregunta = (p.ganchos || []).find((g) => g.estilo === 'pregunta');
+  const L = [gancho || p.titulo, '', p.dato || ''];
+  if (pregunta && pregunta.texto !== gancho) L.push('', '📋 ' + pregunta.texto);
+  L.push('', '💬 ' + CTA_COMENTARIO, '📩 O escribinos por mensaje directo para sumarnos a tu cuerpo técnico.', '', HASHTAGS);
+  return L.join('\n');
+}
+
+/**
+ * El PROMPT ALTERNATIVO: para pegar en otra interfaz de IA y pedir más
+ * variantes del copy. Lo arma el código, no un modelo: lleva la pieza
+ * tal cual y la regla de los números escrita adentro.
+ */
+function promptDeCopy(p, gancho) {
+  const placas = placasDe(p, gancho).map((x) => '- [' + ROLES[x.rol] + '] ' + (x.titulo ? x.titulo + ' — ' : '') + x.texto);
+  const datos = p.datos ? JSON.stringify(p.datos) : '';
+  return [
+    'Sos el redactor de @motorstats.ar, una cuenta de Instagram de analítica de básquet argentino. Escribís como un referente y analista táctico que le habla a cuerpos técnicos: con autoridad, idioma de cancha, directo y sin vueltas. Castellano rioplatense (vos, tenés).',
+    '',
+    'Escribí el copy de Instagram para este ' + (p.formato === 'reel' ? 'reel' : 'carrusel') + '. Estructura: 1) gancho con la tensión o la paradoja, 2) el problema y la evidencia, 3) qué significa en cancha y qué hacer con eso, 4) una pregunta al cuerpo técnico, 5) llamado a comentar, 6) entre 6 y 8 hashtags. Hasta 1.800 caracteres. Dame 3 variantes.',
+    '',
+    'REGLA QUE NO SE NEGOCIA: no inventes ni calcules ningún número. Usá solo los números que figuran abajo, exactamente como están y con el mismo significado. No nombres personas ni clubes que no estén nombrados abajo.',
+    '',
+    'TÍTULO: ' + p.titulo,
+    'DATO CENTRAL: ' + (p.dato || ''),
+    'PLACAS:',
+  ].concat(placas, datos && datos.length < 6000 ? ['', 'NÚMEROS DE RESPALDO (JSON): ' + datos] : [], ['', 'LLAMADO A LA ACCIÓN: ' + CTA_COMENTARIO]).join('\n');
+}
+
+/* --------------------------------------------------------------------
+   LAS PLACAS EN HTML · la línea gráfica de la cuenta
+   Azul noche con el isotipo de marca de agua, esquinas, MOTORSTATS AR
+   arriba, píldora naranja en el gancho, barra celeste por sección,
+   tarjetas, y el pie «Link en Bio | @motorstats.ar» con el logo.
+   Barlow Condensed en títulos, Barlow en el cuerpo.
+   -------------------------------------------------------------------- */
+/* *así* en un título se pinta de naranja. Se escapa PRIMERO. */
+const resaltar = (t) => esc(t).replace(/\*([^*]+)\*/g, '<span class="nar">$1</span>');
+const cuerpoDe = (t, max) => { const n = String(t || '').length; return n > max * 1.6 ? 'ch' : n > max ? 'me' : 'gr'; };
+
 function placasHtml(p, gancho, contexto) {
   const vertical = p.formato === 'reel' || p.formato === 'stories';
   const W = 1080, H = vertical ? 1920 : 1350;
-  const marco = (cuerpo) => '<section class="p" data-document-role="page"><i class="esq ea"></i><i class="esq eb"></i><i class="esq ec"></i><i class="esq ed"></i>' +
-    '<div class="marca"><b>MOTORSTATS</b><sup>AR</sup></div><div class="c">' + cuerpo + '</div>' +
-    '<div class="pie"><img src="' + LOGO + '" alt=""><span>@motorstats.ar</span></div></section>';
-  const pildora = TONOS[p.tono] ? TONOS[p.tono].pildora : (p.id + ' · ' + (p.formatoLabel || ''));
-  const paginas = [marco('<div class="pildora">' + esc(pildora) + '</div><h1>' + esc(gancho || p.titulo) + '</h1>' +
-    (p.dato ? '<p class="baj">' + esc(p.dato) + '</p>' : ''))];
-  /* Una línea larga (las de la IA suelen serlo) baja de cuerpo para no salirse de la placa. */
-  (p.guion || []).forEach((g, i) => paginas.push(marco('<div class="rot">' + (i + 1) + ' / ' + p.guion.length + '</div><p class="baj ' + (String(g).length > 170 ? 'media' : 'grande') + '">' + esc(g) + '</p>')));
-  /* Una propuesta del laboratorio trae su tabla: va en su propia placa. */
+  const placas = placasDe(p, gancho);
+  const marco = (cuerpo, ultima) => '<section class="p" data-document-role="page"><img class="agua" src="' + LOGO + '" alt=""><i class="esq ea"></i><i class="esq eb"></i><i class="esq ec"></i><i class="esq ed"></i>' +
+    '<div class="marca"><b>MOTORSTATS</b><sup>AR</sup></div><div class="c">' + cuerpo + '</div>' + (ultima ? '' : '<div class="sig">&rarr;</div>') +
+    '<div class="pie"><img src="' + LOGO + '" alt=""><span>Link en Bio | @motorstats.ar</span></div></section>';
+  const barra = (t) => (t ? '<div class="barra">' + resaltar(t) + '</div>' : '');
+  const paginas = placas.map((x, i) => {
+    const ultima = i === placas.length - 1 && !contexto;
+    const txt = '<p class="baj ' + cuerpoDe(x.texto, 190) + '">' + esc(x.texto) + '</p>';
+    const dest = x.destacado ? '<div class="tarj ' + (x.rol === 'propuesta' ? 'v' : 'n') + '">' + esc(x.destacado) + '</div>' : '';
+    if (x.rol === 'gancho') {
+      return marco('<div class="pildora">' + esc(TONOS[p.tono] ? TONOS[p.tono].pildora : 'EXCLUSIVO PARA CUERPOS TÉCNICOS & CLUBES') + '</div><h1 class="' + cuerpoDe(x.titulo, 60) + '">' + resaltar(x.titulo || p.titulo) + '</h1>' +
+        (x.texto ? '<p class="baj me">' + esc(x.texto) + '</p>' : '') + dest, ultima);
+    }
+    if (x.rol === 'cierre') {
+      return marco((x.titulo ? '<h1 class="me">' + resaltar(x.titulo) + '</h1>' : '') + txt + '<div class="tarj n">💬 ' + esc(CTA_COMENTARIO) + '</div><p class="nota">📩 O escribinos al directo para sumarnos a tu equipo</p>', ultima);
+    }
+    return marco('<div class="rot">' + esc(ROLES[x.rol]) + '</div>' + barra(x.titulo) + txt + dest, ultima);
+  });
+  /* Una propuesta del laboratorio trae su tabla: va después de la primera evidencia. */
   const d = p.datos || {};
   if (Array.isArray(d.filas) && Array.isArray(d.columnas) && d.filas.length) {
     const cols = d.columnas.slice(0, 4);
-    paginas.splice(Math.min(3, paginas.length), 0, marco('<table><thead><tr><th>#</th><th></th>' + cols.map((c) => '<th>' + esc(c.label) + '</th>').join('') + '</tr></thead><tbody>' +
+    paginas.splice(Math.min(2, paginas.length - 1), 0, marco('<div class="barra">LOS NÚMEROS</div><table><thead><tr><th>#</th><th></th>' + cols.map((c) => '<th>' + esc(c.label) + '</th>').join('') + '</tr></thead><tbody>' +
       d.filas.slice(0, 8).map((f) => '<tr><td>' + esc(f.puesto || '') + '</td><td>' + esc(f.jugador || f.equipo || f.zona || '') + (f.jugador && f.equipo ? '<small> · ' + esc(f.equipo) + '</small>' : '') + '</td>' +
         cols.map((c) => '<td class="n">' + esc((f.texto || {})[c.id]) + '</td>').join('') + '</tr>').join('') + '</tbody></table>'));
   }
-  if (contexto) paginas.push(marco('<div class="rot">Contexto</div><p class="baj">' + esc(contexto) + '</p>'));
-  const css = '@import url("https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@700;800&display=swap");' +
+  if (contexto) paginas.push(marco('<div class="barra">CONTEXTO</div><p class="baj me">' + esc(contexto) + '</p>', true));
+  const k = vertical ? 1.2 : 1;
+  const css = '@import url("https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700;800&display=swap");' +
     '*{box-sizing:border-box;margin:0;padding:0}html,body{background:#0a1930}body{font-family:Barlow,sans-serif;color:#e6ecf5}' +
     '.p{position:relative;width:' + W + 'px;height:' + H + 'px;overflow:hidden;background:#0a1930}' +
+    '.agua{position:absolute;left:50%;top:50%;width:900px;transform:translate(-50%,-50%);opacity:.05}' +
     '.esq{position:absolute;width:30px;height:30px;border:2px solid #74acdf}.ea{left:30px;top:30px;border-right:0;border-bottom:0}.eb{right:30px;top:30px;border-left:0;border-bottom:0}' +
     '.ec{left:30px;bottom:30px;border-right:0;border-top:0}.ed{right:30px;bottom:30px;border-left:0;border-top:0}' +
-    '.marca{position:absolute;left:78px;top:44px;font-weight:700;font-size:17px;letter-spacing:4px;color:#74acdf}.marca b{color:#fff}.marca sup{font-size:9px}' +
-    '.c{position:absolute;left:100px;right:100px;top:150px;bottom:150px;display:flex;flex-direction:column;justify-content:center;gap:40px}' +
-    '.pildora{align-self:flex-start;border:2px solid #f5a623;border-radius:30px;padding:7px 22px;font-weight:700;font-size:20px;letter-spacing:2px;color:#f5a623}' +
-    'h1{font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:' + (vertical ? 104 : 88) + 'px;line-height:1;text-transform:uppercase;color:#fff}' +
-    '.baj{font-size:38px;line-height:1.3;font-weight:500}.baj.grande{font-size:52px;color:#fff}.baj.media{font-size:40px;color:#fff}.rot{font-weight:700;font-size:24px;letter-spacing:2px;text-transform:uppercase;color:#74acdf}' +
+    '.marca{position:absolute;left:78px;top:44px;font-weight:700;font-size:17px;letter-spacing:4px;color:#74acdf}.marca b{color:#fff}.marca sup{font-size:9px;letter-spacing:1px}' +
+    '.c{position:absolute;left:100px;right:100px;top:150px;bottom:150px;display:flex;flex-direction:column;justify-content:center;gap:38px}' +
+    '.pildora{align-self:flex-start;border:2px solid #f5a623;border-radius:30px;padding:7px 22px;font-weight:700;font-size:20px;letter-spacing:2px;color:#f5a623;background:rgba(245,166,35,.12)}' +
+    'h1{font-family:"Barlow Condensed",sans-serif;font-weight:800;line-height:1;text-transform:uppercase;color:#fff}h1.gr{font-size:' + Math.round(104 * k) + 'px}h1.me{font-size:' + Math.round(82 * k) + 'px}h1.ch{font-size:' + Math.round(64 * k) + 'px}' +
+    '.nar{color:#f5a623}.cel{color:#74acdf}' +
+    '.baj{line-height:1.32;font-weight:500;color:#e6ecf5}.baj.gr{font-size:' + Math.round(46 * k) + 'px}.baj.me{font-size:' + Math.round(38 * k) + 'px}.baj.ch{font-size:' + Math.round(31 * k) + 'px}' +
+    '.barra{background:#74acdf;color:#0a1930;font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:' + Math.round(46 * k) + 'px;line-height:1.05;text-transform:uppercase;text-align:center;padding:14px 20px}.barra .nar{color:#0a1930;text-decoration:underline}' +
+    '.rot{font-weight:700;font-size:22px;letter-spacing:3px;text-transform:uppercase;color:#74acdf}' +
+    '.tarj{border-radius:14px;padding:26px 30px;font-size:' + Math.round(33 * k) + 'px;line-height:1.3;border:2px solid}.tarj.n{background:rgba(245,166,35,.10);border-color:rgba(245,166,35,.45)}.tarj.v{background:rgba(74,222,128,.10);border-color:rgba(74,222,128,.4)}' +
+    '.nota{font-size:28px;color:#b8c4d6;text-align:center}' +
+    '.sig{position:absolute;right:78px;bottom:130px;width:44px;height:44px;border:2px solid #74acdf;border-radius:50%;color:#74acdf;font-size:26px;line-height:38px;text-align:center}' +
     '.pie{position:absolute;left:0;right:0;bottom:44px;height:70px}.pie img{position:absolute;left:50%;top:0;width:70px;height:70px;object-fit:contain;transform:translateX(-50%)}' +
     '.pie span{position:absolute;right:78px;top:26px;font-weight:600;font-size:19px;color:#fff}' +
     'table{width:100%;border-collapse:collapse;font-size:32px}th,td{padding:14px 12px;border-bottom:1px solid rgba(116,172,223,.25);text-align:left}th{font-size:20px;letter-spacing:2px;text-transform:uppercase;color:#74acdf}' +
@@ -443,17 +548,20 @@ function placasHtml(p, gancho, contexto) {
   return '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>' + esc(p.id + ' · ' + p.titulo) + '</title><style>' + css + '</style></head><body>' + paginas.join('\n') + '</body></html>';
 }
 
-/** El resumen en Markdown de una propuesta, con el gancho elegido. */
+/** El resumen en Markdown de una propuesta: placas, copy y prompt alternativo. */
 function resumenMd(p, gancho, contexto) {
-  const L = ['# ' + p.id + ' · ' + p.titulo, '', '_' + (p.formatoLabel || p.formato) + '_', '', '**Gancho:** ' + (gancho || p.titulo), ''];
+  const L = ['# ' + p.id + ' · ' + p.titulo, '', '_' + (p.formatoLabel || p.formato) + (p.redaccion === 'ia' ? ' · redactada por IA' : '') + '_', '', '**Gancho:** ' + (gancho || p.titulo), ''];
   if (p.dato) L.push('**Dato:** ' + p.dato, '');
-  (p.guion || []).forEach((g, i) => L.push((i + 1) + '. ' + g));
+  L.push('## Placas', '');
+  placasDe(p, gancho).forEach((x, i) => L.push((i + 1) + '. **' + ROLES[x.rol] + (x.titulo ? ' · ' + x.titulo : '') + '** — ' + x.texto + (x.destacado ? ' _(' + x.destacado + ')_' : '')));
+  L.push('', '## Copy sugerido para Instagram', '', p.copy || copyPlantilla(p, gancho), '', '## Prompt alternativo para el copy', '', '~~~', promptDeCopy(p, gancho), '~~~');
   if (contexto) L.push('', '**Contexto (cargado a mano):** ' + contexto);
-  if (p.muestra) L.push('', '**Muestra:** `' + JSON.stringify(p.muestra) + '`');
+  if (p.muestra) L.push('', '**Muestra:** ' + JSON.stringify(p.muestra));
   return L.join('\n') + '\n';
 }
 
 module.exports = {
+  ROLES, MIN_PLACAS, MAX_PLACAS, CTA_COMENTARIO, HASHTAGS, estructuraDePlacas, placasDe, copyPlantilla, promptDeCopy,
   PIEZAS, EJES, FORMATOS, AUTO, ESTILOS, ENFOQUES, ENFOQUE_DE, TONOS, MAX_BANDEJA,
   conTono, aplicarRedaccion, guardarRedaccion, armarBandeja, cambiarEnfoque, cambiarTono, marcar, sumarABandeja, registroDeAprobacion, medir, diaLocal, PESOS_INTERACCION, MIN_MUESTRA, PISO, TECHO,
   opciones, piezasPara, motivoSinFormato, ganchos, deReceta, deFeed, deStories,

@@ -276,11 +276,11 @@ async function redactarItem(b, deps) {
   }
   const nombres = GC.nombresDelLibro((await indiceDe(p, false)).idx);
   const nombra = (v) => { try { GC.verificarAnonimo(v, nombres); return false; } catch (e) { return true; } };
-  if (!nombra({ t: base.titulo, d: base.dato, g: base.guion, x: base.datos }) && nombra({ t: red.titulo, g: red.ganchos, l: red.guion })) {
+  if (!nombra({ t: base.titulo, d: base.dato, g: base.guion, x: base.datos }) && nombra({ t: red.titulo, g: red.ganchos, l: red.guion, p: red.placas, c: red.copy })) {
     throw new Error('La redacción nombró a alguien del libro en una pieza anónima: se descartó entera.');
   }
   const actual = leerBandejas()[clave];
-  const nueva = guardarBandeja(clave, M.guardarRedaccion(actual, x.uid, tono, { titulo: red.titulo, ganchos: red.ganchos, guion: red.guion, descartado: red.descartado, modelo: red.modelo }));
+  const nueva = guardarBandeja(clave, M.guardarRedaccion(actual, x.uid, tono, { titulo: red.titulo, ganchos: red.ganchos, guion: red.guion, placas: red.placas, copy: red.copy, descartado: red.descartado, modelo: red.modelo }));
   return { bandeja: nueva, item: nueva.items.find((i) => i.uid === x.uid), descartado: red.descartado, uso: red.uso };
 }
 
@@ -320,7 +320,7 @@ function aprobar(b) {
   const contexto = String(x.contexto || '').trim().slice(0, 600);
   const g = x.gancho && typeof x.gancho === 'object' ? x.gancho : { texto: x.gancho || null, estilo: null };
   const archivos = [
-    escribir('.json', JSON.stringify({ meta: x.meta || null, gancho: g.texto, contexto: contexto || null, propuesta: p }, null, 2)),
+    escribir('.json', JSON.stringify({ meta: x.meta || null, gancho: g.texto, contexto: contexto || null, placas: M.placasDe(p, g.texto), copy: p.copy || M.copyPlantilla(p, g.texto), promptCopy: M.promptDeCopy(p, g.texto), propuesta: p }, null, 2)),
     escribir('.md', M.resumenMd(p, g.texto, contexto)),
     escribir('.html', pl.html),
   ];
@@ -374,6 +374,8 @@ function app() {
   a.post('/api/laboratorio', ruta((req) => delLaboratorio(req.body)));
   a.post('/api/generar', ruta((req) => generar(req.body)));
   a.post('/api/placas', ruta((req) => placas(req.body.propuesta, req.body.gancho, req.body.contexto)));
+  /* El copy y el prompt alternativo de una propuesta, con el gancho elegido. Sin modelo: los arma el motor. */
+  a.post('/api/copy', ruta((req) => { const p = req.body.propuesta || {}, g = req.body.gancho && req.body.gancho.texto; return { copy: p.copy || M.copyPlantilla(p, g), deIa: !!p.copy, prompt: M.promptDeCopy(p, g), placas: M.placasDe(p, g) }; }));
   a.post('/api/aprobar', ruta((req) => aprobar(req.body)));
   const aprendizaje = () => { const r = leerAprendizaje(); return { registros: r, ponderaciones: M.ponderaciones(r), cola: leerLista(COLA, 'pendientes').filter((c) => c.estado === 'pendiente') }; };
   a.get('/api/aprendizaje', ruta(aprendizaje));

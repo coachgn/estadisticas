@@ -57,6 +57,12 @@
   .visor iframe { display: block; width: 100%; border: 0; background: #06101f; }
   .visor p { margin: 0; padding: 6px 10px; font-size: 12px; color: var(--tenue); border-top: 1px solid var(--borde); }
   .metricas { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .placas { list-style: none; padding: 0; margin: 8px 0; counter-reset: pl; }
+  .placas li { counter-increment: pl; padding: 8px 0 8px 34px; border-bottom: 1px solid var(--borde); position: relative; }
+  .placas li::before { content: counter(pl); position: absolute; left: 0; top: 8px; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--borde); text-align: center; font-size: 12px; line-height: 22px; color: var(--tenue); }
+  .placas .chip { margin-right: 8px; }
+  .copy { width: 100%; min-height: 220px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; }
+  .copy.prompt { min-height: 160px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
   .cond { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; margin-bottom: 6px; }
   [hidden] { display: none !important; }
 </style>
@@ -220,7 +226,7 @@ function tarjeta(uid, p, modo, estado) {
   const chips = '<span class="chip id">' + esc(p.id) + '</span><span class="chip">' + esc(p.formatoLabel || p.formato) + '</span>' +
     (p.enfoque ? '<span class="chip">' + esc(OPC.enfoques[p.enfoque]) + '</span>' : '') + (p.tono ? '<span class="chip">Tono ' + esc(OPC.tonos[p.tono]) + '</span>' : '') +
     (p.peso && p.peso !== 1 ? '<span class="chip">peso ' + num(p.peso) + '</span>' : '') +
-    (p.redaccion === 'ia' ? '<span class="chip ok" title="Título, ganchos y guion redactados por Claude. El dato y los números son los del libro.">✍️ redactada por IA</span>' : '') +
+    (p.redaccion === 'ia' ? '<span class="chip ok" title="Título, ganchos, placas y copy redactados por Claude. El dato y los números son los del libro.">✍️ redactada por IA</span>' : '') +
     (REDACTANDO.has(uid) ? '<span class="chip">✍️ redactando… (unos segundos)</span>' : '');
   if (estado && estado !== 'pendiente') {
     return '<article class="card" id="a-' + uid + '" style="padding:10px 18px">' + chips + '<span class="chip ' + (estado === 'aprobada' ? 'ok' : '') + '">' + (estado === 'aprobada' ? '✅ aprobada · en la cola de Canva' : 'descartada') + '</span> ' + esc(p.titulo) + '</article>';
@@ -230,7 +236,7 @@ function tarjeta(uid, p, modo, estado) {
   const botones = modo === 'bandeja'
     ? (p.enfoque ? '<button data-accion="enfoque" data-uid="' + uid + '" title="Cambia esta pieza por otra de la reserva, del enfoque que sigue">🔄 Cambiar enfoque · ' + esc(OPC.enfoques[p.enfoque]) + '</button>' : '') +
       '<button data-accion="tono" data-uid="' + uid + '" title="Cambia el tono: qué gancho va primero y la píldora de la portada. Para que Claude reescriba el texto en ese tono, tocá «Redactar con IA» después; los números son siempre los del libro.">🌶️ Ajustar tono · ' + esc(OPC.tonos[p.tono] || '') + '</button>' +
-      (OPC.ia.activa && p.redaccion !== 'ia' ? '<button data-redactar="' + uid + '"' + (REDACTANDO.has(uid) ? ' disabled' : '') + ' title="Claude reescribe título, ganchos y guion en el tono elegido. Una llamada por pieza y tono; queda guardada.">✍️ Redactar con IA</button>' : '') +
+      (OPC.ia.activa && p.redaccion !== 'ia' ? '<button data-redactar="' + uid + '"' + (REDACTANDO.has(uid) ? ' disabled' : '') + ' title="Claude arma la pieza con voz de referente: gancho, evidencia, propuesta y cierre en las placas que el tema pida, más el copy de Instagram. Una llamada por pieza y tono; queda guardada.">✍️ Redactar con IA</button>' : '') +
       '<button class="pri" data-accion="aprobar" data-uid="' + uid + '">✅ Aprobar y enviar a la cola de Canva</button><button class="chico" data-accion="descartar" data-uid="' + uid + '">Descartar</button>'
     : '<button class="pri" data-aprobar="' + uid + '">✅ Aprobar y enviar a la cola de Canva</button>';
   return '<article class="card" id="a-' + uid + '">' + chips + '<h3>' + esc(p.titulo) + '</h3><p class="dato">' + esc(p.dato) + '</p>' +
@@ -239,7 +245,7 @@ function tarjeta(uid, p, modo, estado) {
     (p.muestra ? '<p class="tenue">Muestra: ' + esc(Object.keys(p.muestra).filter((k) => p.muestra[k] != null).map((k) => k + ' ' + p.muestra[k]).join(' · ')) + '</p>' : '') + avisos(p.avisos) +
     '<fieldset style="border:0;padding:0;margin:10px 0"><legend class="tenue" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px">Gancho</legend>' + ganchos + '</fieldset>' +
     '<div class="visor" id="v-' + uid + '"><iframe title="Placas de ' + esc(p.id) + '" sandbox></iframe><p>Cargando las placas…</p></div>' +
-    '<details><summary>Guion (' + p.guion.length + ')</summary><ol>' + p.guion.map((g) => '<li>' + esc(g) + '</li>').join('') + '</ol></details>' +
+    '<div id="k-' + uid + '"><p class="tenue">Armando las placas y el copy…</p></div>' +
     '<details><summary>Los números, tal como salen del libro</summary><pre>' + esc(JSON.stringify(p.datos, null, 2)) + '</pre></details>' +
     '<div class="acciones">' + botones + '<span class="tenue" role="status" aria-live="polite" id="e-' + uid + '"></span></div></article>';
 }
@@ -261,8 +267,27 @@ async function pintarVisor(uid) {
     caja.querySelector('p').textContent = (r.html.split('data-document-role="page"').length - 1) + ' placas · ' +
       (r.plantilla === 'stories' ? 'plantilla diseñada de Stories' : 'plantilla genérica') + ' · deslizá hacia el costado';
   } catch (e) { caja.querySelector('p').textContent = 'No se pudieron armar las placas: ' + e.message; }
+  pintarCopy(uid);
 }
 const pintarVisores = (raiz) => raiz.querySelectorAll('.visor').forEach((v) => pintarVisor(v.id.slice(2)));
+
+/* LA NARRATIVA, EL COPY Y EL PROMPT · debajo del visor de cada propuesta:
+   las placas con su rol, el copy sugerido para Instagram y el prompt para
+   pedir más variantes en otra IA. Los arma el servidor con el gancho elegido. */
+const ROL = { gancho: 'Gancho', evidencia: 'Evidencia', propuesta: 'Propuesta', cierre: 'Cierre' };
+async function pintarCopy(uid) {
+  const caja = $('k-' + uid), reg = PROPS.get(uid); if (!caja || !reg) return;
+  try {
+    const r = await api('/api/copy', { propuesta: reg.p, gancho: ganchoElegido(uid) });
+    if (PROPS.get(uid) !== reg || !$('k-' + uid)) return;
+    caja.innerHTML = '<details open><summary>Placas (' + r.placas.length + ') · gancho, evidencia, propuesta y cierre</summary><ol class="placas">' +
+      r.placas.map((x) => '<li><span class="chip">' + esc(ROL[x.rol] || x.rol) + '</span>' + (x.titulo ? '<strong>' + esc(x.titulo) + '</strong> — ' : '') + esc(x.texto) + (x.destacado ? ' <span class="tenue">· destacado: ' + esc(x.destacado) + '</span>' : '') + '</li>').join('') + '</ol></details>' +
+      '<details open><summary>Copy sugerido para Instagram' + (r.deIa ? ' · redactado por IA' : ' · de plantilla (tocá «Redactar con IA» para el de referente)') + '</summary>' +
+      '<textarea class="copy" id="c-' + uid + '" readonly>' + esc(r.copy) + '</textarea><div class="acciones" style="margin-top:6px"><button class="chico" data-copiar="c-' + uid + '">Copiar el copy</button></div></details>' +
+      '<details><summary>Prompt alternativo · para pedir más variantes del copy en otra IA</summary>' +
+      '<textarea class="copy prompt" id="q-' + uid + '" readonly>' + esc(r.prompt) + '</textarea><div class="acciones" style="margin-top:6px"><button class="chico" data-copiar="q-' + uid + '">Copiar el prompt</button></div></details>';
+  } catch (e) { caja.innerHTML = avisos(['No se pudo armar el copy: ' + e.message], 'error'); }
+}
 
 /* ------------------------------ bandeja ------------------------------- */
 let turnoB = 0;
@@ -479,6 +504,11 @@ function pintarAprendizaje(a) {
 document.addEventListener('click', async (ev) => {
   const t = ev.target.closest('button'); if (!t) return;
   if (t.dataset.tab) return irA(t.dataset.tab);
+  if (t.dataset.copiar) {
+    const a = $(t.dataset.copiar), previo = t.textContent;
+    try { await navigator.clipboard.writeText(a.value); } catch (e) { a.select(); document.execCommand('copy'); }
+    t.textContent = 'Copiado'; setTimeout(() => { t.textContent = previo; }, 1500); return;
+  }
   if (t.dataset.redactar) return redactarUna(t.dataset.redactar);
   if (t.dataset.accion) {
     const uid = t.dataset.uid, estado = $('e-' + uid);

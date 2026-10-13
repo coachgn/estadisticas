@@ -141,9 +141,11 @@ const ESQUEMAS_JSON = {
     },
   },
   redaccion: {
-    type: 'object', additionalProperties: false, required: ['titulo', 'ganchos', 'guion'],
+    type: 'object', additionalProperties: false, required: ['titulo', 'ganchos', 'placas', 'guion', 'copy'],
     properties: {
-      titulo: txt,
+      titulo: txt, copy: txt,
+      placas: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['rol', 'titulo', 'texto', 'destacado'],
+        properties: { rol: { type: 'string', enum: ['gancho', 'evidencia', 'propuesta', 'cierre'] }, titulo: txt, texto: txt, destacado: txt } } },
       ganchos: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['estilo', 'texto'], properties: { estilo: { type: 'string', enum: ['dato', 'titular', 'pregunta'] }, texto: txt } } },
       guion: { type: 'array', items: txt },
     },
@@ -308,26 +310,46 @@ async function interpretar(pregunta, catalogo, deps) {
 const EsquemaRedaccion = z && z.object({
   titulo: z.string().describe('título de la pieza, hasta 70 caracteres'),
   ganchos: z.array(z.object({ estilo: z.enum(ESTILOS), texto: z.string().describe('hasta 140 caracteres') })).describe('exactamente tres, uno por estilo: dato, titular y pregunta'),
-  guion: z.array(z.string()).describe('la misma cantidad de líneas que el guion recibido, en el mismo orden y con la misma función cada una'),
+  placas: z.array(z.object({
+    rol: z.enum(['gancho', 'evidencia', 'propuesta', 'cierre']),
+    titulo: z.string().describe('el encabezado de la placa, hasta 60 caracteres; puede ir vacío'),
+    texto: z.string().describe('el cuerpo de la placa, hasta 320 caracteres'),
+    destacado: z.string().describe('una frase para la tarjeta resaltada, hasta 140 caracteres; vacío si no hace falta'),
+  })).describe('carrusel: entre 4 y 10 placas. Reel o Stories: lista vacía'),
+  guion: z.array(z.string()).describe('reel: la misma cantidad de líneas que el guion recibido, cada una con su marca de tiempo. Carrusel: lista vacía'),
+  copy: z.string().describe('el copy de Instagram listo para publicar, hasta 1800 caracteres'),
 });
 
 const SISTEMA_REDACCION = [
-  'Sos el redactor de @motorstats.ar, una cuenta de Instagram de analítica de básquet argentino para cuerpos técnicos y clubes. Escribís en castellano rioplatense (vos, tenés), directo, sin signos de exclamación en cadena, sin emojis y sin hashtags.',
+  'Sos el redactor de @motorstats.ar, una cuenta de Instagram de analítica de básquet argentino. Escribís como un REFERENTE y analista táctico de autoridad: alguien que estuvo en el banco y le habla de igual a igual a cuerpos técnicos y clubes. Idioma de cancha, directo, coloquial y sin vueltas. Castellano rioplatense (vos, tenés). Afirmás con seguridad lo que el dato sostiene y marcás como lectura lo que es lectura.',
   '',
-  'Recibís una PIEZA ya calculada (título, dato, guion y sus números) y un TONO. Devolvés un título, tres ganchos de portada (uno que abre con el dato, uno que es un titular y uno que es una pregunta) y el guion reescrito en ese tono.',
+  'Recibís una PIEZA ya calculada (título, dato, guion y sus números) y un TONO. Devolvés: un título, tres ganchos de portada (uno que abre con el dato, uno que es un titular y uno que es una pregunta), las placas, y el copy de Instagram.',
+  '',
+  'LA NARRATIVA · cuatro momentos, en este orden. La cantidad de placas NO es fija: usá las que el tema pida, entre 4 y 10. Un dato simple se cuenta en 4 o 5; una pieza con varios casos o una tabla puede pedir más.',
+  '1. GANCHO (una placa, rol «gancho»): la tensión táctica, la paradoja o el punto de quiebre. El título es la frase de portada; el texto, una bajada que promete lo que viene.',
+  '2. EVIDENCIA (una o más, rol «evidencia»): el problema explicado y los números de la pieza desglosados. Un concepto por placa. Si hay que explicar una métrica para que se entienda, va acá.',
+  '3. PROPUESTA (una o más, rol «propuesta»): qué significa esto en cancha. La lectura de juego, la decisión táctica o qué mirar en el próximo rival. Es tu criterio de analista: escribilo como lectura («esto te pide…», «la tendencia marca…»), no como un hecho medido.',
+  '4. CIERRE (una placa, rol «cierre»): una conclusión contundente y una pregunta al cuerpo técnico que invite a comentar. El llamado a la acción («Comentá CONTEXTO…») lo agrega el diseño: no lo escribas.',
+  'SOLO en el título de una placa podés marcar *así* la palabra o el número que va resaltado; en ningún otro campo uses asteriscos. El campo «destacado» es para la frase que merece una tarjeta aparte; dejalo vacío si no hay ninguna.',
+  'Cuidá el sentido de cada movimiento: pasar del puesto 11 al 10 es SUBIR. Si no estás seguro de la dirección, decí «pasa del … al …» y nada más.',
+  '',
+  'SEGÚN EL FORMATO',
+  '- Carrusel: devolvé «placas» y dejá «guion» vacío.',
+  '- Reel: devolvé «guion» con la misma cantidad de líneas que el recibido, en el mismo orden, cada una con su marca de tiempo del principio tal cual, y dejá «placas» vacío.',
+  '- Stories: dejá «placas» y «guion» vacíos; las placas ya están diseñadas con los rankings.',
+  '',
+  'EL COPY DE INSTAGRAM: listo para publicar, con la misma voz. Abre con el gancho, plantea el problema, da la evidencia, cierra con la lectura táctica y una pregunta, e invita a comentar «CONTEXTO» para recibir una demo o a escribir por mensaje directo. Párrafos cortos, algún emoji como viñeta (no más de seis en total) y entre 6 y 8 hashtags al final, sin números adentro.',
   '',
   'LA REGLA QUE NO SE NEGOCIA: no sos la fuente de ningún número.',
-  '- Todo número que escribas tiene que estar en la pieza, EXACTAMENTE como figura ahí (58 es 58, no «casi 60» ni «6 de cada 10»).',
+  '- Todo número que escribas —en un título, una placa, un gancho o el copy— tiene que estar en la pieza, EXACTAMENTE como figura ahí (58 es 58, no «casi 60» ni «6 de cada 10»).',
   '- No calcules, no redondees, no conviertas, no sumes ni restes, no escribas un número en letras.',
   '- Cada número conserva su unidad y aquello a lo que se refiere en la pieza: un rating no es una cantidad de puestos, un porcentaje de un jugador no es el de la liga. Si no estás seguro de qué mide un número, no lo uses.',
-  '- No agregues datos, causas ni comparaciones que la pieza no trae. Si la pieza no dice por qué pasa algo, no lo expliques.',
+  '- La autoridad viene de leer bien el dato, no de agregarle datos: no inventes hechos sobre equipos, jugadores, planteles, canchas ni partidos que la pieza no trae. La lectura táctica es general (qué pide esto en cancha), nunca un hecho sobre alguien en particular.',
   '- Un sistema automático revisa cada número después de vos y descarta el texto que traiga uno que no esté en la pieza.',
   '',
   'OTRAS REGLAS',
   '- No nombres personas ni clubes que la pieza no nombre. Si la pieza dice «Jugador 1» o «Equipo A», se queda así o se generaliza («un escolta», «un equipo de la zona»).',
-  '- El guion conserva la cantidad de líneas, su orden y la función de cada una (portada, desarrollo, cierre). En un reel, cada línea conserva su marca de tiempo del principio tal cual.',
-  '- Cada línea del guion es UNA placa: hasta 220 caracteres.',
-  '- La última línea del guion cierra con una pregunta al cuerpo técnico o una invitación a probar la demo, como la original.',
+  '- Sin signos de exclamación en cadena. En las placas, a lo sumo un emoji como viñeta por placa.',
 ].join('\n');
 
 /**
@@ -351,11 +373,15 @@ function piezaDe(p) {
 
 /** La guarda aplicada a una redacción. PURA: es lo que se testea. */
 function filtrar(salida, pieza) {
+  const M = require('./motor.js');
   const permitidos = numerosDe(pieza);
   const descartado = [];
-  const fiel = (campo, texto) => {
-    const t = String(texto || '').trim();
-    if (!t) { descartado.push({ campo, motivo: 'vacío' }); return null; }
+  /* El resaltado *así* vale SOLO en el título de una placa. En cualquier
+     otro campo los asteriscos saldrían literales en la placa o en el copy. */
+  const sinMarcas = (t) => String(t || '').replace(/\*([^*\n]+)\*/g, '$1');
+  const fiel = (campo, texto, opcional, conMarcas) => {
+    const t = (conMarcas ? String(texto || '') : sinMarcas(texto)).trim();
+    if (!t) { if (!opcional) descartado.push({ campo, motivo: 'vacío' }); return opcional ? '' : null; }
     const aj = numerosAjenos(t, permitidos);
     if (aj.length) { descartado.push({ campo, texto: t, motivo: 'trae números que no están en la pieza: ' + aj.join(', ') }); return null; }
     return t;
@@ -369,14 +395,36 @@ function filtrar(salida, pieza) {
     return { estilo: g.estilo, texto: t.slice(0, 200), ia: true };
   }).filter(Boolean);
   const titulo = fiel('título', salida.titulo);
+
+  /* EL GUION (reels): misma cantidad de líneas, y una sola con un número
+     ajeno lo tira entero. Vacío no es un error: el carrusel va por placas. */
   let guion = null;
   const original = pieza.guion || [];
-  if (!Array.isArray(salida.guion) || salida.guion.length !== original.length) descartado.push({ campo: 'guion', motivo: 'cambió la cantidad de líneas' });
-  else {
-    const lineas = salida.guion.map((l, i) => fiel('guion · línea ' + (i + 1), l));
-    if (lineas.every(Boolean)) guion = lineas;
+  const g = Array.isArray(salida.guion) ? salida.guion : null;
+  if (g && g.length) {
+    if (g.length !== original.length) descartado.push({ campo: 'guion', motivo: 'cambió la cantidad de líneas' });
+    else { const lineas = g.map((x, i) => fiel('guion · línea ' + (i + 1), x)); if (lineas.every(Boolean)) guion = lineas; }
+  } else if (!g) descartado.push({ campo: 'guion', motivo: 'cambió la cantidad de líneas' });
+
+  /* LAS PLACAS (carrusel): la placa del medio que trae un número ajeno se
+     saca; si la que falla es el gancho o el cierre, o lo que queda ya no
+     tiene la estructura, se tiran todas y la pieza vuelve a su guion. */
+  let placas = null;
+  if (Array.isArray(salida.placas) && salida.placas.length) {
+    const limpias = [];
+    let rota = null;
+    salida.placas.forEach((x, i) => {
+      const campo = 'placa ' + (i + 1) + ' · ' + (x && x.rol);
+      const t = fiel(campo, x && x.texto), ti = fiel(campo + ' · título', x && x.titulo, true, true), de = fiel(campo + ' · destacado', x && x.destacado, true);
+      if (t && ti !== null && de !== null) limpias.push({ rol: x.rol, titulo: ti.slice(0, 90), texto: t.slice(0, 420), destacado: de.slice(0, 180) });
+      else if (x && (x.rol === 'gancho' || x.rol === 'cierre')) rota = 'el ' + x.rol + ' no pasó la guarda';
+    });
+    const motivo = rota || M.estructuraDePlacas(limpias);
+    if (motivo) descartado.push({ campo: 'placas', motivo: 'se descartaron todas: ' + motivo });
+    else placas = limpias;
   }
-  return { titulo, ganchos, guion, descartado };
+  const copy = salida.copy ? fiel('copy', salida.copy) : null;
+  return { titulo, ganchos, guion, placas, copy: copy ? copy.slice(0, 2200) : null, descartado };
 }
 
 module.exports = { MODELO, TONOS, ESTILOS, ESQUEMAS_JSON, motor, cliDisponible, piezaDe, pedirPorCli, disponible, motivoApagada, interpretar, redactar, filtrar, numerosDe, numerosAjenos, explicar, EsquemaConsulta, EsquemaRedaccion, sistemaConsulta, SISTEMA_REDACCION };

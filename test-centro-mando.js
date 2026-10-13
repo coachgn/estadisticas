@@ -162,11 +162,11 @@ titulo('La exportación');
 {
   const p = { id: 'CR-01', ok: true, formato: 'carrusel', formatoLabel: 'Carrusel 3:4', titulo: 'Título <b>', dato: 'Dato & más', guion: ['Uno', 'Dos <script>'] };
   const h = M.placasHtml(p, 'Mi "gancho"', 'Contexto a mano');
-  check('una placa por línea del guion, más la portada y el contexto', (h.match(/data-document-role="page"/g) || []).length === 4);
+  check('gancho, cierre y la placa de contexto', (h.match(/data-document-role="page"/g) || []).length === 3);
   check('todo lo que entra se escapa', h.indexOf('<script>') === -1 && h.indexOf('Título <b>') === -1 && h.indexOf('&quot;gancho&quot;') !== -1);
   check('las imágenes van por URL pública, no en data URI', !/data:image/.test(h) && /https:\/\/coachgn\.github\.io/.test(h));
   check('el carrusel es 3:4 y el reel 9:16', /height:1350px/.test(h) && /height:1920px/.test(M.placasHtml(Object.assign({}, p, { formato: 'reel' }))));
-  check('sin contexto no hay placa de contexto', (M.placasHtml(p, 'g').match(/data-document-role="page"/g) || []).length === 3);
+  check('sin contexto no hay placa de contexto', (M.placasHtml(p, 'g').match(/data-document-role="page"/g) || []).length === 2);
   const md = M.resumenMd(p, 'Gancho elegido', 'Contexto');
   check('el resumen dice el gancho elegido y que el contexto es manual', /\*\*Gancho:\*\* Gancho elegido/.test(md) && /cargado a mano/.test(md));
 }
@@ -236,8 +236,8 @@ titulo('Destacadas de la fecha, el visor y la aprobación');
   const S = require('./centro-mando/servidor.js');
   const st = auto.find((x) => x.id === 'STORIES');
   const v1 = S.placas(p, p.ganchos[0], ''), v2 = S.placas(p, p.ganchos[1], '');
-  check('el visor recibe una página por placa', (v1.html.match(/data-document-role="page"/g) || []).length === p.guion.length + 1 && v1.plantilla === 'generica');
-  check('cambiar el gancho cambia la portada', v1.html !== v2.html && v1.html.indexOf('<h1>') !== -1);
+  check('el visor recibe una página por placa', (v1.html.match(/data-document-role="page"/g) || []).length === M.placasDe(p).length && M.placasDe(p).length === p.guion.length && v1.plantilla === 'generica');
+  check('cambiar el gancho cambia la portada', v1.html !== v2.html && /<h1 class="\w+">/.test(v1.html));
   check('las Stories anónimas no usan la plantilla con nombres', S.placas(Object.assign({}, st, { datos: Object.assign({}, st.datos, { anonimo: true }) }), null, '').plantilla === 'generica');
   check('una propuesta sin datos no tiene placas', (() => { try { S.placas({ id: 'RL-01', ok: false }); return false; } catch (e) { return /sin|No hay/.test(e.message); } })());
 
@@ -395,12 +395,12 @@ titulo('Los agentes con Claude · la guarda numérica');
 
   const pieza = { id: 'CR-01', titulo: 'La tabla de ataque está mal ordenada', dato: '7 de 12 equipos (58%) cambian de puesto.', guion: ['Portada: el dato', 'Jugada no es posesión', '¿Con qué vara medís? + demo'], numeros: { cambian: 7, equipos: 12 } };
   const buena = { titulo: 'Tu tabla de ataque miente', ganchos: [{ estilo: 'dato', texto: '7 de 12 equipos cambian de puesto' }, { estilo: 'titular', texto: 'El ranking que mirás está mal' }, { estilo: 'pregunta', texto: '¿Con qué vara medís tu ataque?' }],
-    guion: ['Portada: 7 de 12', 'Una jugada no es una posesión', '¿Cómo lo medís vos? Probá la demo'] };
+    guion: ['Portada: 7 de 12', 'Una jugada no es una posesión', '¿Cómo lo medís vos? Probá la demo'], placas: [], copy: '' };
   const f1 = L.filtrar(buena, pieza);
   check('una redacción fiel pasa entera', f1.titulo === buena.titulo && f1.ganchos.length === 3 && f1.guion.length === 3 && f1.descartado.length === 0);
   check('los ganchos quedan marcados como de la IA', f1.ganchos.every((g) => g.ia === true));
   const mala = { titulo: 'El 60% de la liga mide mal', ganchos: [{ estilo: 'dato', texto: '6 de cada 10 equipos cambian' }, { estilo: 'titular', texto: 'El ranking que mirás está mal' }, { estilo: 'titular', texto: 'Otro titular' }, { estilo: 'grito', texto: 'x' }],
-    guion: ['Portada', 'En 2019 pasaba igual', 'Cierre'] };
+    guion: ['Portada', 'En 2019 pasaba igual', 'Cierre'], placas: [], copy: '' };
   const f2 = L.filtrar(mala, pieza);
   check('el título con un número ajeno se descarta', f2.titulo === null);
   check('el gancho con un número ajeno se descarta, y los demás quedan', f2.ganchos.map((g) => g.estilo).join() === 'titular');
@@ -478,7 +478,7 @@ titulo('Los agentes con Claude · la guarda numérica');
   const escribir = (x) => fsx.writeFileSync(pth.join(DATOS_TMP, 'centro-mando', 'bandeja.json'), JSON.stringify({ bandejas: { 'lnb-unica': x } }));
   escribir(arm);
   const u = arm.items[0].uid, base = arm.items[0].propuesta;
-  const fiel = { titulo: 'La tabla miente', ganchos: [{ estilo: 'titular', texto: 'Tu ranking de ataque está mal' }], guion: base.guion.map((g) => 'Reescrita: ' + g.replace(/\d/g, '')) };
+  const fiel = { titulo: 'La tabla miente', ganchos: [{ estilo: 'titular', texto: 'Tu ranking de ataque está mal' }], guion: base.guion.map((g) => 'Reescrita: ' + g.replace(/\d/g, '')), placas: [], copy: '' };
   const ri = await S.redactarItem({ liga: 'lnb', zona: 'unica', uid: u }, { cliente: fake(fiel) });
   check('redacta el ítem y lo guarda en la bandeja', ri.item.propuesta.redaccion === 'ia' && ri.item.propuesta.titulo === 'La tabla miente' && JSON.parse(fsx.readFileSync(pth.join(DATOS_TMP, 'centro-mando', 'bandeja.json'), 'utf8')).bandejas['lnb-unica'].items[0].redacciones.tactico.titulo === 'La tabla miente');
   const otra = fake(fiel);
@@ -512,7 +512,7 @@ titulo('Los agentes con Claude · la guarda numérica');
   check('lo llama en modo no interactivo, con salida JSON y sin guardar la sesión', a[0] === '-p' && arg('--output-format') === 'json' && a.indexOf('--no-session-persistence') !== -1);
   check('SIN herramientas, sin configuración del usuario y sin conectores', arg('--tools') === '' && a.indexOf('--safe-mode') !== -1 && a.indexOf('--strict-mcp-config') !== -1);
   check('nunca saltea permisos', !a.some((x) => /dangerously|bypassPermissions/.test(x)));
-  check('el esquema viaja como JSON Schema', JSON.parse(arg('--json-schema')).required.join() === 'titulo,ganchos,guion');
+  check('el esquema viaja como JSON Schema', JSON.parse(arg('--json-schema')).required.join() === 'titulo,ganchos,placas,guion,copy');
   check('la regla de los números va en el sistema y la pieza por la entrada estándar', /no sos la fuente de ningún número/.test(arg('--system-prompt')) && /POLÉMICO/.test(c2.llamadas[0].entrada) && !a.some((x) => /POLÉMICO/.test(x)));
   const rm = await L.redactar(p, 'tactico', { ejecutar: cli(okCli(mala)).ejecutar });
   check('LA MISMA GUARDA numérica corre sobre lo que devuelve Claude Code', rm.titulo === null && rm.guion === null && rm.ganchos.length === 1 && rm.descartado.length > 0);
@@ -547,8 +547,64 @@ titulo('Los agentes con Claude · la guarda numérica');
   check('/agencia exige confirmación antes de publicar e importar', /sin un «sí» del usuario/.test(cmd) && /Pedí confirmación/.test(cmd) && /preguntá cuáles aprobar/.test(cmd));
   check('/agencia no edita la bandeja a mano y borra siempre las placas temporales', /No edites .bandeja\.json. ni .aprendizaje\.json. a mano/.test(cmd) && /Hacelo siempre/.test(cmd));
   check('/agencia usa las rutas que el servidor tiene', ['/api/bandeja', '/api/bandeja/accion', '/api/bandeja/redactar', '/api/aprendizaje', '/api/opciones'].every((r) => cmd.indexOf(r) !== -1 && fs.readFileSync('centro-mando/servidor.js', 'utf8').indexOf("'" + r + "'") !== -1));
-  const hp = M.placasHtml(Object.assign({}, p, { guion: ['corta', 'x'.repeat(200)] }), 'g');
-  check('una línea larga del guion baja de cuerpo en la placa', /class="baj grande">corta/.test(hp) && /class="baj media">x{200}/.test(hp));
+  const hp = M.placasHtml(Object.assign({}, p, { guion: ['portada', 'corta', 'x'.repeat(400), 'fin'] }), 'g');
+  check('un texto largo baja de cuerpo en la placa', /class="baj gr">corta/.test(hp) && /class="baj ch">x{400}/.test(hp));
+
+  titulo('La narrativa de referente · placas, copy y prompt alternativo');
+  const P = (rol, texto, titulo, destacado) => ({ rol, texto, titulo: titulo || '', destacado: destacado || '' });
+  const serie = [P('gancho', 'Lo que la tabla no te muestra', '¿Tu ranking de ataque *miente*?'), P('evidencia', '7 de 12 equipos cambian de puesto', 'El dato'), P('evidencia', 'Una jugada no es una posesión', 'Por qué pasa'),
+    P('propuesta', 'Medí por posesión antes de armar el plan', 'Qué te pide en cancha', 'El rebote ofensivo cambia la cuenta'), P('cierre', '¿Con qué vara medís tu ataque?', 'La tabla depende de la vara')];
+  check('la estructura buena pasa', M.estructuraDePlacas(serie) === null);
+  check('la cantidad de placas es libre entre el mínimo y el máximo', M.estructuraDePlacas(serie.slice(0, 1).concat(serie.slice(2))) === null && M.MIN_PLACAS === 4 && M.MAX_PLACAS === 10 &&
+    /entre/.test(M.estructuraDePlacas(serie.slice(0, 3))) && /entre/.test(M.estructuraDePlacas(serie.slice(0, 1).concat(Array(10).fill(serie[1]), serie.slice(3)))));
+  check('sin gancho al principio o sin cierre al final, no', /primera/.test(M.estructuraDePlacas(serie.slice(1).concat(serie[4]))) && /última/.test(M.estructuraDePlacas(serie.slice(0, 4).concat(serie[3]))));
+  check('sin evidencia o sin propuesta, no', /evidencia/.test(M.estructuraDePlacas([serie[0], serie[3], serie[3], serie[4]])) && /propuesta/.test(M.estructuraDePlacas([serie[0], serie[1], serie[2], serie[4]])));
+  check('el orden es gancho, evidencia, propuesta, cierre', /orden/.test(M.estructuraDePlacas([serie[0], serie[3], serie[1], serie[4]])));
+  check('un rol inventado, no', /rol/.test(M.estructuraDePlacas([serie[0], serie[1], P('opinion', 'x'), serie[3], serie[4]])));
+
+  const conPlacas = Object.assign({}, buena, { placas: serie, guion: [], copy: 'Tu ranking de ataque puede estar mal: 7 de 12 equipos cambian de puesto.\n\n¿Con qué vara medís?\n\n#MotorStatsAR #Pace' });
+  const fp = L.filtrar(conPlacas, pieza);
+  check('una redacción con placas fieles pasa entera, con su copy', fp.placas.length === 5 && /7 de 12/.test(fp.copy) && fp.descartado.length === 0);
+  check('en un carrusel, el guion vacío no es un error', fp.guion === null && !fp.descartado.some((d) => d.campo === 'guion'));
+  const unaMala = serie.slice(); unaMala[2] = P('evidencia', 'En 2019 la liga corría a 80 posesiones', 'Antes');
+  const fm = L.filtrar(Object.assign({}, conPlacas, { placas: unaMala }), pieza);
+  check('la placa del medio con un número ajeno se saca, y las demás quedan', fm.placas.length === 4 && !fm.placas.some((x) => /2019/.test(x.texto)) && fm.descartado.some((d) => /placa 3/.test(d.campo) && /2019/.test(d.motivo)));
+  const sinEvidencia = [serie[0], P('evidencia', 'El 99% mide mal'), serie[3], serie[3], serie[4]];
+  check('si al sacarla se rompe la estructura, se descartan todas', L.filtrar(Object.assign({}, conPlacas, { placas: sinEvidencia }), pieza).placas === null);
+  const ganchoMalo = serie.slice(); ganchoMalo[0] = P('gancho', 'El 99% de los rankings está mal', 'Mirá');
+  check('si el que falla es el gancho, se descartan todas', (() => { const r = L.filtrar(Object.assign({}, conPlacas, { placas: ganchoMalo }), pieza); return r.placas === null && r.descartado.some((d) => /gancho no pasó/.test(d.motivo)); })());
+  const tituloMalo = serie.slice(); tituloMalo[1] = P('evidencia', 'Texto limpio', 'Los 45 mejores');
+  check('el TÍTULO y el DESTACADO de una placa pasan por la misma guarda', L.filtrar(Object.assign({}, conPlacas, { placas: tituloMalo }), pieza).placas.length === 4);
+  const marcas = L.filtrar(Object.assign({}, conPlacas, { placas: [P('gancho', 'Lo que *la tabla* no muestra', 'Tu ranking *miente*')].concat(serie.slice(1)), copy: '*7 de 12* equipos cambian', ganchos: [{ estilo: 'dato', texto: '*7 de 12* cambian' }] }), pieza);
+  check('el resaltado *así* se conserva solo en el título de una placa', marcas.placas[0].titulo === 'Tu ranking *miente*' && marcas.placas[0].texto === 'Lo que la tabla no muestra' && marcas.copy === '7 de 12 equipos cambian' && marcas.ganchos[0].texto === '7 de 12 cambian');
+  check('un copy con un número ajeno se descarta entero', (() => { const r = L.filtrar(Object.assign({}, conPlacas, { copy: 'El 83% de los equipos…' }), pieza); return r.copy === null && r.descartado.some((d) => d.campo === 'copy'); })());
+
+  const pIa = M.aplicarRedaccion(p, fp);
+  check('aplicadas: la pieza lleva las placas y el copy de la IA, y el DATO intacto', pIa.placas.length === 5 && pIa.copy === fp.copy && pIa.dato === p.dato && pIa.guion.length === 5);
+  check('las placas que se dibujan son las de la IA', M.placasDe(pIa).length === 5 && M.placasDe(pIa)[3].destacado === 'El rebote ofensivo cambia la cuenta');
+  check('el gancho elegido en pantalla va a la portada', M.placasDe(pIa, 'Otro gancho')[0].titulo === 'Otro gancho' && M.placasDe(pIa)[0].titulo === serie[0].titulo);
+  const der = M.placasDe(p);
+  check('sin IA, las placas salen del guion repartido en los cuatro momentos, sin una palabra nueva', M.estructuraDePlacas(Object.assign([], der)) === null || der.length < 4 ? der[0].rol === 'gancho' && der[der.length - 1].rol === 'cierre' && der.slice(1, -1).every((x) => p.guion.indexOf(x.texto) !== -1) : false);
+
+  const hIa = M.placasHtml(pIa, null, '');
+  check('una página por placa', (hIa.match(/data-document-role="page"/g) || []).length === 5);
+  check('la línea gráfica de la cuenta: píldora, barra celeste, isotipo de fondo, pie y flecha', /class="pildora"/.test(hIa) && /class="barra"/.test(hIa) && /class="agua"/.test(hIa) && /Link en Bio \| @motorstats\.ar/.test(hIa) && /class="sig"/.test(hIa));
+  check('Barlow Condensed en títulos y Barlow en el cuerpo; azul noche, celeste y naranja', /Barlow\+Condensed/.test(hIa) && /font-family:Barlow,/.test(hIa) && /#0a1930/.test(hIa) && /#74acdf/.test(hIa) && /#f5a623/.test(hIa));
+  check('*así* en un título sale resaltado, ya escapado', /<span class="nar">miente<\/span>/.test(hIa) && M.placasHtml(Object.assign({}, pIa, { placas: [P('gancho', 't', '<u>*x*</u>')].concat(serie.slice(1)) })).indexOf('<u>') === -1);
+  check('el cierre lleva el llamado a comentar, y la última placa no lleva flecha', hIa.indexOf(M.CTA_COMENTARIO.replace(/«/g, '«')) !== -1 && (hIa.match(/class="sig"/g) || []).length === 4);
+  check('el destacado de la propuesta va en su tarjeta', /class="tarj v">El rebote ofensivo cambia la cuenta/.test(hIa));
+
+  const cp = M.copyPlantilla(p, p.ganchos[0].texto);
+  check('sin IA hay copy igual: frases de la pieza, llamado a comentar y hashtags', cp.indexOf(p.dato) !== -1 && cp.indexOf(M.CTA_COMENTARIO) !== -1 && /#MotorStatsAR/.test(cp));
+  check('y no trae un número que no esté en la pieza', L.numerosAjenos(cp, L.piezaDe(p)).length === 0);
+  const pr = M.promptDeCopy(pIa);
+  check('el prompt alternativo lleva la pieza, las placas y la regla de los números', pr.indexOf(pIa.dato) !== -1 && /REGLA QUE NO SE NEGOCIA/.test(pr) && /\[Evidencia\]/.test(pr) && /\[Propuesta\]/.test(pr) && /referente/.test(pr));
+  check('lo arma el código: no trae un número ajeno a la pieza (salvo las consignas de formato)', L.numerosAjenos(pr.split('TÍTULO:')[1], { p: L.piezaDe(pIa), x: pIa.placas }).length === 0);
+  check('el prompt de una pieza anónima no nombra a nadie del libro', lanza(() => GC.verificarAnonimo({ t: M.promptDeCopy(M.deReceta(GC.anonimizar(GC.nivel2(idx, [], { nivel: 'LIGA_NACIONAL', piezas: ['CR-02'] })).piezas[0])) }, GC.nombresDelLibro(idx))) === null);
+  const md = M.resumenMd(pIa, null, '');
+  check('el resumen exportado trae placas, copy y prompt', /## Placas/.test(md) && /## Copy sugerido para Instagram/.test(md) && /## Prompt alternativo para el copy/.test(md) && md.indexOf(fp.copy) !== -1);
+  check('el sistema del redactor pide la voz de referente y los cuatro momentos', /REFERENTE/.test(L.SISTEMA_REDACCION) && ['GANCHO', 'EVIDENCIA', 'PROPUESTA', 'CIERRE'].every((x) => L.SISTEMA_REDACCION.indexOf(x) !== -1) && /NO es fija/.test(L.SISTEMA_REDACCION));
+  check('y deja la lectura táctica como lectura, sin hechos inventados', /no como un hecho medido/.test(L.SISTEMA_REDACCION) && /no inventes hechos sobre equipos, jugadores, planteles, canchas/.test(L.SISTEMA_REDACCION));
 
   fsx.rmSync(DATOS_TMP, { recursive: true, force: true });
   console.log(NL + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');

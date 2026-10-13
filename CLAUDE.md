@@ -118,7 +118,7 @@ node test-interzonal.js    # 220 tests · la llave entre zonas: un cliente de un
 node test-contenido.js     # 142 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
                            #             derivado, las diez recetas de Nivel 2 y que los nombres solo salgan en APdeB (103, 104)
 
-node test-centro-mando.js  # 232 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
+node test-centro-mando.js  # 264 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
                            #             (pide «npm install» en centro-mando/ una vez: los agentes usan el SDK de Claude, punto 107)
                            #             el play-by-play que no se presta, el aprendizaje y el servidor en 127.0.0.1 (105)
 
@@ -132,7 +132,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7457 tests en total. Todos tienen que dar verde antes de commitear.**
+**7489 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -13300,3 +13300,78 @@ motivo por el que el comando tiene prohibido editar `bandeja.json` a mano.
 Corre en una sesión de Claude Code (terminal o app), que es donde vive el
 conector de Canva: la página sigue sin poder importar. No está probado de
 punta a punta: la importación real pide la confirmación del usuario.
+
+## 109. LA NARRATIVA DE REFERENTE · placas dinámicas, copy y prompt alternativo (2026-10-12)
+
+Pedido del club: que los agentes escriban como **referente y analista
+táctico de autoridad**, con la estructura y la línea gráfica del carrusel
+«PROBLEMA REAL» de la cuenta en Canva (*¿A qué velocidad se juega en La
+Plata?*, diseño `DAHWBVml8X8`), que se leyó con el conector.
+
+### Los cuatro momentos, y la cantidad de placas LIBRE
+
+```
+gancho      1     la tensión, la paradoja o el punto de quiebre
+evidencia   1+    el problema y los números del libro, un concepto por placa
+propuesta   1+    qué significa en cancha · es LECTURA, no un hecho medido
+cierre      1     conclusión + pregunta que invita a comentar
+```
+
+Entre 4 y 10 (`MIN_PLACAS`, `MAX_PLACAS`), en ese orden:
+`M.estructuraDePlacas`. El modelo decide cuántas según el tema; en las
+pruebas reales dio 7 y 8 para CR-01.
+
+- **Carrusel** → `placas` (`{rol, titulo, texto, destacado}`), `guion` vacío.
+  **Reel** → `guion` con sus marcas de tiempo, `placas` vacío. **Stories** →
+  ninguno: sus placas son los rankings diseñados.
+- **Sin IA también hay placas**: `M.placasDe(p)` reparte el guion del
+  generador en los cuatro momentos, sin agregar una palabra.
+
+### Las guardas sobre lo nuevo (`LLM.filtrar`)
+
+- El **texto, el título y el destacado** de cada placa y el **copy** pasan
+  la guarda numérica. Una placa del medio con un número ajeno se SACA; si
+  falla el gancho o el cierre, o lo que queda ya no tiene la estructura,
+  se descartan todas y la pieza vuelve a su guion. Un copy con un número
+  ajeno se descarta entero y queda el de plantilla.
+- El anonimato se verifica también sobre placas y copy.
+- `*así*` resalta en naranja SOLO en el título de una placa; en cualquier
+  otro campo los asteriscos se sacan (el modelo los ponía en el copy).
+- **La lectura táctica es opinión del analista**: el prompt la pide como
+  lectura («esto te pide…») y prohíbe hechos sobre equipos, jugadores,
+  planteles o canchas que la pieza no trae. El carrusel de referencia sí
+  los tiene («bases con experiencia», «dimensiones de las canchas»):
+  eso lo sabe quien lo escribió, no el libro, y ninguna guarda puede
+  verificarlo. **Leer la propuesta antes de aprobar.**
+
+### El copy y el prompt alternativo
+
+- **Copy sugerido**: el de la IA (`p.copy`) o, sin IA, `M.copyPlantilla`
+  (gancho, dato, pregunta, llamado a comentar y hashtags, todo de la pieza).
+- **Prompt alternativo** (`M.promptDeCopy`): lo arma EL CÓDIGO, no un
+  modelo. Lleva la pieza, las placas, los números de respaldo y la regla
+  de no inventar números escrita adentro. Está siempre, con o sin IA.
+- Los dos salen en la tarjeta con su botón de copiar (`POST /api/copy`), y
+  al aprobar van al `.md` y al `.json` de la pieza.
+- El llamado a la acción es fijo: «Comentá «CONTEXTO»…» (`CTA_COMENTARIO`),
+  el mismo del carrusel de referencia. Lo pone el diseño en la placa de
+  cierre; al modelo se le dice que no lo escriba ahí.
+
+### La línea gráfica de `placasHtml`
+
+Azul noche `#0a1930` con el isotipo de marca de agua, esquinas celestes,
+«MOTORSTATS AR» arriba, píldora naranja `#f5a623` en el gancho, barra
+celeste `#74acdf` con texto oscuro por sección, tarjetas, flecha de
+«seguí» y el pie «Link en Bio | @motorstats.ar» con el logo. Barlow
+Condensed 800 en títulos, Barlow en el cuerpo. El cuerpo baja de tamaño
+según el largo del texto (`cuerpoDe`). No reproduce los gráficos del
+original (semáforos, flechas): eso sigue siendo trabajo de Canva.
+
+### Medido
+
+Redactar con placas y copy tarda **~43 s** por Claude Code (antes ~20 s:
+escribe bastante más). En las pruebas reales los números salieron bien y
+la guarda no descartó nada, pero el modelo volvió a llamar «puestos» a
+una diferencia de rating: la clave de CR-01 pasó a llamarse
+`diferenciaMaximaDeOrtgEntreLasDosVaras` para que diga qué mide. **Un
+nombre de dato ambiguo en una receta es una invitación a ese error.**

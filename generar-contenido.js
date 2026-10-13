@@ -581,7 +581,7 @@ function cr01(idx) {
     muestra: { equipos: eq.length },
     datos: {
       cambian, equipos: eq.length, porcentaje: pct(cambian, eq.length),
-      diferenciaMaxima: redondear(Math.max.apply(null, eq.map((x) => x.porPosesion - x.porJugada)), 1),
+      diferenciaMaximaDeOrtgEntreLasDosVaras: redondear(Math.max.apply(null, eq.map((x) => x.porPosesion - x.porJugada)), 1),
       top3: orden.slice(0, 3).map(fila), bottom3: orden.slice(-3).map(fila), elQueMasSube: fila(sube),
     },
     guion: ['Portada: el dato', 'Jugada no es posesión: cada rebote ofensivo suma una jugada y no una posesión',
