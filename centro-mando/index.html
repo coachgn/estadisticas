@@ -43,6 +43,9 @@
   th { color: var(--tenue); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
   .scroll { overflow-x: auto; }
   .tenue { color: var(--tenue); }
+  .visor { margin: 12px 0 4px; border: 1px solid var(--borde); border-radius: 8px; background: #06101f; overflow: hidden; }
+  .visor iframe { display: block; width: 100%; border: 0; background: #06101f; }
+  .visor p { margin: 0; padding: 6px 10px; font-size: 12px; color: var(--tenue); border-top: 1px solid var(--borde); }
   @media (prefers-reduced-motion: no-preference) { .girando::after { content: ' …'; } }
 </style>
 </head>
@@ -73,7 +76,7 @@
       <textarea id="contexto" maxlength="600" placeholder="Ej.: esta semana se habló de la defensa del pick &amp; roll en la final de…"></textarea>
     </label>
     <div class="acciones">
-      <button class="pri" id="generar">Generar propuestas</button>
+      <button id="generar">Volver a generar</button>
       <span id="estado" role="status" aria-live="polite" class="tenue"></span>
     </div>
     <div id="nota"></div>
@@ -81,13 +84,14 @@
 
   <section aria-labelledby="t-prop">
     <h2 id="t-prop" style="margin-left:4px">2 · Propuestas</h2>
-    <div id="propuestas"><div class="card tenue">Elegí liga, formato y eje, y tocá «Generar propuestas».</div></div>
+    <div id="propuestas"><div class="card tenue">Elegí la liga y la zona: las propuestas se arman solas.</div></div>
   </section>
 
   <section class="card" aria-labelledby="t-apr">
     <h2 id="t-apr">3 · Aprendizaje</h2>
-    <p class="tenue" style="margin-top:0">Cargá a mano lo que muestra Instagram de cada publicación. Con tres o más publicaciones medidas de un formato, una pieza o un estilo de gancho, las propuestas se reordenan solas. Se guarda en <code>contenido/aprendizaje.json</code>, en esta máquina.</p>
+    <p class="tenue" style="margin-top:0">Cada pieza que aprobás queda anotada sola en el historial. Lo que Instagram muestra de ella (alcance, guardados, compartidos) lo cargás vos cuando lo tengas: esta página no lee Instagram. Con tres o más publicaciones medidas de un formato, una pieza o un estilo de gancho, las propuestas se reordenan solas. Se guarda en <code>contenido/aprendizaje.json</code>, en esta máquina.</p>
     <form id="formApr" class="grilla">
+      <input type="hidden" id="a-id">
       <label>Pieza <input id="a-pieza" required placeholder="CR-01"></label>
       <label>Formato <select id="a-formato"></select></label>
       <label>Estilo de gancho <select id="a-estilo"></select></label>
@@ -100,6 +104,7 @@
       <label style="grid-column:1/-1">Gancho publicado <input id="a-gancho" maxlength="300"></label>
       <div class="acciones" style="grid-column:1/-1;margin-top:0"><button class="pri">Guardar rendimiento</button><span id="a-estado" role="status" aria-live="polite" class="tenue"></span></div>
     </form>
+    <div id="historial" class="scroll" style="margin-top:14px"></div>
     <div id="pesos" class="scroll" style="margin-top:14px"></div>
   </section>
 </main>
@@ -129,7 +134,7 @@ function pintarZonas() {
 function pintarFormatos() {
   const l = ligaSel(), z = zonaSel(), previo = $('formato').value;
   const lista = OPC.formatos.map((f) => {
-    const no = (f.soloConNombres && !l.nombres) ? ' — solo APdeB' : (f.pidePbp && !z.pbp) ? ' — sin datos de PBP para esta liga' : '';
+    const no = f.id === 'auto' ? '' : (f.soloConNombres && !l.nombres) ? ' — solo APdeB' : (f.pidePbp && !z.pbp) ? ' — sin datos de PBP para esta liga' : '';
     return { id: f.id, label: f.label + no, no: !!no };
   });
   const valido = lista.find((f) => f.id === previo && !f.no) || lista.find((f) => !f.no);
@@ -142,13 +147,21 @@ function pintarEjes() {
   if (f.nivel === 2) ejes = OPC.piezas.filter((p) => p.formato === f.id).map((p) => ({ id: p.eje, label: OPC.ejes[p.eje] + ' · ' + p.id }));
   else if (f.id === 'feed') ejes = ['generacion', 'tiro', 'falta', 'rebote'].map((e) => ({ id: e, label: OPC.ejes[e] }));
   $('eje').innerHTML = opciones([{ id: '', label: f.id === 'stories' ? 'Las cinco categorías' : 'Todos' }].concat(ejes), '');
-  $('eje').disabled = f.id === 'stories';
-  $('ventana').hidden = f.nivel !== 1;
-  /* Los nombres: solo APdeB. Nivel 1 arranca con nombres, Nivel 2 anónimo. */
-  $('conNombres').disabled = !l.nombres;
+  $('eje').disabled = f.id === 'stories' || f.id === 'auto';
+  $('ventana').hidden = f.nivel === 2;
+  /* Los nombres: solo APdeB. Nivel 1 arranca con nombres, Nivel 2 anónimo.
+     En «destacadas» cada nivel va con su regla y la casilla no decide. */
+  $('conNombres').disabled = !l.nombres || f.id === 'auto';
   $('conNombres').checked = l.nombres && f.nivel === 1;
-  $('nota').innerHTML = l.nombres ? '' : '<div class="aviso">' + esc(l.torneo) + ' sale siempre anónima: «Jugador 1», «Equipo A».</div>';
+  $('nota').innerHTML = !l.nombres ? '<div class="aviso">' + esc(l.torneo) + ' sale siempre anónima: «Jugador 1», «Equipo A».</div>'
+    : f.id === 'auto' ? '<div class="aviso">En «destacadas», las Stories y el feed salen con nombres y las piezas de Nivel 2 anónimas.</div>' : '';
+  programar();
 }
+
+/* Elegir liga, zona, formato o eje ya dispara la generación: no hace falta
+   tocar el botón. Se espera un momento por si vienen dos cambios seguidos. */
+let reloj = null, turno = 0;
+function programar() { clearTimeout(reloj); reloj = setTimeout(generar, 350); }
 
 function tarjeta(p, i) {
   if (!p.ok) {
@@ -163,19 +176,42 @@ function tarjeta(p, i) {
     (p.muestra ? '<p class="tenue">Muestra: ' + esc(Object.keys(p.muestra).filter((k) => p.muestra[k] != null).map((k) => k + ' ' + p.muestra[k]).join(' · ')) + '</p>' : '') +
     p.avisos.map((a) => '<div class="aviso">' + esc(a) + '</div>').join('') +
     '<fieldset style="border:0;padding:0;margin:10px 0"><legend class="tenue" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px">Gancho</legend>' + ganchos + '</fieldset>' +
+    '<div class="visor" id="v' + i + '"><iframe title="Placas de ' + esc(p.id) + '" sandbox></iframe><p>Cargando las placas…</p></div>' +
     '<details><summary>Guion (' + p.guion.length + ')</summary><ol>' + p.guion.map((g) => '<li>' + esc(g) + '</li>').join('') + '</ol></details>' +
     '<details><summary>Los números, tal como salen del generador</summary><pre>' + esc(JSON.stringify(p.datos, null, 2)) + '</pre></details>' +
-    '<div class="acciones"><button data-exportar="' + i + '">Exportar JSON · guion · placas HTML</button><button data-medir="' + i + '">Cargar su rendimiento</button><span class="tenue" role="status" aria-live="polite" id="e' + i + '"></span></div></article>';
+    '<div class="acciones"><button class="pri" data-aprobar="' + i + '">Aprobar · exportar · encolar para Canva</button><span class="tenue" role="status" aria-live="polite" id="e' + i + '"></span></div></article>';
+}
+
+/* EL VISOR · las placas tal como se exportan, a escala, adentro de la
+   propuesta. Es el MISMO HTML que escribe «Aprobar»: el servidor lo arma
+   una sola vez para los dos. */
+const ESCALA = 0.26;
+async function pintarVisor(i) {
+  const caja = $('v' + i); if (!caja) return;
+  const p = ULTIMO.propuestas[i], mio = ULTIMO;
+  try {
+    const r = await api('/api/placas', { propuesta: p, gancho: ganchoElegido(i), contexto: $('contexto').value });
+    if (mio !== ULTIMO || !$('v' + i)) return;
+    const alto = (p.formato === 'reel' || p.formato === 'stories') ? 1920 : 1350;
+    const fila = '<style>html{overflow-y:hidden}body{display:flex!important;flex-wrap:nowrap!important;gap:28px;width:max-content;padding:28px;zoom:' + ESCALA + '}.p,section{flex:none}</style>';
+    const f = caja.querySelector('iframe');
+    f.style.height = Math.round((alto + 56) * ESCALA + 18) + 'px';
+    f.srcdoc = r.html.replace('</head>', fila + '</head>');
+    caja.querySelector('p').textContent = (r.html.split('data-document-role="page"').length - 1) + ' placas · ' +
+      (r.plantilla === 'stories' ? 'plantilla diseñada de Stories' : 'plantilla genérica: portada con el gancho y una placa por línea del guion') + ' · deslizá hacia el costado';
+  } catch (e) { caja.querySelector('p').textContent = 'No se pudieron armar las placas: ' + e.message; }
 }
 
 async function generar() {
-  const b = $('generar');
+  const b = $('generar'), yo = ++turno;
+  clearTimeout(reloj);
   b.disabled = true; $('estado').textContent = 'Leyendo el libro y armando las piezas…';
   try {
     const r = await api('/api/generar', {
       liga: $('liga').value, zona: $('zona').value, formato: $('formato').value, eje: $('eje').value || null,
       desde: $('desde').value, hasta: $('hasta').value, fechaN: $('fechaN').value, conNombres: $('conNombres').checked, refrescar: $('refrescar').checked,
     });
+    if (yo !== turno) return;
     ULTIMO = r;
     const cab = '<div class="card tenue">' + esc(r.meta.torneo) + (r.meta.zona ? ' · ' + esc(r.meta.zona) : '') + (r.meta.tramo ? ' · tramo ' + esc(r.meta.tramo) : '') +
       (r.meta.leido ? ' · libro leído ' + new Date(r.meta.leido).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '') +
@@ -183,32 +219,52 @@ async function generar() {
       (r.avisos || []).map((a) => '<div class="aviso">' + esc(a) + '</div>').join('') + '</div>';
     $('propuestas').innerHTML = cab + (r.propuestas.length ? r.propuestas.map(tarjeta).join('') : '');
     $('estado').textContent = r.propuestas.filter((p) => p.ok).length + ' propuesta(s) con datos.';
+    r.propuestas.forEach((p, i) => { if (p.ok) pintarVisor(i); });
+    $('refrescar').checked = false;
   } catch (e) {
+    if (yo !== turno) return;
     $('propuestas').innerHTML = '<div class="card"><div class="aviso error">' + esc(e.message) + '</div></div>';
     $('estado').textContent = '';
   }
-  b.disabled = false;
+  if (yo === turno) b.disabled = false;
 }
 
 const ganchoElegido = (i) => { const r = document.querySelector('input[name="g' + i + '"]:checked'); return ULTIMO.propuestas[i].ganchos[r ? Number(r.value) : 0]; };
 
 document.addEventListener('click', async (ev) => {
   const t = ev.target;
-  if (t.dataset.exportar != null) {
-    const i = Number(t.dataset.exportar), p = ULTIMO.propuestas[i], g = ganchoElegido(i);
+  if (t.dataset.aprobar != null) {
+    const i = Number(t.dataset.aprobar), p = ULTIMO.propuestas[i];
+    t.disabled = true;
     try {
-      const r = await api('/api/exportar', { propuesta: p, gancho: g && g.texto, contexto: $('contexto').value, liga: ULTIMO.meta.liga + '-' + ULTIMO.meta.zonaId, meta: ULTIMO.meta });
-      $('e' + i).textContent = 'Escrito: ' + r.archivos.join(' · ');
-    } catch (e) { $('e' + i).textContent = 'No se pudo exportar: ' + e.message; }
+      const r = await api('/api/aprobar', { propuesta: p, gancho: ganchoElegido(i), contexto: $('contexto').value, liga: ULTIMO.meta.liga + '-' + ULTIMO.meta.zonaId, meta: ULTIMO.meta });
+      $('e' + i).textContent = 'Aprobada. Archivos en contenido/centro-mando/ · anotada en el historial · ' + r.enCola + ' en la cola de Canva.';
+      pintarAprendizaje(await api('/api/aprendizaje'));
+    } catch (e) { $('e' + i).textContent = 'No se pudo aprobar: ' + e.message; }
+    t.disabled = false;
   }
   if (t.dataset.medir != null) {
-    const i = Number(t.dataset.medir), p = ULTIMO.propuestas[i], g = ganchoElegido(i);
-    $('a-pieza').value = p.id; $('a-formato').value = p.formato; $('a-estilo').value = g ? g.estilo : ''; $('a-gancho').value = g ? g.texto : '';
+    const r = HISTORIAL.find((x) => x.id === t.dataset.medir); if (!r) return;
+    $('a-id').value = r.id; $('a-pieza').value = r.pieza; $('a-formato').value = r.formato; $('a-estilo').value = r.estilo || ''; $('a-gancho').value = r.gancho || '';
+    $('a-estado').textContent = 'Cargando las métricas de ' + r.pieza + ' (' + r.fecha + ').';
     $('a-alcance').focus();
   }
 });
+/* Tiempo real: cambiar el gancho o el contexto repinta las placas. */
+document.addEventListener('change', (ev) => { const n = ev.target.name || ''; if (ev.target.type === 'radio' && n.charAt(0) === 'g') pintarVisor(Number(n.slice(1))); });
+let relojCtx = null;
+$('contexto').addEventListener('input', () => { clearTimeout(relojCtx); relojCtx = setTimeout(() => { if (ULTIMO) ULTIMO.propuestas.forEach((p, i) => { if (p.ok) pintarVisor(i); }); }, 500); });
+let HISTORIAL = [];
 
+function pintarHistorial(a) {
+  HISTORIAL = a.registros || [];
+  const filas = HISTORIAL.slice().reverse().slice(0, 30).map((r) => '<tr><td>' + esc(r.fecha || '') + '</td><td>' + esc(r.pieza) + '</td><td>' + esc(r.liga || '') + '</td><td>' + esc(r.gancho || '') + '</td><td>' +
+    (r.alcance ? 'medida · alcance ' + esc(r.alcance) : 'aprobada · <span class="tenue">sin métricas</span>') + '</td><td>' + (r.id && !r.alcance ? '<button data-medir="' + esc(r.id) + '">Cargar métricas</button>' : '') + '</td></tr>').join('');
+  $('historial').innerHTML = (a.cola && a.cola.length ? '<div class="aviso">' + a.cola.length + ' pieza(s) en la cola de Canva (<code>contenido/centro-mando/cola-canva.json</code>). La importación no sale de esta página: pedila en una sesión de Claude con el conector de Canva.</div>' : '') +
+    (filas ? '<table><thead><tr><th>Fecha</th><th>Pieza</th><th>Liga</th><th>Gancho</th><th>Estado</th><th></th></tr></thead><tbody>' + filas + '</tbody></table>' : '<p class="tenue">Todavía no se aprobó ninguna pieza.</p>');
+}
 function pintarAprendizaje(a) {
+  pintarHistorial(a);
   const w = a.ponderaciones;
   if (!w.publicaciones) { $('pesos').innerHTML = '<p class="tenue">Todavía no hay publicaciones medidas: las propuestas salen en el orden del generador.</p>'; return; }
   const filas = (titulo, g, nombre) => Object.keys(g).map((k) => '<tr><td>' + titulo + '</td><td>' + esc(nombre ? nombre(k) : k) + '</td><td>' + g[k].n + '</td><td>' + num(g[k].puntaje) +
@@ -222,10 +278,10 @@ $('formApr').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const v = (k) => $('a-' + k).value;
   try {
-    const a = await api('/api/aprendizaje', { pieza: v('pieza'), formato: v('formato'), estilo: v('estilo'), gancho: v('gancho'), alcance: v('alcance'), guardados: v('guardados'),
+    const a = await api('/api/aprendizaje', { id: v('id') || undefined, pieza: v('pieza'), formato: v('formato'), estilo: v('estilo'), gancho: v('gancho'), alcance: v('alcance'), guardados: v('guardados'),
       compartidos: v('compartidos'), comentarios: v('comentarios'), likes: v('likes'), fecha: v('fecha'), liga: $('liga').value + '-' + $('zona').value });
     pintarAprendizaje(a); $('a-estado').textContent = 'Guardado.';
-    ['alcance', 'gancho'].forEach((k) => { $('a-' + k).value = ''; }); ['guardados', 'compartidos', 'comentarios', 'likes'].forEach((k) => { $('a-' + k).value = 0; });
+    ['alcance', 'gancho', 'id'].forEach((k) => { $('a-' + k).value = ''; }); ['guardados', 'compartidos', 'comentarios', 'likes'].forEach((k) => { $('a-' + k).value = 0; });
   } catch (e) { $('a-estado').textContent = e.message; }
 });
 
@@ -237,12 +293,13 @@ $('formApr').addEventListener('submit', async (ev) => {
     $('generar').disabled = true; return;
   }
   $('liga').innerHTML = opciones(OPC.ligas.map((l) => ({ id: l.id, label: l.torneo })), 'apb');
-  $('a-formato').innerHTML = opciones(OPC.formatos);
+  $('a-formato').innerHTML = opciones(OPC.formatos.filter((f) => f.id !== 'auto'));
   $('a-estilo').innerHTML = opciones([{ id: '', label: 'Sin clasificar' }].concat(Object.keys(OPC.estilos).map((k) => ({ id: k, label: OPC.estilos[k] }))));
   pintarZonas();
   $('liga').addEventListener('change', pintarZonas);
   $('zona').addEventListener('change', pintarFormatos);
   $('formato').addEventListener('change', pintarEjes);
+  $('eje').addEventListener('change', programar);
   $('generar').addEventListener('click', generar);
   pintarAprendizaje(await api('/api/aprendizaje'));
 })();

@@ -26,7 +26,8 @@
       "runtimeArgs": [
         "centro-mando/servidor.js"
       ],
-      "port": 8770
+      "port": 8770,
+      "autoPort": true
     }
   ]
 }

@@ -47,6 +47,10 @@ const FORMATOS = {
   reel: { label: 'Reel 9:16 · Nivel 2', nivel: 2, pidePbp: true },
 };
 
+/* «Destacadas de la fecha»: todo lo que esa zona puede dar, junto. No es
+   un formato de publicación, así que vive aparte de FORMATOS. */
+const AUTO = 'auto';
+
 const ESTILOS = { dato: 'El dato primero', titular: 'El titular', pregunta: 'La pregunta' };
 
 /** Lo que la página necesita para armar sus selectores. */
@@ -56,7 +60,7 @@ function opciones(LIGAS) {
       id, torneo: LIGAS[id].torneo, nombres: !!LIGAS[id].nombres,
       zonas: Object.keys(LIGAS[id].zonas).map((z) => ({ id: z, label: LIGAS[id].zonas[z].label || 'Única', pbp: !!LIGAS[id].zonas[z].pbp })),
     })),
-    formatos: Object.keys(FORMATOS).map((id) => Object.assign({ id }, FORMATOS[id])),
+    formatos: [{ id: AUTO, label: 'Destacadas de la fecha (todo lo disponible)', nivel: 0 }].concat(Object.keys(FORMATOS).map((id) => Object.assign({ id }, FORMATOS[id]))),
     ejes: EJES,
     piezas: Object.keys(PIEZAS).map((id) => Object.assign({ id }, PIEZAS[id])),
     estilos: ESTILOS,
@@ -132,7 +136,7 @@ function deStories(st, avisos) {
     id: 'STORIES', ok: true, formato: 'stories', eje: null, formatoLabel: st.formato, titulo,
     dato: r.length + ' rankings sobre ' + (m.partidos || 0) + ' partidos, del ' + m.desde + ' al ' + m.hasta + '.',
     guion: (st.placas || []).map((x) => x.titulo || x.texto || x.tipo), muestra: { partidos: m.partidos, desde: m.desde, hasta: m.hasta },
-    datos: { placas: st.placas || [] }, avisos: avisos || [],
+    datos: { placas: st.placas || [], meta: m, formato: st.formato, anonimo: !!st.anonimo }, avisos: avisos || [],
     ganchos: [{ estilo: 'titular', texto: titulo }],
   };
 }
@@ -145,6 +149,40 @@ const MIN_MUESTRA = 3;
 const PISO = 0.5, TECHO = 2;
 
 const entero = (v) => { const n = Number(v); return isFinite(n) && n >= 0 ? Math.round(n) : null; };
+
+/**
+ * Lo que queda en el historial cuando una pieza se APRUEBA (se exporta):
+ * qué se publicó y con qué gancho, SIN métricas. El alcance y las
+ * interacciones no existen todavía y no se inventan: se completan después
+ * con `medir`, y hasta entonces el registro no entra a las ponderaciones.
+ */
+/* El día de quien aprueba, NO el de UTC: a las 21 h de Argentina
+   `toISOString()` ya dice mañana, y la pieza quedaría fechada un día después. */
+function diaLocal(t) {
+  const d = t || new Date(), dos = (n) => (n < 10 ? '0' : '') + n;
+  return d.getFullYear() + '-' + dos(d.getMonth() + 1) + '-' + dos(d.getDate());
+}
+
+function registroDeAprobacion(p, gancho, liga, ahora) {
+  const t = ahora || new Date();
+  return {
+    id: t.getTime().toString(36) + '-' + String(p.id).toLowerCase(), estado: 'aprobada', aprobada: t.toISOString(), fecha: diaLocal(t),
+    pieza: String(p.id).toUpperCase(), formato: p.formato, estilo: (gancho && gancho.estilo) || null,
+    gancho: String((gancho && gancho.texto) || p.titulo || '').slice(0, 300), liga: String(liga || '').slice(0, 40), titulo: String(p.titulo || '').slice(0, 200),
+  };
+}
+
+/** Le carga las métricas a un registro del historial. Devuelve la lista NUEVA. */
+function medir(registros, id, metricas) {
+  const i = (registros || []).findIndex((r) => r.id === id);
+  if (i === -1) return { ok: false, error: 'Esa pieza no está en el historial.' };
+  const previo = registros[i];
+  const v = normalizarRegistro(Object.assign({}, previo, metricas, { pieza: previo.pieza, formato: previo.formato, estilo: previo.estilo, gancho: previo.gancho, liga: previo.liga }));
+  if (!v.ok) return v;
+  const lista = registros.slice();
+  lista[i] = Object.assign({}, previo, v.registro, { estado: 'medida', fecha: previo.fecha || v.registro.fecha });
+  return { ok: true, registros: lista };
+}
 
 /** Valida lo que se carga a mano de Instagram. Devuelve {ok, registro|error}. */
 function normalizarRegistro(b) {
@@ -218,10 +256,15 @@ function propuestas(salida, filtros, pond) {
   const s = salida || {}, f = filtros || {};
   let lista = [];
   if (s.nivel2) lista = lista.concat(s.nivel2.piezas.map(deReceta));
-  if (s.nivel1 && f.formato === 'stories') lista.push(deStories(s.nivel1.stories, s.nivel1.avisos));
-  if (s.nivel1 && f.formato === 'feed') {
+  const auto = f.formato === AUTO;
+  if (s.nivel1 && (f.formato === 'stories' || (auto && f.stories))) lista.push(deStories(s.nivel1.stories, s.nivel1.avisos));
+  if (s.nivel1 && (f.formato === 'feed' || auto)) {
     const fd = s.nivel1.feed;
-    lista = lista.concat([fd.posteo].concat(fd.alternativas || []).filter(Boolean).map((x) => deFeed(x, x === fd.posteo)));
+    let feeds = [fd.posteo].concat(fd.alternativas || []).filter(Boolean);
+    /* En «destacadas» solo entra el feed que encontró una anomalía: con
+       contraste 0, ningún líder de volumen queda bajo la mediana. */
+    if (auto) feeds = feeds.filter((x) => x.contraste > 0).sort((a, b) => b.contraste - a.contraste);
+    lista = lista.concat(feeds.map((x) => deFeed(x, x === fd.posteo)));
   }
   if (f.eje) lista = lista.filter((p) => !p.eje || p.eje === f.eje);
   return ordenar(lista, pond);
@@ -271,7 +314,7 @@ function resumenMd(p, gancho, contexto) {
 }
 
 module.exports = {
-  PIEZAS, EJES, FORMATOS, ESTILOS, PESOS_INTERACCION, MIN_MUESTRA, PISO, TECHO,
+  PIEZAS, EJES, FORMATOS, AUTO, ESTILOS, registroDeAprobacion, medir, diaLocal, PESOS_INTERACCION, MIN_MUESTRA, PISO, TECHO,
   opciones, piezasPara, motivoSinFormato, ganchos, deReceta, deFeed, deStories,
   normalizarRegistro, puntaje, ponderaciones, ordenar, propuestas, placasHtml, resumenMd,
 };

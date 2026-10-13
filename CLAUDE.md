@@ -118,7 +118,7 @@ node test-interzonal.js    # 220 tests · la llave entre zonas: un cliente de un
 node test-contenido.js     # 142 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
                            #             derivado, las diez recetas de Nivel 2 y que los nombres solo salgan en APdeB (103, 104)
 
-node test-centro-mando.js  #  63 tests · el Centro de Mando Editorial local: propuestas, ganchos sin números propios,
+node test-centro-mando.js  #  89 tests · el Centro de Mando Editorial local: propuestas, ganchos sin números propios,
                            #             el play-by-play que no se presta, el aprendizaje y el servidor en 127.0.0.1 (105)
 
 node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, el catálogo en KV
@@ -131,7 +131,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7288 tests en total. Todos tienen que dar verde antes de commitear.**
+**7314 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -13015,11 +13015,36 @@ centro-mando/index.html    la página, sin dependencias
   alcance. El peso de un formato, una pieza o un estilo de gancho es su
   puntaje sobre la media, acotado a [0,5 ; 2], y **con menos de 3
   publicaciones medidas vale 1**. Reordena, no filtra.
-- **Exportar** escribe en `contenido/centro-mando/` el JSON, el guion en
-  Markdown y un HTML de placas GENÉRICO (portada con el gancho + una placa
-  por línea del guion, `data-document-role="page"`, logo por URL pública).
-  Las placas diseñadas de `contenido/placas/` siguen siendo a mano, y la
-  importación a Canva se hace desde una sesión de Claude: la página no
-  tiene conector.
+- **«Destacadas de la fecha»** (`M.AUTO`, el formato por defecto): todo lo
+  que la zona puede dar, junto. Las diez piezas de Nivel 2, las Stories si
+  la liga va con nombres, y del feed SOLO los posteos con `contraste > 0`
+  (con 0 no hay anomalía que contar), del mayor al menor. Elegir liga,
+  zona, formato o eje **genera solo**, con 350 ms de espera y una guarda
+  de turno para que una respuesta vieja no pise a la nueva.
+- **El visor**: cada propuesta trae sus placas a escala en un `<iframe
+  sandbox srcdoc>`, y cambiar el gancho o el contexto las repinta.
+  `POST /api/placas` devuelve el MISMO HTML que escribe «Aprobar»
+  (`placas()` en el servidor es el único que lo arma; hay test). Las
+  Stories con nombres usan la plantilla diseñada de
+  `contenido/placas/generar-stories.js` (exporta `html`; fuera del repo:
+  si no está, cae a la genérica). El resto usa la GENÉRICA: portada con el
+  gancho y una placa por línea del guion. `generar-placas.js` NO se
+  invoca: sus tres piezas tienen el texto escrito a mano y mostrarían
+  números viejos.
+- **«Aprobar»** escribe en `contenido/centro-mando/` el JSON, el guion y
+  el HTML; anota la pieza en `aprendizaje.json` como `aprobada` **sin
+  métricas** (no entra a las ponderaciones hasta que se le cargan con
+  «Cargar métricas» → `M.medir`); y la deja en `cola-canva.json`. Aprobar
+  la misma pieza el mismo día reemplaza, no duplica. La fecha es la del
+  día LOCAL (`diaLocal`): con `toISOString()` a las 21 h quedaba fechada
+  mañana.
+- **LA IMPORTACIÓN A CANVA NO SALE DE LA PÁGINA.** El servidor no tiene
+  credencial de Canva ni dónde publicar el HTML para que Canva lo lea. La
+  cola se procesa desde una sesión de Claude con el conector (publicar en
+  Pages, importar, borrar), con confirmación antes de publicar. Hacerlo de
+  un clic pide una integración propia con la API de Canva (OAuth) y un
+  lugar público para los HTML: no está hecho.
+- **Instagram tampoco se lee**: alcance, guardados y compartidos se cargan
+  a mano.
 - El libro se guarda 10 minutos por zona en la memoria del proceso;
   «Volver a leer el libro» lo fuerza.

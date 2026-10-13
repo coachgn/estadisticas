@@ -11,8 +11,13 @@
 
    No calcula nada: le pide los números a `generar-contenido.js` —por el
    mismo camino que verifica el anonimato— y las propuestas a `motor.js`.
-   Lo que se exporta y el aprendizaje van a `contenido/`, que está en
-   .gitignore.
+   Lo que se exporta, la cola de Canva y el aprendizaje van a
+   `contenido/`, que está en .gitignore.
+
+   LO QUE ESTE SERVIDOR NO HACE: hablar con Canva. No tiene credencial de
+   Canva ni dónde publicar el HTML para que Canva lo lea; deja cada pieza
+   aprobada en una COLA (`cola-canva.json`) que se importa desde una
+   sesión con el conector.
    ===================================================================== */
 'use strict';
 
@@ -24,8 +29,9 @@ const M = require('./motor.js');
 
 const RAIZ = path.join(__dirname, '..');
 const SALIDA = path.join(RAIZ, 'contenido', 'centro-mando');
+const COLA = path.join(RAIZ, 'contenido', 'centro-mando', 'cola-canva.json');
 const APRENDIZAJE = path.join(RAIZ, 'contenido', 'aprendizaje.json');
-const PUERTO = Number(process.env.CENTRO_MANDO_PUERTO) || 8770;
+const PUERTO = Number(process.env.CENTRO_MANDO_PUERTO) || Number(process.env.PORT) || 8770;
 const TTL_INDICE = 10 * 60 * 1000;
 
 /* El libro tarda segundos en bajar: se guarda diez minutos por zona. */
@@ -40,69 +46,124 @@ async function indiceDe(p, refrescar) {
   return nuevo;
 }
 
-function leerAprendizaje() {
-  try { const d = JSON.parse(fs.readFileSync(APRENDIZAJE, 'utf8')); return Array.isArray(d.registros) ? d.registros : []; }
-  catch (e) { if (e.code === 'ENOENT') return []; throw new Error('contenido/aprendizaje.json no se puede leer: ' + e.message); }
+function leerLista(archivo, clave) {
+  try { const d = JSON.parse(fs.readFileSync(archivo, 'utf8')); return Array.isArray(d[clave]) ? d[clave] : []; }
+  catch (e) { if (e.code === 'ENOENT') return []; throw new Error(path.basename(archivo) + ' no se puede leer: ' + e.message); }
+}
+function escribirLista(archivo, clave, lista) {
+  fs.mkdirSync(path.dirname(archivo), { recursive: true });
+  fs.writeFileSync(archivo, JSON.stringify({ [clave]: lista }, null, 2));
+}
+const leerAprendizaje = () => leerLista(APRENDIZAJE, 'registros');
+
+/* Las Stories tienen su plantilla diseñada en `contenido/placas/`, que
+   está fuera del repo: si no está en esta máquina, se cae a la genérica. */
+function plantillaStories() {
+  try { const g = require(path.join(RAIZ, 'contenido', 'placas', 'generar-stories.js')); return typeof g.html === 'function' ? g.html : null; }
+  catch (e) { return null; }
+}
+
+/** El HTML de las placas de una propuesta: el mismo para el visor y para exportar. */
+function placas(p, gancho, contexto) {
+  if (!p || !p.id || !p.ok) throw new Error('No hay una propuesta con datos.');
+  const texto = gancho && typeof gancho === 'object' ? gancho.texto : gancho;
+  const ctx = String(contexto || '').trim().slice(0, 600);
+  if (p.id === 'STORIES' && p.datos && p.datos.meta && !p.datos.anonimo) {
+    const html = plantillaStories();
+    if (html) return { html: html({ meta: p.datos.meta, placas: p.datos.placas, formato: p.datos.formato }), plantilla: 'stories' };
+  }
+  return { html: M.placasHtml(p, texto, ctx), plantilla: 'generica' };
 }
 
 /** Lo que el pedido de la página se traduce a argumentos del generador. */
 async function generar(b) {
   const x = b || {};
+  const auto = x.formato === M.AUTO;
   const f = M.FORMATOS[x.formato];
-  if (!f) throw new Error('Elegí un formato.');
+  if (!f && !auto) throw new Error('Elegí un formato.');
   const args = { liga: x.liga, zona: x.zona };
   /* El Nivel 1 de APdeB sale con nombres salvo que se pida anónimo; el
-     Nivel 2 al revés. Fuera de APdeB, `resolverPedido` rechaza los nombres. */
-  if (x.conNombres) args['con-nombres'] = true;
-  else if (f.nivel === 1) args.anonimo = true;
+     Nivel 2 al revés. En «destacadas» cada nivel va con su regla por
+     defecto. Fuera de APdeB, `resolverPedido` rechaza los nombres. */
+  if (!auto && x.conNombres) args['con-nombres'] = true;
+  else if (!auto && f.nivel === 1) args.anonimo = true;
   const p = GC.resolverPedido(args);
-  const motivo = M.motivoSinFormato(x.formato, p.liga, p.zona);
-  if (motivo) return { meta: { torneo: p.liga.torneo, zona: p.zona.label }, propuestas: [], avisos: [motivo] };
+  const meta0 = { torneo: p.liga.torneo, zona: p.zona.label, liga: p.ligaId, zonaId: p.zonaId };
+  const motivo = auto ? null : M.motivoSinFormato(x.formato, p.liga, p.zona);
+  if (motivo) return { meta: meta0, propuestas: [], avisos: [motivo] };
 
   const { idx, t } = await indiceDe(p, !!x.refrescar);
-  const salida = {};
-  if (f.nivel === 2) {
-    const piezas = M.piezasPara(x.formato, x.eje || null);
-    if (!piezas.length) return { meta: { torneo: p.liga.torneo, zona: p.zona.label }, propuestas: [], avisos: ['Ninguna pieza de ese formato mide ese eje.'] };
-    salida.nivel2 = GC.armarNivel2(Object.assign({ piezas: piezas.join(',') }, args), p, idx);
-  } else {
+  const salida = {}, avisos = [];
+  if (auto || f.nivel === 2) {
+    const piezas = auto ? Object.keys(M.PIEZAS) : M.piezasPara(x.formato, x.eje || null);
+    if (!piezas.length) return { meta: meta0, propuestas: [], avisos: ['Ninguna pieza de ese formato mide ese eje.'] };
+    const a2 = { liga: x.liga, zona: x.zona, piezas: piezas.join(',') };
+    if (!auto && x.conNombres) a2['con-nombres'] = true;
+    salida.nivel2 = GC.armarNivel2(a2, p, idx);
+  }
+  if (auto || f.nivel === 1) {
     ['desde', 'hasta'].forEach((k) => { if (/^\d{4}-\d{2}-\d{2}$/.test(String(x[k] || ''))) args[k] = x[k]; });
     if (Number(x.fechaN) > 0) args['fecha-n'] = String(Number(x.fechaN));
     const pq = GC.armarNivel1(args, p, idx);
-    if (!pq.ok) return { meta: { torneo: p.liga.torneo, zona: p.zona.label }, propuestas: [], avisos: pq.avisos };
-    salida.nivel1 = pq;
+    if (pq.ok) { salida.nivel1 = pq; if (x.formato !== 'stories') pq.avisos.forEach((a) => avisos.push(a)); }
+    else if (!auto) return { meta: meta0, propuestas: [], avisos: pq.avisos };
+    else avisos.push('Nivel 1: ' + pq.avisos.join(' '));
   }
   const pond = M.ponderaciones(leerAprendizaje());
-  const anonimo = f.nivel === 2 ? !(p.liga.nombres && x.conNombres) : !p.conNombres;
+  const anonimo = auto ? null : (f.nivel === 2 ? !(p.liga.nombres && x.conNombres) : !p.conNombres);
   return {
-    meta: { torneo: p.liga.torneo, zona: p.zona.label, liga: p.ligaId, zonaId: p.zonaId, tramo: idx.liga.torneo + '|' + idx.fase, anonimo, leido: new Date(t).toISOString() },
-    propuestas: M.propuestas(salida, { formato: x.formato, eje: x.eje || null }, pond),
-    avisos: (salida.nivel1 && x.formato !== 'stories' ? salida.nivel1.avisos : []) || [],
+    meta: Object.assign(meta0, { tramo: idx.liga.torneo + '|' + idx.fase, anonimo, leido: new Date(t).toISOString() }),
+    propuestas: M.propuestas(salida, { formato: x.formato, eje: auto ? null : (x.eje || null), stories: !!p.liga.nombres }, pond),
+    avisos,
   };
 }
 
-function exportar(b) {
+/**
+ * APROBAR una pieza: escribe sus tres archivos, la deja en la cola de
+ * Canva y la anota en el historial de aprendizaje, sin métricas.
+ */
+function aprobar(b) {
   const x = b || {}, p = x.propuesta;
-  if (!p || !p.id || !p.ok) throw new Error('No hay una propuesta con datos para exportar.');
-  const dia = new Date().toISOString().slice(0, 10);
-  const base = [dia, String(x.liga || 'liga').replace(/[^a-z0-9-]/gi, ''), String(p.id).replace(/[^A-Z0-9-]/gi, '')].join('_');
+  const pl = placas(p, x.gancho, x.contexto);
+  const ahora = new Date();
+  const liga = String(x.liga || 'liga').replace(/[^a-z0-9-]/gi, '');
+  const base = [M.diaLocal(ahora), liga, String(p.id).replace(/[^A-Z0-9-]/gi, '')].join('_');
   fs.mkdirSync(SALIDA, { recursive: true });
   const escribir = (ext, v) => { const f = path.join(SALIDA, base + ext); fs.writeFileSync(f, v); return path.relative(RAIZ, f).replace(/\\/g, '/'); };
   const contexto = String(x.contexto || '').trim().slice(0, 600);
-  return [
-    escribir('.json', JSON.stringify({ meta: x.meta || null, gancho: x.gancho || null, contexto: contexto || null, propuesta: p }, null, 2)),
-    escribir('.md', M.resumenMd(p, x.gancho, contexto)),
-    escribir('.html', M.placasHtml(p, x.gancho, contexto)),
+  const g = x.gancho && typeof x.gancho === 'object' ? x.gancho : { texto: x.gancho || null, estilo: null };
+  const archivos = [
+    escribir('.json', JSON.stringify({ meta: x.meta || null, gancho: g.texto, contexto: contexto || null, propuesta: p }, null, 2)),
+    escribir('.md', M.resumenMd(p, g.texto, contexto)),
+    escribir('.html', pl.html),
   ];
+  const reg = M.registroDeAprobacion(p, g, liga, ahora);
+  /* Volver a aprobar la misma pieza el mismo día PISA sus archivos, así
+     que también reemplaza su lugar en la cola y en el historial. */
+  const mismo = (r) => r.pieza === reg.pieza && r.liga === reg.liga && r.fecha === reg.fecha;
+  const registros = leerAprendizaje();
+  const previo = registros.find((r) => mismo(r) && r.estado === 'aprobada');
+  if (previo) Object.assign(previo, reg, { id: previo.id }); else registros.push(reg);
+  escribirLista(APRENDIZAJE, 'registros', registros);
+  const cola = leerLista(COLA, 'pendientes').filter((c) => !(c.pieza === reg.pieza && c.liga === liga && c.fecha === reg.fecha && c.estado === 'pendiente'));
+  cola.push({ id: (previo || reg).id, estado: 'pendiente', fecha: reg.fecha, pieza: reg.pieza, liga, titulo: p.id + ' · ' + p.titulo, html: archivos[2], plantilla: pl.plantilla, conNombres: p.id === 'STORIES' || !!(x.meta && x.meta.anonimo === false) });
+  escribirLista(COLA, 'pendientes', cola);
+  return { archivos, plantilla: pl.plantilla, registro: previo || reg, enCola: cola.filter((c) => c.estado === 'pendiente').length };
 }
 
 function registrar(b) {
-  const v = M.normalizarRegistro(b);
-  if (!v.ok) throw new Error(v.error);
-  const registros = leerAprendizaje();
-  registros.push(Object.assign({ cargado: new Date().toISOString() }, v.registro));
-  fs.mkdirSync(path.dirname(APRENDIZAJE), { recursive: true });
-  fs.writeFileSync(APRENDIZAJE, JSON.stringify({ registros }, null, 2));
+  const x = b || {};
+  let registros = leerAprendizaje();
+  if (x.id) {
+    const r = M.medir(registros, String(x.id), x);
+    if (!r.ok) throw new Error(r.error);
+    registros = r.registros;
+  } else {
+    const v = M.normalizarRegistro(x);
+    if (!v.ok) throw new Error(v.error);
+    registros.push(Object.assign({ id: Date.now().toString(36) + '-m', estado: 'medida', cargado: new Date().toISOString() }, v.registro));
+  }
+  escribirLista(APRENDIZAJE, 'registros', registros);
   return registros;
 }
 
@@ -116,8 +177,9 @@ function app() {
   a.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
   a.get('/api/opciones', ruta(() => M.opciones(GC.LIGAS)));
   a.post('/api/generar', ruta((req) => generar(req.body)));
-  a.post('/api/exportar', ruta((req) => ({ archivos: exportar(req.body) })));
-  const aprendizaje = () => { const r = leerAprendizaje(); return { registros: r, ponderaciones: M.ponderaciones(r) }; };
+  a.post('/api/placas', ruta((req) => placas(req.body.propuesta, req.body.gancho, req.body.contexto)));
+  a.post('/api/aprobar', ruta((req) => aprobar(req.body)));
+  const aprendizaje = () => { const r = leerAprendizaje(); return { registros: r, ponderaciones: M.ponderaciones(r), cola: leerLista(COLA, 'pendientes').filter((c) => c.estado === 'pendiente') }; };
   a.get('/api/aprendizaje', ruta(aprendizaje));
   a.post('/api/aprendizaje', ruta((req) => { registrar(req.body); return aprendizaje(); }));
   return a;
@@ -127,4 +189,4 @@ if (require.main === module) {
   app().listen(PUERTO, '127.0.0.1', () => console.log('Centro de Mando Editorial · http://127.0.0.1:' + PUERTO));
 }
 
-module.exports = { app, generar, exportar, registrar, PUERTO };
+module.exports = { app, generar, placas, aprobar, registrar, PUERTO };

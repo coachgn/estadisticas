@@ -189,5 +189,55 @@ titulo('El servidor local y el generador');
   check('y no trae un sheetId ni un mail', !/[A-Za-z0-9_-]{40,}/.test(html.replace(/https?:\/\/\S+/g, '')) && !/@gmail/.test(html));
 }
 
+/* -------------------------------------------------------------------- */
+titulo('Destacadas de la fecha, el visor y la aprobación');
+{
+  const pq = GC.paquete(idx, { torneo: 'TORNEO', zona: 'ZONA X' });
+  const n2 = GC.nivel2(idx, [], { nivel: 'LIGA_ARGENTINA' });
+  const auto = M.propuestas({ nivel1: pq, nivel2: n2 }, { formato: M.AUTO, stories: true });
+  const feeds = auto.filter((p) => p.formato === 'feed');
+  const conAnomalia = [pq.feed.posteo].concat(pq.feed.alternativas).filter((x) => x.contraste > 0).length;
+  check('«destacadas» junta Nivel 1 y Nivel 2', auto.some((p) => p.formato === 'carrusel') && auto.some((p) => p.id === 'STORIES'));
+  check('del feed entra SOLO el que encontró una anomalía', feeds.length === conAnomalia && feeds.length < 1 + pq.feed.alternativas.length, feeds.length + ' de ' + (1 + pq.feed.alternativas.length));
+  check('y van del mayor contraste al menor', feeds.every((p, i) => !i || feeds[i - 1].muestra.contraste >= p.muestra.contraste));
+  check('una liga sin nombres no recibe Stories en «destacadas»', !M.propuestas({ nivel1: pq, nivel2: n2 }, { formato: M.AUTO, stories: false }).some((p) => p.id === 'STORIES'));
+  check('las diez piezas de Nivel 2 están, con o sin datos', auto.filter((p) => M.PIEZAS[p.id]).length === 10);
+  check('«destacadas» se ofrece primero y no es un formato de publicación', M.opciones(GC.LIGAS).formatos[0].id === M.AUTO && !M.FORMATOS[M.AUTO]);
+
+  const p = auto.find((x) => x.ok && x.formato === 'carrusel');
+  const t0 = new Date('2026-10-12T15:00:00Z');
+  const reg = M.registroDeAprobacion(p, p.ganchos[0], 'apb-b', t0);
+  check('aprobar anota pieza, formato, estilo y gancho', reg.pieza === p.id && reg.formato === 'carrusel' && reg.estilo === p.ganchos[0].estilo && reg.gancho === p.ganchos[0].texto && reg.estado === 'aprobada');
+  check('la fecha es la del día LOCAL, también de noche', M.registroDeAprobacion(p, null, 'x', new Date(2026, 9, 12, 22, 30)).fecha === '2026-10-12' && M.diaLocal(new Date(2026, 0, 5, 23, 59)) === '2026-01-05');
+  check('ni el motor ni el servidor fechan con toISOString', [fs.readFileSync('centro-mando/motor.js', 'utf8'), fs.readFileSync('centro-mando/servidor.js', 'utf8')].every((x) => x.indexOf('toISOString().slice(0, 10)') === -1));
+  check('y NO inventa métricas', !('alcance' in reg) && !('guardados' in reg) && !('likes' in reg));
+  check('una aprobada sin métricas no mueve las ponderaciones', M.ponderaciones([reg, reg, reg]).publicaciones === 0);
+  const med = M.medir([reg], reg.id, { alcance: 2000, guardados: 40, pieza: 'OTRA', formato: 'reel' });
+  check('cargarle las métricas la vuelve «medida»', med.ok && med.registros[0].estado === 'medida' && med.registros[0].alcance === 2000 && M.puntaje(med.registros[0]) === 6);
+  check('sin dejar cambiarle la pieza ni el formato', med.registros[0].pieza === p.id && med.registros[0].formato === 'carrusel' && med.registros[0].id === reg.id);
+  check('no muta el historial que recibe', !('alcance' in reg));
+  check('medir sin alcance, o una que no está, se rechaza', M.medir([reg], reg.id, { alcance: 0 }).ok === false && M.medir([reg], 'no-esta', { alcance: 10 }).ok === false);
+
+  const S = require('./centro-mando/servidor.js');
+  const st = auto.find((x) => x.id === 'STORIES');
+  const v1 = S.placas(p, p.ganchos[0], ''), v2 = S.placas(p, p.ganchos[1], '');
+  check('el visor recibe una página por placa', (v1.html.match(/data-document-role="page"/g) || []).length === p.guion.length + 1 && v1.plantilla === 'generica');
+  check('cambiar el gancho cambia la portada', v1.html !== v2.html && v1.html.indexOf('<h1>') !== -1);
+  check('las Stories anónimas no usan la plantilla con nombres', S.placas(Object.assign({}, st, { datos: Object.assign({}, st.datos, { anonimo: true }) }), null, '').plantilla === 'generica');
+  check('una propuesta sin datos no tiene placas', (() => { try { S.placas({ id: 'RL-01', ok: false }); return false; } catch (e) { return /sin|No hay/.test(e.message); } })());
+
+  const src = fs.readFileSync('centro-mando/servidor.js', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const aprobar = src.slice(src.indexOf('function aprobar('), src.indexOf('function registrar('));
+  check('aprobar escribe con el MISMO html que muestra el visor', /const pl = placas\(p, x\.gancho, x\.contexto\)/.test(aprobar) && /escribir\('\.html', pl\.html\)/.test(aprobar));
+  check('aprobar anota el historial y la cola', /registroDeAprobacion\(/.test(aprobar) && /escribirLista\(APRENDIZAJE/.test(aprobar) && /escribirLista\(COLA/.test(aprobar));
+  check('el servidor no tiene credencial ni llamada a Canva', !/canva\.com|CANVA_|api\.instagram|graph\.facebook/i.test(src));
+
+  const html = fs.readFileSync('centro-mando/index.html', 'utf8');
+  check('la página tiene el visor adentro de cada propuesta, aislado', /class="visor"/.test(html) && /<iframe[^>]* sandbox>/.test(html) && /srcdoc = /.test(html));
+  check('elegir liga, zona, formato o eje genera sin tocar el botón', /function programar\(\)/.test(html) && /addEventListener\('change', programar\)/.test(html) && /programar\(\);\s*\}/.test(html));
+  check('una respuesta vieja no pisa a la nueva', /if \(yo !== turno\) return;/.test(html));
+  check('la página dice que la importación a Canva no sale de ella', /La importación no sale de esta página/.test(html) && /esta página no lee Instagram/.test(html));
+}
+
 console.log(NL + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);
