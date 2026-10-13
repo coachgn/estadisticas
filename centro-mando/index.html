@@ -99,7 +99,7 @@
     </div>
     <div class="card">
       <h2>Pregunta táctica</h2>
-      <label>Escribila como la dirías. Claude la traduce a un filtro; los números los lee el Explorador del libro, no el modelo.
+      <label>Escribila como la dirías. Claude la traduce a un filtro (tarda unos segundos); los números los lee el Explorador del libro, no el modelo.
         <textarea id="x-pregunta" maxlength="400" placeholder="Ej.: ¿Quiénes son los jugadores más eficientes tirando de tres con menos de 15 minutos en cancha?"></textarea>
       </label>
       <div class="acciones" style="margin-top:8px"><button class="pri" id="x-preguntar">🤖 Interpretar y explorar</button><span id="x-pregunta-estado" role="status" aria-live="polite" class="tenue"></span></div>
@@ -221,7 +221,7 @@ function tarjeta(uid, p, modo, estado) {
     (p.enfoque ? '<span class="chip">' + esc(OPC.enfoques[p.enfoque]) + '</span>' : '') + (p.tono ? '<span class="chip">Tono ' + esc(OPC.tonos[p.tono]) + '</span>' : '') +
     (p.peso && p.peso !== 1 ? '<span class="chip">peso ' + num(p.peso) + '</span>' : '') +
     (p.redaccion === 'ia' ? '<span class="chip ok" title="Título, ganchos y guion redactados por Claude. El dato y los números son los del libro.">✍️ redactada por IA</span>' : '') +
-    (REDACTANDO.has(uid) ? '<span class="chip">✍️ redactando…</span>' : '');
+    (REDACTANDO.has(uid) ? '<span class="chip">✍️ redactando… (unos segundos)</span>' : '');
   if (estado && estado !== 'pendiente') {
     return '<article class="card" id="a-' + uid + '" style="padding:10px 18px">' + chips + '<span class="chip ' + (estado === 'aprobada' ? 'ok' : '') + '">' + (estado === 'aprobada' ? '✅ aprobada · en la cola de Canva' : 'descartada') + '</span> ' + esc(p.titulo) + '</article>';
   }
@@ -229,10 +229,12 @@ function tarjeta(uid, p, modo, estado) {
     '<small>' + esc(OPC.estilos[g.estilo] || g.estilo) + (g.ia ? ' · IA' : p.redaccion === 'ia' ? ' · del generador' : '') + (g.peso && g.peso !== 1 ? ' · peso ' + num(g.peso) : '') + '</small></span></label>').join('');
   const botones = modo === 'bandeja'
     ? (p.enfoque ? '<button data-accion="enfoque" data-uid="' + uid + '" title="Cambia esta pieza por otra de la reserva, del enfoque que sigue">🔄 Cambiar enfoque · ' + esc(OPC.enfoques[p.enfoque]) + '</button>' : '') +
-      '<button data-accion="tono" data-uid="' + uid + '" title="Con la IA activa, Claude reescribe título, ganchos y guion en ese tono; los números son siempre los del libro. Sin IA, solo cambia qué gancho va primero.">🌶️ Ajustar tono · ' + esc(OPC.tonos[p.tono] || '') + '</button>' +
+      '<button data-accion="tono" data-uid="' + uid + '" title="Cambia el tono: qué gancho va primero y la píldora de la portada. Para que Claude reescriba el texto en ese tono, tocá «Redactar con IA» después; los números son siempre los del libro.">🌶️ Ajustar tono · ' + esc(OPC.tonos[p.tono] || '') + '</button>' +
+      (OPC.ia.activa && p.redaccion !== 'ia' ? '<button data-redactar="' + uid + '"' + (REDACTANDO.has(uid) ? ' disabled' : '') + ' title="Claude reescribe título, ganchos y guion en el tono elegido. Una llamada por pieza y tono; queda guardada.">✍️ Redactar con IA</button>' : '') +
       '<button class="pri" data-accion="aprobar" data-uid="' + uid + '">✅ Aprobar y enviar a la cola de Canva</button><button class="chico" data-accion="descartar" data-uid="' + uid + '">Descartar</button>'
     : '<button class="pri" data-aprobar="' + uid + '">✅ Aprobar y enviar a la cola de Canva</button>';
   return '<article class="card" id="a-' + uid + '">' + chips + '<h3>' + esc(p.titulo) + '</h3><p class="dato">' + esc(p.dato) + '</p>' +
+    (p.redaccion === 'ia' ? '<p class="tenue" style="font-size:13px">Texto de la IA: la guarda comprueba que cada número exista en la pieza, no que esté bien usado. Leelo contra el dato antes de aprobar.</p>' : '') +
     (p.redaccionDescartada ? '<div class="aviso">La guarda numérica descartó ' + p.redaccionDescartada + ' texto(s) de la IA que traían un número que no está en la pieza: ahí quedó el del generador.</div>' : '') +
     (p.muestra ? '<p class="tenue">Muestra: ' + esc(Object.keys(p.muestra).filter((k) => p.muestra[k] != null).map((k) => k + ' ' + p.muestra[k]).join(' · ')) + '</p>' : '') + avisos(p.avisos) +
     '<fieldset style="border:0;padding:0;margin:10px 0"><legend class="tenue" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px">Gancho</legend>' + ganchos + '</fieldset>' +
@@ -264,33 +266,28 @@ const pintarVisores = (raiz) => raiz.querySelectorAll('.visor').forEach((v) => p
 
 /* ------------------------------ bandeja ------------------------------- */
 let turnoB = 0;
-/* LA REDACCIÓN CON IA · cada pieza pendiente que todavía no tiene la de su
-   tono se le pide a Claude, de a tres, y su tarjeta se cambia sola al
-   llegar. Se intenta UNA vez por pieza y tono: si falla, queda la plantilla. */
-const REDACTANDO = new Set(), INTENTADO = new Set();
-async function redactarPendientes(b) {
-  if (!OPC.ia.activa) return;
-  const zona = $('liga').value + '|' + $('zona').value;
-  const cola = b.items.filter((i) => i.estado === 'pendiente' && i.propuesta.ok && i.propuesta.redaccion !== 'ia' && !INTENTADO.has(i.uid + '|' + i.propuesta.tono));
-  cola.forEach((i) => { INTENTADO.add(i.uid + '|' + i.propuesta.tono); REDACTANDO.add(i.uid); });
-  const repintar = (uid, item, nota) => {
-    REDACTANDO.delete(uid);
-    const el = $('a-' + uid);
-    if (!el || zona !== $('liga').value + '|' + $('zona').value) return;
-    const actual = item || { propuesta: PROPS.get(uid).p, estado: 'pendiente' };
-    if (item && item.propuesta.tono !== PROPS.get(uid).p.tono) return;
-    el.outerHTML = tarjeta(uid, actual.propuesta, 'bandeja', actual.estado);
-    if (nota && $('e-' + uid)) $('e-' + uid).textContent = nota;
-    pintarVisor(uid);
-  };
-  cola.forEach((i) => { const el = $('a-' + i.uid); if (el) { el.outerHTML = tarjeta(i.uid, i.propuesta, 'bandeja', i.estado); pintarVisor(i.uid); } });
-  const uno = async () => {
-    for (let i = cola.shift(); i; i = cola.shift()) {
-      try { const r = await api('/api/bandeja/redactar', Object.assign({ uid: i.uid }, donde())); repintar(i.uid, r.item); }
-      catch (e) { repintar(i.uid, null, 'La IA no pudo redactarla (' + e.message + '): queda la plantilla.'); }
-    }
-  };
-  await Promise.all([uno(), uno(), uno()]);
+/* LA REDACCIÓN CON IA · A PEDIDO, pieza por pieza. Cada una es una llamada
+   a Claude Code que tarda y gasta del plan, así que la dispara quien opera
+   y no la pantalla al abrirse. La tarjeta se cambia sola al llegar; si
+   falla, queda la plantilla y lo dice. */
+const REDACTANDO = new Set();
+function repintarTarjeta(uid, item, nota) {
+  const el = $('a-' + uid); if (!el) return;
+  const reg = PROPS.get(uid), actual = item || { propuesta: reg.p, estado: 'pendiente' };
+  el.outerHTML = tarjeta(uid, actual.propuesta, 'bandeja', actual.estado);
+  if (nota && $('e-' + uid)) $('e-' + uid).textContent = nota;
+  pintarVisor(uid);
+}
+async function redactarUna(uid) {
+  if (REDACTANDO.has(uid)) return;
+  const zona = $('liga').value + '|' + $('zona').value, tono = PROPS.get(uid).p.tono;
+  REDACTANDO.add(uid); repintarTarjeta(uid);
+  let r = null, error = null;
+  try { r = await api('/api/bandeja/redactar', Object.assign({ uid }, donde())); } catch (e) { error = e.message; }
+  REDACTANDO.delete(uid);
+  /* Si mientras tanto se cambió de zona o de tono, la respuesta ya quedó guardada: no se pinta encima. */
+  if (zona !== $('liga').value + '|' + $('zona').value || !PROPS.get(uid) || PROPS.get(uid).p.tono !== tono) return;
+  repintarTarjeta(uid, r && r.item, error ? 'La IA no pudo redactarla (' + error + ') Queda la plantilla.' : '');
 }
 function pintarBandeja(b) {
   const pend = b.items.filter((i) => i.estado === 'pendiente'), hechas = b.items.filter((i) => i.estado !== 'pendiente');
@@ -302,11 +299,13 @@ function pintarBandeja(b) {
     pend.map((i) => tarjeta(i.uid, i.propuesta, 'bandeja', i.estado)).join('') + hechas.map((i) => tarjeta(i.uid, i.propuesta, 'bandeja', i.estado)).join('') +
     ((b.sinDatos || []).length ? '<details class="card"><summary>' + b.sinDatos.length + ' pieza(s) sin datos en esta zona</summary><ul>' + b.sinDatos.map((s) => '<li><strong>' + esc(s.id) + '</strong> · ' + esc((s.avisos || []).join(' ')) + '</li>').join('') + '</ul></details>' : '');
   pintarVisores($('bandeja'));
-  redactarPendientes(b);
 }
 async function cargarBandeja(rearmar) {
   const yo = ++turnoB;
   $('b-estado').textContent = 'Leyendo el libro y armando las propuestas…'; $('rearmar').disabled = true;
+  /* Las tarjetas de la zona anterior se van YA: un clic sobre una de ellas
+     mandaría su pieza con la liga y la zona nuevas. */
+  $('bandeja').innerHTML = '<div class="card tenue">Armando la bandeja…</div>';
   try {
     const b = await api('/api/bandeja', Object.assign({ rearmar }, donde()));
     if (yo !== turnoB) return;
@@ -480,6 +479,7 @@ function pintarAprendizaje(a) {
 document.addEventListener('click', async (ev) => {
   const t = ev.target.closest('button'); if (!t) return;
   if (t.dataset.tab) return irA(t.dataset.tab);
+  if (t.dataset.redactar) return redactarUna(t.dataset.redactar);
   if (t.dataset.accion) {
     const uid = t.dataset.uid, estado = $('e-' + uid);
     t.disabled = true;
@@ -559,9 +559,9 @@ function cambioDeZona() {
     $('bandeja').innerHTML = '<div class="card">' + avisos(['El servidor local no contesta. Levantalo con «node centro-mando/servidor.js» y abrí http://127.0.0.1:8770.'], 'error') + '</div>';
     return;
   }
-  $('ia').textContent = OPC.ia.activa ? '🤖 IA activa · ' + OPC.ia.modelo : '🤖 IA apagada';
+  $('ia').textContent = OPC.ia.activa ? '🤖 IA activa · ' + (OPC.ia.motor === 'api' ? 'API · ' + OPC.ia.modelo : 'Claude Code, sin API') : '🤖 IA apagada';
   $('ia').className = 'chip' + (OPC.ia.activa ? ' ok' : '');
-  $('ia').title = OPC.ia.activa ? 'Claude interpreta la pregunta táctica y redacta ganchos, títulos y guiones. Los números salen siempre del libro.' : (OPC.ia.motivo || '') + ' Todo funciona igual, con las plantillas.';
+  $('ia').title = OPC.ia.activa ? 'Claude interpreta la pregunta táctica y redacta ganchos, títulos y guiones, a pedido. ' + (OPC.ia.motor === 'api' ? 'Usa la clave de la API (pago por uso).' : 'Usa tu sesión de Claude Code: sin clave, consume del plan.') + ' Los números salen siempre del libro.' : (OPC.ia.motivo || '') + ' Todo funciona igual, con las plantillas.';
   if (!OPC.ia.activa) { $('x-preguntar').disabled = true; $('x-pregunta-estado').textContent = 'La IA está apagada. ' + (OPC.ia.motivo || '') + ' Después reiniciá el servidor. Mientras, armá el filtro con los controles.'; }
   $('liga').innerHTML = opciones(OPC.ligas.map((l) => ({ id: l.id, label: l.torneo })), 'apb');
   const zonas = () => { $('zona').innerHTML = opciones(ligaSel().zonas.map((z) => ({ id: z.id, label: z.label + (z.pbp ? ' · con play-by-play' : '') })), $('zona').value); };

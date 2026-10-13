@@ -415,7 +415,8 @@ function placasHtml(p, gancho, contexto) {
   const pildora = TONOS[p.tono] ? TONOS[p.tono].pildora : (p.id + ' · ' + (p.formatoLabel || ''));
   const paginas = [marco('<div class="pildora">' + esc(pildora) + '</div><h1>' + esc(gancho || p.titulo) + '</h1>' +
     (p.dato ? '<p class="baj">' + esc(p.dato) + '</p>' : ''))];
-  (p.guion || []).forEach((g, i) => paginas.push(marco('<div class="rot">' + (i + 1) + ' / ' + p.guion.length + '</div><p class="baj grande">' + esc(g) + '</p>')));
+  /* Una línea larga (las de la IA suelen serlo) baja de cuerpo para no salirse de la placa. */
+  (p.guion || []).forEach((g, i) => paginas.push(marco('<div class="rot">' + (i + 1) + ' / ' + p.guion.length + '</div><p class="baj ' + (String(g).length > 170 ? 'media' : 'grande') + '">' + esc(g) + '</p>')));
   /* Una propuesta del laboratorio trae su tabla: va en su propia placa. */
   const d = p.datos || {};
   if (Array.isArray(d.filas) && Array.isArray(d.columnas) && d.filas.length) {
@@ -434,7 +435,7 @@ function placasHtml(p, gancho, contexto) {
     '.c{position:absolute;left:100px;right:100px;top:150px;bottom:150px;display:flex;flex-direction:column;justify-content:center;gap:40px}' +
     '.pildora{align-self:flex-start;border:2px solid #f5a623;border-radius:30px;padding:7px 22px;font-weight:700;font-size:20px;letter-spacing:2px;color:#f5a623}' +
     'h1{font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:' + (vertical ? 104 : 88) + 'px;line-height:1;text-transform:uppercase;color:#fff}' +
-    '.baj{font-size:38px;line-height:1.3;font-weight:500}.baj.grande{font-size:52px;color:#fff}.rot{font-weight:700;font-size:24px;letter-spacing:2px;text-transform:uppercase;color:#74acdf}' +
+    '.baj{font-size:38px;line-height:1.3;font-weight:500}.baj.grande{font-size:52px;color:#fff}.baj.media{font-size:40px;color:#fff}.rot{font-weight:700;font-size:24px;letter-spacing:2px;text-transform:uppercase;color:#74acdf}' +
     '.pie{position:absolute;left:0;right:0;bottom:44px;height:70px}.pie img{position:absolute;left:50%;top:0;width:70px;height:70px;object-fit:contain;transform:translateX(-50%)}' +
     '.pie span{position:absolute;right:78px;top:26px;font-weight:600;font-size:19px;color:#fff}' +
     'table{width:100%;border-collapse:collapse;font-size:32px}th,td{padding:14px 12px;border-bottom:1px solid rgba(116,172,223,.25);text-align:left}th{font-size:20px;letter-spacing:2px;text-transform:uppercase;color:#74acdf}' +

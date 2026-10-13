@@ -180,7 +180,7 @@ async function anomalias(b) {
  */
 async function preguntar(b, deps) {
   const x = b || {};
-  if (!(deps && deps.cliente) && !LLM.disponible()) throw new Error('La IA está apagada. ' + LLM.motivoApagada());
+  if (!deps && !LLM.disponible()) throw new Error('La IA está apagada. ' + LLM.motivoApagada());
   const p = GC.resolverPedido({ liga: x.liga, zona: x.zona });
   const r = await LLM.interpretar(x.pregunta, E.opciones(), deps);
   const c = r.consulta;
@@ -258,14 +258,22 @@ async function accionDeBandeja(b) {
  */
 async function redactarItem(b, deps) {
   const x = b || {};
-  if (!(deps && deps.cliente) && !LLM.disponible()) throw new Error('La IA está apagada. ' + LLM.motivoApagada());
   const p = GC.resolverPedido({ liga: x.liga, zona: x.zona });
   const clave = claveBandeja(p);
   const antes = (leerBandejas()[clave] || { items: [] }).items.find((i) => i.uid === x.uid);
   if (!antes) throw new Error('Esa propuesta ya no está en la bandeja.');
   const base = antes.base || antes.propuesta, tono = antes.propuesta.tono;
-  if ((antes.redacciones || {})[tono] && !x.rehacer) return { bandeja: leerBandejas()[clave], item: antes };
-  const red = await LLM.redactar(base, tono, deps);
+  let red;
+  if (x.redaccion) {
+    /* Una redacción que llega HECHA (la escribió una sesión de Claude Code
+       con /agencia): pasa por la MISMA guarda numérica que la del servidor. */
+    if (x.tono && x.tono !== tono) throw new Error('La pieza está en tono ' + tono + ': la redacción dice ' + x.tono + '.');
+    red = Object.assign(LLM.filtrar(x.redaccion, LLM.piezaDe(base)), { modelo: 'sesión de Claude Code', motor: 'sesion' });
+  } else {
+    if (!deps && !LLM.disponible()) throw new Error('La IA está apagada. ' + LLM.motivoApagada());
+    if ((antes.redacciones || {})[tono] && !x.rehacer) return { bandeja: leerBandejas()[clave], item: antes };
+    red = await LLM.redactar(base, tono, deps);
+  }
   const nombres = GC.nombresDelLibro((await indiceDe(p, false)).idx);
   const nombra = (v) => { try { GC.verificarAnonimo(v, nombres); return false; } catch (e) { return true; } };
   if (!nombra({ t: base.titulo, d: base.dato, g: base.guion, x: base.datos }) && nombra({ t: red.titulo, g: red.ganchos, l: red.guion })) {
@@ -354,7 +362,9 @@ function app() {
     catch (e) { res.status(400).json({ error: e.message }); }
   };
   a.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
-  a.get('/api/opciones', ruta(() => Object.assign(M.opciones(GC.LIGAS), { explorador: E.opciones(), ia: { activa: LLM.disponible(), modelo: LLM.MODELO, motivo: LLM.motivoApagada() } })));
+  a.get('/api/opciones', ruta(() => Object.assign(M.opciones(GC.LIGAS), { explorador: E.opciones(),
+    ia: { activa: LLM.disponible(), motor: LLM.motor(), modelo: LLM.motor() === 'api' ? LLM.MODELO : null, motivo: LLM.motivoApagada() } })));
+  a.get('/api/cola', ruta(() => ({ pendientes: leerLista(COLA, 'pendientes') })));
   a.post('/api/preguntar', ruta((req) => preguntar(req.body)));
   a.post('/api/bandeja/redactar', ruta((req) => redactarItem(req.body)));
   a.post('/api/explorar', ruta((req) => explorar(req.body)));

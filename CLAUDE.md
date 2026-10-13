@@ -118,7 +118,7 @@ node test-interzonal.js    # 220 tests · la llave entre zonas: un cliente de un
 node test-contenido.js     # 142 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
                            #             derivado, las diez recetas de Nivel 2 y que los nombres solo salgan en APdeB (103, 104)
 
-node test-centro-mando.js  # 206 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
+node test-centro-mando.js  # 232 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
                            #             (pide «npm install» en centro-mando/ una vez: los agentes usan el SDK de Claude, punto 107)
                            #             el play-by-play que no se presta, el aprendizaje y el servidor en 127.0.0.1 (105)
 
@@ -132,7 +132,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7431 tests en total. Todos tienen que dar verde antes de commitear.**
+**7457 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -13202,8 +13202,101 @@ No se confía en el prompt: cada una se verifica en código.
 - **Los tests no llaman a la API**: `deps.cliente` inyecta uno simulado, y
   `CENTRO_MANDO_DATOS` manda la bandeja y el historial a una carpeta
   temporal. Ningún test toca `contenido/`.
+- **El motor de todos los días ya no es éste: es Claude Code (punto 108).**
+  La API quedó de resguardo, apagada sin clave.
 - **NO VERIFICADO CONTRA LA API REAL**: el 2026-10-12 no había clave en la
   máquina. Verificado: la forma del pedido contra los tipos del SDK
   0.133, las guardas, y la pantalla con la IA apagada.
 - Sigue sin haber búsqueda web ni «agente de tendencias»: el contexto de
   tendencia lo escribe quien opera.
+
+## 108. CLAUDE CODE COMO MOTOR DE REDACCIÓN, SIN API PAGA · y `/agencia` (2026-10-12)
+
+El plan Pro y la API de desarrollador se cobran por separado, y el club no
+quiere sumar un costo de API. Decisión: **el servidor redacta con
+`claude -p`**, o sea con la sesión de Claude Code que ya está iniciada en
+la máquina. La API del punto 107 queda de **resguardo, apagada** salvo que
+haya `ANTHROPIC_API_KEY` en `centro-mando/.env`.
+
+### El motor (`LLM.motor()`)
+
+```
+sin clave  →  claude-code   (si el comando «claude» está en la máquina)
+con clave  →  api           (el resguardo no se enciende solo)
+CENTRO_MANDO_MOTOR = cli | api | no   lo fuerza
+```
+
+`pedirPorCli` ejecuta:
+
+    claude -p --safe-mode --tools "" --strict-mcp-config --no-session-persistence
+           --output-format json --effort <low> --system-prompt <…> --json-schema <…>
+
+con la pieza por la **entrada estándar** y en una **carpeta vacía** del
+temporal del sistema.
+
+- **`--safe-mode` y la carpeta vacía no son prolijidad**: en el repo, cada
+  llamada cargaría este CLAUDE.md entero (lento y caro) y los conectores
+  del usuario. Así es texto que entra y JSON que sale.
+- **`--bare` NO sirve**: exige API key y saltea el login del plan.
+- **Sin herramientas** y sin saltear permisos: el modelo no puede leer ni
+  tocar nada. Hay test.
+- **De a una** (`enFila`): cada llamada levanta un proceso y gasta del
+  plan. Techo de 120 s.
+- El esquema va como JSON Schema escrito a mano (`ESQUEMAS_JSON`); un test
+  exige que nombre los mismos campos que los de Zod del SDK.
+- El modelo es el de la configuración de Claude Code del usuario
+  (`CENTRO_MANDO_MODELO_CLI` lo cambia); la respuesta dice cuál fue.
+- Un error o el límite de uso del plan se dice y la pieza queda en plantilla.
+
+### Medido el 2026-10-12, en esta máquina (claude 2.1.227, plan del usuario)
+
+```
+llamada mínima de prueba                 11 s
+interpretar una pregunta táctica         12 s
+redactar una pieza · esfuerzo medium     50 s
+redactar una pieza · esfuerzo low        18 a 23 s   ← el que quedó (CENTRO_MANDO_ESFUERZO)
+```
+
+Probado de punta a punta desde la pantalla con el libro real de APdeB
+Zona B: «Redactar con IA» sobre CR-02, 23 s, guarda limpia, dato intacto.
+La pregunta del ejemplo se tradujo bien, y «puntos tras pérdida» volvió
+como «no se puede».
+
+### La redacción es A PEDIDO
+
+Ya no se redacta sola al abrir la bandeja: cada tarjeta tiene **✍️ Redactar
+con IA**, una llamada por pieza y tono, que queda guardada. **🌶️ Ajustar
+tono** vuelve a ser instantáneo (cambia el orden de los ganchos y la
+píldora) y deja el botón de redactar listo para ese tono. Al cambiar de
+zona las tarjetas viejas se van en el acto: un clic sobre una de ellas
+mandaba su pieza con la zona nueva.
+
+### LO QUE LA GUARDA NO VE
+
+La guarda numérica comprueba que cada número EXISTA en la pieza, no que
+esté bien usado. En la prueba real el modelo escribió «esa diferencia de
+14 puestos» con un 14 que en la pieza era una diferencia de rating, y
+pasó. Se reforzó el prompt (cada número conserva su unidad) y la tarjeta
+de toda pieza redactada por IA dice que hay que leerla contra el dato
+antes de aprobar. **La revisión humana no es opcional.** También puede
+agregar una condición de volumen a una pregunta («al menos 2 triples»):
+queda dicha en «Entendí:» y a la vista en los controles.
+
+### La redacción que llega HECHA · `POST /api/bandeja/redactar` con `redaccion`
+
+Una sesión de Claude Code puede escribir la redacción y mandarla. Pasa
+por **las mismas guardas** (`LLM.filtrar` contra `LLM.piezaDe(base)` y el
+anonimato) y no llama a ningún modelo. Es lo que usa `/agencia`, y es el
+motivo por el que el comando tiene prohibido editar `bandeja.json` a mano.
+
+### `/agencia` · `.claude/commands/agencia.md`
+
+| | |
+|---|---|
+| `/agencia` | estado: qué hay en la cola de Canva y qué falta medir |
+| `/agencia canva` | publica los HTML en `placas-tmp/`, espera a Pages, importa a Canva, marca la cola y BORRA la carpeta. Pide confirmación antes de publicar |
+| `/agencia quincena <liga> <zona>` | arma la bandeja, redacta las piezas elegidas, muestra lo que rechazó la guarda y aprueba las que el usuario diga |
+
+Corre en una sesión de Claude Code (terminal o app), que es donde vive el
+conector de Canva: la página sigue sin poder importar. No está probado de
+punta a punta: la importación real pide la confirmación del usuario.

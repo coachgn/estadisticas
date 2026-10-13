@@ -28,6 +28,9 @@ const GC = require('./generar-contenido.js');
    con un cliente simulado. */
 const DATOS_TMP = fs.mkdtempSync(require('path').join(require('os').tmpdir(), 'cm-'));
 process.env.CENTRO_MANDO_DATOS = DATOS_TMP;
+/* Ningún test puede levantar un «claude -p» de verdad ni gastar del plan. */
+process.env.CENTRO_MANDO_MOTOR = 'no';
+delete process.env.ANTHROPIC_API_KEY; delete process.env.ANTHROPIC_AUTH_TOKEN;
 const M = require('./centro-mando/motor.js');
 
 const hojas = DEMO.rehidratar(require('./demo/datos-demo.json'));
@@ -414,7 +417,7 @@ titulo('Los agentes con Claude · la guarda numérica');
   const c1 = fake(buena);
   const r1 = await L.redactar(p, 'polemico', { cliente: c1 });
   const ped = c1.pedidos[0];
-  check('pide con el modelo por defecto y salida estructurada', ped.model === 'claude-opus-5-5' && ped.output_config.format.type === 'json_schema' && ped.output_config.effort === 'medium');
+  check('pide con el modelo por defecto y salida estructurada', ped.model === 'claude-opus-5-5' && ped.output_config.format.type === 'json_schema' && ped.output_config.effort === 'low');
   check('con el respaldo ante una declinación', ped.fallbacks === 'default' && ped.betas.indexOf('server-side-fallback-2026-07-01') !== -1);
   check('no manda parámetros que este modelo rechaza', !('temperature' in ped) && !('thinking' in ped) && !('tool_choice' in ped));
   check('el sistema lleva la regla de los números', /no sos la fuente de ningún número/.test(ped.system));
@@ -498,6 +501,54 @@ titulo('Los agentes con Claude · la guarda numérica');
   check('la clave sale del entorno: no hay ninguna escrita', !/sk-ant-/.test(src) && !/apiKey:/.test(src));
   check('la clave y las dependencias no van al repo', /^centro-mando\/\.env\s*$/m.test(fs.readFileSync('.gitignore', 'utf8')) && /^centro-mando\/node_modules\/\s*$/m.test(fs.readFileSync('.gitignore', 'utf8')));
   check('el ejemplo de .env no trae una clave', /^ANTHROPIC_API_KEY=\s*$/m.test(fs.readFileSync('centro-mando/.env.ejemplo', 'utf8')));
+
+  titulo('Claude Code como motor · sin clave');
+  const cli = (respuesta, extra) => { const c = { llamadas: [], ejecutar: async (args, entrada) => { c.llamadas.push({ args, entrada }); return Object.assign({ codigo: 0, error: '', salida: typeof respuesta === 'string' ? respuesta : JSON.stringify(respuesta) }, extra); } }; return c; };
+  const okCli = (so) => ({ is_error: false, subtype: 'success', result: JSON.stringify(so), structured_output: so, modelUsage: { 'claude-sonnet-5': {} }, usage: { input_tokens: 5, output_tokens: 7 }, duration_ms: 18142 });
+  const c2 = cli(okCli(buena));
+  const rc = await L.redactar(p, 'polemico', { ejecutar: c2.ejecutar });
+  const a = c2.llamadas[0].args, arg = (k) => a[a.indexOf(k) + 1];
+  check('redacta por Claude Code y dice con qué motor y modelo', rc.motor === 'claude-code' && rc.modelo === 'claude-sonnet-5' && rc.ganchos.length === 3);
+  check('lo llama en modo no interactivo, con salida JSON y sin guardar la sesión', a[0] === '-p' && arg('--output-format') === 'json' && a.indexOf('--no-session-persistence') !== -1);
+  check('SIN herramientas, sin configuración del usuario y sin conectores', arg('--tools') === '' && a.indexOf('--safe-mode') !== -1 && a.indexOf('--strict-mcp-config') !== -1);
+  check('nunca saltea permisos', !a.some((x) => /dangerously|bypassPermissions/.test(x)));
+  check('el esquema viaja como JSON Schema', JSON.parse(arg('--json-schema')).required.join() === 'titulo,ganchos,guion');
+  check('la regla de los números va en el sistema y la pieza por la entrada estándar', /no sos la fuente de ningún número/.test(arg('--system-prompt')) && /POLÉMICO/.test(c2.llamadas[0].entrada) && !a.some((x) => /POLÉMICO/.test(x)));
+  const rm = await L.redactar(p, 'tactico', { ejecutar: cli(okCli(mala)).ejecutar });
+  check('LA MISMA GUARDA numérica corre sobre lo que devuelve Claude Code', rm.titulo === null && rm.guion === null && rm.ganchos.length === 1 && rm.descartado.length > 0);
+  check('el límite del plan o un error se dice, y manda a las plantillas', /plantillas/.test(await lanzaA(() => L.redactar(p, 'tactico', { ejecutar: cli({ is_error: true, subtype: 'error_during_execution', result: 'usage limit reached' }).ejecutar }))));
+  check('una salida que no es JSON se dice', /legible/.test(await lanzaA(() => L.redactar(p, 'tactico', { ejecutar: cli('no anda', { error: 'claude: command not found' }).ejecutar }))));
+  check('una respuesta a la que le falta un campo se rechaza', /forma pedida/.test(await lanzaA(() => L.redactar(p, 'tactico', { ejecutar: cli(okCli({ titulo: 'x' })).ejecutar }))));
+  const rq = await S.preguntar({ liga: 'lnb', zona: 'unica', pregunta: '¿Quiénes tiran mejor de tres con menos de 15 minutos?' }, { ejecutar: cli(okCli(consulta)).ejecutar });
+  check('la pregunta táctica por Claude Code da la tabla del Explorador local', rq.sePuede && JSON.stringify(rq.resultado.filas) === JSON.stringify(directo.filas));
+  const { z } = require('./centro-mando/node_modules/zod');
+  const campos = (j) => Object.keys(j.properties).sort().join();
+  check('los esquemas del CLI nombran los mismos campos que los del SDK', campos(L.ESQUEMAS_JSON.consulta) === campos(z.toJSONSchema(L.EsquemaConsulta)) && campos(L.ESQUEMAS_JSON.redaccion) === campos(z.toJSONSchema(L.EsquemaRedaccion)) &&
+    L.ESQUEMAS_JSON.consulta.required.length === Object.keys(L.ESQUEMAS_JSON.consulta.properties).length);
+
+  const env = (k, v, f) => { const prev = process.env[k]; if (v == null) delete process.env[k]; else process.env[k] = v; try { return f(); } finally { if (prev == null) delete process.env[k]; else process.env[k] = prev; } };
+  check('apagada a propósito, no hay motor', L.motor() === null && L.disponible() === false && /a propósito/.test(L.motivoApagada()));
+  check('forzar la API sin clave no la enciende', env('CENTRO_MANDO_MOTOR', 'api', () => L.motor()) === null);
+  check('con clave, manda la API; sin clave, nunca', env('CENTRO_MANDO_MOTOR', null, () => env('ANTHROPIC_API_KEY', 'x', () => L.motor())) === 'api');
+  check('forzar el CLI lo usa aunque haya clave, si está instalado', env('CENTRO_MANDO_MOTOR', 'cli', () => env('ANTHROPIC_API_KEY', 'x', () => L.motor())) === (L.cliDisponible() ? 'claude-code' : null));
+  const fuenteL = fs.readFileSync('centro-mando/llm.js', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  check('las llamadas a Claude Code van de a una', /return enFila\(\(\) => pedirPorCli\(ejecutarClaude/.test(fuenteL));
+  check('corre en una carpeta vacía, no en el repo', /cwd = path\.join\(os\.tmpdir\(\)/.test(fuenteL) && !/cwd: __dirname|cwd: process\.cwd/.test(fuenteL));
+
+  titulo('La redacción que llega hecha (/agencia)');
+  escribir(arm);
+  const hecha = await S.redactarItem({ liga: 'lnb', zona: 'unica', uid: u, tono: 'tactico', redaccion: Object.assign({}, fiel, { ganchos: [{ estilo: 'titular', texto: 'Tu ranking de ataque está mal' }, { estilo: 'dato', texto: 'El 99,9% de la liga mide mal' }] }) });
+  check('se guarda sin llamar a ningún modelo', hecha.item.propuesta.redaccion === 'ia' && hecha.item.propuesta.titulo === 'La tabla miente');
+  check('y pasa por LA MISMA guarda numérica: el gancho con un número ajeno no entra', hecha.descartado.some((d) => /99/.test(d.motivo)) && !hecha.item.propuesta.ganchos.some((g) => /99/.test(g.texto)));
+  check('una redacción para otro tono se rechaza', /tono/.test(await lanzaA(() => S.redactarItem({ liga: 'lnb', zona: 'unica', uid: u, tono: 'polemico', redaccion: fiel }))));
+  escribir(arm);
+  check('si nombra a un club del libro en una pieza anónima, se descarta entera', /nombró a alguien/.test(await lanzaA(() => S.redactarItem({ liga: 'lnb', zona: 'unica', uid: u, redaccion: fuga }))));
+  const cmd = fs.readFileSync('.claude/commands/agencia.md', 'utf8');
+  check('/agencia exige confirmación antes de publicar e importar', /sin un «sí» del usuario/.test(cmd) && /Pedí confirmación/.test(cmd) && /preguntá cuáles aprobar/.test(cmd));
+  check('/agencia no edita la bandeja a mano y borra siempre las placas temporales', /No edites .bandeja\.json. ni .aprendizaje\.json. a mano/.test(cmd) && /Hacelo siempre/.test(cmd));
+  check('/agencia usa las rutas que el servidor tiene', ['/api/bandeja', '/api/bandeja/accion', '/api/bandeja/redactar', '/api/aprendizaje', '/api/opciones'].every((r) => cmd.indexOf(r) !== -1 && fs.readFileSync('centro-mando/servidor.js', 'utf8').indexOf("'" + r + "'") !== -1));
+  const hp = M.placasHtml(Object.assign({}, p, { guion: ['corta', 'x'.repeat(200)] }), 'g');
+  check('una línea larga del guion baja de cuerpo en la placa', /class="baj grande">corta/.test(hp) && /class="baj media">x{200}/.test(hp));
 
   fsx.rmSync(DATOS_TMP, { recursive: true, force: true });
   console.log(NL + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');

@@ -22,9 +22,19 @@
        filtrar un nombre que no recibió. El servidor igual verifica la
        respuesta contra los nombres del libro.
 
-   La credencial sale del entorno (`ANTHROPIC_API_KEY`, que el servidor
-   carga de `centro-mando/.env`). Sin ella, este módulo se declara
-   apagado y el Centro de Mando sigue andando con las plantillas.
+   DOS MOTORES, LAS MISMAS GUARDAS
+
+     · `claude-code` (el de todos los días): el servidor ejecuta
+       `claude -p` con la sesión de Claude Code que ya está iniciada en
+       la máquina. No hay clave ni costo de API: consume del plan. Sin
+       herramientas, sin CLAUDE.md, en una carpeta vacía: es solo texto
+       que entra y JSON que sale.
+     · `api` (resguardo, APAGADO salvo que haya `ANTHROPIC_API_KEY` en
+       `centro-mando/.env`): el SDK oficial.
+
+   Las guardas corren DESPUÉS de la respuesta y no saben de qué motor
+   vino. Sin ninguno de los dos, el módulo se declara apagado y el Centro
+   de Mando sigue andando con las plantillas.
    ===================================================================== */
 'use strict';
 
@@ -43,12 +53,122 @@ const TONOS = {
   educativo: 'EDUCATIVO: le explicás el concepto a alguien que recién empieza a mirar estadística. Claro, paso a paso, sin jerga sin explicar.',
 };
 
-/* -------------------------------------------------------------------- */
-function disponible() { return !SIN_DEPENDENCIAS && !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN); }
+/* --------------------------------------------------------------------
+   QUÉ MOTOR HAY
+   -------------------------------------------------------------------- */
+const { spawn, spawnSync } = require('child_process');
+const os = require('os');
+const fs = require('fs');
+const path = require('path');
+
+const BINARIO = process.env.CENTRO_MANDO_CLAUDE || 'claude';
+const ESPERA_CLI_MS = 120000;
+/* Medido el 2026-10-12 con Claude Code: redactar una pieza tarda ~50 s en
+   «medium» y bastante menos en «low», con textos equivalentes. */
+const ESFUERZO_REDACCION = process.env.CENTRO_MANDO_ESFUERZO || 'low';
+
+let _cli = null;
+/** ¿Está Claude Code en esta máquina? Se averigua una vez. */
+function cliDisponible() {
+  if (_cli === null) {
+    try { const r = spawnSync(BINARIO, ['--version'], { encoding: 'utf8', timeout: 15000, windowsHide: true }); _cli = r.status === 0 && /Claude Code/i.test(r.stdout || ''); }
+    catch (e) { _cli = false; }
+  }
+  return _cli;
+}
+const hayClave = () => !SIN_DEPENDENCIAS && !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+
+/**
+ * 'api' solo si hay clave: el resguardo no se enciende solo. Sin clave,
+ * Claude Code. `CENTRO_MANDO_MOTOR` = api | cli | no lo fuerza.
+ */
+function motor() {
+  const f = String(process.env.CENTRO_MANDO_MOTOR || '').toLowerCase();
+  if (f === 'no') return null;
+  if (f === 'api') return hayClave() ? 'api' : null;
+  if (f === 'cli') return cliDisponible() ? 'claude-code' : null;
+  if (hayClave()) return 'api';
+  return cliDisponible() ? 'claude-code' : null;
+}
+function disponible() { return !!motor(); }
 /** Por qué está apagada, para decirlo en pantalla. null si está activa. */
 function motivoApagada() {
-  if (SIN_DEPENDENCIAS) return SIN_DEPENDENCIAS;
-  return disponible() ? null : 'Falta ANTHROPIC_API_KEY en centro-mando/.env (hay un .env.ejemplo al lado).';
+  if (disponible()) return null;
+  if (String(process.env.CENTRO_MANDO_MOTOR || '').toLowerCase() === 'no') return 'Está apagada a propósito (CENTRO_MANDO_MOTOR=no).';
+  return 'No encontré Claude Code en esta máquina (el comando «claude») ni hay ANTHROPIC_API_KEY en centro-mando/.env.';
+}
+
+/* Las llamadas a Claude Code van DE A UNA: cada una levanta un proceso y
+   gasta del plan; siete a la vez es la forma más rápida de tocar el límite. */
+let _fila = Promise.resolve();
+const enFila = (f) => { const r = _fila.then(f, f); _fila = r.catch(() => {}); return r; };
+
+/** Corre `claude -p`. Devuelve { codigo, salida, error }. Nunca lanza. */
+function ejecutarClaude(args, entrada) {
+  return new Promise((resolver) => {
+    /* Una carpeta vacía: sin CLAUDE.md, sin proyecto, sin nada que leer. */
+    const cwd = path.join(os.tmpdir(), 'motorstats-centro-mando');
+    try { fs.mkdirSync(cwd, { recursive: true }); } catch (e) { /* ya está */ }
+    let salida = '', error = '', listo = false;
+    const fin = (x) => { if (!listo) { listo = true; clearTimeout(reloj); resolver(x); } };
+    let h;
+    try { h = spawn(BINARIO, args, { cwd, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }); }
+    catch (e) { return resolver({ codigo: -1, salida: '', error: e.message }); }
+    const reloj = setTimeout(() => { try { h.kill(); } catch (e) { /* ya murió */ } fin({ codigo: -1, salida, error: 'Claude Code no contestó en ' + (ESPERA_CLI_MS / 1000) + ' segundos.' }); }, ESPERA_CLI_MS);
+    h.stdout.on('data', (d) => { salida += d; });
+    h.stderr.on('data', (d) => { error += d; });
+    h.on('error', (e) => fin({ codigo: -1, salida, error: e.message }));
+    h.on('close', (codigo) => fin({ codigo, salida, error }));
+    h.stdin.on('error', () => {});
+    h.stdin.end(entrada);
+  });
+}
+
+/* Lo mismo que los esquemas de Zod de abajo, en JSON Schema: es lo que
+   toma `claude -p --json-schema`. Un test exige que nombren los mismos campos. */
+const txt = { type: 'string' };
+const ESQUEMAS_JSON = {
+  consulta: {
+    type: 'object', additionalProperties: false,
+    required: ['sePuede', 'motivo', 'nivel', 'metricas', 'orden', 'sentido', 'top', 'soloCalificados', 'condiciones', 'lectura'],
+    properties: {
+      sePuede: { type: 'boolean' }, motivo: txt, nivel: { type: 'string', enum: ['jugadores', 'equipos', 'zonas', 'partidos'] },
+      metricas: { type: 'array', items: txt }, orden: txt, sentido: { type: 'string', enum: ['mejor', 'desc', 'asc'] }, top: { type: 'integer' },
+      soloCalificados: { type: 'boolean' },
+      condiciones: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['metrica', 'op', 'valor'],
+        properties: { metrica: txt, op: { type: 'string', enum: ['<', '<=', '>', '>='] }, valor: { type: 'number' } } } },
+      lectura: txt,
+    },
+  },
+  redaccion: {
+    type: 'object', additionalProperties: false, required: ['titulo', 'ganchos', 'guion'],
+    properties: {
+      titulo: txt,
+      ganchos: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['estilo', 'texto'], properties: { estilo: { type: 'string', enum: ['dato', 'titular', 'pregunta'] }, texto: txt } } },
+      guion: { type: 'array', items: txt },
+    },
+  },
+};
+
+/** Una llamada por Claude Code. `ejecutar` se inyecta en los tests. */
+async function pedirPorCli(ejecutar, nombre, sistema, usuario, esfuerzo) {
+  const esquema = ESQUEMAS_JSON[nombre];
+  const args = ['-p', '--safe-mode', '--tools', '', '--strict-mcp-config', '--no-session-persistence', '--output-format', 'json',
+    '--effort', esfuerzo, '--system-prompt', sistema, '--json-schema', JSON.stringify(esquema)];
+  if (process.env.CENTRO_MANDO_MODELO_CLI) args.push('--model', process.env.CENTRO_MANDO_MODELO_CLI);
+  const r = await ejecutar(args, usuario);
+  let j = null;
+  try { j = JSON.parse(String(r.salida || '').trim()); } catch (e) { /* no era JSON */ }
+  if (!j) throw new Error('Claude Code no devolvió una respuesta legible' + (r.error ? ': ' + String(r.error).trim().slice(0, 300) : '.'));
+  if (j.is_error || j.subtype !== 'success') {
+    throw new Error('Claude Code no pudo contestar (' + (j.subtype || j.api_error_status || 'error') + '): ' + String(j.result || '').slice(0, 300) +
+      ' Si es el límite de uso del plan, probá más tarde: mientras, quedan las plantillas.');
+  }
+  let salida = j.structured_output;
+  if (!salida || typeof salida !== 'object') { try { salida = JSON.parse(j.result); } catch (e) { salida = null; } }
+  if (!salida || esquema.required.some((k) => !(k in salida))) throw new Error('Claude Code no devolvió una respuesta con la forma pedida.');
+  const modelo = Object.keys(j.modelUsage || {})[0] || 'claude-code';
+  return { salida, uso: j.usage ? { entrada: j.usage.input_tokens, salida: j.usage.output_tokens } : null, modelo, motor: 'claude-code', segundos: Math.round((j.duration_ms || 0) / 100) / 10 };
 }
 
 let _cliente = null;
@@ -75,8 +195,19 @@ function explicar(e) {
   return e && e.message ? e.message : String(e);
 }
 
-/** Una llamada con salida estructurada. Devuelve el objeto ya validado contra el esquema. */
-async function pedir(cliente, esquema, sistema, usuario, esfuerzo) {
+/**
+ * Una llamada con salida estructurada, por el motor que haya.
+ * `deps.cliente` (SDK) y `deps.ejecutar` (CLI) son para los tests.
+ */
+async function pedir(deps, nombre, sistema, usuario, esfuerzo) {
+  const d = deps || {};
+  if (d.ejecutar) return pedirPorCli(d.ejecutar, nombre, sistema, usuario, esfuerzo);
+  if (!d.cliente && motor() === 'claude-code') return enFila(() => pedirPorCli(ejecutarClaude, nombre, sistema, usuario, esfuerzo));
+  if (!d.cliente && motor() !== 'api') throw new Error('La IA está apagada. ' + motivoApagada());
+  return pedirPorApi(d.cliente || clientePorDefecto(), nombre === 'consulta' ? EsquemaConsulta : EsquemaRedaccion, sistema, usuario, esfuerzo);
+}
+
+async function pedirPorApi(cliente, esquema, sistema, usuario, esfuerzo) {
   if (SIN_DEPENDENCIAS) throw new Error(SIN_DEPENDENCIAS);
   const { betaZodOutputFormat } = require('@anthropic-ai/sdk/helpers/beta/zod');
   let r;
@@ -95,7 +226,7 @@ async function pedir(cliente, esquema, sistema, usuario, esfuerzo) {
   if (r.stop_reason === 'refusal') throw new Error('El modelo declinó el pedido' + (r.stop_details && r.stop_details.explanation ? ': ' + r.stop_details.explanation : '.'));
   if (r.stop_reason === 'max_tokens') throw new Error('La respuesta del modelo se cortó por largo.');
   if (!r.parsed_output) throw new Error('El modelo no devolvió una respuesta con la forma pedida.');
-  return { salida: r.parsed_output, uso: r.usage ? { entrada: r.usage.input_tokens, salida: r.usage.output_tokens } : null, modelo: r.model || MODELO };
+  return { salida: r.parsed_output, uso: r.usage ? { entrada: r.usage.input_tokens, salida: r.usage.output_tokens } : null, modelo: r.model || MODELO, motor: 'api' };
 }
 
 /* --------------------------------------------------------------------
@@ -167,8 +298,8 @@ function sistemaConsulta(catalogo) {
 async function interpretar(pregunta, catalogo, deps) {
   const q = String(pregunta || '').trim();
   if (q.length < 8) throw new Error('Escribí la pregunta completa.');
-  const r = await pedir((deps && deps.cliente) || clientePorDefecto(), EsquemaConsulta, sistemaConsulta(catalogo), q, 'low');
-  return { consulta: r.salida, uso: r.uso, modelo: r.modelo };
+  const r = await pedir(deps, 'consulta', sistemaConsulta(catalogo), q, 'low');
+  return { consulta: r.salida, uso: r.uso, modelo: r.modelo, motor: r.motor };
 }
 
 /* --------------------------------------------------------------------
@@ -188,12 +319,14 @@ const SISTEMA_REDACCION = [
   'LA REGLA QUE NO SE NEGOCIA: no sos la fuente de ningún número.',
   '- Todo número que escribas tiene que estar en la pieza, EXACTAMENTE como figura ahí (58 es 58, no «casi 60» ni «6 de cada 10»).',
   '- No calcules, no redondees, no conviertas, no sumes ni restes, no escribas un número en letras.',
+  '- Cada número conserva su unidad y aquello a lo que se refiere en la pieza: un rating no es una cantidad de puestos, un porcentaje de un jugador no es el de la liga. Si no estás seguro de qué mide un número, no lo uses.',
   '- No agregues datos, causas ni comparaciones que la pieza no trae. Si la pieza no dice por qué pasa algo, no lo expliques.',
   '- Un sistema automático revisa cada número después de vos y descarta el texto que traiga uno que no esté en la pieza.',
   '',
   'OTRAS REGLAS',
   '- No nombres personas ni clubes que la pieza no nombre. Si la pieza dice «Jugador 1» o «Equipo A», se queda así o se generaliza («un escolta», «un equipo de la zona»).',
   '- El guion conserva la cantidad de líneas, su orden y la función de cada una (portada, desarrollo, cierre). En un reel, cada línea conserva su marca de tiempo del principio tal cual.',
+  '- Cada línea del guion es UNA placa: hasta 220 caracteres.',
   '- La última línea del guion cierra con una pregunta al cuerpo técnico o una invitación a probar la demo, como la original.',
 ].join('\n');
 
@@ -205,10 +338,15 @@ async function redactar(propuesta, tono, deps) {
   if (!TONOS[tono]) throw new Error('Ese tono no existe.');
   const p = propuesta || {};
   if (!p.ok) throw new Error('No hay una propuesta con datos para redactar.');
-  const pieza = { id: p.id, formato: p.formatoLabel || p.formato, enfoque: p.enfoque || null, titulo: p.titulo, dato: p.dato, guion: p.guion || [], muestra: p.muestra || null, numeros: p.datos || null };
+  const pieza = piezaDe(p);
   const usuario = 'TONO\n' + TONOS[tono] + '\n\nPIEZA\n' + JSON.stringify(pieza, null, 1);
-  const r = await pedir((deps && deps.cliente) || clientePorDefecto(), EsquemaRedaccion, SISTEMA_REDACCION, usuario, 'medium');
-  return Object.assign(filtrar(r.salida, pieza), { tono, uso: r.uso, modelo: r.modelo });
+  const r = await pedir(deps, 'redaccion', SISTEMA_REDACCION, usuario, ESFUERZO_REDACCION);
+  return Object.assign(filtrar(r.salida, pieza), { tono, uso: r.uso, modelo: r.modelo, motor: r.motor });
+}
+
+/** Lo que el modelo ve de una propuesta, y contra lo que corre la guarda numérica. */
+function piezaDe(p) {
+  return { id: p.id, formato: p.formatoLabel || p.formato, enfoque: p.enfoque || null, titulo: p.titulo, dato: p.dato, guion: p.guion || [], muestra: p.muestra || null, numeros: p.datos || null };
 }
 
 /** La guarda aplicada a una redacción. PURA: es lo que se testea. */
@@ -241,4 +379,4 @@ function filtrar(salida, pieza) {
   return { titulo, ganchos, guion, descartado };
 }
 
-module.exports = { MODELO, TONOS, ESTILOS, disponible, motivoApagada, interpretar, redactar, filtrar, numerosDe, numerosAjenos, explicar, EsquemaConsulta, EsquemaRedaccion, sistemaConsulta, SISTEMA_REDACCION };
+module.exports = { MODELO, TONOS, ESTILOS, ESQUEMAS_JSON, motor, cliDisponible, piezaDe, pedirPorCli, disponible, motivoApagada, interpretar, redactar, filtrar, numerosDe, numerosAjenos, explicar, EsquemaConsulta, EsquemaRedaccion, sistemaConsulta, SISTEMA_REDACCION };
