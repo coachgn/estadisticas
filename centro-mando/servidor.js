@@ -351,19 +351,36 @@ async function libre(b) {
   const p = GC.resolverPedido({ liga: x.liga, zona: x.zona });
   const { idx } = await indiceDe(p, !!x.refrescar);
   const multi = Object.keys(p.liga.zonas).length > 1;
-  const lec = LIBRE.interpretarLibre(x.texto, E.catalogo(idx), { nivel: E.NIVELES[x.nivel] ? x.nivel : null, zonas: multi });
+  const libro = p.liga.torneo + (p.zona.label ? ' · ' + p.zona.label : '');
+  const lec = LIBRE.interpretarLibre(x.texto, E.catalogo(idx), { nivel: E.NIVELES[x.nivel] ? x.nivel : null, zonas: multi, libro });
   if (!lec.ok) return { ok: false, lectura: lec };
   const consulta = Object.assign({}, lec.consulta, { liga: x.liga, zona: x.zona });
+  /* Lo que se elige a mano en la pantalla le gana a lo que leyó el texto. */
+  if (x.escala === 'total' || x.escala === 'promedio') consulta.escala = x.escala;
+  if (x.activos != null && x.activos !== '') consulta.activos = Number(x.activos) > 0 ? Number(x.activos) : 0;
   /* El grupo del cruce: el que se elige a mano le gana al que leyó el texto. */
   if (x.grupo && Object.prototype.hasOwnProperty.call(E.GRUPOS_CRUCE, x.grupo)) consulta.grupo = x.grupo;
   if (Number(x.top) > 0) consulta.top = Number(x.top);
   const resultado = await explorar(consulta);
+  /* EL DIAGNÓSTICO DE CALIDAD se cierra acá: a lo que midió el Explorador
+     se le suman los filtros que el texto pedía y el libro no puede cumplir. */
+  const omitidos = (lec.omitidos || []).map((o) => o.texto);
+  if (resultado.calidad) { resultado.calidad.filtros.omitidos = omitidos; E.certificar(resultado.calidad); }
   const sello = Date.now().toString(36);
   /* El título es lo que se escribió si entra entero; si no, su primera
      oración; y si tampoco, el que arma el generador. Nunca un texto cortado. */
-  const titulo = E.tituloDe(x.angulo || x.texto, 90);
+  /* Con un filtro desactivado, el texto NO puede ser el título: prometería
+     («los U23 que más anotan») lo que la tabla no cumple. */
+  const titulo = omitidos.length ? '' : E.tituloDe(x.angulo || x.texto, 90);
   let propuesta = null;
   const avisos = [];
+  /* SIN CERTIFICAR NO HAY PIEZA: si el texto pedía un filtro que el libro no
+     trae, la tabla se muestra con su aviso y la propuesta no se arma hasta
+     que quien opera acepte seguir sin ese filtro. */
+  if (omitidos.length && !x.aceptarOmitidos) {
+    return { ok: true, lectura: lec, consulta, resultado, propuesta: null, pideAceptar: true,
+      avisos: ['No armé la propuesta: el texto pedía ' + (lec.omitidos.length === 1 ? 'un filtro' : lec.omitidos.length + ' filtros') + ' que este libro no puede cumplir (' + lec.omitidos.map((o) => o.variable).join(', ') + '). La tabla de abajo es SIN ese filtro. Si igual te sirve, tildá «Seguir sin los filtros desactivados» y volvé a buscar.'] };
+  }
   const limites = (lec.avisos || []).filter((a) => /sin piso de intentos/.test(a));
   try { propuesta = await propuestaAnonima(p, consulta.nivel, resultado, titulo, sello); }
   catch (e) {
@@ -376,7 +393,7 @@ async function libre(b) {
     }
   }
   /* Los límites de la lectura viajan CON la pieza: los ve quien aprueba y los lee la IA. */
-  if (propuesta && limites.length) propuesta.avisos = (propuesta.avisos || []).concat(limites);
+  if (propuesta && (limites.length || omitidos.length)) propuesta.avisos = (propuesta.avisos || []).concat(limites, omitidos);
   const out = { ok: true, lectura: lec, consulta, resultado, propuesta, avisos };
   if (x.aBandeja) {
     if (!propuesta) throw new Error(avisos[0] || 'No hay una propuesta que mandar.');

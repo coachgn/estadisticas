@@ -162,13 +162,56 @@ function catalogo(idx) {
   return out;
 }
 
+/* --------------------------------------------------------------------
+   DOS ESCALAS, Y NO SE MEZCLAN
+   «Por partido» es lo que trae la hoja de promedios. «Total» es lo que el
+   jugador o el equipo lleva sumado en el tramo. Solo las CUENTAS tienen
+   total; una tasa (eFG%, PPP, USG%) es la misma en las dos escalas.
+   El total del jugador sale de su acumulado y, si el libro no lo trae,
+   de SUMAR su partido a partido con ese equipo: nunca de multiplicar el
+   promedio por los partidos (un promedio redondeado no devuelve el total).
+   -------------------------------------------------------------------- */
+const ACUMULABLES = ['PTS', 'PLAYS', 'MIN', 'TCC', 'TCI', 'T2C', 'T2I', 'T3C', 'T3I', 'T1C', 'T1I', 'RO', 'RD', 'RT', 'AST', 'PR', 'PP', 'TC', 'TR', 'FC', 'FR', 'POS', 'PTSopp'];
+const esTotal = (k, total) => !!total && ACUMULABLES.indexOf(k) !== -1;
+const MIN_PJ = 3;              // la regla de la muestra del panel (punto 4)
+const FECHAS_ACTIVO = 4;       // la racha de inactividad del buzón (punto 13)
+
+function totalDeJugador(idx, j, k) {
+  const a = j.__acum && numero(j.__acum[k]);
+  if (a != null) return a;
+  const filas = (idx.liga.jugadorPartidos.get(S.clavePersona(j.NOMBRES)) || []).filter((r) => r.__equipo === S.claveEquipo(j.EQUIPO));
+  const vs = filas.map((r) => numero(r[k])).filter((v) => v != null);
+  return vs.length ? vs.reduce((t, v) => t + v, 0) : null;
+}
+
+/* ¿Sumó minutos en alguna de las últimas n fechas de SU equipo? Es lo que
+   el libro puede decir de una baja o una inactividad: el estado que marca
+   el cuerpo técnico vive en el panel de cada club, no acá. */
+function activoEn(idx, j, n, cache) {
+  const clave = S.claveEquipo(j.EQUIPO);
+  if (!cache.has(clave)) {
+    const e = idx.lista().find((x) => x.clave === clave);
+    const ps = e ? e.partidos.slice().sort((a, b) => ((a.__fecha instanceof Date ? a.__fecha.getTime() : 0) - (b.__fecha instanceof Date ? b.__fecha.getTime() : 0))) : [];
+    cache.set(clave, new Set(ps.slice(-n).map((p) => p.__id)));
+  }
+  const ultimos = cache.get(clave);
+  if (!ultimos.size) return true;
+  return (idx.liga.jugadorPartidos.get(S.clavePersona(j.NOMBRES)) || []).some((r) => r.__equipo === clave && ultimos.has(r.__id) && numero(r.MIN) > 0);
+}
+
 /* Las filas crudas de cada nivel: quién es y de dónde se lee cada métrica. */
-function filasDe(idx, nivel) {
+function filasDe(idx, nivel, total) {
   if (nivel === 'equipos') {
-    return idx.lista().map((e) => ({ equipo: e.nombre, pj: e.pj, leer: (k) => leerEquipo(idx, e, k) }));
+    return idx.lista().map((e) => ({ equipo: e.nombre, pj: e.pj, leer: (k) => {
+      if (esTotal(k, total)) { const t = e.totales && (k === 'PTSopp' ? e.totales.rival && e.totales.rival.PTS : e.totales.propio && e.totales.propio[k]); return { v: numero(t), p: null }; }
+      return leerEquipo(idx, e, k);
+    } }));
   }
   if (nivel === 'jugadores') {
-    return idx.liga.jugadores.map((j) => ({ jugador: j.NOMBRES, equipo: S.limpiarNombre(j.EQUIPO), califica: !!j.__califica, leer: (k) => ({ v: numero(j[k]), p: null }) }));
+    const cache = new Map();
+    return idx.liga.jugadores.map((j) => ({ jugador: j.NOMBRES, equipo: S.limpiarNombre(j.EQUIPO), califica: !!j.__califica,
+      activo: (n) => activoEn(idx, j, n, cache),
+      leer: (k) => ({ v: esTotal(k, total) ? totalDeJugador(idx, j, k) : numero(j[k]), p: null }) }));
   }
   if (nivel === 'partidos') {
     const out = [];
@@ -214,7 +257,13 @@ function pedido(nivel, o, catalogoDelLibro) {
   const sentido = x.sentido === 'asc' || x.sentido === 'desc' ? x.sentido : (invertida ? 'asc' : 'desc');
   const top = Math.min(50, Math.max(1, Number(x.top) || 10));
   const grupo = Object.prototype.hasOwnProperty.call(GRUPOS_CRUCE, x.grupo) ? x.grupo : 'altoBajo';
-  return { nivel, columnas, orden, sentido, condiciones, top, soloCalificados: !!x.soloCalificados, cruce, grupo };
+  /* EL ÍNDICE COMBINADO: tres métricas o más, de ese nivel, sin cruce. */
+  const indice = !cruce && nivel !== 'zonas' && Array.isArray(x.indice) ? x.indice.filter((k, i, a) => validas.indexOf(k) !== -1 && a.indexOf(k) === i) : [];
+  indice.forEach((k) => { if (columnas.indexOf(k) === -1) columnas.push(k); });
+  const activos = nivel === 'jugadores' && Number(x.activos) > 0 ? Math.min(20, Math.round(Number(x.activos))) : 0;
+  /* Una sola partida de partido no tiene total: la escala es de temporada. */
+  const escala = x.escala === 'total' && nivel !== 'partidos' && nivel !== 'zonas' ? 'total' : 'promedio';
+  return { nivel, columnas, orden, sentido, condiciones, top, soloCalificados: !!x.soloCalificados, cruce, grupo, indice: indice.length >= 2 ? indice : null, activos, escala };
 }
 
 /* --------------------------------------------------------------------
@@ -275,28 +324,122 @@ const cumple = (c, v) => {
   const x = esPct(c.metrica) ? v * 100 : v;
   return c.op === '<' ? x < c.valor : c.op === '<=' ? x <= c.valor : c.op === '>' ? x > c.valor : x >= c.valor;
 };
-const textoCondicion = (c) => rotulo(c.metrica) + ' ' + OPERADORES[c.op] + ' ' + String(c.valor).replace('.', ',') + (esPct(c.metrica) ? ' %' : '');
+const textoCondicion = (c) => rotulo(c.metrica) + ' ' + OPERADORES[c.op] + ' ' + String(c.valor).replace('.', ',') + (esPct(c.metrica) ? ' %' : '') + (c.auto ? ' (piso automático)' : '');
+
+/* El cuartil más bajo de una lista: el corte del piso automático. */
+function cuartilBajo(vs) {
+  const o = vs.slice().sort((a, b) => a - b);
+  return o.length ? o[Math.floor((o.length - 1) * 0.25)] : null;
+}
+
+/**
+ * EL PISO DE VOLUMEN · antes de ordenar o cruzar por una efectividad.
+ * Con `auto`, a nivel jugadores lo pone el motor, con números de ESTA
+ * liga y dichos uno por uno:
+ *   · MIN ≥ el umbral de calificación de la liga (salvo que se haya
+ *     filtrado por minutos a propósito);
+ *   · PJ ≥ 3, la regla de la muestra del panel;
+ *   · el volumen de cada efectividad ≥ el cuartil más bajo de los que
+ *     califican (saca al de uno o dos tiros sin dejar afuera al que tira poco).
+ * Lo que quien pide ya fijó a mano no se pisa. En equipos no hace falta:
+ * cada uno trae su temporada entera. Modifica `q` (suma las condiciones)
+ * y devuelve qué hizo, para decirlo en el encabezado.
+ */
+function pisoDeVolumen(idx, nivel, q, filas, auto) {
+  const usadas = (q.indice || q.cruce || [q.orden]).filter((k) => VOLUMEN[k]);
+  const lista = usadas.map(rotulo).join(', ');
+  if (!usadas.length) return { ok: true, aplicado: false, texto: 'No hace falta: la tabla no se ordena ni se cruza por una efectividad.' };
+  if (nivel === 'equipos' || nivel === 'zonas') {
+    const pjs = idx.lista().map((e) => numero(e.pj)).filter((v) => v != null);
+    return { ok: true, aplicado: false, texto: 'No hace falta: cada equipo trae su temporada entera' + (pjs.length ? ' (PJ mediano ' + String(S.mediana(pjs)).replace('.', ',') + ')' : '') + '.' };
+  }
+  const tiene = (k) => q.condiciones.some((c) => c.metrica === k && (c.op === '>' || c.op === '>='));
+  if (!auto || nivel !== 'jugadores') {
+    const faltan = usadas.filter((k) => !tiene(VOLUMEN[k]));
+    return faltan.length
+      ? { ok: false, aplicado: false, texto: 'SIN PISO de volumen para ' + faltan.map(rotulo).join(', ') + ': arriba puede haber alguien con uno o dos intentos. Pedí un piso (' + faltan.map((k) => rotulo(VOLUMEN[k]) + ' desde…').join(', ') + ').' }
+      : { ok: true, aplicado: false, texto: 'Piso pedido a mano para ' + lista + '.' };
+  }
+  const partes = [];
+  const minutosAMano = q.condiciones.some((c) => c.metrica === 'MIN');
+  if (auto.minutos !== false && !minutosAMano && numero(idx.liga.minJugador) != null) {
+    q.soloCalificados = true;
+    partes.push('MIN ≥ ' + S.formatear('MIN', idx.liga.minJugador) + ' (el umbral de calificación de esta liga)');
+  } else if (minutosAMano) partes.push('minutos: los que pediste');
+  const poner = (metrica, valor) => { q.condiciones.push({ metrica, op: '>=', valor, auto: true }); if (q.columnas.indexOf(metrica) === -1) q.columnas.push(metrica); };
+  if (!q.condiciones.some((c) => c.metrica === 'PJ') && filas.some((x) => x.leer('PJ').v != null)) { poner('PJ', MIN_PJ); partes.push('PJ ≥ ' + MIN_PJ + ' (la regla de la muestra)'); }
+  const base = filas.filter((x) => (!q.soloCalificados || x.califica) && !(x.leer('PJ').v < MIN_PJ));
+  usadas.forEach((k) => {
+    const vol = VOLUMEN[k];
+    if (tiene(vol)) { partes.push(rotulo(vol) + ': el piso que pediste'); return; }
+    if (q.condiciones.some((c) => c.metrica === vol && c.auto)) return;
+    const corte = cuartilBajo(base.map((x) => x.leer(vol).v).filter((v) => v != null));
+    if (corte == null) return;
+    const valor = Math.round(corte * 10) / 10;
+    if (valor > 0) { poner(vol, valor); partes.push(rotulo(vol) + (q.escala === 'total' ? ' tot.' : '') + ' ≥ ' + String(valor).replace('.', ',') + ' (el cuartil más bajo de los que califican)'); }
+  });
+  return { ok: true, aplicado: true, texto: 'Piso automático para ' + lista + ', con números de esta liga: ' + partes.join(' · ') + '.' };
+}
+
+/** ¿El diagnóstico certifica la tabla? Los tres puntos, y nada omitido. */
+function certificar(calidad) {
+  calidad.certificado = !!(calidad.muestra.ok && calidad.piso.ok && !calidad.filtros.omitidos.length);
+  return calidad;
+}
 
 /**
  * La tabla del Explorador para jugadores, equipos o partidos.
- * Devuelve las filas ordenadas, cuántas cumplen y cuántas quedaron
- * afuera por no tener el dato.
+ * Devuelve las filas ordenadas, cuántas cumplen, cuántas quedaron afuera
+ * por no tener el dato y el DIAGNÓSTICO DE CALIDAD (\`calidad\`): la muestra
+ * sin recortes de vista, los filtros aplicados y el piso de volumen.
  */
 function explorar(idx, nivel, o) {
-  const q = pedido(nivel, o, catalogo(idx)[nivel]);
-  let filas = filasDe(idx, nivel);
+  const x = o || {};
+  const q = pedido(nivel, x, catalogo(idx)[nivel]);
+  const total = q.escala === 'total';
+  let filas = filasDe(idx, nivel, total);
   const universo = filas.length;
-  if (q.soloCalificados && nivel === 'jugadores') filas = filas.filter((f) => f.califica);
+  const piso = pisoDeVolumen(idx, nivel, q, filas, x.pisoAuto ? (typeof x.pisoAuto === 'object' ? x.pisoAuto : {}) : null);
+  const aplicados = [];
+  if (q.soloCalificados && nivel === 'jugadores') {
+    filas = filas.filter((f) => f.califica);
+    aplicados.push('Solo los que califican por minutos' + (numero(idx.liga.minJugador) != null ? ' (MIN ≥ ' + S.formatear('MIN', idx.liga.minJugador) + ')' : '') + ': ' + filas.length + ' de ' + universo + '.');
+  }
+  let inactivos = 0;
+  if (q.activos) {
+    const antes = filas.length;
+    filas = filas.filter((f) => f.activo(q.activos));
+    inactivos = antes - filas.length;
+    aplicados.push('Solo activos: con minutos en alguna de las últimas ' + q.activos + ' fechas de su equipo. ' + inactivos + ' ' + pl(inactivos, 'quedó', 'quedaron') + ' afuera por inactividad.');
+  }
+  q.condiciones.forEach((cnd) => aplicados.push(textoCondicion(cnd) + (esTotal(cnd.metrica, total) ? ' (sobre el total)' : '') + '.'));
   let sinDato = 0;
   const pasan = [];
+  const usadas = [q.orden].concat(q.condiciones.map((cnd) => cnd.metrica), q.cruce || [], q.indice || []);
   filas.forEach((f) => {
-    const usadas = [q.orden].concat(q.condiciones.map((c) => c.metrica), q.cruce || []);
     if (usadas.some((k) => f.leer(k).v == null)) { sinDato++; return; }
-    if (!q.condiciones.every((c) => cumple(c, f.leer(c.metrica).v))) return;
+    if (!q.condiciones.every((cnd) => cumple(cnd, f.leer(cnd.metrica).v))) return;
     pasan.push(f);
   });
+  if (sinDato) aplicados.push(sinDato + ' ' + pl(sinDato, 'quedó', 'quedaron') + ' afuera por no tener alguno de los datos pedidos.');
+
+  /* EL ÍNDICE COMBINADO · el promedio de los percentiles de cada métrica
+     ENTRE LOS QUE CUMPLEN, con el mismo peso y respetando la dirección de
+     cada una (en pérdidas, menos es mejor). Es una posición relativa, no
+     una estadística del libro, y se rotula así. */
+  const indiceDe = new Map();
+  if (q.indice) {
+    const pct = q.indice.map((k) => {
+      const vs = pasan.map((f) => f.leer(k).v), inv = !!def(k).invertida, n = vs.length;
+      return vs.map((v) => { let menores = 0, iguales = 0; vs.forEach((w) => { if (w < v) menores++; else if (w === v) iguales++; }); const p = n ? (menores + 0.5 * iguales) / n * 100 : 0; return inv ? 100 - p : p; });
+    });
+    pasan.forEach((f, i) => indiceDe.set(f, Math.round(pct.reduce((t, col) => t + col[i], 0) / pct.length * 10) / 10));
+  }
   const dir = q.sentido === 'asc' ? 1 : -1;
-  pasan.sort((a, b) => (dir * (a.leer(q.orden).v - b.leer(q.orden).v)) || ((b.orden || 0) - (a.orden || 0)) || String(a.jugador || a.equipo).localeCompare(String(b.jugador || b.equipo)));
+  const desempate = (a, b) => ((b.orden || 0) - (a.orden || 0)) || String(a.jugador || a.equipo).localeCompare(String(b.jugador || b.equipo));
+  if (q.indice) pasan.sort((a, b) => (indiceDe.get(b) - indiceDe.get(a)) || desempate(a, b));
+  else pasan.sort((a, b) => (dir * (a.leer(q.orden).v - b.leer(q.orden).v)) || desempate(a, b));
+
   /* Con cruce, la tabla es el GRUPO pedido (los altos en una y bajos en la
      otra, por defecto), ordenado por la primera métrica. */
   const cr = q.cruce ? cruzar(pasan, q.cruce[0], q.cruce[1], q.grupo) : null;
@@ -304,10 +447,12 @@ function explorar(idx, nivel, o) {
   if (cr) { pasan.forEach((f) => grupoDe.set(f, cr.del(f))); delete cr.del; }
   const visibles = cr && q.grupo !== 'todos' ? pasan.filter((f) => grupoDe.get(f) === q.grupo) : pasan;
   /* DE DÓNDE SALE LA MEDIANA, dicho: sobre cuántos y cuáles. */
-  if (cr) cr.base = 'Medianas calculadas sobre N = ' + cr.n + ' ' + pl(cr.n, SUJETO_UNO[nivel], SUJETO[nivel]) + (q.condiciones.length || (q.soloCalificados && nivel === 'jugadores') ? ' que cumplen el filtro' : ' del libro') + ', todos los que tienen las dos métricas.';
+  if (cr) cr.base = 'Medianas calculadas sobre N = ' + cr.n + ' ' + pl(cr.n, SUJETO_UNO[nivel], SUJETO[nivel]) + (q.condiciones.length || q.activos || (q.soloCalificados && nivel === 'jugadores') ? ' que cumplen el filtro' : ' del libro') + ', todos los que tienen las dos métricas.';
+  const ver = (k, v) => (numero(v) == null ? '—' : esTotal(k, total) ? String(Math.round(v * 10) / 10).replace('.', ',') : mostrar(k, v));
   const salida = visibles.slice(0, q.top).map((f, i) => {
     const valores = {}, texto = {}, percentil = {};
-    q.columnas.forEach((k) => { const r = f.leer(k); valores[k] = r.v; texto[k] = mostrar(k, r.v); if (r.p != null) percentil[k] = Math.round(r.p); });
+    q.columnas.forEach((k) => { const r = f.leer(k); valores[k] = r.v; texto[k] = ver(k, r.v); if (r.p != null) percentil[k] = Math.round(r.p); });
+    if (q.indice) { valores.INDICE = indiceDe.get(f); texto.INDICE = String(valores.INDICE).replace('.', ','); }
     const fila = { puesto: i + 1, valores, texto };
     if (f.jugador) fila.jugador = f.jugador;
     fila.equipo = f.equipo;
@@ -319,11 +464,30 @@ function explorar(idx, nivel, o) {
     if (cr) { const g = grupoDe.get(f); fila.sobreA = g.slice(0, 4) === 'alto'; fila.sobreB = g.slice(-4) === 'Alto'; }
     return fila;
   });
+  const columnas = q.columnas.map((k) => ({ id: k, label: rotulo(k) + (esTotal(k, total) ? ' tot.' : ''), nombre: def(k).label + (esTotal(k, total) ? ' · total del tramo' : total && ACUMULABLES.indexOf(k) === -1 ? ' · una tasa: es la misma en las dos escalas' : ''),
+    escala: esTotal(k, total) ? 'total' : def(k).formato === 'pct' || VOLUMEN[k] ? 'tasa' : 'promedio', volumenDe: Object.keys(VOLUMEN).filter((r) => VOLUMEN[r] === k && q.columnas.indexOf(r) !== -1) }));
+  if (q.indice) columnas.unshift({ id: 'INDICE', label: 'Índice', nombre: 'Índice combinado: el promedio de los percentiles de ' + q.indice.map(rotulo).join(', ') + ' entre los ' + pasan.length + ' que cumplen, con el mismo peso. De 0 a 100.', escala: 'indice', volumenDe: [] });
+  const suj = pl(pasan.length, SUJETO_UNO[nivel], SUJETO[nivel]);
+  const calidad = certificar({
+    /* UN RANKING NO ES UN RECORTE: sus «10 primeros» son lo pedido, y el
+       resumen solo habla de esos y del total. Lo que NO puede quedar a
+       medias es una tabla cuyos números salen de TODOS —las medianas de un
+       cruce, los percentiles de un índice—: ahí lo que no se ve es
+       justamente lo que no se puede contar. */
+    muestra: { ok: salida.length === visibles.length || (!cr && !q.indice), n: pasan.length, enTabla: visibles.length, mostradas: salida.length, ranking: salida.length < visibles.length && !cr && !q.indice,
+      texto: 'N = ' + pasan.length + ' ' + suj + ' de ' + universo + ' del libro. ' + (salida.length === visibles.length
+        ? 'La vista muestra ' + (visibles.length < pasan.length ? 'los ' + salida.length + ' del grupo pedido, completos' : pl(salida.length, 'ese caso', 'los ' + salida.length)) + ': sin recortes.'
+        : !cr && !q.indice ? 'La vista es un RANKING: los ' + salida.length + ' primeros de ' + visibles.length + '. El resumen solo habla de esos y del total; subí «Cuántos» para ver más.'
+        : 'VISTA RECORTADA: se muestran ' + salida.length + ' de ' + visibles.length + ', y ' + (cr ? 'las medianas' : 'el índice') + ' se ' + (cr ? 'calcularon' : 'calculó') + ' sobre todos. Acotá el filtro para poder contarlos.') },
+    filtros: { aplicados, omitidos: [] },
+    piso,
+    escala: nivel === 'partidos' ? 'Cada fila es un equipo en un partido.' : total ? 'TOTALES acumulados del tramo en las cuentas (columnas «tot.»); las tasas son las mismas en las dos escalas.' : 'PROMEDIOS por partido.',
+  });
   return {
     enTabla: visibles.length,
-    nivel, columnas: q.columnas.map((k) => ({ id: k, label: rotulo(k), nombre: def(k).label, volumenDe: Object.keys(VOLUMEN).filter((r) => VOLUMEN[r] === k && q.columnas.indexOf(r) !== -1) })), orden: q.orden, sentido: q.sentido,
-    condiciones: q.condiciones, condicionesTexto: q.condiciones.map(textoCondicion), filas: salida, cumplen: pasan.length, universo, sinDato,
-    tramo: idx.liga.torneo + '|' + idx.fase, cruce: cr, victorias: victoriasDe(idx, q.columnas),
+    nivel, columnas, orden: q.indice ? 'INDICE' : q.orden, sentido: q.indice ? 'desc' : q.sentido,
+    condiciones: q.condiciones, condicionesTexto: q.condiciones.map(textoCondicion), filas: salida, cumplen: pasan.length, universo, sinDato, inactivos,
+    tramo: idx.liga.torneo + '|' + idx.fase, cruce: cr, victorias: victoriasDe(idx, q.columnas), escala: q.escala, indice: q.indice, calidad,
   };
 }
 
@@ -435,7 +599,7 @@ function datoDeCruce(c, nivel, filtro) {
 
 function aPropuesta(res, angulo, sello) {
   if (!res || !res.filas || !res.filas.length) return { id: 'LAB', ok: false, formato: 'carrusel', titulo: 'Laboratorio', avisos: ['Ese filtro no deja a nadie: no hay nada que contar.'] };
-  const k = res.orden, lab = (res.columnas.find((c) => c.id === k) || {}).label || k;
+  const k = res.orden, lab = k === 'INDICE' ? 'el índice combinado' : (res.columnas.find((c) => c.id === k) || {}).label || k;
   const primero = res.filas[0], ultimo = res.filas[res.filas.length - 1];
   const filtro = res.condicionesTexto.length ? ' con ' + res.condicionesTexto.join(' y ') : '';
   const titulo = tituloDe(angulo, 140) || (res.cruce ? rotuloCruce(res.cruce) : null) || ((res.nivel === 'zonas' ? 'Las zonas, comparadas por ' : 'Top ' + res.filas.length + ' por ') + lab + filtro);
@@ -464,7 +628,7 @@ function aPropuesta(res, angulo, sello) {
   });
   /* El volumen de cada efectividad que la pieza usa: si está en la tabla y
      si tiene un piso pedido. Es lo que mira el autochequeo. */
-  const usadas = c ? [c.a, c.b] : [k];
+  const usadas = c ? [c.a, c.b] : (res.indice || [k]);
   const volumen = usadas.filter((m) => VOLUMEN[m]).map((m) => {
     const cond = (res.condiciones || []).find((y) => y.metrica === VOLUMEN[m] && (y.op === '>' || y.op === '>='));
     return { metrica: rotulo(m), volumen: rotulo(VOLUMEN[m]), enTabla: res.columnas.some((y) => y.id === VOLUMEN[m]), piso: cond ? cond.valor : null };
@@ -481,7 +645,7 @@ function aPropuesta(res, angulo, sello) {
       'La tabla, sin nombres', vol ? 'El volumen detrás del porcentaje: cuántos intentos sostienen cada número' : 'Qué dice del juego y qué no',
       '¿Cómo sale esta cuenta en tu equipo? + demo'],
     muestra: { nivel: res.nivel, cumplen: res.cumplen, universo: res.universo, sinDato: res.sinDato, tramo: res.tramo || null, filasEnTabla: filas.length, filasDelGrupo: enTabla },
-    datos: Object.assign({ orden: k, sentido: res.sentido, condiciones: res.condiciones, columnas: res.columnas, filas, volumen }, c ? { cruce: c } : {}),
+    datos: Object.assign({ orden: k, sentido: res.sentido, condiciones: res.condiciones, columnas: res.columnas, filas, volumen, escala: res.escala || 'promedio' }, res.calidad ? { calidad: res.calidad } : {}, c ? { cruce: c } : {}),
     avisos: (res.sinDato ? [res.sinDato + ' quedaron afuera por no tener el dato pedido.'] : [])
       .concat(filas.length < enTabla ? ['La tabla muestra ' + filas.length + ' de ' + enTabla + ': los números del resumen son sobre los ' + (c ? c.n : res.cumplen) + '.'] : []),
   };
@@ -490,5 +654,5 @@ function aPropuesta(res, angulo, sello) {
 module.exports = {
   NIVELES, METRICAS, NO_DISPONIBLES, PISO_NOCHE, VOLUMEN, OPERADORES, Z_ATIPICO, MIN_NOCHE, FUGA_PERCENTIL, BRECHA_ZONAS, METRICAS_FUGA,
   opciones, pedido, explorar, zonas, anomalias, diferenciasEntreZonas, aPropuesta, enfoqueDe,
-  conRecordDeTabla, catalogo, cruzar, GRUPOS_CRUCE, MIN_CRUCE, FUERA_DEL_CATALOGO, EXTRAS, definicion: def, rotulo, tituloDe, datoDeCruce,
+  ACUMULABLES, MIN_PJ, FECHAS_ACTIVO, pisoDeVolumen, certificar, cuartilBajo, conRecordDeTabla, catalogo, cruzar, GRUPOS_CRUCE, MIN_CRUCE, FUERA_DEL_CATALOGO, EXTRAS, definicion: def, rotulo, tituloDe, datoDeCruce,
 };

@@ -66,6 +66,9 @@
   tr.med td { text-align: center !important; color: var(--nar); border-top: 2px dashed var(--nar); border-bottom: 0; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; padding: 3px; }
   th.vol, td.vol { color: var(--tenue); border-left: 0; padding-left: 0; font-size: 13px; }
   .up { color: var(--ver); } .dn { color: var(--roj); }
+  .calidad { border: 1px solid var(--nar); border-radius: 8px; padding: 10px 14px; margin: 0 0 10px; background: rgba(245,166,35,.06); white-space: normal; }
+  .calidad.ok { border-color: var(--ver); background: rgba(74,222,128,.06); }
+  .calidad ul { list-style: none; padding: 0; margin: 6px 0 0; } .calidad li { padding: 3px 0; font-size: 14px; }
   ul.chequeo { list-style: none; padding: 0; margin: 6px 0; } ul.chequeo li { padding: 6px 0; border-bottom: 1px solid var(--borde); } ul.chequeo li:last-child { border-bottom: 0; }
   ul.chequeo blockquote { margin: 4px 0 0 22px; padding-left: 10px; border-left: 2px solid var(--borde); color: var(--tenue); font-size: 13px; }
   .cond { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; margin-bottom: 6px; }
@@ -152,7 +155,10 @@
         <label>Nivel <select id="l-nivel"><option value="">Que lo decida el texto</option><option value="jugadores">Jugadores</option><option value="equipos">Equipos</option><option value="partidos">Partidos</option><option value="zonas">Entre zonas</option></select></label>
         <label>Si cruza dos métricas, mostrar <select id="l-grupo"><option value="">El que pida el texto</option><option value="altoBajo">Altos en la 1.ª y bajos en la 2.ª</option><option value="altoAlto">Altos en las dos</option><option value="bajoAlto">Bajos en la 1.ª y altos en la 2.ª</option><option value="bajoBajo">Bajos en las dos</option><option value="todos">A todos, ordenados por la 1.ª</option></select></label>
         <label>Cuántos <input type="number" id="l-top" min="1" max="50" placeholder="un cruce: todos · un ranking: 10"></label>
+        <label>Escala <select id="l-escala"><option value="">La que pida el texto (por partido)</option><option value="promedio">Promedios por partido</option><option value="total">Totales del tramo</option></select></label>
+        <label>Solo activos · con minutos en las últimas… <select id="l-activos"><option value="">Lo que pida el texto (todos)</option><option value="0">Todos, también los inactivos</option><option value="2">2 fechas de su equipo</option><option value="4">4 fechas de su equipo</option><option value="6">6 fechas de su equipo</option><option value="10">10 fechas de su equipo</option></select></label>
       </div>
+      <label class="fila" id="l-aceptar-caja" hidden style="margin-top:10px"><input type="checkbox" id="l-aceptar"> Seguir sin los filtros desactivados (la pieza sale sin ellos, y lo dice)</label>
       <div class="acciones"><button class="pri" id="l-buscar">Buscar en el libro</button><button id="l-mandar" disabled title="La deja arriba de la bandeja, anónima. Ahí se redacta con IA, se le ajusta el tono y se aprueba.">Mandar a la bandeja para redactarla</button><span id="l-estado" role="status" aria-live="polite" class="tenue"></span></div>
       <div id="l-lectura" role="status" aria-live="polite"></div>
     </div>
@@ -408,19 +414,28 @@ function tablaX(r) {
     (k.medianaBEnAltosA && k.medianaBEnBajosA ? ' Los ' + k.altosA + ' de arriba en ' + esc(k.labelA) + ' tienen una mediana de ' + esc(k.medianaBEnAltosA) + ' en ' + esc(k.labelB) + '; los ' + k.bajosA + ' de abajo, ' + esc(k.medianaBEnBajosA) + '.' : '') +
     ' <strong>' + esc(k.base) + '</strong>' +
     ' <span class="tenue">La tabla muestra a ' + (k.grupo === 'todos' ? '' : 'los ') + esc(k.grupoTexto) + ', con ▲▼ según de qué lado de la mediana de ' + esc(k.labelB) + ' cae cada fila. «Alto» y «bajo» son contra la mediana, no un juicio.</span></div>';
-  if (!r.filas.length) return cab + cruce + '<div class="aviso">' + (k ? 'Nadie cae en ese grupo: probá con otro de los cuatro.' : 'Ese filtro no deja a nadie.') + '</div>';
+  if (!r.filas.length) return (r.calidad ? '<div class="calidad"><strong>⚠️ ' + esc(r.calidad.muestra.texto) + '</strong><ul><li>Filtros: ' + esc(r.calidad.filtros.aplicados.join(' ') || 'ninguno') + '</li><li>' + esc(r.calidad.piso.texto) + '</li></ul></div>' : '') + cab + cruce + '<div class="aviso">' + (k ? 'Nadie cae en ese grupo: probá con otro de los cuatro.' : 'Ese filtro no deja a nadie.') + '</div>';
   const dif = r.diferencias ? '<h4 style="margin-top:14px">Qué separa a las zonas</h4><ul class="lista">' + r.diferencias.filter((d) => d.brecha != null).map((d) => '<li><span><strong>' + esc(d.label) + '</strong> · ' + esc(d.brechaTexto) +
     ' <span class="tenue">(' + esc(d.mayor) + ' arriba, ' + esc(d.menor) + ' abajo)</span></span><span class="chip">' + (d.relativa == null ? '—' : num(d.relativa, 1) + ' desvíos') + '</span></li>').join('') + '</ul>' : '';
   /* LO QUE SE VE ES LO QUE SE CUENTA: cuántas filas hay de cuántas, la
      línea de la mediana cuando la tabla va ordenada por la primera métrica,
      y el volumen de cada efectividad en la columna de al lado. */
+  /* EL DIAGNÓSTICO DE CALIDAD · antes que la tabla: la muestra sin recortes
+     de vista, los filtros aplicados y los desactivados, y el piso de volumen. */
+  const Q = r.calidad, ic = (o) => (o ? '✅' : '⚠️');
+  const calidad = !Q ? '' : '<div class="calidad' + (Q.certificado ? ' ok' : '') + '"><strong>' + (Q.certificado ? '✅ Datos certificados para redactar' : '⚠️ Datos SIN certificar: mirá lo marcado antes de redactar') + '</strong><ul>' +
+    '<li>' + ic(Q.muestra.ok) + ' <strong>Muestra.</strong> ' + esc(Q.muestra.texto) + '</li>' +
+    '<li>' + ic(!Q.filtros.omitidos.length) + ' <strong>Filtros.</strong> ' + (Q.filtros.aplicados.length ? 'Aplicados: ' + esc(Q.filtros.aplicados.join(' ')) : 'Ninguno aplicado: es el libro entero.') +
+      (Q.filtros.omitidos.length ? '<br><span class="dn">Desactivados por falta de columna: ' + esc(Q.filtros.omitidos.join(' ')) + '</span>' : ' Ninguno desactivado.') + '</li>' +
+    '<li>' + ic(Q.piso.ok) + ' <strong>Piso de volumen.</strong> ' + esc(Q.piso.texto) + '</li>' +
+    '<li>➖ <strong>Escala.</strong> ' + esc(Q.escala) + '</li></ul></div>';
   const total = r.enTabla == null ? r.filas.length : r.enTabla;
   const cuantas = r.nivel === 'zonas' ? '' : '<p class="' + (r.filas.length < total ? 'aviso' : 'tenue') + '" style="margin:6px 0">' + (r.filas.length < total ? 'Se muestran ' + r.filas.length + ' de ' + total + (k ? ': el resumen de arriba es sobre los ' + k.n + '.' : '. Subí «Cuántos» para ver más.') : 'Se muestran las ' + total + ' filas: todas.') + '</p>';
   const esVol = (c) => (c.volumenDe || []).length > 0;
   const linea = (i) => (k && k.grupo === 'todos' && i > 0 && r.filas[i - 1].sobreA && !r.filas[i].sobreA ? '<tr class="med"><td colspan="' + (r.columnas.length + 2) + '">mediana de ' + esc(k.labelA) + ' · ' + esc(k.medianaA) + ' · arriba ' + i + ', abajo ' + (r.filas.length - i) + '</td></tr>' : '');
   const marca = (f, c) => (k && c.id === k.b ? (f.sobreB ? ' <span class="up" title="Sobre la mediana">▲</span>' : ' <span class="dn" title="Bajo la mediana">▼</span>') : '');
-  return cab + cruce + cuantas + '<table><thead><tr><th>' + (r.nivel === 'zonas' ? 'Zona' : r.nivel === 'jugadores' ? 'Jugador' : 'Equipo') + '</th><th></th>' +
-    r.columnas.map((c) => '<th class="' + (c.id === r.orden ? 'orden' : '') + (esVol(c) ? ' vol' : '') + '" title="' + esc(c.nombre) + (esVol(c) ? ' · el volumen detrás de ' + esc(c.volumenDe.join(', ')) : '') + '">' + (esVol(c) ? 'sobre ' : '') + esc(c.label) + '</th>').join('') + '</tr></thead><tbody>' +
+  return calidad + cab + cruce + cuantas + '<table><thead><tr><th>' + (r.nivel === 'zonas' ? 'Zona' : r.nivel === 'jugadores' ? 'Jugador' : 'Equipo') + '</th><th></th>' +
+    r.columnas.map((c) => '<th class="' + (c.id === r.orden ? 'orden' : '') + (esVol(c) ? ' vol' : '') + '" title="' + esc(c.nombre) + (c.escala === 'promedio' ? ' · promedio por partido' : '') + (esVol(c) ? ' · el volumen detrás de ' + esc(c.volumenDe.join(', ')) : '') + '">' + (esVol(c) ? 'sobre ' : '') + esc(c.label) + '</th>').join('') + '</tr></thead><tbody>' +
     r.filas.map((f, i) => linea(i) + '<tr>' + quien(f) + r.columnas.map((c) => '<td class="' + (esVol(c) ? 'vol' : '') + '">' + esc(f.texto[c.id]) + marca(f, c) + (f.percentil && f.percentil[c.id] != null ? ' <span class="tenue">p' + f.percentil[c.id] + '</span>' : '') + '</td>').join('') + '</tr>').join('') + '</tbody></table>' + dif;
 }
 async function correrExplorador() {
@@ -510,13 +525,14 @@ function pintarEjes() {
    muestra QUÉ ENTENDIÓ antes que la tabla, para que una lectura torcida
    se vea y se corrija reescribiendo. */
 let turnoL = 0, META_L = null, HAY_L = false;
-const pedidoL = (extra) => Object.assign({ texto: $('l-texto').value, nivel: $('l-nivel').value || undefined, grupo: $('l-grupo').value || undefined, top: $('l-top').value || undefined }, extra || {}, donde());
+const pedidoL = (extra) => Object.assign({ texto: $('l-texto').value, nivel: $('l-nivel').value || undefined, grupo: $('l-grupo').value || undefined, top: $('l-top').value || undefined,
+  escala: $('l-escala').value || undefined, activos: $('l-activos').value === '' ? undefined : $('l-activos').value, aceptarOmitidos: $('l-aceptar').checked }, extra || {}, donde());
 function lecturaL(lec) {
-  if (!lec.ok) return avisos([lec.motivo], 'error') + avisos(lec.avisos);
+  if (!lec.ok) return avisos((lec.omitidos || []).map((o) => o.texto), 'error') + avisos([lec.motivo], 'error') + avisos(lec.avisos);
   const chips = lec.entendido.map((e) => '<span class="chip" title="' + esc(e.nombre) + '">«' + esc(e.frase) + '» → <strong>' + esc(e.label) + '</strong> · por ' + esc(e.como) + '</span>').join('');
   return '<div class="aviso"><strong>Entendí:</strong> ' + esc(lec.lectura) + ' <span class="tenue">Si no es lo que querías, reescribilo: nombrá el nivel («equipos», «jugadores») o usá la sigla de la planilla.</span></div>' +
     '<p style="margin:8px 0 2px">' + chips + '</p>' +
-    avisos(lec.aproximaciones.map((a) => 'Aproximación · ' + a)) + avisos(lec.noExiste.map((a) => 'No está · ' + a)) + avisos(lec.fuera) + avisos(lec.avisos);
+    avisos(lec.aproximaciones.map((a) => 'Aproximación · ' + a)) + avisos(lec.noExiste.map((a) => (a.charAt(0) === '⚠' ? a : 'No está · ' + a)), 'error') + avisos(lec.fuera) + avisos(lec.avisos);
 }
 async function buscarLibre(aBandeja) {
   const yo = ++turnoL;
@@ -526,6 +542,9 @@ async function buscarLibre(aBandeja) {
     if (yo !== turnoL) return;
     $('l-lectura').innerHTML = lecturaL(r.lectura) + avisos(r.avisos);
     HAY_L = !!(r.ok && r.propuesta);
+    /* El permiso para seguir sin un filtro se pide solo cuando hace falta, y no se arrastra a la búsqueda siguiente. */
+    const hayOmitidos = !!(r.lectura && (r.lectura.omitidos || []).length);
+    $('l-aceptar-caja').hidden = !hayOmitidos; if (!hayOmitidos) $('l-aceptar').checked = false;
     if (!r.ok) { $('l-resultado').innerHTML = ''; $('l-estado').textContent = ''; }
     else {
       const l = ligaSel(), z = zonaSel();
@@ -650,7 +669,9 @@ $('generar').addEventListener('click', generar);
 $('l-buscar').addEventListener('click', () => buscarLibre(false));
 $('l-mandar').addEventListener('click', () => buscarLibre(true));
 $('l-texto').addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) buscarLibre(false); });
-['l-nivel', 'l-grupo', 'l-top'].forEach((id) => $(id).addEventListener('change', () => { if (HAY_L) buscarLibre(false); }));
+$('l-aceptar').addEventListener('change', () => buscarLibre(false));
+$('l-texto').addEventListener('input', () => { $('l-aceptar').checked = false; });
+['l-nivel', 'l-grupo', 'l-top', 'l-escala', 'l-activos'].forEach((id) => $(id).addEventListener('change', () => { if (HAY_L) buscarLibre(false); }));
 $('formato').addEventListener('change', pintarEjes);
 $('releer').addEventListener('click', async () => {
   $('releer').disabled = true;
@@ -671,7 +692,7 @@ $('formApr').addEventListener('submit', async (ev) => {
 function cambioDeZona() {
   if (NIVEL === 'zonas' && ligaSel().zonas.length < 2) NIVEL = 'jugadores';
   /* La idea libre de la zona anterior se va: su propuesta es de otro libro. */
-  turnoL++; HAY_L = false; $('l-resultado').innerHTML = ''; $('l-lectura').innerHTML = ''; $('l-mandar').disabled = true;
+  turnoL++; HAY_L = false; $('l-aceptar').checked = false; $('l-aceptar-caja').hidden = true; $('l-resultado').innerHTML = ''; $('l-lectura').innerHTML = ''; $('l-mandar').disabled = true;
   pintarExplorador(); Object.keys(cargado).forEach((k) => { cargado[k] = null; }); cargarTab(true);
 }
 (async function iniciar() {

@@ -118,7 +118,7 @@ node test-interzonal.js    # 220 tests · la llave entre zonas: un cliente de un
 node test-contenido.js     # 142 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
                            #             derivado, las diez recetas de Nivel 2 y que los nombres solo salgan en APdeB (103, 104)
 
-node test-centro-mando.js  # 412 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
+node test-centro-mando.js  # 461 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
                            #             el texto libre de «A medida», el cruce de dos métricas y la voz de entrenador-analista (110),
                            #             el % de victorias, los textos sin cortar y la tesis de vestuario (111)
                            #             (pide «npm install» en centro-mando/ una vez: los agentes usan el SDK de Claude, punto 107)
@@ -134,7 +134,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7637 tests en total. Todos tienen que dar verde antes de commitear.**
+**7686 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -13727,3 +13727,104 @@ Verificado al revés, diez mutaciones, todas caen: el cruce recortado a 10
 autochequeo de filas en verde fijo (2), y una cada una el volumen solo
 para el orden, los otros dos autochequeos, las capas sin verificar, los
 ganchos superpuestos y la cola sin revisar.
+
+## 114. EL BUSCADOR DEL CENTRO DE MANDO · honestidad muestral antes que redacción (2026-10-13)
+
+Pedido del club: frenar la generación de piezas y asegurar la base. Si el
+dato es flojo, la IA redacta bien algo que está mal. `test-centro-mando.js`
+fija todo lo de acá; alcanza a «A medida» (`libre.js`) y al Explorador.
+
+### 1 · Una variable que el libro no trae NO se ignora en silencio
+
+`NO_EXISTE` distingue las VARIABLES que faltan (`v`: EDAD, ALTURA,
+NACIONALIDAD, POSICIÓN, datos por cuarto, clutch, quintetos, zona de tiro)
+de lo que el panel no usa (`+/-`, valoración). Con «U23», «menos de 23
+años», «extranjeros», «más de 1,95 de altura»:
+
+- sale `omitidos: [{ variable, texto }]` con el aviso literal: «⚠️ El libro
+  actual de <liga> no contiene la variable EDAD. Se desactiva este filtro
+  para evitar datos engañosos.»;
+- **el número de esa condición NO se le pasa a la métrica de al lado**:
+  «puntos de jugadores de menos de 23 años» ya no filtra PTS < 23. Era el
+  peor modo de fallar —un filtro que nadie pidió— y estaba ahí;
+- **el servidor no arma la pieza** (`propuesta: null`, `pideAceptar`): la
+  tabla se muestra con el aviso, y la propuesta recién sale con «Seguir sin
+  los filtros desactivados». Aceptada, el título lo arma el generador —el
+  texto prometería el filtro— y el aviso viaja en la pieza hasta la IA.
+
+### 2 · El cruce ya no se fuerza
+
+| Lo que se escribe | Lo que sale |
+|---|---|
+| dos métricas con «contra», «vs», una dirección en cada una o una pregunta de influencia | cruce por mediana (punto 110) |
+| dos métricas sin esa señal, o tres o más | **tabla multivariable** con todas las columnas, ordenada por la primera |
+| «índice», «combinado», «en conjunto» | la misma tabla, ordenada por el **índice combinado** |
+
+El índice es el promedio de los percentiles de cada métrica ENTRE LOS QUE
+CUMPLEN, con el mismo peso y la dirección de cada una dada vuelta donde
+menos es mejor. Es una posición relativa, no un dato del libro, y la
+columna lo dice.
+
+### 3 · Dos escalas, y no se mezclan
+
+`escala: 'total'` («totales», «acumulados», «en la temporada», o el
+selector): las CUENTAS (`E.ACUMULABLES`) pasan al total del tramo y la
+columna se rotula «tot.»; una tasa es la misma en las dos. El total de un
+jugador sale de su acumulado y, si el libro no lo trae, de **sumar su
+partido a partido con ese equipo** — nunca de multiplicar el promedio (hay
+un test con un promedio mal cargado). «Rebotes totales» es una métrica,
+no una escala: las palabras de la consulta se leen FUERA de las métricas.
+
+### 4 · El piso de volumen automático · `E.pisoDeVolumen`
+
+Al ordenar o cruzar por una efectividad a nivel jugadores (`pisoAuto`,
+que pide el intérprete), el Explorador aplica y DICE:
+
+- MIN ≥ el umbral de calificación de la liga (`idx.liga.minJugador`),
+  salvo que se haya filtrado por minutos a propósito;
+- PJ ≥ 3, la regla de la muestra del punto 4;
+- el volumen de esa efectividad ≥ el **cuartil más bajo** de los que
+  califican (medido en APdeB Zona B: T3I ≥ 1,2; en la demo, 1,9).
+
+Lo pedido a mano no se pisa. En equipos no hace falta (temporada entera).
+En partidos y en el laboratorio armado a mano no se aplica: ahí el
+diagnóstico dice «SIN PISO» y no certifica. **Esto revierte la decisión
+del punto 110** de solo avisar: el club pidió que el piso se aplique.
+
+### 5 · Solo activos
+
+`activos: N` («activos», «sin bajas», «últimas 6 fechas», o el selector):
+quedan los que sumaron minutos en alguna de las últimas N fechas de SU
+equipo (4 por defecto, la racha del buzón). Es lo que el libro puede decir;
+el estado que marca el cuerpo técnico vive en el panel de cada club y no
+se lee acá.
+
+### 6 · El diagnóstico de calidad · `resultado.calidad`
+
+Va ANTES de la tabla y adentro de la pieza (`datos.calidad`):
+
+| | |
+|---|---|
+| muestra | la N validada y si la vista la muestra entera |
+| filtros | los aplicados (con cuántos sacó cada uno) y los desactivados por falta de columna |
+| piso | el piso de volumen confirmado, con sus números |
+| escala | por partido o totales |
+
+`certificado` es los tres en verde y nada desactivado. **Un ranking no es
+un recorte** (sus 10 primeros son lo pedido); un cruce o un índice que no
+entran enteros en la vista SÍ lo son, porque sus números salen de todos.
+
+### Lo que este diagnóstico NO certifica
+
+Que el libro esté bien cargado. Un box score truncado o un promedio a
+medio recalcular (puntos 3 ter y 66) los denuncia el Diagnóstico del
+panel, no este buscador: acá se certifica que la tabla dice lo que se
+pidió, sobre quiénes, y con qué piso.
+
+### Verificado
+
+En el navegador contra APdeB Zona B: «jugadores U23 con más puntos» no
+arma la pieza hasta aceptar; «minutos, uso, plays y puntos de los
+jugadores activos» da una tabla de cuatro columnas sobre 93 (25 afuera por
+inactividad); «triples de los jugadores» sale con su piso. Al revés, doce
+mutaciones, todas caen (el piso sin el volumen, 4).

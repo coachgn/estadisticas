@@ -25,7 +25,7 @@
 'use strict';
 
 const S = require('../js/sgadd-core.js');
-const { VOLUMEN, definicion, rotulo } = require('./explorador.js');
+const { VOLUMEN, definicion, rotulo, FECHAS_ACTIVO } = require('./explorador.js');
 
 const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[«»"“”¿?¡!;:()]/g, ' ').replace(/[.,](?!\d)/g, ' ').replace(/\s+/g, ' ').trim();
 const escapar = (t) => t.replace(/[.*+?^${}()|[\]\\\/-]/g, '\\$&');
@@ -71,7 +71,7 @@ const CONCEPTOS = [
   { f: ['recuperos', 'recuperaciones', 'robos', 'roban', 'roba'], m: ['PR'] },
   { f: ['rebote ofensivo', 'rebotes ofensivos', 'cristal ofensivo', 'carga del rebote', 'cargan el rebote'], m: ['RO%', 'RO'] },
   { f: ['rebote defensivo', 'rebotes defensivos', 'cierre del rebote', 'cierran el rebote'], m: ['RD%', 'RD'] },
-  { f: ['rebotes', 'rebote', 'cristal', 'tableros'], m: ['RT%', 'RT', 'RO%'] },
+  { f: ['rebotes totales', 'rebote total', 'rebotes', 'rebote', 'cristal', 'tableros'], m: ['RT%', 'RT', 'RO%'] },
   { f: ['asistencias por perdida', 'creacion', 'generacion', 'generadores', 'generador'], m: ['AST-PP'] },
   { f: ['asistencias', 'asistidas', 'asistidores', 'asistidor', 'pasadores', 'juego colectivo', 'circulacion', 'pase extra'], m: ['AST%', 'AST'] },
   { f: ['uso', 'usage', 'protagonismo', 'toman mas tiros', 'concentran el juego', 'concentra el juego'], m: ['USG%'] },
@@ -101,18 +101,27 @@ const CONCEPTOS = [
     aprox: 'El libro no dice quién arranca ni quién entra desde el banco: uso los minutos por partido, sin exigir el umbral de calificación.' },
 ];
 
-/* Lo que no está y no tiene un dato cercano que no sea inventar. */
+/* LO QUE EL LIBRO NO TRAE, y no tiene un dato cercano que no sea inventar.
+   Con \`v\` es una VARIABLE que falta: si el texto la usa para filtrar
+   («U23», «más de 1,95», «extranjeros»), el filtro se DESACTIVA y se dice
+   con todas las letras. Nunca se ignora en silencio —devolver veteranos a
+   quien pidió juveniles— ni se le pasa su número a otra métrica.
+   Sin \`v\`, el dato existe y el panel no ordena por él. */
 const NO_EXISTE = [
-  { f: ['altura', 'estatura', 'talla', 'centimetros'], que: 'La altura no está en el libro.' },
-  { f: ['edad'], que: 'La edad no está en el libro.' },
-  { f: ['bases', 'aleros', 'pivotes', 'pivots', 'escoltas', 'internos'], que: 'La posición no está en el libro (los roles del panel se infieren de cómo juega, no se filtran acá).' },
-  { f: ['ultimo cuarto', 'primer cuarto', 'por cuarto', 'cuartos'], que: 'No hay datos por cuarto en el libro (con play-by-play están en el reel RL-04).' },
-  { f: ['clutch', 'finales cerrados', 'cierres ajustados', 'ultimos minutos'], que: 'El cierre de los partidos solo existe con play-by-play (reel RL-02).' },
-  { f: ['quintetos', 'quinteto'], que: 'Los quintetos solo existen con play-by-play (reel RL-01).' },
-  { f: ['zona de tiro', 'zonas de tiro', 'mapa de tiro', 'esquina', 'esquinas'], que: 'El tiro por zona de la cancha solo existe con play-by-play (reel RL-03).' },
+  { v: 'EDAD', f: ['edad', 'edades', 'anos', 'juveniles', 'juvenil', 'veteranos', 'veterano', 'jovenes', 'joven', 'menores', 'mayores',
+    'u15', 'u17', 'u19', 'u21', 'u23', 'u 15', 'u 17', 'u 19', 'u 21', 'u 23', 'sub 15', 'sub 17', 'sub 19', 'sub 21', 'sub 23', 'sub15', 'sub17', 'sub19', 'sub21', 'sub23'] },
+  { v: 'ALTURA', f: ['altura', 'estatura', 'talla', 'centimetros', 'cm', 'metros de altura', 'mas altos', 'mas alto', 'mas bajos de altura'] },
+  { v: 'NACIONALIDAD', f: ['nacionalidad', 'extranjeros', 'extranjero', 'foraneos', 'foraneo', 'argentinos', 'nacionales', 'importados'] },
+  { v: 'POSICIÓN', f: ['posicion de juego', 'por posicion', 'por puesto', 'bases', 'aleros', 'pivotes', 'pivots', 'escoltas', 'internos', 'ala pivot', 'ala pivots', 'perimetrales'], nota: 'Los roles del panel se infieren de cómo juega cada uno; acá no se filtra por ellos.' },
+  { v: 'DATOS POR CUARTO', f: ['ultimo cuarto', 'primer cuarto', 'por cuarto', 'cuartos'], nota: 'Con play-by-play están en el reel RL-04.' },
+  { v: 'CIERRE DE PARTIDO (CLUTCH)', f: ['clutch', 'finales cerrados', 'cierres ajustados', 'ultimos minutos'], nota: 'Solo existe con play-by-play (reel RL-02).' },
+  { v: 'QUINTETOS', f: ['quintetos', 'quinteto'], nota: 'Solo existen con play-by-play (reel RL-01).' },
+  { v: 'ZONA DE TIRO', f: ['zona de tiro', 'zonas de tiro', 'mapa de tiro', 'esquina', 'esquinas'], nota: 'Solo existe con play-by-play (reel RL-03).' },
   { f: ['plus minus', 'mas menos', '+/-'], que: 'El +/- no se usa para ordenar: depende de los otros cuatro que estaban en cancha.' },
   { f: ['valoracion'], que: 'La valoración no se usa: es un índice compuesto que el panel dejó afuera a propósito.' },
 ];
+/** El aviso de una variable que falta, con el nombre del libro. */
+const avisoDeVariable = (x, libro) => '⚠️ El libro actual de ' + (libro || 'esta liga') + ' no contiene la variable ' + x.v + '. Se desactiva este filtro para evitar datos engañosos.' + (x.nota ? ' ' + x.nota : '');
 
 const NIVELES_TEXTO = {
   zonas: ['entre zonas', 'las zonas', 'cada zona', 'zonas', 'conferencias', 'conferencia'],
@@ -153,7 +162,7 @@ function vocabulario(cat) {
     frases.forEach((f) => out.push({ frase: f, tipo: 'sigla', m: [k] }));
   });
   CONCEPTOS.forEach((c) => c.f.forEach((f) => out.push({ frase: f, tipo: c.aprox ? 'aproximacion' : 'concepto', m: c.m, aprox: c.aprox || null, pocosMinutos: !!c.pocosMinutos })));
-  NO_EXISTE.forEach((c) => c.f.forEach((f) => out.push({ frase: f, tipo: 'noExiste', que: c.que })));
+  NO_EXISTE.forEach((c) => c.f.forEach((f) => out.push({ frase: f, tipo: 'noExiste', que: c.que || null, variable: c.v ? c : null })));
   Object.keys(NIVELES_TEXTO).forEach((n) => NIVELES_TEXTO[n].forEach((f) => out.push({ frase: f, tipo: 'nivel', nivel: n })));
   /* Con el mismo largo, la sigla del libro le gana al concepto. */
   const peso = { sigla: 0, nivel: 1, noExiste: 2, aproximacion: 3, concepto: 4 };
@@ -217,7 +226,12 @@ function interpretarLibre(texto, cat, opc) {
   if (t.length < 3) return { ok: false, motivo: 'Escribí qué querés mirar: una métrica, dos para cruzar o una hipótesis.' };
   const ms = menciones(t, vocabulario(cat));
   const conds = condicionesDe(t);
-  const noExiste = ms.filter((m) => m.tipo === 'noExiste').map((m) => m.que).filter((q, i, a) => a.indexOf(q) === i);
+  /* LAS VARIABLES QUE FALTAN: cada una, una vez, con su aviso. */
+  const faltantes = ms.filter((m) => m.tipo === 'noExiste');
+  const omitidos = [];
+  faltantes.forEach((m) => { if (m.variable && !omitidos.some((x) => x.variable === m.variable.v)) omitidos.push({ variable: m.variable.v, texto: avisoDeVariable(m.variable, o.libro), frases: [] }); });
+  faltantes.forEach((m) => { if (m.variable) { const x = omitidos.find((y) => y.variable === m.variable.v); if (x.frases.indexOf(m.texto) === -1) x.frases.push(m.texto); } });
+  const noExiste = omitidos.map((x) => x.texto).concat(faltantes.filter((m) => !m.variable).map((m) => m.que).filter((q, i, a) => a.indexOf(q) === i));
   const datos = ms.filter((m) => m.m);
 
   /* EL NIVEL · el que se fuerza, el que el texto nombra, o el que pueda
@@ -227,7 +241,8 @@ function interpretarLibre(texto, cat, opc) {
   const cuenta = (n) => datos.filter((m) => resuelve(m, n)).length;
   let nivel = o.nivel && cat[o.nivel === 'zonas' ? 'equipos' : o.nivel] ? o.nivel : nombrado;
   /* «Tiradores», «reboteadores», «suplentes»: se habla de personas. */
-  const dePersonas = /(^| )[a-z]{4,}(dores|dor)( |$)/.test(t) || datos.some((m) => m.pocosMinutos);
+  /* La edad, la altura, la nacionalidad y la posición también son de personas. */
+  const dePersonas = /(^| )[a-z]{4,}(dores|dor)( |$)/.test(t) || datos.some((m) => m.pocosMinutos) || omitidos.some((x) => ['EDAD', 'ALTURA', 'NACIONALIDAD', 'POSICIÓN'].indexOf(x.variable) !== -1);
   if (!nivel) nivel = dePersonas || cuenta('jugadores') > cuenta('equipos') ? 'jugadores' : 'equipos';
   const avisos = [];
   if (nivel === 'zonas' && !o.zonas) { nivel = 'equipos'; avisos.push('Esta liga tiene una sola zona con libro: comparo equipos en vez de zonas.'); }
@@ -250,11 +265,16 @@ function interpretarLibre(texto, cat, opc) {
   /* LAS CONDICIONES · el número va con el concepto que tiene pegado
      después («menos de 15 minutos»); si no hay, con el de antes. */
   const condiciones = [], sueltas = [];
+  /* Un número puede ir con una variable QUE FALTA («menos de 23 años»): ahí
+     la condición se cae entera. Pasársela a la métrica de al lado —puntos
+     menores a 23— sería el peor error: un filtro que nadie pidió. */
+  const cercanas = validas.concat(faltantes.filter((m) => m.variable)).sort((a, b) => a.ini - b.ini);
   conds.forEach((c) => {
-    const despues = validas.filter((m) => m.ini >= c.fin && m.ini - c.fin <= 22)[0];
-    const antes = validas.filter((m) => m.fin <= c.ini && c.ini - m.fin <= 30).slice(-1)[0];
+    const despues = cercanas.filter((m) => m.ini >= c.fin && m.ini - c.fin <= 22)[0];
+    const antes = cercanas.filter((m) => m.fin <= c.ini && c.ini - m.fin <= 30).slice(-1)[0];
     const m = despues || antes;
     if (!m) { sueltas.push('La condición «' + c.texto + '» no dice de qué métrica: no la apliqué.'); return; }
+    if (m.variable) { const x = omitidos.find((y) => y.variable === m.variable.v); x.condicion = c.texto; x.texto += ' La condición «' + c.texto + '» era sobre ' + x.variable + ': no se aplicó, ni se le pasó a otra métrica.'; return; }
     m.enCondicion = true;
     if (nivel !== 'zonas' && !condiciones.some((x) => x.metrica === m.id && x.op === c.op)) condiciones.push({ metrica: m.id, op: c.op, valor: c.valor });
   });
@@ -264,34 +284,60 @@ function interpretarLibre(texto, cat, opc) {
   let principales = unicas(validas.filter((m) => !m.enCondicion && !m.pocosMinutos));
   if (!principales.length) principales = unicas(validas);
   if (!principales.length) {
-    return { ok: false, noExiste, fuera, avisos: avisos.concat(sueltas),
+    return { ok: false, noExiste: omitidos.map((x) => x.texto).concat(noExiste.slice(omitidos.length)), omitidos, fuera, avisos: avisos.concat(sueltas),
       motivo: (noExiste.length ? noExiste.join(' ') + ' ' : '') + 'No reconocí ninguna métrica del libro en ese texto. Probá nombrando el concepto («ritmo», «triples», «pérdidas», «rebote ofensivo», «uso») o la sigla tal como está en la planilla («eFG%», «USG%», «PACE»).' };
   }
-  principales = principales.slice(0, 6);
-  const cruce = nivel !== 'zonas' && principales.length >= 2 ? principales.slice(0, 2) : null;
+  principales = principales.slice(0, 8);
   const orden = principales[0];
+  /* Lo que queda del texto fuera de las métricas: ahí se leen las palabras
+     que hablan de la CONSULTA («totales», «contra») y no de un dato
+     («rebotes totales» es una métrica, no una escala). */
+  const resto = ' ' + t.split('').map((ch, i) => (ms.some((m) => i >= m.ini && i < m.fin) ? ' ' : ch)).join('').replace(/\s+/g, ' ') + ' ';
+  const dice = (re) => re.test(resto);
 
-  /* QUÉ GRUPO DEL CRUCE PIDE LA HIPÓTESIS · la palabra pegada antes de
-     cada métrica: «más uso y peor true shooting» son los altos en una y
-     bajos en la otra. «Más» y «menos» van por el valor; «mejor» y «peor»
-     se dan vuelta en una métrica donde menos es mejor (peor defensa es un
-     rating defensivo ALTO). Sin palabra, el grupo por defecto. */
-  let grupo = null;
-  if (cruce) {
-    const lado = (id) => {
-      const m = validas.find((x) => x.id === id && !x.enCondicion) || validas.find((x) => x.id === id);
-      const antes = (' ' + t.slice(Math.max(0, m.ini - 16), m.ini) + ' ').match(/ (mas|mayor|mucho|mucha|alto|alta|menos|menor|poco|poca|bajo|baja|mejor|mejores|peor|peores) (?!.* (mas|mayor|mucho|mucha|alto|alta|menos|menor|poco|poca|bajo|baja|mejor|mejores|peor|peores) )/);
-      if (!antes) return null;
-      const w = antes[1], inv = !!def(id).invertida;
-      if (/^(mas|mayor|mucho|mucha|alto|alta)$/.test(w)) return 'alto';
-      if (/^(menos|menor|poco|poca|bajo|baja)$/.test(w)) return 'bajo';
-      return /^mejor/.test(w) ? (inv ? 'bajo' : 'alto') : (inv ? 'alto' : 'bajo');
-    };
-    const la = lado(cruce[0]), lb = lado(cruce[1]);
-    if (la || lb) { const a = la || 'alto', b = lb || 'bajo'; grupo = a + b.charAt(0).toUpperCase() + b.slice(1); }
-    /* UNA PREGUNTA DE INFLUENCIA («¿cómo influye…?», «¿qué tan decisivo…?»)
-       no pide una esquina del cruce: pide la escalera entera. */
-    else if (/(^| )(influye|influyen|influencia|influir|impacta|impactan|impacto|incide|inciden|decisivo|decisiva|determinante|pesa|pesan|relacion|explica|explican)( |$)/.test(t)) grupo = 'todos';
+  /* QUÉ LADO PIDE LA HIPÓTESIS · la palabra pegada antes de cada métrica:
+     «más uso y peor true shooting» son los altos en una y bajos en la
+     otra. «Más» y «menos» van por el valor; «mejor» y «peor» se dan vuelta
+     en una métrica donde menos es mejor (peor defensa es un rating
+     defensivo ALTO). */
+  const lado = (id) => {
+    const m = validas.find((x) => x.id === id && !x.enCondicion) || validas.find((x) => x.id === id);
+    const antes = (' ' + t.slice(Math.max(0, m.ini - 16), m.ini) + ' ').match(/ (mas|mayor|mucho|mucha|alto|alta|menos|menor|poco|poca|bajo|baja|mejor|mejores|peor|peores) (?!.* (mas|mayor|mucho|mucha|alto|alta|menos|menor|poco|poca|bajo|baja|mejor|mejores|peor|peores) )/);
+    if (!antes) return null;
+    const w = antes[1], inv = !!def(id).invertida;
+    if (/^(mas|mayor|mucho|mucha|alto|alta)$/.test(w)) return 'alto';
+    if (/^(menos|menor|poco|poca|bajo|baja)$/.test(w)) return 'bajo';
+    return /^mejor/.test(w) ? (inv ? 'bajo' : 'alto') : (inv ? 'alto' : 'bajo');
+  };
+  const influencia = dice(/ (influye|influyen|influencia|influir|impacta|impactan|impacto|incide|inciden|decisivo|decisiva|determinante|pesa|pesan|relacion|explica|explican) /);
+
+  /* CRUCE, TABLA O ÍNDICE · el cruce de dos métricas no se fuerza:
+       · DOS métricas y una señal de que se quieren enfrentar («contra»,
+         «vs», una dirección en cada una, una pregunta de influencia) → cruce;
+       · dos sin esa señal, o TRES O MÁS → una tabla multivariable con todas
+         las columnas pedidas, ordenada por la primera;
+       · si se pide «índice», «combinado» o «en conjunto» → ordenada por el
+         índice combinado de todas. */
+  let grupo = null, cruce = null, indice = null;
+  if (nivel !== 'zonas' && principales.length === 2) {
+    const la = lado(principales[0]), lb = lado(principales[1]);
+    const enfrenta = dice(/ (contra|vs|versus|cruce|cruza|cruzar|cruzado|cruzando|cruzame|frente a|segun|x) /);
+    if (enfrenta || influencia || la || lb) {
+      cruce = principales.slice(0, 2);
+      if (la || lb) { const a = la || 'alto', b = lb || 'bajo'; grupo = a + b.charAt(0).toUpperCase() + b.slice(1); }
+      /* UNA PREGUNTA DE INFLUENCIA no pide una esquina del cruce: pide la escalera entera. */
+      else if (influencia) grupo = 'todos';
+    }
+  }
+  if (!cruce && nivel !== 'zonas' && principales.length >= 2 && dice(/ (indice|combinado|combinada|combinados|ponderado|ponderada|en conjunto|mas completos|mas completo) /)) indice = principales.slice();
+
+  /* LA ESCALA · por partido, salvo que se pidan los totales del tramo. */
+  const escala = nivel !== 'partidos' && nivel !== 'zonas' && dice(/ (totales|total|acumulado|acumulados|acumulada|acumuladas|en total|sumados|sumadas|en la temporada|en todo el torneo) /) ? 'total' : 'promedio';
+  /* SOLO ACTIVOS · «activos», «sin bajas», «que siguen jugando». */
+  let activos = 0;
+  if (nivel === 'jugadores' && dice(/ (activos|activo|en actividad|sin inactivos|sin los inactivos|sin bajas|sin las bajas|siguen jugando|sigan jugando|vigentes) /)) {
+    const mf = t.match(/ultim[oa]s (\d{1,2}) (?:fechas|partidos|jornadas)/);
+    activos = mf ? Math.min(20, Math.max(1, Number(mf[1]))) : FECHAS_ACTIVO;
   }
 
   let sentido;
@@ -302,13 +348,14 @@ function interpretarLibre(texto, cat, opc) {
   const mt = t.match(/(?:^| )top ?(\d{1,2})(?: |$)/) || t.match(/(?:^| )l[oa]s (\d{1,2}) (?:mejores|peores|primeros|primeras|que)(?: |$)/);
   /* UN CRUCE SE MUESTRA ENTERO: el resumen habla de todos los que cumplen,
      y la tabla tiene que dejar contarlos. El tope es el del Explorador. */
-  const top = mt ? Math.min(50, Math.max(1, Number(mt[1]))) : (cruce ? 50 : 10);
+  const top = mt ? Math.min(50, Math.max(1, Number(mt[1]))) : (cruce || indice || principales.length > 1 ? 50 : 10);
   const filtraMinutos = condiciones.some((c) => c.metrica === 'MIN');
   const soloCalificados = nivel === 'jugadores' && !pocosMinutos && !filtraMinutos;
 
-  /* EL PORCENTAJE SIN PISO DE VOLUMEN: no se le inventa una condición
-     —sería decidir un número por quien opera—, se avisa cómo pedirla. */
-  if (nivel !== 'zonas' && nivel !== 'equipos') {
+  /* EL PISO DE VOLUMEN · en jugadores lo pone el Explorador con números de
+     la liga y lo dice (`pisoAuto`). En partidos no hay un piso de liga que
+     aplicar: se avisa cómo pedirlo. */
+  if (nivel === 'partidos') {
     (cruce || [orden]).forEach((k) => {
       const vol = VOLUMEN[k];
       if (vol && !condiciones.some((c) => c.metrica === vol)) avisos.push(rotulo(k) + ' va sin piso de intentos: arriba puede quedar alguien con uno o dos tiros. Para evitarlo, sumale al texto «con al menos 2 ' + rotulo(vol) + '» (o el piso que quieras).');
@@ -319,14 +366,21 @@ function interpretarLibre(texto, cat, opc) {
   if (sentido) consulta.sentido = sentido;
   if (cruce) consulta.cruce = cruce;
   if (grupo) consulta.grupo = grupo;
+  if (indice) consulta.indice = indice;
+  if (escala === 'total') consulta.escala = 'total';
+  if (activos) consulta.activos = activos;
+  if (nivel === 'jugadores') consulta.pisoAuto = { minutos: !pocosMinutos && !filtraMinutos };
 
   const nombres = { jugadores: 'jugadores', equipos: 'equipos', partidos: 'actuaciones de un equipo en un partido', zonas: 'zonas' };
   const lectura = 'Miro ' + nombres[nivel] + (nombrado || o.nivel ? '' : ' (el texto no decía el nivel)') + '. ' +
-    (cruce ? 'Cruzo ' + rotulo(cruce[0]) + ' con ' + rotulo(cruce[1]) + (grupo === 'todos' ? ' y, como preguntás por la influencia, muestro a todos ordenados por la primera' : grupo ? ' y, por cómo está escrito, muestro a los ' + grupo.replace(/^(alto|bajo)(Alto|Bajo)$/, (x, a, b) => a + 's en la primera y ' + b.toLowerCase() + 's en la segunda') : '') + '.' :'Ordeno por ' + rotulo(orden) + (sentido === 'asc' ? ', de menor a mayor' : '') + '.') +
-    (principales.length > 2 ? ' Sumo a la tabla ' + principales.slice(2).map(rotulo).join(', ') + '.' : '') +
+    (cruce ? 'Cruzo ' + rotulo(cruce[0]) + ' con ' + rotulo(cruce[1]) + (grupo === 'todos' ? ' y, como preguntás por la influencia, muestro a todos ordenados por la primera' : grupo ? ' y, por cómo está escrito, muestro a los ' + grupo.replace(/^(alto|bajo)(Alto|Bajo)$/, (x, a, b) => a + 's en la primera y ' + b.toLowerCase() + 's en la segunda') : '') + '.' : indice ? 'Armo una tabla con ' + principales.map(rotulo).join(', ') + ', ordenada por el índice combinado de todas.'
+      : principales.length > 1 ? 'Armo una tabla con ' + principales.map(rotulo).join(', ') + ', ordenada por ' + rotulo(orden) + (sentido === 'asc' ? ' de menor a mayor' : '') + ' (no las cruzo: para enfrentar dos, escribí «contra»).'
+      : 'Ordeno por ' + rotulo(orden) + (sentido === 'asc' ? ', de menor a mayor' : '') + '.') +
+    (escala === 'total' ? ' En TOTALES del tramo, no por partido.' : '') +
+    (activos ? ' Solo los que sumaron minutos en las últimas ' + activos + ' fechas de su equipo.' : '') +
     (condiciones.length ? ' Condiciones: ' + condiciones.map((c) => rotulo(c.metrica) + ' ' + c.op + ' ' + String(c.valor).replace('.', ',')).join(' y ') + '.' : '') +
     (soloCalificados ? ' Solo los que califican por minutos.' : nivel === 'jugadores' ? ' Sin exigir el umbral de minutos.' : '');
-  return { ok: true, nivel, consulta, entendido, aproximaciones, noExiste, fuera, avisos: avisos.concat(sueltas), lectura };
+  return { ok: true, nivel, consulta, entendido, aproximaciones, noExiste, omitidos, fuera, avisos: avisos.concat(sueltas), lectura };
 }
 
-module.exports = { interpretarLibre, norm, CONCEPTOS, NO_EXISTE, vocabulario, menciones, condicionesDe };
+module.exports = { avisoDeVariable, interpretarLibre, norm, CONCEPTOS, NO_EXISTE, vocabulario, menciones, condicionesDe };

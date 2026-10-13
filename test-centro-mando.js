@@ -405,8 +405,9 @@ titulo('El Explorador táctico');
   check('los decimales se escriben con coma', li('tiro libre con más de 3,5 libres intentados en jugadores').consulta.condiciones[0].valor === 3.5);
   check('el nivel se puede forzar', li('ritmo', { nivel: 'partidos' }).nivel === 'partidos');
   check('entre zonas, sin dos libros, compara equipos y avisa', (() => { const x = li('ritmo entre zonas'); return x.nivel === 'equipos' && x.avisos.some((a) => /una sola zona/.test(a)) && li('ritmo entre zonas', { zonas: true }).nivel === 'zonas'; })());
-  check('un porcentaje sin piso de intentos se AVISA: la condición no se inventa', (() => { const x = li('triples con menos de 15 minutos'); return x.consulta.condiciones.length === 1 && x.consulta.condiciones[0].metrica === 'MIN' && x.avisos.some((a) => /sin piso de intentos/.test(a)) &&
-    !li('triples con al menos 2 t3i en jugadores').avisos.some((a) => /sin piso/.test(a)); })());
+  check('en jugadores el piso lo pone el Explorador: el intérprete lo pide y respeta los minutos que se filtraron a mano', (() => { const x = li('triples con menos de 15 minutos'); return x.consulta.condiciones.length === 1 && x.consulta.condiciones[0].metrica === 'MIN' && x.consulta.pisoAuto.minutos === false &&
+    li('triples de los jugadores').consulta.pisoAuto.minutos === true && !li('triples de los equipos').consulta.pisoAuto; })());
+  check('en un partido no hay piso de liga: se avisa cómo pedirlo', li('triples en un partido').avisos.some((a) => /sin piso de intentos/.test(a)));
   check('«suplentes» no afirma titularidad: usa minutos y lo dice', (() => { const x = li('recuperos de los suplentes'); return x.nivel === 'jugadores' && x.consulta.soloCalificados === false && x.consulta.orden === 'PR' && x.aproximaciones.some((a) => /no dice quién arranca/.test(a)); })());
   check('una condición sin métrica cerca no se aplica, y se dice', (() => { const x = li('más de 3 en general, y bastante más lejos en la frase aparece el ritmo de los equipos'); return x.ok && x.consulta.condiciones.length === 0 && x.avisos.some((a) => /no dice de qué métrica/.test(a)); })());
   check('sin ninguna métrica, dice cómo escribirlo', li('hola qué tal').ok === false && /No reconocí/.test(li('hola qué tal').motivo));
@@ -420,7 +421,7 @@ titulo('El Explorador táctico');
   check('victorias, net rating y pérdidas, como se escriben', li('PACE contra win%').consulta.cruce.join() === 'PACE,WIN%' && li('eFG% vs %V').consulta.cruce.join() === 'eFG%,WIN%' && li('TOV% contra netrtg').consulta.cruce.join() === 'PePP%,NET RTNG' && li('los equipos que más ganan').consulta.orden === 'WIN%');
   check('a nivel jugadores no hay victorias, y se dice', li('jugadores: uso contra victorias').fuera.some((x) => /victorias/.test(x)));
   check('lo que pide lo corre el Explorador sin perder nada', ['USG% vs TS% con al menos 20 minutos', 'los 5 peores equipos en pérdidas', 'triples con menos de 15 minutos'].every((t) => {
-    const x = li(t), res = E.explorar(idx, x.nivel, x.consulta); return res.orden === x.consulta.orden && res.condiciones.length === x.consulta.condiciones.length && !!res.cruce === !!x.consulta.cruce && res.filas.length > 0; }));
+    const x = li(t), res = E.explorar(idx, x.nivel, x.consulta); return res.orden === x.consulta.orden && res.condiciones.filter((y) => !y.auto).length === x.consulta.condiciones.length && !!res.cruce === !!x.consulta.cruce && res.filas.length > 0; }));
   const fuenteLibre = fs.readFileSync('centro-mando/libre.js', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   check('es local y puro: ni red, ni disco, ni modelo, ni reloj', !/require\('fs'\)|fetch\(|llm\.js|child_process|Date\.now|Math\.random/.test(fuenteLibre));
 
@@ -741,6 +742,105 @@ titulo('Los agentes con Claude · la guarda numérica');
   check('el nivel forzado manda sobre el texto', (await S.libre({ liga: 'lnb', zona: 'unica', texto: 'ritmo y pérdidas', nivel: 'partidos' })).resultado.nivel === 'partidos');
   check('la página tiene la idea libre y dice qué entendió antes que la tabla', /id="l-texto"/.test(fs.readFileSync('centro-mando/index.html', 'utf8')) && /api\('\/api\/libre'/.test(fs.readFileSync('centro-mando/index.html', 'utf8')) && /Aproximación · /.test(fs.readFileSync('centro-mando/index.html', 'utf8')));
 
+  titulo('El buscador · una variable que el libro no trae');
+  {
+    const LB2 = require('./centro-mando/libre.js');
+    const cat2 = E.catalogo(idx);
+    const li2 = (t, o) => LB2.interpretarLibre(t, cat2, Object.assign({ libro: 'LIGA DE PRUEBA' }, o || {}));
+    const u23 = li2('jugadores U23 con más puntos');
+    check('un filtro por edad no se ignora en silencio: se desactiva y se dice, con el nombre del libro', u23.ok && u23.omitidos.length === 1 && u23.omitidos[0].variable === 'EDAD' &&
+      u23.omitidos[0].texto.indexOf('⚠️ El libro actual de LIGA DE PRUEBA no contiene la variable EDAD. Se desactiva este filtro para evitar datos engañosos.') === 0);
+    const menos23 = li2('puntos de jugadores de menos de 23 años');
+    check('el número de una variable que falta NO se le pasa a la métrica de al lado', menos23.consulta.condiciones.length === 0 && menos23.consulta.orden === 'PTS' && /«menos de 23» era sobre EDAD: no se aplicó/.test(menos23.omitidos[0].texto));
+    const varios = li2('extranjeros con más de 1,95 de altura que más anotan');
+    check('altura y nacionalidad, cada una con su aviso; y son de personas', varios.omitidos.map((x) => x.variable).sort().join() === 'ALTURA,NACIONALIDAD' && varios.consulta.condiciones.length === 0 && varios.nivel === 'jugadores');
+    check('posición, cuartos, clutch y zona de tiro también se avisan', ['los bases que más asisten', 'puntos en el último cuarto', 'triples desde la esquina', 'uso en el clutch'].every((t) => li2(t).omitidos.length === 1));
+    check('una variable que falta se avisa una sola vez', li2('juveniles u21 y u23 con más puntos').omitidos.length === 1 && li2('juveniles u21 y u23 con más puntos').omitidos[0].frases.length === 3);
+    check('lo que el panel no usa (+/-) no es una variable que falte', (() => { const x = li2('uso y +/- de los jugadores'); return x.omitidos.length === 0 && x.noExiste.length === 1; })());
+    check('una consulta sin variables faltantes no avisa nada', li2('uso contra true shooting').omitidos.length === 0);
+    const ru = await S.libre({ liga: 'lnb', zona: 'unica', texto: 'jugadores U23 con más puntos' });
+    check('con un filtro desactivado NO se arma la pieza: se muestra la tabla y se pide aceptar', ru.ok && ru.propuesta === null && ru.pideAceptar === true && ru.resultado.filas.length > 0 && ru.resultado.calidad.certificado === false && ru.resultado.calidad.filtros.omitidos.length === 1 && /LIGA NACIONAL/.test(ru.resultado.calidad.filtros.omitidos[0]));
+    check('y no se puede mandar a la bandeja sin aceptar', (await S.libre({ liga: 'lnb', zona: 'unica', texto: 'jugadores U23 con más puntos', aBandeja: true })).enBandeja === undefined);
+    const ra = await S.libre({ liga: 'lnb', zona: 'unica', texto: 'jugadores U23 con más puntos', aceptarOmitidos: true });
+    check('aceptando, la pieza sale SIN prometer el filtro: otro título, y el aviso adentro', !!ra.propuesta && !/u23/i.test(ra.propuesta.titulo) && ra.propuesta.avisos.some((a) => /no contiene la variable EDAD/.test(a)) && L.piezaDe(ra.propuesta).limites.some((a) => /EDAD/.test(a)) && ra.propuesta.datos.calidad.certificado === false);
+
+    titulo('El buscador · tabla multivariable e índice combinado');
+    const multi = li2('minutos, uso, plays y puntos de los jugadores');
+    check('más de dos métricas no se fuerzan a un cruce: tabla con todas, ordenada por la primera', !multi.consulta.cruce && multi.consulta.metricas.join() === 'MIN,USG%,PLAYS,PTS' && multi.consulta.orden === 'MIN' && multi.consulta.top === 50);
+    const rm2 = E.explorar(idx, 'jugadores', multi.consulta);
+    check('salen todas las columnas pedidas, ordenadas por la líder', ['MIN', 'USG%', 'PLAYS', 'PTS'].every((k) => rm2.columnas.some((x) => x.id === k)) && rm2.cruce === null && rm2.filas.every((x, i, a) => !i || a[i - 1].valores.MIN >= x.valores.MIN));
+    check('dos métricas sin «contra» tampoco se cruzan; con «contra», sí', !li2('minutos y puntos de los jugadores').consulta.cruce && li2('minutos contra puntos de los jugadores').consulta.cruce.join() === 'MIN,PTS');
+    const ind = li2('minutos, uso, plays y puntos de los jugadores, índice combinado');
+    const ri = E.explorar(idx, 'jugadores', ind.consulta);
+    check('con «índice combinado» se ordena por el índice, que va primero y dice cómo se armó', ind.consulta.indice.length === 4 && ri.orden === 'INDICE' && ri.columnas[0].id === 'INDICE' && /promedio de los percentiles/.test(ri.columnas[0].nombre) && ri.filas.every((x, i, a) => !i || a[i - 1].valores.INDICE >= x.valores.INDICE));
+    check('el índice es el promedio de los percentiles entre los que cumplen, a mano', (() => {
+      const pasan = idx.liga.jugadores.filter((j) => j.__califica && ['MIN', 'USG%', 'PLAYS', 'PTS'].every((k) => typeof j[k] === 'number'));
+      const pct = (k, v) => { let m = 0, ig = 0; pasan.forEach((j) => { if (j[k] < v) m++; else if (j[k] === v) ig++; }); return (m + 0.5 * ig) / pasan.length * 100; };
+      const j0 = pasan.find((j) => j.NOMBRES === ri.filas[0].jugador);
+      return ri.cumplen === pasan.length && ri.filas[0].valores.INDICE === Math.round(['MIN', 'USG%', 'PLAYS', 'PTS'].reduce((t, k) => t + pct(k, j0[k]), 0) / 4 * 10) / 10;
+    })());
+    check('en una métrica donde menos es mejor, el índice se da vuelta', (() => { const x = E.explorar(idx, 'equipos', { indice: ['PePP%', 'RTNG DEF'], top: 50 }); const peor = x.filas[x.filas.length - 1], mejor = x.filas[0]; return mejor.valores['PePP%'] + mejor.valores['RTNG DEF'] / 1000 < peor.valores['PePP%'] + peor.valores['RTNG DEF'] / 1000 || mejor.valores['RTNG DEF'] < peor.valores['RTNG DEF']; })());
+    check('un índice que no entra entero en la vista NO certifica la muestra', ri.cumplen > 50 && ri.calidad.muestra.ok === false && /VISTA RECORTADA/.test(ri.calidad.muestra.texto));
+
+    titulo('El buscador · por partido contra totales');
+    const tj = E.explorar(idx, 'jugadores', { metricas: ['PTS', 'T3I', 'T3%'], orden: 'PTS', escala: 'total', top: 50 });
+    const j1 = idx.liga.jugadores.find((j) => j.NOMBRES === tj.filas[0].jugador);
+    const log1 = idx.liga.jugadorPartidos.get(SGADD.clavePersona(j1.NOMBRES)).filter((r) => r.__equipo === SGADD.claveEquipo(j1.EQUIPO));
+    check('el total de un jugador es la SUMA de su partido a partido, no el promedio por los partidos', tj.filas[0].valores.PTS === log1.reduce((t, r) => t + (r.PTS || 0), 0) && tj.filas[0].valores.PTS > j1.PTS * 3);
+    check('aunque el promedio de la hoja diga otra cosa: el total no se arma multiplicándolo', (() => {
+      /* Un libro con el promedio de un jugador mal cargado: su total tiene que seguir siendo lo que sumó. */
+      const idxT = SGADD.construirIndice(JSON.parse(JSON.stringify(hojas)), { fase: 'REGULAR', torneo: SGADD.TORNEO_TOTAL });
+      const jt = idxT.liga.jugadores.find((j) => j.NOMBRES === j1.NOMBRES && j.EQUIPO === j1.EQUIPO);
+      jt.PTS = 99;
+      const fila = E.explorar(idxT, 'jugadores', { metricas: ['PTS'], orden: 'PTS', escala: 'total', top: 50 }).filas.find((x) => x.jugador === j1.NOMBRES);
+      return fila.valores.PTS === log1.reduce((t, r) => t + (r.PTS || 0), 0) && fila.valores.PTS !== 99 * jt.PJ;
+    })());
+    check('las cuentas van rotuladas «tot.» y las tasas no cambian', tj.columnas.find((x) => x.id === 'PTS').label === 'PTS tot.' && tj.columnas.find((x) => x.id === 'PTS').escala === 'total' && tj.columnas.find((x) => x.id === 'T3%').escala === 'tasa' && tj.filas[0].valores['T3%'] === j1['T3%'] && tj.escala === 'total' && /TOTALES/.test(tj.calidad.escala));
+    check('por defecto es por partido, y lo dice', (() => { const x = E.explorar(idx, 'jugadores', { metricas: ['PTS'], orden: 'PTS' }); return x.escala === 'promedio' && x.columnas[0].label === 'PTS' && /PROMEDIOS por partido/.test(x.calidad.escala) && x.filas[0].valores.PTS === Math.max.apply(null, idx.liga.jugadores.map((j) => j.PTS || 0)); })());
+    check('el total de un equipo es el de sus partidos', (() => { const x = E.explorar(idx, 'equipos', { metricas: ['PTS'], orden: 'PTS', escala: 'total', top: 50 }); return x.filas.every((y) => { const e = idx.lista().find((z) => z.nombre === y.equipo); return y.valores.PTS === e.totales.propio.PTS; }); })());
+    check('el orden por total no es el orden por promedio', (() => { const a = E.explorar(idx, 'jugadores', { metricas: ['PTS'], orden: 'PTS', top: 20 }).filas.map((x) => x.jugador).join('|'), b = E.explorar(idx, 'jugadores', { metricas: ['PTS'], orden: 'PTS', escala: 'total', top: 20 }).filas.map((x) => x.jugador).join('|'); return a !== b; })());
+    check('«totales» pide la escala; «rebotes totales» es una métrica, no una escala', li2('puntos totales de los jugadores').consulta.escala === 'total' && !li2('rebotes totales y puntos de los equipos').consulta.escala && li2('rebotes totales y puntos de los equipos').consulta.metricas[0] === 'RT%');
+    check('un partido no tiene total', E.explorar(idx, 'partidos', { metricas: ['PTS'], orden: 'PTS', escala: 'total' }).escala === 'promedio');
+
+    titulo('El buscador · el piso de volumen automático');
+    const pt = E.explorar(idx, 'jugadores', li2('triples de los jugadores').consulta);
+    const califPj = idx.liga.jugadores.filter((j) => j.__califica && !(j.PJ < 3));
+    const corte = (() => { const o = califPj.map((j) => j.T3I).filter((v) => typeof v === 'number').sort((a, b) => a - b); return Math.round(o[Math.floor((o.length - 1) * 0.25)] * 10) / 10; })();
+    check('ordenar por una efectividad aplica el piso con números de ESTA liga', pt.calidad.piso.aplicado === true && pt.condiciones.some((x) => x.metrica === 'PJ' && x.valor === 3 && x.auto) && pt.condiciones.some((x) => x.metrica === 'T3I' && x.valor === corte && x.auto), JSON.stringify(pt.condiciones) + ' corte ' + corte);
+    check('y lo informa en el encabezado, pieza por pieza', new RegExp('MIN ≥ ' + SGADD.formatear('MIN', idx.liga.minJugador).replace('.', '\\.')).test(pt.calidad.piso.texto) && /PJ ≥ 3/.test(pt.calidad.piso.texto) && /T3I ≥ /.test(pt.calidad.piso.texto) && /cuartil más bajo/.test(pt.calidad.piso.texto));
+    check('todas las filas lo cumplen', pt.filas.every((x) => x.valores.T3I >= corte && x.valores.PJ >= 3 && x.califica));
+    check('el primero ya no es un 1 de 1', pt.filas[0].valores['T3%'] < 1 && E.explorar(idx, 'jugadores', { metricas: ['T3%'], orden: 'T3%' }).filas[0].valores['T3%'] > pt.filas[0].valores['T3%']);
+    check('un piso pedido a mano no se pisa', (() => { const x = E.explorar(idx, 'jugadores', li2('triples con al menos 4 t3i en jugadores').consulta); return x.condiciones.filter((y) => y.metrica === 'T3I').length === 1 && x.condiciones.find((y) => y.metrica === 'T3I').valor === 4 && /el piso que pediste/.test(x.calidad.piso.texto); })());
+    check('si se filtró por minutos a propósito, no se exige el umbral de la liga', (() => { const x = E.explorar(idx, 'jugadores', li2('triples con menos de 15 minutos').consulta); return x.filas.every((y) => y.valores.MIN < 15) && /minutos: los que pediste/.test(x.calidad.piso.texto) && x.filas.length > 0; })());
+    check('lo que no es una efectividad no lleva piso', E.explorar(idx, 'jugadores', li2('puntos de los jugadores').consulta).calidad.piso.aplicado === false && E.explorar(idx, 'jugadores', li2('puntos de los jugadores').consulta).calidad.piso.ok === true);
+    check('en equipos no hace falta: la temporada entera', (() => { const x = E.explorar(idx, 'equipos', li2('eFG% de los equipos').consulta).calidad.piso; return x.ok && !x.aplicado && /temporada entera/.test(x.texto); })());
+    check('sin piso automático ni manual, el diagnóstico lo denuncia', (() => { const x = E.explorar(idx, 'jugadores', { metricas: ['T3%'], orden: 'T3%' }).calidad; return x.piso.ok === false && /SIN PISO/.test(x.piso.texto) && x.certificado === false; })());
+
+    titulo('El buscador · solo activos');
+    const todos = E.explorar(idx, 'jugadores', { metricas: ['PTS'], orden: 'PTS', top: 50 });
+    const act = E.explorar(idx, 'jugadores', { metricas: ['PTS'], orden: 'PTS', top: 50, activos: 4 });
+    const activoAMano = (j, n) => { const e = idx.lista().find((x) => x.clave === SGADD.claveEquipo(j.EQUIPO)); const ult = new Set(e.partidos.slice().sort((a, b) => a.__fecha - b.__fecha).slice(-n).map((p) => p.__id)); return (idx.liga.jugadorPartidos.get(SGADD.clavePersona(j.NOMBRES)) || []).some((r) => r.__equipo === e.clave && ult.has(r.__id) && r.MIN > 0); };
+    const inact = idx.liga.jugadores.filter((j) => typeof j.PTS === 'number' && !activoAMano(j, 4)).length;
+    check('saca a los que no sumaron minutos en las últimas 4 fechas de su equipo, contados a mano', act.inactivos === inact && inact > 0 && act.cumplen === todos.cumplen - inact, act.inactivos + ' vs ' + inact);
+    check('y lo dice entre los filtros aplicados', act.calidad.filtros.aplicados.some((a) => new RegExp('últimas 4 fechas de su equipo\\. ' + inact + ' quedaron afuera').test(a)));
+    check('con más fechas de margen quedan afuera menos', E.explorar(idx, 'jugadores', { metricas: ['PTS'], orden: 'PTS', activos: 10 }).inactivos <= act.inactivos);
+    check('sin pedirlo no se saca a nadie', todos.inactivos === 0 && !todos.calidad.filtros.aplicados.some((a) => /activos/.test(a)));
+    check('«activos» y «últimas N fechas» se leen del texto', li2('puntos de los jugadores activos').consulta.activos === E.FECHAS_ACTIVO && li2('puntos de los jugadores activos en las últimas 6 fechas').consulta.activos === 6 && !li2('puntos de los jugadores').consulta.activos);
+    check('no aplica a equipos', E.explorar(idx, 'equipos', { metricas: ['PTS'], activos: 4 }).inactivos === 0);
+
+    titulo('El buscador · el diagnóstico de calidad');
+    const cz2 = E.explorar(idx, 'equipos', { cruce: ['RO%', 'WIN%'], grupo: 'todos', top: 50 }).calidad;
+    check('los tres puntos y la escala, siempre', ['muestra', 'filtros', 'piso', 'escala', 'certificado'].every((k) => k in cz2) && Array.isArray(cz2.filtros.aplicados) && Array.isArray(cz2.filtros.omitidos));
+    check('un cruce de equipos entero queda certificado', cz2.certificado === true && cz2.muestra.ok && cz2.muestra.n === idx.lista().length && /sin recortes/.test(cz2.muestra.texto));
+    check('un ranking no es un recorte: sus 10 primeros son lo pedido', (() => { const x = E.explorar(idx, 'jugadores', { metricas: ['PTS'], orden: 'PTS' }).calidad.muestra; return x.ok === true && x.ranking === true && /RANKING: los 10 primeros de/.test(x.texto); })());
+    check('un cruce que no entra entero NO se certifica', (() => { const x = E.explorar(idx, 'jugadores', { cruce: ['USG%', 'TS%'], grupo: 'todos', top: 50 }).calidad; return x.muestra.ok === false && x.certificado === false && /las medianas se calcularon sobre todos/.test(x.muestra.texto); })());
+    check('la N del diagnóstico es la de la tabla', (() => { const x = E.explorar(idx, 'jugadores', { metricas: ['PTS'], orden: 'PTS', soloCalificados: true }); return x.calidad.muestra.n === x.cumplen && x.calidad.filtros.aplicados.some((a) => /califican por minutos/.test(a)); })());
+    check('un filtro desactivado quita el certificado', E.certificar({ muestra: { ok: true }, piso: { ok: true }, filtros: { aplicados: [], omitidos: ['x'] } }).certificado === false && E.certificar({ muestra: { ok: true }, piso: { ok: true }, filtros: { aplicados: [], omitidos: [] } }).certificado === true);
+    check('el diagnóstico viaja en la pieza: lo lee la IA', (() => { const x = E.aPropuesta(E.explorar(idx, 'equipos', { cruce: ['RO%', 'WIN%'], grupo: 'todos', top: 50 }), '', 'q'); return L.piezaDe(x).numeros.calidad.certificado === true && L.piezaDe(x).numeros.escala === 'promedio'; })());
+    const htmlQ = fs.readFileSync('centro-mando/index.html', 'utf8');
+    check('la pantalla lo muestra ANTES de la tabla, y tiene la escala, los activos y el permiso para seguir', /return calidad \+ cab \+ cruce/.test(htmlQ) && /Datos certificados para redactar/.test(htmlQ) && /id="l-escala"/.test(htmlQ) && /id="l-activos"/.test(htmlQ) && /id="l-aceptar"/.test(htmlQ) && /Desactivados por falta de columna/.test(htmlQ));
+  }
+
   titulo('Lo que se ve es lo que se cuenta');
   {
     const N = idx.lista().length;
@@ -770,8 +870,8 @@ titulo('Los agentes con Claude · la guarda numérica');
     check('1 · filas: una receta sin tabla no aplica', ac({ ok: true, id: 'CR-01', datos: { cambian: 7 } }).filas.ok === null);
     check('2 · volumen: en equipos el volumen es la temporada, y pasa si está a la vista', ac((await S.libre({ liga: 'lnb', zona: 'unica', texto: 'eFG% contra victorias en equipos' })).propuesta).volumen.ok === true);
     const sinPiso = await S.libre({ liga: 'lnb', zona: 'unica', texto: 'triples con menos de 15 minutos' });
-    check('2 · volumen: un T3% de jugadores sin piso de intentos NO pasa', (() => { const x = ac(sinPiso.propuesta).volumen; return x.ok === false && /no tiene un piso de T3I/.test(x.detalle); })());
-    check('y ese límite viaja con la pieza, hasta la IA', sinPiso.propuesta.avisos.some((a) => /sin piso de intentos/.test(a)) && L.piezaDe(sinPiso.propuesta).limites.some((a) => /sin piso de intentos/.test(a)));
+    check('2 · volumen: un T3% de jugadores sale con su piso automático, y pasa', (() => { const x = ac(sinPiso.propuesta).volumen; return x.ok === true && /un piso de/.test(x.detalle) && sinPiso.resultado.calidad.piso.aplicado === true; })());
+    check('2 · volumen: sin piso (una tabla armada a mano en el laboratorio) NO pasa', (() => { const x = ac(E.aPropuesta(E.explorar(idx, 'jugadores', { metricas: ['T3%'], orden: 'T3%' }), '', 'v')).volumen; return x.ok === false && /no tiene un piso de T3I/.test(x.detalle); })());
     check('2 · volumen: con el piso pedido, pasa', ac((await S.libre({ liga: 'lnb', zona: 'unica', texto: 'triples con menos de 15 minutos y al menos 2 t3i' })).propuesta).volumen.ok === true);
     check('2 · volumen: lo que no es una efectividad pasa sin más', ac((await S.libre({ liga: 'lnb', zona: 'unica', texto: 'ritmo de los equipos' })).propuesta).volumen.ok === true);
     check('3 · copy: sin redactar, todavía no aplica', a1.copy.ok === null && /plantilla/.test(a1.copy.detalle));
