@@ -1368,6 +1368,13 @@ function equiposDetallePartido(idx, e, id) {
         <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Quintetos · inicial, de cierre y clutch</h5>
         ${SGADD_PBP.espacioPartido(propio.equipo.nombre, refPbp, 'partido-quintetos')}
       </div>` : '';
+  /* El reloj de posesión del partido (punto 115): en qué segundo tiró y
+     perdió la pelota cada equipo. */
+  const relojPartido = conPbp ? `
+      <div class="mb-6" id="relojPartido">
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Reloj de posesión · cuándo tiró cada equipo</h5>
+        ${SGADD_PBP.espacioPartido(propio.equipo.nombre, refPbp, 'partido-reloj')}
+      </div>` : '';
   const mapaPartido = conPbp ? `
       <div class="mb-6" id="mapaTiroPartido">
         <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Mapa de tiro del partido</h5>
@@ -1460,6 +1467,7 @@ function equiposDetallePartido(idx, e, id) {
       ${cuartos}
       ${momentum}
       ${perfilesTiro}
+      ${relojPartido}
       ${mapaPartido}
       ${quintetos}
       <div class="grid grid-cols-1 xl:grid-cols-2 gap-6" id="boxScores">

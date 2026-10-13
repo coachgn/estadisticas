@@ -81,10 +81,11 @@ node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: 
                            #             equipo, vencimiento y ciclo ORO por categoría
 node test-glosario.js      #  34 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
-node test-pbp.js           # 146 tests · la capa de laboratorio de play-by-play: el catálogo,
+node test-pbp.js           # 191 tests · la capa de laboratorio de play-by-play: el catálogo,
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
-                           #             · y el bloque opcional de secciones del paquete (punto 83)
+                           #             · el bloque opcional de secciones del paquete (punto 83)
+                           #             · y el reloj de posesión: franjas, identidad y perfil del jugador (115)
 
 node test-mails.js         # 177 tests · los mails institucionales: plantillas sin huecos, el
                            #             día de Argentina, la idempotencia del cron, la ficha, el SMTP,
@@ -134,7 +135,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7686 tests en total. Todos tienen que dar verde antes de commitear.**
+**7731 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -252,7 +253,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=270`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=276`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -13828,3 +13829,123 @@ arma la pieza hasta aceptar; «minutos, uso, plays y puntos de los
 jugadores activos» da una tabla de cuatro columnas sobre 93 (25 afuera por
 inactividad); «triples de los jugadores» sale con su piso. Al revés, doce
 mutaciones, todas caen (el piso sin el volumen, 4).
+
+## 115. EL RELOJ DE POSESIÓN, DERIVADO DEL PLAY-BY-PLAY (2026-10-13)
+
+Pedido: clasificar cada tiro según el segundo de la posesión en que sale
+(0-6 · 7-14 · 15-20 · 21-24), con su zona, su asistencia y el perfil del
+jugador, en los torneos con la capa `pbp`. **Hecho en local; sin publicar:**
+falta regenerar y subir los paquetes, y el push del front.
+
+```
+motorstats-ingestion/src/pbp/reloj.js    PURO: posesiones, franjas, resumen de equipo y vara de liga
+motorstats-ingestion/test/test-reloj.js  46 tests (secuencia a mano + la Conferencia Norte real)
+js/sgadd-pbp.js                          relojTabla · relojIdentidad · relojPerfilJugador · relojEquipo/Jugador/Partido
+test-pbp.js, sección 7
+```
+
+### Lo medido antes de escribir (Conferencia Norte 25/26 · 266 partidos · 33.996 tiros)
+
+La plataforma no publica el reloj de 24: se DERIVA del reloj del período
+(tiempo del tiro − tiempo del evento que le dio la pelota al equipo).
+
+```
+franja     tiros   pts/tiro   eFG%
+0-6 s      4.332    1,30      64,9
+7-14 s     8.886    1,09      54,7
+15-20 s    8.200    1,00      50,1
+21-24 s    4.573    0,85      42,5
+tras rebote ofensivo 3.097 · 1,15      tras falta recibida 2.722 · 0,96
+cobertura 93,6 % (76,5 % con franja + 17,1 % reinicio) · 6,4 % sin reloj
+```
+
+La señal existe y cae franja por franja. En la LNB (21 partidos) da lo mismo:
+1,25 · 1,16 · 1,01 · 0,82.
+
+- **El reloj lo carga un operador a mano**: la asistencia aparece 1 s después
+  de la canasta y el rebote 1 s después del fallo; el 97 % a 3 s o menos. Por
+  eso hay una TOLERANCIA de 3 s (hasta 27 s entra en la franja tardía; desde
+  28, «sin reloj») y por eso se lee por franjas, no segundo a segundo.
+- **Tras una canasta recibida la posesión sale ~3 s más larga** (el 24 arranca
+  al tocar el saque, el reloj del período no para). Es un sesgo común a todos.
+- **`partido.tiros` no trae reloj**: la zona se une por posición SOLO si la
+  secuencia de tiros coincide entera con la de los eventos (es la misma lista
+  al revés en 291 de 293 partidos). Si no coincide, ese partido va sin zona.
+
+### En qué se apartó del pedido, y por qué
+
+| Pedido | Lo que se hizo |
+|---|---|
+| Umbrales fijos (>22 % temprano, >50 % medio, Bailout >15 %/16 %) | **Cortes de la propia competencia** (el cuarto más alto). Medido: la mediana de finales tardíos de un equipo es 15,5 % y la del tramo medio 64,9 %: los fijos marcarían a media liga como «trancada» y a todos como «metódica». Regla del punto 4 |
+| PPP y TS% por franja | **Puntos por TIRO y eFG%**. Los viajes a la línea no se cronometran: no es puntos por jugada, y la columna lo dice |
+| Una sola posesión de 24 | **Reinicio aparte**: lo que sigue a un rebote ofensivo o a una falta recibida corre con otro reloj (14 s o lo que quedaba). Un palmeo a los 2 s del rebote no es transición |
+| 5 zonas NBA | **Las 7 familias que el panel ya usa** (aro, corta, medias, triples) |
+| % de asistencia de los tiros | **Solo de las canastas**: el PBP no registra el pase de un tiro errado |
+| «Ofensiva trancada / alta presión rival» | Un aviso que **no afirma la causa**: el dato no las separa |
+
+### El motor (ingesta)
+
+Inicio de posesión: rebote defensivo, robo, pérdida rival sin robo (pelota
+muerta), canasta o libre convertido del rival, arranque de período. Reinicio:
+rebote ofensivo, falta recibida CON la pelota (sin ella es posesión nueva).
+Tras un tiro errado nadie tiene la pelota hasta el rebote: un segundo tiro
+sin rebote cargado queda sin reloj, no hereda el anterior. Un robo cargado
+ANTES que su pérdida mide la pérdida contra la posesión que se perdió.
+
+Viaja como campos OPCIONALES del paquete @3 (como `secciones`): `reloj`
+(equipo: favor, contra, origen, familia por franja, jugadores), `liga.reloj`
+(totales, cobertura y CORTES de equipo, jugador y partido) y
+`partidosPbp[i].reloj`. Suma ~5,5 KB: el paquete más pesado queda en 167,7 KB
+contra el techo de 200.
+
+### El panel
+
+- **Equipos → Quintetos**: sub-card «Reloj de posesión»: identidad, lo que
+  tira, lo que le tiran, cómo nace la posesión y desde dónde tira por franja.
+  **No entra en Scouting**: esa card sigue con sus tres sub-cards (punto 62).
+- **Post-partido**: card entre el perfil de tiro y el mapa
+  (`espacioPartido(…, 'partido-reloj')`), con el aviso de reloj tardío si el
+  partido está en el 10 % más alto de la competencia y tuvo 30+ finales.
+- **Jugador → Tiro**: debajo del mapa, el perfil y su tabla.
+
+Etiquetas (no excluyentes; ninguna franja es buena o mala):
+
+```
+EQUIPO   Ataca temprano · Ofensiva armada · Llega tarde al tiro · (Reparto de liga)
+         con 150+ finales con reloj y 8+ equipos con muestra
+JUGADOR  temprano + asistido  → Finalizador temprano      temprano + creado → Creador de transición
+         tardío + asistido    → Válvula de escape         tardío + creado   → Resuelve con el reloj encima
+         con 30+ tiros con reloj, 20+ jugadores con muestra y 5+ canastas en la franja
+         (con menos canastas: «Tira temprano / con el reloj encima», sin decidir quién lo crea)
+```
+
+«Asistido» es contra la tasa de la competencia en esa franja. Medido en la
+Conferencia Norte: 172 de 230 jugadores con muestra; 18 · 23 · 22 · 20 en
+los cuatro perfiles. En la LNB de hoy (6 equipos, 2-5 partidos) todo sale
+«muestra chica» o «sin comparar»: es lo correcto.
+
+### Verificado
+
+- Ingesta: 46 tests y la suite entera en verde. **Al revés, 9 mutaciones**,
+  todas caen (tres no caían al principio y se corrigió la secuencia).
+- Panel: `test-pbp.js` sección 7. **Al revés, 16 mutaciones**, todas caen.
+  Sin `reloj` en el paquete la card es byte a byte la de antes.
+- Las funciones se ejercieron sobre los 17 paquetes reales armados con el
+  exportador: sin `undefined` ni `NaN`.
+- **NO verificado en el navegador ni en PDF**: la sección solo se ve con los
+  paquetes nuevos en KV. El post-partido suma un bloque: hay que generar su
+  PDF y mirar el paginado.
+
+### Para que llegue a producción
+
+1. Regenerar y subir los paquetes (`exportar-web.js` + `server/bin/pbp.js
+   subir --confirmar`), o esperar la corrida de las 02:00 / 10:00.
+2. Push del front (`?v=276`). El backend no cambió.
+
+### Lo que quedó afuera
+
+- **Puntos por jugada y TS% por franja** (cronometrar los viajes a la línea).
+- **El reloj en Scouting y en Fichajes** (el perfil del jugador como filtro).
+- **El origen «robo» como dato de transición del rival** (puntos tras pérdida).
+- Los partidos más viejos que los últimos 10 del equipo no tienen reloj en su
+  post-partido (el tope del punto 97); la temporada sí los cuenta.
