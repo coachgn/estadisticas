@@ -143,7 +143,7 @@
       </label>
       <div class="grilla" style="margin-top:10px">
         <label>Nivel <select id="l-nivel"><option value="">Que lo decida el texto</option><option value="jugadores">Jugadores</option><option value="equipos">Equipos</option><option value="partidos">Partidos</option><option value="zonas">Entre zonas</option></select></label>
-        <label>Si cruza dos métricas, mostrar <select id="l-grupo"><option value="">El que pida el texto</option><option value="altoBajo">Altos en la 1.ª y bajos en la 2.ª</option><option value="altoAlto">Altos en las dos</option><option value="bajoAlto">Bajos en la 1.ª y altos en la 2.ª</option><option value="bajoBajo">Bajos en las dos</option></select></label>
+        <label>Si cruza dos métricas, mostrar <select id="l-grupo"><option value="">El que pida el texto</option><option value="altoBajo">Altos en la 1.ª y bajos en la 2.ª</option><option value="altoAlto">Altos en las dos</option><option value="bajoAlto">Bajos en la 1.ª y altos en la 2.ª</option><option value="bajoBajo">Bajos en las dos</option><option value="todos">A todos, ordenados por la 1.ª</option></select></label>
         <label>Cuántos <input type="number" id="l-top" min="1" max="50" placeholder="10"></label>
       </div>
       <div class="acciones"><button class="pri" id="l-buscar">Buscar en el libro</button><button id="l-mandar" disabled title="La deja arriba de la bandeja, anónima. Ahí se redacta con IA, se le ajusta el tono y se aprueba.">Mandar a la bandeja para redactarla</button><span id="l-estado" role="status" aria-live="polite" class="tenue"></span></div>
@@ -393,7 +393,8 @@ function tablaX(r) {
   const cruce = !k ? '' : '<div class="aviso"><strong>Cruce · ' + esc(k.nombreA) + ' × ' + esc(k.nombreB) + '</strong> sobre ' + k.n + ' casos, partidos por la mediana (' + esc(k.medianaA) + ' y ' + esc(k.medianaB) + '): ' +
     q.altoAlto + ' altos en las dos · ' + q.altoBajo + ' altos en ' + esc(k.labelA) + ' y bajos en ' + esc(k.labelB) + ' · ' + q.bajoAlto + ' bajos en ' + esc(k.labelA) + ' y altos en ' + esc(k.labelB) + ' · ' + q.bajoBajo + ' bajos en las dos. ' +
     (k.r == null ? 'Con tan pocos casos no se mide la relación.' : 'Relación ' + esc(k.fuerza) + (k.fuerza === 'prácticamente nula' ? '' : (k.sentido === 'inversa' ? ' e ' : ' y ') + esc(k.sentido)) + ' (r = ' + esc(k.rTexto) + ').') +
-    ' <span class="tenue">La tabla muestra a los ' + esc(k.grupoTexto) + '. «Alto» y «bajo» son contra la mediana, no un juicio.</span></div>';
+    (k.medianaBEnAltosA && k.medianaBEnBajosA ? ' Los ' + k.altosA + ' de arriba en ' + esc(k.labelA) + ' tienen una mediana de ' + esc(k.medianaBEnAltosA) + ' en ' + esc(k.labelB) + '; los ' + k.bajosA + ' de abajo, ' + esc(k.medianaBEnBajosA) + '.' : '') +
+    ' <span class="tenue">La tabla muestra a ' + (k.grupo === 'todos' ? '' : 'los ') + esc(k.grupoTexto) + '. «Alto» y «bajo» son contra la mediana, no un juicio.</span></div>';
   if (!r.filas.length) return cab + cruce + '<div class="aviso">' + (k ? 'Nadie cae en ese grupo: probá con otro de los cuatro.' : 'Ese filtro no deja a nadie.') + '</div>';
   const dif = r.diferencias ? '<h4 style="margin-top:14px">Qué separa a las zonas</h4><ul class="lista">' + r.diferencias.filter((d) => d.brecha != null).map((d) => '<li><span><strong>' + esc(d.label) + '</strong> · ' + esc(d.brechaTexto) +
     ' <span class="tenue">(' + esc(d.mayor) + ' arriba, ' + esc(d.menor) + ' abajo)</span></span><span class="chip">' + (d.relativa == null ? '—' : num(d.relativa, 1) + ' desvíos') + '</span></li>').join('') + '</ul>' : '';

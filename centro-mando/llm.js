@@ -310,11 +310,11 @@ async function interpretar(pregunta, catalogo, deps) {
    2 · REDACTAR UNA PROPUESTA EN UN TONO
    -------------------------------------------------------------------- */
 const EsquemaRedaccion = z && z.object({
-  titulo: z.string().describe('título de la pieza, hasta 70 caracteres'),
+  titulo: z.string().describe('título de la pieza: la tesis de vestuario, hasta 70 caracteres'),
   ganchos: z.array(z.object({ estilo: z.enum(ESTILOS), texto: z.string().describe('hasta 140 caracteres') })).describe('exactamente tres, uno por estilo: dato, titular y pregunta'),
   placas: z.array(z.object({
     rol: z.enum(['gancho', 'evidencia', 'propuesta', 'cierre']),
-    titulo: z.string().describe('el encabezado de la placa, hasta 60 caracteres; puede ir vacío'),
+    titulo: z.string().describe('el encabezado de la placa: corto, hasta ocho palabras y 60 caracteres'),
     texto: z.string().describe('el cuerpo de la placa, hasta 380 caracteres'),
     destacado: z.string().describe('la frase de impacto o la pregunta disparadora de esa placa, para la tarjeta resaltada; hasta 150 caracteres; vacío si no hace falta'),
   })).describe('carrusel: entre 4 y 10 placas. Reel o Stories: lista vacía'),
@@ -329,7 +329,7 @@ const SISTEMA_REDACCION = M.VOZ.concat([
 ], M.CAPAS, [
   '',
   'LA NARRATIVA · cuatro momentos, en este orden. La cantidad de placas NO es fija: usá las que el tema pida, entre 4 y 10. Una pieza con profundidad —dato, por qué, dolor, beneficio y otra mirada— suele pedir entre 6 y 9; no la estires con relleno ni la apures dejando capas afuera.',
-  '1. GANCHO (una placa, rol «gancho»): la tensión táctica, la paradoja o el punto de quiebre. El título es la frase de portada; el texto, una bajada que le promete al entrenador algo que le sirve.',
+  '1. GANCHO (una placa, rol «gancho»): LA TESIS DE VESTUARIO. El título es la postura, dicha de frente y en pocas palabras; el texto, la bajada que la remata o la pone en tensión. La placa 1 no presenta el tema ni promete «te contamos»: toma posición.',
   '2. EVIDENCIA (dos o más, rol «evidencia»): primero el número, desglosado y con su unidad; después EL POR QUÉ, en su propia placa. Un concepto por placa. Si hay que explicar una métrica para que se entienda, va acá.',
   '3. PROPUESTA (dos o más, rol «propuesta»): EL DOLOR de no verlo, EL BENEFICIO de dominarlo y LA OTRA MIRADA. Es tu criterio de analista: escribilo como lectura («esto te pide…», «la tendencia marca…», «el que no lo mide suele…»), no como un hecho medido.',
   '4. CIERRE (una placa, rol «cierre»): una sentencia contundente y UNA pregunta disparadora de auditoría al cuerpo técnico, que invite a comentar. El llamado a la acción («Comentá CONTEXTO…») lo agrega el diseño: no lo escribas.',
@@ -344,7 +344,7 @@ const SISTEMA_REDACCION = M.VOZ.concat([
   '- Reel: devolvé «guion» con la misma cantidad de líneas que el recibido, en el mismo orden, cada una con su marca de tiempo del principio tal cual, y dejá «placas» vacío. Las capas van adentro de esas líneas: el por qué y el dolor, dichos para ser escuchados.',
   '- Stories: dejá «placas» y «guion» vacíos; las placas ya están diseñadas con los rankings.',
   '',
-  'EL COPY DE INSTAGRAM: listo para publicar, con la misma voz, y más profundo que las placas, no un resumen de ellas. Abre con el gancho; cuenta el dato y POR QUÉ pasa; dice qué te cuesta no verlo y qué ganás si lo dominás; deja dos o tres preguntas para que el entrenador audite a su equipo; e invita a comentar «CONTEXTO» para recibir una demo o a escribir por mensaje directo. Párrafos cortos y algún emoji como viñeta (no más de seis en total). NO escribas hashtags: los agrega el sistema.',
+  'EL COPY DE INSTAGRAM: listo para publicar, con la misma voz. NO es un resumen de las placas: es un ARTÍCULO DE OPINIÓN TÁCTICA, más profundo que las placas. Estructura fija: TRES párrafos —el primero planta la tesis de vestuario y el dato que la prueba; el segundo explica por qué pasa en la cancha; el tercero, qué cuesta no verlo y qué decide distinto el que lo domina—, y después TRES preguntas de auditoría incisivas, una por línea, que obliguen al entrenador a comentar. Cierra invitando a comentar «CONTEXTO» para recibir una demo o a escribir por mensaje directo. A lo sumo un emoji como viñeta por pregunta. NO escribas hashtags: los agrega el sistema.',
   '',
   'LA REGLA QUE NO SE NEGOCIA: no sos la fuente de ningún número.',
   '- Todo número que escribas —en un título, una placa, un gancho o el copy— tiene que estar en la pieza, EXACTAMENTE como figura ahí (58 es 58, no «casi 60» ni «6 de cada 10»).',
@@ -402,7 +402,7 @@ function filtrar(salida, pieza) {
     const t = fiel('gancho · ' + g.estilo, g.texto);
     if (!t) return null;
     vistos.add(g.estilo);
-    return { estilo: g.estilo, texto: cerrar(t.slice(0, 200)), ia: true };
+    return { estilo: g.estilo, texto: cerrar(M.recortar(t, 200)), ia: true };
   }).filter(Boolean);
   const titulo = fiel('título', salida.titulo);
 
@@ -426,7 +426,7 @@ function filtrar(salida, pieza) {
     salida.placas.forEach((x, i) => {
       const campo = 'placa ' + (i + 1) + ' · ' + (x && x.rol);
       const t = fiel(campo, x && x.texto), ti = fiel(campo + ' · título', x && x.titulo, true, true), de = fiel(campo + ' · destacado', x && x.destacado, true);
-      if (t && ti !== null && de !== null) limpias.push({ rol: x.rol, titulo: ti.slice(0, 90), texto: t.slice(0, 420), destacado: de.slice(0, 180) });
+      if (t && ti !== null && de !== null) limpias.push({ rol: x.rol, titulo: M.recortar(ti, 90), texto: M.recortar(t, 420), destacado: M.recortar(de, 180) });
       else if (x && (x.rol === 'gancho' || x.rol === 'cierre')) rota = 'el ' + x.rol + ' no pasó la guarda';
     });
     const motivo = rota || M.estructuraDePlacas(limpias);
@@ -439,7 +439,7 @@ function filtrar(salida, pieza) {
      se sacan y van los de la cuenta. */
   const sinHashtags = (t) => String(t || '').replace(/(^|\s)#[\p{L}\d_]+/gu, '$1').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   const copy = salida.copy ? fiel('copy', sinHashtags(salida.copy)) : null;
-  return { titulo, ganchos, guion, placas, copy: copy ? copy.slice(0, 2100) + '\n\n' + M.HASHTAGS : null, descartado };
+  return { titulo, ganchos, guion, placas, copy: copy ? M.recortar(copy, 2100) + '\n\n' + M.HASHTAGS : null, descartado };
 }
 
 module.exports = { MODELO, TONOS, ESTILOS, ESQUEMAS_JSON, motor, cliDisponible, piezaDe, pedirPorCli, disponible, motivoApagada, interpretar, redactar, filtrar, numerosDe, numerosAjenos, explicar, EsquemaConsulta, EsquemaRedaccion, sistemaConsulta, SISTEMA_REDACCION };

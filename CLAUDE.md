@@ -118,8 +118,9 @@ node test-interzonal.js    # 220 tests · la llave entre zonas: un cliente de un
 node test-contenido.js     # 142 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
                            #             derivado, las diez recetas de Nivel 2 y que los nombres solo salgan en APdeB (103, 104)
 
-node test-centro-mando.js  # 327 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
-                           #             el texto libre de «A medida», el cruce de dos métricas y la voz de entrenador-analista (110)
+node test-centro-mando.js  # 353 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
+                           #             el texto libre de «A medida», el cruce de dos métricas y la voz de entrenador-analista (110),
+                           #             el % de victorias, los textos sin cortar y la tesis de vestuario (111)
                            #             (pide «npm install» en centro-mando/ una vez: los agentes usan el SDK de Claude, punto 107)
                            #             el play-by-play que no se presta, el aprendizaje y el servidor en 127.0.0.1 (105)
 
@@ -133,7 +134,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7552 tests en total. Todos tienen que dar verde antes de commitear.**
+**7578 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -13514,3 +13515,74 @@ llama «puestos».
   prompt alternativo sin las capas.
 - `.claude/launch.json` suma `centro-mando-prueba` (puerto 8771, datos en
   una carpeta temporal) para probar sin tocar la bandeja de verdad.
+
+## 111. VICTORIAS EN EL EXPLORADOR, TEXTOS SIN CORTAR Y LA TESIS DE VESTUARIO (2026-10-13)
+
+Auditoría del club sobre la pregunta «¿cómo influye el RO% en las
+victorias?»: no había métrica de resultado, el título salía cortado
+(«…en toda la lig»), el dato decía «1 quedan altos» y la redacción leía
+la tabla. `test-centro-mando.js` fija todo lo de acá.
+
+### 1 · `% de victorias` · una métrica de resultado, fuera del núcleo
+
+`E.EXTRAS['WIN%']` (rótulo «% Victorias»): ganados sobre partidos, del
+`e.record` que el índice ya arma. **No se agregó al registro del núcleo**
+(el servidor lo copia byte a byte): vive en el Explorador, y `def`,
+`rotulo`, `mostrar` y `leerEquipo` la resuelven. Existe para equipos y
+zonas; a nivel jugadores o partidos el intérprete dice que no hay dato.
+
+- **Cuenta solo los partidos con box score.** Un partido cargado a mano en
+  la tabla de posiciones (punto 44) no está en el índice, así que el % puede
+  diferir del de Clasificación.
+- El rating neto ya estaba (`NET RTNG`); se sumaron las formas de
+  escribirlo («netrtg»), «TOV%» → `PePP%`, «victorias», «ganan», «win%»,
+  «%V» → `WIN%`, y «dominan el cristal» → `RO%`.
+
+### 2 · Una pregunta de INFLUENCIA pide la tabla entera
+
+Con «influye», «decisivo», «impacta», «pesa», «relación» y sin una palabra
+de dirección, el grupo del cruce es `todos`: la tabla completa ordenada por
+la primera métrica, no una esquina. El cruce informa además **cuánto tiene
+de la segunda cada mitad de la primera** (`medianaBEnAltosA`,
+`medianaBEnBajosA`): es la lectura de influencia que una correlación sola
+no deja ver.
+
+### 3 · Ni un texto cortado, ni una concordancia rota
+
+- **`E.tituloDe(texto, max)`**: si entra, entero; si no, su primera
+  oración; si tampoco, vacío y el título lo arma el generador
+  («Rebote ofensivo y % de victorias: qué dice el cruce»). La idea libre
+  usa 90 caracteres.
+- **`M.recortar(texto, max)`**: lo que la IA manda de más se corta en el
+  fin de una oración o de una palabra, con «…». Reemplaza a todos los
+  `slice` de `LLM.filtrar` (gancho, título, texto y destacado de placa,
+  copy).
+- **`E.datoDeCruce`**: la concordancia sale de n («1 queda alto», «4
+  quedan altos», «De 1 equipo», «Con 1 caso»).
+
+### 4 · La voz · tesis de vestuario
+
+`M.VOZ`, `M.CAPAS` y `M.ESTILO` suman:
+
+- **LA TESIS DE VESTUARIO**: una postura táctica discutible, plantada en la
+  placa 1. El prompt dice qué NO es una tesis (una generalidad, o el dato).
+- **El dolor en la moneda del juego**: posesiones regaladas, puntos por
+  posesión, desgaste, golpe anímico del cierre — **sin números inventados**.
+- **Punch**: títulos de hasta ocho palabras y léxico de cancha rioplatense.
+- **El copy es un artículo de opinión**: tres párrafos y tres preguntas de
+  auditoría.
+- **«Si el dato es flojo, la postura es ESA»**: no se infla.
+
+### La prueba de fuego · medida el 2026-10-13, APdeB Zona B
+
+59 s con `claude -p`, 8 placas, nada descartado. Los 6 equipos sobre la
+mediana de RO% tienen una mediana de 54,8 % de victorias contra 45,0 % de
+los de abajo, con r = 0,23 sobre 12 casos. **El modelo tituló «El rebote
+ofensivo no te garantiza nada»**: tomó la postura que el dato sostiene, que
+es la contraria a la intuición del pedido. Es lo que se le pide; con otro
+libro la tesis puede ser la opuesta.
+
+Leída contra el dato: los números están bien usados; escribió «prioridad
+número uno» (un número en letras, que el prompt prohíbe y la guarda no ve)
+y un par de frases de lectura flojas. **La revisión humana sigue siendo
+obligatoria.**

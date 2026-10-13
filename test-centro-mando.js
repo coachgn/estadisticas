@@ -324,7 +324,14 @@ titulo('El Explorador táctico');
   const cat = E.catalogo(idx);
   check('contiene la lista corta y la supera', ['jugadores', 'equipos', 'partidos'].every((n) => E.METRICAS[n].every((k) => cat[n].indexOf(k) !== -1) && cat[n].length > E.METRICAS[n].length), cat.jugadores.length + '/' + cat.equipos.length + '/' + cat.partidos.length);
   check('toda métrica que ofrece tiene dato en ese nivel', cat.jugadores.every((k) => idx.liga.jugadores.some((j) => typeof j[k] === 'number')) &&
-    cat.equipos.every((k) => idx.lista().some((e) => typeof idx.leer(e.clave, k).valor === 'number')));
+    cat.equipos.every((k) => E.EXTRAS[k] || idx.lista().some((e) => typeof idx.leer(e.clave, k).valor === 'number')));
+  /* LAS MÉTRICAS DE RESULTADO */
+  const wn = E.explorar(idx, 'equipos', { metricas: ['WIN%', 'NET RTNG'], orden: 'WIN%', top: 50 });
+  check('el % de victorias está en el catálogo de equipos, y solo ahí', cat.equipos.indexOf('WIN%') !== -1 && cat.zonas.indexOf('WIN%') !== -1 && cat.jugadores.indexOf('WIN%') === -1 && cat.partidos.indexOf('WIN%') === -1 && E.METRICAS.equipos.indexOf('NET RTNG') !== -1);
+  check('sale del récord del índice: ganados sobre partidos con box score', wn.filas.length === idx.lista().length && wn.filas.every((x) => { const e = idx.lista().find((y) => y.nombre === x.equipo); return x.valores['WIN%'] === e.record.ganados / e.record.pj; }));
+  check('se escribe como porcentaje, con coma', wn.filas.every((x) => /^\d+,\d%$/.test(x.texto['WIN%'])) && E.definicion('WIN%').formato === 'pct' && E.rotulo('WIN%') === '% Victorias');
+  check('un 55 es 55 %: la condición se compara como se escribe', E.explorar(idx, 'equipos', { metricas: ['WIN%'], condiciones: [{ metrica: 'WIN%', op: '>=', valor: 55 }], top: 50 }).filas.every((x) => x.valores['WIN%'] >= 0.55));
+  check('el núcleo no se tocó: WIN% no está en su registro', !SGADD.metrica('WIN%'));
   check('VAL y +/- no se ofrecen: el panel no ordena por ninguna', ['jugadores', 'equipos', 'partidos'].every((n) => cat[n].indexOf('VAL') === -1 && cat[n].indexOf('+/-') === -1));
   check('una métrica fuera de la lista corta se explora si el libro la trae', E.METRICAS.equipos.indexOf('eFG Opp%') === -1 && E.explorar(idx, 'equipos', { metricas: ['eFG Opp%'], orden: 'eFG Opp%' }).columnas[0].id === 'eFG Opp%');
   check('y la que no es de ese nivel se sigue descartando', E.explorar(idx, 'equipos', { metricas: ['USG%', 'PACE'] }).columnas.map((c) => c.id).join() === 'PACE');
@@ -347,7 +354,25 @@ titulo('El Explorador táctico');
   check('no cruza una métrica consigo misma, ni de otro nivel, ni entre zonas', E.pedido('equipos', { cruce: ['PACE', 'PACE'] }).cruce === null && E.pedido('equipos', { cruce: ['PACE', 'USG%'] }).cruce === null && E.pedido('zonas', { cruce: ['PACE', 'eFG%'] }).cruce === null);
   check('sin cruce, la tabla es la de siempre', E.explorar(idx, 'jugadores', q).cruce === null && JSON.stringify(E.explorar(idx, 'jugadores', q).filas) === JSON.stringify(r.filas));
   const pc = E.aPropuesta(cz, '', 'c1');
-  check('la propuesta cuenta el grupo, las medianas, el n y la relación', pc.ok && pc.dato.indexOf(', ' + enGrupo + ' quedan altos en') !== -1 && pc.dato.indexOf('r = ' + cz.cruce.rTexto + ' sobre ' + cal.length + ' casos') !== -1 && pc.datos.cruce.n === cal.length && /no dice cuál causa al otro/.test(pc.guion.join(' ')));
+  check('la propuesta cuenta el grupo, las medianas, el n y la relación', pc.ok && pc.dato.indexOf(' ' + enGrupo + ' quedan altos en USG% y bajos en TS%') !== -1 && pc.dato.indexOf('r = ' + cz.cruce.rTexto + ' sobre ' + cal.length + ' casos') !== -1 && pc.datos.cruce.n === cal.length && /no dice cuál causa al otro/.test(pc.guion.join(' ')));
+  /* Cuánto tiene de la segunda cada mitad de la primera. */
+  const medB = (alto) => SGADD.mediana(cal.filter((j) => (j['USG%'] >= mu) === alto).map((j) => j['TS%']));
+  check('cada mitad de la primera, con su mediana de la segunda, contada a mano', cz.cruce.altosA + cz.cruce.bajosA === cal.length && cz.cruce.altosA === Q.altoAlto + Q.altoBajo &&
+    cz.cruce.medianaBEnAltosA === SGADD.formatear('TS%', medB(true)) && cz.cruce.medianaBEnBajosA === SGADD.formatear('TS%', medB(false)) && pc.dato.indexOf(cz.cruce.medianaBEnAltosA + ' en TS%') !== -1);
+  const tod = E.explorar(idx, 'equipos', { cruce: ['RO%', 'WIN%'], grupo: 'todos', top: 50 });
+  check('«todos» no es un cuadrante: la tabla entera, ordenada por la primera', tod.filas.length === idx.lista().length && tod.cruce.enGrupo === idx.lista().length && tod.filas.every((x, i, a) => !i || a[i - 1].valores['RO%'] >= x.valores['RO%']) && /también quedan? sobre la mediana de % Victorias/.test(E.aPropuesta(tod, '', 't').dato));
+  /* LA CONCORDANCIA: el número manda sobre el verbo y el adjetivo. */
+  const uno = { n: 12, altosA: 6, bajosA: 6, labelA: 'RO%', labelB: '% Victorias', medianaA: '23,3%', medianaB: '50,0%', medianaBEnAltosA: '54,5%', medianaBEnBajosA: '45,5%', cuadrantes: { altoAlto: 5, altoBajo: 1, bajoAlto: 1, bajoBajo: 5 }, grupo: 'altoBajo', enGrupo: 1, grupoTextoN: 'alto en RO% y bajo en % Victorias', r: 0.4, rTexto: '0,40', fuerza: 'moderada', sentido: 'directa' };
+  const dUno = E.datoDeCruce(uno, 'equipos', '');
+  check('con uno solo: «1 queda alto», nunca «1 quedan altos»', /\b1 queda alto en RO% y bajo en % Victorias/.test(dUno) && !/1 quedan/.test(dUno) && !/\b1 [a-záéíóú]+ altos\b/.test(dUno));
+  check('y con uno solo en el universo: «De 1 equipo»', /^De 1 equipo,/.test(E.datoDeCruce(Object.assign({}, uno, { n: 1, altosA: 1, bajosA: 0, medianaBEnBajosA: null, r: null }), 'equipos', '')) && /el que está sobre la mediana de RO% \(23,3%\) tiene 54,5%/.test(E.datoDeCruce(Object.assign({}, uno, { n: 1, altosA: 1, bajosA: 0, r: null }), 'equipos', '')) && /Con 1 caso no alcanza/.test(E.datoDeCruce(Object.assign({}, uno, { n: 1, altosA: 1, bajosA: 0, r: null }), 'equipos', '')));
+  check('el grupo real de cada cruce también concuerda', ['altoBajo', 'altoAlto', 'bajoAlto', 'bajoBajo'].every((g) => { const x = E.explorar(idx, 'equipos', { cruce: ['RO%', 'WIN%'], grupo: g, top: 50 }); const d = E.aPropuesta(x, '', 'g'); return !d.ok || (x.cruce.enGrupo === 1 ? /\b1 queda (alto|bajo) en/.test(d.dato) : new RegExp(' ' + x.cruce.enGrupo + ' quedan (altos|bajos) en').test(d.dato)); }));
+  /* NINGÚN TEXTO SE CORTA A MITAD DE PALABRA */
+  const larga = '¿Por qué o cómo influye el RO% en las victorias y qué tan decisivo es? Tener en cuenta aquellos equipos que dominan el cristal en toda la liga y cómo influye en el % de victorias.';
+  check('un título que no entra se queda con su primera oración, entera', E.tituloDe(larga, 90) === '¿Por qué o cómo influye el RO% en las victorias y qué tan decisivo es?');
+  check('si tampoco entra la primera oración, no hay título cortado: lo arma el generador', E.tituloDe('una frase larguísima sin un solo punto que sigue y sigue y sigue y sigue y sigue y sigue y sigue y sigue y sigue y no termina', 90) === '' && /qué dice el cruce$/.test(E.aPropuesta(tod, 'una frase larguísima sin un solo punto que sigue y sigue y sigue y sigue y sigue y sigue y sigue y sigue y sigue y sigue y sigue y sigue y sigue y sigue y no termina nunca', 't').titulo));
+  check('un texto que entra no se toca', E.tituloDe('  USG%   contra TS% ', 90) === 'USG% contra TS%');
+  check('recortar corta en el fin de una oración o de una palabra', M.recortar('Una frase entera. Otra frase que ya no entra del todo acá', 22) === 'Una frase entera.' && M.recortar('palabra1 palabra2 palabra3 palabra4', 20) === 'palabra1 palabra2…' && M.recortar('corto', 20) === 'corto' && !/\S…\S/.test(M.recortar(larga, 100)) && M.recortar(larga, 100).length <= 100);
   check('y anonimizada no nombra a nadie', lanza(() => GC.verificarAnonimo(GC.anonimizar(pc), nombres)) === null);
 
   titulo('«A medida» · el intérprete local del texto libre');
@@ -381,7 +406,13 @@ titulo('El Explorador táctico');
   check('sin ninguna métrica, dice cómo escribirlo', li('hola qué tal').ok === false && /No reconocí/.test(li('hola qué tal').motivo));
   check('todo lo que resuelve existe en el catálogo de ese nivel', ['ritmo contra rebote ofensivo', 'uso y true shooting', 'presión defensiva de los suplentes', 'peso del triple, PACE y eFG permitido en equipos', 'contraataque en un partido', 'tapas y faltas'].every((t) => {
     const x = li(t); return x.ok && x.consulta.metricas.concat(x.consulta.condiciones.map((c) => c.metrica)).every((k) => cat[x.nivel].indexOf(k) !== -1); }));
-  check('todo candidato del vocabulario es una métrica del registro del núcleo', LB.CONCEPTOS.every((c) => c.m.every((k) => !!SGADD.metrica(k))));
+  check('todo candidato del vocabulario es una métrica del registro del núcleo o de resultado', LB.CONCEPTOS.every((c) => c.m.every((k) => !!SGADD.metrica(k) || !!E.EXTRAS[k])));
+  /* LA PRUEBA DE FUEGO que trajo el club (2026-10-13). */
+  const fuego = li(larga);
+  check('la pregunta del cristal y las victorias: RO% contra % de victorias, en equipos', fuego.ok && fuego.nivel === 'equipos' && fuego.consulta.cruce.join() === 'RO%,WIN%' && fuego.consulta.metricas.join() === 'RO%,WIN%');
+  check('una pregunta de influencia pide la tabla entera, no una esquina', fuego.consulta.grupo === 'todos' && /influencia/.test(fuego.lectura) && li('rebote ofensivo y victorias').consulta.grupo === undefined);
+  check('victorias, net rating y pérdidas, como se escriben', li('PACE contra win%').consulta.cruce.join() === 'PACE,WIN%' && li('eFG% vs %V').consulta.cruce.join() === 'eFG%,WIN%' && li('TOV% contra netrtg').consulta.cruce.join() === 'PePP%,NET RTNG' && li('los equipos que más ganan').consulta.orden === 'WIN%');
+  check('a nivel jugadores no hay victorias, y se dice', li('jugadores: uso contra victorias').fuera.some((x) => /victorias/.test(x)));
   check('lo que pide lo corre el Explorador sin perder nada', ['USG% vs TS% con al menos 20 minutos', 'los 5 peores equipos en pérdidas', 'triples con menos de 15 minutos'].every((t) => {
     const x = li(t), res = E.explorar(idx, x.nivel, x.consulta); return res.orden === x.consulta.orden && res.condiciones.length === x.consulta.condiciones.length && !!res.cruce === !!x.consulta.cruce && res.filas.length > 0; }));
   const fuenteLibre = fs.readFileSync('centro-mando/libre.js', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
@@ -684,6 +715,11 @@ titulo('Los agentes con Claude · la guarda numérica');
   check('la tabla es la del Explorador local, fila por fila', JSON.stringify(lb.resultado.filas) === JSON.stringify(E.explorar(idx, 'jugadores', lb.consulta).filas));
   check('la tabla va con nombres y la propuesta sale anónima y verificada', lb.resultado.filas.some((x) => /PEREZ/.test(x.jugador)) && lanza(() => GC.verificarAnonimo(lb.propuesta, GC.nombresDelLibro(idx))) === null && /Jugador 1/.test(JSON.stringify(lb.propuesta.datos)));
   check('el título es lo que se escribió, y trae ganchos', lb.propuesta.titulo === 'USG% contra TS% con al menos 20 minutos' && lb.propuesta.ganchos.length >= 2);
+  const larga2 = '¿Por qué o cómo influye el RO% en las victorias y qué tan decisivo es? Tener en cuenta aquellos equipos que dominan el cristal en toda la liga y cómo influye en el % de victorias.';
+  const lf = await S.libre({ liga: 'lnb', zona: 'unica', texto: larga2 });
+  check('la prueba de fuego, de punta a punta: cruce con victorias, título entero y ganchos sin cortar', lf.ok && lf.resultado.cruce.b === 'WIN%' && lf.resultado.filas.length === 10 && lf.propuesta.titulo === '¿Por qué o cómo influye el RO% en las victorias y qué tan decisivo es?' &&
+    [lf.propuesta.titulo, lf.propuesta.dato].concat(lf.propuesta.ganchos.map((g) => g.texto)).every((t) => /[.?!]$/.test(t)) && !/\b1 quedan\b/.test(lf.propuesta.dato));
+  check('y sus placas de plantilla tampoco traen un texto cortado', M.placasDe(lf.propuesta, lf.propuesta.ganchos[0].texto).every((x) => !/[a-záéíóúñ]$/.test(x.titulo || '.') || x.titulo === lf.propuesta.ganchos[0].texto));
   check('todo número de la propuesta sale del cruce o del texto', L.numerosAjenos(lb.propuesta.dato, { c: lb.resultado.cruce, t: lb.propuesta.titulo, x: lb.resultado.condicionesTexto }).length === 0);
   check('buscar no toca la bandeja', !lb.enBandeja && enBandeja().length === antesL);
   const lb2 = await S.libre({ liga: 'lnb', zona: 'unica', texto: 'USG% contra TS% con al menos 20 minutos', aBandeja: true });
@@ -700,13 +736,25 @@ titulo('Los agentes con Claude · la guarda numérica');
 
   titulo('La voz de entrenador-analista');
   const SR = L.SISTEMA_REDACCION;
-  check('pide interpretar el número, no describirlo', /ENTRENADOR-ANALISTA/.test(SR) && /NO es describir el número: es INTERPRETARLO/.test(SR));
+  check('pide interpretar el número, no describirlo', /ENTRENADOR-ANALISTA/.test(SR) && /NO es describir el número: es INTERPRETARLO/.test(SR) && /no leés tablas: leés DINÁMICAS DE JUEGO/.test(SR));
+  check('la tesis de vestuario va en la placa 1, y dice qué NO es una tesis', /LA TESIS DE VESTUARIO/.test(SR) && /La placa 1 no presenta el tema/.test(SR) && /NO es una tesis/.test(SR));
+  check('el dolor se dice en la moneda del juego, sin números inventados', /puntos por posesión que se dejan en la cancha/.test(SR) && /desgaste de defender dos veces/.test(SR) && /golpe anímico/.test(SR) && /sin números inventados/.test(SR));
+  check('punch: títulos cortos y léxico de cancha rioplatense', /hasta ocho palabras/.test(SR) && ['cancha', 'cristal', 'pintura', 'balance defensivo', 'segunda oportunidad', 'rotación'].every((w) => SR.indexOf(w) !== -1));
+  check('el copy es un artículo de opinión: tres párrafos y tres preguntas de auditoría', /ARTÍCULO DE OPINIÓN TÁCTICA/.test(SR) && /TRES párrafos/.test(SR) && /TRES preguntas de auditoría incisivas/.test(SR) && /ARTÍCULO DE OPINIÓN TÁCTICA/.test(pr));
+  check('un dato flojo no se infla: la postura es esa', /no lo infles/.test(SR));
+  check('lo que la IA manda de más se corta en una palabra, no a mitad', (() => {
+    const base = { id: 'X', titulo: 't', dato: 'd', guion: [], numeros: {} };
+    const largo = 'palabra '.repeat(80).trim();
+    const pl2 = (rol, texto) => ({ rol, titulo: '', texto, destacado: '' });
+    const r2 = L.filtrar({ titulo: 't', ganchos: [{ estilo: 'titular', texto: largo }], guion: [], copy: '', placas: [pl2('gancho', 'g'), pl2('evidencia', largo), pl2('propuesta', 'p'), pl2('cierre', 'c')] }, base);
+    return r2.ganchos[0].texto.length <= 200 && /palabra…$/.test(r2.ganchos[0].texto) && r2.placas[1].texto.length <= 420 && /palabra…$/.test(r2.placas[1].texto);
+  })());
   check('las capas: por qué, dolor, beneficio, otra mirada y preguntas de auditoría', ['EL POR QUÉ', 'EL DOLOR', 'EL BENEFICIO', 'LA OTRA MIRADA', 'LAS PREGUNTAS DISPARADORAS'].every((x) => SR.indexOf(x) !== -1) && /AUDITORÍA/.test(SR));
   check('cada capa tiene su lugar en la narrativa', /después EL POR QUÉ, en su propia placa/.test(SR) && /EL DOLOR de no verlo, EL BENEFICIO de dominarlo y LA OTRA MIRADA/.test(SR) && /pregunta disparadora de auditoría/.test(SR));
   check('prohíbe el tono robótico o académico, con ejemplos', /robótico o académico/.test(SR) && /cabe destacar/.test(SR));
   check('y que las capas se anuncien como rótulos', /no se anuncian/.test(SR) && /no las uses de rótulo/.test(SR));
   check('la profundidad no abre la puerta a números nuevos ni a hechos inventados', /La profundidad se gana con lectura, no con números nuevos/.test(SR) && /una correlación no es una causa/.test(SR) && /lecturas GENERALES del juego/.test(SR));
-  check('el copy va más hondo que las placas y trae preguntas para auditar', /más profundo que las placas/.test(SR) && /dos o tres preguntas para que el entrenador audite a su equipo/.test(SR));
+  check('el copy va más hondo que las placas y trae preguntas para auditar', /más profundo que las placas/.test(SR) && /TRES preguntas de auditoría/.test(SR));
   check('el prompt alternativo habla con la MISMA voz que el redactor', M.VOZ.concat(M.CAPAS, M.ESTILO).every((l) => pr.indexOf(l) !== -1 && SR.indexOf(l) !== -1));
   check('los hashtags los pone el código: los del modelo se sacan y van los de la cuenta', (() => {
     const base = { id: 'X', titulo: 't', dato: '7 de 12', guion: [], numeros: {} };

@@ -334,11 +334,13 @@ async function libre(b) {
   if (!lec.ok) return { ok: false, lectura: lec };
   const consulta = Object.assign({}, lec.consulta, { liga: x.liga, zona: x.zona });
   /* El grupo del cruce: el que se elige a mano le gana al que leyó el texto. */
-  if (E.GRUPOS_CRUCE[x.grupo]) consulta.grupo = x.grupo;
+  if (x.grupo && Object.prototype.hasOwnProperty.call(E.GRUPOS_CRUCE, x.grupo)) consulta.grupo = x.grupo;
   if (Number(x.top) > 0) consulta.top = Number(x.top);
   const resultado = await explorar(consulta);
   const sello = Date.now().toString(36);
-  const titulo = String(x.angulo || x.texto || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+  /* El título es lo que se escribió si entra entero; si no, su primera
+     oración; y si tampoco, el que arma el generador. Nunca un texto cortado. */
+  const titulo = E.tituloDe(x.angulo || x.texto, 90);
   let propuesta = null;
   const avisos = [];
   try { propuesta = await propuestaAnonima(p, consulta.nivel, resultado, titulo, sello); }

@@ -25,12 +25,11 @@
 'use strict';
 
 const S = require('../js/sgadd-core.js');
-const { VOLUMEN } = require('./explorador.js');
+const { VOLUMEN, definicion, rotulo } = require('./explorador.js');
 
 const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[«»"“”¿?¡!;:()]/g, ' ').replace(/[.,](?!\d)/g, ' ').replace(/\s+/g, ' ').trim();
 const escapar = (t) => t.replace(/[.*+?^${}()|[\]\\\/-]/g, '\\$&');
-const def = (k) => S.metrica(k) || { label: k, invertida: false, formato: 'num' };
-const rotulo = (k) => (S.siglaVisible ? S.siglaVisible(k) : k) || k;
+const def = definicion;
 
 /* --------------------------------------------------------------------
    EL VOCABULARIO · concepto de cancha → métricas candidatas, en orden.
@@ -38,6 +37,11 @@ const rotulo = (k) => (S.siglaVisible ? S.siglaVisible(k) : k) || k;
    es el rating ofensivo de un equipo y los puntos por play de un jugador.
    -------------------------------------------------------------------- */
 const CONCEPTOS = [
+  /* EL RESULTADO · ganar o perder, y por cuánto. */
+  { f: ['porcentaje de victorias', '% de victorias', '% victorias', 'victorias', 'victoria', 'partidos ganados', 'triunfos', 'ganan', 'ganar', 'gana', 'win rate', 'winrate', '%v'], m: ['WIN%'] },
+  { f: ['netrtg', 'net rtg', 'diferencia de puntos por posesion'], m: ['NET RTNG'] },
+  { f: ['tov%', 'tov', 'turnovers'], m: ['PePP%', 'PP'] },
+  { f: ['dominan el cristal', 'domina el cristal', 'dominio del cristal', 'dominar el cristal', 'ganan el cristal'], m: ['RO%', 'RO'] },
   { f: ['rating ofensivo', 'eficiencia ofensiva', 'eficiencia en ataque', 'ataque'], m: ['RTNG OFF', 'PPP'] },
   { f: ['rating defensivo', 'eficiencia defensiva', 'eficiencia en defensa', 'defensa', 'defienden', 'defiende', 'defensores'], m: ['RTNG DEF', 'PTSopp', 'PR'] },
   { f: ['rating neto', 'net rating', 'diferencial'], m: ['NET RTNG'] },
@@ -285,6 +289,9 @@ function interpretarLibre(texto, cat, opc) {
     };
     const la = lado(cruce[0]), lb = lado(cruce[1]);
     if (la || lb) { const a = la || 'alto', b = lb || 'bajo'; grupo = a + b.charAt(0).toUpperCase() + b.slice(1); }
+    /* UNA PREGUNTA DE INFLUENCIA («¿cómo influye…?», «¿qué tan decisivo…?»)
+       no pide una esquina del cruce: pide la escalera entera. */
+    else if (/(^| )(influye|influyen|influencia|influir|impacta|impactan|impacto|incide|inciden|decisivo|decisiva|determinante|pesa|pesan|relacion|explica|explican)( |$)/.test(t)) grupo = 'todos';
   }
 
   let sentido;
@@ -313,7 +320,7 @@ function interpretarLibre(texto, cat, opc) {
 
   const nombres = { jugadores: 'jugadores', equipos: 'equipos', partidos: 'actuaciones de un equipo en un partido', zonas: 'zonas' };
   const lectura = 'Miro ' + nombres[nivel] + (nombrado || o.nivel ? '' : ' (el texto no decía el nivel)') + '. ' +
-    (cruce ? 'Cruzo ' + rotulo(cruce[0]) + ' con ' + rotulo(cruce[1]) + (grupo ? ' y, por cómo está escrito, muestro a los ' + grupo.replace(/^(alto|bajo)(Alto|Bajo)$/, (x, a, b) => a + 's en la primera y ' + b.toLowerCase() + 's en la segunda') : '') + '.' :'Ordeno por ' + rotulo(orden) + (sentido === 'asc' ? ', de menor a mayor' : '') + '.') +
+    (cruce ? 'Cruzo ' + rotulo(cruce[0]) + ' con ' + rotulo(cruce[1]) + (grupo === 'todos' ? ' y, como preguntás por la influencia, muestro a todos ordenados por la primera' : grupo ? ' y, por cómo está escrito, muestro a los ' + grupo.replace(/^(alto|bajo)(Alto|Bajo)$/, (x, a, b) => a + 's en la primera y ' + b.toLowerCase() + 's en la segunda') : '') + '.' :'Ordeno por ' + rotulo(orden) + (sentido === 'asc' ? ', de menor a mayor' : '') + '.') +
     (principales.length > 2 ? ' Sumo a la tabla ' + principales.slice(2).map(rotulo).join(', ') + '.' : '') +
     (condiciones.length ? ' Condiciones: ' + condiciones.map((c) => rotulo(c.metrica) + ' ' + c.op + ' ' + String(c.valor).replace('.', ',')).join(' y ') + '.' : '') +
     (soloCalificados ? ' Solo los que califican por minutos.' : nivel === 'jugadores' ? ' Sin exigir el umbral de minutos.' : '');
