@@ -996,6 +996,7 @@ const SGADD_PBP = (function () {
         ${notaLaboratorio(paq)}
         ${v2 ? seccion('ultimos5', 'Últimos 5 partidos · inicial contra cierre', tablaUltimos5(paq)) : ''}
         ${seccion('decide', 'Quién decide los finales', tablaClutch(paq), { nota: 'Usos = PLAYS del motor, en los finales apretados.' })}
+        ${relojScouting(paq) ? seccion('reloj', 'Reloj de posesión · cuándo tira el rival', relojScouting(paq), { nota: NOTA_RELOJ }) : ''}
         ${bloqueSecciones(paq, 'scouting')}
       </div>`;
     }
@@ -1450,6 +1451,50 @@ const SGADD_PBP = (function () {
     } catch (e) { return ''; }
   }
 
+  /* EN SCOUTING (2026-10-13, a pedido del club): la misma sección del
+     equipo, más lo que le sirve al que lo va a defender: una LECTURA por
+     rasgo y quiénes toman los tiros tempranos y los del final del reloj.
+     Es lectura de los números, no una orden: decide el cuerpo técnico. */
+  const LECTURA_RELOJ = {
+    temprana: () => 'buena parte de su ataque sale antes de que la defensa esté armada: el balance defensivo va antes que cargar el rebote ofensivo.',
+    armada: () => 'ataca con la jugada armada y casi no llega al final del reloj: sacarlo de su primera opción lo lleva a un terreno que usa poco.',
+    tardia: (L) => 'llega seguido al final del reloj' + (L && L.f[3][0] ? ', donde la competencia rinde ' + num(L.f[3][2] / L.f[3][0], 2) + ' por tiro' : '')
+      + ': sostener la defensa los 24 segundos paga.',
+  };
+  /** Los jugadores con perfil de reloj, separados en tempranos y tardíos. PURA. */
+  function relojQuienes(paq) {
+    const out = { tempranos: [], tardios: [] };
+    const jug = (paq && paq.reloj && paq.reloj.jugadores) || {};
+    Object.keys(jug).forEach((id) => {
+      const pf = relojPerfilJugador(paq, id);
+      if (!pf) return;
+      pf.rasgos.forEach((r) => {
+        const i = r.id.indexOf('temprana') === 0 ? 0 : 3;
+        const c = jug[id].f[i];
+        (i === 0 ? out.tempranos : out.tardios).push({ id: id, nombre: paq.jugadores && paq.jugadores[id] ? paq.jugadores[id].n : id,
+          label: r.label, conv: c[1], tiros: c[0], porcion: pf.reparto[i] });
+      });
+    });
+    const orden = (a, b) => b.tiros - a.tiros || String(a.nombre).localeCompare(String(b.nombre), 'es');
+    out.tempranos.sort(orden); out.tardios.sort(orden);
+    return out;
+  }
+  /** La sección de la card de Scouting. Sin «reloj» en el paquete devuelve ''. PURA. */
+  function relojScouting(paq) {
+    try {
+      const base = relojEquipo(paq);
+      if (!base) return '';
+      const idn = relojIdentidad(paq), L = relojLiga(paq), q = relojQuienes(paq);
+      const lecturas = idn.rasgos.filter(r => LECTURA_RELOJ[r.id]).map(r => `<li class="text-[11px] text-ink leading-snug"><b>${esc(r.label)}</b> · ${esc(LECTURA_RELOJ[r.id](L))}</li>`).join('');
+      const lista = (titulo, filas) => (filas.length ? `<div class="min-w-0">${subtitulo(titulo)}<ul>${filas.map(x => `<li class="text-[11px] text-ink leading-snug" title="${esc(x.nombre)}">
+          <b class="text-white">${esc(apellido(x.nombre))}</b> · ${esc(x.label)} <span class="font-mono dato-sec">${x.conv}/${x.tiros} · ${num(x.porcion, 0)} % de sus tiros</span></li>`).join('')}</ul></div>` : '');
+      const quienes = lista('Quién tira en los primeros 6 segundos', q.tempranos) + lista('Quién tira con el reloj encima', q.tardios);
+      return `${lecturas ? `<div class="pbp-lectura mb-3" data-reloj-lectura="1"><p class="text-[10px] uppercase tracking-wider text-muted mb-1">Lectura para defenderlo · decide el cuerpo técnico</p><ul>${lecturas}</ul></div>` : ''}
+        ${quienes ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-3" data-reloj-quienes="1">${quienes}</div>` : ''}
+        ${base}`;
+    } catch (e) { return ''; }
+  }
+
   /** El bloque del jugador, debajo de su mapa. Sin datos devuelve ''. PURA. */
   function relojJugador(paq, id) {
     try {
@@ -1749,6 +1794,7 @@ const SGADD_PBP = (function () {
     activa, espacio, espacioJugador, montarPendientes, activar, apellido, _cache: cache,
     partidoDe, mapaPartido, momentumPartido, quintetosPartido, espacioPartido, MIN_TIROS_DIAGNOSTICO,
     relojTabla, relojIdentidad, relojPerfilJugador, relojEquipo, relojJugador, relojPartido, relojReparto, FRANJAS_RELOJ,
+    relojScouting, relojQuienes,
   };
 })();
 

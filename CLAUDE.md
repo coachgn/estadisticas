@@ -81,7 +81,7 @@ node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: 
                            #             equipo, vencimiento y ciclo ORO por categoría
 node test-glosario.js      #  34 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
-node test-pbp.js           # 191 tests · la capa de laboratorio de play-by-play: el catálogo,
+node test-pbp.js           # 196 tests · la capa de laboratorio de play-by-play: el catálogo,
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
                            #             · el bloque opcional de secciones del paquete (punto 83)
@@ -135,7 +135,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7731 tests en total. Todos tienen que dar verde antes de commitear.**
+**7736 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -253,7 +253,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=276`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=277`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -13834,8 +13834,8 @@ mutaciones, todas caen (el piso sin el volumen, 4).
 
 Pedido: clasificar cada tiro según el segundo de la posesión en que sale
 (0-6 · 7-14 · 15-20 · 21-24), con su zona, su asistencia y el perfil del
-jugador, en los torneos con la capa `pbp`. **Hecho en local; sin publicar:**
-falta regenerar y subir los paquetes, y el push del front.
+jugador, en los torneos con la capa `pbp`. **Los paquetes ya están en KV
+(subidos el 2026-10-13); falta el push del front** para que se vea.
 
 ```
 motorstats-ingestion/src/pbp/reloj.js    PURO: posesiones, franjas, resumen de equipo y vara de liga
@@ -13902,7 +13902,12 @@ contra el techo de 200.
 
 - **Equipos → Quintetos**: sub-card «Reloj de posesión»: identidad, lo que
   tira, lo que le tiran, cómo nace la posesión y desde dónde tira por franja.
-  **No entra en Scouting**: esa card sigue con sus tres sub-cards (punto 62).
+- **Scouting → card de Quintetos del rival** (pedido del club, el mismo día:
+  revierte el «solo tres sub-cards» del punto 62 para esta sección): la misma
+  sección más una LECTURA por rasgo para defenderlo (`LECTURA_RELOJ`) y
+  quién tira en los primeros 6 segundos y quién con el reloj encima
+  (`relojQuienes`: solo jugadores con perfil, de más a menos tiros). Un
+  equipo sin rasgo no recibe lectura. Es lectura, no orden: lo dice.
 - **Post-partido**: card entre el perfil de tiro y el mapa
   (`espacioPartido(…, 'partido-reloj')`), con el aviso de reloj tardío si el
   partido está en el 10 % más alto de la competencia y tuvo 30+ finales.
@@ -13932,20 +13937,40 @@ los cuatro perfiles. En la LNB de hoy (6 equipos, 2-5 partidos) todo sale
   Sin `reloj` en el paquete la card es byte a byte la de antes.
 - Las funciones se ejercieron sobre los 17 paquetes reales armados con el
   exportador: sin `undefined` ni `NaN`.
-- **NO verificado en el navegador ni en PDF**: la sección solo se ve con los
-  paquetes nuevos en KV. El post-partido suma un bloque: hay que generar su
-  PDF y mirar el paginado.
+- **NO verificado en el navegador ni en PDF.** El post-partido suma un bloque
+  y la card de Quintetos de Scouting una sección: hay que generar los dos PDF
+  y mirar el paginado.
 
 ### Para que llegue a producción
 
-1. Regenerar y subir los paquetes (`exportar-web.js` + `server/bin/pbp.js
-   subir --confirmar`), o esperar la corrida de las 02:00 / 10:00.
-2. Push del front (`?v=276`). El backend no cambió.
+1. ~~Subir los paquetes.~~ HECHO el 2026-10-13 con la subida masiva (abajo).
+2. Push del front: la primera entrega salió con `?v=276` (commit 9679b19); el reloj en Scouting va con `?v=277`. El backend no cambió.
+
+### La subida masiva · `motorstats-ingestion/herramientas/subir-paquetes.js`
+
+    node herramientas/subir-paquetes.js                 ensayo: no escribe en la nube
+    node herramientas/subir-paquetes.js --confirmar     regenera y sube todo
+    node herramientas/subir-paquetes.js --sin-regenerar --confirmar   sube lo ya ensayado
+
+Recorre `DESTINOS` (carpeta de `salida/` → club y categoría del catálogo):
+respalda `web/` en `web.respaldo-<fecha>` (la vuelta atrás: se resube con
+`pbp.js subir --dir`), regenera con `exportar-web.js` y sube con `pbp.js
+subir`, que sigue siendo el único que escribe y valida. Un destino sin
+partidos locales se saltea y lo dice; uno que falla no frena a los demás.
+
+```
+conferencia-norte  → jujuy / jujuy-primera                  17 equipos · 266/272 validados
+lnb-2026-27        → liga-nacional-2026-27 / lnb-2026-27    18 equipos · 21/21
+lab-2026-27-norte/sur                                       salteadas: sin partidos todavía
+```
+
+Los paquetes de Jujuy en KV eran del 02/10: además del reloj, ahora traen
+`partidosPbp` (momentum, mapa y quintetos del post-partido, puntos 96-97).
 
 ### Lo que quedó afuera
 
 - **Puntos por jugada y TS% por franja** (cronometrar los viajes a la línea).
-- **El reloj en Scouting y en Fichajes** (el perfil del jugador como filtro).
+- **El reloj en Fichajes** (el perfil del jugador como filtro).
 - **El origen «robo» como dato de transición del rival** (puntos tras pérdida).
 - Los partidos más viejos que los últimos 10 del equipo no tienen reloj en su
   post-partido (el tope del punto 97); la temporada sí los cuenta.

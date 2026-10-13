@@ -822,8 +822,21 @@ function paquete(equipo) {
     const sinSeccion = hR.replace(/\s*<details class="pbp-detalle mt-3" data-pbp-seccion="reloj">[\s\S]*?<\/details>/, '');
     check('SIN «reloj» en el paquete la card es la de antes: ni la sección ni una línea de más',
       !/data-pbp-seccion="reloj"/.test(hSin) && !/Reloj de posesión/.test(hSin) && sinSeccion.replace(/\s+/g, ' ') === hSin.replace(/\s+/g, ' '));
-    check('en Scouting la card sigue con sus sub-cards de siempre: el reloj no entra',
-      !/data-pbp-seccion="reloj"/.test(P.html(pR, { contexto: 'scouting' })));
+    const hSc = P.html(pR, { contexto: 'scouting' }), hScSin = P.html(paquete3('BOCA'), { contexto: 'scouting' });
+    check('en Scouting la card del rival suma el reloj, con la lectura del rasgo y sin afirmar una orden',
+      /data-pbp-seccion="reloj"/.test(hSc) && /cuándo tira el rival/.test(hSc) && /data-reloj-lectura/.test(hSc)
+        && /balance defensivo/.test(hSc) && /decide el cuerpo técnico/.test(hSc) && /Lo que tira/.test(hSc));
+    const qn = P.relojQuienes(pR);
+    /* tempranos: el 1 (20 tiros) y el 2 (10) · tardíos: el 1, el 2 y el 5 (10 cada uno, por nombre) */
+    check('Scouting nombra quién tira temprano y quién con el reloj encima, de más a menos tiros',
+      qn.tempranos.map(x => x.id).join() === '1,2' && qn.tardios.length === 3 && qn.tempranos[0].conv === 12 && qn.tempranos[0].tiros === 20
+        && qn.tempranos[0].porcion === 50 && /data-reloj-quienes/.test(hSc) && /12\/20 · 50 % de sus tiros/.test(hSc) && /Válvula de escape/.test(hSc), qn);
+    check('un jugador sin muestra o sin rasgo no aparece en esas listas', qn.tempranos.concat(qn.tardios).every(x => x.id !== '3' && x.id !== '4'));
+    check('en Scouting, SIN «reloj» en el paquete la card es la de antes',
+      !/data-pbp-seccion="reloj"/.test(hScSin)
+        && hSc.replace(/\s*<details class="pbp-detalle mt-3" data-pbp-seccion="reloj">[\s\S]*?<\/details>/, '').replace(/\s+/g, ' ') === hScSin.replace(/\s+/g, ' '));
+    check('un equipo sin rasgo no recibe una lectura inventada', !/data-reloj-lectura/.test(P.relojScouting(medioLiga)) && /Reparto de liga/.test(P.relojScouting(medioLiga)));
+    check('la lectura del equipo que llega tarde cita lo que rinde la competencia en esa franja (0,84)', /la competencia rinde 0,84 por tiro/.test(P.relojScouting(tardio)));
 
     const roto = conReloj({ favor: { f: [[1, 2, 3], [1, 2, 3]], ro: [0, 0, 0], fa: [0, 0, 0], sr: 0 } });
     const textos = conReloj({ favor: { f: [['a', 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]], ro: [0, 0, 0], fa: [0, 0, 0], sr: 0 } });
