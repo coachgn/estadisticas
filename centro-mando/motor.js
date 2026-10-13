@@ -31,6 +31,23 @@ const PIEZAS = {
   'RL-04': { formato: 'reel', eje: 'momentum', label: 'Parciales sin respuesta' },
 };
 
+/* El ENFOQUE de cada pieza: de qué lado de la cancha habla. Es lo que
+   recorre «Cambiar enfoque» en la bandeja. */
+const ENFOQUES = { ataque: 'Ataque', defensa: 'Defensa', faltas: 'Faltas' };
+const ENFOQUE_DE = {
+  'CR-01': 'ataque', 'CR-02': 'defensa', 'CR-03': 'faltas', 'CR-04': 'faltas', 'CR-05': 'ataque', 'CR-06': 'ataque',
+  'RL-01': 'ataque', 'RL-02': 'defensa', 'RL-03': 'ataque', 'RL-04': 'defensa',
+  'FEED-GENERADORES': 'ataque', 'FEED-T3': 'ataque', 'FEED-T2': 'ataque', 'FEED-T1': 'faltas', 'FEED-RO': 'ataque',
+};
+
+/* El TONO no reescribe el texto —no hay quien lo redacte—: elige qué
+   gancho va primero y qué dice la píldora de la portada. */
+const TONOS = {
+  tactico: { label: 'Táctico', estilo: 'dato', pildora: 'PARA CUERPOS TÉCNICOS' },
+  polemico: { label: 'Polémico', estilo: 'titular', pildora: 'CONTRA LA INTUICIÓN' },
+  educativo: { label: 'Educativo', estilo: 'pregunta', pildora: 'CÓMO LEERLO' },
+};
+
 const EJES = {
   eficiencia: 'Eficiencia ofensiva', tiro: 'Tiro y selección', falta: 'Falta táctica', varas: 'Varas y niveles',
   tendencia: 'Tendencia y ciclos', perfiles: 'Perfiles de jugador', quintetos: 'Quintetos',
@@ -63,7 +80,7 @@ function opciones(LIGAS) {
     formatos: [{ id: AUTO, label: 'Destacadas de la fecha (todo lo disponible)', nivel: 0 }].concat(Object.keys(FORMATOS).map((id) => Object.assign({ id }, FORMATOS[id]))),
     ejes: EJES,
     piezas: Object.keys(PIEZAS).map((id) => Object.assign({ id }, PIEZAS[id])),
-    estilos: ESTILOS,
+    estilos: ESTILOS, enfoques: ENFOQUES, tonos: Object.keys(TONOS).reduce((a, k) => { a[k] = TONOS[k].label; return a; }, {}),
   };
 }
 
@@ -104,10 +121,10 @@ function ganchos(titulo, dato, lineas) {
 function deReceta(p) {
   const def = PIEZAS[p.id] || {};
   if (!p.ok) {
-    return { id: p.id, ok: false, formato: def.formato || null, eje: def.eje || null, titulo: def.label || p.id, avisos: p.avisos || [] };
+    return { id: p.id, ok: false, formato: def.formato || null, eje: def.eje || null, enfoque: ENFOQUE_DE[p.id] || null, titulo: def.label || p.id, avisos: p.avisos || [] };
   }
   return {
-    id: p.id, ok: true, formato: def.formato, eje: def.eje, formatoLabel: p.formato, titulo: p.titulo, dato: p.dato,
+    id: p.id, ok: true, formato: def.formato, eje: def.eje, enfoque: ENFOQUE_DE[p.id] || null, formatoLabel: p.formato, titulo: p.titulo, dato: p.dato,
     guion: p.guion || [], muestra: p.muestra || null, datos: p.datos || null, avisos: p.avisos || [],
     ganchos: ganchos(p.titulo, p.dato, p.guion),
   };
@@ -119,7 +136,7 @@ function deFeed(f, elegida) {
   const textos = (f.slides || []).map((s) => s.texto).filter(Boolean);
   const liga = (f.slides || []).find((s) => s.rol === 'La liga');
   return {
-    id: f.id, ok: true, formato: 'feed', eje: EJE_DE_FEED[cat] || null, formatoLabel: f.formato, titulo: f.titulo,
+    id: f.id, ok: true, formato: 'feed', eje: EJE_DE_FEED[cat] || null, enfoque: ENFOQUE_DE[f.id] || null, formatoLabel: f.formato, titulo: f.titulo,
     dato: liga ? liga.texto : (textos[1] || ''), guion: (f.slides || []).map((s) => s.rol + (s.texto ? ': ' + s.texto : '')),
     muestra: { deriva: f.deriva, contraste: f.contraste }, datos: { slides: f.slides || [] },
     avisos: elegida ? ['Es la que propone el generador: la de mayor contraste.'] : [],
@@ -133,7 +150,7 @@ function deStories(st, avisos) {
   const m = st.meta || {};
   const titulo = 'Top 3 de la fecha' + (m.fecha ? ' ' + m.fecha : '') + (m.zona ? ' · ' + m.zona : '');
   return {
-    id: 'STORIES', ok: true, formato: 'stories', eje: null, formatoLabel: st.formato, titulo,
+    id: 'STORIES', ok: true, formato: 'stories', eje: null, enfoque: null, formatoLabel: st.formato, titulo,
     dato: r.length + ' rankings sobre ' + (m.partidos || 0) + ' partidos, del ' + m.desde + ' al ' + m.hasta + '.',
     guion: (st.placas || []).map((x) => x.titulo || x.texto || x.tipo), muestra: { partidos: m.partidos, desde: m.desde, hasta: m.hasta },
     datos: { placas: st.placas || [], meta: m, formato: st.formato, anonimo: !!st.anonimo }, avisos: avisos || [],
@@ -169,6 +186,7 @@ function registroDeAprobacion(p, gancho, liga, ahora) {
     id: t.getTime().toString(36) + '-' + String(p.id).toLowerCase(), estado: 'aprobada', aprobada: t.toISOString(), fecha: diaLocal(t),
     pieza: String(p.id).toUpperCase(), formato: p.formato, estilo: (gancho && gancho.estilo) || null,
     gancho: String((gancho && gancho.texto) || p.titulo || '').slice(0, 300), liga: String(liga || '').slice(0, 40), titulo: String(p.titulo || '').slice(0, 200),
+    enfoque: ENFOQUES[p.enfoque] ? p.enfoque : null, tono: TONOS[p.tono] ? p.tono : null,
   };
 }
 
@@ -229,7 +247,7 @@ function ponderaciones(registros) {
     });
     return out;
   };
-  return { publicaciones: medidos.length, media, formato: grupo('formato'), pieza: grupo('pieza'), estilo: grupo('estilo') };
+  return { publicaciones: medidos.length, media, formato: grupo('formato'), pieza: grupo('pieza'), estilo: grupo('estilo'), tono: grupo('tono'), enfoque: grupo('enfoque') };
 }
 
 const pesoDe = (g, k) => (g && g[k] ? g[k].peso : 1);
@@ -271,6 +289,79 @@ function propuestas(salida, filtros, pond) {
 }
 
 /* --------------------------------------------------------------------
+   LA BANDEJA · lo que se propone esta quincena
+   -------------------------------------------------------------------- */
+const MAX_BANDEJA = 6;
+const orden3 = Object.keys(ENFOQUES);
+
+/** Una propuesta con su tono: el gancho de ese estilo pasa adelante. */
+function conTono(p, tono) {
+  const t = TONOS[tono] ? tono : 'tactico';
+  if (!p.ok) return Object.assign({}, p, { tono: t });
+  const gs = (p.ganchos || []).slice().sort((a, b) => (b.estilo === TONOS[t].estilo) - (a.estilo === TONOS[t].estilo));
+  return Object.assign({}, p, { tono: t, ganchos: gs });
+}
+
+/**
+ * De todo lo generado, qué entra a la bandeja: las Stories (si hay) y
+ * hasta MAX_BANDEJA piezas REPARTIDAS entre los tres enfoques, cada una
+ * en el orden en que llegó (que ya es el del aprendizaje). El resto
+ * queda en reserva, que es de donde saca «Cambiar enfoque».
+ */
+function armarBandeja(propuestas, sello) {
+  const con = propuestas.filter((p) => p.ok), sinDatos = propuestas.filter((p) => !p.ok).map((p) => ({ id: p.id, titulo: p.titulo, avisos: p.avisos }));
+  const elegidas = con.filter((p) => !p.enfoque);
+  const colas = orden3.map((e) => con.filter((p) => p.enfoque === e));
+  const piezas = [];
+  for (let vuelta = 0; piezas.length < MAX_BANDEJA && colas.some((c) => c.length > vuelta); vuelta++) {
+    colas.forEach((c) => { if (c[vuelta] && piezas.length < MAX_BANDEJA) piezas.push(c[vuelta]); });
+  }
+  const reserva = con.filter((p) => p.enfoque && piezas.indexOf(p) === -1);
+  const items = elegidas.concat(piezas).map((p, i) => ({ uid: (sello || 'b') + '-' + i, estado: 'pendiente', propuesta: conTono(p, 'tactico') }));
+  return { items, reserva, sinDatos };
+}
+
+const itemDe = (b, uid) => { const i = (b.items || []).findIndex((x) => x.uid === uid); if (i === -1) throw new Error('Esa propuesta ya no está en la bandeja.'); return i; };
+
+/** Cambia la pieza de un ítem por la primera de la reserva del enfoque que sigue. */
+function cambiarEnfoque(b, uid) {
+  const i = itemDe(b, uid), actual = b.items[i].propuesta;
+  if (!actual.enfoque) throw new Error('Esta pieza no tiene enfoque: es el resumen de la fecha.');
+  const desde = orden3.indexOf(actual.enfoque);
+  for (let paso = 1; paso <= orden3.length; paso++) {
+    const e = orden3[(desde + paso) % orden3.length];
+    const j = (b.reserva || []).findIndex((p) => p.enfoque === e && (paso < orden3.length || p.id !== actual.id));
+    if (j === -1) continue;
+    const reserva = b.reserva.slice(), items = b.items.slice();
+    const nueva = reserva.splice(j, 1)[0];
+    reserva.push(Object.assign({}, actual));
+    items[i] = Object.assign({}, items[i], { propuesta: conTono(nueva, actual.tono) });
+    return Object.assign({}, b, { items, reserva });
+  }
+  throw new Error('No queda otra pieza con datos en la reserva para cambiar el enfoque.');
+}
+
+/** Pasa al tono que sigue. */
+function cambiarTono(b, uid) {
+  const i = itemDe(b, uid), p = b.items[i].propuesta, ts = Object.keys(TONOS);
+  const items = b.items.slice();
+  items[i] = Object.assign({}, items[i], { propuesta: conTono(p, ts[(ts.indexOf(p.tono) + 1) % ts.length]) });
+  return Object.assign({}, b, { items });
+}
+
+function marcar(b, uid, estado) {
+  const i = itemDe(b, uid), items = b.items.slice();
+  items[i] = Object.assign({}, items[i], { estado });
+  return Object.assign({}, b, { items });
+}
+
+/** Suma una propuesta del laboratorio arriba de todo. */
+function sumarABandeja(b, p, sello) {
+  const base = b && b.items ? b : { items: [], reserva: [], sinDatos: [] };
+  return Object.assign({}, base, { items: [{ uid: 'lab-' + (sello || Date.now().toString(36)), estado: 'pendiente', propuesta: conTono(p, 'tactico') }].concat(base.items) });
+}
+
+/* --------------------------------------------------------------------
    LAS PLACAS · un HTML por propuesta, importable a Canva
    Misma línea gráfica que `contenido/placas/`: una <section> por placa
    con `data-document-role="page"` e imágenes por URL pública.
@@ -284,9 +375,18 @@ function placasHtml(p, gancho, contexto) {
   const marco = (cuerpo) => '<section class="p" data-document-role="page"><i class="esq ea"></i><i class="esq eb"></i><i class="esq ec"></i><i class="esq ed"></i>' +
     '<div class="marca"><b>MOTORSTATS</b><sup>AR</sup></div><div class="c">' + cuerpo + '</div>' +
     '<div class="pie"><img src="' + LOGO + '" alt=""><span>@motorstats.ar</span></div></section>';
-  const paginas = [marco('<div class="pildora">' + esc(p.id) + ' · ' + esc(p.formatoLabel || '') + '</div><h1>' + esc(gancho || p.titulo) + '</h1>' +
+  const pildora = TONOS[p.tono] ? TONOS[p.tono].pildora : (p.id + ' · ' + (p.formatoLabel || ''));
+  const paginas = [marco('<div class="pildora">' + esc(pildora) + '</div><h1>' + esc(gancho || p.titulo) + '</h1>' +
     (p.dato ? '<p class="baj">' + esc(p.dato) + '</p>' : ''))];
   (p.guion || []).forEach((g, i) => paginas.push(marco('<div class="rot">' + (i + 1) + ' / ' + p.guion.length + '</div><p class="baj grande">' + esc(g) + '</p>')));
+  /* Una propuesta del laboratorio trae su tabla: va en su propia placa. */
+  const d = p.datos || {};
+  if (Array.isArray(d.filas) && Array.isArray(d.columnas) && d.filas.length) {
+    const cols = d.columnas.slice(0, 4);
+    paginas.splice(Math.min(3, paginas.length), 0, marco('<table><thead><tr><th>#</th><th></th>' + cols.map((c) => '<th>' + esc(c.label) + '</th>').join('') + '</tr></thead><tbody>' +
+      d.filas.slice(0, 8).map((f) => '<tr><td>' + esc(f.puesto || '') + '</td><td>' + esc(f.jugador || f.equipo || f.zona || '') + (f.jugador && f.equipo ? '<small> · ' + esc(f.equipo) + '</small>' : '') + '</td>' +
+        cols.map((c) => '<td class="n">' + esc((f.texto || {})[c.id]) + '</td>').join('') + '</tr>').join('') + '</tbody></table>'));
+  }
   if (contexto) paginas.push(marco('<div class="rot">Contexto</div><p class="baj">' + esc(contexto) + '</p>'));
   const css = '@import url("https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@700;800&display=swap");' +
     '*{box-sizing:border-box;margin:0;padding:0}html,body{background:#0a1930}body{font-family:Barlow,sans-serif;color:#e6ecf5}' +
@@ -299,7 +399,9 @@ function placasHtml(p, gancho, contexto) {
     'h1{font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:' + (vertical ? 104 : 88) + 'px;line-height:1;text-transform:uppercase;color:#fff}' +
     '.baj{font-size:38px;line-height:1.3;font-weight:500}.baj.grande{font-size:52px;color:#fff}.rot{font-weight:700;font-size:24px;letter-spacing:2px;text-transform:uppercase;color:#74acdf}' +
     '.pie{position:absolute;left:0;right:0;bottom:44px;height:70px}.pie img{position:absolute;left:50%;top:0;width:70px;height:70px;object-fit:contain;transform:translateX(-50%)}' +
-    '.pie span{position:absolute;right:78px;top:26px;font-weight:600;font-size:19px;color:#fff}';
+    '.pie span{position:absolute;right:78px;top:26px;font-weight:600;font-size:19px;color:#fff}' +
+    'table{width:100%;border-collapse:collapse;font-size:32px}th,td{padding:14px 12px;border-bottom:1px solid rgba(116,172,223,.25);text-align:left}th{font-size:20px;letter-spacing:2px;text-transform:uppercase;color:#74acdf}' +
+    'td.n{font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:40px;text-align:right;color:#fff}td small{font-size:22px;color:#a9b8cf}';
   return '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>' + esc(p.id + ' · ' + p.titulo) + '</title><style>' + css + '</style></head><body>' + paginas.join('\n') + '</body></html>';
 }
 
@@ -314,7 +416,8 @@ function resumenMd(p, gancho, contexto) {
 }
 
 module.exports = {
-  PIEZAS, EJES, FORMATOS, AUTO, ESTILOS, registroDeAprobacion, medir, diaLocal, PESOS_INTERACCION, MIN_MUESTRA, PISO, TECHO,
+  PIEZAS, EJES, FORMATOS, AUTO, ESTILOS, ENFOQUES, ENFOQUE_DE, TONOS, MAX_BANDEJA,
+  conTono, armarBandeja, cambiarEnfoque, cambiarTono, marcar, sumarABandeja, registroDeAprobacion, medir, diaLocal, PESOS_INTERACCION, MIN_MUESTRA, PISO, TECHO,
   opciones, piezasPara, motivoSinFormato, ganchos, deReceta, deFeed, deStories,
   normalizarRegistro, puntaje, ponderaciones, ordenar, propuestas, placasHtml, resumenMd,
 };

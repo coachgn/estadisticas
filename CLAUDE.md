@@ -118,7 +118,7 @@ node test-interzonal.js    # 220 tests · la llave entre zonas: un cliente de un
 node test-contenido.js     # 142 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
                            #             derivado, las diez recetas de Nivel 2 y que los nombres solo salgan en APdeB (103, 104)
 
-node test-centro-mando.js  #  89 tests · el Centro de Mando Editorial local: propuestas, ganchos sin números propios,
+node test-centro-mando.js  # 153 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
                            #             el play-by-play que no se presta, el aprendizaje y el servidor en 127.0.0.1 (105)
 
 node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, el catálogo en KV
@@ -131,7 +131,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7314 tests en total. Todos tienen que dar verde antes de commitear.**
+**7378 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -13048,3 +13048,79 @@ centro-mando/index.html    la página, sin dependencias
   a mano.
 - El libro se guarda 10 minutos por zona en la memoria del proceso;
   «Volver a leer el libro» lo fuerza.
+
+## 106. EL CENTRO DE MANDO, REDISEÑADO · bandeja, Explorador táctico y enfoque/tono (2026-10-12)
+
+Cuatro pestañas sobre una liga y una zona elegidas arriba:
+📥 Bandeja · 🔬 Explorador táctico · 🎛 A medida (el flujo del punto 105) ·
+📈 Aprendizaje. Sigue siendo LOCAL y SIN LLM: lo que el pedido original
+llamaba «agentes» son funciones deterministas, y la página lo dice.
+
+```
+centro-mando/explorador.js   PURO: tabla por nivel, entre zonas, anomalías, hallazgo → propuesta
+centro-mando/motor.js        suma ENFOQUES, TONOS y la bandeja (armar, cambiar enfoque/tono, marcar)
+centro-mando/servidor.js     /api/explorar · /anomalias · /bandeja · /bandeja/accion · /laboratorio
+```
+
+### El Explorador
+
+- **Cuatro niveles**: jugadores, equipos, comparativa entre zonas (la
+  MEDIANA de los equipos de cada zona; pide dos zonas con libro) y partidos
+  (un equipo en una noche).
+- **No hay métrica propia**: equipos por `idx.leer` (ORTG/DRTG por
+  posesión, punto 66), jugadores y partidos por su fila. El Explorador
+  filtra, ordena y compara.
+- **Las métricas son las del libro.** «Puntos tras pérdida» y «segunda
+  oportunidad» no están en ninguna hoja, y la eficiencia por zona de tiro
+  solo existe con play-by-play (RL-03): se listan como NO DISPONIBLES en
+  vez de ofrecerse.
+- **El que no tiene el dato queda afuera y se cuenta** (`sinDato`), como
+  en Fichajes. **El porcentaje no viaja solo**: ordenar o filtrar por T3%
+  suma T3I a las columnas.
+- **Los porcentajes se escriben como 35**, no 0,35.
+- **EL ÁNGULO NO SE INTERPRETA.** No hay lenguaje natural: lo que se
+  escribe ahí es el TÍTULO de la propuesta. Lo que decide son las métricas,
+  el orden y hasta tres condiciones. Un parser de texto libre que entienda
+  mal devuelve una tabla plausible y equivocada.
+
+### Las anomalías (`E.anomalias`)
+
+| | Regla |
+|---|---|
+| ⬆ Puntos altos | noches de la última fecha con MIN ≥ 10, z ≥ 1,5 contra su propio promedio **y** sobre el PISO de la métrica (`PISO_NOCHE`: 18 PTS, 6 AST, 5 RO, 8 RD, 4 T3C); más rachas de 3+ |
+| ⬇ Puntos de fuga | la métrica más floja de cada equipo (`METRICAS_FUGA`), si cae en el percentil 25 o menos de su zona |
+| ⇄ Entre zonas | métricas donde las medianas se separan ≥ 0,5 desvíos del conjunto de equipos |
+
+**El piso es la mitad de la regla**: sin él, al que promedia cero triples
+UNO le daba z de 5,6 (su media está hundida por las noches sin minutos,
+punto 3 ter). Los puntos de fuga son de EQUIPO; de jugador no hay.
+
+### Del laboratorio a la bandeja
+
+`POST /api/laboratorio` arma la propuesta (`E.aPropuesta`), la pasa por
+`GC.anonimizar` + `GC.verificarAnonimo` contra los nombres de todos los
+libros leídos y recién ahí la guarda. **Sale anónima siempre**, también en
+APdeB. Un ángulo que nombre a un club del libro hace fallar la verificación.
+
+### La bandeja (`contenido/centro-mando/bandeja.json`, una por liga-zona)
+
+- Se arma al abrir la pestaña si no hay una o si tiene más de 14 días, y
+  con «Rearmar». **No hay un proceso de fondo ni propuestas que «lleguen»**.
+- Entran las Stories (si la liga va con nombres) y hasta 6 piezas
+  repartidas entre ataque, defensa y faltas (`ENFOQUE_DE`); el resto con
+  datos queda en RESERVA. Rearmar conserva lo pendiente del laboratorio.
+- **🔄 Cambiar enfoque** cambia la PIEZA por la primera de la reserva del
+  enfoque que sigue; la que sale vuelve a la reserva. Sin reserva lo dice.
+- **🌶️ Ajustar tono** (Táctico → Polémico → Educativo) elige qué gancho va
+  primero (dato / titular / pregunta) y la píldora de la portada. **No
+  reescribe el texto**: no hay quien lo redacte.
+- **✅ Aprobar** es el `aprobar` del punto 105 (archivos, cola de Canva,
+  historial) y además anota enfoque y tono; el aprendizaje los agrupa.
+
+### Verificado
+
+En el navegador contra los libros reales de APdeB: bandeja de Zona B (7
+pendientes, 3 en reserva), cambio de tono y de enfoque, anomalías, el
+filtro «T3% con menos de 15 minutos y al menos 1 triple intentado» (30 de
+235), la comparativa de las tres zonas y un hallazgo mandado a la bandeja
+y aprobado, con su tabla anónima en la placa. Sin captura de pantalla.

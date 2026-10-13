@@ -9,103 +9,155 @@
   :root { --fondo: #0a1930; --card: #10233f; --borde: #24406a; --tinta: #e6ecf5; --tenue: #a9b8cf; --cel: #74acdf; --nar: #f5a623; --ver: #4ade80; --roj: #f87171; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--fondo); color: var(--tinta); font: 15px/1.45 system-ui, 'Segoe UI', sans-serif; }
-  header { padding: 18px 24px; border-bottom: 1px solid var(--borde); display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
-  header h1 { margin: 0; font-size: 20px; letter-spacing: .5px; }
-  header small { color: var(--tenue); }
-  main { max-width: 1180px; margin: 0 auto; padding: 20px 24px 60px; display: grid; gap: 18px; }
-  .card { background: var(--card); border: 1px solid var(--borde); border-radius: 10px; padding: 16px 18px; }
+  header { padding: 14px 24px; border-bottom: 1px solid var(--borde); display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; position: sticky; top: 0; background: var(--fondo); z-index: 5; }
+  header h1 { margin: 0 auto 0 0; font-size: 20px; letter-spacing: .5px; align-self: center; }
+  header h1 small { display: block; font-size: 12px; font-weight: 400; color: var(--tenue); letter-spacing: 0; }
+  main { max-width: 1240px; margin: 0 auto; padding: 16px 24px 60px; }
+  .card { background: var(--card); border: 1px solid var(--borde); border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
   h2 { margin: 0 0 12px; font-size: 14px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--cel); }
-  .grilla { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  h3 { margin: 0 0 4px; font-size: 18px; }
+  h4 { margin: 0 0 8px; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--tenue); }
+  .grilla { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  .tres { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
   label { display: grid; gap: 4px; font-size: 12px; letter-spacing: .5px; text-transform: uppercase; color: var(--tenue); }
-  label.fila { display: flex; align-items: center; gap: 8px; text-transform: none; font-size: 14px; color: var(--tinta); }
-  select, input, textarea, button { font: inherit; color: var(--tinta); background: #0b1c35; border: 1px solid var(--borde); border-radius: 6px; padding: 9px 10px; min-height: 40px; }
+  label.fila { display: inline-flex; align-items: center; gap: 8px; text-transform: none; font-size: 14px; color: var(--tinta); letter-spacing: 0; }
+  select, input, textarea, button { font: inherit; color: var(--tinta); background: #0b1c35; border: 1px solid var(--borde); border-radius: 6px; padding: 8px 10px; min-height: 40px; }
   input[type=checkbox], input[type=radio] { min-height: 0; width: 18px; height: 18px; padding: 0; accent-color: var(--cel); }
-  textarea { min-height: 64px; resize: vertical; text-transform: none; }
+  textarea { min-height: 60px; resize: vertical; width: 100%; }
   button { cursor: pointer; font-weight: 600; }
   button.pri { background: var(--cel); color: #08162b; border-color: var(--cel); }
+  button.chico { min-height: 32px; padding: 4px 10px; font-size: 13px; font-weight: 500; }
   button:disabled { opacity: .5; cursor: not-allowed; }
   :focus-visible { outline: 2px solid var(--nar); outline-offset: 2px; }
-  .acciones { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+  nav[role=tablist] { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+  nav button[aria-selected=true] { background: var(--cel); color: #08162b; border-color: var(--cel); }
+  .acciones { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
   .aviso { border-left: 3px solid var(--nar); padding: 8px 12px; background: rgba(245,166,35,.08); border-radius: 0 6px 6px 0; margin: 6px 0; }
   .error { border-left-color: var(--roj); background: rgba(248,113,113,.08); }
-  .ok { border-left-color: var(--ver); background: rgba(74,222,128,.08); }
-  .prop h3 { margin: 0 0 4px; font-size: 18px; }
-  .chip { display: inline-block; border: 1px solid var(--borde); border-radius: 20px; padding: 2px 10px; font-size: 12px; color: var(--tenue); margin-right: 6px; }
+  .chip { display: inline-block; border: 1px solid var(--borde); border-radius: 20px; padding: 2px 10px; font-size: 12px; color: var(--tenue); margin: 0 6px 4px 0; }
   .chip.id { color: var(--nar); border-color: var(--nar); font-weight: 700; }
+  .chip.ok { color: var(--ver); border-color: var(--ver); }
   .dato { font-size: 16px; margin: 10px 0; }
   .gancho { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--borde); border-radius: 8px; margin: 6px 0; text-transform: none; font-size: 15px; color: var(--tinta); letter-spacing: 0; }
   .gancho small { color: var(--tenue); display: block; }
-  ol { margin: 8px 0; padding-left: 22px; color: var(--tinta); }
+  ol, ul { margin: 8px 0; padding-left: 22px; }
+  ul.lista { list-style: none; padding: 0; margin: 0; }
+  ul.lista li { padding: 8px 0; border-bottom: 1px solid var(--borde); display: flex; gap: 10px; justify-content: space-between; align-items: center; }
+  ul.lista li:last-child { border-bottom: 0; }
   details summary { cursor: pointer; color: var(--cel); padding: 6px 0; }
   pre { background: #08162b; padding: 10px; border-radius: 6px; overflow: auto; max-height: 320px; font-size: 12px; }
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
-  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--borde); }
+  th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--borde); white-space: nowrap; }
+  th:nth-child(-n+2), td:nth-child(-n+2) { text-align: left; }
   th { color: var(--tenue); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+  th.orden { color: var(--nar); }
   .scroll { overflow-x: auto; }
   .tenue { color: var(--tenue); }
   .visor { margin: 12px 0 4px; border: 1px solid var(--borde); border-radius: 8px; background: #06101f; overflow: hidden; }
   .visor iframe { display: block; width: 100%; border: 0; background: #06101f; }
   .visor p { margin: 0; padding: 6px 10px; font-size: 12px; color: var(--tenue); border-top: 1px solid var(--borde); }
-  @media (prefers-reduced-motion: no-preference) { .girando::after { content: ' …'; } }
+  .metricas { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .cond { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; margin-bottom: 6px; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Centro de Mando Editorial</h1>
-  <small>MotorStats AR · local · los números salen del libro, sin tipear nada</small>
+  <h1>Centro de Mando Editorial<small>MotorStats AR · local · todo número sale del libro</small></h1>
+  <label>Liga / torneo <select id="liga"></select></label>
+  <label>Zona <select id="zona"></select></label>
+  <button id="releer" class="chico" title="Vuelve a bajar el libro de Google en vez de usar la copia de los últimos 10 minutos">Volver a leer el libro</button>
 </header>
 <main>
-  <section class="card" aria-labelledby="t-pedido">
-    <h2 id="t-pedido">1 · Qué generamos</h2>
-    <div class="grilla">
-      <label>Liga / torneo <select id="liga"></select></label>
-      <label>Zona <select id="zona"></select></label>
-      <label>Formato <select id="formato"></select></label>
-      <label>Eje táctico <select id="eje"></select></label>
+  <nav role="tablist" aria-label="Módulos">
+    <button role="tab" data-tab="bandeja" aria-selected="true">📥 Bandeja de la agencia</button>
+    <button role="tab" data-tab="explorador" aria-selected="false">🔬 Explorador táctico</button>
+    <button role="tab" data-tab="medida" aria-selected="false">🎛 A medida</button>
+    <button role="tab" data-tab="aprendizaje" aria-selected="false">📈 Aprendizaje</button>
+  </nav>
+  <details class="card" style="padding:8px 18px">
+    <summary>Contexto de tendencia (opcional · lo escribís vos y viaja a las placas y a la exportación)</summary>
+    <textarea id="contexto" maxlength="600" placeholder="Ej.: esta semana se habló de la defensa del pick &amp; roll en la final de…"></textarea>
+  </details>
+
+  <!-- ============================ BANDEJA ============================ -->
+  <section id="tab-bandeja" role="tabpanel">
+    <div class="card">
+      <h2>Propuestas de la quincena</h2>
+      <p class="tenue" style="margin:0">Se arman con el libro de la zona elegida: las Stories de la fecha y hasta seis piezas repartidas entre ataque, defensa y faltas. Se rearman solas cada 14 días o cuando lo pedís; no hay un proceso corriendo de fondo.</p>
+      <div class="acciones"><button id="rearmar">Rearmar la quincena ahora</button><span id="b-estado" role="status" aria-live="polite" class="tenue"></span></div>
     </div>
-    <div class="grilla" id="ventana" style="margin-top:12px">
-      <label>Desde (opcional) <input type="date" id="desde"></label>
-      <label>Hasta (opcional) <input type="date" id="hasta"></label>
-      <label>N.º de fecha (opcional) <input type="number" id="fechaN" min="1" max="60"></label>
-    </div>
-    <div class="acciones">
-      <label class="fila"><input type="checkbox" id="conNombres"> Con nombres reales</label>
-      <label class="fila"><input type="checkbox" id="refrescar"> Volver a leer el libro</label>
-    </div>
-    <label style="margin-top:12px">Contexto de tendencia (opcional · lo escribís vos, viaja a la exportación)
-      <textarea id="contexto" maxlength="600" placeholder="Ej.: esta semana se habló de la defensa del pick &amp; roll en la final de…"></textarea>
-    </label>
-    <div class="acciones">
-      <button id="generar">Volver a generar</button>
-      <span id="estado" role="status" aria-live="polite" class="tenue"></span>
-    </div>
-    <div id="nota"></div>
+    <div id="bandeja"></div>
   </section>
 
-  <section aria-labelledby="t-prop">
-    <h2 id="t-prop" style="margin-left:4px">2 · Propuestas</h2>
-    <div id="propuestas"><div class="card tenue">Elegí la liga y la zona: las propuestas se arman solas.</div></div>
+  <!-- ========================== EXPLORADOR =========================== -->
+  <section id="tab-explorador" role="tabpanel" hidden>
+    <div class="card">
+      <h2>Anomalías y puntos de fuga · detección automática</h2>
+      <div id="anomalias" class="tres"><p class="tenue">Leyendo el libro…</p></div>
+    </div>
+    <div class="card">
+      <h2>Laboratorio</h2>
+      <fieldset style="border:0;padding:0;margin:0 0 12px"><legend class="tenue" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Nivel de análisis</legend><div id="x-niveles" class="metricas"></div></fieldset>
+      <h4>Métricas a cruzar</h4>
+      <div id="x-metricas" class="metricas"></div>
+      <p class="tenue" id="x-nodisp" style="font-size:13px"></p>
+      <div class="grilla" style="margin-top:10px">
+        <label>Ordenar por <select id="x-orden"></select></label>
+        <label>Sentido <select id="x-sentido"><option value="">El mejor primero</option><option value="desc">De mayor a menor</option><option value="asc">De menor a mayor</option></select></label>
+        <label>Cuántos <input type="number" id="x-top" min="1" max="50" value="10"></label>
+        <label class="fila" id="x-calif-caja" style="align-self:end"><input type="checkbox" id="x-calif"> Solo los que califican por minutos</label>
+      </div>
+      <h4 style="margin-top:14px">Condiciones <span style="text-transform:none;letter-spacing:0">· los porcentajes se escriben como 35, no 0,35</span></h4>
+      <div id="x-conds"></div>
+      <label style="margin-top:10px">Ángulo táctico · es el TÍTULO de la propuesta; no se interpreta: lo que filtra son las condiciones de arriba
+        <textarea id="x-angulo" maxlength="140" placeholder="Ej.: ¿Quiénes tiran mejor de tres con menos de 15 minutos en cancha?"></textarea>
+      </label>
+      <div class="acciones"><button id="x-correr">Explorar</button><button class="pri" id="x-mandar">Mandar a la bandeja</button><span id="x-estado" role="status" aria-live="polite" class="tenue"></span></div>
+      <div id="x-enviado" role="status" aria-live="polite"></div>
+    </div>
+    <div class="card"><h2>Resultado</h2><div id="x-resultado" class="scroll"><p class="tenue">Elegí métricas y condiciones.</p></div></div>
   </section>
 
-  <section class="card" aria-labelledby="t-apr">
-    <h2 id="t-apr">3 · Aprendizaje</h2>
-    <p class="tenue" style="margin-top:0">Cada pieza que aprobás queda anotada sola en el historial. Lo que Instagram muestra de ella (alcance, guardados, compartidos) lo cargás vos cuando lo tengas: esta página no lee Instagram. Con tres o más publicaciones medidas de un formato, una pieza o un estilo de gancho, las propuestas se reordenan solas. Se guarda en <code>contenido/aprendizaje.json</code>, en esta máquina.</p>
-    <form id="formApr" class="grilla">
-      <input type="hidden" id="a-id">
-      <label>Pieza <input id="a-pieza" required placeholder="CR-01"></label>
-      <label>Formato <select id="a-formato"></select></label>
-      <label>Estilo de gancho <select id="a-estilo"></select></label>
-      <label>Alcance <input type="number" id="a-alcance" min="1" required></label>
-      <label>Guardados <input type="number" id="a-guardados" min="0" value="0"></label>
-      <label>Compartidos <input type="number" id="a-compartidos" min="0" value="0"></label>
-      <label>Comentarios <input type="number" id="a-comentarios" min="0" value="0"></label>
-      <label>Me gusta <input type="number" id="a-likes" min="0" value="0"></label>
-      <label>Fecha <input type="date" id="a-fecha"></label>
-      <label style="grid-column:1/-1">Gancho publicado <input id="a-gancho" maxlength="300"></label>
-      <div class="acciones" style="grid-column:1/-1;margin-top:0"><button class="pri">Guardar rendimiento</button><span id="a-estado" role="status" aria-live="polite" class="tenue"></span></div>
-    </form>
-    <div id="historial" class="scroll" style="margin-top:14px"></div>
-    <div id="pesos" class="scroll" style="margin-top:14px"></div>
+  <!-- ============================ A MEDIDA =========================== -->
+  <section id="tab-medida" role="tabpanel" hidden>
+    <div class="card">
+      <h2>Una pieza puntual</h2>
+      <div class="grilla">
+        <label>Formato <select id="formato"></select></label>
+        <label>Eje táctico <select id="eje"></select></label>
+        <label>Desde <input type="date" id="desde"></label>
+        <label>Hasta <input type="date" id="hasta"></label>
+        <label>N.º de fecha <input type="number" id="fechaN" min="1" max="60"></label>
+      </div>
+      <div class="acciones"><label class="fila"><input type="checkbox" id="conNombres"> Con nombres reales</label><button id="generar">Generar</button><span id="estado" role="status" aria-live="polite" class="tenue"></span></div>
+      <div id="nota"></div>
+    </div>
+    <div id="propuestas"></div>
+  </section>
+
+  <!-- ========================== APRENDIZAJE ========================== -->
+  <section id="tab-aprendizaje" role="tabpanel" hidden>
+    <div class="card">
+      <h2>Historial de tracción</h2>
+      <p class="tenue" style="margin-top:0">Cada pieza aprobada queda anotada sola, con su gancho, su enfoque y su tono. Lo que Instagram muestra de ella (alcance, guardados, compartidos) lo cargás vos cuando lo tengas: esta página no lee Instagram. Con tres o más publicaciones medidas de un grupo, las propuestas se reordenan.</p>
+      <div id="historial" class="scroll"></div>
+      <form id="formApr" class="grilla" style="margin-top:14px">
+        <input type="hidden" id="a-id">
+        <label>Pieza <input id="a-pieza" required placeholder="CR-01"></label>
+        <label>Formato <select id="a-formato"></select></label>
+        <label>Estilo de gancho <select id="a-estilo"></select></label>
+        <label>Alcance <input type="number" id="a-alcance" min="1" required></label>
+        <label>Guardados <input type="number" id="a-guardados" min="0" value="0"></label>
+        <label>Compartidos <input type="number" id="a-compartidos" min="0" value="0"></label>
+        <label>Comentarios <input type="number" id="a-comentarios" min="0" value="0"></label>
+        <label>Me gusta <input type="number" id="a-likes" min="0" value="0"></label>
+        <label>Fecha <input type="date" id="a-fecha"></label>
+        <label style="grid-column:1/-1">Gancho publicado <input id="a-gancho" maxlength="300"></label>
+        <div class="acciones" style="grid-column:1/-1;margin-top:0"><button class="pri">Guardar rendimiento</button><span id="a-estado" role="status" aria-live="polite" class="tenue"></span></div>
+      </form>
+      <div id="pesos" class="scroll" style="margin-top:14px"></div>
+    </div>
   </section>
 </main>
 
@@ -114,7 +166,9 @@
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const num = (v, d) => Number(v).toFixed(d == null ? 2 : d).replace('.', ',');
-let OPC = null, ULTIMO = null;
+let OPC = null, HISTORIAL = [];
+/* Toda propuesta en pantalla, por su uid: las tarjetas no guardan datos, los buscan acá. */
+const PROPS = new Map();
 
 async function api(ruta, cuerpo) {
   const r = await fetch(ruta, cuerpo ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) } : undefined);
@@ -125,16 +179,179 @@ async function api(ruta, cuerpo) {
 const opciones = (lista, valor) => lista.map((o) => '<option value="' + esc(o.id) + '"' + (o.id === valor ? ' selected' : '') + (o.no ? ' disabled' : '') + '>' + esc(o.label) + '</option>').join('');
 const ligaSel = () => OPC.ligas.find((l) => l.id === $('liga').value);
 const zonaSel = () => ligaSel().zonas.find((z) => z.id === $('zona').value);
-const formatoSel = () => OPC.formatos.find((f) => f.id === $('formato').value);
+const donde = () => ({ liga: $('liga').value, zona: $('zona').value });
+const avisos = (lista, clase) => (lista || []).map((a) => '<div class="aviso ' + (clase || '') + '">' + esc(a) + '</div>').join('');
 
-function pintarZonas() {
-  $('zona').innerHTML = opciones(ligaSel().zonas.map((z) => ({ id: z.id, label: z.label + (z.pbp ? ' · con play-by-play' : '') })), $('zona').value);
-  pintarFormatos();
+/* ------------------------------ pestañas ------------------------------ */
+let TAB = 'bandeja';
+function irA(tab) {
+  TAB = tab;
+  document.querySelectorAll('nav [role=tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+  document.querySelectorAll('[role=tabpanel]').forEach((s) => { s.hidden = s.id !== 'tab-' + tab; });
+  cargarTab();
 }
+/* Cada pestaña se carga la primera vez que se abre para esa zona. */
+const cargado = {};
+function cargarTab(forzar) {
+  const k = TAB + '|' + $('liga').value + '|' + $('zona').value;
+  if (cargado[TAB] === k && !forzar) return;
+  cargado[TAB] = k;
+  if (TAB === 'bandeja') cargarBandeja(false);
+  if (TAB === 'explorador') { cargarAnomalias(); correrExplorador(); }
+  if (TAB === 'medida') pintarFormatos();
+  if (TAB === 'aprendizaje') api('/api/aprendizaje').then(pintarAprendizaje);
+}
+
+/* ------------------------------ tarjetas ------------------------------ */
+const ganchoElegido = (uid) => { const p = PROPS.get(uid).p, r = document.querySelector('input[name="g-' + uid + '"]:checked'); return (p.ganchos || [])[r ? Number(r.value) : 0]; };
+
+function tarjeta(uid, p, modo, estado) {
+  PROPS.set(uid, { p, modo });
+  if (!p.ok) return '<article class="card"><span class="chip id">' + esc(p.id) + '</span><span class="chip">sin datos</span><h3>' + esc(p.titulo) + '</h3>' + avisos(p.avisos) + '</article>';
+  const chips = '<span class="chip id">' + esc(p.id) + '</span><span class="chip">' + esc(p.formatoLabel || p.formato) + '</span>' +
+    (p.enfoque ? '<span class="chip">' + esc(OPC.enfoques[p.enfoque]) + '</span>' : '') + (p.tono ? '<span class="chip">Tono ' + esc(OPC.tonos[p.tono]) + '</span>' : '') +
+    (p.peso && p.peso !== 1 ? '<span class="chip">peso ' + num(p.peso) + '</span>' : '');
+  if (estado && estado !== 'pendiente') {
+    return '<article class="card" style="padding:10px 18px">' + chips + '<span class="chip ' + (estado === 'aprobada' ? 'ok' : '') + '">' + (estado === 'aprobada' ? '✅ aprobada · en la cola de Canva' : 'descartada') + '</span> ' + esc(p.titulo) + '</article>';
+  }
+  const ganchos = (p.ganchos || []).map((g, j) => '<label class="gancho"><input type="radio" name="g-' + uid + '" value="' + j + '"' + (j ? '' : ' checked') + '><span>' + esc(g.texto) +
+    '<small>' + esc(OPC.estilos[g.estilo] || g.estilo) + (g.peso && g.peso !== 1 ? ' · peso ' + num(g.peso) : '') + '</small></span></label>').join('');
+  const botones = modo === 'bandeja'
+    ? (p.enfoque ? '<button data-accion="enfoque" data-uid="' + uid + '" title="Cambia esta pieza por otra de la reserva, del enfoque que sigue">🔄 Cambiar enfoque · ' + esc(OPC.enfoques[p.enfoque]) + '</button>' : '') +
+      '<button data-accion="tono" data-uid="' + uid + '" title="Elige qué gancho va primero y la píldora de la portada. No reescribe el texto.">🌶️ Ajustar tono · ' + esc(OPC.tonos[p.tono] || '') + '</button>' +
+      '<button class="pri" data-accion="aprobar" data-uid="' + uid + '">✅ Aprobar y enviar a la cola de Canva</button><button class="chico" data-accion="descartar" data-uid="' + uid + '">Descartar</button>'
+    : '<button class="pri" data-aprobar="' + uid + '">✅ Aprobar y enviar a la cola de Canva</button>';
+  return '<article class="card">' + chips + '<h3>' + esc(p.titulo) + '</h3><p class="dato">' + esc(p.dato) + '</p>' +
+    (p.muestra ? '<p class="tenue">Muestra: ' + esc(Object.keys(p.muestra).filter((k) => p.muestra[k] != null).map((k) => k + ' ' + p.muestra[k]).join(' · ')) + '</p>' : '') + avisos(p.avisos) +
+    '<fieldset style="border:0;padding:0;margin:10px 0"><legend class="tenue" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px">Gancho</legend>' + ganchos + '</fieldset>' +
+    '<div class="visor" id="v-' + uid + '"><iframe title="Placas de ' + esc(p.id) + '" sandbox></iframe><p>Cargando las placas…</p></div>' +
+    '<details><summary>Guion (' + p.guion.length + ')</summary><ol>' + p.guion.map((g) => '<li>' + esc(g) + '</li>').join('') + '</ol></details>' +
+    '<details><summary>Los números, tal como salen del libro</summary><pre>' + esc(JSON.stringify(p.datos, null, 2)) + '</pre></details>' +
+    '<div class="acciones">' + botones + '<span class="tenue" role="status" aria-live="polite" id="e-' + uid + '"></span></div></article>';
+}
+
+/* EL VISOR · las placas tal como se exportan, a escala. Es el MISMO HTML
+   que escribe «Aprobar»: el servidor lo arma una sola vez para los dos. */
+const ESCALA = 0.26;
+async function pintarVisor(uid) {
+  const caja = $('v-' + uid), reg = PROPS.get(uid); if (!caja || !reg) return;
+  const p = reg.p;
+  try {
+    const r = await api('/api/placas', { propuesta: p, gancho: ganchoElegido(uid), contexto: $('contexto').value });
+    if (PROPS.get(uid) !== reg || !$('v-' + uid)) return;
+    const alto = (p.formato === 'reel' || p.formato === 'stories') ? 1920 : 1350;
+    const fila = '<style>html{overflow-y:hidden}body{display:flex!important;flex-wrap:nowrap!important;gap:28px;width:max-content;padding:28px;zoom:' + ESCALA + '}.p,section{flex:none}</style>';
+    const f = caja.querySelector('iframe');
+    f.style.height = Math.round((alto + 56) * ESCALA + 18) + 'px';
+    f.srcdoc = r.html.replace('</head>', fila + '</head>');
+    caja.querySelector('p').textContent = (r.html.split('data-document-role="page"').length - 1) + ' placas · ' +
+      (r.plantilla === 'stories' ? 'plantilla diseñada de Stories' : 'plantilla genérica') + ' · deslizá hacia el costado';
+  } catch (e) { caja.querySelector('p').textContent = 'No se pudieron armar las placas: ' + e.message; }
+}
+const pintarVisores = (raiz) => raiz.querySelectorAll('.visor').forEach((v) => pintarVisor(v.id.slice(2)));
+
+/* ------------------------------ bandeja ------------------------------- */
+let turnoB = 0;
+function pintarBandeja(b) {
+  const pend = b.items.filter((i) => i.estado === 'pendiente'), hechas = b.items.filter((i) => i.estado !== 'pendiente');
+  const m = b.meta || {};
+  $('bandeja').innerHTML = '<div class="card tenue">' + esc(m.torneo || '') + (m.zona ? ' · ' + esc(m.zona) : '') + (m.tramo ? ' · tramo ' + esc(m.tramo) : '') +
+    ' · armada el ' + new Date(b.generada).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) +
+    ' · ' + pend.length + ' pendiente(s) · ' + (b.reserva || []).length + ' en reserva' + avisos(b.avisos) + '</div>' +
+    (pend.length ? '' : '<div class="card">Bandeja al día: no queda nada pendiente de esta quincena.</div>') +
+    pend.map((i) => tarjeta(i.uid, i.propuesta, 'bandeja', i.estado)).join('') + hechas.map((i) => tarjeta(i.uid, i.propuesta, 'bandeja', i.estado)).join('') +
+    ((b.sinDatos || []).length ? '<details class="card"><summary>' + b.sinDatos.length + ' pieza(s) sin datos en esta zona</summary><ul>' + b.sinDatos.map((s) => '<li><strong>' + esc(s.id) + '</strong> · ' + esc((s.avisos || []).join(' ')) + '</li>').join('') + '</ul></details>' : '');
+  pintarVisores($('bandeja'));
+}
+async function cargarBandeja(rearmar) {
+  const yo = ++turnoB;
+  $('b-estado').textContent = 'Leyendo el libro y armando las propuestas…'; $('rearmar').disabled = true;
+  try {
+    const b = await api('/api/bandeja', Object.assign({ rearmar }, donde()));
+    if (yo !== turnoB) return;
+    pintarBandeja(b); $('b-estado').textContent = '';
+  } catch (e) { if (yo !== turnoB) return; $('bandeja').innerHTML = '<div class="card">' + avisos([e.message], 'error') + '</div>'; $('b-estado').textContent = ''; }
+  $('rearmar').disabled = false;
+}
+
+/* ----------------------------- explorador ----------------------------- */
+let NIVEL = 'jugadores', ULTIMO_X = null, turnoX = 0, relojX = null;
+function pintarExplorador() {
+  const X = OPC.explorador, multi = ligaSel().zonas.length > 1;
+  $('x-niveles').innerHTML = Object.keys(X.niveles).map((n) => '<label class="fila"><input type="radio" name="x-nivel" value="' + n + '"' + (n === NIVEL ? ' checked' : '') + (n === 'zonas' && !multi ? ' disabled' : '') + '> ' +
+    esc(X.niveles[n]) + (n === 'zonas' && !multi ? ' <span class="tenue">(esta liga tiene una sola)</span>' : '') + '</label>').join('');
+  const ms = X.metricas[NIVEL], previas = new Set([...document.querySelectorAll('#x-metricas input:checked')].map((i) => i.value));
+  const marcadas = ms.filter((m) => previas.has(m.id)).length ? previas : new Set(ms.slice(0, 4).map((m) => m.id));
+  $('x-metricas').innerHTML = ms.map((m) => '<label class="fila" title="' + esc(m.nombre) + '"><input type="checkbox" value="' + esc(m.id) + '"' + (marcadas.has(m.id) ? ' checked' : '') + '> ' + esc(m.label) + '</label>').join('');
+  $('x-nodisp').textContent = 'No están en ningún libro, así que no se ofrecen: ' + X.noDisponibles.join(' · ') + '.';
+  $('x-calif-caja').hidden = NIVEL !== 'jugadores';
+  const ops = Object.keys(X.operadores).map((o) => ({ id: o, label: X.operadores[o] }));
+  if (!$('x-conds').children.length || $('x-conds').dataset.nivel !== NIVEL) {
+    $('x-conds').dataset.nivel = NIVEL;
+    $('x-conds').innerHTML = NIVEL === 'zonas' ? '<p class="tenue">La comparativa entre zonas no lleva condiciones: compara la mediana de los equipos de cada una.</p>' :
+      [0, 1, 2].map(() => '<div class="cond"><select class="c-met" aria-label="Métrica de la condición">' + opciones([{ id: '', label: '— sin condición —' }].concat(ms)) +
+        '</select><select class="c-op" aria-label="Operador">' + opciones(ops) + '</select><input class="c-val" type="number" step="any" aria-label="Valor"></div>').join('');
+  }
+  pintarOrden();
+}
+function pintarOrden() {
+  const ms = OPC.explorador.metricas[NIVEL], marcadas = [...document.querySelectorAll('#x-metricas input:checked')].map((i) => i.value);
+  $('x-orden').innerHTML = opciones(ms.filter((m) => marcadas.indexOf(m.id) !== -1), $('x-orden').value);
+}
+function pedidoX() {
+  const condiciones = [...document.querySelectorAll('#x-conds .cond')].map((c) => ({ metrica: c.querySelector('.c-met').value, op: c.querySelector('.c-op').value, valor: c.querySelector('.c-val').value })).filter((c) => c.metrica && c.valor !== '');
+  return Object.assign({ nivel: NIVEL, metricas: [...document.querySelectorAll('#x-metricas input:checked')].map((i) => i.value), orden: $('x-orden').value, sentido: $('x-sentido').value || undefined,
+    top: $('x-top').value, soloCalificados: $('x-calif').checked, condiciones, angulo: $('x-angulo').value }, donde());
+}
+function tablaX(r) {
+  const quien = (f) => r.nivel === 'zonas' ? '<td>' + esc(f.zona) + '</td><td class="tenue">' + f.equipos + ' equipos</td>'
+    : r.nivel === 'jugadores' ? '<td>' + esc(f.jugador) + (f.califica ? '' : ' <span class="tenue" title="No llega al umbral de minutos de la liga">~</span>') + '</td><td class="tenue">' + esc(f.equipo) + '</td>'
+    : r.nivel === 'partidos' ? '<td>' + esc(f.equipo) + '</td><td class="tenue">' + esc(f.fecha || 's/f') + ' · ' + esc((f.condicion || '').slice(0, 1)) + ' · ' + esc((f.resultado || '').slice(0, 1)) + '</td>'
+    : '<td>' + esc(f.equipo) + '</td><td></td>';
+  const cab = '<p class="tenue">' + (r.nivel === 'zonas' ? 'Mediana de los equipos de cada zona.' : r.cumplen + ' de ' + r.universo + ' cumplen' + (r.condicionesTexto.length ? ' (' + esc(r.condicionesTexto.join(' y ')) + ')' : '') +
+    '. ' + (r.sinDato ? r.sinDato + ' quedaron afuera por no tener el dato pedido. ' : '')) + (r.tramo ? 'Tramo ' + esc(r.tramo) + '.' : '') + '</p>' + avisos(r.avisos);
+  if (!r.filas.length) return cab + '<div class="aviso">Ese filtro no deja a nadie.</div>';
+  const dif = r.diferencias ? '<h4 style="margin-top:14px">Qué separa a las zonas</h4><ul class="lista">' + r.diferencias.filter((d) => d.brecha != null).map((d) => '<li><span><strong>' + esc(d.label) + '</strong> · ' + esc(d.brechaTexto) +
+    ' <span class="tenue">(' + esc(d.mayor) + ' arriba, ' + esc(d.menor) + ' abajo)</span></span><span class="chip">' + (d.relativa == null ? '—' : num(d.relativa, 1) + ' desvíos') + '</span></li>').join('') + '</ul>' : '';
+  return cab + '<table><thead><tr><th>' + (r.nivel === 'zonas' ? 'Zona' : r.nivel === 'jugadores' ? 'Jugador' : 'Equipo') + '</th><th></th>' +
+    r.columnas.map((c) => '<th class="' + (c.id === r.orden ? 'orden' : '') + '" title="' + esc(c.nombre) + '">' + esc(c.label) + '</th>').join('') + '</tr></thead><tbody>' +
+    r.filas.map((f) => '<tr>' + quien(f) + r.columnas.map((c) => '<td>' + esc(f.texto[c.id]) + (f.percentil && f.percentil[c.id] != null ? ' <span class="tenue">p' + f.percentil[c.id] + '</span>' : '') + '</td>').join('') + '</tr>').join('') + '</tbody></table>' + dif;
+}
+async function correrExplorador() {
+  const yo = ++turnoX; clearTimeout(relojX);
+  $('x-estado').textContent = 'Leyendo…';
+  try {
+    const r = await api('/api/explorar', pedidoX());
+    if (yo !== turnoX) return;
+    ULTIMO_X = r; $('x-resultado').innerHTML = tablaX(r); $('x-estado').textContent = '';
+  } catch (e) { if (yo !== turnoX) return; ULTIMO_X = null; $('x-resultado').innerHTML = avisos([e.message], 'error'); $('x-estado').textContent = ''; }
+}
+const programarX = () => { clearTimeout(relojX); relojX = setTimeout(correrExplorador, 400); };
+
+async function cargarAnomalias() {
+  $('anomalias').innerHTML = '<p class="tenue">Leyendo el libro…</p>';
+  try {
+    const a = await api('/api/anomalias', donde());
+    const ver = (nivel, met, extra) => ' <button class="chico" data-ver="' + nivel + '" data-met="' + esc(met) + '"' + (extra || '') + '>Explorar</button>';
+    const li = (h) => '<li>' + h + '</li>';
+    const altos = a.altos.map((x) => li('<span><strong>' + esc(x.jugador) + '</strong> <span class="tenue">' + esc(x.equipo) + '</span><br>' + esc(x.valor) + ' ' + esc(x.label) + ' · promedia ' + String(x.media).replace('.', ',') + ' · z ' + String(x.z).replace('.', ',') + '</span>' + ver('jugadores', x.metrica)))
+      .concat(a.rachas.map((x) => li('<span><strong>' + esc(x.equipo) + '</strong><br>' + x.n + ' ' + (x.resultado === 'GANADO' ? 'ganados' : 'perdidos') + ' seguidos</span>')));
+    const fugas = a.fugas.map((x) => li('<span><strong>' + esc(x.equipo) + '</strong>' + (x.muestraSuficiente ? '' : ' <span class="tenue" title="Pocos partidos">~</span>') + '<br>' + esc(x.label) + ' ' + esc(x.texto) + ' · liga ' + esc(x.liga) + ' · percentil ' + x.percentil + '</span>' + ver('equipos', x.metrica)));
+    const zs = a.zonas.map((x) => li('<span><strong>' + esc(x.label) + '</strong><br>' + esc(x.brechaTexto) + ' · ' + esc(x.mayor) + ' arriba, ' + esc(x.menor) + ' abajo · ' + num(x.relativa, 1) + ' desvíos</span>' + ver('zonas', x.metrica)));
+    const col = (t, sub, items, vacio) => '<div><h4>' + t + '</h4><p class="tenue" style="font-size:13px;margin:0 0 6px">' + sub + '</p>' + (items.length ? '<ul class="lista">' + items.join('') + '</ul>' : '<p class="tenue">' + vacio + '</p>') + '</div>';
+    $('anomalias').innerHTML =
+      col('⬆ Puntos altos', (a.ventana ? 'Última fecha (' + esc(a.ventana.desde) + ' a ' + esc(a.ventana.hasta) + '): noches a ' + String(a.varas.z).replace('.', ',') + ' desvíos o más de su promedio, y rachas de 3+.' : 'Sin partidos con fecha.'), altos, 'Ninguna noche atípica en la última fecha.') +
+      col('⬇ Puntos de fuga', 'La métrica más floja de cada equipo, si cae en el percentil ' + a.varas.percentil + ' o menos de su zona.', fugas, 'Ningún equipo tiene una métrica tan abajo.') +
+      col('⇄ Diferencias entre zonas', ligaSel().zonas.length > 1 ? 'Métricas donde la mediana de una zona se separa medio desvío o más de otra.' : 'Esta liga tiene una sola zona.', zs, a.avisoZonas ? esc(a.avisoZonas) : 'Sin diferencias marcadas.');
+  } catch (e) { $('anomalias').innerHTML = avisos([e.message], 'error'); }
+}
+
+/* ------------------------------ a medida ------------------------------ */
+const formatoSel = () => OPC.formatos.find((f) => f.id === $('formato').value);
 function pintarFormatos() {
   const l = ligaSel(), z = zonaSel(), previo = $('formato').value;
-  const lista = OPC.formatos.map((f) => {
-    const no = f.id === 'auto' ? '' : (f.soloConNombres && !l.nombres) ? ' — solo APdeB' : (f.pidePbp && !z.pbp) ? ' — sin datos de PBP para esta liga' : '';
+  const lista = OPC.formatos.filter((f) => f.id !== 'auto').map((f) => {
+    const no = (f.soloConNombres && !l.nombres) ? ' — solo APdeB' : (f.pidePbp && !z.pbp) ? ' — sin datos de PBP para esta liga' : '';
     return { id: f.id, label: f.label + no, no: !!no };
   });
   const valido = lista.find((f) => f.id === previo && !f.no) || lista.find((f) => !f.no);
@@ -147,133 +364,109 @@ function pintarEjes() {
   if (f.nivel === 2) ejes = OPC.piezas.filter((p) => p.formato === f.id).map((p) => ({ id: p.eje, label: OPC.ejes[p.eje] + ' · ' + p.id }));
   else if (f.id === 'feed') ejes = ['generacion', 'tiro', 'falta', 'rebote'].map((e) => ({ id: e, label: OPC.ejes[e] }));
   $('eje').innerHTML = opciones([{ id: '', label: f.id === 'stories' ? 'Las cinco categorías' : 'Todos' }].concat(ejes), '');
-  $('eje').disabled = f.id === 'stories' || f.id === 'auto';
-  $('ventana').hidden = f.nivel === 2;
-  /* Los nombres: solo APdeB. Nivel 1 arranca con nombres, Nivel 2 anónimo.
-     En «destacadas» cada nivel va con su regla y la casilla no decide. */
-  $('conNombres').disabled = !l.nombres || f.id === 'auto';
+  $('eje').disabled = f.id === 'stories';
+  ['desde', 'hasta', 'fechaN'].forEach((k) => { $(k).disabled = f.nivel !== 1; });
+  /* Los nombres: solo APdeB. Nivel 1 arranca con nombres, Nivel 2 anónimo. */
+  $('conNombres').disabled = !l.nombres;
   $('conNombres').checked = l.nombres && f.nivel === 1;
-  $('nota').innerHTML = !l.nombres ? '<div class="aviso">' + esc(l.torneo) + ' sale siempre anónima: «Jugador 1», «Equipo A».</div>'
-    : f.id === 'auto' ? '<div class="aviso">En «destacadas», las Stories y el feed salen con nombres y las piezas de Nivel 2 anónimas.</div>' : '';
-  programar();
+  $('nota').innerHTML = l.nombres ? '' : '<div class="aviso">' + esc(l.torneo) + ' sale siempre anónima: «Jugador 1», «Equipo A».</div>';
 }
-
-/* Elegir liga, zona, formato o eje ya dispara la generación: no hace falta
-   tocar el botón. Se espera un momento por si vienen dos cambios seguidos. */
-let reloj = null, turno = 0;
-function programar() { clearTimeout(reloj); reloj = setTimeout(generar, 350); }
-
-function tarjeta(p, i) {
-  if (!p.ok) {
-    return '<article class="card prop"><span class="chip id">' + esc(p.id) + '</span><span class="chip">sin datos</span><h3>' + esc(p.titulo) + '</h3>' +
-      p.avisos.map((a) => '<div class="aviso">' + esc(a) + '</div>').join('') + '</article>';
-  }
-  const ganchos = p.ganchos.map((g, j) => '<label class="gancho"><input type="radio" name="g' + i + '" value="' + j + '"' + (j ? '' : ' checked') + '><span>' + esc(g.texto) +
-    '<small>' + esc(OPC.estilos[g.estilo] || g.estilo) + (g.peso && g.peso !== 1 ? ' · peso ' + num(g.peso) : '') + '</small></span></label>').join('');
-  return '<article class="card prop" data-i="' + i + '"><span class="chip id">' + esc(p.id) + '</span><span class="chip">' + esc(p.formatoLabel || p.formato) + '</span>' +
-    (p.eje ? '<span class="chip">' + esc(OPC.ejes[p.eje]) + '</span>' : '') + (p.peso && p.peso !== 1 ? '<span class="chip">peso ' + num(p.peso) + '</span>' : '') +
-    '<h3>' + esc(p.titulo) + '</h3><p class="dato">' + esc(p.dato) + '</p>' +
-    (p.muestra ? '<p class="tenue">Muestra: ' + esc(Object.keys(p.muestra).filter((k) => p.muestra[k] != null).map((k) => k + ' ' + p.muestra[k]).join(' · ')) + '</p>' : '') +
-    p.avisos.map((a) => '<div class="aviso">' + esc(a) + '</div>').join('') +
-    '<fieldset style="border:0;padding:0;margin:10px 0"><legend class="tenue" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px">Gancho</legend>' + ganchos + '</fieldset>' +
-    '<div class="visor" id="v' + i + '"><iframe title="Placas de ' + esc(p.id) + '" sandbox></iframe><p>Cargando las placas…</p></div>' +
-    '<details><summary>Guion (' + p.guion.length + ')</summary><ol>' + p.guion.map((g) => '<li>' + esc(g) + '</li>').join('') + '</ol></details>' +
-    '<details><summary>Los números, tal como salen del generador</summary><pre>' + esc(JSON.stringify(p.datos, null, 2)) + '</pre></details>' +
-    '<div class="acciones"><button class="pri" data-aprobar="' + i + '">Aprobar · exportar · encolar para Canva</button><span class="tenue" role="status" aria-live="polite" id="e' + i + '"></span></div></article>';
-}
-
-/* EL VISOR · las placas tal como se exportan, a escala, adentro de la
-   propuesta. Es el MISMO HTML que escribe «Aprobar»: el servidor lo arma
-   una sola vez para los dos. */
-const ESCALA = 0.26;
-async function pintarVisor(i) {
-  const caja = $('v' + i); if (!caja) return;
-  const p = ULTIMO.propuestas[i], mio = ULTIMO;
-  try {
-    const r = await api('/api/placas', { propuesta: p, gancho: ganchoElegido(i), contexto: $('contexto').value });
-    if (mio !== ULTIMO || !$('v' + i)) return;
-    const alto = (p.formato === 'reel' || p.formato === 'stories') ? 1920 : 1350;
-    const fila = '<style>html{overflow-y:hidden}body{display:flex!important;flex-wrap:nowrap!important;gap:28px;width:max-content;padding:28px;zoom:' + ESCALA + '}.p,section{flex:none}</style>';
-    const f = caja.querySelector('iframe');
-    f.style.height = Math.round((alto + 56) * ESCALA + 18) + 'px';
-    f.srcdoc = r.html.replace('</head>', fila + '</head>');
-    caja.querySelector('p').textContent = (r.html.split('data-document-role="page"').length - 1) + ' placas · ' +
-      (r.plantilla === 'stories' ? 'plantilla diseñada de Stories' : 'plantilla genérica: portada con el gancho y una placa por línea del guion') + ' · deslizá hacia el costado';
-  } catch (e) { caja.querySelector('p').textContent = 'No se pudieron armar las placas: ' + e.message; }
-}
-
+let turnoM = 0, META_M = null;
 async function generar() {
-  const b = $('generar'), yo = ++turno;
-  clearTimeout(reloj);
+  const b = $('generar'), yo = ++turnoM;
   b.disabled = true; $('estado').textContent = 'Leyendo el libro y armando las piezas…';
   try {
-    const r = await api('/api/generar', {
-      liga: $('liga').value, zona: $('zona').value, formato: $('formato').value, eje: $('eje').value || null,
-      desde: $('desde').value, hasta: $('hasta').value, fechaN: $('fechaN').value, conNombres: $('conNombres').checked, refrescar: $('refrescar').checked,
-    });
-    if (yo !== turno) return;
-    ULTIMO = r;
-    const cab = '<div class="card tenue">' + esc(r.meta.torneo) + (r.meta.zona ? ' · ' + esc(r.meta.zona) : '') + (r.meta.tramo ? ' · tramo ' + esc(r.meta.tramo) : '') +
-      (r.meta.leido ? ' · libro leído ' + new Date(r.meta.leido).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '') +
-      (r.meta.anonimo === true ? ' · <strong>anónimo</strong>' : r.meta.anonimo === false ? ' · <strong>con nombres</strong>' : '') +
-      (r.avisos || []).map((a) => '<div class="aviso">' + esc(a) + '</div>').join('') + '</div>';
-    $('propuestas').innerHTML = cab + (r.propuestas.length ? r.propuestas.map(tarjeta).join('') : '');
+    const r = await api('/api/generar', Object.assign({ formato: $('formato').value, eje: $('eje').value || null, desde: $('desde').value, hasta: $('hasta').value, fechaN: $('fechaN').value, conNombres: $('conNombres').checked }, donde()));
+    if (yo !== turnoM) return;
+    META_M = r.meta;
+    $('propuestas').innerHTML = '<div class="card tenue">' + esc(r.meta.torneo) + (r.meta.zona ? ' · ' + esc(r.meta.zona) : '') + (r.meta.tramo ? ' · tramo ' + esc(r.meta.tramo) : '') +
+      (r.meta.anonimo === true ? ' · <strong>anónimo</strong>' : r.meta.anonimo === false ? ' · <strong>con nombres</strong>' : '') + avisos(r.avisos) + '</div>' +
+      r.propuestas.map((p, i) => tarjeta('m' + yo + '-' + i, p, 'medida')).join('');
     $('estado').textContent = r.propuestas.filter((p) => p.ok).length + ' propuesta(s) con datos.';
-    r.propuestas.forEach((p, i) => { if (p.ok) pintarVisor(i); });
-    $('refrescar').checked = false;
-  } catch (e) {
-    if (yo !== turno) return;
-    $('propuestas').innerHTML = '<div class="card"><div class="aviso error">' + esc(e.message) + '</div></div>';
-    $('estado').textContent = '';
-  }
-  if (yo === turno) b.disabled = false;
+    pintarVisores($('propuestas'));
+  } catch (e) { if (yo !== turnoM) return; $('propuestas').innerHTML = '<div class="card">' + avisos([e.message], 'error') + '</div>'; $('estado').textContent = ''; }
+  if (yo === turnoM) b.disabled = false;
 }
 
-const ganchoElegido = (i) => { const r = document.querySelector('input[name="g' + i + '"]:checked'); return ULTIMO.propuestas[i].ganchos[r ? Number(r.value) : 0]; };
-
-document.addEventListener('click', async (ev) => {
-  const t = ev.target;
-  if (t.dataset.aprobar != null) {
-    const i = Number(t.dataset.aprobar), p = ULTIMO.propuestas[i];
-    t.disabled = true;
-    try {
-      const r = await api('/api/aprobar', { propuesta: p, gancho: ganchoElegido(i), contexto: $('contexto').value, liga: ULTIMO.meta.liga + '-' + ULTIMO.meta.zonaId, meta: ULTIMO.meta });
-      $('e' + i).textContent = 'Aprobada. Archivos en contenido/centro-mando/ · anotada en el historial · ' + r.enCola + ' en la cola de Canva.';
-      pintarAprendizaje(await api('/api/aprendizaje'));
-    } catch (e) { $('e' + i).textContent = 'No se pudo aprobar: ' + e.message; }
-    t.disabled = false;
-  }
-  if (t.dataset.medir != null) {
-    const r = HISTORIAL.find((x) => x.id === t.dataset.medir); if (!r) return;
-    $('a-id').value = r.id; $('a-pieza').value = r.pieza; $('a-formato').value = r.formato; $('a-estilo').value = r.estilo || ''; $('a-gancho').value = r.gancho || '';
-    $('a-estado').textContent = 'Cargando las métricas de ' + r.pieza + ' (' + r.fecha + ').';
-    $('a-alcance').focus();
-  }
-});
-/* Tiempo real: cambiar el gancho o el contexto repinta las placas. */
-document.addEventListener('change', (ev) => { const n = ev.target.name || ''; if (ev.target.type === 'radio' && n.charAt(0) === 'g') pintarVisor(Number(n.slice(1))); });
-let relojCtx = null;
-$('contexto').addEventListener('input', () => { clearTimeout(relojCtx); relojCtx = setTimeout(() => { if (ULTIMO) ULTIMO.propuestas.forEach((p, i) => { if (p.ok) pintarVisor(i); }); }, 500); });
-let HISTORIAL = [];
-
-function pintarHistorial(a) {
-  HISTORIAL = a.registros || [];
-  const filas = HISTORIAL.slice().reverse().slice(0, 30).map((r) => '<tr><td>' + esc(r.fecha || '') + '</td><td>' + esc(r.pieza) + '</td><td>' + esc(r.liga || '') + '</td><td>' + esc(r.gancho || '') + '</td><td>' +
-    (r.alcance ? 'medida · alcance ' + esc(r.alcance) : 'aprobada · <span class="tenue">sin métricas</span>') + '</td><td>' + (r.id && !r.alcance ? '<button data-medir="' + esc(r.id) + '">Cargar métricas</button>' : '') + '</td></tr>').join('');
-  $('historial').innerHTML = (a.cola && a.cola.length ? '<div class="aviso">' + a.cola.length + ' pieza(s) en la cola de Canva (<code>contenido/centro-mando/cola-canva.json</code>). La importación no sale de esta página: pedila en una sesión de Claude con el conector de Canva.</div>' : '') +
-    (filas ? '<table><thead><tr><th>Fecha</th><th>Pieza</th><th>Liga</th><th>Gancho</th><th>Estado</th><th></th></tr></thead><tbody>' + filas + '</tbody></table>' : '<p class="tenue">Todavía no se aprobó ninguna pieza.</p>');
-}
+/* ----------------------------- aprendizaje ---------------------------- */
 function pintarAprendizaje(a) {
-  pintarHistorial(a);
+  HISTORIAL = a.registros || [];
+  const filas = HISTORIAL.slice().reverse().slice(0, 40).map((r) => '<tr><td>' + esc(r.fecha || '') + '</td><td>' + esc(r.pieza) + '</td><td>' + esc(r.liga || '') + '</td><td>' + esc(OPC.enfoques[r.enfoque] || '—') + '</td><td>' + esc(OPC.tonos[r.tono] || '—') +
+    '</td><td style="white-space:normal;text-align:left">' + esc(r.gancho || '') + '</td><td>' + (r.alcance ? 'medida · alcance ' + esc(r.alcance) : 'aprobada · <span class="tenue">sin métricas</span>') + '</td><td>' +
+    (r.id && !r.alcance ? '<button class="chico" data-medir="' + esc(r.id) + '">Cargar métricas</button>' : '') + '</td></tr>').join('');
+  $('historial').innerHTML = (a.cola && a.cola.length ? '<div class="aviso">' + a.cola.length + ' pieza(s) en la cola de Canva (<code>contenido/centro-mando/cola-canva.json</code>). La importación no sale de esta página: pedila en una sesión de Claude con el conector de Canva.</div>' : '') +
+    (filas ? '<table><thead><tr><th>Fecha</th><th>Pieza</th><th>Liga</th><th>Enfoque</th><th>Tono</th><th>Gancho</th><th>Estado</th><th></th></tr></thead><tbody>' + filas + '</tbody></table>' : '<p class="tenue">Todavía no se aprobó ninguna pieza.</p>');
   const w = a.ponderaciones;
   if (!w.publicaciones) { $('pesos').innerHTML = '<p class="tenue">Todavía no hay publicaciones medidas: las propuestas salen en el orden del generador.</p>'; return; }
-  const filas = (titulo, g, nombre) => Object.keys(g).map((k) => '<tr><td>' + titulo + '</td><td>' + esc(nombre ? nombre(k) : k) + '</td><td>' + g[k].n + '</td><td>' + num(g[k].puntaje) +
+  const grupo = (titulo, g, nombre) => Object.keys(g || {}).map((k) => '<tr><td>' + titulo + '</td><td>' + esc(nombre ? nombre(k) : k) + '</td><td>' + g[k].n + '</td><td>' + num(g[k].puntaje) +
     '</td><td>' + (g[k].confiable ? num(g[k].peso) : '1,00 <span class="tenue">· faltan publicaciones</span>') + '</td></tr>').join('');
   $('pesos').innerHTML = '<p class="tenue">' + w.publicaciones + ' publicaciones medidas · media ' + num(w.media) + ' interacciones ponderadas cada 100 cuentas alcanzadas (compartido ×4, guardado ×3, comentario ×2, me gusta ×1).</p>' +
     '<table><thead><tr><th>Grupo</th><th>Valor</th><th>Publicaciones</th><th>Puntaje</th><th>Peso</th></tr></thead><tbody>' +
-    filas('Formato', w.formato, (k) => (OPC.formatos.find((f) => f.id === k) || {}).label || k) + filas('Pieza', w.pieza) + filas('Gancho', w.estilo, (k) => OPC.estilos[k] || k) + '</tbody></table>';
+    grupo('Formato', w.formato, (k) => (OPC.formatos.find((f) => f.id === k) || {}).label || k) + grupo('Pieza', w.pieza) + grupo('Gancho', w.estilo, (k) => OPC.estilos[k] || k) +
+    grupo('Tono', w.tono, (k) => OPC.tonos[k] || k) + grupo('Enfoque', w.enfoque, (k) => OPC.enfoques[k] || k) + '</tbody></table>';
 }
 
+/* ------------------------------- eventos ------------------------------ */
+document.addEventListener('click', async (ev) => {
+  const t = ev.target.closest('button'); if (!t) return;
+  if (t.dataset.tab) return irA(t.dataset.tab);
+  if (t.dataset.accion) {
+    const uid = t.dataset.uid, estado = $('e-' + uid);
+    t.disabled = true;
+    try {
+      const r = await api('/api/bandeja/accion', Object.assign({ uid, accion: t.dataset.accion, gancho: ganchoElegido(uid), contexto: $('contexto').value }, donde()));
+      pintarBandeja(r.bandeja);
+      if (t.dataset.accion === 'aprobar') $('b-estado').textContent = 'Aprobada: archivos en contenido/centro-mando/, anotada en el historial y ' + r.enCola + ' en la cola de Canva.';
+    } catch (e) { if (estado) estado.textContent = e.message; t.disabled = false; }
+  }
+  if (t.dataset.aprobar) {
+    const uid = t.dataset.aprobar;
+    t.disabled = true;
+    try {
+      const r = await api('/api/aprobar', { propuesta: PROPS.get(uid).p, gancho: ganchoElegido(uid), contexto: $('contexto').value, liga: $('liga').value + '-' + $('zona').value, meta: META_M });
+      $('e-' + uid).textContent = 'Aprobada: archivos en contenido/centro-mando/, anotada en el historial y ' + r.enCola + ' en la cola de Canva.';
+    } catch (e) { $('e-' + uid).textContent = 'No se pudo aprobar: ' + e.message; }
+    t.disabled = false;
+  }
+  if (t.dataset.ver) {
+    NIVEL = t.dataset.ver;
+    pintarExplorador();
+    const met = t.dataset.met, caja = [...document.querySelectorAll('#x-metricas input')].find((i) => i.value === met);
+    if (caja) { caja.checked = true; pintarOrden(); $('x-orden').value = met; }
+    correrExplorador(); $('x-resultado').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  if (t.dataset.medir) {
+    const r = HISTORIAL.find((x) => x.id === t.dataset.medir); if (!r) return;
+    $('a-id').value = r.id; $('a-pieza').value = r.pieza; $('a-formato').value = r.formato; $('a-estilo').value = r.estilo || ''; $('a-gancho').value = r.gancho || '';
+    $('a-estado').textContent = 'Cargando las métricas de ' + r.pieza + ' (' + r.fecha + ').'; $('a-alcance').focus();
+  }
+});
+/* Tiempo real: cambiar el gancho repinta las placas; tocar el laboratorio vuelve a explorar. */
+document.addEventListener('change', (ev) => {
+  const t = ev.target, n = t.name || '';
+  if (t.type === 'radio' && n.slice(0, 2) === 'g-') return pintarVisor(n.slice(2));
+  if (n === 'x-nivel') { NIVEL = t.value; pintarExplorador(); return correrExplorador(); }
+  if (t.closest && t.closest('#x-metricas')) { pintarOrden(); return programarX(); }
+  if (t.closest && t.closest('#tab-explorador') && t.id !== 'x-angulo') programarX();
+});
+$('x-conds').addEventListener('input', (ev) => { if (ev.target.classList.contains('c-val')) programarX(); });
+let relojCtx = null;
+$('contexto').addEventListener('input', () => { clearTimeout(relojCtx); relojCtx = setTimeout(() => document.querySelectorAll('[role=tabpanel]:not([hidden]) .visor').forEach((v) => pintarVisor(v.id.slice(2))), 500); });
+$('x-correr').addEventListener('click', correrExplorador);
+$('x-mandar').addEventListener('click', async () => {
+  /* En su propio lugar: el estado del explorador se limpia en cada búsqueda. */
+  $('x-enviado').innerHTML = '<p class="tenue">Armando la propuesta…</p>';
+  try { const r = await api('/api/laboratorio', pedidoX()); cargado.bandeja = null; $('x-enviado').innerHTML = '<div class="aviso">' + esc(r.id) + ' quedó arriba de la bandeja, anónima.</div>'; }
+  catch (e) { $('x-enviado').innerHTML = avisos(['No se pudo: ' + e.message], 'error'); }
+});
+$('rearmar').addEventListener('click', () => cargarBandeja(true));
+$('generar').addEventListener('click', generar);
+$('formato').addEventListener('change', pintarEjes);
+$('releer').addEventListener('click', async () => {
+  $('releer').disabled = true;
+  try { await api('/api/explorar', Object.assign({ nivel: 'equipos', refrescar: true }, donde())); } catch (e) { /* el error lo muestra la pestaña al recargar */ }
+  $('releer').disabled = false; Object.keys(cargado).forEach((k) => { cargado[k] = null; }); cargarTab(true);
+});
 $('formApr').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const v = (k) => $('a-' + k).value;
@@ -285,23 +478,25 @@ $('formApr').addEventListener('submit', async (ev) => {
   } catch (e) { $('a-estado').textContent = e.message; }
 });
 
+function cambioDeZona() {
+  if (NIVEL === 'zonas' && ligaSel().zonas.length < 2) NIVEL = 'jugadores';
+  pintarExplorador(); Object.keys(cargado).forEach((k) => { cargado[k] = null; }); cargarTab(true);
+}
 (async function iniciar() {
-  try {
-    OPC = await api('/api/opciones');
-  } catch (e) {
-    $('propuestas').innerHTML = '<div class="card"><div class="aviso error">El servidor local no contesta. Levantalo con <code>node centro-mando/servidor.js</code> y abrí <code>http://127.0.0.1:8770</code>.</div></div>';
-    $('generar').disabled = true; return;
+  try { OPC = await api('/api/opciones'); }
+  catch (e) {
+    $('bandeja').innerHTML = '<div class="card">' + avisos(['El servidor local no contesta. Levantalo con «node centro-mando/servidor.js» y abrí http://127.0.0.1:8770.'], 'error') + '</div>';
+    return;
   }
   $('liga').innerHTML = opciones(OPC.ligas.map((l) => ({ id: l.id, label: l.torneo })), 'apb');
+  const zonas = () => { $('zona').innerHTML = opciones(ligaSel().zonas.map((z) => ({ id: z.id, label: z.label + (z.pbp ? ' · con play-by-play' : '') })), $('zona').value); };
+  zonas();
+  $('liga').addEventListener('change', () => { zonas(); cambioDeZona(); });
+  $('zona').addEventListener('change', cambioDeZona);
   $('a-formato').innerHTML = opciones(OPC.formatos.filter((f) => f.id !== 'auto'));
   $('a-estilo').innerHTML = opciones([{ id: '', label: 'Sin clasificar' }].concat(Object.keys(OPC.estilos).map((k) => ({ id: k, label: OPC.estilos[k] }))));
-  pintarZonas();
-  $('liga').addEventListener('change', pintarZonas);
-  $('zona').addEventListener('change', pintarFormatos);
-  $('formato').addEventListener('change', pintarEjes);
-  $('eje').addEventListener('change', programar);
-  $('generar').addEventListener('click', generar);
-  pintarAprendizaje(await api('/api/aprendizaje'));
+  pintarExplorador();
+  cargarTab(true);
 })();
 </script>
 </body>

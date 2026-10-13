@@ -1,0 +1,283 @@
+/* =====================================================================
+   centro-mando/explorador.js · el Explorador y Laboratorio Táctico
+
+   PURO: entra un índice del núcleo (o varios, uno por zona) y sale una
+   tabla, una lista de anomalías o una propuesta. No lee red ni disco.
+
+   LAS REGLAS
+
+     · NO HAY MÉTRICA PROPIA. Todo valor se LEE del índice (`idx.leer`
+       para equipos, la fila del jugador o del partido para el resto): el
+       Explorador filtra, ordena y compara, no calcula estadísticas.
+     · UN FILTRO DEJA AFUERA AL QUE NO TIENE EL DATO, Y LO CUENTA. Un
+       jugador sin triples intentados no «tiene 0 %»: no entra, y la
+       respuesta dice cuántos quedaron así (la regla de Fichajes).
+     · EL PORCENTAJE NO VIAJA SOLO. Pedir T3% suma T3I a la tabla: un 60 %
+       sobre cinco tiros y sobre ochenta no son el mismo dato.
+     · LA PREGUNTA SE ARMA, NO SE INTERPRETA. No hay lenguaje natural: el
+       ángulo que escribe quien opera es el TÍTULO de la propuesta. Lo que
+       decide qué sale son las métricas, el orden y las condiciones.
+     · LO QUE SALE HACIA UNA PROPUESTA no lleva nombres en su texto: las
+       personas van bajo `jugador` y los clubes bajo `equipo`, que es lo
+       que el generador sabe anonimizar y verificar.
+   ===================================================================== */
+'use strict';
+
+const S = require('../js/sgadd-core.js');
+
+const NIVELES = { jugadores: 'Jugadores', equipos: 'Equipos', zonas: 'Comparativa entre zonas', partidos: 'Partidos' };
+
+const METRICAS = {
+  equipos: ['RTNG OFF', 'RTNG DEF', 'NET RTNG', 'PACE', 'PPP', 'eFG%', 'TS%', 'T2%', 'T3%', 'T1%', 'PT3%', 'RTL%', 'PePP%', 'RO%', 'RD%', 'AST%', 'AST-PP', 'PTS'],
+  jugadores: ['MIN', 'PJ', 'PTS', 'PLAYS', 'PPP', 'USG%', 'eFG%', 'TS%', 'T2%', 'T3%', 'T1%', 'T2I', 'T3I', 'T1I', 'PPT2', 'PPT3', 'PPT1', 'RTL%', 'PePP%', 'AST', 'AST-PP', 'RO', 'RD', 'PR', 'FC', 'FR'],
+  partidos: ['PTS', 'PTSopp', 'PACE', 'POS', 'PPP', 'eFG%', 'TS%', 'T3%', 'T3I', 'T1%', 'T1I', 'RTL%', 'PePP%', 'RO%', 'RD%', 'AST', 'PP'],
+};
+METRICAS.zonas = METRICAS.equipos;
+
+/* Lo que NO está en ningún libro, para decirlo en vez de ofrecerlo. */
+const NO_DISPONIBLES = ['Puntos tras pérdida', 'Puntos de segunda oportunidad', 'Eficiencia por zona de tiro (solo con play-by-play, en los reels RL-03)'];
+
+/* El volumen que acompaña a cada tasa. */
+const VOLUMEN = { 'T3%': 'T3I', 'PPT3': 'T3I', 'T2%': 'T2I', 'PPT2': 'T2I', 'T1%': 'T1I', 'PPT1': 'T1I' };
+const DEFENSA = ['RTNG DEF', 'RD%', 'RD', 'PR', 'PTSopp'];
+const FALTAS = ['T1%', 'T1I', 'PPT1', 'RTL%', 'FC', 'FR'];
+const OPERADORES = { '<': 'menos de', '<=': 'hasta', '>': 'más de', '>=': 'desde' };
+
+const def = (k) => S.metrica(k) || { clave: k, label: k, formato: 'num', invertida: false };
+const rotulo = (k) => (S.siglaVisible ? S.siglaVisible(k) : k) || k;
+const esPct = (k) => def(k).formato === 'pct';
+const numero = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
+const mostrar = (k, v) => (numero(v) == null ? '—' : S.formatear(k, v));
+
+/** Lo que la página necesita para armar el Explorador. */
+function opciones() {
+  const lista = (ks) => ks.map((k) => ({ id: k, label: rotulo(k), nombre: def(k).label, pct: esPct(k), invertida: !!def(k).invertida }));
+  return { niveles: NIVELES, metricas: { equipos: lista(METRICAS.equipos), jugadores: lista(METRICAS.jugadores), partidos: lista(METRICAS.partidos), zonas: lista(METRICAS.zonas) },
+    operadores: OPERADORES, noDisponibles: NO_DISPONIBLES };
+}
+
+function enfoqueDe(metrica) {
+  if (DEFENSA.indexOf(metrica) !== -1) return 'defensa';
+  if (FALTAS.indexOf(metrica) !== -1) return 'faltas';
+  return 'ataque';
+}
+
+/* Las filas crudas de cada nivel: quién es y de dónde se lee cada métrica. */
+function filasDe(idx, nivel) {
+  if (nivel === 'equipos') {
+    return idx.lista().map((e) => ({ equipo: e.nombre, pj: e.pj, leer: (k) => { const r = idx.leer(e.clave, k); return r ? { v: numero(r.valor), p: numero(r.percentil) } : { v: null, p: null }; } }));
+  }
+  if (nivel === 'jugadores') {
+    return idx.liga.jugadores.map((j) => ({ jugador: j.NOMBRES, equipo: S.limpiarNombre(j.EQUIPO), califica: !!j.__califica, leer: (k) => ({ v: numero(j[k]), p: null }) }));
+  }
+  if (nivel === 'partidos') {
+    const out = [];
+    idx.lista().forEach((e) => e.partidos.forEach((p) => out.push({
+      equipo: e.nombre, fecha: p.__fecha instanceof Date ? S.formatearFecha(p.__fecha) : null, resultado: p.RESULTADO || null, condicion: p.CONDICION || null,
+      orden: p.__fecha instanceof Date ? p.__fecha.getTime() : 0, leer: (k) => ({ v: numero(p[k]), p: null }),
+    })));
+    return out;
+  }
+  throw new Error('Ese nivel de análisis no existe.');
+}
+
+/** Normaliza el pedido: descarta lo que no es de ese nivel y completa el volumen. */
+function pedido(nivel, o) {
+  const x = o || {};
+  const validas = METRICAS[nivel];
+  if (!validas) throw new Error('Ese nivel de análisis no existe.');
+  let metricas = (x.metricas || []).filter((k, i, a) => validas.indexOf(k) !== -1 && a.indexOf(k) === i);
+  if (!metricas.length) metricas = validas.slice(0, 4);
+  const orden = metricas.indexOf(x.orden) !== -1 ? x.orden : metricas[0];
+  const condiciones = (x.condiciones || []).filter((c) => c && validas.indexOf(c.metrica) !== -1 && OPERADORES[c.op] && numero(Number(c.valor)) != null && String(c.valor).trim() !== '')
+    .map((c) => ({ metrica: c.metrica, op: c.op, valor: Number(c.valor) }));
+  /* El porcentaje no viaja solo: su volumen se suma a las columnas. */
+  const columnas = metricas.slice();
+  [orden].concat(condiciones.map((c) => c.metrica)).forEach((k) => {
+    if (columnas.indexOf(k) === -1) columnas.push(k);
+    const vol = VOLUMEN[k];
+    if (vol && validas.indexOf(vol) !== -1 && columnas.indexOf(vol) === -1) columnas.push(vol);
+  });
+  const invertida = !!def(orden).invertida;
+  const sentido = x.sentido === 'asc' || x.sentido === 'desc' ? x.sentido : (invertida ? 'asc' : 'desc');
+  const top = Math.min(50, Math.max(1, Number(x.top) || 10));
+  return { nivel, columnas, orden, sentido, condiciones, top, soloCalificados: !!x.soloCalificados };
+}
+
+const cumple = (c, v) => {
+  if (v == null) return false;
+  const x = esPct(c.metrica) ? v * 100 : v;
+  return c.op === '<' ? x < c.valor : c.op === '<=' ? x <= c.valor : c.op === '>' ? x > c.valor : x >= c.valor;
+};
+const textoCondicion = (c) => rotulo(c.metrica) + ' ' + OPERADORES[c.op] + ' ' + String(c.valor).replace('.', ',') + (esPct(c.metrica) ? ' %' : '');
+
+/**
+ * La tabla del Explorador para jugadores, equipos o partidos.
+ * Devuelve las filas ordenadas, cuántas cumplen y cuántas quedaron
+ * afuera por no tener el dato.
+ */
+function explorar(idx, nivel, o) {
+  const q = pedido(nivel, o);
+  let filas = filasDe(idx, nivel);
+  const universo = filas.length;
+  if (q.soloCalificados && nivel === 'jugadores') filas = filas.filter((f) => f.califica);
+  let sinDato = 0;
+  const pasan = [];
+  filas.forEach((f) => {
+    const usadas = [q.orden].concat(q.condiciones.map((c) => c.metrica));
+    if (usadas.some((k) => f.leer(k).v == null)) { sinDato++; return; }
+    if (!q.condiciones.every((c) => cumple(c, f.leer(c.metrica).v))) return;
+    pasan.push(f);
+  });
+  const dir = q.sentido === 'asc' ? 1 : -1;
+  pasan.sort((a, b) => (dir * (a.leer(q.orden).v - b.leer(q.orden).v)) || ((b.orden || 0) - (a.orden || 0)) || String(a.jugador || a.equipo).localeCompare(String(b.jugador || b.equipo)));
+  const salida = pasan.slice(0, q.top).map((f, i) => {
+    const valores = {}, texto = {}, percentil = {};
+    q.columnas.forEach((k) => { const r = f.leer(k); valores[k] = r.v; texto[k] = mostrar(k, r.v); if (r.p != null) percentil[k] = Math.round(r.p); });
+    const fila = { puesto: i + 1, valores, texto };
+    if (f.jugador) fila.jugador = f.jugador;
+    fila.equipo = f.equipo;
+    if (nivel === 'jugadores') fila.califica = f.califica;
+    if (nivel === 'partidos') { fila.fecha = f.fecha; fila.resultado = f.resultado; fila.condicion = f.condicion; }
+    if (Object.keys(percentil).length) fila.percentil = percentil;
+    return fila;
+  });
+  return {
+    nivel, columnas: q.columnas.map((k) => ({ id: k, label: rotulo(k), nombre: def(k).label })), orden: q.orden, sentido: q.sentido,
+    condiciones: q.condiciones, condicionesTexto: q.condiciones.map(textoCondicion), filas: salida, cumplen: pasan.length, universo, sinDato,
+    tramo: idx.liga.torneo + '|' + idx.fase,
+  };
+}
+
+const desvio = (vs) => { if (vs.length < 2) return 0; const m = vs.reduce((a, v) => a + v, 0) / vs.length; return Math.sqrt(vs.reduce((a, v) => a + (v - m) * (v - m), 0) / vs.length); };
+
+/**
+ * La comparativa entre zonas: por métrica, la MEDIANA de los equipos de
+ * cada zona. La brecha se mide contra el desvío de todos los equipos
+ * juntos: medio punto de PACE no es una diferencia entre zonas.
+ */
+function zonas(lista, o) {
+  const q = pedido('zonas', o);
+  const porZona = lista.map((z) => ({ zona: z.label, id: z.id, equipos: z.idx.lista().length, tramo: z.idx.liga.torneo + '|' + z.idx.fase,
+    de: (k) => z.idx.lista().map((e) => { const r = z.idx.leer(e.clave, k); return r ? numero(r.valor) : null; }).filter((v) => v != null) }));
+  const diferencias = q.columnas.map((k) => {
+    const meds = porZona.map((z) => { const vs = z.de(k); return vs.length ? S.mediana(vs) : null; });
+    const todos = porZona.reduce((a, z) => a.concat(z.de(k)), []);
+    const validas = meds.filter((m) => m != null);
+    if (validas.length < 2) return { metrica: k, label: rotulo(k), brecha: null, relativa: null };
+    const max = Math.max.apply(null, validas), min = Math.min.apply(null, validas), s = desvio(todos);
+    return { metrica: k, label: rotulo(k), brecha: max - min, brechaTexto: mostrar(k, max) + ' contra ' + mostrar(k, min), relativa: s > 0 ? (max - min) / s : null,
+      mayor: porZona[meds.indexOf(max)].zona, menor: porZona[meds.indexOf(min)].zona };
+  });
+  const filas = porZona.map((z) => {
+    const valores = {}, texto = {};
+    q.columnas.forEach((k) => { const vs = z.de(k); valores[k] = vs.length ? S.mediana(vs) : null; texto[k] = mostrar(k, valores[k]); });
+    return { zona: z.zona, equipos: z.equipos, tramo: z.tramo, valores, texto };
+  });
+  return { nivel: 'zonas', columnas: q.columnas.map((k) => ({ id: k, label: rotulo(k), nombre: def(k).label })), orden: q.orden, sentido: q.sentido, condiciones: [], condicionesTexto: [],
+    filas, cumplen: filas.length, universo: filas.length, sinDato: 0, diferencias: diferencias.slice().sort((a, b) => (b.relativa || 0) - (a.relativa || 0)) };
+}
+
+/* --------------------------------------------------------------------
+   ANOMALÍAS Y PUNTOS DE FUGA
+   -------------------------------------------------------------------- */
+const Z_ATIPICO = 1.5;          // la vara del panel (punto 4)
+const MIN_NOCHE = 10;
+const FUGA_PERCENTIL = 25;
+const BRECHA_ZONAS = 0.5;       // en desvíos del conjunto
+/* Cada métrica de la noche con su PISO. El desvío solo no alcanza: al que
+   promedia cero triples, UNO le da z de 5 —su media está hundida por las
+   noches sin minutos (punto 3 ter)— y eso no es un pico, es ruido. */
+const PISO_NOCHE = { PTS: 18, AST: 6, RO: 5, RD: 8, T3C: 4 };
+const METRICAS_NOCHE = Object.keys(PISO_NOCHE);
+const METRICAS_FUGA = ['RTNG OFF', 'RTNG DEF', 'eFG%', 'PePP%', 'RO%', 'RD%', 'RTL%', 'T3%', 'T1%'];
+
+/**
+ * `filasNoche`: las filas de jugador-partido de la última fecha (las da
+ * el generador, que es el que sabe cuál es la ventana).
+ */
+function anomalias(idx, filasNoche) {
+  const altos = [];
+  (filasNoche || []).forEach((f) => {
+    if (!(f.MIN >= MIN_NOCHE)) return;
+    let mejor = null;
+    METRICAS_NOCHE.forEach((k) => {
+      const v = numero(f[k]); if (v == null || v < PISO_NOCHE[k]) return;
+      const st = idx.statJugador(S.clavePersona(f.NOMBRES), k);
+      if (!st || !(st.desvio > 0)) return;
+      const z = (v - st.media) / st.desvio;
+      if (z >= Z_ATIPICO && (!mejor || z > mejor.z)) mejor = { metrica: k, label: rotulo(k), valor: v, media: Math.round(st.media * 10) / 10, z: Math.round(z * 10) / 10, partidos: st.n };
+    });
+    if (mejor) altos.push(Object.assign({ tipo: 'noche', jugador: f.NOMBRES, equipo: S.limpiarNombre(f.EQUIPO || f.__equipo || '') }, mejor));
+  });
+  altos.sort((a, b) => b.z - a.z);
+  const rachas = idx.lista().filter((e) => e.racha && e.racha.n >= 3).map((e) => ({ tipo: 'racha', equipo: e.nombre, resultado: e.racha.tipo, n: e.racha.n }))
+    .sort((a, b) => b.n - a.n);
+
+  const fugas = [];
+  idx.lista().forEach((e) => {
+    let peor = null;
+    METRICAS_FUGA.forEach((k) => {
+      const r = idx.leer(e.clave, k);
+      if (!r || numero(r.percentil) == null || numero(r.valor) == null) return;
+      if (!peor || r.percentil < peor.percentil) peor = { metrica: k, label: rotulo(k), valor: r.valor, texto: r.formateado, liga: r.tipoFormateado, percentil: Math.round(r.percentil), muestraSuficiente: r.muestraSuficiente !== false };
+    });
+    if (peor && peor.percentil <= FUGA_PERCENTIL) fugas.push(Object.assign({ equipo: e.nombre }, peor));
+  });
+  fugas.sort((a, b) => a.percentil - b.percentil);
+  return { altos: altos.slice(0, 8), rachas: rachas.slice(0, 6), fugas: fugas.slice(0, 8), varas: { z: Z_ATIPICO, minutos: MIN_NOCHE, percentil: FUGA_PERCENTIL, pisos: PISO_NOCHE } };
+}
+
+/** De la comparativa, las métricas que de verdad separan a las zonas. */
+function diferenciasEntreZonas(lista) {
+  if (!lista || lista.length < 2) return [];
+  return zonas(lista, { metricas: ['PACE', 'RTNG OFF', 'RTNG DEF', 'eFG%', 'PePP%', 'RO%', 'RTL%', 'T3%', 'PT3%'] }).diferencias
+    .filter((d) => d.relativa != null && d.relativa >= BRECHA_ZONAS).slice(0, 6);
+}
+
+/* --------------------------------------------------------------------
+   DE UN HALLAZGO A UNA PROPUESTA
+   -------------------------------------------------------------------- */
+const SUJETO = { jugadores: 'jugadores', equipos: 'equipos', partidos: 'actuaciones de equipo en un partido', zonas: 'zonas' };
+
+function aPropuesta(res, angulo, sello) {
+  if (!res || !res.filas || !res.filas.length) return { id: 'LAB', ok: false, formato: 'carrusel', titulo: 'Laboratorio', avisos: ['Ese filtro no deja a nadie: no hay nada que contar.'] };
+  const k = res.orden, lab = (res.columnas.find((c) => c.id === k) || {}).label || k;
+  const primero = res.filas[0], ultimo = res.filas[res.filas.length - 1];
+  const filtro = res.condicionesTexto.length ? ' con ' + res.condicionesTexto.join(' y ') : '';
+  const titulo = String(angulo || '').trim().slice(0, 140) || ((res.nivel === 'zonas' ? 'Las zonas, comparadas por ' : 'Top ' + res.filas.length + ' por ') + lab + filtro);
+  let dato;
+  if (res.nivel === 'zonas') {
+    const d = (res.diferencias || []).find((x) => x.metrica === k);
+    dato = d && d.brechaTexto ? 'En ' + lab + ', la mediana de los equipos va de ' + d.brechaTexto + ' según la zona.' : 'Comparativa de ' + res.filas.length + ' zonas por ' + lab + '.';
+  } else {
+    dato = res.cumplen + ' ' + SUJETO[res.nivel] + ' de ' + res.universo + filtro + '. En ' + lab + ', el primero marca ' + primero.texto[k] +
+      (res.filas.length > 1 ? ' y el ' + res.filas.length + '.º, ' + ultimo.texto[k] : '') + '.';
+  }
+  const vol = VOLUMEN[k];
+  /* Lo que identifica a cada fila va bajo `jugador` / `equipo`: es lo que
+     el generador anonimiza. El partido pierde la fecha y el resultado. */
+  const filas = res.filas.map((f) => {
+    const x = { puesto: f.puesto };
+    if (f.jugador) x.jugador = f.jugador;
+    if (f.equipo) x.equipo = f.equipo;
+    if (f.zona) x.zona = f.zona;
+    x.texto = f.texto;
+    return x;
+  });
+  return {
+    id: 'LAB-' + String(sello || Date.now().toString(36)).toUpperCase(), ok: true, formato: 'carrusel', formatoLabel: 'Carrusel 3:4 · Laboratorio', eje: null, enfoque: enfoqueDe(k),
+    titulo, dato,
+    guion: ['Portada: el ángulo', 'El filtro: ' + (res.condicionesTexto.join(' y ') || 'sin condiciones') + ', ordenado por ' + lab,
+      'La tabla, sin nombres', vol ? 'El volumen detrás del porcentaje: cuántos intentos sostienen cada número' : 'Qué dice del juego y qué no',
+      '¿Cómo sale esta cuenta en tu equipo? + demo'],
+    muestra: { nivel: res.nivel, cumplen: res.cumplen, universo: res.universo, sinDato: res.sinDato, tramo: res.tramo || null },
+    datos: { orden: k, sentido: res.sentido, condiciones: res.condiciones, columnas: res.columnas, filas },
+    avisos: res.sinDato ? [res.sinDato + ' quedaron afuera por no tener el dato pedido.'] : [],
+  };
+}
+
+module.exports = {
+  NIVELES, METRICAS, NO_DISPONIBLES, PISO_NOCHE, VOLUMEN, OPERADORES, Z_ATIPICO, MIN_NOCHE, FUGA_PERCENTIL, BRECHA_ZONAS, METRICAS_FUGA,
+  opciones, pedido, explorar, zonas, anomalias, diferenciasEntreZonas, aPropuesta, enfoqueDe,
+};

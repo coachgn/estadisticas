@@ -26,11 +26,14 @@ const path = require('path');
 const express = require('../server/node_modules/express');
 const GC = require('../generar-contenido.js');
 const M = require('./motor.js');
+const E = require('./explorador.js');
 
 const RAIZ = path.join(__dirname, '..');
 const SALIDA = path.join(RAIZ, 'contenido', 'centro-mando');
 const COLA = path.join(RAIZ, 'contenido', 'centro-mando', 'cola-canva.json');
+const BANDEJA = path.join(RAIZ, 'contenido', 'centro-mando', 'bandeja.json');
 const APRENDIZAJE = path.join(RAIZ, 'contenido', 'aprendizaje.json');
+const QUINCENA_MS = 14 * 24 * 60 * 60 * 1000;
 const PUERTO = Number(process.env.CENTRO_MANDO_PUERTO) || Number(process.env.PORT) || 8770;
 const TTL_INDICE = 10 * 60 * 1000;
 
@@ -118,6 +121,122 @@ async function generar(b) {
   };
 }
 
+/* --------------------------------------------------------------------
+   EL EXPLORADOR
+   -------------------------------------------------------------------- */
+async function zonasDe(p, refrescar) {
+  const ids = Object.keys(p.liga.zonas);
+  const out = [];
+  for (const z of ids) {
+    const pz = GC.resolverPedido({ liga: p.ligaId, zona: z });
+    try { out.push({ id: z, label: pz.zona.label || 'Única', idx: (await indiceDe(pz, refrescar)).idx }); }
+    catch (e) { out.push({ id: z, label: pz.zona.label || z, error: e.message }); }
+  }
+  return out;
+}
+
+async function explorar(b) {
+  const x = b || {};
+  const p = GC.resolverPedido({ liga: x.liga, zona: x.zona });
+  if (x.nivel === 'zonas') {
+    const zs = await zonasDe(p, !!x.refrescar), buenas = zs.filter((z) => z.idx);
+    if (buenas.length < 2) throw new Error('Para comparar zonas hacen falta al menos dos con libro: ' + p.liga.torneo + ' tiene ' + buenas.length + '.');
+    const r = E.zonas(buenas, x);
+    r.avisos = zs.filter((z) => z.error).map((z) => z.label + ': no se pudo leer (' + z.error + ').');
+    return r;
+  }
+  const { idx } = await indiceDe(p, !!x.refrescar);
+  return E.explorar(idx, x.nivel, x);
+}
+
+async function anomalias(b) {
+  const x = b || {};
+  const p = GC.resolverPedido({ liga: x.liga, zona: x.zona });
+  const { idx } = await indiceDe(p, !!x.refrescar);
+  const v = GC.ventana(idx, {});
+  const r = E.anomalias(idx, v ? GC.filasDeVentana(idx, v) : []);
+  r.ventana = v ? { desde: v.desde, hasta: v.hasta } : null;
+  r.zonas = [];
+  if (Object.keys(p.liga.zonas).length > 1) {
+    try { r.zonas = E.diferenciasEntreZonas((await zonasDe(p, false)).filter((z) => z.idx)); }
+    catch (e) { r.avisoZonas = e.message; }
+  }
+  return r;
+}
+
+/* --------------------------------------------------------------------
+   LA BANDEJA
+   Una por liga y zona, en disco: lo que se propuso esta quincena y qué
+   se hizo con cada pieza. Se arma al pedirla; nadie la arma de fondo.
+   -------------------------------------------------------------------- */
+function leerBandejas() {
+  try { const d = JSON.parse(fs.readFileSync(BANDEJA, 'utf8')); return d && typeof d.bandejas === 'object' ? d.bandejas : {}; }
+  catch (e) { if (e.code === 'ENOENT') return {}; throw new Error('bandeja.json no se puede leer: ' + e.message); }
+}
+function guardarBandeja(clave, b) {
+  const todas = leerBandejas();
+  todas[clave] = b;
+  fs.mkdirSync(path.dirname(BANDEJA), { recursive: true });
+  fs.writeFileSync(BANDEJA, JSON.stringify({ bandejas: todas }, null, 2));
+  return b;
+}
+const claveBandeja = (p) => p.ligaId + '-' + p.zonaId;
+
+async function bandeja(b) {
+  const x = b || {};
+  const p = GC.resolverPedido({ liga: x.liga, zona: x.zona });
+  const clave = claveBandeja(p);
+  const previa = leerBandejas()[clave];
+  const vencida = !previa || Date.now() - Date.parse(previa.generada) > QUINCENA_MS;
+  if (previa && !x.rearmar && !vencida) return previa;
+  const r = await generar({ liga: x.liga, zona: x.zona, formato: M.AUTO, refrescar: !!x.rearmar });
+  const armada = M.armarBandeja(r.propuestas, Date.now().toString(36));
+  /* Rearmar no se lleva puesto lo que se mandó desde el laboratorio y
+     sigue pendiente: eso lo eligió alguien a mano. */
+  const delLab = previa ? previa.items.filter((i) => i.estado === 'pendiente' && /^LAB-/.test(i.propuesta.id)) : [];
+  return guardarBandeja(clave, Object.assign(armada, { items: delLab.concat(armada.items), clave, generada: new Date().toISOString(), meta: r.meta, avisos: r.avisos }));
+}
+
+async function accionDeBandeja(b) {
+  const x = b || {};
+  const p = GC.resolverPedido({ liga: x.liga, zona: x.zona });
+  const clave = claveBandeja(p);
+  let actual = leerBandejas()[clave];
+  if (!actual) throw new Error('No hay bandeja armada para esa zona.');
+  let extra = {};
+  if (x.accion === 'enfoque') actual = M.cambiarEnfoque(actual, x.uid);
+  else if (x.accion === 'tono') actual = M.cambiarTono(actual, x.uid);
+  else if (x.accion === 'descartar') actual = M.marcar(actual, x.uid, 'descartada');
+  else if (x.accion === 'aprobar') {
+    const item = actual.items.find((i) => i.uid === x.uid);
+    if (!item) throw new Error('Esa propuesta ya no está en la bandeja.');
+    extra = aprobar({ propuesta: item.propuesta, gancho: x.gancho, contexto: x.contexto, liga: clave, meta: actual.meta });
+    actual = M.marcar(actual, x.uid, 'aprobada');
+  } else throw new Error('Esa acción no existe.');
+  return Object.assign({ bandeja: guardarBandeja(clave, actual) }, extra);
+}
+
+/** Un hallazgo del Explorador → propuesta ANÓNIMA y verificada → bandeja. */
+async function delLaboratorio(b) {
+  const x = b || {};
+  const p = GC.resolverPedido({ liga: x.liga, zona: x.zona });
+  const res = await explorar(x);
+  const sello = Date.now().toString(36);
+  const cruda = E.aPropuesta(res, x.angulo, sello);
+  if (!cruda.ok) throw new Error(cruda.avisos[0]);
+  /* El mismo camino que el Nivel 2: anónimo SIEMPRE, y verificado contra
+     los nombres de todos los libros que se leyeron. */
+  const anon = GC.anonimizar(cruda);
+  const nombres = { jugadores: [], equipos: [] };
+  const zs = x.nivel === 'zonas' ? (await zonasDe(p, false)).filter((z) => z.idx) : [{ idx: (await indiceDe(p, false)).idx }];
+  zs.forEach((z) => { const n = GC.nombresDelLibro(z.idx); nombres.jugadores = nombres.jugadores.concat(n.jugadores); nombres.equipos = nombres.equipos.concat(n.equipos); });
+  GC.verificarAnonimo(anon, nombres);
+  delete anon.anonimo;
+  anon.ganchos = M.ganchos(anon.titulo, anon.dato, anon.guion);
+  const clave = claveBandeja(p);
+  return { bandeja: guardarBandeja(clave, Object.assign({ clave, generada: new Date().toISOString(), meta: { torneo: p.liga.torneo, zona: p.zona.label, liga: p.ligaId, zonaId: p.zonaId } }, M.sumarABandeja(leerBandejas()[clave], anon, sello))), id: anon.id };
+}
+
 /**
  * APROBAR una pieza: escribe sus tres archivos, la deja en la cola de
  * Canva y la anota en el historial de aprendizaje, sin métricas.
@@ -175,7 +294,12 @@ function app() {
     catch (e) { res.status(400).json({ error: e.message }); }
   };
   a.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
-  a.get('/api/opciones', ruta(() => M.opciones(GC.LIGAS)));
+  a.get('/api/opciones', ruta(() => Object.assign(M.opciones(GC.LIGAS), { explorador: E.opciones() })));
+  a.post('/api/explorar', ruta((req) => explorar(req.body)));
+  a.post('/api/anomalias', ruta((req) => anomalias(req.body)));
+  a.post('/api/bandeja', ruta((req) => bandeja(req.body)));
+  a.post('/api/bandeja/accion', ruta((req) => accionDeBandeja(req.body)));
+  a.post('/api/laboratorio', ruta((req) => delLaboratorio(req.body)));
   a.post('/api/generar', ruta((req) => generar(req.body)));
   a.post('/api/placas', ruta((req) => placas(req.body.propuesta, req.body.gancho, req.body.contexto)));
   a.post('/api/aprobar', ruta((req) => aprobar(req.body)));
@@ -189,4 +313,4 @@ if (require.main === module) {
   app().listen(PUERTO, '127.0.0.1', () => console.log('Centro de Mando Editorial · http://127.0.0.1:' + PUERTO));
 }
 
-module.exports = { app, generar, placas, aprobar, registrar, PUERTO };
+module.exports = { app, generar, placas, aprobar, registrar, explorar, anomalias, bandeja, accionDeBandeja, delLaboratorio, PUERTO };

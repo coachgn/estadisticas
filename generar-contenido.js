@@ -1046,5 +1046,5 @@ module.exports = {
   jornadas, ventana, top3, paquete, anonimizar, verificarAnonimo, nombresDelLibro,
   resolverPedido, argumentos, resumen, mostrar, contextoDeCategoria,
   RECETAS, nivel2, resumenNivel2, leerPaquetes, nombresDePaquetes, carpetaPbp, paquetesPara, SIN_PBP, PISO_TRIPLES_CASO,
-  leerIndice, armarNivel1, armarNivel2, escribirNivel2, principal,
+  leerIndice, filasDeVentana, armarNivel1, armarNivel2, escribirNivel2, principal,
 };
