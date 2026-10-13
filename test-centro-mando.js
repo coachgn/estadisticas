@@ -272,7 +272,13 @@ titulo('El Explorador táctico');
   check('todas las filas cumplen las condiciones', r.filas.every((f) => f.valores.MIN < 15 && f.valores.T3I >= 1));
   check('van de mayor a menor por la métrica de orden', r.filas.every((f, i, a) => !i || a[i - 1].valores['T3%'] >= f.valores['T3%']));
   check('el primero es el máximo de los que cumplen', r.filas[0].valores['T3%'] === Math.max.apply(null, aMano.map((j) => j['T3%'])));
-  check('el porcentaje no viaja solo: T3I entra a las columnas aunque no se haya marcado', r.columnas.map((c) => c.id).join() === 'T3%,MIN,T3I');
+  check('el porcentaje no viaja solo: T3I entra a las columnas aunque no se haya marcado', r.columnas.map((c) => c.id).join() === 'T3%,T3I,MIN');
+  check('toda efectividad de la tabla lleva su volumen en la columna de al lado, no solo la que ordena', (() => {
+    const x = E.explorar(idx, 'jugadores', { metricas: ['PTS', 'eFG%', 'T3%', 'PePP%'], orden: 'PTS' }).columnas;
+    return x.map((c) => c.id).join() === 'PTS,eFG%,TCI,T3%,T3I,PePP%,PLAYS' && x.find((c) => c.id === 'TCI').volumenDe.join() === 'eFG%' && x.find((c) => c.id === 'PTS').volumenDe.length === 0;
+  })());
+  check('si el volumen ya estaba pedido, no se repite', E.explorar(idx, 'jugadores', { metricas: ['T3I', 'T3%'], orden: 'T3%' }).columnas.map((c) => c.id).join() === 'T3I,T3%');
+  check('entre zonas el volumen no se cuela como una «diferencia»', E.zonas([{ id: 'a', label: 'A', idx }, { id: 'b', label: 'B', idx }], { metricas: ['PACE', 'eFG%', 'PePP%'], orden: 'PACE' }).diferencias.every((d) => ['TCI', 'PLAYS'].indexOf(d.metrica) === -1));
   check('el valor es el del libro, sin tocar', r.filas.every((f) => { const j = todos.find((x) => x.NOMBRES === f.jugador); return j && j['T3%'] === f.valores['T3%']; }));
   check('el que no tiene el dato queda afuera y se cuenta', r.sinDato === todos.filter((j) => typeof j['T3%'] !== 'number' || typeof j.MIN !== 'number' || typeof j.T3I !== 'number').length && r.sinDato > 0);
   check('respeta el tope', r.filas.length === 5 && E.explorar(idx, 'jugadores', { top: 999 }).filas.length === 50);
@@ -318,7 +324,7 @@ titulo('El Explorador táctico');
   check('una propuesta de partidos no arrastra la fecha ni el resultado', E.aPropuesta(pa, '', 'x').datos.filas.every((f) => !('fecha' in f) && !('resultado' in f)));
   check('sin filas no hay propuesta', E.aPropuesta({ filas: [] }, 'x').ok === false);
   check('el enfoque sale de la métrica de orden', E.enfoqueDe('RTNG DEF') === 'defensa' && E.enfoqueDe('T1%') === 'faltas' && E.enfoqueDe('eFG%') === 'ataque');
-  check('su placa trae la tabla', /<table>/.test(M.placasHtml(anon, anon.titulo)) && /Jugador 1/.test(M.placasHtml(anon, anon.titulo)));
+  check('su placa trae la tabla', /<table/.test(M.placasHtml(anon, anon.titulo)) && /Jugador 1/.test(M.placasHtml(anon, anon.titulo)));
 
   titulo('El catálogo completo del libro');
   const cat = E.catalogo(idx);
@@ -534,7 +540,8 @@ titulo('Los agentes con Claude · la guarda numérica');
   const ap = M.aplicarRedaccion(p, r1);
   check('aplicada: título y guion de la IA, el DATO intacto', ap.titulo === buena.titulo && ap.guion[1] === buena.guion[1] && ap.dato === p.dato && ap.redaccion === 'ia');
   check('el gancho del estilo del tono va primero', ap.ganchos[0].estilo === M.TONOS.polemico.estilo && ap.ganchos[0].ia === true);
-  check('los ganchos del generador quedan detrás, elegibles', ap.ganchos.length > 3 && ap.ganchos.slice(3).every((g) => !g.ia));
+  check('la redacción REEMPLAZA: los ganchos de plantilla se van de la tarjeta', ap.ganchos.length === 3 && ap.ganchos.every((g) => g.ia));
+  check('salvo que la guarda haya tirado todos los de la IA: ahí quedan los del generador', (() => { const x = M.aplicarRedaccion(M.conTono(p, 'tactico'), { titulo: 't', ganchos: [], guion: null, placas: null, copy: null, descartado: [] }); return x.ganchos.length === p.ganchos.length && x.ganchos.every((g) => !g.ia); })());
   const ap2 = M.aplicarRedaccion(p, r2);
   check('lo que la guarda descartó vuelve a ser lo del generador', ap2.titulo === p.titulo && ap2.guion === p.guion && ap2.redaccionDescartada === r2.descartado.length);
   check('los datos de la pieza no los toca nadie', JSON.stringify(ap.datos) === JSON.stringify(p.datos) && JSON.stringify(ap.muestra) === JSON.stringify(p.muestra));
@@ -613,7 +620,7 @@ titulo('Los agentes con Claude · la guarda numérica');
   check('lo llama en modo no interactivo, con salida JSON y sin guardar la sesión', a[0] === '-p' && arg('--output-format') === 'json' && a.indexOf('--no-session-persistence') !== -1);
   check('SIN herramientas, sin configuración del usuario y sin conectores', arg('--tools') === '' && a.indexOf('--safe-mode') !== -1 && a.indexOf('--strict-mcp-config') !== -1);
   check('nunca saltea permisos', !a.some((x) => /dangerously|bypassPermissions/.test(x)));
-  check('el esquema viaja como JSON Schema', JSON.parse(arg('--json-schema')).required.join() === 'titulo,ganchos,placas,guion,copy');
+  check('el esquema viaja como JSON Schema', JSON.parse(arg('--json-schema')).required.join() === 'titulo,ganchos,placas,guion,copy,capas');
   check('la regla de los números va en el sistema y la pieza por la entrada estándar', /no sos la fuente de ningún número/.test(arg('--system-prompt')) && /POLÉMICO/.test(c2.llamadas[0].entrada) && !a.some((x) => /POLÉMICO/.test(x)));
   const rm = await L.redactar(p, 'tactico', { ejecutar: cli(okCli(mala)).ejecutar });
   check('LA MISMA GUARDA numérica corre sobre lo que devuelve Claude Code', rm.titulo === null && rm.guion === null && rm.ganchos.length === 1 && rm.descartado.length > 0);
@@ -717,7 +724,7 @@ titulo('Los agentes con Claude · la guarda numérica');
   check('el título es lo que se escribió, y trae ganchos', lb.propuesta.titulo === 'USG% contra TS% con al menos 20 minutos' && lb.propuesta.ganchos.length >= 2);
   const larga2 = '¿Por qué o cómo influye el RO% en las victorias y qué tan decisivo es? Tener en cuenta aquellos equipos que dominan el cristal en toda la liga y cómo influye en el % de victorias.';
   const lf = await S.libre({ liga: 'lnb', zona: 'unica', texto: larga2 });
-  check('la prueba de fuego, de punta a punta: cruce con victorias, título entero y ganchos sin cortar', lf.ok && lf.resultado.cruce.b === 'WIN%' && lf.resultado.filas.length === 10 && lf.propuesta.titulo === '¿Por qué o cómo influye el RO% en las victorias y qué tan decisivo es?' &&
+  check('la prueba de fuego, de punta a punta: cruce con victorias, título entero y ganchos sin cortar', lf.ok && lf.resultado.cruce.b === 'WIN%' && lf.resultado.filas.length === idx.lista().length && lf.propuesta.titulo === '¿Por qué o cómo influye el RO% en las victorias y qué tan decisivo es?' &&
     [lf.propuesta.titulo, lf.propuesta.dato].concat(lf.propuesta.ganchos.map((g) => g.texto)).every((t) => /[.?!]$/.test(t)) && !/\b1 quedan\b/.test(lf.propuesta.dato));
   check('y sus placas de plantilla tampoco traen un texto cortado', M.placasDe(lf.propuesta, lf.propuesta.ganchos[0].texto).every((x) => !/[a-záéíóúñ]$/.test(x.titulo || '.') || x.titulo === lf.propuesta.ganchos[0].texto));
   check('todo número de la propuesta sale del cruce o del texto', L.numerosAjenos(lb.propuesta.dato, { c: lb.resultado.cruce, t: lb.propuesta.titulo, x: lb.resultado.condicionesTexto }).length === 0);
@@ -733,6 +740,88 @@ titulo('Los agentes con Claude · la guarda numérica');
     (await S.libre({ liga: 'lnb', zona: 'unica', texto: 'USG% contra TS%', grupo: 'altoAlto', top: 3 })).resultado.filas.length === 3);
   check('el nivel forzado manda sobre el texto', (await S.libre({ liga: 'lnb', zona: 'unica', texto: 'ritmo y pérdidas', nivel: 'partidos' })).resultado.nivel === 'partidos');
   check('la página tiene la idea libre y dice qué entendió antes que la tabla', /id="l-texto"/.test(fs.readFileSync('centro-mando/index.html', 'utf8')) && /api\('\/api\/libre'/.test(fs.readFileSync('centro-mando/index.html', 'utf8')) && /Aproximación · /.test(fs.readFileSync('centro-mando/index.html', 'utf8')));
+
+  titulo('Lo que se ve es lo que se cuenta');
+  {
+    const N = idx.lista().length;
+    const lt = await S.libre({ liga: 'lnb', zona: 'unica', texto: '¿Cómo influye el RO% en las victorias de los equipos?' });
+    const R = lt.resultado, K = R.cruce;
+    check('un cruce de equipos muestra a TODOS: las filas son la N del resumen', R.filas.length === N && K.n === N && R.enTabla === N && lt.propuesta.datos.filas.length === N, R.filas.length + ' de ' + N);
+    check('dice sobre cuántos se calculó la mediana', K.base === 'Medianas calculadas sobre N = ' + N + ' equipos del libro, todos los que tienen las dos métricas.');
+    check('cada fila dice de qué lado de cada mediana cae, y contarlas da el resumen', R.filas.filter((x) => x.sobreA).length === K.altosA && R.filas.filter((x) => x.sobreA && x.sobreB).length === K.cuadrantes.altoAlto && R.filas.filter((x) => !x.sobreA && x.sobreB).length === K.cuadrantes.bajoAlto);
+    check('la tabla va ordenada por la primera: la mediana la parte en un solo lugar', R.filas.every((x, i, a) => !i || !(x.sobreA && !a[i - 1].sobreA)));
+    check('lo que lee la IA son esas mismas filas, con sus marcas', (() => { const pz = L.piezaDe(lt.propuesta); return pz.numeros.filas.length === N && pz.numeros.filas.every((x, i) => x.sobreA === R.filas[i].sobreA && x.sobreB === R.filas[i].sobreB && x.texto['WIN%'] === R.filas[i].texto['WIN%']) && pz.numeros.cruce.n === N; })());
+    const hp = M.placasHtml(Object.assign({}, lt.propuesta, { datos: Object.assign({}, lt.propuesta.datos, { filas: lt.propuesta.datos.filas.slice(0, 12) }), muestra: Object.assign({}, lt.propuesta.muestra, { filasDelGrupo: 12 }) }), lt.propuesta.titulo, '');
+    check('la placa de la tabla trae la línea de la mediana, las marcas y la N', /<tr class="med">/.test(hp) && /▲/.test(hp) && /▼/.test(hp) && new RegExp('N = ' + N + ' · ▲▼ contra la mediana de % Victorias').test(hp) && !/se muestran/.test(hp));
+    const hpT = M.placasHtml(lt.propuesta, lt.propuesta.titulo, '');
+    check('y si no entran todas, lo dice: nunca una tabla recortada en silencio', N <= M.FILAS_EN_PLACA ? !/se muestran/.test(hpT) : new RegExp('se muestran ' + M.FILAS_EN_PLACA + ' de ' + N).test(hpT));
+    const lj = await S.libre({ liga: 'lnb', zona: 'unica', texto: 'USG% contra TS% en jugadores', grupo: 'todos' });
+    check('con más casos que el tope, la tabla dice cuántas muestra de cuántas, y la pieza lo lleva como límite', lj.resultado.enTabla > 50 && lj.resultado.filas.length === 50 && lj.propuesta.avisos.some((a) => new RegExp('La tabla muestra 50 de ' + lj.resultado.enTabla).test(a)) && L.piezaDe(lj.propuesta).limites.length >= 1);
+    check('un ranking sigue saliendo de a 10, y lo dice', (() => { const x = E.aPropuesta(E.explorar(idx, 'jugadores', { metricas: ['PTS'], orden: 'PTS' }), '', 'r'); return x.datos.filas.length === 10 && x.muestra.filasDelGrupo > 10 && x.avisos.some((a) => /La tabla muestra 10 de/.test(a)); })());
+    const html2 = fs.readFileSync('centro-mando/index.html', 'utf8');
+    check('la pantalla pinta la línea de la mediana, las marcas, «se muestran X de Y» y el volumen al lado', /class="med"/.test(html2) && /Se muestran las /.test(html2) && /Se muestran ' \+ r\.filas\.length \+ ' de '/.test(html2) && /volumenDe/.test(html2) && /esc\(k\.base\)/.test(html2));
+
+    titulo('El autochequeo de cada pieza');
+    const ac = (p) => { const o = {}; M.autochequeo(p).forEach((x) => { o[x.id] = x; }); return o; };
+    const a1 = ac(lt.propuesta);
+    check('son tres preguntas, siempre', M.autochequeo(lt.propuesta).length === 3 && M.autochequeo({ ok: true, id: 'CR-01', datos: { cambian: 7 } }).length === 3);
+    check('1 · filas: con las ' + N + ' a la vista' + (N <= M.FILAS_EN_PLACA ? ' pasa' : ' en pantalla y ' + M.FILAS_EN_PLACA + ' en la placa, avisa'), a1.filas.ok === (N <= M.FILAS_EN_PLACA));
+    check('1 · filas: una tabla que muestra 50 de más, NO pasa y dice cuántas', (() => { const x = ac(lj.propuesta).filas; return x.ok === false && /se muestran 50/.test(x.detalle); })());
+    check('1 · filas: una receta sin tabla no aplica', ac({ ok: true, id: 'CR-01', datos: { cambian: 7 } }).filas.ok === null);
+    check('2 · volumen: en equipos el volumen es la temporada, y pasa si está a la vista', ac((await S.libre({ liga: 'lnb', zona: 'unica', texto: 'eFG% contra victorias en equipos' })).propuesta).volumen.ok === true);
+    const sinPiso = await S.libre({ liga: 'lnb', zona: 'unica', texto: 'triples con menos de 15 minutos' });
+    check('2 · volumen: un T3% de jugadores sin piso de intentos NO pasa', (() => { const x = ac(sinPiso.propuesta).volumen; return x.ok === false && /no tiene un piso de T3I/.test(x.detalle); })());
+    check('y ese límite viaja con la pieza, hasta la IA', sinPiso.propuesta.avisos.some((a) => /sin piso de intentos/.test(a)) && L.piezaDe(sinPiso.propuesta).limites.some((a) => /sin piso de intentos/.test(a)));
+    check('2 · volumen: con el piso pedido, pasa', ac((await S.libre({ liga: 'lnb', zona: 'unica', texto: 'triples con menos de 15 minutos y al menos 2 t3i' })).propuesta).volumen.ok === true);
+    check('2 · volumen: lo que no es una efectividad pasa sin más', ac((await S.libre({ liga: 'lnb', zona: 'unica', texto: 'ritmo de los equipos' })).propuesta).volumen.ok === true);
+    check('3 · copy: sin redactar, todavía no aplica', a1.copy.ok === null && /plantilla/.test(a1.copy.detalle));
+    const P1 = 'Cargar el cristal no gana solo. Con estos equipos la relación es débil, y eso ya es una postura: el que arma su plan alrededor del rebote ofensivo está apostando a una variable que explica poco de lo que pasa.';
+    const P2 = 'Detrás de este número hay una tensión de la cancha: mandar jugadores al rebote ofensivo te saca gente del balance defensivo, y el rival sale de contraataque con ventaja antes de que llegues al retroceso.';
+    const P3 = 'El que no lo mide decide la charla técnica a ciegas y regala posesiones en el cierre. El que lo cruza con sus pérdidas y su tiro sabe a qué rival apretar en el cristal y contra cuál conviene volver a defender.';
+    const Q3 = '¿Sabés cuántos contraataques concediste por ir al rebote?\n¿Quién de los tuyos vuelve primero a defender?\n¿Cuándo mediste por última vez tu balance defensivo?';
+    const copyOk = [P1, P2, P3, Q3, 'Comentá CONTEXTO.'].join('\n\n') + '\n\n' + M.HASHTAGS;
+    const capasOk = { porQue: 'mandar jugadores al rebote ofensivo te saca gente del balance defensivo', dolor: 'El que no lo mide decide la charla técnica a ciegas y regala posesiones en el cierre.', beneficio: 'sabe a qué rival apretar en el cristal y contra cuál conviene volver a defender' };
+    const red = (copy, capas) => Object.assign({}, lt.propuesta, { redaccion: 'ia', copy, capas });
+    check('3 · copy: tres párrafos, tres preguntas y las tres capas señaladas, pasa', ac(red(copyOk, capasOk)).copy.ok === true && ac(red(copyOk, capasOk)).copy.capas.dolor === capasOk.dolor);
+    check('3 · copy: con dos párrafos no pasa', (() => { const x = ac(red([P1, P2, Q3].join('\n\n'), capasOk)).copy; return x.ok === false && /párrafo/.test(x.detalle); })());
+    check('3 · copy: con dos preguntas no pasa', (() => { const x = ac(red([P1, P2, P3, '¿Sabés cuántos contraataques concediste?\n¿Quién vuelve primero a defender?'].join('\n\n'), capasOk)).copy; return x.ok === false && /pregunta/.test(x.detalle); })());
+    check('3 · copy: sin una capa señalada no pasa, y dice cuál', (() => { const x = ac(red(copyOk, { porQue: capasOk.porQue, dolor: null, beneficio: capasOk.beneficio })).copy; return x.ok === false && /el dolor/.test(x.detalle) && !/el beneficio/.test(x.detalle); })());
+    check('3 · copy: si copia el dato del generador palabra por palabra, no pasa', (() => { const x = ac(red(copyOk.replace(P1, P1 + ' ' + lt.propuesta.dato), capasOk)).copy; return x.ok === false && /palabra por palabra/.test(x.detalle); })());
+    check('3 · copy: las capas como rótulo no pasan', ac(red(copyOk.replace(P3, 'El dolor de no verlo: ' + P3), capasOk)).copy.ok === false);
+
+    titulo('Las capas que señala la IA se verifican contra el copy');
+    const baseC = { id: 'X', titulo: 't', dato: 'd', guion: [], numeros: {} };
+    const salidaC = (capas) => ({ titulo: 't', ganchos: [], guion: [], placas: [], copy: [P1, P2, P3, Q3].join('\n\n') + '\n\n#uno #dos', capas });
+    const fc = L.filtrar(salidaC(capasOk), baseC);
+    check('una cita que está en el copy vale', fc.capas.porQue === capasOk.porQue && fc.capas.dolor === capasOk.dolor && fc.capas.beneficio === capasOk.beneficio);
+    check('una cita que NO está en el copy no vale: el modelo no puede decir que cumplió sin haberlo escrito', L.filtrar(salidaC(Object.assign({}, capasOk, { dolor: 'Perdés partidos por no medir esto, y lo sabés.' })), baseC).capas.dolor === null);
+    check('ni la misma oración para dos capas, ni una cita de tres palabras', (() => { const x = L.filtrar(salidaC({ porQue: capasOk.porQue, dolor: capasOk.porQue, beneficio: 'sabe a qué rival' }), baseC).capas; return x.porQue === capasOk.porQue && x.dolor === null && x.beneficio === null; })());
+    check('sin copy no hay capas, y una redacción sin el campo no se rechaza', L.filtrar({ titulo: 't', ganchos: [], guion: [], placas: [], copy: '' }, baseC).capas.dolor === null &&
+      (await L.redactar(p, 'tactico', { ejecutar: cli(okCli(buena)).ejecutar })).capas.porQue === null);
+    check('el prompt pide el autochequeo y el volumen antes que el adjetivo', /TU AUTOCHEQUEO/.test(L.SISTEMA_REDACCION) && /copiadas TEXTUALES/.test(L.SISTEMA_REDACCION) && /EL VOLUMEN ANTES QUE EL ADJETIVO/.test(L.SISTEMA_REDACCION) && /no hables de filas que la pieza no trae/.test(L.SISTEMA_REDACCION));
+    check('la tarjeta muestra el autochequeo y las citas, y el copy de la IA reemplaza al de plantilla', /r\.autochequeo/.test(html2) && /blockquote/.test(html2) && /reemplazó al de plantilla/.test(html2));
+
+    titulo('Los conectores locales');
+    /* Un catálogo de mentira: los tests no salen a la red. */
+    const catF = { catalogo: { 'liga-nacional-2026-27': { tipo: 'torneo', categorias: { 'lnb-2026-27': { sheetId: 'x' } } }, deportivo: { categorias: { 'deportivo-primera': { sheetId: 'y', torneo: 'apb-2026-masculino', zona: 'b' } } }, jujuy: { categorias: { 'jujuy-primera': {} } } }, origen: 'kv', aviso: null };
+    const cx = await S.conectores({ catalogo: catF });
+    check('un libro conectado, uno sin libro y uno que el catálogo no tiene, cada uno con su motivo', (() => { const l = (n) => cx.conectores.find((x) => x.nombre.indexOf('Libro · ') === 0 && x.detalle.indexOf(n) !== -1); return l('deportivo/deportivo-primera').ok === true && l('jujuy/jujuy-primera').ok === false && /todavía no tiene libro/.test(l('jujuy/jujuy-primera').detalle) && l('reconquista/reconquista-primera').ok === false; })());
+    check('lee el archivo del torneo de la zona enganchada y el del torneo mismo', cx.conectores.filter((x) => x.nombre.indexOf('Torneo · ') === 0 && x.ok).length === 2 && cx.conectores.some((x) => /torneos\/apb-2026-masculino\.json/.test(x.detalle)));
+    check('con el catálogo de respaldo, lo dice', (await S.conectores({ catalogo: { catalogo: {}, origen: 'codigo', aviso: null } })).conectores[0].ok === false);
+    const de = (n) => cx.conectores.filter((x) => x.nombre.indexOf(n) === 0);
+    check('revisa el catálogo, un libro por zona, los torneos, los escudos, la cola, la bandeja y el historial', de('Catálogo').length === 1 && de('Libro · ').length === Object.keys(GC.LIGAS).reduce((a, l) => a + Object.keys(GC.LIGAS[l].zonas).length, 0) && de('Escudos · ').length === Object.keys(GC.LIGAS).length && de('Cola de Canva').length === 1 && de('Bandeja').length === 1 && de('Historial').length === 1);
+    check('los escudos de cada liga están en el repo', de('Escudos · ').every((x) => x.ok), de('Escudos · ').filter((x) => !x.ok).map((x) => x.detalle).join(' | '));
+    check('cada conector dice si está y por qué; ninguno lleva un sheetId', cx.conectores.every((x) => typeof x.ok === 'boolean' && x.detalle.length > 5) && !/[A-Za-z0-9_-]{40,}/.test(JSON.stringify(cx)) && cx.total === cx.conectores.length);
+    const colaRota = await (async () => {
+      const colaF = require('path').join(DATOS_TMP, 'centro-mando', 'cola-canva.json'), previa = fs.existsSync(colaF) ? fs.readFileSync(colaF, 'utf8') : null;
+      fs.writeFileSync(colaF, JSON.stringify({ pendientes: [{ id: 'x', estado: 'pendiente', pieza: 'CR-99', html: 'contenido/centro-mando/no-existe.html' }] }));
+      const y = await S.conectores({ catalogo: catF });
+      if (previa == null) fs.unlinkSync(colaF); else fs.writeFileSync(colaF, previa);
+      return y.conectores.find((x) => x.nombre === 'Cola de Canva');
+    })();
+    check('una pieza de la cola cuyo HTML ya no está se denuncia, y dice cuál', colaRota.ok === false && /CR-99/.test(colaRota.detalle));
+    check('la página tiene el panel de conectores', /id="conectores"/.test(html2) && /api\('\/api\/conectores'\)/.test(html2));
+  }
 
   titulo('El % de victorias es el de la tabla de posiciones');
   {

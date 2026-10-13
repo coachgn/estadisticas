@@ -35,6 +35,9 @@ const LIBRE = require('./libre.js');
 const LLM = require('./llm.js');
 
 const RAIZ = path.join(__dirname, '..');
+/* Lo que el Centro de Mando LEE del repo (torneos, escudos). Va con otro
+   nombre a propósito: todo lo que se escribe sale de RAIZ y va a contenido/. */
+const REPO = RAIZ;
 /* Dónde se escribe. La variable existe para los tests, que no pueden
    tocar la bandeja ni el historial de verdad. */
 const DATOS = process.env.CENTRO_MANDO_DATOS || path.join(RAIZ, 'contenido');
@@ -299,7 +302,7 @@ async function redactarItem(b, deps) {
     throw new Error('La redacción nombró a alguien del libro en una pieza anónima: se descartó entera.');
   }
   const actual = leerBandejas()[clave];
-  const nueva = guardarBandeja(clave, M.guardarRedaccion(actual, x.uid, tono, { titulo: red.titulo, ganchos: red.ganchos, guion: red.guion, placas: red.placas, copy: red.copy, descartado: red.descartado, modelo: red.modelo }));
+  const nueva = guardarBandeja(clave, M.guardarRedaccion(actual, x.uid, tono, { titulo: red.titulo, ganchos: red.ganchos, guion: red.guion, placas: red.placas, copy: red.copy, capas: red.capas, descartado: red.descartado, modelo: red.modelo }));
   return { bandeja: nueva, item: nueva.items.find((i) => i.uid === x.uid), descartado: red.descartado, uso: red.uso };
 }
 
@@ -361,6 +364,7 @@ async function libre(b) {
   const titulo = E.tituloDe(x.angulo || x.texto, 90);
   let propuesta = null;
   const avisos = [];
+  const limites = (lec.avisos || []).filter((a) => /sin piso de intentos/.test(a));
   try { propuesta = await propuestaAnonima(p, consulta.nivel, resultado, titulo, sello); }
   catch (e) {
     /* El texto nombró a alguien del libro: la propuesta sale igual, con el
@@ -371,6 +375,8 @@ async function libre(b) {
       catch (e2) { avisos.push(e2.message); }
     }
   }
+  /* Los límites de la lectura viajan CON la pieza: los ve quien aprueba y los lee la IA. */
+  if (propuesta && limites.length) propuesta.avisos = (propuesta.avisos || []).concat(limites);
   const out = { ok: true, lectura: lec, consulta, resultado, propuesta, avisos };
   if (x.aBandeja) {
     if (!propuesta) throw new Error(avisos[0] || 'No hay una propuesta que mandar.');
@@ -413,6 +419,50 @@ function aprobar(b) {
   return { archivos, plantilla: pl.plantilla, registro: previo || reg, enCola: cola.filter((c) => c.estado === 'pendiente').length };
 }
 
+/**
+ * LOS CONECTORES LOCALES · de qué vive el Centro de Mando, y si está.
+ * No lee un solo libro: comprueba que cada pieza del proyecto de la que
+ * depende exista y se pueda leer AHORA. Es el diagnóstico de treinta
+ * segundos antes de culpar a los datos.
+ */
+async function conectores(deps) {
+  const out = [];
+  const poner = (nombre, ok, detalle) => out.push({ nombre, ok, detalle });
+  const leerJson = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
+  let cat = null;
+  try {
+    /* `deps.catalogo` es para los tests, que no salen a la red. */
+    const c = deps && deps.catalogo ? deps.catalogo : await require('../server/lib/catalogo.js').cargar();
+    cat = c.catalogo;
+    poner('Catálogo de clubes y torneos', c.origen === 'kv', (c.origen === 'kv' ? 'Leído de Upstash' : 'RESPALDO (' + c.origen + '): Upstash no contestó, así que no hay planes ni partidos cargados a mano') + ' · ' + Object.keys(cat).length + ' entradas.' + (c.aviso ? ' ' + c.aviso : ''));
+  } catch (e) { poner('Catálogo de clubes y torneos', false, e.message); }
+  Object.keys(GC.LIGAS).forEach((l) => {
+    const liga = GC.LIGAS[l];
+    Object.keys(liga.zonas).forEach((z) => {
+      const zona = liga.zonas[z], quien = liga.torneo + (zona.label ? ' · ' + zona.label : '');
+      const k = cat && cat[zona.club] && cat[zona.club].categorias && cat[zona.club].categorias[zona.categoria];
+      poner('Libro · ' + quien, !!(k && k.sheetId), !cat ? 'Sin catálogo no se puede saber.' : !k ? 'El catálogo no tiene ' + zona.club + '/' + zona.categoria + '.' : k.sheetId ? 'Conectado (' + zona.club + '/' + zona.categoria + ').' : zona.club + '/' + zona.categoria + ' existe y todavía no tiene libro.');
+      const tid = k && (k.torneo || (cat[zona.club].tipo === 'torneo' ? zona.club : null));
+      if (tid) { const f = path.join(REPO, 'torneos', tid + '.json'); try { const t = leerJson(f); poner('Torneo · ' + quien, true, 'torneos/' + tid + '.json · ' + Object.keys(t.zonas || {}).length + ' zona(s).'); } catch (e) { poner('Torneo · ' + quien, false, 'torneos/' + tid + '.json no se puede leer: ' + e.message); } }
+      if (zona.pbp) { const dir = GC.carpetaPbp({}, zona); let n = 0; try { n = fs.readdirSync(dir).filter((x) => /\.json$/.test(x)).length; } catch (e) { n = 0; } poner('Play-by-play · ' + quien, n > 0, n ? n + ' paquete(s) en ' + dir : 'No hay paquetes en ' + dir + ': los reels de esta zona no salen.'); }
+    });
+    const man = path.join(REPO, 'logos', liga.logos, 'index.json');
+    try { poner('Escudos · ' + liga.torneo, true, 'logos/' + liga.logos + '/index.json · ' + Object.keys(leerJson(man)).length + ' entradas.'); } catch (e) { poner('Escudos · ' + liga.torneo, false, 'logos/' + liga.logos + '/index.json no se puede leer.'); }
+  });
+  try {
+    const cola = leerLista(COLA, 'pendientes'), pend = cola.filter((c) => c.estado === 'pendiente');
+    const huerfanos = pend.filter((c) => !c.html || !fs.existsSync(path.join(RAIZ, c.html)));
+    poner('Cola de Canva', !huerfanos.length, pend.length + ' pendiente(s) de ' + cola.length + ' en contenido/centro-mando/cola-canva.json.' + (huerfanos.length ? ' ' + huerfanos.length + ' apuntan a un HTML que ya no está: ' + huerfanos.map((c) => c.pieza).join(', ') + '.' : ''));
+  } catch (e) { poner('Cola de Canva', false, e.message); }
+  try { const b = leerBandejas(); poner('Bandeja', true, Object.keys(b).length + ' zona(s) con bandeja armada.'); } catch (e) { poner('Bandeja', false, e.message); }
+  try { const r = leerAprendizaje(); poner('Historial de aprendizaje', true, r.length + ' registro(s), ' + r.filter((x) => x.alcance).length + ' con métricas.'); } catch (e) { poner('Historial de aprendizaje', false, e.message); }
+  poner('Plantilla diseñada de Stories', !!plantillaStories(), plantillaStories() ? 'contenido/placas/generar-stories.js' : 'No está en esta máquina: las Stories salen con la plantilla genérica.');
+  poner('Redacción con IA', LLM.disponible(), LLM.disponible() ? (LLM.motor() === 'api' ? 'API de Claude (pago por uso).' : 'Claude Code, con tu sesión.') : LLM.motivoApagada());
+  const ahora = Date.now();
+  const libros = Array.from(indices.keys()).map((k2) => k2 + ' (hace ' + Math.round((ahora - indices.get(k2).t) / 60000) + ' min)');
+  return { conectores: out, bien: out.filter((x) => x.ok).length, total: out.length, librosEnMemoria: libros, nota: 'Los libros se releen de Google cada ' + (TTL_INDICE / 60000) + ' minutos o con «Volver a leer el libro»; la cola, la bandeja y el historial se leen del disco en cada pedido. Qué liga usa qué libro está escrito en generar-contenido.js (LIGAS): una liga nueva se agrega ahí.' };
+}
+
 function registrar(b) {
   const x = b || {};
   let registros = leerAprendizaje();
@@ -451,7 +501,8 @@ function app() {
   a.post('/api/generar', ruta((req) => generar(req.body)));
   a.post('/api/placas', ruta((req) => placas(req.body.propuesta, req.body.gancho, req.body.contexto)));
   /* El copy y el prompt alternativo de una propuesta, con el gancho elegido. Sin modelo: los arma el motor. */
-  a.post('/api/copy', ruta((req) => { const p = req.body.propuesta || {}, g = req.body.gancho && req.body.gancho.texto; return { copy: p.copy || M.copyPlantilla(p, g), deIa: !!p.copy, prompt: M.promptDeCopy(p, g), placas: M.placasDe(p, g) }; }));
+  a.post('/api/copy', ruta((req) => { const p = req.body.propuesta || {}, g = req.body.gancho && req.body.gancho.texto; return { copy: p.copy || M.copyPlantilla(p, g), deIa: !!p.copy, prompt: M.promptDeCopy(p, g), placas: M.placasDe(p, g), autochequeo: M.autochequeo(p) }; }));
+  a.get('/api/conectores', ruta(() => conectores()));
   a.post('/api/aprobar', ruta((req) => aprobar(req.body)));
   const aprendizaje = () => { const r = leerAprendizaje(); return { registros: r, ponderaciones: M.ponderaciones(r), cola: leerLista(COLA, 'pendientes').filter((c) => c.estado === 'pendiente') }; };
   a.get('/api/aprendizaje', ruta(aprendizaje));
@@ -463,4 +514,4 @@ if (require.main === module) {
   app().listen(PUERTO, '127.0.0.1', () => console.log('Centro de Mando Editorial · http://127.0.0.1:' + PUERTO));
 }
 
-module.exports = { app, generar, placas, aprobar, registrar, explorar, anomalias, bandeja, accionDeBandeja, delLaboratorio, libre, preguntar, redactarItem, indices, PUERTO };
+module.exports = { app, generar, placas, aprobar, registrar, explorar, anomalias, bandeja, accionDeBandeja, delLaboratorio, libre, conectores, preguntar, redactarItem, indices, PUERTO };

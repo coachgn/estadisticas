@@ -333,7 +333,9 @@ function aplicarRedaccion(p, red) {
   const estilo = TONOS[p.tono] ? TONOS[p.tono].estilo : null;
   const ia = (red.ganchos || []).slice().sort((a, b) => (b.estilo === estilo) - (a.estilo === estilo));
   const resto = (p.ganchos || []).filter((g) => !ia.some((x) => x.texto === g.texto));
-  const out = Object.assign({}, p, { titulo: red.titulo || p.titulo, guion: red.guion || p.guion, ganchos: ia.concat(resto), redaccion: 'ia',
+  /* LA REDACCIÓN REEMPLAZA, NO SE SUPERPONE: si la IA dio ganchos, los de
+     plantilla se van de la tarjeta. Solo quedan si la guarda los tiró todos. */
+  const out = Object.assign({}, p, { titulo: red.titulo || p.titulo, guion: red.guion || p.guion, ganchos: ia.length ? ia : resto, redaccion: 'ia', capas: red.capas || null,
     redaccionDescartada: (red.descartado || []).length });
   /* Las placas de la IA reemplazan al guion como estructura de la pieza;
      el copy, al de plantilla. Lo que la guarda tiró no llega acá. */
@@ -562,10 +564,18 @@ function placasHtml(p, gancho, contexto) {
   /* Una propuesta del laboratorio trae su tabla: va después de la primera evidencia. */
   const d = p.datos || {};
   if (Array.isArray(d.filas) && Array.isArray(d.columnas) && d.filas.length) {
-    const cols = d.columnas.slice(0, 4);
-    paginas.splice(Math.min(2, paginas.length - 1), 0, marco('<div class="barra">LOS NÚMEROS</div><table><thead><tr><th>#</th><th></th>' + cols.map((c) => '<th>' + esc(c.label) + '</th>').join('') + '</tr></thead><tbody>' +
-      d.filas.slice(0, 8).map((f) => '<tr><td>' + esc(f.puesto || '') + '</td><td>' + esc(f.jugador || f.equipo || f.zona || '') + (f.jugador && f.equipo ? '<small> · ' + esc(f.equipo) + '</small>' : '') + '</td>' +
-        cols.map((c) => '<td class="n">' + esc((f.texto || {})[c.id]) + '</td>').join('') + '</tr>').join('') + '</tbody></table>'));
+    /* LA PLACA MUESTRA LO MISMO QUE LA PANTALLA Y QUE EL RESUMEN: hasta
+       FILAS_EN_PLACA filas, con la línea de la mediana, de qué lado de la
+       segunda mediana cae cada una y, si no entran todas, cuántas faltan. */
+    const cols = d.columnas.slice(0, 4), cz = d.cruce || null, visibles = d.filas.slice(0, FILAS_EN_PLACA);
+    const total = (p.muestra && p.muestra.filasDelGrupo) || d.filas.length;
+    const linea = (i) => (cz && cz.grupo === 'todos' && i > 0 && visibles[i - 1].sobreA && !visibles[i].sobreA
+      ? '<tr class="med"><td colspan="' + (cols.length + 2) + '">mediana de ' + esc(cz.labelA) + ' · ' + esc(cz.medianaA) + '</td></tr>' : '');
+    const marca = (f, col) => (cz && col.id === cz.b ? (f.sobreB ? ' <i class="up">▲</i>' : ' <i class="dn">▼</i>') : '');
+    paginas.splice(Math.min(2, paginas.length - 1), 0, marco('<div class="barra">LOS NÚMEROS</div><table class="' + (visibles.length > 8 ? 'densa' : '') + '"><thead><tr><th>#</th><th></th>' + cols.map((c) => '<th>' + esc(c.label) + '</th>').join('') + '</tr></thead><tbody>' +
+      visibles.map((f, i) => linea(i) + '<tr><td>' + esc(f.puesto || '') + '</td><td>' + esc(f.jugador || f.equipo || f.zona || '') + (f.jugador && f.equipo ? '<small> · ' + esc(f.equipo) + '</small>' : '') + '</td>' +
+        cols.map((c) => '<td class="n">' + esc((f.texto || {})[c.id]) + marca(f, c) + '</td>').join('') + '</tr>').join('') + '</tbody></table>' +
+      '<p class="nota">' + (cz ? 'N = ' + cz.n + ' · ▲▼ contra la mediana de ' + esc(cz.labelB) + ' (' + esc(cz.medianaB) + ')' : '') + (visibles.length < total ? (cz ? ' · ' : '') + 'se muestran ' + visibles.length + ' de ' + total : '') + '</p>'));
   }
   if (contexto) paginas.push(marco('<div class="barra">CONTEXTO</div><p class="baj me">' + esc(contexto) + '</p>', true));
   const k = vertical ? 1.2 : 1;
@@ -589,8 +599,65 @@ function placasHtml(p, gancho, contexto) {
     '.pie{position:absolute;left:0;right:0;bottom:44px;height:70px}.pie img{position:absolute;left:50%;top:0;width:70px;height:70px;object-fit:contain;transform:translateX(-50%)}' +
     '.pie span{position:absolute;right:78px;top:26px;font-weight:600;font-size:19px;color:#fff}' +
     'table{width:100%;border-collapse:collapse;font-size:32px}th,td{padding:14px 12px;border-bottom:1px solid rgba(116,172,223,.25);text-align:left}th{font-size:20px;letter-spacing:2px;text-transform:uppercase;color:#74acdf}' +
-    'td.n{font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:40px;text-align:right;color:#fff}td small{font-size:22px;color:#a9b8cf}';
+    'td.n{font-family:"Barlow Condensed",sans-serif;font-weight:800;font-size:40px;text-align:right;color:#fff}td small{font-size:22px;color:#a9b8cf}' +
+    'table.densa{font-size:26px}table.densa th,table.densa td{padding:8px 12px}table.densa td.n{font-size:32px}' +
+    'tr.med td{border-bottom:0;border-top:3px dashed #f5a623;color:#f5a623;font-size:20px;letter-spacing:2px;text-transform:uppercase;text-align:center;padding:6px}' +
+    'i.up{font-style:normal;font-size:.6em;color:#4ade80}i.dn{font-style:normal;font-size:.6em;color:#f87171}';
   return '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>' + esc(p.id + ' · ' + p.titulo) + '</title><style>' + css + '</style></head><body>' + paginas.join('\n') + '</body></html>';
+}
+
+/* --------------------------------------------------------------------
+   EL AUTOCHEQUEO · tres preguntas antes de mostrar una pieza
+   PURO: mira la propuesta y contesta lo que se puede comprobar por código.
+   `ok` es true, false o null (no aplica todavía). No reemplaza la lectura
+   humana: la tercera pregunta comprueba la FORMA del copy y que el modelo
+   haya señalado dónde está cada capa; si la capa está bien pensada lo
+   decide quien aprueba.
+   -------------------------------------------------------------------- */
+const FILAS_EN_PLACA = 12;
+function autochequeo(p) {
+  const d = (p && p.datos) || {}, m = (p && p.muestra) || {}, out = [];
+  /* 1 · ¿Las filas a la vista son la N de la que se habla? */
+  if (Array.isArray(d.filas) && d.columnas) {
+    const n = d.cruce ? (d.cruce.grupo === 'todos' ? d.cruce.n : d.cruce.enGrupo) : m.cumplen;
+    const hay = d.filas.length, enPlaca = Math.min(hay, FILAS_EN_PLACA);
+    const ok = hay === n && enPlaca === n;
+    out.push({ id: 'filas', pregunta: '¿La cantidad de filas visibles coincide con la N de la que habla la pieza?', ok,
+      detalle: ok ? 'Sí: ' + hay + ' filas en la pantalla, en la placa y en lo que lee la IA' + (d.cruce ? '; las medianas son sobre N = ' + d.cruce.n : '') + '.'
+        : 'No: la pieza habla de ' + n + ' y se muestran ' + hay + ' en la pantalla y ' + enPlaca + ' en la placa. La IA lee esas ' + hay + ' filas y los totales; no afirmes sobre las que no se ven.' });
+  } else out.push({ id: 'filas', pregunta: '¿La cantidad de filas visibles coincide con la N de la que habla la pieza?', ok: null, detalle: 'No aplica: esta pieza no trae una tabla; sus números están en «Los números, tal como salen del libro».' });
+  /* 2 · ¿Hay volumen confirmado detrás de cada «alto» o «bajo»? */
+  const vol = Array.isArray(d.volumen) ? d.volumen : null;
+  if (!vol) out.push({ id: 'volumen', pregunta: '¿Hay un volumen mínimo confirmado antes de llamar «alto» o «bajo» a un rendimiento?', ok: null, detalle: 'No aplica: el piso de volumen de esta pieza lo fija su receta.' });
+  else if (!vol.length) out.push({ id: 'volumen', pregunta: '¿Hay un volumen mínimo confirmado antes de llamar «alto» o «bajo» a un rendimiento?', ok: true, detalle: 'Sí: la pieza no ordena ni cruza por una efectividad.' });
+  else {
+    const equipos = m.nivel === 'equipos' || m.nivel === 'zonas';
+    const flojas = vol.filter((v) => !v.enTabla || (!equipos && v.piso == null));
+    out.push({ id: 'volumen', pregunta: '¿Hay un volumen mínimo confirmado antes de llamar «alto» o «bajo» a un rendimiento?', ok: !flojas.length,
+      detalle: !flojas.length ? 'Sí: ' + vol.map((v) => v.metrica + ' va con ' + v.volumen + ' al lado' + (v.piso != null ? ' y un piso de ' + String(v.piso).replace('.', ',') : equipos ? ' (temporada entera del equipo)' : '')).join('; ') + '.'
+        : 'No: ' + flojas.map((v) => v.metrica + (v.enTabla ? ' no tiene un piso de ' + v.volumen : ' no tiene ' + v.volumen + ' a la vista')).join('; ') + '. Arriba puede haber alguien con uno o dos intentos: pedí la pieza con un piso («con al menos 2 ' + flojas[0].volumen + '»).' });
+  }
+  /* 3 · ¿El copy es el de referente, y no la plantilla repetida? */
+  const pr3 = '¿El copy aborda el por qué, el dolor y el beneficio sin repetir el texto genérico?';
+  if (p.redaccion !== 'ia' || !p.copy) out.push({ id: 'copy', pregunta: pr3, ok: null, detalle: 'Todavía es el copy de plantilla: tocá «Redactar con IA».' });
+  else {
+    const cuerpo = String(p.copy).split(HASHTAGS)[0];
+    const parrafos = cuerpo.split(/\n\s*\n/).filter((x) => x.trim().length > 140 && !x.trim().split('\n').every((l) => /\?\s*$/.test(l.trim()))).length;
+    const preguntas = (cuerpo.match(/¿[^?]{12,}\?/g) || []).length;
+    const c = p.capas || {}, faltan = [['porQue', 'el por qué'], ['dolor', 'el dolor'], ['beneficio', 'el beneficio']].filter((x) => !c[x[0]]).map((x) => x[1]);
+    const repite = !!p.dato && cuerpo.indexOf(p.dato) !== -1;
+    const rotulos = /(^|\n)\s*(el dolor|el beneficio|la otra mirada|el por qu[eé])[^\n]{0,30}:/i.test(cuerpo);
+    const fallas = [];
+    if (parrafos < 3) fallas.push('tiene ' + parrafos + ' párrafo(s) de desarrollo y tienen que ser 3');
+    if (preguntas < 3) fallas.push('tiene ' + preguntas + ' pregunta(s) de auditoría y tienen que ser 3');
+    if (faltan.length) fallas.push('la IA no señaló en el copy dónde está ' + faltan.join(' ni ') + ' (o la cita que dio no está en el texto)');
+    if (repite) fallas.push('copia el dato del generador palabra por palabra');
+    if (rotulos) fallas.push('anuncia las capas como rótulos');
+    out.push({ id: 'copy', pregunta: pr3, ok: !fallas.length, capas: c,
+      detalle: !fallas.length ? 'Sí, en la forma: ' + parrafos + ' párrafos, ' + preguntas + ' preguntas de auditoría, y la IA señaló la oración del por qué, la del dolor y la del beneficio (están abajo). Si están bien pensadas lo decidís vos.'
+        : 'No: ' + fallas.join('; ') + '. Volvé a redactarla o corregila a mano.' });
+  }
+  return out;
 }
 
 /** El resumen en Markdown de una propuesta: placas, copy y prompt alternativo. */
@@ -606,7 +673,7 @@ function resumenMd(p, gancho, contexto) {
 }
 
 module.exports = {
-  ROLES, MIN_PLACAS, MAX_PLACAS, CTA_COMENTARIO, HASHTAGS, VOZ, CAPAS, ESTILO, recortar, estructuraDePlacas, placasDe, copyPlantilla, promptDeCopy,
+  autochequeo, FILAS_EN_PLACA, ROLES, MIN_PLACAS, MAX_PLACAS, CTA_COMENTARIO, HASHTAGS, VOZ, CAPAS, ESTILO, recortar, estructuraDePlacas, placasDe, copyPlantilla, promptDeCopy,
   PIEZAS, EJES, FORMATOS, AUTO, ESTILOS, ENFOQUES, ENFOQUE_DE, TONOS, MAX_BANDEJA,
   conTono, aplicarRedaccion, guardarRedaccion, armarBandeja, cambiarEnfoque, cambiarTono, marcar, sumarABandeja, registroDeAprobacion, medir, diaLocal, PESOS_INTERACCION, MIN_MUESTRA, PISO, TECHO,
   opciones, piezasPara, motivoSinFormato, ganchos, deReceta, deFeed, deStories,

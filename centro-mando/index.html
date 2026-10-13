@@ -63,6 +63,11 @@
   .placas .chip { margin-right: 8px; }
   .copy { width: 100%; min-height: 220px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; }
   .copy.prompt { min-height: 160px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  tr.med td { text-align: center !important; color: var(--nar); border-top: 2px dashed var(--nar); border-bottom: 0; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; padding: 3px; }
+  th.vol, td.vol { color: var(--tenue); border-left: 0; padding-left: 0; font-size: 13px; }
+  .up { color: var(--ver); } .dn { color: var(--roj); }
+  ul.chequeo { list-style: none; padding: 0; margin: 6px 0; } ul.chequeo li { padding: 6px 0; border-bottom: 1px solid var(--borde); } ul.chequeo li:last-child { border-bottom: 0; }
+  ul.chequeo blockquote { margin: 4px 0 0 22px; padding-left: 10px; border-left: 2px solid var(--borde); color: var(--tenue); font-size: 13px; }
   .cond { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; margin-bottom: 6px; }
   [hidden] { display: none !important; }
 </style>
@@ -70,6 +75,7 @@
 <body>
 <header>
   <h1>Centro de Mando Editorial<small>MotorStats AR · local · todo número sale del libro</small></h1>
+  <button id="conectores" class="chico" style="align-self:center" title="Qué archivos y servicios del proyecto está leyendo esta pantalla, y si están">Conectores…</button>
   <span id="ia" class="chip" style="align-self:center" role="status"></span>
   <label>Liga / torneo <select id="liga"></select></label>
   <label>Zona <select id="zona"></select></label>
@@ -82,6 +88,7 @@
     <button role="tab" data-tab="medida" aria-selected="false">🎛 A medida</button>
     <button role="tab" data-tab="aprendizaje" aria-selected="false">📈 Aprendizaje</button>
   </nav>
+  <div id="conectores-panel" class="card" hidden></div>
   <details class="card" style="padding:8px 18px">
     <summary>Contexto de tendencia (opcional · lo escribís vos y viaja a las placas y a la exportación)</summary>
     <textarea id="contexto" maxlength="600" placeholder="Ej.: esta semana se habló de la defensa del pick &amp; roll en la final de…"></textarea>
@@ -144,7 +151,7 @@
       <div class="grilla" style="margin-top:10px">
         <label>Nivel <select id="l-nivel"><option value="">Que lo decida el texto</option><option value="jugadores">Jugadores</option><option value="equipos">Equipos</option><option value="partidos">Partidos</option><option value="zonas">Entre zonas</option></select></label>
         <label>Si cruza dos métricas, mostrar <select id="l-grupo"><option value="">El que pida el texto</option><option value="altoBajo">Altos en la 1.ª y bajos en la 2.ª</option><option value="altoAlto">Altos en las dos</option><option value="bajoAlto">Bajos en la 1.ª y altos en la 2.ª</option><option value="bajoBajo">Bajos en las dos</option><option value="todos">A todos, ordenados por la 1.ª</option></select></label>
-        <label>Cuántos <input type="number" id="l-top" min="1" max="50" placeholder="10"></label>
+        <label>Cuántos <input type="number" id="l-top" min="1" max="50" placeholder="un cruce: todos · un ranking: 10"></label>
       </div>
       <div class="acciones"><button class="pri" id="l-buscar">Buscar en el libro</button><button id="l-mandar" disabled title="La deja arriba de la bandeja, anónima. Ahí se redacta con IA, se le ajusta el tono y se aprueba.">Mandar a la bandeja para redactarla</button><span id="l-estado" role="status" aria-live="polite" class="tenue"></span></div>
       <div id="l-lectura" role="status" aria-live="polite"></div>
@@ -246,7 +253,7 @@ function tarjeta(uid, p, modo, estado) {
     return '<article class="card" id="a-' + uid + '" style="padding:10px 18px">' + chips + '<span class="chip ' + (estado === 'aprobada' ? 'ok' : '') + '">' + (estado === 'aprobada' ? '✅ aprobada · en la cola de Canva' : 'descartada') + '</span> ' + esc(p.titulo) + '</article>';
   }
   const ganchos = (p.ganchos || []).map((g, j) => '<label class="gancho"><input type="radio" name="g-' + uid + '" value="' + j + '"' + (j ? '' : ' checked') + '><span>' + esc(g.texto) +
-    '<small>' + esc(OPC.estilos[g.estilo] || g.estilo) + (g.ia ? ' · IA' : p.redaccion === 'ia' ? ' · del generador' : '') + (g.peso && g.peso !== 1 ? ' · peso ' + num(g.peso) : '') + '</small></span></label>').join('');
+    '<small>' + esc(OPC.estilos[g.estilo] || g.estilo) + (g.ia ? ' · IA' : p.redaccion === 'ia' ? ' · del generador (la guarda descartó los de la IA)' : '') + (g.peso && g.peso !== 1 ? ' · peso ' + num(g.peso) : '') + '</small></span></label>').join('');
   const botones = modo === 'bandeja'
     ? (p.enfoque ? '<button data-accion="enfoque" data-uid="' + uid + '" title="Cambia esta pieza por otra de la reserva, del enfoque que sigue">🔄 Cambiar enfoque · ' + esc(OPC.enfoques[p.enfoque]) + '</button>' : '') +
       '<button data-accion="tono" data-uid="' + uid + '" title="Cambia el tono: qué gancho va primero y la píldora de la portada. Para que Claude reescriba el texto en ese tono, tocá «Redactar con IA» después; los números son siempre los del libro.">🌶️ Ajustar tono · ' + esc(OPC.tonos[p.tono] || '') + '</button>' +
@@ -294,9 +301,13 @@ async function pintarCopy(uid) {
   try {
     const r = await api('/api/copy', { propuesta: reg.p, gancho: ganchoElegido(uid) });
     if (PROPS.get(uid) !== reg || !$('k-' + uid)) return;
-    caja.innerHTML = '<details open><summary>Placas (' + r.placas.length + ') · gancho, evidencia, propuesta y cierre</summary><ol class="placas">' +
+    const chq = r.autochequeo || [], icono = (o) => (o === true ? '✅' : o === false ? '⚠️' : '➖');
+    const capas = (c) => (c ? [['porQue', 'Por qué'], ['dolor', 'Dolor'], ['beneficio', 'Beneficio']].filter((x) => c[x[0]]).map((x) => '<blockquote><strong>' + x[1] + ':</strong> ' + esc(c[x[0]]) + '</blockquote>').join('') : '');
+    caja.innerHTML = '<details' + (chq.some((x) => x.ok === false) ? ' open' : '') + '><summary>Autochequeo · ' + chq.filter((x) => x.ok === true).length + ' de ' + chq.filter((x) => x.ok !== null).length + ' en orden' + (chq.some((x) => x.ok === false) ? ' · revisá lo marcado' : '') + '</summary><ul class="chequeo">' +
+      chq.map((x) => '<li>' + icono(x.ok) + ' <strong>' + esc(x.pregunta) + '</strong><br><span class="tenue">' + esc(x.detalle) + '</span>' + capas(x.capas) + '</li>').join('') + '</ul></details>' +
+      '<details open><summary>Placas (' + r.placas.length + ') · gancho, evidencia, propuesta y cierre</summary><ol class="placas">' +
       r.placas.map((x) => '<li><span class="chip">' + esc(ROL[x.rol] || x.rol) + '</span>' + (x.titulo ? '<strong>' + esc(x.titulo) + '</strong> — ' : '') + esc(x.texto) + (x.destacado ? ' <span class="tenue">· destacado: ' + esc(x.destacado) + '</span>' : '') + '</li>').join('') + '</ol></details>' +
-      '<details open><summary>Copy sugerido para Instagram' + (r.deIa ? ' · redactado por IA' : ' · de plantilla (tocá «Redactar con IA» para el de referente)') + '</summary>' +
+      '<details open><summary>' + (r.deIa ? 'Copy para Instagram · redactado por IA (reemplazó al de plantilla)' : 'Copy para Instagram · de plantilla (tocá «Redactar con IA» y lo reemplaza el de referente)') + '</summary>' +
       '<textarea class="copy" id="c-' + uid + '" readonly>' + esc(r.copy) + '</textarea><div class="acciones" style="margin-top:6px"><button class="chico" data-copiar="c-' + uid + '">Copiar el copy</button></div></details>' +
       '<details><summary>Prompt alternativo · para pedir más variantes del copy en otra IA</summary>' +
       '<textarea class="copy prompt" id="q-' + uid + '" readonly>' + esc(r.prompt) + '</textarea><div class="acciones" style="margin-top:6px"><button class="chico" data-copiar="q-' + uid + '">Copiar el prompt</button></div></details>';
@@ -395,13 +406,22 @@ function tablaX(r) {
     q.altoAlto + ' altos en las dos · ' + q.altoBajo + ' altos en ' + esc(k.labelA) + ' y bajos en ' + esc(k.labelB) + ' · ' + q.bajoAlto + ' bajos en ' + esc(k.labelA) + ' y altos en ' + esc(k.labelB) + ' · ' + q.bajoBajo + ' bajos en las dos. ' +
     (k.r == null ? 'Con tan pocos casos no se mide la relación.' : 'Relación ' + esc(k.fuerza) + (k.fuerza === 'prácticamente nula' ? '' : (k.sentido === 'inversa' ? ' e ' : ' y ') + esc(k.sentido)) + ' (r = ' + esc(k.rTexto) + ').') +
     (k.medianaBEnAltosA && k.medianaBEnBajosA ? ' Los ' + k.altosA + ' de arriba en ' + esc(k.labelA) + ' tienen una mediana de ' + esc(k.medianaBEnAltosA) + ' en ' + esc(k.labelB) + '; los ' + k.bajosA + ' de abajo, ' + esc(k.medianaBEnBajosA) + '.' : '') +
-    ' <span class="tenue">La tabla muestra a ' + (k.grupo === 'todos' ? '' : 'los ') + esc(k.grupoTexto) + '. «Alto» y «bajo» son contra la mediana, no un juicio.</span></div>';
+    ' <strong>' + esc(k.base) + '</strong>' +
+    ' <span class="tenue">La tabla muestra a ' + (k.grupo === 'todos' ? '' : 'los ') + esc(k.grupoTexto) + ', con ▲▼ según de qué lado de la mediana de ' + esc(k.labelB) + ' cae cada fila. «Alto» y «bajo» son contra la mediana, no un juicio.</span></div>';
   if (!r.filas.length) return cab + cruce + '<div class="aviso">' + (k ? 'Nadie cae en ese grupo: probá con otro de los cuatro.' : 'Ese filtro no deja a nadie.') + '</div>';
   const dif = r.diferencias ? '<h4 style="margin-top:14px">Qué separa a las zonas</h4><ul class="lista">' + r.diferencias.filter((d) => d.brecha != null).map((d) => '<li><span><strong>' + esc(d.label) + '</strong> · ' + esc(d.brechaTexto) +
     ' <span class="tenue">(' + esc(d.mayor) + ' arriba, ' + esc(d.menor) + ' abajo)</span></span><span class="chip">' + (d.relativa == null ? '—' : num(d.relativa, 1) + ' desvíos') + '</span></li>').join('') + '</ul>' : '';
-  return cab + cruce + '<table><thead><tr><th>' + (r.nivel === 'zonas' ? 'Zona' : r.nivel === 'jugadores' ? 'Jugador' : 'Equipo') + '</th><th></th>' +
-    r.columnas.map((c) => '<th class="' + (c.id === r.orden ? 'orden' : '') + '" title="' + esc(c.nombre) + '">' + esc(c.label) + '</th>').join('') + '</tr></thead><tbody>' +
-    r.filas.map((f) => '<tr>' + quien(f) + r.columnas.map((c) => '<td>' + esc(f.texto[c.id]) + (f.percentil && f.percentil[c.id] != null ? ' <span class="tenue">p' + f.percentil[c.id] + '</span>' : '') + '</td>').join('') + '</tr>').join('') + '</tbody></table>' + dif;
+  /* LO QUE SE VE ES LO QUE SE CUENTA: cuántas filas hay de cuántas, la
+     línea de la mediana cuando la tabla va ordenada por la primera métrica,
+     y el volumen de cada efectividad en la columna de al lado. */
+  const total = r.enTabla == null ? r.filas.length : r.enTabla;
+  const cuantas = r.nivel === 'zonas' ? '' : '<p class="' + (r.filas.length < total ? 'aviso' : 'tenue') + '" style="margin:6px 0">' + (r.filas.length < total ? 'Se muestran ' + r.filas.length + ' de ' + total + (k ? ': el resumen de arriba es sobre los ' + k.n + '.' : '. Subí «Cuántos» para ver más.') : 'Se muestran las ' + total + ' filas: todas.') + '</p>';
+  const esVol = (c) => (c.volumenDe || []).length > 0;
+  const linea = (i) => (k && k.grupo === 'todos' && i > 0 && r.filas[i - 1].sobreA && !r.filas[i].sobreA ? '<tr class="med"><td colspan="' + (r.columnas.length + 2) + '">mediana de ' + esc(k.labelA) + ' · ' + esc(k.medianaA) + ' · arriba ' + i + ', abajo ' + (r.filas.length - i) + '</td></tr>' : '');
+  const marca = (f, c) => (k && c.id === k.b ? (f.sobreB ? ' <span class="up" title="Sobre la mediana">▲</span>' : ' <span class="dn" title="Bajo la mediana">▼</span>') : '');
+  return cab + cruce + cuantas + '<table><thead><tr><th>' + (r.nivel === 'zonas' ? 'Zona' : r.nivel === 'jugadores' ? 'Jugador' : 'Equipo') + '</th><th></th>' +
+    r.columnas.map((c) => '<th class="' + (c.id === r.orden ? 'orden' : '') + (esVol(c) ? ' vol' : '') + '" title="' + esc(c.nombre) + (esVol(c) ? ' · el volumen detrás de ' + esc(c.volumenDe.join(', ')) : '') + '">' + (esVol(c) ? 'sobre ' : '') + esc(c.label) + '</th>').join('') + '</tr></thead><tbody>' +
+    r.filas.map((f, i) => linea(i) + '<tr>' + quien(f) + r.columnas.map((c) => '<td class="' + (esVol(c) ? 'vol' : '') + '">' + esc(f.texto[c.id]) + marca(f, c) + (f.percentil && f.percentil[c.id] != null ? ' <span class="tenue">p' + f.percentil[c.id] + '</span>' : '') + '</td>').join('') + '</tr>').join('') + '</tbody></table>' + dif;
 }
 async function correrExplorador() {
   const yo = ++turnoX; clearTimeout(relojX);
@@ -616,6 +636,16 @@ $('x-mandar').addEventListener('click', async () => {
   catch (e) { $('x-enviado').innerHTML = avisos(['No se pudo: ' + e.message], 'error'); }
 });
 $('rearmar').addEventListener('click', () => cargarBandeja(true));
+$('conectores').addEventListener('click', async () => {
+  const caja = $('conectores-panel');
+  if (!caja.hidden) { caja.hidden = true; return; }
+  caja.hidden = false; caja.innerHTML = '<p class="tenue">Revisando los conectores…</p>';
+  try {
+    const r = await api('/api/conectores');
+    caja.innerHTML = '<h2>Conectores locales · ' + r.bien + ' de ' + r.total + ' en orden</h2><ul class="lista">' + r.conectores.map((x) => '<li><span>' + (x.ok ? '✅' : '⚠️') + ' <strong>' + esc(x.nombre) + '</strong><br><span class="tenue">' + esc(x.detalle) + '</span></span></li>').join('') + '</ul>' +
+      '<p class="tenue" style="font-size:13px">' + esc(r.nota) + (r.librosEnMemoria.length ? ' En memoria: ' + esc(r.librosEnMemoria.join(' · ')) + '.' : '') + '</p>';
+  } catch (e) { caja.innerHTML = avisos([e.message], 'error'); }
+});
 $('generar').addEventListener('click', generar);
 $('l-buscar').addEventListener('click', () => buscarLibre(false));
 $('l-mandar').addEventListener('click', () => buscarLibre(true));

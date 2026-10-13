@@ -143,9 +143,10 @@ const ESQUEMAS_JSON = {
     },
   },
   redaccion: {
-    type: 'object', additionalProperties: false, required: ['titulo', 'ganchos', 'placas', 'guion', 'copy'],
+    type: 'object', additionalProperties: false, required: ['titulo', 'ganchos', 'placas', 'guion', 'copy', 'capas'],
     properties: {
       titulo: txt, copy: txt,
+      capas: { type: 'object', additionalProperties: false, required: ['porQue', 'dolor', 'beneficio'], properties: { porQue: txt, dolor: txt, beneficio: txt } },
       placas: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['rol', 'titulo', 'texto', 'destacado'],
         properties: { rol: { type: 'string', enum: ['gancho', 'evidencia', 'propuesta', 'cierre'] }, titulo: txt, texto: txt, destacado: txt } } },
       ganchos: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['estilo', 'texto'], properties: { estilo: { type: 'string', enum: ['dato', 'titular', 'pregunta'] }, texto: txt } } },
@@ -170,7 +171,9 @@ async function pedirPorCli(ejecutar, nombre, sistema, usuario, esfuerzo) {
   }
   let salida = j.structured_output;
   if (!salida || typeof salida !== 'object') { try { salida = JSON.parse(j.result); } catch (e) { salida = null; } }
-  if (!salida || esquema.required.some((k) => !(k in salida))) throw new Error('Claude Code no devolvió una respuesta con la forma pedida.');
+  /* «capas» es el autochequeo del modelo: si falta, la redacción vale igual
+     y el autochequeo de la tarjeta lo marca. Lo demás es obligatorio. */
+  if (!salida || esquema.required.some((k) => k !== 'capas' && !(k in salida))) throw new Error('Claude Code no devolvió una respuesta con la forma pedida.');
   const modelo = Object.keys(j.modelUsage || {})[0] || 'claude-code';
   return { salida, uso: j.usage ? { entrada: j.usage.input_tokens, salida: j.usage.output_tokens } : null, modelo, motor: 'claude-code', segundos: Math.round((j.duration_ms || 0) / 100) / 10 };
 }
@@ -354,6 +357,11 @@ const EsquemaRedaccion = z && z.object({
   })).describe('carrusel: entre 4 y 10 placas. Reel o Stories: lista vacía'),
   guion: z.array(z.string()).describe('reel: la misma cantidad de líneas que el guion recibido, cada una con su marca de tiempo. Carrusel: lista vacía'),
   copy: z.string().describe('el copy de Instagram listo para publicar, hasta 2100 caracteres'),
+  capas: z.object({
+    porQue: z.string().describe('copiada TEXTUAL del copy: la oración donde explicás por qué pasa'),
+    dolor: z.string().describe('copiada TEXTUAL del copy: la oración donde decís qué cuesta no verlo'),
+    beneficio: z.string().describe('copiada TEXTUAL del copy: la oración donde decís qué gana el que lo domina'),
+  }).describe('tu autochequeo: dónde está cada capa en el copy. Tres oraciones distintas, copiadas tal cual'),
 });
 
 const SISTEMA_REDACCION = M.VOZ.concat([
@@ -379,6 +387,10 @@ const SISTEMA_REDACCION = M.VOZ.concat([
   '- Stories: dejá «placas» y «guion» vacíos; las placas ya están diseñadas con los rankings.',
   '',
   'EL COPY DE INSTAGRAM: listo para publicar, con la misma voz. NO es un resumen de las placas: es un ARTÍCULO DE OPINIÓN TÁCTICA, más profundo que las placas. Estructura fija: TRES párrafos —el primero planta la tesis de vestuario y el dato que la prueba; el segundo explica por qué pasa en la cancha; el tercero, qué cuesta no verlo y qué decide distinto el que lo domina—, y después TRES preguntas de auditoría incisivas, una por línea, que obliguen al entrenador a comentar. Cierra invitando a comentar «CONTEXTO» para recibir una demo o a escribir por mensaje directo. A lo sumo un emoji como viñeta por pregunta. NO escribas hashtags: los agrega el sistema.',
+  '',
+  'TU AUTOCHEQUEO (campo «capas»): antes de entregar, señalá en el copy la oración del por qué, la del dolor y la del beneficio, copiadas TEXTUALES y distintas entre sí. Si no encontrás alguna, el copy está incompleto: reescribilo antes de contestar. Un sistema verifica que cada cita esté en el copy.',
+  '',
+  'EL VOLUMEN ANTES QUE EL ADJETIVO: no llames «alto», «bajo», «eficiente» o «flojo» a un porcentaje sin su volumen. Si la pieza trae los intentos o las jugadas al lado del porcentaje, nombralos juntos. Si la pieza avisa que un porcentaje va sin piso de intentos, o que la tabla muestra solo una parte, decilo como un límite de la lectura: no lo tapes. Y no hables de filas que la pieza no trae.',
   '',
   'LA REGLA QUE NO SE NEGOCIA: no sos la fuente de ningún número.',
   '- Todo número que escribas —en un título, una placa, un gancho o el copy— tiene que estar en la pieza, EXACTAMENTE como figura ahí (58 es 58, no «casi 60» ni «6 de cada 10»).',
@@ -412,7 +424,7 @@ async function redactar(propuesta, tono, deps) {
 
 /** Lo que el modelo ve de una propuesta, y contra lo que corre la guarda numérica. */
 function piezaDe(p) {
-  return { id: p.id, formato: p.formatoLabel || p.formato, enfoque: p.enfoque || null, titulo: p.titulo, dato: p.dato, guion: p.guion || [], muestra: p.muestra || null, numeros: p.datos || null };
+  return { id: p.id, formato: p.formatoLabel || p.formato, enfoque: p.enfoque || null, titulo: p.titulo, dato: p.dato, guion: p.guion || [], muestra: p.muestra || null, numeros: p.datos || null, limites: p.avisos || [] };
 }
 
 /** La guarda aplicada a una redacción. PURA: es lo que se testea. */
@@ -476,7 +488,18 @@ function filtrar(salida, pieza) {
      se sacan y van los de la cuenta. */
   const sinHashtags = (t) => String(t || '').replace(/(^|\s)#[\p{L}\d_]+/gu, '$1').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   const copy = salida.copy ? fiel('copy', sinHashtags(salida.copy)) : null;
-  return { titulo, ganchos, guion, placas, copy: copy ? M.recortar(copy, 2100) + '\n\n' + M.HASHTAGS : null, descartado };
+  /* LAS CAPAS QUE EL MODELO SEÑALÓ: vale la cita que está, tal cual, en el
+     copy que quedó, tiene largo de oración y no repite a otra. */
+  const plano = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+  const capas = { porQue: null, dolor: null, beneficio: null };
+  if (copy && salida.capas) {
+    const cuerpo = plano(copy), usadas = [];
+    Object.keys(capas).forEach((k) => {
+      const cita = plano(sinMarcas(salida.capas[k])).replace(/^[«"“]+|[»"”]+$/g, '');
+      if (cita.length >= 30 && cuerpo.indexOf(cita) !== -1 && usadas.indexOf(cita) === -1) { capas[k] = cita; usadas.push(cita); }
+    });
+  }
+  return { titulo, ganchos, guion, placas, capas, copy: copy ? M.recortar(copy, 2100) + '\n\n' + M.HASHTAGS : null, descartado };
 }
 
 module.exports = { MODELO, TONOS, ESTILOS, ESQUEMAS_JSON, motor, cliDisponible, piezaDe, pedirPorCli, disponible, motivoApagada, interpretar, redactar, filtrar, numerosDe, numerosAjenos, numerosEnLetras, explicar, EsquemaConsulta, EsquemaRedaccion, sistemaConsulta, SISTEMA_REDACCION };

@@ -300,7 +300,9 @@ function interpretarLibre(texto, cat, opc) {
     else if (/(^| )(peor|peores)( |$)/.test(t)) sentido = def(orden).invertida ? 'desc' : 'asc';
   }
   const mt = t.match(/(?:^| )top ?(\d{1,2})(?: |$)/) || t.match(/(?:^| )l[oa]s (\d{1,2}) (?:mejores|peores|primeros|primeras|que)(?: |$)/);
-  const top = mt ? Math.min(50, Math.max(1, Number(mt[1]))) : 10;
+  /* UN CRUCE SE MUESTRA ENTERO: el resumen habla de todos los que cumplen,
+     y la tabla tiene que dejar contarlos. El tope es el del Explorador. */
+  const top = mt ? Math.min(50, Math.max(1, Number(mt[1]))) : (cruce ? 50 : 10);
   const filtraMinutos = condiciones.some((c) => c.metrica === 'MIN');
   const soloCalificados = nivel === 'jugadores' && !pocosMinutos && !filtraMinutos;
 

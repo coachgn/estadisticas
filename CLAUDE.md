@@ -118,7 +118,7 @@ node test-interzonal.js    # 220 tests · la llave entre zonas: un cliente de un
 node test-contenido.js     # 142 tests · generar-contenido.js: el Top 3 de la fecha, la ventana, el feed
                            #             derivado, las diez recetas de Nivel 2 y que los nombres solo salgan en APdeB (103, 104)
 
-node test-centro-mando.js  # 368 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
+node test-centro-mando.js  # 412 tests · el Centro de Mando Editorial local: bandeja, Explorador táctico, ganchos sin números propios,
                            #             el texto libre de «A medida», el cruce de dos métricas y la voz de entrenador-analista (110),
                            #             el % de victorias, los textos sin cortar y la tesis de vestuario (111)
                            #             (pide «npm install» en centro-mando/ una vez: los agentes usan el SDK de Claude, punto 107)
@@ -134,7 +134,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7593 tests en total. Todos tienen que dar verde antes de commitear.**
+**7637 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -13643,3 +13643,87 @@ del medio por «la mitad», y las otras siete quedaron en pie.
 Verificado al revés, cuatro mutaciones, cae una cada una: el % ignorando la
 tabla, sin la guarda de letras, la guarda sin respetar el léxico y el
 servidor sin colgar el récord.
+
+## 113. LO QUE SE VE ES LO QUE SE CUENTA · filas, volumen, autochequeo y conectores (2026-10-13)
+
+Auditoría del club: el resumen hablaba de 12 equipos y la tabla mostraba
+10, así que al contar filas parecía que la IA se equivocaba. No se
+equivocaba: el resumen se calculaba sobre todos y la tabla salía con el
+tope de un ranking. `test-centro-mando.js` fija todo lo de acá.
+
+### 1 · Un cruce se muestra entero
+
+- **`libre.js`**: un cruce sin tope pedido va con el máximo del
+  Explorador (50), no con los 10 de un ranking. Con 12 equipos se ven los 12.
+- **Cada fila trae `sobreA` y `sobreB`**: de qué lado de cada mediana cae.
+  La pantalla y la placa dibujan la **línea de la mediana** (cuando la
+  tabla va ordenada por la primera métrica) y ▲▼ contra la segunda.
+  Contando las marcas sale el resumen; hay un test que lo cuenta.
+- **`cruce.base`**: «Medianas calculadas sobre N = 12 equipos del libro,
+  todos los que tienen las dos métricas.»
+- **`enTabla`** (cuántos hay) contra `filas.length` (cuántos se
+  muestran): la pantalla dice «Se muestran las 12 filas: todas» o «50 de
+  130», y cuando no entran todos la propuesta lo lleva en `avisos`.
+- **La IA lee las mismas filas que se ven** (`piezaDe` → `numeros.filas`,
+  con sus marcas) y los `avisos` de la pieza como `limites`.
+- **La placa «LOS NÚMEROS»** muestra hasta `M.FILAS_EN_PLACA` (12), con la
+  línea de la mediana, las marcas, la N y «se muestran X de Y» si recorta.
+
+### 2 · El volumen, en la columna de al lado
+
+`E.VOLUMEN` suma `eFG%`, `TS%` y `RTL%` → `TCI`, y `PePP%` y `PPP` →
+`PLAYS`. `E.pedido` pone el volumen **pegado a cada efectividad de la
+tabla**, no solo a la que ordena (`columnas[].volumenDe`). Si quien pide
+ya lo ubicó, no se mueve. Entre zonas solo acompaña a la métrica de orden:
+una columna de intentos no es una «diferencia entre zonas».
+
+### 3 · El autochequeo · `M.autochequeo(p)`
+
+Tres preguntas por pieza, a la vista en cada tarjeta (`/api/copy`):
+
+| | Qué comprueba el código |
+|---|---|
+| filas | que las filas en pantalla, en la placa y en lo que lee la IA sean la N del resumen |
+| volumen | que cada efectividad tenga su volumen a la vista y, en jugadores o partidos, un piso pedido |
+| copy | 3 párrafos, 3 preguntas, sin rótulos, sin copiar el dato del generador, y las tres capas señaladas |
+
+**Las capas las señala el modelo y las verifica el código**: la redacción
+devuelve `capas: { porQue, dolor, beneficio }` con la oración TEXTUAL del
+copy donde está cada una, y `LLM.filtrar` solo acepta la cita que está en
+el copy, mide una oración y no repite a otra. **Es un chequeo de forma**:
+si la capa está bien pensada lo decide quien aprueba, y la tarjeta lo dice.
+`ok` es `null` cuando no aplica (una receta sin tabla, un copy sin redactar).
+
+### 4 · La redacción reemplaza, no se superpone
+
+`aplicarRedaccion`: con ganchos de la IA, los de plantilla se van de la
+tarjeta (quedan solo si la guarda tiró todos los de la IA). El copy de la
+IA reemplaza al de plantilla en la tarjeta, el `.md` y el `.json`.
+
+### 5 · Los conectores · `GET /api/conectores`
+
+Botón «Conectores…» del encabezado. Comprueba, sin leer un libro: el
+catálogo (y si es el de Upstash o el respaldo), el libro de cada zona de
+`GC.LIGAS`, el `torneos/<id>.json` de la zona, los paquetes de
+play-by-play, el manifiesto de escudos, la cola de Canva **con sus HTML**,
+la bandeja, el historial, la plantilla de Stories y el motor de IA.
+
+- Lo que se lee del repo va por `REPO`; lo que se escribe, por `RAIZ` a
+  `contenido/` (hay un test que lo separa).
+- **Qué liga usa qué libro sigue escrito en `GC.LIGAS`**: no se descubre
+  solo. Una liga nueva se agrega ahí.
+- Medido el 2026-10-13: 25 de 27 en orden; faltan los paquetes de
+  play-by-play de LAB 2026-27 Norte y Sur (la temporada no arrancó).
+
+### Medido
+
+Prueba de fuego en APdeB Zona B, redacción real (68 s): 12 filas en
+pantalla, placa e IA; 3 ▲ arriba de la línea de la mediana, que es el «3
+altos en las dos» del resumen; autochequeo 3 de 3, con las tres citas en
+el copy. La guarda de letras sacó una placa por «la mitad de los equipos».
+
+Verificado al revés, diez mutaciones, todas caen: el cruce recortado a 10
+(8), las marcas mal puestas (2), la tabla recortada sin avisar (2), el
+autochequeo de filas en verde fijo (2), y una cada una el volumen solo
+para el orden, los otros dos autochequeos, las capas sin verificar, los
+ganchos superpuestos y la cola sin revisar.
