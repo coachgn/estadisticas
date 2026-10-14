@@ -81,13 +81,14 @@ node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: 
                            #             equipo, vencimiento y ciclo ORO por categoría
 node test-glosario.js      #  34 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
-node test-pbp.js           # 227 tests · la capa de laboratorio de play-by-play: el catálogo,
+node test-pbp.js           # 255 tests · la capa de laboratorio de play-by-play: el catálogo,
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
                            #             · el bloque opcional de secciones del paquete (punto 83)
                            #             · y el reloj de posesión: franjas, identidad y perfil del jugador (115),
                            #               su metodología en las cards, el Glosario y el manual (116),
                            #               y su síntesis táctica en la pestaña Personalidad (118)
+                           #               y el perfil de ritmo: arquetipos, desglose por franja y cruces de identidad (119)
 
 node test-mails.js         # 177 tests · los mails institucionales: plantillas sin huecos, el
                            #             día de Argentina, la idempotencia del cron, la ficha, el SMTP,
@@ -137,7 +138,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7767 tests en total. Todos tienen que dar verde antes de commitear.**
+**7795 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -255,7 +256,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=280`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=281`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -14170,3 +14171,115 @@ Al revés, once mutaciones, todas caen: el corte de 0,06 (2), el mínimo de
 impacto (3), explotar con las armas, la síntesis sin muestra, el ▲/▼, la
 pestaña sin la guarda de la capa, el informe sin esperar y el montaje sin
 el tipo nuevo.
+
+## 119. EL PERFIL DE RITMO EN PERSONALIDAD · arquetipos, desglose por franja y cruces de identidad (2026-10-14)
+
+Pedido del club: llevar el reloj de posesión a la pestaña **Personalidad**
+como su único lugar en Equipos, con arquetipos de ritmo, conclusiones
+por franja y cruces con los 8 ejes. `test-pbp.js` (sección 7, al final)
+fija todo lo de acá. Assets en `?v=281`.
+
+### Las tres decisiones, consultadas antes de escribir
+
+| | Decisión |
+|---|---|
+| **De dónde sale el reloj** | Solo de **Equipos → Quintetos**. Se queda en la card del rival de Scouting (punto 115), en el post-partido y en Jugador → Tiro |
+| **El marcador de la liga** | El **trazo neutro** de siempre, no rojo: en el panel el rojo es «peor que la liga» |
+| **Varios arquetipos a la vez** | Se muestran **todos**, en el orden del pedido |
+
+### La vara de 7-14 y de 15-20 · cambio en la INGESTA
+
+`liga.reloj.cortes.equipo` traía cuartiles de 0-6, 7-20 (`medio`) y 21-24.
+El Plan A contra el Plan B necesita **7-14 (`media`) y 15-20 (`armada`)
+por separado**, y las barras nuevas necesitan el origen y las zonas de la
+competencia. `motorstats-ingestion/src/pbp/reloj.js` (`baseLigaReloj`) suma
+`cortes.equipo.media`, `cortes.equipo.armada`, `liga.reloj.origen` y
+`liga.reloj.fam`; `test/test-reloj.js` tiene 4 tests más (50). Los paquetes
+quedaron **regenerados en local** (máximo 181 KB, contra el techo de 200)
+y **sin subir**. Hasta que se suban, los arquetipos de 7-14 y 15-20 no se
+evalúan y la card lo dice (`sinVara`); el resto anda con el paquete de hoy.
+
+### Lo que se agregó en `js/sgadd-pbp.js`
+
+| Función | Qué hace |
+|---|---|
+| `ARQUETIPOS_RELOJ` | los 7 de ataque y los 3 de defensa del pedido, en datos |
+| `relojArquetipos(paq)` | cuáles calzan. Ataque: volumen ≥ el p75 de esa franja **y** rendimiento con el signo pedido. Defensa: el rendimiento de las franjas que pide cada uno |
+| `relojDesglose(paq, identidad)` | el desglose 3.B (0-6, 7-20, 21-24), las situaciones especiales 3.C y los cruces 3.D |
+| `relojOrigenBarras` · `relojLugarBarras` | «Cómo nace la posesión» y «Desde dónde tira en cada franja» en barras, con el trazo de la competencia |
+| `relojPerfilHtml` | la card «Perfil de ritmo y ejecución», arriba de las barras |
+
+`relojSintesis(paq, identidad)` mete el desglose en el insight y en
+«Para explotarle / anularle». **La acción genérica de una franja que el
+desglose ya cubre no se repite.**
+
+### Las reglas, y en qué se apartan del texto del pedido
+
+- **Volumen**: contra los cuartiles de la competencia (p25 y p75), como pide
+  el pedido. 7-20 se mide contra el corte de 7-20 (`medio`), no contra el
+  de una franja suelta; hay un test que lo fija.
+- **Rendimiento**: el desvío de **Pts/tiro AJUSTADO POR MUESTRA** (20
+  tiros de la liga), desde 0,06 y con 20 tiros o más. Es la misma vara de
+  las armas y las grietas (punto 118). El pedido decía `pts_per_shot > liga + 0,06`
+  crudo, y con eso cinco de cinco tiros son un arquetipo.
+- **Situaciones especiales**: 0,08 ajustado y **más** de 30 tiros (con 30
+  justos no se dice nada; hay test).
+- **Cruces con la identidad**: PACE > p70, RO% > p90 y uso del triple
+  (`PT3%`) > p80, leídos con `idx.leer` del **mismo índice** que los 8 ejes
+  (`equiposIdentidadReloj` en `sgadd-equipos.js`). Viajan como JSON en
+  `data-pbp-identidad` del lugar, y `leerIdentidad()` no tumba el bloque si
+  el JSON viene roto. **El 35 % de triples de la posesión armada es fijo**,
+  como lo pidió el club: lo que lo vuelve selectivo es el percentil 80 del
+  uso del triple.
+- **Textos ajustados**: «Vértigo» decía que *el plan del rival* debía
+  priorizar un ritmo alto; se escribió «su plan de juego prioriza un ritmo
+  alto». «Cargar el rebote ofensivo de forma estricta» se escribió como
+  cargar con **un solo** jugador y dejar el resto atrás. «Su mayor grieta»
+  pasó a «Grieta táctica»: el arquetipo no mide si es la mayor. La falta
+  táctica dice que **el bonus y las faltas los mira el cuerpo técnico**: el
+  panel no conoce el estado del partido (punto 64).
+- **Las variables `identity.*` y `shot_clock.*` del pedido no existen** con
+  esos nombres: son los 8 ejes del índice y el campo `reloj` del paquete.
+
+### Los arquetipos son etiquetas, así que están en la metodología
+
+`METODOLOGIA_RELOJ.arquetipos` sale de la **misma tabla** que los decide
+(`ARQUETIPOS_RELOJ` se movió arriba de la metodología para eso) y
+se pinta en el Glosario y en el manual (`node generar-manual-etiquetas.js`).
+Hay un criterio nuevo, «Cuándo una franja rinde distinto». Un test exige
+que cada arquetipo esté en la metodología, en el Glosario y en el manual.
+
+### Medido
+
+- **Sobre los 17 paquetes regenerados de la Conferencia Norte**: 10 equipos
+  calzan en algún arquetipo (vulnerable ante el primer sistema 5, balance
+  quebrado 4, Plan A 2, Plan A estéril 2, Plan B 2, vértigo 2, transición
+  desordenada 2, muralla 1) y 5 tienen una situación especial. Ninguna
+  salida con `undefined` ni `NaN`.
+- **En el navegador** (API local, KV y Google reales, link de cliente de
+  Jujuy): Quintetos ya no trae el reloj; Personalidad muestra el perfil
+  con el paquete de KV («Balance defensivo quebrado» y el aviso de los
+  cuartiles que faltan). Con el paquete nuevo inyectado: «Libreto inicial
+  estéril», el desglose, el reinicio inerte y el cruce del triple
+  (percentil 91). A 375 px, cero desbordes fuera de los `.scrollbox`.
+- **En el PDF real del informe de equipo** (A3 apaisada, todas las
+  secciones tildadas, paquete nuevo): el bloque **arranca en la hoja 6 y
+  sigue en la 7**. Ninguna pieza se parte y no queda ninguna hoja huérfana.
+  **Entero no entra en una sola hoja**: mide ~1245 px contra ~1028 px
+  útiles, así que «íntegro en la hoja 6» no se cumple. Achicarlo a una sola
+  hoja implicaría sacar contenido.
+- **Al revés, 15 mutaciones, todas caen**: el arquetipo sin rendimiento 5,
+  sin la deduplicación 4, sin volumen 3, la muralla con una franja 2, sin
+  la card 2, y 1 cada una: el especial con 30, PACE, RO% y triple sin
+  percentil (los dos primeros revientan la suite), 7-20 contra el corte de
+  15-20, `sinVara` callado, el origen sin trazo y el reloj de vuelta en
+  Quintetos.
+
+### Para que llegue a producción
+
+1. **Push del front** (`?v=281`). El backend no cambió.
+2. **Subir los paquetes regenerados**, que es lo que trae los cuartiles
+   nuevos y la competencia de las barras:
+   `node herramientas/subir-paquetes.js --sin-regenerar --confirmar`
+   (en `motorstats-ingestion`). Antes de eso, el panel muestra el perfil sin
+   los arquetipos de 7-14 y 15-20, y las barras sin el trazo de la liga.

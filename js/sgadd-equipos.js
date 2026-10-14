@@ -1054,16 +1054,28 @@ function equiposTabPersonalidad(idx, e) {
       </div>` : ''}
     </div>
     ${equiposInsight(p.insight)}
-    ${equiposRelojPersonalidad(e)}`;
+    ${equiposRelojPersonalidad(idx, e)}`;
 }
 
 /* EL RELOJ DE POSESIÓN EN LA PERSONALIDAD (punto 118). Solo con la capa
    de play-by-play: sin ella la pestaña queda exactamente como antes. El
    paquete llega después del pintado (montarPendientes); la marca de hoja lo
    manda a una hoja propia en el informe de equipo. */
-function equiposRelojPersonalidad(e) {
+function equiposRelojPersonalidad(idx, e) {
   if (typeof SGADD_PBP === 'undefined' || !SGADD_PBP.activa || !SGADD_PBP.activa()) return '';
-  return `<div class="mt-6" data-hoja data-reloj-personalidad-espacio="1">${SGADD_PBP.espacio(e.nombre, 'equipo', null, 'personalidad')}</div>`;
+  return `<div class="mt-6" data-hoja data-reloj-personalidad-espacio="1">${SGADD_PBP.espacio(e.nombre, 'equipo', null, 'personalidad', equiposIdentidadReloj(idx, e))}</div>`;
+}
+
+/* Los tres ejes de la identidad que cruza el reloj (punto 119): ritmo,
+   uso del triple y rebote ofensivo, con su percentil contra la liga. Salen
+   del MISMO índice que los 8 ejes de arriba; un eje sin dato no viaja. */
+function equiposIdentidadReloj(idx, e) {
+  const out = {};
+  ['PACE', 'PT3%', 'RO%'].forEach((k) => {
+    const r = idx && idx.leer ? idx.leer(e.clave, k) : null;
+    if (r && r.percentil !== null && isFinite(r.percentil)) out[k] = { f: r.formateado, p: Math.round(r.percentil) };
+  });
+  return out;
 }
 
 /* =====================================================================

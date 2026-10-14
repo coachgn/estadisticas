@@ -447,6 +447,7 @@ function seccionReloj() {
     ${tabla(['Familia', 'Zonas', 'Dónde'], M.familias.map(f => [esc(fam(f.id)), esc(f.zonas), esc(f.donde)]))}
     <h3>5.4 · Etiquetas de equipo y de jugador</h3>
     ${tabla(['Etiqueta de equipo', 'Cuándo'], M.equipo.map(e => [esc(e.label), esc(e.regla)]))}
+    ${tabla(['Arquetipo del perfil de ritmo', 'Lado', 'Cuándo'], M.arquetipos.map(e => [esc(e.label), esc(e.lado), esc(e.regla)]))}
     ${tabla(['Etiqueta de jugador', 'Cuándo'], M.jugador.map(e => [esc(e.label), esc(e.regla)]))}
     <h3>5.5 · El aviso de reloj tardío</h3>
     <p>${esc(M.alerta)}</p>
