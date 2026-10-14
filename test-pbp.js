@@ -820,7 +820,17 @@ function paquete(equipo) {
       tabla.indexOf('mm-pos">1,10 <span class="dato-sec">(1,10)</span>') === -1 && tabla.indexOf('1,30 <span class="dato-sec">(1,30)</span>') !== -1
         && /mm-neg">0,73 <span class="dato-sec">\(0,84\)<\/span>/.test(tabla), tabla.match(/0,73[^/]+/));
     check('lo que sigue a un rebote ofensivo o a una falta va aparte, sin franja',
-      /Reinicio · tras rebote ofensivo[\s\S]*12\/20[\s\S]*Reinicio · tras falta recibida[\s\S]*4\/10/.test(tabla) && /no entra en ninguna franja/.test(tabla));
+      /2da oportunidad · tras rebote ofensivo[\s\S]*12\/20[\s\S]*Reinicio · tras falta recibida[\s\S]*4\/10/.test(tabla) && /no entran en ninguna franja/.test(tabla));
+    check('la fila del rebote ofensivo es «2da oportunidad» y la de la falta «Reinicio»: no comparten nombre ni tooltip',
+      P.FUERA_DE_FRANJA.ro.label === '2da oportunidad · tras rebote ofensivo' && P.FUERA_DE_FRANJA.fa.label === 'Reinicio · tras falta recibida'
+        && !/Reinicio · tras rebote/.test(tabla) && !/2da oportunidad · tras falta/.test(tabla)
+        && tabla.indexOf('title="' + P.FUERA_DE_FRANJA.ro.glosa + '">2da oportunidad') !== -1 && tabla.indexOf('title="' + P.FUERA_DE_FRANJA.fa.glosa + '">Reinicio') !== -1);
+    /* los 20 tiros tras rebote ofensivo y los 10 tras falta NO suman a ninguna franja: 50 + 60 + 40 + 30 = 180 */
+    const soloFuera = { f: [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]], ro: [20, 12, 26], fa: [10, 4, 9], sr: 0 };
+    const conFuera = P.relojReparto(pR.reloj.favor), sinFuera = P.relojReparto(Object.assign({}, pR.reloj.favor, { ro: [0, 0, 0], fa: [0, 0, 0] }));
+    check('la 2da oportunidad y el reinicio no contaminan las franjas: el reparto es el mismo con o sin ellos, y solos no llenan ninguna',
+      JSON.stringify(conFuera) === JSON.stringify(sinFuera) && P.relojReparto(soloFuera).every(x => x === null)
+        && /12\/20/.test(P.relojTabla(soloFuera, null)) && (P.relojTabla(soloFuera, null).match(/>0\/0</g) || []).length === 4);
     check('los tiros sin reloj se cuentan a la vista, y la columna dice que no son puntos por jugada',
       /7 tiros sin reloj atribuible/.test(tabla) && /No cuenta los libres: no es puntos por jugada/.test(tabla));
     const pocos = P.relojTabla({ f: [[9, 9, 18, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]], ro: [0, 0, 0], fa: [0, 0, 0], sr: 0 }, pR.liga.reloj);
@@ -881,7 +891,8 @@ function paquete(equipo) {
     const crit = (id) => (M.criterios.filter(x => x.id === id)[0] || {}).texto || '';
     check('los tres criterios pedidos están escritos: la liga y no umbrales fijos, Pts/tiro sin libres y el reinicio en fila propia',
       /No hay umbrales fijos/.test(crit('liga')) && /cuarto más alto/.test(crit('liga')) && /tiros libres no se cronometran/.test(crit('tiro'))
-        && /rebote ofensivo o a una falta recibida/.test(crit('reinicio')) && /no entra en ninguna franja/.test(crit('reinicio')));
+        && /«2da oportunidad» son los tiros que siguen a un rebote ofensivo/.test(crit('reinicio')) && /«Reinicio» son los que siguen a una falta recibida/.test(crit('reinicio'))
+        && /fuera de las franjas/.test(crit('reinicio')));
     const dichas = M.equipo.concat(M.jugador).map(x => x.label);
     const emitidas = [pR, tardio, armada, dosRasgos].map(x => P.relojIdentidad(x).rasgos.map(y => y.label))
       .concat(['1', '2', '5'].map(id => P.relojPerfilJugador(pR, id).rasgos.map(y => y.label)))
@@ -894,7 +905,7 @@ function paquete(equipo) {
     const ayudas = [P.relojEquipo(pR), P.relojJugador(pR, '1'), hp, P.relojScouting(pR)];
     check('las cuatro superficies del reloj traen «Cómo se lee», plegado y fuera del papel',
       ayudas.every(h => (h.match(/data-reloj-ayuda/g) || []).length === 1 && /<details class="pbp-detalle pbp-sub mt-2 no-imprimir" data-reloj-ayuda="1">/.test(h)
-        && /Reinicio, en fila propia/.test(h) && /Las etiquetas salen de la propia liga/.test(h)));
+        && /2da oportunidad y reinicio, en filas propias/.test(h) && /Las etiquetas salen de la propia liga/.test(h)));
     check('«Cómo se lee» cita los cortes de ESTA competencia, y sin cortes válidos no inventa ninguno',
       /el cuarto más alto arranca en 19,0 % de finales tempranos y en 19,7 % de tardíos/.test(P.relojAyuda(pR.liga.reloj))
         && !/arranca en/.test(P.relojAyuda(pocosEquipos.liga.reloj)) && !/arranca en/.test(P.relojAyuda(null)));
@@ -916,7 +927,16 @@ function paquete(equipo) {
     const manual = fs.readFileSync(path.join(__dirname, 'MANUAL_ETIQUETADO_SGADD.html'), 'utf8');
     check('el manual de etiquetado trae la sección del reloj, generada del mismo texto',
       /5 · Reloj de posesión/.test(manual) && M.franjas.every(x => manual.indexOf(x.lectura) !== -1)
-        && M.equipo.concat(M.jugador).every(x => manual.indexOf(x.label) !== -1) && manual.indexOf('Describe, no juzga') !== -1);
+        && M.equipo.concat(M.jugador).every(x => manual.indexOf(x.label) !== -1) && manual.indexOf('Describe, no juzga') !== -1
+        && manual.indexOf('2da oportunidad y reinicio, en filas propias') !== -1);
+    /* ---- el papel: cada pieza del reloj va entera (punto 117) */
+    const piezas = (h) => (h.match(/pbp-reloj-pieza/g) || []).length;
+    check('cada tabla, lista y lectura del reloj es una pieza que no se parte entre hojas',
+      piezas(P.relojEquipo(pR)) === 4 && piezas(P.relojScouting(pR)) === 4 + 1 + 2 && piezas(hp) === 2 && piezas(P.relojJugador(pR, '1')) === 1,
+      [piezas(P.relojEquipo(pR)), piezas(P.relojScouting(pR)), piezas(hp), piezas(P.relojJugador(pR, '1'))]);
+    const cssIndex = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+    check('y el CSS de papel lo hace valer: break-inside avoid, solo al imprimir',
+      /@media print \{ \.pbp-reloj-pieza \{ break-inside: avoid; page-break-inside: avoid; \} \}/.test(cssIndex));
     check('ninguna salida trae un undefined ni un NaN', !/undefined|NaN/.test(hR + hp + P.relojJugador(pR, '1') + P.relojJugador(pR, '5') + P.relojEquipo(chico)));
   }
 

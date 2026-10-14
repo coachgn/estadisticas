@@ -1277,6 +1277,10 @@ const SGADD_PBP = (function () {
        «más de 15 %» marcaría a media liga. Se decide contra los cortes de
        la propia competencia (el cuarto más alto), y solo con muestra.
      · Ninguna franja es buena o mala por sí sola: describen un estilo. */
+  /* EN EL PAPEL, CADA PIEZA VA ENTERA (.pbp-reloj-pieza, index.html): una
+     tabla con su subtítulo, una lista de jugadores o la lectura no se
+     parten entre dos hojas. Medido en el PDF del Scouting: sin eso la lista
+     de «quién tira con el reloj encima» quedaba mitad en cada hoja. */
   const FRANJAS_RELOJ = ['0-6 s', '7-14 s', '15-20 s', '21-24 s'];
   const MIN_EQUIPOS_RELOJ = 8, MIN_JUGADORES_RELOJ = 20, MIN_PARTIDOS_RELOJ = 30, MIN_TIROS_TINTE = 10;
   const ORIGENES_RELOJ = [['ROBO', 'Tras robo'], ['RD', 'Tras rebote defensivo'], ['MUERTA', 'Tras pelota muerta'],
@@ -1299,6 +1303,17 @@ const SGADD_PBP = (function () {
      del reloj («Cómo se lee»), el Glosario del panel y el manual de
      etiquetado: con el criterio escrito en tres lados, uno queda viejo. */
   const RELOJ_MINIMOS = { finalesEquipo: 150, tirosJugador: 30, canastasFranja: 5 };
+  /* LAS DOS FILAS FUERA DE FRANJA (opción elegida por el club, 2026-10-14).
+     No son lo mismo y por eso no se llaman igual: tras un rebote ofensivo
+     el equipo tiene una SEGUNDA OPORTUNIDAD de tiro; tras una falta
+     recibida el reloj se REINICIA y la posesión sigue. Ninguna de las dos
+     entra en una franja: corren con otro reloj. */
+  const FUERA_DE_FRANJA = {
+    ro: { label: '2da oportunidad · tras rebote ofensivo',
+      glosa: 'Tiros que siguen a un rebote ofensivo propio. Corren con un reloj de 14 segundos: no entran en ninguna franja.' },
+    fa: { label: 'Reinicio · tras falta recibida',
+      glosa: 'Tiros que siguen a una falta recibida con la pelota. El reloj se reinicia (14 segundos, o lo que quedaba): no entran en ninguna franja.' },
+  };
   const METODOLOGIA_RELOJ = {
     franjas: [
       { label: '0-6 s', nombre: 'Temprana', lectura: 'Transición y primera ventaja: el tiro sale antes de que la defensa termine de armarse.' },
@@ -1320,8 +1335,8 @@ const SGADD_PBP = (function () {
         texto: 'No hay umbrales fijos: un equipo o un jugador recibe una etiqueta cuando su porción en esa franja está en el cuarto más alto de SU competencia. El mismo porcentaje puede marcar a alguien en una liga y a nadie en otra.' },
       { id: 'tiro', titulo: 'Se mide Pts/tiro y eFG%',
         texto: 'Los tiros libres no se cronometran —el play-by-play no permite ubicarlos en el reloj—, así que lo que se informa es puntos por tiro de campo, no puntos por jugada.' },
-      { id: 'reinicio', titulo: 'Reinicio, en fila propia',
-        texto: 'Lo que sigue a un rebote ofensivo o a una falta recibida corre con otro reloj (14 segundos, o lo que quedaba). Va en su fila y no entra en ninguna franja: un palmeo a los 2 segundos del rebote no es una transición.' },
+      { id: 'reinicio', titulo: '2da oportunidad y reinicio, en filas propias',
+        texto: 'Dos filas van fuera de las franjas porque corren con otro reloj (14 segundos, o lo que quedaba). «2da oportunidad» son los tiros que siguen a un rebote ofensivo: un palmeo a los 2 segundos del rebote no es una transición. «Reinicio» son los que siguen a una falta recibida con la pelota.' },
       { id: 'derivado', titulo: 'El reloj es derivado',
         texto: 'Sale del reloj del período que carga el operador del partido. Se lee por franjas, no segundo a segundo: hasta 3 segundos de más entran en la franja tardía, y el tiro sin un inicio atribuible queda «sin reloj» y se cuenta a la vista.' },
       { id: 'asistencia', titulo: 'Asistido es solo la canasta',
@@ -1397,11 +1412,11 @@ const SGADD_PBP = (function () {
         <td class="${TD}">${c[5]}</td>
       </tr>`;
     };
-    const aparte = (rotulo, c, cl) => {
+    const aparte = (rotulo, glosa, c, cl) => {
       const x = tr3(c), y = cl ? tr3(cl) : null;
       if (!x[0]) return '';
       return `<tr class="fila-tenue">
-        <td class="px-2 py-1 text-left text-xs whitespace-nowrap" title="Corre con otro reloj (14 segundos, o lo que quedaba): no entra en ninguna franja.">${rotulo}</td><td class="${TD}">—</td>
+        <td class="px-2 py-1 text-left text-xs whitespace-nowrap" title="${esc(glosa)}">${rotulo}</td><td class="${TD}">—</td>
         <td class="${TD}">${x[1]}/${x[0]}</td>
         <td class="${TD}">${num(x[2] / x[0], 2)}${y && y[0] ? ` <span class="dato-sec">(${num(y[2] / y[0], 2)})</span>` : ''}</td>
         <td class="${TD}">${num(50 * x[2] / x[0])} %</td><td class="${TD}">—</td><td class="${TD}">—</td><td class="${TD}">—</td>
@@ -1410,7 +1425,7 @@ const SGADD_PBP = (function () {
     const th = (t, glosa) => `<th class="${TH}"${glosa ? ` data-glosa="${esc(glosa)}"` : ''}>${t}</th>`;
     return `<div class="scrollbox"><table class="w-full" style="min-width:34rem">
       <thead><tr>
-        <th class="${TH} text-left" data-glosa="Segundo de la posesión en que sale el tiro o se pierde la pelota. Derivado del reloj del período: se lee por franjas. Las filas de reinicio (tras rebote ofensivo o falta) van aparte.">Reloj</th>
+        <th class="${TH} text-left" data-glosa="Segundo de la posesión en que sale el tiro o se pierde la pelota. Derivado del reloj del período: se lee por franjas. La 2da oportunidad (tras rebote ofensivo) y el reinicio (tras falta recibida) van en filas aparte.">Reloj</th>
         ${th(o.soloTiros ? '% tiros' : '% finales', o.soloTiros
           ? 'Qué parte de sus tiros de campo con reloj sale en esta franja. Entre paréntesis, la competencia.'
           : 'Qué parte de sus finales de posesión con reloj (tiros de campo y pérdidas) cae en esta franja. Entre paréntesis, la competencia.')}
@@ -1422,7 +1437,7 @@ const SGADD_PBP = (function () {
         ${th('PP', 'Pérdidas en la franja.')}
       </tr></thead>
       <tbody>${acc.f.map(fila).join('')}
-        ${aparte('Reinicio · tras rebote ofensivo', acc.ro, liga && liga.ro)}${aparte('Reinicio · tras falta recibida', acc.fa, liga && liga.fa)}</tbody>
+        ${aparte(FUERA_DE_FRANJA.ro.label, FUERA_DE_FRANJA.ro.glosa, acc.ro, liga && liga.ro)}${aparte(FUERA_DE_FRANJA.fa.label, FUERA_DE_FRANJA.fa.glosa, acc.fa, liga && liga.fa)}</tbody>
     </table></div>
     ${acc.sr ? `<p class="text-[10px] dato-sec mt-1">${acc.sr} tiro${acc.sr === 1 ? '' : 's'} sin reloj atribuible (sin rebote cargado, o a más de ${24 + ((liga && liga.tolerancia) || 3)} s del inicio): no entra${acc.sr === 1 ? '' : 'n'} en ninguna franja.</p>` : ''}`;
   }
@@ -1498,7 +1513,7 @@ const SGADD_PBP = (function () {
   const relojChips = (rasgos) => rasgos.map(x => `<span class="inline-block text-[11px] px-2 py-0.5 rounded border border-current/40 text-accent mr-1 mb-1" title="${esc(x.detalle)}">${esc(x.label)}</span>`).join('');
   const relojDetalles = (rasgos) => (rasgos.length ? `<ul class="mb-2">${rasgos.map(x => `<li class="text-[11px] text-ink leading-snug"><b>${esc(x.label)}</b> · ${esc(x.detalle)}</li>`).join('')}</ul>` : '');
   const NOTA_RELOJ = 'El reloj de posesión se deriva del reloj del período que carga el operador del partido: sirve por franjas, no segundo a segundo. '
-    + 'Entre paréntesis, la competencia. Pts/tiro no cuenta los libres. Lo que sigue a un rebote ofensivo o a una falta va aparte: corre con otro reloj.';
+    + 'Entre paréntesis, la competencia. Pts/tiro no cuenta los libres. La 2da oportunidad (tras rebote ofensivo) y el reinicio (tras falta recibida) van aparte: corren con otro reloj.';
 
   /** La sección del equipo en la card de Quintetos. Sin «reloj» en el paquete devuelve ''. PURA. */
   function relojEquipo(paq) {
@@ -1522,12 +1537,12 @@ const SGADD_PBP = (function () {
           ${FRANJAS_RELOJ.map((_, i) => `<td class="${TD}">${totalFranja[i] ? num(porc(fam[f.id][i] || 0, totalFranja[i]), 0) + ' %' : '—'}</td>`).join('')}</tr>`).join('');
       return `${cabecera}
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <div class="min-w-0">${subtitulo('Lo que tira')}${relojTabla(r.favor, L)}</div>
-          <div class="min-w-0">${subtitulo('Lo que le tiran')}${relojTabla(r.contra, L)}</div>
-          ${origen ? `<div class="min-w-0">${subtitulo('Cómo nace la posesión · tiros de la primera opción')}
+          <div class="min-w-0 pbp-reloj-pieza">${subtitulo('Lo que tira')}${relojTabla(r.favor, L)}</div>
+          <div class="min-w-0 pbp-reloj-pieza">${subtitulo('Lo que le tiran')}${relojTabla(r.contra, L)}</div>
+          ${origen ? `<div class="min-w-0 pbp-reloj-pieza">${subtitulo('Cómo nace la posesión · tiros de la primera opción')}
             <div class="scrollbox"><table class="w-full"><thead><tr><th class="${TH} text-left">Origen</th><th class="${TH}">Tiros</th>
               <th class="${TH}" data-glosa="Segundos promedio entre el inicio de la posesión y el tiro.">Seg.</th><th class="${TH}">Pts/tiro</th></tr></thead><tbody>${origen}</tbody></table></div></div>` : ''}
-          ${lugar ? `<div class="min-w-0">${subtitulo('Desde dónde tira en cada franja')}
+          ${lugar ? `<div class="min-w-0 pbp-reloj-pieza">${subtitulo('Desde dónde tira en cada franja')}
             <div class="scrollbox"><table class="w-full"><thead><tr><th class="${TH} text-left">Zona</th>${FRANJAS_RELOJ.map(f => `<th class="${TH}">${f}</th>`).join('')}</tr></thead><tbody>${lugar}</tbody></table></div>
             ${r.sinZona ? `<p class="text-[10px] dato-sec mt-1">${r.sinZona} partido${r.sinZona === 1 ? '' : 's'} sin zona: su lista de tiros no coincide con los eventos y no se adivina.</p>` : ''}</div>` : ''}
         </div>
@@ -1570,10 +1585,10 @@ const SGADD_PBP = (function () {
       if (!base) return '';
       const idn = relojIdentidad(paq), L = relojLiga(paq), q = relojQuienes(paq);
       const lecturas = idn.rasgos.filter(r => LECTURA_RELOJ[r.id]).map(r => `<li class="text-[11px] text-ink leading-snug"><b>${esc(r.label)}</b> · ${esc(LECTURA_RELOJ[r.id](L))}</li>`).join('');
-      const lista = (titulo, filas) => (filas.length ? `<div class="min-w-0">${subtitulo(titulo)}<ul>${filas.map(x => `<li class="text-[11px] text-ink leading-snug" title="${esc(x.nombre)}">
+      const lista = (titulo, filas) => (filas.length ? `<div class="min-w-0 pbp-reloj-pieza">${subtitulo(titulo)}<ul>${filas.map(x => `<li class="text-[11px] text-ink leading-snug" title="${esc(x.nombre)}">
           <b class="text-white">${esc(apellido(x.nombre))}</b> · ${esc(x.label)} <span class="font-mono dato-sec">${x.conv}/${x.tiros} · ${num(x.porcion, 0)} % de sus tiros</span></li>`).join('')}</ul></div>` : '');
       const quienes = lista('Quién tira en los primeros 6 segundos', q.tempranos) + lista('Quién tira con el reloj encima', q.tardios);
-      return `${lecturas ? `<div class="pbp-lectura mb-3" data-reloj-lectura="1"><p class="text-[10px] uppercase tracking-wider text-muted mb-1">Lectura para defenderlo · decide el cuerpo técnico</p><ul>${lecturas}</ul></div>` : ''}
+      return `${lecturas ? `<div class="pbp-lectura pbp-reloj-pieza mb-3" data-reloj-lectura="1"><p class="text-[10px] uppercase tracking-wider text-muted mb-1">Lectura para defenderlo · decide el cuerpo técnico</p><ul>${lecturas}</ul></div>` : ''}
         ${quienes ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-3" data-reloj-quienes="1">${quienes}</div>` : ''}
         ${base}`;
     } catch (e) { return ''; }
@@ -1589,7 +1604,7 @@ const SGADD_PBP = (function () {
       if (perfil.comparable && !perfil.muestra) cabecera = `<p class="text-[11px] text-yellow-400 mb-2">~ Muestra chica: ${perfil.tiros} tiros con reloj (hacen falta ${perfil.minimo}). Se muestra el reparto, sin perfil.</p>`;
       else if (perfil.rasgos.length) cabecera = `<div class="mb-1">${relojChips(perfil.rasgos)}</div>${relojDetalles(perfil.rasgos)}`;
       else if (perfil.comparable) cabecera = '<p class="text-[11px] text-ink mb-2">Reparte sus tiros en el reloj como la mayoría de la competencia: ninguna franja lo distingue.</p>';
-      return `<div class="pbp-reloj-jugador mt-4">
+      return `<div class="pbp-reloj-jugador pbp-reloj-pieza mt-4">
         ${subtitulo('Reloj de posesión · cuándo tira')}
         ${cabecera}${relojTabla(acc, relojLiga(paq), { soloTiros: true })}
         <p class="text-[10px] dato-sec mt-1 leading-snug">${NOTA_RELOJ}</p>
@@ -1609,7 +1624,7 @@ const SGADD_PBP = (function () {
     const lado = (rotulo, acc) => {
       const n = relojFinales(acc), tard = relojReparto(acc)[3];
       const alto = corteValido(corte, MIN_PARTIDOS_RELOJ) && isFinite(corte.p90) && n >= 30 && tard != null && tard >= corte.p90;
-      return `<div class="min-w-0">
+      return `<div class="min-w-0 pbp-reloj-pieza">
         <p class="text-[11px] uppercase tracking-wider font-display text-accent mb-1">${esc(rotulo)}</p>
         <p class="text-[11px] text-ink mb-1">Finales con el reloj encima: <b class="font-mono">${tard == null ? '—' : num(tard) + ' %'}</b>
           ${corteValido(corte, MIN_PARTIDOS_RELOJ) ? `<span class="dato-sec">(un partido típico de la competencia: ${num(corte.p50)} %)</span>` : ''}</p>
@@ -1880,7 +1895,7 @@ const SGADD_PBP = (function () {
     activa, espacio, espacioJugador, montarPendientes, activar, apellido, _cache: cache,
     partidoDe, mapaPartido, momentumPartido, quintetosPartido, espacioPartido, MIN_TIROS_DIAGNOSTICO,
     relojTabla, relojIdentidad, relojPerfilJugador, relojEquipo, relojJugador, relojPartido, relojReparto, FRANJAS_RELOJ,
-    relojScouting, relojQuienes, relojMetodologiaHtml, relojAyuda, METODOLOGIA_RELOJ, RELOJ_MINIMOS,
+    relojScouting, relojQuienes, relojMetodologiaHtml, relojAyuda, METODOLOGIA_RELOJ, RELOJ_MINIMOS, FUERA_DE_FRANJA,
   };
 })();
 

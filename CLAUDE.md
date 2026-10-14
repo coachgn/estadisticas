@@ -81,7 +81,7 @@ node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: 
                            #             equipo, vencimiento y ciclo ORO por categoría
 node test-glosario.js      #  34 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
-node test-pbp.js           # 206 tests · la capa de laboratorio de play-by-play: el catálogo,
+node test-pbp.js           # 210 tests · la capa de laboratorio de play-by-play: el catálogo,
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
                            #             · el bloque opcional de secciones del paquete (punto 83)
@@ -136,7 +136,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7746 tests en total. Todos tienen que dar verde antes de commitear.**
+**7750 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -254,7 +254,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=278`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=279`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -14011,19 +14011,17 @@ del aviso de reloj tardío («describe, no juzga»).
   cambia, hay que cambiarlos acá.
 - **Toda etiqueta que el motor emite tiene que estar definida**: hay un test
   que junta las que salen de las fixtures y las busca en la metodología.
-- **Las filas aparte se rotulan «Reinicio · tras rebote ofensivo / tras falta
-  recibida»**, con un `title` que dice por qué no entran en una franja.
+- **Las dos filas aparte tienen nombre propio** (punto 117), con un `title`
+  que dice por qué no entran en una franja.
 - **«Cómo se lee» lleva `.no-imprimir`**: en el papel ya va la nota corta.
 - **El Glosario sin `SGADD_PBP` cargado no pinta la card** (los tests del
   glosario corren sin el módulo y no cambiaron).
 - La card del Glosario la ve todo el mundo, tenga o no la capa: es
   metodología, no un dato de un club (punto 20).
 
-### «2da oportunidad» en vez de «Reinicio» · NO aplicado
+### «2da oportunidad» y «Reinicio» · resuelto en el punto 117
 
-Llegó como texto pegado, y el mensaje del club decía «Reinicio». Además
-«segunda oportunidad» describe el tiro tras un rebote ofensivo, no el que
-sigue a una falta recibida. Queda por confirmar con el club.
+El club eligió separar las dos filas: ver el punto 117.
 
 ### Verificado en el servidor local (2026-10-14)
 
@@ -14042,3 +14040,65 @@ reales) con un link de cliente de Jujuy de 12 horas, `v278`:
 
 **Sigue sin verificar: los PDF** (post-partido y Scouting, que ahora son más
 largos) y el bloque del jugador en pantalla.
+
+## 117. «2DA OPORTUNIDAD» Y «REINICIO», Y EL PAGINADO DE LOS DOS PDF (2026-10-14)
+
+### Las dos filas fuera de franja dejan de llamarse igual
+
+Decisión del club: no son lo mismo. `SGADD_PBP.FUERA_DE_FRANJA` (un solo
+lugar, con rótulo y tooltip de cada una):
+
+```
+2da oportunidad · tras rebote ofensivo    el equipo vuelve a tirar tras su propio rebote
+Reinicio · tras falta recibida            el reloj se reinicia y la posesión sigue
+```
+
+Ninguna entra en una franja: corren con otro reloj. El criterio de la
+metodología pasó a «2da oportunidad y reinicio, en filas propias», y de ahí
+lo toman las cards, el Glosario y el manual (regenerado). **La ingesta no
+cambió**: allá son los grupos `ro` y `fa`, sin texto.
+
+Tests nuevos: los dos rótulos y sus tooltips no se cruzan, y el reparto por
+franja es el mismo con o sin esos tiros (no contaminan la posesión primaria).
+
+### El paginado, medido sobre los PDF REALES
+
+Generados con Chrome sin ventana por CDP contra el panel local (API local,
+KV y Google reales, link de cliente de Jujuy), con y sin el bloque del reloj
+en el mismo documento, y leídos hoja por hoja con `pdftotext` / `pypdf`.
+
+```
+POST-PARTIDO (Comunicaciones vs Jujuy, A4 vertical)
+  sin reloj  5 hojas · 3: perfil de tiro + mapa         · 4: quintetos
+  con reloj  5 hojas · 3: perfil de tiro + RELOJ entero · 4: mapa + quintetos
+
+SCOUTING vs Rivadavia (A3 apaisada, plan ORO, todo tildado)
+  sin reloj  15 hojas
+  con reloj  16 hojas · 12: quintetos + lectura + quién tira temprano
+                        13: quién tira tarde + lo que tira + lo que le tiran + origen
+                        14: zona por franja + líderes del último partido
+```
+
+- **Post-partido**: mismas 5 hojas. El bloque entra entero en la hoja 3 (las
+  dos tablas, la nota y el título); el mapa baja a la 4, que tenía lugar. El
+  pie sale en las cinco. «Cómo se lee» no se imprime.
+- **Scouting**: una hoja más, sin hojas huérfanas (la 14 comparte con los
+  líderes, que antes iban solos).
+- **El corte que se encontró y se arregló**: la lista «quién tira con el
+  reloj encima» quedaba mitad en cada hoja, y la tabla de zonas partida
+  después de su primera fila. Cada tabla con su subtítulo, cada lista y la
+  lectura llevan ahora `.pbp-reloj-pieza` (`break-inside: avoid`, solo en
+  `@media print`). Hay test de las dos mitades (la clase y la regla).
+
+**El post-partido mide 5 hojas, no las 2 del punto 7**: es así desde que
+sumó cuarto a cuarto, momentum, mapa y quintetos (puntos 96-98). No lo
+cambió el reloj; la hoja 2 lleva solo el momentum.
+
+### Cómo se generó (por si hay que repetirlo)
+
+`window.print` se reemplaza antes de llamar a la exportación (en el
+post-partido tiene que LANZAR: su limpieza corre 400 ms después de
+`print()` y borra el modo de papel antes de la captura), y después
+`Page.printToPDF` con `preferCSSPageSize` y márgenes de 0,4 pulgadas. Con la
+caché desactivada (`Network.setCacheDisabled`), o Chrome sirve el
+`index.html` anterior.
