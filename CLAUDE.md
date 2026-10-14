@@ -81,11 +81,12 @@ node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: 
                            #             equipo, vencimiento y ciclo ORO por categoría
 node test-glosario.js      #  34 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
-node test-pbp.js           # 196 tests · la capa de laboratorio de play-by-play: el catálogo,
+node test-pbp.js           # 206 tests · la capa de laboratorio de play-by-play: el catálogo,
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
                            #             · el bloque opcional de secciones del paquete (punto 83)
-                           #             · y el reloj de posesión: franjas, identidad y perfil del jugador (115)
+                           #             · y el reloj de posesión: franjas, identidad y perfil del jugador (115),
+                           #               su metodología en las cards, el Glosario y el manual (116)
 
 node test-mails.js         # 177 tests · los mails institucionales: plantillas sin huecos, el
                            #             día de Argentina, la idempotencia del cron, la ficha, el SMTP,
@@ -135,7 +136,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7736 tests en total. Todos tienen que dar verde antes de commitear.**
+**7746 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -253,7 +254,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=277`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=278`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -12885,8 +12886,14 @@ de la Zona B que reciben las otras zonas.
 `naranja-u21-clausura-2026`, el id de planilla del JSON (punto 54). El
 servidor no conoce esa clave, así que no llegan a ninguna zona. Y no se
 atribuyen por los equipos: «RECONQUISTA 'A' vs UNION VECINAL 'A'» existe en
-la Zona A de Primera y en la U21 — con dos candidatos no se elige. Hay que
-decidir a qué categoría pertenecen y volver a publicarlos ahí.
+la Zona A de Primera y en la U21 — con dos candidatos no se elige.
+
+**Decidido por el club (2026-10-13): son de la U21** (09/07, Ida). Falta
+volver a publicarlos desde el Panel Master → Reconquista → categoría U21 →
+Configuración → partidos sin estadísticas (tramo Ida) → Publicar, alcance
+«solo este cliente». Después, la zona U21 de APB Formativas tiene que
+mostrar el mismo PJ que la ficha de Reconquista U21 (hasta 5 minutos, por
+el caché de la llave). Es una escritura del catálogo: la hace el club.
 
 Tests: `test-interzonal.js`, sección «1 ter bis». Al revés: sin la unión
 caen 5, sin el respaldo por mismo libro 3, sin la herencia al enganchar 1.
@@ -13974,3 +13981,64 @@ Los paquetes de Jujuy en KV eran del 02/10: además del reloj, ahora traen
 - **El origen «robo» como dato de transición del rival** (puntos tras pérdida).
 - Los partidos más viejos que los últimos 10 del equipo no tienen reloj en su
   post-partido (el tope del punto 97); la temporada sí los cuenta.
+
+## 116. LA METODOLOGÍA DEL RELOJ, A LA VISTA · cards, Glosario y manual (2026-10-14)
+
+Pedido del club: dejar documentados para el usuario los criterios y los
+umbrales del reloj de posesión. `test-pbp.js` (sección 7) fija todo.
+
+### Un solo texto · `SGADD_PBP.METODOLOGIA_RELOJ`
+
+Vive en `js/sgadd-pbp.js`, que es el módulo que APLICA los criterios, y lo
+leen tres lugares. Con el criterio escrito en tres lados, uno queda viejo.
+
+| Dónde | Qué muestra |
+|---|---|
+| Las cuatro superficies del reloj (Equipos, Scouting, post-partido, jugador) | «Cómo se lee · criterios del reloj», plegado (`relojAyuda`), con los cortes de ESA competencia |
+| Glosario del panel | card «Metodología · Reloj de posesión», plegada, arriba de las familias (`relojMetodologiaHtml`) |
+| `MANUAL_ETIQUETADO_SGADD.html` | sección 5, generada con `node generar-manual-etiquetas.js` |
+
+Contiene: las cuatro franjas (Temprana · Media · Armada · Tardía) con su
+lectura, los seis criterios de medición, las siete familias de zona con sus
+zonas, las etiquetas de equipo y de jugador con su regla, y la definición
+del aviso de reloj tardío («describe, no juzga»).
+
+### Lo que hay que respetar al tocarlo
+
+- **Los mínimos de la metodología son los que aplica el motor**
+  (`RELOJ_MINIMOS`: 150 finales, 30 tiros, 5 canastas). Son el respaldo del
+  panel; los que rigen viajan en `liga.reloj.minimos`. Si la ingesta los
+  cambia, hay que cambiarlos acá.
+- **Toda etiqueta que el motor emite tiene que estar definida**: hay un test
+  que junta las que salen de las fixtures y las busca en la metodología.
+- **Las filas aparte se rotulan «Reinicio · tras rebote ofensivo / tras falta
+  recibida»**, con un `title` que dice por qué no entran en una franja.
+- **«Cómo se lee» lleva `.no-imprimir`**: en el papel ya va la nota corta.
+- **El Glosario sin `SGADD_PBP` cargado no pinta la card** (los tests del
+  glosario corren sin el módulo y no cambiaron).
+- La card del Glosario la ve todo el mundo, tenga o no la capa: es
+  metodología, no un dato de un club (punto 20).
+
+### «2da oportunidad» en vez de «Reinicio» · NO aplicado
+
+Llegó como texto pegado, y el mensaje del club decía «Reinicio». Además
+«segunda oportunidad» describe el tiro tras un rebote ofensivo, no el que
+sigue a una falta recibida. Queda por confirmar con el club.
+
+### Verificado en el servidor local (2026-10-14)
+
+Panel en `localhost:8765` contra la API local (`localhost:3011`, KV y Google
+reales) con un link de cliente de Jujuy de 12 horas, `v278`:
+
+- **Equipos → Quintetos**: la sección con «Ofensiva armada», sus cuatro
+  tablas, las filas de reinicio y «Cómo se lee».
+- **Post-partido** (Comunicaciones vs Jujuy, 27/03): la card con las dos
+  tablas; sin aviso (10,5 % de finales tardíos contra 16,3 % de un partido
+  típico).
+- **Scouting vs Rivadavia**: las dos lecturas (ataca temprano y llega tarde)
+  y los siete jugadores nombrados.
+- **Glosario**: la card, plegada, con sus 27 ítems.
+- A 375 px, ni Scouting ni el Glosario desbordan.
+
+**Sigue sin verificar: los PDF** (post-partido y Scouting, que ahora son más
+largos) y el bloque del jugador en pantalla.

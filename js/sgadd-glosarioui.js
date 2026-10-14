@@ -119,6 +119,19 @@ const SGADD_GLOSARIOUI = (function () {
     return indice + orden.map(f => bloqueFamilia(f, porFamilia.get(f))).join('');
   }
 
+  /* LA METODOLOGÍA DEL RELOJ DE POSESIÓN (punto 116). No es una sigla de la
+     planilla, así que no entra en las familias del manual del motor: es una
+     card propia, plegada. El texto vive en sgadd-pbp.js, que es el que
+     aplica los criterios; acá solo se muestra. */
+  function metodologiaReloj() {
+    if (typeof SGADD_PBP === 'undefined' || !SGADD_PBP.relojMetodologiaHtml) return '';
+    return `<details class="card rounded-xl p-4 sm:p-5 border border-hairline pbp-detalle pbp-sub" id="glosarioReloj">
+      <summary class="font-display uppercase tracking-wide text-xs text-accent cursor-pointer select-none">Metodología · Reloj de posesión (play-by-play)</summary>
+      <p class="text-xs text-muted mt-2">En qué segundo de la posesión tira y pierde la pelota un equipo. Solo en las categorías con análisis de play-by-play.</p>
+      ${SGADD_PBP.relojMetodologiaHtml()}
+    </details>`;
+  }
+
   function html() {
     if (!G) return '';
     return `<div class="space-y-5">
@@ -140,6 +153,7 @@ const SGADD_GLOSARIOUI = (function () {
             class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm text-ink">
         </label>
       </div>
+      ${metodologiaReloj()}
       <div id="glosarioCuerpo" class="space-y-5">${cuerpo()}</div>
     </div>`;
   }

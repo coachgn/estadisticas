@@ -426,6 +426,33 @@ function seccionLimites() {
     el percentil en vez de recibir uno falso.</p>`;
 }
 
+/* ====================================================================
+   SECCIÓN 5 · EL RELOJ DE POSESIÓN (play-by-play)
+
+   El texto NO se escribe acá: sale de METODOLOGIA_RELOJ, en
+   js/sgadd-pbp.js, que es el módulo que aplica los criterios.
+   ==================================================================== */
+function seccionReloj() {
+  const P = require('./js/sgadd-pbp.js');
+  const M = P.METODOLOGIA_RELOJ;
+  const fam = (id) => (P.FAMILIAS.filter(f => f.id === id)[0] || { label: id }).label;
+  return `
+    <p>Solo en las categorías con análisis de play-by-play. Dice en qué segundo de la
+    posesión tira y pierde la pelota un equipo, sus rivales y cada jugador.</p>
+    <h3>5.1 · Las cuatro franjas</h3>
+    ${tabla(['Franja', 'Nombre', 'Qué describe'], M.franjas.map(f => [esc(f.label), esc(f.nombre), esc(f.lectura)]))}
+    <h3>5.2 · Cómo se mide</h3>
+    <ul>${M.criterios.map(c => '<li><b>' + esc(c.titulo) + '.</b> ' + esc(c.texto) + '</li>').join('')}</ul>
+    <h3>5.3 · Las siete familias de zona</h3>
+    ${tabla(['Familia', 'Zonas', 'Dónde'], M.familias.map(f => [esc(fam(f.id)), esc(f.zonas), esc(f.donde)]))}
+    <h3>5.4 · Etiquetas de equipo y de jugador</h3>
+    ${tabla(['Etiqueta de equipo', 'Cuándo'], M.equipo.map(e => [esc(e.label), esc(e.regla)]))}
+    ${tabla(['Etiqueta de jugador', 'Cuándo'], M.jugador.map(e => [esc(e.label), esc(e.regla)]))}
+    <h3>5.5 · El aviso de reloj tardío</h3>
+    <p>${esc(M.alerta)}</p>
+    <p class="aviso">${esc(M.neutral)}</p>`;
+}
+
 /* ===================== DOCUMENTO ===================== */
 
 /* ====================================================================
@@ -662,6 +689,7 @@ con un número detrás, y acá están todas.</p>
   &nbsp;&nbsp;4.1 Los seis niveles<br>
   &nbsp;&nbsp;4.2 De dónde sale cada número<br>
   &nbsp;&nbsp;4.3 La matriz completa<br>
+  5. Reloj de posesión (play-by-play)<br>
 </div>
 
 <h2>1 · Clasificación ofensiva</h2>
@@ -689,6 +717,9 @@ class="mono" style="display:inline;padding:1px 4px">T1% &lt; 0,60</span> marca a
 peor en Liga Argentina y al <b>60%</b> en una U23: escrito como constante, la etiqueta
 dice cosas distintas según dónde se use.</p>
 ${seccionNiveles()}
+
+<h2 class="salto">5 · Reloj de posesión</h2>
+${seccionReloj()}
 
 <script>
 /* Los seis mapas viajan en el documento: el selector no vuelve a

@@ -757,6 +757,17 @@ function paquete(equipo) {
       return p;
     };
     const pR = conReloj();
+    const sinSeccionReloj = (h) => {
+      const m = h.match(/\s*<details class="pbp-detalle mt-3" data-pbp-seccion="reloj">/);
+      if (!m) return h;
+      let i = m.index + m[0].length, abiertos = 1;
+      while (abiertos > 0) {
+        const a = h.indexOf('<details', i), c = h.indexOf('</details>', i);
+        if (c === -1) return h;
+        if (a !== -1 && a < c) { abiertos++; i = a + 8; } else { abiertos--; i = c + 10; }
+      }
+      return h.slice(0, m.index) + h.slice(i);
+    };
     const rasgos = (x) => x.rasgos.map(r => r.id).join();
 
     const idn = P.relojIdentidad(pR);
@@ -809,7 +820,7 @@ function paquete(equipo) {
       tabla.indexOf('mm-pos">1,10 <span class="dato-sec">(1,10)</span>') === -1 && tabla.indexOf('1,30 <span class="dato-sec">(1,30)</span>') !== -1
         && /mm-neg">0,73 <span class="dato-sec">\(0,84\)<\/span>/.test(tabla), tabla.match(/0,73[^/]+/));
     check('lo que sigue a un rebote ofensivo o a una falta va aparte, sin franja',
-      /Tras rebote ofensivo[\s\S]*12\/20[\s\S]*Tras falta recibida[\s\S]*4\/10/.test(tabla));
+      /Reinicio · tras rebote ofensivo[\s\S]*12\/20[\s\S]*Reinicio · tras falta recibida[\s\S]*4\/10/.test(tabla) && /no entra en ninguna franja/.test(tabla));
     check('los tiros sin reloj se cuentan a la vista, y la columna dice que no son puntos por jugada',
       /7 tiros sin reloj atribuible/.test(tabla) && /No cuenta los libres: no es puntos por jugada/.test(tabla));
     const pocos = P.relojTabla({ f: [[9, 9, 18, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]], ro: [0, 0, 0], fa: [0, 0, 0], sr: 0 }, pR.liga.reloj);
@@ -819,7 +830,7 @@ function paquete(equipo) {
     check('la card de Quintetos suma la sección del reloj, con sus dos tablas, el origen y la zona por franja',
       /data-pbp-seccion="reloj"/.test(hR) && /Lo que tira/.test(hR) && /Lo que le tiran/.test(hR) && /Tras robo/.test(hR) && /6,7 s/.test(hR)
         && /Bajo el aro/.test(hR) && /1 partido sin zona/.test(hR));
-    const sinSeccion = hR.replace(/\s*<details class="pbp-detalle mt-3" data-pbp-seccion="reloj">[\s\S]*?<\/details>/, '');
+    const sinSeccion = sinSeccionReloj(hR);
     check('SIN «reloj» en el paquete la card es la de antes: ni la sección ni una línea de más',
       !/data-pbp-seccion="reloj"/.test(hSin) && !/Reloj de posesión/.test(hSin) && sinSeccion.replace(/\s+/g, ' ') === hSin.replace(/\s+/g, ' '));
     const hSc = P.html(pR, { contexto: 'scouting' }), hScSin = P.html(paquete3('BOCA'), { contexto: 'scouting' });
@@ -834,7 +845,7 @@ function paquete(equipo) {
     check('un jugador sin muestra o sin rasgo no aparece en esas listas', qn.tempranos.concat(qn.tardios).every(x => x.id !== '3' && x.id !== '4'));
     check('en Scouting, SIN «reloj» en el paquete la card es la de antes',
       !/data-pbp-seccion="reloj"/.test(hScSin)
-        && hSc.replace(/\s*<details class="pbp-detalle mt-3" data-pbp-seccion="reloj">[\s\S]*?<\/details>/, '').replace(/\s+/g, ' ') === hScSin.replace(/\s+/g, ' '));
+        && sinSeccionReloj(hSc).replace(/\s+/g, ' ') === hScSin.replace(/\s+/g, ' '));
     check('un equipo sin rasgo no recibe una lectura inventada', !/data-reloj-lectura/.test(P.relojScouting(medioLiga)) && /Reparto de liga/.test(P.relojScouting(medioLiga)));
     check('la lectura del equipo que llega tarde cita lo que rinde la competencia en esa franja (0,84)', /la competencia rinde 0,84 por tiro/.test(P.relojScouting(tardio)));
 
@@ -861,6 +872,51 @@ function paquete(equipo) {
     const fuenteEquipos = fs.readFileSync(path.join(__dirname, 'js', 'sgadd-equipos.js'), 'utf8');
     check('el post-partido de Equipos reserva el lugar del reloj y lo pinta', /espacioPartido\(propio\.equipo\.nombre, refPbp, 'partido-reloj'\)/.test(fuenteEquipos)
       && /\$\{relojPartido\}/.test(fuenteEquipos));
+    /* ---- la metodología: un solo texto para las cards, el Glosario y el manual (punto 116) */
+    const M = P.METODOLOGIA_RELOJ;
+    check('la metodología define las cuatro franjas, con los mismos rótulos que la tabla',
+      M.franjas.length === 4 && M.franjas.map(x => x.label).join() === P.FRANJAS_RELOJ.join() && M.franjas.every(x => x.nombre && x.lectura));
+    check('y las siete familias de zona, las mismas del mapa de tiro', M.familias.length === 7
+      && M.familias.map(x => x.id).sort().join() === P.FAMILIAS.map(x => x.id).sort().join() && M.familias.every(x => /Z\d/.test(x.zonas) && x.donde));
+    const crit = (id) => (M.criterios.filter(x => x.id === id)[0] || {}).texto || '';
+    check('los tres criterios pedidos están escritos: la liga y no umbrales fijos, Pts/tiro sin libres y el reinicio en fila propia',
+      /No hay umbrales fijos/.test(crit('liga')) && /cuarto más alto/.test(crit('liga')) && /tiros libres no se cronometran/.test(crit('tiro'))
+        && /rebote ofensivo o a una falta recibida/.test(crit('reinicio')) && /no entra en ninguna franja/.test(crit('reinicio')));
+    const dichas = M.equipo.concat(M.jugador).map(x => x.label);
+    const emitidas = [pR, tardio, armada, dosRasgos].map(x => P.relojIdentidad(x).rasgos.map(y => y.label))
+      .concat(['1', '2', '5'].map(id => P.relojPerfilJugador(pR, id).rasgos.map(y => y.label)))
+      .concat([[P.relojPerfilJugador(conReloj({ jugadores: { 9: { f: [[20, 3, 6, 0, 1, 0], [10, 4, 8, 0, 2, 0], [10, 4, 8, 0, 2, 0], [2, 1, 2, 0, 0, 0]], ro: [0, 0, 0], fa: [0, 0, 0], sr: 0 } } }), '9').rasgos[0].label]])
+      .reduce((a, b) => a.concat(b), []);
+    check('toda etiqueta que el motor emite está definida en la metodología (y los mínimos son los que aplica)',
+      emitidas.length >= 9 && emitidas.every(l => dichas.indexOf(l) !== -1) && /Tira temprano en el reloj/.test(emitidas.join())
+        && crit('muestra').indexOf(P.RELOJ_MINIMOS.finalesEquipo + ' finales') !== -1 && crit('muestra').indexOf(P.RELOJ_MINIMOS.tirosJugador + ' tiros') !== -1, emitidas);
+    check('el aviso de reloj tardío se define sin afirmar una causa', /Describe, no juzga/.test(M.alerta) && /el dato no los separa/.test(M.alerta) && /no son excluyentes/.test(M.neutral));
+    const ayudas = [P.relojEquipo(pR), P.relojJugador(pR, '1'), hp, P.relojScouting(pR)];
+    check('las cuatro superficies del reloj traen «Cómo se lee», plegado y fuera del papel',
+      ayudas.every(h => (h.match(/data-reloj-ayuda/g) || []).length === 1 && /<details class="pbp-detalle pbp-sub mt-2 no-imprimir" data-reloj-ayuda="1">/.test(h)
+        && /Reinicio, en fila propia/.test(h) && /Las etiquetas salen de la propia liga/.test(h)));
+    check('«Cómo se lee» cita los cortes de ESTA competencia, y sin cortes válidos no inventa ninguno',
+      /el cuarto más alto arranca en 19,0 % de finales tempranos y en 19,7 % de tardíos/.test(P.relojAyuda(pR.liga.reloj))
+        && !/arranca en/.test(P.relojAyuda(pocosEquipos.liga.reloj)) && !/arranca en/.test(P.relojAyuda(null)));
+    const mh = P.relojMetodologiaHtml();
+    check('el texto del Glosario trae franjas, criterios, familias, etiquetas y el aviso',
+      /Las cuatro franjas del reloj/.test(mh) && /Las siete familias de zona/.test(mh) && /Triple esquina \(Z10 · Z14\)/.test(mh)
+        && /Válvula de escape/.test(mh) && /El aviso de reloj tardío/.test(mh) && (mh.match(/<li /g) || []).length === 4 + 6 + 7 + 4 + 6);
+    const GUIr = require('./js/sgadd-glosarioui.js');
+    const uiPrevia = global.SGADD_UI;
+    if (!uiPrevia) global.SGADD_UI = { escJs: (v) => String(v) };
+    const sinPbp = GUIr.html();
+    global.SGADD_PBP = P;
+    const conPbp = GUIr.html();
+    delete global.SGADD_PBP;
+    if (!uiPrevia) delete global.SGADD_UI;
+    check('el Glosario del panel muestra la card de metodología, plegada, y sin el módulo no pinta nada',
+      /id="glosarioReloj"/.test(conPbp) && /Metodología · Reloj de posesión/.test(conPbp) && /data-reloj-metodologia/.test(conPbp)
+        && conPbp.indexOf('id="glosarioReloj"') < conPbp.indexOf('id="glosarioCuerpo"') && !/glosarioReloj/.test(sinPbp));
+    const manual = fs.readFileSync(path.join(__dirname, 'MANUAL_ETIQUETADO_SGADD.html'), 'utf8');
+    check('el manual de etiquetado trae la sección del reloj, generada del mismo texto',
+      /5 · Reloj de posesión/.test(manual) && M.franjas.every(x => manual.indexOf(x.lectura) !== -1)
+        && M.equipo.concat(M.jugador).every(x => manual.indexOf(x.label) !== -1) && manual.indexOf('Describe, no juzga') !== -1);
     check('ninguna salida trae un undefined ni un NaN', !/undefined|NaN/.test(hR + hp + P.relojJugador(pR, '1') + P.relojJugador(pR, '5') + P.relojEquipo(chico)));
   }
 

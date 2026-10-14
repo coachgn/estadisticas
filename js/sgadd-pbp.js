@@ -1295,6 +1295,89 @@ const SGADD_PBP = (function () {
   const corteValido = (c, minimo) => !!(c && c.n >= minimo && isFinite(c.p50) && isFinite(c.p75) && c.p50 !== null && c.p75 !== null);
   const tr3 = (c) => (Array.isArray(c) && c.length >= 3 ? c : [0, 0, 0]);
 
+  /* LA METODOLOGÍA, EN UN SOLO LUGAR (2026-10-14). La leen las tres cards
+     del reloj («Cómo se lee»), el Glosario del panel y el manual de
+     etiquetado: con el criterio escrito en tres lados, uno queda viejo. */
+  const RELOJ_MINIMOS = { finalesEquipo: 150, tirosJugador: 30, canastasFranja: 5 };
+  const METODOLOGIA_RELOJ = {
+    franjas: [
+      { label: '0-6 s', nombre: 'Temprana', lectura: 'Transición y primera ventaja: el tiro sale antes de que la defensa termine de armarse.' },
+      { label: '7-14 s', nombre: 'Media', lectura: 'Ataque temprano: la primera acción de la jugada, con la defensa ya ubicada.' },
+      { label: '15-20 s', nombre: 'Armada', lectura: 'Juego de sistema: las segundas y terceras opciones de la jugada.' },
+      { label: '21-24 s', nombre: 'Tardía', lectura: 'Final del reloj: el tiro que queda cuando la jugada no dio una ventaja antes.' },
+    ],
+    familias: [
+      { id: 'aro', zonas: 'Z1', donde: 'A menos de 2,35 m del aro.' },
+      { id: 'corta', zonas: 'Z2 · Z3 · Z4', donde: 'Entre 2,35 y 4,8 m del aro.' },
+      { id: 'mediaLateral', zonas: 'Z5 · Z6 · Z8 · Z9', donde: 'Desde 4,8 m hasta la línea de tres, por los costados y el fondo.' },
+      { id: 'mediaFrontal', zonas: 'Z7', donde: 'Desde 4,8 m hasta la línea de tres, de frente al aro.' },
+      { id: 'tripleEsquina', zonas: 'Z10 · Z14', donde: 'Detrás de la línea de tres, en las esquinas.' },
+      { id: 'tripleLateral', zonas: 'Z11 · Z13', donde: 'Detrás de la línea de tres, a 45 grados.' },
+      { id: 'tripleFrontal', zonas: 'Z12', donde: 'Detrás de la línea de tres, de frente al aro.' },
+    ],
+    criterios: [
+      { id: 'liga', titulo: 'Las etiquetas salen de la propia liga',
+        texto: 'No hay umbrales fijos: un equipo o un jugador recibe una etiqueta cuando su porción en esa franja está en el cuarto más alto de SU competencia. El mismo porcentaje puede marcar a alguien en una liga y a nadie en otra.' },
+      { id: 'tiro', titulo: 'Se mide Pts/tiro y eFG%',
+        texto: 'Los tiros libres no se cronometran —el play-by-play no permite ubicarlos en el reloj—, así que lo que se informa es puntos por tiro de campo, no puntos por jugada.' },
+      { id: 'reinicio', titulo: 'Reinicio, en fila propia',
+        texto: 'Lo que sigue a un rebote ofensivo o a una falta recibida corre con otro reloj (14 segundos, o lo que quedaba). Va en su fila y no entra en ninguna franja: un palmeo a los 2 segundos del rebote no es una transición.' },
+      { id: 'derivado', titulo: 'El reloj es derivado',
+        texto: 'Sale del reloj del período que carga el operador del partido. Se lee por franjas, no segundo a segundo: hasta 3 segundos de más entran en la franja tardía, y el tiro sin un inicio atribuible queda «sin reloj» y se cuenta a la vista.' },
+      { id: 'asistencia', titulo: 'Asistido es solo la canasta',
+        texto: 'El play-by-play no registra el pase de un tiro errado, así que la asistencia se mide sobre las canastas, contra la tasa de la competencia en esa franja.' },
+      { id: 'muestra', titulo: 'Sin muestra no hay etiqueta',
+        texto: 'Hacen falta ' + RELOJ_MINIMOS.finalesEquipo + ' finales con reloj para un equipo, ' + RELOJ_MINIMOS.tirosJugador + ' tiros con reloj para un jugador y '
+          + RELOJ_MINIMOS.canastasFranja + ' canastas en la franja para decir si se las crean. Con menos, se muestra el reparto con ~ y sin etiqueta.' },
+    ],
+    equipo: [
+      { label: 'Ataca temprano', regla: 'Su porción de finales en 0-6 s está en el cuarto más alto de la competencia.' },
+      { label: 'Ofensiva armada', regla: 'Su porción entre los 7 y los 20 s está en el cuarto más alto, y la de 21-24 s por debajo de la mediana.' },
+      { label: 'Llega tarde al tiro', regla: 'Su porción de finales en 21-24 s está en el cuarto más alto de la competencia.' },
+      { label: 'Reparto de liga', regla: 'Ninguna franja lo separa del resto.' },
+    ],
+    jugador: [
+      { label: 'Finalizador temprano', regla: 'Tira temprano (cuarto más alto) y sus canastas ahí llegan con asistencia.' },
+      { label: 'Creador de transición', regla: 'Tira temprano y sus canastas ahí son creadas por él.' },
+      { label: 'Válvula de escape', regla: 'Tira con el reloj encima y sus canastas ahí llegan con asistencia.' },
+      { label: 'Resuelve con el reloj encima', regla: 'Tira con el reloj encima y sus canastas ahí son creadas por él.' },
+      { label: 'Tira temprano en el reloj', regla: 'Tira temprano, con menos de ' + RELOJ_MINIMOS.canastasFranja + ' canastas ahí: no se decide quién las crea.' },
+      { label: 'Tira con el reloj encima', regla: 'Tira tarde, con menos de ' + RELOJ_MINIMOS.canastasFranja + ' canastas ahí: no se decide quién las crea.' },
+    ],
+    alerta: 'El aviso de «reloj tardío alto» de un partido dice que ese equipo terminó más posesiones después del segundo 20 que 9 de cada 10 partidos de la competencia (y solo con 30 finales con reloj o más). Describe, no juzga: puede venir de un ataque trabado o de una buena defensa rival, y el dato no los separa.',
+    neutral: 'Ninguna franja es buena o mala por sí sola, y los rasgos no son excluyentes: describen cómo juega un equipo, no cuánto vale.',
+  };
+  const familiaLabel = (id) => { const f = FAMILIAS.filter(x => x.id === id)[0]; return f ? f.label : id; };
+
+  /** La metodología completa, para el Glosario. PURA. */
+  function relojMetodologiaHtml() {
+    const M = METODOLOGIA_RELOJ;
+    const li = (b, t) => `<li class="text-xs text-ink leading-snug mb-1"><b class="text-white">${esc(b)}</b> · ${esc(t)}</li>`;
+    const h = (t) => `<h4 class="text-[11px] uppercase tracking-wider text-muted mt-3 mb-1">${t}</h4>`;
+    return `<div data-reloj-metodologia="1">
+      ${h('Las cuatro franjas del reloj')}<ul>${M.franjas.map(f => li(f.label + ' · ' + f.nombre, f.lectura)).join('')}</ul>
+      ${h('Cómo se mide')}<ul>${M.criterios.map(c => li(c.titulo, c.texto)).join('')}</ul>
+      ${h('Las siete familias de zona')}<ul>${M.familias.map(f => li(familiaLabel(f.id) + ' (' + f.zonas + ')', f.donde)).join('')}</ul>
+      ${h('Etiquetas de equipo')}<ul>${M.equipo.map(e => li(e.label, e.regla)).join('')}</ul>
+      ${h('Etiquetas de jugador')}<ul>${M.jugador.map(e => li(e.label, e.regla)).join('')}</ul>
+      ${h('El aviso de reloj tardío')}<p class="text-xs text-ink leading-snug">${esc(M.alerta)}</p>
+      <p class="text-xs text-muted leading-snug mt-2">${esc(M.neutral)}</p>
+    </div>`;
+  }
+
+  /** «Cómo se lee», al pie de cada card del reloj: los criterios, plegados. No se imprime. PURA. */
+  function relojAyuda(L) {
+    const M = METODOLOGIA_RELOJ;
+    const c = L && L.cortes && L.cortes.equipo;
+    const cortes = c && corteValido(c.temprana, MIN_EQUIPOS_RELOJ) && corteValido(c.tardia, MIN_EQUIPOS_RELOJ)
+      ? ' En esta competencia el cuarto más alto arranca en ' + num(c.temprana.p75) + ' % de finales tempranos y en ' + num(c.tardia.p75) + ' % de tardíos.' : '';
+    return `<details class="pbp-detalle pbp-sub mt-2 no-imprimir" data-reloj-ayuda="1">
+      <summary class="pbp-resumen text-[11px] uppercase tracking-wider text-muted cursor-pointer select-none">Cómo se lee · criterios del reloj</summary>
+      <ul class="mt-1">${M.criterios.map(x => `<li class="text-[11px] text-ink leading-snug mb-1"><b>${esc(x.titulo)}</b> · ${esc(x.texto)}${x.id === 'liga' ? esc(cortes) : ''}</li>`).join('')}</ul>
+      <p class="text-[11px] text-muted leading-snug">${esc(M.neutral)} La definición completa está en el Glosario.</p>
+    </details>`;
+  }
+
   /** La tabla por franja de un acumulado, contra la competencia (entre paréntesis). */
   function relojTabla(acc, liga, opciones) {
     const o = opciones || {};
@@ -1318,7 +1401,7 @@ const SGADD_PBP = (function () {
       const x = tr3(c), y = cl ? tr3(cl) : null;
       if (!x[0]) return '';
       return `<tr class="fila-tenue">
-        <td class="px-2 py-1 text-left text-xs whitespace-nowrap">${rotulo}</td><td class="${TD}">—</td>
+        <td class="px-2 py-1 text-left text-xs whitespace-nowrap" title="Corre con otro reloj (14 segundos, o lo que quedaba): no entra en ninguna franja.">${rotulo}</td><td class="${TD}">—</td>
         <td class="${TD}">${x[1]}/${x[0]}</td>
         <td class="${TD}">${num(x[2] / x[0], 2)}${y && y[0] ? ` <span class="dato-sec">(${num(y[2] / y[0], 2)})</span>` : ''}</td>
         <td class="${TD}">${num(50 * x[2] / x[0])} %</td><td class="${TD}">—</td><td class="${TD}">—</td><td class="${TD}">—</td>
@@ -1327,7 +1410,7 @@ const SGADD_PBP = (function () {
     const th = (t, glosa) => `<th class="${TH}"${glosa ? ` data-glosa="${esc(glosa)}"` : ''}>${t}</th>`;
     return `<div class="scrollbox"><table class="w-full" style="min-width:34rem">
       <thead><tr>
-        <th class="${TH} text-left">Reloj</th>
+        <th class="${TH} text-left" data-glosa="Segundo de la posesión en que sale el tiro o se pierde la pelota. Derivado del reloj del período: se lee por franjas. Las filas de reinicio (tras rebote ofensivo o falta) van aparte.">Reloj</th>
         ${th(o.soloTiros ? '% tiros' : '% finales', o.soloTiros
           ? 'Qué parte de sus tiros de campo con reloj sale en esta franja. Entre paréntesis, la competencia.'
           : 'Qué parte de sus finales de posesión con reloj (tiros de campo y pérdidas) cae en esta franja. Entre paréntesis, la competencia.')}
@@ -1339,7 +1422,7 @@ const SGADD_PBP = (function () {
         ${th('PP', 'Pérdidas en la franja.')}
       </tr></thead>
       <tbody>${acc.f.map(fila).join('')}
-        ${aparte('Tras rebote ofensivo', acc.ro, liga && liga.ro)}${aparte('Tras falta recibida', acc.fa, liga && liga.fa)}</tbody>
+        ${aparte('Reinicio · tras rebote ofensivo', acc.ro, liga && liga.ro)}${aparte('Reinicio · tras falta recibida', acc.fa, liga && liga.fa)}</tbody>
     </table></div>
     ${acc.sr ? `<p class="text-[10px] dato-sec mt-1">${acc.sr} tiro${acc.sr === 1 ? '' : 's'} sin reloj atribuible (sin rebote cargado, o a más de ${24 + ((liga && liga.tolerancia) || 3)} s del inicio): no entra${acc.sr === 1 ? '' : 'n'} en ninguna franja.</p>` : ''}`;
   }
@@ -1353,7 +1436,7 @@ const SGADD_PBP = (function () {
     const r = paq && paq.reloj, L = relojLiga(paq);
     if (!r || !relojValido(r.favor)) return null;
     const rep = relojReparto(r.favor), n = relojFinales(r.favor);
-    const minimo = (L && L.minimos && L.minimos.finalesEquipo) || 150;
+    const minimo = (L && L.minimos && L.minimos.finalesEquipo) || RELOJ_MINIMOS.finalesEquipo;
     const out = { finales: n, reparto: rep, muestra: n >= minimo, minimo, comparable: false, rasgos: [] };
     const c = L && L.cortes && L.cortes.equipo;
     if (!c || !corteValido(c.temprana, MIN_EQUIPOS_RELOJ) || !corteValido(c.tardia, MIN_EQUIPOS_RELOJ) || !corteValido(c.medio, MIN_EQUIPOS_RELOJ)) return out;
@@ -1385,8 +1468,8 @@ const SGADD_PBP = (function () {
     const acc = r && r.jugadores && r.jugadores[id];
     if (!relojValido(acc)) return null;
     const tiros = relojTiros(acc);
-    const minimo = (L && L.minimos && L.minimos.tirosJugador) || 30;
-    const minCanastas = (L && L.minimos && L.minimos.canastasFranja) || 5;
+    const minimo = (L && L.minimos && L.minimos.tirosJugador) || RELOJ_MINIMOS.tirosJugador;
+    const minCanastas = (L && L.minimos && L.minimos.canastasFranja) || RELOJ_MINIMOS.canastasFranja;
     const out = { tiros, reparto: relojReparto(acc, true), muestra: tiros >= minimo, minimo, comparable: false, rasgos: [] };
     const c = L && L.cortes && L.cortes.jugador;
     if (!c || !corteValido(c.temprana, MIN_JUGADORES_RELOJ) || !corteValido(c.tardia, MIN_JUGADORES_RELOJ)) return out;
@@ -1447,7 +1530,8 @@ const SGADD_PBP = (function () {
           ${lugar ? `<div class="min-w-0">${subtitulo('Desde dónde tira en cada franja')}
             <div class="scrollbox"><table class="w-full"><thead><tr><th class="${TH} text-left">Zona</th>${FRANJAS_RELOJ.map(f => `<th class="${TH}">${f}</th>`).join('')}</tr></thead><tbody>${lugar}</tbody></table></div>
             ${r.sinZona ? `<p class="text-[10px] dato-sec mt-1">${r.sinZona} partido${r.sinZona === 1 ? '' : 's'} sin zona: su lista de tiros no coincide con los eventos y no se adivina.</p>` : ''}</div>` : ''}
-        </div>`;
+        </div>
+        ${relojAyuda(L)}`;
     } catch (e) { return ''; }
   }
 
@@ -1509,6 +1593,7 @@ const SGADD_PBP = (function () {
         ${subtitulo('Reloj de posesión · cuándo tira')}
         ${cabecera}${relojTabla(acc, relojLiga(paq), { soloTiros: true })}
         <p class="text-[10px] dato-sec mt-1 leading-snug">${NOTA_RELOJ}</p>
+        ${relojAyuda(relojLiga(paq))}
       </div>`;
     } catch (e) { return ''; }
   }
@@ -1535,7 +1620,8 @@ const SGADD_PBP = (function () {
     return `<div class="pbp-bloque grid grid-cols-1 xl:grid-cols-2 gap-5" data-pbp-listo="1">
       ${lado(paq.equipo, rp.favor)}${lado(pp.rival, rp.contra)}
     </div>
-    <p class="text-[11px] dato-sec mt-2 leading-snug">${NOTA_RELOJ} Con los tiros de un solo partido, los puntos por tiro de una franja son una noche, no una tendencia: por eso van con sus convertidos e intentados.</p>`;
+    <p class="text-[11px] dato-sec mt-2 leading-snug">${NOTA_RELOJ} Con los tiros de un solo partido, los puntos por tiro de una franja son una noche, no una tendencia: por eso van con sus convertidos e intentados.</p>
+    ${relojAyuda(L)}`;
   }
 
   /** El lugar de una card de partido en el post-partido: 'partido-mapa', 'partido-momentum', 'partido-quintetos' o 'partido-reloj'. */
@@ -1794,7 +1880,7 @@ const SGADD_PBP = (function () {
     activa, espacio, espacioJugador, montarPendientes, activar, apellido, _cache: cache,
     partidoDe, mapaPartido, momentumPartido, quintetosPartido, espacioPartido, MIN_TIROS_DIAGNOSTICO,
     relojTabla, relojIdentidad, relojPerfilJugador, relojEquipo, relojJugador, relojPartido, relojReparto, FRANJAS_RELOJ,
-    relojScouting, relojQuienes,
+    relojScouting, relojQuienes, relojMetodologiaHtml, relojAyuda, METODOLOGIA_RELOJ, RELOJ_MINIMOS,
   };
 })();
 
