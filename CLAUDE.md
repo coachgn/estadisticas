@@ -81,7 +81,7 @@ node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: 
                            #             equipo, vencimiento y ciclo ORO por categoría
 node test-glosario.js      #  34 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
-node test-pbp.js           # 255 tests · la capa de laboratorio de play-by-play: el catálogo,
+node test-pbp.js           # 270 tests · la capa de laboratorio de play-by-play: el catálogo,
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
                            #             · el bloque opcional de secciones del paquete (punto 83)
@@ -89,6 +89,7 @@ node test-pbp.js           # 255 tests · la capa de laboratorio de play-by-play
                            #               su metodología en las cards, el Glosario y el manual (116),
                            #               y su síntesis táctica en la pestaña Personalidad (118)
                            #               y el perfil de ritmo: arquetipos, desglose por franja y cruces de identidad (119)
+                           #               y el insight por bloque, las tablas completas y la cancha por franja (120)
 
 node test-mails.js         # 177 tests · los mails institucionales: plantillas sin huecos, el
                            #             día de Argentina, la idempotencia del cron, la ficha, el SMTP,
@@ -138,7 +139,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7795 tests en total. Todos tienen que dar verde antes de commitear.**
+**7810 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -256,7 +257,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=281`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=282`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -14283,3 +14284,72 @@ que cada arquetipo esté en la metodología, en el Glosario y en el manual.
    `node herramientas/subir-paquetes.js --sin-regenerar --confirmar`
    (en `motorstats-ingestion`). Antes de eso, el panel muestra el perfil sin
    los arquetipos de 7-14 y 15-20, y las barras sin el trazo de la liga.
+
+## 120. EL RELOJ EN PERSONALIDAD · INSIGHT POR BLOQUE, TABLAS Y CANCHA POR FRANJA (2026-10-14)
+
+Ajustes del club sobre el punto 119. `test-pbp.js` (sección 7, al final)
+los fija. Assets en `?v=282`. Solo front: la ingesta y el backend no cambiaron.
+
+### 1 · «Balance defensivo vulnerable», no «quebrado»
+
+En `ARQUETIPOS_RELOJ`, la metodología, el Glosario y el manual (regenerado).
+Hay un test que falla si «quebrado» vuelve al módulo o al manual.
+
+### 2 · Volumen relativo NO es la franja de mayor frecuencia
+
+Una etiqueta dice que el equipo o el jugador está en el cuarto más alto de
+la competencia en una franja; casi todos tiran más en 7-14 s. Cuando la
+franja de MAYOR volumen absoluto es otra, `aclaraMayor()` lo agrega:
+«…, aunque el 37,5 % de sus tiros ocurre en la ventana media de 7 a 14 s».
+Va en la identidad del equipo, en el perfil del jugador (que ahora arranca
+«Destaca por su alto volumen de tiro temprano en la competencia (X % … contra
+Y % de la competencia; el cuarto más alto arranca en Z %)») y en los
+arquetipos de ataque. Si la franja de la etiqueta ES la mayor, no se aclara.
+
+### 3 · El insight por bloque · `BLOQUES_RELOJ`
+
+`relojSintesis` devuelve `bloques`: Temprano (0-6), Medio (7-14), Armado
+(15-20) y Tardío (21-24), cada uno con su lectura de ATAQUE y de DEFENSA,
+contra los cuartiles de esa franja.
+
+- **Un bloque en el rango de la competencia también se dice** («Reparte como
+  la competencia: X % … (la competencia, Y %)», con su rendimiento): es la
+  vista panorámica. Va atenuado.
+- **`insight` sigue siendo la lista de lo que DISTINGUE** (volumen fuera de
+  los cuartiles), en el orden de los bloques: los neutros no la llenan.
+- El cruce de 7-20 s va como `extra` del bloque armado; las situaciones
+  especiales, aparte (`extras`).
+- **Sin un solo desvío no se dibujan los bloques** (`neutro`): una frase lo dice.
+- Sin el corte de 7-14 / 15-20 (paquete viejo) esos bloques se comparan
+  contra la competencia sin clasificar.
+
+### 4 · Las tablas completas y la leyenda
+
+Debajo de las barras de «Cuándo tira» y «Cuándo le tiran», la tabla entera
+(`relojTabla`: C/I, Pts/tiro, eFG%, % T3, Asist., PP) y la leyenda «La
+barra de color representa el % de volumen del equipo; el marcador vertical
+(trazo) indica la media de la competencia.».
+
+### 5 · «Desde dónde tira en cada franja» es una cancha · `relojLugarCancha`
+
+Reemplaza a `relojLugarBarras`. Cuatro canchas chicas, una por franja, con
+las 14 zonas pintadas con el acento por la parte de los tiros de ESA franja
+que sale de su familia (intensidad por raíz, la vara de frecuencia del mapa).
+
+- Una familia ocupa varias zonas: todas se pintan igual y el % va UNA vez,
+  en su zona de referencia (`ZONA_ETIQUETA_FAMILIA`).
+- El `title` de cada zona trae la competencia; sin `liga.reloj.fam` se dice.
+- **La pintura (aro + corta)** sigue: badge en cada cancha contra la
+  competencia y la serie de 0-6 a 21-24 debajo.
+- SVG puro (sale igual en papel), `clipPath` por cancha.
+
+### Verificado
+
+Suite entera en verde. Al revés, ocho mutaciones, todas caen: la aclaración,
+los bloques neutros llenando el insight, el `neutro`, los cortes por franja,
+las tablas, la leyenda, el % de la cancha y el badge de pintura sin la liga.
+
+**No verificado en el navegador ni en el PDF del informe de equipo**: el
+bloque ya ocupaba dos hojas (punto 119) y ahora suma las dos tablas y las
+cuatro canchas. Hay que generar el PDF y mirar el paginado. Los valores de
+la competencia en la cancha llegan con la subida de paquetes del punto 119.

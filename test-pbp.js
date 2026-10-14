@@ -1001,7 +1001,7 @@ function paquete(equipo) {
       /data-reloj-insight/.test(hP) && /Sus armas del reloj/.test(hP) && /Sus grietas del reloj/.test(hP)
         && /Para explotarle/.test(hP) && /Para anularle/.test(hP)
         && /data-reloj-origenes/.test(hP) && /data-reloj-lugar/.test(hP)
-        && (hP.match(/pbp-reloj-pieza/g) || []).length === 9 + (hP.match(/data-reloj-arquetipo=/g) || []).length, (hP.match(/pbp-reloj-pieza/g) || []).length);
+        && (hP.match(/pbp-reloj-pieza/g) || []).length === 11 + (hP.match(/data-reloj-arquetipo=/g) || []).length, (hP.match(/pbp-reloj-pieza/g) || []).length);
     check('sin «reloj» en el paquete no hay bloque, y el lugar de la Personalidad pide su propio tipo',
       P.relojPersonalidad(paquete3('BOCA')) === '' && P.relojSintesis(paquete3('BOCA')) === null
         && /data-pbp-tipo="personalidad"/.test(P.espacio('BOCA', 'equipo', null, 'personalidad')) && !/data-pbp-tipo="quintetos"/.test(P.espacio('BOCA', 'equipo', null, 'personalidad')));
@@ -1075,11 +1075,11 @@ function paquete(equipo) {
     const dos = conVara(conReloj({ favor: { f: [[60, 40, 95, 10, 20, 5], [30, 15, 33, 10, 5, 5], [60, 35, 80, 20, 10, 5], [20, 8, 16, 5, 2, 5]], ro: [0, 0, 0], fa: [0, 0, 0], sr: 0 } }));
     check('si calza en varios arquetipos se muestran TODOS, en el orden del pedido', aIds(P.relojArquetipos(dos), 'ofensivos') === 'vertigo,plan-b', P.relojArquetipos(dos));
 
-    /* defensa: le sacan poco en 15-20 y en 21-24 → muralla; le sacan mucho en 0-6 → balance quebrado */
+    /* defensa: le sacan poco en 15-20 y en 21-24 → muralla; le sacan mucho en 0-6 → balance vulnerable */
     const muralla = conVara(conReloj({ contra: { f: [[50, 40, 95, 10, 12, 10], [60, 30, 66, 25, 15, 10], [60, 18, 40, 18, 9, 10], [40, 8, 18, 14, 5, 10]], ro: [20, 12, 26], fa: [10, 4, 9], sr: 0 } }));
     const aM = P.relojArquetipos(muralla);
-    check('defensa · «Muralla» exige concederle menos en 15-20 Y en 21-24, y «Balance quebrado» sale de lo que le sacan en 0-6',
-      aIds(aM, 'defensivos') === 'balance-quebrado,muralla' && /^En 15-20 s le sacan 0,67 por tiro contra 1,00 \(18\/60\); en 21-24 s le sacan 0,45/.test(aM.defensivos[1].detalle), aM);
+    check('defensa · «Muralla» exige concederle menos en 15-20 Y en 21-24, y «Balance vulnerable» sale de lo que le sacan en 0-6',
+      aIds(aM, 'defensivos') === 'balance-vulnerable,muralla' && /^En 15-20 s le sacan 0,67 por tiro contra 1,00 \(18\/60\); en 21-24 s le sacan 0,45/.test(aM.defensivos[1].detalle), aM);
     const soloUna = conVara(conReloj({ contra: { f: [[50, 30, 65, 10, 12, 10], [60, 30, 66, 25, 15, 10], [60, 18, 40, 18, 9, 10], [40, 14, 34, 14, 5, 10]], ro: [20, 12, 26], fa: [10, 4, 9], sr: 0 } }));
     check('con una sola de las dos franjas no es muralla', aIds(P.relojArquetipos(soloUna), 'defensivos') === '');
 
@@ -1110,11 +1110,21 @@ function paquete(equipo) {
 
     /* las barras nuevas: cómo nace y desde dónde, con el trazo neutro de la competencia */
     const hV = P.relojPersonalidad(vertigo, { identidad: { PACE: { f: '78,4', p: 85 } } });
-    const orig = P.relojOrigenBarras(vertigo.reloj, vertigo.liga.reloj), lug = P.relojLugarBarras(vertigo.reloj, vertigo.liga.reloj);
+    const orig = P.relojOrigenBarras(vertigo.reloj, vertigo.liga.reloj), lug = P.relojLugarCancha(vertigo);
     check('«Cómo nace la posesión» en barras: la parte de cada origen, sus puntos por tiro y el trazo de la competencia',
       (orig.match(/data-reloj-origen=/g) || []).length === 3 && (orig.match(/reloj-barra-liga/g) || []).length === 3 && /Tras robo/.test(orig) && /23,5 %/.test(orig) && /\(20,0\)/.test(orig));
-    check('«Desde dónde tira» en barras por zona y franja, con la fila de pintura y la competencia',
-      /data-reloj-familia="aro"/.test(lug) && /data-reloj-familia="pintura"/.test(lug) && (lug.match(/reloj-barra-liga/g) || []).length === 12);
+    /* aro [30,20,10,5] y triple frontal [10,20,10,15]; la liga, aro [300,300,250,100] y triple frontal [100,300,300,200] */
+    check('«Desde dónde tira» es un mapa por cancha: cuatro canchas, las 14 zonas en cada una, y el % una vez por familia',
+      (lug.match(/data-reloj-cancha=/g) || []).length === 4 && (lug.match(/data-reloj-zona=/g) || []).length === 56
+        && (lug.match(/class="reloj-cancha-pct"/g) || []).length === 8 && /<title>Bajo el aro · 75,0 % de sus tiros de 0-6 s \(la competencia, 75,0 %\)<\/title>/.test(lug)
+        && (lug.match(/clipPath id="reloj-cancha-/g) || []).length === 4, lug.length);
+    check('la pintura (aro + corta) se destaca en cada franja y en serie, contra la competencia: si se aleja del aro con el reloj',
+      (lug.match(/data-reloj-pintura="/g) || []).length === 4
+        && lug.indexOf('75 % → 50 % → 50 % → 25 % <span class="dato-sec">· la competencia, 75 % → 50 % → 45 % → 33 %</span>') !== -1);
+    check('la insignia de pintura de cada cancha trae la competencia al lado (franja 21-24: 25 % contra 33)',
+      /data-reloj-pintura="3">Pintura <b class="font-mono text-white">25 %<\/b> <span class="dato-sec">\(33\)<\/span>/.test(lug));
+    const lugSinLiga = P.relojLugarCancha(pR);
+    check('sin las zonas de la competencia la cancha sale igual y lo dice', /data-reloj-cancha="0"/.test(lugSinLiga) && /no trae las zonas de la competencia/.test(lugSinLiga) && !/la competencia, \d/.test(lugSinLiga.split('data-reloj-pintura-serie')[1] || ''));
     const origSinLiga = P.relojOrigenBarras(pR.reloj, pR.liga.reloj);
     check('un paquete sin el origen de la competencia dibuja las barras sin trazo y lo dice',
       !/reloj-barra-liga/.test(origSinLiga) && /no trae el origen de la competencia/.test(origSinLiga));
@@ -1137,6 +1147,42 @@ function paquete(equipo) {
         && M119.arquetipos.length === 10 && /Perfil de ritmo y ejecución/.test(P.relojMetodologiaHtml())
         && M119.arquetipos.every(x => P.relojMetodologiaHtml().indexOf(x.label) !== -1)
         && M119.arquetipos.every(x => fs.readFileSync(path.join(__dirname, 'MANUAL_ETIQUETADO_SGADD.html'), 'utf8').indexOf(x.label) !== -1));
+    /* ---- punto 120: la franja de mayor volumen, el insight por bloque, las tablas y la leyenda ---- */
+    check('identidad: «Ataca temprano» aclara que su mayor volumen está en otra franja (31,8 % en 7-14 s)',
+      /27,3 % de sus finales en los primeros 6 segundos \(el cuarto más alto de la competencia arranca en 19,0 %\), aunque el 31,8 % de sus finales ocurre en la ventana media de 7 a 14 s\./.test(idn.rasgos[0].detalle), idn.rasgos[0].detalle);
+    const pJ = conReloj();
+    /* 40 tiros: 30 % tempranos (corte 20,5) con 6 de 8 asistidas, pero el 50 % en 7-14 s */
+    pJ.reloj.jugadores[7] = { f: [[12, 8, 16, 0, 6, 0], [20, 8, 16, 0, 2, 0], [8, 3, 6, 0, 1, 0], [0, 0, 0, 0, 0, 0]], ro: [0, 0, 0], fa: [0, 0, 0], sr: 0 };
+    const j7 = P.relojPerfilJugador(pJ, '7');
+    check('jugador: «Finalizador temprano» por su volumen relativo, y el texto aclara que su mayor volumen está en 7-14 s',
+      j7.rasgos[0].label === 'Finalizador temprano'
+        && j7.rasgos[0].detalle.indexOf('Destaca por su alto volumen de tiro temprano en la competencia (30,0 % de sus tiros en los primeros 6 segundos contra 15,7 % de la competencia; el cuarto más alto arranca en 20,5 %), aunque el 50,0 % de sus tiros ocurre en la ventana media de 7 a 14 s') === 0, j7.rasgos[0].detalle);
+    check('si su franja de mayor volumen ES la de la etiqueta, no se aclara nada',
+      !/aunque/.test(P.relojPerfilJugador(pR, '1').rasgos[0].detalle), P.relojPerfilJugador(pR, '1').rasgos[0].detalle);
+    const bR = sR.bloques;
+    check('el insight se arma por bloque: temprano, medio, armado y tardío, cada uno con ataque y defensa',
+      bR.map(b => b.id).join() === 'temprano,medio,armado,tardio' && bR.every(b => b.ataque && b.defensa) && !sR.neutro
+        && /^Vive del primer golpe/.test(bR[0].ataque) && /^Le corren/.test(bR[0].defensa) && bR[0].distinto, bR);
+    check('un bloque en el rango de la competencia también se dice, con su rendimiento: es la vista panorámica',
+      /^Reparte como la competencia: 18,2 % de sus finales \(la competencia, 16,8 %\), pero ahí rinde por debajo de la competencia \(0,73 contra 0,84 por tiro\)\.$/.test(bR[3].ataque)
+        && /^El rival termina ahí 18,2 % de sus finales \(la competencia, 16,8 %\), y ahí su defensa responde/.test(bR[3].defensa) && !bR[3].distinto, bR[3]);
+    check('la lista plana de lo que distingue al equipo no cambia: los bloques neutros no la llenan', sR.insight.length === 2);
+    const bB = P.relojSintesis(planB).bloques;
+    check('7-14 y 15-20 se leen contra sus propios cuartiles, y el cruce de 7-20 va como extra del bloque armado',
+      /^Usa poco la primera acción del sistema: 25,6 %/.test(bB[1].ataque) && /^Juega mucho la segunda opción: 46,5 %/.test(bB[2].ataque)
+        && /^Ataque de control/.test(bB[2].extra || ''), bB);
+    const hN = P.relojPersonalidad(conReloj({ favor: comoLiga, contra: comoLiga }));
+    check('sin un solo desvío no se dibujan los bloques: una frase lo dice', neutro.neutro && !/data-reloj-bloques/.test(hN) && /no es un rasgo de este equipo/.test(hN));
+    check('la Personalidad pinta los cuatro bloques con su ataque y su defensa, y las situaciones especiales aparte',
+      /data-reloj-bloques/.test(hP) && (hP.match(/data-reloj-bloque="/g) || []).length === 4 && (hP.match(/<b>Ataque<\/b>/g) || []).length === 4
+        && /data-reloj-extras/.test(P.relojPersonalidad(especial([40, 28, 70], [40, 10, 20]))));
+    check('«Cuándo tira» y «Cuándo le tiran» traen la tabla completa: C/I, Pts/tiro, eFG%, % T3, Asist. y PP',
+      /data-reloj-tablas/.test(hP) && ['C/I', 'Pts/tiro', 'eFG%', '% T3', 'Asist.', 'PP'].every(c => (hP.match(new RegExp('>' + c.replace(/[.%/]/g, '\\$&') + '</th>', 'g')) || []).length === 2));
+    check('la leyenda de las barras: la barra es el volumen y el trazo, la media de la competencia',
+      /La barra de color representa el % de volumen del equipo; el marcador vertical \(trazo\) indica la media de la competencia\./.test(hP));
+    check('«Balance defensivo vulnerable», no «quebrado», en el motor, la metodología y el manual',
+      !/quebrado/i.test(fuentePbp) && /Balance defensivo vulnerable/.test(P.relojMetodologiaHtml())
+        && /Balance defensivo vulnerable/.test(fs.readFileSync(path.join(__dirname, 'MANUAL_ETIQUETADO_SGADD.html'), 'utf8')));
     check('ninguna salida del punto 119 trae un undefined ni un NaN',
       !/undefined|NaN/.test(hV + P.relojPersonalidad(planB) + P.relojPersonalidad(muralla) + P.relojPersonalidad(especial([40, 28, 70], [40, 10, 20]), { identidad: { 'RO%': { f: '38,2 %', p: 95 }, 'PT3%': { f: '42,0 %', p: 85 } } }) + orig + lug + origSinLiga));
   }
