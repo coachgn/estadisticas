@@ -937,7 +937,83 @@ function paquete(equipo) {
     const cssIndex = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
     check('y el CSS de papel lo hace valer: break-inside avoid, solo al imprimir',
       /@media print \{ \.pbp-reloj-pieza \{ break-inside: avoid; page-break-inside: avoid; \} \}/.test(cssIndex));
-    check('ninguna salida trae un undefined ni un NaN', !/undefined|NaN/.test(hR + hp + P.relojJugador(pR, '1') + P.relojJugador(pR, '5') + P.relojEquipo(chico)));
+    /* ---- el reloj en la PERSONALIDAD (punto 118) ----
+       Fixture: favor y contra iguales. La liga rinde 1,30 · 1,10 · 1,00 · 0,84 por tiro, 1,15 en 2da oportunidad.
+       21-24 s: 10/30 y 22 puntos (0,73) → ajustado con 20 tiros de liga, −0,067: grieta en ataque, ARMA en defensa.
+       2da oportunidad: 12/20 y 26 (1,30) → +0,075: arma en ataque, GRIETA en defensa.
+       0-6, 7-14 y 15-20 rinden igual que la liga, y el reinicio tiene 10 tiros: ninguno cuenta. */
+    const sR = P.relojSintesis(pR);
+    const ids = (l) => l.map(x => x.lado + ':' + x.k).join();
+    check('síntesis: armas y grietas salen de los desvíos AJUSTADOS por muestra, de los dos lados, ordenadas por puntos de diferencia',
+      sR.muestra && ids(sR.armas) === 'contra:3,favor:ro' && ids(sR.grietas) === 'favor:3,contra:ro', [ids(sR.armas), ids(sR.grietas)]);
+    check('cada arma y grieta dice la cifra, la de la competencia y su muestra',
+      sR.grietas[0].label === 'Tira · 21-24 s (tardía)' && /Saca 0,73 por tiro contra 0,84 de la competencia \(10\/30/.test(sR.grietas[0].detalle)
+        && sR.armas[0].label === 'Le tiran · 21-24 s (tardía)' && /Le sacan 0,73/.test(sR.armas[0].detalle), sR);
+    check('una franja que rinde como la liga, o con menos de 20 tiros, no es arma ni grieta aunque su desvío crudo sea grande',
+      !sR.armas.concat(sR.grietas).some(x => x.k === 0 || x.k === 1 || x.k === 2 || x.k === 'fa'));
+    const reinicioLetal = P.relojSintesis(conReloj({ favor: Object.assign(favor(), { fa: [15, 14, 40] }) }));
+    /* 20 tiros a 1,40 contra 1,30: +0,10 crudo, pero con 20 tiros de liga el ajuste lo deja en +0,05, bajo el corte */
+    const crudo = P.relojSintesis(conReloj({ favor: Object.assign(favor(), { f: [[20, 14, 28, 2, 6, 10]].concat(favor().f.slice(1)) }) }));
+    check('el desvío se mide AJUSTADO por muestra: 20 tiros a 1,40 contra 1,30 de la liga no son un arma (crudo +0,10, ajustado +0,05)',
+      !crudo.armas.some(x => x.lado === 'favor' && x.k === 0), crudo.armas);
+    check('15 tiros de reinicio a 2,67 por tiro siguen sin contar: con menos de 20 la franja es una racha',
+      !reinicioLetal.armas.some(x => x.k === 'fa'));
+    check('«para explotarle» sale de sus grietas y «para anularle» de sus armas, con la cifra para auditarla',
+      sR.explotar.length === 2 && sR.anular.length === 2
+        && /^Defender los 24 segundos: con el reloj encima saca 0,73 por tiro \(0,84\)/.test(sR.explotar[0].texto)
+        && /^Cargar el rebote ofensivo: la 2da oportunidad le cuesta 1,30 por tiro \(1,15\)/.test(sR.explotar[1].texto)
+        && /^Evitar el final del reloj/.test(sR.anular[0].texto) && /^Box-out en cada tiro/.test(sR.anular[1].texto), sR);
+    check('el insight lee el reparto contra los cuartiles: 27,3 % de finales tempranos propios y de los rivales, sobre el 19 % del cuarto alto',
+      sR.insight.length === 2 && /^Vive del primer golpe: 27,3 % de sus finales/.test(sR.insight[0]) && /^Le corren: 27,3 % de los finales rivales/.test(sR.insight[1])
+        && /arranca en 19,0 %/.test(sR.insight[0]), sR.insight);
+    /* «tardio»: 25 % de finales después del 20, a 0,89 por tiro (ajustado +0,03: no se separa). Con 10/45 (0,44) sí. */
+    const sTardio = P.relojSintesis(tardio).insight.join(' ');
+    const tardioFlojo = P.relojSintesis(conReloj({ favor: { f: [[25, 10, 20, 5, 5, 5], [50, 20, 40, 5, 5, 10], [50, 20, 40, 5, 5, 10], [45, 10, 20, 5, 5, 5]], ro: [0, 0, 0], fa: [0, 0, 0], sr: 0 } })).insight.join(' ');
+    check('el reparto se dice solo, y si esa franja además se separa en rendimiento, en la misma frase',
+      sTardio.indexOf('Llega seguido al final del reloj: 25,0 % de sus finales llegan después del segundo 20 (el cuarto más alto de la competencia arranca en 19,7 %).') !== -1
+        && tardioFlojo.indexOf('Llega seguido al final del reloj: 25,0 % de sus finales llegan después del segundo 20 (el cuarto más alto de la competencia arranca en 19,7 %), pero ahí rinde por debajo de la competencia (0,44 contra 0,84 por tiro).') !== -1, [sTardio, tardioFlojo]);
+    /* un equipo que reparte y rinde como la liga: la liga ×0,1 */
+    const comoLiga = { f: [[40, 26, 52, 12, 13, 10], [90, 44, 99, 40, 23, 18], [80, 36, 80, 35, 19, 14], [45, 17, 38, 20, 8, 6]], ro: [30, 16, 35], fa: [27, 11, 26], sr: 0 };
+    const neutro = P.relojSintesis(conReloj({ favor: comoLiga, contra: comoLiga }));
+    check('sin desvíos no se fuerza un texto: una sola frase que lo dice, y ninguna arma, grieta ni recomendación',
+      neutro.insight.length === 1 && /no es un rasgo de este equipo/.test(neutro.insight[0])
+        && !neutro.armas.length && !neutro.grietas.length && !neutro.explotar.length && !neutro.anular.length, neutro);
+    const sChico = P.relojSintesis(conReloj({ favor: chico.reloj.favor, contra: chico.reloj.favor }));
+    const hChico = P.relojPersonalidad(conReloj({ favor: chico.reloj.favor, contra: chico.reloj.favor }));
+    check('con menos de 150 finales no hay síntesis: se muestran las barras y el aviso con ~',
+      !sChico.muestra && !sChico.insight.length && !sChico.armas.length && /~ Muestra chica: 90 finales/.test(hChico)
+        && !/data-reloj-insight/.test(hChico) && /data-reloj-lado="favor"/.test(hChico));
+    const hP = P.relojPersonalidad(pR);
+    const lado = (h, l) => h.slice(h.indexOf('data-reloj-lado="' + l + '"'), l === 'favor' ? h.indexOf('data-reloj-lado="contra"') : h.indexOf('data-reloj-insight'));
+    const fila = (h, i) => h.slice(h.indexOf('data-reloj-franja="' + i + '"'), h.indexOf('data-reloj-franja="' + i + '"') + 1400).split('</div>\n      </div>')[0];
+    check('las barras: cuatro franjas por lado, el volumen en %, el trazo de la competencia y las dos filas aparte',
+      (hP.match(/data-reloj-franja=/g) || []).length === 8 && (hP.match(/reloj-barra-liga/g) || []).length === 8
+        && /27,3 %/.test(lado(hP, 'favor')) && lado(hP, 'favor').indexOf(P.FUERA_DE_FRANJA.ro.label) !== -1 && lado(hP, 'favor').indexOf(P.FUERA_DE_FRANJA.fa.label) !== -1);
+    check('el rendimiento no se comunica solo con color: ▼ y tono bajo en 21-24 s de ataque, ▲ y tono alto en la misma franja de defensa',
+      /0,73 ▼/.test(fila(lado(hP, 'favor'), 3)) && /tono-bajo/.test(fila(lado(hP, 'favor'), 3))
+        && /0,73 ▲/.test(fila(lado(hP, 'contra'), 3)) && /tono-alto/.test(fila(lado(hP, 'contra'), 3))
+        && !/d [▲▼]/.test(fila(lado(hP, 'favor'), 0)));
+    check('el bloque trae insight, armas, grietas y las dos recomendaciones, cada una como pieza que no se parte en el papel',
+      /data-reloj-insight/.test(hP) && /Sus armas del reloj/.test(hP) && /Sus grietas del reloj/.test(hP)
+        && /Para explotarle/.test(hP) && /Para anularle/.test(hP) && (hP.match(/pbp-reloj-pieza/g) || []).length === 7);
+    check('sin «reloj» en el paquete no hay bloque, y el lugar de la Personalidad pide su propio tipo',
+      P.relojPersonalidad(paquete3('BOCA')) === '' && P.relojSintesis(paquete3('BOCA')) === null
+        && /data-pbp-tipo="personalidad"/.test(P.espacio('BOCA', 'equipo', null, 'personalidad')) && !/data-pbp-tipo="quintetos"/.test(P.espacio('BOCA', 'equipo', null, 'personalidad')));
+    const fuenteEq = fs.readFileSync(path.join(__dirname, 'js', 'sgadd-equipos.js'), 'utf8');
+    const fuenteInf = fs.readFileSync(path.join(__dirname, 'js', 'sgadd-informe.js'), 'utf8');
+    const fuentePbp = fs.readFileSync(path.join(__dirname, 'js', 'sgadd-pbp.js'), 'utf8');
+    check('la pestaña Personalidad lo monta solo con la capa, en una hoja propia del informe',
+      /\$\{equiposRelojPersonalidad\(e\)\}/.test(fuenteEq) && /function equiposRelojPersonalidad\(e\) \{\s*if \(typeof SGADD_PBP === 'undefined' \|\| !SGADD_PBP\.activa \|\| !SGADD_PBP\.activa\(\)\) return '';/.test(fuenteEq)
+        && /data-hoja data-reloj-personalidad-espacio/.test(fuenteEq)
+        && /tipo === 'personalidad' \? relojPersonalidad\(paq\)/.test(fuentePbp));
+    check('y el informe de equipo espera a que se monte (con techo de 5 s) antes de imprimir',
+      /SGADD_PBP\.montarPendientes\(salida\)/.test(fuenteInf) && /Promise\.race\(\[montaje, new Promise\(r => setTimeout\(r, 5000\)\)\]\)/.test(fuenteInf)
+        && fuenteInf.indexOf('montarPendientes(salida)') < fuenteInf.indexOf('window.print();'));
+    const cssIdx = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+    check('las barras tienen su variante de papel y no se borran al imprimir',
+      /\.reloj-barra-relleno \{[^}]*background: var\(--acento-texto/.test(cssIdx) && /print-color-adjust: exact; \}/.test(cssIdx)
+        && /body \.reloj-barra-relleno \{ background: var\(--acento-papel/.test(cssIdx));
+    check('ninguna salida trae un undefined ni un NaN', !/undefined|NaN/.test(hR + hp + hP + hChico + P.relojJugador(pR, '1') + P.relojJugador(pR, '5') + P.relojEquipo(chico)));
   }
 
   console.log('\n' + '═'.repeat(70) + '\n' + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');

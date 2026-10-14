@@ -81,12 +81,13 @@ node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: 
                            #             equipo, vencimiento y ciclo ORO por categoría
 node test-glosario.js      #  34 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
-node test-pbp.js           # 210 tests · la capa de laboratorio de play-by-play: el catálogo,
+node test-pbp.js           # 227 tests · la capa de laboratorio de play-by-play: el catálogo,
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
                            #             · el bloque opcional de secciones del paquete (punto 83)
                            #             · y el reloj de posesión: franjas, identidad y perfil del jugador (115),
-                           #               su metodología en las cards, el Glosario y el manual (116)
+                           #               su metodología en las cards, el Glosario y el manual (116),
+                           #               y su síntesis táctica en la pestaña Personalidad (118)
 
 node test-mails.js         # 177 tests · los mails institucionales: plantillas sin huecos, el
                            #             día de Argentina, la idempotencia del cron, la ficha, el SMTP,
@@ -136,7 +137,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7750 tests en total. Todos tienen que dar verde antes de commitear.**
+**7767 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -254,7 +255,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=279`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=280`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -14102,3 +14103,70 @@ post-partido tiene que LANZAR: su limpieza corre 400 ms después de
 `Page.printToPDF` con `preferCSSPageSize` y márgenes de 0,4 pulgadas. Con la
 caché desactivada (`Network.setCacheDisabled`), o Chrome sirve el
 `index.html` anterior.
+
+## 118. EL RELOJ EN LA PESTAÑA PERSONALIDAD · barras y síntesis táctica (2026-10-14)
+
+Pedido del club: «cuándo tira» y «cuándo le tiran» dentro de Personalidad,
+en un gráfico, con conclusiones en el idioma del resto del panel.
+`test-pbp.js` (sección 7, al final) fija todo.
+
+### Dónde va
+
+- **Equipos → Personalidad**, al pie, DESPUÉS del insight del equipo
+  (`equiposRelojPersonalidad`). **Solo con la capa `pbp`**: sin ella la
+  pestaña queda byte a byte como antes. Llega por `SGADD_PBP.espacio(…,
+  'personalidad')` y `montarPendientes`, como el resto del play-by-play.
+- **Informe de equipo (PDF)**: la sección «8 ejes de personalidad» lo
+  arrastra, en hoja propia (`data-hoja`). `generar()` espera a que se monte,
+  con techo de 5 s (el mismo patrón de la ficha del jugador).
+- **Va después del insight a propósito**, medido en el PDF real (Jujuy, A3
+  apaisada): puesto antes, empujaba el «Insight clave» del equipo al pie de su
+  hoja y lo partía en dos (10 → 12 hojas). Después, el informe pasa de 10 a
+  **11 hojas**: las hojas 1-5 y 7-11 son idénticas a las de sin reloj, y la 6
+  es el bloque entero. «Cómo se lee» no se imprime.
+- **El post-partido NO tiene una card de Personalidad.** Su card del reloj
+  (punto 115) queda como estaba: la síntesis mira la temporada, y con los
+  tiros de una noche las armas y grietas serían ruido.
+
+### El gráfico · `relojBarras` (PURA)
+
+Por lado, cuatro filas: la barra es la parte de los finales (tiros y
+pérdidas) en la franja, con un trazo en la competencia; al lado, Pts/tiro
+(entre paréntesis la competencia) y eFG%. Abajo, «2da oportunidad» y
+«Reinicio» con sus C/I, sin barra: no son una porción del reloj. El
+rendimiento que se separa lleva ▲/▼ además del tono (punto 14). CSS a mano
+(`.reloj-barra*`) con variante de papel y `print-color-adjust: exact`.
+
+### La síntesis · `relojSintesis` (PURA) · nada se escribe si el dato no lo sostiene
+
+| | De dónde sale |
+|---|---|
+| **Insight del reloj** | el reparto propio y el del rival contra los cuartiles de la competencia (`cortes.equipo`, p25 y p75). Si esa franja además se separa en rendimiento, va en la misma frase |
+| **3 armas / 3 grietas** | franjas de los DOS lados (lo que tira y lo que le tiran) cuyo rendimiento se separa, ordenadas por puntos de diferencia en la temporada (desvío × tiros) |
+| **Para explotarle** | sale de sus grietas: dónde atacarlo y dónde dejarlo tirar |
+| **Para anularle** | sale de sus armas: qué negarle y en qué terreno no jugarle |
+
+- **El rendimiento se ajusta por muestra** con 20 tiros de la liga (el
+  criterio del mapa) y cuenta como desvío **desde 0,06 puntos por tiro, con
+  20 tiros o más**. Medido sobre los 17 equipos de la Conferencia Norte: el
+  desvío ajustado tiene mediana 0,047 y p75 0,077. Con esos cortes salen 34
+  armas y 28 grietas en total (2 y 1,6 por equipo).
+- **Lo que le tiran se mide con la misma vara de cuartiles** que el ataque:
+  es la distribución de los ataques de la liga, y el reparto en contra de
+  los 17 equipos se mueve en el mismo rango (14 a 22 % de tempranos).
+- **Sin desvíos no se fuerza un texto**: una sola frase que lo dice, y
+  ninguna lista. Sin muestra (150 finales) no hay síntesis, solo barras.
+- Las recomendaciones (`QUE_HACER`, lado × franja) llevan siempre la cifra y
+  la de la competencia, y el bloque dice que decide el cuerpo técnico.
+
+### Verificado
+
+En el navegador contra la API local (KV y Google reales, link de cliente de
+Jujuy): el bloque sale con «Ofensiva armada», sus dos grietas de ataque más
+la del reinicio, y ningún desborde a 475 px (la emulación no baja de ahí).
+
+Al revés, once mutaciones, todas caen: el corte de 0,06 (2), el mínimo de
+20 tiros, el ajuste por muestra, el signo de la defensa (4), el orden por
+impacto (3), explotar con las armas, la síntesis sin muestra, el ▲/▼, la
+pestaña sin la guarda de la capa, el informe sin esperar y el montaje sin
+el tipo nuevo.

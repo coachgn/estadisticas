@@ -141,8 +141,8 @@ check('los bloques marcados abren hoja nueva',
 check('y la grilla que los contiene se aplana',
   html.indexOf('#informeSalida .lg') !== -1 &&
   /#informeSalida \.lg.:grid-cols-2 \{ display: block !important; \}/.test(html));
-check('están marcados los tres: cómo ataca, dónde gana y 4 factores',
-  (require('fs').readFileSync('./js/sgadd-equipos.js', 'utf8').match(/data-hoja/g) || []).length === 3);
+check('están marcados los cuatro: cómo ataca, dónde gana, 4 factores y el reloj de posesión (punto 118)',
+  (require('fs').readFileSync('./js/sgadd-equipos.js', 'utf8').match(/data-hoja/g) || []).length === 4);
 check('la caja del gráfico reserva su espacio y no se parte',
   /#informeSalida \.chart-box \{[\s\S]{0,220}overflow: hidden;[\s\S]{0,120}page-break-inside: avoid/.test(html));
 /* Un radar es CUADRADO: su tamaño lo limita el lado más corto. Con 70mm de

@@ -168,7 +168,13 @@ const SGADD_INFORME = (function () {
 
        El timeout queda solo como red de seguridad por si `afterprint` no
        llega (pasa en algunos navegadores al cancelar), con margen de sobra. */
-    setTimeout(() => {
+    /* El reloj de la Personalidad (punto 118) llega por play-by-play: se
+       espera a que se monte —con techo de 5 s, como la ficha del jugador—
+       para que el PDF no salga con el cartel de «Cargando…». Sin la capa no
+       hay nada que montar y la promesa se cumple en el acto. */
+    const montaje = (typeof SGADD_PBP !== 'undefined')
+      ? Promise.resolve(SGADD_PBP.montarPendientes(salida)).catch(() => null) : Promise.resolve();
+    Promise.race([montaje, new Promise(r => setTimeout(r, 5000))]).then(() => setTimeout(() => {
       const alTerminar = () => {
         window.removeEventListener('afterprint', alTerminar);
         clearTimeout(respaldo);
@@ -177,7 +183,7 @@ const SGADD_INFORME = (function () {
       window.addEventListener('afterprint', alTerminar);
       const respaldo = setTimeout(alTerminar, 60000);
       window.print();
-    }, 700);
+    }, 700));
   }
 
   function limpiar() {

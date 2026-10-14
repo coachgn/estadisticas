@@ -1053,7 +1053,17 @@ function equiposTabPersonalidad(idx, e) {
         </p>
       </div>` : ''}
     </div>
-    ${equiposInsight(p.insight)}`;
+    ${equiposInsight(p.insight)}
+    ${equiposRelojPersonalidad(e)}`;
+}
+
+/* EL RELOJ DE POSESIÓN EN LA PERSONALIDAD (punto 118). Solo con la capa
+   de play-by-play: sin ella la pestaña queda exactamente como antes. El
+   paquete llega después del pintado (montarPendientes); la marca de hoja lo
+   manda a una hoja propia en el informe de equipo. */
+function equiposRelojPersonalidad(e) {
+  if (typeof SGADD_PBP === 'undefined' || !SGADD_PBP.activa || !SGADD_PBP.activa()) return '';
+  return `<div class="mt-6" data-hoja data-reloj-personalidad-espacio="1">${SGADD_PBP.espacio(e.nombre, 'equipo', null, 'personalidad')}</div>`;
 }
 
 /* =====================================================================
