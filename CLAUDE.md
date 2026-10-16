@@ -14520,3 +14520,58 @@ Arreglos:
 3. **Subir los paquetes de LAB Sur** con la validación nueva (ya regenerados
    en local; el respaldo quedó en `web.respaldo-2026-10-16`).
 4. Push del front (`?v=284`, escudos, núcleo y `server/lib/compartido`).
+
+## 125. BAHÍA BLANCA REPARADO EN EL LIBRO · y por qué la primera prueba no escribió (2026-10-16)
+
+El punto 124 dejó el motor v115 desplegado, pero el libro seguía con «1° X»
+en las tres maestras y EQUIPO = 1 en 4 FACTORES. **La prueba por la fachada
+no había escrito nada**, por dos motivos que no dejaban rastro:
+
+- **`confirmar=true` viajaba como TEXTO.** `llamarFachada.js` pasaba los
+  `clave=valor` como strings y las acciones de escritura exigen
+  `pedido.confirmar === true`: devolvían el plan con `ok: true`. Ahora
+  `true`, `false` y los números viajan con su tipo.
+- **Sin `operador`, la identidad llega vacía** (`NO_REGISTRADA`). Con
+  `operador=<admin>` el motor confirma al administrador contra el DUEÑO de la
+  planilla (`_accesoDeAdministrador_`, v104); este libro es de
+  motorstats.ar@gmail.com.
+- **La config del cliente**: `llamarFachada` manda la de
+  `cliente/Configuracion.js`, que es la de OTRO torneo. Suma
+  `config=@archivo.json`; la de Bahía se bajó del propio script
+  (`2026 / BAHIA BLANCA / PRIMERA / ORO / IDA - REGULAR`) y quedó en
+  `mi-motor-stats/respaldos/ordinal_2026-10-16/config-bahia.json`.
+
+**Ni la Service Account ni clasp pueden escribir el Sheet**: la SA es de
+solo lectura por diseño (punto 18 bis) y clasp no tiene el permiso de
+spreadsheets. El que escribe es el motor, por la fachada.
+
+### Lo que se hizo
+
+1. Respaldo de las 11 hojas: `respaldos/ordinal_2026-10-16/bahia-blanca_antes_de_reparar.json`.
+2. `repararNombresConOrdinal` con `confirmar`: 82 + 976 + 82 EQUIPO y PARTIDO
+   limpios, y 82 EQUIPO de 4 FACTORES rehechos por ID_ARCHIVO + CONDICION.
+   Verificado contra Base Datos E: 82 de 82 coinciden.
+3. Regeneradas, en orden: generarAcumulados, generarAcumulado4F,
+   generarPromedios, generarPromedios4F, rankingEquipos, rankingJugadores.
+
+### Medido después con la API de Sheets
+
+```
+las 11 hojas         0 celdas con ordinal · ningún equipo «1»
+derivadas            12 equipos cada una (ACUMULADO 4F 5 → 16 filas, PROMEDIOS 4F 7 → 16)
+el panel             173 jugadores en 12 planteles de 12 a 16 · validarTorneo sin errores
+```
+
+### La carpeta de partidos
+
+`1XQUy3ks…` es la de la categoría: el libro «PRIMERA ORO», «IDA - REGULAR»
+VACÍA (nada pendiente) y «PARTIDOS» con los 41 archivos procesados, que son
+las 82 filas de Base Datos E. Sus nombres mezclan «1º» y «1°»: los dos los
+saca `_quitarOrdinal_` al consolidar, porque el nombre sale de la celda del
+equipo y no del archivo. Un partido nuevo entra limpio sin tocar nada.
+
+### Lo que NO se hizo
+
+- **Fixture externo de Bahía** (volcala.com, abbasquet.com): quedaron como
+  referencia. Sumarlos es un adaptador nuevo de `fixture-fuentes.js` (punto 70).
+- El Cliente_Script de Bahía no se tocó: el motor compartido ya trae la v115.
