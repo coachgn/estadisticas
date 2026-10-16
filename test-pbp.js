@@ -558,6 +558,19 @@ function paquete(equipo) {
       && /No hubo: el partido no llegó/.test(qp));
   check('quintetos: un paquete sin quintetos lo dice en una línea',
     /no hay quintetos/.test(P.quintetosPartido(pPart, { id: 'x' })) && /partido-quintetos/.test(P.espacioPartido('BOCA', {}, 'partido-quintetos')));
+  /* ---- validación en dos niveles (punto 125): el partido PARCIAL */
+  check('un partido parcial (quintetos: null) explica que el play-by-play pierde un cambio',
+    /pierde un cambio/.test(P.quintetosPartido(pPart, { id: 'x', quintetos: null })) &&
+    !/pierde un cambio/.test(P.quintetosPartido(pPart, { id: 'x' })));
+  {
+    const conParc = Object.assign({}, pPart, { partidos: { jugados: 1, validados: 0, conTiros: 1,
+      parciales: [{ fecha: '2026-10-15', rival: 'QUILMES (MDP)', motivo: 'hay tramos sin cinco jugadores en cancha (cambio mal cargado)' }], excluidos: [] } });
+    const h = P.html(conParc);
+    check('la nota del laboratorio nombra el partido parcial y para qué sirve',
+      /Solo para tiros, reloj, momentum y cuartos/.test(h) && /2026-10-15 vs QUILMES \(MDP\)/.test(h));
+    const sinParc = P.html(Object.assign({}, pPart, { partidos: { jugados: 1, validados: 1, excluidos: [] } }));
+    check('sin parciales la nota queda como antes', !/Solo para tiros/.test(sinParc));
+  }
 
   /* ---- tiros individuales */
   const t12 = P.capaTiros(p3, 'equipo', 'Z12');

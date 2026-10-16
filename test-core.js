@@ -15,6 +15,27 @@ check('num() null es null', S.num(null) === null);
 check('num() de un número JS lo deja igual', S.num(42) === 42);
 check('num() de NaN/Infinity es null', S.num(NaN) === null && S.num(Infinity) === null);
 check('num() texto no numérico es null', S.num('abc') === null);
+/* Punto 124: parseFloat leía «1° BAHIENSE DEL NORTE» como 1 y los 173
+   jugadores del libro de Bahía Blanca entraban con EQUIPO = 1. */
+check('num() de «1° BAHIENSE DEL NORTE» es null, no 1', S.num('1° BAHIENSE DEL NORTE') === null);
+check('num() de «1º INDEPENDIENTE» y «1ª X» también', S.num('1º INDEPENDIENTE') === null && S.num('1ª X') === null);
+check('num() de «9 DE JULIO» es null, no 9', S.num('9 DE JULIO') === null);
+check('num() sigue leyendo «1.234,56», «45,5%» y «1e3»',
+  S.num('1.234,56') === 1234.56 && Math.abs(S.num('45,5%') - 0.455) < 1e-12 && S.num('1e3') === 1000);
+{
+  const hb = {
+    'PROMEDIOS J': { cols: ['NOMBRES', 'EQUIPO', 'FASE', 'PJ', 'MIN', 'PTS'],
+      filas: [{ NOMBRES: 'PEREZ, JUAN', EQUIPO: '1° NAPOSTA', FASE: 'REGULAR', PJ: 5, MIN: 30, PTS: 12 },
+              { NOMBRES: 'GOMEZ, LUIS', EQUIPO: '1° LINIERS', FASE: 'REGULAR', PJ: 5, MIN: 25, PTS: 9 }] },
+    'PROMEDIOS E': { cols: ['EQUIPO', 'FASE', 'PJ', 'PTS'],
+      filas: [{ EQUIPO: '1° NAPOSTA', FASE: 'REGULAR', PJ: 5, PTS: 80 }, { EQUIPO: '1° LINIERS', FASE: 'REGULAR', PJ: 5, PTS: 75 }] },
+  };
+  const ib = S.construirIndice(hb, { fase: 'REGULAR' });
+  check('un plantel con prefijo de división se arma por equipo (no todos en «1»)',
+    ib.liga.jugadores.length === 2 && ib.liga.jugadores.every(j => typeof j.EQUIPO === 'string') &&
+    (ib.liga.jugadoresPorEquipo.get('NAPOSTA') || []).length === 1 &&
+    (ib.liga.jugadoresPorEquipo.get('LINIERS') || []).length === 1);
+}
 check('num() coma decimal simple', cerca(S.num('3,5'), 3.5));
 check('num() formato es-AR con miles', cerca(S.num('1.234,56'), 1234.56));
 check('num() porcentaje con coma', cerca(S.num('41,68%'), 0.4168));

@@ -119,11 +119,26 @@ const SGADD_PBP = (function () {
     const excl = (p.excluidos || []).length
       ? ' Quedaron afuera ' + p.excluidos.length + ': ' + p.excluidos.map(x => esc(x.fecha) + ' vs ' + esc(x.rival) + ' (' + esc(x.motivo) + ')').join('; ') + '.'
       : '';
+    /* Validación en DOS niveles (ingesta, 2026-10-16): un partido con el
+       marcador idéntico y un hueco corto de quinteto entra a tiros, mapa,
+       reloj, momentum y cuartos, pero no a quintetos ni rotaciones. Se dice
+       cuáles son: si no, «0/1 validados» con un mapa lleno se lee como error. */
+    const parc = (p.parciales || []).length
+      ? ' Solo para tiros, reloj, momentum y cuartos (sin quintetos) ' + p.parciales.length + ': '
+        + p.parciales.map(x => esc(x.fecha) + ' vs ' + esc(x.rival) + ' (' + esc(x.motivo) + ')').join('; ') + '.'
+      : '';
     return `<p class="text-[11px] text-muted">
         <b class="text-ink">Laboratorio</b> · ${esc(paq.competencia || '')} · play-by-play oficial,
         <b class="text-ink">${p.validados}/${p.jugados}</b> partidos validados (cinco en cancha siempre y minutos
-        contra el box score).${excl}
+        contra el box score).${parc}${excl}
       </p>`;
+  }
+
+  /** Cuántos partidos sostienen el mapa, el reloj y el momentum: los validados
+      más los parciales. Un paquete anterior a los dos niveles no trae `conTiros`. */
+  function partidosConTiros(paq) {
+    const p = (paq && paq.partidos) || {};
+    return p.conTiros != null ? p.conTiros : (p.validados != null ? p.validados : '—');
   }
 
   /* --------------------------------------------------------- quintetos */
@@ -1069,9 +1084,9 @@ const SGADD_PBP = (function () {
       const pts = paq.tiros.detalle.puntos;
       const ji = pts && id ? (pts.ids || []).indexOf(String(id)) : -1;
       const suyos = ji === -1 ? [] : (pts.favor || []).filter(p => p[4] === ji);
-      if (!suyos.length) return vacio('Sin tiros de campo ubicados en los partidos validados de ' + esc(paq.equipo) + '.');
+      if (!suyos.length) return vacio('Sin tiros de campo ubicados en los partidos con play-by-play de ' + esc(paq.equipo) + '.');
       return `<div class="pbp-bloque" data-pbp-listo="1">
-        <p class="text-xs text-ink mb-2"><b>Laboratorio</b> · muestra chica: sin diagnóstico. <span class="dato-sec">Play-by-play oficial, ${paq.partidos ? paq.partidos.validados : '—'} partidos validados de ${esc(paq.equipo)}.</span></p>
+        <p class="text-xs text-ink mb-2"><b>Laboratorio</b> · muestra chica: sin diagnóstico. <span class="dato-sec">Play-by-play oficial, ${partidosConTiros(paq)} partidos de ${esc(paq.equipo)}.</span></p>
         ${canchaConTiros(suyos, 'Tiros de ' + nombre)}</div>`;
     }
     const chica = det.i < MIN_TIROS_DIAGNOSTICO;
@@ -1080,7 +1095,7 @@ const SGADD_PBP = (function () {
       <p class="text-xs text-ink mb-2"><b>Laboratorio</b> · ${det.c}/${det.i} tiros de campo (${num(100 * det.c / det.i)} %) ·
         <b>${num(det.ppt, 2)}</b> puntos por tiro <span class="dato-sec">(liga ${num(vara, 2)})</span> · distancia mediana ${num(det.dist)} m
         ${det.pj ? '· ' + det.pj + ' PJ con minutos' : ''} ·
-        <span class="dato-sec">play-by-play oficial, ${paq.partidos ? paq.partidos.validados : '—'} partidos validados de ${esc(paq.equipo)}</span></p>
+        <span class="dato-sec">play-by-play oficial, ${partidosConTiros(paq)} partidos de ${esc(paq.equipo)}</span></p>
       ${chica ? `<p class="text-[11px] text-yellow-400 mb-2">Muestra chica (menos de ${MIN_TIROS_DIAGNOSTICO} tiros de campo): el mapa muestra dónde tiró, sin diagnóstico. Leelo como un registro, no como una tendencia.</p>` : ''}
       ${mapa(paq, { sujeto: String(id), diag: !chica })}
       ${relojJugador(paq, String(id))}
@@ -1211,6 +1226,9 @@ const SGADD_PBP = (function () {
    * y sus minutos juntos en el partido. PURA.
    */
   function quintetosPartido(paq, pp) {
+    /* Un partido PARCIAL viaja con `quintetos: null` (ingesta, 2026-10-16): el
+       play-by-play pierde un cambio y no se sabe quién era el quinto. */
+    if (pp && pp.quintetos === null) return vacio('El play-by-play oficial de este partido pierde un cambio: hay un tramo con cuatro en cancha y no se puede saber quién era el quinto, así que no hay quintetos. El momentum, el mapa y el reloj sí salen.');
     if (!pp || !pp.quintetos) return vacio('Sin play-by-play validado de este partido (o paquete anterior al punto 97): no hay quintetos.');
     const nombres = pp.nombres || {};
     const jug = (id) => {

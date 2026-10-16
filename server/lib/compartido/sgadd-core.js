@@ -43,6 +43,13 @@
     if (typeof v === 'number') return isFinite(v) ? v : null;
     let s = String(v).trim();
     if (!s) return null;
+    /* Un TEXTO que empieza con un número no es un número. `parseFloat` lee
+       «1° BAHIENSE DEL NORTE» como 1 y «9 DE JULIO» como 9: medido en el
+       libro de Bahía Blanca (2026-10-16), los 173 jugadores entraban con
+       EQUIPO = 1 y ningún plantel encontraba a los suyos. Una letra o un
+       signo ordinal dicen que la celda es texto. La `e` queda afuera del
+       chequeo por la notación científica. */
+    if (/[a-df-zA-DF-ZÀ-ɏ°ºª]/.test(s)) return null;
     const esPct = s.indexOf('%') !== -1;
     s = s.replace(/%/g, '').replace(/\s/g, '');
     // "1.234,56" (es-AR) vs "1234.56"

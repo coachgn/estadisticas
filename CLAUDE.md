@@ -16,8 +16,8 @@ aplicadas en el punto 14.
 ## 1. Cómo correr y verificar
 
 ```bash
-node test-core.js          # 328 tests · núcleo, índice, validador
-node test-logos.js         #  37 tests · resolución de escudos
+node test-core.js          # 336 tests · núcleo, índice, validador, num() con prefijo de división (punto 124)
+node test-logos.js         #  39 tests · resolución de escudos
 node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 318 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
@@ -81,7 +81,7 @@ node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: 
                            #             equipo, vencimiento y ciclo ORO por categoría
 node test-glosario.js      #  34 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
-node test-pbp.js           # 270 tests · la capa de laboratorio de play-by-play: el catálogo,
+node test-pbp.js           # 273 tests · la capa de laboratorio de play-by-play: el catálogo,
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
                            #             · el bloque opcional de secciones del paquete (punto 83)
@@ -145,7 +145,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7810 tests en total. Todos tienen que dar verde antes de commitear.**
+**7818 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -263,7 +263,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=283`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=284`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -14441,3 +14441,82 @@ centro-mando/canva.js   autorizar (una vez) · estado · importar [--ensayo]
 - **No verificado contra Canva**: hace falta crear la app y autorizarla. El
   PDF en memoria sí se midió (CR-03: 6 placas, 6 hojas, 855 KB).
 
+## 124. LAB SUR, ESCUDOS DE LA LAB Y EL «1°» DE BAHÍA BLANCA (2026-10-16)
+
+Tres problemas reportados juntos, auditados contra los datos reales. Assets
+en `?v=284`.
+
+### 1 · El play-by-play de LAB Sur · validación en DOS niveles (ingesta)
+
+**La Sur estaba configurada igual que la Norte y corría completa** (bajada →
+motor → exportar → KV). Su único partido, Quilmes (MDP) 78-79 River (15/10),
+quedaba afuera porque **el play-by-play oficial pierde un cambio**: Alderete
+sale a las 8:23 del Q2 sin reemplazo y vuelve a las 7:50, así que Quilmes
+juega 33 s con cuatro. El box score oficial tiene el MISMO hueco (sus minutos
+suman 11.968 s contra 12.000): el quinto no se puede inferir.
+
+Decisión del club: **validación en dos niveles** (`motorstats-ingestion`,
+`src/pbp/segmentar.js` → `validar`):
+
+| | Exige | Alimenta |
+|---|---|---|
+| `ok` | cinco en cancha siempre y minutos jugador exactos | quintetos, dúos, tríos, rotaciones, últimos 5, clutch, tácticas |
+| `okTiros` | marcador idéntico, ningún tramo con MÁS de cinco y ≤ 60 s con cuatro por lado (`toleranciaCancha`) | tiros, mapa, reloj, momentum, cuartos, vara de la liga y el post-partido |
+
+- El paquete suma `partidos.conTiros` y `partidos.parciales` (con su motivo);
+  `excluidos` queda para lo que no entra a nada. Sigue siendo `@3`.
+- **Un partido parcial viaja en `partidosPbp` con `quintetos: null`**, y el
+  post-partido lo dice («pierde un cambio… el momentum, el mapa y el reloj sí
+  salen»). La nota del laboratorio lo nombra aparte.
+- Esto ablanda la regla del punto 62 («solo entra un partido que valida»)
+  SOLO para lo que no depende de quién estaba en cancha.
+- Tests: `test/test-jujuy-pbp.js` (+9) y `test-pbp.js` (+3); las dos piezas
+  verificadas al revés.
+
+### 2 · Escudos de la LAB · 34 de 34
+
+Faltaban **UNION (SF)** y **RACING (A)**, los dos que estaban provisorios.
+Bajados de `/escudos/{idClub}/{idEquipo}` del sitio de la liga
+(`union-sf.jpg`, `racing-a.jpg`) y sumados al manifiesto.
+
+### 3 · Bahía Blanca · el prefijo de división rompía DOS cosas
+
+La federación nombra a los clubes «1° NAPOSTA». Medido en el libro el
+2026-10-16:
+
+- **En el motor** (`consolidar4Factores`): después de escribir el nombre, el
+  bucle sobre `ENCABEZADOS_FINALES_4_FACTORES` volvía a copiar EQUIPO desde
+  la hoja PARTIDO por `_parsearValor_` → `parseFloat("1° NAPOSTA") = 1`. Los
+  82 partidos de 4 FACTORES quedaron con EQUIPO = 1 y ACUMULADO 4F /
+  PROMEDIOS 4F colapsaron en un solo «equipo 1» (el Diagnóstico ya lo
+  denunciaba: «Base Datos E tiene 12 equipos y PROMEDIOS 4F solo 1»).
+- **En el panel** (`num()` del núcleo): el mismo `parseFloat` leía la celda
+  EQUIPO como 1, así que **los 173 jugadores entraban al equipo «1»** y
+  ningún plantel encontraba a los suyos. Era el «no se cargan los jugadores»:
+  la hoja ACUMULADO J estaba bien.
+
+Arreglos:
+
+- **Panel**: `num()` devuelve `null` si la celda tiene una letra o un signo
+  ordinal (la `e` queda afuera por la notación científica). Medido después
+  sobre el libro real: 12 planteles de 12 a 16 jugadores. Cierra la clase
+  entera: «9 DE JULIO» tampoco se lee más como 9.
+- **Motor v115** (`mi-motor-stats`, detalle en su `CAMBIOS.md`): los dos
+  extractores de nombre sacan el ordinal (`_quitarOrdinal_`, misma regla que
+  `SGADD.quitarOrdinal`), la pestaña vieja «1° X» se sigue encontrando
+  (`_hojaDeEquipo_`), 4F no vuelve a copiar los metadatos, y la acción
+  `repararNombresConOrdinal` de la fachada limpia lo ya cargado y rehace el
+  EQUIPO de 4 FACTORES (por ID_ARCHIVO + CONDICION desde Base Datos E).
+  Sin `confirmar` devuelve el plan.
+
+### Lo que NO está aplicado (lo corre el club)
+
+1. **Desplegar el motor v115** a la fachada (`clasp push` + nueva versión).
+2. **En el libro de Bahía, ANTES de la próxima consolidación**:
+   `repararNombresConOrdinal` (plan) → con `confirmar: true` → regenerar
+   acumulados, promedios (E, J y 4F) y rankings. Si se consolida antes, las
+   filas viejas («1° X») y las nuevas («X») conviven y los acumulados las
+   cuentan como dos equipos.
+3. **Subir los paquetes de LAB Sur** con la validación nueva (ya regenerados
+   en local; el respaldo quedó en `web.respaldo-2026-10-16`).
+4. Push del front (`?v=284`, escudos, núcleo y `server/lib/compartido`).
