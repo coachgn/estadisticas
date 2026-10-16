@@ -36,6 +36,7 @@ const AUTH = require('./compartido/sgadd-auth.js');
    editor de cruces del Panel Master no puede guardar algo que el panel
    después no entienda (punto 77). */
 const FASES = require('./compartido/sgadd-fases.js');
+const FUENTES = require('./fixture-fuentes.js');
 
 /* Los roles de un LIBRO VINCULADO (punto 77). `regular` es el de cada
    zona; los demás son los tramos siguientes del torneo, cada uno en su
@@ -263,6 +264,19 @@ function torneo(cat, d, deps) {
     });
     const p = FASES.parsear(v.formato, { zonasValidas: Array.from(validas) });
     if (p.errores && p.errores.length) return malo('La llave tiene errores: ' + p.errores.join(' · ') + '.');
+  }
+  /* LA FUENTE DEL FIXTURE que se pega desde el Panel Master: se valida con
+     el MISMO `configDe` que la usa al bajar. Una config que el servidor no
+     puede leer se ve guardada y nunca trae un partido, así que se rechaza
+     acá y no el sábado a la mañana. Las zonas tienen que ser del torneo. */
+  if (v.fixture && typeof v.fixture === 'object' && !Array.isArray(v.fixture)) {
+    const cfg = FUENTES.configDe({ fixture: v.fixture });
+    if (!cfg) return malo('La fuente del fixture no tiene ningún link válido (http/https) ni un adaptador conocido.');
+    const conocidas = new Set(Object.keys(previo && previo.categorias || {})
+      .map(s2 => (previo.categorias[s2] || {}).zona).filter(Boolean)
+      .concat(Object.keys(v.zonas || {})));
+    const ajena = Object.keys(cfg.zonas).find(z => !conocidas.has(z));
+    if (ajena) return malo('La fuente del fixture nombra la zona «' + ajena + '», que el torneo no tiene.');
   }
   ['marca', 'fuente', 'formato', 'fixture'].forEach((c) => {
     if (v[c] === undefined) return;

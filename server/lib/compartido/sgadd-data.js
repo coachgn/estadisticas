@@ -377,8 +377,10 @@ const SGADD_DATA = (function () {
        «traer is not defined» en el navegador, con el panel cayendo al
        calendario declarado como si la fuente se hubiera caído. */
     const traerlo = o.fetch || fetch;
-    const url = baseApi + '/api/v1/fixture/' + encodeURIComponent(torneo)
-      + (zona ? '?zona=' + encodeURIComponent(zona) : '');
+    /* `refrescar` (solo ADMIN en el servidor) es el «Probar» del Panel
+       Master: baja la fuente en el acto en vez de servir el caché. */
+    const qs = [zona ? 'zona=' + encodeURIComponent(zona) : '', o.refrescar ? 'refrescar=1' : ''].filter(Boolean);
+    const url = baseApi + '/api/v1/fixture/' + encodeURIComponent(torneo) + (qs.length ? '?' + qs.join('&') : '');
     const r = await traerlo(url, { headers: { Authorization: 'Bearer ' + auth.token() } });
     const cuerpo = await r.json().catch(() => null);
     if (!r.ok || !cuerpo || !cuerpo.ok) {

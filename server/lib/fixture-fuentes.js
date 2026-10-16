@@ -455,6 +455,276 @@ function numeroDe(c) {
 }
 
 /* =====================================================================
+   LA INSTANCIA DE UN PARTIDO · fase regular, octavos, play-in…
+
+   Las fuentes rotulan cada partido con su ronda —«Fecha 21», «Torneo
+   Apertura - LBB ORO - Cuartos de Final»— y ese texto es lo único que dice
+   a qué fase pertenece sin adivinar por la fecha. Se lee por palabra clave
+   y se CONSERVA el texto crudo (`ronda`): lo que no se reconoce no se
+   inventa, viaja como `OTRA` con su rótulo tal cual.
+   ===================================================================== */
+
+/* El ORDEN importa: «final extra» antes que «final», «semifinal» antes que
+   «final», y «play-in» antes que cualquier cosa que diga «partido». */
+const INSTANCIAS = [
+  { id: 'PLAYIN', label: 'Play-In', orden: 2, re: /\bplay\s*-?\s*in\b/ },
+  { id: 'RECLASIFICACION', label: 'Reclasificación', orden: 2, re: /reclasifica/ },
+  { id: 'OCTAVOS', label: 'Octavos de final', orden: 3, re: /octavos/ },
+  { id: 'CUARTOS', label: 'Cuartos de final', orden: 4, re: /cuartos/ },
+  { id: 'SEMIFINAL', label: 'Semifinales', orden: 5, re: /semi\s*-?\s*final/ },
+  { id: 'FINAL_EXTRA', label: 'Final extra', orden: 7, re: /final\s+extra|superfinal/ },
+  { id: 'FINAL', label: 'Final', orden: 6, re: /\bfinal(es)?\b/ },
+  { id: 'PERMANENCIA', label: 'Permanencia', orden: 8, re: /permanencia|descenso/ },
+  { id: 'PROMOCION', label: 'Promoción', orden: 9, re: /promoci/ },
+  { id: 'REGULAR', label: 'Fase regular', orden: 1, re: /\b(fecha|jornada|regular|ronda)\b/ },
+];
+
+/**
+ * @param {string} t el rótulo de la fuente
+ * @returns {{id, label, orden, etapa}|null} `etapa` es Apertura/Clausura si
+ *          el rótulo lo dice; nunca se deduce de la fecha.
+ */
+function instanciaDe(t) {
+  const s = sinAcentos(String(t || '')).normalize('NFKC').toLowerCase();
+  if (!s.trim()) return null;
+  const i = INSTANCIAS.find(x => x.re.test(s));
+  const etapa = /apertura/.test(s) ? 'Apertura' : /clausura/.test(s) ? 'Clausura' : null;
+  if (!i) return { id: 'OTRA', label: String(t).trim(), orden: 10, etapa: etapa };
+  return { id: i.id, label: i.label, orden: i.orden, etapa: etapa };
+}
+
+/* =====================================================================
+   ADAPTADOR · volcala.com
+
+   Una app de Next.js: la página no trae una tabla sino el payload de React
+   Server Components (`self.__next_f.push([1,"…"])`), y adentro un arreglo
+   `"matches":[…]` con un objeto por partido — fecha, hora, local,
+   visitante, resultado, estado, ronda y cancha.
+
+   SE LEE EL JSON, NO EL HTML DIBUJADO: es el dato con el que la propia app
+   arma la pantalla, así que un cambio de estilos no lo rompe. Medido sobre
+   la de Bahía Blanca Primera el 2026-10-16: 163 partidos (151 jugados, 12
+   por jugar), las 22 fechas y los playoffs del Apertura.
+
+   Volcala SÍ publica la cancha (`venue`), así que acá `sede` viaja.
+   ===================================================================== */
+
+/* Los textos del payload, en orden. Cada uno es un literal de JS. */
+const NEXT_F = /self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)/g;
+
+/** El arreglo que empieza en `i` (un `[`), respetando los strings. */
+function arregloDesde(s, i) {
+  let d = 0, enStr = false;
+  for (let j = i; j < s.length; j++) {
+    const c = s[j];
+    if (enStr) {
+      if (c === '\\') { j++; continue; }
+      if (c === '"') enStr = false;
+      continue;
+    }
+    if (c === '"') enStr = true;
+    else if (c === '[') d++;
+    else if (c === ']') { d--; if (!d) return s.slice(i, j + 1); }
+  }
+  return null;
+}
+
+const ESTADOS_VOLCALA = [
+  { estado: 'FINALIZADO', re: /^(finished|ended|after|ft\b|final)/i },
+  { estado: 'PROGRAMADO', re: /^(scheduled|not started|ns\b|tbd)/i },
+  { estado: 'SUSPENDIDO', re: /(postpon|cancel|suspend|abandon|delay)/i },
+  { estado: 'EN_JUEGO', re: /(live|quarter|half|break|overtime|q[1-4]\b|in progress)/i },
+];
+
+function sinUndefined(v) { return v === '$undefined' || v === undefined ? null : v; }
+
+/**
+ * @param {string} html la página de la liga en volcala
+ * @param {{zona?: string, categoria?: string}} [opciones] `categoria` filtra
+ *        por `league_key` si la página trajera más de una liga
+ */
+function parsearVolcala(html, opciones) {
+  const o = opciones || {};
+  const doc = String(html == null ? '' : html);
+  const avisos = [];
+  let s = '';
+  todas(NEXT_F, doc).forEach((m) => { try { s += JSON.parse(m[1]); } catch (e) { /* trozo roto: se saltea */ } });
+  const porId = {};
+  const crudos = [];
+  const re = /"matches":\[/g;
+  let m;
+  while ((m = re.exec(s))) {
+    const txt = arregloDesde(s, m.index + m[0].length - 1);
+    if (!txt) continue;
+    let arr = null;
+    try { arr = JSON.parse(txt); } catch (e) { continue; }
+    (arr || []).forEach((x) => {
+      if (!x || typeof x !== 'object' || !x.event_home_team || !x.event_away_team) return;
+      /* La misma lista puede venir dos veces en el payload: el id manda. */
+      const id = x.event_key != null ? String(x.event_key) : null;
+      if (id && porId[id]) return;
+      if (id) porId[id] = true;
+      crudos.push(x);
+    });
+  }
+  const partidos = [];
+  crudos.forEach((x) => {
+    if (o.categoria && x.league_key && String(x.league_key) !== String(o.categoria)) return;
+    const fecha = FECHA_ISO.test(String(x.event_date || '')) ? String(x.event_date) : null;
+    const st = String(sinUndefined(x.event_status) || '').trim();
+    const v = ESTADOS_VOLCALA.find(e => e.re.test(st));
+    let estado = v ? v.estado : (st ? 'OTRO' : 'PROGRAMADO');
+    const res = String(sinUndefined(x.event_final_result) || '').match(/^\s*(\d{1,3})\s*-\s*(\d{1,3})\s*$/);
+    /* EL MARCADOR SOLO SE TOMA DE UN PARTIDO TERMINADO. Uno en juego trae
+       el parcial en el mismo campo, y tomarlo como resultado daría por
+       ganado un partido que todavía no terminó. */
+    const jugado = !!res && estado === 'FINALIZADO';
+    const ronda = String(sinUndefined(x.round) || '').trim() || null;
+    partidos.push({
+      fecha: fecha,
+      hora: hora(sinUndefined(x.event_time) || ''),
+      estado: estado,
+      estadoTexto: estado === 'OTRO' ? st : '',
+      local: String(x.event_home_team).trim(),
+      visitante: String(x.event_away_team).trim(),
+      ptsLocal: jugado ? Number(res[1]) : null,
+      ptsVisitante: jugado ? Number(res[2]) : null,
+      ronda: ronda,
+      instancia: instanciaDe(ronda),
+      sede: String(sinUndefined(x.venue) || '').trim() || null,
+      transmision: [],
+      zona: o.zona || null,
+    });
+  });
+  if (!partidos.length) {
+    avisos.push(s ? 'No se reconoció ningún partido: la página cambió de estructura.'
+      : 'La página no trae el calendario de volcala (sin payload de la app).');
+  }
+  partidos.sort((a, b) => {
+    if (!a.fecha && !b.fecha) return 0;
+    if (!a.fecha) return 1;
+    if (!b.fecha) return -1;
+    return ordenar(a, b);
+  });
+  return { partidos: partidos, avisos: avisos };
+}
+
+/* =====================================================================
+   ADAPTADOR GENÉRICO · «jornadas» en una página de texto
+
+   Es el formato de las federaciones que publican el fixture como NOTA —la
+   ABB lo hace en WordPress—: un encabezado por jornada con su día y debajo
+   un cruce por renglón.
+
+       JORNADA 1 – Jueves 20 de agosto
+       Pueyrredón – Leandro Alem
+       Liniers – Napostá
+
+   Y más abajo, la ESTRUCTURA de la postemporada en prosa: «Cuartos de
+   final … al mejor de tres … Los días de juego serán: Lun 09/11 – Jue
+   12/11». De eso se toman la instancia, sus días y la serie, y NADA más:
+   los cruces de esas fases todavía no existen.
+
+   - Es FIXTURE ESTRUCTURAL (`estructural: true`): no trae hora, estado ni
+     marcador, y pierde contra cualquier otra fuente del mismo cruce.
+   - El año no se escribe: sale del primer `dd/mm/aaaa` de la página
+     («Inicio: Jueves 20/08/2026») y, si no hay, de la fecha de hoy.
+   - Un renglón se toma como cruce SOLO debajo de un encabezado de jornada,
+     y solo si es «NOMBRE – NOMBRE» corto: la prosa del reglamento no
+     puede colarse como partido.
+   ===================================================================== */
+
+/* Los tags que NO cortan renglón: con ellos la ABB parte una palabra
+   («<u>PL</u><u>AY-</u><u>IN</u>»). Todo lo demás corta. */
+const INLINE = /<\/?(u|em|strong|b|i|span|a|small|sup|sub|font|mark)\b[^>]*>/gi;
+const ENCABEZADO_JORNADA = /^(jornada|fecha)\s*(?:n[°º.]?\s*)?(\d{1,2})\b\s*[-–—:.]?\s*(.*)$/i;
+const CRUCE_TEXTO = /^([^–—:|]{2,40}?)\s*[–—]\s*([^–—:|]{2,40})$|^([^\-–—:|]{2,40}?)\s+-\s+([^\-–—:|]{2,40})$/;
+const NUMEROS_PALABRA = { uno: 1, tres: 3, cinco: 5, siete: 7 };
+
+function renglones(html) {
+  const s = String(html == null ? '' : html)
+    .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<!--[\s\S]*?-->/gi, ' ')
+    .replace(INLINE, '')
+    .replace(/<[^>]+>/g, '\n');
+  return decodificar(s).normalize('NFKC').split(/\n/)
+    .map(l => l.replace(/[ \t ]+/g, ' ').trim()).filter(Boolean);
+}
+
+/** Las fechas de un renglón: `09/11`, `09/11/2026` o «lunes 02 de noviembre». */
+function fechasDeRenglon(l, ref) {
+  const out = [];
+  const anioRef = Number(String(ref).slice(0, 4)) || new Date().getUTCFullYear();
+  const re = /(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/g;
+  let m;
+  while ((m = re.exec(l))) {
+    const mes = Number(m[2]), dia = Number(m[1]);
+    if (mes < 1 || mes > 12 || dia < 1 || dia > 31) continue;
+    out.push((m[3] || anioRef) + '-' + ('0' + mes).slice(-2) + '-' + ('0' + dia).slice(-2));
+  }
+  if (!out.length) {
+    const f = fechaDesdeJornada(l, ref);
+    if (f) out.push(f);
+  }
+  return out;
+}
+
+function parsearJornadas(html, opciones) {
+  const o = opciones || {};
+  const lineas = renglones(html);
+  const avisos = [];
+  const inicio = lineas.map(l => fechaDesdeDDMM(l)).find(Boolean);
+  const ref = inicio || o.desde || o.hoy || new Date().toISOString().slice(0, 10);
+  const partidos = [];
+  const estructura = [];
+  let jornada = null;
+  let etapa = null;
+  lineas.forEach((l) => {
+    const j = l.match(ENCABEZADO_JORNADA);
+    if (j && l.length <= 70) {
+      const f = fechasDeRenglon(j[3] || '', ref);
+      jornada = { ronda: (j[1].charAt(0).toUpperCase() + j[1].slice(1).toLowerCase()) + ' ' + Number(j[2]), fecha: f[0] || null };
+      etapa = null;
+      return;
+    }
+    const c = l.match(CRUCE_TEXTO);
+    if (jornada && c && !/\d{2}/.test(l)) {
+      const a = (c[1] || c[3]).trim(), b = (c[2] || c[4]).trim();
+      if (/[a-z]/i.test(a) && /[a-z]/i.test(b)) {
+        partidos.push({ fecha: jornada.fecha, hora: null, estado: 'PROGRAMADO', estadoTexto: '',
+          local: a, visitante: b, ptsLocal: null, ptsVisitante: null,
+          ronda: jornada.ronda, instancia: instanciaDe(jornada.ronda),
+          transmision: [], zona: o.zona || null, estructural: true });
+        return;
+      }
+    }
+    /* UN ENCABEZADO DE INSTANCIA corta la jornada y abre una etapa de la
+       estructura. Se exige renglón corto: «La ventaja de campo será para
+       el mejor posicionado» no es un título aunque diga «posicionado». */
+    /* Sin números: «Del 7° al 10° disputarán el Play-In» es una regla, no
+       el título de la sección. */
+    const inst = (l.length <= 40 && !/\d/.test(l)) ? instanciaDe(l) : null;
+    if (inst && inst.id !== 'OTRA' && inst.id !== 'REGULAR') {
+      jornada = null;
+      etapa = estructura.find(e => e.instancia === inst.id) || null;
+      if (!etapa) {
+        etapa = { instancia: inst.id, label: inst.label, orden: inst.orden, fechas: [], mejorDe: null };
+        estructura.push(etapa);
+      }
+      return;
+    }
+    if (!etapa) return;
+    fechasDeRenglon(l, ref).forEach((f) => { if (etapa.fechas.indexOf(f) === -1) etapa.fechas.push(f); });
+    const md = sinAcentos(l).toLowerCase().match(/mejor de\s+(\d|uno|tres|cinco|siete)\b/);
+    if (md) etapa.mejorDe = Number(md[1]) || NUMEROS_PALABRA[md[1]] || null;
+  });
+  if (!partidos.length && !estructura.length) {
+    avisos.push('No se reconoció ninguna jornada: la página no tiene el formato «JORNADA N – día» con un cruce por renglón.');
+  }
+  return { partidos: partidos.sort(ordenar), avisos: avisos,
+    estructura: estructura.map((e) => { e.fechas.sort(); return e; }) };
+}
+
+/* =====================================================================
    EL REGISTRO
    ===================================================================== */
 
@@ -473,7 +743,45 @@ const ADAPTADORES = {
     variasUrls: true,
     parsear: parsearApdeb,
   },
+  volcala: {
+    nombre: 'Volcala',
+    porZona: true,
+    variasUrls: true,
+    parsear: parsearVolcala,
+  },
+  jornadas: {
+    nombre: 'Página de texto con jornadas',
+    porZona: true,
+    variasUrls: true,
+    parsear: parsearJornadas,
+  },
+  /* EL MODO DE PEGAR UN LINK Y LISTO. Cada URL elige su parser por el
+     sitio (`adaptadorDeUrl`), así una zona puede juntar volcala con la nota
+     de la federación, y un torneo nuevo no pide código: si el sitio no es
+     uno conocido, se intenta como página de jornadas, y si tampoco
+     cuadra, el aviso lo dice. */
+  auto: {
+    nombre: 'Automático por sitio',
+    porZona: true,
+    variasUrls: true,
+    parsear: (html, o) => adaptadorDeUrl((o || {}).url).parsear(html, o),
+  },
 };
+
+/* Los sitios con un parser propio. Lo que no está acá va al genérico. */
+const SITIOS = [
+  { re: /(^|\.)volcala\.com$/i, id: 'volcala' },
+  { re: /(^|\.)basket-club\.com$/i, id: 'basket-club' },
+  { re: /(^|\.)apdeb\.com\.ar$/i, id: 'apdeb' },
+];
+
+/** El adaptador que corresponde a una URL. Nunca `auto`: sería un ciclo. */
+function adaptadorDeUrl(url) {
+  let host = '';
+  try { host = new URL(String(url || '')).hostname; } catch (e) { host = ''; }
+  const s = SITIOS.find(x => x.re.test(host));
+  return ADAPTADORES[s ? s.id : 'jornadas'];
+}
 
 function adaptador(id) { return ADAPTADORES[String(id || '')] || null; }
 
@@ -604,8 +912,8 @@ function cruzarConLibro(partidos, clavesLibro, alias, clave) {
 }
 
 module.exports = {
-  ESTADOS, ADAPTADORES, adaptador, configDe,
-  parsearBasketClub, parsearApdeb, categoriasDe, numeroDe,
+  ESTADOS, ADAPTADORES, adaptador, adaptadorDeUrl, configDe,
+  parsearBasketClub, parsearApdeb, parsearVolcala, parsearJornadas, instanciaDe, renglones, categoriasDe, numeroDe,
   clasificarEstado, fechaDesdeDDMM, fechaDesdeJornada, hora, texto, decodificar,
   equipoDelLibro, cruzarConLibro,
 };

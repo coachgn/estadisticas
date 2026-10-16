@@ -201,6 +201,13 @@ const SGADD_FIXTURE = (function () {
         /* De qué página del sitio salió: la de fixture no trae hora ni
            estado, así que pierde contra la programación del mismo cruce. */
         estructural: !!p.estructural,
+        /* La RONDA tal cual la rotula la fuente («Fecha 21», «Torneo
+           Apertura - Cuartos de Final») y su INSTANCIA leída por palabra
+           clave. Es lo que divide el calendario en fases sin adivinar por
+           la fecha. Y la cancha, si la fuente la publica. */
+        ronda: p.ronda || null,
+        instancia: (p.instancia && p.instancia.id) ? p.instancia : null,
+        sede: p.sede || null,
       };
     }).filter(p => p.fecha).sort(ordenar);
     return dedupFuente(filas);
@@ -240,7 +247,81 @@ const SGADD_FIXTURE = (function () {
       else if (!p.jugado && antes.jugado) return;
       else if (antes.estructural && !p.estructural) out[pos[k]] = p;
     });
-    return out;
+    return sinEstructuralesCubiertos(out);
+  }
+
+  /* EL FIXTURE ESTRUCTURAL QUE LA FUENTE EN VIVO YA CUBRE · la misma regla
+     del servidor (`server/api/fixture.js`), DESPUÉS del alias. Allá se
+     compara con el texto crudo y la nota de la ABB escribe «Leandro Alem» y
+     «Oimpo» donde Volcala dice «Leandro N. Alem» y «Olimpo»: recién acá,
+     con los nombres del libro, se ve que son el mismo cruce.
+
+     Una fila estructural (día PLANIFICADO, sin hora) se va si el mismo par
+     tiene una fila de la fuente en vivo a 14 días o menos: medido en Bahía
+     Blanca, la Jornada 10 de la ABB dice 22/10 y se jugó el 27/10. */
+  const VENTANA_ESTRUCTURAL_DIAS = 14;
+  function sinEstructuralesCubiertos(filas) {
+    const reales = {};
+    const par = p => [p.localClave, p.visitanteClave].sort().join('|');
+    (filas || []).forEach((p) => {
+      if (p.estructural || !p.fecha) return;
+      (reales[par(p)] = reales[par(p)] || []).push(Date.parse(p.fecha + 'T00:00:00Z'));
+    });
+    const ventana = VENTANA_ESTRUCTURAL_DIAS * 86400000;
+    return (filas || []).filter((p) => {
+      if (!p.estructural || !p.fecha) return true;
+      const t = Date.parse(p.fecha + 'T00:00:00Z');
+      return !(reales[par(p)] || []).some(x => Math.abs(x - t) <= ventana);
+    });
+  }
+
+  /* =====================================================================
+     LA ESTRUCTURA DEL TORNEO · sus fases, de la fuente
+
+     Cada partido de una fuente en vivo viene con su INSTANCIA (fase
+     regular, octavos, cuartos…). Acá se agrupan para mostrar el torneo
+     entero de un vistazo: qué fase va, cuándo, cuánto se jugó y cuánto
+     falta. Las fases que la liga ANUNCIÓ y todavía no tienen cruces (la
+     nota de la ABB publica los días de los playoffs) entran con sus días y
+     «cruces a definir»: no se inventa quién juega.
+
+     Sin instancias (una fuente que no rotula sus rondas, o el calendario
+     declarado del archivo) devuelve una lista vacía y el bloque no se
+     dibuja: no hay nada que dividir sin inventar.
+     ===================================================================== */
+  function estructuraTorneo(partidos, anunciada, hoy) {
+    const grupos = {};
+    (partidos || []).forEach((p) => {
+      const i = p.instancia;
+      if (!i || !i.id || !p.fecha) return;
+      const k = i.id + '|' + (i.etapa || '');
+      const g = grupos[k] = grupos[k] || { id: i.id, etapa: i.etapa || null,
+        label: i.label + (i.etapa ? ' · ' + i.etapa : ''), orden: i.orden || 10,
+        desde: p.fecha, hasta: p.fecha, jugados: 0, porJugar: 0, anunciada: false, mejorDe: null };
+      if (p.fecha < g.desde) g.desde = p.fecha;
+      if (p.fecha > g.hasta) g.hasta = p.fecha;
+      if (p.jugado) g.jugados++; else g.porJugar++;
+    });
+    const lista = Object.keys(grupos).map(k => grupos[k]);
+    if (!lista.length) return [];
+    (anunciada || []).forEach((e) => {
+      if (!e || !e.instancia || !(e.fechas || []).length) return;
+      const fs = e.fechas.slice().sort();
+      /* CUBIERTA si una fase con la misma instancia ya tiene partidos en
+         esos días: es la misma, y la fuente en vivo la describe mejor. */
+      const cubre = lista.find(g => g.id === e.instancia && !(g.hasta < fs[0] || g.desde > fs[fs.length - 1]));
+      if (cubre) { if (!cubre.mejorDe && e.mejorDe) cubre.mejorDe = e.mejorDe; return; }
+      lista.push({ id: e.instancia, etapa: null, label: e.label || e.instancia, orden: e.orden || 10,
+        desde: fs[0], hasta: fs[fs.length - 1], jugados: 0, porJugar: 0, anunciada: true,
+        dias: fs, mejorDe: e.mejorDe || null });
+    });
+    const h = hoy || '';
+    lista.forEach((g) => {
+      g.estado = (g.hasta < h && !g.porJugar) ? 'jugada'
+        : (g.desde <= h && (g.hasta >= h || g.porJugar)) ? 'en-curso' : 'por-jugar';
+      if (g.anunciada) g.estado = g.hasta < h ? 'jugada' : (g.desde <= h ? 'en-curso' : 'por-jugar');
+    });
+    return lista.sort((a2, b2) => a2.desde.localeCompare(b2.desde) || a2.orden - b2.orden);
   }
 
   /* CRONOLÓGICO DE VERDAD: fecha, HORA y después el nombre para desempatar.
@@ -584,6 +665,8 @@ const SGADD_FIXTURE = (function () {
       faseSinVentanas: !!(o.fase && FASES() && FASES().tipoDe(o.fase, o.fases) === 'eliminacion'
         && !FASES().tieneVentanas(o.fases)),
       deOtrasFases: calCompleto.length - cal.length,
+      /* Las fases del torneo según la fuente (ver `estructuraTorneo`). */
+      estructura: estructuraTorneo(todos, o.estructura, hoy),
       otrasFases: o.otrasFases || [],
     };
   }
@@ -649,7 +732,7 @@ const SGADD_FIXTURE = (function () {
   const estado = { torneo: null, doc: null, pidiendo: null, error: '', mes: '',
     /* La lectura de la FUENTE EN VIVO (punto 70): los partidos de la zona,
        cuándo se leyeron y si lo que se sirve es la última copia buena. */
-    vivo: null, vivoEstado: null, vivoPidiendo: null };
+    vivo: null, vivoEstado: null, vivoPidiendo: null, vivoEstructura: null };
 
   /* La base del sitio, deducida del propio <script>: con una URL sin barra
      final, un fetch relativo se resuelve contra la raíz del dominio y da
@@ -716,6 +799,9 @@ const SGADD_FIXTURE = (function () {
       const partidos = z ? z.partidos
         : Object.keys(r.zonas).reduce((a2, k) => a2.concat(r.zonas[k].partidos || []), []);
       estado.vivo = (partidos && partidos.length) ? partidos : null;
+      /* Las fases que la liga anunció con sus días (la nota de la ABB). */
+      const zs = zona ? [r.zonas[zona]] : Object.keys(r.zonas).map(k => r.zonas[k]);
+      estado.vivoEstructura = zs.reduce((a2, x) => a2.concat((x && x.estructura) || []), []);
       estado.vivoEstado = { actualizado: r.actualizado || null, stale: !!r.stale,
         aviso: r.aviso || null, fuente: r.fuente || null, fallaron: r.fallaron || [] };
       return estado.vivo;
@@ -756,8 +842,18 @@ const SGADD_FIXTURE = (function () {
     const lado = (n, cl, fuerte) => '<span class="flex items-center gap-1.5 min-w-0 '
       + (fuerte ? 'text-ink font-medium' : 'text-ink') + '">' + escudo(n)
       + '<span class="truncate">' + esc(n) + '</span></span>';
-    return '<tr class="text-xs border-t border-hairline">'
-      + '<td class="py-2 pr-3 text-muted whitespace-nowrap">' + esc(fechaLarga(p.fecha, true)) + '</td>'
+    /* LO QUE FALTA JUGAR SE DISTINGUE DE LO JUGADO con una barra a la
+       izquierda y «por jugar» escrito, no solo con color (punto 14). La
+       ronda de la fuente va debajo de la fecha: es la que dice a qué fase
+       pertenece el partido. La cancha, si la fuente la publica, en el
+       `title` de la fila. */
+    const porJugar = !p.jugado;
+    return '<tr class="text-xs border-t border-hairline' + (porJugar ? ' fila-por-jugar' : '') + '"'
+      + (p.sede ? ' title="' + esc('Cancha: ' + p.sede) + '"' : '') + '>'
+      + '<td class="py-2 pr-3 text-muted whitespace-nowrap">' + esc(fechaLarga(p.fecha, true))
+      + (p.ronda ? '<span class="block text-[10px] text-muted">' + esc(rondaCorta(p)) + '</span>' : '')
+      + (porJugar ? '<span class="block text-[10px] font-display uppercase tracking-wider text-accent">por jugar</span>' : '')
+      + '</td>'
       + '<td class="py-2 pr-3">' + lado(p.local, p.localClave, yoLocal) + '</td>'
       + '<td class="py-2 px-2 text-center whitespace-nowrap">' + marcador + '</td>'
       + '<td class="py-2 pr-3">' + lado(p.visitante, p.visitanteClave, yoVisita) + '</td>'
@@ -766,6 +862,48 @@ const SGADD_FIXTURE = (function () {
       + chipEstado(p) + chipsFase(p) + '</td>'
       + '<td class="py-2 text-[11px]">' + transmisiones(p) + '</td>'
       + '</tr>';
+  }
+
+  /* La ronda corta: «Fecha 21» queda igual; «Torneo Apertura - LBB ORO -
+     Cuartos de Final» se lee como su instancia y su etapa. */
+  function rondaCorta(p) {
+    const r = String(p.ronda || '');
+    const i = p.instancia;
+    if (r.length <= 24 || !i || i.id === 'OTRA') return r;
+    return i.label + (i.etapa ? ' · ' + i.etapa : '');
+  }
+
+  /** El bloque «Estructura del torneo»: una fila por fase. */
+  function bloqueEstructura(a) {
+    const fs = a.estructura || [];
+    if (!fs.length) return '';
+    const rango = g => g.desde === g.hasta ? fechaLarga(g.desde, true)
+      : fechaLarga(g.desde, true) + ' → ' + fechaLarga(g.hasta, true);
+    const chip = (g) => g.estado === 'en-curso'
+      ? ' <span class="fase-chip zona-exito zona-texto">en curso</span>'
+      : g.estado === 'por-jugar' ? ' <span class="fase-chip zona-neutro zona-texto">por jugar</span>' : '';
+    const filas = fs.map(g => '<tr class="text-xs border-t border-hairline' + (g.estado !== 'jugada' ? ' fila-por-jugar' : '') + '">'
+      + '<td class="py-2 pr-3 text-ink">' + esc(g.label) + chip(g) + '</td>'
+      + '<td class="py-2 pr-3 text-muted whitespace-nowrap">' + esc(rango(g)) + '</td>'
+      + (g.anunciada
+        ? '<td class="py-2 pr-3 text-muted" colspan="2">Cruces a definir · '
+          + (g.dias ? g.dias.length + (g.dias.length === 1 ? ' día anunciado' : ' días anunciados') : '') + '</td>'
+        : '<td class="py-2 pr-3 text-center font-mono">' + g.jugados + '</td>'
+          + '<td class="py-2 pr-3 text-center font-mono">' + g.porJugar + '</td>')
+      + '<td class="py-2 text-muted whitespace-nowrap">' + (g.mejorDe ? 'al mejor de ' + g.mejorDe : '—') + '</td>'
+      + '</tr>').join('');
+    return '<div class="card rounded-xl p-4 sm:p-5 border border-hairline">'
+      + '<h3 class="font-display uppercase tracking-wide text-sm text-ink">Estructura del torneo</h3>'
+      + '<p class="text-[11px] text-muted mt-1">Las fases como las rotula la fuente del fixture. Las que la liga anunció '
+      + 'sin cruces todavía van con sus días y «cruces a definir».</p>'
+      + '<div class="scrollbox mt-3"><table class="w-full">'
+      + '<thead><tr class="text-[10px] uppercase tracking-wider text-muted">'
+      + '<th class="text-left pb-1 pr-3 font-display">Fase</th>'
+      + '<th class="text-left pb-1 pr-3 font-display">Días</th>'
+      + '<th class="pb-1 pr-3 font-display">Jugados</th>'
+      + '<th class="pb-1 pr-3 font-display">Por jugar</th>'
+      + '<th class="text-left pb-1 font-display">Serie</th>'
+      + '</tr></thead><tbody>' + filas + '</tbody></table></div></div>';
   }
 
   /* La serie, si el cruce es interzonal y si la fecha no se pudo asignar a
@@ -1086,6 +1224,7 @@ const SGADD_FIXTURE = (function () {
       torneo: estado.doc, zona: planilla.zonaId, idx: idx,
       equipo: equipoPropio(), mes: estado.mes || null,
       fuente: estado.vivo,
+      estructura: estado.vivoEstructura || [],
       fase: fase,
       fases: FASES() ? FASES().visibles() : [],
       zonaDeEquipo: FASES() ? FASES().zonasDeEquipos(estado.doc) : {},
@@ -1102,7 +1241,7 @@ const SGADD_FIXTURE = (function () {
     }
 
     return '<div class="space-y-5">' + encabezado(a, estado.doc, planilla)
-      + bloqueRival(a) + bloqueMes(a) + '</div>';
+      + bloqueRival(a) + bloqueEstructura(a) + bloqueMes(a) + '</div>';
   }
 
   /** El equipo del club, si la categoría abierta declara uno. */
@@ -1137,7 +1276,7 @@ const SGADD_FIXTURE = (function () {
     const planilla = planillaActual();
     const id = planilla && planilla.torneoId;
     estado.zonaLabel = (planilla && planilla.label) || '';
-    estado.vivo = null; estado.vivoEstado = null; estado.vivoPidiendo = null;
+    estado.vivo = null; estado.vivoEstado = null; estado.vivoPidiendo = null; estado.vivoEstructura = null;
     pintar();
     if (id) {
       cargarTorneo(id).then(() => { if (vigente()) pintar(); });
@@ -1164,7 +1303,8 @@ const SGADD_FIXTURE = (function () {
     fechaISO, fechaLarga, mesLargo, mesDe, mesMas, claveCruce,
     normalizarCalendario, jugadosDelIndice, rivalDelTexto, unir, delEquipo, resultado,
     meses, mesPorDefecto, deMes, proximo, anterior, agenda, aniosAtipicos,
-    mapaAlias, normalizarFuente, dedupFuente,
+    mapaAlias, normalizarFuente, dedupFuente, sinEstructuralesCubiertos, estructuraTorneo,
+    VENTANA_ESTRUCTURAL_DIAS, rondaCorta, bloqueEstructura, tabla, filaPartido,
     /* ui */
     html, pintar, montar, irAMes, cargarTorneo, cargarVivo, estado, vacio,
     chipEstado, transmisiones, avisoFuente, horaDe,

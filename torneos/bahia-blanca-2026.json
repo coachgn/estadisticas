@@ -1,5 +1,5 @@
 {
-  "//": "Torneo de Primera de Bahía Blanca 2026, grupo ORO. Los equipos salen del libro (Base Datos E); el libro los escribe con el prefijo de división («1° LINIERS»), que el núcleo limpia (quitarOrdinal), y va como alias. Sin fuente de fixture en vivo ni reglamento publicado: no se declaran zonas de tabla ni cruces. SIN sheetId: el repo es público.",
+  "//": "Torneo de Primera de Bahía Blanca 2026, grupo ORO. Los equipos salen del libro (Base Datos E); el libro los escribe con el prefijo de división («1° LINIERS»), que el núcleo limpia (quitarOrdinal), y va como alias. El fixture en vivo sale de Volcala (partidos, horarios, cancha y fases) y de la nota de la ABB (jornadas planificadas y la estructura de los playoffs), con el lector automático por sitio (punto 126). Los alias «LEANDRO ALEM» y «OIMPO» son como escribe la ABB. Sin reglamento de tabla declarado: la Clausura arrastra el 50 % de los puntos del Apertura y el panel ordena por PCT. SIN sheetId: el repo es público.",
   "id": "bahia-blanca-2026",
   "nombre": "Bahía Blanca · Primera 2026",
   "nombreCorto": "Bahía Blanca 2026",
@@ -9,9 +9,24 @@
   "formato": {
     "modalidad": "Grupo ORO, fase regular (el libro trae IDA - REGULAR)",
     "fases": [
-      { "id": "regular", "label": "Fase regular", "cruce": "zona" }
+      {
+        "id": "regular",
+        "label": "Fase regular",
+        "cruce": "zona"
+      }
     ],
-    "nota": "El reglamento de clasificación no está publicado: no se declaran zonas de tabla para no inventarlas."
+    "nota": "La ABB publicó el reglamento de la segunda etapa (los 6 primeros a cuartos, del 7° al 10° al play-in, 11° y 12° a la permanencia), pero la tabla oficial arrastra el 50 % de los puntos del Apertura, que el panel no calcula: no se declaran zonas de tabla para no pintar un orden distinto del oficial. Las fases se ven en el Fixture, con la ronda que publica la fuente."
+  },
+  "fixture": {
+    "adaptador": "auto",
+    "zonas": {
+      "oro": {
+        "urls": [
+          "https://www.volcala.com/bahia-primera",
+          "https://abbasquet.com/fixture-primera-division-abb-bahia-blanca/"
+        ]
+      }
+    }
   },
   "zonas": {
     "oro": {
@@ -23,10 +38,10 @@
         { "id": null, "nombre": "ESTRELLA", "alias": ["1° ESTRELLA"], "abreviatura": "EST" },
         { "id": null, "nombre": "ESTUDIANTES", "alias": ["1° ESTUDIANTES"], "abreviatura": "ESU" },
         { "id": null, "nombre": "INDEPENDIENTE", "alias": ["1º INDEPENDIENTE"], "abreviatura": "IND" },
-        { "id": null, "nombre": "LEANDRO N.ALEM", "alias": ["1º LEANDRO N.ALEM", "LEANDRO N. ALEM"], "abreviatura": "LNA" },
+        { "id": null, "nombre": "LEANDRO N.ALEM", "alias": ["1º LEANDRO N.ALEM", "LEANDRO N. ALEM", "LEANDRO ALEM"], "abreviatura": "LNA" },
         { "id": null, "nombre": "LINIERS", "alias": ["1° LINIERS"], "abreviatura": "LIN" },
         { "id": null, "nombre": "NAPOSTA", "alias": ["1° NAPOSTA"], "abreviatura": "NAP" },
-        { "id": null, "nombre": "OLIMPO", "alias": ["1° OLIMPO"], "abreviatura": "OLI" },
+        { "id": null, "nombre": "OLIMPO", "alias": ["1° OLIMPO", "OIMPO"], "abreviatura": "OLI" },
         { "id": null, "nombre": "PACIFICO", "alias": ["1° PACIFICO"], "abreviatura": "PAC" },
         { "id": null, "nombre": "PUEYRREDON", "alias": ["1° PUEYRREDON"], "abreviatura": "PUE" },
         { "id": null, "nombre": "VILLA MITRE", "alias": ["1° VILLA MITRE"], "abreviatura": "VMI" }

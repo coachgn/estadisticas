@@ -102,6 +102,9 @@ node test-fixture-apdeb.js # 125 tests · el conector de apdeb: tablas sin clase
 node test-fixture-apb.js  #  93 tests · el conector de basket-club: el parser contra markup REAL,
                            #             los estados, el cruce con el libro y el respaldo ante una caida
 
+node test-fixture-auto.js  #  67 tests · los conectores que se pegan en el Panel Master: Volcala, la página de
+                           #             «jornadas» de una federación y el modo auto por sitio (punto 126)
+
 node test-fixture.js       # 116 tests · la seccion Fixture, los empty states de pretemporada,
                            #             las iniciales con parentesis y la grilla compacta del hub
 
@@ -145,7 +148,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7818 tests en total. Todos tienen que dar verde antes de commitear.**
+**7885 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -263,7 +266,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=284`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=285`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -14575,3 +14578,96 @@ equipo y no del archivo. Un partido nuevo entra limpio sin tocar nada.
 - **Fixture externo de Bahía** (volcala.com, abbasquet.com): quedaron como
   referencia. Sumarlos es un adaptador nuevo de `fixture-fuentes.js` (punto 70).
 - El Cliente_Script de Bahía no se tocó: el motor compartido ya trae la v115.
+
+## 126. EL FIXTURE QUE SE PEGA EN EL PANEL MASTER · Volcala, jornadas y el modo `auto` (2026-10-16)
+
+Pedido del club: que Bahía Blanca muestre en Fixture lo que falta jugar y sus
+fases, y que un torneo nuevo se conecte pegando los links, sin código ni
+Claude. `test-fixture-auto.js` fija todo lo de acá contra markup REAL de las
+dos páginas (`test-fixtures/bahia/`). Assets en `?v=285`.
+
+### Los dos lectores nuevos (`server/lib/fixture-fuentes.js`, puros)
+
+| Lector | Qué lee | Qué devuelve |
+|---|---|---|
+| `volcala` | el JSON `"matches":[…]` del payload de Next.js (`self.__next_f.push`), no el HTML dibujado | fecha, hora, estado, marcador, **ronda**, **instancia** y **cancha** (`sede`) |
+| `jornadas` | una nota de texto: «JORNADA N – Jueves 20 de agosto» y un cruce por renglón (la ABB en WordPress) | partidos ESTRUCTURALES (sin hora ni marcador) y la `estructura` de la postemporada: instancia, días y serie |
+
+- **`instanciaDe(ronda)`** lee la fase por palabra clave (play-in, octavos,
+  cuartos, semis, final, final extra, permanencia, promoción, regular) y la
+  etapa (Apertura/Clausura) si el rótulo la dice. Lo que no reconoce viaja
+  como `OTRA` con su texto. **Nunca se deduce de la fecha.**
+- Volcala: el marcador se toma **solo de un partido terminado** (uno en juego
+  trae el parcial en el mismo campo). `$undefined` es «sin dato».
+- Jornadas: un renglón es cruce solo debajo de un encabezado de jornada; el
+  año sale del primer `dd/mm/aaaa` de la página; los tags en línea no cortan
+  renglón («<u>PL</u><u>AY-</u><u>IN</u>»); un título con números («Del 7° al
+  10° … Play-In») no abre sección. **Lo que la nota no dice no se inventa**:
+  «al mejor de» sin número queda `mejorDe: null`, el play-in con «lunes 02
+  de» incompleto queda con el único día completo.
+
+### El modo `auto` · pegar el link y listo
+
+`fixture.adaptador: 'auto'` y cada URL elige su lector por el sitio
+(`adaptadorDeUrl`): volcala.com, basket-club.com y apdeb.com.ar tienen el
+suyo; **cualquier otro sitio se intenta como «jornadas»** y, si no cuadra, el
+aviso lo dice. Una zona puede juntar varias fuentes. `refrescar` le pasa la
+`url` al parser.
+
+### El fixture estructural que otra fuente ya cubre
+
+La nota trae el día PLANIFICADO; Volcala, el real (Jornada 10: 22/10 contra
+27/10). Una fila estructural se descarta si el mismo par (en cualquier orden)
+tiene una fila no estructural a **14 días o menos** — en el servidor con el
+texto crudo y otra vez en el panel después del alias (`sinEstructuralesCubiertos`
+en los dos), porque la ABB escribe «Leandro Alem» y «Oimpo». Una estructural
+sin cruce real cerca **se queda**: es el respaldo de lo no publicado.
+
+### El panel · Fixture
+
+- Cada fila lleva su ronda debajo de la fecha y la cancha en el `title`.
+- **Lo que falta jugar** lleva barra del acento en la primera celda
+  (`.fila-por-jugar`, a mano en el `<style>`, con su variante de papel) y el
+  texto «por jugar»: no solo color (punto 14).
+- **«Estructura del torneo»** (`estructuraTorneo`, `bloqueEstructura`): una
+  fila por fase con sus días, jugados y por jugar, y «en curso» / «por
+  jugar» escrito. Las fases que la liga ANUNCIÓ sin cruces entran con sus
+  días y «cruces a definir»; una anunciada se considera cubierta solo si una
+  fase de la misma instancia tiene partidos en esos días (los cuartos de
+  junio no tapan a los de noviembre). Sin instancias el bloque no se dibuja.
+- **La partición por fase de la barra NO cambió** (punto 75): la instancia de
+  la fuente se muestra, no filtra.
+
+### Panel Master · «📅 Fuente del fixture» en la tarjeta del torneo
+
+Un textarea por zona, un link por renglón; dice con qué lector se va a leer
+cada uno, guarda por el modal de confirmación (`accion: 'torneo'` con
+`fixture`) y **«Probar lo guardado»** baja la fuente en el acto
+(`?refrescar=1`, solo admin) y cuenta partidos por zona. Sin links, `fixture:
+null` y el torneo vuelve al calendario de su archivo. Conserva lo que no se
+edita ahí (la `categoria` de apdeb, el piso `desde`).
+
+- **El servidor valida** con el MISMO `configDe` que lee al bajar
+  (`torneos.js`): sin un link http(s) o con una zona que el torneo no tiene,
+  se rechaza. El admin recibe `fixture` en el catálogo para poder editarla.
+- `LECTORES` del panel es copia de `SITIOS` del servidor y hay un test que
+  compara.
+
+### Bahía Blanca
+
+`torneos/bahia-blanca-2026.json` declara Volcala + la nota de la ABB, y los
+alias «LEANDRO ALEM» y «OIMPO». Medido con las páginas del 2026-10-16: 163
+partidos, ninguno duplicado, los 12 equipos cruzan con el libro; la
+estructura muestra la fase regular en curso, los playoffs del Apertura y las
+7 instancias anunciadas de noviembre-diciembre. **No se declaran zonas de
+tabla**: el reglamento arrastra el 50 % de los puntos del Apertura y el panel
+ordena por PCT.
+
+### Para que llegue a producción (lo corre el club)
+
+1. Deploy del backend (lectores, ventana, validación y `fixture` en el
+   catálogo): `cd server && npx vercel --prod`.
+2. Cargar la fuente en el catálogo de KV: desde el Panel Master (Bahía →
+   📅 Fuente del fixture → pegar los dos links → Guardar) o con
+   `node server/bin/catalogo.js torneo --archivo torneos/bahia-blanca-2026.json`.
+3. Push del front (`?v=285`).

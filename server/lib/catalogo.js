@@ -496,6 +496,9 @@ function publico(cat, opciones) {
     temporada: c[id].temporada || null,
     formato: c[id].formato || null,
     marca: c[id].marca || null,
+    /* La FUENTE DEL FIXTURE (links públicos de la liga): el Panel Master
+       la edita, y para eso tiene que poder leer la que hay. */
+    fixture: c[id].fixture || null,
   } : {}, admin ? {
     estado: c[id].estado || 'activo',
     plan: c[id].plan || null,

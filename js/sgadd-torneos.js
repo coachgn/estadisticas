@@ -382,7 +382,7 @@ const SGADD_TORNEOS = (function () {
     /* CON UN EDITOR ABIERTO la tarjeta ocupa la fila entera: en la grilla
        de tres columnas mide ~220px y la llave no entra en un renglón. Va
        inline y no como clase para no depender del CSS compilado. */
-    const ancha = libroEd.torneo === n.id || llaveEd.torneo === n.id;
+    const ancha = libroEd.torneo === n.id || llaveEd.torneo === n.id || fixtureEd.torneo === n.id;
     return `<details class="card hub-plegable rounded-xl border border-hairline" data-torneo="${esc(n.id)}"
       ${ancha ? 'style="grid-column: 1 / -1"' : ''}
       ${abiertos[n.id] ? 'open' : ''} ontoggle="SGADD_TORNEOS.abrirTarjeta('${escJs(n.id)}', this.open)">
@@ -435,6 +435,7 @@ const SGADD_TORNEOS = (function () {
       </div>
       ${bloqueLibros(n, tCrudo)}
       ${bloqueLlave(n, tCrudo)}
+      ${bloqueFixture(n, tCrudo)}
       </div>
     </details>`;
   }
@@ -820,6 +821,7 @@ const SGADD_TORNEOS = (function () {
   const CLASE_CHICO = 'bg-surface2 border border-hairline rounded-md px-2 py-1.5 text-xs text-ink';
   const libroEd = { torneo: '', zona: '', editando: false, label: '', rol: 'playoffs', participan: {}, libro: '', mensaje: '', error: false };
   const llaveEd = { torneo: '', fases: [], mensaje: '', error: false };
+  const fixtureEd = { torneo: '', zonas: {}, mensaje: '', error: false, prueba: null, probando: false };
 
   /* La lista que se está PINTANDO, no la global: la tarjeta tiene que
      mostrar los libros del mismo catálogo del que sale su árbol. */
@@ -917,6 +919,176 @@ const SGADD_TORNEOS = (function () {
       <button type="button" onclick="SGADD_TORNEOS.editarLlave('${escJs(n.id)}')"
         class="mt-2 text-[11px] font-display uppercase tracking-wider text-accent hover:underline">Editar la llave</button>`}
     </div>`;
+  }
+
+  /* =====================================================================
+     LA FUENTE DEL FIXTURE · pegar los links y listo
+
+     El calendario en vivo (punto 70) sale de las páginas que publica la
+     liga. Hasta acá se declaraba en `torneos/<id>.json` y pedía un commit;
+     ahora se pegan los links acá, uno por renglón y por zona, y se guarda
+     en el servidor. CADA LINK ELIGE SU LECTOR POR EL SITIO (`auto`):
+     Volcala, basket-club y apdeb tienen el suyo, y cualquier otra página se
+     intenta como «jornadas» de texto. «Probar» baja la fuente en el acto y
+     dice cuántos partidos encontró: un link que no sirve se ve ANTES del
+     sábado, no después.
+     ===================================================================== */
+
+  /* Los sitios con lector propio. ES LA MISMA LISTA que `SITIOS` en
+     `server/lib/fixture-fuentes.js`, y un test compara las dos: acá es solo
+     para decirle al admin qué lector va a usar cada link. */
+  const LECTORES = [
+    { re: /(^|\.)volcala\.com$/i, label: 'Volcala' },
+    { re: /(^|\.)basket-club\.com$/i, label: 'basket-club' },
+    { re: /(^|\.)apdeb\.com\.ar$/i, label: 'APdeB' },
+  ];
+  function lectorDeUrl(url) {
+    let host = '';
+    try { host = new URL(String(url || '')).hostname; } catch (e) { return null; }
+    const l = LECTORES.find(x => x.re.test(host));
+    return l ? l.label : 'página de jornadas (genérico)';
+  }
+
+  /** Los links de una zona: uno por renglón (o separados por espacio o coma). */
+  function linksDe(texto) {
+    return String(texto || '').split(/[\s,]+/).map(x => x.trim()).filter(Boolean);
+  }
+  function linksInvalidos(texto) { return linksDe(texto).filter(u => !/^https?:\/\/\S+$/i.test(u)); }
+
+  /** Lo que se manda. Conserva lo que el admin no ve acá (la categoría que
+      filtra apdeb, el piso de temporada). Sin ningún link, `fixture: null`
+      borra la fuente y el torneo vuelve al calendario de su archivo. */
+  function intencionFixture(t, zonasTexto) {
+    const previo = (t && t.fixture) || {};
+    const zonas = {};
+    Object.keys(zonasTexto || {}).forEach((z) => {
+      const urls = linksDe(zonasTexto[z]).filter(u => /^https?:\/\/\S+$/i.test(u));
+      if (!urls.length) return;
+      const ant = (previo.zonas || {})[z];
+      const extra = (ant && typeof ant === 'object' && !Array.isArray(ant)) ? Object.assign({}, ant) : {};
+      ['programacion', 'resultados', 'fixture', 'url'].forEach((k) => { delete extra[k]; });
+      zonas[z] = Object.assign(extra, { urls: urls });
+    });
+    const fixture = Object.keys(zonas).length
+      ? Object.assign({}, previo, { adaptador: 'auto', zonas: zonas })
+      : null;
+    return { accion: 'torneo', club: t.id, nombre: t.nombre, fixture: fixture };
+  }
+
+  /** Los links de cada zona tal como están guardados, en texto. */
+  function textoDeFixture(t) {
+    const out = {};
+    const zs = (t && t.fixture && t.fixture.zonas) || {};
+    Object.keys(zs).forEach((z) => {
+      const v = zs[z];
+      const urls = typeof v === 'string' ? [v] : (Array.isArray(v && v.urls) ? v.urls
+        : [v && v.programacion, v && v.resultados, v && v.fixture, v && v.url].filter(Boolean));
+      out[z] = urls.join('\n');
+    });
+    return out;
+  }
+
+  function bloqueFixture(n, t) {
+    const zs = zonasDe(t);
+    const actual = textoDeFixture(t);
+    const editando = fixtureEd.torneo === n.id;
+    const nLinks = Object.keys(actual).reduce((a, z) => a + linksDe(actual[z]).length, 0);
+    return `<div class="mt-4 pt-3 border-t border-hairline" data-fixture="${esc(n.id)}">
+      <div class="flex items-baseline justify-between gap-3 flex-wrap mb-1">
+        <h4 class="font-display uppercase tracking-wide text-xs text-ink">📅 Fuente del fixture</h4>
+        <span class="font-mono text-[10px] text-muted">${nLinks} ${nLinks === 1 ? 'link' : 'links'}</span>
+      </div>
+      ${editando ? `<div id="fixtureEd-${esc(n.id)}">${formFixture(t)}</div>` : `
+      <p class="text-[11px] text-muted mb-2">Las páginas de la liga de donde sale el calendario: partidos por jugar,
+        horarios, resultados y fases. El servidor las vuelve a leer cada diez minutos.</p>
+      <ul class="space-y-1 text-xs">${zs.map(z => `<li><span class="text-ink">${esc(z.label)}</span>
+        <span class="text-muted">· ${actual[z.zona] ? linksDe(actual[z.zona]).map(u => esc(lectorDeUrl(u) || u)).join(', ') : 'sin fuente: usa el calendario del archivo'}</span></li>`).join('')
+        || '<li class="text-muted">Sin zonas declaradas.</li>'}</ul>
+      <button type="button" onclick="SGADD_TORNEOS.editarFixture('${escJs(n.id)}')"
+        class="mt-2 text-[11px] font-display uppercase tracking-wider text-accent hover:underline">Editar los links</button>`}
+    </div>`;
+  }
+
+  function formFixture(t) {
+    const zs = zonasDe(t);
+    return `<div class="space-y-2">${zs.map(z => `<label class="block">
+        <span class="${ROTULO}">${esc(z.label)} · un link por renglón</span>
+        <textarea rows="2" id="fx-${esc(z.zona)}" oninput="SGADD_TORNEOS.campoFixture('${escJs(z.zona)}', this.value)"
+          class="${CLASE_INPUT} font-mono" placeholder="https://www.volcala.com/…">${esc(fixtureEd.zonas[z.zona] || '')}</textarea>
+      </label>`).join('')}
+      <div id="fixtureEdEstado">${estadoFixture()}</div></div>`;
+  }
+
+  function estadoFixture() {
+    const malos = Object.keys(fixtureEd.zonas).reduce((a, z) => a.concat(linksInvalidos(fixtureEd.zonas[z])), []);
+    const lectores = Object.keys(fixtureEd.zonas).reduce((a, z) => a.concat(linksDe(fixtureEd.zonas[z])
+      .filter(u => !linksInvalidos(u).length).map(u => lectorDeUrl(u))), []);
+    const msg = fixtureEd.mensaje ? `<p class="text-xs ${fixtureEd.error ? 'text-red-400' : 'text-emerald-400'}" role="${fixtureEd.error ? 'alert' : 'status'}">${esc(fixtureEd.mensaje)}</p>` : '';
+    const p = fixtureEd.prueba;
+    const prueba = p ? `<ul class="text-[11px] text-muted mt-1">${Object.keys(p.zonas || {}).map((z) => {
+      const x = p.zonas[z] || {};
+      const ps = x.partidos || [];
+      const por = ps.filter(q => q.ptsLocal == null).length;
+      return `<li><span class="text-ink">${esc(z)}</span> · ${ps.length} partidos (${ps.length - por} jugados, ${por} por jugar)${(x.avisos || []).length ? ' · ' + esc(x.avisos.join(' · ')) : ''}</li>`;
+    }).join('')}${(p.fallaron || []).map(f => `<li class="zona-aviso zona-texto">⚠ ${esc(f)}</li>`).join('')}</ul>` : '';
+    return `${malos.length ? `<p class="text-[11px] zona-peligro zona-texto" role="alert">No es un link: ${esc(malos.join(' · '))}</p>` : ''}
+      ${lectores.length ? `<p class="text-[11px] text-muted">Se van a leer con: ${esc([...new Set(lectores)].join(', '))}.</p>` : ''}
+      ${msg}${prueba}
+      <div class="flex gap-3 mt-1 flex-wrap">
+        <button type="button" onclick="SGADD_TORNEOS.guardarFixture()" ${malos.length ? 'disabled' : ''}
+          class="px-3 py-1.5 rounded-md text-[11px] font-display uppercase tracking-wider bg-accent text-base disabled:opacity-40">Guardar los links</button>
+        <button type="button" onclick="SGADD_TORNEOS.probarFixture()" ${fixtureEd.probando ? 'disabled' : ''}
+          class="text-[11px] font-display uppercase tracking-wider text-ink hover:underline disabled:opacity-40">${fixtureEd.probando ? 'Leyendo…' : 'Probar lo guardado'}</button>
+        <button type="button" onclick="SGADD_TORNEOS.cancelarFixture()" class="text-[11px] font-display uppercase tracking-wider text-muted hover:underline">Cancelar</button></div>`;
+  }
+
+  function editarFixture(tid) {
+    const t = torneoPorId(tid); if (!t) return;
+    Object.assign(fixtureEd, { torneo: tid, zonas: textoDeFixture(t), mensaje: '', error: false, prueba: null, probando: false });
+    abiertos[tid] = true; repintarTodo();
+  }
+  function cancelarFixture() { fixtureEd.torneo = ''; repintarTodo(); }
+  /* Tipear NO repinta el formulario: solo el estado de abajo (punto 13). */
+  function campoFixture(z, v) { fixtureEd.zonas[z] = v; fixtureEd.mensaje = ''; pintar('fixtureEdEstado', estadoFixture()); }
+  function guardarFixture() {
+    const t = torneoPorId(fixtureEd.torneo); if (!t) return;
+    if (Object.keys(fixtureEd.zonas).some(z => linksInvalidos(fixtureEd.zonas[z]).length)) return;
+    const intencion = intencionFixture(t, fixtureEd.zonas);
+    const nom = nombresDeZonas(t);
+    const antes = textoDeFixture(t);
+    const ir = () => SGADD_DATA.guardarCatalogo(intencion).then((r) => {
+      fixtureEd.torneo = '';
+      if (typeof SGADD_CLIENTES !== 'undefined' && r.clubes) { SGADD_CLIENTES.estado.clubes = r.clubes; SGADD_CLIENTES.pintar(); }
+      repintarTodo();
+    }).catch((e) => { fixtureEd.mensaje = e.message || 'No se pudo guardar.'; fixtureEd.error = true; pintar('fixtureEdEstado', estadoFixture()); });
+    if (typeof SGADD_CONFIRMAR === 'undefined') return ir();
+    const zonas = Object.keys(Object.assign({}, antes, fixtureEd.zonas));
+    SGADD_CONFIRMAR.abrir({ titulo: t.nombre + ' · fuente del fixture',
+      aviso: 'El calendario de todos los clientes del torneo pasa a salir de estos links desde su próxima carga.',
+      confirmar: 'Guardar los links',
+      cambios: zonas.map(z => ({ label: 'Zona ' + (nom[z] || z),
+        antes: linksDe(antes[z]).join(' · ') || '—', despues: linksDe(fixtureEd.zonas[z]).join(' · ') || '— sin fuente' }))
+        .filter(c => c.antes !== c.despues),
+      alConfirmar: ir });
+  }
+  /* PROBAR baja la fuente YA GUARDADA en el acto (`?refrescar=1`, solo
+     admin) y dice cuántos partidos leyó por zona. */
+  function probarFixture() {
+    if (typeof SGADD_DATA === 'undefined' || !SGADD_DATA.fixtureDeTorneo) return;
+    fixtureEd.probando = true; fixtureEd.prueba = null; pintar('fixtureEdEstado', estadoFixture());
+    SGADD_DATA.fixtureDeTorneo(fixtureEd.torneo, null, { refrescar: true }).then((r) => {
+      fixtureEd.probando = false;
+      if (!r || !r.fuente) { fixtureEd.mensaje = 'El torneo todavía no tiene links guardados.'; fixtureEd.error = true; }
+      else {
+        fixtureEd.prueba = r;
+        fixtureEd.mensaje = r.stale ? 'La fuente no contestó: se muestra la última lectura buena.' : '';
+        fixtureEd.error = !!r.stale;
+      }
+      pintar('fixtureEdEstado', estadoFixture());
+    }).catch((e) => {
+      fixtureEd.probando = false; fixtureEd.mensaje = e.message || 'No se pudo leer la fuente.'; fixtureEd.error = true;
+      pintar('fixtureEdEstado', estadoFixture());
+    });
   }
 
   function selectLado(fi, ci, lado, l, zonas, previos) {
@@ -1135,10 +1307,12 @@ const SGADD_TORNEOS = (function () {
     faltantesTorneo, intencionTorneo, cambiosTorneo, idVinculoSugerido, idDeLibro,
     ROLES_LIBRO, librosDe, slugDe, faltantesLibro, intencionLibro, ladoTexto, faseAEditor, editorAFase,
     erroresLlave, intencionLlave, libroEd, llaveEd, esMascara,
+    LECTORES, lectorDeUrl, linksDe, linksInvalidos, intencionFixture, textoDeFixture, fixtureEd,
     /* ui */
     html, borrador, vinculo, resultado, campo: campo_, campoZona, agregarZona, quitarZona, nuevo, editar,
     guardar, empezarVinculo, elegirVinculo, campoVinculo, vincular, abrirForm, abrirVinculo, abrirTarjeta, bloqueHuerfanos,
     nuevoLibro, editarLibro, cancelarLibro, campoLibro, elegirLibro, guardarLibro, desvincularLibro,
+    editarFixture, cancelarFixture, campoFixture, guardarFixture, probarFixture, bloqueFixture,
     editarLlave, cancelarLlave, campoFase, zonaFase, campoCruce, campoLado, agregarFase, quitarFase, agregarCruce, quitarCruce, guardarLlave,
   };
 })();

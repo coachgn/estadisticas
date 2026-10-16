@@ -201,8 +201,11 @@ seccion('4 · la config del torneo');
   check('y ese torneo no declara piso de temporada', apb.desde === null);
   check('una zona sin URLs válidas se ignora',
     F.configDe({ fixture: { adaptador: 'apdeb', zonas: { x: { programacion: 'nada' } } } }) === null);
-  check('el registro conoce los dos adaptadores',
-    Object.keys(F.ADAPTADORES).sort().join(',') === 'apdeb,basket-club');
+  /* Desde el punto 126 el registro suma volcala, jornadas y `auto`: lo que
+     se fija es que estos dos sigan y que todo adaptador tenga su parser. */
+  check('el registro conoce apdeb y basket-club, y todos parsean',
+    !!F.ADAPTADORES.apdeb && !!F.ADAPTADORES['basket-club']
+    && Object.keys(F.ADAPTADORES).every(k => typeof F.ADAPTADORES[k].parsear === 'function'));
 
   check('el archivo del torneo no trae ningún sheetId',
     !/"sheetId"\s*:|[A-Za-z0-9_-]{40,}/.test(JSON.stringify(DOC)));

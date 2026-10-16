@@ -131,17 +131,26 @@ async function refrescar(config, deps, hoy) {
       const lecturas = await Promise.all(cfgZona.urls.map(async (u) => {
         try {
           const html = await bajar(u, deps);
+          /* `url` es lo que usa el modo `auto` para elegir el parser por
+             sitio: una zona puede juntar volcala con la nota de la liga. */
           return { r: ad.parsear(html, { zona: z, hoy: hoy, categoria: cfgZona.categoria,
-            desde: cfgZona.desde || config.desde }) };
+            desde: cfgZona.desde || config.desde, url: u }) };
         } catch (e) { return { error: e.message || 'No se pudo leer ' + u }; }
       }));
       const partidos = [];
       const avisos = [];
       const errores = [];
       const vistos = {};
+      const estructura = [];
       lecturas.forEach((l) => {
         if (l.error) { errores.push(l.error); return; }
         l.r.avisos.forEach(x => avisos.push(x));
+        /* LA ESTRUCTURA DE LA POSTEMPORADA (instancias con sus días) la
+           publica la nota de la liga; si dos páginas la traen, gana la
+           primera que nombra la instancia. */
+        (l.r.estructura || []).forEach((e) => {
+          if (!estructura.some(x => x.instancia === e.instancia)) estructura.push(e);
+        });
         l.r.partidos.forEach((p) => {
           /* LA CLAVE VA NORMALIZADA con `claveEquipo`, el normalizador de
              todo el proyecto: las páginas del mismo sitio escriben el mismo
@@ -163,12 +172,14 @@ async function refrescar(config, deps, hoy) {
           if (antes.estructural && !p.estructural) partidos[previo] = p;
         });
       });
+      const finales = sinEstructuralesCubiertos(partidos);
       /* CERO PARTIDOS CON HTTP 200 es «cambió la estructura», no «no hay
          torneo»: se trata como falla para conservar lo guardado. */
-      if (!partidos.length) {
+      if (!finales.length) {
         return { z: z, error: errores.concat(avisos)[0] || 'No se reconoció ningún partido.' };
       }
-      return { z: z, datos: { partidos: partidos, avisos: avisos.concat(errores) } };
+      return { z: z, datos: { partidos: finales, avisos: avisos.concat(errores),
+        estructura: estructura.length ? estructura : undefined } };
     } catch (e) {
       return { z: z, error: e.message || 'No se pudo leer la fuente.' };
     }
@@ -178,6 +189,39 @@ async function refrescar(config, deps, hoy) {
     else fallaron.push(r.z + ': ' + r.error);
   });
   return { zonas: zonas, fallaron: fallaron };
+}
+
+/* =====================================================================
+   EL FIXTURE ESTRUCTURAL QUE OTRA FUENTE YA CUBRE
+
+   La nota de la liga declara el día PLANIFICADO de cada jornada; la fuente
+   en vivo, el día REAL. Medido en Bahía Blanca el 2026-10-16: la Jornada
+   10 de la ABB dice 22/10 y Volcala la tiene el 27/10; un partido de la
+   11, 29/10 contra 06/11. Con la deduplicación por fecha exacta el mismo
+   cruce salía dos veces, uno «a jugarse» en un día que ya no es.
+
+   Una fila ESTRUCTURAL se descarta si la misma pareja (en cualquier
+   orden) tiene una fila NO estructural a 14 días o menos. La ventana es
+   segura en una liga de ida y vuelta: la revancha está a semanas. Y lo que
+   se pierde es el día planificado de un cruce cuyo día real está a la
+   vista. Una fila estructural sin cruce real cerca SE QUEDA: es el respaldo
+   para lo que la fuente en vivo todavía no publicó.
+   ===================================================================== */
+const VENTANA_ESTRUCTURAL_DIAS = 14;
+
+function sinEstructuralesCubiertos(partidos) {
+  const reales = {};
+  const par = p => [CORE.claveEquipo(p.local), CORE.claveEquipo(p.visitante)].sort().join('|');
+  partidos.forEach((p) => {
+    if (p.estructural || !p.fecha) return;
+    (reales[par(p)] = reales[par(p)] || []).push(Date.parse(p.fecha));
+  });
+  const ventana = VENTANA_ESTRUCTURAL_DIAS * 86400000;
+  return partidos.filter((p) => {
+    if (!p.estructural || !p.fecha) return true;
+    const t = Date.parse(p.fecha);
+    return !(reales[par(p)] || []).some(x => Math.abs(x - t) <= ventana);
+  });
 }
 
 /** Lo guardado, o null. Un KV ilegible NO es un fixture vacío. */
@@ -283,4 +327,5 @@ function respuesta(torneo, config, datos, estado, query) {
   };
 }
 
-module.exports = { manejarFixture, bajar, refrescar, claveKV, TTL_POR_DEFECTO };
+module.exports = { manejarFixture, bajar, refrescar, claveKV, TTL_POR_DEFECTO,
+  sinEstructuralesCubiertos, VENTANA_ESTRUCTURAL_DIAS };
