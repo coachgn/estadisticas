@@ -129,6 +129,9 @@ node test-centro-mando.js  # 461 tests · el Centro de Mando Editorial local: ba
                            #             (pide «npm install» en centro-mando/ una vez: los agentes usan el SDK de Claude, punto 107)
                            #             el play-by-play que no se presta, el aprendizaje y el servidor en 127.0.0.1 (105)
 
+node test-ecosistema.js    #  16 tests · el auditor del ecosistema: fechas, claves de escudo,
+                           #             ids tapados y que no escriba (punto 121)
+
 node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
 
@@ -14353,3 +14356,28 @@ las tablas, la leyenda, el % de la cancha y el badge de pintura sin la liga.
 bloque ya ocupaba dos hojas (punto 119) y ahora suma las dos tablas y las
 cuatro canchas. Hay que generar el PDF y mirar el paginado. Los valores de
 la competencia en la cancha llegan con la subida de paquetes del punto 119.
+
+## 121. EL AUDITOR DEL ECOSISTEMA · seis fuentes que nadie comparaba (2026-10-15)
+
+`node server/bin/ecosistema.js auditar`, de solo lectura. Guía y comandos de
+corrección en [`OPERACION_ECOSISTEMA.md`](OPERACION_ECOSISTEMA.md).
+
+Cruza: el catálogo de KV · el libro en Google (Service Account) · LICENCIAS
+del motor (la lee la Service Account) · el `MS_TOKEN` de cada Apps Script
+contra `tokenDe(parentId)` (API de Apps Script con la sesión de clasp) · los
+libros de la ingesta (`sitios.js`) · `torneos/*.json` y `logos/<liga>/index.json`.
+
+- **El vínculo libro ↔ script lo da Google** (`parentId`). El registro
+  `~/mi-motor-stats/registro-scripts.json` guarda solo scriptIds (`registrar`),
+  y además se recorren los `.clasp.json` del motor y de la ingesta.
+- **Las suscripciones usan `AUTH.suscripcionDeCategoria`**, la misma
+  cascada que aplica el servidor.
+- **Un libro de la ingesta sin licencia es AVISO, no error**: lo opera un
+  administrador y el cliente usa la web.
+- **Escribe UN solo archivo** (el registro de scripts), fuera del repo.
+  `test-ecosistema.js` lo fija. Ningún id sale entero en la salida.
+- `TORNEOS_FUERA_DEL_CATALOGO` lista los archivos de `torneos/` que no tienen
+  que estar en el catálogo, con su motivo (hoy, la Zona C dada de baja).
+- **La capa 3 (`alta` que aplica) NO está escrita**: espera tres decisiones
+  (escritura de LICENCIAS, una sola fecha de vencimiento, a quién le llega el
+  mail). Ver el punto 5 de la guía.
