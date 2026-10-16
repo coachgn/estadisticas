@@ -253,7 +253,7 @@ Primera corrida: `3 errores · 17 avisos`. Después de los ajustes de ese día
 |---|---|---|
 | ✓ | `logos/bahia-blanca/` sin `index.json` | **resuelto**: los 12 equipos resuelven su escudo, y el núcleo limpia el prefijo «1°» |
 | ✖ | Script «U15» (`1MtG…cSQw`): la Service Account no lee su libro | compartirlo, o sacarlo de `~/mi-motor-stats/registro-scripts.json` si es la planilla de prueba |
-| ⚠ | **Bahía Blanca** (`1Vjj…y_VY`): motor y token correctos; falta en el catálogo y no tiene `torneos/*.json` | circuito A, pasos 6 y 7 (liga `bahia-blanca`) |
+| ✓ | **Bahía Blanca** (`1Vjj…y_VY`) | **resuelto el 2026-10-16**: `torneos/bahia-blanca-2026.json` y el torneo `bahia-blanca-2026` (zona `oro`, 12 equipos) en el catálogo |
 | ⚠ | Hogar Social y Boca: la prueba terminó (10/10 y 12/10); Sud América vence el 16/10 | renovar o dar de baja |
 | ⚠ | Liga Argentina: UNION (SF) y RACING (A) sin escudo | subir los dos archivos |
 | ⚠ | El motor no está bajo git | ver «Deuda que el auditor deja a la vista» |

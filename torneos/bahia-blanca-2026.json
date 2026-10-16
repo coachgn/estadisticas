@@ -1,0 +1,36 @@
+{
+  "//": "Torneo de Primera de Bahía Blanca 2026, grupo ORO. Los equipos salen del libro (Base Datos E); el libro los escribe con el prefijo de división («1° LINIERS»), que el núcleo limpia (quitarOrdinal), y va como alias. Sin fuente de fixture en vivo ni reglamento publicado: no se declaran zonas de tabla ni cruces. SIN sheetId: el repo es público.",
+  "id": "bahia-blanca-2026",
+  "nombre": "Bahía Blanca · Primera 2026",
+  "nombreCorto": "Bahía Blanca 2026",
+  "liga": "bahia-blanca",
+  "temporada": "2026",
+  "nivel": "LOCAL_MAYORES",
+  "formato": {
+    "modalidad": "Grupo ORO, fase regular (el libro trae IDA - REGULAR)",
+    "fases": [
+      { "id": "regular", "label": "Fase regular", "cruce": "zona" }
+    ],
+    "nota": "El reglamento de clasificación no está publicado: no se declaran zonas de tabla para no inventarlas."
+  },
+  "zonas": {
+    "oro": {
+      "slug": "bahia-blanca-2026-oro",
+      "label": "Bahía Blanca 2026 · Primera Oro",
+      "equipos": [
+        { "id": null, "nombre": "BAHIENSE DEL NORTE", "alias": ["1° BAHIENSE DEL NORTE"], "abreviatura": "BDN" },
+        { "id": null, "nombre": "BARRIO HOSPITAL", "alias": ["1º BARRIO HOSPITAL"], "abreviatura": "BHO" },
+        { "id": null, "nombre": "ESTRELLA", "alias": ["1° ESTRELLA"], "abreviatura": "EST" },
+        { "id": null, "nombre": "ESTUDIANTES", "alias": ["1° ESTUDIANTES"], "abreviatura": "ESU" },
+        { "id": null, "nombre": "INDEPENDIENTE", "alias": ["1º INDEPENDIENTE"], "abreviatura": "IND" },
+        { "id": null, "nombre": "LEANDRO N.ALEM", "alias": ["1º LEANDRO N.ALEM", "LEANDRO N. ALEM"], "abreviatura": "LNA" },
+        { "id": null, "nombre": "LINIERS", "alias": ["1° LINIERS"], "abreviatura": "LIN" },
+        { "id": null, "nombre": "NAPOSTA", "alias": ["1° NAPOSTA"], "abreviatura": "NAP" },
+        { "id": null, "nombre": "OLIMPO", "alias": ["1° OLIMPO"], "abreviatura": "OLI" },
+        { "id": null, "nombre": "PACIFICO", "alias": ["1° PACIFICO"], "abreviatura": "PAC" },
+        { "id": null, "nombre": "PUEYRREDON", "alias": ["1° PUEYRREDON"], "abreviatura": "PUE" },
+        { "id": null, "nombre": "VILLA MITRE", "alias": ["1° VILLA MITRE"], "abreviatura": "VMI" }
+      ]
+    }
+  }
+}
