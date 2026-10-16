@@ -6,7 +6,8 @@
   "scripts": {
     "auto-process": "node auto-process.js",
     "auditar": "node server/bin/ecosistema.js auditar",
-    "render": "node centro-mando/renderizar.js --pendientes"
+    "canva": "node centro-mando/canva.js importar",
+    "canva:autorizar": "node centro-mando/canva.js autorizar"
   },
   "engines": {
     "node": ">=22"

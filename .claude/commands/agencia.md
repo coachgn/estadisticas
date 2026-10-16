@@ -48,3 +48,7 @@ Ligas: `apb` (zonas `a`, `b`, `c`), `lnb` (`unica`), `lab25` (`norte`), `lab` (`
 7. Ofrecé seguir con `/agencia canva`.
 
 Los cuerpos con tildes mandalos desde un archivo (`curl --data-binary @archivo.json -H "Content-Type: application/json"`): en la línea de comandos de Windows se rompen.
+
+> **Sin Claude:** `node centro-mando/canva.js importar` hace el mismo circuito
+> por la API oficial de Canva (con un PDF, porque la API no importa HTML), y
+> es el paso 4 de `npm run auto-process`. Ver OPERACION_ECOSISTEMA.md, 0 bis.

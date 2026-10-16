@@ -21,7 +21,7 @@ paso del Panel Master está en [`GUIA_ALTA_CLIENTES.md`](GUIA_ALTA_CLIENTES.md).
 npm run auto-process                   # todo, de punta a punta
 npm run auto-process -- --ensayo       # muestra los pasos y no corre nada
 npm run auto-process -- --sin-ingesta  # sin tocar los sitios ni Drive
-npm run auto-process -- --solo render  # un paso: ingesta | auditar | contenido | render
+npm run auto-process -- --solo canva   # un paso: ingesta | auditar | contenido | canva
 ```
 
 | Paso | Qué corre | Qué deja |
@@ -29,16 +29,17 @@ npm run auto-process -- --solo render  # un paso: ingesta | auditar | contenido 
 | 1 · ingesta | `motorstats-ingestion/herramientas/correr-lnb.js` | libros de LNB y LAB al día y los paquetes de play-by-play en KV |
 | 2 · auditar | `server/bin/ecosistema.js auditar --json` | `contenido/auto-process/<fecha>_auditoria.json`; los errores en el log |
 | 3 · contenido | `generar-contenido.js` por liga (lista `CONTENIDO` de `auto-process.js`) | `contenido/<liga>-<zona>/<día>/`: el Top 3 y las diez recetas |
-| 4 · render | `centro-mando/renderizar.js --pendientes` | las piezas aprobadas como `<pieza>/01.png…` y `<pieza>.pdf`, al lado de su HTML |
+| 4 · canva | `centro-mando/canva.js importar` | las piezas aprobadas, como diseños editables en Canva; `placas-tmp/` vuelve a quedar vacía |
 
 **Ningún paso llama a una IA ni a un conector.** Los hijos corren con
-`CENTRO_MANDO_MOTOR=no`. El render usa el Chrome instalado en la máquina, por
-su protocolo de depuración, y no suma dependencias. Un paso que falla no frena
+`CENTRO_MANDO_MOTOR=no`. El paso de Canva arma el PDF EN MEMORIA con el Chrome de la máquina
+(sin dependencias), lo publica en `placas-tmp/` de GitHub Pages y Canva lo
+importa por su API oficial. No queda ningún archivo local. Un paso que falla no frena
 a los siguientes, y el comando sale con 1 si alguno falló. El log queda en
 `contenido/auto-process/<fecha>.log`.
 
 **Lo que sigue siendo una decisión humana:** aprobar una pieza en el Centro de
-Mando (`npm start` en `centro-mando/`). Este comando renderiza lo que ya se
+Mando (`npm start` en `centro-mando/`). Este comando lleva a Canva lo que ya se
 aprobó; no aprueba nada.
 
 **Para que corra solo**, hay que reemplazar la acción de la tarea de Windows
@@ -50,6 +51,49 @@ cmd /c "cd /d C:\Users\Pc\Documents\estadisticas && npm run auto-process"
 
 No lo registré: es un cambio de configuración de la máquina, y lo hacés vos
 desde el Programador de tareas o con `motorstats-ingestion/herramientas/programar-tarea.ps1`.
+
+## 0 bis · Canva sin Claude · la app, una sola vez
+
+El paso 4 usa la **Connect API** de Canva. **No importa HTML** (solo PDF,
+PPTX, DOCX y formatos de Office/Adobe), por eso cada pieza viaja como PDF:
+
+```
+cola (pendiente) → PDF en memoria → placas-tmp/ (commit SOLO de esa carpeta) → Pages
+  → POST /rest/v1/url-imports → diseño en Canva (importada) → placas-tmp/ vacía
+```
+
+Configuración, una vez:
+
+1. En https://www.canva.com/developers crear una integración (Connect API).
+   Scope: **design:content:write**. URL de redirección:
+   **http://127.0.0.1:8772/oauth/redirect** (Canva no acepta `localhost`).
+2. Copiar el Client ID y el secreto en `centro-mando/.env` como
+   `CANVA_CLIENT_ID` y `CANVA_CLIENT_SECRET` (ver `.env.ejemplo`).
+3. Correr una vez, y aceptar en el navegador:
+
+```bash
+node centro-mando/canva.js autorizar
+```
+
+El permiso queda en `centro-mando/.canva-token.json` (en .gitignore). Canva
+rota el refresh token en cada uso y el script guarda el nuevo antes de usarlo.
+
+```bash
+node centro-mando/canva.js estado            # app, permiso y la cola
+node centro-mando/canva.js importar --ensayo # qué publicaría e importaría
+npm run canva                                # el paso 4 solo
+```
+
+- **Pages puede tardar** (de 40 s a más de media hora). Lo que no se ve en 20
+  minutos queda `publicada` y se importa en la corrida siguiente.
+- Un error transitorio de Canva (`fetch_failed`, throttling) se reintenta
+  hasta 3 corridas; uno definitivo (`invalid_file`) deja la pieza en `error`
+  con el motivo y retira su PDF de Pages.
+- **Publica solo si la copia está en main y al día con origin**, y el commit
+  incluye SOLO `placas-tmp/`: nunca arrastra otros cambios.
+- El diseño queda en Canva como un PDF importado: los textos son editables, y
+  los gráficos de Canva (semáforos, flechas) se siguen agregando a mano.
+
 
 ---
 

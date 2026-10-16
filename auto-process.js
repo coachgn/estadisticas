@@ -4,7 +4,7 @@
      npm run auto-process                    todo
      npm run auto-process -- --ensayo        muestra los pasos y no corre nada
      npm run auto-process -- --sin-ingesta   saltea el paso 1 (no toca los sitios)
-     npm run auto-process -- --solo auditar  un solo paso (ingesta, auditar, contenido, render)
+     npm run auto-process -- --solo auditar  un solo paso (ingesta, auditar, contenido, canva)
 
    Los pasos, en orden:
      1 · INGESTA    motorstats-ingestion/herramientas/correr-lnb.js
@@ -15,15 +15,18 @@
                     y escudos. El informe queda en contenido/auto-process/.
      3 · CONTENIDO  generar-contenido.js por cada liga de CONTENIDO (abajo):
                     el Top 3 y las diez recetas, con los números del libro.
-     4 · RENDER     centro-mando/renderizar.js --pendientes
-                    las placas aprobadas en el Centro de Mando → PNG y PDF.
+     4 · CANVA      centro-mando/canva.js importar
+                    las piezas aprobadas en el Centro de Mando → PDF en memoria →
+                    placas-tmp/ en Pages → Canva por su API (url-imports) →
+                    placas-tmp/ vacía. Sin archivos locales. Necesita la app de
+                    Canva autorizada una vez (OPERACION_ECOSISTEMA.md, 0 bis).
 
    NINGÚN PASO LLAMA A UN MODELO: los hijos corren con
    CENTRO_MANDO_MOTOR=no, que apaga la redacción con IA del Centro de Mando
    (punto 108). Aprobar una pieza sigue siendo una decisión editorial: este
-   comando renderiza lo aprobado, no aprueba.
+   comando lleva a Canva lo aprobado, no aprueba.
 
-   Un paso que falla NO frena a los siguientes (el auditor y el render no
+   Un paso que falla NO frena a los siguientes (el auditor y Canva no
    dependen de que la ingesta de hoy haya salido). El código de salida es 1
    si alguno falló, para que la tarea programada lo registre.
 
@@ -99,12 +102,12 @@ const pasos = {
     }
     return ok;
   },
-  render() {
-    return correr('RENDER · placas aprobadas → PNG y PDF', RAIZ, ['centro-mando/renderizar.js', '--pendientes'], { techo: 20 * 60 * 1000 }).ok;
+  canva() {
+    return correr('CANVA · piezas aprobadas → Pages → Canva', RAIZ, ['centro-mando/canva.js', 'importar'], { techo: 40 * 60 * 1000 }).ok;
   },
 };
 
-const orden = ['ingesta', 'auditar', 'contenido', 'render'];
+const orden = ['ingesta', 'auditar', 'contenido', 'canva'];
 if (SOLO && !orden.includes(SOLO)) { console.error('--solo tiene que ser uno de: ' + orden.join(', ')); process.exit(2); }
 
 log('MotorStats · corrida completa · ' + sello + (ENSAYO ? ' · ENSAYO' : ''));

@@ -129,8 +129,11 @@ node test-centro-mando.js  # 461 tests · el Centro de Mando Editorial local: ba
                            #             (pide «npm install» en centro-mando/ una vez: los agentes usan el SDK de Claude, punto 107)
                            #             el play-by-play que no se presta, el aprendizaje y el servidor en 127.0.0.1 (105)
 
-node test-ecosistema.js    #  25 tests · el auditor del ecosistema: fechas, claves de escudo,
+node test-ecosistema.js    #  23 tests · el auditor del ecosistema: fechas, claves de escudo,
                            #             ids tapados y que no escriba (punto 121)
+
+node test-canva.js         #  29 tests · las piezas aprobadas a Canva por la API, sin Claude:
+                           #             el permiso que rota, publicar SOLO placas-tmp, reintentos (punto 123)
 
 node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -14391,7 +14394,7 @@ libros de la ingesta (`sitios.js`) · `torneos/*.json` y `logos/<liga>/index.jso
   Log e informe en `contenido/auto-process/`. Aprobar piezas sigue siendo
   manual. La tarea de Windows NO se cambió: la acción nueva está en
   `OPERACION_ECOSISTEMA.md`, punto 0.
-- **`centro-mando/renderizar.js`**: cada `section[data-document-role="page"]`
+- ~~**`centro-mando/renderizar.js`**~~ **REEMPLAZADO por el punto 123** (el club no quiere archivos locales). Era: cada `section[data-document-role="page"]`
   pasa a PNG del tamaño de la placa, y el HTML entero a un PDF de una placa por
   hoja. Usa el Chrome de la máquina por CDP (sin puppeteer ni playwright). Con
   `--pendientes` recorre la cola y anota `render` en cada pieza, sin cambiarle
@@ -14405,3 +14408,36 @@ libros de la ingesta (`sitios.js`) · `torneos/*.json` y `logos/<liga>/index.jso
   número de «9 DE JULIO» o «25 DE MAYO». `limpiarNombre` y `claveEquipo` lo
   aplican, así que lo heredan el servidor, la ingesta y los generadores.
 - **`logos/bahia-blanca/index.json`**: los 12 equipos del libro resuelven.
+
+## 123. LAS PIEZAS A CANVA POR LA API, SIN CLAUDE Y SIN ARCHIVOS LOCALES (2026-10-16)
+
+Pedido del club: nada de PNG ni PDF en carpetas locales; el circuito es
+Drive ↔ Sheets ↔ Pages ↔ Plataforma ↔ Canva, y corre solo. Guía y la
+configuración de una vez en `OPERACION_ECOSISTEMA.md`, punto 0 bis.
+
+```
+centro-mando/pdf.js     el PDF de un HTML aprobado, EN MEMORIA (Chrome por CDP, sin dependencias)
+centro-mando/canva.js   autorizar (una vez) · estado · importar [--ensayo]
+```
+
+- **La Connect API de Canva NO importa HTML** (solo PDF, PPTX, DOCX y formatos
+  de Office/Adobe). Lo único que convertía HTML en diseño era el conector de
+  Claude. Por eso viaja un PDF: una placa por hoja, del tamaño de la placa.
+- Circuito: pendiente → `placas-tmp/<pieza>.pdf` (+ el HTML) → commit SOLO de
+  esa carpeta y push → Pages → `POST /rest/v1/url-imports` (`mime_type:
+  application/pdf`) → sondeo del job → `importada` con `canva` (edit_url) y
+  `canvaId` → se borra de `placas-tmp/`, commit y push.
+- **OAuth con PKCE, una vez**, con redirección a `http://127.0.0.1:8772/oauth/redirect`.
+  El permiso vive en `centro-mando/.canva-token.json` (gitignore). Canva ROTA el
+  refresh token en cada uso: se guarda el nuevo antes de usar el acceso.
+- **El permiso se mira ANTES de publicar**: sin él no queda nada a la vista.
+- **Publicar exige main al día con origin** y nunca arrastra otros cambios.
+- Pages que no sirve a los 20 min → `publicada`, se importa la corrida
+  siguiente. Errores transitorios de Canva, hasta 3 intentos; uno definitivo
+  deja `error` y retira el PDF.
+- `auto-process` corre `canva` como paso 4 (en lugar del render). Con la cola
+  vacía no necesita la app; con piezas pendientes y sin app, falla diciéndolo.
+- Se conservan el saneo de `1°`, el matcheo de escudos y el salto de LICENCIAS.
+- **No verificado contra Canva**: hace falta crear la app y autorizarla. El
+  PDF en memoria sí se midió (CR-03: 6 placas, 6 hojas, 855 KB).
+
