@@ -89,8 +89,20 @@
   */
   const SUFIJO_CATEGORIA = /\s*-\s*(MM|MF|U\d{1,2}\s*[MF]?)\s*$/i;
 
+  /* EL PREFIJO DE DIVISIÓN (2026-10-15). Bahía Blanca escribe la Primera
+     como «1° LINIERS», «1º BARRIO HOSPITAL»: sin sacarlo, el escudo no
+     matchea y el nombre sale con el número en todas las pantallas.
+     EXIGE EL SIGNO ORDINAL (° º ª) a propósito: un número suelto al principio
+     es parte del nombre de varios clubes («9 DE JULIO», «25 DE MAYO»), y un
+     regex que lo comiera los dejaría como «DE JULIO». */
+  const PREFIJO_ORDINAL = /^(?:\d+\s*[°ºª]\s*)+/;
+
+  function quitarOrdinal(v) {
+    return texto(v).replace(PREFIJO_ORDINAL, '');
+  }
+
   function limpiarNombre(v) {
-    return texto(v).replace(SUFIJO_CATEGORIA, '').trim();
+    return quitarOrdinal(v).replace(SUFIJO_CATEGORIA, '').trim();
   }
 
   function claveEquipo(v) {
@@ -3412,7 +3424,7 @@
 
   const SGADD = {
     // utilidades
-    num, texto, fecha, formatearFecha, limpiarNombre, claveEquipo, clavePersona, idPartido, mediana, promedio, percentil,
+    num, texto, fecha, formatearFecha, limpiarNombre, quitarOrdinal, claveEquipo, clavePersona, idPartido, mediana, promedio, percentil,
     // 1
     ESQUEMA, HOJAS_EXCLUIDAS,
     // 2

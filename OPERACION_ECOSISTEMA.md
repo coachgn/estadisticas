@@ -15,6 +15,44 @@ paso del Panel Master está en [`GUIA_ALTA_CLIENTES.md`](GUIA_ALTA_CLIENTES.md).
 
 ---
 
+## 0 · La corrida completa · un solo comando
+
+```bash
+npm run auto-process                   # todo, de punta a punta
+npm run auto-process -- --ensayo       # muestra los pasos y no corre nada
+npm run auto-process -- --sin-ingesta  # sin tocar los sitios ni Drive
+npm run auto-process -- --solo render  # un paso: ingesta | auditar | contenido | render
+```
+
+| Paso | Qué corre | Qué deja |
+|---|---|---|
+| 1 · ingesta | `motorstats-ingestion/herramientas/correr-lnb.js` | libros de LNB y LAB al día y los paquetes de play-by-play en KV |
+| 2 · auditar | `server/bin/ecosistema.js auditar --json` | `contenido/auto-process/<fecha>_auditoria.json`; los errores en el log |
+| 3 · contenido | `generar-contenido.js` por liga (lista `CONTENIDO` de `auto-process.js`) | `contenido/<liga>-<zona>/<día>/`: el Top 3 y las diez recetas |
+| 4 · render | `centro-mando/renderizar.js --pendientes` | las piezas aprobadas como `<pieza>/01.png…` y `<pieza>.pdf`, al lado de su HTML |
+
+**Ningún paso llama a una IA ni a un conector.** Los hijos corren con
+`CENTRO_MANDO_MOTOR=no`. El render usa el Chrome instalado en la máquina, por
+su protocolo de depuración, y no suma dependencias. Un paso que falla no frena
+a los siguientes, y el comando sale con 1 si alguno falló. El log queda en
+`contenido/auto-process/<fecha>.log`.
+
+**Lo que sigue siendo una decisión humana:** aprobar una pieza en el Centro de
+Mando (`npm start` en `centro-mando/`). Este comando renderiza lo que ya se
+aprobó; no aprueba nada.
+
+**Para que corra solo**, hay que reemplazar la acción de la tarea de Windows
+que hoy corre la ingesta (02:00 y 10:00) por:
+
+```bash
+cmd /c "cd /d C:\Users\Pc\Documents\estadisticas && npm run auto-process"
+```
+
+No lo registré: es un cambio de configuración de la máquina, y lo hacés vos
+desde el Programador de tareas o con `motorstats-ingestion/herramientas/programar-tarea.ps1`.
+
+---
+
 ## 1 · El mapa · seis fuentes que tienen que coincidir
 
 ```
@@ -41,6 +79,12 @@ paso del Panel Master está en [`GUIA_ALTA_CLIENTES.md`](GUIA_ALTA_CLIENTES.md).
 | 4 | **El Apps Script del libro** | ligado al libro | su `MS_TOKEN` tiene que ser el de **ese** libro, y su `MI_CONFIG` tiene que nombrar bien las carpetas |
 | 5 | **La ingesta** | `motorstats-ingestion/src/sitios.js` | qué libros se llenan solos, sin Excel |
 | 6 | **Torneos y escudos** | `torneos/*.json`, `logos/<liga>/index.json` | fixture, zonas, equipos, alias y escudos |
+
+**LICENCIAS no se audita por defecto (decisión del 2026-10-15).** Todas las
+planillas se operan con la cuenta de administración, y el motor le saltea la
+licencia a un administrador (v104). Mientras eso sea cierto, una fila faltante
+o vencida no rompe nada. Si un cliente va a operar su planilla con su propia
+cuenta, se vuelve a mirar con `ecosistema.js auditar --licencias`.
 
 **Hay dos vencimientos y no son el mismo.** La web corta con el `vence` del
 catálogo. El menú de la planilla corta con `FECHA_VENCIMIENTO` de LICENCIAS. Si
@@ -98,7 +142,7 @@ node server/bin/catalogo.js listar                   # el catálogo, legible
 | `motor` | verificar un libro de punta a punta | `cd ~/mi-motor-stats && node herramientas/llamarFachada.js validarAccesoPro <sheetId>` |
 | `google` | la Service Account no lo lee | compartir el libro, como Lector, con la cuenta de servicio (`node server/bin/probar-google.js` la muestra en la primera línea) |
 | `google` | el libro no existe | corregir el `sheetId` en el Panel Master (o `catalogo.js alta`) |
-| `licencias` | falta la fila / PENDIENTE / vencida | editar LICENCIAS (CLIENTE · EMAIL · SPREADSHEET_ID · ESTADO=ACTIVA · FECHA_VENCIMIENTO · PLAN) |
+| `licencias` (solo con `--licencias`) | falta la fila / PENDIENTE / vencida | editar LICENCIAS (CLIENTE · EMAIL · SPREADSHEET_ID · ESTADO=ACTIVA · FECHA_VENCIMIENTO · PLAN) |
 | `catálogo` | el libro tiene motor y la web no lo conoce | torneo: `node server/bin/catalogo.js torneo --archivo torneos/<id>.json --libro "<zona>=<id>" --probar` · cliente: Panel Master → Alta |
 | `torneos` | zona sin libro | `node server/bin/catalogo.js torneo --archivo torneos/<id>.json --libro "<zona>=<id>"` |
 | `escudos` | carpeta sin `index.json`, archivo faltante | escribir `logos/<liga>/index.json` y correr `node test-logos.js` |
@@ -124,7 +168,7 @@ node herramientas/puente.js --competencia <id> --ping  # el puente de un libro
 2. `node server/bin/ecosistema.js registrar --script <scriptId> --etiqueta "<torneo / categoría>"`
 3. `cd ~/mi-motor-stats && node herramientas/publicarCliente.js <scriptId> <sheetId>`: le pone el token nuevo.
 4. Compartir el libro y la carpeta del **año** con `freytesgn@gmail.com` como Editor, y el libro con la Service Account como Lector.
-5. LICENCIAS: una fila con su `SPREADSHEET_ID`. Solo hace falta si lo va a operar alguien que no es administrador.
+5. LICENCIAS: no hace falta (se opera con la cuenta de administración).
 6. Catálogo: `catalogo.js torneo …` si es un torneo, o Panel Master → Alta si es un cliente.
 7. Escudos: `logos/<liga>/` con su `index.json`.
 8. `node server/bin/ecosistema.js plan-alta --sheet <sheetId>`: tiene que decir «nada pendiente».
@@ -175,17 +219,16 @@ capa 2 propuso:
 |---|---|---|
 | token del script | `publicarCliente.js` | **sí**, ya existe |
 | registrar el script | `registrar` | **sí** |
-| fila de LICENCIAS | escribir con la cuenta del prestador (la Service Account hoy solo lee) | **sí, si se da permiso de escritura** sobre esa planilla |
-| alinear la licencia con el `vence` del catálogo | el mismo camino | **sí**, con la misma condición |
+| fila de LICENCIAS | — | **no hace falta** desde el 2026-10-15: se opera con la cuenta de administración |
 | catálogo y torneo | `catalogo.js` | **sí** |
 | compartir el libro | API de Drive con la cuenta del dueño | **no**: el dueño es otra persona |
 | `index.json` de escudos | generarlo desde los archivos de la carpeta y los nombres del torneo | **sí**, con revisión: un escudo mal asignado no lo detecta nadie |
 
-**Hay tres decisiones tuyas antes de escribir la capa 3:**
+**Las decisiones de la capa 3:**
 
-1. **¿La Service Account puede escribir LICENCIAS?** Sin eso, la fila y la fecha se siguen cargando a mano.
-2. **¿El `vence` de la web y el de LICENCIAS son la misma fecha?** Si lo son, conviene que haya **una sola** fuente (el catálogo) y que el motor la lea de ahí. Es un cambio en el motor.
-3. **¿A quién le llega el mail de la capa 1?**
+1. ~~¿La Service Account puede escribir LICENCIAS?~~ **Resuelta el 2026-10-15**: LICENCIAS sale del circuito.
+2. ~~¿El vencimiento de la web y el de LICENCIAS son la misma fecha?~~ **Resuelta**: el que manda es el del catálogo.
+3. **¿A quién le llega el mail de la capa 1?** Pendiente. Hoy el resultado queda en el log de `npm run auto-process`.
 
 ### Deuda que el auditor deja a la vista
 
@@ -201,16 +244,16 @@ capa 2 propuso:
 
 ---
 
-## 6 · Estado al 2026-10-15 · la primera corrida
+## 6 · Estado al 2026-10-15
 
-`3 errores · 17 avisos`. Los que piden acción:
+Primera corrida: `3 errores · 17 avisos`. Después de los ajustes de ese día
+(manifiesto de Bahía Blanca, prefijo «1°» y LICENCIAS fuera): `1 error · 7 avisos`.
 
 | | Hallazgo | Acción |
 |---|---|---|
-| ✖ | `logos/bahia-blanca/` tiene 12 escudos y **no tiene `index.json`** | escribir el manifiesto. La carpeta todavía no está commiteada |
-| ✖ | Libro de la Zona B (DEPORTIVO, Sud América, Hogar Social, Universitario): **la licencia del motor venció el 18/09/2026** | extender `FECHA_VENCIMIENTO` (fila 3). Hoy el menú de esa planilla solo le contesta a un administrador |
-| ✖ | Script «U15» (`1MtG…cSQw`): la Service Account no lee su libro | compartirlo, o sacarlo del registro si es la planilla de prueba («Prueba Conejillo») |
-| ⚠ | **Bahía Blanca** (`1Vjj…y_VY`): tiene motor y token correctos, pero no está en el catálogo ni tiene `torneos/*.json` | circuito A, pasos 5 a 7 |
-| ⚠ | LNB (`1AXK…`) en LICENCIAS como PENDIENTE; LAB Norte y Sur, Zona C y las fases de APB sin fila | no hace falta mientras los opere un administrador |
-| ⚠ | Hogar Social y Boca: la prueba terminó (10/10 y 12/10) | renovar o dar de baja |
+| ✓ | `logos/bahia-blanca/` sin `index.json` | **resuelto**: los 12 equipos resuelven su escudo, y el núcleo limpia el prefijo «1°» |
+| ✖ | Script «U15» (`1MtG…cSQw`): la Service Account no lee su libro | compartirlo, o sacarlo de `~/mi-motor-stats/registro-scripts.json` si es la planilla de prueba |
+| ⚠ | **Bahía Blanca** (`1Vjj…y_VY`): motor y token correctos; falta en el catálogo y no tiene `torneos/*.json` | circuito A, pasos 6 y 7 (liga `bahia-blanca`) |
+| ⚠ | Hogar Social y Boca: la prueba terminó (10/10 y 12/10); Sud América vence el 16/10 | renovar o dar de baja |
 | ⚠ | Liga Argentina: UNION (SF) y RACING (A) sin escudo | subir los dos archivos |
+| ⚠ | El motor no está bajo git | ver «Deuda que el auditor deja a la vista» |

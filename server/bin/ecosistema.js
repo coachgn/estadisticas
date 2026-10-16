@@ -4,18 +4,24 @@
      node server/bin/ecosistema.js auditar            todo, en una tabla
      node server/bin/ecosistema.js auditar --json     lo mismo, para otro script
      node server/bin/ecosistema.js auditar --sin-scripts   sin la API de Apps Script
+     node server/bin/ecosistema.js auditar --licencias     suma LICENCIAS del motor
 
-   Cruza las SEIS fuentes que tienen que coincidir para que un libro ande
-   de punta a punta, y que hoy nadie compara entre sí:
+   Cruza las fuentes que tienen que coincidir para que un libro ande de
+   punta a punta, y que hoy nadie compara entre sí:
 
      1 · el catálogo de KV            (qué libros sirve la web, y a quién)
      2 · el libro en Google           (si la Service Account lo puede leer)
-     3 · LICENCIAS del motor          (si el menú del libro le contesta a un cliente)
-     4 · el Apps Script del libro     (si su MS_TOKEN es el de ESE libro)
-     5 · la ingesta automática        (qué libros escribe sola)
-     6 · torneos/*.json y logos/      (fixture, zonas y escudos)
+     3 · el Apps Script del libro     (si su MS_TOKEN es el de ESE libro)
+     4 · la ingesta automática        (qué libros escribe sola)
+     5 · torneos/*.json y logos/      (fixture, zonas y escudos)
 
-   NO ESCRIBE NADA, en ninguna de las seis. Cada desvío sale con el
+   LICENCIAS NO SE AUDITA POR DEFECTO (decisión del 2026-10-15): todas las
+   planillas se operan con la cuenta de administración, y el motor le saltea
+   la licencia a un administrador (v104). Mientras eso sea cierto, una fila
+   faltante no rompe nada. `--licencias` la vuelve a sumar: hace falta el día
+   que un cliente opere su planilla con su propia cuenta.
+
+   NO ESCRIBE NADA, en ninguna de las fuentes. Cada desvío sale con el
    comando que lo corrige: arreglar sigue siendo un gesto explícito, que
    es lo que evita que un auditor equivocado pise datos buenos.
 
@@ -302,7 +308,7 @@ function auditarEscudos(cat) {
 async function auditar(o) {
   const hoy = hoyISO();
   const { cat, libros } = await libroDelCatalogo();
-  const lic = await licencias();
+  const lic = o.licencias ? await licencias() : null;
   const ingesta = competenciasDeIngesta();
 
   /* Los scripts, con su libro según Google. */
@@ -419,12 +425,16 @@ async function auditar(o) {
 // ---------------------------------------------------------------------
 // plan-alta · qué falta para que UN libro ande de punta a punta
 // ---------------------------------------------------------------------
-async function planAlta(sheetId) {
-  await auditar({});
+async function planAlta(sheetId, o) {
+  await auditar(o || {});
   const mios = hallazgos.filter(h => String(h.sujeto).startsWith(corto(sheetId)));
   console.log('\n  Libro ' + corto(sheetId) + (mios.length ? ' · ' + mios.length + ' pendientes\n' : ' · nada pendiente\n'));
   mios.forEach(h => console.log('  [' + h.nivel + '] ' + h.area + ': ' + h.texto + (h.arreglo ? '\n          → ' + h.arreglo : '')));
-  console.log('\n  Fila de LICENCIAS, si falta:  CLIENTE=<nombre> · SPREADSHEET_ID=' + sheetId + ' · ESTADO=ACTIVA · FECHA_VENCIMIENTO=<dd/mm/aaaa> · PLAN=<plan>\n');
+  if (o && o.licencias) {
+    console.log('\n  Fila de LICENCIAS, si falta:  CLIENTE=<nombre> · SPREADSHEET_ID=' + sheetId
+      + ' · ESTADO=ACTIVA · FECHA_VENCIMIENTO=<dd/mm/aaaa> · PLAN=<plan>');
+  }
+  console.log('');
 }
 
 // ---------------------------------------------------------------------
@@ -459,7 +469,7 @@ if (require.main === module) {
     if (cmd === 'registrar') return registrar(o);
     if (cmd === 'plan-alta') {
       if (!o.sheet) { console.error('uso: node server/bin/ecosistema.js plan-alta --sheet <sheetId>'); process.exit(2); }
-      return planAlta(o.sheet);
+      return planAlta(o.sheet, o);
     }
     if (cmd !== 'auditar') {
       console.error('uso: node server/bin/ecosistema.js auditar [--json] [--sin-scripts] | plan-alta --sheet <id> | registrar --script <id> --etiqueta "<texto>"');
@@ -471,7 +481,7 @@ if (require.main === module) {
       const orden = { ERROR: 0, AVISO: 1 };
       h.sort((a, b) => orden[a.nivel] - orden[b.nivel] || a.area.localeCompare(b.area));
       console.log('\n  Auditoría del ecosistema · ' + hoyISO() + '\n');
-      if (!h.length) console.log('  Todo en orden: las seis fuentes coinciden.');
+      if (!h.length) console.log('  Todo en orden: las fuentes coinciden.');
       for (const x of h) {
         console.log('  ' + (x.nivel === 'ERROR' ? '✖' : '⚠') + ' ' + x.area.padEnd(12) + x.sujeto);
         console.log('      ' + x.texto);

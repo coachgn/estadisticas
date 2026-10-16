@@ -47,5 +47,24 @@ check('no escribe en Google (ni PUT ni POST a sheets/script)',
 check('el único archivo que escribe es el registro de scripts',
   (src.match(/writeFileSync\(/g) || []).length === 1 && /registro-scripts\.json/.test(src));
 
+// --- LICENCIAS solo con --licencias (decisión del 2026-10-15) ---
+check('LICENCIAS no se lee por defecto', /const lic = o\.licencias \? await licencias\(\) : null;/.test(src));
+
+// --- el comando único ---
+const auto = fs.readFileSync(path.join(__dirname, 'auto-process.js'), 'utf8');
+check('auto-process apaga la IA en todos los hijos', /CENTRO_MANDO_MOTOR:\s*'no'/.test(auto) && /env:\s*ENV/.test(auto));
+check('auto-process corre ingesta → auditar → contenido → render, en ese orden',
+  /\['ingesta', 'auditar', 'contenido', 'render'\]/.test(auto));
+check('auto-process no aprueba piezas: solo renderiza lo aprobado', !/aprobar\(/.test(auto));
+const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+check('npm run auto-process existe', pkg.scripts && pkg.scripts['auto-process'] === 'node auto-process.js');
+check('el package.json del panel no trae dependencias', !pkg.dependencies && !pkg.devDependencies);
+
+// --- el render local ---
+const rnd = fs.readFileSync(path.join(__dirname, 'centro-mando', 'renderizar.js'), 'utf8');
+check('el render usa las placas del mismo contrato que Canva', /section\[data-document-role="page"\]/.test(rnd));
+check('el render no suma dependencias (sin puppeteer ni playwright)', !/require\(['"](puppeteer|playwright)/.test(rnd));
+check('el render no cambia el estado de la cola', !/\.estado\s*=/.test(rnd));
+
 console.log('\n  test-ecosistema.js · ' + ok + ' pasaron · ' + mal + ' fallaron' + (mal ? '  ← FALLARON' : ''));
 process.exit(mal ? 1 : 0);

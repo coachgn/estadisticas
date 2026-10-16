@@ -129,7 +129,7 @@ node test-centro-mando.js  # 461 tests · el Centro de Mando Editorial local: ba
                            #             (pide «npm install» en centro-mando/ una vez: los agentes usan el SDK de Claude, punto 107)
                            #             el play-by-play que no se presta, el aprendizaje y el servidor en 127.0.0.1 (105)
 
-node test-ecosistema.js    #  16 tests · el auditor del ecosistema: fechas, claves de escudo,
+node test-ecosistema.js    #  25 tests · el auditor del ecosistema: fechas, claves de escudo,
                            #             ids tapados y que no escriba (punto 121)
 
 node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, el catálogo en KV
@@ -260,7 +260,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=282`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=283`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -14381,3 +14381,27 @@ libros de la ingesta (`sitios.js`) · `torneos/*.json` y `logos/<liga>/index.jso
 - **La capa 3 (`alta` que aplica) NO está escrita**: espera tres decisiones
   (escritura de LICENCIAS, una sola fecha de vencimiento, a quién le llega el
   mail). Ver el punto 5 de la guía.
+
+## 122. LA CORRIDA SIN NADIE · `npm run auto-process`, render local y Bahía Blanca (2026-10-15)
+
+- **`npm run auto-process`** (`auto-process.js`, con un `package.json` de raíz
+  que SOLO declara comandos: el panel sigue sin dependencias). Corre ingesta →
+  auditar → contenido → render. Los hijos corren con `CENTRO_MANDO_MOTOR=no`:
+  ningún paso llama a un modelo. Un paso que falla no frena a los demás.
+  Log e informe en `contenido/auto-process/`. Aprobar piezas sigue siendo
+  manual. La tarea de Windows NO se cambió: la acción nueva está en
+  `OPERACION_ECOSISTEMA.md`, punto 0.
+- **`centro-mando/renderizar.js`**: cada `section[data-document-role="page"]`
+  pasa a PNG del tamaño de la placa, y el HTML entero a un PDF de una placa por
+  hoja. Usa el Chrome de la máquina por CDP (sin puppeteer ni playwright). Con
+  `--pendientes` recorre la cola y anota `render` en cada pieza, sin cambiarle
+  el estado. Medido: 4 piezas, 26 placas, 1080×1350 y 1080×1920.
+- **LICENCIAS sale del auditor** salvo con `--licencias`: todo se opera con la
+  cuenta de administración, y el motor le saltea la licencia (v104). El gate
+  del motor NO se tocó.
+- **Prefijo de división**: `SGADD.quitarOrdinal` (núcleo, y `LOGOS.normalizar`
+  la usa) saca `1°` / `1º` / `1ª` del principio del nombre. **Exige el signo
+  ordinal**: el regex que se pidió (`/^(\d+[°ºª\.\-]?\s*)+/`) también comía el
+  número de «9 DE JULIO» o «25 DE MAYO». `limpiarNombre` y `claveEquipo` lo
+  aplican, así que lo heredan el servidor, la ingesta y los generadores.
+- **`logos/bahia-blanca/index.json`**: los 12 equipos del libro resuelven.

@@ -38,6 +38,16 @@ console.log('\n2. NOMBRES: sufijos, claves y id de partido');
 console.log('═'.repeat(70));
 check('limpiarNombre() saca el sufijo de categoría', S.limpiarNombre("RECONQUISTA 'A' - MM") === "RECONQUISTA 'A'",
   S.limpiarNombre("RECONQUISTA 'A' - MM"));
+/* El prefijo de división de Bahía Blanca («1° LINIERS»): sale con los dos
+   signos que trae el libro, y un número SIN signo ordinal se queda, porque es
+   parte del nombre («9 DE JULIO»). */
+check('limpiarNombre() saca «1°» y «1º» del principio',
+  S.limpiarNombre('1° LINIERS') === 'LINIERS' && S.limpiarNombre('1º BARRIO HOSPITAL') === 'BARRIO HOSPITAL',
+  S.limpiarNombre('1º BARRIO HOSPITAL'));
+check('claveEquipo() sin prefijo: los dos lados de «A vs B» cruzan igual',
+  S.claveEquipo('1º LEANDRO N.ALEM') === 'LEANDRO N ALEM' && S.claveEquipo('1° OLIMPO - MM') === 'OLIMPO');
+check('un número sin signo ordinal es parte del nombre y se queda',
+  S.limpiarNombre('9 DE JULIO') === '9 DE JULIO' && S.claveEquipo('25 DE MAYO') === '25 DE MAYO');
 check('claveEquipo() normaliza acentos, mayúsculas y sufijo', S.claveEquipo("ATENAS 'A' - U21M") === 'ATENAS A',
   S.claveEquipo("ATENAS 'A' - U21M"));
 check('claveEquipo() sin sufijo no rompe', S.claveEquipo('Náutico Ensenada') === 'NAUTICO ENSENADA',

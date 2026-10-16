@@ -1,0 +1,14 @@
+{
+  "name": "sgadd-estadisticas",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Panel MotorStats. Sitio estático: este archivo solo declara los comandos de operación, no hay dependencias ni paso de compilación.",
+  "scripts": {
+    "auto-process": "node auto-process.js",
+    "auditar": "node server/bin/ecosistema.js auditar",
+    "render": "node centro-mando/renderizar.js --pendientes"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
