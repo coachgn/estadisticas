@@ -165,12 +165,18 @@ const SGADD_FICHA = (function () {
     });
     return s;
   }
-  /** La misma poda sobre el DOM, para lo que el play-by-play monta después. */
+  /** La misma poda sobre el DOM, para lo que el play-by-play monta después.
+      Como `podarHtml`, también se va el grupo que se quedó sin hijos activos
+      (el bloque del reloj del Mapa de tiro del equipo, 2026-10-19). */
   function podarDom(raiz, act) {
     if (!raiz || !raiz.querySelectorAll) return;
+    const sale = id => Object.prototype.hasOwnProperty.call(act, id) && !act[id];
     raiz.querySelectorAll('[data-subcard]').forEach((n) => {
-      const id = n.getAttribute('data-subcard');
-      if (Object.prototype.hasOwnProperty.call(act, id) && !act[id]) n.remove();
+      if (sale(n.getAttribute('data-subcard'))) n.remove();
+    });
+    raiz.querySelectorAll('[data-subcard-de]').forEach((n) => {
+      const lista = String(n.getAttribute('data-subcard-de') || '').split(/\s+/).filter(Boolean);
+      if (lista.length && lista.every(sale)) n.remove();
     });
   }
 
@@ -253,7 +259,7 @@ const SGADD_FICHA = (function () {
                  onchange="SGADD_FICHA.tocarSeccion(this)" class="w-4 h-4" style="accent-color:var(--acento)">
           <span class="text-sm text-white">${esc(x.label)}</span>
           ${x.pregunta ? `<span class="text-[10px] text-muted">${esc(x.pregunta)}</span>` : ''}
-          ${hay ? '' : '<span class="text-[10px] text-muted">sin datos suficientes</span>'}
+          ${hay ? '' : `<span class="text-[10px] text-muted">${esc(x.motivo || 'sin datos suficientes')}</span>`}
         </label>`;
       if (!hay) return fila;
       let hijos = '';

@@ -2038,6 +2038,19 @@
        papel el grid pasa a una columna y cada bloque ocupa su hoja entera,
        que es donde mejor se leen: son listas largas de ejes y de claves.
        ----------------------------------------------------------------- */
+    /* LA HOJA DE LA IDENTIDAD (2026-10-19, medido en el PDF real de la
+       demo): identidad + rasgos + el radar de los 8 ejes no entraban en una
+       hoja A3 por unos pocos puntos, y como «Cómo ataca» abre hoja el radar
+       quedaba SOLO en la siguiente, con media hoja en blanco. Se comprimen
+       los aires de esos dos bloques en el papel y el radar vuelve a su hoja. */
+    body.modo-impresion #informeSalida [data-subcard="equipo.personalidad.identidad"],
+    body.modo-impresion #informeSalida [data-subcard="equipo.personalidad.rasgos"] {
+      margin-bottom: 3mm !important;
+    }
+    body.modo-impresion #informeSalida [data-subcard="equipo.personalidad.rasgos"] > div { padding: 2mm 3mm !important; }
+    body.modo-impresion #informeSalida [data-subcard="equipo.personalidad.radar"] .chart-box {
+      height: 82mm !important; max-height: 82mm !important;
+    }
     body.modo-impresion #informeSalida [data-hoja] {
       page-break-before: always; break-before: page;
       page-break-inside: auto; break-inside: auto;
@@ -2051,6 +2064,30 @@
        informe se aplanan igual, que en A3 apaisada no aprieta nada. */
     body.modo-impresion #informeSalida .lg\:grid-cols-2 { display: block !important; }
     body.modo-impresion #informeSalida .lg\:grid-cols-2 > * + * { margin-top: 4mm; }
+
+    /* EL FLUJO DEL INFORME MODULAR (2026-10-19, medido en el PDF real).
+       La regla general le pone `avoid` a todo `.informe-bloque`, y una
+       sección más alta que la hoja saltaba ENTERA a la siguiente: con
+       «Solo Tiro / Mapa» la portada quedaba sola en la hoja 1, y Partidos
+       dejaba su título en una hoja, la tabla en otra y la nota en una
+       tercera. Es el modelo del punto 65: la SECCIÓN se parte; lo que no se
+       parte es cada SUB-CARD (salvo las del play-by-play, que traen sus
+       propias piezas indivisibles) y, en las tablas largas, cada fila. */
+    body.modo-impresion #informeSalida .informe-bloque { page-break-inside: auto; break-inside: auto; }
+    body.modo-impresion #informeSalida [data-bloque="ficha"],
+    body.modo-impresion #informeSalida [data-bloque="insight"] { page-break-inside: avoid; break-inside: avoid; }
+    body.modo-impresion #informeSalida [data-bloque]:not([data-bloque^="pbp"]) [data-subcard] {
+      page-break-inside: avoid; break-inside: avoid;
+    }
+    /* Los dos radares de 4 Factores van juntos: partidos, el defensivo
+       quedaba solo en una hoja. Solo ese par: con la regla para todos los
+       pares de gráficos el informe completo crecía una hoja (medido). */
+    body.modo-impresion #informeSalida [data-subcard-de="equipo.4factores.radar-of equipo.4factores.radar-def"] {
+      page-break-inside: avoid; break-inside: avoid;
+    }
+    body.modo-impresion #informeSalida .informe-pregunta { page-break-after: avoid; break-after: avoid; }
+    body.modo-impresion #informeSalida [data-bloque="partidos"] .scrollbox,
+    body.modo-impresion #informeSalida [data-bloque="partidos"] table { page-break-inside: auto !important; break-inside: auto !important; }
 
     /* =================================================================
        SCOUTING PRE-PARTIDO · export por cards
@@ -3126,7 +3163,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=289" />
+<link rel="stylesheet" href="sgadd.css?v=290" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -3323,53 +3360,53 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=289"></script>
+<script src="js/sgadd-club.js?v=290"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=289"></script>
-<script src="js/sgadd-core.js?v=289"></script>
-<script src="js/sgadd-auth.js?v=289"></script>
+<script src="js/sgadd-config.js?v=290"></script>
+<script src="js/sgadd-core.js?v=290"></script>
+<script src="js/sgadd-auth.js?v=290"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=289"></script>
-<script src="js/sgadd-glosario.js?v=289"></script>
-<script src="js/sgadd-glosarioui.js?v=289"></script>
-<script src="js/sgadd-comparativa.js?v=289"></script>
-<script src="js/sgadd-comparativaui.js?v=289"></script>
-<script src="js/sgadd-confirmar.js?v=289"></script>
-<script src="js/sgadd-landing.js?v=289"></script>
-<script src="js/sgadd-login.js?v=289"></script>
-<script src="js/sgadd-data.js?v=289"></script>
-<script src="js/sgadd-clientes.js?v=289"></script>
-<script src="js/sgadd-ui.js?v=289"></script>
-<script src="js/sgadd-app.js?v=289"></script>
-<script src="js/sgadd-clasificacion.js?v=289"></script>
+<script src="js/sgadd-demo.js?v=290"></script>
+<script src="js/sgadd-glosario.js?v=290"></script>
+<script src="js/sgadd-glosarioui.js?v=290"></script>
+<script src="js/sgadd-comparativa.js?v=290"></script>
+<script src="js/sgadd-comparativaui.js?v=290"></script>
+<script src="js/sgadd-confirmar.js?v=290"></script>
+<script src="js/sgadd-landing.js?v=290"></script>
+<script src="js/sgadd-login.js?v=290"></script>
+<script src="js/sgadd-data.js?v=290"></script>
+<script src="js/sgadd-clientes.js?v=290"></script>
+<script src="js/sgadd-ui.js?v=290"></script>
+<script src="js/sgadd-app.js?v=290"></script>
+<script src="js/sgadd-clasificacion.js?v=290"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-fixture.js?v=289"></script>
-<script src="js/sgadd-inscriptos.js?v=289"></script>
-<script src="js/sgadd-fases.js?v=289"></script>
-<script src="js/sgadd-torneos.js?v=289"></script>
-<script src="js/sgadd-hub.js?v=289"></script>
-<script src="js/sgadd-configui.js?v=289"></script>
-<script src="js/sgadd-estados.js?v=289"></script>
-<script src="js/sgadd-buzon.js?v=289"></script>
-<script src="js/sgadd-charts.js?v=289"></script>
-<script src="js/sgadd-personalidad.js?v=289"></script>
-<script src="js/sgadd-rankings.js?v=289"></script>
-<script src="js/sgadd-partido.js?v=289"></script>
-<script src="js/sgadd-informe.js?v=289"></script>
-<script src="js/sgadd-ficha.js?v=289"></script>
-<script src="js/sgadd-mercado.js?v=289"></script>
-<script src="js/sgadd-fichajes.js?v=289"></script>
-  <script src="js/sgadd-rankingpdf.js?v=289"></script>
-<script src="js/sgadd-equipos.js?v=289"></script>
+<script src="js/sgadd-fixture.js?v=290"></script>
+<script src="js/sgadd-inscriptos.js?v=290"></script>
+<script src="js/sgadd-fases.js?v=290"></script>
+<script src="js/sgadd-torneos.js?v=290"></script>
+<script src="js/sgadd-hub.js?v=290"></script>
+<script src="js/sgadd-configui.js?v=290"></script>
+<script src="js/sgadd-estados.js?v=290"></script>
+<script src="js/sgadd-buzon.js?v=290"></script>
+<script src="js/sgadd-charts.js?v=290"></script>
+<script src="js/sgadd-personalidad.js?v=290"></script>
+<script src="js/sgadd-rankings.js?v=290"></script>
+<script src="js/sgadd-partido.js?v=290"></script>
+<script src="js/sgadd-informe.js?v=290"></script>
+<script src="js/sgadd-ficha.js?v=290"></script>
+<script src="js/sgadd-mercado.js?v=290"></script>
+<script src="js/sgadd-fichajes.js?v=290"></script>
+  <script src="js/sgadd-rankingpdf.js?v=290"></script>
+<script src="js/sgadd-equipos.js?v=290"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=289"></script>
-<script src="js/sgadd-jugadores.js?v=289"></script>
-<script src="js/sgadd-4factores.js?v=289"></script>
-<script src="js/sgadd-scouting.js?v=289"></script>
-<script src="js/sgadd-pbp.js?v=289"></script>
-<script src="js/sgadd-diagnostico.js?v=289"></script>
+<script src="js/sgadd-niveles.js?v=290"></script>
+<script src="js/sgadd-jugadores.js?v=290"></script>
+<script src="js/sgadd-4factores.js?v=290"></script>
+<script src="js/sgadd-scouting.js?v=290"></script>
+<script src="js/sgadd-pbp.js?v=290"></script>
+<script src="js/sgadd-diagnostico.js?v=290"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

@@ -451,26 +451,26 @@ function equiposTabGeneral(idx, e) {
   const etiquetas = (e.partidos || []).map(p => equiposEtiquetaEvolucion(p, e));
 
   return `
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">${kpis}</div>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5" data-subcard="equipo.general.kpis">${kpis}</div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-      ${equiposPanel(e.nombre + ' vs liga · métricas clave',
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6" data-subcard-de="equipo.general.ranking equipo.general.evolucion">
+      <div data-subcard="equipo.general.ranking">${equiposPanel(e.nombre + ' vs liga · métricas clave',
         SGADD_CHARTS.barrasRanking(filasRank),
-        SGADD_CHARTS.narrarAtaque(idx, e))}
-      ${equiposPanel('Evolución · puntos a favor y en contra',
+        SGADD_CHARTS.narrarAtaque(idx, e))}</div>
+      <div data-subcard="equipo.general.evolucion">${equiposPanel('Evolución · puntos a favor y en contra',
         SGADD_CHARTS.evolucion('chEvolucion', e.partidos || [], { etiquetas: etiquetas }),
-        SGADD_CHARTS.nota(e.sinFecha ? e.sinFecha + ' partido(s) sin fecha cargada van al final.' : 'Orden cronológico.'))}
+        SGADD_CHARTS.nota(e.sinFecha ? e.sinFecha + ' partido(s) sin fecha cargada van al final.' : 'Orden cronológico.'))}</div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6" data-subcard-de="equipo.general.ultimos5 equipo.general.distribucion">
+      <div data-subcard="equipo.general.ultimos5">
         <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Últimos 5</h5>
         <table class="w-full text-left"><tbody>${log || '<tr><td class="text-xs text-muted py-2">Sin partidos.</td></tr>'}</tbody></table>
         <p class="text-[11px] text-muted mt-2 font-mono">
           ${u5.ganados || 0}-${u5.perdidos || 0} · diferencial ${dif > 0 ? '+' : ''}${dif}
         </p>
       </div>
-      ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'distribucion-plays'))}
+      <div data-subcard="equipo.general.distribucion">${SGADD_UI.metricTable(idx.leerVista(e.clave, 'distribucion-plays'))}</div>
     </div>`;
 }
 
@@ -490,27 +490,27 @@ function equiposTabOfensiva(idx, e) {
   const errL  = ['T2I', 'T3I', 'T1I'].map((k, i) => Math.max(0, val(k, 'tipo') - convL[i]));
 
   return `
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">${cards}</div>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5" data-subcard="equipo.ofensiva.kpis">${cards}</div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-      ${equiposPanel('Distribución de lanzamientos · ' + e.nombre + ' vs liga',
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6" data-subcard-de="equipo.ofensiva.lanzamientos equipo.ofensiva.ppt">
+      <div data-subcard="equipo.ofensiva.lanzamientos">${equiposPanel('Distribución de lanzamientos · ' + e.nombre + ' vs liga',
         SGADD_CHARTS.barrasComparadas('chLanz', ['T2 int.', 'T3 int.', 'T1 int.', 'T2 conv.', 'T3 conv.', 'T1 conv.'],
           lanz.eq, lanz.lg, { nombreEquipo: e.nombre }),
-        SGADD_CHARTS.nota('Promedios por partido. Muestra de dónde salen los tiros, no si entran.'))}
-      ${equiposPanel('Efectividad por zona · PPP convertido',
+        SGADD_CHARTS.nota('Promedios por partido. Muestra de dónde salen los tiros, no si entran.'))}</div>
+      <div data-subcard="equipo.ofensiva.ppt">${equiposPanel('Efectividad por zona · PPP convertido',
         SGADD_CHARTS.barrasComparadas('chPPT', ['PPT2 (dobles)', 'PPT3 (triples)', 'PPT1 (libres)'],
           ppt.eq, ppt.lg, { nombreEquipo: e.nombre }),
-        SGADD_CHARTS.narrarPPT(idx, e))}
+        SGADD_CHARTS.narrarPPT(idx, e))}</div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6" data-subcard="equipo.ofensiva.convertidos">
       ${equiposPanel(e.nombre + ' · convertidos vs errados',
         SGADD_CHARTS.convertidosErrados('chCE1', conv, errEq))}
       ${equiposPanel('Liga (equipo tipo) · convertidos vs errados',
         SGADD_CHARTS.convertidosErrados('chCE2', convL, errL, { gris: true }))}
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6" data-subcard="equipo.ofensiva.tablas">
       ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'eficiencia'))}
       ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'tiro'))}
     </div>`;
@@ -531,18 +531,19 @@ function equiposTabDefensiva(idx, e) {
   const reb = equiposSerie(idx, e, ['RO', 'RD', 'RT']);
 
   return `
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">${cards}</div>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5" data-subcard="equipo.defensiva.kpis">${cards}</div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-      ${equiposPanel('Pérdidas de balón · propias vs provocadas',
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6" data-subcard-de="equipo.defensiva.perdidas equipo.defensiva.rebotes">
+      <div data-subcard="equipo.defensiva.perdidas">${equiposPanel('Pérdidas de balón · propias vs provocadas',
         SGADD_CHARTS.barrasComparadas('chPerd', ['PP% propias (menos=mejor)', 'PP Opp% provocadas (más=mejor)'],
           perd.eq, perd.lg, { horizontal: true, nombreEquipo: e.nombre, formato: 'PePP%' }),
-        SGADD_CHARTS.narrarPerdidas(idx, e))}
-      ${equiposPanel('Rebotes · ' + e.nombre + ' vs liga',
+        SGADD_CHARTS.narrarPerdidas(idx, e))}</div>
+      <div data-subcard="equipo.defensiva.rebotes">${equiposPanel('Rebotes · ' + e.nombre + ' vs liga',
         SGADD_CHARTS.barrasComparadas('chReb', ['RO', 'RD', 'RT'], reb.eq, reb.lg, { nombreEquipo: e.nombre }),
-        SGADD_CHARTS.narrarRebote(idx, e))}
+        SGADD_CHARTS.narrarRebote(idx, e))}</div>
     </div>
 
+    <div data-subcard="equipo.defensiva.tablas">
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'factores-def'))}
       ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'rebote'))}
@@ -550,7 +551,8 @@ function equiposTabDefensiva(idx, e) {
     <p class="text-[11px] text-muted mt-4 leading-snug">
       Los factores del rival se calculan sumando su box score en cada partido, no promediando porcentajes.
       Por eso son comparables uno a uno con los tuyos.
-    </p>`;
+    </p>
+    </div>`;
 }
 
 function equiposTab4F(idx, e) {
@@ -563,19 +565,20 @@ function equiposTab4F(idx, e) {
   const lbl = ks => ks.map(k => SGADD.metrica(k).label);
 
   return `
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-      ${equiposPanel('Perfil ofensivo · percentiles',
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6" data-subcard-de="equipo.4factores.radar-of equipo.4factores.radar-def">
+      <div data-subcard="equipo.4factores.radar-of">${equiposPanel('Perfil ofensivo · percentiles',
         SGADD_CHARTS.radar('chRadarOf', lbl(of), [
           { label: e.nombre, data: pct(of) },
           { label: 'Mediana de la liga', data: of.map(() => 50), color: SGADD_CHARTS.COL.liga, relleno: 'transparent' },
         ]),
-        SGADD_CHARTS.nota('El círculo del 50 es la mediana. Cuanto más lejos del centro, mejor — también en las métricas donde menos es mejor.'))}
-      ${equiposPanel('Perfil defensivo · percentiles',
+        SGADD_CHARTS.nota('El círculo del 50 es la mediana. Cuanto más lejos del centro, mejor — también en las métricas donde menos es mejor.'))}</div>
+      <div data-subcard="equipo.4factores.radar-def">${equiposPanel('Perfil defensivo · percentiles',
         SGADD_CHARTS.radar('chRadarDef', lbl(df), [
           { label: e.nombre, data: pct(df), color: SGADD_CHARTS.COL.acento, relleno: SGADD_CHARTS.COL.acentoSuave },
           { label: 'Mediana de la liga', data: df.map(() => 50), color: SGADD_CHARTS.COL.liga, relleno: 'transparent' },
-        ]))}
+        ]))}</div>
     </div>
+    <div data-subcard="equipo.4factores.tablas">
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6" data-hoja>
       ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'factores-of'))}
       ${SGADD_UI.metricTable(idx.leerVista(e.clave, 'factores-def'))}
@@ -583,7 +586,8 @@ function equiposTab4F(idx, e) {
     <p class="text-[11px] text-muted mt-4 leading-snug">
       Los ocho salen de la misma fuente y con el mismo método: ratio sobre los totales de la temporada.
       La flecha ↓ marca las métricas donde menos es mejor.
-    </p>`;
+    </p>
+    </div>`;
 }
 
 /* El radar de este tab va con el ancho ACOTADO (`max-w-3xl`), aunque el
@@ -639,12 +643,12 @@ function equiposTabCondicion(idx, e) {
   });
 
   return `
-    <div class="grid grid-cols-2 gap-3 mb-5">
+    <div class="grid grid-cols-2 gap-3 mb-5" data-subcard="equipo.condicion.record">
       ${cab('De local', cond.LOCAL)}
       ${cab('De visitante', cond.VISITANTE)}
     </div>
 
-    <div class="mb-6 max-w-3xl">
+    <div class="mb-6 max-w-3xl" data-subcard="equipo.condicion.radar">
       ${equiposPanel('Local vs visitante · comparación por condición',
         SGADD_CHARTS.radar('chRadarCond', ejesRadar.map(k => SGADD.metrica(k).label + (SGADD.metrica(k).invertida ? ' (inv.)' : '')), [
           { label: 'Local', data: escala(e.split.LOCAL) },
@@ -652,6 +656,7 @@ function equiposTabCondicion(idx, e) {
         ]),
         SGADD_CHARTS.narrarCondicion(e))}
     </div>
+    <div data-subcard="equipo.condicion.tabla">
     <div class="scrollbox"><table class="w-full text-left">
       <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
         <th class="pb-1 pr-3">Factor</th><th class="pb-1 pr-3">Local</th>
@@ -659,7 +664,8 @@ function equiposTabCondicion(idx, e) {
       </tr></thead><tbody>${filas}</tbody></table></div>
     <p class="text-[11px] text-muted mt-3 leading-snug">
       La columna Dif está pintada desde la mirada de local: verde significa que juegan mejor en casa.
-    </p>`;
+    </p>
+    </div>`;
 }
 
 /* =====================================================================
@@ -829,7 +835,7 @@ function equiposTabPlantel(idx, e) {
   }).join('');
 
   return `
-    <div class="mb-6">
+    <div class="mb-6" data-subcard="equipo.plantel.scatter">
       ${equiposPanel('Uso vs eficiencia · quién carga y quién rinde',
         /* Se le pasa el PLANTEL COMPLETO, no `jugadoresCalificados`: el
            gráfico filtra por su propio piso de 10 minutos.
@@ -845,6 +851,7 @@ function equiposTabPlantel(idx, e) {
         SGADD_CHARTS.nota('Incluye a todo el que promedie 10 minutos o más, califique o no para percentiles.'))}
     </div>
 
+    <div data-subcard="equipo.plantel.tabla">
     ${hayAcum ? `
     <div class="flex items-center justify-between gap-3 mb-2 flex-wrap">
       <p class="text-[11px] uppercase tracking-wider text-muted font-display">Plantel</p>
@@ -877,7 +884,8 @@ function equiposTabPlantel(idx, e) {
       Los marcados <span class="text-yellow-400">sin percentil</span> no llegan al umbral de
       calificación de la liga (MIN ≥ ${idx.liga.minJugador !== null ? idx.liga.minJugador.toFixed(2) : '—'}):
       sus datos se muestran igual, pero no entran en ningún ranking.
-    </p>`;
+    </p>
+    </div>`;
 }
 
 function equiposTabPartidos(idx, e) {
@@ -950,7 +958,7 @@ function equiposTabPersonalidad(idx, e) {
   /* --- Titular --- */
   const neto = p.arquetipo.neto;
   const cabecera = `
-    <div class="rounded-lg border border-accent/40 bg-accent/5 p-4 mb-5">
+    <div class="rounded-lg border border-accent/40 bg-accent/5 p-4 mb-5" data-subcard="equipo.personalidad.identidad">
       <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-1">Identidad de juego</p>
       <h4 class="font-display text-xl sm:text-2xl uppercase tracking-wide text-ink leading-tight">
         ${escapeHtml(p.arquetipo.titulo)}
@@ -1018,24 +1026,24 @@ function equiposTabPersonalidad(idx, e) {
   return `
     ${cabecera}
     ${aviso}
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">${rasgos}</div>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6" data-subcard="equipo.personalidad.rasgos">${rasgos}</div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-      ${equiposPanel('Perfil completo · 8 ejes', radar,
-        SGADD_CHARTS.nota('El anillo del 50 es la mediana de su liga. Los ejes no tienen lado bueno ni malo: son formas de jugar.'))}
-      <div data-hoja>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6" data-subcard-de="equipo.personalidad.radar equipo.personalidad.ataque">
+      <div data-subcard="equipo.personalidad.radar">${equiposPanel('Perfil completo · 8 ejes', radar,
+        SGADD_CHARTS.nota('El anillo del 50 es la mediana de su liga. Los ejes no tienen lado bueno ni malo: son formas de jugar.'))}</div>
+      <div data-hoja data-subcard="equipo.personalidad.ataque">
         <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Cómo ataca</h5>
         ${ataque.map(eje).join('')}
       </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6" data-subcard-de="equipo.personalidad.defensa equipo.personalidad.armas">
+      <div data-subcard="equipo.personalidad.defensa">
         <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Cómo defiende</h5>
         ${defensa.map(eje).join('')}
       </div>
       ${p.resumen ? `
-      <div data-hoja>
+      <div data-hoja data-subcard="equipo.personalidad.armas">
         <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Dónde gana y dónde pierde</h5>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -1053,7 +1061,7 @@ function equiposTabPersonalidad(idx, e) {
         </p>
       </div>` : ''}
     </div>
-    ${equiposInsight(p.insight)}`;
+    <div data-subcard="equipo.personalidad.insight">${equiposInsight(p.insight)}</div>`;
 }
 
 /* EL RELOJ DE POSESIÓN SE MUDÓ A LA PESTAÑA MAPA DE TIRO (2026-10-18, pedido

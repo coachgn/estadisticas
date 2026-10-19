@@ -74,6 +74,8 @@ node test-padron-j.js      #  35 tests · la pestaña PADRON J → fichas: fecha
                            #             fotos y dorsales (punto 96)
 node test-ficha-pdf.js     #  43 tests · la ficha en PDF a elección: las marcas data-subcard del render contra la
                            #             estructura, la poda sin huecos, la titularidad con el dato y el Pack PLANTEL (129)
+node test-equipo-pdf.js    #  45 tests · el informe del EQUIPO a elección: las marcas data-subcard «equipo.» del render
+                           #             contra la estructura, los atajos, la poda y el papel sin hojas huérfanas (131)
 node test-pdf-layout.js    #  37 tests · claves arriba del resto, el flujo continuo, la
                            #             tabla que se parte por filas y que ningún :hover
                            #             pinte la hoja impresa
@@ -274,7 +276,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=289`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=290`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15045,3 +15047,61 @@ PDF. La ficha individual no la ofrece.
    `node herramientas/subir-paquetes.js --confirmar` (regenera todo con las
    acciones por tramo). Hasta eso, la card por tramo dice que llega con la
    próxima subida.
+
+---
+
+## 131. EL INFORME DEL EQUIPO EN PDF A ELECCIÓN · CARDS, SUB-CARDS Y ATAJOS (2026-10-19)
+
+El botón «Generar informe PDF» de Equipos pasa al modelo de la ficha del
+jugador (punto 129). Assets en `?v=290`. `test-equipo-pdf.js` fija todo.
+
+### Las marcas y la estructura
+
+Cada bloque de las pestañas del equipo lleva `data-subcard="equipo.<pestaña>.<id>"`
+(y `data-subcard-de` en las grillas de dos): `sgadd-equipos.js` (General,
+Ofensiva, Defensiva, 4 Factores, Local/Vis., Personalidad, Plantel),
+`sgadd-pbp.js` (Quintetos: las secciones de `html()` por la opción
+`subcard` de `seccion()`; Mapa de tiro: el mapa y las cuatro piezas del
+reloj) y la ficha general en `sgadd-informe.js`. `SGADD_INFORME.estructura()`
+declara 12 secciones con sus sub-cards y el test compara las dos listas en
+los dos sentidos.
+
+- **El prefijo `equipo.` las separa de las de la ficha del jugador**, que
+  viven en los mismos archivos: `test-ficha-pdf.js` las ignora.
+- **Quintetos y Mapa de tiro solo con la capa `pbp`**: sin ella van
+  deshabilitadas en el árbol, con el motivo (`x.motivo` en `arbolHtml`).
+- **El insight de la Personalidad arranca destildado**: el informe ya lo
+  abre arriba y salía dos veces.
+
+### El modal, la poda y los atajos
+
+El árbol es el MISMO `SGADD_FICHA.arbolHtml` y la poda la MISMA
+`podarHtml`/`podarDom`, que ahora también quita en el DOM el grupo que se
+quedó sin hijos (el bloque del reloj sin ninguna pieza no deja el título
+suelto). Lo del play-by-play se poda después de montarlo y antes de embeber
+e imprimir. Atajos (`ATAJOS`, `seleccionAtajo`, puros): **Informe
+completo**, **Solo Tiro / Mapa** (Ofensiva + Mapa de tiro) y **Solo
+Quintetos / Rotación** (Quintetos + Plantel). La selección se recuerda.
+El guard de `puedeVerEquipo` vale en `abrir` y en `generar`.
+
+### El papel · medido con el PDF real (demo, A3 apaisada, Chrome por CDP)
+
+```
+                    HEAD   ahora
+por defecto          10      9   el radar de Personalidad ya no queda solo
+informe completo     20     18   sin una hoja con solo un título o una nota
+Solo Tiro / Mapa      5      4   la portada ya no queda sola
+```
+
+- **`.informe-bloque` se parte en este informe** y lo que no se parte es
+  cada sub-card (menos las del play-by-play, que traen sus piezas): con el
+  `avoid` general una sección larga saltaba entera y dejaba la hoja de
+  antes vacía. Partidos se parte por filas. Es el modelo del punto 65.
+- **Los dos radares de 4 Factores van juntos** (solo ese par: con la regla
+  para todos los pares el completo crecía una hoja).
+- **Identidad + rasgos + radar de la Personalidad entran en una hoja**: se
+  comprimen sus aires en el papel y la caja de ese radar baja a 82 mm. Le
+  faltaban ~25 pt; con una frase de identidad más larga puede volver a no
+  entrar.
+- **No medido con la capa `pbp`**: la demo no la tiene. Las marcas se
+  verificaron sobre un paquete real de la ingesta (`html` y `mapaCard`).

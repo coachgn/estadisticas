@@ -105,7 +105,7 @@ const SGADD_PBP = (function () {
   /* Una sección colapsable. Al imprimir se abren todas (`beforeprint`, al pie). */
   function seccion(id, titulo, cuerpo, opciones) {
     const o = opciones || {};
-    return `<details class="pbp-detalle mt-3" data-pbp-seccion="${esc(id)}"${o.abierta ? ' open' : ''}>
+    return `<details class="pbp-detalle mt-3" data-pbp-seccion="${esc(id)}"${o.subcard ? ` data-subcard="${esc(o.subcard)}"` : ''}${o.abierta ? ' open' : ''}>
       <summary class="pbp-resumen font-display uppercase tracking-wide text-xs text-accent cursor-pointer select-none">${titulo}</summary>
       <div class="pbp-cuerpo">
       ${o.nota ? `<p class="text-[11px] text-muted mb-2">${o.nota}</p>` : ''}
@@ -979,10 +979,10 @@ const SGADD_PBP = (function () {
          de Equipos y con la sección Jugadores. Quedan los líderes y, en
          Equipos, la tabla de posiciones. */
       const piezas = [
-        ['sec-lideres', 'Líderes y destacados del último partido', bloqueLideres(sec)],
+        ['sec-lideres', 'Líderes y destacados del último partido', bloqueLideres(sec), 'equipo.pbp.lideres'],
       ];
-      if (contexto !== 'scouting') piezas.push(['sec-tabla', 'Tabla de posiciones', tablaPosicionesSec(sec, paq.idEquipo)]);
-      const cuerpo = piezas.filter(p => p[2]).map(p => seccion(p[0], p[1], p[2])).join('');
+      if (contexto !== 'scouting') piezas.push(['sec-tabla', 'Tabla de posiciones', tablaPosicionesSec(sec, paq.idEquipo), 'equipo.pbp.tabla-posiciones']);
+      const cuerpo = piezas.filter(p => p[2]).map(p => seccion(p[0], p[1], p[2], { subcard: p[3] })).join('');
       if (!cuerpo) return '';
       return `<div class="pbp-secciones" data-pbp-secciones="1">${cuerpo}${avisos.length ? `
         <p class="text-[11px] text-muted mt-2" title="${esc(avisos.map(a => a.d).join(' · '))}">${avisos.length} control${avisos.length === 1 ? '' : 'es'} de la ficha no cerraron contra el sitio: el dato del sitio es así (pasá el mouse para verlos).</p>` : ''}
@@ -1026,16 +1026,16 @@ const SGADD_PBP = (function () {
           <div>${subtitulo('Quinteto inicial')}${tablaClave(paq, paq.iniciales)}</div>
           <div>${subtitulo('Cierre · más minutos en los últimos 5\'')}${tablaClave(paq, paq.cierre && paq.cierre.ultimos5)}</div>
           <div>${subtitulo('Cierre · en cancha al final')}${tablaClave(paq, paq.cierre && paq.cierre.alFinal)}</div>
-        </div>${v2 ? `<div class="mt-3">${subtitulo('Últimos 5 partidos · inicial contra cierre')}${tablaUltimos5(paq)}</div>` : ''}`)}
+        </div>${v2 ? `<div class="mt-3">${subtitulo('Últimos 5 partidos · inicial contra cierre')}${tablaUltimos5(paq)}</div>` : ''}`, { subcard: 'equipo.pbp.clave' })}
       ${seccion('quintetos', 'Quintetos con más minutos', tablaCombos(paq, paq.quintetos, 'Quinteto') + trios,
-        { nota: 'NET/pos: puntos a favor menos en contra cada 100 posesiones. Con ~ y atenuados, menos de '
+        { subcard: 'equipo.pbp.quintetos', nota: 'NET/pos: puntos a favor menos en contra cada 100 posesiones. Con ~ y atenuados, menos de '
           + (u[5] || 15) + ' minutos juntos: se muestran, pero todavía no dicen mucho.' })}
-      ${v2 ? seccion('rotaciones', 'Rotaciones · minuto a minuto', heatmapRotaciones(paq)) : ''}
-      ${v2 ? seccion('cuartos', 'Cuartos y momentum', bloqueCuartos(paq)) : ''}
+      ${v2 ? seccion('rotaciones', 'Rotaciones · minuto a minuto', heatmapRotaciones(paq), { subcard: 'equipo.pbp.rotaciones' }) : ''}
+      ${v2 ? seccion('cuartos', 'Cuartos y momentum', bloqueCuartos(paq), { subcard: 'equipo.pbp.cuartos' }) : ''}
       ${seccion('clutch', 'Clutch · quién decide los finales', bloqueClutch(paq),
-        { nota: notaClutch + ' Usos = PLAYS del motor.' })}
+        { subcard: 'equipo.pbp.clutch', nota: notaClutch + ' Usos = PLAYS del motor.' })}
       ${v2 ? seccion('tactico', 'Motor táctico · puntos de fuga y combinaciones', bloqueTactico(paq),
-        { nota: 'Solo combinaciones con muestra suficiente. Es una lectura de los números, no una orden: decide el cuerpo técnico.' }) : ''}
+        { subcard: 'equipo.pbp.tactico', nota: 'Solo combinaciones con muestra suficiente. Es una lectura de los números, no una orden: decide el cuerpo técnico.' }) : ''}
       ${bloqueSecciones(paq, 'equipo')}
     </div>`;
   }
@@ -1068,7 +1068,7 @@ const SGADD_PBP = (function () {
     }
     return `<div class="pbp-bloque" data-pbp-listo="1">
       ${notaLaboratorio(paq)}
-      ${o.fijo ? mapa(paq, { fijo: true }) : mapa(paq, { sujeto: 'equipo', perspectiva: true })}
+      <div data-subcard="equipo.tiro.mapa">${o.fijo ? mapa(paq, { fijo: true }) : mapa(paq, { sujeto: 'equipo', perspectiva: true })}</div>
       ${cruce}
       ${relojMapaTiro(paq, { fijo: !!o.fijo, identidad: o.identidad })}
     </div>`;
@@ -2742,11 +2742,12 @@ const SGADD_PBP = (function () {
           ${s.anular.length ? lista('Para anularle', s.anular, 'text-accent') : ''}
         </div>
         <p class="text-[10px] dato-sec mt-1">Es lectura de los números, no una orden: decide el cuerpo técnico.</p>` : ''}` : '';
-      return `<div class="mt-6 pt-4 border-t border-hairline" data-reloj-mapa-tiro="1">
+      return `<div class="mt-6 pt-4 border-t border-hairline" data-reloj-mapa-tiro="1" data-subcard-de="equipo.tiro.reloj equipo.tiro.reloj-franjas equipo.tiro.reloj-sintesis equipo.tiro.tendencias">
         <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">Reloj de posesión · cuándo tira y cuándo le tiran</h4>
         <p class="text-[11px] text-muted mb-2 leading-snug">Tres franjas: 0-7 s (temprana), 8-17 s (media) y 18-24 s (tardía). La barra es la parte de sus finales (tiros y pérdidas) en cada franja; el trazo, la competencia. Al lado, puntos por tiro y eFG% (entre paréntesis, la competencia).</p>
         ${notaConvertido(paq)}
         ${o.fijo ? relojLecturaScouting(paq) : ''}
+        <div data-subcard="equipo.tiro.reloj">
         ${estado}
         ${relojPerfilHtml(arq)}
         ${idn.rasgos.length ? `<div class="mb-2">${relojChips(idn.rasgos)}</div>` : ''}
@@ -2760,9 +2761,10 @@ const SGADD_PBP = (function () {
           <div class="min-w-0 pbp-reloj-pieza">${subtitulo('Cuándo le tiran · por franja')}${relojTabla(r.contra, L)}</div>
         </div>
         ${origen ? `<div class="min-w-0 pbp-reloj-pieza mt-3" data-reloj-origenes="1">${subtitulo('Cómo nace la posesión · tiros de la primera opción')}${origen}</div>` : ''}
-        <div class="min-w-0 mt-4" data-reloj-lugar="1">${subtitulo('Desde dónde tira en cada franja · el mapa completo')}${mapas}</div>
-        ${sintesis}
-        ${relojTendenciasHtml(paq)}
+        </div>
+        <div class="min-w-0 mt-4" data-reloj-lugar="1" data-subcard="equipo.tiro.reloj-franjas">${subtitulo('Desde dónde tira en cada franja · el mapa completo')}${mapas}</div>
+        ${sintesis ? `<div data-subcard="equipo.tiro.reloj-sintesis">${sintesis}</div>` : ''}
+        <div data-subcard="equipo.tiro.tendencias">${relojTendenciasHtml(paq)}</div>
         <p class="text-[10px] dato-sec mt-2 leading-snug">${NOTA_RELOJ} El rendimiento de una franja se ajusta por muestra y cuenta como desvío desde ${num(SIGNIF_RELOJ, 2)} puntos por tiro con ${MIN_TIROS_SINTESIS} tiros o más.</p>
         ${relojAyuda(L)}
       </div>`;

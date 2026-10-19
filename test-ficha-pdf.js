@@ -30,14 +30,15 @@ const declarados = est.reduce((a, x) => a.concat(x.subs.map(y => y.id)), []);
 seccion('1 · La estructura sale del código de la vista');
 {
   const fuente = ['js/sgadd-jugadores.js', 'js/sgadd-pbp.js'].map(f => fs.readFileSync(f, 'utf8')).join('\n');
-  const marcas = [...new Set((fuente.match(/data-subcard="([^"$]+)"/g) || []).map(m => m.slice(14, -1)))].sort();
+  /* Las marcas `equipo.` son del informe del EQUIPO (test-equipo-pdf.js): viven en los mismos archivos. */
+  const marcas = [...new Set((fuente.match(/data-subcard="([^"$]+)"/g) || []).map(m => m.slice(14, -1)))].filter(m => m.indexOf('equipo.') !== 0).sort();
   check('cada marca del render real está declarada en la estructura', marcas.every(m => declarados.indexOf(m) !== -1), marcas.filter(m => declarados.indexOf(m) === -1));
   check('y cada sub-card declarada tiene su marca en el render', declarados.every(d => marcas.indexOf(d) !== -1), declarados.filter(d => marcas.indexOf(d) === -1));
   check('las secciones son las pestañas reales de Jugadores, con su nombre y su pregunta',
     est.map(x => x.id).join() === J.JUGADORES_TABS.map(t => t.id).join() && est.every(x => x.label === J.JUGADORES_TABS.find(t => t.id === x.id).label && x.pregunta));
   check('las cartas toman el nombre de JUGADORES_CARDS_REF', ['uso', 'pases'].every(c => est[0].subs.some(y => y.label === J.JUGADORES_CARDS_REF.find(r => r.id === c).label))
     && est[1].subs.some(y => y.label === J.JUGADORES_CARDS_REF.find(r => r.id === 'tiro').label));
-  const grupos = (fuente.match(/data-subcard-de="([^"$]+)"/g) || []).map(m => m.slice(17, -1).split(/\s+/));
+  const grupos = (fuente.match(/data-subcard-de="([^"$]+)"/g) || []).map(m => m.slice(17, -1).split(/\s+/)).filter(g => g[0].indexOf('equipo.') !== 0);
   check('cada grupo declara hijos que existen', grupos.length >= 2 && grupos.every(g => g.every(id => declarados.indexOf(id) !== -1)), grupos);
   check('los bloques del play-by-play van marcados como tales', est[1].subs.filter(y => y.pbp).map(y => y.id).join() === 'tiro.mapa,tiro.reloj,tiro.reloj-tramos,tiro.reloj-franjas');
   check('la evolución elige métricas y el log de partidos arranca destildado', est[2].metricas === true && est[3].pre === false);
