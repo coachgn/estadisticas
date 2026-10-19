@@ -454,6 +454,74 @@ const SGADD_CLASIF = (function () {
     });
   }
 
+  /* =====================================================================
+     ARRASTRE DE PUNTOS · punto 133
+
+     Un tramo puede arrancar con un porcentaje de los PUNTOS DE TABLA que
+     cada equipo hizo en otro (la Clausura de Bahía Blanca arranca con el
+     50 % de la fase regular del Apertura). El formato lo declara
+     (`arrastre` en `SGADD_CONFIG`); acá solo se SUMA.
+
+     Tres reglas:
+       - el origen aporta SUS puntos propios (2 por ganado, 1 por perdido,
+         con sus partidos manuales). Si el origen a su vez arrastraba de
+         otro, eso NO se encadena: el reglamento habla de lo que se sumó
+         en esa fase, no de lo que se arrastró a ella;
+       - la tabla con arrastre se ordena por PUNTOS. Si el orden declarado
+         no los nombra (ni PTS ni FIBA), se antepone PTS y la pantalla lo
+         dice (`ordenConArrastre`): ordenar por porcentaje ignoraría el
+         arrastre entero;
+       - lo que NO cambia: PJ, PG, PP, PF, PC, la diferencia, el porcentaje
+         y la mini-tabla FIBA, que son de los partidos de ESTE tramo. El
+         arrastre entra solo al total de puntos (D.1).
+     ===================================================================== */
+  function redondear2(v) { return Math.round(v * 100) / 100; }
+
+  /** `filasOrigen` (las de `tabla()` del tramo de origen) → el arrastre. */
+  function puntosArrastre(filasOrigen, porcentaje, faseOrigen) {
+    const pct = Number(porcentaje);
+    const porClave = {};
+    if (!isFinite(pct) || pct <= 0) return null;
+    (filasOrigen || []).forEach((f) => {
+      if (!f || f.sinPartidos) return;
+      const base = puntosDeTabla(num(f.pg), num(f.pp));
+      porClave[claveDe(f.clave)] = { base: base, puntos: redondear2(base * pct / 100),
+        nombre: f.nombre || f.clave };
+    });
+    return { faseOrigen: faseOrigen || null, porcentaje: pct, porClave: porClave };
+  }
+
+  /** El orden que de verdad se usa con un arrastre activo. */
+  function ordenConArrastre(orden, arrastre) {
+    const o = Array.isArray(orden) && orden.length ? orden.slice() : ORDEN_POR_DEFECTO.slice();
+    if (!arrastre || !arrastre.porClave) return o;
+    const nombra = o.some((id) => ['PTS', 'FIBA'].indexOf(String(id).toUpperCase()) !== -1);
+    return nombra ? o : ['PTS'].concat(o);
+  }
+
+  /** Suma el arrastre a filas YA fusionadas (copias). Los equipos que solo
+      están en el origen entran con 0 PJ y sus puntos arrastrados. */
+  function aplicarArrastre(filasT, arrastre) {
+    if (!arrastre || !arrastre.porClave) return filasT;
+    const porClave = new Map();
+    filasT.forEach((f) => porClave.set(claveDe(f.clave), f));
+    Object.keys(arrastre.porClave).forEach((k) => {
+      if (porClave.has(k)) return;
+      const nueva = filaVacia(k, arrastre.porClave[k].nombre);
+      recalcular(nueva);
+      nueva.soloArrastre = true;
+      porClave.set(k, nueva);
+      filasT.push(nueva);
+    });
+    filasT.forEach((f) => {
+      const a = arrastre.porClave[claveDe(f.clave)];
+      f.puntosPropios = f.puntos;
+      f.arrastre = a ? a.puntos : 0;
+      f.puntos = redondear2(f.puntosPropios + f.arrastre);
+    });
+    return filasT;
+  }
+
   /**
    * La tabla completa: filas ordenadas, con puesto y zona.
    *
@@ -464,12 +532,13 @@ const SGADD_CLASIF = (function () {
    */
   function tabla(idx, opciones) {
     const o = opciones || {};
-    const orden = o.orden || (o.config && o.config.ordenTabla) || ORDEN_POR_DEFECTO;
+    const orden = ordenConArrastre(o.orden || (o.config && o.config.ordenTabla) || ORDEN_POR_DEFECTO,
+      o.arrastre);
     /* LOS MANUALES SE FUSIONAN ACÁ, y solo acá: es el único punto por el
        que pasan las dos tablas (la sección y el resumen de Principal),
        así que no pueden mostrar totales distintos. Sin `manuales` la
        fusión igual corre, porque es la que calcula `puntos`. */
-    const conManuales = fusionarManuales(filas(idx), o.manuales || []);
+    const conManuales = aplicarArrastre(fusionarManuales(filas(idx), o.manuales || []), o.arrastre);
     const filasOrdenadas = ordenar(conManuales, orden,
       usaFiba(orden) ? partidosDeTabla(idx, o.manuales || []) : null);
     const total = filasOrdenadas.length;
@@ -618,7 +687,8 @@ const SGADD_CLASIF = (function () {
            filasPorEquipo, conPjDeTabla, condicionConManuales, rachaConManuales,
            fusionarManuales, manualesDelTramo, puntosDeTabla, esTramoTotal,
            PUNTOS_GANADO, PUNTOS_PERDIDO,
-           partidosDeTabla, miniTabla, ordenarFiba, usaFiba, cociente };
+           partidosDeTabla, miniTabla, ordenarFiba, usaFiba, cociente,
+           puntosArrastre, ordenConArrastre, aplicarArrastre };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_CLASIF;
@@ -734,6 +804,80 @@ function clasifFormatoVigente(torneo, fase) {
   return SGADD_CONFIG.resolver(cfgClub, st.torneo, st.fase);
 }
 
+/* =====================================================================
+   LAS REGLAS DE UN TRAMO, EN UN SOLO LUGAR (punto 133)
+
+   Formato (zonas), orden de desempate y arrastre de puntos. Las usan la
+   sección, el resumen de Principal y la llave de playoffs (que necesita
+   la tabla de la Clausura CON su arrastre para saber quién es el 7°).
+
+   EL ORDEN ES EL DEL BLOQUE QUE MANDA EN LA CATEGORÍA. Antes se leía
+   `config.ordenTabla`, el del CLUB: con el desempate FIBA publicado
+   «solo para esta categoría» (`porCategoria`), la tabla seguía ordenando
+   por porcentaje, sin ningún síntoma. `resolver()` ya devolvía el bloque
+   correcto; faltaba leerlo.
+   ===================================================================== */
+const _clasifIndices = (typeof WeakMap !== 'undefined') ? new WeakMap() : null;
+/** El índice de UN tramo del libro abierto, cacheado por hojas. */
+function clasifIndiceDeTramo(torneo, fase) {
+  const st = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado) || {};
+  const hojas = st.hojas;
+  const k = String(torneo || '').toUpperCase() + '|' + String(fase || '').toUpperCase();
+  if (st.idx && String(st.torneo || '').toUpperCase() + '|' + String(st.fase || '').toUpperCase() === k) return st.idx;
+  if (!hojas || typeof SGADD === 'undefined') return null;
+  let mapa = _clasifIndices ? _clasifIndices.get(hojas) : null;
+  if (!mapa) { mapa = {}; if (_clasifIndices) _clasifIndices.set(hojas, mapa); }
+  if (mapa[k] !== undefined) return mapa[k];
+  const existe = SGADD.combinacionesTorneoFase(hojas)
+    .some(t => (t.torneo || '') + '|' + t.fase === k && !t.agregado);
+  mapa[k] = existe ? SGADD.construirIndice(hojas, { fase: String(fase).toUpperCase(),
+    torneo: String(torneo).toUpperCase() }) : null;
+  return mapa[k];
+}
+
+/** El arrastre de un tramo, ya calculado sobre la tabla de su origen, o
+    `{ declarado, sinOrigen }` si el libro todavía no trae el origen. */
+function clasifArrastreDeTramo(bloque, torneo, fase) {
+  if (typeof SGADD_CONFIG === 'undefined' || !SGADD_CONFIG.arrastreDeTramo || !bloque) return null;
+  const decl = SGADD_CONFIG.arrastreDeTramo(bloque, torneo, fase);
+  if (!decl) return null;
+  const partes = decl.faseOrigen.split('|');
+  const idxO = clasifIndiceDeTramo(partes[0], partes[1]);
+  if (!idxO) return { declarado: decl, sinOrigen: true, porClave: null };
+  /* El origen aporta los puntos que SUMÓ JUGANDO, con sus partidos
+     manuales y SIN su propio arrastre: no se encadena. */
+  const filasO = SGADD_CLASIF.tabla(idxO, { manuales: clasifManualesVigentes(partes[0], partes[1]) });
+  return Object.assign(SGADD_CLASIF.puntosArrastre(filasO, decl.porcentaje, decl.faseOrigen) || {},
+    { declarado: decl });
+}
+
+function clasifReglasDeTramo(torneo, fase) {
+  const r = clasifFormatoVigente(torneo, fase);
+  const st = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado) || {};
+  const t = torneo || st.torneo, f = fase || st.fase;
+  const bloque = (r && (r.bloque || r.config)) || null;
+  const arrastre = clasifArrastreDeTramo(bloque, t, f);
+  const base = (bloque && bloque.ordenTabla) || SGADD_CLASIF.ORDEN_POR_DEFECTO;
+  return {
+    formato: (r && r.formato) || null,
+    config: (r && r.config) || null,
+    bloque: bloque,
+    arrastre: arrastre,
+    orden: SGADD_CLASIF.ordenConArrastre(base, arrastre && arrastre.porClave ? arrastre : null),
+    ordenDeclarado: base,
+  };
+}
+
+/** La tabla de UN tramo con todas sus reglas: la misma de Clasificación. */
+function clasifTablaDeTramo(torneo, fase) {
+  const idx = clasifIndiceDeTramo(torneo, fase);
+  if (!idx) return null;
+  const r = clasifReglasDeTramo(torneo, fase);
+  return SGADD_CLASIF.tabla(idx, { orden: r.orden, formato: r.formato,
+    manuales: clasifManualesVigentes(torneo, fase),
+    arrastre: r.arrastre && r.arrastre.porClave ? r.arrastre : null });
+}
+
 function clasifCartel(txt, tono) {
   const c = tono === 'error' ? 'text-red-400' : 'text-muted';
   return `<div class="card rounded-xl p-8 border border-hairline text-center ${c} text-sm">${SGADD_UI.esc(txt)}</div>`;
@@ -786,9 +930,13 @@ function clasifTablaHTML(idx, opciones) {
      Principal y la seccion podrian ordenar distinto y mostrar dos tablas
      que se contradicen. */
   const vig = (o.formato !== undefined || o.orden !== undefined)
-    ? { formato: o.formato || null, config: null } : clasifFormatoVigente();
+    ? { formato: o.formato || null, orden: null, arrastre: null } : clasifReglasDeTramo();
   const formato = o.formato !== undefined ? o.formato : vig.formato;
-  const orden = o.orden || (vig.config && vig.config.ordenTabla) || null;
+  const orden = o.orden || vig.orden || null;
+  /* El arrastre (punto 133): si el que llama no lo pasa, se resuelve con
+     el resto de las reglas del tramo abierto. */
+  const arrastre = o.arrastre !== undefined ? o.arrastre
+    : (vig.arrastre && vig.arrastre.porClave ? vig.arrastre : null);
   /* Si el que llama no los pasa, se resuelven acá: así el resumen de
      Principal y la sección muestran lo mismo sin que cada uno se acuerde. */
   const manuales = o.manuales !== undefined ? o.manuales : clasifManualesVigentes();
@@ -797,7 +945,7 @@ function clasifTablaHTML(idx, opciones) {
   const inscriptos = o.inscriptos !== undefined ? o.inscriptos
     : (typeof inscriptosFaltantes === 'function' ? inscriptosFaltantes(idx) : []);
   const filas = SGADD_CLASIF.tabla(idx, { formato: formato, orden: orden, manuales: manuales,
-    inscriptos: inscriptos });
+    inscriptos: inscriptos, arrastre: arrastre });
   /* SIN FILAS, el empty state DESCRIBE por qué (punto 68): antes de que el
      torneo empiece la tabla está vacía a propósito, y «sin partidos
      cargados» se lee como que algo falló al cargar. El de pretemporada
@@ -847,7 +995,15 @@ function clasifTablaHTML(idx, opciones) {
     'PCT%': 'Porcentaje de Victorias',
     'PF/P': 'Puntos a Favor por Partido',
     'PC/P': 'Puntos en Contra por Partido',
+    'Pts': 'Puntos de tabla: 2 por ganado, 1 por perdido',
+    'Arr.': 'Puntos arrastrados de otra fase (ya incluidos en Pts)',
   };
+  /* LOS PUNTOS SE VEN cuando ordenan (punto 133): con FIBA, PTS o un
+     arrastre, la tabla sin la columna de puntos no se podía auditar. */
+  const conPts = SGADD_CLASIF.usaFiba(orden || [])
+    || (orden || []).some(x => String(x).toUpperCase() === 'PTS') || !!arrastre;
+  const conArr = !!arrastre;
+  const fmtPts = (v) => String(Math.round(Number(v) * 100) / 100).replace('.', ',');
 
   /* EL ENCABEZADO SE ALINEA COMO SU COLUMNA.
 
@@ -864,9 +1020,12 @@ function clasifTablaHTML(idx, opciones) {
   const td = 'px-3 py-2.5 whitespace-nowrap text-sm border-b border-hairline/40 ' +
     'text-white font-mono tabular-nums';
 
+  const extra = (conPts ? ['Pts'] : []).concat(conArr ? ['Arr.'] : []);
   const cabeceras = completa
-    ? ['Pos', 'Equipo', 'PJ', 'PG', 'PP', 'PG L', 'PP L', 'PG V', 'PP V', 'PF', 'PC', 'Dif', 'PCT%', 'PF/P', 'PC/P']
-    : ['Pos', 'Equipo', 'PJ', 'PG', 'PP', 'PCT%', 'Dif', 'PF/P', 'PC/P'];
+    ? ['Pos', 'Equipo'].concat(extra, ['PJ', 'PG', 'PP', 'PG L', 'PP L', 'PG V', 'PP V', 'PF', 'PC', 'Dif', 'PCT%', 'PF/P', 'PC/P'])
+    : ['Pos', 'Equipo'].concat(extra, ['PJ', 'PG', 'PP', 'PCT%', 'Dif', 'PF/P', 'PC/P']);
+  const valoresExtra = (r) => (conPts ? [fmtPts(r.puntos)] : [])
+    .concat(conArr ? [r.arrastre ? '+' + fmtPts(r.arrastre) : '0'] : []);
 
   const cuerpo = recorte.map((r) => {
     /* La clase de zona va en el <tr> y la barra la pinta el <td>: en una
@@ -877,9 +1036,9 @@ function clasifTablaHTML(idx, opciones) {
        un PF/P 0.0 se leerían como un resultado, y no hubo partido. */
     if (r.sinPartidos) {
       const raya = '—';
-      const vals = completa
+      const vals = (conPts ? [0] : []).concat(conArr ? [0] : [], completa
         ? [0, 0, 0, 0, 0, 0, 0, 0, 0, raya, raya, raya, raya]
-        : [0, 0, 0, raya, raya, raya, raya];
+        : [0, 0, 0, raya, raya, raya, raya]);
       return `<tr class="fila-sin-partidos opacity-70" title="Sin partidos jugados">
       <td class="${td} font-bold text-muted">—</td>
       <td class="${td.replace('font-mono tabular-nums', 'font-body font-medium')} text-ink">
@@ -889,14 +1048,19 @@ function clasifTablaHTML(idx, opciones) {
       ${vals.map(v => `<td class="${td}">${SGADD_UI.esc(String(v))}</td>`).join('')}
     </tr>`;
     }
-    const cols = completa
+    const cols = valoresExtra(r).concat(completa
       ? [r.pj, r.pg, r.pp, r.local.pg, r.local.pp, r.visitante.pg, r.visitante.pp,
          r.pf, r.pc, (r.dif > 0 ? '+' : '') + r.dif,
          (r.pct * 100).toFixed(1) + '%', r.pfProm.toFixed(1), r.pcProm.toFixed(1)]
       : [r.pj, r.pg, r.pp, (r.pct * 100).toFixed(1) + '%',
-         (r.dif > 0 ? '+' : '') + r.dif, r.pfProm.toFixed(1), r.pcProm.toFixed(1)];
-    return `<tr class="hover:bg-surface2/40 transition-colors${zc}"${titulo}>
-      <td class="${td} font-bold">${r.puesto}</td>
+         (r.dif > 0 ? '+' : '') + r.dif, r.pfProm.toFixed(1), r.pcProm.toFixed(1)]);
+    /* Qué decidió el puesto, cuando lo decidió un desempate FIBA: viaja en
+       el `title` de la fila (teclado y papel) y como marca junto al puesto. */
+    const porDesempate = r.desempate ? 'Desempate: ' + r.desempate : '';
+    const tituloFila = (r.zona || porDesempate)
+      ? ` title="${SGADD_UI.esc([r.zona ? r.zona.label : '', porDesempate].filter(Boolean).join(' · '))}"` : '';
+    return `<tr class="hover:bg-surface2/40 transition-colors${zc}"${tituloFila}>
+      <td class="${td} font-bold">${r.puesto}${r.desempate ? '<sup class="text-muted" aria-hidden="true">*</sup>' : ''}</td>
       <td class="${td.replace('font-mono tabular-nums', 'font-body font-medium')} text-ink">
         <span class="inline-flex items-center gap-2">${clasifEscudo(r.nombre)}${SGADD_UI.esc(r.nombre)}${clasifBadgeManual(r)}</span>
       </td>
@@ -941,6 +1105,23 @@ function clasifLeyendaHTML(formato, total) {
   </div>`;
 }
 
+/** Qué dice el arrastre, arriba de la tabla: de dónde, cuánto y que la
+    tabla pasó a ordenarse por puntos. Nada en silencio. */
+function clasifAvisoArrastre(arr, reglas) {
+  if (!arr || !arr.declarado) return '';
+  const d = arr.declarado;
+  const orig = d.faseOrigen.split('|').map(x => x.charAt(0) + x.slice(1).toLowerCase()).join(' - ');
+  if (arr.sinOrigen) {
+    return '<p class="text-[11px] zona-aviso zona-texto mt-3">Este tramo arrastra el ' + d.porcentaje
+      + ' % de los puntos de ' + SGADD_UI.esc(orig) + ', que el libro todavía no trae: por ahora no se suma nada.</p>';
+  }
+  const antepuso = reglas && reglas.ordenDeclarado && reglas.orden[0] === 'PTS'
+    && String(reglas.ordenDeclarado[0]).toUpperCase() !== 'PTS';
+  return '<p class="text-[11px] text-muted mt-3">Incluye el <b class="text-ink">' + d.porcentaje
+    + ' % de los puntos</b> de ' + SGADD_UI.esc(orig) + ' (columna Arr.). PJ, PG, PP y la diferencia son solo de este tramo.'
+    + (antepuso ? ' Con arrastre la tabla se ordena por puntos.' : '') + '</p>';
+}
+
 function buildClasificacion() {
   const st = SGADD_APP.estado;
   if (!st.idx) {
@@ -950,8 +1131,10 @@ function buildClasificacion() {
   /* En modo llave (punto 76) el índice es el de la fase regular de la
      zona, y su tabla se pinta con el formato de ESE tramo. */
   const ti = st.tramoIndice;
-  const { config, formato } = ti ? clasifFormatoVigente(ti.torneo, ti.fase) : clasifFormatoVigente();
-  const orden = (config && config.ordenTabla) || SGADD_CLASIF.ORDEN_POR_DEFECTO;
+  const reglas = ti ? clasifReglasDeTramo(ti.torneo, ti.fase) : clasifReglasDeTramo();
+  const formato = reglas.formato;
+  const orden = reglas.orden;
+  const arr = reglas.arrastre;
   const total = st.idx.lista().length;
   /* La leyenda de zonas sigue sobre los que jugaron (`total`); el rótulo
      cuenta también a los inscriptos sin partidos (punto 93). */
@@ -972,8 +1155,10 @@ function buildClasificacion() {
 
   const cuerpoTabla = `
         ${clasifLeyendaHTML(formato, total)}
+        ${clasifAvisoArrastre(arr, reglas)}
         <div class="mt-4">${clasifTablaHTML(st.idx, { columnas: 'completa', formato: formato, orden: orden,
-          manuales: ti ? clasifManualesVigentes(ti.torneo, ti.fase) : undefined })}</div>`;
+          manuales: ti ? clasifManualesVigentes(ti.torneo, ti.fase) : undefined,
+          arrastre: arr && arr.porClave ? arr : null })}</div>`;
 
   const tabla = llave
     ? `<details class="card hub-plegable rounded-xl border border-hairline" ${CLASIF_TABLA_ABIERTA ? 'open' : ''}

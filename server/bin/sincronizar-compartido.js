@@ -70,7 +70,10 @@ const MODULOS = ['sgadd-core.js', 'sgadd-auth.js', 'sgadd-estados.js', 'sgadd-da
   /* El motor del mercado de fichajes: el servidor valida la ficha manual
      y resuelve el padrón con las mismas funciones que filtra el panel
      (punto 87). */
-  'sgadd-mercado.js'];
+  'sgadd-mercado.js',
+  /* El parser de competencia: el servidor resuelve con él el orden de
+     desempate y el arrastre de puntos de la tabla de cada zona (punto 133). */
+  'sgadd-config.js'];
 
 const ORIGEN = path.join(__dirname, '..', '..', 'js');
 const DESTINO = path.join(__dirname, '..', 'lib', 'compartido');

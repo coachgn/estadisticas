@@ -15,7 +15,7 @@
         "cruce": "zona"
       }
     ],
-    "nota": "La ABB publicó el reglamento de la segunda etapa (los 6 primeros a cuartos, del 7° al 10° al play-in, 11° y 12° a la permanencia), pero la tabla oficial arrastra el 50 % de los puntos del Apertura, que el panel no calcula: no se declaran zonas de tabla para no pintar un orden distinto del oficial. Las fases se ven en el Fixture, con la ronda que publica la fuente."
+    "nota": "La ABB publicó el reglamento de la segunda etapa (los 6 primeros a cuartos, del 7° al 10° al play-in, 11° y 12° a la permanencia) y la Clausura arrastra el 50 % de los puntos de la regular del Apertura. Desde el punto 133 el panel lo calcula: el arrastre, el desempate FIBA y las zonas se configuran y publican desde el Panel Master (Configuración → Zonas de la tabla), y la llave desde la tarjeta del torneo. Lo publicado en el catálogo gana sobre este archivo. Ver DOCUMENTACION_FASES.md."
   },
   "fixture": {
     "adaptador": "auto",

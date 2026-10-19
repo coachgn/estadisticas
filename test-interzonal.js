@@ -174,7 +174,10 @@ const pedirLibro = async (tok, club, cat) => { catalogo.limpiarCache(); return H
        rompe acá. */
     const PERMITIDAS = new Set(['ok', 'torneo', 'nombre', 'zonas', 'postemporada', 'leidoEn', 'label', 'filas',
       'cerrada', 'puesto', 'clave', 'pj', 'pg', 'pp', 'conLibro', 'partidos', 'fase', 'fecha', 'local',
-      'visitante', 'ptsLocal', 'ptsVisitante', 'zonaLibro', 'zona', 'id', 'sinLibro', 'ilegible', 'norte', 'sur']);
+      'visitante', 'ptsLocal', 'ptsVisitante', 'zonaLibro', 'zona', 'id', 'sinLibro', 'ilegible', 'norte', 'sur',
+      /* De qué tramo (TORNEO|FASE) sale la tabla: no es una estadística, es
+         lo que deja usar una tabla para el puesto que la pide (punto 133). */
+      'tramo']);
     const extras = [];
     (function recorrer(v) {
       if (Array.isArray(v)) return v.forEach(recorrer);

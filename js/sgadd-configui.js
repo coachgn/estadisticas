@@ -250,6 +250,98 @@ function configZonaAgregar() {
   configPintar();
 }
 
+/* =====================================================================
+   FORMATOS, ARRASTRE Y TRAMOS · editables desde acá (punto 133)
+
+   Antes la pantalla editaba las zonas de los formatos que YA existían y
+   mostraba los tramos de solo lectura: armar una Clausura con otras zonas
+   que el Apertura —o que arrastre la mitad de sus puntos— pedía tocar el
+   JSON a mano. Ahora todo viaja con «Publicar», sin git.
+
+   Los tramos del libro siguen saliendo del dato (punto 15). Lo que se
+   edita es a QUÉ FORMATO apunta cada uno; y se puede declarar un tramo
+   que el libro TODAVÍA no trae («CLAUSURA|REGULAR» mientras se juega el
+   Apertura), para que la tabla salga bien desde el primer partido.
+   ===================================================================== */
+function configTramosDelLibro() {
+  return (typeof SGADD !== 'undefined')
+    ? SGADD.combinacionesTorneoFase(SGADD_APP.estado.hojas || {}).filter(t => !t.agregado) : [];
+}
+
+function configFormatoAgregar() {
+  const b = CONFIGUI.borrador;
+  if (!b) return;
+  let n = Object.keys(b.formatos).length + 1;
+  while (b.formatos['formato' + n]) n++;
+  const id = 'formato' + n;
+  b.formatos[id] = { id: id, label: 'Formato ' + n, equiposEsperados: null, zonas: [], arrastre: null };
+  CONFIGUI.formatoSel = id;
+  configMarcarSucio();
+  configPintar();
+}
+
+function configFormatoNombre(valor) {
+  const f = configFormatoActual();
+  if (!f) return;
+  f.label = String(valor || '');
+  configMarcarSucio();
+  configPintarPreview();   // se tipea: no se repinta la pantalla
+}
+
+function configFormatoBorrar() {
+  const b = CONFIGUI.borrador;
+  const f = configFormatoActual();
+  if (!b || !f || Object.keys(b.formatos).length < 2) return;
+  delete b.formatos[f.id];
+  /* Los tramos que apuntaban al formato borrado quedan «sin zonas»
+     explícito: dejarlos apuntando a la nada es el error del validador. */
+  Object.keys(b.porTramo).forEach((k) => { if (b.porTramo[k] === f.id) b.porTramo[k] = null; });
+  CONFIGUI.formatoSel = Object.keys(b.formatos)[0];
+  configMarcarSucio();
+  configPintar();
+}
+
+/* El arrastre del formato elegido. `origen` vacío lo apaga. */
+function configArrastre(campo, valor) {
+  const f = configFormatoActual();
+  if (!f) return;
+  const a = f.arrastre ? Object.assign({}, f.arrastre) : { faseOrigen: '', porcentaje: 50 };
+  if (campo === 'faseOrigen') a.faseOrigen = String(valor || '');
+  if (campo === 'porcentaje') a.porcentaje = Number(valor);
+  if (!String(a.faseOrigen).trim()) { f.arrastre = null; }
+  else {
+    const n = SGADD_CONFIG.normalizarArrastre(a);
+    /* Un porcentaje a medio tipear no borra el origen elegido. */
+    f.arrastre = n || { faseOrigen: SGADD_CONFIG.claveDeTramo(a.faseOrigen) || a.faseOrigen, porcentaje: a.porcentaje };
+  }
+  configMarcarSucio();
+  if (campo === 'porcentaje') configPintarPreview(); else configPintar();
+}
+
+/* A qué formato apunta un tramo: '' = hereda del comodín (se borra la
+   clave), '__null' = «sin zonas» a propósito, o el id de un formato. */
+function configTramoFormato(clave, valor) {
+  const b = CONFIGUI.borrador;
+  if (!b) return;
+  const k = String(clave || '').toUpperCase();
+  if (valor === '') delete b.porTramo[k];
+  else b.porTramo[k] = valor === '__null' ? null : valor;
+  configMarcarSucio();
+  configPintar();
+}
+
+/* Un tramo que el libro todavía no trae, escrito a mano. */
+function configTramoNuevo() {
+  const el = typeof document !== 'undefined' ? document.getElementById('configTramoNuevoInput') : null;
+  const k = SGADD_CONFIG.claveDeTramo(el ? el.value : '');
+  if (!k) { configAvisar('El tramo se escribe TORNEO|FASE, por ejemplo CLAUSURA|REGULAR.', false); return; }
+  const b = CONFIGUI.borrador;
+  if (!b) return;
+  if (!Object.prototype.hasOwnProperty.call(b.porTramo, k)) b.porTramo[k] = CONFIGUI.formatoSel || null;
+  configMarcarSucio();
+  configPintar();
+}
+
 /* El desempate de la tabla (punto 132). Es del BLOQUE, no del formato:
    `ordenTabla` vale para todos los formatos del club o de la categoría.
    Viaja con «Publicar» como el resto del bloque. */
@@ -1070,10 +1162,18 @@ function configPreviewHTML() {
      `clasifTablaHTML` que pinta la sección Clasificación. Una preview
      que no es el componente real miente en cuanto uno de los dos
      cambie, y este es justo el lugar donde el DT confía en lo que ve. */
+  /* Con el arrastre que el BORRADOR declara para el tramo abierto (punto
+     133): la preview tiene que mostrar los puntos que se van a publicar. */
+  const b = CONFIGUI.borrador;
+  const arr = (b && typeof clasifArrastreDeTramo === 'function') ? clasifArrastreDeTramo(b, st.torneo, st.fase) : null;
+  const arrastre = arr && arr.porClave ? arr : null;
   return clasifLeyendaHTML(f, configEquiposReales()) +
+    (typeof clasifAvisoArrastre === 'function'
+      ? clasifAvisoArrastre(arr, { orden: SGADD_CLASIF.ordenConArrastre((b && b.ordenTabla) || null, arrastre),
+        ordenDeclarado: (b && b.ordenTabla) || [] }) : '') +
     '<div class="mt-3">' +
-    clasifTablaHTML(st.idx, { columnas: 'resumida', formato: f,
-      orden: (CONFIGUI.borrador && CONFIGUI.borrador.ordenTabla) || null }) +
+    clasifTablaHTML(st.idx, { columnas: 'resumida', formato: f, arrastre: arrastre,
+      orden: SGADD_CLASIF.ordenConArrastre((b && b.ordenTabla) || null, arrastre) }) +
     '</div>';
 }
 
@@ -1082,7 +1182,10 @@ function configValidacionHTML() {
   if (!b) return '';
   const st = SGADD_APP.estado;
   const problemas = SGADD_CONFIG.validar(b, {
-    torneo: st.torneo, fase: st.fase, equipos: configEquiposReales() });
+    torneo: st.torneo, fase: st.fase, equipos: configEquiposReales(),
+    /* Los tramos del libro, para avisar de un arrastre cuyo origen todavía
+       no existe (punto 133). */
+    tramos: configTramosDelLibro().map(t => (t.torneo || 'GENERAL') + '|' + t.fase) });
   if (!problemas.length) {
     return '<p class="text-xs text-green-400">Sin choques de reglas: cada zona alcanza al ' +
       'menos un puesto y la cantidad de equipos coincide con el libro.</p>';
@@ -1187,22 +1290,50 @@ function configTramosHTML() {
   /* La MISMA fuente que la barra: `combinacionesTorneoFase()` sobre las
      hojas del libro. Si acá se armara la lista por otro camino, la
      pantalla podría ofrecer un tramo que el selector no tiene. */
-  const tramos = (typeof SGADD !== 'undefined')
-    ? SGADD.combinacionesTorneoFase(SGADD_APP.estado.hojas || {}) : [];
-  if (!tramos.length) return '<p class="text-xs text-muted">Sin tramos en este libro.</p>';
-  return tramos.map((t) => {
-    const clave = (t.torneo || 'GENERAL') + '|' + t.fase;
-    const actual = Object.prototype.hasOwnProperty.call(b.porTramo, clave)
-      ? b.porTramo[clave] : null;
-    const heredado = !Object.prototype.hasOwnProperty.call(b.porTramo, clave);
-    const f = SGADD_CONFIG.formatoDeTramo(b, t.torneo, t.fase);
-    return `<div class="flex items-center gap-3 py-1.5 border-b border-hairline/40 last:border-0">
-      <span class="text-xs text-ink flex-1 min-w-0">${SGADD_UI.esc(t.label)}</span>
-      <span class="font-mono text-[11px] text-muted shrink-0">${SGADD_UI.esc(clave)}</span>
-      <span class="font-mono text-[11px] shrink-0 ${f ? 'text-accent' : 'text-muted'}">${
-        f ? SGADD_UI.esc(f.label) : 'sin zonas'}${heredado ? ' (por comodín)' : ''}</span>
+  const delLibro = configTramosDelLibro();
+  /* Las claves del libro, más las que el borrador declara y el libro
+     todavía no trae (un tramo que va a llegar). El comodín va al final. */
+  const claves = delLibro.map(t => ({ clave: (t.torneo || 'GENERAL') + '|' + t.fase, label: t.label, libro: true }));
+  Object.keys(b.porTramo).forEach((k) => {
+    if (k === SGADD_CONFIG.TRAMO_CUALQUIERA || claves.some(c => c.clave === k)) return;
+    claves.push({ clave: k, label: k.split('|').map(x => x.charAt(0) + x.slice(1).toLowerCase()).join(' - '), libro: false });
+  });
+  const ids = Object.keys(b.formatos);
+  const sel = 'bg-surface2 border border-hairline rounded px-2 py-1 text-[11px] text-ink outline-none';
+  const fila = (c) => {
+    const tiene = Object.prototype.hasOwnProperty.call(b.porTramo, c.clave);
+    const valor = !tiene ? '' : (b.porTramo[c.clave] === null ? '__null' : b.porTramo[c.clave]);
+    const partes = c.clave.split('|');
+    const f = SGADD_CONFIG.formatoDeTramo(b, partes[0], partes[1]);
+    const arr = SGADD_CONFIG.arrastreDeTramo(b, partes[0], partes[1]);
+    return `<div class="flex flex-wrap items-center gap-2 py-1.5 border-b border-hairline/40 last:border-0">
+      <span class="text-xs text-ink flex-1 min-w-[8rem]">${SGADD_UI.esc(c.label)}${c.libro ? ''
+        : ' <span class="text-[10px] text-muted">(todavía no está en el libro)</span>'}</span>
+      <span class="font-mono text-[11px] text-muted shrink-0">${SGADD_UI.esc(c.clave)}</span>
+      <select aria-label="Formato del tramo ${SGADD_UI.esc(c.clave)}" class="${sel}"
+        onchange="configTramoFormato('${SGADD_UI.escJs(c.clave)}', this.value)">
+        <option value="" ${valor === '' ? 'selected' : ''}>por comodín${!tiene && f ? ' · ' + SGADD_UI.esc(f.label) : ''}</option>
+        <option value="__null" ${valor === '__null' ? 'selected' : ''}>sin zonas</option>
+        ${ids.map(id => `<option value="${SGADD_UI.esc(id)}" ${valor === id ? 'selected' : ''}>${SGADD_UI.esc(b.formatos[id].label)}</option>`).join('')}
+      </select>
+      ${arr ? `<span class="text-[10px] text-accent shrink-0">+${arr.porcentaje} % de ${SGADD_UI.esc(arr.faseOrigen)}</span>` : ''}
     </div>`;
-  }).join('');
+  };
+  const comodin = Object.prototype.hasOwnProperty.call(b.porTramo, SGADD_CONFIG.TRAMO_CUALQUIERA)
+    ? b.porTramo[SGADD_CONFIG.TRAMO_CUALQUIERA] : undefined;
+  return (claves.length ? claves.map(fila).join('') : '<p class="text-xs text-muted">Sin tramos en este libro.</p>')
+    + `<div class="flex flex-wrap items-center gap-2 py-1.5 border-t border-hairline mt-1">
+      <span class="text-xs text-muted flex-1 min-w-[8rem]">Cualquier otro tramo (comodín)</span>
+      <select aria-label="Formato del comodín" class="${sel}" onchange="configTramoFormato('*', this.value)">
+        <option value="" ${comodin === undefined ? 'selected' : ''}>nada (sin zonas)</option>
+        <option value="__null" ${comodin === null ? 'selected' : ''}>sin zonas, explícito</option>
+        ${ids.map(id => `<option value="${SGADD_UI.esc(id)}" ${comodin === id ? 'selected' : ''}>${SGADD_UI.esc(b.formatos[id].label)}</option>`).join('')}
+      </select></div>
+    <div class="flex flex-wrap items-center gap-2 pt-2">
+      <input id="configTramoNuevoInput" type="text" placeholder="CLAUSURA|REGULAR" aria-label="Tramo que el libro todavía no trae"
+        class="bg-surface2 border border-hairline rounded px-2 py-1 text-[11px] font-mono text-ink outline-none focus:border-accent w-44">
+      <button onclick="configTramoNuevo()" class="text-[11px] text-accent hover:underline">+ tramo que todavía no está en el libro</button>
+    </div>`;
 }
 
 function buildConfiguracion() {
@@ -1274,8 +1405,8 @@ function buildConfiguracion() {
           <!-- TRAMOS · solo lectura, salen del libro -->
           <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
             <div class="flex items-baseline justify-between gap-3 mb-2">
-              <h3 class="font-display uppercase tracking-wide text-sm text-ink">Tramos del libro</h3>
-              <span class="text-[10px] uppercase tracking-wider text-muted">salen del dato</span>
+              <h3 class="font-display uppercase tracking-wide text-sm text-ink">Tramos y su formato</h3>
+              <span class="text-[10px] uppercase tracking-wider text-muted">los tramos salen del dato</span>
             </div>
             ${configTramosHTML()}
           </div>
@@ -1296,6 +1427,36 @@ function buildConfiguracion() {
                 id === CONFIGUI.formatoSel ? 'selected' : ''}>${SGADD_UI.esc(b.formatos[id].label)}</option>`).join('')}
             </select>` : `<span class="font-mono text-[11px] text-muted">${
               f ? SGADD_UI.esc(f.id) : '—'}</span>`}
+          </div>
+
+          <div class="flex flex-wrap items-center gap-3 pb-3 mb-3 border-b border-hairline">
+            <label for="configFormatoNombreInput" class="text-[11px] uppercase tracking-wider text-muted">Nombre</label>
+            <input id="configFormatoNombreInput" type="text" value="${f ? SGADD_UI.esc(f.label) : ''}"
+              oninput="configFormatoNombre(this.value)" aria-label="Nombre del formato"
+              class="bg-surface2 border border-hairline rounded px-2 py-1 text-xs text-ink outline-none focus:border-accent flex-1 min-w-[10rem]">
+            <button onclick="configFormatoAgregar()" class="text-[11px] text-accent hover:underline">+ formato</button>
+            ${ids.length > 1 ? '<button onclick="configFormatoBorrar()" class="text-[11px] text-muted hover:text-red-400">borrar este formato</button>' : ''}
+          </div>
+
+          <div class="flex flex-wrap items-center gap-3 pb-3 mb-3 border-b border-hairline">
+            <label for="configArrastreOrigen" class="text-[11px] uppercase tracking-wider text-muted">Arrastre de puntos</label>
+            <select id="configArrastreOrigen" onchange="configArrastre('faseOrigen', this.value)" aria-label="Tramo del que se arrastran puntos"
+              class="bg-surface2 border border-hairline rounded px-2 py-1 text-xs text-ink outline-none">
+              <option value="" ${!(f && f.arrastre) ? 'selected' : ''}>sin arrastre</option>
+              ${(function () {
+                const ks = configTramosDelLibro().filter(t => String(t.torneo || '').indexOf('*') !== 0)
+                  .map(t => (t.torneo || 'GENERAL') + '|' + t.fase);
+                const actual = f && f.arrastre ? f.arrastre.faseOrigen : null;
+                if (actual && ks.indexOf(actual) === -1) ks.push(actual);
+                return ks.map(k => `<option value="${SGADD_UI.esc(k)}" ${actual === k ? 'selected' : ''}>${SGADD_UI.esc(k)}</option>`).join('');
+              })()}
+            </select>
+            ${f && f.arrastre ? `<input type="number" min="1" max="100" value="${SGADD_UI.esc(String(f.arrastre.porcentaje))}"
+              aria-label="Porcentaje de los puntos que se arrastran" oninput="configArrastre('porcentaje', this.value)"
+              class="bg-surface2 border border-hairline rounded px-2 py-1 text-xs font-mono text-ink w-20 outline-none focus:border-accent">
+              <span class="text-[11px] text-muted">% de los puntos de tabla (2 G · 1 P)</span>` : ''}
+            <span class="text-[11px] text-muted basis-full">Los tramos que usan este formato arrancan con ese porcentaje de los
+              puntos que cada equipo sumó en el origen. Solo suma puntos: PJ, PG, PP y la diferencia siguen siendo del tramo.</span>
           </div>
 
           <div class="flex items-center gap-3 pb-3 mb-3 border-b border-hairline">

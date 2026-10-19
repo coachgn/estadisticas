@@ -24,7 +24,10 @@ node test-config.js        # 318 tests · zonas de tabla, tramos, tonos AA, pest
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
 node test-desempate-fiba.js # 37 tests · el desempate oficial FIBA: duelo directo, mini-tabla,
                            #             la vuelta a empezar (D.3), cociente y los manuales (punto 132)
-node test-boot.js          # 181 tests · arranque por club, sintaxis de los módulos, carteles de espera
+node test-arrastre-fases.js # 70 tests · el arrastre de puntos, los playoffs que no tocan la regular,
+                           #             el acumulado, las fases por torneo/tabla, la final extra y
+                           #             el desempate de la CATEGORÍA (Olimpo / Alem) en la app real (punto 133)
+node test-boot.js          # 184 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 291 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  96 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
@@ -120,7 +123,7 @@ node test-fixture-auto.js  #  88 tests · los conectores que se pegan en el Pane
 node test-fixture.js       # 116 tests · la seccion Fixture, los empty states de pretemporada,
                            #             las iniciales con parentesis y la grilla compacta del hub
 
-node test-torneos.js       # 132 tests · los torneos sin cliente y la estructura multizona: la Liga
+node test-torneos.js       # 142 tests · los torneos sin cliente y la estructura multizona: la Liga
                            #             Argentina 2026-27, la Zona C, el enganche a una zona, la propagación
                            #             y el marcador de las cards plegables del Panel Master
 
@@ -150,7 +153,7 @@ node test-ecosistema.js    #  23 tests · el auditor del ecosistema: fechas, cla
 node test-canva.js         #  29 tests · las piezas aprobadas a Canva por la API, sin Claude:
                            #             el permiso que rota, publicar SOLO placas-tmp, reintentos (punto 123)
 
-node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, el catálogo en KV
+node test-backend.js       # 466 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
 
 # OJO: `test-backend.js` ESTÁ EN MAIN desde que se integró el backend.
@@ -278,7 +281,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=291`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=292`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15161,3 +15164,98 @@ Verificado al revés, ocho mutaciones, todas caen: sin FIBA en `ordenar`
 12, mini-tabla vacía 12, sin diferencia 4, sin la vuelta a empezar 3, sin
 manuales 2, y 1 cada una sin cociente, PC = 0 crudo y sin PF.
 
+---
+
+## 133. ARRASTRE DE PUNTOS, FASES POR TORNEO Y EL DESEMPATE DE LA CATEGORÍA (2026-10-19)
+
+Pedido: el caso Bahía Blanca (Olimpo le ganó a Alem el duelo directo y la
+tabla los mostraba al revés) y una temporada Apertura + Clausura con arrastre
+del 50 %, play-in, permanencia, promoción, playoffs y final extra, todo
+gestionable desde el Panel Master. El manual reusable es
+[`DOCUMENTACION_FASES.md`](DOCUMENTACION_FASES.md); `test-arrastre-fases.js`
+fija todo lo de acá. Assets en `?v=292`.
+
+### 1 · Bahía: no era el motor, era la config
+
+Medido sobre el libro real (`APERTURA|REGULAR`, 66 partidos): OLIMPO y LEANDRO
+N.ALEM 4-7; OLIMPO ganó 81-77 el 26/03; ALEM tiene mejor diferencia (−30
+contra −85). Con FIBA el motor ya daba OLIMPO 9° y ALEM 10° («duelo
+directo»); el catálogo publicaba `PCT › DIF › PF` en el torneo y en
+`porCategoria.bahia-blanca-2026-oro`. Se arregla publicando FIBA (Panel
+Master → Configuración → Desempate → Publicar): es una escritura de KV y la
+hace el club.
+
+**Y había un bug que habría tapado el arreglo:** la tabla, la llave del
+navegador y `llave.js` leían `ordenTabla` del bloque del CLUB (`r.config`), no
+del de la categoría (`r.bloque`). Un FIBA publicado «solo para esta categoría»
+no se aplicaba. Ahora todo pasa por `clasifReglasDeTramo(torneo, fase)`
+(formato + orden del bloque + arrastre calculado) y `clasifTablaDeTramo`, y
+el servidor resuelve con `sgadd-config.js`, que se sumó a `compartido/`.
+
+### 2 · El arrastre · `formatos[id].arrastre = { faseOrigen, porcentaje }`
+
+En `SGADD_CONFIG` (`normalizarArrastre`, `arrastreDeTramo`) y
+`SGADD_CLASIF` (`puntosArrastre`, `aplicarArrastre`, `ordenConArrastre`).
+
+- **Suma solo puntos** (2 G · 1 P): PJ, PG, PP, PF, PC, DIF, PCT y la
+  mini-tabla FIBA son del tramo. La tabla suma las columnas **Pts** y **Arr.**
+  (Pts también aparece con FIBA o PTS sin arrastre: sin ella el orden no se
+  podía auditar), y la fila desempatada lleva `*` y el motivo en el `title`.
+- **Ordena por puntos**: con un orden sin PTS ni FIBA se antepone PTS y la
+  pantalla lo dice.
+- El origen aporta lo que sumó jugando (con manuales, sin su propio arrastre:
+  no se encadena). **Nunca en `*TOTAL*`** (ya suma el origen) ni en un tramo
+  del mismo torneo que el origen. El que no debutó entra con 0 PJ
+  (`soloArrastre`).
+- Validación: aviso con desempate por porcentaje, aviso con un origen que el
+  libro no trae, error si un tramo arrastra de sí mismo.
+
+### 3 · Fases: `torneo`, `tabla`, lado `externo`, `condicion`
+
+En `SGADD_FASES.parsear`: `torneo` (valor de la columna TORNEO: separa los
+cuartos del Apertura de los del Clausura), `tabla` (`TORNEO|FASE` de la que
+salen los puestos; un lado puede pisarla), lado `{ externo, equipo? }` y
+`condicion: 'distintos'` (la final extra: con el mismo equipo de los dos
+lados, «No se juega»). `declaradaDe(fases, fase, torneo)` y el contexto de la
+llave usan el torneo; `ctx.tablasPorTramo` trae la tabla de cada tramo pedido,
+la MISMA de Clasificación. **Con `tabla` declarada y sin esa tabla, el puesto
+queda «a definir»**: nunca se toma otra (el acumulado daría otro 7°). El
+servidor manda `torneo` en los partidos de la postemporada y `tramo` en cada
+tabla.
+
+Lo que NO hubo que construir: los playoffs no suman a la regular (el índice
+está scopeado por TORNEO|FASE desde el punto 3 ter) y el acumulado de la
+temporada es `*TOTAL*|REGULAR`. Los dos tienen tests nuevos.
+
+### 4 · Autogestión desde la UI
+
+- **Configuración → Zonas de la tabla**: crear, renombrar y borrar formatos;
+  «Arrastre de puntos» por formato; «Tramos y su formato» pasó de solo lectura
+  a un selector por tramo (comodín / sin zonas / formato) y permite declarar un
+  tramo que el libro todavía no trae. Todo viaja con «Publicar» (la acción
+  `zonas` guarda el bloque tal cual).
+- **Editor de cruces** (tarjeta del torneo): «TORNEO en el libro», «Puestos de
+  la tabla», nombre del cruce, lados «Equipo fijo» y «De otro torneo», y la
+  casilla «solo si son distintos». **Antes un lado `equipo` se perdía al pasar
+  por el editor**; ya no.
+
+### Verificado
+
+Suite entera en verde (62 archivos). Al revés, ocho mutaciones, todas caen:
+orden del club en vez del bloque 7, arrastre sin aplicar 4, partidos de la fase
+sin filtrar por torneo 2, sin la condición 2, y 1 cada una la tabla equivocada
+para un puesto, `declaradaDe` sin torneo, el arrastre en el TOTAL y no
+anteponer PTS. En el navegador, sobre la demo con un Apertura/Clausura armado
+en memoria: columna Arr. (40,5 = 29 + 11,5), aviso del arrastre, Pts y
+desempates en la tabla FIBA, y los controles nuevos de Configuración sin
+errores de consola. **No verificado en un PDF ni contra el libro de Bahía con
+playoffs**: hoy el libro solo trae `APERTURA|REGULAR`.
+
+### Lo que hace el club (escrituras de KV)
+
+1. Desempate FIBA de Bahía: Panel Master → Bahía Blanca 2026 · Oro →
+   Configuración → Zonas de la tabla → Desempate «FIBA» → Publicar.
+2. Formato de la Clausura con el arrastre, y la asignación de tramos.
+3. La llave, cuando MotorStats escriba los playoffs: los valores de FASE y
+   TORNEO de cada instancia salen del nombre de la carpeta.
+4. Deploy del backend (`llave.js` y `compartido/sgadd-config.js`).

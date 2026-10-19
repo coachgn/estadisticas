@@ -269,7 +269,8 @@ const SGADD_TORNEOS = (function () {
     if (!l) return '—';
     if (l.ganador) return 'Ganador ' + l.ganador;
     if (l.perdedor) return 'Perdedor ' + l.perdedor;
-    if (l.zona && l.puesto) return l.puesto + '° ' + (n[l.zona] || l.zona);
+    if (l.zona && l.puesto) return l.puesto + '° ' + (n[l.zona] || l.zona) + (l.tabla ? ' (' + l.tabla + ')' : '');
+    if (l.externo) return String(l.externo) + (l.equipo ? ' · ' + l.equipo : '');
     if (l.equipo) return String(l.equipo);
     return '—';
   }
@@ -278,28 +279,45 @@ const SGADD_TORNEOS = (function () {
      no conoce (ventanas, `desde`, `hasta`, campos futuros) viaja intacto en
      `_resto`, así guardar desde el Panel Master no borra lo que vino del
      archivo del torneo. */
+  /* Cinco tipos de lado (punto 133): puesto (con su tabla opcional),
+     ganador, perdedor, un EQUIPO fijo y uno EXTERNO —alguien que sale de
+     otro torneo, como el subcampeón de la Plata—. Antes un lado `equipo`
+     se perdía al pasar por el editor. */
   function ladoAEditor(l) {
     const x = l || {};
-    if (x.ganador) return { tipo: 'ganador', ref: x.ganador, zona: '', puesto: '' };
-    if (x.perdedor) return { tipo: 'perdedor', ref: x.perdedor, zona: '', puesto: '' };
-    return { tipo: 'puesto', ref: '', zona: x.zona || '', puesto: x.puesto ? String(x.puesto) : '' };
+    const vacio = { ref: '', zona: '', puesto: '', tabla: '', equipo: '', externo: '' };
+    if (x.ganador) return Object.assign(vacio, { tipo: 'ganador', ref: x.ganador });
+    if (x.perdedor) return Object.assign(vacio, { tipo: 'perdedor', ref: x.perdedor });
+    if (x.externo) return Object.assign(vacio, { tipo: 'externo', externo: x.externo, equipo: x.equipo || '' });
+    if (x.equipo) return Object.assign(vacio, { tipo: 'equipo', equipo: x.equipo });
+    return Object.assign(vacio, { tipo: 'puesto', zona: x.zona || '', puesto: x.puesto ? String(x.puesto) : '',
+      tabla: x.tabla || '' });
   }
   function editorALado(e) {
     if (e.tipo === 'ganador') return { ganador: e.ref };
     if (e.tipo === 'perdedor') return { perdedor: e.ref };
+    if (e.tipo === 'equipo') return { equipo: String(e.equipo || '').trim() };
+    if (e.tipo === 'externo') {
+      const o = { externo: String(e.externo || '').trim() };
+      if (String(e.equipo || '').trim()) o.equipo = String(e.equipo).trim();
+      return o;
+    }
     const o = { zona: e.zona }; const p = Number(e.puesto);
     o.puesto = Number.isInteger(p) ? p : e.puesto;
+    if (String(e.tabla || '').trim()) o.tabla = String(e.tabla).trim().toUpperCase();
     return o;
   }
   function faseAEditor(f) {
     const resto = Object.assign({}, f);
-    ['id', 'label', 'libro', 'cruce', 'zonaLibro', 'serie', 'cruces', 'zonas'].forEach(k => delete resto[k]);
+    ['id', 'label', 'libro', 'cruce', 'zonaLibro', 'serie', 'cruces', 'zonas', 'torneo', 'tabla'].forEach(k => delete resto[k]);
     const zonas = {};
     (Array.isArray(f.zonas) ? f.zonas : (f.zonas ? [f.zonas] : [])).forEach((z) => { zonas[String(z).toLowerCase()] = true; });
     return { id: f.id || '', label: f.label || '', libro: Array.isArray(f.libro) ? f.libro.join(', ') : (f.libro || ''),
       cruce: f.cruce === 'interzonal' ? 'interzonal' : 'zona', zonaLibro: f.zonaLibro || '',
       mejorDe: f.serie && f.serie.mejorDe ? String(f.serie.mejorDe) : '',
-      cruces: (f.cruces || []).map(c => ({ id: c.id || '', a: ladoAEditor(c.a), b: ladoAEditor(c.b) })),
+      torneo: f.torneo || '', tabla: f.tabla || '',
+      cruces: (f.cruces || []).map(c => ({ id: c.id || '', label: c.label || '',
+        condicion: c.condicion === 'distintos', a: ladoAEditor(c.a), b: ladoAEditor(c.b) })),
       zonas: zonas, _resto: resto };
   }
   function editorAFase(e) {
@@ -310,7 +328,17 @@ const SGADD_TORNEOS = (function () {
     f.cruce = e.cruce === 'interzonal' ? 'interzonal' : 'zona';
     if (e.zonaLibro) f.zonaLibro = e.zonaLibro;
     if (e.mejorDe) f.serie = { mejorDe: Number(e.mejorDe) };
-    if (e.cruces.length) f.cruces = e.cruces.map(c => ({ id: String(c.id || '').trim(), a: editorALado(c.a), b: editorALado(c.b) }));
+    /* El torneo del libro y la tabla de los puestos (punto 133). */
+    if (String(e.torneo || '').trim()) f.torneo = String(e.torneo).trim().toUpperCase();
+    if (String(e.tabla || '').trim()) f.tabla = String(e.tabla).trim().toUpperCase();
+    if (e.cruces.length) {
+      f.cruces = e.cruces.map((c) => {
+        const o = { id: String(c.id || '').trim(), a: editorALado(c.a), b: editorALado(c.b) };
+        if (String(c.label || '').trim()) o.label = String(c.label).trim();
+        if (c.condicion) o.condicion = 'distintos';
+        return o;
+      });
+    }
     /* LA PERTENENCIA POR ZONA (punto 78). Ninguna tildada = se deduce de
        los cruces; así una llave vieja no cambia de visibilidad sola. */
     const zonas = Object.keys(e.zonas || {}).filter(z => e.zonas[z]).sort();
@@ -1100,13 +1128,25 @@ const SGADD_TORNEOS = (function () {
         <option value="puesto" ${l.tipo === 'puesto' ? 'selected' : ''}>Puesto</option>
         <option value="ganador" ${l.tipo === 'ganador' ? 'selected' : ''}>Ganador de</option>
         <option value="perdedor" ${l.tipo === 'perdedor' ? 'selected' : ''}>Perdedor de</option>
+        <option value="equipo" ${l.tipo === 'equipo' ? 'selected' : ''}>Equipo fijo</option>
+        <option value="externo" ${l.tipo === 'externo' ? 'selected' : ''}>De otro torneo</option>
       </select>
       ${l.tipo === 'puesto'
         ? `<input type="number" min="1" max="40" aria-label="Puesto" value="${esc(l.puesto)}" id="ll-${fi}-${ci}-${lado}-p"
              oninput="${pre}'puesto',this.value,true)" class="${CLASE_CHICO}" style="width:4rem">
            <span class="text-muted text-xs">°</span>
            <select aria-label="Zona" onchange="${pre}'zona',this.value)" class="${CLASE_CHICO}">
-             <option value="">zona…</option>${zonas.map(z => `<option value="${esc(z.zona)}" ${l.zona === z.zona ? 'selected' : ''}>${esc(z.label)}</option>`).join('')}</select>`
+             <option value="">zona…</option>${zonas.map(z => `<option value="${esc(z.zona)}" ${l.zona === z.zona ? 'selected' : ''}>${esc(z.label)}</option>`).join('')}</select>
+           <input type="text" aria-label="Tabla de la que sale el puesto (TORNEO|FASE)" value="${esc(l.tabla)}" id="ll-${fi}-${ci}-${lado}-t"
+             placeholder="tabla de la fase" oninput="${pre}'tabla',this.value,true)" class="${CLASE_CHICO} font-mono" style="width:9rem">`
+        : l.tipo === 'equipo'
+        ? `<input type="text" aria-label="Equipo" value="${esc(l.equipo)}" id="ll-${fi}-${ci}-${lado}-e"
+             placeholder="nombre del equipo" oninput="${pre}'equipo',this.value,true)" class="${CLASE_CHICO}" style="width:10rem">`
+        : l.tipo === 'externo'
+        ? `<input type="text" aria-label="Quién es, de otro torneo" value="${esc(l.externo)}" id="ll-${fi}-${ci}-${lado}-x"
+             placeholder="Subcampeón Plata" oninput="${pre}'externo',this.value,true)" class="${CLASE_CHICO}" style="width:9rem">
+           <input type="text" aria-label="Equipo, cuando se sepa" value="${esc(l.equipo)}" id="ll-${fi}-${ci}-${lado}-e"
+             placeholder="equipo (cuando se sepa)" oninput="${pre}'equipo',this.value,true)" class="${CLASE_CHICO}" style="width:9rem">`
         : `<select aria-label="Cruce" onchange="${pre}'ref',this.value)" class="${CLASE_CHICO}">
              <option value="">cruce…</option>${previos.map(id => `<option value="${esc(id)}" ${l.ref === id ? 'selected' : ''}>${esc(id)}</option>`).join('')}</select>`}
     </span>`;
@@ -1121,9 +1161,13 @@ const SGADD_TORNEOS = (function () {
         const fila = `<div class="flex flex-wrap items-center gap-2 py-1 border-t border-hairline">
           <input type="text" aria-label="Id del cruce" value="${esc(c.id)}" id="ll-${fi}-${ci}-id" placeholder="C1"
             oninput="SGADD_TORNEOS.campoCruce(${fi},${ci},this.value)" class="${CLASE_CHICO} font-mono" style="width:4rem">
+          <input type="text" aria-label="Nombre del cruce" value="${esc(c.label)}" id="ll-${fi}-${ci}-label" placeholder="nombre"
+            oninput="SGADD_TORNEOS.campoCruce(${fi},${ci},this.value,'label')" class="${CLASE_CHICO}" style="width:7rem">
           ${selectLado(fi, ci, 'a', c.a, zonas, previos.slice())}
           <span class="text-muted text-xs">vs</span>
           ${selectLado(fi, ci, 'b', c.b, zonas, previos.slice())}
+          <label class="inline-flex items-center gap-1 text-[11px] text-muted" title="El cruce se juega solo si los dos lados son equipos distintos (la final extra)">
+            <input type="checkbox" ${c.condicion ? 'checked' : ''} onchange="SGADD_TORNEOS.condicionCruce(${fi},${ci},this.checked)"> solo si son distintos</label>
           <button type="button" onclick="SGADD_TORNEOS.quitarCruce(${fi},${ci})" aria-label="Quitar el cruce"
             class="text-[11px] text-muted hover:underline ml-auto">quitar</button></div>`;
         if (c.id) previos.push(c.id);
@@ -1145,6 +1189,12 @@ const SGADD_TORNEOS = (function () {
             <option value="">el libro de cada zona</option>${libros.map(l => `<option value="${esc(l.zona)}" ${f.zonaLibro === l.zona ? 'selected' : ''}>${esc(l.label)}</option>`).join('')}</select></label>
           <label class="block"><span class="${ROTULO}">Serie</span><select onchange="${pre}'mejorDe',this.value)" class="${CLASE_INPUT}">
             <option value="">todos contra todos</option>${[1, 3, 5, 7].map(m => `<option value="${m}" ${f.mejorDe === String(m) ? 'selected' : ''}>${m === 1 ? 'a un partido' : 'al mejor de ' + m}</option>`).join('')}</select></label>
+          <label class="block"><span class="${ROTULO}">TORNEO en el libro</span><input type="text" value="${esc(f.torneo)}" id="ll-${fi}-torneo"
+            placeholder="cualquiera" title="Con Apertura y Clausura en el mismo libro, separa los cuartos de uno y del otro"
+            oninput="${pre}'torneo',this.value,true)" class="${CLASE_INPUT} font-mono"></label>
+          <label class="block"><span class="${ROTULO}">Puestos de la tabla</span><input type="text" value="${esc(f.tabla)}" id="ll-${fi}-tabla"
+            placeholder="la fase regular" title="TORNEO|FASE de la tabla de la que salen los puestos de sus cruces, por ejemplo CLAUSURA|REGULAR"
+            oninput="${pre}'tabla',this.value,true)" class="${CLASE_INPUT} font-mono"></label>
         </div>
         <fieldset><legend class="${ROTULO}">Zonas que la ven · ninguna tildada = las de sus cruces</legend>
           <div class="flex flex-wrap gap-x-4 gap-y-1">${zonas.map(z => `<label class="inline-flex items-center gap-1.5 text-xs text-ink">
@@ -1258,9 +1308,13 @@ const SGADD_TORNEOS = (function () {
     f.zonas[zona] = !!marcado;
     refrescarLlaveEstado();
   }
-  function campoCruce(fi, ci, v) {
+  function campoCruce(fi, ci, v, campo) {
     const c = llaveEd.fases[fi] && llaveEd.fases[fi].cruces[ci]; if (!c) return;
-    c.id = v; refrescarLlaveEstado();
+    c[campo === 'label' ? 'label' : 'id'] = v; refrescarLlaveEstado();
+  }
+  function condicionCruce(fi, ci, marcado) {
+    const c = llaveEd.fases[fi] && llaveEd.fases[fi].cruces[ci]; if (!c) return;
+    c.condicion = !!marcado; refrescarLlaveEstado();
   }
   function campoLado(fi, ci, lado, campoL, v, tipeo) {
     const c = llaveEd.fases[fi] && llaveEd.fases[fi].cruces[ci]; if (!c) return;
@@ -1294,7 +1348,10 @@ const SGADD_TORNEOS = (function () {
       confirmar: 'Guardar la llave',
       cambios: fases.map((f) => {
         const a = antes.find(x => x.id === f.id);
-        const txt = (x) => (x.label || x.id) + (Array.isArray(x.zonas) && x.zonas.length ? ' · zonas ' + x.zonas.map(z => nom[z] || z).join(', ') : '') + ((x.cruces || []).length ? ' · ' + x.cruces.map(c => c.id + ': ' + ladoTexto(c.a, nom) + ' vs ' + ladoTexto(c.b, nom)).join(' · ') : '');
+        const txt = (x) => (x.label || x.id) + (x.torneo ? ' · torneo ' + x.torneo : '')
+          + (x.tabla ? ' · tabla ' + x.tabla : '') + (x.serie && x.serie.mejorDe ? ' · al mejor de ' + x.serie.mejorDe : '')
+          + (Array.isArray(x.zonas) && x.zonas.length ? ' · zonas ' + x.zonas.map(z => nom[z] || z).join(', ') : '') + ((x.cruces || []).length ? ' · ' + x.cruces.map(c => c.id + ': ' + ladoTexto(c.a, nom) + ' vs ' + ladoTexto(c.b, nom)
+          + (c.condicion === 'distintos' ? ' (solo si son distintos)' : '')).join(' · ') : '');
         return { label: 'Fase ' + f.id, antes: a ? txt(a) : '—', despues: txt(f) };
       }).filter(c => c.antes !== c.despues).concat(antes.filter(a => !fases.some(f => f.id === a.id))
         .map(a => ({ label: 'Fase ' + a.id, antes: a.label || a.id, despues: '— se quita' }))),
@@ -1315,7 +1372,7 @@ const SGADD_TORNEOS = (function () {
     guardar, empezarVinculo, elegirVinculo, campoVinculo, vincular, abrirForm, abrirVinculo, abrirTarjeta, bloqueHuerfanos,
     nuevoLibro, editarLibro, cancelarLibro, campoLibro, elegirLibro, guardarLibro, desvincularLibro,
     editarFixture, cancelarFixture, campoFixture, guardarFixture, probarFixture, bloqueFixture,
-    editarLlave, cancelarLlave, campoFase, zonaFase, campoCruce, campoLado, agregarFase, quitarFase, agregarCruce, quitarCruce, guardarLlave,
+    editarLlave, cancelarLlave, campoFase, zonaFase, campoCruce, condicionCruce, campoLado, agregarFase, quitarFase, agregarCruce, quitarCruce, guardarLlave,
   };
 })();
 

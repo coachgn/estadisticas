@@ -294,7 +294,10 @@ const htmlIdx = fs.readFileSync('./index.html', 'utf8');
 check('el escudo va en la celda del nombre, no en una columna nueva',
   /clasifEscudo\(r\.nombre\)\}\$\{SGADD_UI\.esc\(r\.nombre\)/.test(src));
 check('y la cantidad de cabeceras no cambió',
-  /'Pos', 'Equipo', 'PJ'/.test(src));
+  /* Lo único que puede ir entre el equipo y PJ son Pts y Arr., y solo
+     cuando ordenan (punto 133): nunca una columna de escudo. */
+  /\['Pos', 'Equipo'\]\.concat\(extra, \['PJ'/.test(src)
+  && /const extra = \(conPts \? \['Pts'\] : \[\]\)\.concat\(conArr \? \['Arr\.'\] : \[\]\)/.test(src));
 /* Sin escudo resuelto van las INICIALES, no un hueco: es lo que pasa
    siempre que el manifiesto de logos no se pueda leer. */
 check('sin escudo resuelto, van las iniciales',

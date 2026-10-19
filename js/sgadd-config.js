@@ -104,6 +104,9 @@ const SGADD_CONFIG = (function () {
         label: texto(f.label) || id,
         equiposEsperados: entero(f.equiposEsperados),
         zonas: normalizarZonas(f.zonas),
+        /* El arrastre de puntos de otro tramo (punto 133): null si no
+           se declaró o si vino roto. */
+        arrastre: normalizarArrastre(f.arrastre),
       };
     });
 
@@ -142,6 +145,40 @@ const SGADD_CONFIG = (function () {
       porTramo: porTramo,
       porCategoria: porCategoria,
     };
+  }
+
+  /* ===================================================================
+     ARRASTRE DE PUNTOS · punto 133
+
+     Un formato puede sumarle a cada equipo un porcentaje de los PUNTOS DE
+     TABLA (2 por ganado, 1 por perdido) que hizo en OTRO tramo. Es el
+     caso de Bahía Blanca: la Clausura arranca con el 50 % de lo que cada
+     uno sumó en la fase regular del Apertura.
+
+         "arrastre": { "faseOrigen": "APERTURA|REGULAR", "porcentaje": 50 }
+
+     La clave del origen es la MISMA `TORNEO|FASE` de `porTramo` y del
+     selector, sin traducción. Se aceptan los espacios y las minúsculas
+     («Apertura | Regular») porque es lo que alguien escribe a mano; se
+     guarda normalizada. También se acepta `origen` como sinónimo.
+
+     Lo que NO es un arrastre válido, y por eso devuelve null:
+       - un origen sin las dos partes, o que nombra al TOTAL sintético
+         (no es un tramo jugado: es la suma de los reales);
+       - un porcentaje fuera de 1..100.
+     =================================================================== */
+  function claveDeTramo(v) {
+    const partes = texto(v).split('|').map(x => x.trim().toUpperCase());
+    if (partes.length !== 2 || !partes[0] || !partes[1]) return null;
+    if (partes[0] === '*TOTAL*' || partes[0] === TRAMO_CUALQUIERA || partes[1] === TRAMO_CUALQUIERA) return null;
+    return partes[0] + '|' + partes[1];
+  }
+  function normalizarArrastre(a) {
+    if (!a || typeof a !== 'object') return null;
+    const origen = claveDeTramo(a.faseOrigen != null ? a.faseOrigen : a.origen);
+    const pct = Number(a.porcentaje);
+    if (!origen || !isFinite(pct) || pct <= 0 || pct > 100) return null;
+    return { faseOrigen: origen, porcentaje: pct };
   }
 
   function normalizarZonas(lista) {
@@ -196,6 +233,24 @@ const SGADD_CONFIG = (function () {
       return cfg.formatos[id] || null;
     }
     return null;
+  }
+
+  /**
+   * El arrastre que rige en un tramo, o null (punto 133).
+   *
+   * NUNCA en el TOTAL sintético: ya suma los partidos del origen, y el
+   * arrastre los contaría dos veces. Tampoco si el origen es del mismo
+   * torneo que el tramo (sería arrastrarse a sí mismo por otra fase del
+   * mismo torneo, que ningún reglamento declara).
+   */
+  function arrastreDeTramo(cfg, torneo, fase) {
+    const t = texto(torneo).toUpperCase();
+    if (!t || t === '*TOTAL*') return null;
+    const f = formatoDeTramo(cfg, torneo, fase);
+    const a = f && f.arrastre;
+    if (!a) return null;
+    if (a.faseOrigen.split('|')[0] === t) return null;
+    return a;
   }
 
   /* ===================================================================
@@ -298,6 +353,35 @@ const SGADD_CONFIG = (function () {
       const v = cfg.porTramo[k];
       if (v && !cfg.formatos[v]) out.push({ nivel: 'error', tema: 'competencia',
         mensaje: 'El tramo ' + k + ' apunta al formato "' + v + '", que no está declarado.' });
+    });
+
+    /* EL ARRASTRE (punto 133). Se valida en TODOS los formatos y no solo
+       en el del tramo abierto: el de la Clausura se escribe mientras se
+       juega el Apertura, y un error ahí no se vería hasta el primer
+       partido. */
+    const tramosLibro = Array.isArray(ctx.tramos) ? ctx.tramos.map(x => texto(x).toUpperCase()) : null;
+    Object.keys(cfg.formatos).forEach((id) => {
+      const a = cfg.formatos[id].arrastre;
+      if (!a) return;
+      const orden = (cfg.ordenTabla || []).map(x => texto(x).toUpperCase());
+      if (orden.indexOf('FIBA') === -1 && orden.indexOf('PTS') === -1) {
+        out.push({ nivel: 'aviso', tema: 'competencia',
+          mensaje: 'El formato "' + id + '" arrastra puntos de ' + a.faseOrigen + ' y el desempate es ' +
+            orden.join(' › ') + ': con arrastre la tabla se ordena por PUNTOS (va PTS adelante). ' +
+            'Conviene elegir el desempate FIBA.' });
+      }
+      if (tramosLibro && tramosLibro.indexOf(a.faseOrigen) === -1) {
+        out.push({ nivel: 'aviso', tema: 'competencia',
+          mensaje: 'El formato "' + id + '" arrastra puntos de ' + a.faseOrigen +
+            ', que el libro no trae: hasta que lo traiga, no se suma nada.' });
+      }
+      Object.keys(cfg.porTramo).forEach((k) => {
+        if (cfg.porTramo[k] === id && k === a.faseOrigen) {
+          out.push({ nivel: 'error', tema: 'competencia',
+            mensaje: 'El tramo ' + k + ' arrastra puntos de sí mismo: el formato "' + id +
+              '" no se puede usar en su propio origen.' });
+        }
+      });
     });
 
     const f = formatoDeTramo(cfg, ctx.torneo, ctx.fase);
@@ -636,6 +720,7 @@ const SGADD_CONFIG = (function () {
       const f = cfg.formatos[id];
       const o = { label: f.label };
       if (f.equiposEsperados) o.equiposEsperados = f.equiposEsperados;
+      if (f.arrastre) o.arrastre = { faseOrigen: f.arrastre.faseOrigen, porcentaje: f.arrastre.porcentaje };
       o.zonas = f.zonas.map((z) => {
         const zz = { id: z.id, desde: z.desde };
         /* `hasta` solo si se declaró: omitirlo es semántico —con `desde`
@@ -1372,7 +1457,7 @@ const SGADD_CONFIG = (function () {
     categoriaActiva, bloqueDeCategoria,
     slugDe, clavesDeCategoria, deCategoria, porCategoriaASlugs,
     TONOS, TONO_POR_DEFECTO, TRAMO_CUALQUIERA, tono,
-    parsear, formatoDeTramo, zonaDePuesto, zonasDeTabla, leyenda, validar,
+    parsear, formatoDeTramo, normalizarArrastre, claveDeTramo, arrastreDeTramo, zonaDePuesto, zonasDeTabla, leyenda, validar,
     leerOverride, guardarOverride, borrarOverride, vigente, exportar, claveAlmacen,
     serializar, fusionarCategoria, exportarArchivo,
     clubActivo, resolver,

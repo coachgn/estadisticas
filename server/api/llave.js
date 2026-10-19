@@ -37,6 +37,9 @@
 'use strict';
 
 const catalogo = require('../lib/catalogo.js');
+/* El parser de competencia (punto 133): el orden de desempate y el
+   arrastre de puntos se resuelven con el MISMO módulo que la pantalla. */
+const CONFIG = require('../lib/compartido/sgadd-config.js');
 const mutar = require('../lib/catalogo-mutar.js');
 const sheets = require('../lib/google-sheets.js');
 const etiquetas = require('../lib/etiquetas.js');
@@ -147,8 +150,26 @@ function tablaDeZona(t, slug, hojas, cat, torneoId) {
      ser el 2° que ve el club de la B. Sin catálogo, los del torneo. */
   const mapaManual = cat ? mutar.manualesDeZona(cat, torneoId, slug).mapa : (((t.partidosManuales || {})[slug]) || {});
   const manuales = CLASIF.manualesDelTramo(mapaManual, tramo.torneo, fr);
-  const orden = (t.competencia && t.competencia.ordenTabla) || CLASIF.ORDEN_POR_DEFECTO;
-  const filas = CLASIF.tabla(idx, { orden: orden, manuales: manuales }).map(r => ({
+  /* EL ORDEN ES EL DEL BLOQUE DE LA ZONA (punto 133): con el desempate
+     publicado «solo para esta categoría» (`porCategoria`), leer el del
+     torneo ordenaba por porcentaje la tabla que define los puestos de la
+     llave. Y si el formato de ese tramo arrastra puntos de otro, se suman
+     igual que en Clasificación. */
+  const cfg = CONFIG.parsear({ competencia: t.competencia || {} });
+  const bloque = cfg ? ((cfg.porCategoria || {})[slug] || cfg) : null;
+  const decl = bloque ? CONFIG.arrastreDeTramo(bloque, tramo.torneo, fr) : null;
+  let arrastre = null;
+  if (decl) {
+    const partes = decl.faseOrigen.split('|');
+    const existe = tramos.some(x => (x.torneo || '') + '|' + x.fase === decl.faseOrigen && !x.agregado);
+    if (existe) {
+      const idxO = CORE.construirIndice(hojas, { torneo: partes[0], fase: partes[1] });
+      const filasO = CLASIF.tabla(idxO, { manuales: CLASIF.manualesDelTramo(mapaManual, partes[0], partes[1]) });
+      arrastre = CLASIF.puntosArrastre(filasO, decl.porcentaje, decl.faseOrigen);
+    }
+  }
+  const orden = CLASIF.ordenConArrastre((bloque && bloque.ordenTabla) || CLASIF.ORDEN_POR_DEFECTO, arrastre);
+  const filas = CLASIF.tabla(idx, { orden: orden, manuales: manuales, arrastre: arrastre }).map(r => ({
     puesto: r.puesto, clave: r.clave, nombre: r.nombre, pj: r.pj, pg: r.pg, pp: r.pp,
     zona: k.zona || null, id: ids[r.clave] != null ? ids[r.clave] : null,
   }));
@@ -158,7 +179,7 @@ function tablaDeZona(t, slug, hojas, cat, torneoId) {
   const posterior = tramos.some(x => x.fase !== fr && !x.agregado && x.conPartidos);
   const n = Number(formato.partidosPorEquipo) || 0;
   const cerrada = posterior || (n > 0 && filas.length > 0 && filas.every(f => Number(f.pj) >= n));
-  return { filas: filas, cerrada: cerrada };
+  return { filas: filas, cerrada: cerrada, tramo: (tramo.torneo || '') + '|' + fr };
 }
 
 /** Los partidos de la postemporada: fecha, equipos y marcador final. */
@@ -172,7 +193,10 @@ function partidosDePostemporada(hojas) {
       ? (CORE.claveEquipo(partes[0]) === CORE.claveEquipo(f.EQUIPO) ? partes[1] : partes[0]) : null;
     if (!rival) return;
     const pl = Number(f.PTS), pv = Number(f.PTSopp);
-    out.push({ fase: String(f.FASE || '').toUpperCase(), fecha: iso(f.FECHA),
+    /* El torneo viaja (punto 133): con Apertura y Clausura en el mismo
+       libro, «CUARTOS» está dos veces y solo la columna TORNEO los separa. */
+    out.push({ fase: String(f.FASE || '').toUpperCase(), torneo: String(f.TORNEO || '').toUpperCase() || null,
+      fecha: iso(f.FECHA),
       local: CORE.limpiarNombre ? CORE.limpiarNombre(f.EQUIPO) : f.EQUIPO,
       visitante: CORE.limpiarNombre ? CORE.limpiarNombre(rival) : rival,
       ptsLocal: isFinite(pl) ? pl : null, ptsVisitante: isFinite(pv) ? pv : null });
