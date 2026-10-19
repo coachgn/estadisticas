@@ -1103,8 +1103,10 @@ const SGADD_PBP = (function () {
         <b>${num(det.ppt, 2)}</b> puntos por tiro <span class="dato-sec">(liga ${num(vara, 2)})</span> · distancia mediana ${num(det.dist)} m
         ${det.pj ? '· ' + det.pj + ' PJ con minutos' : ''} ·
         <span class="dato-sec">play-by-play oficial, ${partidosConTiros(paq)} partidos de ${esc(paq.equipo)}</span></p>
+      <div data-subcard="tiro.mapa">
       ${chica ? `<p class="text-[11px] text-yellow-400 mb-2">Muestra chica (menos de ${MIN_TIROS_DIAGNOSTICO} tiros de campo): el mapa muestra dónde tiró, sin diagnóstico. Leelo como un registro, no como una tendencia.</p>` : ''}
       ${mapa(paq, { sujeto: String(id), diag: !chica })}
+      </div>
       ${relojJugador(paq, String(id))}
     </div>`;
   }
@@ -1817,7 +1819,7 @@ const SGADD_PBP = (function () {
       mapas = '<p class="text-[11px] text-muted mt-2">El mapa por franja necesita la franja de cada tiro, que llega con la próxima subida de los paquetes.</p>';
     }
     if (!filas && !mapas) return '';
-    return `<div class="mt-3" data-reloj-jugador-franjas="1">
+    return `<div class="mt-3" data-reloj-jugador-franjas="1" data-subcard="tiro.reloj-franjas">
       ${subtitulo('Cuándo y desde dónde tira · por franja del reloj')}
       ${filas ? `<div class="grid grid-cols-3 gap-2">${filas}</div>` : ''}
       ${mapas}
@@ -1835,13 +1837,17 @@ const SGADD_PBP = (function () {
       if (perfil.comparable && !perfil.muestra) cabecera = `<p class="text-[11px] text-yellow-400 mb-2">~ Muestra chica: ${perfil.tiros} tiros con reloj (hacen falta ${perfil.minimo}). Se muestra el reparto, sin perfil.</p>`;
       else if (perfil.rasgos.length) cabecera = `<div class="mb-1">${relojChips(perfil.rasgos)}</div>${relojDetalles(perfil.rasgos)}`;
       else if (perfil.comparable) cabecera = '<p class="text-[11px] text-ink mb-2">Reparte sus tiros en el reloj como la mayoría de la competencia: ninguna franja lo distingue.</p>';
-      return `<div class="pbp-reloj-jugador pbp-reloj-pieza mt-4">
+      /* La tabla del reloj y el desglose por franja son HERMANOS y no uno
+         dentro del otro: el PDF los elige por separado (data-subcard), y el
+         desglose —con sus mapas— no puede ir adentro de una pieza que no se
+         parte entre hojas. */
+      return `<div class="pbp-reloj-jugador pbp-reloj-pieza mt-4" data-subcard="tiro.reloj">
         ${subtitulo('Reloj de posesión · cuándo tira')}
         ${notaConvertido(paq)}${cabecera}${relojTabla(acc, relojLiga(paq), { soloTiros: true })}
-        ${relojJugadorFranjas(paq, id)}
         <p class="text-[10px] dato-sec mt-1 leading-snug">${NOTA_RELOJ}</p>
         ${relojAyuda(relojLiga(paq))}
-      </div>`;
+      </div>
+      ${relojJugadorFranjas(paq, id)}`;
     } catch (e) { return ''; }
   }
 

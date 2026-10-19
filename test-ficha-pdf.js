@@ -1,0 +1,123 @@
+/* =====================================================================
+   test-ficha-pdf.js · la exportación modular de la ficha del jugador y el
+   Pack PLANTEL (2026-10-18)
+
+     node test-ficha-pdf.js
+
+   La lista de cards y sub-cards tiene que ser la del CÓDIGO de la vista:
+   cada `data-subcard` del render real (sgadd-jugadores.js, sgadd-pbp.js)
+   está declarado en `estructura()` y al revés. Después: la poda sin
+   huecos, la titularidad solo con el dato, el pack y los canvas sin ids
+   repetidos.
+   ===================================================================== */
+'use strict';
+const fs = require('fs');
+global.SGADD = require('./js/sgadd-core.js');
+const J = require('./js/sgadd-jugadores.js');
+Object.keys(J).forEach((k) => { global[k] = J[k]; });
+const F = require('./js/sgadd-ficha.js');
+
+let ok = 0, mal = 0;
+function check(n, c, d) {
+  if (c) { ok++; console.log('  ✓ ' + n); }
+  else { mal++; console.log('  ✗ ' + n + (d !== undefined ? '  → ' + JSON.stringify(d) : '')); }
+}
+function seccion(t) { console.log('\n' + t); }
+
+const est = F.estructura();
+const declarados = est.reduce((a, x) => a.concat(x.subs.map(y => y.id)), []);
+
+seccion('1 · La estructura sale del código de la vista');
+{
+  const fuente = ['js/sgadd-jugadores.js', 'js/sgadd-pbp.js'].map(f => fs.readFileSync(f, 'utf8')).join('\n');
+  const marcas = [...new Set((fuente.match(/data-subcard="([^"$]+)"/g) || []).map(m => m.slice(14, -1)))].sort();
+  check('cada marca del render real está declarada en la estructura', marcas.every(m => declarados.indexOf(m) !== -1), marcas.filter(m => declarados.indexOf(m) === -1));
+  check('y cada sub-card declarada tiene su marca en el render', declarados.every(d => marcas.indexOf(d) !== -1), declarados.filter(d => marcas.indexOf(d) === -1));
+  check('las secciones son las pestañas reales de Jugadores, con su nombre y su pregunta',
+    est.map(x => x.id).join() === J.JUGADORES_TABS.map(t => t.id).join() && est.every(x => x.label === J.JUGADORES_TABS.find(t => t.id === x.id).label && x.pregunta));
+  check('las cartas toman el nombre de JUGADORES_CARDS_REF', ['uso', 'pases'].every(c => est[0].subs.some(y => y.label === J.JUGADORES_CARDS_REF.find(r => r.id === c).label))
+    && est[1].subs.some(y => y.label === J.JUGADORES_CARDS_REF.find(r => r.id === 'tiro').label));
+  const grupos = (fuente.match(/data-subcard-de="([^"$]+)"/g) || []).map(m => m.slice(17, -1).split(/\s+/));
+  check('cada grupo declara hijos que existen', grupos.length >= 2 && grupos.every(g => g.every(id => declarados.indexOf(id) !== -1)), grupos);
+  check('los bloques del play-by-play van marcados como tales', est[1].subs.filter(y => y.pbp).map(y => y.id).join() === 'tiro.mapa,tiro.reloj,tiro.reloj-franjas');
+  check('la evolución elige métricas y el log de partidos arranca destildado', est[2].metricas === true && est[3].pre === false);
+}
+
+seccion('2 · La selección');
+{
+  const s = F.seleccionPorDefecto(est);
+  check('por defecto: todo tildado salvo el log, y la métrica en pantalla', s.secciones.general && s.secciones.tiro && s.secciones.evolucion && !s.secciones.partidos
+    && declarados.every(d => s.subs[d]) && s.metricas.PTS === true && Object.keys(s.metricas).filter(k => s.metricas[k]).length === 1);
+  const s2 = F.seleccionPorDefecto(est);
+  s2.secciones.tiro = false;
+  s2.subs['general.uso'] = false;
+  const a = F.activos(s2, est);
+  check('una sub-card está activa si ella Y su sección están tildadas', a['general.adn'] && !a['general.uso'] && !a['tiro.carta']);
+  check('una sección entra si tiene algo adentro', F.seccionEntra(est[0], s2) && !F.seccionEntra(est[1], s2)
+    && !F.seccionEntra(est[0], Object.assign({}, s2, { subs: Object.fromEntries(declarados.map(d => [d, false])) })));
+  check('la evolución entra solo con al menos una métrica', F.seccionEntra(est[2], s2) && !F.seccionEntra(est[2], Object.assign({}, s2, { metricas: { PTS: false } })));
+}
+
+seccion('3 · La poda · lo destildado se quita, sin huecos');
+{
+  const html = `<div data-subcard="general.adn"><div>ADN<div>anidado</div></div></div>
+    <div data-subcard="general.sintesis">SINT</div>
+    <div data-subcard-de="general.uso general.pases" class="grid">
+      <div data-subcard="general.uso"><div>USO</div></div>
+      <div data-subcard="general.pases">PASES</div>
+    </div>
+    <div data-subcard="otra.cosa">NO DECLARADA</div>
+    <p>texto suelto</p>`;
+  const act = { 'general.adn': false, 'general.sintesis': true, 'general.uso': false, 'general.pases': true };
+  const p1 = F.podarHtml(html, act);
+  check('quita el bloque entero, con sus div anidados', !/ADN|anidado/.test(p1) && /SINT/.test(p1) && /texto suelto/.test(p1));
+  check('en un grupo quita al hijo destildado y deja al otro', !/USO/.test(p1) && /PASES/.test(p1) && /class="grid"/.test(p1));
+  const p2 = F.podarHtml(html, Object.assign({}, act, { 'general.pases': false }));
+  check('un grupo sin ningún hijo activo se va entero: no queda la grilla vacía', !/class="grid"/.test(p2) && !/PASES/.test(p2));
+  check('lo que no está declarado se conserva', /NO DECLARADA/.test(p2));
+  check('los div quedan balanceados', (p2.match(/<div\b/g) || []).length === (p2.match(/<\/div>/g) || []).length);
+  check('con todo activo no cambia nada', F.podarHtml(html, { 'general.adn': true, 'general.sintesis': true, 'general.uso': true, 'general.pases': true }) === html);
+  const pbp = `<div class="mapa-pbp-jugador" data-subcard-de="tiro.mapa tiro.reloj tiro.reloj-franjas"><div class="pbp-montaje">cargando</div></div>`;
+  check('si las tres piezas del play-by-play van destildadas no se pide ni el paquete', F.podarHtml(pbp, { 'tiro.mapa': false, 'tiro.reloj': false, 'tiro.reloj-franjas': false }) === ''
+    && F.podarHtml(pbp, { 'tiro.mapa': false, 'tiro.reloj': true, 'tiro.reloj-franjas': false }) === pbp);
+  check('el contenedor del play-by-play declara sus tres hijos en el código',
+    /data-subcard-de="tiro\.mapa tiro\.reloj tiro\.reloj-franjas"/.test(fs.readFileSync('js/sgadd-jugadores.js', 'utf8')));
+}
+
+seccion('4 · Varias fichas en un documento: los gráficos no se pisan');
+{
+  const h = '<div><canvas id="chTiroVol" class="x"></canvas><canvas class="y" id="chTiroConv"></canvas></div><div id="chTiroVol">no es canvas</div>';
+  const p = F.prefijarCanvas(h, 'f3-');
+  check('renombra SOLO los ids de <canvas>', /<canvas id="f3-chTiroVol"/.test(p) && /id="f3-chTiroConv"/.test(p) && /<div id="chTiroVol">/.test(p));
+  const CH = fs.readFileSync('js/sgadd-charts.js', 'utf8');
+  check('los gráficos encolados con un prefijo dibujan en `prefijo + id`', /function conPrefijo\(prefijo, fn\)/.test(CH) && /id = prefijoCrear \+ id;/.test(CH)
+    && /conPrefijo, dibujarPendientes/.test(CH));
+  const FI = fs.readFileSync('js/sgadd-ficha.js', 'utf8');
+  check('cada jugador del pack usa su propio prefijo', /const p = 'f' \+ \(n \|\| 0\) \+ '-';/.test(FI) && /SGADD_CHARTS\.conPrefijo\(p, fn\)/.test(FI) && /prefijarCanvas\(bloques\.join\(''\), p\)/.test(FI));
+}
+
+seccion('5 · Pack PLANTEL · titulares y sustitutos solo con el dato');
+{
+  const lista = [{ NOMBRES: 'A', EQUIPO: 'X' }, { NOMBRES: 'B', EQUIPO: 'X' }, { NOMBRES: 'C', EQUIPO: 'X' }, { NOMBRES: 'D', EQUIPO: 'X' }];
+  const datos = { A: { titular: 10, partidos: 10 }, B: { titular: 5, partidos: 10 }, C: { titular: 2, partidos: 10 } };
+  const t = F.porTitularidad(lista, n => datos[n] || null);
+  check('titular = arrancó la mitad o más de SUS partidos', t.titulares.map(j => j.NOMBRES).join() === 'A,B' && t.sustitutos.map(j => j.NOMBRES).join() === 'C');
+  check('sin el dato no es ni titular ni sustituto: no se infiere', t.conDato === 3 && !t.titulares.concat(t.sustitutos).some(j => j.NOMBRES === 'D'));
+  check('una planilla sin titularidad deja los dos atajos vacíos', F.porTitularidad(lista, () => null).conDato === 0);
+  const FI = fs.readFileSync('js/sgadd-ficha.js', 'utf8');
+  check('sin el dato los atajos se deshabilitan y lo dicen', /no trae la titularidad \(TITULAR del box score\): no se infiere/.test(FI) && /atajo\('Titulares \(' \+ t\.titulares\.length \+ '\)', 'titulares', t\.conDato > 0\)/.test(FI));
+  const idx = { liga: { jugadoresPorEquipo: new Map([['X', [{ NOMBRES: 'A', MIN: 10 }, { NOMBRES: 'B', MIN: 30 }, { NOMBRES: 'C', MIN: 20 }]]]) } };
+  check('el plantel del pack va por minutos, de mayor a menor', F.plantelDe(idx, 'X').map(j => j.NOMBRES).join() === 'B,C,A' && F.plantelDe(idx, 'Y').length === 0);
+  check('el pack son tres pasos y un solo PDF con nombre propio', /'1 · Cards', '2 · Jugadores', '3 · Generar'/.test(FI) && /nombrePdf\('plantel'/.test(FI)
+    && /plantel: \(d\) =>/.test(fs.readFileSync('js/sgadd-ui.js', 'utf8')));
+  const UI = require('./js/sgadd-ui.js');
+  check('el archivo se llama «Plantel <equipo>»', UI.nombrePdf('plantel', { equipo: "RECONQUISTA 'A' - MM" }).indexOf('Plantel') === 0 && UI.nombrePdf('plantel', {}) === 'Pack_Plantel', UI.nombrePdf('plantel', { equipo: "RECONQUISTA 'A' - MM" }));
+  check('la vista del plantel ofrece el botón', /SGADD_FICHA\.abrirPack\('\$\{SGADD_UI\.escJs\(clave\)\}'\)/.test(fs.readFileSync('js/sgadd-jugadores.js', 'utf8')));
+  const css = fs.readFileSync('index.html', 'utf8');
+  check('en el papel cada jugador arranca en hoja nueva, salvo el primero', /#fichaSalida \.ficha-jugador \+ \.ficha-jugador \{\s*page-break-before: always; break-before: page;/.test(css));
+  check('el bloque del play-by-play ya no va entero: se parte entre mapas', !/\.mapa-pbp-jugador \{\s*display: block !important;\s*page-break-inside: avoid/.test(css)
+    && /\[data-reloj-jugador-mapa\] \{\s*page-break-inside: avoid; break-inside: avoid;/.test(css));
+}
+
+console.log('\n' + (mal ? '✗ HAY FALLAS   ' : '✓ TODO OK   ') + ok + ' pasaron, ' + mal + ' fallaron');
+process.exit(mal ? 1 : 0);

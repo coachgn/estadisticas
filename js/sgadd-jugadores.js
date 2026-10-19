@@ -2500,10 +2500,14 @@ function jugadoresPlantelEquipo(idx) {
         </h3>
         <!-- Con el picker escondido este boton es el UNICO camino de vuelta,
              asi que dice a donde lleva y no que hace por dentro. -->
+        <span class="flex flex-wrap gap-2">
+        ${typeof SGADD_FICHA !== 'undefined' && lista.length ? `<button type="button" onclick="SGADD_FICHA.abrirPack('${SGADD_UI.escJs(clave)}')" data-no-print
+          class="text-[11px] text-accent border border-accent/60 hover:bg-accent/10 rounded px-2.5 py-1 transition-colors">🖨 Pack PLANTEL</button>` : ''}
         <button type="button" onclick="jugadoresElegirEquipo('${SGADD_UI.escJs(clave)}')"
           class="text-[11px] text-muted hover:text-accent border border-hairline hover:border-accent rounded px-2.5 py-1 transition-colors">
           ← Elegir otro equipo
         </button>
+        </span>
       </div>
       <p class="text-[11px] text-muted mb-4">
         ${lista.length} jugador${lista.length === 1 ? '' : 'es'}, ordenados por minutos de mayor a menor.
@@ -2884,27 +2888,33 @@ function jugadoresTabGeneral(idx, j) {
     filas: clavesMarcador.map(k => idx.leerJugador(j, k)).filter(Boolean),
   };
 
+  /* Cada bloque lleva `data-subcard` (2026-10-18): la exportación a PDF
+     arma su lista de cards y sub-cards desde ESTAS marcas y poda lo que el
+     DT destilda (SGADD_FICHA). Un bloque nuevo sin marca no se puede elegir
+     y un test lo denuncia. Las marcas no cambian nada en pantalla. */
   return `
-    ${jugadoresBloqueADN(sintesis)}
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+    <div data-subcard="general.adn">${jugadoresBloqueADN(sintesis)}</div>
+    <div data-subcard="general.sintesis" class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
       ${jugadoresTarjetaSintesis(sintesis.impacto)}
       ${jugadoresTarjetaSintesis(sintesis.eficiencia)}
       ${jugadoresTarjetaSintesis(conclusionBloque)}
     </div>
-    ${jugadoresBloqueCondicion(idx, j)}
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">${cards}</div>
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-      ${carta('uso')}
-      ${carta('pases')}
+    <div data-subcard="general.condicion">${jugadoresBloqueCondicion(idx, j)}</div>
+    <div data-subcard="general.kpis" class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">${cards}</div>
+    <div data-subcard-de="general.uso general.pases" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div data-subcard="general.uso">${carta('uso')}</div>
+      <div data-subcard="general.pases">${carta('pases')}</div>
     </div>
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      ${SGADD_UI.metricTable(vistaMarcador)}
-      ${SGADD_UI.metricTable(vistaOtras)}
+    <div data-subcard="general.tablas">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        ${SGADD_UI.metricTable(vistaMarcador)}
+        ${SGADD_UI.metricTable(vistaOtras)}
+      </div>
+      <p class="text-[11px] text-muted mt-4 leading-snug">
+        Percentiles contra el resto de la liga que llega al umbral de minutos.
+        ${j.__califica ? '' : 'Este jugador está debajo de ese umbral: sus datos se muestran, pero sin percentil, para no mentir con poca muestra.'}
+      </p>
     </div>
-    <p class="text-[11px] text-muted mt-4 leading-snug">
-      Percentiles contra el resto de la liga que llega al umbral de minutos.
-      ${j.__califica ? '' : 'Este jugador está debajo de ese umbral: sus datos se muestran, pero sin percentil, para no mentir con poca muestra.'}
-    </p>
     ${jugadoresBloqueVara(idx)}`;
 }
 
@@ -3136,7 +3146,7 @@ function jugadoresTabTiro(idx, j) {
   const cvLg = ZONAS_TIRO.map(z => refDe(z.conv));
 
   return `
-    <div class="mb-6">
+    <div data-subcard="tiro.distribucion" class="mb-6">
       <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Distribución del tiro por zona</h5>
       <div class="scrollbox"><table class="w-full text-left">
         <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
@@ -3148,8 +3158,8 @@ function jugadoresTabTiro(idx, j) {
         (no por convertido). C/I son promedios por partido, no acumulado de temporada.
       </p>
     </div>
-    <div class="mb-6">${carta('tiro')}</div>
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div data-subcard="tiro.carta" class="mb-6">${carta('tiro')}</div>
+    <div data-subcard="tiro.graficos" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       ${equiposPanel('Volumen por zona · intentos por partido',
         SGADD_CHARTS.barrasComparadas('chTiroVol', etiquetas, volEq, volLg,
           { nombreEquipo: j['NOMBRES'], nombreLiga: refTiro.grupo.label,
@@ -3168,7 +3178,7 @@ function jugadoresTabTiro(idx, j) {
 function jugadoresBloqueMapaPbp(j) {
   if (typeof SGADD_PBP === 'undefined' || !SGADD_PBP.activa() || !j) return '';
   return `
-    <div class="mt-6 no-imprimir mapa-pbp-jugador">
+    <div class="mt-6 no-imprimir mapa-pbp-jugador" data-subcard-de="tiro.mapa tiro.reloj tiro.reloj-franjas">
       <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Mapa de tiro y diagnóstico individual · play-by-play</h5>
       ${SGADD_PBP.espacioJugador(j['NOMBRES'], j['EQUIPO'])}
     </div>`;

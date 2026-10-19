@@ -75,8 +75,22 @@ const SGADD_CHARTS = (function () {
   const instancias = {};
   let pendientes = [];
 
+  /* EL PREFIJO DE LOS CANVAS (2026-10-18, pack PLANTEL): varias fichas en
+     un mismo documento repiten los ids de sus gráficos (chTiroVol…). Lo que
+     se encola mientras rige un prefijo dibuja en `prefijo + id`; quien arma
+     el documento renombra sus <canvas> con el mismo prefijo. */
+  let prefijoEncolar = '';
+  let prefijoCrear = '';
+  function conPrefijo(prefijo, fn) {
+    const antes = prefijoEncolar;
+    prefijoEncolar = String(prefijo || '');
+    try { return fn(); } finally { prefijoEncolar = antes; }
+  }
   /** Los canvas recién existen después del innerHTML: se dibuja al final. */
-  function encolar(fn) { pendientes.push(fn); }
+  function encolar(fn) {
+    const p = prefijoEncolar;
+    pendientes.push(p ? () => { const a = prefijoCrear; prefijoCrear = p; try { fn(); } finally { prefijoCrear = a; } } : fn);
+  }
   function dibujarPendientes() {
     const cola = pendientes; pendientes = [];
     setTimeout(() => cola.forEach(f => { try { f(); } catch (e) { console.error('[charts]', e); } }), 0);
@@ -124,6 +138,7 @@ const SGADD_CHARTS = (function () {
   }
 
   function crear(id, config) {
+    id = prefijoCrear + id;
     const cv = document.getElementById(id);
     if (!cv || typeof Chart === 'undefined') return null;
     if (instancias[id]) { try { instancias[id].destroy(); } catch (e) {} }
@@ -857,7 +872,7 @@ const SGADD_CHARTS = (function () {
   }
 
   return {
-    COL, crear, encolar, dibujarPendientes, limpiar, baseOpciones, ejes,
+    COL, crear, encolar, conPrefijo, dibujarPendientes, limpiar, baseOpciones, ejes,
     repintarParaPapel,
     barrasRanking, barrasComparadas, convertidosErrados, radar, tiroPartido, evolucion, evolucionJugador, scatterUsoEficiencia,
     inicialesJugador, radioNodo, MIN_SCATTER,

@@ -1016,6 +1016,12 @@ const SGADD_UI = (function () {
       return sanearNombreArchivo(r ? 'Scouting vs ' + r : '', 'Informe_Scouting');
     },
 
+    /* Pack PLANTEL (2026-10-18) → "Plantel Reconquista" */
+    plantel: (d) => {
+      const e = d && d.equipo ? nombreEquipoPdf(d.equipo) : '';
+      return sanearNombreArchivo(e ? 'Plantel ' + e : '', 'Pack_Plantel');
+    },
+
     /* Ficha de equipo → "Ficha Reconquista" */
     equipo: (d) => {
       const e = d && d.equipo ? nombreEquipoPdf(d.equipo) : '';

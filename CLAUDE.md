@@ -72,6 +72,8 @@ node test-fichajes.js      # 221 tests · Fichajes: ficha manual, padrón, filtr
                            #             · y PADRON J del libro, que completa las fichas sin pisarlas
 node test-padron-j.js      #  35 tests · la pestaña PADRON J → fichas: fechas, claves, campos inválidos, fusión,
                            #             fotos y dorsales (punto 96)
+node test-ficha-pdf.js     #  32 tests · la ficha en PDF a elección: las marcas data-subcard del render contra la
+                           #             estructura, la poda sin huecos, la titularidad con el dato y el Pack PLANTEL (129)
 node test-pdf-layout.js    #  37 tests · claves arriba del resto, el flujo continuo, la
                            #             tabla que se parte por filas y que ningún :hover
                            #             pinte la hoja impresa
@@ -153,7 +155,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7897 tests en total. Todos tienen que dar verde antes de commitear.**
+**7929 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -271,7 +273,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=287`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=288`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -14868,3 +14870,72 @@ Verificado al revés: sin la conversión caen 5; sin el octavo del segundo 7, 3.
 1. Push del front (`?v=287`).
 2. Igual conviene subir los paquetes regenerados (`node herramientas/subir-paquetes.js --confirmar`
    en `motorstats-ingestion`): trae el dato exacto y la franja de cada tiro.
+
+---
+
+## 129. LA FICHA EN PDF A ELECCIÓN · CARDS Y SUB-CARDS, Y EL PACK PLANTEL (2026-10-18)
+
+Pedido del club: elegir de a una las cards y sub-cards de la ficha del
+jugador, y bajar el plantel entero en un solo PDF. Assets en `?v=288`.
+`test-ficha-pdf.js` fija todo lo de acá.
+
+### La lista sale de las marcas del render real, no de memoria
+
+Cada bloque de la vista lleva `data-subcard="<pestaña>.<id>"` en su render:
+
+| Pestaña | Sub-cards (dónde se marca) |
+|---|---|
+| General | `adn` · `sintesis` · `condicion` · `kpis` · `uso` · `pases` · `tablas` (`jugadoresTabGeneral`) |
+| Tiro | `distribucion` · `carta` · `graficos` (`jugadoresTabTiro`); `mapa` · `reloj` · `reloj-franjas` (`SGADD_PBP.jugador` / `relojJugador`, solo con la capa) |
+| Evolución | un gráfico por métrica (las 14 de `JUGADORES_METRICAS_EVOLUCION`) |
+| Partidos | el log entero, **destildado por defecto** (había salido de la hoja por repetir la evolución; vuelve como opción) |
+
+`SGADD_FICHA.estructura()` las declara con su nombre, y los nombres de las
+pestañas y de las cartas salen de `JUGADORES_TABS` y `JUGADORES_CARDS_REF`.
+**El test lee las marcas del fuente y las compara contra la estructura en
+los dos sentidos**: un bloque nuevo sin marca, o una marca sin declarar,
+rompe la suite. Los grupos llevan `data-subcard-de="a b"` y se quitan
+enteros si ninguno de sus hijos quedó (no queda la grilla vacía); el
+contenedor del play-by-play declara sus tres hijos, así que con los tres
+destildados ni se pide el paquete. Las marcas no cambian nada en pantalla.
+
+### La poda · se QUITA, no se esconde
+
+`podarHtml` (puro, sobre el texto del mismo `jugadoresTab()` de la
+pantalla, con los `<div>` anidados balanceados) y `podarDom` (lo que el
+play-by-play monta después, tras esperarlo). Lo destildado no deja hueco.
+Una marca que no está declarada se conserva. Destildar una sección arrastra
+a sus sub-cards; una sección entra si tiene algo adentro. La selección se
+recuerda entre aperturas.
+
+**La evolución ya no abre hoja.** Con el corte fijo, cada vez que Tiro
+terminaba a mitad de carilla quedaba media hoja en blanco: medido en el PDF
+real del pack (Chrome headless, 4 jugadores de la demo), **20 hojas → 16**.
+El título va pegado a su primer gráfico. El bloque del play-by-play tampoco
+va entero (ahora mide más que una hoja): no se parte cada mapa.
+
+### Pack PLANTEL · un solo PDF
+
+Botón «🖨 Pack PLANTEL» en el plantel de Jugadores (con un equipo elegido).
+Un modal de tres pasos: **1 · Cards** (el mismo árbol), **2 · Jugadores**
+(checklist por minutos, con «Todos», «Ninguno», «Titulares» y «Sustitutos»),
+**3 · Generar**. Sale `Plantel <Equipo>.pdf`; cada jugador arranca en una
+hoja nueva (`.ficha-jugador + .ficha-jugador`), y una pestaña sin datos de un
+jugador se saltea en SU ficha.
+
+- **Titulares y Sustitutos solo con el dato** (`porTitularidad`): titular =
+  arrancó la mitad o más de SUS partidos según la columna TITULAR (punto 97).
+  Sin el dato el jugador no es ni una cosa ni la otra, y sin dato en la
+  planilla los dos atajos quedan apagados y lo dicen: el motor no infiere
+  titularidad (punto 8). La demo no lo trae.
+- **Los gráficos de varias fichas no se pisan**: `SGADD_CHARTS.conPrefijo(p, fn)`
+  hace que lo encolado dibuje en `p + id`, y `prefijarCanvas` renombra los
+  `<canvas>` de esa ficha. Medido: 16 jugadores, 15 gráficos, 15 ids
+  distintos y los 15 dibujados.
+- El guard de `puedeVerEquipo` vale también acá: en la demo (cliente de
+  EQUIPO 1) el pack de otro equipo no se arma.
+
+Verificado en el navegador sobre la demo: ficha individual (destildar Tiro
+arrastra sus sub-cards, `kpis` fuera, el log adentro, archivo «Jugador 15») y
+pack completo. El PDF real se generó con Chrome headless y se leyó hoja por
+hoja con `pdftotext`.

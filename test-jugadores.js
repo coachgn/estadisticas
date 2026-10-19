@@ -1166,12 +1166,13 @@ const jugJs = require('fs').readFileSync('./js/sgadd-jugadores.js', 'utf8');
 check('cada sección de la ficha apunta a un tab real de Jugadores',
   FICHA.SECCIONES.every(x => J.JUGADORES_TABS.some(t => t.id === x.tab)),
   FICHA.SECCIONES.map(x => x.tab).join(','));
-/* El log de partidos SALIÓ de la lista: repetía con 13 filas lo que el
-   gráfico de evolución ya cuenta, y ese lugar lo ocupan las métricas. */
-check('el log de partidos ya no es una opción de la hoja',
-  !FICHA.SECCIONES.some(x => x.id === 'partidos'),
+/* El log de partidos salió de la hoja por repetir lo que el gráfico de
+   evolución ya cuenta; desde el selector modular (2026-10-18) vuelve como
+   OPCIÓN, destildada: la lista refleja la estructura real de la vista. */
+check('el log de partidos es una opción, destildada por defecto',
+  FICHA.SECCIONES.some(x => x.id === 'partidos' && !x.pre),
   FICHA.SECCIONES.map(x => x.id).join(','));
-check('las tres secciones vienen tildadas', FICHA.SECCIONES.every(x => x.pre));
+check('general, tiro y evolución vienen tildadas', FICHA.SECCIONES.filter(x => x.id !== 'partidos').every(x => x.pre));
 
 /* La evolución es la única con SUBSECCIONES: no es "sí o no" sino cuáles de
    las 14 métricas. Antes se exportaba solo la que estaba en pantalla y el DT
@@ -1244,8 +1245,11 @@ check('el selector de métrica no deja su etiqueta huérfana en el papel',
 
 /* El título quedaba al pie de una hoja y el gráfico arrancaba en la
    siguiente. Y ahora que son varios gráficos, el bloque es largo. */
-check('la evolución abre hoja propia',
-  /modo-ficha-print #fichaSalida \[data-bloque="evolucion"\] \{[^}]*page-break-before: always/.test(htmlApp));
+/* Desde el selector modular (2026-10-18) la evolución NO abre hoja: el
+   corte fijo dejaba media carilla en blanco. Su título va pegado al gráfico. */
+check('la evolución sigue el flujo, sin corte fijo, con el título pegado a su gráfico',
+  !/modo-ficha-print #fichaSalida \[data-bloque="evolucion"\] \{[^}]*page-break-before: always/.test(htmlApp)
+    && /\[data-bloque="evolucion"\] > h2,[\s\S]{0,140}page-break-after: avoid/.test(htmlApp));
 
 /* ---------------------------------------------------------------------
    LOS PUNTOS DEL GRÁFICO SON EL ESCUDO DEL RIVAL
