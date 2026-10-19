@@ -390,5 +390,115 @@ seccion('5 · la app real: FIBA de la categoría (Olimpo / Alem) y la Clausura c
   SGADD.CATALOGO.planillas = planillasAntes;
 }
 
+/* =====================================================================
+   6 · EL LIBRO VINCULADO DE PLAYOFFS CON LA CARPETA AL REVÉS (punto 134)
+
+   El caso de Bahía, tal como está en el catálogo: la fase de Cruces dice
+   FASE = APERTURA y torneo APERTURA, con su libro vinculado de la zona Oro;
+   el libro, armado desde la carpeta «OCTAVOS - APERTURA», trae
+   TORNEO = OCTAVOS y FASE = APERTURA. El selector mostraba el tramo con
+   datos Y la misma fase «· llave», que abría el modo llave.
+   ===================================================================== */
+seccion('6 · libro vinculado de playoffs: una sola opción y la llave con datos');
+const DECL_BAHIA = { fases: [{ id: 'octavos', label: 'Octavos de Final - APERTURA', libro: ['APERTURA'],
+  cruce: 'zona', zonaLibro: 'octavos-apertura', torneo: 'APERTURA', serie: { mejorDe: 3 },
+  cruces: [{ id: 'O1', a: { zona: 'oro', puesto: 1 }, b: { zona: 'oro', puesto: 4 } },
+    { id: 'O2', a: { zona: 'oro', puesto: 2 }, b: { zona: 'oro', puesto: 3 } }] }] };
+const OCT = [].concat(
+  partido('20/04/2026', 'OCTAVOS', 'APERTURA', NAP, ALE, 80, 60),
+  partido('22/04/2026', 'OCTAVOS', 'APERTURA', ALE, NAP, 61, 79),
+  partido('20/04/2026', 'OCTAVOS', 'APERTURA', EST, OLI, 70, 72));
+{
+  const p = F.parsear(DECL_BAHIA, { zonasValidas: ['oro'], participan: { 'octavos-apertura': ['oro'] } });
+  check('la declaración de Bahía se lee sin errores', !p.errores.length, p.errores);
+  const fases = p.fases;
+  const conDatos = SGADD.combinacionesTorneoFase(libro(AP_REG.concat(OCT)));
+  check('el libro trae el tramo al revés: OCTAVOS|APERTURA', conDatos.some(t => t.id === 'OCTAVOS|APERTURA'), conDatos.map(t => t.id));
+  const sel = F.enriquecerTramos(conDatos, fases);
+  const deOct = sel.filter(t => t.declarada === 'octavos');
+  check('UNA sola opción para los octavos', deOct.length === 1, sel.map(t => t.id + ' «' + t.label + '»'));
+  check('es el tramo con datos, no la llave', deOct[0] && deOct[0].id === 'OCTAVOS|APERTURA' && !deOct[0].llave);
+  check('sin el sufijo «· llave» y con el nombre del reglamento', deOct[0] && deOct[0].label === 'Octavos de Final - APERTURA', deOct[0] && deOct[0].label);
+  check('ninguna opción de llave en el selector', !sel.some(t => t.llave));
+  check('la regular del Apertura no se confunde con los octavos', !sel.find(t => t.id === 'APERTURA|REGULAR').declarada);
+  check('el tramo se reconoce como eliminación (Clasificación pinta la llave)', F.tipoDe('APERTURA', fases, 'OCTAVOS') === 'eliminacion');
+
+  const sinJugar = F.enriquecerTramos(SGADD.combinacionesTorneoFase(libro(AP_REG)), fases);
+  check('si el equipo no jugó los octavos, la llave SÍ se ofrece', sinJugar.filter(t => t.declarada === 'octavos').length === 1
+    && sinJugar.some(t => t.llave), sinJugar.map(t => t.id));
+
+  const dos = F.parsear({ fases: [
+    { id: 'octavos', label: 'Octavos de Final - APERTURA', libro: ['APERTURA'], torneo: 'APERTURA', serie: { mejorDe: 3 } },
+    { id: 'cuartos', label: 'Cuartos de Final - APERTURA', libro: ['APERTURA'], torneo: 'APERTURA', serie: { mejorDe: 3 } }] }).fases;
+  check('con octavos y cuartos sobre el mismo valor, cada tramo va a su instancia',
+    (F.declaradaDe(dos, 'APERTURA', 'OCTAVOS') || {}).id === 'octavos' && (F.declaradaDe(dos, 'APERTURA', 'CUARTOS') || {}).id === 'cuartos');
+  const bien = F.parsear({ fases: [{ id: 'oct', label: 'Octavos', libro: ['OCTAVOS'], torneo: 'APERTURA', serie: { mejorDe: 3 } }] }).fases;
+  check('declarada «al derecho» (FASE OCTAVOS) también calza con la carpeta al revés', !!F.declaradaDe(bien, 'APERTURA', 'OCTAVOS'));
+  check('una carpeta al derecho sigue calzando como antes', (F.declaradaDe(bien, 'OCTAVOS', 'APERTURA') || {}).id === 'oct');
+  check('otro torneo no calza (Clausura)', !F.declaradaDe(fases, 'CLAUSURA', 'OCTAVOS'));
+
+  /* La postemporada del servidor: sus partidos traen el TORNEO del libro. */
+  const ctx0 = { tablas: {}, nombresZona: {}, partidosPorFase: {} };
+  F.mezclarLlave(ctx0, fases, { zonas: {}, postemporada: { partidos: [
+    { fase: 'APERTURA', torneo: 'OCTAVOS', zonaLibro: 'octavos-apertura', fecha: '2026-04-20', local: NAP, visitante: ALE, ptsLocal: 80, ptsVisitante: 60 },
+    { fase: 'APERTURA', torneo: 'CLAUSURA', zonaLibro: 'otra', fecha: '2026-10-20', local: NAP, visitante: ALE, ptsLocal: 80, ptsVisitante: 60 }] } }, 'oro', null);
+  check('la llave del servidor suma los partidos de los octavos (y no los de otro libro)',
+    (ctx0.partidosPorFase.octavos || []).length === 1, (ctx0.partidosPorFase.octavos || []).length);
+}
+
+seccion('6 bis · la app real con el libro vinculado fusionado');
+{
+  const root = { innerHTML: '' };
+  const CAT = 'leandro-n-alem-primera-oro';
+  const hojas = libro(AP_REG.concat(OCT));
+  const ctx = {
+    console, Promise, JSON, Math, Date, Map, Set, WeakMap, Array, Object, String, Number, RegExp, Error, Infinity,
+    SGADD: SGADD, SGADD_UI: require('./js/sgadd-ui.js'),
+    CLUB: { cfg: {}, estado: { id: 'leandro-n-alem' } },
+    window: { location: { hash: '#clasificacion' } }, location: { hash: '#clasificacion' },
+    history: { pushState() {}, replaceState() {} },
+    setTimeout: () => 0, clearTimeout() {},
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    document: { getElementById: (id) => (id === 'view-root' ? root : null), querySelector: () => null,
+      querySelectorAll: () => [], getElementsByTagName: () => [] },
+    LOGOS: { getUrl: () => null, iniciales: (n) => String(n).slice(0, 2) },
+    currentSection: 'clasificacion',
+  };
+  ctx.globalThis = ctx;
+  vm.createContext(ctx);
+  ['sgadd-config.js', 'sgadd-app.js', 'sgadd-clasificacion.js', 'sgadd-fixture.js', 'sgadd-fases.js'].forEach((f) => {
+    vm.runInContext(fs.readFileSync('./js/' + f, 'utf8'), ctx, { filename: f });
+  });
+  const planillasAntes = SGADD.CATALOGO.planillas;
+  SGADD.CATALOGO.planillas = [{ id: CAT, slug: CAT, label: 'Primera Oro', activo: true, torneoId: 'bahia', zonaId: 'oro' }];
+  vm.runInContext('SGADD_FIXTURE.estado.torneo = "bahia"; SGADD_FIXTURE.estado.doc = ' + JSON.stringify({
+    id: 'bahia', zonas: { oro: { label: 'Oro', equipos: [OLI, ALE, NAP, EST].map(n => ({ nombre: n })) },
+      'octavos-apertura': { label: 'Octavos - APERTURA', interzonal: true, participan: ['oro'], equipos: [] } },
+    formato: DECL_BAHIA }) + ';', ctx);
+  const APP = vm.runInContext('SGADD_APP', ctx);
+  APP.estado.planillaId = CAT;
+  APP.estado.hojas = hojas;
+  APP.estado.torneo = 'OCTAVOS';
+  APP.estado.fase = 'APERTURA';
+  APP.reindexar();
+
+  const barra = vm.runInContext('SGADD_APP.barra()', ctx);
+  const opciones = (barra.match(/<option[^>]*>[^<]*<\/option>/g) || []);
+  check('el selector trae los octavos UNA vez', opciones.filter(o => /Octavos/.test(o)).length === 1, opciones);
+  check('sin la opción «· llave»', !opciones.some(o => /· llave/.test(o)), opciones);
+  check('no se entra en modo llave', !vm.runInContext('SGADD_FASES.esLlave(SGADD_APP.estado.torneo)', ctx));
+  check('el índice del tramo trae a los equipos de los octavos (datos completos)',
+    APP.estado.idx && APP.estado.idx.liga.n === 4 && APP.estado.idx.liga.partidos === 3, APP.estado.idx && APP.estado.idx.liga);
+  check('Scouting y Equipos no quedan bloqueados', !vm.runInContext(
+    'SGADD_FASES.bloqueaEnLlave("scouting", SGADD_APP.estado.torneo) || SGADD_FASES.bloqueaEnLlave("equipos", SGADD_APP.estado.torneo)', ctx));
+  const cx = vm.runInContext('SGADD_FASES.contexto()', ctx);
+  check('la llave toma los partidos del libro vinculado', (cx.partidosPorFase.octavos || []).length === 3,
+    (cx.partidosPorFase.octavos || []).length);
+  root.innerHTML = vm.runInContext('buildClasificacion()', ctx);
+  check('Clasificación pinta la llave de los octavos, sin el aviso de «solo la llave»',
+    /Octavos de Final/.test(root.innerHTML) && !/solo la llave/.test(root.innerHTML), root.innerHTML.slice(0, 300));
+  SGADD.CATALOGO.planillas = planillasAntes;
+}
+
 console.log('\n' + (mal ? '✗ HAY FALLAS · ' : '✓ TODO OK · ') + ok + ' pasaron, ' + mal + ' fallaron');
 process.exit(mal ? 1 : 0);

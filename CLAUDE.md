@@ -24,7 +24,7 @@ node test-config.js        # 318 tests · zonas de tabla, tramos, tonos AA, pest
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
 node test-desempate-fiba.js # 37 tests · el desempate oficial FIBA: duelo directo, mini-tabla,
                            #             la vuelta a empezar (D.3), cociente y los manuales (punto 132)
-node test-arrastre-fases.js # 70 tests · el arrastre de puntos, los playoffs que no tocan la regular,
+node test-arrastre-fases.js # 91 tests · el arrastre de puntos, los playoffs que no tocan la regular,
                            #             el acumulado, las fases por torneo/tabla, la final extra y
                            #             el desempate de la CATEGORÍA (Olimpo / Alem) en la app real (punto 133)
 node test-boot.js          # 184 tests · arranque por club, sintaxis de los módulos, carteles de espera
@@ -281,7 +281,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=292`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=293`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15259,3 +15259,54 @@ playoffs**: hoy el libro solo trae `APERTURA|REGULAR`.
 3. La llave, cuando MotorStats escriba los playoffs: los valores de FASE y
    TORNEO de cada instancia salen del nombre de la carpeta.
 4. Deploy del backend (`llave.js` y `compartido/sgadd-config.js`).
+
+---
+
+## 134. LA CARPETA AL REVÉS · una sola opción para la fase del libro vinculado (2026-10-19)
+
+Reportado en Bahía Blanca · Primera Oro: el selector mostraba
+«Octavos - Apertura» (el tramo con datos) **y** «Octavos de Final -
+APERTURA · llave», y la segunda abría «Fase entre zonas · solo la llave»
+sobre un libro que el cliente sí recibe. Assets en `?v=293`;
+`test-arrastre-fases.js` (secciones 6 y 6 bis) lo fija.
+
+### Lo medido (solo lectura de KV y del libro)
+
+```
+catálogo   fase «octavos»: libro [APERTURA] · torneo APERTURA · zonaLibro octavos-apertura · cruce zona
+libro      bahia-blanca-2026-octavos-apertura → un solo tramo: OCTAVOS|APERTURA
+```
+
+MotorStats arma TORNEO y FASE del nombre de la carpeta («TORNEO - FASE»), y
+la carpeta se llamó «OCTAVOS - APERTURA»: el libro trae TORNEO = OCTAVOS y
+FASE = APERTURA. La declaración exigía torneo APERTURA, no calzaba, y
+`enriquecerTramos` sumaba la fase como llave. **No era un problema de
+acceso**: el cliente ya recibía los partidos por la fusión del punto 77.
+
+### El arreglo · `SGADD_FASES.calza(f, fase, torneo)`
+
+UN criterio para decidir si una fase declarada es un tramo del libro, que
+usan el selector (`enriquecerTramos`), `declaradaDe` / `tipoDe`, los
+partidos de la fase en `contexto()` y los de la postemporada en
+`mezclarLlave`. Además del cruce directo, reconoce la **carpeta al revés**
+(`invertido`): el TORNEO es una instancia de eliminación del núcleo y la
+FASE no. Ahí el torneo real es la FASE, y la instancia se compara con la de
+la declaración (`instanciaDe`: la del libro si es del núcleo, si no la del
+id o el nombre), así octavos y cuartos sobre el mismo valor no se cruzan.
+
+- **El dato no se toca**: el id del tramo, la ruta y los links siguen
+  siendo `OCTAVOS|APERTURA`. Solo cambia el nombre que muestra el selector
+  (el del reglamento, sin «Octavos - » adelante) y que no se agrega la llave.
+- Un tramo al revés sin declaración también es eliminación (`tipoDe`).
+- **La llave se sigue ofreciendo** cuando el equipo de la categoría no jugó
+  esa fase (su libro no trae el tramo). Para una fase de la propia zona el
+  aviso ya no dice «entre zonas»: dice que llegan los partidos que jugó su
+  equipo y que todavía no jugó ninguno.
+- El servidor (`llave.js`) ya cruzaba la postemporada solo por FASE y libro:
+  no cambió.
+
+Verificado al revés: sin la detección de la carpeta invertida caen 11; con
+el filtro viejo de `mezclarLlave`, 1.
+
+**Lo prolijo sigue siendo nombrar la carpeta «APERTURA - OCTAVOS»** (o
+declarar la fase con FASE = OCTAVOS): el panel ya no depende de eso.

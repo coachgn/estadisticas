@@ -330,6 +330,51 @@ const SGADD_FASES = (function () {
     return fases;
   }
 
+  /* LA CARPETA AL REVÉS (punto 134). MotorStats arma TORNEO y FASE del
+     nombre de la carpeta, «TORNEO - FASE». El libro de los octavos del
+     Apertura de Bahía se llamó «OCTAVOS - APERTURA», así que trae
+     TORNEO = OCTAVOS y FASE = APERTURA, y la fase declarada en Cruces
+     (FASE APERTURA, torneo APERTURA) no lo reconocía: el selector mostraba
+     el tramo con datos Y la misma fase como «· llave», y elegir esa abría
+     el modo llave sobre un libro que el cliente sí tiene.
+
+     Se reconoce cuando el TORNEO es una instancia de eliminación del núcleo
+     y la FASE no lo es. El dato no se toca —el id del tramo, la ruta y los
+     links siguen siendo los del libro—: lo que se corrige es el CRUCE con
+     la declaración. */
+  function invertido(torneo, faseLibro) {
+    return esEliminacionDelNucleo(torneo) && !esEliminacionDelNucleo(faseLibro);
+  }
+
+  /* La instancia que nombra una fase declarada: la del libro si es del
+     núcleo, si no la del id o el nombre. Sin ninguna, `null` (no excluye). */
+  const INSTANCIAS = [['OCTAVOS', /octav/i], ['CUARTOS', /cuart/i], ['SEMIFINAL', /semi/i],
+    ['REPECHAJE', /repech/i], ['RECLASIFICACION', /reclasif/i], ['FINAL', /final/i]];
+  function instanciaDe(f) {
+    const delLibro = (f.libro || []).find(esEliminacionDelNucleo);
+    if (delLibro) return delLibro === 'SEMIFINALES' ? 'SEMIFINAL' : delLibro;
+    const txt = texto(f.id) + ' ' + texto(f.labelDeclarado || f.label);
+    const hit = INSTANCIAS.find(par => par[1].test(txt));
+    return hit ? hit[0] : null;
+  }
+
+  /**
+   * ¿Esta fase declarada es la del tramo `torneoLibro|faseLibro`? UN SOLO
+   * criterio para el selector, la llave, los partidos de la fase y los de
+   * la postemporada: con dos, uno ve la fase y el otro no.
+   */
+  function calza(f, faseLibro, torneoLibro) {
+    if (!f) return false;
+    const v = mayus(faseLibro), t = mayus(torneoLibro);
+    if (f.libro.indexOf(v) !== -1 && (!f.torneo || !t || t === f.torneo || t.indexOf('*') === 0)) return true;
+    if (!t || !invertido(t, v)) return false;
+    if (f.torneo && f.torneo !== v) return false;
+    if (f.libro.indexOf(t) !== -1) return true;
+    const inst = instanciaDe(f);
+    const tN = t === 'SEMIFINALES' ? 'SEMIFINAL' : t;
+    return f.libro.indexOf(v) !== -1 && (!inst || inst === tN);
+  }
+
   /** La fase declarada que corresponde a un valor de la columna FASE. */
   /* Con `torneo` (punto 133) se prefiere la fase declarada para ESE
      torneo; una sin torneo vale para cualquiera. Sin torneo, o con un
@@ -338,8 +383,9 @@ const SGADD_FASES = (function () {
     const v = mayus(faseLibro);
     const cands = (fases || []).filter(f => f.libro.indexOf(v) !== -1);
     const t = mayus(torneo);
-    if (t && t.indexOf('*') === -1 && cands.length) {
-      return cands.find(f => f.torneo === t) || cands.find(f => !f.torneo) || null;
+    if (t && t.indexOf('*') === -1) {
+      return (fases || []).find(f => f.torneo && calza(f, v, t))
+        || (fases || []).find(f => !f.torneo && calza(f, v, t)) || null;
     }
     return cands[0] || null;
   }
@@ -348,7 +394,7 @@ const SGADD_FASES = (function () {
   function tipoDe(faseLibro, fases, torneo) {
     const d = declaradaDe(fases, faseLibro, torneo);
     if (d) return d.tipo;
-    return esEliminacionDelNucleo(faseLibro) ? 'eliminacion' : 'liga';
+    return esEliminacionDelNucleo(faseLibro) || invertido(torneo, faseLibro) ? 'eliminacion' : 'liga';
   }
 
   /* =====================================================================
@@ -395,15 +441,19 @@ const SGADD_FASES = (function () {
       if (!d) return t;
       const general = CORE && t.torneo === CORE.TORNEO_GENERAL;
       const corte = t.label.lastIndexOf(' - ');
-      const label = general || corte < 0 ? d.label : t.label.slice(0, corte) + ' - ' + d.label;
+      /* Con la carpeta al revés el prefijo del tramo es la instancia
+         («Octavos - …»), que el nombre declarado ya dice. */
+      const label = general || corte < 0 || invertido(t.torneo, t.fase)
+        ? d.label : t.label.slice(0, corte) + ' - ' + d.label;
       return Object.assign({}, t, { label: label, declarada: d.id });
     });
     /* LA FASE DECLARADA QUE TODAVÍA NO SE JUGÓ SE VE, PERO NO SE ELIGE.
        Es el patrón de la categoría sin libro (punto 6): el DT sabe que
        existe y no entra a una vista vacía. */
     (fases || []).forEach((f) => {
-      const tiene = lista.some(t => f.libro.indexOf(mayus(t.fase)) !== -1
-        && (!f.torneo || mayus(t.torneo) === f.torneo || String(t.torneo || '').indexOf('*') === 0));
+      /* Con el MISMO criterio que el nombre de arriba: si el tramo con
+         datos ya es esta fase, no se agrega una segunda opción (punto 134). */
+      const tiene = lista.some(t => calza(f, t.fase, t.torneo));
       if (tiene) return;
       /* UNA FASE ENTRE ZONAS SÍ SE ELIGE aunque el libro de la zona no la
          tenga: su llave se arma con las posiciones de cada zona y los
@@ -1014,9 +1064,8 @@ const SGADD_FASES = (function () {
       /* EL MISMO VALOR DE FASE EN DOS LIBROS («SEMIFINAL» de los playoffs
          A y de los B) no se mezcla: si la fase dice en qué libro se juega,
          solo entran los partidos de ESE libro (punto 78). */
-      const deFase = post.filter(x => f.libro.indexOf(mayus(x.fase)) !== -1
-        && (!f.zonaLibro || !x.zonaLibro || x.zonaLibro === f.zonaLibro)
-        && (!f.torneo || !x.torneo || mayus(x.torneo) === f.torneo)).map(partidoDeLlave)
+      const deFase = post.filter(x => (x.torneo ? calza(f, x.fase, x.torneo) : f.libro.indexOf(mayus(x.fase)) !== -1)
+        && (!f.zonaLibro || !x.zonaLibro || x.zonaLibro === f.zonaLibro)).map(partidoDeLlave)
         .filter((x) => { const k = clavePartido(x); if (ya.has(k)) return false; ya.add(k); return true; });
       if (deFase.length) ctx.partidosPorFase[f.id] = (ctx.partidosPorFase[f.id] || []).concat(deFase);
     });
@@ -1031,6 +1080,23 @@ const SGADD_FASES = (function () {
        pantalla es este aviso y no la sección: al volver a una fase de la
        zona hay que pasar por el router, porque la sección no tiene dónde
        pintarse (punto 79). */
+    /* UNA FASE DE LA PROPIA ZONA con libro vinculado (punto 134) no es
+       «entre zonas»: llega al modo llave solo cuando el equipo de la
+       categoría no jugó ningún partido de esa fase (punto 77). Decir lo
+       que pasó, no algo que no aplica. */
+    let d = null;
+    try {
+      const st = SGADD_APP.estado;
+      d = declaradaDe(visibles(), st.fase, null);
+    } catch (e) { d = null; }
+    if (d && d.cruce !== 'interzonal') {
+      return '<div data-modo-llave class="card rounded-xl p-4 sm:p-5 border border-hairline mt-5">'
+        + '<h3 class="font-display uppercase tracking-wide text-sm text-ink mb-2">' + esc(d.label) + ' · solo la llave</h3>'
+        + '<p class="text-xs text-muted">Los partidos de esta fase están en el libro de la postemporada, y a tu panel '
+        + 'llegan con estadísticas los que jugó tu equipo. Como todavía no jugó ninguno, acá ves '
+        + '<b class="text-ink">los cruces y cómo van las series</b> —en <b class="text-ink">Clasificación</b> y '
+        + '<b class="text-ink">Fixture</b>—. Cuando tu equipo juegue esta fase, aparece en el selector con sus datos.</p></div>';
+    }
     return '<div data-modo-llave class="card rounded-xl p-4 sm:p-5 border border-hairline mt-5">'
       + '<h3 class="font-display uppercase tracking-wide text-sm text-ink mb-2">Fase entre zonas · solo la llave</h3>'
       + '<p class="text-xs text-muted">Esta fase se juega en el libro de la postemporada, que tu acceso no incluye: '
@@ -1081,6 +1147,18 @@ const SGADD_FASES = (function () {
       /* El libro propio alimenta solo las fases de SU zona: con el mismo
          valor de FASE, sus partidos caerían en la fase de otra (punto 78). */
       if (p.zonaId && !visibleEnZona(f, p.zonaId)) { partidosPorFase[f.id] = lista; return; }
+      /* Los tramos del libro que SON esta fase, con el criterio de
+         `calza`: con la carpeta al revés («OCTAVOS - APERTURA») el tramo
+         no se llama torneo|fase como dice la declaración (punto 134). */
+      const tramosF = (f.torneo && hojas && CORE) ? CORE.combinacionesTorneoFase(hojas)
+        .filter(t => !t.agregado && String(t.torneo || '').indexOf('*') !== 0
+          && mayus(t.torneo) !== f.torneo /* esos los toma el recorrido de abajo */
+          && calza(f, t.fase, t.torneo)) : [];
+      tramosF.forEach((t) => {
+        jugados(indiceDeTramo(hojas, t.torneo, t.fase)).forEach(x => lista.push(x));
+        ((typeof clasifManualesVigentes === 'function' ? clasifManualesVigentes(t.torneo, t.fase) : []) || [])
+          .map(manualComoPartido).forEach(x => lista.push(x));
+      });
       f.libro.forEach((v) => {
         if (f.torneo) {
           jugados(indiceDeTramo(hojas, f.torneo, v)).forEach(x => lista.push(x));
@@ -1285,7 +1363,7 @@ const SGADD_FASES = (function () {
   return {
     /* motor */
     parsear, asignarZonas, visibleEnZona, filtrarPorZona, dependenciasDe, desambiguarEtiquetas,
-    declaradaDe, tipoDe, enriquecerTramos, SIN_DATOS, LLAVE, esLlave, esEntreZonas,
+    declaradaDe, tipoDe, calza, invertido, instanciaDe, enriquecerTramos, SIN_DATOS, LLAVE, esLlave, esEntreZonas,
     mezclarLlave, partidoDeLlave, SECCIONES_EN_LLAVE, SECCIONES_QUE_USAN_LLAVE, repintarLaQueLaMuestra, bloqueaEnLlave,
     series, resumen, resolverSlot, llave, naturalezaCruce, naturalezaPartido, claveTramo, indiceDeTramo,
     faseDeFecha, tieneVentanas, tablaCerrada,
