@@ -779,10 +779,51 @@ function paquete(equipo) {
     check('son TRES franjas: 0-7, 8-17 y 18-24 s, y la metodología dice lo mismo',
       P.FRANJAS_RELOJ.join() === '0-7 s,8-17 s,18-24 s' && P.METODOLOGIA_RELOJ.franjas.map(x => x.label).join() === P.FRANJAS_RELOJ.join()
         && P.METODOLOGIA_RELOJ.franjas.every(x => x.nombre && x.lectura));
-    const viejo = conReloj({ favor: { f: [[1, 1, 2, 0, 0, 0], [1, 1, 2, 0, 0, 0], [1, 1, 2, 0, 0, 0], [1, 1, 2, 0, 0, 0]], ro: [0, 0, 0], fa: [0, 0, 0], sr: 0 } });
-    check('un paquete con las CUATRO franjas de antes no se remapea: no hay identidad y el Mapa de tiro lo dice',
-      P.relojFormaVieja(viejo) && P.relojIdentidad(viejo) === null && /data-reloj-forma-vieja/.test(P.relojMapaTiro(viejo))
-        && /próxima subida/.test(P.relojMapaTiro(viejo)) && !P.relojFormaVieja(pR));
+    /* ---- RETROCOMPATIBILIDAD · un paquete de CUATRO franjas se convierte al vuelo ----
+       0-7 ← 0-6 + un octavo de 7-14 · 8-17 ← el resto de 7-14 + la mitad de 15-20 · 18-24 ← 21-24 + la otra mitad */
+    const acc4 = (o) => Object.assign({ f: [[40, 24, 52, 8, 10, 8], [80, 40, 88, 32, 20, 16], [64, 30, 64, 28, 15, 12], [36, 12, 26, 16, 6, 8]],
+      ro: [20, 12, 26], fa: [10, 4, 9], sr: 5 }, o || {});
+    const viejo = (() => {
+      const p = conReloj({ favor: acc4(), contra: acc4(), fam: { aro: [16, 24, 8, 4], tripleFrontal: [8, 16, 10, 6] },
+        jugadores: { 1: { f: [[16, 9, 20, 2, 7, 1], [8, 4, 8, 0, 2, 0], [8, 4, 9, 2, 2, 0], [8, 3, 7, 3, 1, 1]], ro: [0, 0, 0], fa: [0, 0, 0], sr: 0 } } });
+      p.liga.reloj = { f: [[400, 260, 520, 120, 130, 100], [800, 380, 840, 350, 200, 160], [900, 420, 950, 400, 220, 160], [450, 170, 380, 200, 85, 60]],
+        ro: [300, 160, 345], fa: [270, 110, 260], sr: 200, tolerancia: 3, minimos: { finalesEquipo: 150, tirosJugador: 30, canastasFranja: 5 },
+        fam: { aro: [300, 300, 250, 100] },
+        cortes: { equipo: { temprana: corte(16, 18, 19, 20, 17), medio: corte(63, 65, 68, 69, 17), tardia: corte(14, 15.5, 19.7, 22, 17) },
+          jugador: { temprana: corte(13, 17, 20.5, 23, 172), tardia: corte(12.6, 17.2, 21.7, 25.3, 172) },
+          partido: { temprana: corte(12.7, 17.2, 22.2, 26.6, 532), tardia: corte(11.9, 16.3, 21.5, 26.4, 532) } } };
+      p.partidosPbp = [{ id: 'v1', fecha: '2026-03-01', rival: 'R', reloj: { favor: acc4(), contra: acc4() } }];
+      return p;
+    })();
+    const nv = P.normalizarReloj(viejo);
+    check('se reconoce un paquete de cuatro franjas, y uno de tres vuelve INTACTO (el mismo objeto)',
+      P.relojFormaVieja(viejo) && !P.relojFormaVieja(pR) && P.normalizarReloj(pR) === pR && P.normalizarReloj(nv) === nv && P.normalizarReloj(null) === null);
+    /* 0-6 [40,24,52,8,10,8] + octavo de 7-14 [10,5,11,4,3,2] · 7-14 − octavo + mitad de 15-20 [32,15,32,14,8,6] · 21-24 + la otra mitad */
+    check('la conversión: 0-7 suma el segundo 7, 8-17 y 18-24 se reparten 15-20 por mitades, por CUENTA y sin decimales',
+      JSON.stringify(nv.reloj.favor.f) === JSON.stringify([[50, 29, 63, 12, 13, 10], [102, 50, 109, 42, 25, 20], [68, 27, 58, 30, 13, 14]]), nv.reloj.favor.f);
+    const suma = (acc) => acc.f.reduce((a, c) => a.map((x, i) => x + c[i]), [0, 0, 0, 0, 0, 0]);
+    check('ninguna cuenta se pierde ni se inventa: las sumas de las seis columnas son las mismas',
+      JSON.stringify(suma(viejo.reloj.favor)) === JSON.stringify(suma(nv.reloj.favor)) && JSON.stringify(nv.reloj.favor.ro) === JSON.stringify(viejo.reloj.favor.ro)
+        && nv.reloj.favor.sr === 5 && nv.reloj.favor.f.every(c => c[1] <= c[0] && c.every(x => Number.isInteger(x) && x >= 0)));
+    check('también la defensa, cada jugador, las familias de zona, la liga y cada partido',
+      nv.reloj.contra.f.length === 3 && nv.reloj.jugadores[1].f.length === 3 && JSON.stringify(nv.reloj.fam.aro) === JSON.stringify([19, 25, 8])
+        && nv.liga.reloj.f.length === 3 && JSON.stringify(nv.liga.reloj.fam.aro) === JSON.stringify([338, 387, 225]) && nv.partidosPbp[0].reloj.favor.f.length === 3,
+      [nv.reloj.fam.aro, nv.liga.reloj.fam.aro]);
+    const cv = nv.liga.reloj.cortes;
+    check('los cortes de la competencia se escalan por el cambio de reparto de la liga, y lo que no existía queda sin evaluar',
+      cv.equipo.temprana.n === 17 && cv.equipo.temprana.p75 > 19 && cv.equipo.media && cv.equipo.media.p75 < 68 && cv.equipo.tardia.p75 > 19.7
+        && cv.jugador.media === null && cv.partido.tardia.p90 > 26.4 && nv.liga.reloj.aproximado === true, cv);
+    check('el original no se toca', viejo.reloj.favor.f.length === 4 && viejo.liga.reloj.f.length === 4);
+    const salidas = [P.relojMapaTiro(viejo), P.mapaCard(viejo), P.relojEquipo(viejo), P.relojJugador(viejo, '1'), P.relojPartido(viejo, viejo.partidosPbp[0]),
+      P.relojPartido(pR, { id: 'x', rival: 'R', reloj: { favor: acc4(), contra: acc4() } }), P.relojMapaTiro(viejo, { fijo: true })];
+    check('NINGÚN partido viejo queda vacío: todas las superficies dibujan su reloj', salidas.every(h => h && h.length > 200)
+      && /data-reloj-franja="2"/.test(salidas[0]) && !/data-reloj-franja="3"/.test(salidas[0]) && (salidas[4].match(/<table/g) || []).length === 2);
+    check('y dicen que es una conversión aproximada, con su criterio', salidas.every(h => /data-reloj-convertido/.test(h))
+      && /un octavo de 7-14/.test(P.AVISO_CONVERTIDO) && /mitad y mitad/.test(P.AVISO_CONVERTIDO) && !/data-reloj-convertido/.test(P.relojMapaTiro(pR)));
+    check('la conversión no deja un NaN ni un undefined', !/undefined|NaN/.test(salidas.join('')));
+    check('las etiquetas y la síntesis se calculan sobre lo convertido',
+      P.relojIdentidad(viejo).finales === 264 && P.relojSintesis(viejo).bloques.length === 3 && P.relojArquetipos(viejo) !== null,
+      P.relojIdentidad(viejo));
 
     /* ---- identidad del equipo ---- */
     const idn = P.relojIdentidad(pR);
@@ -821,7 +862,16 @@ function paquete(equipo) {
       rasgos(j2) === 'temprana-creado,tardia-asistido' && j2.rasgos[1].label === 'Válvula de escape'
         && /en los primeros 7 segundos/.test(j2.rasgos[0].detalle) && /aunque el 50,0 % de sus tiros ocurre en la ventana media de 8 a 17 s/.test(j2.rasgos[0].detalle), j2);
     check('jugador con 12 tiros con reloj: sin perfil, y el bloque lo dice', !P.relojPerfilJugador(pR, '3').muestra && /~ Muestra chica: 12 tiros con reloj/.test(P.relojJugador(pR, '3')));
-    check('jugador que reparte como la liga: ningún rasgo', rasgos(P.relojPerfilJugador(pR, '4')) === '' && /ninguna franja lo distingue/.test(P.relojJugador(pR, '4')));
+    /* 80 % de sus tiros entre los 8 y los 17 s (el cuarto alto de un jugador arranca en 66 %), con 8 de 16 asistidas
+       contra 52,5 % de la competencia en esa franja → creadas por él */
+    const j4 = P.relojPerfilJugador(pR, '4');
+    check('la franja MEDIA también perfila: mucho juego armado y canastas propias → «Creador en el juego armado»',
+      rasgos(j4) === 'media-creado' && j4.rasgos[0].label === 'Creador en el juego armado' && /entre los 8 y los 17 segundos/.test(j4.rasgos[0].detalle), j4);
+    const pJ6 = conReloj();
+    pJ6.reloj.jugadores[6] = reloj3([[6, 3, 6, 0, 1, 0], [28, 12, 24, 0, 10, 0], [6, 3, 6, 0, 1, 0]]);
+    check('con el sistema buscándolo (10 de 12 asistidas) es «Ejecutor del juego armado»; quien reparte como la liga, nada',
+      rasgos(P.relojPerfilJugador(pJ6, '6')) === 'media-asistido' && rasgos(P.relojPerfilJugador(pR, '1')) === 'temprana-asistido,tardia-creado');
+    check('la franja media no entra en las listas de quién tira temprano y tarde', !P.relojQuienes(pR).tempranos.concat(P.relojQuienes(pR).tardios).some(x => x.id === '4'));
     const j5 = P.relojPerfilJugador(pR, '5');
     check('con menos de 5 canastas en la franja no se decide si se las crean', rasgos(j5) === 'tardia' && j5.rasgos[0].label === 'Tira con el reloj encima');
     check('un jugador que no está en el paquete no tiene perfil ni bloque', P.relojPerfilJugador(pR, '99') === null && P.relojJugador(pR, '99') === '');
@@ -1001,6 +1051,20 @@ function paquete(equipo) {
     check('el mapa de una franja usa el MISMO mapa principal (conmutadores incluidos) y marca su franja', /data-pbp-franja="1"/.test(mpf)
       && /data-pbp-accion="vista:hex"/.test(mpf) && !/data-pbp-franja/.test(P.mapa(pP, { sujeto: 'equipo' })));
 
+    /* ---- la card TIRO del jugador: cuándo y desde dónde tira, por franja ---- */
+    const jf = P.relojJugadorFranjas(pP, '2');
+    check('card Tiro: el volumen de cada franja (% de sus tiros, C/I, Pts/tiro con la liga, asistidas y pérdidas)',
+      (jf.match(/data-reloj-jugador-franja="/g) || []).length === 3 && /Cuándo y desde dónde tira · por franja del reloj/.test(jf) && /\(liga 1,30\)/.test(jf));
+    check('card Tiro: el mapa COMPLETO del jugador en cada franja, con su sujeto y su franja',
+      (jf.match(/data-reloj-jugador-mapa="/g) || []).length === 3 && /data-pbp-sujeto="2" [^>]*data-pbp-franja="0"/.test(jf)
+        && /Desde dónde tira en 0-7 s <span[^>]*>· 11\/15/.test(jf) && /Desde dónde tira en 8-17 s <span[^>]*>· sin tiros/.test(jf), jf.slice(0, 300));
+    const pj0 = P.paqFranja(pP, 0).tiros.detalle.jugadores;
+    check('el paquete por franja trae a cada jugador con sus tiros de esa franja', pj0.find(j => j.id === '2').i === 15 && pj0.find(j => j.id === '5').i === 5
+      && P.capaTiros(P.paqFranja(pP, 0), '2', 'Z1').convertidos === 11);
+    check('sin la franja de cada tiro, la card Tiro muestra los volúmenes y dice cuándo llega el mapa',
+      /data-reloj-jugador-franja="2"/.test(P.relojJugadorFranjas(pR, '1')) && /llega con la próxima subida/.test(P.relojJugadorFranjas(pR, '1'))
+        && /data-reloj-jugador-franjas/.test(P.relojJugador(pR, '1')) && P.relojJugadorFranjas(pR, '99') === '');
+
     /* ---- las tarjetas de tendencias ---- */
     const tt = P.relojTendencias(pP);
     check('PUNTOS ALTOS: franja y zona que rinden por encima con volumen (0-7 · aro, 1,40 contra 1,22)',
@@ -1034,7 +1098,7 @@ function paquete(equipo) {
         && /el cuarto más alto arranca en 19,0 % de finales tempranos y en 19,7 % de tardíos/.test(P.relojAyuda(pR.liga.reloj)));
     const mh = P.relojMetodologiaHtml();
     check('el texto del Glosario: tres franjas, criterios, familias, etiquetas, arquetipos y el aviso',
-      /Las tres franjas del reloj/.test(mh) && (mh.match(/<li /g) || []).length === 3 + 7 + 7 + 4 + 9 + 6, (mh.match(/<li /g) || []).length);
+      /Las tres franjas del reloj/.test(mh) && (mh.match(/<li /g) || []).length === 3 + 9 + 7 + 4 + 9 + 9, (mh.match(/<li /g) || []).length);
     const GUIr = require('./js/sgadd-glosarioui.js');
     const uiPrevia = global.SGADD_UI;
     if (!uiPrevia) global.SGADD_UI = { escJs: (v) => String(v) };
@@ -1045,8 +1109,11 @@ function paquete(equipo) {
     if (!uiPrevia) delete global.SGADD_UI;
     check('el Glosario muestra la metodología, y sin el módulo no pinta nada', /id="glosarioReloj"/.test(conPbp) && !/glosarioReloj/.test(sinPbp));
     const manual = fs.readFileSync(path.join(__dirname, 'MANUAL_ETIQUETADO_SGADD.html'), 'utf8');
+    check('el manual vincula los perfiles por franja: las etiquetas de la franja media, la card Tiro y la conversión',
+      ['Ejecutor del juego armado', 'Creador en el juego armado', 'Tira en el juego armado', 'La card Tiro de cada jugador', 'Paquetes de cuatro franjas']
+        .every(x => fs.readFileSync(path.join(__dirname, 'MANUAL_ETIQUETADO_SGADD.html'), 'utf8').indexOf(x) !== -1));
     check('el manual de etiquetado se regeneró con las tres franjas', /5 · Reloj de posesión/.test(manual) && M.franjas.every(x => manual.indexOf(x.lectura) !== -1)
-      && manual.indexOf('0-7 s') !== -1 && manual.indexOf('15-20 s') === -1);
+      && manual.indexOf('0-7 s') !== -1 && !/Su porción de finales en (15-20|21-24) s/.test(manual));
 
     /* ---- fuentes: dónde se monta ---- */
     const fuenteEq = fs.readFileSync(path.join(__dirname, 'js', 'sgadd-equipos.js'), 'utf8');

@@ -1048,6 +1048,7 @@ const SGADD_PBP = (function () {
    */
   function mapaCard(paq, opciones) {
     const o = opciones || {};
+    paq = normalizarReloj(paq);
     if (!paq || !paq.esquema) return vacio('Sin análisis de play-by-play.');
     if (!(paq.tiros && paq.tiros.detalle)) {
       return `<div class="pbp-bloque" data-pbp-listo="1">${notaLaboratorio(paq)}${mapaViejo(paq)}</div>`;
@@ -1078,6 +1079,7 @@ const SGADD_PBP = (function () {
    * El jugador se busca por nombre normalizado en el paquete de su equipo.
    */
   function jugador(paq, nombre) {
+    paq = normalizarReloj(paq);
     if (!paq || !paq.tiros || !paq.tiros.detalle) return vacio('El análisis de tiro por jugador todavía no está cargado para este equipo.');
     const id = Object.keys(paq.jugadores || {}).find(k => norm(paq.jugadores[k].n) === norm(nombre));
     const det = id ? (paq.tiros.detalle.jugadores || []).find(j => String(j.id) === String(id)) : null;
@@ -1315,8 +1317,95 @@ const SGADD_PBP = (function () {
     && acc.f.every(c => Array.isArray(c) && c.length >= 6 && c.every(x => typeof x === 'number')));
   const relojLiga = (paq) => (paq && paq.liga && relojValido(paq.liga.reloj) ? paq.liga.reloj : null);
   /** El paquete trae el reloj con las CUATRO franjas de antes del 2026-10-18. */
-  const relojFormaVieja = (paq) => !!(paq && paq.reloj && paq.reloj.favor && Array.isArray(paq.reloj.favor.f) && paq.reloj.favor.f.length === 4);
-  const AVISO_FORMA_VIEJA = 'Este paquete trae el reloj con las cuatro franjas de antes (0-6 · 7-14 · 15-20 · 21-24 s). Las tres nuevas (0-7 · 8-17 · 18-24 s) llegan con la próxima subida de los paquetes.';
+  const es4 = (acc) => !!(acc && Array.isArray(acc.f) && acc.f.length === 4);
+  const relojFormaVieja = (paq) => !!(paq && ((paq.reloj && es4(paq.reloj.favor)) || (paq.liga && es4(paq.liga.reloj))
+    || (paq.partidosPbp || []).some(x => x && x.reloj && es4(x.reloj.favor))));
+  const AVISO_CONVERTIDO = '≈ Reloj convertido de las cuatro franjas anteriores (0-6 · 7-14 · 15-20 · 21-24 s): el segundo 7 (un octavo de 7-14) pasa a 0-7 y el tramo 15-20 s se reparte mitad y mitad entre 8-17 y 18-24. '
+    + 'Es una aproximación; la próxima subida de los paquetes trae el dato exacto, con la franja de cada tiro.';
+
+  /* ------------------------------------------------------------------
+     RETROCOMPATIBILIDAD · 4 FRANJAS → 3, AL VUELO (2026-10-18)
+
+     Los paquetes subidos antes del cambio traen 0-6 · 7-14 · 15-20 · 21-24.
+     No se pierden: se convierten al leerlos (`normalizarReloj`).
+
+       0-7   ← 0-6 + un octavo de 7-14 (el segundo 7)
+       8-17  ← el resto de 7-14 + la mitad de 15-20
+       18-24 ← 21-24 + la otra mitad de 15-20
+
+     La mitad se redondea por CUENTA (tiros, convertidos, puntos, triples,
+     asistidas, pérdidas) y el resto va a la otra franja: las sumas se
+     conservan y no aparecen decimales en un C/I. Es una aproximación y se
+     DICE en cada superficie (`AVISO_CONVERTIDO`): ni 7-14 ni 15-20 traen el
+     segundo de cada tiro, así que se reparten por la cantidad de segundos.
+     Medido contra el dato exacto de los 17 equipos de la Conferencia Norte
+     (paquetes viejos contra los regenerados): error medio de 0,5 · 1,6 ·
+     1,4 puntos de reparto por franja; Amancay 20,1 · 40,9 · 39,0 % contra
+     20,0 · 41,8 · 38,2 %. El cuarto alto de la temprana da 23,1 % en los dos.
+     Los cortes de la competencia se escalan por el cambio de reparto de la
+     liga en esa franja (un cuartil de 21-24 multiplicado por cuánto creció
+     la franja tardía en la liga); la franja media de un jugador no tenía
+     corte y queda sin evaluar. La franja de cada tiro (los mapas por franja)
+     no se puede derivar: llega con la próxima subida.
+     ------------------------------------------------------------------ */
+  const mitad = (x) => Math.round((Number(x) || 0) / 2);
+  /* El segundo 7 es uno de los ocho segundos de 7-14. */
+  const octavo = (x) => Math.round((Number(x) || 0) / 8);
+  function franjas4a3(acc) {
+    if (!es4(acc)) return acc;
+    const [a, b, c, d] = acc.f;
+    const m = c.map(mitad), o = b.map(octavo);
+    return Object.assign({}, acc, { f: [a.map((x, i) => x + o[i]), b.map((x, i) => x - o[i] + m[i]), d.map((x, i) => x + (c[i] - m[i]))], convertido: true });
+  }
+  const fam4a3 = (v) => (Array.isArray(v) && v.length === 4 ? [v[0] + octavo(v[1]), v[1] - octavo(v[1]) + mitad(v[2]), v[3] + v[2] - mitad(v[2])] : v);
+  const escalar = (c, k) => (c && isFinite(k) && k > 0 ? Object.assign({}, c, ['p25', 'p50', 'p75', 'p90'].reduce((o, q) => {
+    o[q] = c[q] == null ? c[q] : Math.round(10 * c[q] * k) / 10; return o; }, {})) : null);
+  function ligaReloj4a3(L) {
+    if (!es4(L)) return L;
+    const nuevo = franjas4a3(L);
+    const part = (acc, tiros) => { const t = acc.f.map(x => x[0] + (tiros ? 0 : x[5])); const n = t.reduce((p, q) => p + q, 0); return t.map(x => (n ? 100 * x / n : null)); };
+    const vF = part(L), nF = part(nuevo), vT = part(L, true), nT = part(nuevo, true);
+    const c = L.cortes || {}, e = c.equipo || {}, j = c.jugador || {}, pa = c.partido || {};
+    const fam = {};
+    Object.keys(L.fam || {}).forEach((k) => { fam[k] = fam4a3(L.fam[k]); });
+    return Object.assign(nuevo, {
+      fam: fam,
+      franjas: FRANJAS_RELOJ.map((x, i) => ({ id: ['temprana', 'media', 'tardia'][i], label: x })),
+      cortes: {
+        equipo: { temprana: escalar(e.temprana, nF[0] / vF[0]),
+          media: e.medio ? escalar(e.medio, nF[1] / (vF[1] + vF[2])) : escalar(e.media, nF[1] / vF[1]),
+          tardia: escalar(e.tardia, nF[2] / vF[3]) },
+        jugador: { temprana: escalar(j.temprana, nT[0] / vT[0]), media: null, tardia: escalar(j.tardia, nT[2] / vT[3]) },
+        partido: { temprana: escalar(pa.temprana, nF[0] / vF[0]), tardia: escalar(pa.tardia, nF[2] / vF[3]) },
+      },
+      aproximado: true,
+    });
+  }
+  const cacheNormal = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+  /**
+   * El paquete con el reloj en TRES franjas. Uno que ya las trae vuelve tal
+   * cual; uno de cuatro se convierte (ver arriba). PURA e idempotente.
+   */
+  function normalizarReloj(paq) {
+    if (!paq || typeof paq !== 'object' || !relojFormaVieja(paq)) return paq;
+    if (cacheNormal && cacheNormal.has(paq)) return cacheNormal.get(paq);
+    const out = Object.assign({}, paq);
+    if (paq.reloj) {
+      const r = paq.reloj, jug = {}, fam = {};
+      Object.keys(r.jugadores || {}).forEach((k) => { jug[k] = franjas4a3(r.jugadores[k]); });
+      Object.keys(r.fam || {}).forEach((k) => { fam[k] = fam4a3(r.fam[k]); });
+      out.reloj = Object.assign({}, r, { favor: franjas4a3(r.favor), contra: franjas4a3(r.contra), jugadores: jug, fam: fam, convertido: true });
+    }
+    if (paq.liga && paq.liga.reloj) out.liga = Object.assign({}, paq.liga, { reloj: ligaReloj4a3(paq.liga.reloj) });
+    if (Array.isArray(paq.partidosPbp)) {
+      out.partidosPbp = paq.partidosPbp.map(x => (x && x.reloj && es4(x.reloj.favor)
+        ? Object.assign({}, x, { reloj: Object.assign({}, x.reloj, { favor: franjas4a3(x.reloj.favor), contra: franjas4a3(x.reloj.contra), convertido: true }) }) : x));
+    }
+    if (cacheNormal) cacheNormal.set(paq, out);
+    return out;
+  }
+  const notaConvertido = (paq) => (paq && paq.reloj && paq.reloj.convertido
+    ? `<p class="text-[11px] text-yellow-400 mb-2 leading-snug" data-reloj-convertido="1">${esc(AVISO_CONVERTIDO)}</p>` : '');
   const relojTiros = (acc) => acc.f.reduce((a, c) => a + c[0], 0);
   const relojFinales = (acc) => acc.f.reduce((a, c) => a + c[0] + c[5], 0);
   const porc = (n, d) => (d > 0 ? 100 * n / d : null);
@@ -1414,6 +1503,10 @@ const SGADD_PBP = (function () {
         texto: 'El play-by-play no registra el pase de un tiro errado, así que la asistencia se mide sobre las canastas, contra la tasa de la competencia en esa franja.' },
       { id: 'rinde', titulo: 'Cuándo una franja rinde distinto',
         texto: 'Los puntos por tiro se ajustan por muestra (con 20 tiros de la competencia) y cuentan como desvío desde 0,06 con 20 tiros o más. La 2da oportunidad y el reinicio piden más para una lectura especial: más de 30 tiros y 0,08 de desvío. Un equipo puede calzar en más de un arquetipo.' },
+      { id: 'jugador', titulo: 'La card Tiro de cada jugador',
+        texto: 'Cada jugador tiene su volumen por franja (qué parte de sus tiros sale en 0-7, 8-17 y 18-24 s, con C/I, puntos por tiro contra la liga, canastas asistidas y pérdidas) y el mapa completo de cada franja. Sus etiquetas de reloj salen de esos mismos números: el cuarto más alto de su competencia en la franja, y si sus canastas ahí llegan con asistencia o las crea él.' },
+      { id: 'convertido', titulo: 'Paquetes de cuatro franjas',
+        texto: 'Los partidos cargados antes del cambio (0-6 · 7-14 · 15-20 · 21-24 s) se convierten al leerlos: el segundo 7 (un octavo de 7-14) pasa a 0-7 y 15-20 se reparte mitad y mitad. Es una aproximación —error medio de 0,5 a 1,6 puntos de reparto por franja, medido— y se avisa con ≈; el mapa por franja necesita la próxima subida de los paquetes.' },
       { id: 'muestra', titulo: 'Sin muestra no hay etiqueta',
         texto: 'Hacen falta ' + RELOJ_MINIMOS.finalesEquipo + ' finales con reloj para un equipo, ' + RELOJ_MINIMOS.tirosJugador + ' tiros con reloj para un jugador y '
           + RELOJ_MINIMOS.canastasFranja + ' canastas en la franja para decir si se las crean. Con menos, se muestra el reparto con ~ y sin etiqueta.' },
@@ -1427,9 +1520,12 @@ const SGADD_PBP = (function () {
     jugador: [
       { label: 'Finalizador temprano', regla: 'Tira temprano (cuarto más alto) y sus canastas ahí llegan con asistencia.' },
       { label: 'Creador de transición', regla: 'Tira temprano y sus canastas ahí son creadas por él.' },
+      { label: 'Ejecutor del juego armado', regla: 'Tira mucho entre los 8 y los 17 s (cuarto más alto) y sus canastas ahí llegan con asistencia: el sistema lo busca.' },
+      { label: 'Creador en el juego armado', regla: 'Tira mucho entre los 8 y los 17 s y sus canastas ahí son creadas por él: el sistema termina en sus manos.' },
       { label: 'Válvula de escape', regla: 'Tira con el reloj encima y sus canastas ahí llegan con asistencia.' },
       { label: 'Resuelve con el reloj encima', regla: 'Tira con el reloj encima y sus canastas ahí son creadas por él.' },
       { label: 'Tira temprano en el reloj', regla: 'Tira temprano, con menos de ' + RELOJ_MINIMOS.canastasFranja + ' canastas ahí: no se decide quién las crea.' },
+      { label: 'Tira en el juego armado', regla: 'Tira mucho entre los 8 y los 17 s, con menos de ' + RELOJ_MINIMOS.canastasFranja + ' canastas ahí: no se decide quién las crea.' },
       { label: 'Tira con el reloj encima', regla: 'Tira tarde, con menos de ' + RELOJ_MINIMOS.canastasFranja + ' canastas ahí: no se decide quién las crea.' },
     ],
     /* Los arquetipos del perfil de ritmo (punto 119): la regla sale de la
@@ -1530,6 +1626,7 @@ const SGADD_PBP = (function () {
    * Los rasgos NO son excluyentes, y sin muestra o sin equipos contra los que comparar no hay ninguno.
    */
   function relojIdentidad(paq) {
+    paq = normalizarReloj(paq);
     const r = paq && paq.reloj, L = relojLiga(paq);
     if (!r || !relojValido(r.favor)) return null;
     const rep = relojReparto(r.favor), n = relojFinales(r.favor);
@@ -1561,6 +1658,7 @@ const SGADD_PBP = (function () {
    * tardío + asistido = válvula de escape; tardío + creado = resuelve con el reloj encima.
    */
   function relojPerfilJugador(paq, id) {
+    paq = normalizarReloj(paq);
     const r = paq && paq.reloj, L = relojLiga(paq);
     const acc = r && r.jugadores && r.jugadores[id];
     if (!relojValido(acc)) return null;
@@ -1573,6 +1671,7 @@ const SGADD_PBP = (function () {
     out.comparable = true;
     if (!out.muestra) return out;
     const lado = (i, corte, t) => {
+      if (!corte) return;
       if (!(out.reparto[i] >= corte.p75)) return;
       const f = acc.f[i], lf = L.f[i];
       const tasaLiga = lf[1] ? lf[4] / lf[1] : null;
@@ -1590,6 +1689,10 @@ const SGADD_PBP = (function () {
     };
     lado(0, c.temprana, { id: 'temprana', volumen: 'temprano', donde: 'en los primeros 7 segundos', neutro: 'Tira temprano en el reloj',
       asistido: 'Finalizador temprano', creado: 'Creador de transición' });
+    /* LA FRANJA MEDIA (2026-10-18): el juego armado. Solo con su corte: un
+       paquete convertido de las cuatro franjas no lo trae y no se evalúa. */
+    lado(1, corteValido(c.media, MIN_JUGADORES_RELOJ) ? c.media : null, { id: 'media', volumen: 'en el juego armado', donde: 'entre los 8 y los 17 segundos',
+      neutro: 'Tira en el juego armado', asistido: 'Ejecutor del juego armado', creado: 'Creador en el juego armado' });
     lado(2, c.tardia, { id: 'tardia', volumen: 'con el reloj encima', donde: 'después del segundo 17', neutro: 'Tira con el reloj encima',
       asistido: 'Válvula de escape', creado: 'Resuelve con el reloj encima' });
     return out;
@@ -1603,6 +1706,7 @@ const SGADD_PBP = (function () {
   /** La sección del equipo en la card de Quintetos. Sin «reloj» en el paquete devuelve ''. PURA. */
   function relojEquipo(paq) {
     try {
+      paq = normalizarReloj(paq);
       const r = paq && paq.reloj;
       if (!r || !relojValido(r.favor) || !relojValido(r.contra)) return '';
       const L = relojLiga(paq), idn = relojIdentidad(paq);
@@ -1620,7 +1724,7 @@ const SGADD_PBP = (function () {
       const lugar = FAMILIAS.filter(f => (fam[f.id] || []).some(x => x > 0)).map(f => `<tr>
           <td class="px-2 py-1 text-left text-xs text-white whitespace-nowrap">${esc(f.label)}</td>
           ${FRANJAS_RELOJ.map((_, i) => `<td class="${TD}">${totalFranja[i] ? num(porc(fam[f.id][i] || 0, totalFranja[i]), 0) + ' %' : '—'}</td>`).join('')}</tr>`).join('');
-      return `${cabecera}
+      return `${notaConvertido(paq)}${cabecera}
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <div class="min-w-0 pbp-reloj-pieza">${subtitulo('Lo que tira')}${relojTabla(r.favor, L)}</div>
           <div class="min-w-0 pbp-reloj-pieza">${subtitulo('Lo que le tiran')}${relojTabla(r.contra, L)}</div>
@@ -1647,12 +1751,14 @@ const SGADD_PBP = (function () {
   };
   /** Los jugadores con perfil de reloj, separados en tempranos y tardíos. PURA. */
   function relojQuienes(paq) {
+    paq = normalizarReloj(paq);
     const out = { tempranos: [], tardios: [] };
     const jug = (paq && paq.reloj && paq.reloj.jugadores) || {};
     Object.keys(jug).forEach((id) => {
       const pf = relojPerfilJugador(paq, id);
       if (!pf) return;
       pf.rasgos.forEach((r) => {
+        if (r.id.indexOf('media') === 0) return;   // las listas son de los extremos del reloj
         const i = r.id.indexOf('temprana') === 0 ? 0 : 2;
         const c = jug[id].f[i];
         (i === 0 ? out.tempranos : out.tardios).push({ id: id, nombre: paq.jugadores && paq.jugadores[id] ? paq.jugadores[id].n : id,
@@ -1679,9 +1785,49 @@ const SGADD_PBP = (function () {
     } catch (e) { return ''; }
   }
 
+  /**
+   * Cuándo y desde dónde tira UN jugador: su volumen por franja y el mapa
+   * completo de cada franja (2026-10-18, card Tiro). PURA.
+   */
+  function relojJugadorFranjas(paq, id) {
+    paq = normalizarReloj(paq);
+    const acc = paq && paq.reloj && paq.reloj.jugadores && paq.reloj.jugadores[id];
+    const L = relojLiga(paq);
+    const filas = relojValido(acc) ? acc.f.map((c, k) => {
+      const tiros = relojTiros(acc), parte = tiros ? 100 * c[0] / tiros : null;
+      const lf = L && L.f[k], liga = lf && lf[0] ? lf[2] / lf[0] : null;
+      return `<div class="rounded border border-hairline bg-surface2/40 p-2 min-w-0" data-reloj-jugador-franja="${k}">
+        <p class="text-[11px] text-white">${FRANJAS_RELOJ[k]} <span class="dato-sec">${esc(METODOLOGIA_RELOJ.franjas[k].nombre)}</span></p>
+        <p class="font-mono text-lg text-white leading-tight">${parte == null ? '—' : num(parte, 0) + ' %'}</p>
+        <p class="text-[11px] text-ink">${c[1]}/${c[0]} · ${c[0] ? num(c[2] / c[0], 2) : '—'} por tiro${liga != null ? ` <span class="dato-sec">(liga ${num(liga, 2)})</span>` : ''}</p>
+        <p class="text-[10px] dato-sec">${c[1] ? c[4] + ' de ' + c[1] + ' canastas asistidas' : 'sin canastas'}${c[5] ? ' · ' + c[5] + ' pérdidas' : ''}</p>
+      </div>`;
+    }).join('') : '';
+    let mapas = '';
+    if (conCodigoReloj(paq)) {
+      mapas = FRANJAS_RELOJ.map((rotulo, k) => {
+        const pf = paqFranja(paq, k);
+        const j = (pf.tiros.detalle.jugadores || []).find(x => x.id === String(id));
+        return `<details class="pbp-detalle pbp-sub mt-2" data-reloj-jugador-mapa="${k}">
+          <summary class="pbp-resumen text-[11px] uppercase tracking-wider text-accent cursor-pointer select-none">Desde dónde tira en ${rotulo} <span class="normal-case tracking-normal dato-sec">· ${j ? j.c + '/' + j.i + ' · ' + num(j.ppt, 2) + ' por tiro' : 'sin tiros'}</span></summary>
+          ${j ? mapa(pf, { sujeto: String(id), franja: k, diag: j.i >= MIN_TIROS_DIAGNOSTICO }) : vacio('Sin tiros en esta franja.')}
+        </details>`;
+      }).join('');
+    } else if (filas) {
+      mapas = '<p class="text-[11px] text-muted mt-2">El mapa por franja necesita la franja de cada tiro, que llega con la próxima subida de los paquetes.</p>';
+    }
+    if (!filas && !mapas) return '';
+    return `<div class="mt-3" data-reloj-jugador-franjas="1">
+      ${subtitulo('Cuándo y desde dónde tira · por franja del reloj')}
+      ${filas ? `<div class="grid grid-cols-3 gap-2">${filas}</div>` : ''}
+      ${mapas}
+    </div>`;
+  }
+
   /** El bloque del jugador, debajo de su mapa. Sin datos devuelve ''. PURA. */
   function relojJugador(paq, id) {
     try {
+      paq = normalizarReloj(paq);
       const perfil = relojPerfilJugador(paq, id);
       if (!perfil || !(perfil.tiros > 0)) return '';
       const acc = paq.reloj.jugadores[id];
@@ -1691,7 +1837,8 @@ const SGADD_PBP = (function () {
       else if (perfil.comparable) cabecera = '<p class="text-[11px] text-ink mb-2">Reparte sus tiros en el reloj como la mayoría de la competencia: ninguna franja lo distingue.</p>';
       return `<div class="pbp-reloj-jugador pbp-reloj-pieza mt-4">
         ${subtitulo('Reloj de posesión · cuándo tira')}
-        ${cabecera}${relojTabla(acc, relojLiga(paq), { soloTiros: true })}
+        ${notaConvertido(paq)}${cabecera}${relojTabla(acc, relojLiga(paq), { soloTiros: true })}
+        ${relojJugadorFranjas(paq, id)}
         <p class="text-[10px] dato-sec mt-1 leading-snug">${NOTA_RELOJ}</p>
         ${relojAyuda(relojLiga(paq))}
       </div>`;
@@ -1700,6 +1847,10 @@ const SGADD_PBP = (function () {
 
   /** La card del post-partido: los dos equipos por franja y el aviso de reloj tardío. PURA. */
   function relojPartido(paq, pp) {
+    paq = normalizarReloj(paq);
+    if (pp && pp.reloj && es4(pp.reloj.favor)) {
+      pp = Object.assign({}, pp, { reloj: Object.assign({}, pp.reloj, { favor: franjas4a3(pp.reloj.favor), contra: franjas4a3(pp.reloj.contra), convertido: true }) });
+    }
     const rp = pp && pp.reloj;
     if (!rp || !relojValido(rp.favor) || !relojValido(rp.contra)) {
       return vacio('Sin reloj de posesión de este partido (sin play-by-play validado, o paquete anterior al punto 115).');
@@ -1717,7 +1868,7 @@ const SGADD_PBP = (function () {
         ${relojTabla(acc, L)}
       </div>`;
     };
-    return `<div class="pbp-bloque grid grid-cols-1 xl:grid-cols-2 gap-5" data-pbp-listo="1">
+    return `${rp.convertido ? `<p class="text-[11px] text-yellow-400 mb-2 leading-snug" data-reloj-convertido="1">${esc(AVISO_CONVERTIDO)}</p>` : ''}<div class="pbp-bloque grid grid-cols-1 xl:grid-cols-2 gap-5" data-pbp-listo="1">
       ${lado(paq.equipo, rp.favor)}${lado(pp.rival, rp.contra)}
     </div>
     <p class="text-[11px] dato-sec mt-2 leading-snug">${NOTA_RELOJ} Con los tiros de un solo partido, los puntos por tiro de una franja son una noche, no una tendencia: por eso van con sus convertidos e intentados.</p>
@@ -1854,6 +2005,7 @@ const SGADD_PBP = (function () {
    * null sin datos; sin muestra, listas vacías. `sinVara`: franjas cuyo corte el paquete no trae.
    */
   function relojArquetipos(paq) {
+    paq = normalizarReloj(paq);
     const r = paq && paq.reloj, L = relojLiga(paq);
     if (!r || !relojValido(r.favor) || !relojValido(r.contra) || !L) return null;
     const idn = relojIdentidad(paq);
@@ -1887,6 +2039,7 @@ const SGADD_PBP = (function () {
      ({ PACE, 'RO%', 'PT3%' } → { f: formateado, p: percentil }). */
   const pctl = (id, k) => (id && id[k] && isFinite(id[k].p) && id[k].p !== null ? id[k].p : null);
   function relojDesglose(paq, identidad) {
+    paq = normalizarReloj(paq);
     const r = paq.reloj, L = relojLiga(paq);
     const out = { insight: {}, extra: [], explotar: [], anular: [] };
     const rep = relojReparto(r.favor), repL = relojReparto(L), fav = relojCeldas(r.favor, L);
@@ -1985,6 +2138,7 @@ const SGADD_PBP = (function () {
    * { insight: [frases], armas, grietas, explotar, anular } · cada ítem { lado, k, label, detalle }.
    */
   function relojSintesis(paq, identidad) {
+    paq = normalizarReloj(paq);
     const r = paq && paq.reloj, L = relojLiga(paq);
     if (!r || !relojValido(r.favor) || !relojValido(r.contra) || !L) return null;
     const idn = relojIdentidad(paq);
@@ -2196,10 +2350,23 @@ const SGADD_PBP = (function () {
     if (memo[k]) return memo[k];
     const det = paq.tiros.detalle, pts = det.puntos, orden = pts.zonas || ZONAS;
     const fav = (pts.favor || []).filter(p => p[5] === k), con = (pts.contra || []).filter(p => p[5] === k);
+    /* Los jugadores de la franja: sus tiros, re-agregados, para que el mapa
+       de un jugador (card Tiro) también tenga su versión por franja. */
+    const porJ = {};
+    fav.forEach((p) => { if (p[4] >= 0) (porJ[p[4]] || (porJ[p[4]] = [])).push(p); });
+    const pjDe = {};
+    (det.jugadores || []).forEach((j) => { pjDe[String(j.id)] = j.pj || 0; });
+    const jugadoresF = Object.keys(porJ).map((ix) => {
+      const lista = porJ[ix], id = String((pts.ids || [])[Number(ix)]);
+      const a = agregarPuntos(lista, orden);
+      const c = lista.filter(p => p[2]).length, pt = lista.reduce((s2, p) => s2 + (p[2] ? valorDeZona(orden[p[3]]) : 0), 0);
+      return { id: id, pj: pjDe[id] || 0, i: lista.length, c: c, ppt: Math.round(1000 * pt / lista.length) / 1000, dist: null,
+        familias: {}, zonas: a.zonas, hex: a.hex };
+    });
     const out = Object.assign({}, paq, {
       tiros: Object.assign({}, paq.tiros, {
         detalle: Object.assign({}, det, {
-          favor: agregarPuntos(fav, orden), contra: agregarPuntos(con, orden), jugadores: [],
+          favor: agregarPuntos(fav, orden), contra: agregarPuntos(con, orden), jugadores: jugadoresF,
           puntos: Object.assign({}, pts, { favor: fav, contra: con, sinUbicar: 0 }),
         }),
       }),
@@ -2321,6 +2488,7 @@ const SGADD_PBP = (function () {
   /** La parte del Scouting: la lectura por rasgo y quién tira temprano y tarde. PURA. */
   function relojLecturaScouting(paq) {
     try {
+      paq = normalizarReloj(paq);
       const idn = relojIdentidad(paq), L = relojLiga(paq), q = relojQuienes(paq);
       if (!idn) return '';
       const lecturas = idn.rasgos.filter(r => LECTURA_RELOJ[r.id]).map(r => `<li class="text-[11px] text-ink leading-snug"><b>${esc(r.label)}</b> · ${esc(LECTURA_RELOJ[r.id](L))}</li>`).join('');
@@ -2339,12 +2507,8 @@ const SGADD_PBP = (function () {
   function relojMapaTiro(paq, opciones) {
     try {
       const o = opciones || {};
+      paq = normalizarReloj(paq);
       const r = paq && paq.reloj;
-      if (relojFormaVieja(paq)) {
-        return `<div class="mt-6 pt-4 border-t border-hairline" data-reloj-mapa-tiro="1">
-          <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">Reloj de posesión · cuándo tira y cuándo le tiran</h4>
-          <p class="text-[11px] text-yellow-400" data-reloj-forma-vieja="1">${esc(AVISO_FORMA_VIEJA)}</p></div>`;
-      }
       if (!r || !relojValido(r.favor) || !relojValido(r.contra)) return '';
       const L = relojLiga(paq), idn = relojIdentidad(paq), s = relojSintesis(paq, o.identidad);
       const arq = relojArquetipos(paq), origen = relojOrigenBarras(r, L), mapas = relojMapas(paq, { fijo: !!o.fijo });
@@ -2380,6 +2544,7 @@ const SGADD_PBP = (function () {
       return `<div class="mt-6 pt-4 border-t border-hairline" data-reloj-mapa-tiro="1">
         <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">Reloj de posesión · cuándo tira y cuándo le tiran</h4>
         <p class="text-[11px] text-muted mb-2 leading-snug">Tres franjas: 0-7 s (temprana), 8-17 s (media) y 18-24 s (tardía). La barra es la parte de sus finales (tiros y pérdidas) en cada franja; el trazo, la competencia. Al lado, puntos por tiro y eFG% (entre paréntesis, la competencia).</p>
+        ${notaConvertido(paq)}
         ${o.fijo ? relojLecturaScouting(paq) : ''}
         ${estado}
         ${relojPerfilHtml(arq)}
@@ -2455,7 +2620,8 @@ const SGADD_PBP = (function () {
     if (!d || typeof SGADD_DATA === 'undefined' || !SGADD_DATA.leerPbp) return Promise.reject(new Error('Sin backend.'));
     const k = d.club + '|' + d.slug + '|' + String(equipo).toUpperCase();
     if (!cache.has(k)) {
-      cache.set(k, SGADD_DATA.leerPbp(d.club, d.slug, equipo).then(c => c.paquete)
+      /* Un paquete de las cuatro franjas de antes se convierte al leerlo. */
+      cache.set(k, SGADD_DATA.leerPbp(d.club, d.slug, equipo).then(c => normalizarReloj(c.paquete))
         .catch((e) => { cache.delete(k); throw e; }));
     }
     return cache.get(k);
@@ -2673,7 +2839,7 @@ const SGADD_PBP = (function () {
     relojTabla, relojIdentidad, relojPerfilJugador, relojEquipo, relojJugador, relojPartido, relojReparto, FRANJAS_RELOJ,
     relojScouting, relojQuienes, relojMetodologiaHtml, relojAyuda, METODOLOGIA_RELOJ, RELOJ_MINIMOS, FUERA_DE_FRANJA,
     relojSintesis, relojBarras, relojMapaTiro, relojCeldas, relojMapas, relojTendencias, relojTendenciasHtml, paqFranja,
-    relojLecturaScouting, relojFormaVieja, conCodigoReloj, hexDePunto,
+    relojLecturaScouting, relojFormaVieja, conCodigoReloj, hexDePunto, normalizarReloj, relojJugadorFranjas, AVISO_CONVERTIDO,
     relojArquetipos, relojDesglose, relojOrigenBarras, ARQUETIPOS_RELOJ, BLOQUES_RELOJ,
   };
 })();

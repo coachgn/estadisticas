@@ -81,7 +81,7 @@ node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: 
                            #             equipo, vencimiento y ciclo ORO por categoría
 node test-glosario.js      #  34 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
-node test-pbp.js           # 248 tests · la capa de laboratorio de play-by-play: el catálogo,
+node test-pbp.js           # 264 tests · la capa de laboratorio de play-by-play: el catálogo,
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
                            #             · el bloque opcional de secciones del paquete (punto 83)
@@ -91,7 +91,8 @@ node test-pbp.js           # 248 tests · la capa de laboratorio de play-by-play
                            #               y el perfil de ritmo: arquetipos, desglose por franja y cruces de identidad (119)
                            #               y el insight por bloque, las tablas completas y la cancha por franja (120)
                            #               y el reloj en TRES franjas, mudado al Mapa de tiro, con un mapa completo
-                           #               por franja y las tarjetas de tendencias (127)
+                           #               por franja y las tarjetas de tendencias (127), los paquetes de cuatro
+                           #               franjas convertidos al vuelo y la card Tiro por franja (128)
 
 node test-mails.js         # 177 tests · los mails institucionales: plantillas sin huecos, el
                            #             día de Argentina, la idempotencia del cron, la ficha, el SMTP,
@@ -152,7 +153,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7881 tests en total. Todos tienen que dar verde antes de commitear.**
+**7897 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -270,7 +271,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=286`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=287`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -14799,3 +14800,71 @@ cortes de la competencia son uno por franja, de equipo y de jugador
    `motorstats-ingestion`: `node herramientas/subir-paquetes.js --confirmar`.
    Hasta eso, el panel muestra el aviso de las franjas viejas.
 5. Registrar el vigía: `programar-tarea.ps1 -Vigia -Registrar`, y arrancarlo.
+
+---
+
+## 128. LOS PAQUETES DE CUATRO FRANJAS SE CONVIERTEN AL VUELO · Y LA CARD TIRO POR FRANJA (2026-10-18)
+
+Con el punto 127 en producción, los paquetes que ya estaban en KV (cuatro
+franjas) mostraban «paquete antiguo» en Equipos y en el post-partido. Pedido
+del club: ningún partido puede quedar sin reloj. Assets en `?v=287`. Solo panel.
+
+### 1 · `SGADD_PBP.normalizarReloj(paq)` · 4 → 3 al leer
+
+```
+0-7   ← 0-6 + un octavo de 7-14 (el segundo 7)
+8-17  ← el resto de 7-14 + la mitad de 15-20
+18-24 ← 21-24 + la otra mitad de 15-20
+```
+
+- **Por CUENTA y sin decimales** (tiros, convertidos, puntos, triples,
+  asistidas, pérdidas): se redondea la parte que se mueve y el resto queda en
+  la otra franja, así las sumas se conservan y un C/I nunca sale «10,5/21».
+- Convierte el reloj del equipo (favor, contra, cada jugador, las familias de
+  zona), la vara de la liga y el reloj de cada partido de `partidosPbp`.
+- **Los cortes de la competencia se escalan** por el cambio de reparto de la
+  liga en esa franja. La franja media de un JUGADOR no tenía corte: queda sin
+  evaluar en un paquete convertido.
+- **Se aplica en la entrada**: `pedir()` (todo lo que monta `montarPendientes`)
+  y cada función pública del reloj y del mapa (`mapaCard`, `jugador` —que usa
+  Fichajes—, `relojPartido`, `relojMapaTiro`, `relojEquipo`…). Es PURA,
+  idempotente y con caché: un paquete de tres franjas vuelve como el mismo
+  objeto, y el original nunca se toca.
+- **Es una aproximación y se DICE** (`AVISO_CONVERTIDO`, con ≈, en cada
+  superficie). Medido contra el dato exacto de los 17 equipos de la Conferencia
+  Norte (respaldos viejos contra paquetes regenerados): **error medio de 0,5 ·
+  1,6 · 1,4 puntos de reparto por franja**; el cuarto alto de la temprana da
+  23,1 % en los dos. Sin el octavo del segundo 7 la temprana quedaba 3,4 puntos
+  corta: por eso está.
+- Lo que **no** se puede convertir es la franja de cada tiro: los mapas por
+  franja de un paquete viejo siguen diciendo que llegan con la próxima subida.
+  **La solución exacta sigue siendo subir los paquetes regenerados.**
+
+### 2 · La card TIRO del jugador · cuándo y desde dónde tira
+
+`relojJugadorFranjas(paq, id)`, debajo de la tabla del reloj del jugador
+(Jugadores → Tiro y la Radiografía de Fichajes): tres tarjetas de volumen
+(% de sus tiros, C/I, puntos por tiro contra la liga, asistidas y pérdidas) y
+el **mapa completo del jugador en cada franja**. `paqFranja` ahora re-agrega
+también a cada jugador, así el mismo `mapa()` dibuja su sujeto en la franja y
+los conmutadores y la capa de tiros siguen en ella.
+
+### 3 · El perfil del jugador en la franja media, y el manual
+
+`relojPerfilJugador` suma la franja MEDIA (8-17 s, con su corte de jugador):
+**«Ejecutor del juego armado»** (las canastas ahí llegan con asistencia: el
+sistema lo busca), **«Creador en el juego armado»** (las crea él) y **«Tira en
+el juego armado»** (menos de 5 canastas). No entran en las listas de quién tira
+temprano y tarde. La metodología suma dos criterios —«La card Tiro de cada
+jugador» y «Paquetes de cuatro franjas»— y de ahí salen el Glosario y el
+manual de etiquetado (regenerado). En la Conferencia Norte el cuarto alto de un
+jugador en 8-17 arranca en 51,6 %.
+
+Tests: `test-pbp.js` sección 7 (retrocompatibilidad, card Tiro, franja media).
+Verificado al revés: sin la conversión caen 5; sin el octavo del segundo 7, 3.
+
+### Para producción
+
+1. Push del front (`?v=287`).
+2. Igual conviene subir los paquetes regenerados (`node herramientas/subir-paquetes.js --confirmar`
+   en `motorstats-ingestion`): trae el dato exacto y la franja de cada tiro.
