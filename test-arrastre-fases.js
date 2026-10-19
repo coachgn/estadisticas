@@ -501,6 +501,104 @@ seccion('6 bis · la app real con el libro vinculado fusionado');
 }
 
 /* =====================================================================
+   8 · LOS PUESTOS DE LA LLAVE SALEN DE LA REGULAR DEL TORNEO DE LA FASE
+       (punto 136)
+
+   El caso de Bahía: los octavos del Apertura (carpeta al revés, TORNEO =
+   OCTAVOS y FASE = APERTURA) tomaban los puestos de la tabla de la zona,
+   que con Apertura y Clausura es el TOTAL: otro 5°, cruces que no eran y
+   series jugadas que quedaban sueltas. Y el segundo pase: una serie
+   jugada que comparte un equipo con un cruce sin serie es la suya.
+   ===================================================================== */
+seccion('8 · la llave toma la tabla del torneo de la fase y lo jugado manda');
+{
+  const A = 'ATENAS', B = 'PLATENSE', CC = 'UNIVERSAL', D = 'NAUTICO';
+  const filas = [];
+  /* Apertura: A 3-0, B 2-1, C 1-2, D 0-3 → A, B, C, D.
+     Clausura: D 3-0, C 2-1, A 1-2, B 0-3. TOTAL: A 4-2, C 3-3, D 3-3, B 2-4. */
+  const ap = [[A, B], [A, CC], [A, D], [B, CC], [B, D], [CC, D]];
+  const cl = [[D, A], [D, B], [D, CC], [CC, A], [CC, B], [A, B]];
+  ap.forEach((x, i) => filas.push(...partido('0' + (i + 1) + '/03/2026', 'APERTURA', 'REGULAR', x[0], x[1], 80, 70)));
+  cl.forEach((x, i) => filas.push(...partido('0' + (i + 1) + '/08/2026', 'CLAUSURA', 'REGULAR', x[0], x[1], 80, 70)));
+  /* Los octavos, en la carpeta al revés: A-D y B-C, como dice el Apertura. */
+  filas.push(...partido('10/05/2026', 'OCTAVOS', 'APERTURA', A, D, 90, 60));
+  filas.push(...partido('11/05/2026', 'OCTAVOS', 'APERTURA', B, CC, 90, 60));
+  const hojas = libro(filas);
+
+  const root = { innerHTML: '' };
+  const ctx = {
+    console, Promise, JSON, Math, Date, Map, Set, WeakMap, Array, Object, String, Number, RegExp, Error, Infinity,
+    SGADD: SGADD, SGADD_UI: require('./js/sgadd-ui.js'),
+    CLUB: { cfg: { competencia: { formatos: { r: { label: 'Regular', zonas: [] } }, porTramo: { '*': 'r' } } },
+      estado: { id: 'liga-test' } },
+    window: { location: { hash: '#clasificacion' } }, location: { hash: '#clasificacion' },
+    history: { pushState() {}, replaceState() {} }, setTimeout: () => 0, clearTimeout() {},
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    document: { getElementById: (id) => (id === 'view-root' ? root : null), querySelector: () => null,
+      querySelectorAll: () => [], getElementsByTagName: () => [] },
+    LOGOS: { getUrl: () => null, iniciales: (n) => String(n).slice(0, 2) },
+    currentSection: 'clasificacion',
+  };
+  ctx.globalThis = ctx;
+  vm.createContext(ctx);
+  ['sgadd-config.js', 'sgadd-app.js', 'sgadd-clasificacion.js', 'sgadd-fixture.js', 'sgadd-fases.js'].forEach((f) => {
+    vm.runInContext(fs.readFileSync('./js/' + f, 'utf8'), ctx, { filename: f });
+  });
+  const planillasAntes = SGADD.CATALOGO.planillas;
+  SGADD.CATALOGO.planillas = [{ id: 'oro', slug: 'oro', label: 'Oro', activo: true, torneoId: 'liga', zonaId: 'oro' }];
+  vm.runInContext('SGADD_FIXTURE.estado.torneo = "liga"; SGADD_FIXTURE.estado.doc = ' + JSON.stringify({
+    id: 'liga', zonas: { oro: { label: 'Oro', equipos: [A, B, CC, D].map(n => ({ nombre: n })) } },
+    formato: { fases: [{ id: 'octavos', label: 'Octavos - Apertura', libro: ['APERTURA'], torneo: 'OCTAVOS',
+      cruce: 'zona', serie: { mejorDe: 1 }, cruces: [
+        { id: 'O1', a: { zona: 'oro', puesto: 1 }, b: { zona: 'oro', puesto: 4 } },
+        { id: 'O2', a: { zona: 'oro', puesto: 2 }, b: { zona: 'oro', puesto: 3 } }] }] },
+  }) + ';', ctx);
+  const APP = vm.runInContext('SGADD_APP', ctx);
+  APP.estado.planillaId = 'oro';
+  APP.estado.hojas = hojas;
+  APP.estado.torneo = 'APERTURA';
+  APP.estado.fase = 'REGULAR';
+  APP.reindexar();
+
+  const cx = vm.runInContext('SGADD_FASES.contexto()', ctx);
+  check('la tabla por defecto de la zona es el TOTAL (el caso que confundía)',
+    cx.tablas.oro && cx.tablas.oro.tramo === '*TOTAL*|REGULAR', cx.tablas.oro && cx.tablas.oro.tramo);
+  check('la fase de la carpeta al revés toma la regular del APERTURA', cx.tablaDeFase.octavos === 'APERTURA|REGULAR',
+    cx.tablaDeFase);
+  const tAp = vm.runInContext('clasifTablaDeTramo("APERTURA", "REGULAR")', ctx);
+  const tLl = cx.tablasPorTramo['APERTURA|REGULAR'].oro.filas;
+  check('y es la MISMA tabla que Clasificación (mismo orden)',
+    tLl.map(f => f.clave).join() === tAp.filter(r => !r.sinPartidos).map(r => r.clave).join(),
+    [tLl.map(f => f.nombre), tAp.map(r => r.nombre)]);
+  const ll = vm.runInContext('SGADD_FASES.llave(SGADD_FASES.declaradas(), SGADD_FASES.contexto())', ctx);
+  const o1 = ll.octavos.cruces[0], o2 = ll.octavos.cruces[1];
+  check('O1 es 1° vs 4° del Apertura (ATENAS vs NAUTICO), con su serie', o1.a.nombre === A && o1.b.nombre === D && !!o1.serie,
+    [o1.a.nombre, o1.b.nombre, !!o1.serie]);
+  check('O2 es 2° vs 3° del Apertura (PLATENSE vs UNIVERSAL), con su serie', o2.a.nombre === B && o2.b.nombre === CC && !!o2.serie,
+    [o2.a.nombre, o2.b.nombre, !!o2.serie]);
+  check('ninguna serie jugada queda suelta', ll.octavos.sueltas.length === 0, ll.octavos.sueltas.map(s => s.clave));
+  SGADD.CATALOGO.planillas = planillasAntes;
+
+  /* El SEGUNDO PASE, puro: la proyección dice A vs B, pero A jugó con C.
+     Con una sola serie candidata, la serie es del cruce y lo jugado manda. */
+  const k = (n) => SGADD.claveEquipo(n);
+  const fx = { id: 'o', mejorDe: 1, tipo: 'eliminacion', cruces: [
+    { id: 'X1', a: { tipo: 'puesto', zona: 'z', puesto: 1 }, b: { tipo: 'puesto', zona: 'z', puesto: 4 } }] };
+  const tabla = { z: { cerrada: false, filas: [{ clave: k(A), nombre: A, puesto: 1 }, { clave: k(B), nombre: B, puesto: 4 }] } };
+  const pj = (l, v) => ({ fecha: '2026-05-10', local: l, visitante: v, localClave: k(l), visitanteClave: k(v),
+    jugado: true, ptsLocal: 80, ptsVisitante: 70 });
+  let r = F.llave([fx], { tablas: tabla, partidosPorFase: { o: [pj(A, CC)] } });
+  check('segundo pase: la única serie que comparte un equipo es del cruce',
+    !!r.o.cruces[0].serie && r.o.cruces[0].b.clave === k(CC) && r.o.cruces[0].b.porLoJugado && !r.o.sueltas.length,
+    { b: r.o.cruces[0].b, sueltas: r.o.sueltas.length });
+  check('y los dos lados quedan resueltos por lo jugado',
+    r.o.cruces[0].a.estado === 'resuelto' && r.o.cruces[0].b.estado === 'resuelto');
+  r = F.llave([fx], { tablas: tabla, partidosPorFase: { o: [pj(A, CC), pj(B, D)] } });
+  check('con dos candidatas no se elige: el cruce queda sin serie y las dos sueltas',
+    !r.o.cruces[0].serie && r.o.sueltas.length === 2, { serie: !!r.o.cruces[0].serie, sueltas: r.o.sueltas.length });
+}
+
+/* =====================================================================
    7 · LA CLAUSURA CON EL 50 % · 17 + 11 = 19,5, Y EL BORRADOR QUE LO TAPABA
 
    Reportado en Bahía: ESTUDIANTES hizo 17 Pts en la regular del Apertura

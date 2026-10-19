@@ -590,7 +590,16 @@ const SGADD_FASES = (function () {
      tramo; la tabla «por defecto» de la zona sirve solo si es justamente
      ese tramo. Una tabla equivocada movería a un equipo de llave sin
      ningún síntoma: mejor «a definir». */
-  function tablaParaSlot(s, ctx) {
+  function tablaParaSlot(s, ctx, fase) {
+    /* LA TABLA DEL TORNEO DE LA FASE (punto 136). Una fase con `torneo` y
+       sin `tabla` (los octavos del Apertura) sale de la regular de ESE
+       torneo, no de la tabla por defecto de la zona: con Apertura y
+       Clausura, ésa es el TOTAL acumulado y daba otro 5°. */
+    const deFase = !s.tabla && fase && ctx.tablaDeFase && ctx.tablaDeFase[fase.id];
+    if (deFase) {
+      const pf = ctx.tablasPorTramo && ctx.tablasPorTramo[deFase];
+      if (pf && (pf[s.zona] || pf['*'])) return pf[s.zona] || pf['*'];
+    }
     if (!s.tabla) return ctx.tablas && ctx.tablas[s.zona];
     const pt = ctx.tablasPorTramo && ctx.tablasPorTramo[s.tabla];
     if (pt && (pt[s.zona] || pt['*'])) return pt[s.zona] || pt['*'];
@@ -606,12 +615,12 @@ const SGADD_FASES = (function () {
    *   pendiente    todavía no se puede saber (otra zona, una serie sin terminar)
    *   invalido     la declaración está rota
    */
-  function resolverSlot(s, ctx, previos) {
+  function resolverSlot(s, ctx, previos, fase) {
     const zonaDe = (k) => (ctx.zonaDeEquipo && ctx.zonaDeEquipo[k]) || null;
     if (!s || s.tipo === 'invalido') return { estado: 'invalido', etiqueta: '—' };
     if (s.tipo === 'puesto') {
       const et = s.puesto + '° ' + nombreZona(ctx, s.zona) + (s.tabla ? ' · ' + nombreTramo(s.tabla) : '');
-      const t = tablaParaSlot(s, ctx);
+      const t = tablaParaSlot(s, ctx, fase);
       const fila = t && (t.filas || []).find(f => f.puesto === s.puesto);
       if (!fila) return { estado: 'pendiente', etiqueta: et, zona: s.zona };
       return { estado: t.cerrada ? 'resuelto' : 'proyectado', clave: fila.clave,
@@ -668,8 +677,8 @@ const SGADD_FASES = (function () {
       const sers = series((c.partidosPorFase || {})[f.id] || [], f.mejorDe);
       const usadas = new Set();
       const cruces = f.cruces.map((cr) => {
-        let a = resolverSlot(cr.a, c, previos);
-        let b = resolverSlot(cr.b, c, previos);
+        let a = resolverSlot(cr.a, c, previos, f);
+        let b = resolverSlot(cr.b, c, previos, f);
         /* LA FINAL EXTRA (punto 133): con `condicion: "distintos"` y los dos
            lados resueltos al MISMO equipo, el cruce no se juega. */
         if (cr.condicion === 'distintos' && a.clave && b.clave && a.clave === b.clave
@@ -710,6 +719,30 @@ const SGADD_FASES = (function () {
           naturaleza: naturalezaCruce(f, a, b, c), condicion: cr.condicion || null };
         previos[cr.id] = r;
         return r;
+      });
+      /* SEGUNDO PASE · LO JUGADO MANDA SOBRE LA PROYECCIÓN (punto 136).
+         Un cruce que quedó sin serie con los dos lados conocidos puede
+         estar proyectado con una tabla que se movió: si UNA SOLA serie
+         libre de la fase comparte un equipo con él, es la suya y los dos
+         lados pasan a ser los de la serie. Con dos candidatas no se elige
+         (la regla de la línea de arriba): la serie queda suelta. */
+      cruces.forEach((r) => {
+        if (r.serie || r.noSeJuega || !r.a.clave || !r.b.clave) return;
+        const ks = [r.a.clave, r.b.clave];
+        const cands = sers.filter(x => !usadas.has(x.clave) && (ks.indexOf(x.a) !== -1 || ks.indexOf(x.b) !== -1));
+        if (cands.length !== 1) return;
+        const s = cands[0];
+        const otroDe = (k) => (k === s.a ? s.b : s.a);
+        const fijo = ks.indexOf(s.a) !== -1 ? s.a : s.b;
+        const ladoA = r.a.clave === fijo;
+        usadas.add(s.clave);
+        const mantener = (x) => Object.assign({}, x, { estado: 'resuelto' });
+        const cambiar = (x, k) => Object.assign({}, x, { estado: 'resuelto', clave: k,
+          nombre: s.nombres[k] || k, porLoJugado: true });
+        r.a = ladoA ? mantener(r.a) : cambiar(r.a, otroDe(fijo));
+        r.b = ladoA ? cambiar(r.b, otroDe(fijo)) : mantener(r.b);
+        r.serie = s;
+        r.naturaleza = naturalezaCruce(f, r.a, r.b, c);
       });
       porFase[f.id] = { fase: f, cruces: cruces, sueltas: sers.filter(x => !usadas.has(x.clave)) };
     });
@@ -1208,8 +1241,26 @@ const SGADD_FASES = (function () {
        para ese tramo, con su arrastre y su desempate. Cerrada si ya se
        jugó una fase que sale de ella, o si todos llegaron a sus partidos. */
     const tablasPorTramo = {};
+    /* LA REGULAR DEL TORNEO DE CADA FASE (punto 136): una eliminatoria con
+       `torneo` y sin `tabla` toma sus puestos de `<torneo>|<regular>`, la
+       MISMA tabla que Clasificación muestra para ese torneo, y no del
+       TOTAL de la zona. Con la carpeta al revés («OCTAVOS - APERTURA») el
+       torneo real es la FASE del libro. Si ese tramo no existe en el libro,
+       se queda con la tabla de la zona, como antes. */
+    const tablaDeFase = {};
+    if (hojas && CORE) {
+      const existentes = new Set(CORE.combinacionesTorneoFase(hojas)
+        .filter(t => !t.agregado && String(t.torneo || '').indexOf('*') !== 0)
+        .map(t => (t.torneo || '') + '|' + t.fase));
+      fases.forEach((f) => {
+        if (f.tipo !== 'eliminacion' || f.tabla || !f.torneo) return;
+        const tReal = invertido(f.torneo, f.libro[0]) ? mayus(f.libro[0]) : f.torneo;
+        const k = tReal + '|' + mayus(faseR);
+        if (existentes.has(k)) tablaDeFase[f.id] = k;
+      });
+    }
     if (p.zonaId && typeof clasifTablaDeTramo === 'function') {
-      const pedidas = new Set();
+      const pedidas = new Set(Object.keys(tablaDeFase).map(id => tablaDeFase[id]));
       fases.forEach(f => f.cruces.forEach(cr => [cr.a, cr.b].forEach((x) => {
         if (x && x.tipo === 'puesto' && x.tabla) pedidas.add(x.tabla);
       })));
@@ -1220,7 +1271,7 @@ const SGADD_FASES = (function () {
         const filas = filasT.filter(r => !r.sinPartidos)
           .map(r => ({ clave: r.clave, nombre: r.nombre, puesto: r.puesto, pj: r.pj }));
         const jugadaDesde = fases.some(f => f.tipo === 'eliminacion' && (partidosPorFase[f.id] || []).length
-          && (f.tabla === k || f.cruces.some(cr => (cr.a && cr.a.tabla === k) || (cr.b && cr.b.tabla === k))));
+          && (f.tabla === k || tablaDeFase[f.id] === k || f.cruces.some(cr => (cr.a && cr.a.tabla === k) || (cr.b && cr.b.tabla === k))));
         const t = { filas: filas, tramo: k,
           cerrada: tablaCerrada(filas, doc && doc.formato && doc.formato.partidosPorEquipo, jugadaDesde) };
         tablasPorTramo[k] = {};
@@ -1228,7 +1279,8 @@ const SGADD_FASES = (function () {
         tablasPorTramo[k]['*'] = t;
       });
     }
-    const ctx = { tablas: tablas, tablasPorTramo: tablasPorTramo, partidosPorFase: partidosPorFase,
+    const ctx = { tablas: tablas, tablasPorTramo: tablasPorTramo, tablaDeFase: tablaDeFase,
+      partidosPorFase: partidosPorFase,
       zonaDeEquipo: zonasDeEquipos(doc), nombresZona: nombresDeZonas(doc) };
     /* Las OTRAS zonas y la postemporada llegan del servidor, solo si hay
        alguna fase entre zonas: un torneo de zona única no la necesita. */

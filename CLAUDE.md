@@ -24,7 +24,7 @@ node test-config.js        # 318 tests · zonas de tabla, tramos, tonos AA, pest
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
 node test-desempate-fiba.js # 37 tests · el desempate oficial FIBA: duelo directo, mini-tabla,
                            #             la vuelta a empezar (D.3), cociente y los manuales (punto 132)
-node test-arrastre-fases.js # 103 tests · el arrastre de puntos, los playoffs que no tocan la regular,
+node test-arrastre-fases.js # 112 tests · el arrastre de puntos, los playoffs que no tocan la regular,
                            #             el acumulado, las fases por torneo/tabla, la final extra y
                            #             el desempate de la CATEGORÍA (Olimpo / Alem) en la app real (punto 133)
 node test-boot.js          # 184 tests · arranque por club, sintaxis de los módulos, carteles de espera
@@ -281,7 +281,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=294`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=295`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15355,3 +15355,50 @@ Verificado al revés: sin el `borrarOverride` cae 1; sin el aviso, 1.
 **En el navegador donde se publicó antes de este arreglo, el borrador viejo
 sigue ahí**: hay que tocar «Volver al JSON del club» en Configuración (o
 publicar de nuevo) una vez.
+
+---
+
+## 136. LOS PUESTOS DE LA LLAVE SALEN DE LA REGULAR DEL TORNEO DE LA FASE (2026-10-19)
+
+Reportado en Bahía Blanca · Primera Oro: Clasificación (Apertura) dice
+Estudiantes 5° y Villa Mitre 6°, y la llave armaba O1 = Villa Mitre vs
+Independiente, que no calzaba con los partidos cargados. Assets en
+`?v=295`; `test-arrastre-fases.js` (sección 8) lo fija.
+
+### Lo medido (libros reales de la zona y de los octavos, solo lectura)
+
+**No eran dos desempates FIBA distintos** (`resolverPuestos`, `matchearSeries`
+y `sgadd-tablas.js` no existen: la llave vive en `sgadd-fases.js`). Era otra
+TABLA. `contexto()` arma la tabla de la zona con `indicePara(hojas,
+'REGULAR')`, que con dos torneos toma el `*TOTAL*` (Apertura + Clausura):
+
+```
+Clasificación · APERTURA|REGULAR   5 ESTUDIANTES · 6 VILLA MITRE · 7 PACIFICO · 8 LINIERS …
+llave · *TOTAL*|REGULAR            5 VILLA MITRE · 6 PACIFICO · 7 LINIERS · 8 ALEM · 9 ESTUDIANTES …
+```
+
+Y el TOTAL figuraba «cerrada»: los cuatro cruces salían RESUELTOS con los
+equipos equivocados, uno solo con serie y tres series jugadas sueltas.
+
+### El arreglo · `tablaDeFase`
+
+- **Una eliminatoria con `torneo` y sin `tabla` toma sus puestos de
+  `<torneo>|<regular>`** (`ctx.tablaDeFase`, en `contexto()`), la misma
+  `clasifTablaDeTramo` de Clasificación con su desempate y su arrastre. Con
+  la carpeta al revés (`torneo: OCTAVOS`, `libro: [APERTURA]`, punto 134) el
+  torneo real es la FASE del libro. Si ese tramo no está en el libro, queda
+  la tabla de la zona, como antes. `tablaParaSlot` lo usa antes que la de la
+  zona; una `tabla` declarada sigue mandando.
+- **Segundo pase de series** (`llave()`): un cruce con los dos lados
+  conocidos y sin serie toma la ÚNICA serie libre de la fase que comparte
+  un equipo con él; los lados pasan a ser los de la serie (`porLoJugado`,
+  resueltos). Con dos candidatas no se elige y quedan sueltas.
+
+Medido con los libros reales: O1 Estudiantes–Independiente, O2 Villa
+Mitre–Barrio Hospital, O3 Pacífico–Alem, O4 Liniers–Olimpo, las cuatro con
+su serie y ninguna suelta. Al revés: sin la tabla del torneo caen 3; sin el
+segundo pase, 2.
+
+**El servidor (`llave.js`) no cambió**: arma las tablas de las OTRAS zonas
+para la llave entre zonas. Bahía tiene una sola zona; un torneo multizona
+con fases por torneo tendría que hacer lo mismo allá.
