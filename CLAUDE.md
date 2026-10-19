@@ -81,7 +81,7 @@ node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: 
                            #             equipo, vencimiento y ciclo ORO por categoría
 node test-glosario.js      #  34 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
-node test-pbp.js           # 273 tests · la capa de laboratorio de play-by-play: el catálogo,
+node test-pbp.js           # 248 tests · la capa de laboratorio de play-by-play: el catálogo,
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
                            #             · el bloque opcional de secciones del paquete (punto 83)
@@ -90,6 +90,8 @@ node test-pbp.js           # 273 tests · la capa de laboratorio de play-by-play
                            #               y su síntesis táctica en la pestaña Personalidad (118)
                            #               y el perfil de ritmo: arquetipos, desglose por franja y cruces de identidad (119)
                            #               y el insight por bloque, las tablas completas y la cancha por franja (120)
+                           #               y el reloj en TRES franjas, mudado al Mapa de tiro, con un mapa completo
+                           #               por franja y las tarjetas de tendencias (127)
 
 node test-mails.js         # 177 tests · los mails institucionales: plantillas sin huecos, el
                            #             día de Argentina, la idempotencia del cron, la ficha, el SMTP,
@@ -102,8 +104,10 @@ node test-fixture-apdeb.js # 125 tests · el conector de apdeb: tablas sin clase
 node test-fixture-apb.js  #  93 tests · el conector de basket-club: el parser contra markup REAL,
                            #             los estados, el cruce con el libro y el respaldo ante una caida
 
-node test-fixture-auto.js  #  67 tests · los conectores que se pegan en el Panel Master: Volcala, la página de
+node test-fixture-auto.js  #  88 tests · los conectores que se pegan en el Panel Master: Volcala, la página de
                            #             «jornadas» de una federación y el modo auto por sitio (punto 126)
+                           #             · y el fixture de la Liga (Gesdeportiva): el fragmento por rango, la conferencia
+                           #               por equipos y el parcial de un partido en juego (punto 127)
 
 node test-fixture.js       # 116 tests · la seccion Fixture, los empty states de pretemporada,
                            #             las iniciales con parentesis y la grilla compacta del hub
@@ -148,7 +152,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7885 tests en total. Todos tienen que dar verde antes de commitear.**
+**7881 tests en total. Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -266,7 +270,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=285`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=286`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -14671,3 +14675,127 @@ ordena por PCT.
    📅 Fuente del fixture → pegar los dos links → Guardar) o con
    `node server/bin/catalogo.js torneo --archivo torneos/bahia-blanca-2026.json`.
 3. Push del front (`?v=285`).
+
+---
+
+## 127. FIXTURE DE LA LIGA, EL VIGÍA Y EL RELOJ EN TRES FRANJAS, EN EL MAPA DE TIRO (2026-10-18)
+
+Cuatro pedidos juntos. Assets en `?v=286`. Toca el servidor, la ingesta y el panel.
+
+### 1 · El fixture de la LAB · un lector de Gesdeportiva (`server/lib/fixture-fuentes.js`)
+
+El link que se pega (`laliganacional.com.ar/laligaargentina/fixture`) **no trae
+los partidos**: la página los pide por JS a
+`/<delegación>/fixture?handler=ProximosPartidos&fechaInicio=…&fechaFin=…`. Por
+eso el genérico decía «No se reconoció ninguna jornada».
+
+- **`urlDeLectura`** es un gancho nuevo del registro de adaptadores: el
+  servidor baja la URL que el lector pide, no la pegada (`refrescar` en
+  `server/api/fixture.js`). El modo `auto` lo delega por sitio. Para la Liga:
+  la delegación (primer segmento del link) y la temporada entera (el 1 de julio
+  anterior, o el `desde` declarado, y un año). Un link que ya pide el fragmento
+  se respeta.
+- **La delegación trae las dos conferencias mezcladas y sin grupo.** La zona
+  sale de los EQUIPOS: `idsPorZona(entrada)` arma, del catálogo del torneo, los
+  ids de Gesdeportiva de cada zona (`config.equiposPorZona`) y el lector se
+  queda con lo suyo y cuenta lo de otra zona. Un equipo que el catálogo tenga
+  sin id (Unión y Racing eran provisorios) se reconoce por nombre o alias. Sin
+  ids no filtra, y avisa.
+- **Un partido en juego trae el PARCIAL** en las celdas del resultado (medido:
+  Jujuy 19-13 Hindú en el primer cuarto). El marcador cuenta solo si pasaron
+  150 min desde el inicio en hora de Argentina (`ahora`, que `refrescar` pasa);
+  si no, `EN_JUEGO` sin puntos. **0-0 es sin jugar** y **«00:00» es sin hora**.
+  La sede sale del `<small>`; estado y transmisión no se publican.
+- `LECTORES` del Panel Master suma «Liga Nacional / Argentina» (la copia de
+  `SITIOS` que un test compara).
+- Medido contra el sitio el 2026-10-18: **Norte 68 partidos, Sur 76** (los 144
+  publicados hasta noviembre), 8 jugados, 2 en juego. Fixture real recortado en
+  `test-fixtures/lab/fixture-delegacion.html`. `test-fixture-auto.js` 3 bis y 3 ter.
+
+### 2 · El vigía · la ingesta apenas termina un partido (`motorstats-ingestion`)
+
+La tarea de las 02:00 y las 10:00 sigue igual. Se suma **una segunda tarea de
+Windows, «MotorStats Vigia»**, que arranca `herramientas/vigia.cmd` al iniciar
+sesión y queda corriendo mientras la PC está prendida:
+
+- mira el fixture de las tres competencias (LNB, LAB Norte, LAB Sur) en una
+  ventana corta (ayer y hoy), sin caché, una petición por delegación;
+- apenas un partido **terminó** (marcador y 150 min desde el inicio) y no está
+  en el `estado.json` de su competencia, dispara `correr-lnb.js --solo <id>
+  --fresco` (y `--reintentar` si estaba en cuarentena): sitio → Drive → motor →
+  libro, y los tiros al KV;
+- con partidos en juego mira cada 5 min; si no, cada 30 como mucho. Un partido
+  que no entra se reintenta cada 20 min, hasta 4 veces, durante 6 horas; después
+  queda para la tarea.
+
+Piezas: `src/vigia.js` (PURO: `terminado`, `listos`, `proximaMirada`),
+`src/corrida.js` (la lista de competencias, que antes vivía adentro de
+correr-lnb.js, y el **candado** `salida/.corrida.lock`: la tarea y el vigía
+nunca corren a la vez; un candado de un proceso muerto o de más de 70 min es
+viejo), `herramientas/vigia.js` (el bucle) y `test/test-vigia.js`.
+
+**Y un defecto que cerraba la puerta a esto:** `sincronizar.js` tomaba como
+jugado cualquier fila con marcador, o sea el parcial de un partido en juego, y
+su página quedaba en el caché PARA SIEMPRE (`ttlMs: null`). Ahora filtra con
+`V.terminado` y lo dice. `--fresco` pide el fixture sin el caché de una hora.
+
+    powershell -ExecutionPolicy Bypass -File herramientas\programar-tarea.ps1 -Vigia            (muestra)
+    powershell -ExecutionPolicy Bypass -File herramientas\programar-tarea.ps1 -Vigia -Registrar
+    node herramientas\vigia.js --ensayo                                                          (una mirada, sin disparar)
+
+### 3 · El reloj de posesión en TRES franjas · 0-7 · 8-17 · 18-24 s
+
+En la ingesta (`src/pbp/reloj.js`) y en todo el panel. Los ids que conservan
+el sentido se quedan (`temprana`, `media`, `tardia`); `armada` desaparece. Los
+cortes de la competencia son uno por franja, de equipo y de jugador
+(`cortes.equipo.medio` y `.armada` ya no existen).
+
+- **Medido en la Conferencia Norte con las tres:** Pts/tiro caen franja por
+  franja; los cuartos altos de equipo arrancan en 23,1 % (temprana), 49,4 %
+  (media) y 36,9 % (tardía) — la tardía pasó a ser casi un tercio de los finales.
+- **Arquetipos (9):** el Plan A y el Plan B de antes son ahora UNA ventana, la
+  del juego armado: «Sistemático · eficacia en el juego armado» y «Juego armado
+  estéril». Se suma «Sangre fría al final del reloj» (18-24 con volumen alto y
+  rendimiento por encima). En defensa, «Vulnerable ante el juego armado» y la
+  muralla sobre 18-24.
+- **Un paquete con las cuatro franjas de antes no se remapea** (los bordes no
+  coinciden): el panel lo dice (`relojFormaVieja`) y el reloj vuelve con la
+  próxima subida de los paquetes.
+
+### 4 · El reloj se mudó a la card de MAPA DE TIRO, con mapas completos por franja
+
+- **Equipos → Mapa de tiro** (y la card del rival en Scouting) traen, abajo del
+  mapa principal, todo el reloj (`relojMapaTiro`): perfil de ritmo, barras,
+  tablas, cómo nace la posesión, el insight por bloque, armas y grietas y las
+  recomendaciones. **Personalidad** vuelve a ser solo los 8 ejes, y la card de
+  Quintetos de Scouting ya no lo trae (su lectura y «quién tira temprano / tarde»
+  van en la de Mapa de tiro, `relojLecturaScouting`).
+- **Cada franja tiene el MAPA COMPLETO.** La ingesta suma a cada tiro de
+  `tiros.detalle.puntos` su código de reloj (6.º elemento: 0..2 la franja, 3 tras
+  rebote ofensivo, 4 tras falta, −1 sin reloj; `RELOJ.franjaPorTiro`, misma
+  unión por posición que la familia del tiro). El panel no tiene un segundo
+  mapa: `paqFranja(paq, k)` recorta los puntos de esa franja y re-agrega zonas y
+  hexágonos (`hexDePunto`, la fórmula de la ingesta), y eso va al MISMO `mapa()`:
+  zonas por eficiencia, hexágonos, diagnóstico, tabla enlazada y los círculos y
+  cruces. La caja lleva `data-pbp-franja`, así los conmutadores y la capa de tiros
+  siguen en su franja. La vara de cada zona es la de la liga con todas las
+  franjas juntas (el paquete no trae la liga por franja y zona), y se dice al pie.
+- **Tarjetas de tendencias al pie** (`relojTendencias`), por franja × familia de
+  zona con el ajuste por muestra de siempre (20 tiros de liga): **Puntos altos**
+  (desvío ≥ +0,05 con 15 tiros, por puntos de más), **Puntos de fuga** (≤ −0,05,
+  por puntos perdidos, separando volumen alto —15 % o más de la franja— del bajo)
+  y **Top 3 por zona y franja** (quién tira más en cada franja, con su C/I, su
+  Pts/tiro y la zona desde donde más tira).
+- El paquete con códigos pesa más: Amancay (Conferencia Norte) 192 KB.
+  **`MAX_KB` de `server/bin/pbp.js` subió de 200 a 256.**
+
+### Para producción (lo corre el club)
+
+1. Backend (el lector de la Liga y los ids por zona): `cd server && npx vercel --prod`.
+2. Push del front (`?v=286`).
+3. Pegar el link de la LAB en Panel Master → Liga Argentina 2026-27 → 📅 Fuente
+   del fixture (en las dos zonas) → Guardar → «Probar lo guardado».
+4. Subir los paquetes regenerados (tres franjas + franja por tiro), en
+   `motorstats-ingestion`: `node herramientas/subir-paquetes.js --confirmar`.
+   Hasta eso, el panel muestra el aviso de las franjas viejas.
+5. Registrar el vigía: `programar-tarea.ps1 -Vigia -Registrar`, y arrancarlo.

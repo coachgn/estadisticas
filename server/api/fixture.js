@@ -58,6 +58,26 @@ const TIMEOUT_MS = 12000;
 
 function claveKV(torneo) { return PREFIJO + torneo; }
 
+/**
+ * Los ids de Gesdeportiva de los equipos de cada zona de un torneo del
+ * catálogo. Los usa el lector de la Liga para quedarse con SU conferencia.
+ */
+function idsPorZona(entrada) {
+  const out = {};
+  const cats = (entrada && entrada.categorias) || {};
+  Object.keys(cats).forEach((s) => {
+    const c = cats[s] || {};
+    if (!c.zona) return;
+    const eq = (c.equipos || []).filter(Boolean).map((e) => {
+      const id = Number(e.id);
+      return { id: isFinite(id) && id > 0 ? id : null,
+        nombres: [e.nombre, e.clave].concat(e.alias || []).filter(Boolean) };
+    });
+    if (eq.length) out[c.zona] = eq;
+  });
+  return out;
+}
+
 function error(status, codigo, mensaje) {
   return { status: status, body: { ok: false, codigo: codigo, mensaje: mensaje } };
 }
@@ -130,11 +150,18 @@ async function refrescar(config, deps, hoy) {
          la misma regla que entre zonas, un nivel más abajo. */
       const lecturas = await Promise.all(cfgZona.urls.map(async (u) => {
         try {
-          const html = await bajar(u, deps);
+          const desde = cfgZona.desde || config.desde;
+          /* UN LECTOR PUEDE PEDIR OTRA URL que la pegada: Gesdeportiva sirve
+             los partidos en un fragmento por rango de fechas (punto 127). */
+          const aBajar = ad.urlDeLectura ? ad.urlDeLectura(u, { hoy: hoy, desde: desde }) : u;
+          const html = await bajar(aBajar, deps);
           /* `url` es lo que usa el modo `auto` para elegir el parser por
-             sitio: una zona puede juntar volcala con la nota de la liga. */
+             sitio: una zona puede juntar volcala con la nota de la liga.
+             `equipos` son los ids de Gesdeportiva de la zona (del catálogo):
+             la delegación de la Liga trae todas las conferencias juntas. */
           return { r: ad.parsear(html, { zona: z, hoy: hoy, categoria: cfgZona.categoria,
-            desde: cfgZona.desde || config.desde, url: u }) };
+            desde: desde, url: u, ahora: (deps && deps.ahora) || new Date().toISOString(),
+            equipos: (config.equiposPorZona || {})[z] || null }) };
         } catch (e) { return { error: e.message || 'No se pudo leer ' + u }; }
       }));
       const partidos = [];
@@ -245,6 +272,7 @@ async function manejarFixture(peticion, deps) {
   if (!entrada) return error(404, 'TORNEO', 'Ese torneo no está en el catálogo.');
 
   const config = fuentes.configDe(entrada);
+  if (config) config.equiposPorZona = idsPorZona(entrada);
   if (!config) {
     /* NO ES UN ERROR: un torneo puede traer su calendario en su propio
        archivo (LAB) y no tener fuente en vivo. Se dice, y el panel usa el
@@ -327,5 +355,5 @@ function respuesta(torneo, config, datos, estado, query) {
   };
 }
 
-module.exports = { manejarFixture, bajar, refrescar, claveKV, TTL_POR_DEFECTO,
+module.exports = { manejarFixture, bajar, refrescar, claveKV, idsPorZona, TTL_POR_DEFECTO,
   sinEstructuralesCubiertos, VENTANA_ESTRUCTURAL_DIAS };

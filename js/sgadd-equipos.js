@@ -416,7 +416,7 @@ function equiposTab(idx, e, id) {
     case 'plantel':   return equiposTabPlantel(idx, e);
     case 'partidos':  return equiposTabPartidos(idx, e);
     case 'pbp':       return (typeof SGADD_PBP !== 'undefined') ? SGADD_PBP.espacio(e.nombre, 'equipo') : '';
-    case 'pbp-tiro':  return (typeof SGADD_PBP !== 'undefined') ? SGADD_PBP.espacio(e.nombre, 'equipo', null, 'mapa') : '';
+    case 'pbp-tiro':  return (typeof SGADD_PBP !== 'undefined') ? SGADD_PBP.espacio(e.nombre, 'equipo', null, 'mapa', equiposIdentidadReloj(idx, e)) : '';
     default:          return '';
   }
 }
@@ -1053,20 +1053,15 @@ function equiposTabPersonalidad(idx, e) {
         </p>
       </div>` : ''}
     </div>
-    ${equiposInsight(p.insight)}
-    ${equiposRelojPersonalidad(idx, e)}`;
+    ${equiposInsight(p.insight)}`;
 }
 
-/* EL RELOJ DE POSESIÓN EN LA PERSONALIDAD (punto 118). Solo con la capa
-   de play-by-play: sin ella la pestaña queda exactamente como antes. El
-   paquete llega después del pintado (montarPendientes); la marca de hoja lo
-   manda a una hoja propia en el informe de equipo. */
-function equiposRelojPersonalidad(idx, e) {
-  if (typeof SGADD_PBP === 'undefined' || !SGADD_PBP.activa || !SGADD_PBP.activa()) return '';
-  return `<div class="mt-6" data-hoja data-reloj-personalidad-espacio="1">${SGADD_PBP.espacio(e.nombre, 'equipo', null, 'personalidad', equiposIdentidadReloj(idx, e))}</div>`;
-}
+/* EL RELOJ DE POSESIÓN SE MUDÓ A LA PESTAÑA MAPA DE TIRO (2026-10-18, pedido
+   del club): la Personalidad vuelve a ser solo los 8 ejes. Lo monta
+   `SGADD_PBP.mapaCard`, con la identidad de abajo para sus cruces. */
 
-/* Los tres ejes de la identidad que cruza el reloj (punto 119): ritmo,
+/* Los tres ejes de la identidad que cruza el reloj (punto 119; desde el
+   2026-10-18 lo lee la pestaña Mapa de tiro): ritmo,
    uso del triple y rebote ofensivo, con su percentil contra la liga. Salen
    del MISMO índice que los 8 ejes de arriba; un eje sin dato no viaja. */
 function equiposIdentidadReloj(idx, e) {

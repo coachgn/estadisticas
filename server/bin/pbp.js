@@ -39,7 +39,7 @@ const ESQUEMAS = ['motorstats-ingestion/analitica-pbp-web@1', 'motorstats-ingest
 /* Un paquete @1 pesa ~23 KB, uno @2 ~57 KB y uno @3 —con los tiros
    ubicados— ~105 KB. Un techo holgado frena el error de subir
    el `analitica-pbp.json` completo, o partidos crudos, por equivocación. */
-const MAX_KB = 200;
+const MAX_KB = 256;
 
 function args(argv) {
   const o = { _: [] };

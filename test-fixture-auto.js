@@ -101,9 +101,67 @@ seccion('3 · El modo `auto` · cada link con su lector');
   check('un sitio que solo CONTIENE el nombre no se confunde', F.adaptadorDeUrl('https://volcala.com.falso.net/x') === F.ADAPTADORES.jornadas);
   const cfg = F.configDe({ fixture: { adaptador: 'auto', zonas: { oro: { urls: [URL_V, URL_A] } } } });
   check('configDe acepta `auto` con varias URLs', cfg && cfg.adaptador === 'auto' && cfg.zonas.oro.urls.length === 2, cfg);
-  check('el panel conoce los mismos sitios que el servidor', UI.LECTORES.length === 3
+  check('el panel conoce los mismos sitios que el servidor', UI.LECTORES.length === 4
     && UI.lectorDeUrl(URL_V) === 'Volcala' && UI.lectorDeUrl('https://basket-club.com/a') === 'basket-club'
     && UI.lectorDeUrl('http://apdeb.com.ar/a') === 'APdeB' && /jornadas/.test(UI.lectorDeUrl(URL_A)));
+}
+
+seccion('3 bis · La Liga (Gesdeportiva) · el fixture de la delegación (punto 127)');
+const LAB = fs.readFileSync('test-fixtures/lab/fixture-delegacion.html', 'utf8');
+const DOC_LAB = JSON.parse(fs.readFileSync('torneos/liga-argentina-2026-27.json', 'utf8'));
+const NORTE = DOC_LAB.zonas.norte.equipos.map(e => e.id);
+const URL_LAB = 'https://www.laliganacional.com.ar/laligaargentina/fixture';
+const AHORA_LAB = '2026-10-18T23:40:00Z'; // 20:40 de Argentina
+{
+  check('laliganacional.com.ar → gesdeportiva', F.adaptadorDeUrl(URL_LAB) === F.ADAPTADORES.gesdeportiva);
+  check('el panel lo nombra', UI.lectorDeUrl(URL_LAB) === 'Liga Nacional / Argentina', UI.lectorDeUrl(URL_LAB));
+  const u = F.urlGesdeportiva(URL_LAB, { hoy: '2026-10-18' });
+  check('la página pegada se convierte en el pedido del fragmento, temporada entera',
+    u === 'https://www.laliganacional.com.ar/laligaargentina/fixture?handler=ProximosPartidos&fechaInicio=2026-07-01&fechaFin=2027-06-30', u);
+  check('en marzo la temporada sigue siendo la que arrancó en julio', F.inicioTemporada('2027-03-10') === '2026-07-01');
+  check('el piso declarado manda', /fechaInicio=2026-10-01&fechaFin=2027-09-30$/.test(F.urlGesdeportiva(URL_LAB, { hoy: '2026-10-18', desde: '2026-10-01' })));
+  const ya = URL_LAB + '?handler=ProximosPartidos&fechaInicio=2026-10-01&fechaFin=2026-11-30';
+  check('un link que ya pide el fragmento se respeta', F.urlGesdeportiva(ya, { hoy: '2026-10-18' }) === ya);
+  check('auto también pide el fragmento', /handler=ProximosPartidos/.test(F.ADAPTADORES.auto.urlDeLectura(URL_LAB, { hoy: '2026-10-18' })));
+  check('auto deja intacto un link de otro sitio', F.ADAPTADORES.auto.urlDeLectura(URL_V, { hoy: HOY }) === URL_V);
+
+  const r = F.parsearGesdeportiva(LAB, { zona: 'norte', hoy: '2026-10-18', ahora: AHORA_LAB, equipos: NORTE });
+  check('se queda con los 4 de la Norte y descarta los 3 de la Sur', r.partidos.length === 4 && r.otraZona === 3, [r.partidos.length, r.otraZona]);
+  const p0 = r.partidos[0];
+  check('un jugado trae marcador, sede e ids', p0.estado === 'FINALIZADO' && p0.ptsLocal === 96 && p0.ptsVisitante === 87
+    && p0.sede === 'ANGEL P. MALVICINO' && p0.idLocal === 115314, p0);
+  const vivo = r.partidos.find(p => /JUJUY/.test(p.local));
+  check('un partido EN JUEGO no toma el parcial como resultado', vivo.estado === 'EN_JUEGO' && vivo.ptsLocal === null, vivo);
+  const fin = F.parsearGesdeportiva(LAB, { zona: 'norte', hoy: '2026-10-19', ahora: '2026-10-19T03:30:00Z', equipos: NORTE })
+    .partidos.find(p => /JUJUY/.test(p.local));
+  check('el mismo, pasadas dos horas y media, ya es resultado', fin.estado === 'FINALIZADO' && fin.ptsLocal === 19, fin);
+  const sinAhora = F.parsearGesdeportiva(LAB, { zona: 'norte', hoy: '2026-10-18', equipos: NORTE }).partidos.find(p => /JUJUY/.test(p.local));
+  check('sin `ahora`, un marcador del mismo día no es resultado', sinAhora.estado === 'EN_JUEGO', sinAhora);
+  check('0-0 es «sin jugar»', r.partidos.filter(p => p.estado === 'PROGRAMADO').every(p => p.ptsLocal === null)
+    && r.partidos.filter(p => p.estado === 'PROGRAMADO').length === 2);
+  const vsm = r.partidos.find(p => /VILLA/.test(p.local));
+  check('«00:00» es sin hora, y la entidad hexadecimal se lee', vsm.hora === null && vsm.local === 'VILLA SAN MARTÍN', vsm);
+  const sinIds = F.parsearGesdeportiva(LAB, { zona: 'norte', hoy: '2026-10-18', ahora: AHORA_LAB });
+  check('sin los equipos de la zona no filtra, y lo avisa', sinIds.partidos.length === 7 && /no declara los ids/.test(sinIds.avisos.join(' ')));
+  const porNombre = F.parsearGesdeportiva(LAB, { zona: 'norte', hoy: '2026-10-18', ahora: AHORA_LAB,
+    equipos: NORTE.filter(id => id !== 115314).concat([{ id: null, nombres: ['UNION (SF)'] }]) });
+  check('un equipo sin id en el catálogo se reconoce por el nombre', porNombre.partidos.length === 4);
+  const vacio = F.parsearGesdeportiva('<html>sin tabla</html>', { zona: 'norte' });
+  check('una página sin la tabla lo dice', !vacio.partidos.length && /no trae la tabla de calendario/.test(vacio.avisos[0]));
+  const ids = API.idsPorZona({ categorias: { 'lab-norte': { zona: 'norte', equipos: [{ id: 112674, nombre: 'JUJUY BASQUET', clave: 'JUJUY BASQUET' }, { id: null, nombre: 'UNION (SF)', alias: ['Unión'] }] } } });
+  check('el servidor arma los equipos de cada zona desde el catálogo', ids.norte.length === 2 && ids.norte[0].id === 112674
+    && ids.norte[1].id === null && ids.norte[1].nombres.indexOf('Unión') !== -1, ids);
+}
+
+async function servidorLab() {
+  seccion('3 ter · El servidor baja el fragmento, no la página pegada');
+  const urls = [];
+  const deps = { ahora: AHORA_LAB, fetch: async (u) => { urls.push(u); return { ok: true, status: 200, text: async () => LAB }; } };
+  const r = await API.refrescar({ adaptador: 'auto', zonas: { norte: { urls: [URL_LAB] }, sur: { urls: [URL_LAB] } },
+    equiposPorZona: { norte: NORTE, sur: DOC_LAB.zonas.sur.equipos.map(e => e.id) } }, deps, '2026-10-18');
+  check('pidió el handler de ProximosPartidos', urls.length === 2 && urls.every(u => /handler=ProximosPartidos/.test(u)), urls);
+  check('cada conferencia con lo suyo', r.zonas.norte.partidos.length === 4 && r.zonas.sur.partidos.length === 3,
+    [r.zonas.norte && r.zonas.norte.partidos.length, r.zonas.sur && r.zonas.sur.partidos.length]);
 }
 
 let ZONA = null;
@@ -217,6 +275,7 @@ async function datos() {
 }
 
 (async () => {
+  await servidorLab();
   await servidor();
   panel();
   panelMaster();

@@ -688,10 +688,14 @@ const SGADD_PBP = (function () {
    * @param {{sujeto?: string, vista?: 'zonas'|'hex', metrica?: 'eficiencia'|'frecuencia', diag?: boolean, perspectiva?: boolean}} opciones
    */
   function mapa(paq, opciones) {
-    const o = Object.assign({ sujeto: 'equipo', vista: 'zonas', metrica: 'eficiencia', diag: true, perspectiva: false, fijo: false }, opciones);
+    const o = Object.assign({ sujeto: 'equipo', vista: 'zonas', metrica: 'eficiencia', diag: true, perspectiva: false, fijo: false, franja: null }, opciones);
     /* Fijo (Scouting): una sola vista, la que se lee para preparar el
        partido. Se fuerza acá para que ningún llamador la mezcle. */
     if (o.fijo) Object.assign(o, { sujeto: 'equipo', vista: 'zonas', metrica: 'eficiencia', diag: true, perspectiva: false });
+    /* UN MAPA DE UNA FRANJA DEL RELOJ (2026-10-18): el llamador pasa el
+       paquete ya recortado (`paqFranja`); acá solo se marca la caja, para
+       que los conmutadores y la capa de tiros sigan en esa franja. */
+    const franja = (o.franja !== null && o.franja !== undefined && o.franja !== '' && isFinite(o.franja)) ? Number(o.franja) : null;
     const s = sujetoTiros(paq, o.sujeto);
     if (!s) return vacio('Sin tiros suficientes para dibujar el mapa.');
     const G = geometria(paq);
@@ -804,8 +808,8 @@ const SGADD_PBP = (function () {
     }).join('');
 
     const esJugador = o.sujeto !== 'equipo' && o.sujeto !== 'contra';
-    return `<div class="pbp-mapa-caja" data-pbp-sujeto="${esc(o.sujeto)}" data-pbp-vista="${o.vista}" data-pbp-metrica="${o.metrica}" data-pbp-diag="${o.diag ? '1' : '0'}" data-pbp-perspectiva="${o.perspectiva ? '1' : '0'}"${o.fijo ? ' data-pbp-fijo="1"' : ''}>
-      ${o.fijo ? '<p class="pbp-vista-fija text-[11px] text-muted mb-2">Lo que tira · Zonas · Color: eficiencia contra la liga</p>' : `<div class="pbp-controles">
+    return `<div class="pbp-mapa-caja" data-pbp-sujeto="${esc(o.sujeto)}" data-pbp-vista="${o.vista}" data-pbp-metrica="${o.metrica}" data-pbp-diag="${o.diag ? '1' : '0'}" data-pbp-perspectiva="${o.perspectiva ? '1' : '0'}"${o.fijo ? ' data-pbp-fijo="1"' : ''}${franja !== null ? ` data-pbp-franja="${franja}"` : ''}>
+      ${o.fijo ? `<p class="pbp-vista-fija text-[11px] text-muted mb-2">Lo que tira${franja !== null ? ' en ' + FRANJAS_RELOJ[franja] : ''} · Zonas · Color: eficiencia contra la liga</p>` : `<div class="pbp-controles">
         ${o.perspectiva && !esJugador ? grupo('Perspectiva', boton('sujeto', 'equipo', 'Lo que tira') + boton('sujeto', 'contra', 'Lo que le tiran')) : ''}
         ${grupo('Vista', boton('vista', 'zonas', 'Zonas') + boton('vista', 'hex', 'Hexágonos'))}
         ${grupo('Color', boton('metrica', 'eficiencia', 'Eficiencia vs liga') + boton('metrica', 'frecuencia', 'Frecuencia'))}
@@ -1011,7 +1015,6 @@ const SGADD_PBP = (function () {
         ${notaLaboratorio(paq)}
         ${v2 ? seccion('ultimos5', 'Últimos 5 partidos · inicial contra cierre', tablaUltimos5(paq)) : ''}
         ${seccion('decide', 'Quién decide los finales', tablaClutch(paq), { nota: 'Usos = PLAYS del motor, en los finales apretados.' })}
-        ${relojScouting(paq) ? seccion('reloj', 'Reloj de posesión · cuándo tira el rival', relojScouting(paq), { nota: NOTA_RELOJ }) : ''}
         ${bloqueSecciones(paq, 'scouting')}
       </div>`;
     }
@@ -1039,8 +1042,9 @@ const SGADD_PBP = (function () {
 
   /**
    * La card MAPA DE TIRO de un equipo. PURO.
-   * @param {{propio?: object, fijo?: boolean}} opciones  en Scouting, el paquete del otro lado del
+   * @param {{propio?: object, fijo?: boolean, identidad?: object}} opciones  en Scouting, el paquete del otro lado del
    *   cruce, y `fijo`: la vista queda en «Lo que tira · Zonas · Eficiencia vs liga», sin conmutadores.
+   *   Abajo va el reloj de posesión (`relojMapaTiro`, 2026-10-18).
    */
   function mapaCard(paq, opciones) {
     const o = opciones || {};
@@ -1065,6 +1069,7 @@ const SGADD_PBP = (function () {
       ${notaLaboratorio(paq)}
       ${o.fijo ? mapa(paq, { fijo: true }) : mapa(paq, { sujeto: 'equipo', perspectiva: true })}
       ${cruce}
+      ${relojMapaTiro(paq, { fijo: !!o.fijo, identidad: o.identidad })}
     </div>`;
   }
 
@@ -1298,13 +1303,20 @@ const SGADD_PBP = (function () {
      tabla con su subtítulo, una lista de jugadores o la lectura no se
      parten entre dos hojas. Medido en el PDF del Scouting: sin eso la lista
      de «quién tira con el reloj encima» quedaba mitad en cada hoja. */
-  const FRANJAS_RELOJ = ['0-6 s', '7-14 s', '15-20 s', '21-24 s'];
+  /* TRES FRANJAS desde el 2026-10-18 (pedido del club): 0-7 · 8-17 · 18-24.
+     Un paquete con las cuatro de antes (0-6 · 7-14 · 15-20 · 21-24) no se
+     remapea —los bordes no coinciden y repartirlo sería inventar— : se dice
+     que se actualiza con la próxima subida (`relojFormaVieja`). */
+  const FRANJAS_RELOJ = ['0-7 s', '8-17 s', '18-24 s'];
   const MIN_EQUIPOS_RELOJ = 8, MIN_JUGADORES_RELOJ = 20, MIN_PARTIDOS_RELOJ = 30, MIN_TIROS_TINTE = 10;
   const ORIGENES_RELOJ = [['ROBO', 'Tras robo'], ['RD', 'Tras rebote defensivo'], ['MUERTA', 'Tras pelota muerta'],
     ['SAQUE', 'Tras canasta o libre recibido'], ['PERIODO', 'Arranque de período']];
-  const relojValido = (acc) => !!(acc && Array.isArray(acc.f) && acc.f.length === 4
+  const relojValido = (acc) => !!(acc && Array.isArray(acc.f) && acc.f.length === FRANJAS_RELOJ.length
     && acc.f.every(c => Array.isArray(c) && c.length >= 6 && c.every(x => typeof x === 'number')));
   const relojLiga = (paq) => (paq && paq.liga && relojValido(paq.liga.reloj) ? paq.liga.reloj : null);
+  /** El paquete trae el reloj con las CUATRO franjas de antes del 2026-10-18. */
+  const relojFormaVieja = (paq) => !!(paq && paq.reloj && paq.reloj.favor && Array.isArray(paq.reloj.favor.f) && paq.reloj.favor.f.length === 4);
+  const AVISO_FORMA_VIEJA = 'Este paquete trae el reloj con las cuatro franjas de antes (0-6 · 7-14 · 15-20 · 21-24 s). Las tres nuevas (0-7 · 8-17 · 18-24 s) llegan con la próxima subida de los paquetes.';
   const relojTiros = (acc) => acc.f.reduce((a, c) => a + c[0], 0);
   const relojFinales = (acc) => acc.f.reduce((a, c) => a + c[0] + c[5], 0);
   const porc = (n, d) => (d > 0 ? 100 * n / d : null);
@@ -1316,10 +1328,9 @@ const SGADD_PBP = (function () {
   /* VOLUMEN RELATIVO NO ES FRANJA DE MAYOR FRECUENCIA (2026-10-14). Una
      etiqueta dice que alguien está en el cuarto más alto de la competencia
      en una franja, y eso no quiere decir que sea donde más tira: casi todos
-     tiran más en 7-14 s. Cuando la franja de MAYOR volumen es otra, el texto
+     tiran más en la franja media. Cuando la franja de MAYOR volumen es otra, el texto
      lo aclara. */
-  const VENTANAS_RELOJ = ['la ventana temprana de 0 a 6 s', 'la ventana media de 7 a 14 s',
-    'la ventana armada de 15 a 20 s', 'el final del reloj, de 21 a 24 s'];
+  const VENTANAS_RELOJ = ['la ventana temprana de 0 a 7 s', 'la ventana media de 8 a 17 s', 'el final del reloj, de 18 a 24 s'];
   function aclaraMayor(reparto, i, unidad) {
     let m = 0;
     reparto.forEach((v, k) => { if (v != null && (reparto[m] == null || v > reparto[m])) m = k; });
@@ -1349,38 +1360,37 @@ const SGADD_PBP = (function () {
      rendimiento desde el punto de vista del EQUIPO (en defensa, +1 =
      concede menos que la competencia). */
   const ARQUETIPOS_RELOJ = {
+    /* Tres franjas (2026-10-18): el Plan A y el Plan B de antes (7-14 y
+       15-20) son ahora una sola ventana, la del juego armado (8-17). */
     ofensivos: [
       { id: 'vertigo', k: 0, ef: +1, emoji: '🏎️', label: 'Vértigo en transición',
         texto: 'Ofensiva vertical de alto impacto: castiga en transición primaria, antes de que la defensa arme el balance. Su plan de juego prioriza un ritmo alto.' },
       { id: 'transicion-desordenada', k: 0, ef: -1, emoji: '🎢', label: 'Transición desordenada',
-        texto: 'Confunde prisa con velocidad: empuja transiciones rápidas, pero fuerza tiros incómodos o pierde la pelota antes del segundo 6.' },
-      { id: 'plan-a', k: 1, ef: +1, emoji: '♟️', label: 'Sistemático · eficacia en el Plan A',
-        texto: 'Ejecuta bien el libreto inicial: su primera acción (el bloqueo directo temprano o el sistema asignado) le da ventajas en media cancha.' },
-      { id: 'plan-a-esteril', k: 1, ef: -1, emoji: '📉', label: 'Libreto inicial estéril',
-        texto: 'Su ofensiva primaria es previsible: concentra el volumen en la primera acción, pero el movimiento no rompe la primera línea defensiva.' },
-      { id: 'plan-b', k: 2, ef: +1, emoji: '🧠', label: 'Paciencia y lectura en el Plan B',
-        texto: 'Ofensiva de varias ventajas: si el primer sistema falla, re-espacia, invierte la pelota y castiga con el pase extra.' },
-      { id: 'trancado', k: 2, ef: -1, emoji: '🛑', label: 'Ataque trancado tras el desgaste',
-        texto: 'Le falta juego secundario: cuando la defensa frena el primer movimiento, pierde el espaciado y se nubla en la toma de decisiones.' },
-      { id: 'soga', k: 3, ef: -1, emoji: '⏳', label: 'Soga al cuello · tiros forzados',
+        texto: 'Confunde prisa con velocidad: empuja transiciones rápidas, pero fuerza tiros incómodos o pierde la pelota antes del segundo 7.' },
+      { id: 'plan-a', k: 1, ef: +1, emoji: '♟️', label: 'Sistemático · eficacia en el juego armado',
+        texto: 'Ejecuta bien el juego armado: la primera acción y las opciones del sistema le dan ventajas en media cancha.' },
+      { id: 'plan-a-esteril', k: 1, ef: -1, emoji: '📉', label: 'Juego armado estéril',
+        texto: 'Concentra el volumen en el ataque armado, pero el movimiento no rompe la primera línea defensiva: el sistema es previsible.' },
+      { id: 'sangre-fria', k: 2, ef: +1, emoji: '🧊', label: 'Sangre fría al final del reloj',
+        texto: 'Llega seguido al final del reloj y lo resuelve: cuando la jugada no dio una ventaja, igual encuentra un tiro que rinde.' },
+      { id: 'soga', k: 2, ef: -1, emoji: '⏳', label: 'Soga al cuello · tiros forzados',
         texto: 'Ataque lento y congestionado: agota el reloj sin generar ventajas y termina con tiros exigidos sobre la bocina.' },
     ],
     defensivos: [
       { id: 'balance-vulnerable', ks: [0], ef: -1, emoji: '🚨', label: 'Balance defensivo vulnerable',
         texto: 'Grieta táctica: concede tiros cómodos en la transición primaria rival, por el retroceso o por la asignación de marcas.' },
-      { id: 'vulnerable-plan-a', ks: [1], ef: -1, emoji: '🔓', label: 'Vulnerable ante el primer sistema',
-        texto: 'Le cuesta contener el Plan A rival: sus ajustes iniciales contra el bloqueo directo o las cortinas indirectas ceden ventajas inmediatas.' },
-      { id: 'muralla', ks: [2, 3], ef: +1, emoji: '🧱', label: 'Defensa de resistencia · muralla',
+      { id: 'vulnerable-plan-a', ks: [1], ef: -1, emoji: '🔓', label: 'Vulnerable ante el juego armado',
+        texto: 'Le cuesta contener el ataque armado rival: sus ajustes contra el bloqueo directo o las cortinas indirectas ceden ventajas.' },
+      { id: 'muralla', ks: [2], ef: +1, emoji: '🧱', label: 'Defensa de resistencia · muralla',
         texto: 'Desgasta al rival: sostiene las rotaciones, niega el pase extra y fuerza tiros incómodos al límite del reloj.' },
     ],
   };
 
   const METODOLOGIA_RELOJ = {
     franjas: [
-      { label: '0-6 s', nombre: 'Temprana', lectura: 'Transición y primera ventaja: el tiro sale antes de que la defensa termine de armarse.' },
-      { label: '7-14 s', nombre: 'Media', lectura: 'Ataque temprano: la primera acción de la jugada, con la defensa ya ubicada.' },
-      { label: '15-20 s', nombre: 'Armada', lectura: 'Juego de sistema: las segundas y terceras opciones de la jugada.' },
-      { label: '21-24 s', nombre: 'Tardía', lectura: 'Final del reloj: el tiro que queda cuando la jugada no dio una ventaja antes.' },
+      { label: '0-7 s', nombre: 'Temprana', lectura: 'Transición y primera ventaja: el tiro sale antes de que la defensa termine de armarse.' },
+      { label: '8-17 s', nombre: 'Media', lectura: 'Juego armado: la primera acción de la jugada y las opciones del sistema, con la defensa ya ubicada.' },
+      { label: '18-24 s', nombre: 'Tardía', lectura: 'Final del reloj: el tiro que queda cuando la jugada no dio una ventaja antes.' },
     ],
     familias: [
       { id: 'aro', zonas: 'Z1', donde: 'A menos de 2,35 m del aro.' },
@@ -1409,9 +1419,9 @@ const SGADD_PBP = (function () {
           + RELOJ_MINIMOS.canastasFranja + ' canastas en la franja para decir si se las crean. Con menos, se muestra el reparto con ~ y sin etiqueta.' },
     ],
     equipo: [
-      { label: 'Ataca temprano', regla: 'Su porción de finales en 0-6 s está en el cuarto más alto de la competencia.' },
-      { label: 'Ofensiva armada', regla: 'Su porción entre los 7 y los 20 s está en el cuarto más alto, y la de 21-24 s por debajo de la mediana.' },
-      { label: 'Llega tarde al tiro', regla: 'Su porción de finales en 21-24 s está en el cuarto más alto de la competencia.' },
+      { label: 'Ataca temprano', regla: 'Su porción de finales en 0-7 s está en el cuarto más alto de la competencia.' },
+      { label: 'Ofensiva armada', regla: 'Su porción de finales en 8-17 s está en el cuarto más alto, y la de 18-24 s por debajo de la mediana.' },
+      { label: 'Llega tarde al tiro', regla: 'Su porción de finales en 18-24 s está en el cuarto más alto de la competencia.' },
       { label: 'Reparto de liga', regla: 'Ninguna franja lo separa del resto.' },
     ],
     jugador: [
@@ -1425,12 +1435,12 @@ const SGADD_PBP = (function () {
     /* Los arquetipos del perfil de ritmo (punto 119): la regla sale de la
        MISMA tabla que los decide, así el texto no puede divergir. */
     arquetipos: ARQUETIPOS_RELOJ.ofensivos.map(a => ({ label: a.label, lado: 'ataque',
-      regla: 'Su porción de finales en ' + ['0-6 s', '7-14 s', '15-20 s', '21-24 s'][a.k] + ' está en el cuarto más alto de la competencia y rinde por '
+      regla: 'Su porción de finales en ' + FRANJAS_RELOJ[a.k] + ' está en el cuarto más alto de la competencia y rinde por '
         + (a.ef > 0 ? 'encima' : 'debajo') + ' de ella. ' + a.texto }))
       .concat(ARQUETIPOS_RELOJ.defensivos.map(a => ({ label: a.label, lado: 'defensa',
-        regla: 'En ' + a.ks.map(k => ['0-6 s', '7-14 s', '15-20 s', '21-24 s'][k]).join(' y en ') + ' le sacan ' + (a.ef > 0 ? 'menos' : 'más')
+        regla: 'En ' + a.ks.map(k => FRANJAS_RELOJ[k]).join(' y en ') + ' le sacan ' + (a.ef > 0 ? 'menos' : 'más')
           + ' por tiro que a la competencia. ' + a.texto }))),
-    alerta: 'El aviso de «reloj tardío alto» de un partido dice que ese equipo terminó más posesiones después del segundo 20 que 9 de cada 10 partidos de la competencia (y solo con 30 finales con reloj o más). Describe, no juzga: puede venir de un ataque trabado o de una buena defensa rival, y el dato no los separa.',
+    alerta: 'El aviso de «reloj tardío alto» de un partido dice que ese equipo terminó más posesiones después del segundo 17 que 9 de cada 10 partidos de la competencia (y solo con 30 finales con reloj o más). Describe, no juzga: puede venir de un ataque trabado o de una buena defensa rival, y el dato no los separa.',
     neutral: 'Ninguna franja es buena o mala por sí sola, y los rasgos no son excluyentes: describen cómo juega un equipo, no cuánto vale.',
   };
   const familiaLabel = (id) => { const f = FAMILIAS.filter(x => x.id === id)[0]; return f ? f.label : id; };
@@ -1441,7 +1451,7 @@ const SGADD_PBP = (function () {
     const li = (b, t) => `<li class="text-xs text-ink leading-snug mb-1"><b class="text-white">${esc(b)}</b> · ${esc(t)}</li>`;
     const h = (t) => `<h4 class="text-[11px] uppercase tracking-wider text-muted mt-3 mb-1">${t}</h4>`;
     return `<div data-reloj-metodologia="1">
-      ${h('Las cuatro franjas del reloj')}<ul>${M.franjas.map(f => li(f.label + ' · ' + f.nombre, f.lectura)).join('')}</ul>
+      ${h('Las tres franjas del reloj')}<ul>${M.franjas.map(f => li(f.label + ' · ' + f.nombre, f.lectura)).join('')}</ul>
       ${h('Cómo se mide')}<ul>${M.criterios.map(c => li(c.titulo, c.texto)).join('')}</ul>
       ${h('Las siete familias de zona')}<ul>${M.familias.map(f => li(familiaLabel(f.id) + ' (' + f.zonas + ')', f.donde)).join('')}</ul>
       ${h('Etiquetas de equipo')}<ul>${M.equipo.map(e => li(e.label, e.regla)).join('')}</ul>
@@ -1526,21 +1536,21 @@ const SGADD_PBP = (function () {
     const minimo = (L && L.minimos && L.minimos.finalesEquipo) || RELOJ_MINIMOS.finalesEquipo;
     const out = { finales: n, reparto: rep, muestra: n >= minimo, minimo, comparable: false, rasgos: [] };
     const c = L && L.cortes && L.cortes.equipo;
-    if (!c || !corteValido(c.temprana, MIN_EQUIPOS_RELOJ) || !corteValido(c.tardia, MIN_EQUIPOS_RELOJ) || !corteValido(c.medio, MIN_EQUIPOS_RELOJ)) return out;
+    if (!c || !corteValido(c.temprana, MIN_EQUIPOS_RELOJ) || !corteValido(c.tardia, MIN_EQUIPOS_RELOJ) || !corteValido(c.media, MIN_EQUIPOS_RELOJ)) return out;
     out.comparable = true;
     if (!out.muestra) return out;
     const cuarto = (corte) => 'el cuarto más alto de la competencia arranca en ' + num(corte.p75) + ' %';
     if (rep[0] >= c.temprana.p75) {
       out.rasgos.push({ id: 'temprana', label: 'Ataca temprano',
-        detalle: num(rep[0]) + ' % de sus finales en los primeros 6 segundos (' + cuarto(c.temprana) + ')' + aclaraMayor(rep, 0, 'finales') + '.' });
+        detalle: num(rep[0]) + ' % de sus finales en los primeros 7 segundos (' + cuarto(c.temprana) + ')' + aclaraMayor(rep, 0, 'finales') + '.' });
     }
-    if (rep[1] + rep[2] >= c.medio.p75 && rep[3] < c.tardia.p50) {
+    if (rep[1] >= c.media.p75 && rep[2] < c.tardia.p50) {
       out.rasgos.push({ id: 'armada', label: 'Ofensiva armada',
-        detalle: num(rep[1] + rep[2]) + ' % de sus finales entre los 7 y los 20 segundos (' + cuarto(c.medio) + ') y pocos con el reloj encima.' });
+        detalle: num(rep[1]) + ' % de sus finales entre los 8 y los 17 segundos (' + cuarto(c.media) + ') y pocos con el reloj encima.' });
     }
-    if (rep[3] >= c.tardia.p75) {
+    if (rep[2] >= c.tardia.p75) {
       out.rasgos.push({ id: 'tardia', label: 'Llega tarde al tiro',
-        detalle: num(rep[3]) + ' % de sus finales después del segundo 20 (' + cuarto(c.tardia) + ')' + aclaraMayor(rep, 3, 'finales') + '.' });
+        detalle: num(rep[2]) + ' % de sus finales después del segundo 17 (' + cuarto(c.tardia) + ')' + aclaraMayor(rep, 2, 'finales') + '.' });
     }
     return out;
   }
@@ -1578,9 +1588,9 @@ const SGADD_PBP = (function () {
       out.rasgos.push({ id: t.id + (asistido ? '-asistido' : '-creado'), label: asistido ? t.asistido : t.creado,
         detalle: base + ', y ' + f[4] + ' de sus ' + f[1] + ' canastas ahí llegaron con asistencia (la competencia: ' + num(100 * tasaLiga, 0) + ' %).' });
     };
-    lado(0, c.temprana, { id: 'temprana', volumen: 'temprano', donde: 'en los primeros 6 segundos', neutro: 'Tira temprano en el reloj',
+    lado(0, c.temprana, { id: 'temprana', volumen: 'temprano', donde: 'en los primeros 7 segundos', neutro: 'Tira temprano en el reloj',
       asistido: 'Finalizador temprano', creado: 'Creador de transición' });
-    lado(3, c.tardia, { id: 'tardia', volumen: 'con el reloj encima', donde: 'después del segundo 20', neutro: 'Tira con el reloj encima',
+    lado(2, c.tardia, { id: 'tardia', volumen: 'con el reloj encima', donde: 'después del segundo 17', neutro: 'Tira con el reloj encima',
       asistido: 'Válvula de escape', creado: 'Resuelve con el reloj encima' });
     return out;
   }
@@ -1632,7 +1642,7 @@ const SGADD_PBP = (function () {
   const LECTURA_RELOJ = {
     temprana: () => 'buena parte de su ataque sale antes de que la defensa esté armada: el balance defensivo va antes que cargar el rebote ofensivo.',
     armada: () => 'ataca con la jugada armada y casi no llega al final del reloj: sacarlo de su primera opción lo lleva a un terreno que usa poco.',
-    tardia: (L) => 'llega seguido al final del reloj' + (L && L.f[3][0] ? ', donde la competencia rinde ' + num(L.f[3][2] / L.f[3][0], 2) + ' por tiro' : '')
+    tardia: (L) => 'llega seguido al final del reloj' + (L && L.f[2][0] ? ', donde la competencia rinde ' + num(L.f[2][2] / L.f[2][0], 2) + ' por tiro' : '')
       + ': sostener la defensa los 24 segundos paga.',
   };
   /** Los jugadores con perfil de reloj, separados en tempranos y tardíos. PURA. */
@@ -1643,7 +1653,7 @@ const SGADD_PBP = (function () {
       const pf = relojPerfilJugador(paq, id);
       if (!pf) return;
       pf.rasgos.forEach((r) => {
-        const i = r.id.indexOf('temprana') === 0 ? 0 : 3;
+        const i = r.id.indexOf('temprana') === 0 ? 0 : 2;
         const c = jug[id].f[i];
         (i === 0 ? out.tempranos : out.tardios).push({ id: id, nombre: paq.jugadores && paq.jugadores[id] ? paq.jugadores[id].n : id,
           label: r.label, conv: c[1], tiros: c[0], porcion: pf.reparto[i] });
@@ -1662,7 +1672,7 @@ const SGADD_PBP = (function () {
       const lecturas = idn.rasgos.filter(r => LECTURA_RELOJ[r.id]).map(r => `<li class="text-[11px] text-ink leading-snug"><b>${esc(r.label)}</b> · ${esc(LECTURA_RELOJ[r.id](L))}</li>`).join('');
       const lista = (titulo, filas) => (filas.length ? `<div class="min-w-0 pbp-reloj-pieza">${subtitulo(titulo)}<ul>${filas.map(x => `<li class="text-[11px] text-ink leading-snug" title="${esc(x.nombre)}">
           <b class="text-white">${esc(apellido(x.nombre))}</b> · ${esc(x.label)} <span class="font-mono dato-sec">${x.conv}/${x.tiros} · ${num(x.porcion, 0)} % de sus tiros</span></li>`).join('')}</ul></div>` : '');
-      const quienes = lista('Quién tira en los primeros 6 segundos', q.tempranos) + lista('Quién tira con el reloj encima', q.tardios);
+      const quienes = lista('Quién tira en los primeros 7 segundos', q.tempranos) + lista('Quién tira con el reloj encima', q.tardios);
       return `${lecturas ? `<div class="pbp-lectura pbp-reloj-pieza mb-3" data-reloj-lectura="1"><p class="text-[10px] uppercase tracking-wider text-muted mb-1">Lectura para defenderlo · decide el cuerpo técnico</p><ul>${lecturas}</ul></div>` : ''}
         ${quienes ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-3" data-reloj-quienes="1">${quienes}</div>` : ''}
         ${base}`;
@@ -1697,13 +1707,13 @@ const SGADD_PBP = (function () {
     const L = relojLiga(paq);
     const corte = L && L.cortes && L.cortes.partido && L.cortes.partido.tardia;
     const lado = (rotulo, acc) => {
-      const n = relojFinales(acc), tard = relojReparto(acc)[3];
+      const n = relojFinales(acc), tard = relojReparto(acc)[2];
       const alto = corteValido(corte, MIN_PARTIDOS_RELOJ) && isFinite(corte.p90) && n >= 30 && tard != null && tard >= corte.p90;
       return `<div class="min-w-0 pbp-reloj-pieza">
         <p class="text-[11px] uppercase tracking-wider font-display text-accent mb-1">${esc(rotulo)}</p>
         <p class="text-[11px] text-ink mb-1">Finales con el reloj encima: <b class="font-mono">${tard == null ? '—' : num(tard) + ' %'}</b>
           ${corteValido(corte, MIN_PARTIDOS_RELOJ) ? `<span class="dato-sec">(un partido típico de la competencia: ${num(corte.p50)} %)</span>` : ''}</p>
-        ${alto ? '<p class="text-[11px] text-yellow-400 mb-1" data-reloj-aviso="1">⚠ Reloj tardío alto: está entre el 10 % de partidos con más finales después del segundo 20. Puede ser un ataque trabado o una buena defensa rival: el dato no los separa.</p>' : ''}
+        ${alto ? '<p class="text-[11px] text-yellow-400 mb-1" data-reloj-aviso="1">⚠ Reloj tardío alto: está entre el 10 % de partidos con más finales después del segundo 17. Puede ser un ataque trabado o una buena defensa rival: el dato no los separa.</p>' : ''}
         ${relojTabla(acc, L)}
       </div>`;
     };
@@ -1737,32 +1747,26 @@ const SGADD_PBP = (function () {
        pocos tiros pesa poco aunque rinda mucho.
      ------------------------------------------------------------------ */
   const K_RELOJ = 20, SIGNIF_RELOJ = 0.06, MIN_TIROS_SINTESIS = 20;
-  /* Los cuatro bloques del insight, en el orden del reloj. Los textos de 0-6
-     y 21-24 son los de siempre; los de 7-14 y 15-20 se miden contra sus
-     propios cuartiles (`media` y `armada`, ingesta del 2026-10-14). */
+  /* Los tres bloques del insight, en el orden del reloj, cada uno contra los
+     cuartiles de SU franja (tres franjas desde el 2026-10-18). */
   const BLOQUES_RELOJ = [
-    { id: 'temprano', titulo: 'Temprano · 0-6 s',
-      alto: 'Vive del primer golpe: {v} % de sus finales salen en los primeros 6 segundos',
-      bajo: 'Casi no ataca en transición: {v} % de sus finales en los primeros 6 segundos',
-      altoC: 'Le corren: {v} % de los finales rivales salen en los primeros 6 segundos',
-      bajoC: 'Cierra la transición: solo {v} % de los finales rivales en los primeros 6 segundos' },
-    { id: 'medio', titulo: 'Medio · 7-14 s',
-      alto: 'Vive de la primera acción del sistema: {v} % de sus finales llegan entre los 7 y los 14 segundos',
-      bajo: 'Usa poco la primera acción del sistema: {v} % de sus finales entre los 7 y los 14 segundos',
-      altoC: 'Lo atacan seguido con la primera acción: {v} % de los finales rivales entre los 7 y los 14 segundos',
-      bajoC: 'Le quita la primera acción al rival: solo {v} % de los finales rivales entre los 7 y los 14 segundos' },
-    { id: 'armado', titulo: 'Armado · 15-20 s',
-      alto: 'Juega mucho la segunda opción: {v} % de sus finales entre los 15 y los 20 segundos',
-      bajo: 'Casi no llega a la segunda opción: {v} % de sus finales entre los 15 y los 20 segundos',
-      altoC: 'Lleva al rival a la segunda opción: {v} % de los finales rivales entre los 15 y los 20 segundos',
-      bajoC: 'El rival casi no llega a la segunda opción: {v} % de sus finales entre los 15 y los 20 segundos' },
-    { id: 'tardio', titulo: 'Tardío · 21-24 s',
-      alto: 'Llega seguido al final del reloj: {v} % de sus finales llegan después del segundo 20',
-      bajo: 'Rara vez llega al final del reloj: {v} % de sus finales después del segundo 20',
-      altoC: 'Su defensa estira al rival: {v} % de los finales rivales llegan después del segundo 20',
-      bajoC: 'Al rival le alcanza con poco reloj: solo {v} % de sus finales llegan después del segundo 20' },
+    { id: 'temprano', titulo: 'Temprano · 0-7 s',
+      alto: 'Vive del primer golpe: {v} % de sus finales salen en los primeros 7 segundos',
+      bajo: 'Casi no ataca en transición: {v} % de sus finales en los primeros 7 segundos',
+      altoC: 'Le corren: {v} % de los finales rivales salen en los primeros 7 segundos',
+      bajoC: 'Cierra la transición: solo {v} % de los finales rivales en los primeros 7 segundos' },
+    { id: 'medio', titulo: 'Medio · 8-17 s',
+      alto: 'Vive del juego armado: {v} % de sus finales llegan entre los 8 y los 17 segundos',
+      bajo: 'Usa poco el juego armado: {v} % de sus finales entre los 8 y los 17 segundos',
+      altoC: 'Lo atacan seguido con la jugada armada: {v} % de los finales rivales entre los 8 y los 17 segundos',
+      bajoC: 'Le quita el juego armado al rival: solo {v} % de los finales rivales entre los 8 y los 17 segundos' },
+    { id: 'tardio', titulo: 'Tardío · 18-24 s',
+      alto: 'Llega seguido al final del reloj: {v} % de sus finales llegan después del segundo 17',
+      bajo: 'Rara vez llega al final del reloj: {v} % de sus finales después del segundo 17',
+      altoC: 'Su defensa estira al rival: {v} % de los finales rivales llegan después del segundo 17',
+      bajoC: 'Al rival le alcanza con poco reloj: solo {v} % de sus finales llegan después del segundo 17' },
   ];
-  const FILAS_SINTESIS = [0, 1, 2, 3, 'ro', 'fa'];
+  const FILAS_SINTESIS = [0, 1, 2, 'ro', 'fa'];
   const nombreFila = (k) => (typeof k === 'number'
     ? FRANJAS_RELOJ[k] + ' (' + METODOLOGIA_RELOJ.franjas[k].nombre.toLowerCase() + ')'
     : k === 'ro' ? '2da oportunidad' : 'reinicio tras falta');
@@ -1789,36 +1793,32 @@ const SGADD_PBP = (function () {
   const QUE_HACER = {
     explotar: {
       contra: {
-        0: 'Correrle: en los primeros 6 segundos le sacan {p} por tiro (la competencia, {l}). Salir rápido tras recuperar o tras el rebote defensivo.',
-        1: 'Atacarlo de entrada: en la primera acción de la jugada concede {p} por tiro ({l}).',
-        2: 'Insistir con el juego de sistema: en las segundas opciones (15-20 s) concede {p} por tiro ({l}).',
-        3: 'Estirar la posesión: con el reloj encima su defensa concede {p} por tiro ({l}).',
+        0: 'Correrle: en los primeros 7 segundos le sacan {p} por tiro (la competencia, {l}). Salir rápido tras recuperar o tras el rebote defensivo.',
+        1: 'Atacarlo con la jugada armada: entre los 8 y los 17 segundos concede {p} por tiro ({l}).',
+        2: 'Estirar la posesión: con el reloj encima su defensa concede {p} por tiro ({l}).',
         ro: 'Cargar el rebote ofensivo: la 2da oportunidad le cuesta {p} por tiro ({l}).',
         fa: 'Atacar el contacto: tras una falta recibida concede {p} por tiro ({l}).',
       },
       favor: {
-        0: 'Su transición no castiga: en los primeros 6 segundos saca {p} por tiro ({l}). Presionar arriba le cuesta poco.',
-        1: 'Concederle la primera acción: en 7-14 s rinde {p} por tiro ({l}).',
-        2: 'Sacarlo de la primera opción: cuando la jugada se alarga (15-20 s) rinde {p} por tiro ({l}).',
-        3: 'Defender los 24 segundos: con el reloj encima saca {p} por tiro ({l}).',
+        0: 'Su transición no castiga: en los primeros 7 segundos saca {p} por tiro ({l}). Presionar arriba le cuesta poco.',
+        1: 'Concederle el juego armado: en 8-17 s rinde {p} por tiro ({l}).',
+        2: 'Defender los 24 segundos: con el reloj encima saca {p} por tiro ({l}).',
         ro: 'Su 2da oportunidad no pesa: tras el rebote ofensivo saca {p} por tiro ({l}).',
         fa: 'Tras el reinicio por falta su ataque se apaga: saca {p} por tiro ({l}).',
       },
     },
     anular: {
       favor: {
-        0: 'Balance defensivo primero: en los primeros 6 segundos saca {p} por tiro ({l}). Volver antes de cargar el rebote ofensivo.',
-        1: 'Ensuciarle la entrada al sistema: en la primera acción de la jugada saca {p} por tiro ({l}).',
-        2: 'Romperle la segunda opción: con la jugada armada (15-20 s) saca {p} por tiro ({l}).',
-        3: 'No soltar al final: con el reloj encima saca {p} por tiro ({l}); la última defensa de la posesión también cuenta.',
+        0: 'Balance defensivo primero: en los primeros 7 segundos saca {p} por tiro ({l}). Volver antes de cargar el rebote ofensivo.',
+        1: 'Ensuciarle el juego armado: entre los 8 y los 17 segundos saca {p} por tiro ({l}).',
+        2: 'No soltar al final: con el reloj encima saca {p} por tiro ({l}); la última defensa de la posesión también cuenta.',
         ro: 'Box-out en cada tiro: la 2da oportunidad le rinde {p} por tiro ({l}).',
         fa: 'Cuidar las faltas: tras una falta recibida saca {p} por tiro ({l}).',
       },
       contra: {
-        0: 'No correrle sin ventaja clara: en los primeros 6 segundos concede apenas {p} por tiro ({l}).',
-        1: 'No tirar en la primera acción: en 7-14 s concede {p} por tiro ({l}).',
-        2: 'No estirar el sistema contra él: en 15-20 s concede {p} por tiro ({l}).',
-        3: 'Evitar el final del reloj: con el reloj encima concede solo {p} por tiro ({l}). Tirar en la primera ventaja.',
+        0: 'No correrle sin ventaja clara: en los primeros 7 segundos concede apenas {p} por tiro ({l}).',
+        1: 'No apurar la jugada armada contra él: en 8-17 s concede {p} por tiro ({l}).',
+        2: 'Evitar el final del reloj: con el reloj encima concede solo {p} por tiro ({l}). Tirar en la primera ventaja.',
         ro: 'Su cierre del rebote rinde: la 2da oportunidad contra él vale {p} por tiro ({l}).',
         fa: 'Tras el reinicio por falta concede {p} por tiro ({l}).',
       },
@@ -1834,25 +1834,17 @@ const SGADD_PBP = (function () {
      el mismo desvío ajustado por muestra de las armas y las grietas
      (0,06 por tiro, 20 tiros o más). Las situaciones especiales (2da
      oportunidad y reinicio) piden más: 0,08 y más de 30 tiros.
-     Los cortes de 7-14 (`media`) y 15-20 (`armada`) los trae el paquete
-     desde la ingesta del 2026-10-14; un paquete anterior no los tiene y
-     esos arquetipos no se evalúan (se dice, no se adivina).
+     Desde el 2026-10-18 hay un corte por cada una de las tres franjas
+     (`temprana`, `media`, `tardia`); si el paquete no trae alguno, esos
+     arquetipos no se evalúan (se dice, no se adivina).
      ------------------------------------------------------------------ */
   const SIGNIF_ESPECIAL = 0.08, MIN_TIROS_ESPECIAL = 30;
-  const CORTE_FRANJA = ['temprana', 'media', 'armada', 'tardia'];
+  const CORTE_FRANJA = ['temprana', 'media', 'tardia'];
   const corteConQ1 = (c) => corteValido(c, MIN_EQUIPOS_RELOJ) && isFinite(c.p25) && c.p25 !== null;
-  /** El corte de volumen de una franja (0-3) o de 7-20 ('medio'); null si el paquete no lo trae. */
+  /** El corte de volumen de una franja (0-2); null si el paquete no lo trae. */
   function corteDe(L, k) {
     const c = L && L.cortes && L.cortes.equipo && L.cortes.equipo[typeof k === 'number' ? CORTE_FRANJA[k] : k];
     return corteConQ1(c) ? c : null;
-  }
-  /** Una celda de varias franjas juntas (7-20): el mismo cálculo que relojCeldas. */
-  function celdaSuma(acc, L, ks) {
-    const c = [0, 0, 0], l = [0, 0, 0];
-    ks.forEach((k) => { for (let j = 0; j < 3; j++) { c[j] += acc.f[k][j]; if (L) l[j] += L.f[k][j]; } });
-    const liga = L && l[0] ? l[2] / l[0] : null;
-    return { k: ks.join('-'), tiros: c[0], conv: c[1], ppt: c[0] ? c[2] / c[0] : null, efg: c[0] ? 50 * c[2] / c[0] : null,
-      liga: liga, delta: liga == null ? null : (c[2] + K_RELOJ * liga) / (c[0] + K_RELOJ) - liga };
   }
   const signoEspecial = (x) => (x.delta == null || !(x.tiros > MIN_TIROS_ESPECIAL) || Math.abs(x.delta) < SIGNIF_ESPECIAL ? 0 : Math.sign(x.delta));
 
@@ -1899,47 +1891,47 @@ const SGADD_PBP = (function () {
     const out = { insight: {}, extra: [], explotar: [], anular: [] };
     const rep = relojReparto(r.favor), repL = relojReparto(L), fav = relojCeldas(r.favor, L);
     const p2 = (x) => num(x, 2), id = identidad || {};
-    /* 0-6 */
+    /* 0-7 */
     const c0 = corteDe(L, 0), x0 = fav[0], s0 = signoCelda(x0, 'favor');
     if (c0 && rep[0] >= c0.p75 && s0 > 0) {
-      out.insight[0] = 'Ritmo vertiginoso en transición: finaliza ' + num(rep[0]) + ' % de sus jugadas en los primeros 6 segundos (la competencia, '
+      out.insight[0] = 'Ritmo vertiginoso en transición: finaliza ' + num(rep[0]) + ' % de sus jugadas en los primeros 7 segundos (la competencia, '
         + num(repL[0]) + ' %) y castiga con ' + p2(x0.ppt) + ' por tiro (' + p2(x0.liga) + ').';
       out.anular.push({ lado: 'favor', ks: [0], texto: 'Cargar el rebote ofensivo con un solo jugador y dejar el resto atrás: balance defensivo con tres hombres detrás de la línea de la pelota para negar el primer pase de salida y llevarlo al 5 contra 5.' });
     } else if (c0 && rep[0] <= c0.p25 && s0 < 0) {
-      out.insight[0] = 'Ofensiva inerte a campo abierto: solo ' + num(rep[0]) + ' % de sus ataques terminan en los primeros 6 segundos (la competencia, '
+      out.insight[0] = 'Ofensiva inerte a campo abierto: solo ' + num(rep[0]) + ' % de sus ataques terminan en los primeros 7 segundos (la competencia, '
         + num(repL[0]) + ' %) y ahí rinde por debajo (' + p2(x0.ppt) + ' contra ' + p2(x0.liga) + ' por tiro).';
       out.explotar.push({ lado: 'favor', ks: [0], texto: 'No intenta ni castiga a campo abierto. Regla táctica: no presionar toda la cancha —le acelera el juego—; replegar a media cancha, negar la primera opción y obligarlo a jugar 5 contra 5.' });
     } else if (c0 && rep[0] >= c0.p75 && s0 < 0) {
-      out.insight[0] = 'Ataque apresurado y sin control: empuja el ritmo hacia la transición (' + num(rep[0]) + ' % de sus finales en los primeros 6 segundos; la competencia, '
+      out.insight[0] = 'Ataque apresurado y sin control: empuja el ritmo hacia la transición (' + num(rep[0]) + ' % de sus finales en los primeros 7 segundos; la competencia, '
         + num(repL[0]) + ' %), pero elige mal el tiro: ' + p2(x0.ppt) + ' por tiro contra ' + p2(x0.liga) + '.';
-      let t = 'Aprovechar el desbalance de su tiro temprano: concederle el tiro apurado en los primeros 6 segundos sin saltar agresivo a las ayudas, y asegurar el rebote defensivo para salir de contra.';
+      let t = 'Aprovechar el desbalance de su tiro temprano: concederle el tiro apurado en los primeros 7 segundos sin saltar agresivo a las ayudas, y asegurar el rebote defensivo para salir de contra.';
       if (pctl(id, 'PACE') > 70) {
-        t += ' Juega a un ritmo alto (PACE ' + id.PACE.f + ', percentil ' + num(id.PACE.p, 0) + '), pero es una falsa transición: no cortarle el ritmo con faltas tempranas; dejarlo acelerar para que se apure con tiros incómodos antes del segundo 6.';
+        t += ' Juega a un ritmo alto (PACE ' + id.PACE.f + ', percentil ' + num(id.PACE.p, 0) + '), pero es una falsa transición: no cortarle el ritmo con faltas tempranas; dejarlo acelerar para que se apure con tiros incómodos antes del segundo 7.';
       }
       out.explotar.push({ lado: 'favor', ks: [0], texto: t });
     }
-    /* 7-20: el Plan A y el Plan B juntos, contra el corte de 7-20 */
-    const cm = corteDe(L, 'medio'), xm = celdaSuma(r.favor, L, [1, 2]), sm = signoCelda(xm, 'favor'), vm = rep[1] + rep[2];
+    /* 8-17: el juego armado, contra el corte de SU franja */
+    const cm = corteDe(L, 1), xm = fav[1], sm = signoCelda(xm, 'favor'), vm = rep[1];
     if (cm && vm >= cm.p75 && sm < 0) {
-      out.insight.armada = 'Ejecución metódica pero estéril: ' + num(vm) + ' % de sus ofensivas maduran entre los 7 y los 20 segundos, pero el movimiento de pelota no le da ventajas ('
+      out.insight.armada = 'Ejecución metódica pero estéril: ' + num(vm) + ' % de sus ofensivas maduran entre los 8 y los 17 segundos, pero el movimiento de pelota no le da ventajas ('
         + p2(xm.ppt) + ' por tiro contra ' + p2(xm.liga) + ').';
-      out.explotar.push({ lado: 'favor', ks: [1, 2], texto: 'Concederle la primera acción o el pase extra perimetral: su ofensiva se traba si la primera línea no colapsa la pintura.' });
+      out.explotar.push({ lado: 'favor', ks: [1], texto: 'Concederle la primera acción o el pase extra perimetral: su ofensiva se traba si la primera línea no colapsa la pintura.' });
     } else if (cm && vm >= cm.p75 && sm > 0) {
-      out.insight.armada = 'Ataque de control: la paciencia colectiva concentra ' + num(vm) + ' % de sus finales entre los 7 y los 20 segundos, con '
+      out.insight.armada = 'Ataque de control: la paciencia colectiva concentra ' + num(vm) + ' % de sus finales entre los 8 y los 17 segundos, con '
         + p2(xm.ppt) + ' por tiro (' + p2(xm.liga) + ').';
-      out.anular.push({ lado: 'favor', ks: [1, 2], texto: 'Cambios defensivos automáticos en las cortinas indirectas para cortarle la circulación de pases y sostener la contención individual.' });
+      out.anular.push({ lado: 'favor', ks: [1], texto: 'Cambios defensivos automáticos en las cortinas indirectas para cortarle la circulación de pases y sostener la contención individual.' });
     }
-    /* 21-24 */
-    const c3 = corteDe(L, 3), x3 = fav[3], s3 = signoCelda(x3, 'favor');
-    if (c3 && rep[3] >= c3.p75 && s3 < 0) {
-      out.insight[3] = 'Colapso al final del reloj: resuelve bajo presión en ' + num(rep[3]) + ' % de sus finales (la competencia, ' + num(repL[3])
+    /* 18-24 */
+    const c3 = corteDe(L, 2), x3 = fav[2], s3 = signoCelda(x3, 'favor');
+    if (c3 && rep[2] >= c3.p75 && s3 < 0) {
+      out.insight[2] = 'Colapso al final del reloj: resuelve bajo presión en ' + num(rep[2]) + ' % de sus finales (la competencia, ' + num(repL[2])
         + ' %) y saca apenas ' + p2(x3.ppt) + ' por tiro (' + p2(x3.liga) + ').';
-      out.explotar.push({ lado: 'favor', ks: [3], texto: 'Defensa estricta de 24 segundos: disciplina individual, sin morder amagues ni regalar faltas; termina tomando un tiro punteado sobre la bocina.' });
-    } else if (c3 && rep[3] <= c3.p25 && s3 >= 0) {
-      out.insight[3] = 'Llegada disciplinada: rara vez compromete la pelota al límite del reloj (solo ' + num(rep[3]) + ' % de finales tardíos; la competencia, ' + num(repL[3]) + ' %).';
+      out.explotar.push({ lado: 'favor', ks: [2], texto: 'Defensa estricta de 24 segundos: disciplina individual, sin morder amagues ni regalar faltas; termina tomando un tiro punteado sobre la bocina.' });
+    } else if (c3 && rep[2] <= c3.p25 && s3 >= 0) {
+      out.insight[2] = 'Llegada disciplinada: rara vez compromete la pelota al límite del reloj (solo ' + num(rep[2]) + ' % de finales tardíos; la competencia, ' + num(repL[2]) + ' %).';
     }
     /* Situaciones especiales: más de 30 tiros y 0,08 de desvío ajustado */
-    const ro = fav[4], fa = fav[5];
+    const ro = fav.filter(x => x.k === 'ro')[0], fa = fav.filter(x => x.k === 'fa')[0];
     if (signoEspecial(fa) < 0) {
       out.extra.push('Ataque inerte tras congelar el juego: tras una falta recibida saca ' + p2(fa.ppt) + ' por tiro (' + p2(fa.liga) + '; ' + fa.conv + '/' + fa.tiros + ').');
       out.explotar.push({ lado: 'favor', ks: ['fa'], texto: 'La falta táctica antes del bonus le cuesta poco a este rival: tras el reinicio saca ' + p2(fa.ppt) + ' por tiro (' + p2(fa.liga) + '). El bonus y las faltas de cada uno los mira el cuerpo técnico en el partido.' });
@@ -1952,11 +1944,10 @@ const SGADD_PBP = (function () {
       }
       out.anular.push({ lado: 'favor', ks: ['ro'], texto: t });
     }
-    /* El triple en la posesión armada, cruzado con el uso del triple de la identidad */
-    const t3 = (k) => (r.favor.f[k][0] ? 100 * r.favor.f[k][3] / r.favor.f[k][0] : null);
-    if (pctl(id, 'PT3%') > 80 && (t3(1) > 35 || t3(2) > 35)) {
-      const t = r.favor.f[1][3] + r.favor.f[2][3], n = r.favor.f[1][0] + r.favor.f[2][0];
-      out.extra.push('Dependencia del tiro externo en la posesión armada: ' + num(100 * t / n) + ' % de sus tiros entre los 7 y los 20 segundos son triples (uso del triple, percentil '
+    /* El triple en el juego armado, cruzado con el uso del triple de la identidad */
+    const f1 = r.favor.f[1];
+    if (pctl(id, 'PT3%') > 80 && f1[0] && 100 * f1[3] / f1[0] > 35) {
+      out.extra.push('Dependencia del tiro externo en el juego armado: ' + num(100 * f1[3] / f1[0]) + ' % de sus tiros entre los 8 y los 17 segundos son triples (uso del triple, percentil '
         + num(id['PT3%'].p, 0) + ' de la liga). Negar las esquinas y cerrar fuerte sobre el tirador le rompe la fluidez.');
     }
     return out;
@@ -1986,67 +1977,6 @@ const SGADD_PBP = (function () {
       </div>`;
     }).join('');
     return `${filas}<p class="text-[10px] dato-sec mt-1 leading-snug">La barra es la parte de sus tiros de primera opción que nace de cada origen; el trazo, la competencia. Al lado, puntos por tiro (entre paréntesis, la competencia) y los segundos promedio hasta el tiro.${ol ? '' : ' Este paquete no trae el origen de la competencia: sin trazo.'}</p>`;
-  }
-
-  /* «DESDE DÓNDE TIRA EN CADA FRANJA» SOBRE LA CANCHA (2026-10-14, a pedido
-     del club): cuatro canchas chicas, una por franja, con las 14 zonas de la
-     plataforma pintadas por la parte de los tiros de ESA franja que sale de
-     su familia. Una familia ocupa varias zonas (las medias laterales son
-     cuatro): todas se pintan igual y el % va UNA vez, en su zona de
-     referencia, para no leerse como cuatro porciones distintas. El color es
-     el acento con intensidad por la porción —la vara de frecuencia del mapa
-     de tiro— y el `title` de cada zona trae la competencia. Debajo, la
-     pintura (aro + corta) franja por franja contra la competencia: es lo que
-     dice si el equipo se aleja del aro a medida que se consume el reloj. */
-  const ZONA_ETIQUETA_FAMILIA = { aro: 'Z1', corta: 'Z3', mediaLateral: 'Z6', mediaFrontal: 'Z7',
-    tripleEsquina: 'Z10', tripleLateral: 'Z11', tripleFrontal: 'Z12' };
-  function relojLugarCancha(paq) {
-    const r = paq && paq.reloj, L = relojLiga(paq);
-    if (!r) return '';
-    const fam = r.fam || {}, fl = (L && L.fam) || null;
-    const presentes = FAMILIAS.filter(f => (fam[f.id] || []).some(x => x > 0));
-    if (!presentes.length) return '';
-    const total = (m) => FRANJAS_RELOJ.map((_, i) => FAMILIAS.reduce((a, f) => a + ((m[f.id] || [])[i] || 0), 0));
-    const T = total(fam), TL = fl ? total(fl) : null;
-    const parte = (m, t, f, i) => (t[i] ? 100 * (((m[f] || [])[i]) || 0) / t[i] : null);
-    const zonasDe = {};
-    METODOLOGIA_RELOJ.familias.forEach((f) => { f.zonas.split('·').map(z => z.trim()).forEach((z) => { zonasDe[z] = f.id; }); });
-    let maxP = 1;
-    FRANJAS_RELOJ.forEach((_, i) => FAMILIAS.forEach((f) => { const p = parte(fam, T, f.id, i); if (p > maxP) maxP = p; }));
-    const G = geometria(paq), geo = geometriaZonas(G);
-    const puntos = (lista) => lista.map(([f, l]) => X(l) + ',' + Y(f)).join(' ');
-    const pintura = (m, t, i) => (t[i] ? 100 * ((((m.aro || [])[i]) || 0) + (((m.corta || [])[i]) || 0)) / t[i] : null);
-    const canchas = FRANJAS_RELOJ.map((rotulo, i) => {
-      const clip = 'reloj-cancha-' + (++serial);
-      const zonas = ZONAS.map((z) => {
-        const f = zonasDe[z];
-        const p = f ? parte(fam, T, f, i) : null, pl = f && TL ? parte(fl, TL, f, i) : null;
-        const lab = (FAMILIAS.find(x => x.id === f) || {}).label || z;
-        const tip = lab + ' · ' + (p == null ? '—' : num(p) + ' % de sus tiros de ' + rotulo) + (pl != null ? ' (la competencia, ' + num(pl) + ' %)' : '');
-        const op = p ? (0.08 + 0.82 * Math.sqrt(p / maxP)).toFixed(2) : '0';
-        return `<polygon points="${puntos(geo[z].poligono)}" data-reloj-zona="${z}" style="fill:var(--acento, #f7941e);fill-opacity:${op}" stroke="#0b1121" stroke-width="0.4"><title>${esc(tip)}</title></polygon>`;
-      }).join('');
-      const etiquetas = presentes.map((f) => {
-        const z = ZONA_ETIQUETA_FAMILIA[f.id], e = geo[z] && geo[z].etiqueta, p = parte(fam, T, f.id, i);
-        if (!e || p == null) return '';
-        const cx = Math.max(12, Math.min(138, (15 - e[1]) * 10)), cy = Math.max(12, Math.min(132, e[0] * 10));
-        return `<text class="reloj-cancha-pct" x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" text-anchor="middle">${num(p, 0)}%</text>`;
-      }).join('');
-      const pp = pintura(fam, T, i), ppl = TL ? pintura(fl, TL, i) : null;
-      return `<figure class="min-w-0 m-0" data-reloj-cancha="${i}">
-          <svg class="w-full" viewBox="-4 -4 158 148" role="img" aria-label="Desde dónde tira en ${rotulo}">
-            <defs><clipPath id="${clip}"><rect x="0" y="0" width="150" height="140"/></clipPath></defs>
-            <g clip-path="url(#${clip})">${zonas}</g>${lineasCancha(G)}<g pointer-events="none">${etiquetas}</g>
-          </svg>
-          <figcaption class="text-[11px] text-center leading-tight mt-0.5"><span class="text-white">${rotulo}</span> <span class="dato-sec">${esc(METODOLOGIA_RELOJ.franjas[i].nombre)}</span><br>
-            <span class="inline-block mt-0.5 px-1.5 rounded border border-hairline" data-reloj-pintura="${i}">Pintura <b class="font-mono text-white">${pp == null ? '—' : num(pp, 0) + ' %'}</b>${ppl != null ? ` <span class="dato-sec">(${num(ppl, 0)})</span>` : ''}</span></figcaption>
-        </figure>`;
-    }).join('');
-    const serie = (m, t) => FRANJAS_RELOJ.map((_, i) => { const v = pintura(m, t, i); return v == null ? '—' : num(v, 0) + ' %'; }).join(' → ');
-    return `<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">${canchas}</div>
-      <p class="text-[11px] text-ink mt-2 leading-snug" data-reloj-pintura-serie="1"><b>Pintura (aro + corta), de 0-6 a 21-24 s:</b> ${serie(fam, T)}${TL ? ` <span class="dato-sec">· la competencia, ${serie(fl, TL)}</span>` : ''}.</p>
-      <p class="text-[10px] dato-sec mt-1 leading-snug">Cada cancha es una franja: la intensidad del color es la parte de sus tiros de esa franja que sale de cada zona, y el % va una vez por familia de zona. Al pasar el mouse, la competencia.${fl ? '' : ' Este paquete no trae las zonas de la competencia: sin comparación.'}</p>
-      ${r.sinZona ? `<p class="text-[10px] dato-sec mt-1">${r.sinZona} partido${r.sinZona === 1 ? '' : 's'} sin zona: su lista de tiros no coincide con los eventos y no se adivina.</p>` : ''}`;
   }
 
   /**
@@ -2096,16 +2026,15 @@ const SGADD_PBP = (function () {
     const colaDefensa = (x) => (!x ? '' : x.signo > 0
       ? ', y ahí su defensa responde (le sacan ' + num(x.ppt, 2) + ' por tiro; la competencia, ' + num(x.liga, 2) + ')'
       : ', y ahí lo castigan (le sacan ' + num(x.ppt, 2) + ' por tiro; la competencia, ' + num(x.liga, 2) + ')');
-    /* EL INSIGHT POR BLOQUE (2026-10-14, a pedido del club): los cuatro
-       bloques del reloj en orden —temprano, medio, armado y tardío—, cada uno
+    /* EL INSIGHT POR BLOQUE (2026-10-14, a pedido del club): los tres
+       bloques del reloj en orden —temprano, medio y tardío—, cada uno
        con su lectura de ataque y de defensa, para una vista panorámica.
-       · `bloques` trae los cuatro, también los que están en el rango de la
+       · `bloques` trae los tres, también los que están en el rango de la
          competencia: lo neutro también es información.
        · `insight` sigue siendo la lista de lo que DISTINGUE al equipo (el
          volumen fuera de los cuartiles), en el orden de los bloques.
        · El volumen se mide contra los cuartiles de CADA franja; sin el corte
-         de esa franja (un paquete anterior a 7-14 y 15-20 por separado) se
-         compara contra la competencia sin clasificar. */
+         de esa franja se compara contra la competencia sin clasificar. */
     const rep = relojReparto(r.favor), repC = relojReparto(r.contra), repL = relojReparto(L);
     const fav = relojCeldas(r.favor, L), con = relojCeldas(r.contra, L);
     const alto = (corte) => ' (el cuarto más alto de la competencia arranca en ' + num(corte.p75) + ' %)';
@@ -2121,7 +2050,7 @@ const SGADD_PBP = (function () {
       const c = idn.comparable ? corteDe(L, k) : null;
       const dA = de('favor', k), dD = de('contra', k);
       let ataque, defensa, distA = false, distD = false;
-      const dgA = k === 0 ? dg.insight[0] : k === 3 ? dg.insight[3] : null;
+      const dgA = k === 0 ? dg.insight[0] : k === 2 ? dg.insight[2] : null;
       if (dgA) { ataque = dgA; distA = true; }
       else if (c && rep[k] >= c.p75) { ataque = llenar(b.alto, rep[k]) + alto(c) + colaAtaque(dA) + '.'; distA = true; }
       else if (c && rep[k] <= c.p25) { ataque = llenar(b.bajo, rep[k]) + bajo(c) + colaAtaque(dA) + '.'; distA = true; }
@@ -2131,7 +2060,7 @@ const SGADD_PBP = (function () {
       else defensa = 'El rival termina ahí ' + num(repC[k]) + ' % de sus finales' + comp(repL[k]) + (dD ? colaDefensa(dD) : parejo(con[k], 'contra')) + '.';
       if (distA) out.insight.push(ataque);
       if (distD) out.insight.push(defensa);
-      const extra = k === 2 && dg.insight.armada ? dg.insight.armada : null;
+      const extra = k === 1 && dg.insight.armada ? dg.insight.armada : null;
       if (extra) out.insight.push(extra);
       if (distA || distD || extra || dA || dD) distintos++;
       return { id: b.id, k: k, titulo: b.titulo, ataque: ataque, defensa: defensa, extra: extra, distinto: distA || distD || !!extra };
@@ -2161,7 +2090,7 @@ const SGADD_PBP = (function () {
       return `<span class="font-mono ${tono}" title="${lado === 'favor' ? 'Puntos por tiro de campo' : 'Puntos por tiro que le sacan'}${x.liga != null ? '; la competencia, ' + num(x.liga, 2) : ''}. ▲/▼ solo si se separa de la competencia con muestra.">${num(x.ppt, 2)}${marca}</span>`
         + `${x.liga != null ? ` <span class="dato-sec">(${num(x.liga, 2)})</span>` : ''} <span class="dato-sec">· eFG ${x.efg == null ? '—' : num(x.efg) + ' %'}</span>`;
     };
-    const filas = celdas.slice(0, 4).map((x, i) => `<div class="reloj-fila" data-reloj-franja="${i}">
+    const filas = celdas.slice(0, FRANJAS_RELOJ.length).map((x, i) => `<div class="reloj-fila" data-reloj-franja="${i}">
         <div class="flex flex-wrap items-baseline justify-between gap-x-2 text-[11px]">
           <span class="text-white whitespace-nowrap">${FRANJAS_RELOJ[i]} <span class="dato-sec">${esc(METODOLOGIA_RELOJ.franjas[i].nombre)}</span></span>
           <span class="whitespace-nowrap"><b class="font-mono text-white">${rep[i] == null ? '—' : num(rep[i]) + ' %'}</b>${repL && repL[i] != null ? ` <span class="dato-sec">(${num(repL[i])})</span>` : ''} · ${rinde(x)}</span>
@@ -2171,7 +2100,7 @@ const SGADD_PBP = (function () {
           ${repL && repL[i] != null ? `<div class="reloj-barra-liga" style="left:${Math.min(100, 100 * repL[i] / escala).toFixed(1)}%"></div>` : ''}
         </div>
       </div>`).join('');
-    const aparte = celdas.slice(4).filter(x => x.tiros > 0).map(x => `<div class="flex flex-wrap items-baseline justify-between gap-x-2 text-[11px] fila-tenue" title="${esc(FUERA_DE_FRANJA[x.k].glosa)}">
+    const aparte = celdas.slice(FRANJAS_RELOJ.length).filter(x => x.tiros > 0).map(x => `<div class="flex flex-wrap items-baseline justify-between gap-x-2 text-[11px] fila-tenue" title="${esc(FUERA_DE_FRANJA[x.k].glosa)}">
         <span class="whitespace-nowrap">${esc(FUERA_DE_FRANJA[x.k].label)}</span>
         <span class="whitespace-nowrap"><span class="font-mono">${x.conv}/${x.tiros}</span> · ${rinde(x)}</span>
       </div>`).join('');
@@ -2202,14 +2131,223 @@ const SGADD_PBP = (function () {
       </div>`;
   }
 
-  /** El bloque de la pestaña Personalidad. Sin «reloj» en el paquete devuelve ''. PURA.
-   *  @param {{identidad?: object}} opciones  la identidad del índice: { PACE, 'RO%', 'PT3%' } → { f, p } */
-  function relojPersonalidad(paq, opciones) {
+  /* ------------------------------------------------------------------
+     EL RELOJ EN EL MAPA DE TIRO (2026-10-18, pedido del club)
+
+     El reloj se mudó de la pestaña Personalidad a la card de Mapa de tiro,
+     y «desde dónde tira en cada franja» dejó de ser una cancha chica por
+     familias: cada franja tiene el MAPA COMPLETO —zonas por eficiencia,
+     hexágonos, diagnóstico, tabla enlazada y los círculos y cruces de cada
+     tiro—. No hay un segundo mapa: `paqFranja` recorta el paquete a los
+     tiros de esa franja (cada punto trae su código de reloj desde la ingesta
+     del 2026-10-18) y re-agrega zonas y hexágonos, y eso se le pasa al MISMO
+     `mapa()` de siempre. Lo que cambie en el mapa principal cambia en los
+     tres.
+
+     La vara de cada zona es la de la liga en esa zona con todas las franjas
+     juntas: el paquete no trae la eficiencia de la liga por franja y zona.
+     Se dice al pie.
+     ------------------------------------------------------------------ */
+  const COD_RO = 3, COD_FA = 4;
+  const ZONA_FAMILIA = {};
+  METODOLOGIA_RELOJ.familias.forEach((f) => { f.zonas.split('·').map(z => z.trim()).forEach((z) => { ZONA_FAMILIA[z] = f.id; }); });
+  const valorDeZona = (z) => (/^Z1[0-4]$/.test(z) ? 3 : 2);
+  /** El hexágono de un punto (lateral, fondo en metros): la misma fórmula que la ingesta (hexDe). */
+  function hexDePunto(lateral, fondo) {
+    const q = (Math.sqrt(3) / 3 * lateral - fondo / 3) / HEX_R, r = (2 / 3 * fondo) / HEX_R;
+    let x = q, z = r, y = -x - z;
+    let rx = Math.round(x), ry = Math.round(y), rz = Math.round(z);
+    const dx = Math.abs(rx - x), dy = Math.abs(ry - y), dz = Math.abs(rz - z);
+    if (dx > dy && dx > dz) rx = -ry - rz; else if (dy > dz) ry = -rx - rz; else rz = -rx - ry;
+    return [rx, rz];
+  }
+  /** ¿Los puntos del paquete traen el código de reloj (6.º elemento)? */
+  const conCodigoReloj = (paq) => {
+    const pts = paq && paq.tiros && paq.tiros.detalle && paq.tiros.detalle.puntos;
+    return !!(pts && Array.isArray(pts.favor) && pts.favor.length && pts.favor.every(p => Array.isArray(p) && p.length >= 6));
+  };
+  /** Zonas y hexágonos de una lista de puntos, con la forma de `detalle.favor`. */
+  function agregarPuntos(lista, zonasOrden) {
+    const zonas = {}, hex = {};
+    lista.forEach((p) => {
+      const z = zonasOrden[p[3]];
+      if (!z) return;
+      const pts = p[2] ? valorDeZona(z) : 0;
+      const a = zonas[z] || (zonas[z] = { zona: z, i: 0, c: 0, p: 0 });
+      a.i++; a.c += p[2] ? 1 : 0; a.p += pts;
+      const h = hexDePunto(p[0] / 10, p[1] / 10), k = h[0] + ',' + h[1];
+      const b = hex[k] || (hex[k] = [h[0], h[1], 0, 0, 0]);
+      b[2]++; b[3] += p[2] ? 1 : 0; b[4] += pts;
+    });
+    return {
+      zonas: Object.keys(zonas).map((k) => { const a = zonas[k]; return { zona: a.zona, i: a.i, c: a.c, pct: Math.round(1000 * a.c / a.i) / 10, ppt: Math.round(1000 * a.p / a.i) / 1000 }; })
+        .sort((x, y) => y.i - x.i),
+      hex: Object.keys(hex).map(k => hex[k]),
+    };
+  }
+  const cacheFranja = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+  /**
+   * El paquete recortado a los tiros de UNA franja (0..2). PURA.
+   * null si los puntos no traen el código de reloj.
+   */
+  function paqFranja(paq, k) {
+    if (!conCodigoReloj(paq)) return null;
+    const memo = cacheFranja ? (cacheFranja.get(paq) || {}) : {};
+    if (memo[k]) return memo[k];
+    const det = paq.tiros.detalle, pts = det.puntos, orden = pts.zonas || ZONAS;
+    const fav = (pts.favor || []).filter(p => p[5] === k), con = (pts.contra || []).filter(p => p[5] === k);
+    const out = Object.assign({}, paq, {
+      tiros: Object.assign({}, paq.tiros, {
+        detalle: Object.assign({}, det, {
+          favor: agregarPuntos(fav, orden), contra: agregarPuntos(con, orden), jugadores: [],
+          puntos: Object.assign({}, pts, { favor: fav, contra: con, sinUbicar: 0 }),
+        }),
+      }),
+      franjaReloj: k,
+    });
+    memo[k] = out;
+    if (cacheFranja) cacheFranja.set(paq, memo);
+    return out;
+  }
+
+  /** Los tres mapas completos por franja. PURA. */
+  function relojMapas(paq, opciones) {
+    const o = opciones || {};
+    if (!conCodigoReloj(paq)) {
+      return '<p class="text-[11px] text-muted">Los mapas por franja necesitan la franja de cada tiro, que llega con la próxima subida de los paquetes.</p>';
+    }
+    const pts = paq.tiros.detalle.puntos;
+    const conFranja = (pts.favor || []).filter(p => p[5] >= 0 && p[5] <= 2).length;
+    const mapas = FRANJAS_RELOJ.map((rotulo, k) => {
+      const pf = paqFranja(paq, k);
+      const fav = pf.tiros.detalle.puntos.favor;
+      const c = fav.filter(p => p[2]).length, puntos = fav.reduce((a, p) => a + (p[2] ? valorDeZona((pts.zonas || ZONAS)[p[3]]) : 0), 0);
+      const resumen = fav.length
+        ? fav.length + ' tiros · ' + c + '/' + fav.length + ' · ' + num(puntos / fav.length, 2) + ' por tiro · ' + num(100 * fav.length / (conFranja || 1)) + ' % de sus tiros con reloj'
+        : 'sin tiros';
+      return `<details class="pbp-detalle pbp-sub mt-2" data-reloj-mapa-franja="${k}">
+        <summary class="pbp-resumen text-[11px] uppercase tracking-wider text-accent cursor-pointer select-none">${rotulo} · ${esc(METODOLOGIA_RELOJ.franjas[k].nombre)} <span class="normal-case tracking-normal dato-sec">· ${esc(resumen)}</span></summary>
+        <p class="text-[11px] text-muted mt-1 mb-2">${esc(METODOLOGIA_RELOJ.franjas[k].lectura)}</p>
+        ${fav.length || (pf.tiros.detalle.puntos.contra || []).length ? mapa(pf, o.fijo ? { fijo: true, franja: k } : { sujeto: 'equipo', perspectiva: true, franja: k }) : vacio('Sin tiros en esta franja.')}
+      </details>`;
+    }).join('');
+    const sinReloj = (pts.favor || []).filter(p => p[5] === COD_RO || p[5] === COD_FA || p[5] === -1).length;
+    return `${mapas}
+      <p class="text-[10px] dato-sec mt-2 leading-snug">Cada franja es el mapa completo de esos tiros: color por puntos por tiro contra la liga, C/I por zona, diagnóstico y, al tocar una zona, cada tiro (● convertido · ✕ errado). La vara es la liga en esa zona con todas las franjas juntas.${sinReloj ? ' ' + sinReloj + ' tiros (2da oportunidad, reinicio o sin reloj atribuible) no entran en ninguna franja.' : ''}</p>`;
+  }
+
+  /**
+   * Las tendencias del reloj por zona: puntos altos, puntos de fuga y los
+   * tres que más tiran en cada franja. PURA. null sin códigos de reloj.
+   * Celda = franja × familia de zona, con el ajuste por muestra de siempre
+   * (20 tiros de la liga) contra la liga en esa familia.
+   */
+  const MIN_TIROS_TENDENCIA = 15, SIGNIF_TENDENCIA = 0.05, MIN_TIROS_TOP = 5;
+  function relojTendencias(paq) {
+    if (!conCodigoReloj(paq)) return null;
+    const pts = paq.tiros.detalle.puntos, orden = pts.zonas || ZONAS;
+    const famLiga = (paq.liga && paq.liga.familias) || {};
+    const celdas = [];
+    const porFranja = FRANJAS_RELOJ.map(() => 0);
+    const acc = {};
+    (pts.favor || []).forEach((p) => {
+      const k = p[5];
+      if (!(k >= 0 && k <= 2)) return;
+      porFranja[k]++;
+      const z = orden[p[3]], f = ZONA_FAMILIA[z];
+      if (!f) return;
+      const a = acc[k + '|' + f] || (acc[k + '|' + f] = { k: k, fam: f, i: 0, c: 0, p: 0 });
+      a.i++; if (p[2]) { a.c++; a.p += valorDeZona(z); }
+    });
+    Object.keys(acc).forEach((key) => {
+      const a = acc[key], vara = famLiga[a.fam] && isFinite(famLiga[a.fam].ppt) ? famLiga[a.fam].ppt : null;
+      const ppt = a.p / a.i;
+      const delta = vara == null ? null : (a.p + K_EQUIPO * vara) / (a.i + K_EQUIPO) - vara;
+      celdas.push(Object.assign(a, { ppt: ppt, vara: vara, delta: delta, share: porFranja[a.k] ? a.i / porFranja[a.k] : 0 }));
+    });
+    const altos = celdas.filter(x => x.delta != null && x.i >= MIN_TIROS_TENDENCIA && x.delta >= SIGNIF_TENDENCIA)
+      .sort((a, b) => b.delta * b.i - a.delta * a.i).slice(0, 3);
+    const fuga = celdas.filter(x => x.delta != null && x.i >= MIN_TIROS_TENDENCIA && x.delta <= -SIGNIF_TENDENCIA)
+      .sort((a, b) => a.delta * a.i - b.delta * b.i).slice(0, 3)
+      .map(x => Object.assign(x, { volumen: x.share >= 0.15 ? 'alto' : 'bajo' }));
+    /* Top 3 de cada franja: quién toma esos tiros y desde dónde. */
+    const ids = pts.ids || [];
+    const jug = (paq.jugadores) || {};
+    const top = FRANJAS_RELOJ.map((_, k) => {
+      const porJ = {};
+      (pts.favor || []).forEach((p) => {
+        if (p[5] !== k || !(p[4] >= 0)) return;
+        const j = porJ[p[4]] || (porJ[p[4]] = { i: 0, c: 0, p: 0, fam: {}, total: 0 });
+        j.i++; if (p[2]) { j.c++; j.p += valorDeZona(orden[p[3]]); }
+        const f = ZONA_FAMILIA[orden[p[3]]];
+        if (f) j.fam[f] = (j.fam[f] || 0) + 1;
+      });
+      (pts.favor || []).forEach((p) => { if (porJ[p[4]] && p[5] >= 0 && p[5] <= 2) porJ[p[4]].total++; });
+      return Object.keys(porJ).map((ix) => {
+        const j = porJ[ix], id = ids[Number(ix)];
+        const famTop = Object.keys(j.fam).sort((a, b) => j.fam[b] - j.fam[a])[0] || null;
+        return { id: id, nombre: jug[id] && jug[id].n ? jug[id].n : String(id), i: j.i, c: j.c, ppt: j.p / j.i,
+          familia: famTop, enFamilia: famTop ? j.fam[famTop] : 0, parte: j.total ? 100 * j.i / j.total : null };
+      }).filter(x => x.i >= MIN_TIROS_TOP).sort((a, b) => b.i - a.i || String(a.nombre).localeCompare(String(b.nombre), 'es')).slice(0, 3);
+    });
+    return { altos: altos, fuga: fuga, top: top, porFranja: porFranja };
+  }
+
+  function relojTendenciasHtml(paq) {
+    const t = relojTendencias(paq);
+    if (!t) return '';
+    const celda = (x) => `<b class="text-white">${FRANJAS_RELOJ[x.k]} · ${esc(familiaLabel(x.fam))}</b>: ${x.c}/${x.i}, ${num(x.ppt, 2)} por tiro contra ${num(x.vara, 2)} de la liga en esa zona`
+      + ` <span class="dato-sec">(${num(100 * x.share, 0)} % de sus tiros de la franja)</span>`;
+    const card = (titulo, tono, cuerpo, ayuda) => `<div class="pbp-reloj-pieza rounded border border-hairline bg-surface2/40 p-3 min-w-0" data-reloj-tendencia="${tono}">
+        <p class="text-[10px] uppercase tracking-wider font-display mb-1 ${tono === 'altos' ? 'text-green-400' : tono === 'fuga' ? 'text-red-400' : 'text-accent'}">${titulo}</p>
+        <p class="text-[10px] dato-sec leading-snug mb-2">${ayuda}</p>${cuerpo}</div>`;
+    const lista = (items, fn, vacioTxt) => (items.length ? `<ul>${items.map(x => `<li class="text-[11px] text-ink leading-snug mb-1.5">${fn(x)}</li>`).join('')}</ul>` : `<p class="text-[11px] text-muted">${vacioTxt}</p>`);
+    const altos = lista(t.altos, x => '▲ ' + celda(x) + '.', 'Ninguna franja y zona con muestra rinde claramente por encima de la liga.');
+    const fuga = lista(t.fuga, x => '▼ ' + celda(x) + (x.volumen === 'alto'
+      ? '. <span class="mm-neg">Mucho volumen con baja conversión: el desequilibrio más caro.</span>'
+      : '. <span class="dato-sec">Poco volumen: se puede evitar sin tocar el plan.</span>'), 'Ninguna franja y zona con muestra cae claramente por debajo de la liga.');
+    const top = t.top.map((lista3, k) => `<div class="mb-2"><p class="text-[11px] text-white mb-0.5">${FRANJAS_RELOJ[k]} · ${esc(METODOLOGIA_RELOJ.franjas[k].nombre)}</p>
+        ${lista3.length ? `<ol class="list-decimal ml-4">${lista3.map(j => `<li class="text-[11px] text-ink leading-snug" title="${esc(j.nombre)}"><b class="text-white">${esc(apellido(j.nombre))}</b>
+          <span class="font-mono">${j.c}/${j.i}</span> · ${num(j.ppt, 2)} por tiro${j.familia ? ' · más desde ' + esc(familiaLabel(j.familia).toLowerCase()) + ' (' + j.enFamilia + ')' : ''}
+          <span class="dato-sec">· ${num(j.parte, 0)} % de sus tiros con reloj</span></li>`).join('')}</ol>`
+          : `<p class="text-[11px] text-muted">Nadie con ${MIN_TIROS_TOP} tiros o más en esta franja.</p>`}</div>`).join('');
+    return `<div class="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-4" data-reloj-tendencias="1">
+      ${card('Puntos altos', 'altos', altos, 'Franja y zona donde más rinde, por volumen y por conversión: puntos por tiro ajustados por muestra contra la liga, con ' + MIN_TIROS_TENDENCIA + ' tiros o más.')}
+      ${card('Puntos de fuga', 'fuga', fuga, 'Donde cae la efectividad, ordenado por puntos perdidos contra lo esperado. Se separa el volumen alto (15 % o más de los tiros de la franja) del bajo.')}
+      ${card('Top 3 por zona y franja', 'top', top, 'Quién toma más tiros en cada franja, con su conversión y la zona desde donde más tira.')}
+    </div>`;
+  }
+
+  /** La parte del Scouting: la lectura por rasgo y quién tira temprano y tarde. PURA. */
+  function relojLecturaScouting(paq) {
     try {
+      const idn = relojIdentidad(paq), L = relojLiga(paq), q = relojQuienes(paq);
+      if (!idn) return '';
+      const lecturas = idn.rasgos.filter(r => LECTURA_RELOJ[r.id]).map(r => `<li class="text-[11px] text-ink leading-snug"><b>${esc(r.label)}</b> · ${esc(LECTURA_RELOJ[r.id](L))}</li>`).join('');
+      const lista = (titulo, filas) => (filas.length ? `<div class="min-w-0 pbp-reloj-pieza">${subtitulo(titulo)}<ul>${filas.map(x => `<li class="text-[11px] text-ink leading-snug" title="${esc(x.nombre)}">
+          <b class="text-white">${esc(apellido(x.nombre))}</b> · ${esc(x.label)} <span class="font-mono dato-sec">${x.conv}/${x.tiros} · ${num(x.porcion, 0)} % de sus tiros</span></li>`).join('')}</ul></div>` : '');
+      const quienes = lista('Quién tira en los primeros 7 segundos', q.tempranos) + lista('Quién tira con el reloj encima', q.tardios);
+      return `${lecturas ? `<div class="pbp-lectura pbp-reloj-pieza mb-3" data-reloj-lectura="1"><p class="text-[10px] uppercase tracking-wider text-muted mb-1">Lectura para defenderlo · decide el cuerpo técnico</p><ul>${lecturas}</ul></div>` : ''}
+        ${quienes ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-3" data-reloj-quienes="1">${quienes}</div>` : ''}`;
+    } catch (e) { return ''; }
+  }
+
+  /** El bloque del reloj en la card de Mapa de tiro (2026-10-18; antes vivía en Personalidad).
+   *  Sin «reloj» en el paquete devuelve ''. PURA.
+   *  @param {{identidad?: object, fijo?: boolean}} opciones  la identidad del índice: { PACE, 'RO%', 'PT3%' } → { f, p };
+   *    `fijo` en Scouting: mapas en una sola vista, más la lectura para defenderlo. */
+  function relojMapaTiro(paq, opciones) {
+    try {
+      const o = opciones || {};
       const r = paq && paq.reloj;
+      if (relojFormaVieja(paq)) {
+        return `<div class="mt-6 pt-4 border-t border-hairline" data-reloj-mapa-tiro="1">
+          <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">Reloj de posesión · cuándo tira y cuándo le tiran</h4>
+          <p class="text-[11px] text-yellow-400" data-reloj-forma-vieja="1">${esc(AVISO_FORMA_VIEJA)}</p></div>`;
+      }
       if (!r || !relojValido(r.favor) || !relojValido(r.contra)) return '';
-      const L = relojLiga(paq), idn = relojIdentidad(paq), s = relojSintesis(paq, (opciones || {}).identidad);
-      const arq = relojArquetipos(paq), origen = relojOrigenBarras(r, L), lugar = relojLugarCancha(paq);
+      const L = relojLiga(paq), idn = relojIdentidad(paq), s = relojSintesis(paq, o.identidad);
+      const arq = relojArquetipos(paq), origen = relojOrigenBarras(r, L), mapas = relojMapas(paq, { fijo: !!o.fijo });
       let estado = '';
       if (!idn.muestra) estado = `<p class="text-[11px] text-yellow-400 mb-2">~ Muestra chica: ${idn.finales} finales con reloj (hacen falta ${idn.minimo}). Se muestra el reparto, sin síntesis.</p>`;
       else if (!idn.comparable) estado = '<p class="text-[11px] text-muted mb-2">Todavía no hay equipos suficientes con muestra para medir el reparto contra los cuartiles de la competencia: la síntesis mira solo el rendimiento por franja.</p>';
@@ -2226,7 +2364,7 @@ const SGADD_PBP = (function () {
                 <p class="text-[11px] uppercase tracking-wider font-display ${b.distinto ? 'text-white' : 'text-muted'}">${esc(b.titulo)}</p>
                 <p class="text-xs text-ink leading-snug"><b>Ataque</b> · ${esc(b.ataque)}</p>
                 <p class="text-xs text-ink leading-snug"><b>Defensa</b> · ${esc(b.defensa)}</p>
-                ${b.extra ? `<p class="text-xs text-ink leading-snug"><b>7-20 s juntos</b> · ${esc(b.extra)}</p>` : ''}
+                ${b.extra ? `<p class="text-xs text-ink leading-snug"><b>Juego armado</b> · ${esc(b.extra)}</p>` : ''}
               </li>`).join('')}</ol>
               ${s.extras.length ? `<div class="mt-2 pt-2 border-t border-hairline/40" data-reloj-extras="1">${s.extras.map(t => `<p class="text-xs text-ink leading-snug mb-1">${esc(t)}</p>`).join('')}</div>` : ''}`}
         </div>
@@ -2239,9 +2377,10 @@ const SGADD_PBP = (function () {
           ${s.anular.length ? lista('Para anularle', s.anular, 'text-accent') : ''}
         </div>
         <p class="text-[10px] dato-sec mt-1">Es lectura de los números, no una orden: decide el cuerpo técnico.</p>` : ''}` : '';
-      return `<div class="pbp-bloque" data-pbp-listo="1" data-reloj-personalidad="1">
-        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-1">Reloj de posesión · cuándo tira y cuándo le tiran</h5>
-        <p class="text-[11px] text-muted mb-2 leading-snug">La barra es la parte de sus finales (tiros y pérdidas) en cada franja; el trazo, la competencia. Al lado, puntos por tiro y eFG% (entre paréntesis, la competencia).</p>
+      return `<div class="mt-6 pt-4 border-t border-hairline" data-reloj-mapa-tiro="1">
+        <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">Reloj de posesión · cuándo tira y cuándo le tiran</h4>
+        <p class="text-[11px] text-muted mb-2 leading-snug">Tres franjas: 0-7 s (temprana), 8-17 s (media) y 18-24 s (tardía). La barra es la parte de sus finales (tiros y pérdidas) en cada franja; el trazo, la competencia. Al lado, puntos por tiro y eFG% (entre paréntesis, la competencia).</p>
+        ${o.fijo ? relojLecturaScouting(paq) : ''}
         ${estado}
         ${relojPerfilHtml(arq)}
         ${idn.rasgos.length ? `<div class="mb-2">${relojChips(idn.rasgos)}</div>` : ''}
@@ -2255,8 +2394,9 @@ const SGADD_PBP = (function () {
           <div class="min-w-0 pbp-reloj-pieza">${subtitulo('Cuándo le tiran · por franja')}${relojTabla(r.contra, L)}</div>
         </div>
         ${origen ? `<div class="min-w-0 pbp-reloj-pieza mt-3" data-reloj-origenes="1">${subtitulo('Cómo nace la posesión · tiros de la primera opción')}${origen}</div>` : ''}
-        ${lugar ? `<div class="min-w-0 pbp-reloj-pieza mt-3" data-reloj-lugar="1">${subtitulo('Desde dónde tira en cada franja')}${lugar}</div>` : ''}
+        <div class="min-w-0 mt-4" data-reloj-lugar="1">${subtitulo('Desde dónde tira en cada franja · el mapa completo')}${mapas}</div>
         ${sintesis}
+        ${relojTendenciasHtml(paq)}
         <p class="text-[10px] dato-sec mt-2 leading-snug">${NOTA_RELOJ} El rendimiento de una franja se ajusta por muestra y cuenta como desvío desde ${num(SIGNIF_RELOJ, 2)} puntos por tiro con ${MIN_TIROS_SINTESIS} tiros o más.</p>
         ${relojAyuda(L)}
       </div>`;
@@ -2295,14 +2435,14 @@ const SGADD_PBP = (function () {
 
   /**
    * El lugar de una card de un equipo.
-   * @param {string} tipo  'quintetos' (por defecto), 'mapa' o 'personalidad' (el reloj de la pestaña Personalidad)
+   * @param {string} tipo  'quintetos' (por defecto) o 'mapa' (el mapa de tiro con el reloj de posesión)
    * @param {string} propio  en Scouting, el otro lado del cruce (para «atacar / cerrar ahí»)
    */
   function espacio(equipo, contexto, propio, tipo, identidad) {
-    const t = tipo === 'mapa' || tipo === 'personalidad' ? tipo : 'quintetos';
-    const id = identidad && t === 'personalidad' ? ` data-pbp-identidad="${esc(JSON.stringify(identidad))}"` : '';
+    const t = tipo === 'mapa' ? tipo : 'quintetos';
+    const id = identidad && t === 'mapa' ? ` data-pbp-identidad="${esc(JSON.stringify(identidad))}"` : '';
     return `<div class="pbp-montaje" data-pbp-equipo="${esc(equipo)}" data-pbp-contexto="${esc(contexto || 'equipo')}" data-pbp-tipo="${t}"${propio ? ` data-pbp-propio="${esc(propio)}"` : ''}${id}>
-      ${cargando(t === 'mapa' ? 'Cargando el mapa de tiro…' : t === 'personalidad' ? 'Cargando el reloj de posesión…' : 'Cargando el análisis de play-by-play…')}</div>`;
+      ${cargando(t === 'mapa' ? 'Cargando el mapa de tiro…' : 'Cargando el análisis de play-by-play…')}</div>`;
   }
   /** El lugar del mapa de un jugador. */
   function espacioJugador(nombre, equipo) {
@@ -2328,7 +2468,7 @@ const SGADD_PBP = (function () {
   /* Devuelve una promesa que se cumple cuando TODOS los lugares montados
      terminaron (bien o mal): la ficha en PDF la espera antes de imprimir
      para que el mapa salga dibujado y no el cartel de «Cargando…». */
-  /** La identidad que dejó la pestaña Personalidad en el lugar; un JSON roto no tumba el bloque. */
+  /** La identidad que dejó la pestaña Mapa de tiro en el lugar; un JSON roto no tumba el bloque. */
   function leerIdentidad(nodo) {
     try { const t = nodo.getAttribute('data-pbp-identidad'); return t ? JSON.parse(t) : null; } catch (e) { return null; }
   }
@@ -2354,8 +2494,7 @@ const SGADD_PBP = (function () {
             : tipo === 'partido-momentum' ? momentumPartido(paq, pp)
             : tipo === 'partido-quintetos' ? quintetosPartido(paq, pp)
             : tipo === 'partido-reloj' ? relojPartido(paq, pp)
-            : tipo === 'personalidad' ? relojPersonalidad(paq, { identidad: leerIdentidad(nodo) })
-            : tipo === 'mapa' ? mapaCard(paq, { propio: paqPropio, fijo: contexto === 'scouting' }) : html(paq, { contexto: contexto });
+            : tipo === 'mapa' ? mapaCard(paq, { propio: paqPropio, fijo: contexto === 'scouting', identidad: leerIdentidad(nodo) }) : html(paq, { contexto: contexto });
           activar(nodo, paq);
         }).catch((e) => {
           if (!nodo.isConnected) return;
@@ -2382,7 +2521,9 @@ const SGADD_PBP = (function () {
       if (ley) ley.textContent = '';
       return;
     }
-    const r = capaTiros(paq, caja.getAttribute('data-pbp-sujeto'), zona);
+    const fr = caja.getAttribute('data-pbp-franja');
+    const fuente = fr !== null && fr !== '' ? (paqFranja(paq, Number(fr)) || paq) : paq;
+    const r = capaTiros(fuente, caja.getAttribute('data-pbp-sujeto'), zona);
     if (g) g.innerHTML = r.svg;
     if (ley) {
       ley.textContent = r.disponible
@@ -2455,7 +2596,12 @@ const SGADD_PBP = (function () {
           perspectiva: caja.getAttribute('data-pbp-perspectiva') === '1',
         };
         op[partes[0]] = partes[0] === 'diag' ? partes[1] === '1' : partes[1];
-        caja.outerHTML = mapa(entrada, op);
+        /* Un mapa de una franja del reloj se vuelve a dibujar con su franja. */
+        const fr = caja.getAttribute('data-pbp-franja');
+        if (fr !== null && fr !== '') {
+          op.franja = Number(fr);
+          caja.outerHTML = mapa(paqFranja(entrada, op.franja) || entrada, op);
+        } else caja.outerHTML = mapa(entrada, op);
         tooltip(nodo).hidden = true;
         return;
       }
@@ -2526,8 +2672,9 @@ const SGADD_PBP = (function () {
     partidoDe, mapaPartido, momentumPartido, quintetosPartido, espacioPartido, MIN_TIROS_DIAGNOSTICO,
     relojTabla, relojIdentidad, relojPerfilJugador, relojEquipo, relojJugador, relojPartido, relojReparto, FRANJAS_RELOJ,
     relojScouting, relojQuienes, relojMetodologiaHtml, relojAyuda, METODOLOGIA_RELOJ, RELOJ_MINIMOS, FUERA_DE_FRANJA,
-    relojSintesis, relojBarras, relojPersonalidad, relojCeldas,
-    relojArquetipos, relojDesglose, relojOrigenBarras, relojLugarCancha, ARQUETIPOS_RELOJ, BLOQUES_RELOJ,
+    relojSintesis, relojBarras, relojMapaTiro, relojCeldas, relojMapas, relojTendencias, relojTendenciasHtml, paqFranja,
+    relojLecturaScouting, relojFormaVieja, conCodigoReloj, hexDePunto,
+    relojArquetipos, relojDesglose, relojOrigenBarras, ARQUETIPOS_RELOJ, BLOQUES_RELOJ,
   };
 })();
 

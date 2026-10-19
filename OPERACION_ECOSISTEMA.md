@@ -97,6 +97,32 @@ npm run canva                                # el paso 4 solo
 
 ---
 
+## 0 ter · El vigía · la ingesta apenas termina un partido (2026-10-18)
+
+La tarea de las 02:00 y las 10:00 es la red. El **vigía** corre mientras la
+PC está prendida y dispara la cadena de una competencia (LNB, LAB Norte, LAB
+Sur) apenas uno de sus partidos termina: mira el fixture cada 5 minutos con
+partidos en juego y cada 30 si no, y cuenta como terminado un partido con
+marcador y 150 minutos desde su inicio (el fixture trae el parcial de uno en
+juego). Nunca corre a la vez que la tarea: comparten el candado
+`salida\.corrida.lock`. Detalle en el punto 127 de CLAUDE.md.
+
+En `motorstats-ingestion`:
+
+```bash
+node herramientas/vigia.js --ensayo
+```
+
+```bash
+powershell -ExecutionPolicy Bypass -File herramientas/programar-tarea.ps1 -Vigia -Registrar
+```
+
+```bash
+powershell -Command "Start-ScheduledTask -TaskName 'MotorStats Vigia'"
+```
+
+Log en `salida\vigia\AAAA-MM-DD.log`.
+
 ## 1 · El mapa · seis fuentes que tienen que coincidir
 
 ```

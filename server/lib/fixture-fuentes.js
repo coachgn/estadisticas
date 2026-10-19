@@ -76,6 +76,7 @@ function decodificar(t) {
     .replace(/&nbsp;/g, ' ').replace(/&ndash;/g, '-').replace(/&mdash;/g, '-')
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&#(\d+);/g, (m, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (m, n) => String.fromCharCode(parseInt(n, 16)))
     .replace(/&amp;/g, '&');
 }
 
@@ -725,6 +726,158 @@ function parsearJornadas(html, opciones) {
 }
 
 /* =====================================================================
+   ADAPTADOR · Gesdeportiva por delegación (laliganacional.com.ar) · punto 127
+
+   La Liga Nacional y la Liga Argentina publican el fixture con la
+   plataforma Gesdeportiva. La página que el admin pega
+   (`/laligaargentina/fixture`) NO trae los partidos: los pide por JS a
+   `/<delegación>/fixture?handler=ProximosPartidos&fechaInicio=…&fechaFin=…`,
+   que devuelve un fragmento con una `tr.fila-tabla-calendarios` por
+   partido. Por eso este lector declara `urlDeLectura`: el servidor baja
+   ESE fragmento con la temporada entera, no la página que se pegó. Era el
+   motivo del error «No se reconoció ninguna jornada» con el genérico.
+
+   Medido el 2026-10-18 (test-fixtures/lab/fixture-delegacion.html):
+   - **la delegación trae las DOS conferencias mezcladas y sin grupo.** La
+     zona sale de los EQUIPOS: el servidor pasa los ids de Gesdeportiva de
+     la zona (`o.equipos`, del catálogo) y lo que es de otra zona se descarta
+     y se cuenta. Sin ids declarados no se filtra, y se avisa;
+   - **un partido sin jugar viene 0-0** (en básquet no hay 0-0);
+   - **un partido EN JUEGO trae el parcial** en las mismas celdas (19-13 en
+     el primer cuarto). El marcador se toma solo si el partido ya terminó:
+     con `ahora`, si arrancó hace más de `DURACION_PARTIDO_MIN`; sin
+     `ahora`, si es de un día anterior. Lo demás va EN_JUEGO, sin puntos;
+   - **«00:00» es «sin hora»**: ningún partido de la LAB arranca a medianoche;
+   - la celda «Fecha/Hora - Campo» trae el estadio en `<small>`. No publica
+     estado ni transmisión: no se inventan.
+   ===================================================================== */
+
+/* Un partido de 40 minutos con entretiempo y tiempos muertos dura ~2 h. */
+const DURACION_PARTIDO_MIN = 150;
+const VENTANA_TEMPORADA_DIAS = 364;
+
+/** El inicio de la temporada que contiene `hoy`: el 1 de julio anterior. */
+function inicioTemporada(hoy) {
+  const m = String(hoy || '').match(/^(\d{4})-(\d{2})/);
+  if (!m) return null;
+  const anio = Number(m[2]) >= 7 ? Number(m[1]) : Number(m[1]) - 1;
+  return anio + '-07-01';
+}
+
+function sumarDias(iso, n) {
+  const d = new Date(iso + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * La URL que hay que bajar para un link pegado de la Liga.
+ *
+ * Un link que ya pide el fragmento (`handler=ProximosPartidos`) se respeta
+ * tal cual; cualquier otro de la delegación —el fixture, la portada, una
+ * noticia— se convierte en el pedido de la temporada entera. La ventana es
+ * el piso declarado (`desde`) o el 1 de julio de la temporada, y un año.
+ */
+function urlGesdeportiva(url, o) {
+  let u;
+  try { u = new URL(String(url || '')); } catch (e) { return url; }
+  if (/handler=ProximosPartidos/i.test(u.search)) return u.href;
+  const delegacion = u.pathname.split('/').filter(Boolean)[0];
+  if (!delegacion || !/^[a-z0-9-]+$/i.test(delegacion)) return url;
+  const desde = (o && FECHA_ISO.test(String(o.desde || '')) && String(o.desde)) || inicioTemporada(o && o.hoy);
+  if (!desde) return url;
+  const hasta = sumarDias(desde, VENTANA_TEMPORADA_DIAS);
+  return u.origin + '/' + delegacion + '/fixture?handler=ProximosPartidos&fechaInicio=' + desde + '&fechaFin=' + hasta;
+}
+
+/** Minutos desde 1970 de una fecha y hora de ARGENTINA (UTC−3 fijo). */
+function minutosArgentina(fecha, horaTxt) {
+  const t = Date.parse(fecha + 'T' + (horaTxt || '00:00') + ':00-03:00');
+  return isFinite(t) ? t / 60000 : null;
+}
+
+/**
+ * @param {string} html el fragmento del fixture de la delegación
+ * @param {Object} [o] { zona, hoy, ahora (ISO), equipos: [idEquipo], desde }
+ */
+function parsearGesdeportiva(html, o) {
+  o = o || {};
+  const avisos = [];
+  const partidos = [];
+  const filas = String(html || '').match(/<tr[^>]*class="[^"]*fila-tabla-calendarios[^"]*"[\s\S]*?<\/tr>/g) || [];
+  /* `equipos` son los de la zona: números (ids) u objetos {id, nombres}.
+     Un equipo que el catálogo tiene SIN id (quedó provisorio) se reconoce
+     por su nombre o sus alias, normalizados. */
+  const zonaEq = Array.isArray(o.equipos) && o.equipos.length
+    ? o.equipos.map(e => (typeof e === 'object' && e ? e : { id: e })) : null;
+  const ids = zonaEq;
+  const nombreLlano = t => sinAcentos(t).toUpperCase().replace(/[^A-Z0-9]+/g, '');
+  const deLaZona = (e) => zonaEq.some(z => (z.id != null && Number(z.id) === e.id)
+    || (z.id == null && (z.nombres || []).some(n => nombreLlano(n) === nombreLlano(e.nombre))));
+  const ahoraMin = o.ahora && isFinite(Date.parse(o.ahora)) ? Date.parse(o.ahora) / 60000 : null;
+  let otraZona = 0;
+  filas.forEach((tr) => {
+    const eq = [];
+    const re = /href="[^"]*\/equipo\/(\d+)(?:\/(\d+))?\/[^"]*"[^>]*>\s*<strong[^>]*class="nombre-equipo"[^>]*>([\s\S]*?)<\/strong>/g;
+    let m;
+    while ((m = re.exec(tr))) eq.push({ id: Number(m[2] || m[1]), nombre: texto(m[3]) });
+    if (eq.length < 2) return;
+    if (ids && (!deLaZona(eq[0]) || !deLaZona(eq[1]))) { otraZona++; return; }
+    const celda = (tr.match(/<td[^>]*class="fecha-campo[^"]*"[^>]*>([\s\S]*?)<\/td>/) || [])[1] || '';
+    const fh = texto((celda.match(/<strong>([\s\S]*?)<\/strong>/) || [])[1] || '');
+    const sede = texto((celda.match(/<small>([\s\S]*?)<\/small>/) || [])[1] || '') || null;
+    const fecha = fechaDesdeDDMM(fh);
+    let h = hora(fh);
+    if (h === '00:00') h = null;
+    let res = (tr.match(/<td[^>]*class="resultados"[^>]*>([\s\S]*?)<\/td>/g) || [])
+      .map(td => texto(td)).map(t => (/^\d{1,3}$/.test(t) ? Number(t) : null));
+    if (res[0] === 0 && res[1] === 0) res = [null, null];
+    const conMarcador = res[0] != null && res[1] != null;
+    let estado = 'PROGRAMADO';
+    if (conMarcador) {
+      let termino;
+      const ini = fecha ? minutosArgentina(fecha, h) : null;
+      if (ahoraMin != null && ini != null && h) termino = ahoraMin >= ini + DURACION_PARTIDO_MIN;
+      else if (ahoraMin != null && fecha) termino = ahoraMin >= minutosArgentina(fecha, '23:59');
+      else termino = !!(fecha && o.hoy && fecha < o.hoy);
+      estado = termino ? 'FINALIZADO' : 'EN_JUEGO';
+    }
+    const jugado = estado === 'FINALIZADO';
+    partidos.push({
+      fecha: fecha,
+      hora: h,
+      estado: estado,
+      estadoTexto: '',
+      local: eq[0].nombre,
+      visitante: eq[1].nombre,
+      idLocal: eq[0].id,
+      idVisitante: eq[1].id,
+      ptsLocal: jugado ? res[0] : null,
+      ptsVisitante: jugado ? res[1] : null,
+      sede: sede,
+      transmision: [],
+      zona: o.zona || null,
+    });
+  });
+  if (!filas.length) {
+    avisos.push('No se reconoció ningún partido: el fixture de la Liga no trae la tabla de calendario (¿cambió el sitio o la temporada no está publicada?).');
+  } else if (!partidos.length && otraZona) {
+    avisos.push('Los ' + otraZona + ' partidos del fixture son de otra zona: revisá los equipos (ids de Gesdeportiva) de esta zona.');
+  }
+  if (!ids && filas.length) avisos.push('Esta zona no declara los ids de sus equipos: el fixture de la delegación trae todas las zonas juntas y no se pudo filtrar.');
+  return {
+    partidos: partidos.sort((a, b) => {
+      if (!a.fecha && !b.fecha) return 0;
+      if (!a.fecha) return 1;
+      if (!b.fecha) return -1;
+      return ordenar(a, b);
+    }),
+    avisos: avisos,
+    otraZona: otraZona,
+  };
+}
+
+/* =====================================================================
    EL REGISTRO
    ===================================================================== */
 
@@ -749,6 +902,14 @@ const ADAPTADORES = {
     variasUrls: true,
     parsear: parsearVolcala,
   },
+  gesdeportiva: {
+    nombre: 'Liga Nacional / Liga Argentina (Gesdeportiva)',
+    porZona: true,
+    variasUrls: true,
+    /* El servidor no baja la página pegada sino el fragmento del fixture. */
+    urlDeLectura: urlGesdeportiva,
+    parsear: parsearGesdeportiva,
+  },
   jornadas: {
     nombre: 'Página de texto con jornadas',
     porZona: true,
@@ -765,6 +926,10 @@ const ADAPTADORES = {
     porZona: true,
     variasUrls: true,
     parsear: (html, o) => adaptadorDeUrl((o || {}).url).parsear(html, o),
+    urlDeLectura: (url, o) => {
+      const ad = adaptadorDeUrl(url);
+      return ad.urlDeLectura ? ad.urlDeLectura(url, o) : url;
+    },
   },
 };
 
@@ -773,6 +938,7 @@ const SITIOS = [
   { re: /(^|\.)volcala\.com$/i, id: 'volcala' },
   { re: /(^|\.)basket-club\.com$/i, id: 'basket-club' },
   { re: /(^|\.)apdeb\.com\.ar$/i, id: 'apdeb' },
+  { re: /(^|\.)laliganacional\.com\.ar$/i, id: 'gesdeportiva' },
 ];
 
 /** El adaptador que corresponde a una URL. Nunca `auto`: sería un ciclo. */
@@ -913,7 +1079,7 @@ function cruzarConLibro(partidos, clavesLibro, alias, clave) {
 
 module.exports = {
   ESTADOS, ADAPTADORES, adaptador, adaptadorDeUrl, configDe,
-  parsearBasketClub, parsearApdeb, parsearVolcala, parsearJornadas, instanciaDe, renglones, categoriasDe, numeroDe,
+  parsearBasketClub, parsearApdeb, parsearVolcala, parsearJornadas, parsearGesdeportiva, urlGesdeportiva, inicioTemporada, instanciaDe, renglones, categoriasDe, numeroDe,
   clasificarEstado, fechaDesdeDDMM, fechaDesdeJornada, hora, texto, decodificar,
   equipoDelLibro, cruzarConLibro,
 };

@@ -928,7 +928,8 @@ const SGADD_TORNEOS = (function () {
      liga. Hasta acá se declaraba en `torneos/<id>.json` y pedía un commit;
      ahora se pegan los links acá, uno por renglón y por zona, y se guarda
      en el servidor. CADA LINK ELIGE SU LECTOR POR EL SITIO (`auto`):
-     Volcala, basket-club y apdeb tienen el suyo, y cualquier otra página se
+     Volcala, basket-club, apdeb y la Liga (laliganacional.com.ar, punto 127)
+     tienen el suyo, y cualquier otra página se
      intenta como «jornadas» de texto. «Probar» baja la fuente en el acto y
      dice cuántos partidos encontró: un link que no sirve se ve ANTES del
      sábado, no después.
@@ -941,6 +942,7 @@ const SGADD_TORNEOS = (function () {
     { re: /(^|\.)volcala\.com$/i, label: 'Volcala' },
     { re: /(^|\.)basket-club\.com$/i, label: 'basket-club' },
     { re: /(^|\.)apdeb\.com\.ar$/i, label: 'APdeB' },
+    { re: /(^|\.)laliganacional\.com\.ar$/i, label: 'Liga Nacional / Argentina' },
   ];
   function lectorDeUrl(url) {
     let host = '';
