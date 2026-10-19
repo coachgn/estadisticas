@@ -23,7 +23,7 @@ node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 318 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
 node test-boot.js          # 181 tests · arranque por club, sintaxis de los módulos, carteles de espera
-node test-jugadores.js     # 290 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
+node test-jugadores.js     # 291 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  96 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
 node test-personalidad.js  #  20 tests · identidad táctica
 node test-informe.js       #  45 tests · secciones del informe y su PDF
@@ -46,7 +46,7 @@ node test-jsonclub.js      # 115 tests · los JSON de club, el validador, el ais
 node test-pares.js         # 219 tests · el grupo de pares, la cascada y las 3 cards
 node test-panelmaster.js   #  57 tests · la categoría que persiste, el reset y el toast
 node test-manuales.js      # 175 tests · partidos sin box score: suman a la tabla, no a las métricas
-node test-responsive.js    # 156 tests · desborde, targets táctiles, modales, el papel, el PIE
+node test-responsive.js    # 157 tests · desborde, targets táctiles, modales, el papel, el PIE
                            #             el aviso de version y el diagnostico del pie
 node test-rankingpdf.js    # 112 tests · la quinta exportación: una tabla por CARD, con su orden
 node test-demo.js          # 130 tests · la demo publica: el snapshot anonimizado, el
@@ -62,8 +62,8 @@ node test-plan-racha.js    #  43 tests · la racha con partidos manuales, el pla
                            #             efectivo del catálogo y el arranque sin destello
 node test-resto.js         # 137 tests · el resto del plantel en tabla, el piso de 5 min, la vía
                            #             de gol líder por partido y la ficha del Plan Oro
-node test-niveles.js       # 665 tests · registro de umbrales, los 6 niveles, la resolución
-                           #             adaptativa y la PROCEDENCIA · REGRESIÓN de equivalencia
+node test-niveles.js       # 670 tests · registro de umbrales, los 6 niveles, la PROCEDENCIA y los umbrales
+                           #             que salen SOLO de la competencia, desde el primer partido (punto 130)
 node test-similitud-etiquetas.js #  45 tests · la similitud multi-etiqueta contra el documento
                            #             de etiquetas, el caso Raineri/Benavidez y los afines
 node test-estados-sync.js  #  74 tests · los estados compartidos en el servidor, dos sesiones
@@ -72,7 +72,7 @@ node test-fichajes.js      # 221 tests · Fichajes: ficha manual, padrón, filtr
                            #             · y PADRON J del libro, que completa las fichas sin pisarlas
 node test-padron-j.js      #  35 tests · la pestaña PADRON J → fichas: fechas, claves, campos inválidos, fusión,
                            #             fotos y dorsales (punto 96)
-node test-ficha-pdf.js     #  32 tests · la ficha en PDF a elección: las marcas data-subcard del render contra la
+node test-ficha-pdf.js     #  43 tests · la ficha en PDF a elección: las marcas data-subcard del render contra la
                            #             estructura, la poda sin huecos, la titularidad con el dato y el Pack PLANTEL (129)
 node test-pdf-layout.js    #  37 tests · claves arriba del resto, el flujo continuo, la
                            #             tabla que se parte por filas y que ningún :hover
@@ -81,9 +81,9 @@ node test-router-jugadores.js # 12 tests · la pestaña Jugadores se pinta en el
                            #             suelta el equipo de otra categoría
 node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: plan, estado,
                            #             equipo, vencimiento y ciclo ORO por categoría
-node test-glosario.js      #  34 tests · el glosario sin la columna ni la card de hojas,
+node test-glosario.js      #  38 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
-node test-pbp.js           # 264 tests · la capa de laboratorio de play-by-play: el catálogo,
+node test-pbp.js           # 281 tests · la capa de laboratorio de play-by-play: el catálogo,
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
                            #             · el bloque opcional de secciones del paquete (punto 83)
@@ -95,6 +95,7 @@ node test-pbp.js           # 264 tests · la capa de laboratorio de play-by-play
                            #               y el reloj en TRES franjas, mudado al Mapa de tiro, con un mapa completo
                            #               por franja y las tarjetas de tendencias (127), los paquetes de cuatro
                            #               franjas convertidos al vuelo y la card Tiro por franja (128)
+                           #               y el perfil táctico por tramo del jugador: 1x1 / 5x5, rebote, pérdida y defensa (130)
 
 node test-mails.js         # 177 tests · los mails institucionales: plantillas sin huecos, el
                            #             día de Argentina, la idempotencia del cron, la ficha, el SMTP,
@@ -155,7 +156,7 @@ node test-backend.js       # 461 tests · el proxy, el benchmark, las alertas, e
 # tocó `sgadd-core.js`, o sea que el servidor corría con un núcleo viejo.
 ```
 
-**7929 tests en total. Todos tienen que dar verde antes de commitear.**
+**Más de 8.400 tests en total** (medido el 2026-10-19 sumando lo que informa cada archivo). **Todos tienen que dar verde antes de commitear.**
 
 Todos los `test-*.js` corren **desde la raíz del repo** (no desde `js/`): sus
 `require('./js/sgadd-core.js')` son relativos al propio archivo, no al cwd.
@@ -273,7 +274,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=288`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=289`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -14939,3 +14940,108 @@ Verificado en el navegador sobre la demo: ficha individual (destildar Tiro
 arrastra sus sub-cards, `kpis` fuera, el log adentro, archivo «Jugador 15») y
 pack completo. El PDF real se generó con Chrome headless y se leyó hoja por
 hoja con `pdftotext`.
+
+---
+
+## 130. UMBRALES POR COMPETENCIA, PERFIL POR TRAMO DEL RELOJ, TOP 3 DEL PLANTEL Y PDF DISCRETO (2026-10-19)
+
+Assets en `?v=289`. Toca el panel y la ingesta.
+
+### 1 · La competencia desde el primer partido (`js/sgadd-niveles.js`)
+
+Decisión del club: **todo umbral relativo sale SOLO del percentil de la
+competencia elegida, desde el primer partido**. `umbralVigente` ya no usa
+la semilla por nivel, ni la mezcla, ni los topes (los tres venían de libros
+de otras ligas). Revierte lo que los puntos 45 y 45 bis decían de `tier`,
+`mezcla` y los clamps.
+
+| origen | cuándo |
+|---|---|
+| `absoluto` | los cinco de economía del juego; no se mueven nunca |
+| `vivo` | el percentil de ESTA competencia. Con menos de 40 partidos o 60 calificados va con `chica: true` |
+| `sin-datos` | sin un solo valor de la métrica: `NaN`, y ninguna comparación dispara |
+| `declarado` | `idx.liga.umbralesDeclarados`: SOLO fixtures de prueba (cinco jugadores no miden un p90). Nunca pisa un absoluto. Ningún índice de producción lo trae |
+| `tier`, `mezcla` | ya no se producen; quedan para leer una vara vieja |
+
+- **El `~` de la competencia chica**: `mapaVigente` cuelga `__chica` y
+  `jugadoresBadges` marca TODAS las etiquetas con `~` y el motivo
+  `JUGADORES_MOTIVO_COMPETENCIA_CHICA`, aunque el jugador califique.
+- **Los tests no se recalibraron contra la vara viva**: las fixtures de
+  scouting, jugadores, pares y similitud DECLARAN la vara con la que se
+  escribieron (`mapaDe('LIGA_ARGENTINA')` / `mapaDe('LOCAL_MAYORES')`).
+  `test-niveles.js` fija que la vara cambia al cambiar de competencia.
+- El manual (sección 4) y una card nueva del Glosario («Umbrales de las
+  etiquetas, por competencia») lo cuentan con los números del registro.
+
+### 2 · El perfil táctico por tramo del reloj
+
+**Ingesta** (`src/pbp/reloj.js`, 73 tests): `relojDePartido` emite
+`eventos` —asistencia, rebote ofensivo y defensivo, recupero y tapón— con
+la franja de la posesión a la que pertenecen (para el que defiende, el
+reloj del RIVAL). Cada jugador suma `e[franja] = [ast, ro, rd, rec, tap]`
+y `pj`. `baseLigaReloj` publica `cortes.tramos[franja]` con mín, P25, P50,
+P75, P90 y máx de puntos por tiro, % de canastas asistidas, % de sus tiros
+y, por partido, producción, rebotes, recuperos, tapones y pérdidas.
+
+- **Los tapones**: de 991 en la Conferencia Norte, la mayoría viene SIN el
+  tiro bloqueado en la lista. Se miden contra la posesión del rival que
+  está corriendo: con eso entran 755.
+- Paquetes regenerados en local (`salida/conferencia-norte/web`, el más
+  pesado 195 KB contra el techo de 256). **No se subieron.**
+
+**Panel** (`js/sgadd-pbp.js`): `relojTramosJugador` (PURA),
+`relojTramosHtml` (card «Perfil táctico por tramo del reloj · 1x1 o 5x5»
+en la pestaña Tiro, sub-card `tiro.reloj-tramos` del PDF) y
+`relojTramosAdn` (chips en el ADN, debajo de Función en cancha, montados
+por `espacioTramos`; una carga fallida no deja cartel).
+
+| Tramo | Ataque | Defensa |
+|---|---|---|
+| 0-7 s | Ataque Rápido · Finalizador 1x1 / Generador 5x5 / Reboteador Ofensivo / Fuga por Pérdida | Transición Defensiva · Recuperador / Taponador / Reboteador Defensivo |
+| 8-17 s | Set Ofensivo · Definidor 1x1 / Facilitador 5x5 / Reboteador Ofensivo / Fuga por Pérdida | Set Defensivo · ídem |
+| 18-24 s | Clutch · Definidor 1x1 / Generador 5x5 / Reboteador Ofensivo | Clutch Defensivo · ídem |
+
+- **Rol**: producción por partido (canastas + asistencias) en el P75 de la
+  franja; 1x1 si finaliza más de lo que asiste, 5x5 si asiste más (empate,
+  nada). **Resto**: P90 por partido. Todo pide 5 acciones y 3 partidos.
+- **Semáforo** (`.tramo-verde/amarillo/rojo/neutro`, con variante de papel):
+  su puntos por tiro en la franja contra P75/P25; sin 10 tiros ahí, o una
+  etiqueta de defensa, neutro. Con menos de 20 jugadores con muestra, todo `~`.
+- **«Clutch» es el final del RELOJ (18-24 s)**, no del partido: lo dice la nota.
+- Medido sobre los 17 paquetes regenerados: 118 de 236 jugadores con alguna
+  etiqueta; ningún HTML con `undefined` ni `NaN`.
+- Un paquete sin `e` (todo lo subido hasta hoy) dice que llega con la
+  próxima subida y no inventa nada.
+
+### 3 · TOP 3 del PLANTEL (`js/sgadd-jugadores.js`)
+
+Card arriba de «Plantel · <Equipo>», con un equipo elegido: los tres
+primeros del plantel en cada dimensión de `JUGADORES_RANKINGS`, por el MISMO
+`jugadoresRanking` (pool = plantel, sin piso de minutos). Columnas `#` ·
+Jugador · PJ · MIN y las de referencia del grupo; una columna que el libro
+no trae (el `+/-` viejo) se omite. Cada sub-card lleva
+`data-subcard="plantel.top3-<id>"`, y el **Pack PLANTEL** suma en el paso 1
+la sección «TOP 3 del plantel» (`SGADD_FICHA.estructuraPack`), que abre el
+PDF. La ficha individual no la ofrece.
+
+### 4 · El PDF, discreto (`js/sgadd-ui.js`, `index.html`)
+
+- **Sin marca de agua**, en ninguna exportación (se fueron la clase y las
+  dos reglas).
+- **Encabezado**: solo el logo (16 px, `alt="MotorStats"`).
+- **Pie**: logo · «Generado el DD/MM/AAAA» y los íconos de correo e
+  Instagram, sin el texto del mail ni el arroba (van en su `title`). Siguen
+  sin enlace en papel. El pie de PANTALLA (`pieWeb`) no cambió.
+
+### Lo que NO se hizo
+
+- **El modal modular de EQUIPOS** (pegado en el mismo mensaje) queda para
+  una sesión aparte: no estaba pedido en el texto del mensaje.
+
+### Para producción (lo corre el club)
+
+1. Push del front (`?v=289`).
+2. Subir los paquetes regenerados, en `motorstats-ingestion`:
+   `node herramientas/subir-paquetes.js --confirmar` (regenera todo con las
+   acciones por tramo). Hasta eso, la card por tramo dice que llega con la
+   próxima subida.

@@ -1477,6 +1477,22 @@ const SGADD_PBP = (function () {
     ],
   };
 
+  /* Las constantes del perfil por tramo (ver relojTramosJugador) van antes de
+     la metodología, que las lee para escribir sus reglas. */
+  const TRAMOS_JUGADOR = [
+    { k: 0, id: 'temprana', ataque: 'Ataque Rápido', defensa: 'Transición Defensiva', uno: 'Finalizador 1x1', cinco: 'Generador 5x5', fuga: true },
+    { k: 1, id: 'media', ataque: 'Set Ofensivo', defensa: 'Set Defensivo', uno: 'Definidor 1x1', cinco: 'Facilitador 5x5', fuga: true },
+    { k: 2, id: 'tardia', ataque: 'Clutch', defensa: 'Clutch Defensivo', uno: 'Definidor 1x1', cinco: 'Generador 5x5', fuga: false },
+  ];
+  /* m: el corte de la competencia · i: posición en e[franja] (−1: las pérdidas, que viven en f[franja][5]) */
+  const ACCIONES_TRAMO = [
+    { m: 'ro', i: 1, fase: 'ataque', label: 'Reboteador Ofensivo', que: 'rebotes ofensivos' },
+    { m: 'per', i: -1, fase: 'ataque', label: 'Fuga por Pérdida', que: 'pérdidas', soloConFuga: true },
+    { m: 'rec', i: 3, fase: 'defensa', label: 'Recuperador', que: 'recuperos' },
+    { m: 'tap', i: 4, fase: 'defensa', label: 'Taponador', que: 'tapones' },
+    { m: 'rd', i: 2, fase: 'defensa', label: 'Reboteador Defensivo', que: 'rebotes defensivos' },
+  ];
+  const TRAMO_MIN = { tiros: 10, pj: 3, acciones: 5, jugadoresLiga: 20 };
   const METODOLOGIA_RELOJ = {
     franjas: [
       { label: '0-7 s', nombre: 'Temprana', lectura: 'Transición y primera ventaja: el tiro sale antes de que la defensa termine de armarse.' },
@@ -1509,6 +1525,8 @@ const SGADD_PBP = (function () {
         texto: 'Cada jugador tiene su volumen por franja (qué parte de sus tiros sale en 0-7, 8-17 y 18-24 s, con C/I, puntos por tiro contra la liga, canastas asistidas y pérdidas) y el mapa completo de cada franja. Sus etiquetas de reloj salen de esos mismos números: el cuarto más alto de su competencia en la franja, y si sus canastas ahí llegan con asistencia o las crea él.' },
       { id: 'convertido', titulo: 'Paquetes de cuatro franjas',
         texto: 'Los partidos cargados antes del cambio (0-6 · 7-14 · 15-20 · 21-24 s) se convierten al leerlos: el segundo 7 (un octavo de 7-14) pasa a 0-7 y 15-20 se reparte mitad y mitad. Es una aproximación —error medio de 0,5 a 1,6 puntos de reparto por franja, medido— y se avisa con ≈; el mapa por franja necesita la próxima subida de los paquetes.' },
+      { id: 'tramos', titulo: 'El perfil táctico por tramo del jugador',
+        texto: 'Cada jugador recibe etiquetas por tramo del reloj —Ataque Rápido (0-7 s), Set Ofensivo (8-17 s) y Clutch (18-24 s, el final del reloj de posesión, no del partido), y sus pares defensivos con el reloj del rival—. Los cortes (P25, P50, P75, P90, mínimo y máximo de puntos por tiro, % de canastas asistidas, % de sus tiros y acciones por partido) salen SOLO de los jugadores de esa competencia. 1x1 si finaliza más de lo que asiste, 5x5 si asiste más. Hacen falta 5 acciones en la franja y 3 partidos. El color de una etiqueta de ataque es su puntos por tiro en la franja: verde por encima del P75, amarillo entre P25 y P75, rojo por debajo del P25. Con menos de 20 jugadores con muestra en la competencia, todas llevan ~.' },
       { id: 'muestra', titulo: 'Sin muestra no hay etiqueta',
         texto: 'Hacen falta ' + RELOJ_MINIMOS.finalesEquipo + ' finales con reloj para un equipo, ' + RELOJ_MINIMOS.tirosJugador + ' tiros con reloj para un jugador y '
           + RELOJ_MINIMOS.canastasFranja + ' canastas en la franja para decir si se las crean. Con menos, se muestra el reparto con ~ y sin etiqueta.' },
@@ -1538,6 +1556,15 @@ const SGADD_PBP = (function () {
       .concat(ARQUETIPOS_RELOJ.defensivos.map(a => ({ label: a.label, lado: 'defensa',
         regla: 'En ' + a.ks.map(k => FRANJAS_RELOJ[k]).join(' y en ') + ' le sacan ' + (a.ef > 0 ? 'menos' : 'más')
           + ' por tiro que a la competencia. ' + a.texto }))),
+    /* El perfil táctico por tramo (2026-10-19): la regla sale de las MISMAS
+       tablas que deciden la etiqueta. */
+    tramos: TRAMOS_JUGADOR.map(t => ({ franja: FRANJAS_RELOJ[t.k], ataque: t.ataque, defensa: t.defensa,
+      etiquetas: [
+        { label: t.ataque + ' · ' + t.uno, regla: 'Su producción por partido en ' + FRANJAS_RELOJ[t.k] + ' (canastas propias + asistencias) está en el cuarto más alto de la competencia (P75) y finaliza más de lo que asiste.' },
+        { label: t.ataque + ' · ' + t.cinco, regla: 'La misma producción en el cuarto más alto, pero asiste más de lo que finaliza.' },
+      ].concat(ACCIONES_TRAMO.filter(a => !a.soloConFuga || t.fuga).map(a => ({
+        label: (a.fase === 'ataque' ? t.ataque : t.defensa) + ' · ' + a.label,
+        regla: 'Sus ' + a.que + ' por partido en ' + FRANJAS_RELOJ[t.k] + (a.fase === 'defensa' ? ' (con el reloj del rival)' : '') + ' están en el 10 % más alto de la competencia (P90).' }))) })),
     alerta: 'El aviso de «reloj tardío alto» de un partido dice que ese equipo terminó más posesiones después del segundo 17 que 9 de cada 10 partidos de la competencia (y solo con 30 finales con reloj o más). Describe, no juzga: puede venir de un ataque trabado o de una buena defensa rival, y el dato no los separa.',
     neutral: 'Ninguna franja es buena o mala por sí sola, y los rasgos no son excluyentes: describen cómo juega un equipo, no cuánto vale.',
   };
@@ -1555,6 +1582,7 @@ const SGADD_PBP = (function () {
       ${h('Etiquetas de equipo')}<ul>${M.equipo.map(e => li(e.label, e.regla)).join('')}</ul>
       ${h('Perfil de ritmo y ejecución · arquetipos')}<ul>${M.arquetipos.map(e => li(e.label + ' (' + e.lado + ')', e.regla)).join('')}</ul>
       ${h('Etiquetas de jugador')}<ul>${M.jugador.map(e => li(e.label, e.regla)).join('')}</ul>
+      ${h('Perfil táctico por tramo del jugador')}<ul>${M.tramos.map(t => t.etiquetas.map(e => li(e.label, e.regla)).join('')).join('')}</ul>
       ${h('El aviso de reloj tardío')}<p class="text-xs text-ink leading-snug">${esc(M.alerta)}</p>
       <p class="text-xs text-muted leading-snug mt-2">${esc(M.neutral)}</p>
     </div>`;
@@ -1698,6 +1726,172 @@ const SGADD_PBP = (function () {
     lado(2, c.tardia, { id: 'tardia', volumen: 'con el reloj encima', donde: 'después del segundo 17', neutro: 'Tira con el reloj encima',
       asistido: 'Válvula de escape', creado: 'Resuelve con el reloj encima' });
     return out;
+  }
+
+  /* ===================================================================
+     EL PERFIL TÁCTICO POR TRAMO DEL RELOJ (2026-10-19)
+
+     Cada jugador, en cada franja del reloj de posesión, contra los cortes
+     de SU competencia (liga.reloj.cortes.tramos: P25, P50, P75, P90, mín y
+     máx; la ingesta los calcula sobre los jugadores de ESA competencia).
+
+       ATAQUE  rol 1x1 o 5x5: su producción por partido en la franja
+               (canastas + asistencias) está en el cuarto más alto; 1x1 si
+               finaliza más de lo que asiste, 5x5 si asiste más. Reboteador
+               ofensivo y fuga por pérdida: el 10 % más alto por partido.
+       DEFENSA recuperador, taponador y reboteador defensivo: el 10 % más
+               alto por partido, con el reloj del RIVAL.
+
+     Toda etiqueta pide 5 acciones en la franja y 3 partidos: dos jugadas
+     sueltas no son un rasgo. El color de una etiqueta de ataque es su
+     puntos por tiro en la franja contra la competencia (verde por encima
+     del P75, rojo por debajo del P25, amarillo en el medio; sin 10 tiros
+     ahí, neutro). Con menos de 20 jugadores con muestra en la competencia,
+     todas salen con ~. «Clutch» es el final del RELOJ (18-24 s), no el
+     final del partido.
+     =================================================================== */
+  const corteTramo = (c) => !!(c && c.n > 0 && isFinite(c.p25) && isFinite(c.p75) && isFinite(c.p90));
+
+  /** El semáforo de un puntos por tiro contra los cortes de la franja. */
+  function tonoTramo(pps, tiros, corte) {
+    if (pps == null || !(tiros >= TRAMO_MIN.tiros) || !corteTramo(corte) || corte.n < TRAMO_MIN.jugadoresLiga) return 'neutro';
+    return pps > corte.p75 ? 'verde' : pps < corte.p25 ? 'rojo' : 'amarillo';
+  }
+  /** En qué percentil cae un valor dentro de los cortes publicados (aprox. por tramos). */
+  function percentilTramo(v, c) {
+    if (v == null || !corteTramo(c)) return null;
+    if (v <= c.p25) return 25; if (v <= c.p50) return 50; if (v <= c.p75) return 75; if (v <= c.p90) return 90; return 100;
+  }
+
+  /**
+   * El perfil táctico por tramo de un jugador. PURA.
+   * @returns {{disponible, motivo, chica, pj, filas, etiquetas}}
+   */
+  function relojTramosJugador(paq, id) {
+    paq = normalizarReloj(paq);
+    const acc = paq && paq.reloj && paq.reloj.jugadores && paq.reloj.jugadores[id];
+    const L = relojLiga(paq);
+    const tr = L && L.cortes && L.cortes.tramos;
+    if (!acc || !relojValido(acc)) return { disponible: false, motivo: 'sin reloj del jugador', filas: [], etiquetas: [] };
+    if (!tr || !Array.isArray(acc.e) || paq.reloj.convertido) {
+      return { disponible: false, motivo: 'El perfil por tramo necesita las acciones por franja (asistencias, rebotes, recuperos y tapones), que llegan con la próxima subida de los paquetes.', filas: [], etiquetas: [] };
+    }
+    const min = Object.assign({}, TRAMO_MIN, (L.minimos && { tiros: L.minimos.tirosTramo || TRAMO_MIN.tiros, pj: L.minimos.pjTramo || TRAMO_MIN.pj, acciones: L.minimos.accionesTramo || TRAMO_MIN.acciones }) || {});
+    const pj = acc.pj || 0;
+    const chica = TRAMOS_JUGADOR.some(t => !(tr[t.id] && tr[t.id].pps && tr[t.id].pps.n >= TRAMO_MIN.jugadoresLiga));
+    const tiros = relojTiros(acc);
+    const filas = TRAMOS_JUGADOR.map((t) => {
+      const c = acc.f[t.k], e = acc.e[t.k] || [0, 0, 0, 0, 0], ct = tr[t.id] || {};
+      const pps = c[0] ? c[2] / c[0] : null;
+      return { k: t.k, id: t.id, tiros: c[0], conv: c[1], pts: c[2], pps, ppsLiga: ct.pps ? ct.pps.p50 : null,
+        percentil: c[0] >= min.tiros ? percentilTramo(pps, ct.pps) : null,
+        parte: tiros ? 100 * c[0] / tiros : null, asistidas: c[4], astLiga: ct.ast ? ct.ast.p50 : null,
+        asistencias: e[0], ro: e[1], rd: e[2], rec: e[3], tap: e[4], per: c[5],
+        tono: tonoTramo(pps, c[0], ct.pps) };
+    });
+    const etiquetas = [];
+    if (pj >= min.pj) {
+      TRAMOS_JUGADOR.forEach((t) => {
+        const f = filas[t.k], ct = tr[t.id] || {};
+        const prod = f.conv + f.asistencias;
+        if (corteTramo(ct.prod) && prod >= min.acciones && prod / pj >= ct.prod.p75 && f.conv !== f.asistencias) {
+          const uno = f.conv > f.asistencias;
+          etiquetas.push({ id: t.id + (uno ? '-1x1' : '-5x5'), fase: 'ataque', k: t.k, label: t.ataque + ' · ' + (uno ? t.uno : t.cinco), tono: f.tono,
+            detalle: num(prod / pj, 2) + ' canastas más asistencias por partido en ' + FRANJAS_RELOJ[t.k] + ' (el cuarto más alto de la competencia arranca en ' + num(ct.prod.p75, 2) + '): '
+              + f.conv + ' canastas propias contra ' + f.asistencias + ' asistencias, ' + (uno ? 'finaliza más de lo que asiste.' : 'asiste más de lo que finaliza.')
+              + (f.pps != null && f.tiros >= min.tiros ? ' Rinde ' + num(f.pps, 2) + ' por tiro (la competencia: ' + num(f.ppsLiga, 2) + ').' : '') });
+        }
+        ACCIONES_TRAMO.forEach((a) => {
+          if (a.soloConFuga && !t.fuga) return;
+          const n = a.i === -1 ? f.per : (acc.e[t.k] || [])[a.i] || 0;
+          const corte = ct[a.m];
+          if (!corteTramo(corte) || n < min.acciones || !(n / pj > 0) || n / pj < corte.p90) return;
+          etiquetas.push({ id: t.id + '-' + a.m, fase: a.fase, k: t.k, label: (a.fase === 'ataque' ? t.ataque : t.defensa) + ' · ' + a.label,
+            tono: a.fase === 'ataque' ? f.tono : 'neutro',
+            detalle: num(n / pj, 2) + ' ' + a.que + ' por partido en ' + FRANJAS_RELOJ[t.k] + (a.fase === 'defensa' ? ' del reloj del rival' : '')
+              + ' (' + n + ' en ' + pj + ' partidos): el 10 % más alto de la competencia arranca en ' + num(corte.p90, 2) + '.' });
+        });
+      });
+    }
+    etiquetas.forEach((x) => { x.chica = chica; });
+    return { disponible: true, motivo: null, chica, pj, filas, etiquetas, minimos: min };
+  }
+
+  const TONO_TRAMO_TITULO = { verde: 'Rinde por encima del P75 de la competencia en la franja', amarillo: 'Rinde entre el P25 y el P75 de la competencia',
+    rojo: 'Rinde por debajo del P25 de la competencia', neutro: 'Sin semáforo: sin 10 tiros en la franja, o una etiqueta de defensa' };
+  /** Las etiquetas por tramo como chips con semáforo. PURA. */
+  function relojTramosChips(etiquetas) {
+    return (etiquetas || []).map(x => `<span class="tramo-chip tramo-${x.tono} inline-flex items-center text-[11px] px-2 py-0.5 rounded-full border mr-1.5 mb-1.5"
+      data-tramo-etiqueta="${esc(x.id)}" title="${esc(x.detalle + ' ' + TONO_TRAMO_TITULO[x.tono] + '.' + (x.chica ? ' ~ La competencia todavía tiene poca muestra: el corte se va a mover.' : ''))}">${x.chica ? '~ ' : ''}${esc(x.label)}</span>`).join('');
+  }
+
+  /** La card «Perfil táctico por tramo» de la pestaña Tiro. Sin datos devuelve ''. PURA. */
+  function relojTramosHtml(paq, id) {
+    try {
+      const r = relojTramosJugador(paq, id);
+      if (!r.filas.length && !r.motivo) return '';
+      if (!r.disponible) {
+        return r.motivo && r.motivo.indexOf('próxima subida') !== -1
+          ? `<div class="mt-3" data-subcard="tiro.reloj-tramos">${subtitulo('Perfil táctico por tramo del reloj')}<p class="text-[11px] text-muted">${esc(r.motivo)}</p></div>` : '';
+      }
+      const grupo = (fase, titulo) => {
+        const xs = r.etiquetas.filter(x => x.fase === fase);
+        return xs.length ? `<p class="text-[10px] uppercase tracking-wider text-muted mt-1 mb-1">${titulo}</p><div>${relojTramosChips(xs)}</div>` : '';
+      };
+      const cab = r.etiquetas.length ? grupo('ataque', 'Ataque') + grupo('defensa', 'Defensa')
+        : r.pj < r.minimos.pj ? `<p class="text-[11px] text-yellow-400 mb-2">~ Muestra chica: ${r.pj} partido${r.pj === 1 ? '' : 's'} con acciones cronometradas (hacen falta ${r.minimos.pj}).</p>`
+        : '<p class="text-[11px] text-ink mb-2">Ninguna franja lo separa del resto de la competencia: reparte su juego como la mayoría.</p>';
+      const fila = (f) => `<tr>
+          <td class="px-2 py-1 text-left text-xs text-white whitespace-nowrap">${FRANJAS_RELOJ[f.k]} <span class="dato-sec">${esc(TRAMOS_JUGADOR[f.k].ataque)}</span></td>
+          <td class="${TD}">${f.parte == null ? '—' : num(f.parte, 0) + ' %'}</td>
+          <td class="${TD}">${f.conv}/${f.tiros}</td>
+          <td class="${TD}"><span class="tramo-texto tramo-${f.tono}">${num(f.pps, 2)}</span>${f.ppsLiga != null ? ` <span class="dato-sec">(${num(f.ppsLiga, 2)})</span>` : ''}${f.percentil ? ` <span class="dato-sec">≤P${f.percentil === 100 ? '100' : f.percentil}</span>` : ''}</td>
+          <td class="${TD}">${f.conv ? num(100 * f.asistidas / f.conv, 0) + ' %' : '—'}${f.astLiga != null ? ` <span class="dato-sec">(${num(f.astLiga, 0)})</span>` : ''}</td>
+          <td class="${TD}">${f.conv} · ${f.asistencias}</td>
+          <td class="${TD}">${f.ro}</td><td class="${TD}">${f.per}</td>
+          <td class="${TD}">${f.rec}</td><td class="${TD}">${f.tap}</td><td class="${TD}">${f.rd}</td>
+        </tr>`;
+      return `<div class="pbp-reloj-pieza mt-4" data-reloj-tramos="1" data-subcard="tiro.reloj-tramos">
+        ${subtitulo('Perfil táctico por tramo del reloj · 1x1 o 5x5')}
+        ${r.chica ? '<p class="text-[11px] text-yellow-400 mb-1">~ La competencia todavía tiene poca muestra: los cortes salen de sus propios percentiles y se van a mover.</p>' : ''}
+        ${cab}
+        <div class="scrollbox mt-2"><table class="w-full"><thead><tr>
+          <th class="${TH} text-left">Tramo</th>
+          <th class="${TH}" data-glosa="Qué parte de sus tiros de campo con reloj sale en la franja.">% tiros</th>
+          <th class="${TH}">C/I</th>
+          <th class="${TH}" data-glosa="Puntos por tiro de campo en la franja, con el semáforo contra la competencia; entre paréntesis la mediana de los jugadores de la competencia.">Pts/tiro</th>
+          <th class="${TH}" data-glosa="Qué parte de sus canastas en la franja llegó con asistencia; entre paréntesis la mediana de la competencia.">Asistidas</th>
+          <th class="${TH}" data-glosa="Canastas propias · asistencias que dio, en la franja: 1x1 si finaliza más, 5x5 si asiste más.">Can. · Ast.</th>
+          <th class="${TH}" data-glosa="Rebotes ofensivos tras un tiro errado de su equipo en la franja.">RO</th>
+          <th class="${TH}" data-glosa="Pérdidas en la franja.">PP</th>
+          <th class="${TH}" data-glosa="Recuperos sobre posesiones del rival en la franja (el reloj del rival).">Rec.</th>
+          <th class="${TH}" data-glosa="Tapones sobre tiros del rival en la franja (el reloj del rival).">Tap.</th>
+          <th class="${TH}" data-glosa="Rebotes defensivos sobre tiros errados del rival en la franja (el reloj del rival).">RD</th>
+        </tr></thead><tbody>${r.filas.map(fila).join('')}</tbody></table></div>
+        <p class="text-[10px] dato-sec mt-1 leading-snug">${esc(NOTA_TRAMOS)} Totales en ${r.pj} partido${r.pj === 1 ? '' : 's'} con acciones cronometradas.</p>
+      </div>`;
+    } catch (e) { return ''; }
+  }
+  const NOTA_TRAMOS = 'Las etiquetas salen de los cortes de ESTA competencia (P75 para el rol, P90 para rebotes, pérdidas, recuperos y tapones, por partido), con 5 acciones y 3 partidos como mínimo. Verde: por encima del P75 en puntos por tiro; amarillo: entre P25 y P75; rojo: por debajo del P25. «Clutch» es el final del reloj de posesión (18-24 s), no el final del partido.';
+
+  /** Las etiquetas por tramo para el bloque ADN de la ficha. '' sin etiquetas. PURA. */
+  function relojTramosAdn(paq, nombre) {
+    try {
+      paq = normalizarReloj(paq);
+      const id = Object.keys((paq && paq.jugadores) || {}).find(k => norm(paq.jugadores[k].n) === norm(nombre));
+      if (!id) return '';
+      const r = relojTramosJugador(paq, String(id));
+      if (!r.disponible || !r.etiquetas.length) return '';
+      const at = r.etiquetas.filter(x => x.fase === 'ataque'), de = r.etiquetas.filter(x => x.fase === 'defensa');
+      return `<div data-reloj-tramos-adn="1">
+        <p class="text-[10px] uppercase tracking-wider text-muted font-display mt-3 mb-1.5">Función por tramo del reloj · play-by-play</p>
+        ${at.length ? `<div>${relojTramosChips(at)}</div>` : ''}${de.length ? `<div>${relojTramosChips(de)}</div>` : ''}
+      </div>`;
+    } catch (e) { return ''; }
+  }
+  /** El lugar de las etiquetas por tramo en el ADN del jugador. */
+  function espacioTramos(nombre, equipo) {
+    return `<div class="pbp-montaje" data-pbp-equipo="${esc(equipo)}" data-pbp-tramos="${esc(nombre)}"></div>`;
   }
 
   const relojChips = (rasgos) => rasgos.map(x => `<span class="inline-block text-[11px] px-2 py-0.5 rounded border border-current/40 text-accent mr-1 mb-1" title="${esc(x.detalle)}">${esc(x.label)}</span>`).join('');
@@ -1847,6 +2041,7 @@ const SGADD_PBP = (function () {
         <p class="text-[10px] dato-sec mt-1 leading-snug">${NOTA_RELOJ}</p>
         ${relojAyuda(relojLiga(paq))}
       </div>
+      ${relojTramosHtml(paq, id)}
       ${relojJugadorFranjas(paq, id)}`;
     } catch (e) { return ''; }
   }
@@ -2651,6 +2846,7 @@ const SGADD_PBP = (function () {
     r.querySelectorAll('.pbp-montaje:not([data-pbp-montado])').forEach((nodo) => {
       nodo.setAttribute('data-pbp-montado', '1');
       const nombreJugador = nodo.getAttribute('data-pbp-jugador');
+      const nombreTramos = nodo.getAttribute('data-pbp-tramos');
       const propio = nodo.getAttribute('data-pbp-propio');
       const tipo = nodo.getAttribute('data-pbp-tipo');
       const contexto = nodo.getAttribute('data-pbp-contexto');
@@ -2661,7 +2857,8 @@ const SGADD_PBP = (function () {
           const pp = (tipo === 'partido-mapa' || tipo === 'partido-momentum' || tipo === 'partido-quintetos' || tipo === 'partido-reloj')
             ? partidoDe(paq, nodo.getAttribute('data-pbp-partido'), nodo.getAttribute('data-pbp-fecha'), nodo.getAttribute('data-pbp-rival'))
             : null;
-          nodo.innerHTML = nombreJugador ? jugador(paq, nombreJugador)
+          nodo.innerHTML = nombreTramos ? relojTramosAdn(paq, nombreTramos)
+            : nombreJugador ? jugador(paq, nombreJugador)
             : tipo === 'partido-mapa' ? mapaPartido(paq, pp)
             : tipo === 'partido-momentum' ? momentumPartido(paq, pp)
             : tipo === 'partido-quintetos' ? quintetosPartido(paq, pp)
@@ -2670,6 +2867,7 @@ const SGADD_PBP = (function () {
           activar(nodo, paq);
         }).catch((e) => {
           if (!nodo.isConnected) return;
+          if (nombreTramos) { nodo.innerHTML = ''; return; }
           nodo.innerHTML = vacio(esc(e && e.message ? e.message : 'No se pudo cargar el análisis.'));
         }));
     });
@@ -2846,6 +3044,7 @@ const SGADD_PBP = (function () {
     relojScouting, relojQuienes, relojMetodologiaHtml, relojAyuda, METODOLOGIA_RELOJ, RELOJ_MINIMOS, FUERA_DE_FRANJA,
     relojSintesis, relojBarras, relojMapaTiro, relojCeldas, relojMapas, relojTendencias, relojTendenciasHtml, paqFranja,
     relojLecturaScouting, relojFormaVieja, conCodigoReloj, hexDePunto, normalizarReloj, relojJugadorFranjas, AVISO_CONVERTIDO,
+    TRAMOS_JUGADOR, ACCIONES_TRAMO, TRAMO_MIN, relojTramosJugador, relojTramosHtml, relojTramosAdn, relojTramosChips, espacioTramos, tonoTramo,
     relojArquetipos, relojDesglose, relojOrigenBarras, ARQUETIPOS_RELOJ, BLOQUES_RELOJ,
   };
 })();

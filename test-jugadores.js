@@ -198,6 +198,12 @@ const idxArq = SGADD.construirIndice({
    Generador y el test dejaría de probar que el motor discrimina.
    Los números de arriba (1,40 · 3,0 T3I · 0,34 T3%) son los de esa liga. */
 idxArq.liga.nivel = 'LIGA_ARGENTINA';
+/* Desde el 2026-10-18 los umbrales relativos salen de la propia
+   competencia. Esta fixture tiene un puñado de jugadores —un p90 sería el
+   máximo— así que DECLARA la vara contra la que se calibró
+   (idx.liga.umbralesDeclarados, origen «declarado»): prueba las reglas, no
+   la medición. Ningún índice de producción la trae. */
+idxArq.liga.umbralesDeclarados = require('./js/sgadd-niveles.js').mapaDe('LIGA_ARGENTINA');
 
 const jugArq = (nombre) => idxArq.liga.jugadores.find(j => j['NOMBRES'] === nombre);
 const idsDe = (arqs) => arqs.map(a => a.id);
@@ -725,6 +731,18 @@ const idxP7 = SGADD.construirIndice({
   'PROMEDIOS J': { cols: colsRk, filas: filasP7 },
   'Base Datos E': { cols: colsBD, filas: filasBD },
 }, { fase: 'REGULAR' });
+/* Vara declarada (ver la nota de idxArq): esta sección prueba el ~ del NO
+   calificado; el de la competencia chica se prueba abajo, sin declarar. */
+const bTitularChica = (() => {
+  const ix = SGADD.construirIndice({
+    'PROMEDIOS E': { cols: colsE, filas: filasE },
+    'PROMEDIOS J': { cols: colsRk, filas: filasP7 },
+    'Base Datos E': { cols: colsBD, filas: filasBD },
+  }, { fase: 'REGULAR' });
+  const t = ix.liga.jugadores.find(x => x['NOMBRES'] === 'TITULAR, PLENO');
+  return J.jugadoresBadges(J.jugadoresADN(ix, t));
+})();
+idxP7.liga.umbralesDeclarados = require('./js/sgadd-niveles.js').mapaDe('LOCAL_MAYORES');
 
 const cameo = idxP7.liga.jugadores.find(x => x['NOMBRES'] === 'CAMEO, BRILLANTE');
 const titular = idxP7.liga.jugadores.find(x => x['NOMBRES'] === 'TITULAR, PLENO');
@@ -759,6 +777,12 @@ check('la etiqueta relativa aclara además contra qué se mide',
 check('un jugador que califica no lleva ninguna marca',
   bTitular.every(b => !b.sinRespaldo && !/^~ /.test(b.texto)),
   bTitular.map(b => b.texto).join(' | '));
+/* LA COMPETENCIA CHICA (2026-10-18): con la vara medida sobre un puñado de
+   jugadores, hasta el que califica sale con ~ y el motivo lo dice. */
+check('con la competencia en muestra chica, también el que califica lleva ~',
+  bTitularChica.length > 0 && bTitularChica.every(b => b.sinRespaldo && b.competenciaChica && /^~ /.test(b.texto)
+    && b.motivo.indexOf(J.JUGADORES_MOTIVO_COMPETENCIA_CHICA) !== -1),
+  bTitularChica.map(b => b.texto).join(' | '));
 
 /* Lo que NO puede pasar: que la marca cambie la taxonomía. Scouting y
    Jugadores comparten el motor y tienen que seguir diciendo lo mismo. */

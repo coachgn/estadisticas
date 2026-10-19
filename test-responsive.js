@@ -360,23 +360,26 @@ ok(/hijoPorClase\(c, CLASE_TABLA\)/.test(CUERPO_HOJA),
 /* PUNTO 97 · EL ENCABEZADO Y LA MARCA DE AGUA, con la misma maquinaria. */
 ok(CUERPO_HOJA.indexOf("createElement('thead')") !== -1,
    'el encabezado de cada hoja es un <thead> de verdad (lo que el ranking ya repite)');
-ok(CUERPO_HOJA.indexOf('encabezadoInforme()') !== -1 && /marca-agua/.test(CUERPO_HOJA),
-   '  con la marca, y la celda del cuerpo lleva la marca de agua');
+ok(CUERPO_HOJA.indexOf('encabezadoInforme()') !== -1 && !/marca-agua/.test(CUERPO_HOJA),
+   '  con el logo, y la celda del cuerpo va LIMPIA: sin marca de agua (2026-10-19)');
+const UI_ENC = require('./js/sgadd-ui.js');
+ok(/<img[^>]*cabecera-logo/.test(UI_ENC.encabezadoInforme()) && UI_ENC.encabezadoInforme().replace(/<[^>]+>/g, '').trim() === '',
+   '  el encabezado es SOLO el logo: sin «MotorStats · Análisis de datos deportivos»');
 ok(ESTILO.indexOf('.hoja-firmada > thead { display: table-header-group') !== -1,
    'el thead se repite arriba de cada hoja');
-ok(/td[.]hoja-cuerpo-celda[.]marca-agua \{[\s\S]{0,700}fill-opacity='0[.]0\d+'[\s\S]{0,400}print-color-adjust: exact/.test(ESTILO),
-   'la marca de agua es un FONDO tenue (no tapa contenido) y sale sin «Gráficos de fondo»');
+ok(!/marca-agua/.test(ESTILO) && !/fill-opacity='0[.]04/.test(ESTILO),
+   'no queda ninguna regla de marca de agua en la hoja de estilos');
 /* El post-partido también va en la hoja firmada (2026-10-09), y su papel
    no trata a esa tabla como una del informe. */
 const EQ_SRC = fs.readFileSync('./js/sgadd-equipos.js', 'utf8');
 ok(EQ_SRC.indexOf("inyectarPieDeHoja('detallePartido')") !== -1 && EQ_SRC.indexOf("quitarPieDeHoja('detallePartido')") !== -1
    && EQ_SRC.indexOf('inyectarPieMotorStats()') === -1,
-   'el post-partido firma cada hoja con la tabla (encabezado, pie y marca de agua), no con el pie fijo');
+   'el post-partido firma cada hoja con la tabla (encabezado y pie), no con el pie fijo');
 ok(/#detallePartido table[.]hoja-firmada \{[^}]*table-layout: auto !important[^}]*break-inside: auto !important/.test(ESTILO)
    && /#detallePartido [.]hoja-cuerpo-celda > \* \{[^}]*break-inside: avoid/.test(ESTILO),
    '  y la tabla firmada se puede partir; cada bloque del informe, no');
-ok(/#detallePartido td[.]hoja-cuerpo-celda[.]marca-agua \{[^}]*background-image: url/.test(ESTILO),
-   '  y recupera la marca de agua que el papel del post-partido le sacaba a todo');
+ok(!/#detallePartido td[.]hoja-cuerpo-celda[.]marca-agua/.test(ESTILO),
+   '  y el post-partido tampoco la recupera');
 
 /* La celda del cuerpo va SIN padding: el maquetado de las tres
    exportaciones esta medido y presupuestado (puntos 7.6 y 50). */

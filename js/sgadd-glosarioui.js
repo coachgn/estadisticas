@@ -132,6 +132,27 @@ const SGADD_GLOSARIOUI = (function () {
     </details>`;
   }
 
+  /* LOS UMBRALES DINÁMICOS POR COMPETENCIA (punto 130). La regla vive en
+     sgadd-niveles.js (umbralVigente); acá se cuenta, con los números del
+     propio registro: la muestra plena y los absolutos salen de ahí. */
+  function metodologiaUmbrales() {
+    const N = typeof SGADD_NIVELES !== 'undefined' ? SGADD_NIVELES : null;
+    if (!N || !N.REGISTRO) return '';
+    const fijos = N.claves().filter(k => N.definicion(k).tipo === N.TIPOS.ABSOLUTO)
+      .map(k => esc(N.definicion(k).metrica || k) + ' ' + esc(String(N.definicion(k).valor).replace('.', ',')));
+    const li = (b, t) => `<li class="text-xs text-ink leading-snug mb-1"><b class="text-white">${b}</b> · ${t}</li>`;
+    return `<details class="card rounded-xl p-4 sm:p-5 border border-hairline pbp-detalle pbp-sub" id="glosarioUmbrales">
+      <summary class="font-display uppercase tracking-wide text-xs text-accent cursor-pointer select-none">Metodología · Umbrales de las etiquetas, por competencia</summary>
+      <ul class="mt-2">
+        ${li('Regla innegociable', 'Todo corte relativo —«por encima de su liga», «el cuarto más alto», «el 10 % que más rebotea»— se calcula SOLO con los jugadores de la competencia elegida: mínimo, máximo, mediana y percentiles P25, P50, P75 y P90. No hay valores escritos para todas las ligas ni importados de otra.')}
+        ${li('Desde el primer partido', 'Con poca muestra la vara se usa igual y las etiquetas salen con ~: hasta ' + N.MUESTRA.plenoPartidos + ' partidos y ' + N.MUESTRA.plenoCalificados + ' jugadores que califican, el corte todavía se mueve. Sin un solo valor de una métrica, esa regla no dispara.')}
+        ${li('Los cinco fijos', 'Solo describen economía del juego (puntos por posesión) y valen igual en cualquier liga: ' + fijos.join(' · ') + '.')}
+        ${li('Cambiar de competencia cambia la vara', 'El mismo jugador puede recibir una etiqueta en un torneo y no en otro: se mide contra los que juegan con él.')}
+        ${li('El perfil por tramo del reloj', 'Las etiquetas 1x1 y 5x5 por tramo (Ataque Rápido, Set Ofensivo, Clutch) siguen la misma regla: sus cortes salen de los jugadores de la competencia (ver «Reloj de posesión»).')}
+      </ul>
+    </details>`;
+  }
+
   function html() {
     if (!G) return '';
     return `<div class="space-y-5">
@@ -153,6 +174,7 @@ const SGADD_GLOSARIOUI = (function () {
             class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm text-ink">
         </label>
       </div>
+      ${metodologiaUmbrales()}
       ${metodologiaReloj()}
       <div id="glosarioCuerpo" class="space-y-5">${cuerpo()}</div>
     </div>`;
@@ -322,7 +344,7 @@ const SGADD_GLOSARIOUI = (function () {
     window.addEventListener('scroll', ocultar, { passive: true });
   }
 
-  return { html, pintar, buscar, cuerpo, irA, iniciar, mostrar, ocultar, siglaDe, estado };
+  return { html, pintar, buscar, cuerpo, irA, iniciar, mostrar, ocultar, siglaDe, estado, metodologiaUmbrales };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_GLOSARIOUI;

@@ -1086,9 +1086,13 @@ titulo('EL PIE INSTITUCIONAL · la misma firma en pantalla y en papel');
 
   check('lleva el logo', /motorlogo-\d+\.png/.test(pie));
   check('la marca y la fecha', /MotorStats/.test(pie) && /31\/08\/2026/.test(pie));
-  check('el mail', pie.indexOf(U.MAIL) !== -1);
-  check('el usuario de Instagram', pie.indexOf(U.ARROBA) !== -1);
-  check('y su icono', /<svg[^>]*pie-ig/.test(pie));
+  /* DISCRETO (2026-10-19, pedido del club): en el papel el mail y el
+     arroba ya no van escritos; quedan los dos íconos, con el dato en su
+     title. La pantalla los sigue escribiendo, con enlace. */
+  const textoPie = pie.replace(/<[^>]+>/g, ' ');
+  check('el mail y el arroba NO van escritos en el papel', textoPie.indexOf(U.MAIL) === -1 && textoPie.indexOf(U.ARROBA) === -1, textoPie);
+  check('van los dos íconos oficiales, correo e Instagram, con el dato en su title',
+    (pie.match(/<svg[^>]*pie-ig/g) || []).length === 2 && pie.indexOf('title="' + U.MAIL + '"') !== -1 && pie.indexOf('title="' + U.ARROBA + '"') !== -1);
 
   /* EL DE PANTALLA LLEVA LOS ENLACES VIVOS; el de papel no, porque en un
      PDF un `mailto:` no se puede tocar y el subrayado solo ensucia. */
@@ -1105,10 +1109,10 @@ titulo('EL PIE INSTITUCIONAL · la misma firma en pantalla y en papel');
      actualización de los datos, que es otra cosa y vive en el pie del
      menú. Lo demás —marca, mail y perfil— tiene que coincidir. */
   const pelar = (h) => h.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-  const sinFecha = (t) => t.replace(/ · Generado el \d{2}\/\d{2}\/\d{4} -/, ' ·').trim();
-  check('la firma es la misma sacando la fecha',
-    sinFecha(pelar(pie)) === sinFecha(pelar(web)),
-    sinFecha(pelar(pie)) + '  ||  ' + sinFecha(pelar(web)));
+  check('la pantalla sigue escribiendo la firma completa: marca, mail y perfil',
+    /MotorStats/.test(pelar(web)) && pelar(web).indexOf(U.MAIL) !== -1 && pelar(web).indexOf(U.ARROBA) !== -1, pelar(web));
+  check('el papel lleva el logo con la marca en su alt, la fecha y nada más escrito',
+    /alt="MotorStats"/.test(pie) && pelar(pie) === '· Generado el 31/08/2026', pelar(pie));
   check('solo el PDF lleva la fecha de generación',
     /Generado el/.test(pie) && !/Generado el/.test(web));
 

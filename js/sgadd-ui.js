@@ -386,9 +386,9 @@ const SGADD_UI = (function () {
       const tf = document.createElement('tfoot');
       tf.innerHTML = '<tr><td class="pie-hoja-celda"></td></tr>';
       const tb = document.createElement('tbody');
-      /* La celda del cuerpo lleva la MARCA DE AGUA como fondo (index.html,
-         `.hoja-cuerpo-celda`): queda debajo del contenido, nunca encima. */
-      tb.innerHTML = '<tr><td class="hoja-cuerpo-celda marca-agua"></td></tr>';
+      /* SIN MARCA DE AGUA (2026-10-19, pedido del club): la celda del
+         cuerpo va limpia. Estuvo desde el punto 97 como fondo diagonal. */
+      tb.innerHTML = '<tr><td class="hoja-cuerpo-celda"></td></tr>';
       tabla.appendChild(th);
       tabla.appendChild(tf);
       tabla.appendChild(tb);
@@ -404,16 +404,13 @@ const SGADD_UI = (function () {
   }
 
   /**
-   * El encabezado institucional de cada hoja de un PDF (punto 97): el logo
-   * y la marca, chicos y a la derecha, con un filete abajo. La firma
-   * completa —mail, Instagram, fecha— sigue en el pie: arriba solo se dice
-   * de dónde sale el informe.
+   * El encabezado de cada hoja de un PDF: SOLO EL LOGO, chico y a la
+   * derecha (2026-10-19, pedido del club: sin «MotorStats · Análisis de
+   * datos deportivos»). El `alt` lleva la marca para quien no ve la imagen.
    */
   function encabezadoInforme() {
     return '<span class="cabecera-bloque">' +
-      '<img src="' + LOGO + '" alt="" width="14" height="14" class="pie-logo">' +
-      '<span class="pie-marca">' + esc(MARCA) + '<sup class="pie-marca-sup">AR</sup></span>' +
-      '<span class="cabecera-lema">· Análisis de datos deportivos</span></span>';
+      '<img src="' + LOGO + '" alt="' + esc(MARCA) + '" width="16" height="16" class="pie-logo cabecera-logo"></span>';
   }
 
   /** Deshace el envoltorio. El contenedor suele recrearse entero, pero las
@@ -552,6 +549,12 @@ const SGADD_UI = (function () {
      @motorstats.ar», que es el orden en que se dice. Detrás parecía un
      botón suelto al final de la línea. */
   const IG_CON_ICONO = ICONO_IG + ' ' + esc(ARROBA);
+  /* El sobre, con el mismo trazo que el de Instagram: los dos íconos del
+     pie se leen como un par. */
+  const ICONO_MAIL = '<svg class="pie-ig" viewBox="0 0 24 24" fill="none" ' +
+    'stroke="currentColor" stroke-width="1.8" aria-hidden="true">' +
+    '<rect x="3" y="5" width="18" height="14" rx="2"/>' +
+    '<path d="M3.5 6.5 12 13l8.5-6.5"/></svg>';
 
   /**
    * El pie del PDF. LLEVA LA FECHA y el de pantalla no.
@@ -561,13 +564,16 @@ const SGADD_UI = (function () {
    * lo vuelve auditable. En la web no: ahí la fecha es SIEMPRE hoy, así
    * que no informa nada y ocupa la línea del pie.
    */
+  /* DISCRETO (2026-10-19, pedido del club): el logo, la fecha y los dos
+     íconos oficiales —correo e Instagram— sin el texto del mail ni el
+     arroba. Siguen SIN enlace, como antes: en papel un `mailto:` no se
+     toca. El dato completo va en su title y su aria-label. */
   function pieInforme(fecha) {
     return '<span class="pie-bloque">' +
-      '<img src="' + LOGO + '" alt="" width="14" height="14" class="pie-logo">' +
-      '<span class="pie-marca">' + esc(MARCA) +
-      '<sup class="pie-marca-sup">AR</sup></span> · Generado el ' +
-      esc(fecha || fechaHoy()) +
-      ' - ' + esc(MAIL) + ' | ' + IG_CON_ICONO +
+      '<img src="' + LOGO + '" alt="' + esc(MARCA) + '" width="14" height="14" class="pie-logo">' +
+      '<span class="pie-fecha">· Generado el ' + esc(fecha || fechaHoy()) + '</span>' +
+      '<span class="pie-icono" title="' + esc(MAIL) + '" aria-label="Correo ' + esc(MAIL) + '">' + ICONO_MAIL + '</span>' +
+      '<span class="pie-icono" title="' + esc(ARROBA) + '" aria-label="Instagram ' + esc(ARROBA) + '">' + ICONO_IG + '</span>' +
       '</span>';
   }
 

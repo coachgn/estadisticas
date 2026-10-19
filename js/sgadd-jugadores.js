@@ -503,7 +503,7 @@ function jugadoresUmbrales(idx, opciones) {
   const partidos = (idx.liga.partidos && idx.liga.partidos.length)
     || (idx.liga.filasPartido || 0) || 0;
   const mapa = N.mapaVigente(
-    { nivel: nv.nivel, partidos: partidos },
+    { nivel: nv.nivel, partidos: partidos, declarados: idx.liga.umbralesDeclarados || null },
     (clave) => jugadoresValoresDe(idx, clave));
   try { Object.defineProperty(mapa, '__nivel', { value: nv, enumerable: false }); } catch (e) {}
   if (cacheable) JUGADORES_UMBRALES_CACHE.set(idx, mapa);
@@ -529,6 +529,8 @@ const VARA_ORIGENES = {
   tier:     { label: 'Nivel', tono: 'aviso' },
   mezcla:   { label: 'En transición', tono: 'aviso' },
   vivo:     { label: 'Medido', tono: 'exito' },
+  declarado: { label: 'Declarado', tono: 'aviso' },
+  'sin-datos': { label: 'Sin datos', tono: 'peligro' },
 };
 
 /* De dónde salió la DECLARACIÓN del nivel, que es otra pregunta que de
@@ -1238,20 +1240,27 @@ function jugadoresADN(idx, j) {
 function jugadoresBadges(adn) {
   if (!adn) return [];
   const califica = !!(adn.perfil && adn.perfil.califica);
+  /* LA COMPETENCIA DESDE EL DÍA 1 (2026-10-18): los umbrales relativos
+     salen del percentil de ESTA competencia aunque tenga pocos partidos.
+     Con muestra chica la etiqueta se muestra igual, con ~: la vara existe
+     pero todavía se mueve. */
+  const competenciaChica = !!(adn.perfil && adn.perfil.U && adn.perfil.U.__chica);
   const out = [];
   const marca = (tipo, texto, relativa) => {
-    const sinRespaldo = !califica;
+    const sinRespaldo = !califica || competenciaChica;
+    const motivos = [];
+    if (!califica) motivos.push(relativa ? JUGADORES_MOTIVO_SIN_RESPALDO + ' Además se mide contra una mediana armada con los que sí califican.'
+      : JUGADORES_MOTIVO_SIN_RESPALDO);
+    if (competenciaChica) motivos.push(JUGADORES_MOTIVO_COMPETENCIA_CHICA);
     out.push({
       tipo: tipo,
       texto: sinRespaldo ? '~ ' + texto : texto,
       sinRespaldo: sinRespaldo,
+      competenciaChica: competenciaChica,
       /* El motivo va en el objeto y no armado en cada vista: son tres
          renders distintos —card del plantel, ficha y scouting— y un texto
          duplicado tres veces termina diciendo tres cosas. */
-      motivo: sinRespaldo
-        ? (relativa ? JUGADORES_MOTIVO_SIN_RESPALDO + ' Además se mide contra una mediana armada con los que sí califican.'
-          : JUGADORES_MOTIVO_SIN_RESPALDO)
-        : null,
+      motivo: motivos.length ? motivos.join(' ') : null,
     });
   };
   if (adn.jerarquia) marca('jerarquia', adn.jerarquia.emoji + ' ' + adn.jerarquia.label, adn.jerarquia.relativa);
@@ -1589,6 +1598,9 @@ function jugadoresPeerReferencia(idx, j, claves, modo) {
   return { valores: valores, grupo: g };
 }
 
+const JUGADORES_MOTIVO_COMPETENCIA_CHICA =
+  'La competencia todavía tiene poca muestra: los cortes salen de sus propios percentiles ' +
+  'desde el primer partido y se van a mover a medida que se jueguen más fechas.';
 const JUGADORES_MOTIVO_SIN_RESPALDO =
   'El jugador no llega al umbral de minutos de la liga: sus promedios salen de ' +
   'una muestra chica, así que la etiqueta se muestra igual pero con menos respaldo.';
@@ -2517,6 +2529,61 @@ function jugadoresPlantelEquipo(idx) {
     </div>`;
 }
 
+/* =====================================================================
+   TOP 3 DEL PLANTEL (2026-10-19)
+
+   Los líderes del equipo en cada dimensión del ranking del plantel, en
+   una card arriba de las cards del plantel. Sale del MISMO motor que el
+   ranking (`jugadoresRanking` con `pool` = el plantel, sin piso de
+   minutos, como el ranking del plantel del punto 21): quién entra es el
+   top 3 por la métrica del grupo, y las columnas son # · Jugador · PJ ·
+   MIN más las de referencia de ese grupo. Cada sub-card lleva
+   su marca data-subcard «plantel.top3-» + el id del grupo: el Pack PLANTEL
+   las elige de a una.
+   ===================================================================== */
+const JUGADORES_TOP3_N = 3;
+function jugadoresTop3Plantel(idx, clave) {
+  if (!idx || !idx.liga || !clave) return [];
+  const plantel = (idx.liga.jugadoresPorEquipo && idx.liga.jugadoresPorEquipo.get(clave)) || [];
+  if (!plantel.length) return [];
+  return JUGADORES_RANKINGS.map((g) => {
+    const cols = ['PJ', 'MIN'].concat(g.cols.filter(k => k !== 'PJ' && k !== 'MIN'));
+    const r = jugadoresRanking(idx, g.id, { pool: plantel, ambito: 'plantel', umbral: 0, topN: JUGADORES_TOP3_N, cols: cols });
+    if (!r || !r.filas.length) return null;
+    /* Una columna que la planilla no trae (el +/- de un libro viejo) se
+       omite: una columna muerta en «—» es ruido, no información (punto 3 bis). */
+    const vivas = cols.filter(k => k === 'PJ' || k === 'MIN' || k === g.orden || r.filas.some(f => f.celdas[k] !== null && f.celdas[k] !== undefined));
+    return { id: g.id, titulo: g.titulo, orden: g.orden, cols: vivas, filas: r.filas };
+  }).filter(Boolean);
+}
+function jugadoresBloqueTop3Plantel(idx, clave) {
+  const grupos = jugadoresTop3Plantel(idx, clave);
+  if (!grupos.length) return '';
+  const e = idx.get(clave);
+  const th = 'px-2 py-1 text-[10px] uppercase tracking-wider text-muted font-display whitespace-nowrap';
+  const sub = (g) => `
+      <div class="rounded-lg border border-hairline bg-surface2/30 p-3 min-w-0 top3-sub" data-subcard="plantel.top3-${escapeAttr(g.id)}">
+        <p class="text-[11px] uppercase tracking-wider text-accent font-display mb-1">${escapeHtml(g.titulo)}
+          <span class="normal-case tracking-normal text-[10px] text-muted">· por ${escapeHtml(SGADD.siglaVisible ? SGADD.siglaVisible(g.orden) : g.orden)}</span></p>
+        <div class="scrollbox"><table class="w-full">
+          <thead><tr><th class="${th}">#</th><th class="${th} text-left">Jugador</th>
+            ${g.cols.map(k => `<th class="${th}" data-metrica="${escapeAttr(k)}">${escapeHtml(SGADD.siglaVisible ? SGADD.siglaVisible(k) : k)}</th>`).join('')}</tr></thead>
+          <tbody>${g.filas.map(f => `<tr class="fila-jug cursor-pointer" ${SGADD_UI.atributosFila('Abrir el perfil de ' + f.jugador)}
+              onclick="jugadoresIrA('${SGADD_UI.escJs(f.slug)}')">
+            <td class="px-2 py-1 text-xs font-mono text-muted">${f.puesto}</td>
+            <td class="px-2 py-1 text-left text-xs text-white whitespace-nowrap">${escapeHtml(jugadoresConDorsal(f.jugador, f.equipoCrudo))}</td>
+            ${g.cols.map(k => `<td class="px-2 py-1 text-xs font-mono ${k === g.orden ? 'text-accent' : 'text-ink'}">${escapeHtml(SGADD.formatear(k, f.celdas[k]))}</td>`).join('')}
+          </tr>`).join('')}</tbody>
+        </table></div>
+      </div>`;
+  return `
+    <div id="jugadoresTop3" class="card rounded-xl p-4 sm:p-5 border border-hairline mb-4" data-top3-plantel="1">
+      <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">TOP 3 del PLANTEL · ${escapeHtml(e ? e.nombre : clave)}</h3>
+      <p class="text-[11px] text-muted mb-3">Los tres primeros del plantel en cada dimensión del ranking, por promedio por partido y sin piso de minutos. En color, la métrica que ordena.</p>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">${grupos.map(sub).join('')}</div>
+    </div>`;
+}
+
 /**
  * El landing de Jugadores tiene DOS estados, no uno con cosas encima.
  *
@@ -2535,6 +2602,8 @@ function jugadoresGrilla(idx) {
   const conEquipo = !!JUGADORES.filtroEquipo;
   return [
     conEquipo ? '' : jugadoresPickerEquipos(idx),
+    /* El TOP 3 va ARRIBA del plantel (2026-10-19, pedido del club). */
+    conEquipo ? jugadoresBloqueTop3Plantel(idx, JUGADORES.filtroEquipo) : '',
     jugadoresPlantelEquipo(idx),
     /* El ranking del plantel va DEBAJO de las cards y solo con un equipo
        elegido; el de la liga, solo sin equipo. Nunca conviven: son la
@@ -2654,7 +2723,7 @@ function jugadoresTarjetaSintesis(bloque) {
     </div>`;
 }
 
-function jugadoresBloqueADN(sintesis) {
+function jugadoresBloqueADN(sintesis, j) {
   /* Una etiqueta RELATIVA sobre un jugador que no califica se muestra igual
      —la regla es no esconder el dato— pero con `~` y en gris, como el
      percentil de una muestra pobre. P-7 de la auditoría. */
@@ -2709,6 +2778,9 @@ function jugadoresBloqueADN(sintesis) {
       <p class="text-[10px] uppercase tracking-wider text-muted font-display mb-1.5">Perfiles técnicos</p>
       <div>${arqs}</div>
       ${rolBloque()}
+      ${/* Las etiquetas por tramo del reloj (2026-10-19): llegan con el
+           play-by-play, después del primer pintado. Sin la capa, nada. */
+        j && typeof SGADD_PBP !== 'undefined' && SGADD_PBP.activa && SGADD_PBP.activa() ? SGADD_PBP.espacioTramos(j['NOMBRES'], j['EQUIPO']) : ''}
     </div>`;
 }
 
@@ -2893,7 +2965,7 @@ function jugadoresTabGeneral(idx, j) {
      DT destilda (SGADD_FICHA). Un bloque nuevo sin marca no se puede elegir
      y un test lo denuncia. Las marcas no cambian nada en pantalla. */
   return `
-    <div data-subcard="general.adn">${jugadoresBloqueADN(sintesis)}</div>
+    <div data-subcard="general.adn">${jugadoresBloqueADN(sintesis, j)}</div>
     <div data-subcard="general.sintesis" class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
       ${jugadoresTarjetaSintesis(sintesis.impacto)}
       ${jugadoresTarjetaSintesis(sintesis.eficiencia)}
@@ -3178,7 +3250,7 @@ function jugadoresTabTiro(idx, j) {
 function jugadoresBloqueMapaPbp(j) {
   if (typeof SGADD_PBP === 'undefined' || !SGADD_PBP.activa() || !j) return '';
   return `
-    <div class="mt-6 no-imprimir mapa-pbp-jugador" data-subcard-de="tiro.mapa tiro.reloj tiro.reloj-franjas">
+    <div class="mt-6 no-imprimir mapa-pbp-jugador" data-subcard-de="tiro.mapa tiro.reloj tiro.reloj-tramos tiro.reloj-franjas">
       <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Mapa de tiro y diagnóstico individual · play-by-play</h5>
       ${SGADD_PBP.espacioJugador(j['NOMBRES'], j['EQUIPO'])}
     </div>`;
@@ -3325,7 +3397,8 @@ if (typeof module !== 'undefined' && module.exports) {
     jugadoresVara, VARA_ORIGENES, VARA_ORIGEN_NIVEL,
     jugadoresPerfilBase, jugadoresRolFuncional, jugadoresADN, jugadoresBadges,
     JUGADORES_METRICAS_EVOLUCION,
-    JUGADORES_MOTIVO_SIN_RESPALDO,
+    JUGADORES_MOTIVO_SIN_RESPALDO, JUGADORES_MOTIVO_COMPETENCIA_CHICA,
+    JUGADORES_TOP3_N, jugadoresTop3Plantel, jugadoresBloqueTop3Plantel,
     CLAVES_CONDICION, MIN_PJ_CONDICION, SENSIBILIDAD_CONDICION,
     jugadoresSlug, jugadoresBuscar, jugadoresZScore,
     jugadoresPartidosOrdenados, jugadoresRival, jugadoresIdCanonico,

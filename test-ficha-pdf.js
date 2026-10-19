@@ -39,7 +39,7 @@ seccion('1 · La estructura sale del código de la vista');
     && est[1].subs.some(y => y.label === J.JUGADORES_CARDS_REF.find(r => r.id === 'tiro').label));
   const grupos = (fuente.match(/data-subcard-de="([^"$]+)"/g) || []).map(m => m.slice(17, -1).split(/\s+/));
   check('cada grupo declara hijos que existen', grupos.length >= 2 && grupos.every(g => g.every(id => declarados.indexOf(id) !== -1)), grupos);
-  check('los bloques del play-by-play van marcados como tales', est[1].subs.filter(y => y.pbp).map(y => y.id).join() === 'tiro.mapa,tiro.reloj,tiro.reloj-franjas');
+  check('los bloques del play-by-play van marcados como tales', est[1].subs.filter(y => y.pbp).map(y => y.id).join() === 'tiro.mapa,tiro.reloj,tiro.reloj-tramos,tiro.reloj-franjas');
   check('la evolución elige métricas y el log de partidos arranca destildado', est[2].metricas === true && est[3].pre === false);
 }
 
@@ -77,11 +77,11 @@ seccion('3 · La poda · lo destildado se quita, sin huecos');
   check('lo que no está declarado se conserva', /NO DECLARADA/.test(p2));
   check('los div quedan balanceados', (p2.match(/<div\b/g) || []).length === (p2.match(/<\/div>/g) || []).length);
   check('con todo activo no cambia nada', F.podarHtml(html, { 'general.adn': true, 'general.sintesis': true, 'general.uso': true, 'general.pases': true }) === html);
-  const pbp = `<div class="mapa-pbp-jugador" data-subcard-de="tiro.mapa tiro.reloj tiro.reloj-franjas"><div class="pbp-montaje">cargando</div></div>`;
-  check('si las tres piezas del play-by-play van destildadas no se pide ni el paquete', F.podarHtml(pbp, { 'tiro.mapa': false, 'tiro.reloj': false, 'tiro.reloj-franjas': false }) === ''
-    && F.podarHtml(pbp, { 'tiro.mapa': false, 'tiro.reloj': true, 'tiro.reloj-franjas': false }) === pbp);
+  const pbp = `<div class="mapa-pbp-jugador" data-subcard-de="tiro.mapa tiro.reloj tiro.reloj-tramos tiro.reloj-franjas"><div class="pbp-montaje">cargando</div></div>`;
+  check('si las cuatro piezas del play-by-play van destildadas no se pide ni el paquete', F.podarHtml(pbp, { 'tiro.mapa': false, 'tiro.reloj': false, 'tiro.reloj-tramos': false, 'tiro.reloj-franjas': false }) === ''
+    && F.podarHtml(pbp, { 'tiro.mapa': false, 'tiro.reloj': true, 'tiro.reloj-tramos': false, 'tiro.reloj-franjas': false }) === pbp);
   check('el contenedor del play-by-play declara sus tres hijos en el código',
-    /data-subcard-de="tiro\.mapa tiro\.reloj tiro\.reloj-franjas"/.test(fs.readFileSync('js/sgadd-jugadores.js', 'utf8')));
+    /data-subcard-de="tiro\.mapa tiro\.reloj tiro\.reloj-tramos tiro\.reloj-franjas"/.test(fs.readFileSync('js/sgadd-jugadores.js', 'utf8')));
 }
 
 seccion('4 · Varias fichas en un documento: los gráficos no se pisan');
@@ -117,6 +117,46 @@ seccion('5 · Pack PLANTEL · titulares y sustitutos solo con el dato');
   check('en el papel cada jugador arranca en hoja nueva, salvo el primero', /#fichaSalida \.ficha-jugador \+ \.ficha-jugador \{\s*page-break-before: always; break-before: page;/.test(css));
   check('el bloque del play-by-play ya no va entero: se parte entre mapas', !/\.mapa-pbp-jugador \{\s*display: block !important;\s*page-break-inside: avoid/.test(css)
     && /\[data-reloj-jugador-mapa\] \{\s*page-break-inside: avoid; break-inside: avoid;/.test(css));
+}
+
+seccion('6 · TOP 3 del PLANTEL · arriba del plantel y elegible en el pack');
+{
+  const esc = (x) => String(x == null ? '' : x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  global.escapeHtml = esc; global.escapeAttr = esc;
+  global.SGADD_UI = { escJs: (v) => String(v), atributosFila: () => 'tabindex="0" role="button"' };
+  global.jugadoresConDorsal = (n) => n;
+  const cols = ['NOMBRES', 'EQUIPO', 'FASE', 'PJ', 'MIN', 'PTS', 'PLAYS', 'PPP', 'USG%', 'eFG%', 'TS%', 'RTL%', 'TC%', 'TCC', 'TCI',
+    'PT2%', 'T2%', 'T2C', 'T2I', 'PPT2', 'PT3%', 'T3%', 'T3C', 'T3I', 'PPT3', 'PT1%', 'T1%', 'T1C', 'T1I', 'PPT1', 'RO', 'RD', 'RT', 'AST-PP', 'AST%', 'FC', 'FR'];
+  const fila = (n, i) => { const o = { NOMBRES: n, EQUIPO: 'ATENAS A', FASE: 'REGULAR' }; cols.slice(3).forEach((k, c) => { o[k] = String(10 + i * 2 + (c % 5)); }); o.MIN = String(10 + i * 4); return o; };
+  const idx = SGADD.construirIndice({ 'PROMEDIOS J': { cols: cols, filas: ['A, UNO', 'B, DOS', 'C, TRES', 'D, CUATRO', 'E, CINCO'].map(fila) } }, { fase: 'REGULAR' });
+  const clave = SGADD.claveEquipo('ATENAS A');
+  const g = J.jugadoresTop3Plantel(idx, clave);
+  check('una sub-card por dimensión del ranking del plantel', g.map(x => x.id).join() === J.JUGADORES_RANKINGS.map(x => x.id).join(), g.map(x => x.id));
+  check('cada una con los tres primeros por la métrica del grupo', g.every(x => x.filas.length === 3
+    && x.filas[0].celdas[x.orden] >= x.filas[1].celdas[x.orden] && x.filas[1].celdas[x.orden] >= x.filas[2].celdas[x.orden]));
+  check('las columnas: PJ y MIN primero, después las de referencia del grupo', g.every(x => x.cols[0] === 'PJ' && x.cols[1] === 'MIN'
+    && x.cols.slice(2).join() === J.JUGADORES_RANKINGS.find(r => r.id === x.id).cols.filter(k => k !== 'PJ' && k !== 'MIN' && k !== '+/-').join()));
+  check('una columna que la planilla no trae se omite, no sale en «—»', g.find(x => x.id === 'produccion').cols.indexOf('+/-') === -1);
+  check('sin piso de minutos: entra el de 10 minutos si lidera', J.jugadoresTop3Plantel(idx, clave)[0].filas.length === 3);
+  const html = J.jugadoresBloqueTop3Plantel(idx, clave);
+  const marcas = (html.match(/data-subcard="([^"]+)"/g) || []).map(m => m.slice(14, -1));
+  const ep = F.estructuraPack();
+  check('la card se llama TOP 3 del PLANTEL y lleva una marca data-subcard por grupo', /TOP 3 del PLANTEL/.test(html)
+    && marcas.join() === ep[0].subs.map(x => x.id).join(), marcas);
+  check('el pack declara esas mismas sub-cards, tildadas por defecto', ep[0].id === 'top3' && ep[0].pre === true
+    && F.seleccionPorDefecto(ep).secciones.top3 === true && ep[0].subs.every(x => F.seleccionPorDefecto(ep).subs[x.id]));
+  const podado = F.podarHtml(html, Object.assign({}, ...ep[0].subs.map(x => ({ [x.id]: x.id !== 'plantel.top3-rebotes' }))));
+  check('destildar una dimensión la quita del PDF sin dejar hueco', !/plantel\.top3-rebotes/.test(podado) && /plantel\.top3-produccion/.test(podado)
+    && (podado.match(/<div\b/g) || []).length === (podado.match(/<\/div>/g) || []).length);
+  check('la ficha individual NO ofrece el TOP 3: es del pack', !F.estructura().some(x => x.id === 'top3'));
+  const fuente = fs.readFileSync('js/sgadd-jugadores.js', 'utf8');
+  const ini = fuente.indexOf('function jugadoresGrilla(idx)');
+  const cuerpo = fuente.slice(ini, fuente.indexOf('\n}\n', ini));
+  check('va inmediatamente ARRIBA de la card del plantel', cuerpo.indexOf('jugadoresBloqueTop3Plantel(idx') !== -1
+    && cuerpo.indexOf('jugadoresBloqueTop3Plantel(idx') < cuerpo.indexOf('jugadoresPlantelEquipo(idx)'));
+  const FI = fs.readFileSync('js/sgadd-ficha.js', 'utf8');
+  check('el pack lo arma primero, con lo elegido en el paso 1', /podarHtml\(jugadoresBloqueTop3Plantel\(idx, clave\), activos\(sel, ep\)\)/.test(FI)
+    && /arbolHtml\(elegidas\(\), null, estructuraPack\(\)\.concat\(estructura\(\)\)\)/.test(FI));
 }
 
 console.log('\n' + (mal ? '✗ HAY FALLAS   ' : '✓ TODO OK   ') + ok + ' pasaron, ' + mal + ' fallaron');

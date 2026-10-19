@@ -792,6 +792,9 @@
   }
   .pie-logo { width: 14px; height: 14px; object-fit: contain; vertical-align: middle; }
   .pie-ig { width: 13px; height: 13px; display: inline-block; vertical-align: middle; }
+  /* Los íconos del pie del PDF: con el color del texto, sin el mail ni el arroba escritos. */
+  .pie-icono { color: inherit; display: inline-flex; align-items: center; }
+  .cabecera-logo { width: 16px; height: 16px; }
   .pie-enlace { color: inherit; text-decoration: none; }
   .pie-enlace:hover { text-decoration: underline; }
   /* En papel el logo tiene que imprimirse: sin esto Chromium descarta
@@ -859,22 +862,9 @@
     .cabecera-hoja-celda .pie-marca { font-weight: 700; font-size: 8.5pt; color: #0f172a !important; }
     .cabecera-hoja-celda .pie-marca-sup { font-size: .62em; vertical-align: super; line-height: 0; margin-left: .5px; }
     .cabecera-hoja-celda .pie-logo { width: 13px; height: 13px; }
-    .cabecera-hoja-celda .cabecera-lema { color: #64748b !important; }
 
-    /* LA MARCA DE AGUA (punto 97): «MotorStats» en diagonal, al 4 % de
-       opacidad, como FONDO de la celda del contenido. Va debajo de todo:
-       no tapa un número ni una línea, y una tabla o una card con fondo
-       blanco la cubren. Se repite hacia abajo cada 240 mm (≈ una hoja A4
-       útil), así que cae una por hoja. `print-color-adjust: exact` para
-       que salga sin activar «Gráficos de fondo». */
-    table.hoja-firmada td.hoja-cuerpo-celda.marca-agua {
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='900' viewBox='0 0 420 900'%3E%3Ctext x='210' y='450' text-anchor='middle' font-family='Arial,Helvetica,sans-serif' font-size='64' font-weight='700' fill='%230f172a' fill-opacity='0.045' transform='rotate(-32 210 450)'%3EMotorStats%3C/text%3E%3C/svg%3E") !important;
-      background-repeat: repeat-y !important;
-      background-position: center 0 !important;
-      background-size: 110mm 240mm !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-    }
+    /* LA MARCA DE AGUA se sacó el 2026-10-19 a pedido del club: la celda
+       del contenido va limpia en todas las exportaciones. */
 
 
     /* EL ELEMENTO FIJO CUBRE LA HOJA ENTERA Y LA FIRMA SE APOYA ABAJO.
@@ -1483,14 +1473,6 @@
        informe entero en su hoja— ahora vale para los hijos de la celda. */
     body.modo-partido-print #detallePartido .hoja-cuerpo-celda > * {
       page-break-inside: avoid !important; break-inside: avoid !important;
-    }
-    /* La marca de agua: el post-partido le saca `background-image` a todo
-       lo suyo (papel limpio), así que la celda la recupera con más peso. */
-    body.modo-partido-print #detallePartido td.hoja-cuerpo-celda.marca-agua {
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='900' viewBox='0 0 420 900'%3E%3Ctext x='210' y='450' text-anchor='middle' font-family='Arial,Helvetica,sans-serif' font-size='64' font-weight='700' fill='%230f172a' fill-opacity='0.045' transform='rotate(-32 210 450)'%3EMotorStats%3C/text%3E%3C/svg%3E") !important;
-      background-repeat: repeat-y !important;
-      background-position: center 0 !important;
-      background-size: 110mm 240mm !important;
     }
     body.modo-partido-print #detallePartido .scrollbox { overflow: visible !important; }
 
@@ -2832,6 +2814,23 @@
     body .reloj-barra-relleno { background: var(--acento-papel, #a16014) !important; }
     body .reloj-barra-liga { background: #111 !important; }
   }
+  /* EL SEMÁFORO DEL PERFIL POR TRAMO (punto 130): el puntos por tiro del
+     jugador en la franja contra los percentiles de SU competencia. Los
+     tonos son los de las zonas de la tabla (punto 15), con el contraste
+     medido; en papel, la variante oscura. La etiqueta lleva además su texto
+     y su title: ningún estado solo con color. */
+  .tramo-chip { border-color: currentColor; background: rgba(255,255,255,.03); }
+  .tramo-verde { color: #4ade80; }
+  .tramo-amarillo { color: #fbbf24; }
+  .tramo-rojo { color: #f87171; }
+  .tramo-neutro { color: #94a3b8; }
+  @media print {
+    body .tramo-verde { color: #15803d !important; }
+    body .tramo-amarillo { color: #8a5206 !important; }
+    body .tramo-rojo { color: #b91c1c !important; }
+    body .tramo-neutro { color: #475569 !important; }
+    body .tramo-chip { background: transparent !important; border-color: currentColor !important; }
+  }
   @media (prefers-reduced-motion: reduce) { .pbp-detalle > summary::before { transition: none; } }
   .pbp-sec-lider { border: 1px solid rgba(148,163,184,.18); border-radius: .5rem; padding: .4rem .55rem; }
   /* La nota metodológica de las marcas (scouting): card dorada con el
@@ -3127,7 +3126,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=288" />
+<link rel="stylesheet" href="sgadd.css?v=289" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -3324,53 +3323,53 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=288"></script>
+<script src="js/sgadd-club.js?v=289"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=288"></script>
-<script src="js/sgadd-core.js?v=288"></script>
-<script src="js/sgadd-auth.js?v=288"></script>
+<script src="js/sgadd-config.js?v=289"></script>
+<script src="js/sgadd-core.js?v=289"></script>
+<script src="js/sgadd-auth.js?v=289"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=288"></script>
-<script src="js/sgadd-glosario.js?v=288"></script>
-<script src="js/sgadd-glosarioui.js?v=288"></script>
-<script src="js/sgadd-comparativa.js?v=288"></script>
-<script src="js/sgadd-comparativaui.js?v=288"></script>
-<script src="js/sgadd-confirmar.js?v=288"></script>
-<script src="js/sgadd-landing.js?v=288"></script>
-<script src="js/sgadd-login.js?v=288"></script>
-<script src="js/sgadd-data.js?v=288"></script>
-<script src="js/sgadd-clientes.js?v=288"></script>
-<script src="js/sgadd-ui.js?v=288"></script>
-<script src="js/sgadd-app.js?v=288"></script>
-<script src="js/sgadd-clasificacion.js?v=288"></script>
+<script src="js/sgadd-demo.js?v=289"></script>
+<script src="js/sgadd-glosario.js?v=289"></script>
+<script src="js/sgadd-glosarioui.js?v=289"></script>
+<script src="js/sgadd-comparativa.js?v=289"></script>
+<script src="js/sgadd-comparativaui.js?v=289"></script>
+<script src="js/sgadd-confirmar.js?v=289"></script>
+<script src="js/sgadd-landing.js?v=289"></script>
+<script src="js/sgadd-login.js?v=289"></script>
+<script src="js/sgadd-data.js?v=289"></script>
+<script src="js/sgadd-clientes.js?v=289"></script>
+<script src="js/sgadd-ui.js?v=289"></script>
+<script src="js/sgadd-app.js?v=289"></script>
+<script src="js/sgadd-clasificacion.js?v=289"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-fixture.js?v=288"></script>
-<script src="js/sgadd-inscriptos.js?v=288"></script>
-<script src="js/sgadd-fases.js?v=288"></script>
-<script src="js/sgadd-torneos.js?v=288"></script>
-<script src="js/sgadd-hub.js?v=288"></script>
-<script src="js/sgadd-configui.js?v=288"></script>
-<script src="js/sgadd-estados.js?v=288"></script>
-<script src="js/sgadd-buzon.js?v=288"></script>
-<script src="js/sgadd-charts.js?v=288"></script>
-<script src="js/sgadd-personalidad.js?v=288"></script>
-<script src="js/sgadd-rankings.js?v=288"></script>
-<script src="js/sgadd-partido.js?v=288"></script>
-<script src="js/sgadd-informe.js?v=288"></script>
-<script src="js/sgadd-ficha.js?v=288"></script>
-<script src="js/sgadd-mercado.js?v=288"></script>
-<script src="js/sgadd-fichajes.js?v=288"></script>
-  <script src="js/sgadd-rankingpdf.js?v=288"></script>
-<script src="js/sgadd-equipos.js?v=288"></script>
+<script src="js/sgadd-fixture.js?v=289"></script>
+<script src="js/sgadd-inscriptos.js?v=289"></script>
+<script src="js/sgadd-fases.js?v=289"></script>
+<script src="js/sgadd-torneos.js?v=289"></script>
+<script src="js/sgadd-hub.js?v=289"></script>
+<script src="js/sgadd-configui.js?v=289"></script>
+<script src="js/sgadd-estados.js?v=289"></script>
+<script src="js/sgadd-buzon.js?v=289"></script>
+<script src="js/sgadd-charts.js?v=289"></script>
+<script src="js/sgadd-personalidad.js?v=289"></script>
+<script src="js/sgadd-rankings.js?v=289"></script>
+<script src="js/sgadd-partido.js?v=289"></script>
+<script src="js/sgadd-informe.js?v=289"></script>
+<script src="js/sgadd-ficha.js?v=289"></script>
+<script src="js/sgadd-mercado.js?v=289"></script>
+<script src="js/sgadd-fichajes.js?v=289"></script>
+  <script src="js/sgadd-rankingpdf.js?v=289"></script>
+<script src="js/sgadd-equipos.js?v=289"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=288"></script>
-<script src="js/sgadd-jugadores.js?v=288"></script>
-<script src="js/sgadd-4factores.js?v=288"></script>
-<script src="js/sgadd-scouting.js?v=288"></script>
-<script src="js/sgadd-pbp.js?v=288"></script>
-<script src="js/sgadd-diagnostico.js?v=288"></script>
+<script src="js/sgadd-niveles.js?v=289"></script>
+<script src="js/sgadd-jugadores.js?v=289"></script>
+<script src="js/sgadd-4factores.js?v=289"></script>
+<script src="js/sgadd-scouting.js?v=289"></script>
+<script src="js/sgadd-pbp.js?v=289"></script>
+<script src="js/sgadd-diagnostico.js?v=289"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

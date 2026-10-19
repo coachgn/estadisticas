@@ -439,7 +439,7 @@ function seccionReloj() {
   return `
     <p>Solo en las categorías con análisis de play-by-play. Dice en qué segundo de la
     posesión tira y pierde la pelota un equipo, sus rivales y cada jugador.</p>
-    <h3>5.1 · Las cuatro franjas</h3>
+    <h3>5.1 · Las tres franjas</h3>
     ${tabla(['Franja', 'Nombre', 'Qué describe'], M.franjas.map(f => [esc(f.label), esc(f.nombre), esc(f.lectura)]))}
     <h3>5.2 · Cómo se mide</h3>
     <ul>${M.criterios.map(c => '<li><b>' + esc(c.titulo) + '.</b> ' + esc(c.texto) + '</li>').join('')}</ul>
@@ -449,6 +449,8 @@ function seccionReloj() {
     ${tabla(['Etiqueta de equipo', 'Cuándo'], M.equipo.map(e => [esc(e.label), esc(e.regla)]))}
     ${tabla(['Arquetipo del perfil de ritmo', 'Lado', 'Cuándo'], M.arquetipos.map(e => [esc(e.label), esc(e.lado), esc(e.regla)]))}
     ${tabla(['Etiqueta de jugador', 'Cuándo'], M.jugador.map(e => [esc(e.label), esc(e.regla)]))}
+    <h3>5.4 bis · El perfil táctico por tramo del jugador</h3>
+    ${tabla(['Etiqueta por tramo', 'Cuándo'], M.tramos.reduce((a, t) => a.concat(t.etiquetas.map(e => [esc(e.label), esc(e.regla)])), []))}
     <h3>5.5 · El aviso de reloj tardío</h3>
     <p>${esc(M.alerta)}</p>
     <p class="aviso">${esc(M.neutral)}</p>`;
@@ -492,25 +494,24 @@ function seccionNiveles() {
     formativas, que es justo el corte que importa.</p>
     ${tabla(['Nivel', 'Qué cubre', 'Semilla'], filasNivel, 'ancha')}
 
-    <h3>4.2 · De dónde sale cada número</h3>
-    <p>Un umbral no vale siempre lo mismo, y confundir los cuatro casos es lo que
-    hacía que una etiqueta cambiara sin que nadie supiera si cambió el jugador o
-    cambió la vara.</p>
+    <h3>4.2 · De dónde sale cada número · la competencia desde el primer partido</h3>
+    <p><b>Regla innegociable:</b> todo corte relativo se calcula <b>solo con los jugadores
+    de la competencia elegida</b> —mínimo, máximo, mediana y percentiles P25, P50, P75 y
+    P90—. No hay valores escritos para todas las ligas ni importados de otra: cambiar de
+    torneo cambia la vara.</p>
     ${tabla(['Procedencia', 'Cuándo'], [
-      ['<b>Fijo</b>', 'Describe economía del básquet. Vale igual en las seis. Son tres.'],
-      ['<b>Nivel</b>', 'La semilla medida del nivel declarado, porque la competencia todavía no tiene muestra.'],
-      ['<b>En transición</b>', 'Hay muestra parcial: se interpola entre la semilla y el percentil real. Sin esto, el partido que cruza el umbral reetiqueta a media liga de un día para el otro.'],
-      ['<b>Medido</b>', 'El percentil real sobre los calificados de esta competencia.'],
+      ['<b>Fijo</b>', 'Describe economía del básquet (puntos por posesión). Vale igual en cualquier liga. Son cinco.'],
+      ['<b>Medido</b>', 'El percentil sobre los calificados de esta competencia, desde el primer partido. Hasta ' + N.MUESTRA.plenoPartidos + ' partidos y ' + N.MUESTRA.plenoCalificados + ' calificados la muestra es chica y las etiquetas salen con <b>~</b>: el corte todavía se mueve.'],
+      ['<b>Sin datos</b>', 'La competencia todavía no tiene un solo valor de esa métrica: no hay umbral y la regla no dispara.'],
     ])}
-    <div class="aviso"><b>Los topes no son una traba, son el ancla de significado.</b>
-    Sin ellos el sistema sería puramente auto-referencial: toda liga tendría
-    exactamente un 10% de «tiradores de élite», incluida una donde nadie convierte,
-    y la etiqueta pasaría a decir <i>«de los peores, el mejor»</i>.</div>
+    <div class="aviso">Hasta el 2026-10-18 los umbrales arrancaban en una semilla por nivel y se
+    acotaban a topes medidos en otras ligas. Se sacaron las dos cosas: eran una vara importada.</div>
 
     <h3>4.3 · La matriz completa</h3>
-    <p>El valor de arranque de cada nivel. En la app estos números son el piso: si la
-    competencia tiene muestra suficiente, se mueven hacia su percentil real y la ficha
-    del jugador lo dice en <i>Vara de medición</i>.</p>
+    <p><b>Referencia histórica</b>: los valores medidos por nivel en los libros con los que se
+    calibraron las reglas. <b>Ya no rigen</b> en ninguna competencia con datos —ahí manda su
+    propio percentil, y la ficha del jugador lo dice en <i>Vara de medición</i>—; quedan para
+    leer una etiqueta contra la vara con la que se escribió.</p>
     ${tabla(['Umbral', 'Métrica', 'Corte'].concat(N.NIVELES.map(n => n.label.replace(/ /g, '<br>'))), filas, 'ancha')}
     <p class="nota">El <span style="color:#bbb">=</span> quiere decir «lo mismo»: un
     umbral fijo no cambia de nivel en nivel, y repetirlo seis veces invitaría a

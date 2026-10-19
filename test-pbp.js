@@ -1098,7 +1098,7 @@ function paquete(equipo) {
         && /el cuarto más alto arranca en 19,0 % de finales tempranos y en 19,7 % de tardíos/.test(P.relojAyuda(pR.liga.reloj)));
     const mh = P.relojMetodologiaHtml();
     check('el texto del Glosario: tres franjas, criterios, familias, etiquetas, arquetipos y el aviso',
-      /Las tres franjas del reloj/.test(mh) && (mh.match(/<li /g) || []).length === 3 + 9 + 7 + 4 + 9 + 9, (mh.match(/<li /g) || []).length);
+      /Las tres franjas del reloj/.test(mh) && (mh.match(/<li /g) || []).length === 3 + M.criterios.length + 7 + 4 + 9 + 9 + 20 && M.criterios.length === 10, (mh.match(/<li /g) || []).length);
     const GUIr = require('./js/sgadd-glosarioui.js');
     const uiPrevia = global.SGADD_UI;
     if (!uiPrevia) global.SGADD_UI = { escJs: (v) => String(v) };
@@ -1131,6 +1131,74 @@ function paquete(equipo) {
     check('las piezas del reloj no se parten en el papel y las barras tienen su variante de papel',
       /@media print \{ \.pbp-reloj-pieza \{ break-inside: avoid; page-break-inside: avoid; \} \}/.test(cssIdx)
         && /body \.reloj-barra-relleno \{ background: var\(--acento-papel/.test(cssIdx));
+
+    /* ---- EL PERFIL TÁCTICO POR TRAMO (2026-10-19) · 1x1 / 5x5, rebote, pérdida y defensa ----
+       Los cortes son los MEDIDOS en la Conferencia Norte 25/26 (punto 130). */
+    const cT = (min, p25, p50, p75, p90, max, n) => ({ n, min, p25, p50, p75, p90, max });
+    const tramosNorte = (n) => ({
+      temprana: { pps: cT(0.5, 1.07, 1.25, 1.42, 1.55, 2, n), ast: cT(0, 36.4, 50, 66.7, 78.6, 100, n), freq: cT(5, 16.3, 21.6, 25, 28.2, 60, n),
+        prod: cT(0, 0.32, 0.68, 1.16, 1.67, 4, n), ro: cT(0, 0, 0.07, 0.13, 0.23, 1, n), rd: cT(0, 0.11, 0.22, 0.35, 0.5, 2, n),
+        rec: cT(0, 0.06, 0.13, 0.21, 0.32, 1, n), tap: cT(0, 0, 0, 0, 0.03, 1, n), per: cT(0, 0.1, 0.2, 0.36, 0.48, 2, n) },
+      media: { pps: cT(0.4, 0.95, 1.07, 1.18, 1.3, 2, n), ast: cT(0, 40, 53, 71.6, 83.3, 100, n), freq: cT(20, 41, 46.5, 51.6, 56.5, 80, n),
+        prod: cT(0, 0.67, 1.39, 2.06, 2.83, 6, n), ro: cT(0, 0.09, 0.17, 0.32, 0.53, 2, n), rd: cT(0, 0.45, 0.72, 1.17, 1.47, 4, n),
+        rec: cT(0, 0.11, 0.23, 0.38, 0.52, 2, n), tap: cT(0, 0, 0, 0, 0.03, 1, n), per: cT(0, 0.21, 0.39, 0.6, 0.8, 3, n) },
+      tardia: { pps: cT(0.3, 0.79, 0.91, 1.04, 1.17, 2, n), ast: cT(0, 40, 53.6, 66.7, 80, 100, n), freq: cT(5, 26.3, 31.7, 37.6, 43.9, 70, n),
+        prod: cT(0, 0.4, 0.81, 1.25, 1.52, 4, n), ro: cT(0, 0.07, 0.16, 0.28, 0.45, 2, n), rd: cT(0, 0.29, 0.63, 0.91, 1.19, 3, n),
+        rec: cT(0, 0.03, 0.13, 0.19, 0.28, 1, n), tap: cT(0, 0, 0, 0, 0.03, 1, n), per: cT(0, 0.07, 0.17, 0.28, 0.45, 2, n) },
+    });
+    const conTramos = (n, eJ1, pj) => {
+      const p = conReloj();
+      p.liga.reloj = Object.assign({}, p.liga.reloj, { cortes: Object.assign({}, p.liga.reloj.cortes, { tramos: tramosNorte(n) }) });
+      /* J1: temprano 12 canastas y 2 asistencias (1x1, 1,50 por tiro → verde); medio 4 canastas y 9 asistencias
+         en 10 tiros a 0,80 (5x5, rojo); tardío 6 canastas a 1,30 (1x1, verde) y 6 rebotes defensivos sobre el
+         reloj del rival. */
+      p.reloj.jugadores['1'] = Object.assign(reloj3([[20, 12, 30, 6, 10, 1], [10, 4, 8, 1, 2, 0], [10, 6, 13, 3, 1, 2]]),
+        { e: eJ1 || [[2, 1, 3, 4, 0], [9, 0, 2, 1, 0], [0, 0, 6, 0, 0]], pj: pj == null ? 4 : pj });
+      return p;
+    };
+    const pT = conTramos(159);
+    const rT = P.relojTramosJugador(pT, '1');
+    const idsT = rT.etiquetas.map(x => x.id).join();
+    check('las etiquetas por tramo: 1x1 temprano, 5x5 en el set, 1x1 y reboteador defensivo al final del reloj', idsT === 'temprana-1x1,media-5x5,tardia-1x1,tardia-rd', rT.etiquetas);
+    check('con la taxonomía pedida', rT.etiquetas.map(x => x.label).join(' | ') === 'Ataque Rápido · Finalizador 1x1 | Set Ofensivo · Facilitador 5x5 | Clutch · Definidor 1x1 | Clutch Defensivo · Reboteador Defensivo');
+    check('el semáforo es su puntos por tiro contra los percentiles de la franja: verde > P75, rojo < P25, defensa neutra',
+      rT.etiquetas.map(x => x.tono).join() === 'verde,rojo,verde,neutro' && rT.filas[2].tono === 'verde', rT.etiquetas.map(x => x.tono));
+    check('con 4 recuperos (menos de 5 acciones) no hay recuperador, aunque la tasa sea alta', !/rec/.test(idsT));
+    check('sin muestra chica en la competencia no lleva ~', rT.chica === false && rT.etiquetas.every(x => !x.chica));
+    const dosPj = P.relojTramosJugador(conTramos(159, null, 2), '1');
+    check('con menos de 3 partidos no hay etiquetas, pero sí la tabla', dosPj.etiquetas.length === 0 && dosPj.filas.length === 3);
+    const chicaT = P.relojTramosJugador(conTramos(12), '1');
+    check('con menos de 20 jugadores con muestra en la competencia, todas salen con ~ y sin semáforo',
+      chicaT.chica && chicaT.etiquetas.length > 0 && chicaT.etiquetas.every(x => x.chica && x.tono === 'neutro')
+        && /~ Ataque Rápido/.test(P.relojTramosChips(chicaT.etiquetas)), chicaT.etiquetas);
+    /* CAMBIAR DE COMPETENCIA cambia la lectura: el mismo jugador, otra vara. */
+    const otraLiga = conTramos(159);
+    otraLiga.liga.reloj.cortes.tramos.temprana.prod = cT(0, 2, 3, 4, 5, 9, 159);
+    otraLiga.liga.reloj.cortes.tramos.temprana.pps = cT(0.8, 1.6, 1.7, 1.8, 1.9, 2.5, 159);
+    const rO = P.relojTramosJugador(otraLiga, '1');
+    check('en otra competencia, el mismo jugador pierde el 1x1 temprano y su puntos por tiro pasa a rojo',
+      !rO.etiquetas.some(x => x.id === 'temprana-1x1') && rO.filas[0].tono === 'rojo' && rT.filas[0].tono === 'verde');
+    check('fuga por pérdida: solo en ataque rápido y en el set, nunca en clutch',
+      P.ACCIONES_TRAMO.find(a => a.m === 'per').soloConFuga && P.TRAMOS_JUGADOR.map(t => t.fuga).join() === 'true,true,false');
+    const hT = P.relojTramosHtml(pT, '1');
+    check('la card del perfil por tramo: marca data-subcard, tabla por tramo y chips con su semáforo',
+      /data-subcard="tiro\.reloj-tramos"/.test(hT) && (hT.match(/<tr>/g) || []).length === 4 && /tramo-chip tramo-verde/.test(hT) && /tramo-chip tramo-rojo/.test(hT));
+    check('y va dentro del bloque del jugador, como sub-card hermana', /data-reloj-tramos="1"/.test(P.relojJugador(pT, '1')));
+    const sinE = conReloj();
+    check('un paquete sin las acciones por franja lo dice y no inventa etiquetas',
+      P.relojTramosJugador(sinE, '1').disponible === false && /próxima subida/.test(P.relojTramosHtml(sinE, '1')));
+    const nom = pT.jugadores && pT.jugadores['1'] ? pT.jugadores['1'].n : null;
+    const adnT = nom ? P.relojTramosAdn(pT, nom) : '';
+    check('las etiquetas se inyectan en el ADN del jugador', /Función por tramo del reloj/.test(adnT) && /Finalizador 1x1/.test(adnT) && /Reboteador Defensivo/.test(adnT), adnT);
+    check('el ADN deja su lugar solo con la capa, y la carga fallida no deja cartel',
+      /SGADD_PBP\.espacioTramos\(j\['NOMBRES'\], j\['EQUIPO'\]\)/.test(fs.readFileSync(path.join(__dirname, 'js/sgadd-jugadores.js'), 'utf8'))
+        && /if \(nombreTramos\) \{ nodo\.innerHTML = ''; return; \}/.test(fuentePbp));
+    check('el semáforo tiene su variante de papel', /\.tramo-verde \{/.test(cssIdx) && /body \.tramo-verde/.test(cssIdx));
+    const MT = P.METODOLOGIA_RELOJ.tramos;
+    check('la metodología lista las 20 etiquetas por tramo con su regla', MT.reduce((a, t) => a + t.etiquetas.length, 0) === 20
+      && MT.every(t => t.etiquetas.every(e => e.regla)) && P.METODOLOGIA_RELOJ.criterios.some(c => c.id === 'tramos'));
+    const manualT = fs.readFileSync(path.join(__dirname, 'MANUAL_ETIQUETADO_SGADD.html'), 'utf8');
+    check('y el manual de etiquetado también', /El perfil táctico por tramo del jugador/.test(manualT) && /Set Ofensivo · Facilitador 5x5/.test(manualT) && /Clutch Defensivo · Taponador/.test(manualT));
   }
 
   console.log('\n' + '═'.repeat(70) + '\n' + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');

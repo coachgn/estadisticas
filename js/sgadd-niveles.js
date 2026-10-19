@@ -517,32 +517,24 @@ const SGADD_NIVELES = (function () {
                muestra: { partidos: c.partidos || 0, n: (c.valores || []).length } };
     }
 
-    const semilla = semillaDe(clave, n);
+    /* LA COMPETENCIA DESDE EL DÍA 1 (2026-10-18, decisión del club). Un
+       umbral relativo sale SOLO del percentil de la propia competencia:
+       sin semilla de nivel, sin mezcla y sin clamps —las tres venían de
+       libros de OTRAS ligas—. Con poca muestra el número se usa igual y se
+       marca (`chica`): las etiquetas salen con ~ en vez de con una vara
+       importada. Sin un solo valor de la métrica no hay umbral: NaN, que
+       hace falsa cualquier comparación (un null valdría 0 y dispararía). */
     const vals = c.valores || [];
-    const f = factorMezcla(c.partidos, vals.length);
     const base = { clave, nivel: n, tipo: d.tipo, metrica: d.metrica,
-                   semilla: semilla,
                    muestra: { partidos: c.partidos || 0, n: vals.length } };
-
-    if (f <= 0) return Object.assign(base, { valor: semilla, origen: 'tier', mezcla: 0 });
-
     const crudo = (typeof d.p === 'number') ? percentilDe(vals, d.p) : null;
     if (crudo === null) {
-      /* Hay muestra en cantidad pero no en esta métrica: no se inventa. */
-      return Object.assign(base, { valor: semilla, origen: 'tier', mezcla: 0,
-                                   nota: 'sin valores de ' + d.metrica });
+      return Object.assign(base, { valor: NaN, origen: 'sin-datos', mezcla: 0, chica: true,
+                                   nota: 'sin valores de ' + d.metrica + ' en esta competencia' });
     }
-
-    const vivo = acotar(crudo, d.clamp);
-    const valor = (f >= 1) ? vivo : (semilla + (vivo - semilla) * f);
-    return Object.assign(base, {
-      valor: valor,
-      origen: f >= 1 ? 'vivo' : 'mezcla',
-      mezcla: Math.round(f * 100) / 100,
-      vivo: vivo,
-      vivoSinAcotar: crudo,
-      acotado: crudo !== vivo,
-    });
+    const chica = !((c.partidos || 0) >= MUESTRA.plenoPartidos && vals.length >= MUESTRA.plenoCalificados);
+    return Object.assign(base, { valor: crudo, origen: 'vivo', mezcla: 1, vivo: crudo, vivoSinAcotar: crudo,
+                                 acotado: false, chica: chica });
   }
 
   function acotar(v, clamp) {
@@ -559,11 +551,24 @@ const SGADD_NIVELES = (function () {
     const out = {}, detalle = {};
     claves().forEach(k => {
       const vals = (typeof leer === 'function') ? (leer(k) || []) : [];
-      const r = umbralVigente(k, Object.assign({}, contexto, { valores: vals }));
+      const decl = contexto && contexto.declarados;
+      const def = REGISTRO[k];
+      /* Una vara DECLARADA en el índice (idx.liga.umbralesDeclarados) gana
+         sobre la medida. La usan las fixtures de prueba, que tienen cinco
+         jugadores y donde un p90 sería el máximo; ningún índice de
+         producción la trae. Los absolutos no se pisan nunca. */
+      const r = (decl && def && def.tipo !== TIPOS.ABSOLUTO && typeof decl[k] === 'number')
+        ? { clave: k, valor: decl[k], origen: 'declarado', nivel: normalizarNivel(contexto.nivel), tipo: def.tipo,
+            metrica: def.metrica, mezcla: 0, chica: false, muestra: { partidos: contexto.partidos || 0, n: vals.length } }
+        : umbralVigente(k, Object.assign({}, contexto, { valores: vals }));
       out[k] = r ? r.valor : null;
       detalle[k] = r;
     });
     Object.defineProperty(out, '__detalle', { value: detalle, enumerable: false });
+    /* ¿Algún umbral relativo se midió con poca muestra? Las etiquetas lo
+       muestran con ~ (jugadoresBadges). */
+    const chica = Object.keys(detalle).some(k => detalle[k] && detalle[k].origen !== 'absoluto' && detalle[k].chica);
+    Object.defineProperty(out, '__chica', { value: chica, enumerable: false });
     return out;
   }
 
@@ -616,7 +621,9 @@ const SGADD_NIVELES = (function () {
     return (typeof d.base === 'number') ? d.base : null;
   }
 
-  /** La semilla del nivel, sin liga viva. Es lo que se usa en warm-up. */
+  /** La semilla del nivel, sin liga viva. Desde el 2026-10-18 ninguna
+      competencia con índice la usa: queda para el respaldo sin contexto
+      (un perfil armado a mano) y para el manual impreso. */
   function valorDe(clave, nivelId) { return semillaDe(clave, nivelId); }
 
   /**
@@ -663,7 +670,8 @@ const SGADD_NIVELES = (function () {
         valor: r ? r.valor : null,
         origen: r ? r.origen : null,
         mezcla: r ? (r.mezcla || 0) : 0,
-        semilla: r ? r.semilla : null,
+        semilla: r ? (r.semilla === undefined ? null : r.semilla) : null,
+        chica: !!(r && r.chica),
         vivo: r ? (r.vivo === undefined ? null : r.vivo) : null,
         acotado: !!(r && r.acotado),
         muestra: r ? r.muestra : null,
@@ -679,10 +687,13 @@ const SGADD_NIVELES = (function () {
 
   /** Los cuatro orígenes posibles, en castellano y en un solo lugar. */
   const ORIGENES = {
-    absoluto: 'Fijo: describe economía del juego y vale igual en cualquier liga.',
-    tier: 'La semilla del nivel declarado. Todavía no hay muestra para medir en vivo.',
-    mezcla: 'En transición: se está pasando de la semilla del nivel al percentil real.',
-    vivo: 'El percentil real sobre los calificados de esta competencia.',
+    absoluto: 'Fijo: describe economía del juego (puntos por posesión) y vale igual en cualquier liga.',
+    vivo: 'El percentil real sobre los calificados de ESTA competencia. Con poca muestra se usa igual y las etiquetas salen con ~.',
+    declarado: 'Escrito en el índice a mano: solo fixtures de prueba. Ningún libro real lo trae.',
+    'sin-datos': 'La competencia todavía no tiene un solo valor de esta métrica: no hay umbral y la regla no dispara.',
+    /* Ya no se producen (2026-10-18): quedan para leer una vara vieja. */
+    tier: 'La semilla del nivel declarado (ya no se usa: los umbrales salen de la competencia).',
+    mezcla: 'Transición de la semilla al percentil real (ya no se usa).',
   };
 
   return {

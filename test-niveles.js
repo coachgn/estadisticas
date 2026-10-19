@@ -410,27 +410,46 @@ for (let i = 0; i < 120; i++) VALS.push(i / 100);
 const CTX = { partidos: 90, valores: VALS };
 const VIVO = N.procedencia('astPPGenerador', 'LOCAL_MENORES', CTX);
 igual(VIVO.origen, 'vivo', 'con muestra plena la procedencia es `vivo`');
-ok(VIVO.semilla === N.valorDe('astPPGenerador', 'LOCAL_MENORES'),
-   'y sigue exponiendo la semilla contra la que se movio', VIVO.semilla);
+ok(VIVO.valor === N.percentilDe(VALS, N.definicion('astPPGenerador').p) && VIVO.chica === false,
+   'y el valor es el percentil de la propia competencia, sin muestra chica', VIVO);
 ok(VIVO.muestra && VIVO.muestra.n === VALS.length,
    'y cuanta muestra la respalda');
 igual(N.procedencia('pptTripleElite', 'LOCAL_MENORES', CTX).origen, 'absoluto',
       'un absoluto NO se mueve por mas muestra que haya: es el punto');
 
-/* En transicion tiene que decirse en transicion. Con un corte duro, el
-   partido que cruza el umbral reetiqueta a media liga de un dia para el
-   otro y el DT ve cambiar las fichas sin que haya pasado nada. */
+/* LA COMPETENCIA DESDE EL DIA 1 (2026-10-18). Con poca muestra ya no
+   hay mezcla con una semilla de otra liga: rige el percentil propio y se
+   MARCA `chica`, que es lo que pone el ~ en las etiquetas. */
 const MEDIO = N.procedencia('astPPGenerador', 'LOCAL_MENORES',
   { partidos: 25, valores: VALS.slice(0, 45) });
-igual(MEDIO.origen, 'mezcla', 'con muestra parcial la procedencia es `mezcla`');
-ok(MEDIO.mezcla > 0 && MEDIO.mezcla < 1, '  y dice cuanto pesa la liga', MEDIO.mezcla);
+igual(MEDIO.origen, 'vivo', 'con muestra parcial rige el percentil de la propia competencia');
+ok(MEDIO.chica === true && MEDIO.valor === N.percentilDe(VALS.slice(0, 45), N.definicion('astPPGenerador').p),
+   '  y se marca como muestra chica, sin semilla ni topes', MEDIO);
+const SIN = N.umbralVigente('astPPGenerador', { nivel: 'LOCAL_MENORES', partidos: 3, valores: [] });
+ok(SIN.origen === 'sin-datos' && Number.isNaN(SIN.valor) && !(1 > SIN.valor) && !(1 < SIN.valor),
+   'sin un solo valor no hay umbral: NaN, y ninguna comparacion dispara', SIN);
+/* El umbral CAMBIA con la competencia: dos ligas, dos varas. */
+const LIGA_A = [], LIGA_B = [];
+for (let i = 0; i < 80; i++) { LIGA_A.push(0.5 + i / 100); LIGA_B.push(1.0 + i / 100); }
+const UA = N.umbralVigente('astPPGenerador', { nivel: 'LOCAL_MAYORES', partidos: 60, valores: LIGA_A });
+const UB = N.umbralVigente('astPPGenerador', { nivel: 'LOCAL_MAYORES', partidos: 60, valores: LIGA_B });
+ok(UA.valor < UB.valor && Math.abs((UB.valor - UA.valor) - 0.5) < 1e-9,
+   'cambiar de competencia cambia el percentil: el mismo nivel, dos varas distintas', [UA.valor, UB.valor]);
+ok(N.umbralVigente('pptTripleElite', { nivel: 'LOCAL_MAYORES', partidos: 60, valores: LIGA_A }).valor
+   === N.umbralVigente('pptTripleElite', { nivel: 'LOCAL_MAYORES', partidos: 60, valores: LIGA_B }).valor,
+   'y los absolutos de economia del juego no se mueven');
+const MV = N.mapaVigente({ nivel: 'LOCAL_MAYORES', partidos: 5 }, () => LIGA_A.slice(0, 10));
+ok(MV.__chica === true, 'el mapa con poca muestra avisa `__chica` para el ~ de las etiquetas');
+const MD = N.mapaVigente({ nivel: 'LOCAL_MAYORES', partidos: 5, declarados: { astPPGenerador: 1.4, pptTripleElite: 9 } }, () => LIGA_A);
+ok(MD.astPPGenerador === 1.4 && MD.__detalle.astPPGenerador.origen === 'declarado' && MD.pptTripleElite !== 9,
+   'una vara declarada en el indice gana sobre la medida, pero nunca pisa un absoluto', MD.__detalle.astPPGenerador);
 
-igual(Object.keys(N.ORIGENES).sort(), ['absoluto', 'mezcla', 'tier', 'vivo'],
-      'los cuatro origenes estan declarados en un solo lugar');
+igual(Object.keys(N.ORIGENES).sort(), ['absoluto', 'declarado', 'mezcla', 'sin-datos', 'tier', 'vivo'],
+      'los origenes estan declarados en un solo lugar');
 /* La UI pinta por esta tabla: un origen que el motor devuelva y la tabla
    no conozca saldria sin explicacion y nadie se enteraria. */
 igual(Object.keys(J.VARA_ORIGENES).sort(), Object.keys(N.ORIGENES).sort(),
-      'y la UI conoce exactamente esos cuatro');
+      'y la UI conoce exactamente esos');
 
 /* --- LA VARA · el motor puro que la ficha imprime --- */
 const SGADD_T = require('./js/sgadd-core.js');

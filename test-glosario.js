@@ -128,6 +128,20 @@ if (rutaManual && fs.existsSync(rutaManual)) {
   console.log('  · (el manual del motor no está en esta máquina: no se regenera)');
 }
 
+/* LOS UMBRALES POR COMPETENCIA (punto 130): la card del Glosario cuenta la
+   regla con los números del registro, no con un texto escrito aparte. */
+{
+  global.SGADD_NIVELES = require('./js/sgadd-niveles.js');
+  const N = global.SGADD_NIVELES;
+  const h = GUI.metodologiaUmbrales();
+  const fijos = N.claves().filter(k => N.definicion(k).tipo === N.TIPOS.ABSOLUTO);
+  check('el Glosario explica los umbrales por competencia: la regla innegociable y los percentiles', /Regla innegociable/.test(h) && /P25, P50, P75 y P90/.test(h) && /Desde el primer partido/.test(h));
+  check('nombra los cinco fijos de economía del juego, del propio registro', fijos.length === 5 && fijos.every(k => h.indexOf(N.definicion(k).metrica) !== -1), fijos);
+  check('y la muestra plena sale de MUESTRA, no de un número escrito', h.indexOf(String(N.MUESTRA.plenoPartidos) + ' partidos') !== -1);
+  check('la card está en la pantalla del Glosario', /metodologiaUmbrales\(\)/.test(require('fs').readFileSync('./js/sgadd-glosarioui.js', 'utf8')));
+  delete global.SGADD_NIVELES;
+}
+
 console.log('\n' + '═'.repeat(70));
 if (fail === 0) console.log('✓ TODO OK   ' + ok + ' pasaron, 0 fallaron');
 else { console.log('✗ HAY FALLAS   ' + ok + ' pasaron, ' + fail + ' fallaron'); process.exit(1); }

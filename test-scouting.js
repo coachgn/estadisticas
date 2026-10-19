@@ -244,6 +244,12 @@ const idx = SGADD.construirIndice(HOJAS_FIXTURE, { fase: 'REGULAR' });
    O sea que no es que el test se rompió: es que estaba midiendo contra
    una vara que ahora hay que nombrar. */
 idx.liga.nivel = 'LIGA_ARGENTINA';
+/* Desde el 2026-10-18 los umbrales relativos salen de la propia
+   competencia. Esta fixture tiene un puñado de jugadores —un p90 sería el
+   máximo— así que DECLARA la vara contra la que se calibró
+   (idx.liga.umbralesDeclarados, origen «declarado»): prueba las reglas, no
+   la medición. Ningún índice de producción la trae. */
+idx.liga.umbralesDeclarados = require('./js/sgadd-niveles.js').mapaDe('LIGA_ARGENTINA');
 
 console.log('\n0. LA FIXTURE ES SANA (si esto falla, el resto miente)');
 console.log('═'.repeat(70));
@@ -2299,6 +2305,7 @@ check('sin mapa en el perfil, las reglas caen al respaldo estático de scouting'
 (() => {
   const idxL = SGADD.construirIndice(HOJAS_FIXTURE, { fase: 'REGULAR' });
   idxL.liga.nivel = 'LOCAL_MAYORES';
+  idxL.liga.umbralesDeclarados = require('./js/sgadd-niveles.js').mapaDe('LOCAL_MAYORES');
   const tabL = S.jugadoresClave(idxL, 'ATENAS A', 10);
   const f0 = tabL.filas[0];
   const mapaL = JUG.jugadoresUmbrales(idxL);

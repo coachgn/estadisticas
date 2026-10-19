@@ -244,7 +244,9 @@ function jug(nombre, MIN, PLAYS, extra) {
 function indice(jugadores, umbral) {
   const u = umbral || 15;
   return { liga: { jugadores: jugadores, jugadoresCalificados: jugadores.filter(j => j.MIN >= u),
-    minJugador: u, jugadorTipo: null, jugadoresPorEquipo: new Map() }, leerJugador: () => null };
+    minJugador: u, jugadorTipo: null, jugadoresPorEquipo: new Map(),
+    /* vara declarada: la fixture tiene cinco jugadores (ver test-scouting.js) */
+    umbralesDeclarados: require('./js/sgadd-niveles.js').mapaDe('LOCAL_MAYORES') }, leerJugador: () => null };
 }
 /* Cinco de la misma banda y la misma jerarquía. Cuatro tiran de afuera;
    PIVOT tira 9 dobles y ningún triple, así que el motor lo lee interior. */

@@ -72,6 +72,7 @@ const SGADD_FICHA = (function () {
         { id: 'tiro.graficos', label: 'Volumen y acierto por zona · gráficos' },
         { id: 'tiro.mapa', label: 'Mapa de tiro y diagnóstico · play-by-play', pbp: true },
         { id: 'tiro.reloj', label: 'Reloj de posesión · cuándo tira', pbp: true },
+        { id: 'tiro.reloj-tramos', label: 'Perfil táctico por tramo del reloj · 1x1 o 5x5', pbp: true },
         { id: 'tiro.reloj-franjas', label: 'Cuándo y desde dónde tira · por franja', pbp: true },
       ] }),
       sec('evolucion', { pre: true, metricas: true }),
@@ -79,6 +80,14 @@ const SGADD_FICHA = (function () {
          arranca por el perfil, no por la planilla. */
       sec('partidos', { pre: false }),
     ];
+  }
+
+  /** Lo que el Pack PLANTEL suma arriba de las fichas: el TOP 3 del plantel,
+      con una sub-card por dimensión del ranking (sgadd-jugadores.js). */
+  function estructuraPack() {
+    const grupos = typeof JUGADORES_RANKINGS !== 'undefined' ? JUGADORES_RANKINGS : [];
+    return [{ id: 'top3', tab: null, pack: true, pre: true, label: 'TOP 3 del plantel',
+      pregunta: 'Los líderes del equipo en cada dimensión', subs: grupos.map(g => ({ id: 'plantel.top3-' + g.id, label: g.titulo })) }];
   }
 
   /* ---------------------------------------------------------------------
@@ -98,7 +107,7 @@ const SGADD_FICHA = (function () {
     return s;
   }
   function elegidas() {
-    if (!seleccion) seleccion = seleccionPorDefecto();
+    if (!seleccion) seleccion = seleccionPorDefecto(estructuraPack().concat(estructura()));
     return seleccion;
   }
   /* Compatibilidad: quien leía la selección vieja (sección → sí/no). */
@@ -218,18 +227,24 @@ const SGADD_FICHA = (function () {
 
   /** El pack: una ficha por jugador, cada una desde una hoja nueva. */
   function armarPack(idx, jugadores, sel, equipo) {
+    /* El TOP 3 del plantel abre el pack, con las sub-cards que se eligieron. */
+    const ep = estructuraPack();
+    const clave = jugadores.length ? SGADD.claveEquipo(jugadores[0]['EQUIPO']) : null;
+    const top3 = seccionEntra(ep[0], sel) && typeof jugadoresBloqueTop3Plantel === 'function'
+      ? podarHtml(jugadoresBloqueTop3Plantel(idx, clave), activos(sel, ep)) : '';
     const fichas = jugadores.map((j, n) => `<article class="ficha-jugador" data-jugador="${esc(j['NOMBRES'])}">
         ${armarJugador(idx, j, sel, n)}
       </article>`).join('');
     return cabecera('Pack PLANTEL · ' + equipo + ' · ' + jugadores.length + ' jugador' + (jugadores.length === 1 ? '' : 'es'))
+      + (top3 ? `<section class="informe-bloque ficha-top3" data-bloque="top3">${top3}</section>` : '')
       + fichas + `<footer class="informe-pie">${SGADD_UI.pieInforme(SGADD_UI.fechaHoy())}</footer>`;
   }
 
   /* ---------------------------------------------------------------------
      EL ÁRBOL DE CHECKBOXES (lo usan el modal individual y el pack)
      --------------------------------------------------------------------- */
-  function arbolHtml(sel, disponible) {
-    const est = estructura();
+  function arbolHtml(sel, disponible, estArbol) {
+    const est = estArbol || estructura();
     const pbp = pbpActiva();
     return est.map((x) => {
       const hay = disponible ? disponible(x) : true;
@@ -387,7 +402,7 @@ const SGADD_FICHA = (function () {
       ${['1 · Cards', '2 · Jugadores', '3 · Generar'].map((t, i) => `<span class="${pack.paso === i + 1 ? 'text-accent' : ''}">${t}</span>`).join(' → ')}</p>`;
     let cuerpo = '', acciones = boton('Cancelar', 'SGADD_FICHA.cerrar()');
     if (pack.paso === 1) {
-      cuerpo = pasos + arbolHtml(elegidas(), null)
+      cuerpo = pasos + arbolHtml(elegidas(), null, estructuraPack().concat(estructura()))
         + '<p class="text-[11px] text-muted mt-2">A cada jugador le entra lo que tenga datos: una pestaña sin datos suficientes se saltea en su ficha.</p>';
       acciones += boton('Siguiente', 'SGADD_FICHA.pasoPack(2)', true);
     } else if (pack.paso === 2) {
@@ -410,7 +425,7 @@ const SGADD_FICHA = (function () {
       acciones += boton('Atrás', 'SGADD_FICHA.pasoPack(1)') + boton('Siguiente', 'SGADD_FICHA.pasoPack(3)', true);
     } else {
       const n = lista.filter(j => pack.elegidos[jugadoresSlug(j)]).length;
-      const secs = estructura().filter(x => seccionEntra(x, elegidas())).map(x => x.label);
+      const secs = estructuraPack().concat(estructura()).filter(x => seccionEntra(x, elegidas())).map(x => x.label);
       cuerpo = pasos + `<p class="text-sm text-white mb-1" data-pack-resumen="1">${n} jugador${n === 1 ? '' : 'es'} · ${secs.length ? esc(secs.join(', ')) : 'ninguna card'}</p>
         <p class="text-[11px] text-muted">Un solo PDF: cada jugador arranca en una hoja nueva, en orden de minutos. Lo que un jugador no tiene se saltea, sin dejar huecos.</p>
         ${n && secs.length ? '' : '<p class="text-[11px] text-yellow-400 mt-2">Elegí al menos un jugador y una card.</p>'}`;
@@ -490,7 +505,7 @@ const SGADD_FICHA = (function () {
   /* `SECCIONES` queda por compatibilidad: las secciones de la estructura. */
   return {
     get SECCIONES() { return estructura(); },
-    estructura, seleccionPorDefecto, elegidas, metricasElegidas, activos, seccionEntra,
+    estructura, estructuraPack, seleccionPorDefecto, elegidas, metricasElegidas, activos, seccionEntra,
     podarHtml, podarDom, prefijarCanvas, porTitularidad, plantelDe, arbolHtml,
     armar, armarJugador, armarPack,
     abrir, cerrar, generar, tocarSeccion, marcarMetricas,

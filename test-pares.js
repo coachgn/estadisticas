@@ -82,6 +82,8 @@ function indice(jugadores, opciones) {
       minJugador: umbral,
       jugadorTipo: o.tipo || null,
       jugadoresPorEquipo: new Map(),
+      /* vara declarada: un puñado de jugadores no mide un p90 (ver test-scouting.js) */
+      umbralesDeclarados: require('./js/sgadd-niveles.js').mapaDe('LOCAL_MAYORES'),
     },
     leerJugador: () => null,
   };
