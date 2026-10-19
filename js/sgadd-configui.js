@@ -250,6 +250,25 @@ function configZonaAgregar() {
   configPintar();
 }
 
+/* El desempate de la tabla (punto 132). Es del BLOQUE, no del formato:
+   `ordenTabla` vale para todos los formatos del club o de la categoría.
+   Viaja con «Publicar» como el resto del bloque. */
+const CONFIG_DESEMPATES = {
+  pct: { orden: ['PCT', 'DIF', 'PF'], label: 'Porcentaje · PCT › DIF › PF' },
+  fiba: { orden: ['FIBA'], label: 'FIBA · puntos, duelo directo y mini-tabla' },
+};
+function configDesempateActual() {
+  const o = (CONFIGUI.borrador && CONFIGUI.borrador.ordenTabla) || [];
+  return o.some(x => String(x).toUpperCase() === 'FIBA') ? 'fiba' : 'pct';
+}
+function configDesempate(valor) {
+  const d = CONFIG_DESEMPATES[valor];
+  if (!d || !CONFIGUI.borrador) return;
+  CONFIGUI.borrador.ordenTabla = d.orden.slice();
+  configMarcarSucio();
+  configPintar();   // un select: no se está tipeando
+}
+
 function configEquiposEsperados(valor) {
   const f = configFormatoActual();
   if (!f) return;
@@ -1288,6 +1307,16 @@ function buildConfiguracion() {
             <span class="font-mono text-[11px] ${
               !f || f.equiposEsperados === null || f.equiposEsperados === total
                 ? 'text-muted' : 'text-red-400'}">el libro trae ${total}</span>
+          </div>
+
+          <div class="flex items-center gap-3 pb-3 mb-3 border-b border-hairline flex-wrap">
+            <label for="configDesempateSel" class="text-[11px] uppercase tracking-wider text-muted">Desempate</label>
+            <select id="configDesempateSel" onchange="configDesempate(this.value)"
+              class="bg-surface2 border border-hairline rounded px-2 py-1 text-xs text-ink outline-none">
+              ${Object.keys(CONFIG_DESEMPATES).map(k => `<option value="${k}" ${
+                k === configDesempateActual() ? 'selected' : ''}>${SGADD_UI.esc(CONFIG_DESEMPATES[k].label)}</option>`).join('')}
+            </select>
+            <span class="text-[11px] text-muted">Vale para todos los formatos de este bloque.</span>
           </div>
 
           <div class="flex items-baseline justify-between gap-3 mb-1">

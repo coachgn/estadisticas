@@ -22,6 +22,8 @@ node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 318 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
+node test-desempate-fiba.js # 37 tests · el desempate oficial FIBA: duelo directo, mini-tabla,
+                           #             la vuelta a empezar (D.3), cociente y los manuales (punto 132)
 node test-boot.js          # 181 tests · arranque por club, sintaxis de los módulos, carteles de espera
 node test-jugadores.js     # 291 tests · rol, arquetipos, tiro, evolución, local/visitante, rankings
 node test-4factores.js     #  96 tests · regresión, pesos de liga, perfil de equipo, Simulador 360°
@@ -276,7 +278,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=290`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=291`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15105,3 +15107,57 @@ Solo Tiro / Mapa      5      4   la portada ya no queda sola
   entrar.
 - **No medido con la capa `pbp`**: la demo no la tiene. Las marcas se
   verificaron sobre un paquete real de la ingesta (`html` y `mapaCard`).
+
+---
+
+## 132. EL DESEMPATE OFICIAL FIBA EN LA TABLA DE POSICIONES (2026-10-19)
+
+Pedido: aplicar el Apéndice D del reglamento FIBA. `test-desempate-fiba.js`
+fija todo. Assets en `?v=291`.
+
+### La auditoría, antes de escribir
+
+- **El orden vive en UN motor**: `SGADD_CLASIF.ordenar` (cascada de
+  `ordenTabla`, el nombre como último criterio). Lo usan Clasificación, el
+  resumen de Principal, la llave (`sgadd-fases.js`) y el servidor
+  (`server/api/llave.js` por `server/lib/compartido/`), así que el cambio
+  llega a todos solo.
+- **Nadie ordenaba por FIBA.** Todos los clubes declaran `PCT › DIF › PF`
+  explícito (los tres JSON, el respaldo de `SGADD_CONFIG.parsear` y las
+  zonas que arma `server/lib/torneos.js`). Con un empate en PCT decidía la
+  diferencia GENERAL, no el duelo directo.
+- **La ingesta no arma tablas**: copia la del sitio (`parsers/secciones.js`).
+- **La incomparecencia (0 puntos) NO existe en el dato**: `RESULTADO` es
+  GANADO/PERDIDO y la carga manual no tiene campo. No se inventa: un W.O.
+  suma 1 como cualquier derrota hasta que el dato exista.
+
+### El procedimiento · `ordenTabla: ["FIBA"]`
+
+```
+D.1  puntos de tabla (2 ganado · 1 perdido)
+D.2  entre los empatados, mini-tabla con SOLO sus partidos: puntos → diferencia → PF
+D.3  un subgrupo que sigue empatado VUELVE A EMPEZAR con solo sus partidos
+D.4  si la mini-tabla no separa: cociente general PF/PC (PC = 0 → el mejor; 0/0 → 0)
+     empate total: por nombre (FIBA sortea; un sorteo no se reproduce)
+```
+
+- **Los partidos salen del índice emparejando las dos filas por `__id`**
+  (FECHA + PARTIDO, como `rivalDe`), y de los **manuales**: un partido sin
+  estadísticas cuenta en el duelo igual que en la tabla.
+- **Es TERMINAL**: con `FIBA` en la lista, los otros criterios no se usan.
+- Cada fila resuelta lleva `desempate` (qué la decidió): queda para auditar.
+
+### La decisión: opt-in, no default
+
+`ORDEN_POR_DEFECTO` sigue `PCT › DIF › PF`. Ordenar por PUNTOS con PJ
+distintos (partidos postergados) reordena la tabla de todos los clientes y
+mueve los puestos que la llave le manda a las otras zonas (punto 76). Eso
+lo decide el club, no un deploy. Se activa por bloque desde **Configuración
+→ Desempate** («FIBA · puntos, duelo directo y mini-tabla») + Publicar, o
+con `ordenTabla: ["FIBA"]` en `clubes/<club>.json`. Para un torneo, en su
+`competencia.ordenTabla` del catálogo.
+
+Verificado al revés, ocho mutaciones, todas caen: sin FIBA en `ordenar`
+12, mini-tabla vacía 12, sin diferencia 4, sin la vuelta a empezar 3, sin
+manuales 2, y 1 cada una sin cociente, PC = 0 crudo y sin PF.
+

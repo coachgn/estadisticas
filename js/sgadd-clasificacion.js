@@ -40,6 +40,10 @@ const SGADD_CLASIF = (function () {
        default sigue siendo PCT, porque cambiarlo reordenaría la tabla de
        los tres clientes sin que nadie lo pidiera. */
     PTS: { dir: -1, valor: (r) => r.puntos },
+    /* El procedimiento oficial FIBA (punto 132). No es un criterio de
+       cascada: `ordenar` lo resuelve aparte y entero. Está acá para que
+       `ordenTabla: ["FIBA"]` se reconozca como un nombre válido. */
+    FIBA: { dir: -1, valor: (r) => r.puntos, fiba: true },
   };
   const ORDEN_POR_DEFECTO = ['PCT', 'DIF', 'PF'];
 
@@ -287,7 +291,145 @@ const SGADD_CLASIF = (function () {
    * estable y auditable, que es lo que hace falta cuando dos equipos
    * empatan en todo.
    */
-  function ordenar(lista, orden) {
+  /* =====================================================================
+     DESEMPATE FIBA (Reglamento Oficial, Apéndice D) · punto 132
+
+     Se pide declarando `ordenTabla: ["FIBA"]`. Es TERMINAL: si la lista lo
+     nombra, manda entero y los demás criterios de la lista no se usan
+     (mezclar una cascada propia con el procedimiento FIBA daría un orden
+     que ningún reglamento declara).
+
+       D.1  puntos de tabla: 2 por ganado, 1 por perdido. El perdido por
+            incomparecencia (0) NO se aplica: ni el libro ni la carga manual
+            traen ese dato, y no se inventa — un W.O. suma 1 como cualquier
+            derrota hasta que el dato exista.
+       D.2  entre los empatados, una MINI-TABLA con SOLO los partidos entre
+            ellos: puntos → diferencia → puntos a favor. Con dos equipos es
+            el duelo directo.
+       D.3  si un paso separa al grupo en subgrupos, cada subgrupo que siga
+            empatado VUELVE A EMPEZAR desde la mini-tabla, con solo sus
+            partidos entre ellos.
+       D.4  si la mini-tabla no separa a nadie, el cociente GENERAL PF/PC
+            (todos los partidos). Lo que sigue igual va por nombre: FIBA
+            sortea, y un sorteo no se puede reproducir; el nombre sí.
+
+     Los partidos sin estadísticas (punto 44) cuentan para la mini-tabla
+     igual que en la tabla: son resultados.
+     ===================================================================== */
+  const DESEMPATES_FIBA = [
+    { id: 'pts', texto: 'puntos entre los empatados', valor: (m) => m.pts },
+    { id: 'dif', texto: 'diferencia entre los empatados', valor: (m) => m.pf - m.pc },
+    { id: 'pf', texto: 'puntos a favor entre los empatados', valor: (m) => m.pf },
+  ];
+
+  /* El cociente con PC = 0 no es NaN ni un error: sin puntos recibidos el
+     cociente es el mejor posible, salvo que tampoco haya hecho ninguno. */
+  function cociente(f) {
+    const pf = num(f.pf), pc = num(f.pc);
+    if (pc > 0) return pf / pc;
+    return pf > 0 ? Infinity : 0;
+  }
+
+  /**
+   * Los resultados que la tabla cuenta, como pares: del índice (las dos
+   * filas de un mismo partido, emparejadas por `__id` = FECHA + PARTIDO,
+   * como `rivalDe` del núcleo) y de los manuales. Un partido cuyo rival no
+   * está en el libro no se puede leer como duelo y queda afuera.
+   */
+  function partidosDeTabla(idx, manuales) {
+    const out = [];
+    if (idx && typeof idx.lista === 'function') {
+      const porId = new Map();
+      idx.lista().forEach((e) => (e.partidos || []).forEach((p) => {
+        if (!p || !p.__id) return;
+        if (!porId.has(p.__id)) porId.set(p.__id, []);
+        porId.get(p.__id).push({ clave: claveDe(e.clave), pts: p['PTS'] });
+      }));
+      porId.forEach((l) => {
+        if (l.length !== 2 || l[0].clave === l[1].clave) return;
+        const pa = Number(l[0].pts), pb = Number(l[1].pts);
+        if (!isFinite(pa) || !isFinite(pb) || pa === pb) return;
+        out.push({ a: l[0].clave, b: l[1].clave, pa: pa, pb: pb });
+      });
+    }
+    (manuales || []).forEach((p) => {
+      if (!manualValido(p)) return;
+      out.push({ a: claveDe(p.local), b: claveDe(p.visitante),
+        pa: Number(p.puntosLocal), pb: Number(p.puntosVisitante) });
+    });
+    return out;
+  }
+
+  /** La mini-tabla de un grupo: solo los partidos entre sus miembros. */
+  function miniTabla(grupo, partidos) {
+    const m = new Map();
+    grupo.forEach((f) => m.set(claveDe(f.clave), { pts: 0, pf: 0, pc: 0, pj: 0 }));
+    (partidos || []).forEach((p) => {
+      const a = m.get(p.a), b = m.get(p.b);
+      if (!a || !b || p.a === p.b) return;
+      a.pj++; b.pj++;
+      a.pf += p.pa; a.pc += p.pb; b.pf += p.pb; b.pc += p.pa;
+      a.pts += p.pa > p.pb ? PUNTOS_GANADO : PUNTOS_PERDIDO;
+      b.pts += p.pb > p.pa ? PUNTOS_GANADO : PUNTOS_PERDIDO;
+    });
+    return m;
+  }
+
+  /** Parte un grupo por un valor, de mayor a menor. */
+  function partir(grupo, valor) {
+    const porValor = new Map();
+    grupo.forEach((f) => {
+      const v = valor(f);
+      const k = v === Infinity ? 'inf' : String(v);
+      if (!porValor.has(k)) porValor.set(k, { v: v, filas: [] });
+      porValor.get(k).filas.push(f);
+    });
+    return Array.from(porValor.values()).sort((x, y) => (y.v === x.v ? 0 : (y.v > x.v ? 1 : -1)))
+      .map((x) => x.filas);
+  }
+
+  function marcar(subgrupos, texto) {
+    subgrupos.forEach((s) => { if (s.length === 1) s[0].desempate = texto; });
+  }
+
+  /* D.2 a D.4 sobre UN grupo empatado en puntos de tabla. */
+  function desempatarFiba(grupo, partidos) {
+    if (grupo.length <= 1) return grupo;
+    const mini = miniTabla(grupo, partidos);
+    const de = (f) => mini.get(claveDe(f.clave));
+    for (let i = 0; i < DESEMPATES_FIBA.length; i++) {
+      const c = DESEMPATES_FIBA[i];
+      const subs = partir(grupo, (f) => c.valor(de(f)));
+      if (subs.length > 1) {
+        const texto = grupo.length === 2 && c.id === 'pts' ? 'duelo directo' : c.texto;
+        marcar(subs, texto);
+        /* D.3: el subgrupo que sigue empatado vuelve a empezar, solo con
+           sus partidos entre ellos. */
+        return [].concat.apply([], subs.map((s) => desempatarFiba(s, partidos)));
+      }
+    }
+    const porCociente = partir(grupo, cociente);
+    if (porCociente.length > 1) {
+      marcar(porCociente, 'cociente PF/PC general');
+      return [].concat.apply([], porCociente.map((s) => desempatarFiba(s, partidos)));
+    }
+    return grupo.slice().sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)))
+      .map((f) => { f.desempate = 'empate total · orden por nombre'; return f; });
+  }
+
+  /** El orden FIBA completo: D.1 y, dentro de cada empate, D.2-D.4. */
+  function ordenarFiba(lista, partidos) {
+    const copia = lista.slice();
+    copia.forEach((f) => { delete f.desempate; });
+    return [].concat.apply([], partir(copia, (f) => num(f.puntos))
+      .map((g) => desempatarFiba(g, partidos)));
+  }
+
+  const usaFiba = (orden) => Array.isArray(orden)
+    && orden.some((id) => String(id).toUpperCase() === 'FIBA');
+
+  function ordenar(lista, orden, partidos) {
+    if (usaFiba(orden)) return ordenarFiba(lista, partidos || []);
     const crits = (Array.isArray(orden) && orden.length ? orden : ORDEN_POR_DEFECTO)
       .map((id) => CRITERIOS[String(id).toUpperCase()])
       .filter(Boolean);
@@ -318,7 +460,8 @@ const SGADD_CLASIF = (function () {
        así que no pueden mostrar totales distintos. Sin `manuales` la
        fusión igual corre, porque es la que calcula `puntos`. */
     const conManuales = fusionarManuales(filas(idx), o.manuales || []);
-    const filasOrdenadas = ordenar(conManuales, orden);
+    const filasOrdenadas = ordenar(conManuales, orden,
+      usaFiba(orden) ? partidosDeTabla(idx, o.manuales || []) : null);
     const total = filasOrdenadas.length;
     const zonaDe = (typeof SGADD_CONFIG !== 'undefined' && o.formato)
       ? (p) => SGADD_CONFIG.zonaDePuesto(o.formato, p, total)
@@ -464,7 +607,8 @@ const SGADD_CLASIF = (function () {
   return { CRITERIOS, ORDEN_POR_DEFECTO, filas, ordenar, tabla,
            filasPorEquipo, conPjDeTabla, condicionConManuales, rachaConManuales,
            fusionarManuales, manualesDelTramo, puntosDeTabla, esTramoTotal,
-           PUNTOS_GANADO, PUNTOS_PERDIDO };
+           PUNTOS_GANADO, PUNTOS_PERDIDO,
+           partidosDeTabla, miniTabla, ordenarFiba, usaFiba, cociente };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_CLASIF;
