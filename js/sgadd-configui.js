@@ -512,6 +512,14 @@ function configPublicar() {
         if (typeof SGADD_CLIENTES !== 'undefined' && r.clubes) {
           SGADD_CLIENTES.estado.clubes = r.clubes;
         }
+        /* LO PUBLICADO PASA A SER LO VIGENTE, también en ESTE navegador.
+           `vigente()` le da prioridad al borrador «Guardado en este
+           navegador», y publicar no lo tocaba: un guardado viejo (sin el
+           arrastre de la Clausura, medido en Bahía) seguía tapando lo
+           recién publicado y la tabla de quien publicó mostraba los
+           puntos sin arrastre, sin ningún síntoma. */
+        SGADD_CONFIG.borrarOverride(configClubId());
+        CONFIGUI.origen = 'publicado';
         /* Y se repinta lo que depende de las zonas, para que el admin vea
            lo mismo que va a ver el club sin recargar. */
         if (typeof SGADD_APP !== 'undefined') { try { SGADD_APP.reindexar(); } catch (e) {} }
@@ -1359,6 +1367,7 @@ function buildConfiguracion() {
           <h2 class="font-display uppercase tracking-wide text-sm text-ink">Configuración de competencia</h2>
           <span class="font-mono text-[11px] text-muted">${SGADD_UI.esc(nombreClub)} ·
             ${CONFIGUI.origen === 'local' ? 'editada en este navegador'
+              : CONFIGUI.origen === 'publicado' ? 'publicada en el servidor'
               : CONFIGUI.origen === 'json' ? 'desde clubes/' + SGADD_UI.esc(configClubId()) + '.json'
               : 'sin configurar'}</span>
         </div>

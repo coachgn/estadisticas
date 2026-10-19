@@ -500,5 +500,127 @@ seccion('6 bis · la app real con el libro vinculado fusionado');
   SGADD.CATALOGO.planillas = planillasAntes;
 }
 
-console.log('\n' + (mal ? '✗ HAY FALLAS · ' : '✓ TODO OK · ') + ok + ' pasaron, ' + mal + ' fallaron');
-process.exit(mal ? 1 : 0);
+/* =====================================================================
+   7 · LA CLAUSURA CON EL 50 % · 17 + 11 = 19,5, Y EL BORRADOR QUE LO TAPABA
+
+   Reportado en Bahía: ESTUDIANTES hizo 17 Pts en la regular del Apertura
+   (6-5) y lleva 11 en la Clausura (2-7); la tabla de la Clausura tiene que
+   decir 19,5 (11 + 8,5). Medido contra el libro y el catálogo reales, el
+   motor ya lo daba: lo que lo tapaba en el navegador de quien publicó era
+   un borrador «Guardado en este navegador» viejo, que `vigente()` pone
+   por encima de lo publicado y que publicar no borraba.
+   ===================================================================== */
+seccion('7 · la Clausura con el 50 %: 19,5, los playoffs afuera y el borrador local');
+{
+  const ESTU = 'ESTUDIANTES', VMI = 'VILLA MITRE';
+  const filas = [];
+  let dia = 0;
+  const fecha = (mes) => String(dia++ % 28 + 1).padStart(2, '0') + '/' + mes + '/2026';
+  /* Apertura regular: 6 ganados y 5 perdidos → 6×2 + 5×1 = 17. */
+  for (let i = 0; i < 11; i++) filas.push(...partido(fecha('03'), 'APERTURA', 'REGULAR', ESTU, VMI, i < 6 ? 80 : 60, 70));
+  /* Cuartos del Apertura: tres victorias que NO pueden sumar al arrastre. */
+  for (let i = 0; i < 3; i++) filas.push(...partido(fecha('05'), 'APERTURA', 'CUARTOS', ESTU, VMI, 90, 60));
+  /* Clausura regular: 2 ganados y 7 perdidos → 11. */
+  for (let i = 0; i < 9; i++) filas.push(...partido(fecha('08'), 'CLAUSURA', 'REGULAR', ESTU, VMI, i < 2 ? 80 : 60, 70));
+  const hojas = libro(filas);
+
+  const CLUBID = 'bahia-test';
+  const comp = { ordenTabla: ['FIBA'],
+    formatos: { regular: { label: 'Apertura - Regular', zonas: [] },
+      formato2: { label: 'Clausura - Regular', arrastre: { faseOrigen: 'APERTURA|REGULAR', porcentaje: 50 }, zonas: [] } },
+    porTramo: { '*': 'regular', 'CLAUSURA|REGULAR': 'formato2' } };
+  /* El borrador viejo: lo que se guardó en el navegador ANTES de declarar
+     el arrastre (sin `formato2`). */
+  const viejo = { ordenTabla: ['FIBA'], formatos: { regular: { label: 'Apertura - Regular', zonas: [] } },
+    porTramo: { '*': 'regular' } };
+  const almacen = {};
+  const root = { innerHTML: '' };
+  const ctx = {
+    console, Promise, JSON, Math, Date, Map, Set, WeakMap, Array, Object, String, Number, RegExp, Error, Infinity,
+    SGADD: SGADD, SGADD_UI: require('./js/sgadd-ui.js'),
+    CLUB: { cfg: { competencia: comp }, estado: { id: CLUBID } },
+    window: { location: { hash: '#clasificacion' } }, location: { hash: '#clasificacion' },
+    history: { pushState() {}, replaceState() {} }, setTimeout: () => 0, clearTimeout() {},
+    localStorage: { getItem: (k) => (Object.prototype.hasOwnProperty.call(almacen, k) ? almacen[k] : null),
+      setItem: (k, v) => { almacen[k] = String(v); }, removeItem: (k) => { delete almacen[k]; } },
+    document: { getElementById: (id) => (id === 'view-root' ? root : null), querySelector: () => null,
+      querySelectorAll: () => [], getElementsByTagName: () => [] },
+    LOGOS: { getUrl: () => null, iniciales: (n) => String(n).slice(0, 2) },
+    currentSection: 'clasificacion',
+  };
+  ctx.globalThis = ctx;
+  vm.createContext(ctx);
+  ['sgadd-config.js', 'sgadd-app.js', 'sgadd-clasificacion.js', 'sgadd-fixture.js', 'sgadd-fases.js'].forEach((f) => {
+    vm.runInContext(fs.readFileSync('./js/' + f, 'utf8'), ctx, { filename: f });
+  });
+  const planillasAntes = SGADD.CATALOGO.planillas;
+  SGADD.CATALOGO.planillas = [{ id: 'oro', slug: 'oro', label: 'Primera Oro', activo: true }];
+  const APP = vm.runInContext('SGADD_APP', ctx);
+  APP.estado.planillaId = 'oro';
+  APP.estado.hojas = hojas;
+  APP.estado.torneo = 'CLAUSURA';
+  APP.estado.fase = 'REGULAR';
+  APP.reindexar();
+
+  const reglas = vm.runInContext('clasifReglasDeTramo("CLAUSURA", "REGULAR")', ctx);
+  check('CLAUSURA|REGULAR toma el formato con arrastre', !!(reglas.arrastre && reglas.arrastre.porClave),
+    reglas.arrastre);
+  const t = vm.runInContext('clasifTablaDeTramo("CLAUSURA", "REGULAR")', ctx);
+  const e = t.find(r => r.nombre === ESTU);
+  check('el arrastre sale SOLO de la regular del Apertura: 17 Pts (los cuartos no suman)',
+    reglas.arrastre.porClave[SGADD.claveEquipo(ESTU)].base === 17, reglas.arrastre.porClave);
+  check('Clausura: 11 propios + 8,5 arrastrados = 19,5', e.puntosPropios === 11 && e.arrastre === 8.5 && e.puntos === 19.5,
+    { propios: e.puntosPropios, arr: e.arrastre, pts: e.puntos });
+  check('PJ/PG/PP siguen siendo los de la Clausura', e.pj === 9 && e.pg === 2 && e.pp === 7, [e.pj, e.pg, e.pp]);
+  root.innerHTML = vm.runInContext('buildClasificacion()', ctx);
+  check('Clasificación muestra las columnas Pts y Arr.', /data-glosa="Puntos de tabla/.test(root.innerHTML)
+    && />Arr\.</.test(root.innerHTML));
+  check('el total y el arrastre van con el ,5', />19,5</.test(root.innerHTML) && />\+8,5</.test(root.innerHTML));
+  check('y el aviso dice de dónde salen', /50 % de los puntos<\/b> de Apertura - Regular/.test(root.innerHTML));
+  check('sin borrador local, no aparece el aviso del borrador', !/guardados en este navegador/.test(root.innerHTML));
+
+  /* El caso de Bahía: un borrador viejo en este navegador gana sobre lo
+     publicado. Ya no en silencio: la tabla lo dice. */
+  almacen[vm.runInContext('SGADD_CONFIG.claveAlmacen("' + CLUBID + '")', ctx)] = JSON.stringify(viejo);
+  const rViejo = vm.runInContext('clasifReglasDeTramo("CLAUSURA", "REGULAR")', ctx);
+  check('con un borrador local viejo, las reglas salen de ahí (origen local, sin arrastre)',
+    rViejo.origen === 'local' && !rViejo.arrastre, { origen: rViejo.origen, arr: rViejo.arrastre });
+  root.innerHTML = vm.runInContext('buildClasificacion()', ctx);
+  check('y la tabla AVISA que usa lo guardado en este navegador, no lo publicado',
+    /guardados en este navegador/.test(root.innerHTML) && !/>Arr\.</.test(root.innerHTML));
+  SGADD.CATALOGO.planillas = planillasAntes;
+
+  /* PUBLICAR DESCARTA EL BORRADOR LOCAL: lo publicado pasa a ser lo vigente
+     también en el navegador de quien publicó. Se ejerce `configPublicar`. */
+  const almacen2 = {};
+  const pub = {
+    console, JSON, Object, Array, Promise,
+    document: { getElementById: () => null },
+    localStorage: { getItem: (k) => (Object.prototype.hasOwnProperty.call(almacen2, k) ? almacen2[k] : null),
+      setItem: (k, v) => { almacen2[k] = String(v); }, removeItem: (k) => { delete almacen2[k]; } },
+    navigator: {},
+    SGADD_UI: { esc: (x) => String(x) },
+    SGADD: { CATALOGO: { planillas: [{ id: 'oro', label: 'Primera Oro' }] } },
+    SGADD_APP: { estado: { planillaId: 'oro' }, reindexar() {} },
+    CLUB: { cfg: { id: CLUBID, competencia: comp }, estado: { id: CLUBID } },
+    SGADD_DATA: { apiConfigurada: () => true, guardarCatalogo: () => Promise.resolve({ clubes: [] }) },
+    SGADD_AUTH: { rol: () => 'ADMIN' },
+  };
+  pub.window = pub;
+  vm.createContext(pub);
+  vm.runInContext(fs.readFileSync('./js/sgadd-config.js', 'utf8'), pub);
+  vm.runInContext(fs.readFileSync('./js/sgadd-configui.js', 'utf8'), pub);
+  pub.configPintar = () => {}; pub.configPintarPreview = () => {}; pub.configAvisar = () => {}; pub.configToast = () => {};
+  const claveP = vm.runInContext('SGADD_CONFIG.claveAlmacen("' + CLUBID + '")', pub);
+  almacen2[claveP] = JSON.stringify(viejo);
+  pub.configCargarBorrador(true);
+  pub.configPublicar();
+  setImmediate(() => {
+    check('publicar BORRA el borrador local (si no, sigue tapando lo publicado)', !(claveP in almacen2),
+      Object.keys(almacen2));
+    check('y la pantalla dice que la config es la publicada',
+      vm.runInContext('CONFIGUI.origen', pub) === 'publicado', vm.runInContext('CONFIGUI.origen', pub));
+    console.log('\n' + (mal ? '✗ HAY FALLAS · ' : '✓ TODO OK · ') + ok + ' pasaron, ' + mal + ' fallaron');
+    process.exit(mal ? 1 : 0);
+  });
+}

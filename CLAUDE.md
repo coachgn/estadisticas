@@ -24,7 +24,7 @@ node test-config.js        # 318 tests · zonas de tabla, tramos, tonos AA, pest
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
 node test-desempate-fiba.js # 37 tests · el desempate oficial FIBA: duelo directo, mini-tabla,
                            #             la vuelta a empezar (D.3), cociente y los manuales (punto 132)
-node test-arrastre-fases.js # 91 tests · el arrastre de puntos, los playoffs que no tocan la regular,
+node test-arrastre-fases.js # 103 tests · el arrastre de puntos, los playoffs que no tocan la regular,
                            #             el acumulado, las fases por torneo/tabla, la final extra y
                            #             el desempate de la CATEGORÍA (Olimpo / Alem) en la app real (punto 133)
 node test-boot.js          # 184 tests · arranque por club, sintaxis de los módulos, carteles de espera
@@ -281,7 +281,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=293`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=294`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15310,3 +15310,48 @@ el filtro viejo de `mezclarLlave`, 1.
 
 **Lo prolijo sigue siendo nombrar la carpeta «APERTURA - OCTAVOS»** (o
 declarar la fase con FASE = OCTAVOS): el panel ya no depende de eso.
+
+---
+
+## 135. EL ARRASTRE QUE NO SE VEÍA · un borrador local tapaba lo publicado (2026-10-19)
+
+Reportado en Bahía Blanca · Primera Oro: con `CLAUSURA|REGULAR → formato2`
+(arrastre del 50 % de `APERTURA|REGULAR`) publicado, la tabla de la
+Clausura mostraba solo los puntos del tramo, sin la columna Arr. Assets en
+`?v=294`; `test-arrastre-fases.js` (sección 7) lo fija.
+
+### Lo medido (solo lectura de KV y del libro)
+
+- **Lo publicado está bien**: el bloque de `leandro-n-alem` y el
+  `porCategoria.bahia-blanca-2026-oro` del torneo declaran `formato2` con el
+  arrastre y `CLAUSURA|REGULAR → formato2`.
+- **El libro está bien**: `APERTURA|REGULAR` (132 filas) y
+  `CLAUSURA|REGULAR` (108), con TORNEO y FASE bien escritos.
+- **El motor ya lo calculaba**: con ese libro y esa config, en un `vm` con
+  la app real, ESTUDIANTES da 11 + 8,5 = **19,5**, con las columnas Pts y
+  Arr. Lo mismo desde el cliente (Alem) y desde el torneo. Producción ya
+  servía ese código (`v293`).
+
+### La causa · `vigente()` y «Guardar en este navegador»
+
+`SGADD_CONFIG.vigente()` resuelve **borrador local → publicado → JSON**, y
+publicar no borraba el borrador. Un «Guardado en este navegador» de antes
+de declarar el arrastre seguía ganándole a lo publicado en el navegador de
+quien publicó: la tabla salía con FIBA (de ese borrador) y sin arrastre, sin
+ningún síntoma. Un cliente no tiene borrador y ve lo publicado.
+
+### El arreglo
+
+- **Publicar descarta el borrador local** (`configPublicar` →
+  `borrarOverride`) y la pantalla dice «publicada en el servidor».
+- **La tabla AVISA cuando usa un borrador local** (`clasifAvisoBorrador`,
+  con el `origen` que ahora devuelve `clasifReglasDeTramo`), con la salida:
+  «Volver al JSON del club» o publicar de nuevo.
+- El arrastre sigue saliendo solo de la regular del origen (los cuartos del
+  Apertura no suman) y los totales llevan el ,5 (`19,5`, `+8,5`).
+
+Verificado al revés: sin el `borrarOverride` cae 1; sin el aviso, 1.
+
+**En el navegador donde se publicó antes de este arreglo, el borrador viejo
+sigue ahí**: hay que tocar «Volver al JSON del club» en Configuración (o
+publicar de nuevo) una vez.

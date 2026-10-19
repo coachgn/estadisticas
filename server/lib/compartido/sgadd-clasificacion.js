@@ -865,6 +865,9 @@ function clasifReglasDeTramo(torneo, fase) {
     arrastre: arrastre,
     orden: SGADD_CLASIF.ordenConArrastre(base, arrastre && arrastre.porClave ? arrastre : null),
     ordenDeclarado: base,
+    /* De dónde salieron las reglas: 'local' es un borrador guardado en
+       ESTE navegador, que le gana a lo publicado (ver `clasifAvisoBorrador`). */
+    origen: (r && r.origen) || 'ninguno',
   };
 }
 
@@ -1105,6 +1108,21 @@ function clasifLeyendaHTML(formato, total) {
   </div>`;
 }
 
+/** LAS REGLAS DE UN BORRADOR LOCAL SE DICEN.
+
+    `vigente()` le da prioridad a lo «Guardado en este navegador» sobre lo
+    publicado, y es lo correcto mientras el admin prueba un corte. Pero un
+    borrador viejo tapa lo que se publicó después —medido en Bahía: la
+    Clausura sin el arrastre del 50 %— y la tabla no daba ningún indicio.
+    Ahora lo dice, con la salida: publicar (que lo descarta) o volver a lo
+    publicado desde Configuración. */
+function clasifAvisoBorrador(reglas) {
+  if (!reglas || reglas.origen !== 'local') return '';
+  return '<p class="text-[11px] text-amber-400 mb-2" role="note">⚠ Esta tabla usa las zonas y el desempate '
+    + '<b>guardados en este navegador</b>, no los publicados para el cliente. Si ya publicaste, entrá a '
+    + 'Configuración y tocá «Volver al JSON del club» (o publicá de nuevo) para ver lo que ve el cliente.</p>';
+}
+
 /** Qué dice el arrastre, arriba de la tabla: de dónde, cuánto y que la
     tabla pasó a ordenarse por puntos. Nada en silencio. */
 function clasifAvisoArrastre(arr, reglas) {
@@ -1154,6 +1172,7 @@ function buildClasificacion() {
     '"competencia") y el Diagnóstico lo audita.');
 
   const cuerpoTabla = `
+        ${clasifAvisoBorrador(reglas)}
         ${clasifLeyendaHTML(formato, total)}
         ${clasifAvisoArrastre(arr, reglas)}
         <div class="mt-4">${clasifTablaHTML(st.idx, { columnas: 'completa', formato: formato, orden: orden,
