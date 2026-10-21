@@ -491,6 +491,14 @@ function alta(cat, d) {
     nuevo[v.club].categorias[v.categoria].torneo = v.torneo;
     nuevo[v.club].categorias[v.categoria].zona = v.zona;
   }
+  /* LA LIGA DE UN CLUB NUEVO ES LA DE SU TORNEO (punto 137): es la
+     carpeta de escudos de los equipos que juega. Lanús se dio de alta con
+     `liga-argentina` jugando la LNB y su panel salió sin un solo escudo
+     ni color. Un club que ya existía conserva la suya, salvo vacía. */
+  const tz = nuevo[nuevo[v.club].categorias[v.categoria].torneo || ''];
+  if (TORNEOS.esTorneo(tz) && tz.liga && (!existia || !nuevo[v.club].liga)) {
+    nuevo[v.club].liga = tz.liga;
+  }
   /* Sin el campo en el pedido NO se toca: editar la etiqueta desde una
      pantalla vieja no puede borrarle el plan a la categoría. */
   const kNueva = nuevo[v.club].categorias[v.categoria];

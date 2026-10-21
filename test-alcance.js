@@ -571,6 +571,16 @@ function crearClub() {
   const soloJson = CLUB.reconciliarConfig({ nombre: 'U', acento: '#0d5e27', acentoOscuro: '#083e1a', planillas: [] },
     Object.assign({}, SRV, { acento: null }));
   check('sin color publicado queda el del JSON, con su oscuro', soloJson.acento === '#0d5e27' && soloJson.acentoOscuro === '#083e1a');
+
+  /* PUNTO 137 · Lanús: alta con `liga-argentina` jugando la LNB. */
+  const LANUS = { id: 'lanus', nombre: 'Lanus', liga: 'liga-argentina',
+    categorias: [{ slug: 'lanus-lnb-27', label: 'LNB', activo: true, torneo: 'liga-nacional-2026-27', ligaTorneo: 'liga-nacional' }] };
+  check('sin JSON, la carpeta de escudos es la del torneo de sus categorías',
+    CLUB.reconciliarConfig(null, LANUS, { equipoPropio: 'LANUS' }).liga === 'liga-nacional');
+  check('con JSON, la liga del JSON manda',
+    CLUB.reconciliarConfig({ nombre: 'L', liga: 'liga-argentina', planillas: [] }, LANUS).liga === 'liga-argentina');
+  const dos = Object.assign({}, LANUS, { categorias: LANUS.categorias.concat([{ slug: 'x', label: 'X', ligaTorneo: 'la-plata' }]) });
+  check('con dos ligas de torneo distintas no se elige', CLUB.reconciliarConfig(null, dos).liga === 'liga-argentina');
 }
 
 console.log(NL + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');

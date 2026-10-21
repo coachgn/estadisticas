@@ -281,7 +281,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=295`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=296`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15402,3 +15402,35 @@ segundo pase, 2.
 **El servidor (`llave.js`) no cambió**: arma las tablas de las OTRAS zonas
 para la llave entre zonas. Bahía tiene una sola zona; un torneo multizona
 con fases por torneo tendría que hacer lo mismo allá.
+
+## 137. LA CARPETA DE ESCUDOS DE UN CLIENTE ES LA DE SU TORNEO (2026-10-21)
+
+Reportado: Lanús, dado de alta desde el Panel Master en la LNB, salía sin
+escudos ni color en su sesión; la vista del torneo los tenía. Assets en
+`?v=296`.
+
+**Medido en KV (solo lectura):** `lanus.liga = liga-argentina` (Boca y el
+torneo dicen `liga-nacional`) y sin `acento`. `aplicarDatos` arma
+`LOGOS.CFG.basePaths` con la liga del CLUB, y los escudos de la LNB viven en
+`logos/liga-nacional/`: ni el suyo ni el de los rivales. El color «Del
+escudo» del alta tampoco pudo proponer nada, porque el hub buscó el escudo
+en esa misma carpeta. La causa en la pantalla: `elegirTorneoZona` solo
+completaba la liga si el campo estaba vacío.
+
+- **Servidor (`alta`)**: un club NUEVO enganchado a un torneo toma la liga
+  del torneo, aunque el pedido traiga otra. Uno que ya existía conserva la
+  suya, salvo vacía.
+- **Hub**: al crear, elegir torneo y zona escribe la liga del torneo.
+- **Catálogo**: cada categoría enganchada del cliente (y del admin) suma
+  `ligaTorneo`. `CLUB.reconciliarConfig`, para un club **sin JSON**, usa esa
+  liga si todas sus categorías dicen la misma (con dos, no elige). Así Lanús
+  se arregla sin escribir en KV.
+- **Color**: un club sin JSON y sin `acento` lo deriva del escudo del header
+  una vez (`acentoDelEscudo`, el mismo `colorDeImagen` del alta). Un escudo
+  blanco y negro deja el tema por defecto.
+
+Tests: `test-torneos.js` (3) y `test-alcance.js` (3). **No verificado en el
+navegador con la sesión de Lanús.** Para que llegue: deploy del backend
+(`ligaTorneo`) y push del front. Opcional, para dejar el dato prolijo en KV:
+corregir la liga de Lanús a `liga-nacional` y publicar su color desde el
+Panel Master.

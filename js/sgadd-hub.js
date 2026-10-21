@@ -1390,7 +1390,9 @@ const SGADD_HUB = (function () {
     const k = t ? (t.categorias || []).find(x => x.slug === p[1]) : null;
     if (k && k.activo) { alta.fuente = 'existente'; alta.libroDe = v; }
     else if (k) { alta.fuente = 'nuevo'; alta.libroDe = ''; }
-    if (t && t.liga && !alta.liga) alta.liga = t.liga;
+    /* Al CREAR, la liga es la del torneo aunque ya hubiera otra escrita
+       (punto 137): es la carpeta de escudos de su zona. */
+    if (t && t.liga && (alta.modo === 'nuevo' || !alta.liga)) alta.liga = t.liga;
     refrescarAlta('alta-torneozona');
   }
 

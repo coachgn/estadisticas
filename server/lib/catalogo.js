@@ -484,6 +484,11 @@ function publico(cat, opciones) {
          todas: su Panel Master las edita. */
       torneoDecl: declaracionDeTorneo(c, c[id].categorias[s].torneo || id,
         admin ? null : (c[id].categorias[s].zona || null)),
+      /* LA LIGA DEL TORNEO (punto 137): la carpeta de escudos de los
+         equipos que juegan esa categoría. Un cliente dado de alta con otra
+         liga (Lanús, `liga-argentina`, jugando la LNB) se quedaba sin un
+         solo escudo y sin el color «del escudo». */
+      ligaTorneo: (c[c[id].categorias[s].torneo || id] || {}).liga || null,
     } : {},
     (!admin && propio === id) ? Object.assign(suscripcionPublica(c[id], s, origen, c), {
       /* El cliente no puede abrir una categoría pausada: el servidor le

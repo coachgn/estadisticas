@@ -528,10 +528,25 @@ const CLUB = (function () {
 
     (function probar(i) {
       if (i >= candidatos.length) { mostrar(false); return; }
-      img.onload = () => mostrar(true);
+      img.onload = () => { mostrar(true); acentoDelEscudo(c, img); };
       img.onerror = () => probar(i + 1);
       img.src = candidatos[i];
     })(0);
+  }
+
+  /* EL COLOR DE MARCA DEL ESCUDO, cuando nadie lo publicó (punto 137).
+     Solo para un club SIN JSON (`origen: 'catalogo'`) y sin `acento`: sin
+     esto quedaba con el naranja de Reconquista. Se deriva UNA vez, con el
+     mismo `colorDeImagen` que usa el botón «Del escudo» del alta. Un
+     escudo blanco y negro no propone color: queda el tema por defecto. */
+  function acentoDelEscudo(c, img) {
+    if (!c || c.origen !== 'catalogo' || c.acento || c.acentoDerivado) return;
+    c.acentoDerivado = true;
+    const color = colorDeImagen(img);
+    if (!color) return;
+    c.acento = color;
+    c.acentoOscuro = mezclarHex(color, '#000000', 0.3);
+    aplicarUI(c);
   }
 
   /* LOGOS resuelve los escudos después de que carga la config, así que
@@ -815,6 +830,16 @@ const CLUB = (function () {
        («Sud América La Plata») no es la clave del manifiesto de escudos
        («SUD AMERICA LP»). */
     if (equipo && !base.equipoEscudo) base.equipoEscudo = equipo;
+    /* LA CARPETA DE ESCUDOS ES LA DEL TORNEO (punto 137). Un club sin JSON
+       enganchado a un torneo de otra liga —Lanús, dado de alta con
+       `liga-argentina` jugando la LNB— leía `logos/liga-argentina/` y no
+       encontraba un solo escudo, ni el suyo. Solo sin JSON (el del JSON se
+       escribió a mano) y solo si todas sus categorías dicen la MISMA liga:
+       con dos, no se elige. */
+    if (!cfg && s.tipo !== 'torneo') {
+      const ligas = Array.from(new Set(s.categorias.map(k => k && k.ligaTorneo).filter(Boolean)));
+      if (ligas.length === 1 && ligas[0] !== base.liga) base.liga = ligas[0];
+    }
     const delJson = (cfg && Array.isArray(cfg.planillas)) ? cfg.planillas : [];
     base.planillas = s.categorias.map((k) => {
       const j = delJson.find(p => p && p.slug === k.slug) || null;

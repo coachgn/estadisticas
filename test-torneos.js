@@ -587,5 +587,22 @@ seccion('9 · el marcador de los plegables (punto 74)');
     /prefers-reduced-motion[\s\S]{0,200}?\.hub-plegable\s*>\s*summary::before\s*\{[^}]*transition:\s*none/.test(idx));
 }
 
+seccion('Punto 137 · la liga de un club nuevo es la de su torneo');
+{
+  const cat = base();
+  cat['liga-nacional-2026-27'] = { tipo: 'torneo', nombre: 'LNB', liga: 'liga-nacional',
+    categorias: { 'lnb-2026-27': { label: 'LNB', zona: 'unica', sheetId: 'L'.repeat(40) } } };
+  const r = mutar.aplicar(cat, 'alta', { club: 'lanus', nombre: 'Lanus', liga: 'liga-argentina', equipoPropio: 'LANUS',
+    categoria: 'lanus-lnb-27', label: 'LNB', libroDe: 'liga-nacional-2026-27/lnb-2026-27' });
+  check('alta con el libro de la zona: la liga es la del torneo aunque viniera otra',
+    r.ok && r.catalogo.lanus.liga === 'liga-nacional', r.mensaje || r.motivo);
+  const r2 = mutar.aplicar(cat, 'alta', { club: 'jujuy', categoria: 'jujuy-lnb', label: 'LNB',
+    libroDe: 'liga-nacional-2026-27/lnb-2026-27' });
+  check('un club que ya existía conserva su liga', r2.ok && r2.catalogo.jujuy.liga === 'liga-argentina', r2.mensaje || r2.motivo);
+  const pub = r.ok && catalogo.publico(r.catalogo, { club: 'lanus' }).find(c => c.id === 'lanus');
+  check('el catálogo del cliente manda la liga del torneo de cada categoría',
+    !!pub && pub.categorias[0].ligaTorneo === 'liga-nacional', pub && pub.categorias);
+}
+
 console.log('\n' + (mal ? '✗ HAY FALLAS · ' : '✓ TODO OK · ') + ok + ' pasaron, ' + mal + ' fallaron');
 process.exit(mal ? 1 : 0);
