@@ -29,6 +29,7 @@ const ARCHIVOS = new Set([
   'logos/la-plata/reconquista-a.png',
   'logos/la-plata/astillero.webp',
   'logos/liga-argentina/hindu-c.jfif',
+  'logos/liga-argentina/gonnet.jfif',
 ]);
 let peticiones = [];
 let manifiestoMock = null;   // { ok, json } por prueba
@@ -110,6 +111,21 @@ fs.unlinkSync(EXTRAIDO);
   manifiestoMock = null;
   check('el manifiesto resuelve directo sin sondear extensiones',
     L.getUrl('HINDU (C)') === 'logos/liga-argentina/hindu-c.jfif', L.getUrl('HINDU (C)'));
+
+  /* Punto 138: con manifiesto, un equipo que no figura NO se sondea a
+     ciegas (eran ~200 404 por carga y el rate limit de GitHub Pages). Sus
+     variantes de nombre se buscan contra los archivos del manifiesto. */
+  L.reset();
+  L.CFG.basePaths = ['logos/liga-argentina/', 'logos/'];
+  manifiestoMock = { ok: true, json: async () => ({ 'gonnet': 'gonnet.jfif' }) };
+  peticiones = [];
+  console.log = () => {}; await L.resolver(['EQUIPO INEXISTENTE', 'C F GONNET']); console.log = realLog;
+  manifiestoMock = null;
+  const sondeos = peticiones.filter(p => p.indexOf('index.json') === -1);
+  check('con manifiesto, un equipo ausente no dispara una sola petición de imagen',
+    !sondeos.some(p => /inexistente/i.test(p)), sondeos);
+  check('y una variante del nombre se resuelve contra los archivos del manifiesto',
+    L.getUrl('C F GONNET') === 'logos/liga-argentina/gonnet.jfif' && sondeos.length === 1, sondeos);
 
   console.log('\n5. AISLAMIENTO ENTRE CLUBES (reset)');
   console.log('─'.repeat(70));

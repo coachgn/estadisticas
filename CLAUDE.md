@@ -281,7 +281,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=296`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=297`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15434,3 +15434,35 @@ navegador con la sesión de Lanús.** Para que llegue: deploy del backend
 (`ligaTorneo`) y push del front. Opcional, para dejar el dato prolijo en KV:
 corregir la liga de Lanús a `liga-nacional` y publicar su color desde el
 Panel Master.
+
+## 138. EL «RATE LIMIT EXCEEDED» DE PAGES · 200 SONDEOS DE ESCUDOS POR CARGA (2026-10-21)
+
+Reportado tras el punto 137: GitHub Pages contestó «Rate limit exceeded».
+**No era un bucle**: medido con la sesión de Lanús (front y API locales,
+KV real), 250 peticiones en el arranque, ninguna repetida y cero nuevas en
+15 s. **199 eran 404 de escudos**: con el manifiesto de la liga ya
+cargado, a cada equipo que no figuraba se lo sondeaba a ciegas (8
+extensiones × 2 carpetas × variantes del nombre). Unos pocos F5 llegan al
+límite. Assets en `?v=297`.
+
+- **`resolverUno` (LOGOS, `index.html`)**: con un manifiesto no vacío, un
+  equipo ausente no va a la red a ciegas. Se prueban el alias del JSON
+  (`aliasLogos`) y las variantes del nombre (`nombresArchivo`) que
+  coinciden con un ARCHIVO del manifiesto. Sin manifiesto, el sondeo de
+  siempre. Las cuatro carpetas tienen manifiesto completo.
+- Medido con los nombres de equipo de los `torneos/*.json`, viejo contra
+  nuevo: **los mismos escudos en las cuatro ligas (cero diferencias)**;
+  peticiones la-plata 191 → 29, liga-argentina 191 → 36, bahía 29 → 13.
+  Arranque de Lanús: 250 → 60, cero 404.
+
+**El dato de Lanús**: `lanus-lnb-27` lee el libro de la LNB pero quedó
+enganchada a `liga-argentina-2026-27 / sur`. Por eso el punto 137 le manda
+`ligaTorneo: liga-argentina` y sigue sin escudos. El hub manda el enganche
+explícito cuando «Torneo y zona» difiere del libro elegido, y el explícito
+pisaba al del libro. **`alta` ahora rechaza (`ZONA`) un `libroDe` de una
+zona con un enganche a otra.** Corregir Lanús es una escritura de KV:
+
+    node server/bin/catalogo.js vincular --club lanus --categoria lanus-lnb-27 --torneo liga-nacional-2026-27 --zona unica
+
+(y su `liga` a `liga-nacional`). Tests: `test-logos.js` (2) y
+`test-torneos.js` (2).

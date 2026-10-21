@@ -484,6 +484,15 @@ function alta(cat, d) {
      Se verifica que el torneo y la zona EXISTAN: un enganche a algo que
      no está es peor que ninguno, porque se ve igual de enganchado. */
   if (v.torneo && v.zona) {
+    /* EL LIBRO DE UNA ZONA Y UN ENGANCHE A OTRA SE CONTRADICEN (punto
+       138). Lanús quedó leyendo el libro de la LNB enganchado a LAB Sur:
+       la carpeta de escudos, el fixture y la llave salían del torneo
+       equivocado. Con los dos en el pedido no se elige: se rechaza. */
+    const kl = nuevo[v.club].categorias[v.categoria];
+    if (v.libroDe && kl.torneo && (kl.torneo !== v.torneo || kl.zona !== v.zona)) {
+      return { ok: false, codigo: 'ZONA', mensaje: 'El libro elegido es de ' + kl.torneo + ' / ' + kl.zona
+        + ' y el torneo elegido es ' + v.torneo + ' / ' + v.zona + '. Elegí el libro de esa zona o esa zona.' };
+    }
     const ot = nuevo[v.torneo];
     const hay = TORNEOS.esTorneo(ot)
       && Object.keys(ot.categorias || {}).some(s => ot.categorias[s] && ot.categorias[s].zona === v.zona);

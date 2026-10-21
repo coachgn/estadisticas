@@ -604,5 +604,23 @@ seccion('Punto 137 · la liga de un club nuevo es la de su torneo');
     !!pub && pub.categorias[0].ligaTorneo === 'liga-nacional', pub && pub.categorias);
 }
 
+seccion('Punto 138 · el libro de una zona y el enganche a otra se rechazan');
+{
+  const cat = base();
+  cat['liga-nacional-2026-27'] = { tipo: 'torneo', nombre: 'LNB', liga: 'liga-nacional',
+    categorias: { 'lnb-2026-27': { label: 'LNB', zona: 'unica', sheetId: 'L'.repeat(40) } } };
+  cat['liga-argentina-2026-27'] = { tipo: 'torneo', nombre: 'LAB', liga: 'liga-argentina',
+    categorias: { 'lab-sur': { label: 'Sur', zona: 'sur', sheetId: 'S'.repeat(40) } } };
+  const r = mutar.aplicar(cat, 'alta', { club: 'lanus', nombre: 'Lanus', equipoPropio: 'LANUS',
+    categoria: 'lanus-lnb-27', label: 'LNB', libroDe: 'liga-nacional-2026-27/lnb-2026-27',
+    torneo: 'liga-argentina-2026-27', zona: 'sur' });
+  check('libro de la LNB con enganche a LAB Sur: rechazado', !r.ok && r.codigo === 'ZONA', r.mensaje || r.motivo);
+  const r2 = mutar.aplicar(cat, 'alta', { club: 'lanus', nombre: 'Lanus', equipoPropio: 'LANUS',
+    categoria: 'lanus-lnb-27', label: 'LNB', libroDe: 'liga-nacional-2026-27/lnb-2026-27',
+    torneo: 'liga-nacional-2026-27', zona: 'unica' });
+  check('el mismo enganche que declara el libro pasa', r2.ok && r2.catalogo.lanus.categorias['lanus-lnb-27'].zona === 'unica',
+    r2.mensaje || r2.motivo);
+}
+
 console.log('\n' + (mal ? '✗ HAY FALLAS · ' : '✓ TODO OK · ') + ok + ' pasaron, ' + mal + ' fallaron');
 process.exit(mal ? 1 : 0);
