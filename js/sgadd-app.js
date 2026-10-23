@@ -480,16 +480,25 @@ const SGADD_APP = (function () {
     const k = (t.torneo || '') + '|' + (t.fase || '') + '|' + SGADD_MUESTRA.clave(estado.muestra);
     if (!_vista || _vista.base !== base || _vista.clave !== k) {
       const dias = SGADD_MUESTRA.diasDelTramo(estado.hojas, t);
-      const vent = SGADD_MUESTRA.ventana(estado.muestra, dias);
-      const rec = SGADD_MUESTRA.recortar(estado.hojas, t, vent);
+      const fam = SGADD_MUESTRA.familia(estado.muestra);
+      /* FAMILIA 2: cada equipo en SU condición, y el otro lado de cada
+         partido como contexto que el núcleo descarta antes de la vara. */
+      const vent = fam === 'equipo' ? null : SGADD_MUESTRA.ventana(estado.muestra, dias);
+      const rec = fam === 'equipo'
+        ? SGADD_MUESTRA.recortarPorCondicion(estado.hojas, t, estado.muestra)
+        : SGADD_MUESTRA.recortar(estado.hojas, t, vent);
+      const rival = estado.muestra.tipo === 'rival' ? base.get(estado.muestra.rival) : null;
       const info = {
-        etiqueta: SGADD_MUESTRA.etiqueta(estado.muestra), ventana: vent,
-        partidos: rec.partidos, total: rec.total, sinFecha: rec.sinFecha,
+        etiqueta: SGADD_MUESTRA.etiqueta(estado.muestra, rival ? SGADD.limpiarNombre(rival.nombre) : null),
+        familia: fam, ventana: vent,
+        partidos: rec.partidos, total: rec.total, sinFecha: rec.sinFecha, porEquipo: rec.porEquipo || null,
         dias: dias, vacia: !rec.partidos, jugadoresRecortados: jugadoresRecortados(),
       };
       let v = null;
       if (rec.partidos) {
-        v = SGADD.construirIndice(rec.hojas, { fase: t.fase, torneo: SGADD.TORNEO_TOTAL });
+        const opc = { fase: t.fase, torneo: SGADD.TORNEO_TOTAL };
+        if (rec.conservar) opc.conservar = rec.conservar;
+        v = SGADD.construirIndice(rec.hojas, opc);
         /* El nivel de la competencia es el del libro, no el de un recorte:
            sin esto la vara de las etiquetas podría resolverse con otro. */
         if (base.liga && base.liga.nivel && v.liga && !v.liga.nivel) v.liga.nivel = base.liga.nivel;
@@ -784,7 +793,8 @@ const SGADD_APP = (function () {
     const t = tramoDeIndice();
     const dias = SGADD_MUESTRA.diasDelTramo(estado.hojas, t);
     if (!dias.length) return '';
-    const valor = m.tipo === 'semanas' ? 'semanas:' + m.n : m.tipo;
+    const valor = (m.tipo === 'semanas' || m.tipo === 'ultimos') ? m.tipo + ':' + m.n
+      : (m.tipo === 'condicion' || m.tipo === 'resultado') ? m.tipo + ':' + m.valor : m.tipo;
     const opcion = (v, txt) => `<option value="${v}" ${v === valor ? 'selected' : ''}>${esc(txt)}</option>`;
     const sel = `
           <div class="sm:w-56">
@@ -792,8 +802,25 @@ const SGADD_APP = (function () {
             <select id="selMuestra" onchange="SGADD_APP.elegirMuestra(this.value)"
               class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm focus:border-accent outline-none">
               ${opcion('todo', 'Todo el tramo')}
+              <optgroup label="Calendario · igual para toda la liga">
               ${[1, 2, 3, 4].map(n => opcion('semanas:' + n, n === 1 ? 'Última semana' : 'Últimas ' + n + ' semanas')).join('')}
               ${opcion('rango', 'Rango de fechas…')}
+              </optgroup>
+              <optgroup label="Del equipo · cada uno en su condición">
+              ${[3, 5, 10].map(n => opcion('ultimos:' + n, 'Sus últimos ' + n + ' partidos')).join('')}
+              ${opcion('condicion:LOCAL', 'Solo de local')}${opcion('condicion:VISITANTE', 'Solo de visitante')}
+              ${opcion('resultado:GANADO', 'Solo ganados')}${opcion('resultado:PERDIDO', 'Solo perdidos')}
+              ${opcion('rival', 'Contra un rival…')}
+              </optgroup>
+            </select>
+          </div>`;
+    const rivales = m.tipo === 'rival' ? rivalesParaMuestra(estado.idx, seccion) : [];
+    const selRival = m.tipo !== 'rival' ? '' : `
+          <div class="sm:w-56">
+            <label for="selRival" class="block text-[11px] uppercase tracking-wider text-muted font-display mb-1">Rival</label>
+            <select id="selRival" onchange="SGADD_APP.elegirMuestra('rival:' + this.value)"
+              class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm focus:border-accent outline-none">
+              ${rivales.map(r => `<option value="${esc(r.clave)}" ${r.clave === m.rival ? 'selected' : ''}>${esc(r.nombre)}</option>`).join('')}
             </select>
           </div>`;
     const v = SGADD_MUESTRA.ventana(m, dias) || {};
@@ -804,7 +831,7 @@ const SGADD_APP = (function () {
               onchange="SGADD_APP.cambiarMuestra({ tipo: 'rango', desde: document.getElementById('muestraDesde').value, hasta: document.getElementById('muestraHasta').value })"
               class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm focus:border-accent outline-none">
           </div>`;
-    const rango = m.tipo === 'rango' ? fecha('muestraDesde', 'Desde', v.desde) + fecha('muestraHasta', 'Hasta', v.hasta) : '';
+    const rango = (m.tipo === 'rango' ? fecha('muestraDesde', 'Desde', v.desde) + fecha('muestraHasta', 'Hasta', v.hasta) : '') + selRival;
 
     const e = equipoParaPartidos(estado.idx, seccion);
     const partidos = e ? e.partidos.filter(p => p.__id).slice().reverse() : [];
@@ -830,9 +857,23 @@ const SGADD_APP = (function () {
     const vent = info.ventana || {};
     const dd = (iso) => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) : '…';
     const avisos = [];
-    if (info.vacia) avisos.push('La ventana no tiene partidos: se muestra el tramo entero.');
+    const eq = info.vacia ? null : equipoParaPartidos(estado.idx, seccion);
+    const pjEq = eq ? pjEnMuestra(eq.clave) : null;
+    if (info.vacia) avisos.push(info.familia === 'equipo'
+      ? 'Ningún equipo tiene partidos en esa condición: se muestra el tramo entero.'
+      : 'La ventana no tiene partidos: se muestra el tramo entero.');
     else {
-      avisos.push('Métricas, percentiles y textos recalculados contra la liga en ese período. ▲▼ compara contra su propia temporada.');
+      avisos.push(info.familia === 'equipo'
+        ? 'Cada equipo se mide en su propia condición: el percentil compara contra todos los equipos en esa misma situación. ▲▼ compara contra su propia temporada.'
+        : 'Métricas, percentiles y textos recalculados contra la liga en ese período. ▲▼ compara contra su propia temporada.');
+      /* LA MUESTRA CHICA SE DICE con el equipo que se está mirando: con 1
+         a 3 partidos el número se ve, pero no es una tendencia (punto 4). */
+      if (eq && pjEq === 0) {
+        avisos.push('⚠ ' + SGADD.limpiarNombre(eq.nombre) + ' no tiene partidos en esta muestra: su ficha sigue mostrando el tramo entero.');
+      } else if (eq && pjEq <= SGADD_MUESTRA.MUESTRA_CHICA) {
+        avisos.push('⚠ Muestra chica · ' + SGADD.limpiarNombre(eq.nombre) + ': ' + pjEq + (pjEq === 1 ? ' partido' : ' partidos')
+          + '. El número se ve, pero no alcanza para leer una tendencia.');
+      }
       if (info.sinFecha) avisos.push(info.sinFecha + ' filas sin fecha quedaron afuera: no se puede saber de qué noche son.');
       if (seccion === 'jugadores' && info.jugadoresRecortados) {
         avisos.push('En Jugadores tu plan ve la temporada completa: la vara de la liga por período para jugadores la calcula el servidor y todavía no está activa.');
@@ -841,8 +882,8 @@ const SGADD_APP = (function () {
     }
     return fila + `
         <div class="muestra-badge mt-3" role="status">
-          <p><b>◷ Muestra activa</b> · ${esc(info.etiqueta)} · ${esc(dd(vent.desde))} → ${esc(dd(vent.hasta))}
-            · ${info.vacia ? 0 : info.partidos} de ${info.total} partidos
+          <p><b>◷ Muestra activa</b> · ${esc(info.etiqueta)}${info.familia === 'equipo' ? '' : ' · ' + esc(dd(vent.desde)) + ' → ' + esc(dd(vent.hasta))}
+            · ${info.vacia ? 0 : info.partidos} de ${info.total} partidos${eq && pjEq !== null ? ' · ' + esc(SGADD.limpiarNombre(eq.nombre)) + ' ' + pjEq + ' PJ' : ''}
             <button type="button" onclick="SGADD_APP.cambiarMuestra({ tipo: 'todo' })" class="muestra-quitar">Quitar</button></p>
           ${avisos.map(a => `<p class="muestra-nota">${esc(a)}</p>`).join('')}
         </div>`;
@@ -857,7 +898,40 @@ const SGADD_APP = (function () {
     if (opciones && opciones.jugadores && info.jugadoresRecortados) return '';
     const v = info.ventana || {};
     const dd = (iso) => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) : '…';
+    if (info.familia === 'equipo') {
+      return 'Muestra: ' + info.etiqueta + ' · cada equipo medido en su propia condición (' + info.partidos + ' de ' + info.total + ' partidos)';
+    }
     return 'Muestra: ' + info.etiqueta + ' (' + dd(v.desde) + ' → ' + dd(v.hasta) + ', ' + info.partidos + ' de ' + info.total + ' partidos)';
+  }
+
+  /** Los PJ de un equipo en la muestra activa (0 si no tiene). null sin muestra. */
+  function pjEnMuestra(clave) {
+    if (!infoMuestra()) return null;
+    const v = _vista && _vista.idx;
+    const e = v ? v.get(clave) : null;
+    return e ? (e.pj || 0) : 0;
+  }
+
+  /* Los rivales que ofrece «Contra un rival…»: los que enfrentó el equipo
+     que se está mirando, por nombre; sin equipo, todos los del tramo. Salen
+     del texto «A vs B» de sus partidos, que es lo que el libro dice. */
+  function rivalesParaMuestra(idx, seccion) {
+    if (!idx) return [];
+    const e = equipoParaPartidos(idx, seccion);
+    const claves = new Set();
+    if (e) {
+      e.partidos.forEach(p => {
+        const partes = SGADD.texto(p['PARTIDO']).split(/\s+vs\s+/i);
+        if (partes.length !== 2) return;
+        const a = SGADD.claveEquipo(partes[0]), b = SGADD.claveEquipo(partes[1]);
+        const otro = a === e.clave ? b : (b === e.clave ? a : null);
+        if (otro) claves.add(otro);
+      });
+    } else idx.lista().forEach(x => claves.add(x.clave));
+    return Array.from(claves).map(k => {
+      const x = idx.get(k);
+      return { clave: k, nombre: x ? SGADD.limpiarNombre(x.nombre) : k };
+    }).sort((a, b) => a.nombre.localeCompare(b.nombre));
   }
 
   /* Elegir «Rango de fechas…» abre el rango sobre el tramo entero: el DT
@@ -865,6 +939,17 @@ const SGADD_APP = (function () {
   function elegirMuestra(valor) {
     const v = String(valor || 'todo');
     if (v.indexOf('semanas:') === 0) return cambiarMuestra({ tipo: 'semanas', n: Number(v.split(':')[1]) });
+    if (v.indexOf('ultimos:') === 0) return cambiarMuestra({ tipo: 'ultimos', n: Number(v.split(':')[1]) });
+    if (v.indexOf('condicion:') === 0) return cambiarMuestra({ tipo: 'condicion', valor: v.split(':')[1] });
+    if (v.indexOf('resultado:') === 0) return cambiarMuestra({ tipo: 'resultado', valor: v.split(':')[1] });
+    if (v.indexOf('rival:') === 0) return cambiarMuestra({ tipo: 'rival', rival: v.slice(6) });
+    /* «Contra un rival…» arranca con el primero de la lista: dejar el
+       filtro a medio elegir mostraría una vista que no es ninguna. */
+    if (v === 'rival') {
+      const sec = (typeof currentSection !== 'undefined') ? currentSection : null;
+      const r = rivalesParaMuestra(estado.idx, sec)[0];
+      return r ? cambiarMuestra({ tipo: 'rival', rival: r.clave }) : undefined;
+    }
     if (v === 'rango') {
       const dias = estado.hojas ? SGADD_MUESTRA.diasDelTramo(estado.hojas, tramoDeIndice()) : [];
       return cambiarMuestra({ tipo: 'rango', desde: dias[0], hasta: dias[dias.length - 1] });
@@ -991,7 +1076,7 @@ const SGADD_APP = (function () {
     estado, inicializar, cargar, reindexar, cambiarPlanilla, cambiarFase, cambiarTorneo, cambiarTramo,
     aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, onCambio, adoptarEquipoDeCategoria,
     recordarCategoria, categoriaRecordada, sufijoCategoria,
-    cambiarMuestra, elegirMuestra, irAPartido, textoMuestra, idxVista, infoMuestra, muestraRecordada, barraMuestra,
+    cambiarMuestra, elegirMuestra, irAPartido, textoMuestra, pjEnMuestra, rivalesParaMuestra, idxVista, infoMuestra, muestraRecordada, barraMuestra,
     get idx() { return estado.idx; },
   };
 })();

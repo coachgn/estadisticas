@@ -254,7 +254,7 @@ const src = (f) => fs.readFileSync(f, 'utf8');
 const EQ = src('./js/sgadd-equipos.js'), JG = src('./js/sgadd-jugadores.js'), FI = src('./js/sgadd-ficha.js'),
   IN = src('./js/sgadd-informe.js'), CL = src('./js/sgadd-clasificacion.js'), HTML = src('./index.html');
 check('Equipos pinta desde idxVista(), y el detalle del partido desde la temporada',
-  /const idx = \(EQUIPOS\.partido \|\| typeof SGADD_APP\.idxVista !== 'function'\) \? st\.idx : SGADD_APP\.idxVista\(\)/.test(EQ));
+  /(?:const|let) idx = \(EQUIPOS\.partido \|\| typeof SGADD_APP\.idxVista !== 'function'\) \? st\.idx : SGADD_APP\.idxVista\(\)/.test(EQ));
 check('Equipos y Jugadores piden la fila de la muestra en la barra',
   /barra\(\{ extra: volver, muestra: 'equipos' \}\)/.test(EQ) && /barra\(\{ extra: volver, muestra: 'jugadores' \}\)/.test(JG));
 check('Jugadores pide la vista con { jugadores: true }', /SGADD_APP\.idxVista\(\{ jugadores: true \}\)/.test(JG));
@@ -265,8 +265,136 @@ check('los dos PDF declaran la muestra en su encabezado', /textoMuestra\(\{ juga
 check('en una muestra los partidos manuales no se suman', /idx && idx\.__muestra\) \? \[\] : clasifManualesVigentes\(\)/.test(CL));
 const iM = HTML.indexOf('js/sgadd-muestra.js'), iA = HTML.indexOf('js/sgadd-app.js');
 check('sgadd-muestra.js carga ANTES que sgadd-app.js', iM !== -1 && iM < iA);
-check('assets en v298', /sgadd-muestra\.js\?v=298/.test(HTML) && !/\?v=297/.test(HTML));
+check('assets en v299', /sgadd-muestra\.js\?v=299/.test(HTML) && !/\?v=29[78]/.test(HTML));
 check('el CSS del badge va a mano en el <style>', /\.muestra-badge \{/.test(HTML));
+
+/* =====================================================================
+   8 · FAMILIA 2 · cada equipo en SU condición
+   ===================================================================== */
+titulo('8 · familia 2: normalizar, familia y etiqueta');
+
+check('los tipos de la familia 2 se normalizan', M.normalizar({ tipo: 'ultimos', n: 5 }).n === 5
+  && M.normalizar({ tipo: 'condicion', valor: 'local' }).valor === 'LOCAL'
+  && M.normalizar({ tipo: 'resultado', valor: 'perdido' }).valor === 'PERDIDO'
+  && M.normalizar({ tipo: 'rival', rival: 'equipo 2' }).rival === 'EQUIPO 2');
+check('lo que no se entiende es «todo»', M.normalizar({ tipo: 'ultimos', n: 0 }).tipo === 'todo'
+  && M.normalizar({ tipo: 'ultimos', n: M.MAX_ULTIMOS + 1 }).tipo === 'todo'
+  && M.normalizar({ tipo: 'condicion', valor: 'NEUTRAL' }).tipo === 'todo'
+  && M.normalizar({ tipo: 'rival', rival: '  ' }).tipo === 'todo');
+check('familia() separa calendario de equipo', M.familia({ tipo: 'semanas', n: 2 }) === 'calendario'
+  && M.familia({ tipo: 'condicion', valor: 'LOCAL' }) === 'equipo' && M.familia(null) === null);
+check('las claves no chocan entre tipos', new Set([
+  { tipo: 'ultimos', n: 3 }, { tipo: 'semanas', n: 3 }, { tipo: 'condicion', valor: 'LOCAL' },
+  { tipo: 'condicion', valor: 'VISITANTE' }, { tipo: 'resultado', valor: 'GANADO' }, { tipo: 'rival', rival: 'A' },
+].map(M.clave)).size === 6);
+check('etiquetas', M.etiqueta({ tipo: 'ultimos', n: 5 }) === 'Sus últimos 5 partidos'
+  && M.etiqueta({ tipo: 'condicion', valor: 'LOCAL' }) === 'Solo de local'
+  && M.etiqueta({ tipo: 'resultado', valor: 'GANADO' }) === 'Solo ganados'
+  && M.etiqueta({ tipo: 'rival', rival: 'EQUIPO 2' }, 'Equipo 2') === 'Contra Equipo 2');
+
+titulo('8 bis · recortarPorCondicion + conservar: la liga en esa misma condición');
+const OPC = (r) => ({ fase: TRAMO.fase, torneo: SGADD.TORNEO_TOTAL, conservar: r.conservar });
+const idxDe = (m) => { const r = M.recortarPorCondicion(HOJAS, TRAMO, m); return { r, idx: SGADD.construirIndice(r.hojas, OPC(r)) }; };
+const sinContexto = (ix) => !ix.lista().some(e => e.clave.indexOf('CONTEXTO') === 0)
+  && !ix.liga.jugadores.some(j => /^CONTEXTO/.test(SGADD.texto(j['EQUIPO'])));
+
+const LOC = idxDe({ tipo: 'condicion', valor: 'LOCAL' });
+check('de local: ningún equipo de contexto queda en la lista ni en los jugadores', sinContexto(LOC.idx));
+check('de local: el otro lado entra rotulado como contexto',
+  LOC.r.hojas['Base Datos E'].filas.some(f => /^CONTEXTO /.test(f['EQUIPO'])));
+check('de local: toda fila propia es de local',
+  LOC.r.hojas['Base Datos E'].filas.filter(f => !/^CONTEXTO /.test(f['EQUIPO'])).every(f => SGADD.texto(f['CONDICION']).toUpperCase() === 'LOCAL'));
+check('la distribución de la liga es de los equipos en su condición, sin contexto',
+  (LOC.idx.liga.distribuciones['PTS'] || []).length === LOC.idx.lista().length && LOC.idx.lista().length === base.lista().length);
+check('de local: cada equipo tiene sus partidos de local, ni uno más',
+  LOC.idx.lista().every(e => base.get(e.clave) && e.pj === base.get(e.clave).partidos.filter(p => SGADD.texto(p['CONDICION']).toUpperCase() === 'LOCAL').length));
+check('los jugadores son solo los del lado que cumple', LOC.idx.lista().every(e =>
+  (LOC.idx.liga.jugadoresPorEquipo.get(e.clave) || []).every(j => j['PJ'] <= e.pj)));
+
+/* LA PRUEBA FUERTE: para cada equipo, el índice compuesto da EXACTAMENTE
+   lo mismo que un índice armado solo con SUS partidos en esa condición
+   (los dos lados de cada uno). Si el contexto contaminara un promedio o
+   faltara el rival en una tasa, cae en algún equipo. */
+const idsDe = (e, pred) => new Set(e.partidos.filter(pred).map(p => M.diaIso(SGADD.fecha(p['FECHA'])) + '|' + SGADD.texto(p['PARTIDO']).toUpperCase()));
+const idF = (f) => M.diaIso(SGADD.fecha(f['FECHA'])) + '|' + SGADD.texto(f['PARTIDO']).toUpperCase();
+function dedicado(clave, ids) {
+  const sel = (H, soloPropio) => ({ cols: H.cols, filas: H.filas.filter(f => ids.has(idF(f)) && (!soloPropio || SGADD.claveEquipo(f['EQUIPO']) === clave)) });
+  return SGADD.construirIndice({
+    'Base Datos E': sel(HOJAS['Base Datos E']), '4 FACTORES': sel(HOJAS['4 FACTORES']), 'Base Datos J': sel(HOJAS['Base Datos J'], true),
+  }, { fase: TRAMO.fase, torneo: SGADD.TORNEO_TOTAL });
+}
+['PTS', 'eFG%', 'RO%', 'RTNG DEF', 'PACE', 'NET RTNG'].forEach(k => {
+  const malos = base.lista().filter(e => {
+    const ded = dedicado(e.clave, idsDe(e, p => SGADD.texto(p['CONDICION']).toUpperCase() === 'LOCAL'));
+    const a = LOC.idx.leer(e.clave, k), b = ded.leer(e.clave, k);
+    return !(a && b && (a.valor === b.valor || casi(a.valor, b.valor, 1e-9)));
+  }).map(e => e.nombre);
+  check('de local = su índice dedicado · ' + k, !malos.length, malos.join(', '));
+});
+
+const GAN = idxDe({ tipo: 'resultado', valor: 'GANADO' });
+check('ganados: todo equipo con récord invicto en la muestra', GAN.idx.lista().every(e => e.record.perdidos === 0 && e.record.ganados === e.pj));
+check('ganados: sin contexto', sinContexto(GAN.idx));
+
+const ULT = idxDe({ tipo: 'ultimos', n: 5 });
+const ultimosOk = base.lista().every(e => {
+  const fechas = e.partidos.map(p => M.diaIso(SGADD.fecha(p['FECHA']))).filter(Boolean).sort();
+  const vista5 = ULT.idx.get(e.clave);
+  const propios = vista5 ? vista5.partidos.map(p => M.diaIso(SGADD.fecha(p['FECHA']))).sort() : [];
+  return vista5 && vista5.pj === Math.min(5, fechas.length) && propios.join() === fechas.slice(-5).join();
+});
+check('sus últimos 5: cada equipo, SUS cinco más recientes', ultimosOk);
+check('los últimos 5 son de cada uno: no los mismos días para todos',
+  new Set(ULT.idx.lista().map(e => e.partidos.map(p => p['FECHA']).join())).size > 1);
+
+const rivalClave = base.lista()[1].clave;
+const RIV = idxDe({ tipo: 'rival', rival: rivalClave });
+check('contra un rival: el rival no está en la vara (no se enfrenta a sí mismo)', !RIV.idx.get(rivalClave));
+check('contra un rival: cada partido propio es contra ese rival', RIV.idx.lista().every(e => e.partidos.every(p =>
+  SGADD.texto(p['PARTIDO']).split(/\s+vs\s+/i).some(x => SGADD.claveEquipo(x) === rivalClave))));
+check('contra un rival: los demás equipos son la vara de cómo le fue a la liga contra él', RIV.idx.lista().length === base.lista().length - 1);
+check('porEquipo cuenta los partidos de cada uno', RIV.r.porEquipo.get(base.lista()[0].clave) === RIV.idx.get(base.lista()[0].clave).pj);
+
+titulo('8 ter · el núcleo: conservar solo actúa en el TOTAL y no rompe el rival');
+const sinCons = SGADD.construirIndice(LOC.r.hojas, { fase: TRAMO.fase, torneo: SGADD.TORNEO_TOTAL });
+check('sin `conservar`, el contexto aparece como equipo (lo que la opción evita)', sinCons.lista().some(e => e.clave.indexOf('CONTEXTO') === 0));
+const e1 = LOC.idx.lista()[0];
+check('con `conservar`, el DRTG sigue saliendo (el rival se leyó del contexto)', LOC.idx.leer(e1.clave, 'RTNG DEF').valor !== null);
+
+/* =====================================================================
+   9 · FAMILIA 2 EN SGADD_APP · badge, muestra chica y rival
+   ===================================================================== */
+titulo('9 · familia 2 en sgadd-app.js real');
+const F = armarApp();
+const EQ1 = base.lista()[0], EQ2 = base.lista()[1];
+F.ctx.EQUIPOS = { equipo: EQ1.clave.toLowerCase().replace(/\s+/g, '-') };
+F.ctx.currentSection = 'equipos';
+F.A.elegirMuestra('condicion:LOCAL');
+const vF = F.A.idxVista();
+check('de local: la vista es de la familia 2', vF !== base && vF.__muestra.familia === 'equipo');
+check('el percentil se mide contra los equipos de local', vF.leer(EQ1.clave, 'PTS').n === base.lista().length);
+check('«propio» sigue siendo contra su temporada entera', casi(vF.leer(EQ1.clave, 'PTS').propio.valor, base.leer(EQ1.clave, 'PTS').valor));
+const bF = F.A.barraMuestra('equipos');
+check('el badge explica la vara por condición', /cada equipo se mide en su propia condición/i.test(bF));
+check('en la familia 2 el badge no inventa un rango de fechas', !/\d\d\/\d\d → \d\d\/\d\d/.test(bF));
+check('el desplegable marca la opción elegida', /value="condicion:LOCAL" selected/.test(bF));
+check('las dos familias van agrupadas', /optgroup label="Calendario/.test(bF) && /optgroup label="Del equipo/.test(bF));
+check('el PDF lo declara', /cada equipo medido en su propia condición/.test(F.A.textoMuestra()));
+
+const rivs = F.A.rivalesParaMuestra(base, 'equipos');
+check('los rivales ofrecidos son los que enfrentó, sin él mismo', rivs.length > 0 && !rivs.some(r => r.clave === EQ1.clave)
+  && rivs.every((r, i) => !i || rivs[i - 1].nombre.localeCompare(r.nombre) <= 0));
+F.A.elegirMuestra('rival');
+check('«Contra un rival…» arranca con el primero de la lista', F.A.estado.muestra.tipo === 'rival' && F.A.estado.muestra.rival === rivs[0].clave);
+F.A.elegirMuestra('rival:' + EQ2.clave);
+const bR = F.A.barraMuestra('equipos');
+check('con rival aparece su desplegable con el elegido', /id="selRival"/.test(bR) && new RegExp('value="' + EQ2.clave + '" selected').test(bR));
+const pjR = F.A.pjEnMuestra(EQ1.clave);
+check('contra un rival hay 1 a 3 partidos: el badge avisa muestra chica', pjR >= 1 && pjR <= 3 && /⚠ Muestra chica/.test(bR), pjR);
+check('el badge nombra al rival', /Contra /.test(bR));
+F.ctx.EQUIPOS = { equipo: EQ2.clave.toLowerCase().replace(/\s+/g, '-') };
+check('el equipo elegido como rival no tiene partidos: se dice', F.A.pjEnMuestra(EQ2.clave) === 0
+  && /no tiene partidos en esta muestra/.test(F.A.barraMuestra('equipos')));
 
 console.log('\n' + ok + ' ok · ' + fail + ' fallas');
 if (fail) { console.log('HAY FALLAS'); process.exit(1); }

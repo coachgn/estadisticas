@@ -27,6 +27,16 @@ const SGADD_MUESTRA = (function () {
 
   const DIA = /^\d{4}-\d{2}-\d{2}$/;
   const MAX_SEMANAS = 8;
+  const MAX_ULTIMOS = 10;
+  /* El prefijo del OTRO LADO de un partido en una muestra de la familia 2:
+     entra al índice para que el rival exista (RO%, DRTG, PACE) y el núcleo
+     lo saca antes de la vara (`construirIndice`, opción `conservar`). */
+  const CONTEXTO = 'CONTEXTO ';
+  /* Debajo de esto, un equipo en la muestra se dice «muestra chica»: con 1
+     a 3 partidos se ve el número, pero no alcanza para leer una tendencia
+     (punto 4: el desvío pide 3 partidos y el PJ mediano, 5). */
+  const MUESTRA_CHICA = 3;
+  const FAMILIA_EQUIPO = ['ultimos', 'condicion', 'resultado', 'rival'];
   /* Las hojas PARTIDO A PARTIDO, las únicas que se recortan. Las derivadas
      (PROMEDIOS, ACUMULADO) se DESCARTAN: traen la temporada ya calculada, y
      el TOTAL de un recorte se rearma desde las maestras. Dejar `ACUMULADO J`
@@ -72,7 +82,32 @@ const SGADD_MUESTRA = (function () {
       if (desde && hasta && desde > hasta) { const t = desde; desde = hasta; hasta = t; }
       return { tipo: 'rango', desde: desde, hasta: hasta };
     }
+    if (m.tipo === 'ultimos') {
+      const n = Math.round(Number(m.n));
+      if (!(n >= 1 && n <= MAX_ULTIMOS)) return TODO;
+      return { tipo: 'ultimos', n: n };
+    }
+    if (m.tipo === 'condicion') {
+      const v = String(m.valor || '').toUpperCase();
+      return (v === 'LOCAL' || v === 'VISITANTE') ? { tipo: 'condicion', valor: v } : TODO;
+    }
+    if (m.tipo === 'resultado') {
+      const v = String(m.valor || '').toUpperCase();
+      return (v === 'GANADO' || v === 'PERDIDO') ? { tipo: 'resultado', valor: v } : TODO;
+    }
+    if (m.tipo === 'rival') {
+      const r = String(m.rival || '').trim().toUpperCase();
+      return r ? { tipo: 'rival', rival: r } : TODO;
+    }
     return TODO;
+  }
+
+  /** `calendario` (igual para toda la liga), `equipo` (cada uno en su
+      condición) o null con «todo». */
+  function familia(m) {
+    const x = normalizar(m);
+    if (x.tipo === 'todo') return null;
+    return FAMILIA_EQUIPO.indexOf(x.tipo) !== -1 ? 'equipo' : 'calendario';
   }
 
   function activa(m) { return normalizar(m).tipo !== 'todo'; }
@@ -81,6 +116,9 @@ const SGADD_MUESTRA = (function () {
     const x = normalizar(m);
     if (x.tipo === 'semanas') return 'semanas:' + x.n;
     if (x.tipo === 'rango') return 'rango:' + (x.desde || '') + ':' + (x.hasta || '');
+    if (x.tipo === 'ultimos') return 'ultimos:' + x.n;
+    if (x.tipo === 'condicion' || x.tipo === 'resultado') return x.tipo + ':' + x.valor;
+    if (x.tipo === 'rival') return 'rival:' + x.rival;
     return 'todo';
   }
 
@@ -93,6 +131,8 @@ const SGADD_MUESTRA = (function () {
     return {
       fecha: (dep && dep.fecha) || (S && S.fecha) || (() => null),
       texto: (dep && dep.texto) || (S && S.texto) || texto0,
+      claveEquipo: (dep && dep.claveEquipo) || (S && S.claveEquipo) || (v => texto0(v).toUpperCase()),
+      limpiar: (dep && dep.limpiarNombre) || (S && S.limpiarNombre) || texto0,
     };
   }
 
@@ -208,9 +248,141 @@ const SGADD_MUESTRA = (function () {
     return DIA.test(String(iso || '')) ? iso.slice(8, 10) + '/' + iso.slice(5, 7) : '';
   }
 
-  /** El rótulo de la muestra: «Últimas 2 semanas», «Del 07/10 al 21/10». */
-  function etiqueta(m) {
+  /**
+   * LA FAMILIA 2 · cada equipo en SU condición.
+   *
+   * Una fila de equipo-partido CUMPLE si la condición vale para su propio
+   * equipo: Boca de local y Atenas de local cumplen «de local» en partidos
+   * distintos. Un partido entra si alguno de sus dos lados cumple; el lado
+   * que no cumple entra RENOMBRADO como contexto (`CONTEXTO <nombre>`),
+   * porque las tasas que dependen del rival lo necesitan, y el índice lo
+   * descarta antes de la vara (`conservar`).
+   *
+   * Así la liga de referencia es «cada equipo en esa misma condición»: el
+   * percentil de Boca de local se mide contra cada equipo jugando de local.
+   *
+   * Las filas de JUGADOR del lado que no cumple se descartan: un jugador no
+   * hace falta como contexto. 4 FACTORES sigue a Base Datos E.
+   *
+   * Devuelve { hojas, conservar: Set, partidos, total, porEquipo: Map, sinFecha }.
+   */
+  function recortarPorCondicion(hojas, tramo, m, dep) {
     const x = normalizar(m);
+    const d = deps(dep);
+    const es = delTramo(tramo, d.texto);
+    const E = hojas && hojas['Base Datos E'];
+    const filas = ((E && E.filas) || []).filter(es);
+
+    const idDe = (f, dia) => (dia || '') + '|' + d.texto(f['PARTIDO']).toUpperCase();
+    const porPartido = new Map();          // id -> [filas]
+    const fechasDePartido = new Map();     // texto PARTIDO -> Set de días
+    filas.forEach(f => {
+      const dia = diaIso(d.fecha(f['FECHA']));
+      const id = idDe(f, dia);
+      if (!porPartido.has(id)) porPartido.set(id, []);
+      porPartido.get(id).push({ fila: f, dia: dia, equipo: d.claveEquipo(f['EQUIPO']) });
+      const k = d.texto(f['PARTIDO']).toUpperCase();
+      if (k && dia) {
+        if (!fechasDePartido.has(k)) fechasDePartido.set(k, new Set());
+        fechasDePartido.get(k).add(dia);
+      }
+    });
+
+    /* El rival de una fila: la otra fila del mismo partido; sin pareja, el
+       otro lado del texto «A vs B». */
+    const rivalDe = (item, lista) => {
+      const otro = lista.find(o => o !== item && o.equipo !== item.equipo);
+      if (otro) return otro.equipo;
+      const partes = d.texto(item.fila['PARTIDO']).split(/\s+vs\s+/i);
+      if (partes.length !== 2) return null;
+      const a = d.claveEquipo(partes[0]), b = d.claveEquipo(partes[1]);
+      return a === item.equipo ? b : (b === item.equipo ? a : null);
+    };
+
+    /* Los últimos N de cada equipo, por fecha. Sin fecha no se puede
+       ordenar: queda afuera y se cuenta. */
+    let sinFecha = 0;
+    const ultimos = new Map();
+    if (x.tipo === 'ultimos') {
+      const porEq = new Map();
+      porPartido.forEach((lista, id) => lista.forEach(it => {
+        if (!it.dia) return;
+        if (!porEq.has(it.equipo)) porEq.set(it.equipo, []);
+        porEq.get(it.equipo).push(id);
+      }));
+      porEq.forEach((ids, eq) => {
+        const orden = ids.slice().sort();       // el id arranca con el día
+        ultimos.set(eq, new Set(orden.slice(-x.n)));
+      });
+    }
+
+    const cumple = (it, id, lista) => {
+      if (x.tipo === 'ultimos') return !!(ultimos.get(it.equipo) && ultimos.get(it.equipo).has(id));
+      if (x.tipo === 'condicion') return d.texto(it.fila['CONDICION']).toUpperCase() === x.valor;
+      if (x.tipo === 'resultado') return d.texto(it.fila['RESULTADO']).toUpperCase() === x.valor;
+      if (x.tipo === 'rival') return rivalDe(it, lista) === x.rival;
+      return false;
+    };
+
+    const filasE = [];
+    const conservar = new Set();
+    const porEquipo = new Map();
+    const cumplen = new Set();             // id|equipo que cumple
+    const incluidos = new Set();           // id de partido que entra
+    porPartido.forEach((lista, id) => {
+      const ok = lista.map(it => cumple(it, id, lista));
+      if (!ok.some(Boolean)) return;
+      incluidos.add(id);
+      lista.forEach((it, i) => {
+        if (ok[i]) {
+          filasE.push(it.fila);
+          conservar.add(it.equipo);
+          cumplen.add(id + '|' + it.equipo);
+          porEquipo.set(it.equipo, (porEquipo.get(it.equipo) || 0) + 1);
+        } else {
+          filasE.push(Object.assign({}, it.fila, { EQUIPO: CONTEXTO + d.limpiar(it.fila['EQUIPO']) }));
+        }
+      });
+    });
+    porPartido.forEach((lista, id) => { if (x.tipo === 'ultimos' && lista.some(it => !it.dia)) sinFecha += lista.filter(it => !it.dia).length; });
+
+    const diaDeFila = (f) => {
+      let dia = diaIso(d.fecha(f['FECHA']));
+      if (!dia) {
+        const set = fechasDePartido.get(d.texto(f['PARTIDO']).toUpperCase());
+        if (set && set.size === 1) dia = Array.from(set)[0];
+      }
+      return dia;
+    };
+    const salida = { 'Base Datos E': { cols: (E && E.cols) || [], filas: filasE } };
+    ['4 FACTORES', 'Base Datos J'].forEach(nombre => {
+      const H = hojas && hojas[nombre];
+      if (!H) return;
+      const out = [];
+      (H.filas || []).forEach(f => {
+        if (!es(f)) return;
+        const dia = diaDeFila(f);
+        if (!dia) { sinFecha++; return; }
+        const id = idDe(f, dia);
+        if (!incluidos.has(id)) return;
+        const eq = d.claveEquipo(f['EQUIPO']);
+        if (cumplen.has(id + '|' + eq)) out.push(f);
+        else if (nombre === '4 FACTORES') out.push(Object.assign({}, f, { EQUIPO: CONTEXTO + d.limpiar(f['EQUIPO']) }));
+      });
+      salida[nombre] = { cols: H.cols || [], filas: out };
+    });
+
+    return { hojas: salida, conservar: conservar, partidos: incluidos.size, total: porPartido.size,
+      porEquipo: porEquipo, sinFecha: sinFecha };
+  }
+
+  /** El rótulo de la muestra: «Últimas 2 semanas», «Del 07/10 al 21/10». */
+  function etiqueta(m, nombreRival) {
+    const x = normalizar(m);
+    if (x.tipo === 'ultimos') return x.n === 1 ? 'Su último partido' : 'Sus últimos ' + x.n + ' partidos';
+    if (x.tipo === 'condicion') return x.valor === 'LOCAL' ? 'Solo de local' : 'Solo de visitante';
+    if (x.tipo === 'resultado') return x.valor === 'GANADO' ? 'Solo ganados' : 'Solo perdidos';
+    if (x.tipo === 'rival') return 'Contra ' + (nombreRival || x.rival);
     if (x.tipo === 'semanas') return x.n === 1 ? 'Última semana' : 'Últimas ' + x.n + ' semanas';
     if (x.tipo === 'rango') {
       if (x.desde && x.hasta) return 'Del ' + ddmm(x.desde) + ' al ' + ddmm(x.hasta);
@@ -246,8 +418,8 @@ const SGADD_MUESTRA = (function () {
   }
 
   const API = {
-    TODO, MAX_SEMANAS, HOJAS_PARTIDO, TOLERANCIA_MEDIA,
-    normalizar, activa, clave, diasDelTramo, ventana, recortar, etiqueta, comparar, restarDias, diaIso,
+    TODO, MAX_SEMANAS, MAX_ULTIMOS, HOJAS_PARTIDO, TOLERANCIA_MEDIA, CONTEXTO, MUESTRA_CHICA,
+    normalizar, activa, familia, clave, recortarPorCondicion, diasDelTramo, ventana, recortar, etiqueta, comparar, restarDias, diaIso,
   };
   return API;
 })();

@@ -153,8 +153,9 @@ node test-ecosistema.js    #  23 tests · el auditor del ecosistema: fechas, cla
 node test-canva.js         #  29 tests · las piezas aprobadas a Canva por la API, sin Claude:
                            #             el permiso que rota, publicar SOLO placas-tmp, reintentos (punto 123)
 
-node test-muestra.js       #  81 tests · el selector de muestra de Equipos y Jugadores: el recorte de
+node test-muestra.js       # 122 tests · el selector de muestra de Equipos y Jugadores: el recorte de
                            #             calendario, idxVista(), «propio» contra la temporada y la barra (punto 139)
+                           #             · y la familia 2: cada equipo en su condición, contra su índice dedicado
 
 node test-backend.js       # 466 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -284,7 +285,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=298`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=299`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15470,7 +15471,7 @@ zona con un enganche a otra.** Corregir Lanús es una escritura de KV:
 (y su `liga` a `liga-nacional`). Tests: `test-logos.js` (2) y
 `test-torneos.js` (2).
 
-## 139. EL SELECTOR DE MUESTRA EN EQUIPOS Y JUGADORES · FASE 1, CALENDARIO (2026-10-23)
+## 139. EL SELECTOR DE MUESTRA EN EQUIPOS Y JUGADORES · FASES 1 Y 2 (2026-10-23)
 
 Equipos y Jugadores se pueden mirar sobre un recorte del tramo de la barra.
 Assets en `?v=298`. `test-muestra.js` fija todo, sobre el snapshot de la demo
@@ -15555,4 +15556,55 @@ semanas» = 23 de 33 partidos; Boca pasa de 4 a 3 PJ (0-3); PTS 86,0 contra
 (simulado) andan; a 375 px no hay desborde. **Con un link de cliente no se
 pudo**: el club `boca` está `inactivo` en KV y la categoría sale bloqueada.
 Al revés, cuatro mutaciones del test caen todas.
+
+### FASE 2 · la familia del EQUIPO (assets en `?v=299`)
+
+Sus últimos 3, 5 o 10 partidos · Solo de local / de visitante · Solo
+ganados / perdidos · Contra un rival (los que enfrentó el equipo que se
+mira; sin equipo, todos). Es UNA muestra a la vez: no se combinan con las
+de calendario.
+
+**La vara es «la liga en esa misma condición»**: Boca de local contra cada
+equipo jugando de local; Boca contra Argentino contra cómo le fue a cada
+equipo contra Argentino (Argentino no está en esa vara: no se enfrenta a sí
+mismo).
+
+`SGADD_MUESTRA.recortarPorCondicion` decide fila por fila si un
+equipo-partido CUMPLE para SU equipo (sus últimos N son los suyos, no los
+mismos días para todos). Un partido entra si cumple algún lado:
+
+- **el lado que no cumple entra RENOMBRADO** `CONTEXTO <nombre>`, porque
+  RO%, DRTG y PACE necesitan al rival de esa noche;
+- **`construirIndice(…, { conservar: Set })`** —opción nueva del núcleo,
+  solo con el TOTAL— lo saca **antes** de la fila TIPO, las distribuciones
+  y el plantel de la liga. `rivalDe` lee `filasPorId`, que ya lo tiene, así
+  que los ratings siguen andando;
+- las filas de JUGADOR del lado que no cumple se descartan.
+
+**La prueba fuerte de `test-muestra.js`**: para cada equipo, el índice
+compuesto da EXACTAMENTE lo mismo que un índice armado solo con sus
+partidos en esa condición (PTS, eFG%, RO%, DRTG, PACE, NET).
+
+- **Muestra chica**: con 1 a 3 partidos del equipo que se mira, el badge
+  dice «⚠ Muestra chica · BOCA: 1 partido». Con 0 —el rival elegido, un
+  equipo sin victorias— dice que su ficha sigue con el tramo entero, y
+  Equipos y Jugadores la abren sobre `estado.idx` en vez de perderla.
+- **«propio»** sigue siendo contra la temporada entera.
+- El selector agrupa las dos familias (`<optgroup>`); con «Contra un
+  rival…» aparece el desplegable del rival.
+- Los PDF declaran «cada equipo medido en su propia condición».
+
+**La trampa de siempre, otra vez**: la primera verificación en el
+navegador salió con 31 «equipos» donde hay 18. El núcleo había cambiado y
+`?v=298` era el mismo que ya había cargado la prueba de la Fase 1: el
+navegador sirvió el `sgadd-core.js` viejo, sin `conservar`. Con `?v=299`,
+18. **Cada entrega que toca un `.js` sube el `?v=`, aunque la anterior no
+se haya publicado.**
+
+Medido con el libro real de Boca (link de admin): de local 1 PJ (1-0),
+96,0 PTS contra 88,5 de su temporada, percentil contra los 18 equipos de
+local; de visitante 3 PJ (0-3), contra 13; contra Argentino 1 PJ (0-1),
+contra los 4 que lo enfrentaron; sus últimos 3, 0-3. Recalcular cuesta
+~350 ms. A 375 px no hay desborde. Cinco mutaciones del motor y del badge
+hacen caer el test.
 

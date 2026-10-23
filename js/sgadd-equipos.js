@@ -148,7 +148,12 @@ function equiposPintar() {
   /* LA MUESTRA (punto 139): la grilla y la ficha leen el recorte de la
      barra. El DETALLE DE UN PARTIDO no: sus desvíos se miden contra el
      promedio de la temporada, y en un recorte el partido puede no estar. */
-  const idx = (EQUIPOS.partido || typeof SGADD_APP.idxVista !== 'function') ? st.idx : SGADD_APP.idxVista();
+  let idx = (EQUIPOS.partido || typeof SGADD_APP.idxVista !== 'function') ? st.idx : SGADD_APP.idxVista();
+  /* Un equipo SIN partidos en la muestra (familia 2: el rival elegido, o
+     uno que nunca ganó) no está en el recorte: su ficha sigue con el tramo
+     entero, y la barra lo dice. Sin esto se abría la ficha mínima de un
+     inscripto que no jugó. */
+  if (EQUIPOS.equipo && idx !== st.idx && !idx.get(EQUIPOS.equipo.replace(/-/g, ' ')) && st.idx.get(EQUIPOS.equipo.replace(/-/g, ' '))) idx = st.idx;
   EQUIPOS.planillaId = st.planillaId;
   EQUIPOS.fase = st.fase;
   const e = EQUIPOS.equipo ? idx.get(EQUIPOS.equipo.replace(/-/g, ' ')) : null;

@@ -2089,6 +2089,18 @@
         });
       });
 
+      /* LOS EQUIPOS DE CONTEXTO SE VAN ACÁ (punto 139, familia 2). Una
+         muestra «en condición» (de local, ganados, contra un rival…) deja
+         a cada equipo con SUS filas que cumplen, y el otro lado de cada
+         partido entra rotulado como contexto: hace falta para el rival de
+         RO%, DRTG o PACE, que ya se sumó arriba. Se sacan ANTES de la fila
+         TIPO, de las distribuciones y del plantel de la liga, así la vara
+         es la de los equipos en su condición. `rivalDe` lee `filasPorId`,
+         que ya los tiene, así que los ratings de abajo siguen andando. */
+      if (opt.conservar instanceof Set) {
+        Array.from(equipos.keys()).forEach(k => { if (!opt.conservar.has(k)) equipos.delete(k); });
+      }
+
       /* La fila TIPO de la liga es la MEDIANA, y la del libro es la de UN
          torneo: no sirve para el conjunto. Se recalcula sobre los valores
          derivados, columna por columna. NUNCA se deriva una columna de

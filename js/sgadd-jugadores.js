@@ -1940,7 +1940,11 @@ function jugadoresPintar() {
 
   /* LA MUESTRA (punto 139). Con el log recortado del cliente devuelve la
      temporada: ver `jugadoresRecortados` en sgadd-app.js. */
-  const idx = (typeof SGADD_APP.idxVista === 'function') ? SGADD_APP.idxVista({ jugadores: true }) : st.idx;
+  let idx = (typeof SGADD_APP.idxVista === 'function') ? SGADD_APP.idxVista({ jugadores: true }) : st.idx;
+  /* Mismo respaldo que Equipos: un equipo o un jugador sin partidos en la
+     muestra se mira sobre el tramo entero en vez de desaparecer. */
+  if (idx !== st.idx && ((JUGADORES.filtroEquipo && !idx.get(JUGADORES.filtroEquipo) && st.idx.get(JUGADORES.filtroEquipo))
+      || (JUGADORES.jugador && !jugadoresBuscar(idx, JUGADORES.jugador) && jugadoresBuscar(st.idx, JUGADORES.jugador)))) idx = st.idx;
   JUGADORES.planillaId = st.planillaId;
   JUGADORES.fase = st.fase;
   /* UN EQUIPO ELEGIDO QUE NO EXISTE EN ESTE LIBRO SE SUELTA. El filtro
