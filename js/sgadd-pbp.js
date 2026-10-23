@@ -2818,6 +2818,12 @@ const SGADD_PBP = (function () {
       ${cargando('Cargando el mapa de tiro…')}</div>`;
   }
 
+  /** El lugar de la card de Rendimiento de un jugador (punto 140). */
+  function espacioRendimiento(nombre, equipo) {
+    return `<div class="pbp-montaje" data-pbp-equipo="${esc(equipo)}" data-pbp-rendimiento="${esc(nombre)}">
+      ${cargando('Cargando la card de Rendimiento…')}</div>`;
+  }
+
   function pedir(equipo) {
     const d = destino();
     if (!d || typeof SGADD_DATA === 'undefined' || !SGADD_DATA.leerPbp) return Promise.reject(new Error('Sin backend.'));
@@ -2849,6 +2855,7 @@ const SGADD_PBP = (function () {
       nodo.setAttribute('data-pbp-montado', '1');
       const nombreJugador = nodo.getAttribute('data-pbp-jugador');
       const nombreTramos = nodo.getAttribute('data-pbp-tramos');
+      const nombreRendimiento = nodo.getAttribute('data-pbp-rendimiento');
       const propio = nodo.getAttribute('data-pbp-propio');
       const tipo = nodo.getAttribute('data-pbp-tipo');
       const contexto = nodo.getAttribute('data-pbp-contexto');
@@ -2860,6 +2867,7 @@ const SGADD_PBP = (function () {
             ? partidoDe(paq, nodo.getAttribute('data-pbp-partido'), nodo.getAttribute('data-pbp-fecha'), nodo.getAttribute('data-pbp-rival'))
             : null;
           nodo.innerHTML = nombreTramos ? relojTramosAdn(paq, nombreTramos)
+            : nombreRendimiento ? (typeof SGADD_RENDIMIENTO !== 'undefined' ? SGADD_RENDIMIENTO.html(paq, nombreRendimiento) : '')
             : nombreJugador ? jugador(paq, nombreJugador)
             : tipo === 'partido-mapa' ? mapaPartido(paq, pp)
             : tipo === 'partido-momentum' ? momentumPartido(paq, pp)
@@ -3040,7 +3048,7 @@ const SGADD_PBP = (function () {
     CAPA, NOMBRES_ZONA, FAMILIAS, ZONAS, GEOMETRIA, MIN_LIGA_HEX,
     html, mapaCard, jugador, mapa, capaTiros, bloqueSecciones, tieneSecciones, geometriaZonas, zonaGeometrica,
     diagnosticoZonas, diagnosticoJugador, cruceZonas, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
-    activa, espacio, espacioJugador, montarPendientes, activar, apellido, _cache: cache,
+    activa, espacio, espacioJugador, espacioRendimiento, montarPendientes, activar, apellido, _cache: cache,
     partidoDe, mapaPartido, momentumPartido, quintetosPartido, espacioPartido, MIN_TIROS_DIAGNOSTICO,
     relojTabla, relojIdentidad, relojPerfilJugador, relojEquipo, relojJugador, relojPartido, relojReparto, FRANJAS_RELOJ,
     relojScouting, relojQuienes, relojMetodologiaHtml, relojAyuda, METODOLOGIA_RELOJ, RELOJ_MINIMOS, FUERA_DE_FRANJA,

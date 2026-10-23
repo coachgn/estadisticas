@@ -153,10 +153,13 @@ node test-ecosistema.js    #  23 tests · el auditor del ecosistema: fechas, cla
 node test-canva.js         #  29 tests · las piezas aprobadas a Canva por la API, sin Claude:
                            #             el permiso que rota, publicar SOLO placas-tmp, reintentos (punto 123)
 
-node test-muestra.js       # 155 tests · el selector de muestra de Equipos y Jugadores: el recorte de
+node test-muestra.js       # 156 tests · el selector de muestra de Equipos y Jugadores: el recorte de
                            #             calendario, idxVista(), «propio» contra la temporada y la barra (punto 139)
                            #             · y la familia 2: cada equipo en su condición, contra su índice dedicado
                            #             · y la fase 3: la vara de jugadores del período que calcula el servidor
+
+node test-rendimiento.js   #  41 tests · la card de Rendimiento del jugador: el motor puro, las degradaciones,
+                           #             la vista y el cableado de la pestaña (punto 140)
 
 node test-backend.js       # 468 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -286,7 +289,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=300`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=302`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15560,7 +15563,7 @@ Al revés, cuatro mutaciones del test caen todas.
 
 ### FASE 2 · la familia del EQUIPO (assets en `?v=299`)
 
-Sus últimos 3, 5 o 10 partidos · Solo de local / de visitante · Solo
+Sus últimos 4, 6 u 8 partidos (`MAX_ULTIMOS = 8`; arrancó en 3, 5 o 10) · Solo de local / de visitante · Solo
 ganados / perdidos · Contra un rival (los que enfrentó el equipo que se
 mira; sin equipo, todos). Es UNA muestra a la vez: no se combinan con las
 de calendario.
@@ -15674,3 +15677,88 @@ endpoint.
 `compartido/sgadd-muestra.js`) y push del front (`?v=300`). Sin el backend
 nuevo, el pedido falla y Jugadores dice que sigue con la temporada.
 
+### Después de la fase 3 · quién ve el selector (v301)
+
+- **El selector solo se ofrece a `boca`, `reconquista` y `deportivo`**:
+  whitelist en `barraMuestra` de `js/sgadd-app.js`. Cualquier otro club ve
+  Equipos y Jugadores sobre el tramo entero, sin la fila del selector.
+  `test-muestra.js` usa `deportivo` en el harness y verifica que un club
+  fuera de la lista no vea el selector.
+- **Últimos 4, 6 u 8 partidos** (`MAX_ULTIMOS = 8`, en `js/sgadd-muestra.js`
+  y en su copia de `server/lib/compartido/`: la vara del servidor rechaza
+  un N mayor).
+- Verificado con un token de cliente de Deportivo: últimas 2 semanas, 81
+  calificados; de local, 114.
+
+---
+
+## 140. LA CARD DE RENDIMIENTO DEL JUGADOR · PRIMERA VERSIÓN (2026-10-23)
+
+Pestaña **Rendimiento** en la ficha del jugador, entre Tiro y Evolución,
+**solo con la capa `pbp`** (sin ella no aparece, ni gris:
+`jugadoresTabsVisibles`). Es el «asistente hablándole al entrenador»: seis
+bloques, cada frase con el número que la sostiene y, donde corresponde,
+contra los cuartiles de la competencia. Assets en `?v=302`.
+
+```
+motorstats-ingestion/src/pbp/rendimiento.js   el motor que acumula la temporada por jugador
+motorstats-ingestion/test/test-rendimiento.js 27 tests: secuencia a mano + invariantes de la liga real
+js/sgadd-rendimiento.js                       analizar (PURO) y html; se monta por SGADD_PBP
+test-rendimiento.js                           41 tests
+```
+
+### El dato viaja en el paquete de laboratorio
+
+Dos campos OPCIONALES del paquete @3 (como `reloj`): `rendimiento.jugadores[id]`
+y `liga.rendimiento` (p25 · p50 · p75 de ppt, volumen, RCA, valor por
+asistencia, faltas que van a la línea, TCDP, 2das oportunidades y On/Off).
+Las franjas del reloj (`reloj.jugadores`) y el clutch (`clutch.jugadores`)
+ya viajaban: la card los cruza, no los repite. Suma ~6 KB por equipo; el
+paquete más pesado de la Conferencia Norte queda en 194 KB (techo 256).
+**Un paquete sin el campo** dice que la card llega con la próxima subida.
+
+### Los seis bloques
+
+| Bloque | Qué dice | De dónde |
+|---|---|---|
+| Veredicto | On/Off Net (Net ON − Net OFF por 100 posesiones), volumen contra eficiencia, su arma y su riesgo | segmentos y acciones validados |
+| Espacio | distancia mediana, reparto pintura/media/triple, rango real del triple por banda, RCA, 2das oportunidades | `partido.tiros` + acciones |
+| Reloj y clutch | participación y faceta dominante por franja (0-7 · 8-17 · 18-24 s, dicha también como reloj 24-17 · 16-7 · 6-0) y el cierre | `reloj`, `clutch` |
+| Química | asistencias y puntos que valen, socio principal, quién lo habilita, qué tiro llega de un pase | díadas asistencia → canasta |
+| Defensa | recuperos, tapones y rebote por partido, robos por franja del reloj rival, faltas de corte | acciones, `reloj.e` |
+| Riesgo | faltas recibidas por tipo, pérdidas robadas / en ataque / castigadas a ≤ 7 s (TCDP), técnicas e IDE | jugadas crudas |
+
+### Lo que hay que respetar al tocarlo
+
+- **ON/OFF solo con la cancha validada** (`validacion.ok`) y solo en los
+  partidos que jugó. Invariante en la ingesta: los minutos ON del plantel
+  son 5 × el tiempo de juego y los puntos ON, 5 × los puntos del equipo.
+- **Lo que el dato no trae no se inventa, y la card lo dice**: no hay
+  hockey assists (el PBP no registra el pase previo), ni pérdida «de
+  drible» o «de pase», y una falta con 2 libres con el rival en bonus se
+  informa «de tiro o de penalización», sin elegir.
+- **El color solo cuando se separa de la competencia** (cuarto alto o
+  bajo), siempre con ▲/▼ (punto 14). Sin muestra, la tasa es `null` y no
+  se compara.
+- `tasas()` está en los dos lados (ingesta y panel); si cambia una, cambia
+  la otra.
+- **IDE** = % de sus errores (pérdidas y tiros errados) que NO terminaron
+  en una falta suya a ≤ 5 s o en una técnica/antideportiva a ≤ 10 s.
+
+### Medido
+
+Conferencia Norte 25/26, 272 partidos: 10.290 de 10.348 faltas recibidas
+clasificadas, 61 % de pérdidas robadas, TCDP mediano 26 %, On/Off de −7,0
+a +5,6 entre p25 y p75. La card se renderizó para los 258 jugadores sin un
+`NaN` ni un `undefined`. Vista previa en el panel con un recorte real:
+seis bloques, sin errores de consola, sin desborde a 375 px.
+
+### Pendiente
+
+- **Regenerar y subir los paquetes** (`subir-paquetes.js --confirmar` en
+  la ingesta): hasta entonces la pestaña muestra que la card llega con la
+  próxima subida. Es una escritura de KV.
+- **La card no entra al PDF de la ficha** todavía (`test-ficha-pdf.js` lo
+  dice): no tiene `data-subcard`.
+- No se probó con una sesión real con la capa: la vista previa usó la demo
+  con `SGADD_PBP.activa` forzado y el paquete inyectado.

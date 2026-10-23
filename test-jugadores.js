@@ -142,7 +142,9 @@ check('con un equipo inexistente, cae de vuelta al id de la fila (no revienta)',
 
 console.log('\n7. ESTRUCTURA DE TABS');
 console.log('═'.repeat(70));
-check('hay 4 tabs: General, Tiro, Evolución, Partidos', J.JUGADORES_TABS.length === 4,
+check('hay 5 tabs: General, Tiro, Rendimiento (solo con la capa pbp), Evolución, Partidos',
+  J.JUGADORES_TABS.map(t => t.id).join(',') === 'general,tiro,rendimiento,evolucion,partidos'
+  && J.JUGADORES_TABS.filter(t => t.pbp).map(t => t.id).join() === 'rendimiento',
   J.JUGADORES_TABS.map(t => t.id).join(','));
 check('cada tab trae id, label y la pregunta que responde',
   J.JUGADORES_TABS.every(t => t.id && t.label && t.pregunta));

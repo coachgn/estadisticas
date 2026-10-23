@@ -34,8 +34,9 @@ seccion('1 · La estructura sale del código de la vista');
   const marcas = [...new Set((fuente.match(/data-subcard="([^"$]+)"/g) || []).map(m => m.slice(14, -1)))].filter(m => m.indexOf('equipo.') !== 0).sort();
   check('cada marca del render real está declarada en la estructura', marcas.every(m => declarados.indexOf(m) !== -1), marcas.filter(m => declarados.indexOf(m) === -1));
   check('y cada sub-card declarada tiene su marca en el render', declarados.every(d => marcas.indexOf(d) !== -1), declarados.filter(d => marcas.indexOf(d) === -1));
+  /* La pestaña Rendimiento (punto 140, solo con la capa pbp) todavía no entra al PDF. */
   check('las secciones son las pestañas reales de Jugadores, con su nombre y su pregunta',
-    est.map(x => x.id).join() === J.JUGADORES_TABS.map(t => t.id).join() && est.every(x => x.label === J.JUGADORES_TABS.find(t => t.id === x.id).label && x.pregunta));
+    est.map(x => x.id).join() === J.JUGADORES_TABS.filter(t => !t.pbp).map(t => t.id).join() && est.every(x => x.label === J.JUGADORES_TABS.find(t => t.id === x.id).label && x.pregunta));
   check('las cartas toman el nombre de JUGADORES_CARDS_REF', ['uso', 'pases'].every(c => est[0].subs.some(y => y.label === J.JUGADORES_CARDS_REF.find(r => r.id === c).label))
     && est[1].subs.some(y => y.label === J.JUGADORES_CARDS_REF.find(r => r.id === 'tiro').label));
   const grupos = (fuente.match(/data-subcard-de="([^"$]+)"/g) || []).map(m => m.slice(17, -1).split(/\s+/)).filter(g => g[0].indexOf('equipo.') !== 0);

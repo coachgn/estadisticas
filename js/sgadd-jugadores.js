@@ -249,6 +249,9 @@ function jugadoresRanking(idx, id, opciones) {
 const JUGADORES_TABS = [
   { id: 'general',   label: 'General',   pregunta: '¿Qué tipo de jugador es?' },
   { id: 'tiro',      label: 'Tiro',      pregunta: '¿De dónde anota?' },
+  /* Solo con la capa de laboratorio `pbp` (punto 140): sin ella la pestaña
+     no aparece, ni gris (`jugadoresTabsVisibles`). */
+  { id: 'rendimiento', label: 'Rendimiento', pregunta: '¿Qué le dice el play-by-play al cuerpo técnico?', pbp: true },
   { id: 'evolucion', label: 'Evolución', pregunta: '¿Está mejorando?' },
   { id: 'partidos',  label: 'Partidos',  pregunta: '¿Qué hizo cada noche?' },
 ];
@@ -2689,16 +2692,23 @@ function jugadoresGrilla(idx) {
 /* ---------- Ficha ---------- */
 
 function jugadoresFicha(idx, j) {
-  const tabs = JUGADORES_TABS.map(t => ({ id: t.id, label: t.label, disponible: jugadoresTabDisponible(idx, j, t.id) }));
-  const actual = JUGADORES_TABS.find(t => t.id === JUGADORES.tab) || JUGADORES_TABS[0];
+  const visibles = jugadoresTabsVisibles();
+  const tabs = visibles.map(t => ({ id: t.id, label: t.label, disponible: jugadoresTabDisponible(idx, j, t.id) }));
+  const actual = visibles.find(t => t.id === JUGADORES.tab) || visibles[0];
   return [
     jugadoresHeader(idx, j),
     `<div class="card rounded-xl p-4 sm:p-5 border border-hairline">
        ${SGADD_UI.tabs(tabs, JUGADORES.tab, 'jugadoresVerTab')}
        <p class="text-[11px] text-muted mb-4 -mt-2">${escapeHtml(actual.pregunta)}</p>
-       ${jugadoresTab(idx, j, JUGADORES.tab)}
+       ${jugadoresTab(idx, j, actual.id)}
      </div>`,
   ].join('');
+}
+
+/** Las pestañas de la ficha: la de Rendimiento solo con la capa `pbp`. */
+function jugadoresTabsVisibles() {
+  const pbp = typeof SGADD_PBP !== 'undefined' && SGADD_PBP.activa && SGADD_PBP.activa();
+  return JUGADORES_TABS.filter(t => !t.pbp || pbp);
 }
 
 function jugadoresTabDisponible(idx, j, id) {
@@ -2768,6 +2778,7 @@ function jugadoresTab(idx, j, id) {
   switch (id) {
     case 'general':   return jugadoresTabGeneral(idx, j);
     case 'tiro':      return jugadoresTabTiro(idx, j);
+    case 'rendimiento': return jugadoresTabRendimiento(j);
     case 'evolucion': return jugadoresTabEvolucion(idx, j);
     case 'partidos':  return jugadoresTabPartidos(idx, j);
     default:          return '';
@@ -3313,6 +3324,18 @@ function jugadoresTabTiro(idx, j) {
           { nombreEquipo: j['NOMBRES'], formato: 'T2%', nombreLiga: refTiro.grupo.label,
             notaLiga: refTiro.grupo.motivo }))}
     </div>${jugadoresBloqueMapaPbp(j)}`;
+}
+
+/* La card de RENDIMIENTO (punto 140): el play-by-play traducido para el
+   cuerpo técnico. Los datos llegan después del pintado, por
+   `SGADD_PBP.montarPendientes`, como el mapa. */
+function jugadoresTabRendimiento(j) {
+  if (typeof SGADD_PBP === 'undefined' || !SGADD_PBP.activa() || !j || !SGADD_PBP.espacioRendimiento) return '';
+  return `
+    <div class="card-rendimiento">
+      <h4 class="font-display uppercase tracking-wide text-sm text-white mb-2">📊 Card de rendimiento · ${escapeHtml(j['NOMBRES'])}</h4>
+      ${SGADD_PBP.espacioRendimiento(j['NOMBRES'], j['EQUIPO'])}
+    </div>`;
 }
 
 /* El mapa de tiro por zona y hexágono del play-by-play (punto 62). Solo con
