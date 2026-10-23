@@ -846,7 +846,7 @@ const SGADD_APP = (function () {
    */
   function barraMuestra(seccion) {
     const cid = clubId();
-    if (cid !== 'boca' && cid !== 'reconquista') return '';	
+    if (cid !== 'boca' && cid !== 'reconquista' && cid !== 'deportivo') return '';
     if (typeof SGADD_MUESTRA === 'undefined' || !estado.idx || !estado.hojas || enLlave()) return '';
     const esc = SGADD_UI.esc;
     const m = estado.muestra;
