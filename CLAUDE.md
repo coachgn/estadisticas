@@ -153,6 +153,9 @@ node test-ecosistema.js    #  23 tests · el auditor del ecosistema: fechas, cla
 node test-canva.js         #  29 tests · las piezas aprobadas a Canva por la API, sin Claude:
                            #             el permiso que rota, publicar SOLO placas-tmp, reintentos (punto 123)
 
+node test-muestra.js       #  81 tests · el selector de muestra de Equipos y Jugadores: el recorte de
+                           #             calendario, idxVista(), «propio» contra la temporada y la barra (punto 139)
+
 node test-backend.js       # 466 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
 
@@ -281,7 +284,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=297`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=298`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15466,3 +15469,90 @@ zona con un enganche a otra.** Corregir Lanús es una escritura de KV:
 
 (y su `liga` a `liga-nacional`). Tests: `test-logos.js` (2) y
 `test-torneos.js` (2).
+
+## 139. EL SELECTOR DE MUESTRA EN EQUIPOS Y JUGADORES · FASE 1, CALENDARIO (2026-10-23)
+
+Equipos y Jugadores se pueden mirar sobre un recorte del tramo de la barra.
+Assets en `?v=298`. `test-muestra.js` fija todo, sobre el snapshot de la demo
+y con `sgadd-app.js` real en un `vm`.
+
+```
+js/sgadd-muestra.js    PURO: normalizar, ventana, recortar, etiqueta, comparar
+SGADD_APP.idxVista()   el índice que muestran Equipos, Jugadores y sus PDF
+SGADD_APP.barra({ muestra: 'equipos' | 'jugadores' })   la fila del selector y el badge
+```
+
+### Las opciones de la fase 1 · familia de CALENDARIO
+
+Todo el tramo · Última semana / Últimas 2, 3, 4 semanas · Rango de fechas.
+Cada equipo se mide contra la liga EN ESA MISMA VENTANA.
+
+- **Semanas, no jornadas**: el libro no trae la jornada y el calendario del
+  torneo tampoco (la LNB juega todos los días). En una liga semanal una
+  semana es una fecha. La ventana se ancla al último día con partidos del
+  tramo, no a hoy.
+- **«Partido específico» no es una muestra** (punto 4): es el atajo «Ver un
+  partido», que abre el detalle con sus desvíos contra la temporada.
+- La familia 2 (últimos N propios, local/visitante, ganado/perdido, rival)
+  y la vara de jugadores del servidor (opción A) son las fases 2 y 3.
+
+### Cómo se recalcula
+
+`SGADD_MUESTRA.recortar` deja solo `Base Datos E`, `Base Datos J` y
+`4 FACTORES` de la ventana, y `construirIndice(…, TOTAL)` rearma todo:
+métricas avanzadas, medianas, percentiles de la liga del período, ADN y
+textos. **Las derivadas se descartan**: `ACUMULADO J` traería los totales de
+la temporada. Una fila sin fecha se ubica por su PARTIDO solo si tiene una
+sola noche (la regla del punto 90). Con la ventana cubriendo el tramo entero
+el recorte reproduce `PROMEDIOS E` (hay test por equipo).
+
+- **`estado.idx` no se toca**: Clasificación, el buzón, las alertas,
+  Scouting y el Fixture siguen sobre el tramo entero.
+- **Caché** por tramo y muestra; cambiar de libro o de tramo lo invalida.
+  Medido en Boca: ~140 ms.
+- **La muestra vive en `sessionStorage`, por planilla**, y no en la ruta
+  (el hash es frágil, punto 16).
+- **Los partidos sin estadísticas no se suman en una muestra**
+  (`clasifFilasVigentes` con `idx.__muestra`): son de la temporada.
+- **El detalle de un partido lee la temporada**, no el recorte.
+- Una ventana sin partidos devuelve el tramo entero y el badge lo dice.
+
+### «Propio» · contra su temporada
+
+`idxVista()` envuelve `leer`, `leerVista` y `leerJugador` del recorte y le
+cuelga a cada lectura `propio` (`SGADD_MUESTRA.comparar`): el dato en la
+temporada, la diferencia y si estuvo arriba, en su media (menos de 2,5 %) o
+abajo, en términos de rendimiento. `statCard` suma «▲ +2,3 vs su
+temporada» y `metricTable` una columna «Temporada», **solo con la muestra
+activa**: sin ella las dos salen como antes. En una descriptiva la flecha va
+sin color.
+
+**Lo que no lleva `propio`**: los números que una sección lee directo del
+objeto del equipo (`e.promedios[…]`) y no por `leer()`. Salen del período,
+sin la comparación.
+
+### El log recortado del cliente
+
+Un cliente recibe `Base Datos J` solo con su plantel (punto 19). Recalcular
+jugadores dejaría la liga formada por los suyos. Con
+`alcance.hojasRecortadas` incluyendo esa hoja, `idxVista({ jugadores: true })`
+devuelve la temporada, el badge de Jugadores lo dice y la ficha en PDF no
+declara una muestra que no aplicó. Equipos sí recorta (`Base Datos E` llega
+completa). Se cierra con la fase 3.
+
+### Lo que no se recorta, y lo dice el badge
+
+Quintetos, Mapa de tiro y el reloj (vienen del paquete de la temporada) y la
+tabla de posiciones. El informe de equipo y la ficha en PDF suman «Muestra:
+…» a su encabezado.
+
+### Verificado
+
+Con el libro real de Boca (backend local, link de admin): «Últimas 2
+semanas» = 23 de 33 partidos; Boca pasa de 4 a 3 PJ (0-3); PTS 86,0 contra
+88,5 de su temporada, percentil contra los 18 equipos del período; Vildoza
+8,3 contra 11,8. El rango, el atajo al partido y el caso recortado
+(simulado) andan; a 375 px no hay desborde. **Con un link de cliente no se
+pudo**: el club `boca` está `inactivo` en KV y la categoría sale bloqueada.
+Al revés, cuatro mutaciones del test caen todas.
+

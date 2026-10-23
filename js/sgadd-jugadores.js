@@ -1938,7 +1938,9 @@ function jugadoresPintar() {
   if (st.error) { root.innerHTML = SGADD_APP.barra({ extra: volver }) + SGADD_UI.aviso('No se pudo cargar', st.error, 'error'); return; }
   if (!st.idx) { root.innerHTML = SGADD_APP.barra({ extra: volver }) + SGADD_UI.cargando('Cargando la categoría…', (SGADD_APP.planillaActual() || {}).label); return; }
 
-  const idx = st.idx;
+  /* LA MUESTRA (punto 139). Con el log recortado del cliente devuelve la
+     temporada: ver `jugadoresRecortados` en sgadd-app.js. */
+  const idx = (typeof SGADD_APP.idxVista === 'function') ? SGADD_APP.idxVista({ jugadores: true }) : st.idx;
   JUGADORES.planillaId = st.planillaId;
   JUGADORES.fase = st.fase;
   /* UN EQUIPO ELEGIDO QUE NO EXISTE EN ESTE LIBRO SE SUELTA. El filtro
@@ -1960,7 +1962,7 @@ function jugadoresPintar() {
 
   SGADD_CHARTS.limpiar();
   root.innerHTML = [
-    SGADD_APP.barra({ extra: volver }),
+    SGADD_APP.barra({ extra: volver, muestra: 'jugadores' }),
     SGADD_APP.avisoMuestra(),
     j ? jugadoresFicha(idx, j) : jugadoresGrilla(idx),
   ].filter(Boolean).join('');
@@ -2317,7 +2319,7 @@ function jugadoresBloqueRankingPlantel(idx) {
         ${typeof SGADD_RANKPDF !== 'undefined' ? `
         <div>
           <span class="block text-[10px] uppercase tracking-wider text-muted font-display mb-1">Exportar</span>
-          <button type="button" onclick="SGADD_RANKPDF.abrir(SGADD_APP.estado.idx)"
+          <button type="button" onclick="SGADD_RANKPDF.abrir(SGADD_APP.idxVista({ jugadores: true }))"
             class="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider rounded-md
                    border border-hairline hover:border-accent hover:bg-surface2 transition-colors
                    focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"

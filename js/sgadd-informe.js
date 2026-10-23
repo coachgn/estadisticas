@@ -199,7 +199,9 @@ const SGADD_INFORME = (function () {
      MODAL
      --------------------------------------------------------------------- */
   function equipoActual() {
-    const idx = typeof SGADD_APP !== 'undefined' ? SGADD_APP.estado.idx : null;
+    /* El informe es el de la pantalla: con una muestra activa, el recorte. */
+    const idx = typeof SGADD_APP !== 'undefined'
+      ? (typeof SGADD_APP.idxVista === 'function' ? SGADD_APP.idxVista() : SGADD_APP.estado.idx) : null;
     const e = (idx && typeof EQUIPOS !== 'undefined' && EQUIPOS.equipo) ? idx.get(EQUIPOS.equipo.replace(/-/g, ' ')) : null;
     return idx && e ? { idx: idx, e: e } : null;
   }
@@ -379,6 +381,7 @@ const SGADD_INFORME = (function () {
         <p>Fecha de emisión: ${fecha} · Competición: ${esc(pl ? pl.label : '—')}
            · ${esc(club.nombre || '')}</p>
         <p>Récord ${rec.ganados}-${rec.perdidos} · ${idx.liga.n} equipos en la liga · PJ ${e.pj || 0}</p>
+        ${(SGADD_APP.textoMuestra && SGADD_APP.textoMuestra()) ? `<p>${esc(SGADD_APP.textoMuestra())}</p>` : ''}
       </header>`);
 
     est.filter(x => seccionEntra(x, sel) && disponible(idx, e, x)).forEach((x) => {

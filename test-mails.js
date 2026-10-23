@@ -195,7 +195,12 @@ const sumar = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86400000
   const renovado = JSON.parse(JSON.stringify({ tres: catalogo.tres }));
   renovado.tres.categorias.u23.vence = sumar(HOY, 3 + 30);
   const hoyMasTreinta = sumar(HOY, 30);
-  const planRenov = cron.planificar(renovado, await fichas.leerTodas({ kv: almacen }), hoyMasTreinta);
+  /* El instante va EXPLÍCITO, igual que en el plan de arriba: sin él,
+     `planificar` mide el acceso con el reloj real, y desde que el período
+     renovado (HOY + 33) quedó en el pasado la categoría salía vencida y el
+     test dependía del día en que se corriera. */
+  const ahoraMasTreinta = AHORA + 30 * 86400000;
+  const planRenov = cron.planificar(renovado, await fichas.leerTodas({ kv: almacen }), hoyMasTreinta, ahoraMasTreinta);
   check('RENOVAR re-arma los avisos: el 3 días del período nuevo sale aunque el viejo ya se mandó',
     planRenov.avisos.length === 1 && planRenov.avisos[0].hito === 'recordatorio_3d' && planRenov.avisos[0].vence === sumar(HOY, 33));
   check('yaEnviado distingue el vencimiento', fichas.yaEnviado(fichaTres, 'recordatorio_3d', sumar(HOY, 3))

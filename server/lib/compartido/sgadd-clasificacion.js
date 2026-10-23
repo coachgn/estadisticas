@@ -733,7 +733,9 @@ function clasifManualesVigentes(torneo, fase) {
    sección Equipos (tarjetas, ficha, local/visitante), el picker de
    Jugadores y los rankings, para mostrar el MISMO PJ que la tabla. */
 function clasifFilasVigentes(idx) {
-  try { return SGADD_CLASIF.filasPorEquipo(idx, clasifManualesVigentes()); }
+  /* En una MUESTRA (punto 139) los partidos sin estadísticas no se suman:
+     son de la temporada y el recorte no sabe cuáles caen en la ventana. */
+  try { return SGADD_CLASIF.filasPorEquipo(idx, (idx && idx.__muestra) ? [] : clasifManualesVigentes()); }
   catch (e) { return new Map(); }
 }
 

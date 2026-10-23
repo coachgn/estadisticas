@@ -222,6 +222,7 @@ const SGADD_FICHA = (function () {
     return `<header class="informe-cabecera ficha-cabecera ficha-emision">
         <p>${esc(titulo)} · Fecha de emisión: ${esc(SGADD_UI.fechaHoy())} · Competición: ${esc(pl ? pl.label : '—')}
            ${club.nombre ? '· ' + esc(club.nombre) : ''}</p>
+        ${(SGADD_APP.textoMuestra && SGADD_APP.textoMuestra({ jugadores: true })) ? `<p>${esc(SGADD_APP.textoMuestra({ jugadores: true }))}</p>` : ''}
       </header>`;
   }
 
@@ -304,11 +305,17 @@ const SGADD_FICHA = (function () {
     return sel;
   }
 
+  /* La ficha y el Pack PLANTEL salen del índice de la pantalla: con una
+     muestra activa, el recorte (punto 139). */
+  function idxFicha() {
+    return (typeof SGADD_APP.idxVista === 'function') ? SGADD_APP.idxVista({ jugadores: true }) : SGADD_APP.estado.idx;
+  }
+
   /* ---------------------------------------------------------------------
      MODAL INDIVIDUAL
      --------------------------------------------------------------------- */
   function jugadorActual() {
-    const idx = SGADD_APP.estado.idx;
+    const idx = idxFicha();
     if (!idx || typeof JUGADORES === 'undefined' || !JUGADORES.jugador) return null;
     const j = jugadoresBuscar(idx, JUGADORES.jugador);
     return j ? { idx: idx, j: j } : null;
@@ -389,7 +396,7 @@ const SGADD_FICHA = (function () {
   }
 
   function abrirPack(clave) {
-    const idx = SGADD_APP.estado.idx;
+    const idx = idxFicha();
     const lista = plantelDe(idx, clave);
     if (!lista.length) return;
     if (!SGADD_AUTH.puedeVerEquipo(lista[0]['EQUIPO'])) return;
@@ -401,7 +408,7 @@ const SGADD_FICHA = (function () {
   }
 
   function pintarPack() {
-    const idx = SGADD_APP.estado.idx;
+    const idx = idxFicha();
     const lista = plantelDe(idx, pack.clave);
     const equipo = lista.length ? SGADD.limpiarNombre(lista[0]['EQUIPO']) : pack.clave;
     const pasos = `<p class="text-[10px] uppercase tracking-wider text-muted font-display mb-2">
@@ -448,7 +455,7 @@ const SGADD_FICHA = (function () {
   }
   function pasoPack(n) { leerPack(); pack.paso = n; pintarPack(); }
   function atajoPack(modo) {
-    const lista = plantelDe(SGADD_APP.estado.idx, pack.clave);
+    const lista = plantelDe(idxFicha(), pack.clave);
     const t = porTitularidad(lista);
     const set = modo === 'titulares' ? t.titulares : modo === 'sustitutos' ? t.sustitutos : modo === 'todos' ? lista : [];
     lista.forEach((j) => { pack.elegidos[jugadoresSlug(j)] = set.indexOf(j) !== -1; });
@@ -456,7 +463,7 @@ const SGADD_FICHA = (function () {
   }
   function generarPack() {
     leerPack();
-    const idx = SGADD_APP.estado.idx;
+    const idx = idxFicha();
     const lista = plantelDe(idx, pack.clave).filter(j => pack.elegidos[jugadoresSlug(j)]);
     cerrar();
     if (!lista.length) return;

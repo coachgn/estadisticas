@@ -34,6 +34,10 @@ const SGADD_APP = (function () {
     idx: null,
     cargando: false,
     error: null,
+    /* La MUESTRA de Equipos y Jugadores (punto 139): un recorte de
+       calendario adentro del tramo de la barra. `todo` = el tramo entero,
+       que es exactamente lo de antes. */
+    muestra: { tipo: 'todo' },
   };
 
   const suscriptores = [];
@@ -126,6 +130,7 @@ const SGADD_APP = (function () {
       || (activas.length ? activas[0].id : null);
     if (r.fase) estado.fase = r.fase;
     if (r.torneo) estado.torneo = r.torneo;
+    estado.muestra = muestraRecordada(estado.planillaId);
   }
 
   /**
@@ -367,6 +372,139 @@ const SGADD_APP = (function () {
     estado.idx = SGADD.construirIndice(estado.hojas, { fase: estado.fase, torneo: estado.torneo });
   }
 
+  /* =====================================================================
+     LA MUESTRA (punto 139) · el índice de lo que se MIRA
+
+     `estado.idx` sigue siendo el del tramo entero y lo usan Clasificación,
+     el buzón, las alertas, Scouting y el Fixture: ninguno de ellos cambia
+     con la muestra. Equipos, Jugadores y sus PDF leen `idxVista()`.
+
+     El índice del recorte se arma con el motor del TOTAL sobre las hojas
+     partido a partido recortadas (`SGADD_MUESTRA.recortar`), así que las
+     métricas avanzadas, las medianas, los percentiles contra la liga EN
+     ESE PERÍODO, el ADN y los textos automáticos salen recalculados sin
+     tocar ni una sección. Y cada lectura (`leer`, `leerVista`,
+     `leerJugador`) lleva `propio`: el mismo dato en su temporada.
+     ===================================================================== */
+  const CLAVE_MUESTRA = 'sgadd.muestra.';
+  let _vista = null;   // { base, clave, idx, info }
+
+  function sesion() {
+    try { return (typeof sessionStorage !== 'undefined') ? sessionStorage : null; } catch (e) { return null; }
+  }
+  /* En `sessionStorage` y por planilla: sobrevive al F5, no a cerrar la
+     pestaña. Una ventana de fechas de la semana pasada no tiene que
+     esperar a nadie el lunes. */
+  function muestraRecordada(id) {
+    const s = sesion();
+    if (!s || !id || typeof SGADD_MUESTRA === 'undefined') return { tipo: 'todo' };
+    try { return SGADD_MUESTRA.normalizar(JSON.parse(s.getItem(CLAVE_MUESTRA + id) || 'null')); }
+    catch (e) { return { tipo: 'todo' }; }
+  }
+
+  function cambiarMuestra(m) {
+    if (typeof SGADD_MUESTRA === 'undefined') return;
+    const nueva = SGADD_MUESTRA.normalizar(m);
+    if (SGADD_MUESTRA.clave(nueva) === SGADD_MUESTRA.clave(estado.muestra)) return;
+    estado.muestra = nueva;
+    const s = sesion();
+    if (s && estado.planillaId) { try { s.setItem(CLAVE_MUESTRA + estado.planillaId, JSON.stringify(nueva)); } catch (e) {} }
+    avisar();
+  }
+
+  /* El cliente recibe `Base Datos J` recortada a su plantel (punto 19): un
+     recálculo de jugadores dejaría la liga formada solo por los suyos, el
+     bug del «percentil 50 en todo». Hasta que el servidor mande la vara de
+     la liga del período (fase 3), en esa sesión Jugadores sigue sobre la
+     temporada y la barra lo dice. */
+  function jugadoresRecortados() {
+    const a = estado.alcance;
+    return !!(a && Array.isArray(a.hojasRecortadas) && a.hojasRecortadas.indexOf('Base Datos J') !== -1);
+  }
+
+  function claveJugadorVista(j) {
+    return SGADD.claveEquipo(j['EQUIPO']) + '|' + SGADD.texto(j['NOMBRES']).toUpperCase();
+  }
+
+  /* Le cuelga a cada lectura del recorte la misma lectura en la temporada.
+     Se envuelve el OBJETO del índice y no el núcleo: `ranking`, el ADN y
+     todo lo interno siguen leyendo el recorte sin enterarse. */
+  function decorar(v, base) {
+    const leerV = v.leer, leerVistaV = v.leerVista, leerJ = v.leerJugador;
+    const porClave = new Map((base.liga.jugadores || []).map(j => [claveJugadorVista(j), j]));
+    v.leer = (k, m, vi) => {
+      const r = leerV(k, m, vi);
+      if (r) r.propio = SGADD_MUESTRA.comparar(r, base.leer(k, m, vi));
+      return r;
+    };
+    v.leerVista = (k, vi) => {
+      const out = leerVistaV(k, vi);
+      if (!out) return out;
+      const b = base.leerVista(k, vi);
+      const mb = new Map(((b && b.filas) || []).map(f => [f.clave, f]));
+      out.filas.forEach(f => { f.propio = SGADD_MUESTRA.comparar(f, mb.get(f.clave)); });
+      return out;
+    };
+    v.leerJugador = (j, m) => {
+      const r = leerJ(j, m);
+      const jb = j ? porClave.get(claveJugadorVista(j)) : null;
+      if (r) r.propio = jb ? SGADD_MUESTRA.comparar(r, base.leerJugador(jb, m)) : null;
+      return r;
+    };
+    return v;
+  }
+
+  function tramoDeIndice() {
+    return estado.tramoIndice || { torneo: estado.torneo, fase: estado.fase };
+  }
+
+  /** Lo que la barra dice de la muestra. null con la muestra apagada. */
+  function infoMuestra() {
+    if (typeof SGADD_MUESTRA === 'undefined' || !estado.hojas || enLlave()) return null;
+    if (!SGADD_MUESTRA.activa(estado.muestra)) return null;
+    idxVista();
+    return _vista ? _vista.info : null;
+  }
+
+  /**
+   * El índice que muestran Equipos y Jugadores. Con la muestra apagada, en
+   * modo llave o sin libro, es `estado.idx` tal cual.
+   * `{ jugadores: true }` lo pide para la sección Jugadores: con el log
+   * recortado del cliente, devuelve la temporada.
+   */
+  function idxVista(opciones) {
+    const base = estado.idx;
+    if (!base || !estado.hojas || enLlave() || typeof SGADD_MUESTRA === 'undefined') return base;
+    if (!SGADD_MUESTRA.activa(estado.muestra)) return base;
+    const t = tramoDeIndice();
+    const k = (t.torneo || '') + '|' + (t.fase || '') + '|' + SGADD_MUESTRA.clave(estado.muestra);
+    if (!_vista || _vista.base !== base || _vista.clave !== k) {
+      const dias = SGADD_MUESTRA.diasDelTramo(estado.hojas, t);
+      const vent = SGADD_MUESTRA.ventana(estado.muestra, dias);
+      const rec = SGADD_MUESTRA.recortar(estado.hojas, t, vent);
+      const info = {
+        etiqueta: SGADD_MUESTRA.etiqueta(estado.muestra), ventana: vent,
+        partidos: rec.partidos, total: rec.total, sinFecha: rec.sinFecha,
+        dias: dias, vacia: !rec.partidos, jugadoresRecortados: jugadoresRecortados(),
+      };
+      let v = null;
+      if (rec.partidos) {
+        v = SGADD.construirIndice(rec.hojas, { fase: t.fase, torneo: SGADD.TORNEO_TOTAL });
+        /* El nivel de la competencia es el del libro, no el de un recorte:
+           sin esto la vara de las etiquetas podría resolverse con otro. */
+        if (base.liga && base.liga.nivel && v.liga && !v.liga.nivel) v.liga.nivel = base.liga.nivel;
+        decorar(v, base);
+        v.__muestra = info;
+      }
+      _vista = { base: base, clave: k, idx: v, info: info };
+    }
+    /* Sin partidos en la ventana se muestra el tramo entero, y la barra lo
+       dice: una ficha vacía se lee como que el equipo no jugó nunca. */
+    if (!_vista.idx) return base;
+    if (opciones && opciones.jugadores && _vista.info.jugadoresRecortados) return base;
+    return _vista.idx;
+  }
+
   function torneos() {
     return estado.hojas ? SGADD.torneosDisponibles(estado.hojas)
       : [{ id: SGADD.TORNEO_GENERAL, label: 'Todos', unico: true }];
@@ -468,6 +606,8 @@ const SGADD_APP = (function () {
     /* El torneo es del libro anterior: se vuelve a resolver al cargar. La
        preferencia NO se borra — es justo lo que hay que conservar. */
     estado.hojas = null; estado.idx = null; estado.torneo = null;
+    /* Una ventana de fechas de otro libro no significa nada acá. */
+    estado.muestra = muestraRecordada(id);
     // La capa de datos vieja también tiene que seguir al selector.
     if (typeof window !== 'undefined' && typeof window.onCategoriaCambiada === 'function') {
       window.onCategoriaCambiada(id);
@@ -612,7 +752,138 @@ const SGADD_APP = (function () {
         </div>
         ${info ? `<p class="text-[11px] text-muted mt-2 font-mono">${SGADD_UI.esc(p ? p.label : '')} · ${SGADD_UI.esc(info)}</p>` : ''}
         ${avisoTorneo}
+        ${o.muestra ? barraMuestra(o.muestra) : ''}
       </div>`;
+  }
+
+  /* El equipo sobre el que se ofrece «Ver un partido»: el de la ficha
+     abierta, el elegido en Jugadores, o el propio. Sin ninguno no se
+     ofrece: una lista con todos los partidos de la liga no ayuda a nadie. */
+  function equipoParaPartidos(idx, seccion) {
+    let k = null;
+    if (seccion === 'equipos' && typeof EQUIPOS !== 'undefined' && EQUIPOS.equipo) k = EQUIPOS.equipo.replace(/-/g, ' ');
+    if (!k && seccion === 'jugadores' && typeof JUGADORES !== 'undefined' && JUGADORES.filtroEquipo) k = JUGADORES.filtroEquipo;
+    let e = k ? idx.get(k) : null;
+    if (!e) e = idx.lista().find(x => SGADD.esEquipoPropio(x.clave)) || null;
+    if (e && typeof SGADD_AUTH !== 'undefined' && SGADD_AUTH.puedeVerEquipo && !SGADD_AUTH.puedeVerEquipo(e.clave)) return null;
+    return e;
+  }
+
+  /**
+   * La fila de la MUESTRA de la barra (punto 139): el selector, las fechas
+   * del rango, el atajo a un partido y el badge «Muestra activa».
+   *
+   * «Partido específico» NO es una muestra: recalcular percentiles sobre
+   * una noche es ruido (punto 4). Es un atajo al detalle del partido, que
+   * ya mide cada rendimiento contra el promedio propio.
+   */
+  function barraMuestra(seccion) {
+    if (typeof SGADD_MUESTRA === 'undefined' || !estado.idx || !estado.hojas || enLlave()) return '';
+    const esc = SGADD_UI.esc;
+    const m = estado.muestra;
+    const t = tramoDeIndice();
+    const dias = SGADD_MUESTRA.diasDelTramo(estado.hojas, t);
+    if (!dias.length) return '';
+    const valor = m.tipo === 'semanas' ? 'semanas:' + m.n : m.tipo;
+    const opcion = (v, txt) => `<option value="${v}" ${v === valor ? 'selected' : ''}>${esc(txt)}</option>`;
+    const sel = `
+          <div class="sm:w-56">
+            <label for="selMuestra" class="block text-[11px] uppercase tracking-wider text-muted font-display mb-1">Muestra</label>
+            <select id="selMuestra" onchange="SGADD_APP.elegirMuestra(this.value)"
+              class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm focus:border-accent outline-none">
+              ${opcion('todo', 'Todo el tramo')}
+              ${[1, 2, 3, 4].map(n => opcion('semanas:' + n, n === 1 ? 'Última semana' : 'Últimas ' + n + ' semanas')).join('')}
+              ${opcion('rango', 'Rango de fechas…')}
+            </select>
+          </div>`;
+    const v = SGADD_MUESTRA.ventana(m, dias) || {};
+    const fecha = (id, txt, val) => `
+          <div>
+            <label for="${id}" class="block text-[11px] uppercase tracking-wider text-muted font-display mb-1">${txt}</label>
+            <input id="${id}" type="date" value="${esc(val || '')}" min="${esc(dias[0])}" max="${esc(dias[dias.length - 1])}"
+              onchange="SGADD_APP.cambiarMuestra({ tipo: 'rango', desde: document.getElementById('muestraDesde').value, hasta: document.getElementById('muestraHasta').value })"
+              class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm focus:border-accent outline-none">
+          </div>`;
+    const rango = m.tipo === 'rango' ? fecha('muestraDesde', 'Desde', v.desde) + fecha('muestraHasta', 'Hasta', v.hasta) : '';
+
+    const e = equipoParaPartidos(estado.idx, seccion);
+    const partidos = e ? e.partidos.filter(p => p.__id).slice().reverse() : [];
+    const atajo = partidos.length ? `
+          <div class="sm:w-56">
+            <label for="selPartido" class="block text-[11px] uppercase tracking-wider text-muted font-display mb-1">Ver un partido</label>
+            <select id="selPartido" onchange="SGADD_APP.irAPartido(this.value)"
+              class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm focus:border-accent outline-none">
+              <option value="">${esc(SGADD.limpiarNombre(e.nombre))} · elegí…</option>
+              ${partidos.map(p => {
+                const r = SGADD.texto(p['RESULTADO']).toUpperCase().charAt(0);
+                const txt = (p.__fecha ? SGADD.formatearFecha(p.__fecha) + ' · ' : '') + SGADD.texto(p['PARTIDO'])
+                  + (r === 'G' || r === 'P' ? ' (' + r + ')' : '');
+                return `<option value="${esc(e.clave + '|' + p.__id)}">${esc(txt)}</option>`;
+              }).join('')}
+            </select>
+          </div>` : '';
+
+    const fila = `
+        <div class="flex flex-col sm:flex-row sm:items-end gap-3 mt-3">${sel}${rango}${atajo}</div>`;
+    const info = infoMuestra();
+    if (!info) return fila;
+    const vent = info.ventana || {};
+    const dd = (iso) => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) : '…';
+    const avisos = [];
+    if (info.vacia) avisos.push('La ventana no tiene partidos: se muestra el tramo entero.');
+    else {
+      avisos.push('Métricas, percentiles y textos recalculados contra la liga en ese período. ▲▼ compara contra su propia temporada.');
+      if (info.sinFecha) avisos.push(info.sinFecha + ' filas sin fecha quedaron afuera: no se puede saber de qué noche son.');
+      if (seccion === 'jugadores' && info.jugadoresRecortados) {
+        avisos.push('En Jugadores tu plan ve la temporada completa: la vara de la liga por período para jugadores la calcula el servidor y todavía no está activa.');
+      }
+      avisos.push('Quintetos, Mapa de tiro y el reloj de posesión siguen siendo de la temporada; la tabla de posiciones no cambia.');
+    }
+    return fila + `
+        <div class="muestra-badge mt-3" role="status">
+          <p><b>◷ Muestra activa</b> · ${esc(info.etiqueta)} · ${esc(dd(vent.desde))} → ${esc(dd(vent.hasta))}
+            · ${info.vacia ? 0 : info.partidos} de ${info.total} partidos
+            <button type="button" onclick="SGADD_APP.cambiarMuestra({ tipo: 'todo' })" class="muestra-quitar">Quitar</button></p>
+          ${avisos.map(a => `<p class="muestra-nota">${esc(a)}</p>`).join('')}
+        </div>`;
+  }
+
+  /* La línea que los PDF suman a su encabezado con una muestra activa. Un
+     informe se comparte y se archiva: sin decir de qué período habla, sus
+     percentiles se leen como los de la temporada. Vacía si no aplica. */
+  function textoMuestra(opciones) {
+    const info = infoMuestra();
+    if (!info || info.vacia) return '';
+    if (opciones && opciones.jugadores && info.jugadoresRecortados) return '';
+    const v = info.ventana || {};
+    const dd = (iso) => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) : '…';
+    return 'Muestra: ' + info.etiqueta + ' (' + dd(v.desde) + ' → ' + dd(v.hasta) + ', ' + info.partidos + ' de ' + info.total + ' partidos)';
+  }
+
+  /* Elegir «Rango de fechas…» abre el rango sobre el tramo entero: el DT
+     ajusta desde ahí en vez de arrancar con dos campos vacíos. */
+  function elegirMuestra(valor) {
+    const v = String(valor || 'todo');
+    if (v.indexOf('semanas:') === 0) return cambiarMuestra({ tipo: 'semanas', n: Number(v.split(':')[1]) });
+    if (v === 'rango') {
+      const dias = estado.hojas ? SGADD_MUESTRA.diasDelTramo(estado.hojas, tramoDeIndice()) : [];
+      return cambiarMuestra({ tipo: 'rango', desde: dias[0], hasta: dias[dias.length - 1] });
+    }
+    return cambiarMuestra({ tipo: 'todo' });
+  }
+
+  /* El atajo al detalle del partido. Desde Equipos abre ahí mismo; desde
+     Jugadores cruza con el mismo link que ya usa el log del jugador. */
+  function irAPartido(valor) {
+    const i = String(valor || '').indexOf('|');
+    if (i < 0) return;
+    const clave = valor.slice(0, i), id = valor.slice(i + 1);
+    if (typeof currentSection !== 'undefined' && currentSection === 'equipos' && typeof equiposVerPartido === 'function') {
+      EQUIPOS.equipo = clave.toLowerCase().split(' ').filter(Boolean).join('-');
+      equiposVerPartido(id);
+      return;
+    }
+    if (typeof jugadoresVerPartido === 'function') jugadoresVerPartido(clave, id);
   }
 
   function avisoMuestra() {
@@ -720,6 +991,7 @@ const SGADD_APP = (function () {
     estado, inicializar, cargar, reindexar, cambiarPlanilla, cambiarFase, cambiarTorneo, cambiarTramo,
     aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, onCambio, adoptarEquipoDeCategoria,
     recordarCategoria, categoriaRecordada, sufijoCategoria,
+    cambiarMuestra, elegirMuestra, irAPartido, textoMuestra, idxVista, infoMuestra, muestraRecordada, barraMuestra,
     get idx() { return estado.idx; },
   };
 })();

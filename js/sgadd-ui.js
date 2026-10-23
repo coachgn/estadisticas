@@ -62,6 +62,25 @@ const SGADD_UI = (function () {
   }
 
   /* ---------------------------------------------------------------------
+     LA COMPARACIÓN CONTRA LA TEMPORADA PROPIA (punto 139)
+
+     Con una muestra activa, cada lectura trae `propio`: el mismo dato en
+     la temporada del equipo o jugador. Va CON flecha y con palabra además
+     del color —ningún estado solo con color, punto 14— y en una métrica
+     descriptiva la flecha sale neutra: el ritmo o el reparto de plays no
+     tienen lado bueno (punto 4).
+     --------------------------------------------------------------------- */
+  function textoPropio(r) {
+    const pr = r && r.propio;
+    if (!pr) return null;
+    const flecha = pr.direccion > 0 ? '▲' : pr.direccion < 0 ? '▼' : '=';
+    const color = pr.estado === 'arriba' ? 'text-green-400' : pr.estado === 'abajo' ? 'text-red-400' : 'text-muted';
+    const cuanto = pr.direccion === 0 ? 'en su media'
+      : (pr.delta > 0 ? '+' : '') + SGADD.formatear(r.clave, pr.delta) + ' vs su temporada';
+    return { flecha: flecha, color: color, cuanto: cuanto, temporada: pr.formateado };
+  }
+
+  /* ---------------------------------------------------------------------
      StatCard
 
      La tarjeta de una métrica: valor grande, delta contra la mediana con
@@ -78,11 +97,16 @@ const SGADD_UI = (function () {
            ${flecha} ${esc((r.delta > 0 ? '+' : '') + SGADD.formatear(r.clave, r.delta))} vs mediana
          </p>`;
 
+    const tp = textoPropio(r);
+    const propioTxt = !tp ? '' : `<p class="text-[11px] ${tp.color} font-mono" title="${esc('Su temporada: ' + (tp.temporada || '—'))}">
+           ${tp.flecha} ${esc(tp.cuanto)}</p>`;
+
     return `
       <div class="bg-surface2/50 rounded-lg p-3 ${o.clase || ''}">
         <p class="text-[10px] uppercase tracking-wider text-muted font-display truncate" title="${esc(r.label)}">${esc(r.label)}</p>
         <p class="font-display text-2xl text-ink leading-tight">${esc(r.formateado)}</p>
         ${deltaTxt}
+        ${propioTxt}
         ${percentileBar(r, o)}
       </div>`;
   }
@@ -93,7 +117,12 @@ const SGADD_UI = (function () {
   function metricTable(vista, opciones) {
     if (!vista) return '';
     const o = opciones || {};
+    /* La columna «Temporada» aparece solo con una muestra activa: es la
+       única vez que las filas traen `propio`. */
+    const conPropio = vista.filas.some(r => r && r.propio !== undefined);
     const filas = vista.filas.map(r => {
+      const tp = conPropio ? textoPropio(r) : null;
+      const celdaPropio = !conPropio ? '' : `<td class="py-1.5 pr-3 font-mono text-xs ${tp ? tp.color : 'text-muted'}" title="${tp ? esc(tp.cuanto) : ''}">${tp ? esc(tp.flecha + ' ' + (tp.temporada || '—')) : '—'}</td>`;
       const pct = (vista.descriptiva || r.percentil === null) ? '—' : r.percentil.toFixed(0);
       const colorPct = vista.descriptiva ? 'text-muted'
         : (r.percentil >= 66 ? 'text-green-400' : r.percentil >= 34 ? 'text-accent' : 'text-red-400');
@@ -102,6 +131,7 @@ const SGADD_UI = (function () {
           <td class="py-1.5 pr-3 text-xs">${esc(r.label)}${r.invertida && !vista.descriptiva ? ' <span class="text-muted" title="menos es mejor">↓</span>' : ''}</td>
           <td class="py-1.5 pr-3 font-mono text-xs text-ink">${esc(r.formateado)}</td>
           <td class="py-1.5 pr-3 font-mono text-xs text-muted">${esc(r.tipoFormateado)}</td>
+          ${celdaPropio}
           <td class="py-1.5 font-mono text-xs ${colorPct}">${esc(pct)}</td>
         </tr>`;
     }).join('');
@@ -121,6 +151,7 @@ const SGADD_UI = (function () {
             <th class="pb-1 pr-3">Métrica</th>
             <th class="pb-1 pr-3">Valor</th>
             <th class="pb-1 pr-3">Mediana</th>
+            ${conPropio ? '<th class="pb-1 pr-3" title="El mismo dato en su temporada; la flecha dice si el período estuvo por encima o por debajo">Temporada</th>' : ''}
             <th class="pb-1">Pctil</th>
           </tr></thead>
           <tbody>${filas}</tbody>
@@ -1376,7 +1407,7 @@ const SGADD_UI = (function () {
     }, true);
   }
 
-  return { esc, escJs, statCard, percentileBar, metricTable, teamPicker, tabs, aviso, sinDatosTodavia, signoDelta, colorDelta, claseMasMenos,
+  return { esc, escJs, statCard, percentileBar, metricTable, textoPropio, teamPicker, tabs, aviso, sinDatosTodavia, signoDelta, colorDelta, claseMasMenos,
     tonoDePixeles, tonoEscudo, esEscudo, luminancia,
     atributosFila, teclaActiva, teclaTabs, cargando, conservarFoco,
     embeberImagenes, restaurarImagenes, pieInforme, encabezadoInforme, pieWeb, MAIL, INSTAGRAM, ARROBA, LOGO, fechaHoy, MARCA,

@@ -145,7 +145,10 @@ function equiposPintar() {
   if (st.error) { root.innerHTML = SGADD_APP.barra({ extra: volver }) + SGADD_UI.aviso('No se pudo cargar', st.error, 'error'); return; }
   if (!st.idx) { root.innerHTML = SGADD_APP.barra({ extra: volver }) + SGADD_UI.cargando('Cargando la categoría…', (SGADD_APP.planillaActual() || {}).label); return; }
 
-  const idx = st.idx;
+  /* LA MUESTRA (punto 139): la grilla y la ficha leen el recorte de la
+     barra. El DETALLE DE UN PARTIDO no: sus desvíos se miden contra el
+     promedio de la temporada, y en un recorte el partido puede no estar. */
+  const idx = (EQUIPOS.partido || typeof SGADD_APP.idxVista !== 'function') ? st.idx : SGADD_APP.idxVista();
   EQUIPOS.planillaId = st.planillaId;
   EQUIPOS.fase = st.fase;
   const e = EQUIPOS.equipo ? idx.get(EQUIPOS.equipo.replace(/-/g, ' ')) : null;
@@ -169,7 +172,7 @@ function equiposPintar() {
 
   SGADD_CHARTS.limpiar();
   root.innerHTML = [
-    SGADD_APP.barra({ extra: volver }),
+    SGADD_APP.barra({ extra: volver, muestra: 'equipos' }),
     SGADD_APP.avisoMuestra(),
     e ? equiposFicha(idx, e) : sinDatos ? inscriptosFichaMinima(sinDatos) : equiposGrilla(idx),
   ].filter(Boolean).join('');
