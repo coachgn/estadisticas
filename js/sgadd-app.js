@@ -845,6 +845,8 @@ const SGADD_APP = (function () {
    * ya mide cada rendimiento contra el promedio propio.
    */
   function barraMuestra(seccion) {
+    const cid = clubId();
+    if (cid !== 'boca' && cid !== 'reconquista') return '';	
     if (typeof SGADD_MUESTRA === 'undefined' || !estado.idx || !estado.hojas || enLlave()) return '';
     const esc = SGADD_UI.esc;
     const m = estado.muestra;
@@ -865,7 +867,7 @@ const SGADD_APP = (function () {
               ${opcion('rango', 'Rango de fechas…')}
               </optgroup>
               <optgroup label="Del equipo · cada uno en su condición">
-              ${[3, 5, 10].map(n => opcion('ultimos:' + n, 'Sus últimos ' + n + ' partidos')).join('')}
+              ${[4, 6, 8].map(n => opcion('ultimos:' + n, 'Sus últimos ' + n + ' partidos')).join('')}
               ${opcion('condicion:LOCAL', 'Solo de local')}${opcion('condicion:VISITANTE', 'Solo de visitante')}
               ${opcion('resultado:GANADO', 'Solo ganados')}${opcion('resultado:PERDIDO', 'Solo perdidos')}
               ${opcion('rival', 'Contra un rival…')}

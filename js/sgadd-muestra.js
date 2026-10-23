@@ -27,7 +27,7 @@ const SGADD_MUESTRA = (function () {
 
   const DIA = /^\d{4}-\d{2}-\d{2}$/;
   const MAX_SEMANAS = 8;
-  const MAX_ULTIMOS = 10;
+  const MAX_ULTIMOS = 8;
   /* El prefijo del OTRO LADO de un partido en una muestra de la familia 2:
      entra al índice para que el rival exista (RO%, DRTG, PACE) y el núcleo
      lo saca antes de la vara (`construirIndice`, opción `conservar`). */
