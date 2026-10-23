@@ -151,6 +151,8 @@ function armarApp(opciones) {
     sessionStorage: { getItem: k => (sesionMem.has(k) ? sesionMem.get(k) : null), setItem: (k, v) => sesionMem.set(k, String(v)) },
     document: { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [] },
     setTimeout: () => 0, clearTimeout() {},
+    /* El selector se ofrece solo a los clubes habilitados (barraMuestra). */
+    CLUB: { estado: { id: o.club || 'deportivo' } },
   };
   ctx.globalThis = ctx;
   vm.createContext(ctx);
@@ -211,6 +213,7 @@ const B = armarApp();
 const sinMuestra = B.A.barraMuestra('equipos');
 check('la barra ofrece el selector', /id="selMuestra"/.test(sinMuestra) && /Últimas 2 semanas/.test(sinMuestra) && /Rango de fechas/.test(sinMuestra));
 check('sin muestra activa no hay badge', !/Muestra activa/.test(sinMuestra));
+check('un club fuera de la lista habilitada no ve el selector', armarApp({ club: 'jujuy' }).A.barraMuestra('equipos') === '');
 check('las fechas aparecen solo con el rango', !/id="muestraDesde"/.test(sinMuestra));
 B.A.elegirMuestra('rango');
 check('«Rango de fechas…» arranca cubriendo el tramo', B.A.estado.muestra.desde === DIAS[0] && B.A.estado.muestra.hasta === DIAS[DIAS.length - 1]);
@@ -460,7 +463,7 @@ async function fase3() {
   P.A.estado.hojas = hojasCliente;
   const catalogoViejo = SGADD.CATALOGO;
   SGADD.CATALOGO = Object.assign({}, catalogoViejo || {}, { planillas: [{ id: 'demo', slug: 'demo-cat' }] });
-  P.ctx.CLUB = { estado: { id: 'demo-club' } };
+  P.ctx.CLUB = { estado: { id: 'deportivo' } };
   P.ctx.SGADD_DATA = { varaJugadores: (club, slug, t, m) => {
     pedidos++;
     if (falla) return Promise.reject(new Error('caído'));
