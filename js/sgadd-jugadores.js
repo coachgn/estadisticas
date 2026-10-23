@@ -377,6 +377,14 @@ function jugadoresRolMinutos(minutos) {
     `extractor`, si viene, reemplaza la lectura directa de la columna
     (por ejemplo, para sumar RO+RD como "rebotes totales"). */
 function jugadoresPromedioMetrica(idx, clave, extractor) {
+  /* LA VARA DEL SERVIDOR (punto 139, fase 3): con el log recortado del
+     cliente y una muestra activa, la liga del período no está en el
+     índice; su promedio viene ya calculado. */
+  const vara = idx && idx.liga && idx.liga.vara;
+  if (vara) {
+    const col = vara.columnas[extractor === jugadoresRT ? '__RT' : clave];
+    return col ? col.media : null;
+  }
   const cal = idx.liga.jugadoresCalificados || [];
   const vals = cal.map(j => (extractor ? extractor(j) : j[clave])).filter(v => typeof v === 'number' && isFinite(v));
   return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
@@ -414,6 +422,26 @@ function jugadoresValoresDe(idx, clave) {
   if (!d) return [];
   const cal = (idx && idx.liga && idx.liga.jugadoresCalificados) || [];
   const refs = jugadoresReferenciasRebote(idx);
+  /* Con la vara del servidor no hay filas de la liga: cada umbral se lee
+     de su columna, ya resumida (las que cruzan dos métricas del mismo
+     jugador vienen derivadas). Las tres que dependen del plantel se
+     quedan en la semilla, igual que abajo. */
+  const vara = idx && idx.liga && idx.liga.vara;
+  if (vara && typeof SGADD_MUESTRA_J !== 'undefined' && SGADD_MUESTRA_J) {
+    const X = SGADD_MUESTRA_J;
+    const col = (k) => X.expandir(vara.columnas[k]);
+    switch (d.metrica) {
+      case 'T3I/(T3I+T2I)': return col('__MEZCLA');
+      case 'RO% / mediana': return refs['RO%'] ? col('RO%').map(v => v / refs['RO%']) : [];
+      case 'RT / mediana': return refs.RT ? col('__RT').map(v => v / refs.RT) : [];
+      case 'RDrel / ROrel': return col('__RDROREL');
+      case 'PePP% / JUGADOR TIPO':
+      case 'PLAYS jugador / Σ plantel':
+      case 'T3I jugador / T3I equipo':
+        return [];
+      default: return col(d.metrica);
+    }
+  }
   const tipo = (j) => {
     switch (d.metrica) {
       case 'T3I/(T3I+T2I)': {
@@ -646,6 +674,15 @@ const MIN_CALIFICADOS_REFERENCIA = 3;
 function jugadoresReferenciasRebote(idx) {
   const tipo = (idx && idx.liga && idx.liga.jugadorTipo) ? idx.liga.jugadorTipo : {};
   const cal = (idx && idx.liga && idx.liga.jugadoresCalificados) || [];
+  const vara = idx && idx.liga && idx.liga.vara;
+  if (vara && typeof SGADD_MUESTRA_J !== 'undefined' && SGADD_MUESTRA_J
+      && vara.calificados >= MIN_CALIFICADOS_REFERENCIA) {
+    const ro = SGADD_MUESTRA_J.medianaDeVara(vara, 'RO%'), rd = SGADD_MUESTRA_J.medianaDeVara(vara, 'RD%');
+    if (ro && rd) {
+      return { 'RO%': ro, 'RD%': rd, RT: SGADD_MUESTRA_J.medianaDeVara(vara, '__RT'),
+        origen: 'mediana de calificados del período (servidor)' };
+    }
+  }
   const respaldo = {
     'RO%': jugadoresNN(tipo['RO%']), 'RD%': jugadoresNN(tipo['RD%']),
     RT: jugadoresNN(tipo['RT']) !== null ? jugadoresNN(tipo['RT']) : jugadoresNN(jugadoresRT(tipo)),
@@ -848,6 +885,13 @@ function jugadoresJerarquia(idx, j) {
 const JUGADORES_NIVELES = (function () {
   if (typeof SGADD_NIVELES !== 'undefined') return SGADD_NIVELES;
   try { return require('./sgadd-niveles.js'); } catch (e) { return null; }
+})();
+
+/* El motor de la muestra, para leer la vara del servidor (punto 139, fase
+   3). Mismo patrón que el de niveles: global en el navegador, require en Node. */
+const SGADD_MUESTRA_J = (function () {
+  if (typeof SGADD_MUESTRA !== 'undefined') return SGADD_MUESTRA;
+  try { return require('./sgadd-muestra.js'); } catch (e) { return null; }
 })();
 
 const JUGADORES_UMBRALES = (function () {
@@ -1516,6 +1560,20 @@ function jugadoresPeerGroup(idx, j, modo) {
       + 'así que se usa la fila JUGADOR TIPO de la planilla.',
   });
 
+  /* LA VARA DEL SERVIDOR: los rivales del período no están en el índice
+     (el log del cliente viene recortado), así que no hay grupo de afines
+     que armar. Se compara contra la mediana de la liga del período, y se
+     DICE por qué. */
+  const vara = liga.vara;
+  if (vara) {
+    return {
+      jugadores: [], n: vara.calificados, nivel: 'servidor', etiquetas: [], vara: vara,
+      label: 'Liga del período (mediana)',
+      motivo: 'Mediana sobre los ' + vara.calificados + ' jugadores de la liga que llegan al umbral de minutos en la muestra, '
+        + 'calculada por el servidor: con tu plan, los jugadores rivales no viajan al panel, así que no se arma un grupo de afines.',
+    };
+  }
+
   if (!cal.length && !todos.length) return tipo();
   if (modo === 'global') return cal.length >= PEER_MIN ? global() : tipo();
 
@@ -1588,6 +1646,11 @@ function jugadoresPeerReferencia(idx, j, claves, modo) {
   const tipo = (idx && idx.liga && idx.liga.jugadorTipo) || {};
   const valores = {};
   (claves || []).forEach(k => {
+    if (g.nivel === 'servidor') {
+      valores[k] = (typeof SGADD_MUESTRA_J !== 'undefined' && SGADD_MUESTRA_J)
+        ? SGADD_MUESTRA_J.medianaDeVara(g.vara, k === 'RT' ? '__RT' : k) : null;
+      return;
+    }
     if (g.nivel === 'tipo') {
       const v = jugadoresNN(tipo[k]);
       valores[k] = (v === null && k === 'RT') ? jugadoresNN(jugadoresRT(tipo)) : v;
@@ -2188,6 +2251,9 @@ function jugadoresBloqueRankings(idx) {
           <p class="text-[11px] text-muted">
             Las mismas tablas de la hoja RANKINGS J, calculadas en vivo sobre ${idx.liga.jugadores.length} jugadores.
           </p>
+          ${idx.liga.vara ? `<p class="text-[11px] text-amber-400 mt-1" data-vara-ranking>
+            ⚠ En esta muestra, con tu plan, la tabla tiene solo a tu plantel: los jugadores rivales del período no viajan al panel.
+            Los percentiles sí se miden contra la liga entera del período (${idx.liga.vara.calificados} jugadores, calculado en el servidor).</p>` : ''}
         </div>
         ${hayAcum ? `
         <div>

@@ -417,9 +417,180 @@ const SGADD_MUESTRA = (function () {
     };
   }
 
+  /* =====================================================================
+     FASE 3 · LA VARA DE JUGADORES DEL PERÍODO, CALCULADA EN EL SERVIDOR
+
+     Un cliente recibe `Base Datos J` con su plantel nada más (punto 19).
+     Recalcular jugadores sobre ese log deja una «liga» formada por los
+     suyos. El servidor tiene el libro entero: arma el período, y de la
+     liga de jugadores entrega SOLO números agregados.
+
+       tipo        la mediana de todos los jugadores (la fila TIPO)
+       minJugador  el umbral de minutos del período
+       columnas    por métrica, sobre los que califican: n, media,
+                   desvío y 21 cortes (p0, p5 … p100)
+
+     Ningún nombre, ninguna fila: cada métrica se resume POR SEPARADO, así
+     que de la vara no se puede rearmar a un jugador. Tres columnas
+     DERIVADAS van ya calculadas, porque cruzan dos métricas del mismo
+     jugador y eso el panel no lo puede hacer sin la fila:
+
+       __RT       rebotes totales (RT, o RO + RD)
+       __MEZCLA   T3I / (T3I + T2I), de dónde tira
+       __RDROREL  RD% relativo sobre RO% relativo, entre los que no son
+                  perimetrales (la vara de `ancla-defensiva`, punto 45)
+     ===================================================================== */
+  const CORTES = 21;
+  /* Mismo número que `mezclaTripleaPerimetral` de `sgadd-niveles.js`, un
+     ABSOLUTO (punto 45). Se repite porque el servidor no carga ese
+     módulo; `test-muestra.js` exige que coincidan. */
+  const MEZCLA_PERIMETRAL = 0.30;
+  /* Por debajo de esto la vara no se entrega (punto 139, fase 3): con un
+     solo partido, los cortes de la liga son el box score de esa noche. */
+  const VARA_MIN_PARTIDOS = 3;
+  const VARA_MIN_CALIFICADOS = 5;
+
+  function num(v) { return (typeof v === 'number' && isFinite(v)) ? v : null; }
+  function redondear(v) { return v === null ? null : Math.round(v * 1e4) / 1e4; }
+
+  /** El cuantil p (0..1) de una lista ORDENADA, interpolado. */
+  function cuantil(orden, p) {
+    if (!orden.length) return null;
+    const h = (orden.length - 1) * p;
+    const lo = Math.floor(h), hi = Math.ceil(h);
+    return orden[lo] + (orden[hi] - orden[lo]) * (h - lo);
+  }
+
+  function resumen(vals) {
+    const orden = vals.filter(v => num(v) !== null).sort((a, b) => a - b);
+    const n = orden.length;
+    if (n < 3) return null;
+    const media = orden.reduce((a, b) => a + b, 0) / n;
+    const desvio = Math.sqrt(orden.reduce((a, b) => a + (b - media) * (b - media), 0) / n);
+    const cortes = [];
+    for (let i = 0; i < CORTES; i++) cortes.push(redondear(cuantil(orden, i / (CORTES - 1))));
+    return { n: n, media: redondear(media), desvio: redondear(desvio), cortes: cortes };
+  }
+
+  function rtDe(j) {
+    if (num(j['RT']) !== null) return j['RT'];
+    const ro = num(j['RO']), rd = num(j['RD']);
+    return (ro === null && rd === null) ? null : (ro || 0) + (rd || 0);
+  }
+  function mezclaDe(j) {
+    const a = num(j['T3I']), b = num(j['T2I']);
+    return (a !== null && b !== null && a + b > 0) ? a / (a + b) : null;
+  }
+
+  /**
+   * La vara de jugadores de un índice YA RECORTADO al período, con la liga
+   * entera. Corre en el servidor. Devuelve null si el índice no alcanza.
+   */
+  function varaJugadores(idx) {
+    const liga = idx && idx.liga;
+    if (!liga) return null;
+    const cal = liga.jugadoresCalificados || [];
+    const columnas = {};
+    const claves = new Set();
+    cal.forEach(j => Object.keys(j).forEach(k => { if (k.indexOf('__') !== 0) claves.add(k); }));
+    claves.forEach(k => {
+      const r = resumen(cal.map(j => j[k]));
+      if (r) columnas[k] = r;
+    });
+    const med = (k) => { const c = columnas[k]; return c ? c.cortes[(CORTES - 1) / 2] : null; };
+    const rt = resumen(cal.map(rtDe));
+    if (rt) columnas.__RT = rt;
+    const mz = resumen(cal.map(mezclaDe));
+    if (mz) columnas.__MEZCLA = mz;
+    const refRO = med('RO%'), refRD = med('RD%');
+    if (refRO && refRD) {
+      const r = resumen(cal.map(j => {
+        const m = mezclaDe(j);
+        if (m === null || m >= MEZCLA_PERIMETRAL) return null;
+        const ro = num(j['RO%']), rd = num(j['RD%']);
+        if (ro === null || rd === null) return null;
+        const roRel = ro / refRO;
+        return roRel > 0 ? (rd / refRD) / roRel : null;
+      }));
+      if (r) columnas.__RDROREL = r;
+    }
+    const tipo = {};
+    Object.keys(liga.jugadorTipo || {}).forEach(k => {
+      if (num(liga.jugadorTipo[k]) !== null) tipo[k] = redondear(liga.jugadorTipo[k]);
+    });
+    return {
+      partidos: Array.isArray(liga.partidos) ? liga.partidos.length : (liga.partidos || 0),
+      jugadores: (liga.jugadores || []).length,
+      calificados: cal.length,
+      minJugador: num(liga.minJugador),
+      tipo: tipo,
+      columnas: columnas,
+    };
+  }
+
+  /** ¿Alcanza para entregarla? */
+  function varaSuficiente(v) {
+    return !!(v && v.partidos >= VARA_MIN_PARTIDOS && v.calificados >= VARA_MIN_CALIFICADOS);
+  }
+
+  /** De 21 cortes a una lista de n valores, para leer percentiles como
+      con la distribución real (mismo largo: la `muestra` del motor de
+      niveles lo usa para decir si la competencia es chica). */
+  function expandir(col) {
+    if (!col || !Array.isArray(col.cortes) || col.cortes.length < 2) return [];
+    const n = Math.max(3, col.n || 0);
+    const c = col.cortes, tramos = c.length - 1;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const p = n === 1 ? 0 : (i / (n - 1)) * tramos;
+      const lo = Math.floor(p), hi = Math.min(tramos, lo + 1);
+      out.push(c[lo] + (c[hi] - c[lo]) * (p - lo));
+    }
+    return out;
+  }
+
+  /** La mediana de una columna de la vara (el corte del medio). */
+  function medianaDeVara(vara, clave) {
+    const c = vara && vara.columnas && vara.columnas[clave];
+    return c ? c.cortes[(c.cortes.length - 1) / 2] : null;
+  }
+
+  /**
+   * Corre en el PANEL: le pone la vara del servidor al índice del período
+   * que se armó con el log recortado. Lo de los jugadores propios no se
+   * toca —son sus filas reales—; lo de la liga sale de la vara.
+   */
+  function aplicarVara(idx, vara) {
+    if (!idx || !idx.liga || !vara) return idx;
+    const liga = idx.liga;
+    if (vara.minJugador !== null && vara.minJugador !== undefined) liga.minJugador = vara.minJugador;
+    liga.jugadorTipo = Object.assign({}, vara.tipo || {});
+    const min = liga.minJugador;
+    const califica = (j) => (typeof min !== 'number') || (typeof j['MIN'] === 'number' && j['MIN'] >= min);
+    (liga.jugadores || []).forEach(j => { j.__califica = califica(j); });
+    if (typeof idx.lista === 'function') {
+      idx.lista().forEach(e => { e.jugadoresCalificados = (e.jugadores || []).filter(j => j.__califica); });
+    }
+    liga.jugadoresCalificados = (liga.jugadores || []).filter(j => j.__califica);
+    const dist = {};
+    Object.keys(vara.columnas || {}).forEach(k => {
+      if (k.indexOf('__') === 0) return;
+      const vals = expandir(vara.columnas[k]);
+      if (vals.length >= 3) dist[k] = vals;
+    });
+    liga.distribucionesJ = dist;
+    /* Los consumidores que necesitan la liga y no solo un percentil —los
+       promedios del ADN, la referencia de rebote, los umbrales vivos y el
+       grupo de pares— la leen de acá (`sgadd-jugadores.js`). */
+    liga.vara = vara;
+    return idx;
+  }
+
   const API = {
     TODO, MAX_SEMANAS, MAX_ULTIMOS, HOJAS_PARTIDO, TOLERANCIA_MEDIA, CONTEXTO, MUESTRA_CHICA,
     normalizar, activa, familia, clave, recortarPorCondicion, diasDelTramo, ventana, recortar, etiqueta, comparar, restarDias, diaIso,
+    CORTES, MEZCLA_PERIMETRAL, VARA_MIN_PARTIDOS, VARA_MIN_CALIFICADOS,
+    varaJugadores, varaSuficiente, expandir, medianaDeVara, aplicarVara, cuantil,
   };
   return API;
 })();

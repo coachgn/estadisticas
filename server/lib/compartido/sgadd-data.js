@@ -639,6 +639,16 @@ const SGADD_DATA = (function () {
   }
 
   function fichajesTorneos(opciones) { return getConToken('/api/v1/fichajes', opciones); }
+
+  /* La vara de jugadores de un período (punto 139, fase 3): números
+     agregados de la liga, para el cliente que recibe el log recortado. */
+  function varaJugadores(club, slug, tramo, muestra, opciones) {
+    const t = tramo || {};
+    return getConToken('/api/v1/vara-jugadores/' + encodeURIComponent(club)
+      + '?categoria=' + encodeURIComponent(slug)
+      + '&torneo=' + encodeURIComponent(t.torneo || '') + '&fase=' + encodeURIComponent(t.fase || '')
+      + '&muestra=' + encodeURIComponent(JSON.stringify(muestra || {})), opciones);
+  }
   function fichajesZona(torneo, zona, opciones) {
     return getConToken('/api/v1/fichajes/' + encodeURIComponent(torneo) + '/' + encodeURIComponent(zona), opciones);
   }
@@ -664,7 +674,7 @@ const SGADD_DATA = (function () {
     fixtureDeTorneo, llaveDeTorneo, rivalDeTorneo,
     login, fijarClave, clientes, guardarClientes, fichas, guardarFicha,
     estadosCompartibles, leerEstados, guardarEstados, leerPbp,
-    fichajesTorneos, fichajesZona, fichajesTiros, fichajesGuardarFichas, fichajesPadron, fichajesGuardarPadron,
+    varaJugadores, fichajesTorneos, fichajesZona, fichajesTiros, fichajesGuardarFichas, fichajesPadron, fichajesGuardarPadron,
   };
 })();
 

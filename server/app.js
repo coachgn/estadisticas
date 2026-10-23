@@ -76,6 +76,8 @@ function crearApp(opciones) {
   app.get('/api/v1/catalogo', responder(h.manejarCatalogo));
   app.get('/api/v1/equipos/:clubId', responder(h.manejarEquipos));
   app.get('/api/v1/scouting/:clubId', responder(h.manejarScouting));
+  /* La vara de jugadores de un período (punto 139, fase 3): números agregados, sin filas. */
+  app.get('/api/v1/vara-jugadores/:clubId', responder(require('./api/vara.js').manejarVara));
   /* La ÚNICA ruta que escribe. Va separada del GET y no como un verbo
      dentro del mismo handler para que se vea de un vistazo cuál es la que
      puede romper a todos los clubes. */

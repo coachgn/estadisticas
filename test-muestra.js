@@ -265,7 +265,7 @@ check('los dos PDF declaran la muestra en su encabezado', /textoMuestra\(\{ juga
 check('en una muestra los partidos manuales no se suman', /idx && idx\.__muestra\) \? \[\] : clasifManualesVigentes\(\)/.test(CL));
 const iM = HTML.indexOf('js/sgadd-muestra.js'), iA = HTML.indexOf('js/sgadd-app.js');
 check('sgadd-muestra.js carga ANTES que sgadd-app.js', iM !== -1 && iM < iA);
-check('assets en v299', /sgadd-muestra\.js\?v=299/.test(HTML) && !/\?v=29[78]/.test(HTML));
+check('assets en v300', /sgadd-muestra\.js\?v=300/.test(HTML) && !/\?v=29\d/.test(HTML));
 check('el CSS del badge va a mano en el <style>', /\.muestra-badge \{/.test(HTML));
 
 /* =====================================================================
@@ -396,5 +396,130 @@ F.ctx.EQUIPOS = { equipo: EQ2.clave.toLowerCase().replace(/\s+/g, '-') };
 check('el equipo elegido como rival no tiene partidos: se dice', F.A.pjEnMuestra(EQ2.clave) === 0
   && /no tiene partidos en esta muestra/.test(F.A.barraMuestra('equipos')));
 
-console.log('\n' + ok + ' ok · ' + fail + ' fallas');
-if (fail) { console.log('HAY FALLAS'); process.exit(1); }
+/* =====================================================================
+   10 · FASE 3 · LA VARA DE JUGADORES DEL PERÍODO, DESDE EL SERVIDOR
+   ===================================================================== */
+async function fase3() {
+  titulo('10 · varaJugadores: la liga del período, sin filas');
+  global.SGADD = SGADD;
+  const J = require('./js/sgadd-jugadores.js');
+  const NIV = require('./js/sgadd-niveles.js');
+  const VARA = require('./server/api/vara.js');
+
+  const m2 = { tipo: 'semanas', n: 2 };
+  const recF = M.recortar(HOJAS, TRAMO, M.ventana(m2, DIAS));
+  const full = SGADD.construirIndice(recF.hojas, { fase: TRAMO.fase, torneo: SGADD.TORNEO_TOTAL });
+  if (base.liga.nivel) full.liga.nivel = base.liga.nivel;
+  const vara = M.varaJugadores(full);
+  const txt = JSON.stringify(vara);
+  check('cuenta a los calificados y a la liga del período', vara.calificados === full.liga.jugadoresCalificados.length
+    && vara.jugadores === full.liga.jugadores.length && vara.partidos === full.liga.partidos);
+  check('ningún nombre de jugador ni de equipo viaja', !/NOMBRES|EQUIPO/.test(Object.keys(vara.columnas).join(','))
+    && !full.liga.jugadores.some(j => txt.indexOf(String(j['NOMBRES'])) !== -1)
+    && !full.lista().some(e => txt.indexOf(e.nombre) !== -1));
+  check('21 cortes por métrica, ordenados', Object.values(vara.columnas).every(c => c.cortes.length === M.CORTES
+    && c.cortes.every((v, i, a) => !i || a[i - 1] <= v)));
+  const vPTS = full.liga.jugadoresCalificados.map(j => j['PTS']).filter(v => typeof v === 'number').sort((a, b) => a - b);
+  check('la mediana es la real', casi(M.medianaDeVara(vara, 'PTS'), M.cuantil(vPTS, 0.5), 1e-3));
+  check('la media es la real', casi(vara.columnas.PTS.media, vPTS.reduce((a, b) => a + b, 0) / vPTS.length, 1e-3));
+  check('el umbral de minutos y el TIPO son los del período', casi(vara.minJugador, full.liga.minJugador)
+    && casi(vara.tipo.PTS, full.liga.jugadorTipo.PTS, 1e-3));
+  check('las derivadas viajan ya calculadas', !!vara.columnas.__RT && !!vara.columnas.__MEZCLA && !!vara.columnas.__RDROREL);
+  check('la mezcla perimetral es la del registro de niveles', M.MEZCLA_PERIMETRAL === NIV.definicion('mezclaTripleaPerimetral').valor);
+  check('expandir conserva el n (la «muestra» de los umbrales)', M.expandir(vara.columnas.PTS).length === vara.columnas.PTS.n);
+
+  titulo('10 bis · el endpoint, sin red');
+  const c1 = VARA.calcular(HOJAS, TRAMO, m2);
+  check('semanas:2 entrega la vara', c1.body && c1.body.ok && !!c1.body.vara && c1.body.vara.calificados === vara.calificados);
+  const cmal = VARA.calcular(HOJAS, { torneo: 'NO-EXISTE', fase: TRAMO.fase }, m2);
+  check('un tramo que el libro no tiene → 400', cmal.error && cmal.error.status === 400);
+  check('sin muestra → 400', VARA.calcular(HOJAS, TRAMO, { tipo: 'todo' }).error.status === 400);
+  const porDia = new Map();
+  HOJAS['Base Datos E'].filas.forEach(f => {
+    const d = M.diaIso(SGADD.fecha(f['FECHA']));
+    if (!d) return;
+    if (!porDia.has(d)) porDia.set(d, new Set());
+    porDia.get(d).add(SGADD.texto(f['PARTIDO']));
+  });
+  const diaChico = DIAS.find(d => porDia.has(d) && porDia.get(d).size < M.VARA_MIN_PARTIDOS);
+  const cch = VARA.calcular(HOJAS, TRAMO, { tipo: 'rango', desde: diaChico, hasta: diaChico });
+  check('con menos de ' + M.VARA_MIN_PARTIDOS + ' partidos no se entrega (sería el box score de la noche)',
+    cch.body && cch.body.ok && cch.body.vara === null && cch.body.motivo === 'MUESTRA_CHICA', diaChico + ' ' + JSON.stringify(cch.body));
+  const cloc = VARA.calcular(HOJAS, TRAMO, { tipo: 'condicion', valor: 'LOCAL' });
+  const recL = M.recortarPorCondicion(HOJAS, TRAMO, { tipo: 'condicion', valor: 'LOCAL' });
+  const idxL = SGADD.construirIndice(recL.hojas, { fase: TRAMO.fase, torneo: SGADD.TORNEO_TOTAL, conservar: recL.conservar });
+  check('la familia 2: la vara es la de los jugadores en esa condición', cloc.body.vara
+    && cloc.body.vara.jugadores === idxL.liga.jugadores.length && cloc.body.vara.jugadores < full.liga.jugadores.length + 1000);
+
+  titulo('10 ter · el panel con el log recortado y la vara del servidor');
+  const EQ = base.lista()[0];
+  const hojasCliente = Object.assign({}, HOJAS, { 'Base Datos J': Object.assign({}, HOJAS['Base Datos J'], {
+    filas: HOJAS['Base Datos J'].filas.filter(f => SGADD.claveEquipo(f['EQUIPO']) === EQ.clave) }) });
+  let pedidos = 0, falla = false;
+  const P = armarApp({ recortado: true });
+  P.A.estado.hojas = hojasCliente;
+  const catalogoViejo = SGADD.CATALOGO;
+  SGADD.CATALOGO = Object.assign({}, catalogoViejo || {}, { planillas: [{ id: 'demo', slug: 'demo-cat' }] });
+  P.ctx.CLUB = { estado: { id: 'demo-club' } };
+  P.ctx.SGADD_DATA = { varaJugadores: (club, slug, t, m) => {
+    pedidos++;
+    if (falla) return Promise.reject(new Error('caído'));
+    const r = VARA.calcular(HOJAS, t, m);
+    return r.error ? Promise.reject(new Error(r.error.body.mensaje)) : Promise.resolve(JSON.parse(JSON.stringify(r.body)));
+  } };
+  P.A.cambiarMuestra(m2);
+  check('mientras la vara viaja, Jugadores muestra la temporada', P.A.idxVista({ jugadores: true }) === base);
+  check('y el badge lo dice', /Calculando en el servidor/.test(P.A.barraMuestra('jugadores')));
+  await new Promise(r => setImmediate(r));
+  const vj = P.A.idxVista({ jugadores: true });
+  check('con la vara, Jugadores pasa al período', vj !== base && !!vj.liga.vara && !!vj.__muestra);
+  check('se pidió una sola vez', pedidos === 1, pedidos);
+  check('el plantel es el propio (los rivales no viajaron)', vj.liga.jugadores.length > 0
+    && vj.liga.jugadores.every(j => SGADD.claveEquipo(j['EQUIPO']) === EQ.clave));
+  const propios = vj.liga.jugadores;
+  const enFull = (j) => full.liga.jugadores.find(x => x['NOMBRES'] === j['NOMBRES'] && SGADD.claveEquipo(x['EQUIPO']) === EQ.clave);
+  check('quién califica sale del umbral de la liga del período', propios.every(j => j.__califica === enFull(j).__califica));
+  const difs = [];
+  propios.filter(j => j.__califica).forEach(j => ['PTS', 'eFG%', 'USG%', 'AST-PP', 'RD'].forEach(k => {
+    const a = vj.leerJugador(j, k), b = full.leerJugador(enFull(j), k);
+    if (a && b && a.percentil !== null && b.percentil !== null) difs.push(Math.abs(a.percentil - b.percentil));
+  }));
+  check('los percentiles coinciden con los de la liga completa (±5)', difs.length > 5 && Math.max.apply(null, difs) <= 5, Math.max.apply(null, difs));
+  const j0 = propios.find(j => j.__califica);
+  check('el TIPO de la ficha es el de la liga del período', casi(vj.leerJugador(j0, 'PTS').tipo, full.leerJugador(enFull(j0), 'PTS').tipo, 1e-3));
+  check('«propio» sigue contra su temporada', !!vj.leerJugador(j0, 'PTS').propio);
+  const pv = J.jugadoresPromediosLiga(vj), pf = J.jugadoresPromediosLiga(full);
+  check('los promedios del ADN son los de la liga', casi(pv.PLAYS, pf.PLAYS, 1e-3) && casi(pv.RT, pf.RT, 1e-3) && casi(pv['eFG%'], pf['eFG%'], 1e-3));
+  const rr = J.jugadoresReferenciasRebote(vj);
+  check('la referencia de rebote sale de la vara', /servidor/.test(rr.origen) && casi(rr['RO%'], J.jugadoresReferenciasRebote(full)['RO%'], 1e-3));
+  const uv = J.jugadoresUmbrales(vj), uf = J.jugadoresUmbrales(full);
+  const umbs = ['astPPGenerador', 'reboteOfensivoAlto', 'anclaRatioDefensivo', 'pptTripleFrio'].filter(k => typeof uf[k] === 'number' && isFinite(uf[k]));
+  check('los umbrales vivos son los de la liga (±5 %)', umbs.length >= 3 && umbs.every(k => Math.abs(uv[k] - uf[k]) <= 0.05 * Math.abs(uf[k]) + 1e-3),
+    umbs.map(k => k + ' ' + uv[k] + '/' + uf[k]).join(' · '));
+  const g = J.jugadoresPeerGroup(vj, j0);
+  check('sin rivales no hay afines: el grupo es la liga del período, y lo dice', g.nivel === 'servidor' && /no viajan/.test(g.motivo));
+  check('su referencia es la mediana de la liga', casi(J.jugadoresPeerReferencia(vj, j0, ['PTS']).valores.PTS, M.medianaDeVara(vj.liga.vara, 'PTS')));
+  check('el badge dice de dónde sale la liga', /la calcula el servidor/.test(P.A.barraMuestra('jugadores')));
+  check('el PDF de jugadores ahora declara la muestra', /^Muestra: Últimas 2 semanas/.test(P.A.textoMuestra({ jugadores: true })), P.A.textoMuestra({ jugadores: true }));
+  check('Equipos no se toca', P.A.idxVista() !== vj && !P.A.idxVista().liga.vara);
+
+  P.A.cambiarMuestra({ tipo: 'rango', desde: diaChico, hasta: diaChico });
+  P.A.idxVista({ jugadores: true });
+  await new Promise(r => setImmediate(r));
+  check('una muestra chica: Jugadores sigue con la temporada y se explica', P.A.idxVista({ jugadores: true }) === base
+    && /no entrega la liga de jugadores de un recorte tan chico/.test(P.A.barraMuestra('jugadores')));
+
+  falla = true;
+  const antes = pedidos;
+  P.A.cambiarMuestra({ tipo: 'semanas', n: 3 });
+  P.A.idxVista({ jugadores: true });
+  await new Promise(r => setImmediate(r));
+  P.A.idxVista({ jugadores: true }); P.A.barraMuestra('jugadores');
+  check('un error se dice y no se reintenta en bucle', pedidos === antes + 1 && /No se pudo calcular/.test(P.A.barraMuestra('jugadores')), pedidos - antes);
+  SGADD.CATALOGO = catalogoViejo;
+}
+
+fase3().catch(e => { fail++; console.log('  ✗ fase 3 tiró: ' + (e && e.stack)); }).then(() => {
+  console.log('\n' + ok + ' ok · ' + fail + ' fallas');
+  if (fail) { console.log('HAY FALLAS'); process.exit(1); }
+});

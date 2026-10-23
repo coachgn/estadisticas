@@ -458,6 +458,50 @@ const SGADD_APP = (function () {
     return estado.tramoIndice || { torneo: estado.torneo, fase: estado.fase };
   }
 
+  /* =====================================================================
+     LA VARA DEL SERVIDOR · fase 3 (opción A)
+
+     Con el log de jugadores recortado (`jugadoresRecortados`), el índice
+     del período solo tiene al plantel propio. La liga del período la arma
+     el servidor (`/api/v1/vara-jugadores`) y llega como números agregados:
+     se aplica sobre un índice PROPIO de Jugadores (`_vista.idxJ`), así no
+     toca los cachés del que usa Equipos. Mientras no llega —o si no se
+     entrega por muestra chica— Jugadores sigue con la temporada, y la
+     barra lo dice.
+     ===================================================================== */
+  const _varas = new Map();
+
+  function destinoApi() {
+    if (typeof SGADD === 'undefined' || !SGADD.CATALOGO) return null;
+    const p = (SGADD.CATALOGO.planillas || []).filter(x => x.id === estado.planillaId)[0];
+    const club = (typeof CLUB !== 'undefined' && CLUB.estado && CLUB.estado.id) ? CLUB.estado.id : null;
+    return (p && p.slug && club) ? { club: club, slug: p.slug } : null;
+  }
+
+  /** El estado de la vara del período abierto, y la pide si falta. */
+  function varaDelPeriodo() {
+    const d = destinoApi();
+    if (!d || typeof SGADD_DATA === 'undefined' || !SGADD_DATA.varaJugadores) return { estado: 'sin-servidor' };
+    const t = tramoDeIndice();
+    const m = SGADD_MUESTRA.normalizar(estado.muestra);
+    const k = [d.club, d.slug, t.torneo || '', t.fase || '', SGADD_MUESTRA.clave(m)].join('|');
+    const previo = _varas.get(k);
+    /* Un fallo se reintenta recién al minuto: reintentar en el repintado
+       que dispara el propio fallo sería un bucle de pedidos. */
+    if (!previo || (previo.estado === 'error' && Date.now() > previo.reintentarEn)) {
+      const ev = { clave: k, estado: 'cargando', vara: null };
+      _varas.set(k, ev);
+      SGADD_DATA.varaJugadores(d.club, d.slug, t, m).then((r) => {
+        if (r && r.vara) { ev.estado = 'ok'; ev.vara = r.vara; }
+        else { ev.estado = 'chica'; ev.partidos = r ? r.partidos : 0; }
+      }).catch((e) => {
+        ev.estado = 'error'; ev.mensaje = e && e.message;
+        ev.reintentarEn = Date.now() + 60000;
+      }).then(() => avisar());
+    }
+    return _varas.get(k);
+  }
+
   /** Lo que la barra dice de la muestra. null con la muestra apagada. */
   function infoMuestra() {
     if (typeof SGADD_MUESTRA === 'undefined' || !estado.hojas || enLlave()) return null;
@@ -505,12 +549,26 @@ const SGADD_APP = (function () {
         decorar(v, base);
         v.__muestra = info;
       }
-      _vista = { base: base, clave: k, idx: v, info: info };
+      _vista = { base: base, clave: k, idx: v, info: info, rec: v ? rec : null, opc: v ? { fase: t.fase, torneo: SGADD.TORNEO_TOTAL, conservar: rec.conservar } : null };
     }
     /* Sin partidos en la ventana se muestra el tramo entero, y la barra lo
        dice: una ficha vacía se lee como que el equipo no jugó nunca. */
     if (!_vista.idx) return base;
-    if (opciones && opciones.jugadores && _vista.info.jugadoresRecortados) return base;
+    if (opciones && opciones.jugadores && _vista.info.jugadoresRecortados) {
+      const ev = varaDelPeriodo();
+      if (ev.estado !== 'ok') return base;
+      if (!_vista.idxJ || _vista.varaJ !== ev.vara) {
+        const o = Object.assign({}, _vista.opc);
+        if (!o.conservar) delete o.conservar;
+        const vj = SGADD.construirIndice(_vista.rec.hojas, o);
+        if (base.liga && base.liga.nivel && vj.liga && !vj.liga.nivel) vj.liga.nivel = base.liga.nivel;
+        SGADD_MUESTRA.aplicarVara(vj, ev.vara);
+        decorar(vj, base);
+        vj.__muestra = _vista.info;
+        _vista.idxJ = vj; _vista.varaJ = ev.vara;
+      }
+      return _vista.idxJ;
+    }
     return _vista.idx;
   }
 
@@ -876,7 +934,15 @@ const SGADD_APP = (function () {
       }
       if (info.sinFecha) avisos.push(info.sinFecha + ' filas sin fecha quedaron afuera: no se puede saber de qué noche son.');
       if (seccion === 'jugadores' && info.jugadoresRecortados) {
-        avisos.push('En Jugadores tu plan ve la temporada completa: la vara de la liga por período para jugadores la calcula el servidor y todavía no está activa.');
+        const ev = varaDelPeriodo();
+        avisos.push(ev.estado === 'ok'
+          ? 'Jugadores: la liga del período la calcula el servidor (' + ev.vara.calificados + ' jugadores que llegan al umbral de minutos). '
+            + 'Los rivales no viajan al panel, así que no hay grupo de afines y el ranking de la liga muestra solo a tu plantel.'
+          : ev.estado === 'sin-servidor' ? 'En Jugadores tu plan ve la temporada completa: sin conexión con el servidor no se puede calcular la liga de jugadores del período.'
+          : ev.estado === 'cargando' ? 'Calculando en el servidor la liga de jugadores de este período… mientras tanto, Jugadores muestra la temporada.'
+          : ev.estado === 'chica' ? 'La muestra tiene menos de ' + SGADD_MUESTRA.VARA_MIN_PARTIDOS + ' partidos o de '
+            + SGADD_MUESTRA.VARA_MIN_CALIFICADOS + ' jugadores que califican: el servidor no entrega la liga de jugadores de un recorte tan chico, así que Jugadores sigue con la temporada.'
+          : 'No se pudo calcular la liga de jugadores del período' + (ev.mensaje ? ' (' + ev.mensaje + ')' : '') + ': Jugadores sigue con la temporada.');
       }
       avisos.push('Quintetos, Mapa de tiro y el reloj de posesión siguen siendo de la temporada; la tabla de posiciones no cambia.');
     }
@@ -895,7 +961,7 @@ const SGADD_APP = (function () {
   function textoMuestra(opciones) {
     const info = infoMuestra();
     if (!info || info.vacia) return '';
-    if (opciones && opciones.jugadores && info.jugadoresRecortados) return '';
+    if (opciones && opciones.jugadores && info.jugadoresRecortados && varaDelPeriodo().estado !== 'ok') return '';
     const v = info.ventana || {};
     const dd = (iso) => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) : '…';
     if (info.familia === 'equipo') {
@@ -1076,7 +1142,7 @@ const SGADD_APP = (function () {
     estado, inicializar, cargar, reindexar, cambiarPlanilla, cambiarFase, cambiarTorneo, cambiarTramo,
     aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, onCambio, adoptarEquipoDeCategoria,
     recordarCategoria, categoriaRecordada, sufijoCategoria,
-    cambiarMuestra, elegirMuestra, irAPartido, textoMuestra, pjEnMuestra, rivalesParaMuestra, idxVista, infoMuestra, muestraRecordada, barraMuestra,
+    cambiarMuestra, elegirMuestra, irAPartido, textoMuestra, pjEnMuestra, rivalesParaMuestra, varaDelPeriodo, idxVista, infoMuestra, muestraRecordada, barraMuestra,
     get idx() { return estado.idx; },
   };
 })();

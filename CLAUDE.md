@@ -153,11 +153,12 @@ node test-ecosistema.js    #  23 tests · el auditor del ecosistema: fechas, cla
 node test-canva.js         #  29 tests · las piezas aprobadas a Canva por la API, sin Claude:
                            #             el permiso que rota, publicar SOLO placas-tmp, reintentos (punto 123)
 
-node test-muestra.js       # 122 tests · el selector de muestra de Equipos y Jugadores: el recorte de
+node test-muestra.js       # 155 tests · el selector de muestra de Equipos y Jugadores: el recorte de
                            #             calendario, idxVista(), «propio» contra la temporada y la barra (punto 139)
                            #             · y la familia 2: cada equipo en su condición, contra su índice dedicado
+                           #             · y la fase 3: la vara de jugadores del período que calcula el servidor
 
-node test-backend.js       # 466 tests · el proxy, el benchmark, las alertas, el catálogo en KV
+node test-backend.js       # 468 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
 
 # OJO: `test-backend.js` ESTÁ EN MAIN desde que se integró el backend.
@@ -285,7 +286,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=299`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=300`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15471,7 +15472,7 @@ zona con un enganche a otra.** Corregir Lanús es una escritura de KV:
 (y su `liga` a `liga-nacional`). Tests: `test-logos.js` (2) y
 `test-torneos.js` (2).
 
-## 139. EL SELECTOR DE MUESTRA EN EQUIPOS Y JUGADORES · FASES 1 Y 2 (2026-10-23)
+## 139. EL SELECTOR DE MUESTRA EN EQUIPOS Y JUGADORES · FASES 1, 2 Y 3 (2026-10-23)
 
 Equipos y Jugadores se pueden mirar sobre un recorte del tramo de la barra.
 Assets en `?v=298`. `test-muestra.js` fija todo, sobre el snapshot de la demo
@@ -15607,4 +15608,69 @@ local; de visitante 3 PJ (0-3), contra 13; contra Argentino 1 PJ (0-1),
 contra los 4 que lo enfrentaron; sus últimos 3, 0-3. Recalcular cuesta
 ~350 ms. A 375 px no hay desborde. Cinco mutaciones del motor y del badge
 hacen caer el test.
+
+### FASE 3 · la vara de jugadores del período, en el SERVIDOR (assets en `?v=300`)
+
+Opción A: el cliente que recibe `Base Datos J` recortada (punto 19)
+ahora ve Jugadores sobre la muestra. Hasta acá veía la temporada.
+
+```
+GET /api/v1/vara-jugadores/:clubId?categoria=&torneo=&fase=&muestra=<json>   server/api/vara.js
+SGADD_MUESTRA.varaJugadores(idx)   el resumen (servidor)
+SGADD_MUESTRA.aplicarVara(idx, v)  su aplicación al índice del período (panel)
+```
+
+- **El servidor arma el período sobre el libro COMPLETO** con el mismo
+  motor que el panel (`recortar` / `recortarPorCondicion` +
+  `construirIndice`). `sgadd-muestra.js` se sumó a `compartido/`.
+- **Viaja solo la vara**: la mediana de todos (la fila TIPO), el umbral de
+  minutos y, por métrica de los calificados, n, media, desvío y 21 cortes
+  (p0 a p100). Cada métrica se resume por separado: ningún nombre,
+  ninguna fila, nada que rearme a un jugador. Las tres que cruzan dos
+  métricas del mismo jugador van derivadas: `__RT`, `__MEZCLA` y
+  `__RDROREL` (la vara de `ancla-defensiva`; usa `MEZCLA_PERIMETRAL`
+  0,30, que un test ata a `mezclaTripleaPerimetral`).
+- **No se entrega con menos de 3 partidos o 5 calificados**
+  (`MUESTRA_CHICA`): con una noche, los cortes son su box score. Ahí
+  Jugadores sigue con la temporada y la barra lo dice.
+- **El panel la aplica sobre un índice PROPIO de Jugadores**
+  (`_vista.idxJ`). El de Equipos y sus cachés no se tocan. Los jugadores
+  propios siguen siendo sus filas reales; de la vara salen
+  `distribucionesJ` (los cortes expandidos al n real, para que la
+  «muestra» de los umbrales no mienta), `jugadorTipo`, `minJugador` y
+  `__califica`.
+- **Los consumidores que leían filas de la liga leen `idx.liga.vara`**:
+  `jugadoresPromedioMetrica`, `jugadoresReferenciasRebote`,
+  `jugadoresValoresDe` (umbrales vivos) y el grupo de pares, que pasa al
+  nivel `servidor`: no hay afines sin rivales, y el `title` lo dice. El
+  ranking de la liga queda con el plantel propio y lo avisa
+  (`data-vara-ranking`).
+- **Un pedido por período**, cacheado. Mientras viaja, Jugadores muestra
+  la temporada. Un fallo se dice y se reintenta recién al minuto:
+  reintentar en el repintado que dispara el propio fallo era un bucle.
+- **Los PDF de jugadores declaran la muestra** solo con la vara aplicada.
+
+**Medido con links de CLIENTE reales** (API local, KV y Google), todos con
+el log recortado:
+
+| Cliente | Liga | Muestras | Calificados | Tiempo |
+|---|---|---|---|---|
+| Deportivo | APdeB | últimas 2 semanas | 81 | 250 ms |
+| Lanús | LNB | 2 semanas · de local · últimos 3 | 112 a 116 | ~220 ms |
+| Jujuy | LAB Norte | última semana · de local | 71 y 48 | ~100 ms |
+| Alem | Bahía Blanca | 2 semanas · ganados · contra un rival | 78 a 105 | 215 a 410 ms |
+
+La vara pesa 9 a 11 KB. En la ficha, percentil y TIPO salen contra la liga
+del período y «propio» contra su temporada. A 375 px no desborda. Con el
+admin, siete categorías de cuatro ligas responden.
+
+`test-muestra.js` (secciones 10 a 10 ter): los percentiles con la vara
+coinciden ±5 con los de la liga completa; promedios, rebote y umbrales
+coinciden con ella. Cinco reversiones hacen caer el test: la del piso de
+partidos, solo sobre la copia de `compartido/`, que es la que carga el
+endpoint.
+
+**Para producción**: deploy del backend (la ruta nueva y
+`compartido/sgadd-muestra.js`) y push del front (`?v=300`). Sin el backend
+nuevo, el pedido falla y Jugadores dice que sigue con la temporada.
 

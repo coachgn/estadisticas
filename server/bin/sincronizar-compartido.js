@@ -73,7 +73,10 @@ const MODULOS = ['sgadd-core.js', 'sgadd-auth.js', 'sgadd-estados.js', 'sgadd-da
   'sgadd-mercado.js',
   /* El parser de competencia: el servidor resuelve con él el orden de
      desempate y el arrastre de puntos de la tabla de cada zona (punto 133). */
-  'sgadd-config.js'];
+  'sgadd-config.js',
+  /* El recorte de la muestra y la vara de jugadores del período: el
+     servidor la arma sobre el libro completo (punto 139, fase 3). */
+  'sgadd-muestra.js'];
 
 const ORIGEN = path.join(__dirname, '..', '..', 'js');
 const DESTINO = path.join(__dirname, '..', 'lib', 'compartido');
