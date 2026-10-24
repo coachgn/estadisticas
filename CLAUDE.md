@@ -289,7 +289,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=302`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=303`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15762,3 +15762,7 @@ seis bloques, sin errores de consola, sin desborde a 375 px.
   dice): no tiene `data-subcard`.
 - No se probó con una sesión real con la capa: la vista previa usó la demo
   con `SGADD_PBP.activa` forzado y el paquete inyectado.
+
+### Las faltas con el reglamento FIBA/CAB (2026-10-23, ingesta)
+
+`rendimiento.js` suma `libroDeFaltas` (bonus de equipo: la 5.ª del cuarto penaliza, el suplementario cuenta como 4.º, suman las personales, las en ataque y las técnicas/antideportivas/descalificantes de JUGADOR, no las del banquillo; una técnica pegada a su falta en el mismo segundo no se cuenta dos veces) y los individuales (5 faltas, o descalificante, 2 técnicas, 2 antideportivas, 1+1). Viajan como `fi`, `bn` por jugador y `faltasEq` por equipo. El PBP no distingue técnicas Cat. 1/2 ni trae la falta disruptiva (la de corte `fc[4]` es lo más cercano, inferida). Los patrones (`perfilFaltas`: empuja al bonus, regala libres, se expone a la expulsión, administra su riesgo) salen de los cuartiles de la competencia (`tasas` suma faltasPJ, problemas, tempranoBonus, regaloBonus, expulsion, gestionQ4). Medido: 93 % de las faltas no ofensivas en bonus dan libres. Los paquetes con estos campos se subieron a KV el 2026-10-24. **El panel los dibuja desde la v303**: `sgadd-rendimiento.js` suma las seis tasas a su copia de `tasas()`, porta `perfilFaltas` (`PERFIL_FALTAS`) y agrega al bloque Riesgo las líneas de faltas del reglamento, bonus de equipo, gestión del 4.º cuarto, el resumen del equipo (`faltasEq`) y las etiquetas con ▲/▼. Con un paquete sin `fi`/`bn` la card queda como antes. `test-rendimiento.js` pasa a 52 tests.

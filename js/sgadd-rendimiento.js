@@ -68,7 +68,7 @@ const SGADD_RENDIMIENTO = (() => {
   /* La misma cuenta que la ingesta (rendimiento.js, `tasas`): se repite
      acá porque el panel no carga la ingesta. Un test las compara. */
   function tasas(j, MIN) {
-    const m = MIN || { pj: 5, tiros: 40, canastas: 15, ast: 15, faltas: 15, perdidas: 15, segOn: 6000, segOff: 3600, segunda: 10 };
+    const m = MIN || { pj: 5, tiros: 40, canastas: 15, ast: 15, faltas: 15, perdidas: 15, segOn: 6000, segOff: 3600, segunda: 10, aportes: 10, gestion: 3 };
     const fga = suma(j.esp, 0), pts = suma(j.esp, 2);
     const linea = j.fr[1] + j.fr[2] + j.fr[3] + j.fr[4];
     const net = (t) => (t[3] > 0 && t[4] > 0 ? 100 * t[1] / t[3] - 100 * t[2] / t[4] : null);
@@ -82,7 +82,35 @@ const SGADD_RENDIMIENTO = (() => {
       segPpt: j.seg[0] >= m.segunda ? j.seg[2] / j.seg[0] : null,
       onoff: j.on[0] >= m.segOn && j.off[0] >= m.segOff && net(j.on) != null && net(j.off) != null ? net(j.on) - net(j.off) : null,
       netOn: net(j.on), netOff: net(j.off),
+      /* Las faltas (punto 140 · FIBA/CAB): la misma cuenta que la ingesta. */
+      faltasPJ: j.fc && j.pj >= m.pj && j.fc[0] >= m.faltas ? j.fc[0] / j.pj : null,
+      problemas: j.fi && j.pj >= m.pj ? j.fi[1] / j.pj : null,
+      tempranoBonus: j.bn && j.bn[0] >= (m.aportes || 10) ? j.bn[1] / j.bn[0] : null,
+      regaloBonus: j.bn && j.fc[0] >= m.faltas ? j.bn[2] / j.fc[0] : null,
+      expulsion: j.fi && j.pj >= m.pj ? (j.fi[2] + j.fi[3]) / j.pj : null,
+      gestionQ4: j.fi && j.fi[5] >= (m.gestion || 3) ? 1 - j.fi[6] / j.fi[5] : null,
     };
+  }
+
+  /* Lo que hace con las faltas, leído CONTRA LA COMPETENCIA (la misma regla
+     que `perfilFaltas` de la ingesta): ningún corte es fijo. */
+  const PERFIL_FALTAS = {
+    'empuja-al-bonus': ['Empuja al bonus', 'sus faltas llegan seguido cuando el equipo todavía tiene medio cuarto por jugar y lo mete en bonus antes de tiempo', 'neg'],
+    'regala-libres-de-bonus': ['Regala libres de bonus', 'comete más faltas penalizadas (que dan libres) que la mayoría', 'neg'],
+    'se-expone-a-la-expulsion': ['Se expone a la expulsión', 'termina expulsado por faltas o disciplina más que la mayoría', 'neg'],
+    'llega-al-cierre-sin-margen': ['Llega al cierre sin margen', 'cuando entra al 4.º cuarto con 3 faltas, lo termina expulsado más que la mayoría', 'neg'],
+    'administra-su-riesgo': ['Administra su riesgo', 'cuando entra al 4.º cuarto con 3 faltas, casi nunca se queda sin partido', 'pos'],
+  };
+  function perfilFaltas(T, C) {
+    const out = [];
+    const sobre = (k, q) => T[k] != null && C[k] && T[k] > C[k][q];
+    const bajo = (k, q) => T[k] != null && C[k] && T[k] < C[k][q];
+    if (sobre('tempranoBonus', 'p75') && T.faltasPJ != null && C.faltasPJ && T.faltasPJ >= C.faltasPJ.p50) out.push('empuja-al-bonus');
+    if (sobre('regaloBonus', 'p75')) out.push('regala-libres-de-bonus');
+    if (sobre('expulsion', 'p75') && T.expulsion > 0) out.push('se-expone-a-la-expulsion');
+    if (bajo('gestionQ4', 'p25')) out.push('llega-al-cierre-sin-margen');
+    else if (T.gestionQ4 != null && C.gestionQ4 && T.gestionQ4 >= C.gestionQ4.p75 && T.gestionQ4 > C.gestionQ4.p25) out.push('administra-su-riesgo');
+    return out;
   }
 
   function idDe(paq, nombre) {
@@ -119,7 +147,7 @@ const SGADD_RENDIMIENTO = (() => {
       reloj(paq, id, j),
       quimica(paq, j, T, C),
       defensa(paq, id, j),
-      riesgo(j, T, C),
+      riesgo(j, T, C, paq),
     ];
     return { ok: true, id, nombre: nombreDe(paq, id), pj: j.pj, bloques };
   }
@@ -284,7 +312,7 @@ const SGADD_RENDIMIENTO = (() => {
   }
 
   /* ---------- 6 · Riesgo ---------- */
-  function riesgo(j, T, C) {
+  function riesgo(j, T, C, paq) {
     const lineas = [], chips = [];
     const fr = j.fr;
     if (fr[0]) {
@@ -314,7 +342,42 @@ const SGADD_RENDIMIENTO = (() => {
     chips.push({ label: 'IDE', valor: ide == null ? '—' : num(ide, 0) + ' %' });
     const f = j.fc;
     if (f[0]) lineas.push({ texto: f[0] + ' faltas cometidas: ' + f[1] + ' en ataque, ' + f[2] + ' con libres para el rival y ' + f[3] + ' sin libres.' });
+    faltasFiba(j, T, C, paq, lineas, chips);
     return { id: 'riesgo', titulo: '⚠️ Anatomía del riesgo: faltas, pérdidas y temperamento', lineas, chips };
+  }
+
+  /* ---------- Faltas con el reglamento FIBA/CAB (campos fi, bn, faltasEq) ---------- */
+  function faltasFiba(j, T, C, paq, lineas, chips) {
+    if (!j.fi || !j.bn) return;       // paquete anterior a las faltas FIBA/CAB: la card sigue sin ellas
+    const fi = j.fi, bn = j.bn;
+    const expulsiones = fi[2] + fi[3];
+    if (fi[7]) {
+      lineas.push({ texto: 'Faltas del reglamento (personales, técnicas y antideportivas): ' + fi[7] + ' en ' + j.pj + ' partidos'
+        + (T.faltasPJ != null ? ' (' + num(T.faltasPJ, 2) + ' por partido, ' + TEXTO_NIVEL[nivel(T.faltasPJ, C.faltasPJ, true)] + ')' : '')
+        + '. Llegó a 3 o más en ' + plural(fi[0], 'partido', 'partidos') + ' y a 4 o más en ' + fi[1] + '. Expulsado por 5 faltas: ' + fi[2]
+        + ' · por técnicas, antideportivas o descalificante: ' + fi[3] + '.', tono: expulsiones > 0 ? 'neg' : null });
+    }
+    if (bn[0] || bn[2]) {
+      lineas.push({ texto: 'Bonus de equipo (la 5.ª falta del cuarto se penaliza; el suplementario cuenta como 4.º cuarto): ' + bn[0] + ' de sus faltas sumaron al camino hacia el bonus'
+        + (bn[0] ? ', ' + bn[1] + ' con el bonus prematuro (4 faltas del equipo con más de la mitad del cuarto por jugar)' + (T.tempranoBonus != null ? ' = ' + num(100 * T.tempranoBonus, 0) + ' %, ' + TEXTO_NIVEL[nivel(T.tempranoBonus, C.tempranoBonus, true)] : '') : '')
+        + '; ' + bn[3] + ' fueron la 4.ª del equipo. Cometió ' + plural(bn[2], 'falta penalizada', 'faltas penalizadas') + ' (dan libres), ' + bn[4] + ' de ellas la primera del bonus.'
+        + ' Las faltas en ataque suman al equipo pero nunca dan libres.' });
+    }
+    if (fi[5]) {
+      lineas.push({ texto: 'Llegó al 4.º cuarto con 3 faltas o más en ' + plural(fi[5], 'partido', 'partidos') + ' y terminó expulsado en ' + fi[6]
+        + (T.gestionQ4 != null ? ' (gestión del riesgo ' + num(100 * T.gestionQ4, 0) + ' %' + contraLigaPct(C.gestionQ4).replace(' (competencia', ', competencia') : '') + '.' });
+    }
+    const eq = paq && paq.rendimiento && paq.rendimiento.faltasEq;
+    if (eq && eq[0]) {
+      lineas.push({ texto: 'El equipo llegó al bonus en ' + eq[1] + ' de ' + eq[0] + ' cuartos (' + eq[2] + ' prematuros) y el rival en ' + eq[3] + ' (' + eq[4] + ' prematuros).', nota: true });
+    }
+    const perfil = perfilFaltas(T, C);
+    perfil.forEach((id) => {
+      const p = PERFIL_FALTAS[id];
+      lineas.push({ texto: p[0] + ': ' + p[1] + '. Lectura contra los cuartiles de la competencia.', tono: p[2] });
+      chips.push({ label: 'Faltas', valor: p[0], tono: p[2] });
+    });
+    lineas.push({ texto: 'El play-by-play no distingue técnicas de categoría 1 y 2; la antideportiva se toma como la flagrante, y la falta disruptiva no es un tipo propio (la de corte es lo más cercano).', nota: true });
   }
 
   /* ================================================== LA VISTA */
@@ -341,7 +404,7 @@ const SGADD_RENDIMIENTO = (() => {
     </div>`;
   }
 
-  return { FRANJAS, analizar, html, tasas, nivel, idDe };
+  return { FRANJAS, analizar, html, tasas, nivel, idDe, perfilFaltas, PERFIL_FALTAS };
 })();
 
 if (typeof module !== 'undefined') module.exports = SGADD_RENDIMIENTO;

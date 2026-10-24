@@ -118,5 +118,27 @@ check('el tab pinta el lugar de montaje del play-by-play', /espacioRendimiento\(
 check('sgadd-pbp monta la card con SGADD_RENDIMIENTO', /data-pbp-rendimiento/.test(pbp) && /SGADD_RENDIMIENTO\.html\(paq, nombreRendimiento\)/.test(pbp));
 check('el script se carga después de sgadd-pbp.js', idx.indexOf('sgadd-rendimiento.js') > idx.indexOf('sgadd-pbp.js'));
 
+titulo('5 · Faltas FIBA/CAB');
+const jF = Object.assign({}, base, { fi: [12, 5, 1, 1, 3, 6, 3, 95], bn: [60, 45, 18, 15, 7] });
+const cF = Object.assign({}, cortes, { faltasPJ: { p25: 1.2, p50: 1.8, p75: 2.4 }, tempranoBonus: { p25: 0.3, p50: 0.5, p75: 0.6 },
+  regaloBonus: { p25: 0.1, p50: 0.2, p75: 0.25 }, expulsion: { p25: 0, p50: 0, p75: 0.02 }, gestionQ4: { p25: 0.5, p50: 0.8, p75: 1 }, problemas: { p25: 0.1, p50: 0.2, p75: 0.3 } });
+const pF = Object.assign({}, paq, { rendimiento: { jugadores: { 100: jF }, faltasEq: [120, 40, 12, 38, 10] }, liga: { rendimiento: { cortes: cF }, reloj: paq.liga.reloj } });
+const TF = R.tasas(jF);
+check('faltas por partido = 70 / 30', Math.abs(TF.faltasPJ - 70 / 30) < 1e-9, TF.faltasPJ);
+check('bonus temprano = 45 / 60 y regalo = 18 / 70', Math.abs(TF.tempranoBonus - 0.75) < 1e-9 && Math.abs(TF.regaloBonus - 18 / 70) < 1e-9);
+check('expulsión = 2 / 30 y gestión del 4.º cuarto = 1 − 3/6', Math.abs(TF.expulsion - 2 / 30) < 1e-9 && TF.gestionQ4 === 0.5);
+check('sin fi/bn (paquete anterior) las tasas son null', R.tasas(base).tempranoBonus === null && R.tasas(base).gestionQ4 === null);
+const pr = R.perfilFaltas(TF, cF);
+check('el perfil sale de los cuartiles: empuja al bonus, regala libres y se expone a la expulsión', ['empuja-al-bonus', 'regala-libres-de-bonus', 'se-expone-a-la-expulsion'].every(x => pr.includes(x)), pr);
+check('una competencia más exigente no etiqueta', R.perfilFaltas(TF, Object.assign({}, cF, { tempranoBonus: { p75: 0.9 }, regaloBonus: { p75: 0.5 }, expulsion: { p75: 0.5 } })).length === 0);
+check('la tasa sin muestra no etiqueta', R.perfilFaltas(R.tasas(Object.assign({}, jF, { bn: [5, 5, 5, 0, 0] })), { tempranoBonus: cF.tempranoBonus, faltasPJ: cF.faltasPJ }).length === 0);
+const aF = R.analizar(pF, 'PEREZ, JUAN');
+const tF = aF.bloques.find(b => b.id === 'riesgo').lineas.map(l => l.texto).join(' | ');
+check('el riesgo cuenta las faltas, el bonus, el cuarto cuarto y el equipo', /95 en 30 partidos/.test(tF) && /bonus prematuro/.test(tF) && /3 faltas o más en 6 partidos/.test(tF) && /llegó al bonus en 40 de 120/.test(tF), tF);
+const hF = R.html(pF, 'PEREZ, JUAN');
+check('el perfil sale en pantalla con ▲/▼', /Empuja al bonus/.test(hF) && /▼/.test(hF));
+check('sin los campos, la card es la de antes', !/bonus de equipo/i.test(R.analizar(paq, 'PEREZ, JUAN').bloques[5].lineas.map(l => l.texto).join(' ')));
+check('el HTML de faltas no trae undefined ni NaN y sigue con seis bloques', !/undefined|NaN/.test(hF) && (hF.match(/data-rendimiento="/g) || []).length === 6);
+
 console.log('\n' + ok + ' ok · ' + fail + ' fallaron');
 if (fail) { console.log('HAY FALLAS'); process.exit(1); }
