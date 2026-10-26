@@ -292,7 +292,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=307`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=308`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15813,7 +15813,7 @@ La pestaña seguía apareciendo en clientes sin la capa porque `SGADD_APP.estado
 
 ## 141. CONCLUSIONES CLÍNICAS, EQUIPOS EN BENTO Y LA TERNA DEL PDF (2026-10-26)
 
-Assets en `?v=307`. `test-conclusiones.js` fija todo.
+Assets en `?v=308`. `test-conclusiones.js` fija todo.
 
 ### La card «🩺 Conclusiones para el cuerpo técnico» · `js/sgadd-conclusiones.js`
 
@@ -15848,4 +15848,4 @@ La cabecera y los indicadores de General, Ofensiva, Defensiva y las vistas usan 
 
 ### La terna del encabezado PDF
 
-`SGADD_UI.encabezadoInforme(ctx)`: **liga · equipo · MotorStats**, en una sola línea (`.cabecera-terna`, logos de 7 mm de alto con su proporción). `contextoEncabezado(contenedor, equipo)` la arma: la liga sale de **`_liga` en `logos/<liga>/index.json`** (no entra al mapa de escudos; `LOGOS.urlLiga()`), y sin archivo va el nombre del torneo; el equipo, el que pasa cada exportación (informe → el equipo, ficha y pack → su equipo, ranking → el plantel, fichajes → el del jugador) o el propio del club. **Hoy ninguna liga tiene su logo en el repo**: hay que subir el archivo y declararlo como `"_liga": "liga.png"` en su manifiesto.
+`SGADD_UI.encabezadoInforme(ctx)`: **liga · equipo · MotorStats**, en una sola línea (`.cabecera-terna`, logos de 7 mm de alto con su proporción). `contextoEncabezado(contenedor, equipo)` la arma: la liga sale de **`_liga` en `logos/<liga>/index.json`** (no entra al mapa de escudos; `LOGOS.urlLiga()`), y sin archivo va el nombre del torneo; el equipo, el que pasa cada exportación (informe → el equipo, ficha y pack → su equipo, ranking → el plantel, fichajes → el del jugador) o el propio del club. **Cargados el 2026-10-26** (v308): LAB y LNB de laliganacional.com.ar (`_liga.png`), Bahía de abbasquet.com (`_liga.png`, 250×50) y APdeB (`apdb.png`, que ya estaba). Una liga nueva suma su archivo y `"_liga"` en su manifiesto. **No verificado en un PDF real**: la terna solo se dibuja al imprimir.
