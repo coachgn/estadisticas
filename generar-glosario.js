@@ -263,6 +263,37 @@ Object.keys(CORRECCIONES).forEach((sigla) => {
   Object.assign(e, CORRECCIONES[sigla]);
 });
 
+/* LAS TRES SIGLAS DE LA CARD DE RENDIMIENTO (punto 140). No están en el
+   manual del motor: salen del play-by-play que procesa la ingesta, así que
+   se declaran acá, con su fórmula tal cual la calcula `rendimiento.js`. */
+const EXTRAS = [
+  {
+    sigla: 'RCA',
+    nombre: 'Ratio de Creación Autónoma',
+    formula: 'canastas de campo sin asistencia / canastas de campo',
+    lectura: 'Qué parte de sus canastas se fabrica solo (pull-up, aclarado, rebote) y no depende de un pase',
+    uso: 'Alto: anotador autónomo. Bajo: finalizador que vive del pase. Se lee contra los cuartiles de la competencia',
+    familia: 'K · Rendimiento (play-by-play)',
+  },
+  {
+    sigla: 'TCDP',
+    nombre: 'Tasa Crítica de Daño Post-Pérdida',
+    formula: 'pérdidas que terminan en puntos del rival en ≤ 7 s / pérdidas',
+    lectura: 'Cuánto le cuesta al equipo cada pérdida del jugador: qué parte el rival la convierte en puntos casi de inmediato',
+    uso: 'Menos es mejor. Alto: el rival castiga sus pérdidas más que a la mayoría',
+    familia: 'K · Rendimiento (play-by-play)',
+  },
+  {
+    sigla: 'IDE',
+    nombre: 'Índice de Disciplina Emocional',
+    formula: '100 × (1 − errores seguidos de falta propia ≤ 5 s o técnica/antideportiva ≤ 10 s / errores)',
+    lectura: 'Qué parte de sus errores (pérdidas y tiros errados) NO terminan en una falta suya por frustración',
+    uso: 'Más es mejor. Bajo: reacciona a sus errores con faltas o técnicas',
+    familia: 'K · Rendimiento (play-by-play)',
+  },
+];
+EXTRAS.forEach((x) => { if (!entradas.some(e => e.sigla === x.sigla)) entradas.push(x); });
+
 /* Y el `grupo` se descarta: es el título del <h2> anterior a cada tabla,
    que en el manual puede ser una nota al pie («Celdas vacías: no es un
    error») y no una categoría. Sesenta y seis entradas caían ahí. La

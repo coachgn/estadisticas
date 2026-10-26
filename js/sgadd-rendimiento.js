@@ -54,6 +54,9 @@ const SGADD_RENDIMIENTO = (() => {
   const MIN_CLASE = 15;         // tiros en una clase para leer su eficiencia
   const MIN_BANDA = 10;         // triples en una banda
 
+  /* Semáforo: nivel contra la competencia → tono visual (verde / ámbar / rojo). */
+  const tonoDe = (nv) => (nv === 'alto' ? 'pos' : nv === 'bajo' ? 'neg' : nv === 'medio' ? 'aviso' : null);
+
   /** p25 / p75 de la competencia → 'alto' | 'bajo' | 'medio' | null. `menos` = menos es mejor. */
   function nivel(v, c, menos) {
     if (v == null || !c || c.p25 == null) return null;
@@ -149,12 +152,15 @@ const SGADD_RENDIMIENTO = (() => {
       defensa(paq, id, j),
       riesgo(j, T, C, paq),
     ];
-    return { ok: true, id, nombre: nombreDe(paq, id), pj: j.pj, bloques };
+    const SEMAFORO = ['On/Off Net', 'Pts/tiro', 'RCA', 'TCDP', 'IDE'];
+    const semaforo = SEMAFORO.map(l => bloques.reduce((s, b) => s || (b.chips || []).find(c => c.label === l), null)).filter(Boolean);
+    return { ok: true, id, nombre: nombreDe(paq, id), pj: j.pj, bloques, semaforo };
   }
 
   /* ---------- 1 · Veredicto ---------- */
   function veredicto(j, T, C, quien) {
     const lineas = [], chips = [];
+    let titularV = '';
     const minOn = j.on[0] / 60, minOff = j.off[0] / 60;
     if (T.onoff != null) {
       const nv = nivel(T.onoff, C.onoff);
@@ -165,7 +171,8 @@ const SGADD_RENDIMIENTO = (() => {
           : 'Su impacto neto está en el rango de la competencia.';
       lineas.push({ texto: 'On/Off ' + signo(T.onoff) + ' de Net Rating: el equipo hace ' + signo(T.netOn) + ' cada 100 posesiones con él en cancha y '
         + signo(T.netOff) + ' sin él (' + num(minOn, 0) + ' min ON, ' + num(minOff, 0) + ' min OFF, en ' + j.pjOnOff + ' partidos que jugó). ' + rol, tono });
-      chips.push({ label: 'On/Off Net', valor: signo(T.onoff), tono });
+      chips.push({ label: 'On/Off Net', valor: signo(T.onoff), tono: tonoDe(nv) });
+      titularV = rol;
     } else {
       lineas.push({ texto: 'On/Off sin muestra suficiente (' + num(minOn, 0) + ' min ON y ' + num(minOff, 0) + ' min OFF con la cancha validada; hacen falta '
         + MIN_ONOFF_MIN + ' y ' + MIN_OFF_MIN + '): todavía no se puede decir si el equipo depende de él.' });
@@ -178,7 +185,8 @@ const SGADD_RENDIMIENTO = (() => {
       else if (nvV === 'bajo' && nvP === 'alto') lectura = 'pocos tiros y bien elegidos: hay renta para darle más.';
       lineas.push({ texto: num(T.vol) + ' tiros de campo por partido a ' + num(T.ppt, 2) + ' puntos por tiro' + contraLiga(C.ppt) + ': ' + lectura,
         tono: nvP === 'alto' ? 'pos' : (nvP === 'bajo' ? 'neg' : null) });
-      chips.push({ label: 'Pts/tiro', valor: num(T.ppt, 2) });
+      chips.push({ label: 'Pts/tiro', valor: num(T.ppt, 2), tono: tonoDe(nvP) });
+      if (!titularV) titularV = lectura.charAt(0).toUpperCase() + lectura.slice(1);
     }
     /* Su arma y su riesgo: la tasa mejor y peor ubicada contra la competencia. */
     const ARMAS = [['rca', 'crea su propio tiro'], ['linea', 'saca faltas que lo mandan a la línea'], ['vnap', 'sus asistencias valen puntos'], ['segPpt', 'castiga la segunda oportunidad']];
@@ -188,7 +196,13 @@ const SGADD_RENDIMIENTO = (() => {
     if (arma) partes.push('Su arma: ' + arma[1] + '.');
     if (riesgoAlto) partes.push('Su riesgo: el rival le castiga las pérdidas con puntos en 7 segundos más que a la mayoría (' + num(100 * T.tcdp, 0) + ' %).');
     if (partes.length) lineas.push({ texto: partes.join(' ') });
-    return { id: 'veredicto', titulo: '🎙️ Resumen ejecutivo · el veredicto', lineas, chips };
+    const tiles = [
+      { label: 'On/Off Net', valor: T.onoff != null ? signo(T.onoff) : 's/m', sub: T.onoff != null ? 'ON ' + signo(T.netOn) + ' · OFF ' + signo(T.netOff) : 'sin muestra', tono: tonoDe(nivel(T.onoff, C.onoff)) },
+      { label: 'Pts/tiro', valor: num(T.ppt, 2), sub: C.ppt ? 'mediana ' + num(C.ppt.p50, 2) : 'sin comparar', tono: tonoDe(nivel(T.ppt, C.ppt)) },
+      { label: 'Tiros/PJ', valor: num(T.vol), sub: C.vol ? 'mediana ' + num(C.vol.p50) : 'sin comparar', tono: null },
+    ];
+    const titular = titularV || 'Sin muestra suficiente para un veredicto.';
+    return { id: 'veredicto', titulo: '🎙️ El veredicto', lineas, chips, tiles, titular };
   }
 
   /* ---------- 2 · Espacio, creación y segundas oportunidades ---------- */
@@ -214,7 +228,8 @@ const SGADD_RENDIMIENTO = (() => {
         : nv === 'bajo' ? 'finalizador dependiente: vive del pase (catch & shoot, cortes)' : 'mezcla de los dos perfiles');
       lineas.push({ texto: 'RCA ' + num(pct(j.rca[1], j.rca[0]), 0) + ' %: ' + j.rca[1] + ' de sus ' + j.rca[0] + ' canastas de campo llegaron sin asistencia'
         + contraLigaPct(C.rca) + '. Lectura: ' + perfil + '.' });
-      chips.push({ label: 'RCA', valor: num(pct(j.rca[1], j.rca[0]), 0) + ' %' });
+      /* RCA no tiene lado bueno y lado malo (punto 4): tono azul informativo, no semáforo. */
+      chips.push({ label: 'RCA', valor: num(pct(j.rca[1], j.rca[0]), 0) + ' %', tono: 'info' });
     }
     if (j.seg[0]) {
       const nv = nivel(T.segPpt, C.segPpt);
@@ -224,12 +239,22 @@ const SGADD_RENDIMIENTO = (() => {
       tono: nv === 'alto' ? 'pos' : (nv === 'bajo' ? 'neg' : null) });
     }
     if (!lineas.length) lineas.push({ texto: 'Sin tiros de campo en los partidos con play-by-play.' });
-    return { id: 'espacio', titulo: '🗺️ Gravedad espacial, creación y segundas oportunidades', lineas, chips };
+    const barras = fga ? j.esp.map((c, i) => ({
+      label: CLASES[i].charAt(0).toUpperCase() + CLASES[i].slice(1), pct: pct(c[0], fga),
+      sub: num(pct(c[0], fga), 0) + ' %' + (c[0] >= MIN_CLASE ? ' · ' + num(c[2] / c[0], 2) + ' pts/tiro' : ''),
+    })) : [];
+    const tiles = [];
+    if (j.rca[0]) tiles.push({ label: 'RCA', valor: num(pct(j.rca[1], j.rca[0]), 0) + ' %', sub: 'canastas sin asistencia', tono: 'info' });
+    if (j.seg[0]) tiles.push({ label: '2da oportunidad', valor: num(j.seg[2] / j.seg[0], 2), sub: j.seg[1] + '/' + j.seg[0] + ' · pts/tiro', tono: tonoDe(nivel(T.segPpt, C.segPpt)) });
+    if (fga) tiles.push({ label: 'Distancia', valor: num(j.dist) + ' m', sub: 'mediana de tiro', tono: null });
+    const triples = suma(j.t3b, 0) ? j.t3b.map((b, i) => BANDAS_T3[i] + ': ' + b[1] + '/' + b[0]) : [];
+    return { id: 'espacio', titulo: '🗺️ Espacio y creación', lineas, chips, barras, tiles, triples };
   }
 
   /* ---------- 3 · Reloj y clutch ---------- */
   function reloj(paq, id, j) {
-    const lineas = [], chips = [];
+    const lineas = [], chips = [], barras = [];
+    let alerta = null;
     const r = paq.reloj && paq.reloj.jugadores && paq.reloj.jugadores[id];
     const ligaF = paq.liga && paq.liga.reloj && paq.liga.reloj.f;
     if (r && Array.isArray(r.f) && r.f.length === 3) {
@@ -244,6 +269,8 @@ const SGADD_RENDIMIENTO = (() => {
           const tono = ppt != null && pptL != null && c[0] >= 10 ? (ppt - pptL >= 0.06 ? 'pos' : (pptL - ppt >= 0.06 ? 'neg' : null)) : null;
           lineas.push({ texto: FRANJAS[k].label + ': ' + num(pct(acciones[k], total), 0) + ' % de su participación, domina el ' + facetas[0][0]
             + (c[0] ? ' · ' + c[1] + '/' + c[0] + ' tiros, ' + num(ppt, 2) + ' pts/tiro (competencia ' + num(pptL, 2) + ')' : '') + '.', tono });
+          barras.push({ label: ['0-7 s', '8-17 s', '18-24 s'][k], pct: pct(acciones[k], total), tono,
+            sub: num(pct(acciones[k], total), 0) + ' % · ' + facetas[0][0] + (c[0] ? ' · ' + num(ppt, 2) + ' pts/tiro' : '') });
         });
         const mayor = acciones.indexOf(Math.max.apply(null, acciones));
         chips.push({ label: 'Su franja', valor: ['0-7 s', '8-17 s', '18-24 s'][mayor] });
@@ -259,8 +286,11 @@ const SGADD_RENDIMIENTO = (() => {
         + ', eFG ' + num(cl.efg) + ' %, toma el ' + num(cl.porc, 0) + ' % de los usos del equipo, ' + cl.pp + ' pérdidas, +/- ' + signo(cl.mm, 0) + '.',
       tono: cl.mm >= 5 ? 'pos' : (cl.mm <= -5 ? 'neg' : null) });
       chips.push({ label: 'Usos clutch', valor: num(cl.porc, 0) + ' %' });
+      /* El termómetro del cierre: un badge de alerta, verde / ámbar / rojo según el +/- del tramo. */
+      alerta = { titulo: 'Termómetro clutch', tono: cl.mm >= 5 ? 'pos' : (cl.mm <= -5 ? 'neg' : 'aviso'),
+        texto: signo(cl.mm, 0) + ' en ' + num(cl.min) + ' min · ' + cl.pts + ' pts · eFG ' + num(cl.efg, 0) + ' % · toma el ' + num(cl.porc, 0) + ' % de los usos · ' + cl.pp + ' pérdidas' };
     } else lineas.push({ texto: 'Sin minutos de clutch con la cancha validada.' });
-    return { id: 'reloj', titulo: '⏱️ Crono-análisis, participación por posesión y clutch', lineas, chips };
+    return { id: 'reloj', titulo: '⏱️ Reloj de posesión y clutch', lineas, chips, barras, alerta };
   }
 
   /* ---------- 4 · Química ---------- */
@@ -285,8 +315,13 @@ const SGADD_RENDIMIENTO = (() => {
         + 'en la pintura, ' + num(pct(j.asistido[0][0], j.asistido[0][0] + j.asistido[0][1]), 0) + ' %.'
         + (j.asistidores && j.asistidores[0] ? ' Quien más lo habilita: ' + nombreDe(paq, j.asistidores[0][0]) + ' (' + j.asistidores[0][1] + ').' : '') });
     }
-    lineas.push({ texto: 'El play-by-play no registra el pase previo a la asistencia: no hay hockey assists.', nota: true });
-    return { id: 'quimica', titulo: '🤝 Química colectiva, red de pases y perfil de lanzamiento', lineas, chips };
+    const tiles = [];
+    if (j.ast[0]) {
+      tiles.push({ label: 'Asistencias', valor: String(j.ast[0]), sub: num(j.ast[1] / j.ast[0], 2) + ' pts por pase', tono: tonoDe(nivel(T.vnap, C.vnap)) });
+      if (j.socios && j.socios[0]) tiles.push({ label: 'Socio principal', valor: nombreDe(paq, j.socios[0][0]).split(' ').slice(-1)[0], sub: j.socios[0][1] + ' pases · ' + j.socios[0][2] + ' pts', tono: null });
+    }
+    if (recib + sin) tiles.push({ label: 'Canastas asistidas', valor: num(pct(recib, recib + sin), 0) + ' %', sub: recib + ' de ' + (recib + sin), tono: 'info' });
+    return { id: 'quimica', titulo: '🤝 Química y red de pases', lineas, chips, tiles };
   }
 
   /* ---------- 5 · Defensa ---------- */
@@ -308,7 +343,12 @@ const SGADD_RENDIMIENTO = (() => {
       }
     }
     if (j.fc[4]) lineas.push({ texto: j.fc[4] + ' faltas de corte: cometidas a ≤ 4 s de que su equipo perdió la pelota, sin libres.' });
-    return { id: 'defensa', titulo: '🛡️ Defensa: robos por franja, tapones e impacto invisible', lineas, chips };
+    const tiles = [
+      { label: 'Recuperos/PJ', valor: num(j.def[0] / pj), sub: j.def[0] + ' en total', tono: null },
+      { label: 'Tapones/PJ', valor: num(j.def[2] / pj), sub: j.def[2] + ' en total', tono: null },
+      { label: 'Reb. def./PJ', valor: num(j.def[4] / pj), sub: j.def[4] + ' en total', tono: null },
+    ];
+    return { id: 'defensa', titulo: '🛡️ Defensa', lineas, chips, tiles };
   }
 
   /* ---------- 6 · Riesgo ---------- */
@@ -317,7 +357,7 @@ const SGADD_RENDIMIENTO = (() => {
     const fr = j.fr;
     if (fr[0]) {
       lineas.push({ texto: fr[0] + ' faltas recibidas: ' + fr[1] + ' de tiro con 2 libres, ' + fr[2] + ' sobre triple, ' + fr[3] + ' and-1, '
-        + fr[4] + ' con 2 libres y el rival en bonus (de tiro o de penalización: el dato no lo separa), ' + fr[5] + ' sin libres (saque) y '
+        + fr[4] + ' con 2 libres y el rival en bonus, ' + fr[5] + ' sin libres (saque) y '
         + fr[8] + ' cargos provocados. Libres: ' + fr[7] + '/' + fr[6] + ' (' + num(pct(fr[7], fr[6]), 0) + ' %).'
         + (T.linea != null ? ' Lo mandan a la línea en el ' + num(100 * T.linea, 0) + ' % de sus faltas, ' + TEXTO_NIVEL[nivel(T.linea, C.linea)] + '.' : '') });
       chips.push({ label: 'And-1', valor: String(fr[3]) });
@@ -327,23 +367,32 @@ const SGADD_RENDIMIENTO = (() => {
       const nv = nivel(T.tcdp, C.tcdp, true);
       lineas.push({ texto: pp[0] + ' pérdidas: ' + pp[1] + ' robadas por el rival, ' + pp[2] + ' por falta en ataque y el resto con la pelota muerta. TCDP '
         + num(pct(pp[3], pp[0]), 0) + ' %: ' + pp[3] + ' terminaron en puntos del rival en ≤ 7 s (' + pp[4] + ' puntos)'
-        + (T.tcdp != null ? ', ' + TEXTO_NIVEL[nivel(T.tcdp, C.tcdp)] : '') + '. El play-by-play no dice si fueron de drible o de pase.',
+        + (T.tcdp != null ? ', ' + TEXTO_NIVEL[nivel(T.tcdp, C.tcdp)] : '') + '.',
       tono: nv === 'alto' ? 'pos' : (nv === 'bajo' ? 'neg' : null) });
-      chips.push({ label: 'TCDP', valor: num(pct(pp[3], pp[0]), 0) + ' %' });
+      chips.push({ label: 'TCDP', valor: num(pct(pp[3], pp[0]), 0) + ' %', tono: tonoDe(nivel(T.tcdp, C.tcdp, true)) });
     }
     const d = j.dis;
     const incidentes = d[0] + d[1] + d[2];
     const ide = d[5] ? 100 * (1 - (d[3] + d[4]) / d[5]) : null;
     lineas.push({ texto: (incidentes ? plural(d[0], 'técnica', 'técnicas') + ', ' + plural(d[1], 'antideportiva', 'antideportivas') + ' y ' + plural(d[2], 'descalificante', 'descalificantes')
         + '; de ellas, ' + d[3] + ' a ≤ 10 s de un error propio (faltas por frustración). '
-      : 'Sin técnicas ni antideportivas. ') + plural(d[4], 'falta personal', 'faltas personales') + ' a ≤ 5 s de un error propio (pueden ser de corte, no siempre de reacción). '
+      : 'Sin técnicas ni antideportivas. ') + plural(d[4], 'falta personal', 'faltas personales') + ' a ≤ 5 s de un error propio. '
       + 'IDE ' + num(ide, 0) + ' %: ' + (d[5] ? 'de sus ' + d[5] + ' errores (pérdidas y tiros errados), los que NO terminaron en una falta suya.' : 'sin errores registrados.'),
     tono: d[3] > 0 ? 'neg' : null });
-    chips.push({ label: 'IDE', valor: ide == null ? '—' : num(ide, 0) + ' %' });
+    chips.push({ label: 'IDE', valor: ide == null ? '—' : num(ide, 0) + ' %', tono: d[3] > 0 ? 'neg' : null });
     const f = j.fc;
     if (f[0]) lineas.push({ texto: f[0] + ' faltas cometidas: ' + f[1] + ' en ataque, ' + f[2] + ' con libres para el rival y ' + f[3] + ' sin libres.' });
     faltasFiba(j, T, C, paq, lineas, chips);
-    return { id: 'riesgo', titulo: '⚠️ Anatomía del riesgo: faltas, pérdidas y temperamento', lineas, chips };
+    /* Las alertas visuales: el perfil de faltas contra la competencia y la disciplina. */
+    const alertas = chips.filter(c => c.label === 'Faltas').map(c => ({ titulo: c.valor, tono: c.tono, texto: '' }));
+    if (j.fi && (j.fi[2] + j.fi[3]) > 0) alertas.push({ titulo: 'Expulsiones', tono: 'neg', texto: (j.fi[2] + j.fi[3]) + ' en ' + j.pj + ' partidos' });
+    if (d[3] > 0) alertas.push({ titulo: 'Faltas por frustración', tono: 'neg', texto: d[3] + ' técnicas/antideportivas tras un error propio' });
+    const tiles = [];
+    if (pp[0]) tiles.push({ label: 'TCDP', valor: num(pct(pp[3], pp[0]), 0) + ' %', sub: pp[3] + ' de ' + pp[0] + ' pérdidas', tono: tonoDe(nivel(T.tcdp, C.tcdp, true)) });
+    tiles.push({ label: 'IDE', valor: ide == null ? '—' : num(ide, 0) + ' %', sub: d[5] ? d[5] + ' errores' : 'sin errores', tono: d[3] > 0 ? 'neg' : null });
+    if (fr[0]) tiles.push({ label: 'Faltas recibidas', valor: String(fr[0]), sub: fr[3] + ' and-1 · libres ' + num(pct(fr[7], fr[6]), 0) + ' %', tono: tonoDe(nivel(T.linea, C.linea)) });
+    if (j.fc[0]) tiles.push({ label: 'Faltas cometidas', valor: String(j.fc[0]), sub: j.fc[2] + ' con libres', tono: j.fi ? tonoDe(nivel(T.faltasPJ, C.faltasPJ, true)) : null });
+    return { id: 'riesgo', titulo: '⚠️ Anatomía del riesgo', lineas, chips, tiles, alertas };
   }
 
   /* ---------- Faltas con el reglamento FIBA/CAB (campos fi, bn, faltasEq) ---------- */
@@ -377,30 +426,54 @@ const SGADD_RENDIMIENTO = (() => {
       lineas.push({ texto: p[0] + ': ' + p[1] + '. Lectura contra los cuartiles de la competencia.', tono: p[2] });
       chips.push({ label: 'Faltas', valor: p[0], tono: p[2] });
     });
-    lineas.push({ texto: 'El play-by-play no distingue técnicas de categoría 1 y 2; la antideportiva se toma como la flagrante, y la falta disruptiva no es un tipo propio (la de corte es lo más cercano).', nota: true });
   }
 
   /* ================================================== LA VISTA */
 
-  const TONO = { pos: 'mm-pos', neg: 'mm-neg' };
-  const MARCA = { pos: '▲ ', neg: '▼ ' };
+  /* LA VISTA · Bento Grid. Cada bloque es una micro-card: titular, fichas
+     numéricas con semáforo, barras donde hay un reparto y, plegada, la
+     lectura completa. El color nunca va solo: lleva el símbolo (▲ ● ▼ ◆)
+     y el semáforo es contra la competencia (verde sobre su cuarto alto,
+     ámbar en rango, rojo bajo su cuarto bajo). Las clases .rend-* van a
+     mano en el <style> del index.html (nodos inyectados, punto 12). */
+  const MARCA = { pos: '▲', aviso: '●', neg: '▼', info: '◆' };
+  const claseTono = (t) => ' rend-t-' + (t || 'nulo');
+  const marca = (t) => (t && MARCA[t] ? `<span aria-hidden="true">${MARCA[t]}</span> ` : '');
+
+  const ficha = (t) => `<div class="rend-ficha${claseTono(t.tono)}">
+      <div class="rend-ficha-l">${esc(t.label)}</div>
+      <div class="rend-ficha-v">${marca(t.tono)}${esc(t.valor)}</div>
+      ${t.sub ? `<div class="rend-ficha-s">${esc(t.sub)}</div>` : ''}</div>`;
+  const barra = (b) => `<div class="rend-barra">
+      <div class="rend-barra-t"><span>${esc(b.label)}</span><span>${esc(b.sub)}</span></div>
+      <div class="rend-pista" role="img" aria-label="${esc(b.label + ': ' + b.sub)}"><div class="rend-relleno${claseTono(b.tono || 'info')}" style="width:${Math.max(2, Math.min(100, Math.round(b.pct || 0)))}%"></div></div></div>`;
+  const alerta = (a) => `<div class="rend-alerta${claseTono(a.tono)}" role="note">
+      <b>${marca(a.tono)}${esc(a.titulo)}</b>${a.texto ? `<span>${esc(a.texto)}</span>` : ''}</div>`;
+
+  function bloqueHtml(b) {
+    const ancho = (b.id === 'veredicto' || b.id === 'riesgo') ? ' rend-ancho' : '';
+    return `<section class="rend-card${ancho}" data-rendimiento="${esc(b.id)}">
+      <h5 class="rend-card-t">${esc(b.titulo)}</h5>
+      ${b.titular ? `<p class="rend-titular">${esc(b.titular)}</p>` : ''}
+      ${b.alerta ? alerta(b.alerta) : ''}
+      ${(b.alertas || []).length ? `<div class="rend-alertas">${b.alertas.map(alerta).join('')}</div>` : ''}
+      ${(b.tiles || []).length ? `<div class="rend-fichas">${b.tiles.map(ficha).join('')}</div>` : ''}
+      ${(b.barras || []).length ? `<div class="rend-barras">${b.barras.map(barra).join('')}</div>` : ''}
+      ${(b.triples || []).length ? `<p class="rend-mini">Triple por distancia · ${b.triples.map(esc).join(' · ')}</p>` : ''}
+      <details class="rend-detalle"><summary>Lectura detallada</summary>
+        <ul>${b.lineas.map(l => `<li class="${l.nota ? 'text-muted' : 'text-ink'}${l.tono && l.tono !== 'info' ? ' ' + (l.tono === 'pos' ? 'mm-pos' : 'mm-neg') : ''}">${l.tono ? marca(l.tono) : ''}${esc(l.texto)}</li>`).join('')}</ul>
+      </details>
+    </section>`;
+  }
 
   function html(paq, nombre) {
     let a;
     try { a = analizar(paq, nombre); } catch (e) { a = { ok: false, motivo: 'No se pudo armar la card de Rendimiento.' }; }
     if (!a.ok) return `<p class="text-xs text-muted">${esc(a.motivo)}</p>`;
-    const chips = a.bloques.reduce((s, b) => s.concat(b.chips || []), []);
-    const bloque = (b) => `
-      <div class="mb-4" data-rendimiento="${esc(b.id)}">
-        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-1.5">${esc(b.titulo)}</h5>
-        <ul>${b.lineas.map(l => `<li class="text-[12px] ${l.nota ? 'text-muted' : 'text-ink'} leading-snug mb-1${l.tono ? ' ' + TONO[l.tono] : ''}">${l.tono ? MARCA[l.tono] : ''}${esc(l.texto)}</li>`).join('')}</ul>
-      </div>`;
-    return `<div class="pbp-bloque" data-pbp-listo="1">
-      <p class="text-[11px] text-muted mb-3"><i>Diagnóstico integral 360° basado en play-by-play, micro-momentos y eficiencia de procesos.</i>
-        Laboratorio · ${a.pj} partidos de ${esc(paq.equipo || '')} con play-by-play oficial. Las comparaciones son contra los jugadores con muestra de la competencia;
-        una lectura es una lectura: decide el cuerpo técnico.</p>
-      ${chips.length ? `<div class="flex flex-wrap gap-2 mb-4">${chips.map(c => `<span class="text-[11px] px-2 py-0.5 rounded border border-hairline ${c.tono ? TONO[c.tono] : 'text-ink'}">${esc(c.label)} <b>${esc(c.valor)}</b></span>`).join('')}</div>` : ''}
-      ${a.bloques.map(bloque).join('')}
+    return `<div class="pbp-bloque rend-raiz" data-pbp-listo="1">
+      <p class="rend-pie-t">Laboratorio · ${a.pj} partidos de ${esc(paq.equipo || '')} con play-by-play oficial · semáforo contra los cuartiles de la competencia.</p>
+      ${a.semaforo.length ? `<div class="rend-chips">${a.semaforo.map(c => `<span class="rend-chip${claseTono(c.tono)}">${marca(c.tono)}${esc(c.label)} <b>${esc(c.valor)}</b></span>`).join('')}</div>` : ''}
+      <div class="rend-grid">${a.bloques.map(bloqueHtml).join('')}</div>
     </div>`;
   }
 

@@ -63,6 +63,7 @@ const JUGADORES = {
      pero una clave de estado que no figura en el objeto es de las que se
      pierden en la próxima edición sin que nadie lo note. */
   plantelRankingAbierto: 'produccion',
+  top3Abierto: false,   // la card TOP 3 del plantel arranca minimizada
   plantelRankingModo: 'promedio',
   plantelRankingOrdenPor: null,
   plantelRankingOrdenDir: 'desc',
@@ -2631,7 +2632,11 @@ function jugadoresTop3Plantel(idx, clave) {
     return { id: g.id, titulo: g.titulo, orden: g.orden, cols: vivas, filas: r.filas };
   }).filter(Boolean);
 }
-function jugadoresBloqueTop3Plantel(idx, clave) {
+/* El plegado vive en el estado del módulo y no en el DOM: la grilla se
+   repinta entera (punto 13). Arranca CERRADA: gana espacio en pantallas de staff. */
+function jugadoresTop3Plegar(abierto) { JUGADORES.top3Abierto = !!abierto; }
+function jugadoresBloqueTop3Plantel(idx, clave, opts) {
+  const plegable = !!(opts && opts.plegable);   // solo la pantalla; el PDF lo pide abierto (sin opts)
   const grupos = jugadoresTop3Plantel(idx, clave);
   if (!grupos.length) return '';
   const e = idx.get(clave);
@@ -2651,11 +2656,22 @@ function jugadoresBloqueTop3Plantel(idx, clave) {
           </tr>`).join('')}</tbody>
         </table></div>
       </div>`;
+  const titulo = `TOP 3 del PLANTEL · ${escapeHtml(e ? e.nombre : clave)}`;
+  const cuerpo = `
+      <p class="text-[11px] text-muted mb-3">Los tres primeros del plantel en cada dimensión del ranking, por promedio por partido y sin piso de minutos. En color, la métrica que ordena.</p>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">${grupos.map(sub).join('')}</div>`;
+  if (plegable) {
+    return `
+    <details id="jugadoresTop3" class="card hub-plegable rounded-xl border border-hairline mb-4" data-top3-plantel="1"
+      ${JUGADORES.top3Abierto ? 'open' : ''} ontoggle="jugadoresTop3Plegar(this.open)">
+      <summary class="p-4 sm:p-5 cursor-pointer font-display uppercase tracking-wide text-sm text-ink">${titulo}
+        <span class="normal-case tracking-normal text-[11px] text-muted font-sans">· plegable</span></summary>
+      <div class="px-4 sm:px-5 pb-4 sm:pb-5">${cuerpo}</div>
+    </details>`;
+  }
   return `
     <div id="jugadoresTop3" class="card rounded-xl p-4 sm:p-5 border border-hairline mb-4" data-top3-plantel="1">
-      <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">TOP 3 del PLANTEL · ${escapeHtml(e ? e.nombre : clave)}</h3>
-      <p class="text-[11px] text-muted mb-3">Los tres primeros del plantel en cada dimensión del ranking, por promedio por partido y sin piso de minutos. En color, la métrica que ordena.</p>
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">${grupos.map(sub).join('')}</div>
+      <h3 class="font-display uppercase tracking-wide text-sm text-ink mb-1">${titulo}</h3>${cuerpo}
     </div>`;
 }
 
@@ -2678,7 +2694,7 @@ function jugadoresGrilla(idx) {
   return [
     conEquipo ? '' : jugadoresPickerEquipos(idx),
     /* El TOP 3 va ARRIBA del plantel (2026-10-19, pedido del club). */
-    conEquipo ? jugadoresBloqueTop3Plantel(idx, JUGADORES.filtroEquipo) : '',
+    conEquipo ? jugadoresBloqueTop3Plantel(idx, JUGADORES.filtroEquipo, { plegable: true }) : '',
     jugadoresPlantelEquipo(idx),
     /* El ranking del plantel va DEBAJO de las cards y solo con un equipo
        elegido; el de la liga, solo sin equipo. Nunca conviven: son la
@@ -3493,7 +3509,7 @@ if (typeof module !== 'undefined' && module.exports) {
     jugadoresPerfilBase, jugadoresRolFuncional, jugadoresADN, jugadoresBadges,
     JUGADORES_METRICAS_EVOLUCION,
     JUGADORES_MOTIVO_SIN_RESPALDO, JUGADORES_MOTIVO_COMPETENCIA_CHICA,
-    JUGADORES_TOP3_N, jugadoresTop3Plantel, jugadoresBloqueTop3Plantel,
+    JUGADORES_TOP3_N, jugadoresTop3Plantel, jugadoresBloqueTop3Plantel, jugadoresTop3Plegar,
     CLAVES_CONDICION, MIN_PJ_CONDICION, SENSIBILIDAD_CONDICION,
     jugadoresSlug, jugadoresBuscar, jugadoresZScore,
     jugadoresPartidosOrdenados, jugadoresRival, jugadoresIdCanonico,

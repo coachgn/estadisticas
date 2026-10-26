@@ -158,7 +158,7 @@ node test-muestra.js       # 156 tests · el selector de muestra de Equipos y Ju
                            #             · y la familia 2: cada equipo en su condición, contra su índice dedicado
                            #             · y la fase 3: la vara de jugadores del período que calcula el servidor
 
-node test-rendimiento.js   #  41 tests · la card de Rendimiento del jugador: el motor puro, las degradaciones,
+node test-rendimiento.js   #  59 tests · la card de Rendimiento del jugador: el motor puro, las degradaciones,
                            #             la vista y el cableado de la pestaña (punto 140)
 
 node test-backend.js       # 468 tests · el proxy, el benchmark, las alertas, el catálogo en KV
@@ -289,7 +289,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=303`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=304`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -5155,7 +5155,7 @@ Sale de `MOTORSTATS_MANUAL_3_RECORRIDO_Y_GLOSARIO.html`, que vive en
 lee en vivo por dos motivos: el panel es estático y no tiene acceso al disco
 de nadie, y el manual cambia con el calendario del motor. Misma convención que
 `generar-css.js` y `generar-manual-etiquetas.js`: se corre a mano y el
-resultado se commitea. **73 entradas, cobertura 100% de las 59 `METRICAS`** del
+resultado se commitea. **76 entradas (73 del manual + RCA, TCDP e IDE de la card de Rendimiento, que declara `EXTRAS` en el generador), cobertura 100% de las 59 `METRICAS`** del
 panel, y hay un test que falla si alguna queda sin definición.
 
 > **Desde 2026-09-13 el glosario NO trae hojas**: ni la columna «Hoja» ni la
@@ -15766,3 +15766,18 @@ seis bloques, sin errores de consola, sin desborde a 375 px.
 ### Las faltas con el reglamento FIBA/CAB (2026-10-23, ingesta)
 
 `rendimiento.js` suma `libroDeFaltas` (bonus de equipo: la 5.ª del cuarto penaliza, el suplementario cuenta como 4.º, suman las personales, las en ataque y las técnicas/antideportivas/descalificantes de JUGADOR, no las del banquillo; una técnica pegada a su falta en el mismo segundo no se cuenta dos veces) y los individuales (5 faltas, o descalificante, 2 técnicas, 2 antideportivas, 1+1). Viajan como `fi`, `bn` por jugador y `faltasEq` por equipo. El PBP no distingue técnicas Cat. 1/2 ni trae la falta disruptiva (la de corte `fc[4]` es lo más cercano, inferida). Los patrones (`perfilFaltas`: empuja al bonus, regala libres, se expone a la expulsión, administra su riesgo) salen de los cuartiles de la competencia (`tasas` suma faltasPJ, problemas, tempranoBonus, regaloBonus, expulsion, gestionQ4). Medido: 93 % de las faltas no ofensivas en bonus dan libres. Los paquetes con estos campos se subieron a KV el 2026-10-24. **El panel los dibuja desde la v303**: `sgadd-rendimiento.js` suma las seis tasas a su copia de `tasas()`, porta `perfilFaltas` (`PERFIL_FALTAS`) y agrega al bloque Riesgo las líneas de faltas del reglamento, bonus de equipo, gestión del 4.º cuarto, el resumen del equipo (`faltasEq`) y las etiquetas con ▲/▼. Con un paquete sin `fi`/`bn` la card queda como antes. `test-rendimiento.js` pasa a 52 tests.
+
+### La card de Rendimiento, en Bento Grid (2026-10-26, v304)
+
+`sgadd-rendimiento.js` ya no es una sábana de texto: cada uno de los seis bloques es una micro-card (`.rend-card`) con titular, **fichas numéricas con semáforo** (`.rend-ficha`), barras (`.rend-barra`: reparto de tiro, participación por franja del reloj) y la lectura completa **plegada** en «Lectura detallada». Arriba, los chips semáforo On/Off · Pts/tiro · RCA · TCDP · IDE (`analizar().semaforo`).
+
+- **Semáforo contra los cuartiles de la competencia** (`tonoDe`): verde sobre su cuarto alto, ámbar en rango, rojo bajo el cuarto bajo, con la dirección de cada métrica (TCDP: menos es mejor). Nunca solo color: el markup lleva ▲ ● ▼ ◆. **RCA es azul informativo** (◆): no tiene lado bueno y malo (punto 4). IDE no tiene cortes en el paquete: solo se pinta rojo si hubo faltas por frustración.
+- **Alertas visuales** (`.rend-alerta`): el termómetro del clutch (+/- ≥ 5 verde, ≤ −5 rojo, ámbar en medio) y, en Riesgo, el perfil de faltas («Regala libres de bonus», «Empuja al bonus»…), las expulsiones y las faltas por frustración.
+- **Se sacó la autocrítica del motor** («el play-by-play no dice si fueron de drible o de pase», «no hay hockey assists», la nota de límites de las faltas). Las limitaciones quedan documentadas acá y en el punto 140, no en la card.
+- El CSS va a mano en el `<style>` del `index.html` (nodos inyectados), con grilla de dos columnas solo `@media screen and (min-width: 768px)` y tonos oscuros en papel.
+
+### Otros tres cambios de la v304
+
+- **TOP 3 del PLANTEL arranca minimizada** en Jugadores: `<details class="hub-plegable">`, con el estado en `JUGADORES.top3Abierto` (no en el DOM: la grilla se repinta). El PDF y el Pack PLANTEL piden el bloque sin `{ plegable: true }` y lo reciben abierto.
+- **Botón «volver arriba»** (`SGADD_UI.montarSubir`, `.subir-arriba`): flecha flotante que aparece tras 400 px de scroll, sube suave (sin animar con `prefers-reduced-motion`) y no se imprime. No se monta con un `document` de mentira.
+- **Glosario**: RCA, TCDP e IDE entran por `EXTRAS` en `generar-glosario.js` (familia «K · Rendimiento (play-by-play)»), porque no están en el manual del motor.

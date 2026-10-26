@@ -1145,6 +1145,35 @@ const SGADD_UI = (function () {
     return restaurar;
   }
 
+  /* BOTÓN «VOLVER ARRIBA» (2026-10-26). Flecha flotante que aparece al bajar
+     y sube suave al tope de la página. Idempotente (un solo nodo), con
+     `prefers-reduced-motion` salta sin animar y no se imprime. El CSS
+     (.subir-arriba) va a mano en el <style> del index.html. */
+  function montarSubir() {
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function' || typeof document.getElementById !== 'function'
+      || !document.body || document.getElementById('subirArriba')) return null;
+    const b = document.createElement('button');
+    b.id = 'subirArriba'; b.type = 'button'; b.className = 'subir-arriba no-imprimir';
+    b.setAttribute('aria-label', 'Volver al inicio de la página'); b.title = 'Volver arriba';
+    b.textContent = '↑';
+    b.addEventListener('click', () => {
+      const quieta = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      window.scrollTo({ top: 0, behavior: quieta ? 'auto' : 'smooth' });
+    });
+    document.body.appendChild(b);
+    const ver = () => b.classList.toggle('subir-visible', (window.pageYOffset || document.documentElement.scrollTop || 0) > 400);
+    window.addEventListener('scroll', ver, { passive: true });
+    ver();
+    return b;
+  }
+  /* Un `document` de mentira (los tests) no trae lo necesario: no se monta y no rompe. */
+  try {
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', montarSubir);
+      else montarSubir();
+    }
+  } catch (e) { /* sin botón: la página sigue igual */ }
+
   /** ¿Hay una exportación que ya nombró el archivo? La usa el respaldo de
       Ctrl+P para no pisar un nombre que una exportación puso a propósito. */
   function tituloPdfActivo() { return pdfTituloPrevio !== null; }
@@ -1416,7 +1445,7 @@ const SGADD_UI = (function () {
     inyectarPieDeHoja, quitarPieDeHoja, CLASE_TABLA,
     diagnosticarPie, reglaPieImpresion, excepcionesDelPie,
     ancestrosQueRompenElPie,
-    sanearNombreArchivo, nombrePersona, nombrePdf, tituloPdf, tituloPdfActivo,
+    sanearNombreArchivo, nombrePersona, nombrePdf, tituloPdf, tituloPdfActivo, montarSubir,
     sinAcceso, pedirPlan, avisoSinEquipo };
 })();
 

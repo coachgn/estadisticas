@@ -142,6 +142,13 @@ if (rutaManual && fs.existsSync(rutaManual)) {
   delete global.SGADD_NIVELES;
 }
 
+/* RCA, TCDP e IDE (card de Rendimiento, 2026-10-26) */
+['RCA', 'TCDP', 'IDE'].forEach(s => {
+  const e = G.buscar(s);
+  check('«' + s + '» está definida, con nombre, fórmula y lectura', !!e && !!e.nombre && !!e.formula && !!e.lectura, e);
+});
+check('RCA, TCDP e IDE comparten una familia propia', new Set(['RCA', 'TCDP', 'IDE'].map(s => G.buscar(s).familia)).size === 1);
+
 console.log('\n' + '═'.repeat(70));
 if (fail === 0) console.log('✓ TODO OK   ' + ok + ' pasaron, 0 fallaron');
 else { console.log('✗ HAY FALLAS   ' + ok + ' pasaron, ' + fail + ' fallaron'); process.exit(1); }

@@ -10,7 +10,7 @@
    definición está mal, se corrige en el manual del motor — que es la fuente
    que el club audita — y se vuelve a generar.
 
-   73 entradas.
+   76 entradas.
    ===================================================================== */
 
 const SGADD_GLOSARIO = (function () {
@@ -508,6 +508,30 @@ const SGADD_GLOSARIO = (function () {
     formula: "(PTS / POS) × 100 · POS = PLAYS − RO",
     lectura: "Puntos cada 100 posesiones (POS = PLAYS − RO)",
     familia: "J · Ratings",
+  },
+  {
+    sigla: "IDE",
+    nombre: "Índice de Disciplina Emocional",
+    formula: "100 × (1 − errores seguidos de falta propia ≤ 5 s o técnica/antideportiva ≤ 10 s / errores)",
+    lectura: "Qué parte de sus errores (pérdidas y tiros errados) NO terminan en una falta suya por frustración",
+    uso: "Más es mejor. Bajo: reacciona a sus errores con faltas o técnicas",
+    familia: "K · Rendimiento (play-by-play)",
+  },
+  {
+    sigla: "RCA",
+    nombre: "Ratio de Creación Autónoma",
+    formula: "canastas de campo sin asistencia / canastas de campo",
+    lectura: "Qué parte de sus canastas se fabrica solo (pull-up, aclarado, rebote) y no depende de un pase",
+    uso: "Alto: anotador autónomo. Bajo: finalizador que vive del pase. Se lee contra los cuartiles de la competencia",
+    familia: "K · Rendimiento (play-by-play)",
+  },
+  {
+    sigla: "TCDP",
+    nombre: "Tasa Crítica de Daño Post-Pérdida",
+    formula: "pérdidas que terminan en puntos del rival en ≤ 7 s / pérdidas",
+    lectura: "Cuánto le cuesta al equipo cada pérdida del jugador: qué parte el rival la convierte en puntos casi de inmediato",
+    uso: "Menos es mejor. Alto: el rival castiga sus pérdidas más que a la mayoría",
+    familia: "K · Rendimiento (play-by-play)",
   },
   ];
 

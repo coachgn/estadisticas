@@ -738,5 +738,14 @@ bloque('El menú minimizado hacia la izquierda');
 }
 
 console.log('\n' + '─'.repeat(60));
+{
+  bloque('Botón «volver arriba» (2026-10-26)');
+  const ui = fs.readFileSync(path.join(RAIZ, 'js', 'sgadd-ui.js'), 'utf8');
+  ok(/scrollTo\(\{ top: 0, behavior: quieta \? 'auto' : 'smooth' \}\)/.test(ui) && /prefers-reduced-motion: reduce\)'\)\.matches/.test(ui)
+    && /@media print \{ \.subir-arriba \{ display: none !important/.test(HTML),
+  'sube suave, sin animar con reduced-motion y no se imprime');
+  ok(/getElementById\('subirArriba'\)\) return null/.test(ui) && /typeof document\.createElement !== 'function'/.test(ui),
+    'es idempotente y no revienta con un document de mentira');
+}
 if (fallados === 0) console.log('✓ TODO OK · ' + pasados + ' tests');
 else { console.log('✗ ' + fallados + ' FALLARON de ' + (pasados + fallados)); process.exitCode = 1; }

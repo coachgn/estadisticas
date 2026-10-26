@@ -325,6 +325,64 @@
   }
   .hub-plegable[open] > summary::before { transform: rotate(90deg); }
   @media (prefers-reduced-motion: reduce) { .hub-plegable > summary::before { transition: none; } }
+
+  /* CARD DE RENDIMIENTO · Bento Grid (2026-10-26). Cada bloque es una
+     micro-card. El tono vive en --rt: verde / ámbar / rojo contra la
+     competencia, azul informativo para lo que no tiene lado bueno (RCA).
+     Nunca solo color: el markup lleva ▲ ● ▼ ◆. En papel, tonos oscuros. */
+  .rend-raiz { --rt-pos: #4ade80; --rt-aviso: #fbbf24; --rt-neg: #f87171; --rt-info: #74acdf; }
+  .rend-t-pos { --rt: var(--rt-pos); } .rend-t-aviso { --rt: var(--rt-aviso); }
+  .rend-t-neg { --rt: var(--rt-neg); } .rend-t-info { --rt: var(--rt-info); }
+  .rend-t-nulo { --rt: var(--ink, #f5f4f2); }
+  .rend-pie-t { font-size: 11px; color: var(--muted, #8a8a8a); margin-bottom: .6rem; }
+  .rend-chips { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .9rem; }
+  .rend-chip { font-size: 12px; padding: .2rem .65rem; border-radius: 999px; color: var(--rt);
+    border: 1px solid color-mix(in srgb, var(--rt) 55%, transparent);
+    background: color-mix(in srgb, var(--rt) 12%, transparent); white-space: nowrap; }
+  .rend-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: .75rem; }
+  @media screen and (min-width: 768px) { .rend-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rend-ancho { grid-column: span 2; } }
+  .rend-card { min-width: 0; border: 1px solid var(--hairline, #2a2a2a); border-radius: .75rem; padding: .85rem; background: rgba(255,255,255,.025); }
+  .rend-card-t { font-family: inherit; text-transform: uppercase; letter-spacing: .04em; font-size: 11px; color: var(--acento-texto, #f7941e); margin-bottom: .45rem; }
+  .rend-titular { font-size: 13px; line-height: 1.35; color: var(--ink, #f5f4f2); margin-bottom: .65rem; font-weight: 600; }
+  .rend-fichas { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: .5rem; margin-bottom: .65rem; }
+  .rend-ficha { border: 1px solid color-mix(in srgb, var(--rt) 40%, transparent); border-radius: .6rem; padding: .45rem .6rem;
+    background: color-mix(in srgb, var(--rt) 9%, transparent); min-width: 0; }
+  .rend-ficha-l { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted, #8a8a8a); }
+  .rend-ficha-v { font-size: 1.15rem; font-weight: 700; line-height: 1.2; color: var(--rt); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .rend-ficha-s { font-size: 10.5px; color: var(--muted, #8a8a8a); overflow-wrap: anywhere; }
+  .rend-barras { display: grid; gap: .5rem; margin-bottom: .6rem; }
+  .rend-barra-t { display: flex; justify-content: space-between; gap: .5rem; font-size: 11px; color: var(--ink, #f5f4f2); margin-bottom: .15rem; }
+  .rend-barra-t span:last-child { color: var(--muted, #8a8a8a); text-align: right; }
+  .rend-pista { height: .5rem; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; }
+  .rend-relleno { height: 100%; border-radius: 999px; background: var(--rt); }
+  .rend-mini { font-size: 11px; color: var(--muted, #8a8a8a); margin-bottom: .5rem; }
+  .rend-alertas { display: grid; gap: .4rem; margin-bottom: .65rem; }
+  .rend-alerta { display: flex; flex-wrap: wrap; gap: .25rem .6rem; align-items: baseline; font-size: 12px; margin-bottom: .65rem;
+    padding: .45rem .65rem; border-radius: .5rem; color: var(--ink, #f5f4f2);
+    border: 1px solid color-mix(in srgb, var(--rt) 55%, transparent); border-left: 4px solid var(--rt);
+    background: color-mix(in srgb, var(--rt) 13%, transparent); }
+  .rend-alertas .rend-alerta { margin-bottom: 0; }
+  .rend-alerta b { color: var(--rt); text-transform: uppercase; letter-spacing: .04em; font-size: 11px; }
+  .rend-detalle > summary { cursor: pointer; font-size: 11px; color: var(--muted, #8a8a8a); padding: .2rem 0; }
+  .rend-detalle > summary:focus-visible { outline: 2px solid var(--acento-texto, #f7941e); outline-offset: 2px; }
+  .rend-detalle ul { margin-top: .35rem; display: grid; gap: .3rem; }
+  .rend-detalle li { font-size: 11.5px; line-height: 1.4; }
+  @media print {
+    .rend-raiz { --rt-pos: #15803d; --rt-aviso: #8a5206; --rt-neg: #b91c1c; --rt-info: #1d4ed8; }
+    .rend-t-nulo { --rt: #111; }
+    .rend-detalle:not([open]) > :not(summary) { display: block !important; }
+  }
+
+  /* BOTÓN «VOLVER ARRIBA»: aparece al bajar 400 px; fuera del papel. */
+  .subir-arriba { position: fixed; right: 1rem; bottom: 1rem; z-index: 45; width: 2.75rem; height: 2.75rem; border-radius: 999px;
+    border: 1px solid var(--hairline, #2a2a2a); background: var(--surface, #141414); color: var(--acento-texto, #f7941e);
+    font-size: 1.25rem; line-height: 1; cursor: pointer; opacity: 0; pointer-events: none; transform: translateY(.5rem);
+    transition: opacity .2s, transform .2s; box-shadow: 0 4px 14px rgba(0,0,0,.45); }
+  .subir-arriba.subir-visible { opacity: 1; pointer-events: auto; transform: none; }
+  .subir-arriba:hover { background: var(--surface2, #1c1c1c); }
+  .subir-arriba:focus-visible { outline: 2px solid var(--acento-texto, #f7941e); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { .subir-arriba { transition: none; } }
+  @media print { .subir-arriba { display: none !important; } }
   /* LA FILA DE ACCIONES DE UN MODAL NO SE VA CON EL SCROLL.
 
      Con la caja acotada (arriba) los botones ya se ALCANZAN, pero en un
@@ -3191,7 +3249,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=303" />
+<link rel="stylesheet" href="sgadd.css?v=304" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -3388,55 +3446,55 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=303"></script>
+<script src="js/sgadd-club.js?v=304"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=303"></script>
-<script src="js/sgadd-core.js?v=303"></script>
-<script src="js/sgadd-auth.js?v=303"></script>
+<script src="js/sgadd-config.js?v=304"></script>
+<script src="js/sgadd-core.js?v=304"></script>
+<script src="js/sgadd-auth.js?v=304"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=303"></script>
-<script src="js/sgadd-glosario.js?v=303"></script>
-<script src="js/sgadd-glosarioui.js?v=303"></script>
-<script src="js/sgadd-comparativa.js?v=303"></script>
-<script src="js/sgadd-comparativaui.js?v=303"></script>
-<script src="js/sgadd-confirmar.js?v=303"></script>
-<script src="js/sgadd-landing.js?v=303"></script>
-<script src="js/sgadd-login.js?v=303"></script>
-<script src="js/sgadd-data.js?v=303"></script>
-<script src="js/sgadd-clientes.js?v=303"></script>
-<script src="js/sgadd-ui.js?v=303"></script>
-<script src="js/sgadd-muestra.js?v=303"></script>
-<script src="js/sgadd-app.js?v=303"></script>
-<script src="js/sgadd-clasificacion.js?v=303"></script>
+<script src="js/sgadd-demo.js?v=304"></script>
+<script src="js/sgadd-glosario.js?v=304"></script>
+<script src="js/sgadd-glosarioui.js?v=304"></script>
+<script src="js/sgadd-comparativa.js?v=304"></script>
+<script src="js/sgadd-comparativaui.js?v=304"></script>
+<script src="js/sgadd-confirmar.js?v=304"></script>
+<script src="js/sgadd-landing.js?v=304"></script>
+<script src="js/sgadd-login.js?v=304"></script>
+<script src="js/sgadd-data.js?v=304"></script>
+<script src="js/sgadd-clientes.js?v=304"></script>
+<script src="js/sgadd-ui.js?v=304"></script>
+<script src="js/sgadd-muestra.js?v=304"></script>
+<script src="js/sgadd-app.js?v=304"></script>
+<script src="js/sgadd-clasificacion.js?v=304"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-fixture.js?v=303"></script>
-<script src="js/sgadd-inscriptos.js?v=303"></script>
-<script src="js/sgadd-fases.js?v=303"></script>
-<script src="js/sgadd-torneos.js?v=303"></script>
-<script src="js/sgadd-hub.js?v=303"></script>
-<script src="js/sgadd-configui.js?v=303"></script>
-<script src="js/sgadd-estados.js?v=303"></script>
-<script src="js/sgadd-buzon.js?v=303"></script>
-<script src="js/sgadd-charts.js?v=303"></script>
-<script src="js/sgadd-personalidad.js?v=303"></script>
-<script src="js/sgadd-rankings.js?v=303"></script>
-<script src="js/sgadd-partido.js?v=303"></script>
-<script src="js/sgadd-informe.js?v=303"></script>
-<script src="js/sgadd-ficha.js?v=303"></script>
-<script src="js/sgadd-mercado.js?v=303"></script>
-<script src="js/sgadd-fichajes.js?v=303"></script>
-  <script src="js/sgadd-rankingpdf.js?v=303"></script>
-<script src="js/sgadd-equipos.js?v=303"></script>
+<script src="js/sgadd-fixture.js?v=304"></script>
+<script src="js/sgadd-inscriptos.js?v=304"></script>
+<script src="js/sgadd-fases.js?v=304"></script>
+<script src="js/sgadd-torneos.js?v=304"></script>
+<script src="js/sgadd-hub.js?v=304"></script>
+<script src="js/sgadd-configui.js?v=304"></script>
+<script src="js/sgadd-estados.js?v=304"></script>
+<script src="js/sgadd-buzon.js?v=304"></script>
+<script src="js/sgadd-charts.js?v=304"></script>
+<script src="js/sgadd-personalidad.js?v=304"></script>
+<script src="js/sgadd-rankings.js?v=304"></script>
+<script src="js/sgadd-partido.js?v=304"></script>
+<script src="js/sgadd-informe.js?v=304"></script>
+<script src="js/sgadd-ficha.js?v=304"></script>
+<script src="js/sgadd-mercado.js?v=304"></script>
+<script src="js/sgadd-fichajes.js?v=304"></script>
+  <script src="js/sgadd-rankingpdf.js?v=304"></script>
+<script src="js/sgadd-equipos.js?v=304"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=303"></script>
-<script src="js/sgadd-jugadores.js?v=303"></script>
-<script src="js/sgadd-4factores.js?v=303"></script>
-<script src="js/sgadd-scouting.js?v=303"></script>
-<script src="js/sgadd-pbp.js?v=303"></script>
-<script src="js/sgadd-rendimiento.js?v=303"></script>
-<script src="js/sgadd-diagnostico.js?v=303"></script>
+<script src="js/sgadd-niveles.js?v=304"></script>
+<script src="js/sgadd-jugadores.js?v=304"></script>
+<script src="js/sgadd-4factores.js?v=304"></script>
+<script src="js/sgadd-scouting.js?v=304"></script>
+<script src="js/sgadd-pbp.js?v=304"></script>
+<script src="js/sgadd-rendimiento.js?v=304"></script>
+<script src="js/sgadd-diagnostico.js?v=304"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

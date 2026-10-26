@@ -82,10 +82,10 @@ check('espacio: segundas oportunidades con propias e inmediatas', /20\/40 tras r
 check('reloj: las tres franjas con el reloj de 24 que baja', /reloj 24-17/.test(txt('reloj')) && /reloj 16-7/.test(txt('reloj')) && /reloj 6-0/.test(txt('reloj')));
 check('reloj: clutch con usos y +/-', /31 % de los usos/.test(txt('reloj')) && /\+6/.test(txt('reloj')), txt('reloj'));
 check('química: socio principal con nombre dado vuelta', /Socio principal: JUAN|Socio principal: LUIS GOMEZ/.test(txt('quimica')), txt('quimica'));
-check('química: dice que no hay hockey assists', /no hay hockey assists/.test(txt('quimica')));
+check('química: sin autocrítica del motor (ni hockey assists)', !/hockey|play-by-play no/.test(txt('quimica')));
 check('defensa: robos por franja del reloj rival', /15 en transición · 10 en ataque estructurado · 15 en reloj tardío/.test(txt('defensa')), txt('defensa'));
-check('riesgo: and-1, bonus sin elegir y libres', /10 and-1/.test(txt('riesgo')) && /de tiro o de penalización/.test(txt('riesgo')) && /90\/120/.test(txt('riesgo')), txt('riesgo'));
-check('riesgo: TCDP 30 % y aclara drible o pase', /TCDP 30 %/.test(txt('riesgo')) && /drible o de pase/.test(txt('riesgo')));
+check('riesgo: and-1 y libres, sin explicaciones de limitaciones', /10 and-1/.test(txt('riesgo')) && !/el dato no lo separa/.test(txt('riesgo')) && /90\/120/.test(txt('riesgo')), txt('riesgo'));
+check('riesgo: TCDP 30 % sin aclaración de limitaciones', /TCDP 30 %/.test(txt('riesgo')) && !/drible o de pase/.test(txt('riesgo')));
 check('riesgo: IDE = 100 × (1 − (1+3)/400) = 99', /IDE 99 %/.test(txt('riesgo')), txt('riesgo'));
 
 titulo('2 · Las degradaciones');
@@ -104,7 +104,7 @@ titulo('3 · La vista');
 const h = R.html(paq, 'PEREZ, JUAN');
 check('seis bloques en el HTML', (h.match(/data-rendimiento="/g) || []).length === 6);
 check('sin undefined ni NaN', !/undefined|NaN/.test(h));
-check('el color va con ▲/▼ (punto 14)', /mm-pos[^>]*>▲ /.test(h) || /mm-neg[^>]*>▼ /.test(h));
+check('el color va con el símbolo ▲ ● ▼ ◆ (punto 14)', /rend-t-(pos|neg|aviso|info)[^>]*>[\s\S]{0,120}?<span aria-hidden="true">[▲●▼◆]<\/span>/.test(h));
 check('los nombres se escapan', !/<b>'?\)/.test(h) && /DIAZ|ANA &lt;b&gt;/.test(h), h.match(/ANA[^<]{0,20}/));
 check('sin el campo, una línea y no la card', /próxima subida/.test(R.html({ jugadores: {} }, 'X')) && !/data-rendimiento/.test(R.html({ jugadores: {} }, 'X')));
 
@@ -136,9 +136,22 @@ const aF = R.analizar(pF, 'PEREZ, JUAN');
 const tF = aF.bloques.find(b => b.id === 'riesgo').lineas.map(l => l.texto).join(' | ');
 check('el riesgo cuenta las faltas, el bonus, el cuarto cuarto y el equipo', /95 en 30 partidos/.test(tF) && /bonus prematuro/.test(tF) && /3 faltas o más en 6 partidos/.test(tF) && /llegó al bonus en 40 de 120/.test(tF), tF);
 const hF = R.html(pF, 'PEREZ, JUAN');
-check('el perfil sale en pantalla con ▲/▼', /Empuja al bonus/.test(hF) && /▼/.test(hF));
+check('el perfil sale en pantalla con ▲/▼', /Empuja al bonus/.test(hF) && /rend-alerta rend-t-neg/.test(hF) && /▼/.test(hF));
 check('sin los campos, la card es la de antes', !/bonus de equipo/i.test(R.analizar(paq, 'PEREZ, JUAN').bloques[5].lineas.map(l => l.texto).join(' ')));
 check('el HTML de faltas no trae undefined ni NaN y sigue con seis bloques', !/undefined|NaN/.test(hF) && (hF.match(/data-rendimiento="/g) || []).length === 6);
+
+
+titulo('6 · Bento Grid, semáforo y alertas');
+const aB = R.analizar(paq, 'PEREZ, JUAN');
+check('semáforo: chips On/Off, Pts/tiro, RCA, TCDP e IDE con tono propio', ['On/Off Net', 'Pts/tiro', 'RCA', 'TCDP', 'IDE'].every(l => aB.semaforo.some(c => c.label === l)));
+check('RCA es informativo (sin lado bueno ni malo, punto 4)', aB.semaforo.find(c => c.label === 'RCA').tono === 'info');
+check('Pts/tiro: verde / ámbar / rojo contra la competencia', ['pos', 'aviso', 'neg', null].includes(aB.semaforo.find(c => c.label === 'Pts/tiro').tono));
+const hB = R.html(paq, 'PEREZ, JUAN');
+check('seis micro-cards con titular, fichas y lectura plegada', (hB.match(/class="rend-card[ "]/g) || []).length === 6 && /rend-ficha /.test(hB) && /<details class="rend-detalle">/.test(hB));
+check('barras de reparto de tiro (pintura / media / triple)', /rend-barra/.test(hB) && /Pintura/.test(hB) && /Triple/.test(hB));
+check('termómetro clutch como alerta visual', /Termómetro clutch/.test(hB) && /rend-alerta rend-t-(pos|neg|aviso)/.test(hB));
+const htmlIndex = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+check('el CSS del Bento está a mano en el index (nodos inyectados)', /\.rend-grid\s*\{/.test(htmlIndex) && /\.rend-alerta\s*\{/.test(htmlIndex) && /\.subir-arriba\s*\{/.test(htmlIndex));
 
 console.log('\n' + ok + ' ok · ' + fail + ' fallaron');
 if (fail) { console.log('HAY FALLAS'); process.exit(1); }

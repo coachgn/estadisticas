@@ -147,6 +147,10 @@ seccion('6 · TOP 3 del PLANTEL · arriba del plantel y elegible en el pack');
     && marcas.join() === ep[0].subs.map(x => x.id).join(), marcas);
   check('el pack declara esas mismas sub-cards, tildadas por defecto', ep[0].id === 'top3' && ep[0].pre === true
     && F.seleccionPorDefecto(ep).secciones.top3 === true && ep[0].subs.every(x => F.seleccionPorDefecto(ep).subs[x.id]));
+  const plegable = J.jugadoresBloqueTop3Plantel(idx, clave, { plegable: true });
+  check('el TOP 3 de pantalla es un <details> que arranca CERRADO', /<details id="jugadoresTop3"/.test(plegable) && !/<details[^>]*\sopen[\s>]/.test(plegable));
+  check('el del PDF/pack no se pliega (sin opts va abierto como siempre)', !/<details/.test(html));
+  check('el plegado vive en el estado del módulo y no en el DOM', /top3Abierto: false/.test(require('fs').readFileSync(require('path').join(__dirname, 'js', 'sgadd-jugadores.js'), 'utf8')));
   const podado = F.podarHtml(html, Object.assign({}, ...ep[0].subs.map(x => ({ [x.id]: x.id !== 'plantel.top3-rebotes' }))));
   check('destildar una dimensión la quita del PDF sin dejar hueco', !/plantel\.top3-rebotes/.test(podado) && /plantel\.top3-produccion/.test(podado)
     && (podado.match(/<div\b/g) || []).length === (podado.match(/<\/div>/g) || []).length);
