@@ -158,7 +158,7 @@ node test-muestra.js       # 156 tests · el selector de muestra de Equipos y Ju
                            #             · y la familia 2: cada equipo en su condición, contra su índice dedicado
                            #             · y la fase 3: la vara de jugadores del período que calcula el servidor
 
-node test-rendimiento.js   #  59 tests · la card de Rendimiento del jugador: el motor puro, las degradaciones,
+node test-rendimiento.js   #  70 tests · la card de Rendimiento del jugador: el motor puro, las degradaciones,
                            #             la vista y el cableado de la pestaña (punto 140)
 
 node test-backend.js       # 468 tests · el proxy, el benchmark, las alertas, el catálogo en KV
@@ -289,7 +289,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=304`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=305`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15781,3 +15781,14 @@ seis bloques, sin errores de consola, sin desborde a 375 px.
 - **TOP 3 del PLANTEL arranca minimizada** en Jugadores: `<details class="hub-plegable">`, con el estado en `JUGADORES.top3Abierto` (no en el DOM: la grilla se repinta). El PDF y el Pack PLANTEL piden el bloque sin `{ plegable: true }` y lo reciben abierto.
 - **Botón «volver arriba»** (`SGADD_UI.montarSubir`, `.subir-arriba`): flecha flotante que aparece tras 400 px de scroll, sube suave (sin animar con `prefers-reduced-motion`) y no se imprime. No se monta con un `document` de mentira.
 - **Glosario**: RCA, TCDP e IDE entran por `EXTRAS` en `generar-glosario.js` (familia «K · Rendimiento (play-by-play)»), porque no están en el manual del motor.
+
+### La card de TIRO del jugador, en Bento Grid (2026-10-26, v305)
+
+La pestaña Tiro (`jugadoresTabTiro`) usa la MISMA vista que Rendimiento: `SGADD_RENDIMIENTO.vista` (`ficha`, `barra`, `alerta`, `chip`, `marca`), accesible como global en el navegador y por `require` en Node. **No hay una segunda definición del semáforo** (punto 8). Las clases `.rend-*` del `<style>` sirven a las dos cards.
+
+- **Cabecera de chips**: eFG%, True Shooting, Puntos por play (semáforo por percentil contra la liga: verde desde 75, rojo hasta 25, `~` y sin color si no califica) y Triples intentados (azul informativo ◆: tirar más o menos no tiene lado bueno, punto 4).
+- **Tarjetas de zona** (Triple · Doble · Tiro libre): fichas PPP / Conv% / C/I con semáforo y barra del peso en sus jugadas. Las marcas `data-subcard` del PDF a elección (`tiro.distribucion`, `tiro.carta`, `tiro.graficos`, y las del play-by-play) **no cambiaron**.
+- **El mapa de tiro y sus conmutadores quedan intactos**, dentro de una micro-card. Con la capa `pbp`, el diagnóstico individual son cuatro tarjetas de alerta con icono (★ Picos · ↑ A explotar · ≈ Ajuste · ✕ Fuga), y las franjas del reloj (0-7 · 8-17 · 18-24 s) micro-tarjetas con puntos por tiro contra la liga (±0,06, con 10 tiros) y barra de volumen.
+- La explicación metodológica va en «Lectura detallada» y se sacó la autocrítica del mapa («leelo como un registro, no como una tendencia»): la muestra chica es una alerta ámbar corta.
+- **La pestaña Rendimiento sigue exclusiva de la capa `pbp`** (`jugadoresTabsVisibles`): sin ella no figura ni gris, y una ruta a `/rendimiento` cae a la primera visible.
+- Tests: `test-rendimiento.js` (70) y `test-pbp.js`.

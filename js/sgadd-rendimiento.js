@@ -448,7 +448,11 @@ const SGADD_RENDIMIENTO = (() => {
       <div class="rend-barra-t"><span>${esc(b.label)}</span><span>${esc(b.sub)}</span></div>
       <div class="rend-pista" role="img" aria-label="${esc(b.label + ': ' + b.sub)}"><div class="rend-relleno${claseTono(b.tono || 'info')}" style="width:${Math.max(2, Math.min(100, Math.round(b.pct || 0)))}%"></div></div></div>`;
   const alerta = (a) => `<div class="rend-alerta${claseTono(a.tono)}" role="note">
-      <b>${marca(a.tono)}${esc(a.titulo)}</b>${a.texto ? `<span>${esc(a.texto)}</span>` : ''}</div>`;
+      <b>${a.icono ? `<span aria-hidden="true">${esc(a.icono)}</span> ` : marca(a.tono)}${esc(a.titulo)}</b>${a.texto ? `<span>${esc(a.texto)}</span>` : ''}</div>`;
+  const chip = (c) => `<span class="rend-chip${claseTono(c.tono)}">${marca(c.tono)}${esc(c.label)} <b>${esc(c.valor)}</b></span>`;
+  /* La misma vista la usa la card de TIRO del jugador (sgadd-jugadores.js):
+     una sola definición de ficha, barra, alerta y chip. */
+  const vista = { MARCA, claseTono, marca, ficha, barra, alerta, chip };
 
   function bloqueHtml(b) {
     const ancho = (b.id === 'veredicto' || b.id === 'riesgo') ? ' rend-ancho' : '';
@@ -477,7 +481,7 @@ const SGADD_RENDIMIENTO = (() => {
     </div>`;
   }
 
-  return { FRANJAS, analizar, html, tasas, nivel, idDe, perfilFaltas, PERFIL_FALTAS };
+  return { FRANJAS, analizar, html, tasas, nivel, idDe, perfilFaltas, PERFIL_FALTAS, vista };
 })();
 
 if (typeof module !== 'undefined') module.exports = SGADD_RENDIMIENTO;

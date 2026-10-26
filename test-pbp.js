@@ -499,7 +499,7 @@ function paquete(equipo) {
   check('con volumen por partido (intentos / PJ) y acierto contra la liga', dj.pj === 20 && dj.picos[0].vol === 2 && Math.abs(dj.picos[0].dCrudo - (0.45 - 0.33)) < 1e-9);
   const hj = P.jugador(p3, 'ibarra,  santiágo');
   check('ficha: se encuentra por nombre normalizado, dibuja SUS tiros sin perspectiva y trae el diagnóstico',
-    /data-pbp-sujeto="2"/.test(hj) && !/Lo que le tiran/.test(hj) && /Picos de rendimiento/.test(hj) && /Puntos de fuga/.test(hj) && /intentos x PJ/.test(hj) && /20 PJ con minutos/.test(hj));
+    /data-pbp-sujeto="2"/.test(hj) && !/Lo que le tiran/.test(hj) && /Picos de rendimiento/.test(hj) && /Puntos de fuga/.test(hj) && /data-diag="neg"/.test(hj) && /data-diag="pos"/.test(hj) && /<details class="rend-detalle/.test(hj) && /intentos x PJ/.test(hj) && /20 PJ con minutos/.test(hj));
   /* MENOS DE 15 TIROS (2026-10-08): el mapa se dibuja SIEMPRE; lo que se
      calla es el diagnóstico. */
   check('sin tiros ubicados lo dice, y un paquete sin detalle también',
@@ -1054,7 +1054,7 @@ function paquete(equipo) {
     /* ---- la card TIRO del jugador: cuándo y desde dónde tira, por franja ---- */
     const jf = P.relojJugadorFranjas(pP, '2');
     check('card Tiro: el volumen de cada franja (% de sus tiros, C/I, Pts/tiro con la liga, asistidas y pérdidas)',
-      (jf.match(/data-reloj-jugador-franja="/g) || []).length === 3 && /Cuándo y desde dónde tira · por franja del reloj/.test(jf) && /\(liga 1,30\)/.test(jf));
+      (jf.match(/data-reloj-jugador-franja="/g) || []).length === 3 && /Cuándo y desde dónde tira · por franja del reloj/.test(jf) && /liga 1,30/.test(jf) && /rend-card/.test(jf) && /rend-pista/.test(jf) && /[▲●▼]/.test(jf));
     check('card Tiro: el mapa COMPLETO del jugador en cada franja, con su sujeto y su franja',
       (jf.match(/data-reloj-jugador-mapa="/g) || []).length === 3 && /data-pbp-sujeto="2" [^>]*data-pbp-franja="0"/.test(jf)
         && /Desde dónde tira en 0-7 s <span[^>]*>· 11\/15/.test(jf) && /Desde dónde tira en 8-17 s <span[^>]*>· sin tiros/.test(jf), jf.slice(0, 300));

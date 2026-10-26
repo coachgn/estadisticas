@@ -3281,20 +3281,62 @@ const ZONAS_TIRO = [
   { id: 'T1', label: 'Tiro libre', peso: 'PT1%', conv: 'T1%', ppp: 'PPT1', c: 'T1C', i: 'T1I' },
 ];
 
+/* La vista Bento (fichas, barras, alertas y chips) es UNA sola y vive en
+   sgadd-rendimiento.js: la card de Tiro la comparte para no tener dos
+   definiciones del mismo semáforo (punto 8). En el navegador es el global;
+   en Node, el require. */
+function jugadoresBentoVista() {
+  if (typeof SGADD_RENDIMIENTO !== 'undefined' && SGADD_RENDIMIENTO.vista) return SGADD_RENDIMIENTO.vista;
+  try { return require('./sgadd-rendimiento.js').vista; } catch (e) { return null; }
+}
+
+/** El semáforo de una métrica del jugador: su percentil contra la liga.
+    Verde sobre el cuarto alto, rojo bajo el cuarto bajo; sin percentil
+    (no califica) queda sin color. Cada tono lleva su símbolo. */
+function jugadoresTonoPct(p) {
+  if (typeof p !== 'number' || !isFinite(p)) return null;
+  return p >= 75 ? 'pos' : (p <= 25 ? 'neg' : 'aviso');
+}
+
+/** Los chips de la cabecera de Tiro: eficiencia contra la liga. El volumen
+    de triples lleva tono informativo: tirar más o menos no es ni bueno ni
+    malo (punto 4). */
+function jugadoresChipsTiro(idx, j, V) {
+  const defs = [
+    { k: 'eFG%', label: 'eFG%' },
+    { k: 'TS%', label: 'True Shooting' },
+    { k: 'PPP', label: 'Puntos por play' },
+    { k: 'T3I', label: 'Triples int.', info: true },
+  ];
+  const chips = defs.map(d => {
+    const r = idx.leerJugador(j, d.k);
+    if (!r || r.valor === null || r.valor === undefined) return '';
+    const sufijo = (!d.info && r.percentil == null) ? ' ~' : '';
+    return V.chip({ label: d.label, valor: r.formateado + sufijo, tono: d.info ? 'info' : jugadoresTonoPct(r.percentil) });
+  }).join('');
+  return chips ? `<div class="rend-chips">${chips}</div>` : '';
+}
+
 function jugadoresTabTiro(idx, j) {
   const carta = (id) => jugadoresCardRef(idx, j, JUGADORES_CARDS_REF.find(c => c.id === id));
-  const filas = ZONAS_TIRO.map(z => {
+  const V = jugadoresBentoVista();
+  const tarjetasZona = V ? ZONAS_TIRO.map((z, i) => {
     const peso = idx.leerJugador(j, z.peso);
     const conv = idx.leerJugador(j, z.conv);
     const ppp = idx.leerJugador(j, z.ppp);
-    return `<tr class="border-b border-hairline/40 last:border-0">
-      <td class="py-1.5 pr-3 text-xs text-white font-medium">${escapeHtml(z.label)}</td>
-      <td class="py-1.5 pr-3 font-mono text-xs text-ink">${peso ? escapeHtml(peso.formateado) : '—'}</td>
-      <td class="py-1.5 pr-3 font-mono text-xs text-ink">${conv ? escapeHtml(conv.formateado) : '—'}</td>
-      <td class="py-1.5 pr-3 font-mono text-xs text-ink">${ppp ? escapeHtml(ppp.formateado) : '—'}</td>
-      <td class="py-1.5 font-mono text-xs text-muted">${escapeHtml(SGADD.formatear(z.c, j[z.c]))}/${escapeHtml(SGADD.formatear(z.i, j[z.i]))}</td>
-    </tr>`;
-  }).join('');
+    const ci = SGADD.formatear(z.c, j[z.c]) + '/' + SGADD.formatear(z.i, j[z.i]);
+    const pesoPct = peso && typeof peso.valor === 'number' ? peso.valor * 100 : null;
+    const fichas = [
+      { label: 'PPP', valor: ppp ? ppp.formateado : '—', sub: 'puntos por intento', tono: ppp ? jugadoresTonoPct(ppp.percentil) : null },
+      { label: 'Conv%', valor: conv ? conv.formateado : '—', sub: conv && conv.percentil != null ? 'percentil ' + Math.round(conv.percentil) : 'sin percentil', tono: conv ? jugadoresTonoPct(conv.percentil) : null },
+      { label: 'C/I', valor: ci, sub: 'por partido' },
+    ];
+    return `<section class="rend-card${i === ZONAS_TIRO.length - 1 ? ' rend-ancho' : ''}" data-tiro-zona="${escapeHtml(z.id)}">
+      <h5 class="rend-card-t">${escapeHtml(z.label)}</h5>
+      <div class="rend-fichas">${fichas.map(V.ficha).join('')}</div>
+      <div class="rend-barras">${V.barra({ label: 'Peso en sus jugadas', sub: peso ? peso.formateado : '—', pct: pesoPct, tono: 'info' })}</div>
+    </section>`;
+  }).join('') : '';
 
   const valorDe = k => { const r = idx.leerJugador(j, k); return r && r.valor !== null ? r.valor : 0; };
   const etiquetas = ZONAS_TIRO.map(z => z.label);
@@ -3316,21 +3358,20 @@ function jugadoresTabTiro(idx, j) {
   const cvEq = ZONAS_TIRO.map(z => valorDe(z.conv));
   const cvLg = ZONAS_TIRO.map(z => refDe(z.conv));
 
-  return `
-    <div data-subcard="tiro.distribucion" class="mb-6">
-      <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Distribución del tiro por zona</h5>
-      <div class="scrollbox"><table class="w-full text-left">
-        <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
-          <th class="pb-1 pr-3">Zona</th><th class="pb-1 pr-3">Peso relativo</th><th class="pb-1 pr-3">CONV%</th>
-          <th class="pb-1 pr-3">PPP</th><th class="pb-1">C/I</th>
-        </tr></thead><tbody>${filas}</tbody></table></div>
-      <p class="text-[11px] text-muted mt-2 leading-snug">
-        Peso relativo = qué porción de sus plays terminan en esa zona. PPP = puntos por intento en esa zona
-        (no por convertido). C/I son promedios por partido, no acumulado de temporada.
-      </p>
+  /* Las marcas data-subcard (PDF a elección) siguen en los mismos tres
+     bloques; lo que cambió es cómo se ven por dentro. */
+  return `<div class="rend-raiz">
+    <div data-subcard="tiro.distribucion" class="mb-4">
+      ${V ? jugadoresChipsTiro(idx, j, V) : ''}
+      <div class="rend-grid">${tarjetasZona}</div>
+      <details class="rend-detalle mt-2"><summary>Lectura detallada</summary>
+        <ul><li class="text-muted">Peso en sus jugadas = qué porción de sus plays terminan en esa zona.</li>
+        <li class="text-muted">PPP = puntos por intento en esa zona (no por convertido). C/I son promedios por partido, no el acumulado de la temporada.</li>
+        <li class="text-muted">El semáforo compara con el percentil de la liga: verde desde el 75, rojo hasta el 25; sin color si el jugador no llega al umbral de minutos (~). Los triples intentados llevan tono informativo (◆): tirar más o menos no es mejor ni peor.</li></ul>
+      </details>
     </div>
-    <div data-subcard="tiro.carta" class="mb-6">${carta('tiro')}</div>
-    <div data-subcard="tiro.graficos" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div data-subcard="tiro.carta" class="mb-4">${carta('tiro')}</div>
+    <div data-subcard="tiro.graficos" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       ${equiposPanel('Volumen por zona · intentos por partido',
         SGADD_CHARTS.barrasComparadas('chTiroVol', etiquetas, volEq, volLg,
           { nombreEquipo: j['NOMBRES'], nombreLiga: refTiro.grupo.label,
@@ -3339,7 +3380,7 @@ function jugadoresTabTiro(idx, j) {
         SGADD_CHARTS.barrasComparadas('chTiroConv', etiquetas, cvEq, cvLg,
           { nombreEquipo: j['NOMBRES'], formato: 'T2%', nombreLiga: refTiro.grupo.label,
             notaLiga: refTiro.grupo.motivo }))}
-    </div>${jugadoresBloqueMapaPbp(j)}`;
+    </div>${jugadoresBloqueMapaPbp(j)}</div>`;
 }
 
 /* La card de RENDIMIENTO (punto 140): el play-by-play traducido para el
@@ -3361,8 +3402,8 @@ function jugadoresTabRendimiento(j) {
 function jugadoresBloqueMapaPbp(j) {
   if (typeof SGADD_PBP === 'undefined' || !SGADD_PBP.activa() || !j) return '';
   return `
-    <div class="mt-6 no-imprimir mapa-pbp-jugador" data-subcard-de="tiro.mapa tiro.reloj tiro.reloj-tramos tiro.reloj-franjas">
-      <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Mapa de tiro y diagnóstico individual · play-by-play</h5>
+    <div class="rend-card mt-4 no-imprimir mapa-pbp-jugador" data-subcard-de="tiro.mapa tiro.reloj tiro.reloj-tramos tiro.reloj-franjas">
+      <h5 class="rend-card-t">Mapa de tiro y diagnóstico individual · play-by-play</h5>
       ${SGADD_PBP.espacioJugador(j['NOMBRES'], j['EQUIPO'])}
     </div>`;
 }

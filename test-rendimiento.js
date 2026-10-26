@@ -153,5 +153,24 @@ check('termómetro clutch como alerta visual', /Termómetro clutch/.test(hB) && 
 const htmlIndex = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
 check('el CSS del Bento está a mano en el index (nodos inyectados)', /\.rend-grid\s*\{/.test(htmlIndex) && /\.rend-alerta\s*\{/.test(htmlIndex) && /\.subir-arriba\s*\{/.test(htmlIndex));
 
+/* LA CARD DE TIRO EN BENTO (2026-10-26): comparte la vista con Rendimiento. */
+{
+  const V = R.vista;
+  check('Rendimiento exporta la vista Bento (ficha, barra, alerta, chip)', V && ['ficha', 'barra', 'alerta', 'chip'].every(k => typeof V[k] === 'function'));
+  check('el chip lleva su símbolo además del color', /▲/.test(V.chip({ label: 'eFG%', valor: '55 %', tono: 'pos' })) && /▼/.test(V.chip({ label: 'x', valor: '1', tono: 'neg' })) && /◆/.test(V.chip({ label: 'x', valor: '1', tono: 'info' })));
+  check('la alerta acepta un icono propio (★ ↑ ≈ ✕) y no repite el símbolo del tono', /★/.test(V.alerta({ tono: 'pos', icono: '★', titulo: 'Z', texto: 't' })) && !/▲/.test(V.alerta({ tono: 'pos', icono: '★', titulo: 'Z' })));
+  const jugSrc = fs.readFileSync(require('path').join(__dirname, 'js/sgadd-jugadores.js'), 'utf8');
+  const tiro = jugSrc.slice(jugSrc.indexOf('function jugadoresTabTiro'), jugSrc.indexOf('function jugadoresTabRendimiento'));
+  check('Tiro conserva sus tres marcas del PDF a elección', ['tiro.distribucion', 'tiro.carta', 'tiro.graficos'].every(m => tiro.indexOf('data-subcard="' + m + '"') !== -1));
+  check('Tiro arma la cabecera de chips, las tarjetas de zona y la lectura plegada', /jugadoresChipsTiro\(/.test(tiro) && /rend-grid/.test(tiro) && /Lectura detallada/.test(tiro) && /rend-card/.test(tiro));
+  check('los chips de Tiro: eFG%, True Shooting, PPP y volumen de triples', ['eFG%', 'True Shooting', 'Puntos por play', 'Triples int.'].every(t => jugSrc.indexOf("label: '" + t + "'") !== -1));
+  check('el volumen de triples va en azul informativo (sin lado bueno ni malo)', /info: true/.test(jugSrc) && /d\.info \? 'info'/.test(jugSrc));
+  check('la vista no se duplica: Tiro usa la de Rendimiento', /SGADD_RENDIMIENTO\.vista/.test(jugSrc) && !/const ficha = /.test(tiro));
+  check('el semáforo de Tiro es el percentil: verde desde 75, rojo hasta 25', /p >= 75 \? 'pos' : \(p <= 25 \? 'neg' : 'aviso'\)/.test(jugSrc));
+  const pbpSrc = fs.readFileSync(require('path').join(__dirname, 'js/sgadd-pbp.js'), 'utf8');
+  check('el diagnóstico individual son cuatro tarjetas de alerta táctica con icono', /data-diag="\$\{tono\}"/.test(pbpSrc) && ['★', '↑', '≈', '✕'].every(i => pbpSrc.indexOf("'" + i + "', f") !== -1));
+  check('la muestra chica del mapa ya no se autocritica', !/Leelo como un registro/.test(pbpSrc));
+}
+
 console.log('\n' + ok + ' ok · ' + fail + ' fallaron');
 if (fail) { console.log('HAY FALLAS'); process.exit(1); }

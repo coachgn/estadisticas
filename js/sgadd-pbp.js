@@ -858,15 +858,23 @@ const SGADD_PBP = (function () {
       if (!d) return '';
       const pp = (v) => signo(Math.round(v * 100), 0) + ' pp';
       const vol = (f) => (f.vol !== null ? num(f.vol, 1) + ' intentos x PJ' : f.i + ' intentos');
-      const bloque = (titulo, lista, fn, vacioTxt) => `<div>${subtitulo(titulo)}<ul>${lista.length ? lista.map(fn).join('') : `<li class="text-xs text-muted">${vacioTxt}</li>`}</ul></div>`;
-      return `<div class="pbp-diagnostico mt-3">
-        <p class="text-xs text-ink mb-2"><b>Diagnóstico táctico individual</b> · volumen por zona (intentos por partido${d.pj ? ', ' + d.pj + ' PJ con minutos' : ''}) y acierto por zona contra la liga en esa zona.</p>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          ${bloque('Picos de rendimiento', d.picos, f => item('explotar', '★', `<b class="text-white">${esc(f.zona)} · ${esc(f.nombre)}</b>: ${ci(f)}, ${vol(f)} · <span class="mm-pos">${pp(f.dCrudo)}</span> sobre la liga (${num(100 * f.ligaConv, 0)} %).`), 'Ninguna zona con muestra rinde claramente por encima de la liga.')}
-          ${bloque('Puntos a explotar', d.explotar, f => item('mejora', '↑', `<b class="text-white">${esc(f.zona)} · ${esc(f.nombre)}</b>: ${ci(f)} con solo ${vol(f)} · <span class="mm-pos">${pp(f.dCrudo)}</span> sobre la liga: sumarle volumen.`), 'Sin zonas eficientes y poco usadas.')}
-          ${bloque('Criterios de ajuste', d.ajuste, f => item('ajuste', '≈', `<b class="text-white">${esc(f.zona)} · ${esc(f.nombre)}</b>: ${num(100 * f.share, 0)} % de sus tiros (${vol(f)}) con acierto de liga, ${num(100 * f.conv, 0)} % contra ${num(100 * f.ligaConv, 0)} %: seleccionar mejor el tiro.`), 'Sin zonas de mucho volumen con acierto apenas de liga.')}
-          ${bloque('Puntos de fuga', d.fuga, f => item('evitar', '✕', `<b class="text-white">${esc(f.zona)} · ${esc(f.nombre)}</b>: ${ci(f)}, ${vol(f)} · <span class="mm-neg">${pp(f.dCrudo)}</span> bajo la liga: ≈ ${num(Math.max(0, f.perdidos), 0)} puntos por debajo de lo esperado.`), 'Ninguna zona con muestra cae claramente por debajo de la liga.')}
-        </div>${nota}
+      /* Bento (2026-10-26): cada lista es una tarjeta de ALERTA TÁCTICA con su
+         icono (★ ↑ ≈ ✕) y su tono (verde, azul, ámbar, rojo): nunca solo
+         color. Las clases .rend-* son las de la card de Rendimiento. */
+      const alertaT = (tono, icono, f, texto) => `<div class="rend-alerta rend-t-${tono}" role="note">
+        <b><span aria-hidden="true">${icono}</span> ${esc(f.zona)} · ${esc(f.nombre)}</b><span>${texto}</span></div>`;
+      const bloque = (titulo, tono, lista, fn, vacioTxt) => `<section class="rend-card" data-diag="${tono}">
+        <h5 class="rend-card-t">${titulo}</h5>
+        ${lista.length ? `<div class="rend-alertas">${lista.map(fn).join('')}</div>` : `<p class="rend-mini">${vacioTxt}</p>`}</section>`;
+      return `<div class="pbp-diagnostico rend-raiz mt-3">
+        <p class="rend-pie-t"><b>Diagnóstico táctico individual</b> · volumen por zona (intentos por partido${d.pj ? ', ' + d.pj + ' PJ con minutos' : ''}) y acierto contra la liga en esa zona.</p>
+        <div class="rend-grid">
+          ${bloque('★ Picos de rendimiento', 'pos', d.picos, f => alertaT('pos', '★', f, `${ci(f)}, ${vol(f)} · ${pp(f.dCrudo)} sobre la liga (${num(100 * f.ligaConv, 0)} %).`), 'Ninguna zona con muestra rinde claramente por encima de la liga.')}
+          ${bloque('↑ Puntos a explotar', 'info', d.explotar, f => alertaT('info', '↑', f, `${ci(f)} con solo ${vol(f)} · ${pp(f.dCrudo)} sobre la liga: sumarle volumen.`), 'Sin zonas eficientes y poco usadas.')}
+          ${bloque('≈ Criterios de ajuste', 'aviso', d.ajuste, f => alertaT('aviso', '≈', f, `${num(100 * f.share, 0)} % de sus tiros (${vol(f)}) con acierto de liga, ${num(100 * f.conv, 0)} % contra ${num(100 * f.ligaConv, 0)} %: seleccionar mejor el tiro.`), 'Sin zonas de mucho volumen con acierto apenas de liga.')}
+          ${bloque('✕ Puntos de fuga', 'neg', d.fuga, f => alertaT('neg', '✕', f, `${ci(f)}, ${vol(f)} · ${pp(f.dCrudo)} bajo la liga: ≈ ${num(Math.max(0, f.perdidos), 0)} puntos por debajo de lo esperado.`), 'Ninguna zona con muestra cae claramente por debajo de la liga.')}
+        </div>
+        <details class="rend-detalle mt-2"><summary>Lectura detallada</summary><ul><li class="text-muted">${nota.replace(/<[^>]+>/g, '')}</li></ul></details>
       </div>`;
     }
     const d = diagnosticoZonas(paq, sujeto);
@@ -1104,7 +1112,7 @@ const SGADD_PBP = (function () {
         ${det.pj ? '· ' + det.pj + ' PJ con minutos' : ''} ·
         <span class="dato-sec">play-by-play oficial, ${partidosConTiros(paq)} partidos de ${esc(paq.equipo)}</span></p>
       <div data-subcard="tiro.mapa">
-      ${chica ? `<p class="text-[11px] text-yellow-400 mb-2">Muestra chica (menos de ${MIN_TIROS_DIAGNOSTICO} tiros de campo): el mapa muestra dónde tiró, sin diagnóstico. Leelo como un registro, no como una tendencia.</p>` : ''}
+      ${chica ? `<div class="rend-raiz"><div class="rend-alerta rend-t-aviso" role="note"><b><span aria-hidden="true">●</span> Muestra chica</b><span>Menos de ${MIN_TIROS_DIAGNOSTICO} tiros de campo: el mapa muestra dónde tiró, sin diagnóstico.</span></div></div>` : ''}
       ${mapa(paq, { sujeto: String(id), diag: !chica })}
       </div>
       ${relojJugador(paq, String(id))}
@@ -1992,12 +2000,24 @@ const SGADD_PBP = (function () {
     const filas = relojValido(acc) ? acc.f.map((c, k) => {
       const tiros = relojTiros(acc), parte = tiros ? 100 * c[0] / tiros : null;
       const lf = L && L.f[k], liga = lf && lf[0] ? lf[2] / lf[0] : null;
-      return `<div class="rounded border border-hairline bg-surface2/40 p-2 min-w-0" data-reloj-jugador-franja="${k}">
-        <p class="text-[11px] text-white">${FRANJAS_RELOJ[k]} <span class="dato-sec">${esc(METODOLOGIA_RELOJ.franjas[k].nombre)}</span></p>
-        <p class="font-mono text-lg text-white leading-tight">${parte == null ? '—' : num(parte, 0) + ' %'}</p>
-        <p class="text-[11px] text-ink">${c[1]}/${c[0]} · ${c[0] ? num(c[2] / c[0], 2) : '—'} por tiro${liga != null ? ` <span class="dato-sec">(liga ${num(liga, 2)})</span>` : ''}</p>
-        <p class="text-[10px] dato-sec">${c[1] ? c[4] + ' de ' + c[1] + ' canastas asistidas' : 'sin canastas'}${c[5] ? ' · ' + c[5] + ' pérdidas' : ''}</p>
-      </div>`;
+      /* Micro-tarjeta Bento: puntos por tiro con semáforo contra la liga en
+         esa franja (±0,06, con 10 tiros o más; con menos, sin color) y la
+         barra del volumen. Siempre con símbolo: ▲ ● ▼. */
+      const ppt = c[0] ? c[2] / c[0] : null;
+      const dif = (ppt != null && liga != null && c[0] >= 10) ? ppt - liga : null;
+      const tono = dif == null ? 'nulo' : (dif >= 0.06 ? 'pos' : (dif <= -0.06 ? 'neg' : 'aviso'));
+      const sim = { pos: '▲ ', aviso: '● ', neg: '▼ ', nulo: '' }[tono];
+      return `<section class="rend-card" data-reloj-jugador-franja="${k}">
+        <h5 class="rend-card-t">${FRANJAS_RELOJ[k]} <span class="dato-sec normal-case">${esc(METODOLOGIA_RELOJ.franjas[k].nombre)}</span></h5>
+        <div class="rend-fichas">
+          <div class="rend-ficha rend-t-${tono}"><div class="rend-ficha-l">Por tiro</div>
+            <div class="rend-ficha-v">${sim}${ppt == null ? '—' : num(ppt, 2)}</div>
+            <div class="rend-ficha-s">${c[1]}/${c[0]}${liga != null ? ' · liga ' + num(liga, 2) : ''}</div></div>
+        </div>
+        <div class="rend-barra"><div class="rend-barra-t"><span>De sus tiros</span><span>${parte == null ? '—' : num(parte, 0) + ' %'}</span></div>
+          <div class="rend-pista" role="img" aria-label="${parte == null ? 'sin tiros' : num(parte, 0) + ' % de sus tiros'}"><div class="rend-relleno rend-t-info" style="width:${parte == null ? 2 : Math.max(2, Math.min(100, Math.round(parte)))}%"></div></div></div>
+        <p class="rend-mini mt-1">${c[1] ? c[4] + ' de ' + c[1] + ' canastas asistidas' : 'sin canastas'}${c[5] ? ' · ' + c[5] + ' pérdidas' : ''}</p>
+      </section>`;
     }).join('') : '';
     let mapas = '';
     if (conCodigoReloj(paq)) {
@@ -2013,9 +2033,9 @@ const SGADD_PBP = (function () {
       mapas = '<p class="text-[11px] text-muted mt-2">El mapa por franja necesita la franja de cada tiro, que llega con la próxima subida de los paquetes.</p>';
     }
     if (!filas && !mapas) return '';
-    return `<div class="mt-3" data-reloj-jugador-franjas="1" data-subcard="tiro.reloj-franjas">
+    return `<div class="mt-3 rend-raiz" data-reloj-jugador-franjas="1" data-subcard="tiro.reloj-franjas">
       ${subtitulo('Cuándo y desde dónde tira · por franja del reloj')}
-      ${filas ? `<div class="grid grid-cols-3 gap-2">${filas}</div>` : ''}
+      ${filas ? `<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">${filas}</div>` : ''}
       ${mapas}
     </div>`;
   }
