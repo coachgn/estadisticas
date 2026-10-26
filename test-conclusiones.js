@@ -193,5 +193,23 @@ check('el logo de la liga se precarga al leer el manifiesto', /pre\.src = logoLi
 check('el CSS la deja en una sola línea con proporciones fijas', /\.cabecera-terna \{ display: flex/.test(HTML) && /white-space: nowrap/.test(HTML) && /\.cabecera-terna \{ --cab-h: [\d.]+mm; \}/.test(HTML) && /\.cabecera-escudo, \.cabecera-terna \.cabecera-logo \{ height: var\(--cab-h\)/.test(HTML));
 check('el logo de la liga sale del manifiesto (`_liga`) y no entra al mapa de equipos', /logoLiga = j\._liga/.test(HTML) && /k\.charAt\(0\) !== '_'/.test(HTML));
 
+/* ---------- DetectarFilosofiaDT (v311) ---------- */
+{
+  const fake = (m) => ({ leer: (c, k) => (k in m ? { percentil: m[k], valor: 1 } : null) });
+  const E = { clave: 'X' };
+  const d = (m) => C.DetectarFilosofiaDT(fake(m), E);
+  check('filosofía: ritmo alto => Transición / Vértigo', d({ PACE: 90, 'PT3%': 40, 'RO%': 30, 'RTL%': 30, 'PePP%': 20 }).id === 'transicion');
+  check('filosofía: ritmo bajo y cuida la pelota => Set / Control', d({ PACE: 10, 'PT3%': 40, 'RO%': 30, 'RTL%': 30, 'PePP%': 80 }).id === 'set');
+  check('filosofía: mucho triple => Perímetro / Analítica', d({ PACE: 50, 'PT3%': 92, 'RO%': 30, 'RTL%': 30, 'PePP%': 50 }).id === 'perimetro');
+  check('filosofía: cristal y línea => Físico / Interior', d({ PACE: 50, 'PT3%': 20, 'RO%': 90, 'RTL%': 85, 'PePP%': 50 }).id === 'fisico');
+  check('filosofía: nada se separa => Equilibrado', d({ PACE: 50, 'PT3%': 50, 'RO%': 50, 'RTL%': 50, 'PePP%': 50 }).id === 'equilibrado');
+  check('filosofía: sin diferencia clara con la segunda => Equilibrado', d({ PACE: 70, 'PT3%': 68, 'RO%': 30, 'RTL%': 30, 'PePP%': 20 }).id === 'equilibrado');
+  check('filosofía: sin índice o sin percentiles => null', C.DetectarFilosofiaDT(null, E) === null && d({}) === null);
+  const c = C.equipo(fake({ PACE: 90, 'PT3%': 40, 'RO%': 30, 'RTL%': 30, 'PePP%': 20 }), E);
+  check('equipo() trae la filosofía y no mueve los cortes', c.filosofia.id === 'transicion' && C.VERDE === 70 && C.ROJO === 40);
+  check('la card dice la filosofía', /data-filosofia="transicion"/.test(C.html(c, { tipo: 'equipo' })));
+  check('el jugador no lleva filosofía', !('filosofia' in C.jugador(fake({}), {}, null)));
+}
+
 console.log('\n' + (mal ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + mal + ' fallaron');
 process.exit(mal ? 1 : 0);

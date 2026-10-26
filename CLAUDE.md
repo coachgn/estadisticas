@@ -161,7 +161,7 @@ node test-muestra.js       # 156 tests · el selector de muestra de Equipos y Ju
 node test-rendimiento.js   #  83 tests · la card de Rendimiento del jugador: el motor puro, las degradaciones,
                            #             la vista y el cableado de la pestaña (punto 140)
 
-node test-conclusiones.js  #  61 tests · la card de conclusiones clínicas de Equipos y Jugadores, los tipos
+node test-conclusiones.js  #  71 tests · la card de conclusiones clínicas de Equipos y Jugadores, los tipos
                            #             de posesión del PBP y la terna de logos del PDF (punto 141)
 
 node test-backend.js       # 468 tests · el proxy, el benchmark, las alertas, el catálogo en KV
@@ -292,7 +292,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=310`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=311`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15962,3 +15962,19 @@ v309: las dos de más son la proyección y las dimensiones); ficha del jugador
 7 hojas A4 (5: el Diagnóstico pasó de 1 a 2 hojas). **No medido con la capa
 `pbp`.**
 
+## 144. LA FILOSOFÍA DEL EQUIPO · `DetectarFilosofiaDT` (2026-10-26)
+
+Assets en `?v=311`. En `sgadd-conclusiones.js`: una etiqueta de identidad del
+EQUIPO (no del jugador) que sale de los percentiles ya leídos contra la liga,
+para calibrar el tono del Diagnóstico. **No mueve ningún corte** (70 / 40), ni
+las franjas del reloj, ni la ingesta.
+
+- Puntajes: Transición / Vértigo = percentil de PACE · Set / Control = ritmo
+  bajo y PePP% alto · Perímetro / Analítica = PT3% · Físico / Interior =
+  promedio de RO% y RTL%.
+- Gana la mayor si llega a 60 y le saca 5 puntos a la segunda; si no,
+  **Equilibrado**. Ninguna filosofía es mejor que otra (punto 4).
+- `equipo()` suma `out.filosofia`; la card agrega una línea `data-filosofia`
+  con la frase de identidad, la fórmula «para que sea sostenible…» y, si hay
+  puntos de quiebre, el costo de oportunidad propio de ese estilo.
+- Sin índice o sin percentiles devuelve `null`; el jugador no lleva filosofía.

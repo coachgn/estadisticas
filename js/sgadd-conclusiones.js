@@ -120,6 +120,7 @@ const SGADD_CONCLUSIONES = (function () {
       .slice(0, MAX_ITEMS).forEach(f => out.alertas.push(item(f, f.d.mal)));
     [out.fortalezas, out.ajustes, out.alertas].forEach(l => l.forEach(it => { it.dim = dimDe(it.clave, 'equipo'); }));
     out.dimensiones = dimensiones(idx, e, null);
+    out.filosofia = DetectarFilosofiaDT(idx, e);
     out.proyeccion = proyeccionEquipo(idx, e);
     return out;
   }
@@ -187,6 +188,53 @@ const SGADD_CONCLUSIONES = (function () {
     out.dimensiones = dimensiones(idx, null, j);
     out.proyeccion = proyeccionJugador(idx, j, eje);
     return out;
+  }
+
+  /* ================================================== LA FILOSOFÍA DEL EQUIPO
+
+     DetectarFilosofiaDT (2026-10-26): una etiqueta de identidad que sale de
+     las dimensiones ya calculadas (ritmo, selección de tiro, agresividad
+     física y disciplina), siempre en percentil contra la liga. Sirve para
+     calibrar el TONO del texto, no para juzgar: ninguna filosofía es mejor
+     que otra (punto 4) y no mueve ningún corte (70 / 40). Pide una
+     diferencia clara con la segunda, o dice que el equipo es equilibrado. */
+  const FILOSOFIAS = {
+    transicion: { label: 'Transición / Vértigo', frase: 'juega para correr y atacar antes de que la defensa se acomode',
+      sostener: 'Para que el vértigo sea sostenible, cada posesión rápida tiene que terminar en un tiro de ventaja',
+      costo: 'En un equipo que corre, la pérdida viva es una asistencia al contraataque rival' },
+    set: { label: 'Set / Control', frase: 'busca el tiro dentro de su libreto, con posesiones largas y cuidadas',
+      sostener: 'Para que el juego de media cancha sea sostenible, el libreto tiene que llegar al tiro con reloj de sobra',
+      costo: 'En un equipo de set, cada pelota perdida corta una posesión que se construyó entera' },
+    perimetro: { label: 'Perímetro / Analítica', frase: 'apuesta al triple y al espaciado como fuente principal de puntos',
+      sostener: 'Para que el espaciado sea sostenible, el triple tiene que salir de recepción y con ventaja',
+      costo: 'En un equipo de triples, el tiro que no entra también regala el rebote largo y la transición rival' },
+    fisico: { label: 'Físico / Interior', frase: 'vive del cristal ofensivo y de ir a la línea, con juego cerca del aro',
+      sostener: 'Para que el juego interior sea sostenible, el contacto tiene que convertirse en libres y rebotes sin faltas propias',
+      costo: 'En un equipo físico, la falta innecesaria cuesta posesiones de las que más rinden' },
+  };
+
+  /** Etiqueta la filosofía de un equipo (`e`) con sus percentiles contra la
+      liga. Devuelve null sin índice, o `{ id: 'equilibrado' }` si ninguna
+      se separa. */
+  function DetectarFilosofiaDT(idx, e) {
+    if (!idx || !e || typeof idx.leer !== 'function') return null;
+    const p = (k) => { const r = idx.leer(e.clave, k); return r && esNum(r.percentil) ? r.percentil : null; };
+    const prom = (ks) => { const v = ks.map(p).filter(esNum); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    const pace = p('PACE'), cuida = p('PePP%');
+    const puntajes = {
+      transicion: pace,
+      set: pace == null ? null : (cuida == null ? 100 - pace : (100 - pace + cuida) / 2),
+      perimetro: p('PT3%'),
+      fisico: prom(['RO%', 'RTL%']),
+    };
+    const orden = Object.keys(puntajes).filter(k => esNum(puntajes[k])).sort((a, b) => puntajes[b] - puntajes[a]);
+    if (!orden.length) return null;
+    const [g, s2] = orden;
+    const ventaja = s2 ? puntajes[g] - puntajes[s2] : puntajes[g];
+    const claro = puntajes[g] >= 60 && ventaja >= 5;
+    return { id: claro ? g : 'equilibrado', puntajes, ventaja: Math.round(ventaja),
+      ...(claro ? FILOSOFIAS[g] : { label: 'Equilibrado', frase: 'no se define por un estilo: ningún rasgo se separa claramente de la liga',
+        sostener: 'Para que su sistema sea sostenible, conviene sostener lo que ya rinde', costo: 'Cada desvío se paga igual en cualquier estilo' }) };
   }
 
   /* ================================================== LAS CUATRO DIMENSIONES
@@ -662,7 +710,9 @@ const SGADD_CONCLUSIONES = (function () {
     const resumen = [
       c.fortalezas.length + ' para sostener', c.ajustes.length + ' ajustes', c.alertas.length + ' puntos de quiebre',
     ].join(' · ');
-    const contexto = o.contexto ? `<p class="rend-pie-t">${esc(o.contexto)}</p>` : '';
+    const f = c.filosofia;
+    const filo = f ? `<p class="rend-pie-t" data-filosofia="${esc(f.id)}">◆ <strong>${esc(f.label)}</strong>: ${esc(f.frase)}. ${esc(f.sostener)}.${c.alertas.length ? ' ' + esc(f.costo) + '.' : ''}</p>` : '';
+    const contexto = filo + (o.contexto ? `<p class="rend-pie-t">${esc(o.contexto)}</p>` : '');
     return `<section class="rend-raiz concl-card card rounded-xl p-4 sm:p-5 border border-hairline" data-conclusiones="${esc(o.tipo || 'equipo')}">
       <div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">
         <h4 class="rend-card-t" style="margin:0">🩺 Diagnóstico para el cuerpo técnico</h4>
@@ -695,7 +745,7 @@ const SGADD_CONCLUSIONES = (function () {
         <ul class="concl-lista">${proy.map(itemHtml).join('')}</ul></div>` : ''}</div>`;
   }
 
-  return { DIMENSIONES, dimensiones, dimDe, dimensionesHtml, valorObjetivo, proyeccionEquipo, proyeccionJugador, proyeccionHtml,
+  return { DIMENSIONES, FILOSOFIAS, DetectarFilosofiaDT, dimensiones, dimDe, dimensionesHtml, valorObjetivo, proyeccionEquipo, proyeccionJugador, proyeccionHtml,
     PALANCAS_EQ, PALANCAS_J, OBJETIVO,
     VERDE, ROJO, tonoPct, equipo, jugador, ejeDe, POR_EJE, EQ, JUG,
     calificar, tiposDePosesion, fichaEquipo, fichasEquipo, mediaDistancia, pbpEquipo, pbpJugador, html, pbpHtml, ejesHtml };
