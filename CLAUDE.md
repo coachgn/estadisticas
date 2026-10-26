@@ -16085,5 +16085,8 @@ condición que verifica el DT, no como cálculo.
 Al revés, tres mutaciones del motor, todas caen: concesiones sin el filtro de
 intocables (4), el quiebre sin la dirección buena (2) y las concesiones sin
 ordenar (5). En el navegador, sobre la demo, las tres cards salen en su
-orden con datos. **No verificado**: el PDF real (paginado de la hoja 1) ni
-las zonas frías con una sesión que tenga la capa `pbp`.
+orden con datos. **PDF real medido** (demo, Plata, A3 apaisada): 9 hojas con la
+firma en todas; la hoja 1 lleva el encabezado y «las 3 cosas», y el Diagnóstico
+abre la hoja 2 (`break-inside: avoid`). Decisión del club: se queda así.
+**No verificado**: el espacio libre de la hoja 1 como imagen, ni las zonas
+frías ni las fichas ORO (la demo no tiene la capa `pbp`).
