@@ -158,7 +158,7 @@ node test-muestra.js       # 156 tests · el selector de muestra de Equipos y Ju
                            #             · y la familia 2: cada equipo en su condición, contra su índice dedicado
                            #             · y la fase 3: la vara de jugadores del período que calcula el servidor
 
-node test-rendimiento.js   #  70 tests · la card de Rendimiento del jugador: el motor puro, las degradaciones,
+node test-rendimiento.js   #  83 tests · la card de Rendimiento del jugador: el motor puro, las degradaciones,
                            #             la vista y el cableado de la pestaña (punto 140)
 
 node test-backend.js       # 468 tests · el proxy, el benchmark, las alertas, el catálogo en KV
@@ -289,7 +289,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=305`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=306`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15792,3 +15792,17 @@ La pestaña Tiro (`jugadoresTabTiro`) usa la MISMA vista que Rendimiento: `SGADD
 - La explicación metodológica va en «Lectura detallada» y se sacó la autocrítica del mapa («leelo como un registro, no como una tendencia»): la muestra chica es una alerta ámbar corta.
 - **La pestaña Rendimiento sigue exclusiva de la capa `pbp`** (`jugadoresTabsVisibles`): sin ella no figura ni gris, y una ruta a `/rendimiento` cae a la primera visible.
 - Tests: `test-rendimiento.js` (70) y `test-pbp.js`.
+
+### La pestaña PARTIDOS del jugador, como log visual (2026-10-26, v306)
+
+`jugadoresTabPartidos` (sgadd-jugadores.js) deja de ser una planilla: arriba, **Tendencias del historial** como fichas Bento (la MISMA `SGADD_RENDIMIENTO.vista`); después **cinco pills** (`Todos · 🔥 Élite · 🏠 Local · ✈️ Visitante · ⚠️ Noches bajas`, con su conteo) y la tabla con **micro-barras** en MIN y PTS.
+
+- **Las tendencias se miden sobre los partidos JUGADOS** (≥ 8 min): una noche de 3 minutos hunde el promedio sin decir nada. Racha = últimos 5 contra su promedio; segunda mitad contra la primera; el cambio cuenta desde **medio desvío de SUS puntos** (`PARTIDOS_DESVIO_TENDENCIA`). Con menos de 6 jugados no se afirma una tendencia y lo dice (`corta`). Local contra visitante es **informativo** (◆): describe, no reprocha (punto 4). Suma «Élite / bajas» y «Mejor noche».
+- **La micro-barra mide la noche contra el PROMEDIO del jugador** (ancho = valor / 2 × promedio; la marca del medio es el promedio). El número siempre va escrito: la barra ayuda, no reemplaza. En PTS toma verde/rojo con ▲/▼ cuando es atípica.
+- **Las reglas validadas no cambiaron**: verde/rojo a más de 1,5 desvíos, atenuado con menos de 8 minutos, C/I y la fila que cruza al detalle en Equipos.
+- **El filtro vive en `JUGADORES.partidosFiltro`** (no en el DOM: la ficha se repinta) y se resetea al cambiar de jugador. Las pills llevan `data-no-print`; con un filtro activo el PDF lo rotula.
+- Funciones puras y testeadas: `jugadoresClasificarPartidos`, `jugadoresTendenciasPartidos`, `jugadoresPartidoCumple`, `jugadoresMicroBarra`.
+
+### La fuga de Rendimiento sin pbp (2026-10-26, v306)
+
+La pestaña seguía apareciendo en clientes sin la capa porque `SGADD_APP.estado.alcance` (de donde `SGADD_PBP.activa()` lee `capas`) **sobrevivía al cambio de categoría**: pasando de una con `pbp` a una sin ella —o si la carga nueva fallaba— quedaba el alcance viejo. Ahora `cambiarPlanilla` lo limpia, `cargar()` sella `alcancePlanilla`, y `activa()` exige que el alcance sea el de la categoría abierta. Tests en `test-rendimiento.js`.

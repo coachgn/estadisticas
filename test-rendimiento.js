@@ -172,5 +172,42 @@ check('el CSS del Bento está a mano en el index (nodos inyectados)', /\.rend-gr
   check('la muestra chica del mapa ya no se autocritica', !/Leelo como un registro/.test(pbpSrc));
 }
 
+/* LA PESTAÑA PARTIDOS (2026-10-26): tendencias, pills y micro-barras; y la fuga de
+   Rendimiento al cambiar de categoría. */
+{
+  global.SGADD = global.SGADD || require('./js/sgadd-core.js');
+  global.SGADD_PARTIDO = global.SGADD_PARTIDO || require('./js/sgadd-partido.js');
+  const J = require('./js/sgadd-jugadores.js');
+  const fila = (pts, min, cond, rival) => ({ flojo: min < SGADD_PARTIDO.MIN_MINUTOS, nivel: null, local: cond === 'LOCAL', visitante: cond === 'VISITANTE',
+    p: { PTS: pts, MIN: min, CONDICION: cond, PARTIDO: 'A vs ' + rival, EQUIPO: 'A', __fecha: null } });
+  const sube = [10, 10, 10, 10, 10, 20, 20, 20, 20, 20].map((v, i) => fila(v, 25, i % 2 ? 'LOCAL' : 'VISITANTE', 'R' + i));
+  const t = J.jugadoresTendenciasPartidos(sube);
+  const rac = t.fichas.find(f => /^Racha/.test(f.label)), mit = t.fichas.find(f => /mitad/.test(f.label));
+  check('Partidos: la racha de los últimos 5 que sube sale en verde', rac && rac.tono === 'pos');
+  check('Partidos: la segunda mitad contra la primera también', mit && mit.tono === 'pos');
+  const baja = J.jugadoresTendenciasPartidos(sube.slice().reverse());
+  check('Partidos: una racha que cae sale en rojo', baja.fichas.find(f => /^Racha/.test(f.label)).tono === 'neg');
+  check('Partidos: local vs visitante es informativo, sin lado bueno', t.fichas.find(f => /Local vs/.test(f.label)).tono === 'info');
+  const corta = J.jugadoresTendenciasPartidos(sube.slice(0, 4));
+  check('Partidos: con menos de 6 jugados no se afirma una tendencia', corta.corta && !corta.fichas.some(f => /^Racha|mitad/.test(f.label)));
+  const poco = sube.map(f => Object.assign({}, f, { flojo: true }));
+  check('Partidos: las noches de menos de 8 minutos no entran en las tendencias', J.jugadoresTendenciasPartidos(poco).jugados === 0);
+  const el = { nivel: 'elite', local: true, visitante: false }, ba = { nivel: 'baja', local: false, visitante: true };
+  check('Partidos: cada pill filtra lo suyo', J.jugadoresPartidoCumple(el, 'elite') && !J.jugadoresPartidoCumple(ba, 'elite') && J.jugadoresPartidoCumple(ba, 'bajas')
+    && J.jugadoresPartidoCumple(el, 'local') && !J.jugadoresPartidoCumple(el, 'visitante') && J.jugadoresPartidoCumple(ba, 'todos'));
+  check('Partidos: hay cinco pills, en el orden pedido', J.PARTIDOS_FILTROS.map(f => f.id).join() === 'todos,elite,local,visitante,bajas');
+  check('Partidos: la micro-barra mide contra el promedio (el promedio queda a la mitad)', /width:50%/.test(J.jugadoresMicroBarra(10, 10)) && /width:100%/.test(J.jugadoresMicroBarra(40, 10)) && J.jugadoresMicroBarra(null, 10) === '');
+  const src = fs.readFileSync(require('path').join(__dirname, 'js/sgadd-jugadores.js'), 'utf8');
+  const fn = src.slice(src.indexOf('function jugadoresTabPartidos'), src.indexOf("if (typeof module !== 'undefined'"));
+  check('Partidos: conserva el cruce al box score, el atenuado y el C/I', /jugadoresVerPartido\(/.test(fn) && /opacity-50/.test(fn) && /tiroDe\(p, z\)/.test(fn) && /atributosFila/.test(fn));
+  check('Partidos: usa la vista Bento compartida, no una propia', /jugadoresBentoVista\(\)/.test(fn) && !/const ficha = /.test(fn));
+  const app = fs.readFileSync(require('path').join(__dirname, 'js/sgadd-app.js'), 'utf8');
+  const cp = app.slice(app.indexOf('function cambiarPlanilla'), app.indexOf('function cambiarFase'));
+  check('Rendimiento: cambiar de categoría limpia las capas de la anterior', /estado\.alcance = null/.test(cp));
+  const pbpSrc2 = fs.readFileSync(require('path').join(__dirname, 'js/sgadd-pbp.js'), 'utf8');
+  const act = pbpSrc2.slice(pbpSrc2.indexOf('function activa()'), pbpSrc2.indexOf('const cargando'));
+  check('Rendimiento: un alcance de otra categoría no habilita la capa', /alcancePlanilla !== e\.planillaId/.test(act));
+}
+
 console.log('\n' + ok + ' ok · ' + fail + ' fallaron');
 if (fail) { console.log('HAY FALLAS'); process.exit(1); }

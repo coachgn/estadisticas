@@ -64,6 +64,8 @@ const JUGADORES = {
      pierden en la próxima edición sin que nadie lo note. */
   plantelRankingAbierto: 'produccion',
   top3Abierto: false,   // la card TOP 3 del plantel arranca minimizada
+  partidosFiltro: 'todos',  // la pill activa de la pestaña Partidos
+  partidosFiltroDe: null,   // de qué jugador es: cambiar de ficha lo resetea
   plantelRankingModo: 'promedio',
   plantelRankingOrdenPor: null,
   plantelRankingOrdenDir: 'desc',
@@ -3490,34 +3492,203 @@ function tiroDe(p, zona) {
   return SGADD.num(c || 0) + '/' + SGADD.num(i);
 }
 
-function jugadoresTabPartidos(idx, j) {
-  const stat = idx.statJugador(j.__clave, 'PTS');
-  const partidos = jugadoresPartidosOrdenados(idx, j.__clave).slice().reverse();
+/* =====================================================================
+   LA PESTAÑA PARTIDOS · log visual (2026-10-26, v306)
 
-  const filas = partidos.map(p => {
-    const gano = SGADD.texto(p['RESULTADO']).toUpperCase() === 'GANADO';
+   De planilla de cálculo a log de rendimiento: arriba, las tendencias del
+   historial como fichas Bento (la misma vista que Rendimiento y Tiro, punto
+   8: una sola definición del semáforo); después las pills de filtro; y la
+   tabla, con micro-barras proporcionales al PROMEDIO del jugador en MIN y
+   PTS. Las reglas validadas no se tocan: verde/rojo a más de 1,5 desvíos de
+   su promedio de puntos, atenuado con menos de 8 minutos, C/I y la fila que
+   cruza al detalle del partido en Equipos.
+   ===================================================================== */
+
+const PARTIDOS_FILTROS = [
+  { id: 'todos',     label: 'Todos' },
+  { id: 'elite',     label: '🔥 Partidos élite' },
+  { id: 'local',     label: '🏠 Local' },
+  { id: 'visitante', label: '✈️ Visitante' },
+  { id: 'bajas',     label: '⚠️ Noches bajas' },
+];
+
+/** Últimos N partidos que definen la «racha». */
+const PARTIDOS_RACHA = 5;
+/** Con menos partidos jugados (a más de MIN_MINUTOS) no hay tendencia que leer. */
+const PARTIDOS_MIN_TENDENCIA = 6;
+/** Una diferencia cuenta como tendencia desde medio desvío de sus propios puntos. */
+const PARTIDOS_DESVIO_TENDENCIA = 0.5;
+
+function jugadoresPartidosMedia(arr) {
+  return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+}
+function jugadoresPartidosDesvio(arr) {
+  if (arr.length < 2) return null;
+  const m = jugadoresPartidosMedia(arr);
+  return Math.sqrt(arr.reduce((a, b) => a + (b - m) * (b - m), 0) / (arr.length - 1));
+}
+
+/**
+ * Cada partido del jugador, clasificado: `flojo` (menos de MIN_MINUTOS),
+ * `nivel` ('elite' | 'baja' | null, por el z de sus puntos contra SU promedio
+ * y solo si no es flojo), la condición y el resultado. Orden ascendente.
+ * PURA: la usan la tabla, las pills y las tendencias.
+ */
+function jugadoresClasificarPartidos(idx, j) {
+  const stat = idx.statJugador(j.__clave, 'PTS');
+  const filas = jugadoresPartidosOrdenados(idx, j.__clave).map(p => {
     const flojo = (typeof p['MIN'] !== 'number') || p['MIN'] < SGADD_PARTIDO.MIN_MINUTOS;
     const z = jugadoresZScore(p['PTS'], stat && stat.media, stat && stat.desvio);
     const atipico = !flojo && z !== null && Math.abs(z) >= SGADD_PARTIDO.Z_ATIPICO;
-    const colorPts = atipico ? (z > 0 ? 'text-green-400 font-medium' : 'text-red-400 font-medium') : 'text-white';
+    const cond = SGADD.texto(p['CONDICION']).toUpperCase();
+    return {
+      p, flojo, z,
+      nivel: atipico ? (z > 0 ? 'elite' : 'baja') : null,
+      local: cond === 'LOCAL', visitante: cond === 'VISITANTE',
+      gano: SGADD.texto(p['RESULTADO']).toUpperCase() === 'GANADO',
+    };
+  });
+  return { stat, filas };
+}
 
-    return `<tr class="border-b border-hairline/40 last:border-0 cursor-pointer hover:bg-surface2 transition-all duration-200 ${flojo ? 'opacity-50' : ''}"
+/** ¿Este partido pasa la pill? */
+function jugadoresPartidoCumple(f, filtro) {
+  switch (filtro) {
+    case 'elite':     return f.nivel === 'elite';
+    case 'bajas':     return f.nivel === 'baja';
+    case 'local':     return f.local;
+    case 'visitante': return f.visitante;
+    default:          return true;
+  }
+}
+
+/**
+ * Las tendencias del historial, como fichas { label, valor, sub, tono }.
+ * Se miden sobre los partidos JUGADOS (≥ MIN_MINUTOS): una noche de 3 minutos
+ * hunde el promedio sin decir nada del jugador. Sin PARTIDOS_MIN_TENDENCIA
+ * jugados no se afirma una tendencia (`corta: true`). PURA.
+ */
+function jugadoresTendenciasPartidos(filas) {
+  const jugados = filas.filter(f => !f.flojo && typeof f.p['PTS'] === 'number');
+  const pts = jugados.map(f => f.p['PTS']);
+  const media = jugadoresPartidosMedia(pts);
+  const desvio = jugadoresPartidosDesvio(pts);
+  const fmt = (v) => (v === null ? '—' : SGADD.num(Math.round(v * 10) / 10));
+  const signo = (v) => (v > 0 ? '+' : '') + SGADD.num(Math.round(v * 10) / 10);
+  /* El tono de un cambio: contra medio desvío de SUS puntos. Sin desvío
+     (todas las noches iguales) no hay con qué medirlo: informativo. */
+  const tonoDelta = (d) => {
+    if (desvio === null || desvio === 0) return 'info';
+    const u = PARTIDOS_DESVIO_TENDENCIA * desvio;
+    return d >= u ? 'pos' : (d <= -u ? 'neg' : 'aviso');
+  };
+  const fichas = [];
+  const corta = jugados.length < PARTIDOS_MIN_TENDENCIA;
+
+  fichas.push({ label: 'Promedio de puntos', valor: fmt(media), sub: jugados.length + ' PJ jugados' + (desvio !== null ? ' · ± ' + fmt(desvio) : ''), tono: 'info' });
+
+  if (!corta) {
+    const ult = pts.slice(-PARTIDOS_RACHA);
+    const dRacha = jugadoresPartidosMedia(ult) - media;
+    fichas.push({ label: 'Racha · últimos ' + PARTIDOS_RACHA, valor: fmt(jugadoresPartidosMedia(ult)),
+      sub: signo(dRacha) + ' vs su promedio', tono: tonoDelta(dRacha) });
+
+    const mitad = Math.floor(pts.length / 2);
+    const primera = pts.slice(0, mitad), segunda = pts.slice(pts.length - mitad);
+    const dMitad = jugadoresPartidosMedia(segunda) - jugadoresPartidosMedia(primera);
+    fichas.push({ label: 'Primera vs segunda mitad', valor: fmt(jugadoresPartidosMedia(primera)) + ' → ' + fmt(jugadoresPartidosMedia(segunda)),
+      sub: signo(dMitad) + ' pts por partido', tono: tonoDelta(dMitad) });
+  }
+
+  const ptsDe = (fn) => jugados.filter(fn).map(f => f.p['PTS']);
+  const loc = ptsDe(f => f.local), vis = ptsDe(f => f.visitante);
+  if (loc.length >= MIN_PJ_CONDICION && vis.length >= MIN_PJ_CONDICION) {
+    /* Local contra visitante es una descripción, no un reproche: informativo. */
+    fichas.push({ label: 'Local vs visitante', valor: fmt(jugadoresPartidosMedia(loc)) + ' / ' + fmt(jugadoresPartidosMedia(vis)),
+      sub: loc.length + ' L · ' + vis.length + ' V', tono: 'info' });
+  }
+
+  const nElite = filas.filter(f => f.nivel === 'elite').length, nBaja = filas.filter(f => f.nivel === 'baja').length;
+  fichas.push({ label: 'Élite / bajas', valor: nElite + ' / ' + nBaja, sub: 'noches a más de ' + SGADD_PARTIDO.Z_ATIPICO + ' desvíos',
+    tono: nElite > nBaja ? 'pos' : (nBaja > nElite ? 'neg' : 'aviso') });
+
+  const mejor = jugados.reduce((m, f) => (!m || f.p['PTS'] > m.p['PTS'] ? f : m), null);
+  if (mejor) {
+    fichas.push({ label: 'Mejor noche', valor: SGADD.num(mejor.p['PTS']) + ' pts',
+      sub: 'vs ' + jugadoresRival(mejor.p) + ' · ' + SGADD.formatearFecha(mejor.p.__fecha), tono: 'info' });
+  }
+  return { fichas, corta, jugados: jugados.length };
+}
+
+function jugadoresFiltrarPartidos(id) {
+  JUGADORES.partidosFiltro = PARTIDOS_FILTROS.some(f => f.id === id) ? id : 'todos';
+  jugadoresPintar();
+}
+
+/** La micro-barra de una celda: el ancho es el valor contra DOS veces el
+    promedio del jugador (la marca del medio es su promedio), así un pico o
+    una caída se ven sin leer número por número. */
+function jugadoresMicroBarra(valor, promedio, tono) {
+  if (typeof valor !== 'number' || !isFinite(valor) || !promedio) return '';
+  const pct = Math.max(2, Math.min(100, Math.round(100 * valor / (2 * promedio))));
+  return `<span class="part-pista" aria-hidden="true"><i class="part-relleno${tono ? ' rend-t-' + tono : ''}" style="width:${pct}%"></i></span>`;
+}
+
+function jugadoresTabPartidos(idx, j) {
+  const { stat, filas: asc } = jugadoresClasificarPartidos(idx, j);
+  const V = jugadoresBentoVista();
+  if (JUGADORES.partidosFiltroDe !== j.__clave) { JUGADORES.partidosFiltro = 'todos'; JUGADORES.partidosFiltroDe = j.__clave; }
+  const filtro = JUGADORES.partidosFiltro;
+  const todos = asc.slice().reverse();
+  const visibles = todos.filter(f => jugadoresPartidoCumple(f, filtro));
+
+  const tend = jugadoresTendenciasPartidos(asc);
+  const jugadosMin = asc.filter(f => !f.flojo && typeof f.p['MIN'] === 'number').map(f => f.p['MIN']);
+  const jugadosPts = asc.filter(f => !f.flojo && typeof f.p['PTS'] === 'number').map(f => f.p['PTS']);
+  const promMin = jugadoresPartidosMedia(jugadosMin), promPts = jugadoresPartidosMedia(jugadosPts);
+
+  const cabecera = V && todos.length ? `
+    <section class="rend-card rend-ancho" data-partidos="tendencias">
+      <h5 class="rend-card-t">Tendencias del historial</h5>
+      ${tend.corta ? V.alerta({ tono: 'aviso', titulo: 'Muestra corta', texto: 'Con menos de ' + PARTIDOS_MIN_TENDENCIA + ' partidos jugados no se afirma una racha: se muestran los datos sin tendencia.' }) : ''}
+      <div class="rend-fichas">${tend.fichas.map(V.ficha).join('')}</div>
+    </section>` : '';
+
+  const pills = `<div class="part-pills" role="group" aria-label="Filtrar los partidos" data-no-print>${PARTIDOS_FILTROS.map(f => {
+    const n = todos.filter(x => jugadoresPartidoCumple(x, f.id)).length;
+    const on = f.id === filtro;
+    return `<button type="button" class="part-pill${on ? ' part-pill-on' : ''}" aria-pressed="${on}" onclick="jugadoresFiltrarPartidos('${f.id}')">${f.label} <b>${n}</b></button>`;
+  }).join('')}</div>`;
+
+  const filasHtml = visibles.map(f => {
+    const p = f.p;
+    const colorPts = f.nivel ? (f.nivel === 'elite' ? 'text-green-400 font-medium' : 'text-red-400 font-medium') : 'text-white';
+    const tonoPts = f.nivel === 'elite' ? 'pos' : (f.nivel === 'baja' ? 'neg' : null);
+    return `<tr class="border-b border-hairline/40 last:border-0 cursor-pointer hover:bg-surface2 transition-all duration-200 ${f.flojo ? 'opacity-50' : ''}"
+                data-nivel="${f.nivel || ''}"
                 onclick="jugadoresVerPartido('${SGADD_UI.escJs(p['EQUIPO'] || '')}', '${SGADD_UI.escJs(jugadoresIdCanonico(idx, p) || '')}')"
                 title="Ver el detalle de este partido en Equipos"
                 ${SGADD_UI.atributosFila('Ver el detalle del partido contra ' + jugadoresRival(p))}>
       <td class="py-1.5 pr-3 text-xs dato-sec font-mono whitespace-nowrap">${escapeHtml(SGADD.formatearFecha(p.__fecha))}</td>
       <td class="py-1.5 pr-3 text-xs text-white truncate max-w-[200px]">${escapeHtml(jugadoresRival(p))}</td>
       <td class="py-1.5 pr-3 text-xs text-muted">${escapeHtml(SGADD.texto(p['CONDICION']))}</td>
-      <td class="py-1.5 pr-3 font-mono text-xs">${escapeHtml(SGADD.formatear('MIN', p['MIN']))}</td>
-      <td class="py-1.5 pr-3 font-mono text-xs ${colorPts}">${escapeHtml(SGADD.formatear('PTS', p['PTS']))}</td>
+      <td class="py-1.5 pr-3 font-mono text-xs"><span class="part-celda">${escapeHtml(SGADD.formatear('MIN', p['MIN']))}${jugadoresMicroBarra(p['MIN'], promMin)}</span></td>
+      <td class="py-1.5 pr-3 font-mono text-xs ${colorPts}"><span class="part-celda">${f.nivel ? `<span aria-hidden="true">${f.nivel === 'elite' ? '▲' : '▼'}</span> ` : ''}${escapeHtml(SGADD.formatear('PTS', p['PTS']))}${jugadoresMicroBarra(p['PTS'], promPts, tonoPts)}</span></td>
       ${['T2', 'T3', 'T1'].map(z => `<td class="py-1.5 pr-3 font-mono text-xs dato-sec whitespace-nowrap">${
         escapeHtml(tiroDe(p, z))}</td>`).join('')}
       <td class="py-1.5 pr-3 font-mono text-xs ${SGADD_UI.claseMasMenos(p['+/-'])}">${escapeHtml(SGADD.formatear('+/-', p['+/-']))}</td>
-      <td class="py-1.5 text-xs font-semibold ${gano ? 'text-green-400' : 'text-red-400'}">${gano ? 'G' : 'P'}</td>
+      <td class="py-1.5 text-xs font-semibold ${f.gano ? 'text-green-400' : 'text-red-400'}">${f.gano ? 'G' : 'P'}</td>
     </tr>`;
   }).join('');
 
+  const vacio = todos.length ? 'Ningún partido cumple este filtro.' : 'Sin partidos con box score.';
+  const rotuloFiltro = filtro !== 'todos'
+    ? `<p class="solo-imprimir text-[11px] text-muted mb-1">Filtro: ${escapeHtml(PARTIDOS_FILTROS.find(f => f.id === filtro).label)}</p>` : '';
+
   return `
+    <div class="rend-raiz">
+    ${cabecera}
+    ${pills}${rotuloFiltro}
     <div class="scrollbox"><table class="w-full text-left">
       <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
         <th class="pb-1 pr-3">Fecha</th><th class="pb-1 pr-3">Rival</th><th class="pb-1 pr-3">Cond.</th>
@@ -3527,16 +3698,22 @@ function jugadoresTabPartidos(idx, j) {
         <th class="pb-1 pr-3" title="Convertidos sobre intentos">T1 C/I</th>
         <th class="pb-1 pr-3">+/-</th><th class="pb-1"></th>
       </tr></thead>
-      <tbody>${filas || '<tr><td class="text-xs text-muted py-2" colspan="10">Sin partidos con box score.</td></tr>'}</tbody>
+      <tbody>${filasHtml || `<tr><td class="text-xs text-muted py-2" colspan="10">${vacio}</td></tr>`}</tbody>
     </table></div>
-    <p class="text-[11px] text-muted mt-3 leading-snug">
-      En verde o rojo, los partidos a más de ${SGADD_PARTIDO.Z_ATIPICO} desvíos de su propio promedio de puntos.
-      Los atenuados jugaron menos de ${SGADD_PARTIDO.MIN_MINUTOS} minutos. Clic en cualquier fila para ver el
-      detalle completo de ese partido (box score de los dos equipos) en Equipos.
-      <b>C/I</b> son convertidos sobre intentos de esa noche: un 100% con un intento y otro con seis
-      no son lo mismo, y el porcentaje solo no lo dice.
-      <b>+/-</b> es la diferencia de puntos con él en cancha: no es el margen del partido, que es del equipo.
-    </p>`;
+    <details class="rend-detalle mt-3"><summary>Cómo se lee</summary>
+      <p class="text-[11px] text-muted leading-snug">
+        En verde (▲) o rojo (▼), los partidos a más de ${SGADD_PARTIDO.Z_ATIPICO} desvíos de su propio promedio de puntos.
+        Los atenuados jugaron menos de ${SGADD_PARTIDO.MIN_MINUTOS} minutos y no entran en las tendencias.
+        Las barras de MIN y PTS miden la noche contra el promedio del jugador: la marca del medio es su promedio.
+        La racha compara sus últimos ${PARTIDOS_RACHA} partidos con su promedio, y la segunda mitad con la primera;
+        cuenta como cambio desde medio desvío de sus puntos. Local contra visitante es una descripción, no un juicio.
+        Clic en cualquier fila para ver el detalle completo de ese partido (box score de los dos equipos) en Equipos.
+        <b>C/I</b> son convertidos sobre intentos de esa noche: un 100% con un intento y otro con seis
+        no son lo mismo, y el porcentaje solo no lo dice.
+        <b>+/-</b> es la diferencia de puntos con él en cancha: no es el margen del partido, que es del equipo.
+      </p>
+    </details>
+    </div>`;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -3554,6 +3731,7 @@ if (typeof module !== 'undefined' && module.exports) {
     CLAVES_CONDICION, MIN_PJ_CONDICION, SENSIBILIDAD_CONDICION,
     jugadoresSlug, jugadoresBuscar, jugadoresZScore,
     jugadoresPartidosOrdenados, jugadoresRival, jugadoresIdCanonico,
+    PARTIDOS_FILTROS, PARTIDOS_RACHA, jugadoresClasificarPartidos, jugadoresPartidoCumple, jugadoresTendenciasPartidos, jugadoresMicroBarra, jugadoresFiltrarPartidos, jugadoresTabPartidos,
     jugadoresRolMinutos, jugadoresPromedioMetrica, jugadoresPromediosLiga, jugadoresRT,
     jugadoresConvIntento,
     jugadoresReferenciasRebote, jugadoresMediana, MIN_CALIFICADOS_REFERENCIA,

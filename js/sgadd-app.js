@@ -235,6 +235,7 @@ const SGADD_APP = (function () {
          pantalla: un panel que recibe menos filas sin saberlo calcularía
          percentiles sobre una liga fantasma. */
       estado.alcance = r.alcance || null;
+      estado.alcancePlanilla = estado.planillaId;
       /* Y la sesión del CLIENTE adopta el plan efectivo que declara el
          servidor: el menú y el guard tienen que decir lo mismo que el
          servidor hace cumplir (ver `adoptarPlanEfectivo` en el index). */
@@ -673,6 +674,10 @@ const SGADD_APP = (function () {
     /* El torneo es del libro anterior: se vuelve a resolver al cargar. La
        preferencia NO se borra — es justo lo que hay que conservar. */
     estado.hojas = null; estado.idx = null; estado.torneo = null;
+    /* LAS CAPAS SON DE LA CATEGORÍA: el `alcance` de la anterior (con su
+       `pbp`) no puede seguir vivo mientras baja la nueva ni si la carga
+       falla, o la pestaña Rendimiento se ofrece donde no hay play-by-play. */
+    estado.alcance = null; estado.alcancePlanilla = null;
     /* Una ventana de fechas de otro libro no significa nada acá. */
     estado.muestra = muestraRecordada(id);
     // La capa de datos vieja también tiene que seguir al selector.

@@ -2815,7 +2815,11 @@ const SGADD_PBP = (function () {
   /** ¿La categoría abierta tiene la capa? La declara el servidor. */
   function activa() {
     if (typeof SGADD_APP === 'undefined') return false;
-    const a = SGADD_APP.estado && SGADD_APP.estado.alcance;
+    const e = SGADD_APP.estado || {};
+    /* El alcance tiene que ser el de la categoría ABIERTA: uno heredado de
+       otra categoría no habilita nada. */
+    if (e.alcancePlanilla && e.alcancePlanilla !== e.planillaId) return false;
+    const a = e.alcance;
     return !!(a && Array.isArray(a.capas) && a.capas.indexOf(CAPA) !== -1 && destino());
   }
 
