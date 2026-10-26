@@ -631,6 +631,45 @@ const SGADD_PBP = (function () {
     return { atacar: atacar.sort((a, b) => b.indice - a.indice), cerrar: cerrar.sort((a, b) => b.indice - a.indice) };
   }
 
+  /**
+   * LO QUE EL MAPA DEL RIVAL APORTA AL SOPORTE DE DECISIÓN (v313). PURA.
+   *   frias         zonas donde tira peor que la liga, ajustado por muestra
+   *   concesiones   las zonas que menos cuesta cederle (nunca el aro: Z1-Z4)
+   * Ceder una zona no es una orden: es dónde la defensa puede dejarlo tirar
+   * pagando menos.
+   */
+  function diagnosticoRival(paq) {
+    if (!paq) return null;
+    const st = filasZonas(paq, 'equipo', K_EQUIPO);
+    if (!st) return null;
+    const base = st.filas.filter(f => f.i >= 20);
+    const fila = (f) => ({ zona: f.zona, nombre: f.nombre, i: f.i, share: f.share, ppt: f.post, liga: f.liga.ppt, delta: f.delta });
+    const frias = base.filter(f => f.delta <= -0.03).sort((a, b) => b.perdidos - a.perdidos).slice(0, 3).map(fila);
+    const concesiones = base.filter(f => !/^Z[1-4]$/.test(f.zona) && f.delta < 0)
+      .sort((a, b) => a.post - b.post).slice(0, 2).map(fila);
+    return { frias, concesiones };
+  }
+  const n2 = (v) => (isFinite(v) ? v.toFixed(2).replace('.', ',') : '—');
+
+  /** «Zonas frías» del Diagnóstico del rival. Sin datos, vacío. */
+  function rivalFriasHtml(paq) {
+    const d = paq ? diagnosticoRival(paq) : null;
+    if (!d || !d.frias.length) return '';
+    return `<div class="rend-alerta" data-diag-pbp="frias"><div class="text-[10px] uppercase tracking-wider text-muted font-display mb-1">❄ Zonas frías del mapa</div>
+      <ul class="text-[11px] space-y-1">${d.frias.map(f => `<li><span class="tono-bajo" style="color:#f87171">▼</span> <strong>${esc(f.zona)} · ${esc(f.nombre)}</strong>: ${n2(f.ppt)} pts por tiro (liga ${n2(f.liga)}) sobre el ${Math.round(f.share * 100)}% de sus tiros.</li>`).join('')}</ul></div>`;
+  }
+  /** Filas de zona para la matriz de concesiones. */
+  function rivalConcesionesHtml(paq) {
+    const d = paq ? diagnosticoRival(paq) : null;
+    if (!d || !d.concesiones.length) return '';
+    return `<div class="text-[11px] mt-2" data-diag-pbp="concesiones"><div class="text-[10px] uppercase tracking-wider text-muted font-display mb-1">Por zona · mapa de tiro</div>
+      <ul class="space-y-1">${d.concesiones.map(f => `<li>◆ <strong>Ceder ${esc(f.zona)} · ${esc(f.nombre)}</strong>: ${n2(f.ppt)} pts por tiro (liga ${n2(f.liga)}); absorbe el ${Math.round(f.share * 100)}% de sus tiros. Protege el aro y las esquinas.</li>`).join('')}</ul></div>`;
+  }
+  /** El lugar donde el montaje del paquete pinta esas piezas. */
+  function espacioRival(equipo, tipo) {
+    return `<div class="pbp-montaje" data-pbp-equipo="${esc(equipo)}" data-pbp-tipo="${tipo === 'concesiones' ? 'rival-concesiones' : 'rival-frias'}"></div>`;
+  }
+
   /** Las marcas del diagnóstico por zona, con la misma clase para el SVG, la tabla y la lista. */
   function marcasDiagnostico(paq, sujeto) {
     const m = {};
@@ -2962,6 +3001,16 @@ const SGADD_PBP = (function () {
             if (fil) { try { C.refinarFilosofia(fil, paq); } catch (e) { /* queda la del box score */ } }
             return;
           }
+          if (tipo === 'rival-frias' || tipo === 'rival-concesiones') {
+            nodo.innerHTML = tipo === 'rival-frias' ? rivalFriasHtml(paq) : rivalConcesionesHtml(paq);
+            /* La filosofía del rival: el box score ya la pintó; con su paquete se cruza (v313). */
+            if (tipo === 'rival-frias' && typeof SGADD_CONCLUSIONES !== 'undefined' && SGADD_CONCLUSIONES.refinarFilosofia && nodo.closest) {
+              const card = nodo.closest('[data-bloque="diagnostico"]');
+              const fil = card ? card.querySelector('[data-filosofia]') : null;
+              if (fil) { try { SGADD_CONCLUSIONES.refinarFilosofia(fil, paq); } catch (e) { /* queda la del box score */ } }
+            }
+            return;
+          }
           nodo.innerHTML = nombreTramos ? relojTramosAdn(paq, nombreTramos)
             : nombreQuintetos ? quintetosJugador(paq, nombreQuintetos)
             : nombreRendimiento ? (typeof SGADD_RENDIMIENTO !== 'undefined' ? SGADD_RENDIMIENTO.html(paq, nombreRendimiento) : '')
@@ -2974,7 +3023,7 @@ const SGADD_PBP = (function () {
           activar(nodo, paq);
         }).catch((e) => {
           if (!nodo.isConnected) return;
-          if (nombreTramos || tipo === 'conclusiones') { nodo.innerHTML = ''; return; }
+          if (nombreTramos || tipo === 'conclusiones' || tipo === 'rival-frias' || tipo === 'rival-concesiones') { nodo.innerHTML = ''; return; }
           nodo.innerHTML = vacio(esc(e && e.message ? e.message : 'No se pudo cargar el análisis.'));
         }));
     });
@@ -3144,7 +3193,7 @@ const SGADD_PBP = (function () {
   return {
     CAPA, NOMBRES_ZONA, FAMILIAS, ZONAS, GEOMETRIA, MIN_LIGA_HEX,
     html, mapaCard, jugador, mapa, capaTiros, bloqueSecciones, tieneSecciones, geometriaZonas, zonaGeometrica,
-    diagnosticoZonas, diagnosticoJugador, cruceZonas, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
+    diagnosticoZonas, diagnosticoJugador, cruceZonas, diagnosticoRival, rivalFriasHtml, rivalConcesionesHtml, espacioRival, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
     activa, espacio, espacioJugador, espacioQuintetosJugador, quintetosJugador, onOffDe, avisoSinCapa, espacioRendimiento, espacioConclusiones, montarPendientes, activar, apellido, _cache: cache,
     partidoDe, mapaPartido, momentumPartido, quintetosPartido, espacioPartido, MIN_TIROS_DIAGNOSTICO,
     relojTabla, relojIdentidad, relojPerfilJugador, relojEquipo, relojJugador, relojPartido, relojReparto, FRANJAS_RELOJ,

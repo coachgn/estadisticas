@@ -1741,13 +1741,13 @@ const tildadas = (function () {
   return require('vm').runInNewContext('(' + scoutJs.slice(scoutJs.indexOf('{', ini), scoutJs.indexOf('},', ini) + 1) + ')');
 })();
 const diez = SCOUT_CARDS_V.filter(c => !c.capa);
-check('el modal ofrece las 10 cards, cada una por separado y en el orden del informe',
-  diez.map(c => c.id).join(',') === 'encabezado,matriz,ciclo,resumen,marcas,jugadores,resto,claves,marcas-tabla,fichas',
+check('el modal ofrece las 13 cards (las 10 de siempre y las 3 del soporte de decisión), cada una por separado y en el orden del informe',
+  diez.map(c => c.id).join(',') === 'encabezado,tres-cosas,diagnostico,matriz,ciclo,resumen,marcas,concesiones,jugadores,resto,claves,marcas-tabla,fichas',
   diez.map(c => c.id).join(','));
 check('y cada opción lleva el título de su card',
-  diez.map(c => c.label).join(' | ') === ['Reporte de scouting', '📊 Métricas avanzadas y ranking en la liga',
+  diez.map(c => c.label).join(' | ') === ['Reporte de scouting', '⏱ Tiempo muerto · las 3 cosas', '🩺 Diagnóstico del rival y su versión perdedora', '📊 Métricas avanzadas y ranking en la liga',
     '🔀 Splits local/visitante y tendencia reciente', '🧠 Resumen de criterio estratégico',
-    '🛡 Plan defensivo · marca asignada', '👥 Jugadores clave', '🧩 Resto del plantel',
+    '🛡 Plan defensivo · marca asignada', '⚖ El mal menor · matriz de concesiones', '👥 Jugadores clave', '🧩 Resto del plantel',
     '🎯 Claves estratégicas y anticipación', '🛡 Marcas · jugador por jugador',
     '📋 Ficha de análisis por jugador'].join(' | '), diez.map(c => c.label).join(' | '));
 check('todas arrancan tildadas',
@@ -2566,6 +2566,23 @@ check('nadie recibe «no se ayuda desde él» mientras una clave pide colapsar s
       !/NO AYUDAR DESDE ÉL|PROHIBIDO FLOTAR/.test(f.marca.restriccion.titulo) ||
       S.senales(f.perfil).amenazaExteriorPrimaria);
   })());
+
+/* ---------- Soporte de decisión del informe (v313) ---------- */
+{
+  const claves = ['ATENAS A', 'PLATENSE A', 'NAUTICO ENSENADA', 'UNIVERSAL'];
+  let todasOk = true, intocableConcedido = false, tresCosasMal = false;
+  claves.forEach((rival) => {
+    const nuestro = claves.find(c => c !== rival);
+    const inf = S.informePrePartido(idx, nuestro, rival, { claveRival: rival });
+    if (!inf.ok || !inf.quiebreRival || !inf.concesionesRival || !Array.isArray(inf.tresCosas)) todasOk = false;
+    const intoc = (inf.jugadoresRival.plan.intocables || []).map(x => x.nombre);
+    if (inf.concesionesRival.opciones.some(o => intoc.indexOf(o.jugador) !== -1)) intocableConcedido = true;
+    if (inf.tresCosas.length > 3) tresCosasMal = true;
+  });
+  check('el informe trae quiebre, concesiones y tres cosas para cada rival, sin errores', todasOk);
+  check('en ningún cruce de la liga se concede a un intocable del plan', !intocableConcedido);
+  check('las tres cosas son tres como mucho', !tresCosasMal);
+}
 
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');

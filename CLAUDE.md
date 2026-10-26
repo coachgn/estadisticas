@@ -164,6 +164,9 @@ node test-rendimiento.js   #  83 tests · la card de Rendimiento del jugador: el
 node test-conclusiones.js  #  85 tests · la card de conclusiones clínicas de Equipos y Jugadores, los tipos
                            #             de posesión del PBP y la terna de logos del PDF (punto 141)
 
+node test-diagnostico-rival.js # 43 tests · el soporte de decisión del Scouting: la versión perdedora del
+                           #             rival, la matriz de concesiones y las tres cosas (punto 146)
+
 node test-backend.js       # 468 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
 
@@ -292,7 +295,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=312`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=313`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16002,3 +16005,85 @@ capa `pbp` cruza sus señales; sin él, exactamente la del punto 144.
   play-by-play». Un fallo deja la del box score.
 - Medido sobre los 17 paquetes de la Conferencia Norte (solo PBP): 5
   Perímetro, 4 Transición, 1 Set y 7 Equilibrado.
+
+## 146. EL SOPORTE DE DECISIÓN DEL SCOUTING · versión perdedora, mal menor y las tres cosas (2026-10-26)
+
+Assets en `?v=313`. Para TODOS los planes (ninguna de las tres cards es del
+ORO) y con box score solo: el play-by-play suma las zonas por otro camino.
+`test-diagnostico-rival.js` fija todo; el cableado, `test-scouting.js` y
+`test-pbp.js`.
+
+Tres cards nuevas en el informe, también opciones del modal de exportación:
+
+| Card | Dónde | Qué dice |
+|---|---|---|
+| ⏱ **Tiempo muerto · las 3 cosas** | justo debajo del encabezado | la amenaza, su versión perdedora y la decisión del mal menor |
+| 🩺 **Diagnóstico del rival** | debajo de las tres cosas | dependencias de uso, fugas y fortalezas, su versión perdedora, zonas frías y filosofía |
+| ⚖ **El mal menor** | debajo del plan defensivo | qué conceder, de menor a mayor costo |
+
+Semáforo `▲ ● ▼ ◆` desde la mirada del rival: ▲ es fuerte (hay que
+respetarlo), ▼ débil (se explota), ● en rango, ◆ informativo. Nunca solo
+color: el glifo va escrito.
+
+### La versión perdedora (`versionPerdedora`, `textoQuiebre`)
+
+Separa los partidos del rival en ganados y perdidos y busca, entre seis
+métricas (`METRICAS_QUIEBRE`: eFG%, T3%, %TOV, RO%, eFG% de sus rivales,
+RTL%), la que más los distingue en desvíos conjuntos. El punto de quiebre es
+el medio entre las dos medias; con ese corte cuenta cuántas veces pierde
+del lado malo («pierde 13 de 15 partidos»).
+
+- **Solo cuenta si gana con el lado BUENO de la métrica.** Ganar con peor
+  eFG% no es un quiebre, es ruido, y el texto dice que ninguna métrica
+  separa.
+- **Pide 3 ganados y 3 perdidos**, y 3 partidos del lado malo. Con menos de
+  6 de un lado va con «muestra chica». Con 13 fechas es lo más frágil del
+  diseño y la card lo dice.
+- **No es causal**, y la card lo dice: que pierda cuando cae no prueba que se
+  lo pueda forzar. Cada métrica trae la acción que el cuerpo técnico puede
+  hacer (`accion`), como lectura.
+- Usa `idx.agregarPartidos(clave, [partido])`: el mismo cálculo del ciclo.
+
+### El mal menor (`concesiones`)
+
+Sale de `jugadoresClave` con el plan colectivo ya calculado, así que no
+puede contradecir la tabla de marcas. **Un intocable nunca aparece, ni un
+foco** (a ese se lo dobla). Opciones: dejar tirar de tres a un tirador frío
+(costo = su PPT3) y mandar a la línea al que la falta le cuesta menos
+(costo = 2 × T1%, dos libres). Ordenadas de menor a mayor costo, hasta 5.
+Cada una dice el volumen que absorbe y qué protege: la ayuda sobre el foco y
+el box-out del cristal para el tiro; para la falta, que corta la jugada, y
+que **el bonus y las faltas de nuestros defensores los mira el cuerpo
+técnico** (el panel no conoce el estado del partido, punto 64).
+
+### Las tres cosas (`tresCosas`)
+
+Determinista: la amenaza (el intocable antes que el foco), la versión
+perdedora y la concesión más barata con lo que no se concede. Lo que el dato
+no sostiene no se escribe: faltan piezas, quedan menos de tres.
+
+### Con el play-by-play
+
+`SGADD_PBP.diagnosticoRival(paq)` (PURA) suma dos piezas, montadas después de
+pintar por los lugares `espacioRival(equipo, 'frias' | 'concesiones')`:
+- **zonas frías**: las del mapa bajo la liga, ajustadas por muestra (20 tiros
+  de liga), con 20 tiros mínimos;
+- **ceder una zona**: las que menos cuesta cederle, **nunca el aro (Z1-Z4)**.
+
+El montaje también refina la línea de filosofía del Diagnóstico con el
+paquete (`refinarFilosofia`, punto 145). **Sin paquete, o con la carga
+fallida, el lugar queda vacío y la card dice que el mapa necesita la capa de
+laboratorio**: el modo degradado es box score puro.
+
+### Lo que el dato NO permite
+
+Presión de bonus y faltas por cuarto en vivo, y play types: se emiten como
+condición que verifica el DT, no como cálculo.
+
+### Verificado
+
+Al revés, tres mutaciones del motor, todas caen: concesiones sin el filtro de
+intocables (4), el quiebre sin la dirección buena (2) y las concesiones sin
+ordenar (5). En el navegador, sobre la demo, las tres cards salen en su
+orden con datos. **No verificado**: el PDF real (paginado de la hoja 1) ni
+las zonas frías con una sesión que tenga la capa `pbp`.

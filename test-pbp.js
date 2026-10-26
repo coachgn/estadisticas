@@ -493,6 +493,16 @@ function paquete(equipo) {
   const sinDiag = P.mapa(p3, { diag: false });
   check('el diagnóstico se puede ocultar', !/pbp-contorno/.test(sinDiag) && !/pbp-diagnostico/.test(sinDiag) && /data-pbp-accion="diag:1"/.test(sinDiag));
 
+  /* ---- el soporte de decisión del rival (v313) */
+  const dr = P.diagnosticoRival(p3);
+  check('rival: sin paquete no hay diagnóstico ni piezas (modo degradado)', P.diagnosticoRival(null) === null && P.rivalFriasHtml(null) === '' && P.rivalConcesionesHtml(null) === '');
+  check('rival: las zonas frías piden 20 tiros y estar bajo la liga', dr.frias.every(f => f.i >= 20 && f.delta <= -0.03));
+  check('rival: nunca se le cede el aro (Z1-Z4) y van de menor a mayor costo',
+    !dr.concesiones.some(f => /^Z[1-4]$/.test(f.zona)) && dr.concesiones.every((f, i, l) => i === 0 || l[i - 1].ppt <= f.ppt) && dr.concesiones.every(f => f.delta < 0));
+  check('rival: el lugar del montaje trae su tipo y degrada vacío', /data-pbp-tipo="rival-frias"/.test(P.espacioRival('X', 'frias')) && /data-pbp-tipo="rival-concesiones"/.test(P.espacioRival('X', 'concesiones')));
+  check('rival: el montaje sabe pintar los dos tipos y refinar la filosofía', /tipo === 'rival-frias' \|\| tipo === 'rival-concesiones'/.test(fs.readFileSync('js/sgadd-pbp.js', 'utf8'))
+    && /refinarFilosofia\(fil, paq\)/.test(fs.readFileSync('js/sgadd-pbp.js', 'utf8')));
+
   /* ---- jugador */
   const dj = P.diagnosticoJugador(p3, '2');
   check('jugador: picos, puntos a explotar, criterio de ajuste y puntos de fuga por zona',
@@ -1194,7 +1204,7 @@ function paquete(equipo) {
     check('las etiquetas se inyectan en el ADN del jugador', /Función por tramo del reloj/.test(adnT) && /Finalizador 1x1/.test(adnT) && /Reboteador Defensivo/.test(adnT), adnT);
     check('el ADN deja su lugar solo con la capa, y la carga fallida no deja cartel',
       /SGADD_PBP\.espacioTramos\(j\['NOMBRES'\], j\['EQUIPO'\]\)/.test(fs.readFileSync(path.join(__dirname, 'js/sgadd-jugadores.js'), 'utf8'))
-        && /if \(nombreTramos(?: \|\| tipo === 'conclusiones')?\) \{ nodo\.innerHTML = ''; return; \}/.test(fuentePbp));
+        && /if \(nombreTramos(?: \|\| tipo === '[a-z-]+')*\) \{ nodo\.innerHTML = ''; return; \}/.test(fuentePbp));
     check('el semáforo tiene su variante de papel', /\.tramo-verde \{/.test(cssIdx) && /body \.tramo-verde/.test(cssIdx));
     const MT = P.METODOLOGIA_RELOJ.tramos;
     check('la metodología lista las 20 etiquetas por tramo con su regla', MT.reduce((a, t) => a + t.etiquetas.length, 0) === 20
