@@ -213,28 +213,127 @@ const SGADD_CONCLUSIONES = (function () {
       costo: 'En un equipo físico, la falta innecesaria cuesta posesiones de las que más rinden' },
   };
 
-  /** Etiqueta la filosofía de un equipo (`e`) con sus percentiles contra la
-      liga. Devuelve null sin índice, o `{ id: 'equilibrado' }` si ninguna
-      se separa. */
-  function DetectarFilosofiaDT(idx, e) {
+  /** Los puntajes del box score (0-100, percentil contra la liga). */
+  function puntajesBox(idx, e) {
     if (!idx || !e || typeof idx.leer !== 'function') return null;
     const p = (k) => { const r = idx.leer(e.clave, k); return r && esNum(r.percentil) ? r.percentil : null; };
     const prom = (ks) => { const v = ks.map(p).filter(esNum); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
     const pace = p('PACE'), cuida = p('PePP%');
-    const puntajes = {
+    return {
       transicion: pace,
       set: pace == null ? null : (cuida == null ? 100 - pace : (100 - pace + cuida) / 2),
       perimetro: p('PT3%'),
       fisico: prom(['RO%', 'RTL%']),
     };
+  }
+
+  /* Una razón contra la liga (1 = igual) a la escala 0-100 de los
+     percentiles: 1,4 veces la liga es 100, 0,6 veces es 0. */
+  const escala = (r) => (esNum(r) && r > 0 ? Math.max(0, Math.min(100, 50 + 125 * (r - 1))) : null);
+  const promN = (v) => { const x = v.filter(esNum); return x.length ? x.reduce((a, b) => a + b, 0) / x.length : null; };
+
+  /** Las señales del play-by-play en la misma escala (PURA). Cada una se
+      mide contra la liga del mismo paquete: ritmo (parte de los tiros en
+      0-7 s), selección (parte de triples y de aro en el mapa), físico
+      (aro, faltas que van a la línea y tapones) y disciplina (pérdidas
+      castigadas en 7 s y cuartos en bonus contra el rival). Lo que el
+      paquete no trae queda en null y no pesa. */
+  function senalesPbp(paq) {
+    if (!paq || !paq.liga) return null;
+    const L = paq.liga, out = {};
+    const rf = paq.reloj && paq.reloj.favor && paq.reloj.favor.f, lf = L.reloj && L.reloj.f;
+    if (Array.isArray(rf) && Array.isArray(lf) && rf.length === 3 && lf.length === 3) {
+      const t = rf.reduce((a, x) => a + (Array.isArray(x) ? x[0] : 0), 0), tl = lf.reduce((a, x) => a + (Array.isArray(x) ? x[0] : 0), 0);
+      if (t >= 100 && tl && lf[0][0]) out.ritmo = escala((rf[0][0] / t) / (lf[0][0] / tl));
+    }
+    const zonas = paq.tiros && paq.tiros.zonas, zl = L.zonas;
+    if (Array.isArray(zonas) && Array.isArray(zl)) {
+      const suma = (lst, re) => lst.filter(z => re.test(z.zona)).reduce((a, z) => a + (z.i || 0), 0);
+      const tot = suma(zonas, /^Z\d+$/), totL = suma(zl, /^Z\d+$/);
+      if (tot >= 100 && totL) {
+        const parte = (re) => (suma(zl, re) ? (suma(zonas, re) / tot) / (suma(zl, re) / totL) : null);
+        out.triple = escala(parte(/^Z1[0-4]$/));
+        out.aro = escala(parte(/^Z[1-4]$/));
+      }
+    }
+    const R = paq.rendimiento && paq.rendimiento.jugadores;
+    const C = L.rendimiento && L.rendimiento.cortes;
+    if (R && C) {
+      const js = Object.keys(R).map(k => R[k]).filter(Boolean);
+      const sum = (f) => js.reduce((a, j) => a + (f(j) || 0), 0);
+      const faltas = sum(j => (Array.isArray(j.fr) ? j.fr[0] - j.fr[8] : 0));
+      const linea = sum(j => (Array.isArray(j.fr) ? j.fr[1] + j.fr[2] + j.fr[3] + j.fr[4] : 0));
+      if (faltas >= 30 && C.linea && C.linea.p50 > 0) out.linea = escala((linea / faltas) / C.linea.p50);
+      const perd = sum(j => (Array.isArray(j.pp) ? j.pp[0] : 0)), cast = sum(j => (Array.isArray(j.pp) ? j.pp[3] : 0));
+      if (perd >= 30 && C.tcdp && C.tcdp.p50 > 0) out.cuida = escala(C.tcdp.p50 / Math.max(cast / perd, 0.01));
+    }
+    const fe = paq.rendimiento && paq.rendimiento.faltasEq;
+    if (Array.isArray(fe) && fe[0] >= 20 && fe[3] > 0) out.bonus = escala(fe[3] / Math.max(fe[1], 1));
+    return Object.keys(out).some(k => esNum(out[k])) ? out : null;
+  }
+
+  /** Los puntajes del play-by-play, en las mismas cuatro filosofías. */
+  function puntajesPbp(sp) {
+    if (!sp) return null;
+    const disciplina = promN([sp.cuida, sp.bonus]);
+    return {
+      transicion: esNum(sp.ritmo) ? sp.ritmo : null,
+      set: promN([esNum(sp.ritmo) ? 100 - sp.ritmo : null, disciplina]),
+      perimetro: esNum(sp.triple) ? sp.triple : null,
+      fisico: promN([sp.aro, sp.linea]),
+    };
+  }
+
+  /** Elige la filosofía con los puntajes: la mayor si llega a 60 y le saca
+      5 a la segunda; si no, Equilibrado. */
+  function elegirFilosofia(puntajes, fuente, senales) {
+    if (!puntajes) return null;
     const orden = Object.keys(puntajes).filter(k => esNum(puntajes[k])).sort((a, b) => puntajes[b] - puntajes[a]);
     if (!orden.length) return null;
     const [g, s2] = orden;
     const ventaja = s2 ? puntajes[g] - puntajes[s2] : puntajes[g];
     const claro = puntajes[g] >= 60 && ventaja >= 5;
-    return { id: claro ? g : 'equilibrado', puntajes, ventaja: Math.round(ventaja),
-      ...(claro ? FILOSOFIAS[g] : { label: 'Equilibrado', frase: 'no se define por un estilo: ningún rasgo se separa claramente de la liga',
-        sostener: 'Para que su sistema sea sostenible, conviene sostener lo que ya rinde', costo: 'Cada desvío se paga igual en cualquier estilo' }) };
+    return Object.assign({ id: claro ? g : 'equilibrado', puntajes, ventaja: Math.round(ventaja), fuente, senales: senales || null },
+      claro ? FILOSOFIAS[g] : { label: 'Equilibrado', frase: 'no se define por un estilo: ningún rasgo se separa claramente de la liga',
+        sostener: 'Para que su sistema sea sostenible, conviene sostener lo que ya rinde', costo: 'Cada desvío se paga igual en cualquier estilo' });
+  }
+
+  /** Mezcla el box score con el play-by-play: promedio de los dos donde
+      existen los dos; donde falta uno, el otro. Sin play-by-play, el box. */
+  function filosofiaHibrida(box, paq) {
+    const sp = senalesPbp(paq), pb = puntajesPbp(sp);
+    if (!pb) return elegirFilosofia(box, 'box', null);
+    if (!box) return elegirFilosofia(pb, 'pbp', sp);
+    const out = {};
+    Object.keys(FILOSOFIAS).forEach((k) => { out[k] = promN([box[k], pb[k]]); });
+    return elegirFilosofia(out, 'hibrida', sp);
+  }
+
+  /** Etiqueta la filosofía de un equipo (`e`). Con el paquete del
+      play-by-play (`paq`) cruza sus señales; sin él, solo el box score.
+      Devuelve null sin datos, o `{ id: 'equilibrado' }` si ninguna se separa. */
+  function DetectarFilosofiaDT(idx, e, paq) {
+    return filosofiaHibrida(puntajesBox(idx, e), paq);
+  }
+
+  /** La línea de la filosofía en la card. Lleva los puntajes del box para
+      que el montaje del play-by-play la refine sin volver a leer el índice. */
+  function filosofiaHtml(f, conAlertas) {
+    if (!f) return '';
+    const fuente = f.fuente === 'hibrida' ? ' · box score + play-by-play' : f.fuente === 'pbp' ? ' · play-by-play' : '';
+    const box = f.fuente === 'box' ? ` data-filosofia-box="${esc(JSON.stringify(f.puntajes))}"` : '';
+    return `<p class="rend-pie-t" data-filosofia="${esc(f.id)}" data-filosofia-fuente="${esc(f.fuente)}"${box}${conAlertas ? ' data-filosofia-alertas="1"' : ''}>◆ <strong>${esc(f.label)}</strong>${esc(fuente)}: ${esc(f.frase)}. ${esc(f.sostener)}.${conAlertas ? ' ' + esc(f.costo) + '.' : ''}</p>`;
+  }
+
+  /** Refina la línea ya pintada con el paquete (la llama el montaje). */
+  function refinarFilosofia(nodo, paq) {
+    if (!nodo || typeof nodo.getAttribute !== 'function') return null;
+    let box = null;
+    try { box = JSON.parse(nodo.getAttribute('data-filosofia-box') || 'null'); } catch (e) { box = null; }
+    const f = filosofiaHibrida(box, paq);
+    if (!f || f.fuente === 'box') return f;
+    nodo.outerHTML = filosofiaHtml(f, nodo.getAttribute('data-filosofia-alertas') === '1');
+    return f;
   }
 
   /* ================================================== LAS CUATRO DIMENSIONES
@@ -710,8 +809,7 @@ const SGADD_CONCLUSIONES = (function () {
     const resumen = [
       c.fortalezas.length + ' para sostener', c.ajustes.length + ' ajustes', c.alertas.length + ' puntos de quiebre',
     ].join(' · ');
-    const f = c.filosofia;
-    const filo = f ? `<p class="rend-pie-t" data-filosofia="${esc(f.id)}">◆ <strong>${esc(f.label)}</strong>: ${esc(f.frase)}. ${esc(f.sostener)}.${c.alertas.length ? ' ' + esc(f.costo) + '.' : ''}</p>` : '';
+    const filo = filosofiaHtml(c.filosofia, c.alertas.length > 0);
     const contexto = filo + (o.contexto ? `<p class="rend-pie-t">${esc(o.contexto)}</p>` : '');
     return `<section class="rend-raiz concl-card card rounded-xl p-4 sm:p-5 border border-hairline" data-conclusiones="${esc(o.tipo || 'equipo')}">
       <div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">
@@ -745,7 +843,7 @@ const SGADD_CONCLUSIONES = (function () {
         <ul class="concl-lista">${proy.map(itemHtml).join('')}</ul></div>` : ''}</div>`;
   }
 
-  return { DIMENSIONES, FILOSOFIAS, DetectarFilosofiaDT, dimensiones, dimDe, dimensionesHtml, valorObjetivo, proyeccionEquipo, proyeccionJugador, proyeccionHtml,
+  return { DIMENSIONES, FILOSOFIAS, DetectarFilosofiaDT, puntajesBox, senalesPbp, puntajesPbp, filosofiaHibrida, filosofiaHtml, refinarFilosofia, dimensiones, dimDe, dimensionesHtml, valorObjetivo, proyeccionEquipo, proyeccionJugador, proyeccionHtml,
     PALANCAS_EQ, PALANCAS_J, OBJETIVO,
     VERDE, ROJO, tonoPct, equipo, jugador, ejeDe, POR_EJE, EQ, JUG,
     calificar, tiposDePosesion, fichaEquipo, fichasEquipo, mediaDistancia, pbpEquipo, pbpJugador, html, pbpHtml, ejesHtml };

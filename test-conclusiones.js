@@ -211,5 +211,52 @@ check('el logo de la liga sale del manifiesto (`_liga`) y no entra al mapa de eq
   check('el jugador no lleva filosofía', !('filosofia' in C.jugador(fake({}), {}, null)));
 }
 
+/* ---------- DetectarFilosofiaDT híbrida (v312) ---------- */
+{
+  const fake = (m) => ({ leer: (c, k) => (k in m ? { percentil: m[k], valor: 1 } : null) });
+  const E = { clave: 'X' };
+  const z = (zona, i) => ({ zona, i, c: Math.round(i / 2) });
+  const zonasLiga = [z('Z1', 400), z('Z5', 300), z('Z10', 300)];
+  // Un paquete que corre mucho: 40 % de sus tiros en 0-7 s contra 20 % de la liga.
+  const paqVertigo = {
+    liga: { reloj: { f: [[200, 100, 220], [500, 250, 500], [300, 120, 260]] }, zonas: zonasLiga,
+      rendimiento: { cortes: { linea: { p25: 0.2, p50: 0.3, p75: 0.4 }, tcdp: { p25: 0.2, p50: 0.25, p75: 0.3 } } } },
+    reloj: { favor: { f: [[80, 40, 90], [80, 40, 80], [40, 15, 35]] } },
+    tiros: { zonas: [z('Z1', 40), z('Z5', 30), z('Z10', 30)] },
+  };
+  const sp = C.senalesPbp(paqVertigo);
+  check('PBP: el ritmo sale de la parte de tiros en 0-7 s contra la liga', sp && sp.ritmo === 100);
+  check('PBP: selección con triple y aro contra la liga (igual reparto = 50)', sp.triple === 50 && sp.aro === 50);
+  check('PBP: lo que el paquete no trae no pesa (sin rendimiento no hay línea ni TCDP)', !('linea' in sp) && !('cuida' in sp));
+  const boxEquilibrado = { PACE: 50, 'PT3%': 50, 'RO%': 50, 'RTL%': 50, 'PePP%': 50 };
+  check('sin paquete: fallback al box score', C.DetectarFilosofiaDT(fake(boxEquilibrado), E).fuente === 'box'
+    && C.DetectarFilosofiaDT(fake(boxEquilibrado), E).id === 'equilibrado');
+  const h = C.DetectarFilosofiaDT(fake(boxEquilibrado), E, paqVertigo);
+  check('con paquete: híbrida, y el ritmo del PBP define Transición', h.fuente === 'hibrida' && h.id === 'transicion', h);
+  check('híbrida = promedio de box y PBP en cada filosofía', h.puntajes.transicion === 75);
+  check('paquete sin señales útiles: sigue el box, sin errores', C.DetectarFilosofiaDT(fake(boxEquilibrado), E, { liga: {} }).fuente === 'box'
+    && C.DetectarFilosofiaDT(fake(boxEquilibrado), E, null).fuente === 'box');
+  check('sin box y con paquete: sale solo del PBP', C.filosofiaHibrida(null, paqVertigo).fuente === 'pbp');
+  const conRend = Object.assign({}, paqVertigo, { rendimiento: {
+    jugadores: { a: { fr: [60, 10, 10, 5, 5, 0, 0, 0, 0], pp: [40, 20, 0, 4] } }, faltasEq: [30, 4, 1, 8] } });
+  const sp2 = C.senalesPbp(conRend);
+  check('PBP: faltas que van a la línea contra la mediana, pérdidas castigadas y bonus', sp2.linea > 50 && sp2.cuida > 50 && sp2.bonus > 50, sp2);
+  // La línea del box se refina en el montaje sin volver a leer el índice.
+  const f0 = C.DetectarFilosofiaDT(fake(boxEquilibrado), E);
+  const html0 = C.filosofiaHtml(f0, false);
+  check('la línea del box lleva sus puntajes para refinarse', /data-filosofia-box=/.test(html0) && /data-filosofia-fuente="box"/.test(html0));
+  const attrs = { 'data-filosofia-box': JSON.stringify(f0.puntajes) };
+  const nodo = { getAttribute: (k) => (k in attrs ? attrs[k] : null), outerHTML: html0 };
+  const fr = C.refinarFilosofia(nodo, paqVertigo);
+  check('refinarFilosofia reemplaza la línea por la híbrida', fr.id === 'transicion' && /data-filosofia-fuente="hibrida"/.test(nodo.outerHTML)
+    && /box score \+ play-by-play/.test(nodo.outerHTML));
+  const nodo2 = { getAttribute: (k) => (k in attrs ? attrs[k] : null), outerHTML: html0 };
+  C.refinarFilosofia(nodo2, null);
+  check('refinarFilosofia sin paquete no toca la línea', nodo2.outerHTML === html0);
+  const PBP_SRC = fs.readFileSync('js/sgadd-pbp.js', 'utf8');
+  check('el montaje de las conclusiones refina la filosofía', /C\.refinarFilosofia\(fil, paq\)/.test(PBP_SRC));
+  check('los cortes no se tocan', C.VERDE === 70 && C.ROJO === 40);
+}
+
 console.log('\n' + (mal ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + mal + ' fallaron');
 process.exit(mal ? 1 : 0);

@@ -2955,6 +2955,11 @@ const SGADD_PBP = (function () {
             const C = typeof SGADD_CONCLUSIONES !== 'undefined' ? SGADD_CONCLUSIONES : null;
             const nj = nodo.getAttribute('data-pbp-concl-jugador');
             nodo.innerHTML = C ? C.pbpHtml(nj ? C.pbpJugador(paq, nj) : C.pbpEquipo(paq)) : '';
+            /* La filosofía del equipo: el box score ya la pintó; con el
+               paquete se cruza con el play-by-play (v312). */
+            const card = !nj && C && C.refinarFilosofia && nodo.closest ? nodo.closest('[data-conclusiones]') : null;
+            const fil = card ? card.querySelector('[data-filosofia]') : null;
+            if (fil) { try { C.refinarFilosofia(fil, paq); } catch (e) { /* queda la del box score */ } }
             return;
           }
           nodo.innerHTML = nombreTramos ? relojTramosAdn(paq, nombreTramos)

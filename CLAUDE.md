@@ -161,7 +161,7 @@ node test-muestra.js       # 156 tests · el selector de muestra de Equipos y Ju
 node test-rendimiento.js   #  83 tests · la card de Rendimiento del jugador: el motor puro, las degradaciones,
                            #             la vista y el cableado de la pestaña (punto 140)
 
-node test-conclusiones.js  #  71 tests · la card de conclusiones clínicas de Equipos y Jugadores, los tipos
+node test-conclusiones.js  #  85 tests · la card de conclusiones clínicas de Equipos y Jugadores, los tipos
                            #             de posesión del PBP y la terna de logos del PDF (punto 141)
 
 node test-backend.js       # 468 tests · el proxy, el benchmark, las alertas, el catálogo en KV
@@ -292,7 +292,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=311`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=312`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15978,3 +15978,27 @@ las franjas del reloj, ni la ingesta.
   con la frase de identidad, la fórmula «para que sea sostenible…» y, si hay
   puntos de quiebre, el costo de oportunidad propio de ese estilo.
 - Sin índice o sin percentiles devuelve `null`; el jugador no lleva filosofía.
+
+## 145. DetectarFilosofiaDT HÍBRIDA · box score + play-by-play (2026-10-26)
+
+Assets en `?v=312`. `DetectarFilosofiaDT(idx, e, paq)`: con el paquete de la
+capa `pbp` cruza sus señales; sin él, exactamente la del punto 144.
+
+- **Señales del play-by-play** (`senalesPbp`, PURA), todas contra la liga del
+  mismo paquete y llevadas a la escala 0-100 (`escala`: 1,4 veces la liga =
+  100, 0,6 = 0): ritmo (parte de los tiros en 0-7 s), triple y aro (parte de
+  los tiros de Z10-Z14 y Z1-Z4 en el mapa), línea (faltas recibidas que van a
+  la línea contra la mediana `cortes.linea`), cuidado (TCDP contra
+  `cortes.tcdp`, menos es mejor) y bonus (cuartos del rival en bonus contra
+  los propios, `faltasEq`). Lo que el paquete no trae queda en null y no pesa.
+- **Tapones no entran**: el paquete no trae una vara de tapones por equipo, y
+  sin vara no se compara.
+- `puntajesPbp` arma las cuatro filosofías con esas señales y
+  `filosofiaHibrida` promedia box y PBP donde existen los dos (si falta uno,
+  manda el otro). La elección es la misma: 60 y 5 de ventaja, o Equilibrado.
+- **Cómo llega a la card**: la línea del box se pinta con sus puntajes
+  (`data-filosofia-box`); cuando el montaje de las conclusiones baja el
+  paquete, `refinarFilosofia` la reemplaza por la híbrida y dice «box score +
+  play-by-play». Un fallo deja la del box score.
+- Medido sobre los 17 paquetes de la Conferencia Norte (solo PBP): 5
+  Perímetro, 4 Transición, 1 Set y 7 Equilibrado.
