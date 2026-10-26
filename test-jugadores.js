@@ -1360,7 +1360,7 @@ check('el log de partidos suma las tres columnas de tiro',
 /* Tres columnas más: el colspan del vacío tiene que acompañar o la fila
    de "sin datos" queda corta y la tabla se desarma. */
 check('y el colspan del estado vacío acompaña',
-  /colspan="10">${vacio}/.test(fuenteJug) && /Sin partidos con box score/.test(fuenteJug));
+  fuenteJug.indexOf('colspan="10">${vacio}') !== -1 && /Sin partidos con box score/.test(fuenteJug));
 
 /* Sin intentos va "—" y no "0/0": un cero sobre cero se lee como un
    fracaso, y es una zona que el jugador no usó. */
