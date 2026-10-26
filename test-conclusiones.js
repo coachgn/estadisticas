@@ -106,15 +106,78 @@ const PBP_SRC = fs.readFileSync('./js/sgadd-pbp.js', 'utf8');
 const INF_SRC = fs.readFileSync('./js/sgadd-informe.js', 'utf8');
 const HTML = fs.readFileSync('./index.html', 'utf8');
 const orden = (src, ids) => ids.map(i => src.indexOf("{ id: '" + i + "',")).every((p, k, a) => p > -1 && (k === 0 || p > a[k - 1]));
-check('Equipos: la card es la solapa Diagnóstico, después de General', orden(EQ_SRC.slice(EQ_SRC.indexOf('const EQUIPOS_TABS')), ['general', 'diagnostico', 'ofensiva'])
+check('Equipos: sus solapas propias y el mismo cierre · Partidos · Quintetos · Mapa de tiro · Diagnóstico',
+  orden(EQ_SRC.slice(EQ_SRC.indexOf('const EQUIPOS_TABS')), ['general', 'ofensiva', 'defensiva', '4factores', 'condicion', 'personalidad', 'plantel', 'partidos', 'pbp', 'pbp-tiro', 'diagnostico'])
   && /case 'diagnostico': return equiposConclusiones\(idx, e\);/.test(EQ_SRC) && !/equiposHeader\(idx, e\),\s*equiposConclusiones/.test(EQ_SRC));
-check('Jugadores también: GENERAL · DIAGNÓSTICO · TIRO · RENDIMIENTO · EVOLUCIÓN · PARTIDOS', /case 'diagnostico': return jugadoresConclusiones\(idx, j\);/.test(JUG_SRC)
+check('Jugadores: GENERAL · TIRO · RENDIMIENTO · EVOLUCIÓN · PARTIDOS · QUINTETOS · MAPA DE TIRO · DIAGNÓSTICO', /case 'diagnostico': return jugadoresConclusiones\(idx, j\);/.test(JUG_SRC)
   && !/jugadoresHeader\(idx, j\),\s*jugadoresConclusiones/.test(JUG_SRC)
-  && orden(JUG_SRC.slice(JUG_SRC.indexOf('const JUGADORES_TABS')), ['general', 'diagnostico', 'tiro', 'rendimiento', 'evolucion', 'partidos']));
+  && orden(JUG_SRC.slice(JUG_SRC.indexOf('const JUGADORES_TABS')), ['general', 'tiro', 'rendimiento', 'evolucion', 'partidos', 'quintetos', 'mapa', 'diagnostico']));
+check('el mapa del jugador salió de Tiro a su propia solapa', /case 'mapa':\s+return jugadoresBloqueMapaPbp\(j\);/.test(JUG_SRC)
+  && !/\$\{jugadoresBloqueMapaPbp\(j\)\}/.test(JUG_SRC));
+check('Quintetos y Mapa de tiro se ven SIEMPRE: sin la capa, el aviso y no un hueco',
+  /EQUIPOS_TABS\.slice\(\)/.test(EQ_SRC) && /avisoSinCapa\(id === 'pbp' \? 'Quintetos' : 'Mapa de tiro'\)/.test(EQ_SRC)
+  && /avisoSinCapa\('Quintetos'\)/.test(JUG_SRC) && /avisoSinCapa\('Mapa de tiro'\)/.test(JUG_SRC));
 check('las pestañas de Equipos ya no usan statCard sueltas', (EQ_SRC.match(/SGADD_UI\.statCard\(/g) || []).length === 1);
 check('el play-by-play se monta en su ranura, y la carga fallida no deja cartel', /tipo === 'conclusiones'/.test(PBP_SRC) && /espacioConclusiones/.test(PBP_SRC));
 check('el informe del equipo ofrece la card como sub-card', /equipo\.ficha\.conclusiones/.test(INF_SRC));
 check('el módulo carga después de Rendimiento', HTML.indexOf('sgadd-rendimiento.js?v=') < HTML.indexOf('sgadd-conclusiones.js?v='));
+
+/* ===================================================================== */
+titulo('4 bis · las cuatro dimensiones y la proyección de mejora');
+const e0 = equipos[0];
+const c0 = C.equipo(idx, e0);
+check('cuatro dimensiones, cada una con ataque y/o defensa', c0.dimensiones.length === 4
+  && c0.dimensiones.map(d => d.id).join() === 'ritmo,seleccion,fisica,disciplina' && c0.dimensiones.every(d => d.lados.length));
+check('el ritmo es descriptivo: azul, sin percentil', c0.dimensiones[0].lados.find(l => l.lado === 'ataque').tono === 'info'
+  && c0.dimensiones[0].lados.find(l => l.lado === 'ataque').percentil === null);
+check('cada ítem de los ejes dice su dimensión y su lado', c0.fortalezas.concat(c0.ajustes, c0.alertas).filter(i => i.dim).every(i => i.dim.label && /ataque|defensa/.test(i.dim.lado)));
+check('el valor objetivo es el percentil 70 con la dirección de la métrica',
+  C.valorObjetivo([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], false) === 8 && C.valorObjetivo([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], true) === 4 && C.valorObjetivo([1, 2], false) === null);
+let todasBien = true, alguna = 0, ordenadas = true, sinASTPP = true;
+equipos.forEach((e) => {
+  const p = C.equipo(idx, e).proyeccion;
+  alguna += p.palancas.length ? 1 : 0;
+  p.palancas.forEach((x, i) => {
+    if (!(x.percentil < 70 && x.pts > 0 && x.net > 0 && /Costo de oportunidad/.test(x.texto))) todasBien = false;
+    if (i && x.pts > p.palancas[i - 1].pts) ordenadas = false;
+    if (x.clave === 'AST-PP') sinASTPP = false;
+  });
+});
+check('las palancas salen solo de métricas bajo el percentil 70, con puntos y NET positivos', todasBien && alguna > equipos.length / 2);
+check('ordenadas por puntos que recuperan', ordenadas);
+check('lo que no tiene camino a puntos no se proyecta (AST-PP)', sinASTPP && !C.PALANCAS_EQ['AST-PP']);
+/* La cuenta de posesiones contra una mano: llevar el eFG% de .50 a .55 con
+   60 tiros de campo son 6 puntos (0,05 × 2 × 60). */
+check('la cuenta del tiro: Δ eFG% × 2 × tiros de campo', Math.abs(C.PALANCAS_EQ['eFG%'].pts(0.05, { TCI: 60 }) - 6) < 1e-9);
+check('la cuenta de las pérdidas: cada una vale lo que rinde una jugada que termina',
+  Math.abs(C.PALANCAS_EQ['PePP%'].pts(0.02, { PLAYS: 80, PTS: 70, PP: 10 }) - 0.02 * 80 * 1) < 1e-9);
+const pal = C.equipo(idx, equipos.find(e => C.equipo(idx, e).proyeccion.palancas.length)).proyeccion.palancas[0];
+check('la palanca dice el puesto en NET antes y después', pal.puestoDespues <= pal.puestoAntes && pal.de === equipos.length);
+const hP = C.html(C.equipo(idx, equipos[0]), { tipo: 'equipo' });
+check('la card trae el Bloque A (dimensiones) y el Bloque B (proyección)', /data-concl-dims="1"/.test(hP) && /data-concl-proyeccion="1"/.test(hP) && /Proyección de umbrales de mejora/.test(hP));
+const jq = califica.find(x => C.jugador(idx, x, null).proyeccion.palancas.length);
+const pj = C.jugador(idx, jq, null).proyeccion.palancas;
+check('el jugador también: lo que suma él y lo que mueve al NET de su equipo', pj.length && pj.every(x => x.pts > 0 && x.net > 0 && /su rol/.test(x.texto)));
+check('una misma familia de tiro no se cuenta dos veces', pj.filter(x => ['TS%', 'eFG%', 'PPP'].indexOf(x.clave) !== -1).length <= 1);
+const P = require('./js/sgadd-pbp.js');
+check('sin la capa, Quintetos y Mapa dicen qué les falta', /data-pbp-sin-capa="1"/.test(P.avisoSinCapa('Quintetos')) && /◆/.test(P.avisoSinCapa('Mapa de tiro')));
+if (fs.existsSync(DIR)) {
+  const f0 = fs.readdirSync(DIR).filter(f => f.endsWith('.json'))[0];
+  const paq = JSON.parse(fs.readFileSync(DIR + '/' + f0, 'utf8'));
+  const idJ = String(paq.quintetos[0].ids[0]);
+  const hq = P.quintetosJugador(paq, paq.jugadores[idJ].n);
+  check('los quintetos del jugador: solo los que lo incluyen, con su On/Off', /data-subcard="quintetos.jugador"/.test(hq) && /On\/Off Net/.test(hq)
+    && !/NaN|undefined/.test(hq));
+  const enTodos = (paq.quintetos || []).filter(q => q.ids.indexOf(idJ) !== -1).length;
+  check('cuenta las mismas alineaciones que el paquete', new RegExp('Alineaciones</div>[\\s\\S]{0,200}?' + enTodos + '</div>').test(hq) && enTodos > 0, enTodos);
+  let sinNaNp = true;
+  fs.readdirSync(DIR).filter(f => f.endsWith('.json')).forEach((f) => {
+    const p2 = C.pbpEquipo(JSON.parse(fs.readFileSync(DIR + '/' + f, 'utf8')));
+    if (/NaN|undefined/.test(C.pbpHtml(p2))) sinNaNp = false;
+    (p2.proyecciones || []).forEach(x => { if (!/^\+\d/.test(x.valor)) sinNaNp = false; });
+  });
+  check('las prescripciones del play-by-play salen con puntos positivos y sin NaN', sinNaNp);
+}
 
 titulo('5 · la terna del encabezado PDF');
 check('sin contexto, solo MotorStats (como antes)', UI.encabezadoInforme().replace(/<[^>]+>/g, '').trim() === '');
@@ -125,6 +188,7 @@ const sinLogo = UI.encabezadoInforme({ liga: { url: null, nombre: 'TORNEO LOCAL'
 check('sin el logo de la liga va su nombre', /TORNEO LOCAL/.test(sinLogo));
 check('liga y equipo van juntos a la izquierda; MotorStats aparte, a la derecha', /cabecera-origen"><span class="cabecera-liga">[\s\S]*cabecera-equipo[\s\S]*<\/span><\/span><span class="cabecera-motor">/.test(t), t);
 check('un logo que no carga no deja el alt cortado: aparece el nombre', /alt=""/.test(t) && /onerror="this\.hidden=true;[^"]*hidden=false"/.test(t) && /cabecera-nombre" hidden>LIGA/.test(t));
+check('el scouting lleva el escudo del RIVAL en la terna', /inyectarPieDeHoja\('scoutInforme', null, SCOUT_UI\.__claveRival/.test(fs.readFileSync('./js/sgadd-scouting.js', 'utf8')));
 check('el logo de la liga se precarga al leer el manifiesto', /pre\.src = logoLiga/.test(HTML));
 check('el CSS la deja en una sola línea con proporciones fijas', /\.cabecera-terna \{ display: flex/.test(HTML) && /white-space: nowrap/.test(HTML) && /\.cabecera-terna \{ --cab-h: [\d.]+mm; \}/.test(HTML) && /\.cabecera-escudo, \.cabecera-terna \.cabecera-logo \{ height: var\(--cab-h\)/.test(HTML));
 check('el logo de la liga sale del manifiesto (`_liga`) y no entra al mapa de equipos', /logoLiga = j\._liga/.test(HTML) && /k\.charAt\(0\) !== '_'/.test(HTML));

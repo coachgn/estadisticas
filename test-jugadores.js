@@ -142,8 +142,8 @@ check('con un equipo inexistente, cae de vuelta al id de la fila (no revienta)',
 
 console.log('\n7. ESTRUCTURA DE TABS');
 console.log('═'.repeat(70));
-check('hay 5 tabs: General, Tiro, Rendimiento (solo con la capa pbp), Evolución, Partidos',
-  J.JUGADORES_TABS.map(t => t.id).join(',') === 'general,diagnostico,tiro,rendimiento,evolucion,partidos'
+check('la barra simétrica: General, Tiro, Rendimiento (solo con la capa pbp), Evolución, Partidos, Quintetos, Mapa de tiro, Diagnóstico',
+  J.JUGADORES_TABS.map(t => t.id).join(',') === 'general,tiro,rendimiento,evolucion,partidos,quintetos,mapa,diagnostico'
   && J.JUGADORES_TABS.filter(t => t.pbp).map(t => t.id).join() === 'rendimiento',
   J.JUGADORES_TABS.map(t => t.id).join(','));
 check('cada tab trae id, label y la pregunta que responde',
@@ -1198,7 +1198,8 @@ check('cada sección de la ficha apunta a un tab real de Jugadores',
 check('el log de partidos es una opción, destildada por defecto',
   FICHA.SECCIONES.some(x => x.id === 'partidos' && !x.pre),
   FICHA.SECCIONES.map(x => x.id).join(','));
-check('general, tiro y evolución vienen tildadas', FICHA.SECCIONES.filter(x => x.id !== 'partidos').every(x => x.pre));
+check('general, tiro, evolución, mapa y diagnóstico vienen tildadas; partidos y quintetos no', FICHA.SECCIONES.filter(x => x.id !== 'partidos' && x.id !== 'quintetos').every(x => x.pre)
+  && !FICHA.SECCIONES.find(x => x.id === 'quintetos').pre);
 
 /* La evolución es la única con SUBSECCIONES: no es "sí o no" sino cuáles de
    las 14 métricas. Antes se exportaba solo la que estaba en pantalla y el DT

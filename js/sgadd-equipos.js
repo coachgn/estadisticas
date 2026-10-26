@@ -27,25 +27,22 @@ const EQUIPOS = {
 };
 
 const EQUIPOS_TABS = [
+  /* LA BARRA SIMÉTRICA (2026-10-26): las solapas propias de un equipo y
+     después el mismo cierre que Jugadores: Partidos · Quintetos · Mapa de
+     tiro · Diagnóstico. Quintetos y Mapa de tiro se ven SIEMPRE: sin la
+     capa `pbp` (laboratorio, punto 62) dicen qué les falta. */
   { id: 'general',      label: 'General',      pregunta: '¿Cómo viene?' },
-  /* DIAGNÓSTICO (2026-10-26): las conclusiones clínicas del punto 141 dejan
-     de ir arriba de las pestañas y pasan a ser una solapa propia. */
-  { id: 'diagnostico',  label: 'Diagnóstico',  pregunta: '¿Qué sostener, qué ajustar y dónde se quiebra?' },
   { id: 'ofensiva',     label: 'Ofensiva',     pregunta: '¿Cómo anota?' },
   { id: 'defensiva',    label: 'Defensiva',    pregunta: '¿Cómo defiende?' },
   { id: '4factores',    label: '4 Factores',   pregunta: '¿Dónde gana y dónde pierde?' },
   { id: 'condicion',    label: 'Local/Vis.',   pregunta: '¿Cambia de local?' },
   { id: 'personalidad', label: 'Personalidad', pregunta: '¿A qué juega?' },
   { id: 'plantel',      label: 'Plantel',      pregunta: '¿De quién depende?' },
-  /* LABORATORIO (punto 62): solo se ofrece si el servidor declara la capa
-     `pbp` para la categoría abierta. Los datos no salen del libro. */
-  { id: 'pbp',          label: 'Quintetos',    pregunta: '¿Con quién rinde y quién decide al final? · laboratorio' },
-  /* El mapa de tiro es su PROPIA card (pedido del club, 2026-09-15): con la
-     misma capa y el mismo paquete, pero otra pregunta. */
-  { id: 'pbp-tiro',     label: 'Mapa de tiro', pregunta: '¿Desde dónde tira, dónde le tiran y qué conviene? · laboratorio' },
-  /* Partidos va ÚLTIMA, después del mapa de tiro (pedido del club, 2026-09-18). */
   { id: 'partidos',     label: 'Partidos',     pregunta: '¿Qué pasó cada noche?' },
-];
+  { id: 'pbp',          label: 'Quintetos',    pregunta: '¿Con quién rinde y quién decide al final? · laboratorio' },
+  { id: 'pbp-tiro',     label: 'Mapa de tiro', pregunta: '¿Desde dónde tira, dónde le tiran y qué conviene? · laboratorio' },
+  { id: 'diagnostico',  label: 'Diagnóstico',  pregunta: '¿Qué sostener, qué ajustar, dónde se quiebra y cuánto vale mejorarlo?' },
+]
 
 /* ===================== RUTEO ===================== */
 
@@ -255,7 +252,7 @@ function equiposConclusiones(idx, e) {
 
 function equiposTabsOfrecidas() {
   const pbp = typeof SGADD_PBP !== 'undefined' && SGADD_PBP.activa();
-  return EQUIPOS_TABS.filter(t => (t.id !== 'pbp' && t.id !== 'pbp-tiro') || pbp);
+  return EQUIPOS_TABS.slice();
 }
 
 function equiposFicha(idx, e) {
@@ -276,7 +273,7 @@ function equiposFicha(idx, e) {
 function equiposTabDisponible(idx, e, id) {
   if (id === 'plantel') return e.jugadores && e.jugadores.length > 0;
   if (id === 'partidos' || id === 'condicion') return e.partidos && e.partidos.length > 0;
-  if (id === 'pbp' || id === 'pbp-tiro') return typeof SGADD_PBP !== 'undefined' && SGADD_PBP.activa();
+  if (id === 'pbp' || id === 'pbp-tiro') return typeof SGADD_PBP !== 'undefined';
   return true;
 }
 
@@ -446,8 +443,12 @@ function equiposTab(idx, e, id) {
     case 'condicion': return equiposTabCondicion(idx, e);
     case 'plantel':   return equiposTabPlantel(idx, e);
     case 'partidos':  return equiposTabPartidos(idx, e);
-    case 'pbp':       return (typeof SGADD_PBP !== 'undefined') ? SGADD_PBP.espacio(e.nombre, 'equipo') : '';
-    case 'pbp-tiro':  return (typeof SGADD_PBP !== 'undefined') ? SGADD_PBP.espacio(e.nombre, 'equipo', null, 'mapa', equiposIdentidadReloj(idx, e)) : '';
+    case 'pbp':
+    case 'pbp-tiro':
+      if (typeof SGADD_PBP === 'undefined') return '';
+      if (!SGADD_PBP.activa()) return SGADD_PBP.avisoSinCapa ? SGADD_PBP.avisoSinCapa(id === 'pbp' ? 'Quintetos' : 'Mapa de tiro') : '';
+      return id === 'pbp' ? SGADD_PBP.espacio(e.nombre, 'equipo')
+        : SGADD_PBP.espacio(e.nombre, 'equipo', null, 'mapa', equiposIdentidadReloj(idx, e));
     default:          return '';
   }
 }

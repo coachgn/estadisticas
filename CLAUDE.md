@@ -161,7 +161,7 @@ node test-muestra.js       # 156 tests · el selector de muestra de Equipos y Ju
 node test-rendimiento.js   #  83 tests · la card de Rendimiento del jugador: el motor puro, las degradaciones,
                            #             la vista y el cableado de la pestaña (punto 140)
 
-node test-conclusiones.js  #  41 tests · la card de conclusiones clínicas de Equipos y Jugadores, los tipos
+node test-conclusiones.js  #  61 tests · la card de conclusiones clínicas de Equipos y Jugadores, los tipos
                            #             de posesión del PBP y la terna de logos del PDF (punto 141)
 
 node test-backend.js       # 468 tests · el proxy, el benchmark, las alertas, el catálogo en KV
@@ -292,7 +292,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=309`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=310`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15895,4 +15895,70 @@ la demo no la tiene; el ~11 hojas del pedido depende de esa ficha.
 ` literal en `index.html`, que tiene CRLF en
 ese tramo: pasó a `?
 ` (la trampa del punto 51).
+
+## 143. LA BARRA SIMÉTRICA, QUINTETOS Y MAPA SIEMPRE, Y EL DIAGNÓSTICO CON PROYECCIÓN (2026-10-26)
+
+Assets en `?v=310`. Decisiones del club, consultadas antes de escribir: Equipos
+conserva sus solapas propias; Quintetos y Mapa de tiro se ven siempre; los
+quintetos del jugador son SUS alineaciones; los ajustes siguen en 40-69.
+
+### Las barras
+
+```
+Jugadores  General · Tiro · Rendimiento · Evolución · Partidos · Quintetos · Mapa de tiro · Diagnóstico
+Equipos    General · Ofensiva · Defensiva · 4 Factores · Local/Vis. · Personalidad · Plantel ·
+           Partidos · Quintetos · Mapa de tiro · Diagnóstico
+```
+
+- **Quintetos y Mapa de tiro no se habían sacado**: solo existían con la capa
+  `pbp`. Ahora se ven SIEMPRE y, sin la capa, muestran `SGADD_PBP.avisoSinCapa`
+  (◆, `data-pbp-sin-capa`). Rendimiento sigue exclusiva de la capa (punto 140).
+- **El mapa del jugador salió de Tiro** a su solapa (`jugadoresBloqueMapaPbp`).
+  Sus marcas del PDF pasaron de `tiro.*` a `mapa.zonas`, `mapa.reloj`,
+  `mapa.reloj-tramos` y `mapa.reloj-franjas`.
+- **Quintetos del jugador** (`SGADD_PBP.quintetosJugador`, puro): los quintetos,
+  tríos y dúos de su equipo en los que está él, con la tabla de la card del
+  equipo, y su On/Off (`onOffDe`: Net con él y sin él por 100 posesiones, de
+  `rendimiento.jugadores[].on/off`). Sale del mismo paquete.
+- **La ficha en PDF** suma `quintetos` (destildada) y `mapa` (tildada), las dos
+  `soloPbp`: sin la capa no entran al papel. Y `diagnostico`, entero.
+
+### El Diagnóstico · Bloque A y Bloque B (`sgadd-conclusiones.js`)
+
+- **Bloque A · las cuatro dimensiones** (`DIMENSIONES`, `dimensiones()`): ritmo
+  y transición, selección de tiro y espaciado, agresividad física y disciplina
+  operativa, cada una en ATAQUE y DEFENSA, con el percentil promedio de sus
+  métricas (lo descriptivo en azul, sin percentil). Cada ítem de los tres ejes
+  lleva su dimensión y su lado (`dimDe`).
+- **Bloque B · la proyección de umbrales de mejora** (`proyeccionEquipo`,
+  `proyeccionJugador`): cuánto vale llevar cada métrica bajo el p70 al
+  percentil 70 de la liga (`valorObjetivo`, con la dirección), en puntos por
+  partido y en Net Rating por 100 posesiones, con el puesto en NET antes y
+  después. **Es la cuenta de posesiones con los datos reales**, no una
+  regresión (`PALANCAS_EQ`, `PALANCAS_J`): tiro = Δ × 2 × tiros de campo;
+  pérdida evitada = lo que rinde una jugada que termina; rebote = una jugada
+  más (o una menos del rival) al valor de la jugada; libres = Δ × intentos.
+  **Cada palanca se mide sola, no se suman** (se pisan entre sí). AST-PP no
+  se proyecta: no tiene camino directo a puntos. Del jugador, una sola
+  palanca por familia de tiro (TS%/eFG%/PPP).
+- **Con la capa `pbp`, prescripciones del mapa y del reloj**: la trampa de
+  media distancia (llevar el exceso de dobles largos a la parte de la liga, a
+  los pts/tiro de sus otras zonas) y el final del reloj pobre (resolver antes
+  el 25 % de esos tiros, al rédito de su juego armado).
+- **El tono**: «Costo de oportunidad», identidad y sostenibilidad; audita el
+  libreto, no lo reemplaza.
+
+### Papel y terna
+
+- La card de Diagnóstico se parte entre sus piezas (ejes, dimensiones y
+  palancas no se cortan); en el informe la portada que la trae también
+  (`:has(...)`), o saltaba entera y dejaba la hoja 1 sola. Dimensiones a 4
+  columnas y palancas a 2 en papel.
+- **El PDF de scouting lleva en la terna el escudo del RIVAL** analizado
+  (`SCOUT_UI.__claveRival`).
+
+Medido con el PDF real sobre la demo: informe completo 19 hojas A3 (17 en
+v309: las dos de más son la proyección y las dimensiones); ficha del jugador
+7 hojas A4 (5: el Diagnóstico pasó de 1 a 2 hojas). **No medido con la capa
+`pbp`.**
 

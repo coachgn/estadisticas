@@ -43,7 +43,8 @@ seccion('1 · La estructura sale del código de la vista');
     && S("tiro").subs.some(y => y.label === J.JUGADORES_CARDS_REF.find(r => r.id === 'tiro').label));
   const grupos = (fuente.match(/data-subcard-de="([^"$]+)"/g) || []).map(m => m.slice(17, -1).split(/\s+/)).filter(g => g[0].indexOf('equipo.') !== 0);
   check('cada grupo declara hijos que existen', grupos.length >= 2 && grupos.every(g => g.every(id => declarados.indexOf(id) !== -1)), grupos);
-  check('los bloques del play-by-play van marcados como tales', S("tiro").subs.filter(y => y.pbp).map(y => y.id).join() === 'tiro.mapa,tiro.reloj,tiro.reloj-tramos,tiro.reloj-franjas');
+  check('los bloques del play-by-play van marcados como tales', S("mapa").subs.filter(y => y.pbp).map(y => y.id).join() === 'mapa.zonas,mapa.reloj,mapa.reloj-tramos,mapa.reloj-franjas'
+    && S("quintetos").subs.map(y => y.id).join() === 'quintetos.jugador' && !S("tiro").subs.some(y => y.pbp) && S("mapa").soloPbp && S("quintetos").soloPbp);
   check('la evolución elige métricas y el log de partidos arranca destildado', S("evolucion").metricas === true && S("partidos").pre === false);
 }
 
@@ -81,11 +82,11 @@ seccion('3 · La poda · lo destildado se quita, sin huecos');
   check('lo que no está declarado se conserva', /NO DECLARADA/.test(p2));
   check('los div quedan balanceados', (p2.match(/<div\b/g) || []).length === (p2.match(/<\/div>/g) || []).length);
   check('con todo activo no cambia nada', F.podarHtml(html, { 'general.adn': true, 'general.sintesis': true, 'general.uso': true, 'general.pases': true }) === html);
-  const pbp = `<div class="mapa-pbp-jugador" data-subcard-de="tiro.mapa tiro.reloj tiro.reloj-tramos tiro.reloj-franjas"><div class="pbp-montaje">cargando</div></div>`;
-  check('si las cuatro piezas del play-by-play van destildadas no se pide ni el paquete', F.podarHtml(pbp, { 'tiro.mapa': false, 'tiro.reloj': false, 'tiro.reloj-tramos': false, 'tiro.reloj-franjas': false }) === ''
-    && F.podarHtml(pbp, { 'tiro.mapa': false, 'tiro.reloj': true, 'tiro.reloj-tramos': false, 'tiro.reloj-franjas': false }) === pbp);
+  const pbp = `<div class="mapa-pbp-jugador" data-subcard-de="mapa.zonas mapa.reloj mapa.reloj-tramos mapa.reloj-franjas"><div class="pbp-montaje">cargando</div></div>`;
+  check('si las cuatro piezas del play-by-play van destildadas no se pide ni el paquete', F.podarHtml(pbp, { 'mapa.zonas': false, 'mapa.reloj': false, 'mapa.reloj-tramos': false, 'mapa.reloj-franjas': false }) === ''
+    && F.podarHtml(pbp, { 'mapa.zonas': false, 'mapa.reloj': true, 'mapa.reloj-tramos': false, 'mapa.reloj-franjas': false }) === pbp);
   check('el contenedor del play-by-play declara sus tres hijos en el código',
-    /data-subcard-de="tiro\.mapa tiro\.reloj tiro\.reloj-tramos tiro\.reloj-franjas"/.test(fs.readFileSync('js/sgadd-jugadores.js', 'utf8')));
+    /data-subcard-de="mapa.zonas mapa.reloj mapa.reloj-tramos mapa.reloj-franjas"/.test(fs.readFileSync('js/sgadd-jugadores.js', 'utf8')));
 }
 
 seccion('4 · Varias fichas en un documento: los gráficos no se pisan');

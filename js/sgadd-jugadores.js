@@ -250,16 +250,20 @@ function jugadoresRanking(idx, id, opciones) {
 }
 
 const JUGADORES_TABS = [
+  /* LA BARRA SIMÉTRICA (2026-10-26): General · Tiro · Rendimiento ·
+     Evolución · Partidos · Quintetos · Mapa de tiro · Diagnóstico. El mapa
+     sale de Tiro a su propia solapa. Quintetos y Mapa de tiro se ven SIEMPRE:
+     sin la capa `pbp` dicen qué les falta. Rendimiento sigue exclusiva de la
+     capa (`jugadoresTabsVisibles`, punto 140). */
   { id: 'general',   label: 'General',   pregunta: '¿Qué tipo de jugador es?' },
-  /* DIAGNÓSTICO (2026-10-26): las conclusiones clínicas, en su propia solapa. */
-  { id: 'diagnostico', label: 'Diagnóstico', pregunta: '¿Qué sostener, qué ajustar y dónde se quiebra?' },
   { id: 'tiro',      label: 'Tiro',      pregunta: '¿De dónde anota?' },
-  /* Solo con la capa de laboratorio `pbp` (punto 140): sin ella la pestaña
-     no aparece, ni gris (`jugadoresTabsVisibles`). */
   { id: 'rendimiento', label: 'Rendimiento', pregunta: '¿Qué le dice el play-by-play al cuerpo técnico?', pbp: true },
   { id: 'evolucion', label: 'Evolución', pregunta: '¿Está mejorando?' },
   { id: 'partidos',  label: 'Partidos',  pregunta: '¿Qué hizo cada noche?' },
-];
+  { id: 'quintetos', label: 'Quintetos', pregunta: '¿Con quién rinde el equipo cuando él está en cancha?' },
+  { id: 'mapa',      label: 'Mapa de tiro', pregunta: '¿Desde dónde tira, cuándo y con qué rédito?' },
+  { id: 'diagnostico', label: 'Diagnóstico', pregunta: '¿Qué sostener, qué ajustar, dónde se quiebra y cuánto vale mejorarlo?' },
+]
 
 /** Métricas seleccionables en el gráfico de evolución. T2/T3/T1 se leen como
     porcentaje de acierto (T2%/T3%/T1%): es lo que tiene sentido ver
@@ -2811,11 +2815,13 @@ function jugadoresHeader(idx, j) {
 function jugadoresTab(idx, j, id) {
   switch (id) {
     case 'general':   return jugadoresTabGeneral(idx, j);
-    case 'diagnostico': return jugadoresConclusiones(idx, j);
     case 'tiro':      return jugadoresTabTiro(idx, j);
     case 'rendimiento': return jugadoresTabRendimiento(j);
     case 'evolucion': return jugadoresTabEvolucion(idx, j);
     case 'partidos':  return jugadoresTabPartidos(idx, j);
+    case 'quintetos': return jugadoresTabQuintetos(j);
+    case 'mapa':      return jugadoresBloqueMapaPbp(j);
+    case 'diagnostico': return jugadoresConclusiones(idx, j);
     default:          return '';
   }
 }
@@ -3399,7 +3405,7 @@ function jugadoresTabTiro(idx, j) {
         SGADD_CHARTS.barrasComparadas('chTiroConv', etiquetas, cvEq, cvLg,
           { nombreEquipo: j['NOMBRES'], formato: 'T2%', nombreLiga: refTiro.grupo.label,
             notaLiga: refTiro.grupo.motivo }))}
-    </div>${jugadoresBloqueMapaPbp(j)}</div>`;
+    </div></div>`;
 }
 
 /* La card de RENDIMIENTO (punto 140): el play-by-play traducido para el
@@ -3419,12 +3425,21 @@ function jugadoresTabRendimiento(j) {
    pintado, por `SGADD_PBP.montarPendientes`. `.no-imprimir`: la ficha en PDF
    reusa este tab y no espera a un pedido que puede no haber vuelto. */
 function jugadoresBloqueMapaPbp(j) {
-  if (typeof SGADD_PBP === 'undefined' || !SGADD_PBP.activa() || !j) return '';
+  if (typeof SGADD_PBP === 'undefined' || !j) return '';
+  if (!SGADD_PBP.activa()) return SGADD_PBP.avisoSinCapa ? SGADD_PBP.avisoSinCapa('Mapa de tiro') : '';
   return `
-    <div class="rend-card mt-4 no-imprimir mapa-pbp-jugador" data-subcard-de="tiro.mapa tiro.reloj tiro.reloj-tramos tiro.reloj-franjas">
+    <div class="rend-card no-imprimir mapa-pbp-jugador" data-subcard-de="mapa.zonas mapa.reloj mapa.reloj-tramos mapa.reloj-franjas">
       <h5 class="rend-card-t">Mapa de tiro y diagnóstico individual · play-by-play</h5>
       ${SGADD_PBP.espacioJugador(j['NOMBRES'], j['EQUIPO'])}
     </div>`;
+}
+
+/* La solapa QUINTETOS del jugador (2026-10-26): las alineaciones de su
+   equipo en las que está él y su On/Off, del mismo paquete. */
+function jugadoresTabQuintetos(j) {
+  if (typeof SGADD_PBP === 'undefined' || !j) return '';
+  if (!SGADD_PBP.activa()) return SGADD_PBP.avisoSinCapa ? SGADD_PBP.avisoSinCapa('Quintetos') : '';
+  return SGADD_PBP.espacioQuintetosJugador(j['NOMBRES'], j['EQUIPO']);
 }
 
 function jugadoresElegirMetricaEvolucion(id) {

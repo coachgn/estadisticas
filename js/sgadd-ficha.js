@@ -66,22 +66,28 @@ const SGADD_FICHA = (function () {
         { id: 'general.pases', label: cartaDe('pases', 'Pases y pérdidas') },
         { id: 'general.tablas', label: 'Marcador y contexto · otras estadísticas' },
       ] }),
-      /* El diagnóstico clínico (punto 141) es una solapa propia: entra
-         entero, sin sub-cards. */
-      sec('diagnostico', { pre: true }),
       sec('tiro', { pre: true, subs: [
         { id: 'tiro.distribucion', label: 'Distribución del tiro por zona' },
         { id: 'tiro.carta', label: cartaDe('tiro', 'Tiro · volumen y eficiencia') },
         { id: 'tiro.graficos', label: 'Volumen y acierto por zona · gráficos' },
-        { id: 'tiro.mapa', label: 'Mapa de tiro y diagnóstico · play-by-play', pbp: true },
-        { id: 'tiro.reloj', label: 'Reloj de posesión · cuándo tira', pbp: true },
-        { id: 'tiro.reloj-tramos', label: 'Perfil táctico por tramo del reloj · 1x1 o 5x5', pbp: true },
-        { id: 'tiro.reloj-franjas', label: 'Cuándo y desde dónde tira · por franja', pbp: true },
       ] }),
       sec('evolucion', { pre: true, metricas: true }),
       /* El log va DESTILDADO: con 13 fechas se lleva media hoja y la charla
          arranca por el perfil, no por la planilla. */
       sec('partidos', { pre: false }),
+      /* LAS SOLAPAS DEL PLAY-BY-PLAY (2026-10-26): sin la capa no entran al
+         papel (en pantalla muestran el aviso). El mapa salió de Tiro. */
+      sec('quintetos', { pre: false, soloPbp: true, subs: [
+        { id: 'quintetos.jugador', label: 'Sus quintetos, tríos, dúos y On/Off', pbp: true },
+      ] }),
+      sec('mapa', { pre: true, soloPbp: true, subs: [
+        { id: 'mapa.zonas', label: 'Mapa de tiro y diagnóstico · play-by-play', pbp: true },
+        { id: 'mapa.reloj', label: 'Reloj de posesión · cuándo tira', pbp: true },
+        { id: 'mapa.reloj-tramos', label: 'Perfil táctico por tramo del reloj · 1x1 o 5x5', pbp: true },
+        { id: 'mapa.reloj-franjas', label: 'Cuándo y desde dónde tira · por franja', pbp: true },
+      ] }),
+      /* El diagnóstico clínico y la proyección de mejora: entero. */
+      sec('diagnostico', { pre: true }),
     ];
   }
 
@@ -202,7 +208,7 @@ const SGADD_FICHA = (function () {
         ${jugadoresHeader(idx, j)}
         ${j.__califica ? '' : `<p class="ficha-aviso">~ ${esc(JUGADORES_MOTIVO_SIN_RESPALDO)}</p>`}
       </section>`);
-    est.filter(x => seccionEntra(x, sel) && jugadoresTabDisponible(idx, j, x.tab)).forEach((x) => {
+    est.filter(x => seccionEntra(x, sel) && (!x.soloPbp || pbpActiva()) && jugadoresTabDisponible(idx, j, x.tab)).forEach((x) => {
       /* La evolución no usa el tab entero: un gráfico por métrica elegida. */
       const cuerpo = x.metricas
         ? charts(() => JUGADORES_METRICAS_EVOLUCION.filter(m => sel.metricas[m.id])

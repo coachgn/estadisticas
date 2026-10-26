@@ -3345,7 +3345,8 @@ function scoutImprimir() {
      Lo unico que habia que medir era si el A3 apaisado se movia al
      envolverlo en una tabla, y no se mueve: 8 hojas A3 apaisada antes y
      despues, con la firma legible en las 8. La fecha se calcula ACA. */
-  SGADD_UI.inyectarPieDeHoja('scoutInforme');
+  /* La terna del encabezado (punto 141): el EQUIPO es el rival que se analiza. */
+  SGADD_UI.inyectarPieDeHoja('scoutInforme', null, SCOUT_UI.__claveRival || null);
   /* Por si alguna vista de scouting suma un gráfico: los ya dibujados
      tienen la paleta de pantalla congelada en sus opciones. */
   if (typeof SGADD_CHARTS !== 'undefined') SGADD_CHARTS.repintarParaPapel();

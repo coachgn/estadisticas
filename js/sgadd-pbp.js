@@ -1111,7 +1111,7 @@ const SGADD_PBP = (function () {
         <b>${num(det.ppt, 2)}</b> puntos por tiro <span class="dato-sec">(liga ${num(vara, 2)})</span> · distancia mediana ${num(det.dist)} m
         ${det.pj ? '· ' + det.pj + ' PJ con minutos' : ''} ·
         <span class="dato-sec">play-by-play oficial, ${partidosConTiros(paq)} partidos de ${esc(paq.equipo)}</span></p>
-      <div data-subcard="tiro.mapa">
+      <div data-subcard="mapa.zonas">
       ${chica ? `<div class="rend-raiz"><div class="rend-alerta rend-t-aviso" role="note"><b><span aria-hidden="true">●</span> Muestra chica</b><span>Menos de ${MIN_TIROS_DIAGNOSTICO} tiros de campo: el mapa muestra dónde tiró, sin diagnóstico.</span></div></div>` : ''}
       ${mapa(paq, { sujeto: String(id), diag: !chica })}
       </div>
@@ -1840,7 +1840,7 @@ const SGADD_PBP = (function () {
       if (!r.filas.length && !r.motivo) return '';
       if (!r.disponible) {
         return r.motivo && r.motivo.indexOf('próxima subida') !== -1
-          ? `<div class="mt-3" data-subcard="tiro.reloj-tramos">${subtitulo('Perfil táctico por tramo del reloj')}<p class="text-[11px] text-muted">${esc(r.motivo)}</p></div>` : '';
+          ? `<div class="mt-3" data-subcard="mapa.reloj-tramos">${subtitulo('Perfil táctico por tramo del reloj')}<p class="text-[11px] text-muted">${esc(r.motivo)}</p></div>` : '';
       }
       const grupo = (fase, titulo) => {
         const xs = r.etiquetas.filter(x => x.fase === fase);
@@ -1859,7 +1859,7 @@ const SGADD_PBP = (function () {
           <td class="${TD}">${f.ro}</td><td class="${TD}">${f.per}</td>
           <td class="${TD}">${f.rec}</td><td class="${TD}">${f.tap}</td><td class="${TD}">${f.rd}</td>
         </tr>`;
-      return `<div class="pbp-reloj-pieza mt-4" data-reloj-tramos="1" data-subcard="tiro.reloj-tramos">
+      return `<div class="pbp-reloj-pieza mt-4" data-reloj-tramos="1" data-subcard="mapa.reloj-tramos">
         ${subtitulo('Perfil táctico por tramo del reloj · 1x1 o 5x5')}
         ${r.chica ? '<p class="text-[11px] text-yellow-400 mb-1">~ La competencia todavía tiene poca muestra: los cortes salen de sus propios percentiles y se van a mover.</p>' : ''}
         ${cab}
@@ -2033,7 +2033,7 @@ const SGADD_PBP = (function () {
       mapas = '<p class="text-[11px] text-muted mt-2">El mapa por franja necesita la franja de cada tiro, que llega con la próxima subida de los paquetes.</p>';
     }
     if (!filas && !mapas) return '';
-    return `<div class="mt-3 rend-raiz" data-reloj-jugador-franjas="1" data-subcard="tiro.reloj-franjas">
+    return `<div class="mt-3 rend-raiz" data-reloj-jugador-franjas="1" data-subcard="mapa.reloj-franjas">
       ${subtitulo('Cuándo y desde dónde tira · por franja del reloj')}
       ${filas ? `<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">${filas}</div>` : ''}
       ${mapas}
@@ -2055,7 +2055,7 @@ const SGADD_PBP = (function () {
          dentro del otro: el PDF los elige por separado (data-subcard), y el
          desglose —con sus mapas— no puede ir adentro de una pieza que no se
          parte entre hojas. */
-      return `<div class="pbp-reloj-jugador pbp-reloj-pieza mt-4" data-subcard="tiro.reloj">
+      return `<div class="pbp-reloj-jugador pbp-reloj-pieza mt-4" data-subcard="mapa.reloj">
         ${subtitulo('Reloj de posesión · cuándo tira')}
         ${notaConvertido(paq)}${cabecera}${relojTabla(acc, relojLiga(paq), { soloTiros: true })}
         <p class="text-[10px] dato-sec mt-1 leading-snug">${NOTA_RELOJ}</p>
@@ -2802,6 +2802,54 @@ const SGADD_PBP = (function () {
       ${cargando(texto)}</div>`;
   }
 
+  /* ============================================ QUINTETOS DE UN JUGADOR (PURO)
+
+     La solapa Quintetos de la ficha del jugador (2026-10-26): las
+     alineaciones de su equipo en las que ESTÁ él (quintetos, tríos y dúos,
+     con la misma tabla que la card del equipo) y su On/Off: el Net por
+     posesión del equipo con él en cancha contra sin él. Sale del mismo
+     paquete; no se pide nada aparte. */
+  function onOffDe(paq, id) {
+    const R = paq && paq.rendimiento && paq.rendimiento.jugadores && paq.rendimiento.jugadores[id];
+    if (!R || !Array.isArray(R.on) || !Array.isArray(R.off)) return null;
+    const net = (t) => (t[3] > 0 && t[4] > 0 ? 100 * t[1] / t[3] - 100 * t[2] / t[4] : null);
+    const on = net(R.on), off = net(R.off);
+    return { minOn: R.on[0] / 60, minOff: R.off[0] / 60, netOn: on, netOff: off,
+      dif: on != null && off != null ? on - off : null, pj: R.pjOnOff || R.pj || null };
+  }
+  function quintetosJugador(paq, nombre) {
+    if (!paq || !paq.esquema) return vacio('Sin análisis de play-by-play.');
+    const id = Object.keys(paq.jugadores || {}).find(k => norm(paq.jugadores[k].n) === norm(nombre));
+    if (!id) return vacio('No aparece en los partidos con play-by-play de ' + esc(paq.equipo) + '.');
+    const con = (lista) => (Array.isArray(lista) ? lista : []).filter(f => (f.ids || []).map(String).indexOf(String(id)) !== -1);
+    const q = con(paq.quintetos), t = con(paq.trios), d = con(paq.duos);
+    const oo = onOffDe(paq, id);
+    const u = paq.umbrales || {};
+    const V = typeof SGADD_RENDIMIENTO !== 'undefined' && SGADD_RENDIMIENTO.vista ? SGADD_RENDIMIENTO.vista : null;
+    const tonoNet = (v) => (v == null ? 'info' : v >= 3 ? 'pos' : v <= -3 ? 'neg' : 'aviso');
+    const fichas = oo && V ? `<div class="rend-raiz"><div class="rend-fichas">${[
+      V.ficha({ label: 'On/Off Net', valor: oo.dif == null ? '—' : signo(oo.dif), sub: 'Net con él menos Net sin él, por 100 posesiones', tono: tonoNet(oo.dif) }),
+      V.ficha({ label: 'Net con él', valor: oo.netOn == null ? '—' : signo(oo.netOn), sub: num(oo.minOn, 0) + ' min en cancha', tono: tonoNet(oo.netOn) }),
+      V.ficha({ label: 'Net sin él', valor: oo.netOff == null ? '—' : signo(oo.netOff), sub: num(oo.minOff, 0) + ' min en el banco', tono: 'info' }),
+      V.ficha({ label: 'Alineaciones', valor: String(q.length), sub: t.length + ' tríos · ' + d.length + ' dúos con él', tono: 'info' }),
+    ].join('')}</div></div>` : '';
+    return `<div class="pbp-bloque" data-pbp-listo="1" data-subcard="quintetos.jugador">
+      ${notaLaboratorio(paq)}
+      ${fichas}
+      ${seccion('q-jugador', 'Quintetos con él en cancha', tablaCombos(paq, q, 'Quinteto'), { abierta: true,
+        nota: 'NET/pos: puntos a favor menos en contra cada 100 posesiones. Con ~ y atenuados, menos de ' + (u[5] || 15) + ' minutos juntos.' })}
+      ${seccion('t-jugador', 'Tríos con él', tablaCombos(paq, t, 'Trío'))}
+      ${seccion('d-jugador', 'Dúos con él · sus socios', tablaCombos(paq, d, 'Dúo'))}
+    </div>`;
+  }
+
+  /** Quintetos y Mapa de tiro SIN la capa de play-by-play (2026-10-26): la
+      solapa se ve igual y dice qué le falta, en vez de desaparecer. */
+  function avisoSinCapa(que) {
+    return `<div class="rend-raiz"><div class="rend-alerta rend-t-info" role="note" data-pbp-sin-capa="1"><b><span aria-hidden="true">◆</span> ${esc(que)}</b>
+      <span>Sale del play-by-play oficial. Esta categoría todavía no tiene cargado ese análisis: aparece acá apenas se habilite.</span></div></div>`;
+  }
+
   /* ------------------------------------------------------------------ vivo */
 
   function destino() {
@@ -2835,6 +2883,11 @@ const SGADD_PBP = (function () {
     const id = identidad && t === 'mapa' ? ` data-pbp-identidad="${esc(JSON.stringify(identidad))}"` : '';
     return `<div class="pbp-montaje" data-pbp-equipo="${esc(equipo)}" data-pbp-contexto="${esc(contexto || 'equipo')}" data-pbp-tipo="${t}"${propio ? ` data-pbp-propio="${esc(propio)}"` : ''}${id}>
       ${cargando(t === 'mapa' ? 'Cargando el mapa de tiro…' : 'Cargando el análisis de play-by-play…')}</div>`;
+  }
+  /** El lugar de los quintetos de un jugador. */
+  function espacioQuintetosJugador(nombre, equipo) {
+    return `<div class="pbp-montaje" data-pbp-equipo="${esc(equipo)}" data-pbp-quintetos-jugador="${esc(nombre)}">
+      ${cargando('Cargando sus quintetos…')}</div>`;
   }
   /** El lugar del mapa de un jugador. */
   function espacioJugador(nombre, equipo) {
@@ -2887,6 +2940,7 @@ const SGADD_PBP = (function () {
       const nombreJugador = nodo.getAttribute('data-pbp-jugador');
       const nombreTramos = nodo.getAttribute('data-pbp-tramos');
       const nombreRendimiento = nodo.getAttribute('data-pbp-rendimiento');
+      const nombreQuintetos = nodo.getAttribute('data-pbp-quintetos-jugador');
       const propio = nodo.getAttribute('data-pbp-propio');
       const tipo = nodo.getAttribute('data-pbp-tipo');
       const contexto = nodo.getAttribute('data-pbp-contexto');
@@ -2904,6 +2958,7 @@ const SGADD_PBP = (function () {
             return;
           }
           nodo.innerHTML = nombreTramos ? relojTramosAdn(paq, nombreTramos)
+            : nombreQuintetos ? quintetosJugador(paq, nombreQuintetos)
             : nombreRendimiento ? (typeof SGADD_RENDIMIENTO !== 'undefined' ? SGADD_RENDIMIENTO.html(paq, nombreRendimiento) : '')
             : nombreJugador ? jugador(paq, nombreJugador)
             : tipo === 'partido-mapa' ? mapaPartido(paq, pp)
@@ -3085,7 +3140,7 @@ const SGADD_PBP = (function () {
     CAPA, NOMBRES_ZONA, FAMILIAS, ZONAS, GEOMETRIA, MIN_LIGA_HEX,
     html, mapaCard, jugador, mapa, capaTiros, bloqueSecciones, tieneSecciones, geometriaZonas, zonaGeometrica,
     diagnosticoZonas, diagnosticoJugador, cruceZonas, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
-    activa, espacio, espacioJugador, espacioRendimiento, espacioConclusiones, montarPendientes, activar, apellido, _cache: cache,
+    activa, espacio, espacioJugador, espacioQuintetosJugador, quintetosJugador, onOffDe, avisoSinCapa, espacioRendimiento, espacioConclusiones, montarPendientes, activar, apellido, _cache: cache,
     partidoDe, mapaPartido, momentumPartido, quintetosPartido, espacioPartido, MIN_TIROS_DIAGNOSTICO,
     relojTabla, relojIdentidad, relojPerfilJugador, relojEquipo, relojJugador, relojPartido, relojReparto, FRANJAS_RELOJ,
     relojScouting, relojQuienes, relojMetodologiaHtml, relojAyuda, METODOLOGIA_RELOJ, RELOJ_MINIMOS, FUERA_DE_FRANJA,

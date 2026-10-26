@@ -335,7 +335,8 @@ function paquete(equipo) {
   cargarEquipos(conCapa); cargarEquipos(sinCapa);
   const ids = (ctx) => JSON.stringify(vm.runInContext('equiposTabsOfrecidas().map(t => t.id)', ctx));
   check('Equipos: con la capa se ofrece la pestaña Quintetos', /"pbp"/.test(ids(conCapa)));
-  check('Equipos: SIN la capa la pestaña no existe (ni gris)', !/"pbp"/.test(ids(sinCapa)) && /"partidos"/.test(ids(sinCapa)));
+  check('Equipos: SIN la capa la pestaña se ve igual y dice qué le falta (2026-10-26)', /"pbp"/.test(ids(sinCapa)) && /"partidos"/.test(ids(sinCapa))
+    && /data-pbp-sin-capa="1"/.test(vm.runInContext('equiposTab(null, { nombre: "JUJUY BASQUET" }, "pbp")', sinCapa)));
   check('la pestaña pinta el lugar del equipo y la sección lo monta después de pintar',
     /data-pbp-equipo="JUJUY BASQUET"/.test(vm.runInContext('equiposTab(null, { nombre: "JUJUY BASQUET" }, "pbp")', conCapa))
     && /SGADD_PBP\.montarPendientes\(root\)/.test(fs.readFileSync('./js/sgadd-equipos.js', 'utf8')));
@@ -631,7 +632,8 @@ function paquete(equipo) {
 
   /* ---- integración */
   const idsTiro = (ctx) => JSON.stringify(vm.runInContext('equiposTabsOfrecidas().map(t => t.id)', ctx));
-  check('Equipos: «Mapa de tiro» es su propia pestaña, solo con la capa', /"pbp-tiro"/.test(idsTiro(conCapa)) && !/"pbp-tiro"/.test(idsTiro(sinCapa))
+  check('Equipos: «Mapa de tiro» es su propia pestaña, siempre (sin la capa, con el aviso)', /"pbp-tiro"/.test(idsTiro(conCapa)) && /"pbp-tiro"/.test(idsTiro(sinCapa))
+    && /data-pbp-sin-capa="1"/.test(vm.runInContext('equiposTab(null, { nombre: "JUJUY BASQUET" }, "pbp-tiro")', sinCapa))
     && /data-pbp-tipo="mapa"/.test(vm.runInContext('equiposTab(null, { nombre: "JUJUY BASQUET" }, "pbp-tiro")', conCapa)));
   check('Scouting: el mapa del rival es otra card del modal, solo con la capa', /"pbp-tiro"/.test(cards(conCapa)) && !/"pbp-tiro"/.test(cards(sinCapa)));
   check('«juego coral» ya no está en ningún módulo: es «juego colectivo»',
@@ -646,8 +648,8 @@ function paquete(equipo) {
   check('el montaje pasa el contexto: Scouting pide la card acotada y el mapa fijo',
     /mapaCard\(paq, \{ propio: paqPropio, fijo: contexto === 'scouting', identidad: leerIdentidad\(nodo\) \}\)/.test(srcPbp) && /html\(paq, \{ contexto: contexto \}\)/.test(srcPbp));
   const ordenTabs = JSON.parse(vm.runInContext('JSON.stringify(equiposTabsOfrecidas().map(t => t.id))', conCapa));
-  check('Equipos: Partidos es la ÚLTIMA pestaña, después del Mapa de tiro',
-    ordenTabs[ordenTabs.length - 1] === 'partidos' && ordenTabs[ordenTabs.length - 2] === 'pbp-tiro', ordenTabs);
+  check('Equipos: cierra igual que Jugadores · Partidos · Quintetos · Mapa de tiro · Diagnóstico',
+    ordenTabs.slice(-4).join() === 'partidos,pbp,pbp-tiro,diagnostico', ordenTabs);
   check('al imprimir se abren las secciones cerradas y después se devuelven', /beforeprint[\s\S]*details:not\(\[open\]\)/.test(srcPbp) && /afterprint/.test(srcPbp));
   const css = fs.readFileSync('./index.html', 'utf8');
   check('el resaltado vive en el <style> (nodos inyectados) y el hover solo en pantalla',
@@ -1182,7 +1184,7 @@ function paquete(equipo) {
       P.ACCIONES_TRAMO.find(a => a.m === 'per').soloConFuga && P.TRAMOS_JUGADOR.map(t => t.fuga).join() === 'true,true,false');
     const hT = P.relojTramosHtml(pT, '1');
     check('la card del perfil por tramo: marca data-subcard, tabla por tramo y chips con su semáforo',
-      /data-subcard="tiro\.reloj-tramos"/.test(hT) && (hT.match(/<tr>/g) || []).length === 4 && /tramo-chip tramo-verde/.test(hT) && /tramo-chip tramo-rojo/.test(hT));
+      /data-subcard="mapa\.reloj-tramos"/.test(hT) && (hT.match(/<tr>/g) || []).length === 4 && /tramo-chip tramo-verde/.test(hT) && /tramo-chip tramo-rojo/.test(hT));
     check('y va dentro del bloque del jugador, como sub-card hermana', /data-reloj-tramos="1"/.test(P.relojJugador(pT, '1')));
     const sinE = conReloj();
     check('un paquete sin las acciones por franja lo dice y no inventa etiquetas',
