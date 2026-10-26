@@ -1,6 +1,7 @@
 /* =====================================================================
-   El soporte de decisión del Scouting (v313): la versión perdedora del
-   rival, la matriz de concesiones y las tres cosas del tiempo muerto.
+   El soporte de decisión del Scouting (v313-v314): la versión perdedora del
+   rival, los duelos cruzados con sus volúmenes de umbral, el FODA y las
+   tres cosas del tiempo muerto (el mal menor se fue en la v314).
 
    El motor es PURO. La versión perdedora se prueba con un índice de
    mentira (solo `get` y `agregarPartidos`) para que cada caso sea un
@@ -89,66 +90,127 @@ console.log('═'.repeat(70));
   check('sin datos de tiro por partido queda sin lectura, sin error', q.ok === true && q.principal === null);
 }
 
-console.log('\n2. EL MAL MENOR');
+console.log('\n2. LOS DUELOS CRUZADOS');
 console.log('═'.repeat(70));
+const duelosStub = (margen) => ({
+  ok: true, claveLocal: 'L', claveVisitante: 'V', margen: margen, factorClave: { id: 'eFG%' }, muestraLocal: 10, muestraVisitante: 9,
+  duelos: [
+    { id: 'eFG%', label: 'Eficiencia de tiro', netL: 0.03, netV: -0.02, impactoL: 2.0, impactoV: -1.0, propioL: 0.52, defV: 0.49, propioV: 0.47, defL: 0.49 },
+    { id: 'PP%', label: 'Cuidado de la pelota', netL: -0.01, netV: 0.02, impactoL: -0.5, impactoV: 1.0, propioL: 0.15, defV: 0.14, propioV: 0.12, defL: 0.14 },
+  ],
+});
+const idxDuelos = { get: (c) => ({ clave: c }) };
 {
-  const perfil = (o) => Object.assign({ nombre: 'J', min: 28, t3i: 4, pptTriple: 0.78, pptDoble: 0.95, t2i: 6, t1: 0.7, t1i: 1,
-    tiroExternoFrio: false, tiroExternoRentable: false, cuotaTriplesEquipo: 0.2 }, o);
-  const fila = (nombre, o, plan) => ({ clave: nombre, nombre, perfil: perfil(Object.assign({ nombre }, o)), plan: Object.assign({}, plan) });
-  const intocable = fila('SNIPER', { pptTriple: 1.3, t3i: 6, tiroExternoRentable: true }, { intocable: true });
-  const foco = fila('EJE', { pptTriple: 0.6, t3i: 5, tiroExternoFrio: true }, { foco: true });
-  const frio1 = fila('FRIO UNO', { pptTriple: 0.78, tiroExternoFrio: true }, {});
-  const frio2 = fila('FRIO DOS', { pptTriple: 0.85, t3i: 3, tiroExternoFrio: true }, {});
-  const falta = fila('FALTERO', { t1: 0.45, t1i: 4, pptDoble: 1.1 }, {});
-  const jc = { filas: [falta, frio2, intocable, foco, frio1], plan: { focos: [foco], intocables: [intocable], fuentes: [frio1], cristal: [] } };
-  const c = S.concesiones(jc);
-  check('hay opciones y vienen de menor a mayor costo', c.opciones.length === 3 && c.opciones.every((o, i, l) => i === 0 || l[i - 1].costo <= o.costo),
-    c.opciones.map(o => o.titulo + ' ' + o.costo));
-  check('la más barata es dejarle el triple al peor tirador', c.opciones[0].jugador === 'FRIO UNO' && c.opciones[0].tipo === 'triple');
-  check('un INTOCABLE nunca aparece como concesión', !c.opciones.some(o => o.jugador === 'SNIPER'));
-  check('un FOCO tampoco: a ese se lo dobla', !c.opciones.some(o => o.jugador === 'EJE'));
-  check('los intocables se listan aparte, para decir qué no se concede', c.intocables.join() === 'SNIPER');
-  const f = c.opciones.find(o => o.tipo === 'linea');
-  check('la falta táctica cuesta DOS libres: 2 × T1%', f && Math.abs(f.costo - 0.9) < 1e-9 && /dos libres/.test(f.costoTexto), f);
-  check('y avisa que el bonus lo mira el cuerpo técnico', /bonus|margen de faltas/.test(f.protege));
-  check('cada una dice qué protege del plan colectivo (la ayuda sobre el foco)', /EJE/.test(c.opciones[0].protege), c.opciones[0].protege);
-  check('la falta táctica NO libera ayuda: corta la jugada', !/libera la ayuda/.test(f.protege) && /corta su jugada/.test(f.protege), f.protege);
-  check('cada una dice el volumen que absorbe', /triples por partido/.test(c.opciones[0].volumen));
-  check('sin plantel no revienta', S.concesiones(null).opciones.length === 0 && S.concesiones({}).opciones.length === 0);
-  check('tope de 5 opciones', S.concesiones({ filas: Array(9).fill(0).map((_, i) => fila('F' + i, { pptTriple: 0.6 + i / 100, tiroExternoFrio: true }, {})), plan: {} }).opciones.length === 5);
-
-  console.log('\n3. LAS TRES COSAS');
-  console.log('═'.repeat(70));
-  const q = S.versionPerdedora(idxDe([
-    P('GANADO', 0.55, 0.12), P('GANADO', 0.56, 0.15), P('GANADO', 0.54, 0.10), P('PERDIDO', 0.44, 0.13), P('PERDIDO', 0.45, 0.11), P('PERDIDO', 0.43, 0.14)]), 'X');
-  const t = S.tresCosas(jc, q, c);
-  check('con todo el dato salen las tres, en orden', t.map(x => x.id).join() === 'amenaza,quiebre,decision', t.map(x => x.id));
-  check('la amenaza es el intocable antes que el foco y dice que su defensor no ayuda', /SNIPER/.test(t[0].texto) && /no ayuda/.test(t[0].texto));
-  check('la decisión es la concesión más barata e incluye lo que no se concede', /FRIO UNO/.test(t[2].texto) && /SNIPER/.test(t[2].texto));
-  check('todas dicen que es una lectura, no una orden (en el título del bloque de la UI y en la acción)', t.every(x => typeof x.texto === 'string' && x.texto.length > 10));
-  check('sin quiebre quedan dos, sin inventar la tercera', S.tresCosas(jc, { ok: false }, c).map(x => x.id).join() === 'amenaza,decision');
-  check('sin nada, ninguna', S.tresCosas(null, null, null).length === 0);
-  const sinInt = { filas: jc.filas, plan: { focos: [foco], intocables: [], fuentes: [], cristal: [] } };
-  check('sin intocable, la amenaza es el foco: se lo dobla', /doblarlo/.test(S.tresCosas(sinInt, null, null)[0].texto));
+  global.SGADD_4F = { simularEnfrentamiento: () => duelosStub(4.2) };
+  const d = S.duelosCruzados(idxDuelos, 'L', 'V', 'L', 'V');
+  check('nuestro equipo local: nuestro ataque es el del local y su defensa la del visitante', d.ok && d.filas[0].nuestro.propio === 0.52 && d.filas[0].nuestro.contra === 0.49 && d.filas[0].rival.propio === 0.47, d.filas && d.filas[0]);
+  check('✓/✗: el ataque que supera a la defensa rival', d.filas[0].nuestro.ok === true && d.filas[0].rival.ok === false && d.filas[1].nuestro.ok === false && d.filas[1].rival.ok === true);
+  check('★ marca el factor clave del simulador y solo ese', d.filas[0].estrella === true && d.filas[1].estrella === false);
+  check('el balance es nuestro impacto menos el del rival: > 0 inclina a nuestro favor', Math.abs(d.filas[0].balance - 3.0) < 1e-9 && Math.abs(d.filas[1].balance + 1.5) < 1e-9);
+  check('el margen proyectado viene desde nuestro lado y dice a quién favorece', d.margenNuestro === 4.2 && d.favorece === 'nuestro');
+  const v = S.duelosCruzados(idxDuelos, 'V', 'L', 'L', 'V');
+  check('si nosotros somos el visitante los lados se dan vuelta y el margen cambia de signo', v.filas[0].nuestro.propio === 0.47 && v.filas[0].rival.propio === 0.52 && v.margenNuestro === -4.2 && v.favorece === 'rival');
+  global.SGADD_4F = { simularEnfrentamiento: () => ({ ok: false, motivo: 'sin partidos' }) };
+  const f = S.duelosCruzados(idxDuelos, 'L', 'V', 'L', 'V');
+  check('sin muestra no se inventa el cruce y se dice por qué', f.ok === false && /sin partidos/.test(f.motivo));
+  global.SGADD_4F = {};
+  check('sin el simulador cargado degrada, sin error', S.duelosCruzados(idxDuelos, 'L', 'V', 'L', 'V').ok === false);
 }
 
-console.log('\n4. QUE ESTÉ CABLEADO');
+console.log('\n3. LOS VOLÚMENES DE UMBRAL');
+console.log('═'.repeat(70));
+const liga = { PTS: 80, T3C: 8, 'RO%': 0.28, 'RTL%': 0.3 };
+const idxVol = (propio, dist) => ({
+  get: (c) => ({ clave: c, nombre: 'EQ', pj: 12 }),
+  leer: (c, k) => (propio[k] === undefined ? null : { valor: propio[k], tipo: liga[k] === undefined ? null : liga[k] }),
+  liga: { distribuciones: { 'PePP%': dist || [0.08, 0.10, 0.12, 0.14, 0.16, 0.18, 0.20] } },
+});
+const volProp = { TCI: 62, T1C: 12, PTS: 78, 'eFG%': 0.5, T3C: 7, T3I: 22, 'T3%': 0.32, PP: 15, PLAYS: 85, RO: 9, 'RO%': 0.25, T1I: 16, 'RTL%': 0.26 };
+{
+  const v = S.volumenesUmbral(idxVol(volProp), 'X');
+  const g = (id) => v.items.find(i => i.id === id);
+  check('trae los cinco volúmenes', v.items.map(i => i.id).join() === 'tc,t3,perdidas,ro,tl', v.items.map(i => i.id));
+  check('tiros de campo: los puntos de la mediana menos sus libres, sobre 2 × su eFG% → (80−12)/(2×0,5) = 68', Math.abs(g('tc').umbral - 68) < 1e-9 && g('tc').ok === false);
+  check('triples: los convertidos de la mediana sobre su T3% → 8/0,32 = 25', Math.abs(g('t3').umbral - 25) < 1e-9 && g('t3').ok === false);
+  check('pérdidas: el tope es sus plays × el peor cuarto de la liga, y se mide hacia abajo', g('perdidas').dir === 'max' && Math.abs(g('perdidas').umbral - 85 * 0.17) < 1e-9 && g('perdidas').ok === false, g('perdidas'));
+  check('rebote ofensivo: el RO% de la mediana × sus oportunidades (9/0,25 = 36) → 10,08', Math.abs(g('ro').umbral - 0.28 * 36) < 1e-9);
+  check('libres: el RTL% de la mediana × sus tiros de campo → 0,3 × 62 = 18,6', Math.abs(g('tl').umbral - 18.6) < 1e-9);
+  check('cada uno trae el texto con el número y el actual', v.items.every(i => /\d/.test(i.texto) && typeof i.corto === 'string' && i.corto.length > 5));
+  const alto = S.volumenesUmbral(idxVol(Object.assign({}, volProp, { PP: 9, TCI: 80 })), 'X');
+  check('con pérdidas bajo el tope y tiros de sobra, el equipo está del lado bueno', alto.items.find(i => i.id === 'perdidas').ok === true && alto.items.find(i => i.id === 'tc').ok === true);
+  check('sin datos de un volumen se omite, no se inventa', S.volumenesUmbral(idxVol({ TCI: 62 }), 'X').items.length === 0);
+  check('sin distribución de pérdidas no hay tope', !S.volumenesUmbral({ get: () => ({ nombre: 'E' }), leer: idxVol(volProp).leer, liga: {} }, 'X').items.some(i => i.id === 'perdidas'));
+  check('un equipo que no existe no revienta', S.volumenesUmbral({ get: () => null }, 'X') === null && S.volumenesUmbral(null, 'X') === null);
+}
+
+console.log('\n4. LAS TRES COSAS');
+console.log('═'.repeat(70));
+{
+  global.SGADD_4F = { simularEnfrentamiento: () => duelosStub(-3.1) };
+  const d = S.duelosCruzados(idxDuelos, 'L', 'V', 'L', 'V');
+  const q = S.versionPerdedora(idxDe([
+    P('GANADO', 0.55, 0.12), P('GANADO', 0.56, 0.15), P('GANADO', 0.54, 0.10), P('PERDIDO', 0.44, 0.13), P('PERDIDO', 0.45, 0.11), P('PERDIDO', 0.43, 0.14)]), 'X');
+  const vr = S.volumenesUmbral(idxVol(volProp), 'X'), vn = S.volumenesUmbral(idxVol(volProp), 'X');
+  const t = S.tresCosas(d, q, vr, vn, 'SNIPER');
+  check('con todo el dato salen las tres, en orden: duelo, quiebre y volumen', t.map(x => x.id).join() === 'duelo,quiebre,volumen', t.map(x => x.id));
+  check('el duelo es el factor ★, con las dos cifras y a quién favorece el margen', /★ Eficiencia de tiro/.test(t[0].texto) && /47,0%/.test(t[0].texto) && /49,0%/.test(t[0].texto) && /−3,1/.test(t[0].texto), t[0].texto);
+  check('si su ataque no supera nuestra defensa, el duelo dice que es nuestro y hay que sostenerlo', /lo ganamos/.test(t[0].texto) && t[0].tono === 'bajo');
+  const dPierde = S.duelosCruzados(idxDuelos, 'V', 'L', 'L', 'V');
+  check('si su ataque supera nuestra defensa, dice que hay que quitárselo y es ▲', /nos gana: hay que quitárselo/.test(S.tresCosas(dPierde, null, null, null, null)[0].texto) && S.tresCosas(dPierde, null, null, null, null)[0].tono === 'alto');
+  check('el quiebre trae la referencia de volumen de SU métrica', /Cuando su eFG% cae/.test(t[1].texto) && /Su referencia: 68,0 tiros de campo por partido \(hoy 62,0\)/.test(t[1].texto), t[1].texto);
+  check('el volumen propio da el tope de pérdidas y lo que hay que sostener, y dice a quién no soltar', /no pasar de 14,[45] pérdidas/.test(t[2].texto) && /al menos 68,0 tiros de campo/.test(t[2].texto) && /Sin soltar a SNIPER/.test(t[2].texto), t[2].texto);
+  check('sin quiebre quedan dos, sin inventar la tercera', S.tresCosas(d, { ok: false }, vr, vn, null).map(x => x.id).join() === 'duelo,volumen');
+  check('sin duelos (sin muestra) se salta el primero', S.tresCosas({ ok: false }, q, vr, vn, null).map(x => x.id).join() === 'quiebre,volumen');
+  check('sin nada, ninguna', S.tresCosas(null, null, null, null, null).length === 0);
+  check('ninguna repite el diagnóstico ni habla de conceder: son directivas del cruce', t.every(x => !/Conceder|mal menor/.test(x.texto)));
+}
+
+console.log('\n5. EL FODA');
+console.log('═'.repeat(70));
+{
+  global.SGADD_4F = { simularEnfrentamiento: () => duelosStub(4.2) };
+  const d = S.duelosCruzados(idxDuelos, 'L', 'V', 'L', 'V');
+  const q = S.versionPerdedora(idxDe([
+    P('GANADO', 0.55, 0.12), P('GANADO', 0.56, 0.15), P('GANADO', 0.54, 0.10), P('PERDIDO', 0.44, 0.13), P('PERDIDO', 0.45, 0.11), P('PERDIDO', 0.43, 0.14)]), 'X');
+  const it = (titulo, percentil) => ({ titulo, valor: '50%', sub: 'liga 45%', percentil });
+  const f = S.foda({
+    fortalezasRival: [it('eFG%', 91), it('Rebote', 72), it('Ritmo', 55)],
+    debilidadesRival: [it('Pérdidas', 12), it('DRTG', 38), it('Faltas', 30)],
+    duelos: d, quiebre: q, amenaza: 'SNIPER',
+  });
+  check('F: solo percentil ≥ 70', f.F.length === 2 && /eFG%/.test(f.F[0].texto) && /A neutralizar/.test(f.F[0].texto), f.F);
+  check('D: solo percentil < 35 (un 38 no entra) y suma su versión perdedora', f.D.length === 3 && f.D.some(x => /Pérdidas/.test(x.texto)) && !f.D.some(x => /DRTG/.test(x.texto)) && f.D.some(x => /Cuando su eFG%/.test(x.texto)), f.D);
+  check('O: donde NUESTRO ataque supera su defensa', f.O.length === 1 && /Nuestro eficiencia de tiro \(52,0%\) supera su defensa \(49,0%\)/.test(f.O[0].texto), f.O);
+  check('A: donde su ataque supera nuestra defensa, más la amenaza', f.A.length === 2 && /Su cuidado de la pelota \(12,0% de pérdidas\)/.test(f.A[0].texto) && /SNIPER/.test(f.A[1].texto), f.A);
+  const vacio = S.foda({});
+  check('sin nada, nada: no se inventa ninguna casilla', vacio.hay === false && !vacio.F.length && !vacio.O.length && !vacio.D.length && !vacio.A.length);
+  global.SGADD_4F = { simularEnfrentamiento: () => ({ ok: true, claveLocal: 'L', claveVisitante: 'V', margen: 0, factorClave: { id: 'eFG%' }, duelos: [{ id: 'eFG%', label: 'Eficiencia de tiro', netL: -0.02, netV: 0.02, impactoL: -1, impactoV: 1, propioL: 0.47, defV: 0.5, propioV: 0.5, defL: 0.48 }] }) };
+  const sinVentaja = S.foda({ duelos: S.duelosCruzados(idxDuelos, 'L', 'V', 'L', 'V') });
+  check('si ningún factor nuestro supera su defensa, la O lo dice y habla de volumen', sinVentaja.O.length === 1 && /construirse|construirla/.test(sinVentaja.O[0].texto));
+}
+
+console.log('\n6. QUE ESTÉ CABLEADO');
 console.log('═'.repeat(70));
 {
   const src = fs.readFileSync('./js/sgadd-scouting.js', 'utf8');
   const html = fs.readFileSync('./index.html', 'utf8');
-  check('el informe suma el quiebre, las concesiones y las tres cosas', /quiebreRival: quiebreRival/.test(src) && /concesionesRival: concesionesRival/.test(src) && /tresCosas: tresCosas\(/.test(src));
-  check('las tres cards están en el modal y en el orden del informe',
-    ['tres-cosas', 'diagnostico', 'concesiones'].every(id => new RegExp("\\{ id: '" + id + "'").test(src))
-      && src.indexOf('scoutBloqueTresCosas(inf)}') < src.indexOf('scoutBloqueMatriz(inf)}')
-      && src.indexOf('scoutBloqueConcesiones(inf)}') > src.indexOf('scoutBloqueMarcas(inf)}')
-      && src.indexOf('scoutBloqueConcesiones(inf)}') < src.indexOf('scoutBloqueJugadores(inf)}'));
-  check('las tres tienen su data-bloque (una opción de exportación cada una)', ['tres-cosas', 'diagnostico', 'concesiones'].every(id => src.includes('data-bloque="' + id + '"')));
-  check('ninguna es del plan ORO: va para todos los planes', !/id: '(tres-cosas|diagnostico|concesiones)'[^}]*bloque:/.test(src));
-  check('el semáforo no depende solo del color: lleva glifo', /▲/.test(src) && /▼/.test(src) && /●/.test(src) && /◆/.test(src));
-  check('el diagnóstico reusa el motor clínico y no calcula percentiles por su cuenta', /C\.equipo\(idx, eR\)/.test(src));
+  const pbp = fs.readFileSync('./js/sgadd-pbp.js', 'utf8');
+  check('el informe suma duelos, volúmenes, quiebre y las tres cosas', /duelos: duelosCruzadosInf/.test(src) && /volumenesRival: volumenesRival/.test(src) && /volumenesNuestro: volumenesNuestro/.test(src) && /quiebreRival: quiebreRival/.test(src) && /tresCosas: tresCosas\(duelosCruzadosInf/.test(src));
+  check('las cards nuevas están en el modal y en el orden del informe',
+    ['tres-cosas', 'duelos', 'diagnostico', 'foda', 'pbp-cuartos'].every(id => new RegExp("\\{ id: '" + id + "'").test(src))
+      && src.indexOf('scoutBloqueTresCosas(inf)}') < src.indexOf('scoutBloqueDiagnostico(inf)}')
+      && src.indexOf('scoutBloqueDiagnostico(inf)}') < src.indexOf('scoutBloqueDuelos(inf)}')
+      && src.indexOf('scoutBloqueDuelos(inf)}') < src.indexOf('scoutBloqueFoda(inf)}')
+      && src.indexOf('scoutBloqueFoda(inf)}') < src.indexOf('scoutBloqueMatriz(inf)}')
+      && src.indexOf('scoutBloquePbp(inf)}') < src.indexOf('scoutBloqueCuartos(inf)}'));
+  check('cada una tiene su data-bloque (una opción de exportación cada una)', ['tres-cosas', 'duelos', 'diagnostico', 'foda', 'pbp-cuartos'].every(id => src.includes('data-bloque="' + id + '"')));
+  check('la card del mal menor se fue: ni en el modal, ni en el DOM, ni en el motor', !/id: 'concesiones'/.test(src) && !src.includes('data-bloque="concesiones"') && !/concesionesRival|scoutBloqueConcesiones/.test(src) && typeof S.concesiones === 'undefined');
+  check('y su pieza del play-by-play también', typeof require('./js/sgadd-pbp.js').rivalConcesionesHtml === 'undefined' && !/rival-concesiones/.test(pbp));
+  check('solo la de cuartos pide la capa de laboratorio; ninguna es del plan ORO', /\{ id: 'pbp-cuartos'[^}]*capa: 'pbp'/.test(src) && !/id: '(tres-cosas|duelos|diagnostico|foda)'[^}]*bloque:/.test(src));
+  check('el semáforo no depende solo del color: lleva glifo', /▲/.test(src) && /▼/.test(src) && /●/.test(src) && /◆/.test(src) && /✓/.test(src) && /✗/.test(src));
+  check('el diagnóstico y el FODA reusan el motor clínico y no calculan percentiles por su cuenta', (src.match(/C\.equipo\(idx, eR\)/g) || []).length >= 2);
   check('las piezas del play-by-play son opcionales: sin la capa dice que necesita el laboratorio', /necesita la capa de laboratorio/.test(src));
-  check('el assets va en ?v=313 o más', /sgadd-scouting\.js\?v=3(1[3-9]|[2-9]\d)/.test(html));
+  check('el assets va en ?v=314 o más', /sgadd-scouting\.js\?v=3(1[4-9]|[2-9]\d)/.test(html));
 }
 
 console.log('\n' + '═'.repeat(70));

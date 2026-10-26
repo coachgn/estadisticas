@@ -3154,84 +3154,180 @@ const SGADD_SCOUT = (function () {
       ' partidos (' + Math.round(100 * c.perdidosMalo / c.nMalo) + '%).';
   }
 
-  /**
-   * EL MAL MENOR. Qué conceder cuando no se puede cerrar todo, de menor a
-   * mayor costo. Parte de las filas de `jugadoresClave` (con el plan
-   * colectivo ya calculado). Un INTOCABLE nunca aparece, ni tampoco un
-   * foco: a ese se lo dobla, no se lo deja.
-   */
-  function concesiones(jc) {
-    if (!jc || !Array.isArray(jc.filas)) return { opciones: [], intocables: [] };
-    const plan = jc.plan || { focos: [], intocables: [], fuentes: [], cristal: [] };
-    const nombres = (l) => (l || []).map(x => x.nombre || (x.perfil && x.perfil.nombre) || x.clave).filter(Boolean);
-    const focos = nombres(plan.focos), cristal = nombres(plan.cristal);
-    /* Qué protege cada concesión. Dejar tirar libera la ayuda y el box-out
-       (el defensor no sale a ese tirador); la falta táctica, no: corta la
-       jugada. Cada pieza va separada con «;», sin encadenar «y» de nombres. */
-    const protegeTiro = () => {
-      const p = [];
-      if (focos.length) p.push('libera la ayuda para ir sobre ' + enumerar(focos));
-      if (cristal.length) p.push('mantiene el box-out de ' + enumerar(cristal));
-      return p.length ? p.join('; ') : 'mantiene la estructura del plan';
-    };
-    const opciones = [];
-    (jc.filas || []).forEach((f) => {
-      if (!f || !f.perfil || (f.plan && (f.plan.intocable || f.plan.foco))) return;
-      const p = f.perfil, s = senales(p);
-      const nombre = f.nombre || p.nombre;
-      if ((s.invitableAlTriple || s.concesionPerimetral || p.tiroExternoFrio) && !s.amenazaExteriorPrimaria
-          && nn(p.pptTriple) !== null && nn(p.t3i) !== null && p.t3i >= 1) {
-        opciones.push({
-          tipo: 'triple', jugador: nombre, clave: f.clave,
-          titulo: 'Dejar tirar de tres a ' + nombre,
-          costo: p.pptTriple, costoTexto: num2(p.pptTriple) + ' pts por intento',
-          volumen: num1(p.t3i) + ' triples por partido' + (nn(p.cuotaTriplesEquipo) !== null ? ' (' + pct(p.cuotaTriplesEquipo, 0) + ' de los del equipo)' : ''),
-          protege: protegeTiro(),
-        });
-      }
-      if (s.faltaRentable && nn(p.t1) !== null) {
-        opciones.push({
-          tipo: 'linea', jugador: nombre, clave: f.clave,
-          titulo: 'Mandar a ' + nombre + ' a la línea (falta táctica)',
-          costo: 2 * p.t1, costoTexto: num2(2 * p.t1) + ' pts por falta (dos libres al ' + pct(p.t1, 0) + ')',
-          volumen: num1(p.t1i) + ' libres intentados por partido',
-          protege: 'corta su jugada antes de que termine adentro. Solo fuera del bonus y con margen de faltas del defensor: eso lo mira el cuerpo técnico',
-        });
-      }
-    });
-    opciones.sort((a, b) => a.costo - b.costo);
-    return { opciones: opciones.slice(0, 5), intocables: nombres(plan.intocables) };
+  /* ---------------------------------------------------------------------
+     v314 · DUELOS CRUZADOS, VOLÚMENES DE UMBRAL, FODA Y LAS 3 COSAS
+
+     El mal menor (v313) se fue: era redundante con las marcas y el plan
+     colectivo. Las tres cosas del tiempo muerto salen ahora de los duelos
+     de los 4 Factores y de los volúmenes que sostienen cada umbral.
+     --------------------------------------------------------------------- */
+
+  /** El simulador de los 4 Factores: global en el navegador, require en Node. */
+  function motor4F() {
+    if (typeof SGADD_4F !== 'undefined') return SGADD_4F;
+    try { if (typeof require === 'function') return require('./sgadd-4factores.js'); } catch (e) { /* sin simulador */ }
+    return null;
+  }
+
+  function cuantil(arr, q) {
+    const a = (arr || []).filter(v => typeof v === 'number' && isFinite(v)).sort((x, y) => x - y);
+    if (!a.length) return null;
+    const i = (a.length - 1) * q, lo = Math.floor(i), hi = Math.ceil(i);
+    return a[lo] + (a[hi] - a[lo]) * (i - lo);
   }
 
   /**
-   * LAS TRES COSAS para el tiempo muerto. Una amenaza que respetar, su
-   * versión perdedora y la decisión del mal menor. Lo que el dato no
-   * sostiene no se escribe: faltan piezas, quedan menos de tres.
+   * LOS DUELOS CRUZADOS. El mismo cálculo del Simulador (regresión de
+   * liga sobre los 4 Factores de Dean Oliver), puesto desde el lado de
+   * NUESTRO equipo: nuestro ataque contra su defensa y su ataque contra la
+   * nuestra. ★ marca el factor que más mueve el margen; ✓/✗ dice si ese
+   * ataque supera a esa defensa; `balance` > 0 inclina el factor a favor
+   * nuestro.
    */
-  function tresCosas(jc, quiebre, conc) {
+  function duelosCruzados(idx, claveNuestro, claveRival, claveLocal, claveVisitante) {
+    const F4 = motor4F();
+    if (!F4 || typeof F4.simularEnfrentamiento !== 'function') return { ok: false, motivo: 'El simulador de duelos no está disponible.' };
+    const r = F4.simularEnfrentamiento(idx, claveLocal, claveVisitante);
+    if (!r || !r.ok) return { ok: false, motivo: (r && r.motivo) || 'Sin muestra suficiente para cruzar los dos equipos.' };
+    const eN = idx.get(claveNuestro);
+    const nuestroLocal = !!eN && eN.clave === r.claveLocal;
+    const lado = (esLocal, d) => {
+      const o = esLocal
+        ? { propio: d.propioL, contra: d.defV, net: d.netL, impacto: d.impactoL }
+        : { propio: d.propioV, contra: d.defL, net: d.netV, impacto: d.impactoV };
+      o.ok = o.net !== null && o.net !== undefined && o.net > 0;
+      return o;
+    };
+    const filas = r.duelos.map((d) => {
+      const n = lado(nuestroLocal, d), v = lado(!nuestroLocal, d);
+      return { id: d.id, label: d.label, nota: d.id === 'PP%' ? ' de pérdidas' : '', nuestro: n, rival: v,
+        estrella: !!(r.factorClave && d.id === r.factorClave.id), balance: n.impacto - v.impacto };
+    });
+    const margenNuestro = nuestroLocal ? r.margen : -r.margen;
+    return { ok: true, filas: filas, margenNuestro: margenNuestro,
+      favorece: margenNuestro >= 0 ? 'nuestro' : 'rival', nuestroLocal: nuestroLocal,
+      muestraNuestro: nuestroLocal ? r.muestraLocal : r.muestraVisitante,
+      muestraRival: nuestroLocal ? r.muestraVisitante : r.muestraLocal };
+  }
+
+  /**
+   * LOS VOLÚMENES DE UMBRAL. En vez de un porcentaje suelto, cuántos
+   * tiros, pérdidas, rebotes o libres por partido sostienen la zona
+   * positiva. «Positiva» = la mediana de la liga con la propia eficiencia
+   * del equipo (el tope de pérdidas, el peor cuarto de la liga). Cada
+   * ítem trae el volumen actual para ver de qué lado está.
+   */
+  function volumenesUmbral(idx, clave) {
+    const e = idx && idx.get ? idx.get(clave) : null;
+    if (!e || typeof idx.leer !== 'function') return null;
+    const rd = (k) => { const r = idx.leer(clave, k); return r ? { v: nn(r.valor), m: nn(r.tipo) } : { v: null, m: null }; };
+    const TCI = rd('TCI'), T1C = rd('T1C'), PTS = rd('PTS'), EFG = rd('eFG%'), T3C = rd('T3C'), T3I = rd('T3I'), T3P = rd('T3%'),
+      PP = rd('PP'), PL = rd('PLAYS'), RO = rd('RO'), ROP = rd('RO%'), T1I = rd('T1I'), RTL = rd('RTL%');
+    const items = [];
+    const poner = (id, label, actual, umbral, dir, corto, texto) => {
+      items.push({ id: id, label: label, actual: actual, umbral: umbral, dir: dir, corto: corto, texto: texto,
+        ok: dir === 'max' ? actual <= umbral : actual >= umbral });
+    };
+    if (TCI.v !== null && PTS.m !== null && T1C.v !== null && EFG.v) {
+      const nec = (PTS.m - T1C.v) / (2 * EFG.v);
+      if (nec > 0) poner('tc', 'Tiros de campo', TCI.v, nec, 'min', num1(nec) + ' tiros de campo por partido',
+        'Con su eFG% (' + pct(EFG.v) + ') y sus libres, necesita ' + num1(nec) + ' tiros de campo por partido para igualar los ' + num1(PTS.m) + ' puntos de la mediana de la liga; tira ' + num1(TCI.v) + '.');
+    }
+    if (T3C.m !== null && T3P.v && T3I.v !== null) {
+      const nec = T3C.m / T3P.v;
+      poner('t3', 'Triples', T3I.v, nec, 'min', num1(nec) + ' triples por partido',
+        'Con su T3% (' + pct(T3P.v) + ') necesita ' + num1(nec) + ' triples por partido para aportar lo que aporta la mediana de la liga (' + num1(T3C.m) + ' convertidos); tira ' + num1(T3I.v) + '.');
+    }
+    const distTov = idx.liga && idx.liga.distribuciones ? idx.liga.distribuciones['PePP%'] : null;
+    const tovMalo = cuantil(distTov, 0.75);
+    if (PL.v !== null && PP.v !== null && tovMalo !== null) {
+      const tope = PL.v * tovMalo;
+      poner('perdidas', 'Pérdidas', PP.v, tope, 'max', 'no más de ' + num1(tope) + ' pérdidas por partido',
+        'Por encima de ' + num1(tope) + ' pérdidas por partido su %TOV pasa al peor cuarto de la liga (desde ' + pct(tovMalo) + '); promedia ' + num1(PP.v) + '.');
+    }
+    if (RO.v !== null && ROP.v && ROP.m !== null) {
+      const nec = ROP.m * (RO.v / ROP.v);
+      poner('ro', 'Rebotes ofensivos', RO.v, nec, 'min', num1(nec) + ' rebotes ofensivos por partido',
+        'Para sostener el RO% de la mediana de la liga (' + pct(ROP.m) + ') necesita ' + num1(nec) + ' rebotes ofensivos por partido; toma ' + num1(RO.v) + '.');
+    }
+    if (RTL.m !== null && TCI.v !== null && T1I.v !== null) {
+      const nec = RTL.m * TCI.v;
+      poner('tl', 'Libres', T1I.v, nec, 'min', num1(nec) + ' libres por partido',
+        'Para sostener el RTL% de la mediana de la liga (' + pct(RTL.m) + ') con sus tiros de campo necesita ' + num1(nec) + ' libres intentados por partido; llega a ' + num1(T1I.v) + '.');
+    }
+    return { clave: clave, nombre: e.nombre, pj: e.pj, items: items };
+  }
+
+  /** La clave de volumen que acompaña a cada métrica de quiebre. */
+  const VOLUMEN_DE_QUIEBRE = { 'eFG%': 'tc', 'T3%': 't3', 'PePP%': 'perdidas', 'RO%': 'ro', 'RTL%': 'tl' };
+
+  /**
+   * LAS TRES COSAS para el tiempo muerto, como directivas cortas:
+   *   1 · el duelo cruzado que más mueve el margen,
+   *   2 · su punto de quiebre, con el volumen que lo sostiene,
+   *   3 · nuestro volumen límite (y a quién no soltar).
+   * Lo que el dato no sostiene no se escribe: faltan piezas, quedan menos.
+   */
+  function tresCosas(duelos, quiebre, volRival, volNuestro, amenaza) {
     const out = [];
-    const plan = jc && jc.plan;
-    const amenaza = plan && ((plan.intocables || [])[0] || (plan.focos || [])[0]);
-    if (amenaza) {
-      const nom = amenaza.nombre || (amenaza.perfil && amenaza.perfil.nombre) || amenaza.clave;
-      const esInt = (plan.intocables || []).indexOf(amenaza) !== -1;
-      out.push({ id: 'amenaza', titulo: 'La amenaza', tono: 'alto',
-        texto: nom + (esInt
-          ? ': su tiro paga. Su defensor no ayuda: se queda con él.'
-          : ': es el eje de su ataque. Hay que doblarlo y saber desde dónde sale la ayuda.') });
+    if (duelos && duelos.ok) {
+      const k = duelos.filas.filter(f => f.estrella)[0] || duelos.filas[0];
+      if (k) {
+        const margen = (duelos.margenNuestro >= 0 ? '+' : '−') + num1(Math.abs(duelos.margenNuestro));
+        out.push({ id: 'duelo', titulo: 'El duelo que decide', tono: k.rival.ok ? 'alto' : 'bajo',
+          texto: '★ ' + k.label + ': su ataque ' + pct(k.rival.propio) + k.nota + ' contra nuestra defensa ' + pct(k.rival.contra) + k.nota +
+            (k.rival.ok ? ' — nos gana: hay que quitárselo.' : ' — lo ganamos: sostenerlo.') +
+            ' Margen proyectado del cruce: ' + margen + ' pts.' });
+      }
     }
     if (quiebre && quiebre.ok && quiebre.principal) {
-      out.push({ id: 'quiebre', titulo: 'Su versión perdedora', tono: 'info',
-        texto: textoQuiebre(quiebre) + ' ' + quiebre.principal.accion + (quiebre.chica ? ' (Muestra chica.)' : '') });
+      const c = quiebre.principal;
+      const vi = volRival && VOLUMEN_DE_QUIEBRE[c.id]
+        ? volRival.items.filter(i => i.id === VOLUMEN_DE_QUIEBRE[c.id])[0] : null;
+      out.push({ id: 'quiebre', titulo: 'Dónde se quiebra', tono: 'medio',
+        texto: textoQuiebre(quiebre) + (vi ? ' Su referencia: ' + vi.corto + ' (hoy ' + num1(vi.actual) + ').' : '') +
+          (quiebre.chica ? ' (Muestra chica.)' : '') });
     }
-    const o = conc && conc.opciones && conc.opciones[0];
-    if (o) {
-      const nunca = conc.intocables && conc.intocables.length ? ' Lo que no se concede: ' + enumerar(conc.intocables) + '.' : '';
-      out.push({ id: 'decision', titulo: 'Si no se puede cerrar todo', tono: 'medio',
-        texto: 'Conceder: ' + o.titulo.charAt(0).toLowerCase() + o.titulo.slice(1) + ' (' + o.costoTexto + '). ' +
-          'Protege: ' + o.protege + '.' + nunca });
+    if (volNuestro && volNuestro.items.length) {
+      const g = (id) => volNuestro.items.filter(i => i.id === id)[0];
+      const partes = [];
+      if (g('perdidas')) partes.push('no pasar de ' + num1(g('perdidas').umbral) + ' pérdidas');
+      if (g('tc')) partes.push('al menos ' + num1(g('tc').umbral) + ' tiros de campo');
+      if (g('tl')) partes.push(num1(g('tl').umbral) + ' libres');
+      if (g('ro')) partes.push(num1(g('ro').umbral) + ' rebotes ofensivos');
+      if (partes.length) {
+        out.push({ id: 'volumen', titulo: 'Nuestro volumen límite', tono: 'info',
+          texto: 'Por partido: ' + partes.join(', ') + '.' + (amenaza ? ' Sin soltar a ' + amenaza + '.' : '') });
+      }
     }
     return out;
+  }
+
+  /**
+   * EL FODA DINÁMICO. Cruza el box score (y el play-by-play, que suma sus
+   * propias líneas en el navegador) desde la mirada de NUESTRO cuerpo
+   * técnico: F lo del rival a neutralizar, O nuestro foco, D su mayor
+   * grieta y A el riesgo oculto. Recibe las listas ya calculadas: es pura.
+   *   F · percentil ≥ 70      D · percentil < 35 (o su versión perdedora)
+   */
+  function foda(e) {
+    const x = e || {};
+    const lim = (l, n) => (l || []).slice(0, n);
+    const F = lim((x.fortalezasRival || []).filter(i => i.percentil === null || i.percentil === undefined || i.percentil >= 70), 3)
+      .map(i => ({ texto: i.titulo + ' ' + i.valor + (i.sub ? ' · ' + i.sub : '') + '. A neutralizar.', percentil: i.percentil }));
+    const D = lim((x.debilidadesRival || []).filter(i => typeof i.percentil === 'number' && i.percentil < 35), 3)
+      .map(i => ({ texto: i.titulo + ' ' + i.valor + (i.sub ? ' · ' + i.sub : '') + '. Su mayor grieta.', percentil: i.percentil }));
+    if (x.quiebre && x.quiebre.ok && x.quiebre.principal) {
+      D.push({ texto: textoQuiebre(x.quiebre) + ' Es donde se rompe.', percentil: null });
+    }
+    const duelos = x.duelos && x.duelos.ok ? x.duelos.filas : [];
+    const O = duelos.filter(f => f.nuestro.ok).sort((a, b) => b.balance - a.balance).slice(0, 2)
+      .map(f => ({ texto: 'Nuestro ' + f.label.toLowerCase() + ' (' + pct(f.nuestro.propio) + f.nota + ') supera su defensa (' + pct(f.nuestro.contra) + f.nota + '): es nuestro foco.', percentil: null }));
+    if (duelos.length && !O.length) O.push({ texto: 'Ningún factor de nuestro ataque supera su defensa: la ventaja hay que construirla con volumen.', percentil: null });
+    const A = duelos.filter(f => f.rival.ok).sort((a, b) => a.balance - b.balance).slice(0, 2)
+      .map(f => ({ texto: 'Su ' + f.label.toLowerCase() + ' (' + pct(f.rival.propio) + f.nota + ') supera nuestra defensa (' + pct(f.rival.contra) + f.nota + '): riesgo del partido.', percentil: null }));
+    if (x.amenaza) A.push({ texto: x.amenaza + ': su tiro paga y no se lo puede soltar.', percentil: null });
+    return { F: F, O: O, D: D, A: A, hay: !!(F.length + O.length + D.length + A.length) };
   }
 
   /* =====================================================================
@@ -3262,7 +3358,12 @@ const SGADD_SCOUT = (function () {
     /* Soporte de decisión (v313): salen del mismo plan colectivo que la
        tabla de marcas, así que no pueden contradecirla. */
     const quiebreRival = versionPerdedora(idx, claveRival);
-    const concesionesRival = concesiones(jugadoresRival);
+    const duelosCruzadosInf = duelosCruzados(idx, claveNuestro, claveRival, eL.clave, eV.clave);
+    const volumenesRival = volumenesUmbral(idx, claveRival);
+    const volumenesNuestro = volumenesUmbral(idx, claveNuestro);
+    const plan = jugadoresRival && jugadoresRival.plan;
+    const amenazaP = plan && ((plan.intocables || [])[0] || (plan.focos || [])[0]);
+    const amenazaNombre = amenazaP ? (amenazaP.nombre || (amenazaP.perfil && amenazaP.perfil.nombre) || amenazaP.clave) : null;
     return {
       ok: true,
       local: fichaEquipo(idx, eL.clave, filaDe(eL.clave)),
@@ -3280,8 +3381,11 @@ const SGADD_SCOUT = (function () {
          sugería defensores del MISMO equipo que atacaba. */
       jugadoresRival: jugadoresRival,
       quiebreRival: quiebreRival,
-      concesionesRival: concesionesRival,
-      tresCosas: tresCosas(jugadoresRival, quiebreRival, concesionesRival),
+      duelos: duelosCruzadosInf,
+      volumenesRival: volumenesRival,
+      volumenesNuestro: volumenesNuestro,
+      amenazaRival: amenazaNombre,
+      tresCosas: tresCosas(duelosCruzadosInf, quiebreRival, volumenesRival, volumenesNuestro, amenazaNombre),
       /* Los que NO entraron a la tabla de arriba. Parte del mismo plantel
          ordenado, así que el corte no se puede desalinear. */
       restoRival: restoDelPlantel(idx, claveRival),
@@ -3312,7 +3416,8 @@ const SGADD_SCOUT = (function () {
     MIN_MINUTOS_TABLA_RESTO, restoDelPlantel, viaDeGolLider, enumerar,
     fortalezasJugador, fugasJugador, fichaRival,
     clavesEstrategicas, resumenEjecutivo, informePrePartido,
-    METRICAS_QUIEBRE, versionPerdedora, textoQuiebre, concesiones, tresCosas,
+    METRICAS_QUIEBRE, versionPerdedora, textoQuiebre, tresCosas,
+    duelosCruzados, volumenesUmbral, VOLUMEN_DE_QUIEBRE, foda,
   };
 })();
 
@@ -3345,10 +3450,9 @@ const SCOUT_UI = {
      no quiere en ESE informe (a veces el rival se prepara solo con marcas
      y claves, sin la matriz entera). */
   cards: {
-    encabezado: true, 'tres-cosas': true, diagnostico: true, matriz: true, ciclo: true, resumen: true, marcas: true,
-    concesiones: true,
+    encabezado: true, 'tres-cosas': true, duelos: true, diagnostico: true, foda: true, matriz: true, ciclo: true, resumen: true, marcas: true,
     jugadores: true, resto: true, claves: true, 'marcas-tabla': true, fichas: true,
-    pbp: true, 'pbp-tiro': true,
+    pbp: true, 'pbp-tiro': true, 'pbp-cuartos': true,
   },
 };
 
@@ -3364,11 +3468,12 @@ const SCOUT_CARDS = [
   { id: 'encabezado', label: 'Reporte de scouting' },
   { id: 'tres-cosas', label: '⏱ Tiempo muerto · las 3 cosas' },
   { id: 'diagnostico', label: '🩺 Diagnóstico del rival y su versión perdedora' },
+  { id: 'duelos', label: '⚔ Duelos cruzados y volúmenes de umbral' },
+  { id: 'foda', label: '🧭 FODA del partido' },
   { id: 'matriz', label: '📊 Métricas avanzadas y ranking en la liga' },
   { id: 'ciclo', label: '🔀 Splits local/visitante y tendencia reciente' },
   { id: 'resumen', label: '🧠 Resumen de criterio estratégico' },
   { id: 'marcas', label: '🛡 Plan defensivo · marca asignada' },
-  { id: 'concesiones', label: '⚖ El mal menor · matriz de concesiones' },
   { id: 'jugadores', label: '👥 Jugadores clave' },
   { id: 'resto', label: '🧩 Resto del plantel' },
   { id: 'claves', label: '🎯 Claves estratégicas y anticipación' },
@@ -3382,6 +3487,7 @@ const SCOUT_CARDS = [
      desde el play-by-play. Solo con la capa `pbp` de la categoría. */
   { id: 'pbp', label: '🔁 Quintetos y clutch del rival · laboratorio', capa: 'pbp' },
   { id: 'pbp-tiro', label: '🎯 Mapa de tiro del rival · laboratorio', capa: 'pbp' },
+  { id: 'pbp-cuartos', label: '⏲ Rendimiento por cuarto · laboratorio', capa: 'pbp' },
 ];
 
 /* =====================================================================
@@ -4605,28 +4711,110 @@ function scoutBloqueDiagnostico(inf) {
     </section>`;
 }
 
-/** El mal menor: de menor a mayor costo, con lo que protege. Un intocable nunca aparece. */
-function scoutBloqueConcesiones(inf) {
-  const c = inf.concesionesRival;
-  const pbp = (typeof SGADD_PBP !== 'undefined' && SGADD_PBP.activa() && SGADD_PBP.espacioRival)
-    ? SGADD_PBP.espacioRival(scoutNombreRival(inf), 'concesiones') : '';
-  if ((!c || !c.opciones.length) && !pbp) return '';
-  const filas = c && c.opciones.length ? c.opciones.map((o, i) => `
-        <tr class="border-b border-hairline/40 last:border-0 align-top">
-          <td class="px-2 py-2 text-left text-[11px]"><span class="text-muted">${i + 1}.</span> <strong>${escapeHtml(o.titulo)}</strong></td>
-          <td class="px-2 py-2 text-[11px]">${escapeHtml(o.costoTexto)}</td>
-          <td class="px-2 py-2 text-[11px]">${escapeHtml(o.volumen)}</td>
-          <td class="px-2 py-2 text-left text-[11px]">${escapeHtml(o.protege)}.</td>
-        </tr>`).join('') : '';
+/** El nombre de NUESTRO equipo en el cruce (el otro lado del rival). */
+function scoutNombreNuestro(inf) {
+  const esLocal = !!(inf.local && inf.local.clave === inf.claveRival);
+  const n = esLocal ? inf.visitante : inf.local;
+  return n ? n.nombre : '';
+}
+
+/** Porcentaje de una razón 0-1, con coma. */
+function scoutPctFino(v) {
+  return (v === null || v === undefined || !isFinite(v)) ? '—' : (v * 100).toFixed(1).replace('.', ',') + '%';
+}
+
+/** Los duelos de los 4 Factores y los volúmenes que sostienen cada umbral. */
+function scoutBloqueDuelos(inf) {
+  const d = inf.duelos;
+  const vr = inf.volumenesRival, vn = inf.volumenesNuestro;
+  const hayVol = (vr && vr.items.length) || (vn && vn.items.length);
+  if ((!d || !d.ok) && !hayVol) return '';
+  const rival = scoutNombreRival(inf), nuestro = scoutNombreNuestro(inf);
+  const celda = (o) => `<span class="${o.ok ? 'tono-alto' : 'tono-bajo'}" style="color:${o.ok ? '#4ade80' : '#f87171'}">${o.ok ? '✓' : '✗'}</span> ${scoutPctFino(o.propio)} <span class="text-muted">vs</span> ${scoutPctFino(o.contra)}`;
+  const tabla = d && d.ok ? `
+      <p class="text-[10px] text-muted mb-2">★ el factor que más mueve el margen · ✓ el ataque supera a esa defensa, ✗ no · ◀ inclina el factor a favor de ${escapeHtml(nuestro)}, ▶ a favor de ${escapeHtml(rival)}.</p>
+      <div class="scrollbox"><table class="w-full text-left text-xs">
+        <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
+          <th class="px-2 py-1">Factor</th>
+          <th class="px-2 py-1">Ataque de ${escapeHtml(nuestro)} vs defensa de ${escapeHtml(rival)}</th>
+          <th class="px-2 py-1">Ataque de ${escapeHtml(rival)} vs defensa de ${escapeHtml(nuestro)}</th>
+          <th class="px-2 py-1">Balance</th></tr></thead>
+        <tbody>${d.filas.slice().sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance)).map(f => `
+          <tr class="border-b border-hairline/40 last:border-0 align-top">
+            <td class="px-2 py-1.5">${escapeHtml(f.label)}${f.nota ? ' <span class="text-muted text-[10px]">(tasa de pérdidas: menos es mejor)</span>' : ''}${f.estrella ? ' <span class="text-accent" title="El factor que más mueve el margen">★</span>' : ''}</td>
+            <td class="px-2 py-1.5 font-mono">${celda(f.nuestro)}</td>
+            <td class="px-2 py-1.5 font-mono">${celda(f.rival)}</td>
+            <td class="px-2 py-1.5 font-mono">${f.balance >= 0 ? '◀' : '▶'} ${Math.abs(f.balance).toFixed(1).replace('.', ',')} pts</td>
+          </tr>`).join('')}</tbody></table></div>
+      <p class="text-[11px] text-ink mt-2">Margen proyectado del modelo del Simulador: <strong>${d.margenNuestro >= 0 ? '◀ ' + escapeHtml(nuestro) + ' +' : '▶ ' + escapeHtml(rival) + ' +'}${Math.abs(d.margenNuestro).toFixed(1).replace('.', ',')} pts</strong>.</p>`
+    : `<p class="text-[11px] text-muted">◆ ${escapeHtml((d && d.motivo) || 'Sin muestra para cruzar los duelos.')}</p>`;
+  const lista = (v) => !v || !v.items.length
+    ? '<p class="text-[11px] text-muted">◆ Sin datos para calcular volúmenes.</p>'
+    : `<ul class="text-[11px] space-y-1">${v.items.map(i => `<li title="${escapeHtml(i.texto)}"><span class="${i.ok ? 'tono-alto' : 'tono-bajo'}" style="color:${i.ok ? '#4ade80' : '#f87171'}">${i.ok ? '✓' : '✗'}</span> <strong>${escapeHtml(i.label)}</strong> · ${i.dir === 'max' ? 'tope: ' : 'necesita '}${escapeHtml(i.corto)} · hoy ${i.actual.toFixed(1).replace('.', ',')}</li>`).join('')}</ul>`;
   return `
-    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="concesiones">
-      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">⚖ El mal menor · matriz de concesiones</h4>
-      <p class="text-[10px] text-muted mb-2">Cuando no se puede cerrar todo: qué conceder, de lo que menos cuesta a lo que más. ${c && c.intocables.length ? 'Nunca se concede: ' + escapeHtml(c.intocables.join(', ')) + '.' : ''}</p>
-      ${filas ? `<div class="scrollbox"><table class="w-full text-xs">
-        <thead><tr class="text-[10px] uppercase tracking-wider text-muted"><th class="px-2 py-1 text-left">Concesión</th><th class="px-2 py-1">Costo</th><th class="px-2 py-1">Volumen que absorbe</th><th class="px-2 py-1 text-left">Qué protege</th></tr></thead>
-        <tbody>${filas}</tbody></table></div>` : '<p class="text-[11px] text-muted">◆ Con el box score no hay un tirador o una falta que valga conceder.</p>'}
-      ${pbp}
-      <p class="text-[10px] text-muted mt-2">Costo = puntos que concede por intento. Es lectura del dato: el bonus y las faltas de nuestros defensores los mira el cuerpo técnico.</p>
+    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="duelos">
+      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">⚔ Duelos cruzados y volúmenes de umbral</h4>
+      ${tabla}
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+        <div class="rend-card rounded-lg border border-hairline p-3">
+          <p class="text-[10px] uppercase tracking-wider text-muted font-display mb-1">Volumen de ${escapeHtml(rival)} · para sostener su zona positiva</p>
+          ${lista(vr)}
+        </div>
+        <div class="rend-card rounded-lg border border-hairline p-3">
+          <p class="text-[10px] uppercase tracking-wider text-muted font-display mb-1">Nuestro volumen · para sostener la nuestra</p>
+          ${lista(vn)}
+        </div>
+      </div>
+      <p class="text-[10px] text-muted mt-2">Pasá el mouse por cada línea para ver la cuenta completa. La zona positiva es la mediana de la liga con la eficiencia propia de cada equipo; el tope de pérdidas es donde su %TOV pasa al peor cuarto. Es lectura del dato: el cuerpo técnico decide.</p>
+    </section>`;
+}
+
+/** El FODA del partido: box score acá, y el play-by-play suma sus líneas después de pintar. */
+function scoutBloqueFoda(inf) {
+  const idx = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado) ? SGADD_APP.estado.idx : null;
+  const eR = idx ? idx.get(inf.claveRival) : null;
+  const C = (typeof SGADD_CONCLUSIONES !== 'undefined') ? SGADD_CONCLUSIONES : null;
+  let concl = null;
+  try { concl = C && idx && eR ? C.equipo(idx, eR) : null; } catch (e) { concl = null; }
+  const f = SGADD_SCOUT.foda({
+    fortalezasRival: concl ? concl.fortalezas : [],
+    debilidadesRival: concl ? concl.alertas : [],
+    duelos: inf.duelos, quiebre: inf.quiebreRival, amenaza: inf.amenazaRival,
+  });
+  const pbpActiva = typeof SGADD_PBP !== 'undefined' && SGADD_PBP.activa() && SGADD_PBP.espacioRival;
+  if (!f.hay && !pbpActiva) return '';
+  const cuad = (k, titulo, sub, glifo) => `
+        <div class="rend-card rounded-lg border border-hairline p-3" data-foda="${k}">
+          <p class="text-[10px] uppercase tracking-wider text-muted font-display mb-0.5"><strong class="text-accent">${k}</strong> · ${titulo}</p>
+          <p class="text-[10px] text-muted mb-1">${sub}</p>
+          <ul class="text-[11px] space-y-1" data-foda-lista="${k}">${f[k].length ? f[k].map(i => `<li>${scoutMarcaTono(glifo)} ${escapeHtml(i.texto)}</li>`).join('')
+            : '<li class="text-muted">◆ Sin datos del box score que sostengan esta casilla.</li>'}</ul>
+          <ul class="text-[11px] space-y-1 mt-1" data-foda-pbp="${k}"></ul>
+        </div>`;
+  const slot = pbpActiva ? SGADD_PBP.espacioRival(scoutNombreRival(inf), 'foda') : '';
+  return `
+    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="foda">
+      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">🧭 FODA del partido</h4>
+      <p class="text-[10px] text-muted mb-2">Lo del rival visto desde nuestro banco: ▲ fuerte (hay que respetarlo) · ▼ débil (se explota) · ◆ nuestro foco. Fortalezas desde el percentil 70 y debilidades bajo el 35 de su liga.</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        ${cuad('F', 'Fortalezas operativas', 'A neutralizar', 'alto')}
+        ${cuad('O', 'Oportunidades de explotación', 'Nuestro foco', 'info')}
+        ${cuad('D', 'Debilidades estructurales', 'Su mayor grieta', 'bajo')}
+        ${cuad('A', 'Amenazas de partido', 'Riesgo oculto', 'alto')}
+      </div>
+      ${slot}
+    </section>`;
+}
+
+/** El rendimiento por cuarto del rival y el nuestro. Solo con la capa de laboratorio. */
+function scoutBloqueCuartos(inf) {
+  if (typeof SGADD_PBP === 'undefined' || !SGADD_PBP.activa() || !SGADD_PBP.espacioCuartos) return '';
+  const rival = scoutNombreRival(inf), nuestro = scoutNombreNuestro(inf);
+  if (!rival) return '';
+  return `
+    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="pbp-cuartos">
+      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">⏲ Rendimiento por cuarto · ${scoutNombreConLogo(rival, 18)}</h4>
+      ${SGADD_PBP.espacioCuartos(rival, nuestro && nuestro !== rival ? nuestro : null)}
     </section>`;
 }
 
@@ -4894,17 +5082,19 @@ function scoutInforme(idx) {
       ${scoutBloqueEncabezado(inf)}
       ${scoutBloqueTresCosas(inf)}
       ${scoutBloqueDiagnostico(inf)}
+      ${scoutBloqueDuelos(inf)}
+      ${scoutBloqueFoda(inf)}
       ${scoutBloqueMatriz(inf)}
       ${scoutBloqueCiclo(inf)}
       ${scoutBloqueResumen(inf)}
       ${scoutBloqueMarcas(inf)}
-      ${scoutBloqueConcesiones(inf)}
       ${scoutBloqueJugadores(inf)}
       ${scoutBloqueResto(inf)}
       ${scoutBloqueClaves(inf)}
       ${scoutBloqueMarcasTabla(inf)}
       ${scoutBloqueFichas(inf)}
       ${scoutBloquePbp(inf)}
+      ${scoutBloqueCuartos(inf)}
       <footer class="informe-pie solo-imprimir">${SGADD_UI.pieInforme()}</footer>
       ${scoutModalExport()}
     </div>`;

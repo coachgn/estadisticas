@@ -645,9 +645,7 @@ const SGADD_PBP = (function () {
     const base = st.filas.filter(f => f.i >= 20);
     const fila = (f) => ({ zona: f.zona, nombre: f.nombre, i: f.i, share: f.share, ppt: f.post, liga: f.liga.ppt, delta: f.delta });
     const frias = base.filter(f => f.delta <= -0.03).sort((a, b) => b.perdidos - a.perdidos).slice(0, 3).map(fila);
-    const concesiones = base.filter(f => !/^Z[1-4]$/.test(f.zona) && f.delta < 0)
-      .sort((a, b) => a.post - b.post).slice(0, 2).map(fila);
-    return { frias, concesiones };
+    return { frias };
   }
   const n2 = (v) => (isFinite(v) ? v.toFixed(2).replace('.', ',') : '—');
 
@@ -658,16 +656,101 @@ const SGADD_PBP = (function () {
     return `<div class="rend-alerta" data-diag-pbp="frias"><div class="text-[10px] uppercase tracking-wider text-muted font-display mb-1">❄ Zonas frías del mapa</div>
       <ul class="text-[11px] space-y-1">${d.frias.map(f => `<li><span class="tono-bajo" style="color:#f87171">▼</span> <strong>${esc(f.zona)} · ${esc(f.nombre)}</strong>: ${n2(f.ppt)} pts por tiro (liga ${n2(f.liga)}) sobre el ${Math.round(f.share * 100)}% de sus tiros.</li>`).join('')}</ul></div>`;
   }
-  /** Filas de zona para la matriz de concesiones. */
-  function rivalConcesionesHtml(paq) {
-    const d = paq ? diagnosticoRival(paq) : null;
-    if (!d || !d.concesiones.length) return '';
-    return `<div class="text-[11px] mt-2" data-diag-pbp="concesiones"><div class="text-[10px] uppercase tracking-wider text-muted font-display mb-1">Por zona · mapa de tiro</div>
-      <ul class="space-y-1">${d.concesiones.map(f => `<li>◆ <strong>Ceder ${esc(f.zona)} · ${esc(f.nombre)}</strong>: ${n2(f.ppt)} pts por tiro (liga ${n2(f.liga)}); absorbe el ${Math.round(f.share * 100)}% de sus tiros. Protege el aro y las esquinas.</li>`).join('')}</ul></div>`;
-  }
   /** El lugar donde el montaje del paquete pinta esas piezas. */
   function espacioRival(equipo, tipo) {
-    return `<div class="pbp-montaje" data-pbp-equipo="${esc(equipo)}" data-pbp-tipo="${tipo === 'concesiones' ? 'rival-concesiones' : 'rival-frias'}"></div>`;
+    return `<div class="pbp-montaje" data-pbp-equipo="${esc(equipo)}" data-pbp-tipo="${tipo === 'foda' ? 'rival-foda' : 'rival-frias'}"></div>`;
+  }
+
+  /* ----------------------------------------- FODA del partido (PBP) · PURO */
+
+  /**
+   * Lo que el play-by-play del rival suma a cada casilla del FODA:
+   *   F  tipos de posesión excelentes, media distancia como arma, cierres, arquetipos de ataque que rinden
+   *   D  tipos muy pobres, trampa de media distancia, pérdidas vivas, arquetipos de ataque o defensa que no rinden
+   *   A  la defensa de resistencia (muralla) del final del reloj
+   *   O  las zonas donde su defensa concede de más
+   * Cada línea sale de un criterio que ya existe en el panel: ninguno nuevo.
+   */
+  function fodaPbp(paq) {
+    const out = { F: [], O: [], D: [], A: [] };
+    if (!paq) return out;
+    const C = typeof SGADD_CONCLUSIONES !== 'undefined' ? SGADD_CONCLUSIONES : null;
+    if (C && C.pbpEquipo) {
+      const b = C.pbpEquipo(paq);
+      (b.fortalezas || []).forEach(i => out.F.push(i.titulo + ' ' + i.valor + (i.sub ? ' · ' + i.sub : '') + '. A neutralizar.'));
+      (b.alertas || []).forEach(i => out.D.push(i.titulo + ' ' + i.valor + (i.sub ? ' · ' + i.sub : '') + '. Su mayor grieta.'));
+    }
+    const a = relojArquetipos(paq);
+    if (a) {
+      a.ofensivos.forEach(x => (x.ef > 0 ? out.F : out.D).push(x.emoji + ' ' + x.label + ': ' + x.detalle));
+      a.defensivos.forEach(x => (x.ef > 0 ? out.A : out.D).push(x.emoji + ' ' + x.label + ': ' + x.detalle));
+    }
+    const z = diagnosticoZonas(paq, 'contra');
+    if (z && z.criticas) z.criticas.slice(0, 2).forEach(f => out.O.push(f.zona + ' · ' + f.nombre + ': su defensa concede ' + n2(f.ppt) + ' pts por tiro contra ' + n2(f.liga.ppt) + ' de la liga. Atacar ahí.'));
+    return out;
+  }
+
+  /* --------------------------------------- rendimiento por cuarto (PURO) */
+
+  const CUARTO_MIN_PJ = 5;
+  const CUARTO_UMBRAL = 1.5;     // puntos de diferencia por partido en un cuarto
+  /**
+   * Los patrones temporales de un equipo, de su diferencia por cuarto
+   * (puntos a favor − en contra, promedio por partido): arranca fuerte y
+   * se cae, cierra fuerte, o tiene un cuarto débil. Con menos de 5
+   * partidos no se afirma nada.
+   */
+  function cuartosPatrones(cuartos) {
+    const q = {};
+    (cuartos || []).forEach((c) => { q[String(c.periodo)] = c; });
+    const ok = (p) => q[p] && esNum(q[p].dif) && q[p].partidos >= CUARTO_MIN_PJ;
+    const out = [];
+    const d = (p) => q[p].dif;
+    if (ok('1') && ok('4')) {
+      if (d('1') >= CUARTO_UMBRAL && d('4') <= -CUARTO_UMBRAL) out.push({ id: 'colapsa', tono: 'bajo', texto: 'Arranca arrollador (' + signo(d('1'), 1) + ' en el 1.º) y se cae al final (' + signo(d('4'), 1) + ' en el 4.º): el desgaste físico o de rotación aparece tarde.' });
+      else if (d('1') <= -CUARTO_UMBRAL && d('4') >= CUARTO_UMBRAL) out.push({ id: 'remonta', tono: 'alto', texto: 'Arranca lento (' + signo(d('1'), 1) + ' en el 1.º) pero cierra fuerte (' + signo(d('4'), 1) + ' en el 4.º): hay que llegar al último cuarto con ventaja.' });
+      else if (d('4') <= -CUARTO_UMBRAL) out.push({ id: 'se-apaga', tono: 'bajo', texto: 'Se apaga en el último cuarto (' + signo(d('4'), 1) + ' por partido).' });
+      else if (d('4') >= CUARTO_UMBRAL) out.push({ id: 'cierra', tono: 'alto', texto: 'Domina el último cuarto (' + signo(d('4'), 1) + ' por partido).' });
+    }
+    const todos = ['1', '2', '3', '4'].filter(ok);
+    if (todos.length >= 3) {
+      const ord = todos.slice().sort((x, y) => d(x) - d(y));
+      const peor = ord[0];
+      if (d(peor) <= -CUARTO_UMBRAL && !(out.some(o => o.id === 'colapsa' || o.id === 'se-apaga' || o.id === 'remonta'))) {
+        out.push({ id: 'cuarto-debil', tono: 'bajo', texto: 'Su cuarto débil es el ' + peor + '.º (' + signo(d(peor), 1) + ' por partido): ahí se puede quebrar el partido.' });
+      }
+    }
+    return out;
+  }
+
+  /** La matriz por cuarto de los dos equipos, con sus patrones. */
+  function cuartosCruzadoHtml(paq, paqPropio, nombreRival, nombreNuestro) {
+    const cr = (paq && paq.cuartos) || [];
+    const cn = (paqPropio && paqPropio.cuartos) || [];
+    if (!cr.length) return vacio('Sin datos por cuarto de este equipo.');
+    const celda = (c) => c
+      ? `<td class="${TD}">${num(c.favor)}</td><td class="${TD}">${num(c.contra)}</td><td class="${TD} font-semibold ${tonoMM(c.dif)}">${signo(c.dif, 1)}</td>`
+      : `<td class="${TD} dato-sec">—</td><td class="${TD} dato-sec">—</td><td class="${TD} dato-sec">—</td>`;
+    const periodos = ['1', '2', '3', '4', 'OT'].filter(p => cr.some(c => String(c.periodo) === p) || cn.some(c => String(c.periodo) === p));
+    const de = (l, p) => l.filter(c => String(c.periodo) === p)[0];
+    const cab = (n) => `<th class="px-2 pb-1" colspan="3">${esc(n)}</th>`;
+    const lista = (n, c) => {
+      const pat = cuartosPatrones(c);
+      return `<div class="rend-card rounded-lg border border-hairline p-3"><p class="text-[10px] uppercase tracking-wider text-muted font-display mb-1">${esc(n)}</p>${pat.length
+        ? `<ul class="text-[11px] space-y-1">${pat.map(x => `<li>${x.tono === 'alto' ? '<span class="tono-alto" style="color:#4ade80">▲</span>' : '<span class="tono-bajo" style="color:#f87171">▼</span>'} ${esc(x.texto)}</li>`).join('')}</ul>`
+        : '<p class="text-[11px] text-muted">◆ Sin un patrón temporal que se despegue de ±1,5 puntos por cuarto.</p>'}</div>`;
+    };
+    return `<div class="scrollbox"><table class="w-full">
+        <thead><tr class="${TH}"><th class="px-2 pb-1 text-left" rowspan="2">Cuarto</th>${cab(nombreRival)}${cn.length ? cab(nombreNuestro) : ''}</tr>
+        <tr class="${TH}"><th class="px-2 pb-1">Hace</th><th class="px-2 pb-1">Cede</th><th class="px-2 pb-1">Dif.</th>${cn.length ? '<th class="px-2 pb-1">Hace</th><th class="px-2 pb-1">Cede</th><th class="px-2 pb-1">Dif.</th>' : ''}</tr></thead>
+        <tbody>${periodos.map(p => `<tr class="border-b border-hairline/40 last:border-0"><td class="px-2 py-1 text-left text-xs whitespace-nowrap">${p === 'OT' ? 'Supl.' : p + '.º'}</td>${celda(de(cr, p))}${cn.length ? celda(de(cn, p)) : ''}</tr>`).join('')}</tbody></table></div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">${lista(nombreRival, cr)}${cn.length ? lista(nombreNuestro, cn) : ''}</div>
+      <p class="text-[10px] text-muted mt-2">Puntos por partido de cada cuarto, de los partidos validados. «Dif.» es lo que hace menos lo que cede.</p>`;
+  }
+
+  /** El lugar de la matriz por cuarto: rival y, si hay, nuestro paquete. */
+  function espacioCuartos(rival, nuestro) {
+    return `<div class="pbp-montaje" data-pbp-equipo="${esc(rival)}"${nuestro ? ` data-pbp-propio="${esc(nuestro)}"` : ''} data-pbp-nombre-propio="${esc(nuestro || '')}" data-pbp-tipo="rival-cuartos"></div>`;
   }
 
   /** Las marcas del diagnóstico por zona, con la misma clase para el SVG, la tabla y la lista. */
@@ -854,7 +937,7 @@ const SGADD_PBP = (function () {
         ${grupo('Color', boton('metrica', 'eficiencia', 'Eficiencia vs liga') + boton('metrica', 'frecuencia', 'Frecuencia'))}
         ${grupo('Diagnóstico', boton('diag', o.diag ? '0' : '1', o.diag ? 'Ocultar' : 'Mostrar'))}
       </div>`}
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+      <div class="pbp-mapa-grid grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         <div>
           <svg class="pbp-mapa w-full max-w-md" viewBox="-4 -4 158 148" role="img" aria-label="Mapa de tiros de campo por zona">
             <defs><clipPath id="${clip}"><rect x="0" y="0" width="150" height="140"/></clipPath></defs>
@@ -2278,7 +2361,7 @@ const SGADD_PBP = (function () {
       if (!c) { if (out.sinVara.indexOf(a.k) === -1) out.sinVara.push(a.k); return; }
       const x = fav[a.k];
       if (!(rep[a.k] >= c.p75) || signoCelda(x, 'favor') !== a.ef) return;
-      out.ofensivos.push({ id: a.id, emoji: a.emoji, label: a.label, texto: a.texto,
+      out.ofensivos.push({ id: a.id, ef: a.ef, emoji: a.emoji, label: a.label, texto: a.texto,
         detalle: num(rep[a.k]) + ' % de sus finales en ' + FRANJAS_RELOJ[a.k] + ' (la competencia, ' + num(repL[a.k])
           + ' %; el cuarto más alto arranca en ' + num(c.p75) + ' %) y ' + num(x.ppt, 2) + ' por tiro contra ' + num(x.liga, 2)
           + aclaraMayor(rep, a.k, 'finales') + '.' });
@@ -2286,7 +2369,7 @@ const SGADD_PBP = (function () {
     ARQUETIPOS_RELOJ.defensivos.forEach((a) => {
       const xs = a.ks.map(k => con[k]);
       if (!xs.every(x => signoCelda(x, 'contra') === a.ef)) return;
-      out.defensivos.push({ id: a.id, emoji: a.emoji, label: a.label, texto: a.texto,
+      out.defensivos.push({ id: a.id, ef: a.ef, emoji: a.emoji, label: a.label, texto: a.texto,
         detalle: xs.map((x, i) => (i ? 'en ' : 'En ') + FRANJAS_RELOJ[x.k] + ' le sacan ' + num(x.ppt, 2) + ' por tiro contra ' + num(x.liga, 2)
           + ' (' + x.conv + '/' + x.tiros + ')').join('; ') + '.' });
     });
@@ -3001,8 +3084,21 @@ const SGADD_PBP = (function () {
             if (fil) { try { C.refinarFilosofia(fil, paq); } catch (e) { /* queda la del box score */ } }
             return;
           }
-          if (tipo === 'rival-frias' || tipo === 'rival-concesiones') {
-            nodo.innerHTML = tipo === 'rival-frias' ? rivalFriasHtml(paq) : rivalConcesionesHtml(paq);
+          if (tipo === 'rival-cuartos') {
+            nodo.innerHTML = cuartosCruzadoHtml(paq, paqPropio, nodo.getAttribute('data-pbp-equipo') || '', nodo.getAttribute('data-pbp-nombre-propio') || '');
+            return;
+          }
+          if (tipo === 'rival-foda') {
+            const f = fodaPbp(paq), card = nodo.closest ? nodo.closest('[data-bloque="foda"]') : null;
+            if (card) ['F', 'O', 'D', 'A'].forEach((k) => {
+              const ul = card.querySelector('[data-foda-pbp="' + k + '"]');
+              if (ul) ul.innerHTML = f[k].map(t => '<li>' + (k === 'O' ? '◆' : k === 'D' ? '<span class="tono-bajo" style="color:#f87171">▼</span>' : '<span class="tono-alto" style="color:#4ade80">▲</span>') + ' ' + esc(t) + '</li>').join('');
+            });
+            nodo.remove();
+            return;
+          }
+          if (tipo === 'rival-frias') {
+            nodo.innerHTML = rivalFriasHtml(paq);
             /* La filosofía del rival: el box score ya la pintó; con su paquete se cruza (v313). */
             if (tipo === 'rival-frias' && typeof SGADD_CONCLUSIONES !== 'undefined' && SGADD_CONCLUSIONES.refinarFilosofia && nodo.closest) {
               const card = nodo.closest('[data-bloque="diagnostico"]');
@@ -3023,7 +3119,7 @@ const SGADD_PBP = (function () {
           activar(nodo, paq);
         }).catch((e) => {
           if (!nodo.isConnected) return;
-          if (nombreTramos || tipo === 'conclusiones' || tipo === 'rival-frias' || tipo === 'rival-concesiones') { nodo.innerHTML = ''; return; }
+          if (nombreTramos || tipo === 'conclusiones' || tipo === 'rival-frias' || tipo === 'rival-foda' || tipo === 'rival-cuartos') { nodo.innerHTML = ''; return; }
           nodo.innerHTML = vacio(esc(e && e.message ? e.message : 'No se pudo cargar el análisis.'));
         }));
     });
@@ -3193,7 +3289,7 @@ const SGADD_PBP = (function () {
   return {
     CAPA, NOMBRES_ZONA, FAMILIAS, ZONAS, GEOMETRIA, MIN_LIGA_HEX,
     html, mapaCard, jugador, mapa, capaTiros, bloqueSecciones, tieneSecciones, geometriaZonas, zonaGeometrica,
-    diagnosticoZonas, diagnosticoJugador, cruceZonas, diagnosticoRival, rivalFriasHtml, rivalConcesionesHtml, espacioRival, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
+    diagnosticoZonas, diagnosticoJugador, cruceZonas, diagnosticoRival, rivalFriasHtml, espacioRival, fodaPbp, cuartosPatrones, cuartosCruzadoHtml, espacioCuartos, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
     activa, espacio, espacioJugador, espacioQuintetosJugador, quintetosJugador, onOffDe, avisoSinCapa, espacioRendimiento, espacioConclusiones, montarPendientes, activar, apellido, _cache: cache,
     partidoDe, mapaPartido, momentumPartido, quintetosPartido, espacioPartido, MIN_TIROS_DIAGNOSTICO,
     relojTabla, relojIdentidad, relojPerfilJugador, relojEquipo, relojJugador, relojPartido, relojReparto, FRANJAS_RELOJ,

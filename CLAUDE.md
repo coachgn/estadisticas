@@ -164,8 +164,8 @@ node test-rendimiento.js   #  83 tests · la card de Rendimiento del jugador: el
 node test-conclusiones.js  #  85 tests · la card de conclusiones clínicas de Equipos y Jugadores, los tipos
                            #             de posesión del PBP y la terna de logos del PDF (punto 141)
 
-node test-diagnostico-rival.js # 43 tests · el soporte de decisión del Scouting: la versión perdedora del
-                           #             rival, la matriz de concesiones y las tres cosas (punto 146)
+node test-diagnostico-rival.js # 61 tests · el soporte de decisión del Scouting: la versión perdedora, los duelos
+                           #             cruzados con sus volúmenes de umbral, el FODA y las tres cosas (puntos 146 y 147)
 
 node test-backend.js       # 468 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
@@ -295,7 +295,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=313`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=314`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16090,3 +16090,92 @@ firma en todas; la hoja 1 lleva el encabezado y «las 3 cosas», y el Diagnósti
 abre la hoja 2 (`break-inside: avoid`). Decisión del club: se queda así.
 **No verificado**: el espacio libre de la hoja 1 como imagen, ni las zonas
 frías ni las fichas ORO (la demo no tiene la capa `pbp`).
+
+## 147. DUELOS CRUZADOS, VOLÚMENES DE UMBRAL, FODA Y CUARTOS · y se fue el mal menor (2026-10-27)
+
+Assets en `?v=314`. Para TODOS los planes y con box score solo; el play-by-play
+suma sus piezas por el camino de siempre (montaje después de pintar).
+`test-diagnostico-rival.js` fija el motor y el cableado; `test-pbp.js` las
+piezas del play-by-play y `test-scouting.js` la integración con el índice real.
+
+### Lo que se fue y lo que entró
+
+| Antes (v313) | Ahora (v314) |
+|---|---|
+| ⚖ El mal menor · matriz de concesiones | **fuera**: era redundante con las marcas y el plan colectivo. Se fueron `concesiones()`, su card, `concesionesRival`, la opción del modal y la pieza «ceder una zona» del play-by-play |
+| ⏱ las 3 cosas: amenaza, versión perdedora, concesión | ⏱ las 3 cosas **como directivas del cruce**: el duelo que decide, dónde se quiebra (con su volumen) y nuestro volumen límite |
+| — | ⚔ **Duelos cruzados y volúmenes de umbral** (`data-bloque="duelos"`) |
+| — | 🧭 **FODA del partido** (`foda`) |
+| — | ⏲ **Rendimiento por cuarto** (`pbp-cuartos`, solo con la capa `pbp`) |
+
+Orden del informe: encabezado · las 3 cosas · diagnóstico · duelos · FODA · matriz…
+(duelos va DESPUÉS del diagnóstico a propósito: así se reparten mejor las hojas).
+
+### Duelos cruzados (`duelosCruzados`)
+
+El MISMO cálculo del Simulador (`SGADD_4F.simularEnfrentamiento`: regresión de
+liga sobre los 4 Factores), puesto del lado de NUESTRO equipo, con el local y el
+visitante del cruce. ★ marca el factor que más mueve el margen; ✓/✗ dice si el
+ataque supera a esa defensa; ◀ inclina el factor a favor nuestro y ▶ a favor del
+rival; el margen proyectado se da desde nuestro lado. **Sin muestra del
+simulador degrada** (`ok: false` con su motivo), sin error. El factor de
+pérdidas lleva «de pérdidas» y «menos es mejor»: son tasas de pérdida, no de
+cuidado.
+
+### Volúmenes de umbral (`volumenesUmbral`)
+
+Cuántos tiros, pérdidas, rebotes o libres por partido sostienen la zona positiva.
+«Positiva» = la **mediana de la liga con la eficiencia propia del equipo**:
+
+- tiros de campo: `(PTS mediana − sus libres) / (2 × su eFG%)`;
+- triples: `T3C mediana / su T3%`;
+- pérdidas: **tope** = sus plays × el peor cuarto de `PePP%` de la liga (se mide hacia abajo);
+- rebotes ofensivos: `RO% mediana × (su RO / su RO%)`;
+- libres: `RTL% mediana × sus tiros de campo`.
+
+Un volumen sin dato se omite. No son metas: es la cuenta de qué hace falta para
+no quedar bajo la mediana, y cada línea trae la cuenta completa en el `title`.
+
+### FODA (`foda`, pura)
+
+F = percentil ≥ 70 del rival · D = percentil < 35 (más su versión perdedora) ·
+O = duelos donde NUESTRO ataque supera su defensa · A = duelos donde su ataque
+supera nuestra defensa, más la amenaza del plan. Con el play-by-play,
+`SGADD_PBP.fodaPbp` suma a cada casilla: tipos de posesión y media distancia
+(F/D), pérdidas vivas y cierres (D), arquetipos del reloj (F/D según el signo
+`ef`; la defensa de resistencia va a A) y las zonas que su defensa concede (O).
+Cada línea sale de un criterio que ya existía: ninguno nuevo.
+
+### Rendimiento por cuarto (`cuartosCruzadoHtml`, `cuartosPatrones`)
+
+**Lo que el paquete trae por cuarto son los puntos a favor y en contra** (más
+G-E-P y los últimos 5): eso es lo que se muestra, del rival y del nuestro, con
+patrones a partir de ±1,5 puntos por cuarto y 5 partidos (arranca fuerte y se
+cae · arranca lento y remonta · se apaga al final · cuarto débil).
+**La eficiencia de tiro, las pérdidas, el ritmo y las faltas POR CUARTO no están
+en el paquete** y el panel no las inventa: pedirlas es un cambio de
+`motorstats-ingestion` (acumular por período y sumarlo a `cuartos`) más
+resubir los paquetes.
+
+### Las tres cosas
+
+`tresCosas(duelos, quiebre, volRival, volNuestro, amenaza)`: ① el duelo ★ con
+las dos cifras y el margen, ② su quiebre con la referencia de volumen de SU
+métrica (`VOLUMEN_DE_QUIEBRE`), ③ «Por partido: no pasar de N pérdidas, al menos
+M tiros de campo…» y a quién no soltar. Lo que el dato no sostiene no se
+escribe: faltan piezas, quedan menos de tres.
+
+### El papel
+
+- **El mapa de tiro lleva la tabla a la derecha del gráfico** también en el PDF
+  (`.pbp-mapa-grid` forzada en `@media print`): el `lg:` de Tailwind se evalúa
+  contra el ancho de la HOJA (punto 49) y en una A4 vertical no se activaba.
+- Diagnóstico, duelos y cuartos pueden partirse **entre sub-cards** para llenar
+  la hoja (cada sub-card no se parte). Medido con la demo (Plata, sin `pbp`):
+  10 hojas A3, firma en todas; el FODA queda solo en la hoja 3 porque, entero,
+  no entra en lo que queda de la 2. Con la capa `pbp` no se midió.
+
+### No verificado
+
+El PDF con la capa `pbp` (cuartos, zonas frías y las líneas del FODA del
+play-by-play) y con las fichas del Plan ORO: la demo no las tiene.

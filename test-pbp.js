@@ -495,13 +495,33 @@ function paquete(equipo) {
 
   /* ---- el soporte de decisión del rival (v313) */
   const dr = P.diagnosticoRival(p3);
-  check('rival: sin paquete no hay diagnóstico ni piezas (modo degradado)', P.diagnosticoRival(null) === null && P.rivalFriasHtml(null) === '' && P.rivalConcesionesHtml(null) === '');
+  check('rival: sin paquete no hay diagnóstico ni piezas (modo degradado)', P.diagnosticoRival(null) === null && P.rivalFriasHtml(null) === '');
   check('rival: las zonas frías piden 20 tiros y estar bajo la liga', dr.frias.every(f => f.i >= 20 && f.delta <= -0.03));
-  check('rival: nunca se le cede el aro (Z1-Z4) y van de menor a mayor costo',
-    !dr.concesiones.some(f => /^Z[1-4]$/.test(f.zona)) && dr.concesiones.every((f, i, l) => i === 0 || l[i - 1].ppt <= f.ppt) && dr.concesiones.every(f => f.delta < 0));
-  check('rival: el lugar del montaje trae su tipo y degrada vacío', /data-pbp-tipo="rival-frias"/.test(P.espacioRival('X', 'frias')) && /data-pbp-tipo="rival-concesiones"/.test(P.espacioRival('X', 'concesiones')));
-  check('rival: el montaje sabe pintar los dos tipos y refinar la filosofía', /tipo === 'rival-frias' \|\| tipo === 'rival-concesiones'/.test(fs.readFileSync('js/sgadd-pbp.js', 'utf8'))
+  check('rival: la pieza de concesiones por zona se fue con el mal menor (v314)', dr.concesiones === undefined && P.rivalConcesionesHtml === undefined);
+  check('rival: el lugar del montaje trae su tipo y degrada vacío', /data-pbp-tipo="rival-frias"/.test(P.espacioRival('X', 'frias')) && /data-pbp-tipo="rival-foda"/.test(P.espacioRival('X', 'foda')));
+  check('rival: el montaje sabe pintar zonas frías, FODA y cuartos, y refinar la filosofía', /tipo === 'rival-frias'/.test(fs.readFileSync('js/sgadd-pbp.js', 'utf8'))
+    && /tipo === 'rival-foda'/.test(fs.readFileSync('js/sgadd-pbp.js', 'utf8')) && /tipo === 'rival-cuartos'/.test(fs.readFileSync('js/sgadd-pbp.js', 'utf8'))
     && /refinarFilosofia\(fil, paq\)/.test(fs.readFileSync('js/sgadd-pbp.js', 'utf8')));
+
+  /* ---- v314 · FODA y rendimiento por cuarto */
+  const vacioFoda = P.fodaPbp(null);
+  check('FODA: sin paquete, las cuatro casillas vacías (modo degradado)', ['F', 'O', 'D', 'A'].every(k => Array.isArray(vacioFoda[k]) && !vacioFoda[k].length));
+  const f3 = P.fodaPbp(p3);
+  check('FODA: con un paquete real devuelve las cuatro casillas, con texto y sin undefined/NaN', ['F', 'O', 'D', 'A'].every(k => Array.isArray(f3[k]) && f3[k].every(t => typeof t === 'string' && !/undefined|NaN/.test(t))));
+  const cq = (periodo, dif, partidos) => ({ periodo, favor: 20, contra: 20 - dif, dif, partidos: partidos === undefined ? 12 : partidos });
+  const pat = (c) => P.cuartosPatrones(c).map(x => x.id).join();
+  check('cuartos: arranca arrollador y colapsa (+1,5 o más en el 1.º y −1,5 o menos en el 4.º)', pat([cq('1', 2), cq('2', 0), cq('3', 0), cq('4', -2)]) === 'colapsa');
+  check('cuartos: arranca lento y cierra fuerte', pat([cq('1', -2), cq('2', 0), cq('3', 0), cq('4', 2)]) === 'remonta');
+  check('cuartos: se apaga en el último sin haber arrancado fuerte', pat([cq('1', 0), cq('2', 0), cq('3', 0), cq('4', -2)]) === 'se-apaga');
+  check('cuartos: un cuarto débil que no es el último se nombra', pat([cq('1', 1), cq('2', 1), cq('3', -2.5), cq('4', 0)]) === 'cuarto-debil');
+  check('cuartos: dentro de ±1,5 no se afirma ningún patrón', pat([cq('1', 1), cq('2', -1), cq('3', 0.5), cq('4', 1)]) === '');
+  check('cuartos: con menos de 5 partidos no se afirma nada', pat([cq('1', 3, 4), cq('2', 0, 4), cq('3', 0, 4), cq('4', -3, 4)]) === '');
+  const matriz = P.cuartosCruzadoHtml({ cuartos: [cq('1', 2), cq('2', 0), cq('3', 0), cq('4', -2)] }, { cuartos: [cq('1', 0), cq('2', 1), cq('3', 0), cq('4', 1)] }, 'RIVAL', 'NUESTRO');
+  check('cuartos: la matriz muestra a los dos, con Hace / Cede / Dif. por cuarto y los patrones', /RIVAL/.test(matriz) && /NUESTRO/.test(matriz) && /Hace/.test(matriz) && /Cede/.test(matriz) && /1\.º/.test(matriz) && /Arranca arrollador/.test(matriz));
+  check('cuartos: sin nuestro paquete sale solo el rival, y sin datos lo dice', !/NUESTRO/.test(P.cuartosCruzadoHtml({ cuartos: [cq('1', 2)] }, null, 'RIVAL', 'NUESTRO')) && /Sin datos por cuarto/.test(P.cuartosCruzadoHtml({}, null, 'R', 'N')));
+  check('cuartos: el lugar del montaje pide el paquete del rival y el nuestro', /data-pbp-tipo="rival-cuartos"/.test(P.espacioCuartos('R', 'N')) && /data-pbp-propio="N"/.test(P.espacioCuartos('R', 'N')) && !/data-pbp-propio/.test(P.espacioCuartos('R', null)));
+  check('mapa: el gráfico y la tabla van en una grilla que el papel mantiene en dos columnas (la tabla a la derecha)', /pbp-mapa-grid grid grid-cols-1 lg:grid-cols-2/.test(fs.readFileSync('js/sgadd-pbp.js', 'utf8'))
+    && /\.pbp-mapa-grid \{ display: grid !important; grid-template-columns: minmax\(0, 44%\) minmax\(0, 56%\)/.test(fs.readFileSync('index.html', 'utf8')));
 
   /* ---- jugador */
   const dj = P.diagnosticoJugador(p3, '2');
