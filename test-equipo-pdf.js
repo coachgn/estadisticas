@@ -169,7 +169,7 @@ seccion('5 · El modal y la impresión');
     g.indexOf('montarPendientes(salida)') < g.indexOf('podarDom(salida, act)')
     && g.indexOf('podarDom(salida, act)') < g.indexOf("embeberImagenes('#informeSalida')")
     && g.indexOf("embeberImagenes('#informeSalida')") < g.indexOf('window.print()'));
-  check('va en la tabla firmada (encabezado y pie en cada hoja)', /SGADD_UI\.inyectarPieDeHoja\('informeSalida'\)/.test(IN));
+  check('va en la tabla firmada (encabezado y pie en cada hoja)', /SGADD_UI\.inyectarPieDeHoja\('informeSalida'[,)]/.test(IN));
   check('un ítem deshabilitado dice por qué: el play-by-play no es «sin datos»', /motivo: 'sin la capa de play-by-play'/.test(IN)
     && /esc\(x\.motivo \|\| 'sin datos suficientes'\)/.test(fs.readFileSync('js/sgadd-ficha.js', 'utf8')));
 }

@@ -398,7 +398,7 @@ const SGADD_UI = (function () {
    * LA FECHA SE CALCULA ACÁ, en el momento de imprimir: entre que se abre
    * el modal y se toca Generar puede pasar la medianoche.
    */
-  function inyectarPieDeHoja(contenedorId, fecha) {
+  function inyectarPieDeHoja(contenedorId, fecha, equipo) {
     if (typeof document === 'undefined') return null;
     const c = document.getElementById(contenedorId);
     if (!c) return null;
@@ -428,7 +428,7 @@ const SGADD_UI = (function () {
       c.appendChild(tabla);
     }
     const celdaCab = tabla.querySelector('.cabecera-hoja-celda');
-    if (celdaCab) celdaCab.innerHTML = encabezadoInforme();
+    if (celdaCab) celdaCab.innerHTML = encabezadoInforme(contextoEncabezado(c, equipo));
     const celdaPie = tabla.querySelector('.pie-hoja-celda');
     if (celdaPie) celdaPie.innerHTML = pieInforme(fecha);
     return tabla;
@@ -439,9 +439,48 @@ const SGADD_UI = (function () {
    * derecha (2026-10-19, pedido del club: sin «MotorStats · Análisis de
    * datos deportivos»). El `alt` lleva la marca para quien no ve la imagen.
    */
-  function encabezadoInforme() {
-    return '<span class="cabecera-bloque">' +
-      '<img src="' + LOGO + '" alt="' + esc(MARCA) + '" width="16" height="16" class="pie-logo cabecera-logo"></span>';
+  /* LA TERNA DEL ENCABEZADO (punto 141): de izquierda a derecha, la LIGA,
+     el EQUIPO y MotorStats. Sin contexto (Node, una exportación sin liga
+     ni equipo) queda solo el logo de MotorStats, como antes. La liga sale
+     del manifiesto de escudos (`_liga` en logos/<liga>/index.json); si no
+     hay archivo va su nombre, chico. El equipo, su escudo o sus iniciales. */
+  function encabezadoInforme(ctx) {
+    const c = ctx || {};
+    const motor = '<span class="cabecera-motor"><img src="' + LOGO + '" alt="' + esc(MARCA) + '" width="16" height="16" class="pie-logo cabecera-logo"></span>';
+    if (!c.liga && !c.equipo) return '<span class="cabecera-bloque">' + motor + '</span>';
+    const marca = (x, clase) => {
+      if (!x) return '<span class="' + clase + '"></span>';
+      if (x.url) return '<span class="' + clase + '"><img src="' + esc(x.url) + '" alt="' + esc(x.nombre || '') + '" class="cabecera-escudo"></span>';
+      const ini = clase === 'cabecera-equipo' && typeof LOGOS !== 'undefined' && LOGOS.iniciales ? LOGOS.iniciales(x.nombre || '') : '';
+      return '<span class="' + clase + '">' + (ini ? '<span class="escudo-iniciales cabecera-iniciales">' + esc(ini) + '</span> ' : '')
+        + '<span class="cabecera-nombre">' + esc(x.nombre || '') + '</span></span>';
+    };
+    return '<span class="cabecera-bloque cabecera-terna">' + marca(c.liga, 'cabecera-liga') + marca(c.equipo, 'cabecera-equipo') + motor + '</span>';
+  }
+
+  /** El contexto de la terna: la liga de la categoría abierta y el equipo
+      pedido (si no, el que el contenedor declara en `data-equipo-pdf`, y si
+      tampoco, el equipo propio del club). */
+  function contextoEncabezado(contenedor, equipo) {
+    if (typeof document === 'undefined') return null;
+    let nombreLiga = null;
+    try {
+      const pl = typeof SGADD_APP !== 'undefined' && SGADD_APP.planillaActual ? SGADD_APP.planillaActual() : null;
+      nombreLiga = (pl && (pl.torneoNombre || pl.torneo)) || (typeof CLUB !== 'undefined' && CLUB.cfg && (CLUB.cfg.ligaNombre || CLUB.cfg.liga)) || null;
+    } catch (e) { nombreLiga = null; }
+    const urlLiga = typeof LOGOS !== 'undefined' && LOGOS.urlLiga ? LOGOS.urlLiga() : null;
+    let eq = equipo || null;
+    if (!eq && contenedor && contenedor.querySelector) {
+      const m = contenedor.querySelector('[data-equipo-pdf]');
+      if (m) eq = m.getAttribute('data-equipo-pdf');
+    }
+    if (!eq && typeof CLUB !== 'undefined' && CLUB.cfg) eq = CLUB.cfg.equipoEscudo || null;
+    const urlEq = eq && typeof LOGOS !== 'undefined' && LOGOS.getUrl ? LOGOS.getUrl(eq) : null;
+    const nombreEq = eq && typeof SGADD !== 'undefined' && SGADD.limpiarNombre ? SGADD.limpiarNombre(eq) : eq;
+    return {
+      liga: (urlLiga || nombreLiga) ? { url: urlLiga, nombre: nombreLiga ? String(nombreLiga) : '' } : null,
+      equipo: eq ? { url: urlEq, nombre: nombreEq } : null,
+    };
   }
 
   /** Deshace el envoltorio. El contenedor suele recrearse entero, pero las
@@ -1439,7 +1478,7 @@ const SGADD_UI = (function () {
   return { esc, escJs, statCard, percentileBar, metricTable, textoPropio, teamPicker, tabs, aviso, sinDatosTodavia, signoDelta, colorDelta, claseMasMenos,
     tonoDePixeles, tonoEscudo, esEscudo, luminancia,
     atributosFila, teclaActiva, teclaTabs, cargando, conservarFoco,
-    embeberImagenes, restaurarImagenes, pieInforme, encabezadoInforme, pieWeb, MAIL, INSTAGRAM, ARROBA, LOGO, fechaHoy, MARCA,
+    embeberImagenes, restaurarImagenes, pieInforme, encabezadoInforme, contextoEncabezado, pieWeb, MAIL, INSTAGRAM, ARROBA, LOGO, fechaHoy, MARCA,
     inyectarPieMotorStats, quitarPieMotorStats, pieVistaPrevia, ID_PIE,
     versionCargada, comprobarVersionPublicada, avisarVersion,
     inyectarPieDeHoja, quitarPieDeHoja, CLASE_TABLA,

@@ -366,7 +366,7 @@ const SGADD_FICHA = (function () {
     if (!ctx || !m) { cerrar(); return; }
     leerArbol(m);
     cerrar();
-    imprimir(armar(ctx.idx, ctx.j), SGADD_UI.nombrePdf('jugador', { jugador: ctx.j['NOMBRES'] }));
+    imprimir(armar(ctx.idx, ctx.j), SGADD_UI.nombrePdf('jugador', { jugador: ctx.j['NOMBRES'] }), ctx.j['EQUIPO']);
   }
 
   /* ---------------------------------------------------------------------
@@ -468,13 +468,13 @@ const SGADD_FICHA = (function () {
     cerrar();
     if (!lista.length) return;
     const equipo = SGADD.limpiarNombre(lista[0]['EQUIPO']);
-    imprimir(armarPack(idx, lista, elegidas(), equipo), SGADD_UI.nombrePdf('plantel', { equipo: lista[0]['EQUIPO'] }));
+    imprimir(armarPack(idx, lista, elegidas(), equipo), SGADD_UI.nombrePdf('plantel', { equipo: lista[0]['EQUIPO'] }), lista[0]['EQUIPO']);
   }
 
   /* ---------------------------------------------------------------------
      LA IMPRESIÓN (común)
      --------------------------------------------------------------------- */
-  function imprimir(html, nombre) {
+  function imprimir(html, nombre, equipo) {
     const previo = document.getElementById('fichaSalida');
     if (previo) previo.remove();
     const salida = document.createElement('div');
@@ -484,7 +484,7 @@ const SGADD_FICHA = (function () {
     /* La clase va ANTES de dibujar: los colores de Chart.js se resuelven al
        crear el gráfico (`modo-ficha-print` está en MODOS_PAPEL). */
     document.body.classList.add('modo-ficha-print');
-    SGADD_UI.inyectarPieDeHoja('fichaSalida');
+    SGADD_UI.inyectarPieDeHoja('fichaSalida', null, equipo);
     if (typeof SGADD_CHARTS !== 'undefined') SGADD_CHARTS.dibujarPendientes();
     /* El mapa y el reloj del play-by-play llegan después: se ESPERAN (con
        tope de 5 s) y se podan con la misma selección. */

@@ -1256,7 +1256,7 @@ check('  con el pie institucional exceptuado',
    salia unicamente el <sup>— y que en cambio los <thead> de las tablas SI
    se repiten en sus ocho hojas: es la misma maquinaria. */
 check('  y la ficha firma con el <tfoot> de su contenedor',
-  fichaJs.indexOf("inyectarPieDeHoja('fichaSalida')") > -1
+  /inyectarPieDeHoja\('fichaSalida'[,)]/.test(fichaJs)
   && fichaJs.indexOf("quitarPieDeHoja('fichaSalida')") > -1);
 /* Los bloques del informe de equipo son cortos y no se parten; los de la
    ficha miden más de media carilla y con `avoid` dejaban 2/3 de hoja en

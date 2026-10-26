@@ -62,6 +62,7 @@ const SGADD_INFORME = (function () {
       sec('ficha', 'Ficha general y arquetipo', { virtual: 'ficha', pre: true, subs: [
         { id: 'equipo.ficha.arquetipo', label: 'Arquetipo · su identidad en una frase' },
         { id: 'equipo.ficha.kpis', label: 'Indicadores · NET, ORTG, DRTG y eFG%' },
+        { id: 'equipo.ficha.conclusiones', label: 'Conclusiones para el cuerpo técnico' },
       ] }),
       sec('insight', 'Insight clave · patrón de victorias', { virtual: 'insight', pre: true }),
       sec('general', 'General · cómo viene', { tab: 'general', subs: [
@@ -304,7 +305,7 @@ const SGADD_INFORME = (function () {
     document.body.classList.add('modo-impresion');
     /* EL PIE INSTITUCIONAL, EN TODAS LAS HOJAS: la tabla firmada del punto
        51 (encabezado con el logo y pie con logo, fecha e íconos, punto 130). */
-    SGADD_UI.inyectarPieDeHoja('informeSalida');
+    SGADD_UI.inyectarPieDeHoja('informeSalida', null, e.nombre);
 
     /* Los canvas se dibujan recién después del innerHTML, y para que no
        salgan borrosos en papel hay que forzar más resolución. */
@@ -353,13 +354,16 @@ const SGADD_INFORME = (function () {
 
   /** La ficha general (sección virtual), con sus dos sub-cards marcadas. */
   function fichaGeneral(idx, e, p) {
-    const kpis = ['NET RTNG', 'RTNG OFF', 'RTNG DEF', 'eFG%']
-      .map(k => SGADD_UI.statCard(idx.leer(e.clave, k), { ranking: idx.ranking(e.clave, k) })).join('');
+    const claves = ['NET RTNG', 'RTNG OFF', 'RTNG DEF', 'eFG%'];
+    const kpis = (typeof equiposFichas === 'function') ? equiposFichas(idx, e, claves)
+      : `<div class="grid grid-cols-4 gap-3">${claves.map(k => SGADD_UI.statCard(idx.leer(e.clave, k), { ranking: idx.ranking(e.clave, k) })).join('')}</div>`;
+    const concl = (typeof equiposConclusiones === 'function') ? equiposConclusiones(idx, e) : '';
     return `${p ? `<div class="informe-arquetipo" data-subcard="equipo.ficha.arquetipo">
             <p class="informe-arquetipo-titulo">${esc(p.arquetipo.titulo)}</p>
             <p>${esc(p.arquetipo.frase)}</p>
           </div>` : ''}
-          <div class="grid grid-cols-4 gap-3" data-subcard="equipo.ficha.kpis">${kpis}</div>`;
+          <div data-subcard="equipo.ficha.kpis">${kpis}</div>
+          ${concl ? `<div class="mt-4" data-subcard="equipo.ficha.conclusiones">${concl}</div>` : ''}`;
   }
 
   function armar(idx, e, rival, selArg) {

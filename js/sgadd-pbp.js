@@ -2842,6 +2842,13 @@ const SGADD_PBP = (function () {
       ${cargando('Cargando el mapa de tiro…')}</div>`;
   }
 
+  /** El lugar del play-by-play dentro de la card de conclusiones (punto
+      141). Arranca vacío: si el paquete no llega, la card queda con el
+      box score y nada más. Sin jugador, son las del equipo. */
+  function espacioConclusiones(equipo, jugador) {
+    return `<div class="pbp-montaje" data-pbp-equipo="${esc(equipo)}" data-pbp-tipo="conclusiones"${jugador ? ` data-pbp-concl-jugador="${esc(jugador)}"` : ''}></div>`;
+  }
+
   /** El lugar de la card de Rendimiento de un jugador (punto 140). */
   function espacioRendimiento(nombre, equipo) {
     return `<div class="pbp-montaje" data-pbp-equipo="${esc(equipo)}" data-pbp-rendimiento="${esc(nombre)}">
@@ -2890,6 +2897,12 @@ const SGADD_PBP = (function () {
           const pp = (tipo === 'partido-mapa' || tipo === 'partido-momentum' || tipo === 'partido-quintetos' || tipo === 'partido-reloj')
             ? partidoDe(paq, nodo.getAttribute('data-pbp-partido'), nodo.getAttribute('data-pbp-fecha'), nodo.getAttribute('data-pbp-rival'))
             : null;
+          if (tipo === 'conclusiones') {
+            const C = typeof SGADD_CONCLUSIONES !== 'undefined' ? SGADD_CONCLUSIONES : null;
+            const nj = nodo.getAttribute('data-pbp-concl-jugador');
+            nodo.innerHTML = C ? C.pbpHtml(nj ? C.pbpJugador(paq, nj) : C.pbpEquipo(paq)) : '';
+            return;
+          }
           nodo.innerHTML = nombreTramos ? relojTramosAdn(paq, nombreTramos)
             : nombreRendimiento ? (typeof SGADD_RENDIMIENTO !== 'undefined' ? SGADD_RENDIMIENTO.html(paq, nombreRendimiento) : '')
             : nombreJugador ? jugador(paq, nombreJugador)
@@ -2901,7 +2914,7 @@ const SGADD_PBP = (function () {
           activar(nodo, paq);
         }).catch((e) => {
           if (!nodo.isConnected) return;
-          if (nombreTramos) { nodo.innerHTML = ''; return; }
+          if (nombreTramos || tipo === 'conclusiones') { nodo.innerHTML = ''; return; }
           nodo.innerHTML = vacio(esc(e && e.message ? e.message : 'No se pudo cargar el análisis.'));
         }));
     });
@@ -3072,7 +3085,7 @@ const SGADD_PBP = (function () {
     CAPA, NOMBRES_ZONA, FAMILIAS, ZONAS, GEOMETRIA, MIN_LIGA_HEX,
     html, mapaCard, jugador, mapa, capaTiros, bloqueSecciones, tieneSecciones, geometriaZonas, zonaGeometrica,
     diagnosticoZonas, diagnosticoJugador, cruceZonas, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
-    activa, espacio, espacioJugador, espacioRendimiento, montarPendientes, activar, apellido, _cache: cache,
+    activa, espacio, espacioJugador, espacioRendimiento, espacioConclusiones, montarPendientes, activar, apellido, _cache: cache,
     partidoDe, mapaPartido, momentumPartido, quintetosPartido, espacioPartido, MIN_TIROS_DIAGNOSTICO,
     relojTabla, relojIdentidad, relojPerfilJugador, relojEquipo, relojJugador, relojPartido, relojReparto, FRANJAS_RELOJ,
     relojScouting, relojQuienes, relojMetodologiaHtml, relojAyuda, METODOLOGIA_RELOJ, RELOJ_MINIMOS, FUERA_DE_FRANJA,

@@ -325,7 +325,7 @@ igual(sinReserva, [],
  ['sgadd-scouting.js', 'el informe pre-partido', 'scoutInforme']].forEach(
   ([f, eti, cid]) => {
     const src = fs.readFileSync(path.join(__dirname, 'js', f), 'utf8');
-    ok(src.indexOf("inyectarPieDeHoja('" + cid + "')") > -1,
+    ok(new RegExp("inyectarPieDeHoja\\('" + cid + "'[,)]").test(src),
        eti + ' firma con el <tfoot> de su contenedor');
     ok(src.indexOf("quitarPieDeHoja('" + cid + "')") > -1,
        '  y lo saca al terminar');
@@ -360,7 +360,7 @@ ok(/hijoPorClase\(c, CLASE_TABLA\)/.test(CUERPO_HOJA),
 /* PUNTO 97 · EL ENCABEZADO Y LA MARCA DE AGUA, con la misma maquinaria. */
 ok(CUERPO_HOJA.indexOf("createElement('thead')") !== -1,
    'el encabezado de cada hoja es un <thead> de verdad (lo que el ranking ya repite)');
-ok(CUERPO_HOJA.indexOf('encabezadoInforme()') !== -1 && !/marca-agua/.test(CUERPO_HOJA),
+ok(CUERPO_HOJA.indexOf('encabezadoInforme(contextoEncabezado(') !== -1 && !/marca-agua/.test(CUERPO_HOJA),
    '  con el logo, y la celda del cuerpo va LIMPIA: sin marca de agua (2026-10-19)');
 const UI_ENC = require('./js/sgadd-ui.js');
 ok(/<img[^>]*cabecera-logo/.test(UI_ENC.encabezadoInforme()) && UI_ENC.encabezadoInforme().replace(/<[^>]+>/g, '').trim() === '',

@@ -481,7 +481,7 @@ const SGADD_RANKPDF = (function () {
     adentro del contenedor: `position: fixed` se ancla al primer ancestro
     con `transform` o `filter`, y ahi dejaria de repetirse sin ningun
     sintoma. La fecha se calcula ACA, al imprimir. */
-    SGADD_UI.inyectarPieDeHoja('rankingSalida');
+    SGADD_UI.inyectarPieDeHoja('rankingSalida', null, typeof JUGADORES !== 'undefined' ? JUGADORES.filtroEquipo : null);
     /* El escudo se serializa: al imprimir, el navegador vuelve a resolver
        el `src` y cualquier fallo lo deja afuera del PDF sin avisar
        (punto 7.5). */

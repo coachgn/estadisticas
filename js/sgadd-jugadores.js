@@ -2715,12 +2715,27 @@ function jugadoresFicha(idx, j) {
   const actual = visibles.find(t => t.id === JUGADORES.tab) || visibles[0];
   return [
     jugadoresHeader(idx, j),
+    jugadoresConclusiones(idx, j),
     `<div class="card rounded-xl p-4 sm:p-5 border border-hairline">
        ${SGADD_UI.tabs(tabs, JUGADORES.tab, 'jugadoresVerTab')}
        <p class="text-[11px] text-muted mb-4 -mt-2">${escapeHtml(actual.pregunta)}</p>
        ${jugadoresTab(idx, j, actual.id)}
      </div>`,
   ].join('');
+}
+
+/** La card de conclusiones del jugador (punto 141): medido con las
+    métricas de SU función en cancha. Con la capa pbp, las fichas de su
+    card de Rendimiento llegan después a su ranura. */
+function jugadoresConclusiones(idx, j) {
+  if (typeof SGADD_CONCLUSIONES === 'undefined') return '';
+  const adn = jugadoresADN(idx, j);
+  const c = SGADD_CONCLUSIONES.jugador(idx, j, adn);
+  const pbp = typeof SGADD_PBP !== 'undefined' && SGADD_PBP.activa && SGADD_PBP.activa() && SGADD_PBP.espacioConclusiones;
+  const contexto = 'Medido para su función' + (c.rol ? ' · ' + c.rol : '') + ': ' + c.ejeLabel + '.'
+    + (c.califica ? '' : ' No llega al umbral de minutos de la liga: sin percentil, no se juzga.');
+  return SGADD_CONCLUSIONES.html(c, { tipo: 'jugador', contexto,
+    ranura: pbp ? SGADD_PBP.espacioConclusiones(j['EQUIPO'], j['NOMBRES']) : '' });
 }
 
 /** Las pestañas de la ficha: la de Rendimiento solo con la capa `pbp`. */

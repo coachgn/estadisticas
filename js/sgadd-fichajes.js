@@ -1956,7 +1956,7 @@ const SGADD_FICHAJES = (function () {
     salida.id = 'fichajeSalida';
     salida.innerHTML = armarPdf(f);
     document.body.appendChild(salida);
-    SGADD_UI.inyectarPieDeHoja('fichajeSalida');
+    SGADD_UI.inyectarPieDeHoja('fichajeSalida', null, f.equipo);
     SGADD_UI.embeberImagenes('#fichajeSalida');
     SGADD_UI.tituloPdf(SGADD_UI.nombrePdf('fichaje', { jugador: f.nombre }));
     setTimeout(() => {

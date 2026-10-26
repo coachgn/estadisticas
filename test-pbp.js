@@ -1192,7 +1192,7 @@ function paquete(equipo) {
     check('las etiquetas se inyectan en el ADN del jugador', /Función por tramo del reloj/.test(adnT) && /Finalizador 1x1/.test(adnT) && /Reboteador Defensivo/.test(adnT), adnT);
     check('el ADN deja su lugar solo con la capa, y la carga fallida no deja cartel',
       /SGADD_PBP\.espacioTramos\(j\['NOMBRES'\], j\['EQUIPO'\]\)/.test(fs.readFileSync(path.join(__dirname, 'js/sgadd-jugadores.js'), 'utf8'))
-        && /if \(nombreTramos\) \{ nodo\.innerHTML = ''; return; \}/.test(fuentePbp));
+        && /if \(nombreTramos(?: \|\| tipo === 'conclusiones')?\) \{ nodo\.innerHTML = ''; return; \}/.test(fuentePbp));
     check('el semáforo tiene su variante de papel', /\.tramo-verde \{/.test(cssIdx) && /body \.tramo-verde/.test(cssIdx));
     const MT = P.METODOLOGIA_RELOJ.tramos;
     check('la metodología lista las 20 etiquetas por tramo con su regla', MT.reduce((a, t) => a + t.etiquetas.length, 0) === 20

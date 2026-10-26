@@ -373,6 +373,36 @@
     .rend-detalle:not([open]) > :not(summary) { display: block !important; }
   }
 
+  /* CONCLUSIONES CLÍNICAS (punto 141): tres ejes en columnas desde 768 px,
+     cada ítem con su tono y su símbolo; lo que sale del play-by-play lleva
+     la marca PBP. Las fichas Bento de Equipos usan las clases .rend-*. */
+  .concl-card { margin-top: 1rem; }
+  .concl-resumen { font-size: 11px; color: var(--muted, #8a8a8a); }
+  .concl-ejes { display: grid; grid-template-columns: minmax(0, 1fr); gap: .75rem; margin-bottom: .6rem; }
+  @media screen and (min-width: 768px) { .concl-ejes { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .concl-eje { min-width: 0; border: 1px solid color-mix(in srgb, var(--rt) 35%, transparent); border-top: 3px solid var(--rt);
+    border-radius: .65rem; padding: .7rem; background: color-mix(in srgb, var(--rt) 6%, transparent); }
+  .concl-eje-t { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--rt, var(--acento-texto, #f7941e)); font-weight: 700; margin-bottom: .45rem; }
+  .concl-pbp-t { color: var(--acento-texto, #f7941e); }
+  .concl-lista { display: grid; gap: .45rem; }
+  .concl-item { position: relative; border-radius: .5rem; padding: .45rem .55rem; background: rgba(255,255,255,.03);
+    border-left: 3px solid var(--rt); }
+  .concl-item-c { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .1rem .5rem; font-size: 12px; color: var(--ink, #f5f4f2); padding-right: 2rem; }
+  .concl-valor { color: var(--rt); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .concl-sub { font-size: 10.5px; color: var(--muted, #8a8a8a); margin-top: .1rem; }
+  .concl-texto { font-size: 11.5px; line-height: 1.4; color: var(--ink, #f5f4f2); margin-top: .2rem; }
+  .concl-fuente { position: absolute; top: .4rem; right: .45rem; font-size: 9px; letter-spacing: .06em; padding: 0 .3rem; border-radius: .25rem;
+    border: 1px solid var(--hairline, #2a2a2a); color: var(--muted, #8a8a8a); }
+  .concl-vacio { font-size: 11.5px; color: var(--muted, #8a8a8a); }
+  .concl-pbp { border-top: 1px solid var(--hairline, #2a2a2a); padding-top: .7rem; margin-top: .2rem; }
+  .concl-tipos { margin-top: .4rem; }
+  .concl-fichas { margin-bottom: 0; }
+  @media print {
+    .concl-eje, .concl-item { background: #fff !important; break-inside: avoid; }
+    .concl-item-c, .concl-texto { color: #111 !important; }
+    .concl-fuente { border-color: #94a3b8; color: #475569 !important; }
+  }
+
   /* PESTAÑA PARTIDOS (2026-10-26): pills de filtro y micro-barras. La barra
      mide la noche contra el promedio del jugador; la marca del medio es el
      promedio. El número siempre va escrito: la barra ayuda, no reemplaza. */
@@ -966,6 +996,17 @@
       background: none !important;
     }
     .cabecera-hoja-celda .cabecera-bloque { display: inline-flex; align-items: center; gap: .35rem; }
+    /* LA TERNA (punto 141): liga a la izquierda, equipo al centro, MotorStats
+       a la derecha, en una sola línea. Cada logo con alto fijo y su
+       proporción: un escudo apaisado no se deforma ni empuja la línea. */
+    .cabecera-hoja-celda .cabecera-terna { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 4mm; }
+    .cabecera-terna > span { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 1.5mm; white-space: nowrap; overflow: hidden; }
+    .cabecera-terna .cabecera-liga { justify-content: flex-start; }
+    .cabecera-terna .cabecera-equipo { justify-content: center; }
+    .cabecera-terna .cabecera-motor { justify-content: flex-end; }
+    .cabecera-terna .cabecera-escudo { height: 7mm; width: auto; max-width: 28mm; object-fit: contain; }
+    .cabecera-terna .cabecera-nombre { font-size: 7.5pt; font-weight: 600; color: #334155 !important; text-overflow: ellipsis; overflow: hidden; }
+    .cabecera-terna .cabecera-iniciales { width: 6mm; height: 6mm; font-size: 6pt; }
     .cabecera-hoja-celda .pie-marca { font-weight: 700; font-size: 8.5pt; color: #0f172a !important; }
     .cabecera-hoja-celda .pie-marca-sup { font-size: .62em; vertical-align: super; line-height: 0; margin-left: .5px; }
     .cabecera-hoja-celda .pie-logo { width: 13px; height: 13px; }
@@ -3270,7 +3311,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=306" />
+<link rel="stylesheet" href="sgadd.css?v=307" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -3467,55 +3508,56 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=306"></script>
+<script src="js/sgadd-club.js?v=307"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=306"></script>
-<script src="js/sgadd-core.js?v=306"></script>
-<script src="js/sgadd-auth.js?v=306"></script>
+<script src="js/sgadd-config.js?v=307"></script>
+<script src="js/sgadd-core.js?v=307"></script>
+<script src="js/sgadd-auth.js?v=307"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=306"></script>
-<script src="js/sgadd-glosario.js?v=306"></script>
-<script src="js/sgadd-glosarioui.js?v=306"></script>
-<script src="js/sgadd-comparativa.js?v=306"></script>
-<script src="js/sgadd-comparativaui.js?v=306"></script>
-<script src="js/sgadd-confirmar.js?v=306"></script>
-<script src="js/sgadd-landing.js?v=306"></script>
-<script src="js/sgadd-login.js?v=306"></script>
-<script src="js/sgadd-data.js?v=306"></script>
-<script src="js/sgadd-clientes.js?v=306"></script>
-<script src="js/sgadd-ui.js?v=306"></script>
-<script src="js/sgadd-muestra.js?v=306"></script>
-<script src="js/sgadd-app.js?v=306"></script>
-<script src="js/sgadd-clasificacion.js?v=306"></script>
+<script src="js/sgadd-demo.js?v=307"></script>
+<script src="js/sgadd-glosario.js?v=307"></script>
+<script src="js/sgadd-glosarioui.js?v=307"></script>
+<script src="js/sgadd-comparativa.js?v=307"></script>
+<script src="js/sgadd-comparativaui.js?v=307"></script>
+<script src="js/sgadd-confirmar.js?v=307"></script>
+<script src="js/sgadd-landing.js?v=307"></script>
+<script src="js/sgadd-login.js?v=307"></script>
+<script src="js/sgadd-data.js?v=307"></script>
+<script src="js/sgadd-clientes.js?v=307"></script>
+<script src="js/sgadd-ui.js?v=307"></script>
+<script src="js/sgadd-muestra.js?v=307"></script>
+<script src="js/sgadd-app.js?v=307"></script>
+<script src="js/sgadd-clasificacion.js?v=307"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-fixture.js?v=306"></script>
-<script src="js/sgadd-inscriptos.js?v=306"></script>
-<script src="js/sgadd-fases.js?v=306"></script>
-<script src="js/sgadd-torneos.js?v=306"></script>
-<script src="js/sgadd-hub.js?v=306"></script>
-<script src="js/sgadd-configui.js?v=306"></script>
-<script src="js/sgadd-estados.js?v=306"></script>
-<script src="js/sgadd-buzon.js?v=306"></script>
-<script src="js/sgadd-charts.js?v=306"></script>
-<script src="js/sgadd-personalidad.js?v=306"></script>
-<script src="js/sgadd-rankings.js?v=306"></script>
-<script src="js/sgadd-partido.js?v=306"></script>
-<script src="js/sgadd-informe.js?v=306"></script>
-<script src="js/sgadd-ficha.js?v=306"></script>
-<script src="js/sgadd-mercado.js?v=306"></script>
-<script src="js/sgadd-fichajes.js?v=306"></script>
-  <script src="js/sgadd-rankingpdf.js?v=306"></script>
-<script src="js/sgadd-equipos.js?v=306"></script>
+<script src="js/sgadd-fixture.js?v=307"></script>
+<script src="js/sgadd-inscriptos.js?v=307"></script>
+<script src="js/sgadd-fases.js?v=307"></script>
+<script src="js/sgadd-torneos.js?v=307"></script>
+<script src="js/sgadd-hub.js?v=307"></script>
+<script src="js/sgadd-configui.js?v=307"></script>
+<script src="js/sgadd-estados.js?v=307"></script>
+<script src="js/sgadd-buzon.js?v=307"></script>
+<script src="js/sgadd-charts.js?v=307"></script>
+<script src="js/sgadd-personalidad.js?v=307"></script>
+<script src="js/sgadd-rankings.js?v=307"></script>
+<script src="js/sgadd-partido.js?v=307"></script>
+<script src="js/sgadd-informe.js?v=307"></script>
+<script src="js/sgadd-ficha.js?v=307"></script>
+<script src="js/sgadd-mercado.js?v=307"></script>
+<script src="js/sgadd-fichajes.js?v=307"></script>
+  <script src="js/sgadd-rankingpdf.js?v=307"></script>
+<script src="js/sgadd-equipos.js?v=307"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=306"></script>
-<script src="js/sgadd-jugadores.js?v=306"></script>
-<script src="js/sgadd-4factores.js?v=306"></script>
-<script src="js/sgadd-scouting.js?v=306"></script>
-<script src="js/sgadd-pbp.js?v=306"></script>
-<script src="js/sgadd-rendimiento.js?v=306"></script>
-<script src="js/sgadd-diagnostico.js?v=306"></script>
+<script src="js/sgadd-niveles.js?v=307"></script>
+<script src="js/sgadd-jugadores.js?v=307"></script>
+<script src="js/sgadd-4factores.js?v=307"></script>
+<script src="js/sgadd-scouting.js?v=307"></script>
+<script src="js/sgadd-pbp.js?v=307"></script>
+<script src="js/sgadd-rendimiento.js?v=307"></script>
+<script src="js/sgadd-conclusiones.js?v=307"></script>
+<script src="js/sgadd-diagnostico.js?v=307"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -3970,7 +4012,7 @@ const LOGOS = (function () {
      escribir como quieras. Si el archivo no existe, se prueba a mano igual
      que antes y no cambia nada.
      --------------------------------------------------------------------- */
-  let manifiesto = null, promesaManifiesto = null;
+  let manifiesto = null, promesaManifiesto = null, logoLiga = null;
   let manifiestoRoto = [];
 
   function cargarManifiesto() {
@@ -3981,7 +4023,10 @@ const LOGOS = (function () {
       .then(j => {
         manifiesto = {};
         if (j) {
-          Object.keys(j).forEach(k => { manifiesto[normalizar(k)] = base + j[k]; });
+          /* `_liga` es el logo de la LIGA (la terna del encabezado PDF,
+             punto 141): no es un equipo y no entra al mapa de escudos. */
+          logoLiga = j._liga ? base + j._liga : null;
+          Object.keys(j).forEach(k => { if (k.charAt(0) !== '_') manifiesto[normalizar(k)] = base + j[k]; });
           console.log('[LOGOS] manifiesto:', Object.keys(manifiesto).length, 'escudos');
         }
         return manifiesto;
@@ -4166,7 +4211,7 @@ const LOGOS = (function () {
 
   return {
     CFG, DEFAULT_LOGO,
-    resolver, getImage, getUrl, iniciales,
+    resolver, getImage, getUrl, iniciales, urlLiga: () => logoLiga,
     normalizar, slug,
     // Diagnóstico: LOGOS.debug() en la consola
     /* Genera el contenido de logos/<liga>/index.json con lo que YA se resolvio.
@@ -4179,7 +4224,7 @@ const LOGOS = (function () {
     reset: () => {
       cache.clear();
       enVuelo.clear();
-      manifiesto = null; promesaManifiesto = null; manifiestoRoto = [];
+      manifiesto = null; promesaManifiesto = null; manifiestoRoto = []; logoLiga = null;
       mapaRemoto = null; promesaRemota = null;
       console.log('[LOGOS] cache limpiada');
     },

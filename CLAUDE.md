@@ -161,6 +161,9 @@ node test-muestra.js       # 156 tests · el selector de muestra de Equipos y Ju
 node test-rendimiento.js   #  83 tests · la card de Rendimiento del jugador: el motor puro, las degradaciones,
                            #             la vista y el cableado de la pestaña (punto 140)
 
+node test-conclusiones.js  #  38 tests · la card de conclusiones clínicas de Equipos y Jugadores, los tipos
+                           #             de posesión del PBP y la terna de logos del PDF (punto 141)
+
 node test-backend.js       # 468 tests · el proxy, el benchmark, las alertas, el catálogo en KV
                            #             y el reparto de tokens de Upstash
 
@@ -289,7 +292,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=306`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=307`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15806,3 +15809,43 @@ La pestaña Tiro (`jugadoresTabTiro`) usa la MISMA vista que Rendimiento: `SGADD
 ### La fuga de Rendimiento sin pbp (2026-10-26, v306)
 
 La pestaña seguía apareciendo en clientes sin la capa porque `SGADD_APP.estado.alcance` (de donde `SGADD_PBP.activa()` lee `capas`) **sobrevivía al cambio de categoría**: pasando de una con `pbp` a una sin ella —o si la carga nueva fallaba— quedaba el alcance viejo. Ahora `cambiarPlanilla` lo limpia, `cargar()` sella `alcancePlanilla`, y `activa()` exige que el alcance sea el de la categoría abierta. Tests en `test-rendimiento.js`.
+
+
+## 141. CONCLUSIONES CLÍNICAS, EQUIPOS EN BENTO Y LA TERNA DEL PDF (2026-10-26)
+
+Assets en `?v=307`. `test-conclusiones.js` fija todo.
+
+### La card «🩺 Conclusiones para el cuerpo técnico» · `js/sgadd-conclusiones.js`
+
+Va arriba de las pestañas de la ficha de EQUIPO (`equiposConclusiones`) y de la del JUGADOR (`jugadoresConclusiones`). Tres ejes en columnas, cada ítem con valor, percentil, liga y la frase para el DT:
+
+```
+▲ Lo que se hace bien y hay que sostener   percentil ≥ 70
+● Ajustes alcanzables                       percentil 40-69, SOLO variables entrenables, primero las de más margen
+▼ Puntos de quiebre                         percentil < 40, y los detectores del play-by-play
+```
+
+- **El percentil ya trae la dirección** (`idx.leer`): perder menos pelotas es estar arriba. El ritmo y el reparto del tiro no se juzgan (punto 4).
+- **El jugador se mide con las métricas de SU función** (`POR_EJE`, por el `eje` del rol funcional, punto 46): a un ancla no se le juzga la creación. Sin percentil (no califica) no se juzga y la card lo dice.
+- **Con la capa `pbp`, un bloque «Micro-momentos del play-by-play»** llega a su ranura (`SGADD_PBP.espacioConclusiones`, tipo `conclusiones` de `montarPendientes`; un fallo la deja vacía):
+  - **Tipos de posesión**: transición (0-7 s), juego armado (8-17 s), final del reloj (18-24 s), segunda oportunidad tras rebote ofensivo y reinicio tras falta, calificados de Excelente a Muy pobre por puntos por tiro contra la liga en esa situación (ajustado con 20 tiros de liga, ±0,06 y ±0,12, 20 tiros mínimos).
+  - **Trampa de media distancia**: Z5-Z9 con 30 tiros o más, 1,3 veces la parte de la liga y −0,05 o peor; si rinde +0,06, es un arma.
+  - **Hemorragia por pérdidas vivas**: el TCDP del equipo (suma de `rendimiento.jugadores[].pp`) en el cuarto alto de la competencia.
+  - **Cierres ajustados** (`clutch.equipo`, ±10 con 5 partidos) y **bonus de faltas** (`faltasEq`).
+  - Del jugador: las fichas con tono de su card de Rendimiento (On/Off, Pts/tiro, TCDP, IDE).
+
+### Lo que el dato NO permite, y por eso no está
+
+Documentado acá y no en la card (pedido del club: sin autocrítica en pantalla):
+
+- **Play types de Synergy** (pick & roll, aislamiento, poste, spot-up): el play-by-play no los registra. Se usan las situaciones que sí registra (reloj y origen).
+- **«Colapso en pick & roll»**: sin el tipo de jugada no se puede detectar.
+- **Filtro de garbage time**: los agregados vienen armados de la ingesta; filtrar los minutos con +25 de diferencia es trabajo de `motorstats-ingestion`.
+
+### Equipos en Bento
+
+La cabecera y los indicadores de General, Ofensiva, Defensiva y las vistas usan fichas Bento con el semáforo clínico (`SGADD_CONCLUSIONES.fichasEquipo` vía `equiposFichas`): valor, liga, puesto y percentil; ritmo y reparto en azul informativo; muestra corta con `~` y sin color. Los gráficos y las tablas no cambiaron. La nota metodológica de Defensiva pasó a «Lectura detallada». El informe PDF del equipo suma la sub-card `equipo.ficha.conclusiones`. **No se hizo**: la ficha del jugador en PDF no lleva la card.
+
+### La terna del encabezado PDF
+
+`SGADD_UI.encabezadoInforme(ctx)`: **liga · equipo · MotorStats**, en una sola línea (`.cabecera-terna`, logos de 7 mm de alto con su proporción). `contextoEncabezado(contenedor, equipo)` la arma: la liga sale de **`_liga` en `logos/<liga>/index.json`** (no entra al mapa de escudos; `LOGOS.urlLiga()`), y sin archivo va el nombre del torneo; el equipo, el que pasa cada exportación (informe → el equipo, ficha y pack → su equipo, ranking → el plantel, fichajes → el del jugador) o el propio del club. **Hoy ninguna liga tiene su logo en el repo**: hay que subir el archivo y declararlo como `"_liga": "liga.png"` en su manifiesto.
