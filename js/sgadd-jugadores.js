@@ -251,6 +251,8 @@ function jugadoresRanking(idx, id, opciones) {
 
 const JUGADORES_TABS = [
   { id: 'general',   label: 'General',   pregunta: '¿Qué tipo de jugador es?' },
+  /* DIAGNÓSTICO (2026-10-26): las conclusiones clínicas, en su propia solapa. */
+  { id: 'diagnostico', label: 'Diagnóstico', pregunta: '¿Qué sostener, qué ajustar y dónde se quiebra?' },
   { id: 'tiro',      label: 'Tiro',      pregunta: '¿De dónde anota?' },
   /* Solo con la capa de laboratorio `pbp` (punto 140): sin ella la pestaña
      no aparece, ni gris (`jugadoresTabsVisibles`). */
@@ -2715,7 +2717,6 @@ function jugadoresFicha(idx, j) {
   const actual = visibles.find(t => t.id === JUGADORES.tab) || visibles[0];
   return [
     jugadoresHeader(idx, j),
-    jugadoresConclusiones(idx, j),
     `<div class="card rounded-xl p-4 sm:p-5 border border-hairline">
        ${SGADD_UI.tabs(tabs, JUGADORES.tab, 'jugadoresVerTab')}
        <p class="text-[11px] text-muted mb-4 -mt-2">${escapeHtml(actual.pregunta)}</p>
@@ -2810,6 +2811,7 @@ function jugadoresHeader(idx, j) {
 function jugadoresTab(idx, j, id) {
   switch (id) {
     case 'general':   return jugadoresTabGeneral(idx, j);
+    case 'diagnostico': return jugadoresConclusiones(idx, j);
     case 'tiro':      return jugadoresTabTiro(idx, j);
     case 'rendimiento': return jugadoresTabRendimiento(j);
     case 'evolucion': return jugadoresTabEvolucion(idx, j);

@@ -105,8 +105,12 @@ const JUG_SRC = fs.readFileSync('./js/sgadd-jugadores.js', 'utf8');
 const PBP_SRC = fs.readFileSync('./js/sgadd-pbp.js', 'utf8');
 const INF_SRC = fs.readFileSync('./js/sgadd-informe.js', 'utf8');
 const HTML = fs.readFileSync('./index.html', 'utf8');
-check('Equipos pinta la card arriba de las pestañas', /equiposHeader\(idx, e\),\s*equiposConclusiones\(idx, e\),/.test(EQ_SRC));
-check('Jugadores también', /jugadoresHeader\(idx, j\),\s*jugadoresConclusiones\(idx, j\),/.test(JUG_SRC));
+const orden = (src, ids) => ids.map(i => src.indexOf("{ id: '" + i + "',")).every((p, k, a) => p > -1 && (k === 0 || p > a[k - 1]));
+check('Equipos: la card es la solapa Diagnóstico, después de General', orden(EQ_SRC.slice(EQ_SRC.indexOf('const EQUIPOS_TABS')), ['general', 'diagnostico', 'ofensiva'])
+  && /case 'diagnostico': return equiposConclusiones\(idx, e\);/.test(EQ_SRC) && !/equiposHeader\(idx, e\),\s*equiposConclusiones/.test(EQ_SRC));
+check('Jugadores también: GENERAL · DIAGNÓSTICO · TIRO · RENDIMIENTO · EVOLUCIÓN · PARTIDOS', /case 'diagnostico': return jugadoresConclusiones\(idx, j\);/.test(JUG_SRC)
+  && !/jugadoresHeader\(idx, j\),\s*jugadoresConclusiones/.test(JUG_SRC)
+  && orden(JUG_SRC.slice(JUG_SRC.indexOf('const JUGADORES_TABS')), ['general', 'diagnostico', 'tiro', 'rendimiento', 'evolucion', 'partidos']));
 check('las pestañas de Equipos ya no usan statCard sueltas', (EQ_SRC.match(/SGADD_UI\.statCard\(/g) || []).length === 1);
 check('el play-by-play se monta en su ranura, y la carga fallida no deja cartel', /tipo === 'conclusiones'/.test(PBP_SRC) && /espacioConclusiones/.test(PBP_SRC));
 check('el informe del equipo ofrece la card como sub-card', /equipo\.ficha\.conclusiones/.test(INF_SRC));
@@ -119,7 +123,10 @@ const iL = t.indexOf('cabecera-liga'), iE = t.indexOf('cabecera-equipo'), iM = t
 check('liga · equipo · MotorStats, en ese orden', iL > -1 && iL < iE && iE < iM, t);
 const sinLogo = UI.encabezadoInforme({ liga: { url: null, nombre: 'TORNEO LOCAL' }, equipo: { url: null, nombre: 'ATENAS' } });
 check('sin el logo de la liga va su nombre', /TORNEO LOCAL/.test(sinLogo));
-check('el CSS la deja en una sola línea con proporciones fijas', /\.cabecera-terna \{ display: flex/.test(HTML) && /white-space: nowrap/.test(HTML) && /cabecera-escudo \{ height: 7mm; width: auto/.test(HTML));
+check('liga y equipo van juntos a la izquierda; MotorStats aparte, a la derecha', /cabecera-origen"><span class="cabecera-liga">[\s\S]*cabecera-equipo[\s\S]*<\/span><\/span><span class="cabecera-motor">/.test(t), t);
+check('un logo que no carga no deja el alt cortado: aparece el nombre', /alt=""/.test(t) && /onerror="this\.hidden=true;[^"]*hidden=false"/.test(t) && /cabecera-nombre" hidden>LIGA/.test(t));
+check('el logo de la liga se precarga al leer el manifiesto', /pre\.src = logoLiga/.test(HTML));
+check('el CSS la deja en una sola línea con proporciones fijas', /\.cabecera-terna \{ display: flex/.test(HTML) && /white-space: nowrap/.test(HTML) && /\.cabecera-terna \{ --cab-h: [\d.]+mm; \}/.test(HTML) && /\.cabecera-escudo, \.cabecera-terna \.cabecera-logo \{ height: var\(--cab-h\)/.test(HTML));
 check('el logo de la liga sale del manifiesto (`_liga`) y no entra al mapa de equipos', /logoLiga = j\._liga/.test(HTML) && /k\.charAt\(0\) !== '_'/.test(HTML));
 
 console.log('\n' + (mal ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + mal + ' fallaron');

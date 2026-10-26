@@ -77,7 +77,7 @@ node test-fichajes.js      # 221 tests · Fichajes: ficha manual, padrón, filtr
                            #             · y PADRON J del libro, que completa las fichas sin pisarlas
 node test-padron-j.js      #  35 tests · la pestaña PADRON J → fichas: fechas, claves, campos inválidos, fusión,
                            #             fotos y dorsales (punto 96)
-node test-ficha-pdf.js     #  43 tests · la ficha en PDF a elección: las marcas data-subcard del render contra la
+node test-ficha-pdf.js     #  47 tests · la ficha en PDF a elección: las marcas data-subcard del render contra la
                            #             estructura, la poda sin huecos, la titularidad con el dato y el Pack PLANTEL (129)
 node test-equipo-pdf.js    #  45 tests · el informe del EQUIPO a elección: las marcas data-subcard «equipo.» del render
                            #             contra la estructura, los atajos, la poda y el papel sin hojas huérfanas (131)
@@ -161,7 +161,7 @@ node test-muestra.js       # 156 tests · el selector de muestra de Equipos y Ju
 node test-rendimiento.js   #  83 tests · la card de Rendimiento del jugador: el motor puro, las degradaciones,
                            #             la vista y el cableado de la pestaña (punto 140)
 
-node test-conclusiones.js  #  38 tests · la card de conclusiones clínicas de Equipos y Jugadores, los tipos
+node test-conclusiones.js  #  41 tests · la card de conclusiones clínicas de Equipos y Jugadores, los tipos
                            #             de posesión del PBP y la terna de logos del PDF (punto 141)
 
 node test-backend.js       # 468 tests · el proxy, el benchmark, las alertas, el catálogo en KV
@@ -292,7 +292,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=308`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=309`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15849,3 +15849,50 @@ La cabecera y los indicadores de General, Ofensiva, Defensiva y las vistas usan 
 ### La terna del encabezado PDF
 
 `SGADD_UI.encabezadoInforme(ctx)`: **liga · equipo · MotorStats**, en una sola línea (`.cabecera-terna`, logos de 7 mm de alto con su proporción). `contextoEncabezado(contenedor, equipo)` la arma: la liga sale de **`_liga` en `logos/<liga>/index.json`** (no entra al mapa de escudos; `LOGOS.urlLiga()`), y sin archivo va el nombre del torneo; el equipo, el que pasa cada exportación (informe → el equipo, ficha y pack → su equipo, ranking → el plantel, fichajes → el del jugador) o el propio del club. **Cargados el 2026-10-26** (v308): LAB y LNB de laliganacional.com.ar (`_liga.png`), Bahía de abbasquet.com (`_liga.png`, 250×50) y APdeB (`apdb.png`, que ya estaba). Una liga nueva suma su archivo y `"_liga"` en su manifiesto. **No verificado en un PDF real**: la terna solo se dibuja al imprimir.
+
+## 142. LA SOLAPA DIAGNÓSTICO, LA TERNA ARREGLADA Y EL PAPEL SIN CARDS PARTIDAS (2026-10-26)
+
+Assets en `?v=309`.
+
+### Diagnóstico es una solapa
+
+Las conclusiones clínicas del punto 141 dejan de ir arriba de las pestañas.
+Jugadores: **General · Diagnóstico · Tiro · Rendimiento · Evolución ·
+Partidos** (Rendimiento sigue exclusiva de la capa `pbp`). Equipos:
+Diagnóstico va después de General. Los dos `switch` llaman a
+`jugadoresConclusiones` / `equiposConclusiones`, que no cambiaron (la ranura
+del play-by-play se monta igual). La ficha en PDF suma la sección
+`diagnostico`, entera y tildada; el informe de equipo conserva
+`equipo.ficha.conclusiones`.
+
+### La terna del encabezado
+
+- **El logo de la liga salía roto** («CONFERENCIA NOR», el `alt` cortado): el
+  encabezado nace al imprimir y esa imagen no estaba cargada, así que
+  `embeberImagenes` la salteaba. Ahora `cargarManifiesto` la **precarga**, y si
+  igual falla se esconde y aparece su nombre (`onerror`, con el nombre oculto
+  al lado). El `alt` va vacío.
+- **Liga y equipo juntos a la izquierda** (`.cabecera-origen`, separados por
+  un filete) y MotorStats a la derecha. Los tres logos con **un solo alto**
+  (`--cab-h: 5.5mm`), su proporción y sin partir la línea.
+
+### El papel
+
+Bloque «PAPEL SIN CARDS PARTIDAS» en el `@media print` de `.rend-*`: no se
+parten `.rend-card`, `.rend-ficha`, `.rend-alerta`, los ejes e ítems de las
+conclusiones, los mapas ni los gráficos; y el Bento vuelve a dos columnas en
+papel (su regla de 768 px es solo `screen`) con aires y cuerpos chicos. Se
+esconde el «Lectura detallada» (el contenido sale igual). La `@page` vertical
+pasa a 9 mm arriba y a los lados (los 15 mm de abajo no se tocan) y
+`.informe-bloque` a 6 mm de separación.
+
+Medido con el PDF real sobre la demo (Chrome por CDP): informe de equipo
+completo **21 → 17 hojas A3**; ficha del jugador **5 → 5** sumando el
+Diagnóstico. **No medido con la capa `pbp`** (Tiro con mapa y Rendimiento):
+la demo no la tiene; el ~11 hojas del pedido depende de esa ficha.
+
+`test-fichajes.js` buscaba un `
+` literal en `index.html`, que tiene CRLF en
+ese tramo: pasó a `?
+` (la trampa del punto 51).
+

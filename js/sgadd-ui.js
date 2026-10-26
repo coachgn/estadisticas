@@ -448,14 +448,20 @@ const SGADD_UI = (function () {
     const c = ctx || {};
     const motor = '<span class="cabecera-motor"><img src="' + LOGO + '" alt="' + esc(MARCA) + '" width="16" height="16" class="pie-logo cabecera-logo"></span>';
     if (!c.liga && !c.equipo) return '<span class="cabecera-bloque">' + motor + '</span>';
+    /* Un logo que no carga NO deja el `alt` cortado en la hoja (pasó con la
+       liga: «CONFERENCIA NOR»): se esconde y aparece su nombre, que ya va
+       en el markup oculto al lado. */
     const marca = (x, clase) => {
-      if (!x) return '<span class="' + clase + '"></span>';
-      if (x.url) return '<span class="' + clase + '"><img src="' + esc(x.url) + '" alt="' + esc(x.nombre || '') + '" class="cabecera-escudo"></span>';
+      if (!x) return '';
+      const nombre = '<span class="cabecera-nombre"' + (x.url ? ' hidden' : '') + '>' + esc(x.nombre || '') + '</span>';
+      if (x.url) return '<span class="' + clase + '"><img src="' + esc(x.url) + '" alt="" class="cabecera-escudo"'
+        + ' onerror="this.hidden=true;if(this.nextElementSibling)this.nextElementSibling.hidden=false">' + nombre + '</span>';
       const ini = clase === 'cabecera-equipo' && typeof LOGOS !== 'undefined' && LOGOS.iniciales ? LOGOS.iniciales(x.nombre || '') : '';
-      return '<span class="' + clase + '">' + (ini ? '<span class="escudo-iniciales cabecera-iniciales">' + esc(ini) + '</span> ' : '')
-        + '<span class="cabecera-nombre">' + esc(x.nombre || '') + '</span></span>';
+      return '<span class="' + clase + '">' + (ini ? '<span class="escudo-iniciales cabecera-iniciales">' + esc(ini) + '</span> ' : '') + nombre + '</span>';
     };
-    return '<span class="cabecera-bloque cabecera-terna">' + marca(c.liga, 'cabecera-liga') + marca(c.equipo, 'cabecera-equipo') + motor + '</span>';
+    /* Liga y equipo, juntos a la izquierda; MotorStats a la derecha. */
+    return '<span class="cabecera-bloque cabecera-terna"><span class="cabecera-origen">' + marca(c.liga, 'cabecera-liga') + marca(c.equipo, 'cabecera-equipo')
+      + '</span>' + motor + '</span>';
   }
 
   /** El contexto de la terna: la liga de la categoría abierta y el equipo

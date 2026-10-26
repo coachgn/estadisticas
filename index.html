@@ -371,6 +371,36 @@
     .rend-raiz { --rt-pos: #15803d; --rt-aviso: #8a5206; --rt-neg: #b91c1c; --rt-info: #1d4ed8; }
     .rend-t-nulo { --rt: #111; }
     .rend-detalle:not([open]) > :not(summary) { display: block !important; }
+    /* PAPEL SIN CARDS PARTIDAS (2026-10-26): una micro-card del Bento, una
+       ficha, una alerta, un eje de las conclusiones o un mapa no se cortan
+       entre hojas: si no entran en lo que queda, bajan enteros. */
+    .rend-card, .rend-ficha, .rend-fichas, .rend-alerta, .rend-chips, .rend-barras > *, .rend-detalle li,
+    .concl-eje, .concl-item, .concl-pbp, .mapa-pbp-jugador svg, .pbp-mapa svg, .pbp-reloj-pieza, .reloj-barras,
+    .chart-box, canvas { break-inside: avoid !important; page-break-inside: avoid !important; }
+    .rend-card-t, .concl-eje-t, .rend-pie-t { break-after: avoid; page-break-after: avoid; }
+    /* COMPACTO: el papel vuelve a las dos columnas de la pantalla (la
+       regla de 768 px es solo `screen`), con aires y cuerpos chicos. */
+    .rend-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 2.5mm !important; }
+    .rend-ancho { grid-column: span 2; }
+    .rend-card { padding: 2.4mm 2.8mm !important; border-radius: 1.6mm !important; }
+    .rend-card-t { font-size: 8pt; margin-bottom: 1mm; }
+    .rend-titular { font-size: 8.5pt; margin-bottom: 1.5mm; }
+    .rend-fichas { grid-template-columns: repeat(auto-fit, minmax(24mm, 1fr)) !important; gap: 1.6mm !important; margin-bottom: 1.6mm !important; }
+    .rend-ficha { padding: 1.2mm 1.8mm !important; border-radius: 1.2mm !important; }
+    .rend-ficha-l { font-size: 6.5pt; }
+    .rend-ficha-v { font-size: 10.5pt; }
+    .rend-ficha-s { font-size: 7pt; }
+    .rend-chips { gap: 1.5mm; margin-bottom: 2mm; }
+    .rend-chip { font-size: 7.5pt; padding: .4mm 2mm; }
+    .rend-alerta { font-size: 7.5pt; padding: 1.2mm 2mm; margin-bottom: 1.6mm; }
+    .rend-barras { gap: 1.2mm; margin-bottom: 1.6mm; }
+    .rend-barra-t { font-size: 7pt; }
+    .rend-detalle > summary { display: none !important; }
+    .rend-detalle li { font-size: 7.5pt; line-height: 1.3; }
+    .concl-ejes { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 2mm !important; }
+    .concl-item { padding: 1.2mm 1.6mm !important; }
+    .concl-item-c { font-size: 7.5pt; }
+    .concl-texto, .concl-sub { font-size: 7pt; }
   }
 
   /* CONCLUSIONES CLÍNICAS (punto 141): tres ejes en columnas desde 768 px,
@@ -1000,13 +1030,17 @@
        a la derecha, en una sola línea. Cada logo con alto fijo y su
        proporción: un escudo apaisado no se deforma ni empuja la línea. */
     .cabecera-hoja-celda .cabecera-terna { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 4mm; }
-    .cabecera-terna > span { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 1.5mm; white-space: nowrap; overflow: hidden; }
-    .cabecera-terna .cabecera-liga { justify-content: flex-start; }
-    .cabecera-terna .cabecera-equipo { justify-content: center; }
-    .cabecera-terna .cabecera-motor { justify-content: flex-end; }
-    .cabecera-terna .cabecera-escudo { height: 7mm; width: auto; max-width: 28mm; object-fit: contain; }
-    .cabecera-terna .cabecera-nombre { font-size: 7.5pt; font-weight: 600; color: #334155 !important; text-overflow: ellipsis; overflow: hidden; }
-    .cabecera-terna .cabecera-iniciales { width: 6mm; height: 6mm; font-size: 6pt; }
+    /* Los tres logos con UN alto, el del logo de MotorStats en la hoja:
+       compactos, con su proporción y sin partir la línea. */
+    .cabecera-terna { --cab-h: 5.5mm; }
+    .cabecera-terna .cabecera-origen { display: flex; align-items: center; gap: 2.5mm; min-width: 0; overflow: hidden; white-space: nowrap; }
+    .cabecera-terna .cabecera-liga, .cabecera-terna .cabecera-equipo { display: inline-flex; align-items: center; gap: 1.2mm; min-width: 0; flex: 0 1 auto; }
+    .cabecera-terna .cabecera-liga + .cabecera-equipo { padding-left: 2.5mm; border-left: .3mm solid #cbd5e1; }
+    .cabecera-terna .cabecera-motor { display: inline-flex; align-items: center; flex: 0 0 auto; }
+    .cabecera-terna .cabecera-escudo, .cabecera-terna .cabecera-logo { height: var(--cab-h) !important; width: auto !important; max-width: 22mm; object-fit: contain; }
+    .cabecera-terna .cabecera-nombre { font-size: 7.5pt; font-weight: 600; color: #334155 !important; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 60mm; }
+    .cabecera-terna .cabecera-nombre[hidden], .cabecera-terna .cabecera-escudo[hidden] { display: none !important; }
+    .cabecera-terna .cabecera-iniciales { width: var(--cab-h); height: var(--cab-h); font-size: 6pt; }
     .cabecera-hoja-celda .pie-marca { font-weight: 700; font-size: 8.5pt; color: #0f172a !important; }
     .cabecera-hoja-celda .pie-marca-sup { font-size: .62em; vertical-align: super; line-height: 0; margin-left: .5px; }
     .cabecera-hoja-celda .pie-logo { width: 13px; height: 13px; }
@@ -1732,7 +1766,9 @@
        `@page`: el pie se repite en toda hoja de toda exportacion, asi
        que una que se olvide lo deja pisando la ultima linea. Es el mismo
        criterio que el `size`: la hoja se declara entera o no se declara. */
-    @page { size: A4 portrait; margin: 12mm 10mm; margin-bottom: 15mm; }
+    /* 9mm arriba y a los lados (2026-10-26, antes 12 y 10): el encabezado ya
+       va adentro de la tabla firmada, y cada milimetro es contenido. */
+    @page { size: A4 portrait; margin: 9mm 9mm; margin-bottom: 15mm; }
     /* El post-partido necesita cada milimetro para entrar en una carilla. */
     body.modo-partido-print { }
 
@@ -1886,7 +1922,7 @@
       box-shadow: none !important; outline: 0 !important; border: 0 !important;
       background: transparent !important;
     }
-    .informe-bloque { page-break-after: auto; margin-bottom: 10mm; }
+    .informe-bloque { page-break-after: auto; margin-bottom: 6mm; }
     h1, h2, h3, h5 { page-break-after: avoid; break-after: avoid; }
     thead { display: table-header-group; }   /* repite encabezado por página */
 
@@ -3311,7 +3347,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=308" />
+<link rel="stylesheet" href="sgadd.css?v=309" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -3508,56 +3544,56 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=308"></script>
+<script src="js/sgadd-club.js?v=309"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=308"></script>
-<script src="js/sgadd-core.js?v=308"></script>
-<script src="js/sgadd-auth.js?v=308"></script>
+<script src="js/sgadd-config.js?v=309"></script>
+<script src="js/sgadd-core.js?v=309"></script>
+<script src="js/sgadd-auth.js?v=309"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=308"></script>
-<script src="js/sgadd-glosario.js?v=308"></script>
-<script src="js/sgadd-glosarioui.js?v=308"></script>
-<script src="js/sgadd-comparativa.js?v=308"></script>
-<script src="js/sgadd-comparativaui.js?v=308"></script>
-<script src="js/sgadd-confirmar.js?v=308"></script>
-<script src="js/sgadd-landing.js?v=308"></script>
-<script src="js/sgadd-login.js?v=308"></script>
-<script src="js/sgadd-data.js?v=308"></script>
-<script src="js/sgadd-clientes.js?v=308"></script>
-<script src="js/sgadd-ui.js?v=308"></script>
-<script src="js/sgadd-muestra.js?v=308"></script>
-<script src="js/sgadd-app.js?v=308"></script>
-<script src="js/sgadd-clasificacion.js?v=308"></script>
+<script src="js/sgadd-demo.js?v=309"></script>
+<script src="js/sgadd-glosario.js?v=309"></script>
+<script src="js/sgadd-glosarioui.js?v=309"></script>
+<script src="js/sgadd-comparativa.js?v=309"></script>
+<script src="js/sgadd-comparativaui.js?v=309"></script>
+<script src="js/sgadd-confirmar.js?v=309"></script>
+<script src="js/sgadd-landing.js?v=309"></script>
+<script src="js/sgadd-login.js?v=309"></script>
+<script src="js/sgadd-data.js?v=309"></script>
+<script src="js/sgadd-clientes.js?v=309"></script>
+<script src="js/sgadd-ui.js?v=309"></script>
+<script src="js/sgadd-muestra.js?v=309"></script>
+<script src="js/sgadd-app.js?v=309"></script>
+<script src="js/sgadd-clasificacion.js?v=309"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-fixture.js?v=308"></script>
-<script src="js/sgadd-inscriptos.js?v=308"></script>
-<script src="js/sgadd-fases.js?v=308"></script>
-<script src="js/sgadd-torneos.js?v=308"></script>
-<script src="js/sgadd-hub.js?v=308"></script>
-<script src="js/sgadd-configui.js?v=308"></script>
-<script src="js/sgadd-estados.js?v=308"></script>
-<script src="js/sgadd-buzon.js?v=308"></script>
-<script src="js/sgadd-charts.js?v=308"></script>
-<script src="js/sgadd-personalidad.js?v=308"></script>
-<script src="js/sgadd-rankings.js?v=308"></script>
-<script src="js/sgadd-partido.js?v=308"></script>
-<script src="js/sgadd-informe.js?v=308"></script>
-<script src="js/sgadd-ficha.js?v=308"></script>
-<script src="js/sgadd-mercado.js?v=308"></script>
-<script src="js/sgadd-fichajes.js?v=308"></script>
-  <script src="js/sgadd-rankingpdf.js?v=308"></script>
-<script src="js/sgadd-equipos.js?v=308"></script>
+<script src="js/sgadd-fixture.js?v=309"></script>
+<script src="js/sgadd-inscriptos.js?v=309"></script>
+<script src="js/sgadd-fases.js?v=309"></script>
+<script src="js/sgadd-torneos.js?v=309"></script>
+<script src="js/sgadd-hub.js?v=309"></script>
+<script src="js/sgadd-configui.js?v=309"></script>
+<script src="js/sgadd-estados.js?v=309"></script>
+<script src="js/sgadd-buzon.js?v=309"></script>
+<script src="js/sgadd-charts.js?v=309"></script>
+<script src="js/sgadd-personalidad.js?v=309"></script>
+<script src="js/sgadd-rankings.js?v=309"></script>
+<script src="js/sgadd-partido.js?v=309"></script>
+<script src="js/sgadd-informe.js?v=309"></script>
+<script src="js/sgadd-ficha.js?v=309"></script>
+<script src="js/sgadd-mercado.js?v=309"></script>
+<script src="js/sgadd-fichajes.js?v=309"></script>
+  <script src="js/sgadd-rankingpdf.js?v=309"></script>
+<script src="js/sgadd-equipos.js?v=309"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=308"></script>
-<script src="js/sgadd-jugadores.js?v=308"></script>
-<script src="js/sgadd-4factores.js?v=308"></script>
-<script src="js/sgadd-scouting.js?v=308"></script>
-<script src="js/sgadd-pbp.js?v=308"></script>
-<script src="js/sgadd-rendimiento.js?v=308"></script>
-<script src="js/sgadd-conclusiones.js?v=308"></script>
-<script src="js/sgadd-diagnostico.js?v=308"></script>
+<script src="js/sgadd-niveles.js?v=309"></script>
+<script src="js/sgadd-jugadores.js?v=309"></script>
+<script src="js/sgadd-4factores.js?v=309"></script>
+<script src="js/sgadd-scouting.js?v=309"></script>
+<script src="js/sgadd-pbp.js?v=309"></script>
+<script src="js/sgadd-rendimiento.js?v=309"></script>
+<script src="js/sgadd-conclusiones.js?v=309"></script>
+<script src="js/sgadd-diagnostico.js?v=309"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
@@ -4014,6 +4050,7 @@ const LOGOS = (function () {
      --------------------------------------------------------------------- */
   let manifiesto = null, promesaManifiesto = null, logoLiga = null;
   let manifiestoRoto = [];
+  const LOGOS_PRECARGA = [];
 
   function cargarManifiesto() {
     if (promesaManifiesto) return promesaManifiesto;
@@ -4026,6 +4063,9 @@ const LOGOS = (function () {
           /* `_liga` es el logo de la LIGA (la terna del encabezado PDF,
              punto 141): no es un equipo y no entra al mapa de escudos. */
           logoLiga = j._liga ? base + j._liga : null;
+          /* Se PRECARGA: el encabezado del PDF nace al imprimir y una imagen
+             que todavía baja no entra al papel (salía rota, con el alt). */
+          if (logoLiga && typeof Image !== 'undefined') { try { const pre = new Image(); pre.src = logoLiga; LOGOS_PRECARGA.push(pre); } catch (e) { /* sin red */ } }
           Object.keys(j).forEach(k => { if (k.charAt(0) !== '_') manifiesto[normalizar(k)] = base + j[k]; });
           console.log('[LOGOS] manifiesto:', Object.keys(manifiesto).length, 'escudos');
         }

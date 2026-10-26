@@ -28,6 +28,9 @@ const EQUIPOS = {
 
 const EQUIPOS_TABS = [
   { id: 'general',      label: 'General',      pregunta: '¿Cómo viene?' },
+  /* DIAGNÓSTICO (2026-10-26): las conclusiones clínicas del punto 141 dejan
+     de ir arriba de las pestañas y pasan a ser una solapa propia. */
+  { id: 'diagnostico',  label: 'Diagnóstico',  pregunta: '¿Qué sostener, qué ajustar y dónde se quiebra?' },
   { id: 'ofensiva',     label: 'Ofensiva',     pregunta: '¿Cómo anota?' },
   { id: 'defensiva',    label: 'Defensiva',    pregunta: '¿Cómo defiende?' },
   { id: '4factores',    label: '4 Factores',   pregunta: '¿Dónde gana y dónde pierde?' },
@@ -262,7 +265,6 @@ function equiposFicha(idx, e) {
   const actual = ofrecidas.find(t => t.id === EQUIPOS.tab) || ofrecidas[0];
   return [
     equiposHeader(idx, e),
-    equiposConclusiones(idx, e),
     `<div class="card rounded-xl p-4 sm:p-5 border border-hairline">
        ${SGADD_UI.tabs(tabs, EQUIPOS.tab, 'equiposVerTab')}
        <p class="text-[11px] text-muted mb-4 -mt-2">${escapeHtml(actual.pregunta)}</p>
@@ -436,6 +438,7 @@ function equiposInsight(ins) {
 function equiposTab(idx, e, id) {
   switch (id) {
     case 'general':   return equiposTabGeneral(idx, e);
+    case 'diagnostico': return equiposConclusiones(idx, e);
     case 'ofensiva':  return equiposTabOfensiva(idx, e);
     case 'defensiva': return equiposTabDefensiva(idx, e);
     case '4factores': return equiposTab4F(idx, e);

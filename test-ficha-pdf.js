@@ -25,6 +25,8 @@ function check(n, c, d) {
 function seccion(t) { console.log('\n' + t); }
 
 const est = F.estructura();
+const S = (id) => est.find(x => x.id === id);
+check("el diagnóstico entra entero, sin sub-cards, y tildado", S("diagnostico") && S("diagnostico").subs.length === 0 && S("diagnostico").pre === true);
 const declarados = est.reduce((a, x) => a.concat(x.subs.map(y => y.id)), []);
 
 seccion('1 · La estructura sale del código de la vista');
@@ -38,11 +40,11 @@ seccion('1 · La estructura sale del código de la vista');
   check('las secciones son las pestañas reales de Jugadores, con su nombre y su pregunta',
     est.map(x => x.id).join() === J.JUGADORES_TABS.filter(t => !t.pbp).map(t => t.id).join() && est.every(x => x.label === J.JUGADORES_TABS.find(t => t.id === x.id).label && x.pregunta));
   check('las cartas toman el nombre de JUGADORES_CARDS_REF', ['uso', 'pases'].every(c => est[0].subs.some(y => y.label === J.JUGADORES_CARDS_REF.find(r => r.id === c).label))
-    && est[1].subs.some(y => y.label === J.JUGADORES_CARDS_REF.find(r => r.id === 'tiro').label));
+    && S("tiro").subs.some(y => y.label === J.JUGADORES_CARDS_REF.find(r => r.id === 'tiro').label));
   const grupos = (fuente.match(/data-subcard-de="([^"$]+)"/g) || []).map(m => m.slice(17, -1).split(/\s+/)).filter(g => g[0].indexOf('equipo.') !== 0);
   check('cada grupo declara hijos que existen', grupos.length >= 2 && grupos.every(g => g.every(id => declarados.indexOf(id) !== -1)), grupos);
-  check('los bloques del play-by-play van marcados como tales', est[1].subs.filter(y => y.pbp).map(y => y.id).join() === 'tiro.mapa,tiro.reloj,tiro.reloj-tramos,tiro.reloj-franjas');
-  check('la evolución elige métricas y el log de partidos arranca destildado', est[2].metricas === true && est[3].pre === false);
+  check('los bloques del play-by-play van marcados como tales', S("tiro").subs.filter(y => y.pbp).map(y => y.id).join() === 'tiro.mapa,tiro.reloj,tiro.reloj-tramos,tiro.reloj-franjas');
+  check('la evolución elige métricas y el log de partidos arranca destildado', S("evolucion").metricas === true && S("partidos").pre === false);
 }
 
 seccion('2 · La selección');
@@ -55,9 +57,9 @@ seccion('2 · La selección');
   s2.subs['general.uso'] = false;
   const a = F.activos(s2, est);
   check('una sub-card está activa si ella Y su sección están tildadas', a['general.adn'] && !a['general.uso'] && !a['tiro.carta']);
-  check('una sección entra si tiene algo adentro', F.seccionEntra(est[0], s2) && !F.seccionEntra(est[1], s2)
+  check('una sección entra si tiene algo adentro', F.seccionEntra(est[0], s2) && !F.seccionEntra(S("tiro"), s2)
     && !F.seccionEntra(est[0], Object.assign({}, s2, { subs: Object.fromEntries(declarados.map(d => [d, false])) })));
-  check('la evolución entra solo con al menos una métrica', F.seccionEntra(est[2], s2) && !F.seccionEntra(est[2], Object.assign({}, s2, { metricas: { PTS: false } })));
+  check('la evolución entra solo con al menos una métrica', F.seccionEntra(S("evolucion"), s2) && !F.seccionEntra(S("evolucion"), Object.assign({}, s2, { metricas: { PTS: false } })));
 }
 
 seccion('3 · La poda · lo destildado se quita, sin huecos');

@@ -585,7 +585,7 @@ const sinSheetId = (body) => !/SHEET_[A-Z]+_\d+/.test(JSON.stringify(body));
   const idx = fs.readFileSync('./index.html', 'utf8');
   check('la sección se monta ANTES del modo landing: no depende del club abierto',
     idx.indexOf("if (section === 'fichajes')") !== -1
-    && idx.indexOf("if (section === 'fichajes')") < idx.indexOf('SGADD_LANDING.activa()) {\n    root.innerHTML = SGADD_LANDING.vista'));
+    && idx.indexOf("if (section === 'fichajes')") < idx.search(/SGADD_LANDING\.activa\(\)\) \{\r?\n    root\.innerHTML = SGADD_LANDING\.vista/));
 
   titulo('4 bis. VOLUMEN Y PUESTOS EN LA PANTALLA');
 

@@ -66,6 +66,9 @@ const SGADD_FICHA = (function () {
         { id: 'general.pases', label: cartaDe('pases', 'Pases y pérdidas') },
         { id: 'general.tablas', label: 'Marcador y contexto · otras estadísticas' },
       ] }),
+      /* El diagnóstico clínico (punto 141) es una solapa propia: entra
+         entero, sin sub-cards. */
+      sec('diagnostico', { pre: true }),
       sec('tiro', { pre: true, subs: [
         { id: 'tiro.distribucion', label: 'Distribución del tiro por zona' },
         { id: 'tiro.carta', label: cartaDe('tiro', 'Tiro · volumen y eficiencia') },
