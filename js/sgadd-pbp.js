@@ -1248,6 +1248,7 @@ const SGADD_PBP = (function () {
       return `<div class="pbp-bloque" data-pbp-listo="1" data-pbp-contexto="scouting">
         ${notaLaboratorio(paq)}
         ${v2 ? seccion('ultimos5', 'Últimos 5 partidos · inicial contra cierre', tablaUltimos5(paq)) : ''}
+        ${v2 && paq.rotaciones ? seccion('rotaciones', 'Rotaciones · minuto a minuto', heatmapRotaciones(paq) + '<p class="text-[10px] dato-sec mt-1">Parte de los partidos en que cada jugador estuvo en cancha, minuto a minuto.</p>') : ''}
         ${seccion('decide', 'Quién decide los finales', tablaClutch(paq), { nota: 'Usos = PLAYS del motor, en los finales apretados.' })}
         ${bloqueSecciones(paq, 'scouting')}
       </div>`;

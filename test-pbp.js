@@ -432,7 +432,7 @@ function paquete(equipo) {
   const hScout = P.html(p3, { contexto: 'scouting' });
   const secScout = (hScout.match(/data-pbp-seccion="([^"]+)"/g) || []).map(x => x.slice(18, -1));
   check('en Scouting la card de quintetos muestra últimos 5 y quién decide los finales, SIN el sub-card «Clutch» (pedido del club 2026-10-02)',
-    JSON.stringify(secScout) === '["ultimos5","decide"]' && />Quién decide los finales</.test(hScout) && !/data-pbp-seccion="clutch"/.test(hScout), secScout);
+    JSON.stringify(secScout) === '["ultimos5","rotaciones","decide"]' && />Quién decide los finales</.test(hScout) && !/data-pbp-seccion="clutch"/.test(hScout), secScout);
   check('y también arrancan cerradas', !/<details[^>]*\sopen[\s>]/.test(hScout) && /data-pbp-seccion="decide"/.test(hScout));
   check('G-P y MIN no se parten: toda celda numérica lleva whitespace-nowrap', /whitespace-nowrap">8-7</.test(h3) && !/<td class="px-2 py-1 font-mono text-xs">/.test(h3));
   check('sin undefined ni NaN, y escapa lo del paquete nuevo', !/undefined|NaN/.test(h3) && !/<i>SUARDI/.test(h3) && /&lt;i&gt;SUARDI/.test(h3));
@@ -542,8 +542,15 @@ function paquete(equipo) {
   check('juego: la card muestra la tabla de los dos equipos y la nota de cómo se mide', (conTabla.match(/data-cuarto-equipo/g) || []).length >= 2 && /ORTG/.test(conTabla) && /Net = ORTG − DRTG/.test(conTabla) && /neto del rival/.test(conTabla) && !/<table/.test(conTabla));
   check('rotaciones: el lugar existe como tipo propio y la card dibuja el minuto a minuto o dice que no hay', /data-pbp-tipo="rotaciones"/.test(P.espacio('R', 'scouting', null, 'rotaciones')) && /data-pbp-tipo="quintetos"/.test(P.espacio('R', 'scouting')) && /Sin rotaciones/.test(P.rotacionesCard({ esquema: 'x' })));
   const srcSc = fs.readFileSync('js/sgadd-scouting.js', 'utf8');
-  check('scouting: la card de Rotaciones va ENTRE la de Quintetos y la del Mapa de tiro, y es una opción del modal',
-    srcSc.indexOf('data-bloque="pbp"') < srcSc.indexOf('data-bloque="pbp-rotaciones"') && srcSc.indexOf('data-bloque="pbp-rotaciones"') < srcSc.indexOf('data-bloque="pbp-tiro"') && /id: 'pbp-rotaciones'/.test(srcSc));
+  check('scouting: Rotaciones ya NO es una card aparte: va DENTRO de Quintetos, cierre, rotaciones y clutch, minimizada, y no es opción del modal',
+    !/data-bloque="pbp-rotaciones"/.test(srcSc) && !/id: 'pbp-rotaciones'/.test(srcSc) && /Quintetos, cierre, rotaciones y clutch/.test(srcSc));
+  const pqRot = { esquema: 'x', tiros: { detalle: {} }, rotaciones: { partidos: 3, jugadores: [{ id: '1', minutos: 30, minuto: new Array(40).fill(80) }] }, umbrales: {} };
+  const htmlSc = P.html(pqRot, { contexto: 'scouting' });
+  check('scouting: la sub-card de rotaciones está entre «inicial contra cierre» y el clutch, y arranca cerrada',
+    /data-pbp-seccion="rotaciones"/.test(htmlSc) && !/data-pbp-seccion="rotaciones"[^>]*open/.test(htmlSc) && htmlSc.indexOf('data-pbp-seccion="ultimos5"') < htmlSc.indexOf('data-pbp-seccion="rotaciones"') && htmlSc.indexOf('data-pbp-seccion="rotaciones"') < htmlSc.indexOf('data-pbp-seccion="decide"'));
+  const idxH = fs.readFileSync('index.html', 'utf8');
+  check('papel: cada mapa por franja arranca hoja nueva con su título pegado al mapa',
+    /\[data-reloj-mapa-franja\] \+ \[data-reloj-mapa-franja\] \{ break-before: page/.test(idxH) && /\[data-reloj-mapa-franja\] > summary[^}]*break-after: avoid/.test(idxH) && /\[data-reloj-lugar\] \{ break-before: page/.test(idxH));
   check('scouting: duelos y volúmenes en Bento (barras de diferencial y de progreso), sin la línea de proyección del simulador',
     /data-duelos-bento/.test(srcSc) && /class="vbar /.test(srcSc) && !/Margen proyectado del modelo del Simulador/.test(srcSc));
   check('cuartos: sin nuestro paquete sale solo el rival, y sin datos lo dice', !/NUESTRO/.test(P.cuartosCruzadoHtml({ cuartos: [cq('1', 2)] }, null, 'RIVAL', 'NUESTRO')) && /Sin datos por cuarto/.test(P.cuartosCruzadoHtml({}, null, 'R', 'N')));

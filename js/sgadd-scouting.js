@@ -3492,8 +3492,7 @@ const SCOUT_CARDS = [
   { id: 'fichas', label: '📋 Ficha de análisis por jugador', bloque: 'scouting.fichas' },
   /* LABORATORIO (punto 62): quintetos, cierre, clutch y mapa del rival,
      desde el play-by-play. Solo con la capa `pbp` de la categoría. */
-  { id: 'pbp', label: '🔁 Quintetos y clutch del rival · laboratorio', capa: 'pbp' },
-  { id: 'pbp-rotaciones', label: '🔄 Rotaciones · minuto a minuto · laboratorio', capa: 'pbp' },
+  { id: 'pbp', label: '🔁 Quintetos, cierre, rotaciones y clutch del rival · laboratorio', capa: 'pbp' },
   { id: 'pbp-tiro', label: '🎯 Mapa de tiro del rival · laboratorio', capa: 'pbp' },
   { id: 'pbp-cuartos', label: '⏲ Rendimiento por cuarto · laboratorio', capa: 'pbp' },
 ];
@@ -3538,12 +3537,8 @@ function scoutBloquePbp(inf) {
   const propio = rivalEsLocal ? inf.visitante : inf.local;
   return `
     <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="pbp">
-      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">🔁 Quintetos, cierre y clutch · ${scoutNombreConLogo(rival.nombre, 18)}</h4>
+      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">🔁 Quintetos, cierre, rotaciones y clutch · ${scoutNombreConLogo(rival.nombre, 18)}</h4>
       ${SGADD_PBP.espacio(rival.nombre, 'scouting')}
-    </section>
-    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="pbp-rotaciones">
-      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">🔄 Rotaciones · minuto a minuto · ${scoutNombreConLogo(rival.nombre, 18)}</h4>
-      ${SGADD_PBP.espacio(rival.nombre, 'scouting', null, 'rotaciones')}
     </section>
     <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="pbp-tiro">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">🎯 Mapa de tiro · ${scoutNombreConLogo(rival.nombre, 18)}</h4>
