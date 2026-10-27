@@ -295,7 +295,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=318`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=321`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15851,7 +15851,7 @@ La cabecera y los indicadores de General, Ofensiva, Defensiva y las vistas usan 
 
 ### La terna del encabezado PDF
 
-`SGADD_UI.encabezadoInforme(ctx)`: **liga · equipo · MotorStats**, en una sola línea (`.cabecera-terna`, logos de 7 mm de alto con su proporción). `contextoEncabezado(contenedor, equipo)` la arma: la liga sale de **`_liga` en `logos/<liga>/index.json`** (no entra al mapa de escudos; `LOGOS.urlLiga()`), y sin archivo va el nombre del torneo; el equipo, el que pasa cada exportación (informe → el equipo, ficha y pack → su equipo, ranking → el plantel, fichajes → el del jugador) o el propio del club. **Cargados el 2026-10-26** (v308): LAB y LNB de laliganacional.com.ar (`_liga.png`), Bahía de abbasquet.com (`_liga.png`, 250×50) y APdeB (`apdb.png`, que ya estaba). Una liga nueva suma su archivo y `"_liga"` en su manifiesto. **No verificado en un PDF real**: la terna solo se dibuja al imprimir.
+`SGADD_UI.encabezadoInforme(ctx)`: **liga · equipo · MotorStats**, en una sola línea (`.cabecera-terna`, logos de 7 mm de alto con su proporción). `contextoEncabezado(contenedor, equipo)` la arma: la liga sale de **`_liga` en `logos/<liga>/index.json`** (no entra al mapa de escudos; `LOGOS.urlLiga()`), y sin archivo va el nombre del torneo; el equipo, el que pasa cada exportación (informe → el equipo, ficha y pack → su equipo, ranking → el plantel, fichajes → el del jugador) o el propio del club. **Cargados el 2026-10-26** (v308): LAB y LNB de laliganacional.com.ar (`liga.png`), Bahía de abbasquet.com (`liga.png`, 250×50) y APdeB (`apdb.png`, que ya estaba). Una liga nueva suma su archivo y `"_liga"` en su manifiesto. **No verificado en un PDF real**: la terna solo se dibuja al imprimir.
 
 ## 142. LA SOLAPA DIAGNÓSTICO, LA TERNA ARREGLADA Y EL PAPEL SIN CARDS PARTIDAS (2026-10-26)
 
@@ -16304,3 +16304,44 @@ El error baja un 3 %; el acierto del ganador no cambia (el mismo techo del punto
 
 - Ajustar por rival también el ritmo (hoy solo se encoge) y los jugadores del Scouting (siguen contra la liga entera).
 - Rotación, banca, faltas tempranas y clutch por jugador: igual que en el punto 148, necesitan el paquete `pbp`.
+
+---
+
+## 150. EL SCOUTING EN BENTO GRID · BARRAS DE DIFERENCIAL Y DE PROGRESO (2026-10-27)
+
+Assets en `?v=320`. Solo presentación: ningún cálculo cambió. Revisado en el navegador sobre la demo; **no commiteado hasta la validación del club**.
+
+- **Duelos cruzados**: una tarjeta por factor, con dos barras de diferencial (ataque propio menos la defensa que enfrenta, en puntos porcentuales; verde si el ataque supera a esa defensa) y una barra del balance en puntos del margen. El número va siempre escrito. Clases `.dbar` (centrada en cero) y `.vbar` (progreso con la marca de la meta), a mano en el `<style>` y con variante de papel.
+- **Volúmenes de umbral**: mini-tarjetas con barra hasta la meta (marca blanca al 2/3), brecha escrita y estado en palabras («En zona positiva», «Bache crítico», «Dentro del tope», «Pasa el tope»).
+- **Se fue la línea «Margen proyectado del modelo del Simulador»** de la card de duelos. Las 3 cosas la siguen trayendo en su primera directiva.
+- **Mapa de tiro en Scouting** (`fijo`): la tabla de zonas pasó a chips `.pbp-zona-chip` con la barra de desvío del PPT contra la liga; mantienen `data-pbp-zona`, así el enlace con la cancha y los tiros no cambia (y el teclado los activa). Las listas de zonas a explotar / ineficientes son tarjetas de alerta con el delta de PPT. Equipos conserva la tabla.
+- **Rendimiento por cuarto**: una tarjeta por cuarto con el Net rating (o la diferencia de puntos sin el detalle del paquete) como barra centrada, para el rival y para nosotros. Se fue la macro-tabla.
+- **Sin nombres de jugadores en las cards macro**: «Dependencias de uso» dice cuánto concentra el ataque sin nombrar, y las 3 cosas y el FODA remiten a «su amenaza principal (ver la tabla de marcas)». Los nombres viven en las marcas, Jugadores y Fichajes.
+- **Rotaciones · minuto a minuto** es una card propia de Scouting (`pbp-rotaciones`, opción del modal), entre la de Quintetos y la del Mapa de tiro. Tipo nuevo `rotaciones` en `SGADD_PBP.espacio` y `rotacionesCard`.
+- **Reloj de posesión**: sus barras ya eran la comparación ataque / defensa con el trazo de la competencia; **no se tocaron en esta entrega**.
+- Tests: `test-pbp.js` (313), `test-diagnostico-rival.js` (61) y `test-muestra.js` con la nueva versión.
+
+---
+
+## 151. SCOUTING v320 · NOMBRES DE VUELTA, FODA SIN HUECOS Y PÉRDIDAS LEGIBLES (2026-10-27)
+
+Assets en `?v=320`. Revierte el anonimato de la v319 (punto 150) y arregla lo que el club marcó. **Sin commitear hasta la validación.**
+
+- **Dependencias de uso**: el Top 3 de jugadores que más plays concentran, con nombre, en el formato `[Nombre] · X Plays · Y% USG`. En el resto del plantel el orden de la línea pasó a MIN · PLAYS · USG% · PTS.
+- **Las 3 cosas y el FODA nombran a la amenaza** (ya no remiten a la tabla de marcas).
+- **FODA · Fortalezas**: si ninguna métrica pasa el percentil 70, se muestran las tres más altas del rival desde el 55 (`scoutFortalezasAltas`, con su percentil y la liga). Cada casilla vacía dice una lectura (`SIN_ITEM_FODA`) en vez de «Sin datos del box score».
+- **Duelos**: cada lado dice «✓ a favor» o «✗ en contra» con palabras (se fueron las flechas ▲▼, que en pérdidas confundían) y, en la tasa de pérdidas, «menos es mejor».
+- **No hecho**: la redistribución hacia las cards de Equipo (General, Personalidad, Diagnóstico) no cambió: esas pestañas ya muestran lo que el equipo hace bien con la misma fuente (`SGADD_CONCLUSIONES`). Se hace aparte si el club lo define.
+- Tests: `test-diagnostico-rival.js` (63).
+
+---
+
+## 152. EL LOGO DE LA LIGA EN LOS PDF · GitHub Pages NO SIRVE ARCHIVOS CON «_» (2026-10-27)
+
+Assets en `?v=321`. Reportado: en la cabecera `Logo-Liga | Logo-club` del PDF el logo de la liga solo salía con APdeB.
+
+**Causa medida, no del código:** el resolvedor ya era genérico (`_liga` en `logos/<liga>/index.json` → `LOGOS.urlLiga()`). Los archivos se llamaban `_liga.png` y **GitHub Pages (Jekyll) no publica archivos que empiezan con `_`**: `…/logos/liga-nacional/_liga.png` daba **404** y `…/la-plata/apdb.png` daba 200. Por eso solo se veía APdeB, el único con nombre sin guion bajo. En local (python http.server) andaba, y por eso no se vio.
+
+**Arreglo:** los tres archivos pasaron a `liga.png` (Bahía Blanca, Liga Argentina, Liga Nacional) y sus manifiestos lo apuntan; la clave JSON sigue siendo `_liga` (es solo una clave, no un archivo). Si un logo no carga, el encabezado ya esconde la imagen y muestra el nombre del torneo (`onerror`), sin romper el layout.
+
+**Test:** `test-logos.js` recorre todos los `logos/*/index.json` y exige que el archivo de `_liga` exista y no empiece con `_` ni `.`. Una liga nueva sube su logo con un nombre normal (`liga.png`).

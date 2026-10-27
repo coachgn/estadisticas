@@ -517,7 +517,7 @@ function paquete(equipo) {
   check('cuartos: dentro de ±1,5 no se afirma ningún patrón', pat([cq('1', 1), cq('2', -1), cq('3', 0.5), cq('4', 1)]) === '');
   check('cuartos: con menos de 5 partidos no se afirma nada', pat([cq('1', 3, 4), cq('2', 0, 4), cq('3', 0, 4), cq('4', -3, 4)]) === '');
   const matriz = P.cuartosCruzadoHtml({ cuartos: [cq('1', 2), cq('2', 0), cq('3', 0), cq('4', -2)] }, { cuartos: [cq('1', 0), cq('2', 1), cq('3', 0), cq('4', 1)] }, 'RIVAL', 'NUESTRO');
-  check('cuartos: la matriz muestra a los dos, con Hace / Cede / Dif. por cuarto y los patrones', /RIVAL/.test(matriz) && /NUESTRO/.test(matriz) && /Hace/.test(matriz) && /Cede/.test(matriz) && /1\.º/.test(matriz) && /Arranca arrollador/.test(matriz));
+  check('cuartos: la matriz muestra a los dos, con Hace / Cede / Dif. por cuarto y los patrones', /RIVAL/.test(matriz) && /NUESTRO/.test(matriz) && /hace/.test(matriz) && /cede/.test(matriz) && /1\.º cuarto/.test(matriz) && /data-cuartos-bento/.test(matriz) && /class="dbar /.test(matriz) && /Arranca arrollador/.test(matriz));
   /* v315 · el juego de cada cuarto (tiro, pérdidas, ritmo y faltas) */
   const jg = (efgF, efgC, ppF, ppC, fcF, fcC) => ({ n: 12, efgF, efgC, tciF: 16, tciC: 16, ortg: 105, drtg: 100, ppF, ppC, ritmo: 72, fcF, fcC });
   const cj = (periodo, juego) => Object.assign(cq(periodo, 0), { juego });
@@ -539,7 +539,13 @@ function paquete(equipo) {
   check('juego: sin el detalle en el paquete la tabla no se dibuja y la card dice que llega con la próxima subida', P.juegoPorCuartoHtml('R', [cq('1', 2)]) === ''
     && /próxima subida/.test(P.cuartosCruzadoHtml({ cuartos: [cq('1', 2)] }, null, 'R', 'N')));
   const conTabla = P.cuartosCruzadoHtml({ cuartos: base(jg(0.47, 0.50, 3, 3, 4, 4)) }, { cuartos: base(jg(0.52, 0.50, 3, 3, 4, 4)) }, 'RIVAL', 'NUESTRO');
-  check('juego: la card muestra la tabla de los dos equipos y la nota de cómo se mide', (conTabla.match(/· el juego de cada cuarto/g) || []).length === 2 && /neto del rival/.test(conTabla) && /cada 40 minutos/.test(conTabla));
+  check('juego: la card muestra la tabla de los dos equipos y la nota de cómo se mide', (conTabla.match(/data-cuarto-equipo/g) || []).length >= 2 && /ORTG/.test(conTabla) && /Net = ORTG − DRTG/.test(conTabla) && /neto del rival/.test(conTabla) && !/<table/.test(conTabla));
+  check('rotaciones: el lugar existe como tipo propio y la card dibuja el minuto a minuto o dice que no hay', /data-pbp-tipo="rotaciones"/.test(P.espacio('R', 'scouting', null, 'rotaciones')) && /data-pbp-tipo="quintetos"/.test(P.espacio('R', 'scouting')) && /Sin rotaciones/.test(P.rotacionesCard({ esquema: 'x' })));
+  const srcSc = fs.readFileSync('js/sgadd-scouting.js', 'utf8');
+  check('scouting: la card de Rotaciones va ENTRE la de Quintetos y la del Mapa de tiro, y es una opción del modal',
+    srcSc.indexOf('data-bloque="pbp"') < srcSc.indexOf('data-bloque="pbp-rotaciones"') && srcSc.indexOf('data-bloque="pbp-rotaciones"') < srcSc.indexOf('data-bloque="pbp-tiro"') && /id: 'pbp-rotaciones'/.test(srcSc));
+  check('scouting: duelos y volúmenes en Bento (barras de diferencial y de progreso), sin la línea de proyección del simulador',
+    /data-duelos-bento/.test(srcSc) && /class="vbar /.test(srcSc) && !/Margen proyectado del modelo del Simulador/.test(srcSc));
   check('cuartos: sin nuestro paquete sale solo el rival, y sin datos lo dice', !/NUESTRO/.test(P.cuartosCruzadoHtml({ cuartos: [cq('1', 2)] }, null, 'RIVAL', 'NUESTRO')) && /Sin datos por cuarto/.test(P.cuartosCruzadoHtml({}, null, 'R', 'N')));
   check('cuartos: el lugar del montaje pide el paquete del rival y el nuestro', /data-pbp-tipo="rival-cuartos"/.test(P.espacioCuartos('R', 'N')) && /data-pbp-propio="N"/.test(P.espacioCuartos('R', 'N')) && !/data-pbp-propio/.test(P.espacioCuartos('R', null)));
   check('mapa: el gráfico y la tabla van en una grilla que el papel mantiene en dos columnas (la tabla a la derecha)', /pbp-mapa-grid grid grid-cols-1 lg:grid-cols-2/.test(fs.readFileSync('js/sgadd-pbp.js', 'utf8'))
@@ -649,9 +655,9 @@ function paquete(equipo) {
   check('y aunque un llamador pida otra vista, fijo gana',
     /data-pbp-sujeto="equipo" data-pbp-vista="zonas" data-pbp-metrica="eficiencia"/.test(P.mapa(rival, { fijo: true, vista: 'hex', metrica: 'frecuencia', sujeto: 'contra' })));
   check('el diagnóstico del rival explica cómo lo lee el DT: explotar = cerrar, ineficientes = flotar',
-    /data-pbp-lectura="explotar">Áreas de máxima eficiencia ofensiva del rival\. Lectura para el DT: zonas donde nuestra defensa debe priorizar ajustes/.test(hsFijo)
-    && /data-pbp-lectura="evitar">Áreas de bajo rendimiento del rival\. Lectura para el DT: zonas que nuestra defensa puede flotar o liberar/.test(hsFijo)
-    && /title="Áreas de máxima eficiencia/.test(hsFijo));
+    /data-pbp-diag-bento/.test(hsFijo) && /data-pbp-lectura="explotar"/.test(hsFijo) && /nuestra defensa debe cerrar/.test(hsFijo)
+    && /title="Áreas de máxima eficiencia ofensiva del rival\. Lectura para el DT: zonas donde nuestra defensa debe priorizar ajustes/.test(hsFijo)
+    && /title="Áreas de bajo rendimiento del rival\. Lectura para el DT: zonas que nuestra defensa puede flotar o liberar/.test(hsFijo));
   check('en Equipos el mapa sigue con sus conmutadores y sin la lectura del rival',
     /data-pbp-accion="sujeto:contra"/.test(mapa3) && !/data-pbp-lectura/.test(mapa3));
 

@@ -778,9 +778,23 @@ const SGADD_PBP = (function () {
     const cr = (paq && paq.cuartos) || [];
     const cn = (paqPropio && paqPropio.cuartos) || [];
     if (!cr.length) return vacio('Sin datos por cuarto de este equipo.');
-    const celda = (c) => c
-      ? `<td class="${TD}">${num(c.favor)}</td><td class="${TD}">${num(c.contra)}</td><td class="${TD} font-semibold ${tonoMM(c.dif)}">${signo(c.dif, 1)}</td>`
-      : `<td class="${TD} dato-sec">—</td><td class="${TD} dato-sec">—</td><td class="${TD} dato-sec">—</td>`;
+    /* BENTO (punto 150): una tarjeta por cuarto, con el Net rating (o, sin el
+       detalle del paquete, la diferencia de puntos) como barra centrada en
+       cero y los números escritos al lado. */
+    const valorDe = (c) => (c && c.juego && esNum(c.juego.ortg) && esNum(c.juego.drtg) ? { v: c.juego.ortg - c.juego.drtg, u: 'Net' } : (c && esNum(c.dif) ? { v: c.dif, u: 'Dif.' } : null));
+    const todos = cr.concat(cn).map(valorDe).filter(Boolean).map(x => Math.abs(x.v));
+    const maxV = Math.max(1, ...todos);
+    const fila = (nombre, c) => {
+      const x = valorDe(c);
+      if (!x) return `<div class="py-1"><p class="text-[11px] text-muted">${esc(nombre)} · sin datos de este cuarto</p></div>`;
+      const j = c.juego;
+      return `<div class="py-1" data-cuarto-equipo="1">
+        <div class="flex items-center justify-between gap-2"><p class="text-[11px] text-white truncate">${esc(nombre)}</p>
+          <span class="bento-chip ${x.v >= 0 ? 'tono-alto' : 'tono-bajo'}" style="color:${x.v >= 0 ? '#4ade80' : '#f87171'}">${x.v >= 0 ? '▲' : '▼'} ${x.u} ${signo(x.v, 1)}</span></div>
+        <div class="dbar mt-1" aria-hidden="true"><div class="dbar-r ${x.v >= 0 ? 'dbar-pos' : 'dbar-neg'}" style="width:${Math.min(50, 50 * Math.abs(x.v) / maxV).toFixed(1)}%"></div></div>
+        <p class="text-[10px] font-mono dato-sec mt-0.5">hace ${num(c.favor)} · cede ${num(c.contra)} · dif. ${signo(c.dif, 1)}${j ? ` · ORTG ${num(j.ortg)} · DRTG ${num(j.drtg)}` : ''}</p>
+      </div>`;
+    };
     const periodos = ['1', '2', '3', '4', 'OT'].filter(p => cr.some(c => String(c.periodo) === p) || cn.some(c => String(c.periodo) === p));
     const de = (l, p) => l.filter(c => String(c.periodo) === p)[0];
     const cab = (n) => `<th class="px-2 pb-1" colspan="3">${esc(n)}</th>`;
@@ -790,13 +804,13 @@ const SGADD_PBP = (function () {
         ? `<ul class="text-[11px] space-y-1">${pat.map(x => `<li>${x.tono === 'alto' ? '<span class="tono-alto" style="color:#4ade80">▲</span>' : '<span class="tono-bajo" style="color:#f87171">▼</span>'} ${esc(x.texto)}</li>`).join('')}</ul>`
         : '<p class="text-[11px] text-muted">◆ Sin un patrón temporal que se despegue de ±1,5 puntos por cuarto.</p>'}</div>`;
     };
-    return `<div class="scrollbox"><table class="w-full">
-        <thead><tr class="${TH}"><th class="px-2 pb-1 text-left" rowspan="2">Cuarto</th>${cab(nombreRival)}${cn.length ? cab(nombreNuestro) : ''}</tr>
-        <tr class="${TH}"><th class="px-2 pb-1">Hace</th><th class="px-2 pb-1">Cede</th><th class="px-2 pb-1">Dif.</th>${cn.length ? '<th class="px-2 pb-1">Hace</th><th class="px-2 pb-1">Cede</th><th class="px-2 pb-1">Dif.</th>' : ''}</tr></thead>
-        <tbody>${periodos.map(p => `<tr class="border-b border-hairline/40 last:border-0"><td class="px-2 py-1 text-left text-xs whitespace-nowrap">${p === 'OT' ? 'Supl.' : p + '.º'}</td>${celda(de(cr, p))}${cn.length ? celda(de(cn, p)) : ''}</tr>`).join('')}</tbody></table></div>
-      ${juegoPorCuartoHtml(nombreRival, cr)}${cn.length ? juegoPorCuartoHtml(nombreNuestro, cn) : ''}
+    return `<div class="grid gap-3" style="grid-template-columns:repeat(auto-fit,minmax(12rem,1fr))" data-cuartos-bento="1">${periodos.map(p => `
+        <div class="rend-card rounded-lg border border-hairline p-3" data-cuarto="${p}">
+          <p class="text-[10px] uppercase tracking-wider text-accent font-display mb-1">${p === 'OT' ? 'Suplementario' : p + '.º cuarto'}</p>
+          ${fila(nombreRival, de(cr, p))}${cn.length ? fila(nombreNuestro, de(cn, p)) : ''}
+        </div>`).join('')}</div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">${lista(nombreRival, cr)}${cn.length ? lista(nombreNuestro, cn) : ''}</div>
-      <p class="text-[10px] text-muted mt-2">Puntos por partido de cada cuarto, de los partidos validados. «Dif.» es lo que hace menos lo que cede.${cr.some(c => c.juego) ? ' En el juego de cada cuarto, el eFG % y el rating salen de los totales de todos los partidos (no del promedio de cada noche), con las posesiones del panel (tiros de campo + 0,44 libres + pérdidas − rebotes ofensivos); el ritmo son posesiones cada 40 minutos y las faltas, personales por partido. Los patrones del último cuarto se miden neto del rival, porque todos los equipos tiran peor y cometen más faltas al final.' : ' El detalle de tiro, pérdidas, ritmo y faltas por cuarto llega con la próxima subida de los paquetes.'}</p>`;
+      <p class="text-[10px] text-muted mt-2">Net = ORTG − DRTG del cuarto (por 100 posesiones, de los totales de todos los partidos); sin ese detalle, la diferencia de puntos por partido. Los patrones del último cuarto se miden neto del rival.${cr.some(c => c.juego) ? '' : ' El detalle por cuarto llega con la próxima subida de los paquetes.'}</p>`;
   }
 
   /** El lugar de la matriz por cuarto: rival y, si hay, nuestro paquete. */
@@ -980,6 +994,26 @@ const SGADD_PBP = (function () {
       </tr>`;
     }).join('');
 
+    /* Scouting (punto 150): la tabla de zonas pasa a chips compactos con la
+       barra de desvío del PPT contra la liga. Mismo data-pbp-zona: el
+       enlace con la cancha y los tiros no cambia. */
+    const maxDz = 0.5;
+    const chips = zonas.slice().sort((a, b) => b.i - a.i).map((z) => {
+      const liga = varaZona(paq, z.zona);
+      const delta = z.ppt !== null && liga ? Math.round((z.ppt - liga.ppt) * 100) / 100 : null;
+      const m = marcas[z.zona];
+      const cls = delta === null || Math.abs(delta) < 0.02 ? 'dbar-neu' : delta > 0 ? 'dbar-pos' : 'dbar-neg';
+      const glifo = delta === null || Math.abs(delta) < 0.02 ? '●' : delta > 0 ? '▲' : '▼';
+      return `<div class="pbp-zona-chip rounded-lg border border-hairline p-2" data-pbp-zona="${esc(z.zona)}" tabindex="0" role="button"
+          aria-label="${esc(z.zona + ' ' + (NOMBRES_ZONA[z.zona] || ''))}: resaltar en la cancha y ver sus tiros">
+        <div class="flex items-center justify-between gap-1">
+          <p class="text-[11px] text-white">${m ? `<span class="pbp-chip pbp-diag-${m.clase}" title="${esc(m.titulo)}">${m.insignia}</span> ` : ''}${esc(z.zona)} <span class="dato-sec">· ${esc(NOMBRES_ZONA[z.zona] || '')}</span></p>
+          <span class="bento-chip" style="color:${colorDelta(delta)}">${glifo} ${signo(delta, 2)}</span>
+        </div>
+        <p class="text-[10px] font-mono dato-sec mt-0.5">${z.c}/${z.i} · ${num(z.pct)} % · ${num(z.ppt, 2)} PPT${liga ? ` (liga ${num(liga.ppt, 2)})` : ''} · ${num(100 * z.i / totalI)} % de sus tiros</p>
+        <div class="dbar mt-1" aria-hidden="true"><div class="dbar-r ${cls}" style="width:${delta === null ? 0 : Math.min(50, 50 * Math.abs(delta) / maxDz).toFixed(1)}%"></div></div>
+      </div>`;
+    }).join('');
     const esJugador = o.sujeto !== 'equipo' && o.sujeto !== 'contra';
     return `<div class="pbp-mapa-caja" data-pbp-sujeto="${esc(o.sujeto)}" data-pbp-vista="${o.vista}" data-pbp-metrica="${o.metrica}" data-pbp-diag="${o.diag ? '1' : '0'}" data-pbp-perspectiva="${o.perspectiva ? '1' : '0'}"${o.fijo ? ' data-pbp-fijo="1"' : ''}${franja !== null ? ` data-pbp-franja="${franja}"` : ''}>
       ${o.fijo ? `<p class="pbp-vista-fija text-[11px] text-muted mb-2">Lo que tira${franja !== null ? ' en ' + FRANJAS_RELOJ[franja] : ''} · Zonas · Color: eficiencia contra la liga</p>` : `<div class="pbp-controles">
@@ -999,12 +1033,12 @@ const SGADD_PBP = (function () {
           <p class="pbp-capa-leyenda text-[11px] text-ink mt-1" aria-live="polite"></p>
         </div>
         <div>
-          <div class="scrollbox"><table class="w-full">
+          ${o.fijo ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-2" data-pbp-zonas-bento="1">${chips}</div>` : `<div class="scrollbox"><table class="w-full">
             <thead><tr class="${TH}">
               <th class="px-2 pb-1 text-left">Zona</th><th class="px-2 pb-1">C/I</th><th class="px-2 pb-1">%</th>
               <th class="px-2 pb-1" title="Puntos por tiro de campo">PPT</th><th class="px-2 pb-1" title="PPT menos el de la liga en esa zona">vs liga</th>
               <th class="px-2 pb-1">% tiros</th></tr></thead>
-            <tbody>${filas}</tbody></table></div>
+            <tbody>${filas}</tbody></table></div>`}
           <p class="text-[11px] text-muted mt-2 no-imprimir">Pasá el mouse o tocá una fila o una zona: se ilumina en los dos lados${hayPuntos ? ' y aparecen sus tiros' : ''}. Tocar fija la zona.</p>
         </div>
       </div>
@@ -1062,6 +1096,25 @@ const SGADD_PBP = (function () {
       : '<li class="text-xs text-muted">Ninguna zona con muestra rinde por encima de la liga.</li>';
     const mej = d.mejora.map(f => item('mejora', '↑', `<b class="text-white">Zona de mejora · ${esc(f.zona)} ${esc(f.nombre)}</b>: ${num(f.ppt, 2)} pts por tiro, ${signo(Math.round(f.ganancia * 100) / 100, 2)} sobre el promedio del equipo (${num(d.ppt, 2)}): cada tiro redirigido ahí suma.`)).join('');
     const evi = d.evitar.map(f => item('evitar', '✕', `<b class="text-white">${f.accion === 'evitar' ? 'Evitar' : 'Corregir la selección'} · ${esc(f.zona)} ${esc(f.nombre)}</b>: ${ci(f)}, ${num(f.ppt, 2)} contra ${num(f.liga.ppt, 2)} de la liga: ≈ ${num(f.perdidos, 0)} puntos por debajo de lo esperado en la temporada.`)).join('');
+    if (scouting) {
+      /* Bento (punto 150): tarjetas de alerta con el delta de PPT contra la liga. */
+      const dz = (f) => signo(Math.round((f.ppt - f.liga.ppt) * 100) / 100, 2) + ' PPT vs liga';
+      const alertaZ = (tono, icono, f, texto) => `<div class="rend-alerta rend-t-${tono}" role="note" data-pbp-zona="${esc(f.zona)}">
+        <b><span aria-hidden="true">${icono}</span> ${esc(f.zona)} · ${esc(f.nombre)}</b><span>${texto}</span></div>`;
+      const explotar = (d.explotar ? [d.explotar] : []).map(f => alertaZ('neg', '★', f, `${ci(f)} · ${num(f.ppt, 2)} PPT (liga ${num(f.liga.ppt, 2)}) · ${dz(f)}.`))
+        .concat(d.mejora.map(f => alertaZ('info', '↑', f, `${num(f.ppt, 2)} PPT, ${signo(Math.round(f.ganancia * 100) / 100, 2)} sobre su promedio (${num(d.ppt, 2)}).`)));
+      const evitar = d.evitar.map(f => alertaZ('pos', '✕', f, `${ci(f)} · ${num(f.ppt, 2)} PPT (liga ${num(f.liga.ppt, 2)}) · ${dz(f)}: ≈ ${num(f.perdidos, 0)} puntos por debajo de lo esperado.`));
+      const caja = (titulo, tono, lista, vacioTxt, lec) => `<section class="rend-card" data-diag="${tono}">
+        <h5 class="rend-card-t" title="${esc(lec)}">${titulo}</h5>
+        ${lista.length ? `<div class="rend-alertas">${lista.join('')}</div>` : `<p class="rend-mini">${vacioTxt}</p>`}</section>`;
+      return `<div class="pbp-diagnostico rend-raiz mt-3" data-pbp-diag-bento="1">
+        <div class="rend-grid">
+          ${caja('★ Zonas a explotar · cerrarlas', 'neg', explotar, 'Ninguna zona con muestra rinde por encima de la liga.', LECTURA_SCOUTING.explotar)}
+          ${caja('✕ Zonas ineficientes · flotarlas', 'pos', evitar, 'Ninguna zona con muestra cuesta puntos claros contra la liga.', LECTURA_SCOUTING.evitar)}
+        </div>
+        <p class="rend-mini" data-pbp-lectura="explotar">Lo que el rival hace bien es lo que nuestra defensa debe cerrar; lo que hace mal, lo que puede liberar. Ajustado por muestra (un 0/3 pesa menos que un 1/8).</p>
+      </div>`;
+    }
     const lectura = (clave) => (scouting
       ? `<p class="pbp-lectura text-[11px] text-ink mb-2" data-pbp-lectura="${clave}">${esc(LECTURA_SCOUTING[clave])}</p>` : '');
     const titulo = (texto, clave) => (scouting
@@ -1219,6 +1272,14 @@ const SGADD_PBP = (function () {
         { subcard: 'equipo.pbp.tactico', nota: 'Solo combinaciones con muestra suficiente. Es una lectura de los números, no una orden: decide el cuerpo técnico.' }) : ''}
       ${bloqueSecciones(paq, 'equipo')}
     </div>`;
+  }
+
+  /** La card de ROTACIONES (punto 150): el minuto a minuto, que en Scouting va
+   *  entre la card de Quintetos y la del Mapa de tiro. PURA. */
+  function rotacionesCard(paq) {
+    if (!paq || !paq.esquema || !(paq.tiros && paq.tiros.detalle) || !paq.rotaciones) return vacio('Sin rotaciones de este equipo en el laboratorio.');
+    return `<div class="pbp-bloque" data-pbp-listo="1" data-pbp-contexto="scouting">${heatmapRotaciones(paq)}
+      <p class="text-[10px] dato-sec mt-1">Parte de los partidos en que cada jugador estuvo en cancha, minuto a minuto.</p></div>`;
   }
 
   /**
@@ -3052,8 +3113,8 @@ const SGADD_PBP = (function () {
    * @param {string} propio  en Scouting, el otro lado del cruce (para «atacar / cerrar ahí»)
    */
   function espacio(equipo, contexto, propio, tipo, identidad) {
-    const t = tipo === 'mapa' ? tipo : 'quintetos';
-    const id = identidad && t === 'mapa' ? ` data-pbp-identidad="${esc(JSON.stringify(identidad))}"` : '';
+    const t = tipo === 'mapa' || tipo === 'rotaciones' ? tipo : 'quintetos';
+    const id = identidad && t === 'mapa' ?` data-pbp-identidad="${esc(JSON.stringify(identidad))}"` : '';
     return `<div class="pbp-montaje" data-pbp-equipo="${esc(equipo)}" data-pbp-contexto="${esc(contexto || 'equipo')}" data-pbp-tipo="${t}"${propio ? ` data-pbp-propio="${esc(propio)}"` : ''}${id}>
       ${cargando(t === 'mapa' ? 'Cargando el mapa de tiro…' : 'Cargando el análisis de play-by-play…')}</div>`;
   }
@@ -3166,6 +3227,7 @@ const SGADD_PBP = (function () {
             : tipo === 'partido-momentum' ? momentumPartido(paq, pp)
             : tipo === 'partido-quintetos' ? quintetosPartido(paq, pp)
             : tipo === 'partido-reloj' ? relojPartido(paq, pp)
+            : tipo === 'rotaciones' ? rotacionesCard(paq)
             : tipo === 'mapa' ? mapaCard(paq, { propio: paqPropio, fijo: contexto === 'scouting', identidad: leerIdentidad(nodo) }) : html(paq, { contexto: contexto });
           activar(nodo, paq);
         }).catch((e) => {
@@ -3296,7 +3358,7 @@ const SGADD_PBP = (function () {
     });
     nodo.addEventListener('keydown', (ev) => {
       if (ev.key !== 'Enter' && ev.key !== ' ') return;
-      const fila = cerca(ev, 'tr[data-pbp-zona]');
+      const fila = cerca(ev, 'tr[data-pbp-zona], .pbp-zona-chip[data-pbp-zona]');
       if (!fila) return;
       ev.preventDefault();
       fila.click();
@@ -3340,7 +3402,7 @@ const SGADD_PBP = (function () {
   return {
     CAPA, NOMBRES_ZONA, FAMILIAS, ZONAS, GEOMETRIA, MIN_LIGA_HEX,
     html, mapaCard, jugador, mapa, capaTiros, bloqueSecciones, tieneSecciones, geometriaZonas, zonaGeometrica,
-    diagnosticoZonas, diagnosticoJugador, cruceZonas, diagnosticoRival, rivalFriasHtml, espacioRival, fodaPbp, cuartosPatrones, juegoPorCuartoHtml, cuartosCruzadoHtml, espacioCuartos, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
+    rotacionesCard, diagnosticoZonas, diagnosticoJugador, cruceZonas, diagnosticoRival, rivalFriasHtml, espacioRival, fodaPbp, cuartosPatrones, juegoPorCuartoHtml, cuartosCruzadoHtml, espacioCuartos, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
     activa, espacio, espacioJugador, espacioQuintetosJugador, quintetosJugador, onOffDe, avisoSinCapa, espacioRendimiento, espacioConclusiones, montarPendientes, activar, apellido, _cache: cache,
     partidoDe, mapaPartido, momentumPartido, quintetosPartido, espacioPartido, MIN_TIROS_DIAGNOSTICO,
     relojTabla, relojIdentidad, relojPerfilJugador, relojEquipo, relojJugador, relojPartido, relojReparto, FRANJAS_RELOJ,

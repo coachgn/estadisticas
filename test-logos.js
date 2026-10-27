@@ -385,6 +385,21 @@ console.log(String.fromCharCode(10) + 'EL LOGO GENERADO · sin recortes' + Strin
   check('el logo conserva su pulso', /class="cargando-logo"/.test(loader));
 }
 
+/* El logo de la LIGA (terna del encabezado PDF) tiene que existir y NO
+   empezar con «_» ni «.»: GitHub Pages (Jekyll) no sirve esos archivos (404),
+   y por eso solo se veía el de APdeB (`apdb.png`) en producción. */
+{
+  const fsL = require('fs'), pathL = require('path');
+  const raiz = pathL.join(__dirname, 'logos');
+  fsL.readdirSync(raiz).filter(d => fsL.existsSync(pathL.join(raiz, d, 'index.json'))).forEach(d => {
+    const j = JSON.parse(fsL.readFileSync(pathL.join(raiz, d, 'index.json'), 'utf8'));
+    if (!j._liga) return;
+    check('logo de liga de ' + d + ': existe', fsL.existsSync(pathL.join(raiz, d, j._liga)), j._liga);
+    check('logo de liga de ' + d + ': Pages lo sirve (sin «_» ni «.» adelante)', !/^[_.]/.test(j._liga), j._liga);
+  });
+  check('hay al menos 4 ligas con logo', fsL.readdirSync(raiz).filter(d => { try { return JSON.parse(fsL.readFileSync(pathL.join(raiz, d, 'index.json'), 'utf8'))._liga; } catch (e) { return false; } }).length >= 4);
+}
+
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })();

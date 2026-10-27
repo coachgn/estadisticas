@@ -3313,8 +3313,15 @@ const SGADD_SCOUT = (function () {
   function foda(e) {
     const x = e || {};
     const lim = (l, n) => (l || []).slice(0, n);
-    const F = lim((x.fortalezasRival || []).filter(i => i.percentil === null || i.percentil === undefined || i.percentil >= 70), 3)
+    let F = lim((x.fortalezasRival || []).filter(i => i.percentil === null || i.percentil === undefined || i.percentil >= 70), 3)
       .map(i => ({ texto: i.titulo + ' ' + i.valor + (i.sub ? ' · ' + i.sub : '') + '. A neutralizar.', percentil: i.percentil }));
+    /* Sin nada sobre el corte de 70, no se calla la casilla: se muestran las
+       métricas operativas más altas del rival (percentil 55 o más), dichas
+       como lo que son, y recién sin ninguna se dice que no hay ventaja. */
+    if (!F.length) {
+      F = lim((x.fortalezasAltas || []).filter(i => typeof i.percentil === 'number' && i.percentil >= 55), 3)
+        .map(i => ({ texto: i.titulo + ' ' + i.valor + (i.sub ? ' · ' + i.sub : '') + ': por encima de la mitad de la liga, condiciona el planteo.', percentil: i.percentil }));
+    }
     const D = lim((x.debilidadesRival || []).filter(i => typeof i.percentil === 'number' && i.percentil < 35), 3)
       .map(i => ({ texto: i.titulo + ' ' + i.valor + (i.sub ? ' · ' + i.sub : '') + '. Su mayor grieta.', percentil: i.percentil }));
     if (x.quiebre && x.quiebre.ok && x.quiebre.principal) {
@@ -3486,6 +3493,7 @@ const SCOUT_CARDS = [
   /* LABORATORIO (punto 62): quintetos, cierre, clutch y mapa del rival,
      desde el play-by-play. Solo con la capa `pbp` de la categoría. */
   { id: 'pbp', label: '🔁 Quintetos y clutch del rival · laboratorio', capa: 'pbp' },
+  { id: 'pbp-rotaciones', label: '🔄 Rotaciones · minuto a minuto · laboratorio', capa: 'pbp' },
   { id: 'pbp-tiro', label: '🎯 Mapa de tiro del rival · laboratorio', capa: 'pbp' },
   { id: 'pbp-cuartos', label: '⏲ Rendimiento por cuarto · laboratorio', capa: 'pbp' },
 ];
@@ -3532,6 +3540,10 @@ function scoutBloquePbp(inf) {
     <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="pbp">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">🔁 Quintetos, cierre y clutch · ${scoutNombreConLogo(rival.nombre, 18)}</h4>
       ${SGADD_PBP.espacio(rival.nombre, 'scouting')}
+    </section>
+    <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="pbp-rotaciones">
+      <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">🔄 Rotaciones · minuto a minuto · ${scoutNombreConLogo(rival.nombre, 18)}</h4>
+      ${SGADD_PBP.espacio(rival.nombre, 'scouting', null, 'rotaciones')}
     </section>
     <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="pbp-tiro">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1 flex items-center gap-1.5">🎯 Mapa de tiro · ${scoutNombreConLogo(rival.nombre, 18)}</h4>
@@ -4656,11 +4668,15 @@ function scoutBloqueDiagnostico(inf) {
   try { concl = C && idx && eR ? C.equipo(idx, eR) : null; } catch (e) { concl = null; }
 
   const jc = inf.jugadoresRival;
+  /* TOP 3 CON NOMBRE (punto 151): los que más plays concentran, en el
+     formato [Nombre] · X Plays · Y% USG (primero PLAYS, después USG%). */
   const deps = jc && jc.filas ? jc.filas
-    .filter(f => f.perfil && SGADD_SCOUT.senales(f.perfil).ejeDelAtaque)
-    .sort((a, b) => (b.perfil.concentracion || 0) - (a.perfil.concentracion || 0)).slice(0, 2) : [];
+    .filter(f => f.perfil && (f.perfil.concentracion || 0) > 0)
+    .sort((a, b) => (b.perfil.concentracion || 0) - (a.perfil.concentracion || 0)).slice(0, 3) : [];
+  const lecturaPl = (f) => `${f.perfil.plays !== null && f.perfil.plays !== undefined && isFinite(f.perfil.plays) ? f.perfil.plays.toFixed(1).replace('.', ',') : '—'} Plays · ${scoutPctFino(f.perfil.usg)} USG`;
   const dependencias = deps.length
-    ? deps.map(f => `<li>${scoutMarcaTono('alto')} <strong>${escapeHtml(f.nombre)}</strong> concentra el ${Math.round(100 * f.perfil.concentracion)}% de los plays del equipo (${escapeHtml(f.rol.label)}). Si se lo frena, el ataque no tiene segunda vía clara.</li>`).join('')
+    ? deps.map((f) => `<li>${scoutMarcaTono(SGADD_SCOUT.senales(f.perfil).ejeDelAtaque ? 'alto' : 'info')} <strong>${escapeHtml(f.nombre)}</strong> · ${lecturaPl(f)} · ${Math.round(100 * f.perfil.concentracion)}% de los plays del equipo (${escapeHtml(f.rol.label)}).</li>`).join('')
+      + '<li class="text-muted">Si se frena esa vía, el ataque necesita otra opción clara.</li>'
     : '<li>◆ Ningún jugador concentra los plays por encima del corte de su liga: el ataque está repartido.</li>';
 
   const fuga = concl ? concl.alertas.slice(0, 3).map(a =>
@@ -4730,27 +4746,55 @@ function scoutBloqueDuelos(inf) {
   const hayVol = (vr && vr.items.length) || (vn && vn.items.length);
   if ((!d || !d.ok) && !hayVol) return '';
   const rival = scoutNombreRival(inf), nuestro = scoutNombreNuestro(inf);
-  const celda = (o) => `<span class="${o.ok ? 'tono-alto' : 'tono-bajo'}" style="color:${o.ok ? '#4ade80' : '#f87171'}">${o.ok ? '✓' : '✗'}</span> ${scoutPctFino(o.propio)} <span class="text-muted">vs</span> ${scoutPctFino(o.contra)}`;
+  /* BENTO (punto 150): por factor, dos barras de diferencial (ataque propio
+     menos la defensa que enfrenta, en puntos porcentuales) y un balance en
+     puntos del margen. Verde = el ataque supera a esa defensa; rojo = no.
+     El número va escrito siempre: la barra ayuda, no reemplaza. */
+  const ppDif = (o) => ((o.propio - o.contra) * 100);
+  const maxDif = d && d.ok ? Math.max(1, ...d.filas.map(f => Math.max(Math.abs(ppDif(f.nuestro)), Math.abs(ppDif(f.rival))))) : 1;
+  const maxBal = d && d.ok ? Math.max(0.5, ...d.filas.map(f => Math.abs(f.balance))) : 1;
+  const barraD = (v, max, ok) => `<div class="dbar" aria-hidden="true"><div class="dbar-r ${ok ? 'dbar-pos' : 'dbar-neg'}" style="width:${Math.min(50, 50 * Math.abs(v) / max).toFixed(1)}%"></div></div>`;
+  const signoPp = (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1).replace('.', ',') + ' pp';
+  const lado = (titulo, o, nota) => `<div class="min-w-0" data-duelo-lado="1">
+          <p class="text-[10px] text-muted leading-tight">${titulo}</p>
+          <p class="text-[11px] font-mono mt-0.5">${scoutPctFino(o.propio)} <span class="text-muted">vs</span> ${scoutPctFino(o.contra)} <b>${signoPp(ppDif(o))}</b></p>
+          <p class="text-[10px] mt-0.5"><span class="${o.ok ? 'tono-alto' : 'tono-bajo'}" style="color:${o.ok ? '#4ade80' : '#f87171'}">${o.ok ? '✓ a favor' : '✗ en contra'}</span>${nota ? ' <span class="text-muted">· menos es mejor</span>' : ''}</p>
+          ${barraD(ppDif(o), maxDif, o.ok)}
+        </div>`;
   const tabla = d && d.ok ? `
-      <p class="text-[10px] text-muted mb-2">★ el factor que más mueve el margen · ✓ el ataque supera a esa defensa, ✗ no · ◀ inclina el factor a favor de ${escapeHtml(nuestro)}, ▶ a favor de ${escapeHtml(rival)}.</p>
-      <div class="scrollbox"><table class="w-full text-left text-xs">
-        <thead><tr class="text-[10px] uppercase tracking-wider text-muted">
-          <th class="px-2 py-1">Factor</th>
-          <th class="px-2 py-1">Ataque de ${escapeHtml(nuestro)} vs defensa de ${escapeHtml(rival)}</th>
-          <th class="px-2 py-1">Ataque de ${escapeHtml(rival)} vs defensa de ${escapeHtml(nuestro)}</th>
-          <th class="px-2 py-1">Balance</th></tr></thead>
-        <tbody>${d.filas.slice().sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance)).map(f => `
-          <tr class="border-b border-hairline/40 last:border-0 align-top">
-            <td class="px-2 py-1.5">${escapeHtml(f.label)}${f.nota ? ' <span class="text-muted text-[10px]">(tasa de pérdidas: menos es mejor)</span>' : ''}${f.estrella ? ' <span class="text-accent" title="El factor que más mueve el margen">★</span>' : ''}</td>
-            <td class="px-2 py-1.5 font-mono">${celda(f.nuestro)}</td>
-            <td class="px-2 py-1.5 font-mono">${celda(f.rival)}</td>
-            <td class="px-2 py-1.5 font-mono">${f.balance >= 0 ? '◀' : '▶'} ${Math.abs(f.balance).toFixed(1).replace('.', ',')} pts</td>
-          </tr>`).join('')}</tbody></table></div>
-      <p class="text-[11px] text-ink mt-2">Margen proyectado del modelo del Simulador: <strong>${d.margenNuestro >= 0 ? '◀ ' + escapeHtml(nuestro) + ' +' : '▶ ' + escapeHtml(rival) + ' +'}${Math.abs(d.margenNuestro).toFixed(1).replace('.', ',')} pts</strong>.</p>`
+      <p class="text-[10px] text-muted mb-2">★ el factor que más mueve el margen · ▲ el ataque supera a esa defensa, ▼ no · ◀ inclina el factor a favor de ${escapeHtml(nuestro)}, ▶ a favor de ${escapeHtml(rival)}. Las barras miden la diferencia en puntos porcentuales.</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3" data-duelos-bento="1">${d.filas.slice().sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance)).map(f => `
+        <div class="rend-card rounded-lg border border-hairline p-3" data-duelo="${escapeHtml(f.id)}">
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <p class="text-xs text-white font-display uppercase tracking-wide">${escapeHtml(f.label)}${f.estrella ? ' <span class="text-accent" title="El factor que más mueve el margen">★</span>' : ''}</p>
+            <span class="bento-chip ${f.balance >= 0 ? 'tono-alto' : 'tono-bajo'}" style="color:${f.balance >= 0 ? '#4ade80' : '#f87171'}">${f.balance >= 0 ? '◀' : '▶'} ${Math.abs(f.balance).toFixed(1).replace('.', ',')} pts</span>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            ${lado('Nuestro ataque vs su defensa', f.nuestro, f.nota)}
+            ${lado('Su ataque vs nuestra defensa', f.rival, f.nota)}
+          </div>
+          <div class="mt-2"><p class="text-[10px] text-muted">Balance del factor</p>
+            <div class="dbar" aria-hidden="true"><div class="dbar-r ${f.balance >= 0 ? 'dbar-pos' : 'dbar-neg'}" style="width:${Math.min(50, 50 * Math.abs(f.balance) / maxBal).toFixed(1)}%"></div></div></div>
+        </div>`).join('')}</div>`
     : `<p class="text-[11px] text-muted">◆ ${escapeHtml((d && d.motivo) || 'Sin muestra para cruzar los duelos.')}</p>`;
+  /* Volúmenes como mini-tarjetas: barra de progreso hasta la meta (la marca
+     blanca), brecha escrita y estado en palabras. La meta está al 2/3 del
+     ancho para que se vea cuánto se pasa o cuánto falta. */
   const lista = (v) => !v || !v.items.length
     ? '<p class="text-[11px] text-muted">◆ Sin datos para calcular volúmenes.</p>'
-    : `<ul class="text-[11px] space-y-1">${v.items.map(i => `<li title="${escapeHtml(i.texto)}"><span class="${i.ok ? 'tono-alto' : 'tono-bajo'}" style="color:${i.ok ? '#4ade80' : '#f87171'}">${i.ok ? '✓' : '✗'}</span> <strong>${escapeHtml(i.label)}</strong> · ${i.dir === 'max' ? 'tope: ' : 'necesita '}${escapeHtml(i.corto)} · hoy ${i.actual.toFixed(1).replace('.', ',')}</li>`).join('')}</ul>`;
+    : `<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${v.items.map((i) => {
+      const brecha = i.actual - i.umbral;
+      const pctBarra = Math.min(100, 66.7 * (i.umbral ? i.actual / i.umbral : 0));
+      const estado = i.ok ? (i.dir === 'max' ? 'Dentro del tope' : 'En zona positiva') : (i.dir === 'max' ? 'Pasa el tope' : 'Bache crítico');
+      return `<div class="rounded-lg border border-hairline p-2" data-volumen="${escapeHtml(i.id)}" title="${escapeHtml(i.texto)}">
+          <div class="flex items-center justify-between gap-1">
+            <p class="text-[11px] text-white font-semibold">${escapeHtml(i.label)}</p>
+            <span class="bento-chip ${i.ok ? 'tono-alto' : 'tono-bajo'}" style="color:${i.ok ? '#4ade80' : '#f87171'}">${i.ok ? '✓' : '✗'} ${estado}</span>
+          </div>
+          <p class="text-[10px] font-mono mt-1">hoy <b>${i.actual.toFixed(1).replace('.', ',')}</b> · ${i.dir === 'max' ? 'tope' : 'meta'} <b>${i.umbral.toFixed(1).replace('.', ',')}</b> · ${brecha >= 0 ? '+' : '−'}${Math.abs(brecha).toFixed(1).replace('.', ',')}</p>
+          <div class="vbar mt-1" aria-hidden="true"><div class="vbar-r ${i.ok ? 'vbar-ok' : 'vbar-mal'}" style="width:${pctBarra.toFixed(1)}%"></div><div class="vbar-meta" style="left:66.7%"></div></div>
+        </div>`;
+    }).join('')}</div>`;
   return `
     <section class="scout-card card rounded-xl p-4 sm:p-5 border border-hairline" data-bloque="duelos">
       <h4 class="font-display uppercase tracking-wide text-xs text-accent mb-1">⚔ Duelos cruzados y volúmenes de umbral</h4>
@@ -4765,8 +4809,27 @@ function scoutBloqueDuelos(inf) {
           ${lista(vn)}
         </div>
       </div>
-      <p class="text-[10px] text-muted mt-2">Pasá el mouse por cada línea para ver la cuenta completa. La zona positiva es la mediana de la liga con la eficiencia propia de cada equipo; el tope de pérdidas es donde su %TOV pasa al peor cuarto. Es lectura del dato: el cuerpo técnico decide.</p>
+      <p class="text-[10px] text-muted mt-2">Meta = mediana de la liga con la eficiencia propia de cada equipo (la marca blanca de la barra); el tope de pérdidas es donde su %TOV pasa al peor cuarto. Pasá el mouse para ver la cuenta. Lectura del dato: decide el cuerpo técnico.</p>
     </section>`;
+}
+
+/** Qué se dice cuando una casilla del FODA queda sin ítems: una lectura, no un «sin datos». */
+const SIN_ITEM_FODA = {
+  F: 'Ninguna métrica operativa del rival se separa de la liga: su ventaja no está en un rasgo sino en el volumen.',
+  O: 'Ningún factor de nuestro ataque supera su defensa: la ventaja hay que construirla.',
+  D: 'No tiene una grieta clara contra la liga: hay que provocarla desde el plan.',
+  A: 'Ningún factor de su ataque supera nuestra defensa.',
+};
+
+/** Las métricas operativas más altas del rival contra su liga (percentil), con el formato de la card. */
+function scoutFortalezasAltas(idx, e) {
+  if (!idx || !e || typeof idx.leer !== 'function') return [];
+  return ['RTNG OFF', 'RTNG DEF', 'eFG%', 'PePP%', 'RO%', 'RD%', 'RTL%', 'T1%', 'AST-PP', 'eFG Opp%', 'PP Opp%', 'RO Opp%', 'RTL Opp%']
+    .map((k) => {
+      const r = idx.leer(e.clave, k);
+      if (!r || typeof r.percentil !== 'number' || !isFinite(r.percentil)) return null;
+      return { titulo: r.label, valor: r.formateado, sub: 'percentil ' + Math.round(r.percentil) + ' · liga ' + r.tipoFormateado, percentil: r.percentil };
+    }).filter(Boolean).sort((a, b) => b.percentil - a.percentil).slice(0, 3);
 }
 
 /** El FODA del partido: box score acá, y el play-by-play suma sus líneas después de pintar. */
@@ -4778,6 +4841,7 @@ function scoutBloqueFoda(inf) {
   try { concl = C && idx && eR ? C.equipo(idx, eR) : null; } catch (e) { concl = null; }
   const f = SGADD_SCOUT.foda({
     fortalezasRival: concl ? concl.fortalezas : [],
+    fortalezasAltas: scoutFortalezasAltas(idx, eR),
     debilidadesRival: concl ? concl.alertas : [],
     duelos: inf.duelos, quiebre: inf.quiebreRival, amenaza: inf.amenazaRival,
   });
@@ -4788,7 +4852,7 @@ function scoutBloqueFoda(inf) {
           <p class="text-[10px] uppercase tracking-wider text-muted font-display mb-0.5"><strong class="text-accent">${k}</strong> · ${titulo}</p>
           <p class="text-[10px] text-muted mb-1">${sub}</p>
           <ul class="text-[11px] space-y-1" data-foda-lista="${k}">${f[k].length ? f[k].map(i => `<li>${scoutMarcaTono(glifo)} ${escapeHtml(i.texto)}</li>`).join('')
-            : '<li class="text-muted">◆ Sin datos del box score que sostengan esta casilla.</li>'}</ul>
+            : `<li class="text-muted">◆ ${SIN_ITEM_FODA[k]}</li>`}</ul>
           <ul class="text-[11px] space-y-1 mt-1" data-foda-pbp="${k}"></ul>
         </div>`;
   const slot = pbpActiva ? SGADD_PBP.espacioRival(scoutNombreRival(inf), 'foda') : '';
@@ -4889,7 +4953,7 @@ function scoutBloqueResto(inf) {
     const muestra = [
       f.pj !== null ? f.pj + ' PJ' : null,
       dato('MIN', f.min, 'MIN'), dato('PLAYS', f.plays, 'PLAYS'),
-      dato('PTS', f.pts, 'PTS'), dato('USG%', f.usg, 'USG'),
+      dato('USG%', f.usg, 'USG'), dato('PTS', f.pts, 'PTS'),
     ].filter(Boolean).join(' · ');
     /* NI ALERTAS NI BADGE DE EFICIENCIA (pedidos del club, 2026-09-12):
        la fila está para leer el arma principal de un vistazo. */
