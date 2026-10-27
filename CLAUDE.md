@@ -295,7 +295,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=317`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=318`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16253,3 +16253,54 @@ siempre gana el local                                                62,4 %
 ### Compatibilidad
 
 `simularEnfrentamiento` conserva la forma de siempre (la pantalla y los duelos del Scouting no se tocaron en lo funcional). Cambian: `ajusteNetRating` es 0, `pppEsperado*` pasó a ser por posesión (ORTG/100), `usoHistoriaCompleta*` son siempre `false` y `metodoPesos` vale `bayes-oliver` u `oliver`. El perfil por condición (`perfilEquipoSimulacion`) sigue exportado pero ya no lo usa el simulador.
+
+---
+
+## 149. EL SIMULADOR · AJUSTE POR RIVAL, LOCALÍA POR CLUB Y MONTE CARLO DE 10.000 (2026-10-27)
+
+Assets en `?v=318`. Sigue en `js/sgadd-4factores.js` (sección 7) y se apoya en el punto 148. `test-4factores.js`, 148 tests.
+
+### 1 · Ajuste por rival (`ajustarPorRival`)
+
+Lo que un equipo produce se mide contra lo que SU rival de esa noche suele conceder, y lo que concede contra lo que el rival suele producir. Es el esquema iterativo del SRS (12 vueltas), con cada vuelta sobre los ratings ya encogidos de los rivales. Alcanza a ORTG, DRTG y las 8 tasas de los 4 factores; los nets de los duelos salen de las tasas ajustadas. El valor ajustado vive en `g.adj[clave]` y el crudo no se pisa. Un partido sin rival identificado queda como vino. Cada equipo trae su `sos` (+ = enfrentó defensas flojas).
+
+**Medido**: en la demo el efecto es chico (`sos` de −0,4 a +0,3 de ORTG) porque es una conferencia de todos contra todos con calendario parejo. Con un calendario desparejo sí pesa: en el test, dos equipos de la misma ofensiva real separados 2+ puntos por jugarle a una defensa colapsada quedan a menos de la mitad.
+
+### 2 · Localía por club (`hcaClub`)
+
+Se terminó la constante plana. Para cada partido de local se calcula el residual neutral (margen − lo que dicen los ratings sin ese partido) y la localía de cada club es el promedio de SUS residuales en casa, encogido hacia la de la liga con el mismo criterio empírico (`k = σ²/τ²` medido entre clubes). Con pocos partidos en casa vale la media de la liga. La liga conserva su prior débil de 3 ± 2 puntos solo como ancla.
+
+**Medido**: en la demo la localía va de +2,1 a +7,5 puntos entre clubes (liga +4,3), con credibilidad ~48 % con 16 partidos en casa. La pantalla dice la localía propia, la de la liga, los partidos y la credibilidad.
+
+### 3 · Monte Carlo de 10.000 partidos
+
+Cada simulación sortea ritmo y ORTG de los dos lados con la dispersión de noche a noche de cada equipo (encogida hacia la de la liga) y calcula puntos = posesiones × ORTG/100. La dispersión total se calibra con el error fuera de muestra del modelo: la curva no puede ser más angosta que lo que el modelo acierta. Un empate se resuelve en prórroga. Tarda ~70 ms.
+
+De la misma muestra salen: la probabilidad de victoria («ganó el 60,8 % de las simulaciones: 6.076 de 10.000»), el rango del 80 % del margen y de los puntos de cada equipo, y el histograma que dibuja la pantalla (barras de 2 puntos, con título y números: no solo color). `confianza` ya es esa fracción. La probabilidad analítica se conserva en `modelo.probabilidadAnalitica` y los dos coinciden a menos de 3 puntos.
+
+### Sistema vivo
+
+No hay estado guardado: el modelo se reajusta desde el índice en cada carga, así que cada paquete de fecha nuevo mueve los ratings, la credibilidad, la localía de cada club y la dispersión sin tocar una constante. `backtest` lo mide hacia adelante.
+
+### Resultado (demo, hacia adelante, 211 partidos, sin ver el partido que predice)
+
+```
+                 MAE     RMSE    acierta ganador
+v317             9,43    11,81   62,6 %
+v318             9,17    11,58   62,1 %
+```
+
+El error baja un 3 %; el acierto del ganador no cambia (el mismo techo del punto 148: con 32 fechas y equipos parecidos). Hay que decirlo: la mejora de v318 es de calibración y de lectura por club, no un salto de acierto.
+
+### Lo que hay que respetar
+
+- `ajustarPorRival` no toca la planilla ni las columnas del índice: trabaja sobre copias en `g.adj`.
+- El HCA del club sale del residual con ratings **fuera de muestra** (sin el propio partido); con ratings dentro de muestra el residual se achicaría y la localía de todos se aplanaría.
+- El Monte Carlo se calibra con `modelo.sigma`: si no hay partidos emparejados cae a la dispersión analítica.
+- Los tests de MC usan una liga sintética con ruido casi nulo y, por eso, ensanchan `sigma` a mano en los casos de probabilidad intermedia.
+- Verificado al revés: sin las 12 vueltas caen 3 tests, con la localía plana 2 y con 4.000 simulaciones en vez de 10.000 otros 2.
+
+### Pendiente
+
+- Ajustar por rival también el ritmo (hoy solo se encoge) y los jugadores del Scouting (siguen contra la liga entera).
+- Rotación, banca, faltas tempranas y clutch por jugador: igual que en el punto 148, necesitan el paquete `pbp`.

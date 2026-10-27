@@ -400,6 +400,97 @@ const btFix = F.backtest(F.extraerJuegos(idxSim), { minPrevios: 2 });
 check('el backtest hacia adelante corre y da un error medio finito (o n = 0 si no hay fechas)', btFix.n === 0 || (isFinite(btFix.mae) && btFix.mae >= 0), JSON.stringify({ n: btFix.n, mae: btFix.mae }));
 check('el simulador expone lo que lee Scouting sin recalcular', sim.scouting && sim.scouting.duelos.length === 4 && isFinite(sim.scouting.ritmo));
 
+console.log('\n11 ter. v318 · AJUSTE POR RIVAL, LOCALÍA POR CLUB Y MONTE CARLO');
+console.log('═'.repeat(70));
+
+/* Una liga sintética a mano: cada partido trae todo lo que el modelo lee. */
+function ligaSintetica(equipos, partidos) {
+  const filas = [];
+  partidos.forEach((p, i) => {
+    const E = equipos, L = E[p.l], V = E[p.v];
+    const ruido = ((i * 37) % 7 - 3) * 0.4;
+    const ortL = L.o + V.d - 100 + ruido, ortV = V.o + L.d - 100 - ruido;
+    const pos = 70;
+    const ptsL = pos * ortL / 100 + (p.hca || 0) / 2, ptsV = pos * ortV / 100 - (p.hca || 0) / 2;
+    const f = { 'eFG%': 0.5, 'eFG Opp%': 0.5, 'PP%': 0.15, 'PP Opp%': 0.15, 'RO%': 0.25, 'RO Opp%': 0.25, 'RTL%': 0.2, 'RTL Opp%': 0.2 };
+    const base = { id: 'g' + i, fecha: Date.UTC(2026, 0, 1) + i * 86400000 * 3, f: f, descanso: null, pos: pos };
+    filas.push(Object.assign({}, base, { clave: p.l, rival: p.v, local: true, margen: ptsL - ptsV, pts: ptsL, ptsOpp: ptsV, ortg: 100 * ptsL / pos, drtg: 100 * ptsV / pos }));
+    filas.push(Object.assign({}, base, { clave: p.v, rival: p.l, local: false, margen: ptsV - ptsL, pts: ptsV, ptsOpp: ptsL, ortg: 100 * ptsV / pos, drtg: 100 * ptsL / pos }));
+  });
+  return filas;
+}
+/* A y B tienen la MISMA ofensiva real (105). W es una defensa colapsada (115);
+   N1..N3 son defensas normales (100). A le juega casi siempre a W; B, a las normales. */
+const eqSos = { A: { o: 105, d: 100 }, B: { o: 105, d: 100 }, W: { o: 100, d: 115 }, N1: { o: 100, d: 100 }, N2: { o: 100, d: 100 }, N3: { o: 100, d: 100 } };
+const partSos = [];
+for (let r = 0; r < 4; r++) {
+  partSos.push({ l: 'A', v: 'W' }, { l: 'W', v: 'A' }, { l: 'B', v: 'N1' }, { l: 'N2', v: 'B' }, { l: 'B', v: 'N3' }, { l: 'N1', v: 'N2' }, { l: 'N3', v: 'W' }, { l: 'W', v: 'N2' });
+}
+partSos.push({ l: 'A', v: 'N1' }, { l: 'N2', v: 'A' }, { l: 'B', v: 'W' }, { l: 'W', v: 'B' });
+const jSos = ligaSintetica(eqSos, partSos);
+const crudoA = jSos.filter(g => g.clave === 'A').reduce((s, g, _, a) => s + g.ortg / a.length, 0);
+const crudoB = jSos.filter(g => g.clave === 'B').reduce((s, g, _, a) => s + g.ortg / a.length, 0);
+const mSos = F.ajustarModelo(jSos);
+const eA = mSos.equipos.get('A'), eB = mSos.equipos.get('B');
+check('sin ajuste, A parece mucho mejor que B solo por jugarle a la defensa colapsada', crudoA - crudoB > 2, (crudoA - crudoB).toFixed(2));
+check('con el ajuste por rival la brecha entre A y B se achica a menos de la mitad', Math.abs(eA.ortg - eB.ortg) < (crudoA - crudoB) / 2, JSON.stringify({ A: eA.ortg, B: eB.ortg, crudo: crudoA - crudoB }));
+check('el calendario de A queda marcado como flojo (sos positivo) y mayor que el de B', eA.sos > 0 && eA.sos > eB.sos, JSON.stringify({ A: eA.sos, B: eB.sos }));
+check('un partido con rival no identificado se deja como vino (sin ajuste)', (() => {
+  const g = jSos.map(x => Object.assign({}, x, { rival: null }));
+  const m2 = F.ajustarModelo(g);
+  return Math.abs(m2.equipos.get('A').sos) < 1e-9;
+})());
+check('cada partido conserva su ORTG crudo y deja el ajustado aparte (la planilla no se pisa)', jSos.every(g => g.adj && isFinite(g.adj.ortg) && isFinite(g.ortg)));
+
+/* Localía por club: F es un fortín, S rinde igual en casa y de visitante. */
+const eqLoc = {}; ['F', 'S', 'T1', 'T2', 'T3', 'T4'].forEach(c => { eqLoc[c] = { o: 100, d: 100 }; });
+const partLoc = [];
+const clubes = ['F', 'S', 'T1', 'T2', 'T3', 'T4'];
+for (let r = 0; r < 5; r++) clubes.forEach(l => clubes.forEach(v => { if (l !== v) partLoc.push({ l: l, v: v, hca: l === 'F' ? 12 : (l === 'S' ? 0 : 3) }); }));
+const mLoc = F.ajustarModelo(ligaSintetica(eqLoc, partLoc));
+const hF = mLoc.hcaClub.get('F'), hS = mLoc.hcaClub.get('S');
+check('el fortín tiene una localía propia claramente mayor que la de la liga', hF.valor > mLoc.hca + 1, JSON.stringify({ F: hF.valor, liga: mLoc.hca }));
+check('el club que rinde igual en casa queda por debajo de la liga', hS.valor < mLoc.hca - 0.5, JSON.stringify({ S: hS.valor, liga: mLoc.hca }));
+check('la localía deja de ser un número plano: los clubes difieren', Math.abs(hF.valor - hS.valor) > 3);
+check('cada club trae sus partidos en casa y su credibilidad entre 0 y 1', hF.n === 25 && hF.z >= 0 && hF.z <= 1, JSON.stringify(hF));
+const pF = F.predecirCruce(mLoc, 'F', 'T1'), pT = F.predecirCruce(mLoc, 'T2', 'T1');
+check('el margen de local usa la localía DEL CLUB: el fortín proyecta más ventaja que un club normal con iguales ratings', pF.localia > pT.localia + 1, JSON.stringify({ F: pF.localia, T2: pT.localia }));
+check('y localiaDe cae a la de la liga para un club sin partidos en casa', F.localiaDe(mLoc, 'NO_EXISTE') === mLoc.hca);
+const pocas = ligaSintetica(eqLoc, partLoc.filter((p, i) => p.l !== 'F' || i < 6));
+const mPocas = F.ajustarModelo(pocas);
+const hFpocas = mPocas.hcaClub.get('F');
+check('con pocos partidos en casa el club tiene menos partidos propios que con la temporada entera', !hFpocas || hFpocas.n < hF.n, JSON.stringify({ pocas: hFpocas && hFpocas.n, todas: hF.n }));
+
+/* Monte Carlo: 10.000 partidos, curva, probabilidad y rangos. */
+const mAncho = Object.assign({}, mLoc, { sigma: 8 });   // la liga sintética casi no tiene ruido: se ensancha para ver curvas reales
+const mcB = F.simularMonteCarlo(mLoc, pF);
+check('por defecto son 10.000 simulaciones', mcB.n === 10000);
+check('ganadas / n es exactamente la probabilidad informada', mcB.pLocal === mcB.ganadasLocal / mcB.n);
+check('el histograma suma 100 % de las simulaciones', cerca(mcB.histograma.reduce((s, b) => s + b.p, 0), 1, 1e-9));
+check('los intervalos están ordenados (p10 < mediana < p90) para el margen y para los puntos de cada lado',
+  mcB.margenP10 < mcB.margenP50 && mcB.margenP50 < mcB.margenP90 && mcB.ptsLocal.p10 < mcB.ptsLocal.p90 && mcB.ptsVisitante.p10 < mcB.ptsVisitante.p90);
+check('la dispersión simulada coincide con el error del modelo (calibrada)', (() => {
+  const sd = Math.sqrt(mcB.histograma.reduce((s, b) => s + b.p * Math.pow((b.desde + b.hasta) / 2 - mcB.margenMedio, 2), 0));
+  return Math.abs(sd - mcB.sigma) < mcB.sigma * 0.1;
+})(), mcB.sigma);
+check('queda cerca de la probabilidad analítica (±3 pts)', Math.abs(mcB.pLocal - F.probabilidadLocal(pF.margen, mLoc.sigma)) < 0.03, JSON.stringify({ mc: mcB.pLocal, an: F.probabilidadLocal(pF.margen, mLoc.sigma) }));
+check('es repetible: misma semilla, misma curva', F.simularMonteCarlo(mLoc, pF).pLocal === mcB.pLocal);
+check('otra semilla da una muestra distinta pero consistente', (() => { const o = F.simularMonteCarlo(mAncho, pF, { semilla: 7 }), p = F.simularMonteCarlo(mAncho, pF); return o.pLocal !== p.pLocal && Math.abs(o.pLocal - p.pLocal) < 0.03; })());
+check('un cruce parejo da cerca de 50 % y uno desparejo se aleja', (() => {
+  const par = F.simularMonteCarlo(mAncho, F.predecirCruce(mAncho, 'T1', 'T2')).pLocal;
+  return par > 0.5 && par < 0.9 && F.simularMonteCarlo(mAncho, F.predecirCruce(mAncho, 'F', 'T1')).pLocal > par;
+})());
+check('10.000 simulaciones tardan menos de un segundo', (() => { const t0 = Date.now(); F.simularMonteCarlo(mLoc, pF); return Date.now() - t0 < 1000; })());
+const simLoc = F.simularEnfrentamiento(idxSim, 'X', 'Y');
+check('la confianza que muestra la pantalla es la fracción ganada en las simulaciones', cerca(simLoc.confianza, Math.min(0.97, Math.max(0.03, simLoc.modelo.mc.pLocal)), 1e-12));
+check('el simulador entrega la curva y el HCA del club a la pantalla y al Scouting', Array.isArray(simLoc.modelo.mc.histograma) && 'hcaClub' in simLoc.modelo && 'localia' in simLoc.scouting && 'sos' in simLoc.scouting);
+check('aprende solo: sumar partidos reajusta la localía y la credibilidad sin tocar constantes', (() => {
+  const mitad = F.ajustarModelo(ligaSintetica(eqLoc, partLoc.slice(0, 60)));
+  const toda = F.ajustarModelo(ligaSintetica(eqLoc, partLoc));
+  const a = mitad.hcaClub.get('F'), b = toda.hcaClub.get('F');
+  return b.n > a.n && b.z >= a.z - 0.05 && toda.n > mitad.n;
+})());
+
 console.log('\n12. REGLA ANTI-EMPATE: en básquet no hay empates');
 console.log('═'.repeat(70));
 

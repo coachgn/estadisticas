@@ -455,6 +455,8 @@ const SGADD_4F = (function () {
      los corrige con sus propios partidos apenas hay muestra. */
   const PRIOR_LOCALIA = { media: 3.0, sd: 2.0 };   // puntos de margen
   const PRIOR_FATIGA_SD = 1.5;                      // puntos, media 0
+  /* Vueltas del ajuste por rival (el SRS converge en pocas). */
+  const ITERACIONES_RIVAL = 12;
   /* Grilla del encogimiento de la regresión, en múltiplos de n. */
   const LAMBDAS_RELATIVAS = [0, 0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30, 100, 1000];
 
@@ -669,18 +671,59 @@ const SGADD_4F = (function () {
   }
 
   /**
+   * AJUSTE POR RIVAL (strength of schedule). Lo que un equipo produce se
+   * mide contra lo que SU rival de esa noche suele conceder, y lo que
+   * concede, contra lo que su rival suele producir: anotar 112 contra la
+   * peor defensa de la liga vale menos que 108 contra la mejor. Es el
+   * esquema iterativo del SRS: cada vuelta usa los ratings ya ajustados
+   * (y encogidos) de los rivales, hasta que se estabilizan. Un partido sin
+   * rival identificado (fixtures sueltas) se deja como vino.
+   * `pares`: [{ p, c, getP, getC }], con la clave de lo que se produce y la
+   * de lo que se concede. Deja el valor ajustado en `g.adj[clave]` y
+   * devuelve el encogimiento de cada clave.
+   */
+  function ajustarPorRival(grupos, pares, iteraciones) {
+    const filas = [];
+    grupos.forEach(arr => arr.forEach(g => filas.push(g)));
+    const sh = {};
+    pares.forEach(pr => {
+      filas.forEach(g => { g.adj = g.adj || {}; g.adj[pr.p] = pr.getP(g); g.adj[pr.c] = pr.getC(g); });
+      sh[pr.p] = encoger(grupos, g => g.adj[pr.p]);
+      sh[pr.c] = encoger(grupos, g => g.adj[pr.c]);
+    });
+    for (let it = 0; it < (iteraciones || 0); it++) {
+      pares.forEach(pr => {
+        const O = sh[pr.p], D = sh[pr.c];
+        if (!O || !D) return;
+        filas.forEach(g => {
+          const dOpp = g.rival ? D.porEquipo.get(g.rival) : null;   // lo que el rival CONCEDE
+          const oOpp = g.rival ? O.porEquipo.get(g.rival) : null;   // lo que el rival PRODUCE
+          const x = pr.getP(g), y = pr.getC(g);
+          g.adj[pr.p] = (esNum(x) && dOpp) ? x - (dOpp.valor - D.mu) : x;
+          g.adj[pr.c] = (esNum(y) && oOpp) ? y - (oOpp.valor - O.mu) : y;
+        });
+        sh[pr.p] = encoger(grupos, g => g.adj[pr.p]);
+        sh[pr.c] = encoger(grupos, g => g.adj[pr.c]);
+      });
+    }
+    return sh;
+  }
+
+  /**
    * Ajusta TODO el modelo con los partidos recibidos (la liga, hasta hoy).
    * Devuelve null si no hay ratings. El backtest lo llama con los partidos
-   * previos a cada fecha: es el mismo código que usa el simulador.
+   * previos a cada fecha: es el mismo código que usa el simulador, y por
+   * eso aprende solo: cada paquete nuevo de partidos mueve los ratings, la
+   * localía de cada club y la dispersión sin tocar una constante.
    */
   function ajustarModelo(juegosTodos) {
     const juegos = juegosTodos.filter(g => g.ortg !== null && g.drtg !== null);
     if (!juegos.length) return null;
     const grupos = agruparPorEquipo(juegos);
-    const gets = { ortg: g => g.ortg, drtg: g => g.drtg, pos: g => g.pos };
-    FACTORES_NET.forEach(d => { gets[d.id] = g => g.f[d.id]; gets[d.idOpp] = g => g.f[d.idOpp]; });
-    const sh = {};
-    Object.keys(gets).forEach(k => { sh[k] = encoger(grupos, gets[k]); });
+    const pares = [{ p: 'ortg', c: 'drtg', getP: g => g.ortg, getC: g => g.drtg }].concat(
+      FACTORES_NET.map(d => ({ p: d.id, c: d.idOpp, getP: g => g.f[d.id], getC: g => g.f[d.idOpp] })));
+    const sh = ajustarPorRival(grupos, pares, ITERACIONES_RIVAL);
+    sh.pos = encoger(grupos, g => g.pos);
     if (!sh.ortg || !sh.drtg || !sh.pos) return null;
     const loc = ajustarLocalia(juegos);
     const mu = { ortg: (sh.ortg.mu + sh.drtg.mu) / 2, pos: sh.pos.mu };
@@ -694,26 +737,66 @@ const SGADD_4F = (function () {
       });
       const eo = sh.ortg.porEquipo.get(clave), ed = sh.drtg.porEquipo.get(clave), ep = sh.pos.porEquipo.get(clave);
       if (!eo || !ed || !ep) return;
+      const dif = arr.filter(g => esNum(g.adj.ortg)).map(g => g.ortg - g.adj.ortg);
       equipos.set(clave, { clave: clave, n: arr.length, ortg: eo.valor, drtg: ed.valor, pos: ep.valor,
-        z: eo.z, zDef: ed.z, sdOrtg: eo.sd, o: o, a: a, nets: nets });
+        z: eo.z, zDef: ed.z, sdOrtg: eo.sd, sdDrtg: ed.sd, sdPos: ep.sd,
+        /* + si enfrentó defensas flojas (su ORTG crudo está inflado). */
+        sos: dif.length ? mediaDe(dif) : 0, o: o, a: a, nets: nets });
     });
     const modelo = { n: new Set(juegos.map(g => g.id)).size, equipos: equipos, mu: mu, sh: sh,
-      hca: loc.hca, localia: loc, pesos: ajustarPesosOliver(juegos, loc.hca), fatiga: ajustarFatiga(juegos, loc.hca), sigma: null };
-    /* Error fuera de muestra: cada partido predicho con los equipos SIN él. */
+      hca: loc.hca, localia: loc, hcaClub: new Map(), pesos: ajustarPesosOliver(juegos, loc.hca),
+      fatiga: ajustarFatiga(juegos, loc.hca), sigma: null };
+
+    /* Fuera de muestra: cada partido predicho con los equipos SIN él. De
+       paso queda el residual neutral de cada local (margen − lo que dicen
+       los ratings): de ahí sale la localía propia de cada club. */
     const porId = new Map();
     juegos.forEach(g => { if (!porId.has(g.id)) porId.set(g.id, []); porId.get(g.id).push(g); });
-    let se = 0, cnt = 0;
+    const locales = [];
     porId.forEach(par => {
       const L = par.find(g => g.local), V = par.find(g => !g.local);
       if (!L || !V) return;
-      const oL = sinPartido(sh.ortg, L.clave, L, L.ortg), dL = sinPartido(sh.drtg, L.clave, L, L.drtg);
-      const oV = sinPartido(sh.ortg, V.clave, V, V.ortg), dV = sinPartido(sh.drtg, V.clave, V, V.drtg);
+      const oL = sinPartido(sh.ortg, L.clave, L, L.adj.ortg), dL = sinPartido(sh.drtg, L.clave, L, L.adj.drtg);
+      const oV = sinPartido(sh.ortg, V.clave, V, V.adj.ortg), dV = sinPartido(sh.drtg, V.clave, V, V.adj.drtg);
       const P = sinPartido(sh.pos, L.clave, L, L.pos) + sinPartido(sh.pos, V.clave, V, V.pos) - mu.pos;
-      const pred = P * ((oL - dL) - (oV - dV)) / 100 + loc.hca;
-      se += (L.margen - pred) * (L.margen - pred); cnt++;
+      L.resid = L.margen - P * ((oL - dL) - (oV - dV)) / 100;
+      locales.push(L);
     });
-    modelo.sigma = cnt > 1 ? Math.sqrt(se / cnt) : null;
+    /* HCA DINÁMICO POR CLUB: lo que rinde de local por encima de lo que
+       dicen sus ratings, encogido hacia la localía de la liga con el mismo
+       criterio empírico (k = σ²/τ² medido entre clubes). Un club que hace
+       de su cancha un fortín se separa de la media; con pocos partidos
+       en casa vale la media de la liga. */
+    const grHome = new Map();
+    locales.forEach(g => { if (!grHome.has(g.clave)) grHome.set(g.clave, []); grHome.get(g.clave).push(g); });
+    const shHome = encoger(grHome, g => g.resid);
+    if (shHome) {
+      grHome.forEach((arr, clave) => {
+        const t = shHome.porEquipo.get(clave);
+        if (!t) return;
+        const valor = shHome.k === Infinity ? loc.hca : (t.S + shHome.k * loc.hca) / (t.W + shHome.k);
+        modelo.hcaClub.set(clave, { valor: valor, n: t.n, z: shHome.k === Infinity ? 0 : t.W / (t.W + shHome.k),
+          crudo: t.S / t.W, desvio: valor - loc.hca });
+      });
+      let se = 0;
+      locales.forEach(g => {
+        const t = shHome.porEquipo.get(g.clave);
+        const w = g.peso;
+        const h = (shHome.k === Infinity || !t) ? loc.hca : ((t.S - w * g.resid + shHome.k * loc.hca) / (Math.max(t.W - w, 0) + shHome.k));
+        se += (g.resid - h) * (g.resid - h);
+      });
+      modelo.sigma = locales.length > 1 ? Math.sqrt(se / locales.length) : null;
+    } else if (locales.length > 1) {
+      modelo.sigma = Math.sqrt(mediaDe(locales.map(g => (g.resid - loc.hca) * (g.resid - loc.hca))));
+    }
     return modelo;
+  }
+
+  /** Localía que rige para un club: la suya (dinámica) o, sin partidos en
+      casa, la de la liga. */
+  function localiaDe(modelo, clave) {
+    const h = modelo.hcaClub && modelo.hcaClub.get(clave);
+    return h ? h.valor : modelo.hca;
   }
 
   /** Proyección de un cruce con el modelo ya ajustado. `opts.descansoL/V`
@@ -726,8 +809,9 @@ const SGADD_4F = (function () {
     const ortL = L.ortg + V.drtg - modelo.mu.ortg, ortV = V.ortg + L.drtg - modelo.mu.ortg;
     const b2b = (d) => (esNum(d) && d <= 1 ? 1 : 0);
     const fatiga = modelo.fatiga.puntos * (b2b(o.descansoV) - b2b(o.descansoL));
+    const hca = localiaDe(modelo, claveL);
     const margenPosesiones = pos * (ortL - ortV) / 100;
-    const margen = margenPosesiones + modelo.hca + fatiga;
+    const margen = margenPosesiones + hca + fatiga;
     const contribuciones = FACTORES_NET.map(d => {
       const ntL = L.nets[d.id], ntV = V.nets[d.id];
       const beta = modelo.pesos.pesos[d.id] || 0;
@@ -736,8 +820,8 @@ const SGADD_4F = (function () {
     });
     const suma = contribuciones.reduce((s, c) => s + c.puntos, 0);
     return { L: L, V: V, pos: pos, ortL: ortL, ortV: ortV, margen: margen,
-      ptsL: pos * ortL / 100 + (modelo.hca + fatiga) / 2, ptsV: pos * ortV / 100 - (modelo.hca + fatiga) / 2,
-      margenPosesiones: margenPosesiones, localia: modelo.hca, fatiga: fatiga,
+      ptsL: pos * ortL / 100 + (hca + fatiga) / 2, ptsV: pos * ortV / 100 - (hca + fatiga) / 2,
+      margenPosesiones: margenPosesiones, localia: hca, fatiga: fatiga,
       contribuciones: contribuciones, sumaFactores: suma, residual: margenPosesiones - suma };
   }
 
@@ -762,32 +846,66 @@ const SGADD_4F = (function () {
     };
   }
 
-  /** Monte Carlo del cruce: «noches frías o encendidas». La dispersión de
-      cada partido es la del error fuera de muestra del modelo, escalada por
-      cuánto varía de noche cada equipo respecto del resto de la liga
-      (encogida hacia 1 con el peso de una temporada típica). */
+  /** Normal estándar por Box-Muller a partir del generador repetible. */
+  function normalEstandar(rnd) {
+    const u1 = Math.max(rnd(), 1e-12), u2 = rnd();
+    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  }
+
+  /**
+   * MONTE CARLO del cruce (10.000 partidos por defecto, unos milisegundos).
+   * Cada partido sortea el ritmo y el ORTG de cada lado alrededor de las
+   * medias del modelo, con la dispersión de cada equipo de noche a noche
+   * (encogida hacia la de la liga con el peso de una temporada típica), y
+   * calcula los puntos como posesiones × ORTG/100. Después se calibra la
+   * dispersión total para que coincida con el error fuera de muestra del
+   * propio modelo: la curva no puede ser más estrecha que lo que el modelo
+   * realmente acierta. De la misma muestra salen la probabilidad de victoria
+   * (un empate se resuelve en prórroga), el rango del 80 % y el histograma.
+   */
   function simularMonteCarlo(modelo, pred, opts) {
     const o = opts || {};
-    const n = o.n || 5000, rnd = rngSemilla(o.semilla || 20261027);
-    const sdPool = Math.sqrt(modelo.sh.ortg.s2w) || 1;
-    const nu0 = Math.max(mediaDe(Array.from(modelo.equipos.values()).map(x => x.n)) - 1, 1);
-    const rel = (e) => {
-      if (!e.sdOrtg) return 1;
-      const nu = Math.max(e.n - 1, 0);
-      return Math.sqrt((nu * e.sdOrtg * e.sdOrtg + nu0 * sdPool * sdPool) / (nu + nu0)) / sdPool;
+    const n = o.n || 10000, rnd = rngSemilla(o.semilla || 20261027);
+    const equiposLista = Array.from(modelo.equipos.values());
+    const nu0 = Math.max(mediaDe(equiposLista.map(x => x.n)) - 1, 1);
+    const encSd = (sd, nEq, pool) => {
+      if (!sd || !pool) return pool || 1;
+      const nu = Math.max(nEq - 1, 0);
+      return Math.sqrt((nu * sd * sd + nu0 * pool * pool) / (nu + nu0));
     };
-    const escala = Math.sqrt((rel(pred.L) * rel(pred.L) + rel(pred.V) * rel(pred.V)) / 2);
-    const sigma = (modelo.sigma || 12) * escala;
-    let gana = 0; const m = [];
+    const poolO = Math.sqrt(modelo.sh.ortg.s2w) || 1, poolD = Math.sqrt(modelo.sh.drtg.s2w) || 1, poolP = Math.sqrt(modelo.sh.pos.s2w) || 1;
+    const sdOL = Math.sqrt((Math.pow(encSd(pred.L.sdOrtg, pred.L.n, poolO), 2) + Math.pow(encSd(pred.V.sdDrtg, pred.V.n, poolD), 2)) / 2);
+    const sdOV = Math.sqrt((Math.pow(encSd(pred.V.sdOrtg, pred.V.n, poolO), 2) + Math.pow(encSd(pred.L.sdDrtg, pred.L.n, poolD), 2)) / 2);
+    const sdP = (encSd(pred.L.sdPos, pred.L.n, poolP) + encSd(pred.V.sdPos, pred.V.n, poolP)) / 2;
+    const dOrt = (pred.ortL - pred.ortV) / 100;
+    const sdAnalitico = Math.sqrt(Math.pow(pred.pos / 100, 2) * (sdOL * sdOL + sdOV * sdOV) + dOrt * dOrt * sdP * sdP);
+    const sigmaObjetivo = modelo.sigma || sdAnalitico || 12;
+    const c = sdAnalitico > 0 ? sigmaObjetivo / sdAnalitico : 1;
+    const ventaja = (pred.localia + pred.fatiga) / 2;
+    const pEmpate = probabilidadLocal(pred.margen, modelo.sigma);
+    const margenes = new Array(n), ptsL = new Array(n), ptsV = new Array(n);
+    let gana = 0;
     for (let i = 0; i < n; i++) {
-      const u1 = Math.max(rnd(), 1e-12), u2 = rnd();
-      const marg = pred.margen + sigma * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-      m.push(marg);
-      if (marg > 0.5 || (marg >= -0.5 && rnd() < probabilidadLocal(pred.margen, modelo.sigma))) gana++;   // un empate va a la prórroga
+      const pos = Math.max(40, pred.pos + c * sdP * normalEstandar(rnd));
+      const oL = pred.ortL + c * sdOL * normalEstandar(rnd), oV = pred.ortV + c * sdOV * normalEstandar(rnd);
+      const pl = pos * oL / 100 + ventaja, pv = pos * oV / 100 - ventaja;
+      ptsL[i] = pl; ptsV[i] = pv; margenes[i] = pl - pv;
+      if (Math.round(pl) > Math.round(pv)) gana++;
+      else if (Math.round(pl) === Math.round(pv) && rnd() < pEmpate) gana++;   // prórroga
     }
-    m.sort((a, b) => a - b);
-    const q = (p) => m[Math.min(n - 1, Math.floor(p * n))];
-    return { n: n, sigma: sigma, escala: escala, pLocal: gana / n, margenP10: q(0.1), margenP50: q(0.5), margenP90: q(0.9) };
+    const orden = (a) => a.slice().sort((x, y) => x - y);
+    const q = (s, p) => s[Math.min(n - 1, Math.floor(p * n))];
+    const sm = orden(margenes), sl = orden(ptsL), sv = orden(ptsV);
+    /* Histograma del margen: barras de 2 puntos cubriendo los extremos. */
+    const ancho = 2, lo = Math.floor(sm[0] / ancho) * ancho, hi = Math.ceil(sm[n - 1] / ancho) * ancho;
+    const cuentas = new Array(Math.max(1, Math.round((hi - lo) / ancho))).fill(0);
+    margenes.forEach(m => { cuentas[Math.min(cuentas.length - 1, Math.floor((m - lo) / ancho))]++; });
+    const histograma = cuentas.map((cnt, i) => ({ desde: lo + i * ancho, hasta: lo + (i + 1) * ancho, p: cnt / n }));
+    return { n: n, ganadasLocal: gana, pLocal: gana / n, sigma: sigmaObjetivo, calibracion: c,
+      margenMedio: mediaDe(margenes), margenP10: q(sm, 0.1), margenP50: q(sm, 0.5), margenP90: q(sm, 0.9),
+      ptsLocal: { p10: q(sl, 0.1), p50: q(sl, 0.5), p90: q(sl, 0.9) },
+      ptsVisitante: { p10: q(sv, 0.1), p50: q(sv, 0.5), p90: q(sv, 0.9) },
+      histograma: histograma };
   }
 
   /** El uso dentro de la cancha tiene techo: los 5 en cancha suman 100 %.
@@ -868,7 +986,7 @@ const SGADD_4F = (function () {
       };
     });
     const factorClave = duelos.slice().sort((a, b) => Math.abs(b.puntos) - Math.abs(a.puntos))[0];
-    const mc = simularMonteCarlo(modelo, pred, { n: (opts && opts.n) || 4000 });
+    const mc = simularMonteCarlo(modelo, pred, { n: (opts && opts.n) || 10000 });
 
     return {
       ok: true,
@@ -878,8 +996,9 @@ const SGADD_4F = (function () {
       margen: margen,
       empateResuelto: desempate.resuelto,
       ganador: margen >= 0 ? eL.nombre : eV.nombre,
-      /* Probabilidad de que gane el LOCAL; el tope es solo de presentación. */
-      confianza: Math.min(0.97, Math.max(0.03, prob)),
+      /* Probabilidad de que gane el LOCAL = fracción de las simulaciones que
+         ganó; el tope es solo de presentación. */
+      confianza: Math.min(0.97, Math.max(0.03, mc.pLocal)),
       duelos: duelos,
       factorClave: factorClave,
       paceEsperado: pred.pos,
@@ -887,7 +1006,7 @@ const SGADD_4F = (function () {
       ortgEsperadoLocal: pred.ortL, ortgEsperadoVisitante: pred.ortV,
       netRatingLocal: pred.L.ortg - pred.L.drtg, netRatingVisitante: pred.V.ortg - pred.V.drtg,
       ajusteNetRating: 0,   // el Net Rating ya NO se suma aparte: es la base del margen
-      bonusLocalia: modelo.hca,
+      bonusLocalia: pred.localia,
       fatiga: pred.fatiga,
       metodoPesos: modelo.pesos.metodo, rLiga2: modelo.pesos.r2, nLiga: modelo.pesos.n,
       muestraLocal: pred.L.n, muestraVisitante: pred.V.n,
@@ -896,7 +1015,10 @@ const SGADD_4F = (function () {
         credibilidadLocal: pred.L.z, credibilidadVisitante: pred.V.z,
         credibilidadPesos: modelo.pesos.credibilidad, lambda: modelo.pesos.lambda,
         pesosOliver: modelo.pesos.pesosOliver, sigma: modelo.sigma,
-        probabilidadMC: mc.pLocal, margenP10: mc.margenP10, margenP50: mc.margenP50, margenP90: mc.margenP90,
+        probabilidadMC: mc.pLocal, probabilidadAnalitica: prob, mc: mc,
+        margenP10: mc.margenP10, margenP50: mc.margenP50, margenP90: mc.margenP90,
+        hcaClub: modelo.hcaClub.get(eL.clave) || null, hcaLiga: modelo.hca,
+        sosLocal: pred.L.sos, sosVisitante: pred.V.sos,
         localiaObservada: modelo.localia.observada, partidosLiga: modelo.n,
         /* margen = posesiones + localía + fatiga + ajuste de empate; y las
            posesiones = suma de los 4 factores + residual. Siempre cierra. */
@@ -909,6 +1031,7 @@ const SGADD_4F = (function () {
       scouting: {
         duelos: duelos.map(d => ({ id: d.id, puntos: d.puntos, ventajaLocal: d.puntos >= 0, netL: d.netL, netV: d.netV })),
         ritmo: pred.pos, ortg: { local: pred.ortL, visitante: pred.ortV },
+        probabilidadLocal: mc.pLocal, localia: pred.localia, sos: { local: pred.L.sos, visitante: pred.V.sos },
         referencias: { ortgLiga: modelo.mu.ortg, posesionesLiga: modelo.mu.pos },
       },
     };
@@ -923,7 +1046,7 @@ const SGADD_4F = (function () {
     perfilEquipoSimulacion, ventajaLocaliaLiga, matrizVolumenEficiencia,
     resolverEmpate, simularEnfrentamiento,
     PESOS_OLIVER, PRIOR_LOCALIA, extraerJuegos, encoger, ajustarModelo, ajustarPesosOliver, ajustarLocalia, ajustarFatiga,
-    predecirCruce, probabilidadLocal, simularMonteCarlo, repartirUso, backtest, modeloDe,
+    ajustarPorRival, localiaDe, predecirCruce, probabilidadLocal, simularMonteCarlo, repartirUso, backtest, modeloDe,
   };
 })();
 
@@ -1146,11 +1269,32 @@ function simuladorResultado(idx) {
     </div>`;
 
   /* ===================== 🏠 Localía y ritmo del cruce ===================== */
+  /* ===================== 🎲 Monte Carlo: la curva del margen ===================== */
+  const mc = r.modelo.mc;
+  const maxBarra = Math.max(...mc.histograma.map(b => b.p), 1e-9);
+  const barras = mc.histograma.map(b => {
+    const centro = (b.desde + b.hasta) / 2;
+    return `<div title="${b.desde} a ${b.hasta} pts: ${(b.p * 100).toFixed(1)} % de las simulaciones" style="flex:1 1 0;min-width:2px;height:${Math.max(2, b.p / maxBarra * 100).toFixed(0)}%;background:${centro > 0 ? 'var(--acento-fondo, #f7941e)' : '#60a5fa'};opacity:.85"></div>`;
+  }).join('');
+  const fichaMonteCarlo = `
+    <div class="card rounded-xl p-4 sm:p-5 border border-hairline">
+      <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-1">🎲 Simulación Monte Carlo · ${mc.n.toLocaleString('es-AR')} partidos</h5>
+      <p class="text-sm text-white mt-1"><b>${escapeHtml(r.local)}</b> ganó ${(mc.pLocal * 100).toFixed(1).replace('.', ',')} % de las simulaciones (${mc.ganadasLocal.toLocaleString('es-AR')} de ${mc.n.toLocaleString('es-AR')}); ${escapeHtml(r.visitante)}, el ${((1 - mc.pLocal) * 100).toFixed(1).replace('.', ',')} %.</p>
+      <div style="display:flex;align-items:flex-end;gap:1px;height:84px;margin-top:10px" role="img" aria-label="Distribución del margen proyectado, de ${mc.histograma[0].desde} a ${mc.histograma[mc.histograma.length - 1].hasta} puntos">${barras}</div>
+      <div class="flex justify-between text-[10px] dato-sec font-mono mt-1"><span>${mc.histograma[0].desde} pts</span><span>0 · empate</span><span>+${mc.histograma[mc.histograma.length - 1].hasta} pts</span></div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
+        <div class="bg-surface2/50 rounded-lg p-2.5"><p class="text-[10px] uppercase tracking-wider text-muted font-display">Margen (80 % de los casos)</p><p class="text-sm text-white font-mono">${mc.margenP10.toFixed(0)} a +${mc.margenP90.toFixed(0)} · mediana ${mc.margenP50 >= 0 ? '+' : ''}${mc.margenP50.toFixed(1)}</p></div>
+        <div class="bg-surface2/50 rounded-lg p-2.5"><p class="text-[10px] uppercase tracking-wider text-muted font-display truncate">${escapeHtml(r.local)} · puntos</p><p class="text-sm text-white font-mono">${mc.ptsLocal.p10.toFixed(0)} a ${mc.ptsLocal.p90.toFixed(0)} · mediana ${mc.ptsLocal.p50.toFixed(0)}</p></div>
+        <div class="bg-surface2/50 rounded-lg p-2.5"><p class="text-[10px] uppercase tracking-wider text-muted font-display truncate">${escapeHtml(r.visitante)} · puntos</p><p class="text-sm text-white font-mono">${mc.ptsVisitante.p10.toFixed(0)} a ${mc.ptsVisitante.p90.toFixed(0)} · mediana ${mc.ptsVisitante.p50.toFixed(0)}</p></div>
+      </div>
+      <p class="text-[10px] dato-sec mt-2 leading-snug">Cada partido sortea ritmo y ORTG de los dos lados con la dispersión de noche a noche de cada equipo, calibrada con el error fuera de muestra del modelo (${mc.sigma.toFixed(1)} pts). Un empate se resuelve en prórroga. Con cada fecha nueva el modelo se reajusta solo.</p>
+    </div>`;
+
   const fichaLocalia = `
     <div class="bg-surface2/50 rounded-lg p-3">
       <p class="text-[10px] uppercase tracking-wider text-muted font-display">🏠 Bonus de localía / ventaja de cancha</p>
       <p class="text-xl text-white font-display mt-0.5">+${r.bonusLocalia.toFixed(1)} pts</p>
-      <p class="text-[10px] dato-sec mt-1">aditivo para ${escapeHtml(r.local)}, calibrado con la ventaja de localía real de esta liga</p>
+      <p class="text-[10px] dato-sec mt-1">${r.modelo.hcaClub ? `localía propia de ${escapeHtml(r.local)}: rinde ${r.modelo.hcaClub.valor.toFixed(1)} de local contra ${r.modelo.hcaLiga.toFixed(1)} de la liga (${r.modelo.hcaClub.n} partidos en casa, credibilidad ${(r.modelo.hcaClub.z * 100).toFixed(0)} %)` : `sin partidos en casa suficientes: rige la localía de la liga`}</p>
       <div class="border-t border-hairline/40 mt-2 pt-2 space-y-0.5">
         <p class="text-[11px] text-ink font-mono">Ritmo esperado del cruce: <span class="text-white">${r.paceEsperado.toFixed(1)}</span> posesiones</p>
         <p class="text-[11px] text-ink font-mono">Eficiencia esperada: ${escapeHtml(r.local)} <span class="text-white">${r.ortgEsperadoLocal.toFixed(1)}</span> ORTG · ${escapeHtml(r.visitante)} <span class="text-white">${r.ortgEsperadoVisitante.toFixed(1)}</span> ORTG (por 100 posesiones)</p>
@@ -1163,7 +1307,7 @@ function simuladorResultado(idx) {
     <div class="bg-surface2/50 rounded-lg p-3">
       <p class="text-[10px] uppercase tracking-wider text-muted font-display">⚡ Fuerza de temporada (Net Rating)</p>
       <p class="text-[11px] text-ink font-mono mt-1">${escapeHtml(r.local)}: <span class="text-white">${netRatingFmt(r.netRatingLocal)}</span> · ${escapeHtml(r.visitante)}: <span class="text-white">${netRatingFmt(r.netRatingVisitante)}</span></p>
-      <p class="text-[10px] dato-sec mt-1.5">Es la base del margen (ritmo × diferencia de ratings por posesión): no se suma aparte. Ratings encogidos hacia la media de la liga según los partidos jugados — credibilidad ${(r.modelo.credibilidadLocal * 100).toFixed(0)} % ${escapeHtml(r.local)} · ${(r.modelo.credibilidadVisitante * 100).toFixed(0)} % ${escapeHtml(r.visitante)}.</p>
+      <p class="text-[10px] dato-sec mt-1.5">Es la base del margen (ritmo × diferencia de ratings por posesión): no se suma aparte. Ratings ajustados por la calidad de los rivales enfrentados (calendario ${r.modelo.sosLocal >= 0 ? '+' : ''}${r.modelo.sosLocal.toFixed(1)} ${escapeHtml(r.local)} · ${r.modelo.sosVisitante >= 0 ? '+' : ''}${r.modelo.sosVisitante.toFixed(1)} ${escapeHtml(r.visitante)} de ORTG: positivo = enfrentó defensas flojas) y encogidos hacia la media de la liga — credibilidad ${(r.modelo.credibilidadLocal * 100).toFixed(0)} % ${escapeHtml(r.local)} · ${(r.modelo.credibilidadVisitante * 100).toFixed(0)} % ${escapeHtml(r.visitante)}.</p>
     </div>`;
 
   /* ===================== 📊 Influencia de los 4 factores en esta liga ===================== */
@@ -1224,6 +1368,7 @@ function simuladorResultado(idx) {
     <div class="space-y-5">
       ${cabecera}
       ${graficoComparativo}
+      ${fichaMonteCarlo}
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         ${fichaLocalia}
         ${fichaNetRating}
