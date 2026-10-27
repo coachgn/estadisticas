@@ -1058,6 +1058,9 @@ function paquete(equipo) {
     check('el bloque trae barras de tres franjas por lado, las tablas, el insight, armas y grietas y las recomendaciones',
       (hM.match(/data-reloj-franja=/g) || []).length === 6 && (hM.match(/reloj-barra-liga/g) || []).length >= 6 && /data-reloj-tablas/.test(hM)
         && (hM.match(/data-reloj-bloque="/g) || []).length === 3 && /Sus armas del reloj/.test(hM) && /Para explotarle/.test(hM) && /Para anularle/.test(hM));
+    const hF = P.relojMapaTiro(pR, { fijo: true });
+    check('en Scouting (fijo) no van insight, armas, grietas ni recomendaciones, y el resto del reloj sigue',
+      !/Insight del reloj|Sus armas del reloj|Sus grietas del reloj|Para explotarle|Para anularle|data-reloj-bloque=/.test(hF) && /data-reloj-tablas/.test(hF) && /data-reloj-lugar/.test(hF));
     check('el rendimiento no se comunica solo con color: ▼ en 18-24 de ataque, ▲ en la misma franja de defensa', /0,73 ▼/.test(hM) && /0,73 ▲/.test(hM));
     check('con un paquete sin la franja de cada tiro, los mapas por franja lo dicen', /llega con la próxima subida/.test(hM) && !/data-reloj-mapa-franja/.test(hM));
     check('ninguna salida trae un undefined ni un NaN', !/undefined|NaN/.test(mC + mS + hM + hp + P.relojMapaTiro(vertigo, { identidad: { PACE: { f: '78,4', p: 85 } } })

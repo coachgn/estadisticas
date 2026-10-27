@@ -2956,7 +2956,7 @@ const SGADD_PBP = (function () {
         ${origen ? `<div class="min-w-0 pbp-reloj-pieza mt-3" data-reloj-origenes="1">${subtitulo('Cómo nace la posesión · tiros de la primera opción')}${origen}</div>` : ''}
         </div>
         <div class="min-w-0 mt-4" data-reloj-lugar="1" data-subcard="equipo.tiro.reloj-franjas">${subtitulo('Desde dónde tira en cada franja · el mapa completo')}${mapas}</div>
-        ${sintesis ? `<div data-subcard="equipo.tiro.reloj-sintesis">${sintesis}</div>` : ''}
+        ${sintesis && !o.fijo ? `<div data-subcard="equipo.tiro.reloj-sintesis">${sintesis}</div>` : ''}
         <div data-subcard="equipo.tiro.tendencias">${relojTendenciasHtml(paq)}</div>
         <p class="text-[10px] dato-sec mt-2 leading-snug">${NOTA_RELOJ} El rendimiento de una franja se ajusta por muestra y cuenta como desvío desde ${num(SIGNIF_RELOJ, 2)} puntos por tiro con ${MIN_TIROS_SINTESIS} tiros o más.</p>
         ${relojAyuda(L)}
