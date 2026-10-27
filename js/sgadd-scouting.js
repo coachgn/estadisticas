@@ -3672,7 +3672,24 @@ function scoutImprimir() {
     window.removeEventListener('afterprint', limpiar);
   };
   window.addEventListener('afterprint', limpiar);
-  setTimeout(() => window.print(), 60);
+  /* Las FOTOS de los jugadores van con `loading="lazy"`: las que quedan
+     fuera de pantalla no se piden hasta scrollear, y al imprimir salían
+     cuadros grises. Se fuerzan y se espera a que bajen antes del diálogo. */
+  scoutCargarFotos().then(() => setTimeout(() => window.print(), 60));
+}
+
+/** Pide ahora las imágenes diferidas del informe y espera a que terminen (techo
+ *  de 6 s: una foto que no baja cae a su escudo y no cuelga la impresión). */
+function scoutCargarFotos() {
+  const raiz = typeof document !== 'undefined' ? document.getElementById('scoutInforme') : null;
+  if (!raiz) return Promise.resolve();
+  const pend = [];
+  Array.prototype.forEach.call(raiz.querySelectorAll('img'), (img) => {
+    if (img.getAttribute('loading') === 'lazy') img.setAttribute('loading', 'eager');
+    if (!img.complete) pend.push(new Promise((ok) => { img.addEventListener('load', ok, { once: true }); img.addEventListener('error', ok, { once: true }); }));
+  });
+  if (!pend.length) return Promise.resolve();
+  return Promise.race([Promise.all(pend), new Promise((ok) => setTimeout(ok, 6000))]);
 }
 
 function scoutModalExport() {

@@ -295,7 +295,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=322`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=323`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16355,3 +16355,9 @@ Assets en `?v=322`.
 - **Rotaciones · minuto a minuto ya no es una card de Scouting**: pasó a sub-card (minimizada, como las otras dos) de la card «🔁 Quintetos, cierre, rotaciones y clutch», entre «Últimos 5 partidos · inicial contra cierre» y «Quién decide los finales». Se fue `data-bloque="pbp-rotaciones"` y su opción del modal; `rotacionesCard` y el tipo `rotaciones` de `espacio()` siguen exportados pero ya no los usa Scouting. Sale solo con el paquete v2 que trae `rotaciones`.
 - **Mapas por franja en el papel** (CSS `@media print` junto a `.pbp-reloj-pieza`): «Desde dónde tira en cada franja · el mapa completo» abre hoja con la franja 0-7 s, y cada franja siguiente también arranca hoja nueva; el título de cada una (`summary` y su lectura) va pegado a su mapa (`break-after: avoid`), nunca solo al pie de la hoja anterior.
 - Tests: `test-pbp.js` (rotaciones dentro, cerrada y en su lugar; las reglas de papel). **No medido en un PDF real** (la demo no tiene la capa `pbp`).
+
+---
+
+## 154. LAS FOTOS DE LOS JUGADORES EN EL PDF DE SCOUTING (2026-10-27)
+
+Assets en `?v=323`. Reportado: en el PDF de Scouting las fotos salían como cuadros grises. `torneoImagenJugador` las pinta con `loading="lazy"`: las que están fuera de pantalla no se piden hasta scrollear, y al imprimir el navegador no las espera. `scoutImprimir()` ahora llama a `scoutCargarFotos()` —pasa a `eager` las imágenes de `#scoutInforme` y espera a que bajen, con techo de 6 s— antes de abrir el diálogo. Una foto que no carga sigue cayendo a su escudo (`onerror`). Las fotos son de otro dominio (la liga), así que no se embeben como `data:`; se imprimen por su URL. Sin verificar en un PDF real con fotos.

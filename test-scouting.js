@@ -2004,6 +2004,8 @@ check('los escudos se embeben como data: URI antes de imprimir',
 check('y se restauran al terminar, para no dejar el DOM con blobs',
   /function scoutRestaurarEscudos/.test(scoutJs) &&
   /scoutRestaurarEscudos\(\);/.test(scoutJs));
+check('scoutImprimir() fuerza las fotos diferidas y espera a que bajen antes de imprimir',
+  /scoutCargarFotos\(\)\.then\(\(\) => setTimeout\(\(\) => window\.print\(\)/.test(scoutJs) && /setAttribute\('loading', 'eager'\)/.test(scoutJs));
 check('scoutImprimir() los embebe',
   /scoutEmbeberEscudos\(\);/.test(scoutJs.slice(scoutJs.indexOf('function scoutImprimir'))));
 
