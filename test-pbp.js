@@ -518,6 +518,28 @@ function paquete(equipo) {
   check('cuartos: con menos de 5 partidos no se afirma nada', pat([cq('1', 3, 4), cq('2', 0, 4), cq('3', 0, 4), cq('4', -3, 4)]) === '');
   const matriz = P.cuartosCruzadoHtml({ cuartos: [cq('1', 2), cq('2', 0), cq('3', 0), cq('4', -2)] }, { cuartos: [cq('1', 0), cq('2', 1), cq('3', 0), cq('4', 1)] }, 'RIVAL', 'NUESTRO');
   check('cuartos: la matriz muestra a los dos, con Hace / Cede / Dif. por cuarto y los patrones', /RIVAL/.test(matriz) && /NUESTRO/.test(matriz) && /Hace/.test(matriz) && /Cede/.test(matriz) && /1\.º/.test(matriz) && /Arranca arrollador/.test(matriz));
+  /* v315 · el juego de cada cuarto (tiro, pérdidas, ritmo y faltas) */
+  const jg = (efgF, efgC, ppF, ppC, fcF, fcC) => ({ n: 12, efgF, efgC, tciF: 16, tciC: 16, ortg: 105, drtg: 100, ppF, ppC, ritmo: 72, fcF, fcC });
+  const cj = (periodo, juego) => Object.assign(cq(periodo, 0), { juego });
+  const base = (q4) => [cj('1', jg(0.52, 0.50, 3, 3, 4, 4)), cj('2', jg(0.52, 0.50, 3, 3, 4, 4)), cj('3', jg(0.52, 0.50, 3, 3, 4, 4)), cj('4', q4)];
+  const idsJ = (c) => P.cuartosPatrones(c).map(x => x.id).join();
+  check('juego: su tiro se cae al final, neto del rival (−0,05 de eFG% contra los tres primeros)', idsJ(base(jg(0.47, 0.50, 3, 3, 4, 4))) === 'tiro-cae');
+  check('juego: tira mejor al final (+0,05 neto)', idsJ(base(jg(0.57, 0.50, 3, 3, 4, 4))) === 'tiro-sube');
+  check('juego: si el rival también tira peor al final no hay patrón (la fatiga común se resta)', idsJ(base(jg(0.47, 0.45, 3, 3, 4, 4))) === '');
+  check('juego: regala pelotas al final (+0,6 neto) y cuida la pelota (−0,6 neto)', idsJ(base(jg(0.52, 0.50, 3.6, 3, 4, 4))) === 'pierde-tarde' && idsJ(base(jg(0.52, 0.50, 2.4, 3, 4, 4))) === 'cuida-tarde');
+  check('juego: carga faltas al final (+0,7 neto) y avisa que el bonus lo mira el cuerpo técnico', idsJ(base(jg(0.52, 0.50, 3, 3, 4.7, 4))) === 'faltas-tarde'
+    && /bonus lo mira el cuerpo técnico/.test(P.cuartosPatrones(base(jg(0.52, 0.50, 3, 3, 4.7, 4)))[0].texto));
+  check('juego: bajo el corte no se afirma nada (0,03 de eFG%, 0,4 pérdidas, 0,5 faltas)', idsJ(base(jg(0.49, 0.50, 3.4, 3, 4.5, 4))) === '');
+  check('juego: puede haber varios patrones a la vez y cada uno trae su tono', idsJ(base(jg(0.47, 0.50, 3.6, 3, 4.7, 4))) === 'tiro-cae,pierde-tarde,faltas-tarde'
+    && P.cuartosPatrones(base(jg(0.57, 0.50, 2.4, 3, 4, 4))).every(x => x.tono === 'alto'));
+  check('juego: sin el juego en algún cuarto, o con menos de 5 partidos, no se afirma nada', idsJ(base(jg(0.40, 0.50, 5, 3, 7, 4)).map((c, i) => (i === 1 ? Object.assign({}, c, { juego: undefined }) : c))) === ''
+    && idsJ(base(jg(0.40, 0.50, 5, 3, 7, 4)).map(c => Object.assign({}, c, { partidos: 4 }))) === '');
+  const tabJ = P.juegoPorCuartoHtml('RIVAL', base(jg(0.47, 0.50, 3, 3, 4, 4)));
+  check('juego: la tabla por cuarto trae eFG%, rating, pérdidas, ritmo y faltas, los cuatro cuartos y nada en NaN', /eFG %/.test(tabJ) && /Pos\.\/40/.test(tabJ) && /Faltas/.test(tabJ) && (tabJ.match(/<tbody>[\s\S]*<\/tbody>/)[0].match(/<tr /g) || []).length === 4 && !/NaN|undefined/.test(tabJ) && /47,0/.test(tabJ));
+  check('juego: sin el detalle en el paquete la tabla no se dibuja y la card dice que llega con la próxima subida', P.juegoPorCuartoHtml('R', [cq('1', 2)]) === ''
+    && /próxima subida/.test(P.cuartosCruzadoHtml({ cuartos: [cq('1', 2)] }, null, 'R', 'N')));
+  const conTabla = P.cuartosCruzadoHtml({ cuartos: base(jg(0.47, 0.50, 3, 3, 4, 4)) }, { cuartos: base(jg(0.52, 0.50, 3, 3, 4, 4)) }, 'RIVAL', 'NUESTRO');
+  check('juego: la card muestra la tabla de los dos equipos y la nota de cómo se mide', (conTabla.match(/· el juego de cada cuarto/g) || []).length === 2 && /neto del rival/.test(conTabla) && /cada 40 minutos/.test(conTabla));
   check('cuartos: sin nuestro paquete sale solo el rival, y sin datos lo dice', !/NUESTRO/.test(P.cuartosCruzadoHtml({ cuartos: [cq('1', 2)] }, null, 'RIVAL', 'NUESTRO')) && /Sin datos por cuarto/.test(P.cuartosCruzadoHtml({}, null, 'R', 'N')));
   check('cuartos: el lugar del montaje pide el paquete del rival y el nuestro', /data-pbp-tipo="rival-cuartos"/.test(P.espacioCuartos('R', 'N')) && /data-pbp-propio="N"/.test(P.espacioCuartos('R', 'N')) && !/data-pbp-propio/.test(P.espacioCuartos('R', null)));
   check('mapa: el gráfico y la tabla van en una grilla que el papel mantiene en dos columnas (la tabla a la derecha)', /pbp-mapa-grid grid grid-cols-1 lg:grid-cols-2/.test(fs.readFileSync('js/sgadd-pbp.js', 'utf8'))

@@ -210,7 +210,7 @@ console.log('═'.repeat(70));
   check('el semáforo no depende solo del color: lleva glifo', /▲/.test(src) && /▼/.test(src) && /●/.test(src) && /◆/.test(src) && /✓/.test(src) && /✗/.test(src));
   check('el diagnóstico y el FODA reusan el motor clínico y no calculan percentiles por su cuenta', (src.match(/C\.equipo\(idx, eR\)/g) || []).length >= 2);
   check('las piezas del play-by-play son opcionales: sin la capa dice que necesita el laboratorio', /necesita la capa de laboratorio/.test(src));
-  check('el assets va en ?v=314 o más', /sgadd-scouting\.js\?v=3(1[4-9]|[2-9]\d)/.test(html));
+  check('el assets va en ?v=315 o más', /sgadd-scouting\.js\?v=3(1[4-9]|[2-9]\d)/.test(html));
 }
 
 console.log('\n' + '═'.repeat(70));

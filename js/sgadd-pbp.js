@@ -720,7 +720,57 @@ const SGADD_PBP = (function () {
         out.push({ id: 'cuarto-debil', tono: 'bajo', texto: 'Su cuarto débil es el ' + peor + '.º (' + signo(d(peor), 1) + ' por partido): ahí se puede quebrar el partido.' });
       }
     }
+    return out.concat(juegoPatrones(q));
+  }
+
+  /* El juego del último cuarto contra los tres primeros (2026-10-27). Se mide
+     SIEMPRE NETO DEL RIVAL (lo que el equipo hace menos lo que le hacen): todos
+     los equipos tiran peor y cometen más faltas al final, y medir el valor
+     crudo marcaría a media liga. Los cortes salen de los 17 equipos de la
+     Conferencia Norte 25/26 (son ≈ el p10 y el p90 del neto): .04 de eFG%, 0,5
+     pérdidas y 0,6 faltas por partido. Requiere `juego` en los cuatro cuartos
+     y 5 partidos; un paquete viejo no lo trae y no se afirma nada. */
+  const JUEGO_CORTE = { efg: 0.04, pp: 0.5, fc: 0.6 };
+  function juegoPatrones(q) {
+    const j = (p) => (q[p] && q[p].juego && q[p].partidos >= CUARTO_MIN_PJ ? q[p].juego : null);
+    const J = ['1', '2', '3', '4'].map(j);
+    if (J.some(x => !x)) return [];
+    const neto = (x, f, c) => x[f] - x[c];
+    const delta = (f, c) => {
+      const antes = (neto(J[0], f, c) + neto(J[1], f, c) + neto(J[2], f, c)) / 3;
+      return neto(J[3], f, c) - antes;
+    };
+    const dE = delta('efgF', 'efgC'), dP = delta('ppF', 'ppC'), dF = delta('fcF', 'fcC');
+    const out = [];
+    if (dE <= -JUEGO_CORTE.efg) out.push({ id: 'tiro-cae', tono: 'bajo', texto: 'Su tiro se cae en el último cuarto: el eFG% neto del rival baja ' + num(Math.abs(dE) * 100, 1) + ' puntos frente a los tres primeros (' + num(J[3].efgF * 100, 1) + ' % contra ' + num(J[3].efgC * 100, 1) + ' % que le hacen).' });
+    else if (dE >= JUEGO_CORTE.efg) out.push({ id: 'tiro-sube', tono: 'alto', texto: 'Tira mejor al final: el eFG% neto del rival sube ' + num(dE * 100, 1) + ' puntos en el último cuarto frente a los tres primeros (' + num(J[3].efgF * 100, 1) + ' % contra ' + num(J[3].efgC * 100, 1) + ' % que le hacen).' });
+    if (dP >= JUEGO_CORTE.pp) out.push({ id: 'pierde-tarde', tono: 'bajo', texto: 'Regala pelotas al final: pierde ' + num(J[3].ppF, 1) + ' por partido en el último cuarto contra ' + num(J[3].ppC, 1) + ' que le sacan, ' + num(dP, 1) + ' más que en los tres primeros, neto del rival.' });
+    else if (dP <= -JUEGO_CORTE.pp) out.push({ id: 'cuida-tarde', tono: 'alto', texto: 'Cuida la pelota al final: pierde ' + num(J[3].ppF, 1) + ' por partido en el último cuarto contra ' + num(J[3].ppC, 1) + ' que le sacan, ' + num(Math.abs(dP), 1) + ' menos que en los tres primeros, neto del rival.' });
+    if (dF >= JUEGO_CORTE.fc) out.push({ id: 'faltas-tarde', tono: 'bajo', texto: 'Carga faltas al final: comete ' + num(J[3].fcF, 1) + ' por partido en el último cuarto contra ' + num(J[3].fcC, 1) + ' del rival, ' + num(dF, 1) + ' más que en los tres primeros, neto del rival. El bonus lo mira el cuerpo técnico en el partido.' });
     return out;
+  }
+
+  /** La tabla del juego de cada cuarto de UN equipo (null si el paquete no lo trae). */
+  function juegoPorCuartoHtml(nombre, cuartos) {
+    const filas = (cuartos || []).filter(c => c.juego);
+    if (!filas.length) return '';
+    const orden = { '1': 1, '2': 2, '3': 3, '4': 4, OT: 5 };
+    filas.sort((a, b) => orden[a.periodo] - orden[b.periodo]);
+    const pct = (v) => (esNum(v) ? num(v * 100, 1) : '—');
+    const fila = (c) => {
+      const j = c.juego;
+      return `<tr class="border-b border-hairline/40 last:border-0"><td class="px-2 py-1 text-left text-xs whitespace-nowrap">${c.periodo === 'OT' ? 'Supl.' : c.periodo + '.º'}</td>
+        <td class="${TD}">${pct(j.efgF)}</td><td class="${TD}">${pct(j.efgC)}</td>
+        <td class="${TD}">${num(j.ortg)}</td><td class="${TD}">${num(j.drtg)}</td><td class="${TD} font-semibold ${tonoMM(esNum(j.ortg) && esNum(j.drtg) ? j.ortg - j.drtg : 0)}">${signo(esNum(j.ortg) && esNum(j.drtg) ? j.ortg - j.drtg : null, 1)}</td>
+        <td class="${TD}">${num(j.ppF)}</td><td class="${TD}">${num(j.ppC)}</td>
+        <td class="${TD}">${num(j.ritmo)}</td>
+        <td class="${TD}">${num(j.fcF)}</td><td class="${TD}">${num(j.fcC)}</td></tr>`;
+    };
+    return `<div class="mt-3"><p class="text-[10px] uppercase tracking-wider text-muted font-display mb-1">${esc(nombre)} · el juego de cada cuarto</p>
+      <div class="scrollbox"><table class="w-full">
+        <thead><tr class="${TH}"><th class="px-2 pb-1 text-left" rowspan="2">Cuarto</th><th class="px-2 pb-1" colspan="2">eFG %</th><th class="px-2 pb-1" colspan="3">Rating</th><th class="px-2 pb-1" colspan="2">Pérdidas</th><th class="px-2 pb-1">Ritmo</th><th class="px-2 pb-1" colspan="2">Faltas</th></tr>
+        <tr class="${TH}"><th class="px-2 pb-1">Hace</th><th class="px-2 pb-1">Cede</th><th class="px-2 pb-1">ORTG</th><th class="px-2 pb-1">DRTG</th><th class="px-2 pb-1">Net</th><th class="px-2 pb-1">Hace</th><th class="px-2 pb-1">Cede</th><th class="px-2 pb-1">Pos./40'</th><th class="px-2 pb-1">Hace</th><th class="px-2 pb-1">Cede</th></tr></thead>
+        <tbody>${filas.map(fila).join('')}</tbody></table></div></div>`;
   }
 
   /** La matriz por cuarto de los dos equipos, con sus patrones. */
@@ -744,8 +794,9 @@ const SGADD_PBP = (function () {
         <thead><tr class="${TH}"><th class="px-2 pb-1 text-left" rowspan="2">Cuarto</th>${cab(nombreRival)}${cn.length ? cab(nombreNuestro) : ''}</tr>
         <tr class="${TH}"><th class="px-2 pb-1">Hace</th><th class="px-2 pb-1">Cede</th><th class="px-2 pb-1">Dif.</th>${cn.length ? '<th class="px-2 pb-1">Hace</th><th class="px-2 pb-1">Cede</th><th class="px-2 pb-1">Dif.</th>' : ''}</tr></thead>
         <tbody>${periodos.map(p => `<tr class="border-b border-hairline/40 last:border-0"><td class="px-2 py-1 text-left text-xs whitespace-nowrap">${p === 'OT' ? 'Supl.' : p + '.º'}</td>${celda(de(cr, p))}${cn.length ? celda(de(cn, p)) : ''}</tr>`).join('')}</tbody></table></div>
+      ${juegoPorCuartoHtml(nombreRival, cr)}${cn.length ? juegoPorCuartoHtml(nombreNuestro, cn) : ''}
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">${lista(nombreRival, cr)}${cn.length ? lista(nombreNuestro, cn) : ''}</div>
-      <p class="text-[10px] text-muted mt-2">Puntos por partido de cada cuarto, de los partidos validados. «Dif.» es lo que hace menos lo que cede.</p>`;
+      <p class="text-[10px] text-muted mt-2">Puntos por partido de cada cuarto, de los partidos validados. «Dif.» es lo que hace menos lo que cede.${cr.some(c => c.juego) ? ' En el juego de cada cuarto, el eFG % y el rating salen de los totales de todos los partidos (no del promedio de cada noche), con las posesiones del panel (tiros de campo + 0,44 libres + pérdidas − rebotes ofensivos); el ritmo son posesiones cada 40 minutos y las faltas, personales por partido. Los patrones del último cuarto se miden neto del rival, porque todos los equipos tiran peor y cometen más faltas al final.' : ' El detalle de tiro, pérdidas, ritmo y faltas por cuarto llega con la próxima subida de los paquetes.'}</p>`;
   }
 
   /** El lugar de la matriz por cuarto: rival y, si hay, nuestro paquete. */
@@ -3289,7 +3340,7 @@ const SGADD_PBP = (function () {
   return {
     CAPA, NOMBRES_ZONA, FAMILIAS, ZONAS, GEOMETRIA, MIN_LIGA_HEX,
     html, mapaCard, jugador, mapa, capaTiros, bloqueSecciones, tieneSecciones, geometriaZonas, zonaGeometrica,
-    diagnosticoZonas, diagnosticoJugador, cruceZonas, diagnosticoRival, rivalFriasHtml, espacioRival, fodaPbp, cuartosPatrones, cuartosCruzadoHtml, espacioCuartos, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
+    diagnosticoZonas, diagnosticoJugador, cruceZonas, diagnosticoRival, rivalFriasHtml, espacioRival, fodaPbp, cuartosPatrones, juegoPorCuartoHtml, cuartosCruzadoHtml, espacioCuartos, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
     activa, espacio, espacioJugador, espacioQuintetosJugador, quintetosJugador, onOffDe, avisoSinCapa, espacioRendimiento, espacioConclusiones, montarPendientes, activar, apellido, _cache: cache,
     partidoDe, mapaPartido, momentumPartido, quintetosPartido, espacioPartido, MIN_TIROS_DIAGNOSTICO,
     relojTabla, relojIdentidad, relojPerfilJugador, relojEquipo, relojJugador, relojPartido, relojReparto, FRANJAS_RELOJ,

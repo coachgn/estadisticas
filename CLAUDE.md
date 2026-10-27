@@ -295,7 +295,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=314`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=315`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16096,7 +16096,7 @@ frías ni las fichas ORO (la demo no tiene la capa `pbp`).
 Assets en `?v=314`. Para TODOS los planes y con box score solo; el play-by-play
 suma sus piezas por el camino de siempre (montaje después de pintar).
 `test-diagnostico-rival.js` fija el motor y el cableado; `test-pbp.js` las
-piezas del play-by-play y `test-scouting.js` la integración con el índice real.
+piezas del play-by-play (y los cuartos con su juego) y `test-scouting.js` la integración con el índice real.
 
 ### Lo que se fue y lo que entró
 
@@ -16148,14 +16148,39 @@ Cada línea sale de un criterio que ya existía: ninguno nuevo.
 
 ### Rendimiento por cuarto (`cuartosCruzadoHtml`, `cuartosPatrones`)
 
-**Lo que el paquete trae por cuarto son los puntos a favor y en contra** (más
-G-E-P y los últimos 5): eso es lo que se muestra, del rival y del nuestro, con
-patrones a partir de ±1,5 puntos por cuarto y 5 partidos (arranca fuerte y se
-cae · arranca lento y remonta · se apaga al final · cuarto débil).
-**La eficiencia de tiro, las pérdidas, el ritmo y las faltas POR CUARTO no están
-en el paquete** y el panel no las inventa: pedirlas es un cambio de
-`motorstats-ingestion` (acumular por período y sumarlo a `cuartos`) más
-resubir los paquetes.
+Los parciales (puntos a favor y en contra, G-E-P, últimos 5) viajan desde
+siempre; **desde la v315 (2026-10-27) cada cuarto trae además `juego`**, que
+suma la ingesta (`AV.juegoPorCuarto`, dentro de `AV.cuartos`) sobre las acciones
+del play-by-play. Es un campo opcional del paquete @3: un paquete sin él sigue
+mostrando solo los parciales y la card dice que el detalle llega con la próxima
+subida.
+
+```
+juego = { n, efgF, efgC, tciF, tciC, ortg, drtg, ppF, ppC, ritmo, fcF, fcC }
+```
+
+- **Las tasas salen de los TOTALES** de todos los partidos, no del promedio de
+  cada noche. Posesiones = tiros de campo + 0,44 libres + pérdidas − rebotes
+  ofensivos (punto 66); ORTG/DRTG por 100 de ellas. **El ritmo son posesiones
+  cada 40 minutos** (la escala del PACE), así el suplementario (5 min) se lee
+  junto a los cuatro cuartos. Las faltas son las personales (`FALTA-COMETIDA`).
+- **La tabla de la card** muestra, por equipo, eFG% (hace/cede), ORTG, DRTG, Net,
+  pérdidas (hace/cede), ritmo y faltas (hace/cede) de cada cuarto.
+- **Los patrones del último cuarto se miden NETOS DEL RIVAL** contra el promedio
+  de los tres primeros (`juegoPatrones`). Medido en los 17 equipos de la
+  Conferencia Norte, **todos** tiran peor (mediana −0,022 de eFG%) y cometen más
+  faltas (+0,67) al final: con el valor crudo se marcaría a media liga. Neto del
+  rival la mediana queda en ≈ 0 y los cortes caen en el p10/p90: **0,04 de eFG%,
+  0,5 pérdidas y 0,6 faltas por partido** (`JUEGO_CORTE`). Ids: `tiro-cae`,
+  `tiro-sube`, `pierde-tarde`, `cuida-tarde`, `faltas-tarde`. Piden `juego` en los
+  cuatro cuartos y 5 partidos. Sobre los 17 paquetes salen 17 patrones en total.
+- **El ritmo no genera patrón**: lo comparten los dos equipos de la cancha, así
+  que su caída en el cuarto no distingue a nadie. Se muestra y nada más.
+- `faltas-tarde` aclara que el bonus lo mira el cuerpo técnico: el panel no
+  conoce el estado del partido (punto 64).
+- **Los paquetes de producción siguen sin `juego`** hasta la próxima subida
+  (`node herramientas/subir-paquetes.js --confirmar`). Los regenerados en local
+  pesan hasta 210 KB de los 256 que admite `pbp.js`.
 
 ### Las tres cosas
 
