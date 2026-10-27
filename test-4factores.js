@@ -134,13 +134,14 @@ const datosReg = F.datosRegresionLiga(idxReg);
 check('el dataset de liga tiene un caso por partido (35)', datosReg.X.length === 35, datosReg.X.length);
 
 const pesosReg = F.pesosPorFactor(idxReg);
-check('con 35 partidos (≥ mínimo) usa regresión múltiple, no el respaldo',
-  pesosReg.metodo === 'regresion', JSON.stringify(pesosReg));
-check('recupera el peso de eFG% (10)', cerca(pesosReg.pesos['eFG%'], 10, 0.01), pesosReg.pesos['eFG%']);
-check('recupera el peso de PP% (-5, negativo: el solver no fuerza signos)', cerca(pesosReg.pesos['PP%'], -5, 0.01), pesosReg.pesos['PP%']);
-check('recupera el peso de RO% (3)', cerca(pesosReg.pesos['RO%'], 3, 0.01), pesosReg.pesos['RO%']);
-check('recupera el peso de RTL% (2)', cerca(pesosReg.pesos['RTL%'], 2, 0.01), pesosReg.pesos['RTL%']);
-check('R² de liga es prácticamente 1 (dataset sin ruido)', pesosReg.r2 > 0.999, pesosReg.r2);
+check('con 35 partidos (18 de local) los pesos salen del ajuste bayesiano hacia Oliver',
+  pesosReg.metodo === 'bayes-oliver' && pesosReg.n === 18, JSON.stringify(pesosReg));
+check('recupera el peso de eFG% (10)', cerca(pesosReg.pesos['eFG%'], 10, 0.05), pesosReg.pesos['eFG%']);
+check('recupera el peso de PP% (-5, negativo: el ajuste no fuerza signos)', cerca(pesosReg.pesos['PP%'], -5, 0.05), pesosReg.pesos['PP%']);
+check('recupera el peso de RO% (3; la fixture no tiene localía simétrica, de ahí la tolerancia)', cerca(pesosReg.pesos['RO%'], 3, 0.5), pesosReg.pesos['RO%']);
+check('recupera el peso de RTL% (2, ídem)', cerca(pesosReg.pesos['RTL%'], 2, 0.5), pesosReg.pesos['RTL%']);
+check('R² de liga es prácticamente 1 (dataset sin ruido)', pesosReg.r2 > 0.99, pesosReg.r2);
+check('con datos limpios la credibilidad de la liga domina sobre el prior de Oliver', pesosReg.credibilidad > 0.9, pesosReg.credibilidad);
 
 /* Fixture B: 10 partidos (por debajo del mínimo), donde SOLO eFG% varía.
    El respaldo por factor tiene que recuperar ese único coeficiente y dar
@@ -165,11 +166,10 @@ const idxChico = SGADD.construirIndice({
   '4 FACTORES': { cols: cols4F, filas: filasChicas.map(f => f.f4) },
 }, { fase: 'REGULAR' });
 const pesosChico = F.pesosPorFactor(idxChico);
-check('con 10 partidos (< mínimo) degrada al respaldo por factor',
-  pesosChico.metodo === 'correlacion', JSON.stringify(pesosChico));
-check('el respaldo también recupera el coeficiente de eFG% (10)', cerca(pesosChico.pesos['eFG%'], 10, 0.01), pesosChico.pesos['eFG%']);
-check('los factores sin variación dan 0, no ruido ni NaN',
-  pesosChico.pesos['PP%'] === 0 && pesosChico.pesos['RO%'] === 0 && pesosChico.pesos['RTL%'] === 0,
+check('con 10 partidos casi no hay credibilidad en la liga: manda el prior de Oliver',
+  pesosChico.metodo === 'bayes-oliver' && pesosChico.credibilidad < 0.01, JSON.stringify(pesosChico));
+check('los factores que no varían se quedan EXACTAMENTE en el prior (sin ruido ni NaN)',
+  ['PP%', 'RO%', 'RTL%'].every(k => isFinite(pesosChico.pesos[k]) && cerca(pesosChico.pesos[k], pesosChico.pesosOliver[k], 1e-9)),
   JSON.stringify(pesosChico.pesos));
 
 console.log('\n7. PERFIL DE EQUIPO PARA SIMULAR: fallback de muestra chica y recencia');
@@ -313,8 +313,8 @@ check('la confianza es una probabilidad válida (entre 3% y 97%)', sim.confianza
 check('el ganador es alguno de los dos equipos', sim.ganador === sim.local || sim.ganador === sim.visitante);
 check('el factor clave es uno de los 4 factores', F.FACTORES_NET.some(f => f.id === sim.factorClave.id));
 check('el bonus de localía es positivo y aditivo (no multiplica el score)', sim.bonusLocalia > 0, sim.bonusLocalia);
-check('con esta liga chica (< 30 partidos) el método de pesos es el de respaldo',
-  sim.metodoPesos === 'correlacion', sim.metodoPesos);
+check('con esta liga chica el método de pesos es el bayesiano hacia Oliver (o Oliver puro)',
+  sim.metodoPesos === 'bayes-oliver' || sim.metodoPesos === 'oliver', sim.metodoPesos);
 check('la simulación registra que ninguno de los dos necesitó el respaldo de muestra chica',
   sim.usoHistoriaCompletaLocal === false && sim.usoHistoriaCompletaVisitante === false,
   JSON.stringify({ local: sim.usoHistoriaCompletaLocal, visitante: sim.usoHistoriaCompletaVisitante }));
@@ -322,37 +322,83 @@ check('la simulación registra que ninguno de los dos necesitó el respaldo de m
 console.log('\n11. PACE: escala las posesiones proyectadas, no un promedio genérico');
 console.log('═'.repeat(70));
 
-check('paceEsperado es el promedio del PACE de LOCAL y VISITANTE',
-  cerca(sim.paceEsperado, (92 + 78) / 2), sim.paceEsperado);
-check('pppEsperadoLocal cruza el ataque de LOCAL con la defensa de VISITANTE',
-  cerca(sim.pppEsperadoLocal, (0.90 + 0.75) / 2, 1e-6), sim.pppEsperadoLocal);
-check('pppEsperadoVisitante cruza el ataque de VISITANTE con la defensa de LOCAL',
-  cerca(sim.pppEsperadoVisitante, (0.95 + 0.80) / 2, 1e-6), sim.pppEsperadoVisitante);
-check('los dos cruces dan valores DISTINTOS: no es un promedio genérico de liga',
-  Math.abs(sim.pppEsperadoLocal - sim.pppEsperadoVisitante) > 0.01,
-  JSON.stringify({ local: sim.pppEsperadoLocal, visitante: sim.pppEsperadoVisitante }));
+check('el ritmo esperado es un número de posesiones razonable (entre los dos equipos)', sim.paceEsperado > 60 && sim.paceEsperado < 90, sim.paceEsperado);
+check('el ORTG esperado cruza el ataque propio con la defensa del rival: dos valores distintos',
+  Math.abs(sim.ortgEsperadoLocal - sim.ortgEsperadoVisitante) > 1, JSON.stringify({ l: sim.ortgEsperadoLocal, v: sim.ortgEsperadoVisitante }));
+check('el PPP esperado es por POSESIÓN: ORTG/100 (ya no mezcla posesiones con plays)',
+  cerca(sim.pppEsperadoLocal * 100, sim.ortgEsperadoLocal, 1e-9));
+check('el Net Rating ya no se suma aparte (el ajuste es 0): es la base del margen', sim.ajusteNetRating === 0);
 
-/* Si el PACE de los dos equipos se duplica, el score tiene que subir en la
-   misma proporción que el pace esperado — el resto de los términos (duelos,
-   net rating, localía) no dependen del pace y tienen que quedar intactos. */
-const filasPEPaceDoble = filasPE.map(f => (f.EQUIPO === 'X' || f.EQUIPO === 'Y')
-  ? Object.assign({}, f, { PACE: String(Number(f.PACE.replace(',', '.')) * 2) })
-  : f);
-const idxSimPaceDoble = SGADD.construirIndice({
-  'PROMEDIOS E': { cols: colsPE, filas: filasPEPaceDoble },
-  'PROMEDIOS 4F': { cols: colsP4F, filas: filasP4F },
-  'Base Datos E': { cols: colsBD, filas: partidosXY.map(p => p.bd) },
-  '4 FACTORES': { cols: cols4F, filas: partidosXY.map(p => p.f4) },
-}, { fase: 'REGULAR' });
-const simPaceDoble = F.simularEnfrentamiento(idxSimPaceDoble, 'X', 'Y');
-check('con el pace duplicado, paceEsperado también se duplica',
-  cerca(simPaceDoble.paceEsperado, sim.paceEsperado * 2), simPaceDoble.paceEsperado);
-if (!sim.empateResuelto && !simPaceDoble.empateResuelto) {
-  const deltaEsperadoL = (simPaceDoble.paceEsperado - sim.paceEsperado) * sim.pppEsperadoLocal;
-  const deltaRealL = simPaceDoble.scoreLocal - sim.scoreLocal;
-  check('el score de LOCAL sube exactamente lo que aporta el pace extra (el resto del modelo no se mueve)',
-    cerca(deltaRealL, deltaEsperadoL, 0.05), JSON.stringify({ esperado: deltaEsperadoL, real: deltaRealL }));
+console.log('\n11 bis. EL MODELO VIVO: identidad de puntos, reconciliación y encogimiento');
+console.log('═'.repeat(70));
+const jXY = F.extraerJuegos(idxSim), mXY = F.ajustarModelo(jXY), pXY = F.predecirCruce(mXY, 'X', 'Y');
+check('hay una fila por equipo-partido con ratings por posesión', jXY.length === 11 && jXY.every(g => g.ortg > 0 && g.pos > 0), jXY.length);
+check('puntos = posesiones × ORTG/100 en cada fila (la identidad cierra exacta)', jXY.every(g => cerca(g.pos * g.ortg / 100, g.pts, 1e-9)));
+check('margen por posesiones = ritmo × (ORTG−DRTG local − visitante)/100', cerca(pXY.margenPosesiones, pXY.pos * ((pXY.L.ortg - pXY.L.drtg) - (pXY.V.ortg - pXY.V.drtg)) / 100, 1e-9));
+const rc = sim.modelo.reconciliacion;
+check('RECONCILIACIÓN: factores + residual + localía + fatiga + ajuste de empate = margen final, exacto',
+  cerca(rc.sumaFactores + rc.residual + rc.localia + rc.fatiga + rc.ajusteEmpate, rc.margenFinal, 1e-9), JSON.stringify(rc));
+check('y el margen final es el mismo que scoreLocal − scoreVisitante', cerca(rc.margenFinal, sim.scoreLocal - sim.scoreVisitante, 1e-9));
+check('los puntos de cada duelo suman lo mismo que sumaFactores', cerca(sim.duelos.reduce((s, d) => s + d.puntos, 0), rc.sumaFactores, 1e-9));
+check('impactoL e impactoV son espejo: no se cuenta dos veces', sim.duelos.every(d => cerca(d.impactoL, -d.impactoV, 1e-12)));
+const mDoble = Object.assign({}, mXY, { mu: Object.assign({}, mXY.mu, { pos: mXY.mu.pos * 2 }),
+  equipos: new Map(Array.from(mXY.equipos.entries()).map(([k, e]) => [k, Object.assign({}, e, { pos: e.pos * 2 })])) });
+check('duplicar las posesiones de los dos equipos duplica el margen por posesiones (el ritmo escala la diferencia)',
+  cerca(F.predecirCruce(mDoble, 'X', 'Y').margenPosesiones, pXY.margenPosesiones * 2, 1e-6));
+check('la localía es una sola vez y es aditiva: la suma el modelo, no los perfiles',
+  cerca(pXY.margen - pXY.margenPosesiones - pXY.fatiga, mXY.hca, 1e-9));
+check('sin partidos de ≤ 1 día de descanso la fatiga queda en 0 (no se inventa)', pXY.fatiga === 0 && mXY.fatiga.casos === 0);
+const conFatiga = F.predecirCruce(Object.assign({}, mXY, { fatiga: { puntos: 1.2, casos: 9 } }), 'X', 'Y', { descansoL: 1, descansoV: 4 });
+check('un local con back-to-back contra un rival descansado pierde puntos de margen', cerca(conFatiga.fatiga, -1.2, 1e-9), conFatiga.fatiga);
+
+/* Encogimiento bayesiano. */
+const grupoEB = new Map();
+const mk = (clave, vals) => grupoEB.set(clave, vals.map((x, i) => ({ clave: clave, x: x, peso: 1, fecha: i })));
+mk('A', [10, 13, 11, 12, 12, 10, 13, 11]); mk('B', [13, 16, 14, 15, 15, 13, 16, 14]); mk('C', [13]); mk('D', [11, 14, 12, 13, 13, 11, 14, 12]);
+const shEB = F.encoger(grupoEB, g => g.x);
+check('el equipo con 1 partido queda cerca de la media de la liga (credibilidad baja)',
+  shEB.porEquipo.get('C').z < shEB.porEquipo.get('A').z && shEB.porEquipo.get('C').z < 0.5, shEB.porEquipo.get('C').z);
+check('un equipo con 8 partidos pesa más que el prior de la liga',
+  shEB.porEquipo.get('B').z > 0.5, JSON.stringify(shEB.porEquipo.get('B')));
+check('k (peso del prior en partidos) sale de la dispersión medida, no de una constante', isFinite(shEB.k) && shEB.k > 0, shEB.k);
+const iguales = new Map();
+iguales.set('A', [10, 10, 10].map(x => ({ clave: 'A', x: x, peso: 1 })));
+iguales.set('B', [10, 10, 10].map(x => ({ clave: 'B', x: x, peso: 1 })));
+check('si todos son idénticos no hay división por cero: todos a la media', F.encoger(iguales, g => g.x).porEquipo.get('A').valor === 10);
+
+/* Ajuste hacia Oliver con datos simétricos y exactos. */
+const sinteticos = [];
+for (let i = 0; i < 30; i++) {
+  const f = { 'eFG%': 0.45 + 0.01 * ((i % 7) - 3), 'eFG Opp%': 0.45, 'PP%': 0.15, 'PP Opp%': 0.15 + 0.005 * ((i % 5) - 2),
+    'RO%': 0.25 + 0.01 * ((i % 6) - 2.5), 'RO Opp%': 0.25, 'RTL%': 0.2, 'RTL Opp%': 0.2 + 0.01 * ((i % 4) - 1.5) };
+  const margen = 100 * (f['eFG%'] - f['eFG Opp%']) - 60 * (f['PP%'] - f['PP Opp%']) + 40 * (f['RO%'] - f['RO Opp%']) + 20 * (f['RTL%'] - f['RTL Opp%']);
+  sinteticos.push({ id: 'g' + i, clave: 'A', local: true, margen: margen, f: f });
 }
+const ajSint = F.ajustarPesosOliver(sinteticos, 0);
+check('con datos limpios y localía 0 recupera los 4 coeficientes (la liga le gana al prior)',
+  cerca(ajSint.pesos['eFG%'], 100, 0.5) && cerca(ajSint.pesos['PP%'], 60, 0.5) && cerca(ajSint.pesos['RO%'], 40, 0.5) && cerca(ajSint.pesos['RTL%'], 20, 0.5), JSON.stringify(ajSint.pesos));
+const ruido = sinteticos.map((g, i) => Object.assign({}, g, { margen: ((i * 7919) % 13) - 6 }));
+const ajRuido = F.ajustarPesosOliver(ruido, 0);
+check('con ruido puro el modelo desconfía de la liga: credibilidad menor que con datos limpios', ajRuido.credibilidad < ajSint.credibilidad, ajRuido.credibilidad + ' vs ' + ajSint.credibilidad);
+check('los pesos de Oliver suman 1', cerca(Object.values(F.PESOS_OLIVER).reduce((a, b) => a + b, 0), 1));
+
+/* Probabilidad, Monte Carlo, uso y backtest. */
+check('probabilidad de ganar con margen 0 es 50%', cerca(F.probabilidadLocal(0, 10), 0.5, 1e-6));
+check('más margen, más probabilidad; más dispersión la acerca a 50%', F.probabilidadLocal(8, 10) > F.probabilidadLocal(4, 10) && F.probabilidadLocal(8, 20) < F.probabilidadLocal(8, 10));
+check('es simétrica: P(m) + P(−m) = 1', cerca(F.probabilidadLocal(6, 11) + F.probabilidadLocal(-6, 11), 1, 1e-6));
+const mc1 = F.simularMonteCarlo(mXY, pXY, { n: 2000 }), mc2 = F.simularMonteCarlo(mXY, pXY, { n: 2000 });
+check('el Monte Carlo es repetible (semilla fija)', mc1.pLocal === mc2.pLocal && mc1.margenP50 === mc2.margenP50);
+check('el Monte Carlo ordena los percentiles', mc1.margenP10 < mc1.margenP50 && mc1.margenP50 < mc1.margenP90);
+check('el Monte Carlo queda cerca de la probabilidad analítica (±8 pts: usa la dispersión propia de cada equipo)',
+  Math.abs(mc1.pLocal - F.probabilidadLocal(pXY.margen, mXY.sigma)) < 0.08, JSON.stringify({ mc: mc1.pLocal, an: F.probabilidadLocal(pXY.margen, mXY.sigma) }));
+const uso = F.repartirUso([{ nombre: 'A', min: 36, usg: 45, ppp: 1 }, { nombre: 'B', min: 36, usg: 40, ppp: 1 },
+  { nombre: 'C', min: 30, usg: 38, ppp: 1 }, { nombre: 'D', min: 20, usg: 30, ppp: 1 }], 70);
+check('el uso repartido suma las posesiones del equipo: nadie absorbe jugadas que no hay', cerca(uso.jugadores.reduce((s, j) => s + j.plays, 0), 70, 1e-9));
+check('un uso declarado imposible se normaliza a la baja', uso.kappa < 1 && uso.jugadores[0].usgAjustado < 45, uso.kappa);
+check('sin usos no inventa un reparto', F.repartirUso([], 70).ok === false);
+const btFix = F.backtest(F.extraerJuegos(idxSim), { minPrevios: 2 });
+check('el backtest hacia adelante corre y da un error medio finito (o n = 0 si no hay fechas)', btFix.n === 0 || (isFinite(btFix.mae) && btFix.mae >= 0), JSON.stringify({ n: btFix.n, mae: btFix.mae }));
+check('el simulador expone lo que lee Scouting sin recalcular', sim.scouting && sim.scouting.duelos.length === 4 && isFinite(sim.scouting.ritmo));
 
 console.log('\n12. REGLA ANTI-EMPATE: en básquet no hay empates');
 console.log('═'.repeat(70));
@@ -396,7 +442,7 @@ const filasP4FEspejo = [
 ];
 function filaEspejo(equipo, cond, fecha, partido) {
   return {
-    bd: { FECHA: fecha, PARTIDO: partido, EQUIPO: equipo, FASE: 'REGULAR', CONDICION: cond, RESULTADO: 'GANADO', PTS: '70', PTSopp: '70' },
+    bd: { FECHA: fecha, PARTIDO: partido, EQUIPO: equipo, FASE: 'REGULAR', CONDICION: cond, RESULTADO: 'GANADO', PTS: '70', PTSopp: '70', PLAYS: '85', RO: '0', PLAYSopp: '85', ROopp: '0' },
     f4: {
       FECHA: fecha, PARTIDO: partido, EQUIPO: equipo, FASE: 'REGULAR', CONDICION: cond, RESULTADO: 'GANADO',
       'eFG%': '0,45', 'eFG Opp%': '0,45', 'PP%': '0,15', 'PP Opp%': '0,15',

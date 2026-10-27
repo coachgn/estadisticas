@@ -295,7 +295,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=315`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=317`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16204,3 +16204,52 @@ escribe: faltan piezas, quedan menos de tres.
 
 El PDF con la capa `pbp` (cuartos, zonas frías y las líneas del FODA del
 play-by-play) y con las fichas del Plan ORO: la demo no las tiene.
+---
+
+## 148. EL SIMULADOR, VIVO Y BAYESIANO · auditoría y refactor (2026-10-27)
+
+Assets en `?v=317`. `js/sgadd-4factores.js` sección 7; `test-4factores.js` (123 tests).
+
+### Lo que la auditoría encontró (medido con la demo, 17 equipos, 272 partidos)
+
+1. **Dos unidades en la base**: `PACE × PPP`, posesiones por puntos por PLAY (el defecto que el punto 66 dejó abierto).
+2. **Triple contabilidad**: la base ya incluía la eficiencia, y encima se sumaban los duelos de los 4 factores y el Net Rating. Los tres miden lo mismo.
+3. **Sin encogimiento**: un equipo con 2 partidos pesaba 100 %.
+4. **La localía entraba dos veces**: perfiles de local/visitante más un bonus de `2,5 × (1 + 4·ventaja)` con constantes escritas a mano.
+5. **Pesos por regresión sin prior** (cortaba en 30 partidos y caía a regresiones simples sumadas), y probabilidad con una logística de escala 10 sin sustento.
+
+### El modelo nuevo: UNA cadena
+
+`ritmo × ORTG cruzado → margen por posesiones → + localía → + fatiga`, con `ritmo = pL + pV − media` y `ORTG_L = oL + dV − media` (ratings por 100 posesiones, punto 66). Medido: sumar o promediar el ritmo da el mismo error (8,81 contra 8,81).
+
+- **Encogimiento empírico de Bayes** (`encoger`): `k = σ²_dentro / τ²_entre`, medido de la dispersión de la liga, para ORTG, DRTG, ritmo y las 8 tasas de los 4 factores. En la demo la credibilidad de un equipo con 32 partidos es ~31 %: los equipos se parecen mucho entre sí.
+- **Pesos de los 4 factores** (`ajustarPesosOliver`): ridge hacia el prior de Dean Oliver (40/25/20/15) con λ elegido por validación cruzada de un partido afuera. Con pocos partidos vuelve a Oliver; con muchos, a la liga (hoy 97 %).
+- **Los 4 factores EXPLICAN el margen, no se suman a él**: `margen = factores + residual + localía + fatiga + ajuste de empate`, siempre exacto (`modelo.reconciliacion`). El residual medio es 1,1 puntos.
+- **Localía**: media del margen local de la liga con un prior débil (3 ± 2 puntos). Una sola vez.
+- **Fatiga**: ridge hacia 0 sobre partidos con ≤ 1 día de descanso; en la demo da +0,56 con 31 casos. Se aplica solo si se pasan `descansoLocal/Visitante`.
+- **Probabilidad**: normal con el error fuera de muestra del propio modelo (11,4 puntos). **Monte Carlo** repetible (semilla fija) con la dispersión de cada equipo.
+- `repartirUso`: normaliza USG% × minutos para que los 5 en cancha sumen 100 %.
+- `backtest`: cada partido se predice con la liga hasta el día anterior.
+
+### Resultado
+
+```
+                        MAE    RMSE   acierto
+modelo viejo (con trampa: ve el partido que predice)   10,22  12,93  62,2 %
+modelo nuevo (con trampa, para comparar)                8,81  11,05  67,0 %
+modelo nuevo, hacia adelante (sin trampa, 210 partidos) 9,36  11,72  62,9 %
+siempre gana el local                                                62,4 %
+```
+
+**Honestidad**: hacia adelante el nuevo mejora el error pero apenas acierta más que «gana el local». Con 32 fechas por equipo y diferencias chicas entre equipos, el valor está en el margen y la incertidumbre, no en el ganador.
+
+### Lo que NO se hizo (y por qué)
+
+- **Rotación, banca, faltas tempranas y clutch por jugador**: el simulador es de equipo y la planilla no trae quintetos; eso vive en el paquete `pbp`. Solo se agregó `repartirUso`. Simular jugadores partido a partido es un proyecto aparte.
+- **Ajuste por calidad de rivales** (SRS): en una conferencia de todos contra todos el sesgo es chico; queda anotado.
+- **Volúmenes de umbral del Scouting**: siguen saliendo de las medianas del índice (punto 147). El simulador exporta `scouting` (duelos, ritmo, ORTG y referencias de liga) para que lean lo mismo.
+- Constantes que quedan y son priors declarados: `PRIOR_LOCALIA`, `PRIOR_FATIGA_SD`, `PESOS_OLIVER`, la grilla de λ y el tope de presentación de 3 %-97 %.
+
+### Compatibilidad
+
+`simularEnfrentamiento` conserva la forma de siempre (la pantalla y los duelos del Scouting no se tocaron en lo funcional). Cambian: `ajusteNetRating` es 0, `pppEsperado*` pasó a ser por posesión (ORTG/100), `usoHistoriaCompleta*` son siempre `false` y `metodoPesos` vale `bayes-oliver` u `oliver`. El perfil por condición (`perfilEquipoSimulacion`) sigue exportado pero ya no lo usa el simulador.
