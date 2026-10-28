@@ -295,7 +295,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=323`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=324`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16360,4 +16360,15 @@ Assets en `?v=322`.
 
 ## 154. LAS FOTOS DE LOS JUGADORES EN EL PDF DE SCOUTING (2026-10-27)
 
-Assets en `?v=323`. Reportado: en el PDF de Scouting las fotos salían como cuadros grises. `torneoImagenJugador` las pinta con `loading="lazy"`: las que están fuera de pantalla no se piden hasta scrollear, y al imprimir el navegador no las espera. `scoutImprimir()` ahora llama a `scoutCargarFotos()` —pasa a `eager` las imágenes de `#scoutInforme` y espera a que bajen, con techo de 6 s— antes de abrir el diálogo. Una foto que no carga sigue cayendo a su escudo (`onerror`). Las fotos son de otro dominio (la liga), así que no se embeben como `data:`; se imprimen por su URL. Sin verificar en un PDF real con fotos.
+Assets en `?v=324`. Reportado: en el PDF de Scouting las fotos salían como cuadros grises. `torneoImagenJugador` las pinta con `loading="lazy"`: las que están fuera de pantalla no se piden hasta scrollear, y al imprimir el navegador no las espera. `scoutImprimir()` ahora llama a `scoutCargarFotos()` —pasa a `eager` las imágenes de `#scoutInforme` y espera a que bajen, con techo de 6 s— antes de abrir el diálogo. Una foto que no carga sigue cayendo a su escudo (`onerror`). Las fotos son de otro dominio (la liga), así que no se embeben como `data:`; se imprimen por su URL. Sin verificar en un PDF real con fotos.
+
+---
+
+## 155. EL PACK PLANTEL, UNA FICHA POR HOJA (2026-10-28)
+
+Assets en `?v=324`. En el pack con la capa `pbp`, la ficha de cada jugador salía en dos hojas: cabecera y tarjetas arriba, y el mapa de tiro entero en la siguiente, con su título solo al pie de la primera. **Causa:** `.rend-card` trae `break-inside: avoid !important` y la card del mapa (mapa + diagnóstico de cuatro tarjetas) mide más que lo que queda de la hoja 1, así que bajaba entera.
+
+- `.mapa-pbp-jugador` se parte ENTRE piezas (`auto !important`); lo que no se parte es cada mapa y cada tarjeta.
+- Dentro de `.ficha-jugador` (pack): aires de 2,5 mm entre bloques, títulos y tarjetas más chicos, mapa al 36 % del ancho (su alto sale del ancho) y diagnóstico compacto. La pregunta de la sección va pegada a su contenido; la ficha lleva `break-inside: avoid`, que se ignora si no cabe.
+- **Medido con el PDF real** (Chrome por CDP, demo + paquete real de la Conferencia Norte inyectado, solo «Mapa de tiro · zonas»): antes la ficha medía 1052 px y partía en dos hojas. Lo más alto eran la tabla de las 14 zonas (390 px contra 232 del dibujo) y la tarjeta de identidad (272). Con filas y tarjeta compactas, sin la «Lectura detallada» (en papel se abre sola), sin la pregunta de la sección ni el título interno de la card, la ficha mide ~890-905 px (el alto útil de la A4 es ~1030): **cada jugador con mapa ocupa una hoja y la primera comparte hoja con el membrete**; 16 jugadores → 16 hojas.
+- Tests: `test-ficha-pdf.js` (4). Para repetir la medición hace falta un paquete con `partidosPbp` y renombrar sus jugadores a los de la demo.

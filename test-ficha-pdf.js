@@ -168,5 +168,18 @@ seccion('6 · TOP 3 del PLANTEL · arriba del plantel y elegible en el pack');
     && /arbolHtml\(elegidas\(\), null, estructuraPack\(\)\.concat\(estructura\(\)\)\)/.test(FI));
 }
 
+{
+  /* PACK COMPACTO (2026-10-28): la ficha de un jugador entra en una hoja. */
+  const H = fs.readFileSync('index.html', 'utf8');
+  const bloque = (H.match(/body\.modo-ficha-print #fichaSalida \.mapa-pbp-jugador \{[^}]*\}/) || [''])[0];
+  check('el mapa del jugador se parte ENTRE piezas, no baja entero (le gana al avoid de .rend-card)',
+    /break-inside: auto !important/.test(bloque));
+  check('cada ficha del pack no se parte si cabe', /\.ficha-jugador \{ break-inside: avoid/.test(H));
+  check('el mapa del pack va mas angosto y con aires chicos',
+    /\.ficha-jugador \.pbp-mapa-grid \{\s*grid-template-columns: minmax\(0, 36%\)/.test(H)
+    && /\.ficha-jugador \.informe-bloque \{ margin-bottom: 2\.5mm/.test(H));
+  check('la pregunta de la seccion no se despega de su contenido', /\.ficha-jugador \.informe-pregunta \{[^}]*break-after: avoid/.test(H));
+}
+
 console.log('\n' + (mal ? '✗ HAY FALLAS   ' : '✓ TODO OK   ') + ok + ' pasaron, ' + mal + ' fallaron');
 process.exit(mal ? 1 : 0);

@@ -2183,7 +2183,50 @@
        Lo que no se parte es CADA mapa (el principal y uno por franja). */
     body.modo-ficha-print #fichaSalida .mapa-pbp-jugador {
       display: block !important;
+      /* `.rend-card` trae `avoid !important`: un bloque más alto que lo que
+         queda de la hoja 1 bajaba entero a la 2 y dejaba su título solo y
+         media hoja en blanco (pack, 2026-10-28). Se parte ENTRE piezas. */
+      break-inside: auto !important; page-break-inside: auto !important;
     }
+    /* PACK PLANTEL COMPACTO (2026-10-28): la ficha de un jugador tiene que
+       entrar en UNA hoja. Aires más chicos entre cabecera, tarjetas y mapa,
+       el mapa un poco más angosto (su alto sale del ancho) y el diagnóstico
+       de cuatro tarjetas en cuatro columnas en vez de dos filas. */
+    body.modo-ficha-print #fichaSalida .ficha-jugador { break-inside: avoid; page-break-inside: avoid; }
+    body.modo-ficha-print #fichaSalida .ficha-jugador .informe-bloque { margin-bottom: 2.5mm; }
+    body.modo-ficha-print #fichaSalida .ficha-jugador .informe-bloque h2 { font-size: 10pt; padding-bottom: 1mm; margin-bottom: 1.5mm; }
+    body.modo-ficha-print #fichaSalida .ficha-jugador .informe-pregunta { margin-bottom: 1.5mm; break-after: avoid; page-break-after: avoid; }
+    body.modo-ficha-print #fichaSalida .ficha-jugador .ficha-aviso { margin-top: 1mm; }
+    body.modo-ficha-print #fichaSalida .ficha-jugador .rend-card { padding: 1.8mm 2.2mm !important; }
+    body.modo-ficha-print #fichaSalida .ficha-jugador .pbp-mapa-grid {
+      grid-template-columns: minmax(0, 36%) minmax(0, 64%) !important; gap: 3mm !important;
+    }
+    /* La tabla de las 14 zonas era lo más alto del mapa (390 px contra 232 del
+       dibujo): filas apretadas y cuerpo chico. Y la tarjeta de identidad con
+       menos aire (272 px → ~200). Medido en el PDF del pack, 2026-10-28. */
+    body.modo-ficha-print #fichaSalida .ficha-jugador .pbp-mapa-grid td,
+    body.modo-ficha-print #fichaSalida .ficha-jugador .pbp-mapa-grid th {
+      padding: .5mm 1mm !important; font-size: 7pt !important; line-height: 1.15 !important;
+    }
+    body.modo-ficha-print #fichaSalida .ficha-jugador .ficha-identidad .card { padding: 2.5mm 3mm !important; }
+    body.modo-ficha-print #fichaSalida .ficha-jugador .ficha-identidad .card > div:first-child { margin-bottom: 1.5mm !important; }
+    body.modo-ficha-print #fichaSalida .ficha-jugador .ficha-identidad .grid { gap: 1.5mm !important; }
+    body.modo-ficha-print #fichaSalida .ficha-jugador .ficha-identidad .grid > div { padding: 1.6mm 2mm !important; }
+    body.modo-ficha-print #fichaSalida .ficha-jugador .ficha-identidad .grid p { margin-top: 0 !important; margin-bottom: 0 !important; }
+    /* Lo que repite al título de la sección o es lectura larga se va del pack:
+       la «Lectura detallada» (en papel se abre sola), la pregunta de la
+       sección y el título interno de la card del mapa. */
+    body.modo-ficha-print #fichaSalida .ficha-jugador .pbp-diagnostico .rend-detalle,
+    body.modo-ficha-print #fichaSalida .ficha-jugador .mapa-pbp-jugador > .rend-card-t,
+    body.modo-ficha-print #fichaSalida .ficha-jugador [data-bloque="mapa"] > .informe-pregunta { display: none !important; }
+    body.modo-ficha-print #fichaSalida .ficha-jugador .mapa-pbp-jugador { padding-top: 1mm !important; }
+    body.modo-ficha-print #fichaSalida .ficha-jugador .pbp-diagnostico { margin-top: 1.5mm !important; }
+    body.modo-ficha-print #fichaSalida .ficha-jugador .pbp-diagnostico .rend-grid { gap: 1.5mm !important; }
+    body.modo-ficha-print #fichaSalida .ficha-jugador .pbp-diagnostico .rend-card { padding: 1.2mm 1.8mm !important; }
+    body.modo-ficha-print #fichaSalida .ficha-jugador .pbp-diagnostico .rend-alerta { padding: .8mm 1.4mm !important; }
+    body.modo-ficha-print #fichaSalida .ficha-jugador .pbp-diagnostico .rend-alerta,
+    body.modo-ficha-print #fichaSalida .ficha-jugador .pbp-diagnostico .rend-mini,
+    body.modo-ficha-print #fichaSalida .ficha-jugador .pbp-diagnostico .rend-pie-t { font-size: 7.5pt; line-height: 1.25; }
     body.modo-ficha-print #fichaSalida .mapa-pbp-jugador .pbp-mapa-caja,
     body.modo-ficha-print #fichaSalida [data-reloj-jugador-mapa] {
       page-break-inside: avoid; break-inside: avoid;
@@ -3416,7 +3459,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=323" />
+<link rel="stylesheet" href="sgadd.css?v=324" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -3613,56 +3656,56 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=323"></script>
+<script src="js/sgadd-club.js?v=324"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=323"></script>
-<script src="js/sgadd-core.js?v=323"></script>
-<script src="js/sgadd-auth.js?v=323"></script>
+<script src="js/sgadd-config.js?v=324"></script>
+<script src="js/sgadd-core.js?v=324"></script>
+<script src="js/sgadd-auth.js?v=324"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=323"></script>
-<script src="js/sgadd-glosario.js?v=323"></script>
-<script src="js/sgadd-glosarioui.js?v=323"></script>
-<script src="js/sgadd-comparativa.js?v=323"></script>
-<script src="js/sgadd-comparativaui.js?v=323"></script>
-<script src="js/sgadd-confirmar.js?v=323"></script>
-<script src="js/sgadd-landing.js?v=323"></script>
-<script src="js/sgadd-login.js?v=323"></script>
-<script src="js/sgadd-data.js?v=323"></script>
-<script src="js/sgadd-clientes.js?v=323"></script>
-<script src="js/sgadd-ui.js?v=323"></script>
-<script src="js/sgadd-muestra.js?v=323"></script>
-<script src="js/sgadd-app.js?v=323"></script>
-<script src="js/sgadd-clasificacion.js?v=323"></script>
+<script src="js/sgadd-demo.js?v=324"></script>
+<script src="js/sgadd-glosario.js?v=324"></script>
+<script src="js/sgadd-glosarioui.js?v=324"></script>
+<script src="js/sgadd-comparativa.js?v=324"></script>
+<script src="js/sgadd-comparativaui.js?v=324"></script>
+<script src="js/sgadd-confirmar.js?v=324"></script>
+<script src="js/sgadd-landing.js?v=324"></script>
+<script src="js/sgadd-login.js?v=324"></script>
+<script src="js/sgadd-data.js?v=324"></script>
+<script src="js/sgadd-clientes.js?v=324"></script>
+<script src="js/sgadd-ui.js?v=324"></script>
+<script src="js/sgadd-muestra.js?v=324"></script>
+<script src="js/sgadd-app.js?v=324"></script>
+<script src="js/sgadd-clasificacion.js?v=324"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-fixture.js?v=323"></script>
-<script src="js/sgadd-inscriptos.js?v=323"></script>
-<script src="js/sgadd-fases.js?v=323"></script>
-<script src="js/sgadd-torneos.js?v=323"></script>
-<script src="js/sgadd-hub.js?v=323"></script>
-<script src="js/sgadd-configui.js?v=323"></script>
-<script src="js/sgadd-estados.js?v=323"></script>
-<script src="js/sgadd-buzon.js?v=323"></script>
-<script src="js/sgadd-charts.js?v=323"></script>
-<script src="js/sgadd-personalidad.js?v=323"></script>
-<script src="js/sgadd-rankings.js?v=323"></script>
-<script src="js/sgadd-partido.js?v=323"></script>
-<script src="js/sgadd-informe.js?v=323"></script>
-<script src="js/sgadd-ficha.js?v=323"></script>
-<script src="js/sgadd-mercado.js?v=323"></script>
-<script src="js/sgadd-fichajes.js?v=323"></script>
-  <script src="js/sgadd-rankingpdf.js?v=323"></script>
-<script src="js/sgadd-equipos.js?v=323"></script>
+<script src="js/sgadd-fixture.js?v=324"></script>
+<script src="js/sgadd-inscriptos.js?v=324"></script>
+<script src="js/sgadd-fases.js?v=324"></script>
+<script src="js/sgadd-torneos.js?v=324"></script>
+<script src="js/sgadd-hub.js?v=324"></script>
+<script src="js/sgadd-configui.js?v=324"></script>
+<script src="js/sgadd-estados.js?v=324"></script>
+<script src="js/sgadd-buzon.js?v=324"></script>
+<script src="js/sgadd-charts.js?v=324"></script>
+<script src="js/sgadd-personalidad.js?v=324"></script>
+<script src="js/sgadd-rankings.js?v=324"></script>
+<script src="js/sgadd-partido.js?v=324"></script>
+<script src="js/sgadd-informe.js?v=324"></script>
+<script src="js/sgadd-ficha.js?v=324"></script>
+<script src="js/sgadd-mercado.js?v=324"></script>
+<script src="js/sgadd-fichajes.js?v=324"></script>
+  <script src="js/sgadd-rankingpdf.js?v=324"></script>
+<script src="js/sgadd-equipos.js?v=324"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=323"></script>
-<script src="js/sgadd-jugadores.js?v=323"></script>
-<script src="js/sgadd-4factores.js?v=323"></script>
-<script src="js/sgadd-scouting.js?v=323"></script>
-<script src="js/sgadd-pbp.js?v=323"></script>
-<script src="js/sgadd-rendimiento.js?v=323"></script>
-<script src="js/sgadd-conclusiones.js?v=323"></script>
-<script src="js/sgadd-diagnostico.js?v=323"></script>
+<script src="js/sgadd-niveles.js?v=324"></script>
+<script src="js/sgadd-jugadores.js?v=324"></script>
+<script src="js/sgadd-4factores.js?v=324"></script>
+<script src="js/sgadd-scouting.js?v=324"></script>
+<script src="js/sgadd-pbp.js?v=324"></script>
+<script src="js/sgadd-rendimiento.js?v=324"></script>
+<script src="js/sgadd-conclusiones.js?v=324"></script>
+<script src="js/sgadd-diagnostico.js?v=324"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
