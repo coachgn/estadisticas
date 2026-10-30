@@ -433,9 +433,11 @@ const SGADD_APP = (function () {
   function decorar(v, base, rotulo) {
     const leerV = v.leer, leerVistaV = v.leerVista, leerJ = v.leerJugador;
     const porClave = new Map((base.liga.jugadores || []).map(j => [claveJugadorVista(j), j]));
+    /* Contra la Regular los PJ del tramo corto van a la banda de ruido. */
+    const pjEq = (k) => { const e = rotulo && v.get ? v.get(k) : null; return e && e.pj != null ? Number(e.pj) : undefined; };
     v.leer = (k, m, vi) => {
       const r = leerV(k, m, vi);
-      if (r) r.propio = SGADD_MUESTRA.comparar(r, base.leer(k, m, vi), rotulo);
+      if (r) r.propio = SGADD_MUESTRA.comparar(r, base.leer(k, m, vi), rotulo, pjEq(k));
       return r;
     };
     v.leerVista = (k, vi) => {
@@ -443,13 +445,15 @@ const SGADD_APP = (function () {
       if (!out) return out;
       const b = base.leerVista(k, vi);
       const mb = new Map(((b && b.filas) || []).map(f => [f.clave, f]));
-      out.filas.forEach(f => { f.propio = SGADD_MUESTRA.comparar(f, mb.get(f.clave), rotulo); });
+      const n = pjEq(k);
+      out.filas.forEach(f => { f.propio = SGADD_MUESTRA.comparar(f, mb.get(f.clave), rotulo, n); });
       return out;
     };
     v.leerJugador = (j, m) => {
       const r = leerJ(j, m);
       const jb = j ? porClave.get(claveJugadorVista(j)) : null;
-      if (r) r.propio = jb ? SGADD_MUESTRA.comparar(r, base.leerJugador(jb, m), rotulo) : null;
+      const n = rotulo && j && j['PJ'] != null ? Number(j['PJ']) : undefined;
+      if (r) r.propio = jb ? SGADD_MUESTRA.comparar(r, base.leerJugador(jb, m), rotulo, n) : null;
       return r;
     };
     return v;
@@ -540,6 +544,13 @@ const SGADD_APP = (function () {
       }).then(() => avisar());
     }
     return _varas.get(k);
+  }
+
+  /** El índice de la Regular contra la que se lee la fase abierta, o null
+      fuera de una fase de eliminación. Es la capa «fantasma» de los radares. */
+  function idxRegular() {
+    const reg = contextoRegular();
+    return reg && reg.idx ? reg.idx : null;
   }
 
   /** Lo que la barra dice de la muestra. null con la muestra apagada. */
@@ -1213,7 +1224,7 @@ const SGADD_APP = (function () {
   return {
     tramoPreferido, recordarTramo, enLlave,
     estado, inicializar, cargar, reindexar, cambiarPlanilla, cambiarFase, cambiarTorneo, cambiarTramo,
-    aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, contextoRegular, etiquetaRegular, textoFaseCorta, onCambio, adoptarEquipoDeCategoria,
+    aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, contextoRegular, idxRegular, etiquetaRegular, textoFaseCorta, onCambio, adoptarEquipoDeCategoria,
     recordarCategoria, categoriaRecordada, sufijoCategoria,
     cambiarMuestra, elegirMuestra, irAPartido, textoMuestra, pjEnMuestra, rivalesParaMuestra, varaDelPeriodo, idxVista, infoMuestra, muestraRecordada, barraMuestra,
     get idx() { return estado.idx; },

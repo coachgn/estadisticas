@@ -400,7 +400,7 @@ const SGADD_MUESTRA = (function () {
    * reparto de plays, el ritmo— no hay lado bueno: `estado` va null y la
    * pantalla pinta la flecha sin color (punto 4).
    */
-  function comparar(rPeriodo, rTemporada, rotulo) {
+  function comparar(rPeriodo, rTemporada, rotulo, n) {
     if (!rPeriodo || !rTemporada) return null;
     const v = rPeriodo.valor, b = rTemporada.valor;
     if (typeof v !== 'number' || typeof b !== 'number' || !isFinite(v) || !isFinite(b)) return null;
@@ -411,13 +411,79 @@ const SGADD_MUESTRA = (function () {
     if (!rPeriodo.descriptiva) {
       estado = enMedia ? 'media' : ((rPeriodo.invertida ? delta < 0 : delta > 0) ? 'arriba' : 'abajo');
     }
-    return {
+    const out = {
       valor: b, formateado: rTemporada.formateado, delta: delta,
       direccion: enMedia ? 0 : (delta > 0 ? 1 : -1), estado: estado,
       /* Contra QUÉ se compara: null es la temporada del propio tramo; en una
          fase de eliminación es la Regular (`baseDeTramo`). */
       rotulo: rotulo || null,
     };
+    /* La banda de ruido solo existe contra la Regular, donde el tramo es corto. */
+    if (rotulo && n != null) {
+      const bd = bandaRuido(n);
+      out.n = Number(n) || 0;
+      out.banda = bd;
+      out.ruido = base > 1e-9 ? Math.abs(delta) / base < bd : Math.abs(delta) < 1e-9;
+    }
+    return out;
+  }
+
+  /* ---------------------------------------------------------------------
+     LA BANDA DE RUIDO · cuánto se mueve un promedio de N partidos solo por azar
+
+     Un error estándar relativo: CV por partido / √N. El CV (12 %) es el
+     típico de las métricas de un equipo o de un jugador que juega (eFG%,
+     ORTG, puntos): es una constante DECLARADA, no medida por métrica; con
+     la serie partido a partido de cada equipo saldría un intervalo propio.
+     Con un partido la banda es 12 %: casi todo delta es una foto. Con 4,
+     6 %. Contra la Regular, un delta dentro de la banda no es una racha.
+     --------------------------------------------------------------------- */
+  const RUIDO_CV = 0.12;
+  function bandaRuido(n) {
+    const x = Math.max(1, Number(n) || 1);
+    return RUIDO_CV / Math.sqrt(x);
+  }
+
+  /**
+   * El chip de «cuánto cambió contra la Regular», listo para pintar.
+   * `fmt(delta)` formatea el delta con la unidad de la métrica. Devuelve
+   * null sin comparación contra la Regular. El tono sale del RENDIMIENTO
+   * (en una invertida bajar es 'pos') y es 'nulo' si el delta cae dentro del
+   * ruido: ahí el texto dice que no se puede leer como cambio.
+   */
+  function chipDelta(propio, fmt) {
+    if (!propio || !propio.rotulo || typeof propio.delta !== 'number') return null;
+    const flecha = propio.direccion > 0 ? '▲' : propio.direccion < 0 ? '▼' : '=';
+    const num = (propio.delta > 0 ? '+' : '') + (fmt ? fmt(propio.delta) : String(propio.delta));
+    const ruido = propio.ruido === true;
+    const pj = propio.n != null ? (propio.n === 1 ? 'foto de partido único' : propio.n + ' partidos') : '';
+    let tono = 'info';
+    if (propio.estado) tono = ruido || propio.estado === 'media' ? 'nulo' : (propio.estado === 'arriba' ? 'pos' : 'neg');
+    const texto = propio.direccion === 0 ? '= en su ' + propio.rotulo
+      : flecha + ' ' + num + ' vs ' + propio.rotulo;
+    const nota = ruido ? (propio.n === 1 ? 'foto de partido único' : 'dentro del ruido') : '';
+    const titulo = 'Baseline ' + propio.rotulo + ': ' + (propio.formateado || '—')
+      + (propio.banda != null ? ' · el ruido de ' + (propio.n || 1) + ' PJ es ±' + Math.round(propio.banda * 100) + ' %' : '')
+      + (pj ? ' · ' + pj : '');
+    return { texto: texto, tono: tono, ruido: ruido, nota: nota, titulo: titulo, base: propio.formateado || null };
+  }
+
+  /**
+   * La frase de DIAGNÓSTICO sobre un ítem débil o fuerte: ¿nació en la fase
+   * o ya venía de la Regular? Sin comparación contra la Regular devuelve ''.
+   * `fuerte` = true para una fortaleza, false para un punto de quiebre.
+   */
+  function lecturaDelta(propio, fuerte, fmt) {
+    if (!propio || !propio.rotulo || typeof propio.delta !== 'number' || !propio.estado) return '';
+    const cuanto = (propio.delta > 0 ? '+' : '') + (fmt ? fmt(propio.delta) : propio.delta);
+    if (propio.ruido || propio.estado === 'media') {
+      return fuerte ? 'Lo trae de la Regular: no cambió en la fase (dentro del ruido).'
+        : 'Es estructural: ya lo traía de la Regular (' + cuanto + ' vs Reg, dentro del ruido).';
+    }
+    if (fuerte) return propio.estado === 'arriba' ? 'Se potenció en la fase: ' + cuanto + ' vs Regular.'
+      : 'Bajó contra su Regular (' + cuanto + ') aunque sigue arriba de la liga.';
+    return propio.estado === 'abajo' ? 'Nació en la fase: ' + cuanto + ' vs Regular, peor que lo que traía.'
+      : 'Mejoró contra su Regular (' + cuanto + ') y todavía queda bajo la liga.';
   }
 
   /**
@@ -627,7 +693,7 @@ const SGADD_MUESTRA = (function () {
 
   const API = {
     TODO, MAX_SEMANAS, MAX_ULTIMOS, HOJAS_PARTIDO, TOLERANCIA_MEDIA, CONTEXTO, MUESTRA_CHICA,
-    normalizar, activa, familia, clave, recortarPorCondicion, diasDelTramo, ventana, recortar, etiqueta, comparar, esEliminacion, baseDeTramo, restarDias, diaIso,
+    normalizar, activa, familia, clave, recortarPorCondicion, diasDelTramo, ventana, recortar, etiqueta, comparar, RUIDO_CV, bandaRuido, chipDelta, lecturaDelta, esEliminacion, baseDeTramo, restarDias, diaIso,
     CORTES, MEZCLA_PERIMETRAL, VARA_MIN_PARTIDOS, VARA_MIN_CALIFICADOS,
     varaJugadores, varaSuficiente, expandir, medianaDeVara, aplicarVara, cuantil,
   };

@@ -350,6 +350,17 @@
   .rend-ficha-l { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted, #8a8a8a); }
   .rend-ficha-v { font-size: 1.15rem; font-weight: 700; line-height: 1.2; color: var(--rt); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
   .rend-ficha-s { font-size: 10.5px; color: var(--muted, #8a8a8a); overflow-wrap: anywhere; }
+  /* EL DELTA CONTRA LA REGULAR (Corte 2): un badge junto al valor. Nunca solo
+     color: lleva ▲ ▼ = y, dentro del ruido, la palabra. El tono sale del
+     rendimiento (en una invertida bajar es verde). */
+  .delta-chip { --dt: #94a3b8; display: inline-block; vertical-align: middle; margin-left: .35rem; padding: .05rem .45rem;
+    font-size: 11px; font-weight: 600; line-height: 1.35; border-radius: 999px; white-space: nowrap; color: var(--dt);
+    border: 1px solid color-mix(in srgb, var(--dt) 55%, transparent); background: color-mix(in srgb, var(--dt) 13%, transparent); }
+  .delta-pos { --dt: #4ade80; } .delta-neg { --dt: #f87171; } .delta-info { --dt: #60a5fa; }
+  .delta-nulo { --dt: #94a3b8; border-style: dashed; }
+  .rend-ficha-d { margin: .1rem 0 .15rem; } .rend-ficha-d .delta-chip { margin-left: 0; }
+  .rend-ficha-n { font-size: 10px; color: var(--muted, #8a8a8a); }
+  .concl-vsreg { font-size: 11px; color: var(--ink, #f5f4f2); opacity: .85; margin-top: .15rem; }
   .rend-barras { display: grid; gap: .5rem; margin-bottom: .6rem; }
   .rend-barra-t { display: flex; justify-content: space-between; gap: .5rem; font-size: 11px; color: var(--ink, #f5f4f2); margin-bottom: .15rem; }
   .rend-barra-t span:last-child { color: var(--muted, #8a8a8a); text-align: right; }
@@ -370,6 +381,8 @@
   @media print {
     .rend-raiz { --rt-pos: #15803d; --rt-aviso: #8a5206; --rt-neg: #b91c1c; --rt-info: #1d4ed8; }
     .rend-t-nulo { --rt: #111; }
+    .delta-pos { --dt: #15803d; } .delta-neg { --dt: #b91c1c; } .delta-info { --dt: #1d4ed8; } .delta-nulo { --dt: #475569; }
+    .delta-chip { font-size: 7pt; padding: 0 1.4mm; }
     .rend-detalle:not([open]) > :not(summary) { display: block !important; }
     /* PAPEL SIN CARDS PARTIDAS (2026-10-26): una micro-card del Bento, una
        ficha, una alerta, un eje de las conclusiones o un mapa no se cortan
@@ -3459,7 +3472,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=327" />
+<link rel="stylesheet" href="sgadd.css?v=328" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -3656,56 +3669,56 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=327"></script>
+<script src="js/sgadd-club.js?v=328"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=327"></script>
-<script src="js/sgadd-core.js?v=327"></script>
-<script src="js/sgadd-auth.js?v=327"></script>
+<script src="js/sgadd-config.js?v=328"></script>
+<script src="js/sgadd-core.js?v=328"></script>
+<script src="js/sgadd-auth.js?v=328"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=327"></script>
-<script src="js/sgadd-glosario.js?v=327"></script>
-<script src="js/sgadd-glosarioui.js?v=327"></script>
-<script src="js/sgadd-comparativa.js?v=327"></script>
-<script src="js/sgadd-comparativaui.js?v=327"></script>
-<script src="js/sgadd-confirmar.js?v=327"></script>
-<script src="js/sgadd-landing.js?v=327"></script>
-<script src="js/sgadd-login.js?v=327"></script>
-<script src="js/sgadd-data.js?v=327"></script>
-<script src="js/sgadd-clientes.js?v=327"></script>
-<script src="js/sgadd-ui.js?v=327"></script>
-<script src="js/sgadd-muestra.js?v=327"></script>
-<script src="js/sgadd-app.js?v=327"></script>
-<script src="js/sgadd-clasificacion.js?v=327"></script>
+<script src="js/sgadd-demo.js?v=328"></script>
+<script src="js/sgadd-glosario.js?v=328"></script>
+<script src="js/sgadd-glosarioui.js?v=328"></script>
+<script src="js/sgadd-comparativa.js?v=328"></script>
+<script src="js/sgadd-comparativaui.js?v=328"></script>
+<script src="js/sgadd-confirmar.js?v=328"></script>
+<script src="js/sgadd-landing.js?v=328"></script>
+<script src="js/sgadd-login.js?v=328"></script>
+<script src="js/sgadd-data.js?v=328"></script>
+<script src="js/sgadd-clientes.js?v=328"></script>
+<script src="js/sgadd-ui.js?v=328"></script>
+<script src="js/sgadd-muestra.js?v=328"></script>
+<script src="js/sgadd-app.js?v=328"></script>
+<script src="js/sgadd-clasificacion.js?v=328"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-fixture.js?v=327"></script>
-<script src="js/sgadd-inscriptos.js?v=327"></script>
-<script src="js/sgadd-fases.js?v=327"></script>
-<script src="js/sgadd-torneos.js?v=327"></script>
-<script src="js/sgadd-hub.js?v=327"></script>
-<script src="js/sgadd-configui.js?v=327"></script>
-<script src="js/sgadd-estados.js?v=327"></script>
-<script src="js/sgadd-buzon.js?v=327"></script>
-<script src="js/sgadd-charts.js?v=327"></script>
-<script src="js/sgadd-personalidad.js?v=327"></script>
-<script src="js/sgadd-rankings.js?v=327"></script>
-<script src="js/sgadd-partido.js?v=327"></script>
-<script src="js/sgadd-informe.js?v=327"></script>
-<script src="js/sgadd-ficha.js?v=327"></script>
-<script src="js/sgadd-mercado.js?v=327"></script>
-<script src="js/sgadd-fichajes.js?v=327"></script>
-  <script src="js/sgadd-rankingpdf.js?v=327"></script>
-<script src="js/sgadd-equipos.js?v=327"></script>
+<script src="js/sgadd-fixture.js?v=328"></script>
+<script src="js/sgadd-inscriptos.js?v=328"></script>
+<script src="js/sgadd-fases.js?v=328"></script>
+<script src="js/sgadd-torneos.js?v=328"></script>
+<script src="js/sgadd-hub.js?v=328"></script>
+<script src="js/sgadd-configui.js?v=328"></script>
+<script src="js/sgadd-estados.js?v=328"></script>
+<script src="js/sgadd-buzon.js?v=328"></script>
+<script src="js/sgadd-charts.js?v=328"></script>
+<script src="js/sgadd-personalidad.js?v=328"></script>
+<script src="js/sgadd-rankings.js?v=328"></script>
+<script src="js/sgadd-partido.js?v=328"></script>
+<script src="js/sgadd-informe.js?v=328"></script>
+<script src="js/sgadd-ficha.js?v=328"></script>
+<script src="js/sgadd-mercado.js?v=328"></script>
+<script src="js/sgadd-fichajes.js?v=328"></script>
+  <script src="js/sgadd-rankingpdf.js?v=328"></script>
+<script src="js/sgadd-equipos.js?v=328"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=327"></script>
-<script src="js/sgadd-jugadores.js?v=327"></script>
-<script src="js/sgadd-4factores.js?v=327"></script>
-<script src="js/sgadd-scouting.js?v=327"></script>
-<script src="js/sgadd-pbp.js?v=327"></script>
-<script src="js/sgadd-rendimiento.js?v=327"></script>
-<script src="js/sgadd-conclusiones.js?v=327"></script>
-<script src="js/sgadd-diagnostico.js?v=327"></script>
+<script src="js/sgadd-niveles.js?v=328"></script>
+<script src="js/sgadd-jugadores.js?v=328"></script>
+<script src="js/sgadd-4factores.js?v=328"></script>
+<script src="js/sgadd-scouting.js?v=328"></script>
+<script src="js/sgadd-pbp.js?v=328"></script>
+<script src="js/sgadd-rendimiento.js?v=328"></script>
+<script src="js/sgadd-conclusiones.js?v=328"></script>
+<script src="js/sgadd-diagnostico.js?v=328"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

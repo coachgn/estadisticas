@@ -583,6 +583,23 @@ function equiposTabDefensiva(idx, e) {
     </div>`;
 }
 
+/* La capa fantasma de los radares: el mismo equipo medido contra la liga
+   en su REGULAR, dibujado punteado debajo de la fase actual. Solo existe
+   en una fase de eliminación con Regular en el libro; si el equipo no jugó
+   la Regular, no hay capa (null). `armar(idxRegular, eRegular)` devuelve
+   los datos del radar. */
+function equiposCapaRegular(e, armar) {
+  if (typeof SGADD_APP === 'undefined' || typeof SGADD_APP.idxRegular !== 'function') return null;
+  const ridx = SGADD_APP.idxRegular();
+  const er = ridx && ridx.get ? ridx.get(e.clave) : null;
+  if (!er) return null;
+  try {
+    const data = armar(ridx, er);
+    return data ? { label: 'Regular (baseline)', data: data, fantasma: true,
+      color: SGADD_CHARTS.COL.tinta, relleno: 'transparent' } : null;
+  } catch (err) { return null; }
+}
+
 function equiposTab4F(idx, e) {
   /* El radar necesita una escala común: usamos el percentil, que ya viene
      0-100 y con la dirección resuelta (en métricas invertidas, más lejos del
@@ -591,20 +608,23 @@ function equiposTab4F(idx, e) {
   const df = ['eFG Opp%', 'PP Opp%', 'RTL Opp%', 'RO Opp%'];
   const pct = ks => ks.map(k => { const r = idx.leer(e.clave, k); return r && r.percentil !== null ? r.percentil : 50; });
   const lbl = ks => ks.map(k => SGADD.metrica(k).label);
+  const fantasmaDe = ks => equiposCapaRegular(e, (ri, er) => ks.map(k => {
+    const r = ri.leer(er.clave, k); return r && r.percentil !== null ? r.percentil : 50; }));
+  const conFantasma = (serie, ks) => { const f = fantasmaDe(ks); return f ? serie.concat([f]) : serie; };
 
   return `
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6" data-subcard-de="equipo.4factores.radar-of equipo.4factores.radar-def">
       <div data-subcard="equipo.4factores.radar-of">${equiposPanel('Perfil ofensivo · percentiles',
-        SGADD_CHARTS.radar('chRadarOf', lbl(of), [
+        SGADD_CHARTS.radar('chRadarOf', lbl(of), conFantasma([
           { label: e.nombre, data: pct(of) },
           { label: 'Mediana de la liga', data: of.map(() => 50), color: SGADD_CHARTS.COL.liga, relleno: 'transparent' },
-        ]),
+        ], of)),
         SGADD_CHARTS.nota('El círculo del 50 es la mediana. Cuanto más lejos del centro, mejor — también en las métricas donde menos es mejor.'))}</div>
       <div data-subcard="equipo.4factores.radar-def">${equiposPanel('Perfil defensivo · percentiles',
-        SGADD_CHARTS.radar('chRadarDef', lbl(df), [
+        SGADD_CHARTS.radar('chRadarDef', lbl(df), conFantasma([
           { label: e.nombre, data: pct(df), color: SGADD_CHARTS.COL.acento, relleno: SGADD_CHARTS.COL.acentoSuave },
           { label: 'Mediana de la liga', data: df.map(() => 50), color: SGADD_CHARTS.COL.liga, relleno: 'transparent' },
-        ]))}</div>
+        ], df)))}</div>
     </div>
     <div data-subcard="equipo.4factores.tablas">
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6" data-hoja>
@@ -1039,12 +1059,17 @@ function equiposTabPersonalidad(idx, e) {
     : `<p class="text-xs text-muted">Ningún rasgo se separa lo suficiente de la media como para definirlo.</p>`;
 
   /* --- Radar: los 8 ejes en percentil --- */
+  const fantasmaPers = equiposCapaRegular(e, (ri, er) => {
+    const pr = SGADD_PERSONALIDAD.perfil(ri, er);
+    /* Los mismos 8 ejes en el mismo orden; sin alguno, no hay capa. */
+    return pr && pr.ejes && pr.ejes.length === p.ejes.length ? pr.ejes.map(x => x.percentil) : null;
+  });
   const radar = SGADD_CHARTS.radar('chPersonalidad',
     p.ejes.map(x => x.titulo),
     [
       { label: e.nombre, data: p.ejes.map(x => x.percentil) },
       { label: 'Mediana de la liga', data: p.ejes.map(() => 50), color: SGADD_CHARTS.COL.liga, relleno: 'transparent' },
-    ]);
+    ].concat(fantasmaPers ? [fantasmaPers] : []));
 
   const aviso = p.ejes.some(x => !x.muestraSuficiente)
     ? SGADD_UI.aviso('Perfil provisorio',
@@ -1058,7 +1083,8 @@ function equiposTabPersonalidad(idx, e) {
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6" data-subcard-de="equipo.personalidad.radar equipo.personalidad.ataque">
       <div data-subcard="equipo.personalidad.radar">${equiposPanel('Perfil completo · 8 ejes', radar,
-        SGADD_CHARTS.nota('El anillo del 50 es la mediana de su liga. Los ejes no tienen lado bueno ni malo: son formas de jugar.'))}</div>
+        SGADD_CHARTS.nota('El anillo del 50 es la mediana de su liga. Los ejes no tienen lado bueno ni malo: son formas de jugar.'
+          + (fantasmaPers ? ' La línea punteada es su perfil de la Regular: si la capa sólida se corre, el equipo cambió de forma de jugar en la fase.' : '')))}</div>
       <div data-hoja data-subcard="equipo.personalidad.ataque">
         <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Cómo ataca</h5>
         ${ataque.map(eje).join('')}

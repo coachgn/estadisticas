@@ -234,7 +234,7 @@ check('Jugadores con el log recortado dice que ve la temporada', /tu plan ve la 
    6 · LAS CARDS · ▲▼ contra la temporada
    ===================================================================== */
 titulo('6 · statCard y metricTable con «propio»');
-const ctxUI = { SGADD: SGADD, console };
+const ctxUI = { SGADD: SGADD, SGADD_MUESTRA: require('./js/sgadd-muestra.js'), console };
 vm.createContext(ctxUI);
 vm.runInContext(UI_SRC + '\nthis.SGADD_UI = SGADD_UI;', ctxUI);
 const UI = ctxUI.SGADD_UI;
@@ -268,7 +268,7 @@ check('los dos PDF declaran la muestra en su encabezado', /textoMuestra\(\{ juga
 check('en una muestra los partidos manuales no se suman', /idx && idx\.__muestra\) \? \[\] : clasifManualesVigentes\(\)/.test(CL));
 const iM = HTML.indexOf('js/sgadd-muestra.js'), iA = HTML.indexOf('js/sgadd-app.js');
 check('sgadd-muestra.js carga ANTES que sgadd-app.js', iM !== -1 && iM < iA);
-check('assets en v327', /sgadd-muestra\.js\?v=327/.test(HTML) && !/\?v=29\d/.test(HTML));
+check('assets en v328', /sgadd-muestra\.js\?v=328/.test(HTML) && !/\?v=29\d/.test(HTML));
 check('el CSS del badge va a mano en el <style>', /\.muestra-badge \{/.test(HTML));
 
 /* =====================================================================
@@ -591,6 +591,43 @@ const lecR = { label: 'Puntos', clave: 'PTS', formateado: '90', delta: 1, percen
 check('la card dice «vs Regular»', /vs Regular/.test(uiR.statCard(lecR)) && !/vs su temporada/.test(uiR.statCard(lecR)));
 check('la tabla rotula la columna «Regular»', />Regular<\/th>/.test(uiR.metricTable({ label: 'x', filas: [Object.assign({ tipoFormateado: '1', invertida: false }, lecR)] })));
 check('sin rótulo sigue diciendo su temporada', /vs su temporada/.test(uiR.statCard(Object.assign({}, lecR, { propio: Object.assign({}, lecR.propio, { rotulo: null }) }))));
+
+/* 12 · Corte 2: el delta contra la Regular, la banda de ruido y la capa fantasma */
+console.log('\n12 · delta vs Regular, ruido y radar superpuesto');
+{
+  const M = require('./js/sgadd-muestra.js');
+  const lectura = (v, inv) => ({ valor: v, formateado: String(v), descriptiva: false, invertida: !!inv });
+  const fmt = (d) => d.toFixed(1);
+  check('la banda de ruido baja con los partidos', M.bandaRuido(1) > M.bandaRuido(4) && casi(M.bandaRuido(4), M.RUIDO_CV / 2, 1e-9));
+  const foto = M.comparar(lectura(51), lectura(50), 'Regular', 1);
+  check('con 1 PJ un +2 % es ruido y no estado de ánimo', foto.ruido === true && foto.n === 1);
+  check('con 1 PJ el chip dice «foto de partido único» y va neutro', (() => { const c = M.chipDelta(foto, fmt); return c.tono === 'nulo' && /partido único/.test(c.nota); })());
+  const real = M.comparar(lectura(60), lectura(50), 'Regular', 4);
+  const cReal = M.chipDelta(real, fmt);
+  check('+20 % con 4 PJ sale del ruido: ▲ verde con «vs Regular»', real.ruido === false && cReal.tono === 'pos' && /▲ \+10,0? vs Regular|▲ \+10\.0 vs Regular/.test(cReal.texto), cReal.texto);
+  const inv = M.chipDelta(M.comparar(lectura(60, true), lectura(50, true), 'Regular', 4), fmt);
+  check('en una métrica invertida subir es ▲ pero rojo', inv.tono === 'neg' && /^▲/.test(inv.texto));
+  check('el título del chip dice el baseline y el ruido', /Baseline Regular: 50/.test(cReal.titulo) && /ruido de 4 PJ es ±6 %/.test(cReal.titulo));
+  check('sin rótulo (muestra común) no hay banda ni chip', (() => { const p = M.comparar(lectura(60), lectura(50), null, 4); return p.ruido === undefined && M.chipDelta(p, fmt) === null; })());
+  check('lectura: débil y dentro del ruido es ESTRUCTURAL', /estructural/.test(M.lecturaDelta(foto, false, fmt)));
+  check('lectura: débil y empeoró es «nació en la fase»', /Nació en la fase/.test(M.lecturaDelta(M.comparar(lectura(40), lectura(50), 'Regular', 4), false, fmt)));
+  check('lectura: fuerte que se potenció', /Se potenció/.test(M.lecturaDelta(real, true, fmt)));
+  check('lectura: sin Regular no dice nada', M.lecturaDelta(M.comparar(lectura(60), lectura(50), null, 4), true, fmt) === '');
+
+  /* statCard: jerarquía unificada contra la Regular */
+  const ficha = uiR.statCard({ label: 'True Shooting', clave: 'TS%', formateado: '52,7%', delta: 1, tipoFormateado: '47,4%', tipo: 0.474, percentil: 94,
+    propio: { valor: 0.497, formateado: '49,7%', delta: 0.03, direccion: 1, estado: 'arriba', rotulo: 'Regular', n: 4, banda: 0.06, ruido: false } });
+  check('statCard: valor + badge ▲ vs Regular', /data-vs-regular/.test(ficha) && /delta-chip delta-pos/.test(ficha) && /vs Regular/.test(ficha));
+  check('statCard: baseline y liga abajo', /Baseline Reg: 49,7%/.test(ficha) && /Liga: 47,4% \(p94\)/.test(ficha));
+  const fRuido = uiR.statCard({ label: 'PTS', clave: 'PTS', formateado: '90', delta: 1, tipoFormateado: '85', tipo: 85, percentil: 60,
+    propio: { valor: 88, formateado: '88', delta: 2, direccion: 1, estado: 'arriba', rotulo: 'Regular', n: 1, banda: 0.12, ruido: true } });
+  check('statCard: dentro del ruido va neutro y lo dice', /delta-nulo/.test(fRuido) && /foto de partido único/.test(fRuido));
+
+  /* La vista contra la Regular le da los PJ a la banda */
+  const P = armarApp();
+  P.A.estado.idx = base;
+  check('idxRegular existe como API y es null en una fase regular', typeof P.A.idxRegular === 'function' && P.A.idxRegular() === null);
+}
 
 fase3().catch(e => { fail++; console.log('  ✗ fase 3 tiró: ' + (e && e.stack)); }).then(() => {
   console.log('\n' + ok + ' ok · ' + fail + ' fallas');

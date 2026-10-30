@@ -97,6 +97,22 @@ const SGADD_UI = (function () {
            ${flecha} ${esc((r.delta > 0 ? '+' : '') + SGADD.formatear(r.clave, r.delta))} vs mediana
          </p>`;
 
+    /* CONTRA LA REGULAR el widget cambia de jerarquía: el valor y, pegado,
+       el badge del delta; abajo el baseline y la liga. Dentro de la banda
+       de ruido el badge va neutro y lo dice (punto 148 del Corte 2). */
+    const cd = (typeof SGADD_MUESTRA !== 'undefined' && r.propio && r.propio.rotulo)
+      ? SGADD_MUESTRA.chipDelta(r.propio, (d) => SGADD.formatear(r.clave, d)) : null;
+    if (cd) {
+      return `
+      <div class="bg-surface2/50 rounded-lg p-3 ${o.clase || ''}" data-vs-regular="1">
+        <p class="text-[10px] uppercase tracking-wider text-muted font-display truncate" title="${esc(r.label)}">${esc(r.label)}</p>
+        <p class="font-display text-2xl text-ink leading-tight">${esc(r.formateado)}
+          <span class="delta-chip delta-${cd.tono}" title="${esc(cd.titulo)}">${esc(cd.texto)}</span></p>
+        ${cd.nota ? `<p class="text-[10px] text-muted font-mono">≈ ${esc(cd.nota)}: no se lee como cambio</p>` : ''}
+        <p class="text-[10px] text-muted font-mono">Baseline Reg: ${esc(cd.base || '—')}${r.tipoFormateado && r.tipo !== null ? ' · Liga: ' + esc(r.tipoFormateado) + (r.percentil != null && !r.descriptiva ? ' (p' + Math.round(r.percentil) + ')' : '') : ''}</p>
+        ${percentileBar(r, o)}
+      </div>`;
+    }
     const tp = textoPropio(r);
     const propioTxt = !tp ? '' : `<p class="text-[11px] ${tp.color} font-mono" title="${esc((tp.rotulo ? 'Su ' + tp.rotulo + ': ' : 'Su temporada: ') + (tp.temporada || '—'))}">
            ${tp.flecha} ${esc(tp.cuanto)}</p>`;

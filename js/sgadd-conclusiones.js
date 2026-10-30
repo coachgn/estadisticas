@@ -105,19 +105,20 @@ const SGADD_CONCLUSIONES = (function () {
       if (r.muestraSuficiente === false) out.muestra = false;
       return { k, r, d: EQ[k] };
     }).filter(Boolean);
-    const item = (f, texto) => ({
+    const item = (f, texto, fuerte) => ({
       titulo: f.r.label, valor: f.r.formateado, texto,
       sub: 'percentil ' + Math.round(f.r.percentil) + ' · liga ' + f.r.tipoFormateado,
       tono: tonoPct(f.r.percentil), percentil: f.r.percentil, fuente: 'box', clave: f.k,
+      delta: deltaDe(f.r), vsReg: lecturaVsReg(f.r, fuerte),
     });
     filas.filter(f => f.r.percentil >= VERDE && f.d.bien).sort((a, b) => b.r.percentil - a.r.percentil)
-      .slice(0, MAX_ITEMS).forEach(f => out.fortalezas.push(item(f, f.d.bien)));
+      .slice(0, MAX_ITEMS).forEach(f => out.fortalezas.push(item(f, f.d.bien, true)));
     /* Ajustes: rango medio, solo lo entrenable, primero lo que más margen
        tiene (el percentil más bajo dentro del rango). */
     filas.filter(f => f.r.percentil >= ROJO && f.r.percentil < VERDE && f.d.entrenable && f.d.ajuste)
-      .sort((a, b) => a.r.percentil - b.r.percentil).slice(0, 3).forEach(f => out.ajustes.push(item(f, f.d.ajuste)));
+      .sort((a, b) => a.r.percentil - b.r.percentil).slice(0, 3).forEach(f => out.ajustes.push(item(f, f.d.ajuste, false)));
     filas.filter(f => f.r.percentil < ROJO && f.d.mal).sort((a, b) => a.r.percentil - b.r.percentil)
-      .slice(0, MAX_ITEMS).forEach(f => out.alertas.push(item(f, f.d.mal)));
+      .slice(0, MAX_ITEMS).forEach(f => out.alertas.push(item(f, f.d.mal, false)));
     [out.fortalezas, out.ajustes, out.alertas].forEach(l => l.forEach(it => { it.dim = dimDe(it.clave, 'equipo'); }));
     out.dimensiones = dimensiones(idx, e, null);
     out.filosofia = DetectarFilosofiaDT(idx, e);
@@ -175,15 +176,16 @@ const SGADD_CONCLUSIONES = (function () {
       if (!esNum(r.percentil)) { out.califica = false; return null; }
       return { k, r, d: JUG[k] || {} };
     }).filter(Boolean);
-    const item = (f, texto) => ({ titulo: f.r.label, valor: f.r.formateado, texto,
+    const item = (f, texto, fuerte) => ({ titulo: f.r.label, valor: f.r.formateado, texto,
       sub: 'percentil ' + Math.round(f.r.percentil) + (f.r.tipoFormateado ? ' · liga ' + f.r.tipoFormateado : ''),
-      tono: tonoPct(f.r.percentil), percentil: f.r.percentil, fuente: 'box', clave: f.k });
+      tono: tonoPct(f.r.percentil), percentil: f.r.percentil, fuente: 'box', clave: f.k,
+      delta: deltaDe(f.r), vsReg: lecturaVsReg(f.r, fuerte) });
     filas.filter(f => f.r.percentil >= VERDE && f.d.bien).sort((a, b) => b.r.percentil - a.r.percentil)
-      .slice(0, 3).forEach(f => out.fortalezas.push(item(f, f.d.bien)));
+      .slice(0, 3).forEach(f => out.fortalezas.push(item(f, f.d.bien, true)));
     filas.filter(f => f.r.percentil >= ROJO && f.r.percentil < VERDE && f.d.ajuste)
-      .sort((a, b) => a.r.percentil - b.r.percentil).slice(0, 2).forEach(f => out.ajustes.push(item(f, f.d.ajuste)));
+      .sort((a, b) => a.r.percentil - b.r.percentil).slice(0, 2).forEach(f => out.ajustes.push(item(f, f.d.ajuste, false)));
     filas.filter(f => f.r.percentil < ROJO && f.d.mal).sort((a, b) => a.r.percentil - b.r.percentil)
-      .slice(0, 3).forEach(f => out.alertas.push(item(f, f.d.mal)));
+      .slice(0, 3).forEach(f => out.alertas.push(item(f, f.d.mal, false)));
     [out.fortalezas, out.ajustes, out.alertas].forEach(l => l.forEach(it => { it.dim = dimDe(it.clave, 'jugador'); }));
     out.dimensiones = dimensiones(idx, null, j);
     out.proyeccion = proyeccionJugador(idx, j, eje);
@@ -704,7 +706,8 @@ const SGADD_CONCLUSIONES = (function () {
 
   function itemHtml(it) {
     return `<li class="concl-item${(' rend-t-' + (it.tono || 'nulo'))}">
-      <div class="concl-item-c"><b>${esc(it.titulo)}</b><span class="concl-valor">${esc(it.valor)}</span></div>
+      <div class="concl-item-c"><b>${esc(it.titulo)}</b><span class="concl-valor">${esc(it.valor)}${it.delta ? ` <span class="delta-chip delta-${esc(it.delta.tono)}" title="${esc(it.delta.titulo || '')}">${esc(it.delta.texto)}</span>` : ''}</span></div>
+      ${it.vsReg ? `<div class="concl-vsreg">${esc(it.vsReg)}</div>` : ''}
       ${it.sub ? `<div class="concl-sub">${esc(it.sub)}</div>` : ''}
       ${it.texto ? `<div class="concl-texto">${esc(it.texto)}</div>` : ''}
       ${it.fuente === 'pbp' ? '<span class="concl-fuente" title="Del play-by-play">PBP</span>' : ''}</li>`;
@@ -725,6 +728,20 @@ const SGADD_CONCLUSIONES = (function () {
      pestaña de Equipos): valor, liga, puesto y percentil, con el semáforo
      clínico. El ritmo y el reparto del tiro van en azul informativo: no
      tienen lado bueno (punto 4). Una muestra corta lleva `~` y sin color. */
+  /* El delta contra la Regular de una lectura (null fuera de una fase de
+     eliminación): el chip lo arma SGADD_MUESTRA, la misma pieza que statCard. */
+  const MUESTRA = () => (typeof SGADD_MUESTRA !== 'undefined' ? SGADD_MUESTRA : require('./sgadd-muestra.js'));
+  const NUCLEO = () => (typeof SGADD !== 'undefined' ? SGADD : require('./sgadd-core.js'));
+  function deltaDe(r) {
+    if (!r || !r.propio || !r.propio.rotulo) return null;
+    return MUESTRA().chipDelta(r.propio, (d) => NUCLEO().formatear(r.clave, d));
+  }
+  /* «¿Nació en la fase o ya lo traía?», para un ítem del diagnóstico. */
+  function lecturaVsReg(r, fuerte) {
+    if (!r || !r.propio || !r.propio.rotulo) return '';
+    return MUESTRA().lecturaDelta(r.propio, fuerte, (d) => NUCLEO().formatear(r.clave, d));
+  }
+
   const INFORMATIVAS = ['PACE', 'PT3%', 'PT2%', 'PT1%', 'PLAYS', 'POS', 'T2I', 'T3I', 'T1I', 'T2C', 'T3C', 'T1C'];
   function fichaEquipo(idx, e, k) {
     const r = idx.leer(e.clave, k);
@@ -733,10 +750,12 @@ const SGADD_CONCLUSIONES = (function () {
     const info = r.descriptiva || INFORMATIVAS.indexOf(k) !== -1;
     const corta = r.muestraSuficiente === false;
     const tono = r.valor === null ? null : info ? 'info' : (corta ? null : tonoPct(r.percentil));
-    const sub = [r.tipoFormateado && r.tipo !== null ? 'liga ' + r.tipoFormateado : '',
+    const cd = deltaDe(r);
+    const sub = [cd && cd.base ? 'Reg ' + cd.base : '',
+      r.tipoFormateado && r.tipo !== null ? 'liga ' + r.tipoFormateado : '',
       rk ? rk.puesto + '° de ' + rk.de : '',
       esNum(r.percentil) && !info ? 'p' + Math.round(r.percentil) : ''].filter(Boolean).join(' · ');
-    return { label: r.label, valor: r.formateado + (corta && !info ? ' ~' : ''), sub, tono };
+    return { label: r.label, valor: r.formateado + (corta && !info ? ' ~' : ''), sub, tono, delta: cd };
   }
   function fichasEquipo(idx, e, claves) {
     const V = vista();

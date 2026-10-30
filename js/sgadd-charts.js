@@ -278,9 +278,14 @@ const SGADD_CHARTS = (function () {
           data: s.data,
           borderColor: s.color || (i === 0 ? COL.equipo : COL.acento),
           backgroundColor: s.relleno || (i === 0 ? COL.equipoSuave : COL.acentoSuave),
-          borderWidth: 2,
+          /* `fantasma`: la capa de referencia (la Regular) va punteada, sin
+             relleno ni puntos, y detrás de la activa. */
+          borderWidth: s.fantasma ? 1.5 : 2,
+          borderDash: s.fantasma ? [5, 4] : undefined,
+          fill: s.fantasma ? false : true,
+          order: s.fantasma ? 1 : 0,
           pointBackgroundColor: s.color || (i === 0 ? COL.equipo : COL.acento),
-          pointRadius: 3,
+          pointRadius: s.fantasma ? 0 : 3,
         })),
       },
       options: baseOpciones({

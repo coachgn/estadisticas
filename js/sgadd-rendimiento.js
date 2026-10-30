@@ -443,6 +443,7 @@ const SGADD_RENDIMIENTO = (() => {
   const ficha = (t) => `<div class="rend-ficha${claseTono(t.tono)}">
       <div class="rend-ficha-l">${esc(t.label)}</div>
       <div class="rend-ficha-v">${marca(t.tono)}${esc(t.valor)}</div>
+      ${t.delta ? `<div class="rend-ficha-d"><span class="delta-chip delta-${esc(t.delta.tono)}" title="${esc(t.delta.titulo || '')}">${esc(t.delta.texto)}</span>${t.delta.nota ? ` <span class="rend-ficha-n">≈ ${esc(t.delta.nota)}</span>` : ''}</div>` : ''}
       ${t.sub ? `<div class="rend-ficha-s">${esc(t.sub)}</div>` : ''}</div>`;
   const barra = (b) => `<div class="rend-barra">
       <div class="rend-barra-t"><span>${esc(b.label)}</span><span>${esc(b.sub)}</span></div>
