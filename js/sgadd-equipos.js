@@ -1222,10 +1222,18 @@ function equiposDetallePartido(idx, e, id) {
     </div>`).join('') || '<p class="text-xs dato-sec">Sin desvíos relevantes.</p>';
 
   const rec = a.recomendacion;
+  /* v330 (punto 156): el post-partido en Bento. `dec` trae las tarjetas con
+     nombres, los focos y el plan; sin rival o sin la vista de Rendimiento
+     (que da las fichas, barras y alertas) el informe sale como antes. */
+  const V = (typeof SGADD_RENDIMIENTO !== 'undefined' && SGADD_RENDIMIENTO.vista) ? SGADD_RENDIMIENTO.vista : null;
+  const p1 = (v) => (v * 100).toFixed(1).replace('.', ',') + ' %';
+  const pp1 = (v) => (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(1).replace('.', ',') + ' pp';
+  let dec = null;
+  if (riv && V) { try { dec = SGADD_PARTIDO.decision(idx, propio, riv, a); } catch (e) { dec = null; } }
   /* Va al FINAL del informe, debajo de los box scores: es la conclusión,
      no la introducción. Y si no entra en la hoja, salta a la siguiente
      sin apretar el box score. */
-  const bloqueRec = `
+  const bloqueRecViejo = `
     <div id="proximoCruce" class="mt-6 pt-4 border-t border-hairline">
       <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-3">💡 Para el próximo cruce</p>
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -1246,7 +1254,59 @@ function equiposDetallePartido(idx, e, id) {
       </div>
     </div>`;
 
-  const insight = `
+  /* El plan de ajuste: tres directrices sobre los nombres que desequilibraron.
+     La del reloj la completa el play-by-play (tarjeta montada después). Lo
+     anterior —sostener, corregir, nuestros jugadores, atención al rival— queda
+     plegado: es la lectura por desvío contra el promedio de cada uno. */
+  const ctxPbp = dec ? dec.ctx : null;
+  const conPbp = typeof SGADD_PBP !== 'undefined' && SGADD_PBP.activa && SGADD_PBP.activa();
+  const fechaIso = (f) => {
+    const d = f instanceof Date ? f : (f ? new Date(f) : null);
+    if (!d || isNaN(d)) return '';
+    const p = (x) => String(x).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  };
+  const refPbp = {
+    id: dato(propio.fila, 'ID_PARTIDO_FUENTE'),
+    fecha: fechaIso(part.fecha),
+    rival: riv ? riv.equipo.nombre : '',
+  };
+  /* La tercera directriz del plan es el reloj: sale del play-by-play y llega
+     después de pintar. Sin la capa, el plan lo dice en vez de callarlo. */
+  const conPbpPlan = (p, r, d) => conPbp
+    ? SGADD_PBP.espacioPartido(p.equipo.nombre, refPbp, 'partido-plan-reloj', d.ctx)
+    : V.alerta({ tono: 'info', icono: '🧠', titulo: 'Disciplina de posesión y reloj', texto: 'El cierre del set se lee con el play-by-play del partido (capa de laboratorio), que este equipo todavía no tiene.' });
+  const bloqueRec = !dec ? bloqueRecViejo : `
+    <div id="proximoCruce" class="mt-6 pt-4 border-t border-hairline">
+      <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-3">📋 Plan de ajuste para el próximo cruce</p>
+      <div class="rend-raiz"><div class="rend-alertas" data-plan-ajuste="1">
+        ${dec.plan.perimetro ? V.alerta({ tono: 'neg', icono: '🛑', titulo: dec.plan.perimetro.titulo, texto: dec.plan.perimetro.texto }) : ''}
+        ${dec.plan.interior ? V.alerta({ tono: dec.plan.interior.lectura ? 'neg' : 'info', icono: '🔏', titulo: dec.plan.interior.titulo, texto: dec.plan.interior.texto }) : ''}
+        ${conPbpPlan(propio, riv, dec)}
+      </div></div>
+      <p class="text-[11px] dato-sec mt-2 leading-snug">Sale del box score de la noche y de los nombres que desequilibraron. La planilla no trae posiciones ni tipo de jugada:
+        las lecturas dicen cómo jugó cada uno, y la decisión táctica la toma el cuerpo técnico.</p>
+      <details class="rend-detalle mt-3"><summary>Notas por desvío contra el promedio</summary>${bloqueRecViejo.replace('id="proximoCruce"', '')}</details>
+    </div>`;
+
+  /* Los focos a sostener: lo que salió bien, también en una derrota. */
+  const focosHtml = !dec ? '' : (() => {
+    const col = (titulo, lista, vacio) => `<div>
+        <p class="text-[10px] uppercase tracking-wider text-green-400 font-display mb-1.5">${titulo}</p>
+        <div class="rend-alertas">${lista.length ? lista.map(f => V.alerta({ tono: 'pos', titulo: f.titulo, texto: f.texto })).join('')
+          : `<p class="text-xs dato-sec">${vacio}</p>`}</div>
+      </div>`;
+    return `<div class="mb-6" id="focosPartido" data-focos="1">
+      <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">✅ Focos a sostener${a.gano ? '' : ' · también en la derrota'}</h5>
+      <div class="rend-raiz grid grid-cols-1 lg:grid-cols-2 gap-4">
+        ${col('Ataque', dec.focos.ataque, 'Ningún factor ofensivo se despegó de lo habitual a favor.')}
+        ${col('Defensa', dec.focos.defensa, 'El rival no quedó bajo su habitual en ningún factor.')}
+      </div>
+      <p class="text-[11px] dato-sec mt-2 leading-snug">Lo que quedó por encima del promedio del propio equipo, o del rival por debajo del suyo: es lo que conviene no tocar de cara al próximo partido.</p>
+    </div>`;
+  })();
+
+  const insightViejo = `
     <div class="rounded-lg border border-accent/40 bg-accent/5 p-4 sm:p-5 mb-6
                 hover:border-accent hover:shadow-lg transition-all duration-200">
       <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-3">📌 Insight del partido</p>
@@ -1266,8 +1326,57 @@ function equiposDetallePartido(idx, e, id) {
     </div>`;
   // bloqueRec NO va acá: se inserta al final, debajo de los box scores.
 
-  /* --- 4 Factores enfrentados --- */
-  const factores = (propio.factores && riv && riv.factores) ? (() => {
+  /* QUÉ DECIDIÓ EL PARTIDO · Bento (v330). La frase del marcador arriba y
+     una tarjeta por cosa que lo inclinó, con nombres. Las claves y grietas
+     por desvío contra el promedio quedan plegadas: son el detalle. */
+  const insight = !dec ? insightViejo : `
+    <div class="rounded-lg border border-accent/40 bg-accent/5 p-4 sm:p-5 mb-6" id="decisionPartido" data-decision-partido="1">
+      <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-2">📌 Qué decidió el partido</p>
+      <p class="text-base text-white font-medium leading-relaxed mb-3 max-w-4xl">${escapeHtml(a.texto[0])}</p>
+      <div class="rend-raiz"><div class="rend-grid">${dec.tarjetas.map(t => `
+        <section class="rend-card" data-decision="${escapeAttr(t.id)}">
+          <h5 class="rend-card-t">${V.marca(t.tono)}${escapeHtml(t.titulo)}</h5>
+          ${t.ficha.length ? `<div class="rend-fichas">${t.ficha.map((f, i) => V.ficha({ label: f.label, valor: f.valor, sub: f.sub, tono: i === 0 ? t.tono : 'info' })).join('')}</div>` : ''}
+          <p class="rend-titular">${escapeHtml(t.texto)}</p>
+        </section>`).join('')}</div></div>
+      <details class="rend-detalle mt-3"><summary>Claves, grietas y el resto del relato</summary>
+        <div class="space-y-2 mb-4 max-w-4xl mt-2">${a.texto.slice(1).map(t => `<p class="text-sm text-slate-100 leading-relaxed">${escapeHtml(t)}</p>`).join('')}</div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div><p class="text-[10px] uppercase tracking-wider text-green-400 font-display mb-1.5">3 claves del partido</p>${lista(a.claves, 'border-green-400')}</div>
+          <div><p class="text-[10px] uppercase tracking-wider text-red-400 font-display mb-1.5">3 grietas del partido</p>${lista(a.grietas, 'border-red-400')}</div>
+        </div>
+      </details>
+    </div>`;
+
+  /* --- 4 Factores enfrentados · Bento (v330) ---
+     Una tarjeta por factor: la barra propia y la rival, contra el habitual de
+     cada uno y la mediana de la liga. Verde = se ganó el factor; ámbar =
+     se perdió; rojo = se perdió Y quedó claramente bajo lo habitual (desvío
+     crítico). En pérdidas, menos es mejor. */
+  const factoresBento = (dec && dec.factores.length) ? (() => {
+    const fx = (v) => p1(v);
+    const tarj = (f) => {
+      const tonoP = f.gano === true ? 'pos' : f.gano === false ? (f.critico ? 'neg' : 'aviso') : 'info';
+      const tope = Math.max(f.propio, f.rival, f.habitual || 0, f.liga || 0) || 1;
+      const etiq = f.gano === true ? (f.superior ? 'ganado y sobre su habitual' : 'ganado') : f.gano === false ? (f.critico ? 'desvío crítico' : 'perdido') : 'parejo';
+      const sub = (v, hab, des) => (hab === null ? '' : 'habitual ' + fx(hab) + ' (' + pp1(des === null ? 0 : (f.inv ? -des : des)) + ')') + (f.liga !== null ? ' · liga ' + fx(f.liga) : '');
+      const barraP = V.barra({ label: 'Propio · ' + f.corto + ' ' + fx(f.propio), sub: sub(f.propio, f.habitual, f.desvioPropio), pct: 100 * f.propio / tope, tono: tonoP });
+      const barraR = V.barra({ label: 'Rival · ' + f.corto + ' ' + fx(f.rival), sub: sub(f.rival, f.habitualRival, f.desvioRival) + (f.defensaSuperior ? ' · bajo su habitual: defensa superior' : ''), pct: 100 * f.rival / tope, tono: f.gano === false ? 'pos' : 'info' });
+      return `<section class="rend-card" data-factor="${escapeAttr(f.k)}">
+        <h5 class="rend-card-t">${V.marca(tonoP)}${escapeHtml(f.label)} <span class="font-normal dato-sec">· ${escapeHtml(etiq)}</span></h5>
+        <div class="rend-barras">${barraP}${barraR}</div>
+        <p class="rend-mini">Diferencia con el rival: ${escapeHtml(pp1(f.propio - f.rival))}${f.inv ? ' (menos es mejor)' : ''} · peso ${f.peso} %</p>
+      </section>`;
+    };
+    return `
+      <div class="mb-6" id="factoresBento">
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">4 Factores del partido · contra su habitual y la liga</h5>
+        <div class="rend-raiz"><div class="rend-grid">${dec.factores.map(tarj).join('')}</div></div>
+        <p class="text-[11px] dato-sec mt-2 leading-snug">Verde: se ganó el factor. Ámbar: se perdió. Rojo: se perdió y quedó claramente bajo lo habitual (desvío crítico).
+          En pérdidas, menos es mejor. El peso es el de Dean Oliver (40 · 25 · 20 · 15), el mismo prior del Simulador.</p>
+      </div>`;
+  })() : '';
+  const factoresViejo = (propio.factores && riv && riv.factores) ? (() => {
     const filas = ['eFG%', 'PP%', 'RTL%', 'RO%'].map(k => {
       const vp = propio.factores[k], vr = riv.factores[k];
       if (typeof vp !== 'number' || typeof vr !== 'number') return '';
@@ -1298,6 +1407,7 @@ function equiposDetallePartido(idx, e, id) {
         <p class="text-[11px] dato-sec mt-2">Verde = quién ganó ese factor. En pérdidas, menos es mejor.</p>
       </div>`;
   })() : '';
+  const factores = factoresBento || factoresViejo;
 
   /* --- Métricas avanzadas del partido --- */
   const avanzadas = (a.avanzadas) ? (() => {
@@ -1429,22 +1539,23 @@ function equiposDetallePartido(idx, e, id) {
      Salen del paquete de play-by-play del equipo (capa de laboratorio):
      se montan después de pintar, como las otras cards de pbp. Sin la
      capa, no van. */
-  const conPbp = typeof SGADD_PBP !== 'undefined' && SGADD_PBP.activa && SGADD_PBP.activa();
-  const fechaIso = (f) => {
-    const d = f instanceof Date ? f : (f ? new Date(f) : null);
-    if (!d || isNaN(d)) return '';
-    const p = (x) => String(x).padStart(2, '0');
-    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
-  };
-  const refPbp = {
-    id: dato(propio.fila, 'ID_PARTIDO_FUENTE'),
-    fecha: fechaIso(part.fecha),
-    rival: riv ? riv.equipo.nombre : '',
-  };
+  /* (`conPbp` y `refPbp` se arman más arriba: el plan de ajuste los usa.) */
   const momentum = conPbp ? `
       <div class="mb-6" id="momentumPartido">
-        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Momentum · evolución del marcador</h5>
-        ${SGADD_PBP.espacioPartido(propio.equipo.nombre, refPbp, 'partido-momentum')}
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Momentum · evolución del marcador y quintetos en cancha</h5>
+        ${SGADD_PBP.espacioPartido(propio.equipo.nombre, refPbp, 'partido-momentum', ctxPbp)}
+      </div>` : '';
+  /* Rotaciones minuto a minuto, mapa de calor (punto 156) y la lectura del
+     cierre del set y de la pintura rival. */
+  const rotaciones = conPbp ? `
+      <div class="mb-6" id="rotacionesPartido">
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Rotaciones y cargas de minutos · quién estuvo cuando se movió el marcador</h5>
+        ${SGADD_PBP.espacioPartido(propio.equipo.nombre, refPbp, 'partido-rotaciones', ctxPbp)}
+      </div>` : '';
+  const lectura = conPbp ? `
+      <div class="mb-6" id="lecturaPartido">
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">Lectura táctica · cierre del set y pintura rival</h5>
+        ${SGADD_PBP.espacioPartido(propio.equipo.nombre, refPbp, 'partido-lectura', ctxPbp)}
       </div>` : '';
   /* Los quintetos (punto 97): inicial, de cierre y clutch, justo arriba
      de los box scores. */
@@ -1547,10 +1658,13 @@ function equiposDetallePartido(idx, e, id) {
     <div id="detallePartido">
       ${cabecera}
       ${insight}
+      ${focosHtml}
       ${factores}
       ${avanzadas}
       ${cuartos}
       ${momentum}
+      ${rotaciones}
+      ${lectura}
       ${perfilesTiro}
       ${relojPartido}
       ${mapaPartido}

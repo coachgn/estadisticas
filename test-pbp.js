@@ -1271,6 +1271,83 @@ function paquete(equipo) {
     check('y el manual de etiquetado también', /El perfil táctico por tramo del jugador/.test(manualT) && /Set Ofensivo · Facilitador 5x5/.test(manualT) && /Clutch Defensivo · Taponador/.test(manualT));
   }
 
+  /* ------------------------------------------------------------------
+     EL POST-PARTIDO, TRAMO A TRAMO (v330, punto 156)
+     ------------------------------------------------------------------ */
+  titulo('8 · el partido tramo a tramo: quiebres, rotaciones, cierre del set y pintura rival');
+  {
+    const nombres = {}; const ids = [];
+    for (let i = 0; i < 12; i++) { ids.push(String(100 + i)); nombres[String(100 + i)] = [(i < 6 ? 'PROPIO' : 'RIVAL') + i + ', X', String(i + 4)]; }
+    nombres['111'] = ['<img src=x onerror=1>, Z', '9'];
+    const linea = [[0, 0, 0], [200, 2, 0], [400, 2, 8], [600, 10, 8], [900, 23, 8], [1200, 23, 18], [1500, 23, 33], [2000, 40, 44], [2400, 60, 55]];
+    const tramos = [[0, 900, [0, 1, 2, 3, 4], [6, 7, 8, 9, 10], 0, 15, 1], [900, 1500, [0, 1, 2, 3, 5], [6, 7, 8, 9, 11], 15, -10, 2], [1500, 2400, [0, 1, 2, 4, 5], [6, 7, 8, 10, 11], -10, 5, 3]];
+    const base = { id: 'p1', fecha: '2026-01-01', rival: 'RIVAL', linea, periodos: [[1, 0]], final: [60, 55], nombres, ids, tiros: { favor: [], contra: [] } };
+    const paq = { equipo: 'PROPIO', jugadores: {}, liga: { reloj: { f: [[100, 50, 110, 30, 20, 10], [200, 90, 190, 60, 40, 20], [100, 45, 95, 25, 20, 15]] },
+      zonas: [{ zona: 'Z1', i: 100, c: 60, pct: 60, ppt: 1.2 }, { zona: 'Z2', i: 50, c: 20, pct: 40, ppt: 0.8 }] }, tiros: { detalle: { puntos: { zonas: ['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z6'] } } } };
+    const pp = Object.assign({}, base, { tramos });
+    const q = P.quiebres(paq, pp);
+    check('quiebres: el pico de ventaja es +15 a los 900 s y el de desventaja −10 a los 1500 s', q.ventaja.dif === 15 && q.ventaja.t === 900 && q.desventaja.dif === -10 && q.desventaja.t === 1500, [q.ventaja, q.desventaja]);
+    check('la corrida que armó el pico sale de la línea: +21 desde el mínimo de los seis minutos anteriores', q.ventaja.swing === 21 && q.ventaja.t0 === 540, q.ventaja);
+    check('y la de la desventaja es de −25 (de +15 a −10)', q.desventaja.swing === 25 && q.desventaja.t0 === 1140, q.desventaja);
+    check('el quinteto en cancha en el pico sale de los tramos, con los segundos y el +/- exactos de la ventana', q.ventaja.cancha.mejor.favor.join() === '0,1,2,3,4' && q.ventaja.cancha.mejor.seg === 360 && q.ventaja.cancha.mejor.mm === 21, q.ventaja.cancha);
+    check('en la desventaja el quinteto es el segundo y suma −25', q.desventaja.cancha.mejor.favor.join() === '0,1,2,3,5' && q.desventaja.cancha.mejor.mm === -25);
+    check('el período y el reloj salen de FIBA (900 s = 2.º cuarto, 5:00 para el final)', P.periodoDeT(900).n === 2 && P.periodoDeT(900).resta === 300 && P.periodoDeT(2400 + 120).rot.indexOf('suplementario') === 0);
+    check('un paquete sin tramos NO inventa quintetos: el pico se calcula igual y lo dice', (() => { const s = P.quiebres(paq, base); const h = P.quiebresHtml(paq, base, null);
+      return s.ventaja.cancha === null && s.conTramos === false && /data-sin-tramos/.test(h) && /próxima subida/.test(h); })());
+    const h = P.quiebresHtml(paq, pp, { foco: ['RIVAL9, X'] });
+    check('el bloque marca al generador rival (★) que estuvo en el bache y cuánto', /★ Generador rival/.test(h) && /6:00 de 6:00/.test(h), h.slice(0, 200));
+    check('sin generador en el tramo lo dice en vez de callarse (RIVAL10 no jugó en el bache)', /no jugaron en este tramo/.test(P.quiebresHtml(paq, pp, { foco: ['RIVAL10, X'] })));
+    check('los nombres vienen de afuera: se escapan', !/<img src=x/.test(P.rotacionesPartido(paq, pp, null)) && /&lt;img/.test(P.rotacionesPartido(paq, pp, null)));
+    const m = P.momentumPartido(paq, pp, null);
+    check('el momentum marca los picos con su valor y suma el bloque de quiebres', /mo-pico-f/.test(m) && /mo-pico-c/.test(m) && /data-quiebre="ventaja"/.test(m) && /data-quiebre="desventaja"/.test(m));
+    /* Rotaciones: cada lado suma 5 jugadores × el tiempo de juego, y el +/- del rival es el del SU equipo. */
+    const rot = P.rotacionesDe(pp);
+    check('rotaciones: los segundos de cada lado suman 5 × 2400', rot.favor.reduce((s, j) => s + j.seg, 0) === 12000 && rot.contra.reduce((s, j) => s + j.seg, 0) === 12000, [rot.fin]);
+    check('un jugador que no sale queda en UN tramo continuo con el +/- del equipo; el del rival, con el signo dado vuelta',
+      rot.favor.find(j => j.k === 0).tramos.length === 1 && rot.favor.find(j => j.k === 0).mm === 5 && rot.contra.find(j => j.k === 6).mm === -5);
+    check('el que sale y vuelve (el 4) tiene dos tramos; el que sigue contiguo, uno', rot.favor.find(j => j.k === 4).tramos.length === 2 && rot.favor.find(j => j.k === 3).tramos.length === 1 && rot.favor.find(j => j.k === 5).tramos.length === 1);
+    const rh = P.rotacionesPartido(paq, pp, { foco: ['RIVAL9, X'] });
+    check('el mapa de calor marca ★ al generador rival y dice qué es el color', /rot-foco/.test(rh) && /\+\/- de su equipo/.test(rh) && !/undefined|NaN/.test(rh));
+    check('sin tramos las rotaciones no se inventan', /próxima subida/.test(P.rotacionesPartido(paq, base, null)));
+    /* El cierre del set. */
+    const rel = (c0, c1, c2, c3) => ({ favor: { f: [c0, c1, c2] }, contra: { f: [c3, [10, 4, 9, 2, 2, 1], [8, 6, 16, 4, 3, 1]] } });
+    const ppc = Object.assign({}, pp, { reloj: { favor: { f: [[10, 5, 12, 3, 3, 2], [20, 9, 19, 6, 4, 3], [8, 3, 6, 2, 1, 2]] }, contra: { f: [[8, 4, 9, 2, 2, 1], [10, 4, 9, 2, 2, 1], [8, 6, 16, 4, 3, 1]] } } });
+    const c = P.cierreDelSet(paq, ppc);
+    check('el cierre del set se castiga cuando el rival hizo ≥ 0,20 sobre la liga con 5 tiros o más (6/8 · 2,00 contra 0,95)', c.alertaDefensa === 'castigo' && c.final.tiros === 8 && Math.abs(c.final.ppt - 2) < 1e-9, c);
+    check('el texto dice 18-24 s, los convertidos, la liga y que el dato de un partido no separa concentración de buena resolución',
+      /6\/8/.test(P.cierreHtml(paq, ppc)) && /0,95 de la liga/.test(P.cierreHtml(paq, ppc)) && /pérdida de concentración defensiva/.test(P.cierreHtml(paq, ppc)) && /no los separa/.test(P.cierreHtml(paq, ppc)));
+    const pocos = Object.assign({}, ppc, { reloj: { favor: ppc.reloj.favor, contra: { f: [ppc.reloj.contra.f[0], ppc.reloj.contra.f[1], [4, 3, 8, 1, 1, 0]] } } });
+    check('con menos de 5 tiros en el cierre no hay alerta (una noche no es una tendencia)', P.cierreDelSet(paq, pocos).alertaDefensa === null);
+    const bien = Object.assign({}, ppc, { reloj: { favor: ppc.reloj.favor, contra: { f: [ppc.reloj.contra.f[0], ppc.reloj.contra.f[1], [8, 1, 2, 0, 0, 3]] } } });
+    check('si el rival quedó 0,20 o más bajo la liga, el cierre se marca como bien defendido', P.cierreDelSet(paq, bien).alertaDefensa === 'contuvo' && /bien defendido/.test(P.cierreHtml(paq, bien)));
+    check('la directriz del plan usa el mismo cierre', /Concentración defensiva al final del set/.test(P.planRelojHtml(paq, ppc)) && /mantener la misma disciplina/.test(P.planRelojHtml(paq, bien)));
+    const justo = Object.assign({}, ppc, { reloj: { favor: ppc.reloj.favor, contra: { f: [ppc.reloj.contra.f[0], ppc.reloj.contra.f[1], [8, 4, 8, 1, 1, 0]] } } });
+    check('1,00 contra 0,95 de la liga (+0,05) no es un castigo: el corte es 0,20', P.cierreDelSet(paq, justo).alertaDefensa === null);
+    check('sin reloj en el partido lo dice y no inventa', /Sin reloj de posesión/.test(P.cierreHtml(paq, pp)) && /Sin reloj de posesión/.test(P.planRelojHtml(paq, pp)));
+    /* La pintura rival. */
+    const ppt = Object.assign({}, ppc, { tiros: { favor: [], contra: [[0, 10, 1, 0], [0, 10, 0, 0], [0, 10, 1, 1], [0, 10, 1, 5], [0, 10, 0, 5]] } });
+    const pr = P.pinturaRival(paq, ppt, { rivalRo: 11, nuestroRd: 24, rivalDobles: [{ n: 'Fulano', t2c: 7, t2i: 14 }] });
+    check('la pintura cuenta solo Z1 a Z4 contra la liga, con el reparto y el rebote rival', pr.tiros === 3 && pr.conv === 2 && pr.de === 5 && Math.round(pr.parte) === 60 && Math.abs(pr.ppt - 4 / 3) < 1e-9 && Math.abs(pr.liga - 160 / 150) < 1e-9 && pr.ro === 11, pr);
+    const ph = P.pinturaHtml(paq, ppt, { rivalRo: 11, nuestroRd: 24, rivalDobles: [{ n: 'Fulano', t2c: 7, t2i: 14 }] });
+    check('el texto nombra a los que más dobles intentaron y el rebote, y con poca muestra no afirma que rompieron la primera línea', /Fulano 7\/14/.test(ph) && /11 rebotes ofensivos/.test(ph) && !/rompieron la primera línea/.test(ph));
+    const alta = Object.assign({}, ppt, { tiros: { favor: [], contra: Array.from({ length: 10 }, (_, k) => [0, 10, k < 8 ? 1 : 0, 0]) } });
+    check('con volumen y 0,15 sobre la liga sí lo dice, y aclara que el tiro no trae quién penetró', /rompieron la primera línea/.test(P.pinturaHtml(paq, alta, null)) && /no trae quién penetró/.test(P.pinturaHtml(paq, alta, null)));
+    check('el lugar del montaje lleva el contexto del box score y cada tipo nuevo se reconoce', (() => { const e = P.espacioPartido('PROPIO', { id: 'p1' }, 'partido-rotaciones', { foco: ['A, B'] });
+      return /data-pbp-tipo="partido-rotaciones"/.test(e) && /data-pbp-ctx=/.test(e) && /data-pbp-tipo="partido-lectura"/.test(P.espacioPartido('P', {}, 'partido-lectura')) && /data-pbp-tipo="partido-plan-reloj"/.test(P.espacioPartido('P', {}, 'partido-plan-reloj')); })());
+    /* Con el paquete REAL de la ingesta, si está en esta máquina. */
+    const real = 'C:/Users/Pc/Documents/motorstats-ingestion/salida/conferencia-norte/web/sp-suardi.json';
+    if (fs.existsSync(real)) {
+      const pr2 = JSON.parse(fs.readFileSync(real, 'utf8'));
+      const conT = pr2.partidosPbp.filter(x => Array.isArray(x.tramos));
+      check('paquete real: todos los partidos validados traen tramos', conT.length >= 8 && conT.length === pr2.partidosPbp.filter(x => x.quintetos).length, conT.length);
+      check('paquete real: en cada partido los segundos de cada lado suman 5 × el tiempo de juego', conT.every(x => { const r = P.rotacionesDe(x); return Math.abs(r.favor.reduce((s, j) => s + j.seg, 0) - 5 * r.fin) < 1 && Math.abs(r.contra.reduce((s, j) => s + j.seg, 0) - 5 * r.fin) < 1; }));
+      check('paquete real: el pico de ventaja y el de desventaja coinciden con la línea y traen quinteto', conT.every(x => { const qq = P.quiebres(pr2, x); const d = x.linea.map(p => p[1] - p[2]);
+        return (!qq.ventaja || (qq.ventaja.dif === Math.max.apply(null, d) && qq.ventaja.cancha && qq.ventaja.cancha.mejor.favor.length === 5))
+          && (!qq.desventaja || (qq.desventaja.dif === Math.min.apply(null, d) && qq.desventaja.cancha)); }));
+      check('paquete real: ningún HTML del partido sale con undefined ni NaN', conT.every(x => !/undefined|NaN/.test(P.momentumPartido(pr2, x, { foco: [] }) + P.rotacionesPartido(pr2, x, null) + P.lecturaPartido(pr2, x, null) + P.planRelojHtml(pr2, x))));
+    }
+  }
+
   console.log('\n' + '═'.repeat(70) + '\n' + (fail ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

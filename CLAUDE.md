@@ -16372,3 +16372,37 @@ Assets en `?v=324`. En el pack con la capa `pbp`, la ficha de cada jugador salí
 - Dentro de `.ficha-jugador` (pack): aires de 2,5 mm entre bloques, títulos y tarjetas más chicos, mapa al 36 % del ancho (su alto sale del ancho) y diagnóstico compacto. La pregunta de la sección va pegada a su contenido; la ficha lleva `break-inside: avoid`, que se ignora si no cabe.
 - **Medido con el PDF real** (Chrome por CDP, demo + paquete real de la Conferencia Norte inyectado, solo «Mapa de tiro · zonas»): antes la ficha medía 1052 px y partía en dos hojas. Lo más alto eran la tabla de las 14 zonas (390 px contra 232 del dibujo) y la tarjeta de identidad (272). Con filas y tarjeta compactas, sin la «Lectura detallada» (en papel se abre sola), sin la pregunta de la sección ni el título interno de la card, la ficha mide ~890-905 px (el alto útil de la A4 es ~1030): **cada jugador con mapa ocupa una hoja y la primera comparte hoja con el membrete**; 16 jugadores → 16 hojas.
 - Tests: `test-ficha-pdf.js` (4). Para repetir la medición hace falta un paquete con `partidosPbp` y renombrar sus jugadores a los de la demo.
+
+---
+
+## 156. EL POST-PARTIDO EN BENTO · QUÉ DECIDIÓ, QUINTETOS EN EL MOMENTUM Y EL PLAN DE AJUSTE (2026-10-30)
+
+Corte 4 (v330). Assets en `?v=330`. `test-partido.js` fija el motor del box score y `test-pbp.js` (sección 8) las piezas del play-by-play.
+
+### Lo que la planilla NO dice, y por eso no se escribe
+
+El pedido traía lecturas como «la presión secó la línea de pases» o «el pivote castigó desde el poste alto». **El box score no trae posición ni tipo de jugada**, y el tiro del play-by-play no trae quién lo tiró por zona. Las tarjetas dicen quién hizo qué y con cuánto; lo que es lectura va marcado como lectura y un test falla si aparece «pivote», «presión que» o «secó». El «interior pasador» sale de CÓMO jugó (3+ asistencias y 5+ rebotes), no de un puesto.
+
+### Motor del box score · `SGADD_PARTIDO.decision(idx, lp, lr, a)`
+
+- **Qué decidió**: el factor de mayor IMPACTO = diferencia entre los dos × el peso de Dean Oliver (40 · 25 · 20 · 15, el prior del Simulador). Cada tarjeta nombra al responsable (`responsableFactor`): quién anotó y metió triples, quién perdió y quién robó, quién tomó rebotes ofensivos, quién fue a la línea.
+- **Contra el habitual y la liga**: cada factor trae el promedio de temporada de los dos equipos y la mediana de la liga. `critico` = factor perdido Y bajo lo habitual por el umbral de `CONTRASTE_EQUIPO`.
+- **El modelo contra lo que pasó** (`proyeccionPartido`): el margen del Simulador contra el real. **El modelo se arma con la temporada completa, este partido incluido**: es una vara, no una predicción previa, y la tarjeta lo dice.
+- **Focos a sostener** (`focosPartido`), también en una derrota: factores ganados sobre su habitual y lo que el rival bajó contra el suyo. Una clave que ya es un factor no se repite.
+- **Plan de ajuste** (`planAjuste`): contención perimetral sobre el rival que más repartió o anotó (por su tiro exterior: no pasar por abajo si metió, ir por abajo si falló) y poste alto sobre el interior pasador. La tercera directriz, el reloj, la completa el play-by-play.
+- `ctx` viaja al montaje del paquete: los generadores rivales con el nombre de planilla, los que más dobles intentaron y los rebotes.
+
+### Los tramos del paquete (ingesta)
+
+`partidosPbp[i]` suma `ids` y `tramos`: la cancha tramo a tramo `[desde, hasta, cinco propios, cinco rivales, diferencia al empezar, al terminar, período]`, con índices a `ids`. Dos tramos seguidos con los mismos diez se unen. **Solo con cinco en cancha siempre** (igual que `quintetos`). Suma ~1,5 KB por partido: el paquete más pesado de la Conferencia Norte quedó en 230 KB contra el techo de 256. `test/test-jujuy-pbp.js` (110) fija que los segundos de cada lado sumen 5 × el tiempo y que las diferencias empalmen con el marcador final. **Los paquetes de KV no los traen hasta la próxima subida** (`subir-paquetes.js --confirmar`); sin `tramos` el momentum se dibuja igual y dice que los quintetos llegan después.
+
+### Piezas del play-by-play (`js/sgadd-pbp.js`)
+
+- **Momentum**: marca el pico de ventaja y el de desventaja en el gráfico y debajo, por cada uno, la corrida que lo armó (el mínimo de los seis minutos anteriores), el período y el reloj, el quinteto de cada lado con más tiempo en esa ventana, sus segundos y su +/-, y si el generador rival (★) estuvo en cancha durante el bache.
+- **Rotaciones** (`rotacionesPartido`): una barra por tramo continuo de cada jugador, con el +/- de SU equipo adentro (el del rival, con el signo dado vuelta). Color y signo van juntos.
+- **Lectura del cierre del set** (`cierreDelSet`): el rival en 18-24 s contra la liga. Con 5 tiros o más y 0,20 puntos por tiro de diferencia se marca «cierre castigado» o «bien defendido»; menos, nada. **No separa pérdida de concentración de una buena resolución con el reloj en contra**, y lo dice. Lo mismo para 0-7 y 8-17 s.
+- **Pintura rival** (`pinturaRival`): Z1 a Z4 contra la liga, con los rebotes ofensivos rivales y los que más dobles intentaron. «Rompieron la primera línea» solo con 8 tiros o más y 0,15 sobre la liga, y aclara que el tiro no trae quién penetró.
+
+### Lo que NO se hizo
+
+No se agregó un tercer tipo de dato al tiro (quién lo tiró por zona): el gancho está pero necesita un cambio de la ingesta. Tampoco se regeneró `sgadd.css`: las clases nuevas (`rot-*`) van a mano en el `<style>`.

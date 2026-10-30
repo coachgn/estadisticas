@@ -339,6 +339,51 @@ check('y aclara que PPP es la única por PLAY',
 check('ya no dice que los ratings van por 100 PLAYS',
   !/ORTG y DRTG están calculados por 100/.test(eqJs));
 
+/* ---------------------------------------------------------------------
+   QUÉ DECIDIÓ EL PARTIDO (v330, punto 156)
+   --------------------------------------------------------------------- */
+console.log('\nQUÉ DECIDIÓ EL PARTIDO');
+console.log('─'.repeat(70));
+{
+  const rivalL = part.lados.find(l => l !== propio);
+  propio.factores = { 'eFG%': 0.58, 'PP%': 0.12, 'RO%': 0.30, 'RTL%': 0.20 };
+  rivalL.factores = { 'eFG%': 0.44, 'PP%': 0.19, 'RO%': 0.35, 'RTL%': 0.18 };
+  /* Un box con nombres y números para los responsables. */
+  propio.box.forEach((j, i) => { j['PTS'] = i === 0 ? 24 : 8; j['T2C'] = i === 0 ? 8 : 3; j['T2I'] = i === 0 ? 12 : 6; j['T3C'] = i === 0 ? 3 : 1; j['T3I'] = i === 0 ? 5 : 3; j['PR'] = i === 1 ? 5 : 1; j['PP'] = 1; });
+  rivalL.box.forEach((j, i) => { j['PTS'] = i === 0 ? 20 : 9; j['AST'] = i === 2 ? 9 : 2; j['RT'] = i === 2 ? 8 : 3; j['PP'] = i === 3 ? 6 : 1; j['T2I'] = i === 4 ? 14 : 5; j['T2C'] = i === 4 ? 7 : 2; j['T3I'] = i === 0 ? 6 : 2; j['T3C'] = i === 0 ? 1 : 0; });
+  const fp = P.factoresPartido(idx, propio, rivalL);
+  check('los 4 factores salen de los dos lados', fp.length === 4 && fp.every(f => typeof f.propio === 'number' && typeof f.rival === 'number'));
+  check('el de mayor impacto es el tiro (peso 40 × 14 pp) y no los libres', fp.slice().sort((x, y) => Math.abs(y.impacto) - Math.abs(x.impacto))[0].k === 'eFG%');
+  check('en pérdidas menos es mejor: 12 % contra 19 % lo gana el propio', fp.find(f => f.k === 'PP%').gano === true && fp.find(f => f.k === 'PP%').impacto > 0);
+  check('el rebote ofensivo perdido (30 contra 35) lleva gano false y impacto negativo', fp.find(f => f.k === 'RO%').gano === false && fp.find(f => f.k === 'RO%').impacto < 0);
+  const dec = P.decision(idx, propio, rivalL, a);
+  check('la decisión trae tarjetas, focos y plan', dec && dec.tarjetas.length >= 2 && dec.focos && dec.plan);
+  check('la primera tarjeta es el factor que más pesó y dice la cifra de los dos', dec.tarjetas[0].id === 'decisor' && /58,0 % contra 44,0 %/.test(dec.tarjetas[0].texto), dec.tarjetas[0].texto);
+  check('nombra a quien lo sostuvo, con sus números del box', /Local1 24 pts \(11\/17 en tiros de campo\)/.test(dec.tarjetas[0].texto), dec.tarjetas[0].texto);
+  const perim = dec.plan.perimetro;
+  check('el plan perimetral nombra al rival que más repartió, con sus asistencias', perim && /Visita3 hizo 9 pts y 9 asistencias|Visita3/.test(perim.texto) && /9 asistencias/.test(perim.texto), perim && perim.texto);
+  check('el plan interior nombra al interior que reparte y rebotea, y dice que sale de cómo jugó, no de un puesto',
+    dec.plan.interior.nombres.length === 1 && /interior que juega de pasador/.test(dec.plan.interior.texto) && /Visita3/.test(dec.plan.interior.texto), dec.plan.interior);
+  check('nadie escribe un puesto ni una causa que la planilla no tiene (pivote, presión, secó la línea)',
+    !/pivote|presión que|secó|alero|base /i.test(JSON.stringify(dec.tarjetas) + JSON.stringify(dec.plan) + JSON.stringify(dec.focos)));
+  check('el contexto para el play-by-play trae los generadores rivales con su nombre de planilla, los dobles y los rebotes',
+    dec.ctx.foco.indexOf('VISITA3, NOMBRE') !== -1 && dec.ctx.rivalDobles[0].t2i === 14 && typeof dec.ctx.rivalRo === 'number', dec.ctx);
+  check('los focos a sostener incluyen el factor ganado y lo que el rival bajó', dec.focos.ataque.some(f => /Tiro de campo/.test(f.titulo)));
+  /* Sin el factor ganado ni nada a sostener no se inventa un foco. */
+  const peor = JSON.parse(JSON.stringify(fp)).map(f => Object.assign(f, { gano: f.gano === true ? false : f.gano, superior: false }));
+  const focoVacio = P.focosPartido(idx, propio, rivalL, { claves: [] }, peor);
+  check('sin factor ganado ni clave, el ataque queda vacío (no se inventa nada que sostener)', focoVacio.ataque.length === 0, focoVacio.ataque);
+  /* El peso de Oliver decide: 5 pp de tiro (×40) pesan más que 8 pp de rebote (×20). */
+  propio.factores = { 'eFG%': 0.50, 'PP%': 0.15, 'RO%': 0.40, 'RTL%': 0.20 };
+  rivalL.factores = { 'eFG%': 0.45, 'PP%': 0.15, 'RO%': 0.32, 'RTL%': 0.20 };
+  check('el peso de Oliver ordena: 5 pp de eFG% (2,0) pesan más que 8 pp de rebote (1,6)',
+    P.factoresPartido(idx, propio, rivalL).slice().sort((x, y) => Math.abs(y.impacto) - Math.abs(x.impacto))[0].k === 'eFG%');
+  /* Sin un interior pasador no hay ajuste inventado. */
+  rivalL.box.forEach(j => { j['AST'] = 1; });
+  check('si ningún rival reparte con perfil de rebote, el plan lo dice y no nombra a nadie',
+    P.planAjuste(propio, rivalL, a, fp).interior.nombres.length === 0 && P.planAjuste(propio, rivalL, a, fp).interior.lectura === false);
+}
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

@@ -1408,7 +1408,7 @@ const SGADD_PBP = (function () {
    * verde arriba de cero (ganaba el propio) y rojo abajo. SVG puro: sale
    * igual en pantalla y en el PDF, sin esperar a Chart.js.
    */
-  function momentumPartido(paq, pp) {
+  function momentumPartido(paq, pp, ctx) {
     if (!pp || !pp.linea || pp.linea.length < 2) return vacio('Sin play-by-play validado de este partido: no hay evolución del marcador.');
     const linea = pp.linea;
     const fin = Math.max(2400, linea[linea.length - 1][0]);
@@ -1456,6 +1456,13 @@ const SGADD_PBP = (function () {
         <path class="mo-contra" d="${area}" clip-path="url(#${id}-b)"/>
         <line class="mo-eje" x1="${M}" y1="${y(0)}" x2="${W - 2}" y2="${y(0)}"/>
         <path class="mo-linea" d="${tramo}"/>
+        ${(() => {
+          /* Los picos, marcados en el gráfico con su valor (punto 156). */
+          const qb = quiebres(paq, pp);
+          const marca = (p, cls, arriba) => !p ? '' : `<circle class="${cls}" cx="${x(p.t)}" cy="${y(p.dif)}" r="2.6"/>
+            <text class="mo-pico" x="${x(p.t)}" y="${(+y(p.dif) + (arriba ? -4.5 : 8)).toFixed(1)}" text-anchor="${+x(p.t) > W - 16 ? 'end' : +x(p.t) < M + 8 ? 'start' : 'middle'}">${signo(p.dif, 0)}</text>`;
+          return qb ? marca(qb.ventaja, 'mo-pico-f', true) + marca(qb.desventaja, 'mo-pico-c', false) : '';
+        })()}
         <text x="1" y="${(+y(tope) + 3).toFixed(1)}">+${tope}</text>
         <text x="1" y="${(+y(0) + 2.5).toFixed(1)}">0</text>
         <text x="1" y="${(+y(-tope) + 3).toFixed(1)}">−${tope}</text>
@@ -1466,6 +1473,7 @@ const SGADD_PBP = (function () {
         <span class="mm-neg">▼ ${esc(pp.rival)} arriba</span> ${min(abajo)}' ·
         máxima ventaja <b class="font-mono mm-pos">${signo(maxF, 0)}</b> · máxima desventaja <b class="font-mono mm-neg">${signo(maxC, 0)}</b> ·
         cambios de líder <b class="font-mono">${cambios}</b> · empates <b class="font-mono">${empates}</b></p>
+      ${quiebresHtml(paq, pp, ctx)}
     </div>`;
   }
 
@@ -1525,6 +1533,283 @@ const SGADD_PBP = (function () {
     <p class="text-[11px] dato-sec mt-2 leading-snug">Del play-by-play oficial. <b>+/-</b>: diferencia de puntos con esos cinco juntos en
       cancha en todo el partido. Cierre: los cinco en cancha al final. Clutch: últimos 5 minutos del 4.º cuarto o de un suplementario con
       diferencia de 5 o menos (antes de cada acción).</p>`;
+  }
+
+  /* ========================================= EL PARTIDO TRAMO A TRAMO (PURO)
+
+     Punto 157 (v330). El paquete suma por partido `tramos`: la cancha
+     tramo a tramo [desde, hasta, cinco propios, cinco rivales, diferencia al
+     empezar, al terminar, período], con índices a `ids`. De ahí salen tres
+     cosas que el box score no puede decir:
+
+       · qué quinteto estaba cuando el marcador tocó su máximo o su mínimo
+       · cuánto tiempo estuvo cada uno en cancha y con qué +/-
+       · si el generador rival jugó justo en el bache
+
+     LO QUE HAY QUE RESPETAR
+     · Sin `tramos` (paquete anterior o partido parcial) NADA se inventa: el
+       gráfico se dibuja igual y el bloque dice que los quintetos tramo a
+       tramo llegan con la próxima subida.
+     · El +/- de un jugador del RIVAL es el de SU equipo: el signo del
+       marcador propio, dado vuelta.
+     · «Generador rival» lo decide el box score (quien repartió o anotó),
+       y llega en `ctx.foco`: el paquete no trae posiciones. */
+  const VENTANA_QUIEBRE = 360, MIN_TIROS_CIERRE = 5, DELTA_CIERRE = 0.2;
+  function periodoDeT(t) {
+    if (t < 2400) { const q = Math.min(3, Math.floor(t / 600)); return { n: q + 1, rot: (q + 1) + '.º cuarto', resta: 600 - (t - q * 600) }; }
+    const o = Math.floor((t - 2400) / 300);
+    return { n: 5 + o, rot: o ? 'suplementario ' + (o + 1) : 'suplementario', resta: 300 - (t - 2400 - o * 300) };
+  }
+  const mmss = (s) => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  function difEn(linea, t) {
+    let d = 0;
+    for (let i = 0; i < linea.length; i++) { if (linea[i][0] > t) break; d = linea[i][1] - linea[i][2]; }
+    return d;
+  }
+  function jugadorDe(paq, pp, k) {
+    const id = (pp.ids || [])[k];
+    const n = id != null ? (pp.nombres || {})[id] : null;
+    const pj = id != null && paq.jugadores ? paq.jugadores[id] : null;
+    return { id: id, nombre: n ? n[0] : (pj ? pj.n : String(id)), dorsal: n && n[1] !== '' && n[1] != null ? String(n[1]) : '' };
+  }
+  const etiquetaJ = (paq, pp, k) => { const j = jugadorDe(paq, pp, k); return (j.dorsal ? '#' + j.dorsal + ' ' : '') + apellido(j.nombre); };
+  const hayTramos = (pp) => !!(pp && Array.isArray(pp.tramos) && pp.tramos.length && Array.isArray(pp.ids));
+
+  /** La ventana de la corrida que llevó al pico: el mínimo (o máximo) de los seis minutos anteriores. */
+  function ventanaDe(linea, tPico, sg) {
+    let t0 = Math.max(0, tPico - VENTANA_QUIEBRE), d0 = difEn(linea, t0);
+    linea.forEach((p) => {
+      if (p[0] >= t0 && p[0] <= tPico && sg * (p[1] - p[2]) < sg * d0) { t0 = p[0]; d0 = p[1] - p[2]; }
+    });
+    return { t0: t0, swing: sg * (difEn(linea, tPico) - difEn(linea, t0)) };
+  }
+
+  /** Los diez en cancha en una ventana: el quinteto de cada lado con más segundos, y los segundos de cada uno. */
+  function canchaEnVentana(pp, t0, t1) {
+    if (!hayTramos(pp)) return null;
+    const acc = new Map(), segF = {}, segC = {};
+    let total = 0;
+    pp.tramos.forEach((x) => {
+      const a = Math.max(x[0], t0), b = Math.min(x[1], t1);
+      if (b - a <= 0) return;
+      total += b - a;
+      x[2].forEach((k) => { segF[k] = (segF[k] || 0) + b - a; });
+      x[3].forEach((k) => { segC[k] = (segC[k] || 0) + b - a; });
+      const key = x[2].join(',') + '|' + x[3].join(',');
+      const e = acc.get(key) || { favor: x[2], contra: x[3], seg: 0, mm: 0 };
+      e.seg += b - a; e.mm += difEn(pp.linea, b) - difEn(pp.linea, a);
+      acc.set(key, e);
+    });
+    let mejor = null;
+    acc.forEach((e) => { if (!mejor || e.seg > mejor.seg) mejor = e; });
+    return mejor ? { total: total, mejor: mejor, segF: segF, segC: segC } : null;
+  }
+
+  /** El pico de ventaja y el de desventaja, con la corrida que los armó y quién jugaba. PURA. */
+  function quiebres(paq, pp) {
+    const linea = pp && pp.linea;
+    if (!linea || linea.length < 2) return null;
+    let mx = null, mn = null;
+    linea.forEach((p) => {
+      const d = p[1] - p[2];
+      if (!mx || d > mx.d) mx = { t: p[0], d: d };
+      if (!mn || d < mn.d) mn = { t: p[0], d: d };
+    });
+    const armar = (pico, sg) => {
+      const w = ventanaDe(linea, pico.t, sg);
+      return { t: pico.t, dif: pico.d, periodo: periodoDeT(pico.t), t0: w.t0, swing: w.swing, cancha: canchaEnVentana(pp, w.t0, pico.t) };
+    };
+    return { ventaja: mx.d > 0 ? armar(mx, 1) : null, desventaja: mn.d < 0 ? armar(mn, -1) : null, conTramos: hayTramos(pp) };
+  }
+
+  const nombresFoco = (ctx) => ((ctx && ctx.foco) || []).map(norm);
+  const esFoco = (paq, pp, k, foco) => foco.indexOf(norm(jugadorDe(paq, pp, k).nombre)) !== -1;
+
+  function quiebresHtml(paq, pp, ctx) {
+    const q = quiebres(paq, pp);
+    if (!q || (!q.ventaja && !q.desventaja)) return '';
+    const V = vistaRend(), foco = nombresFoco(ctx);
+    const tarjeta = (x, esVentaja) => {
+      if (!x) return '';
+      const reloj = x.periodo.rot + ', ' + mmss(x.periodo.resta) + ' para el final';
+      const corrida = x.swing > 0 ? ' Se armó con una corrida de ' + (esVentaja ? '+' : '−') + x.swing + ' en ' + mmss(x.t - x.t0) + ' (desde el ' + periodoDeT(x.t0).rot + ', ' + mmss(periodoDeT(x.t0).resta) + ').' : '';
+      let cancha = '';
+      if (x.cancha) {
+        const c = x.cancha.mejor, pct = Math.round(100 * c.seg / Math.max(1, x.cancha.total));
+        const fila = (ids, segs, rival) => ids.map((k) => {
+          const f = rival && esFoco(paq, pp, k, foco);
+          return `<li class="text-xs ${f ? 'text-white font-semibold' : 'text-white'}" title="${esc(jugadorDe(paq, pp, k).nombre)} · ${mmss(segs[k] || 0)} en este tramo">${f ? '<span aria-hidden="true">★ </span>' : ''}${esc(etiquetaJ(paq, pp, k))}<span class="font-mono dato-sec"> ${mmss(segs[k] || 0)}</span></li>`;
+        }).join('');
+        const focoEn = foco.length ? Object.keys(x.cancha.segC).filter(k => esFoco(paq, pp, +k, foco)).map(k => ({ k: +k, s: x.cancha.segC[k] })) : [];
+        cancha = `<div class="grid grid-cols-2 gap-3 mt-2">
+            <div><p class="text-[10px] uppercase tracking-wider text-muted mb-1">Propio · quinteto con más tiempo</p><ul>${fila(c.favor, x.cancha.segF, false)}</ul></div>
+            <div><p class="text-[10px] uppercase tracking-wider text-muted mb-1">Rival · quinteto con más tiempo</p><ul>${fila(c.contra, x.cancha.segC, true)}</ul></div>
+          </div>
+          <p class="text-[11px] dato-sec mt-1">Ese quinteto jugó ${mmss(c.seg)} de los ${mmss(x.cancha.total)} del tramo (${pct} %) con <b class="font-mono ${tonoMM(c.mm)}">${signo(c.mm, 0)}</b>.</p>
+          ${focoEn.length ? `<p class="text-[11px] text-ink mt-1"><b>★ Generador rival:</b> ${focoEn.map(f => esc(etiquetaJ(paq, pp, f.k)) + ' estuvo ' + mmss(f.s) + ' de ' + mmss(x.cancha.total)).join(' · ')} en cancha durante el tramo.</p>`
+            : foco.length ? '<p class="text-[11px] dato-sec mt-1">★ Los generadores rivales de la noche no jugaron en este tramo.</p>' : ''}`;
+      }
+      return `<section class="rend-card" data-quiebre="${esVentaja ? 'ventaja' : 'desventaja'}">
+        <h5 class="rend-card-t"><span aria-hidden="true">${esVentaja ? '▲' : '▼'}</span> ${esVentaja ? 'Mayor ventaja' : 'Mayor desventaja'} · <span class="font-mono ${esVentaja ? 'mm-pos' : 'mm-neg'}">${signo(x.dif, 0)}</span></h5>
+        <p class="rend-titular">${esc(reloj)}.${esc(corrida)}</p>${cancha}
+      </section>`;
+    };
+    const sinTramos = q.conTramos ? '' : '<p class="text-[11px] dato-sec mt-2" data-sin-tramos="1">Los quintetos tramo a tramo de este partido llegan con la próxima subida de los paquetes: hoy el gráfico marca el momento, no quién estaba en cancha.</p>';
+    return `<div class="rend-raiz mt-3" data-quiebres="1"><div class="rend-grid">${tarjeta(q.ventaja, true)}${tarjeta(q.desventaja, false)}</div>${sinTramos}</div>`;
+  }
+  const vistaRend = () => {
+    if (typeof SGADD_RENDIMIENTO !== 'undefined') return SGADD_RENDIMIENTO.vista;
+    try { return require('./sgadd-rendimiento.js').vista; } catch (e) { return null; }
+  };
+
+  /** Cada jugador, tramo continuo en cancha con su +/- (el de SU equipo). PURA. */
+  function rotacionesDe(pp) {
+    if (!hayTramos(pp)) return null;
+    const fin = pp.tramos[pp.tramos.length - 1][1];
+    const lado = (c, sg) => {
+      const por = new Map();
+      pp.tramos.forEach((x) => {
+        x[c].forEach((k) => {
+          const l = por.get(k) || [];
+          const u = l[l.length - 1], d = sg * (x[5] - x[4]);
+          if (u && Math.abs(u.hasta - x[0]) < 0.5) { u.hasta = x[1]; u.mm += d; } else l.push({ desde: x[0], hasta: x[1], mm: d });
+          por.set(k, l);
+        });
+      });
+      return Array.from(por.entries()).map(([k, tramos]) => ({ k: k, tramos: tramos, seg: tramos.reduce((s, y) => s + y.hasta - y.desde, 0), mm: tramos.reduce((s, y) => s + y.mm, 0) }))
+        .sort((a, b) => b.seg - a.seg);
+    };
+    return { fin: fin, favor: lado(2, 1), contra: lado(3, -1) };
+  }
+
+  /** El mapa de calor de las rotaciones: una barra por tramo continuo, con el +/- adentro. */
+  function rotacionesPartido(paq, pp, ctx) {
+    if (!pp) return vacio('Sin play-by-play validado de este partido: no hay rotaciones.');
+    const r = rotacionesDe(pp);
+    if (!r) return vacio('Las rotaciones de este partido llegan con la próxima subida de los paquetes (o el play-by-play pierde un cambio y no se sabe quién estaba).');
+    const foco = nombresFoco(ctx);
+    const color = (mm) => {
+      const a = (0.25 + 0.6 * Math.min(1, Math.abs(mm) / 10)).toFixed(2);
+      return mm > 0 ? 'rgba(74,222,128,' + a + ')' : mm < 0 ? 'rgba(248,113,113,' + a + ')' : 'rgba(148,163,184,.35)';
+    };
+    const cortes = [];
+    for (let t = 600; t < r.fin; t += t < 2400 ? 600 : 300) cortes.push(t);
+    const pos = (t) => (100 * t / r.fin).toFixed(2);
+    const lado = (rotulo, lista, esRival) => `<div class="rot-lado min-w-0">
+        <p class="text-[11px] uppercase tracking-wider font-display text-accent mb-1">${esc(rotulo)}</p>
+        ${lista.map((j) => {
+          const f = esRival && esFoco(paq, pp, j.k, foco);
+          return `<div class="rot-fila${f ? ' rot-foco' : ''}"><span class="rot-nombre" title="${esc(jugadorDe(paq, pp, j.k).nombre)} · ${mmss(j.seg)} · +/- ${signo(j.mm, 0)}">${f ? '★ ' : ''}${esc(etiquetaJ(paq, pp, j.k))}</span>
+            <div class="rot-pista">${cortes.map(t => `<i class="rot-corte" style="left:${pos(t)}%"></i>`).join('')}${j.tramos.map(y => {
+              const w = 100 * (y.hasta - y.desde) / r.fin;
+              return `<span class="rot-barra" style="left:${pos(y.desde)}%;width:${w.toFixed(2)}%;background:${color(y.mm)}" title="${mmss(y.desde)}–${mmss(y.hasta)} · +/- ${signo(y.mm, 0)}">${w >= 4.5 ? signo(y.mm, 0) : ''}</span>`;
+            }).join('')}</div>
+            <span class="rot-min font-mono">${mmss(j.seg)}</span></div>`;
+        }).join('')}
+      </div>`;
+    const eje = `<div class="rot-fila rot-eje"><span class="rot-nombre"></span><div class="rot-pista">${[0].concat(cortes).map((t, i) => {
+      const hasta = cortes[i] || r.fin;
+      return `<span class="rot-q" style="left:${pos((t + hasta) / 2)}%">${i < 4 ? (i + 1) + '.º' : 'S' + (i - 3)}</span>`;
+    }).join('')}</div><span class="rot-min"></span></div>`;
+    return `<div class="pbp-bloque" data-pbp-listo="1" data-rotaciones="1">
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">${lado(paq.equipo, r.favor, false)}${lado(pp.rival, r.contra, true)}</div>
+      ${eje}
+      <p class="text-[11px] dato-sec mt-2 leading-snug">Cada barra es un tramo continuo en cancha; el color y el número son el <b>+/- de su equipo</b> mientras estuvo (verde suma, rojo resta; la intensidad crece hasta ±10).
+        ${foco.length ? '<b>★</b> marca a los generadores del rival según el box score (quien más repartió o anotó). ' : ''}Del play-by-play oficial.</p>
+    </div>`;
+  }
+
+  /* ---- Lectura táctica del partido: el cierre de cada posesión y la pintura rival ---- */
+
+  /** Cada franja del reloj, de los dos lados, contra la liga. PURA. */
+  function franjasDelPartido(paq, pp) {
+    paq = normalizarReloj(paq);
+    if (pp && pp.reloj && es4(pp.reloj.favor)) pp = Object.assign({}, pp, { reloj: Object.assign({}, pp.reloj, { favor: franjas4a3(pp.reloj.favor), contra: franjas4a3(pp.reloj.contra) }) });
+    const rp = pp && pp.reloj;
+    if (!rp || !relojValido(rp.favor) || !relojValido(rp.contra)) return null;
+    const L = relojLiga(paq);
+    const de = (acc) => acc.f.map((c, i) => {
+      const ppt = c[0] ? c[2] / c[0] : null;
+      const liga = L && L.f[i][0] ? L.f[i][2] / L.f[i][0] : null;
+      return { i: i, franja: FRANJAS_RELOJ[i], tiros: c[0], conv: c[1], pts: c[2], ppt: ppt, liga: liga, delta: ppt != null && liga != null ? ppt - liga : null };
+    });
+    return { favor: de(rp.favor), contra: de(rp.contra), conLiga: !!L };
+  }
+  /** `alto` / `bajo` si la franja se separó de la liga con muestra; si no, null. */
+  const signoFranja = (x) => (x.tiros >= MIN_TIROS_CIERRE && x.delta != null && Math.abs(x.delta) >= DELTA_CIERRE ? (x.delta > 0 ? 'alto' : 'bajo') : null);
+
+  /** Lo que concedió el equipo en el cierre del set (18-24 s), y lo que consiguió. */
+  function cierreDelSet(paq, pp) {
+    const f = franjasDelPartido(paq, pp);
+    if (!f) return null;
+    const fin = f.contra[2], suyo = f.favor[2];
+    return { final: fin, propio: suyo, conLiga: f.conLiga, franjas: f,
+      alertaDefensa: signoFranja(fin) === 'alto' ? 'castigo' : signoFranja(fin) === 'bajo' ? 'contuvo' : null,
+      alertaAtaque: signoFranja(suyo) };
+  }
+  const textoFranja = (x) => x.conv + '/' + x.tiros + ' · ' + num(x.ppt, 2) + ' pts por tiro' + (x.liga != null ? ' contra ' + num(x.liga, 2) + ' de la liga' : '');
+
+  function cierreHtml(paq, pp) {
+    const c = cierreDelSet(paq, pp);
+    if (!c) return '<p class="text-[11px] text-muted">Sin reloj de posesión de este partido: no se puede leer el cierre del set.</p>';
+    const V = vistaRend();
+    const items = [];
+    const rival = c.franjas.contra;
+    const t18 = rival[2], t0 = rival[0], t8 = rival[1];
+    if (c.alertaDefensa === 'castigo') items.push({ tono: 'neg', icono: '⏱', titulo: 'Cierre del set castigado', texto: 'El rival convirtió ' + textoFranja(t18) + ' en el tramo final de la posesión (18-24 s). Es una señal de pérdida de concentración defensiva al final del set, o de una buena resolución con el reloj en contra: el dato de un partido no los separa. Para revisar en el video.' });
+    else if (c.alertaDefensa === 'contuvo') items.push({ tono: 'pos', icono: '⏱', titulo: 'Cierre del set bien defendido', texto: 'Con el reloj encima el rival hizo ' + textoFranja(t18) + ' (18-24 s): la defensa sostuvo la concentración hasta el final de la posesión. Para sostener.' });
+    else if (t18.tiros) items.push({ tono: 'info', icono: '⏱', titulo: 'Cierre del set en rango', texto: 'Rival con el reloj encima (18-24 s): ' + textoFranja(t18) + '. Sin separarse de la liga con esta muestra.' });
+    if (signoFranja(t0) === 'alto') items.push({ tono: 'neg', icono: '🏃', titulo: 'Transición concedida', texto: 'El rival convirtió ' + textoFranja(t0) + ' en los primeros 7 segundos: el retroceso o el balance defensivo se rompió.' });
+    else if (signoFranja(t0) === 'bajo') items.push({ tono: 'pos', icono: '🏃', titulo: 'Transición cerrada', texto: 'Los primeros 7 segundos del rival: ' + textoFranja(t0) + '.' });
+    if (signoFranja(t8) === 'alto') items.push({ tono: 'neg', icono: '🧩', titulo: 'Defensa de set castigada', texto: 'El rival convirtió ' + textoFranja(t8) + ' entre los 8 y los 17 segundos: lo atacaron bien con la jugada armada.' });
+    else if (signoFranja(t8) === 'bajo') items.push({ tono: 'pos', icono: '🧩', titulo: 'Defensa de set sólida', texto: 'Entre los 8 y los 17 segundos el rival hizo ' + textoFranja(t8) + '.' });
+    const propia = c.alertaAtaque && c.propio.tiros >= MIN_TIROS_CIERRE ? [{ tono: c.alertaAtaque === 'alto' ? 'pos' : 'neg', icono: '⏱', titulo: c.alertaAtaque === 'alto' ? 'Nuestro cierre resolvió' : 'Nuestro cierre no resolvió',
+      texto: 'Nuestros tiros con el reloj encima (18-24 s): ' + textoFranja(c.propio) + '.' }] : [];
+    if (!V) return '';
+    return items.concat(propia).map(V.alerta).join('') || '<p class="text-[11px] text-muted">Sin tiros suficientes en las franjas para leer el cierre.</p>';
+  }
+
+  /** La pintura rival: cuántos tiros, con qué efectividad y de qué lo rodea. PURA. */
+  function pinturaRival(paq, pp, ctx) {
+    const contra = pp && pp.tiros && pp.tiros.contra;
+    if (!contra || !contra.length) return null;
+    const orden = (paq.tiros && paq.tiros.detalle && paq.tiros.detalle.puntos && paq.tiros.detalle.puntos.zonas) || ZONAS;
+    let i = 0, c = 0;
+    contra.forEach((t) => { if (/^Z[1-4]$/.test(orden[t[3]])) { i++; if (t[2]) c++; } });
+    let li = 0, lp = 0;
+    ((paq.liga && paq.liga.zonas) || []).forEach((z) => { if (/^Z[1-4]$/.test(z.zona)) { li += z.i; lp += z.ppt * z.i; } });
+    return { tiros: i, conv: c, de: contra.length, parte: 100 * i / contra.length, ppt: i ? 2 * c / i : null, liga: li ? lp / li : null,
+      ro: ctx && ctx.rivalRo != null ? ctx.rivalRo : null, rd: ctx && ctx.nuestroRd != null ? ctx.nuestroRd : null, lideres: (ctx && ctx.rivalDobles) || [] };
+  }
+  function pinturaHtml(paq, pp, ctx) {
+    const x = pinturaRival(paq, pp, ctx), V = vistaRend();
+    if (!x || !V) return '';
+    const alta = x.liga != null && x.tiros >= 8 && x.ppt - x.liga >= 0.15;
+    const baja = x.liga != null && x.tiros >= 8 && x.liga - x.ppt >= 0.15;
+    const quienes = x.lideres.length ? ' Los que más dobles intentaron: ' + x.lideres.map(l => l.n + ' ' + l.t2c + '/' + l.t2i).join(' · ') + '.' : '';
+    const reb = x.ro != null ? ' El rival sumó ' + x.ro + ' rebotes ofensivos' + (x.rd != null ? ' contra ' + x.rd + ' rebotes defensivos nuestros' : '') + '.' : '';
+    return [V.alerta({ tono: alta ? 'neg' : baja ? 'pos' : 'info', icono: '🎯',
+      titulo: alta ? 'La pintura rival rindió: ' + x.conv + '/' + x.tiros : baja ? 'Pintura rival contenida: ' + x.conv + '/' + x.tiros : 'Pintura rival: ' + x.conv + '/' + x.tiros,
+      texto: Math.round(x.parte) + ' % de sus tiros de campo fueron cerca del aro (zonas 1 a 4), con ' + num(x.ppt, 2) + ' puntos por tiro'
+        + (x.liga != null ? ' contra ' + num(x.liga, 2) + ' de la liga' : '') + '.' + quienes + reb
+        + (alta ? ' Lectura: rompieron la primera línea y el cierre del rebote no alcanzó; el tiro no trae quién penetró por cada zona, así que revisar en el video qué perimetrales lo hicieron.' : '') })].join('');
+  }
+
+  /** La tarjeta de lectura táctica: cierre del set y pintura rival. */
+  function lecturaPartido(paq, pp, ctx) {
+    if (!pp) return vacio('Sin play-by-play validado de este partido: no hay lectura del cierre del set.');
+    return `<div class="pbp-bloque rend-raiz" data-pbp-listo="1" data-lectura-partido="1"><div class="rend-alertas">${cierreHtml(paq, pp)}${pinturaHtml(paq, pp, ctx)}</div></div>`;
+  }
+  /** La tercera directriz del plan: el reloj. */
+  function planRelojHtml(paq, pp) {
+    const c = pp ? cierreDelSet(paq, pp) : null, V = vistaRend();
+    if (!c || !V) return '<p class="text-xs dato-sec">Sin reloj de posesión de este partido: sin directriz de cierre.</p>';
+    const fin = c.franjas.contra[2];
+    const texto = c.alertaDefensa === 'castigo'
+      ? 'Concentración defensiva al final del set: el rival hizo ' + textoFranja(fin) + ' con el reloj encima. Trabajar el cierre de la posesión (18-24 s): quién sale a la bola, quién cierra la ayuda y no soltar la marca cuando el reloj aprieta.'
+      : c.alertaDefensa === 'contuvo' ? 'El cierre del set funcionó (' + textoFranja(fin) + '): mantener la misma disciplina defensiva con el reloj encima.'
+        : 'El cierre del set quedó en rango (' + textoFranja(fin) + '): sin un foco especial en el reloj; mantener la disciplina de posesión.';
+    return V.alerta({ tono: c.alertaDefensa === 'castigo' ? 'neg' : c.alertaDefensa === 'contuvo' ? 'pos' : 'info', icono: '🧠', titulo: 'Disciplina de posesión y reloj', texto: texto });
   }
 
   /* ========================================= RELOJ DE POSESIÓN (PURO)
@@ -3027,13 +3312,16 @@ const SGADD_PBP = (function () {
   }
 
   /** El lugar de una card de partido en el post-partido: 'partido-mapa', 'partido-momentum', 'partido-quintetos' o 'partido-reloj'. */
-  function espacioPartido(equipo, partido, tipo) {
+  function espacioPartido(equipo, partido, tipo, ctx) {
     const p = partido || {};
-    const t = tipo === 'partido-mapa' || tipo === 'partido-quintetos' || tipo === 'partido-reloj' ? tipo : 'partido-momentum';
+    const t = ['partido-mapa', 'partido-quintetos', 'partido-reloj', 'partido-rotaciones', 'partido-lectura', 'partido-plan-reloj'].indexOf(tipo) !== -1 ? tipo : 'partido-momentum';
     const texto = { 'partido-mapa': 'Cargando el mapa de tiro del partido…', 'partido-momentum': 'Cargando la evolución del marcador…',
-      'partido-quintetos': 'Cargando los quintetos del partido…', 'partido-reloj': 'Cargando el reloj de posesión del partido…' }[t];
+      'partido-quintetos': 'Cargando los quintetos del partido…', 'partido-reloj': 'Cargando el reloj de posesión del partido…',
+      'partido-rotaciones': 'Cargando las rotaciones del partido…', 'partido-lectura': 'Cargando la lectura del cierre del set…',
+      'partido-plan-reloj': 'Cargando la directriz del reloj…' }[t];
+    /* `ctx`: lo que solo el box score sabe (generadores rivales, líderes de dobles, rebotes). */
     return `<div class="pbp-montaje" data-pbp-equipo="${esc(equipo)}" data-pbp-tipo="${t}"
-      data-pbp-partido="${esc(p.id || '')}" data-pbp-fecha="${esc(p.fecha || '')}" data-pbp-rival="${esc(p.rival || '')}">
+      data-pbp-partido="${esc(p.id || '')}" data-pbp-fecha="${esc(p.fecha || '')}" data-pbp-rival="${esc(p.rival || '')}"${ctx ? ` data-pbp-ctx="${esc(JSON.stringify(ctx))}"` : ''}>
       ${cargando(texto)}</div>`;
   }
 
@@ -3183,7 +3471,8 @@ const SGADD_PBP = (function () {
       tareas.push(Promise.all([pedir(nodo.getAttribute('data-pbp-equipo')), propio ? pedir(propio).catch(() => null) : null])
         .then(([paq, paqPropio]) => {
           if (!nodo.isConnected) return;
-          const pp = (tipo === 'partido-mapa' || tipo === 'partido-momentum' || tipo === 'partido-quintetos' || tipo === 'partido-reloj')
+          const ctxPartido = (() => { try { const t = nodo.getAttribute('data-pbp-ctx'); return t ? JSON.parse(t) : null; } catch (e) { return null; } })();
+          const pp = /^partido-/.test(tipo || '')
             ? partidoDe(paq, nodo.getAttribute('data-pbp-partido'), nodo.getAttribute('data-pbp-fecha'), nodo.getAttribute('data-pbp-rival'))
             : null;
           if (tipo === 'conclusiones') {
@@ -3225,7 +3514,10 @@ const SGADD_PBP = (function () {
             : nombreRendimiento ? (typeof SGADD_RENDIMIENTO !== 'undefined' ? SGADD_RENDIMIENTO.html(paq, nombreRendimiento) : '')
             : nombreJugador ? jugador(paq, nombreJugador)
             : tipo === 'partido-mapa' ? mapaPartido(paq, pp)
-            : tipo === 'partido-momentum' ? momentumPartido(paq, pp)
+            : tipo === 'partido-momentum' ? momentumPartido(paq, pp, ctxPartido)
+            : tipo === 'partido-rotaciones' ? rotacionesPartido(paq, pp, ctxPartido)
+            : tipo === 'partido-lectura' ? lecturaPartido(paq, pp, ctxPartido)
+            : tipo === 'partido-plan-reloj' ? planRelojHtml(paq, pp)
             : tipo === 'partido-quintetos' ? quintetosPartido(paq, pp)
             : tipo === 'partido-reloj' ? relojPartido(paq, pp)
             : tipo === 'rotaciones' ? rotacionesCard(paq)
@@ -3406,6 +3698,7 @@ const SGADD_PBP = (function () {
     rotacionesCard, diagnosticoZonas, diagnosticoJugador, cruceZonas, diagnosticoRival, rivalFriasHtml, espacioRival, fodaPbp, cuartosPatrones, juegoPorCuartoHtml, cuartosCruzadoHtml, espacioCuartos, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
     activa, espacio, espacioJugador, espacioQuintetosJugador, quintetosJugador, onOffDe, avisoSinCapa, espacioRendimiento, espacioConclusiones, montarPendientes, activar, apellido, _cache: cache,
     partidoDe, mapaPartido, momentumPartido, quintetosPartido, espacioPartido, MIN_TIROS_DIAGNOSTICO,
+    quiebres, quiebresHtml, rotacionesDe, rotacionesPartido, cierreDelSet, cierreHtml, pinturaRival, pinturaHtml, lecturaPartido, planRelojHtml, canchaEnVentana, periodoDeT,
     relojTabla, relojIdentidad, relojPerfilJugador, relojEquipo, relojJugador, relojPartido, relojReparto, FRANJAS_RELOJ,
     relojScouting, relojQuienes, relojMetodologiaHtml, relojAyuda, METODOLOGIA_RELOJ, RELOJ_MINIMOS, FUERA_DE_FRANJA,
     relojSintesis, relojBarras, relojMapaTiro, relojCeldas, relojMapas, relojTendencias, relojTendenciasHtml, paqFranja,
