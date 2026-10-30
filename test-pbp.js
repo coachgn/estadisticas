@@ -712,6 +712,9 @@ function paquete(equipo) {
   const srcPbp = fs.readFileSync('./js/sgadd-pbp.js', 'utf8');
   check('el montaje pasa el contexto: Scouting pide la card acotada y el mapa fijo',
     /mapaCard\(paq, \{ propio: paqPropio, fijo: contexto === 'scouting', identidad: leerIdentidad\(nodo\) \}\)/.test(srcPbp) && /html\(paq, \{ contexto: contexto \}\)/.test(srcPbp));
+  check('post-partido sin play-by-play: la sección se quita en vez de mostrar el aviso (v331)',
+    /function sinDatosPartido/.test(srcPbp) && /function quitarSeccionPartido/.test(srcPbp) && /data-pbp-vacio="1"/.test(srcPbp)
+    && /partido-\/\.test\(tipo \|\| ''\) && sinDatosPartido\(nodo\)/.test(srcPbp));
   const ordenTabs = JSON.parse(vm.runInContext('JSON.stringify(equiposTabsOfrecidas().map(t => t.id))', conCapa));
   check('Equipos: cierra igual que Jugadores · Partidos · Quintetos · Mapa de tiro · Diagnóstico',
     ordenTabs.slice(-4).join() === 'partidos,pbp,pbp-tiro,diagnostico', ordenTabs);

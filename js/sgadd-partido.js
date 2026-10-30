@@ -375,7 +375,7 @@ const SGADD_PARTIDO = (function () {
          qué y con cuánto, y las lecturas van marcadas como lectura.
        · El factor que decide es el de mayor IMPACTO: la diferencia entre
          los dos equipos por el peso de Dean Oliver (40 · 25 · 20 · 15), que
-         es el mismo prior que usa el Simulador.
+         es el prior de Dean Oliver.
        · Cada factor se contrasta contra el HABITUAL del equipo (su promedio
          de temporada) y contra la mediana de la liga, nunca contra un número
          fijo.
@@ -401,7 +401,7 @@ const SGADD_PARTIDO = (function () {
   }
 
   /** Los 4 factores de la noche, de los dos lados, contra el habitual y la liga. */
-  function factoresPartido(idx, propio, riv) {
+  function factoresPartido(idx, propio, riv, idxReg) {
     if (!propio || !riv || !propio.factores || !riv.factores) return [];
     return FACTORES_PARTIDO.map((f) => {
       const v = propio.factores[f.k], vr = riv.factores[f.k];
@@ -409,13 +409,21 @@ const SGADD_PARTIDO = (function () {
       const lp = idx.leer(propio.equipo.clave, f.hab), lr = idx.leer(riv.equipo.clave, f.hab);
       const habP = lp && typeof lp.valor === 'number' ? lp.valor : null;
       const habR = lr && typeof lr.valor === 'number' ? lr.valor : null;
+      /* Doble referencia en una fase de eliminación: la Regular (estructural) y la fase actual (racha). */
+      let regP = null, regR = null;
+      if (idxReg && idxReg.leer) {
+        const a1 = idxReg.leer(propio.equipo.clave, f.hab), a2 = idxReg.leer(riv.equipo.clave, f.hab);
+        regP = a1 && typeof a1.valor === 'number' ? a1.valor : null;
+        regR = a2 && typeof a2.valor === 'number' ? a2.valor : null;
+      }
       const mejor = f.inv ? vr - v : v - vr;                    // > 0: lo ganó el propio
       const umbral = UMBRAL_FACTOR[f.hab];
       const desvioP = habP === null ? null : (f.inv ? habP - v : v - habP);   // > 0: mejor que su habitual
       const desvioR = habR === null ? null : (f.inv ? habR - vr : vr - habR);
       return {
         k: f.k, hab: f.hab, label: f.label, corto: f.corto, peso: f.peso, inv: f.inv,
-        propio: v, rival: vr, habitual: habP, habitualRival: habR,
+        propio: v, rival: vr, habitual: habP, habitualRival: habR, regular: regP, regularRival: regR,
+        deltaRegular: regP === null ? null : v - regP,
         liga: lp && typeof lp.tipo === 'number' ? lp.tipo : null,
         gano: mejor > 0 ? true : mejor < 0 ? false : null,
         impacto: mejor * f.peso,
@@ -459,7 +467,7 @@ const SGADD_PARTIDO = (function () {
   }
 
   /**
-   * El Simulador contra lo que pasó. Ojo: el modelo se arma con la
+   * La expectativa contra lo que pasó. Ojo: el modelo se arma con la
    * temporada COMPLETA, este partido incluido, así que NO es una predicción
    * previa: es qué margen daban los ratings de las dos y cuánto se alejó
    * la noche. Sin simulador o sin partidos suficientes, null.
@@ -485,9 +493,9 @@ const SGADD_PARTIDO = (function () {
    * Qué decidió el partido: tarjetas con nombres, los focos a sostener y
    * el plan de ajuste. `a` es lo que devuelve `analizar`.
    */
-  function decision(idx, lp, lr, a) {
+  function decision(idx, lp, lr, a, idxReg) {
     if (!lp || !lr || !a) return null;
-    const factores = factoresPartido(idx, lp, lr);
+    const factores = factoresPartido(idx, lp, lr, idxReg);
     const tarjetas = [];
     const margen = nz(lp.fila, 'PTS') - nz(lr.fila, 'PTS');
     const ord = factores.slice().sort((x, y) => Math.abs(y.impacto) - Math.abs(x.impacto));
@@ -543,11 +551,11 @@ const SGADD_PARTIDO = (function () {
       const d = proy.desvio;
       tarjetas.push({
         id: 'proyeccion', tono: Math.abs(d) < 4 ? 'info' : (d > 0 ? 'pos' : 'neg'),
-        titulo: 'El modelo contra lo que pasó',
-        texto: 'Con los ratings de la temporada el Simulador daba ' + (proy.margenModelo >= 0 ? '+' : '−') + Math.abs(proy.margenModelo).toFixed(1).replace('.', ',')
-          + ' para nosotros (' + Math.round(proy.probPropio * 100) + ' % de ganar); fue ' + (proy.margenReal >= 0 ? '+' : '−') + Math.abs(proy.margenReal)
-          + ': ' + (Math.abs(d) < 4 ? 'dentro de lo esperable' : (d > 0 ? Math.abs(d).toFixed(0) + ' puntos mejor que lo esperado' : Math.abs(d).toFixed(0) + ' puntos peor que lo esperado'))
-          + '. El modelo incluye este partido en sus datos: es una vara, no una predicción previa.'
+        titulo: 'Expectativa contra realidad',
+        texto: 'Margen esperado: ' + (proy.margenModelo >= 0 ? '+' : '−') + Math.abs(proy.margenModelo).toFixed(1).replace('.', ',')
+          + ' pts (' + Math.round(proy.probPropio * 100) + ' % de victoria estimada); el partido cerró en ' + (proy.margenReal >= 0 ? '+' : '−') + Math.abs(proy.margenReal)
+          + ', ' + (Math.abs(d) < 4 ? 'dentro de lo esperable' : (d > 0 ? 'superando la expectativa por ' + Math.abs(d).toFixed(0) + ' puntos' : 'por debajo de la expectativa por ' + Math.abs(d).toFixed(0) + ' puntos'))
+          + '. La referencia usa los ratings de toda la temporada, este partido incluido: es una vara de rendimiento, no una predicción previa.'
           + (proy.factorClave ? ' Factor que más movía el cruce: ' + proy.factorClave + '.' : ''),
         ficha: [], nombres: [],
       });
@@ -565,7 +573,7 @@ const SGADD_PARTIDO = (function () {
       .map(j => ({ n: quien(j), t2c: nz(j, 'T2C'), t2i: nz(j, 'T2I') }));
     const ctx = { foco: foco, rivalDobles: dobles, rivalRo: nz(lr.fila, 'RO') || null, nuestroRd: nz(lp.fila, 'RD') || null };
     return { margen, gano: a.gano, factores, tarjetas, proyeccion: proy, ctx,
-      focos: focosPartido(idx, lp, lr, a, factores), plan: planAjuste(lp, lr, a, factores) };
+      focos: focosPartido(idx, lp, lr, a, factores), plan: planAjuste(lp, lr, a, factores, idx) };
   }
 
   /** Lo que salió bien en ataque y en defensa, y conviene sostener. También en una derrota. */
@@ -594,43 +602,62 @@ const SGADD_PARTIDO = (function () {
   }
 
   /**
-   * El plan de ajuste para el próximo cruce, sobre los nombres que
-   * desequilibraron. Las posiciones no están en la planilla: el «perfil
-   * interior» sale de CÓMO jugó (rebote + pase), no de un puesto, y se dice.
-   * La tercera directriz (el reloj) la completa el play-by-play.
+   * El plan de ajuste para el próximo cruce, en cuatro categorías de ACCIÓN
+   * (v331). No hay posiciones ni tipo de jugada en la planilla: cada
+   * categoría sale de lo que el rival HIZO en el box (triples y dobles
+   * convertidos, asistencias, rebotes ofensivos). Con play-by-play, la zona
+   * bajo el aro (Z1) y el reloj los completa el paquete.
    */
-  function planAjuste(lp, lr, a, factores) {
+  function planAjuste(lp, lr, a, factores, idx) {
     const fiables = (lr.box || []).filter(j => nz(j, 'MIN') >= MIN_MINUTOS);
-    const gen = lider(fiables, 'AST', 3) || lider(fiables, 'PTS', 10);
-    const out = { perimetro: null, interior: null, reloj: null };
-    if (gen) {
-      const t3i = nz(gen, 'T3I'), t3c = nz(gen, 'T3C');
-      const exterior = t3i >= 3 && t3c / t3i >= 0.4;
-      const pierde = nz(gen, 'PP') >= 4;
-      const otro = lider(fiables.filter(j => j !== gen), 'T3C', 3);
+    const out = { perimetro: null, interior: null, generacion: null, segundas: null, reloj: null };
+    const sinDato = (titulo, texto) => ({ titulo, texto, nombres: [], lectura: false });
+
+    /* 1 · Perímetro: quien más daño hizo de tres */
+    const t3 = fiables.slice().sort((x, y) => nz(y, 'T3C') - nz(x, 'T3C'))[0];
+    if (t3 && nz(t3, 'T3C') >= 3) {
+      const c = nz(t3, 'T3C'), i = nz(t3, 'T3I'), efi = i ? c / i : 0;
       out.perimetro = {
-        titulo: 'Plan de contención perimetral',
-        texto: quien(gen) + ' hizo ' + nz(gen, 'PTS') + ' pts y ' + nz(gen, 'AST') + ' asistencias con ' + nz(gen, 'PP') + ' pérdidas. '
-          + (exterior ? 'Tiró bien de afuera (' + t3c + '/' + t3i + '): no se le pasa por abajo, se lo sigue arriba de la cortina. '
-            : t3i >= 3 ? 'Falló de afuera (' + t3c + '/' + t3i + '): se puede ir por abajo en el pick & roll y cerrar la entrada. ' : '')
-          + (pierde ? 'Perdió ' + nz(gen, 'PP') + ' pelotas: la presión sobre la primera línea le rinde. ' : '')
-          + (otro ? quien(otro) + ' sumó ' + nz(otro, 'T3C') + ' triples: no ayudar de su lado.' : ''),
-        nombres: [gen, otro].filter(Boolean).map(quien),
-        lectura: true,
-      };
-    }
-    const inter = fiables.filter(j => nz(j, 'AST') >= 3 && (nz(j, 'RT') >= 5 || nz(j, 'RO') >= 2))
-      .sort((x, y) => nz(y, 'AST') - nz(x, 'AST'))[0] || null;
-    out.interior = inter ? {
-      titulo: 'Ajuste en defensa de poste alto e interior',
-      texto: quien(inter) + ' repartió ' + nz(inter, 'AST') + ' asistencias y tomó ' + nz(inter, 'RT') + ' rebotes: es un interior que juega de pasador. '
-        + 'Negar la línea de pase al poste alto y al short roll, y ayudar desde el lado débil sin dejar el rebote.',
-      nombres: [quien(inter)], lectura: true,
-    } : {
-      titulo: 'Ajuste en defensa de poste alto e interior',
-      texto: 'Ningún rival con perfil de rebote y pase llegó a 3 asistencias: no hay un interior pasador al que negarle la línea. No hace falta un ajuste especial.',
-      nombres: [], lectura: false,
-    };
+        titulo: 'Contención perimetral',
+        texto: quien(t3) + ' hizo ' + c + ' triples de ' + i + ' (' + Math.round(efi * 100) + ' %) y ' + nz(t3, 'PTS') + ' pts. '
+          + (efi >= 0.4 ? 'Tiró bien y abierto: seguirlo arriba de la cortina, no pasar por abajo y no ayudar desde su lado.'
+            : 'Tiró mucho con poco acierto: dejarlo tirar con la mano arriba y cuidar la penetración.'),
+        nombres: [quien(t3)], lectura: true };
+    } else out.perimetro = sinDato('Contención perimetral', 'Ningún rival llegó a 3 triples convertidos: no hay un tirador al que perseguir.');
+
+    /* 2 · Cerca del aro: más dobles convertidos con buena eficiencia */
+    const dob = fiables.filter(j => nz(j, 'T2I') >= 4).sort((x, y) => nz(y, 'T2C') - nz(x, 'T2C'))[0];
+    if (dob && nz(dob, 'T2C') >= 4 && nz(dob, 'T2C') / nz(dob, 'T2I') >= 0.5) {
+      out.interior = {
+        titulo: 'Contención cerca del aro',
+        texto: quien(dob) + ' convirtió ' + nz(dob, 'T2C') + ' de ' + nz(dob, 'T2I') + ' dobles (' + Math.round(nz(dob, 'T2C') / nz(dob, 'T2I') * 100) + ' %). '
+          + 'Cerrarle el camino a la zona de definición: ayuda temprana desde el lado débil, sea que penetre o reciba cerca, y no dejarlo sellar.',
+        nombres: [quien(dob)], lectura: true };
+    } else out.interior = sinDato('Contención cerca del aro', 'Ningún rival combinó volumen y eficiencia en los dobles (4 convertidos con 50 %): sin ajuste especial en la pintura.');
+
+    /* 3 · Generación: el que más ventajas directas creó */
+    const gen = lider(fiables, 'AST', 3);
+    if (gen) {
+      out.generacion = {
+        titulo: 'Generación y asistencias',
+        texto: quien(gen) + ' repartió ' + nz(gen, 'AST') + ' asistencias' + (nz(gen, 'PP') ? ' con ' + nz(gen, 'PP') + ' pérdidas' : '') + '. '
+          + 'Cortar el circuito: negar la primera descarga, anticipar la línea de pase y obligarlo a decidir lejos del lugar que prefiere.',
+        nombres: [quien(gen)], lectura: true };
+    } else out.generacion = sinDato('Generación y asistencias', 'Ningún rival llegó a 3 asistencias: el juego no pasó por un solo creador.');
+
+    /* 4 · Segundas oportunidades: rebote ofensivo contra la liga */
+    const ro = lider(fiables, 'RO', 2);
+    let roLiga = null, roRival = lr.factores ? lr.factores['RO%'] : null;
+    try { const l = idx && idx.leer(lr.equipo.clave, 'RO%'); roLiga = l && typeof l.tipo === 'number' ? l.tipo : null; } catch (e) {}
+    const sobreLiga = typeof roRival === 'number' && roLiga !== null && roRival > roLiga;
+    if (ro && (sobreLiga || nz(ro, 'RO') >= 3)) {
+      out.segundas = {
+        titulo: 'Control de segundas oportunidades',
+        texto: quien(ro) + ' tomó ' + nz(ro, 'RO') + ' rebotes ofensivos. '
+          + (typeof roRival === 'number' ? 'El rival cerró con RO% ' + p1(roRival) + (roLiga !== null ? ' contra ' + p1(roLiga) + ' de la liga' : '') + '. ' : '')
+          + 'Asignarle un cierre de choque: contacto antes de que salte el tiro y un segundo defensor que saque la pelota.',
+        nombres: [quien(ro)], lectura: true };
+    } else out.segundas = sinDato('Control de segundas oportunidades', 'El rival no cargó el rebote ofensivo por encima de la liga: sin ajuste especial.');
     return out;
   }
 

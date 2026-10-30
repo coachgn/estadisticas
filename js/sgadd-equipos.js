@@ -1229,7 +1229,7 @@ function equiposDetallePartido(idx, e, id) {
   const p1 = (v) => (v * 100).toFixed(1).replace('.', ',') + ' %';
   const pp1 = (v) => (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(1).replace('.', ',') + ' pp';
   let dec = null;
-  if (riv && V) { try { dec = SGADD_PARTIDO.decision(idx, propio, riv, a); } catch (e) { dec = null; } }
+  if (riv && V) { try { dec = SGADD_PARTIDO.decision(idx, propio, riv, a, (typeof SGADD_APP !== 'undefined' && SGADD_APP.idxRegular) ? SGADD_APP.idxRegular() : null); } catch (e) { dec = null; } }
   /* Va al FINAL del informe, debajo de los box scores: es la conclusión,
      no la introducción. Y si no entra en la hoja, salta a la siguiente
      sin apretar el box score. */
@@ -1280,8 +1280,8 @@ function equiposDetallePartido(idx, e, id) {
     <div id="proximoCruce" class="mt-6 pt-4 border-t border-hairline">
       <p class="text-[10px] uppercase tracking-widest text-accent font-display mb-3">📋 Plan de ajuste para el próximo cruce</p>
       <div class="rend-raiz"><div class="rend-alertas" data-plan-ajuste="1">
-        ${dec.plan.perimetro ? V.alerta({ tono: 'neg', icono: '🛑', titulo: dec.plan.perimetro.titulo, texto: dec.plan.perimetro.texto }) : ''}
-        ${dec.plan.interior ? V.alerta({ tono: dec.plan.interior.lectura ? 'neg' : 'info', icono: '🔏', titulo: dec.plan.interior.titulo, texto: dec.plan.interior.texto }) : ''}
+        ${[['perimetro', '🛑'], ['interior', '🏰'], ['generacion', '🧠'], ['segundas', '🚀']].map(([k, ic]) => dec.plan[k]
+          ? V.alerta({ tono: dec.plan[k].lectura ? 'neg' : 'info', icono: ic, titulo: dec.plan[k].titulo, texto: dec.plan[k].texto }) : '').join('')}
         ${conPbpPlan(propio, riv, dec)}
       </div></div>
       <p class="text-[11px] dato-sec mt-2 leading-snug">Sale del box score de la noche y de los nombres que desequilibraron. La planilla no trae posiciones ni tipo de jugada:
@@ -1353,6 +1353,16 @@ function equiposDetallePartido(idx, e, id) {
      cada uno y la mediana de la liga. Verde = se ganó el factor; ámbar =
      se perdió; rojo = se perdió Y quedó claramente bajo lo habitual (desvío
      crítico). En pérdidas, menos es mejor. */
+  const radarFactores = (dec && dec.factores.length >= 3 && typeof SGADD_CHARTS !== 'undefined' && SGADD_CHARTS.radar) ? (() => {
+    /* Cada eje en 0-100 contra el mejor de los dos (en pérdidas, el menor): se ve dónde se separaron. */
+    const esc100 = (f, v) => { const m = f.inv ? Math.min(f.propio, f.rival) : Math.max(f.propio, f.rival); return m ? Math.round(100 * (f.inv ? m / (v || m) : v / m)) : 50; };
+    try {
+      return `<div class="mt-4 max-w-md mx-auto" data-radar-partido="1">${SGADD_CHARTS.radar('chRadarPartido', dec.factores.map(f => f.corto), [
+        { label: propio.equipo.nombre, data: dec.factores.map(f => esc100(f, f.propio)) },
+        { label: riv.equipo.nombre, data: dec.factores.map(f => esc100(f, f.rival)) }])}
+        <p class="text-[10px] dato-sec text-center mt-1">Cada eje contra el mejor de los dos de la noche; en pérdidas, más afuera es mejor.</p></div>`;
+    } catch (e) { return ''; }
+  })() : '';
   const factoresBento = (dec && dec.factores.length) ? (() => {
     const fx = (v) => p1(v);
     const tarj = (f) => {
@@ -1365,15 +1375,16 @@ function equiposDetallePartido(idx, e, id) {
       return `<section class="rend-card" data-factor="${escapeAttr(f.k)}">
         <h5 class="rend-card-t">${V.marca(tonoP)}${escapeHtml(f.label)} <span class="font-normal dato-sec">· ${escapeHtml(etiq)}</span></h5>
         <div class="rend-barras">${barraP}${barraR}</div>
-        <p class="rend-mini">Diferencia con el rival: ${escapeHtml(pp1(f.propio - f.rival))}${f.inv ? ' (menos es mejor)' : ''} · peso ${f.peso} %</p>
+        <p class="rend-mini">${f.regular !== null && f.regular !== undefined ? 'Fase actual: ' + (f.habitual === null ? '—' : fx(f.habitual)) + ' · Regular: ' + fx(f.regular) + ' (' + escapeHtml(pp1(f.propio - f.regular)) + ' esta noche contra la Regular) · ' : ''}Diferencia con el rival: ${escapeHtml(pp1(f.propio - f.rival))}${f.inv ? ' (menos es mejor)' : ''} · peso ${f.peso} %</p>
       </section>`;
     };
     return `
       <div class="mb-6" id="factoresBento">
         <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">4 Factores del partido · contra su habitual y la liga</h5>
         <div class="rend-raiz"><div class="rend-grid">${dec.factores.map(tarj).join('')}</div></div>
-        <p class="text-[11px] dato-sec mt-2 leading-snug">Verde: se ganó el factor. Ámbar: se perdió. Rojo: se perdió y quedó claramente bajo lo habitual (desvío crítico).
-          En pérdidas, menos es mejor. El peso es el de Dean Oliver (40 · 25 · 20 · 15), el mismo prior del Simulador.</p>
+        ${radarFactores}
+        <p class="text-[11px] dato-sec mt-2 leading-snug">${dec.factores.some(f => f.regular !== null && f.regular !== undefined) ? 'En una fase de eliminación cada factor se contrasta con dos referencias: la Fase Regular (lo estructural) y la fase actual (la racha de playoffs). ' : ''}Verde: se ganó el factor. Ámbar: se perdió. Rojo: se perdió y quedó claramente bajo lo habitual (desvío crítico).
+          En pérdidas, menos es mejor. El peso es el de Dean Oliver (40 · 25 · 20 · 15), el prior de Dean Oliver.</p>
       </div>`;
   })() : '';
   const factoresViejo = (propio.factores && riv && riv.factores) ? (() => {

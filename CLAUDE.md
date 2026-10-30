@@ -16406,3 +16406,15 @@ El pedido traía lecturas como «la presión secó la línea de pases» o «el p
 ### Lo que NO se hizo
 
 No se agregó un tercer tipo de dato al tiro (quién lo tiró por zona): el gancho está pero necesita un cambio de la ingesta. Tampoco se regeneró `sgadd.css`: las clases nuevas (`rot-*`) van a mano en el `<style>`.
+
+---
+
+## 157. POST-PARTIDO v331 · SIN PBP NO HAY BLOQUE, EXPECTATIVA SIN SIMULADOR, DOBLE BASELINE Y PLAN EN 4 ACCIONES (2026-10-30)
+
+Assets en `?v=331`.
+
+- **Sin play-by-play de ese partido, la sección desaparece**: `vacio()` lleva `data-pbp-vacio` y `montarPendientes` quita el bloque (`sinDatosPartido` / `quitarSeccionPartido`) en momentum, rotaciones, lectura, reloj, mapa, quintetos y la directriz del reloj; un fallo de carga también. Sin la capa ya no se pintaban.
+- **Se fue la palabra «Simulador»** del post-partido: la tarjeta es «Expectativa contra realidad» (margen esperado, % de victoria estimada, desvío de la noche). Sigue siendo una vara con la temporada completa, no una predicción previa.
+- **Doble baseline en eliminación**: `factoresPartido`/`decision` reciben `idxReg` (`SGADD_APP.idxRegular()`) y cada factor trae `regular` y `deltaRegular`, además del habitual de la fase actual. La tarjeta muestra las dos referencias.
+- **Radar de los 4 factores** (`chRadarPartido`) debajo de las tarjetas, cada eje contra el mejor de los dos.
+- **Plan de ajuste en 4 acciones** (`planAjuste`: perimetro, interior, generacion, segundas), sin puestos: sale de triples y dobles convertidos, asistencias y RO% contra la liga. «Cerca del aro» usa dobles del box (la zona Z1 exacta necesita el play-by-play). Se fue «interior que juega de pasador».

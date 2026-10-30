@@ -361,9 +361,22 @@ console.log('─'.repeat(70));
   check('la primera tarjeta es el factor que más pesó y dice la cifra de los dos', dec.tarjetas[0].id === 'decisor' && /58,0 % contra 44,0 %/.test(dec.tarjetas[0].texto), dec.tarjetas[0].texto);
   check('nombra a quien lo sostuvo, con sus números del box', /Local1 24 pts \(11\/17 en tiros de campo\)/.test(dec.tarjetas[0].texto), dec.tarjetas[0].texto);
   const perim = dec.plan.perimetro;
-  check('el plan perimetral nombra al rival que más repartió, con sus asistencias', perim && /Visita3 hizo 9 pts y 9 asistencias|Visita3/.test(perim.texto) && /9 asistencias/.test(perim.texto), perim && perim.texto);
-  check('el plan interior nombra al interior que reparte y rebotea, y dice que sale de cómo jugó, no de un puesto',
-    dec.plan.interior.nombres.length === 1 && /interior que juega de pasador/.test(dec.plan.interior.texto) && /Visita3/.test(dec.plan.interior.texto), dec.plan.interior);
+  check('sin un rival con 3 triples, el perímetro lo dice y no nombra a nadie', perim && perim.lectura === false && perim.nombres.length === 0, perim);
+  rivalL.box[1]['T3C'] = 4; rivalL.box[1]['T3I'] = 7; rivalL.box[1]['MIN'] = 25; rivalL.box[1]['PTS'] = 15;
+  const perim2 = P.planAjuste(propio, rivalL, a, fp, idx).perimetro;
+  check('con un tirador de 4/7 el perímetro lo nombra, con su acierto y la acción defensiva', perim2.nombres.length === 1 && /4 triples de 7 \(57 %\)/.test(perim2.texto) && /cortina/.test(perim2.texto), perim2);
+  check('el plan trae las 4 categorías de acción: perímetro, cerca del aro, generación y segundas oportunidades',
+    ['perimetro', 'interior', 'generacion', 'segundas'].every(k => dec.plan[k] && dec.plan[k].titulo));
+  check('la generación nombra a quien más repartió y dice cuántas asistencias', dec.plan.generacion.nombres.length === 1 && /Visita3/.test(dec.plan.generacion.texto) && /9 asistencias/.test(dec.plan.generacion.texto), dec.plan.generacion);
+  check('cerca del aro sale del volumen y la eficiencia en dobles, sin hablar de puestos', /Visita5 convirtió 7 de 14 dobles/.test(dec.plan.interior.texto) && !/interior que juega/i.test(dec.plan.interior.texto), dec.plan.interior);
+  check('ningún texto del plan ni de las tarjetas nombra al Simulador ni un puesto tradicional',
+    !/simulador|pívot|pivot|escolta|alero|base|interior que/i.test(JSON.stringify(dec.tarjetas) + JSON.stringify(dec.plan)));
+  const pr = dec.tarjetas.find(t => t.id === 'proyeccion');
+  check('si hay expectativa, dice margen esperado y probabilidad, sin el nombre del modelo', !pr || (/Margen esperado/.test(pr.texto) && /% de victoria estimada/.test(pr.texto)), pr && pr.texto);
+  /* Doble baseline: con un índice de la Regular, cada factor trae su referencia estructural. */
+  const dr = P.factoresPartido(idx, propio, rivalL, idx);
+  check('con índice de la Regular, cada factor trae regular y deltaRegular', dr.every(f => f.regular !== undefined && 'deltaRegular' in f));
+  check('sin índice de la Regular no hay delta', P.factoresPartido(idx, propio, rivalL).every(f => f.regular === null && f.deltaRegular === null));
   check('nadie escribe un puesto ni una causa que la planilla no tiene (pivote, presión, secó la línea)',
     !/pivote|presión que|secó|alero|base /i.test(JSON.stringify(dec.tarjetas) + JSON.stringify(dec.plan) + JSON.stringify(dec.focos)));
   check('el contexto para el play-by-play trae los generadores rivales con su nombre de planilla, los dobles y los rebotes',
@@ -380,8 +393,8 @@ console.log('─'.repeat(70));
     P.factoresPartido(idx, propio, rivalL).slice().sort((x, y) => Math.abs(y.impacto) - Math.abs(x.impacto))[0].k === 'eFG%');
   /* Sin un interior pasador no hay ajuste inventado. */
   rivalL.box.forEach(j => { j['AST'] = 1; });
-  check('si ningún rival reparte con perfil de rebote, el plan lo dice y no nombra a nadie',
-    P.planAjuste(propio, rivalL, a, fp).interior.nombres.length === 0 && P.planAjuste(propio, rivalL, a, fp).interior.lectura === false);
+  check('si ningún rival reparte 3 asistencias, la generación lo dice y no nombra a nadie',
+    P.planAjuste(propio, rivalL, a, fp, idx).generacion.nombres.length === 0 && P.planAjuste(propio, rivalL, a, fp, idx).generacion.lectura === false);
 }
 
 console.log('\n' + '═'.repeat(70));

@@ -100,7 +100,7 @@ const SGADD_PBP = (function () {
       + esc((ids || []).map(id => nombreCorto(paq, id)).join(' · ')) + '</td>';
   }
   const subtitulo = (t) => `<h5 class="text-[11px] uppercase tracking-wider text-muted mb-1">${t}</h5>`;
-  const vacio = (t) => `<p class="text-[11px] text-muted">${t}</p>`;
+  const vacio = (t) => `<p class="text-[11px] text-muted" data-pbp-vacio="1">${t}</p>`;
 
   /* Una sección colapsable. Al imprimir se abren todas (`beforeprint`, al pie). */
   function seccion(id, titulo, cuerpo, opciones) {
@@ -1803,7 +1803,7 @@ const SGADD_PBP = (function () {
   /** La tercera directriz del plan: el reloj. */
   function planRelojHtml(paq, pp) {
     const c = pp ? cierreDelSet(paq, pp) : null, V = vistaRend();
-    if (!c || !V) return '<p class="text-xs dato-sec">Sin reloj de posesión de este partido: sin directriz de cierre.</p>';
+    if (!c || !V) return vacio('Sin reloj de posesión de este partido: sin directriz de cierre.');
     const fin = c.franjas.contra[2];
     const texto = c.alertaDefensa === 'castigo'
       ? 'Concentración defensiva al final del set: el rival hizo ' + textoFranja(fin) + ' con el reloj encima. Trabajar el cierre de la posesión (18-24 s): quién sale a la bola, quién cierra la ayuda y no soltar la marca cuando el reloj aprieta.'
@@ -3522,14 +3522,27 @@ const SGADD_PBP = (function () {
             : tipo === 'partido-reloj' ? relojPartido(paq, pp)
             : tipo === 'rotaciones' ? rotacionesCard(paq)
             : tipo === 'mapa' ? mapaCard(paq, { propio: paqPropio, fijo: contexto === 'scouting', identidad: leerIdentidad(nodo) }) : html(paq, { contexto: contexto });
+          /* Post-partido sin datos del play-by-play: la sección no se muestra (v331). */
+          if (/^partido-/.test(tipo || '') && sinDatosPartido(nodo)) { quitarSeccionPartido(nodo, tipo); return; }
           activar(nodo, paq);
         }).catch((e) => {
+          if (/^partido-/.test(tipo || '')) { quitarSeccionPartido(nodo, tipo); return; }
           if (!nodo.isConnected) return;
           if (nombreTramos || tipo === 'conclusiones' || tipo === 'rival-frias' || tipo === 'rival-foda' || tipo === 'rival-cuartos') { nodo.innerHTML = ''; return; }
           nodo.innerHTML = vacio(esc(e && e.message ? e.message : 'No se pudo cargar el análisis.'));
         }));
     });
     return Promise.all(tareas);
+  }
+
+  /** ¿El lugar quedó solo con el aviso de «sin datos»? Entonces no se muestra. */
+  function sinDatosPartido(nodo) {
+    const h = String(nodo.innerHTML || '');
+    return h.indexOf('data-pbp-vacio') !== -1 && (h.match(/<p[\s>]/g) || []).length === 1 && h.indexOf('<svg') === -1 && h.indexOf('<table') === -1;
+  }
+  function quitarSeccionPartido(nodo, tipo) {
+    const caja = tipo !== 'partido-plan-reloj' && nodo.closest ? nodo.closest('.mb-6[id]') : null;
+    (caja || nodo).remove();
   }
 
   /* -------------------------------------------------------- interacción */
