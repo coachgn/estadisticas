@@ -268,7 +268,7 @@ check('los dos PDF declaran la muestra en su encabezado', /textoMuestra\(\{ juga
 check('en una muestra los partidos manuales no se suman', /idx && idx\.__muestra\) \? \[\] : clasifManualesVigentes\(\)/.test(CL));
 const iM = HTML.indexOf('js/sgadd-muestra.js'), iA = HTML.indexOf('js/sgadd-app.js');
 check('sgadd-muestra.js carga ANTES que sgadd-app.js', iM !== -1 && iM < iA);
-check('assets en v326', /sgadd-muestra\.js\?v=326/.test(HTML) && !/\?v=29\d/.test(HTML));
+check('assets en v327', /sgadd-muestra\.js\?v=327/.test(HTML) && !/\?v=29\d/.test(HTML));
 check('el CSS del badge va a mano en el <style>', /\.muestra-badge \{/.test(HTML));
 
 /* =====================================================================
@@ -521,6 +521,76 @@ async function fase3() {
   check('un error se dice y no se reintenta en bucle', pedidos === antes + 1 && /No se pudo calcular/.test(P.A.barraMuestra('jugadores')), pedidos - antes);
   SGADD.CATALOGO = catalogoViejo;
 }
+
+/* =====================================================================
+   11 · LA FASE CORTA SE LEE CONTRA LA REGULAR (Corte 1 del contexto multi-fase)
+   ===================================================================== */
+titulo('11 · baseDeTramo y propio contra la Regular');
+
+const FA = SGADD.FASES;
+const tr = (id) => ({ id: id, torneo: id.split('|')[0], fase: id.split('|')[1], label: id });
+check('una ronda de eliminación lo es, la regular no', M.esEliminacion({ torneo: 'GENERAL', fase: 'CUARTOS' }, FA)
+  && !M.esEliminacion({ torneo: 'GENERAL', fase: 'REGULAR' }, FA) && !M.esEliminacion(null, FA));
+check('cuartos → la regular del mismo torneo', M.baseDeTramo([tr('APERTURA|REGULAR'), tr('CLAUSURA|REGULAR'), tr('APERTURA|CUARTOS')], { torneo: 'APERTURA', fase: 'CUARTOS' }, FA).id === 'APERTURA|REGULAR');
+check('la carpeta al revés (OCTAVOS - APERTURA) busca la regular de APERTURA',
+  M.baseDeTramo([tr('APERTURA|REGULAR'), tr('CLAUSURA|REGULAR'), tr('OCTAVOS|APERTURA')], { torneo: 'OCTAVOS', fase: 'APERTURA' }, FA).id === 'APERTURA|REGULAR');
+check('sin la del torneo cae al TOTAL de la regular', M.baseDeTramo([tr('*TOTAL*|REGULAR'), tr('GENERAL|CUARTOS')], { torneo: 'GENERAL', fase: 'CUARTOS' }, FA).id === '*TOTAL*|REGULAR');
+check('con dos regulares que no calzan NO elige', M.baseDeTramo([tr('IDA|REGULAR'), tr('VUELTA|REGULAR'), tr('GENERAL|CUARTOS')], { torneo: 'GENERAL', fase: 'CUARTOS' }, FA) === null);
+check('con una sola regular, esa', M.baseDeTramo([tr('IDA|REGULAR'), tr('GENERAL|CUARTOS')], { torneo: 'GENERAL', fase: 'CUARTOS' }, FA).id === 'IDA|REGULAR');
+check('una fase regular no tiene base', M.baseDeTramo([tr('GENERAL|REGULAR')], { torneo: 'GENERAL', fase: 'REGULAR' }, FA) === null);
+check('comparar lleva el rótulo', M.comparar({ valor: 9 }, { valor: 8 }, 'Regular').rotulo === 'Regular' && M.comparar({ valor: 9 }, { valor: 8 }).rotulo === null);
+
+/* El libro de la demo con los dos últimos días de partidos como CUARTOS. */
+const cortes = DIAS.slice(-2);
+const relab = (h) => ({ cols: h.cols, filas: h.filas.map(f => (cortes.indexOf(diaDe(f)) >= 0 ? Object.assign({}, f, { FASE: 'CUARTOS' }) : f)) });
+const HOJAS_PO = Object.assign({}, HOJAS, {
+  'Base Datos E': relab(HOJAS['Base Datos E']),
+  'Base Datos J': relab(HOJAS['Base Datos J']),
+  '4 FACTORES': HOJAS['4 FACTORES'] ? relab(HOJAS['4 FACTORES']) : HOJAS['4 FACTORES'],
+});
+const tramosPO = SGADD.combinacionesTorneoFase(HOJAS_PO);
+check('el libro armado trae cuartos y regular', tramosPO.some(x => x.fase === 'CUARTOS') && tramosPO.some(x => x.fase === 'REGULAR'));
+const tPO = tramosPO.filter(x => x.fase === 'CUARTOS')[0];
+/* Las derivadas del libro armado no traen CUARTOS: se deriva de los partidos, como el TOTAL. */
+const idxPO = SGADD.construirIndice(HOJAS_PO, { fase: 'CUARTOS', torneo: SGADD.TORNEO_TOTAL });
+check('los cuartos son una fase corta', idxPO.lista().length > 0 && !idxPO.liga.muestraSuficiente, idxPO.liga.pjMediano);
+
+(function () {
+  const P = armarApp();
+  P.A.estado.hojas = HOJAS_PO;
+  P.A.estado.torneo = tPO.torneo; P.A.estado.fase = 'CUARTOS';
+  P.A.estado.idx = idxPO;
+  const reg = P.A.contextoRegular();
+  check('el contexto resuelve la regular y su índice', reg && reg.tramo.fase === 'REGULAR' && reg.idx.lista().length >= idxPO.lista().length);
+  const v = P.A.idxVista();
+  check('sin muestra, Equipos lee una VISTA contra la Regular (no el índice mismo)', v !== idxPO && v.__contraRegular === reg.tramo.id);
+  check('el índice del tramo no se toca (Clasificación y el buzón lo siguen leyendo)', idxPO.leer !== v.leer && !('__contraRegular' in idxPO));
+  const e = v.lista()[0];
+  const l = v.leer(e.clave, 'PTS');
+  check('la lectura trae propio contra la Regular', l && l.propio && l.propio.rotulo === 'Regular', JSON.stringify(l && l.propio));
+  const regPTS = reg.idx.leer(e.clave, "PTS");;
+  check('y su base es el dato de la regular', l.propio && regPTS && casi(l.propio.valor, regPTS.valor, 1e-9));
+  const aviso = P.A.avisoMuestra();
+  check('el aviso es «Fase corta» y no «Muestra insuficiente»', /Fase corta/.test(aviso) && !/Muestra insuficiente/.test(aviso), aviso.slice(0, 160));
+  check('el aviso dice la confianza y contra qué lee', /confianza ●/.test(aviso) && /contra la Regular/.test(aviso));
+  check('la confianza sube con los partidos', /●○○/.test(P.A.textoFaseCorta(1, reg)) && /●●○/.test(P.A.textoFaseCorta(3, reg)) && /●●●/.test(P.A.textoFaseCorta(5, reg)));
+  const tarjeta = P.ctx ? null : null;
+  const html = (typeof SGADD_UI !== 'undefined' ? SGADD_UI : null);
+  void tarjeta; void html;
+})();
+
+(function () {
+  const P = armarApp();
+  P.A.estado.idx = base;   // la fase regular, tal cual
+  check('una fase regular no cambia: ni vista ni «Fase corta»', P.A.contextoRegular() === null && P.A.idxVista() === base);
+})();
+
+const uiR = ctxUI.SGADD_UI;
+const lecR = { label: 'Puntos', clave: 'PTS', formateado: '90', delta: 1, percentil: 60,
+  propio: { valor: 80, formateado: '80', delta: 10, direccion: 1, estado: 'arriba', rotulo: 'Regular' } };
+check('la card dice «vs Regular»', /vs Regular/.test(uiR.statCard(lecR)) && !/vs su temporada/.test(uiR.statCard(lecR)));
+check('la tabla rotula la columna «Regular»', />Regular<\/th>/.test(uiR.metricTable({ label: 'x', filas: [Object.assign({ tipoFormateado: '1', invertida: false }, lecR)] })));
+check('sin rótulo sigue diciendo su temporada', /vs su temporada/.test(uiR.statCard(Object.assign({}, lecR, { propio: Object.assign({}, lecR.propio, { rotulo: null }) }))));
 
 fase3().catch(e => { fail++; console.log('  ✗ fase 3 tiró: ' + (e && e.stack)); }).then(() => {
   console.log('\n' + ok + ' ok · ' + fail + ' fallas');

@@ -76,8 +76,8 @@ const SGADD_UI = (function () {
     const flecha = pr.direccion > 0 ? '▲' : pr.direccion < 0 ? '▼' : '=';
     const color = pr.estado === 'arriba' ? 'text-green-400' : pr.estado === 'abajo' ? 'text-red-400' : 'text-muted';
     const cuanto = pr.direccion === 0 ? 'en su media'
-      : (pr.delta > 0 ? '+' : '') + SGADD.formatear(r.clave, pr.delta) + ' vs su temporada';
-    return { flecha: flecha, color: color, cuanto: cuanto, temporada: pr.formateado };
+      : (pr.delta > 0 ? '+' : '') + SGADD.formatear(r.clave, pr.delta) + ' vs ' + (pr.rotulo ? pr.rotulo : 'su temporada');
+    return { flecha: flecha, color: color, cuanto: cuanto, temporada: pr.formateado, rotulo: pr.rotulo || null };
   }
 
   /* ---------------------------------------------------------------------
@@ -98,7 +98,7 @@ const SGADD_UI = (function () {
          </p>`;
 
     const tp = textoPropio(r);
-    const propioTxt = !tp ? '' : `<p class="text-[11px] ${tp.color} font-mono" title="${esc('Su temporada: ' + (tp.temporada || '—'))}">
+    const propioTxt = !tp ? '' : `<p class="text-[11px] ${tp.color} font-mono" title="${esc((tp.rotulo ? 'Su ' + tp.rotulo + ': ' : 'Su temporada: ') + (tp.temporada || '—'))}">
            ${tp.flecha} ${esc(tp.cuanto)}</p>`;
 
     return `
@@ -120,6 +120,7 @@ const SGADD_UI = (function () {
     /* La columna «Temporada» aparece solo con una muestra activa: es la
        única vez que las filas traen `propio`. */
     const conPropio = vista.filas.some(r => r && r.propio !== undefined);
+    const rotuloPropio = (vista.filas.filter(r => r && r.propio && r.propio.rotulo)[0] || { propio: {} }).propio.rotulo || null;
     const filas = vista.filas.map(r => {
       const tp = conPropio ? textoPropio(r) : null;
       const celdaPropio = !conPropio ? '' : `<td class="py-1.5 pr-3 font-mono text-xs ${tp ? tp.color : 'text-muted'}" title="${tp ? esc(tp.cuanto) : ''}">${tp ? esc(tp.flecha + ' ' + (tp.temporada || '—')) : '—'}</td>`;
@@ -151,7 +152,7 @@ const SGADD_UI = (function () {
             <th class="pb-1 pr-3">Métrica</th>
             <th class="pb-1 pr-3">Valor</th>
             <th class="pb-1 pr-3">Mediana</th>
-            ${conPropio ? '<th class="pb-1 pr-3" title="El mismo dato en su temporada; la flecha dice si el período estuvo por encima o por debajo">Temporada</th>' : ''}
+            ${conPropio ? '<th class="pb-1 pr-3" title="' + esc(rotuloPropio ? 'El mismo dato en su ' + rotuloPropio + '; la flecha dice si esta fase está por encima o por debajo' : 'El mismo dato en su temporada; la flecha dice si el período estuvo por encima o por debajo') + '">' + esc(rotuloPropio || 'Temporada') + '</th>' : ''}
             <th class="pb-1">Pctil</th>
           </tr></thead>
           <tbody>${filas}</tbody>

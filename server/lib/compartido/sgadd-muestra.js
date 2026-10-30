@@ -410,7 +410,7 @@ const SGADD_MUESTRA = (function () {
    * reparto de plays, el ritmo— no hay lado bueno: `estado` va null y la
    * pantalla pinta la flecha sin color (punto 4).
    */
-  function comparar(rPeriodo, rTemporada) {
+  function comparar(rPeriodo, rTemporada, rotulo) {
     if (!rPeriodo || !rTemporada) return null;
     const v = rPeriodo.valor, b = rTemporada.valor;
     if (typeof v !== 'number' || typeof b !== 'number' || !isFinite(v) || !isFinite(b)) return null;
@@ -424,7 +424,46 @@ const SGADD_MUESTRA = (function () {
     return {
       valor: b, formateado: rTemporada.formateado, delta: delta,
       direccion: enMedia ? 0 : (delta > 0 ? 1 : -1), estado: estado,
+      /* Contra QUÉ se compara: null es la temporada del propio tramo; en una
+         fase de eliminación es la Regular (`baseDeTramo`). */
+      rotulo: rotulo || null,
     };
+  }
+
+  /**
+   * ¿Es una fase que se juega por series? El núcleo lo declara en `FASES`
+   * (`eliminacion`). Con la carpeta al revés (punto 134) la ronda viene en
+   * el TORNEO y la FASE trae el torneo real («OCTAVOS - APERTURA»).
+   */
+  function esEliminacion(t, fases) {
+    const f = fases || {};
+    const elim = (v) => { const x = f[String(v || '').toUpperCase()]; return !!(x && x.eliminacion); };
+    return !!t && (elim(t.fase) || elim(t.torneo));
+  }
+
+  /**
+   * El tramo contra el que se lee una fase de eliminación: la REGULAR del
+   * mismo torneo. Una fase de 1 a 3 partidos no tiene con qué compararse
+   * sola; la referencia ya está en el libro. Devuelve el tramo de `tramos`
+   * (`combinacionesTorneoFase`) o null si no hay con qué.
+   *
+   * Orden: `<torneo real>|REGULAR` → el TOTAL de la regular → la única
+   * regular que haya. Con más de una regular y ninguna que calce no se
+   * elige: comparar contra la equivocada es peor que no comparar.
+   */
+  function baseDeTramo(tramos, t, fases) {
+    if (!t || !Array.isArray(tramos) || !esEliminacion(t, fases)) return null;
+    const f = fases || {};
+    const alReves = !!(f[String(t.torneo || '').toUpperCase()] || {}).eliminacion
+      && !(f[String(t.fase || '').toUpperCase()] || {}).eliminacion;
+    const torneo = alReves ? t.fase : t.torneo;
+    const porId = (id) => tramos.filter(x => x && x.id === id)[0] || null;
+    const hit = porId(String(torneo || '').toUpperCase() + '|REGULAR')
+      || porId(String(torneo || '') + '|REGULAR')
+      || porId('*TOTAL*|REGULAR');
+    if (hit) return hit;
+    const regulares = tramos.filter(x => x && x.fase === 'REGULAR');
+    return regulares.length === 1 ? regulares[0] : null;
   }
 
   /* =====================================================================
@@ -598,7 +637,7 @@ const SGADD_MUESTRA = (function () {
 
   const API = {
     TODO, MAX_SEMANAS, MAX_ULTIMOS, HOJAS_PARTIDO, TOLERANCIA_MEDIA, CONTEXTO, MUESTRA_CHICA,
-    normalizar, activa, familia, clave, recortarPorCondicion, diasDelTramo, ventana, recortar, etiqueta, comparar, restarDias, diaIso,
+    normalizar, activa, familia, clave, recortarPorCondicion, diasDelTramo, ventana, recortar, etiqueta, comparar, esEliminacion, baseDeTramo, restarDias, diaIso,
     CORTES, MEZCLA_PERIMETRAL, VARA_MIN_PARTIDOS, VARA_MIN_CALIFICADOS,
     varaJugadores, varaSuficiente, expandir, medianaDeVara, aplicarVara, cuantil,
   };

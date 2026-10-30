@@ -430,12 +430,12 @@ const SGADD_APP = (function () {
   /* Le cuelga a cada lectura del recorte la misma lectura en la temporada.
      Se envuelve el OBJETO del índice y no el núcleo: `ranking`, el ADN y
      todo lo interno siguen leyendo el recorte sin enterarse. */
-  function decorar(v, base) {
+  function decorar(v, base, rotulo) {
     const leerV = v.leer, leerVistaV = v.leerVista, leerJ = v.leerJugador;
     const porClave = new Map((base.liga.jugadores || []).map(j => [claveJugadorVista(j), j]));
     v.leer = (k, m, vi) => {
       const r = leerV(k, m, vi);
-      if (r) r.propio = SGADD_MUESTRA.comparar(r, base.leer(k, m, vi));
+      if (r) r.propio = SGADD_MUESTRA.comparar(r, base.leer(k, m, vi), rotulo);
       return r;
     };
     v.leerVista = (k, vi) => {
@@ -443,16 +443,55 @@ const SGADD_APP = (function () {
       if (!out) return out;
       const b = base.leerVista(k, vi);
       const mb = new Map(((b && b.filas) || []).map(f => [f.clave, f]));
-      out.filas.forEach(f => { f.propio = SGADD_MUESTRA.comparar(f, mb.get(f.clave)); });
+      out.filas.forEach(f => { f.propio = SGADD_MUESTRA.comparar(f, mb.get(f.clave), rotulo); });
       return out;
     };
     v.leerJugador = (j, m) => {
       const r = leerJ(j, m);
       const jb = j ? porClave.get(claveJugadorVista(j)) : null;
-      if (r) r.propio = jb ? SGADD_MUESTRA.comparar(r, base.leerJugador(jb, m)) : null;
+      if (r) r.propio = jb ? SGADD_MUESTRA.comparar(r, base.leerJugador(jb, m), rotulo) : null;
       return r;
     };
     return v;
+  }
+
+  /* =====================================================================
+     LA FASE CORTA SE LEE CONTRA LA REGULAR
+
+     Una fase de eliminación (cuartos, semis, final…) tiene 1 a 3 partidos:
+     sola no dice nada, y el aviso de muestra insuficiente era todo lo que
+     el DT recibía. La referencia está en el mismo libro: la Regular del
+     torneo (`SGADD_MUESTRA.baseDeTramo`). Con ella, `propio` pasa a
+     comparar contra la Regular en vez de contra el tramo mismo, y las
+     flechas ▲▼ de las cards y tablas de Equipos y Jugadores dicen «vs
+     Regular». Una vista envoltura (`Object.create`) y no el índice mismo:
+     Clasificación, el buzón y Scouting siguen leyendo `estado.idx` tal cual.
+     ===================================================================== */
+  let _regular = null;   // { base, tramo, idx, vista }
+
+  /** { tramo, idx } de la Regular que le corresponde al tramo abierto, o null. */
+  function contextoRegular() {
+    const idx = estado.idx;
+    if (!idx || !estado.hojas || enLlave() || typeof SGADD_MUESTRA === 'undefined') return null;
+    if (_regular && _regular.base === idx) return _regular.idx ? _regular : null;
+    let tramo = null, ridx = null;
+    try {
+      tramo = SGADD_MUESTRA.baseDeTramo(SGADD.combinacionesTorneoFase(estado.hojas), tramoDeIndice(), SGADD.FASES);
+      if (tramo) {
+        ridx = SGADD.construirIndice(estado.hojas, { fase: tramo.fase, torneo: tramo.torneo });
+        if (ridx && ridx.liga && idx.liga && idx.liga.nivel && !ridx.liga.nivel) ridx.liga.nivel = idx.liga.nivel;
+        if (!ridx || !ridx.lista || !ridx.lista().length) ridx = null;
+      }
+    } catch (e) { ridx = null; }
+    _regular = { base: idx, tramo: tramo, idx: ridx, vista: null };
+    return ridx ? _regular : null;
+  }
+
+  /** El rótulo del tramo de referencia («Ida - Regular»), para decirlo en pantalla. */
+  function etiquetaRegular() {
+    const r = contextoRegular();
+    if (!r) return null;
+    return r.tramo.label || r.tramo.id;
   }
 
   function tramoDeIndice() {
@@ -520,9 +559,17 @@ const SGADD_APP = (function () {
   function idxVista(opciones) {
     const base = estado.idx;
     if (!base || !estado.hojas || enLlave() || typeof SGADD_MUESTRA === 'undefined') return base;
-    if (!SGADD_MUESTRA.activa(estado.muestra)) return base;
+    const reg = contextoRegular();
+    if (!SGADD_MUESTRA.activa(estado.muestra)) {
+      if (!reg) return base;
+      if (!reg.vista) {
+        reg.vista = decorar(Object.create(base), reg.idx, 'Regular');
+        reg.vista.__contraRegular = reg.tramo.id;
+      }
+      return reg.vista;
+    }
     const t = tramoDeIndice();
-    const k = (t.torneo || '') + '|' + (t.fase || '') + '|' + SGADD_MUESTRA.clave(estado.muestra);
+    const k = (t.torneo || '') + '|' + (t.fase || '') + '|' + SGADD_MUESTRA.clave(estado.muestra) + '|' + (reg ? reg.tramo.id : '');
     if (!_vista || _vista.base !== base || _vista.clave !== k) {
       const dias = SGADD_MUESTRA.diasDelTramo(estado.hojas, t);
       const fam = SGADD_MUESTRA.familia(estado.muestra);
@@ -547,7 +594,7 @@ const SGADD_APP = (function () {
         /* El nivel de la competencia es el del libro, no el de un recorte:
            sin esto la vara de las etiquetas podría resolverse con otro. */
         if (base.liga && base.liga.nivel && v.liga && !v.liga.nivel) v.liga.nivel = base.liga.nivel;
-        decorar(v, base);
+        decorar(v, reg ? reg.idx : base, reg ? 'Regular' : null);
         v.__muestra = info;
       }
       _vista = { base: base, clave: k, idx: v, info: info, rec: v ? rec : null, opc: v ? { fase: t.fase, torneo: SGADD.TORNEO_TOTAL, conservar: rec.conservar } : null };
@@ -564,7 +611,7 @@ const SGADD_APP = (function () {
         const vj = SGADD.construirIndice(_vista.rec.hojas, o);
         if (base.liga && base.liga.nivel && vj.liga && !vj.liga.nivel) vj.liga.nivel = base.liga.nivel;
         SGADD_MUESTRA.aplicarVara(vj, ev.vara);
-        decorar(vj, base);
+        decorar(vj, reg ? reg.idx : base, reg ? 'Regular' : null);
         vj.__muestra = _vista.info;
         _vista.idxJ = vj; _vista.varaJ = ev.vara;
       }
@@ -929,8 +976,8 @@ const SGADD_APP = (function () {
       : 'La ventana no tiene partidos: se muestra el tramo entero.');
     else {
       avisos.push(info.familia === 'equipo'
-        ? 'Cada equipo se mide en su propia condición: el percentil compara contra todos los equipos en esa misma situación. ▲▼ compara contra su propia temporada.'
-        : 'Métricas, percentiles y textos recalculados contra la liga en ese período. ▲▼ compara contra su propia temporada.');
+        ? 'Cada equipo se mide en su propia condición: el percentil compara contra todos los equipos en esa misma situación. ▲▼ compara contra ' + (_regular && _regular.idx && _regular.base === estado.idx ? 'su Regular.' : 'su propia temporada.')
+        : 'Métricas, percentiles y textos recalculados contra la liga en ese período. ▲▼ compara contra ' + (_regular && _regular.idx && _regular.base === estado.idx ? 'su Regular.' : 'su propia temporada.'));
       /* LA MUESTRA CHICA SE DICE con el equipo que se está mirando: con 1
          a 3 partidos el número se ve, pero no es una tendencia (punto 4). */
       if (eq && pjEq === 0) {
@@ -1044,8 +1091,23 @@ const SGADD_APP = (function () {
     if (typeof jugadoresVerPartido === 'function') jugadoresVerPartido(clave, id);
   }
 
+  /** El texto del aviso de fase corta (PURO sobre sus dos entradas). */
+  function textoFaseCorta(pj, reg) {
+    const n = Number(pj) || 0;
+    const nivel = n >= 4 ? 3 : (n >= 2 ? 2 : 1);
+    const palabra = nivel === 3 ? 'una tendencia' : (nivel === 2 ? 'un indicio' : 'una foto');
+    const puntos = '●'.repeat(nivel) + '○'.repeat(3 - nivel);
+    const rpj = reg && reg.idx && reg.idx.liga ? reg.idx.liga.pjMediano : null;
+    return 'PJ mediano ' + n + ' · confianza ' + puntos + ' (' + palabra + '). '
+      + 'Cada número se lee contra la Regular (' + (reg.tramo.label || reg.tramo.id)
+      + (rpj ? ', PJ mediano ' + rpj : '') + '): las flechas ▲▼ son contra ella, no contra la liga. '
+      + 'La confianza sube con cada partido.';
+  }
+
   function avisoMuestra() {
-    if (!estado.idx || estado.idx.liga.muestraSuficiente) return '';
+    if (!estado.idx) return '';
+    const reg = contextoRegular();
+    if (estado.idx.liga.muestraSuficiente && !reg) return '';
     /* CERO PARTIDOS NO ES UNA MUESTRA CHICA: es un torneo que no empezó, y
        el texto de muestra insuficiente —«los percentiles no distinguen una
        debilidad estructural de un mal día»— describe otra cosa. Se separan
@@ -1055,6 +1117,10 @@ const SGADD_APP = (function () {
         ? SGADD_UI.sinDatosTodavia({ fixture: tieneFixture() })
         : SGADD_UI.aviso('Sin partidos', 'La categoría todavía no tiene partidos cargados.');
     }
+    /* UNA FASE DE ELIMINACIÓN NO ES UNA MUESTRA INSUFICIENTE: es corta por
+       diseño, y tiene su referencia en la Regular del mismo libro. El aviso
+       dice cuánta confianza hay y contra qué se está leyendo. */
+    if (reg) return SGADD_UI.aviso('Fase corta', textoFaseCorta(estado.idx.liga.pjMediano, reg));
     return SGADD_UI.aviso('Muestra insuficiente',
       'PJ mediano ' + estado.idx.liga.pjMediano + '. Con tan pocos partidos los percentiles no distinguen una debilidad estructural de un mal día.');
   }
@@ -1147,7 +1213,7 @@ const SGADD_APP = (function () {
   return {
     tramoPreferido, recordarTramo, enLlave,
     estado, inicializar, cargar, reindexar, cambiarPlanilla, cambiarFase, cambiarTorneo, cambiarTramo,
-    aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, onCambio, adoptarEquipoDeCategoria,
+    aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, contextoRegular, etiquetaRegular, textoFaseCorta, onCambio, adoptarEquipoDeCategoria,
     recordarCategoria, categoriaRecordada, sufijoCategoria,
     cambiarMuestra, elegirMuestra, irAPartido, textoMuestra, pjEnMuestra, rivalesParaMuestra, varaDelPeriodo, idxVista, infoMuestra, muestraRecordada, barraMuestra,
     get idx() { return estado.idx; },
