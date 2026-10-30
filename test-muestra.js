@@ -268,7 +268,7 @@ check('los dos PDF declaran la muestra en su encabezado', /textoMuestra\(\{ juga
 check('en una muestra los partidos manuales no se suman', /idx && idx\.__muestra\) \? \[\] : clasifManualesVigentes\(\)/.test(CL));
 const iM = HTML.indexOf('js/sgadd-muestra.js'), iA = HTML.indexOf('js/sgadd-app.js');
 check('sgadd-muestra.js carga ANTES que sgadd-app.js', iM !== -1 && iM < iA);
-check('assets en v325', /sgadd-muestra\.js\?v=325/.test(HTML) && !/\?v=29\d/.test(HTML));
+check('assets en v326', /sgadd-muestra\.js\?v=326/.test(HTML) && !/\?v=29\d/.test(HTML));
 check('el CSS del badge va a mano en el <style>', /\.muestra-badge \{/.test(HTML));
 
 /* =====================================================================

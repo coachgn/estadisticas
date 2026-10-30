@@ -215,11 +215,24 @@ const SGADD_CONFIG = (function () {
      "este tramo no lleva zonas". Sin esa distinción, apagar la tabla en
      playoffs sería imposible: el comodín volvería a encenderla.
      =================================================================== */
+  /* Una ronda de eliminación se juega por SERIE, no por tabla: no hereda
+     ningún comodín. Los ids son los de `SGADD.FASES` con `eliminacion`
+     (este módulo es puro y no puede leer el núcleo). La carpeta "al
+     revés" (punto 134) pone la ronda en el TORNEO, por eso se miran los
+     dos. PERMANENCIA y PROMOCION no están: suelen ser todos contra todos. */
+  const RONDAS_ELIMINACION = ['RECLASIFICACION', 'REPECHAJE', 'PLAYOFF', 'PLAYOFFS',
+    'PLAY-IN', 'PLAYIN', 'OCTAVOS', 'CUARTOS', 'SEMIFINAL', 'SEMIFINALES', 'FINAL'];
+  function esRondaDeEliminacion(torneo, fase) {
+    const es = (v) => RONDAS_ELIMINACION.indexOf(texto(v).toUpperCase()) >= 0;
+    return es(fase) || es(torneo);
+  }
+
   function formatoDeTramo(cfg, torneo, fase) {
     if (!cfg) return null;
     const t = texto(torneo).toUpperCase() || TRAMO_CUALQUIERA;
     const f = texto(fase).toUpperCase() || TRAMO_CUALQUIERA;
-    const claves = [
+    const soloExacta = esRondaDeEliminacion(torneo, fase);
+    const claves = soloExacta ? [t + '|' + f] : [
       t + '|' + f,
       t + '|' + TRAMO_CUALQUIERA,
       TRAMO_CUALQUIERA + '|' + f,

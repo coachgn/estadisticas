@@ -252,7 +252,22 @@ check('el comodín general atrapa lo que no calzó',
 check('un null explícito apaga las zonas del tramo',
   C.formatoDeTramo(porTramo, 'PLAYOFFS', 'FINAL') === null);
 check('y le gana al comodín, que sí tiene formato',
-  C.formatoDeTramo(porTramo, 'PLAYOFFS', 'OTRA').id === 'a');
+  C.formatoDeTramo(porTramo, 'OTRO', 'OTRA').id === 'a');
+
+/* Una ronda de eliminación se juega por serie: NO hereda ningún comodín
+   (el caso Cuartos de Zona A heredando la tabla de 12 equipos). Solo vale
+   la clave exacta TORNEO|FASE, y el null sigue apagando. */
+check('cuartos NO hereda el comodín general',
+  C.formatoDeTramo(porTramo, 'GENERAL', 'CUARTOS') === null);
+check('ni el TORNEO|* (la carpeta al revés tampoco)',
+  C.formatoDeTramo(porTramo, 'VUELTA', 'SEMIFINAL') === null &&
+  C.formatoDeTramo(porTramo, 'OCTAVOS', 'APERTURA') === null);
+check('la regular sigue heredando el comodín',
+  C.formatoDeTramo(porTramo, 'GENERAL', 'REGULAR').id === 'a');
+const conExacta = C.parsear({ competencia: { formatos: { a: { zonas: [{ id: 'a', desde: 1, tono: 'exito' }] } },
+  porTramo: { '*': 'a', 'GENERAL|CUARTOS': 'a' } } });
+check('una ronda con clave exacta SÍ la usa (decisión explícita del admin)',
+  C.formatoDeTramo(conExacta, 'GENERAL', 'CUARTOS').id === 'a');
 
 check('la clave no distingue mayúsculas',
   C.formatoDeTramo(porTramo, 'ida', 'regular').id === 'a');
