@@ -81,6 +81,46 @@ const SGADD_UI = (function () {
   }
 
   /* ---------------------------------------------------------------------
+     EL DELTA CONTRA LA REGULAR EN TABLAS Y GRÁFICOS (Corte 3)
+
+     Un solo chip para las tres superficies (tabla, strip bajo el gráfico y
+     fichas de tiro): `chipDeLectura` lo arma con `SGADD_MUESTRA.chipDelta`, o
+     sea con la misma banda de ruido y el mismo tono. Las tasas se dicen en
+     puntos porcentuales: «+3,0 pp» y no «+3,0%», que se lee como relativo.
+     --------------------------------------------------------------------- */
+  function fmtDelta(clave) {
+    return (d) => {
+      const m = (typeof SGADD !== 'undefined' && SGADD.METRICAS && SGADD.METRICAS[clave]) || null;
+      if (m && m.formato === 'pct') return (Math.round(d * 1000) / 10).toFixed(1).replace('.', ',') + ' pp';
+      return SGADD.formatear(clave, d);
+    };
+  }
+
+  function chipDeLectura(r) {
+    if (typeof SGADD_MUESTRA === 'undefined' || !r || !r.propio || !r.propio.rotulo) return null;
+    return SGADD_MUESTRA.chipDelta(r.propio, fmtDelta(r.clave));
+  }
+
+  function chipDeltaHtml(cd) {
+    if (!cd) return '';
+    return `<span class="delta-chip delta-${cd.tono}${cd.ruido ? ' delta-ruido' : ''}" title="${esc(cd.titulo)}">${esc(cd.texto)}</span>`;
+  }
+
+  /** La franja de chips bajo un gráfico de barras: una celda por categoría
+      con su nombre y su variación contra la Regular. Va como franja con
+      rótulos propios y no alineada con el eje: el ancho del eje Y cambia con
+      los números y desalinearía cada chip de su barra. Sin ninguna
+      comparación contra la Regular devuelve ''. */
+  function deltasRegular(etiquetas, lecturas) {
+    const celdas = etiquetas.map((et, i) => {
+      const cd = chipDeLectura(lecturas && lecturas[i]);
+      if (!cd) return '';
+      return `<span class="chart-delta-i"><b>${esc(et)}</b>${chipDeltaHtml(cd)}${cd.nota ? `<em class="delta-nota">≈ ${esc(cd.nota)}</em>` : ''}</span>`;
+    }).join('');
+    return celdas ? `<div class="chart-deltas" data-deltas-regular="1" role="note" aria-label="Variación contra la Regular">${celdas}</div>` : '';
+  }
+
+  /* ---------------------------------------------------------------------
      StatCard
 
      La tarjeta de una métrica: valor grande, delta contra la mediana con
@@ -100,8 +140,7 @@ const SGADD_UI = (function () {
     /* CONTRA LA REGULAR el widget cambia de jerarquía: el valor y, pegado,
        el badge del delta; abajo el baseline y la liga. Dentro de la banda
        de ruido el badge va neutro y lo dice (punto 148 del Corte 2). */
-    const cd = (typeof SGADD_MUESTRA !== 'undefined' && r.propio && r.propio.rotulo)
-      ? SGADD_MUESTRA.chipDelta(r.propio, (d) => SGADD.formatear(r.clave, d)) : null;
+    const cd = chipDeLectura(r);
     if (cd) {
       return `
       <div class="bg-surface2/50 rounded-lg p-3 ${o.clase || ''}" data-vs-regular="1">
@@ -139,14 +178,23 @@ const SGADD_UI = (function () {
     const rotuloPropio = (vista.filas.filter(r => r && r.propio && r.propio.rotulo)[0] || { propio: {} }).propio.rotulo || null;
     const filas = vista.filas.map(r => {
       const tp = conPropio ? textoPropio(r) : null;
-      const celdaPropio = !conPropio ? '' : `<td class="py-1.5 pr-3 font-mono text-xs ${tp ? tp.color : 'text-muted'}" title="${tp ? esc(tp.cuanto) : ''}">${tp ? esc(tp.flecha + ' ' + (tp.temporada || '—')) : '—'}</td>`;
+      /* CONTRA LA REGULAR (Corte 3) el valor lleva su badge pegado y, dentro
+         del ruido, la viñeta que lo dice; la columna Regular muestra solo el
+         baseline (la flecha ya está en el badge). */
+      const cd = (conPropio && rotuloPropio) ? chipDeLectura(r) : null;
+      const celdaPropio = !conPropio ? ''
+        : cd ? `<td class="py-1.5 pr-3 font-mono text-xs text-muted" title="${esc(cd.titulo)}">${esc(cd.base || '—')}</td>`
+        : `<td class="py-1.5 pr-3 font-mono text-xs ${tp ? tp.color : 'text-muted'}" title="${tp ? esc(tp.cuanto) : ''}">${tp ? esc(tp.flecha + ' ' + (tp.temporada || '—')) : '—'}</td>`;
+      const celdaValor = cd
+        ? `<td class="py-1.5 pr-3 font-mono text-xs text-ink" data-vs-regular="1"><span class="text-sm font-semibold">${esc(r.formateado)}</span>${chipDeltaHtml(cd)}${cd.nota ? `<span class="delta-nota">≈ ${esc(cd.nota)}</span>` : ''}</td>`
+        : `<td class="py-1.5 pr-3 font-mono text-xs text-ink">${esc(r.formateado)}</td>`;
       const pct = (vista.descriptiva || r.percentil === null) ? '—' : r.percentil.toFixed(0);
       const colorPct = vista.descriptiva ? 'text-muted'
         : (r.percentil >= 66 ? 'text-green-400' : r.percentil >= 34 ? 'text-accent' : 'text-red-400');
       return `
         <tr class="border-b border-hairline/40 last:border-0">
           <td class="py-1.5 pr-3 text-xs">${esc(r.label)}${r.invertida && !vista.descriptiva ? ' <span class="text-muted" title="menos es mejor">↓</span>' : ''}</td>
-          <td class="py-1.5 pr-3 font-mono text-xs text-ink">${esc(r.formateado)}</td>
+          ${celdaValor}
           <td class="py-1.5 pr-3 font-mono text-xs text-muted">${esc(r.tipoFormateado)}</td>
           ${celdaPropio}
           <td class="py-1.5 font-mono text-xs ${colorPct}">${esc(pct)}</td>
@@ -1498,7 +1546,7 @@ const SGADD_UI = (function () {
     }, true);
   }
 
-  return { esc, escJs, statCard, percentileBar, metricTable, textoPropio, teamPicker, tabs, aviso, sinDatosTodavia, signoDelta, colorDelta, claseMasMenos,
+  return { esc, escJs, statCard, percentileBar, metricTable, textoPropio, fmtDelta, chipDeLectura, chipDeltaHtml, deltasRegular, teamPicker, tabs, aviso, sinDatosTodavia, signoDelta, colorDelta, claseMasMenos,
     tonoDePixeles, tonoEscudo, esEscudo, luminancia,
     atributosFila, teclaActiva, teclaTabs, cargando, conservarFoco,
     embeberImagenes, restaurarImagenes, pieInforme, encabezadoInforme, contextoEncabezado, pieWeb, MAIL, INSTAGRAM, ARROBA, LOGO, fechaHoy, MARCA,

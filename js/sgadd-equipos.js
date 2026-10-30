@@ -195,13 +195,15 @@ function equiposPanel(titulo, cuerpo, narrativa) {
 
 /** Serie de una métrica: [valor del equipo, mediana de la liga]. */
 function equiposSerie(idx, e, claves) {
-  const eq = [], lg = [];
+  const eq = [], lg = [], lecturas = [];
   claves.forEach(k => {
     const r = idx.leer(e.clave, k);
     eq.push(r && r.valor !== null ? r.valor : 0);
     lg.push(r && r.tipo !== null ? r.tipo : 0);
+    lecturas.push(r || null);
   });
-  return { eq, lg };
+  /* `lecturas` trae `propio` (contra la Regular) para el strip de deltas. */
+  return { eq, lg, lecturas };
 }
 
 function equiposGrilla(idx) {
@@ -525,11 +527,13 @@ function equiposTabOfensiva(idx, e) {
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6" data-subcard-de="equipo.ofensiva.lanzamientos equipo.ofensiva.ppt">
       <div data-subcard="equipo.ofensiva.lanzamientos">${equiposPanel('Distribución de lanzamientos · ' + e.nombre + ' vs liga',
         SGADD_CHARTS.barrasComparadas('chLanz', ['T2 int.', 'T3 int.', 'T1 int.', 'T2 conv.', 'T3 conv.', 'T1 conv.'],
-          lanz.eq, lanz.lg, { nombreEquipo: e.nombre }),
+          lanz.eq, lanz.lg, { nombreEquipo: e.nombre })
+          + SGADD_UI.deltasRegular(['T2 int.', 'T3 int.', 'T1 int.', 'T2 conv.', 'T3 conv.', 'T1 conv.'], lanz.lecturas),
         SGADD_CHARTS.nota('Promedios por partido. Muestra de dónde salen los tiros, no si entran.'))}</div>
       <div data-subcard="equipo.ofensiva.ppt">${equiposPanel('Efectividad por zona · PPP convertido',
         SGADD_CHARTS.barrasComparadas('chPPT', ['PPT2 (dobles)', 'PPT3 (triples)', 'PPT1 (libres)'],
-          ppt.eq, ppt.lg, { nombreEquipo: e.nombre }),
+          ppt.eq, ppt.lg, { nombreEquipo: e.nombre })
+          + SGADD_UI.deltasRegular(['PPT2', 'PPT3', 'PPT1'], ppt.lecturas),
         SGADD_CHARTS.narrarPPT(idx, e))}</div>
     </div>
 
@@ -565,10 +569,12 @@ function equiposTabDefensiva(idx, e) {
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6" data-subcard-de="equipo.defensiva.perdidas equipo.defensiva.rebotes">
       <div data-subcard="equipo.defensiva.perdidas">${equiposPanel('Pérdidas de balón · propias vs provocadas',
         SGADD_CHARTS.barrasComparadas('chPerd', ['PP% propias (menos=mejor)', 'PP Opp% provocadas (más=mejor)'],
-          perd.eq, perd.lg, { horizontal: true, nombreEquipo: e.nombre, formato: 'PePP%' }),
+          perd.eq, perd.lg, { horizontal: true, nombreEquipo: e.nombre, formato: 'PePP%' })
+          + SGADD_UI.deltasRegular(['PP% propias', 'PP Opp% provocadas'], perd.lecturas),
         SGADD_CHARTS.narrarPerdidas(idx, e))}</div>
       <div data-subcard="equipo.defensiva.rebotes">${equiposPanel('Rebotes · ' + e.nombre + ' vs liga',
-        SGADD_CHARTS.barrasComparadas('chReb', ['RO', 'RD', 'RT'], reb.eq, reb.lg, { nombreEquipo: e.nombre }),
+        SGADD_CHARTS.barrasComparadas('chReb', ['RO', 'RD', 'RT'], reb.eq, reb.lg, { nombreEquipo: e.nombre })
+          + SGADD_UI.deltasRegular(['RO', 'RD', 'RT'], reb.lecturas),
         SGADD_CHARTS.narrarRebote(idx, e))}</div>
     </div>
 

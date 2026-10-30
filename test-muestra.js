@@ -268,7 +268,7 @@ check('los dos PDF declaran la muestra en su encabezado', /textoMuestra\(\{ juga
 check('en una muestra los partidos manuales no se suman', /idx && idx\.__muestra\) \? \[\] : clasifManualesVigentes\(\)/.test(CL));
 const iM = HTML.indexOf('js/sgadd-muestra.js'), iA = HTML.indexOf('js/sgadd-app.js');
 check('sgadd-muestra.js carga ANTES que sgadd-app.js', iM !== -1 && iM < iA);
-check('assets en v328', /sgadd-muestra\.js\?v=328/.test(HTML) && !/\?v=29\d/.test(HTML));
+check('assets en v329', /sgadd-muestra\.js\?v=329/.test(HTML) && !/\?v=29\d/.test(HTML));
 check('el CSS del badge va a mano en el <style>', /\.muestra-badge \{/.test(HTML));
 
 /* =====================================================================
@@ -627,6 +627,32 @@ console.log('\n12 · delta vs Regular, ruido y radar superpuesto');
   const P = armarApp();
   P.A.estado.idx = base;
   check('idxRegular existe como API y es null en una fase regular', typeof P.A.idxRegular === 'function' && P.A.idxRegular() === null);
+}
+
+console.log('\n13 · delta vs Regular en tablas, gráficos y fichas de tiro (Corte 3)');
+{
+  const prop = (v, b, n, estado) => ({ valor: b, formateado: String(b).replace('.', ','), delta: v - b, direccion: v > b ? 1 : v < b ? -1 : 0,
+    estado: estado === undefined ? (v > b ? 'arriba' : 'abajo') : estado, rotulo: 'Regular', n: n, banda: 0.12 / Math.sqrt(n), ruido: Math.abs(v - b) / Math.abs(b) < 0.12 / Math.sqrt(n) });
+  const fila = (clave, label, fmt, v, b, n) => ({ clave, label, formateado: fmt, tipoFormateado: '47,4%', percentil: 80, propio: prop(v, b, n) });
+  const tabla = uiR.metricTable({ label: 'Tiro', filas: [
+    fila('TS%', 'True Shooting', '52,7%', 0.527, 0.497, 4),
+    fila('T3%', 'T3%', '34,6%', 0.346, 0.340, 1)] });
+  check('tabla: el valor lleva el chip ▲ en pp', /data-vs-regular/.test(tabla) && /delta-chip delta-pos/.test(tabla) && /\+3,0 pp vs Regular/.test(tabla), tabla.slice(0, 300));
+  check('tabla: con 1 PJ la celda se atenúa y dice «foto de partido único»', /delta-ruido/.test(tabla) && /≈ foto de partido único/.test(tabla));
+  const sinReg = uiR.metricTable({ label: 'Tiro', filas: [{ clave: 'TS%', label: 'TS%', formateado: '52,7%', tipoFormateado: '47%', percentil: 80,
+    propio: { valor: 0.5, formateado: '50,0%', delta: 0.02, direccion: 1, estado: 'arriba', rotulo: null } }] });
+  check('tabla: una muestra común (sin Regular) sigue con su columna Temporada', !/data-vs-regular/.test(sinReg) && /Temporada/.test(sinReg));
+  const strip = uiR.deltasRegular(['Triple', 'Doble', 'Tiro libre'], [
+    { clave: 'T3I', propio: prop(7.5, 6, 4, null) }, { clave: 'T2I', propio: prop(5, 5, 4, null) }, null]);
+  check('strip: un chip por categoría con comparación y ninguno por la que no la tiene', /Triple/.test(strip) && /Doble/.test(strip) && !/Tiro libre/.test(strip));
+  check('strip: dice contra la Regular y tiene rol de nota', /vs Regular/.test(strip) && /role="note"/.test(strip));
+  check('strip: sin ninguna Regular no se dibuja', uiR.deltasRegular(['A'], [{ clave: 'T3I', propio: { valor: 1, delta: 0, direccion: 0, rotulo: null } }]) === '' && uiR.deltasRegular(['A'], [null]) === '');
+  check('un volumen (sin lado bueno) sale informativo, no verde ni rojo', /delta-info/.test(strip));
+  check('fmtDelta: una tasa se dice en pp y una cuenta no', uiR.fmtDelta('T3%')(0.051) === '5,1 pp' && !/pp/.test(uiR.fmtDelta('T3I')(1.5)));
+  const V = require('./js/sgadd-rendimiento.js').vista;
+  const cd = uiR.chipDeLectura({ clave: 'PPT3', propio: prop(1.5, 1.15, 4) });
+  const fichaTiro = V.ficha({ label: 'PPP', valor: '1,50', sub: 'Reg 1,15 · percentil 85', tono: 'pos', delta: cd });
+  check('ficha de tiro: PPP con chip vs su Regular y percentil al lado', /delta-chip delta-pos/.test(fichaTiro) && /vs Regular/.test(fichaTiro) && /percentil 85/.test(fichaTiro));
 }
 
 fase3().catch(e => { fail++; console.log('  ✗ fase 3 tiró: ' + (e && e.stack)); }).then(() => {

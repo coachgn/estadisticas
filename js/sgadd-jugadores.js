@@ -3351,10 +3351,17 @@ function jugadoresTabTiro(idx, j) {
     const ppp = idx.leerJugador(j, z.ppp);
     const ci = SGADD.formatear(z.c, j[z.c]) + '/' + SGADD.formatear(z.i, j[z.i]);
     const pesoPct = peso && typeof peso.valor === 'number' ? peso.valor * 100 : null;
+    /* CONTRA SU REGULAR (Corte 3): cada ficha trae su chip y el baseline en
+       el subtítulo, con la jerarquía de liga al lado. El C/I compara los
+       intentos (el volumen): no tiene lado bueno, así que el chip sale
+       informativo. Sin Regular, `delta` queda null y la ficha es la de antes. */
+    const cdDe = (r) => SGADD_UI.chipDeLectura(r);
+    const cdPpp = cdDe(ppp), cdConv = cdDe(conv), cdVol = cdDe(idx.leerJugador(j, z.i));
+    const subReg = (cd, resto) => (cd && cd.base ? 'Reg ' + cd.base + ' · ' : '') + resto;
     const fichas = [
-      { label: 'PPP', valor: ppp ? ppp.formateado : '—', sub: 'puntos por intento', tono: ppp ? jugadoresTonoPct(ppp.percentil) : null },
-      { label: 'Conv%', valor: conv ? conv.formateado : '—', sub: conv && conv.percentil != null ? 'percentil ' + Math.round(conv.percentil) : 'sin percentil', tono: conv ? jugadoresTonoPct(conv.percentil) : null },
-      { label: 'C/I', valor: ci, sub: 'por partido' },
+      { label: 'PPP', valor: ppp ? ppp.formateado : '—', sub: subReg(cdPpp, 'puntos por intento'), tono: ppp ? jugadoresTonoPct(ppp.percentil) : null, delta: cdPpp },
+      { label: 'Conv%', valor: conv ? conv.formateado : '—', sub: subReg(cdConv, conv && conv.percentil != null ? 'percentil ' + Math.round(conv.percentil) : 'sin percentil'), tono: conv ? jugadoresTonoPct(conv.percentil) : null, delta: cdConv },
+      { label: 'C/I', valor: ci, sub: subReg(cdVol, 'por partido'), delta: cdVol ? Object.assign({}, cdVol, { tono: cdVol.ruido ? 'nulo' : 'info' }) : null },
     ];
     return `<section class="rend-card${i === ZONAS_TIRO.length - 1 ? ' rend-ancho' : ''}" data-tiro-zona="${escapeHtml(z.id)}">
       <h5 class="rend-card-t">${escapeHtml(z.label)}</h5>
@@ -3378,6 +3385,9 @@ function jugadoresTabTiro(idx, j) {
   const clavesTiro = ZONAS_TIRO.map(z => z.i).concat(ZONAS_TIRO.map(z => z.conv));
   const refTiro = jugadoresPeerReferencia(idx, j, clavesTiro, JUGADORES.refModo);
   const refDe = k => { const v = refTiro.valores[k]; return (v === null || v === undefined) ? 0 : v; };
+  const lecDe = k => idx.leerJugador(j, k);
+  const deltasVol = SGADD_UI.deltasRegular(etiquetas, ZONAS_TIRO.map(z => lecDe(z.i)));
+  const deltasConv = SGADD_UI.deltasRegular(etiquetas, ZONAS_TIRO.map(z => lecDe(z.conv)));
   const volEq = ZONAS_TIRO.map(z => valorDe(z.i));
   const volLg = ZONAS_TIRO.map(z => refDe(z.i));
   const cvEq = ZONAS_TIRO.map(z => valorDe(z.conv));
@@ -3400,11 +3410,11 @@ function jugadoresTabTiro(idx, j) {
       ${equiposPanel('Volumen por zona · intentos por partido',
         SGADD_CHARTS.barrasComparadas('chTiroVol', etiquetas, volEq, volLg,
           { nombreEquipo: j['NOMBRES'], nombreLiga: refTiro.grupo.label,
-            notaLiga: refTiro.grupo.motivo }))}
+            notaLiga: refTiro.grupo.motivo }) + deltasVol)}
       ${equiposPanel('Acierto por zona · CONV%',
         SGADD_CHARTS.barrasComparadas('chTiroConv', etiquetas, cvEq, cvLg,
           { nombreEquipo: j['NOMBRES'], formato: 'T2%', nombreLiga: refTiro.grupo.label,
-            notaLiga: refTiro.grupo.motivo }))}
+            notaLiga: refTiro.grupo.motivo }) + deltasConv)}
     </div></div>`;
 }
 
