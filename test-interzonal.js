@@ -621,6 +621,19 @@ const pedirLibro = async (tok, club, cat) => { catalogo.limpiarCache(); return H
     const f10 = fus.hojas['Base Datos E'].slice(1).filter(x => x[0] === '10/04/2026');
     check('un partido escrito en los dos libros entra UNA vez (gana el de la zona)', f10.length === 2, f10.length);
     check('fusionar no toca el libro de entrada (viene del caché de Google)', conCopia.hojas['Base Datos E'].length === 15);
+    /* Libro de la PROPIA zona (participan = su zona): entra la fase entera. */
+    const propio = MULTI.fusionar(libroApi(NORTE), [{ slug: 'p', label: 'Playoff propio', rol: 'playoffs', propio: true, libro: libroCompleto(POST) }], SGADD.claveEquipo(OB));
+    const cuartosP = propio.hojas['Base Datos E'].slice(1).filter(x => x[0] !== undefined && /CUARTOS/.test(JSON.stringify(x)));
+    const parcial = MULTI.fusionar(libroApi(NORTE), [{ slug: 'p', label: 'Playoff', rol: 'playoffs', libro: libroCompleto(POST) }], SGADD.claveEquipo(OB));
+    const cuartosR = parcial.hojas['Base Datos E'].slice(1).filter(x => /CUARTOS/.test(JSON.stringify(x)));
+    check('si participan es SU zona, entran los cuartos de TODOS (no solo sus partidos)', cuartosP.length === 6 && cuartosR.length === 4, [cuartosP.length, cuartosR.length]);
+    check('y los informa como fusionado', (propio.vinculados || [])[0].partidos === 3 && (parcial.vinculados || [])[0].partidos === 2);
+    const CATP = { club: { tipo: 'cliente', categorias: { c: { sheetId: 'A'.repeat(40), torneo: 't', zona: 'a' } } },
+      t: { tipo: 'torneo', categorias: { za: { sheetId: 'A'.repeat(40), zona: 'a' }, pa: { sheetId: 'B'.repeat(40), zona: 'pa', rol: 'playoffs', participan: ['a'] },
+        rab: { sheetId: 'C'.repeat(40), zona: 'rab', rol: 'repechaje', participan: ['a', 'b'] } } } };
+    const vp = MULTI.vinculadosDe(CATP, 'club', 'c');
+    check('vinculadosDe marca como propio el libro de su sola zona', vp.find(v => v.slug === 'pa').propio === true);
+    check('y NO el libro entre zonas', vp.find(v => v.slug === 'rab').propio === false);
     const caido = await MULTI.leerVinculados(libroApi(NORTE), [{ slug: 'y', label: 'Caído', sheetId: 'x' }],
       SGADD.claveEquipo(OB), async () => { throw new Error('Google no contestó'); });
     check('un libro vinculado ilegible no tumba el de la zona', caido.hojas['Base Datos E'].length === 13

@@ -85,7 +85,12 @@ function vinculadosDe(cat, clubId, slug) {
     if (z.sheetId === k.sheetId) return;
     const part = Array.isArray(z.participan) ? z.participan : [];
     if (part.length && part.indexOf(k.zona) === -1) return;
-    out.push({ slug: s, zona: z.zona || null, rol: rolDe(z), label: z.label || s, sheetId: z.sheetId });
+    /* Si TODOS los que participan son de la zona del cliente, el libro es una
+       fase de SU zona (los playoffs de la Zona A): los equipos que juegan ahí
+       ya están en su libro regular, así que no hay nada ajeno que proteger y
+       ve la fase entera. Un libro entre zonas (repechaje A-B) sigue por partido. */
+    const propio = part.length > 0 && part.every(p => p === k.zona);
+    out.push({ slug: s, zona: z.zona || null, rol: rolDe(z), label: z.label || s, sheetId: z.sheetId, propio: propio });
   });
   return out.sort((a, b) => String(a.slug).localeCompare(String(b.slug)));
 }
@@ -124,11 +129,28 @@ function esTipoDeLiga(o) {
  * equipos «sucios» por fase (jugaron también contra otros) para
  * re-derivarlos.
  */
-function filtrar(libro, equipoClave) {
+function filtrar(libro, equipoClave, opciones) {
   const hojas = (libro && libro.hojas) || {};
   const out = { indices: {}, partidos: 0, fases: [], sucios: [] };
   const bd = hojas['Base Datos E'];
   const cabBd = cabecera(bd);
+
+  /* Fase de la propia zona: entra el libro completo, sin recorte ni re-derivación. */
+  if (opciones && opciones.completo) {
+    const ids = new Set();
+    const fs = new Set();
+    (bd || []).slice(1).forEach((f) => { const o = aObjeto(cabBd, f); ids.add(idPartido(o)); fs.add(may(o.FASE)); });
+    out.partidos = ids.size;
+    out.fases = Array.from(fs);
+    MAESTRAS.concat(DERIVADAS).forEach((h) => {
+      const m = hojas[h];
+      if (!Array.isArray(m) || !m.length) return;
+      const idx = [];
+      for (let i = 1; i < m.length; i++) idx.push(i);
+      out.indices[h] = idx;
+    });
+    return out;
+  }
   const permitidos = new Set();      // FECHA|PARTIDO
   const textos = new Set();          // PARTIDO, para las filas sin fecha
   const fases = new Set();
@@ -245,7 +267,7 @@ function fusionar(principal, vinculados, equipoClave) {
   (vinculados || []).forEach((v) => {
     const libro = v.libro;
     if (!libro || !libro.hojas) return;
-    const f = filtrar(libro, equipoClave);
+    const f = filtrar(libro, equipoClave, { completo: v.propio === true });
     info.push({ slug: v.slug, label: v.label, rol: v.rol, partidos: f.partidos, fases: f.fases });
     if (!f.partidos) return;
 

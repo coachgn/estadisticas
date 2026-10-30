@@ -608,8 +608,8 @@ const SGADD_FIXTURE = (function () {
     const calCompleto = (o.fuente && o.fuente.length)
       ? normalizarFuente(o.fuente, alias, o.zona)
       : normalizarCalendario(o.torneo, o.zona);
-    const cal = calendarioDeFase(calCompleto, o.fase, o.fases);
     const jug = jugadosDelIndice(o.idx);
+    const cal = calendarioDeFase(calCompleto, o.fase, o.fases, { jugados: jug, equipos: o.equiposFase, hoy: hoy });
     const todos = anotarFase(unir(cal, jug), o);
     const propio = o.equipo ? clave(o.equipo) : '';
     const mios = propio ? delEquipo(todos, propio) : [];
@@ -682,7 +682,28 @@ const SGADD_FIXTURE = (function () {
      ===================================================================== */
   function FASES() { return (typeof SGADD_FASES !== 'undefined') ? SGADD_FASES : null; }
 
-  function calendarioDeFase(cal, fase, fases) {
+  /**
+   * LO PROGRAMADO DE UNA ELIMINATORIA SIN VENTANAS. Sin fechas declaradas no
+   * se puede partir el calendario por fecha, pero tampoco hace falta
+   * esconderlo entero: un partido pertenece a la fase si sus DOS equipos
+   * participan de ella (los de los cruces de la llave y los que ya jugaron
+   * en su libro) y no es anterior a su primer partido —sin partidos jugados,
+   * a hoy—. Así aparece el segundo partido de la serie y los de las otras
+   * series, y los cruces de la fase regular entre los mismos equipos
+   * quedan afuera. Sin equipos conocidos no se adivina: vacío, como antes.
+   */
+  function programadosDeEliminacion(cal, ctx) {
+    const c = ctx || {};
+    const eq = new Set((c.equipos || []).filter(Boolean));
+    const jug = c.jugados || [];
+    jug.forEach((p) => { if (p.localClave) eq.add(p.localClave); if (p.visitanteClave) eq.add(p.visitanteClave); });
+    if (!eq.size) return [];
+    const fechas = jug.map(p => p.fecha).filter(Boolean).sort();
+    const piso = fechas.length ? fechas[0] : (fechaISO(c.hoy) || '');
+    return cal.filter(p => p.fecha && p.fecha >= piso && eq.has(p.localClave) && eq.has(p.visitanteClave));
+  }
+
+  function calendarioDeFase(cal, fase, fases, ctx) {
     const F = FASES();
     if (!fase || !F) return cal;
     /* SIN VENTANAS NO SE PUEDE PARTIR LO PROGRAMADO. Se queda donde
@@ -690,7 +711,10 @@ const SGADD_FIXTURE = (function () {
        solo lo que su libro dice que se jugó. Mostrar ahí el calendario
        entero haría pasar por «a jugarse» partidos de la fase regular que
        ya se jugaron. */
-    if (!F.tieneVentanas(fases)) return F.tipoDe(fase, fases) === 'eliminacion' ? [] : cal;
+    if (!F.tieneVentanas(fases)) {
+      if (F.tipoDe(fase, fases) !== 'eliminacion') return cal;
+      return programadosDeEliminacion(cal, ctx);
+    }
     const v = String(fase).toUpperCase();
     return cal.filter((p) => {
       const r = F.faseDeFecha(p.fecha, fases);
@@ -1227,6 +1251,7 @@ const SGADD_FIXTURE = (function () {
       estructura: estado.vivoEstructura || [],
       fase: fase,
       fases: FASES() ? FASES().visibles() : [],
+      equiposFase: FASES() && FASES().equiposDeFase ? FASES().equiposDeFase() : [],
       zonaDeEquipo: FASES() ? FASES().zonasDeEquipos(estado.doc) : {},
       otrasFases: st ? otrasFasesConPartidos(st.hojas, fase) : [],
     });

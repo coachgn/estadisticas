@@ -1422,9 +1422,24 @@ const SGADD_FASES = (function () {
       + '</div>';
   }
 
+  /** Las claves de los equipos que ya figuran en los cruces de la fase abierta. */
+  function equiposDeFase() {
+    try {
+      const st = SGADD_APP.estado;
+      const d = declaradaDe(visibles(), st.fase, st.torneo);
+      if (!d) return [];
+      const x = llave(declaradas(), contexto())[d.id];
+      const out = [];
+      if (!x) return out;
+      (x.cruces || []).forEach((cr) => { [cr.a, cr.b].forEach((l) => { if (l && l.clave) out.push(l.clave); }); });
+      (x.sueltas || []).forEach((sv) => { Object.keys(sv.nombres || {}).forEach(k => out.push(k)); });
+      return out;
+    } catch (e) { return []; }
+  }
+
   return {
     /* motor */
-    parsear, asignarZonas, visibleEnZona, filtrarPorZona, dependenciasDe, desambiguarEtiquetas,
+    equiposDeFase, parsear, asignarZonas, visibleEnZona, filtrarPorZona, dependenciasDe, desambiguarEtiquetas,
     declaradaDe, tipoDe, calza, invertido, instanciaDe, enriquecerTramos, SIN_DATOS, LLAVE, esLlave, esEntreZonas,
     mezclarLlave, partidoDeLlave, SECCIONES_EN_LLAVE, SECCIONES_QUE_USAN_LLAVE, repintarLaQueLaMuestra, bloqueaEnLlave,
     series, resumen, resolverSlot, llave, naturalezaCruce, naturalezaPartido, claveTramo, indiceDeTramo,

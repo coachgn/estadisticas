@@ -238,6 +238,15 @@ seccion('4 · la fase de un partido programado (reglas del punto 18)');
   check('lo que no se puede asignar se MUESTRA, marcado', deSemis.some(p => p.fecha === '2026-06-01' && p.sinFase));
   const sinVentanas = F.parsear({ fases: [{ id: 'regular' }, { id: 'playoff', libro: ['PLAYOFF'] }] }).fases;
   check('sin ventanas, una fase de eliminación no hereda el calendario entero', FX.calendarioDeFase(cal, 'PLAYOFF', sinVentanas).length === 0);
+  /* Sin ventanas pero con equipos conocidos: entran los partidos entre ellos, desde el piso. */
+  const eqs = ['ATENAS A', 'PLATENSE A'];
+  const prog = FX.calendarioDeFase(cal, 'PLAYOFF', sinVentanas, { equipos: eqs, jugados: [], hoy: '2026-05-01' });
+  check('sin ventanas, la eliminatoria muestra lo programado entre SUS equipos', prog.length === 1 && prog[0].fecha === '2026-06-01');
+  check('y no el de la regular ni los que involucran a un ajeno', !prog.some(p => p.fecha === '2026-03-02' || p.fecha === '2026-04-15'));
+  check('el piso es el primer partido jugado de la fase', FX.calendarioDeFase(cal, 'PLAYOFF', sinVentanas,
+    { equipos: eqs, jugados: [{ fecha: '2026-03-01', localClave: 'ATENAS A', visitanteClave: 'PLATENSE A' }], hoy: '2026-05-01' }).length === 1);
+  check('y los que juegan en el libro cuentan como equipos de la fase', FX.calendarioDeFase(cal, 'PLAYOFF', sinVentanas,
+    { equipos: [], jugados: [{ fecha: '2026-05-20', localClave: 'ATENAS A', visitanteClave: 'PLATENSE A' }], hoy: '2026-05-01' }).length === 1);
   check('y la fase de liga lo conserva, como siempre', FX.calendarioDeFase(cal, 'REGULAR', sinVentanas).length === 3);
   check('sin fase activa el calendario no se toca', FX.calendarioDeFase(cal, null, fases).length === 3);
   delete global.SGADD_FASES;
