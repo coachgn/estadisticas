@@ -1452,6 +1452,14 @@ const SGADD_PBP = (function () {
           <clipPath id="${id}-b"><rect x="0" y="${y(0)}" width="${W}" height="${H}"/></clipPath>
         </defs>
         ${cortes.map(t => `<line class="mo-cuarto" x1="${x(t)}" y1="2" x2="${x(t)}" y2="${H - 11}"/>`).join('')}
+        ${(() => {
+          /* LA BRECHA DE CADA CORRIDA (v333): sombreada desde donde arrancó
+             hasta el pico, con su parcial arriba. */
+          const qb = quiebres(paq, pp);
+          const banda = (p, cls) => !p || !(p.swing > 0) ? '' : `<rect class="mo-banda ${cls}" x="${x(p.t0)}" y="2" width="${Math.max(1, +x(p.t) - +x(p.t0)).toFixed(1)}" height="${H - 13}"/>
+            <text class="mo-banda-t" x="${((+x(p.t0) + +x(p.t)) / 2).toFixed(1)}" y="8" text-anchor="middle">${p.dif > 0 ? '+' : '−'}${p.swing}</text>`;
+          return qb ? banda(qb.ventaja, 'mo-banda-f') + banda(qb.desventaja, 'mo-banda-c') : '';
+        })()}
         <path class="mo-favor" d="${area}" clip-path="url(#${id}-a)"/>
         <path class="mo-contra" d="${area}" clip-path="url(#${id}-b)"/>
         <line class="mo-eje" x1="${M}" y1="${y(0)}" x2="${W - 2}" y2="${y(0)}"/>
@@ -1605,6 +1613,26 @@ const SGADD_PBP = (function () {
     return mejor ? { total: total, mejor: mejor, segF: segF, segC: segC } : null;
   }
 
+  /**
+   * QUIÉN ARMÓ LA CORRIDA (v333): los puntos de cada jugador del lado que la
+   * hizo (sg > 0 propio, < 0 rival) entre t0 y t1. Sale del cuarto elemento
+   * de `linea` (índice en `ids`); un paquete sin él devuelve null y el panel
+   * no inventa nombres. PURA.
+   */
+  function anotadoresEn(pp, t0, t1, sg) {
+    const linea = pp && pp.linea;
+    if (!linea || !linea.some((p, i) => i && p.length > 3)) return null;
+    const por = new Map();
+    for (let i = 1; i < linea.length; i++) {
+      const p = linea[i], ant = linea[i - 1];
+      if (p[0] <= t0 || p[0] > t1) continue;
+      const pts = sg > 0 ? p[1] - ant[1] : p[2] - ant[2];
+      if (!(pts > 0) || p[3] == null || p[3] < 0) continue;
+      por.set(p[3], (por.get(p[3]) || 0) + pts);
+    }
+    return Array.from(por, ([k, pts]) => ({ k, pts })).sort((a, b) => b.pts - a.pts).slice(0, 3);
+  }
+
   /** El pico de ventaja y el de desventaja, con la corrida que los armó y quién jugaba. PURA. */
   function quiebres(paq, pp) {
     const linea = pp && pp.linea;
@@ -1617,7 +1645,8 @@ const SGADD_PBP = (function () {
     });
     const armar = (pico, sg) => {
       const w = ventanaDe(linea, pico.t, sg);
-      return { t: pico.t, dif: pico.d, periodo: periodoDeT(pico.t), t0: w.t0, swing: w.swing, cancha: canchaEnVentana(pp, w.t0, pico.t) };
+      return { t: pico.t, dif: pico.d, periodo: periodoDeT(pico.t), t0: w.t0, swing: w.swing, cancha: canchaEnVentana(pp, w.t0, pico.t),
+        anotadores: anotadoresEn(pp, w.t0, pico.t, sg) };
     };
     return { ventaja: mx.d > 0 ? armar(mx, 1) : null, desventaja: mn.d < 0 ? armar(mn, -1) : null, conTramos: hayTramos(pp) };
   }
@@ -1649,9 +1678,12 @@ const SGADD_PBP = (function () {
           ${focoEn.length ? `<p class="text-[11px] text-ink mt-1"><b>★ Generador rival:</b> ${focoEn.map(f => esc(etiquetaJ(paq, pp, f.k)) + ' estuvo ' + mmss(f.s) + ' de ' + mmss(x.cancha.total)).join(' · ')} en cancha durante el tramo.</p>`
             : foco.length ? '<p class="text-[11px] dato-sec mt-1">★ Los generadores rivales de la noche no jugaron en este tramo.</p>' : ''}`;
       }
+      const lideres = (x.anotadores || []).length
+        ? `<p class="text-xs text-ink mt-1" data-anotadores="1"><b>La armaron:</b> ${x.anotadores.map(a => esc(etiquetaJ(paq, pp, a.k)) + ' <b class="font-mono ' + (esVentaja ? 'mm-pos' : 'mm-neg') + '">' + a.pts + ' pts</b>').join(' · ')}</p>`
+        : '';
       return `<section class="rend-card" data-quiebre="${esVentaja ? 'ventaja' : 'desventaja'}">
         <h5 class="rend-card-t"><span aria-hidden="true">${esVentaja ? '▲' : '▼'}</span> ${esVentaja ? 'Mayor ventaja' : 'Mayor desventaja'} · <span class="font-mono ${esVentaja ? 'mm-pos' : 'mm-neg'}">${signo(x.dif, 0)}</span></h5>
-        <p class="rend-titular">${esc(reloj)}.${esc(corrida)}</p>${cancha}
+        <p class="rend-titular">${esc(reloj)}.${esc(corrida)}</p>${lideres}${cancha}
       </section>`;
     };
     const sinTramos = q.conTramos ? '' : '<p class="text-[11px] dato-sec mt-2" data-sin-tramos="1">Los quintetos tramo a tramo de este partido llegan con la próxima subida de los paquetes: hoy el gráfico marca el momento, no quién estaba en cancha.</p>';
@@ -3711,7 +3743,7 @@ const SGADD_PBP = (function () {
     rotacionesCard, diagnosticoZonas, diagnosticoJugador, cruceZonas, diagnosticoRival, rivalFriasHtml, espacioRival, fodaPbp, cuartosPatrones, juegoPorCuartoHtml, cuartosCruzadoHtml, espacioCuartos, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
     activa, espacio, espacioJugador, espacioQuintetosJugador, quintetosJugador, onOffDe, avisoSinCapa, espacioRendimiento, espacioConclusiones, montarPendientes, activar, apellido, _cache: cache,
     partidoDe, mapaPartido, momentumPartido, quintetosPartido, espacioPartido, MIN_TIROS_DIAGNOSTICO,
-    quiebres, quiebresHtml, rotacionesDe, rotacionesPartido, cierreDelSet, cierreHtml, pinturaRival, pinturaHtml, lecturaPartido, planRelojHtml, canchaEnVentana, periodoDeT,
+    quiebres, quiebresHtml, anotadoresEn, rotacionesDe, rotacionesPartido, cierreDelSet, cierreHtml, pinturaRival, pinturaHtml, lecturaPartido, planRelojHtml, canchaEnVentana, periodoDeT,
     relojTabla, relojIdentidad, relojPerfilJugador, relojEquipo, relojJugador, relojPartido, relojReparto, FRANJAS_RELOJ,
     relojScouting, relojQuienes, relojMetodologiaHtml, relojAyuda, METODOLOGIA_RELOJ, RELOJ_MINIMOS, FUERA_DE_FRANJA,
     relojSintesis, relojBarras, relojMapaTiro, relojCeldas, relojMapas, relojTendencias, relojTendenciasHtml, paqFranja,

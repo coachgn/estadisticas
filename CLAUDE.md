@@ -16450,3 +16450,21 @@ El **plan de ajuste** recibe ese plan: si nombra a un jugador con marca, dice si
 
 ### No verificado
 El PDF del post-partido con la card nueva, y el cruce real San Isidro vs Jujuy (verificado sobre la demo).
+
+
+## 159. EL POST-PARTIDO DE UN GOLPE DE OJO · plan en mosaico, radar de 8 ejes, % de victoria y la corrida con quién la armó (2026-10-31)
+
+Assets en `?v=333`. Pedido del club sobre el punto 158: demasiado texto.
+
+- **📋 Plan contra realidad es un mosaico de números** (`.plan-g` / `.plan-t`): cada pieza dice «antes → esa noche» y el número de la noche lleva tono verde/ámbar/rojo y un glifo ✓ ◐ ✗. Las 3 cosas son chips (la frase va en el `title`); las frases completas, plegadas en «Ver el detalle». `planContraRealidad` devuelve `datos` por fila (duelos: `ellos`/`nos` con `antes`, `contra`, `real`, `tono`; margen; quiebre; volúmenes con `tono` por ítem). «Cerca» (ámbar): 2 pp en las tasas, 4 pts en el margen, 10 % del umbral en los volúmenes.
+- **De las marcas solo va el top 3 de daño** (`danio`): los que no cumplieron su consigna, por los puntos sobre su promedio previo. El resto ya está en el box score.
+- **Radar de 8 ejes** (`SGADD_PARTIDO.radarPartido` + `equiposRadarSvg`), como el de ElStatsLab: NET, DRTG, REB%, OREB%, TOV%, AST%, eFG%, ORTG, con **escala fija por métrica** (`RADAR_EJES`) y DRTG y TOV% invertidos. SVG (sale igual en el PDF), con los dos valores escritos en cada eje. Reemplaza al radar de Chart.js de 4 ejes.
+- **Los colores salen del escudo** (`equiposColoresCruce`: `CLUB.colorDeImagen` + `aclararHastaLegible`). Si los dos se parecen (distancia < 140, o el mismo escudo) el rival pasa al color más lejano de una paleta. Sin escudo: el acento del club y gris.
+- **Barra de % de victoria previa** (`equiposBarraVictoria`), debajo de «Qué decidió el partido», con la probabilidad del simulador PREVIO (punto 158).
+- **Momentum**: la brecha de cada corrida va sombreada (`.mo-banda`) desde donde arrancó hasta el pico, con el parcial arriba, y la tarjeta del pico dice **quién la armó** (`anotadoresEn`: puntos de cada jugador del lado que la hizo dentro de la brecha).
+
+### Ingesta
+`porPartido` (`motorstats-ingestion/src/pbp/avanzado.js`): cada punto de `linea` suma un cuarto elemento, el índice del anotador en `ids` (−1 si el PBP no lo trae). Un paquete sin él no dice «La armaron» (no se inventa). **Hay que regenerar y subir los paquetes** (`node herramientas/subir-paquetes.js --confirmar`) para verlo en producción.
+
+### No verificado
+El PDF del post-partido con el radar SVG, la barra y el mosaico (las reglas de papel están escritas). Probado en el navegador sobre la demo, donde todos los equipos comparten escudo.

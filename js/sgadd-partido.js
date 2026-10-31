@@ -752,6 +752,49 @@ const SGADD_PARTIDO = (function () {
 
   const num1 = (v) => (Math.round(v * 10) / 10).toFixed(1).replace('.', ',');
 
+  /* =====================================================================
+     EL RADAR DEL PARTIDO (v333) · ocho ejes con escala FIJA por métrica,
+     como el de ElStatsLab: el tamaño de la forma se compara entre partidos.
+     DRTG y TOV% van invertidos: más afuera siempre es mejor. Un valor fuera
+     de la escala se pega al borde (la etiqueta dice el número real).
+     ===================================================================== */
+  const RADAR_EJES = [
+    { id: 'NET', label: 'NET', min: -30, max: 30 },
+    { id: 'DRTG', label: 'DRTG', min: 80, max: 140, inv: true },
+    { id: 'REB%', label: 'REB%', min: 0.35, max: 0.65, pct: true },
+    { id: 'OREB%', label: 'OREB%', min: 0.10, max: 0.45, pct: true },
+    { id: 'TOV%', label: 'TOV%', min: 0.05, max: 0.25, pct: true, inv: true },
+    { id: 'AST%', label: 'AST%', min: 0.30, max: 0.85, pct: true },
+    { id: 'eFG%', label: 'eFG%', min: 0.35, max: 0.75, pct: true },
+    { id: 'ORTG', label: 'ORTG', min: 80, max: 140 },
+  ];
+
+  function radarPartido(lp, lr, a) {
+    if (!lp || !lr || !a || !a.avanzadas || !a.avanzadasRival) return null;
+    const div = (x, y) => (typeof x === 'number' && typeof y === 'number' && y > 0 ? x / y : null);
+    const lado = (f, o, av) => {
+      const reb = nz(f, 'RO') + nz(f, 'RD'), rebO = nz(o, 'RO') + nz(o, 'RD');
+      const tcc = nz(f, 'TCC') || (nz(f, 'T2C') + nz(f, 'T3C')), tci = nz(f, 'TCI') || (nz(f, 'T2I') + nz(f, 'T3I'));
+      return {
+        'NET': typeof av.ortg === 'number' && typeof av.drtg === 'number' ? av.ortg - av.drtg : null,
+        'ORTG': av.ortg, 'DRTG': av.drtg,
+        'REB%': div(reb, reb + rebO),
+        'OREB%': div(nz(f, 'RO'), nz(f, 'RO') + nz(o, 'RD')),
+        'TOV%': div(nz(f, 'PP'), nz(f, 'PLAYS')),
+        'AST%': div(nz(f, 'AST'), tcc),
+        'eFG%': div(tcc + 0.5 * nz(f, 'T3C'), tci),
+      };
+    };
+    const P = lado(lp.fila, lr.fila, a.avanzadas), R = lado(lr.fila, lp.fila, a.avanzadasRival);
+    const escala = (e, v) => {
+      if (typeof v !== 'number' || !isFinite(v)) return null;
+      const s = Math.max(0, Math.min(1, (v - e.min) / (e.max - e.min)));
+      return e.inv ? 1 - s : s;
+    };
+    return RADAR_EJES.map(e => ({ id: e.id, label: e.label, pct: !!e.pct, inv: !!e.inv,
+      propio: P[e.id], rival: R[e.id], sP: escala(e, P[e.id]), sR: escala(e, R[e.id]) }));
+  }
+
   /** La clave de persona de un nombre corto o completo del box del lado `lado`. */
   function claveNombre(corto, lado) {
     const j = (lado.box || []).find(x => quien(x) === corto || SGADD.texto(x['NOMBRES']) === corto);
@@ -782,6 +825,8 @@ const SGADD_PARTIDO = (function () {
   }
 
   const VOL_COL = { tc: 'TCI', t3: 'T3I', perdidas: 'PP', ro: 'RO', tl: 'T1I' };
+  const VOL_CORTO = { tc: 'TCI', t3: 'T3I', perdidas: 'PP', ro: 'RO', tl: 'TLI' };
+  const CORTO_FACTOR = { 'eFG%': 'eFG%', 'PP%': 'TOV%', 'RO%': 'RO%', 'RTL%': 'TL/TC' };
   const MAS_ES_MEJOR = (id) => id !== 'PP%' && id !== 'PePP%' && id !== 'eFG Opp%';
 
   function planContraRealidad(idxPre, idx, lp, lr) {
@@ -797,7 +842,10 @@ const SGADD_PARTIDO = (function () {
     if (!inf || !inf.ok) return { ok: false, motivo: (inf && inf.motivo) || 'No se pudo rearmar el scouting previo.' };
 
     const filas = [];
-    const fila = (bloque, titulo, estado, previsto, real) => filas.push({ bloque, titulo, estado, previsto, real });
+    const fila = (bloque, titulo, estado, previsto, real, datos) => filas.push({ bloque, titulo, estado, previsto, real, datos: datos || null });
+    /* El tono de UN número para el golpe de ojo: 'pos' a favor, 'aviso' cerca, 'neg' en contra.
+       delta > 0 = a favor nuestro; 	ol = cuánto en contra todavía es «cerca». */
+    const tonoDe = (delta, tol) => (delta >= 0 ? 'pos' : delta >= -tol ? 'aviso' : 'neg');
     const pf = (id, v) => (typeof v !== 'number' ? '—' : (/%$/.test(id) ? p1(v) : num1(v)));
 
     /* 1 · DUELOS CRUZADOS · el ataque de cada uno contra la defensa habitual del otro. */
@@ -819,14 +867,22 @@ const SGADD_PARTIDO = (function () {
           'Su ataque ' + pf(d.id, d.rival.propio) + d.nota + ' contra nuestra defensa ' + pf(d.id, d.rival.contra) + (d.rival.ok ? ': ventaja de ellos' : ': ventaja nuestra')
             + ' · nuestro ataque ' + pf(d.id, d.nuestro.propio) + ' contra su defensa ' + pf(d.id, d.nuestro.contra) + (d.nuestro.ok ? ': ventaja nuestra' : ': ventaja de ellos') + '.',
           'Su ataque hizo ' + pf(d.id, vR) + (rivalGano ? ' y superó lo que concede nuestra defensa' : ' y no superó lo que concede nuestra defensa')
-            + ' · el nuestro hizo ' + pf(d.id, vN) + (nuestroGano ? ' y superó lo que concede la suya' : ' y no superó lo que concede la suya') + '.');
+            + ' · el nuestro hizo ' + pf(d.id, vN) + (nuestroGano ? ' y superó lo que concede la suya' : ' y no superó lo que concede la suya') + '.',
+          /* Los números del golpe de ojo: lo que traía cada ataque, lo que concedía la
+             otra defensa y lo que hizo esa noche, con su tono desde nuestro lado. */
+          { id: d.id, corto: CORTO_FACTOR[d.id] || d.id, estrella: !!d.estrella, inv: !mas,
+            ellos: { antes: d.rival.propio, contra: d.rival.contra, real: vR,
+              tono: tonoDe(mas ? d.rival.contra - vR : vR - d.rival.contra, 0.02) },
+            nos: { antes: d.nuestro.propio, contra: d.nuestro.contra, real: vN,
+              tono: tonoDe(mas ? vN - d.nuestro.contra : d.nuestro.contra - vN, 0.02) } });
       });
       const real = nz(lp.fila, 'PTS') - nz(lr.fila, 'PTS');
       const m = inf.duelos.margenNuestro;
       /* Desde nuestro lado: terminar en o sobre lo previsto es cumplir. */
       fila('margen', 'Margen previsto', real - m >= -4 ? 'ok' : real - m <= -8 ? 'no' : 'parcial',
         'El simulador previo daba ' + (m >= 0 ? '+' : '−') + num1(Math.abs(m)) + ' pts para nosotros.',
-        'Terminó ' + (real >= 0 ? '+' : '−') + Math.abs(real) + ' (' + (real - m >= 0 ? '+' : '−') + num1(Math.abs(real - m)) + ' contra lo previsto).');
+        'Terminó ' + (real >= 0 ? '+' : '−') + Math.abs(real) + ' (' + (real - m >= 0 ? '+' : '−') + num1(Math.abs(real - m)) + ' contra lo previsto).',
+        { antes: m, real: real, tono: tonoDe(real - m + 4, 4) });
     } else if (inf.duelos) fila('duelos', 'Duelos cruzados', 'info', inf.duelos.motivo || 'Sin duelos previos.', '—');
 
     /* 2 · LA VERSIÓN PERDEDORA · ¿lo llevamos a su lado malo? */
@@ -839,7 +895,9 @@ const SGADD_PARTIDO = (function () {
       if (typeof vReal === 'number') {
         quiebreOk = c.mejor > 0 ? vReal < c.corte : vReal > c.corte;
         fila('quiebre', 'Su versión perdedora', quiebreOk ? 'ok' : 'no', S.textoQuiebre(q) + (q.chica ? ' (Muestra chica.)' : ''),
-          'Su ' + c.label + ' de la noche: ' + pf(c.id, vReal) + (quiebreOk ? ': lo llevamos a su lado malo.' : ': quedó del lado en que gana.'));
+          'Su ' + c.label + ' de la noche: ' + pf(c.id, vReal) + (quiebreOk ? ': lo llevamos a su lado malo.' : ': quedó del lado en que gana.'),
+          { id: c.id, label: c.label, corte: c.corte, real: vReal, mejor: c.mejor, pierde: c.perdidosMalo, de: c.nMalo,
+            tono: tonoDe(c.mejor > 0 ? c.corte - vReal : vReal - c.corte, /%$/.test(c.id) ? 0.02 : 0.05 * Math.abs(c.corte || 1)) });
       }
     } else if (q) fila('quiebre', 'Su versión perdedora', 'info', (q && q.motivo) || 'Sin lectura previa.', '—');
 
@@ -847,7 +905,10 @@ const SGADD_PARTIDO = (function () {
     const vols = (v, nuestro, ladoReal) => (v && v.items ? v.items : []).map((it) => {
       const real = nz(ladoReal.fila, VOL_COL[it.id]);
       const enZona = it.dir === 'max' ? real <= it.umbral : real >= it.umbral;
-      return { id: it.id, label: it.label, umbral: it.umbral, dir: it.dir, real: real, cumple: nuestro ? enZona : !enZona };
+      /* «Cerca» = a menos del 10 % del umbral del lado que no conviene. */
+      const aFavor = (nuestro ? 1 : -1) * (it.dir === 'max' ? it.umbral - real : real - it.umbral);
+      return { id: it.id, label: it.label, corto: VOL_CORTO[it.id] || it.label, umbral: it.umbral, dir: it.dir, real: real,
+        cumple: nuestro ? enZona : !enZona, tono: tonoDe(aFavor, 0.1 * Math.abs(it.umbral || 1)) };
     });
     const volR = vols(inf.volumenesRival, false, lr), volN = vols(inf.volumenesNuestro, true, lp);
     const filaVol = (lista, titulo, quien) => {
@@ -855,7 +916,7 @@ const SGADD_PARTIDO = (function () {
       const n = lista.filter(x => x.cumple).length;
       fila('volumen', titulo, n === lista.length ? 'ok' : n === 0 ? 'no' : 'parcial',
         lista.map(x => x.label + ' ' + (x.dir === 'max' ? '≤ ' : '≥ ') + num1(x.umbral)).join(' · ') + ' (' + quien + ').',
-        lista.map(x => (x.cumple ? '✓ ' : '✗ ') + x.label + ' ' + x.real).join(' · ') + '.');
+        lista.map(x => (x.cumple ? '✓ ' : '✗ ') + x.label + ' ' + x.real).join(' · ') + '.', { items: lista });
     };
     filaVol(volR, 'Volumen del rival · fuera de su zona positiva', 'su zona positiva: el plan era sacarlo de ahí');
     filaVol(volN, 'Nuestro volumen · adentro de la nuestra', 'lo que sostiene nuestra zona positiva');
@@ -939,10 +1000,19 @@ const SGADD_PARTIDO = (function () {
       return { id: t.id, titulo: t.titulo, texto: t.texto, estado };
     });
 
+    /* EL DAÑO CONTRA EL PLAN: los que se le escaparon a su consigna, por los
+       puntos que hicieron por encima de su promedio previo. El resto de las
+       marcas ya está en el box score: acá van solo los tres que pesaron. */
+    const danio = marcas.filter(m => m.real && (m.estado === 'no' || m.estado === 'parcial'))
+      .map(m => Object.assign({ delta: m.real.pts - (typeof m.pre.pts === 'number' ? m.pre.pts : 0) }, m))
+      .filter(m => m.delta > 0 || m.estado === 'no')
+      .sort((x, y) => (y.estado === 'no') - (x.estado === 'no') || y.delta - x.delta)
+      .slice(0, 3);
+
     const cuenta = (l) => ({ ok: l.filter(x => x.estado === 'ok').length, no: l.filter(x => x.estado === 'no').length, parcial: l.filter(x => x.estado === 'parcial').length });
     return {
       ok: true, pjRival: rPre.pj, pjPropio: ePre.pj, muestraChica: Math.min(rPre.pj || 0, ePre.pj || 0) < 3,
-      marcasConTemporada, filas, marcas, tresCosas: tres, jugadores,
+      marcasConTemporada, filas, marcas, danio, tresCosas: tres, jugadores,
       resumen: cuenta(filas.concat(marcas).concat(tres)),
     };
   }
@@ -952,7 +1022,7 @@ const SGADD_PARTIDO = (function () {
     ZONAS_TIRO, MIN_INTENTOS_ZONA, FACTORES_PARTIDO,
     analizar, desviosLado, contrasteEquipo, ajusteJugadores, nombreCorto, avanzadas,
     perfilTiro, decision, factoresPartido, focosPartido, planAjuste, proyeccionPartido, responsableFactor, lider,
-    planContraRealidad,
+    planContraRealidad, radarPartido, RADAR_EJES,
   };
 })();
 

@@ -372,6 +372,48 @@
   .rend-ficha-n { font-size: 10px; color: var(--muted, #8a8a8a); }
   .concl-vsreg { font-size: 11px; color: var(--ink, #f5f4f2); opacity: .85; margin-top: .15rem; }
   .rend-barras { display: grid; gap: .5rem; margin-bottom: .6rem; }
+  /* PLAN CONTRA REALIDAD (v333): una grilla de mosaicos chicos con «antes → esa
+     noche». El número de la noche lleva el tono y un glifo (nunca solo color). */
+  .plan-cab { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; margin-bottom: .5rem; }
+  .plan-cab .rend-chip { font-size: 11px; padding: .05rem .5rem; }
+  .plan-cab h5 { margin: 0; } .plan-res { display: inline-flex; gap: .3rem; }
+  .plan-g { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.6rem, 1fr)); gap: .45rem; }
+  .plan-t { min-width: 0; border: 1px solid var(--hairline, #2a2a2a); border-radius: .55rem; padding: .4rem .55rem; background: rgba(255,255,255,.025); }
+  .plan-t-l { display: flex; justify-content: space-between; gap: .3rem; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted, #8a8a8a); margin-bottom: .1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .plan-f { display: flex; justify-content: space-between; align-items: baseline; gap: .3rem; font-size: 11px; color: var(--muted, #8a8a8a); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .plan-f em { font-style: normal; margin: 0 .2rem; opacity: .6; }
+  .plan-f b { font-size: .95rem; font-weight: 700; color: var(--rt); }
+  .plan-f b i { font-style: normal; font-size: 10px; margin-left: .15rem; }
+  .plan-danio { border-color: color-mix(in srgb, var(--rt) 45%, transparent); background: color-mix(in srgb, var(--rt) 8%, transparent); }
+  .plan-danio .plan-t-l span:first-child { color: var(--ink, #f5f4f2); font-weight: 600; }
+  .plan-sub { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--acento-texto, #f7941e); margin: .6rem 0 .3rem; }
+  .plan-detalle { font-size: 11px; line-height: 1.4; color: var(--ink, #f5f4f2); margin: .4rem 0 0 1rem; list-style: disc; }
+  /* RADAR DEL PARTIDO (v333): ocho ejes, escala fija, colores del escudo. */
+  .radar-partido { max-width: 30rem; margin: 0 auto 1.5rem; }
+  .radar-partido svg { width: 100%; height: auto; display: block; }
+  .radar-partido .rad-anillo { fill: none; stroke: rgba(148,163,184,.28); stroke-width: .8; }
+  .radar-partido .rad-rayo { stroke: rgba(148,163,184,.22); stroke-width: .8; }
+  .radar-partido .rad-eje { font-size: 12px; font-weight: 800; fill: var(--ink, #f5f4f2); }
+  .radar-partido .rad-v { font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .radar-leyenda { display: flex; justify-content: center; flex-wrap: wrap; gap: .3rem 1.2rem; font-size: 12px; font-weight: 600; color: var(--ink, #f5f4f2); margin-bottom: .2rem; }
+  .radar-leyenda i { display: inline-block; width: .7rem; height: .7rem; border-radius: 50%; margin-right: .35rem; vertical-align: -.05rem; }
+  /* BARRA DE % DE VICTORIA PREVIA (v333) */
+  .barra-victoria { margin-top: .8rem; }
+  .barra-victoria-t { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted, #8a8a8a); margin-bottom: .3rem; }
+  .barra-victoria-b { display: flex; height: .7rem; border-radius: .2rem; overflow: hidden; }
+  .barra-victoria-b span { display: block; height: 100%; }
+  .barra-victoria-n { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; margin-top: .25rem; font-size: 11px; color: var(--muted, #8a8a8a); }
+  .barra-victoria-n b { font-size: 1.15rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+  @media print {
+    .radar-partido { max-width: 95mm; break-inside: avoid; }
+    .radar-partido .rad-eje { fill: #111; }
+    .barra-victoria-b, .barra-victoria-b span, .radar-leyenda i { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+  @media print {
+    .plan-g { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; gap: 1.2mm !important; }
+    .plan-t { padding: 1mm 1.4mm !important; border-radius: 1mm !important; break-inside: avoid; }
+    .plan-t-l { font-size: 6pt; } .plan-f { font-size: 6.5pt; } .plan-f b { font-size: 8pt; }
+  }
   .rend-barra-t { display: flex; justify-content: space-between; gap: .5rem; font-size: 11px; color: var(--ink, #f5f4f2); margin-bottom: .15rem; }
   .rend-barra-t span:last-child { color: var(--muted, #8a8a8a); text-align: right; }
   .rend-pista { height: .5rem; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; }
@@ -3472,6 +3514,10 @@
   .momentum-svg .mo-eje { stroke: var(--hairline, #334155); stroke-width: .6; }
   .momentum-svg .mo-cuarto { stroke: var(--hairline, #334155); stroke-width: .5; stroke-dasharray: 2 2; }
   .momentum-svg .mo-favor { fill: rgba(74,222,128,.35); }
+  /* La brecha de cada corrida (v333): una banda gris con su parcial arriba. */
+  .momentum-svg .mo-banda { fill: rgba(148,163,184,.16); stroke: none; }
+  .momentum-svg .mo-banda-t { font-size: 6px; font-weight: 700; fill: #e2e8f0; }
+  body.modo-partido-print .momentum-svg .mo-banda { fill: rgba(100,116,139,.18); } body.modo-partido-print .momentum-svg .mo-banda-t { fill: #111; }
   .momentum-svg .mo-contra { fill: rgba(248,113,113,.35); }
   .momentum-svg .mo-linea { fill: none; stroke: #e2e8f0; stroke-width: 1; }
   .momentum-svg text { fill: #94a3b8; font-size: 7px; font-family: ui-monospace, monospace; }
@@ -3508,7 +3554,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=332" />
+<link rel="stylesheet" href="sgadd.css?v=333" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -3705,56 +3751,56 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=332"></script>
+<script src="js/sgadd-club.js?v=333"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=332"></script>
-<script src="js/sgadd-core.js?v=332"></script>
-<script src="js/sgadd-auth.js?v=332"></script>
+<script src="js/sgadd-config.js?v=333"></script>
+<script src="js/sgadd-core.js?v=333"></script>
+<script src="js/sgadd-auth.js?v=333"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=332"></script>
-<script src="js/sgadd-glosario.js?v=332"></script>
-<script src="js/sgadd-glosarioui.js?v=332"></script>
-<script src="js/sgadd-comparativa.js?v=332"></script>
-<script src="js/sgadd-comparativaui.js?v=332"></script>
-<script src="js/sgadd-confirmar.js?v=332"></script>
-<script src="js/sgadd-landing.js?v=332"></script>
-<script src="js/sgadd-login.js?v=332"></script>
-<script src="js/sgadd-data.js?v=332"></script>
-<script src="js/sgadd-clientes.js?v=332"></script>
-<script src="js/sgadd-ui.js?v=332"></script>
-<script src="js/sgadd-muestra.js?v=332"></script>
-<script src="js/sgadd-app.js?v=332"></script>
-<script src="js/sgadd-clasificacion.js?v=332"></script>
+<script src="js/sgadd-demo.js?v=333"></script>
+<script src="js/sgadd-glosario.js?v=333"></script>
+<script src="js/sgadd-glosarioui.js?v=333"></script>
+<script src="js/sgadd-comparativa.js?v=333"></script>
+<script src="js/sgadd-comparativaui.js?v=333"></script>
+<script src="js/sgadd-confirmar.js?v=333"></script>
+<script src="js/sgadd-landing.js?v=333"></script>
+<script src="js/sgadd-login.js?v=333"></script>
+<script src="js/sgadd-data.js?v=333"></script>
+<script src="js/sgadd-clientes.js?v=333"></script>
+<script src="js/sgadd-ui.js?v=333"></script>
+<script src="js/sgadd-muestra.js?v=333"></script>
+<script src="js/sgadd-app.js?v=333"></script>
+<script src="js/sgadd-clasificacion.js?v=333"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-fixture.js?v=332"></script>
-<script src="js/sgadd-inscriptos.js?v=332"></script>
-<script src="js/sgadd-fases.js?v=332"></script>
-<script src="js/sgadd-torneos.js?v=332"></script>
-<script src="js/sgadd-hub.js?v=332"></script>
-<script src="js/sgadd-configui.js?v=332"></script>
-<script src="js/sgadd-estados.js?v=332"></script>
-<script src="js/sgadd-buzon.js?v=332"></script>
-<script src="js/sgadd-charts.js?v=332"></script>
-<script src="js/sgadd-personalidad.js?v=332"></script>
-<script src="js/sgadd-rankings.js?v=332"></script>
-<script src="js/sgadd-partido.js?v=332"></script>
-<script src="js/sgadd-informe.js?v=332"></script>
-<script src="js/sgadd-ficha.js?v=332"></script>
-<script src="js/sgadd-mercado.js?v=332"></script>
-<script src="js/sgadd-fichajes.js?v=332"></script>
-  <script src="js/sgadd-rankingpdf.js?v=332"></script>
-<script src="js/sgadd-equipos.js?v=332"></script>
+<script src="js/sgadd-fixture.js?v=333"></script>
+<script src="js/sgadd-inscriptos.js?v=333"></script>
+<script src="js/sgadd-fases.js?v=333"></script>
+<script src="js/sgadd-torneos.js?v=333"></script>
+<script src="js/sgadd-hub.js?v=333"></script>
+<script src="js/sgadd-configui.js?v=333"></script>
+<script src="js/sgadd-estados.js?v=333"></script>
+<script src="js/sgadd-buzon.js?v=333"></script>
+<script src="js/sgadd-charts.js?v=333"></script>
+<script src="js/sgadd-personalidad.js?v=333"></script>
+<script src="js/sgadd-rankings.js?v=333"></script>
+<script src="js/sgadd-partido.js?v=333"></script>
+<script src="js/sgadd-informe.js?v=333"></script>
+<script src="js/sgadd-ficha.js?v=333"></script>
+<script src="js/sgadd-mercado.js?v=333"></script>
+<script src="js/sgadd-fichajes.js?v=333"></script>
+  <script src="js/sgadd-rankingpdf.js?v=333"></script>
+<script src="js/sgadd-equipos.js?v=333"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=332"></script>
-<script src="js/sgadd-jugadores.js?v=332"></script>
-<script src="js/sgadd-4factores.js?v=332"></script>
-<script src="js/sgadd-scouting.js?v=332"></script>
-<script src="js/sgadd-pbp.js?v=332"></script>
-<script src="js/sgadd-rendimiento.js?v=332"></script>
-<script src="js/sgadd-conclusiones.js?v=332"></script>
-<script src="js/sgadd-diagnostico.js?v=332"></script>
+<script src="js/sgadd-niveles.js?v=333"></script>
+<script src="js/sgadd-jugadores.js?v=333"></script>
+<script src="js/sgadd-4factores.js?v=333"></script>
+<script src="js/sgadd-scouting.js?v=333"></script>
+<script src="js/sgadd-pbp.js?v=333"></script>
+<script src="js/sgadd-rendimiento.js?v=333"></script>
+<script src="js/sgadd-conclusiones.js?v=333"></script>
+<script src="js/sgadd-diagnostico.js?v=333"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

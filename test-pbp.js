@@ -1303,6 +1303,17 @@ function paquete(equipo) {
     check('los nombres vienen de afuera: se escapan', !/<img src=x/.test(P.rotacionesPartido(paq, pp, null)) && /&lt;img/.test(P.rotacionesPartido(paq, pp, null)));
     const m = P.momentumPartido(paq, pp, null);
     check('el momentum marca los picos con su valor y suma el bloque de quiebres', /mo-pico-f/.test(m) && /mo-pico-c/.test(m) && /data-quiebre="ventaja"/.test(m) && /data-quiebre="desventaja"/.test(m));
+    /* v333 · la brecha de la corrida sombreada y quién la armó. */
+    check('el momentum sombrea la brecha de cada corrida con su parcial', /class="mo-banda mo-banda-f"/.test(m) && /class="mo-banda mo-banda-c"/.test(m) && /mo-banda-t[^>]*>\+21</.test(m));
+    const lineaA = [[0, 0, 0], [200, 2, 0, 0], [400, 2, 8, 6], [600, 10, 8, 1], [900, 23, 8, 2], [1200, 23, 18, 7], [1500, 23, 33, 8], [2000, 40, 44, -1], [2400, 60, 55, 3]];
+    const ppA = Object.assign({}, pp, { linea: lineaA });
+    const qa = P.quiebres(paq, ppA);
+    check('quién armó la corrida de ventaja: los puntos propios dentro de la brecha, de mayor a menor',
+      JSON.stringify(qa.ventaja.anotadores) === JSON.stringify([{ k: 2, pts: 13 }, { k: 1, pts: 8 }]), qa.ventaja.anotadores);
+    check('y la de desventaja cuenta los puntos del RIVAL', JSON.stringify(qa.desventaja.anotadores) === JSON.stringify([{ k: 8, pts: 15 }, { k: 7, pts: 10 }]), qa.desventaja.anotadores);
+    check('un anotador desconocido (−1) no se cuenta', P.anotadoresEn(ppA, 1500, 2000, -1).length === 0);
+    check('la tarjeta del pico dice quién la armó, con sus puntos', /La armaron:/.test(P.quiebresHtml(paq, ppA, null)) && /13 pts/.test(P.quiebresHtml(paq, ppA, null)));
+    check('un paquete sin anotador en la línea no inventa nombres', P.quiebres(paq, pp).ventaja.anotadores === null && !/La armaron/.test(P.quiebresHtml(paq, pp, null)));
     /* Rotaciones: cada lado suma 5 jugadores × el tiempo de juego, y el +/- del rival es el del SU equipo. */
     const rot = P.rotacionesDe(pp);
     check('rotaciones: los segundos de cada lado suman 5 × 2400', rot.favor.reduce((s, j) => s + j.seg, 0) === 12000 && rot.contra.reduce((s, j) => s + j.seg, 0) === 12000, [rot.fin]);

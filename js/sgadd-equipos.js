@@ -1142,6 +1142,89 @@ function equiposIdentidadReloj(idx, e) {
 }
 
 /* =====================================================================
+   LOS COLORES DEL CRUCE (v333) · salen del ESCUDO de cada equipo
+   (`CLUB.colorDeImagen`, la misma lectura que propone el color en el alta).
+   Se aclaran hasta leerse sobre la card, y si los dos quedan parecidos (dos
+   azules) el rival pasa a un neutro: dos colores iguales no distinguen nada.
+   Sin escudo cargado: el acento del club para el propio, gris para el rival.
+   ===================================================================== */
+function equiposColorEscudo(nombre) {
+  try {
+    const img = (typeof LOGOS !== 'undefined' && LOGOS.getImage) ? LOGOS.getImage(nombre) : null;
+    return img && typeof CLUB !== 'undefined' && CLUB.colorDeImagen ? CLUB.colorDeImagen(img) : null;
+  } catch (e) { return null; }
+}
+
+function equiposDistanciaColor(a, b) {
+  const rgb = (h) => { const m = /^#?([0-9a-f]{6})$/i.exec(String(h || '')); if (!m) return null; const n = parseInt(m[1], 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+  const x = rgb(a), y = rgb(b);
+  return x && y ? Math.sqrt(x.reduce((s, v, i) => s + (v - y[i]) * (v - y[i]), 0)) : 999;
+}
+
+function equiposColoresCruce(nombrePropio, nombreRival) {
+  const leg = (c) => (typeof CLUB !== 'undefined' && CLUB.aclararHastaLegible) ? CLUB.aclararHastaLegible(c, '#141414', 3) : c;
+  const acento = (typeof CLUB !== 'undefined' && CLUB.TEMA && CLUB.TEMA.acentoTexto) || '#f7941e';
+  const p = leg(equiposColorEscudo(nombrePropio) || acento);
+  let r = leg(equiposColorEscudo(nombreRival) || '#94a3b8');
+  /* Parecidos (los dos azules, o el mismo escudo): el rival pasa al color de la
+     paleta MÁS LEJANO del propio, no a un gris que se confunde con el fondo. */
+  if (equiposDistanciaColor(p, r) < 140) {
+    r = ['#f97316', '#f43f5e', '#22d3ee', '#facc15', '#a3e635', '#e879f9']
+      .map(c => ({ c, d: equiposDistanciaColor(p, c) })).sort((x, y) => y.d - x.d)[0].c;
+  }
+  return { propio: p, rival: r };
+}
+
+/** El radar de ocho ejes en SVG. `ejes` sale de `SGADD_PARTIDO.radarPartido`. */
+function equiposRadarSvg(ejes, nombreP, nombreR, col) {
+  const W = 380, H = 340, cx = W / 2, cy = 172, R = 108, n = ejes.length;
+  const ang = (i) => -Math.PI / 2 + 2 * Math.PI * i / n;
+  const pt = (i, s) => [cx + R * s * Math.cos(ang(i)), cy + R * s * Math.sin(ang(i))];
+  const poly = (s) => ejes.map((e, i) => pt(i, s).map(v => v.toFixed(1)).join(',')).join(' ');
+  const forma = (k) => ejes.map((e, i) => pt(i, e[k] === null ? 0 : e[k]).map(v => v.toFixed(1)).join(',')).join(' ');
+  const fmt = (e, v) => typeof v !== 'number' ? '—' : (e.pct ? (v * 100).toFixed(1) : v.toFixed(1)).replace('.', ',');
+  const anillos = [0.25, 0.5, 0.75, 1].map(s => `<polygon points="${poly(s)}" class="rad-anillo"/>`).join('');
+  const rayos = ejes.map((e, i) => { const p = pt(i, 1); return `<line x1="${cx}" y1="${cy}" x2="${p[0].toFixed(1)}" y2="${p[1].toFixed(1)}" class="rad-rayo"/>`; }).join('');
+  const puntos = (k, c) => ejes.map((e, i) => { const p = pt(i, e[k] === null ? 0 : e[k]); return `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="${c}" stroke="#0B1121" stroke-width="1"/>`; }).join('');
+  const etiquetas = ejes.map((e, i) => {
+    const p = [cx + (R + 24) * Math.cos(ang(i)), cy + (R + 24) * Math.sin(ang(i))];
+    const anc = Math.abs(p[0] - cx) < 8 ? 'middle' : (p[0] > cx ? 'start' : 'end');
+    const y0 = p[1] + (Math.sin(ang(i)) < -0.5 ? -14 : Math.sin(ang(i)) > 0.5 ? 2 : -8);
+    return `<text x="${p[0].toFixed(1)}" y="${y0.toFixed(1)}" text-anchor="${anc}" class="rad-eje">${escapeHtml(e.label)}</text>
+      <text x="${p[0].toFixed(1)}" y="${(y0 + 11).toFixed(1)}" text-anchor="${anc}" class="rad-v" fill="${col.propio}">${fmt(e, e.propio)}</text>
+      <text x="${p[0].toFixed(1)}" y="${(y0 + 21).toFixed(1)}" text-anchor="${anc}" class="rad-v" fill="${col.rival}">${fmt(e, e.rival)}</text>`;
+  }).join('');
+  return `<div class="radar-partido" data-radar-partido="1">
+    <div class="radar-leyenda">
+      <span><i style="background:${col.propio}"></i>${escapeHtml(nombreP)}</span>
+      <span><i style="background:${col.rival}"></i>${escapeHtml(nombreR)}</span>
+    </div>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Radar del partido: ${escapeAttr(nombreP)} contra ${escapeAttr(nombreR)} en ocho métricas">
+      ${anillos}${rayos}
+      <polygon points="${forma('sR')}" fill="${col.rival}" fill-opacity=".2" stroke="${col.rival}" stroke-width="2"/>
+      <polygon points="${forma('sP')}" fill="${col.propio}" fill-opacity=".25" stroke="${col.propio}" stroke-width="2.4"/>
+      ${puntos('sR', col.rival)}${puntos('sP', col.propio)}
+      ${etiquetas}
+    </svg>
+    <p class="text-[10px] dato-sec text-center">Escala fija por métrica. DRTG y TOV% van invertidos: más afuera siempre es mejor.</p>
+  </div>`;
+}
+
+/** La barra de % de victoria previa (v333): cada equipo con su color, el número escrito. */
+function equiposBarraVictoria(prob, nombreP, nombreR, col) {
+  if (typeof prob !== 'number' || !isFinite(prob)) return '';
+  const p = Math.round(prob * 1000) / 10, r = Math.round((100 - p) * 10) / 10;
+  const f = (v) => v.toFixed(1).replace('.', ',') + ' %';
+  return `<div class="barra-victoria" data-barra-victoria="1">
+    <p class="barra-victoria-t">Probabilidad de victoria previa</p>
+    <div class="barra-victoria-b" role="img" aria-label="${escapeAttr(nombreP)} ${f(p)} contra ${escapeAttr(nombreR)} ${f(r)}">
+      <span style="width:${p}%;background:${col.propio}"></span><span style="width:${r}%;background:${col.rival}"></span>
+    </div>
+    <div class="barra-victoria-n"><b style="color:${col.propio}">${f(p)}</b><span>${escapeHtml(nombreP)} · ${escapeHtml(nombreR)}</span><b style="color:${col.rival}">${f(r)}</b></div>
+  </div>`;
+}
+
+/* =====================================================================
    DETALLE DE UN PARTIDO · sub-vista dentro del tab Partidos
    ===================================================================== */
 function equiposDetallePartido(idx, e, id) {
@@ -1237,6 +1320,9 @@ function equiposDetallePartido(idx, e, id) {
     try { planReal = SGADD_PARTIDO.planContraRealidad(previo.idx, idx, propio, riv); } catch (e) { planReal = null; }
   }
   if (riv && V) { try { dec = SGADD_PARTIDO.decision(idx, propio, riv, a, (typeof SGADD_APP !== 'undefined' && SGADD_APP.idxRegular) ? SGADD_APP.idxRegular() : null, Object.assign({ plan: planReal }, opcBase)); } catch (e) { dec = null; } }
+  const coloresCruce = riv ? equiposColoresCruce(propio.equipo.nombre, riv.equipo.nombre) : null;
+  const barraVictoria = (dec && dec.proyeccion && coloresCruce)
+    ? equiposBarraVictoria(dec.proyeccion.probPropio, propio.equipo.nombre, riv.equipo.nombre, coloresCruce) : '';
   /* Va al FINAL del informe, debajo de los box scores: es la conclusión,
      no la introducción. Y si no entra en la hoja, salta a la siguiente
      sin apretar el box score. */
@@ -1301,45 +1387,72 @@ function equiposDetallePartido(idx, e, id) {
      cada pieza contrastada con lo que pasó. Va primero, arriba de todo. */
   const planHtml = (() => {
     if (!riv || !V) return '';
+    /* GOLPE DE OJO (v333): solo números. Cada uno lleva su tono —verde a favor,
+       ámbar cerca, rojo en contra— y además un glifo (nunca solo color). Las
+       frases quedan plegadas en «Ver el detalle». */
     const TONO = { ok: 'pos', no: 'neg', parcial: 'aviso', info: 'info' };
-    const GLIFO = { ok: '✓', no: '✗', parcial: '◐', info: '◆' };
+    const GLIFO = { ok: '✓', no: '✗', parcial: '◐', info: '◆', pos: '✓', aviso: '◐', neg: '✗' };
     const PALABRA = { ok: 'cumplido', no: 'no cumplido', parcial: 'a medias', info: 'sin veredicto' };
-    const est = (e) => `<span class="font-mono whitespace-nowrap ${e === 'ok' ? 'text-green-400' : e === 'no' ? 'text-red-400' : e === 'parcial' ? 'text-amber-300' : 'dato-sec'}">${GLIFO[e] || '◆'} ${PALABRA[e] || ''}</span>`;
     if (!planReal || !planReal.ok) {
-      return `<div class="mb-6" id="planRealidad" data-plan-realidad="0">
-        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">📋 El plan contra la realidad</h5>
-        <p class="text-xs dato-sec">${escapeHtml((planReal && planReal.motivo) || 'No se pudo rearmar el scouting previo a este partido.')}</p></div>`;
+      return `<div class="mb-5" id="planRealidad" data-plan-realidad="0">
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-1">📋 Plan contra realidad</h5>
+        <p class="text-[11px] dato-sec">${escapeHtml((planReal && planReal.motivo) || 'No se pudo rearmar el scouting previo a este partido.')}</p></div>`;
     }
+    const pct = (v) => typeof v === 'number' ? (v * 100).toFixed(1).replace('.', ',') : '—';
+    const n1 = (v) => typeof v === 'number' ? (Math.round(v * 10) / 10).toFixed(1).replace('.', ',').replace(',0', '') : '—';
+    const sgn = (v) => typeof v === 'number' ? (v >= 0 ? '+' : '−') + n1(Math.abs(v)) : '—';
+    const num = (tono, v, titulo) => `<b class="rend-t-${tono}" title="${escapeAttr(titulo || '')}">${v}<i>${GLIFO[tono] || ''}</i></b>`;
+    const linea = (etq, antes, real, tono, titulo) => `<div class="plan-f"><span>${etq}</span><span>${antes}<em>→</em>${num(tono, real, titulo)}</span></div>`;
+    const tile = (titulo, cuerpo, extra) => `<div class="plan-t"${extra || ''}><div class="plan-t-l"><span>${titulo}</span></div>${cuerpo}</div>`;
+    const de = (b) => planReal.filas.filter(f => f.bloque === b && f.datos);
+
+    const tiles = [];
+    de('duelos').forEach((f) => {
+      const d = f.datos;
+      tiles.push(tile((d.estrella ? '<span class="text-accent">★</span> ' : '') + escapeHtml(d.corto),
+        linea('Ellos', pct(d.ellos.antes), pct(d.ellos.real), d.ellos.tono, 'Su ataque traía ' + pct(d.ellos.antes) + '; nuestra defensa concedía ' + pct(d.ellos.contra) + (d.inv ? ' (menos es mejor)' : ''))
+        + linea('Nos', pct(d.nos.antes), pct(d.nos.real), d.nos.tono, 'Nuestro ataque traía ' + pct(d.nos.antes) + '; su defensa concedía ' + pct(d.nos.contra) + (d.inv ? ' (menos es mejor)' : '')),
+        ` data-plan-duelo="${escapeAttr(d.id)}"`));
+    });
+    de('margen').forEach((f) => tiles.push(tile('Margen', linea('Pts', sgn(f.datos.antes), sgn(f.datos.real), f.datos.tono, 'Margen previsto por el simulador contra el final'), ' data-plan-margen="1"')));
+    de('quiebre').forEach((f) => {
+      const q = f.datos;
+      tiles.push(tile('Su quiebre · ' + escapeHtml(q.label),
+        linea(q.mejor > 0 ? '&lt;' : '&gt;', /%$/.test(q.id) ? pct(q.corte) : n1(q.corte), /%$/.test(q.id) ? pct(q.real) : n1(q.real), q.tono,
+          'Pierde ' + q.pierde + ' de ' + q.de + ' cuando cruza el corte'), ' data-plan-quiebre="1"'));
+    });
+    const vol = de('volumen');
+    vol.forEach((f, i) => {
+      tiles.push(tile(i === 0 && /rival/i.test(f.titulo) ? 'Su volumen' : 'Nuestro volumen',
+        f.datos.items.map(it => linea(escapeHtml(it.corto), (it.dir === 'max' ? '≤' : '≥') + n1(it.umbral), String(it.real), it.tono, it.label)).join(''),
+        ' data-plan-volumen="1"'));
+    });
+
+    const tres = planReal.tresCosas.map(t => `<span class="rend-chip rend-t-${TONO[t.estado]}" title="${escapeAttr(t.texto)}" data-plan-tres="${escapeAttr(t.estado)}">${GLIFO[t.estado]} ${escapeHtml(t.titulo)}</span>`).join('');
+    const GRUPO = { intocable: 'no se suelta', foco: 'foco', fuente: 'fuente de ayuda', cristal: 'box-out' };
+    const danio = (planReal.danio || []).map((m) => `
+      <div class="plan-t plan-danio rend-t-${m.estado === 'no' ? 'neg' : 'aviso'}" data-plan-danio="1">
+        <div class="plan-t-l"><span>${escapeHtml(SGADD_PARTIDO.nombreCorto({ NOMBRES: m.nombre }))}</span><span>${escapeHtml(GRUPO[m.grupo] || 'marca')}</span></div>
+        <div class="plan-f"><span>Pts</span><span>${n1(m.pre.pts)}<em>→</em>${num(m.estado === 'no' ? 'neg' : 'aviso', String(m.real.pts), m.resultado)}</span></div>
+        ${m.grupo === 'intocable' ? `<div class="plan-f"><span>T3</span><span>${num(m.estado === 'no' ? 'neg' : 'aviso', m.real.t3c + '/' + m.real.t3i)}</span></div>` : ''}
+      </div>`).join('');
     const r = planReal.resumen;
-    const GRUPO = { intocable: 'No se suelta', foco: 'Foco · se dobla', fuente: 'Fuente de ayuda', cristal: 'Box-out asignado' };
-    const tres = planReal.tresCosas.length ? `<div class="rend-alertas mb-3">${planReal.tresCosas.map(t =>
-      V.alerta({ tono: TONO[t.estado], icono: GLIFO[t.estado], titulo: t.titulo + ' · ' + PALABRA[t.estado], texto: t.texto })).join('')}</div>` : '';
-    const filas = planReal.filas.map(f => `
-      <tr class="border-b border-hairline/40 last:border-0 align-top" data-plan-fila="${escapeAttr(f.bloque)}">
-        <td class="py-2 pr-3 text-xs text-white">${escapeHtml(f.titulo)}</td>
-        <td class="py-2 pr-3 text-[11px] dato-sec leading-snug text-left">${escapeHtml(f.previsto)}</td>
-        <td class="py-2 pr-3 text-[11px] text-slate-100 leading-snug text-left">${escapeHtml(f.real)}</td>
-        <td class="py-2 text-[11px] text-left">${est(f.estado)}</td>
-      </tr>`).join('');
-    const marcas = planReal.marcas.map(m => `
-      <tr class="border-b border-hairline/40 last:border-0 align-top" data-plan-marca="${escapeAttr(m.estado)}">
-        <td class="py-2 pr-3 text-xs text-white whitespace-nowrap">${escapeHtml(m.nombre)}${m.grupo ? `<br><span class="text-[10px] dato-sec">${escapeHtml(GRUPO[m.grupo])}</span>` : ''}</td>
-        <td class="py-2 pr-3 text-[11px] dato-sec leading-snug text-left">${escapeHtml([m.conPelota, m.sinPelota].filter(Boolean).join(' · '))}</td>
-        <td class="py-2 pr-3 text-[11px] text-slate-100 leading-snug text-left">${escapeHtml(m.resultado)}</td>
-        <td class="py-2 text-[11px] text-left">${est(m.estado)}</td>
-      </tr>`).join('');
-    const cab = (a, b, c) => `<thead><tr><th class="text-left">${a}</th><th class="text-left">${b}</th><th class="text-left">${c}</th><th class="text-left">Veredicto</th></tr></thead>`;
+    const detalle = planReal.filas.map(f => `<li><b>${escapeHtml(f.titulo)}</b> · ${escapeHtml(f.previsto)} <span class="dato-sec">→</span> ${escapeHtml(f.real)}</li>`).join('')
+      + planReal.tresCosas.map(t => `<li><b>${escapeHtml(t.titulo)}</b> · ${escapeHtml(t.texto)}</li>`).join('');
     return `
-      <div class="mb-6" id="planRealidad" data-plan-realidad="1">
-        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-1">📋 El plan contra la realidad</h5>
-        <p class="text-[11px] dato-sec mb-3 leading-snug">El scouting rearmado con lo que se sabía ANTES del partido (${planReal.pjRival} partidos del rival, ${planReal.pjPropio} nuestros) contra lo que pasó.
-          <b class="text-green-400">${r.ok} ✓</b> · <b class="text-amber-300">${r.parcial} ◐</b> · <b class="text-red-400">${r.no} ✗</b>.</p>
-        ${planReal.muestraChica ? V.alerta({ tono: 'aviso', icono: '⚠', titulo: 'Plan armado con muestra chica', texto: 'Uno de los dos equipos llegó con menos de 3 partidos: el plan salió de muy pocas noches y sus consignas son una hipótesis, no una tendencia.' }) : ''}
-        ${tres}
-        <div class="scrollbox"><table class="w-full" style="min-width:40rem">${cab('Pieza del plan', 'Lo previsto', 'Lo que pasó')}<tbody>${filas}</tbody></table></div>
-        ${marcas ? `<p class="text-[10px] uppercase tracking-wider text-accent font-display mt-4 mb-1">Marcas jugador por jugador</p>
-        <div class="scrollbox"><table class="w-full" style="min-width:40rem">${cab('Jugador', 'Consigna del plan', 'Lo que hizo')}<tbody>${marcas}</tbody></table></div>` : ''}
-        <p class="text-[11px] dato-sec mt-2 leading-snug">El plan se recalcula con el motor del scouting sobre los partidos previos: si el cuerpo técnico editó a mano una consigna de la tabla de marcas, esa edición no está acá.${planReal.marcasConTemporada ? ' Las marcas se armaron con la temporada completa: este libro no trae el partido a partido del rival.' : ''}</p>
+      <div class="mb-5 rend-raiz" id="planRealidad" data-plan-realidad="1">
+        <div class="plan-cab">
+          <h5 class="font-display uppercase tracking-wide text-xs text-accent">📋 Plan contra realidad</h5>
+          <span class="plan-res"><span class="rend-chip rend-t-pos">${r.ok} ✓</span><span class="rend-chip rend-t-aviso">${r.parcial} ◐</span><span class="rend-chip rend-t-neg">${r.no} ✗</span></span>
+          ${planReal.muestraChica ? '<span class="rend-chip rend-t-aviso" title="Uno de los dos equipos llegó con menos de 3 partidos">⚠ muestra chica</span>' : ''}
+        </div>
+        ${tres ? `<div class="rend-chips">${tres}</div>` : ''}
+        <div class="plan-g">${tiles.join('')}</div>
+        ${danio ? `<p class="plan-sub">Los que más dañaron el plan</p><div class="plan-g">${danio}</div>` : ''}
+        <details class="rend-detalle mt-2"><summary>Ver el detalle</summary>
+          <ul class="plan-detalle">${detalle}</ul>
+          <p class="text-[10px] dato-sec mt-1">Plan rearmado con los partidos previos (${planReal.pjRival} del rival, ${planReal.pjPropio} nuestros): no trae las consignas editadas a mano.${planReal.marcasConTemporada ? ' Marcas con la temporada completa.' : ''}</p>
+        </details>
       </div>`;
   })();
 
@@ -1393,6 +1506,7 @@ function equiposDetallePartido(idx, e, id) {
           ${t.ficha.length ? `<div class="rend-fichas">${t.ficha.map((f, i) => V.ficha({ label: f.label, valor: f.valor, sub: f.sub, tono: f.tono || (i === 0 ? t.tono : 'info') })).join('')}</div>` : ''}
           <p class="rend-titular">${escapeHtml(t.texto)}</p>
         </section>`).join('')}</div></div>
+      ${barraVictoria}
       <details class="rend-detalle mt-3"><summary>Claves, grietas y el resto del relato</summary>
         <div class="space-y-2 mb-4 max-w-4xl mt-2">${a.texto.slice(1).map(t => `<p class="text-sm text-slate-100 leading-relaxed">${escapeHtml(t)}</p>`).join('')}</div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1407,15 +1521,14 @@ function equiposDetallePartido(idx, e, id) {
      cada uno y la mediana de la liga. Verde = se ganó el factor; ámbar =
      se perdió; rojo = se perdió Y quedó claramente bajo lo habitual (desvío
      crítico). En pérdidas, menos es mejor. */
-  const radarFactores = (dec && dec.factores.length >= 3 && typeof SGADD_CHARTS !== 'undefined' && SGADD_CHARTS.radar) ? (() => {
-    /* Cada eje en 0-100 contra el mejor de los dos (en pérdidas, el menor): se ve dónde se separaron. */
-    const esc100 = (f, v) => { const m = f.inv ? Math.min(f.propio, f.rival) : Math.max(f.propio, f.rival); return m ? Math.round(100 * (f.inv ? m / (v || m) : v / m)) : 50; };
-    try {
-      return `<div class="mt-4 max-w-md mx-auto" data-radar-partido="1">${SGADD_CHARTS.radar('chRadarPartido', dec.factores.map(f => f.corto), [
-        { label: propio.equipo.nombre, data: dec.factores.map(f => esc100(f, f.propio)) },
-        { label: riv.equipo.nombre, data: dec.factores.map(f => esc100(f, f.rival)) }])}
-        <p class="text-[10px] dato-sec text-center mt-1">Cada eje contra el mejor de los dos de la noche; en pérdidas, más afuera es mejor.</p></div>`;
-    } catch (e) { return ''; }
+  /* EL RADAR DEL PARTIDO (v333): ocho ejes con escala fija por métrica y los
+     colores de cada escudo, en SVG (sale igual en el PDF). Cada eje lleva los
+     dos valores escritos: el color ayuda, el número informa. */
+  const radarFactores = (riv && SGADD_PARTIDO.radarPartido) ? (() => {
+    let ejes = null;
+    try { ejes = SGADD_PARTIDO.radarPartido(propio, riv, a); } catch (e) { ejes = null; }
+    if (!ejes || ejes.filter(e => e.sP !== null && e.sR !== null).length < 5) return '';
+    return equiposRadarSvg(ejes, propio.equipo.nombre, riv.equipo.nombre, coloresCruce);
   })() : '';
   const factoresBento = (dec && dec.factores.length) ? (() => {
     const fx = (v) => p1(v);
@@ -1436,7 +1549,6 @@ function equiposDetallePartido(idx, e, id) {
       <div class="mb-6" id="factoresBento">
         <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">4 Factores del partido · contra su habitual y la liga</h5>
         <div class="rend-raiz"><div class="rend-grid">${dec.factores.map(tarj).join('')}</div></div>
-        ${radarFactores}
         <p class="text-[11px] dato-sec mt-2 leading-snug">${dec.factores.some(f => f.regular !== null && f.regular !== undefined) ? 'En una fase de eliminación cada factor se contrasta con dos referencias: la Fase Regular (lo estructural) y la fase actual (la racha de playoffs). ' : ''}Verde: se ganó el factor. Ámbar: se perdió. Rojo: se perdió y quedó claramente bajo lo habitual (desvío crítico).
           En pérdidas, menos es mejor. El peso es el de Dean Oliver (40 · 25 · 20 · 15), el prior de Dean Oliver.</p>
       </div>`;
@@ -1726,6 +1838,7 @@ function equiposDetallePartido(idx, e, id) {
       ${insight}
       ${focosHtml}
       ${factores}
+      ${radarFactores}
       ${avanzadas}
       ${cuartos}
       ${momentum}

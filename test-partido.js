@@ -487,9 +487,52 @@ console.log('─'.repeat(70));
   const nombrado = ['perimetro', 'interior', 'generacion'].filter(k => dD.plan[k] && dD.plan[k].lectura);
   check('cuando nombra a un jugador con marca en el plan, el ajuste cita la consigna o dice si cambia',
     nombrado.length > 0 && nombrado.every(k => /plan|consigna/i.test(dD.plan[k].texto)), nombrado.map(k => dD.plan[k].texto));
+  /* v333 · el golpe de ojo: cada fila trae sus números con tono. */
+  const TONOS = ['pos', 'aviso', 'neg'];
+  const dz = plan.filas.filter(f => f.bloque === 'duelos');
+  check('cada duelo trae antes, contra y real de los dos lados con su tono', dz.every(f => f.datos && ['ellos', 'nos'].every(l =>
+    typeof f.datos[l].antes === 'number' && typeof f.datos[l].real === 'number' && TONOS.indexOf(f.datos[l].tono) !== -1)));
+  check('el tono del ataque rival es rojo cuando superó lo que concedía nuestra defensa por más de 2 pp', dz.every(f => {
+    const d = f.datos, delta = d.inv ? d.ellos.contra - d.ellos.real : d.ellos.real - d.ellos.contra;
+    return delta > 0.02 ? d.ellos.tono === 'neg' : delta <= 0 ? d.ellos.tono === 'pos' : d.ellos.tono === 'aviso'; }));
+  const mg = plan.filas.find(f => f.bloque === 'margen');
+  check('el margen trae previsto, real y tono', mg && typeof mg.datos.antes === 'number' && typeof mg.datos.real === 'number' && TONOS.indexOf(mg.datos.tono) !== -1);
+  check('cada volumen trae su tono y su rótulo corto', plan.filas.filter(f => f.bloque === 'volumen').every(f => f.datos.items.every(i => TONOS.indexOf(i.tono) !== -1 && i.corto)));
+  check('el top de daño son a lo sumo 3, primero los que no cumplieron', plan.danio.length <= 3
+    && plan.danio.every((m, i, l) => !i || !(m.estado === 'no' && l[i - 1].estado !== 'no')));
+  check('cada uno del top de daño trae sus puntos y su promedio previo', plan.danio.every(m => m.real && typeof m.real.pts === 'number'));
+
+  /* v333 · el radar del partido: ocho ejes, escala fija, DRTG y TOV% invertidos. */
+  const rd = P.radarPartido(lp, lr, aD);
+  check('el radar trae los ocho ejes', rd && rd.length === 8 && rd.map(e => e.id).join() === 'NET,DRTG,REB%,OREB%,TOV%,AST%,eFG%,ORTG', rd && rd.map(e => e.id));
+  check('cada eje está escalado entre 0 y 1', rd.every(e => e.sP === null || (e.sP >= 0 && e.sP <= 1)));
+  const ejeDrtg = rd.find(e => e.id === 'DRTG'), cfg = P.RADAR_EJES.find(e => e.id === 'DRTG');
+  check('DRTG va invertido: menos puntos concedidos queda más afuera', ejeDrtg.inv && Math.abs(ejeDrtg.sP - (1 - Math.max(0, Math.min(1, (ejeDrtg.propio - cfg.min) / (cfg.max - cfg.min))))) < 1e-9);
+  const tcc = (lp.fila.TCC || 0), efgEsp = (tcc + 0.5 * (lp.fila.T3C || 0)) / lp.fila.TCI;
+  check('el eFG% del radar es (TCC + 0,5·T3C) / TCI', Math.abs(rd.find(e => e.id === 'eFG%').propio - efgEsp) < 1e-9);
+  check('NET = ORTG − DRTG', Math.abs(rd.find(e => e.id === 'NET').propio - (rd.find(e => e.id === 'ORTG').propio - ejeDrtg.propio)) < 1e-9);
+  check('sin avanzadas no hay radar', P.radarPartido(lp, lr, {}) === null);
+
   /* Sin el plan, el ajuste no inventa una consigna. */
   const dSinPlan = P.decision(full, lp, lr, aD, null, { base: pre });
   check('sin plan previo, el ajuste no cita consignas', ['perimetro', 'interior', 'generacion'].every(k => !dSinPlan.plan[k] || !/Consigna del plan|El plan decía/.test(dSinPlan.plan[k].texto)));
+}
+
+/* v333 · la pantalla: el plan es un mosaico de números, no tablas de texto. */
+{
+  const src = fs.readFileSync('./js/sgadd-equipos.js', 'utf8');
+  const html = fs.readFileSync('./index.html', 'utf8');
+  const bloque = src.slice(src.indexOf('const planHtml = (() => {'), src.indexOf('/* Los focos a sostener'));
+  check('la card del plan no lleva tablas: es una grilla de mosaicos (plan-g / plan-t)', !/<table/.test(bloque) && /plan-g/.test(bloque) && /plan-t/.test(bloque));
+  check('el número de la noche lleva tono Y glifo (nunca solo color)', /rend-t-\$\{tono\}/.test(bloque) && /GLIFO\[tono\]/.test(bloque));
+  check('las frases quedan plegadas en «Ver el detalle»', /<details class="rend-detalle[^"]*"><summary>Ver el detalle/.test(bloque));
+  check('de las marcas solo va el top 3 de daño', /planReal\.danio/.test(bloque) && !/planReal\.marcas\.map/.test(bloque));
+  check('el CSS del mosaico existe', /\.plan-g \{/.test(html) && /\.plan-t \{/.test(html) && /\.plan-f b \{/.test(html));
+  check('el radar es SVG con los colores del escudo (CLUB.colorDeImagen) y se aclara para leerse', /function equiposRadarSvg/.test(src)
+    && /CLUB\.colorDeImagen/.test(src) && /aclararHastaLegible/.test(src));
+  check('si los dos colores se parecen, el rival pasa al color más lejano de una paleta', /equiposDistanciaColor\(p, r\) < 140/.test(src) && /'#f97316'/.test(src));
+  check('la barra de % de victoria sale de la proyección previa', /equiposBarraVictoria\(dec\.proyeccion\.probPropio/.test(src) && /\.barra-victoria-b \{/.test(html));
+  check('el radar viejo de Chart.js (chRadarPartido) ya no está', !/chRadarPartido/.test(src));
 }
 
 console.log('\n' + '═'.repeat(70));
