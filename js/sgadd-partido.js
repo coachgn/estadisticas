@@ -598,7 +598,7 @@ const SGADD_PARTIDO = (function () {
           + ' pts (' + Math.round(proy.probPropio * 100) + ' % de victoria estimada); el partido cerró en ' + (proy.margenReal >= 0 ? '+' : '−') + Math.abs(proy.margenReal)
           + ', ' + (Math.abs(d) < 4 ? 'dentro de lo esperable' : (d > 0 ? 'superando la expectativa por ' + Math.abs(d).toFixed(0) + ' puntos' : 'por debajo de la expectativa por ' + Math.abs(d).toFixed(0) + ' puntos'))
           + (previa
-            ? '. Es la expectativa PREVIA: el simulador con los ' + (pv.partidos || 0) + ' partidos de la liga jugados hasta el ' + ddmm(pv.hasta) + ', sin este.'
+            ? '. Es la expectativa PREVIA: el simulador con los ' + (pv.partidos || 0) + ' partidos de la liga jugados hasta el ' + ddmm(pv.hasta) + (pv.tramo ? ' (' + pv.tramo + ')' : '') + ', sin este.'
             : '. La referencia usa los ratings de toda la temporada, este partido incluido: es una vara de rendimiento, no una predicción previa.')
           + (proy.factorClave ? ' Factor que más movía el cruce: ' + proy.factorClave + '.' : ''),
         ficha: [], nombres: [],
@@ -624,7 +624,7 @@ const SGADD_PARTIDO = (function () {
       .map(j => ({ n: quien(j), t2c: nz(j, 'T2C'), t2i: nz(j, 'T2I') }));
     const ctx = { foco: foco, rivalDobles: dobles, rivalRo: nz(lr.fila, 'RO') || null, nuestroRd: nz(lp.fila, 'RD') || null };
     return { margen, gano: a.gano, factores, tarjetas, proyeccion: proy, ctx,
-      previa: previa ? { partidos: (o.previa && o.previa.partidos) || 0, hasta: (o.previa && o.previa.hasta) || null, sinBase: !base } : null,
+      previa: previa ? { partidos: (o.previa && o.previa.partidos) || 0, hasta: (o.previa && o.previa.hasta) || null, tramo: (o.previa && o.previa.tramo) || null, sinBase: !base } : null,
       focos: focosPartido(base, lp, lr, a, factores), plan: planAjuste(lp, lr, a, factores, idx, o.plan) };
   }
 

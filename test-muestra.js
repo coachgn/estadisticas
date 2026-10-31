@@ -216,6 +216,35 @@ check('«todo» vuelve al índice base', A.idxVista() === base);
   check('antes del primer partido no hay índice previo (no se inventa)', primero && primero.idx === null && primero.partidos === 0);
 }
 
+/* v334 · en un playoff la vara previa es la REGULAR: el primer partido de una
+   serie no tiene nada antes en su fase (el caso Reconquista - Atenas). */
+{
+  const ultimoDia = DIAS[DIAS.length - 1];
+  const cruce = HOJAS['Base Datos E'].filas.filter(f =>
+    SGADD.texto(f['PARTIDO']) && String(f['FASE'] || '').toUpperCase() === 'REGULAR').slice(-2);
+  const partido = SGADD.texto(cruce[0]['PARTIDO']);
+  const fechaPO = '15/12/2099';
+  const clonar = (nombre) => {
+    const H = HOJAS[nombre];
+    if (!H) return H;
+    const extra = (H.filas || []).filter(f => SGADD.texto(f['PARTIDO']) === partido)
+      .slice(0, nombre === 'Base Datos J' ? 40 : 2)
+      .map(f => Object.assign({}, f, { FASE: 'PLAYOFF', FECHA: fechaPO }));
+    return { cols: H.cols, filas: H.filas.concat(extra) };
+  };
+  const HOJAS_PO = Object.assign({}, HOJAS);
+  ['Base Datos E', 'Base Datos J', '4 FACTORES'].forEach(n => { if (HOJAS[n]) HOJAS_PO[n] = clonar(n); });
+  const torneoPO = SGADD.combinacionesTorneoFase(HOJAS_PO).filter(t => t.fase === 'PLAYOFF')[0];
+  const P = armarApp();
+  P.A.estado.hojas = HOJAS_PO;
+  P.A.estado.torneo = torneoPO ? torneoPO.torneo : TRAMO.torneo; P.A.estado.fase = 'PLAYOFF';
+  P.A.estado.idx = SGADD.construirIndice(HOJAS_PO, { fase: 'PLAYOFF', torneo: P.A.estado.torneo });
+  const pv = P.A.idxPrevio(new Date(2099, 11, 15));
+  check('el libro de prueba trae el tramo de playoff', !!torneoPO);
+  check('en un playoff, la vara previa existe aunque la fase no tenga nada antes', pv && pv.idx && pv.partidos > 0, pv && pv.partidos);
+  check('y sale de la Regular hasta el día anterior', pv && pv.tramo && pv.idx.lista().length > 2 && pv.hasta === '2099-12-14' && ultimoDia < pv.hasta, pv && pv.tramo);
+}
+
 const R = armarApp({ recortado: true });
 R.A.cambiarMuestra({ tipo: 'semanas', n: 2 });
 check('con Base Datos J recortada, Jugadores sigue en la temporada', R.A.idxVista({ jugadores: true }) === base);
@@ -283,7 +312,7 @@ check('los dos PDF declaran la muestra en su encabezado', /textoMuestra\(\{ juga
 check('en una muestra los partidos manuales no se suman', /idx && idx\.__muestra\) \? \[\] : clasifManualesVigentes\(\)/.test(CL));
 const iM = HTML.indexOf('js/sgadd-muestra.js'), iA = HTML.indexOf('js/sgadd-app.js');
 check('sgadd-muestra.js carga ANTES que sgadd-app.js', iM !== -1 && iM < iA);
-check('assets en v333', /sgadd-muestra\.js\?v=333/.test(HTML) && !/\?v=29\d/.test(HTML));
+check('assets en v334', /sgadd-muestra\.js\?v=334/.test(HTML) && !/\?v=29\d/.test(HTML));
 check('el CSS del badge va a mano en el <style>', /\.muestra-badge \{/.test(HTML));
 
 /* =====================================================================

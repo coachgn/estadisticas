@@ -1237,7 +1237,7 @@ function equiposDetallePartido(idx, e, id) {
   /* LA VARA ES LA PREVIA (v332): el habitual, los desvíos, el simulador y el
      plan del scouting salen de los partidos ANTERIORES a esta fecha. */
   const previo = (typeof SGADD_APP !== 'undefined' && SGADD_APP.idxPrevio) ? SGADD_APP.idxPrevio(part.fecha) : null;
-  const opcBase = previo ? { base: previo.idx, previa: { partidos: previo.partidos, hasta: previo.hasta } } : {};
+  const opcBase = previo ? { base: previo.idx, previa: { partidos: previo.partidos, hasta: previo.hasta, tramo: previo.tramo } } : {};
   const a = SGADD_PARTIDO.analizar(idx, part, propio, opcBase);
   const riv = a.rival;
   const gano = a.gano;
@@ -1451,7 +1451,7 @@ function equiposDetallePartido(idx, e, id) {
         ${danio ? `<p class="plan-sub">Los que más dañaron el plan</p><div class="plan-g">${danio}</div>` : ''}
         <details class="rend-detalle mt-2"><summary>Ver el detalle</summary>
           <ul class="plan-detalle">${detalle}</ul>
-          <p class="text-[10px] dato-sec mt-1">Plan rearmado con los partidos previos (${planReal.pjRival} del rival, ${planReal.pjPropio} nuestros): no trae las consignas editadas a mano.${planReal.marcasConTemporada ? ' Marcas con la temporada completa.' : ''}</p>
+          <p class="text-[10px] dato-sec mt-1">Plan rearmado con los partidos previos${previo && previo.tramo ? ' de ' + escapeHtml(previo.tramo) : ''} (${planReal.pjRival} del rival, ${planReal.pjPropio} nuestros): no trae las consignas editadas a mano.${planReal.marcasConTemporada ? ' Marcas con la temporada completa.' : ''}</p>
         </details>
       </div>`;
   })();

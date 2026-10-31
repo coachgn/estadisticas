@@ -16468,3 +16468,12 @@ Assets en `?v=333`. Pedido del club sobre el punto 158: demasiado texto.
 
 ### No verificado
 El PDF del post-partido con el radar SVG, la barra y el mosaico (las reglas de papel están escritas). Probado en el navegador sobre la demo, donde todos los equipos comparten escudo.
+
+## 160. EN UN PLAYOFF, LA VARA PREVIA DEL POST-PARTIDO ES LA REGULAR (2026-10-31)
+
+Assets en `?v=334`. Reportado en Reconquista - Atenas (playoff, dos cruces en la Regular): «📋 Plan contra realidad · No hay partidos anteriores a esta fecha». `idxPrevio` (punto 158) recortaba el TRAMO ABIERTO, o sea la fase de playoff, y el primer partido de una serie no tiene nada antes en su fase.
+
+- En una fase de eliminación, `idxPrevio` usa la Regular de esa fase (`SGADD_MUESTRA.baseDeTramo`, el mismo criterio de la doble base del punto 157, con la carpeta al revés resuelta) recortada al día anterior. Las fases no se mezclan: los partidos previos de la propia serie no entran a la vara.
+- Devuelve `tramo` (el rótulo de la Regular), y la expectativa y la nota del plan lo dicen («…hasta el DD/MM (Ida - Regular), sin este»).
+- `test-muestra.js` arma un libro con un partido de PLAYOFF y lo fija; sin el arreglo cae.
+- **No verificado contra el libro real de Reconquista**: la demo no trae playoffs.

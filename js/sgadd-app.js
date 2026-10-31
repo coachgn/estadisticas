@@ -587,17 +587,26 @@ const SGADD_APP = (function () {
     if (!base || !estado.hojas || !dia || enLlave() || typeof SGADD_MUESTRA === 'undefined') return null;
     if (_previos.base !== base) { _previos.base = base; _previos.porDia = new Map(); }
     if (_previos.porDia.has(dia)) return _previos.porDia.get(dia);
-    const t = tramoDeIndice();
+    /* En una fase de ELIMINACIÓN la vara previa es la REGULAR (v334): el
+       primer partido de una serie no tiene nada antes en su fase, y el
+       scouting de un playoff se arma con la Regular (la doble base del
+       punto 157). Las fases no se mezclan: una serie de dos partidos no
+       es una vara. `baseDeTramo` ya resuelve la carpeta al revés. */
+    let t = tramoDeIndice(), tramoLabel = null;
+    try {
+      const reg = SGADD_MUESTRA.baseDeTramo(SGADD.combinacionesTorneoFase(estado.hojas), t, SGADD.FASES);
+      if (reg) { t = { torneo: reg.torneo, fase: reg.fase }; tramoLabel = reg.label || reg.id || 'Regular'; }
+    } catch (e) { /* sin la Regular queda el tramo abierto */ }
     const hasta = diaAnterior(dia);
-    let out = { idx: null, partidos: 0, hasta: hasta };
+    let out = { idx: null, partidos: 0, hasta: hasta, tramo: tramoLabel };
     try {
       const rec = SGADD_MUESTRA.recortar(estado.hojas, t, { desde: null, hasta: hasta });
       if (rec.partidos) {
         const v = SGADD.construirIndice(rec.hojas, { fase: t.fase, torneo: SGADD.TORNEO_TOTAL });
         if (base.liga && base.liga.nivel && v.liga && !v.liga.nivel) v.liga.nivel = base.liga.nivel;
-        out = { idx: v, partidos: rec.partidos, hasta: hasta };
+        out = { idx: v, partidos: rec.partidos, hasta: hasta, tramo: tramoLabel };
       }
-    } catch (e) { out = { idx: null, partidos: 0, hasta: hasta, error: e && e.message }; }
+    } catch (e) { out = { idx: null, partidos: 0, hasta: hasta, tramo: tramoLabel, error: e && e.message }; }
     _previos.porDia.set(dia, out);
     return out;
   }
