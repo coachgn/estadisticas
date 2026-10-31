@@ -295,7 +295,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=324`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=336`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -15896,7 +15896,8 @@ la demo no la tiene; el ~11 hojas del pedido depende de esa ficha.
 
 `test-fichajes.js` buscaba un `
 ` literal en `index.html`, que tiene CRLF en
-ese tramo: pasó a `?
+ese tramo: pasó a `
+?
 ` (la trampa del punto 51).
 
 ## 143. LA BARRA SIMÉTRICA, QUINTETOS Y MAPA SIEMPRE, Y EL DIAGNÓSTICO CON PROYECCIÓN (2026-10-26)
@@ -16488,3 +16489,18 @@ Assets en `?v=335`. En una fase de ELIMINACIÓN el índice abierto trae solo esa
 - **Equipos → Evolución** de puntos a favor/en contra: `equiposHistoria(e)`, mismo criterio.
 - **Post-partido**: se sacó de la tarjeta de expectativa la frase «Es la expectativa PREVIA: el simulador con los N partidos…»; el corte sigue en `decision().previa`.
 - **Sin cubrir**: Comparativa (solo admin) sigue leyendo el tramo abierto; Clasificación y Fixture son por fase a propósito. **No verificado con un libro real con playoffs** (la demo no los trae).
+
+## 162. RACHAS Y TENDENCIAS DE JUGADOR · 🔥 🧊 ⚓ (2026-10-31)
+
+Assets en `?v=336`. Motor PURO `js/sgadd-rachas.js` (`test-rachas.js`, 25 tests, incluida la demo). Se muestra como chip chico en la ficha del jugador, en las cards del plantel (🔥/🧊, sin ⚓) y junto al nombre en Scouting. Manual: sección 6.
+
+- **Medida**: eficiencia (TS%, eFG% si no hay libres) de los últimos 5 partidos jugados (≥ 8 min) contra SU base previa (≥ 3). Con menos de 8 jugados no se lee racha.
+- **z = (media ventana − media base) / (σ/√n)**: el desvío del promedio de n partidos. 🔥 ≥ +1,5, 🧊 ≤ −1,5. **⚓ = ventana a ±0,5 σ por noche** de su media y ni racha ni bache; describe, no premia.
+- **El σ es el de la competencia**: el mayor entre el propio y el p25 del σ de los jugadores del torneo (`sigmaLiga`, calculado del índice). Dos noches parecidas no dan σ≈0.
+- **🔥 exige uso estable**: plays por 40 min de la ventana ≥ 95 % de su base y promedio ≥ 10 min. Si la eficiencia sube pero el uso cae, queda `descartada: 'uso'` (minutos de la basura) y no se marca.
+- **Per 40** para el volumen (FIBA); **el rival pesa 0,8–1,2** por su % de victorias en la tabla.
+- **Alerta de carga** (⚠ junto al 🔥): minutos de la ventana ≥ +20 % y +4 min sobre la base. Para el preparador físico.
+- **🧊 de un tirador** (base ≥ 2,5 triples por partido) trae la causa: menos intentos por 40 (< 85 %), otra selección (≥ 8 pp de triples), rivales con buena defensa (percentil de eFG% permitido ≥ 66) o acierto. **El box score no trae la ubicación del tiro**: es una lectura por proxy y el tooltip no afirma un Deny.
+- **Cortes por torneo**: `idx.liga.rachas = { z, ventana, ... }` pisa los de `UMBRALES`; lo que no se declara usa el respaldo. Todavía no hay UI para declararlo.
+- Medido en la demo: de 175 jugadores evaluados, 6 🔥, 14 🧊 y 119 ⚓.
+- **No verificado en el navegador ni en un PDF.**

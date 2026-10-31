@@ -456,6 +456,38 @@ function seccionReloj() {
     <p class="aviso">${esc(M.neutral)}</p>`;
 }
 
+function seccionRachas() {
+  const R = require('./js/sgadd-rachas.js');
+  const U = R.UMBRALES;
+  const f = (v) => String(v).replace('.', ',');
+  const filas = [
+    ['Ventana', U.ventana + ' partidos jugados', 'Los últimos partidos que definen la racha.'],
+    ['Base previa', 'al menos ' + U.base + ' partidos antes', 'Su línea de comparación. Con menos de ' + (U.ventana + U.base) + ' jugados no se lee racha.'],
+    ['Partido jugado', 'desde ' + U.minMinutos + ' min', 'Un partido de menos minutos no cuenta.'],
+    ['🔥 Racha caliente', 'z ≥ +' + f(U.z), 'Eficiencia (TS%) de la ventana contra su base, en desvíos del promedio de ' + U.ventana + ' partidos (σ / √n).'],
+    ['🧊 Racha fría', 'z ≤ −' + f(U.z), 'Misma medida, hacia abajo.'],
+    ['⚓ Estable', '±' + f(U.ancla) + ' σ', 'La ventana cae a menos de media desviación (por noche) de su media. Describe, no premia.'],
+    ['Filtro de uso (solo 🔥)', 'plays por 40 ≥ ' + Math.round(U.usoMinRatio * 100) + ' % de su base', 'Si la eficiencia sube pero el protagonismo cae, no es racha: son minutos de la basura.'],
+    ['Minutos de la ventana', 'promedio ≥ ' + U.minutosVentana, 'Minutos residuales no marcan ninguna racha.'],
+    ['Peso del rival', f(U.pesoRival[0]) + ' a ' + f(U.pesoRival[1]), 'Según su lugar en la tabla: el puntero pesa más que el último.'],
+    ['Alerta de carga (solo 🔥)', '+' + Math.round((U.cargaRatio - 1) * 100) + ' % y +' + U.cargaMinutos + ' min', 'Produce más porque juega mucho más: aviso discreto para el preparador físico (⚠).'],
+    ['Causa del bache (🧊 de tirador)', 'base ≥ ' + f(U.tiradorT3) + ' triples por partido', 'Menos intentos por 40 (< ' + Math.round(U.bajaVolumen * 100) + ' %), otra selección (≥ ' + Math.round(U.saltoSeleccion * 100) + ' pp), rivales con buena defensa o puro acierto.'],
+  ];
+  return `
+    <p>Marca a los jugadores que vienen en racha, sin ruido: se calcula con el historial de
+    cada uno y se muestra como un chip chico en la ficha, en las cards del plantel y en
+    Scouting.</p>
+    <h3>6.1 · Reglas y cortes por defecto</h3>
+    ${tabla(['Regla', 'Corte', 'Qué hace'], filas.map(r => r.map(esc)))}
+    <h3>6.2 · El desvío es el de la competencia</h3>
+    <ul>
+      <li><b>σ del jugador con piso de liga.</b> Se usa el mayor entre su desvío propio y el percentil 25 del desvío de los jugadores de ESTA competencia. Así dos noches parecidas no dan un desvío cero que dispare todo.</li>
+      <li><b>Normalización FIBA.</b> El uso se compara por 40 minutos: un partido lento o una prórroga no lo distorsiona.</li>
+      <li><b>Cortes por torneo.</b> Cada competencia puede declarar los suyos en <code>liga.rachas</code> (por ejemplo <code>{ "z": 1.25, "ventana": 4 }</code>); lo que no declara usa los de la tabla.</li>
+      <li><b>Límite del dato.</b> El box score no trae la ubicación del tiro: la causa de un bache de tirador es una lectura por proxy, y lo dice.</li>
+    </ul>`;
+}
+
 /* ===================== DOCUMENTO ===================== */
 
 /* ====================================================================
@@ -722,6 +754,9 @@ ${seccionNiveles()}
 
 <h2 class="salto">5 · Reloj de posesión</h2>
 ${seccionReloj()}
+
+<h2 class="salto">6 · Rachas y tendencias</h2>
+${seccionRachas()}
 
 <script>
 /* Los seis mapas viajan en el documento: el selector no vuelve a

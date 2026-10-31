@@ -3956,7 +3956,15 @@ function scoutNombreJugador(f, equipo, tam) {
      Equipos: solo con la columna TITULAR del libro (punto 8). De un rival
      recortado sale del conteo que manda el servidor. */
   const tit = typeof torneoBadgeTitular === 'function' ? torneoBadgeTitular(nombre, equipo, true) : '';
-  return `<span class="inline-flex flex-wrap items-center gap-1.5 min-w-0 align-middle">${torneoImagenJugador(nombre, equipo, tam)}<span class="truncate">${texto}</span>${tit}</span>`;
+  /* 🔥 / 🧊 (punto 162): la racha reciente del rival, sobre la base del informe. */
+  let racha = '';
+  try {
+    const b = (typeof scoutBase === 'function') ? scoutBase() : null;
+    const ce = SGADD.claveEquipo(equipo);
+    const jug = b && b.liga && (b.liga.jugadores || []).find(x => x['NOMBRES'] === nombre && SGADD.claveEquipo(x['EQUIPO']) === ce);
+    if (jug && typeof jugadoresBadgeRacha === 'function') racha = jugadoresBadgeRacha(b, jug, true);
+  } catch (e) { racha = ''; }
+  return `<span class="inline-flex flex-wrap items-center gap-1.5 min-w-0 align-middle">${torneoImagenJugador(nombre, equipo, tam)}<span class="truncate">${texto}</span>${tit}${racha}</span>`;
 }
 function scoutRecord(r) { return r.ganados + ' - ' + r.perdidos; }
 

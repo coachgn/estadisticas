@@ -2575,6 +2575,28 @@ function jugadoresBadgeEstado(j) {
   return `<p class="text-[9px] mt-0.5 ${est.color} truncate" title="${escapeAttr(nota)}">${est.emoji} ${escapeHtml(est.label)}</p>`;
 }
 
+/** 🔥 / 🧊 / ⚓ de UN jugador (punto 162, `sgadd-rachas.js`). Chip chico y
+    sin ruido: el ⚓ no se muestra en las cards (es lo normal), solo en la
+    ficha. La alerta de carga suma un ⚠ discreto para el preparador físico. */
+function jugadoresRacha(idx, j) {
+  if (typeof SGADD_RACHAS === 'undefined' || !idx || !j) return null;
+  try {
+    const hist = jugadoresHistoria(idx, j.__clave);
+    return SGADD_RACHAS.analizar(hist.partidos, { idx, equipo: j['EQUIPO'] });
+  } catch (e) { return null; }
+}
+function jugadoresBadgeRacha(idx, j, compacta) {
+  const r = jugadoresRacha(idx, j);
+  const c = typeof SGADD_RACHAS !== 'undefined' ? SGADD_RACHAS.chip(r) : null;
+  if (!c || (compacta && c.estado === 'ancla')) return '';
+  const color = c.estado === 'caliente' ? 'text-orange-400 border-orange-400/40'
+    : c.estado === 'fria' ? 'text-sky-300 border-sky-300/40' : 'text-muted border-hairline';
+  const tam = compacta ? 'text-[9px] px-1.5 py-0.5' : 'text-[10px] px-2.5 py-1';
+  const carga = c.carga ? ' <span title="Alerta de carga: produce más a costa de muchos más minutos. Para el preparador físico.">⚠</span>' : '';
+  return `<span class="${tam} font-display uppercase tracking-wider rounded border ${color} whitespace-nowrap"
+    title="${escapeAttr(c.tooltip)}">${c.emoji}${compacta ? '' : ' ' + escapeHtml(c.texto)}${carga}</span>`;
+}
+
 function jugadoresPlantelEquipo(idx) {
   const clave = JUGADORES.filtroEquipo;
   if (!clave) return '';
@@ -2622,9 +2644,9 @@ function jugadoresPlantelEquipo(idx) {
             : logo ? `<img src="${escapeAttr(logo)}" alt="" class="w-8 h-8 object-contain shrink-0">` : ''}
           <div class="min-w-0 flex-1">
             <p class="text-xs text-white font-medium truncate">${escapeHtml(jugadoresConDorsal(j['NOMBRES'], j['EQUIPO']))}</p>
-            ${rolMin || jugadoresBadgeTitular(j, true) ? `<div class="flex items-center gap-1.5 min-w-0">
+            ${rolMin || jugadoresBadgeTitular(j, true) || jugadoresBadgeRacha(idx, j, true) ? `<div class="flex items-center gap-1.5 min-w-0">
               ${rolMin ? `<p class="text-[10px] ${rolMin.color} truncate" title="${escapeAttr(rolMin.rol)}">${escapeHtml(rolMin.label)}</p>` : ''}
-              ${jugadoresBadgeTitular(j, true)}</div>` : ''}
+              ${jugadoresBadgeTitular(j, true)}${jugadoresBadgeRacha(idx, j, true)}</div>` : ''}
             ${jugadoresBadgeEstado(j)}
             ${jugadoresLineaPendiente(j)}
           </div>
@@ -2840,6 +2862,7 @@ function jugadoresHeader(idx, j) {
       <div class="mb-4 flex items-center gap-2 flex-wrap">
         ${badgeRol}
         ${jugadoresBadgeTitular(j)}
+        ${jugadoresBadgeRacha(idx, j)}
         ${(() => {
           /* En la FICHA el estado sí se muestra completo, con la fecha de
              corte: acá hay lugar y es el dato que explica por qué sus
@@ -3828,7 +3851,7 @@ if (typeof module !== 'undefined' && module.exports) {
     JUGADORES_MOTIVO_SIN_RESPALDO, JUGADORES_MOTIVO_COMPETENCIA_CHICA,
     JUGADORES_TOP3_N, jugadoresTop3Plantel, jugadoresBloqueTop3Plantel, jugadoresTop3Plegar,
     CLAVES_CONDICION, MIN_PJ_CONDICION, SENSIBILIDAD_CONDICION,
-    jugadoresSlug, jugadoresBuscar, jugadoresZScore,
+    jugadoresSlug, jugadoresBuscar, jugadoresZScore, jugadoresRacha, jugadoresBadgeRacha,
     jugadoresPartidosOrdenados, jugadoresHistoria, jugadoresStatDe, jugadoresRival, jugadoresIdCanonico,
     PARTIDOS_FILTROS, PARTIDOS_RACHA, jugadoresClasificarPartidos, jugadoresPartidoCumple, jugadoresTendenciasPartidos, jugadoresMicroBarra, jugadoresFiltrarPartidos, jugadoresTabPartidos,
     jugadoresRolMinutos, jugadoresPromedioMetrica, jugadoresPromediosLiga, jugadoresRT,
