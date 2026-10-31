@@ -431,8 +431,8 @@ console.log('─'.repeat(70));
 
   const dPre = P.decision(idx, propioV, rivalV, aPre, null, { base: pre, previa: { partidos: 7, hasta: '2026-05-07' } });
   const prPre = dPre.tarjetas.find(t => t.id === 'proyeccion');
-  check('la expectativa dice que es la PREVIA, con los partidos y la fecha de corte (o por qué no la hay)',
-    prPre && ((/expectativa PREVIA/.test(prPre.texto) && /hasta el 07\/05/.test(prPre.texto)) || /muestra suficiente/.test(prPre.texto)), prPre && prPre.texto);
+  check('la expectativa NO repite la frase de la vara previa (v335); el corte viaja en dec.previa (o dice por qué no hay)',
+    prPre && !/expectativa PREVIA|jugados hasta/.test(prPre.texto) && (/Margen esperado/.test(prPre.texto) || /muestra suficiente/.test(prPre.texto)) && dPre.previa && dPre.previa.hasta, prPre && prPre.texto);
   check('y no repite que «este partido incluido»', !prPre || !/este partido incluido/.test(prPre.texto));
   const dec0 = dPre.tarjetas.find(t => t.id === 'decisor');
   check('cada ficha del factor decisivo trae su propio tono', dec0 && dec0.ficha.every(f => typeof f.tono === 'string'), dec0 && dec0.ficha);

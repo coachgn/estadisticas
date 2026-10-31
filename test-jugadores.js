@@ -1560,5 +1560,25 @@ console.log('\n' + 'EL RANKING DEL PLANTEL' + '\n' + '─'.repeat(70));
     /if \(plantel\.length < 4\) return '';/.test(srcJ));
 }
 
+
+/* v335 · EL HISTORIAL CONTINUO: en una fase de eliminación el log de un
+   jugador arranca en su Regular, no con un único partido de playoff. */
+{
+  console.log('EL HISTORIAL CONTINUO ENTRE FASES (v335)');
+  const mk = (id, dia, pts) => ({ __id: id, __fecha: new Date(2026, 2, dia), PTS: pts, MIN: 20 });
+  const idxFase = { liga: { jugadorPartidos: new Map([['X|EQ', [mk('po1', 20, 30)]]]) } };
+  const idxReg = { liga: { jugadorPartidos: new Map([['X|EQ', [mk('r1', 1, 10), mk('r2', 5, 12), mk('r3', 9, 14), mk('po1', 20, 30)]]]) } };
+  const h0 = J.jugadoresHistoria(idxFase, 'X|EQ');
+  check('fuera de una eliminatoria el log es exactamente el de siempre', h0.partidos.length === 1 && h0.previos === 0 && h0.fase === null);
+  global.SGADD_APP = { idxRegular: () => idxReg, etiquetaRegular: () => 'Ida - Regular' };
+  const h1 = J.jugadoresHistoria(idxFase, 'X|EQ');
+  check('en una eliminatoria suma los partidos de la Regular antes', h1.partidos.length === 4 && h1.previos === 3 && h1.partidos[0].__id === 'r1');
+  check('un partido que está en las dos fases no se cuenta dos veces', h1.partidos.filter(p => p.__id === 'po1').length === 1);
+  check('los de la Regular van marcados y los de la fase no', h1.partidos[0].__faseRegular === true && !h1.partidos[3].__faseRegular);
+  const st = J.jugadoresStatDe(h1.partidos, 'PTS');
+  check('la banda de consistencia sale del historial continuo (con 1 partido de playoff no habría)', st && st.n === 4 && J.jugadoresStatDe(h0.partidos, 'PTS') === null);
+  delete global.SGADD_APP;
+}
+
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

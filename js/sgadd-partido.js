@@ -590,7 +590,6 @@ const SGADD_PARTIDO = (function () {
     if (proy) {
       const d = proy.desvio;
       const pv = o.previa || {};
-      const ddmm = (iso) => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) : '';
       tarjetas.push({
         id: 'proyeccion', tono: Math.abs(d) < 4 ? 'info' : (d > 0 ? 'pos' : 'neg'),
         titulo: 'Expectativa contra realidad',
@@ -598,7 +597,7 @@ const SGADD_PARTIDO = (function () {
           + ' pts (' + Math.round(proy.probPropio * 100) + ' % de victoria estimada); el partido cerró en ' + (proy.margenReal >= 0 ? '+' : '−') + Math.abs(proy.margenReal)
           + ', ' + (Math.abs(d) < 4 ? 'dentro de lo esperable' : (d > 0 ? 'superando la expectativa por ' + Math.abs(d).toFixed(0) + ' puntos' : 'por debajo de la expectativa por ' + Math.abs(d).toFixed(0) + ' puntos'))
           + (previa
-            ? '. Es la expectativa PREVIA: el simulador con los ' + (pv.partidos || 0) + ' partidos de la liga jugados hasta el ' + ddmm(pv.hasta) + (pv.tramo ? ' (' + pv.tramo + ')' : '') + ', sin este.'
+            ? '.'
             : '. La referencia usa los ratings de toda la temporada, este partido incluido: es una vara de rendimiento, no una predicción previa.')
           + (proy.factorClave ? ' Factor que más movía el cruce: ' + proy.factorClave + '.' : ''),
         ficha: [], nombres: [],

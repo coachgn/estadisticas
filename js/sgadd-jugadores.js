@@ -1791,6 +1791,43 @@ function jugadoresPartidosOrdenados(idx, clave) {
 }
 
 /**
+ * EL HISTORIAL CONTINUO DEL JUGADOR (v335)
+ *
+ * En una fase de ELIMINACIÓN el índice abierto trae solo esa fase: el log, la
+ * banda de consistencia y las tendencias de un jugador con un único partido
+ * de playoff quedaban ciegos ("1 PJ", sin desvío), aunque jugó toda la
+ * Regular. La línea de tiempo de UN jugador sí se puede leer de corrido —no
+ * es un promedio de liga que mezcle fases—: sus partidos de la Regular
+ * (`SGADD_APP.idxRegular`) van antes y los de la fase abierta después, cada
+ * uno marcado con su fase. Un partido que está en las dos no se cuenta dos
+ * veces. Fuera de una eliminatoria devuelve exactamente el log de siempre.
+ * PURA salvo por el índice de la Regular que le pide a la app.
+ */
+function jugadoresHistoria(idx, clave) {
+  const propios = jugadoresPartidosOrdenados(idx, clave);
+  const reg = (typeof SGADD_APP !== 'undefined' && SGADD_APP.idxRegular) ? SGADD_APP.idxRegular() : null;
+  if (!reg || !reg.liga || !reg.liga.jugadorPartidos) return { partidos: propios, previos: 0, fase: null };
+  const ids = new Set(propios.map(p => p.__id).filter(Boolean));
+  const antes = jugadoresPartidosOrdenados(reg, clave)
+    .filter(p => !p.__id || !ids.has(p.__id))
+    .map(p => Object.assign({}, p, { __faseRegular: true }));
+  return {
+    partidos: antes.concat(propios), previos: antes.length,
+    fase: (SGADD_APP.etiquetaRegular && SGADD_APP.etiquetaRegular()) || 'Regular',
+  };
+}
+
+/** Media y desvío sobre un log ya armado: lo mismo que `statJugador`, pero
+    sobre el historial continuo. Menos de 3 valores, nada. */
+function jugadoresStatDe(partidos, metrica) {
+  const vals = partidos.map(p => p[metrica]).filter(v => typeof v === 'number' && isFinite(v));
+  if (vals.length < 3) return null;
+  const m = vals.reduce((a, v) => a + v, 0) / vals.length;
+  const varianza = vals.reduce((a, v) => a + (v - m) * (v - m), 0) / vals.length;
+  return { media: m, desvio: Math.sqrt(varianza), n: vals.length };
+}
+
+/**
  * El id canónico del partido de UNA fila de jugador: el que usa Equipos.
  *
  * Desde el join de FECHA en `construirIndice()`, `Base Datos J` hereda la
@@ -2762,7 +2799,7 @@ function jugadoresTabsVisibles() {
 
 function jugadoresTabDisponible(idx, j, id) {
   if (id === 'evolucion' || id === 'partidos') {
-    const n = (idx.liga.jugadorPartidos.get(j.__clave) || []).length;
+    const n = jugadoresHistoria(idx, j.__clave).partidos.length;
     return id === 'evolucion' ? n >= 3 : n >= 1;
   }
   return true;
@@ -3501,8 +3538,9 @@ function jugadoresTabEvolucion(idx, j) {
 function jugadoresBloqueEvolucion(idx, j, metricaId, idCanvas) {
   const def = JUGADORES_METRICAS_EVOLUCION.find(m => m.id === metricaId);
   const metricaLbl = def ? def.label : metricaId;
-  const partidos = jugadoresPartidosOrdenados(idx, j.__clave);
-  const stat = idx.statJugador(j.__clave, metricaId);
+  const hist = jugadoresHistoria(idx, j.__clave);
+  const partidos = hist.partidos;
+  const stat = jugadoresStatDe(partidos, metricaId);
   if (!stat) {
     return SGADD_UI.aviso('Todavía no hay suficientes partidos',
       'Hacen falta al menos 3 partidos con box score para calcular una banda de consistencia en ' + metricaLbl.toLowerCase() + '.');
@@ -3588,8 +3626,9 @@ function jugadoresPartidosDesvio(arr) {
  * PURA: la usan la tabla, las pills y las tendencias.
  */
 function jugadoresClasificarPartidos(idx, j) {
-  const stat = idx.statJugador(j.__clave, 'PTS');
-  const filas = jugadoresPartidosOrdenados(idx, j.__clave).map(p => {
+  const hist = jugadoresHistoria(idx, j.__clave);
+  const stat = jugadoresStatDe(hist.partidos, 'PTS');
+  const filas = hist.partidos.map(p => {
     const flojo = (typeof p['MIN'] !== 'number') || p['MIN'] < SGADD_PARTIDO.MIN_MINUTOS;
     const z = jugadoresZScore(p['PTS'], stat && stat.media, stat && stat.desvio);
     const atipico = !flojo && z !== null && Math.abs(z) >= SGADD_PARTIDO.Z_ATIPICO;
@@ -3601,7 +3640,7 @@ function jugadoresClasificarPartidos(idx, j) {
       gano: SGADD.texto(p['RESULTADO']).toUpperCase() === 'GANADO',
     };
   });
-  return { stat, filas };
+  return { stat, filas, previos: hist.previos, fase: hist.fase };
 }
 
 /** ¿Este partido pasa la pill? */
@@ -3688,7 +3727,7 @@ function jugadoresMicroBarra(valor, promedio, tono) {
 }
 
 function jugadoresTabPartidos(idx, j) {
-  const { stat, filas: asc } = jugadoresClasificarPartidos(idx, j);
+  const { stat, filas: asc, previos, fase } = jugadoresClasificarPartidos(idx, j);
   const V = jugadoresBentoVista();
   if (JUGADORES.partidosFiltroDe !== j.__clave) { JUGADORES.partidosFiltro = 'todos'; JUGADORES.partidosFiltroDe = j.__clave; }
   const filtro = JUGADORES.partidosFiltro;
@@ -3703,6 +3742,7 @@ function jugadoresTabPartidos(idx, j) {
   const cabecera = V && todos.length ? `
     <section class="rend-card rend-ancho" data-partidos="tendencias">
       <h5 class="rend-card-t">Tendencias del historial</h5>
+      ${previos ? `<p class="text-[11px] dato-sec mb-2" data-historia="continua">Historial completo: ${previos} partido${previos === 1 ? '' : 's'} de ${escapeHtml(fase)} + ${asc.length - previos} de esta fase. La línea de tiempo del jugador se lee de corrido; los promedios de la liga no se mezclan.</p>` : ''}
       ${tend.corta ? V.alerta({ tono: 'aviso', titulo: 'Muestra corta', texto: 'Con menos de ' + PARTIDOS_MIN_TENDENCIA + ' partidos jugados no se afirma una racha: se muestran los datos sin tendencia.' }) : ''}
       <div class="rend-fichas">${tend.fichas.map(V.ficha).join('')}</div>
     </section>` : '';
@@ -3717,12 +3757,18 @@ function jugadoresTabPartidos(idx, j) {
     const p = f.p;
     const colorPts = f.nivel ? (f.nivel === 'elite' ? 'text-green-400 font-medium' : 'text-red-400 font-medium') : 'text-white';
     const tonoPts = f.nivel === 'elite' ? 'pos' : (f.nivel === 'baja' ? 'neg' : null);
-    return `<tr class="border-b border-hairline/40 last:border-0 cursor-pointer hover:bg-surface2 transition-all duration-200 ${f.flojo ? 'opacity-50' : ''}"
-                data-nivel="${f.nivel || ''}"
-                onclick="jugadoresVerPartido('${SGADD_UI.escJs(p['EQUIPO'] || '')}', '${SGADD_UI.escJs(jugadoresIdCanonico(idx, p) || '')}')"
+    const deOtraFase = !!p.__faseRegular;
+    /* Solo la fila con detalle es clicable; su atributosFila viaja en `accion`. */
+    const claseClic = deOtraFase ? '' : 'cursor-pointer hover:bg-surface2 ';
+    const accion = deOtraFase
+      ? `title="Partido de ${escapeAttr(fase)}: su detalle está en esa fase"`
+      : `onclick="jugadoresVerPartido('${SGADD_UI.escJs(p['EQUIPO'] || '')}', '${SGADD_UI.escJs(jugadoresIdCanonico(idx, p) || '')}')"
                 title="Ver el detalle de este partido en Equipos"
-                ${SGADD_UI.atributosFila('Ver el detalle del partido contra ' + jugadoresRival(p))}>
-      <td class="py-1.5 pr-3 text-xs dato-sec font-mono whitespace-nowrap">${escapeHtml(SGADD.formatearFecha(p.__fecha))}</td>
+                ${SGADD_UI.atributosFila('Ver el detalle del partido contra ' + jugadoresRival(p))}`;
+    return `<tr class="border-b border-hairline/40 last:border-0 ${claseClic}transition-all duration-200 ${f.flojo ? 'opacity-50' : ''}"
+                data-nivel="${f.nivel || ''}" ${deOtraFase ? 'data-fase-previa="1"' : ''}
+                ${accion}>
+      <td class="py-1.5 pr-3 text-xs dato-sec font-mono whitespace-nowrap">${escapeHtml(SGADD.formatearFecha(p.__fecha))}${deOtraFase ? ' <span class="text-[9px] uppercase tracking-wider text-muted border border-hairline rounded px-1" title="Partido de ' + escapeAttr(fase) + '">Reg.</span>' : ''}</td>
       <td class="py-1.5 pr-3 text-xs text-white truncate max-w-[200px]">${escapeHtml(jugadoresRival(p))}</td>
       <td class="py-1.5 pr-3 text-xs text-muted">${escapeHtml(SGADD.texto(p['CONDICION']))}</td>
       <td class="py-1.5 pr-3 font-mono text-xs"><span class="part-celda">${escapeHtml(SGADD.formatear('MIN', p['MIN']))}${jugadoresMicroBarra(p['MIN'], promMin)}</span></td>
@@ -3783,7 +3829,7 @@ if (typeof module !== 'undefined' && module.exports) {
     JUGADORES_TOP3_N, jugadoresTop3Plantel, jugadoresBloqueTop3Plantel, jugadoresTop3Plegar,
     CLAVES_CONDICION, MIN_PJ_CONDICION, SENSIBILIDAD_CONDICION,
     jugadoresSlug, jugadoresBuscar, jugadoresZScore,
-    jugadoresPartidosOrdenados, jugadoresRival, jugadoresIdCanonico,
+    jugadoresPartidosOrdenados, jugadoresHistoria, jugadoresStatDe, jugadoresRival, jugadoresIdCanonico,
     PARTIDOS_FILTROS, PARTIDOS_RACHA, jugadoresClasificarPartidos, jugadoresPartidoCumple, jugadoresTendenciasPartidos, jugadoresMicroBarra, jugadoresFiltrarPartidos, jugadoresTabPartidos,
     jugadoresRolMinutos, jugadoresPromedioMetrica, jugadoresPromediosLiga, jugadoresRT,
     jugadoresConvIntento,

@@ -16477,3 +16477,14 @@ Assets en `?v=334`. Reportado en Reconquista - Atenas (playoff, dos cruces en la
 - Devuelve `tramo` (el rótulo de la Regular), y la expectativa y la nota del plan lo dicen («…hasta el DD/MM (Ida - Regular), sin este»).
 - `test-muestra.js` arma un libro con un partido de PLAYOFF y lo fija; sin el arreglo cae.
 - **No verificado contra el libro real de Reconquista**: la demo no trae playoffs.
+
+## 161. LA CEGUERA ENTRE FASES · SIMULADOR, SCOUTING Y LOS HISTORIALES (2026-10-31)
+
+Assets en `?v=335`. En una fase de ELIMINACIÓN el índice abierto trae solo esa fase, y varias secciones quedaban ciegas (Simulador con «confianza 97 %» sobre un partido por equipo; Jugadores → Partidos con «1 PJ» y sin tendencia). La regla que se aplicó: **los promedios y las varas de liga NO mezclan fases; las líneas de tiempo de un equipo o jugador SÍ se leen de corrido.**
+
+- **Simulador**: en eliminación el modelo (ratings, localía, pesos de los 4 factores) se arma con la Regular (`SGADD_APP.idxRegular`) y la pantalla lo dice («Modelo armado con la Regular»). Fuera de una eliminatoria, igual que siempre.
+- **Scouting**: `scoutBase()` = la Regular en eliminación, el índice abierto si no. Los rivales de otra zona se injertan en ese mismo tramo. Avisa «Informe armado con la Regular».
+- **Jugadores → Partidos / Evolución**: `jugadoresHistoria(idx, clave)` antepone los partidos de la Regular (marcados `Reg.`, sin enlace a un detalle que no existe en la fase abierta) y `jugadoresStatDe` calcula la banda de consistencia y las tendencias sobre ese historial; un partido en las dos fases no se cuenta dos veces.
+- **Equipos → Evolución** de puntos a favor/en contra: `equiposHistoria(e)`, mismo criterio.
+- **Post-partido**: se sacó de la tarjeta de expectativa la frase «Es la expectativa PREVIA: el simulador con los N partidos…»; el corte sigue en `decision().previa`.
+- **Sin cubrir**: Comparativa (solo admin) sigue leyendo el tramo abierto; Clasificación y Fixture son por fase a propósito. **No verificado con un libro real con playoffs** (la demo no los trae).

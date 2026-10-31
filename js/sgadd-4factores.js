@@ -1135,13 +1135,23 @@ function simuladorPintar() {
   if (st.error) { root.innerHTML = SGADD_APP.barra() + SGADD_UI.aviso('No se pudo cargar', st.error, 'error'); return; }
   if (!st.idx) { root.innerHTML = SGADD_APP.barra() + SGADD_UI.cargando('Cargando la categoría…', (SGADD_APP.planillaActual() || {}).label); return; }
 
-  const idx = st.idx;
+  /* EN UNA FASE DE ELIMINACIÓN EL MODELO SE ARMA CON LA REGULAR (v335): una
+     serie de playoff no tiene muestra para ajustar ratings, localía ni
+     pesos de los 4 factores, y el cruce de un cuarto de final con 1 partido
+     por equipo daba «confianza 97 %» sobre nada. Las fases no se mezclan:
+     la Regular entera es la vara, y la pantalla lo dice. */
+  const reg = (typeof SGADD_APP.idxRegular === 'function') ? SGADD_APP.idxRegular() : null;
+  const idx = reg || st.idx;
   SIMULADOR.planillaId = st.planillaId;
   SIMULADOR.fase = st.fase;
+  const avisoFase = reg
+    ? SGADD_UI.aviso('Modelo armado con la Regular',
+        'Estás en una fase de eliminación (corta por diseño): el simulador proyecta con los ratings, la localía y los pesos de la ' + escapeHtml(SGADD_APP.etiquetaRegular() || 'Regular') + ' (' + (reg.liga.pjMediano || 0) + ' PJ mediano). Los partidos de esta fase no se mezclan en el modelo.')
+    : '';
 
   root.innerHTML = [
     SGADD_APP.barra(),
-    SGADD_APP.avisoMuestra(),
+    reg ? avisoFase : SGADD_APP.avisoMuestra(),
     simuladorSelectores(idx),
     simuladorResultado(idx),
   ].filter(Boolean).join('');

@@ -2590,5 +2590,12 @@ check('nadie recibe «no se ayuda desde él» mientras una clave pide colapsar s
 }
 
 console.log('\n' + '═'.repeat(70));
+
+/* v335 · el Scouting en una fase de eliminación se arma con la Regular. */
+console.log('SCOUTING ENTRE FASES (v335)');
+{ const c = (function(){ const f = require('fs').readFileSync('./js/sgadd-scouting.js','utf8'); const i = f.indexOf('function scoutBase('); let d = 0, j = f.indexOf('{', i); const ini = j; for (; j < f.length; j++) { if (f[j]==='{') d++; else if (f[j]==='}') { d--; if (!d) break; } } return f.slice(ini, j+1); })();
+  const pint = (function(){ const f = require('fs').readFileSync('./js/sgadd-scouting.js','utf8'); const i = f.indexOf('function scoutPintar('); let d = 0, j = f.indexOf('{', i); const ini = j; for (; j < f.length; j++) { if (f[j]==='{') d++; else if (f[j]==='}') { d--; if (!d) break; } } return f.slice(ini, j+1); })();
+  check('scoutBase prefiere la Regular y cae al índice abierto', /idxRegular/.test(c) && /reg \|\| SGADD_APP\.estado\.idx/.test(c));
+  check('el informe pinta sobre scoutBase y avisa de dónde sale', /scoutBase\(\)/.test(pint) && /Informe armado con la Regular/.test(pint)); }
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

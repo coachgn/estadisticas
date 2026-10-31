@@ -580,5 +580,10 @@ check('el refuerzo hace que el último partido de una racha larga pese bastante 
   JSON.stringify({ ultimo: F.pesoTemporalPartido(9, 10), primero: F.pesoTemporalPartido(0, 10) }));
 
 console.log('\n' + '═'.repeat(70));
+
+/* v335 · el Simulador en una fase de eliminación se arma con la Regular. */
+console.log('SIMULADOR ENTRE FASES (v335)');
+{ const c = (function(){ const f = require('fs').readFileSync('./js/sgadd-4factores.js','utf8'); const i = f.indexOf('function simuladorPintar('); let d = 0, j = f.indexOf('{', i); const ini = j; for (; j < f.length; j++) { if (f[j]==='{') d++; else if (f[j]==='}') { d--; if (!d) break; } } return f.slice(ini, j+1); })();
+  check('el Simulador toma la Regular cuando la fase es de eliminación y avisa', /idxRegular\(\)/.test(c) && /const idx = reg \|\| st\.idx/.test(c) && /Modelo armado con la Regular/.test(c)); }
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

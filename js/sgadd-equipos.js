@@ -455,6 +455,23 @@ function equiposTab(idx, e, id) {
   }
 }
 
+/**
+ * La línea de tiempo del equipo en una fase de ELIMINACIÓN (v335): sus
+ * partidos de la Regular van antes que los de la fase abierta, así la
+ * evolución no arranca en blanco con dos puntos. Es una serie de partidos,
+ * no un promedio: las métricas de liga siguen separadas por fase. Fuera de
+ * una eliminatoria devuelve `e.partidos` tal cual.
+ */
+function equiposHistoria(e) {
+  const propios = e.partidos || [];
+  const reg = (typeof SGADD_APP !== 'undefined' && SGADD_APP.idxRegular) ? SGADD_APP.idxRegular() : null;
+  const er = reg && reg.get ? reg.get(e.clave) : null;
+  if (!er || !er.partidos) return { partidos: propios, previos: 0, fase: null };
+  const ids = new Set(propios.map(p => p.__id).filter(Boolean));
+  const antes = er.partidos.filter(p => !p.__id || !ids.has(p.__id));
+  return { partidos: antes.concat(propios), previos: antes.length, fase: (SGADD_APP.etiquetaRegular && SGADD_APP.etiquetaRegular()) || 'Regular' };
+}
+
 function equiposTabGeneral(idx, e) {
   const u5 = e.ultimos5 || {};
   const dif = (u5.ptsFavor || 0) - (u5.ptsContra || 0);
@@ -481,7 +498,8 @@ function equiposTabGeneral(idx, e) {
   }).filter(Boolean).sort((a, b) => (b.percentil || 0) - (a.percentil || 0));
 
   // Fecha + rival + condición (L/V) en el tooltip: "14/10/2025 - vs X (L)".
-  const etiquetas = (e.partidos || []).map(p => equiposEtiquetaEvolucion(p, e));
+  const hist = equiposHistoria(e);
+  const etiquetas = hist.partidos.map(p => equiposEtiquetaEvolucion(p, e));
 
   return `
     <div class="mb-5" data-subcard="equipo.general.kpis">${kpis}</div>
@@ -491,8 +509,8 @@ function equiposTabGeneral(idx, e) {
         SGADD_CHARTS.barrasRanking(filasRank),
         SGADD_CHARTS.narrarAtaque(idx, e))}</div>
       <div data-subcard="equipo.general.evolucion">${equiposPanel('Evolución · puntos a favor y en contra',
-        SGADD_CHARTS.evolucion('chEvolucion', e.partidos || [], { etiquetas: etiquetas }),
-        SGADD_CHARTS.nota(e.sinFecha ? e.sinFecha + ' partido(s) sin fecha cargada van al final.' : 'Orden cronológico.'))}</div>
+        SGADD_CHARTS.evolucion('chEvolucion', hist.partidos, { etiquetas: etiquetas }),
+        SGADD_CHARTS.nota(hist.previos ? hist.previos + ' partido(s) de ' + hist.fase + ' + ' + (hist.partidos.length - hist.previos) + ' de esta fase, en orden cronológico.' : e.sinFecha ? e.sinFecha + ' partido(s) sin fecha cargada van al final.' : 'Orden cronológico.'))}</div>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6" data-subcard-de="equipo.general.ultimos5 equipo.general.distribucion">

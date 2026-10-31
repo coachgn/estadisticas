@@ -3749,7 +3749,7 @@ function scoutTorneoAbierto() {
 
 /** Pide un rival de otra zona. Repinta al llegar, si sigue siendo el mismo índice. */
 function scoutPedirRival(clave) {
-  const base = SGADD_APP.estado.idx;
+  const base = scoutBase();
   if (SCOUT_EXT.datos[clave]) return;
   SCOUT_EXT.datos[clave] = { estado: 'cargando' };
   const torneo = scoutTorneoAbierto();
@@ -3769,14 +3769,26 @@ function scoutPedirRival(clave) {
 }
 
 /** El índice del informe: el de la app, o una copia con los rivales de otra zona injertados. */
+/** El índice sobre el que se arma el informe. En una fase de ELIMINACIÓN es la
+    Regular del mismo libro (v335): un cuarto de final con un partido por
+    equipo no tiene con qué armar matriz, marcas ni claves, y el scouting de
+    un playoff se prepara con la temporada. Las fases no se mezclan. */
+function scoutBase() {
+  const reg = (typeof SGADD_APP !== 'undefined' && SGADD_APP.idxRegular) ? SGADD_APP.idxRegular() : null;
+  return reg || SGADD_APP.estado.idx;
+}
+
 function scoutIdx() {
   const st = SGADD_APP.estado;
-  if (SCOUT_EXT.base !== st.idx) { SCOUT_EXT.base = st.idx; SCOUT_EXT.datos = {}; SCOUT_EXT.idx = null; SCOUT_EXT.claves = ''; }
+  const baseIdx = scoutBase();
+  if (SCOUT_EXT.base !== baseIdx) { SCOUT_EXT.base = baseIdx; SCOUT_EXT.datos = {}; SCOUT_EXT.idx = null; SCOUT_EXT.claves = ''; }
   const listos = Object.keys(SCOUT_EXT.datos).filter(k => SCOUT_EXT.datos[k].estado === 'ok').sort();
-  if (!listos.length || !st.hojas) return st.idx;
+  if (!listos.length || !st.hojas) return baseIdx;
   const firma = listos.join('|');
   if (SCOUT_EXT.idx && SCOUT_EXT.claves === firma) return SCOUT_EXT.idx;
-  const scope = st.tramoIndice || { fase: st.fase, torneo: st.torneo };
+  const regCtx = (SGADD_APP.contextoRegular && SGADD_APP.contextoRegular()) || null;
+  const scope = regCtx && regCtx.tramo ? { fase: regCtx.tramo.fase, torneo: regCtx.tramo.torneo }
+    : (st.tramoIndice || { fase: st.fase, torneo: st.torneo });
   const idx = SGADD.construirIndice(st.hojas, { fase: scope.fase, torneo: scope.torneo });
   listos.forEach(k => idx.injertarEquipo(SCOUT_EXT.datos[k].r.equipo));
   SCOUT_EXT.idx = idx; SCOUT_EXT.claves = firma;
@@ -3790,14 +3802,15 @@ function scoutPintar() {
   if (st.error) { root.innerHTML = SGADD_UI.aviso('No se pudo cargar', st.error, 'error'); return; }
   if (!st.idx) { root.innerHTML = SGADD_UI.cargando('Cargando la categoría…', (SGADD_APP.planillaActual() || {}).label); return; }
   scoutIdx();   // descarta la copia si cambió el índice
+  const idxBase = scoutBase();
   const rivales = scoutRivalesLlave();
   /* EN MODO LLAVE se abre directo en el cruce: el equipo propio contra su
      rival de esa fase. Es lo que el DT viene a preparar. */
   if (SGADD_APP.enLlave && SGADD_APP.enLlave() && !SCOUT_UI.local && !SCOUT_UI.visitante && rivales.length) {
-    const propio = st.idx.lista().find(e => SGADD.esEquipoPropio(e.clave));
+    const propio = idxBase.lista().find(e => SGADD.esEquipoPropio(e.clave));
     if (propio) { SCOUT_UI.local = propio.clave; SCOUT_UI.visitante = rivales[0].clave; }
   }
-  const pendiente = [SCOUT_UI.local, SCOUT_UI.visitante].filter(k => k && !st.idx.get(k) && rivales.some(r => r.clave === k));
+  const pendiente = [SCOUT_UI.local, SCOUT_UI.visitante].filter(k => k && !idxBase.get(k) && rivales.some(r => r.clave === k));
   pendiente.forEach(scoutPedirRival);
   const cargando = pendiente.find(k => SCOUT_EXT.datos[k] && SCOUT_EXT.datos[k].estado === 'cargando');
   const fallo = pendiente.map(k => SCOUT_EXT.datos[k]).find(d => d && d.estado === 'error');
@@ -3814,7 +3827,11 @@ function scoutPintar() {
   else if (fallo) cuerpo = '<div class="mt-4">' + SGADD_UI.aviso('No se pudo traer al rival', fallo.mensaje, 'error') + '</div>';
   else if (scoutSinDatos(idx).length) cuerpo = scoutCruceSinDatos(scoutSinDatos(idx));
   else cuerpo = scoutInforme(idx);
-  root.innerHTML = scoutSelectores(idx, rivales) + cuerpo;
+  const avisoReg = idxBase !== st.idx
+    ? '<div class="mt-3 no-imprimir" data-scout-regular="1">' + SGADD_UI.aviso('Informe armado con la Regular',
+        'Estás en una fase de eliminación: el informe usa la ' + escapeHtml((SGADD_APP.etiquetaRegular && SGADD_APP.etiquetaRegular()) || 'Regular')
+        + ' (los partidos de esta fase no alcanzan para una matriz, marcas ni claves, y las fases no se mezclan).') + '</div>' : '';
+  root.innerHTML = scoutSelectores(idx, rivales) + avisoReg + cuerpo;
   if (typeof SGADD_PBP !== 'undefined') SGADD_PBP.montarPendientes(root);
 }
 
@@ -4673,7 +4690,7 @@ function scoutNombreRival(inf) {
 
 /** El diagnóstico clínico del rival: dependencias, fugas, zonas frías, filosofía y su versión perdedora. */
 function scoutBloqueDiagnostico(inf) {
-  const idx = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado) ? SGADD_APP.estado.idx : null;
+  const idx = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado) ? scoutBase() : null;
   const eR = idx ? idx.get(inf.claveRival) : null;
   const C = (typeof SGADD_CONCLUSIONES !== 'undefined') ? SGADD_CONCLUSIONES : null;
   let concl = null;
@@ -4846,7 +4863,7 @@ function scoutFortalezasAltas(idx, e) {
 
 /** El FODA del partido: box score acá, y el play-by-play suma sus líneas después de pintar. */
 function scoutBloqueFoda(inf) {
-  const idx = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado) ? SGADD_APP.estado.idx : null;
+  const idx = (typeof SGADD_APP !== 'undefined' && SGADD_APP.estado) ? scoutBase() : null;
   const eR = idx ? idx.get(inf.claveRival) : null;
   const C = (typeof SGADD_CONCLUSIONES !== 'undefined') ? SGADD_CONCLUSIONES : null;
   let concl = null;
