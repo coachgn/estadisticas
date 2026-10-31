@@ -397,6 +397,101 @@ console.log('─'.repeat(70));
     P.planAjuste(propio, rivalL, a, fp, idx).generacion.nombres.length === 0 && P.planAjuste(propio, rivalL, a, fp, idx).generacion.lectura === false);
 }
 
+/* ---------------------------------------------------------------------
+   LA VARA PREVIA Y EL PLAN CONTRA LA REALIDAD (v332)
+   --------------------------------------------------------------------- */
+console.log('\nLA VARA PREVIA Y EL PLAN CONTRA LA REALIDAD (v332)');
+console.log('─'.repeat(70));
+{
+  /* El índice de los partidos ANTERIORES al último (7 de 8), con el motor del TOTAL. */
+  const antes = (f) => !/^08\//.test(f.FECHA);
+  const pre = SGADD.construirIndice({
+    'Base Datos E': { cols: colsE, filas: fE.filter(antes) },
+    'Base Datos J': { cols: colsJ, filas: fJ.filter(antes) },
+  }, { fase: 'REGULAR', torneo: SGADD.TORNEO_TOTAL });
+  const partV = idx.partido(ultimoId);
+  const propioV = partV.lados.find(l => l.equipo.clave === 'RECONQUISTA A');
+  const aPre = P.analizar(idx, partV, propioV, { base: pre });
+  const t3 = aPre.contraste.find(c => c.clave === 'T3%');
+  check('el habitual sale de los partidos PREVIOS: T3% 6/22 sin la noche de 12 triples', t3 && Math.abs(t3.habitual - 6 / 22) < 1e-6, t3 && t3.habitual);
+  check('y la noche se marca como clave contra esa vara', aPre.claves.some(c => c.clave === 'T3%'));
+  const estrellaPre = aPre.propios.find(x => /LOCAL1/.test(x.fila.NOMBRES));
+  const stPre = pre.statJugador(estrellaPre.fila.__clave, 'PTS');
+  check('los desvíos del jugador también: su media previa son 12 pts, no 14,25', stPre && Math.abs(stPre.media - 12) < 1e-6 && stPre.n === 7, stPre && stPre.media);
+
+  const aSin = P.analizar(idx, partV, propioV, { base: null });
+  check('sin partidos previos no hay habitual ni claves inventadas', aSin.contraste.length === 0 && aSin.claves.length === 0 && aSin.propios.every(x => !x.destacado));
+  const rivalV = partV.lados.find(l => l !== propioV);
+  propioV.factores = { 'eFG%': 0.60, 'PP%': 0.12, 'RO%': 0.30, 'RTL%': 0.20 };
+  rivalV.factores = { 'eFG%': 0.70, 'PP%': 0.13, 'RO%': 0.25, 'RTL%': 0.22 };
+  const dSin = P.decision(idx, propioV, rivalV, aSin, null, { base: null, previa: { partidos: 0, hasta: '2026-05-07' } });
+  const prSin = dSin.tarjetas.find(t => t.id === 'proyeccion');
+  check('sin base no hay expectativa previa, y la tarjeta lo dice', prSin && /Sin expectativa previa/.test(prSin.texto), prSin && prSin.texto);
+  check('los factores sin base dicen «sin habitual previo» en vez de un número', dSin.factores.every(f => f.habitual === null));
+
+  const dPre = P.decision(idx, propioV, rivalV, aPre, null, { base: pre, previa: { partidos: 7, hasta: '2026-05-07' } });
+  const prPre = dPre.tarjetas.find(t => t.id === 'proyeccion');
+  check('la expectativa dice que es la PREVIA, con los partidos y la fecha de corte (o por qué no la hay)',
+    prPre && ((/expectativa PREVIA/.test(prPre.texto) && /hasta el 07\/05/.test(prPre.texto)) || /muestra suficiente/.test(prPre.texto)), prPre && prPre.texto);
+  check('y no repite que «este partido incluido»', !prPre || !/este partido incluido/.test(prPre.texto));
+  const dec0 = dPre.tarjetas.find(t => t.id === 'decisor');
+  check('cada ficha del factor decisivo trae su propio tono', dec0 && dec0.ficha.every(f => typeof f.tono === 'string'), dec0 && dec0.ficha);
+
+  /* El tiro se perdió con nuestro eFG% sobre lo habitual: es la DEFENSA. */
+  const fpD = P.factoresPartido(pre, propioV, rivalV);
+  const efg = fpD.find(f => f.k === 'eFG%');
+  check('el factor perdido con nuestro número sobre lo habitual se rotula «en defensa»',
+    efg.gano === false && efg.desvioPropio >= 0 && /en defensa/.test((dPre.tarjetas.find(t => t.id === 'decisor') || {}).titulo || ''), dPre.tarjetas.map(t => t.titulo));
+  check('y la ficha propia no lleva ▼ (tono negativo) si quedó sobre lo habitual', dec0.ficha[0].tono === 'pos');
+
+  /* Un foco ganado al rival pero bajo lo habitual lo dice con esas palabras. */
+  const focoBajo = P.focosPartido(pre, propioV, rivalV, { claves: [] }, [{ k: 'RO%', hab: 'RO%', label: 'Rebote ofensivo', corto: 'RO%', inv: false, gano: true, superior: false, propio: 0.244, rival: 0.192, habitual: 0.268, desvioPropio: -0.024 }]);
+  check('un foco ganado y bajo lo habitual se rotula así (el ▲ ya no se lee «mejoró»)',
+    focoBajo.ataque.length === 1 && /ganado, bajo lo habitual/.test(focoBajo.ataque[0].titulo) && /Igual quedó bajo nuestro habitual/.test(focoBajo.ataque[0].texto), focoBajo.ataque);
+
+  check('sin índice previo el plan contra la realidad lo dice, sin error', P.planContraRealidad(null, idx, propioV, rivalV).ok === false);
+}
+
+/* Sobre la demo: el scouting rearmado con la previa y contrastado. */
+{
+  const DEMO = require('./js/sgadd-demo.js'), M = require('./js/sgadd-muestra.js');
+  global.SGADD_4F = require('./js/sgadd-4factores.js');
+  global.SGADD_SCOUT = require('./js/sgadd-scouting.js');
+  const crudo = DEMO.rehidratar(JSON.parse(fs.readFileSync('./demo/datos-demo.json', 'utf8')));
+  const H = crudo.hojas || crudo;
+  const T = SGADD.tramoPorDefecto(SGADD.combinacionesTorneoFase(H));
+  const full = SGADD.construirIndice(H, { fase: T.fase, torneo: T.torneo });
+  const e1 = full.get('EQUIPO 1');
+  const pp = e1.partidos[Math.floor(e1.partidos.length * 0.6)];
+  const pd = full.partido(pp.__id);
+  const lp = pd.lados.find(l => l.equipo.clave === 'EQUIPO 1'), lr = pd.lados.find(l => l !== lp);
+  const dia = pp.__id.slice(0, 10);
+  const prev = new Date(Date.UTC(+dia.slice(0, 4), +dia.slice(5, 7) - 1, +dia.slice(8, 10))); prev.setUTCDate(prev.getUTCDate() - 1);
+  const rec = M.recortar(H, T, { desde: null, hasta: prev.toISOString().slice(0, 10) });
+  const pre = SGADD.construirIndice(rec.hojas, { fase: T.fase, torneo: SGADD.TORNEO_TOTAL });
+  check('el índice previo no tiene el partido ni ninguno posterior', pre.get('EQUIPO 1').pj < e1.pj && !pre.partido(pp.__id));
+  const plan = P.planContraRealidad(pre, full, lp, lr);
+  check('el plan contra la realidad se arma sobre la demo', plan && plan.ok, plan && plan.motivo);
+  check('trae los 4 duelos cruzados con lo previsto y lo real', plan.filas.filter(f => f.bloque === 'duelos').length === 4, plan.filas.map(f => f.bloque));
+  check('el duelo decisivo va con ★', plan.filas.some(f => f.bloque === 'duelos' && /^★/.test(f.titulo)));
+  check('trae el margen previsto, la versión perdedora o su motivo, los dos volúmenes y el FODA',
+    ['margen', 'quiebre', 'volumen', 'foda'].every(b => plan.filas.some(f => f.bloque === b)) && plan.filas.filter(f => f.bloque === 'volumen').length === 2);
+  check('cada fila tiene un veredicto del vocabulario cerrado', plan.filas.concat(plan.marcas, plan.tresCosas).every(f => ['ok', 'no', 'parcial', 'info'].indexOf(f.estado) !== -1));
+  check('las marcas traen la consigna del plan y lo que hizo cada uno', plan.marcas.length >= 5 && plan.marcas.every(m => m.resultado && (m.conPelota || m.estado === 'info')));
+  check('el que no se suelta se evalúa por sus triples', plan.marcas.filter(m => m.grupo === 'intocable').every(m => /en triples/.test(m.resultado) || m.estado === 'info'));
+  check('las 3 cosas llevan veredicto', plan.tresCosas.length >= 2 && plan.tresCosas.some(t => t.estado !== 'info'));
+  check('el resumen cuenta todas las filas', plan.resumen.ok + plan.resumen.no + plan.resumen.parcial <= plan.filas.length + plan.marcas.length + plan.tresCosas.length);
+  /* El plan de ajuste no contradice una consigna sin decirlo. */
+  const aD = P.analizar(full, pd, lp, { base: pre });
+  const dD = P.decision(full, lp, lr, aD, null, { base: pre, plan: plan });
+  const nombrado = ['perimetro', 'interior', 'generacion'].filter(k => dD.plan[k] && dD.plan[k].lectura);
+  check('cuando nombra a un jugador con marca en el plan, el ajuste cita la consigna o dice si cambia',
+    nombrado.length > 0 && nombrado.every(k => /plan|consigna/i.test(dD.plan[k].texto)), nombrado.map(k => dD.plan[k].texto));
+  /* Sin el plan, el ajuste no inventa una consigna. */
+  const dSinPlan = P.decision(full, lp, lr, aD, null, { base: pre });
+  check('sin plan previo, el ajuste no cita consignas', ['perimetro', 'interior', 'generacion'].every(k => !dSinPlan.plan[k] || !/Consigna del plan|El plan decía/.test(dSinPlan.plan[k].texto)));
+}
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

@@ -107,7 +107,7 @@ const SGADD_PARTIDO = (function () {
       let mayor = null;
 
       COLS_DESVIO.forEach(k => {
-        const st = idx.statJugador(j.__clave, k);
+        const st = idx ? idx.statJugador(j.__clave, k) : null;
         const v = j[k];
         if (!st || st.n < MIN_PARTIDOS_JUGADOR || typeof v !== 'number' || !st.desvio) return;
         const z = (v - st.media) / st.desvio;
@@ -141,6 +141,7 @@ const SGADD_PARTIDO = (function () {
       'RTL%': div(f['T1C'], f['TCI']),
     };
 
+    if (!idx || (idx.get && !idx.get(e.clave))) return [];
     return CONTRASTE_EQUIPO.map(c => {
       const v = delPartido[c.k];
       const r = idx.leer(e.clave, c.k);
@@ -159,18 +160,29 @@ const SGADD_PARTIDO = (function () {
   /**
    * Analiza el partido completo desde la mirada del equipo `propio`.
    */
-  function analizar(idx, part, ladoPropio) {
+  /* LA VARA ES LA PREVIA (v332). `opciones.base` es el índice con los
+     partidos ANTERIORES al partido (`SGADD_APP.idxPrevio`): el habitual y
+     los desvíos se miden contra lo que había antes, no contra un promedio
+     que ya trae la noche adentro. `base: null` = no hubo partidos previos:
+     no hay habitual y no se inventa uno. Sin `opciones`, la vara es `idx`,
+     como antes. */
+  function baseDe(idx, opciones) {
+    return opciones && Object.prototype.hasOwnProperty.call(opciones, 'base') ? opciones.base : idx;
+  }
+
+  function analizar(idx, part, ladoPropio, opciones) {
     if (!part || !ladoPropio) return null;
+    const base = baseDe(idx, opciones);
     const rival = part.lados.find(l => l !== ladoPropio) || null;
     ladoPropio.rivalFila = rival ? rival.fila : null;
     if (rival) rival.rivalFila = ladoPropio.fila;
 
-    const contraste = contrasteEquipo(idx, ladoPropio);
+    const contraste = base ? contrasteEquipo(base, ladoPropio) : [];
     const claves = contraste.filter(c => c.relevante && c.aFavor).slice(0, 3);
     const grietas = contraste.filter(c => c.relevante && !c.aFavor).slice(0, 3);
 
-    const propios = desviosLado(idx, ladoPropio);
-    const rivales = rival ? desviosLado(idx, rival) : [];
+    const propios = base ? desviosLado(base, ladoPropio) : desviosLado(null, ladoPropio);
+    const rivales = rival ? desviosLado(base, rival) : [];
 
     const gano = SGADD.texto(ladoPropio.fila['RESULTADO']).toUpperCase() === 'GANADO';
 
@@ -401,12 +413,16 @@ const SGADD_PARTIDO = (function () {
   }
 
   /** Los 4 factores de la noche, de los dos lados, contra el habitual y la liga. */
-  function factoresPartido(idx, propio, riv, idxReg) {
+  function factoresPartido(idx, propio, riv, idxReg, idxLiga) {
     if (!propio || !riv || !propio.factores || !riv.factores) return [];
+    /* `idx` es la vara del habitual (la previa, o null sin partidos
+       previos); `idxLiga` da la mediana de la liga cuando no hay previa. */
+    const leerSeguro = (I, k, m) => { try { return I && (!I.get || I.get(k)) ? I.leer(k, m) : null; } catch (e) { return null; } };
     return FACTORES_PARTIDO.map((f) => {
       const v = propio.factores[f.k], vr = riv.factores[f.k];
       if (typeof v !== 'number' || typeof vr !== 'number') return null;
-      const lp = idx.leer(propio.equipo.clave, f.hab), lr = idx.leer(riv.equipo.clave, f.hab);
+      const lp = leerSeguro(idx, propio.equipo.clave, f.hab), lr = leerSeguro(idx, riv.equipo.clave, f.hab);
+      const lLiga = (lp && typeof lp.tipo === 'number') ? lp : leerSeguro(idxLiga, propio.equipo.clave, f.hab);
       const habP = lp && typeof lp.valor === 'number' ? lp.valor : null;
       const habR = lr && typeof lr.valor === 'number' ? lr.valor : null;
       /* Doble referencia en una fase de eliminación: la Regular (estructural) y la fase actual (racha). */
@@ -424,7 +440,7 @@ const SGADD_PARTIDO = (function () {
         k: f.k, hab: f.hab, label: f.label, corto: f.corto, peso: f.peso, inv: f.inv,
         propio: v, rival: vr, habitual: habP, habitualRival: habR, regular: regP, regularRival: regR,
         deltaRegular: regP === null ? null : v - regP,
-        liga: lp && typeof lp.tipo === 'number' ? lp.tipo : null,
+        liga: lLiga && typeof lLiga.tipo === 'number' ? lLiga.tipo : null,
         gano: mejor > 0 ? true : mejor < 0 ? false : null,
         impacto: mejor * f.peso,
         desvioPropio: desvioP, desvioRival: desvioR,
@@ -474,6 +490,7 @@ const SGADD_PARTIDO = (function () {
    */
   function proyeccionPartido(idx, propio, riv, gano) {
     try {
+      if (!idx || (idx.get && (!idx.get(propio.equipo.clave) || !idx.get(riv.equipo.clave)))) return null;
       let S = typeof SGADD_4F !== 'undefined' ? SGADD_4F : null;
       if (!S && typeof require === 'function') S = require('./sgadd-4factores.js');
       if (!S || !S.simularEnfrentamiento) return null;
@@ -493,9 +510,17 @@ const SGADD_PARTIDO = (function () {
    * Qué decidió el partido: tarjetas con nombres, los focos a sostener y
    * el plan de ajuste. `a` es lo que devuelve `analizar`.
    */
-  function decision(idx, lp, lr, a, idxReg) {
+  /**
+   * `opciones.base`: el índice con los partidos previos (o null sin
+   * partidos previos); `opciones.previa`: { partidos, hasta } para decirlo;
+   * `opciones.plan`: lo que devuelve `planContraRealidad`, para que el plan
+   * de ajuste no contradiga una consigna del scouting sin decirlo.
+   */
+  function decision(idx, lp, lr, a, idxReg, opciones) {
     if (!lp || !lr || !a) return null;
-    const factores = factoresPartido(idx, lp, lr, idxReg);
+    const o = opciones || {};
+    const base = baseDe(idx, o);
+    const factores = factoresPartido(base, lp, lr, idxReg, idx);
     const tarjetas = [];
     const margen = nz(lp.fila, 'PTS') - nz(lr.fila, 'PTS');
     const ord = factores.slice().sort((x, y) => Math.abs(y.impacto) - Math.abs(x.impacto));
@@ -504,13 +529,24 @@ const SGADD_PARTIDO = (function () {
       if (f.gano === null || (i === 1 && Math.abs(f.impacto) < 0.5 * Math.abs(ord[0].impacto))) return;
       const r = responsableFactor(f, lp, lr);
       const gP = f.gano === true;
+      /* DE QUÉ LADO SE PERDIÓ (v332). Con nuestro número en o sobre lo
+         habitual y el del rival por encima del suyo, el factor no se perdió
+         en ataque: se perdió en la defensa de ese factor. Antes la tarjeta
+         marcaba ▼ un eFG% propio que había quedado arriba de lo habitual. */
+      const nuestroBien = f.desvioPropio !== null && f.desvioPropio >= 0;
+      const rivalArriba = f.desvioRival !== null && f.desvioRival > 0;
+      const enDefensa = !gP && nuestroBien && rivalArriba;
+      const tonoP = f.desvioPropio === null ? 'info' : (f.desvioPropio >= 0 ? 'pos' : 'neg');
+      const tonoR = f.desvioRival === null ? 'info' : (f.desvioRival > 0 ? 'neg' : 'pos');
       tarjetas.push({
         id: i === 0 ? 'decisor' : 'segundo', tono: gP ? 'pos' : 'neg',
-        titulo: (i === 0 ? (gP ? 'Lo inclinó a favor: ' : 'Lo inclinó en contra: ') : (gP ? 'También a favor: ' : 'También en contra: ')) + f.label,
+        titulo: (i === 0 ? (gP ? 'Lo inclinó a favor: ' : 'Lo inclinó en contra: ') : (gP ? 'También a favor: ' : 'También en contra: ')) + f.label
+          + (enDefensa ? ' · en defensa' : ''),
         texto: f.corto + ' ' + p1(f.propio) + ' contra ' + p1(f.rival) + ' del rival (' + pp1(f.propio - f.rival) + '). '
+          + (enDefensa ? 'Nuestro ataque quedó en o sobre lo habitual; lo que se fue fue el rival, ' + pp1(f.inv ? -f.desvioRival : f.desvioRival) + ' sobre el suyo. ' : '')
           + (r.texto ? (gP ? 'Lo sostuvo: ' : 'Lo marcó el rival: ') + r.texto + '.' : ''),
-        ficha: [{ label: f.corto + ' propio', valor: p1(f.propio), sub: f.habitual === null ? '' : 'habitual ' + p1(f.habitual) },
-          { label: f.corto + ' rival', valor: p1(f.rival), sub: f.habitualRival === null ? '' : 'habitual ' + p1(f.habitualRival) }],
+        ficha: [{ label: f.corto + ' propio', valor: p1(f.propio), sub: f.habitual === null ? 'sin habitual previo' : 'habitual ' + p1(f.habitual), tono: tonoP },
+          { label: f.corto + ' rival', valor: p1(f.rival), sub: f.habitualRival === null ? 'sin habitual previo' : 'habitual ' + p1(f.habitualRival), tono: tonoR }],
         nombres: r.nombres,
       });
     });
@@ -518,7 +554,7 @@ const SGADD_PARTIDO = (function () {
     /* La creación: quién repartió, contra su habitual. */
     const asR = lider(lr.box, 'AST', 4), asP = lider(lp.box, 'AST', 4);
     const cr = a.contraste.find(c => c.clave === 'AST%');
-    const rivalC = contrasteEquipo(idx, lr).find(c => c.clave === 'AST%');
+    const rivalC = contrasteEquipo(base, lr).find(c => c.clave === 'AST%');
     if (asR || asP) {
       tarjetas.push({
         id: 'creacion', tono: asR && rivalC && rivalC.relevante && rivalC.aFavor ? 'neg' : 'info',
@@ -546,19 +582,34 @@ const SGADD_PARTIDO = (function () {
       });
     }
 
-    const proy = proyeccionPartido(idx, lp, lr, a.gano);
+    /* La expectativa es la PREVIA: el simulador con los partidos anteriores,
+       que es lo que veía el scouting. Sin `opciones.base` (llamada vieja) es
+       la vara de toda la temporada, y lo dice. */
+    const previa = Object.prototype.hasOwnProperty.call(o, 'base');
+    const proy = proyeccionPartido(base, lp, lr, a.gano);
     if (proy) {
       const d = proy.desvio;
+      const pv = o.previa || {};
+      const ddmm = (iso) => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) : '';
       tarjetas.push({
         id: 'proyeccion', tono: Math.abs(d) < 4 ? 'info' : (d > 0 ? 'pos' : 'neg'),
         titulo: 'Expectativa contra realidad',
         texto: 'Margen esperado: ' + (proy.margenModelo >= 0 ? '+' : '−') + Math.abs(proy.margenModelo).toFixed(1).replace('.', ',')
           + ' pts (' + Math.round(proy.probPropio * 100) + ' % de victoria estimada); el partido cerró en ' + (proy.margenReal >= 0 ? '+' : '−') + Math.abs(proy.margenReal)
           + ', ' + (Math.abs(d) < 4 ? 'dentro de lo esperable' : (d > 0 ? 'superando la expectativa por ' + Math.abs(d).toFixed(0) + ' puntos' : 'por debajo de la expectativa por ' + Math.abs(d).toFixed(0) + ' puntos'))
-          + '. La referencia usa los ratings de toda la temporada, este partido incluido: es una vara de rendimiento, no una predicción previa.'
+          + (previa
+            ? '. Es la expectativa PREVIA: el simulador con los ' + (pv.partidos || 0) + ' partidos de la liga jugados hasta el ' + ddmm(pv.hasta) + ', sin este.'
+            : '. La referencia usa los ratings de toda la temporada, este partido incluido: es una vara de rendimiento, no una predicción previa.')
           + (proy.factorClave ? ' Factor que más movía el cruce: ' + proy.factorClave + '.' : ''),
         ficha: [], nombres: [],
       });
+    } else if (previa) {
+      const jugaron = !!(base && base.get && base.get(lp.equipo.clave) && base.get(lr.equipo.clave));
+      tarjetas.push({ id: 'proyeccion', tono: 'info', titulo: 'Expectativa contra realidad',
+        texto: jugaron
+          ? 'Sin expectativa previa: con los partidos jugados antes de esta fecha el simulador no tenía muestra suficiente para proyectar el cruce.'
+          : 'Sin expectativa previa: alguno de los dos equipos no había jugado antes de esta fecha, así que el simulador no tenía con qué proyectar el cruce.',
+        ficha: [], nombres: [] });
     }
 
     /* Lo que el play-by-play no sabe y el box score sí: los generadores del
@@ -573,7 +624,8 @@ const SGADD_PARTIDO = (function () {
       .map(j => ({ n: quien(j), t2c: nz(j, 'T2C'), t2i: nz(j, 'T2I') }));
     const ctx = { foco: foco, rivalDobles: dobles, rivalRo: nz(lr.fila, 'RO') || null, nuestroRd: nz(lp.fila, 'RD') || null };
     return { margen, gano: a.gano, factores, tarjetas, proyeccion: proy, ctx,
-      focos: focosPartido(idx, lp, lr, a, factores), plan: planAjuste(lp, lr, a, factores, idx) };
+      previa: previa ? { partidos: (o.previa && o.previa.partidos) || 0, hasta: (o.previa && o.previa.hasta) || null, sinBase: !base } : null,
+      focos: focosPartido(base, lp, lr, a, factores), plan: planAjuste(lp, lr, a, factores, idx, o.plan) };
   }
 
   /** Lo que salió bien en ataque y en defensa, y conviene sostener. También en una derrota. */
@@ -581,8 +633,13 @@ const SGADD_PARTIDO = (function () {
     const ataque = [], defensa = [];
     factores.filter(f => f.gano === true && (f.superior || Math.abs(f.propio - f.rival) >= UMBRAL_FACTOR[f.hab])).forEach((f) => {
       const r = responsableFactor(f, lp, lr);
-      ataque.push({ titulo: f.label, texto: f.corto + ' ' + p1(f.propio) + (f.habitual === null ? '' : ' contra ' + p1(f.habitual) + ' habitual (' + pp1(f.desvioPropio === null ? 0 : (f.inv ? -f.desvioPropio : f.desvioPropio)) + ')')
-        + ' y ' + pp1(f.propio - f.rival) + ' sobre el rival. ' + (r.texto ? r.texto + '.' : ''), nombres: r.nombres });
+      /* Se gana al rival y eso es lo que se sostiene; si quedó bajo lo
+         habitual, se dice con esas palabras (el ▲ se leía «mejoró»). */
+      const bajo = f.desvioPropio !== null && f.desvioPropio < 0;
+      ataque.push({ titulo: f.label + (bajo ? ' · ganado, bajo lo habitual' : ''),
+        texto: 'Se le ganó al rival: ' + f.corto + ' ' + p1(f.propio) + ' contra ' + p1(f.rival) + ' (' + pp1(f.propio - f.rival) + ').'
+          + (f.habitual === null ? '' : (bajo ? ' Igual quedó bajo nuestro habitual (' : ' Y sobre nuestro habitual (') + p1(f.habitual) + ', ' + pp1(f.inv ? -f.desvioPropio : f.desvioPropio) + ').')
+          + (r.texto ? ' ' + r.texto + '.' : ''), nombres: r.nombres, bajo: bajo });
     });
     /* Una clave que ya es uno de los cuatro factores no se repite con otro nombre. */
     const usados = factores.filter(f => f.gano === true).map(f => f.hab);
@@ -608,7 +665,7 @@ const SGADD_PARTIDO = (function () {
    * convertidos, asistencias, rebotes ofensivos). Con play-by-play, la zona
    * bajo el aro (Z1) y el reloj los completa el paquete.
    */
-  function planAjuste(lp, lr, a, factores, idx) {
+  function planAjuste(lp, lr, a, factores, idx, plan) {
     const fiables = (lr.box || []).filter(j => nz(j, 'MIN') >= MIN_MINUTOS);
     const out = { perimetro: null, interior: null, generacion: null, segundas: null, reloj: null };
     const sinDato = (titulo, texto) => ({ titulo, texto, nombres: [], lectura: false });
@@ -658,7 +715,236 @@ const SGADD_PARTIDO = (function () {
           + 'Asignarle un cierre de choque: contacto antes de que salte el tiro y un segundo defensor que saque la pelota.',
         nombres: [quien(ro)], lectura: true };
     } else out.segundas = sinDato('Control de segundas oportunidades', 'El rival no cargó el rebote ofensivo por encima de la liga: sin ajuste especial.');
+
+    /* CONTRA LA CONSIGNA DEL SCOUTING (v332). Si el jugador tenía una marca
+       en el plan previo, la directriz dice si la mantiene o la cambia, y por
+       qué: el ajuste no puede contradecir el plan en silencio. */
+    if (plan && plan.ok && plan.jugadores) {
+      const de = (x) => x && x.nombres && x.nombres[0] ? plan.jugadores[claveNombre(x.nombres[0], lr)] : null;
+      const con = (x, frase) => { if (x && frase) x.texto = frase + ' ' + x.texto; };
+      const mP = de(out.perimetro);
+      if (mP && out.perimetro.lectura) {
+        const t = mP.conPelota || '';
+        const efi = /\((\d+) %\)/.exec(out.perimetro.texto);
+        const bien = efi && Number(efi[1]) >= 40;
+        if (bien && /UNDER|POR DETR|PASO ATR|FLOT/i.test(t)) con(out.perimetro, 'El plan decía «' + t + '»: con ese acierto hay que cambiar la consigna.');
+        else if (bien && /TOP LOCK|OVER|STAY HOME|NEGACI/i.test(t + ' ' + (mP.sinPelota || ''))) con(out.perimetro, 'La consigna era la correcta («' + t + '»): falló la ejecución, se sostiene.');
+        else if (t) con(out.perimetro, 'Consigna del plan: «' + t + '».');
+      }
+      const mI = de(out.interior);
+      if (mI && out.interior.lectura) {
+        if (mI.grupo === 'fuente') con(out.interior, 'Era la fuente de ayuda del plan y castigó cerca del aro: la ayuda tiene que salir de otro lado.');
+        else if (mI.conPelota) con(out.interior, 'Consigna del plan: «' + mI.conPelota + '».');
+      }
+      const mG = de(out.generacion);
+      if (mG && out.generacion.lectura) {
+        if (mG.grupo === 'foco') con(out.generacion, 'Era foco del plan (se lo doblaba): ' + (mG.real && mG.pre && mG.real.pts < mG.pre.pts ? 'el doble le bajó la anotación (' + mG.real.pts + ' pts contra ' + num1(mG.pre.pts) + ' de promedio) pero le abrió el pase.' : 'el doble no lo frenó.'));
+        else if (mG.conPelota) con(out.generacion, 'Consigna del plan: «' + mG.conPelota + '».');
+      }
+      const mS = de(out.segundas);
+      if (mS && out.segundas.lectura && mS.grupo === 'cristal') con(out.segundas, 'Tenía box-out asignado en el plan: el cierre no alcanzó.');
+      if (!out.segundas.lectura && plan.jugadores && Object.keys(plan.jugadores).some(k => plan.jugadores[k].grupo === 'cristal')) {
+        out.segundas.texto = 'El box-out asignado del plan funcionó: el rival no cargó el rebote ofensivo por encima de la liga. Se sostiene.';
+      }
+    }
     return out;
+  }
+
+  const num1 = (v) => (Math.round(v * 10) / 10).toFixed(1).replace('.', ',');
+
+  /** La clave de persona de un nombre corto o completo del box del lado `lado`. */
+  function claveNombre(corto, lado) {
+    const j = (lado.box || []).find(x => quien(x) === corto || SGADD.texto(x['NOMBRES']) === corto);
+    return SGADD.clavePersona(j ? SGADD.texto(j['NOMBRES']) : corto);
+  }
+
+  /* =====================================================================
+     EL PLAN CONTRA LA REALIDAD (v332)
+
+     El post-partido como RESPUESTA al scouting. Se rearma el informe
+     pre-partido (`SGADD_SCOUT.informePrePartido`) con el índice de los
+     partidos ANTERIORES —la foto que tenía el scouting— y cada pieza se
+     contrasta con lo que pasó: las 3 cosas, la versión perdedora, los
+     volúmenes de los dos equipos, los duelos cruzados, el FODA, las marcas
+     jugador por jugador y el margen previsto.
+
+     Estado de cada fila: 'ok' se cumplió · 'no' no se cumplió · 'parcial' a
+     medias · 'info' sin veredicto. Lo que el plan no pudo decir (sin
+     partidos previos, sin versión perdedora) no se evalúa: se dice.
+
+     LÍMITE: el plan se RECALCULA. Si el cuerpo técnico editó a mano una
+     consigna de la tabla de marcas, esa edición no está acá.
+     ===================================================================== */
+  function motorScout() {
+    if (typeof SGADD_SCOUT !== 'undefined') return SGADD_SCOUT;
+    try { if (typeof require === 'function') return require('./sgadd-scouting.js'); } catch (e) { /* sin scouting */ }
+    return null;
+  }
+
+  const VOL_COL = { tc: 'TCI', t3: 'T3I', perdidas: 'PP', ro: 'RO', tl: 'T1I' };
+  const MAS_ES_MEJOR = (id) => id !== 'PP%' && id !== 'PePP%' && id !== 'eFG Opp%';
+
+  function planContraRealidad(idxPre, idx, lp, lr) {
+    const S = motorScout();
+    if (!S || !S.informePrePartido || !lp || !lr) return null;
+    if (!idxPre) return { ok: false, motivo: 'No hay partidos anteriores a esta fecha: el scouting no tenía con qué armar un plan.' };
+    const kP = lp.equipo.clave, kR = lr.equipo.clave;
+    const ePre = idxPre.get(kP), rPre = idxPre.get(kR);
+    if (!ePre || !rPre) return { ok: false, motivo: (rPre ? 'Nuestro equipo' : 'El rival') + ' no había jugado antes de esta fecha: no hubo plan con datos para contrastar.' };
+    const esLocal = SGADD.texto(lp.fila['CONDICION']).toUpperCase() === 'LOCAL';
+    let inf = null;
+    try { inf = S.informePrePartido(idxPre, esLocal ? kP : kR, esLocal ? kR : kP, { claveRival: kR }); } catch (e) { inf = null; }
+    if (!inf || !inf.ok) return { ok: false, motivo: (inf && inf.motivo) || 'No se pudo rearmar el scouting previo.' };
+
+    const filas = [];
+    const fila = (bloque, titulo, estado, previsto, real) => filas.push({ bloque, titulo, estado, previsto, real });
+    const pf = (id, v) => (typeof v !== 'number' ? '—' : (/%$/.test(id) ? p1(v) : num1(v)));
+
+    /* 1 · DUELOS CRUZADOS · el ataque de cada uno contra la defensa habitual del otro. */
+    const duelos = [];
+    if (inf.duelos && inf.duelos.ok) {
+      inf.duelos.filas.forEach((d) => {
+        /* El valor del rival puede venir solo en NUESTRA fila (la columna «Opp»). */
+        const opp = d.id.replace('%', ' Opp%');
+        const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
+        const vN = num(lp.factores && lp.factores[d.id]) !== null ? lp.factores[d.id] : num(lr.factores && lr.factores[opp]);
+        const vR = num(lr.factores && lr.factores[d.id]) !== null ? lr.factores[d.id] : num(lp.factores && lp.factores[opp]);
+        if (vN === null || vR === null || vN === undefined || vR === undefined) return;
+        const mas = MAS_ES_MEJOR(d.id);
+        const supera = (v, contra) => typeof contra === 'number' && (mas ? v > contra : v < contra);
+        const nuestroGano = supera(vN, d.nuestro.contra), rivalGano = supera(vR, d.rival.contra);
+        duelos.push({ id: d.id, estrella: d.estrella, previstoN: d.nuestro.ok, previstoR: d.rival.ok, realN: nuestroGano, realR: rivalGano });
+        fila('duelos', (d.estrella ? '★ ' : '') + d.label,
+          (!rivalGano && nuestroGano) ? 'ok' : (rivalGano && !nuestroGano) ? 'no' : 'parcial',
+          'Su ataque ' + pf(d.id, d.rival.propio) + d.nota + ' contra nuestra defensa ' + pf(d.id, d.rival.contra) + (d.rival.ok ? ': ventaja de ellos' : ': ventaja nuestra')
+            + ' · nuestro ataque ' + pf(d.id, d.nuestro.propio) + ' contra su defensa ' + pf(d.id, d.nuestro.contra) + (d.nuestro.ok ? ': ventaja nuestra' : ': ventaja de ellos') + '.',
+          'Su ataque hizo ' + pf(d.id, vR) + (rivalGano ? ' y superó lo que concede nuestra defensa' : ' y no superó lo que concede nuestra defensa')
+            + ' · el nuestro hizo ' + pf(d.id, vN) + (nuestroGano ? ' y superó lo que concede la suya' : ' y no superó lo que concede la suya') + '.');
+      });
+      const real = nz(lp.fila, 'PTS') - nz(lr.fila, 'PTS');
+      const m = inf.duelos.margenNuestro;
+      /* Desde nuestro lado: terminar en o sobre lo previsto es cumplir. */
+      fila('margen', 'Margen previsto', real - m >= -4 ? 'ok' : real - m <= -8 ? 'no' : 'parcial',
+        'El simulador previo daba ' + (m >= 0 ? '+' : '−') + num1(Math.abs(m)) + ' pts para nosotros.',
+        'Terminó ' + (real >= 0 ? '+' : '−') + Math.abs(real) + ' (' + (real - m >= 0 ? '+' : '−') + num1(Math.abs(real - m)) + ' contra lo previsto).');
+    } else if (inf.duelos) fila('duelos', 'Duelos cruzados', 'info', inf.duelos.motivo || 'Sin duelos previos.', '—');
+
+    /* 2 · LA VERSIÓN PERDEDORA · ¿lo llevamos a su lado malo? */
+    let quiebreOk = null;
+    const q = inf.quiebreRival;
+    if (q && q.ok && q.principal) {
+      const c = q.principal;
+      let vReal = null;
+      try { const ag = idx.agregarPartidos(kR, [lr.fila]); vReal = ag && ag.tiro ? ag.tiro[c.id] : null; } catch (e) { vReal = null; }
+      if (typeof vReal === 'number') {
+        quiebreOk = c.mejor > 0 ? vReal < c.corte : vReal > c.corte;
+        fila('quiebre', 'Su versión perdedora', quiebreOk ? 'ok' : 'no', S.textoQuiebre(q) + (q.chica ? ' (Muestra chica.)' : ''),
+          'Su ' + c.label + ' de la noche: ' + pf(c.id, vReal) + (quiebreOk ? ': lo llevamos a su lado malo.' : ': quedó del lado en que gana.'));
+      }
+    } else if (q) fila('quiebre', 'Su versión perdedora', 'info', (q && q.motivo) || 'Sin lectura previa.', '—');
+
+    /* 3 · LOS VOLÚMENES · el suyo afuera de su zona positiva, el nuestro adentro de la nuestra. */
+    const vols = (v, nuestro, ladoReal) => (v && v.items ? v.items : []).map((it) => {
+      const real = nz(ladoReal.fila, VOL_COL[it.id]);
+      const enZona = it.dir === 'max' ? real <= it.umbral : real >= it.umbral;
+      return { id: it.id, label: it.label, umbral: it.umbral, dir: it.dir, real: real, cumple: nuestro ? enZona : !enZona };
+    });
+    const volR = vols(inf.volumenesRival, false, lr), volN = vols(inf.volumenesNuestro, true, lp);
+    const filaVol = (lista, titulo, quien) => {
+      if (!lista.length) return;
+      const n = lista.filter(x => x.cumple).length;
+      fila('volumen', titulo, n === lista.length ? 'ok' : n === 0 ? 'no' : 'parcial',
+        lista.map(x => x.label + ' ' + (x.dir === 'max' ? '≤ ' : '≥ ') + num1(x.umbral)).join(' · ') + ' (' + quien + ').',
+        lista.map(x => (x.cumple ? '✓ ' : '✗ ') + x.label + ' ' + x.real).join(' · ') + '.');
+    };
+    filaVol(volR, 'Volumen del rival · fuera de su zona positiva', 'su zona positiva: el plan era sacarlo de ahí');
+    filaVol(volN, 'Nuestro volumen · adentro de la nuestra', 'lo que sostiene nuestra zona positiva');
+
+    /* 4 · LAS MARCAS · consigna asignada contra lo que hizo cada uno. */
+    let jr = inf.jugadoresRival, marcasConTemporada = false;
+    if (!jr || !jr.filas || !jr.filas.length) {
+      try { jr = S.jugadoresClave(idx, kR, null, { claveNuestro: kP }); marcasConTemporada = !!jr; } catch (e) { jr = null; }
+    }
+    const jugadores = {};
+    const marcas = [];
+    if (jr && jr.filas) {
+      const plan = jr.plan || {};
+      const grupoDe = (k) => (plan.intocables || []).some(x => x.clave === k) ? 'intocable'
+        : (plan.focos || []).some(x => x.clave === k) ? 'foco'
+        : (plan.cristal || []).some(x => x.clave === k) ? 'cristal'
+        : (plan.fuentes || []).some(x => x.clave === k) ? 'fuente' : null;
+      jr.filas.forEach((f) => {
+        const ck = SGADD.clavePersona(f.nombre);
+        const b = (lr.box || []).find(x => SGADD.clavePersona(SGADD.texto(x['NOMBRES'])) === ck);
+        const p = f.perfil || {};
+        const pre = { pts: p.pts, ppp: p.ppp, t3i: p.t3i, ro: p.ro, t1i: p.t1i };
+        const grupo = grupoDe(f.clave);
+        const conPelota = f.marca && f.marca.conPelota ? f.marca.conPelota.titulo : '';
+        const sinPelota = f.marca && f.marca.sinPelota ? f.marca.sinPelota.titulo : '';
+        const reg = { nombre: f.nombre, grupo, conPelota, sinPelota, pre, real: null };
+        jugadores[ck] = reg;
+        if (!b || nz(b, 'MIN') <= 0) { marcas.push(Object.assign({ estado: 'info', resultado: 'No jugó.' }, reg)); return; }
+        const r = { pts: nz(b, 'PTS'), t3c: nz(b, 'T3C'), t3i: nz(b, 'T3I'), t2c: nz(b, 'T2C'), t2i: nz(b, 'T2I'), ro: nz(b, 'RO'), ast: nz(b, 'AST'), t1i: nz(b, 'T1I'), min: nz(b, 'MIN') };
+        reg.real = r;
+        let estado = 'parcial', txt = r.pts + ' pts en ' + num1(r.min) + ' min (promedio previo ' + (typeof pre.pts === 'number' ? num1(pre.pts) : '—') + ').';
+        const ptsPre = typeof pre.pts === 'number' ? pre.pts : null;
+        if (grupo === 'intocable') {
+          estado = r.t3c <= 1 ? 'ok' : (r.t3i && r.t3c / r.t3i >= 0.4 ? 'no' : 'parcial');
+          txt = r.t3c + '/' + r.t3i + ' en triples y ' + r.pts + ' pts: ' + (estado === 'ok' ? 'no se lo soltó.' : estado === 'no' ? 'se lo soltó y castigó.' : 'tiró, con poco acierto.');
+        } else if (grupo === 'foco') {
+          estado = ptsPre === null ? 'info' : r.pts <= ptsPre * 0.85 ? 'ok' : (r.pts >= ptsPre * 1.15 && r.pts >= 10 ? 'no' : 'parcial');
+          txt = r.pts + ' pts contra ' + (ptsPre === null ? '—' : num1(ptsPre)) + ' de promedio previo' + (r.ast >= 6 ? ', pero repartió ' + r.ast + ' asistencias: el doble le abrió el pase.' : '.');
+          if (estado === 'ok' && r.ast >= 6) estado = 'parcial';
+        } else if (grupo === 'fuente') {
+          estado = (r.t2c >= 4 && r.t2i && r.t2c / r.t2i >= 0.6) ? 'no' : 'ok';
+          txt = 'Desde su lado salía la ayuda: ' + r.t2c + '/' + r.t2i + ' en dobles y ' + r.pts + ' pts' + (estado === 'no' ? ': castigó la rotación.' : ': no la castigó.');
+        } else if (grupo === 'cristal') {
+          const roPre = typeof pre.ro === 'number' ? pre.ro : 1;
+          estado = r.ro <= Math.max(1, roPre) ? 'ok' : (r.ro >= roPre + 2 || r.ro >= 3 ? 'no' : 'parcial');
+          txt = r.ro + ' rebotes ofensivos (promedio previo ' + num1(roPre) + '): ' + (estado === 'ok' ? 'el box-out alcanzó.' : 'se escapó al cristal.');
+        } else if (ptsPre !== null) {
+          estado = r.pts <= ptsPre ? 'ok' : (r.pts >= ptsPre + 6 && r.pts >= 10 ? 'no' : 'parcial');
+        }
+        if (typeof pre.t1i === 'number' && pre.t1i >= 3) {
+          txt += ' Fue ' + r.t1i + ' veces a la línea (promedio ' + num1(pre.t1i) + ')' + (r.t1i <= pre.t1i * 0.6 ? ': la defensa sin contacto funcionó.' : '.');
+        }
+        reg.estado = estado;
+        marcas.push(Object.assign({ estado, resultado: txt }, reg));
+      });
+    }
+
+    /* 5 · EL FODA · oportunidades aprovechadas y amenazas que se dieron. */
+    const ops = duelos.filter(d => d.previstoN), ams = duelos.filter(d => d.previstoR);
+    const amenaza = marcas.find(m => m.grupo === 'intocable') || marcas.find(m => m.grupo === 'foco');
+    if (ops.length || ams.length || amenaza) {
+      const aprov = ops.filter(d => d.realN).length, mat = ams.filter(d => d.realR).length + (amenaza && amenaza.estado === 'no' ? 1 : 0);
+      const totA = ams.length + (amenaza ? 1 : 0);
+      fila('foda', 'FODA', (aprov === ops.length && mat === 0) ? 'ok' : (aprov === 0 && mat === totA && totA) ? 'no' : 'parcial',
+        ops.length + ' oportunidades (duelos que nuestro ataque ganaba) y ' + totA + ' amenazas (duelos que su ataque ganaba' + (amenaza ? ' y ' + amenaza.nombre : '') + ').',
+        aprov + ' de ' + ops.length + ' oportunidades aprovechadas · ' + mat + ' de ' + totA + ' amenazas se dieron.');
+    }
+
+    /* 6 · LAS 3 COSAS · cada directiva con el veredicto de su bloque. */
+    const tres = (inf.tresCosas || []).map((t) => {
+      let estado = 'info';
+      if (t.id === 'duelo') {
+        const k = duelos.find(d => d.estrella) || duelos[0];
+        if (k) estado = k.realR ? 'no' : 'ok';
+      } else if (t.id === 'quiebre') estado = quiebreOk === null ? 'info' : quiebreOk ? 'ok' : 'no';
+      else if (t.id === 'volumen') {
+        const n = volN.filter(x => x.cumple).length;
+        estado = !volN.length ? 'info' : n === volN.length ? 'ok' : n === 0 ? 'no' : 'parcial';
+        if (amenaza && amenaza.grupo === 'intocable' && amenaza.estado === 'no' && estado === 'ok') estado = 'parcial';
+      }
+      return { id: t.id, titulo: t.titulo, texto: t.texto, estado };
+    });
+
+    const cuenta = (l) => ({ ok: l.filter(x => x.estado === 'ok').length, no: l.filter(x => x.estado === 'no').length, parcial: l.filter(x => x.estado === 'parcial').length });
+    return {
+      ok: true, pjRival: rPre.pj, pjPropio: ePre.pj, muestraChica: Math.min(rPre.pj || 0, ePre.pj || 0) < 3,
+      marcasConTemporada, filas, marcas, tresCosas: tres, jugadores,
+      resumen: cuenta(filas.concat(marcas).concat(tres)),
+    };
   }
 
   return {
@@ -666,6 +952,7 @@ const SGADD_PARTIDO = (function () {
     ZONAS_TIRO, MIN_INTENTOS_ZONA, FACTORES_PARTIDO,
     analizar, desviosLado, contrasteEquipo, ajusteJugadores, nombreCorto, avanzadas,
     perfilTiro, decision, factoresPartido, focosPartido, planAjuste, proyeccionPartido, responsableFactor, lider,
+    planContraRealidad,
   };
 })();
 

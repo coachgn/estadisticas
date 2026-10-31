@@ -1151,7 +1151,11 @@ function equiposDetallePartido(idx, e, id) {
   const propio = part.lados.find(l => l.equipo.clave === e.clave);
   if (!propio) return null;
 
-  const a = SGADD_PARTIDO.analizar(idx, part, propio);
+  /* LA VARA ES LA PREVIA (v332): el habitual, los desvíos, el simulador y el
+     plan del scouting salen de los partidos ANTERIORES a esta fecha. */
+  const previo = (typeof SGADD_APP !== 'undefined' && SGADD_APP.idxPrevio) ? SGADD_APP.idxPrevio(part.fecha) : null;
+  const opcBase = previo ? { base: previo.idx, previa: { partidos: previo.partidos, hasta: previo.hasta } } : {};
+  const a = SGADD_PARTIDO.analizar(idx, part, propio, opcBase);
   const riv = a.rival;
   const gano = a.gano;
 
@@ -1228,8 +1232,11 @@ function equiposDetallePartido(idx, e, id) {
   const V = (typeof SGADD_RENDIMIENTO !== 'undefined' && SGADD_RENDIMIENTO.vista) ? SGADD_RENDIMIENTO.vista : null;
   const p1 = (v) => (v * 100).toFixed(1).replace('.', ',') + ' %';
   const pp1 = (v) => (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(1).replace('.', ',') + ' pp';
-  let dec = null;
-  if (riv && V) { try { dec = SGADD_PARTIDO.decision(idx, propio, riv, a, (typeof SGADD_APP !== 'undefined' && SGADD_APP.idxRegular) ? SGADD_APP.idxRegular() : null); } catch (e) { dec = null; } }
+  let dec = null, planReal = null;
+  if (riv && previo && SGADD_PARTIDO.planContraRealidad) {
+    try { planReal = SGADD_PARTIDO.planContraRealidad(previo.idx, idx, propio, riv); } catch (e) { planReal = null; }
+  }
+  if (riv && V) { try { dec = SGADD_PARTIDO.decision(idx, propio, riv, a, (typeof SGADD_APP !== 'undefined' && SGADD_APP.idxRegular) ? SGADD_APP.idxRegular() : null, Object.assign({ plan: planReal }, opcBase)); } catch (e) { dec = null; } }
   /* Va al FINAL del informe, debajo de los box scores: es la conclusión,
      no la introducción. Y si no entra en la hoja, salta a la siguiente
      sin apretar el box score. */
@@ -1289,6 +1296,53 @@ function equiposDetallePartido(idx, e, id) {
       <details class="rend-detalle mt-3"><summary>Notas por desvío contra el promedio</summary>${bloqueRecViejo.replace('id="proximoCruce"', '')}</details>
     </div>`;
 
+  /* EL PLAN CONTRA LA REALIDAD (v332). El post-partido como respuesta al
+     scouting: el informe pre-partido rearmado con los partidos previos y
+     cada pieza contrastada con lo que pasó. Va primero, arriba de todo. */
+  const planHtml = (() => {
+    if (!riv || !V) return '';
+    const TONO = { ok: 'pos', no: 'neg', parcial: 'aviso', info: 'info' };
+    const GLIFO = { ok: '✓', no: '✗', parcial: '◐', info: '◆' };
+    const PALABRA = { ok: 'cumplido', no: 'no cumplido', parcial: 'a medias', info: 'sin veredicto' };
+    const est = (e) => `<span class="font-mono whitespace-nowrap ${e === 'ok' ? 'text-green-400' : e === 'no' ? 'text-red-400' : e === 'parcial' ? 'text-amber-300' : 'dato-sec'}">${GLIFO[e] || '◆'} ${PALABRA[e] || ''}</span>`;
+    if (!planReal || !planReal.ok) {
+      return `<div class="mb-6" id="planRealidad" data-plan-realidad="0">
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-2">📋 El plan contra la realidad</h5>
+        <p class="text-xs dato-sec">${escapeHtml((planReal && planReal.motivo) || 'No se pudo rearmar el scouting previo a este partido.')}</p></div>`;
+    }
+    const r = planReal.resumen;
+    const GRUPO = { intocable: 'No se suelta', foco: 'Foco · se dobla', fuente: 'Fuente de ayuda', cristal: 'Box-out asignado' };
+    const tres = planReal.tresCosas.length ? `<div class="rend-alertas mb-3">${planReal.tresCosas.map(t =>
+      V.alerta({ tono: TONO[t.estado], icono: GLIFO[t.estado], titulo: t.titulo + ' · ' + PALABRA[t.estado], texto: t.texto })).join('')}</div>` : '';
+    const filas = planReal.filas.map(f => `
+      <tr class="border-b border-hairline/40 last:border-0 align-top" data-plan-fila="${escapeAttr(f.bloque)}">
+        <td class="py-2 pr-3 text-xs text-white">${escapeHtml(f.titulo)}</td>
+        <td class="py-2 pr-3 text-[11px] dato-sec leading-snug text-left">${escapeHtml(f.previsto)}</td>
+        <td class="py-2 pr-3 text-[11px] text-slate-100 leading-snug text-left">${escapeHtml(f.real)}</td>
+        <td class="py-2 text-[11px] text-left">${est(f.estado)}</td>
+      </tr>`).join('');
+    const marcas = planReal.marcas.map(m => `
+      <tr class="border-b border-hairline/40 last:border-0 align-top" data-plan-marca="${escapeAttr(m.estado)}">
+        <td class="py-2 pr-3 text-xs text-white whitespace-nowrap">${escapeHtml(m.nombre)}${m.grupo ? `<br><span class="text-[10px] dato-sec">${escapeHtml(GRUPO[m.grupo])}</span>` : ''}</td>
+        <td class="py-2 pr-3 text-[11px] dato-sec leading-snug text-left">${escapeHtml([m.conPelota, m.sinPelota].filter(Boolean).join(' · '))}</td>
+        <td class="py-2 pr-3 text-[11px] text-slate-100 leading-snug text-left">${escapeHtml(m.resultado)}</td>
+        <td class="py-2 text-[11px] text-left">${est(m.estado)}</td>
+      </tr>`).join('');
+    const cab = (a, b, c) => `<thead><tr><th class="text-left">${a}</th><th class="text-left">${b}</th><th class="text-left">${c}</th><th class="text-left">Veredicto</th></tr></thead>`;
+    return `
+      <div class="mb-6" id="planRealidad" data-plan-realidad="1">
+        <h5 class="font-display uppercase tracking-wide text-xs text-accent mb-1">📋 El plan contra la realidad</h5>
+        <p class="text-[11px] dato-sec mb-3 leading-snug">El scouting rearmado con lo que se sabía ANTES del partido (${planReal.pjRival} partidos del rival, ${planReal.pjPropio} nuestros) contra lo que pasó.
+          <b class="text-green-400">${r.ok} ✓</b> · <b class="text-amber-300">${r.parcial} ◐</b> · <b class="text-red-400">${r.no} ✗</b>.</p>
+        ${planReal.muestraChica ? V.alerta({ tono: 'aviso', icono: '⚠', titulo: 'Plan armado con muestra chica', texto: 'Uno de los dos equipos llegó con menos de 3 partidos: el plan salió de muy pocas noches y sus consignas son una hipótesis, no una tendencia.' }) : ''}
+        ${tres}
+        <div class="scrollbox"><table class="w-full" style="min-width:40rem">${cab('Pieza del plan', 'Lo previsto', 'Lo que pasó')}<tbody>${filas}</tbody></table></div>
+        ${marcas ? `<p class="text-[10px] uppercase tracking-wider text-accent font-display mt-4 mb-1">Marcas jugador por jugador</p>
+        <div class="scrollbox"><table class="w-full" style="min-width:40rem">${cab('Jugador', 'Consigna del plan', 'Lo que hizo')}<tbody>${marcas}</tbody></table></div>` : ''}
+        <p class="text-[11px] dato-sec mt-2 leading-snug">El plan se recalcula con el motor del scouting sobre los partidos previos: si el cuerpo técnico editó a mano una consigna de la tabla de marcas, esa edición no está acá.${planReal.marcasConTemporada ? ' Las marcas se armaron con la temporada completa: este libro no trae el partido a partido del rival.' : ''}</p>
+      </div>`;
+  })();
+
   /* Los focos a sostener: lo que salió bien, también en una derrota. */
   const focosHtml = !dec ? '' : (() => {
     const col = (titulo, lista, vacio) => `<div>
@@ -1336,7 +1390,7 @@ function equiposDetallePartido(idx, e, id) {
       <div class="rend-raiz"><div class="rend-grid">${dec.tarjetas.map(t => `
         <section class="rend-card" data-decision="${escapeAttr(t.id)}">
           <h5 class="rend-card-t">${V.marca(t.tono)}${escapeHtml(t.titulo)}</h5>
-          ${t.ficha.length ? `<div class="rend-fichas">${t.ficha.map((f, i) => V.ficha({ label: f.label, valor: f.valor, sub: f.sub, tono: i === 0 ? t.tono : 'info' })).join('')}</div>` : ''}
+          ${t.ficha.length ? `<div class="rend-fichas">${t.ficha.map((f, i) => V.ficha({ label: f.label, valor: f.valor, sub: f.sub, tono: f.tono || (i === 0 ? t.tono : 'info') })).join('')}</div>` : ''}
           <p class="rend-titular">${escapeHtml(t.texto)}</p>
         </section>`).join('')}</div></div>
       <details class="rend-detalle mt-3"><summary>Claves, grietas y el resto del relato</summary>
@@ -1668,6 +1722,7 @@ function equiposDetallePartido(idx, e, id) {
   return `
     <div id="detallePartido">
       ${cabecera}
+      ${planHtml}
       ${insight}
       ${focosHtml}
       ${factores}

@@ -553,6 +553,55 @@ const SGADD_APP = (function () {
     return reg && reg.idx ? reg.idx : null;
   }
 
+  /* =====================================================================
+     LA LÍNEA DE BASE PREVIA AL PARTIDO (v332)
+
+     El post-partido medía contra el «habitual» del índice, que YA incluye el
+     partido: con 2 jugados, la mitad del habitual de un equipo era la misma
+     noche que se analizaba, y el simulador también lo veía. `idxPrevio(fecha)`
+     arma el índice del tramo con los partidos de los días ANTERIORES al
+     partido (el motor del TOTAL sobre las hojas recortadas, como la muestra),
+     que es la foto que tenía el scouting. Un partido del mismo día no entra:
+     la planilla no trae la hora. Sin partidos previos devuelve `idx: null` y
+     el post-partido dice que no hay habitual, en vez de inventar uno.
+     ===================================================================== */
+  const _previos = { base: null, porDia: new Map() };
+
+  function diaDe(f) {
+    const d = f instanceof Date ? f : (f ? new Date(f) : null);
+    if (!d || isNaN(d.getTime())) return null;
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  function diaAnterior(iso) {
+    const p = String(iso).split('-').map(Number);
+    const d = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  /** { idx, partidos, hasta } con lo jugado ANTES de `fecha`, o null sin libro. */
+  function idxPrevio(fecha) {
+    const base = estado.idx;
+    const dia = diaDe(fecha);
+    if (!base || !estado.hojas || !dia || enLlave() || typeof SGADD_MUESTRA === 'undefined') return null;
+    if (_previos.base !== base) { _previos.base = base; _previos.porDia = new Map(); }
+    if (_previos.porDia.has(dia)) return _previos.porDia.get(dia);
+    const t = tramoDeIndice();
+    const hasta = diaAnterior(dia);
+    let out = { idx: null, partidos: 0, hasta: hasta };
+    try {
+      const rec = SGADD_MUESTRA.recortar(estado.hojas, t, { desde: null, hasta: hasta });
+      if (rec.partidos) {
+        const v = SGADD.construirIndice(rec.hojas, { fase: t.fase, torneo: SGADD.TORNEO_TOTAL });
+        if (base.liga && base.liga.nivel && v.liga && !v.liga.nivel) v.liga.nivel = base.liga.nivel;
+        out = { idx: v, partidos: rec.partidos, hasta: hasta };
+      }
+    } catch (e) { out = { idx: null, partidos: 0, hasta: hasta, error: e && e.message }; }
+    _previos.porDia.set(dia, out);
+    return out;
+  }
+
   /** Lo que la barra dice de la muestra. null con la muestra apagada. */
   function infoMuestra() {
     if (typeof SGADD_MUESTRA === 'undefined' || !estado.hojas || enLlave()) return null;
@@ -1224,7 +1273,7 @@ const SGADD_APP = (function () {
   return {
     tramoPreferido, recordarTramo, enLlave,
     estado, inicializar, cargar, reindexar, cambiarPlanilla, cambiarFase, cambiarTorneo, cambiarTramo,
-    aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, contextoRegular, idxRegular, etiquetaRegular, textoFaseCorta, onCambio, adoptarEquipoDeCategoria,
+    aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, contextoRegular, idxRegular, idxPrevio, etiquetaRegular, textoFaseCorta, onCambio, adoptarEquipoDeCategoria,
     recordarCategoria, categoriaRecordada, sufijoCategoria,
     cambiarMuestra, elegirMuestra, irAPartido, textoMuestra, pjEnMuestra, rivalesParaMuestra, varaDelPeriodo, idxVista, infoMuestra, muestraRecordada, barraMuestra,
     get idx() { return estado.idx; },

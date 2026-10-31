@@ -201,6 +201,21 @@ check('una ventana sin partidos devuelve el tramo entero y lo dice', A.idxVista(
 A.cambiarMuestra({ tipo: 'todo' });
 check('«todo» vuelve al índice base', A.idxVista() === base);
 
+/* v332 · la línea de base previa del post-partido: los partidos de los días ANTERIORES. */
+{
+  const eq0 = base.lista()[0];
+  const ps = base.get(eq0.clave).partidos;
+  const mitad = ps[Math.floor(ps.length / 2)];
+  const prev = A.idxPrevio(mitad.__fecha);
+  check('idxPrevio arma el índice con lo jugado antes del día del partido',
+    prev && prev.idx && prev.idx.get(eq0.clave).pj < base.get(eq0.clave).pj && !prev.idx.partido(mitad.__id), prev && prev.hasta);
+  check('su corte es el día anterior', prev.hasta < mitad.__id.slice(0, 10));
+  check('se cachea por día', A.idxPrevio(mitad.__fecha) === prev);
+  check('el índice del tramo no se toca', A.estado.idx === base);
+  const primero = A.idxPrevio(new Date(2000, 0, 1));
+  check('antes del primer partido no hay índice previo (no se inventa)', primero && primero.idx === null && primero.partidos === 0);
+}
+
 const R = armarApp({ recortado: true });
 R.A.cambiarMuestra({ tipo: 'semanas', n: 2 });
 check('con Base Datos J recortada, Jugadores sigue en la temporada', R.A.idxVista({ jugadores: true }) === base);
@@ -268,7 +283,7 @@ check('los dos PDF declaran la muestra en su encabezado', /textoMuestra\(\{ juga
 check('en una muestra los partidos manuales no se suman', /idx && idx\.__muestra\) \? \[\] : clasifManualesVigentes\(\)/.test(CL));
 const iM = HTML.indexOf('js/sgadd-muestra.js'), iA = HTML.indexOf('js/sgadd-app.js');
 check('sgadd-muestra.js carga ANTES que sgadd-app.js', iM !== -1 && iM < iA);
-check('assets en v331', /sgadd-muestra\.js\?v=331/.test(HTML) && !/\?v=29\d/.test(HTML));
+check('assets en v332', /sgadd-muestra\.js\?v=332/.test(HTML) && !/\?v=29\d/.test(HTML));
 check('el CSS del badge va a mano en el <style>', /\.muestra-badge \{/.test(HTML));
 
 /* =====================================================================

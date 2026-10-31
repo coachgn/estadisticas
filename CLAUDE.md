@@ -16418,3 +16418,35 @@ Assets en `?v=331`.
 - **Doble baseline en eliminación**: `factoresPartido`/`decision` reciben `idxReg` (`SGADD_APP.idxRegular()`) y cada factor trae `regular` y `deltaRegular`, además del habitual de la fase actual. La tarjeta muestra las dos referencias.
 - **Radar de los 4 factores** (`chRadarPartido`) debajo de las tarjetas, cada eje contra el mejor de los dos.
 - **Plan de ajuste en 4 acciones** (`planAjuste`: perimetro, interior, generacion, segundas), sin puestos: sale de triples y dobles convertidos, asistencias y RO% contra la liga. «Cerca del aro» usa dobles del box (la zona Z1 exacta necesita el play-by-play). Se fue «interior que juega de pasador».
+
+
+## 158. EL POST-PARTIDO RESPONDE AL SCOUTING · vara previa, plan contra la realidad y porcentajes sin intentos (2026-10-30)
+
+Assets en `?v=332`. Salió de auditar el scouting vs San Isidro (28/10) contra el post-partido del 29/10.
+
+### La vara es la PREVIA
+El «habitual» del post-partido salía del índice del tramo, que ya incluye el partido: San Isidro llegaba con 1 partido y su eFG% habitual (62,6 %) era el promedio de ese partido y del analizado. `SGADD_APP.idxPrevio(fecha)` arma el índice con lo jugado en los días ANTERIORES (`SGADD_MUESTRA.recortar` + el motor del TOTAL), cacheado por día. `analizar(idx, part, lado, { base })` y `decision(..., { base, previa, plan })` miden habitual, desvíos de jugador, focos y simulador contra esa base. `base: null` (sin partidos previos) = sin habitual y sin expectativa, y se dice. Sin opciones, todo como antes.
+
+### Tres correcciones de lectura
+- El factor perdido con nuestro número en o sobre lo habitual y el del rival sobre el suyo se rotula «· en defensa», y cada ficha trae su propio tono (antes ▼ a un eFG% propio que había mejorado).
+- Un foco ganado al rival pero bajo lo habitual dice «ganado, bajo lo habitual».
+- La expectativa dice «PREVIA, con los N partidos hasta el DD/MM».
+
+### 📋 El plan contra la realidad · `SGADD_PARTIDO.planContraRealidad(idxPre, idx, lp, lr)`
+Rearma `SGADD_SCOUT.informePrePartido` con el índice previo y contrasta, con veredicto ✓ cumplido · ◐ a medias · ✗ no cumplido · ◆ sin veredicto:
+- **duelos cruzados**: el ataque de cada uno esa noche contra lo que la otra defensa concedía antes (el valor del rival cae a la columna «Opp» de nuestra fila si el suyo no viene);
+- **margen previsto** (cumplido si se terminó en o sobre lo previsto, con 4 pts de tolerancia);
+- **versión perdedora**: su métrica de quiebre esa noche contra el corte;
+- **volúmenes** del rival (fuera de su zona positiva) y nuestros (adentro);
+- **FODA** (oportunidades aprovechadas, amenazas que se dieron) y **las 3 cosas**;
+- **marcas jugador por jugador**, por grupo del plan colectivo: el que no se suelta por sus triples, el foco por sus puntos contra el promedio previo (y si el doble le abrió el pase), la fuente de ayuda por sus dobles, el box-out por sus rebotes ofensivos, más la línea si promediaba 3+ libres.
+
+El **plan de ajuste** recibe ese plan: si nombra a un jugador con marca, dice si la consigna se sostiene o cambia («El plan decía «UNDER…»: con ese acierto hay que cambiar la consigna»). Va arriba de todo en el post-partido.
+
+**Límites:** el plan se RECALCULA, así que no trae las consignas que el DT editó a mano en la tabla de marcas (para eso hay que guardar el plan firmado al exportar; no está hecho). Con el libro de un cliente (Base Datos J recortada) las marcas salen con la temporada completa y la card lo dice. Los cuartos no se contrastan todavía (necesitan el paquete del play-by-play).
+
+### Sin intentos no hay porcentaje
+`jugadoresPerfilBase`: con T1I, T2I o T3I en 0, la tasa y el puntos-por-tiro son null. La hoja de promedios traía 0 y el scouting decía «T1% 0,0 %: cortar con falta cuesta menos que sobre cualquier otro» de cinco jugadores que nunca habían tirado un libre. Un 0 % con intentos sigue siendo un dato.
+
+### No verificado
+El PDF del post-partido con la card nueva, y el cruce real San Isidro vs Jujuy (verificado sobre la demo).

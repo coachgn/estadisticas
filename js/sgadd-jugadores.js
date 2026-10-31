@@ -1153,6 +1153,17 @@ function jugadoresPerfilBase(idx, j) {
     califica: !!j.__califica,
   };
 
+  /* SIN INTENTOS NO HAY PORCENTAJE (v332). La hoja de promedios trae 0 en
+     T1% o PPT3 cuando el jugador no tiró: el scouting de San Isidro leía
+     «T1% 0,0 %: cortar con falta sobre él cuesta menos que sobre cualquier
+     otro» de cinco jugadores que no habían ido nunca a la línea (uno hizo
+     3/3 esa noche). Con intentos en 0 la tasa es null; la cuenta en 0 sigue
+     siendo un dato. Sin la columna de intentos no se toca nada. */
+  const sinIntentos = (n) => n !== null && n <= 0;
+  if (sinIntentos(p.t1i)) { p.t1 = null; p.pptLibre = null; }
+  if (sinIntentos(p.t3i)) { p.t3 = null; p.pptTriple = null; }
+  if (sinIntentos(p.t2i)) { p.t2 = null; p.pptDoble = null; }
+
   /* ------------------------------------------------------------------
      ORIGEN · sin zona gris (P-6 / P-9)
 

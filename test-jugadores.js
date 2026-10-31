@@ -1097,6 +1097,16 @@ check('ya no existe el caso "ni interior ni perimetral" con tiros de campo carga
 check('sin tiros de campo el origen queda vacío: no se inventa',
   (() => { const p = J.jugadoresPerfilBase(idxZG, { NOMBRES: 'X', T3I: 0, T2I: 0 });
     return p.esInterior === false && p.esPerimetral === false && p.mezclaTriple === null; })());
+/* v332: la hoja de promedios trae T1% = 0 cuando no tiró libres. Sin
+   intentos no hay porcentaje: el scouting leía «falta barata» de cinco
+   jugadores que nunca habían ido a la línea. */
+check('sin libres intentados el T1% y el PPT1 son null, no 0',
+  (() => { const p = J.jugadoresPerfilBase(idxZG, { NOMBRES: 'X', T1I: 0, 'T1%': 0, PPT1: 0, T3I: 2, 'T3%': 0.5, PPT3: 1.5, T2I: 0, 'T2%': 0 });
+    return p.t1 === null && p.pptLibre === null && p.t2 === null && p.pptDoble === null && p.t3 === 0.5 && p.pptTriple === 1.5; })());
+check('con intentos, un 0 % sigue siendo un dato (tiró y erró)',
+  J.jugadoresPerfilBase(idxZG, { NOMBRES: 'X', T1I: 2, 'T1%': 0 }).t1 === 0);
+check('sin la columna de intentos no se toca la tasa',
+  J.jugadoresPerfilBase(idxZG, { NOMBRES: 'X', 'T1%': 0.7 }).t1 === 0.7);
 check('el desempate usa el rebote TOTAL, que es el que dice cuánto vidrio toma',
   typeof gr.reboteTotalRel === 'number' && J.JUGADORES_UMBRALES.reboteDesempate === 1.10);
 
