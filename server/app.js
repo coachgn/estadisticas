@@ -134,6 +134,9 @@ function crearApp(opciones) {
      usuario. Se autentica con CRON_SECRET, igual que el cron de arriba. */
   app.get('/api/cron/alertas-partidos', responder(require('./api/alertas-partidos.js').manejarCronAlertasPartidos));
 
+  /* La doble alerta de carga de los torneos manuales (previa y control). */
+  app.get('/api/cron/carga-manual', responder(require('./api/carga-manual.js').manejarCronCargaManual));
+
   /* LAS DOS RUTAS SIN TOKEN. Son las únicas: todo lo demás exige uno.
      `login` lo emite y `clave` lo fija por primera vez, así que exigirlo
      sería pedir la llave para entrar a buscar la llave. Lo que las cuida

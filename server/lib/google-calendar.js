@@ -122,7 +122,10 @@ async function asegurarEvento(calendarId, evento, deps) {
   if (actual.status === 'cancelled') return 'borrado';
 
   const mismoInicio = actual.start && new Date(actual.start.dateTime).getTime() === new Date(evento.inicio).getTime();
-  if (mismoInicio && actual.summary === evento.summary) return 'igual';
+  /* La descripción también cuenta: una reprogramación cambia la lista de
+     partidos sin cambiar el título. */
+  if (mismoInicio && actual.summary === evento.summary
+    && String(actual.description || '').trim() === String(evento.description || '').trim()) return 'igual';
   const p = await traer(base + '/' + encodeURIComponent(evento.id), {
     method: 'PATCH', headers: cab,
     body: JSON.stringify({ summary: cuerpoEvento.summary, description: cuerpoEvento.description,

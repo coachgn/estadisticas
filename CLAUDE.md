@@ -150,6 +150,8 @@ node test-centro-mando.js  # 461 tests · el Centro de Mando Editorial local: ba
 node test-alertas-partidos.js # 38 tests · las alertas de partido: -4 dias a las 09:00 AR, el id estable, el
                            #             cliente de Calendar, la corrida idempotente y el cron (punto 163)
 
+node test-carga-manual.js  #  24 tests · la doble alerta de carga de los torneos manuales (punto 164)
+
 node test-ecosistema.js    #  23 tests · el auditor del ecosistema: fechas, claves de escudo,
                            #             ids tapados y que no escriba (punto 121)
 
@@ -16550,3 +16552,26 @@ server/vercel.json               cron «0 10 * * *» (07:00 AR)
 
 **No verificado contra Google real**: sin credenciales en la sesión, todo se probó
 contra una API de mentira. El primer disparo real es la prueba de punta a punta.
+
+---
+
+## 164. LA DOBLE ALERTA DE CARGA DE LOS TORNEOS MANUALES (2026-11-01)
+
+Donde no hay play-by-play automático alguien carga los partidos a mano. Solo
+servidor (no sube el `?v=`). `test-carga-manual.js` fija todo.
+
+```
+server/lib/carga-manual.js   PURO: TORNEOS (APB masculino, APB formativas, Bahía), planificarPrevia / planificarControl
+server/api/carga-manual.js   GET /api/cron/carga-manual?flujo=previa|control · CRON_SECRET o ADMIN · ?simular=1
+server/vercel.json           previa «0 15 * * *» (12:00 AR) · control «0 10 * * *» (07:00 AR)
+```
+
+- **PREVIA**: cron 12:00 AR, evento de hoy 21:00 AR «⚠️ Mañana hay carga: N partidos programados», con la lista de mañana agrupada por torneo y zona.
+- **CONTROL**: evento de hoy 09:00 AR «📋 Pendiente de Carga: Partidos jugados ayer (N)», checklist `☐ A 80 - 75 B` de lo jugado ayer (solo con marcador).
+- **Calendario propio**: `TORNEOS_MANUALES_CALENDAR_ID` (motorstats.ar@gmail.com compartido con la Service Account). Nunca cae a `ALERTAS_CALENDAR_ID`.
+- Los partidos salen de `partidosDe` de las alertas de Jujuy (fixture de KV o de la fuente del catálogo) para todas las zonas regulares del torneo. **Una zona que falla no se toma por «sin partidos»**: con alguna caída no se emite (502 `LECTURA_INCOMPLETA`); sin ninguna lectura tampoco.
+- Un día sin partidos no genera evento. Id determinista por flujo y día. Un horario ya pasado no se crea.
+- `asegurarEvento` ahora compara también la **descripción**: una reprogramación cambia la lista sin cambiar el título.
+- Sumar un torneo manual es una entrada más en `TORNEOS`.
+- **No verificado contra Google real** (probado con API de mentira); primero `?simular=1` con un token de admin.
+

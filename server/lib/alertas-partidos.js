@@ -204,5 +204,5 @@ async function ejecutar(perfil, partidos, deps) {
   };
 }
 
-module.exports = { PERFILES, planificar, ejecutar, hoyAR, restarDias, instanteAR, idDeEvento,
+module.exports = { PERFILES, planificar, ejecutar, hoyAR, restarDias, instanteAR, idDeEvento, sumarMin,
   claveDelPartido, esDelEquipo, ZONA };
