@@ -13,6 +13,7 @@
     }
   ],
   "crons": [
-    { "path": "/api/cron/recordatorios-vencimiento", "schedule": "0 12 * * *" }
+    { "path": "/api/cron/recordatorios-vencimiento", "schedule": "0 12 * * *" },
+    { "path": "/api/cron/alertas-partidos", "schedule": "0 10 * * *" }
   ]
 }

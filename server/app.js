@@ -130,6 +130,10 @@ function crearApp(opciones) {
   app.post('/api/v1/fichas', responder(mails.manejarFichasEscribir));
   app.get('/api/cron/recordatorios-vencimiento', responder(mails.manejarCronVencimientos));
 
+  /* Las alertas de partido (-4 dias, 09:00 AR) en el Google Calendar del
+     usuario. Se autentica con CRON_SECRET, igual que el cron de arriba. */
+  app.get('/api/cron/alertas-partidos', responder(require('./api/alertas-partidos.js').manejarCronAlertasPartidos));
+
   /* LAS DOS RUTAS SIN TOKEN. Son las únicas: todo lo demás exige uno.
      `login` lo emite y `clave` lo fija por primera vez, así que exigirlo
      sería pedir la llave para entrar a buscar la llave. Lo que las cuida

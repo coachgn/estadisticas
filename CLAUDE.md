@@ -147,6 +147,9 @@ node test-centro-mando.js  # 461 tests · el Centro de Mando Editorial local: ba
                            #             (pide «npm install» en centro-mando/ una vez: los agentes usan el SDK de Claude, punto 107)
                            #             el play-by-play que no se presta, el aprendizaje y el servidor en 127.0.0.1 (105)
 
+node test-alertas-partidos.js # 38 tests · las alertas de partido: -4 dias a las 09:00 AR, el id estable, el
+                           #             cliente de Calendar, la corrida idempotente y el cron (punto 163)
+
 node test-ecosistema.js    #  23 tests · el auditor del ecosistema: fechas, claves de escudo,
                            #             ids tapados y que no escriba (punto 121)
 
@@ -295,7 +298,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=336`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=337`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16504,3 +16507,46 @@ Assets en `?v=336`. Motor PURO `js/sgadd-rachas.js` (`test-rachas.js`, 25 tests,
 - **Cortes por torneo**: `idx.liga.rachas = { z, ventana, ... }` pisa los de `UMBRALES`; lo que no se declara usa el respaldo. Todavía no hay UI para declararlo.
 - Medido en la demo: de 175 jugadores evaluados, 6 🔥, 14 🧊 y 119 ⚓.
 - **No verificado en el navegador ni en un PDF.**
+
+---
+
+## 163. LAS ALERTAS DE PARTIDO EN EL CALENDARIO · -4 días, 09:00 (2026-11-01)
+
+Para no revisar el fixture a mano: cada partido PROGRAMADO de Jujuy deja un
+evento de 30 min en el Google Calendar del usuario, 4 días antes a las 09:00
+de Argentina, con un popup a la hora exacta (la app de Calendar lo vuelve push).
+Solo servidor, sin front: no sube el `?v=`. `test-alertas-partidos.js` fija todo.
+
+```
+server/lib/alertas-partidos.js   PURO: perfiles, planificar() y ejecutar()
+server/lib/google-calendar.js    Calendar v3 con la Service Account (scope calendar.events)
+server/api/alertas-partidos.js   GET /api/cron/alertas-partidos · CRON_SECRET o ADMIN
+server/vercel.json               cron «0 10 * * *» (07:00 AR)
+```
+
+- **Idempotencia la pone Google**: el id del evento es un hash de
+  `perfil|torneo|LOCAL|VISITANTE` (hex = base32hex válido) y un id repetido da 409.
+  La clave NO lleva la fecha: una reprogramación PATCHea el mismo evento en vez de
+  dejar el viejo y crear otro. Ida y vuelta se separan por la localía invertida.
+- **Un evento borrado a mano no se repone** (queda `cancelled` y el id no se reusa).
+- **Una alerta cuyo momento ya pasó no se crea** (un popup en el pasado no avisa):
+  sale en `atrasadas` con el día en que debió avisar.
+- **Los partidos salen del fixture de KV** (el mismo del panel) y, si está vencido,
+  de la fuente declarada en el catálogo o de la de respaldo del perfil; con la
+  fuente caída se usa la copia vieja. Sin nada: 502 y el calendario no se toca.
+- **`?simular=1`** planifica y muestra (candidatas, atrasadas, id y hora de cada aviso) sin llamar a Calendar, sin pedir credenciales y sin escribir en KV: la primera mirada antes de tocar un calendario. Probar primero contra un calendario secundario «PRUEBA» (`ALERTAS_CALENDAR_ID`) y borrarlo al terminar.
+- **Sumar otro equipo** es una entrada más en `PERFILES`.
+
+### Para ponerlo a andar (lo hace el usuario)
+
+1. Habilitar **Google Calendar API** en el proyecto de la Service Account.
+2. En Google Calendar → el calendario de freytesgn@gmail.com → *Compartir con
+   personas* → agregar `GOOGLE_SERVICE_ACCOUNT_EMAIL` con «Hacer cambios en eventos».
+3. Deploy del backend (`cd server && npx vercel --prod`). `CRON_SECRET` ya existe.
+   Opcional: `ALERTAS_CALENDAR_ID` para apuntar a otro calendario.
+4. Probar a mano con un token de admin: `GET /api/cron/alertas-partidos`.
+   El reporte dice creadas, iguales, atrasadas y el motivo exacto si falla algo
+   (`CALENDARIO_NO_COMPARTIDO`, `CALENDAR_API_APAGADA`, `SIN_PERMISO_CALENDARIO`).
+
+**No verificado contra Google real**: sin credenciales en la sesión, todo se probó
+contra una API de mentira. El primer disparo real es la prueba de punta a punta.
