@@ -1,12 +1,13 @@
 /* =====================================================================
    /api/cron/carga-manual?flujo=previa|control · la doble alerta de carga
 
-   Dos crons en vercel.json: la previa a las 12:00 AR (aviso a las 21:00
-   por los partidos de mañana) y el control a las 07:00 AR (aviso a las
-   09:00 por lo jugado ayer). Escribe SOLO en TORNEOS_MANUALES_CALENDAR_ID,
+   Dos crons en vercel.json: la previa a las 12:00 AR (evento 12:30 con
+   los partidos de HOY) y el control a las 07:00 AR (evento 07:30 con lo
+   jugado ayer y su checklist). Escribe SOLO en TORNEOS_MANUALES_CALENDAR_ID,
    el calendario de motorstats.ar@gmail.com compartido con la Service
    Account. Se autentica como los otros crons (CRON_SECRET o ADMIN).
-   `?simular=1` planifica sin tocar Calendar.
+   `?simular=1` planifica sin tocar Calendar; `?forzar=1` crea el evento
+   aunque su horario ya haya pasado (prueba a deshora).
 
    Una zona que no se pudo leer NO se toma por «sin partidos»: con alguna
    caída no se emite el aviso (uno incompleto engaña más que ninguno) y
@@ -60,6 +61,7 @@ async function manejarCronCargaManual(peticion, deps) {
   const flujo = String(q.flujo || '').toLowerCase();
   if (flujo !== 'previa' && flujo !== 'control') return error(400, 'FLUJO', 'flujo debe ser «previa» o «control».');
   const simular = ['1', 'true'].indexOf(String(q.simular || '').toLowerCase()) >= 0;
+  const forzar = ['1', 'true'].indexOf(String(q.forzar || '').toLowerCase()) >= 0;
   const calendarId = env.TORNEOS_MANUALES_CALENDAR_ID || '';
   if (!calendarId && !simular) return error(503, 'SIN_CALENDARIO', 'TORNEOS_MANUALES_CALENDAR_ID no está configurado.');
 
@@ -83,7 +85,7 @@ async function manejarCronCargaManual(peticion, deps) {
     return { status: 502, body: Object.assign({ ok: false, codigo: 'LECTURA_INCOMPLETA',
       mensaje: 'Faltó leer ' + fallaron.length + ' zona(s): no se emite un aviso incompleto.' }, base) };
   }
-  if (ev.atrasado) {
+  if (ev.atrasado && !forzar) {
     return { status: 200, body: Object.assign({ ok: true, evento: null,
       motivo: 'El horario del aviso (' + ev.inicio + ') ya pasó.' }, base) };
   }

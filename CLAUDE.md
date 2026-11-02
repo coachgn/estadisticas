@@ -16581,3 +16581,9 @@ La previa de las 12:00 AR no creó el evento: `zonasDe()` leía `entrada.zonas`,
 - El mismo cruce no se repite entre zonas de un torneo y las entidades HTML de la fuente («6&ordm;») se decodifican.
 - **Disparo inmediato**: `node server/bin/carga-manual.js previa|control [--real]` corre el mismo handler con las credenciales de `server/.env` (necesita `TORNEOS_MANUALES_CALENDAR_ID` en el entorno). Sin `--real` simula.
 
+### Ajuste del 2026-11-02 · qué dice cada evento
+- **Previa** (cron 12:00 AR, evento 12:30 AR): lista los partidos de **HOY** de todos los torneos manuales, «Partidos a jugarse hoy DD/MM/AA (N)», con torneo, zona, hora y cruce.
+- **Control** (cron 07:00 AR, evento 07:30 AR): «Se jugaron ayer DD/MM/AA: cargar resultados (N)», una línea `☐ local pts - pts visitante` por partido para tildar los cargados.
+- **Todas las fechas de los textos van en DD/MM/AA** (`fechaCorta`); el id y la lógica interna siguen en ISO.
+- `?forzar=1` (o `--forzar` en el bin) crea el evento aunque su horario ya haya pasado.
+

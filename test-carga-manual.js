@@ -1,8 +1,8 @@
 /* =====================================================================
    test-carga-manual.js · LA DOBLE ALERTA DE CARGA (torneos sin PBP)
 
-     1. la previa: partidos de MAÑANA, agrupados, a las 21:00 AR
-     2. el control: lo jugado AYER, checklist, a las 09:00 AR
+     1. la previa: partidos de HOY, agrupados, al mediodía (evento 12:30 AR)
+     2. el control: lo jugado AYER, checklist, a la mañana (evento 07:30 AR)
      3. lo que no entra (jugados en la previa, programados en el control)
      4. el cron: secreto, calendario propio, lectura incompleta, simulacion
      Nada sale a la red.
@@ -38,25 +38,31 @@ const grupos = [
 ];
 
 console.log('1. la previa');
-const pre = C.planificarPrevia(grupos, AHORA);
-t('cuenta los 3 de mañana sin repetir', pre.cantidad === 3, pre.cantidad);
-t('título', pre.evento.summary === '⚠️ Mañana hay carga: 3 partidos programados', pre.evento.summary);
-t('hoy a las 21:00 AR', pre.evento.inicio === '2026-11-01T21:00:00-03:00', pre.evento.inicio);
+const AHORA_P = Date.parse('2026-11-02T15:00:00Z');   // 2026-11-02 12:00 AR
+const pre = C.planificarPrevia(grupos, AHORA_P);
+t('cuenta los 3 de HOY sin repetir', pre.cantidad === 3, pre.cantidad);
+t('título con la fecha DD/MM/AA', pre.evento.summary === '⚠️ Partidos a jugarse hoy 02/11/26 (3)', pre.evento.summary);
+t('hoy a las 12:30 AR', pre.evento.inicio === '2026-11-02T12:30:00-03:00', pre.evento.inicio);
+t('a las 12:00 todavía no pasó el horario', pre.evento.atrasado === false);
 t('agrupa por torneo y zona', /APB Masculino · zona A \(2\)/.test(pre.evento.description)
   && /Bahía Blanca · zona ORO \(1\)/.test(pre.evento.description));
+t('dice partidos a jugarse hoy con fecha corta', /Partidos a jugarse hoy 02\/11\/26/.test(pre.evento.description));
+t('ninguna fecha en formato ISO', !/\d{4}-\d{2}-\d{2}/.test(pre.evento.summary + pre.evento.description), pre.evento.description);
 t('ordena por hora', pre.evento.description.indexOf('21:00 · ESTUDIANTES') < pre.evento.description.indexOf('22:00 · ATENAS'));
 t('no mete lo jugado', !/80/.test(pre.evento.description));
-t('id estable', C.planificarPrevia(grupos, AHORA).evento.id === pre.evento.id);
-t('singular', C.planificarPrevia([{ torneo: 'X', zona: 'a', partidos: [P('2026-11-02', 'A', 'B')] }], AHORA)
-  .evento.summary === '⚠️ Mañana hay carga: 1 partido programado');
-t('después de las 21:00 es atrasado', C.planificarPrevia([{ torneo: 'X', zona: 'a', partidos: [P('2026-11-02', 'A', 'B')] }],
-  Date.parse('2026-11-02T01:00:00Z')).evento.atrasado === true);
+t('no mete los de mañana', C.planificarPrevia(grupos, Date.parse('2026-11-01T15:00:00Z')).cantidad === 0);
+t('id estable', C.planificarPrevia(grupos, AHORA_P).evento.id === pre.evento.id);
+t('después de las 12:30 es atrasado', C.planificarPrevia(grupos, Date.parse('2026-11-02T16:00:00Z')).evento.atrasado === true);
+t('fechaCorta', C.fechaCorta('2026-11-02') === '02/11/26' && C.fechaCorta('2027-01-09') === '09/01/27');
 
 console.log('2. el control');
 const con = C.planificarControl(grupos, AHORA);
 t('cuenta los 2 jugados ayer', con.cantidad === 2, con.cantidad);
-t('título', con.evento.summary === '📋 Pendiente de Carga: Partidos jugados ayer (2)', con.evento.summary);
-t('hoy a las 09:00 AR (ya pasó a las 12:00)', con.evento.inicio === '2026-11-01T09:00:00-03:00' && con.evento.atrasado === true);
+t('título con la fecha DD/MM/AA', con.evento.summary === '📋 Se jugaron ayer 31/10/26: cargar resultados (2)', con.evento.summary);
+t('texto «se jugaron ayer», resultados y a cargar', /Se jugaron los siguientes partidos ayer 31\/10\/26/.test(con.evento.description)
+  && /cargar/.test(con.evento.description));
+t('sin fechas ISO', !/\d{4}-\d{2}-\d{2}/.test(con.evento.summary + con.evento.description));
+t('hoy a las 07:30 AR (ya pasó a las 12:00)', con.evento.inicio === '2026-11-01T07:30:00-03:00' && con.evento.atrasado === true);
 t('checklist con marcador', /☐ ATENAS 80 - 75 ESTUDIANTES/.test(con.evento.description)
   && /☐ OLIMPO 60 - 61 LINIERS/.test(con.evento.description));
 t('no incluye el sin marcador', !/PLATENSE vs|PLATENSE 0/.test(con.evento.description) && !/GIMNASIA/.test(con.evento.description));
@@ -86,7 +92,7 @@ t('catálogo vacío no rompe', C.torneosManuales(null).length === 0);
 const rep = P('2026-11-02', 'A', 'B');
 const dd = C.delDia([{ torneo: 'T', zona: 'a', partidos: [rep] }, { torneo: 'T', zona: 'b', partidos: [rep] }], '2026-11-02', false);
 t('el mismo cruce no se repite entre zonas', dd.length === 1 && dd[0].partidos.length === 1, dd);
-const ent = C.planificarPrevia([{ torneo: 'T', zona: 'a', partidos: [P('2026-11-02', '6&ordm; UNION', 'B')] }], Date.parse('2026-11-01T10:00:00Z'));
+const ent = C.planificarPrevia([{ torneo: 'T', zona: 'a', partidos: [P('2026-11-02', '6&ordm; UNION', 'B')] }], Date.parse('2026-11-02T10:00:00Z'));
 t('decodifica entidades HTML', /6º UNION/.test(ent.evento.description) && !/&ordm;/.test(ent.evento.description), ent.evento.description);
 
 console.log('4. el cron');

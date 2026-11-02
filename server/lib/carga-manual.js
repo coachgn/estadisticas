@@ -4,10 +4,10 @@
    Donde no hay ingesta automática alguien tiene que cargar los partidos
    a mano. Dos eventos en el Google Calendar compartido de MotorStats:
 
-     PREVIA   la tarde anterior (21:00 AR): «mañana hay carga», con los
-              partidos programados del día siguiente por torneo y zona.
-     CONTROL  la mañana siguiente (09:00 AR): «pendiente de carga», con una
-              checklist de lo que se jugó AYER.
+     PREVIA   el mediodía del mismo día (12:30 AR): «partidos a jugarse hoy»,
+              con los programados de HOY por torneo y zona.
+     CONTROL  la mañana siguiente (07:30 AR): «se jugaron ayer», con una
+              checklist de lo que se jugó AYER para cargar.
 
    `planificarPrevia()` y `planificarControl()` son PUROS (partidos y
    «ahora» adentro, evento afuera). Mismas decisiones que
@@ -54,8 +54,8 @@ function torneosManuales(cat) {
 }
 
 const FLUJOS = {
-  previa: { hora: '21:00', duracionMin: 30, recordatorios: [0] },
-  control: { hora: '09:00', duracionMin: 30, recordatorios: [0] },
+  previa: { hora: '12:30', duracionMin: 30, recordatorios: [0] },
+  control: { hora: '07:30', duracionMin: 30, recordatorios: [0] },
 };
 
 /** Los partidos de UNA fecha, agrupados por torneo y zona. */
@@ -93,6 +93,14 @@ function delDia(grupos, fecha, jugados) {
   return salida;
 }
 
+const SEP = '\n\n';
+
+/** AAAA-MM-DD → DD/MM/AA (el formato de TODO texto de los eventos). */
+function fechaCorta(f) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(f || ''));
+  return m ? m[3] + '/' + m[2] + '/' + m[1].slice(2) : String(f || '');
+}
+
 function total(grupos) { return grupos.reduce((n, g) => n + g.partidos.length, 0); }
 
 function bloque(grupos, linea) {
@@ -118,22 +126,21 @@ function evento(flujo, fecha, resumen, descripcion, cant, ahora) {
   };
 }
 
-/** Aviso de HOY (21:00) por los partidos programados para mañana. */
+/** Aviso del mediodía de HOY con los partidos programados para HOY. */
 function planificarPrevia(grupos, ahoraMs) {
   const ahora = ahoraMs === undefined ? Date.now() : ahoraMs;
   const hoy = A.hoyAR(ahora);
-  const manana = A.restarDias(hoy, -1);
-  const g = delDia(grupos, manana, false);
+  const g = delDia(grupos, hoy, false);
   const n = total(g);
-  if (!n) return { evento: null, cantidad: 0, fecha: manana };
-  const desc = 'Partidos programados para mañana ' + manana + ', a cargar cuando terminen:\n\n'
+  if (!n) return { evento: null, cantidad: 0, fecha: hoy };
+  const desc = 'Partidos a jugarse hoy ' + fechaCorta(hoy) + ' (torneos sin play-by-play):' + SEP
     + bloque(g, p => '• ' + (p.hora ? p.hora + ' · ' : '') + p.local + ' vs. ' + p.visitante)
-    + '\n\nAviso automático de MotorStats (torneos sin play-by-play).';
-  return { evento: evento('previa', hoy, '⚠️ Mañana hay carga: ' + n + (n === 1 ? ' partido programado' : ' partidos programados'),
-    desc, n, ahora), cantidad: n, fecha: manana };
+    + SEP + 'Aviso automático de MotorStats. Mañana a la mañana llega la checklist para cargarlos.';
+  return { evento: evento('previa', hoy, '⚠️ Partidos a jugarse hoy ' + fechaCorta(hoy) + ' (' + n + ')',
+    desc, n, ahora), cantidad: n, fecha: hoy };
 }
 
-/** Checklist de HOY (09:00) con lo que se jugó AYER. */
+/** Checklist de HOY (07:30) con lo que se jugó AYER. */
 function planificarControl(grupos, ahoraMs) {
   const ahora = ahoraMs === undefined ? Date.now() : ahoraMs;
   const hoy = A.hoyAR(ahora);
@@ -141,11 +148,12 @@ function planificarControl(grupos, ahoraMs) {
   const g = delDia(grupos, ayer, true);
   const n = total(g);
   if (!n) return { evento: null, cantidad: 0, fecha: ayer };
-  const desc = 'Partidos jugados ayer ' + ayer + ' pendientes de cargar en la plataforma:\n\n'
+  const desc = 'Se jugaron los siguientes partidos ayer ' + fechaCorta(ayer) + '. Resultados a cargar en la plataforma de estadísticas '
+    + '(tildá ☑ los que ya cargaste):' + SEP
     + bloque(g, p => '☐ ' + p.local + ' ' + p.ptsLocal + ' - ' + p.ptsVisitante + ' ' + p.visitante)
-    + '\n\nChecklist automática de MotorStats (torneos sin play-by-play).';
-  return { evento: evento('control', hoy, '📋 Pendiente de Carga: Partidos jugados ayer (' + n + ')',
+    + SEP + 'Checklist automática de MotorStats (torneos sin play-by-play).';
+  return { evento: evento('control', hoy, '📋 Se jugaron ayer ' + fechaCorta(ayer) + ': cargar resultados (' + n + ')',
     desc, n, ahora), cantidad: n, fecha: ayer };
 }
 
-module.exports = { torneosManuales, zonasDeTorneo, EXCLUIDOS, FLUJOS, planificarPrevia, planificarControl, delDia, idDe };
+module.exports = { torneosManuales, zonasDeTorneo, EXCLUIDOS, FLUJOS, planificarPrevia, planificarControl, delDia, idDe, fechaCorta };
