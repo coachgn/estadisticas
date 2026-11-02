@@ -373,10 +373,54 @@ const SGADD_FASES = (function () {
    * criterio para el selector, la llave, los partidos de la fase y los de
    * la postemporada: con dos, uno ve la fase y el otro no.
    */
+  /* EL NOMBRE DE LA FASE, FLEXIBLE (punto 165). El libro escribe
+     «REPECHAJE» y la declaración «REPECHAJE A-B» / «REPECHAJE - ZONA B/C»:
+     la carpeta de Drive no distingue la zona. Con la coincidencia exacta,
+     los partidos del repechaje quedaban huérfanos —la llave decía «sin
+     partidos todavía» con el partido jugado—. `faseBase` saca la
+     calificación de zona; `faseZonas` la devuelve para no cruzar dos
+     fases que dicen zonas distintas. */
+  const RE_CALIF_ZONA = /[\s\-–]*(?:ZONAS?\s*)?\b([A-D])\s*[\/\-–]\s*([A-D])\b\s*$/;
+  function sinAcentos(s) { return String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+  function faseBase(v) {
+    const s = sinAcentos(mayus(v)).replace(/\s+/g, ' ').trim();
+    return s.replace(RE_CALIF_ZONA, '').replace(/[\s\-–]+$/, '').trim();
+  }
+  function faseZonas(v) {
+    const m = RE_CALIF_ZONA.exec(sinAcentos(mayus(v)).trim());
+    return m ? [m[1], m[2]].sort().join('') : null;
+  }
+  /** ¿Este valor de FASE es el de la declaración, exacto o por familia? */
+  function libroCalza(f, v) {
+    if (!f || !f.libro) return false;
+    if (f.libro.indexOf(v) !== -1) return true;
+    const b = faseBase(v);
+    if (!b) return false;
+    const z = faseZonas(v);
+    return f.libro.some((lb) => {
+      if (faseBase(lb) !== b) return false;
+      const zl = faseZonas(lb);
+      return !z || !zl || z === zl;
+    });
+  }
+  /** ¿El calce es solo por familia (no exacto)? Ahí un partido puede ser de
+      otra fase hermana y se decide por los equipos (`partidoEnZonas`). */
+  function calzaPorFamilia(f, v) { return !!f && f.libro.indexOf(v) === -1 && libroCalza(f, v); }
+  /** Un partido de una fase calzada por familia solo es de ESTA si sus
+      equipos juegan en zonas que la fase cruza. Zona desconocida: no se
+      esconde. */
+  function partidoEnZonas(f, p, zonaDeEquipo) {
+    if (!f || !f.zonas || !f.zonas.length || !zonaDeEquipo) return true;
+    return [p.localClave || clave(p.local), p.visitanteClave || clave(p.visitante)].every((k) => {
+      const z = zonaDeEquipo[k];
+      return !z || f.zonas.indexOf(String(z).toLowerCase()) !== -1;
+    });
+  }
+
   function calza(f, faseLibro, torneoLibro) {
     if (!f) return false;
     const v = mayus(faseLibro), t = mayus(torneoLibro);
-    if (f.libro.indexOf(v) !== -1 && (!f.torneo || !t || t === f.torneo || t.indexOf('*') === 0)) return true;
+    if (libroCalza(f, v) && (!f.torneo || !t || t === f.torneo || t.indexOf('*') === 0)) return true;
     if (!t || !invertido(t, v)) return false;
     if (f.torneo && f.torneo !== v) return false;
     if (f.libro.indexOf(t) !== -1) return true;
@@ -389,15 +433,20 @@ const SGADD_FASES = (function () {
   /* Con `torneo` (punto 133) se prefiere la fase declarada para ESE
      torneo; una sin torneo vale para cualquiera. Sin torneo, o con un
      torneo sintético (`*TOTAL*`, la llave), la primera que calce. */
-  function declaradaDe(fases, faseLibro, torneo) {
-    const v = mayus(faseLibro);
-    const cands = (fases || []).filter(f => f.libro.indexOf(v) !== -1);
-    const t = mayus(torneo);
+  /* TODAS las fases declaradas que son este tramo, las exactas primero.
+     Con la calificación de zona fuera del libro («REPECHAJE») pueden ser
+     varias hermanas (A-B y B-C): quien muestra decide por los datos. */
+  function candidatasDe(fases, faseLibro, torneo) {
+    const v = mayus(faseLibro), t = mayus(torneo);
+    const todas = fases || [];
+    let c;
     if (t && t.indexOf('*') === -1) {
-      return (fases || []).find(f => f.torneo && calza(f, v, t))
-        || (fases || []).find(f => !f.torneo && calza(f, v, t)) || null;
-    }
-    return cands[0] || null;
+      c = todas.filter(f => f.torneo && calza(f, v, t)).concat(todas.filter(f => !f.torneo && calza(f, v, t)));
+    } else c = todas.filter(f => libroCalza(f, v));
+    return c.filter(f => !calzaPorFamilia(f, v)).concat(c.filter(f => calzaPorFamilia(f, v)));
+  }
+  function declaradaDe(fases, faseLibro, torneo) {
+    return candidatasDe(fases, faseLibro, torneo)[0] || null;
   }
 
   /** ¿La fase del libro se juega por series (llave) o todos contra todos (tabla)? */
@@ -457,8 +506,14 @@ const SGADD_FASES = (function () {
 
   function enriquecerTramos(tramos, fases) {
     const lista = (tramos || []).map((t) => {
-      const d = t.agregado ? null : declaradaDe(fases, t.fase, t.torneo);
+      const cands = t.agregado ? [] : candidatasDe(fases, t.fase, t.torneo);
+      const d = cands[0] || null;
       if (!d) return t;
+      /* VARIAS HERMANAS POR FAMILIA (REPECHAJE para A-B y B-C): el tramo
+         conserva su nombre —no es de una sola— y las cubre a todas. */
+      if (cands.length > 1 && cands.every(f => calzaPorFamilia(f, mayus(t.fase)))) {
+        return Object.assign({}, t, { declaradas: cands.map(f => f.id) });
+      }
       const general = CORE && t.torneo === CORE.TORNEO_GENERAL;
       const corte = t.label.lastIndexOf(' - ');
       /* Con la carpeta al revés el prefijo del tramo es la instancia
@@ -1117,8 +1172,10 @@ const SGADD_FASES = (function () {
       /* EL MISMO VALOR DE FASE EN DOS LIBROS («SEMIFINAL» de los playoffs
          A y de los B) no se mezcla: si la fase dice en qué libro se juega,
          solo entran los partidos de ESE libro (punto 78). */
-      const deFase = post.filter(x => (x.torneo ? calza(f, x.fase, x.torneo) : f.libro.indexOf(mayus(x.fase)) !== -1)
-        && (!f.zonaLibro || !x.zonaLibro || x.zonaLibro === f.zonaLibro)).map(partidoDeLlave)
+      const deFase = post.filter(x => calza(f, x.fase, x.torneo)
+        && (!f.zonaLibro || !x.zonaLibro || x.zonaLibro === f.zonaLibro)
+        && (!calzaPorFamilia(f, mayus(x.fase)) || x.zonaLibro || partidoEnZonas(f, partidoDeLlave(x), ctx.zonaDeEquipo)))
+        .map(partidoDeLlave)
         .filter((x) => { const k = clavePartido(x); if (ya.has(k)) return false; ya.add(k); return true; });
       if (deFase.length) ctx.partidosPorFase[f.id] = (ctx.partidosPorFase[f.id] || []).concat(deFase);
     });
@@ -1212,6 +1269,22 @@ const SGADD_FASES = (function () {
         ((typeof clasifManualesVigentes === 'function' ? clasifManualesVigentes(t.torneo, t.fase) : []) || [])
           .map(manualComoPartido).forEach(x => lista.push(x));
       });
+      /* LOS TRAMOS DEL LIBRO QUE SON ESTA FASE POR FAMILIA (punto 165): el
+         libro dice «REPECHAJE» y la declaración «REPECHAJE A-B». Se toman
+         los partidos cuyos equipos juegan en las zonas que la fase cruza:
+         con dos hermanas (A-B y B-C) cada partido va a la suya. */
+      if (hojas && CORE) {
+        const zonasEq = zonasDeEquipos(doc);
+        CORE.combinacionesTorneoFase(hojas)
+          .filter(t => !t.agregado && String(t.torneo || '').indexOf('*') !== 0
+            && calzaPorFamilia(f, mayus(t.fase)) && (!f.torneo || calza(f, t.fase, t.torneo)))
+          .forEach((t) => {
+            const ps = jugados(indiceDeTramo(hojas, t.torneo, t.fase))
+              .concat(((typeof clasifManualesVigentes === 'function' ? clasifManualesVigentes(t.torneo, t.fase) : []) || [])
+                .map(manualComoPartido));
+            ps.filter(x => partidoEnZonas(f, x, zonasEq)).forEach(x => lista.push(x));
+          });
+      }
       f.libro.forEach((v) => {
         if (f.torneo) {
           jugados(indiceDeTramo(hojas, f.torneo, v)).forEach(x => lista.push(x));
@@ -1356,6 +1429,16 @@ const SGADD_FASES = (function () {
     } catch (e) { return []; }
   }
 
+  /* La fase declarada de la barra. Con varias hermanas por familia
+     (REPECHAJE → A-B y B-C) gana la que tiene partidos; sin datos, la
+     primera. */
+  function faseActivaPorDatos(vis, st, ctx) {
+    const cands = candidatasDe(vis, st.fase, st.torneo);
+    if (cands.length < 2) return cands[0] || null;
+    const n = f => ((ctx.partidosPorFase && ctx.partidosPorFase[f.id]) || []).length;
+    return cands.reduce((m, f) => (n(f) > n(m) ? f : m), cands[0]);
+  }
+
   /**
    * La sección de la llave para Clasificación, o '' si la fase abierta
    * se juega todos contra todos.
@@ -1373,10 +1456,11 @@ const SGADD_FASES = (function () {
         destacar: (cr) => !!(propio && ((cr.a.nombre && propio(cr.a.nombre)) || (cr.b.nombre && propio(cr.b.nombre)))) };
       let cuerpo;
       if (declaradaDe(vis, st.fase, st.torneo)) {
-        const d = declaradaDe(vis, st.fase, st.torneo);
         /* Se resuelve con TODAS (una final A-B necesita la semifinal A) y
            se muestran solo las de la zona. */
-        const todo = llave(fases, contexto());
+        const ctx = contexto();
+        const d = faseActivaPorDatos(vis, st, ctx);
+        const todo = llave(fases, ctx);
         const soloVis = {};
         vis.forEach((f) => { if (todo[f.id]) soloVis[f.id] = todo[f.id]; });
         pedirEscudos(nombresDeLlave(soloVis));
@@ -1414,9 +1498,10 @@ const SGADD_FASES = (function () {
   function fixtureDeLlave() {
     const st = SGADD_APP.estado;
     const fases = declaradas();
-    const d = declaradaDe(visibles(), st.fase, st.torneo);
+    const ctx = contexto();
+    const d = faseActivaPorDatos(visibles(), st, ctx);
     if (!d) return '';
-    const porFase = llave(fases, contexto());
+    const porFase = llave(fases, ctx);
     const x = porFase[d.id];
     if (x) { const u = {}; u[d.id] = x; pedirEscudos(nombresDeLlave(u)); }
     const escudo = (typeof clasifEscudo === 'function') ? clasifEscudo : null;
@@ -1450,7 +1535,7 @@ const SGADD_FASES = (function () {
   return {
     /* motor */
     equiposDeFase, parsear, asignarZonas, visibleEnZona, filtrarPorZona, dependenciasDe, desambiguarEtiquetas,
-    declaradaDe, tipoDe, calza, invertido, instanciaDe, enriquecerTramos, grupoDeTramo, SIN_DATOS, LLAVE, esLlave, esEntreZonas,
+    declaradaDe, candidatasDe, faseBase, faseZonas, libroCalza, calzaPorFamilia, partidoEnZonas, tipoDe, calza, invertido, instanciaDe, enriquecerTramos, grupoDeTramo, SIN_DATOS, LLAVE, esLlave, esEntreZonas,
     mezclarLlave, partidoDeLlave, SECCIONES_EN_LLAVE, SECCIONES_QUE_USAN_LLAVE, repintarLaQueLaMuestra, bloqueaEnLlave,
     series, resumen, resolverSlot, llave, naturalezaCruce, naturalezaPartido, claveTramo, indiceDeTramo,
     faseDeFecha, tieneVentanas, tablaCerrada,

@@ -453,6 +453,76 @@ const OCT = [].concat(
     (ctx0.partidosPorFase.octavos || []).length === 1, (ctx0.partidosPorFase.octavos || []).length);
 }
 
+/* =====================================================================
+   6 ter · EL NOMBRE DE LA FASE FLEXIBLE (punto 165)
+
+   El libro escribe «REPECHAJE» y la declaración «REPECHAJE A-B» y
+   «REPECHAJE B-C»: la carpeta de Drive no distingue la zona. Con la
+   coincidencia exacta el partido quedaba huérfano: la llave decía «sin
+   partidos todavía» y el selector ofrecía el tramo con datos Y las dos
+   llaves.
+   ===================================================================== */
+seccion('6 ter · «REPECHAJE» del libro es «REPECHAJE A-B» y «B-C» de la declaración');
+{
+  check('faseBase saca la calificación de zona', ['REPECHAJE A-B', 'Repechaje - Zona A/B', 'REPECHAJE ZONA B-C', 'repechaje', 'REPECHAJE  B/C']
+    .every(v => F.faseBase(v) === 'REPECHAJE'), ['REPECHAJE A-B', 'Repechaje - Zona A/B', 'REPECHAJE ZONA B-C'].map(F.faseBase));
+  check('faseZonas devuelve las zonas ordenadas', F.faseZonas('REPECHAJE B-C') === 'BC' && F.faseZonas('Repechaje - Zona B/A') === 'AB' && F.faseZonas('REPECHAJE') === null);
+  check('una fase que no tiene calificación no se toca', F.faseBase('FASE REGULAR') === 'FASE REGULAR' && F.faseBase('SEMIFINAL') === 'SEMIFINAL');
+
+  const HOG = 'HOGAR SOCIAL', JUV = 'JUVENTUD', PLA = 'PLATENSE', CEY = 'C.E.Y.E.', CAP = 'CAPITAL CHICA';
+  const decl = F.parsear({ fases: [
+    { id: 'rep-bc', label: 'Repechaje - Zona B/C', libro: ['REPECHAJE B-C'], cruce: 'interzonal', zonaLibro: 'repechaje', serie: { mejorDe: 3 },
+      cruces: [{ id: 'R1', a: { zona: 'b', puesto: 3 }, b: { zona: 'c', puesto: 5 } }] },
+    { id: 'rep-ab', label: 'Repechaje - Zona A/B', libro: ['REPECHAJE A-B'], cruce: 'interzonal', zonaLibro: 'repechaje-a-b', serie: { mejorDe: 3 },
+      cruces: [{ id: 'R4', a: { zona: 'a', puesto: 10 }, b: { zona: 'b', puesto: 3 } }] }] },
+  { participan: { repechaje: ['b', 'c'], 'repechaje-a-b': ['a', 'b'] } }).fases;
+  const [bc, ab] = decl;
+
+  check('«REPECHAJE» calza con las dos hermanas', F.calza(bc, 'REPECHAJE', null) && F.calza(ab, 'REPECHAJE', null));
+  check('«REPECHAJE A-B» solo con la suya', F.calza(ab, 'REPECHAJE A-B', null) && !F.calza(bc, 'REPECHAJE A-B', null));
+  check('«REPECHAJE - ZONA A/B» también', F.calza(ab, 'REPECHAJE - ZONA A/B', null) && !F.calza(bc, 'REPECHAJE - ZONA A/B', null));
+  check('otra familia no calza (PLAYOFF)', !F.calza(ab, 'PLAYOFF', null) && !F.calza(ab, 'REPECHAJES X', null));
+  check('candidatasDe devuelve las dos para «REPECHAJE»', F.candidatasDe(decl, 'REPECHAJE', '').length === 2);
+  check('el exacto va primero', F.candidatasDe(decl, 'REPECHAJE A-B', '')[0].id === 'rep-ab');
+
+  const lib = libro([].concat(
+    partido('29/10/2026', '', 'REGULAR', JUV, HOG, 82, 87),
+    partido('29/10/2026', '', 'REPECHAJE', JUV, HOG, 82, 87)));
+  const tramos = SGADD.combinacionesTorneoFase(lib);
+  const sel = F.enriquecerTramos(tramos, decl);
+  const rep = sel.filter(t => t.fase === 'REPECHAJE');
+  check('el tramo con datos conserva SU nombre (no es de una sola hermana)', rep.length === 1 && !rep[0].declarada
+    && rep[0].declaradas && rep[0].declaradas.length === 2, rep);
+  check('no se suman las dos llaves como opciones paralelas', !sel.some(t => t.llave || t.sinDatos), sel.map(t => t.id + ' «' + t.label + '»'));
+  check('el tramo es postemporada en el selector', F.grupoDeTramo(rep[0], decl) === 'post');
+  check('y es de eliminación (Clasificación pinta la llave)', F.tipoDe('REPECHAJE', decl, '') === 'eliminacion');
+
+  /* El libro con la fase escrita igual que la declaración sigue como antes. */
+  const exacto = F.enriquecerTramos(SGADD.combinacionesTorneoFase(libro(partido('29/10/2026', '', 'REPECHAJE A-B', JUV, HOG, 82, 87))), decl);
+  const e1 = exacto.filter(t => t.declarada === 'rep-ab');
+  check('con el nombre exacto, una opción con el nombre del reglamento', e1.length === 1 && !e1[0].llave, exacto.map(t => t.id + ' «' + t.label + '»'));
+  check('y la hermana sin datos sigue ofreciéndose como llave', exacto.some(t => t.llave && t.declarada === 'rep-bc'));
+
+  /* La llave del servidor: el partido llega con FASE «REPECHAJE». */
+  const zonaDeEquipo = {}; zonaDeEquipo[JUV] = 'a'; zonaDeEquipo[PLA] = 'a'; zonaDeEquipo[HOG] = 'b'; zonaDeEquipo[CEY] = 'b'; zonaDeEquipo[CAP] = 'c';
+  const ZE = {}; Object.keys(zonaDeEquipo).forEach((n) => { ZE[SGADD.claveEquipo(n)] = zonaDeEquipo[n]; });
+  const ctx1 = { tablas: {}, nombresZona: {}, partidosPorFase: {}, zonaDeEquipo: ZE };
+  const post = [
+    { fase: 'REPECHAJE', torneo: null, zonaLibro: 'repechaje-a-b', fecha: '2026-10-29', local: JUV, visitante: HOG, ptsLocal: 82, ptsVisitante: 87 },
+    { fase: 'REPECHAJE', torneo: null, zonaLibro: 'repechaje', fecha: '2026-10-29', local: CEY, visitante: CAP, ptsLocal: 70, ptsVisitante: 60 }];
+  F.mezclarLlave(ctx1, decl, { zonas: {}, postemporada: { partidos: post } }, 'b', null);
+  check('el partido A/B va a la llave A/B (y solo a esa)', (ctx1.partidosPorFase['rep-ab'] || []).length === 1
+    && ctx1.partidosPorFase['rep-ab'][0].localClave === SGADD.claveEquipo(JUV), JSON.stringify(ctx1.partidosPorFase));
+  check('el partido B/C va a la llave B/C', (ctx1.partidosPorFase['rep-bc'] || []).length === 1);
+  /* Sin zonaLibro (un servidor viejo) se decide por las zonas de los equipos. */
+  const ctx2 = { tablas: {}, nombresZona: {}, partidosPorFase: {}, zonaDeEquipo: ZE };
+  F.mezclarLlave(ctx2, decl, { zonas: {}, postemporada: { partidos: post.map(p => Object.assign({}, p, { zonaLibro: undefined })) } }, 'b', null);
+  check('sin zonaLibro se decide por la zona de los equipos', (ctx2.partidosPorFase['rep-ab'] || []).length === 1
+    && (ctx2.partidosPorFase['rep-bc'] || []).length === 1, JSON.stringify(ctx2.partidosPorFase));
+  check('partidoEnZonas deja pasar a un equipo de zona desconocida', F.partidoEnZonas(ab, { localClave: 'X', visitanteClave: SGADD.claveEquipo(HOG) }, ZE));
+  check('y rechaza uno de otra zona', !F.partidoEnZonas(bc, { localClave: SGADD.claveEquipo(JUV), visitanteClave: SGADD.claveEquipo(HOG) }, ZE));
+}
+
 seccion('6 bis · la app real con el libro vinculado fusionado');
 {
   const root = { innerHTML: '' };

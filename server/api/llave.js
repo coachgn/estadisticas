@@ -282,7 +282,9 @@ function paraZonas(datos, t, zonas) {
 
   const incluye = (lista) => !lista || !lista.length || lista.some(z => zonas.has(String(z).toLowerCase()));
   const partidos = ((datos.postemporada && datos.postemporada.partidos) || []).filter((p) => {
-    const f = fases.find(x => x.libro.indexOf(String(p.fase || '').toUpperCase()) !== -1
+    /* Con el nombre flexible (punto 165): «REPECHAJE» en el libro es la
+       fase declarada «REPECHAJE A-B». */
+    const f = fases.find(x => FASES.libroCalza(x, String(p.fase || '').toUpperCase())
       && (!x.zonaLibro || !p.zonaLibro || x.zonaLibro === p.zonaLibro));
     if (f) return idsNec.has(f.id);
     return incluye(participan[p.zonaLibro]);
