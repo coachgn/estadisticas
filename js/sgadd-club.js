@@ -867,6 +867,9 @@ const CLUB = (function () {
          seccion lo dice en vez de quedar vacia. */
       if (k.torneo) p.torneoId = k.torneo;
       if (k.zona) p.zonaId = k.zona;
+      /* UN LIBRO VINCULADO (Playoffs, Repechaje, Permanencia) es una FASE
+         del torneo, no una categoría: el selector no lo ofrece. */
+      if (k.interzonal) p.interzonal = true;
       /* SI EL CLUB ES UN TORNEO, la categoría ES una de sus zonas: su
          fixture es el del propio torneo. Sin esto, abrir la Zona C decía
          «esta categoría no está enganchada a un torneo» — y es el torneo. */

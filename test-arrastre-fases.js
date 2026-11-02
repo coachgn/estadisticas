@@ -437,6 +437,13 @@ const OCT = [].concat(
   check('una carpeta al derecho sigue calzando como antes', (F.declaradaDe(bien, 'OCTAVOS', 'APERTURA') || {}).id === 'oct');
   check('otro torneo no calza (Clausura)', !F.declaradaDe(fases, 'CLAUSURA', 'OCTAVOS'));
 
+  /* La etapa del selector: la regular y su TOTAL son «regular»; los octavos
+     con datos, «post»; la llave y lo sin datos, «llave». */
+  check('grupoDeTramo: la regular es regular', sel.filter(t => t.id === 'APERTURA|REGULAR').every(t => F.grupoDeTramo(t, fases) === 'regular'));
+  check('grupoDeTramo: los octavos con datos son postemporada', F.grupoDeTramo(deOct[0], fases) === 'post');
+  check('grupoDeTramo: la llave va en su grupo', sinJugar.filter(t => t.llave).every(t => F.grupoDeTramo(t, fases) === 'llave'));
+  check('grupoDeTramo: sin tramo no rompe', F.grupoDeTramo(null, fases) === 'regular');
+
   /* La postemporada del servidor: sus partidos traen el TORNEO del libro. */
   const ctx0 = { tablas: {}, nombresZona: {}, partidosPorFase: {} };
   F.mezclarLlave(ctx0, fases, { zonas: {}, postemporada: { partidos: [

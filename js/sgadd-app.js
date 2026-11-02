@@ -841,6 +841,22 @@ const SGADD_APP = (function () {
     return partes.length ? ' · ' + partes.join(' · ') : '';
   }
 
+  /* Las opciones del selector Fase, agrupadas por etapa del torneo (Fase
+     regular → Postemporada) cuando hay más de una; con una sola, planas
+     como siempre. PURA. */
+  function opcionesDeTramos(tramos, tramoActual) {
+    const opt = t => `<option value="${SGADD_UI.esc(t.id)}" ${t.id === tramoActual ? 'selected' : ''} ${t.sinDatos ? 'disabled' : ''}>${SGADD_UI.esc(t.label)}</option>`;
+    const grupoDe = (typeof SGADD_FASES !== 'undefined' && SGADD_FASES.grupoDeTramo)
+      ? (t => SGADD_FASES.grupoDeTramo(t, SGADD_FASES.visibles())) : (() => 'regular');
+    const orden = ['regular', 'post', 'llave'];
+    const rot = { regular: 'Fase regular', post: 'Postemporada', llave: 'Postemporada · llaves y fases por jugar' };
+    const por = { regular: [], post: [], llave: [] };
+    (tramos || []).forEach(t => por[grupoDe(t)].push(t));
+    const usados = orden.filter(g => por[g].length);
+    if (usados.length < 2) return (tramos || []).map(opt).join('');
+    return usados.map(g => `<optgroup label="${rot[g]}">${por[g].map(opt).join('')}</optgroup>`).join('');
+  }
+
   /* ---------------------------------------------------------------------
      Barra de selección. La pintan todas las secciones SGADD.
      --------------------------------------------------------------------- */
@@ -849,7 +865,11 @@ const SGADD_APP = (function () {
     const planillas = SGADD.CATALOGO.planillas;
     const p = planillaActual();
 
-    const grupos = SGADD.agrupar(planillas, 'tira');
+    /* LA CATEGORÍA ES UNA COSA Y LA FASE OTRA. Un libro vinculado del
+       torneo (Playoffs - Zona A, Repechaje…) es una fase que se elige en
+       el selector Fase, no una categoría paralela. Solo se deja si es la
+       abierta (un link viejo a ese libro no puede dejar el select vacío). */
+    const grupos = SGADD.agrupar(planillas.filter(x => !x.interzonal || x.id === estado.planillaId), 'tira');
     let opts = '';
     grupos.forEach((lista, tira) => {
       const etiqueta = tira === 'null' || tira === '—'
@@ -916,7 +936,7 @@ const SGADD_APP = (function () {
             <label for="selTramo" class="block text-[11px] uppercase tracking-wider text-muted font-display mb-1">Fase</label>
             <select id="selTramo" onchange="SGADD_APP.cambiarTramo(this.value)"
               class="w-full bg-surface2 border border-hairline rounded-md px-3 py-2 text-sm focus:border-accent outline-none">
-              ${tramos.map(t => `<option value="${SGADD_UI.esc(t.id)}" ${t.id === tramoActual ? 'selected' : ''} ${t.sinDatos ? 'disabled' : ''}>${SGADD_UI.esc(t.label)}</option>`).join('')}
+              ${opcionesDeTramos(tramos, tramoActual)}
             </select>
           </div>`;
 

@@ -445,6 +445,16 @@ const SGADD_FASES = (function () {
     return esLlave(torneo) && SECCIONES_EN_LLAVE.indexOf(seccion) === -1;
   }
 
+  /** La etapa del torneo a la que pertenece un tramo del selector:
+      'regular' (liga y su TOTAL), 'post' (eliminatoria con datos) o
+      'llave' (llave entre zonas o fase todavía sin datos). PURA. */
+  function grupoDeTramo(t, fases) {
+    if (!t) return 'regular';
+    if (t.llave || t.sinDatos) return 'llave';
+    if (t.agregado) return 'regular';
+    return tipoDe(t.fase, fases, t.torneo) === 'eliminacion' ? 'post' : 'regular';
+  }
+
   function enriquecerTramos(tramos, fases) {
     const lista = (tramos || []).map((t) => {
       const d = t.agregado ? null : declaradaDe(fases, t.fase, t.torneo);
@@ -1440,7 +1450,7 @@ const SGADD_FASES = (function () {
   return {
     /* motor */
     equiposDeFase, parsear, asignarZonas, visibleEnZona, filtrarPorZona, dependenciasDe, desambiguarEtiquetas,
-    declaradaDe, tipoDe, calza, invertido, instanciaDe, enriquecerTramos, SIN_DATOS, LLAVE, esLlave, esEntreZonas,
+    declaradaDe, tipoDe, calza, invertido, instanciaDe, enriquecerTramos, grupoDeTramo, SIN_DATOS, LLAVE, esLlave, esEntreZonas,
     mezclarLlave, partidoDeLlave, SECCIONES_EN_LLAVE, SECCIONES_QUE_USAN_LLAVE, repintarLaQueLaMuestra, bloqueaEnLlave,
     series, resumen, resolverSlot, llave, naturalezaCruce, naturalezaPartido, claveTramo, indiceDeTramo,
     faseDeFecha, tieneVentanas, tablaCerrada,

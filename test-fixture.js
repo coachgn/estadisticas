@@ -464,7 +464,8 @@ seccion('14 · entrar al fixture antes de que exista el libro');
     APP.sufijoCategoria({ activo: false, torneoId: 'x', bloqueada: true, estado: 'pausado' }) === ' — pausada');
 
   const app = fs.readFileSync('js/sgadd-app.js', 'utf8');
-  const opt = app.slice(app.indexOf('<option value='), app.indexOf('<option value=') + 300);
+  const iOpt = app.indexOf('<option value="${SGADD_UI.esc(x.id)}"');
+  const opt = app.slice(iOpt, iOpt + 300);
   check('el selector la habilita', opt.indexOf('x.activo || (x.torneoId') !== -1, opt.slice(0, 140));
   check('pero NO si está bloqueada', opt.indexOf('!x.bloqueada') !== -1);
 }
