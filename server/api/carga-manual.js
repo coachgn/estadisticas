@@ -22,7 +22,6 @@ const calendar = require('../lib/google-calendar.js');
 const { partidosDe } = require('./alertas-partidos.js');
 const { verificarToken, tokenDeLaPeticion } = require('../lib/auth.js');
 const AUTH = require('../lib/compartido/sgadd-auth.js');
-const mailEnvio = require('../lib/mail-envio.js');
 const { mismoSecreto } = require('./mails.js');
 
 function error(status, codigo, mensaje) {
@@ -44,21 +43,6 @@ async function leerGrupos(deps) {
     }
   }
   return { grupos: grupos, fallaron: fallaron, torneos: torneos.map(t => t.torneo) };
-}
-
-/** Complemento del calendario: el mismo aviso por mail. Un fallo acá NO tumba
- *  la corrida (el evento ya está) pero se informa. */
-async function avisarPorMail(ev, d, env) {
-  const para = carga.destinosMail(env);
-  const m = carga.armarMail(ev);
-  const transporte = d.transporte || mailEnvio.transporteSmtp({ env: env });
-  const enviados = [];
-  const errores = [];
-  for (const a of para) {
-    try { await transporte.enviar({ para: a, asunto: m.asunto, html: m.html, texto: m.texto }); enviados.push(a); }
-    catch (e) { errores.push({ para: a, codigo: e.codigo || 'ERROR', mensaje: e.message }); }
-  }
-  return { enviado: enviados.length > 0, para: enviados, errores: errores };
 }
 
 async function manejarCronCargaManual(peticion, deps) {
@@ -107,13 +91,10 @@ async function manejarCronCargaManual(peticion, deps) {
   }
   try {
     const r = await (d.calendario || calendar).asegurarEvento(calendarId, ev, d);
-    /* El mail sale al crear o corregir el evento (o forzado), no cuando el cron
-       lo encuentra igual: correr dos veces no duplica el aviso. */
-    const mail = (r === 'creado' || r === 'actualizado' || forzar) ? await avisarPorMail(ev, d, env) : { enviado: false, motivo: 'evento sin cambios' };
-    return { status: 200, body: Object.assign({ ok: true, resultado: r, mail: mail, evento: { summary: ev.summary, inicio: ev.inicio } }, base) };
+    return { status: 200, body: Object.assign({ ok: true, resultado: r, evento: { summary: ev.summary, inicio: ev.inicio } }, base) };
   } catch (e) {
     return { status: 502, body: Object.assign({ ok: false, codigo: e.codigo || 'ERROR', mensaje: e.message }, base) };
   }
 }
 
-module.exports = { manejarCronCargaManual, avisarPorMail };
+module.exports = { manejarCronCargaManual };

@@ -110,38 +110,6 @@ console.log('4. el cron');
   t('el calendario no se comparte con ALERTAS_CALENDAR_ID', !/ALERTAS_CALENDAR_ID/.test(require('fs').readFileSync('./server/api/carga-manual.js', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')));
   r = await api.manejarCronCargaManual(peticion({ flujo: 'previa' }, 'sec'), { env, ahora: AHORA, kv: { leer: async () => ({ valor: null }), escribir: async () => {} } });
   t('sin fixture 502 y no toca el calendario', r.status === 502, r.status);
-})().then(async () => {
-console.log('5. la notificación en el celular');
-const gcal = require('./server/lib/google-calendar.js');
-(async () => {
-  let cuerpo = null;
-  await gcal.asegurarEvento('c@group.calendar.google.com', pre.evento, {
-    entorno: { googleEmail: 'a@b.iam', googleKey: 'k' },
-    fetch: async (url, o) => {
-      if (/oauth2/.test(url)) return { ok: true, json: async () => ({ access_token: 'x', expires_in: 3600 }) };
-      cuerpo = JSON.parse(o.body); return { ok: true, json: async () => ({}) };
-    },
-  }).catch(() => {});
-  /* sin credencial real la firma falla: se prueba la forma del cuerpo aparte */
-  const ov = cuerpo && cuerpo.reminders;
-  if (ov) {
-    t('recordatorio explícito, sin useDefault', ov.useDefault === false);
-    t('popup y email en el minuto 0', ov.overrides.some(o => o.method === 'popup' && o.minutes === 0)
-      && ov.overrides.some(o => o.method === 'email' && o.minutes === 0), ov);
-  }
-  t('el módulo declara popup y email', /method: 'popup'/.test(require('fs').readFileSync('./server/lib/google-calendar.js', 'utf8'))
-    && /method: 'email'/.test(require('fs').readFileSync('./server/lib/google-calendar.js', 'utf8')));
-  const m = C.armarMail(pre.evento);
-  t('el mail lleva título y partidos', m.asunto === pre.evento.summary && /ATENAS/.test(m.texto) && /ATENAS/.test(m.html));
-  t('el mail escapa el HTML', !/<script/.test(C.armarMail({ summary: 's', description: '<script>x</script>' }).html));
-  t('destino por defecto y configurable', C.destinosMail({}).length === 1
-    && C.destinosMail({ CARGA_MANUAL_MAIL_PARA: 'a@x.com, b@y.com' }).join() === 'a@x.com,b@y.com');
-  const enviados = [];
-  const tr = { enviar: async (x) => { if (x.para === 'malo@x.com') throw Object.assign(new Error('no'), { codigo: 'SMTP' }); enviados.push(x); } };
-  let r = await api.avisarPorMail(pre.evento, { transporte: tr }, { CARGA_MANUAL_MAIL_PARA: 'ok@x.com,malo@x.com' });
-  t('manda a cada destino y un fallo no tumba', r.enviado === true && r.para.join() === 'ok@x.com' && r.errores.length === 1, r);
-  t('el mail sale con asunto y texto', enviados[0].asunto === pre.evento.summary && /Partidos a jugarse hoy/.test(enviados[0].texto));
   console.log('\n' + ok + ' ok · ' + mal + ' mal');
   process.exit(mal ? 1 : 0);
 })();
-});

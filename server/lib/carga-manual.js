@@ -156,28 +156,4 @@ function planificarControl(grupos, ahoraMs) {
     desc, n, ahora), cantidad: n, fecha: ayer };
 }
 
-/* El aviso por MAIL (complemento del calendario): el popup de un evento
-   creado por una Service Account no es confiable en el celular de quien
-   mira el calendario (los recordatorios son por usuario), así que el mismo
-   aviso sale también por el mail institucional, que llega como push por la
-   app de Gmail apenas corre el cron. */
-const DESTINOS_POR_DEFECTO = ['freytesgn@gmail.com'];
-
-function destinosMail(env) {
-  const crudo = String((env || {}).CARGA_MANUAL_MAIL_PARA || '').split(/[,;\s]+/).filter(Boolean);
-  return crudo.length ? crudo : DESTINOS_POR_DEFECTO.slice();
-}
-
-function esc(t) {
-  return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function armarMail(ev) {
-  const texto = ev.summary + SEP + ev.description;
-  const html = '<div style="font-family:Arial,sans-serif;font-size:15px;color:#111;line-height:1.5">'
-    + '<h2 style="margin:0 0 12px">' + esc(ev.summary) + '</h2>'
-    + '<div style="white-space:pre-line">' + esc(ev.description) + '</div></div>';
-  return { asunto: ev.summary, texto: texto, html: html };
-}
-
-module.exports = { torneosManuales, destinosMail, armarMail, DESTINOS_POR_DEFECTO, zonasDeTorneo, EXCLUIDOS, FLUJOS, planificarPrevia, planificarControl, delDia, idDe, fechaCorta };
+module.exports = { torneosManuales, zonasDeTorneo, EXCLUIDOS, FLUJOS, planificarPrevia, planificarControl, delDia, idDe, fechaCorta };
