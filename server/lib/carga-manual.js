@@ -21,13 +21,37 @@
 const crypto = require('crypto');
 const A = require('./alertas-partidos.js');
 
-/* Qué torneos son manuales es un dato: sumar uno es sumar una entrada.
-   Las zonas salen del catálogo. */
-const TORNEOS = [
-  { torneo: 'apb-2026-masculino', etiqueta: 'APB Masculino' },
-  { torneo: 'apb-2026-formativas', etiqueta: 'APB Formativas' },
-  { torneo: 'bahia-blanca-2026', etiqueta: 'Bahía Blanca' },
-];
+/* Qué torneos son manuales SALE DEL CATÁLOGO: todo torneo (tipo «torneo»)
+   que declara una fuente de fixture y en el que ninguna zona tiene la capa
+   de laboratorio `pbp` (con play-by-play carga la ingesta sola). Un torneo
+   nuevo entra sin tocar código. `EXCLUIDOS` saca uno a mano. */
+const EXCLUIDOS = [];
+
+/** Las zonas a leer de un torneo: las que declara la fuente del fixture y,
+ *  si no, las categorías regulares enganchadas. Una zona de postemporada
+ *  (interzonal) no se lee aparte: sus partidos ya vienen en las fuentes. */
+function zonasDeTorneo(entrada) {
+  const decl = entrada && entrada.fixture && entrada.fixture.zonas;
+  const declaradas = decl && typeof decl === 'object' ? Object.keys(decl) : [];
+  if (declaradas.length) return declaradas;
+  const cats = (entrada && entrada.categorias) || {};
+  return Object.keys(cats).map(s => cats[s]).filter(c => c && c.zona && !c.interzonal
+    && (!c.rol || c.rol === 'regular')).map(c => c.zona);
+}
+
+function torneosManuales(cat) {
+  const todo = (cat && cat.catalogo) || {};
+  const salida = [];
+  Object.keys(todo).forEach((id) => {
+    const e = todo[id];
+    if (!e || e.tipo !== 'torneo' || EXCLUIDOS.indexOf(id) >= 0 || !e.fixture) return;
+    const conPbp = Object.keys(e.categorias || {}).some(s => ((e.categorias[s] || {}).laboratorio || []).indexOf('pbp') >= 0);
+    if (conPbp) return;
+    const zonas = zonasDeTorneo(e);
+    if (zonas.length) salida.push({ torneo: id, etiqueta: e.nombre || id, zonas: zonas });
+  });
+  return salida;
+}
 
 const FLUJOS = {
   previa: { hora: '21:00', duracionMin: 30, recordatorios: [0] },
@@ -35,17 +59,30 @@ const FLUJOS = {
 };
 
 /** Los partidos de UNA fecha, agrupados por torneo y zona. */
+const ENTIDADES = { ordm: 'º', ordf: 'ª', amp: '&', quot: '"', apos: "'", nbsp: ' ', lt: '<', gt: '>',
+  aacute: 'á', eacute: 'é', iacute: 'í', oacute: 'ó', uacute: 'ú', ntilde: 'ñ', uuml: 'ü',
+  Aacute: 'Á', Eacute: 'É', Iacute: 'Í', Oacute: 'Ó', Uacute: 'Ú', Ntilde: 'Ñ' };
+
+/** Las páginas de la fuente traen entidades HTML en los nombres («6&ordm;»). */
+function limpio(t) {
+  return String(t == null ? '' : t)
+    .replace(/&#(\d+);/g, (m, n) => String.fromCharCode(Number(n)))
+    .replace(/&([A-Za-z]+);/g, (m, k) => (ENTIDADES[k] !== undefined ? ENTIDADES[k] : m));
+}
+
+/* El MISMO cruce no se repite entre zonas de un torneo: las páginas de
+   playoffs/repechaje las comparten y salía tres veces. */
 function delDia(grupos, fecha, jugados) {
   const salida = [];
+  const vistos = {};
   (grupos || []).forEach((g) => {
-    const vistos = {};
     const lista = [];
     (g.partidos || []).forEach((p) => {
       if (!p || p.fecha !== fecha) return;
       const conMarcador = p.ptsLocal != null && p.ptsVisitante != null;
       if (jugados) { if (!conMarcador) return; }
       else if (conMarcador || (p.estado && p.estado !== 'PROGRAMADO')) return;
-      const k = A.claveDelPartido(p);
+      const k = (g.torneo || '') + '|' + A.claveDelPartido(p);
       if (vistos[k]) return;
       vistos[k] = true;
       lista.push(p);
@@ -59,8 +96,8 @@ function delDia(grupos, fecha, jugados) {
 function total(grupos) { return grupos.reduce((n, g) => n + g.partidos.length, 0); }
 
 function bloque(grupos, linea) {
-  return grupos.map(g => g.torneo + ' · zona ' + String(g.zona).toUpperCase() + ' (' + g.partidos.length + ')\n'
-    + g.partidos.map(linea).join('\n')).join('\n\n');
+  return limpio(grupos.map(g => g.torneo + ' · zona ' + String(g.zona).toUpperCase() + ' (' + g.partidos.length + ')\n'
+    + g.partidos.map(linea).join('\n')).join('\n\n'));
 }
 
 function idDe(flujo, fecha) {
@@ -111,4 +148,4 @@ function planificarControl(grupos, ahoraMs) {
     desc, n, ahora), cantidad: n, fecha: ayer };
 }
 
-module.exports = { TORNEOS, FLUJOS, planificarPrevia, planificarControl, delDia, idDe };
+module.exports = { torneosManuales, zonasDeTorneo, EXCLUIDOS, FLUJOS, planificarPrevia, planificarControl, delDia, idDe };

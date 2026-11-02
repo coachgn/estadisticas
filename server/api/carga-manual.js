@@ -27,28 +27,21 @@ function error(status, codigo, mensaje) {
   return { status: status, body: { ok: false, codigo: codigo, mensaje: mensaje } };
 }
 
-async function zonasDe(torneo, deps) {
-  const cat = await catalogo.cargar(deps);
-  const entrada = (cat.catalogo || {})[torneo];
-  const z = (entrada && entrada.zonas) || {};
-  return Object.keys(z).filter(id => !z[id].interzonal && (!z[id].rol || z[id].rol === 'regular'));
-}
-
 async function leerGrupos(deps) {
   const grupos = [];
   const fallaron = [];
-  for (const t of carga.TORNEOS) {
-    let zonas = [];
-    try { zonas = await zonasDe(t.torneo, deps); }
-    catch (e) { fallaron.push({ torneo: t.torneo, mensaje: e.message }); continue; }
-    for (const zona of zonas) {
+  let torneos = [];
+  try { torneos = carga.torneosManuales(await catalogo.cargar(deps)); }
+  catch (e) { return { grupos: grupos, fallaron: [{ torneo: '*', mensaje: 'catálogo: ' + e.message }], torneos: [] }; }
+  for (const t of torneos) {
+    for (const zona of t.zonas) {
       try {
         const r = await partidosDe({ torneo: t.torneo, zona: zona }, deps);
         grupos.push({ torneo: t.etiqueta, zona: zona, partidos: r.partidos, origen: r.origen });
       } catch (e) { fallaron.push({ torneo: t.torneo, zona: zona, mensaje: e.message }); }
     }
   }
-  return { grupos: grupos, fallaron: fallaron };
+  return { grupos: grupos, fallaron: fallaron, torneos: torneos.map(t => t.torneo) };
 }
 
 async function manejarCronCargaManual(peticion, deps) {
@@ -70,12 +63,16 @@ async function manejarCronCargaManual(peticion, deps) {
   const calendarId = env.TORNEOS_MANUALES_CALENDAR_ID || '';
   if (!calendarId && !simular) return error(503, 'SIN_CALENDARIO', 'TORNEOS_MANUALES_CALENDAR_ID no está configurado.');
 
-  const { grupos, fallaron } = await leerGrupos(Object.assign({}, d, { simular: simular }));
-  if (!grupos.length) return error(502, 'FIXTURE', 'No se pudo leer ningún fixture; el calendario no se toca.');
+  const { grupos, fallaron, torneos } = await leerGrupos(Object.assign({}, d, { simular: simular }));
+  if (!grupos.length) {
+    return { status: 502, body: { ok: false, codigo: 'FIXTURE', torneos: torneos, fallaron: fallaron,
+      mensaje: torneos.length ? 'No se pudo leer ningún fixture; el calendario no se toca.'
+        : 'No hay torneos manuales (con fixture y sin play-by-play) en el catálogo.' } };
+  }
 
   const plan = flujo === 'previa' ? carga.planificarPrevia(grupos, d.ahora) : carga.planificarControl(grupos, d.ahora);
   const base = { flujo: flujo, calendario: calendarId || null, hoy: alertas.hoyAR(d.ahora), fechaRevisada: plan.fecha,
-    cantidad: plan.cantidad, zonasLeidas: grupos.length, fallaron: fallaron, simulacion: simular };
+    cantidad: plan.cantidad, torneos: torneos, zonasLeidas: grupos.length, fallaron: fallaron, simulacion: simular };
   if (!plan.evento) return { status: 200, body: Object.assign({ ok: true, evento: null, motivo: 'Sin partidos para ese día.' }, base) };
   const ev = plan.evento;
   if (simular) {

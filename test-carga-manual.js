@@ -68,6 +68,27 @@ console.log('3. días vacíos');
 t('sin partidos no hay evento', C.planificarPrevia(grupos, Date.parse('2026-12-20T10:00:00Z')).evento === null);
 t('sin jugados no hay evento', C.planificarControl([], AHORA).evento === null);
 
+console.log('3 bis. los torneos manuales salen del catálogo (forma REAL: zonas en categorias)');
+const cat = { catalogo: {
+  masc: { tipo: 'torneo', nombre: 'APB Masc', fixture: { adaptador: 'auto', zonas: { a: {}, b: {} } },
+    categorias: { 'm-a': { zona: 'a' }, 'm-b': { zona: 'b' }, 'm-po': { zona: 'po', rol: 'playoffs', interzonal: true } } },
+  conPbp: { tipo: 'torneo', fixture: { zonas: { n: {} } }, categorias: { x: { zona: 'n', laboratorio: ['pbp'] } } },
+  sinFixture: { tipo: 'torneo', categorias: { y: { zona: 'u' } } },
+  club: { tipo: 'cliente', fixture: { zonas: { a: {} } } },
+  nuevo: { tipo: 'torneo', nombre: 'Nuevo', fixture: { adaptador: 'x' }, categorias: { n1: { zona: 'z1' }, n2: { zona: 'z2', rol: 'regular' } } },
+} };
+const tm = C.torneosManuales(cat);
+t('toma los que declaran fixture y no tienen pbp', tm.map(x => x.torneo).join() === 'masc,nuevo', tm.map(x => x.torneo));
+t('zonas de la fuente declarada', tm[0].zonas.join() === 'a,b');
+t('sin zonas declaradas usa las categorías regulares', tm[1].zonas.join() === 'z1,z2');
+t('un torneo nuevo entra sin tocar código', tm[1].etiqueta === 'Nuevo');
+t('catálogo vacío no rompe', C.torneosManuales(null).length === 0);
+const rep = P('2026-11-02', 'A', 'B');
+const dd = C.delDia([{ torneo: 'T', zona: 'a', partidos: [rep] }, { torneo: 'T', zona: 'b', partidos: [rep] }], '2026-11-02', false);
+t('el mismo cruce no se repite entre zonas', dd.length === 1 && dd[0].partidos.length === 1, dd);
+const ent = C.planificarPrevia([{ torneo: 'T', zona: 'a', partidos: [P('2026-11-02', '6&ordm; UNION', 'B')] }], Date.parse('2026-11-01T10:00:00Z'));
+t('decodifica entidades HTML', /6º UNION/.test(ent.evento.description) && !/&ordm;/.test(ent.evento.description), ent.evento.description);
+
 console.log('4. el cron');
 (async () => {
   const peticion = (q, auth) => ({ headers: auth ? { authorization: 'Bearer ' + auth } : {}, query: q });

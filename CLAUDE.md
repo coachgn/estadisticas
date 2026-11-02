@@ -16575,3 +16575,9 @@ server/vercel.json           previa «0 15 * * *» (12:00 AR) · control «0 10 
 - Sumar un torneo manual es una entrada más en `TORNEOS`.
 - **No verificado contra Google real** (probado con API de mentira); primero `?simular=1` con un token de admin.
 
+### Corrección del 2026-11-02 · el cron leía zonas que no existen
+La previa de las 12:00 AR no creó el evento: `zonasDe()` leía `entrada.zonas`, pero en el catálogo real las zonas viven en `categorias[slug].zona`, así que no encontraba ninguna y el cron respondía 502 `FIXTURE` sin tocar el calendario. El test usaba un catálogo inventado con `zonas` y no lo veía.
+- **Los torneos manuales salen del catálogo** (`torneosManuales`): todo `tipo: 'torneo'` con `fixture` y ninguna zona con la capa `pbp`. Sin lista escrita a mano; `EXCLUIDOS` saca uno. Las zonas son las de `fixture.zonas` o, si no, las categorías regulares.
+- El mismo cruce no se repite entre zonas de un torneo y las entidades HTML de la fuente («6&ordm;») se decodifican.
+- **Disparo inmediato**: `node server/bin/carga-manual.js previa|control [--real]` corre el mismo handler con las credenciales de `server/.env` (necesita `TORNEOS_MANUALES_CALENDAR_ID` en el entorno). Sin `--real` simula.
+
