@@ -104,7 +104,9 @@ async function asegurarEvento(calendarId, evento, deps) {
     /* SIN useDefault: el aviso tiene que despertar el celular sí o sí, no
        depender de cómo el usuario configuró su calendario. */
     reminders: { useDefault: false,
-      overrides: (evento.recordatorios || [0]).map(m => ({ method: 'popup', minutes: m })) },
+      overrides: [].concat(
+        (evento.recordatorios || [0]).map(m => ({ method: 'popup', minutes: m })),
+        (evento.recordatorios || [0]).map(m => ({ method: 'email', minutes: m }))) },
     extendedProperties: { private: evento.privadas || {} },
     transparency: 'transparent',
   };

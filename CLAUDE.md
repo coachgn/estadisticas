@@ -16587,3 +16587,8 @@ La previa de las 12:00 AR no creó el evento: `zonasDe()` leía `entrada.zonas`,
 - **Todas las fechas de los textos van en DD/MM/AA** (`fechaCorta`); el id y la lógica interna siguen en ISO.
 - `?forzar=1` (o `--forzar` en el bin) crea el evento aunque su horario ya haya pasado.
 
+
+### Notificación en el celular (2026-11-02)
+Un evento creado por la Service Account lleva `reminders` explícitos (popup y email en el minuto 0), pero esos recordatorios son por usuario y no despiertan el celular de quien solo mira el calendario compartido. Por eso, **además**, el cron manda el mismo aviso por mail (`avisarPorMail`, SMTP de `motorstats.ar@gmail.com`) apenas crea o corrige el evento; llega como push por la app de Gmail.
+- Destinatarios: `CARGA_MANUAL_MAIL_PARA` (lista separada por comas) o, sin ella, `freytesgn@gmail.com`.
+- Un fallo del mail no tumba la corrida y se informa en `mail.errores`; no se manda cuando el evento ya estaba igual (salvo `--forzar`).
