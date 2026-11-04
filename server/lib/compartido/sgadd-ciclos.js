@@ -527,7 +527,80 @@ const SGADD_CICLOS = (function () {
     return err('ACCION', 'Acción desconocida.');
   }
 
+  /* ===================================================== PLAN DE INTERVENCIÓN
+     Cada meta sale de un número del ciclo y se expresa en PUNTOS POR PARTIDO que
+     se recuperan al llevarla a lo que rinde la liga. Nada se inventa: lo que el
+     paquete no trae (la vara de la liga) deja la meta afuera.
+       zonas     defensa: lo que el rival rindió de más en esa zona · ataque: lo que se rindió de menos
+       transición  el exceso del rival por origen en los primeros 7 s (ya viene por partido)
+       pérdidas  la mitad de lo que el rival anotó tras pérdidas propias (criterio declarado)
+     Las metas se pisan entre sí (un tiro en transición es también un tiro de una zona),
+     así que la suma teórica no es un pronóstico: el escenario prudente la reduce por SOLAPE. */
+  const SOLAPE_PRUDENTE = 0.5;
+  const MIN_TIROS_META = 5;       // una zona con menos tiros no es meta: no hay con qué medirla
+  const MIN_META_PP = 0.15;       // por debajo, la meta no pesa lo suficiente para entrar a la tabla
+
+  function planIntervencion(c) {
+    const out = { metas: [], balance: null, escenarios: null, criterio: { solape: SOLAPE_PRUDENTE, minPP: MIN_META_PP, minTiros: MIN_TIROS_META }, sinVara: false };
+    if (!c || !c.meta || !c.meta.partidos) return out;
+    const n = c.meta.partidos;
+    const metas = out.metas;
+    /* Lo recuperable en una zona usa el rendimiento AJUSTADO por muestra (K tiros de liga): 0 de 4 no
+       es «cero real», y sin el ajuste las zonas de pocos tiros inflaban el total. */
+    const dec = (v, d) => Number(v).toFixed(d).replace('.', ',');
+    const recup = (z) => (z.pptAjustado === null || z.ligaPpt === null || z.pptAjustado === undefined) ? null : (z.pptAjustado - z.ligaPpt) * z.i;
+    (c.zonas.contra || []).forEach((z) => {
+      const r = recup(z);
+      if (r === null || r <= 0 || z.i < MIN_TIROS_META) return;
+      const pp = r2(r / n);
+      if (pp < MIN_META_PP) return;
+      metas.push({ id: 'def-' + z.zona, lado: 'Defensa', tipo: 'zona', zona: z.zona,
+        meta: `Cerrar ${z.zona}: dejar de conceder sobre la liga`, cambio: `${dec(z.pptAjustado, 2)} → ${dec(z.ligaPpt, 2)} pts por tiro`,
+        ptsPP: pp, base: `${z.i} tiros concedidos en ${n} partidos (${z.c} convertidos, ${dec(z.pct, 1)} %), ${dec(z.ppt, 2)} pts por tiro crudo y ${dec(z.pptAjustado, 2)} ajustado por muestra, liga ${dec(z.ligaPpt, 2)}`, muestraChica: z.muestraChica });
+    });
+    (c.zonas.favor || []).forEach((z) => {
+      const r = recup(z);
+      if (r === null || r >= 0 || z.i < MIN_TIROS_META) return;
+      const pp = r2(-r / n);
+      if (pp < MIN_META_PP) return;
+      metas.push({ id: 'atq-' + z.zona, lado: 'Ataque', tipo: 'zona', zona: z.zona,
+        meta: `Recuperar el rendimiento de ${z.zona}`, cambio: `${dec(z.pptAjustado, 2)} → ${dec(z.ligaPpt, 2)} pts por tiro`,
+        ptsPP: pp, base: `${z.i} tiros propios en ${n} partidos (${z.c} convertidos, ${dec(z.pct, 1)} %), ${dec(z.ppt, 2)} pts por tiro crudo y ${dec(z.pptAjustado, 2)} ajustado por muestra, liga ${dec(z.ligaPpt, 2)}`, muestraChica: z.muestraChica });
+    });
+    const tr = c.transicion || {};
+    if (tr.sinVara) out.sinVara = true;
+    ORIGENES.forEach((o) => {
+      const x = (tr.porOrigen || {})[o];
+      if (!x || !x.liga || !(x.exceso >= MIN_META_PP)) return;
+      metas.push({ id: 'tr-' + o, lado: 'Defensa', tipo: 'transicion', origen: o,
+        meta: `Transición 0-7 s tras ${o}: bajar lo que anota el rival`, cambio: `${dec(x.ptsPP, 2)} → ${dec(x.liga.ptsPP, 2)} pts por partido`,
+        ptsPP: x.exceso, base: `franja 0-7 s, ${x.tiros} tiros del rival en ${n} partidos (${dec(x.tirosPP, 2)} por partido, liga ${dec(x.liga.tirosPP, 2)}), ${x.pts} pts, ${x.perd} pérdidas` });
+    });
+    const perdidas = (c.causas.jugadores || []).reduce((t, j) => t + j.perdidas, 0);
+    const ptsPerd = (c.causas.jugadores || []).reduce((t, j) => t + j.puntosRival, 0);
+    if (ptsPerd > 0) {
+      const pp = r2(ptsPerd / n * 0.5);
+      if (pp >= MIN_META_PP) metas.push({ id: 'atq-perdidas', lado: 'Ataque', tipo: 'perdidas',
+        meta: 'Cuidar la pelota: bajar a la mitad las pérdidas que el rival convierte', cambio: `${ptsPerd} → ${dec(ptsPerd / 2, 1)} pts del rival en ${n} partidos`,
+        ptsPP: pp, base: `${perdidas} pérdidas propias en ${n} partidos que valieron ${ptsPerd} pts al rival (${dec(ptsPerd / n, 1)} por partido). Criterio: la mitad, no la liga` });
+    }
+    metas.sort((a, b) => b.ptsPP - a.ptsPP);
+    const ataque = r2(sum(metas.filter(m => m.lado === 'Ataque'), m => m.ptsPP));
+    const defensa = r2(sum(metas.filter(m => m.lado === 'Defensa'), m => m.ptsPP));
+    const total = r2(ataque + defensa);
+    out.balance = { ataque, defensa, total, pctAtaque: total ? r1(100 * ataque / total) : null, pctDefensa: total ? r1(100 * defensa / total) : null };
+    const margen = c.resultados && c.resultados.puntos ? r1(c.resultados.puntos.dif / n) : null;
+    const prudente = r1(total * SOLAPE_PRUDENTE);
+    out.escenarios = {
+      teorico: r1(total), prudente, margenActual: margen,
+      margenTeorico: margen === null ? null : r1(margen + total), margenPrudente: margen === null ? null : r1(margen + prudente),
+      siguiente: c.meta.numero === null || c.meta.numero === undefined ? null : c.meta.numero + 1,
+    };
+    return out;
+  }
+
   return {
+    planIntervencion, SOLAPE_PRUDENTE,
     PARTIDOS_POR_CICLO, K_MUESTRA, MIN_TIROS_ZONA, ORIGENES, ZONAS, ESTADOS, LECTURAS, MAX_LECTURA,
     lecturasBase, limpiarLecturas, transicionarGestion,
     partidosDe, ventanas, armarCiclo, armarVentana, claveSello, huella, sellar, verificar, historial, auditar, comparar,

@@ -84,6 +84,20 @@ console.log('Error de carga');
 UI.estado.paq = null; UI.estado.error = 'Sin conexión';
 check('un fallo se dice', /No se pudo leer/.test(UI.html(idx)));
 
+{
+  const cic = global.SGADD_CICLOS;
+  const mk = () => ({ ciclos: { partidos: [0, 1, 2, 3].map(i => ({ id: 'p' + i, fecha: '2026-03-0' + (i + 1), rival: 'R' + i, condicion: 'LOCAL', final: [70, 75],
+      zonas: { favor: cic.ZONAS.map(() => [10, 2]), contra: cic.ZONAS.map(() => [8, 5]) }, trans: { rival: { RD: [2, 2, 4, 0] } }, causas: { perd: { 'X': [2, 4] } },
+      cuartos: { favor: [[1, 1, 2, 1], [1, 1, 2, 1], [1, 1, 2, 1], [1, 1, 2, 1]], contra: [[1, 1, 2, 1], [1, 1, 2, 1], [1, 1, 2, 1], [1, 1, 2, 1]] }, parciales: [[18, 18], [18, 18], [17, 20], [17, 19]] })) },
+    liga: { zonas: cic.ZONAS.map(z => ({ zona: z, ppt: 1.0 })), ciclos: { lados: 8, trans: { RD: [8, 4, 8, 0] } } } });
+  const c = cic.armarCiclo(mk(), 0);
+  const h = UI.bloquePlan(c);
+  const todas = ['Balance estructural', 'Meta táctica', 'Pts por partido', 'Base', 'Sumatoria teórica', 'Escenario prudente', 'Margen hacia el Ciclo 1'].every(t => h.indexOf(t) >= 0);
+  ok += todas ? 1 : 0; fail += todas ? 0 : 1; if (!todas) console.log('  ✗ el plan trae balance, tabla maestra y escenarios');
+  const sinNaN = !/NaN|undefined/.test(h);
+  ok += sinNaN ? 1 : 0; fail += sinNaN ? 0 : 1; if (!sinNaN) console.log('  ✗ el plan no muestra NaN ni undefined');
+}
+
 console.log(`\n${ok} pasan · ${fail} fallan`);
 process.exit(fail ? 1 : 0);
 

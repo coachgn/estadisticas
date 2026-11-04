@@ -319,16 +319,29 @@ const SGADD_CICLOSUI = (function () {
 
   /** El plan sale de lo medido en el ciclo: cada punto cita su número. No hay consejos que el dato no sostenga. */
   function bloquePlan(c) {
-    const pts = [];
-    (c.zonas.fugas || []).forEach(z => pts.push({ t: 'Defensa', tono: 'zona-peligro', x: `{{${z.zona}}}: concede ${f2(z.ppt)} pts por tiro en ${z.i} tiros, ${signo(z.puntosDeMas)} pts sobre la liga${z.muestraChica ? ' (muestra chica)' : ''}.` }));
-    (c.zonas.propiasBajas || []).slice(0, 2).forEach(z => pts.push({ t: 'Ataque', tono: 'zona-aviso', x: `{{${z.zona}}}: rinde ${f1(Math.abs(z.puntosDeMas))} pts bajo la liga en ${z.i} tiros.` }));
-    CI.ORIGENES.forEach((o) => { const x = c.transicion.porOrigen[o]; if (x && x.exceso > 0.15) pts.push({ t: 'Transición', tono: 'zona-peligro', x: `${NOMBRE_ORIGEN[o]}: el rival anota ${f2(x.ptsPP)} pts por partido, ${signo(x.exceso, 2)} sobre la liga.` }); });
-    c.cuartos.filter(q => q.parcial.dif < 0).forEach(q => pts.push({ t: 'Cuartos', tono: 'zona-aviso', x: `Q${q.cuarto}: ${signo(q.parcial.dif)} en el ciclo (${q.parcial.favor}-${q.parcial.contra}).` }));
-    c.causas.jugadores.slice(0, 2).forEach(j => pts.push({ t: 'Pérdidas', tono: 'zona-aviso', x: `${esc(j.nombre)}: ${j.perdidas} pérdidas que valieron ${j.puntosRival} pts al rival.` }));
-    const lista = pts.length ? `<ul class="text-xs space-y-2">${pts.map(p => `<li><span class="zona-texto ${p.tono}">◆ ${p.t}</span> ${CA ? CA.enlazarZonas(p.x) : p.x}</li>`).join('')}</ul>`
-      : '<p class="text-xs text-muted">El ciclo no deja puntos que se separen de la liga.</p>';
-    return `<div class="rend-card" style="grid-column:1/-1" data-cancha-bloque><h3 class="font-display uppercase tracking-wide text-xs text-ink mb-2">Plan de intervención · puntos a trabajar en el ciclo siguiente</h3>${lista}
-      <p class="text-[11px] text-muted mt-2">Cada punto sale de un número del ciclo ${c.meta.numero}. Cómo se trabaja lo decide el cuerpo técnico.</p></div>`;
+    const P = CI.planIntervencion(c);
+    const b = P.balance, e = P.escenarios;
+    const sg1 = (v) => (v === null || v === undefined) ? '—' : signo(v);
+    const barra = (t, pts, pct, tono) => `<div class="mb-2"><div class="flex justify-between text-xs"><span class="font-semibold">${t}</span><span>${pct === null ? '—' : f1(pct)} % · +${f2(pts)} pts por partido</span></div>
+      <div class="h-3 rounded bg-surface2 overflow-hidden" role="img" aria-label="${t} ${pct === null ? 'sin dato' : f1(pct) + ' por ciento'}"><div class="h-3 ${tono}" style="width:${pct === null ? 0 : Math.max(2, pct)}%;background:${tono === 'a' ? 'var(--acento)' : '#94a3b8'}"></div></div></div>`;
+    const balance = b && b.total ? `<div class="mb-4"><h4 class="font-display uppercase tracking-wide text-[11px] text-muted mb-2">Balance estructural · dónde está el margen de mejora</h4>
+        ${barra('Ataque', b.ataque, b.pctAtaque, 'a')}${barra('Defensa', b.defensa, b.pctDefensa, 'd')}
+        <p class="text-[11px] text-muted">Peso de cada lado sobre el total de puntos por partido recuperables (+${f2(b.total)}) al llevar cada meta a lo que rinde la liga.</p></div>` : '';
+    const tabla = P.metas.length ? `<div class="scrollbox mb-4"><table class="w-full text-xs"><thead><tr class="text-muted"><th>Lado</th><th>Meta táctica</th><th>Cambio</th><th>Pts por partido</th><th>Base</th></tr></thead><tbody>${
+      P.metas.map(m => `<tr><td><span class="zona-texto ${m.lado === 'Defensa' ? 'zona-peligro' : 'zona-aviso'}">◆ ${m.lado}</span></td>
+        <td>${CA ? CA.enlazarZonas(m.zona ? esc(m.meta).replace(m.zona, '{{' + m.zona + '}}') : esc(m.meta)) : esc(m.meta)}${m.muestraChica ? ' <span class="text-muted">(muestra chica)</span>' : ''}</td>
+        <td class="whitespace-nowrap">${esc(m.cambio)}</td><td class="whitespace-nowrap font-semibold">+${f2(m.ptsPP)}</td><td class="text-muted">${esc(m.base)}</td></tr>`).join('')}</tbody></table></div>`
+      : '<p class="text-xs text-muted mb-4">El ciclo no deja metas que se separen de la liga con el peso mínimo (' + P.criterio.minPP + ' pts por partido).</p>';
+    const esc2 = e && b && b.total ? `<div class="mb-4"><h4 class="font-display uppercase tracking-wide text-[11px] text-muted mb-2">Escenarios y solapes</h4>
+        <div class="grid gap-2 sm:grid-cols-3 text-xs">
+          <div class="rend-card"><div class="text-muted">Sumatoria teórica</div><div class="text-lg font-semibold">+${f1(e.teorico)} pts</div><div class="text-[11px] text-muted">Todas las metas a la vez. No es un pronóstico: se pisan entre sí.</div></div>
+          <div class="rend-card"><div class="text-muted">Escenario prudente</div><div class="text-lg font-semibold">+${f1(e.prudente)} pts</div><div class="text-[11px] text-muted">${Math.round(P.criterio.solape * 100)} % de la teórica, por solape entre metas (criterio declarado).</div></div>
+          <div class="rend-card"><div class="text-muted">Margen hacia ${e.siguiente === null ? 'el próximo corte' : 'el Ciclo ' + e.siguiente}</div><div class="text-lg font-semibold">${sg1(e.margenActual)} → ${sg1(e.margenPrudente)}</div><div class="text-[11px] text-muted">Margen por partido de hoy, y con el escenario prudente${e.margenTeorico === null ? '' : ' (teórico ' + sg1(e.margenTeorico) + ')'}.</div></div>
+        </div></div>` : '';
+    const cuartos = c.cuartos.filter(q => q.parcial.dif < 0);
+    const extra = cuartos.length ? `<p class="text-xs"><span class="zona-texto zona-aviso">◆ Cuartos</span> ${cuartos.map(q => `Q${q.cuarto}: ${signo(q.parcial.dif)} (${q.parcial.favor}-${q.parcial.contra})`).join(' · ')}. No suman a la tabla: son el mismo partido visto por tiempo.</p>` : '';
+    return `<div class="rend-card" style="grid-column:1/-1" data-cancha-bloque><h3 class="font-display uppercase tracking-wide text-xs text-ink mb-3">Plan de intervención · ciclo ${c.meta.numero}</h3>${balance}${tabla}${esc2}${extra}
+      <p class="text-[11px] text-muted mt-2">Cada meta sale de un número del ciclo ${c.meta.numero} y se mide contra la liga. Cómo se trabaja lo decide el cuerpo técnico.${P.sinVara ? ' El paquete no trae la vara de transición de la liga: esas metas no se calculan.' : ''}</p></div>`;
   }
 
 

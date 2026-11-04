@@ -165,5 +165,23 @@ sec('6 · la ingesta real');
   }
 }
 
+sec('7 · plan de intervención: balance, metas y escenarios');
+{
+  const c = C.armarCiclo(paq, 0), P = C.planIntervencion(c);
+  ok(Array.isArray(P.metas) && P.balance && P.escenarios, 'el plan trae metas, balance y escenarios');
+  ok(P.metas.every((m, i, a) => i === 0 || a[i - 1].ptsPP >= m.ptsPP), 'las metas van de mayor a menor en pts por partido');
+  ok(P.metas.every(m => m.ptsPP >= P.criterio.minPP && m.base && m.cambio && m.meta && (m.lado === 'Ataque' || m.lado === 'Defensa')), 'toda meta trae lado, cambio, base y el piso de peso');
+  ok(Math.abs(P.balance.ataque + P.balance.defensa - P.balance.total) < 0.011, 'ataque + defensa = total');
+  ok(P.balance.total === 0 || Math.abs(P.balance.pctAtaque + P.balance.pctDefensa - 100) < 0.21, 'los porcentajes cierran en 100');
+  ok(Math.abs(P.escenarios.prudente - P.escenarios.teorico * C.SOLAPE_PRUDENTE) < 0.06, 'el prudente es el teórico por el solape declarado');
+  ok(P.escenarios.margenPrudente === Math.round((P.escenarios.margenActual + P.escenarios.prudente) * 10) / 10, 'el margen proyectado suma el prudente al de hoy');
+  ok(P.escenarios.siguiente === 1, 'proyecta hacia el ciclo siguiente');
+  const sinLiga = copia(paq); delete sinLiga.liga;
+  const Q = C.planIntervencion(C.armarCiclo(sinLiga, 0));
+  ok(Q.metas.every(m => m.tipo === 'perdidas'), 'sin vara de la liga solo queda lo que no la necesita');
+  ok(!/NaN|undefined|Infinity/.test(JSON.stringify(P)), 'el plan no trae NaN, undefined ni Infinity');
+  ok(C.planIntervencion(null).metas.length === 0, 'sin ciclo no rompe');
+}
+
 console.log('\n' + pasan + ' pasan · ' + fallan + ' fallan');
 process.exit(fallan ? 1 : 0);
