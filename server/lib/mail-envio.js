@@ -85,6 +85,9 @@ function construirMensaje(m, opciones) {
   const limite = 'ms_' + (o.limite || crypto.randomBytes(12).toString('hex'));
   const id = '<' + (o.id || crypto.randomBytes(16).toString('hex')) + '@motorstats.ar>';
   const fecha = (o.fecha || new Date()).toUTCString().replace('GMT', '+0000');
+  const adjuntos = (m.adjuntos || []).filter(a => a && a.contenido);
+  const conAdjuntos = adjuntos.length > 0;
+  const limiteExterno = 'ms_mx_' + (o.limite || crypto.randomBytes(12).toString('hex'));
   const encabezados = [
     'From: ' + codificarEncabezado(NOMBRE_REMITENTE) + ' <' + REMITENTE + '>',
     'To: <' + para + '>',
@@ -93,9 +96,9 @@ function construirMensaje(m, opciones) {
     'Date: ' + fecha,
     'Message-ID: ' + id,
     'MIME-Version: 1.0',
-    'Content-Type: multipart/alternative; boundary="' + limite + '"',
+    'Content-Type: ' + (conAdjuntos ? 'multipart/mixed; boundary="' + limiteExterno + '"' : 'multipart/alternative; boundary="' + limite + '"'),
   ];
-  return encabezados.join('\r\n') + '\r\n\r\n'
+  const alternativa = (conAdjuntos ? 'Content-Type: multipart/alternative; boundary="' + limite + '"\r\n\r\n' : '')
     + '--' + limite + '\r\n'
     + 'Content-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n'
     + base64Lineas(m.texto || '')
@@ -103,6 +106,24 @@ function construirMensaje(m, opciones) {
     + 'Content-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n'
     + base64Lineas(m.html || '')
     + '--' + limite + '--\r\n';
+  if (!conAdjuntos) return encabezados.join('\r\n') + '\r\n\r\n' + alternativa;
+  /* multipart/mixed: el cuerpo (alternativa) y un adjunto por parte. El
+     nombre del archivo se limpia: va en un encabezado y no puede traer
+     saltos de línea ni comillas. */
+  const partes = adjuntos.map((a) => {
+    const nombre = String(a.nombre || 'adjunto').replace(/[\r\n"\\]+/g, ' ').trim();
+    const cod = codificarEncabezado(nombre);
+    const tipo = String(a.tipo || 'application/octet-stream').replace(/[\r\n;"\s]+/g, '');
+    return '--' + limiteExterno + '\r\n'
+      + 'Content-Type: ' + tipo + '; name="' + cod + '"\r\n'
+      + 'Content-Transfer-Encoding: base64\r\n'
+      + 'Content-Disposition: attachment; filename="' + cod + '"\r\n\r\n'
+      + Buffer.from(a.contenido).toString('base64').replace(/.{1,76}/g, '$&\r\n');
+  });
+  return encabezados.join('\r\n') + '\r\n\r\n'
+    + '--' + limiteExterno + '\r\n' + alternativa
+    + partes.join('')
+    + '--' + limiteExterno + '--\r\n';
 }
 
 /* --------------------------------------------------------------- SMTP */

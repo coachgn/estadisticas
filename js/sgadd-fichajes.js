@@ -3,7 +3,7 @@
 
    Una sección POR INVITACIÓN: la ve el admin y los mails del padrón de
    fichajes, y solo de los torneos de su registro. El servidor es el que
-   lo hace cumplir (`server/api/fichajes.js`); acá está la vidriera.
+   lo hace cumplir (`server/rutas/fichajes.js`); acá está la vidriera.
 
    QUÉ HACE
      1 · baja el libro COMPLETO de cada zona del torneo y arma un índice por

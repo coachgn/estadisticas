@@ -3741,7 +3741,7 @@ const SGADD_PBP = (function () {
     CAPA, NOMBRES_ZONA, FAMILIAS, ZONAS, GEOMETRIA, MIN_LIGA_HEX,
     html, mapaCard, jugador, mapa, capaTiros, bloqueSecciones, tieneSecciones, geometriaZonas, zonaGeometrica,
     rotacionesCard, diagnosticoZonas, diagnosticoJugador, cruceZonas, diagnosticoRival, rivalFriasHtml, espacioRival, fodaPbp, cuartosPatrones, juegoPorCuartoHtml, cuartosCruzadoHtml, espacioCuartos, marcasDiagnostico, lecturaTactica, colorDelta, varaHex,
-    activa, espacio, espacioJugador, espacioQuintetosJugador, quintetosJugador, onOffDe, avisoSinCapa, espacioRendimiento, espacioConclusiones, montarPendientes, activar, apellido, _cache: cache,
+    activa, espacio, espacioJugador, espacioQuintetosJugador, quintetosJugador, onOffDe, avisoSinCapa, espacioRendimiento, espacioConclusiones, montarPendientes, activar, apellido, pedir, _cache: cache,
     partidoDe, mapaPartido, momentumPartido, quintetosPartido, espacioPartido, MIN_TIROS_DIAGNOSTICO,
     quiebres, quiebresHtml, anotadoresEn, rotacionesDe, rotacionesPartido, cierreDelSet, cierreHtml, pinturaRival, pinturaHtml, lecturaPartido, planRelojHtml, canchaEnVentana, periodoDeT,
     relojTabla, relojIdentidad, relojPerfilJugador, relojEquipo, relojJugador, relojPartido, relojReparto, FRANJAS_RELOJ,

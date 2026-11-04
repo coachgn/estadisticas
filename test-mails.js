@@ -30,7 +30,7 @@ const envio = require('./server/lib/mail-envio.js');
 const fichas = require('./server/lib/fichas.js');
 const cron = require('./server/lib/cron-vencimientos.js');
 const { kvMemoria } = require('./server/lib/kv-memoria.js');
-const mails = require('./server/api/mails.js');
+const mails = require('./server/rutas/mails.js');
 const auth = require('./server/lib/auth.js');
 const invitacion = require('./server/lib/invitacion.js');
 const clientes = require('./server/lib/clientes.js');
@@ -340,7 +340,7 @@ const sumar = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86400000
 
   const app = fs.readFileSync('./server/app.js', 'utf8');
   check('las rutas están registradas en app.js', /'\/api\/v1\/fichas'/.test(app) && /'\/api\/cron\/recordatorios-vencimiento'/.test(app));
-  check('y NO viven en handlers.js (la única ruta que escribe el catálogo)', !/fichas|recordatorios/.test(fs.readFileSync('./server/api/handlers.js', 'utf8')));
+  check('y NO viven en handlers.js (la única ruta que escribe el catálogo)', !/fichas|recordatorios/.test(fs.readFileSync('./server/rutas/handlers.js', 'utf8')));
   const vercel = JSON.parse(fs.readFileSync('./server/vercel.json', 'utf8'));
   check('Vercel Cron: todos los días a las 12:00 UTC (09:00 de Argentina)',
     (vercel.crons || []).some(c => c.path === '/api/cron/recordatorios-vencimiento' && c.schedule === '0 12 * * *'));
@@ -541,7 +541,7 @@ const sumar = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86400000
   check('reinvitar SIN nombre no borra el que tenía', ri.padron['ana@club.com'].nombre === 'Ana Pérez');
   const ri2 = clientes.reinvitar(pn.padron, 'ana@club.com', 7, 'Ana María Pérez');
   check('reinvitar CON nombre lo corrige', ri2.padron['ana@club.com'].nombre === 'Ana María Pérez');
-  const H_SRC = fs.readFileSync('./server/api/handlers.js', 'utf8');
+  const H_SRC = fs.readFileSync('./server/rutas/handlers.js', 'utf8');
   check('la ruta de accesos pasa el nombre al alta y a la reinvitación',
     /nombre: cuerpo\.nombre,/.test(H_SRC) && /clientes\.reinvitar\(padron, email, cuerpo\.dias, cuerpo\.nombre\)/.test(H_SRC));
 

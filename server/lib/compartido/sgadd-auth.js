@@ -389,6 +389,10 @@ const SGADD_AUTH = (function () {
     equipos: null,          // completa, pero el picker se filtra
     jugadores: null,        // ídem
     scouting: { plan: PLANES.PLATA },
+    /* CICLOS es del Plan ORO: el informe de cada 4 partidos que antes
+       armaba el cuerpo de MotorStats a mano. El admin pasa siempre (puede
+       generarlo para cualquier equipo, sea cual sea su plan). */
+    ciclos: { plan: PLANES.ORO },
     /* El glosario es PUBLICO y no depende de datos: son definiciones, no
        numeros de un club. Un DT que quiere saber que mide `eFG%` no
        deberia necesitar un link. */

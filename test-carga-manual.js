@@ -13,7 +13,7 @@ process.env.JWT_SECRET = 'secreto-de-prueba-de-mas-de-32-caracteres-1234567890';
 delete process.env.CRON_SECRET;
 
 const C = require('./server/lib/carga-manual.js');
-const api = require('./server/api/carga-manual.js');
+const api = require('./server/rutas/carga-manual.js');
 
 let ok = 0, mal = 0;
 function t(nombre, cond, extra) {
@@ -107,7 +107,7 @@ console.log('4. el cron');
   t('flujo inválido 400', r.status === 400, r.status);
   r = await api.manejarCronCargaManual(peticion({ flujo: 'previa' }, 'sec'), { env: { CRON_SECRET: 'sec' } });
   t('sin calendario propio 503, no usa el de las alertas', r.status === 503 && r.body.codigo === 'SIN_CALENDARIO', r);
-  t('el calendario no se comparte con ALERTAS_CALENDAR_ID', !/ALERTAS_CALENDAR_ID/.test(require('fs').readFileSync('./server/api/carga-manual.js', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')));
+  t('el calendario no se comparte con ALERTAS_CALENDAR_ID', !/ALERTAS_CALENDAR_ID/.test(require('fs').readFileSync('./server/rutas/carga-manual.js', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')));
   r = await api.manejarCronCargaManual(peticion({ flujo: 'previa' }, 'sec'), { env, ahora: AHORA, kv: { leer: async () => ({ valor: null }), escribir: async () => {} } });
   t('sin fixture 502 y no toca el calendario', r.status === 502, r.status);
   console.log('\n' + ok + ' ok · ' + mal + ' mal');

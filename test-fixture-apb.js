@@ -15,7 +15,7 @@
 
 const fs = require('fs');
 const F = require('./server/lib/fixture-fuentes.js');
-const API = require('./server/api/fixture.js');
+const API = require('./server/rutas/fixture.js');
 const CORE = require('./js/sgadd-core.js');
 const PANEL = require('./js/sgadd-fixture.js');
 

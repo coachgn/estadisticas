@@ -17,7 +17,7 @@
 
 const fs = require('fs');
 const F = require('./server/lib/fixture-fuentes.js');
-const API = require('./server/api/fixture.js');
+const API = require('./server/rutas/fixture.js');
 const CORE = require('./js/sgadd-core.js');
 
 let ok = 0, mal = 0;
@@ -692,7 +692,7 @@ async function forzar() {
      `v.payload.email`, que no existe: `esAdmin` daba SIEMPRE false, así que
      `?refrescar=1` no forzaba nada y el endpoint contestaba 200 con el
      caché viejo — bien, pero viejo, y sin ningún síntoma. */
-  const fuente = fs.readFileSync('server/api/fixture.js', 'utf8');
+  const fuente = fs.readFileSync('server/rutas/fixture.js', 'utf8');
   check('el rol sale del resultado de verificarToken',
     /esAdmin\s*=\s*v\.rol\s*===\s*AUTH\.ROLES\.ADMIN/.test(fuente),
     (fuente.match(/const esAdmin[^;]*/) || [])[0]);

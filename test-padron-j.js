@@ -86,7 +86,7 @@ check('dorsales: pasan los números, el 0 incluido', dors[kb] === '32' && dors[P
 check('dorsales: lo que no es un número no viaja', Object.keys(dors).length === 2);
 check('dorsales: del libro recortado, solo quien está en PROMEDIOS J',
   JSON.stringify(P.fotosDelLibro(dors, libroRec)) === JSON.stringify({ [kb]: '32' }));
-const handlers = require('fs').readFileSync('./server/api/handlers.js', 'utf8');
+const handlers = require('fs').readFileSync('./server/rutas/handlers.js', 'utf8');
 check('el handler manda los dorsales con el filtro de las fotos', /dorsales: PADRON_J\.fotosDelLibro\(await pDorsales, rec\.hojas\)/.test(handlers));
 /* LAS TITULARIDADES (punto 97) */
 const BDJ = { 'Base Datos J': [['NOMBRES', 'EQUIPO', 'FASE', 'TORNEO', 'TITULAR'],

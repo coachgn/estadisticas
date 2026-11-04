@@ -337,7 +337,7 @@ titulo('8 · LO QUE VIAJA AL NAVEGADOR · la huella sí, el sheetId nunca');
   check('y ni un sheetId en ninguno de los dos', [S1, S2, S3, S4].every(s => todo.indexOf(s) === -1));
   check('la huella es estable', CATV.huellaLibro(S1) === CATV.huellaLibro(S1) && CATV.huellaLibro('') === null);
 
-  const src = fs.readFileSync('./server/api/handlers.js', 'utf8');
+  const src = fs.readFileSync('./server/rutas/handlers.js', 'utf8');
   check('la respuesta de guardar dice a quiénes llegó y qué heredó (lo dice el servidor)',
     /aplicadoA: r\.aplicadoA/.test(src) && /herencia: r\.herencia/.test(src));
 }

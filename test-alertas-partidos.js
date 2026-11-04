@@ -18,7 +18,7 @@ delete process.env.CRON_SECRET;
 const crypto = require('crypto');
 const A = require('./server/lib/alertas-partidos.js');
 const cal = require('./server/lib/google-calendar.js');
-const api = require('./server/api/alertas-partidos.js');
+const api = require('./server/rutas/alertas-partidos.js');
 
 let ok = 0, mal = 0;
 function t(nombre, cond, extra) {
@@ -193,7 +193,7 @@ function apiCalendar(opciones) {
   const escrituras = [];
   const kvEsc = { leer: async () => ({ valor: null }), escribir: async (...a) => { escrituras.push(a); }, configurado: () => true };
   const catV = require('./server/lib/catalogo.js');
-  const fixtureApi = require('./server/api/fixture.js');
+  const fixtureApi = require('./server/rutas/fixture.js');
   const refrescarOriginal = fixtureApi.refrescar;
   fixtureApi.refrescar = async () => ({ zonas: { norte: { partidos: partidos } }, fallaron: [] });
   const cargarO = catV.cargar;

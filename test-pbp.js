@@ -46,8 +46,8 @@ const auth = require('./server/lib/auth.js');
 const catalogo = require('./server/lib/catalogo.js');
 const mutar = require('./server/lib/catalogo-mutar.js');
 const sheets = require('./server/lib/google-sheets.js');
-const H = require('./server/api/handlers.js');
-const PBP = require('./server/api/pbp.js');
+const H = require('./server/rutas/handlers.js');
+const PBP = require('./server/rutas/pbp.js');
 const A = require('./js/sgadd-auth.js');
 global.SGADD = require('./js/sgadd-core.js');
 

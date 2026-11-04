@@ -76,7 +76,13 @@ const MODULOS = ['sgadd-core.js', 'sgadd-auth.js', 'sgadd-estados.js', 'sgadd-da
   'sgadd-config.js',
   /* El recorte de la muestra y la vara de jugadores del período: el
      servidor la arma sobre el libro completo (punto 139, fase 3). */
-  'sgadd-muestra.js'];
+  'sgadd-muestra.js',
+  /* El motor de los ciclos de 4 partidos: el servidor RECALCULA y sella el
+     ciclo con el mismo código que lo dibuja el panel (Ciclos, fase 4). */
+  'sgadd-ciclos.js',
+  /* La cancha vectorial: el informe de ciclo en PDF dibuja el mismo mapa
+     que el panel (Ciclos, fase 6). */
+  'sgadd-cancha.js'];
 
 const ORIGEN = path.join(__dirname, '..', '..', 'js');
 const DESTINO = path.join(__dirname, '..', 'lib', 'compartido');

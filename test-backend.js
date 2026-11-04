@@ -38,7 +38,7 @@ const jwtLib = require('./server/lib/jwt.js');
 const auth = require('./server/lib/auth.js');
 const reglas = require('./server/lib/reglas.js');
 const sheets = require('./server/lib/google-sheets.js');
-const handlers = require('./server/api/handlers.js');
+const handlers = require('./server/rutas/handlers.js');
 const config = require('./server/lib/config.js');
 const AUTH = require('./js/sgadd-auth.js');
 
@@ -168,7 +168,7 @@ titulo('EL sheetId NO SALE · el objetivo entero del backend');
   /* El fuente, sin comentarios: un `sheetId:` en un objeto de respuesta
      lo mandaría al cliente, y un `console.log` del id lo mandaría a los
      logs de Vercel, que es otra forma de filtrarlo. */
-  const srcH = fs.readFileSync('./server/api/handlers.js', 'utf8')
+  const srcH = fs.readFileSync('./server/rutas/handlers.js', 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   check('ningún handler pone sheetId en un objeto de respuesta',
     !/sheetId\s*:/.test(srcH));
@@ -987,6 +987,12 @@ titulo('EL BUNDLE DE VERCEL · nada puede salir de server/');
   /* Pero `api/index.js` SÍ tiene que subir: es el entrypoint de verdad. */
   check('y api/index.js no queda excluido por eso',
     fs.existsSync('./server/api/index.js') && !/^api\//m.test(ign));
+  /* Vercel cuenta UNA función por archivo de `api/` (el plan Hobby topea en
+     12): los handlers viven en `server/rutas/` y `api/` solo trae el
+     entrypoint. Un archivo más acá y el deploy puede dar «No more than 12
+     Serverless Functions». */
+  check('api/ tiene UN solo archivo (el entrypoint): los handlers viven en rutas/',
+    fs.readdirSync('./server/api').join() === 'index.js' && fs.readdirSync('./server/rutas').length >= 12);
 
   /* 6 · Vercel autodetecta "framework: express" a partir del `main` de
      package.json (acá, `index.js`) y --desde esa detección-- usa `app.js`
@@ -1261,7 +1267,7 @@ titulo('ALERTAS EN EL SERVIDOR · se detecta al rival sin mandar su log');
      compartían entrada y el segundo recibía las alertas de la liga del
      primero durante el TTL. */
   check('la clave del caché de alertas lleva el club, no solo el slug',
-    /claveCache: cat\.clubId \+ ':' \+ cat\.slug/.test(fs.readFileSync('./server/api/handlers.js', 'utf8')));
+    /claveCache: cat\.clubId \+ ':' \+ cat\.slug/.test(fs.readFileSync('./server/rutas/handlers.js', 'utf8')));
 
   /* LISTA BLANCA de campos: con una lista negra, el campo que el detector
      agregue mañana viaja solo. */
@@ -1595,7 +1601,7 @@ titulo('ESCRIBIR EL CATÁLOGO · la unica ruta que puede romper a todos');
 
   /* Y EL VALIDADOR ES EL MISMO QUE USA LA CASCADA AL LEER. Dos validadores
      terminan discrepando, y el que se relaja es siempre el de escritura. */
-  const src = fs.readFileSync('./server/api/handlers.js', 'utf8');
+  const src = fs.readFileSync('./server/rutas/handlers.js', 'utf8');
   check('el endpoint valida con el validador de la cascada',
     /mutar\.aplicar\([\s\S]{0,80}catalogo\.validar\)/.test(src));
 
@@ -1627,7 +1633,7 @@ titulo('EL CICLO DE VIDA DEL CLIENTE · pausar, vencer y el plan del club');
 {
   const MC = require('./server/lib/catalogo-mutar.js');
   const CV = require('./server/lib/catalogo.js');
-  const H = require('./server/api/handlers.js');
+  const H = require('./server/rutas/handlers.js');
   const SH2 = new Array(41).join('a');
   const BASE = {
     uno: { nombre: 'Uno', categorias: { 'uno-p': { label: 'P', sheetId: SH2 } } },
@@ -1761,7 +1767,7 @@ titulo('EL CICLO DE VIDA DEL CLIENTE · pausar, vencer y el plan del club');
      en producción al pausar un club. */
   check('el POST devuelve el catálogo con estado comercial',
     /clubes: catalogo\.publico\(r\.catalogo, \{ admin: true \}\)/.test(
-      fs.readFileSync('./server/api/handlers.js', 'utf8')));
+      fs.readFileSync('./server/rutas/handlers.js', 'utf8')));
   check('y ninguno de los dos ve el sheetId',
     !/aaaa/.test(JSON.stringify(paraAdmin)) && !/aaaa/.test(JSON.stringify(paraCliente)));
 
@@ -1775,7 +1781,7 @@ titulo('EL CICLO DE VIDA DEL CLIENTE · pausar, vencer y el plan del club');
     !!res.suscripcion && res.suscripcion.estado === 'pausado');
   check('y `club` sigue siendo el nombre, como esperan los demás',
     res.club === 'Uno');
-  const hSrc = fs.readFileSync('./server/api/handlers.js', 'utf8');
+  const hSrc = fs.readFileSync('./server/rutas/handlers.js', 'utf8');
   check('los handlers le pasan al guard la suscripción, no el nombre',
     /guardSuscripcion\(cat\.suscripcion/.test(hSrc) && !/guardSuscripcion\(cat\.club/.test(hSrc));
 
@@ -1924,7 +1930,7 @@ titulo('INGRESO DE ADMINISTRADORES · claves, bloqueo y lo que NO se filtra');
 
   /* ================= EL ENDPOINT ================= */
 
-  const hs = fs.readFileSync('./server/api/handlers.js', 'utf8');
+  const hs = fs.readFileSync('./server/rutas/handlers.js', 'utf8');
   /* EL ROL NO SALE DEL LOGIN: el token se firma sin rol y
      `verificarToken` lo re-deriva contra ADMINS en cada petición. Así este
      endpoint no otorga privilegios, solo confirma identidad. */
@@ -2348,7 +2354,7 @@ titulo('EL PADRÓN NO SE PISA CON UNA LECTURA QUE FALLÓ');
 {
   const kvm = require('./server/lib/kv.js');
   const ADM = require('./server/lib/admins.js');
-  const HH = require('./server/api/handlers.js');
+  const HH = require('./server/rutas/handlers.js');
   const leerOriginal = kvm.leer, escribirOriginal = kvm.escribir, confOriginal = kvm.configurado;
 
   const correr = async (fn) => { try { return await fn(); } finally {

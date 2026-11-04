@@ -61,8 +61,8 @@ const catalogo = require('./server/lib/catalogo.js');
 const clientes = require('./server/lib/clientes.js');
 const mutar = require('./server/lib/catalogo-mutar.js');
 const sheets = require('./server/lib/google-sheets.js');
-const H = require('./server/api/handlers.js');
-const EST = require('./server/api/estados.js');
+const H = require('./server/rutas/handlers.js');
+const EST = require('./server/rutas/estados.js');
 const AUTH = require('./js/sgadd-auth.js');
 
 /* Un libro mínimo: los handlers de datos lo recortan y lo devuelven. Lo que

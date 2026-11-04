@@ -93,7 +93,7 @@ titulo('1 · LA RACHA · los partidos sin estadísticas entran en su fecha');
    ===================================================================== */
 titulo('2 · EL PLAN · el del catálogo, estricto, en el servidor y en el panel');
 {
-  const H = require('./server/api/handlers.js');
+  const H = require('./server/rutas/handlers.js');
   check('con el catálogo de KV, un club SIN plan es BRONCE aunque el link diga ORO',
     H.planEfectivo({}, { plan: 'ORO' }, 'kv') === 'BRONCE');
   check('con plan en el club manda el del club, en los dos sentidos',
@@ -130,7 +130,7 @@ titulo('2 · EL PLAN · el del catálogo, estricto, en el servidor y en el panel
     check('con el respaldo, el del link', r.body.usuario.plan === 'PLATA');
   } finally { CATV.cargar = orig; }
 
-  const src = fs.readFileSync('./server/api/handlers.js', 'utf8');
+  const src = fs.readFileSync('./server/rutas/handlers.js', 'utf8');
   check('los datos (equipos) y el scouting miden el plan con el origen del catálogo',
     (src.match(/planEfectivo\(cat\.suscripcion \|\| \{\}, ctx\.sesion, cascada\.origen\)/g) || []).length === 2);
   /* SE RECORTA EL CUERPO DEL HANDLER y no una ventana de caracteres: el

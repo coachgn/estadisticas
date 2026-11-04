@@ -70,8 +70,8 @@ kv.tamanoHash = async (k) => Object.keys(hashes[k] || {}).length;
 
 const auth = require('./server/lib/auth.js');
 const catalogo = require('./server/lib/catalogo.js');
-const H = require('./server/api/handlers.js');
-const EST = require('./server/api/estados.js');
+const H = require('./server/rutas/handlers.js');
+const EST = require('./server/rutas/estados.js');
 
 const CAT = {
   deportivo: {
@@ -282,14 +282,14 @@ const HASH = EST.claveKV('deportivo', 'deportivo-primera');
      ===================================================================== */
   titulo('5. LO QUE CARGA UN USUARIO NO LO PISA NINGUNA RUTINA');
 
-  const fuenteEst = fs.readFileSync('./server/api/estados.js', 'utf8');
+  const fuenteEst = fs.readFileSync('./server/rutas/estados.js', 'utf8');
   check('el endpoint de estados no tiene un solo camino que borre o reemplace el mapa',
     !/\.borrar\(|\.escribir\(|'DEL'|'SET'/.test(fuenteEst));
   const fuenteKv = fs.readFileSync('./server/lib/kv.js', 'utf8');
   const escCampos = fuenteKv.slice(fuenteKv.indexOf('async function escribirCampos'), fuenteKv.indexOf('async function tamanoHash'));
   check('y la escritura de campos es HSET: suma o actualiza campos, nunca los demás',
     /'HSET'/.test(escCampos) && !/'DEL'|'SET'|'HDEL'/.test(escCampos));
-  ['server/api/handlers.js', 'server/lib/catalogo.js', 'server/lib/catalogo-mutar.js', 'server/bin/catalogo.js']
+  ['server/rutas/handlers.js', 'server/lib/catalogo.js', 'server/lib/catalogo-mutar.js', 'server/bin/catalogo.js']
     .forEach(f => check('  ' + f + ' no nombra la clave de los estados',
       fs.readFileSync(f, 'utf8').indexOf('sgadd:estados') === -1));
 

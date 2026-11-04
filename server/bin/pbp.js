@@ -28,7 +28,7 @@ const path = require('path');
 require('../lib/env.js').cargar();
 const kv = require('../lib/kv.js');
 const catalogo = require('../lib/catalogo.js');
-const { claveKV, campoDeEquipo, CAMPO_INDICE } = require('../api/pbp.js');
+const { claveKV, campoDeEquipo, CAMPO_INDICE } = require('../rutas/pbp.js');
 
 /* @2 suma al @1 el tiro por hexágono y por jugador contra la liga, las
    rotaciones, los cuartos, el momentum y las listas tácticas; lo de @1 no
@@ -39,7 +39,7 @@ const ESQUEMAS = ['motorstats-ingestion/analitica-pbp-web@1', 'motorstats-ingest
 /* Un paquete @1 pesa ~23 KB, uno @2 ~57 KB y uno @3 —con los tiros
    ubicados— ~105 KB. Un techo holgado frena el error de subir
    el `analitica-pbp.json` completo, o partidos crudos, por equivocación. */
-const MAX_KB = 256;
+const MAX_KB = 320;   // 256 hasta el bloque `ciclos` (~0,8 KB por partido, 2026-11-03)
 
 function args(argv) {
   const o = { _: [] };

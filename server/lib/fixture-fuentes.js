@@ -9,7 +9,7 @@
      }
 
    Acá vive el ADAPTADOR: entra HTML, salen partidos. No hay red, ni KV, ni
-   `document` — eso es `server/api/fixture.js`. Así el parser se prueba
+   `document` — eso es `server/rutas/fixture.js`. Así el parser se prueba
    contra HTML guardado, que es la única forma de tener un test que no
    dependa de que el sitio esté arriba ni de que no haya cambiado.
 

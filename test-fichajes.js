@@ -407,7 +407,7 @@ titulo('1 quater. EL % DE COINCIDENCIA (punto 91) · puertas duras y puntaje');
 
 const auth = require('./server/lib/auth.js');
 const catalogo = require('./server/lib/catalogo.js');
-const F = require('./server/api/fichajes.js');
+const F = require('./server/rutas/fichajes.js');
 const AUTH = require('./js/sgadd-auth.js');
 
 store[catalogo.CLAVE_KV] = JSON.stringify(CAT);
@@ -559,7 +559,7 @@ const sinSheetId = (body) => !/SHEET_[A-Z]+_\d+/.test(JSON.stringify(body));
 
   titulo('4. EL PANEL · el gate y el cableado');
 
-  const src = fs.readFileSync('./server/api/fichajes.js', 'utf8');
+  const src = fs.readFileSync('./server/rutas/fichajes.js', 'utf8');
   check('el servidor no tiene ningún camino que borre el padrón ni las fichas',
     !/\.borrar\(|\.escribir\(\s*(PADRON|claveFichas)/.test(src));
   const app = fs.readFileSync('./server/app.js', 'utf8');

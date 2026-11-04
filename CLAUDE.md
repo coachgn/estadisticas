@@ -90,6 +90,25 @@ node test-clientes-estructura.js # 175 tests · club padre y categorías hijas: 
                            #             equipo, vencimiento y ciclo ORO por categoría
 node test-glosario.js      #  38 tests · el glosario sin la columna ni la card de hojas,
                            #             y PPP por jugada, en el archivo y en el generador
+node test-cancha.js        #  41 tests · la cancha vectorial unificada (js/sgadd-cancha.js): misma geometría que
+                           #             SGADD_PBP, marcadores ○/✕, perímetro fino de zonas y texto ↔ zona (Ciclos, fase 1)
+
+node test-ciclos.js        #  55 tests · el informe de ciclo de 4 partidos (js/sgadd-ciclos.js): ventanas, transición contra la
+                           #             liga, causas, esperado/real por cuarto, zonas, auditoría y comparar; y el dato REAL de la
+                           #             ingesta (motorstats-ingestion/src/pbp/ciclos.js, bloque `ciclos` del paquete @3) (Ciclos, fase 2)
+
+node test-ciclosui.js      #  13 tests · la sección Ciclos (js/sgadd-ciclosui.js): selector de ciclo, bento, cancha con zonas
+                           #             citadas, comparar sin tendencia, paquete viejo y error de carga (Ciclos, fase 3)
+
+node test-ciclos-sellos.js #  34 tests · los ciclos sellados (Ciclos, fase 4): ventana libre (calendario / partidos / ids), huella, sellar
+                           #             solo cerrado y apto, verificar, historial sin juicio, y /api/v1/ciclos con HSETNX (nada se reemplaza ni se borra)
+
+node test-ciclosadmin.js   #  58 tests · la gestión de ciclos (Ciclos, fase 5): estados borrador → auditado → publicado, lecturas editables sin tocar
+                           #             números, /api/v1/ciclos/.../gestion solo ADMIN y la pestaña «Ciclos · gestión» de Comparativa
+
+node test-ciclospublicar.js #  54 tests · publicar y enviar el ciclo (Ciclos, fase 6): el mail MIME con el PDF adjunto, el informe HTML autónomo,
+                           #             /api/v1/ciclos/.../publicar solo ADMIN (ensayo, HSETNX, reintento de fallidos, el PDF que no compila) y el paquete de ciclos del cliente ORO sin la capa pbp
+
 node test-pbp.js           # 281 tests · la capa de laboratorio de play-by-play: el catálogo,
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
@@ -265,7 +284,7 @@ js/
                           arriba, pegamento con la app abajo
 server/lib/fixture-fuentes.js ← los ADAPTADORES de fixture externo. PURO: entra
                           HTML, salen partidos. Punto 70
-server/api/fixture.js   ← baja la fuente, la cachea en KV y sirve la ultima
+server/rutas/fixture.js   ← baja la fuente, la cachea en KV y sirve la ultima
                           lectura buena cuando la fuente se cae
   sgadd-torneos.js      ← el bloque de TORNEOS del Panel Master (punto 67)
 torneos/<id>.json       ← la estructura de un torneo: zonas, equipos con su id de
@@ -8168,7 +8187,7 @@ saca el id con `idDeLibro()`.
 equipos con la **clave** que usa el gate, así el equipo propio se ELIGE
 de una lista. El motor puro es `server/lib/catalogo-libro.js`.
 
-- **En su propio archivo** (`server/api/libro.js`) y no en
+- **En su propio archivo** (`server/rutas/libro.js`) y no en
   `handlers.js`: la ruta que solo lee no comparte archivo con la única
   que escribe el catálogo.
 - **POST y no GET**: puede llevar el id de un libro nuevo, y un id en la
@@ -8623,7 +8642,7 @@ POST /api/v1/estados/:club/:categoria      { cambios: { "NOMBRE|EQUIPO": registr
 Upstash  sgadd:estados:<club>:<categoría>  un HASH · un campo por jugador
 ```
 
-`server/api/estados.js`, **en su propio archivo** como `libro.js`, y en su
+`server/rutas/estados.js`, **en su propio archivo** como `libro.js`, y en su
 **propia clave** de KV. La clave de la categoría es el **slug** (punto 54):
 el id de planilla del JSON el servidor no lo conoce. La copia local sigue
 indexada por id, que es la clave que ya tenían guardada los navegadores.
@@ -9165,7 +9184,7 @@ cerrado de `SGADD_AUTH.CAPAS_LABORATORIO`:
 
 ### Dónde vive el guard
 
-En `server/api/pbp.js`, con archivo propio y hash propio: fuera del catálogo,
+En `server/rutas/pbp.js`, con archivo propio y hash propio: fuera del catálogo,
 como los estados del punto 57. **Solo lee**; escribir es tarea del CLI.
 
 - **Un cliente** lee solo categorías de SU club, activas y con la capa. Dentro
@@ -9379,7 +9398,7 @@ server/lib/mail-plantillas.js    las plantillas · PURO
 server/lib/mail-envio.js         SMTP de Gmail sin dependencias (tls de Node)
 server/lib/fichas.js             la ficha del cliente y el log de avisos
 server/lib/cron-vencimientos.js  qué toca hoy (PURO) y la corrida
-server/api/mails.js              /api/v1/fichas · /api/cron/recordatorios-vencimiento
+server/rutas/mails.js              /api/v1/fichas · /api/cron/recordatorios-vencimiento
 server/bin/probar-mails.js       vista previa, simulación y envío de prueba
 ```
 
@@ -11228,7 +11247,7 @@ postemporada, y también su propia zona pedida por el torneo—. Su libro es el
 de su categoría, que ya lleva el `sheetId` de la zona (punto 67). Fijado con
 tests.
 
-**La ruta nueva** (`server/api/llave.js`) la pide el admin, o un cliente con
+**La ruta nueva** (`server/rutas/llave.js`) la pide el admin, o un cliente con
 una categoría ENGANCHADA a ese torneo y con acceso: un club pausado recibe
 403 igual que uno ajeno (`OTRO_TORNEO`). Devuelve de cada zona `puesto,
 clave, nombre, pj, pg, pp` y si la tabla cerró; de la postemporada, `fase,
@@ -12084,7 +12103,7 @@ admin y para mails habilitados. `test-fichajes.js` fija todo lo de acá.
 
 ### Lo que SÍ es seguridad: el servidor
 
-`server/api/fichajes.js`. El libro SIN recorte de un torneo solo sale de
+`server/rutas/fichajes.js`. El libro SIN recorte de un torneo solo sale de
 ahí, y solo para el admin (`ADMINS`, en el código) o un mail del padrón,
 y solo de los torneos de su registro.
 
@@ -14721,7 +14740,7 @@ eso el genérico decía «No se reconoció ninguna jornada».
 
 - **`urlDeLectura`** es un gancho nuevo del registro de adaptadores: el
   servidor baja la URL que el lector pide, no la pegada (`refrescar` en
-  `server/api/fixture.js`). El modo `auto` lo delega por sitio. Para la Liga:
+  `server/rutas/fixture.js`). El modo `auto` lo delega por sitio. Para la Liga:
   la delegación (primer segmento del link) y la temporada entera (el 1 de julio
   anterior, o el `desde` declarado, y un año). Un link que ya pide el fragmento
   se respeta.
@@ -15142,7 +15161,7 @@ fija todo. Assets en `?v=291`.
 - **El orden vive en UN motor**: `SGADD_CLASIF.ordenar` (cascada de
   `ordenTabla`, el nombre como último criterio). Lo usan Clasificación, el
   resumen de Principal, la llave (`sgadd-fases.js`) y el servidor
-  (`server/api/llave.js` por `server/lib/compartido/`), así que el cambio
+  (`server/rutas/llave.js` por `server/lib/compartido/`), así que el cambio
   llega a todos solo.
 - **Nadie ordenaba por FIBA.** Todos los clubes declaran `PCT › DIF › PF`
   explícito (los tres JSON, el respaldo de `SGADD_CONFIG.parsear` y las
@@ -15629,7 +15648,7 @@ Opción A: el cliente que recibe `Base Datos J` recortada (punto 19)
 ahora ve Jugadores sobre la muestra. Hasta acá veía la temporada.
 
 ```
-GET /api/v1/vara-jugadores/:clubId?categoria=&torneo=&fase=&muestra=<json>   server/api/vara.js
+GET /api/v1/vara-jugadores/:clubId?categoria=&torneo=&fase=&muestra=<json>   server/rutas/vara.js
 SGADD_MUESTRA.varaJugadores(idx)   el resumen (servidor)
 SGADD_MUESTRA.aplicarVara(idx, v)  su aplicación al índice del período (panel)
 ```
@@ -16522,7 +16541,7 @@ Solo servidor, sin front: no sube el `?v=`. `test-alertas-partidos.js` fija todo
 ```
 server/lib/alertas-partidos.js   PURO: perfiles, planificar() y ejecutar()
 server/lib/google-calendar.js    Calendar v3 con la Service Account (scope calendar.events)
-server/api/alertas-partidos.js   GET /api/cron/alertas-partidos · CRON_SECRET o ADMIN
+server/rutas/alertas-partidos.js   GET /api/cron/alertas-partidos · CRON_SECRET o ADMIN
 server/vercel.json               cron «0 10 * * *» (07:00 AR)
 ```
 
@@ -16562,7 +16581,7 @@ servidor (no sube el `?v=`). `test-carga-manual.js` fija todo.
 
 ```
 server/lib/carga-manual.js   PURO: TORNEOS (APB masculino, APB formativas, Bahía), planificarPrevia / planificarControl
-server/api/carga-manual.js   GET /api/cron/carga-manual?flujo=previa|control · CRON_SECRET o ADMIN · ?simular=1
+server/rutas/carga-manual.js   GET /api/cron/carga-manual?flujo=previa|control · CRON_SECRET o ADMIN · ?simular=1
 server/vercel.json           previa «0 15 * * *» (12:00 AR) · control «0 10 * * *» (07:00 AR)
 ```
 

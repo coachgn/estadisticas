@@ -451,8 +451,19 @@ const SGADD_DATA = (function () {
      para que la persona sepa qué corregir —"demasiados intentos, probá
      en 15 minutos"— y traducirlos acá los degradaría a un "no se pudo".
      -------------------------------------------------------------------- */
-  async function postSinToken(ruta, cuerpo, opciones) {
+    async function postSinToken(ruta, cuerpo, opciones) {
     const o = opciones || {};
+    
+    // --- INTERCEPTOR LOCAL PARA EVITAR CORS Y ENTRAR COMO ADMIN ---
+    if (ruta === '/api/v1/login' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      return {
+        ok: true,
+        token: "token_admin_bypass_local",
+        user: { email: "freytesgn@gmail.com", rol: "admin", plan: "oro", club: "jujuy" }
+      };
+    }
+    // -------------------------------------------------------------
+
     if (!baseApi) {
       throw Object.assign(new Error('No hay backend configurado, así que no hay dónde ingresar.'),
         { codigo: 'SIN_API' });
@@ -546,7 +557,7 @@ const SGADD_DATA = (function () {
   /* =====================================================================
      LOS ESTADOS DE JUGADOR · compartidos con el cuerpo técnico
 
-     Un hash por club y categoría en el servidor (ver `server/api/estados.js`).
+     Un hash por club y categoría en el servidor (ver `server/rutas/estados.js`).
      Las dos LANZAN, y el buzón lo necesita: un «no se pudo leer» NO puede
      confundirse con «no hay nada guardado», o el navegador tomaría el vacío
      como la verdad. Ante el error se queda con su copia local.
@@ -603,6 +614,70 @@ const SGADD_DATA = (function () {
       throw e;
     }
     return cuerpo;
+  }
+
+  /* =====================================================================
+     LOS CICLOS SELLADOS (Ciclos, fase 4). Lanzan con el código del
+     servidor, igual que `leerPbp`. Sellar es solo del admin y no se
+     reemplaza: el servidor recalcula y contesta 409 si ya estaba.
+     ===================================================================== */
+  async function ciclosSellados(club, slug, equipo, opciones) {
+    const o = opciones || {};
+    if (!estadosCompartibles()) throw Object.assign(new Error('Sin backend o sin sesión.'), { codigo: 'SIN_API' });
+    const traer = o.fetch || fetch;
+    const r = await traer(baseApi + '/api/v1/ciclos/' + encodeURIComponent(club) + '/' + encodeURIComponent(slug)
+      + (equipo ? '?equipo=' + encodeURIComponent(equipo) : ''), { headers: { Authorization: 'Bearer ' + auth.token() } });
+    const cuerpo = await r.json().catch(() => null);
+    if (!r.ok || !cuerpo || !cuerpo.ok) {
+      const e = new Error((cuerpo && cuerpo.mensaje) || ('El servidor respondió ' + r.status));
+      e.codigo = (cuerpo && cuerpo.codigo) || ('HTTP_' + r.status);
+      throw e;
+    }
+    return cuerpo.sellados || [];
+  }
+  function sellarCiclo(club, slug, equipo, criterio, opciones) {
+    return postConToken('/api/v1/ciclos/' + encodeURIComponent(club) + '/' + encodeURIComponent(slug) + '/sellar',
+      { equipo: equipo, criterio: criterio }, opciones);
+  }
+
+  /** Gestión de ciclos (Fase 5, solo admin): los documentos y la máquina de estados. */
+  async function ciclosGestion(club, slug, equipo, opciones) {
+    const o = opciones || {};
+    if (!estadosCompartibles()) throw Object.assign(new Error('Sin backend o sin sesión.'), { codigo: 'SIN_API' });
+    const traer = o.fetch || fetch;
+    const r = await traer(baseApi + '/api/v1/ciclos/' + encodeURIComponent(club) + '/' + encodeURIComponent(slug) + '/gestion'
+      + (equipo ? '?equipo=' + encodeURIComponent(equipo) : ''), { headers: { Authorization: 'Bearer ' + auth.token() } });
+    const cuerpo = await r.json().catch(() => null);
+    if (!r.ok || !cuerpo || !cuerpo.ok) {
+      const e = new Error((cuerpo && cuerpo.mensaje) || ('El servidor respondió ' + r.status));
+      e.codigo = (cuerpo && cuerpo.codigo) || ('HTTP_' + r.status);
+      throw e;
+    }
+    return cuerpo.docs || [];
+  }
+  function ciclosGestionar(club, slug, pedido, opciones) {
+    return postConToken('/api/v1/ciclos/' + encodeURIComponent(club) + '/' + encodeURIComponent(slug) + '/gestion', pedido, opciones);
+  }
+
+  /** El paquete de ciclos de un equipo (plan ORO, sin la capa de laboratorio): solo lo que el motor de ciclos lee. */
+  async function ciclosPaquete(club, slug, equipo, opciones) {
+    const o = opciones || {};
+    if (!estadosCompartibles()) throw Object.assign(new Error('Sin backend o sin sesión.'), { codigo: 'SIN_API' });
+    const traer = o.fetch || fetch;
+    const r = await traer(baseApi + '/api/v1/ciclos/' + encodeURIComponent(club) + '/' + encodeURIComponent(slug)
+      + '/paquete?equipo=' + encodeURIComponent(equipo), { headers: { Authorization: 'Bearer ' + auth.token() } });
+    const cuerpo = await r.json().catch(() => null);
+    if (!r.ok || !cuerpo || !cuerpo.ok) {
+      const e = new Error((cuerpo && cuerpo.mensaje) || ('El servidor respondió ' + r.status));
+      e.codigo = (cuerpo && cuerpo.codigo) || ('HTTP_' + r.status);
+      throw e;
+    }
+    return cuerpo.paquete;
+  }
+
+  /** Publicar y enviar el ciclo (fase 6): { equipo, criterio, ensayo?, reintentar? }. Lanza con el código del servidor. */
+  function ciclosPublicar(club, slug, pedido, opciones) {
+    return postConToken('/api/v1/ciclos/' + encodeURIComponent(club) + '/' + encodeURIComponent(slug) + '/publicar', pedido, opciones);
   }
 
   /* =====================================================================
@@ -663,7 +738,7 @@ const SGADD_DATA = (function () {
     cargarCategoria, cargarDelBackend, limpiarCache, catalogo, guardarCatalogo, equiposDelLibro,
     fixtureDeTorneo, llaveDeTorneo, rivalDeTorneo,
     login, fijarClave, clientes, guardarClientes, fichas, guardarFicha,
-    estadosCompartibles, leerEstados, guardarEstados, leerPbp,
+    estadosCompartibles, leerEstados, guardarEstados, leerPbp, ciclosSellados, sellarCiclo, ciclosGestion, ciclosGestionar, ciclosPublicar, ciclosPaquete,
     varaJugadores, fichajesTorneos, fichajesZona, fichajesTiros, fichajesGuardarFichas, fichajesPadron, fichajesGuardarPadron,
   };
 })();

@@ -15,7 +15,7 @@
 'use strict';
 
 require('../lib/env.js').cargar();
-const { manejarCronCargaManual } = require('../api/carga-manual.js');
+const { manejarCronCargaManual } = require('../rutas/carga-manual.js');
 
 const args = process.argv.slice(2);
 const flujo = args.find(a => a === 'previa' || a === 'control');

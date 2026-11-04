@@ -545,6 +545,7 @@ const SGADD_COMPUI = (function () {
   const TABS = [
     { id: 'equipos', label: 'Equipos · ciclos' },
     { id: 'jugadores', label: 'Jugadores · cara a cara' },
+    { id: 'ciclos', label: 'Ciclos · gestión' },
   ];
 
   function html(idx) {
@@ -564,7 +565,8 @@ const SGADD_COMPUI = (function () {
         </p>
         ${(typeof SGADD_UI !== 'undefined') ? SGADD_UI.tabs(TABS, estado.tab, 'SGADD_COMPUI.verTab') : ''}
       </div>
-      ${estado.tab === 'jugadores' ? vistaJugadores(idx) : vistaEquipos(idx)}
+      ${estado.tab === 'ciclos' ? ((typeof SGADD_CICLOSADMIN !== 'undefined') ? SGADD_CICLOSADMIN.html(idx) : '')
+        : estado.tab === 'jugadores' ? vistaJugadores(idx) : vistaEquipos(idx)}
     </div>`;
   }
 
@@ -573,11 +575,12 @@ const SGADD_COMPUI = (function () {
     if (!r) return;
     const idx = (typeof SGADD_APP !== 'undefined') ? SGADD_APP.estado.idx : null;
     r.innerHTML = html(idx);
+    if (estado.tab === 'ciclos' && typeof SGADD_CICLOSADMIN !== 'undefined') SGADD_CICLOSADMIN.montar();
   }
 
   /* --------------------------------------------------------- handlers */
 
-  function verTab(id) { estado.tab = (id === 'jugadores') ? 'jugadores' : 'equipos'; pintar(); }
+  function verTab(id) { estado.tab = (id === 'jugadores' || id === 'ciclos') ? id : 'equipos'; pintar(); }
   function elegirEquipo(c) { estado.equipo = c || null; pintar(); }
   function elegirEquipoJug(c) { estado.equipoJug = c || null; pintar(); }
   function modo(m) { estado.modo = (m === 'fechas') ? 'fechas' : 'ciclos'; pintar(); }

@@ -138,7 +138,7 @@ check('el contexto de club no toca a las otras secciones del admin',
   A.puedoAcceder('configuracion', ADM).ok === true && A.puedoAcceder('equipos', ADM).ok === true);
 A.fijarContextoClub(null);
 check('el menú no lo ofrece a quien no lo tiene (no es REQUIERE_PLAN)',
-  /mostrar = p\.ok \|\| p\.motivo === SGADD_AUTH\.MOTIVOS\.REQUIERE_PLAN/.test(fs.readFileSync('./index.html', 'utf8')));
+  /mostrar = p\.ok \|\| \(p\.motivo === SGADD_AUTH\.MOTIVOS\.REQUIERE_PLAN/.test(fs.readFileSync('./index.html', 'utf8')));
 check('el item del menú nace oculto, para que no parpadee',
   /<button onclick="navigate\('fichajes'\)" data-nav="fichajes" class="hidden /.test(fs.readFileSync('./index.html', 'utf8')));
 check('sin sesión ve todos los equipos', A.puedeVerEquipo('ATENAS A', null) === true);
@@ -784,8 +784,12 @@ titulo('EL REBRANDING · los tokens ya emitidos NO se degradan');
      pantalla sino una entrega que hace MotorStats cada cuatro partidos.
      Inventarle un módulo para que "se note" sería peor — un cliente
      pagando ORO y encontrando una sección vacía. */
-  check('ningún módulo pide ORO',
-    Object.keys(A.MODULOS).every(m => !A.MODULOS[m] || A.MODULOS[m].plan !== 'ORO'));
+  /* EXCEPCIÓN DECIDIDA (2026-11-03): la sección CICLOS es del plan ORO,
+     nativa en el panel. Es la ÚNICA; el admin la ve siempre. */
+  check('el único módulo que pide ORO es Ciclos',
+    Object.keys(A.MODULOS).filter(m => A.MODULOS[m] && A.MODULOS[m].plan === 'ORO').join() === 'ciclos');
+  check('Ciclos: ORO entra, PLATA no, el admin siempre',
+    A.tieneModulo('ciclos', ses('ORO')) && !A.tieneModulo('ciclos', ses('PLATA')));
   check('y el hub explica qué incluye ORO en su lugar',
     /scouters de MotorStats/.test(require('./js/sgadd-hub.js').QUE_INCLUYE.ORO));
 
@@ -850,7 +854,7 @@ titulo('LA SESIÓN DESPUÉS DEL LOGIN · los tres síntomas eran uno solo');
   const LG = require('./js/sgadd-login.js');
   const lg = fs.readFileSync('./js/sgadd-login.js', 'utf8');
   const cli = fs.readFileSync('./js/sgadd-clientes.js', 'utf8');
-  const hs = fs.readFileSync('./server/api/handlers.js', 'utf8');
+  const hs = fs.readFileSync('./server/rutas/handlers.js', 'utf8');
 
   /* 1 · ENTRAR TIENE QUE VOLVER A BAJAR LOS DATOS. */
   check('al entrar se limpian los dos cachés de datos',

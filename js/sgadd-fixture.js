@@ -251,7 +251,7 @@ const SGADD_FIXTURE = (function () {
   }
 
   /* EL FIXTURE ESTRUCTURAL QUE LA FUENTE EN VIVO YA CUBRE · la misma regla
-     del servidor (`server/api/fixture.js`), DESPUÉS del alias. Allá se
+     del servidor (`server/rutas/fixture.js`), DESPUÉS del alias. Allá se
      compara con el texto crudo y la nota de la ABB escribe «Leandro Alem» y
      «Oimpo» donde Volcala dice «Leandro N. Alem» y «Olimpo»: recién acá,
      con los nombres del libro, se ve que son el mismo cruce.

@@ -455,7 +455,7 @@ check('la comparación de planes no está duplicada',
    ===================================================================== */
 titulo('10. EL SERVIDOR DECLARA LO QUE CONCEDE EL PLAN EFECTIVO');
 
-const srv = fs.readFileSync('./server/api/handlers.js', 'utf8');
+const srv = fs.readFileSync('./server/rutas/handlers.js', 'utf8');
 const cuerpoScout = srv.slice(srv.indexOf('async function manejarScouting'),
                              srv.indexOf('function fallaDeDatos'));
 const cuerpoEquipos = srv.slice(srv.indexOf('async function manejarEquipos'),

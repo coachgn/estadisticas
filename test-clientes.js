@@ -36,7 +36,7 @@ kv.leer = async (k) => ({ valor: store[k] !== undefined ? JSON.parse(store[k]) :
 kv.escribir = async (k, v) => { store[k] = JSON.stringify(v); };
 
 const auth = require('./server/lib/auth.js');
-const H = require('./server/api/handlers.js');
+const H = require('./server/rutas/handlers.js');
 const catalogo = require('./server/lib/catalogo.js');
 const C = require('./server/lib/clientes.js');
 const A = require('./server/lib/admins.js');

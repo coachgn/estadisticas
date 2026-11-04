@@ -292,7 +292,7 @@ seccion('4 bis · un catálogo SIN torneos sigue igual');
    ===================================================================== */
 seccion('5 · accesos');
 {
-  const src = fs.readFileSync('server/api/handlers.js', 'utf8');
+  const src = fs.readFileSync('server/rutas/handlers.js', 'utf8');
   const i = src.indexOf("if (accion === 'alta') {", src.indexOf('async function manejarClientesEscribir'));
   const cuerpo = src.slice(i, src.indexOf('clientes.alta(padron', i));
   check('el alta de un mail sobre un torneo se rechaza ANTES de tocar el padrón', /club\.tipo === 'torneo'/.test(cuerpo));

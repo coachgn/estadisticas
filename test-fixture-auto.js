@@ -14,7 +14,7 @@
 const fs = require('fs');
 global.SGADD = require('./js/sgadd-core.js');
 const F = require('./server/lib/fixture-fuentes.js');
-const API = require('./server/api/fixture.js');
+const API = require('./server/rutas/fixture.js');
 const TORNEOS = require('./server/lib/torneos.js');
 const PANEL = require('./js/sgadd-fixture.js');
 const UI = require('./js/sgadd-torneos.js');

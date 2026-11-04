@@ -142,7 +142,7 @@ titulo('3 · EL ENDPOINT DE LECTURA DE EQUIPOS');
 
 const auth = require('./server/lib/auth.js');
 const sheets = require('./server/lib/google-sheets.js');
-const LIB = require('./server/api/libro.js');
+const LIB = require('./server/rutas/libro.js');
 const tokAdmin = auth.firmarToken({ email: 'freytesgn@gmail.com' }, { expiraEn: '1h' });
 const tokCliente = auth.firmarToken({ email: 'dt@club.com', equipoAsignado: 'SUD AMERICA LP' }, { expiraEn: '1h' });
 const pedir = (tok, body) => ({ headers: tok ? { authorization: 'Bearer ' + tok } : {}, body: body || {} });
@@ -193,7 +193,7 @@ const app = fs.readFileSync('./server/app.js', 'utf8');
 check('la ruta está registrada, y en POST (un id en la query termina en los logs)',
   /app\.post\('\/api\/v1\/catalogo\/equipos'/.test(app));
 check('y en su propio archivo, no en handlers.js',
-  !/manejarEquiposDelLibro/.test(fs.readFileSync('./server/api/handlers.js', 'utf8')));
+  !/manejarEquiposDelLibro/.test(fs.readFileSync('./server/rutas/handlers.js', 'utf8')));
 
 /* =====================================================================
    4 · LAS CATEGORÍAS SALEN DEL CATÁLOGO · el JSON pone la marca

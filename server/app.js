@@ -9,7 +9,7 @@
 const express = require('express');
 const cors = require('cors');
 const { entorno } = require('./lib/config.js');
-const h = require('./api/handlers.js');
+const h = require('./rutas/handlers.js');
 
 const { limitador } = require('./lib/limitador.js');
 
@@ -77,7 +77,7 @@ function crearApp(opciones) {
   app.get('/api/v1/equipos/:clubId', responder(h.manejarEquipos));
   app.get('/api/v1/scouting/:clubId', responder(h.manejarScouting));
   /* La vara de jugadores de un período (punto 139, fase 3): números agregados, sin filas. */
-  app.get('/api/v1/vara-jugadores/:clubId', responder(require('./api/vara.js').manejarVara));
+  app.get('/api/v1/vara-jugadores/:clubId', responder(require('./rutas/vara.js').manejarVara));
   /* La ÚNICA ruta que escribe. Va separada del GET y no como un verbo
      dentro del mismo handler para que se vea de un vistazo cuál es la que
      puede romper a todos los clubes. */
@@ -86,35 +86,43 @@ function crearApp(opciones) {
      va en su propio archivo justamente para que no se confunda con la de
      arriba. POST porque puede llevar el id de un libro nuevo, y un id en
      la query termina en los logs de acceso. */
-  app.post('/api/v1/catalogo/equipos', responder(require('./api/libro.js').manejarEquiposDelLibro));
+  app.post('/api/v1/catalogo/equipos', responder(require('./rutas/libro.js').manejarEquiposDelLibro));
 
   /* Los estados de jugador del cuerpo técnico. En su propio archivo y en
      su propia clave de KV: lo que carga un usuario no comparte camino con
      el catálogo, así que ninguna escritura del catálogo lo puede pisar. */
-  const estados = require('./api/estados.js');
+  const estados = require('./rutas/estados.js');
   app.get('/api/v1/estados/:clubId/:categoria', responder(estados.manejarEstados));
   app.post('/api/v1/estados/:clubId/:categoria', responder(estados.manejarEstadosEscribir));
+  /* Los ciclos de 4 partidos sellados (Ciclos, fase 4). */
+  const ciclos = require('./rutas/ciclos.js');
+  app.get('/api/v1/ciclos/:clubId/:categoria', responder(ciclos.manejarCiclos));
+  app.post('/api/v1/ciclos/:clubId/:categoria/sellar', responder(ciclos.manejarSellar));
+  app.get('/api/v1/ciclos/:clubId/:categoria/paquete', responder(ciclos.manejarPaquete));
+  app.get('/api/v1/ciclos/:clubId/:categoria/gestion', responder(ciclos.manejarGestion));
+  app.post('/api/v1/ciclos/:clubId/:categoria/gestion', responder(ciclos.manejarGestionGuardar));
+  app.post('/api/v1/ciclos/:clubId/:categoria/publicar', responder(ciclos.manejarPublicar));
 
   /* La analítica de play-by-play, capa de LABORATORIO (punto 62). Solo
      lee: la carga es del CLI (`server/bin/pbp.js`). */
-  app.get('/api/v1/pbp/:clubId/:categoria', responder(require('./api/pbp.js').manejarPbp));
+  app.get('/api/v1/pbp/:clubId/:categoria', responder(require('./rutas/pbp.js').manejarPbp));
 
   /* El fixture en vivo de una fuente externa (punto 70). Solo LEE de la
      fuente y cachea en KV: no toca el catalogo ni ninguna otra clave. */
-  app.get('/api/v1/fixture/:torneo', responder(require('./api/fixture.js').manejarFixture));
+  app.get('/api/v1/fixture/:torneo', responder(require('./rutas/fixture.js').manejarFixture));
 
   /* La LLAVE de un torneo (punto 76): posiciones de cada zona y resultados
      de la postemporada, sin estadísticas. Es lo que resuelve un cruce
      interzonal sin entregarle a un cliente el libro de otra zona. */
-  app.get('/api/v1/torneos/:torneo/llave', responder(require('./api/llave.js').manejarLlave));
-  app.get('/api/v1/torneos/:torneo/rival', responder(require('./api/llave.js').manejarRival));
+  app.get('/api/v1/torneos/:torneo/llave', responder(require('./rutas/llave.js').manejarLlave));
+  app.get('/api/v1/torneos/:torneo/rival', responder(require('./rutas/llave.js').manejarRival));
 
   /* EL MERCADO DE FICHAJES (punto 87): el libro SIN recorte de un torneo,
      solo para el admin y los mails del padrón de fichajes. En su propio
      archivo y con su propia clave de KV: no toca el catálogo ni el padrón
      de clientes. `padron` tiene un segmento y `:torneo/:zona` dos, así
      que no colisionan. */
-  const fichajes = require('./api/fichajes.js');
+  const fichajes = require('./rutas/fichajes.js');
   app.get('/api/v1/fichajes', responder(fichajes.manejarFichajes));
   app.get('/api/v1/fichajes/padron', responder(fichajes.manejarPadron));
   app.post('/api/v1/fichajes/padron', responder(fichajes.manejarPadronEscribir));
@@ -125,17 +133,17 @@ function crearApp(opciones) {
   /* Las fichas de los clientes y los mails institucionales (bienvenida y
      recordatorios de vencimiento). Solo ADMIN, salvo el cron, que se
      autentica con CRON_SECRET. En su propio archivo: no toca el catálogo. */
-  const mails = require('./api/mails.js');
+  const mails = require('./rutas/mails.js');
   app.get('/api/v1/fichas', responder(mails.manejarFichas));
   app.post('/api/v1/fichas', responder(mails.manejarFichasEscribir));
   app.get('/api/cron/recordatorios-vencimiento', responder(mails.manejarCronVencimientos));
 
   /* Las alertas de partido (-4 dias, 09:00 AR) en el Google Calendar del
      usuario. Se autentica con CRON_SECRET, igual que el cron de arriba. */
-  app.get('/api/cron/alertas-partidos', responder(require('./api/alertas-partidos.js').manejarCronAlertasPartidos));
+  app.get('/api/cron/alertas-partidos', responder(require('./rutas/alertas-partidos.js').manejarCronAlertasPartidos));
 
   /* La doble alerta de carga de los torneos manuales (previa y control). */
-  app.get('/api/cron/carga-manual', responder(require('./api/carga-manual.js').manejarCronCargaManual));
+  app.get('/api/cron/carga-manual', responder(require('./rutas/carga-manual.js').manejarCronCargaManual));
 
   /* LAS DOS RUTAS SIN TOKEN. Son las únicas: todo lo demás exige uno.
      `login` lo emite y `clave` lo fija por primera vez, así que exigirlo
@@ -150,7 +158,7 @@ function crearApp(opciones) {
   /* El alta y la reinvitación mandan la bienvenida con el código adentro
      (`mails.js`), envolviendo al handler de accesos sin tocarlo. */
   app.post('/api/v1/clientes', responder((p, d) =>
-    require('./api/mails.js').manejarClientesConBienvenida(p, d, h.manejarClientesEscribir)));
+    require('./rutas/mails.js').manejarClientesConBienvenida(p, d, h.manejarClientesEscribir)));
 
   app.use((req, res) => res.status(404).json({ ok: false, codigo: 'SIN_RUTA' }));
 
