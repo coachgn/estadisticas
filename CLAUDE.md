@@ -109,6 +109,9 @@ node test-ciclosadmin.js   #  58 tests · la gestión de ciclos (Ciclos, fase 5)
 node test-ciclospublicar.js #  54 tests · publicar y enviar el ciclo (Ciclos, fase 6): el mail MIME con el PDF adjunto, el informe HTML autónomo,
                            #             /api/v1/ciclos/.../publicar solo ADMIN (ensayo, HSETNX, reintento de fallidos, el PDF que no compila) y el paquete de ciclos del cliente ORO sin la capa pbp
 
+node test-cicloinforme.js  #  25 tests · el informe de ciclo nativo (js/sgadd-cicloinforme.js): tramos y línea de tanteo, on/off, semáforo,
+                           #             y las 6 secciones sobre el paquete REAL de LAB 2026-27 si está en la máquina (punto 165)
+
 node test-pbp.js           # 281 tests · la capa de laboratorio de play-by-play: el catálogo,
                            #             /api/v1/pbp, la pestaña y la card que no aparecen sin ella,
                            #             la geometría de zonas, los diagnósticos sobre la cancha y el cruce
@@ -16606,3 +16609,53 @@ La previa de las 12:00 AR no creó el evento: `zonasDe()` leía `entrada.zonas`,
 - **Todas las fechas de los textos van en DD/MM/AA** (`fechaCorta`); el id y la lógica interna siguen en ISO.
 - `?forzar=1` (o `--forzar` en el bin) crea el evento aunque su horario ya haya pasado.
 
+
+---
+
+## 165. EL INFORME DE CICLO NATIVO · la réplica del Artifact «Jujuy Básquet · Ciclo 0» (2026-11-06)
+
+`js/sgadd-cicloinforme.js` reconstruye en la sección Ciclos, con los datos vivos, el
+Artifact armado a mano (https://claude.ai/artifact/C6Kc6X4twmjm6ULawVfFQA): las seis
+secciones con TODAS sus cards, en el mismo orden. Assets en `?v=351`. `test-cicloinforme.js`.
+
+- **Una función por card** (`cardResumen`, `cardFuga1`, `cardRotacion`, `cardPlan`…), cada una
+  con su cabecera `§` que dice de dónde sale cada número: se mejora una card sin tocar las demás.
+  `armar(ctx)` junta las fuentes; `html(modelo, seccion)` pinta. El estilo (`.ci-*`, tokens del
+  Artifact en el tema oscuro y su variante de papel) lo inyecta el propio módulo.
+- **Fuentes**: el índice del libro abierto (la vara de la liga y las filas del equipo y de los
+  jugadores en las fechas del ciclo), el paquete de laboratorio (ciclos, `partidosPbp` con tramos
+  de cancha y línea de tanteo, reloj por partido, detalle de tiros por jugador, clutch), el modelo
+  del Simulador (NET ajustado y lectura de los próximos partidos) y el fixture vivo de la liga
+  (`SGADD_DATA.fixtureDeTorneo`: sedes, horas y próximos partidos; el archivo del torneo es respaldo).
+- **Lo calculado acá, y cómo**: los promedios del ciclo salen de `agregarPartidos` (totales ÷ PJ,
+  tasas sobre totales, PACE por 40 minutos jugados); el puesto saca de la distribución la temporada
+  del propio equipo y pone el valor del ciclo. Dúos, tríos, quintetos y on/off salen de los TRAMOS
+  de cancha con los puntos de la línea de tanteo; **las posesiones de cada tramo se estiman con el
+  ritmo de ese partido** (el play-by-play no marca la posesión) y la card lo dice. Los jugadores del
+  ciclo se suman de `Base Datos J` filtrando por equipo (punto 86); USG% con la fórmula de la planilla.
+- **Metas reales = mitad del camino** hasta la liga o el escalón siguiente del panel (p70 / p40);
+  escenario prudente = la mitad de la suma, porque las metas se pisan. Igual que el Artifact.
+- **Lo que el dato no trae se dice**: el tiro de cada partido no trae al tirador ni su franja, así
+  que «quién tira en la zona», los mapas por franja y por jugador salen del detalle de TEMPORADA del
+  paquete y lo rotulan. Bajas del rival: no se suponen. Clasificación: escenarios, no proyección.
+- **El servidor** (`server/rutas/ciclos.js`): `paqueteDe` lee el hash propio de la categoría y el de
+  la zona del torneo y se queda con el que trae el partido de ciclo MÁS RECIENTE (la categoría LAB
+  2026-27 de Jujuy guardaba el paquete de 2025-26 y tapaba los partidos de 2026). Sellar usa la misma
+  elección. La proyección de ADMIN suma `tiros`, `jugadores`, `clutch` y `partidos`.
+- **Sin el módulo, o si no se puede armar**, la sección cae a los bloques anteriores de
+  `sgadd-ciclosui.js`. Las herramientas de admin (auditoría, sello, comparar, historial) van al pie
+  de Principal.
+
+### Para producción
+1. Deploy del backend (`cd server && npx vercel --prod`): sin él, producción sigue sirviendo el
+   paquete viejo de 2025-26 para la categoría LAB 2026-27.
+2. Push del front (`?v=351`).
+
+### Pendiente para acercarlo más al Artifact
+- **El tirador y la franja por tiro en `partidosPbp`** (ingesta, `AV.porPartido`): con eso «quién
+  tira en Z13», los mapas por jugador y por franja pasan a ser del ciclo y no de la temporada.
+- **Los textos de lectura** (proceso contra resultado, cinco preguntas del peor cuarto, fortaleza /
+  fuga / ajuste por jugador) son reglas simples sobre el dato: se refinan card por card.
+- **El NET sin el partido contra nosotros** en el SOS y la tabla de la temporada anterior en los
+  escenarios de Clasificación (hoy no se cargan: se dice).
+- **No verificado en PDF** ni con un link de cliente.

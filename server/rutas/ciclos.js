@@ -91,16 +91,9 @@ async function manejarSellar(peticion, deps) {
   const campoEq = PBP.campoDeEquipo(body.equipo);
   if (!campoEq) return error(400, 'EQUIPO_INVALIDO', 'Falta el equipo.');
 
-  /* El paquete, de la misma clave que lee /api/v1/pbp. */
-  const claves = PBP.claveDeDatos(ctx.catalogo, ctx.clubId, ctx.slug);
-  const lista = typeof claves === 'string' ? [claves] : [claves.propia, claves.torneo];
+  /* El paquete: la MISMA elección que /paquete (paqueteDe), así el sello es el ciclo que se ve. */
   let paq = null;
-  try {
-    for (const k of lista) {
-      const l = await almacen.leerCampos(k, [campoEq]);
-      if (l && l[campoEq]) { paq = l[campoEq]; break; }
-    }
-  } catch (e) { return error(503, 'KV_ILEGIBLE', 'No se pudo leer el análisis del equipo.'); }
+  try { paq = await paqueteDe(ctx, almacen, campoEq); } catch (e) { return error(503, 'KV_ILEGIBLE', 'No se pudo leer el análisis del equipo.'); }
   if (!paq) return error(404, 'SIN_DATOS', 'Todavía no hay análisis de play-by-play de ese equipo.');
 
   const hoy = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
@@ -137,14 +130,25 @@ async function manejarSellar(peticion, deps) {
 const PREFIJO_GESTION = 'sgadd:ciclos-gestion:';
 const claveGestion = (clubId, slug) => PREFIJO_GESTION + clubId + ':' + slug;
 
+/* El paquete del equipo. Una categoría enganchada a una zona de torneo tiene
+   DOS fuentes posibles: su propio hash (lo que el club subió aparte) y el de la
+   zona (lo que carga la ingesta automática). Con las dos, gana la que trae el
+   partido de ciclo MÁS RECIENTE: medido el 2026-11-06, la categoría LAB 2026-27
+   de Jujuy guardaba el paquete de 2025-26 y tapaba los 5 partidos de 2026. */
+const ultimaFecha = (paq) => {
+  const l = (paq && paq.ciclos && Array.isArray(paq.ciclos.partidos)) ? paq.ciclos.partidos : [];
+  return l.reduce((m, x) => (x && x.fecha && x.fecha > m ? x.fecha : m), '');
+};
 async function paqueteDe(ctx, almacen, campoEq) {
   const claves = PBP.claveDeDatos(ctx.catalogo, ctx.clubId, ctx.slug);
   const lista = typeof claves === 'string' ? [claves] : [claves.propia, claves.torneo];
+  let mejor = null;
   for (const k of lista) {
     const l = await almacen.leerCampos(k, [campoEq]);
-    if (l && l[campoEq]) return l[campoEq];
+    const p = l && l[campoEq];
+    if (p && (!mejor || ultimaFecha(p) > ultimaFecha(mejor))) mejor = p;
   }
-  return null;
+  return mejor;
 }
 
 async function manejarGestion(peticion, deps) {
@@ -218,6 +222,9 @@ function proyectarPaquete(paq, completo) {
     return Object.assign(proyectarPaquete(paq, false), {
       liga: liga, reloj: p.reloj || null, rendimiento: p.rendimiento || null, secciones: p.secciones || null,
       partidosPbp: p.partidosPbp || [],
+      /* El informe de ciclo (SGADD_CICLOINFORME) también lee el detalle de tiros
+         por jugador, el plantel, el cierre y el conteo de partidos. */
+      tiros: p.tiros || null, jugadores: p.jugadores || [], clutch: p.clutch || null, partidos: p.partidos || null,
     });
   }
   return {

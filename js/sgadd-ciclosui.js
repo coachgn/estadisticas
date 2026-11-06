@@ -410,6 +410,47 @@ const SGADD_CICLOSUI = (function () {
     } catch (err) { return ''; }
   }
 
+  /* ---- EL INFORME DE CICLO (2026-11-06) ----
+     Las seis secciones salen de SGADD_CICLOINFORME, la réplica nativa del
+     Artifact «Jujuy Básquet · Ciclo 0»: cada card vive en su función y dice de
+     dónde sale. Las herramientas de ADMIN (auditoría, sello, comparar contra
+     otro ciclo, historial) van al pie de Principal: son gestión, no informe.
+     Sin el módulo (o si el informe no se puede armar) quedan los bloques
+     anteriores, que siguen en este archivo. */
+  function informe(idx, c, reg) {
+    const CIN = (typeof SGADD_CICLOINFORME !== 'undefined') ? SGADD_CICLOINFORME : null;
+    pedirDoc();
+    const modelo = CIN ? CIN.armar({ idx, paq: estado.paq, ciclo: c, doc: estado.doc }) : null;
+    const admin = esAdmin() ? `<div class="rend-grid" style="margin-top:12px">${bloqueAuditoria(c, estado.paq)}${bloqueSello(c, reg, estado.paq)}${bloqueComparar(estado.paq, c)}${bloqueHistorial(estado.paq)}</div>` : '';
+    if (modelo && modelo.ok) {
+      return `<div style="grid-column:1/-1">${CIN.html(modelo, estado.seccion)}${estado.seccion === 'principal' ? admin : ''}</div>`;
+    }
+    return ({
+      principal: () => bloqueAuditoria(c, estado.paq) + bloqueSello(c, reg, estado.paq) + bloqueResultados(c) + bloqueTransicion(c) + bloqueCuartos(c) + bloqueMapa(c) + bloqueCausas(c) + bloqueComparar(estado.paq, c) + bloqueHistorial(estado.paq),
+      equipos: () => bloque4Factores(idx, c) + bloqueArquetipos(estado.paq) + bloqueEquipos(estado.paq),
+      jugadores: () => bloqueJugadores(estado.paq),
+      clasificacion: () => bloqueClasificacion(estado.paq, idx),
+      fixture: () => bloqueFixture(estado.paq),
+      plan: () => bloquePlan(c) + bloqueEscenarios(idx),
+    }[estado.seccion] || (() => ''))();
+  }
+  /** El archivo del torneo (calendario y formato) para Fixture, SOS y escenarios: se pide una vez. */
+  function pedirDoc() {
+    if (typeof SGADD_FIXTURE === 'undefined' || !SGADD_FIXTURE.cargarTorneo) return;
+    let pl = null;
+    try { pl = SGADD.CATALOGO.planillas.find(p => p.id === SGADD_APP.estado.planillaId); } catch (e) { pl = null; }
+    if (!pl || !pl.torneoId || estado.docPedido === pl.torneoId) return;
+    estado.docPedido = pl.torneoId; estado.doc = null;
+    Promise.resolve(SGADD_FIXTURE.cargarTorneo(pl.torneoId)).then((d) => { if (d) { estado.doc = Object.assign({}, d, { vivo: estado.doc && estado.doc.vivo }); pintar(); } }).catch(() => {});
+    /* El fixture VIVO de la liga (sede, hora, próximos partidos): el archivo del torneo publica solo las primeras fechas. */
+    if (typeof SGADD_DATA !== 'undefined' && SGADD_DATA.fixtureDeTorneo) {
+      Promise.resolve(SGADD_DATA.fixtureDeTorneo(pl.torneoId, pl.zonaId)).then((r) => {
+        const z = r && r.zonas && (r.zonas[pl.zonaId] || Object.values(r.zonas)[0]);
+        if (z && Array.isArray(z.partidos)) { estado.doc = Object.assign({}, estado.doc || {}, { vivo: z.partidos }); pintar(); }
+      }).catch(() => {});
+    }
+  }
+
   function tabsSecciones() {
     return `<div class="flex flex-wrap gap-1 border-b border-hairline" role="tablist" aria-label="Secciones del ciclo">${SECCIONES.map(([id, t]) =>
       `<button type="button" role="tab" aria-selected="${estado.seccion === id}" onclick="SGADD_CICLOSUI.verSeccion('${id}')"
@@ -480,14 +521,7 @@ const SGADD_CICLOSUI = (function () {
             <div class="flex flex-wrap items-baseline gap-x-3"><h3 class="font-display uppercase tracking-wide text-sm text-ink">Ciclo ${c.meta.numero} · ${esc(c.meta.equipo || equipo)}</h3>
               <span class="text-xs text-muted">${dia(c.meta.desde)} al ${dia(c.meta.hasta)} · ${c.resultados.record.g}-${c.resultados.record.p}${c.meta.cerrado ? '' : ' · <b>ciclo abierto</b>: ' + c.meta.partidos + ' de ' + c.meta.n + ' partidos'}</span></div>
           </div>
-          ${({
-            principal: () => bloqueAuditoria(c, estado.paq) + bloqueSello(c, reg, estado.paq) + bloqueResultados(c) + bloqueTransicion(c) + bloqueCuartos(c) + bloqueMapa(c) + bloqueCausas(c) + bloqueComparar(estado.paq, c) + bloqueHistorial(estado.paq),
-            equipos: () => bloque4Factores(idx, c) + bloqueArquetipos(estado.paq) + bloqueEquipos(estado.paq),
-            jugadores: () => bloqueJugadores(estado.paq),
-            clasificacion: () => bloqueClasificacion(estado.paq, idx),
-            fixture: () => bloqueFixture(estado.paq),
-            plan: () => bloquePlan(c) + bloqueEscenarios(idx),
-          }[estado.seccion] || (() => ''))()}
+          ${informe(idx, c, reg)}
         </div>`;
     }
     return `<div class="space-y-5">${cabecera(idx, estado.paq)}${estado.paq && !estado.error && !estado.cargando ? tabsSecciones() : ''}${cuerpo}</div>`;
