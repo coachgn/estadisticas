@@ -2,6 +2,9 @@
 'use strict';
 global.SGADD_CICLOS = require('./js/sgadd-ciclos.js');
 global.SGADD_CANCHA = require('./js/sgadd-cancha.js');
+/* El rol se cambia por bloque: el admin ve el ciclo en vivo; el cuerpo técnico, solo lo publicado (2026-11-06). */
+let ROL = 'ADMIN';
+global.SGADD_AUTH = { ROLES: { ADMIN: 'ADMIN' }, rol: () => ROL, sesion: () => ({ email: 'freytesgn@gmail.com' }) };
 const UI = require('./js/sgadd-ciclosui.js');
 
 let ok = 0, fail = 0;
@@ -54,12 +57,12 @@ console.log('Sello e historial');
   const p = paq(9);
   UI.estado.paq = p; UI.estado.error = null; UI.estado.ciclo = 0; UI.estado.comparar = null; UI.estado.sellados = [];
   let h2 = UI.html(idx);
-  check('un ciclo cerrado sin sellar dice que está sin sellar', /sin sellar/.test(h2));
+  check('un ciclo cerrado sin publicar lo dice y ofrece sellar, publicar y enviar', /sin publicar/.test(h2) && /Sellar, publicar y enviar/.test(h2));
   check('el historial aparece con dos ciclos cerrados', /Evolución entre ciclos/.test(h2));
   const reg = SGADD_CICLOS.sellar(p, { tipo: 'ciclo', numero: 0, n: 4 }).registro;
   UI.estado.sellados = [reg];
   h2 = UI.html(idx);
-  check('un ciclo sellado se muestra como tal, con su huella', /Ciclo sellado/.test(h2) && h2.indexOf(reg.huella) !== -1);
+  check('un ciclo sellado se muestra como tal, con su huella', /Sellado/.test(h2) && h2.indexOf(reg.huella) !== -1);
   check('y dice que coincide con el análisis actual', /coincide con el análisis actual/.test(h2));
   check('el historial marca el candado del sellado', /Ciclo 0 🔒/.test(h2));
   const cambiado = paq(9); cambiado.ciclos.partidos[1].final = [99, 70];
@@ -99,6 +102,29 @@ check('un fallo se dice', /No se pudo leer/.test(UI.html(idx)));
   ok += todas ? 1 : 0; fail += todas ? 0 : 1; if (!todas) console.log('  ✗ el plan trae balance, tabla maestra y escenarios');
   const sinNaN = !/NaN|undefined/.test(h);
   ok += sinNaN ? 1 : 0; fail += sinNaN ? 0 : 1; if (!sinNaN) console.log('  ✗ el plan no muestra NaN ni undefined');
+}
+
+console.log('El cuerpo técnico ve SOLO lo publicado (2026-11-06)');
+{
+  ROL = 'CLIENTE';
+  Object.assign(UI.estado, { paq: paq(5), error: null, cargando: false, ciclo: null, publicados: [], foto: null, fotoDe: null, pubClave: null, seccion: 'principal' });
+  let hc = UI.html(idx);
+  check('sin publicados dice que todavía no hay y NO muestra el ciclo en curso', /Todavía no hay ciclos publicados/.test(hc) && !/ciclo abierto|Ciclo 1 ◆|data-ciclo=/.test(hc));
+  UI.estado.publicados = [{ clave: 'c0n4', publicado: '2026-11-06T12:00:00Z', meta: { numero: 0, desde: '2026-10-10', hasta: '2026-10-13', record: '4-0' } }];
+  UI.estado.foto = { foto: { titulo: 'Ciclo 0 · JUJUY', estilo: '.ci{}', secciones: { principal: '<div class="ci">INFORME-P</div>', plan: '<div class="ci">INFORME-PLAN</div>' } }, meta: UI.estado.publicados[0].meta, publicado: '2026-11-06T12:00:00Z' };
+  UI.estado.fotoDe = 'c0n4';
+  hc = UI.html(idx);
+  check('con uno publicado muestra la foto tal cual se publicó', /INFORME-P/.test(hc) && /publicado el 06\/11\/2026/.test(hc) && /Ciclo 0/.test(hc));
+  check('las pestañas son solo las secciones que trae la foto', /Plan de intervención/.test(hc) && !/>Jugadores</.test(hc));
+  check('no hay herramientas de admin en la vista del cuerpo técnico', !/Sellar|Auditoría del ciclo|Evolución entre ciclos/.test(hc));
+  ROL = 'ADMIN';
+  UI.estado.envioClientes = false; UI.estado.equipo = 'JUJUY'; UI.estado.publicados = [];
+  UI.estado.cierre = { num: 0, publicar: true, enviar: 'prueba', yendo: false, resultado: null, error: null };
+  const mh = UI.modalCierre();
+  check('el modal ofrece publicar y las tres opciones de mail', /Sellarlo y publicarlo/.test(mh) && /No mandar mail/.test(mh) && /Solo a mi mail \(prueba\)/.test(mh) && /A los usuarios del club/.test(mh));
+  check('con el envío apagado en el servidor, «a los usuarios» no se puede elegir', /value="equipo"[^>]*disabled/.test(mh) && /CICLOS_ENVIO_CLIENTES=si/.test(mh));
+  check('la prueba dice a qué mail va', /freytesgn@gmail\.com/.test(mh));
+  UI.estado.cierre = null;
 }
 
 console.log(`\n${ok} pasan · ${fail} fallan`);

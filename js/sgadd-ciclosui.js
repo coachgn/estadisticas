@@ -38,6 +38,12 @@ const SGADD_CICLOSUI = (function () {
     paq: null, paqDe: null, error: null, cargando: false,
     sellados: [],        // los ciclos sellados del equipo (servidor)
     sellando: false,
+    /* Cerrar un ciclo y lo que ve el cuerpo técnico (2026-11-06). */
+    publicados: [],      // [{clave, publicado, meta}] del equipo
+    envioClientes: false, // el servidor deja mandar a los entrenadores (CICLOS_ENVIO_CLIENTES)
+    modelo: null,        // el informe armado que se ve: de ahí sale la foto
+    cierre: null,        // el modal abierto: { num, publicar, enviar, yendo, resultado, error }
+    pubClave: null, foto: null, fotoDe: null, fotoError: null, // el cliente: el ciclo publicado abierto
   };
 
   const f1 = (v) => (v === null || v === undefined || !isFinite(v)) ? '—' : String(Math.round(v * 10) / 10).replace('.', ',');
@@ -193,11 +199,28 @@ const SGADD_CICLOSUI = (function () {
 
   const claveDe = (num, n) => 'c' + num + 'n' + n;
   const selladoDe = (num) => estado.sellados.find(r => r.clave === claveDe(num, CI.PARTIDOS_POR_CICLO)) || null;
-  const fechaCorta = (iso) => { const m = /^(d{4})-(d{2})-(d{2})/.exec(String(iso || '')); return m ? m[3] + '/' + m[2] + '/' + m[1] : ''; };
+  const fechaCorta = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? m[3] + '/' + m[2] + '/' + m[1] : ''; };
 
   /** Un ciclo cerrado se lee SELLADO si lo está: la historia no se recalcula. */
+  /** El documento publicado de un ciclo (si lo está). */
+  const publicadoDe = (num) => estado.publicados.find(x => x.clave === claveDe(num, CI.PARTIDOS_POR_CICLO)) || null;
+
   function bloqueSello(c, reg, paq) {
     const admin = esAdmin();
+    if (admin && c.meta.cerrado) {
+      const pub = publicadoDe(c.meta.numero);
+      const v = reg ? CI.verificar(reg, paq) : null;
+      const apto = CI.auditar(c, paq).apto;
+      const estadoTxt = pub ? `📣 <b>Publicado</b> el ${fechaCorta(pub.publicado)}: el cuerpo técnico lo ve en Ciclos.`
+        : reg ? `🔒 <b>Sellado</b> el ${fechaCorta(reg.sellado)} (huella <span class="font-mono">${esc(reg.huella)}</span>), <b>sin publicar</b>: el cuerpo técnico todavía no lo ve.`
+        : 'Ciclo cerrado, <b>sin publicar</b>: el cuerpo técnico todavía no lo ve.';
+      return `<div class="rend-card" style="grid-column:1/-1"><div class="flex flex-wrap items-center gap-3">
+        <p class="text-xs">${estadoTxt}${v ? (v === 'INTACTO' ? ' <span class="zona-texto zona-exito">✓ el sello coincide con el análisis actual</span>' : ' <span class="zona-texto zona-aviso">◆ el dato de origen cambió después del sello: se muestra lo sellado</span>') : ''}</p>
+        <button type="button" ${apto && !estado.cierre ? '' : 'disabled'} onclick="SGADD_CICLOSUI.abrirCierre(${c.meta.numero})"
+          class="px-3 py-2 text-[11px] font-semibold rounded-md bg-accent text-base disabled:opacity-40">${pub ? '✉ Enviar por mail…' : '📣 Sellar, publicar y enviar…'}</button>
+        ${apto ? '' : '<span class="text-[11px] zona-texto zona-peligro">La auditoría tiene errores: no se puede cerrar.</span>'}</div>
+        <p class="text-[11px] text-muted mt-1">El ciclo en curso no se le muestra al cuerpo técnico: ve cada ciclo recién cuando lo publicás. Lo sellado no se reemplaza ni se borra.</p></div>`;
+    }
     if (reg) {
       const v = CI.verificar(reg, paq);
       const txt = { INTACTO: '✓ coincide con el análisis actual', DIVERGENTE: '◆ el dato de origen cambió después del sello: se muestra lo sellado', NO_VERIFICABLE: '● el análisis actual ya no trae esos partidos' }[v];
@@ -425,6 +448,7 @@ const SGADD_CICLOSUI = (function () {
     try { if (c.meta.cerrado && SGADD_APP.idxPrevio) { const d = new Date(c.meta.hasta + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 1); const r = SGADD_APP.idxPrevio(d.toISOString().slice(0, 10)); if (r && r.idx) idxC = r.idx; } } catch (e) { idxC = idx; }
     const modelo = CIN ? CIN.armar({ idx: idxC, paq: estado.paq, ciclo: c, doc: estado.doc, anterior: estado.anterior || null }) : null;
     const admin = esAdmin() ? `<div class="rend-grid" style="margin-top:12px">${bloqueAuditoria(c, estado.paq)}${bloqueSello(c, reg, estado.paq)}${bloqueComparar(estado.paq, c)}${bloqueHistorial(estado.paq)}</div>` : '';
+    estado.modelo = modelo && modelo.ok ? { modelo, ciclo: c } : null;
     if (modelo && modelo.ok) {
       return `<div style="grid-column:1/-1">${CIN.html(modelo, estado.seccion)}${estado.seccion === 'principal' ? admin : ''}</div>`;
     }
@@ -524,6 +548,42 @@ const SGADD_CICLOSUI = (function () {
       </div></div>`;
   }
 
+  /* ===================================================== LO QUE VE EL CUERPO TÉCNICO
+     Solo los ciclos PUBLICADOS, tal cual se publicaron (la foto): el ciclo en
+     curso no se muestra, y lo publicado no cambia aunque la liga siga jugando. */
+  function htmlCliente(idx) {
+    const equipo = equipoInicial(idx);
+    estado.equipo = equipo;
+    const cab = (extra) => `<div class="card rounded-xl p-4 sm:p-5 border border-hairline">
+      <h2 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Ciclos de ${CI.PARTIDOS_POR_CICLO} partidos</h2>
+      <p class="text-xs text-muted mb-3">Cada informe cubre cuatro partidos seguidos de ${esc(equipo || 'tu equipo')}. Aparece acá cuando el cuerpo de análisis de MotorStats cierra el ciclo; el que está en curso se publica al completarse.</p>${extra || ''}</div>`;
+    if (!equipo) return cab('<p class="text-xs text-muted">No hay equipo asignado.</p>');
+    if (estado.cargando) return cab() + SGADD_UI.cargando('Cargando los ciclos…', equipo);
+    if (estado.error) return cab(`<p class="text-xs"><b>No se pudieron leer los ciclos.</b> <span class="text-muted">${esc(estado.error)}</span></p>`);
+    if (!estado.publicados.length) return cab('<p class="text-xs"><b>Todavía no hay ciclos publicados.</b> <span class="text-muted">El primero aparece cuando se cierre el ciclo de cuatro partidos.</span></p>');
+    const sel = estado.pubClave || estado.publicados[estado.publicados.length - 1].clave;
+    const botones = `<div class="inline-flex flex-wrap rounded-md border border-hairline overflow-hidden" role="group" aria-label="Elegir ciclo">${estado.publicados.map(p => {
+      const m = p.meta || {};
+      return `<button type="button" onclick="SGADD_CICLOSUI.elegirPublicado('${esc(p.clave)}')" aria-pressed="${p.clave === sel}" title="${dia(m.desde)} al ${dia(m.hasta)}"
+        class="px-3 py-2 text-[11px] font-semibold ${p.clave === sel ? 'bg-surface2 text-ink' : 'text-muted hover:text-ink'}">Ciclo ${m.numero === undefined || m.numero === null ? '' : m.numero}</button>`; }).join('')}</div>`;
+    let cuerpo;
+    if (estado.fotoError) cuerpo = `<div class="card rounded-xl p-4 border border-hairline text-xs"><b>No se pudo leer el informe.</b> <span class="text-muted">${esc(estado.fotoError)}</span></div>`;
+    else if (!estado.foto || estado.fotoDe !== sel) cuerpo = SGADD_UI.cargando('Cargando el informe…', '');
+    else {
+      const f = estado.foto, m = f.meta || {};
+      const secs = SECCIONES.filter(([id]) => f.foto.secciones[id]);
+      if (!secs.some(([id]) => id === estado.seccion)) estado.seccion = 'principal';
+      cuerpo = `<style data-ci-foto>${f.foto.estilo || ''}</style>
+        <div class="rend-card"><div class="flex flex-wrap items-baseline gap-x-3"><h3 class="font-display uppercase tracking-wide text-sm text-ink">${esc(f.foto.titulo || 'Ciclo')}</h3>
+          <span class="text-xs text-muted">${dia(m.desde)} al ${dia(m.hasta)}${m.record ? ' · ' + esc(m.record) : ''}${f.publicado ? ' · publicado el ' + fechaCorta(f.publicado) : ''}</span></div></div>
+        <div class="flex flex-wrap gap-1 border-b border-hairline" role="tablist" aria-label="Secciones del ciclo">${secs.map(([id, t]) =>
+          `<button type="button" role="tab" aria-selected="${estado.seccion === id}" onclick="SGADD_CICLOSUI.verSeccion('${id}')"
+            class="px-3 py-2 text-xs font-semibold ${estado.seccion === id ? 'text-ink border-b-2 border-[color:var(--acento)]' : 'text-muted hover:text-ink'}">${t}</button>`).join('')}</div>
+        <div>${f.foto.secciones[estado.seccion] || ''}</div>`;
+    }
+    return `<div class="space-y-5">${cab(`<span class="block text-[10px] uppercase tracking-wider text-muted font-display mb-1">Ciclo</span>${botones}`)}${cuerpo}</div>`;
+  }
+
   function html(idx) {
     if (!CI) return '';
     if (!idx || !idx.liga) {
@@ -532,6 +592,7 @@ const SGADD_CICLOSUI = (function () {
       if (app && app.error && !app.cargando) return `<div class="card rounded-xl p-4 border border-hairline text-xs"><b>No se pudo cargar la categoría.</b><br><span class="text-muted">${esc(app.error)}</span></div>`;
       return (typeof SGADD_UI !== 'undefined') ? SGADD_UI.cargando('Cargando la categoría…', 'Los ciclos necesitan los partidos del torneo.') : '';
     }
+    if (!esAdmin()) return htmlCliente(idx);
     const equipo = equipoInicial(idx);
     estado.equipo = equipo;
     let cuerpo;
@@ -569,7 +630,29 @@ const SGADD_CICLOSUI = (function () {
   }
 
   /** Pide el paquete del equipo elegido una sola vez por equipo y repinta al llegar. */
+  /** El cliente: la lista de ciclos publicados y el informe del elegido. */
+  function cargarPublicados() {
+    const eq = estado.equipo;
+    const club = (typeof CLUB !== 'undefined' && CLUB.estado) ? CLUB.estado.id : null;
+    const pl = (SGADD.CATALOGO.planillas || []).filter(x => x.id === SGADD_APP.estado.planillaId)[0];
+    const ficha = String(SGADD_APP.estado.planillaId || '') + '|' + eq;
+    if (!eq || !club || !pl || typeof SGADD_DATA === 'undefined' || !SGADD_DATA.ciclosPublicados) return;
+    if (estado.paqDe !== ficha) {
+      estado.paqDe = ficha; estado.cargando = true; estado.error = null; estado.publicados = []; estado.foto = null; estado.fotoDe = null; estado.pubClave = null;
+      SGADD_DATA.ciclosPublicados(club, pl.slug, eq).then((r) => { if (estado.paqDe !== ficha) return; estado.publicados = r.publicados || []; estado.cargando = false; pintar(); })
+        .catch((e) => { if (estado.paqDe === ficha) { estado.error = (e && e.message) || 'Sin conexión con el servidor.'; estado.cargando = false; pintar(); } });
+      return;
+    }
+    if (estado.cargando || !estado.publicados.length) return;
+    const clave = estado.pubClave || estado.publicados[estado.publicados.length - 1].clave;
+    if (estado.fotoDe === clave || estado.fotoPidiendo === clave) return;
+    estado.fotoPidiendo = clave; estado.fotoError = null;
+    SGADD_DATA.cicloFoto(club, pl.slug, eq, clave).then((r) => { if (estado.paqDe !== ficha) return; estado.foto = r; estado.fotoDe = clave; estado.fotoPidiendo = null; pintar(); })
+      .catch((e) => { estado.fotoPidiendo = null; estado.fotoError = (e && e.message) || 'Sin conexión.'; pintar(); });
+  }
+
   function cargarPaquete(idx) {
+    if (!esAdmin()) { cargarPublicados(); return; }
     const eq = estado.equipo;
     const paqDeCiclos = typeof SGADD_DATA !== 'undefined' && SGADD_DATA.ciclosPaquete;
     /* La ficha es CATEGORÍA + EQUIPO: con el nombre solo, pasar de «Apertura 2025» a «LAB 2026-27»
@@ -583,6 +666,9 @@ const SGADD_CICLOSUI = (function () {
     const pl = (SGADD.CATALOGO.planillas || []).filter(x => x.id === SGADD_APP.estado.planillaId)[0];
     const pedirSellos = (typeof SGADD_DATA !== 'undefined' && SGADD_DATA.ciclosSellados && club && pl)
       ? SGADD_DATA.ciclosSellados(club, pl.slug, eq).catch(() => []) : Promise.resolve([]);
+    if (typeof SGADD_DATA !== 'undefined' && SGADD_DATA.ciclosPublicados && club && pl) {
+      SGADD_DATA.ciclosPublicados(club, pl.slug, eq).then((r) => { if (estado.paqDe === ficha) { estado.publicados = r.publicados || []; estado.envioClientes = !!r.envioClientes; pintar(); } }).catch(() => {});
+    }
     /* El paquete de CICLOS (plan ORO): no pasa por la capa de laboratorio. */
     const pedirPaq = paqDeCiclos && club && pl ? SGADD_DATA.ciclosPaquete(club, pl.slug, eq) : SGADD_PBP.pedir(eq);
     Promise.all([pedirPaq, pedirSellos]).then(([p, sl]) => { if (estado.paqDe === ficha) { estado.paq = p; estado.sellados = sl; estado.cargando = false; pintar(); } })
@@ -610,11 +696,86 @@ const SGADD_CICLOSUI = (function () {
       },
     });
   }
+  /* ===================================================== CERRAR UN CICLO (admin)
+     Un modal con dos decisiones: publicarlo en la plataforma y mandarlo por
+     mail. «Solo a mi mail» no sella ni publica: es la prueba de punta a punta. */
+  function mailAdmin() { try { const s = SGADD_AUTH.sesion && SGADD_AUTH.sesion(); return (s && s.email) || ''; } catch (e) { return ''; } }
+  function modalCierre() {
+    const m = estado.cierre;
+    if (!m) return '';
+    const pub = publicadoDe(m.num);
+    const op = (val, txt, sub, hab) => `<label class="flex items-start gap-2 text-xs ${hab ? '' : 'opacity-50'}"><input type="radio" name="ciEnviar" value="${val}" ${m.enviar === val ? 'checked' : ''} ${hab && !m.yendo ? '' : 'disabled'}
+      onchange="SGADD_CICLOSUI.cierreCampo('enviar', this.value)"><span><b>${txt}</b>${sub ? `<br><span class="text-muted">${sub}</span>` : ''}</span></label>`;
+    const acc = !m.publicar && m.enviar === 'no' ? '' : (m.publicar ? (m.enviar === 'no' ? 'Sellar y publicar' : 'Sellar, publicar y enviar') : 'Enviar');
+    const res = m.resultado ? `<div class="text-xs zona-texto zona-exito">✓ ${esc(m.resultado)}</div>` : '';
+    const err = m.error ? `<div class="text-xs zona-texto zona-peligro">✗ ${esc(m.error)}</div>` : '';
+    return `<div class="login-fondo" role="dialog" aria-modal="true" aria-labelledby="ciCierreT" onclick="if(event.target===this)SGADD_CICLOSUI.cerrarModal()">
+      <div class="login-caja"><div class="p-5 space-y-3">
+        <h2 id="ciCierreT" class="font-display uppercase tracking-wide text-sm text-ink">Ciclo ${m.num} · ${esc(estado.equipo || '')}</h2>
+        <label class="flex items-start gap-2 text-xs ${pub ? 'opacity-50' : ''}"><input type="checkbox" ${m.publicar ? 'checked' : ''} ${pub || m.yendo ? 'disabled' : ''} onchange="SGADD_CICLOSUI.cierreCampo('publicar', this.checked)">
+          <span><b>${pub ? 'Ya está publicado' : 'Sellarlo y publicarlo en la plataforma'}</b><br><span class="text-muted">El cuerpo técnico lo ve en Ciclos tal cual está ahora. Lo sellado no se reemplaza.</span></span></label>
+        <div class="space-y-2"><div class="text-[10px] uppercase tracking-wider text-muted font-display">Mail con el informe en PDF</div>
+          ${op('no', 'No mandar mail', '', true)}
+          ${op('prueba', 'Solo a mi mail (prueba)', esc(mailAdmin() || 'el mail de tu sesión') + (m.publicar ? '' : ' · sin sellar ni publicar nada'), true)}
+          ${op('equipo', 'A los usuarios del club', estado.envioClientes ? 'Cada mail del padrón de acceso del club.' : 'Apagado en el servidor hasta que confirmes la prueba (CICLOS_ENVIO_CLIENTES=si).', estado.envioClientes)}</div>
+        ${res}${err}
+        <div class="flex justify-end gap-2 pt-2"><button type="button" onclick="SGADD_CICLOSUI.cerrarModal()" class="px-3 py-2 text-xs rounded-md border border-hairline text-ink">${m.resultado ? 'Cerrar' : 'Cancelar'}</button>
+          ${m.resultado ? '' : `<button type="button" ${acc && !m.yendo ? '' : 'disabled'} onclick="SGADD_CICLOSUI.confirmarCierre()" class="px-3 py-2 text-xs font-semibold rounded-md bg-accent text-base disabled:opacity-40">${m.yendo ? 'Trabajando…' : acc || 'Elegí una opción'}</button>`}</div>
+      </div></div></div>`;
+  }
+  function pintarModal() {
+    if (typeof document === 'undefined') return;
+    let n = document.getElementById('ciCierre');
+    if (!estado.cierre) { if (n) n.remove(); return; }
+    if (!n) { n = document.createElement('div'); n.id = 'ciCierre'; document.body.appendChild(n); }
+    n.innerHTML = modalCierre();
+  }
+  function abrirCierre(num) {
+    const pub = publicadoDe(num);
+    estado.cierre = { num: Number(num), publicar: !pub, enviar: 'prueba', yendo: false, resultado: null, error: null };
+    pintarModal();
+  }
+  function cerrarModal() { const hubo = estado.cierre && estado.cierre.resultado; estado.cierre = null; pintarModal(); if (hubo) pintar(); }
+  function cierreCampo(k, v) { if (!estado.cierre || estado.cierre.yendo) return; estado.cierre[k] = v; estado.cierre.error = null; pintarModal(); }
+  /** La foto: las 6 secciones del informe que se ve, ya armadas, con su estilo. */
+  function fotoDelInforme() {
+    const CIN = (typeof SGADD_CICLOINFORME !== 'undefined') ? SGADD_CICLOINFORME : null;
+    const x = estado.modelo;
+    if (!CIN || !x || !x.modelo) return null;
+    const secciones = {};
+    SECCIONES.forEach(([id]) => { secciones[id] = CIN.html(x.modelo, id); });
+    return { titulo: 'Ciclo ' + x.ciclo.meta.numero + ' · ' + (x.ciclo.meta.equipo || estado.equipo || ''), estilo: CIN.CSS || '', secciones, generado: new Date().toISOString() };
+  }
+  function confirmarCierre() {
+    const m = estado.cierre;
+    if (!m || m.yendo) return;
+    const x = estado.modelo;
+    if (!x || x.ciclo.meta.numero !== m.num) { m.error = 'Abrí ese ciclo en la pantalla antes de cerrarlo: el informe que se publica es el que ves.'; pintarModal(); return; }
+    const foto = fotoDelInforme();
+    if (!foto) { m.error = 'El informe no está armado todavía.'; pintarModal(); return; }
+    const club = CLUB.estado.id;
+    const pl = (SGADD.CATALOGO.planillas || []).filter(p => p.id === SGADD_APP.estado.planillaId)[0];
+    m.yendo = true; m.error = null; pintarModal();
+    SGADD_DATA.cerrarCiclo(club, pl.slug, { equipo: estado.equipo, criterio: { tipo: 'ciclo', numero: m.num, n: CI.PARTIDOS_POR_CICLO }, huella: CI.huella(x.ciclo), foto, publicar: !!m.publicar, enviar: m.enviar })
+      .then((r) => {
+        const partes = [];
+        if (r.publicado && m.publicar) partes.push('Sellado y publicado: el cuerpo técnico ya lo ve');
+        if (r.envio) partes.push('Mail enviado a ' + r.envio.a.join(', ') + (r.envio.fallidos.length ? ' (fallaron ' + r.envio.fallidos.length + ')' : ''));
+        m.resultado = partes.join(' · ') || 'Listo.';
+        return SGADD_DATA.ciclosPublicados(club, pl.slug, estado.equipo).then((l) => { estado.publicados = l.publicados || []; }).catch(() => {})
+          .then(() => SGADD_DATA.ciclosSellados(club, pl.slug, estado.equipo).then((sl) => { estado.sellados = sl; }).catch(() => {}));
+      })
+      .catch((e) => { m.error = (e && e.message) || 'No se pudo.'; })
+      .then(() => { m.yendo = false; pintarModal(); });
+  }
+  function elegirPublicado(clave) { estado.pubClave = String(clave); estado.seccion = 'principal'; pintar(); }
+
   function verSeccion(s) { estado.seccion = SECCIONES.some(x => x[0] === s) ? s : 'principal'; pintar(); }
   function verLado(l) { estado.lado = l === 'favor' ? 'favor' : 'contra'; pintar(); }
 
   return {
     estado, html, pintar, elegirEquipo, elegirCiclo, elegirComparar, verLado, verSeccion, sellar, SECCIONES,
+    abrirCierre, cerrarModal, cierreCampo, confirmarCierre, elegirPublicado, htmlCliente, modalCierre, fotoDelInforme,
     bloqueEquipos, bloque4Factores, bloqueArquetipos, bloqueEscenarios, bloqueJugadores, bloqueClasificacion, bloqueFixture, bloquePlan,
     bloqueSello, bloqueHistorial, selladoDe,
     bloqueResultados, bloqueTransicion, bloqueCuartos, bloqueMapa, bloqueCausas, bloqueComparar, bloqueAuditoria, lecturaZonas,

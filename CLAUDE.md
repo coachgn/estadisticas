@@ -97,19 +97,19 @@ node test-ciclos.js        #  55 tests · el informe de ciclo de 4 partidos (js/
                            #             liga, causas, esperado/real por cuarto, zonas, auditoría y comparar; y el dato REAL de la
                            #             ingesta (motorstats-ingestion/src/pbp/ciclos.js, bloque `ciclos` del paquete @3) (Ciclos, fase 2)
 
-node test-ciclosui.js      #  13 tests · la sección Ciclos (js/sgadd-ciclosui.js): selector de ciclo, bento, cancha con zonas
+node test-ciclosui.js      #  31 tests · la sección Ciclos (js/sgadd-ciclosui.js): selector de ciclo, bento, cancha con zonas
                            #             citadas, comparar sin tendencia, paquete viejo y error de carga (Ciclos, fase 3)
 
-node test-ciclos-sellos.js #  34 tests · los ciclos sellados (Ciclos, fase 4): ventana libre (calendario / partidos / ids), huella, sellar
+node test-ciclos-sellos.js #  35 tests · los ciclos sellados (Ciclos, fase 4): ventana libre (calendario / partidos / ids), huella, sellar
                            #             solo cerrado y apto, verificar, historial sin juicio, y /api/v1/ciclos con HSETNX (nada se reemplaza ni se borra)
 
 node test-ciclosadmin.js   #  58 tests · la gestión de ciclos (Ciclos, fase 5): estados borrador → auditado → publicado, lecturas editables sin tocar
                            #             números, /api/v1/ciclos/.../gestion solo ADMIN y la pestaña «Ciclos · gestión» de Comparativa
 
-node test-ciclospublicar.js #  54 tests · publicar y enviar el ciclo (Ciclos, fase 6): el mail MIME con el PDF adjunto, el informe HTML autónomo,
+node test-ciclospublicar.js #  73 tests · publicar y enviar el ciclo (Ciclos, fase 6): el mail MIME con el PDF adjunto, el informe HTML autónomo,
                            #             /api/v1/ciclos/.../publicar solo ADMIN (ensayo, HSETNX, reintento de fallidos, el PDF que no compila) y el paquete de ciclos del cliente ORO sin la capa pbp
 
-node test-cicloinforme.js  #  32 tests · el informe de ciclo nativo (js/sgadd-cicloinforme.js): tramos y línea de tanteo, on/off, semáforo,
+node test-cicloinforme.js  #  37 tests · el informe de ciclo nativo (js/sgadd-cicloinforme.js): tramos y línea de tanteo, on/off, semáforo,
                            #             y las 6 secciones sobre el paquete REAL de LAB 2026-27 si está en la máquina (punto 165)
 
 node test-pbp.js           # 281 tests · la capa de laboratorio de play-by-play: el catálogo,
@@ -322,7 +322,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=354`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=356`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16674,16 +16674,61 @@ secciones con TODAS sus cards, en el mismo orden. Assets en `?v=351`. `test-cicl
   mapas por jugador y por franja. Para que sean del ciclo, la ingesta tiene que agregar el tirador y
   la franja a cada tiro de `partidosPbp`.
 
+### La tercera vuelta (2026-11-06, `?v=355`) · el tirador, la franja y el ritmo, del ciclo
+- **Ingesta** (`AV.porPartido`): cada tiro de `partidosPbp` es
+  `[lateral×10, fondo×10, convertido, zona, tirador, reloj]` (tirador = índice en `ids`, −1 sin
+  dato; reloj = el código de `franjaPorTiro`), de los dos lados, y cada partido suma `juego`
+  (`juegoPorCuarto` de ese partido: ritmo, eFG, ORTG/DRTG, pérdidas y faltas por cuarto).
+  `test/test-jujuy-pbp.js` exige que los tiros por jugador y las franjas sumen lo mismo que el
+  detalle de temporada.
+- **Panel** (`detalleDe(X)`): quién tira en cada zona, los mapas por jugador, los mapas por franja
+  y la lectura de cada jugador salen SOLO de los partidos del ciclo, con la misma forma que
+  `paq.tiros.detalle`. Un paquete anterior (tiro de 4 elementos) vuelve al detalle de temporada
+  y la card lo dice. `ritmoCuarto(X, k)` pone el ritmo en la pregunta «¿Filosofía?» del peor cuarto.
+- Paquete de LAB Norte regenerado en local; **sin subir**.
+
 ### Para producción
 1. Deploy del backend (`cd server && npx vercel --prod`): sin él, producción sigue sirviendo el
    paquete viejo de 2025-26 para la categoría LAB 2026-27.
-2. Push del front (`?v=354`).
+2. Push del front (`?v=355`).
+3. Subir los paquetes regenerados (en `motorstats-ingestion`:
+   `node herramientas/subir-paquetes.js --confirmar`). Hasta eso, el ciclo sigue con el detalle
+   de temporada y sin el ritmo del 3.º cuarto.
 
 ### Pendiente para acercarlo más al Artifact
-- **El tirador y la franja por tiro en `partidosPbp`** (ingesta, `AV.porPartido`): con eso «quién
-  tira en Z13», los mapas por jugador y por franja pasan a ser del ciclo y no de la temporada.
 - **Los textos de lectura** (proceso contra resultado, cinco preguntas del peor cuarto, fortaleza /
   fuga / ajuste por jugador) son reglas simples sobre el dato: se refinan card por card.
 - **El NET sin el partido contra nosotros** en el SOS y la tabla de la temporada anterior en los
   escenarios de Clasificación (hoy no se cargan: se dice).
 - **No verificado en PDF** ni con un link de cliente.
+
+---
+
+## 166. CERRAR UN CICLO · SELLAR, PUBLICAR Y MANDAR, Y EL CUERPO TÉCNICO VE SOLO LO PUBLICADO (2026-11-06)
+
+Assets en `?v=356`. `test-ciclospublicar.js` (sección 6) y `test-ciclosui.js` fijan todo.
+
+- **Un paso desde Ciclos** (admin, ciclo cerrado): «📣 Sellar, publicar y enviar…» abre un modal con
+  dos decisiones: *sellarlo y publicarlo en la plataforma* y el mail (*no mandar* · *solo a mi mail
+  (prueba)* · *a los usuarios del club*). `POST /api/v1/ciclos/:club/:cat/cerrar`
+  (`manejarCerrar`), solo ADMIN.
+- **La FOTO** (`server/lib/ciclos-foto.js`): el navegador del admin manda el HTML de las 6 secciones
+  del informe nativo con su estilo. El servidor recalcula el ciclo y exige la misma huella (si no,
+  409 `CAMBIO`), guarda la foto comprimida en `sgadd:ciclos-foto:<club>:<cat>` (gzip + base64: 384
+  KB → 62 KB) y de ella sale el PDF del mail (`documento`: una sección por hoja, papel claro,
+  `<details>` abiertos, `<base>` al panel publicado). Medido con el Ciclo 0 real: 25 hojas A4, 966 KB.
+  Solo esta ruta acepta un cuerpo de hasta 4 MB (`app.js`, `RUTA_CERRAR`); el resto sigue en 16 KB.
+- **«Solo a mi mail» sin publicar** no sella ni publica: es la prueba de punta a punta, al mail de la
+  sesión del admin, con «[PRUEBA]» en el asunto.
+- **El envío a los entrenadores está APAGADO EN EL SERVIDOR** hasta `CICLOS_ENVIO_CLIENTES=si`
+  (variable de entorno de Vercel): `/cerrar` con `enviar: 'equipo'` y el `/publicar` viejo de
+  Comparativa contestan 403 `ENVIO_EN_PRUEBA`. La pantalla lo muestra deshabilitado.
+- **El cuerpo técnico ve solo lo publicado**: `GET /publicados` (lista con meta) y `GET /foto` (el
+  informe tal cual se publicó). `/paquete` pasa a ser solo de ADMIN (403 `SOLO_PUBLICADOS`: con el
+  paquete el cliente armaría el ciclo en curso) y `/ciclos` le devuelve al cliente solo los sellos
+  publicados. Un publicado no se vuelve a publicar; sí se puede volver a mandar con la foto guardada.
+- **Consecuencia al desplegar**: los clientes ORO que hoy ven Ciclos en vivo pasan a ver «Todavía no
+  hay ciclos publicados» hasta que el admin publique el primero.
+- Se arregló `fechaCorta` de `sgadd-ciclosui.js` (la expresión había perdido las `\d`).
+- **No verificado con sesión en el navegador** ni contra Gmail real: probado con KV y transporte de
+  mentira, y el PDF con el Chrome local.

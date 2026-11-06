@@ -124,7 +124,9 @@ const ped = (t, club, cat, body, query) => ({ headers: t ? { authorization: 'Bea
   check('un equipo sin análisis da 404', r.status === 404);
 
   r = await CIC.manejarCiclos(ped(tokJujuy, 'jujuy', 'jujuy-norte', null, { equipo: 'JUJUY' }));
-  check('el cliente ORO lee sus sellados', r.status === 200 && r.body.sellados.length === 2 && r.body.sellados.some(s => s.huella === huella));
+  check('el cliente ORO NO ve un sellado que no se publicó (2026-11-06)', r.status === 200 && r.body.sellados.length === 0);
+  r = await CIC.manejarCiclos(ped(tokAdmin, 'jujuy', 'jujuy-norte', null, { equipo: 'JUJUY' }));
+  check('el admin ve los dos sellados', r.status === 200 && r.body.sellados.length === 2 && r.body.sellados.some(s => s.huella === huella));
   r = await CIC.manejarCiclos(ped(tokDep, 'deportivo', 'deportivo-primera'));
   check('un cliente PLATA no los lee (403 de plan)', r.status === 403 && r.body.codigo === 'REQUIERE_PLAN');
   r = await CIC.manejarCiclos(ped(tokDep, 'jujuy', 'jujuy-norte'));

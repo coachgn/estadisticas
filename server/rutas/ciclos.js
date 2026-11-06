@@ -35,6 +35,7 @@ const INFORME = require('../lib/ciclos-informe.js');
 const PDF = require('../lib/ciclos-pdf.js');
 const ENVIO = require('../lib/mail-envio.js');
 const { mailCiclo } = require('../lib/mail-ciclo.js');
+const FOTO = require('../lib/ciclos-foto.js');
 
 const PREFIJO = 'sgadd:ciclos:';
 const SLUG = /^[a-z0-9][a-z0-9-]{0,79}$/;
@@ -78,7 +79,14 @@ async function manejarCiclos(peticion, deps) {
   let hash;
   try { hash = await almacen.leerHash(claveKV(ctx.clubId, ctx.slug)); }
   catch (e) { return error(503, 'KV_ILEGIBLE', 'No se pudieron leer los ciclos sellados.'); }
-  const sellados = Object.keys(hash).filter(k => !eq || k.split('|')[0] === eq).sort().map(k => hash[k]);
+  let sellados = Object.keys(hash).filter(k => !eq || k.split('|')[0] === eq).sort().map(k => hash[k]);
+  /* Un cliente ve solo los sellos de ciclos PUBLICADOS (2026-11-06). */
+  if (!ctx.esAdmin) {
+    let g = {};
+    try { g = await almacen.leerHash(claveGestion(ctx.clubId, ctx.slug)); } catch (e) { return error(503, 'KV_ILEGIBLE', 'No se pudieron leer los ciclos.'); }
+    const pub = new Set(Object.keys(g).filter(k => g[k] && g[k].estado === 'publicado'));
+    sellados = Object.keys(hash).filter(k => (!eq || k.split('|')[0] === eq) && pub.has(k)).sort().map(k => hash[k]);
+  }
   return { status: 200, body: { ok: true, sellados } };
 }
 
@@ -250,11 +258,9 @@ async function manejarPaquete(peticion, deps) {
   const q = (peticion && peticion.query) || {};
   const campoEq = PBP.campoDeEquipo(q.equipo);
   if (!campoEq) return error(400, 'EQUIPO_INVALIDO', 'Falta el equipo.');
-  if (!ctx.esAdmin) {
-    const propio = AUTH.equipoDeCategoria(ctx.catalogo[ctx.clubId], ctx.slug).equipo;
-    if (!propio) return error(403, 'SIN_EQUIPO', 'La categoría no tiene un equipo propio declarado.');
-    if (!mismoEquipo(q.equipo, propio)) return error(403, 'OTRO_EQUIPO', 'Los ciclos son del equipo del club.');
-  }
+  /* El cuerpo técnico NO lee el paquete: con él armaría el ciclo en curso, que no se
+     muestra hasta que se publica (2026-11-06). Lee /publicados y /foto. */
+  if (!ctx.esAdmin) return error(403, 'SOLO_PUBLICADOS', 'El cuerpo técnico ve los ciclos publicados.');
   let paq;
   try { paq = await paqueteDe(ctx, almacen, campoEq); }
   catch (e) { return error(503, 'KV_ILEGIBLE', 'No se pudo leer el análisis del equipo.'); }
@@ -347,6 +353,10 @@ async function manejarPublicar(peticion, deps) {
     return { status: 200, body: { ok: true, ensayo: true, destinatarios: destinos.map(x => x.email), pdfBytes: pdf.length, archivo: informe.archivo, titulo: informe.titulo } };
   }
 
+  /* Mientras el club prueba el informe, nada sale a los entrenadores (2026-11-06). */
+  if (!envioClientesHabilitado(d.env)) {
+    return error(403, 'ENVIO_EN_PRUEBA', 'El envío a los entrenadores está apagado en el servidor (modo prueba). Se habilita con CICLOS_ENVIO_CLIENTES=si.');
+  }
   /* Se reclama el envío ANTES de mandar. */
   const envioKey = claveEnvio(ctx.clubId, ctx.slug);
   if (!reintento) {
@@ -388,4 +398,204 @@ async function manejarPublicar(peticion, deps) {
   return { status: 200, body: { ok: true, doc: Object.assign({ campo }, doc), enviados: ok, fallidos } };
 }
 
-module.exports = { manejarCiclos, manejarSellar, manejarGestion, manejarGestionGuardar, manejarPublicar, manejarPaquete, proyectarPaquete, claveKV, claveGestion, claveEnvio, PREFIJO, PREFIJO_GESTION, PREFIJO_ENVIO };
+/* =====================================================================
+   CERRAR UN CICLO (2026-11-06) · solo ADMIN · un paso, con opciones
+
+     POST  /cerrar   { equipo, criterio, huella, foto, publicar, enviar }
+       enviar: 'no' | 'prueba' | 'equipo'
+
+   Lo que pidió el club: al sellar, elegir si se PUBLICA en la plataforma y si
+   se MANDA por mail. Mientras el ciclo siguiente está en curso, el cuerpo
+   técnico no lo ve: solo ve los publicados (ver `manejarPublicados`).
+
+   - El servidor recalcula el ciclo; la `huella` que manda el navegador tiene
+     que coincidir con la suya (si no, 409 CAMBIO: la foto describe otro dato).
+   - 'prueba' sin publicar: manda el informe SOLO al mail del admin que lo
+     pide, sin sellar ni publicar nada. Es el ensayo de punta a punta.
+   - Publicar: sella (HSETNX, igual que /sellar; si ya estaba sellado con la
+     misma huella sigue), guarda la foto y deja la gestión en 'publicado'.
+     Un ciclo publicado no se vuelve a publicar; sí se puede volver a mandar.
+   - 'equipo' manda al padrón del club SOLO si el servidor tiene
+     CICLOS_ENVIO_CLIENTES=si. Hasta que el club lo pruebe, el envío a los
+     entrenadores queda apagado en el servidor, no solo en la pantalla.
+   ===================================================================== */
+const PREFIJO_FOTO = 'sgadd:ciclos-foto:';
+const claveFoto = (clubId, slug) => PREFIJO_FOTO + clubId + ':' + slug;
+const envioClientesHabilitado = (env) => String(((env || process.env).CICLOS_ENVIO_CLIENTES) || '').toLowerCase() === 'si';
+
+async function manejarCerrar(peticion, deps) {
+  const d = deps || {};
+  const ctx = await autorizar(peticion, d, true);
+  if (ctx.error) return ctx.error;
+  const almacen = d.kv || kv;
+  if (!almacen.configurado()) return error(503, 'SIN_KV', 'El servidor no tiene dónde guardar el ciclo.');
+  const body = (peticion && peticion.body) || {};
+  const campoEq = PBP.campoDeEquipo(body.equipo);
+  if (!campoEq) return error(400, 'EQUIPO_INVALIDO', 'Falta el equipo.');
+  const publicar = body.publicar === true;
+  const enviar = ['no', 'prueba', 'equipo'].includes(body.enviar) ? body.enviar : 'no';
+  if (!publicar && enviar === 'no') return error(400, 'SIN_ACCION', 'Elegí publicar, enviar o las dos.');
+  if (enviar === 'equipo' && !envioClientesHabilitado(d.env)) {
+    return error(403, 'ENVIO_EN_PRUEBA', 'El envío a los entrenadores está apagado en el servidor (modo prueba). Mandalo primero a tu mail; se habilita con CICLOS_ENVIO_CLIENTES=si.');
+  }
+  const v = verificarToken(tokenDeLaPeticion(peticion));
+  const emailAdmin = v.ok && v.sesion ? v.sesion.email : null;
+
+  let paq;
+  try { paq = await paqueteDe(ctx, almacen, campoEq); }
+  catch (e) { return error(503, 'KV_ILEGIBLE', 'No se pudo leer el análisis del equipo.'); }
+  if (!paq) return error(404, 'SIN_DATOS', 'Todavía no hay análisis de play-by-play de ese equipo.');
+
+  const ahoraD = d.ahora ? new Date(d.ahora) : new Date();
+  const hoy = new Date(ahoraD.getTime() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+  const r = CICLOS.sellar(paq, body.criterio, { hoy, ahora: ahoraD });
+  if (!r.ok) return error(422, r.motivo, r.mensaje, { auditoria: r.auditoria || null });
+  const ciclo = r.registro.ciclo;
+  if (body.huella !== r.registro.huella) return error(409, 'CAMBIO', 'El informe armado no coincide con el dato del servidor: recargá la página y volvé a intentar.', { huella: r.registro.huella });
+
+  const campo = campoEq + '|' + r.clave;
+  const claveG = claveGestion(ctx.clubId, ctx.slug), claveF = claveFoto(ctx.clubId, ctx.slug);
+  let previo = null, fotoGuardada = null;
+  try {
+    previo = (await almacen.leerCampos(claveG, [campo]))[campo] || null;
+    fotoGuardada = (await almacen.leerCampos(claveF, [campo]))[campo] || null;
+  } catch (e) { return error(503, 'KV_ILEGIBLE', 'No se pudo leer la gestión del ciclo.'); }
+  const yaPublicado = !!(previo && previo.estado === 'publicado');
+  if (publicar && yaPublicado) return error(409, 'YA_PUBLICADO', 'Ese ciclo ya está publicado. Para volver a mandarlo, elegí solo el envío.');
+
+  /* La foto: la que viene o, para reenviar uno ya publicado, la guardada. */
+  let foto = null;
+  if (body.foto) {
+    const vf = FOTO.validar(body.foto);
+    if (!vf.ok) return error(400, 'FOTO_INVALIDA', vf.motivo);
+    foto = vf.foto;
+  } else if (fotoGuardada) foto = FOTO.descomprimir(fotoGuardada.datos);
+  if (!foto) return error(400, 'FOTO_INVALIDA', 'Falta el informe armado.');
+
+  const meta = { equipo: ciclo.meta.equipo || body.equipo, numero: ciclo.meta.numero, n: ciclo.meta.n, desde: ciclo.meta.desde, hasta: ciclo.meta.hasta,
+    record: ciclo.resultados.record.g + '-' + ciclo.resultados.record.p, tipo: ciclo.meta.tipo };
+  const out = { ok: true, prueba: enviar === 'prueba' && !publicar, sellado: false, publicado: yaPublicado, envio: null };
+
+  /* 1 · Sellar y publicar. */
+  if (publicar) {
+    let escrito;
+    try { escrito = await almacen.comando(['HSETNX', claveKV(ctx.clubId, ctx.slug), campo, JSON.stringify(r.registro)]); }
+    catch (e) { return error(503, 'KV_ESCRITURA', 'No se pudo guardar el sello.'); }
+    if (!Number(escrito)) {
+      const s0 = (await almacen.leerCampos(claveKV(ctx.clubId, ctx.slug), [campo]))[campo] || null;
+      if (!s0 || s0.huella !== r.registro.huella) return error(409, 'YA_SELLADO', 'Ese ciclo ya está sellado con otro dato: no se reemplaza.', { sellado: s0 ? { huella: s0.huella, fecha: s0.sellado } : null });
+    }
+    out.sellado = true;
+    const doc = Object.assign({ estado: 'borrador', lecturas: {}, historial: [] }, previo || {}, {
+      estado: 'publicado', huella: r.registro.huella, publicado: ahoraD.toISOString(), actualizado: ahoraD.toISOString(),
+      criterio: ciclo.meta.criterio || { tipo: ciclo.meta.tipo, numero: ciclo.meta.numero, n: ciclo.meta.n }, equipo: body.equipo, meta,
+    });
+    doc.historial = ((previo && previo.historial) || []).concat([{ estado: 'publicado', accion: 'cerrar', en: ahoraD.toISOString(), por: emailAdmin, nota: '' }]);
+    try {
+      await almacen.escribirCampos(claveF, { [campo]: { datos: FOTO.comprimir(foto), huella: r.registro.huella, guardado: ahoraD.toISOString() } });
+      await almacen.escribirCampos(claveG, { [campo]: doc });
+    } catch (e) { return error(503, 'KV_ESCRITURA', 'Se selló pero no se pudo publicar: volvé a intentar.'); }
+    out.publicado = true; previo = doc;
+  }
+
+  /* 2 · El mail. */
+  if (enviar !== 'no') {
+    let destinos;
+    if (enviar === 'prueba') {
+      if (!emailAdmin) return error(400, 'SIN_MAIL', 'Tu sesión no tiene mail: no hay a dónde mandar la prueba.', out);
+      destinos = [{ email: emailAdmin, nombre: null }];
+    } else {
+      let padron;
+      try { padron = d.padron || await CLIENTES.cargar(d.kvOpciones); }
+      catch (e) { return error(503, 'KV_ILEGIBLE', 'No se pudo leer el padrón de accesos.', out); }
+      destinos = CLIENTES.delClub(padron, ctx.clubId).map(x => ({ email: x.email, nombre: x.nombre }));
+      if (!destinos.length) return error(422, 'SIN_DESTINATARIOS', 'El club no tiene mails dados de alta en el padrón de acceso.', out);
+    }
+    let pdf;
+    try { pdf = await (d.render || PDF.aPdf)(FOTO.documento(foto, meta)); }
+    catch (e) { return error(503, (e && e.codigo) || 'PDF_FALLO', (e && e.message) || 'No se pudo compilar el PDF.', out); }
+    const transporte = d.transporte || ENVIO.transporteSmtp({ env: d.env });
+    const estadoMail = ENVIO.estadoEnvio(d.env);
+    if (!estadoMail.ok && !d.transporte) return error(503, estadoMail.codigo, estadoMail.mensaje, out);
+    const lecturas = Object.assign({}, CICLOS.lecturasBase(ciclo), (previo && previo.lecturas) || {});
+    const etiqueta = ciclo.meta.tipo === 'ciclo' && ciclo.meta.numero !== null ? 'Ciclo ' + ciclo.meta.numero : 'Ventana libre';
+    const archivo = ('Ciclo ' + (ciclo.meta.numero !== null ? ciclo.meta.numero : '') + ' ' + meta.equipo).replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() + '.pdf';
+    const ok = [], fallidos = [];
+    for (const x of destinos) {
+      const mail = mailCiclo({ nombre: x.nombre, equipo: meta.equipo, club: ctx.clubId, ciclo: etiqueta, desde: meta.desde, hasta: meta.hasta, record: meta.record,
+        lectura: lecturas.resumen, panel: FOTO.BASE_PANEL + '?club=' + encodeURIComponent(ctx.clubId) });
+      const asunto = (enviar === 'prueba' ? '[PRUEBA] ' : '') + mail.asunto;
+      try {
+        await transporte.enviar({ para: x.email, asunto, html: mail.html, texto: mail.texto, adjuntos: [{ nombre: archivo, tipo: 'application/pdf', contenido: pdf }] });
+        ok.push(x.email);
+      } catch (e) { fallidos.push({ email: x.email, error: (e && e.codigo) || 'ENVIO', mensaje: (e && e.message) || '' }); }
+    }
+    out.envio = { modo: enviar, a: ok, fallidos, pdfBytes: pdf.length, archivo };
+    if (!ok.length) return error(502, 'ENVIO', 'No salió ningún mail.', out);
+    if (enviar === 'equipo' && previo) {
+      const doc = Object.assign({}, previo, { envio: { fecha: ahoraD.toISOString(), archivo, a: ((previo.envio && previo.envio.a) || []).concat(ok), fallidos } });
+      try { await almacen.escribirCampos(claveG, { [campo]: doc }); } catch (e) { /* los mails salieron: el registro queda para la próxima */ }
+    }
+  }
+  return { status: 200, body: out };
+}
+
+/* =====================================================================
+   LO QUE VE EL CUERPO TÉCNICO · solo los ciclos PUBLICADOS
+
+     GET  /publicados?equipo=       la lista (meta, sin el informe)
+     GET  /foto?equipo=&clave=      el informe de un ciclo publicado
+
+   El cliente (plan ORO) ve un ciclo recién cuando el admin lo publica: el
+   que está en curso no existe para él. Un cliente pide solo SU equipo.
+   ===================================================================== */
+async function contextoLectura(peticion, deps) {
+  const ctx = await autorizar(peticion, deps, false);
+  if (ctx.error) return ctx;
+  const almacen = (deps && deps.kv) || kv;
+  if (!almacen.configurado()) return { error: error(503, 'SIN_KV', 'El servidor no tiene dónde leer los ciclos.') };
+  const q = (peticion && peticion.query) || {};
+  const campoEq = PBP.campoDeEquipo(q.equipo);
+  if (!campoEq) return { error: error(400, 'EQUIPO_INVALIDO', 'Falta el equipo.') };
+  if (!ctx.esAdmin) {
+    const propio = AUTH.equipoDeCategoria(ctx.catalogo[ctx.clubId], ctx.slug).equipo;
+    if (!propio) return { error: error(403, 'SIN_EQUIPO', 'La categoría no tiene un equipo propio declarado.') };
+    if (!mismoEquipo(q.equipo, propio)) return { error: error(403, 'OTRO_EQUIPO', 'Los ciclos son del equipo del club.') };
+  }
+  return Object.assign(ctx, { almacen, campoEq, q });
+}
+
+async function manejarPublicados(peticion, deps) {
+  const ctx = await contextoLectura(peticion, deps);
+  if (ctx.error) return ctx.error;
+  let hash;
+  try { hash = await ctx.almacen.leerHash(claveGestion(ctx.clubId, ctx.slug)); }
+  catch (e) { return error(503, 'KV_ILEGIBLE', 'No se pudieron leer los ciclos publicados.'); }
+  const publicados = Object.keys(hash).filter(k => k.split('|')[0] === ctx.campoEq && hash[k] && hash[k].estado === 'publicado')
+    .map(k => ({ clave: k.split('|').slice(1).join('|'), publicado: hash[k].publicado || null, meta: hash[k].meta || null, criterio: hash[k].criterio || null }))
+    .sort((a, b) => String((a.meta && a.meta.desde) || '').localeCompare(String((b.meta && b.meta.desde) || '')));
+  const body = { ok: true, publicados };
+  if (ctx.esAdmin) body.envioClientes = envioClientesHabilitado(deps && deps.env);
+  return { status: 200, body };
+}
+
+async function manejarFoto(peticion, deps) {
+  const ctx = await contextoLectura(peticion, deps);
+  if (ctx.error) return ctx.error;
+  const clave = String(ctx.q.clave || '');
+  if (!/^[a-z0-9_.:-]{1,80}$/i.test(clave)) return error(400, 'CLAVE_INVALIDA', 'Falta el ciclo.');
+  const campo = ctx.campoEq + '|' + clave;
+  let doc, f;
+  try {
+    doc = (await ctx.almacen.leerCampos(claveGestion(ctx.clubId, ctx.slug), [campo]))[campo] || null;
+    f = (await ctx.almacen.leerCampos(claveFoto(ctx.clubId, ctx.slug), [campo]))[campo] || null;
+  } catch (e) { return error(503, 'KV_ILEGIBLE', 'No se pudo leer el informe.'); }
+  if (!doc || doc.estado !== 'publicado' || !f) return error(404, 'NO_PUBLICADO', 'Ese ciclo no está publicado.');
+  const foto = FOTO.descomprimir(f.datos);
+  if (!foto) return error(500, 'FOTO_ROTA', 'El informe guardado no se pudo leer.');
+  return { status: 200, body: { ok: true, foto, meta: doc.meta || null, publicado: doc.publicado || null } };
+}
+
+module.exports = { manejarCiclos, manejarSellar, manejarGestion, manejarGestionGuardar, manejarPublicar, manejarPaquete, manejarCerrar, manejarPublicados, manejarFoto,
+  proyectarPaquete, envioClientesHabilitado, claveKV, claveGestion, claveEnvio, claveFoto, PREFIJO, PREFIJO_GESTION, PREFIJO_ENVIO, PREFIJO_FOTO };
+

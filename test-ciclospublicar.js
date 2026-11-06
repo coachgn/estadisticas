@@ -100,7 +100,7 @@ const padron = {
   'otro@otro.com': { club: 'otroclub', altaEl: '2026-10-01' },
 };
 const G = (body) => CIC.manejarGestionGuardar(ped(tokAdmin, body));
-const P = (t, body, deps) => CIC.manejarPublicar(ped(t, body), Object.assign({ render, padron, transporte: ENVIO.transporteMemoria() }, deps || {}));
+const P = (t, body, deps) => CIC.manejarPublicar(ped(t, body), Object.assign({ render, padron, transporte: ENVIO.transporteMemoria(), env: { CICLOS_ENVIO_CLIENTES: 'si' } }, deps || {}));
 const estadoDoc = () => Object.values(hashes[CIC.claveGestion('jujuy', 'jujuy-norte')] || {}).map(x => JSON.parse(x))[0];
 
 (async () => {
@@ -121,6 +121,8 @@ const estadoDoc = () => Object.values(hashes[CIC.claveGestion('jujuy', 'jujuy-no
   check('el ensayo no manda, no reclama y no cambia el estado', t0.enviados.length === 0 && !ops.includes('HSETNX') && estadoDoc().estado === 'auditado');
   check('el ensayo dice el tamaño y el nombre del PDF', r.body.pdfBytes === PDF_FALSO.length && /^Ciclo 0 - JUJUY\.pdf$/.test(r.body.archivo));
 
+  r = await P(tokAdmin, { equipo: 'JUJUY', criterio: crit0 }, { env: {} });
+  check('sin CICLOS_ENVIO_CLIENTES=si, /publicar tampoco manda a los entrenadores', r.status === 403 && r.body.codigo === 'ENVIO_EN_PRUEBA' && estadoDoc().estado === 'auditado');
   r = await P(tokAdmin, { equipo: 'JUJUY', criterio: crit0 }, { padron: { 'otro@otro.com': padron['otro@otro.com'] } });
   check('sin mails en el padrón del club no se publica', r.status === 422 && r.body.codigo === 'SIN_DESTINATARIOS' && estadoDoc().estado === 'auditado');
 
@@ -177,13 +179,11 @@ const estadoDoc = () => Object.values(hashes[CIC.claveGestion('jujuy', 'jujuy-no
     hashes[PBP.claveKV('jujuy', 'jujuy-norte')][PBP.campoDeEquipo('JUJUY')] = JSON.stringify(gordo);
     const Q = (t, eq) => CIC.manejarPaquete({ headers: t ? { authorization: 'Bearer ' + t } : {}, params: { clubId: 'jujuy', categoria: 'jujuy-norte' }, body: {}, query: { equipo: eq } });
     let r2 = await Q(tokJujuy, 'JUJUY');
-    check('un cliente ORO recibe el paquete de ciclos SIN que su categoría tenga la capa pbp', r2.status === 200 && r2.body.paquete.ciclos.partidos.length === 6 && !(CAT.jujuy.categorias['jujuy-norte'].laboratorio));
-    const js = JSON.stringify(r2.body);
-    check('no viaja ningún quinteto, rotación, reloj, sección ni mapa del equipo', !/quinteto|rotaciones|reloj|secciones|hex|momentum|tramos|secreto/.test(js), js.slice(0, 160));
-    check('sí viajan los tiros del partido para el mapa del ciclo y la vara de la liga', r2.body.paquete.partidosPbp.length === 1 && r2.body.paquete.partidosPbp[0].tiros.favor.length === 1 && r2.body.paquete.liga.zonas.length === 14);
-    check('con ese paquete el motor arma el mismo ciclo que con el completo', CI.huella(CI.armarVentana(r2.body.paquete, crit0)) === CI.huella(CI.armarVentana(gordo, crit0)));
-    r2 = await Q(tokJujuy, 'RIVAL');
-    check('un cliente NO pide el paquete de otro equipo', r2.status === 403 && r2.body.codigo === 'OTRO_EQUIPO');
+    check('el cuerpo técnico NO recibe el paquete: con él armaría el ciclo en curso (2026-11-06)', r2.status === 403 && r2.body.codigo === 'SOLO_PUBLICADOS');
+    const proy = CIC.proyectarPaquete(gordo, false);
+    const js = JSON.stringify(proy);
+    check('la proyección no trae quintetos, rotación, reloj, secciones ni mapa del equipo', !/quinteto|rotaciones|reloj|secciones|hex|momentum|tramos|secreto/.test(js), js.slice(0, 160));
+    check('la proyección arma el mismo ciclo que el paquete completo', CI.huella(CI.armarVentana(proy, crit0)) === CI.huella(CI.armarVentana(gordo, crit0)));
     r2 = await Q(tokAdmin, 'JUJUY');
     check('el admin lo pide igual', r2.status === 200);
     r2 = await Q(tok({ email: 'x@otro.com', club: 'otroclub', equipoAsignado: 'JUJUY', plan: 'ORO' }), 'JUJUY');
@@ -192,10 +192,75 @@ const estadoDoc = () => Object.values(hashes[CIC.claveGestion('jujuy', 'jujuy-no
     check('sin token, 401', r2.status === 401);
     const orig = CAT.jujuy.plan; CAT.jujuy.plan = 'PLATA'; store[catalogo.CLAVE_KV] = JSON.stringify(CAT); catalogo.limpiarCache();
     r2 = await Q(tokJujuy, 'JUJUY');
-    check('un cliente PLATA no lo recibe (los ciclos son del plan ORO)', r2.status === 403 && r2.body.codigo === 'REQUIERE_PLAN');
+    check('un cliente PLATA tampoco (los ciclos son del plan ORO)', r2.status === 403 && r2.body.codigo === 'REQUIERE_PLAN');
     CAT.jujuy.plan = orig; store[catalogo.CLAVE_KV] = JSON.stringify(CAT); catalogo.limpiarCache();
     r2 = await Q(tokAdmin, 'NO EXISTE');
     check('un equipo sin ciclos da 404', r2.status === 404);
+  }
+
+
+  titulo('6 · cerrar un ciclo: sellar, publicar y mandar (2026-11-06)');
+  {
+    const FOTO = require('./server/lib/ciclos-foto.js');
+    CAT.jujuy.categorias['jujuy-sur'] = { label: 'Sur', sheetId: 'Z' };
+    store[catalogo.CLAVE_KV] = JSON.stringify(CAT); catalogo.limpiarCache();
+    const paqSur = paquete(6);
+    hashes[PBP.claveKV('jujuy', 'jujuy-sur')] = { [PBP.campoDeEquipo('JUJUY')]: JSON.stringify(paqSur) };
+    const huella0 = CI.huella(CI.armarVentana(paqSur, crit0));
+    const foto = { titulo: 'Ciclo 0 · JUJUY', estilo: '.ci{color:red}', secciones: { principal: '<div class="ci"><details><summary>x</summary>P</div>', equipos: '<div class="ci">E</div>' } };
+    const pedS = (t, body, query) => ({ headers: t ? { authorization: 'Bearer ' + t } : {}, params: { clubId: 'jujuy', categoria: 'jujuy-sur' }, body: body || {}, query: query || {} });
+    let html = '';
+    const rend = async (h) => { html = h; return PDF_FALSO; };
+    const C = (t, body, deps) => CIC.manejarCerrar(pedS(t, body), Object.assign({ render: rend, padron, env: {} }, deps || {}));
+    const L = (t) => CIC.manejarPublicados(pedS(t, null, { equipo: 'JUJUY' }), { env: {} });
+    const F = (t, clave) => CIC.manejarFoto(pedS(t, null, { equipo: 'JUJUY', clave }));
+    const base = { equipo: 'JUJUY', criterio: crit0, huella: huella0, foto };
+
+    let r = await C(tokJujuy, Object.assign({}, base, { publicar: true }));
+    check('cerrar es solo del admin', r.status === 403 && r.body.codigo === 'SOLO_ADMIN');
+    r = await C(tokAdmin, Object.assign({}, base, { publicar: false, enviar: 'no' }));
+    check('sin publicar ni enviar no hace nada', r.status === 400 && r.body.codigo === 'SIN_ACCION');
+    r = await C(tokAdmin, Object.assign({}, base, { huella: 'deadbeef', publicar: true }));
+    check('una foto de otro dato (huella distinta) se rechaza', r.status === 409 && r.body.codigo === 'CAMBIO');
+    r = await C(tokAdmin, Object.assign({}, base, { enviar: 'equipo' }));
+    check('mandar a los entrenadores está apagado en el servidor', r.status === 403 && r.body.codigo === 'ENVIO_EN_PRUEBA');
+
+    const tP = ENVIO.transporteMemoria();
+    r = await C(tokAdmin, Object.assign({}, base, { publicar: false, enviar: 'prueba' }), { transporte: tP });
+    check('la prueba manda SOLO al mail del admin', r.status === 200 && tP.enviados.length === 1 && tP.enviados[0].para === 'freytesgn@gmail.com' && /^\[PRUEBA\]/.test(tP.enviados[0].asunto));
+    check('la prueba no sella ni publica', !r.body.sellado && !r.body.publicado && !(hashes[CIC.claveKV('jujuy', 'jujuy-sur')] || {})[PBP.campoDeEquipo('JUJUY') + '|c0n4']);
+    check('el PDF sale de la foto: las secciones, el estilo y los detalles abiertos', /<h2 class="foto-h2">Principal<\/h2>/.test(html) && /\.ci\{color:red\}/.test(html) && /<details open>/.test(html) && /<base href="https:\/\/coachgn\.github\.io\/estadisticas\/">/.test(html));
+    r = await L(tokJujuy);
+    check('el cuerpo técnico no ve nada antes de publicar', r.status === 200 && r.body.publicados.length === 0 && r.body.envioClientes === undefined);
+
+    const tQ = ENVIO.transporteMemoria();
+    r = await C(tokAdmin, Object.assign({}, base, { publicar: true, enviar: 'prueba' }), { transporte: tQ });
+    check('publicar sella, publica y manda la prueba', r.status === 200 && r.body.sellado && r.body.publicado && tQ.enviados.length === 1);
+    r = await L(tokJujuy);
+    check('el cuerpo técnico ve el ciclo publicado, con su meta', r.body.publicados.length === 1 && r.body.publicados[0].clave === 'c0n4' && r.body.publicados[0].meta.desde === '2026-10-10');
+    r = await F(tokJujuy, 'c0n4');
+    check('y lee el informe tal cual se publicó', r.status === 200 && r.body.foto.secciones.principal === foto.secciones.principal && r.body.foto.estilo === foto.estilo);
+    r = await F(tokJujuy, 'c1n4');
+    check('un ciclo no publicado no se lee', r.status === 404 && r.body.codigo === 'NO_PUBLICADO');
+    const comp = Object.values(hashes[CIC.claveFoto('jujuy', 'jujuy-sur')])[0];
+    check('la foto se guarda comprimida', JSON.parse(comp).datos.length < JSON.stringify(foto).length * 2 && FOTO.descomprimir(JSON.parse(comp).datos).titulo === 'Ciclo 0 · JUJUY');
+    r = await C(tokAdmin, Object.assign({}, base, { publicar: true }));
+    check('publicar dos veces: 409 YA_PUBLICADO', r.status === 409 && r.body.codigo === 'YA_PUBLICADO');
+    const tR = ENVIO.transporteMemoria();
+    r = await C(tokAdmin, { equipo: 'JUJUY', criterio: crit0, huella: huella0, enviar: 'prueba' }, { transporte: tR });
+    check('uno publicado se puede volver a mandar con la foto guardada', r.status === 200 && tR.enviados.length === 1);
+    r = await CIC.manejarCiclos(pedS(tokJujuy, null, { equipo: 'JUJUY' }));
+    check('y su sello ya lo ve el cuerpo técnico', r.status === 200 && r.body.sellados.length === 1);
+
+    const tE = ENVIO.transporteMemoria();
+    r = await C(tokAdmin, { equipo: 'JUJUY', criterio: crit0, huella: huella0, enviar: 'equipo' }, { transporte: tE, env: { CICLOS_ENVIO_CLIENTES: 'si' } });
+    check('con CICLOS_ENVIO_CLIENTES=si va a cada mail del padrón del club', r.status === 200 && tE.enviados.map(m => m.para).join() === 'ana@jujuy.com,beto@jujuy.com' && !/PRUEBA/.test(tE.enviados[0].asunto));
+    r = await CIC.manejarPublicados(pedS(tokAdmin, null, { equipo: 'JUJUY' }), { env: { CICLOS_ENVIO_CLIENTES: 'si' } });
+    check('el admin sabe si el envío a los entrenadores está habilitado', r.body.envioClientes === true);
+
+    check('la foto valida tamaño y la sección Principal', !FOTO.validar({ secciones: { equipos: 'x' } }).ok && !FOTO.validar({ secciones: { principal: 'x'.repeat(FOTO.MAX_BYTES + 1) } }).ok && FOTO.validar(foto).ok);
+    const app2 = require('fs').readFileSync(__dirname + '/server/app.js', 'utf8');
+    check('las rutas existen y solo /cerrar acepta un cuerpo grande', /\/cerrar', responder\(ciclos\.manejarCerrar\)/.test(app2) && /\/publicados', responder/.test(app2) && /\/foto', responder/.test(app2) && /jsonInforme = express\.json\(\{ limit: '4mb' \}\)/.test(app2));
   }
 
   titulo('5 · el cableado');

@@ -226,6 +226,51 @@ const SGADD_CICLOINFORME = (function () {
     return out;
   }
 
+  /** EL DETALLE DE TIROS DEL CICLO (2026-11-06). Desde la ingesta del 06/11 cada tiro de
+      `partidosPbp` trae su tirador (índice en `ids` del partido) y su código de reloj, así
+      quién tira en cada zona, los mapas por jugador y los mapas por franja salen SOLO de los
+      partidos del ciclo. Se arma con la MISMA forma que `paq.tiros.detalle` (puntos, ids y
+      jugadores con sus zonas), así las cards no cambian. Si algún partido del ciclo viene de
+      un paquete viejo (tiro sin tirador), se usa el detalle de temporada y la card lo dice. */
+  function detalleDe(X) {
+    if (X.__det !== undefined) return X.__det;
+    const g8 = X.g8 || [];
+    const nuevo = g8.length && g8.length === X.n && g8.every(g => g.tiros && Array.isArray(g.tiros.favor) && Array.isArray(g.ids)
+      && g.tiros.favor.concat(g.tiros.contra || []).every(p => Array.isArray(p) && p.length >= 6));
+    if (!nuevo) { X.__det = Object.assign({ delCiclo: false }, (X.paq.tiros && X.paq.tiros.detalle) || {}); return X.__det; }
+    const ids = [], ix = new Map(), nombres = {}, favor = [], jug = new Map(), pj = new Map();
+    const global = (id) => { if (!ix.has(id)) { ix.set(id, ids.length); ids.push(id); } return ix.get(id); };
+    const ARO = [1.575, 7.5];
+    g8.forEach((g) => {
+      Object.keys(g.nombres || {}).forEach((id) => { const v = g.nombres[id]; nombres[id] = Array.isArray(v) ? v[0] : String(v); });
+      const vio = new Set();
+      g.tiros.favor.forEach((p) => {
+        const id = p[4] >= 0 ? String(g.ids[p[4]]) : null;
+        const k = id === null ? -1 : global(id);
+        favor.push([p[0], p[1], p[2], p[3], k, p[5]]);
+        if (id === null) return;
+        vio.add(id);
+        const J = jug.get(id) || { id, i: 0, c: 0, p: 0, dist: [], zonas: new Map() };
+        const zona = ZONAS[p[3]], pts = p[2] ? (p[3] >= 9 ? 3 : 2) : 0;
+        J.i++; J.c += p[2] ? 1 : 0; J.p += pts;
+        J.dist.push(Math.hypot(p[1] / 10 - ARO[0], p[0] / 10 - ARO[1]));
+        if (zona) { const z = J.zonas.get(zona) || { zona, i: 0, c: 0, p: 0 }; z.i++; z.c += p[2] ? 1 : 0; z.p += pts; J.zonas.set(zona, z); }
+        jug.set(id, J);
+      });
+      vio.forEach(id => pj.set(id, (pj.get(id) || 0) + 1));
+    });
+    const med = (a) => { const o = a.slice().sort((x, y) => x - y); return o.length ? Math.round(10 * o[Math.floor(o.length / 2)]) / 10 : null; };
+    const r3 = v => Math.round(v * 1000) / 1000;
+    const jugadores = [...jug.values()].map(J => ({
+      id: J.id, pj: pj.get(J.id) || 0, i: J.i, c: J.c, ppt: r3(J.p / J.i), dist: med(J.dist),
+      zonas: [...J.zonas.values()].map(z => ({ zona: z.zona, i: z.i, c: z.c, ppt: r3(z.p / z.i) })).sort((a, b) => b.i - a.i),
+    })).sort((a, b) => b.i - a.i);
+    X.__det = { delCiclo: true, puntos: { zonas: ZONAS, ids, favor }, jugadores, nombres };
+    return X.__det;
+  }
+  /** Los nombres para el detalle: los del paquete, completados con los de los partidos del ciclo. */
+  const nombresDet = (X) => Object.assign({}, nombresPaq(X.paq), (detalleDe(X).nombres) || {});
+
   /* ===================================================== LOS JUGADORES DEL CICLO
 
      Del libro (`Base Datos J`), solo las filas del equipo en las fechas del
@@ -820,8 +865,8 @@ const SGADD_CICLOINFORME = (function () {
       con cuántos partidos (en el Ciclo 0 la temporada y el ciclo coinciden
       mientras no se juegue el partido siguiente). */
   function quienTira(X, zona, espejo) {
-    const d = X.paq.tiros && X.paq.tiros.detalle;
-    const nombres = nombresPaq(X.paq);
+    const d = detalleDe(X);
+    const nombres = nombresDet(X);
     const lista = ((d && d.jugadores) || []).map((j) => {
       const z = (j.zonas || []).find(x => x.zona === zona), e = espejo ? (j.zonas || []).find(x => x.zona === espejo) : null;
       const t3 = (j.zonas || []).filter(x => /^Z1[0-4]$/.test(x.zona));
@@ -834,6 +879,7 @@ const SGADD_CICLOINFORME = (function () {
   }
   /** Qué partidos cubre el reparto por jugador (el detalle de temporada del paquete). */
   function fuenteTemporada(X) {
+    if (detalleDe(X).delCiclo) return `Reparto por jugador de los ${X.n} partidos del ciclo, tiro por tiro.`;
     const pj = (X.paq.partidos && X.paq.partidos.validados) || null;
     return pj && pj > X.n ? `Reparto por jugador de la temporada (${pj} partidos, ${pj - X.n} después del ciclo): el tiro de cada partido no trae al tirador.` : `Reparto por jugador de los ${pj || X.n} partidos.`;
   }
@@ -1016,9 +1062,9 @@ const SGADD_CICLOINFORME = (function () {
   }
   /** Dónde y quién, franja por franja. El código de reloj por tiro viene en el detalle de TEMPORADA. */
   function franjasMapas(X) {
-    const d = X.paq.tiros && X.paq.tiros.detalle;
+    const d = detalleDe(X);
     if (!d || !d.puntos || !Array.isArray(d.puntos.favor)) return '';
-    const ids = d.puntos.ids || [], nombres = nombresPaq(X.paq);
+    const ids = d.puntos.ids || [], nombres = nombresDet(X);
     const bloques = [0, 1, 2].map((k) => {
       const ts = d.puntos.favor.filter(p => p[5] === k);
       if (!ts.length) return '';
@@ -1117,6 +1163,14 @@ const SGADD_CICLOINFORME = (function () {
   }
 
   /* § Cuartos y cierre: el peor cuarto y las cinco preguntas (calidad, rival, filosofía, partido, combinación). */
+  /** El ritmo de un cuarto en el ciclo (posesiones cada 40 minutos, la escala del PACE): el
+      promedio de `partidosPbp[i].juego[k].ritmo` de los partidos del ciclo. null si algún
+      partido viene de un paquete sin el juego por cuarto (antes del 06/11). */
+  function ritmoCuarto(X, q) {
+    const g8 = X.g8 || [];
+    const v = g8.map(g => g.juego && g.juego[String(q)] && esNum(g.juego[String(q)].ritmo) ? g.juego[String(q)].ritmo : null);
+    return g8.length === X.n && v.length && v.every(esNum) ? sum(v) / v.length : null;
+  }
   /** Triples convertidos por cuarto, desde la línea de tanteo (un salto de 3 es un triple). */
   function triplesPorCuarto(X, q) {
     let t = 0;
@@ -1162,7 +1216,7 @@ const SGADD_CICLOINFORME = (function () {
       preguntas = `<h4>Por qué el ${k}.º es el peor: cinco preguntas</h4><div class="ci-q5">
         ${q('¿Calidad de tiro?', seleccion ? 'warn' : 'neg', `Los tiros del ${k}.º valían ${n(peor.favor.esperados)} pts (en el ${ref.cuarto}.º, ${n(ref.favor.esperados)}): ${seleccion ? 'la selección no empeora' : 'baja también la calidad del tiro elegido'}. Se anotaron ${peor.favor.pts}: ${sg(peor.favor.dif)} pts (${sg(peor.favor.dif / X.n)} por partido). ${seleccion ? 'Es ejecución.' : 'Es selección y ejecución.'}`)}
         ${q('¿Rival?', peor.contra.dif > 3 ? 'neg' : 'pos', `El rival anotó ${peor.contra.pts} con ${n(peor.contra.esperados)} esperados (${sg(peor.contra.dif)}). ${peor.contra.dif > 3 ? `En el ${k}.º el rival sobre-rinde.` : `En el ${k}.º no sobre-rinde: el daño es de nuestro ataque.`}${Q.filter(x => x.contra.dif > 10).length && !(peor.contra.dif > 3) ? ` Su exceso de acierto está en el ${Q.filter(x => x.contra.dif > 10).map(x => x.cuarto + '.º').join(' y ')}.` : ''}`)}
-        ${q('¿Filosofía?', 'info', `El volumen del ${k}.º (${volK} tiros entre los dos equipos) ${Math.abs(volK - volR) <= volR * 0.08 ? 'está cerca' : volK > volR ? 'está por encima' : 'está por debajo'} del ${ref.cuarto}.º (${volR}). Triples convertidos: ${t3k} en el ${k}.º contra ${t3r} en el ${ref.cuarto}.º.`)}
+        ${q('¿Filosofía?', 'info', `${esNum(ritmoCuarto(X, k)) && esNum(ritmoCuarto(X, ref.cuarto)) ? `Ritmo del ${k}.º: ${n(ritmoCuarto(X, k), 1)} posesiones cada 40 minutos contra ${n(ritmoCuarto(X, ref.cuarto), 1)} del ${ref.cuarto}.º (${Math.abs(ritmoCuarto(X, k) - ritmoCuarto(X, ref.cuarto)) < 3 ? 'el mismo ritmo: el cambio no es de filosofía' : ritmoCuarto(X, k) > ritmoCuarto(X, ref.cuarto) ? 'el partido se acelera' : 'el partido se frena'}). ` : ''}El volumen del ${k}.º (${volK} tiros entre los dos equipos) ${Math.abs(volK - volR) <= volR * 0.08 ? 'está cerca' : volK > volR ? 'está por encima' : 'está por debajo'} del ${ref.cuarto}.º (${volR}). Triples convertidos: ${t3k} en el ${k}.º contra ${t3r} en el ${ref.cuarto}.º.`)}
         ${q('¿Qué partido?', 'warn', peorP ? `El ${k}.º suma ${sg(peor.parcial.dif, 0)}: ${esc(peorP.r)} explica ${sg(peorP.d, 0)}.${resto.length ? ` Sin ese partido, ${sg(sum(resto, x => x.d), 0)} en ${resto.length} partidos (${sg(sum(resto, x => x.d) / resto.length)} por partido).` : ''} ${resto.map(x => esc(x.r) + ' ' + sg(x.d, 0)).join(' · ')}.` : 'Sin parciales por partido.')}
         ${q('¿Combinación?', 'info', comb.length ? comb.map(a => `<span class="ci-avs">${a.nombres.map(nm => foto(nm, X)).join('')}</span> ${n(a.seg / 60)} min · ${sg(a.pf - a.pc, 0)}`).join('<br>') + '<br><span class="ci-mut">Puntos de diferencia mientras el quinteto jugó el ' + k + '.º, suma de ' + X.n + ' partidos.</span>' : 'Sin tramos de cancha.')}</div>`;
       const zf = zonaFria(X);
@@ -1237,7 +1291,7 @@ const SGADD_CICLOINFORME = (function () {
   }
   /** Fortaleza / fuga / ajuste de un jugador, con números del ciclo y de su mapa de temporada. */
   function lecturaJugador(j, X) {
-    const d = X.paq.tiros && X.paq.tiros.detalle; const nombres = nombresPaq(X.paq);
+    const d = detalleDe(X); const nombres = nombresDet(X);
     const tj = d && (d.jugadores || []).find(x => clave(nombres[x.id] || '') === clave(j.nombre));
     const zs = tj ? (tj.zonas || []).filter(z => z.i >= 5) : [];
     const mejor = zs.slice().sort((a, b) => b.ppt - a.ppt)[0], peor = zs.slice().sort((a, b) => a.ppt - b.ppt)[0];
@@ -1307,13 +1361,13 @@ const SGADD_CICLOINFORME = (function () {
         <ul class="ci-tri"><li><b>Fortaleza de identidad.</b> ${esc(L.fortaleza)}.</li><li><b>Punto de fuga.</b> ${esc(L.fuga)}.</li><li><b>Ajuste estratégico.</b> ${esc(L.ajuste)}</li></ul></div>`; }).join('')}</div>`; };
     return card('Desempeño individual del plantel · el ciclo', `<p class="ci-sm">Ordenado por influencia: el ajuste de un jugador de 34 minutos pesa más que el de uno de 14.</p>
       ${bloque('I. Núcleo de alta carga (más de 25 min)', j => j.min > 25)}${bloque('II. Rotación y eficiencia estratégica (16 a 25 min)', j => j.min >= 16 && j.min <= 25)}${bloque('III. Segunda unidad y factores X (menos de 16 min)', j => j.min < 16)}
-      ${nota(`Semáforo: ★ Élite (PPP 0,03 sobre la mediana y TS 5 pp sobre la mediana, con 15+ min) · ✓ Cumplido (en o sobre la mediana ${n(X.mPPP, 2)}) · ⚠ Alerta (hasta 0,14 por debajo) · ✖ Crítico. Zonas: mapa de temporada del paquete. Es una foto, no una sentencia.`)}`);
+      ${nota(`Semáforo: ★ Élite (PPP 0,03 sobre la mediana y TS 5 pp sobre la mediana, con 15+ min) · ✓ Cumplido (en o sobre la mediana ${n(X.mPPP, 2)}) · ⚠ Alerta (hasta 0,14 por debajo) · ✖ Crítico. Zonas: ${detalleDe(X).delCiclo ? `mapa de los ${X.n} partidos del ciclo` : "mapa de temporada del paquete"}. Es una foto, no una sentencia.`)}`);
   }
   /* § Mapas de tiro por jugador (los seis con más tiros): ○ / ✕ reales y su mejor y peor zona. */
   function cardMapasJugador(X) {
-    const d = X.paq.tiros && X.paq.tiros.detalle;
+    const d = detalleDe(X);
     if (!d || !d.puntos || !Array.isArray(d.puntos.favor)) return '';
-    const ids = d.puntos.ids || [], nombres = nombresPaq(X.paq);
+    const ids = d.puntos.ids || [], nombres = nombresDet(X);
     const top = (d.jugadores || []).slice().sort((a, b) => b.i - a.i).slice(0, 6);
     const pm = top.map((tj) => {
       const k = ids.indexOf(tj.id), ts = d.puntos.favor.filter(p => p[4] === k);
@@ -1706,7 +1760,7 @@ const SGADD_CICLOINFORME = (function () {
     const s = document.createElement('style'); s.id = 'ci-estilo'; s.textContent = CSS; document.head.appendChild(s);
   }
 
-  return { armar, html, ubicar, rotacion, porPeriodo, relojDelCiclo, jugadoresDelCiclo, semaforo, metas, corto, puntosEntre, CSS };
+  return { armar, html, ubicar, rotacion, porPeriodo, relojDelCiclo, jugadoresDelCiclo, semaforo, metas, corto, puntosEntre, detalleDe, ritmoCuarto, CSS };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_CICLOINFORME;

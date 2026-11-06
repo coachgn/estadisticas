@@ -703,6 +703,20 @@ const SGADD_DATA = (function () {
     return cuerpo;
   }
 
+  /* =====================================================================
+     CERRAR UN CICLO Y LO QUE VE EL CUERPO TÉCNICO (2026-11-06)
+     cerrarCiclo: { equipo, criterio, huella, foto, publicar, enviar } · solo admin.
+     ciclosPublicados / cicloFoto: lo que se muestra al cliente, nada más.
+     ===================================================================== */
+  const rutaCiclos = (club, slug) => '/api/v1/ciclos/' + encodeURIComponent(club) + '/' + encodeURIComponent(slug);
+  function cerrarCiclo(club, slug, pedido, opciones) { return postConToken(rutaCiclos(club, slug) + '/cerrar', pedido, opciones); }
+  function ciclosPublicados(club, slug, equipo, opciones) {
+    return getConToken(rutaCiclos(club, slug) + '/publicados?equipo=' + encodeURIComponent(equipo), opciones);
+  }
+  function cicloFoto(club, slug, equipo, clave, opciones) {
+    return getConToken(rutaCiclos(club, slug) + '/foto?equipo=' + encodeURIComponent(equipo) + '&clave=' + encodeURIComponent(clave), opciones);
+  }
+
   function fichajesTorneos(opciones) { return getConToken('/api/v1/fichajes', opciones); }
 
   /* La vara de jugadores de un período (punto 139, fase 3): números
@@ -738,7 +752,7 @@ const SGADD_DATA = (function () {
     cargarCategoria, cargarDelBackend, limpiarCache, catalogo, guardarCatalogo, equiposDelLibro,
     fixtureDeTorneo, llaveDeTorneo, rivalDeTorneo,
     login, fijarClave, clientes, guardarClientes, fichas, guardarFicha,
-    estadosCompartibles, leerEstados, guardarEstados, leerPbp, ciclosSellados, sellarCiclo, ciclosGestion, ciclosGestionar, ciclosPublicar, ciclosPaquete,
+    estadosCompartibles, leerEstados, guardarEstados, leerPbp, ciclosSellados, sellarCiclo, ciclosGestion, ciclosGestionar, ciclosPublicar, ciclosPaquete, cerrarCiclo, ciclosPublicados, cicloFoto,
     varaJugadores, fichajesTorneos, fichajesZona, fichajesTiros, fichajesGuardarFichas, fichajesPadron, fichajesGuardarPadron,
   };
 })();

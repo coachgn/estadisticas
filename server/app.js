@@ -58,7 +58,11 @@ function crearApp(opciones) {
   /* El cuerpo JSON, SOLO para el alta. El tope es chico a propósito: por
      acá entra un objeto de cinco campos, y aceptar megabytes sería regalar
      una forma de ocupar memoria a cualquiera que tenga un token. */
-  app.use(express.json({ limit: '16kb' }));
+  /* Una sola excepción: cerrar un ciclo trae el informe armado (la foto de las 6
+     secciones, ~400 KB de HTML). La ruta es solo de ADMIN y valida el tamaño. */
+  const jsonChico = express.json({ limit: '16kb' }), jsonInforme = express.json({ limit: '4mb' });
+  const RUTA_CERRAR = /^\/api\/v1\/ciclos\/[^/]+\/[^/]+\/cerrar$/;
+  app.use((req, res, next) => (RUTA_CERRAR.test(req.path) ? jsonInforme : jsonChico)(req, res, next));
 
   const responder = (fn) => async (req, res) => {
     try {
@@ -102,6 +106,9 @@ function crearApp(opciones) {
   app.get('/api/v1/ciclos/:clubId/:categoria/gestion', responder(ciclos.manejarGestion));
   app.post('/api/v1/ciclos/:clubId/:categoria/gestion', responder(ciclos.manejarGestionGuardar));
   app.post('/api/v1/ciclos/:clubId/:categoria/publicar', responder(ciclos.manejarPublicar));
+  app.post('/api/v1/ciclos/:clubId/:categoria/cerrar', responder(ciclos.manejarCerrar));
+  app.get('/api/v1/ciclos/:clubId/:categoria/publicados', responder(ciclos.manejarPublicados));
+  app.get('/api/v1/ciclos/:clubId/:categoria/foto', responder(ciclos.manejarFoto));
 
   /* La analítica de play-by-play, capa de LABORATORIO (punto 62). Solo
      lee: la carga es del CLI (`server/bin/pbp.js`). */

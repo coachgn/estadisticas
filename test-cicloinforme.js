@@ -73,6 +73,21 @@ if (fs.existsSync(f)) {
   t(/17 de 28/.test(he) && /20-12/.test(he) && /entre 13\.º y 14\.º/.test(he), 'escenarios con la tabla anterior: 17 de 28, 20-12 y «entre 13.º y 14.º»');
   t(/Para terminar como el año pasado hay que ganar 17 de los 28/.test(he) && /50 % de victorias/.test(he), 'la conclusión de los escenarios');
   t(/temporadaAnterior/.test(JSON.stringify(Object.keys(doc))) && doc.temporadaAnterior.categoriaPorClub.jujuy === 'jujuy-primera', 'el torneo declara la temporada anterior por club (sin sheetId)');
+  /* El tirador y la franja de cada tiro (ingesta del 06/11): quién tira y los mapas salen solo del ciclo. */
+  if (g8.every(x => x.tiros && x.tiros.favor.every(p => p.length >= 6))) {
+    const D = CI.detalleDe(m.contexto);
+    const tirosC = g8.reduce((a, x) => a + x.tiros.favor.length, 0);
+    t(D.delCiclo && D.puntos.favor.length === tirosC, 'el detalle del ciclo: los tiros propios de los 4 partidos (' + tirosC + ')');
+    t(D.jugadores.reduce((a, j) => a + j.i, 0) === D.puntos.favor.filter(p => p[4] >= 0).length && D.jugadores.every(j => j.pj >= 1 && j.pj <= 4), 'cada tiro con tirador cuenta una vez y nadie suma más de 4 partidos');
+    const hj = CI.html(m, 'jugadores');
+    t(/4 partidos del ciclo/.test(hj) && !/temporada \(/.test(hj), 'Jugadores dice que los mapas son de los partidos del ciclo');
+    const r3 = CI.ritmoCuarto(m.contexto, 3);
+    t(esNum(r3) && r3 > 60 && r3 < 100, 'el ritmo del 3.er cuarto del ciclo (' + (esNum(r3) ? r3.toFixed(1) : r3) + ')');
+    /* Un paquete viejo (tiro sin tirador) vuelve al detalle de temporada. */
+    const viejo = JSON.parse(JSON.stringify(paq)); viejo.partidosPbp.forEach(x => { x.tiros.favor = x.tiros.favor.map(p => p.slice(0, 4)); delete x.juego; });
+    const mv = CI.armar({ idx: { lista: () => [], liga: {} }, paq: viejo, ciclo: c });
+    t(!CI.detalleDe(mv.contexto).delCiclo && CI.ritmoCuarto(mv.contexto, 3) === null, 'paquete viejo: detalle de temporada y sin ritmo por cuarto');
+  }
   const hp = CI.html(me, 'plan');
   t(/Elaborado con los datos de MotorStats AR al 03\/11\/2026/.test(hp), 'la firma con la fecha de los datos: el día siguiente al cierre');
 } else console.log('  (sin el paquete real de la ingesta: se saltean las verificaciones del Ciclo 0)');
