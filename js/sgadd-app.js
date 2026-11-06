@@ -568,6 +568,9 @@ const SGADD_APP = (function () {
   const _previos = { base: null, porDia: new Map() };
 
   function diaDe(f) {
+    /* Un texto «AAAA-MM-DD» ya es el día: `new Date('2026-11-03')` es medianoche UTC y en
+       Argentina cae el 02/11 a las 21, o sea un día antes. */
+    if (typeof f === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(f)) return f;
     const d = f instanceof Date ? f : (f ? new Date(f) : null);
     if (!d || isNaN(d.getTime())) return null;
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -1264,6 +1267,8 @@ const SGADD_APP = (function () {
     /* El Fixture filtra por la fase de la barra (punto 75): sin repintarse
        seguía mostrando la instancia anterior con el selector ya cambiado. */
     if (currentSection === 'fixture' && typeof SGADD_FIXTURE !== 'undefined') SGADD_FIXTURE.pintar();
+    /* Ciclos se repinta con la categoría nueva: sin esto se quedaba con el paquete y el ciclo de la anterior. */
+    if (currentSection === 'ciclos' && typeof SGADD_CICLOSUI !== 'undefined') { try { SGADD_CICLOSUI.pintar(); } catch (e) { console.warn('[app]', e); } }
     if (currentSection === 'clasificacion' && typeof buildClasificacion === 'function') {
       const r = document.getElementById('view-root');
       if (r) r.innerHTML = buildClasificacion();

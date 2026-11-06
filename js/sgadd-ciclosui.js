@@ -420,7 +420,10 @@ const SGADD_CICLOSUI = (function () {
   function informe(idx, c, reg) {
     const CIN = (typeof SGADD_CICLOINFORME !== 'undefined') ? SGADD_CICLOINFORME : null;
     pedirDoc();
-    const modelo = CIN ? CIN.armar({ idx, paq: estado.paq, ciclo: c, doc: estado.doc }) : null;
+    /* La liga se mide al CIERRE del ciclo: un ciclo cerrado no cambia cuando la liga sigue jugando. */
+    let idxC = idx;
+    try { if (c.meta.cerrado && SGADD_APP.idxPrevio) { const d = new Date(c.meta.hasta + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 1); const r = SGADD_APP.idxPrevio(d.toISOString().slice(0, 10)); if (r && r.idx) idxC = r.idx; } } catch (e) { idxC = idx; }
+    const modelo = CIN ? CIN.armar({ idx: idxC, paq: estado.paq, ciclo: c, doc: estado.doc, anterior: estado.anterior || null }) : null;
     const admin = esAdmin() ? `<div class="rend-grid" style="margin-top:12px">${bloqueAuditoria(c, estado.paq)}${bloqueSello(c, reg, estado.paq)}${bloqueComparar(estado.paq, c)}${bloqueHistorial(estado.paq)}</div>` : '';
     if (modelo && modelo.ok) {
       return `<div style="grid-column:1/-1">${CIN.html(modelo, estado.seccion)}${estado.seccion === 'principal' ? admin : ''}</div>`;
@@ -441,7 +444,8 @@ const SGADD_CICLOSUI = (function () {
     try { pl = SGADD.CATALOGO.planillas.find(p => p.id === SGADD_APP.estado.planillaId); } catch (e) { pl = null; }
     if (!pl || !pl.torneoId || estado.docPedido === pl.torneoId) return;
     estado.docPedido = pl.torneoId; estado.doc = null;
-    Promise.resolve(SGADD_FIXTURE.cargarTorneo(pl.torneoId)).then((d) => { if (d) { estado.doc = Object.assign({}, d, { vivo: estado.doc && estado.doc.vivo }); pintar(); } }).catch(() => {});
+    estado.anterior = null;
+    Promise.resolve(SGADD_FIXTURE.cargarTorneo(pl.torneoId)).then((d) => { if (d) { estado.doc = Object.assign({}, d, { vivo: estado.doc && estado.doc.vivo }); pintar(); pedirAnterior(d); } }).catch(() => {});
     /* El fixture VIVO de la liga (sede, hora, próximos partidos): el archivo del torneo publica solo las primeras fechas. */
     if (typeof SGADD_DATA !== 'undefined' && SGADD_DATA.fixtureDeTorneo) {
       Promise.resolve(SGADD_DATA.fixtureDeTorneo(pl.torneoId, pl.zonaId)).then((r) => {
@@ -449,6 +453,34 @@ const SGADD_CICLOSUI = (function () {
         if (z && Array.isArray(z.partidos)) { estado.doc = Object.assign({}, estado.doc || {}, { vivo: z.partidos }); pintar(); }
       }).catch(() => {});
     }
+  }
+
+  /** La tabla final de la temporada anterior (escenarios de Clasificación). El archivo del torneo
+      declara, por club, la categoría que la tiene (`temporadaAnterior.categoriaPorClub`); se lee
+      ese libro, se arma su índice y su tabla con el mismo motor de Clasificación. Sin la
+      declaración, sin backend o si falla, los escenarios quedan sin puestos y lo dicen. */
+  function pedirAnterior(doc) {
+    const ta = doc && doc.temporadaAnterior;
+    const club = (typeof CLUB !== 'undefined' && CLUB.estado) ? CLUB.estado.id : null;
+    const slug = ta && ta.categoriaPorClub && club ? ta.categoriaPorClub[club] : null;
+    if (!slug || typeof SGADD_DATA === 'undefined' || !SGADD_DATA.cargarDelBackend || typeof SGADD_CLASIF === 'undefined') return;
+    const ficha = club + '/' + slug;
+    if (estado.anteriorDe === ficha) return;
+    estado.anteriorDe = ficha;
+    Promise.resolve(SGADD_DATA.cargarDelBackend(club, slug)).then((r) => {
+      if (!r || !r.hojas || estado.anteriorDe !== ficha) return;
+      const t = SGADD.tramoPorDefecto(SGADD.combinacionesTorneoFase(r.hojas));
+      const ia = t ? SGADD.construirIndice(r.hojas, { fase: t.fase, torneo: t.torneo }) : null;
+      const filas = ia ? SGADD_CLASIF.tabla(ia, { orden: ['PCT', 'DIF', 'PF'] }) : null;
+      if (Array.isArray(filas) && filas.length) { estado.anterior = { label: ta.label, temporada: ta.temporada, filas }; pintar(); }
+    }).catch(() => {});
+  }
+
+  /** Se abre por el último ciclo CERRADO: uno abierto con 1 de 4 partidos no es un informe. Sin cerrados, el último. */
+  function cicloPorDefecto(vs) {
+    if (!vs || !vs.length) return null;
+    const c = vs.filter(v => v.cerrado);
+    return (c.length ? c[c.length - 1] : vs[vs.length - 1]).numero;
   }
 
   function tabsSecciones() {
@@ -475,7 +507,7 @@ const SGADD_CICLOSUI = (function () {
   function cabecera(idx, paq) {
     const lista = equiposDe(idx);
     const vs = paq ? CI.ventanas(paq, CI.PARTIDOS_POR_CICLO) : [];
-    const sel = estado.ciclo === null ? (vs.length ? vs[vs.length - 1].numero : null) : estado.ciclo;
+    const sel = estado.ciclo === null ? cicloPorDefecto(vs) : estado.ciclo;
     return `<div class="card rounded-xl p-4 sm:p-5 border border-hairline">
       <h2 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Ciclos de ${CI.PARTIDOS_POR_CICLO} partidos</h2>
       <p class="text-xs text-muted mb-3">Cada ciclo agrupa cuatro partidos seguidos del equipo. Se lee la transición del rival en los primeros 7 segundos, el rendimiento por cuarto y las zonas de la cancha donde se concede.</p>
@@ -512,7 +544,7 @@ const SGADD_CICLOSUI = (function () {
         <span class="text-muted">El paquete de este equipo no trae el bloque de ciclos: llega con la próxima subida del análisis, o el equipo no tiene partidos validados.</span></div>`;
     } else {
       const vs = CI.ventanas(estado.paq, CI.PARTIDOS_POR_CICLO);
-      const num = estado.ciclo === null ? vs[vs.length - 1].numero : estado.ciclo;
+      const num = estado.ciclo === null ? cicloPorDefecto(vs) : estado.ciclo;
       const reg = selladoDe(num);
       const c = reg ? reg.ciclo : CI.armarCiclo(estado.paq, num, { n: CI.PARTIDOS_POR_CICLO });
       if (!c) cuerpo = '<div class="card rounded-xl p-4 border border-hairline text-xs">Ese ciclo no existe.</div>';
@@ -540,8 +572,11 @@ const SGADD_CICLOSUI = (function () {
   function cargarPaquete(idx) {
     const eq = estado.equipo;
     const paqDeCiclos = typeof SGADD_DATA !== 'undefined' && SGADD_DATA.ciclosPaquete;
-    if (!eq || estado.paqDe === eq || (!paqDeCiclos && (typeof SGADD_PBP === 'undefined' || !SGADD_PBP.pedir))) return;
-    estado.paqDe = eq; estado.cargando = true; estado.error = null; estado.paq = null;
+    /* La ficha es CATEGORÍA + EQUIPO: con el nombre solo, pasar de «Apertura 2025» a «LAB 2026-27»
+       (mismo equipo) dejaba el paquete de la temporada anterior en pantalla (medido el 2026-11-06). */
+    const ficha = String(SGADD_APP.estado.planillaId || '') + '|' + eq;
+    if (!eq || estado.paqDe === ficha || (!paqDeCiclos && (typeof SGADD_PBP === 'undefined' || !SGADD_PBP.pedir))) return;
+    estado.paqDe = ficha; estado.cargando = true; estado.error = null; estado.paq = null; estado.ciclo = null; estado.sellados = [];
     const r = document.getElementById('view-root');
     if (r) r.innerHTML = (SGADD_APP.barra ? SGADD_APP.barra() : '') + html(idx);
     const club = (typeof CLUB !== 'undefined' && CLUB.estado) ? CLUB.estado.id : null;
@@ -550,8 +585,8 @@ const SGADD_CICLOSUI = (function () {
       ? SGADD_DATA.ciclosSellados(club, pl.slug, eq).catch(() => []) : Promise.resolve([]);
     /* El paquete de CICLOS (plan ORO): no pasa por la capa de laboratorio. */
     const pedirPaq = paqDeCiclos && club && pl ? SGADD_DATA.ciclosPaquete(club, pl.slug, eq) : SGADD_PBP.pedir(eq);
-    Promise.all([pedirPaq, pedirSellos]).then(([p, sl]) => { if (estado.equipo === eq) { estado.paq = p; estado.sellados = sl; estado.cargando = false; pintar(); } })
-      .catch((e) => { if (estado.equipo === eq) { estado.error = (e && e.message) || 'Sin conexión con el servidor.'; estado.cargando = false; pintar(); } });
+    Promise.all([pedirPaq, pedirSellos]).then(([p, sl]) => { if (estado.paqDe === ficha) { estado.paq = p; estado.sellados = sl; estado.cargando = false; pintar(); } })
+      .catch((e) => { if (estado.paqDe === ficha) { estado.error = (e && e.message) || 'Sin conexión con el servidor.'; estado.cargando = false; pintar(); } });
   }
 
   function elegirEquipo(n) { estado.equipo = n || null; estado.ciclo = null; estado.comparar = null; estado.paqDe = null; estado.paq = null; pintar(); }

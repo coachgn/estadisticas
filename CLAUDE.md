@@ -109,7 +109,7 @@ node test-ciclosadmin.js   #  58 tests · la gestión de ciclos (Ciclos, fase 5)
 node test-ciclospublicar.js #  54 tests · publicar y enviar el ciclo (Ciclos, fase 6): el mail MIME con el PDF adjunto, el informe HTML autónomo,
                            #             /api/v1/ciclos/.../publicar solo ADMIN (ensayo, HSETNX, reintento de fallidos, el PDF que no compila) y el paquete de ciclos del cliente ORO sin la capa pbp
 
-node test-cicloinforme.js  #  25 tests · el informe de ciclo nativo (js/sgadd-cicloinforme.js): tramos y línea de tanteo, on/off, semáforo,
+node test-cicloinforme.js  #  32 tests · el informe de ciclo nativo (js/sgadd-cicloinforme.js): tramos y línea de tanteo, on/off, semáforo,
                            #             y las 6 secciones sobre el paquete REAL de LAB 2026-27 si está en la máquina (punto 165)
 
 node test-pbp.js           # 281 tests · la capa de laboratorio de play-by-play: el catálogo,
@@ -322,7 +322,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=337`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=354`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16646,10 +16646,38 @@ secciones con TODAS sus cards, en el mismo orden. Assets en `?v=351`. `test-cicl
   `sgadd-ciclosui.js`. Las herramientas de admin (auditoría, sello, comparar, historial) van al pie
   de Principal.
 
+### La segunda vuelta (2026-11-06, `?v=354`) · los números y la voz del Artifact
+- **La liga se mide AL CIERRE del ciclo** (`SGADD_APP.idxPrevio(día siguiente al cierre)` en
+  `sgadd-ciclosui.js`): un ciclo cerrado no cambia cuando la liga sigue jugando. Con eso los puestos,
+  medianas y el NET ajustado dan los del Artifact (PACE liga 78,0, eFG 50,6 %, 15/17, −6,9).
+- **`diaDe` del app leía «AAAA-MM-DD» como medianoche UTC** y en Argentina caía el día anterior:
+  `idxPrevio('2026-11-03')` cortaba el 01/11. Corregido en el origen.
+- **Los parciales salen de la línea de tanteo del play-by-play** (`porPeriodo`): el bloque `ciclos`
+  del paquete SUMA el suplementario al 4.º cuarto. El suplementario va aparte (4.º 17,5 / 19,0).
+- **+/- de quintetos y on/off: la plataforma es la correcta** (diferencia de cada tramo de la ingesta,
+  suma −45 = el margen real); el Artifact tenía otra atribución.
+- **Mediana de jugadores = fila JUGADOR TIPO** (PPP 0,94, USG 19,1 %), como el Artifact.
+- **Percentil de rango medio** en `ubicar` (2.º de 17 = 91, 17.º = 3), el del Artifact.
+- **Los 4 Factores con los pesos del Simulador** (`modeloDe(idx).pesos`): diferencial neto × peso.
+- **Minutos por partido DEL CICLO** (Caicedo 11,6, no 15,4 por los que jugó).
+- **Metas**: el PLAN lleva a la liga el juego armado, la zona fría, las pérdidas, el T3% y la
+  transición defensiva; la defensa del juego armado va a la mitad porque se solapa con el triple de
+  ala del rival (que no entra a la tabla y se dice). El TABLERO mide la meta real (mitad del camino).
+- **Escenarios con la tabla final de la temporada anterior**: el archivo del torneo declara
+  `temporadaAnterior.categoriaPorClub` (slug, sin sheetId) y la sección pide ese libro
+  (`pedirAnterior`). Sin la declaración, los escenarios quedan sin puestos y lo dicen.
+- **Síntesis interpretadas en todas las cards** (resumen, ejes, partido a partido, fugas, hoja de ruta
+  con «Optimizar», personalidad con filosofía híbrida del ciclo y los 8 ejes, arquetipos de ritmo,
+  quintetos, cuartos con cierre del ciclo, jugadores, SOS sin el partido contra nosotros, ventanas,
+  qué esperar) y la firma «Elaborado con los datos de MotorStats AR al …».
+- **Lo que sigue saliendo de la TEMPORADA del paquete** (y se dice): quién tira en cada zona, los
+  mapas por jugador y por franja. Para que sean del ciclo, la ingesta tiene que agregar el tirador y
+  la franja a cada tiro de `partidosPbp`.
+
 ### Para producción
 1. Deploy del backend (`cd server && npx vercel --prod`): sin él, producción sigue sirviendo el
    paquete viejo de 2025-26 para la categoría LAB 2026-27.
-2. Push del front (`?v=351`).
+2. Push del front (`?v=354`).
 
 ### Pendiente para acercarlo más al Artifact
 - **El tirador y la franja por tiro en `partidosPbp`** (ingesta, `AV.porPartido`): con eso «quién

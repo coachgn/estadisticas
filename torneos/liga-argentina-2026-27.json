@@ -6,6 +6,12 @@
  "liga": "liga-argentina",
  "temporada": "2026-27",
  "nivel": "LIGA_ARGENTINA",
+ "temporadaAnterior": {
+  "//": "La tabla final de la temporada anterior para los escenarios de Clasificación del informe de ciclo: la categoría de cada club que la tiene (slug del catálogo, sin sheetId).",
+  "label": "Conferencia Norte 2025-26",
+  "temporada": "2025-26",
+  "categoriaPorClub": { "jujuy": "jujuy-primera" }
+ },
  "fuente": {
   "sitio": "liga",
   "delegacion": "laligaargentina",

@@ -55,7 +55,29 @@ if (fs.existsSync(f)) {
     const h = CI.html(m, s);
     t(h.indexOf('ci-card') >= 0 && !/undefined|NaN/.test(h), 'la sección ' + s + ' pinta sin undefined ni NaN');
   });
+  /* El 4.º cuarto sin el suplementario: el bloque `ciclos` lo suma al 4.º; la línea del play-by-play lo separa. */
+  const suardi = g8.find(g => g.fecha === '2026-11-02');
+  if (suardi) {
+    const per = CI.porPeriodo(suardi);
+    t(per.length === 5 && per[3][0] === 12 && per[3][1] === 12 && per[4][0] === 7, 'el suplementario va aparte del 4.º cuarto (12-12 y 7-11)');
+    t(m.contexto.cuartos[3].parcial.favor === 70 && m.contexto.cuartos[3].parcial.contra === 76, '4.º cuarto del ciclo: 70 a favor y 76 en contra, sin el suplementario');
+  }
+  /* Los escenarios con la tabla de la temporada anterior: puesto y zona de cada récord. */
+  const filasAnt = [['SAN ISIDRO', 23], ['AMANCAY (LR)', 23], ['BARRIO PARQUE', 21], ['SP. SUARDI', 20], ['SANTA PAULA (G)', 19], ['COMUNICACIONES', 18], ['SALTA BASKET', 18], ['JUJUY BASQUET', 17],
+    ['VILLA SAN MARTIN', 16], ['ESTUDIANTES (T)', 16], ['BOCHAS (CC)', 15], ['INDEPENDIENTE (SDE)', 14], ['RIVADAVIA (MZA)', 13], ['COLON (SF)', 11], ['HINDU (C)', 11], ['FUSION RIOJANA', 11], ['HURACAN (LH)', 6]]
+    .map(([nombre, pg], i) => ({ nombre, pg, pp: 32 - pg, puesto: i + 1 }));
+  const doc = JSON.parse(fs.readFileSync(path.join(__dirname, 'torneos', 'liga-argentina-2026-27.json'), 'utf8'));
+  const idxE = { lista: () => [{ nombre: 'JUJUY BASQUET', clave: 'JUJUY BASQUET', partidos: [] }], liga: {}, get: () => null, leer: () => null };
+  const me = CI.armar({ idx: idxE, paq, ciclo: c, doc, anterior: { label: 'Conferencia Norte 2025-26', temporada: '2025-26', filas: filasAnt } });
+  const he = CI.html(me, 'clasificacion');
+  t(/17 de 28/.test(he) && /20-12/.test(he) && /entre 13\.º y 14\.º/.test(he), 'escenarios con la tabla anterior: 17 de 28, 20-12 y «entre 13.º y 14.º»');
+  t(/Para terminar como el año pasado hay que ganar 17 de los 28/.test(he) && /50 % de victorias/.test(he), 'la conclusión de los escenarios');
+  t(/temporadaAnterior/.test(JSON.stringify(Object.keys(doc))) && doc.temporadaAnterior.categoriaPorClub.jujuy === 'jujuy-primera', 'el torneo declara la temporada anterior por club (sin sheetId)');
+  const hp = CI.html(me, 'plan');
+  t(/Elaborado con los datos de MotorStats AR al 03\/11\/2026/.test(hp), 'la firma con la fecha de los datos: el día siguiente al cierre');
 } else console.log('  (sin el paquete real de la ingesta: se saltean las verificaciones del Ciclo 0)');
+const ui2 = fs.readFileSync(path.join(__dirname, 'js', 'sgadd-ciclosui.js'), 'utf8');
+t(/idxPrevio\(/.test(ui2) && /pedirAnterior\(/.test(ui2), 'la sección mide la liga al cierre del ciclo y pide la tabla anterior');
 
 /* 5 · cableado: el panel carga el módulo antes de la sección */
 const idxHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
