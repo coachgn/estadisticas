@@ -34,7 +34,13 @@ const CLIENTES = require('../lib/clientes.js');
 const INFORME = require('../lib/ciclos-informe.js');
 const PDF = require('../lib/ciclos-pdf.js');
 const ENVIO = require('../lib/mail-envio.js');
-const { mailCiclo } = require('../lib/mail-ciclo.js');
+const { mailCiclo, numerosCiclo } = require('../lib/mail-ciclo.js');
+/** El resumen va en el mail solo si el cuerpo de análisis lo EDITÓ: el automático ya lo dicen las fichas. */
+function lecturaEditada(ciclo, lecturas) {
+  const base = CICLOS.lecturasBase(ciclo).resumen;
+  const r = String((lecturas && lecturas.resumen) || '').trim();
+  return r && r !== String(base || '').trim() ? r : '';
+}
 const FOTO = require('../lib/ciclos-foto.js');
 
 const PREFIJO = 'sgadd:ciclos:';
@@ -376,7 +382,8 @@ async function manejarPublicar(peticion, deps) {
   const etiquetaCiclo = ciclo.meta.tipo === 'ciclo' && ciclo.meta.numero !== null ? 'Ciclo ' + ciclo.meta.numero : 'Ventana libre';
   for (const x of destinos) {
     const mail = mailCiclo({ nombre: x.nombre, equipo: ciclo.meta.equipo || body.equipo, club: ctx.clubId, ciclo: etiquetaCiclo,
-      desde: ciclo.meta.desde, hasta: ciclo.meta.hasta, record: ciclo.resultados.record.g + '-' + ciclo.resultados.record.p, lectura: lecturas.resumen });
+      desde: ciclo.meta.desde, hasta: ciclo.meta.hasta, record: ciclo.resultados.record.g + '-' + ciclo.resultados.record.p, numeros: numerosCiclo(ciclo),
+      lectura: lecturaEditada(ciclo, lecturas) });
     try {
       await transporte.enviar({ para: x.email, asunto: mail.asunto, html: mail.html, texto: mail.texto,
         adjuntos: [{ nombre: informe.archivo, tipo: 'application/pdf', contenido: pdf }] });
@@ -522,8 +529,8 @@ async function manejarCerrar(peticion, deps) {
     const archivo = ('Ciclo ' + (ciclo.meta.numero !== null ? ciclo.meta.numero : '') + ' ' + meta.equipo).replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() + '.pdf';
     const ok = [], fallidos = [];
     for (const x of destinos) {
-      const mail = mailCiclo({ nombre: x.nombre, equipo: meta.equipo, club: ctx.clubId, ciclo: etiqueta, desde: meta.desde, hasta: meta.hasta, record: meta.record,
-        lectura: lecturas.resumen, panel: FOTO.BASE_PANEL + '?club=' + encodeURIComponent(ctx.clubId) });
+      const mail = mailCiclo({ nombre: x.nombre, equipo: meta.equipo, club: ctx.clubId, ciclo: etiqueta, desde: meta.desde, hasta: meta.hasta, record: meta.record, numeros: numerosCiclo(ciclo),
+        lectura: lecturaEditada(ciclo, lecturas), panel: FOTO.BASE_PANEL + '?club=' + encodeURIComponent(ctx.clubId) });
       const asunto = (enviar === 'prueba' ? '[PRUEBA] ' : '') + mail.asunto;
       try {
         await transporte.enviar({ para: x.email, asunto, html: mail.html, texto: mail.texto, adjuntos: [{ nombre: archivo, tipo: 'application/pdf', contenido: pdf }] });

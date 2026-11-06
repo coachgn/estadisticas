@@ -127,6 +127,25 @@ console.log('El cuerpo técnico ve SOLO lo publicado (2026-11-06)');
   UI.estado.cierre = null;
 }
 
+console.log('El admin ve la sección como el cuerpo técnico (2026-11-06)');
+{
+  ROL = 'ADMIN';
+  Object.assign(UI.estado, { paq: paq(5), error: null, cargando: false, ciclo: null, publicados: [], foto: null, fotoDe: null, pubClave: null, seccion: 'principal', vistaCliente: null });
+  let ha = UI.html(idx);
+  check('la vista de admin ofrece verla como el cuerpo técnico', /data-vista-cliente/.test(ha) && /Cuerpo técnico · hoy/.test(ha) && /si publicás este ciclo/.test(ha));
+  UI.estado.vistaCliente = 'hoy';
+  ha = UI.html(idx);
+  check('«hoy» sin publicados muestra lo mismo que el cliente', /Todavía no hay ciclos publicados/.test(ha) && !/Sellar, publicar|Auditoría del ciclo/.test(ha));
+  UI.estado.modelo = { ciclo: { meta: { numero: 0, desde: '2026-10-10', hasta: '2026-10-13', equipo: 'JUJUY' }, resultados: { record: { g: 4, p: 0 } } }, modelo: {} };
+  global.SGADD_CICLOINFORME = { html: (mo, id) => '<div class="ci">SIM-' + id + '</div>', CSS: '.ci{}' };
+  UI.estado.vistaCliente = 'simulado';
+  ha = UI.html(idx);
+  check('«si publicás» muestra el ciclo abierto con la foto que se mandaría', /SIM-principal/.test(ha) && /Ciclo 0/.test(ha) && /No se publica nada/.test(ha));
+  check('la simulación no toca lo publicado de verdad', UI.estado.publicados.length === 0);
+  delete global.SGADD_CICLOINFORME;
+  UI.estado.vistaCliente = null; UI.estado.modelo = null;
+}
+
 console.log(`\n${ok} pasan · ${fail} fallan`);
 process.exit(fail ? 1 : 0);
 

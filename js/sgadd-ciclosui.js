@@ -551,26 +551,27 @@ const SGADD_CICLOSUI = (function () {
   /* ===================================================== LO QUE VE EL CUERPO TÉCNICO
      Solo los ciclos PUBLICADOS, tal cual se publicaron (la foto): el ciclo en
      curso no se muestra, y lo publicado no cambia aunque la liga siga jugando. */
-  function htmlCliente(idx) {
+  function htmlCliente(idx, src) {
+    src = src || estado;
     const equipo = equipoInicial(idx);
     estado.equipo = equipo;
     const cab = (extra) => `<div class="card rounded-xl p-4 sm:p-5 border border-hairline">
       <h2 class="font-display uppercase tracking-wide text-sm text-ink mb-1">Ciclos de ${CI.PARTIDOS_POR_CICLO} partidos</h2>
       <p class="text-xs text-muted mb-3">Cada informe cubre cuatro partidos seguidos de ${esc(equipo || 'tu equipo')}. Aparece acá cuando el cuerpo de análisis de MotorStats cierra el ciclo; el que está en curso se publica al completarse.</p>${extra || ''}</div>`;
     if (!equipo) return cab('<p class="text-xs text-muted">No hay equipo asignado.</p>');
-    if (estado.cargando) return cab() + SGADD_UI.cargando('Cargando los ciclos…', equipo);
-    if (estado.error) return cab(`<p class="text-xs"><b>No se pudieron leer los ciclos.</b> <span class="text-muted">${esc(estado.error)}</span></p>`);
-    if (!estado.publicados.length) return cab('<p class="text-xs"><b>Todavía no hay ciclos publicados.</b> <span class="text-muted">El primero aparece cuando se cierre el ciclo de cuatro partidos.</span></p>');
-    const sel = estado.pubClave || estado.publicados[estado.publicados.length - 1].clave;
-    const botones = `<div class="inline-flex flex-wrap rounded-md border border-hairline overflow-hidden" role="group" aria-label="Elegir ciclo">${estado.publicados.map(p => {
+    if (src.cargando) return cab() + SGADD_UI.cargando('Cargando los ciclos…', equipo);
+    if (src.error) return cab(`<p class="text-xs"><b>No se pudieron leer los ciclos.</b> <span class="text-muted">${esc(src.error)}</span></p>`);
+    if (!src.publicados.length) return cab('<p class="text-xs"><b>Todavía no hay ciclos publicados.</b> <span class="text-muted">El primero aparece cuando se cierre el ciclo de cuatro partidos.</span></p>');
+    const sel = src.publicados.some(p => p.clave === src.pubClave) ? src.pubClave : src.publicados[src.publicados.length - 1].clave;
+    const botones = `<div class="inline-flex flex-wrap rounded-md border border-hairline overflow-hidden" role="group" aria-label="Elegir ciclo">${src.publicados.map(p => {
       const m = p.meta || {};
       return `<button type="button" onclick="SGADD_CICLOSUI.elegirPublicado('${esc(p.clave)}')" aria-pressed="${p.clave === sel}" title="${dia(m.desde)} al ${dia(m.hasta)}"
         class="px-3 py-2 text-[11px] font-semibold ${p.clave === sel ? 'bg-surface2 text-ink' : 'text-muted hover:text-ink'}">Ciclo ${m.numero === undefined || m.numero === null ? '' : m.numero}</button>`; }).join('')}</div>`;
     let cuerpo;
-    if (estado.fotoError) cuerpo = `<div class="card rounded-xl p-4 border border-hairline text-xs"><b>No se pudo leer el informe.</b> <span class="text-muted">${esc(estado.fotoError)}</span></div>`;
-    else if (!estado.foto || estado.fotoDe !== sel) cuerpo = SGADD_UI.cargando('Cargando el informe…', '');
+    if (src.fotoError) cuerpo = `<div class="card rounded-xl p-4 border border-hairline text-xs"><b>No se pudo leer el informe.</b> <span class="text-muted">${esc(src.fotoError)}</span></div>`;
+    else if (!src.foto || src.fotoDe !== sel) cuerpo = SGADD_UI.cargando('Cargando el informe…', '');
     else {
-      const f = estado.foto, m = f.meta || {};
+      const f = src.foto, m = f.meta || {};
       const secs = SECCIONES.filter(([id]) => f.foto.secciones[id]);
       if (!secs.some(([id]) => id === estado.seccion)) estado.seccion = 'principal';
       cuerpo = `<style data-ci-foto>${f.foto.estilo || ''}</style>
@@ -584,6 +585,58 @@ const SGADD_CICLOSUI = (function () {
     return `<div class="space-y-5">${cab(`<span class="block text-[10px] uppercase tracking-wider text-muted font-display mb-1">Ciclo</span>${botones}`)}${cuerpo}</div>`;
   }
 
+  /* ===================================================== VISTA PREVIA DEL CUERPO TÉCNICO (admin, 2026-11-06)
+     El admin ve la sección tal cual la ve el cliente, con la MISMA función
+     (htmlCliente): «hoy» es lo publicado de verdad; «si publicás» agrega el
+     ciclo abierto en pantalla con la foto que se mandaría. No escribe nada. */
+  function fuenteVista() {
+    const v = estado.vistaCliente;
+    const base = { cargando: false, error: null, publicados: estado.publicados.slice(), pubClave: estado.pubClave, foto: null, fotoDe: null, fotoError: null };
+    if (v === 'simulado') {
+      const x = estado.modelo, foto = fotoDelInforme();
+      if (!x || !foto) return Object.assign(base, { error: 'Abrí un ciclo cerrado en la vista de admin: la simulación usa el informe que estás viendo.' });
+      const clave = claveDe(x.ciclo.meta.numero, CI.PARTIDOS_POR_CICLO), m = x.ciclo.meta, r = x.ciclo.resultados;
+      const meta = { numero: m.numero, desde: m.desde, hasta: m.hasta, record: r.record.g + '-' + r.record.p };
+      base.publicados = base.publicados.filter(p => p.clave !== clave).concat([{ clave, publicado: new Date().toISOString(), meta, simulado: true }])
+        .sort((a, b) => String((a.meta && a.meta.desde) || '').localeCompare(String((b.meta && b.meta.desde) || '')));
+      if (!base.publicados.some(p => p.clave === base.pubClave)) base.pubClave = clave;
+      if (base.pubClave === clave) return Object.assign(base, { foto: { foto, meta, publicado: new Date().toISOString() }, fotoDe: clave });
+    }
+    if (!base.publicados.length) return base;
+    const sel = base.publicados.some(p => p.clave === base.pubClave) ? base.pubClave : base.publicados[base.publicados.length - 1].clave;
+    if (estado.vistaFotoDe === sel && estado.vistaFoto) return Object.assign(base, { foto: estado.vistaFoto, fotoDe: sel });
+    if (estado.vistaFotoError) return Object.assign(base, { fotoError: estado.vistaFotoError });
+    pedirFotoVista(sel);
+    return base;
+  }
+  function pedirFotoVista(clave) {
+    if (estado.vistaPidiendo === clave || typeof SGADD_DATA === 'undefined' || !SGADD_DATA.cicloFoto) return;
+    const club = (typeof CLUB !== 'undefined' && CLUB.estado) ? CLUB.estado.id : null;
+    const pl = (SGADD.CATALOGO.planillas || []).filter(x => x.id === SGADD_APP.estado.planillaId)[0];
+    if (!club || !pl) return;
+    estado.vistaPidiendo = clave;
+    SGADD_DATA.cicloFoto(club, pl.slug, estado.equipo, clave)
+      .then((r) => { estado.vistaFoto = r; estado.vistaFotoDe = clave; estado.vistaFotoError = null; })
+      .catch((e) => { estado.vistaFotoError = (e && e.message) || 'Sin conexión.'; })
+      .then(() => { estado.vistaPidiendo = null; pintar(); });
+  }
+  function barraVista() {
+    const v = estado.vistaCliente;
+    const b = (val, txt) => `<button type="button" onclick="SGADD_CICLOSUI.verComoCliente(${val === null ? 'null' : "'" + val + "'"})" aria-pressed="${v === val}"
+      class="px-3 py-2 text-[11px] font-semibold ${v === val ? 'bg-surface2 text-ink' : 'text-muted hover:text-ink'}">${txt}</button>`;
+    return `<div class="rend-card" data-vista-cliente style="border-color:var(--acento)"><div class="flex flex-wrap items-center gap-3">
+      <span class="text-[10px] uppercase tracking-wider text-muted font-display">Vista</span>
+      <div class="inline-flex flex-wrap rounded-md border border-hairline overflow-hidden" role="group" aria-label="Elegir la vista">
+        ${b(null, 'Admin')}${b('hoy', '👁 Cuerpo técnico · hoy')}${b('simulado', '👁 Cuerpo técnico · si publicás este ciclo')}</div></div>
+      ${v ? `<p class="text-[11px] text-muted mt-2">${v === 'hoy' ? 'Es exactamente lo que ve el cuerpo técnico ahora: solo los ciclos publicados.' : 'Simulación: el ciclo abierto en la vista de admin aparece como publicado, con el informe que se mandaría. No se publica nada.'}</p>` : ''}</div>`;
+  }
+  function verComoCliente(v) {
+    estado.vistaCliente = (v === 'hoy' || v === 'simulado') ? v : null;
+    estado.vistaFoto = null; estado.vistaFotoDe = null; estado.vistaFotoError = null; estado.pubClave = null;
+    if (estado.vistaCliente) estado.seccion = 'principal';
+    pintar();
+  }
+
   function html(idx) {
     if (!CI) return '';
     if (!idx || !idx.liga) {
@@ -593,6 +646,7 @@ const SGADD_CICLOSUI = (function () {
       return (typeof SGADD_UI !== 'undefined') ? SGADD_UI.cargando('Cargando la categoría…', 'Los ciclos necesitan los partidos del torneo.') : '';
     }
     if (!esAdmin()) return htmlCliente(idx);
+    if (estado.vistaCliente) return `<div class="space-y-5">${barraVista()}${htmlCliente(idx, fuenteVista())}</div>`;
     const equipo = equipoInicial(idx);
     estado.equipo = equipo;
     let cuerpo;
@@ -617,7 +671,7 @@ const SGADD_CICLOSUI = (function () {
           ${informe(idx, c, reg)}
         </div>`;
     }
-    return `<div class="space-y-5">${cabecera(idx, estado.paq)}${estado.paq && !estado.error && !estado.cargando ? tabsSecciones() : ''}${cuerpo}</div>`;
+    return `<div class="space-y-5">${estado.paq && !estado.error && !estado.cargando ? barraVista() : ''}${cabecera(idx, estado.paq)}${estado.paq && !estado.error && !estado.cargando ? tabsSecciones() : ''}${cuerpo}</div>`;
   }
 
   function pintar() {
@@ -768,14 +822,14 @@ const SGADD_CICLOSUI = (function () {
       .catch((e) => { m.error = (e && e.message) || 'No se pudo.'; })
       .then(() => { m.yendo = false; pintarModal(); });
   }
-  function elegirPublicado(clave) { estado.pubClave = String(clave); estado.seccion = 'principal'; pintar(); }
+  function elegirPublicado(clave) { estado.pubClave = String(clave); estado.seccion = 'principal'; estado.vistaFotoError = null; pintar(); }
 
   function verSeccion(s) { estado.seccion = SECCIONES.some(x => x[0] === s) ? s : 'principal'; pintar(); }
   function verLado(l) { estado.lado = l === 'favor' ? 'favor' : 'contra'; pintar(); }
 
   return {
     estado, html, pintar, elegirEquipo, elegirCiclo, elegirComparar, verLado, verSeccion, sellar, SECCIONES,
-    abrirCierre, cerrarModal, cierreCampo, confirmarCierre, elegirPublicado, htmlCliente, modalCierre, fotoDelInforme,
+    abrirCierre, cerrarModal, cierreCampo, confirmarCierre, elegirPublicado, htmlCliente, modalCierre, fotoDelInforme, verComoCliente, fuenteVista,
     bloqueEquipos, bloque4Factores, bloqueArquetipos, bloqueEscenarios, bloqueJugadores, bloqueClasificacion, bloqueFixture, bloquePlan,
     bloqueSello, bloqueHistorial, selladoDe,
     bloqueResultados, bloqueTransicion, bloqueCuartos, bloqueMapa, bloqueCausas, bloqueComparar, bloqueAuditoria, lecturaZonas,

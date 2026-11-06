@@ -58,6 +58,16 @@ const { mailCiclo } = require('./server/lib/mail-ciclo.js');
   check('lo escrito por el analista se escapa', !/<script>alert/.test(inf.html) && /&lt;script&gt;/.test(inf.html) && !/<b>/.test(inf.html.split('<h1>')[1].split('</h1>')[0]));
   check('la zona citada sale como etiqueta, no como botón', /<span class="zona-ref">Z13<\/span>/.test(inf.html) && !/<button/.test(inf.html));
   check('lleva la huella y el nombre del archivo es seguro', /Huella [0-9a-f]{8}/.test(inf.html) && !/[\\/:*?"<>|]/.test(inf.archivo) && /\.pdf$/.test(inf.archivo));
+  {
+    const MC = require('./server/lib/mail-ciclo.js');
+    const nums = MC.numerosCiclo({ meta: { partidos: 4 }, resultados: { record: { g: 0, p: 4 }, puntos: { favorPP: 78.3, contraPP: 89.5, dif: -45 } } });
+    const mb = mailCiclo({ equipo: 'JUJUY', club: 'jujuy', ciclo: 'Ciclo 0', desde: '2026-10-18', hasta: '2026-11-02', record: '0-4', numeros: nums });
+    check('el mail pone los números en fichas: récord, diferencia, a favor y en contra', /Récord[\s\S]*0-4[\s\S]*Diferencia[\s\S]*-45[\s\S]*Puntos a favor[\s\S]*78,3[\s\S]*Puntos en contra[\s\S]*89,5/.test(mb.html));
+    check('las fichas llevan glifo además del color y la diferencia por partido', /▼ en 4 partidos/.test(mb.html) && /-11,2 por partido/.test(mb.html));
+    check('las fechas del mail van en DD/MM/AAAA', /18\/10\/2026 al 02\/11\/2026/.test(mb.asunto) && /del 18\/10\/2026 al 02\/11\/2026/.test(mb.html) && !/2026-10-18/.test(mb.html));
+    check('sin resumen editado no repite el párrafo', !/border-left:4px solid #f7941e/.test(mb.html));
+    check('el texto plano dice los mismos números', /Récord 0-4 en 4 partidos · Diferencia -45 · 78,3 a favor y 89,5 en contra/.test(mb.texto));
+  }
   const m = mailCiclo({ nombre: 'Ana <x>', equipo: 'JUJUY', club: 'jujuy', ciclo: 'Ciclo 0', desde: '10/10', hasta: '13/10', record: '4-0', lectura: 'Resumen <b>' });
   check('el mail dice equipo, ciclo y fechas en el asunto', /Ciclo 0/.test(m.asunto) && /JUJUY/.test(m.asunto));
   check('el mail escapa nombre y resumen', !/<b>Resumen|Ana <x>/.test(m.html) && /Ana &lt;x&gt;/.test(m.html));

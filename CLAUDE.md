@@ -322,7 +322,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=356`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=357`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16732,3 +16732,16 @@ Assets en `?v=356`. `test-ciclospublicar.js` (sección 6) y `test-ciclosui.js` f
 - Se arregló `fechaCorta` de `sgadd-ciclosui.js` (la expresión había perdido las `\d`).
 - **No verificado con sesión en el navegador** ni contra Gmail real: probado con KV y transporte de
   mentira, y el PDF con el Chrome local.
+- **Mail probado contra Gmail real el 2026-11-06** («Solo a mi mail»): llegó bien.
+
+### Las fichas del mail y la vista previa del cuerpo técnico (2026-11-06, `?v=357`)
+- **El resumen del mail va en fichas** (`mail-ciclo.js`: `numerosCiclo`, `bentoHtml`): Récord,
+  Diferencia (con la de cada partido), Puntos a favor y en contra por partido, en tarjetas oscuras
+  como las del panel, dos por fila, con ▲ ▼ ● además del color. Tablas y estilos en línea: los
+  clientes de correo no leen grid ni flex. Las fechas van en DD/MM/AAAA, también en el asunto.
+- **El párrafo del resumen solo va si el cuerpo de análisis lo EDITÓ** (`lecturaEditada` en
+  `server/rutas/ciclos.js`): el automático ya lo dicen las fichas.
+- **Vista previa en Ciclos (admin)**: barra «Vista» con Admin · 👁 Cuerpo técnico · hoy · 👁 Cuerpo
+  técnico · si publicás este ciclo. Usa la MISMA `htmlCliente` (ahora acepta una fuente):
+  «hoy» es lo publicado de verdad (pide `/foto` con el token de admin); «si publicás» suma el ciclo
+  abierto con la foto que se mandaría (`fotoDelInforme`). No escribe nada.
