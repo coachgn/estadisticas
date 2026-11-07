@@ -884,8 +884,19 @@ const SGADD_APP = (function () {
         `</optgroup>`;
     });
 
+    /* En una eliminatoria «12 equipos · PJ mediano 1» no dice nada: se
+       dice cuántos partidos de la fase hay, y que los cruces salen de la
+       tabla. Una fase de la propia zona no es «entre zonas» (2026-11-07). */
+    const F = (typeof SGADD_FASES !== 'undefined') ? SGADD_FASES : null;
+    let decl = null;
+    try { decl = F ? F.declaradaDe(F.visibles(), estado.fase, enLlave() ? null : estado.torneo) : null; } catch (e) { decl = null; }
+    const esElim = !!(F && estado.idx && !enLlave() && F.tipoDe(estado.fase, F.visibles(), estado.torneo) === 'eliminacion');
     const info = enLlave()
-      ? 'Llave entre zonas · posiciones y resultados, sin estadísticas'
+      ? ((decl && !F.esEntreZonas(decl)) || (decl && decl.cruce === 'zona')
+        ? 'Fase por jugar · los cruces salen de la tabla y de la llave del torneo'
+        : 'Llave entre zonas · posiciones y resultados, sin estadísticas')
+      : esElim
+      ? `Postemporada · ${estado.idx.liga.partidos} ${estado.idx.liga.partidos === 1 ? 'partido jugado' : 'partidos jugados'} con estadísticas · los cruces, en Clasificación`
       : estado.idx
       ? `${estado.idx.liga.n} equipos · ${estado.idx.liga.partidos} partidos · PJ mediano ${estado.idx.liga.pjMediano}`
       : (estado.cargando ? 'Cargando…' : '');

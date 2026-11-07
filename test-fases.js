@@ -366,7 +366,7 @@ seccion('7 · cambiar la fase en la barra repinta Clasificación y Fixture');
   check('la llave nombra los cruces declarados con sus equipos', /ATENAS &#39;A&#39; - MM/.test(root.innerHTML) && /UNIVERSAL/.test(root.innerHTML));
   check('con el estado de cada serie', /Gana ATENAS/.test(root.innerHTML) && /Serie 1-0 · Partido 2/.test(root.innerHTML));
   check('la final muestra al ganador de S1 y espera al de S2', /Ganador S2/.test(root.innerHTML));
-  check('la tabla de la fase no desaparece: queda plegada', /Tabla de la fase · todos los partidos/.test(root.innerHTML));
+  check('la tabla no desaparece: queda plegada, y es la REGULAR de la que salen los puestos (no una tabla de la llave)', /Tabla de la que salen los puestos · General · Regular/.test(root.innerHTML));
 
   APP.cambiarTramo(F.SIN_DATOS + '|FINAL');
   check('elegir una fase sin datos no hace nada', APP.estado.fase === 'PLAYOFF');

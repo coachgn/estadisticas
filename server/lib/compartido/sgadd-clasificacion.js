@@ -1150,15 +1150,34 @@ function buildClasificacion() {
   }
   /* En modo llave (punto 76) el índice es el de la fase regular de la
      zona, y su tabla se pinta con el formato de ESE tramo. */
-  const ti = st.tramoIndice;
+  /* EN UNA ELIMINATORIA LA TABLA DE ABAJO ES LA DE LA QUE SALEN LOS
+     PUESTOS (2026-11-07), no una «tabla» armada con los partidos de la
+     llave: con el Play-In del Clausura de Bahía abierto se mostraba un
+     ranking de cuatro equipos que no significa nada. Se usa la regular del
+     torneo de esa fase («CLAUSURA|REGULAR»), con sus zonas, su arrastre y
+     su desempate: la misma que ve el DT en esa fase regular. */
+  let ti = st.tramoIndice;
+  let idxTabla = st.idx;
+  let rotuloRef = '';
+  const refK = (typeof SGADD_FASES !== 'undefined' && SGADD_FASES.tablaDeReferenciaActiva)
+    ? SGADD_FASES.tablaDeReferenciaActiva() : null;
+  if (refK) {
+    const pr = refK.split('|');
+    const idxR = clasifIndiceDeTramo(pr[0], pr[1]);
+    if (idxR) {
+      ti = { torneo: pr[0], fase: pr[1] };
+      idxTabla = idxR;
+      rotuloRef = pr.map(x => x.charAt(0) + x.slice(1).toLowerCase()).join(' · ');
+    }
+  }
   const reglas = ti ? clasifReglasDeTramo(ti.torneo, ti.fase) : clasifReglasDeTramo();
   const formato = reglas.formato;
   const orden = reglas.orden;
   const arr = reglas.arrastre;
-  const total = st.idx.lista().length;
+  const total = idxTabla.lista().length;
   /* La leyenda de zonas sigue sobre los que jugaron (`total`); el rótulo
      cuenta también a los inscriptos sin partidos (punto 93). */
-  const nSin = (typeof inscriptosFaltantes === 'function') ? inscriptosFaltantes(st.idx).length : 0;
+  const nSin = (typeof inscriptosFaltantes === 'function') ? inscriptosFaltantes(idxTabla).length : 0;
   const rotuloEquipos = nSin ? (total + nSin) + ' equipos · ' + nSin + ' sin partidos' : total + ' equipos';
 
   /* UNA FASE DE ELIMINACIÓN SE LEE EN UNA LLAVE, NO EN UNA TABLA (punto
@@ -1177,7 +1196,7 @@ function buildClasificacion() {
         ${clasifAvisoBorrador(reglas)}
         ${clasifLeyendaHTML(formato, total)}
         ${clasifAvisoArrastre(arr, reglas)}
-        <div class="mt-4">${clasifTablaHTML(st.idx, { columnas: 'completa', formato: formato, orden: orden,
+        <div class="mt-4">${clasifTablaHTML(idxTabla, { columnas: 'completa', formato: formato, orden: orden,
           manuales: ti ? clasifManualesVigentes(ti.torneo, ti.fase) : undefined,
           arrastre: arr && arr.porClave ? arr : null })}</div>`;
 
@@ -1185,7 +1204,9 @@ function buildClasificacion() {
     ? `<details class="card hub-plegable rounded-xl border border-hairline" ${CLASIF_TABLA_ABIERTA ? 'open' : ''}
          ontoggle="CLASIF_TABLA_ABIERTA = this.open">
         <summary class="cursor-pointer p-4 sm:p-5 flex items-baseline justify-between gap-3 flex-wrap">
-          <span class="font-display uppercase tracking-wide text-sm text-ink">${ti ? 'Tabla de la fase regular de tu zona' : 'Tabla de la fase · todos los partidos'}</span>
+          <span class="font-display uppercase tracking-wide text-sm text-ink">${rotuloRef
+            ? 'Tabla de la que salen los puestos · ' + SGADD_UI.esc(rotuloRef)
+            : (ti ? 'Tabla de la fase regular de tu zona' : 'Tabla de la fase · todos los partidos')}</span>
           <span class="text-[11px] text-muted font-mono">${rotuloEquipos}</span>
         </summary>
         <div class="px-4 sm:px-5 pb-4 sm:pb-5">${cuerpoTabla}</div>

@@ -1196,6 +1196,7 @@ const SGADD_TORNEOS = (function () {
             placeholder="la fase regular" title="TORNEO|FASE de la tabla de la que salen los puestos de sus cruces, por ejemplo CLAUSURA|REGULAR"
             oninput="${pre}'tabla',this.value,true)" class="${CLASE_INPUT} font-mono"></label>
         </div>
+        ${lecturaFase(f)}
         <fieldset><legend class="${ROTULO}">Zonas que la ven · ninguna tildada = las de sus cruces</legend>
           <div class="flex flex-wrap gap-x-4 gap-y-1">${zonas.map(z => `<label class="inline-flex items-center gap-1.5 text-xs text-ink">
             <input type="checkbox" ${f.zonas && f.zonas[z.zona] ? 'checked' : ''}
@@ -1209,6 +1210,25 @@ const SGADD_TORNEOS = (function () {
     return `<div class="space-y-2">${html}
       <button type="button" onclick="SGADD_TORNEOS.agregarFase()" class="text-[11px] font-display uppercase tracking-wider text-ink hover:underline">＋ Fase</button>
       <div id="llaveEdEstado">${estadoLlave()}</div></div>`;
+  }
+
+  /* CÓMO LA VA A LEER EL PANEL (2026-11-07). La vinculación de una fase con
+     el libro era a ciegas: MotorStats arma TORNEO y FASE del nombre de la
+     carpeta de Drive («TORNEO - FASE») y nada en esta pantalla lo decía.
+     Bahía cargó la carpeta «PLAY IN - CLAUSURA» con la fase declarada como
+     «PLAY IN» y sin torneo: el panel ahora lo reconoce, y esta línea dice
+     qué carpeta alimenta cada fase y de qué tabla salen sus puestos. */
+  function lecturaFase(f) {
+    const inst = String(f.libro || '').toUpperCase().trim();
+    const tor = String(f.torneo || '').toUpperCase().trim();
+    if (!inst) return '';
+    const carpeta = tor
+      ? '«' + tor + ' - ' + inst + '» (o al revés, «' + inst + ' - ' + tor + '»)'
+      : '«… - ' + inst + '» o «' + inst + ' - …» (sin torneo: cualquier torneo)';
+    const tabla = String(f.tabla || '').trim()
+      ? f.tabla.toUpperCase().replace(/\s*\|\s*/, ' · ')
+      : (tor ? tor + ' · REGULAR (la regular de su torneo)' : 'la regular del torneo de la carpeta, o la que diga cada cruce');
+    return `<p class="text-[11px] text-muted leading-relaxed">Así la lee el panel: los partidos de la carpeta ${esc(carpeta)}; los puestos salen de ${esc(tabla)}.</p>`;
   }
 
   function estadoLlave() {

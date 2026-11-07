@@ -22,6 +22,8 @@ node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 318 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
+node test-llave-bahia.js   #  46 tests · fases por tabla y por llave: la carpeta al revés del Play-In, el selector,
+                           #             lo jugado de cada fase, el camino del equipo y la tarjeta simple (punto 167)
 node test-desempate-fiba.js # 37 tests · el desempate oficial FIBA: duelo directo, mini-tabla,
                            #             la vuelta a empezar (D.3), cociente y los manuales (punto 132)
 node test-arrastre-fases.js # 112 tests · el arrastre de puntos, los playoffs que no tocan la regular,
@@ -322,7 +324,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=357`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=360`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16745,3 +16747,77 @@ Assets en `?v=356`. `test-ciclospublicar.js` (sección 6) y `test-ciclosui.js` f
   técnico · si publicás este ciclo. Usa la MISMA `htmlCliente` (ahora acepta una fuente):
   «hoy» es lo publicado de verdad (pide `/foto` con el token de admin); «si publicás» suma el ciclo
   abierto con la foto que se mandaría (`fotoDelInforme`). No escribe nada.
+
+---
+
+## 167. CLASIFICACIÓN Y FIXTURE · FASES POR TABLA Y POR LLAVE, BIEN CONECTADAS (2026-11-07)
+
+Reportado en Bahía Blanca · Primera Oro (cliente Leandro N. Alem). Assets en `?v=360`.
+`test-llave-bahia.js` fija todo, con la app real en un `vm`.
+
+### Lo medido en los libros y en KV
+
+```
+zona oro                   APERTURA|REGULAR 132 · CLAUSURA|REGULAR 132
+octavos-apertura           OCTAVOS|APERTURA 20        (carpeta al revés, punto 134)
+postemporada-clausura      PLAY IN|CLAUSURA 4         (carpeta al revés, y «PLAY IN»)
+fase declarada Play-In     libro ["PLAY IN"], SIN torneo, zonaLibro postemporada-clausura
+```
+
+**«PLAY IN» no era una instancia de eliminación**, así que `invertido` no reconocía la carpeta
+al revés. Tres síntomas de la misma causa: el selector ponía «Play in - Clausura» en «Fase
+regular» y repetía la fase como «Play-In - CLAUSURA · llave»; Clasificación le armaba una
+**tabla de posiciones de 4 equipos** con los partidos del Play-In; y la llave del Clausura no
+veía ningún partido jugado (`contexto()` buscaba la FASE «PLAY IN» y el libro dice «CLAUSURA»).
+
+### El arreglo (motor, `sgadd-fases.js`)
+
+- **`RE_ELIM_LIBRE`**: PLAY IN / PLAY-IN / PLAYIN, PLAYOFFS, PROMOCION, TERCER PUESTO, FINAL EXTRA,
+  SUPER FINAL cuentan como eliminación aunque el núcleo no los nombre. `INSTANCIAS` suma PLAYIN.
+- **`contexto()` toma los partidos de cada fase con UN criterio**: los tramos del libro que
+  `calza` (derechos, al revés o por familia). Eran tres caminos y el de una fase sin `torneo`
+  buscaba la FASE por su nombre declarado.
+- **`torneoRealDe(f, hojas)`**: el torneo de una fase sin `torneo` sale del tramo al revés; de
+  ahí la tabla regular de la que salen sus puestos (`tablaDeFase`).
+- **El servidor** (`llave.js`, `paraZonas`) usa `calza` con el TORNEO del partido. Hay que
+  desplegar el backend; mientras tanto el panel ya resuelve con su propio libro.
+
+### La llave, simple
+
+Cada lado: **escudo · nombre · puesto** («2°»), el puesto de la tabla de la que sale la fase
+(`tablaDeReferencia`). La etiqueta larga va en el `title`. Proyectado: «~2°» con borde
+punteado. Pendiente: «Ganador de Partido 3» y, si se sabe, «Liniers o Olimpo». Los partidos
+son chips «P1 · 05/11 · 65–82» en el orden de la tarjeta. «Intrazonal» solo se dice en un
+torneo de varias zonas (en la tarjeta y en el Fixture). CSS a mano en el `<style>` (`.fase-*`),
+con `min-width: 0` en cada hijo del flex: era lo que sacaba los textos de la card a 375 px.
+
+### Lo que viene · el camino del equipo (`camino`, `caminoHTML`)
+
+Con la llave declarada y la tabla, el panel **anuncia el cruce aunque la liga no haya publicado
+la fecha**: lo que viene (rival con su puesto, resuelto o proyectado, o los dos candidatos),
+de dónde viene («Ganó 82–65 a Liniers») y de dónde viene el rival (su último cruce o su último
+partido de la regular). Va arriba de la llave en Clasificación y arriba de todo en el Fixture;
+en el Fixture reemplaza al vacío «Sin próximo partido declarado». En plena fase regular, con un
+próximo partido declarado, solo aparece si el cruce ya está definido.
+
+### Clasificación y Fixture en una eliminatoria
+
+- **La tabla plegada debajo de la llave es la regular de la que salen los puestos**
+  («Tabla de la que salen los puestos · Clausura · Regular»), con su arrastre y su desempate:
+  nunca una tabla armada con los partidos de la llave.
+- **El Fixture de una eliminatoria con datos** trae sus cruces arriba (antes solo en modo
+  llave), lo jugado sale de TODAS las series de la fase y `tipoDe` / `declaradaDe` reciben el
+  TORNEO del tramo. «También hay partidos de…» nombra las fases como el selector.
+- La barra dice «Postemporada · N partidos jugados» en una eliminatoria, y en modo llave de
+  una fase de la propia zona ya no dice «entre zonas».
+
+### Panel Master
+
+En el editor de cruces cada fase dice **cómo la lee el panel**: qué carpeta de Drive la
+alimenta («CLAUSURA - CUARTOS» o al revés) y de qué tabla salen sus puestos.
+
+### Lo que NO se tocó
+
+El catálogo de KV (la declaración de Bahía sigue igual y ahora se lee bien) ni el núcleo
+(`sgadd-core.js`). No verificado en PDF.
+

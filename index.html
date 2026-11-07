@@ -2992,33 +2992,66 @@
      de La Plata («RECONQUISTA 'A' - MM») sin cortarlo en tres renglones.
      ===================================================================== */
   .fase-llave { display: flex; gap: .75rem; align-items: flex-start; }
-  .fase-columna { flex: 1 0 15rem; min-width: 15rem; }
-  .fase-columna.fase-activa > h4 { text-decoration: underline; text-underline-offset: 4px; }
+  /* 13,5rem deja leer «LEANDRO N.ALEM» con su puesto sin partirlo: el
+     nombre se TRUNCA con «…» (con el nombre entero en el title) en vez de
+     empujar la tarjeta. Medido el 2026-11-07: a 375px los textos se salían
+     de la card porque ningún hijo del flex llevaba `min-width: 0`. */
+  .fase-columna { flex: 1 0 13.5rem; min-width: 13.5rem; max-width: 22rem; }
+  .fase-col-tit { margin-bottom: .5rem; font-family: var(--font-display, inherit); text-transform: uppercase;
+    letter-spacing: .04em; font-size: .75rem; min-width: 0; }
+  .fase-col-sub { display: block; text-transform: none; letter-spacing: 0; font-size: 10px; color: #9ca3af; }
+  .fase-columna.fase-activa .fase-col-tit > span:first-child { text-decoration: underline; text-underline-offset: 4px; }
   .fase-cruce {
-    border: 1px solid #374151; border-radius: .6rem;
-    padding: .55rem .65rem; background: rgba(255, 255, 255, .02);
+    border: 1px solid #374151; border-radius: .6rem; min-width: 0;
+    padding: .5rem .6rem; background: rgba(255, 255, 255, .02);
   }
+  .fase-cruce-cab { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .3rem; min-width: 0; }
+  .fase-cruce-tit { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #9ca3af;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .fase-cruce-estado { font-size: 11px; margin-top: .3rem; overflow-wrap: anywhere; }
   /* El cruce del equipo propio se marca con el BORDE del acento del club,
      no con un relleno: un fondo de color obliga a revalidar el contraste
      de cada numero de adentro (punto 14). */
   .fase-cruce-propio { border-color: var(--acento-texto, #fbbf24); }
   .fase-lado {
     display: flex; align-items: center; justify-content: space-between;
-    gap: .5rem; font-size: .75rem; padding: .15rem 0; color: #d1d5db;
+    gap: .5rem; font-size: .78rem; padding: .2rem 0; color: #d1d5db; min-width: 0;
   }
+  .fase-lado-nombre { display: flex; align-items: center; gap: .4rem; min-width: 0; flex: 1 1 auto; }
+  .fase-lado-nombre > .truncate { min-width: 0; }
+  .fase-lado-meta { flex: 0 0 auto; white-space: nowrap; }
   .fase-lado.fase-ganador { color: #f9fafb; font-weight: 600; }
+  .fase-lado.fase-perdedor { color: #9ca3af; }
+  .fase-lado-pend { color: #9ca3af; font-style: italic; }
+  .fase-escudo-vacio { flex: 0 0 auto; width: 1.25rem; height: 1.25rem; border-radius: 9999px; border: 1px dashed #4b5563; }
+  /* El puesto en la tabla de la que sale la fase. Proyectado: «~» y borde
+     punteado, además del title (ningún estado solo con color, punto 14). */
+  .fase-puesto { flex: 0 0 auto; font-family: ui-monospace, monospace; font-size: 10px; line-height: 1.5;
+    padding: 0 .35rem; border-radius: .35rem; border: 1px solid #4b5563; color: #e5e7eb; white-space: nowrap; }
+  .fase-puesto-proy { border-style: dashed; color: #9ca3af; }
   .fase-proyectado { font-size: 10px; color: #9ca3af; white-space: nowrap; font-style: italic; }
-  .fase-partidos { margin-top: .35rem; font-size: 11px; color: #d1d5db; }
-  .fase-partidos li { padding: .1rem 0; border-top: 1px solid rgba(55, 65, 81, .5); }
+  .fase-partidos { margin-top: .35rem; display: flex; flex-wrap: wrap; gap: .25rem; font-size: 10.5px; color: #d1d5db; }
+  .fase-partidos li { padding: .05rem .4rem; border: 1px solid rgba(75, 85, 99, .7); border-radius: 9999px; white-space: nowrap; }
   .fase-chip {
     display: inline-block; font-size: 10px; line-height: 1.4;
     padding: 0 .4rem; border-radius: 9999px;
     border: 1px solid var(--zona); white-space: nowrap;
   }
+  /* El Fixture en modo llave y en una eliminatoria: las tarjetas en grilla
+     que se acomoda sola al ancho (una por fila en el teléfono). */
+  .fase-grid { display: grid; gap: .5rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); }
+  /* La card «Lo que viene»: los dos equipos frente a frente, y en el
+     teléfono uno debajo del otro. */
+  .fase-camino-vs { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; min-width: 0; }
+  .fase-camino-equipo { display: flex; align-items: center; gap: .5rem; min-width: 0; flex: 1 1 12rem; }
+  .fase-camino-equipo img { width: 1.75rem; height: 1.75rem; }
+  .fase-camino-x { font-size: 11px; color: #9ca3af; text-transform: uppercase; letter-spacing: .08em; flex: 0 0 auto; }
   @media print {
     .fase-cruce { background: #fff !important; border: 1.4px solid #94a3b8 !important; break-inside: avoid; }
-    .fase-lado, .fase-partidos { color: #111 !important; }
+    .fase-lado, .fase-partidos, .fase-puesto { color: #111 !important; }
+    .fase-puesto, .fase-partidos li { border-color: #94a3b8 !important; }
     .fase-llave { flex-wrap: wrap; }
+    .fase-columna { max-width: none; }
   }
   /* LO QUE FALTA JUGAR en el Fixture: barra del acento en la primera celda
      (en el <td>, punto 14: el fondo de la celda tapa el del <tr>) y el
@@ -3554,7 +3587,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=357" />
+<link rel="stylesheet" href="sgadd.css?v=360" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -3755,62 +3788,62 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=357"></script>
+<script src="js/sgadd-club.js?v=360"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=357"></script>
-<script src="js/sgadd-core.js?v=357"></script>
-<script src="js/sgadd-auth.js?v=357"></script>
+<script src="js/sgadd-config.js?v=360"></script>
+<script src="js/sgadd-core.js?v=360"></script>
+<script src="js/sgadd-auth.js?v=360"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=357"></script>
-<script src="js/sgadd-glosario.js?v=357"></script>
-<script src="js/sgadd-glosarioui.js?v=357"></script>
-<script src="js/sgadd-comparativa.js?v=357"></script>
-<script src="js/sgadd-comparativaui.js?v=357"></script>
-<script src="js/sgadd-confirmar.js?v=357"></script>
-<script src="js/sgadd-landing.js?v=357"></script>
-<script src="js/sgadd-login.js?v=357"></script>
-<script src="js/sgadd-data.js?v=357"></script>
-<script src="js/sgadd-clientes.js?v=357"></script>
-<script src="js/sgadd-ui.js?v=357"></script>
-<script src="js/sgadd-muestra.js?v=357"></script>
-<script src="js/sgadd-app.js?v=357"></script>
-<script src="js/sgadd-clasificacion.js?v=357"></script>
+<script src="js/sgadd-demo.js?v=360"></script>
+<script src="js/sgadd-glosario.js?v=360"></script>
+<script src="js/sgadd-glosarioui.js?v=360"></script>
+<script src="js/sgadd-comparativa.js?v=360"></script>
+<script src="js/sgadd-comparativaui.js?v=360"></script>
+<script src="js/sgadd-confirmar.js?v=360"></script>
+<script src="js/sgadd-landing.js?v=360"></script>
+<script src="js/sgadd-login.js?v=360"></script>
+<script src="js/sgadd-data.js?v=360"></script>
+<script src="js/sgadd-clientes.js?v=360"></script>
+<script src="js/sgadd-ui.js?v=360"></script>
+<script src="js/sgadd-muestra.js?v=360"></script>
+<script src="js/sgadd-app.js?v=360"></script>
+<script src="js/sgadd-clasificacion.js?v=360"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-fixture.js?v=357"></script>
-<script src="js/sgadd-inscriptos.js?v=357"></script>
-<script src="js/sgadd-fases.js?v=357"></script>
-<script src="js/sgadd-torneos.js?v=357"></script>
-<script src="js/sgadd-hub.js?v=357"></script>
-<script src="js/sgadd-configui.js?v=357"></script>
-<script src="js/sgadd-estados.js?v=357"></script>
-<script src="js/sgadd-buzon.js?v=357"></script>
-<script src="js/sgadd-charts.js?v=357"></script>
-<script src="js/sgadd-personalidad.js?v=357"></script>
-<script src="js/sgadd-rankings.js?v=357"></script>
-<script src="js/sgadd-partido.js?v=357"></script>
-<script src="js/sgadd-informe.js?v=357"></script>
-<script src="js/sgadd-ficha.js?v=357"></script>
-<script src="js/sgadd-mercado.js?v=357"></script>
-<script src="js/sgadd-fichajes.js?v=357"></script>
-  <script src="js/sgadd-rankingpdf.js?v=357"></script>
-<script src="js/sgadd-equipos.js?v=357"></script>
+<script src="js/sgadd-fixture.js?v=360"></script>
+<script src="js/sgadd-inscriptos.js?v=360"></script>
+<script src="js/sgadd-fases.js?v=360"></script>
+<script src="js/sgadd-torneos.js?v=360"></script>
+<script src="js/sgadd-hub.js?v=360"></script>
+<script src="js/sgadd-configui.js?v=360"></script>
+<script src="js/sgadd-estados.js?v=360"></script>
+<script src="js/sgadd-buzon.js?v=360"></script>
+<script src="js/sgadd-charts.js?v=360"></script>
+<script src="js/sgadd-personalidad.js?v=360"></script>
+<script src="js/sgadd-rankings.js?v=360"></script>
+<script src="js/sgadd-partido.js?v=360"></script>
+<script src="js/sgadd-informe.js?v=360"></script>
+<script src="js/sgadd-ficha.js?v=360"></script>
+<script src="js/sgadd-mercado.js?v=360"></script>
+<script src="js/sgadd-fichajes.js?v=360"></script>
+  <script src="js/sgadd-rankingpdf.js?v=360"></script>
+<script src="js/sgadd-equipos.js?v=360"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=357"></script>
-<script src="js/sgadd-rachas.js?v=357"></script>
-<script src="js/sgadd-jugadores.js?v=357"></script>
-<script src="js/sgadd-4factores.js?v=357"></script>
-<script src="js/sgadd-scouting.js?v=357"></script>
-<script src="js/sgadd-cancha.js?v=357"></script>
-<script src="js/sgadd-ciclos.js?v=357"></script>
-<script src="js/sgadd-cicloinforme.js?v=357"></script>
-<script src="js/sgadd-ciclosui.js?v=357"></script>
-<script src="js/sgadd-ciclosadmin.js?v=357"></script>
-<script src="js/sgadd-pbp.js?v=357"></script>
-<script src="js/sgadd-rendimiento.js?v=357"></script>
-<script src="js/sgadd-conclusiones.js?v=357"></script>
-<script src="js/sgadd-diagnostico.js?v=357"></script>
+<script src="js/sgadd-niveles.js?v=360"></script>
+<script src="js/sgadd-rachas.js?v=360"></script>
+<script src="js/sgadd-jugadores.js?v=360"></script>
+<script src="js/sgadd-4factores.js?v=360"></script>
+<script src="js/sgadd-scouting.js?v=360"></script>
+<script src="js/sgadd-cancha.js?v=360"></script>
+<script src="js/sgadd-ciclos.js?v=360"></script>
+<script src="js/sgadd-cicloinforme.js?v=360"></script>
+<script src="js/sgadd-ciclosui.js?v=360"></script>
+<script src="js/sgadd-ciclosadmin.js?v=360"></script>
+<script src="js/sgadd-pbp.js?v=360"></script>
+<script src="js/sgadd-rendimiento.js?v=360"></script>
+<script src="js/sgadd-conclusiones.js?v=360"></script>
+<script src="js/sgadd-diagnostico.js?v=360"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */

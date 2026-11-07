@@ -284,7 +284,10 @@ function paraZonas(datos, t, zonas) {
   const partidos = ((datos.postemporada && datos.postemporada.partidos) || []).filter((p) => {
     /* Con el nombre flexible (punto 165): «REPECHAJE» en el libro es la
        fase declarada «REPECHAJE A-B». */
-    const f = fases.find(x => FASES.libroCalza(x, String(p.fase || '').toUpperCase())
+    /* Con `calza` y el TORNEO del partido (2026-11-07): la carpeta al revés
+       «PLAY IN - CLAUSURA» trae FASE = CLAUSURA, que por el nombre solo no
+       es ninguna fase declarada. */
+    const f = fases.find(x => FASES.calza(x, String(p.fase || '').toUpperCase(), String(p.torneo || '').toUpperCase())
       && (!x.zonaLibro || !p.zonaLibro || x.zonaLibro === p.zonaLibro));
     if (f) return idsNec.has(f.id);
     return incluye(participan[p.zonaLibro]);

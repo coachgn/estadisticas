@@ -51,10 +51,20 @@ const SGADD_FASES = (function () {
   function mayus(v) { return texto(v).toUpperCase(); }
   const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
+  /* LAS INSTANCIAS QUE EL NÚCLEO NO NOMBRA (2026-11-07). La FASE sale del
+     nombre de una carpeta de Drive y es texto libre: Bahía escribió
+     «PLAY IN» y el núcleo solo conoce OCTAVOS, CUARTOS, etc. Sin esto el
+     tramo `PLAY IN|CLAUSURA` caía en «Fase regular», Clasificación le
+     armaba una tabla de posiciones de cuatro equipos y la fase declarada
+     aparecía repetida como «· llave». Se reconocen por su forma, con o sin
+     espacio o guion, y sin acentos. */
+  const RE_ELIM_LIBRE = /^(PLAY\s*[-_]?\s*IN|PLAY\s*[-_]?\s*OFFS?|PROMOCION|TERCER\s+PUESTO|FINAL\s+EXTRA|SUPER\s*FINAL)$/;
   /** Una fase del libro que no está en el vocabulario del núcleo es de liga. */
   function esEliminacionDelNucleo(faseLibro) {
-    const f = CORE && CORE.FASES ? CORE.FASES[mayus(faseLibro)] : null;
-    return !!(f && f.eliminacion);
+    const v = mayus(faseLibro);
+    const f = CORE && CORE.FASES ? CORE.FASES[v] : null;
+    if (f) return !!f.eliminacion;
+    return RE_ELIM_LIBRE.test(sinAcentos(v));
   }
 
   /* =====================================================================
@@ -358,8 +368,15 @@ const SGADD_FASES = (function () {
 
   /* La instancia que nombra una fase declarada: la del libro si es del
      núcleo, si no la del id o el nombre. Sin ninguna, `null` (no excluye). */
-  const INSTANCIAS = [['OCTAVOS', /octav/i], ['CUARTOS', /cuart/i], ['SEMIFINAL', /semi/i],
+  const INSTANCIAS = [['PLAYIN', /play\s*[-_]?\s*in\b/i], ['OCTAVOS', /octav/i], ['CUARTOS', /cuart/i], ['SEMIFINAL', /semi/i],
     ['REPECHAJE', /repech/i], ['RECLASIFICACION', /reclasif/i], ['FINAL', /final/i]];
+  /** La instancia canónica de un texto suelto del libro («PLAY IN», «SEMIFINALES»). */
+  function instanciaDeTexto(v) {
+    const t = mayus(v);
+    if (CORE && CORE.FASES && CORE.FASES[t] && CORE.FASES[t].eliminacion) return t === 'SEMIFINALES' ? 'SEMIFINAL' : t;
+    const hit = INSTANCIAS.find(par => par[1].test(t));
+    return hit ? hit[0] : null;
+  }
   function instanciaDe(f) {
     const delLibro = (f.libro || []).find(esEliminacionDelNucleo);
     if (delLibro) return delLibro === 'SEMIFINALES' ? 'SEMIFINAL' : delLibro;
@@ -425,7 +442,10 @@ const SGADD_FASES = (function () {
     if (f.torneo && f.torneo !== v) return false;
     if (f.libro.indexOf(t) !== -1) return true;
     const inst = instanciaDe(f);
-    const tN = t === 'SEMIFINALES' ? 'SEMIFINAL' : t;
+    const tN = instanciaDeTexto(t) || t;
+    /* La declaración puede nombrar el VALOR del libro con otra grafía
+       («PLAY-IN» contra «PLAY IN»): se compara la instancia. */
+    if (!f.torneo && f.libro.some(lb => instanciaDeTexto(lb) && instanciaDeTexto(lb) === tN)) return true;
     return f.libro.indexOf(v) !== -1 && (!inst || inst === tN);
   }
 
@@ -672,6 +692,24 @@ const SGADD_FASES = (function () {
     return d && d.tramo === s.tabla ? d : null;
   }
 
+  /** La tabla de la que salen los puestos de una fase: la de su primer
+      lado por puesto, la regular de su torneo o, si no, la de la zona. */
+  function tablaDeReferencia(f, ctx) {
+    const c = ctx || {};
+    for (const cr of (f.cruces || [])) {
+      for (const x of [cr.a, cr.b]) {
+        if (x && x.tipo === 'puesto') { const t = tablaParaSlot(x, c, f); if (t) return t; }
+      }
+    }
+    const k = c.tablaDeFase && c.tablaDeFase[f.id];
+    if (k && c.tablasPorTramo && c.tablasPorTramo[k]) {
+      const pt = c.tablasPorTramo[k];
+      return pt['*'] || pt[Object.keys(pt)[0]] || null;
+    }
+    const zonas = Object.keys(c.tablas || {});
+    return zonas.length === 1 ? c.tablas[zonas[0]] : null;
+  }
+
   /**
    * Un lado de un cruce contra lo que se sabe hoy.
    *
@@ -697,7 +735,14 @@ const SGADD_FASES = (function () {
     if (s.tipo === 'externo') return { estado: 'pendiente', etiqueta: s.externo };
     const et = (s.tipo === 'ganador' ? 'Ganador ' : 'Perdedor ') + s.cruce;
     const r = previos[s.cruce];
-    if (!r || !r.serie || !r.serie.ganador) return { estado: 'pendiente', etiqueta: et };
+    if (!r || !r.serie || !r.serie.ganador) {
+      /* PENDIENTE, PERO SE DICE ENTRE QUIÉNES (2026-11-07): «Ganador de
+         Partido 2 · Olimpo o Estudiantes» le sirve al DT para preparar los
+         dos rivales posibles; «Ganador P2» a secas no le dice nada. */
+      const de = r ? [r.a, r.b].filter(x => x && x.nombre).map(x => x.nombre) : [];
+      return { estado: 'pendiente', etiqueta: et, ref: s.cruce, refTipo: s.tipo,
+        refLabel: (r && r.label) || s.cruce, opciones: de.length === 2 ? de : null };
+    }
     const k = s.tipo === 'ganador' ? r.serie.ganador
       : (r.serie.ganador === r.serie.a ? r.serie.b : r.serie.a);
     return { estado: 'resuelto', clave: k, nombre: r.serie.nombres[k] || k, etiqueta: et, zona: zonaDe(k) };
@@ -809,7 +854,18 @@ const SGADD_FASES = (function () {
         r.serie = s;
         r.naturaleza = naturalezaCruce(f, r.a, r.b, c);
       });
-      porFase[f.id] = { fase: f, cruces: cruces, sueltas: sers.filter(x => !usadas.has(x.clave)) };
+      /* EL PUESTO DE CADA LADO EN LA TABLA DE LA QUE SALE LA FASE: es lo
+         único que la tarjeta muestra además del nombre (2026-11-07). Un
+         lado que llega como «Ganador de P3» también lo lleva, para que la
+         llave se lea igual de punta a punta. */
+      const ref = tablaDeReferencia(f, c);
+      const conPuesto = (x) => {
+        if (!x || !x.clave || !ref) return x;
+        const fila = (ref.filas || []).find(r => r.clave === x.clave);
+        return fila ? Object.assign({}, x, { puesto: fila.puesto, tramoRef: ref.tramo || null }) : x;
+      };
+      cruces.forEach((r) => { r.a = conPuesto(r.a); r.b = conPuesto(r.b); });
+      porFase[f.id] = { fase: f, cruces: cruces, sueltas: sers.filter(x => !usadas.has(x.clave)), tablaRef: ref };
     });
     return porFase;
   }
@@ -868,37 +924,97 @@ const SGADD_FASES = (function () {
       + (inter ? '⇄ Interzonal' : 'Intrazonal') + '</span>';
   }
 
-  const ESTADO_LADO = {
-    proyectado: '<span class="fase-proyectado" title="Sale de la tabla de hoy: la fase regular todavía no terminó">~ proyectado</span>',
-    pendiente: '<span class="fase-proyectado">a definir</span>',
-    invalido: '<span class="fase-proyectado">declaración inválida</span>',
-  };
+  /* =====================================================================
+     LA TARJETA DE UN CRUCE · simple a propósito (2026-11-07)
+
+     Cada lado es ESCUDO · NOMBRE · PUESTO, y nada más. El puesto es el de
+     la tabla de la que sale la fase («2°»): la etiqueta larga («2° Bahía
+     Blanca 2026 · Primera Oro · Clausura · Regular») viaja en el `title`,
+     para quien quiera auditarla, y no ocupa la tarjeta. El estado de la
+     serie va en UNA línea y los partidos como chips cortos (fecha y
+     marcador, en el orden de los dos renglones de arriba).
+
+     Un lado PROYECTADO lleva «~» delante del puesto y el borde punteado: se
+     lee como provisorio sin una palabra de más. Un lado PENDIENTE dice de
+     dónde sale y, si ya se sabe, entre quiénes («Olimpo o Estudiantes»).
+     ===================================================================== */
+
+  function tituloPuesto(x) {
+    const partes = [];
+    if (x.etiqueta) partes.push(x.etiqueta);
+    else if (x.puesto) partes.push(x.puesto + '°' + (x.tramoRef ? ' · ' + nombreTramo(x.tramoRef) : ''));
+    if (x.estado === 'proyectado') partes.push('proyectado con la tabla de hoy: la fase de la que sale todavía no terminó');
+    if (x.porLoJugado) partes.push('lo dice el partido jugado');
+    return partes.join(' · ');
+  }
+
+  function pillPuesto(x) {
+    if (!x || !x.puesto) return '';
+    return '<span class="fase-puesto' + (x.estado === 'proyectado' ? ' fase-puesto-proy' : '') + '" title="'
+      + esc(tituloPuesto(x)) + '">' + (x.estado === 'proyectado' ? '~' : '') + x.puesto + '°</span>';
+  }
+
+  /** «Ganador de Partido 2», o lo que diga la declaración. */
+  function deDondeSale(x) {
+    if (x.ref) return (x.refTipo === 'ganador' ? 'Ganador de ' : 'Perdedor de ') + x.refLabel;
+    return x.etiqueta || 'A definir';
+  }
 
   function ladoHTML(x, s, esc2, escudo) {
     const k = x.clave;
     const gan = s && k && s.ganados ? s.ganados[k] : null;
-    const gano = s && s.ganador && s.ganador === k;
+    const gano = !!(s && s.ganador && s.ganador === k);
+    const perdio = !!(s && s.ganador && k && s.ganador !== k);
+    if (!k) {
+      const de = deDondeSale(x);
+      return '<div class="fase-lado fase-lado-pend" title="' + esc2(x.etiqueta || de) + '">'
+        + '<span class="fase-lado-nombre"><span class="fase-escudo-vacio" aria-hidden="true"></span>'
+        + '<span class="min-w-0"><span class="block truncate">' + esc2(de) + '</span>'
+        + (x.opciones ? '<span class="block truncate text-[10px] text-muted">' + esc2(x.opciones.join(' o ')) + '</span>' : '')
+        + '</span></span></div>';
+    }
     const nombre = x.nombre || x.etiqueta;
-    return '<div class="fase-lado' + (gano ? ' fase-ganador' : '') + '">'
-      + '<span class="flex items-center gap-1.5 min-w-0">'
-      + (k && escudo ? escudo(nombre) : '')
-      + '<span class="truncate">' + esc2(nombre) + '</span>'
-      + (x.clave && x.etiqueta && x.etiqueta !== nombre
-        ? '<span class="text-[10px] text-muted whitespace-nowrap">' + esc2(x.etiqueta) + '</span>' : '')
-      + (ESTADO_LADO[x.estado] || '')
-      + '</span>'
-      + '<span class="font-mono tabular-nums">' + (gan != null && s.jugados ? gan : '') + (gano ? ' ✓' : '') + '</span>'
-      + '</div>';
+    return '<div class="fase-lado' + (gano ? ' fase-ganador' : '') + (perdio ? ' fase-perdedor' : '')
+      + (x.estado === 'proyectado' ? ' fase-lado-proy' : '') + '">'
+      + '<span class="fase-lado-nombre">' + (escudo ? escudo(nombre) : '')
+      + '<span class="truncate">' + esc2(nombre) + '</span>' + pillPuesto(x) + '</span>'
+      + '<span class="fase-lado-meta font-mono tabular-nums">'
+      + (gan != null && s.jugados && s.mejorDe !== 1 ? gan : '')
+      + (gano ? ' <span aria-label="ganó la serie">✓</span>' : '')
+      + '</span></div>';
   }
 
-  function partidosDeSerie(s) {
+  /** dd/mm de una fecha ISO, sin pasar por `Date` (zona horaria). */
+  function ddmm(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+    return m ? m[3] + '/' + m[2] : (iso ? String(iso) : 's/f');
+  }
+
+  /* Los partidos de la serie como chips: «P1 · 05/11 · 65–82». El marcador
+     va en el ORDEN DE LA TARJETA (lado de arriba – lado de abajo), no en el
+     de local y visitante: así se lee contra los nombres que tiene encima. */
+  function partidosDeSerie(s, arriba) {
     if (!s || !s.partidos.length) return '';
-    return '<ul class="fase-partidos">' + s.partidos.map((p, i) => '<li>'
-      + '<span class="text-muted">P' + (i + 1) + ' · ' + esc(p.fecha || 's/f') + '</span> '
-      + esc(p.local) + ' '
-      + (p.jugado && p.ptsLocal != null ? '<b class="font-mono">' + p.ptsLocal + '–' + p.ptsVisitante + '</b>'
-        : '<span class="text-muted">' + (p.hora ? esc(p.hora) : 'a jugarse') + '</span>')
-      + ' ' + esc(p.visitante) + '</li>').join('') + '</ul>';
+    const a = arriba || s.a;
+    return '<ul class="fase-partidos">' + s.partidos.map((p, i) => {
+      const n = s.partidos.length > 1 ? 'P' + (i + 1) + ' · ' : '';
+      let marc;
+      if (p.jugado && p.ptsLocal != null) {
+        const pa = p.localClave === a ? p.ptsLocal : p.ptsVisitante;
+        const pb = p.localClave === a ? p.ptsVisitante : p.ptsLocal;
+        marc = '<b class="font-mono">' + pa + '–' + pb + '</b>';
+      } else marc = '<span class="text-muted">' + (p.hora ? esc(p.hora) : 'a jugarse') + '</span>';
+      return '<li title="' + esc(p.local + ' ' + (p.jugado ? (p.ptsLocal + '-' + p.ptsVisitante) : 'vs') + ' ' + p.visitante) + '">'
+        + '<span class="text-muted">' + n + esc(ddmm(p.fecha)) + '</span> ' + marc + '</li>';
+    }).join('') + '</ul>';
+  }
+
+  /** La línea del estado de la serie, corta. */
+  function estadoSerie(cr) {
+    const s = cr.serie;
+    if (s) return { txt: resumen(s, cr.a.clave), def: !!s.ganador };
+    if (cr.a.clave && cr.b.clave) return { txt: 'Por jugarse', def: false };
+    return { txt: 'Cruce a definir', def: false };
   }
 
   /** La card de un cruce: los dos lados, la serie y sus partidos. */
@@ -908,20 +1024,21 @@ const SGADD_FASES = (function () {
     const titulo = cr.label || cr.id;
     if (cr.noSeJuega) {
       return '<article class="fase-cruce">'
-        + '<header class="mb-1.5"><span class="font-display uppercase tracking-wide text-[11px] text-muted">' + esc(titulo) + '</span></header>'
+        + '<header class="fase-cruce-cab"><span class="fase-cruce-tit">' + esc(titulo) + '</span></header>'
         + '<p class="text-[11px] text-muted">No se juega: ' + esc(cr.a.nombre || cr.a.etiqueta)
         + ' es ' + esc(cr.a.etiqueta) + ' y ' + esc(cr.b.etiqueta) + '.</p></article>';
     }
+    const e = estadoSerie(cr);
+    /* «Intrazonal» se dice solo cuando NO es lo de siempre: en un torneo de
+       una zona todos los cruces lo son y el chip es ruido. */
+    const chip = cr.naturaleza === 'interzonal' ? chipNaturaleza(cr.naturaleza) : '';
     return '<article class="fase-cruce' + (o.destacar && o.destacar(cr) ? ' fase-cruce-propio' : '') + '">'
-      + '<header class="flex items-center justify-between gap-2 mb-1.5">'
-      + '<span class="font-display uppercase tracking-wide text-[11px] text-muted">' + esc(titulo) + '</span>'
-      + chipNaturaleza(cr.naturaleza) + '</header>'
+      + '<header class="fase-cruce-cab"><span class="fase-cruce-tit">' + esc(titulo) + '</span>' + chip + '</header>'
       + ladoHTML(cr.a, s, esc, o.escudo) + ladoHTML(cr.b, s, esc, o.escudo)
-      + '<p class="text-[11px] mt-1.5 ' + (s && s.ganador ? 'text-ink' : 'text-muted') + '">'
-      + esc(s ? resumen(s) : (cr.a.clave && cr.b.clave ? 'Sin partidos todavía' : 'Cruce a definir')) + '</p>'
+      + '<p class="fase-cruce-estado ' + (e.def ? 'text-ink' : 'text-muted') + '">' + esc(e.txt) + '</p>'
       + (cr.condicion === 'distintos' && !s ? '<p class="text-[11px] text-muted">Se juega solo si los dos campeones son distintos.</p>' : '')
       + (s && s.excedida ? '<p class="text-[11px] zona-aviso zona-texto">⚠ Hay más partidos jugados que los de la serie: revisá el libro.</p>' : '')
-      + partidosDeSerie(s)
+      + partidosDeSerie(s, cr.a.clave)
       + '</article>';
   }
 
@@ -929,8 +1046,8 @@ const SGADD_FASES = (function () {
   function serieSueltaHTML(s, opciones) {
     const o = opciones || {};
     const lado = (k) => ({ clave: k, nombre: s.nombres[k] || k, estado: 'resuelto' });
-    return cruceHTML({ id: '', label: null, a: lado(s.a), b: lado(s.b), serie: s, naturaleza: o.naturaleza ? o.naturaleza(s) : null },
-      o);
+    return cruceHTML({ id: '', label: 'Serie jugada', a: lado(s.a), b: lado(s.b), serie: s,
+      naturaleza: o.naturaleza ? o.naturaleza(s) : null }, o);
   }
 
   /**
@@ -946,15 +1063,127 @@ const SGADD_FASES = (function () {
       const activa = id === faseActivaId;
       const cuerpo = x.cruces.map(cr => cruceHTML(cr, opciones)).join('')
         + (x.sueltas.length ? (x.cruces.length
-          ? '<p class="text-[11px] text-muted mt-2">Series jugadas que no calzan en ningún cruce declarado:</p>' : '')
+          ? '<p class="text-[11px] text-muted mt-1">Series jugadas fuera de los cruces declarados:</p>' : '')
           + x.sueltas.map(s => serieSueltaHTML(s, opciones)).join('') : '')
         || '<p class="text-[11px] text-muted">Todavía no hay cruces para esta fase.</p>';
+      const ref = x.tablaRef && x.tablaRef.tramo ? nombreTramo(x.tablaRef.tramo) : '';
+      const serie = x.fase.mejorDe > 1 ? 'al mejor de ' + x.fase.mejorDe : (x.fase.mejorDe === 1 ? 'a un partido' : '');
+      const sub = [serie, ref ? 'puestos de ' + ref : ''].filter(Boolean).join(' · ');
       return '<div class="fase-columna' + (activa ? ' fase-activa' : '') + '">'
-        + '<h4 class="font-display uppercase tracking-wide text-xs mb-2 ' + (activa ? 'text-accent' : 'text-muted') + '">'
-        + esc(x.fase.label) + (x.fase.mejorDe > 1 ? ' <span class="normal-case text-muted">· al mejor de ' + x.fase.mejorDe + '</span>' : '')
+        + '<h4 class="fase-col-tit ' + (activa ? 'text-accent' : 'text-muted') + '">'
+        + '<span class="block truncate" title="' + esc(x.fase.label) + '">' + esc(x.fase.label) + '</span>'
+        + (sub ? '<span class="fase-col-sub">' + esc(sub) + '</span>' : '')
         + '</h4><div class="space-y-2">' + cuerpo + '</div></div>';
     }).join('');
     return '<div class="scrollbox"><div class="fase-llave">' + columnas + '</div></div>';
+  }
+
+  /* =====================================================================
+     EL CAMINO DE UN EQUIPO EN LA LLAVE (2026-11-07)
+
+     Lo que el cuerpo técnico necesita para anticipar el trabajo aunque la
+     liga todavía no haya publicado la fecha: contra quién juega lo que
+     viene (resuelto, proyectado con la tabla de hoy, o «el ganador de…»
+     con los dos candidatos), de dónde viene y si quedó afuera. Sale SOLO de
+     la llave declarada y de lo jugado: no inventa una fecha. PURA.
+     ===================================================================== */
+  function camino(porFase, fases, esPropio) {
+    const pasos = [];
+    (fases || []).forEach((f) => {
+      const x = porFase && porFase[f.id];
+      if (!x || f.tipo !== 'eliminacion') return;
+      x.cruces.forEach((cr) => {
+        if (cr.noSeJuega) return;
+        const enA = !!(cr.a && cr.a.clave && esPropio(cr.a.clave, cr.a.nombre));
+        const enB = !enA && !!(cr.b && cr.b.clave && esPropio(cr.b.clave, cr.b.nombre));
+        if (!enA && !enB) return;
+        pasos.push({ fase: f, cruce: cr, yo: enA ? cr.a : cr.b, rival: enA ? cr.b : cr.a, serie: cr.serie || null });
+      });
+      x.sueltas.forEach((s) => {
+        const k = [s.a, s.b].find(c => esPropio(c, s.nombres[c]));
+        if (!k) return;
+        const o = k === s.a ? s.b : s.a;
+        pasos.push({ fase: f, cruce: null, yo: { clave: k, nombre: s.nombres[k], estado: 'resuelto' },
+          rival: { clave: o, nombre: s.nombres[o], estado: 'resuelto' }, serie: s });
+      });
+    });
+    const definido = p => !!(p.serie && p.serie.ganador);
+    const actual = pasos.find(p => !definido(p)) || null;
+    const hechos = pasos.filter(definido);
+    const anterior = hechos.length ? hechos[hechos.length - 1] : null;
+    const gano = p => !!(p && p.serie && p.serie.ganador === p.yo.clave);
+    return { pasos: pasos, actual: actual, anterior: anterior,
+      eliminado: !actual && !!anterior && !gano(anterior) };
+  }
+
+  /** El resultado de una serie desde el lado del equipo: «Ganó 82–65 a Liniers». */
+  function resultadoDe(p) {
+    const s = p && p.serie;
+    if (!s || !s.ganador) return '';
+    const yo = p.yo.clave, otro = p.rival.clave;
+    const gano = s.ganador === yo;
+    const rival = p.rival.nombre || otro;
+    if (s.mejorDe === 1 || s.partidos.filter(q => q.jugado).length === 1) {
+      const q = s.partidos.find(x => x.jugado) || s.partidos[0];
+      const py = q.localClave === yo ? q.ptsLocal : q.ptsVisitante;
+      const pr = q.localClave === yo ? q.ptsVisitante : q.ptsLocal;
+      return (gano ? 'Ganó ' : 'Perdió ') + py + '–' + pr + (gano ? ' a ' : ' con ') + rival;
+    }
+    return (gano ? 'Ganó la serie ' : 'Perdió la serie ') + s.ganados[yo] + '-' + s.ganados[otro]
+      + (gano ? ' a ' : ' con ') + rival;
+  }
+
+  /**
+   * La card «Tu camino en la llave»: lo que viene y de dónde viene.
+   * `opciones.rivalViene` es una línea ya armada sobre el último partido
+   * del rival (la arma quien tiene el calendario).
+   */
+  function caminoHTML(cam, opciones) {
+    const o = opciones || {};
+    if (!cam || (!cam.actual && !cam.anterior)) return '';
+    const escudo = o.escudo || null;
+    const ladoMini = (x) => {
+      if (!x.clave) {
+        return '<span class="fase-camino-equipo"><span class="fase-escudo-vacio" aria-hidden="true"></span>'
+          + '<span class="min-w-0"><span class="block truncate font-display uppercase tracking-wide text-ink">' + esc(deDondeSale(x)) + '</span>'
+          + (x.opciones ? '<span class="block truncate text-[11px] text-muted">' + esc(x.opciones.join(' o ')) + '</span>' : '')
+          + '</span></span>';
+      }
+      return '<span class="fase-camino-equipo">' + (escudo ? escudo(x.nombre || x.clave) : '')
+        + '<span class="truncate font-display uppercase tracking-wide text-ink">' + esc(x.nombre || x.clave) + '</span>'
+        + pillPuesto(x) + '</span>';
+    };
+    let cab;
+    let cuerpo = '';
+    if (cam.actual) {
+      const p = cam.actual;
+      const s = p.serie;
+      const estado = s ? resumen(s, p.yo.clave) : (p.rival.clave ? 'Por jugarse' : 'Rival a definir');
+      const provisional = p.rival.estado === 'proyectado' || p.yo.estado === 'proyectado';
+      cab = 'Lo que viene · ' + p.fase.label + (p.cruce && p.cruce.label ? ' · ' + p.cruce.label : '');
+      cuerpo = '<div class="fase-camino-vs">' + ladoMini(p.yo) + '<span class="fase-camino-x">vs</span>' + ladoMini(p.rival) + '</div>'
+        + '<p class="text-[11px] mt-2 ' + (s && s.jugados ? 'text-ink' : 'text-muted') + '">' + esc(estado)
+        + (p.fase.mejorDe > 1 && !(s && s.jugados) ? ' · al mejor de ' + p.fase.mejorDe : '')
+        + (s && s.proximo ? ' · próximo partido: ' + esc(ddmm(s.proximo.fecha)) + (s.proximo.hora ? ' ' + esc(s.proximo.hora) : '') : '')
+        + '</p>'
+        + (provisional ? '<p class="text-[11px] text-muted">~ Proyectado con la tabla de hoy: puede cambiar hasta que termine la fase de la que sale.</p>' : '');
+    } else if (cam.eliminado) {
+      cab = 'Quedó afuera · ' + cam.anterior.fase.label;
+    } else {
+      cab = 'Último cruce · ' + cam.anterior.fase.label;
+    }
+    const filas = [];
+    if (cam.anterior) {
+      filas.push('<p class="text-[11px] text-muted mt-2"><span class="uppercase tracking-wider font-display">Viene de</span> · '
+        + esc(cam.anterior.fase.label) + (cam.anterior.cruce && cam.anterior.cruce.label ? ' · ' + esc(cam.anterior.cruce.label) : '')
+        + ': <b class="text-ink">' + esc(resultadoDe(cam.anterior)) + '</b></p>');
+    }
+    if (o.rivalViene) filas.push(o.rivalViene);
+    return '<div class="card rounded-xl p-4 sm:p-5 border border-hairline fase-camino" data-camino>'
+      + '<h3 class="font-display uppercase tracking-wide text-sm text-ink mb-3">' + esc(cab) + '</h3>'
+      + cuerpo + filas.join('')
+      + (o.nota ? '<p class="text-[11px] text-muted mt-2">' + o.nota + '</p>' : '')
+      + '</div>';
   }
 
   /* =====================================================================
@@ -1074,6 +1303,19 @@ const SGADD_FASES = (function () {
       .some(t => (t.torneo || '') + '|' + t.fase === k && !t.agregado);
     porFase[k] = existe ? CORE.construirIndice(hojas, { fase: mayus(faseLibro), torneo: mayus(torneo) }) : null;
     return porFase[k];
+  }
+
+  /* EL TORNEO DE VERDAD DE UNA FASE (Apertura, Clausura…): de qué tabla
+     regular salen sus puestos. La declaración puede decirlo (`torneo`), y
+     con la carpeta al revés («OCTAVOS - APERTURA», «PLAY IN - CLAUSURA») el
+     torneo real es la FASE del libro. Sin ninguna de las dos, null. */
+  function torneoRealDe(f, hojas) {
+    if (!f) return null;
+    if (f.torneo) return invertido(f.torneo, f.libro[0]) ? mayus(f.libro[0]) : f.torneo;
+    if (!hojas || !CORE) return null;
+    const t = CORE.combinacionesTorneoFase(hojas).find(x => !x.agregado
+      && String(x.torneo || '').indexOf('*') !== 0 && calza(f, x.fase, x.torneo) && invertido(x.torneo, x.fase));
+    return t ? mayus(t.fase) : null;
   }
 
   /* Un partido manual (punto 44) con la forma del fixture: sin box score
@@ -1257,44 +1499,31 @@ const SGADD_FASES = (function () {
       /* El libro propio alimenta solo las fases de SU zona: con el mismo
          valor de FASE, sus partidos caerían en la fase de otra (punto 78). */
       if (p.zonaId && !visibleEnZona(f, p.zonaId)) { partidosPorFase[f.id] = lista; return; }
-      /* Los tramos del libro que SON esta fase, con el criterio de
-         `calza`: con la carpeta al revés («OCTAVOS - APERTURA») el tramo
-         no se llama torneo|fase como dice la declaración (punto 134). */
-      const tramosF = (f.torneo && hojas && CORE) ? CORE.combinacionesTorneoFase(hojas)
-        .filter(t => !t.agregado && String(t.torneo || '').indexOf('*') !== 0
-          && mayus(t.torneo) !== f.torneo /* esos los toma el recorrido de abajo */
-          && calza(f, t.fase, t.torneo)) : [];
-      tramosF.forEach((t) => {
-        jugados(indiceDeTramo(hojas, t.torneo, t.fase)).forEach(x => lista.push(x));
-        ((typeof clasifManualesVigentes === 'function' ? clasifManualesVigentes(t.torneo, t.fase) : []) || [])
-          .map(manualComoPartido).forEach(x => lista.push(x));
-      });
-      /* LOS TRAMOS DEL LIBRO QUE SON ESTA FASE POR FAMILIA (punto 165): el
-         libro dice «REPECHAJE» y la declaración «REPECHAJE A-B». Se toman
-         los partidos cuyos equipos juegan en las zonas que la fase cruza:
-         con dos hermanas (A-B y B-C) cada partido va a la suya. */
+      /* UN SOLO CRITERIO PARA SABER QUÉ PARTIDOS SON DE ESTA FASE
+         (2026-11-07): los tramos del libro que `calza` con la declaración,
+         estén escritos derechos («CLAUSURA|PLAYOFF»), al revés («PLAY IN|
+         CLAUSURA», punto 134) o por familia («REPECHAJE» contra «REPECHAJE
+         A-B», punto 165). Antes había tres caminos y el de una fase SIN
+         `torneo` buscaba la FASE por su nombre declarado: el Play-In de
+         Bahía («PLAY IN») nunca encontraba su tramo y la llave del Clausura
+         salía sin un solo partido jugado. Cada tramo se lee UNA vez. */
       if (hojas && CORE) {
         const zonasEq = zonasDeEquipos(doc);
+        const vistos = new Set();
         CORE.combinacionesTorneoFase(hojas)
-          .filter(t => !t.agregado && String(t.torneo || '').indexOf('*') !== 0
-            && calzaPorFamilia(f, mayus(t.fase)) && (!f.torneo || calza(f, t.fase, t.torneo)))
+          .filter(t => !t.agregado && String(t.torneo || '').indexOf('*') !== 0 && calza(f, t.fase, t.torneo))
           .forEach((t) => {
-            const ps = jugados(indiceDeTramo(hojas, t.torneo, t.fase))
+            const k = (t.torneo || '') + '|' + t.fase;
+            if (vistos.has(k)) return;
+            vistos.add(k);
+            let ps = jugados(indiceDeTramo(hojas, t.torneo, t.fase))
               .concat(((typeof clasifManualesVigentes === 'function' ? clasifManualesVigentes(t.torneo, t.fase) : []) || [])
                 .map(manualComoPartido));
-            ps.filter(x => partidoEnZonas(f, x, zonasEq)).forEach(x => lista.push(x));
+            /* Por familia, cada partido va a la hermana de SUS zonas. */
+            if (calzaPorFamilia(f, mayus(t.fase))) ps = ps.filter(x => partidoEnZonas(f, x, zonasEq));
+            ps.forEach(x => lista.push(x));
           });
       }
-      f.libro.forEach((v) => {
-        if (f.torneo) {
-          jugados(indiceDeTramo(hojas, f.torneo, v)).forEach(x => lista.push(x));
-          ((typeof clasifManualesVigentes === 'function' ? clasifManualesVigentes(f.torneo, v) : []) || [])
-            .map(manualComoPartido).forEach(x => lista.push(x));
-          return;
-        }
-        jugados(indicePara(hojas, v)).forEach(x => lista.push(x));
-        manualesDeFase(hojas, v).forEach(x => lista.push(x));
-      });
       partidosPorFase[f.id] = lista;
       if (f.tipo === 'eliminacion' && lista.length) hayElimJugada = true;
     });
@@ -1336,8 +1565,9 @@ const SGADD_FASES = (function () {
         .filter(t => !t.agregado && String(t.torneo || '').indexOf('*') !== 0)
         .map(t => (t.torneo || '') + '|' + t.fase));
       fases.forEach((f) => {
-        if (f.tipo !== 'eliminacion' || f.tabla || !f.torneo) return;
-        const tReal = invertido(f.torneo, f.libro[0]) ? mayus(f.libro[0]) : f.torneo;
+        if (f.tipo !== 'eliminacion' || f.tabla) return;
+        const tReal = torneoRealDe(f, hojas);
+        if (!tReal) return;
         const k = tReal + '|' + mayus(faseR);
         if (existentes.has(k)) tablaDeFase[f.id] = k;
       });
@@ -1455,6 +1685,7 @@ const SGADD_FASES = (function () {
       const opciones = { escudo: escudo,
         destacar: (cr) => !!(propio && ((cr.a.nombre && propio(cr.a.nombre)) || (cr.b.nombre && propio(cr.b.nombre)))) };
       let cuerpo;
+      let caminoArriba = '';
       if (declaradaDe(vis, st.fase, st.torneo)) {
         /* Se resuelve con TODAS (una final A-B necesita la semifinal A) y
            se muestran solo las de la zona. */
@@ -1465,6 +1696,10 @@ const SGADD_FASES = (function () {
         vis.forEach((f) => { if (todo[f.id]) soloVis[f.id] = todo[f.id]; });
         pedirEscudos(nombresDeLlave(soloVis));
         cuerpo = llaveHTML(soloVis, d.id, opciones);
+        /* EL CAMINO DEL EQUIPO PROPIO, arriba de la llave: lo que viene y
+           de dónde viene, sin tener que buscarse en el bracket. */
+        const cam = Object.assign(camino(todo, vis, esPropioFn(equipoDeCategoria())), { _ll: todo, _ctx: ctx, _vis: vis });
+        caminoArriba = caminoHTML(cam, { escudo: escudo, rivalViene: rivalVieneHTML(cam) });
       } else {
         /* SIN DECLARACIÓN: las series que se jugaron, y nada más. No se
            sabe a cuántos partidos era la serie, así que no se declara un
@@ -1475,7 +1710,7 @@ const SGADD_FASES = (function () {
           sueltas: series(jugados(indicePara(st.hojas, st.fase)), null) };
         cuerpo = llaveHTML(ps, st.fase, opciones);
       }
-      return '<div class="card rounded-xl p-4 sm:p-5 border border-hairline">'
+      return caminoArriba + '<div class="card rounded-xl p-4 sm:p-5 border border-hairline' + (caminoArriba ? ' mt-5' : '') + '">'
         + '<div class="flex items-baseline justify-between gap-3 flex-wrap mb-3">'
         + '<h2 class="font-display uppercase tracking-wide text-sm text-ink">Llave y series</h2>'
         + '<span class="text-[11px] text-muted">' + (esLlave(st.torneo)
@@ -1512,7 +1747,7 @@ const SGADD_FASES = (function () {
     return '<div class="card rounded-xl p-4 sm:p-5 border border-hairline">'
       + '<h3 class="font-display uppercase tracking-wide text-sm text-ink mb-3">' + esc(d.label) + ' · cruces y series</h3>'
       + pendiente
-      + (cuerpo ? '<div class="grid sm:grid-cols-2 gap-2">' + cuerpo + '</div>'
+      + (cuerpo ? '<div class="fase-grid">' + cuerpo + '</div>'
         : '<p class="text-xs text-muted">Todavía no hay cruces definidos para esta fase.</p>')
       + '</div>';
   }
@@ -1532,8 +1767,77 @@ const SGADD_FASES = (function () {
     } catch (e) { return []; }
   }
 
+  /* EL CAMINO DEL EQUIPO PROPIO EN LA LLAVE, con todas las fases de su
+     zona (no solo la abierta): lo usan Clasificación y el Fixture para
+     anunciar el cruce que viene aunque la liga no haya publicado la fecha. */
+  /** El equipo propio que declara la categoría abierta, o null (entonces
+      decide el patrón del club, `esEquipoPropio`). */
+  function equipoDeCategoria() {
+    try {
+      const p = CORE.CATALOGO.planillas.find(x => x.id === SGADD_APP.estado.planillaId);
+      return (p && p.equipoPropio) || null;
+    } catch (e) { return null; }
+  }
+  function esPropioFn(equipo) {
+    const k = equipo ? clave(equipo) : null;
+    return (c, n) => (!!k && c === k)
+      || !!(!k && CORE && typeof CORE.esEquipoPropio === 'function' && n && CORE.esEquipoPropio(n));
+  }
+  function caminoDelEquipo(equipo) {
+    try {
+      const vis = visibles();
+      if (!vis.length) return null;
+      const ctx = contexto();
+      const ll = llave(declaradas(), ctx);
+      const cam = camino(ll, vis, esPropioFn(equipo));
+      return Object.assign(cam, { _ll: ll, _ctx: ctx, _vis: vis });
+    } catch (e) { return null; }
+  }
+  /* De dónde viene el rival del cruce que viene: su último cruce de la
+     llave o, si no tuvo, su último partido de la fase regular. */
+  function rivalVieneHTML(cam) {
+    try {
+      const r = cam && cam.actual && cam.actual.rival;
+      if (!r || !r.clave) return '';
+      const suyo = camino(cam._ll, cam._vis, c => c === r.clave).anterior;
+      let txt = '';
+      if (suyo) txt = suyo.fase.label + ': ' + resultadoDe(suyo);
+      else {
+        const st = SGADD_APP.estado;
+        const tabla = cam._ctx && cam.actual && tablaDeReferencia(cam.actual.fase, cam._ctx);
+        const k = tabla && tabla.tramo && tabla.tramo.indexOf('*') !== 0 ? tabla.tramo.split('|') : null;
+        const idx = k ? indiceDeTramo(st.hojas, k[0], k[1]) : indicePara(st.hojas, 'REGULAR');
+        const ps = jugados(idx).filter(p => p.jugado && (p.localClave === r.clave || p.visitanteClave === r.clave))
+          .sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+        const u = ps[ps.length - 1];
+        if (u) {
+          const loc = u.localClave === r.clave;
+          const py = loc ? u.ptsLocal : u.ptsVisitante, pr = loc ? u.ptsVisitante : u.ptsLocal;
+          txt = 'su último partido (' + ddmm(u.fecha) + '): ' + (py > pr ? 'ganó ' : 'perdió ') + py + '–' + pr
+            + (py > pr ? ' a ' : ' con ') + (loc ? u.visitante : u.local);
+        }
+      }
+      return txt ? '<p class="text-[11px] text-muted mt-1"><span class="uppercase tracking-wider font-display">'
+        + esc(r.nombre || r.clave) + '</span> · ' + esc(txt) + '</p>' : '';
+    } catch (e) { return ''; }
+  }
+  /** La tabla («TORNEO|FASE») de la que salen los puestos de la fase abierta. */
+  function tablaDeReferenciaActiva() {
+    try {
+      const st = SGADD_APP.estado;
+      const vis = visibles();
+      if (tipoDe(st.fase, vis, st.torneo) !== 'eliminacion') return null;
+      const ctx = contexto();
+      const d = faseActivaPorDatos(vis, st, ctx);
+      if (!d) return null;
+      const t = tablaDeReferencia(d, ctx);
+      return t && t.tramo && String(t.tramo).indexOf('*') !== 0 ? t.tramo : null;
+    } catch (e) { return null; }
+  }
+
   return {
     /* motor */
+    camino, caminoHTML, resultadoDe, tablaDeReferencia, torneoRealDe, caminoDelEquipo, rivalVieneHTML, tablaDeReferenciaActiva,
     equiposDeFase, parsear, asignarZonas, visibleEnZona, filtrarPorZona, dependenciasDe, desambiguarEtiquetas,
     declaradaDe, candidatasDe, faseBase, faseZonas, libroCalza, calzaPorFamilia, partidoEnZonas, tipoDe, calza, invertido, instanciaDe, enriquecerTramos, grupoDeTramo, SIN_DATOS, LLAVE, esLlave, esEntreZonas,
     mezclarLlave, partidoDeLlave, SECCIONES_EN_LLAVE, SECCIONES_QUE_USAN_LLAVE, repintarLaQueLaMuestra, bloqueaEnLlave,

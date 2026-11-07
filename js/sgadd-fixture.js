@@ -608,8 +608,12 @@ const SGADD_FIXTURE = (function () {
     const calCompleto = (o.fuente && o.fuente.length)
       ? normalizarFuente(o.fuente, alias, o.zona)
       : normalizarCalendario(o.torneo, o.zona);
-    const jug = jugadosDelIndice(o.idx);
-    const cal = calendarioDeFase(calCompleto, o.fase, o.fases, { jugados: jug, equipos: o.equiposFase, hoy: hoy });
+    /* En una eliminatoria lo jugado viene ARMADO de la llave (todas las
+       series de la fase, también las que llegan del servidor); si no, del
+       índice de la fase. */
+    const jug = Array.isArray(o.jugados) ? o.jugados : jugadosDelIndice(o.idx);
+    const cal = calendarioDeFase(calCompleto, o.fase, o.fases, { jugados: jug, equipos: o.equiposFase, hoy: hoy,
+      torneo: o.torneoTramo });
     const todos = anotarFase(unir(cal, jug), o);
     const propio = o.equipo ? clave(o.equipo) : '';
     const mios = propio ? delEquipo(todos, propio) : [];
@@ -662,7 +666,7 @@ const SGADD_FIXTURE = (function () {
       /* La fase (punto 75): qué se está mostrando, qué quedó afuera por
          pertenecer a otra, y si lo programado se pudo separar o no. */
       fase: o.fase || null,
-      faseSinVentanas: !!(o.fase && FASES() && FASES().tipoDe(o.fase, o.fases) === 'eliminacion'
+      faseSinVentanas: !!(o.fase && FASES() && FASES().tipoDe(o.fase, o.fases, o.torneoTramo) === 'eliminacion'
         && !FASES().tieneVentanas(o.fases)),
       deOtrasFases: calCompleto.length - cal.length,
       /* Las fases del torneo según la fuente (ver `estructuraTorneo`). */
@@ -711,8 +715,9 @@ const SGADD_FIXTURE = (function () {
        solo lo que su libro dice que se jugó. Mostrar ahí el calendario
        entero haría pasar por «a jugarse» partidos de la fase regular que
        ya se jugaron. */
+    const torneo = ctx && ctx.torneo;
     if (!F.tieneVentanas(fases)) {
-      if (F.tipoDe(fase, fases) !== 'eliminacion') return cal;
+      if (F.tipoDe(fase, fases, torneo) !== 'eliminacion') return cal;
       return programadosDeEliminacion(cal, ctx);
     }
     const v = String(fase).toUpperCase();
@@ -727,11 +732,14 @@ const SGADD_FIXTURE = (function () {
   function anotarFase(partidos, o) {
     const F = FASES();
     if (!F || !o.fase) return partidos;
-    const eliminacion = F.tipoDe(o.fase, o.fases) === 'eliminacion';
+    const eliminacion = F.tipoDe(o.fase, o.fases, o.torneoTramo) === 'eliminacion';
     const zonas = o.zonaDeEquipo || {};
+    /* En un torneo de UNA zona todos los cruces son intrazonales: decirlo
+       en cada fila es ruido (2026-11-07). */
+    const variasZonas = new Set(Object.keys(zonas).map(k => zonas[k])).size > 1;
     let porPar = null;
     if (eliminacion) {
-      const d = F.declaradaDe(o.fases, o.fase);
+      const d = F.declaradaDe(o.fases, o.fase, o.torneoTramo);
       porPar = {};
       F.series(partidos, d ? d.mejorDe : null).forEach((s) => { porPar[s.clave] = s; });
     }
@@ -740,7 +748,7 @@ const SGADD_FIXTURE = (function () {
       /* «Intrazonal» en cada partido de una fase regular es ruido: ahí
          todos lo son. Se marca en las eliminatorias, o cuando es la
          excepción. */
-      if (n && (eliminacion || n === 'interzonal')) p.naturaleza = n;
+      if (n && (n === 'interzonal' || (eliminacion && variasZonas))) p.naturaleza = n;
       if (porPar) {
         const s = porPar[[p.localClave, p.visitanteClave].sort().join('|')];
         if (s) p.serieTexto = F.resumen(s, p.localClave);
@@ -1055,8 +1063,27 @@ const SGADD_FIXTURE = (function () {
       + cuerpo + '</div>';
   }
 
-  function bloqueRival(a) {
+  /* LO QUE VIENE SEGÚN LA LLAVE (2026-11-07). Cuando la liga todavía no
+     publicó la fecha, el cruce igual se sabe: sale de la tabla y de la
+     llave declarada en el Panel Master. Se muestra en una eliminatoria, o
+     cuando no hay un próximo partido declarado, o cuando el cruce ya está
+     definido (los dos lados resueltos): en plena fase regular, con su
+     próximo partido a la vista, un cruce proyectado sería ruido. */
+  function bloqueCamino(a, cam, enEliminacion) {
+    const F = FASES();
+    if (!F || !cam || (!cam.actual && !cam.anterior)) return '';
+    const def = cam.actual && cam.actual.yo.estado === 'resuelto' && cam.actual.rival.estado === 'resuelto';
+    if (!(enEliminacion || !a.proximo || def)) return '';
+    return F.caminoHTML(cam, { escudo: n => escudo(n, 28), rivalViene: F.rivalVieneHTML(cam),
+      nota: 'El cruce sale de la tabla y de la llave del torneo: aparece aunque la liga todavía no haya publicado la fecha.' });
+  }
+
+  function bloqueRival(a, cam) {
     if (!a.equipo) return '';
+    /* Sin próximo partido declarado y con la llave diciendo lo que viene,
+       la card del camino ya lo cuenta: el vacío «sin próximo partido» la
+       contradiría. */
+    if (!a.proximo && cam && (cam.actual || cam.anterior)) return '';
     if (!a.proximo) {
       return '<div class="card rounded-xl p-4 sm:p-5 border border-hairline">'
         + '<h3 class="font-display uppercase tracking-wide text-sm text-ink mb-3">Próximo rival</h3>'
@@ -1170,24 +1197,56 @@ const SGADD_FIXTURE = (function () {
         + a.otrasFases.map(esc).join('</b>, <b>') + '</b>: elegila en el selector Fase.');
     }
     if (a.faseSinVentanas) {
-      partes.push('El torneo no declara las fechas de esta fase, así que acá va solo lo que '
-        + 'ya se jugó; lo programado queda en la fase regular.');
+      partes.push('El torneo no declara las fechas de esta fase: lo programado entra cuando sus '
+        + 'dos equipos ya están en los cruces de esta fase.');
     }
     return partes.length ? '<p class="text-xs text-muted mt-2">' + partes.join(' ') + '</p>' : '';
   }
 
-  /* Las fases del libro que tienen partidos y no son la que se mira. */
-  function otrasFasesConPartidos(hojas, fase) {
+  /* Las fases del libro que tienen partidos y no son la que se mira.
+     Se nombran como en el selector (con el TORNEO: una carpeta al revés
+     «PLAY IN - CLAUSURA» es el Play-In, no «CLAUSURA»), y las tramos de
+     liga se dicen «Fase regular» una sola vez. */
+  function otrasFasesConPartidos(hojas, fase, torneo) {
     try {
       if (!hojas || typeof SGADD === 'undefined') return [];
-      const vistas = {};
+      const F = FASES();
+      const vis = F ? F.visibles() : [];
+      const tipo = (fs, tr) => (F ? F.tipoDe(fs, vis, tr) : 'liga');
+      const actual = F ? F.declaradaDe(vis, fase, torneo) : null;
+      const actualLiga = tipo(fase, torneo) !== 'eliminacion';
+      const vistas = [];
       SGADD.combinacionesTorneoFase(hojas).forEach((t) => {
-        if (!t.conPartidos || t.agregado || t.fase === fase) return;
-        const d = FASES() ? FASES().declaradaDe(FASES().visibles(), t.fase) : null;
-        vistas[t.fase] = d ? d.label : ((SGADD.FASES[t.fase] || {}).label || t.fase);
+        if (!t.conPartidos || t.agregado || String(t.torneo || '').indexOf('*') === 0) return;
+        const esLiga = tipo(t.fase, t.torneo) !== 'eliminacion';
+        let label;
+        if (esLiga) {
+          if (actualLiga) return;
+          label = 'Fase regular';
+        } else {
+          const d = F ? F.declaradaDe(vis, t.fase, t.torneo) : null;
+          if (d && actual && d.id === actual.id) return;
+          if (!d && t.fase === fase && (t.torneo || '') === (torneo || '')) return;
+          label = d ? d.label : ((SGADD.FASES[t.fase] || {}).label || t.fase);
+        }
+        if (vistas.indexOf(label) === -1) vistas.push(label);
       });
-      return Object.keys(vistas).map(k => vistas[k]);
+      return vistas;
     } catch (e) { return []; }
+  }
+
+  /* LA FASE QUE MIRA EL FIXTURE, con su torneo: una eliminatoria trae su
+     llave arriba y lo jugado de TODAS sus series. */
+  function faseFixture() {
+    const F = FASES();
+    const st = (typeof SGADD_APP !== 'undefined') ? SGADD_APP.estado : null;
+    if (!F || !st) return { elim: false, d: null };
+    const fase = (st.tramoIndice && st.tramoIndice.fase) || st.fase;
+    const torneo = (st.tramoIndice && st.tramoIndice.torneo) || st.torneo;
+    if (F.esLlave(st.torneo)) return { elim: true, llave: true, d: null, fase: fase, torneo: torneo };
+    const vis = F.visibles();
+    const elim = F.tipoDe(fase, vis, torneo) === 'eliminacion';
+    return { elim: elim, llave: false, d: elim ? F.declaradaDe(vis, fase, torneo) : null, fase: fase, torneo: torneo };
   }
 
   /** La barra de categoría y fase: el Fixture se lee por instancia. */
@@ -1201,8 +1260,12 @@ const SGADD_FIXTURE = (function () {
     /* En modo llave (punto 76) va primero la llave de ESA fase: es lo que
        el DT vino a ver. El calendario de su zona sigue debajo. */
     const F = FASES();
-    const enLlave = !!(F && typeof SGADD_APP !== 'undefined' && F.esLlave(SGADD_APP.estado.torneo));
-    const llave = enLlave ? '<div class="mt-5">' + F.fixtureDeLlave() + '</div>' : '';
+    const ff = faseFixture();
+    /* La llave de la fase arriba: en modo llave (punto 76) y también en una
+       eliminatoria con datos, que es lo que el DT vino a ver. */
+    let llave = '';
+    try { llave = (ff.llave || ff.d) && F ? '<div class="mt-5">' + F.fixtureDeLlave() + '</div>' : ''; }
+    catch (e) { llave = ''; }
     return barraApp() + llave + '<div class="mt-5">' + cuerpo() + '</div>';
   }
 
@@ -1219,7 +1282,13 @@ const SGADD_FIXTURE = (function () {
        como tal. Sin esto mezclaba lo jugado de la regular con el rótulo
        de la fase entre zonas. */
     const fase = st ? ((st.tramoIndice && st.tramoIndice.fase) || st.fase) : null;
+    const torneoTramo = st ? ((st.tramoIndice && st.tramoIndice.torneo) || st.torneo) : null;
     const idx = st ? ((FASES() && st.hojas && FASES().indicePara(st.hojas, fase)) || st.idx) : null;
+    const ff = faseFixture();
+    let jugadosFase = null;
+    if (ff.d && !ff.llave) {
+      try { jugadosFase = (FASES().contexto().partidosPorFase[ff.d.id] || []); } catch (e) { jugadosFase = null; }
+    }
 
     if (!torneoId) {
       return '<div class="space-y-5">'
@@ -1250,11 +1319,14 @@ const SGADD_FIXTURE = (function () {
       fuente: estado.vivo,
       estructura: estado.vivoEstructura || [],
       fase: fase,
+      torneoTramo: torneoTramo,
+      jugados: jugadosFase,
       fases: FASES() ? FASES().visibles() : [],
       equiposFase: FASES() && FASES().equiposDeFase ? FASES().equiposDeFase() : [],
       zonaDeEquipo: FASES() ? FASES().zonasDeEquipos(estado.doc) : {},
-      otrasFases: st ? otrasFasesConPartidos(st.hojas, fase) : [],
+      otrasFases: st ? otrasFasesConPartidos(st.hojas, fase, torneoTramo) : [],
     });
+    const cam = (FASES() && FASES().caminoDelEquipo && equipoPropio()) ? FASES().caminoDelEquipo(equipoPropio()) : null;
 
     if (!a.total) {
       return '<div class="space-y-5">' + encabezado(a, estado.doc, planilla)
@@ -1265,8 +1337,8 @@ const SGADD_FIXTURE = (function () {
         + '</div></div>';
     }
 
-    return '<div class="space-y-5">' + encabezado(a, estado.doc, planilla)
-      + bloqueRival(a) + bloqueEstructura(a) + bloqueMes(a) + '</div>';
+    return '<div class="space-y-5">' + bloqueCamino(a, cam, ff.elim) + encabezado(a, estado.doc, planilla)
+      + bloqueRival(a, cam) + bloqueEstructura(a) + bloqueMes(a) + '</div>';
   }
 
   /** El equipo del club, si la categoría abierta declara uno. */
