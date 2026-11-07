@@ -240,6 +240,21 @@ seccion('4 · la app real: selector, Clasificación y Fixture con el Play-In abi
   check('y «Lo que viene» aunque la liga no haya publicado la fecha', /data-camino/.test(fx) && /Ganador de Partido 2/.test(fx));
   check('sin la contradicción «Sin próximo partido declarado»', !/Sin próximo partido declarado/.test(fx));
   check('las otras fases se nombran bien (no «CLAUSURA» suelto)', !/<b>CLAUSURA<\/b>/.test(fx));
+
+  /* v361 · el selector FILTRA, no vacía la base. Con la barra en el Play-In
+     el índice abierto no tiene a OLIMPO; la temporada completa sí. */
+  vmctx.SGADD_MUESTRA = require('./js/sgadd-muestra.js');
+  check('v361: el Play-In se reconoce como postemporada', APP.enPostemporada() === true);
+  check('v361: el índice del tramo NO tiene a OLIMPO (no jugó el Play-In)', !APP.estado.idx.get(OLI));
+  const tem = APP.idxTemporada(null);
+  check('v361: la temporada completa SÍ tiene a OLIMPO, con su partido de la Regular',
+    tem && tem.idx && tem.idx.get(OLI) && tem.idx.get(OLI).pj === 1, tem && tem.idx && tem.idx.get(OLI) && tem.idx.get(OLI).pj);
+  check('v361: y cuenta Regular y Postemporada por separado', tem.regular === 2 && tem.postemporada === 1 && /Postemporada/.test(tem.etiqueta), tem);
+  const pre = APP.idxPrevio('2026-11-05', { temporada: true });
+  check('v361: la vara previa del Play-In es la temporada hasta el día anterior (sin el Play-In)',
+    pre && pre.idx && pre.partidos === 2 && pre.postemporada === 0 && pre.idx.get(NAP) && pre.idx.get(NAP).pj === 1, pre && { p: pre.partidos, q: pre.postemporada });
+  const preViejo = APP.idxPrevio('2026-11-05');
+  check('v361: sin { temporada } sigue siendo la vara del tramo (la de Ciclos no cambia)', !preViejo || !preViejo.temporada);
   SGADD.CATALOGO.planillas = antes;
 }
 

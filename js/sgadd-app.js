@@ -583,10 +583,78 @@ const SGADD_APP = (function () {
     return d.toISOString().slice(0, 10);
   }
 
-  /** { idx, partidos, hasta } con lo jugado ANTES de `fecha`, o null sin libro. */
-  function idxPrevio(fecha) {
+  /* =====================================================================
+     LA TEMPORADA COMPLETA (v361) · el selector filtra, no vacía
+
+     `idxTemporada(hasta)` arma el índice con TODOS los partidos del libro
+     (las regulares y la postemporada) hasta `hasta` inclusive, con el motor
+     del TOTAL (`SGADD_MUESTRA.recortarTemporada`). Es la base del Scouting
+     en una fase de postemporada y la vara previa del post-partido: el
+     número de un equipo hoy es su acumulado, aunque todavía no haya jugado
+     la fase que está elegida en la barra. Devuelve `{ idx, partidos,
+     regular, postemporada, hasta, etiqueta }` o null sin libro.
+     ===================================================================== */
+  const _temporada = { base: null, porHasta: new Map() };
+
+  function etiquetaTemporada(r) {
+    if (!r) return null;
+    return r.postemporada
+      ? 'Temporada completa · ' + r.regular + ' de Regular + ' + r.postemporada + ' de Postemporada'
+      : 'Temporada completa · ' + r.regular + ' partidos';
+  }
+
+  function idxTemporada(hasta) {
+    const base = estado.idx;
+    if (!base || !estado.hojas || typeof SGADD_MUESTRA === 'undefined' || !SGADD_MUESTRA.recortarTemporada) return null;
+    if (_temporada.base !== estado.hojas) { _temporada.base = estado.hojas; _temporada.porHasta = new Map(); }
+    const k = hasta || '*';
+    if (_temporada.porHasta.has(k)) return _temporada.porHasta.get(k);
+    let out = { idx: null, partidos: 0, regular: 0, postemporada: 0, hasta: hasta || null, etiqueta: null };
+    try {
+      const rec = SGADD_MUESTRA.recortarTemporada(estado.hojas, hasta ? { desde: null, hasta: hasta } : null);
+      if (rec.partidos) {
+        const v = SGADD.construirIndice(rec.hojas, { fase: 'REGULAR', torneo: SGADD.TORNEO_TOTAL });
+        if (base.liga && base.liga.nivel && v.liga && !v.liga.nivel) v.liga.nivel = base.liga.nivel;
+        v.__temporada = true;
+        out = { idx: v, partidos: rec.partidos, regular: rec.regular, postemporada: rec.postemporada, hasta: hasta || null, porFase: rec.porFase };
+        out.etiqueta = etiquetaTemporada(out);
+      }
+    } catch (e) { out.error = e && e.message; }
+    _temporada.porHasta.set(k, out);
+    return out;
+  }
+
+  /** ¿El tramo abierto es de POSTEMPORADA? En modo llave, en una fase de
+      eliminación del núcleo, o en un tramo cuya FASE no es la regular
+      (la carpeta al revés: «PLAY IN|CLAUSURA», «OCTAVOS|APERTURA»). */
+  function enPostemporada() {
+    if (!estado.idx) return false;
+    if (enLlave()) return true;
+    const t = tramoDeIndice();
+    if (!t) return false;
+    if (typeof SGADD_MUESTRA !== 'undefined' && SGADD_MUESTRA.esEliminacion(t, SGADD.FASES)) return true;
+    if (typeof SGADD_FASES !== 'undefined' && SGADD_FASES.tipoDe) {
+      try {
+        const decl = SGADD_FASES.declaradas ? SGADD_FASES.declaradas() : [];
+        if (SGADD_FASES.tipoDe(t.fase, decl, t.torneo) === 'eliminacion') return true;
+      } catch (e) { /* sigue */ }
+    }
+    return false;
+  }
+
+  /** { idx, partidos, hasta } con lo jugado ANTES de `fecha`, o null sin libro.
+      Con `{ temporada: true }` es el acumulado de TODA la temporada hasta el
+      día anterior (la vara del post-partido, v361). */
+  function idxPrevio(fecha, opciones) {
     const base = estado.idx;
     const dia = diaDe(fecha);
+    if (opciones && opciones.temporada) {
+      if (!base || !estado.hojas || !dia) return null;
+      const r = idxTemporada(diaAnterior(dia));
+      if (!r) return null;
+      return { idx: r.idx, partidos: r.partidos, hasta: diaAnterior(dia), tramo: r.etiqueta,
+        regular: r.regular, postemporada: r.postemporada, temporada: true };
+    }
     if (!base || !estado.hojas || !dia || enLlave() || typeof SGADD_MUESTRA === 'undefined') return null;
     if (_previos.base !== base) { _previos.base = base; _previos.porDia = new Map(); }
     if (_previos.porDia.has(dia)) return _previos.porDia.get(dia);
@@ -1318,7 +1386,7 @@ const SGADD_APP = (function () {
   return {
     tramoPreferido, recordarTramo, enLlave,
     estado, inicializar, cargar, reindexar, cambiarPlanilla, cambiarFase, cambiarTorneo, cambiarTramo,
-    aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, contextoRegular, idxRegular, idxPrevio, etiquetaRegular, textoFaseCorta, onCambio, adoptarEquipoDeCategoria,
+    aplicarTorneoRuta, planillaActual, fases, torneos, barra, avisoMuestra, contextoRegular, idxRegular, idxPrevio, idxTemporada, enPostemporada, etiquetaRegular, textoFaseCorta, onCambio, adoptarEquipoDeCategoria,
     recordarCategoria, categoriaRecordada, sufijoCategoria,
     cambiarMuestra, elegirMuestra, irAPartido, textoMuestra, pjEnMuestra, rivalesParaMuestra, varaDelPeriodo, idxVista, infoMuestra, muestraRecordada, barraMuestra,
     get idx() { return estado.idx; },

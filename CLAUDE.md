@@ -324,7 +324,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=360`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=361`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16821,3 +16821,29 @@ alimenta («CLAUSURA - CUARTOS» o al revés) y de qué tabla salen sus puestos.
 El catálogo de KV (la declaración de Bahía sigue igual y ahora se lee bien) ni el núcleo
 (`sgadd-core.js`). No verificado en PDF.
 
+
+---
+
+## 168. EL SELECTOR FILTRA, NO VACÍA · la temporada completa en Scouting y post-partido (2026-11-07)
+
+Reportado en Bahía Blanca (cliente Leandro N. Alem). Assets en `?v=361`.
+
+### Lo medido
+- **Post-partido del Play-In (Alem vs Liniers, 05/11)**: «Plan contra realidad · No hay partidos anteriores», «el plan funcionó como siempre», «QUIROGA… dentro de su promedio». `idxPrevio` recortaba el tramo abierto (`PLAY IN|CLAUSURA`) y «PLAY IN» no es eliminación para el núcleo, así que no caía a la Regular: base vacía.
+- **Scouting en «Cuartos de Final - CLAUSURA»** (modo llave): el índice era el del último tramo jugado por Alem (el Play-In, 4 equipos). NAPOSTA salía «sin partidos cargados» con 22 en la Regular.
+
+### La regla nueva (decisión del club): la Regular es la norma, la postemporada el ajuste
+- **`SGADD_MUESTRA.recortarTemporada(hojas, vent)`** junta TODOS los tramos del libro (regulares + postemporada) hasta `vent.hasta`, renombra la FASE a REGULAR en COPIAS y deduplica el partido escrito en dos libros (FECHA + PARTIDO + EQUIPO/NOMBRES; sin fecha no deduplica). Cuenta `regular` / `postemporada` / `porFase`. Va en `compartido/`.
+- **`SGADD_APP.idxTemporada(hasta)`** (caché por libro) y **`enPostemporada()`** (modo llave, fase de eliminación del núcleo o declarada, carpeta al revés).
+- **Post-partido**: `idxPrevio(fecha, { temporada: true })` = el acumulado de la temporada hasta el día anterior, SIEMPRE (también en la regular: el primer partido del Clausura ya no queda sin base). Sin `{ temporada }` sigue la vara del tramo (Ciclos no cambia).
+- **Scouting**: en postemporada `scoutBase()` = temporada completa (con el injerto de rivales de otra zona sobre la misma base), con un aviso que va al papel: de qué está hecha la base y qué jugó cada equipo del cruce en esta postemporada («Alem 1 (1-0) · Naposta todavía no jugó»). Fuera de la postemporada, el tramo de la barra como siempre.
+- **Esto revierte, a pedido del club, el «las fases no se mezclan» de los puntos 158, 160 y 161 para estas dos bases.** Los promedios de Equipos/Jugadores, Clasificación y el Fixture siguen por fase.
+- **Textos honestos sin base** (`recomendar(…, conBase)`): «Sin partidos previos del equipo: no hay un habitual contra el cual medir» en vez de «funcionó como siempre», y el máximo anotador rival dice su promedio previo y en cuántos partidos, o que no hay con qué compararlo.
+
+### Medido con el libro real (Node)
+Temporada hasta el 04/11: 142 partidos (132 Regular + 10 Octavos); NAPOSTA 22 PJ, ALEM 25. El post-partido del Play-In arma el plan contra la realidad (9 filas) y la expectativa (34 % de victoria estimada; ganó por 17).
+
+### Límites
+- **Un cliente recibe de los libros de postemporada solo los partidos de SU equipo** (punto 77): la base del rival incluye su Regular pero no su postemporada.
+- **No verificado en el navegador ni en PDF**: el panel de vista previa no abrió localhost en esa sesión.
+- El Simulador (sección) sigue con la Regular en eliminación (punto 161).

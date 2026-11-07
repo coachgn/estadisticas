@@ -194,7 +194,7 @@ const SGADD_PARTIDO = (function () {
       propios: propios, rivales: rivales,
       jugadores: ajusteJugadores(propios, rivales),
       texto: narrar(ladoPropio, rival, gano, claves, grietas),
-      recomendacion: recomendar(gano, claves, grietas, propios, rivales, rival),
+      recomendacion: recomendar(gano, claves, grietas, propios, rivales, rival, !!base),
     };
   }
 
@@ -248,7 +248,11 @@ const SGADD_PARTIDO = (function () {
     return c.length > 1 ? c[0].trim() : n;
   };
 
-  function recomendar(gano, claves, grietas, propios, rivales, rival) {
+  /* `conBase` (v361): sin partidos previos no hay habitual, y decir «el plan
+     funcionó como siempre» o «dentro de su promedio» sería afirmar algo que
+     el dato no sabe. Se dice que no hay contra qué medir. */
+  function recomendar(gano, claves, grietas, propios, rivales, rival, conBase) {
+    if (conBase === undefined) conBase = true;
     const aj = ajusteJugadores(propios, rivales);
     const sostener = [], corregir = [], vigilar = [];
 
@@ -263,7 +267,9 @@ const SGADD_PARTIDO = (function () {
         ' contra ' + pct(g.habitual) + ' habitual.'));
     }
     if (!sostener.length && !corregir.length) {
-      (gano ? sostener : corregir).push('No hubo un factor que se despegara: el plan de juego funcionó como siempre.');
+      (gano ? sostener : corregir).push(conBase
+        ? 'Ningún factor se separó de su habitual por encima del umbral: ' + (gano ? 'ganó con su juego de siempre.' : 'perdió con su juego de siempre; la diferencia estuvo en el rival.')
+        : 'Sin partidos previos del equipo: no hay un habitual contra el cual medir este partido.');
     }
 
     aj.rivalesArriba.forEach(x => vigilar.push(nombreCorto(x.fila) + ' hizo ' +
@@ -272,8 +278,12 @@ const SGADD_PARTIDO = (function () {
 
     if (rival && !vigilar.length) {
       const top = rivales.slice().sort((a, b) => (b.fila['PTS'] || 0) - (a.fila['PTS'] || 0))[0];
-      if (top) vigilar.push(nombreCorto(top.fila) + ' fue su máximo anotador con ' +
-        (top.fila['PTS'] || 0) + ' puntos, dentro de su promedio.');
+      if (top) {
+        const m = top.marcas && top.marcas['PTS'];
+        const cola = !conBase || !m ? ' (sin partidos previos suficientes para compararlo con su promedio).'
+          : ', dentro de su promedio previo (' + SGADD.formatear('PTS', m.media) + ' en ' + m.n + ' partidos).';
+        vigilar.push(nombreCorto(top.fila) + ' fue su máximo anotador con ' + (top.fila['PTS'] || 0) + ' puntos' + cola);
+      }
     }
 
     return {

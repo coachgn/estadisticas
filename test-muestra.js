@@ -312,7 +312,7 @@ check('los dos PDF declaran la muestra en su encabezado', /textoMuestra\(\{ juga
 check('en una muestra los partidos manuales no se suman', /idx && idx\.__muestra\) \? \[\] : clasifManualesVigentes\(\)/.test(CL));
 const iM = HTML.indexOf('js/sgadd-muestra.js'), iA = HTML.indexOf('js/sgadd-app.js');
 check('sgadd-muestra.js carga ANTES que sgadd-app.js', iM !== -1 && iM < iA);
-check('assets en v349', /sgadd-muestra\.js\?v=360/.test(HTML) && !/\?v=29\d/.test(HTML));
+check('assets en v349', /sgadd-muestra\.js\?v=361/.test(HTML) && !/\?v=29\d/.test(HTML));
 check('el CSS del badge va a mano en el <style>', /\.muestra-badge \{/.test(HTML));
 
 /* =====================================================================
@@ -697,6 +697,32 @@ console.log('\n13 · delta vs Regular en tablas, gráficos y fichas de tiro (Cor
   const cd = uiR.chipDeLectura({ clave: 'PPT3', propio: prop(1.5, 1.15, 4) });
   const fichaTiro = V.ficha({ label: 'PPP', valor: '1,50', sub: 'Reg 1,15 · percentil 85', tono: 'pos', delta: cd });
   check('ficha de tiro: PPP con chip vs su Regular y percentil al lado', /delta-chip delta-pos/.test(fichaTiro) && /vs Regular/.test(fichaTiro) && /percentil 85/.test(fichaTiro));
+}
+
+
+/* v361 · la temporada completa: todas las fases juntas, sin tocar el libro. */
+{
+  const M2 = require('./js/sgadd-muestra.js');
+  const filaE = (fecha, partido, eq, tor, fase, res) => ({ FECHA: fecha, PARTIDO: partido, EQUIPO: eq, TORNEO: tor, FASE: fase, RESULTADO: res, PTS: 70 });
+  const H = {
+    'Base Datos E': { cols: ['FECHA', 'PARTIDO', 'EQUIPO', 'TORNEO', 'FASE', 'RESULTADO', 'PTS'], filas: [
+      filaE('2026-05-01', 'A vs B', 'A', 'APERTURA', 'REGULAR', 'GANADO'), filaE('2026-05-01', 'A vs B', 'B', 'APERTURA', 'REGULAR', 'PERDIDO'),
+      filaE('2026-09-01', 'B vs A', 'B', 'CLAUSURA', 'REGULAR', 'GANADO'), filaE('2026-09-01', 'B vs A', 'A', 'CLAUSURA', 'REGULAR', 'PERDIDO'),
+      filaE('2026-11-05', 'A vs B', 'A', 'PLAY IN', 'CLAUSURA', 'GANADO'), filaE('2026-11-05', 'A vs B', 'B', 'PLAY IN', 'CLAUSURA', 'PERDIDO'),
+      filaE('2026-11-05', 'A vs B', 'A', 'PLAY IN', 'CLAUSURA', 'GANADO'),
+    ] },
+    'Base Datos J': { cols: ['FECHA', 'PARTIDO', 'NOMBRES', 'EQUIPO', 'FASE'], filas: [
+      { FECHA: '2026-05-01', PARTIDO: 'A vs B', NOMBRES: 'Y', EQUIPO: 'A', FASE: 'REGULAR' },
+    ] },
+  };
+  const antes = JSON.stringify(H);
+  const r = M2.recortarTemporada(H, null);
+  check('v361: junta Regular y Postemporada en un solo tramo', r.partidos === 3 && r.regular === 2 && r.postemporada === 1, JSON.stringify(r.porFase));
+  check('v361: todas las filas quedan como REGULAR', r.hojas['Base Datos E'].filas.every(f => f.FASE === 'REGULAR'));
+  check('v361: el partido escrito en dos libros entra una vez', r.hojas['Base Datos E'].filas.length === 6, r.hojas['Base Datos E'].filas.length);
+  check('v361: el libro no se toca', JSON.stringify(H) === antes);
+  const h = M2.recortarTemporada(H, { hasta: '2026-11-04' });
+  check('v361: con «hasta», el partido de ese día y los siguientes no entran', h.partidos === 2 && h.postemporada === 0, h.partidos);
 }
 
 fase3().catch(e => { fail++; console.log('  ✗ fase 3 tiró: ' + (e && e.stack)); }).then(() => {

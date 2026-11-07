@@ -535,6 +535,28 @@ console.log('─'.repeat(70));
   check('el radar viejo de Chart.js (chRadarPartido) ya no está', !/chRadarPartido/.test(src));
 }
 
+
+/* v361 · sin partidos previos NO se afirma «como siempre» ni «dentro de su promedio». */
+{
+  const DEMO = require('./js/sgadd-demo.js');
+  const crudo = DEMO.rehidratar(JSON.parse(fs.readFileSync('./demo/datos-demo.json', 'utf8')));
+  const H = crudo.hojas || crudo;
+  const T = SGADD.tramoPorDefecto(SGADD.combinacionesTorneoFase(H));
+  const full = SGADD.construirIndice(H, { fase: T.fase, torneo: T.torneo });
+  const e1 = full.get('EQUIPO 1');
+  const pd = full.partido(e1.partidos[0].__id);
+  const lp = pd.lados.find(l => l.equipo.clave === 'EQUIPO 1');
+  const sin = P.analizar(full, pd, lp, { base: null }).recomendacion;
+  const todo = [].concat(sin.sostener, sin.corregir, sin.vigilar).join(' ');
+  check('v361: sin base no dice «funcionó como siempre»', !/como siempre/.test(todo), todo);
+  check('v361: sin base dice que no hay habitual contra el cual medir', /no hay un habitual contra el cual medir/.test(todo), todo);
+  check('v361: sin base el máximo anotador rival NO va «dentro de su promedio»', !/dentro de su promedio/.test(sin.vigilar.join(' ')), sin.vigilar.join(' '));
+  const con = P.analizar(full, pd, lp, { base: full }).recomendacion;
+  const vig = con.vigilar.join(' ');
+  check('v361: con base, si dice «dentro de su promedio previo» trae el promedio y los partidos',
+    !/dentro de su promedio/.test(vig) || /promedio previo \([^)]+ en \d+ partidos\)/.test(vig), vig);
+}
+
 console.log('\n' + '═'.repeat(70));
 console.log((fail === 0 ? '✓ TODO OK' : '✗ HAY FALLAS') + '   ' + ok + ' pasaron, ' + fail + ' fallaron');
 process.exit(fail ? 1 : 0);

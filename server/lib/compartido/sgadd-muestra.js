@@ -254,6 +254,70 @@ const SGADD_MUESTRA = (function () {
     return { hojas: salida, partidos: dentro.size, total: todos.size, sinFecha: sinFecha, rango: [primero, ultimo] };
   }
 
+  /* =====================================================================
+     LA TEMPORADA COMPLETA · el acumulado que no vacía la base (v361)
+
+     El selector de fase FILTRA lo que se muestra, pero no puede vaciar la
+     base de un informe. Medido en Bahía (2026-11-07): con la barra en el
+     Play-In o en Cuartos del Clausura, el post-partido se quedaba «sin
+     partidos anteriores» y el Scouting decía que NAPOSTA «no tiene
+     partidos cargados», con 22 partidos jugados en la Regular.
+
+     `recortarTemporada` junta TODOS los tramos del libro (las regulares
+     y la postemporada) hasta `vent.hasta`, y renombra la FASE de cada fila
+     a REGULAR para que el motor del TOTAL los lea como un solo tramo: el
+     acumulado de la temporada, «el post de cada equipo después de su
+     último partido». Lo pidió el club: la Regular es la norma y la
+     postemporada el ajuste, y el número de hoy de un equipo es la suma.
+
+     - Las filas se COPIAN: el libro no se toca.
+     - Un mismo partido escrito en dos libros (el de la zona y el de la
+       postemporada) entra una vez: la clave es FECHA + PARTIDO + EQUIPO
+       (NOMBRES en `Base Datos J`).
+     - `porFase` cuenta partidos por la FASE original, y `regular` /
+       `postemporada` los separa: la pantalla dice de qué está hecha la base.
+     ===================================================================== */
+  function recortarTemporada(hojas, vent, dep) {
+    const d = deps(dep);
+    const rec = recortar(hojas, {}, vent || null, dep);
+    const porFase = {};
+    let regular = 0, post = 0;
+    const vistos = new Set();
+    ((rec.hojas['Base Datos E'] || {}).filas || []).forEach(f => {
+      const k = diaIso(d.fecha(f['FECHA'])) + '|' + d.texto(f['PARTIDO']).toUpperCase();
+      if (vistos.has(k)) return;
+      vistos.add(k);
+      const fase = d.texto(f['FASE']).toUpperCase();
+      const tor = d.texto(f['TORNEO']).toUpperCase();
+      const id = (tor || 'GENERAL') + '|' + (fase || 'REGULAR');
+      porFase[id] = (porFase[id] || 0) + 1;
+      if (!fase || fase === 'REGULAR') regular++; else post++;
+    });
+    const salida = {};
+    Object.keys(rec.hojas).forEach(nombre => {
+      const H = rec.hojas[nombre];
+      const col = nombre === 'Base Datos J' ? 'NOMBRES' : 'EQUIPO';
+      const ya = new Set();
+      const filas = [];
+      (H.filas || []).forEach(f => {
+        /* Sin fecha en la fila no se deduplica: la ida y la vuelta con el
+           mismo texto de PARTIDO serían la misma clave. */
+        const dia = diaIso(d.fecha(f['FECHA']));
+        if (dia) {
+          const k = dia + '|' + d.texto(f['PARTIDO']).toUpperCase() + '|' + d.texto(f[col]).toUpperCase();
+          if (ya.has(k)) return;
+          ya.add(k);
+        }
+        filas.push(Object.assign({}, f, { FASE: 'REGULAR' }));
+      });
+      salida[nombre] = { cols: H.cols || [], filas: filas };
+    });
+    return {
+      hojas: salida, partidos: vistos.size, regular: regular, postemporada: post, porFase: porFase,
+      sinFecha: rec.sinFecha, rango: rec.rango,
+    };
+  }
+
   function ddmm(iso) {
     return DIA.test(String(iso || '')) ? iso.slice(8, 10) + '/' + iso.slice(5, 7) : '';
   }
@@ -703,7 +767,7 @@ const SGADD_MUESTRA = (function () {
 
   const API = {
     TODO, MAX_SEMANAS, MAX_ULTIMOS, HOJAS_PARTIDO, TOLERANCIA_MEDIA, CONTEXTO, MUESTRA_CHICA,
-    normalizar, activa, familia, clave, recortarPorCondicion, diasDelTramo, ventana, recortar, etiqueta, comparar, RUIDO_CV, bandaRuido, chipDelta, lecturaDelta, esEliminacion, baseDeTramo, restarDias, diaIso,
+    normalizar, activa, familia, clave, recortarPorCondicion, diasDelTramo, ventana, recortar, recortarTemporada, etiqueta, comparar, RUIDO_CV, bandaRuido, chipDelta, lecturaDelta, esEliminacion, baseDeTramo, restarDias, diaIso,
     CORTES, MEZCLA_PERIMETRAL, VARA_MIN_PARTIDOS, VARA_MIN_CALIFICADOS,
     varaJugadores, varaSuficiente, expandir, medianaDeVara, aplicarVara, cuantil,
   };

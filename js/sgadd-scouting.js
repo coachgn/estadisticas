@@ -3773,9 +3773,41 @@ function scoutPedirRival(clave) {
     Regular del mismo libro (v335): un cuarto de final con un partido por
     equipo no tiene con qué armar matriz, marcas ni claves, y el scouting de
     un playoff se prepara con la temporada. Las fases no se mezclan. */
+/* LA BASE DEL INFORME (v361). En una fase de POSTEMPORADA —o en modo
+   llave— el informe se arma con el ACUMULADO DE LA TEMPORADA (las
+   regulares + la postemporada jugada): la barra elige la fase, pero no
+   puede vaciar la base. Medido en Bahía: con la barra en Cuartos del
+   Clausura, NAPOSTA salía «sin partidos cargados» teniendo 22 en la
+   Regular. Fuera de la postemporada la base es el tramo de la barra. */
 function scoutBase() {
+  if (typeof SGADD_APP !== 'undefined' && SGADD_APP.enPostemporada && SGADD_APP.enPostemporada()) {
+    const t = SGADD_APP.idxTemporada ? SGADD_APP.idxTemporada(null) : null;
+    if (t && t.idx) return t.idx;
+  }
   const reg = (typeof SGADD_APP !== 'undefined' && SGADD_APP.idxRegular) ? SGADD_APP.idxRegular() : null;
   return reg || SGADD_APP.estado.idx;
+}
+
+/** Lo que cada equipo del cruce jugó en la POSTEMPORADA: el «ajuste»
+    contra la norma de la Regular. [{ nombre, pj, pg, pp }] */
+function scoutPostemporadaDe(claves) {
+  const st = SGADD_APP.estado;
+  const E = st.hojas && st.hojas['Base Datos E'];
+  if (!E) return [];
+  return claves.filter(Boolean).map((k) => {
+    const vistos = new Set();
+    let pg = 0, pp = 0, nombre = k;
+    (E.filas || []).forEach((f) => {
+      const fase = SGADD.texto(f['FASE']).toUpperCase();
+      if (!fase || fase === 'REGULAR' || SGADD.claveEquipo(f['EQUIPO']) !== k) return;
+      const id = SGADD.texto(f['FECHA']) + '|' + SGADD.texto(f['PARTIDO']).toUpperCase();
+      if (vistos.has(id)) return;
+      vistos.add(id);
+      nombre = SGADD.limpiarNombre ? SGADD.limpiarNombre(f['EQUIPO']) : k;
+      if (SGADD.texto(f['RESULTADO']).toUpperCase() === 'GANADO') pg++; else pp++;
+    });
+    return { clave: k, nombre: nombre, pj: vistos.size, pg: pg, pp: pp };
+  });
 }
 
 function scoutIdx() {
@@ -3789,7 +3821,12 @@ function scoutIdx() {
   const regCtx = (SGADD_APP.contextoRegular && SGADD_APP.contextoRegular()) || null;
   const scope = regCtx && regCtx.tramo ? { fase: regCtx.tramo.fase, torneo: regCtx.tramo.torneo }
     : (st.tramoIndice || { fase: st.fase, torneo: st.torneo });
-  const idx = SGADD.construirIndice(st.hojas, { fase: scope.fase, torneo: scope.torneo });
+  let idx;
+  if (baseIdx && baseIdx.__temporada && typeof SGADD_MUESTRA !== 'undefined' && SGADD_MUESTRA.recortarTemporada) {
+    idx = SGADD.construirIndice(SGADD_MUESTRA.recortarTemporada(st.hojas, null).hojas, { fase: 'REGULAR', torneo: SGADD.TORNEO_TOTAL });
+    idx.__temporada = true;
+    if (baseIdx.liga && baseIdx.liga.nivel && idx.liga && !idx.liga.nivel) idx.liga.nivel = baseIdx.liga.nivel;
+  } else idx = SGADD.construirIndice(st.hojas, { fase: scope.fase, torneo: scope.torneo });
   listos.forEach(k => idx.injertarEquipo(SCOUT_EXT.datos[k].r.equipo));
   SCOUT_EXT.idx = idx; SCOUT_EXT.claves = firma;
   return idx;
@@ -3827,12 +3864,26 @@ function scoutPintar() {
   else if (fallo) cuerpo = '<div class="mt-4">' + SGADD_UI.aviso('No se pudo traer al rival', fallo.mensaje, 'error') + '</div>';
   else if (scoutSinDatos(idx).length) cuerpo = scoutCruceSinDatos(scoutSinDatos(idx));
   else cuerpo = scoutInforme(idx);
-  const avisoReg = idxBase !== st.idx
+  const temp = idxBase && idxBase.__temporada && SGADD_APP.idxTemporada ? SGADD_APP.idxTemporada(null) : null;
+  const avisoReg = temp ? scoutAvisoTemporada(temp) : idxBase !== st.idx
     ? '<div class="mt-3 no-imprimir" data-scout-regular="1">' + SGADD_UI.aviso('Informe armado con la Regular',
         'Estás en una fase de eliminación: el informe usa la ' + escapeHtml((SGADD_APP.etiquetaRegular && SGADD_APP.etiquetaRegular()) || 'Regular')
         + ' (los partidos de esta fase no alcanzan para una matriz, marcas ni claves, y las fases no se mezclan).') + '</div>' : '';
   root.innerHTML = scoutSelectores(idx, rivales) + avisoReg + cuerpo;
   if (typeof SGADD_PBP !== 'undefined') SGADD_PBP.montarPendientes(root);
+}
+
+/* La base del informe en postemporada, dicha: de qué está hecha y qué
+   jugó cada equipo del cruce en esta postemporada. Va al papel: quien lee
+   el PDF tiene que saber contra qué se armó. */
+function scoutAvisoTemporada(temp) {
+  const post = scoutPostemporadaDe([SCOUT_UI.local, SCOUT_UI.visitante]).map((x) =>
+    x.pj ? escapeHtml(x.nombre) + ' ' + x.pj + ' (' + x.pg + '-' + x.pp + ')'
+      : escapeHtml(x.nombre) + ' todavía no jugó');
+  return '<div class="mt-3" data-scout-temporada="1">' + SGADD_UI.aviso('Informe con la temporada completa',
+    'Estás en una fase de postemporada: el informe usa el acumulado de cada equipo (' + escapeHtml(temp.etiqueta || 'temporada completa')
+    + '). La Regular es la norma; la postemporada, el ajuste.'
+    + (post.length ? ' En esta postemporada: ' + post.join(' · ') + '.' : '')) + '</div>';
 }
 
 /* LOS EQUIPOS DEL CRUCE QUE TODAVÍA NO JUGARON (punto 93). Están en el

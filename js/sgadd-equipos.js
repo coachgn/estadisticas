@@ -1254,7 +1254,11 @@ function equiposDetallePartido(idx, e, id) {
 
   /* LA VARA ES LA PREVIA (v332): el habitual, los desvíos, el simulador y el
      plan del scouting salen de los partidos ANTERIORES a esta fecha. */
-  const previo = (typeof SGADD_APP !== 'undefined' && SGADD_APP.idxPrevio) ? SGADD_APP.idxPrevio(part.fecha) : null;
+  /* v361: la vara es el ACUMULADO DE LA TEMPORADA hasta el día anterior
+     (regulares + postemporada), no solo el tramo de la barra. El primer
+     partido de un Play-In o del Clausura se quedaba sin partidos previos y
+     el post-partido no podía contestarle al scouting. */
+  const previo = (typeof SGADD_APP !== 'undefined' && SGADD_APP.idxPrevio) ? SGADD_APP.idxPrevio(part.fecha, { temporada: true }) : null;
   const opcBase = previo ? { base: previo.idx, previa: { partidos: previo.partidos, hasta: previo.hasta, tramo: previo.tramo } } : {};
   const a = SGADD_PARTIDO.analizar(idx, part, propio, opcBase);
   const riv = a.rival;
@@ -1355,7 +1359,7 @@ function equiposDetallePartido(idx, e, id) {
         <div class="rounded-lg border border-accent/40 bg-accent/5 p-3 hover:border-accent hover:shadow-lg transition-all duration-200">
           <p class="text-[10px] uppercase tracking-wider text-accent font-display mb-1.5">🎯 Nuestros jugadores</p>
           ${(rec.destacados.concat(rec.potenciar).slice(0, 3).map(t => `<p class="text-xs text-white leading-relaxed mb-1.5 last:mb-0">${escapeHtml(t)}</p>`).join('')
-            || '<p class="text-xs dato-sec">Nadie se salió de su promedio.</p>')}
+            || '<p class="text-xs dato-sec">' + (previo && previo.idx ? 'Nadie se salió de su promedio previo.' : 'Sin partidos previos: no hay promedio contra el cual medir.') + '</p>')}
         </div>
         <div class="rounded-lg border border-red-400/40 bg-red-400/5 p-3 hover:border-red-400 hover:shadow-lg transition-all duration-200">
           <p class="text-[10px] uppercase tracking-wider text-red-400 font-display mb-1.5">🎯 Atención al rival</p>
@@ -1469,7 +1473,7 @@ function equiposDetallePartido(idx, e, id) {
         ${danio ? `<p class="plan-sub">Los que más dañaron el plan</p><div class="plan-g">${danio}</div>` : ''}
         <details class="rend-detalle mt-2"><summary>Ver el detalle</summary>
           <ul class="plan-detalle">${detalle}</ul>
-          <p class="text-[10px] dato-sec mt-1">Plan rearmado con los partidos previos${previo && previo.tramo ? ' de ' + escapeHtml(previo.tramo) : ''} (${planReal.pjRival} del rival, ${planReal.pjPropio} nuestros): no trae las consignas editadas a mano.${planReal.marcasConTemporada ? ' Marcas con la temporada completa.' : ''}</p>
+          <p class="text-[10px] dato-sec mt-1">Plan rearmado con lo jugado antes de esta fecha${previo && previo.tramo ? ' · ' + escapeHtml(previo.tramo) : ''} (${planReal.pjRival} del rival, ${planReal.pjPropio} nuestros): no trae las consignas editadas a mano.${planReal.marcasConTemporada ? ' Marcas con la temporada completa.' : ''}</p>
         </details>
       </div>`;
   })();
