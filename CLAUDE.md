@@ -324,7 +324,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=361`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=362`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16847,3 +16847,6 @@ Temporada hasta el 04/11: 142 partidos (132 Regular + 10 Octavos); NAPOSTA 22 PJ
 - **Un cliente recibe de los libros de postemporada solo los partidos de SU equipo** (punto 77): la base del rival incluye su Regular pero no su postemporada.
 - **No verificado en el navegador ni en PDF**: el panel de vista previa no abrió localhost en esa sesión.
 - El Simulador (sección) sigue con la Regular en eliminación (punto 161).
+
+### v362 · «En la postemporada del Clausura» cuenta solo la del Clausura
+El aviso del Scouting sumaba toda la postemporada del equipo: con la barra en Cuartos del Clausura decía «ALEM 4 (3-1)» mezclando los Octavos del Apertura con el Play-In. `scoutTorneoPostemporada()` saca el torneo REAL de la fase elegida (en modo llave, de la fase declarada con `torneoRealDe`; si no, del tramo con la carpeta al revés resuelta) y `scoutPostemporadaDe` cuenta solo esos partidos: ALEM 1 (1-0). Sin torneo reconocible cuenta todo, como antes. La BASE del informe (temporada completa) no cambió. Test en `test-llave-bahia.js` sección 5.

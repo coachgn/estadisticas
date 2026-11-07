@@ -3790,16 +3790,42 @@ function scoutBase() {
 
 /** Lo que cada equipo del cruce jugó en la POSTEMPORADA: el «ajuste»
     contra la norma de la Regular. [{ nombre, pj, pg, pp }] */
+/* El torneo REAL de la postemporada elegida en la barra (v362): con
+   «Cuartos de Final - CLAUSURA» o «Play-In - CLAUSURA» es CLAUSURA, aunque
+   el libro lo escriba al revés (TORNEO = PLAY IN, FASE = CLAUSURA). null si
+   no se puede saber: ahí se cuenta toda la postemporada, como antes. */
+function scoutTorneoPostemporada() {
+  const st = SGADD_APP.estado;
+  if (typeof SGADD_FASES === 'undefined') return null;
+  const up = (v) => SGADD.texto(v).toUpperCase();
+  try {
+    if (SGADD_FASES.esLlave(st.torneo)) {
+      const f = (SGADD_FASES.declaradas() || []).find(x => (x.libro || []).some(l => up(l) === up(st.fase)) || up(x.id) === up(st.fase));
+      const t = f ? SGADD_FASES.torneoRealDe(f, st.hojas) : null;
+      return t ? up(t) : null;
+    }
+    const t = (st.tramoIndice || { torneo: st.torneo, fase: st.fase });
+    if (!t.torneo || String(t.torneo).indexOf('*') === 0) return null;
+    return SGADD_FASES.invertido(t.torneo, t.fase) ? up(t.fase) : up(t.torneo);
+  } catch (e) { return null; }
+}
+
 function scoutPostemporadaDe(claves) {
   const st = SGADD_APP.estado;
   const E = st.hojas && st.hojas['Base Datos E'];
   if (!E) return [];
+  const torneo = scoutTorneoPostemporada();
   return claves.filter(Boolean).map((k) => {
     const vistos = new Set();
     let pg = 0, pp = 0, nombre = k;
     (E.filas || []).forEach((f) => {
       const fase = SGADD.texto(f['FASE']).toUpperCase();
       if (!fase || fase === 'REGULAR' || SGADD.claveEquipo(f['EQUIPO']) !== k) return;
+      if (torneo) {
+        const tor = SGADD.texto(f['TORNEO']).toUpperCase();
+        const real = SGADD_FASES.invertido(tor, fase) ? fase : tor;
+        if (real !== torneo) return;
+      }
       const id = SGADD.texto(f['FECHA']) + '|' + SGADD.texto(f['PARTIDO']).toUpperCase();
       if (vistos.has(id)) return;
       vistos.add(id);
@@ -3883,7 +3909,7 @@ function scoutAvisoTemporada(temp) {
   return '<div class="mt-3" data-scout-temporada="1">' + SGADD_UI.aviso('Informe con la temporada completa',
     'Estás en una fase de postemporada: el informe usa el acumulado de cada equipo (' + escapeHtml(temp.etiqueta || 'temporada completa')
     + '). La Regular es la norma; la postemporada, el ajuste.'
-    + (post.length ? ' En esta postemporada: ' + post.join(' · ') + '.' : '')) + '</div>';
+    + (post.length ? ' En la postemporada' + (scoutTorneoPostemporada() ? ' del ' + escapeHtml(scoutTorneoPostemporada().charAt(0) + scoutTorneoPostemporada().slice(1).toLowerCase()) : '') + ': ' + post.join(' · ') + '.' : '')) + '</div>';
 }
 
 /* LOS EQUIPOS DEL CRUCE QUE TODAVÍA NO JUGARON (punto 93). Están en el

@@ -258,5 +258,29 @@ seccion('4 · la app real: selector, Clasificación y Fixture con el Play-In abi
   SGADD.CATALOGO.planillas = antes;
 }
 
+
+seccion('5 · v362 · «En la postemporada del Clausura» cuenta solo la del Clausura');
+{
+  const src = fs.readFileSync('./js/sgadd-scouting.js', 'utf8');
+  const cortar = (n) => { const i = src.indexOf('function ' + n + '('); let d = 0;
+    for (let k = src.indexOf('{', i); k < src.length; k++) { if (src[k] === '{') d++; if (src[k] === '}' && !--d) return src.slice(i, k + 1); } };
+  const OCT = [].concat(partido('01/06/2026', 'OCTAVOS', 'APERTURA', ALE, OLI, 80, 70), partido('04/06/2026', 'OCTAVOS', 'APERTURA', OLI, ALE, 75, 70));
+  const H = libro(CL_REG.concat(PLAYIN, OCT, partido('06/11/2026', 'PLAY IN', 'CLAUSURA', ALE, OLI, 71, 60)));
+  const conteo = (torneo, fase) => {
+    const ctx = { SGADD: SGADD, SGADD_FASES: Object.assign({}, F, { declaradas: () => [
+      { id: 'cuartos-clausura', libro: ['CUARTOS'], torneo: 'CLAUSURA', cruces: [] }] }),
+      SGADD_APP: { estado: { hojas: H, torneo: torneo, fase: fase, tramoIndice: null } } };
+    vm.createContext(ctx);
+    vm.runInContext(cortar('scoutTorneoPostemporada') + cortar('scoutPostemporadaDe') + ';r = scoutPostemporadaDe([' + JSON.stringify(SGADD.claveEquipo(ALE)) + ']);', ctx);
+    return ctx.r[0];
+  };
+  const cl = conteo(F.LLAVE, 'CUARTOS');
+  check('en Cuartos del Clausura (llave), ALEM cuenta solo su Play-In: 1 (1-0)', cl.pj === 1 && cl.pg === 1, cl);
+  const pi = conteo('PLAY IN', 'CLAUSURA');
+  check('en el Play-In (carpeta al revés), lo mismo', pi.pj === 1, pi);
+  const ap = conteo('OCTAVOS', 'APERTURA');
+  check('en Octavos del Apertura, sus 2 de Octavos (1-1)', ap.pj === 2 && ap.pg === 1, ap);
+}
+
 console.log('\n' + (mal ? '✗ HAY FALLAS · ' : '✓ TODO OK · ') + ok + ' pasaron, ' + mal + ' fallaron');
 process.exit(mal ? 1 : 0);
