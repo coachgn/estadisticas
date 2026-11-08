@@ -324,7 +324,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=362`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=363`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16850,3 +16850,15 @@ Temporada hasta el 04/11: 142 partidos (132 Regular + 10 Octavos); NAPOSTA 22 PJ
 
 ### v362 · «En la postemporada del Clausura» cuenta solo la del Clausura
 El aviso del Scouting sumaba toda la postemporada del equipo: con la barra en Cuartos del Clausura decía «ALEM 4 (3-1)» mezclando los Octavos del Apertura con el Play-In. `scoutTorneoPostemporada()` saca el torneo REAL de la fase elegida (en modo llave, de la fase declarada con `torneoRealDe`; si no, del tramo con la carpeta al revés resuelta) y `scoutPostemporadaDe` cuenta solo esos partidos: ALEM 1 (1-0). Sin torneo reconocible cuenta todo, como antes. La BASE del informe (temporada completa) no cambió. Test en `test-llave-bahia.js` sección 5.
+
+## 169. EL RIVAL DE UNA SERIE LLEGA ENTERO DESDE UN LIBRO ENTRE ZONAS (2026-11-08)
+
+Assets en `?v=363`. `server/lib/multilibro.js` (`filtrar`, `vinculadosDe`) y `js/sgadd-app.js` (`idxTemporada`). Revisa la regla del punto 77 a pedido del club: lo que el cuerpo técnico vería mirando los partidos del rival no se le esconde.
+
+- **Lo medido antes de tocar nada**: en Bahía el límite no existía. Sus libros de postemporada declaran `participan: ['oro']`, la zona del cliente, así que llegan enteros (`propio`). En APB cada repechaje es una serie aislada: el rival no tiene otros partidos en ese libro. **Hoy no cambia nada en producción**; el cambio aplica a un libro entre zonas con varias rondas (los playoffs de la LAB, o una ronda siguiente de APB).
+- **El rival** = el equipo que jugó contra el de la categoría en ese libro (con fecha). De sus OTROS partidos de ese libro entran sus filas de equipo y de jugador, y queda «limpio»: viajan sus promedios de la fase. La respuesta suma `vinculados[].delRival` (cuántos partidos entraron por él).
+- **El tercer equipo** de esos partidos: entra SOLO su fila de equipo (Base Datos E y 4 FACTORES), como contexto para los ratings del rival esa noche. Sus jugadores y sus promedios no viajan nunca. En el índice de ESA fase del cliente aparece con esos partidos (es dato real, parcial); **en la base de la temporada no entra**: `idxTemporada` pasa `conservar` con los equipos que tienen filas de la fase regular.
+- El recorte por plan de `Base Datos J` sigue igual después de la fusión.
+- **Un torneo de UNA sola zona con `participan` vacío** también es libro de su zona (`propio`).
+- `test-interzonal.js` 5 ter reescrito a la regla nueva (la permanencia trae el partido de los dos rivales entre sí) y suma el libro de rondas: River-Gimnasia entra, Jujuy-Villa Mitre no, los jugadores y promedios de Gimnasia no. `test-llave-bahia.js`: el equipo que solo está en la postemporada no entra a la temporada. Verificado al revés, tres mutaciones caen.
+- **Requiere desplegar el backend** (`cd server && npx vercel --prod`). No verificado en el navegador.

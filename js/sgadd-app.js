@@ -613,7 +613,16 @@ const SGADD_APP = (function () {
     try {
       const rec = SGADD_MUESTRA.recortarTemporada(estado.hojas, hasta ? { desde: null, hasta: hasta } : null);
       if (rec.partidos) {
-        const v = SGADD.construirIndice(rec.hojas, { fase: 'REGULAR', torneo: SGADD.TORNEO_TOTAL });
+        /* Un equipo que solo aparece en la postemporada es el CONTEXTO de un
+           rival (su rival de cuartos en un libro entre zonas): está para los
+           ratings de esa noche, no es de esta liga. Se saca antes de la vara. */
+        const opc = { fase: 'REGULAR', torneo: SGADD.TORNEO_TOTAL };
+        const conservar = new Set();
+        (((estado.hojas['Base Datos E'] || {}).filas) || []).forEach((f) => {
+          if (/REGULAR/i.test(String(f.FASE || '')) || /REGULAR/i.test(String(f.TORNEO || ''))) conservar.add(SGADD.claveEquipo(f.EQUIPO));
+        });
+        if (conservar.size) opc.conservar = conservar;
+        const v = SGADD.construirIndice(rec.hojas, opc);
         if (base.liga && base.liga.nivel && v.liga && !v.liga.nivel) v.liga.nivel = base.liga.nivel;
         v.__temporada = true;
         out = { idx: v, partidos: rec.partidos, regular: rec.regular, postemporada: rec.postemporada, hasta: hasta || null, porFase: rec.porFase };

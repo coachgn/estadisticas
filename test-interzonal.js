@@ -603,17 +603,49 @@ const pedirLibro = async (tok, club, cat) => { catalogo.limpiarCache(); return H
     check('…con los playoffs informados en cero partidos',
       (rs.body.vinculados || []).some(v => v.label === 'Playoff A' && v.partidos === 0), rs.body.vinculados);
 
-    seccion('5 ter · todos contra todos: el rival que jugó con otros se re-deriva');
+    seccion('5 ter · el rival llega ENTERO: sus otros partidos del libro (2026-11-08)');
+    /* Todos contra todos: Barrio Jardín y Estudiantes son los dos rivales de
+       Salta, así que su partido entre ellos entra (es cómo llegan). */
     const perm = bdS.filter(f => f.FASE === 'PERMANENCIA');
-    check('de la permanencia entran sus dos partidos, no Barrio Jardín-Estudiantes',
-      perm.length === 4 && !perm.some(f => /BARRIO/.test(f.PARTIDO) && /ESTUDIANTES/.test(f.PARTIDO)), perm.map(f => f.PARTIDO));
+    check('de la permanencia entran los tres partidos: los dos de Salta y el de sus dos rivales entre sí',
+      perm.length === 6 && perm.some(f => /BARRIO/.test(f.PARTIDO) && /ESTUDIANTES/.test(f.PARTIDO)), perm.map(f => f.PARTIDO));
     const peS = DATOS_F(rs.body.hojas['PROMEDIOS E']).filter(f => f.FASE === 'PERMANENCIA');
     const bj = peS.find(f => f.EQUIPO === BJ);
-    check('el promedio de Barrio Jardín NO es el del libro (999): mezcla un partido ajeno', bj && Number(bj.PTS) !== 999, bj);
-    check('se re-derivó de su partido contra Salta: 60 puntos', bj && Number(bj.PTS) === 60, bj);
+    check('el promedio de Barrio Jardín es el del libro: ya no le falta ningún partido', bj && Number(bj.PTS) === 999, bj);
     check('Salta conserva el suyo (el del libro)', peS.some(f => f.EQUIPO === SA && Number(f.PTS) === 999), peS);
-    check('los jugadores del rival con partidos ajenos NO viajan en PROMEDIOS J',
-      !DATOS_F(rs.body.hojas['PROMEDIOS J']).some(f => f.FASE === 'PERMANENCIA' && f.EQUIPO === BJ));
+    check('y los jugadores del rival viajan en PROMEDIOS J de la fase',
+      DATOS_F(rs.body.hojas['PROMEDIOS J']).some(f => f.FASE === 'PERMANENCIA' && f.EQUIPO === BJ));
+    check('la respuesta cuenta los partidos que entraron por el rival',
+      (rs.body.vinculados || []).some(v => v.label === 'Permanencia' && v.delRival === 1), rs.body.vinculados);
+
+    /* Un libro de varias rondas: Obras-River en semis, y antes River-Gimnasia
+       en cuartos. Gimnasia NO es rival de Obras: de ese partido entra su fila
+       de equipo como contexto, nunca sus jugadores ni sus promedios. */
+    const RONDAS = [].concat(partido('10/04/2026', 'CUARTOS', RI, GI, 80, 70), partido('11/04/2026', 'CUARTOS', JU, VM, 66, 60),
+      partido('20/04/2026', 'SEMIFINAL', OB, RI, 77, 71));
+    const fr = MULTI.fusionar(libroApi(NORTE), [{ slug: 'r', label: 'Rondas', rol: 'playoffs', libro: libroCompleto(RONDAS) }], SGADD.claveEquipo(OB));
+    const FF = (n) => DATOS_F(fr.hojas[n]);
+    const cu = FF('Base Datos E').filter(f => f.FASE === 'CUARTOS');
+    check('entra River-Gimnasia, de los dos lados (la fila de Gimnasia es el contexto del rival)',
+      cu.length === 2 && cu.every(f => /RIVER/.test(f.PARTIDO)), cu.map(f => f.EQUIPO));
+    check('NO entra Jujuy-Villa Mitre: ninguno jugó contra Obras', !FF('Base Datos E').some(f => /VILLA MITRE/.test(f.PARTIDO)));
+    const jCu = FF('Base Datos J').filter(f => f.FASE === 'CUARTOS');
+    check('de ese partido viajan los jugadores de River y NO los de Gimnasia',
+      jCu.length === 1 && jCu[0].EQUIPO === RI, jCu.map(f => f.EQUIPO));
+    const peCu = FF('PROMEDIOS E').filter(f => f.FASE === 'CUARTOS').map(f => f.EQUIPO);
+    check('promedios de los cuartos: el de River sí, el de Gimnasia no', peCu.indexOf(RI) !== -1 && peCu.indexOf(GI) === -1, peCu);
+    check('ni sus jugadores en PROMEDIOS J', !FF('PROMEDIOS J').some(f => f.EQUIPO === GI));
+    {
+      const hI = {};
+      Object.keys(fr.hojas).forEach((n) => { hI[n] = DATOS_F2(fr.hojas[n]); });
+      const iC = SGADD.construirIndice(hI, { fase: 'CUARTOS' });
+      console.log('    [índice de cuartos del cliente] ' + iC.lista().map(e => e.nombre).join(', '));
+    }
+    /* Torneo de UNA sola zona con `participan` vacío: el libro es de su zona. */
+    const CAT1 = { club: { tipo: 'cliente', categorias: { c: { sheetId: 'A'.repeat(40), torneo: 't', zona: 'a' } } },
+      t: { tipo: 'torneo', categorias: { za: { sheetId: 'A'.repeat(40), zona: 'a' }, pa: { sheetId: 'B'.repeat(40), zona: 'pa', rol: 'playoffs' } } } };
+    check('una sola zona y participan vacío: el libro de playoffs es de su zona (entra entero)',
+      MULTI.vinculadosDe(CAT1, 'club', 'c')[0].propio === true);
 
     seccion('5 quater · sin duplicar y sin tumbar la zona');
     const conCopia = libroApi(NORTE.concat(partido('10/04/2026', 'CUARTOS', OB, RI, 88, 70)));

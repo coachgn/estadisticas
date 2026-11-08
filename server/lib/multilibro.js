@@ -32,6 +32,17 @@
           motor que arma el TOTAL (punto 3 ter). Sus jugadores no: no hay
           de dónde sacarlos sin mezclar partidos ajenos
 
+   EL RIVAL DE UNA SERIE LLEGA ENTERO (2026-11-08)
+        → un equipo que jugó contra el suyo en ese libro es su RIVAL, y de
+          sus OTROS partidos de ese libro entran sus filas de equipo y de
+          jugador: es cómo llega a la serie, lo que el scouting necesita y
+          lo que el cuerpo técnico vería mirando esos partidos
+        → del tercer equipo de esos partidos entra SOLO su fila de equipo
+          (Base Datos E y 4 FACTORES), como contexto del rival: sin ella
+          no hay DRTG, RO% ni ritmo del rival en esa noche. Sus jugadores
+          y sus promedios no viajan nunca
+        → con eso el rival queda «limpio» y viajan sus promedios de la fase
+
    Todo se fusiona en el libro de la zona ANTES del recorte por plan
    (`reglas.recortarLibro`), así que la hoja que el plan recorta —Base
    Datos J— se sigue recortando igual.
@@ -89,7 +100,9 @@ function vinculadosDe(cat, clubId, slug) {
        fase de SU zona (los playoffs de la Zona A): los equipos que juegan ahí
        ya están en su libro regular, así que no hay nada ajeno que proteger y
        ve la fase entera. Un libro entre zonas (repechaje A-B) sigue por partido. */
-    const propio = part.length > 0 && part.every(p => p === k.zona);
+    const regulares = Object.keys(t.categorias || {}).filter(x => t.categorias[x] && rolDe(t.categorias[x]) === 'regular' && t.categorias[x].zona);
+    const unaZona = new Set(regulares.map(x => t.categorias[x].zona)).size === 1;
+    const propio = part.length > 0 ? part.every(p => p === k.zona) : (unaZona && t.categorias[regulares[0]].zona === k.zona);
     out.push({ slug: s, zona: z.zona || null, rol: rolDe(z), label: z.label || s, sheetId: z.sheetId, propio: propio });
   });
   return out.sort((a, b) => String(a.slug).localeCompare(String(b.slug)));
@@ -164,13 +177,32 @@ function filtrar(libro, equipoClave, opciones) {
   out.partidos = permitidos.size;
   out.fases = Array.from(fases);
 
+  /* LOS RIVALES Y SUS OTROS PARTIDOS de este libro (con fecha: sin ella no
+     se puede saber qué noche es). */
+  const rivales = new Set();
+  (bd || []).slice(1).forEach((f) => {
+    const o = aObjeto(cabBd, f);
+    const k = clave(o.EQUIPO);
+    if (k && k !== equipoClave && permitidos.has(idPartido(o)) && txt(o.FECHA)) rivales.add(k);
+  });
+  const ampliados = new Set();
+  (bd || []).slice(1).forEach((f) => {
+    const o = aObjeto(cabBd, f);
+    if (!txt(o.FECHA) || permitidos.has(idPartido(o))) return;
+    if (rivales.has(clave(o.EQUIPO))) { ampliados.add(idPartido(o)); fases.add(may(o.FASE)); }
+  });
+  out.rivales = Array.from(rivales);
+  out.ampliados = ampliados.size;
+  out.fases = Array.from(fases);
+  const visible = (o) => permitidos.has(idPartido(o)) || ampliados.has(idPartido(o));
+
   /* Un equipo está LIMPIO en una fase si todos sus partidos de esa fase
      en este libro son partidos del equipo propio. */
   const limpio = {};
   (bd || []).slice(1).forEach((f) => {
     const o = aObjeto(cabBd, f);
     const k = clave(o.EQUIPO) + '|' + may(o.FASE) + '|' + may(o.TORNEO);
-    const dentro = permitidos.has(idPartido(o));
+    const dentro = visible(o);
     limpio[k] = (limpio[k] === undefined ? true : limpio[k]) && dentro;
   });
   const sucios = new Set();
@@ -180,7 +212,7 @@ function filtrar(libro, equipoClave, opciones) {
       /* Sucio pero RIVAL: jugó al menos un partido con el propio en esa fase. */
       const rival = (bd || []).slice(1).some((f) => {
         const o = aObjeto(cabBd, f);
-        return clave(o.EQUIPO) === eq && may(o.FASE) === fase && permitidos.has(idPartido(o));
+        return clave(o.EQUIPO) === eq && may(o.FASE) === fase && visible(o);
       });
       if (rival) sucios.add(eq + '|' + fase);
     }
@@ -196,13 +228,17 @@ function filtrar(libro, equipoClave, opciones) {
       const o = aObjeto(cab, m[i]);
       let va;
       if (MAESTRAS.indexOf(h) !== -1) {
-        va = txt(o.FECHA) ? permitidos.has(idPartido(o)) : textos.has(may(o.PARTIDO));
+        if (!txt(o.FECHA)) va = textos.has(may(o.PARTIDO));
+        else if (permitidos.has(idPartido(o))) va = true;
+        /* De un partido del rival contra un tercero: el rival entero; del
+           tercero, solo su fila de equipo (nunca sus jugadores). */
+        else va = ampliados.has(idPartido(o)) && (h !== 'Base Datos J' || rivales.has(clave(o.EQUIPO)));
       } else if (esTipoDeLiga(o)) {
         /* La mediana de la fase: solo si la fase es una donde jugó. */
         va = fases.has(may(o.FASE));
       } else {
         const k = clave(o.EQUIPO) + '|' + may(o.FASE) + '|' + may(o.TORNEO);
-        va = fases.has(may(o.FASE)) && (clave(o.EQUIPO) === equipoClave || limpio[k] === true);
+        va = fases.has(may(o.FASE)) && (clave(o.EQUIPO) === equipoClave || (rivales.has(clave(o.EQUIPO)) && limpio[k] === true));
       }
       if (va) idx.push(i);
     }
@@ -268,7 +304,7 @@ function fusionar(principal, vinculados, equipoClave) {
     const libro = v.libro;
     if (!libro || !libro.hojas) return;
     const f = filtrar(libro, equipoClave, { completo: v.propio === true });
-    info.push({ slug: v.slug, label: v.label, rol: v.rol, partidos: f.partidos, fases: f.fases });
+    info.push({ slug: v.slug, label: v.label, rol: v.rol, partidos: f.partidos, fases: f.fases, delRival: f.ampliados || 0 });
     if (!f.partidos) return;
 
     const cabeceras = {};

@@ -253,6 +253,19 @@ seccion('4 · la app real: selector, Clasificación y Fixture con el Play-In abi
   const pre = APP.idxPrevio('2026-11-05', { temporada: true });
   check('v361: la vara previa del Play-In es la temporada hasta el día anterior (sin el Play-In)',
     pre && pre.idx && pre.partidos === 2 && pre.postemporada === 0 && pre.idx.get(NAP) && pre.idx.get(NAP).pj === 1, pre && { p: pre.partidos, q: pre.postemporada });
+  /* 2026-11-08 · un equipo que SOLO está en la postemporada (el contexto de
+     un rival en un libro entre zonas) no entra a la vara de la temporada. */
+  {
+    const prev = APP.estado.hojas;
+    const extra = partido('07/11/2026', 'PLAY IN', 'CLAUSURA', NAP, 'OTRA ZONA FC', 70, 66);
+    const H2 = libro(CL_REG.concat(PLAYIN, extra));
+    APP.estado.hojas = H2;
+    const t2 = APP.idxTemporada(null);
+    check('el equipo que solo está en la postemporada NO entra a la temporada (es contexto)',
+      t2 && t2.idx && !t2.idx.get(SGADD.claveEquipo('OTRA ZONA FC')) && t2.idx.get(NAP) && t2.idx.get(NAP).pj === 3,
+      t2 && t2.idx && t2.idx.lista().map(e => e.nombre + ':' + e.pj));
+    APP.estado.hojas = prev;
+  }
   const preViejo = APP.idxPrevio('2026-11-05');
   check('v361: sin { temporada } sigue siendo la vara del tramo (la de Ciclos no cambia)', !preViejo || !preViejo.temporada);
   SGADD.CATALOGO.planillas = antes;
