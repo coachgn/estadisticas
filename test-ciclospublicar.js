@@ -244,8 +244,17 @@ const estadoDoc = () => Object.values(hashes[CIC.claveGestion('jujuy', 'jujuy-no
     check('el cuerpo técnico no ve nada antes de publicar', r.status === 200 && r.body.publicados.length === 0 && r.body.envioClientes === undefined);
 
     const tQ = ENVIO.transporteMemoria();
-    r = await C(tokAdmin, Object.assign({}, base, { publicar: true, enviar: 'prueba' }), { transporte: tQ });
+    const metasN = { version: 1, ciclo: { numero: 99 }, resultado: { g: 9, p: 9, net: -6.5 }, metas: [
+      { id: 't3r', secciones: ['principal', 'plan', 'inventada'], aspecto: 'Defensa', lado: 'Defensa', label: 'Triple <b>del rival', unidad: 'pct', dir: -1, base: 0.40, meta: 0.35, liga: 0.33, pts: 4.1 },
+      { id: 'roto<script>', base: 1, meta: 2 }, { id: 'sin-numeros', base: 'x', meta: 1 }] };
+    r = await C(tokAdmin, Object.assign({}, base, { publicar: true, enviar: 'prueba', metas: metasN }), { transporte: tQ });
     check('publicar sella, publica y manda la prueba', r.status === 200 && r.body.sellado && r.body.publicado && tQ.enviados.length === 1);
+    check('el link del mail abre Ciclos en ese ciclo publicado', /club=jujuy&(amp;)?ciclo=c0n4#ciclos/.test(tQ.enviados[0].html) && CIC.linkDelCiclo('jujuy', 'c0n4') === 'https://coachgn.github.io/estadisticas/?club=jujuy&ciclo=c0n4#ciclos');
+    r = await L(tokJujuy);
+    const mt = r.body.publicados[0] && r.body.publicados[0].metas;
+    check('las metas quedan congeladas con el ciclo publicado', mt && mt.metas.length === 1 && mt.metas[0].id === 't3r' && mt.metas[0].base === 0.40 && mt.metas[0].meta === 0.35);
+    check('se acota la forma: sin HTML, sin secciones inventadas, sin ids raros', mt && !/</.test(mt.metas[0].label) && mt.metas[0].secciones.join() === 'principal,plan');
+    check('el resultado congelado sale del dato del servidor, no del navegador', mt && mt.resultado.g === 4 && mt.resultado.p === 0 && mt.resultado.net === -6.5 && mt.ciclo.numero === 0 && !!mt.congeladas);
     r = await L(tokJujuy);
     check('el cuerpo técnico ve el ciclo publicado, con su meta', r.body.publicados.length === 1 && r.body.publicados[0].clave === 'c0n4' && r.body.publicados[0].meta.desde === '2026-10-10');
     r = await F(tokJujuy, 'c0n4');
@@ -268,6 +277,8 @@ const estadoDoc = () => Object.values(hashes[CIC.claveGestion('jujuy', 'jujuy-no
     r = await CIC.manejarPublicados(pedS(tokAdmin, null, { equipo: 'JUJUY' }), { env: { CICLOS_ENVIO_CLIENTES: 'si' } });
     check('el admin sabe si el envío a los entrenadores está habilitado', r.body.envioClientes === true);
 
+    check('Evolución es la primera hoja del PDF', FOTO.SECCIONES[0] === 'evolucion' && /Evolución<\/h2>[\s\S]*Principal<\/h2>/.test(FOTO.documento({ estilo: '', secciones: { evolucion: 'E', principal: 'P' } }, {})));
+    check('sin metas válidas no se congela nada', FOTO.validarMetas(null) === null && FOTO.validarMetas({ metas: 'x' }) === null && FOTO.validarMetas({ metas: [] }).metas.length === 0);
     check('la foto valida tamaño y la sección Principal', !FOTO.validar({ secciones: { equipos: 'x' } }).ok && !FOTO.validar({ secciones: { principal: 'x'.repeat(FOTO.MAX_BYTES + 1) } }).ok && FOTO.validar(foto).ok);
     const app2 = require('fs').readFileSync(__dirname + '/server/app.js', 'utf8');
     check('las rutas existen y solo /cerrar acepta un cuerpo grande', /\/cerrar', responder\(ciclos\.manejarCerrar\)/.test(app2) && /\/publicados', responder/.test(app2) && /\/foto', responder/.test(app2) && /jsonInforme = express\.json\(\{ limit: '4mb' \}\)/.test(app2));

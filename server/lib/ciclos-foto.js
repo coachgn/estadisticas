@@ -19,8 +19,9 @@
 
 const zlib = require('zlib');
 
-const SECCIONES = ['principal', 'equipos', 'jugadores', 'clasificacion', 'fixture', 'plan'];
-const TITULOS = { principal: 'Principal', equipos: 'Equipos', jugadores: 'Jugadores', clasificacion: 'Clasificación', fixture: 'Fixture', plan: 'Plan de intervención' };
+/* Evolución va PRIMERA (2026-11-08): es la primera hoja del PDF del mail. Existe desde el Ciclo 1. */
+const SECCIONES = ['evolucion', 'principal', 'equipos', 'jugadores', 'clasificacion', 'fixture', 'plan'];
+const TITULOS = { evolucion: 'Evolución', principal: 'Principal', equipos: 'Equipos', jugadores: 'Jugadores', clasificacion: 'Clasificación', fixture: 'Fixture', plan: 'Plan de intervención' };
 const MAX_BYTES = 3 * 1024 * 1024;     // el HTML entero, sin comprimir
 const MAX_ESTILO = 120 * 1024;
 /* Las rutas relativas del informe (escudos, logos) se resuelven contra el panel publicado. */
@@ -42,6 +43,28 @@ function validar(crudo) {
   if (total + estilo.length > MAX_BYTES) return { ok: false, motivo: 'El informe pesa más de 3 MB.' };
   const titulo = String(f.titulo || '').replace(/[<>]/g, '').slice(0, 160);
   return { ok: true, foto: { titulo, estilo, secciones, generado: typeof f.generado === 'string' ? f.generado.slice(0, 40) : null } };
+}
+
+/* ---- LAS METAS CONGELADAS (Evolución, 2026-11-08) ----
+   Las arma el navegador del admin con el informe (js/sgadd-cicloinforme.js, metasDelCiclo).
+   Se guardan tal cual las mide el ciclo siguiente: id, base, meta, liga y su valor en puntos.
+   Solo se acota la forma: números finitos, textos cortos, a lo sumo 120 metas. */
+const SECCIONES_META = new Set(SECCIONES.concat(['fixture']));
+const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
+const txt = (v, max) => String(v === undefined || v === null ? '' : v).replace(/[<>]/g, '').slice(0, max);
+function validarMetas(crudo) {
+  const m = crudo && typeof crudo === 'object' ? crudo : null;
+  if (!m || !Array.isArray(m.metas)) return null;
+  const metas = m.metas.slice(0, 120).map((x) => {
+    if (!x || typeof x !== 'object') return null;
+    const id = typeof x.id === 'string' ? x.id : '', base = num(x.base), meta = num(x.meta);
+    if (id.length > 80 || !/^[A-Za-z0-9_:%. ,'ÁÉÍÓÚÑáéíóúñü()-]+$/.test(id) || base === null || meta === null) return null;
+    return { id, secciones: (Array.isArray(x.secciones) ? x.secciones : []).filter(s => SECCIONES_META.has(s)).slice(0, 7),
+      aspecto: txt(x.aspecto, 40), lado: txt(x.lado, 20), label: txt(x.label, 120), unidad: ['pct', 'p2', 'n1', 'signo'].includes(x.unidad) ? x.unidad : 'n1',
+      dir: x.dir === -1 ? -1 : 1, tipo: x.tipo === 'sostener' ? 'sostener' : 'mejorar', base, meta, liga: num(x.liga), pts: num(x.pts) };
+  }).filter(Boolean);
+  const c = m.ciclo && typeof m.ciclo === 'object' ? m.ciclo : {};
+  return { version: 1, ciclo: { numero: num(c.numero), desde: txt(c.desde, 10), hasta: txt(c.hasta, 10) }, metas, reconstruidas: m.reconstruidas === true };
 }
 
 const comprimir = (foto) => zlib.gzipSync(Buffer.from(JSON.stringify(foto), 'utf8')).toString('base64');
@@ -71,4 +94,4 @@ ${cuerpo}</body></html>`;
 /** Los `<details>` del informe se abren en el papel: en una hoja impresa nadie puede tocar «Ver más». */
 const abrirDetalles = (html) => String(html).replace(/<details(?![^>]*\bopen\b)/g, '<details open');
 
-module.exports = { validar, comprimir, descomprimir, documento, abrirDetalles, SECCIONES, TITULOS, MAX_BYTES, BASE_PANEL };
+module.exports = { validar, validarMetas, comprimir, descomprimir, documento, abrirDetalles, SECCIONES, TITULOS, MAX_BYTES, BASE_PANEL };

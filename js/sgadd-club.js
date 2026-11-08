@@ -81,6 +81,26 @@ const CLUB = (function () {
     };
   })();
 
+  /* EL CICLO DEL LINK DEL MAIL (2026-11-08): `?club=<club>&ciclo=<clave>#ciclos` abre Ciclos en
+     ese ciclo publicado. Se saca de la barra igual que el código, y se guarda en sessionStorage
+     para que sobreviva al login (la puerta de ingreso recarga la página). La sección lo consume. */
+  const CICLO_PENDIENTE = 'sgadd.cicloPendiente';
+  (function () {
+    let q;
+    try { q = new URLSearchParams(window.location.search); } catch (e) { return; }
+    if (!q.has('ciclo')) return;
+    const c = String(q.get('ciclo') || '').trim();
+    q.delete('ciclo');
+    try {
+      const resto = q.toString();
+      window.history.replaceState(window.history.state, '', window.location.pathname + (resto ? '?' + resto : '') + (window.location.hash || ''));
+    } catch (e) { /* sin history */ }
+    if (/^[a-z0-9_.:-]{1,80}$/i.test(c)) { try { window.sessionStorage.setItem(CICLO_PENDIENTE, c); } catch (e) { /* sin storage: no se recuerda */ } }
+  })();
+  /** El ciclo que pidió el link del mail (sin consumirlo). */
+  function cicloPendiente() { try { return window.sessionStorage.getItem(CICLO_PENDIENTE) || null; } catch (e) { return null; } }
+  function consumirCiclo() { try { window.sessionStorage.removeItem(CICLO_PENDIENTE); } catch (e) { /* nada */ } }
+
   /** El mail y el código del link, UNA sola vez. */
   function accesoDeUrl() {
     const r = { email: accesoUrl.email, codigo: accesoUrl.codigo };
@@ -913,7 +933,7 @@ const CLUB = (function () {
     return true;
   }
 
-  return { TEMA, estado, cargar, aplicar: aplicarSeguro, reconciliar, confirmarSinConfig, reconciliarConfig, patronDeCategoria, credito, idDesdeUrl, esLanding, puertaDeIngreso, accesoDeUrl, enDemo, debug, marcarRender,
+  return { TEMA, estado, cargar, aplicar: aplicarSeguro, reconciliar, confirmarSinConfig, reconciliarConfig, patronDeCategoria, credito, idDesdeUrl, esLanding, puertaDeIngreso, accesoDeUrl, cicloPendiente, consumirCiclo, enDemo, debug, marcarRender,
            reintentarEscudo, aclararHastaLegible, oscurecerHastaLegible, contraste,
            mezclarHex, colorDeEscudo, colorDeImagen,
            get cfg() { return estado.cfg; }, get aplicado() { return aplicado; } };

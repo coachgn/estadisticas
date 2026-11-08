@@ -268,7 +268,7 @@ const SGADD_CICLOSUI = (function () {
      Todo sale del paquete del equipo. Lo que el paquete no trae se DICE: no se inventa. */
 
   const SECCIONES = [
-    ['principal', 'Principal'], ['equipos', 'Equipos'], ['jugadores', 'Jugadores'],
+    ['evolucion', 'Evolución'], ['principal', 'Principal'], ['equipos', 'Equipos'], ['jugadores', 'Jugadores'],
     ['clasificacion', 'Clasificación'], ['fixture', 'Fixture'], ['plan', 'Plan de intervención'],
   ];
   const ROTULO_METRICA = { pts: 'Puntos', rt: 'Rebotes', ro: 'Rebotes ofensivos', rd: 'Rebotes defensivos', ast: 'Asistencias', pr: 'Recuperos',
@@ -443,10 +443,9 @@ const SGADD_CICLOSUI = (function () {
   function informe(idx, c, reg) {
     const CIN = (typeof SGADD_CICLOINFORME !== 'undefined') ? SGADD_CICLOINFORME : null;
     pedirDoc();
-    /* La liga se mide al CIERRE del ciclo: un ciclo cerrado no cambia cuando la liga sigue jugando. */
-    let idxC = idx;
-    try { if (c.meta.cerrado && SGADD_APP.idxPrevio) { const d = new Date(c.meta.hasta + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 1); const r = SGADD_APP.idxPrevio(d.toISOString().slice(0, 10)); if (r && r.idx) idxC = r.idx; } } catch (e) { idxC = idx; }
-    const modelo = CIN ? CIN.armar({ idx: idxC, paq: estado.paq, ciclo: c, doc: estado.doc, anterior: estado.anterior || null }) : null;
+    const idxC = idxAlCierre(idx, c);
+    const previo = CIN ? previoDe(idx, c, CIN) : null;
+    const modelo = CIN ? CIN.armar({ idx: idxC, paq: estado.paq, ciclo: c, doc: estado.doc, anterior: estado.anterior || null, previo }) : null;
     const admin = esAdmin() ? `<div class="rend-grid" style="margin-top:12px">${bloqueAuditoria(c, estado.paq)}${bloqueSello(c, reg, estado.paq)}${bloqueComparar(estado.paq, c)}${bloqueHistorial(estado.paq)}</div>` : '';
     estado.modelo = modelo && modelo.ok ? { modelo, ciclo: c } : null;
     if (modelo && modelo.ok) {
@@ -460,6 +459,36 @@ const SGADD_CICLOSUI = (function () {
       fixture: () => bloqueFixture(estado.paq),
       plan: () => bloquePlan(c) + bloqueEscenarios(idx),
     }[estado.seccion] || (() => ''))();
+  }
+  /** La liga se mide al CIERRE del ciclo: un ciclo cerrado no cambia cuando la liga sigue jugando. */
+  function idxAlCierre(idx, c) {
+    try { if (c.meta.cerrado && SGADD_APP.idxPrevio) { const d = new Date(c.meta.hasta + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 1); const r = SGADD_APP.idxPrevio(d.toISOString().slice(0, 10)); if (r && r.idx) return r.idx; } } catch (e) { /* la liga de hoy */ }
+    return idx;
+  }
+  /* LAS METAS DEL CICLO ANTERIOR (Evolución, 2026-11-08): las que se congelaron al publicarlo;
+     si se publicó sin ellas (el Ciclo 0), se reconstruyen UNA vez con los datos de su cierre
+     y se rotulan «reconstruidas». Sin ciclo anterior cerrado no hay Evolución. */
+  function previoDe(idx, c, CIN) {
+    const num = c && c.meta && c.meta.numero;
+    if (typeof num !== 'number' || num < 1 || !CIN.metasDelCiclo) return null;
+    const pub = (estado.publicados || []).find(p => p.meta && p.meta.numero === num - 1 && p.metas && Array.isArray(p.metas.metas));
+    if (pub) return pub.metas;
+    const ficha = String((SGADD_APP.estado && SGADD_APP.estado.planillaId) || '') + '|' + estado.equipo + '|' + (num - 1);
+    estado.reconstruidas = estado.reconstruidas || {};
+    if (Object.prototype.hasOwnProperty.call(estado.reconstruidas, ficha)) return estado.reconstruidas[ficha];
+    let r = null;
+    try {
+      const reg = selladoDe(num - 1);
+      const c0 = reg ? reg.ciclo : CI.armarCiclo(estado.paq, num - 1, { n: CI.PARTIDOS_POR_CICLO });
+      if (c0 && c0.meta.cerrado) {
+        const m0 = CIN.armar({ idx: idxAlCierre(idx, c0), paq: estado.paq, ciclo: c0, doc: estado.doc, anterior: estado.anterior || null });
+        const M = m0 && m0.ok ? CIN.metasDelCiclo(m0) : null;
+        if (M) r = Object.assign(M, { reconstruidas: true });
+      }
+    } catch (e) { r = null; }
+    /* Sin el archivo del torneo ni la tabla anterior todavía, no se congela: se vuelve a intentar. */
+    if (estado.doc) estado.reconstruidas[ficha] = r;
+    return r;
   }
   /** El archivo del torneo (calendario y formato) para Fixture, SOS y escenarios: se pide una vez. */
   function pedirDoc() {
@@ -508,7 +537,10 @@ const SGADD_CICLOSUI = (function () {
   }
 
   function tabsSecciones() {
-    return `<div class="flex flex-wrap gap-1 border-b border-hairline" role="tablist" aria-label="Secciones del ciclo">${SECCIONES.map(([id, t]) =>
+    const secs = estado.modelo && estado.modelo.modelo && estado.modelo.modelo.secciones;
+    const vis = SECCIONES.filter(([id]) => id !== 'evolucion' || (secs && secs.evolucion));
+    if (!vis.some(([id]) => id === estado.seccion)) estado.seccion = 'principal';
+    return `<div class="flex flex-wrap gap-1 border-b border-hairline" role="tablist" aria-label="Secciones del ciclo">${vis.map(([id, t]) =>
       `<button type="button" role="tab" aria-selected="${estado.seccion === id}" onclick="SGADD_CICLOSUI.verSeccion('${id}')"
         class="px-3 py-2 text-xs font-semibold ${estado.seccion === id ? 'text-ink border-b-2 border-[color:var(--acento)]' : 'text-muted hover:text-ink'}">${t}</button>`).join('')}</div>`;
   }
@@ -683,6 +715,18 @@ const SGADD_CICLOSUI = (function () {
     cargarPaquete(idx);
   }
 
+  /** El ciclo que pidió el link del mail: el cliente lo abre publicado; el admin, en su vista. */
+  function abrirPendiente() {
+    const C = typeof CLUB !== 'undefined' ? CLUB : null;
+    const pend = C && C.cicloPendiente ? C.cicloPendiente() : null;
+    if (!pend) return;
+    const p = (estado.publicados || []).find(x => x.clave === pend);
+    if (!p) return;
+    if (esAdmin()) { if (p.meta && typeof p.meta.numero === 'number') estado.ciclo = p.meta.numero; }
+    else estado.pubClave = p.clave;
+    estado.seccion = SECCIONES.some(x => x[0] === 'evolucion') && p.meta && p.meta.numero > 0 ? 'evolucion' : 'principal';
+    if (C.consumirCiclo) C.consumirCiclo();
+  }
   /** Pide el paquete del equipo elegido una sola vez por equipo y repinta al llegar. */
   /** El cliente: la lista de ciclos publicados y el informe del elegido. */
   function cargarPublicados() {
@@ -693,7 +737,7 @@ const SGADD_CICLOSUI = (function () {
     if (!eq || !club || !pl || typeof SGADD_DATA === 'undefined' || !SGADD_DATA.ciclosPublicados) return;
     if (estado.paqDe !== ficha) {
       estado.paqDe = ficha; estado.cargando = true; estado.error = null; estado.publicados = []; estado.foto = null; estado.fotoDe = null; estado.pubClave = null;
-      SGADD_DATA.ciclosPublicados(club, pl.slug, eq).then((r) => { if (estado.paqDe !== ficha) return; estado.publicados = r.publicados || []; estado.cargando = false; pintar(); })
+      SGADD_DATA.ciclosPublicados(club, pl.slug, eq).then((r) => { if (estado.paqDe !== ficha) return; estado.publicados = r.publicados || []; estado.cargando = false; abrirPendiente(); pintar(); })
         .catch((e) => { if (estado.paqDe === ficha) { estado.error = (e && e.message) || 'Sin conexión con el servidor.'; estado.cargando = false; pintar(); } });
       return;
     }
@@ -721,7 +765,7 @@ const SGADD_CICLOSUI = (function () {
     const pedirSellos = (typeof SGADD_DATA !== 'undefined' && SGADD_DATA.ciclosSellados && club && pl)
       ? SGADD_DATA.ciclosSellados(club, pl.slug, eq).catch(() => []) : Promise.resolve([]);
     if (typeof SGADD_DATA !== 'undefined' && SGADD_DATA.ciclosPublicados && club && pl) {
-      SGADD_DATA.ciclosPublicados(club, pl.slug, eq).then((r) => { if (estado.paqDe === ficha) { estado.publicados = r.publicados || []; estado.envioClientes = !!r.envioClientes; pintar(); } }).catch(() => {});
+      SGADD_DATA.ciclosPublicados(club, pl.slug, eq).then((r) => { if (estado.paqDe === ficha) { estado.publicados = r.publicados || []; estado.envioClientes = !!r.envioClientes; abrirPendiente(); pintar(); } }).catch(() => {});
     }
     /* El paquete de CICLOS (plan ORO): no pasa por la capa de laboratorio. */
     const pedirPaq = paqDeCiclos && club && pl ? SGADD_DATA.ciclosPaquete(club, pl.slug, eq) : SGADD_PBP.pedir(eq);
@@ -797,9 +841,10 @@ const SGADD_CICLOSUI = (function () {
     const x = estado.modelo;
     if (!CIN || !x || !x.modelo) return null;
     const secciones = {};
-    SECCIONES.forEach(([id]) => { secciones[id] = CIN.html(x.modelo, id); });
+    SECCIONES.forEach(([id]) => { if (x.modelo.secciones && x.modelo.secciones[id]) secciones[id] = CIN.html(x.modelo, id); });
     return { titulo: 'Ciclo ' + x.ciclo.meta.numero + ' · ' + (x.ciclo.meta.equipo || estado.equipo || ''), estilo: CIN.CSS || '', secciones, generado: new Date().toISOString() };
   }
+  const CIN = () => (typeof SGADD_CICLOINFORME !== 'undefined' ? SGADD_CICLOINFORME : null);
   function confirmarCierre() {
     const m = estado.cierre;
     if (!m || m.yendo) return;
@@ -810,7 +855,7 @@ const SGADD_CICLOSUI = (function () {
     const club = CLUB.estado.id;
     const pl = (SGADD.CATALOGO.planillas || []).filter(p => p.id === SGADD_APP.estado.planillaId)[0];
     m.yendo = true; m.error = null; pintarModal();
-    SGADD_DATA.cerrarCiclo(club, pl.slug, { equipo: estado.equipo, criterio: { tipo: 'ciclo', numero: m.num, n: CI.PARTIDOS_POR_CICLO }, huella: CI.huella(x.ciclo), foto, publicar: !!m.publicar, enviar: m.enviar })
+    SGADD_DATA.cerrarCiclo(club, pl.slug, { equipo: estado.equipo, criterio: { tipo: 'ciclo', numero: m.num, n: CI.PARTIDOS_POR_CICLO }, huella: CI.huella(x.ciclo), foto, metas: (CIN() && CIN().metasDelCiclo) ? CIN().metasDelCiclo(x.modelo) : null, publicar: !!m.publicar, enviar: m.enviar })
       .then((r) => {
         const partes = [];
         if (r.publicado && m.publicar) partes.push('Sellado y publicado: el cuerpo técnico ya lo ve');
@@ -829,7 +874,7 @@ const SGADD_CICLOSUI = (function () {
 
   return {
     estado, html, pintar, elegirEquipo, elegirCiclo, elegirComparar, verLado, verSeccion, sellar, SECCIONES,
-    abrirCierre, cerrarModal, cierreCampo, confirmarCierre, elegirPublicado, htmlCliente, modalCierre, fotoDelInforme, verComoCliente, fuenteVista,
+    abrirCierre, cerrarModal, cierreCampo, confirmarCierre, elegirPublicado, abrirPendiente, previoDe, htmlCliente, modalCierre, fotoDelInforme, verComoCliente, fuenteVista,
     bloqueEquipos, bloque4Factores, bloqueArquetipos, bloqueEscenarios, bloqueJugadores, bloqueClasificacion, bloqueFixture, bloquePlan,
     bloqueSello, bloqueHistorial, selladoDe,
     bloqueResultados, bloqueTransicion, bloqueCuartos, bloqueMapa, bloqueCausas, bloqueComparar, bloqueAuditoria, lecturaZonas,

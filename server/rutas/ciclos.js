@@ -35,6 +35,8 @@ const INFORME = require('../lib/ciclos-informe.js');
 const PDF = require('../lib/ciclos-pdf.js');
 const ENVIO = require('../lib/mail-envio.js');
 const { mailCiclo, numerosCiclo } = require('../lib/mail-ciclo.js');
+/** El link del mail: abre Ciclos en ESE ciclo publicado (el panel lo lee y lo saca de la barra). */
+const linkDelCiclo = (club, clave) => FOTO.BASE_PANEL + '?club=' + encodeURIComponent(club) + '&ciclo=' + encodeURIComponent(clave) + '#ciclos';
 /** El resumen va en el mail solo si el cuerpo de análisis lo EDITÓ: el automático ya lo dicen las fichas. */
 function lecturaEditada(ciclo, lecturas) {
   const base = CICLOS.lecturasBase(ciclo).resumen;
@@ -493,7 +495,17 @@ async function manejarCerrar(peticion, deps) {
       if (!s0 || s0.huella !== r.registro.huella) return error(409, 'YA_SELLADO', 'Ese ciclo ya está sellado con otro dato: no se reemplaza.', { sellado: s0 ? { huella: s0.huella, fecha: s0.sellado } : null });
     }
     out.sellado = true;
-    const doc = Object.assign({ estado: 'borrador', lecturas: {}, historial: [] }, previo || {}, {
+    /* Las metas que este ciclo le fija al siguiente, CONGELADAS (Evolución). El resultado del
+       ciclo sale del dato del servidor, no del navegador. */
+    const metas = FOTO.validarMetas(body.metas);
+    if (metas) {
+      const rr = ciclo.resultados, pj = ciclo.meta.partidos || (rr.record.g + rr.record.p);
+      const net = body.metas && body.metas.resultado && typeof body.metas.resultado.net === 'number' && isFinite(body.metas.resultado.net) ? body.metas.resultado.net : null;
+      metas.resultado = { g: rr.record.g, p: rr.record.p, pj, pf: rr.puntos.favorPP, pc: rr.puntos.contraPP, dif: rr.puntos.dif, difPP: pj ? rr.puntos.dif / pj : null, net };
+      metas.ciclo = Object.assign(metas.ciclo, { numero: ciclo.meta.numero, desde: ciclo.meta.desde, hasta: ciclo.meta.hasta });
+      metas.congeladas = ahoraD.toISOString();
+    }
+    const doc = Object.assign({ estado: 'borrador', lecturas: {}, historial: [] }, previo || {}, metas ? { metas } : {}, {
       estado: 'publicado', huella: r.registro.huella, publicado: ahoraD.toISOString(), actualizado: ahoraD.toISOString(),
       criterio: ciclo.meta.criterio || { tipo: ciclo.meta.tipo, numero: ciclo.meta.numero, n: ciclo.meta.n }, equipo: body.equipo, meta,
     });
@@ -530,7 +542,7 @@ async function manejarCerrar(peticion, deps) {
     const ok = [], fallidos = [];
     for (const x of destinos) {
       const mail = mailCiclo({ nombre: x.nombre, equipo: meta.equipo, club: ctx.clubId, ciclo: etiqueta, desde: meta.desde, hasta: meta.hasta, record: meta.record, numeros: numerosCiclo(ciclo),
-        lectura: lecturaEditada(ciclo, lecturas), panel: FOTO.BASE_PANEL + '?club=' + encodeURIComponent(ctx.clubId) });
+        lectura: lecturaEditada(ciclo, lecturas), panel: linkDelCiclo(ctx.clubId, r.clave) });
       const asunto = (enviar === 'prueba' ? '[PRUEBA] ' : '') + mail.asunto;
       try {
         await transporte.enviar({ para: x.email, asunto, html: mail.html, texto: mail.texto, adjuntos: [{ nombre: archivo, tipo: 'application/pdf', contenido: pdf }] });
@@ -579,7 +591,7 @@ async function manejarPublicados(peticion, deps) {
   try { hash = await ctx.almacen.leerHash(claveGestion(ctx.clubId, ctx.slug)); }
   catch (e) { return error(503, 'KV_ILEGIBLE', 'No se pudieron leer los ciclos publicados.'); }
   const publicados = Object.keys(hash).filter(k => k.split('|')[0] === ctx.campoEq && hash[k] && hash[k].estado === 'publicado')
-    .map(k => ({ clave: k.split('|').slice(1).join('|'), publicado: hash[k].publicado || null, meta: hash[k].meta || null, criterio: hash[k].criterio || null }))
+    .map(k => ({ clave: k.split('|').slice(1).join('|'), publicado: hash[k].publicado || null, meta: hash[k].meta || null, criterio: hash[k].criterio || null, metas: hash[k].metas || null }))
     .sort((a, b) => String((a.meta && a.meta.desde) || '').localeCompare(String((b.meta && b.meta.desde) || '')));
   const body = { ok: true, publicados };
   if (ctx.esAdmin) body.envioClientes = envioClientesHabilitado(deps && deps.env);
@@ -603,6 +615,6 @@ async function manejarFoto(peticion, deps) {
   return { status: 200, body: { ok: true, foto, meta: doc.meta || null, publicado: doc.publicado || null } };
 }
 
-module.exports = { manejarCiclos, manejarSellar, manejarGestion, manejarGestionGuardar, manejarPublicar, manejarPaquete, manejarCerrar, manejarPublicados, manejarFoto,
+module.exports = { linkDelCiclo, manejarCiclos, manejarSellar, manejarGestion, manejarGestionGuardar, manejarPublicar, manejarPaquete, manejarCerrar, manejarPublicados, manejarFoto,
   proyectarPaquete, envioClientesHabilitado, claveKV, claveGestion, claveEnvio, claveFoto, PREFIJO, PREFIJO_GESTION, PREFIJO_ENVIO, PREFIJO_FOTO };
 

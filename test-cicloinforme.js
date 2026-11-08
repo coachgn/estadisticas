@@ -90,7 +90,38 @@ if (fs.existsSync(f)) {
   }
   const hp = CI.html(me, 'plan');
   t(/Elaborado con los datos de MotorStats AR al 03\/11\/2026/.test(hp), 'la firma con la fecha de los datos: el día siguiente al cierre');
+  /* Evolución (2026-11-08): las metas del Ciclo 0, congeladas y evaluadas. */
+  const MZ = CI.metasDelCiclo(me);
+  t(MZ && MZ.metas.length >= 6 && MZ.resultado.g === 0 && MZ.resultado.p === 4 && MZ.ciclo.numero === 0, 'el Ciclo 0 congela sus metas y su resultado (' + (MZ && MZ.metas.length) + ' metas)');
+  t(MZ.metas.every(x => typeof x.base === 'number' && typeof x.meta === 'number' && x.secciones.length && (x.dir === 1 || x.dir === -1)), 'cada meta trae base, meta, dirección y en qué secciones aparece');
+  t(new Set(MZ.metas.map(x => x.id)).size === MZ.metas.length, 'un indicador no se repite entre secciones (la fuga y el tablero son la misma meta)');
+  t(['principal', 'equipos', 'plan', 'clasificacion'].every(sc => MZ.metas.some(x => x.secciones.includes(sc))), 'hay metas de Principal, Equipos, Clasificación y Plan');
+  t(!CI.html(me, 'evolucion'), 'sin ciclo anterior no hay sección Evolución');
+  const mEv = CI.armar({ idx: idxE, paq, ciclo: c, doc, anterior: { label: 'x', temporada: '2025-26', filas: filasAnt }, previo: Object.assign({}, MZ, { reconstruidas: true }) });
+  const hEv = CI.html(mEv, 'evolucion');
+  t(/de \d+ metas cumplidas/.test(hEv) && /Metas reconstruidas/.test(hEv) && !/undefined|NaN/.test(hEv), 'la sección Evolución pinta el veredicto, rotula las reconstruidas y no deja undefined ni NaN');
 } else console.log('  (sin el paquete real de la ingesta: se saltean las verificaciones del Ciclo 0)');
+
+/* 4 bis · Evolución con un ciclo de mentira: los cinco veredictos y el sostener */
+{
+  const X = { metricas: { 'T3%': { valor: 0.36 }, 'PePP%': { valor: 0.18 }, 'eFG%': { valor: 0.50 }, 'RO%': { valor: 0.30 } }, c: { resultados: { record: { g: 2, p: 2 } }, zonas: { favor: [], contra: [] } }, jug: [], n: 4 };
+  const P = { metas: [
+    { id: 'm:T3%', tipo: 'mejorar', dir: 1, base: 0.30, meta: 0.35 },
+    { id: 'm:PePP%', tipo: 'mejorar', dir: -1, base: 0.20, meta: 0.16 },
+    { id: 'm:eFG%', tipo: 'mejorar', dir: 1, base: 0.49, meta: 0.53 },
+    { id: 'm:RO%', tipo: 'mejorar', dir: 1, base: 0.33, meta: 0.36 },
+    { id: 'zona:Z13', tipo: 'mejorar', dir: 1, base: 0.5, meta: 0.7 },
+    { id: 'victorias', tipo: 'sostener', dir: 1, base: 0.6, meta: 0.5 },
+    { id: 'm:eFG%', tipo: 'sostener', dir: 1, base: 0.55, meta: 0.52 }] };
+  const E = CI.evaluar(P, X), v = E.map(e => e.veredicto);
+  t(v[0] === 'cumplida' && Math.round(E[0].pct) === 120, 'superar la meta = cumplida (120 % del camino)');
+  t(v[1] === 'medias' && Math.round(E[1].pct) === 50, 'en una métrica invertida, bajar las pérdidas cuenta como avance (50 %: a medias)');
+  t(v[2] === 'no' && Math.round(E[2].pct) === 25, 'menos del 40 % del camino = no cumplida');
+  t(v[3] === 'retrocedio', 'peor que la base = retrocedió');
+  t(v[4] === 'sin' && E[4].pct === null, 'sin muestra en el ciclo = sin dato, no se juzga');
+  t(v[5] === 'sin' || v[5] === 'cumplida', 'el % de victorias se mide sobre el récord del ciclo');
+  t(v[6] === 'retrocedio', 'una fortaleza que cae bajo su piso no se sostuvo');
+}
 const ui2 = fs.readFileSync(path.join(__dirname, 'js', 'sgadd-ciclosui.js'), 'utf8');
 t(/idxPrevio\(/.test(ui2) && /pedirAnterior\(/.test(ui2), 'la sección mide la liga al cierre del ciclo y pide la tabla anterior');
 

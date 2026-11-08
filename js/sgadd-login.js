@@ -74,6 +74,8 @@ const SGADD_LOGIN = (function () {
     try {
       /* `rol()` devuelve el string, no un objeto: `rol().rol` da `undefined`
          y el try/catch ni se entera — todos iban a Principal, callado. */
+      /* El link del mail de un ciclo manda a Ciclos (al que sea: admin o cliente). */
+      if (typeof CLUB !== 'undefined' && CLUB.cicloPendiente && CLUB.cicloPendiente()) return 'ciclos';
       return (SGADD_AUTH.rol() === 'ADMIN') ? 'configuracion' : 'principal';
     } catch (e) { return 'principal'; }
   }

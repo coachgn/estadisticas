@@ -382,6 +382,7 @@ const SGADD_CICLOINFORME = (function () {
     const tipo = (k) => { const T = idx.liga && idx.liga.jugadorTipo; return T && esNum(T[k]) ? T[k] : varaJ(idx, k); };
     X.mPPP = tipo('PPP'); X.mUSG = tipo('USG%'); X.mTS = tipo('TS%');
     X.metricas = metricasEquipo(X);
+    X.previo = ctx.previo && Array.isArray(ctx.previo.metas) ? ctx.previo : null;
     out.contexto = X;
     out.secciones = {
       principal: [cardResumen, cardMotor, cardCombustion, cardBalance, card4Factores, cardPartidos, cardProceso, cardTecho, cardMantener, cardFuga1, cardFuga2, cardFuga3],
@@ -391,6 +392,7 @@ const SGADD_CICLOINFORME = (function () {
       fixture: [cardCalendario, cardSOS, cardDisponibilidad, cardProximo, cardVentanas],
       plan: [cardPlan, cardTablero, cardEsperar, cardReglas],
     };
+    if (X.previo) out.secciones.evolucion = [cardEvolucion];
     out.ok = true;
     return out;
   }
@@ -1712,8 +1714,166 @@ const SGADD_CICLOINFORME = (function () {
 
   /* ===================================================== RENDER */
 
+  /* ============================================================ EVOLUCIÓN (2026-11-08)
+     Cada meta que fija el informe (en las seis secciones) se CONGELA al publicar el ciclo
+     con su base, su meta, la liga y lo que vale en puntos; el ciclo siguiente la mide con
+     el MISMO indicador. `% del camino` = lo que se movió ÷ lo que había que moverse, con la
+     dirección de la métrica:
+       ✓ cumplida ≥ 100 % · ◐ a medias 40-99 % · ✗ no cumplida < 40 % · ✗ retrocedió (peor
+       que la base) · ◆ sin dato (sin muestra: no se juzga).
+     Una meta de SOSTENER (una fortaleza, un jugador ya en la mediana) se cumple si no cae
+     bajo su piso. Fixture no fija metas: describe el calendario. */
+  const UNIDAD = { pct: v => pc(v), p2: v => n(v, 2), n1: v => n(v, 1), signo: v => sg(v) };
+  const unidadDe = k => /%$/.test(k) ? 'pct' : (k === 'PPP' || k === 'PPP DEF' || k === 'AST-PP' ? 'p2' : (k === 'NET RTNG' ? 'signo' : 'n1'));
+  const ASPECTO_M = { 'PePP%': 'Cuidado del balón', 'AST-PP': 'Creación', 'RO%': 'Rebote', 'RD%': 'Rebote', 'RO Opp%': 'Rebote', 'eFG%': 'Tiro', 'TS%': 'Tiro', 'T3%': 'Tiro', 'RTL%': 'Tiro',
+    'eFG Opp%': 'Defensa', 'RTL Opp%': 'Defensa', 'RTNG DEF': 'Defensa', 'PP Opp%': 'Defensa', 'RTNG OFF': 'Ataque' };
+  const ladoM = k => (ASPECTO_M[k] === 'Defensa' || k === 'RO Opp%' || k === 'RD%') ? 'Defensa' : 'Ataque';
+  const dirM = k => INVERTIDAS.has(k) ? -1 : 1;
+  const zpt = (zs, ids, min) => { const t = zonasSum(zs || [], ids); return t.i >= (min || 5) ? t.pts / t.i : null; };
+  const franjaPpt = (X, lado, i) => { const R = X.reloj; if (!R || !R.con) return null; const x = R[lado] && R[lado].f && R[lado].f[i]; return x && x[0] >= 5 ? pptDe(x) : null; };
+  /** El valor de un indicador en un ciclo. `null` = sin muestra (no se juzga). */
+  function valorIndicador(X, id) {
+    const [tipo, arg] = String(id).split(':');
+    if (tipo === 'm') { const m = X.metricas[arg]; return m && esNum(m.valor) ? m.valor : null; }
+    if (tipo === 't3r') { const t = zonasSum(X.c.zonas.contra || [], ['Z10', 'Z11', 'Z12', 'Z13', 'Z14']); return t.i >= 10 ? t.c / t.i : null; }
+    if (tipo === 'trans') { const tr = transicion(X); return tr && tr.tiros >= 5 ? tr.ppt : null; }
+    if (tipo === 'zona') return zpt(X.c.zonas.favor, [arg]);
+    if (tipo === 'cortos') return zpt(X.c.zonas.favor, ['Z2', 'Z3', 'Z4']);
+    if (tipo === 'rf') return franjaPpt(X, 'favor', Number(arg));
+    if (tipo === 'rc') return franjaPpt(X, 'contra', Number(arg));
+    if (tipo === 'cuarto') { const q = (X.cuartos || X.c.cuartos || []).find(x => x.cuarto === Number(arg)); return q && q.favor && esNum(q.favor.pts) && X.n ? q.favor.pts / X.n : null; }
+    if (tipo === 'ppp') { const j = (X.jug || []).find(x => clave(x.nombre) === arg); return j && j.PLAYS >= 12 && esNum(j.ppp) ? j.ppp : null; }
+    if (tipo === 'victorias') { const r = X.c.resultados.record; return r.g + r.p ? r.g / (r.g + r.p) : null; }
+    return null;
+  }
+  /** El resultado del ciclo, para el antes y después. */
+  function resultadoDe(X) {
+    const r = X.c.resultados, pj = X.n || (r.record.g + r.record.p);
+    return { g: r.record.g, p: r.record.p, pj, pf: r.puntos.favorPP, pc: r.puntos.contraPP, dif: r.puntos.dif, difPP: pj ? r.puntos.dif / pj : null, net: esNum(X.R && X.R.net) ? X.R.net : null };
+  }
+  /** Las metas que fija este ciclo, de todas las secciones, sin repetir un indicador. */
+  function metasDelCiclo(modelo) {
+    const X = modelo && modelo.contexto; if (!X) return null;
+    const lista = [], porId = {};
+    const add = (m) => {
+      if (!esNum(m.base) || !esNum(m.meta)) return;
+      const y = porId[m.id];
+      if (y) { m.secciones.forEach(sc => { if (y.secciones.indexOf(sc) < 0) y.secciones.push(sc); }); if (!esNum(y.liga) && esNum(m.liga)) y.liga = m.liga; return; }
+      const o = { id: m.id, secciones: m.secciones.slice(), aspecto: m.aspecto, lado: m.lado, label: m.label, unidad: m.unidad, dir: m.dir, tipo: m.tipo || 'mejorar',
+        base: m.base, meta: m.meta, liga: esNum(m.liga) ? m.liga : null, pts: esNum(m.pts) && m.pts > 0 ? m.pts : null };
+      porId[m.id] = o; lista.push(o);
+    };
+    const MR = metasReales(X);
+    /* Principal · las tres fugas (y su eco en el tablero del Plan). */
+    if (MR.t3r) add({ id: 't3r', secciones: ['principal', 'plan'], aspecto: 'Defensa', lado: 'Defensa', label: 'Triple del rival (T3% concedido)', unidad: 'pct', dir: -1, base: MR.t3r.base, meta: MR.t3r.meta, liga: MR.t3r.liga, pts: MR.t3r.pts });
+    if (MR.trans) add({ id: 'trans', secciones: ['principal', 'plan'], aspecto: 'Defensa', lado: 'Defensa', label: 'Transición defensiva · rival en 0-7 s (pts/tiro)', unidad: 'p2', dir: -1, base: MR.trans.base, meta: MR.trans.meta, liga: MR.trans.liga, pts: MR.trans.pts });
+    if (MR.fria) add({ id: 'zona:' + MR.fria.zona, secciones: ['principal', 'equipos', 'plan'], aspecto: 'Tiro', lado: 'Ataque', label: `${cap(NOMBRE_ZONA[MR.fria.zona])} ${MR.fria.zona} (pts/tiro)`, unidad: 'p2', dir: 1, base: MR.fria.base, meta: MR.fria.meta, liga: MR.fria.liga, pts: MR.fria.pts });
+    /* Equipos · mapa, reloj y cuartos. */
+    if (MR.cortos) add({ id: 'cortos', secciones: ['equipos', 'plan'], aspecto: 'Tiro', lado: 'Ataque', label: 'Dobles cortos Z2-Z4 (pts/tiro)', unidad: 'p2', dir: 1, base: MR.cortos.base, meta: MR.cortos.meta, liga: MR.cortos.liga, pts: MR.cortos.pts });
+    if (MR.armado) add({ id: 'rf:1', secciones: ['equipos', 'plan'], aspecto: 'Ritmo y reloj', lado: 'Ataque', label: 'Ataque armado 8-17 s (pts/tiro)', unidad: 'p2', dir: 1, base: MR.armado.base, meta: MR.armado.meta, liga: MR.armado.liga, pts: MR.armado.pts });
+    if (MR.cuarto) add({ id: 'cuarto:' + MR.cuarto.cuarto, secciones: ['equipos', 'plan'], aspecto: 'Cuartos', lado: 'Ataque', label: `${MR.cuarto.cuarto}.º cuarto · puntos propios por partido`, unidad: 'n1', dir: 1, base: MR.cuarto.base / X.n, meta: MR.cuarto.meta / X.n, pts: (MR.cuarto.meta - MR.cuarto.base) / X.n });
+    /* Equipos · hoja de ruta: fortalezas que se sostienen, ajustes y quiebres que suben un escalón. */
+    const G = grupos(X), P = (X.A && X.A.P) || {};
+    G.fo.forEach((m) => { const piso = enPercentil(X.idx, m.k, 70); if (esNum(piso)) add({ id: 'm:' + m.k, secciones: ['equipos'], aspecto: ASPECTO_M[m.k] || 'Ataque', lado: ladoM(m.k), label: m.label, unidad: unidadDe(m.k), dir: dirM(m.k), tipo: 'sostener', base: m.valor, meta: piso, liga: m.med }); });
+    [[G.aj, 70], [G.qu, 40]].forEach(([l, pObj]) => l.forEach((m) => { const obj = enPercentil(X.idx, m.k, pObj); if (!esNum(obj)) return; const meta = m.valor + MITAD * (obj - m.valor);
+      add({ id: 'm:' + m.k, secciones: ['equipos'].concat(m.k === 'eFG Opp%' ? ['plan'] : []), aspecto: ASPECTO_M[m.k] || 'Ataque', lado: ladoM(m.k), label: m.label, unidad: unidadDe(m.k), dir: dirM(m.k), base: m.valor, meta, liga: m.med, pts: ganancia(m.k, m.valor, meta, P) }); }));
+    /* Plan · franjas del reloj, pérdidas y triple propio (a la liga). */
+    const Rl = X.reloj, Ll = X.paq.liga && X.paq.liga.reloj;
+    if (Rl && Rl.con && Ll && Ll.f) {
+      const k = Rl.favor.f.map(x => x[0]).indexOf(Math.max(...Rl.favor.f.map(x => x[0])));
+      const p0 = pptDe(Rl.favor.f[k]), lp = pptDe(Ll.f[k]);
+      if (k !== 1 && esNum(p0) && esNum(lp) && p0 < lp) add({ id: 'rf:' + k, secciones: ['plan'], aspecto: 'Ritmo y reloj', lado: 'Ataque', label: `${['Ataque en transición 0-7 s', 'Ataque armado 8-17 s', 'Final del reloj 18-24 s'][k]} (pts/tiro)`, unidad: 'p2', dir: 1, base: p0, meta: lp, liga: lp, pts: (lp - p0) * Rl.favor.f[k][0] / X.n });
+      const pa = pptDe(Rl.contra.f[1]), la = pptDe(Ll.f[1]);
+      if (esNum(pa) && esNum(la) && pa > la) { const m = pa - MITAD * (pa - la); add({ id: 'rc:1', secciones: ['plan'], aspecto: 'Defensa', lado: 'Defensa', label: 'Defensa en juego armado 8-17 s (pts/tiro concedido)', unidad: 'p2', dir: -1, base: pa, meta: m, liga: la, pts: (pa - m) * Rl.contra.f[1][0] / X.n }); }
+    }
+    const M = X.metricas;
+    ['PePP%', 'T3%'].forEach((k) => { const m = M[k]; if (!m || !esNum(m.valor) || !esNum(m.med)) return; const peor = dirM(k) < 0 ? m.valor > m.med : m.valor < m.med; if (!peor) return;
+      add({ id: 'm:' + k, secciones: ['plan'], aspecto: ASPECTO_M[k], lado: 'Ataque', label: m.label, unidad: 'pct', dir: dirM(k), base: m.valor, meta: m.med, liga: m.med, pts: k === 'T3%' && esNum(P.T3I) ? (m.med - m.valor) * 3 * P.T3I : ganancia(k, m.valor, m.med, P) }); });
+    /* Jugadores · el PPP de cada uno (mitad del camino a la mediana, o sostenerla). */
+    (X.jug || []).forEach((j) => { if (j.PLAYS < 12 || !esNum(j.ppp) || !esNum(X.mPPP)) return; const L = lecturaJugador(j, X);
+      add({ id: 'ppp:' + clave(j.nombre), secciones: ['jugadores'], aspecto: 'Jugadores', lado: 'Ataque', label: `${corto(j.nombre)} · PPP`, unidad: 'p2', dir: 1, tipo: L.meta ? 'mejorar' : 'sostener', base: j.ppp, meta: L.meta || X.mPPP, liga: X.mPPP }); });
+    /* Clasificación · el ritmo de victorias que piden los escenarios. */
+    const vic = victoriasPedidas(X);
+    if (vic) add({ id: 'victorias', secciones: ['clasificacion'], aspecto: 'Resultado', lado: 'Resultado', label: vic.label, unidad: 'pct', dir: 1, base: vic.base, meta: vic.meta });
+    const m0 = X.c.meta;
+    return { version: 1, ciclo: { numero: m0.numero, desde: m0.desde, hasta: m0.hasta, equipo: m0.equipo || null }, resultado: resultadoDe(X), metas: lista };
+  }
+  /** El % de victorias que piden los escenarios (el borde de la zona, o el 50 %). */
+  function victoriasPedidas(X) {
+    const F = (X.doc && X.doc.formato) || {}, total = F.partidosPorEquipo || null;
+    const g = X.c.resultados.record.g, p = X.c.resultados.record.p;
+    if (!total || g + p === 0) return null;
+    const quedan = Math.max(0, total - g - p); if (!quedan) return null;
+    const A = X.anterior && Array.isArray(X.anterior.filas) && X.anterior.filas.length ? X.anterior : null;
+    let obj = Math.ceil(total / 2), label = 'Victorias · el ritmo que pide el 50 % de la temporada';
+    if (A) { const fa = A.filas.slice().sort((a, b) => b.pg - a.pg), rec = (F.fases || []).find(f => f.puestos); const borde = rec && fa[rec.puestos[1] - 1] ? fa[rec.puestos[1] - 1].pg : null;
+      if (esNum(borde)) { obj = borde; label = `Victorias · el ritmo que pide el borde de la zona (${rec.label || 'clasificación'})`; } }
+    const meta = Math.max(0, obj - g) / quedan;
+    return meta > 0 && meta <= 1 ? { base: g / (g + p), meta, label } : null;
+  }
+  /** Cada meta congelada, medida en este ciclo. */
+  function evaluar(previo, X) {
+    return ((previo && previo.metas) || []).map((m) => {
+      const v = valorIndicador(X, m.id), r = Object.assign({}, m, { valor: v });
+      if (!esNum(v)) return Object.assign(r, { veredicto: 'sin', pct: null });
+      if (m.tipo === 'sostener') { const ok = m.dir > 0 ? v >= m.meta - 1e-9 : v <= m.meta + 1e-9; return Object.assign(r, { veredicto: ok ? 'cumplida' : 'retrocedio', pct: ok ? 100 : null }); }
+      const falta = m.meta - m.base;
+      if (Math.abs(falta) < 1e-9) return Object.assign(r, { veredicto: 'cumplida', pct: 100 });
+      const pct = 100 * (v - m.base) / falta;
+      return Object.assign(r, { pct, veredicto: pct >= 100 ? 'cumplida' : pct >= 40 ? 'medias' : pct < 0 ? 'retrocedio' : 'no' });
+    });
+  }
+  const VEREDICTO = { cumplida: ['pos', '✓', 'cumplida'], medias: ['warn', '◐', 'a medias'], no: ['neg', '✗', 'no cumplida'], retrocedio: ['neg', '✗', 'retrocedió'], sin: ['info', '◆', 'sin dato'] };
+  const ORDEN_V = { retrocedio: 0, no: 1, medias: 2, sin: 3, cumplida: 4 };
+  const TITULO_SEC = { principal: 'Principal', equipos: 'Equipos', jugadores: 'Jugadores', clasificacion: 'Clasificación', fixture: 'Fixture', plan: 'Plan de intervención' };
+  /* § Evolución · lo que se pidió en el ciclo anterior contra lo que pasó en este. */
+  function cardEvolucion(X) {
+    const P = X.previo; if (!P || !Array.isArray(P.metas)) return '';
+    const num = P.ciclo && P.ciclo.numero !== undefined ? P.ciclo.numero : X.c.meta.numero - 1;
+    const E = evaluar(P, X), juz = E.filter(e => e.veredicto !== 'sin');
+    const cuenta = v => E.filter(e => e.veredicto === v).length;
+    const ok = cuenta('cumplida'), med = cuenta('medias'), mal = cuenta('no') + cuenta('retrocedio'), sin = cuenta('sin');
+    const rec = P.reconstruidas ? `<p class="ci-sm ci-mut">Metas reconstruidas: el Ciclo ${num} se publicó antes de que existiera esta sección, así que sus metas se rearmaron con los datos de su cierre.</p>` : '';
+    if (!E.length) return card(`Evolución · metas del Ciclo ${num}`, rec + vacio(`El Ciclo ${num} no dejó metas que se separen de la liga.`));
+    const w = x => (juz.length ? (100 * x / juz.length).toFixed(1) : 0) + '%';
+    const barra = `<div class="ci-evbar" role="img" aria-label="${ok} cumplidas, ${med} a medias, ${mal} no cumplidas"><i class="pos" style="--w:${w(ok)}"></i><i class="warn" style="--w:${w(med)}"></i><i class="neg" style="--w:${w(mal)}"></i></div>`;
+    const verd = `<div class="ci-evtop"><div class="ci-evn"><b>${ok}</b> de ${juz.length} metas cumplidas</div>${barra}
+      <div class="ci-evley"><span class="pos">✓ ${ok} cumplidas</span><span class="warn">◐ ${med} a medias</span><span class="neg">✗ ${mal} no cumplidas o en retroceso</span>${sin ? `<span class="ci-mut">◆ ${sin} sin dato (sin muestra: no se juzgan)</span>` : ''}</div></div>`;
+    /* Por sección y por aspecto. */
+    const grupo = (claveDe, orden) => { const g = {}; E.forEach(e => (claveDe(e)).forEach((k) => { g[k] = g[k] || { ok: 0, tot: 0 }; if (e.veredicto !== 'sin') { g[k].tot++; if (e.veredicto === 'cumplida') g[k].ok++; } }));
+      return (orden || Object.keys(g)).filter(k => g[k]).map(k => `<div class="ci-evg ${!g[k].tot ? 'info' : g[k].ok === g[k].tot ? 'pos' : g[k].ok === 0 ? 'neg' : 'warn'}"><span>${esc(TITULO_SEC[k] || k)}</span><b>${g[k].tot ? g[k].ok + '/' + g[k].tot : '◆ sin dato'}</b></div>`).join(''); };
+    const porSec = grupo(e => e.secciones || [], ['principal', 'equipos', 'jugadores', 'clasificacion', 'fixture', 'plan']);
+    const porAsp = grupo(e => [e.aspecto || 'Otro']);
+    /* Una barra por meta: la marca vertical es la meta; el relleno, el % del camino (hasta 150 %). */
+    const fmtU = (e, v) => (UNIDAD[e.unidad] || UNIDAD.n1)(v);
+    const fila = (e) => { const [t, gl, txt] = VEREDICTO[e.veredicto];
+      const ancho = esNum(e.pct) ? Math.max(0, Math.min(150, e.pct)) / 1.5 : (e.veredicto === 'cumplida' ? 100 / 1.5 : 0);
+      const camino = e.tipo === 'sostener' ? `sostener ${e.dir > 0 ? '≥' : '≤'} ${fmtU(e, e.meta)}` : `${fmtU(e, e.base)} → ${fmtU(e, e.meta)}`;
+      return `<div class="ci-evm ${t}"><div class="ci-evh"><span>${esc(e.label)}</span><b>${gl} ${txt}${esNum(e.pct) && e.tipo !== 'sostener' ? ` · ${Math.round(e.pct)} % del camino` : ''}</b></div>
+        <div class="ci-evt"><i style="--w:${ancho.toFixed(1)}%"></i><em></em></div>
+        <div class="ci-evd"><span>Meta: ${camino}</span><span>Real: <b>${esNum(e.valor) ? fmtU(e, e.valor) : '—'}</b></span><span class="ci-mut">${esc((e.secciones || []).map(x => TITULO_SEC[x] || x).join(' · '))}</span></div></div>`; };
+    const filas = E.slice().sort((a, b) => ORDEN_V[a.veredicto] - ORDEN_V[b.veredicto] || (b.pts || 0) - (a.pts || 0)).map(fila).join('');
+    /* Impacto: el resultado antes y después, y lo que explicarían las metas (estimación). */
+    const A0 = P.resultado || {}, A1 = resultadoDe(X);
+    const expl = SOLAPE * sum(E.filter(e => e.tipo !== 'sostener' && esNum(e.pts) && esNum(e.pct)), e => e.pts * Math.max(0, Math.min(1, e.pct / 100)));
+    const dd = esNum(A0.difPP) && esNum(A1.difPP) ? A1.difPP - A0.difPP : null;
+    const imp = `<div class="ci-tiles t4">${tile('Récord', `${A0.g}-${A0.p} → ${A1.g}-${A1.p}`, `Ciclo ${num} → Ciclo ${X.c.meta.numero}`, A1.g > A0.g ? 'pos' : A1.g < A0.g ? 'neg' : 'info')}
+      ${tile('Diferencia por partido', `${sg(A0.difPP)} → ${sg(A1.difPP)}`, esNum(dd) ? `${sg(dd)} por partido` : '', esNum(dd) ? (dd > 0 ? 'pos' : dd < 0 ? 'neg' : 'info') : 'info')}
+      ${esNum(A0.net) && esNum(A1.net) ? tile('NET (por 100 pos.)', `${sg(A0.net)} → ${sg(A1.net)}`, sg(A1.net - A0.net) + ' de cambio', A1.net > A0.net ? 'pos' : 'neg') : ''}
+      ${tile('Lo explicado por las metas', sg(expl) + ' pts', 'por partido · estimación, no causa', expl > 0.05 ? 'pos' : 'info')}</div>
+      ${nota(`«Lo explicado por las metas» suma lo que vale cada meta en puntos por partido, en la parte del camino que se recorrió, y toma la mitad porque las metas se pisan entre sí. Es una estimación con ${X.n} partidos: describe, no prueba que la mejora venga de ahí.`)}`;
+    /* Lo que queda abierto pasa al ciclo siguiente. */
+    const abiertas = E.filter(e => e.veredicto === 'no' || e.veredicto === 'retrocedio' || e.veredicto === 'medias');
+    const cierre = abiertas.length ? `<p class="ci-lee">Siguen abiertas para el Ciclo ${X.c.meta.numero + 1}: ${esc(abiertas.slice(0, 6).map(e => e.label.replace(/ \(.*\)$/, '')).join(', ').replace(/, ([^,]*)$/, ' y $1'))}${abiertas.length > 6 ? ` y ${abiertas.length - 6} más` : ''}.</p>` : `<p class="ci-lee">Todas las metas que se pudieron medir se cumplieron: el Ciclo ${X.c.meta.numero + 1} arranca con metas nuevas.</p>`;
+    return card(`Evolución · metas del Ciclo ${num} contra el Ciclo ${X.c.meta.numero}`, `${rec}${verd}
+      <h4>Por sección</h4><div class="ci-evgs">${porSec}</div><h4>Por aspecto</h4><div class="ci-evgs">${porAsp}</div>
+      <h4>Meta por meta · las que fallaron primero</h4><div class="ci-evms">${filas}</div>
+      <h4>Impacto en el rendimiento</h4>${imp}${cierre}
+      ${nota('% del camino = lo que se movió ÷ lo que había que moverse desde la base del ciclo anterior. ✓ 100 % o más · ◐ 40 a 99 % · ✗ menos de 40 % · ✗ retrocedió = peor que la base · ◆ sin muestra en este ciclo.')}`);
+  }
+
   function html(modelo, seccion) {
-    if (!modelo || !modelo.ok) return '';
+    if (!modelo || !modelo.ok || !modelo.secciones[seccion]) return '';
     const cards = (modelo.secciones[seccion] || []).map((f) => { try { return f(modelo.contexto); } catch (err) { return `<div class="ci-card"><p class="ci-vacio">Esta card no se pudo armar (${esc(err && err.message)}).</p></div>`; } }).join('');
     asegurarEstilo();
     return `<div class="ci">${cards}</div>`;
@@ -1753,6 +1913,13 @@ const SGADD_CICLOINFORME = (function () {
 .ci-mv .ci-mvr{display:grid;grid-template-columns:1fr auto 1fr auto;gap:10px;align-items:center;border-bottom:1px solid var(--ci-line);padding:6px 0;font-size:13px}.ci-fl{color:var(--ci-mut);font-size:12px}
 .ci-vts{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}.ci-vt{border:1px solid var(--ci-line);padding:8px}.ci-vt.jug{background:var(--ci-infobg)}.ci-vd{font:800 18px 'Barlow Condensed',sans-serif}.ci-vr{font-size:11.5px}.ci-vn{font-size:17px;font-family:'Barlow Condensed',sans-serif;margin-top:4px}.ci-vn.pos{color:var(--ci-pos)}.ci-vn.info{color:var(--ci-info)}.ci-vn.warn{color:var(--ci-warn)}.ci-vn.neg{color:var(--ci-neg)}
 .ci-resp{display:flex;gap:2px;margin:8px 0;font-size:13px}.ci-rA{flex:0 0 var(--w);background:var(--ci-infobg);border:1px solid var(--ci-info);padding:6px 8px;min-width:0}.ci-rD{flex:0 0 var(--w);background:var(--ci-posbg);border:1px solid var(--ci-pos);padding:6px 8px;min-width:0}
+.ci-evtop{margin:4px 0 10px}.ci-evn{font:800 30px/1.1 'Barlow Condensed',sans-serif}.ci-evn b{color:var(--ci-pos)}.ci-evbar{display:flex;height:16px;gap:2px;margin:8px 0;background:var(--ci-line)}.ci-evbar i{flex:0 0 var(--w);min-width:0}.ci-evbar i.pos{background:var(--ci-pos)}.ci-evbar i.warn{background:var(--ci-warn)}.ci-evbar i.neg{background:var(--ci-neg)}
+.ci-evley{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px}.ci-evley .pos{color:var(--ci-pos)}.ci-evley .warn{color:var(--ci-warn)}.ci-evley .neg{color:var(--ci-neg)}
+.ci-evgs{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}.ci-evg{display:flex;gap:10px;align-items:baseline;border:1px solid var(--ci-line);border-left:4px solid var(--ci-warn);padding:5px 10px;font-size:12.5px}.ci-evg.pos{border-left-color:var(--ci-pos)}.ci-evg.info{border-left-color:var(--ci-info)}.ci-evg.neg{border-left-color:var(--ci-neg)}.ci-evg b{font:800 16px 'Barlow Condensed',sans-serif}
+.ci-evms{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:10px}.ci-evm{border:1px solid var(--ci-line);border-left:4px solid var(--ci-info);padding:8px 10px;min-width:0}.ci-evm.pos{border-left-color:var(--ci-pos)}.ci-evm.neg{border-left-color:var(--ci-neg)}.ci-evm.warn{border-left-color:var(--ci-warn)}
+.ci-evh{display:flex;justify-content:space-between;gap:8px;font-size:12.5px}.ci-evh b{white-space:nowrap}.ci-evm.pos .ci-evh b{color:var(--ci-pos)}.ci-evm.neg .ci-evh b{color:var(--ci-neg)}.ci-evm.warn .ci-evh b{color:var(--ci-warn)}.ci-evm.info .ci-evh b{color:var(--ci-info)}
+.ci-evt{position:relative;height:10px;background:var(--ci-line);margin:6px 0}.ci-evt i{position:absolute;left:0;top:0;bottom:0;width:var(--w);background:var(--ci-info)}.ci-evm.pos .ci-evt i{background:var(--ci-pos)}.ci-evm.neg .ci-evt i{background:var(--ci-neg)}.ci-evm.warn .ci-evt i{background:var(--ci-warn)}.ci-evt em{position:absolute;left:66.67%;top:-3px;bottom:-3px;width:2px;background:var(--ci-fg)}
+.ci-evd{display:flex;flex-wrap:wrap;gap:2px 12px;font-size:11.5px}
 @media screen and (max-width:560px){.ci-pr{grid-template-columns:104px 52px 1fr}.ci-mv .ci-mvr{grid-template-columns:1fr}.ci-resp{flex-direction:column}.ci-rA,.ci-rD{flex:none}}
 @media print{.ci{--ci-card:#fff;--ci-line:#cbd5e1;--ci-fg:#0f1b2e;--ci-mut:#475569;--ci-pos:#0e7a4f;--ci-posbg:#dff3ea;--ci-neg:#b4232c;--ci-negbg:#fbe4e4;--ci-info:#1d5fb4;--ci-infobg:#e1ecfa;--ci-warn:#8a5a06;--ci-warnbg:#fbf0d5}.ci *{print-color-adjust:exact;-webkit-print-color-adjust:exact}.ci-card{break-inside:avoid}}`;
   function asegurarEstilo() {
@@ -1760,7 +1927,7 @@ const SGADD_CICLOINFORME = (function () {
     const s = document.createElement('style'); s.id = 'ci-estilo'; s.textContent = CSS; document.head.appendChild(s);
   }
 
-  return { armar, html, ubicar, rotacion, porPeriodo, relojDelCiclo, jugadoresDelCiclo, semaforo, metas, corto, puntosEntre, detalleDe, ritmoCuarto, CSS };
+  return { armar, html, metasDelCiclo, evaluar, valorIndicador, ubicar, rotacion, porPeriodo, relojDelCiclo, jugadoresDelCiclo, semaforo, metas, corto, puntosEntre, detalleDe, ritmoCuarto, CSS };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SGADD_CICLOINFORME;

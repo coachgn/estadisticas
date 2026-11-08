@@ -324,7 +324,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=363`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=364`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16862,3 +16862,43 @@ Assets en `?v=363`. `server/lib/multilibro.js` (`filtrar`, `vinculadosDe`) y `js
 - **Un torneo de UNA sola zona con `participan` vacío** también es libro de su zona (`propio`).
 - `test-interzonal.js` 5 ter reescrito a la regla nueva (la permanencia trae el partido de los dos rivales entre sí) y suma el libro de rondas: River-Gimnasia entra, Jujuy-Villa Mitre no, los jugadores y promedios de Gimnasia no. `test-llave-bahia.js`: el equipo que solo está en la postemporada no entra a la temporada. Verificado al revés, tres mutaciones caen.
 - **Requiere desplegar el backend** (`cd server && npx vercel --prod`). No verificado en el navegador.
+
+## 170. EVOLUCIÓN · LAS METAS DEL CICLO ANTERIOR CONTRA EL CICLO NUEVO, Y EL LINK DEL MAIL (2026-11-08)
+
+Assets en `?v=364`. `test-cicloinforme.js` (4 bis), `test-ciclospublicar.js` y `test-ciclosui.js` lo fijan.
+
+### Las metas que se congelan · `SGADD_CICLOINFORME.metasDelCiclo(modelo)`
+Junta en una lista, SIN repetir un indicador, todas las metas que fija el informe:
+
+| Sección | Metas |
+|---|---|
+| Principal | Fuga 1 · triple del rival (`t3r`) · Fuga 2 · transición defensiva 0-7 s (`trans`) · Fuga 3 · zona fría (`zona:Zn`) |
+| Equipos | dobles cortos (`cortos`) · ataque armado 8-17 s (`rf:1`) · peor cuarto (`cuarto:k`, por partido) · la hoja de ruta (`m:<métrica>`: fortalezas a SOSTENER sobre p70, ajustes y quiebres a la mitad del camino al p70 / p40) |
+| Jugadores | el PPP de cada uno con 12+ jugadas (`ppp:<nombre>`): mitad del camino a la mediana, o sostenerla |
+| Clasificación | el % de victorias que piden los escenarios (`victorias`): el borde de la zona con la tabla anterior, o el 50 % |
+| Plan | la franja del reloj de más volumen (`rf:k`) · defensa en juego armado (`rc:1`) · pérdidas y triple propio a la liga (`m:PePP%`, `m:T3%`) y el eco de las fugas en el tablero |
+| Fixture | no fija metas: describe el calendario |
+
+Cada meta: `id`, `secciones`, `aspecto` (Defensa, Tiro, Cuidado del balón, Rebote, Ritmo y reloj, Cuartos, Jugadores, Resultado…), `dir` (+1/−1), `tipo` (mejorar / sostener), `base`, `meta`, `liga` y `pts` por partido. Una meta repetida (la fuga y el tablero) suma secciones, no filas.
+
+### Dónde viven
+- **El navegador del admin las arma** (necesita el libro y el paquete juntos) y las manda en `/cerrar` con la foto (`metas`).
+- **El servidor** (`FOTO.validarMetas`) acota la forma —ids con un vocabulario cerrado validados CRUDOS, sin HTML, secciones conocidas, a lo sumo 120— y al PUBLICAR las guarda en el doc de gestión (`doc.metas`) con el **resultado del ciclo sacado de SU dato** (récord, PF, PC, diferencia); del navegador solo toma el NET. Nunca se reemplazan: un publicado no se vuelve a publicar.
+- `/publicados` devuelve `metas` por ciclo.
+
+### La evaluación · `evaluar(previo, X)` y `valorIndicador(X, id)`
+El MISMO indicador mide la base en N y el valor en N+1. `% del camino` = (valor − base) ÷ (meta − base), con la dirección ya dentro de la resta: ✓ ≥ 100 % · ◐ 40-99 % · ✗ < 40 % · ✗ retrocedió (< 0) · ◆ sin dato (sin muestra: zona con < 5 tiros, franja con < 5, triple rival < 10, jugador < 12 jugadas). Una meta de SOSTENER se cumple si no cae bajo el piso. La liga de las metas es la del cierre de N (congelada); el valor es el del equipo en N+1.
+
+### La sección Evolución
+`out.secciones.evolucion` existe solo con `ctx.previo`. Primera pestaña y **primera hoja del PDF** (`FOTO.SECCIONES[0]`). Arriba el veredicto «X de N metas cumplidas» con una barra verde/ámbar/rojo; después la cuenta por sección y por aspecto, una barra por meta (la marca vertical es la meta, el relleno el % del camino hasta 150 %, las que fallaron primero), el impacto (récord, diferencia por partido y NET antes → después, y «lo explicado por las metas» = Σ pts × % recorrido × 0,5 por el solape, rotulado como estimación, no causa) y las metas que siguen abiertas.
+
+### El Ciclo 0 · metas reconstruidas
+Se publicó antes de esto y no tiene metas guardadas. `previoDe` (sgadd-ciclosui.js) toma las del publicado N−1 y, si no las tiene, arma el informe de N−1 con la liga al cierre de N−1 y le saca las metas UNA vez por categoría y equipo, rotuladas «metas reconstruidas». No se cachean hasta que llegó el archivo del torneo.
+
+### El link del mail
+`linkDelCiclo(club, clave)` = `?club=<club>&ciclo=<clave>#ciclos`. `sgadd-club.js` lo lee en el primer script, lo saca de la barra (`replaceState`, como el código de invitación) y lo guarda en `sessionStorage` (`sgadd.cicloPendiente`) para que sobreviva al login, que recarga la página. `init()` y `destino()` del login abren Ciclos; `abrirPendiente()` elige ese ciclo publicado (el cliente) o ese número (el admin), abre Evolución si el ciclo tiene, y lo consume.
+
+### Para producción
+1. Deploy del backend (`cd server && npx vercel --prod`): sin él, `/cerrar` ignora las metas y el mail sigue con el link viejo.
+2. Push del front (`?v=364`).
+3. **No verificado en el navegador ni en un PDF real**: probado con el paquete real del Ciclo 0 sin el índice del libro (8 metas) y con el servidor de mentira.

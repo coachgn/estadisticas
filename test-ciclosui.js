@@ -127,6 +127,21 @@ console.log('El cuerpo técnico ve SOLO lo publicado (2026-11-06)');
   UI.estado.cierre = null;
 }
 
+console.log('Evolución y el link del mail (2026-11-08)');
+{
+  check('Evolución es la primera pestaña, y solo aparece con un ciclo anterior', UI.SECCIONES[0][0] === 'evolucion');
+  UI.estado.publicados = [{ clave: 'c0n4', meta: { numero: 0 }, metas: { metas: [{ id: 't3r', base: 0.4, meta: 0.35 }] } }];
+  const prev = UI.previoDe(null, { meta: { numero: 1 } }, { metasDelCiclo: () => null, armar: () => null });
+  check('el ciclo siguiente toma las metas congeladas del publicado', prev && prev.metas[0].id === 't3r');
+  check('el Ciclo 0 no tiene evolución', UI.previoDe(null, { meta: { numero: 0 } }, { metasDelCiclo: () => null }) === null);
+  const C0 = global.CLUB; let consumido = false;
+  global.CLUB = Object.assign({}, C0 || {}, { estado: (C0 && C0.estado) || { id: 'jujuy' }, cicloPendiente: () => 'c0n4', consumirCiclo: () => { consumido = true; } });
+  ROL = 'CLIENTE'; UI.estado.pubClave = null;
+  UI.abrirPendiente();
+  check('el link del mail abre ese ciclo publicado y se consume', UI.estado.pubClave === 'c0n4' && consumido);
+  global.CLUB = C0; ROL = 'ADMIN'; UI.estado.publicados = []; UI.estado.pubClave = null;
+}
+
 console.log('El admin ve la sección como el cuerpo técnico (2026-11-06)');
 {
   ROL = 'ADMIN';
@@ -136,7 +151,7 @@ console.log('El admin ve la sección como el cuerpo técnico (2026-11-06)');
   UI.estado.vistaCliente = 'hoy';
   ha = UI.html(idx);
   check('«hoy» sin publicados muestra lo mismo que el cliente', /Todavía no hay ciclos publicados/.test(ha) && !/Sellar, publicar|Auditoría del ciclo/.test(ha));
-  UI.estado.modelo = { ciclo: { meta: { numero: 0, desde: '2026-10-10', hasta: '2026-10-13', equipo: 'JUJUY' }, resultados: { record: { g: 4, p: 0 } } }, modelo: {} };
+  UI.estado.modelo = { ciclo: { meta: { numero: 0, desde: '2026-10-10', hasta: '2026-10-13', equipo: 'JUJUY' }, resultados: { record: { g: 4, p: 0 } } }, modelo: { secciones: { principal: [] } } };
   global.SGADD_CICLOINFORME = { html: (mo, id) => '<div class="ci">SIM-' + id + '</div>', CSS: '.ci{}' };
   UI.estado.vistaCliente = 'simulado';
   ha = UI.html(idx);
