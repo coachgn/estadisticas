@@ -176,7 +176,7 @@ node test-alertas-partidos.js # 38 tests · las alertas de partido: -4 dias a la
 
 node test-carga-manual.js  #  24 tests · la doble alerta de carga de los torneos manuales (punto 164)
 
-node test-predicciones.js  #  34 tests · lo simulado contra lo que pasó: congelar antes del partido, HSETNX,
+node test-predicciones.js  #  45 tests · lo simulado contra lo que pasó: congelar antes del partido, HSETNX,
                            #             el resultado real, el resumen de calibración y la card (punto 171)
 
 node test-ecosistema.js    #  23 tests · el auditor del ecosistema: fechas, claves de escudo,
@@ -327,7 +327,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=365`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=366`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16925,6 +16925,12 @@ server/vercel.json              cron «0 11 * * *» (08:00 AR)
 - **La card** «📈 Calibración del modelo», al pie del Simulador (solo admin): pide lo congelado de la zona de la planilla (`torneoId`/`zonaId`) y lo cruza con `idxTemporada()`, así un playoff también se evalúa. Una categoría sin torneo lo dice.
 - `sgadd-4factores.js` y `sgadd-predicciones.js` se sumaron a `server/lib/compartido/` (el cron congela con el mismo modelo que dibuja el panel).
 - Medido en la demo, congelando día por día con el libro hasta el día anterior (26 partidos): MAE 9,0 · acierta el ganador 69 % · P10-P90 cubre el 85 %.
+
+### Los cruces entre zonas (2026-11-09)
+En una postemporada interzonal (APB) el rival no está en el libro de la zona y `planificarZona` lo deja pendiente. Un segundo pase por torneo (`planificarEntreZonas`, salida `zona: 'entre-zonas'`) arma el índice con los libros de TODAS las zonas regulares (`hojasDeTorneo`: une las columnas, las filas TIPO solo de la primera zona) y proyecta esos cruces. El registro lleva `entreZonas` y `zonas`, y se guarda con HSETNX en la clave de las DOS zonas: cada club lo ve en su card.
+- **Límite del modelo:** en la fase regular las zonas no se cruzan, así que no hay datos que conecten sus niveles; el modelo las trata como una sola liga.
+- **El resultado de un cruce entre zonas se lee desde un solo lado** (`resultados`): en el libro de la zona el rival de otra zona no es un equipo de la lista (punto 169), pero la fila propia trae PTSopp y el texto del cruce lo nombra. Sin PTSopp no se inventa.
+- Un lugar a definir («Ganador Partido A») o un equipo de otra categoría siguen sin cruzar y se omiten.
 
 ### Lo que NO hace todavía
 - **No corrige el modelo con sus errores.** El sesgo por equipo queda a la vista; usarlo como corrección encogida es el paso siguiente, cuando haya muestra (decenas de partidos congelados por zona).

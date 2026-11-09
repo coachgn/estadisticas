@@ -157,6 +157,71 @@ const IDX = SGADD.construirIndice(HOJAS, { fase: TRAMO.fase, torneo: TRAMO.torne
   check('sin predicciones dice qué falta', /Todavía no hay predicciones congeladas/.test(F4.simuladorCalibracionHtml([], { torneo: 'demo', zona: 'a' })));
   check('sin torneo dice que la categoría no está enganchada', /no está enganchada a un torneo/.test(F4.simuladorCalibracionHtml(null, null)));
 
+  /* ================================================================ 7 */
+  titulo('7 · los cruces entre zonas (postemporada interzonal)');
+  /* El libro cortado se parte en dos zonas por equipo: cada una trae solo
+     sus filas, como el libro de una zona de verdad. */
+  const claves = IDX.lista().map(e => e.clave).sort();
+  const enA = new Set(claves.slice(0, Math.floor(claves.length / 2)));
+  const deZona = (h, a) => {
+    const out = {};
+    Object.keys(h).forEach((k) => {
+      out[k] = { cols: h[k].cols, filas: h[k].filas.filter((f) => {
+        const eq = String(f.EQUIPO || '').trim();
+        if (!eq || /\bTIPO\b/i.test(eq)) return true;
+        return enA.has(SGADD.claveEquipo(eq)) === a;
+      }) };
+    });
+    return out;
+  };
+  const hA = deZona(corte.hojas, true), hB = deZona(corte.hojas, false);
+  const kA = claves.find(k => enA.has(k)), kB = claves.find(k => !enA.has(k));
+  const cruce = [{ fecha: D, local: nombreDe(kA), visitante: nombreDe(kB), estado: 'PROGRAMADO' }];
+  const pz = RUTA.planificarZona(cruce, hA, {}, {}, D, Date.now());
+  check('en el libro de una zona, el rival de la otra queda pendiente', pz.registros.length === 0 && pz.pendientes.length === 1);
+  const eA = deZona(HOJAS, true), eB = deZona(HOJAS, false);
+  const ht = RUTA.hojasDeTorneo([eA, eB]);
+  const tipos = ((ht['PROMEDIOS E'] || {}).filas || []).filter(f => /\bTIPO\b/i.test(String(f.EQUIPO || '')) || !String(f.EQUIPO || '').trim());
+  const tiposA = (eA['PROMEDIOS E'] ? eA['PROMEDIOS E'].filas : []).filter(f => /\bTIPO\b/i.test(String(f.EQUIPO || '')) || !String(f.EQUIPO || '').trim());
+  check('las filas TIPO salen solo de la primera zona', tiposA.length > 0 && tipos.length === tiposA.length);
+  const zfilas = (z, h) => ({ zona: z, hojas: h });
+  const ez = RUTA.planificarEntreZonas([zfilas('a', hA), zfilas('b', hB)], cruce, {}, {}, D, Date.now());
+  check('con los libros de las dos zonas, el cruce se proyecta', ez.registros.length === 1);
+  check('y el registro dice que es entre zonas y a qué dos zonas va', ez.registros[0] && ez.registros[0].entreZonas === true
+    && ez.registros[0].zonas.join(',') === 'a,b');
+  check('la proyección usa los mismos números del simulador', ez.registros[0] && typeof ez.registros[0].margen === 'number' && ez.registros[0].pLocal > 0 && ez.registros[0].pLocal < 1);
+
+  const catEZ = { demo: { tipo: 'torneo', fixture: { adaptador: 'basket-club', zonas: { a: 'https://basket-club.com/x' } },
+    categorias: { 'demo-a': { zona: 'a', sheetId: 'LA', label: 'A' }, 'demo-b': { zona: 'b', sheetId: 'LB', label: 'B' } } } };
+  const kvEZ = kvMemoria();
+  const depsEZ = Object.assign({}, deps, { kv: kvEZ, catalogo: catEZ, partidosDe: async () => ({ partidos: cruce }),
+    obtenerLibro: async (id) => ({ hojas: aMatriz(id === 'LA' ? hA : hB) }) });
+  const simEZ = await RUTA.manejarCronPredicciones(cron(true), depsEZ);
+  const salEZ = simEZ.body.zonas.find(z => z.zona === 'entre-zonas');
+  check('el cron suma un pase «entre-zonas» con el cruce', salEZ && salEZ.registros.length === 1 && !kvEZ.ops.includes('HSETNX'));
+  const realEZ = await RUTA.manejarCronPredicciones(cron(false), depsEZ);
+  const salR = realEZ.body.zonas.find(z => z.zona === 'entre-zonas');
+  const enAk = await RUTA.manejarPredicciones({ headers: { authorization: 'Bearer ' + T_ADMIN }, params: { torneo: 'demo', zona: 'a' } }, depsEZ);
+  const enBk = await RUTA.manejarPredicciones({ headers: { authorization: 'Bearer ' + T_ADMIN }, params: { torneo: 'demo', zona: 'b' } }, depsEZ);
+  check('se congela UNA vez y queda en la clave de las dos zonas', salR.congeladas === 1
+    && enAk.body.predicciones.length === 1 && enBk.body.predicciones.length === 1);
+  const otraVez = await RUTA.manejarCronPredicciones(cron(false), depsEZ);
+  check('correrlo de nuevo no pisa nada', otraVez.body.zonas.find(z => z.zona === 'entre-zonas').yaEstaban === 1);
+
+  /* El resultado desde un solo lado: en el libro de la zona el rival de
+     otra zona no es un equipo de la lista, pero su fila trae PTSopp. */
+  const lado = { lista: () => [{ clave: kA, partidos: [{ __id: 'x1', PTS: 80, PTSopp: 74, CONDICION: 'LOCAL', FECHA: D,
+    PARTIDO: nombreDe(kA) + ' vs ' + nombreDe(kB) }] }] };
+  const res1 = P.resultados(lado);
+  check('el resultado se lee desde un solo lado, con PTSopp y el texto del cruce', res1.length === 1 && res1[0].local === kA
+    && res1[0].visitante === kB && res1[0].ptsLocal === 80 && res1[0].ptsVisitante === 74 && res1[0].unLado === true);
+  const ladoV = { lista: () => [{ clave: kB, partidos: [{ __id: 'x2', PTS: 70, PTSopp: 75, CONDICION: 'VISITANTE', FECHA: D,
+    PARTIDO: nombreDe(kA) + ' vs ' + nombreDe(kB) }] }] };
+  const res2 = P.resultados(ladoV);
+  check('y del lado visitante, con la localía dada vuelta', res2.length === 1 && res2[0].local === kA && res2[0].ptsLocal === 75 && res2[0].ptsVisitante === 70);
+  check('sin PTSopp no se inventa el resultado', P.resultados({ lista: () => [{ clave: kA, partidos: [{ __id: 'x3', PTS: 80, CONDICION: 'LOCAL', FECHA: D,
+    PARTIDO: nombreDe(kA) + ' vs ' + nombreDe(kB) }] }] }).length === 0);
+
   console.log('\n' + ok + ' OK · ' + mal + ' FALLARON');
   process.exit(mal ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

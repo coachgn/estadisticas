@@ -90,6 +90,65 @@ function planificarZona(partidos, hojas, formato, alias, hoy, ahoraMs) {
     const reg = P.congelar(F4, ir.idx, c, ahoraMs);
     if (reg.omitido) omitidos.push({ clave: reg.clave, motivo: reg.motivo }); else registros.push(reg);
   });
+  const pendientes = cruzado.partidos.map((x, i) => (x.sinCruce ? partidos[i] : null)).filter(Boolean);
+  return { registros: registros, omitidos: omitidos, sinCruce: cruzado.sinCruce, pendientes: pendientes, tramo: ir.tramo && ir.tramo.id };
+}
+
+/* LOS CRUCES ENTRE ZONAS. En una postemporada interzonal el rival no está
+   en el libro de la zona, así que `planificarZona` lo deja «sin cruce».
+   Se proyecta con un índice armado con los libros de TODAS las zonas del
+   torneo: cada equipo con sus propios partidos. En la fase regular las
+   zonas no se cruzan, así que no hay datos que conecten sus niveles: el
+   modelo los trata como una sola liga. Las filas TIPO (la mediana) se
+   toman solo de la primera zona: dos filas TIPO dejarían la vara a la
+   suerte del orden. */
+const ES_TIPO = /\bTIPO\b/i;
+function hojasDeTorneo(hojasPorZona) {
+  const out = {};
+  /* Cada hoja es { cols, filas } (`matrizAFilas`): las columnas se unen,
+     así un libro con una columna de más no la pierde. */
+  hojasPorZona.forEach((h, i) => {
+    Object.keys(h || {}).forEach((hoja) => {
+      const x = h[hoja] || {};
+      const filas = (x.filas || []).filter((f) => {
+        if (i === 0 || !f) return true;
+        const eq = String(f.EQUIPO || '').trim();
+        return !(!eq && !String(f.NOMBRES || '').trim()) && !ES_TIPO.test(eq) && !ES_TIPO.test(String(f.NOMBRES || ''));
+      });
+      const o = out[hoja] || (out[hoja] = { cols: [], filas: [] });
+      (x.cols || []).forEach((c) => { if (o.cols.indexOf(c) < 0) o.cols.push(c); });
+      o.filas = o.filas.concat(filas);
+    });
+  });
+  return out;
+}
+
+/** Lo puro de los cruces entre zonas: [{zona, hojas}] + los partidos pendientes. */
+function planificarEntreZonas(zonas, partidos, formato, alias, hoy, ahoraMs) {
+  const zonaDe = {};
+  zonas.forEach((z) => {
+    (((z.hojas && z.hojas['Base Datos E']) || {}).filas || []).forEach((f) => {
+      const eq = String((f && f.EQUIPO) || '').trim();
+      if (eq && !ES_TIPO.test(eq)) zonaDe[CORE.claveEquipo(eq)] = z.zona;
+    });
+  });
+  const ir = indiceRegular(formato, hojasDeTorneo(zonas.map(z => z.hojas)));
+  if (!ir) return { registros: [], omitidos: [], sinCruce: [], motivo: 'Los libros no tienen una fase regular.' };
+  const claves = ir.idx.lista().map(e => e.clave);
+  const cruzado = fuentes.cruzarConLibro(partidos, claves, alias, CORE.claveEquipo);
+  const res = P.resultados(ir.idx);
+  const registros = [];
+  const omitidos = [];
+  P.candidatos(cruzado.partidos, hoy).forEach((c) => {
+    const zl = zonaDe[c.localClave], zv = zonaDe[c.visitanteClave];
+    if (!zl || !zv) { omitidos.push({ clave: c.clave, motivo: 'Un equipo no tiene partidos en la fase regular de ninguna zona.' }); return; }
+    if (P.resultadoDe(c, res)) { omitidos.push({ clave: c.clave, motivo: 'Ya está jugado en el libro.' }); return; }
+    const reg = P.congelar(F4, ir.idx, c, ahoraMs);
+    if (reg.omitido) { omitidos.push({ clave: reg.clave, motivo: reg.motivo }); return; }
+    reg.entreZonas = zl !== zv;
+    reg.zonas = zl === zv ? [zl] : [zl, zv];
+    registros.push(reg);
+  });
   return { registros: registros, omitidos: omitidos, sinCruce: cruzado.sinCruce, tramo: ir.tramo && ir.tramo.id };
 }
 
@@ -121,34 +180,76 @@ async function manejarCronPredicciones(peticion, deps) {
   const leerLibro = d.obtenerLibro || sheets.obtenerLibro;
   const zonas = [];
   const fallaron = [];
-  for (const z of zonasACongelar(cat)) {
-    const sal = { torneo: z.torneo, zona: z.zona, congeladas: 0, yaEstaban: 0, enVentana: 0 };
+  const porTorneo = {};
+  zonasACongelar(cat).forEach((z) => { (porTorneo[z.torneo] = porTorneo[z.torneo] || []).push(z); });
+  /* Un registro entre zonas se guarda en la clave de LAS DOS zonas: cada
+     club lo ve en la card de la suya. */
+  const guardar = async (torneo, zonaIds, registros, sal) => {
+    for (const reg of registros) {
+      let nuevo = false;
+      for (const zona of zonaIds(reg)) { if (await PRED_KV.congelar(torneo, zona, reg, d)) nuevo = true; }
+      if (nuevo) sal.congeladas++; else sal.yaEstaban++;
+    }
+  };
+  for (const torneo of Object.keys(porTorneo)) {
+    const grupo = porTorneo[torneo];
+    const hojasDe = {};
+    const leer = async (z) => {
+      if (!hojasDe[z.zona]) {
+        const libro = await leerLibro(z.k.sheetId, d);
+        etiquetas.reetiquetar(libro, z.slug);
+        hojasDe[z.zona] = aFilas(libro.hojas);
+      }
+      return hojasDe[z.zona];
+    };
+    const pendientes = new Map();
+    let zonaCayo = false;
+    for (const z of grupo) {
+      const sal = { torneo: z.torneo, zona: z.zona, congeladas: 0, yaEstaban: 0, enVentana: 0 };
+      try {
+        const fx = await leerFixture({ torneo: z.torneo, zona: z.zona }, Object.assign({}, d, { simular: simular }));
+        /* Sin partidos en la ventana no se lee el libro: es lo caro. */
+        const enVentana = (fx.partidos || []).filter((p) => {
+          const f = P.iso(p.fecha);
+          return f && f >= hoy && f <= P.sumarDias(hoy, P.DIAS_ANTES);
+        });
+        sal.enVentana = enVentana.length;
+        if (!enVentana.length) { zonas.push(sal); continue; }
+        const plan = planificarZona(enVentana, await leer(z), z.formato, aliasDe(z.k), hoy, ahora);
+        sal.tramo = plan.tramo || null;
+        sal.omitidos = plan.omitidos;
+        sal.sinCruce = plan.sinCruce;
+        if (plan.motivo) sal.motivo = plan.motivo;
+        (plan.pendientes || []).forEach((p) => {
+          pendientes.set(P.iso(p.fecha) + '|' + CORE.claveEquipo(p.local) + '|' + CORE.claveEquipo(p.visitante), p);
+        });
+        if (simular) sal.registros = plan.registros;
+        else await guardar(z.torneo, () => [z.zona], plan.registros, sal);
+        zonas.push(sal);
+      } catch (e) {
+        zonaCayo = true;
+        fallaron.push({ torneo: z.torneo, zona: z.zona, codigo: e.codigo || 'ERROR', mensaje: e.message });
+      }
+    }
+    /* El segundo pase, solo con dos zonas o más y algo que no cruzó. */
+    if (grupo.length < 2 || !pendientes.size) continue;
+    const sal = { torneo: torneo, zona: 'entre-zonas', congeladas: 0, yaEstaban: 0, enVentana: pendientes.size };
     try {
-      const fx = await leerFixture({ torneo: z.torneo, zona: z.zona }, Object.assign({}, d, { simular: simular }));
-      /* Sin partidos en la ventana no se lee el libro: es lo caro. */
-      const enVentana = (fx.partidos || []).filter((p) => {
-        const f = P.iso(p.fecha);
-        return f && f >= hoy && f <= P.sumarDias(hoy, P.DIAS_ANTES);
-      });
-      sal.enVentana = enVentana.length;
-      if (!enVentana.length) { zonas.push(sal); continue; }
-      const libro = await leerLibro(z.k.sheetId, d);
-      etiquetas.reetiquetar(libro, z.slug);
-      const plan = planificarZona(enVentana, aFilas(libro.hojas), z.formato, aliasDe(z.k), hoy, ahora);
+      const zs = [];
+      for (const z of grupo) zs.push({ zona: z.zona, hojas: await leer(z) });
+      const alias = {};
+      grupo.forEach(z => Object.assign(alias, aliasDe(z.k)));
+      const plan = planificarEntreZonas(zs, Array.from(pendientes.values()), grupo[0].formato, alias, hoy, ahora);
       sal.tramo = plan.tramo || null;
       sal.omitidos = plan.omitidos;
       sal.sinCruce = plan.sinCruce;
       if (plan.motivo) sal.motivo = plan.motivo;
-      if (simular) {
-        sal.registros = plan.registros;
-      } else {
-        for (const reg of plan.registros) {
-          if (await PRED_KV.congelar(z.torneo, z.zona, reg, d)) sal.congeladas++; else sal.yaEstaban++;
-        }
-      }
+      if (zonaCayo) sal.aviso = 'Una zona no se pudo leer: los cruces con ella quedan sin proyectar.';
+      if (simular) sal.registros = plan.registros;
+      else await guardar(torneo, reg => reg.zonas, plan.registros, sal);
       zonas.push(sal);
     } catch (e) {
-      fallaron.push({ torneo: z.torneo, zona: z.zona, codigo: e.codigo || 'ERROR', mensaje: e.message });
+      fallaron.push({ torneo: torneo, zona: 'entre-zonas', codigo: e.codigo || 'ERROR', mensaje: e.message });
     }
   }
   return { status: fallaron.length && !zonas.length ? 502 : 200,
@@ -172,4 +273,4 @@ async function manejarPredicciones(peticion, deps) {
   return { status: 200, body: { ok: true, torneo: torneo, zona: zona, predicciones: lista } };
 }
 
-module.exports = { manejarCronPredicciones, manejarPredicciones, planificarZona, zonasACongelar, aliasDe };
+module.exports = { manejarCronPredicciones, manejarPredicciones, planificarZona, planificarEntreZonas, hojasDeTorneo, zonasACongelar, aliasDe };

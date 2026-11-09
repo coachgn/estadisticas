@@ -105,11 +105,27 @@ const SGADD_PREDICCIONES = (function () {
       (e.partidos || []).forEach((p) => {
         if (!p || !p.__id || !esNum(p.PTS)) return;
         if (!porId.has(p.__id)) porId.set(p.__id, []);
-        porId.get(p.__id).push({ clave: e.clave, pts: p.PTS, local: String(p.CONDICION || '').toUpperCase() === 'LOCAL', fecha: iso(p.__fecha || p.FECHA) });
+        porId.get(p.__id).push({ clave: e.clave, pts: p.PTS, opp: p.PTSopp, partido: p.PARTIDO,
+          local: String(p.CONDICION || '').toUpperCase() === 'LOCAL', fecha: iso(p.__fecha || p.FECHA) });
       });
     });
     const out = [];
     porId.forEach((par) => {
+      /* DE UN SOLO LADO: el rival de otra zona no está en la lista de
+         equipos del libro (punto 169), pero la fila propia trae sus puntos
+         (PTSopp) y el texto del cruce lo nombra. */
+      if (par.length === 1) {
+        const x = par[0];
+        const lados = String(x.partido || '').split(/\s+vs\.?\s+/i);
+        const clave = (typeof SGADD !== 'undefined' && SGADD.claveEquipo) ? SGADD.claveEquipo : null;
+        if (!esNum(x.opp) || lados.length !== 2 || !clave || !x.fecha) return;
+        const otros = lados.map(clave).filter(c => c && c !== x.clave);
+        if (otros.length !== 1) return;
+        out.push(x.local
+          ? { fecha: x.fecha, local: x.clave, visitante: otros[0], ptsLocal: x.pts, ptsVisitante: x.opp, unLado: true }
+          : { fecha: x.fecha, local: otros[0], visitante: x.clave, ptsLocal: x.opp, ptsVisitante: x.pts, unLado: true });
+        return;
+      }
       if (par.length !== 2) return;
       const L = par.find(x => x.local) || null;
       const V = par.find(x => x !== L) || null;
