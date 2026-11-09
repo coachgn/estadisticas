@@ -123,6 +123,7 @@ const SGADD_CONCLUSIONES = (function () {
     out.dimensiones = dimensiones(idx, e, null);
     out.filosofia = DetectarFilosofiaDT(idx, e);
     out.proyeccion = proyeccionEquipo(idx, e);
+    out.matriz = matrizEquipo(idx, e);
     return out;
   }
 
@@ -189,6 +190,7 @@ const SGADD_CONCLUSIONES = (function () {
     [out.fortalezas, out.ajustes, out.alertas].forEach(l => l.forEach(it => { it.dim = dimDe(it.clave, 'jugador'); }));
     out.dimensiones = dimensiones(idx, null, j);
     out.proyeccion = proyeccionJugador(idx, j, eje);
+    out.matriz = matrizJugador(idx, j);
     return out;
   }
 
@@ -450,6 +452,7 @@ const SGADD_CONCLUSIONES = (function () {
     const P = e.promedios, L = idx.liga.tipo || {};
     const pos = esNum(P.POS) && P.POS > 0 ? P.POS : null;
     const netR = idx.leer(e.clave, 'NET RTNG');
+    const tend = tendenciasLiga(idx);
     out.net = netR && esNum(netR.valor) ? { valor: netR.valor, formateado: netR.formateado } : null;
     Object.keys(PALANCAS_EQ).forEach((k) => {
       const r = idx.leer(e.clave, k);
@@ -459,11 +462,16 @@ const SGADD_CONCLUSIONES = (function () {
       const d = r.invertida ? r.valor - obj : obj - r.valor;
       const pts = PALANCAS_EQ[k].pts(d, P, L);
       if (!esNum(pts) || pts <= 0.05) return;
-      out.palancas.push({ clave: k, label: r.label, lado: PALANCAS_EQ[k].lado, que: PALANCAS_EQ[k].que,
+      const pal = { clave: k, label: r.label, lado: PALANCAS_EQ[k].lado, que: PALANCAS_EQ[k].que,
         actual: r.formateado, objetivo: formato(k, obj), percentil: r.percentil, pts,
-        net: pos ? 100 * pts / pos : null, dim: dimDe(k, 'equipo') });
+        net: pos ? 100 * pts / pos : null, dim: dimDe(k, 'equipo') };
+      escalonar(pal, r, obj, d, dd => PALANCAS_EQ[k].pts(dd, P, L), idx.liga.distribuciones[k], pos,
+        dd => tradeoffsDe(tend, k, dd, P, L));
+      out.palancas.push(pal);
     });
-    out.palancas.sort((a, b) => b.pts - a.pts);
+    /* Ordena por lo que deja NETO del trade-off de la liga. */
+    const netoDe = (x) => (x.umbral && esNum(x.umbral.neto) ? x.umbral.neto : x.pts);
+    out.palancas.sort((a, b) => netoDe(b) - netoDe(a));
     /* El puesto en NET si se mueve SOLO esa palanca. */
     const dist = (idx.liga.distribuciones['NET RTNG'] || []).filter(esNum);
     const puesto = (v) => dist.filter(x => x > v).length + 1;
@@ -517,6 +525,7 @@ const SGADD_CONCLUSIONES = (function () {
       const dim = dimDe(k, 'jugador');
       const p = { clave: k, label: r.label, que: m.que, actual: r.formateado, objetivo: formato(k, obj),
         percentil: r.percentil, pts, net: pos ? 100 * pts / pos : null, dim, lado: dim ? dim.lado : 'ataque' };
+      escalonar(p, r, obj, d, dd => m.pts(dd, j, E), (idx.liga.distribucionesJ || {})[k], pos, null);
       const fam = FAMILIA_J[k] || k;
       if (!mejores[fam] || mejores[fam].pts < pts) mejores[fam] = p;
     });
@@ -525,7 +534,210 @@ const SGADD_CONCLUSIONES = (function () {
     return out;
   }
 
-  /* ================================================== PLAY-BY-PLAY */
+  /* ================================================== TRADE-OFFS (Fase 3)
+     Cuánto se mueve una métrica cuando se empuja otra. Se mide PARTIDO A
+     PARTIDO y DENTRO de cada equipo (cada valor menos el promedio de su
+     equipo): así no se confunde «los equipos rápidos pierden más» con «el
+     mismo equipo, una noche más rápida, pierde más». Con ~30 partidos por
+     equipo un coeficiente propio sería ruido: es UNA pendiente para toda la
+     liga, y se rotula «tendencia de la liga». Es correlación, no causa. */
+  const PARES_EQ = [
+    { id: 'ritmo-perdidas', palanca: 'PACE', consecuencia: 'PePP%', paso: 3, pasoTxt: '+3 posesiones de ritmo' },
+    { id: 'ritmo-rebote', palanca: 'PACE', consecuencia: 'RO%', paso: 3, pasoTxt: '+3 posesiones de ritmo' },
+    { id: 'triple-rebote', palanca: 'PT3%', consecuencia: 'RO%', paso: 0.05, pasoTxt: '+5 pp de jugadas que terminan en triple' },
+    { id: 'triple-linea', palanca: 'PT3%', consecuencia: 'RTL%', paso: 0.05, pasoTxt: '+5 pp de jugadas que terminan en triple' },
+    { id: 'presion-libres', palanca: 'PP Opp%', consecuencia: 'RTL Opp%', paso: 0.02, pasoTxt: '+2 pp de pérdidas forzadas' },
+    { id: 'presion-tiro', palanca: 'PP Opp%', consecuencia: 'eFG Opp%', paso: 0.02, pasoTxt: '+2 pp de pérdidas forzadas' },
+    { id: 'cristal-transicion', palanca: 'RO%', consecuencia: 'eFG Opp%', paso: 0.03, pasoTxt: '+3 pp de rebote ofensivo' },
+    { id: 'linea-perdidas', palanca: 'RTL%', consecuencia: 'PePP%', paso: 0.03, pasoTxt: '+3 pp de viajes a la línea' },
+  ];
+  /* El jugador: uso y selección de tiro contra su eficiencia, en su propio
+     log (partidos de 8+ minutos). */
+  const PARES_J = [
+    { id: 'uso-eficiencia', palanca: 'USG%', consecuencia: 'TS%', paso: 0.05, pasoTxt: '+5 pp de uso' },
+    { id: 'uso-perdidas', palanca: 'USG%', consecuencia: 'PePP%', paso: 0.05, pasoTxt: '+5 pp de uso' },
+    { id: 'triple-eficiencia', palanca: 'PT3%', consecuencia: 'TS%', paso: 0.10, pasoTxt: '+10 pp de jugadas que terminan en triple' },
+  ];
+  const INVERTIDAS = { 'PePP%': true, 'eFG Opp%': true, 'RTL Opp%': true, 'RO Opp%': true };
+  const ROTULO_TO = { PACE: 'Ritmo', 'PT3%': 'Volumen de triples', 'PP Opp%': 'Presión defensiva', 'RO%': 'Rebote ofensivo',
+    'RTL%': 'Viajes a la línea', 'PePP%': 'Pérdidas', 'eFG Opp%': 'Acierto del rival', 'RTL Opp%': 'Libres concedidos',
+    'USG%': 'Uso', 'TS%': 'True Shooting' };
+  const T_FIRME = 2, T_DEBIL = 1, MIN_PARTIDOS_TENDENCIA = 60, MIN_PARTIDOS_GRUPO = 3, MIN_MIN_JUGADOR = 8;
+
+  /** Pendiente dentro de cada grupo (efecto fijo por grupo). PURA. */
+  function pendienteDentro(grupos) {
+    let sxx = 0, sxy = 0, syy = 0, n = 0, k = 0;
+    grupos.forEach((l) => {
+      if (l.length < MIN_PARTIDOS_GRUPO) return;
+      k++;
+      const mx = l.reduce((s, p) => s + p[0], 0) / l.length, my = l.reduce((s, p) => s + p[1], 0) / l.length;
+      l.forEach((p) => { const dx = p[0] - mx, dy = p[1] - my; sxx += dx * dx; sxy += dx * dy; syy += dy * dy; n++; });
+    });
+    if (n - k - 1 < 3 || sxx <= 0 || syy <= 0) return { n, grupos: k, b: null, r: null, t: null, estado: 'nula' };
+    const b = sxy / sxx, r = sxy / Math.sqrt(sxx * syy);
+    const resid = Math.max(syy - b * sxy, 0) / (n - k - 1);
+    const se = Math.sqrt(resid / sxx);
+    const t = se > 0 ? b / se : 0;
+    const estado = n >= MIN_PARTIDOS_TENDENCIA && Math.abs(t) >= T_FIRME ? 'firme' : (Math.abs(t) >= T_DEBIL ? 'debil' : 'nula');
+    return { n, grupos: k, b, r, t, estado };
+  }
+
+  /* El valor de una métrica en UN partido de un equipo. */
+  function valorPartido(a, k) {
+    const y = a.propio || {}, rv = a.rival || {};
+    if (k === 'PACE') {
+      if (!a.partidosConRival || !esNum(y.PLAYS) || !esNum(rv.PLAYS)) return null;
+      const pos = ((y.PLAYS - (y.RO || 0)) + (rv.PLAYS - (rv.RO || 0))) / 2;
+      const min = esNum(y.MIN) && y.MIN > 0 ? y.MIN : 200;
+      return pos * 200 / min;
+    }
+    if (k === 'PT3%') return div(y.T3I, y.PLAYS);
+    const v = a.factores ? a.factores[k] : null;
+    return esNum(v) ? v : null;
+  }
+
+  const _tendencias = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+  /** Las tendencias de la liga del índice, una vez por índice. */
+  function tendenciasLiga(idx) {
+    if (!idx || typeof idx.lista !== 'function' || typeof idx.agregarPartidos !== 'function') return null;
+    if (_tendencias && _tendencias.has(idx)) return _tendencias.get(idx);
+    const porEquipo = idx.lista().map(e => (e.partidos || []).map(p => idx.agregarPartidos(e.clave, [p])));
+    const eq = {};
+    PARES_EQ.forEach((par) => {
+      const grupos = porEquipo.map(l => l.map(a => [valorPartido(a, par.palanca), valorPartido(a, par.consecuencia)])
+        .filter(p => esNum(p[0]) && esNum(p[1])));
+      eq[par.id] = Object.assign({ par }, pendienteDentro(grupos));
+    });
+    const jug = {};
+    const jp = idx.liga && idx.liga.jugadorPartidos;
+    const filasJ = jp && typeof jp.values === 'function' ? [].concat(...Array.from(jp.values())) : [];
+    PARES_J.forEach((par) => {
+      const g = {};
+      filasJ.forEach((f) => {
+        if (!(f.MIN >= MIN_MIN_JUGADOR) || !esNum(f[par.palanca]) || !esNum(f[par.consecuencia])) return;
+        const c = (f.__clave || f.NOMBRES) + '|' + (f.__equipo || f.EQUIPO);
+        (g[c] = g[c] || []).push([f[par.palanca], f[par.consecuencia]]);
+      });
+      jug[par.id] = Object.assign({ par }, pendienteDentro(Object.keys(g).map(c => g[c])));
+    });
+    const out = { equipo: eq, jugador: jug };
+    if (_tendencias) _tendencias.set(idx, out);
+    return out;
+  }
+
+  /* Puntos por partido que vale mover la consecuencia `dy` (crudo). */
+  function ptsConsecuencia(k, dy, P, L, J) {
+    const bueno = INVERTIDAS[k] ? -dy : dy;
+    if (J) {
+      if (k === 'TS%') return bueno * 2 * ((J.TCI || 0) + 0.44 * (J.T1I || 0));
+      if (PALANCAS_J[k] && P) return PALANCAS_J[k].pts(bueno, J, P);
+      return null;
+    }
+    return PALANCAS_EQ[k] ? PALANCAS_EQ[k].pts(bueno, P, L) : null;
+  }
+
+  /* Lo que vale empujar la palanca, sin el trade-off. PACE: más
+     posesiones para los dos lados, al neto por posesión del equipo. PT3%:
+     jugadas que pasan del doble al triple, a la diferencia de rédito. */
+  function ptsPalanca(k, d, P, L, idx, e) {
+    if (k === 'PACE') {
+      const o = idx.leer(e.clave, 'RTNG OFF'), df = idx.leer(e.clave, 'RTNG DEF');
+      return o && df && esNum(o.valor) && esNum(df.valor) ? d * (o.valor - df.valor) / 100 : null;
+    }
+    if (k === 'PT3%') {
+      const p3 = div(3 * (P.T3C || 0), P.T3I), p2 = div(2 * (P.T2C || 0), P.T2I);
+      return esNum(p3) && esNum(p2) && esNum(P.PLAYS) ? d * P.PLAYS * (p3 - p2) : null;
+    }
+    return PALANCAS_EQ[k] ? PALANCAS_EQ[k].pts(d, P, L) : null;
+  }
+
+  /* Cómo se dice el movimiento de una métrica. */
+  function txtDelta(k, dy) {
+    if (k === 'PACE') return (dy >= 0 ? '+' : '−') + num(Math.abs(dy), 1) + ' posesiones';
+    return (dy >= 0 ? '+' : '−') + num(Math.abs(dy) * 100, 1) + ' pp';
+  }
+
+  /** Los trade-offs cuyo ORIGEN es `k`, para un empuje `d` (en la unidad
+      cruda de `k`, en la dirección buena). Solo los firmes cuestan. */
+  function tradeoffsDe(tend, k, d, P, L, J) {
+    if (!tend) return [];
+    const lista = J ? tend.jugador : tend.equipo;
+    return Object.keys(lista || {}).map(id => lista[id]).filter(x => x.par.palanca === k && x.estado === 'firme' && esNum(x.b))
+      .map((x) => {
+        const dy = x.b * d;
+        const pts = ptsConsecuencia(x.par.consecuencia, dy, P, L, J);
+        return { id: x.par.id, consecuencia: x.par.consecuencia, label: ROTULO_TO[x.par.consecuencia] || x.par.consecuencia,
+          dy, delta: txtDelta(x.par.consecuencia, dy), pts: esNum(pts) ? pts : null, r: x.r, n: x.n,
+          costo: esNum(pts) && pts < 0 };
+      });
+  }
+
+  /** La matriz de un equipo: cada par con lo que gana la palanca, lo que
+      mueve en la otra métrica, sus puntos y el neto. */
+  function matrizEquipo(idx, e) {
+    const tend = tendenciasLiga(idx);
+    if (!tend || !e || !e.promedios) return null;
+    const P = e.promedios, L = (idx.liga && idx.liga.tipo) || {};
+    const filas = PARES_EQ.map((par) => {
+      const t = tend.equipo[par.id];
+      const dy = esNum(t.b) ? t.b * par.paso : null;
+      const gana = ptsPalanca(par.palanca, par.paso, P, L, idx, e);
+      const pierde = esNum(dy) ? ptsConsecuencia(par.consecuencia, dy, P, L) : null;
+      const cuenta = t.estado === 'firme' && esNum(pierde);
+      return { id: par.id, palanca: par.palanca, consecuencia: par.consecuencia,
+        palancaLabel: ROTULO_TO[par.palanca], consecuenciaLabel: ROTULO_TO[par.consecuencia], paso: par.pasoTxt,
+        estado: t.estado, r: t.r, t: t.t, n: t.n, grupos: t.grupos, dy, delta: esNum(dy) ? txtDelta(par.consecuencia, dy) : null,
+        gana: esNum(gana) ? gana : null, pierde: cuenta ? pierde : null,
+        neto: esNum(gana) ? gana + (cuenta ? pierde : 0) : null };
+    });
+    return { tipo: 'equipo', filas, partidos: (filas[0] || {}).n || 0 };
+  }
+
+  /** La del jugador: solo la consecuencia (lo que gana su equipo con más
+      uso depende de a quién se le saca, y eso no lo dice su log). */
+  function matrizJugador(idx, j) {
+    const tend = tendenciasLiga(idx);
+    if (!tend || !j) return null;
+    const eq = typeof idx.get === 'function' ? idx.get(j['EQUIPO']) : null;
+    const E = eq && eq.promedios;
+    const filas = PARES_J.map((par) => {
+      const t = tend.jugador[par.id];
+      const dy = esNum(t.b) ? t.b * par.paso : null;
+      const pts = esNum(dy) ? ptsConsecuencia(par.consecuencia, dy, E, null, j) : null;
+      return { id: par.id, palanca: par.palanca, consecuencia: par.consecuencia,
+        palancaLabel: ROTULO_TO[par.palanca], consecuenciaLabel: ROTULO_TO[par.consecuencia], paso: par.pasoTxt,
+        estado: t.estado, r: t.r, t: t.t, n: t.n, grupos: t.grupos, dy, delta: esNum(dy) ? txtDelta(par.consecuencia, dy) : null,
+        gana: null, pierde: t.estado === 'firme' && esNum(pts) ? pts : null, neto: null };
+    });
+    return { tipo: 'jugador', filas, partidos: (filas[0] || {}).n || 0 };
+  }
+
+  /* El percentil de un valor en la distribución de la liga, con la
+     dirección: el mismo criterio de `idx.leer`. */
+  function percentilDe(dist, v, invertida) {
+    const l = (dist || []).filter(esNum);
+    if (!l.length || !esNum(v)) return null;
+    const abajo = l.filter(x => (invertida ? x > v : x < v)).length, igual = l.filter(x => x === v).length;
+    return 100 * (abajo + igual / 2) / l.length;
+  }
+
+  /** Las metas escalonadas de una palanca: hoy → próximo ciclo (la mitad
+      del camino, la meta real que fija el informe de ciclo) → el p70. Cada
+      escalón con sus puntos, su Net y el trade-off de la liga. */
+  function escalonar(p, r, obj, d, ptsFn, dist, pos, tradeoffFn) {
+    const paso = (frac) => {
+      const dd = d * frac;
+      const valor = r.invertida ? r.valor - dd : r.valor + dd;
+      const pts = ptsFn(dd);
+      const to = tradeoffFn ? tradeoffFn(dd) : [];
+      const costo = to.reduce((s, x) => s + (x.costo ? x.pts : 0), 0);
+      const neto = esNum(pts) ? pts + costo : null;
+      return { valor, formateado: formato(p.clave, valor), percentil: frac === 1 ? OBJETIVO : percentilDe(dist, valor, r.invertida),
+        pts, tradeoffs: to, costo, neto, net: pos && esNum(neto) ? 100 * neto / pos : null };
+    };
+    p.ciclo = paso(0.5);
+    p.umbral = paso(1);
+  }
 
   const ZONAS_MEDIA = ['Z5', 'Z6', 'Z7', 'Z8', 'Z9'];
   const ajustado = (pts, tiros, liga) => (pts + K * liga) / (tiros + K);
@@ -790,11 +1002,14 @@ const SGADD_CONCLUSIONES = (function () {
         <div class="rend-card-t">${i === 0 ? '◆ Palanca principal · ' : ''}${esc(x.label)}${x.dim ? ' · ' + esc(x.dim.label.toLowerCase()) + ' · ' + esc(x.lado) : ''}</div>
         <div class="rend-fichas">
           ${V.ficha({ label: 'Hoy', valor: x.actual, sub: 'percentil ' + Math.round(x.percentil), tono: tonoPct(x.percentil) })}
+          ${x.ciclo ? V.ficha({ label: 'Próximo ciclo', valor: x.ciclo.formateado, sub: (esNum(x.ciclo.percentil) ? 'percentil ' + Math.round(x.ciclo.percentil) + ' · ' : '')
+            + (esNum(x.ciclo.neto) ? (x.ciclo.neto >= 0 ? '+' : '−') + num(Math.abs(x.ciclo.neto), 1) + ' pts netos' : 'la mitad del camino'), tono: 'aviso' }) : ''}
           ${V.ficha({ label: 'Umbral p70', valor: x.objetivo, sub: 'el percentil 70 de la liga', tono: 'pos' })}
           ${V.ficha({ label: tipo === 'jugador' ? 'Suma él' : 'Recupera', valor: '+' + num(x.pts, 1) + ' pts', sub: 'por partido', tono: 'info' })}
           ${esNum(x.net) ? V.ficha({ label: 'Net Rating', valor: '+' + num(x.net, 1), sub: tipo === 'jugador' ? 'del equipo, por 100 posesiones'
             : (x.puestoAntes ? 'puesto ' + x.puestoAntes + '° → ' + x.puestoDespues + '° de ' + x.de : 'por 100 posesiones'), tono: 'info' }) : ''}
         </div>
+        ${tradeoffAviso(x)}
         <p class="concl-texto">${esc(x.texto)}</p></div>`).join('')
       : `<p class="concl-vacio">Todas las palancas con mecanismo de puntos ya están en el percentil 70 o más: el trabajo es sostener.</p>`;
     return `<div class="concl-proy" data-concl-proyeccion="1"><div class="concl-eje-t">📈 Proyección de umbrales de mejora</div>
@@ -805,7 +1020,61 @@ const SGADD_CONCLUSIONES = (function () {
         <li>Pérdidas: cada pérdida evitada vale lo que rinde una jugada que sí termina en tiro.</li>
         <li>Rebote: cada rebote ganado de los disponibles es una jugada más (o una menos del rival), al valor de la jugada.</li>
         <li>Net Rating: los puntos sobre las posesiones del equipo, por 100. El puesto es el que tendría moviendo SOLO esa palanca.</li>
+        <li>Próximo ciclo: la mitad del camino al umbral, la misma meta real del informe de ciclo. Sus puntos ya descuentan el trade-off de la liga.</li>
         <li>La relación asistencias/pérdidas no se proyecta: no tiene un camino directo a puntos y no se le inventa uno.</li>
+      </ul></details></div>`;
+  }
+
+  /* La advertencia de una palanca: lo que la liga proyecta que se pierde
+     en otra métrica al buscar el umbral, y el neto. */
+  function tradeoffAviso(x) {
+    const u = x.umbral;
+    if (!u || !u.tradeoffs || !u.tradeoffs.length) return '';
+    const signo = (v) => (v >= 0 ? '+' : '−') + num(Math.abs(v), 1);
+    return `<div class="concl-tradeoff" data-tradeoff="${esc(x.clave)}">${u.tradeoffs.map(t =>
+      `<p>⚖ <b>Trade-off · tendencia de la liga:</b> si se busca el umbral en ${esc(x.label)}, la liga proyecta ${esc(t.delta)} en ${esc(t.label)}`
+      + (esNum(t.pts) ? ' (' + signo(t.pts) + ' pts)' : '') + '.</p>').join('')}
+      ${esNum(u.neto) ? '<p class="concl-tradeoff-neto">Neto en el marcador: ' + signo(u.neto) + ' pts por partido'
+        + (esNum(u.net) ? ' · ' + signo(u.net) + ' de Net' : '') + '.</p>' : ''}</div>`;
+  }
+
+  const MARCA_TO = { firme: { m: '▲', t: 'tendencia firme' }, debil: { m: '●', t: 'señal débil' },
+    nula: { m: '◆', t: 'sin tendencia clara' } };
+
+  /** La matriz de trade-offs: qué se mueve en otra métrica cuando se
+      empuja una, con su rédito, su costo y el neto. */
+  function matrizHtml(mz) {
+    const V = vista();
+    if (!V || !mz || !mz.filas || !mz.filas.length) return '';
+    const pts = (v) => (esNum(v) ? (v >= 0 ? '+' : '−') + num(Math.abs(v), 1) + ' pts' : '—');
+    const eq = mz.tipo === 'equipo';
+    const celdas = mz.filas.map((f) => {
+      const m = MARCA_TO[f.estado] || MARCA_TO.nula;
+      const firme = f.estado === 'firme';
+      return `<div class="rend-card concl-to concl-to-${esc(f.estado)}" data-trade-off="${esc(f.id)}">
+        <div class="rend-card-t">${esc(f.palancaLabel)} → ${esc(f.consecuenciaLabel)}</div>
+        <p class="concl-to-paso">Si se busca ${esc(f.paso)}…</p>
+        <div class="rend-fichas">
+          ${V.ficha({ label: f.consecuenciaLabel, valor: f.delta || '—', sub: m.m + ' ' + m.t, tono: firme ? 'aviso' : 'info' })}
+          ${eq ? V.ficha({ label: 'Rédito', valor: pts(f.gana), sub: 'lo que suma la palanca', tono: 'info' }) : ''}
+          ${V.ficha({ label: 'Costo', valor: firme ? pts(f.pierde) : 'no se cuenta', sub: firme ? 'en esa otra métrica' : 'la liga no lo sostiene',
+            tono: firme && esNum(f.pierde) && f.pierde < 0 ? 'neg' : 'info' })}
+          ${eq ? V.ficha({ label: 'Neto', valor: pts(f.neto), sub: 'por partido', tono: esNum(f.neto) ? (f.neto >= 0 ? 'pos' : 'neg') : 'info' }) : ''}
+        </div>
+        <p class="rend-pie-t">r = ${num(f.r, 2)} sobre ${f.n} partidos${f.grupos ? ' de ' + f.grupos + (eq ? ' equipos' : ' jugadores') : ''}.</p>
+      </div>`;
+    }).join('');
+    const quien = eq ? 'equipo' : 'jugador';
+    return `<div class="concl-proy concl-matriz" data-concl-matriz="${esc(mz.tipo)}"><div class="concl-eje-t">⚖ Matriz de trade-offs · tendencias de la liga</div>
+      <p class="rend-pie-t">Cuánto se mueve otra métrica cuando se empuja una, medido partido a partido y dentro de cada ${quien} de la liga. Solo las tendencias firmes se descuentan del neto.</p>
+      <div class="concl-palancas">${celdas}</div>
+      <details class="rend-detalle"><summary>Cómo se calcula</summary><ul>
+        <li>Cada valor de un partido se compara con el promedio de ${eq ? 'su equipo' : 'ese jugador (partidos de 8 minutos o más)'}: la pendiente dice qué pasa cuando el MISMO ${quien} cambia, no cuando se comparan dos distintos.</li>
+        <li>Es una sola pendiente para toda la liga: con unos 30 partidos por ${quien}, una propia sería ruido.</li>
+        <li>Firme: la pendiente está a 2 errores estándar o más de cero, con 60 partidos o más. Señal débil: entre 1 y 2. Debajo, sin tendencia.</li>
+        <li>Es una tendencia, no una causa: una noche con muchas pérdidas también termina posesiones antes y sube el ritmo.</li>
+        ${eq ? '<li>El rédito del ritmo son las posesiones de más para los dos lados, al neto por posesión del equipo; el del triple, las jugadas que pasan del doble al triple, a la diferencia de rédito.</li>'
+          : '<li>Al jugador no se le calcula rédito: lo que gana el equipo con más uso depende de a quién se le saca, y eso su log no lo dice.</li>'}
       </ul></details></div>`;
   }
 
@@ -839,6 +1108,7 @@ const SGADD_CONCLUSIONES = (function () {
       ${ejesHtml(c)}
       ${dimensionesHtml(c.dimensiones)}
       ${proyeccionHtml(c.proyeccion, o.tipo)}
+      ${matrizHtml(c.matriz)}
       ${o.ranura || ''}
       <details class="rend-detalle mt-2"><summary>Cómo se arma</summary><ul>
         <li>Verde desde el percentil 70 de la liga, ámbar entre 40 y 69, rojo debajo de 40. Siempre con la dirección de cada métrica: perder menos pelotas es estar arriba.</li>
@@ -863,7 +1133,8 @@ const SGADD_CONCLUSIONES = (function () {
   }
 
   return { DIMENSIONES, FILOSOFIAS, DetectarFilosofiaDT, puntajesBox, senalesPbp, puntajesPbp, filosofiaHibrida, filosofiaHtml, refinarFilosofia, dimensiones, dimDe, dimensionesHtml, valorObjetivo, proyeccionEquipo, proyeccionJugador, proyeccionHtml,
-    PALANCAS_EQ, PALANCAS_J, OBJETIVO,
+    PALANCAS_EQ, PALANCAS_J, OBJETIVO, PARES_EQ, PARES_J, pendienteDentro, valorPartido, tendenciasLiga, tradeoffsDe,
+    matrizEquipo, matrizJugador, matrizHtml, percentilDe, escalonar,
     VERDE, ROJO, tonoPct, equipo, jugador, ejeDe, POR_EJE, EQ, JUG,
     calificar, tiposDePosesion, fichaEquipo, fichasEquipo, mediaDistancia, pbpEquipo, pbpJugador, html, pbpHtml, ejesHtml };
 })();

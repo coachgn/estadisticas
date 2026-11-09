@@ -139,12 +139,13 @@ equipos.forEach((e) => {
   alguna += p.palancas.length ? 1 : 0;
   p.palancas.forEach((x, i) => {
     if (!(x.percentil < 70 && x.pts > 0 && x.net > 0 && /Costo de oportunidad/.test(x.texto))) todasBien = false;
-    if (i && x.pts > p.palancas[i - 1].pts) ordenadas = false;
+    const neto = (y) => (y.umbral && typeof y.umbral.neto === "number" ? y.umbral.neto : y.pts);
+    if (i && neto(x) > neto(p.palancas[i - 1]) + 1e-12) ordenadas = false;
     if (x.clave === 'AST-PP') sinASTPP = false;
   });
 });
 check('las palancas salen solo de métricas bajo el percentil 70, con puntos y NET positivos', todasBien && alguna > equipos.length / 2);
-check('ordenadas por puntos que recuperan', ordenadas);
+check('ordenadas por lo que dejan netas del trade-off de la liga', ordenadas);
 check('lo que no tiene camino a puntos no se proyecta (AST-PP)', sinASTPP && !C.PALANCAS_EQ['AST-PP']);
 /* La cuenta de posesiones contra una mano: llevar el eFG% de .50 a .55 con
    60 tiros de campo son 6 puntos (0,05 × 2 × 60). */
@@ -256,6 +257,93 @@ check('el logo de la liga sale del manifiesto (`_liga`) y no entra al mapa de eq
   const PBP_SRC = fs.readFileSync('js/sgadd-pbp.js', 'utf8');
   check('el montaje de las conclusiones refina la filosofía', /C\.refinarFilosofia\(fil, paq\)/.test(PBP_SRC));
   check('los cortes no se tocan', C.VERDE === 70 && C.ROJO === 40);
+}
+
+/* ===================================================================== */
+titulo('7 · trade-offs cruzados y metas escalonadas (Fase 3)');
+{
+  /* La pendiente es la de DENTRO de cada grupo: dos equipos con niveles
+     opuestos (uno rápido que pierde poco, otro lento que pierde mucho) no
+     inventan una relación negativa si en cada uno la relación es positiva. */
+  const g1 = [[80, 0.10], [82, 0.11], [84, 0.12], [86, 0.13]];
+  const g2 = [[60, 0.30], [62, 0.31], [64, 0.32], [66, 0.33]];
+  const pd = C.pendienteDentro([g1, g2]);
+  check('la pendiente dentro de cada equipo, no entre equipos', pd.b > 0 && Math.abs(pd.b - 0.005) < 1e-9, pd.b);
+  const crudo2 = g1.concat(g2);
+  const mx = crudo2.reduce((s, p) => s + p[0], 0) / 8, my = crudo2.reduce((s, p) => s + p[1], 0) / 8;
+  const bTotal = crudo2.reduce((s, p) => s + (p[0] - mx) * (p[1] - my), 0) / crudo2.reduce((s, p) => s + (p[0] - mx) ** 2, 0);
+  check('el pool crudo daría el signo contrario (por eso se resta el promedio del equipo)', bTotal < 0, bTotal);
+  check('con pocos partidos la tendencia no es firme', C.pendienteDentro([g1, g2]).estado !== 'firme');
+  check('un grupo de menos de 3 partidos no entra', C.pendienteDentro([[[1, 1], [2, 2]]]).grupos === 0);
+
+  const tend = C.tendenciasLiga(idx);
+  check('una tendencia por cada par de equipo y de jugador', Object.keys(tend.equipo).length === C.PARES_EQ.length && Object.keys(tend.jugador).length === C.PARES_J.length);
+  check('la tendencia se calcula una vez por índice', C.tendenciasLiga(idx) === tend);
+  check('los pares del pedido están: ritmo→pérdidas, triple→rebote, presión→libres',
+    ['ritmo-perdidas', 'triple-rebote', 'presion-libres'].every(id => tend.equipo[id]));
+  const rp = tend.equipo['ritmo-perdidas'];
+  check('demo: más ritmo, más pérdidas (firme)', rp.estado === 'firme' && rp.b > 0 && rp.n >= 500, JSON.stringify(rp).slice(0, 120));
+  check('demo: más triples, menos viajes a la línea (firme)', tend.equipo['triple-linea'].estado === 'firme' && tend.equipo['triple-linea'].b < 0);
+  check('demo: triple→rebote no es firme en esta liga (no se inventa el costo)', tend.equipo['triple-rebote'].estado !== 'firme');
+
+  let sinRuido = true, conAviso = 0, netoOk = true, escalones = true, matrices = 0;
+  equipos.forEach((e) => {
+    const c = C.equipo(idx, e);
+    const h = C.html(c, { tipo: 'equipo' });
+    if (/undefined|NaN/.test(h)) sinRuido = false;
+    if (c.matriz && /data-concl-matriz="equipo"/.test(h)) matrices++;
+    if (/data-tradeoff=/.test(h)) conAviso++;
+    c.matriz.filas.forEach((f) => {
+      if (f.estado !== 'firme' && f.pierde !== null) netoOk = false;
+      if (f.estado === 'firme' && f.gana !== null && f.pierde !== null && Math.abs(f.neto - (f.gana + f.pierde)) > 1e-9) netoOk = false;
+    });
+    c.proyeccion.palancas.forEach((p) => {
+      if (!p.ciclo || !p.umbral) { escalones = false; return; }
+      if (!(p.ciclo.pts > 0 && p.ciclo.pts < p.umbral.pts + 1e-9)) escalones = false;
+      if (Math.abs(p.umbral.pts - p.pts) > 1e-9) escalones = false;
+      if (p.umbral.percentil !== C.OBJETIVO) escalones = false;
+      if (typeof p.ciclo.percentil === 'number' && !(p.ciclo.percentil >= p.percentil - 1e-9)) escalones = false;
+      const costo = p.umbral.tradeoffs.reduce((s, t) => s + (t.costo ? t.pts : 0), 0);
+      if (Math.abs(p.umbral.neto - (p.umbral.pts + costo)) > 1e-9) escalones = false;
+    });
+  });
+  check('ningún diagnóstico con undefined ni NaN', sinRuido);
+  check('la matriz va en la card de cada equipo', matrices === equipos.length, matrices);
+  check('solo los firmes se descuentan; neto = rédito + costo', netoOk);
+  check('metas escalonadas: hoy → próximo ciclo (mitad) → p70, con el neto descontado', escalones);
+
+  /* Una palanca con un trade-off firme muestra la advertencia y el neto. */
+  const P0 = { TCI: 60, PLAYS: 80, PP: 12, PTS: 75, T1I: 15, 'T1%': 0.7, RO: 10, RDopp: 25, RD: 25, ROopp: 9, PTSopp: 74, PLAYSopp: 80, PPopp: 12, PPP: 0.94 };
+  const tFake = { equipo: { x: { par: { id: 'x', palanca: 'PP Opp%', consecuencia: 'eFG Opp%' }, estado: 'firme', b: 0.2, r: 0.1, n: 500 } }, jugador: {} };
+  const to = C.tradeoffsDe(tFake, 'PP Opp%', 0.02, P0, { TCI: 60 });
+  check('tradeoffsDe: +2 pp de presión → +0,4 pp de acierto rival, con costo en puntos', to.length === 1 && Math.abs(to[0].dy - 0.004) < 1e-12 && to[0].costo && to[0].pts < 0, JSON.stringify(to));
+  const tNoFirme = { equipo: { x: Object.assign({}, tFake.equipo.x, { estado: 'debil' }) }, jugador: {} };
+  check('una señal débil no cuesta nada', C.tradeoffsDe(tNoFirme, 'PP Opp%', 0.02, P0, {}).length === 0);
+  const pal = { clave: 'PP Opp%', label: 'Pérdidas forzadas', lado: 'defensa', que: 'x', actual: '12%', objetivo: '14%', percentil: 40, pts: 2, net: 2, texto: 't' };
+  C.escalonar(pal, { valor: 0.12, invertida: false }, 0.14, 0.02, dd => dd * 100, [0.10, 0.12, 0.13, 0.14, 0.16], 80,
+    dd => C.tradeoffsDe(tFake, 'PP Opp%', dd, P0, { TCI: 60 }));
+  check('escalonar: el próximo ciclo es la mitad del camino', Math.abs(pal.ciclo.valor - 0.13) < 1e-12 && Math.abs(pal.ciclo.pts - 1) < 1e-12);
+  check('escalonar: el neto descuenta el trade-off', pal.umbral.neto < pal.umbral.pts && pal.ciclo.neto < pal.ciclo.pts);
+  const hPal = C.proyeccionHtml({ palancas: [pal], net: null }, 'equipo');
+  check('la palanca dice el trade-off con su rótulo de liga y el neto en el marcador',
+    /data-tradeoff="PP Opp%"/.test(hPal) && /Trade-off · tendencia de la liga/.test(hPal) && /Neto en el marcador/.test(hPal) && /Próximo ciclo/.test(hPal));
+
+  /* La matriz rotulada y sin afirmar causa. */
+  const hM = C.matrizHtml(C.matrizEquipo(idx, equipos[0]));
+  check('la matriz se rotula como tendencias de la liga', /Matriz de trade-offs · tendencias de la liga/.test(hM));
+  check('la matriz dice que es tendencia, no causa', /no una causa/.test(hM));
+  check('la matriz marca el estado sin depender del color (▲ ● ◆)', /[▲●◆] (tendencia firme|señal débil|sin tendencia clara)/.test(hM));
+
+  /* Jugador: solo la consecuencia, sin rédito inventado. */
+  const j0 = idx.liga.jugadoresCalificados[0];
+  const cj = C.jugador(idx, j0, null);
+  check('el jugador tiene su matriz de uso y selección de tiro', cj.matriz && cj.matriz.filas.length === C.PARES_J.length && cj.matriz.filas.every(f => f.gana === null));
+  check('la card del jugador lleva la matriz sin undefined', /data-concl-matriz="jugador"/.test(C.html(cj, { tipo: 'jugador' })) && !/undefined|NaN/.test(C.html(cj, { tipo: 'jugador' })));
+  check('las palancas del jugador también se escalonan', cj.proyeccion.palancas.every(p => p.ciclo && p.umbral));
+  check('sin índice no hay matriz', C.matrizEquipo(null, equipos[0]) === null && C.tendenciasLiga(null) === null);
+  check('percentilDe respeta la dirección', C.percentilDe([1, 2, 3, 4], 3.5, false) === 75 && C.percentilDe([1, 2, 3, 4], 1.5, true) === 75);
+  const CSS = fs.readFileSync('index.html', 'utf8');
+  check('el CSS de la advertencia existe, con su variante de papel', /\.concl-tradeoff \{/.test(CSS) && /\.concl-tradeoff \{ background: #fff !important/.test(CSS));
 }
 
 console.log('\n' + (mal ? '✗ HAY FALLAS' : '✓ TODO OK') + '   ' + ok + ' pasaron, ' + mal + ' fallaron');

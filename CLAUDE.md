@@ -196,8 +196,9 @@ node test-muestra.js       # 156 tests · el selector de muestra de Equipos y Ju
 node test-rendimiento.js   #  83 tests · la card de Rendimiento del jugador: el motor puro, las degradaciones,
                            #             la vista y el cableado de la pestaña (punto 140)
 
-node test-conclusiones.js  #  85 tests · la card de conclusiones clínicas de Equipos y Jugadores, los tipos
+node test-conclusiones.js  # 113 tests · la card de conclusiones clínicas de Equipos y Jugadores, los tipos
                            #             de posesión del PBP y la terna de logos del PDF (punto 141)
+                           #             · y la matriz de trade-offs con las metas escalonadas (punto 173)
 
 node test-diagnostico-rival.js # 61 tests · el soporte de decisión del Scouting: la versión perdedora, los duelos
                            #             cruzados con sus volúmenes de umbral, el FODA y las tres cosas (puntos 146 y 147)
@@ -330,7 +331,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=367`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=368`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16968,4 +16969,20 @@ Assets en `?v=367`. `js/sgadd-4factores.js` (`impactoBajas`, `reemplazoLiga`, `p
 - Los duelos del Scouting llaman al simulador sin bajas.
 - Quintetos combinados (qué pasa con LOS CINCO sin él) no: el paquete trae el On/Off individual, no alineaciones contrafácticas.
 - **No verificado en el navegador**: el Simulador es de admin y la demo entra como PLATA; la pantalla se ejerció en un `vm`.
+
+## 173. LA MATRIZ DE TRADE-OFFS EN EL DIAGNÓSTICO · y las metas escalonadas por ciclo (2026-11-09)
+
+Assets en `?v=368`. Todo en `js/sgadd-conclusiones.js` (sección TRADE-OFFS); `test-conclusiones.js` (sección 7) lo fija. Solo front: el módulo no está en `server/lib/compartido/`.
+
+- **Problema**: cada palanca de la proyección (punto 143) se medía sola, sin el daño colateral en otra métrica.
+- **Cómo se mide** (`tendenciasLiga`, una vez por índice, `WeakMap`): partido a partido y **dentro de cada equipo** (cada valor menos el promedio de su equipo; `pendienteDentro`, efecto fijo por grupo, grupos de 3+ partidos). Así no se confunde «los equipos rápidos pierden más» con «el mismo equipo, una noche más rápida, pierde más»: con el pool crudo el signo puede salir al revés (hay test). Es UNA pendiente para toda la liga y se rotula «tendencia de la liga»: con ~30 partidos por equipo, una propia sería ruido. **Es correlación, no causa**, y la card lo dice.
+- **Estado**: firme con |t| ≥ 2 y 60+ partidos; señal débil con |t| entre 1 y 2; si no, sin tendencia. **Solo los firmes se descuentan.**
+- **Pares** (`PARES_EQ`): ritmo +3 posesiones → pérdidas y rebote ofensivo; triples +5 pp de jugadas → rebote ofensivo y viajes a la línea; presión +2 pp de pérdidas forzadas → libres concedidos y acierto del rival; rebote ofensivo +3 pp → acierto del rival (la transición); viajes a la línea +3 pp → pérdidas. Jugador (`PARES_J`, su log de partidos de 8+ min): uso +5 pp → TS% y pérdidas; triples +10 pp → TS%.
+- **Puntos**: el costo sale de las mismas `PALANCAS_EQ` / `PALANCAS_J` de la proyección (una sola cuenta de posesiones). El rédito del ritmo = las posesiones de más para los dos lados al neto por posesión del equipo (ORTG − DRTG); el del triple = jugadas que pasan del doble al triple a la diferencia de rédito. Al jugador no se le calcula rédito (depende de a quién se le saca el uso).
+- **Medido en la demo** (544 filas equipo-partido): firmes ritmo→pérdidas (+0,12 pp por posesión, t 2,9), triples→línea (t −4,9) y presión→acierto rival (t 2,6). **Triple→rebote ofensivo y presión→libres concedidos, los dos ejemplos del pedido, NO son firmes en esta liga**: salen como señal débil y no se les cobra nada. En jugadores, uso→eficiencia no aparece (t 1,0); triples→TS% sí.
+- **En cada palanca**: «⚖ Trade-off · tendencia de la liga: si se busca el umbral en X, la liga proyecta −Y en Z (−W pts)» y «Neto en el marcador». Las palancas se ordenan por el NETO, ya no por los puntos brutos.
+- **Metas escalonadas** (`escalonar`): Hoy (percentil) → **Próximo ciclo** (la mitad del camino, la meta real del informe de ciclo, punto 165, con su percentil y sus puntos netos) → Umbral p70. Equipo y jugador.
+- **La matriz** (`matrizHtml`, debajo de la proyección): una micro-card por par con la consecuencia, el rédito, el costo y el neto, el estado con ▲ ● ◆ (no solo color), r y n.
+- Verificado al revés: cobrar las señales débiles caen 2, el ciclo en el umbral 2, sin restar el promedio del equipo 4.
+- **No verificado en el navegador ni en el PDF** (hay CSS de papel: la advertencia en blanco con borde ámbar oscuro y las micro-cards sin partirse).
 
