@@ -179,6 +179,9 @@ node test-carga-manual.js  #  24 tests · la doble alerta de carga de los torneo
 node test-predicciones.js  #  48 tests · lo simulado contra lo que pasó: congelar antes del partido, HSETNX,
                            #             el resultado real, el resumen de calibración y la card (punto 171)
 
+node test-bajas.js         #  45 tests · las bajas del buzón en el Simulador: valor sobre reemplazo, la rotación,
+                           #             la escala por partidos jugados, el On/Off y el badge (punto 172)
+
 node test-ecosistema.js    #  23 tests · el auditor del ecosistema: fechas, claves de escudo,
                            #             ids tapados y que no escriba (punto 121)
 
@@ -327,7 +330,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=366`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=367`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16942,3 +16945,27 @@ En una postemporada interzonal (APB) el rival no está en el libro de la zona y 
 1. Deploy del backend (`cd server && npx vercel --prod`): la ruta, el cron y los compartidos nuevos.
 2. Push del front (`?v=365`).
 3. Primera mirada con un token de admin: `GET /api/cron/predicciones?simular=1`.
+
+## 172. LAS BAJAS DEL BUZÓN EN EL SIMULADOR · valor sobre reemplazo (2026-11-09)
+
+Assets en `?v=367`. `js/sgadd-4factores.js` (`impactoBajas`, `reemplazoLiga`, `plantelDe`, constantes `BAJAS`) y su copia en `server/lib/compartido/`. `test-bajas.js` (45) fija todo, sobre la demo y planteles armados a mano.
+
+- **De dónde salen**: los jugadores del cruce que el buzón marca 🟡 SUSPENSO o 🔴 BAJA (`SGADD_BUZON.estadoDe`). Un ALTA juega. Se aplican solas y el DT las apaga con «Aplicar las bajas del buzón».
+- **El modelo de equipo no se toca**: `predecirCruce(…, { ajustes })` mueve ORTG/DRTG sobre una COPIA de cada equipo y el Monte Carlo corre con eso. Sin bajas, la proyección es byte a byte la de antes.
+- **Ataque · VORP**: la parte de las jugadas del equipo que termina el ausente (`repartirUso`, uso × minutos, el quinteto suma 100 %) pasa a valer lo que rinde su REEMPLAZO: mitad los compañeros que absorben sus minutos, con su PPP y la curva de uso (−0,01 por jugada por punto de USG% extra, prior de Oliver), y mitad el nivel de reemplazo de la liga (mediana de PPP de los que no califican). Sin esa mitad, el goleador de bajo PPP «mejoraba» al equipo al faltar: el box no ve la jugada que él inventa. Δ pts/jugada × jugadas por posesión × 100 = ΔORTG.
+- **Los minutos** van a la rotación con peso `min × (40 − min)` (absorbe más el sexto hombre que el titular de 36), techo de 40.
+- **Defensa**: recuperos + tapones + medio rebote defensivo por minuto del ausente contra los que heredan sus minutos → posesiones rivales que se dejan de cortar × PPP de la liga. **Pesa la mitad** (`PESO_DEFENSA`): la planilla solo ve la defensa que corta la posesión.
+- PPP y tasas por minuto se **encogen** hacia el nivel de reemplazo con 40 jugadas / 60 minutos de la liga.
+- **Escala**: el efecto × (sus PJ / PJ del equipo). Si ya faltó la mitad de la temporada, la mitad de su ausencia ya está en el rating.
+- **Con la capa `pbp`**: el On/Off del jugador (`SGADD_PBP.onOffDe`) entra como Δnet = −(min/40) × (Net con él − Net sin él) × escala, mezclado con el box con peso min(con, sin) / (min(con, sin) + 300 min). Se reparte entre ataque y defensa como el box. Se pide una vez por equipo y repinta al llegar.
+- **Una baja nunca mejora al equipo**: si el box dice que sí, no se ajusta y el badge lo dice («el box score no le mide un costo»).
+- **Varias bajas no se suman**: el box se evalúa con todos afuera a la vez y el ajuste del On/Off de cada uno se suma encima.
+- **El badge** (cabecera del cruce): «⚠️ Ajustado por baja de [Jugador] ([equipo] · motivo del buzón): −X,X pts en margen», con ORTG/DRTG en el `title`, a quién van sus minutos y el margen sin y con las bajas. Margen por jugador = posesiones del cruce × su Δnet / 100, desde el lado de su equipo.
+- Medido en la demo, el jugador de más uso de cada equipo: de 0 (sin costo medible) a −4,3 de Net por 100 posesiones.
+
+### Lo que NO hace
+- **Las predicciones congeladas del cron (punto 171) no usan bajas**: el servidor no lee el buzón de cada club. La calibración mide el modelo sin ellas.
+- Los duelos del Scouting llaman al simulador sin bajas.
+- Quintetos combinados (qué pasa con LOS CINCO sin él) no: el paquete trae el On/Off individual, no alineaciones contrafácticas.
+- **No verificado en el navegador**: el Simulador es de admin y la demo entra como PLATA; la pantalla se ejerció en un `vm`.
+

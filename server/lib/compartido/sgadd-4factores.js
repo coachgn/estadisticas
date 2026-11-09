@@ -813,8 +813,13 @@ const SGADD_4F = (function () {
       (días desde su partido anterior) activan la fatiga. */
   function predecirCruce(modelo, claveL, claveV, opts) {
     const o = opts || {};
-    const L = modelo.equipos.get(claveL), V = modelo.equipos.get(claveV);
+    let L = modelo.equipos.get(claveL), V = modelo.equipos.get(claveV);
     if (!L || !V) return null;
+    /* Bajas (punto 172): Δ de ORTG/DRTG por 100 posesiones sobre una COPIA
+       del equipo; el modelo ajustado no se toca. */
+    const aj = o.ajustes || {};
+    const mover = (eq, a) => (a && (a.ortg || a.drtg)) ? Object.assign({}, eq, { ortg: eq.ortg + (a.ortg || 0), drtg: eq.drtg + (a.drtg || 0) }) : eq;
+    L = mover(L, aj.L); V = mover(V, aj.V);
     const pos = L.pos + V.pos - modelo.mu.pos;
     const ortL = L.ortg + V.drtg - modelo.mu.ortg, ortV = V.ortg + L.drtg - modelo.mu.ortg;
     const b2b = (d) => (esNum(d) && d <= 1 ? 1 : 0);
@@ -932,6 +937,234 @@ const SGADD_4F = (function () {
     }) };
   }
 
+  /* =====================================================================
+     BAJAS · VALOR SOBRE REEMPLAZO (VORP) · punto 172
+     ---------------------------------------------------------------------
+     El rating del equipo es el de SU temporada, con el ausente adentro.
+     Sin él, sus minutos van a la rotación (proporcional a los minutos de
+     cada uno: es lo único que la planilla dice de quién entra) y sus
+     jugadas se reparten con `repartirUso`, así el uso del quinteto sigue
+     sumando 100 %. Lo que cambia es QUIÉN termina las jugadas:
+
+       ataque   Δ pts/jugada = Σ uso'·PPP' − Σ uso·PPP  →  × jugadas/posesión × 100
+       defensa  recuperos + tapones + rebote defensivo por minuto, del ausente
+                contra los que heredan sus minutos  →  posesiones rivales
+                cortadas × los puntos de una jugada de la liga
+
+     PPP y tasas por minuto se encogen hacia el nivel de REEMPLAZO de la
+     liga (la mediana de los que no califican) con el peso de su muestra:
+     un suplente con 15 jugadas en la temporada no hereda un PPP de 1,40.
+
+     Y el efecto se escala por la parte de los partidos del equipo que el
+     ausente jugó: si ya faltó la mitad de la temporada, la mitad de su
+     ausencia ya está en el rating. Con play-by-play, el On/Off de ese
+     jugador (Net con él − Net sin él) se mezcla con la estimación del box
+     score con el peso de sus minutos con y sin él.
+     ===================================================================== */
+  const BAJAS = {
+    K_JUGADAS: 40,       // jugadas de la liga con que se encoge el PPP de cada uno
+    K_MINUTOS: 60,       // minutos de la liga con que se encogen recuperos, tapones y rebote
+    K_ONOFF: 300,        // minutos (con y sin él) que pesa el On/Off contra el box score
+    MIN_JUGADOR: 1,      // minutos de promedio para entrar a la rotación
+    /* Curva de uso (prior de Dean Oliver): el que toma más jugadas de las
+       que suele tomar rinde menos, ~1 punto de ORTG por cada punto de uso. */
+    CURVA_USO: 0.01,     // pts por jugada que pierde cada punto de USG% extra
+    /* La planilla solo ve la parte de la defensa que CORTA la posesión
+       (recuperos, tapones, rebote defensivo): el resto (rotar, cerrar, el
+       contacto) no está. Por eso pesa la mitad. */
+    PESO_DEFENSA: 0.5,
+    /* El reemplazo: mitad los compañeros que absorben los minutos, mitad el
+       nivel de reemplazo de la liga (ver evaluar). */
+    MEZCLA_REEMPLAZO: 0.5,
+  };
+
+  const num0 = (v) => (esNum(v) ? v : 0);
+
+  /** Niveles de reemplazo de la liga: medianas de los que NO califican
+      (los que entran cuando falta alguien), con respaldo en la de todos. */
+  function reemplazoLiga(idx) {
+    const liga = (idx && idx.liga) || {};
+    const todos = (liga.jugadores || []).filter(j => esNum(j['MIN']) && j['MIN'] > 0 && !/TIPO/i.test(String(j['NOMBRES'] || '')));
+    const umbral = esNum(liga.minJugador) ? liga.minJugador : 15;
+    const banco = todos.filter(j => j['MIN'] < umbral);
+    const mediana = (arr) => { const s = arr.filter(esNum).sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : null; };
+    const pool = banco.length >= 8 ? banco : todos;
+    const porMin = (k) => mediana(pool.map(j => (esNum(j[k]) && j['MIN'] > 0 ? j[k] / j['MIN'] : null)));
+    return {
+      ppp: mediana(pool.filter(j => num0(j['PLAYS']) > 0).map(j => j['PPP'])) || mediana(todos.map(j => j['PPP'])) || 0.9,
+      prMin: porMin('PR') || 0, tcMin: porMin('TC') || 0, rdMin: porMin('RD') || 0,
+      pppLiga: mediana(todos.map(j => j['PPP'])) || 0.95,
+      n: pool.length,
+    };
+  }
+
+  /** El plantel del equipo con lo que hace falta para la cuenta. */
+  function plantelDe(idx, clave) {
+    const liga = idx.liga || {};
+    const lista = (liga.jugadoresPorEquipo && liga.jugadoresPorEquipo.get(clave)) || [];
+    return lista.filter(j => !/TIPO/i.test(String(j['NOMBRES'] || '')) && esNum(j['MIN']) && j['MIN'] >= BAJAS.MIN_JUGADOR)
+      .map(j => ({ nombre: j['NOMBRES'], equipo: j['EQUIPO'], min: j['MIN'], usg: j['USG%'] != null ? (j['USG%'] <= 1 ? j['USG%'] * 100 : j['USG%']) : null,
+        ppp: j['PPP'], plays: num0(j['PLAYS']), pj: num0(j['PJ']) || 1,
+        pr: num0(j['PR']), tc: num0(j['TC']), rd: num0(j['RD']) }));
+  }
+
+  const normNombre = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+
+  /**
+   * Impacto de las bajas de UN equipo. `bajas`: [{ nombre, motivo?, onOff? }]
+   * (onOff = { dif, minOn, minOff } del play-by-play, opcional).
+   * Devuelve { ok, ortg, drtg, net, jugadores: [{ nombre, ortg, drtg, net, ... }] }
+   * con Δ en puntos por 100 posesiones (ORTG baja = negativo; DRTG sube = positivo).
+   */
+  function impactoBajas(idx, clave, bajas, opts) {
+    const o = opts || {};
+    const out = { ok: false, clave: clave, ortg: 0, drtg: 0, net: 0, jugadores: [], omitidas: [] };
+    const e = idx && idx.get ? idx.get(clave) : null;
+    if (!e || !Array.isArray(bajas) || !bajas.length) { out.motivo = 'sin bajas'; return out; }
+    const plantel = plantelDe(idx, e.clave);
+    if (plantel.length < 6) { out.motivo = 'plantel sin minutos suficientes'; return out; }
+    const R = o.reemplazo || reemplazoLiga(idx);
+    const pjEq = Math.max(1, num0(e.pj) || num0(e.promedios && e.promedios['PJ']) || Math.max.apply(null, plantel.map(j => j.pj)));
+    const pr = e.promedios || {};
+    const plays = num0(pr['PLAYS']), ro = num0(pr['RO']);
+    const jugPorPos = plays > 0 && plays - ro > 0 ? plays / (plays - ro) : 1.1;
+    const posPartido = plays > 0 ? plays - ro : 70;
+
+    /* Encogimientos hacia el nivel de reemplazo. */
+    plantel.forEach(j => {
+      const n = j.plays * j.pj;
+      j.pppE = esNum(j.ppp) ? (n * j.ppp + BAJAS.K_JUGADAS * R.ppp) / (n + BAJAS.K_JUGADAS) : R.ppp;
+      const m = j.min * j.pj;
+      const enc = (x, r) => (m * (x / j.min) + BAJAS.K_MINUTOS * r) / (m + BAJAS.K_MINUTOS);
+      j.prE = enc(j.pr, R.prMin); j.tcE = enc(j.tc, R.tcMin); j.rdE = enc(j.rd, R.rdMin);
+    });
+
+    /* La parte de las jugadas del equipo que termina cada uno (los 5 en
+       cancha suman 100 %): repartirUso con posesiones = 1. */
+    const partes = (lista) => {
+      const u = repartirUso(lista.map(j => ({ nombre: j.nombre, min: j.min, usg: j.usg })), 1);
+      const m = new Map();
+      if (u.ok) u.jugadores.forEach(x => m.set(x.nombre, x));
+      return m;
+    };
+    /* Estado SIN las bajas: los minutos de los ausentes pasan a la rotación.
+       Absorbe más el que tiene minutos Y lugar para sumar (min × (40 − min)):
+       el sexto o séptimo hombre, no el titular de 36. Techo de 40. */
+    const sinBajas = (ausentes) => {
+      const resto = plantel.filter(j => ausentes.indexOf(j) === -1).map(j => Object.assign({}, j));
+      let libres = ausentes.reduce((s, j) => s + j.min, 0);
+      for (let vuelta = 0; vuelta < 6 && libres > 1e-6; vuelta++) {
+        const abiertos = resto.filter(j => j.min < 40);
+        const peso = (j) => j.min * (40 - j.min);
+        const base = abiertos.reduce((s, j) => s + peso(j), 0);
+        if (base <= 0) break;
+        let usados = 0;
+        const reparto = abiertos.map(j => libres * peso(j) / base);
+        abiertos.forEach((j, k) => { const d = Math.min(40 - j.min, reparto[k]); j.min += d; usados += d; });
+        libres -= usados;
+      }
+      return resto;
+    };
+    const defensa = (lista) => lista.reduce((s, j) => s + j.min * (j.prE + j.tcE + j.rdE * 0.5), 0);   // un rebote defensivo cuesta media posesión: el rival podría haber fallado igual
+
+    const base = { partes: partes(plantel), df: defensa(plantel) };
+    if (!base.partes.size) { out.motivo = 'sin uso para repartir'; return out; }
+
+    /* VORP: las jugadas del ausente pasan a valer lo que rinde su REEMPLAZO.
+       El reemplazo es mitad los compañeros que absorben sus minutos (con su
+       PPP y la curva de uso por las jugadas de más que toman) y mitad el
+       nivel de reemplazo de la liga (tiros forzados de quien no suele
+       tenerlos). Sin la mitad de la liga, el goleador de bajo PPP «mejora»
+       al equipo al faltar: el box score no ve la jugada que él inventa. */
+    const evaluar = (ausentes) => {
+      const resto = sinBajas(ausentes);
+      const p2 = partes(resto);
+      if (!p2.size) return null;
+      let extra = 0, ptsExtra = 0;
+      resto.forEach(j => {
+        const a = base.partes.get(j.nombre), b2 = p2.get(j.nombre);
+        if (!a || !b2) return;
+        const d = b2.plays - a.plays;
+        if (d <= 0) return;
+        extra += d;
+        ptsExtra += d * (j.pppE - BAJAS.CURVA_USO * Math.max(0, b2.usgAjustado - j.usg));
+      });
+      const pppCompas = extra > 0 ? ptsExtra / extra : R.ppp;
+      const pppRepl = BAJAS.MEZCLA_REEMPLAZO * pppCompas + (1 - BAJAS.MEZCLA_REEMPLAZO) * R.ppp;
+      const dPts = ausentes.reduce((s, j) => {
+        const a = base.partes.get(j.nombre);
+        return s + (a ? a.plays * (pppRepl - j.pppE) : 0);
+      }, 0);
+      const dOrtg = 100 * dPts * jugPorPos;
+      const dCortes = base.df - defensa(resto);   // posesiones rivales que se dejan de cortar
+      const dDrtg = BAJAS.PESO_DEFENSA * 100 * dCortes * R.pppLiga / posPartido;
+      return { ortg: dOrtg, drtg: dDrtg, pppReemplazo: pppRepl, reemplazo: resto.filter(j => {
+        const antes = plantel.find(p => p.nombre === j.nombre);
+        return antes && j.min - antes.min > 0.5;
+      }).map(j => ({ nombre: j.nombre, minExtra: j.min - plantel.find(p => p.nombre === j.nombre).min })).sort((a, b) => b.minExtra - a.minExtra).slice(0, 3) };
+    };
+
+    const ausentes = [];
+    bajas.forEach(b => {
+      const j = plantel.find(p => normNombre(p.nombre) === normNombre(b.nombre));
+      if (!j) { out.omitidas.push({ nombre: b.nombre, motivo: 'no tiene minutos en esta fase' }); return; }
+      const ev = evaluar([j]);
+      if (!ev) { out.omitidas.push({ nombre: b.nombre, motivo: 'sin uso para repartir' }); return; }
+      /* Lo que el rating todavía le debe a su ausencia. */
+      const escala = Math.max(0, Math.min(1, j.pj / pjEq));
+      let ortg = ev.ortg * escala, drtg = ev.drtg * escala;
+      const fuente = ['box'];
+      let peso = 0, dO = 0, dD = 0;
+      const oo = b.onOff;
+      if (oo && esNum(oo.dif) && esNum(oo.minOn) && esNum(oo.minOff)) {
+        /* Net del equipo = f·Net con él + (1−f)·Net sin él; sin él, todo
+           pasa a ser «sin él»: Δ = −f·(con − sin). */
+        const f = Math.max(0, Math.min(1, j.min / 40));
+        const netOnOff = -f * oo.dif * escala;
+        peso = Math.min(oo.minOn, oo.minOff) / (Math.min(oo.minOn, oo.minOff) + BAJAS.K_ONOFF);
+        const netBox = ortg - drtg;
+        const net = peso * netOnOff + (1 - peso) * netBox;
+        /* El On/Off no separa ataque de defensa: se reparte como el box. */
+        const totalBox = Math.abs(ortg) + Math.abs(drtg);
+        const fracO = totalBox > 0 ? Math.abs(ortg) / totalBox : 0.5;
+        const delta = net - netBox;
+        dO = delta * fracO; dD = -delta * (1 - fracO);
+        ortg += dO; drtg += dD;
+        fuente.push('on/off');
+      }
+      /* Una baja NUNCA mejora al equipo en la proyección. Si el box score
+         dice que sí (el goleador de bajo PPP), lo que no ve es la jugada
+         que él inventa: no se ajusta, y se dice. */
+      let sinCosto = false;
+      if (ortg - drtg > 0) { sinCosto = true; ortg = 0; drtg = 0; dO = 0; dD = 0; }
+      ausentes.push(j);
+      out.jugadores.push({ sinCosto: sinCosto, nombre: j.nombre, motivo: b.motivo || null, min: j.min, usg: j.usg, ppp: j.ppp, pj: j.pj, pjEquipo: pjEq,
+        escala: escala, ortg: ortg, drtg: drtg, net: ortg - drtg, fuente: fuente.join(' + '), pesoOnOff: peso, reemplazo: ev.reemplazo,
+        _dO: dO, _dD: dD });
+    });
+    if (!out.jugadores.length) { out.motivo = 'ninguna baja con minutos en esta fase'; return out; }
+
+    /* Juntos no se suman: los reemplazos se pisan. El box se evalúa con
+       todos afuera a la vez (con la escala media de lo que faltaron) y el
+       ajuste del On/Off de cada uno se suma encima. */
+    const junto = ausentes.length > 1 ? evaluar(ausentes) : null;
+    if (junto) {
+      const escMedia = mediaDe(out.jugadores.map(x => x.escala));
+      out.ortg = junto.ortg * escMedia + out.jugadores.reduce((s, x) => s + x._dO, 0);
+      out.drtg = junto.drtg * escMedia + out.jugadores.reduce((s, x) => s + x._dD, 0);
+      out.reemplazo = junto.reemplazo;
+    } else {
+      out.ortg = out.jugadores[0].ortg; out.drtg = out.jugadores[0].drtg;
+      out.reemplazo = out.jugadores[0].reemplazo;
+    }
+    if (out.ortg - out.drtg > 0) { out.ortg = 0; out.drtg = 0; out.sinCosto = true; }
+    out.jugadores.forEach(x => { delete x._dO; delete x._dD; });
+    out.net = out.ortg - out.drtg;
+    out.ok = true;
+    out.reemplazoLiga = R;
+    return out;
+  }
+
   /** Backtest hacia adelante: cada partido se predice con la liga hasta el
       día anterior. Mide el modelo sin hacerle trampa. */
   function backtest(juegos, opts) {
@@ -974,8 +1207,25 @@ const SGADD_4F = (function () {
     if (!eL || !eV) return { ok: false, motivo: 'Alguno de los dos equipos no existe en esta liga.' };
     if (eL.clave === eV.clave) return { ok: false, motivo: 'Elegí dos equipos distintos.' };
     const modelo = modeloDe(idx);
-    const pred = modelo ? predecirCruce(modelo, eL.clave, eV.clave, { descansoL: opts && opts.descansoLocal, descansoV: opts && opts.descansoVisitante }) : null;
-    if (!pred) return { ok: false, motivo: 'Alguno de los dos equipos no tiene partidos suficientes para simular.' };
+    const op = opts || {};
+    const optsPred = { descansoL: op.descansoLocal, descansoV: op.descansoVisitante };
+    const base = modelo ? predecirCruce(modelo, eL.clave, eV.clave, optsPred) : null;
+    if (!base) return { ok: false, motivo: 'Alguno de los dos equipos no tiene partidos suficientes para simular.' };
+    /* BAJAS: cada lado con lo que su ausente deja de aportar. Sin bajas,
+       la proyección es exactamente la de siempre. */
+    const iL = (op.bajasLocal && op.bajasLocal.length) ? impactoBajas(idx, eL.clave, op.bajasLocal) : null;
+    const iV = (op.bajasVisitante && op.bajasVisitante.length) ? impactoBajas(idx, eV.clave, op.bajasVisitante) : null;
+    const hayBajas = !!((iL && iL.ok) || (iV && iV.ok));
+    const pred = hayBajas
+      ? predecirCruce(modelo, eL.clave, eV.clave, Object.assign({}, optsPred, { ajustes: {
+          L: iL && iL.ok ? { ortg: iL.ortg, drtg: iL.drtg } : null, V: iV && iV.ok ? { ortg: iV.ortg, drtg: iV.drtg } : null } }))
+      : base;
+    /* El margen que cuesta cada ausente, desde el lado de SU equipo. */
+    const enMargen = (imp) => (imp && imp.ok ? Object.assign({}, imp, {
+      margen: base.pos * imp.net / 100,
+      jugadores: imp.jugadores.map(j => Object.assign({}, j, { margen: base.pos * j.net / 100 })) }) : imp);
+    const bajas = { aplicadas: hayBajas, local: enMargen(iL), visitante: enMargen(iV),
+      margenSinBajas: base.margen, margenConBajas: pred.margen, delta: pred.margen - base.margen };
 
     /* En básquet no hay empates: si el redondeo empata, se separa con la
        misma señal del modelo (el signo del margen que ya calculó). El
@@ -1016,6 +1266,7 @@ const SGADD_4F = (function () {
       ortgEsperadoLocal: pred.ortL, ortgEsperadoVisitante: pred.ortV,
       netRatingLocal: pred.L.ortg - pred.L.drtg, netRatingVisitante: pred.V.ortg - pred.V.drtg,
       ajusteNetRating: 0,   // el Net Rating ya NO se suma aparte: es la base del margen
+      bajas: bajas,
       bonusLocalia: pred.localia,
       fatiga: pred.fatiga,
       metodoPesos: modelo.pesos.metodo, rLiga2: modelo.pesos.r2, nLiga: modelo.pesos.n,
@@ -1057,6 +1308,7 @@ const SGADD_4F = (function () {
     resolverEmpate, simularEnfrentamiento,
     PESOS_OLIVER, PRIOR_LOCALIA, extraerJuegos, encoger, ajustarModelo, ajustarPesosOliver, ajustarLocalia, ajustarFatiga,
     ajustarPorRival, localiaDe, predecirCruce, probabilidadLocal, simularMonteCarlo, repartirUso, backtest, modeloDe,
+    BAJAS, impactoBajas, reemplazoLiga, plantelDe,
   };
 })();
 
@@ -1075,7 +1327,92 @@ const SIMULADOR = {
   fase: 'REGULAR',
   equipoLocal: null,
   equipoVisitante: null,
+  /* Bajas del buzón (punto 172): se aplican salvo que el DT las apague. */
+  aplicarBajas: true,
+  onOff: {},        // nombre del equipo -> Map(nombre normalizado -> On/Off) | 'pidiendo' | 'sin'
 };
+
+/* ===================== BAJAS (punto 172) ===================== */
+
+/** Las bajas de un equipo según el buzón: SUSPENSO (lesión, sanción) y
+    BAJA (fuera del plantel). Un ALTA o un ACTIVO juegan. */
+function simuladorBajasDe(idx, clave) {
+  if (typeof SGADD_BUZON === 'undefined' || !SGADD_BUZON.estadoDe) return [];
+  const e = idx.get(clave);
+  if (!e) return [];
+  const lista = (idx.liga.jugadoresPorEquipo && idx.liga.jugadoresPorEquipo.get(e.clave)) || [];
+  const mapaOo = SIMULADOR.onOff[e.nombre];
+  const out = [];
+  lista.forEach(j => {
+    if (/TIPO/i.test(String(j['NOMBRES'] || ''))) return;
+    const est = SGADD_BUZON.estadoDe(j['NOMBRES'], j['EQUIPO']);
+    if (!est || (est.id !== 'SUSPENSO' && est.id !== 'BAJA')) return;
+    const oo = mapaOo instanceof Map ? mapaOo.get(simuladorNorm(j['NOMBRES'])) : null;
+    out.push({ nombre: j['NOMBRES'], motivo: est.emoji + ' ' + est.label, nota: est.nota || null, onOff: oo || null });
+  });
+  return out;
+}
+
+function simuladorNorm(s) {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+}
+
+/** Con la capa de play-by-play, el On/Off de cada jugador del equipo. Se
+    pide UNA vez por equipo; al llegar, repinta. Sin capa, no se pide. */
+function simuladorPedirOnOff(nombreEquipo) {
+  if (!nombreEquipo || SIMULADOR.onOff[nombreEquipo]) return;
+  if (typeof SGADD_PBP === 'undefined' || !SGADD_PBP.activa || !SGADD_PBP.activa() || !SGADD_PBP.pedir) {
+    SIMULADOR.onOff[nombreEquipo] = 'sin';
+    return;
+  }
+  SIMULADOR.onOff[nombreEquipo] = 'pidiendo';
+  SGADD_PBP.pedir(nombreEquipo).then((paq) => {
+    const m = new Map();
+    Object.keys((paq && paq.jugadores) || {}).forEach(id => {
+      const oo = SGADD_PBP.onOffDe(paq, id);
+      if (oo && oo.dif != null) m.set(simuladorNorm(paq.jugadores[id].n), oo);
+    });
+    SIMULADOR.onOff[nombreEquipo] = m;
+    simuladorPintar();
+  }).catch(() => { SIMULADOR.onOff[nombreEquipo] = 'sin'; });
+}
+
+function simuladorAlternarBajas(v) {
+  SIMULADOR.aplicarBajas = !!v;
+  simuladorPintar();
+}
+
+const simuladorFmt = (v, d) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d == null ? 1 : d).replace('.', ',');
+
+/** El indicador de la cabecera: qué baja se aplicó y cuánto movió el margen. */
+function simuladorBadgeBajas(r, hay) {
+  if (!hay.local.length && !hay.visitante.length) return '';
+  const b = r.bajas || {};
+  const linea = (lado, nombreEq) => {
+    const imp = b[lado];
+    if (!imp || !imp.ok) return '';
+    return imp.jugadores.map(j => {
+      if (j.sinCosto) return `<li class="text-[11px] dato-sec">◆ Baja de <b>${escapeHtml(j.nombre)}</b> (${escapeHtml(nombreEq)}): el box score no le mide un costo, no se ajusta.</li>`;
+      const ext = j.escala < 0.999 ? ` · jugó el ${Math.round(j.escala * 100)} % de los partidos` : '';
+      const oo = j.fuente.indexOf('on/off') !== -1 ? ' · con On/Off' : '';
+      return `<li class="text-[11px] text-white" title="ORTG ${simuladorFmt(j.ortg)} · DRTG ${simuladorFmt(j.drtg)} por 100 posesiones${ext}${oo}">⚠️ Ajustado por baja de <b>${escapeHtml(j.nombre)}</b> (${escapeHtml(nombreEq)}${j.motivo ? ' · ' + escapeHtml(j.motivo) : ''}): <span class="font-mono ${j.margen < 0 ? 'text-red-300' : 'text-green-300'}">${simuladorFmt(j.margen)} pts</span> en margen</li>`;
+    }).join('') + (imp.reemplazo && imp.reemplazo.length ? `<li class="text-[10px] dato-sec">Sus minutos van a ${imp.reemplazo.map(x => escapeHtml(x.nombre) + ' (+' + x.minExtra.toFixed(1).replace('.', ',') + ' min)').join(', ')}.</li>` : '');
+  };
+  const total = (hay.local.length + hay.visitante.length);
+  const control = `<label class="inline-flex items-center gap-2 text-[11px] dato-sec cursor-pointer">
+      <input type="checkbox" ${SIMULADOR.aplicarBajas ? 'checked' : ''} onchange="simuladorAlternarBajas(this.checked)">
+      Aplicar las bajas del buzón (${total})</label>`;
+  if (!SIMULADOR.aplicarBajas || !b.aplicadas) {
+    const nombres = hay.local.concat(hay.visitante).map(x => escapeHtml(x.nombre)).join(', ');
+    return `<div class="mt-3 rounded-md border border-hairline p-2.5" data-bajas="apagadas">${control}
+      <p class="text-[10px] dato-sec mt-1">Sin ajuste: el buzón marca ${nombres}.</p></div>`;
+  }
+  return `<div class="mt-3 rounded-md border border-yellow-400/40 bg-yellow-400/5 p-2.5" data-bajas="aplicadas">
+      ${control}
+      <ul class="mt-1.5 space-y-1">${linea('local', r.local)}${linea('visitante', r.visitante)}</ul>
+      <p class="text-[10px] dato-sec mt-1.5">Margen sin las bajas ${simuladorFmt(b.margenSinBajas)} · con las bajas ${simuladorFmt(b.margenConBajas)}. Cada baja: sus jugadas pasan a su reemplazo y sus minutos a la rotación.</p>
+    </div>`;
+}
 
 /* ===================== RUTEO ===================== */
 
@@ -1237,7 +1574,12 @@ function filaComparativa(etiqueta, valL, valV, nombreL, nombreV, formatear) {
 function simuladorResultado(idx) {
   if (!SIMULADOR.equipoLocal || !SIMULADOR.equipoVisitante) return '';
 
-  const r = SGADD_4F.simularEnfrentamiento(idx, SIMULADOR.equipoLocal, SIMULADOR.equipoVisitante);
+  const eqL = idx.get(SIMULADOR.equipoLocal), eqV = idx.get(SIMULADOR.equipoVisitante);
+  const hay = { local: eqL ? simuladorBajasDe(idx, eqL.clave) : [], visitante: eqV ? simuladorBajasDe(idx, eqV.clave) : [] };
+  if (hay.local.length && eqL) simuladorPedirOnOff(eqL.nombre);
+  if (hay.visitante.length && eqV) simuladorPedirOnOff(eqV.nombre);
+  const r = SGADD_4F.simularEnfrentamiento(idx, SIMULADOR.equipoLocal, SIMULADOR.equipoVisitante,
+    SIMULADOR.aplicarBajas ? { bajasLocal: hay.local, bajasVisitante: hay.visitante } : null);
   if (!r.ok) return SGADD_UI.aviso('No se pudo simular', r.motivo, 'error');
 
   const logoL = (typeof LOGOS !== 'undefined') ? LOGOS.getUrl(r.local) : null;
@@ -1278,6 +1620,7 @@ function simuladorResultado(idx) {
         El modelo proyectaba un resultado sin margen claro (en básquet no hay empates): se resolvió
         con la fuerza de temporada (Net Rating) y la ventaja de localía, el mismo criterio que ya
         usa el resto del cálculo.</p>` : ''}
+      ${simuladorBadgeBajas(r, hay)}
     </div>`;
 
   /* ===================== 📊 Gráfico comparativo ===================== */
