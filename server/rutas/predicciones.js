@@ -123,16 +123,31 @@ function hojasDeTorneo(hojasPorZona) {
   return out;
 }
 
+/** ¿El torneo declara alguna fase que cruce zonas? */
+function cruzaZonas(formato) {
+  return ((formato && formato.fases) || []).some(f => f && String(f.cruce || '').toLowerCase() === 'interzonal');
+}
+
 /** Lo puro de los cruces entre zonas: [{zona, hojas}] + los partidos pendientes. */
 function planificarEntreZonas(zonas, partidos, formato, alias, hoy, ahoraMs) {
   const zonaDe = {};
+  const repetidos = new Set();
   zonas.forEach((z) => {
     (((z.hojas && z.hojas['Base Datos E']) || {}).filas || []).forEach((f) => {
       const eq = String((f && f.EQUIPO) || '').trim();
-      if (eq && !ES_TIPO.test(eq)) zonaDe[CORE.claveEquipo(eq)] = z.zona;
+      if (!eq || ES_TIPO.test(eq)) return;
+      const k = CORE.claveEquipo(eq);
+      if (zonaDe[k] && zonaDe[k] !== z.zona) repetidos.add(k);
+      zonaDe[k] = z.zona;
     });
   });
-  const ir = indiceRegular(formato, hojasDeTorneo(zonas.map(z => z.hojas)));
+  /* Un mismo equipo en dos «zonas» quiere decir que son categorías
+     distintas (U21 y U23 del mismo club), no zonas de una competencia:
+     mezclarlas mediría a un equipo con los partidos de otra categoría. */
+  if (repetidos.size) {
+    return { registros: [], omitidos: [], sinCruce: [], motivo: 'Las zonas comparten equipos (' + Array.from(repetidos).slice(0, 3).join(', ') + '): son categorías distintas y no se mezclan.' };
+  }
+  const ir =indiceRegular(formato, hojasDeTorneo(zonas.map(z => z.hojas)));
   if (!ir) return { registros: [], omitidos: [], sinCruce: [], motivo: 'Los libros no tienen una fase regular.' };
   const claves = ir.idx.lista().map(e => e.clave);
   const cruzado = fuentes.cruzarConLibro(partidos, claves, alias, CORE.claveEquipo);
@@ -232,7 +247,9 @@ async function manejarCronPredicciones(peticion, deps) {
       }
     }
     /* El segundo pase, solo con dos zonas o más y algo que no cruzó. */
-    if (grupo.length < 2 || !pendientes.size) continue;
+    /* Y solo en un torneo que declara una fase entre zonas: en Formativas
+       las «zonas» son categorías (U21, U23) que nunca se cruzan. */
+    if (grupo.length < 2 || !pendientes.size || !cruzaZonas(grupo[0].formato)) continue;
     const sal = { torneo: torneo, zona: 'entre-zonas', congeladas: 0, yaEstaban: 0, enVentana: pendientes.size };
     try {
       const zs = [];
@@ -273,4 +290,4 @@ async function manejarPredicciones(peticion, deps) {
   return { status: 200, body: { ok: true, torneo: torneo, zona: zona, predicciones: lista } };
 }
 
-module.exports = { manejarCronPredicciones, manejarPredicciones, planificarZona, planificarEntreZonas, hojasDeTorneo, zonasACongelar, aliasDe };
+module.exports = { manejarCronPredicciones, manejarPredicciones, planificarZona, planificarEntreZonas, hojasDeTorneo, cruzaZonas, zonasACongelar, aliasDe };

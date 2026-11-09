@@ -176,7 +176,7 @@ node test-alertas-partidos.js # 38 tests · las alertas de partido: -4 dias a la
 
 node test-carga-manual.js  #  24 tests · la doble alerta de carga de los torneos manuales (punto 164)
 
-node test-predicciones.js  #  45 tests · lo simulado contra lo que pasó: congelar antes del partido, HSETNX,
+node test-predicciones.js  #  48 tests · lo simulado contra lo que pasó: congelar antes del partido, HSETNX,
                            #             el resultado real, el resumen de calibración y la card (punto 171)
 
 node test-ecosistema.js    #  23 tests · el auditor del ecosistema: fechas, claves de escudo,
@@ -16930,6 +16930,7 @@ server/vercel.json              cron «0 11 * * *» (08:00 AR)
 En una postemporada interzonal (APB) el rival no está en el libro de la zona y `planificarZona` lo deja pendiente. Un segundo pase por torneo (`planificarEntreZonas`, salida `zona: 'entre-zonas'`) arma el índice con los libros de TODAS las zonas regulares (`hojasDeTorneo`: une las columnas, las filas TIPO solo de la primera zona) y proyecta esos cruces. El registro lleva `entreZonas` y `zonas`, y se guarda con HSETNX en la clave de las DOS zonas: cada club lo ve en su card.
 - **Límite del modelo:** en la fase regular las zonas no se cruzan, así que no hay datos que conecten sus niveles; el modelo las trata como una sola liga.
 - **El resultado de un cruce entre zonas se lee desde un solo lado** (`resultados`): en el libro de la zona el rival de otra zona no es un equipo de la lista (punto 169), pero la fila propia trae PTSopp y el texto del cruce lo nombra. Sin PTSopp no se inventa.
+- **Solo en un torneo que declara una fase `cruce: 'interzonal'`** (`cruzaZonas`): en Formativas las «zonas» son categorías (U21, U23) que nunca se cruzan. Y si dos zonas comparten un equipo, no se mezclan (son categorías distintas del mismo club).
 - Un lugar a definir («Ganador Partido A») o un equipo de otra categoría siguen sin cruzar y se omiten.
 
 ### Lo que NO hace todavía

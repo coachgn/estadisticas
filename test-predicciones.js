@@ -191,7 +191,13 @@ const IDX = SGADD.construirIndice(HOJAS, { fase: TRAMO.fase, torneo: TRAMO.torne
     && ez.registros[0].zonas.join(',') === 'a,b');
   check('la proyección usa los mismos números del simulador', ez.registros[0] && typeof ez.registros[0].margen === 'number' && ez.registros[0].pLocal > 0 && ez.registros[0].pLocal < 1);
 
-  const catEZ = { demo: { tipo: 'torneo', fixture: { adaptador: 'basket-club', zonas: { a: 'https://basket-club.com/x' } },
+  check('dos «zonas» que comparten equipos son categorías distintas y no se mezclan',
+    RUTA.planificarEntreZonas([zfilas('u21', hA), zfilas('u23', hA)], cruce, {}, {}, D, Date.now()).registros.length === 0
+    && /categorías distintas/.test(RUTA.planificarEntreZonas([zfilas('u21', hA), zfilas('u23', hA)], cruce, {}, {}, D, Date.now()).motivo));
+  check('cruzaZonas: solo con una fase declarada entre zonas', RUTA.cruzaZonas({ fases: [{ id: 'cuartos', cruce: 'interzonal' }] })
+    && !RUTA.cruzaZonas({ fases: [{ id: 'regular', cruce: 'zona' }] }) && !RUTA.cruzaZonas({}));
+  const FMT_IZ = { fases: [{ id: 'regular', cruce: 'zona' }, { id: 'cuartos', cruce: 'interzonal' }] };
+  const catEZ = { demo: { tipo: 'torneo', formato: FMT_IZ, fixture: { adaptador: 'basket-club', zonas: { a: 'https://basket-club.com/x' } },
     categorias: { 'demo-a': { zona: 'a', sheetId: 'LA', label: 'A' }, 'demo-b': { zona: 'b', sheetId: 'LB', label: 'B' } } } };
   const kvEZ = kvMemoria();
   const depsEZ = Object.assign({}, deps, { kv: kvEZ, catalogo: catEZ, partidosDe: async () => ({ partidos: cruce }),
@@ -207,6 +213,9 @@ const IDX = SGADD.construirIndice(HOJAS, { fase: TRAMO.fase, torneo: TRAMO.torne
     && enAk.body.predicciones.length === 1 && enBk.body.predicciones.length === 1);
   const otraVez = await RUTA.manejarCronPredicciones(cron(false), depsEZ);
   check('correrlo de nuevo no pisa nada', otraVez.body.zonas.find(z => z.zona === 'entre-zonas').yaEstaban === 1);
+  const sinFaseIZ = Object.assign({}, depsEZ, { kv: kvMemoria(), catalogo: { demo: Object.assign({}, catEZ.demo, { formato: { fases: [{ id: 'regular', cruce: 'zona' }] } }) } });
+  check('un torneo sin fase entre zonas (Formativas) no hace el segundo pase',
+    !(await RUTA.manejarCronPredicciones(cron(true), sinFaseIZ)).body.zonas.some(z => z.zona === 'entre-zonas'));
 
   /* El resultado desde un solo lado: en el libro de la zona el rival de
      otra zona no es un equipo de la lista, pero su fila trae PTSopp. */
