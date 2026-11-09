@@ -408,4 +408,4 @@ async function manejarRival(peticion, deps) {
   }
 }
 
-module.exports = { manejarLlave, manejarRival, crucesDe, limpiarCache, tablaDeZona, partidosDePostemporada, faseRegular, paraZonas };
+module.exports = { manejarLlave, manejarRival, crucesDe, limpiarCache, tablaDeZona, partidosDePostemporada, faseRegular, paraZonas, indiceRegular };

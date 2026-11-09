@@ -22,6 +22,7 @@
     { "path": "/api/cron/recordatorios-vencimiento", "schedule": "0 12 * * *" },
     { "path": "/api/cron/alertas-partidos", "schedule": "0 10 * * *" },
     { "path": "/api/cron/carga-manual?flujo=previa", "schedule": "0 15 * * *" },
-    { "path": "/api/cron/carga-manual?flujo=control", "schedule": "0 10 * * *" }
+    { "path": "/api/cron/carga-manual?flujo=control", "schedule": "0 10 * * *" },
+    { "path": "/api/cron/predicciones", "schedule": "0 11 * * *" }
   ]
 }

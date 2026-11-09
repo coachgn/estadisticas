@@ -1154,7 +1154,9 @@ function simuladorPintar() {
     reg ? avisoFase : SGADD_APP.avisoMuestra(),
     simuladorSelectores(idx),
     simuladorResultado(idx),
+    '<div id="simuladorCalibracion"></div>',
   ].filter(Boolean).join('');
+  simuladorCargarCalibracion();
 }
 
 function simuladorSelectores(idx) {
@@ -1406,8 +1408,105 @@ function simuladorResultado(idx) {
     </div>`;
 }
 
+
+/* ===================== 📈 CALIBRACIÓN · lo simulado contra lo que pasó (punto 171) =====================
+   Las predicciones las congela el cron `/api/cron/predicciones` ANTES de
+   cada partido (HSETNX: no se reescriben), y acá se cruzan con el
+   resultado del libro. La base del cruce es la temporada completa
+   (`idxTemporada`), así un partido de playoff también se evalúa. */
+const SIM_CALIB = { clave: null, preds: null, error: null };
+
+function simuladorContextoTorneo() {
+  const p = (typeof SGADD_APP !== 'undefined' && SGADD_APP.planillaActual) ? SGADD_APP.planillaActual() : null;
+  return p && p.torneoId ? { torneo: p.torneoId, zona: p.zonaId || '' } : null;
+}
+
+function simuladorCargarCalibracion() {
+  const el = (typeof document !== 'undefined') ? document.getElementById('simuladorCalibracion') : null;
+  if (!el) return;
+  const ctx = simuladorContextoTorneo();
+  if (!ctx || typeof SGADD_PREDICCIONES === 'undefined') { el.innerHTML = simuladorCalibracionHtml(null, null); return; }
+  if (typeof SGADD_DATA === 'undefined' || !SGADD_DATA.prediccionesDeZona) { el.innerHTML = ''; return; }
+  const k = ctx.torneo + '|' + ctx.zona;
+  const pintar = () => {
+    const e2 = document.getElementById('simuladorCalibracion');
+    if (!e2) return;
+    if (SIM_CALIB.error) { e2.innerHTML = SGADD_UI.aviso('No se pudieron leer las predicciones', SIM_CALIB.error, 'error'); return; }
+    if (!SIM_CALIB.preds) { e2.innerHTML = SGADD_UI.cargando('Leyendo las predicciones congeladas…'); return; }
+    const t = (typeof SGADD_APP.idxTemporada === 'function') ? SGADD_APP.idxTemporada() : null;
+    const base = (t && t.idx) || SGADD_APP.estado.idx;
+    e2.innerHTML = simuladorCalibracionHtml(SGADD_PREDICCIONES.cruzar(SIM_CALIB.preds, base), ctx);
+  };
+  if (SIM_CALIB.clave === k && (SIM_CALIB.preds || SIM_CALIB.error)) { pintar(); return; }
+  SIM_CALIB.clave = k; SIM_CALIB.preds = null; SIM_CALIB.error = null;
+  pintar();
+  SGADD_DATA.prediccionesDeZona(ctx.torneo, ctx.zona).then((r) => {
+    if (SIM_CALIB.clave !== k) return;
+    SIM_CALIB.preds = (r && r.predicciones) || [];
+    pintar();
+  }, (e) => {
+    if (SIM_CALIB.clave !== k) return;
+    SIM_CALIB.error = (e && e.message) || 'Error desconocido.';
+    pintar();
+  });
+}
+
+/** PURA: la card, con las filas de `SGADD_PREDICCIONES.cruzar`. */
+function simuladorCalibracionHtml(filas, ctx) {
+  const ENT = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  const esc = (v) => String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, c => ENT[c]);
+  const P = (typeof SGADD_PREDICCIONES !== 'undefined') ? SGADD_PREDICCIONES
+    : (typeof require === 'function' ? require('./sgadd-predicciones.js') : null);
+  const titulo = '<h3 class="font-display text-lg text-ink">📈 Calibración del modelo · lo simulado contra lo que pasó</h3>';
+  const caja = (cuerpo) => '<section class="card rounded-xl p-5 border border-hairline space-y-3" data-calibracion>' + titulo + cuerpo + '</section>';
+  const nota = (t) => '<p class="text-xs text-muted leading-snug">' + t + '</p>';
+  const aviso = (t, txt) => (typeof SGADD_UI !== 'undefined' && SGADD_UI.aviso) ? SGADD_UI.aviso(t, txt)
+    : '<p class="text-xs" style="color:#fbbf24">⚠ ' + t + ': ' + txt + '</p>';
+  if (!ctx) return caja(nota('Esta categoría no está enganchada a un torneo con fixture: no hay partidos programados que congelar.'));
+  const lista = filas || [];
+  if (!lista.length) {
+    return caja(nota('Todavía no hay predicciones congeladas para esta zona. El cron las congela una vez por día, para los partidos programados de hoy a ' + P.DIAS_ANTES + ' días, con el modelo ' + esc(P.VERSION) + '.'));
+  }
+  const s = P.resumen(lista);
+  const pct = (v) => (typeof v === 'number' ? Math.round(v * 100) + ' %' : '—');
+  const num = (v, d) => (typeof v === 'number' ? v.toFixed(d === undefined ? 1 : d).replace('.', ',') : '—');
+  const signo = (v) => (typeof v === 'number' ? (v > 0 ? '+' : '') + num(v) : '—');
+  const ficha = (rot, val, sub) => '<div class="rounded-lg border border-hairline bg-surface2/30 p-3"><p class="text-[10px] uppercase tracking-widest dato-sec">' + rot
+    + '</p><p class="font-display text-2xl text-ink leading-none mt-1">' + val + '</p><p class="text-[11px] text-muted mt-1">' + sub + '</p></div>';
+  const tabla = (cab, cuerpo) => '<div class="scrollbox"><table class="w-full text-xs"><thead><tr>' + cab.map(c => '<th>' + c + '</th>').join('') + '</tr></thead><tbody>' + cuerpo + '</tbody></table></div>';
+  const partes = [nota('Cada predicción se congela ANTES del partido y no se reescribe: lo que se ve es lo que el modelo dijo de verdad. Modelo vigente: ' + esc(P.VERSION) + '.')];
+  if (!s.n) {
+    partes.push(nota(lista.length + ' predicción(es) congelada(s), ninguna jugada todavía.'));
+  } else {
+    if (!s.suficiente) partes.push(aviso('Muestra corta', 'Con ' + s.n + ' partido(s) evaluado(s) todavía no alcanza para leer la calibración: hacen falta ' + s.minimo + '. Los números se muestran igual.'));
+    partes.push('<div class="grid grid-cols-2 gap-3">'
+      + ficha('Evaluadas', String(s.n), s.pendientes + ' pendiente(s)')
+      + ficha('Error medio (MAE)', num(s.mae) + ' pts', 'RMSE ' + num(s.rmse) + ' · sesgo ' + signo(s.sesgo) + ' (+ = sobreestima al local)')
+      + ficha('Acierta el ganador', pct(s.aciertos), '«siempre gana el local»: ' + pct(s.ganaLocal))
+      + ficha('Dentro del rango P10-P90', pct(s.cobertura80), 'un modelo calibrado anda cerca de 80 %')
+      + ficha('Brier', num(s.brier, 3), 'decir 50 % siempre da 0,250 · menos es mejor')
+      + '</div>');
+    const filasCal = s.calibracion.filter(c => c.n).map(c => '<tr><td>' + pct(c.desde) + '–' + pct(c.hasta) + '</td><td>' + c.n + '</td><td>' + pct(c.prob) + '</td><td>' + pct(c.real) + '</td></tr>').join('');
+    if (filasCal) partes.push(tabla(['Confianza en el favorito', 'Partidos', 'Dijo', 'Ganó el favorito'], filasCal));
+    const filasEq = s.porEquipo.slice(0, 8).map(e => '<tr><td>' + esc(e.nombre) + '</td><td>' + e.n + '</td><td>' + num(e.mae) + '</td><td>' + signo(e.sesgo) + '</td><td>' + num(e.ultimos.mae) + ' (' + e.ultimos.n + ')</td></tr>').join('');
+    partes.push('<details class="hub-plegable"><summary class="text-sm text-ink cursor-pointer">Por equipo · dónde más se equivoca</summary>'
+      + nota('Sesgo desde el lado del equipo: positivo = el modelo lo sobreestimó. Últimos 4 = su último ciclo.')
+      + tabla(['Equipo', 'Partidos', 'MAE', 'Sesgo', 'Últimos 4'], filasEq) + '</details>');
+  }
+  const ultimas = lista.slice(-15).reverse().map((f) => {
+    const p = f.pred, e = f.eval;
+    const realTxt = e ? (e.ptsLocal + '–' + e.ptsVisitante + ' (' + signo(e.margenReal) + ')') : 'por jugarse';
+    const ver = e ? (e.acierto ? '✓' : '✗') + ' ' + signo(e.error) : '◆';
+    return '<tr><td class="font-mono">' + esc(p.fecha) + '</td><td>' + esc(p.local) + ' vs ' + esc(p.visitante) + '</td><td class="font-mono">'
+      + signo(p.margen) + ' · local ' + pct(p.pLocal) + '</td><td class="font-mono">' + realTxt + '</td><td class="font-mono">' + ver + '</td></tr>';
+  }).join('');
+  partes.push(tabla(['Fecha', 'Cruce', 'Predicho', 'Real', 'Error'], ultimas));
+  return caja(partes.join(''));
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = Object.assign({}, SGADD_4F, {
     SIMULADOR, simuladorLeerRuta, simuladorEscribirRuta,
+    simuladorCalibracionHtml,
   });
 }

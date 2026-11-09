@@ -176,6 +176,9 @@ node test-alertas-partidos.js # 38 tests · las alertas de partido: -4 dias a la
 
 node test-carga-manual.js  #  24 tests · la doble alerta de carga de los torneos manuales (punto 164)
 
+node test-predicciones.js  #  34 tests · lo simulado contra lo que pasó: congelar antes del partido, HSETNX,
+                           #             el resultado real, el resumen de calibración y la card (punto 171)
+
 node test-ecosistema.js    #  23 tests · el auditor del ecosistema: fechas, claves de escudo,
                            #             ids tapados y que no escriba (punto 121)
 
@@ -324,7 +327,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=364`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=365`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16902,3 +16905,33 @@ Se publicó antes de esto y no tiene metas guardadas. `previoDe` (sgadd-ciclosui
 1. Deploy del backend (`cd server && npx vercel --prod`): sin él, `/cerrar` ignora las metas y el mail sigue con el link viejo.
 2. Push del front (`?v=364`).
 3. **No verificado en el navegador ni en un PDF real**: probado con el paquete real del Ciclo 0 sin el índice del libro (8 metas) y con el servidor de mentira.
+
+## 171. LO SIMULADO CONTRA LO QUE PASÓ · las predicciones congeladas y la calibración (2026-11-09)
+
+Assets en `?v=365`. `test-predicciones.js` fija todo, sobre el snapshot de la demo. Es el primer paso de la auditoría del simulador contra el dossier de ensembles: antes de cambiar el modelo hay que poder medir si mejora.
+
+```
+js/sgadd-predicciones.js        PURO, compartido: candidatos, congelar, resultados, evaluar, cruzar, resumen
+server/lib/predicciones.js      KV · sgadd:predicciones:<torneo>:<zona>, un campo por partido, HSETNX
+server/rutas/predicciones.js    GET /api/cron/predicciones (CRON_SECRET o ADMIN, ?simular=1)
+                                GET /api/v1/predicciones/:torneo/:zona (solo ADMIN)
+server/vercel.json              cron «0 11 * * *» (08:00 AR)
+```
+
+- **Por qué congelar y no recalcular**: el `backtest` (punto 148) re-predice con el modelo de HOY, así que un cambio de constante reescribe el pasado. Lo congelado lleva versión (`SGADD_PREDICCIONES.VERSION`, hoy `v318`; subirla cuando cambie la sección 7 de `sgadd-4factores.js`), fecha y lo que el modelo sabía, y no se reemplaza nunca.
+- **El cron**: torneos del catálogo con fuente de fixture, zonas regulares con libro (no las interzonales). Lee el fixture con `partidosDe` (el de las alertas), toma los programados de hoy a +2 días, y solo si hay alguno lee el libro. Arma el índice de la fase REGULAR (`indiceRegular` de `llave.js`, el mismo con que el Simulador proyecta una eliminatoria, punto 161), cruza los nombres con `cruzarConLibro` y los alias de la zona del catálogo, y congela `simularEnfrentamiento`. Un partido que no cruza, que ya está en el libro o que el simulador no puede proyectar se omite con su motivo.
+- **El resultado real** (`resultadoDe`): el mismo cruce con la MISMA localía (al revés es la vuelta), a 3 días o menos (el libro corrido, punto 71). Con dos a la misma distancia no se elige.
+- **Qué se mide** (`resumen`): MAE, RMSE y sesgo (+ = sobreestima al local), acierto contra «siempre gana el local», cobertura del P10-P90 (calibrado ≈ 80 %), Brier contra 0,25, calibración por la confianza en el favorito, y por equipo desde SU lado con sus últimos 4 (un ciclo). Con menos de 10 evaluadas se muestra con aviso de muestra corta.
+- **La card** «📈 Calibración del modelo», al pie del Simulador (solo admin): pide lo congelado de la zona de la planilla (`torneoId`/`zonaId`) y lo cruza con `idxTemporada()`, así un playoff también se evalúa. Una categoría sin torneo lo dice.
+- `sgadd-4factores.js` y `sgadd-predicciones.js` se sumaron a `server/lib/compartido/` (el cron congela con el mismo modelo que dibuja el panel).
+- Medido en la demo, congelando día por día con el libro hasta el día anterior (26 partidos): MAE 9,0 · acierta el ganador 69 % · P10-P90 cubre el 85 %.
+
+### Lo que NO hace todavía
+- **No corrige el modelo con sus errores.** El sesgo por equipo queda a la vista; usarlo como corrección encogida es el paso siguiente, cuando haya muestra (decenas de partidos congelados por zona).
+- Un partido que la fuente publica recién el mismo día después de las 08:00 AR no se congela (el cron corre una vez).
+- **No verificado contra el catálogo real ni en el navegador**: probado con KV, fixture y libro de mentira sobre la demo.
+
+### Para producción
+1. Deploy del backend (`cd server && npx vercel --prod`): la ruta, el cron y los compartidos nuevos.
+2. Push del front (`?v=365`).
+3. Primera mirada con un token de admin: `GET /api/cron/predicciones?simular=1`.

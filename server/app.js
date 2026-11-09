@@ -152,6 +152,12 @@ function crearApp(opciones) {
   /* La doble alerta de carga de los torneos manuales (previa y control). */
   app.get('/api/cron/carga-manual', responder(require('./rutas/carga-manual.js').manejarCronCargaManual));
 
+  /* Lo simulado contra lo que pasó (punto 171): el cron congela la predicción
+     de cada partido programado con HSETNX y el admin la lee para la calibración. */
+  const predicciones = require('./rutas/predicciones.js');
+  app.get('/api/cron/predicciones', responder(predicciones.manejarCronPredicciones));
+  app.get('/api/v1/predicciones/:torneo/:zona', responder(predicciones.manejarPredicciones));
+
   /* LAS DOS RUTAS SIN TOKEN. Son las únicas: todo lo demás exige uno.
      `login` lo emite y `clave` lo fija por primera vez, así que exigirlo
      sería pedir la llave para entrar a buscar la llave. Lo que las cuida

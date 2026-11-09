@@ -82,7 +82,10 @@ const MODULOS = ['sgadd-core.js', 'sgadd-auth.js', 'sgadd-estados.js', 'sgadd-da
   'sgadd-ciclos.js',
   /* La cancha vectorial: el informe de ciclo en PDF dibuja el mismo mapa
      que el panel (Ciclos, fase 6). */
-  'sgadd-cancha.js'];
+  'sgadd-cancha.js',
+  /* El simulador y la congelación de sus predicciones: el cron congela con
+     el MISMO modelo que dibuja el panel (punto 171). */
+  'sgadd-4factores.js', 'sgadd-predicciones.js'];
 
 const ORIGEN = path.join(__dirname, '..', '..', 'js');
 const DESTINO = path.join(__dirname, '..', 'lib', 'compartido');

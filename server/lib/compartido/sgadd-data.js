@@ -727,6 +727,12 @@ const SGADD_DATA = (function () {
     return getConToken(rutaCiclos(club, slug) + '/foto?equipo=' + encodeURIComponent(equipo) + '&clave=' + encodeURIComponent(clave), opciones);
   }
 
+  /* Lo simulado contra lo que pasó (punto 171): las predicciones congeladas
+     de una zona de torneo. Solo ADMIN. */
+  function prediccionesDeZona(torneo, zona, opciones) {
+    return getConToken('/api/v1/predicciones/' + encodeURIComponent(torneo) + '/' + encodeURIComponent(zona), opciones);
+  }
+
   function fichajesTorneos(opciones) { return getConToken('/api/v1/fichajes', opciones); }
 
   /* La vara de jugadores de un período (punto 139, fase 3): números
@@ -760,7 +766,7 @@ const SGADD_DATA = (function () {
     configurar, apiConfigurada, origen, base: () => baseApi,
     matrizAFilas, matrizALegacy, tipoDeColumna,
     cargarCategoria, cargarDelBackend, limpiarCache, catalogo, guardarCatalogo, equiposDelLibro,
-    fixtureDeTorneo, llaveDeTorneo, rivalDeTorneo,
+    fixtureDeTorneo, llaveDeTorneo, rivalDeTorneo, prediccionesDeZona,
     login, fijarClave, clientes, guardarClientes, fichas, guardarFicha,
     estadosCompartibles, leerEstados, guardarEstados, leerPbp, ciclosSellados, sellarCiclo, ciclosGestion, ciclosGestionar, ciclosPublicar, ciclosPaquete, cerrarCiclo, ciclosPublicados, cicloFoto,
     varaJugadores, fichajesTorneos, fichajesZona, fichajesTiros, fichajesGuardarFichas, fichajesPadron, fichajesGuardarPadron,
