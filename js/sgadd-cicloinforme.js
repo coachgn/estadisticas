@@ -59,11 +59,15 @@ const SGADD_CICLOINFORME = (function () {
   const NOMBRE_ZONA = { Z1: 'bajo el aro', Z2: 'corta izquierda', Z3: 'corta frontal', Z4: 'corta derecha', Z5: 'media fondo izq.', Z6: 'media ala izq.', Z7: 'media frontal', Z8: 'media ala der.', Z9: 'media fondo der.', Z10: 'esquina izquierda', Z11: 'triple ala izquierda', Z12: 'triple frontal', Z13: 'triple ala derecha', Z14: 'esquina derecha' };
   const FRANJAS = ['0-7 s · transición', '8-17 s · juego armado', '18-24 s · final del reloj'];
   const ORIGEN = { RD: 'Tras nuestro tiro errado (rebote defensivo del rival)', ROBO: 'Tras nuestra pérdida (robo)', SAQUE: 'Saque tras canasta nuestra', MUERTA: 'Pérdida con pelota muerta', PERIODO: 'Inicio de período' };
-  const MITAD = 0.5;          // la meta real: mitad del camino (criterio del Artifact)
+  /* Los TERCIOS de la liga (punto 174): el mismo criterio que la proyección del Diagnóstico.
+     Fortaleza = tercio superior (P67+), ajuste = medio (P34-66), quiebre = inferior (< P34). */
+  const ESC = typeof SGADD_ESCALONES !== 'undefined' ? SGADD_ESCALONES : require('./sgadd-escalones.js');
+  const SUP = ESC.INICIO_SUPERIOR, MED = ESC.INICIO_MEDIO;
+  const MITAD = ESC.FRACCION_CICLO;   // la meta real de un ciclo: mitad del camino al escalón
   const SOLAPE = 0.5;         // escenario prudente: la mitad de la suma, porque las metas se pisan
 
   /* ---- vista: tiles, chips y tarjetas (clases `.ci-*`, estilo propio inyectado) ---- */
-  const tono = (pct, inv) => !esNum(pct) ? 'info' : (pct >= 70 ? 'pos' : pct < 40 ? 'neg' : 'warn');
+  const tono = (pct, inv) => !esNum(pct) ? 'info' : (pct >= SUP ? 'pos' : pct < MED ? 'neg' : 'warn');
   const glifo = t => ({ pos: '▲', neg: '▼', warn: '●', info: '◆' }[t] || '◆');
   const tile = (l, v, s, t) => `<div class="ci-tile ${t || 'info'}"><div class="ci-tl">${esc(l)}</div><div class="ci-tv"><span class="ci-gl">${glifo(t)}</span>${v}</div>${s ? `<div class="ci-ts">${s}</div>` : ''}</div>`;
   const card = (titulo, cuerpo, cls) => cuerpo ? `<div class="ci-card ${cls || ''}"><h3>${esc(titulo)}</h3>${cuerpo}</div>` : '';
@@ -457,14 +461,14 @@ const SGADD_CICLOINFORME = (function () {
     const pace = M.PACE, plays = M.PLAYS;
     let s = '';
     if (pace.puesto === 1) s = `${eq} corre más que nadie en la conferencia (PACE ${fmt('PACE', pace.valor)}, 1.º de ${pace.de})`;
-    else if (esNum(pace.pct) && pace.pct >= 70) s = `${eq} es de los equipos que más corren (PACE ${fmt('PACE', pace.valor)}, ${ordDe(pace)})`;
-    else if (esNum(pace.pct) && pace.pct < 40) s = `${eq} juega a ritmo lento (PACE ${fmt('PACE', pace.valor)}, ${ordDe(pace)})`;
+    else if (esNum(pace.pct) && pace.pct >= SUP) s = `${eq} es de los equipos que más corren (PACE ${fmt('PACE', pace.valor)}, ${ordDe(pace)})`;
+    else if (esNum(pace.pct) && pace.pct < MED) s = `${eq} juega a ritmo lento (PACE ${fmt('PACE', pace.valor)}, ${ordDe(pace)})`;
     else s = `${eq} juega a ritmo de liga (PACE ${fmt('PACE', pace.valor)}, ${ordDe(pace)})`;
     s += plays.puesto === 1 ? ` y es el equipo que más plays genera por partido (${fmt('PLAYS', plays.valor)}). ` : `, con ${fmt('PLAYS', plays.valor)} plays por partido (${ord(plays)}). `;
     s += `El ciclo cerró ${res.record.g}-${res.record.p} con un margen de ${sg(margen)} pts por partido`;
     /* Lo que NO explica la brecha (las fortalezas del ciclo) y lo que SÍ (el tiro, si está en el fondo). */
-    const fuerte = ['RO%', 'PP Opp%', 'RD%'].map(k => M[k]).filter(m => m && esNum(m.pct) && m.pct >= 70);
-    const tiroMal = [M['eFG%'], M['eFG Opp%']].filter(m => m && esNum(m.pct) && m.pct < 40);
+    const fuerte = ['RO%', 'PP Opp%', 'RD%'].map(k => M[k]).filter(m => m && esNum(m.pct) && m.pct >= SUP);
+    const tiroMal = [M['eFG%'], M['eFG Opp%']].filter(m => m && esNum(m.pct) && m.pct < MED);
     const ultimo = m => m.puesto === m.de;
     if (margen < 0 && tiroMal.length) {
       const art = { 'RO%': 'el rebote ofensivo', 'RD%': 'el rebote defensivo', 'PP Opp%': 'las pérdidas que fuerza' };
@@ -478,7 +482,7 @@ const SGADD_CICLOINFORME = (function () {
     const brecha = esNum(M.PPP.valor) && esNum(M.PPP.med) && esNum(plays.valor) ? (M.PPP.valor - M.PPP.med) * plays.valor : null;
     const peso = mod && mod.pesos && esNum(mod.pesos['eFG%']) ? mod.pesos['eFG%'] / 100 : null;
     const s2 = [esNum(peso) ? `Cada punto porcentual de eFG vale ${n(peso, 2)} pts por partido con los pesos de la liga.` : '',
-      esNum(brecha) ? `Con ${Math.round(plays.valor)} plays por partido a ${n(M.PPP.valor, 2)} puntos por jugada, la ${brecha < 0 ? 'brecha' : 'ventaja'} contra el PPP de la liga (${n(M.PPP.med, 2)}) son ${n(Math.abs(brecha), 1)} pts por partido${brecha < 0 && esNum(plays.pct) && plays.pct >= 70 ? ': hay volumen de sobra y falta rendimiento por jugada' : ''}.` : ''].filter(Boolean).join(' ');
+      esNum(brecha) ? `Con ${Math.round(plays.valor)} plays por partido a ${n(M.PPP.valor, 2)} puntos por jugada, la ${brecha < 0 ? 'brecha' : 'ventaja'} contra el PPP de la liga (${n(M.PPP.med, 2)}) son ${n(Math.abs(brecha), 1)} pts por partido${brecha < 0 && esNum(plays.pct) && plays.pct >= SUP ? ': hay volumen de sobra y falta rendimiento por jugada' : ''}.` : ''].filter(Boolean).join(' ');
     const ppc = M['PPP DEF'] || ubicar(X.idx, 'PPP DEF', val(X.A, 'PTSopp') && val(X.A, 'PLAYSopp') ? val(X.A, 'PTSopp') / val(X.A, 'PLAYSopp') : null);
     const pppT = M.PPP ? tile(M.PPP.label, fmt('PPP', M.PPP.valor), `liga ${fmt('PPP', M.PPP.med)}${ppc && esNum(ppc.valor) ? ` · rival concede ${n(ppc.valor, 2)} (liga ${n(ppc.med, 2)})` : ''}`, tono(M.PPP.pct)) : '';
     return card('Resumen ejecutivo', `<p class="ci-lead">${s}</p>${s2 ? `<p class="ci-lee">${s2}</p>` : ''}
@@ -498,7 +502,7 @@ const SGADD_CICLOINFORME = (function () {
   function cardMotor(X) {
     const M = X.metricas, dif = esNum(M.PLAYS.valor) && esNum(M.PLAYS.med) ? M.PLAYS.valor - M.PLAYS.med : null;
     const brecha = esNum(M.PPP.valor) && esNum(M.PPP.med) && esNum(M.PLAYS.valor) ? (M.PPP.valor - M.PPP.med) * M.PLAYS.valor : null;
-    const quien = M.PACE.puesto === 1 ? 'Es el equipo más veloz de la conferencia.' : esNum(M.PACE.pct) && M.PACE.pct >= 70 ? `Es de los más veloces (${ordDe(M.PACE)} en ritmo).` : esNum(M.PACE.pct) && M.PACE.pct < 40 ? `Juega lento (${ordDe(M.PACE)} en ritmo).` : `Juega a ritmo de liga (${ordDe(M.PACE)}).`;
+    const quien = M.PACE.puesto === 1 ? 'Es el equipo más veloz de la conferencia.' : esNum(M.PACE.pct) && M.PACE.pct >= SUP ? `Es de los más veloces (${ordDe(M.PACE)} en ritmo).` : esNum(M.PACE.pct) && M.PACE.pct < MED ? `Juega lento (${ordDe(M.PACE)} en ritmo).` : `Juega a ritmo de liga (${ordDe(M.PACE)}).`;
     const txt = esNum(dif) ? `${quien} Ese ritmo (${n(Math.abs(dif), 1)} plays ${dif >= 0 ? 'por encima' : 'por debajo'} de la liga) vale la pena solo si cada jugada paga${esNum(brecha) ? (brecha < 0 ? `: hoy rinde ${n(-brecha, 1)} pts menos por partido que con el PPP de la liga.` : `: hoy rinde ${n(brecha, 1)} pts más por partido que con el PPP de la liga.`) : '.'}` : 'El ritmo describe, no juzga.';
     return card('El Motor · ritmo y volumen', `<div class="ci-tiles">${tileM(X, 'PACE', true)}${tileM(X, 'PLAYS', true)}${tileM(X, 'POS', true)}</div>${nota(txt)}`, 'eje azul');
   }
@@ -508,13 +512,13 @@ const SGADD_CICLOINFORME = (function () {
     const faltan = esNum(t3.valor) && esNum(t3.med) && esNum(P.T3I) ? (t3.med - t3.valor) * P.T3I * X.n : null;
     let txt = '';
     if (pt3 && esNum(pt3.valor) && esNum(t3.valor)) {
-      const elige = esNum(pt3.pct) && pt3.pct >= 70 ? 'Elige tirar de tres' : esNum(pt3.pct) && pt3.pct < 40 ? 'Tira poco de tres' : 'Tira de tres como la liga';
+      const elige = esNum(pt3.pct) && pt3.pct >= SUP ? 'Elige tirar de tres' : esNum(pt3.pct) && pt3.pct < MED ? 'Tira poco de tres' : 'Tira de tres como la liga';
       txt = `${elige} (${fmt('PT3%', pt3.valor)} de sus jugadas, ${ord(pt3)}) y convierte ${fmt('T3%', t3.valor)}, ${ord(t3)}.`;
       if (esNum(faltan) && faltan > 0) txt += ` Con el T3% de la liga (${fmt('T3%', t3.med)}) habría anotado ${n(faltan, 1)} triples más en ${X.n} partidos: ${n(faltan * 3 / X.n, 1)} pts por partido.`;
       else if (esNum(faltan)) txt += ` Está sobre el T3% de la liga (${fmt('T3%', t3.med)}): el triple paga.`;
     }
     const efgO = M['eFG Opp%'];
-    if (efgO && esNum(efgO.pct) && efgO.pct < 40) txt += ` Del otro lado, el rival tira ${fmt('eFG Opp%', efgO.valor)} de eFG (${ord(efgO)}): la Combustión se pierde en los dos costados.`;
+    if (efgO && esNum(efgO.pct) && efgO.pct < MED) txt += ` Del otro lado, el rival tira ${fmt('eFG Opp%', efgO.valor)} de eFG (${ord(efgO)}): la Combustión se pierde en los dos costados.`;
     return card('La Combustión · ejecución y selección', `<div class="ci-tiles">${['eFG%', 'eFG Opp%', 'TS%', 'PPP', 'T3%', 'T2%'].map(k => tileM(X, k)).join('')}</div>${nota(txt || 'Sin la vara de la liga para el tiro.')}`, 'eje verde');
   }
   /** Una lectura de una línea por métrica del Balance (lo que el DT entiende sin la sigla). */
@@ -530,9 +534,9 @@ const SGADD_CICLOINFORME = (function () {
   };
   function cardBalance(X) {
     const ks = ['PePP%', 'RO%', 'RD%', 'RTL%', 'RTL Opp%', 'PP Opp%'], M = X.metricas;
-    const bien = ['RO%', 'PP Opp%', 'RD%', 'RTL Opp%', 'PePP%', 'RTL%'].map(k => M[k]).filter(m => m && esNum(m.pct) && m.pct >= 70).sort((a, b) => b.pct - a.pct).slice(0, 2);
-    const mal = ['RTL%', 'PePP%', 'RO%', 'RD%', 'PP Opp%', 'RTL Opp%'].map(k => M[k]).filter(m => m && esNum(m.pct) && m.pct < 40).sort((a, b) => a.pct - b.pct)[0];
-    let txt = bien.length ? cap(bien.map(m => DICE[m.k](m)).join(' y ')) + '.' : 'Ninguna métrica del Balance pasa el percentil 70.';
+    const bien = ['RO%', 'PP Opp%', 'RD%', 'RTL Opp%', 'PePP%', 'RTL%'].map(k => M[k]).filter(m => m && esNum(m.pct) && m.pct >= SUP).sort((a, b) => b.pct - a.pct).slice(0, 2);
+    const mal = ['RTL%', 'PePP%', 'RO%', 'RD%', 'PP Opp%', 'RTL Opp%'].map(k => M[k]).filter(m => m && esNum(m.pct) && m.pct < MED).sort((a, b) => a.pct - b.pct)[0];
+    let txt = bien.length ? cap(bien.map(m => DICE[m.k](m)).join(' y ')) + '.' : 'Ninguna métrica del Balance llega al tercio superior (P67).';
     if (mal) txt += ` Lo que no hace es ${NO_DICE[mal.k](mal)}.`;
     return card('El Balance del Riesgo · disciplina y segundas', `<div class="ci-tiles">${ks.map(k => tileM(X, k)).join('')}</div>${nota(txt)}`, 'eje rojo');
   }
@@ -673,19 +677,19 @@ const SGADD_CICLOINFORME = (function () {
     const M = X.metricas, g = X.c.resultados.record.g, p = X.c.resultados.record.p;
     const fo = [], fu = [];
     const ro = M['RO%'], rd = M['RD%'], ppo = M['PP Opp%'], pr = M.PR;
-    if (ro && esNum(ro.pct) && ro.pct >= 70) fo.push(`Rebote ofensivo ${fmt('RO%', ro.valor)} (${ord(ro)})${rd && esNum(rd.pct) && rd.pct >= 60 ? ` y defensivo ${fmt('RD%', rd.valor)}` : ''}.`);
-    else if (rd && esNum(rd.pct) && rd.pct >= 70) fo.push(`Rebote defensivo ${fmt('RD%', rd.valor)} (${ord(rd)}).`);
-    if (ppo && esNum(ppo.pct) && ppo.pct >= 70) fo.push(`Pérdidas forzadas ${fmt('PP Opp%', ppo.valor)} (${ord(ppo)})${pr && esNum(pr.valor) ? ` y ${n(pr.valor)} recuperos por partido (${ord(pr)})` : ''}.`);
+    if (ro && esNum(ro.pct) && ro.pct >= SUP) fo.push(`Rebote ofensivo ${fmt('RO%', ro.valor)} (${ord(ro)})${rd && esNum(rd.pct) && rd.pct >= 60 ? ` y defensivo ${fmt('RD%', rd.valor)}` : ''}.`);
+    else if (rd && esNum(rd.pct) && rd.pct >= SUP) fo.push(`Rebote defensivo ${fmt('RD%', rd.valor)} (${ord(rd)}).`);
+    if (ppo && esNum(ppo.pct) && ppo.pct >= SUP) fo.push(`Pérdidas forzadas ${fmt('PP Opp%', ppo.valor)} (${ord(ppo)})${pr && esNum(pr.valor) ? ` y ${n(pr.valor)} recuperos por partido (${ord(pr)})` : ''}.`);
     const ini = quintetoInicial(X);
     if (ini && ini.q && ini.q.mm > -6) fo.push(`El inicial ${ini.distinto ? `con ${esc(ini.distinto)} ` : ''}quedó ${sg(ini.q.mm, 0)} en ${n(ini.q.min)} minutos: compitió.`);
-    Object.values(M).filter(m => esNum(m.pct) && m.pct >= 70 && !['PACE', 'PLAYS', 'POS', 'PT3%', 'RO%', 'RD%', 'PP Opp%', 'PR'].includes(m.k)).slice(0, 2).forEach(m => fo.push(`${esc(m.label)} ${fmt(m.k, m.valor)} (${ord(m)}).`));
+    Object.values(M).filter(m => esNum(m.pct) && m.pct >= SUP && !['PACE', 'PLAYS', 'POS', 'PT3%', 'RO%', 'RD%', 'PP Opp%', 'PR'].includes(m.k)).slice(0, 2).forEach(m => fo.push(`${esc(m.label)} ${fmt(m.k, m.valor)} (${ord(m)}).`));
     const t3c = zonasSum(X.c.zonas.contra || [], ['Z10', 'Z11', 'Z12', 'Z13', 'Z14']), lt3 = varaLiga3(X);
-    if (M['eFG Opp%'] && esNum(M['eFG Opp%'].pct) && M['eFG Opp%'].pct < 40) fu.push(`eFG permitido ${fmt('eFG Opp%', M['eFG Opp%'].valor)}${t3c.i ? `: el rival convierte ${pc(t3c.c / t3c.i)} de sus triples (${t3c.c}/${t3c.i}; liga ${pc(lt3)})` : ''}.`);
+    if (M['eFG Opp%'] && esNum(M['eFG Opp%'].pct) && M['eFG Opp%'].pct < MED) fu.push(`eFG permitido ${fmt('eFG Opp%', M['eFG Opp%'].valor)}${t3c.i ? `: el rival convierte ${pc(t3c.c / t3c.i)} de sus triples (${t3c.c}/${t3c.i}; liga ${pc(lt3)})` : ''}.`);
     const tr = transicion(X);
     if (tr && esNum(tr.ppt) && esNum(tr.lppt) && tr.ppt > tr.lppt + 0.05) fu.push(`Transición defensiva: concede ${n(tr.ppt, 2)} por tiro en 0-7 s contra ${n(tr.lppt, 2)} de la liga.`);
     const zf = zonaFria(X);
     if (zf) fu.push(`Zona ${zf.zona} (${NOMBRE_ZONA[zf.zona]}): ${zf.c}/${zf.i} tiros.`);
-    if (!fu.length) Object.values(M).filter(m => esNum(m.pct) && m.pct < 40 && !['PACE', 'PLAYS', 'POS', 'PT3%'].includes(m.k)).sort((a, b) => a.pct - b.pct).slice(0, 3).forEach(m => fu.push(`${esc(m.label)} ${fmt(m.k, m.valor)} (${ord(m)}).`));
+    if (!fu.length) Object.values(M).filter(m => esNum(m.pct) && m.pct < MED && !['PACE', 'PLAYS', 'POS', 'PT3%'].includes(m.k)).sort((a, b) => a.pct - b.pct).slice(0, 3).forEach(m => fu.push(`${esc(m.label)} ${fmt(m.k, m.valor)} (${ord(m)}).`));
     /* Proceso sobre resultado: lo defendible del volumen y la selección, y lo que es acierto. */
     const P = (X.A && X.A.P) || {}, t3 = M['T3%'], pt3 = M['PT3%'];
     const faltan = esNum(t3.valor) && esNum(t3.med) && esNum(P.T3I) && t3.valor < t3.med ? (t3.med - t3.valor) * P.T3I * 3 : null;
@@ -770,7 +774,7 @@ const SGADD_CICLOINFORME = (function () {
     const vale = esNum(meta) ? (t3pct - meta) * 3 * (t3.i / X.n) : null;
     const ppo = X.metricas['PP Opp%'];
     const sostener = [aroBien ? `Protección del aro: el rival convierte ${pc(aroPct)} cerca del aro contra ${pc(lAroPct)} de la liga, con ${aro.i} tiros.` : '',
-      ppo && esNum(ppo.pct) && ppo.pct >= 70 ? `Y ${fmt('PP Opp%', ppo.valor)} de pérdidas forzadas (${ord(ppo)}).` : ''].filter(Boolean).join(' ');
+      ppo && esNum(ppo.pct) && ppo.pct >= SUP ? `Y ${fmt('PP Opp%', ppo.valor)} de pérdidas forzadas (${ord(ppo)}).` : ''].filter(Boolean).join(' ');
     const alasPpt = alas.i ? alas.pts / alas.i : null;
     return card(`Fuga 1 · eFG permitido ${fmt('eFG Opp%', m.valor)}: dónde nos hacen daño`, `<div class="ci-grid2"><div>${mapa(zs, tirosCiclo(X, 'contra'), top.slice(0, 2).map(z => z.zona), { defensa: true, rotulo: 'Tiros del rival' })}${nota(`Cada número es convertidos/intentados del rival en esa zona (${X.n} partidos). Color: puntos por tiro contra la liga en la misma zona, ajustado por muestra.`)}</div>
       <div><div class="ci-tiles t2">${tile('Triples del rival', `${t3.c}/${t3.i}`, `${pc(t3pct)} · liga ${pc(ligaT3pct)}`, esNum(t3pct) && esNum(ligaT3pct) && t3pct > ligaT3pct ? 'neg' : 'pos')}
@@ -817,7 +821,7 @@ const SGADD_CICLOINFORME = (function () {
     const dob = fp.dobles.n || 0, tri = fp.triples.n || 0;
     const seg = X.reloj.favor.ro, ro = X.metricas['RO%'];
     const rivTrasErr = rd && rd.tiros ? rd.pts / X.n : null;
-    const sostener = seg && seg[0] && ro && esNum(ro.pct) && ro.pct >= 70 ? `El rebote ofensivo (${fmt('RO%', ro.valor)}, ${ord(ro)}) rinde ${n(seg[2] / X.n, 1)} pts por partido en segundas oportunidades.${esNum(rivTrasErr) && rd && esNum(rd.mas) ? ` El rival anota ${n(rivTrasErr, 1)} pts por partido en transición tras nuestros errados, y solo ${sg(rd.mas / X.n)} por encima de la liga: el rebote ofensivo se paga, ${seg[2] / X.n > rivTrasErr ? 'pero deja ganancia' : 'y no deja ganancia'}.` : ''}` : '';
+    const sostener = seg && seg[0] && ro && esNum(ro.pct) && ro.pct >= SUP ? `El rebote ofensivo (${fmt('RO%', ro.valor)}, ${ord(ro)}) rinde ${n(seg[2] / X.n, 1)} pts por partido en segundas oportunidades.${esNum(rivTrasErr) && rd && esNum(rd.mas) ? ` El rival anota ${n(rivTrasErr, 1)} pts por partido en transición tras nuestros errados, y solo ${sg(rd.mas / X.n)} por encima de la liga: el rebote ofensivo se paga, ${seg[2] / X.n > rivTrasErr ? 'pero deja ganancia' : 'y no deja ganancia'}.` : ''}` : '';
     const noUno = perd.length >= 5 ? `Repartidas en ${perd.length} jugadores: no es un problema de uno.` : perd.length ? `Concentradas en ${perd.length === 1 ? 'un jugador' : perd.length + ' jugadores'}.` : '';
     return card(`Fuga 2 · Transición defensiva: ¿de dónde viene el ${n(ppt0, 2)} por tiro en 0-7 s?`, `<div class="ci-tiles t4">${tile('Rival en 0-7 s', `${tiros} tiros`, `${pts} pts · ${n(ppt0, 2)} por tiro · liga ${n(lppt, 2)}`, esNum(lppt) && ppt0 > lppt ? 'neg' : 'pos')}
       ${tile('Sobre la liga', sg(masT / X.n) + ' pts/partido', `${sg(masT)} pts en ${X.n} partidos`, masT > 0 ? 'neg' : 'pos')}
@@ -888,9 +892,9 @@ const SGADD_CICLOINFORME = (function () {
 
   /* ============================================================ EQUIPOS */
 
-  /* § General · lo que el panel marca: fortalezas (≥ 70), ajustes (40-69) y quiebres (< 40). */
+  /* § General · lo que el panel marca, por tercios: fortalezas (≥ P67), ajustes (P34-66) y quiebres (< P34). */
   /** Qué dice cada métrica en el idioma del cuerpo técnico, según caiga como fortaleza
-      (`b`, percentil ≥ 70), ajuste (`a`, 40-69) o punto de quiebre (`q`, < 40). */
+      (`b`, tercio superior), ajuste (`a`, tercio medio) o punto de quiebre (`q`, tercio inferior). */
   const FRASE = {
     'RO%': { b: 'Gana el cristal ofensivo: segundas oportunidades que valen posesiones extra.', a: 'Rebote ofensivo en la media de la liga.', q: 'Casi no gana segundas oportunidades.' },
     'PP Opp%': { b: 'Fuerza pérdidas por encima de la liga.', a: 'Fuerza pérdidas como la liga.', q: 'Defensa de posición: fuerza pocas pérdidas.' },
@@ -906,12 +910,12 @@ const SGADD_CICLOINFORME = (function () {
     'RTL%': { b: 'Llega a la línea más que la liga.', a: 'Llega a la línea como la liga.', q: 'Juega afuera: llega poco a la línea.' },
     'TS%': { b: 'Eficiencia de tiro sobre la liga.', a: 'Eficiencia de tiro en la media.', q: 'Eficiencia de tiro bajo la liga.' },
   };
-  const frase = (m) => { const f = FRASE[m.k]; return f ? (m.pct >= 70 ? f.b : m.pct >= 40 ? f.a : f.q) : ''; };
+  const frase = (m) => { const f = FRASE[m.k]; return f ? (m.pct >= SUP ? f.b : m.pct >= MED ? f.a : f.q) : ''; };
   const EVALUABLES = ['RO%', 'PP Opp%', 'RD%', 'RO Opp%', 'RTL Opp%', 'eFG Opp%', 'RTNG OFF', 'RTNG DEF', 'eFG%', 'AST-PP', 'PePP%', 'RTL%', 'TS%'];
   /* Hasta 4 por grupo, de la más extrema a la menos: el panel nombra lo que más pesa. */
   function grupos(X) {
     const ms = EVALUABLES.map(k => X.metricas[k] || Object.assign({ k, label: METRICAS[k] || k }, ubicar(X.idx, k, val(X.A, k)))).filter(m => esNum(m.pct));
-    return { fo: ms.filter(m => m.pct >= 70).sort((a, b) => b.pct - a.pct).slice(0, 4), aj: ms.filter(m => m.pct >= 40 && m.pct < 70).sort((a, b) => a.pct - b.pct).slice(0, 4), qu: ms.filter(m => m.pct < 40).sort((a, b) => a.pct - b.pct).slice(0, 4) };
+    return { fo: ms.filter(m => m.pct >= SUP).sort((a, b) => b.pct - a.pct).slice(0, 4), aj: ms.filter(m => m.pct >= MED && m.pct < SUP).sort((a, b) => a.pct - b.pct).slice(0, 4), qu: ms.filter(m => m.pct < MED).sort((a, b) => a.pct - b.pct).slice(0, 4) };
   }
   /** Las transiciones propias del ciclo por origen (los partidos crudos del paquete). */
   function transPropia(X) {
@@ -927,7 +931,7 @@ const SGADD_CICLOINFORME = (function () {
     const tr = transicion(X);
     if (m.k === 'RO%' && T && T.RD && tr) return `Que el rebote ofensivo no se pague en transición: ${T.RD.tiros} de los ${tr.tiros} tiros rivales en 0-7 s nacen de un tiro nuestro errado.`;
     if (m.k === 'PP Opp%') { const p = transPropia(X).ROBO, l = L && L.ROBO; if (p && p[0]) return `Aprovechar mejor lo que se roba: en 0-7 s sus robos rinden ${n(p[2] / p[0], 2)} por tiro${l && l[0] ? ` (liga ${n(l[2] / l[0], 2)})` : ''}.`; }
-    if (m.k === 'RD%') { const r = X.metricas['RTL Opp%']; return `Mantener el cierre del cristal sin sumar faltas: los libres concedidos están ${r && esNum(r.pct) ? (r.pct >= 60 ? 'bajo la liga' : r.pct >= 40 ? 'en la mediana' : 'sobre la liga') : 'sin vara'}.`; }
+    if (m.k === 'RD%') { const r = X.metricas['RTL Opp%']; return `Mantener el cierre del cristal sin sumar faltas: los libres concedidos están ${r && esNum(r.pct) ? (r.pct >= 60 ? 'bajo la liga' : r.pct >= MED ? 'en la mediana' : 'sobre la liga') : 'sin vara'}.`; }
     if (m.k === 'RO Opp%') return 'Mantener el box-out: el rival casi no tiene segundas oportunidades.';
     if (m.k === 'RTL Opp%') return 'Sostener la defensa con los pies: cada falta evitada es una posesión que no se regala.';
     if (m.k === 'eFG Opp%') return 'Sostener los cierres: el rival ya tira incómodo.';
@@ -947,21 +951,27 @@ const SGADD_CICLOINFORME = (function () {
     const v = V.dist.slice().sort((a, b) => a - b), q = (V.inv ? 100 - p : p) / 100, pos = q * (v.length - 1), i = Math.floor(pos);
     return i + 1 < v.length ? v[i] + (pos - i) * (v[i + 1] - v[i]) : v[i];
   }
-  /* § Hoja de ruta · fortaleza → sostener; ajuste → fortaleza; quiebre → ajuste (crecimiento real). */
+  /** El plan de tercios de una métrica del equipo (el MISMO motor del Diagnóstico):
+      escalón realista y meta del ciclo. Null si no hay vara o ya está en el tercio superior. */
+  function planDe(idx, k, m) {
+    const V = vara(idx, k); if (!V || !m || !esNum(m.valor)) return null;
+    return ESC.plan({ valor: m.valor, pct: m.pct, dist: V.dist, invertida: V.inv });
+  }
+  /* § Hoja de ruta · fortaleza → sostener; ajuste y quiebre → el escalón realista de su tercio (crecimiento real). */
   function cardHojaRuta(X) {
     const G = grupos(X), P = (X.A && X.A.P) || {};
-    const fila = (m, pctObj, etiqueta) => {
-      const obj = enPercentil(X.idx, m.k, pctObj); if (!esNum(obj)) return null;
-      const meta = m.valor + MITAD * (obj - m.valor);
+    const fila = (m) => {
+      const pl = planDe(X.idx, m.k, m); if (!pl || pl.tipo !== 'subir') return null;
+      const obj = pl.escalon.valor, meta = pl.ciclo.valor;
       const g = ganancia(m.k, m.valor, meta, P);
-      return [esc(m.label), `${fmt(m.k, m.valor)} p${m.pct}`, `${fmt(m.k, obj)} (p${pctObj}: ${etiqueta})`, fmt(m.k, meta), esNum(g) && g > 0.05 ? sg(g) : 'sin palanca directa'];
+      return [esc(m.label), `${fmt(m.k, m.valor)} p${m.pct}`, `${fmt(m.k, obj)} (p${pl.escalon.pct}: ${pl.tercio === 'inferior' ? 'techo del tercio inferior' : 'techo del tercio medio'})`, fmt(m.k, meta), esNum(g) && g > 0.05 ? sg(g) : 'sin palanca directa'];
     };
-    const fo = G.fo.map(m => ruta('pos', `${esc(m.label)} · ${fmt(m.k, m.valor)} p${m.pct}`, `Piso: no bajar de ${fmt(m.k, enPercentil(X.idx, m.k, 70))} (el corte de p70). <b>Optimizar:</b> ${optimizar(X, m)}`)).join('');
-    const aj = G.aj.map(m => fila(m, 70, 'fortaleza')).filter(Boolean), qu = G.qu.map(m => fila(m, 40, 'ajuste')).filter(Boolean);
+    const fo = G.fo.map(m => ruta('pos', `${esc(m.label)} · ${fmt(m.k, m.valor)} p${m.pct}`, `Piso: no bajar de ${fmt(m.k, enPercentil(X.idx, m.k, SUP))} (el inicio del tercio superior, p${SUP}). <b>Optimizar:</b> ${optimizar(X, m)}`)).join('');
+    const aj = G.aj.map(fila).filter(Boolean), qu = G.qu.map(fila).filter(Boolean);
     const cab = ['Métrica', 'Hoy', 'Escalón siguiente', 'Meta real del ciclo', 'Pts por partido'];
     return card('Hoja de ruta · del panel a la próxima meta', `${fo ? `<div class="ci-rutas">${fo}</div>` : ''}
-      ${aj.length ? `<h4 class="warn">Ajustes → fortaleza · crecimiento real</h4>${tabla(cab, aj)}` : ''}${qu.length ? `<h4 class="neg">Puntos de quiebre → ajuste · crecimiento real</h4>${tabla(cab, qu)}` : ''}
-      ${nota('Meta real: la mitad del camino entre hoy y el escalón siguiente (p70 si hoy es ajuste, p40 si es quiebre). Los puntos usan los volúmenes reales del ciclo. Las metas se solapan: no se suman.')}`);
+      ${aj.length ? `<h4 class="warn">Ajustes · escalón realista del tercio medio</h4>${tabla(cab, aj)}` : ''}${qu.length ? `<h4 class="neg">Puntos de quiebre · escalón realista del tercio inferior</h4>${tabla(cab, qu)}` : ''}
+      ${nota('Escalón realista: el techo del tercio en que está la métrica (p33 si es quiebre, p66 si es ajuste; si le faltan menos de 5 puntos, el inicio del que sigue). Meta real del ciclo: la mitad del camino a ese escalón, el mismo criterio de la proyección del Diagnóstico. Los puntos usan los volúmenes reales del ciclo. Las metas se solapan: no se suman.')}`);
   }
 
   /* § Personalidad e identidad: filosofía detectada + cómo es en cada costado de la cancha. */
@@ -991,15 +1001,15 @@ const SGADD_CICLOINFORME = (function () {
     const arq = arquetipos(X);
     const M = X.metricas;
     /* Síntesis de cada costado: lo que hace y lo que le cuesta, en una frase. */
-    const corre = (esNum(M.PACE.pct) && M.PACE.pct >= 70) || (esNum(M.PLAYS.pct) && M.PLAYS.pct >= 70);
+    const corre = (esNum(M.PACE.pct) && M.PACE.pct >= SUP) || (esNum(M.PLAYS.pct) && M.PLAYS.pct >= SUP);
     const rinde = esNum(M.PPP.pct) ? M.PPP.pct : null;
     const sintOf = corre && esNum(rinde) && rinde < 40 ? 'Corre y genera volumen, pero cada jugada rinde poco.' : corre && esNum(rinde) && rinde >= 60 ? 'Corre y cada jugada paga: el volumen ya se convierte en puntos.'
       : esNum(rinde) && rinde < 40 ? 'Ataca a ritmo de liga y rinde por debajo: el ajuste es de ejecución.' : esNum(rinde) && rinde >= 60 ? 'Rinde por encima de la liga en cada jugada.' : 'Ataca en rango de liga.';
     const bienD = [], malD = [];
-    if ((M['RD%'] && M['RD%'].pct >= 70) || (M['RO Opp%'] && M['RO Opp%'].pct >= 70)) bienD.push('gana el cristal');
-    if (M['PP Opp%'] && M['PP Opp%'].pct >= 70) bienD.push('roba');
+    if ((M['RD%'] && M['RD%'].pct >= SUP) || (M['RO Opp%'] && M['RO Opp%'].pct >= SUP)) bienD.push('gana el cristal');
+    if (M['PP Opp%'] && M['PP Opp%'].pct >= SUP) bienD.push('roba');
     const t3c = zonasSum(X.c.zonas.contra || [], ['Z11', 'Z13']), tr = transicion(X);
-    if (M['eFG Opp%'] && M['eFG Opp%'].pct < 40) malD.push(t3c.mas > 0 ? 'concede tiros de ala' : 'concede tiro cómodo');
+    if (M['eFG Opp%'] && M['eFG Opp%'].pct < MED) malD.push(t3c.mas > 0 ? 'concede tiros de ala' : 'concede tiro cómodo');
     if (tr && esNum(tr.ppt) && esNum(tr.lppt) && tr.ppt > tr.lppt + 0.05) malD.push('transición');
     const sintDe = bienD.length && malD.length ? `${cap(bienD.join(' y '))}, pero ${malD.join(' y ')}.` : bienD.length ? `${cap(bienD.join(' y '))}.` : malD.length ? `${cap(malD.join(' y '))}.` : 'Defiende en rango de liga.';
     const pr = (m) => `<div class="ci-pr"><span>${esc(m.label)}</span><b>${fmt(m.k, m.valor)}</b><i class="ci-bar ${tono(m.pct)}" style="--w:${esNum(m.pct) ? m.pct : 0}%"></i><em>p${esNum(m.pct) ? m.pct : '—'} · liga ${fmt(m.k, m.med)}</em></div>`;
@@ -1436,7 +1446,7 @@ const SGADD_CICLOINFORME = (function () {
     const R = X.reloj, L = X.paq.liga && X.paq.liga.reloj;
     if (R.con && L && L.f) { const b = pptDe(R.favor.f[1]), l = pptDe(L.f[1]); if (esNum(b) && esNum(l) && b < l) { const m = b + MITAD * (l - b); out.armado = { base: b, meta: m, liga: l, pts: (m - b) * R.favor.f[1][0] / X.n }; } }
     const efo = X.metricas['eFG Opp%'];
-    if (efo && esNum(efo.valor) && esNum(efo.pct) && efo.pct < 40) { const obj = enPercentil(X.idx, 'eFG Opp%', 40); if (esNum(obj)) out.efgo = { base: efo.valor, meta: efo.valor + MITAD * (obj - efo.valor) }; }
+    if (efo && esNum(efo.valor) && esNum(efo.pct) && efo.pct < MED) { const pl = planDe(X.idx, 'eFG Opp%', efo); if (pl && pl.tipo === 'subir') out.efgo = { base: efo.valor, meta: pl.ciclo.valor }; }
     const Q = X.cuartos || X.c.cuartos, peor = Q.slice().sort((a, b) => a.parcial.dif - b.parcial.dif)[0];
     if (peor && peor.favor.dif < -2) out.cuarto = { cuarto: peor.cuarto, base: peor.favor.pts, meta: Math.round(peor.favor.pts + MITAD * -peor.favor.dif) };
     X._mr = out;
@@ -1617,9 +1627,10 @@ const SGADD_CICLOINFORME = (function () {
 
   /** Las metas del ciclo siguiente: cada una con su base, su cambio y su valor en puntos. */
   /** Las metas del PLAN (lo que se le pide al ciclo siguiente), con el criterio del Artifact:
-        · el juego armado (la franja con más tiros), la zona propia más fría, las pérdidas y el
-          T3% propio se llevan a la LIGA;
-        · la defensa en transición se lleva a la liga;
+        · la mitad del camino es la meta del ciclo para TODO (punto 174): las que tienen
+          distribución por equipo (pérdidas, T3%) la miden contra el escalón de su tercio, y
+          las que solo conocen el valor de la liga (franjas del reloj, zonas, transición) contra
+          la liga, que cae en el tercio medio;
         · la defensa del juego armado, a la MITAD del camino, porque se solapa con el triple de
           ala del rival (que por eso no entra a la tabla: se dice en la nota).
       El tablero mide, en cambio, la meta real (mitad del camino) de cada indicador. */
@@ -1628,25 +1639,27 @@ const SGADD_CICLOINFORME = (function () {
     if (R.con && L && L.f) {
       const k = R.favor.f.map(x => x[0]).indexOf(Math.max(...R.favor.f.map(x => x[0])));
       const x = R.favor.f[k], lp = pptDe(L.f[k]), p = pptDe(x), t = ['Ataque en transición (0-7 s)', 'Ataque armado (8-17 s)', 'Final del reloj (18-24 s)'][k];
-      if (esNum(p) && esNum(lp) && p < lp) out.push({ lado: 'Ataque', meta: `${t}: de ${n(p, 2)} a ${n(lp, 2)} pts/tiro (la liga)`, cambio: sg(lp - p, 2) + ' pts/tiro', pts: (lp - p) * x[0] / X.n, base: `${Math.round(x[0] / X.n)} tiros por partido en esa franja` });
+      if (esNum(p) && esNum(lp) && p < lp) { const mk = ESC.haciaReferencia(p, lp); out.push({ lado: 'Ataque', meta: `${t}: de ${n(p, 2)} a ${n(mk, 2)} pts/tiro (mitad del camino a la liga, ${n(lp, 2)})`, cambio: sg(mk - p, 2) + ' pts/tiro', pts: (mk - p) * x[0] / X.n, base: `${Math.round(x[0] / X.n)} tiros por partido en esa franja` }); }
       const xa = R.contra.f[1], la = pptDe(L.f[1]), pa = pptDe(xa);
       if (esNum(pa) && esNum(la) && pa > la) { const m = pa - MITAD * (pa - la); out.push({ lado: 'Defensa', meta: `Defensa en juego armado (8-17 s): de ${n(pa, 2)} a ${n(m, 2)} pts/tiro concedido`, cambio: sg(m - pa, 2) + ' pts/tiro', pts: (pa - m) * xa[0] / X.n, base: `${Math.round(xa[0] / X.n)} tiros rivales por partido` }); }
     }
-    if (MR.trans) out.push({ lado: 'Defensa', meta: `Defensa en transición (0-7 s): de ${n(MR.trans.base, 2)} a ${n(MR.trans.liga, 2)} (liga)`, cambio: sg(MR.trans.liga - MR.trans.base, 2), pts: (MR.trans.base - MR.trans.liga) * transicion(X).tiros / X.n, base: `${Math.round(transicion(X).tiros / X.n)} tiros por partido` });
+    if (MR.trans) out.push({ lado: 'Defensa', meta: `Defensa en transición (0-7 s): de ${n(MR.trans.base, 2)} a ${n(MR.trans.meta, 2)} (mitad del camino a la liga, ${n(MR.trans.liga, 2)})`, cambio: sg(MR.trans.meta - MR.trans.base, 2), pts: (MR.trans.base - MR.trans.meta) * transicion(X).tiros / X.n, base: `${Math.round(transicion(X).tiros / X.n)} tiros por partido` });
     const zf = zonaFria(X);
-    if (zf) out.push({ lado: 'Ataque', meta: `${cap(NOMBRE_ZONA[zf.zona])} (${zf.zona}): de ${n(zf.ppt, 2)} a ${n(zf.ligaPpt, 2)} pts/tiro o menos volumen`, cambio: sg(zf.ligaPpt - zf.ppt, 2), pts: (zf.ligaPpt - zf.ppt) * zf.i / X.n, base: `${n(zf.i / X.n, 1)} tiros por partido` });
+    if (zf) out.push({ lado: 'Ataque', meta: `${cap(NOMBRE_ZONA[zf.zona])} (${zf.zona}): de ${n(zf.ppt, 2)} a ${n(MR.fria.meta, 2)} pts/tiro o menos volumen (mitad del camino a la liga, ${n(zf.ligaPpt, 2)})`, cambio: sg(MR.fria.meta - zf.ppt, 2), pts: (MR.fria.meta - zf.ppt) * zf.i / X.n, base: `${n(zf.i / X.n, 1)} tiros por partido` });
     const P = (X.A && X.A.P) || {}, M = X.metricas;
-    if (M['PePP%'] && esNum(M['PePP%'].valor) && esNum(M['PePP%'].med) && M['PePP%'].valor > M['PePP%'].med) { const a = M['PePP%'].valor, meta = M['PePP%'].med; const g = ganancia('PePP%', a, meta, P);
-      if (esNum(g) && g > 0.1) out.push({ lado: 'Ataque', meta: `Pérdidas: de ${pc(a)} a ${pc(meta)} (la liga)`, cambio: sg((meta - a) * 100) + ' pp', pts: g, base: `cada jugada perdida vale ~${n(M.PPP.med, 2)} pts` }); }
-    if (M['T3%'] && esNum(M['T3%'].valor) && esNum(M['T3%'].med) && M['T3%'].valor < M['T3%'].med && esNum(P.T3I)) { const a = M['T3%'].valor, meta = M['T3%'].med; out.push({ lado: 'Ataque', meta: `Triple propio: acercar el T3% a la liga (${pc(a)} a ${pc(meta)})`, cambio: sg((meta - a) * 100) + ' pp', pts: (meta - a) * 3 * P.T3I, base: 'normalización del acierto con el mismo volumen' }); }
+    const plP = M['PePP%'] ? planDe(X.idx, 'PePP%', M['PePP%']) : null;
+    if (plP && plP.tipo === 'subir') { const a = M['PePP%'].valor, meta = plP.ciclo.valor; const g = ganancia('PePP%', a, meta, P);
+      if (esNum(g) && g > 0.1) out.push({ lado: 'Ataque', meta: `Pérdidas: de ${pc(a)} a ${pc(meta)} (mitad del camino al escalón del tercio)`, cambio: sg((meta - a) * 100) + ' pp', pts: g, base: `cada jugada perdida vale ~${n(M.PPP.med, 2)} pts` }); }
+    const plT = M['T3%'] ? planDe(X.idx, 'T3%', M['T3%']) : null;
+    if (plT && plT.tipo === 'subir' && esNum(P.T3I)) { const a = M['T3%'].valor, meta = plT.ciclo.valor; out.push({ lado: 'Ataque', meta: `Triple propio: acercar el T3% al escalón de su tercio (${pc(a)} a ${pc(meta)})`, cambio: sg((meta - a) * 100) + ' pp', pts: (meta - a) * 3 * P.T3I, base: 'normalización del acierto con el mismo volumen' }); }
     return out.filter(m => esNum(m.pts) && m.pts > 0.05);
   }
   /** La identidad en palabras (los ejes claros del ataque): «rápido, perimetral, agresivo en el rebote ofensivo». */
   function identidadCorta(X) {
     const M = X.metricas, out = [];
-    if (M.PACE && esNum(M.PACE.pct) && M.PACE.pct >= 70) out.push('rápido'); else if (M.PACE && esNum(M.PACE.pct) && M.PACE.pct < 30) out.push('pausado');
-    if (M['PT3%'] && esNum(M['PT3%'].pct) && M['PT3%'].pct >= 70) out.push('perimetral'); else if (M['PT3%'] && esNum(M['PT3%'].pct) && M['PT3%'].pct < 30) out.push('interior');
-    if (M['RO%'] && esNum(M['RO%'].pct) && M['RO%'].pct >= 70) out.push('agresivo en el rebote ofensivo');
+    if (M.PACE && esNum(M.PACE.pct) && M.PACE.pct >= SUP) out.push('rápido'); else if (M.PACE && esNum(M.PACE.pct) && M.PACE.pct < 30) out.push('pausado');
+    if (M['PT3%'] && esNum(M['PT3%'].pct) && M['PT3%'].pct >= SUP) out.push('perimetral'); else if (M['PT3%'] && esNum(M['PT3%'].pct) && M['PT3%'].pct < 30) out.push('interior');
+    if (M['RO%'] && esNum(M['RO%'].pct) && M['RO%'].pct >= SUP) out.push('agresivo en el rebote ofensivo');
     return out;
   }
   /* § Plan de intervención: responsabilidad ataque/defensa, metas y escenarios con solape. */
@@ -1687,8 +1700,8 @@ const SGADD_CICLOINFORME = (function () {
     const BASE = { 'RO%': 'el rebote ofensivo', 'PP Opp%': 'las pérdidas forzadas', 'RD%': 'el rebote defensivo', 'RO Opp%': 'el box-out', 'RTL Opp%': 'la defensa sin falta' };
     const base = ['RO%', 'PP Opp%', 'RD%', 'RO Opp%'].map(k => M[k]).filter(m => m && esNum(m.pct) && m.pct >= 80).slice(0, 2).map(m => BASE[m.k]);
     const rtl = M['RTL%'];
-    const sumar = ['segundas oportunidades'].concat(rtl && esNum(rtl.pct) && rtl.pct < 40 ? [`llegada a la línea (${fmt('RTL%', rtl.valor)} contra ${fmt('RTL%', rtl.med)})`] : []);
-    const funciona = [M['RO%'] && M['RO%'].pct >= 70 ? 'cristal' : '', M['PP Opp%'] && M['PP Opp%'].pct >= 70 ? 'robos' : ''].filter(Boolean);
+    const sumar = ['segundas oportunidades'].concat(rtl && esNum(rtl.pct) && rtl.pct < MED ? [`llegada a la línea (${fmt('RTL%', rtl.valor)} contra ${fmt('RTL%', rtl.med)})`] : []);
+    const funciona = [M['RO%'] && M['RO%'].pct >= SUP ? 'cristal' : '', M['PP Opp%'] && M['PP Opp%'].pct >= SUP ? 'robos' : ''].filter(Boolean);
     const aro = zonasSum(X.c.zonas.contra || [], ['Z1']), lAro = ((X.paq.liga && X.paq.liga.zonas) || []).find(z => z.zona === 'Z1');
     if (aro.i && lAro && lAro.i && aro.c / aro.i <= lAro.c / lAro.i + 0.02) funciona.push('protección del aro');
     const proceso = [MR.efgo ? 'eFG permitido' : '', MR.fria ? MR.fria.zona : '', MR.cuarto ? `el ${MR.cuarto.cuarto}.${MR.cuarto.cuarto === 3 ? 'er' : 'º'} cuarto` : ''].filter(Boolean);
@@ -1774,8 +1787,8 @@ const SGADD_CICLOINFORME = (function () {
     if (MR.cuarto) add({ id: 'cuarto:' + MR.cuarto.cuarto, secciones: ['equipos', 'plan'], aspecto: 'Cuartos', lado: 'Ataque', label: `${MR.cuarto.cuarto}.º cuarto · puntos propios por partido`, unidad: 'n1', dir: 1, base: MR.cuarto.base / X.n, meta: MR.cuarto.meta / X.n, pts: (MR.cuarto.meta - MR.cuarto.base) / X.n });
     /* Equipos · hoja de ruta: fortalezas que se sostienen, ajustes y quiebres que suben un escalón. */
     const G = grupos(X), P = (X.A && X.A.P) || {};
-    G.fo.forEach((m) => { const piso = enPercentil(X.idx, m.k, 70); if (esNum(piso)) add({ id: 'm:' + m.k, secciones: ['equipos'], aspecto: ASPECTO_M[m.k] || 'Ataque', lado: ladoM(m.k), label: m.label, unidad: unidadDe(m.k), dir: dirM(m.k), tipo: 'sostener', base: m.valor, meta: piso, liga: m.med }); });
-    [[G.aj, 70], [G.qu, 40]].forEach(([l, pObj]) => l.forEach((m) => { const obj = enPercentil(X.idx, m.k, pObj); if (!esNum(obj)) return; const meta = m.valor + MITAD * (obj - m.valor);
+    G.fo.forEach((m) => { const piso = enPercentil(X.idx, m.k, SUP); if (esNum(piso)) add({ id: 'm:' + m.k, secciones: ['equipos'], aspecto: ASPECTO_M[m.k] || 'Ataque', lado: ladoM(m.k), label: m.label, unidad: unidadDe(m.k), dir: dirM(m.k), tipo: 'sostener', base: m.valor, meta: piso, liga: m.med }); });
+    [G.aj, G.qu].forEach((l) => l.forEach((m) => { const pl = planDe(X.idx, m.k, m); if (!pl || pl.tipo !== 'subir') return; const meta = pl.ciclo.valor;
       add({ id: 'm:' + m.k, secciones: ['equipos'].concat(m.k === 'eFG Opp%' ? ['plan'] : []), aspecto: ASPECTO_M[m.k] || 'Ataque', lado: ladoM(m.k), label: m.label, unidad: unidadDe(m.k), dir: dirM(m.k), base: m.valor, meta, liga: m.med, pts: ganancia(m.k, m.valor, meta, P) }); }));
     /* Plan · franjas del reloj, pérdidas y triple propio (a la liga). */
     const Rl = X.reloj, Ll = X.paq.liga && X.paq.liga.reloj;
@@ -1819,8 +1832,8 @@ const SGADD_CICLOINFORME = (function () {
       if (m.tipo === 'sostener') { const ok = m.dir > 0 ? v >= m.meta - 1e-9 : v <= m.meta + 1e-9; return Object.assign(r, { veredicto: ok ? 'cumplida' : 'retrocedio', pct: ok ? 100 : null }); }
       const falta = m.meta - m.base;
       if (Math.abs(falta) < 1e-9) return Object.assign(r, { veredicto: 'cumplida', pct: 100 });
-      const pct = 100 * (v - m.base) / falta;
-      return Object.assign(r, { pct, veredicto: pct >= 100 ? 'cumplida' : pct >= 40 ? 'medias' : pct < 0 ? 'retrocedio' : 'no' });
+      const avance = 100 * (v - m.base) / falta;   // % del camino recorrido, NO un percentil de la liga
+      return Object.assign(r, { pct: avance, veredicto: avance >= 100 ? 'cumplida' : avance >= 40 ? 'medias' : avance < 0 ? 'retrocedio' : 'no' });
     });
   }
   const VEREDICTO = { cumplida: ['pos', '✓', 'cumplida'], medias: ['warn', '◐', 'a medias'], no: ['neg', '✗', 'no cumplida'], retrocedio: ['neg', '✗', 'retrocedió'], sin: ['info', '◆', 'sin dato'] };

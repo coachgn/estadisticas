@@ -198,7 +198,9 @@ node test-rendimiento.js   #  83 tests · la card de Rendimiento del jugador: el
 
 node test-conclusiones.js  # 113 tests · la card de conclusiones clínicas de Equipos y Jugadores, los tipos
                            #             de posesión del PBP y la terna de logos del PDF (punto 141)
-                           #             · y la matriz de trade-offs con las metas escalonadas (punto 173)
+                           #             · y la matriz de trade-offs con las metas escalonadas (punto 173)
+
+node test-escalones.js      #  22 tests · el criterio ÚNICO de meta por tercios (P0-33 · P34-66 · P67-100) que usan el Diagnóstico y Ciclos (punto 174)
 
 node test-diagnostico-rival.js # 61 tests · el soporte de decisión del Scouting: la versión perdedora, los duelos
                            #             cruzados con sus volúmenes de umbral, el FODA y las tres cosas (puntos 146 y 147)
@@ -331,7 +333,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=368`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=369`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16985,4 +16987,35 @@ Assets en `?v=368`. Todo en `js/sgadd-conclusiones.js` (sección TRADE-OFFS); `t
 - **La matriz** (`matrizHtml`, debajo de la proyección): una micro-card por par con la consecuencia, el rédito, el costo y el neto, el estado con ▲ ● ◆ (no solo color), r y n.
 - Verificado al revés: cobrar las señales débiles caen 2, el ciclo en el umbral 2, sin restar el promedio del equipo 4.
 - **No verificado en el navegador ni en el PDF** (hay CSS de papel: la advertencia en blanco con borde ámbar oscuro y las micro-cards sin partirse).
+
+---
+
+## 174. UN SOLO CRITERIO DE METAS · LOS TERCIOS DE LA LIGA (2026-11-10)
+
+Assets en `?v=369`. `js/sgadd-escalones.js` (puro, `test-escalones.js`) es la ÚNICA lógica de
+meta del Diagnóstico (proyección y trade-offs) y de Ciclos (hoja de ruta, plan, tablero, evolución).
+
+### Lo que la auditoría encontró (tres criterios para lo mismo)
+| Dónde | Antes |
+|---|---|
+| Diagnóstico · proyección | todo lo que está bajo P70 apuntaba a P70 (un P3 «a la mitad» caía en ~P40); clasificación 70/40 |
+| Ciclos · hoja de ruta | ajuste → P70, quiebre → P40, mitad del camino; clasificación 70/40 |
+| Ciclos · plan | franjas del reloj, pérdidas, T3%, transición y zona fría **enteras a la mediana** de la liga, mientras el tablero medía la **mitad** del camino (el plan decía una meta y el tablero evaluaba otra) |
+
+### El criterio
+Tercios: Inferior P0-33 · Medio P34-66 · Superior P67-100. Escalón realista = el techo del tercio
+actual (P33 / P66), o el inicio del siguiente si faltan menos de 5 puntos. Superior = SE SOSTIENE
+(piso P67). La meta del ciclo es la mitad del camino al escalón (`FRACCION_CICLO`). Nunca un salto
+de tercio y medio, y nunca una meta peor que hoy. Los cortes verde/ámbar/rojo pasan a 67/34 en los dos módulos.
+
+### Lo que no tiene distribución por equipo
+Zonas de tiro, franjas del reloj, transición y cuartos solo conocen el valor de la LIGA: ahí la
+referencia es la liga (cae en el tercio medio) a la mitad del camino (`haciaReferencia`). Es el
+límite de la unificación y está dicho acá, no en la card. El plan ya no lleva nada «entero a la liga».
+
+### Compatibilidad
+`p.umbral` y `p.escalon` son el mismo objeto; `valorObjetivo` sigue exportado (por defecto P67);
+`escalonar` suma el parámetro `escPct`. Cambian los textos: «Escalón realista» reemplaza a «Umbral p70».
+**No verificado en el navegador ni en el PDF**, y el Ciclo 0 ya publicado conserva las metas con la
+vara vieja (las reconstruidas se rearman con la nueva).
 

@@ -27,14 +27,14 @@ const equipos = idx.lista();
 
 /* ===================================================================== */
 titulo('1 · equipo · los tres ejes contra la liga');
-check('el semáforo: verde desde 70, rojo bajo 40', C.tonoPct(70) === 'pos' && C.tonoPct(69.9) === 'aviso' && C.tonoPct(40) === 'aviso' && C.tonoPct(39.9) === 'neg' && C.tonoPct(null) === null);
+check('el semáforo por tercios: verde desde 67, rojo bajo 34', C.tonoPct(67) === 'pos' && C.tonoPct(66.9) === 'aviso' && C.tonoPct(34) === 'aviso' && C.tonoPct(33.9) === 'neg' && C.tonoPct(null) === null);
 let todos = { f: 0, a: 0, q: 0 }, coherente = true, soloEntrenables = true;
 equipos.forEach((e) => {
   const c = C.equipo(idx, e);
   todos.f += c.fortalezas.length; todos.a += c.ajustes.length; todos.q += c.alertas.length;
-  c.fortalezas.forEach(i => { if (!(i.percentil >= 70)) coherente = false; });
-  c.alertas.forEach(i => { if (!(i.percentil < 40)) coherente = false; });
-  c.ajustes.forEach(i => { if (!(i.percentil >= 40 && i.percentil < 70)) coherente = false; if (!C.EQ[i.clave].entrenable) soloEntrenables = false; });
+  c.fortalezas.forEach(i => { if (!(i.percentil >= 67)) coherente = false; });
+  c.alertas.forEach(i => { if (!(i.percentil < 34)) coherente = false; });
+  c.ajustes.forEach(i => { if (!(i.percentil >= 34 && i.percentil < 67)) coherente = false; if (!C.EQ[i.clave].entrenable) soloEntrenables = false; });
 });
 check('cada ítem cae en el eje de su percentil', coherente);
 check('los ajustes son solo variables entrenables', soloEntrenables);
@@ -131,14 +131,14 @@ check('cuatro dimensiones, cada una con ataque y/o defensa', c0.dimensiones.leng
 check('el ritmo es descriptivo: azul, sin percentil', c0.dimensiones[0].lados.find(l => l.lado === 'ataque').tono === 'info'
   && c0.dimensiones[0].lados.find(l => l.lado === 'ataque').percentil === null);
 check('cada ítem de los ejes dice su dimensión y su lado', c0.fortalezas.concat(c0.ajustes, c0.alertas).filter(i => i.dim).every(i => i.dim.label && /ataque|defensa/.test(i.dim.lado)));
-check('el valor objetivo es el percentil 70 con la dirección de la métrica',
-  C.valorObjetivo([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], false) === 8 && C.valorObjetivo([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], true) === 4 && C.valorObjetivo([1, 2], false) === null);
+check('el valor objetivo es el percentil pedido con la dirección de la métrica',
+  C.valorObjetivo([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], false, 70) === 8 && C.valorObjetivo([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], true, 70) === 4 && C.valorObjetivo([1, 2], false) === null);
 let todasBien = true, alguna = 0, ordenadas = true, sinASTPP = true;
 equipos.forEach((e) => {
   const p = C.equipo(idx, e).proyeccion;
   alguna += p.palancas.length ? 1 : 0;
   p.palancas.forEach((x, i) => {
-    if (!(x.percentil < 70 && x.pts > 0 && x.net > 0 && /Costo de oportunidad/.test(x.texto))) todasBien = false;
+    if (!(x.percentil < 67 && x.pts > 0 && x.net > 0 && /Costo de oportunidad/.test(x.texto))) todasBien = false;
     const neto = (y) => (y.umbral && typeof y.umbral.neto === "number" ? y.umbral.neto : y.pts);
     if (i && neto(x) > neto(p.palancas[i - 1]) + 1e-12) ordenadas = false;
     if (x.clave === 'AST-PP') sinASTPP = false;
@@ -207,7 +207,7 @@ check('el logo de la liga sale del manifiesto (`_liga`) y no entra al mapa de eq
   check('filosofía: sin diferencia clara con la segunda => Equilibrado', d({ PACE: 70, 'PT3%': 68, 'RO%': 30, 'RTL%': 30, 'PePP%': 20 }).id === 'equilibrado');
   check('filosofía: sin índice o sin percentiles => null', C.DetectarFilosofiaDT(null, E) === null && d({}) === null);
   const c = C.equipo(fake({ PACE: 90, 'PT3%': 40, 'RO%': 30, 'RTL%': 30, 'PePP%': 20 }), E);
-  check('equipo() trae la filosofía y no mueve los cortes', c.filosofia.id === 'transicion' && C.VERDE === 70 && C.ROJO === 40);
+  check('equipo() trae la filosofía y no mueve los cortes', c.filosofia.id === 'transicion' && C.VERDE === 67 && C.ROJO === 34);
   check('la card dice la filosofía', /data-filosofia="transicion"/.test(C.html(c, { tipo: 'equipo' })));
   check('el jugador no lleva filosofía', !('filosofia' in C.jugador(fake({}), {}, null)));
 }
@@ -256,7 +256,7 @@ check('el logo de la liga sale del manifiesto (`_liga`) y no entra al mapa de eq
   check('refinarFilosofia sin paquete no toca la línea', nodo2.outerHTML === html0);
   const PBP_SRC = fs.readFileSync('js/sgadd-pbp.js', 'utf8');
   check('el montaje de las conclusiones refina la filosofía', /C\.refinarFilosofia\(fil, paq\)/.test(PBP_SRC));
-  check('los cortes no se tocan', C.VERDE === 70 && C.ROJO === 40);
+  check('los cortes no se tocan', C.VERDE === 67 && C.ROJO === 34);
 }
 
 /* ===================================================================== */
@@ -301,7 +301,11 @@ titulo('7 · trade-offs cruzados y metas escalonadas (Fase 3)');
       if (!p.ciclo || !p.umbral) { escalones = false; return; }
       if (!(p.ciclo.pts > 0 && p.ciclo.pts < p.umbral.pts + 1e-9)) escalones = false;
       if (Math.abs(p.umbral.pts - p.pts) > 1e-9) escalones = false;
-      if (p.umbral.percentil !== C.OBJETIVO) escalones = false;
+      /* El escalón es el del TERCIO de la métrica: nunca un salto de tercio y medio. */
+      const techo = p.tercio === 'inferior' ? 33 : 66;
+      if (!(p.tercio === 'inferior' || p.tercio === 'medio')) escalones = false;
+      if (p.umbral.percentil !== p.escalonPct || !(p.escalonPct === techo || p.escalonPct === techo + 1)) escalones = false;
+      if (p.escalon !== p.umbral) escalones = false;
       if (typeof p.ciclo.percentil === 'number' && !(p.ciclo.percentil >= p.percentil - 1e-9)) escalones = false;
       const costo = p.umbral.tradeoffs.reduce((s, t) => s + (t.costo ? t.pts : 0), 0);
       if (Math.abs(p.umbral.neto - (p.umbral.pts + costo)) > 1e-9) escalones = false;
@@ -310,7 +314,7 @@ titulo('7 · trade-offs cruzados y metas escalonadas (Fase 3)');
   check('ningún diagnóstico con undefined ni NaN', sinRuido);
   check('la matriz va en la card de cada equipo', matrices === equipos.length, matrices);
   check('solo los firmes se descuentan; neto = rédito + costo', netoOk);
-  check('metas escalonadas: hoy → próximo ciclo (mitad) → p70, con el neto descontado', escalones);
+  check('metas escalonadas: hoy → próximo ciclo (mitad) → escalón del tercio, con el neto descontado', escalones);
 
   /* Una palanca con un trade-off firme muestra la advertencia y el neto. */
   const P0 = { TCI: 60, PLAYS: 80, PP: 12, PTS: 75, T1I: 15, 'T1%': 0.7, RO: 10, RDopp: 25, RD: 25, ROopp: 9, PTSopp: 74, PLAYSopp: 80, PPopp: 12, PPP: 0.94 };
@@ -321,7 +325,7 @@ titulo('7 · trade-offs cruzados y metas escalonadas (Fase 3)');
   check('una señal débil no cuesta nada', C.tradeoffsDe(tNoFirme, 'PP Opp%', 0.02, P0, {}).length === 0);
   const pal = { clave: 'PP Opp%', label: 'Pérdidas forzadas', lado: 'defensa', que: 'x', actual: '12%', objetivo: '14%', percentil: 40, pts: 2, net: 2, texto: 't' };
   C.escalonar(pal, { valor: 0.12, invertida: false }, 0.14, 0.02, dd => dd * 100, [0.10, 0.12, 0.13, 0.14, 0.16], 80,
-    dd => C.tradeoffsDe(tFake, 'PP Opp%', dd, P0, { TCI: 60 }));
+    dd => C.tradeoffsDe(tFake, 'PP Opp%', dd, P0, { TCI: 60 }), 33);
   check('escalonar: el próximo ciclo es la mitad del camino', Math.abs(pal.ciclo.valor - 0.13) < 1e-12 && Math.abs(pal.ciclo.pts - 1) < 1e-12);
   check('escalonar: el neto descuenta el trade-off', pal.umbral.neto < pal.umbral.pts && pal.ciclo.neto < pal.ciclo.pts);
   const hPal = C.proyeccionHtml({ palancas: [pal], net: null }, 'equipo');

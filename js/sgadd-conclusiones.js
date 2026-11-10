@@ -4,9 +4,9 @@
    Una card arriba de la ficha del EQUIPO y del JUGADOR que le habla al
    cuerpo técnico en tres ejes:
 
-     ▲ Lo que se hace bien y hay que sostener   percentil ≥ 70 contra la liga
-     ● Ajustes alcanzables                       percentil 40-69, variables entrenables
-     ▼ Puntos de quiebre                         percentil < 40, y los detectores del PBP
+     ▲ Lo que se hace bien y hay que sostener   tercio superior (P67 o más) contra la liga
+     ● Ajustes alcanzables                       tercio medio (P34-P66), variables entrenables
+     ▼ Puntos de quiebre                         tercio inferior (< P34), y los detectores del PBP
 
    Dos fuentes, y cada ítem dice cuál:
      · el BOX SCORE (el índice): síncrono, siempre;
@@ -35,7 +35,9 @@
 const SGADD_CONCLUSIONES = (function () {
   'use strict';
 
-  const VERDE = 70, ROJO = 40;
+  /* Los cortes son los TERCIOS de la liga (punto 174): verde desde P67, rojo bajo P34. */
+  const ESC = typeof SGADD_ESCALONES !== 'undefined' ? SGADD_ESCALONES : require('./sgadd-escalones.js');
+  const VERDE = ESC.INICIO_SUPERIOR, ROJO = ESC.INICIO_MEDIO;
   const K = 20;                 // ajuste por muestra: tiros de la liga sumados
   const MIN_TIROS = 20;         // tiros mínimos de una situación para calificarla
   const MAX_ITEMS = 4;
@@ -44,7 +46,7 @@ const SGADD_CONCLUSIONES = (function () {
   const num = (v, d) => esNum(v) ? v.toFixed(d == null ? 1 : d).replace('.', ',') : '—';
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  /** El semáforo clínico: verde desde 70, rojo bajo 40. */
+  /** El semáforo clínico por tercios: verde desde P67, rojo bajo P34. */
   function tonoPct(p) {
     if (!esNum(p)) return null;
     return p >= VERDE ? 'pos' : (p < ROJO ? 'neg' : 'aviso');
@@ -200,7 +202,7 @@ const SGADD_CONCLUSIONES = (function () {
      las dimensiones ya calculadas (ritmo, selección de tiro, agresividad
      física y disciplina), siempre en percentil contra la liga. Sirve para
      calibrar el TONO del texto, no para juzgar: ninguna filosofía es mejor
-     que otra (punto 4) y no mueve ningún corte (70 / 40). Pide una
+     que otra (punto 4) y no mueve ningún corte (los tercios). Pide una
      diferencia clara con la segunda, o dice que el equipo es equilibrado. */
   const FILOSOFIAS = {
     transicion: { label: 'Transición / Vértigo', frase: 'juega para correr y atacar antes de que la defensa se acomode',
@@ -391,7 +393,7 @@ const SGADD_CONCLUSIONES = (function () {
 
   /* ================================================== PROYECCIÓN DE MEJORA
 
-     El Bloque B: cuánto vale llevar cada métrica floja al percentil 70 de
+     El Bloque B: cuánto vale llevar cada métrica floja al escalón realista de su tercio de
      la liga, en PUNTOS por partido y en NET RATING (por 100 posesiones).
      No es una regresión: es la cuenta de posesiones con los datos reales
      del equipo (sus intentos, sus pérdidas, sus rebotes disponibles y lo
@@ -400,14 +402,11 @@ const SGADD_CONCLUSIONES = (function () {
      inventarle un número sería peor que no darlo. Cada palanca se mide
      SOLA: no se suman, porque se pisan entre sí (una pérdida menos es
      también un tiro más). */
-  const OBJETIVO = 70;
-  /** El valor de la liga en el percentil 70, con la dirección de la métrica. */
+  /* El piso del tercio superior: desde acá se SOSTIENE, no se proyecta. */
+  const OBJETIVO = ESC.INICIO_SUPERIOR;
+  /** El valor de la liga en el percentil `pct` (por defecto el piso del tercio superior). */
   function valorObjetivo(dist, invertida, pct) {
-    const v = (dist || []).filter(esNum).slice().sort((a, b) => a - b);
-    if (v.length < 3) return null;
-    const q = (invertida ? 100 - (pct || OBJETIVO) : (pct || OBJETIVO)) / 100;
-    const pos = q * (v.length - 1), i = Math.floor(pos), f = pos - i;
-    return i + 1 < v.length ? v[i] + f * (v[i + 1] - v[i]) : v[i];
+    return ESC.valorEnPercentil(dist, invertida, pct || OBJETIVO);
   }
   const div = (a, b) => (esNum(a) && esNum(b) && b > 0 ? a / b : null);
 
@@ -456,17 +455,20 @@ const SGADD_CONCLUSIONES = (function () {
     out.net = netR && esNum(netR.valor) ? { valor: netR.valor, formateado: netR.formateado } : null;
     Object.keys(PALANCAS_EQ).forEach((k) => {
       const r = idx.leer(e.clave, k);
-      if (!r || !esNum(r.valor) || !esNum(r.percentil) || r.percentil >= OBJETIVO) return;
-      const obj = valorObjetivo(idx.liga.distribuciones[k], r.invertida);
-      if (!esNum(obj)) return;
+      if (!r || !esNum(r.valor) || !esNum(r.percentil)) return;
+      /* El escalón realista de SU tercio: nunca un salto de tercio y medio. */
+      const pl = ESC.plan({ valor: r.valor, pct: r.percentil, dist: idx.liga.distribuciones[k], invertida: r.invertida });
+      if (!pl || pl.tipo !== 'subir') return;
+      const obj = pl.escalon.valor;
       const d = r.invertida ? r.valor - obj : obj - r.valor;
       const pts = PALANCAS_EQ[k].pts(d, P, L);
       if (!esNum(pts) || pts <= 0.05) return;
       const pal = { clave: k, label: r.label, lado: PALANCAS_EQ[k].lado, que: PALANCAS_EQ[k].que,
         actual: r.formateado, objetivo: formato(k, obj), percentil: r.percentil, pts,
+        tercio: pl.tercio, escalonPct: pl.escalon.pct,
         net: pos ? 100 * pts / pos : null, dim: dimDe(k, 'equipo') };
       escalonar(pal, r, obj, d, dd => PALANCAS_EQ[k].pts(dd, P, L), idx.liga.distribuciones[k], pos,
-        dd => tradeoffsDe(tend, k, dd, P, L));
+        dd => tradeoffsDe(tend, k, dd, P, L), pl.escalon.pct);
       out.palancas.push(pal);
     });
     /* Ordena por lo que deja NETO del trade-off de la liga. */
@@ -516,16 +518,18 @@ const SGADD_CONCLUSIONES = (function () {
     (POR_EJE[eje] || POR_EJE.base).metricas.forEach((k) => {
       const m = PALANCAS_J[k];
       const r = m ? idx.leerJugador(j, k) : null;
-      if (!r || !esNum(r.valor) || !esNum(r.percentil) || r.percentil >= OBJETIVO) return;
-      const obj = valorObjetivo((idx.liga.distribucionesJ || {})[k], r.invertida);
-      if (!esNum(obj)) return;
+      if (!r || !esNum(r.valor) || !esNum(r.percentil)) return;
+      const pl = ESC.plan({ valor: r.valor, pct: r.percentil, dist: (idx.liga.distribucionesJ || {})[k], invertida: r.invertida });
+      if (!pl || pl.tipo !== 'subir') return;
+      const obj = pl.escalon.valor;
       const d = r.invertida ? r.valor - obj : obj - r.valor;
       const pts = m.pts(d, j, E);
       if (!esNum(pts) || pts <= 0.05) return;
       const dim = dimDe(k, 'jugador');
       const p = { clave: k, label: r.label, que: m.que, actual: r.formateado, objetivo: formato(k, obj),
-        percentil: r.percentil, pts, net: pos ? 100 * pts / pos : null, dim, lado: dim ? dim.lado : 'ataque' };
-      escalonar(p, r, obj, d, dd => m.pts(dd, j, E), (idx.liga.distribucionesJ || {})[k], pos, null);
+        percentil: r.percentil, pts, tercio: pl.tercio, escalonPct: pl.escalon.pct,
+        net: pos ? 100 * pts / pos : null, dim, lado: dim ? dim.lado : 'ataque' };
+      escalonar(p, r, obj, d, dd => m.pts(dd, j, E), (idx.liga.distribucionesJ || {})[k], pos, null, pl.escalon.pct);
       const fam = FAMILIA_J[k] || k;
       if (!mejores[fam] || mejores[fam].pts < pts) mejores[fam] = p;
     });
@@ -714,17 +718,14 @@ const SGADD_CONCLUSIONES = (function () {
 
   /* El percentil de un valor en la distribución de la liga, con la
      dirección: el mismo criterio de `idx.leer`. */
-  function percentilDe(dist, v, invertida) {
-    const l = (dist || []).filter(esNum);
-    if (!l.length || !esNum(v)) return null;
-    const abajo = l.filter(x => (invertida ? x > v : x < v)).length, igual = l.filter(x => x === v).length;
-    return 100 * (abajo + igual / 2) / l.length;
-  }
+  function percentilDe(dist, v, invertida) { return ESC.percentilDe(dist, v, invertida); }
 
   /** Las metas escalonadas de una palanca: hoy → próximo ciclo (la mitad
-      del camino, la meta real que fija el informe de ciclo) → el p70. Cada
-      escalón con sus puntos, su Net y el trade-off de la liga. */
-  function escalonar(p, r, obj, d, ptsFn, dist, pos, tradeoffFn) {
+      del camino al escalón, la meta real que fija el informe de ciclo) → el
+      ESCALÓN REALISTA del tercio (`escPct`: el techo del tercio actual o el
+      inicio del que sigue). Cada escalón con sus puntos, su Net y el
+      trade-off de la liga. `p.umbral` y `p.escalon` son el mismo objeto. */
+  function escalonar(p, r, obj, d, ptsFn, dist, pos, tradeoffFn, escPct) {
     const paso = (frac) => {
       const dd = d * frac;
       const valor = r.invertida ? r.valor - dd : r.valor + dd;
@@ -732,11 +733,12 @@ const SGADD_CONCLUSIONES = (function () {
       const to = tradeoffFn ? tradeoffFn(dd) : [];
       const costo = to.reduce((s, x) => s + (x.costo ? x.pts : 0), 0);
       const neto = esNum(pts) ? pts + costo : null;
-      return { valor, formateado: formato(p.clave, valor), percentil: frac === 1 ? OBJETIVO : percentilDe(dist, valor, r.invertida),
+      return { valor, formateado: formato(p.clave, valor), percentil: frac === 1 ? (esNum(escPct) ? escPct : percentilDe(dist, valor, r.invertida)) : percentilDe(dist, valor, r.invertida),
         pts, tradeoffs: to, costo, neto, net: pos && esNum(neto) ? 100 * neto / pos : null };
     };
-    p.ciclo = paso(0.5);
+    p.ciclo = paso(ESC.FRACCION_CICLO);
     p.umbral = paso(1);
+    p.escalon = p.umbral;
   }
 
   const ZONAS_MEDIA = ['Z5', 'Z6', 'Z7', 'Z8', 'Z9'];
@@ -911,9 +913,9 @@ const SGADD_CONCLUSIONES = (function () {
   }
 
   const EJES = [
-    { id: 'fortalezas', titulo: 'Lo que se hace bien y hay que sostener', marca: '▲', tono: 'pos', vacio: 'Nada por encima del percentil 70 todavía.' },
+    { id: 'fortalezas', titulo: 'Lo que se hace bien y hay que sostener', marca: '▲', tono: 'pos', vacio: 'Nada en el tercio superior (P67 o más) todavía.' },
     { id: 'ajustes', titulo: 'Ajustes alcanzables', marca: '●', tono: 'aviso', vacio: 'Sin ajustes de rango medio para priorizar.' },
-    { id: 'alertas', titulo: 'Puntos de quiebre', marca: '▼', tono: 'neg', vacio: 'Sin puntos de quiebre: ninguna métrica bajo el percentil 40.' },
+    { id: 'alertas', titulo: 'Puntos de quiebre', marca: '▼', tono: 'neg', vacio: 'Sin puntos de quiebre: ninguna métrica en el tercio inferior (bajo P34).' },
   ];
 
   function itemHtml(it) {
@@ -1004,23 +1006,23 @@ const SGADD_CONCLUSIONES = (function () {
           ${V.ficha({ label: 'Hoy', valor: x.actual, sub: 'percentil ' + Math.round(x.percentil), tono: tonoPct(x.percentil) })}
           ${x.ciclo ? V.ficha({ label: 'Próximo ciclo', valor: x.ciclo.formateado, sub: (esNum(x.ciclo.percentil) ? 'percentil ' + Math.round(x.ciclo.percentil) + ' · ' : '')
             + (esNum(x.ciclo.neto) ? (x.ciclo.neto >= 0 ? '+' : '−') + num(Math.abs(x.ciclo.neto), 1) + ' pts netos' : 'la mitad del camino'), tono: 'aviso' }) : ''}
-          ${V.ficha({ label: 'Umbral p70', valor: x.objetivo, sub: 'el percentil 70 de la liga', tono: 'pos' })}
+          ${V.ficha({ label: 'Escalón realista', valor: x.objetivo, sub: 'percentil ' + Math.round(x.escalonPct) + ' · ' + (x.tercio === 'inferior' ? 'techo del tercio inferior' : 'techo del tercio medio'), tono: 'pos' })}
           ${V.ficha({ label: tipo === 'jugador' ? 'Suma él' : 'Recupera', valor: '+' + num(x.pts, 1) + ' pts', sub: 'por partido', tono: 'info' })}
           ${esNum(x.net) ? V.ficha({ label: 'Net Rating', valor: '+' + num(x.net, 1), sub: tipo === 'jugador' ? 'del equipo, por 100 posesiones'
             : (x.puestoAntes ? 'puesto ' + x.puestoAntes + '° → ' + x.puestoDespues + '° de ' + x.de : 'por 100 posesiones'), tono: 'info' }) : ''}
         </div>
         ${tradeoffAviso(x)}
         <p class="concl-texto">${esc(x.texto)}</p></div>`).join('')
-      : `<p class="concl-vacio">Todas las palancas con mecanismo de puntos ya están en el percentil 70 o más: el trabajo es sostener.</p>`;
+      : `<p class="concl-vacio">Todas las palancas con mecanismo de puntos ya están en el tercio superior (P67 o más): el trabajo es sostener.</p>`;
     return `<div class="concl-proy" data-concl-proyeccion="1"><div class="concl-eje-t">📈 Proyección de umbrales de mejora</div>
-      <p class="rend-pie-t">Cuánto vale llevar cada métrica al percentil 70 de la liga, con los intentos, las pérdidas y los rebotes reales ${tipo === 'jugador' ? 'del jugador y de su equipo' : 'del equipo'}. Cada palanca se mide sola: no se suman.</p>
+      <p class="rend-pie-t">Cuánto vale llevar cada métrica al próximo escalón realista de su tercio de la liga (nunca un salto de tercio y medio), con los intentos, las pérdidas y los rebotes reales ${tipo === 'jugador' ? 'del jugador y de su equipo' : 'del equipo'}. Cada palanca se mide sola: no se suman.</p>
       <div class="concl-palancas">${cuerpo}</div>
       <details class="rend-detalle"><summary>Cómo se calcula</summary><ul>
         <li>Tiro: la diferencia de eFG% por dos por los tiros de campo por partido; los libres, por los intentos.</li>
         <li>Pérdidas: cada pérdida evitada vale lo que rinde una jugada que sí termina en tiro.</li>
         <li>Rebote: cada rebote ganado de los disponibles es una jugada más (o una menos del rival), al valor de la jugada.</li>
         <li>Net Rating: los puntos sobre las posesiones del equipo, por 100. El puesto es el que tendría moviendo SOLO esa palanca.</li>
-        <li>Próximo ciclo: la mitad del camino al umbral, la misma meta real del informe de ciclo. Sus puntos ya descuentan el trade-off de la liga.</li>
+        <li>Escalón realista: el techo del tercio en que está la métrica (P33 si está en el inferior, P66 en el medio), o el inicio del que sigue si le faltan menos de 5 puntos. Próximo ciclo: la mitad del camino a ese escalón, la misma meta real del informe de ciclo. Sus puntos ya descuentan el trade-off de la liga.</li>
         <li>La relación asistencias/pérdidas no se proyecta: no tiene un camino directo a puntos y no se le inventa uno.</li>
       </ul></details></div>`;
   }
@@ -1032,7 +1034,7 @@ const SGADD_CONCLUSIONES = (function () {
     if (!u || !u.tradeoffs || !u.tradeoffs.length) return '';
     const signo = (v) => (v >= 0 ? '+' : '−') + num(Math.abs(v), 1);
     return `<div class="concl-tradeoff" data-tradeoff="${esc(x.clave)}">${u.tradeoffs.map(t =>
-      `<p>⚖ <b>Trade-off · tendencia de la liga:</b> si se busca el umbral en ${esc(x.label)}, la liga proyecta ${esc(t.delta)} en ${esc(t.label)}`
+      `<p>⚖ <b>Trade-off · tendencia de la liga:</b> si se busca el escalón en ${esc(x.label)}, la liga proyecta ${esc(t.delta)} en ${esc(t.label)}`
       + (esNum(t.pts) ? ' (' + signo(t.pts) + ' pts)' : '') + '.</p>').join('')}
       ${esNum(u.neto) ? '<p class="concl-tradeoff-neto">Neto en el marcador: ' + signo(u.neto) + ' pts por partido'
         + (esNum(u.net) ? ' · ' + signo(u.net) + ' de Net' : '') + '.</p>' : ''}</div>`;
@@ -1111,7 +1113,7 @@ const SGADD_CONCLUSIONES = (function () {
       ${matrizHtml(c.matriz)}
       ${o.ranura || ''}
       <details class="rend-detalle mt-2"><summary>Cómo se arma</summary><ul>
-        <li>Verde desde el percentil 70 de la liga, ámbar entre 40 y 69, rojo debajo de 40. Siempre con la dirección de cada métrica: perder menos pelotas es estar arriba.</li>
+        <li>Por tercios de la liga: verde desde el percentil 67, ámbar entre 34 y 66, rojo debajo de 34. Siempre con la dirección de cada métrica: perder menos pelotas es estar arriba.</li>
         <li>Los ajustes son solo variables entrenables en el corto plazo, primero las que más margen tienen.</li>
         ${o.tipo === 'jugador' ? '<li>Al jugador se lo mide con las métricas de su función en cancha: no se le pide a cada rol lo que no le toca.</li>' : ''}
         <li>Lo marcado PBP sale del play-by-play: las situaciones de posesión, la media distancia, las pérdidas que el rival castiga en 7 segundos, los cierres ajustados y el bonus.</li>
