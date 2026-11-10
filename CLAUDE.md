@@ -202,6 +202,8 @@ node test-conclusiones.js  # 113 tests · la card de conclusiones clínicas de E
 
 node test-escalones.js      #  22 tests · el criterio ÚNICO de meta por tercios (P0-33 · P34-66 · P67-100) que usan el Diagnóstico y Ciclos (punto 174)
 
+node test-pwa.js            #  23 tests · la PWA instalable: manifest, íconos, service worker (red primero), registro y botón de instalar (punto 175)
+
 node test-diagnostico-rival.js # 61 tests · el soporte de decisión del Scouting: la versión perdedora, los duelos
                            #             cruzados con sus volúmenes de umbral, el FODA y las tres cosas (puntos 146 y 147)
 
@@ -333,7 +335,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=369`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=370`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -16992,7 +16994,7 @@ Assets en `?v=368`. Todo en `js/sgadd-conclusiones.js` (sección TRADE-OFFS); `t
 
 ## 174. UN SOLO CRITERIO DE METAS · LOS TERCIOS DE LA LIGA (2026-11-10)
 
-Assets en `?v=369`. `js/sgadd-escalones.js` (puro, `test-escalones.js`) es la ÚNICA lógica de
+Assets en `?v=370`. `js/sgadd-escalones.js` (puro, `test-escalones.js`) es la ÚNICA lógica de
 meta del Diagnóstico (proyección y trade-offs) y de Ciclos (hoja de ruta, plan, tablero, evolución).
 
 ### Lo que la auditoría encontró (tres criterios para lo mismo)
@@ -17019,3 +17021,23 @@ límite de la unificación y está dicho acá, no en la card. El plan ya no llev
 **No verificado en el navegador ni en el PDF**, y el Ciclo 0 ya publicado conserva las metas con la
 vara vieja (las reconstruidas se rearman con la nueva).
 
+
+---
+
+## 175. LA PWA · INSTALAR EL PANEL COMO APP (2026-11-10)
+
+Assets en `?v=370`. `test-pwa.js` fija todo. Sin bundler ni tiendas: el panel se instala desde el navegador.
+
+```
+manifest.json        nombre «MotorStats», standalone, #0B1121, rutas RELATIVAS (el sitio vive en /estadisticas/)
+icons/               icon-192, icon-512 y maskable-512 (isotipo sobre el navy del tema, generados con Chrome sin ventana)
+sw.js                service worker: RED PRIMERO, caché de respaldo
+js/sgadd-pwa.js      registra el SW y maneja el botón «⤓ Instalar app» (#pwaInstalar, sidebar)
+```
+
+- **Red primero, no caché primero**: la trampa de este proyecto es la versión vieja que no se va (punto 2). Con red siempre se sirve lo publicado y cada respuesta buena se guarda; sin red abre lo último visto y una navegación cae al `index.html` guardado. La clave incluye el `?v=` de cada script.
+- **Solo el propio sitio y solo GET**: la API del backend, GViz, Sheets y las tipografías son de otro origen y nunca pasan por el SW. **No es un modo offline de datos**: sin red el panel abre pero no baja planillas nuevas.
+- Para invalidar todo, subir `VERSION` en `sw.js` (activate borra las cachés `sgadd-pwa-*` viejas y no toca las ajenas).
+- **El botón nace oculto**: aparece con `beforeinstallprompt` (Chrome/Edge/Android) o, en iOS, siempre que no esté instalada, con la nota «Compartir → Agregar a inicio». Instalada (standalone) no se muestra. No se imprime.
+- El SW solo se registra en https o localhost; todo va con try/catch: la PWA no puede tumbar el panel.
+- **Lo que no se verificó**: la instalación real en un celular y en iOS (el prompt depende del navegador). Probado en un `vm` y en el navegador de la vista previa.

@@ -3,6 +3,14 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#0B1121" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" type="image/png" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="MotorStats" />
 <title>Panel de Scouting</title>
 
 <!-- Tailwind se sirve COMPILADO desde el repo, no por CDN.
@@ -863,6 +871,14 @@
     background: var(--acento-fondo, #f7941e); color: #0B1121; border-color: transparent;
   }
   .plan-cta-pop:hover { opacity: .9; color: #0B1121; }
+  /* PWA · botón «Instalar app»: tamaño táctil de 44px, acento del club. */
+  .pwa-instalar { display: inline-flex; align-items: center; justify-content: center; gap: .35rem;
+    min-height: 44px; padding: 0 .9rem; border-radius: .5rem; font-size: 12px; font-weight: 600;
+    background: var(--acento-fondo, #f7941e); color: #0B1121; border: 1px solid transparent; cursor: pointer; }
+  .pwa-instalar:hover { opacity: .9; }
+  .pwa-instalar:focus-visible { outline: 2px solid var(--acento-texto, #fff); outline-offset: 2px; }
+  .pwa-instalar[hidden], #pwaNota[hidden] { display: none !important; }
+  @media print { .pwa-instalar, #pwaNota { display: none !important; } }
   .plan-cta:focus-visible { outline: 2px solid var(--acento, #f7941e); outline-offset: 2px; }
 
   /* EL CTA DEL HERO. La demo es la accion principal de la landing: se
@@ -3598,7 +3614,7 @@
 </style>
 
 <!-- Aca abajo, no arriba: es donde el CDN inyectaba su <style>. -->
-<link rel="stylesheet" href="sgadd.css?v=369" />
+<link rel="stylesheet" href="sgadd.css?v=370" />
 </head>
 <body class="bg-base text-ink font-body antialiased">
 
@@ -3728,6 +3744,10 @@
              Con el número acá, eso se diagnostica de un vistazo en vez de
              debuggear fantasmas: si dice una versión vieja, es caché. -->
         <div id="sesion-slot" class="text-center mb-2"></div>
+          <div class="no-imprimir text-center mb-2">
+            <button id="pwaInstalar" type="button" class="pwa-instalar" hidden title="Instalá MotorStats como app en este dispositivo">⤓ Instalar app</button>
+            <p id="pwaNota" class="text-[11px] text-muted mt-1" hidden></p>
+          </div>
           <div id="ingresoSlot" class="mt-2"></div>
           <!-- El pie institucional del panel. Mismo texto que el de los
                PDF: quien mira la pantalla y quien recibe el informe leen
@@ -3799,64 +3819,65 @@
      `?api=` en la URL la pisa, para probar contra un servidor local sin
      tocar el deploy. -->
 <script>window.SGADD_API = "https://estadisticas-backend.vercel.app";</script>
-<script src="js/sgadd-club.js?v=369"></script>
+<script src="js/sgadd-club.js?v=370"></script>
 <!-- Puro y sin dependencias: puede ir apenas despues del club. Lo leen el
      Diagnostico y, mas adelante, la tabla de posiciones. -->
-<script src="js/sgadd-config.js?v=369"></script>
-<script src="js/sgadd-core.js?v=369"></script>
-<script src="js/sgadd-auth.js?v=369"></script>
+<script src="js/sgadd-config.js?v=370"></script>
+<script src="js/sgadd-core.js?v=370"></script>
+<script src="js/sgadd-auth.js?v=370"></script>
 <!-- LA DEMO va DESPUES de auth (usa `establecerSesion`) y ANTES de las
      secciones, que preguntan si esta activa al pintar. -->
-<script src="js/sgadd-demo.js?v=369"></script>
-<script src="js/sgadd-glosario.js?v=369"></script>
-<script src="js/sgadd-glosarioui.js?v=369"></script>
-<script src="js/sgadd-comparativa.js?v=369"></script>
-<script src="js/sgadd-comparativaui.js?v=369"></script>
-<script src="js/sgadd-confirmar.js?v=369"></script>
-<script src="js/sgadd-landing.js?v=369"></script>
-<script src="js/sgadd-login.js?v=369"></script>
-<script src="js/sgadd-data.js?v=369"></script>
-<script src="js/sgadd-clientes.js?v=369"></script>
-<script src="js/sgadd-ui.js?v=369"></script>
-<script src="js/sgadd-muestra.js?v=369"></script>
-<script src="js/sgadd-app.js?v=369"></script>
-<script src="js/sgadd-clasificacion.js?v=369"></script>
+<script src="js/sgadd-demo.js?v=370"></script>
+<script src="js/sgadd-glosario.js?v=370"></script>
+<script src="js/sgadd-glosarioui.js?v=370"></script>
+<script src="js/sgadd-comparativa.js?v=370"></script>
+<script src="js/sgadd-comparativaui.js?v=370"></script>
+<script src="js/sgadd-confirmar.js?v=370"></script>
+<script src="js/sgadd-landing.js?v=370"></script>
+<script src="js/sgadd-login.js?v=370"></script>
+<script src="js/sgadd-data.js?v=370"></script>
+<script src="js/sgadd-clientes.js?v=370"></script>
+<script src="js/sgadd-ui.js?v=370"></script>
+<script src="js/sgadd-muestra.js?v=370"></script>
+<script src="js/sgadd-app.js?v=370"></script>
+<script src="js/sgadd-clasificacion.js?v=370"></script>
 <!-- Despues de clasificacion: la vista previa usa su tabla, no una maqueta. -->
-<script src="js/sgadd-fixture.js?v=369"></script>
-<script src="js/sgadd-inscriptos.js?v=369"></script>
-<script src="js/sgadd-fases.js?v=369"></script>
-<script src="js/sgadd-torneos.js?v=369"></script>
-<script src="js/sgadd-hub.js?v=369"></script>
-<script src="js/sgadd-configui.js?v=369"></script>
-<script src="js/sgadd-estados.js?v=369"></script>
-<script src="js/sgadd-buzon.js?v=369"></script>
-<script src="js/sgadd-charts.js?v=369"></script>
-<script src="js/sgadd-personalidad.js?v=369"></script>
-<script src="js/sgadd-rankings.js?v=369"></script>
-<script src="js/sgadd-partido.js?v=369"></script>
-<script src="js/sgadd-informe.js?v=369"></script>
-<script src="js/sgadd-ficha.js?v=369"></script>
-<script src="js/sgadd-mercado.js?v=369"></script>
-<script src="js/sgadd-fichajes.js?v=369"></script>
-  <script src="js/sgadd-rankingpdf.js?v=369"></script>
-<script src="js/sgadd-equipos.js?v=369"></script>
+<script src="js/sgadd-fixture.js?v=370"></script>
+<script src="js/sgadd-inscriptos.js?v=370"></script>
+<script src="js/sgadd-fases.js?v=370"></script>
+<script src="js/sgadd-torneos.js?v=370"></script>
+<script src="js/sgadd-hub.js?v=370"></script>
+<script src="js/sgadd-configui.js?v=370"></script>
+<script src="js/sgadd-estados.js?v=370"></script>
+<script src="js/sgadd-buzon.js?v=370"></script>
+<script src="js/sgadd-charts.js?v=370"></script>
+<script src="js/sgadd-personalidad.js?v=370"></script>
+<script src="js/sgadd-rankings.js?v=370"></script>
+<script src="js/sgadd-partido.js?v=370"></script>
+<script src="js/sgadd-informe.js?v=370"></script>
+<script src="js/sgadd-ficha.js?v=370"></script>
+<script src="js/sgadd-mercado.js?v=370"></script>
+<script src="js/sgadd-fichajes.js?v=370"></script>
+  <script src="js/sgadd-rankingpdf.js?v=370"></script>
+<script src="js/sgadd-equipos.js?v=370"></script>
 <!-- Antes que `sgadd-jugadores.js`: le da los umbrales. -->
-<script src="js/sgadd-niveles.js?v=369"></script>
-<script src="js/sgadd-rachas.js?v=369"></script>
-<script src="js/sgadd-jugadores.js?v=369"></script>
-<script src="js/sgadd-4factores.js?v=369"></script>
-<script src="js/sgadd-predicciones.js?v=369"></script>
-<script src="js/sgadd-scouting.js?v=369"></script>
-<script src="js/sgadd-cancha.js?v=369"></script>
-<script src="js/sgadd-ciclos.js?v=369"></script>
-<script src="js/sgadd-escalones.js?v=369"></script>
-<script src="js/sgadd-cicloinforme.js?v=369"></script>
-<script src="js/sgadd-ciclosui.js?v=369"></script>
-<script src="js/sgadd-ciclosadmin.js?v=369"></script>
-<script src="js/sgadd-pbp.js?v=369"></script>
-<script src="js/sgadd-rendimiento.js?v=369"></script>
-<script src="js/sgadd-conclusiones.js?v=369"></script>
-<script src="js/sgadd-diagnostico.js?v=369"></script>
+<script src="js/sgadd-niveles.js?v=370"></script>
+<script src="js/sgadd-rachas.js?v=370"></script>
+<script src="js/sgadd-jugadores.js?v=370"></script>
+<script src="js/sgadd-4factores.js?v=370"></script>
+<script src="js/sgadd-predicciones.js?v=370"></script>
+<script src="js/sgadd-scouting.js?v=370"></script>
+<script src="js/sgadd-cancha.js?v=370"></script>
+<script src="js/sgadd-ciclos.js?v=370"></script>
+<script src="js/sgadd-escalones.js?v=370"></script>
+<script src="js/sgadd-pwa.js?v=370"></script>
+<script src="js/sgadd-cicloinforme.js?v=370"></script>
+<script src="js/sgadd-ciclosui.js?v=370"></script>
+<script src="js/sgadd-ciclosadmin.js?v=370"></script>
+<script src="js/sgadd-pbp.js?v=370"></script>
+<script src="js/sgadd-rendimiento.js?v=370"></script>
+<script src="js/sgadd-conclusiones.js?v=370"></script>
+<script src="js/sgadd-diagnostico.js?v=370"></script>
 
 <script>
 /* ============ CONFIGURACIÓN DE HOJAS ============ */
