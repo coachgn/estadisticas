@@ -871,12 +871,7 @@
     background: var(--acento-fondo, #f7941e); color: #0B1121; border-color: transparent;
   }
   .plan-cta-pop:hover { opacity: .9; color: #0B1121; }
-  /* PWA · botón «Instalar app»: tamaño táctil de 44px, acento del club. */
-  .pwa-instalar { display: inline-flex; align-items: center; justify-content: center; gap: .35rem;
-    min-height: 44px; padding: 0 .9rem; border-radius: .5rem; font-size: 12px; font-weight: 600;
-    background: var(--acento-fondo, #f7941e); color: #0B1121; border: 1px solid transparent; cursor: pointer; }
-  .pwa-instalar:hover { opacity: .9; }
-  .pwa-instalar:focus-visible { outline: 2px solid var(--acento-texto, #fff); outline-offset: 2px; }
+  /* PWA · «Instalar app» es un item más del menú (.nav-item): solo se oculta mientras no se puede instalar. */
   .pwa-instalar[hidden], #pwaNota[hidden] { display: none !important; }
   @media print { .pwa-instalar, #pwaNota { display: none !important; } }
   .plan-cta:focus-visible { outline: 2px solid var(--acento, #f7941e); outline-offset: 2px; }
@@ -3722,6 +3717,11 @@
         </button>
         <button onclick="navigate('diagnostico')" data-nav="diagnostico" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path stroke-linecap="round" d="m20 20-4.3-4.3"/></svg>Diagnóstico</button>
+        <button id="pwaInstalar" type="button" hidden title="Instalá MotorStats como app en este dispositivo" class="pwa-instalar nav-item w-full flex items-center gap-3 px-4 py-3 rounded-md font-body text-sm text-white hover:bg-surface2 transition no-imprimir">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg>
+          Instalar app
+        </button>
+        <p id="pwaNota" class="px-4 text-[11px] text-muted" hidden></p>
       </nav>
 
       <div class="menu-pie px-4 py-4 border-t border-hairline">
@@ -3744,10 +3744,6 @@
              Con el número acá, eso se diagnostica de un vistazo en vez de
              debuggear fantasmas: si dice una versión vieja, es caché. -->
         <div id="sesion-slot" class="text-center mb-2"></div>
-          <div class="no-imprimir text-center mb-2">
-            <button id="pwaInstalar" type="button" class="pwa-instalar" hidden title="Instalá MotorStats como app en este dispositivo">⤓ Instalar app</button>
-            <p id="pwaNota" class="text-[11px] text-muted mt-1" hidden></p>
-          </div>
           <div id="ingresoSlot" class="mt-2"></div>
           <!-- El pie institucional del panel. Mismo texto que el de los
                PDF: quien mira la pantalla y quien recibe el informe leen

@@ -17030,9 +17030,9 @@ Assets en `?v=370`. `test-pwa.js` fija todo. Sin bundler ni tiendas: el panel se
 
 ```
 manifest.json        nombre «MotorStats», standalone, #0B1121, rutas RELATIVAS (el sitio vive en /estadisticas/)
-icons/               icon-192, icon-512 y maskable-512 (isotipo sobre el navy del tema, generados con Chrome sin ventana)
+icons/               icon-192 e icon-512 con FONDO TRANSPARENTE (solo el isotipo, generados con Chrome sin ventana); sin maskable: un ícono adaptable no puede ser transparente
 sw.js                service worker: RED PRIMERO, caché de respaldo
-js/sgadd-pwa.js      registra el SW y maneja el botón «⤓ Instalar app» (#pwaInstalar, sidebar)
+js/sgadd-pwa.js      registra el SW y maneja el botón «⤓ Instalar app» (#pwaInstalar: un item más del menú, con las MISMAS clases que Principal y su ícono de descarga)
 ```
 
 - **Red primero, no caché primero**: la trampa de este proyecto es la versión vieja que no se va (punto 2). Con red siempre se sirve lo publicado y cada respuesta buena se guarda; sin red abre lo último visto y una navegación cae al `index.html` guardado. La clave incluye el `?v=` de cada script.
