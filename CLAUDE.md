@@ -198,7 +198,7 @@ node test-rendimiento.js   #  83 tests · la card de Rendimiento del jugador: el
 
 node test-conclusiones.js  # 113 tests · la card de conclusiones clínicas de Equipos y Jugadores, los tipos
                            #             de posesión del PBP y la terna de logos del PDF (punto 141)
-                           #             · y la matriz de trade-offs con las metas escalonadas (punto 173)
+                           #             · y la matriz de trade-offs con las metas escalonadas (punto 173)
 
 node test-escalones.js      #  22 tests · el criterio ÚNICO de meta por tercios (P0-33 · P34-66 · P67-100) que usan el Diagnóstico y Ciclos (punto 174)
 
@@ -17030,7 +17030,7 @@ Assets en `?v=370`. `test-pwa.js` fija todo. Sin bundler ni tiendas: el panel se
 
 ```
 manifest.json        nombre «MotorStats», standalone, #0B1121, rutas RELATIVAS (el sitio vive en /estadisticas/)
-icons/               icon-192 e icon-512 con FONDO TRANSPARENTE (solo el isotipo, generados con Chrome sin ventana); sin maskable: un ícono adaptable no puede ser transparente
+icons/               app-192 y app-512 con FONDO TRANSPARENTE (solo el isotipo, generados con Chrome sin ventana); sin maskable: un ícono adaptable no puede ser transparente
 sw.js                service worker: RED PRIMERO, caché de respaldo
 js/sgadd-pwa.js      registra el SW y maneja el botón «⤓ Instalar app» (#pwaInstalar: un item más del menú, con las MISMAS clases que Principal y su ícono de descarga)
 ```

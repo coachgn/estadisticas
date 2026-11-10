@@ -9,10 +9,10 @@
    y cada respuesta buena se guarda para cuando no haya red. La clave incluye
    el `?v=` de cada script, así que una entrega nueva se suma a la anterior;
    subir VERSION limpia las cachés viejas. */
-const VERSION = 'sgadd-pwa-v1';
+const VERSION = 'sgadd-pwa-v2';
 const CACHE = VERSION;
 const BASE = new URL('./', self.location).pathname;
-const SHELL = ['./', 'index.html', 'sgadd.css', 'manifest.json', 'icons/icon-192.png', 'icons/icon-512.png'];
+const SHELL = ['./', 'index.html', 'sgadd.css', 'manifest.json', 'icons/app-192.png', 'icons/app-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(

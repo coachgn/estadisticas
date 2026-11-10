@@ -16,7 +16,7 @@ console.log('2 · index.html');
 check('enlaza el manifest, el theme-color y el ícono de iOS', /rel="manifest" href="manifest\.json"/.test(HTML) && /name="theme-color" content="#0B1121"/.test(HTML) && /rel="apple-touch-icon"/.test(HTML));
 check('el botón es un item más del menú: mismas clases que Principal',(()=>{const cl=s=>(HTML.match(new RegExp('<button[^>]*'+s+'[^>]*class="([^"]+)"'))||[])[1]||'';const p=cl('data-nav="principal"'),b=(HTML.match(/<button id="pwaInstalar"[^>]*class="([^"]+)"/)||[])[1]||'';return p&&['nav-item','w-full','flex','items-center','gap-3','px-4','py-3','rounded-md','font-body','text-sm','text-white','hover:bg-surface2','transition'].every(c=>b.split(' ').includes(c));})());
 check('sin estilos propios de botón llamativo (nada de fondo del acento)', !/\.pwa-instalar\s*\{[^}]*background/.test(HTML));
-check('los PNG del ícono tienen fondo transparente (esquinas con alfa 0)', ['icons/icon-192.png','icons/icon-512.png'].every(f=>{const zlib=require('zlib');const b=fs.readFileSync('./'+f);let i=8,d=[];while(i<b.length){const n=b.readUInt32BE(i),t=b.slice(i+4,i+8).toString();if(t==='IDAT')d.push(b.slice(i+8,i+8+n));i+=12+n;}const w=b.readUInt32BE(16),r=zlib.inflateSync(Buffer.concat(d));return b[25]===6&&(r[0]===0||r[0]===2)&&r[1+3]===0&&r[1+(w-1)*4+3]===0;}));
+check('los PNG del ícono tienen fondo transparente (esquinas con alfa 0)', ['icons/app-192.png','icons/app-512.png'].every(f=>{const zlib=require('zlib');const b=fs.readFileSync('./'+f);let i=8,d=[];while(i<b.length){const n=b.readUInt32BE(i),t=b.slice(i+4,i+8).toString();if(t==='IDAT')d.push(b.slice(i+8,i+8+n));i+=12+n;}const w=b.readUInt32BE(16),r=zlib.inflateSync(Buffer.concat(d));return b[25]===6&&(r[0]===0||r[0]===2)&&r[1+3]===0&&r[1+(w-1)*4+3]===0;}));
 check('el botón existe, nace oculto y no se imprime', /id="pwaInstalar"[^>]*\bhidden\b/.test(HTML) && /@media print \{ \.pwa-instalar/.test(HTML));
 check('el módulo carga con el mismo ?v= que el resto', (HTML.match(/sgadd-pwa\.js\?v=(\d+)/) || [])[1] === (HTML.match(/sgadd-core\.js\?v=(\d+)/) || [])[1]);
 
@@ -38,18 +38,18 @@ check('estrategia red primero (fetch antes que cache.match)', SW.indexOf('await 
   check('un POST no se intercepta', (() => { let r; listeners.fetch({ request: { method: 'POST', url: 'https://x.test/estadisticas/a' }, respondWith: (p) => { r = p; } }); return r === undefined; })());
   red = true;
   const a = await pedir('https://x.test/estadisticas/js/sgadd-core.js?v=370');
-  check('con red sirve lo publicado y lo guarda', a.ok === true && [...caches.get('sgadd-pwa-v1').m.keys()].some(k => k.includes('sgadd-core.js?v=370')));
+  check('con red sirve lo publicado y lo guarda', a.ok === true && [...caches.get('sgadd-pwa-v2').m.keys()].some(k => k.includes('sgadd-core.js?v=370')));
   red = false;
   const b = await pedir('https://x.test/estadisticas/js/sgadd-core.js?v=370');
   check('sin red sirve la copia guardada', b && b.ok === true);
   const c = await pedir('https://x.test/estadisticas/js/otro.js');
   check('sin red y sin copia: 503 claro, no un cuelgue', c.status === 503);
-  await caches.get('sgadd-pwa-v1').add('index.html');
+  await caches.get('sgadd-pwa-v2').add('index.html');
   const d = await pedir('https://x.test/estadisticas/?club=jujuy', 'navigate');
   check('sin red, una navegación cae al index.html guardado', d && d.ok === true);
   caches.set('sgadd-pwa-v0', mkCache()); caches.set('otra-app', mkCache());
   await new Promise((res) => { listeners.activate({ waitUntil: (p) => p.then(res) }); });
-  check('activate borra las cachés viejas de SGADD y no toca las ajenas', !caches.has('sgadd-pwa-v0') && caches.has('otra-app') && caches.has('sgadd-pwa-v1'));
+  check('activate borra las cachés viejas de SGADD y no toca las ajenas', !caches.has('sgadd-pwa-v0') && caches.has('otra-app') && caches.has('sgadd-pwa-v2'));
 
   console.log('4 · registro y botón');
   const P = require('./js/sgadd-pwa.js');
