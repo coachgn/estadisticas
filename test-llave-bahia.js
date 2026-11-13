@@ -295,5 +295,25 @@ seccion('5 · v362 · «En la postemporada del Clausura» cuenta solo la del Cla
   check('en Octavos del Apertura, sus 2 de Octavos (1-1)', ap.pj === 2 && ap.pg === 1, ap);
 }
 
+/* =====================================================================
+   6 · NINGÚN «TOTAL» QUE MEZCLE INSTANCIAS (punto 176)
+   El libro de la postemporada del Clausura trae PLAY IN|CLAUSURA y
+   CUARTOS|CLAUSURA: FASE = CLAUSURA con dos «torneos» que son instancias.
+   ===================================================================== */
+seccion('6 · sin «Total - Clausura» que junte Play-In y Cuartos');
+{
+  const CUA = partido('12/11/2026', 'CUARTOS', 'CLAUSURA', NAP, ALE, 80, 75);
+  const t = SGADD.combinacionesTorneoFase(libro(CL_REG.concat(PLAYIN, CUA)));
+  check('no se ofrece *TOTAL*|CLAUSURA', !t.some(x => x.id === SGADD.TORNEO_TOTAL + '|CLAUSURA'), t.map(x => x.id));
+  check('los dos tramos reales siguen', t.some(x => x.id === 'PLAY IN|CLAUSURA') && t.some(x => x.id === 'CUARTOS|CLAUSURA'));
+  const def = SGADD.tramoPorDefecto(t);
+  check('abre en los Cuartos (lo último jugado), no en un total', def && def.id === 'CUARTOS|CLAUSURA', def && def.id);
+  const t2 = SGADD.combinacionesTorneoFase(libro(CL_REG.concat(partido('01/04/2026', 'APERTURA', 'REGULAR', OLI, NAP, 70, 60))));
+  check('el TOTAL de la regular (Apertura + Clausura) sigue', t2.some(x => x.id === SGADD.TORNEO_TOTAL + '|REGULAR'));
+  check('esInstanciaDeEliminacion reconoce PLAY IN y Cuartos, no CLAUSURA ni APERTURA',
+    SGADD.esInstanciaDeEliminacion('PLAY IN') && SGADD.esInstanciaDeEliminacion('Cuartos de Final')
+    && !SGADD.esInstanciaDeEliminacion('CLAUSURA') && !SGADD.esInstanciaDeEliminacion('APERTURA'));
+}
+
 console.log('\n' + (mal ? '✗ HAY FALLAS · ' : '✓ TODO OK · ') + ok + ' pasaron, ' + mal + ' fallaron');
 process.exit(mal ? 1 : 0);

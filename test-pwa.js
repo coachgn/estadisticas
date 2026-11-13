@@ -37,10 +37,10 @@ check('estrategia red primero (fetch antes que cache.match)', SW.indexOf('await 
   check('un pedido de otro origen no se intercepta', pedir('https://api.otro.com/x') === undefined);
   check('un POST no se intercepta', (() => { let r; listeners.fetch({ request: { method: 'POST', url: 'https://x.test/estadisticas/a' }, respondWith: (p) => { r = p; } }); return r === undefined; })());
   red = true;
-  const a = await pedir('https://x.test/estadisticas/js/sgadd-core.js?v=370');
-  check('con red sirve lo publicado y lo guarda', a.ok === true && [...caches.get('sgadd-pwa-v2').m.keys()].some(k => k.includes('sgadd-core.js?v=370')));
+  const a = await pedir('https://x.test/estadisticas/js/sgadd-core.js?v=371');
+  check('con red sirve lo publicado y lo guarda', a.ok === true && [...caches.get('sgadd-pwa-v2').m.keys()].some(k => k.includes('sgadd-core.js?v=371')));
   red = false;
-  const b = await pedir('https://x.test/estadisticas/js/sgadd-core.js?v=370');
+  const b = await pedir('https://x.test/estadisticas/js/sgadd-core.js?v=371');
   check('sin red sirve la copia guardada', b && b.ok === true);
   const c = await pedir('https://x.test/estadisticas/js/otro.js');
   check('sin red y sin copia: 503 claro, no un cuelgue', c.status === 503);

@@ -562,6 +562,18 @@
      que se eligen juntos.
      ===================================================================== */
 
+  /**
+   * ¿Este texto nombra una INSTANCIA de eliminación (Play-In, Octavos,
+   * Cuartos, Final…) y no un torneo? Es lo que delata la carpeta al revés.
+   */
+  const RE_INSTANCIA = /^(PLAY\s*[-_]?\s*(IN|OFFS?)|RECLASIFICACION|REPECHAJE|OCTAVOS|CUARTOS|SEMI\s*FINAL(ES)?|FINAL|SUPER\s*FINAL|PROMOCION|PERMANENCIA|TERCER\s+PUESTO)\b/;
+  function esInstanciaDeEliminacion(v) {
+    const t = texto(v).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+    if (!t) return false;
+    if (FASES[t]) return !!FASES[t].eliminacion;
+    return RE_INSTANCIA.test(t);
+  }
+
   /** Los pares TORNEO+FASE presentes en el libro, en orden de lectura. */
   function combinacionesTorneoFase(hojas) {
     const vistas = new Map();
@@ -626,9 +638,18 @@
 
        No se ofrece un 'total de todo el libro' mezclando fases: juntar
        una fase regular con unos playoffs no significa nada. */
+    /* NI CON LA CARPETA AL REVÉS (punto 176). Un libro de postemporada
+       escrito «PLAY IN - CLAUSURA» y «CUARTOS - CLAUSURA» trae FASE =
+       CLAUSURA con dos «torneos» que en realidad son INSTANCIAS: el total
+       juntaría un Play-In con unos Cuartos, que es justo lo que no se
+       mezcla. Medido en Bahía: «Total - Clausura» con 7 partidos (3 + 4). */
     const porFase = {};
+    const alReves = new Set();
     lista.forEach(c => {
-      if (c.agregado || c.torneo === TORNEO_GENERAL) return;
+      if (!c.agregado && esInstanciaDeEliminacion(c.torneo)) alReves.add(c.fase);
+    });
+    lista.forEach(c => {
+      if (c.agregado || c.torneo === TORNEO_GENERAL || alReves.has(c.fase)) return;
       (porFase[c.fase] = porFase[c.fase] || []).push(c);
     });
     const conTotal = [];
@@ -3452,7 +3473,7 @@
     // 3
     CATALOGO, FASES, SECCIONES, TORNEO_GENERAL, planilla, planillasVisibles, esEquipoPropio, agrupar,
     fasesDisponibles, torneosDisponibles, torneoPorDefecto, torneoDeFila, Ruta,
-    combinacionesTorneoFase, tramoPorDefecto, TORNEO_TOTAL, esTotal,
+    combinacionesTorneoFase, tramoPorDefecto, TORNEO_TOTAL, esTotal, esInstanciaDeEliminacion,
     leerCachePersistente, guardarCachePersistente, borrarCachePersistente,
     CACHE_PREFIJO, CACHE_FORMATO, CACHE_TTL_MS,
     blanquearTasasSinDenominador, DENOMINADOR_TASA,

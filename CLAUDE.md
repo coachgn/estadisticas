@@ -22,7 +22,7 @@ node test-ligas.js         #   9 tests · aislamiento entre ligas
 node test-clubes.js        #  97 tests · multi-cliente
 node test-config.js        # 318 tests · zonas de tabla, tramos, tonos AA, pestaña Torneo
 node test-clasificacion.js #  57 tests · tabla de posiciones, orden, zonas y escudos
-node test-llave-bahia.js   #  46 tests · fases por tabla y por llave: la carpeta al revés del Play-In, el selector,
+node test-llave-bahia.js   #  61 tests · fases por tabla y por llave: la carpeta al revés del Play-In, el selector,
                            #             lo jugado de cada fase, el camino del equipo y la tarjeta simple (punto 167)
 node test-desempate-fiba.js # 37 tests · el desempate oficial FIBA: duelo directo, mini-tabla,
                            #             la vuelta a empezar (D.3), cociente y los manuales (punto 132)
@@ -335,7 +335,7 @@ simulador-4factores-legacy.js ← Apps Script original (auditado, no se ejecuta:
                           ver punto 10). Queda como referencia de qué se corrigió.
 ```
 
-**Versión actual de assets: `?v=370`.** Los `<script>` llevan query string para
+**Versión actual de assets: `?v=371`.** Los `<script>` llevan query string para
 bustear el caché de GitHub Pages. **Subir el número en CADA entrega**, si no el
 navegador sirve la versión vieja y se pierden horas debuggeando fantasmas.
 
@@ -17041,3 +17041,14 @@ js/sgadd-pwa.js      registra el SW y maneja el botón «⤓ Instalar app» (#pw
 - **El botón nace oculto**: aparece con `beforeinstallprompt` (Chrome/Edge/Android) o, en iOS, siempre que no esté instalada, con la nota «Compartir → Agregar a inicio». Instalada (standalone) no se muestra. No se imprime.
 - El SW solo se registra en https o localhost; todo va con try/catch: la PWA no puede tumbar el panel.
 - **Lo que no se verificó**: la instalación real en un celular y en iOS (el prompt depende del navegador). Probado en un `vm` y en el navegador de la vista previa.
+
+---
+
+## 176. NINGÚN «TOTAL» QUE JUNTE INSTANCIAS DE POSTEMPORADA (2026-11-13)
+
+Reportado en Bahía Blanca (cliente Leandro N. Alem): con los Cuartos del Clausura en juego, la barra abría en **«Total - Clausura» · 10 equipos · 7 partidos**, dentro de «Fase regular». Assets en `?v=371`. `test-llave-bahia.js` (sección 6) lo fija.
+
+- **Lo medido**: el libro `bahia-blanca-2026-postemporada-clausura` (el mismo del Play-In) trae `PLAY IN|CLAUSURA` (3 partidos) y `CUARTOS|CLAUSURA` (4), los dos con la carpeta al revés (punto 134). Para el núcleo eso es FASE = CLAUSURA con dos «torneos», y desde el punto 3 ter toda fase con dos torneos o más recibe su TOTAL sintético: juntaba un Play-In con unos Cuartos. Y como la fase de lo último jugado no es REGULAR, `tramoPorDefecto` abría por ese total.
+- **El arreglo** (`combinacionesTorneoFase`, núcleo y `compartido/`): una FASE donde algún «torneo» es una instancia de eliminación (`SGADD.esInstanciaDeEliminacion`: las del vocabulario `FASES` con `eliminacion` y PLAY IN, PLAYOFFS, OCTAVOS, CUARTOS, SEMIFINAL, FINAL, PROMOCIÓN, PERMANENCIA, TERCER PUESTO…) no recibe TOTAL. Ahora abre en `CUARTOS|CLAUSURA`. El TOTAL de la regular (Apertura + Clausura) y el de una fase de eliminación con dos torneos reales siguen igual.
+- **Un link o una preferencia guardada con `*TOTAL*|CLAUSURA`** deja de ser válido y cae al tramo por defecto.
+- **Panel Master**: las tres fases de Bahía leen bien, pero cada una está declarada de una forma (Octavos con `torneo: OCTAVOS` y libro `APERTURA`; Play-In sin torneo y libro `PLAY IN`; Cuartos con `torneo: CLAUSURA` y libro `CUARTOS`). Lo prolijo es declarar todas como Cuartos (libro = la instancia, torneo = Apertura/Clausura) y nombrar las carpetas «CLAUSURA - CUARTOS». No se escribió en KV.
